@@ -52,7 +52,10 @@ use crate::{
 		DropViewStatement, InsertStatement, OptimizeTableStatement, ReindexStatement,
 		RepairTableStatement, SelectStatement, TruncateTableStatement, UpdateStatement,
 	},
-	types::{BinOper, ColumnRef, TableRef, TriggerBody},
+	types::{
+		BinOper, ColumnDef, ColumnRef, GeneratedColumn, GeneratedStorage, SchemaBinOper,
+		SchemaExpr, SchemaFunc, TableRef, TriggerBody,
+	},
 	value::Values,
 };
 
@@ -340,6 +343,132 @@ impl PostgresQueryBuilder {
 				writer.push(".*");
 			}
 		}
+	}
+
+	/// Write a DDL-safe schema expression with inline literals.
+	fn write_schema_expr(&self, writer: &mut SqlWriter, expr: &SchemaExpr) {
+		match expr {
+			SchemaExpr::Column(iden) => {
+				writer.push_identifier(&iden.to_string(), |s| self.escape_iden(s));
+			}
+			SchemaExpr::Value(value) => {
+				writer.push(&value.to_sql_literal());
+			}
+			SchemaExpr::Binary { left, op, right } => {
+				writer.push("(");
+				self.write_schema_expr(writer, left);
+				writer.push_space();
+				writer.push(match op {
+					SchemaBinOper::Add => "+",
+					SchemaBinOper::Sub => "-",
+					SchemaBinOper::Mul => "*",
+					SchemaBinOper::Div => "/",
+				});
+				writer.push_space();
+				self.write_schema_expr(writer, right);
+				writer.push(")");
+			}
+			SchemaExpr::Function { func, args } => match func {
+				SchemaFunc::Concat => {
+					if args.is_empty() {
+						writer.push("''");
+					} else {
+						writer.push_list(args, " || ", |w, arg| {
+							self.write_schema_expr(w, arg);
+						});
+					}
+				}
+				SchemaFunc::Coalesce => {
+					writer.push("COALESCE(");
+					writer.push_list(args, ", ", |w, arg| {
+						self.write_schema_expr(w, arg);
+					});
+					writer.push(")");
+				}
+			},
+			SchemaExpr::Cast { expr, ty } => {
+				writer.push("CAST(");
+				self.write_schema_expr(writer, expr);
+				writer.push(" AS ");
+				writer.push(&self.column_type_to_sql(ty));
+				writer.push(")");
+			}
+		}
+	}
+
+	/// Write generated-column DDL.
+	fn write_generated_column(&self, writer: &mut SqlWriter, generated: &GeneratedColumn) {
+		generated
+			.validate()
+			.expect("invalid generated-column metadata");
+		if generated.storage == GeneratedStorage::Virtual {
+			panic!("PostgreSQL generated columns require STORED storage");
+		}
+
+		writer.push(" GENERATED ALWAYS AS (");
+		if let Some(expr) = &generated.expr {
+			self.write_schema_expr(writer, expr);
+		} else if let Some(raw_sql) = &generated.raw_sql {
+			writer.push(raw_sql);
+		}
+		writer.push(") ");
+		writer.push(generated.storage.as_str());
+	}
+
+	fn validate_generated_column_dependencies(&self, columns: &[ColumnDef]) {
+		let generated_columns = columns
+			.iter()
+			.filter(|column| column.generated.is_some())
+			.map(|column| column.name.to_string())
+			.collect::<Vec<_>>();
+
+		for column in columns {
+			let Some(generated) = column.generated.as_ref() else {
+				continue;
+			};
+			let column_name = column.name.to_string();
+			for generated_column in &generated_columns {
+				if generated_column == &column_name {
+					continue;
+				}
+				if Self::generated_column_references_column(generated, generated_column) {
+					panic!(
+						"PostgreSQL generated column `{}` cannot reference generated column `{}`",
+						column_name, generated_column
+					);
+				}
+			}
+		}
+	}
+
+	fn generated_column_references_column(generated: &GeneratedColumn, column: &str) -> bool {
+		if let Some(expr) = &generated.expr {
+			return Self::schema_expr_references_column(expr, column);
+		}
+		generated
+			.raw_sql
+			.as_deref()
+			.is_some_and(|raw_sql| Self::expression_text_references_column(raw_sql, column))
+	}
+
+	fn schema_expr_references_column(expr: &SchemaExpr, column: &str) -> bool {
+		match expr {
+			SchemaExpr::Column(identifier) => identifier.to_string() == column,
+			SchemaExpr::Value(_) => false,
+			SchemaExpr::Binary { left, right, .. } => {
+				Self::schema_expr_references_column(left, column)
+					|| Self::schema_expr_references_column(right, column)
+			}
+			SchemaExpr::Function { args, .. } => args
+				.iter()
+				.any(|arg| Self::schema_expr_references_column(arg, column)),
+			SchemaExpr::Cast { expr, .. } => Self::schema_expr_references_column(expr, column),
+		}
+	}
+
+	fn expression_text_references_column(text: &str, column: &str) -> bool {
+		text.split(|character: char| !(character.is_ascii_alphanumeric() || character == '_'))
+			.any(|token| token.eq_ignore_ascii_case(column))
 	}
 
 	/// Write a simple expression
@@ -1425,6 +1554,8 @@ impl QueryBuilder for PostgresQueryBuilder {
 	}
 
 	fn build_create_table(&self, stmt: &CreateTableStatement) -> (String, Values) {
+		self.validate_generated_column_dependencies(&stmt.columns);
+
 		let mut writer = SqlWriter::new();
 
 		writer.push("CREATE TABLE");
@@ -1469,6 +1600,10 @@ impl QueryBuilder for PostgresQueryBuilder {
 				} else {
 					writer.push(&self.column_type_to_sql(col_type));
 				}
+			}
+
+			if let Some(generated) = &column.generated {
+				self.write_generated_column(&mut writer, generated);
 			}
 
 			// NOT NULL
@@ -1546,6 +1681,9 @@ impl QueryBuilder for PostgresQueryBuilder {
 					writer.push_space();
 					if let Some(col_type) = &column_def.column_type {
 						writer.push(&self.column_type_to_sql(col_type));
+					}
+					if let Some(generated) = &column_def.generated {
+						self.write_generated_column(&mut writer, generated);
 					}
 					if column_def.not_null {
 						writer.push(" NOT NULL");
@@ -7112,6 +7250,7 @@ mod tests {
 			auto_increment: false,
 			default: None,
 			check: None,
+			generated: None,
 			comment: None,
 		});
 		stmt.columns.push(ColumnDef {
@@ -7123,6 +7262,7 @@ mod tests {
 			auto_increment: false,
 			default: None,
 			check: None,
+			generated: None,
 			comment: None,
 		});
 
@@ -7149,6 +7289,7 @@ mod tests {
 			auto_increment: false,
 			default: None,
 			check: None,
+			generated: None,
 			comment: None,
 		});
 
@@ -7174,6 +7315,7 @@ mod tests {
 			auto_increment: false,
 			default: None,
 			check: None,
+			generated: None,
 			comment: None,
 		});
 
@@ -7199,6 +7341,7 @@ mod tests {
 			auto_increment: false,
 			default: None,
 			check: None,
+			generated: None,
 			comment: None,
 		});
 
@@ -7223,6 +7366,7 @@ mod tests {
 			auto_increment: false,
 			default: None,
 			check: None,
+			generated: None,
 			comment: None,
 		});
 
@@ -7247,6 +7391,7 @@ mod tests {
 			auto_increment: false,
 			default: Some(Expr::value(true).into_simple_expr()),
 			check: None,
+			generated: None,
 			comment: None,
 		});
 
@@ -7271,6 +7416,7 @@ mod tests {
 			auto_increment: false,
 			default: None,
 			check: Some(Expr::col("age").gte(0).into_simple_expr()),
+			generated: None,
 			comment: None,
 		});
 
@@ -7279,6 +7425,58 @@ mod tests {
 		assert!(sql.contains("\"age\" INTEGER CHECK"));
 		assert!(sql.contains(">= 0"));
 		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_create_table_with_stored_generated_column() {
+		use crate::types::{ColumnDef, SchemaExpr};
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::create_table();
+		stmt.table("users");
+		stmt.col(
+			ColumnDef::new("full_name")
+				.string_len(201)
+				.generated_stored(SchemaExpr::concat([
+					SchemaExpr::col("first_name"),
+					SchemaExpr::val(" "),
+					SchemaExpr::col("last_name"),
+				])),
+		);
+
+		let (sql, values) = builder.build_create_table(&stmt);
+		assert!(sql.contains(
+			r#""full_name" VARCHAR(201) GENERATED ALWAYS AS ("first_name" || ' ' || "last_name") STORED"#
+		));
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	#[should_panic(
+		expected = "PostgreSQL generated column `search_name` cannot reference generated column `full_name`"
+	)]
+	fn test_create_table_rejects_generated_column_chains() {
+		use crate::types::{ColumnDef, SchemaExpr};
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::create_table();
+		stmt.table("users");
+		stmt.col(
+			ColumnDef::new("full_name")
+				.string_len(201)
+				.generated_stored(SchemaExpr::concat([
+					SchemaExpr::col("first_name"),
+					SchemaExpr::val(" "),
+					SchemaExpr::col("last_name"),
+				])),
+		);
+		stmt.col(
+			ColumnDef::new("search_name")
+				.string_len(201)
+				.generated_stored(SchemaExpr::col("full_name")),
+		);
+
+		let _ = builder.build_create_table(&stmt);
 	}
 
 	#[test]
@@ -7297,6 +7495,7 @@ mod tests {
 			auto_increment: false,
 			default: None,
 			check: None,
+			generated: None,
 			comment: None,
 		});
 		stmt.columns.push(ColumnDef {
@@ -7308,6 +7507,7 @@ mod tests {
 			auto_increment: false,
 			default: None,
 			check: None,
+			generated: None,
 			comment: None,
 		});
 		stmt.constraints.push(TableConstraint::PrimaryKey {
@@ -7338,6 +7538,7 @@ mod tests {
 			auto_increment: false,
 			default: None,
 			check: None,
+			generated: None,
 			comment: None,
 		});
 		stmt.columns.push(ColumnDef {
@@ -7349,6 +7550,7 @@ mod tests {
 			auto_increment: false,
 			default: None,
 			check: None,
+			generated: None,
 			comment: None,
 		});
 		stmt.constraints.push(TableConstraint::ForeignKey {
@@ -7565,11 +7767,37 @@ mod tests {
 				auto_increment: false,
 				default: None,
 				check: None,
+				generated: None,
 				comment: None,
 			}));
 
 		let (sql, values) = builder.build_alter_table(&stmt);
 		assert_eq!(sql, r#"ALTER TABLE "users" ADD COLUMN "age" INTEGER"#);
+		assert_eq!(values.len(), 0);
+	}
+
+	#[test]
+	fn test_alter_table_add_stored_generated_column() {
+		use crate::types::{ColumnDef, SchemaExpr};
+
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::alter_table();
+		stmt.table("users");
+		stmt.add_column(
+			ColumnDef::new("full_name")
+				.string_len(201)
+				.generated_stored(SchemaExpr::concat([
+					SchemaExpr::col("first_name"),
+					SchemaExpr::val(" "),
+					SchemaExpr::col("last_name"),
+				])),
+		);
+
+		let (sql, values) = builder.build_alter_table(&stmt);
+		assert_eq!(
+			sql,
+			r#"ALTER TABLE "users" ADD COLUMN "full_name" VARCHAR(201) GENERATED ALWAYS AS ("first_name" || ' ' || "last_name") STORED"#
+		);
 		assert_eq!(values.len(), 0);
 	}
 
@@ -7645,6 +7873,7 @@ mod tests {
 				auto_increment: false,
 				default: None,
 				check: None,
+				generated: None,
 				comment: None,
 			}));
 

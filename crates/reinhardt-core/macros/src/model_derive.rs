@@ -133,6 +133,248 @@ fn validate_sql_expression(sql: &str, attr_name: &str) -> Result<()> {
 	Ok(())
 }
 
+fn validate_generated_schema_expr(expr: &syn::Expr) -> Result<()> {
+	if generated_schema_expr_is_supported(expr) {
+		return Ok(());
+	}
+
+	Err(syn::Error::new_spanned(
+		expr,
+		"generated expects a reconstructable SchemaExpr expression; supported forms are SchemaExpr::col(...), SchemaExpr::val(...), SchemaExpr::concat([...]), SchemaExpr::coalesce([...]), and chained .binary(...) or .cast(...) calls. Use generated_sql = \"...\" for raw SQL or unsupported expression builders.",
+	))
+}
+
+fn generated_schema_expr_is_supported(expr: &syn::Expr) -> bool {
+	match expr {
+		syn::Expr::Paren(expr_paren) => generated_schema_expr_is_supported(&expr_paren.expr),
+		syn::Expr::Group(expr_group) => generated_schema_expr_is_supported(&expr_group.expr),
+		syn::Expr::MethodCall(method_call) => {
+			generated_schema_expr_is_supported(&method_call.receiver)
+				&& match method_call.method.to_string().as_str() {
+					"binary" if method_call.args.len() == 2 => {
+						generated_schema_bin_oper_is_supported(&method_call.args[0])
+							&& generated_schema_expr_is_supported(&method_call.args[1])
+					}
+					"cast" if method_call.args.len() == 1 => {
+						generated_column_type_is_supported(&method_call.args[0])
+					}
+					_ => false,
+				}
+		}
+		syn::Expr::Call(expr_call) => {
+			let syn::Expr::Path(func_path) = &*expr_call.func else {
+				return false;
+			};
+			let Some(func) = func_path
+				.path
+				.segments
+				.last()
+				.map(|segment| segment.ident.to_string())
+			else {
+				return false;
+			};
+			match func.as_str() {
+				"col" if expr_call.args.len() == 1 => {
+					matches!(&expr_call.args[0], syn::Expr::Lit(expr_lit) if matches!(&expr_lit.lit, syn::Lit::Str(_)))
+				}
+				"val" if expr_call.args.len() == 1 => {
+					generated_schema_value_is_supported(&expr_call.args[0])
+				}
+				"concat" if expr_call.args.len() == 1 => {
+					generated_schema_expr_list_is_supported(&expr_call.args[0], true)
+				}
+				"coalesce" if expr_call.args.len() == 1 => {
+					generated_schema_expr_list_is_supported(&expr_call.args[0], false)
+				}
+				_ => false,
+			}
+		}
+		_ => false,
+	}
+}
+
+fn generated_schema_expr_list_is_supported(expr: &syn::Expr, allow_empty: bool) -> bool {
+	match expr {
+		syn::Expr::Array(expr_array) => {
+			(allow_empty || !expr_array.elems.is_empty())
+				&& expr_array
+					.elems
+					.iter()
+					.all(generated_schema_expr_is_supported)
+		}
+		syn::Expr::Macro(expr_macro) if expr_macro.mac.path.is_ident("vec") => {
+			let tokens = &expr_macro.mac.tokens;
+			let Ok(parsed) = syn::parse2::<syn::ExprArray>(quote! { [#tokens] }) else {
+				return false;
+			};
+			(allow_empty || !parsed.elems.is_empty())
+				&& parsed.elems.iter().all(generated_schema_expr_is_supported)
+		}
+		_ => false,
+	}
+}
+
+fn generated_schema_bin_oper_is_supported(expr: &syn::Expr) -> bool {
+	let syn::Expr::Path(expr_path) = expr else {
+		return false;
+	};
+	expr_path.path.segments.last().is_some_and(|segment| {
+		matches!(
+			segment.ident.to_string().as_str(),
+			"Add" | "Sub" | "Mul" | "Div"
+		)
+	})
+}
+
+fn generated_schema_value_is_supported(expr: &syn::Expr) -> bool {
+	match expr {
+		syn::Expr::Lit(expr_lit) => match &expr_lit.lit {
+			syn::Lit::Str(_) | syn::Lit::Bool(_) | syn::Lit::Char(_) => true,
+			syn::Lit::Int(lit_int) => {
+				lit_int.base10_parse::<i32>().is_ok() || lit_int.base10_parse::<i64>().is_ok()
+			}
+			syn::Lit::Float(lit_float) => lit_float.base10_parse::<f64>().is_ok(),
+			_ => false,
+		},
+		syn::Expr::Unary(expr_unary) => {
+			matches!(expr_unary.op, syn::UnOp::Neg(_))
+				&& generated_schema_value_is_supported(&expr_unary.expr)
+		}
+		_ => false,
+	}
+}
+
+fn generated_column_type_is_supported(expr: &syn::Expr) -> bool {
+	match expr {
+		syn::Expr::Path(expr_path) => expr_path.path.segments.last().is_some_and(|segment| {
+			matches!(
+				segment.ident.to_string().as_str(),
+				"Text"
+					| "TinyInteger" | "SmallInteger"
+					| "Integer" | "BigInteger"
+					| "Float" | "Double"
+					| "Boolean" | "Date"
+					| "Time" | "DateTime"
+					| "Timestamp" | "TimestampWithTimeZone"
+					| "Blob" | "Uuid"
+					| "Json" | "JsonBinary"
+			)
+		}),
+		syn::Expr::Call(expr_call) => {
+			let syn::Expr::Path(func_path) = &*expr_call.func else {
+				return false;
+			};
+			let Some(variant) = func_path
+				.path
+				.segments
+				.last()
+				.map(|segment| segment.ident.to_string())
+			else {
+				return false;
+			};
+			match variant.as_str() {
+				"Char" | "String" | "Binary" if expr_call.args.len() == 1 => {
+					generated_optional_u32_is_supported(&expr_call.args[0])
+				}
+				"Decimal" if expr_call.args.len() == 1 => {
+					generated_optional_u32_pair_is_supported(&expr_call.args[0])
+				}
+				"VarBinary" if expr_call.args.len() == 1 => {
+					generated_u32_literal_is_supported(&expr_call.args[0])
+				}
+				"Array" if expr_call.args.len() == 1 => generated_box_new_expr(&expr_call.args[0])
+					.is_some_and(generated_column_type_is_supported),
+				"Custom" if expr_call.args.len() == 1 => {
+					generated_custom_column_type_arg_is_supported(&expr_call.args[0])
+				}
+				_ => false,
+			}
+		}
+		_ => false,
+	}
+}
+
+fn generated_custom_column_type_arg_is_supported(expr: &syn::Expr) -> bool {
+	if matches!(expr, syn::Expr::Lit(expr_lit) if matches!(&expr_lit.lit, syn::Lit::Str(_))) {
+		return true;
+	}
+
+	let syn::Expr::MethodCall(method_call) = expr else {
+		return false;
+	};
+	method_call.method == "to_string"
+		&& method_call.args.is_empty()
+		&& matches!(&*method_call.receiver, syn::Expr::Lit(expr_lit) if matches!(&expr_lit.lit, syn::Lit::Str(_)))
+}
+
+fn generated_box_new_expr(expr: &syn::Expr) -> Option<&syn::Expr> {
+	let syn::Expr::Call(expr_call) = expr else {
+		return None;
+	};
+	let syn::Expr::Path(func_path) = &*expr_call.func else {
+		return None;
+	};
+	if func_path
+		.path
+		.segments
+		.last()
+		.is_some_and(|segment| segment.ident == "new")
+		&& func_path
+			.path
+			.segments
+			.iter()
+			.any(|segment| segment.ident == "Box")
+		&& expr_call.args.len() == 1
+	{
+		return Some(&expr_call.args[0]);
+	}
+	None
+}
+
+fn generated_optional_u32_is_supported(expr: &syn::Expr) -> bool {
+	if let syn::Expr::Path(expr_path) = expr
+		&& expr_path.path.is_ident("None")
+	{
+		return true;
+	}
+	if let syn::Expr::Call(expr_call) = expr
+		&& let syn::Expr::Path(func_path) = &*expr_call.func
+		&& func_path.path.is_ident("Some")
+		&& expr_call.args.len() == 1
+	{
+		return generated_u32_literal_is_supported(&expr_call.args[0]);
+	}
+	false
+}
+
+fn generated_optional_u32_pair_is_supported(expr: &syn::Expr) -> bool {
+	if let syn::Expr::Path(expr_path) = expr
+		&& expr_path.path.is_ident("None")
+	{
+		return true;
+	}
+	if let syn::Expr::Call(expr_call) = expr
+		&& let syn::Expr::Path(func_path) = &*expr_call.func
+		&& func_path.path.is_ident("Some")
+		&& expr_call.args.len() == 1
+		&& let syn::Expr::Tuple(tuple) = &expr_call.args[0]
+		&& tuple.elems.len() == 2
+	{
+		return tuple.elems.iter().all(generated_u32_literal_is_supported);
+	}
+	false
+}
+
+fn generated_u32_literal_is_supported(expr: &syn::Expr) -> bool {
+	let syn::Expr::Lit(expr_lit) = expr else {
+		return false;
+	};
+	let syn::Lit::Int(lit_int) = &expr_lit.lit else {
+		return false;
+	};
+	lit_int.base10_parse::<u32>().is_ok()
+}
+
 /// Model configuration from `#[model(...)]` attribute
 #[derive(Debug, Clone)]
 struct ModelConfig {
@@ -489,7 +731,8 @@ struct FieldConfig {
 	foreign_key: Option<ForeignKeySpec>,
 
 	// Generated Columns (all DBMS)
-	generated: Option<String>,
+	generated: Option<syn::Expr>,
+	generated_sql: Option<String>,
 	generated_stored: Option<bool>,
 	#[cfg(any(feature = "db-mysql", feature = "db-sqlite"))]
 	generated_virtual: Option<bool>,
@@ -701,10 +944,26 @@ impl FieldConfig {
 				}
 				// Generated Columns
 				else if meta.path.is_ident("generated") {
+					let expr: syn::Expr = meta.value()?.parse()?;
+					if matches!(
+						&expr,
+						syn::Expr::Lit(syn::ExprLit {
+							lit: syn::Lit::Str(_),
+							..
+						})
+					) {
+						return Err(meta.error(
+							"generated expects a SchemaExpr expression; use generated_sql = \"...\" for raw SQL",
+						));
+					}
+					validate_generated_schema_expr(&expr)?;
+					config.generated = Some(expr);
+					Ok(())
+				} else if meta.path.is_ident("generated_sql") {
 					let value: syn::LitStr = meta.value()?.parse()?;
 					let gen_str = value.value();
-					validate_sql_expression(&gen_str, "generated")?;
-					config.generated = Some(gen_str);
+					validate_sql_expression(&gen_str, "generated_sql")?;
+					config.generated_sql = Some(gen_str);
 					Ok(())
 				} else if meta.path.is_ident("generated_stored") {
 					let value: syn::LitBool = meta.value()?.parse()?;
@@ -978,11 +1237,8 @@ impl FieldConfig {
 			}
 		}
 
-		#[cfg(feature = "db-mysql")]
-		{
-			if self.auto_increment.is_some() {
-				auto_increment_count += 1;
-			}
+		if self.auto_increment.is_some() {
+			auto_increment_count += 1;
 		}
 
 		#[cfg(feature = "db-sqlite")]
@@ -999,16 +1255,46 @@ impl FieldConfig {
 			));
 		}
 
+		let has_generated = self.generated.is_some() || self.generated_sql.is_some();
+		#[cfg(feature = "db-postgres")]
+		let has_postgres_auto_increment_attribute =
+			self.identity_always.is_some() || self.identity_by_default.is_some();
+		#[cfg(not(feature = "db-postgres"))]
+		let has_postgres_auto_increment_attribute = false;
+
+		#[cfg(feature = "db-sqlite")]
+		let has_sqlite_auto_increment_attribute = self.autoincrement.is_some();
+		#[cfg(not(feature = "db-sqlite"))]
+		let has_sqlite_auto_increment_attribute = false;
+
+		let has_auto_increment_attribute = self.auto_increment.is_some()
+			|| has_postgres_auto_increment_attribute
+			|| has_sqlite_auto_increment_attribute;
+
+		if self.generated.is_some() && self.generated_sql.is_some() {
+			return Err(syn::Error::new(
+				proc_macro2::Span::call_site(),
+				"Generated columns must use either generated or generated_sql, not both",
+			));
+		}
+
 		// Generated columns cannot have default values
-		if self.generated.is_some() && self.default.is_some() {
+		if has_generated && self.default.is_some() {
 			return Err(syn::Error::new(
 				proc_macro2::Span::call_site(),
 				"Generated columns cannot have default values",
 			));
 		}
 
+		if has_generated && has_auto_increment_attribute {
+			return Err(syn::Error::new(
+				proc_macro2::Span::call_site(),
+				"Generated columns cannot be auto-incrementing",
+			));
+		}
+
 		// Generated columns should have either generated_stored or generated_virtual
-		if self.generated.is_some() {
+		if has_generated {
 			let has_stored = self.generated_stored.unwrap_or(false);
 
 			#[cfg(any(feature = "db-mysql", feature = "db-sqlite"))]
@@ -1029,6 +1315,40 @@ impl FieldConfig {
 					"Generated columns cannot be both STORED and VIRTUAL",
 				));
 			}
+		}
+
+		Ok(())
+	}
+
+	/// Validate field configuration that depends on the Rust field type.
+	fn validate_for_field_type(&self, ty: &Type) -> Result<()> {
+		self.validate()?;
+
+		let has_generated = self.generated.is_some() || self.generated_sql.is_some();
+		let implicit_integer_pk_auto_increment = self.primary_key
+			&& is_integer_primary_key_type(ty)
+			&& self.auto_increment.unwrap_or(true);
+		if has_generated && implicit_integer_pk_auto_increment {
+			return Err(syn::Error::new(
+				proc_macro2::Span::call_site(),
+				"Generated columns cannot be auto-incrementing",
+			));
+		}
+
+		#[cfg(feature = "db-sqlite")]
+		if has_generated && self.primary_key {
+			return Err(syn::Error::new(
+				proc_macro2::Span::call_site(),
+				"SQLite generated columns cannot be primary keys",
+			));
+		}
+
+		#[cfg(feature = "db-mysql")]
+		if has_generated && self.primary_key && self.generated_virtual.unwrap_or(false) {
+			return Err(syn::Error::new(
+				proc_macro2::Span::call_site(),
+				"MySQL virtual generated columns cannot be primary keys",
+			));
 		}
 
 		Ok(())
@@ -1111,6 +1431,7 @@ fn field_type_to_metadata_string(ty: &Type, _config: &FieldConfig) -> Result<Str
 				"Uuid" => "UuidField",
 				// Extended types (SQL generation is gated per-DB in map_type_to_field_type)
 				"Vec" => "ArrayField",
+				"Json" => "JsonField",
 				"Value" => "JsonField",
 				"HashMap" => "HStoreField",
 				other => {
@@ -1174,6 +1495,41 @@ fn serialize_field_default(expr: &syn::Expr) -> Option<String> {
 	}
 }
 
+fn generated_column_registration(
+	config: &FieldConfig,
+	migrations_crate: &TokenStream,
+) -> TokenStream {
+	if config.generated.is_none() && config.generated_sql.is_none() {
+		return quote! {};
+	}
+
+	let storage = if config.generated_stored.unwrap_or(false) {
+		quote! { #migrations_crate::GeneratedStorage::Stored }
+	} else {
+		quote! { #migrations_crate::GeneratedStorage::Virtual }
+	};
+
+	if let Some(generated_expr) = &config.generated {
+		let expr_tokens = quote! { #generated_expr }.to_string();
+		quote! {
+			.with_generated(#migrations_crate::GeneratedColumnDefinition::typed(
+				#generated_expr,
+				#expr_tokens,
+				#storage,
+			))
+		}
+	} else if let Some(generated_sql) = &config.generated_sql {
+		quote! {
+			.with_generated(#migrations_crate::GeneratedColumnDefinition::raw_sql(
+				#generated_sql,
+				#storage,
+			))
+		}
+	} else {
+		quote! {}
+	}
+}
+
 /// Map Rust type to ORM field type
 fn map_type_to_field_type(ty: &Type, config: &FieldConfig) -> Result<TokenStream> {
 	let migrations_crate = get_reinhardt_migrations_crate();
@@ -1234,11 +1590,12 @@ fn map_type_to_field_type(ty: &Type, config: &FieldConfig) -> Result<TokenStream
 				"Vec" => {
 					return map_vec_to_array_type(ty, last_segment, config, &migrations_crate);
 				}
-				// PostgreSQL: serde_json::Value -> JSONB
-				#[cfg(feature = "db-postgres")]
+				// Json<T> and serde_json::Value -> JSONB on PostgreSQL, JSON/TEXT elsewhere.
+				"Json" => {
+					quote! { #migrations_crate::FieldType::JsonBinary }
+				}
 				"Value" => {
-					// Assume serde_json::Value for JSONB
-					quote! { #migrations_crate::FieldType::Jsonb }
+					quote! { #migrations_crate::FieldType::JsonBinary }
 				}
 				// PostgreSQL: HashMap<String, String> -> HStore
 				#[cfg(feature = "db-postgres")]
@@ -1268,7 +1625,7 @@ fn map_explicit_field_type(
 	migrations_crate: &proc_macro2::TokenStream,
 ) -> Result<TokenStream> {
 	let field_type = match field_type_str.to_lowercase().as_str() {
-		"jsonb" => quote! { #migrations_crate::FieldType::Jsonb },
+		"jsonb" => quote! { #migrations_crate::FieldType::JsonBinary },
 		"json" => quote! { #migrations_crate::FieldType::Json },
 		"hstore" => quote! { #migrations_crate::FieldType::HStore },
 		"citext" => quote! { #migrations_crate::FieldType::CIText },
@@ -1397,7 +1754,7 @@ fn parse_base_type_string(
 		"DATE" => quote! { #migrations_crate::FieldType::Date },
 		"TIME" => quote! { #migrations_crate::FieldType::Time },
 		"TIMESTAMP" => quote! { #migrations_crate::FieldType::DateTime },
-		"JSONB" => quote! { #migrations_crate::FieldType::Jsonb },
+		"JSONB" => quote! { #migrations_crate::FieldType::JsonBinary },
 		"JSON" => quote! { #migrations_crate::FieldType::Json },
 		_ => {
 			return Err(syn::Error::new(
@@ -1895,7 +2252,7 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 			.ok_or_else(|| syn::Error::new_spanned(field, "Field must have a name"))?;
 		let ty = field.ty.clone();
 		let config = FieldConfig::from_attrs(&field.attrs)?;
-		config.validate()?;
+		config.validate_for_field_type(&ty)?;
 		let injected_relation_serde_skip = field.attrs.iter().any(|attr| {
 			attr.path()
 				.is_ident("reinhardt_internal_relation_serde_skip")
@@ -2223,7 +2580,13 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 	let fk_accessor_methods = generate_fk_accessor_methods(struct_name, &field_infos);
 
 	// Generate relationship metadata
-	let relationship_metadata = generate_relationship_metadata(&rel_fields, app_label, struct_name);
+	let relationship_metadata = generate_relationship_metadata(
+		&rel_fields,
+		&field_infos,
+		&fk_field_infos,
+		app_label,
+		struct_name,
+	);
 
 	// Generate new() as zero-arg alias of build()
 	let new_fn_impl = generate_new_alias(struct_name, &field_infos, &fk_id_field_names);
@@ -2292,6 +2655,22 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 		Some(path) => quote! { #path },
 		None => quote! { #orm_crate::Manager<Self> },
 	};
+	let field_is_none_arms = field_infos.iter().filter_map(|field| {
+		let (is_option, _) = extract_option_type(&field.ty);
+		if !is_option {
+			return None;
+		}
+
+		let field_name = &field.name;
+		Some(quote! {
+			stringify!(#field_name) => self.#field_name.is_none(),
+		})
+	});
+	let generated_field_names: Vec<_> = field_infos
+		.iter()
+		.filter(|field| field.config.generated.is_some() || field.config.generated_sql.is_some())
+		.map(|field| LitStr::new(&field.name.to_string(), field.name.span()))
+		.collect();
 
 	// Generate the Model implementation
 	let expanded = quote! {
@@ -2356,6 +2735,13 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 				stringify!(#pk_name)
 			}
 
+			fn field_is_none(&self, field_name: &str) -> bool {
+				match field_name {
+					#(#field_is_none_arms)*
+					_ => false,
+				}
+			}
+
 			#pk_impl
 
 			#set_pk_impl
@@ -2400,6 +2786,10 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 					});
 				)*
 				constraints
+			}
+
+			fn generated_field_names() -> &'static [&'static str] {
+				&[#(#generated_field_names),*]
 			}
 
 			#relationship_metadata
@@ -2532,10 +2922,19 @@ fn generate_field_metadata(
 
 		// Generated Columns
 		if let Some(ref generated_expr) = config.generated {
+			let generated_expr = quote! { #generated_expr }.to_string();
 			attrs.push(quote! {
 				attributes.insert(
 					"generated".to_string(),
 					#orm_crate::fields::FieldKwarg::String(#generated_expr.to_string())
+				);
+			});
+		}
+		if let Some(ref generated_sql) = config.generated_sql {
+			attrs.push(quote! {
+				attributes.insert(
+					"generated_sql".to_string(),
+					#orm_crate::fields::FieldKwarg::String(#generated_sql.to_string())
 				);
 			});
 		}
@@ -2713,6 +3112,12 @@ fn generate_field_metadata(
 			None => quote! { None },
 		};
 
+		let default = config
+			.default
+			.as_ref()
+			.and_then(|value| field_default_to_metadata(value, &orm_crate))
+			.map_or_else(|| quote! { None }, |value| quote! { Some(#value) });
+
 		let item = quote! {
 			{
 				let mut attributes = ::std::collections::HashMap::new();
@@ -2726,7 +3131,7 @@ fn generate_field_metadata(
 					unique: #unique,
 					blank: #blank,
 					editable: #editable,
-					default: None,
+					default: #default,
 					db_default: None,
 					db_column: #db_column_value,
 					choices: None,
@@ -2758,6 +3163,10 @@ fn generate_field_metadata(
 						#orm_crate::fields::FieldKwarg::Bool(true)
 					);
 				}
+				attributes.insert(
+					"relation_managed".to_string(),
+					#orm_crate::fields::FieldKwarg::Bool(true)
+				);
 
 				#orm_crate::inspection::FieldInfo {
 					name: #name.to_string(),
@@ -2780,6 +3189,48 @@ fn generate_field_metadata(
 	}
 
 	Ok(items)
+}
+
+/// Convert a literal `#[field(default = ...)]` value into inspection metadata.
+///
+/// The migration registration path already supports the same literal set. Keeping
+/// this representation typed lets model-derived test schemas preserve SQL defaults.
+fn field_default_to_metadata(expr: &syn::Expr, orm_crate: &TokenStream) -> Option<TokenStream> {
+	let field_kwarg = quote! { #orm_crate::fields::FieldKwarg };
+
+	if let syn::Expr::Unary(unary) = expr
+		&& matches!(unary.op, syn::UnOp::Neg(_))
+		&& let syn::Expr::Lit(literal) = unary.expr.as_ref()
+		&& let syn::Lit::Int(value) = &literal.lit
+		&& let Ok(value) = value.base10_parse::<i64>()
+	{
+		let value = -value;
+		return Some(quote! { #field_kwarg::Int(#value) });
+	}
+
+	let syn::Expr::Lit(literal) = expr else {
+		return None;
+	};
+
+	match &literal.lit {
+		syn::Lit::Bool(value) => {
+			let value = value.value;
+			Some(quote! { #field_kwarg::Bool(#value) })
+		}
+		syn::Lit::Int(value) => {
+			let value = value.base10_parse::<i64>().ok()?;
+			Some(quote! { #field_kwarg::Int(#value) })
+		}
+		syn::Lit::Float(value) => {
+			let value = value.base10_parse::<f64>().ok()?;
+			Some(quote! { #field_kwarg::Float(#value) })
+		}
+		syn::Lit::Str(value) => {
+			let value = value.value();
+			Some(quote! { #field_kwarg::String(#value.to_string()) })
+		}
+		_ => None,
+	}
 }
 
 /// Generate automatic registration code using ctor
@@ -2956,11 +3407,14 @@ fn generate_registration_code(
 			quote! {}
 		};
 
+		let generated_registration = generated_column_registration(config, &migrations_crate);
+
 		field_registrations.push(quote! {
 			metadata.add_field(
 				#field_name.to_string(),
 				#migrations_crate::model_registry::FieldMetadata::new(#field_type)
 					#(#params)*
+					#generated_registration
 					#fk_registration
 			);
 		});
@@ -3574,8 +4028,13 @@ fn generate_composite_pk_type(struct_name: &syn::Ident, pk_fields: &[&FieldInfo]
 /// Generates two methods:
 /// - `relationship_metadata()` for Model trait (returns `Vec<RelationInfo>`)
 /// - `__migration_relationships()` for migration system (returns `Vec<RelationshipMetadata>`)
+///
+/// Many-to-many targets are inferred from `ManyToManyField<Source, Target>` because
+/// the corresponding `#[rel(many_to_many)]` attribute does not accept `to`.
 fn generate_relationship_metadata(
 	rel_fields: &[(Ident, RelAttribute)],
+	field_infos: &[FieldInfo],
+	fk_field_infos: &[ForeignKeyFieldInfo],
 	_app_label: &str,
 	_struct_name: &Ident,
 ) -> TokenStream {
@@ -3590,10 +4049,21 @@ fn generate_relationship_metadata(
 		};
 	}
 
+	let foreign_keys: HashMap<String, &ForeignKeyFieldInfo> = fk_field_infos
+		.iter()
+		.map(|field| (field.field_name.to_string(), field))
+		.collect();
+	let fields: HashMap<String, &FieldInfo> = field_infos
+		.iter()
+		.map(|field| (field.name.to_string(), field))
+		.collect();
+
 	let relation_info_items: Vec<TokenStream> = rel_fields
 		.iter()
 		.map(|(field_name, rel)| {
 			let field_name_str = field_name.to_string();
+			let foreign_key_info = foreign_keys.get(&field_name_str);
+			let field_info = fields.get(&field_name_str);
 
 			// Map RelationType to RelationshipType
 			let relationship_type = match rel.rel_type {
@@ -3619,11 +4089,29 @@ fn generate_relationship_metadata(
 				}
 			};
 
-			let related_model = rel.to.as_ref().map_or_else(
-				|| quote! { "" },
-				|path| {
-					let path_str = quote! { #path }.to_string();
-					quote! { #path_str }
+			let related_model = foreign_key_info.map_or_else(
+				|| {
+					rel.to.as_ref().map_or_else(
+						|| {
+							field_info
+								.and_then(|field| extract_m2m_target_type(&field.ty))
+								.map_or_else(
+									|| quote! { "" },
+									|target| {
+										let target = relation_target_model_name(target);
+										quote! { #target }
+									},
+								)
+						},
+						|path| {
+							let path_str = quote! { #path }.to_string();
+							quote! { #path_str }
+						},
+					)
+				},
+				|field| {
+					let target = relation_target_model_name(&field.target_type);
+					quote! { #target }
 				},
 			);
 
@@ -3635,7 +4123,11 @@ fn generate_relationship_metadata(
 			// For ForeignKey, the foreign key field is the field itself
 			let foreign_key = match rel.rel_type {
 				RelationType::ForeignKey | RelationType::OneToOne => {
-					quote! { Some(#field_name_str.to_string()) }
+					let column = foreign_key_info.map_or_else(
+						|| format!("{}_id", field_name_str),
+						|field| field.id_column_name.clone(),
+					);
+					quote! { Some(#column.to_string()) }
 				}
 				RelationType::OneToMany => rel
 					.foreign_key
@@ -3680,6 +4172,16 @@ fn generate_relationship_metadata(
 			]
 		}
 	}
+}
+
+fn relation_target_model_name(ty: &Type) -> String {
+	if let Type::Path(type_path) = ty
+		&& let Some(segment) = type_path.path.segments.last()
+	{
+		return segment.ident.to_string();
+	}
+
+	quote! { #ty }.to_string()
 }
 
 /// Check if a type is Uuid or `Option<Uuid>`.
@@ -3881,7 +4383,7 @@ fn is_auto_generated_field(field: &FieldInfo) -> bool {
 	}
 
 	// Generated columns
-	if config.generated.is_some() {
+	if config.generated.is_some() || config.generated_sql.is_some() {
 		return true;
 	}
 
@@ -5362,6 +5864,142 @@ mod tests {
 	use super::*;
 
 	#[test]
+	fn test_generated_schema_expr_validation_accepts_reconstructable_expr() {
+		let expr: syn::Expr = parse_quote! {
+			SchemaExpr::concat([SchemaExpr::col("first_name"), SchemaExpr::val(" "), SchemaExpr::col("last_name")])
+				.cast(ColumnType::String(Some(201)))
+		};
+
+		assert!(validate_generated_schema_expr(&expr).is_ok());
+	}
+
+	#[test]
+	fn test_generated_schema_expr_validation_accepts_custom_cast_type_string() {
+		let expr: syn::Expr = parse_quote! {
+			SchemaExpr::col("email").cast(ColumnType::Custom("CITEXT".to_string()))
+		};
+
+		assert!(validate_generated_schema_expr(&expr).is_ok());
+	}
+
+	#[test]
+	fn test_generated_schema_expr_validation_rejects_empty_coalesce() {
+		let array_expr: syn::Expr = parse_quote! {
+			SchemaExpr::coalesce([])
+		};
+		let vec_expr: syn::Expr = parse_quote! {
+			SchemaExpr::coalesce(vec![])
+		};
+
+		assert!(validate_generated_schema_expr(&array_expr).is_err());
+		assert!(validate_generated_schema_expr(&vec_expr).is_err());
+	}
+
+	#[test]
+	fn test_generated_schema_expr_validation_rejects_unsupported_builder() {
+		let expr: syn::Expr = parse_quote! {
+			build_full_name_expr()
+		};
+
+		let error = validate_generated_schema_expr(&expr)
+			.expect_err("unsupported builders must be rejected");
+
+		assert_eq!(
+			error.to_string(),
+			"generated expects a reconstructable SchemaExpr expression; supported forms are SchemaExpr::col(...), SchemaExpr::val(...), SchemaExpr::concat([...]), SchemaExpr::coalesce([...]), and chained .binary(...) or .cast(...) calls. Use generated_sql = \"...\" for raw SQL or unsupported expression builders."
+		);
+	}
+
+	#[test]
+	fn test_generated_field_validation_rejects_auto_increment() {
+		let attrs = vec![parse_quote! {
+			#[field(
+				generated = SchemaExpr::col("name"),
+				generated_stored = true,
+				auto_increment = true
+			)]
+		}];
+
+		let config = FieldConfig::from_attrs(&attrs).expect("field config should parse");
+		let error = config
+			.validate()
+			.expect_err("generated auto-increment must be rejected");
+
+		assert_eq!(
+			error.to_string(),
+			"Generated columns cannot be auto-incrementing"
+		);
+	}
+
+	#[test]
+	fn test_generated_integer_primary_key_rejects_implicit_auto_increment() {
+		let attrs = vec![parse_quote! {
+			#[field(
+				primary_key = true,
+				generated = SchemaExpr::col("name"),
+				generated_stored = true
+			)]
+		}];
+		let ty: Type = parse_quote! { i64 };
+
+		let config = FieldConfig::from_attrs(&attrs).expect("field config should parse");
+		let error = config
+			.validate_for_field_type(&ty)
+			.expect_err("generated integer primary keys imply auto-increment by default");
+
+		assert_eq!(
+			error.to_string(),
+			"Generated columns cannot be auto-incrementing"
+		);
+	}
+
+	#[cfg(feature = "db-sqlite")]
+	#[test]
+	fn test_generated_non_integer_primary_key_rejects_on_sqlite() {
+		let attrs = vec![parse_quote! {
+			#[field(
+				primary_key = true,
+				generated_sql = "lower(name)",
+				generated_stored = true
+			)]
+		}];
+		let ty: Type = parse_quote! { String };
+
+		let config = FieldConfig::from_attrs(&attrs).expect("field config should parse");
+		let error = config
+			.validate_for_field_type(&ty)
+			.expect_err("SQLite generated primary keys must be rejected");
+
+		assert_eq!(
+			error.to_string(),
+			"SQLite generated columns cannot be primary keys"
+		);
+	}
+
+	#[cfg(all(feature = "db-mysql", not(feature = "db-sqlite")))]
+	#[test]
+	fn test_generated_virtual_primary_key_rejects_on_mysql() {
+		let attrs = vec![parse_quote! {
+			#[field(
+				primary_key = true,
+				generated_sql = "lower(name)",
+				generated_virtual = true
+			)]
+		}];
+		let ty: Type = parse_quote! { String };
+
+		let config = FieldConfig::from_attrs(&attrs).expect("field config should parse");
+		let error = config
+			.validate_for_field_type(&ty)
+			.expect_err("MySQL virtual generated primary keys must be rejected");
+
+		assert_eq!(
+			error.to_string(),
+			"MySQL virtual generated columns cannot be primary keys"
+		);
+	}
+
+	#[test]
 	fn test_fields_are_private() {
 		let input = quote! {
 			#[model(app_label = "test", table_name = "test", info = false)]
@@ -5463,6 +6101,28 @@ mod tests {
 		assert!(output_str.contains("pub fn new () -> EmptyRequiredModelBuilder"));
 		assert!(output_str.contains("pub fn build () -> EmptyRequiredModelBuilder"));
 		assert!(!output_str.contains("EmptyRequiredModelBuilder < >"));
+	}
+
+	#[test]
+	fn test_relationship_metadata_infers_many_to_many_target_model() {
+		// Arrange
+		let input = quote! {
+			#[model(app_label = "test", table_name = "articles")]
+			pub struct Article {
+				#[field(primary_key = true)]
+				pub id: i64,
+				#[rel(many_to_many)]
+				pub tags: ManyToManyField<Article, Tag>,
+			}
+		};
+
+		// Act
+		let output = model_derive_impl(syn::parse2(input).unwrap()).unwrap();
+		let output_str = output.to_string();
+
+		// Assert
+		assert!(output_str.contains("related_model : \"Tag\" . to_string ()"));
+		assert!(!output_str.contains("related_model : \"\" . to_string ()"));
 	}
 
 	#[test]

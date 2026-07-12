@@ -23,7 +23,7 @@ struct Article {
 	#[field(max_length = 5000)]
 	content: String,
 
-	#[field(max_length = 255, generated = "UPPER(title)", generated_stored = true)]
+	#[field(max_length = 255, generated_sql = "UPPER(title)", generated_stored = true)]
 	title_upper: String,
 
 	#[cfg(any(feature = "db-postgres", feature = "db-mysql"))]

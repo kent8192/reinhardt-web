@@ -47,6 +47,8 @@ fn create_users_migration() -> Migration {
 					primary_key: true,
 					auto_increment: true,
 					default: None,
+
+					generated: None,
 				},
 				ColumnDefinition {
 					name: "name".to_string(),
@@ -56,6 +58,8 @@ fn create_users_migration() -> Migration {
 					primary_key: false,
 					auto_increment: false,
 					default: None,
+
+					generated: None,
 				},
 			],
 			constraints: vec![],
