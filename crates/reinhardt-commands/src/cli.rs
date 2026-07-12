@@ -669,7 +669,7 @@ async fn run_command_core(
 	if requires_database(&command) {
 		let mut ctx = crate::CommandContext::new(vec![]);
 		ctx.verbosity = verbosity;
-		ctx.suppress_output = matches!(command, Commands::Dumpdata { .. });
+		ctx.set_output_suppressed(matches!(command, Commands::Dumpdata { .. }));
 		// Thread the project's composed settings into the ORM-init context so the
 		// database URL can be resolved from `settings/*.toml`
 		// (`[core.databases.default]`) when `DATABASE_URL` is unset (#5042).
