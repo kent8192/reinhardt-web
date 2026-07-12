@@ -389,7 +389,17 @@ where
 	}
 
 	let pk_field = M::primary_key_field();
-	let mut columns = object.keys().cloned().collect::<Vec<_>>();
+	let generated_fields = M::generated_field_names();
+	let mut columns = object
+		.keys()
+		.filter(|column| !generated_fields.contains(&column.as_str()))
+		.cloned()
+		.collect::<Vec<_>>();
+	if columns.is_empty() {
+		return Err(FixtureError::Database(
+			"fixture record must contain at least one writable database column".to_string(),
+		));
+	}
 	columns.sort();
 	if let Some(pk_index) = columns.iter().position(|column| column == pk_field) {
 		columns.swap(0, pk_index);
@@ -398,10 +408,22 @@ where
 	let mut stmt = Query::insert();
 	stmt.into_table(Alias::new(M::table_name()));
 	stmt.columns(columns.iter().map(|column| Alias::new(column.as_str())));
+	let field_metadata = M::field_metadata();
 	stmt.values_panic(
 		columns
 			.iter()
-			.map(|column| Manager::<M>::json_to_sea_value(&object[column]))
+			.map(|column| {
+				let field_info = field_metadata.iter().find(|field| {
+					field.name == *column || field.db_column.as_deref() == Some(column.as_str())
+				});
+				let field_is_none = field_info
+					.is_some_and(|field| field.nullable && object[column].is_null());
+				Manager::<M>::json_to_sea_value_for_field(
+					&object[column],
+					field_info,
+					field_is_none,
+				)
+			})
 			.collect::<Vec<_>>(),
 	);
 
@@ -446,18 +468,12 @@ where
 	let Some(metadata) = metadata_for_model::<M>() else {
 		return Ok(());
 	};
-	for field_name in metadata.fields.keys() {
-		if !is_foreign_key_field(&metadata, field_name) {
+	for (field_name, relation_name) in foreign_key_fixture_field_names::<M>(&metadata) {
+		if object.contains_key(&field_name) {
 			continue;
 		}
-		let Some(relation_name) = field_name.strip_suffix("_id") else {
-			continue;
-		};
-		if object.contains_key(field_name) {
-			continue;
-		}
-		if let Some(value) = object.remove(relation_name) {
-			object.insert(field_name.clone(), value);
+		if let Some(value) = object.remove(&relation_name) {
+			object.insert(field_name, value);
 		}
 	}
 	Ok(())
@@ -472,17 +488,11 @@ where
 		return Ok(());
 	};
 	let mut renames = Vec::new();
-	for field_name in metadata.fields.keys() {
-		if !is_foreign_key_field(&metadata, field_name) {
+	for (field_name, relation_name) in foreign_key_fixture_field_names::<M>(&metadata) {
+		if !object.contains_key(&field_name) || object.contains_key(&relation_name) {
 			continue;
 		}
-		let Some(relation_name) = field_name.strip_suffix("_id") else {
-			continue;
-		};
-		if !object.contains_key(field_name) || object.contains_key(relation_name) {
-			continue;
-		}
-		renames.push((field_name.clone(), relation_name.to_string()));
+		renames.push((field_name, relation_name));
 	}
 	for (field_name, relation_name) in renames {
 		if let Some(value) = object.remove(&field_name) {
@@ -490,6 +500,37 @@ where
 		}
 	}
 	Ok(())
+}
+
+
+#[cfg(feature = "migrations")]
+fn foreign_key_fixture_field_names<M>(
+	metadata: &crate::migrations::model_registry::ModelMetadata,
+) -> Vec<(String, String)>
+where
+	M: Model,
+{
+	let relationship_names = M::relationship_metadata()
+		.into_iter()
+		.filter_map(|relationship| {
+			relationship
+				.foreign_key
+				.map(|field_name| (field_name, relationship.name))
+		})
+		.collect::<HashMap<_, _>>();
+
+	metadata
+		.fields
+		.keys()
+		.filter(|field_name| is_foreign_key_field(metadata, field_name))
+		.filter_map(|field_name| {
+			let relation_name = relationship_names
+				.get(field_name)
+				.cloned()
+				.or_else(|| field_name.strip_suffix("_id").map(str::to_string))?;
+			Some((field_name.clone(), relation_name))
+		})
+		.collect()
 }
 
 #[cfg(not(feature = "migrations"))]
@@ -1205,6 +1246,85 @@ mod tests {
 
 	#[cfg(feature = "migrations")]
 	#[derive(Clone, Serialize, Deserialize)]
+	struct FixtureFieldAwarePost {
+		id: Option<i64>,
+		writer_id: Option<i64>,
+		payload: Value,
+		generated_value: i64,
+	}
+
+	#[cfg(feature = "migrations")]
+	impl Model for FixtureFieldAwarePost {
+		type PrimaryKey = i64;
+		type Fields = FixturePostFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"fixture_field_aware_post"
+		}
+
+		fn new_fields() -> Self::Fields {
+			FixturePostFields
+		}
+
+		fn app_label() -> &'static str {
+			"fixture_field_aware"
+		}
+
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = Some(value);
+		}
+
+		fn field_metadata() -> Vec<crate::orm::inspection::FieldInfo> {
+			vec![fixture_field_info("payload", "JsonField", false)]
+		}
+
+		fn relationship_metadata() -> Vec<crate::orm::inspection::RelationInfo> {
+			vec![crate::orm::inspection::RelationInfo::new(
+				"author",
+				crate::orm::relationship::RelationshipType::ManyToOne,
+				"Author",
+			)
+			.with_foreign_key("writer_id")]
+		}
+
+		fn generated_field_names() -> &'static [&'static str] {
+			&["generated_value"]
+		}
+	}
+
+	#[cfg(feature = "migrations")]
+	fn fixture_field_info(
+		name: &str,
+		field_type: &str,
+		nullable: bool,
+	) -> crate::orm::inspection::FieldInfo {
+		crate::orm::inspection::FieldInfo {
+			name: name.to_string(),
+			field_type: field_type.to_string(),
+			nullable,
+			primary_key: false,
+			unique: false,
+			blank: false,
+			editable: true,
+			default: None,
+			db_default: None,
+			db_column: None,
+			choices: None,
+			attributes: std::collections::HashMap::new(),
+		}
+	}
+
+	#[cfg(feature = "migrations")]
+	#[derive(Clone, Serialize, Deserialize)]
 	struct CompositeFixture {
 		left_id: i64,
 		right_id: i64,
@@ -1388,6 +1508,59 @@ mod tests {
 		assert_eq!(object.get("author"), Some(&Value::from(7)));
 		assert_eq!(object.get("title"), Some(&Value::from("Fixture")));
 		assert!(object.get("author_id").is_none());
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	#[serial_test::serial(fixture_model_registry)]
+	fn custom_foreign_key_columns_use_relationship_names() {
+		let mut post = crate::migrations::ModelMetadata::new(
+			"fixture_field_aware",
+			"FixtureFieldAwarePost",
+			"fixture_field_aware_post",
+		);
+		post.add_field(
+			"writer_id".to_string(),
+			crate::migrations::FieldMetadata::new(crate::migrations::FieldType::BigInteger)
+				.with_param("fk_target", "Author")
+				.with_param("fk_target_app", "fixture_field_aware"),
+		);
+		crate::migrations::model_registry::global_registry().register_model(post);
+		let mut object = Map::new();
+		object.insert("author".to_string(), Value::from(7));
+
+		normalize_foreign_key_fixture_fields::<FixtureFieldAwarePost>(&mut object).unwrap();
+
+		assert_eq!(object.get("writer_id"), Some(&Value::from(7)));
+		assert_eq!(object.get("author"), None);
+
+		denormalize_foreign_key_fixture_fields::<FixtureFieldAwarePost>(&mut object).unwrap();
+
+		assert_eq!(object.get("author"), Some(&Value::from(7)));
+		assert_eq!(object.get("writer_id"), None);
+	}
+
+	#[cfg(feature = "migrations")]
+	#[tokio::test]
+	async fn fixture_upserts_preserve_json_values_and_skip_generated_fields() {
+		let database_file = tempfile::NamedTempFile::new().unwrap();
+		let database_url = format!("sqlite://{}", database_file.path().display());
+		let connection = DatabaseConnection::connect(&database_url).await.unwrap();
+		let payload = serde_json::json!({"theme": "paper"});
+		let mut object = Map::new();
+		object.insert("id".to_string(), Value::from(1));
+		object.insert("payload".to_string(), payload.clone());
+		object.insert("generated_value".to_string(), Value::from(99));
+
+		let (sql, values) =
+			build_fixture_upsert_sql_values::<FixtureFieldAwarePost>(&connection, &object).unwrap();
+
+		assert!(!sql.contains("generated_value"));
+		assert_eq!(values.len(), 2);
+		assert!(matches!(
+			values.get(1),
+			Some(QueryValue::Json(Some(value))) if **value == payload
+		));
 	}
 
 	#[cfg(feature = "migrations")]
