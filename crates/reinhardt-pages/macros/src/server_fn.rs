@@ -1461,11 +1461,6 @@ fn generate_server_handler(
 		quote! {}
 	};
 
-	// Query helpers also support single-parameter result aliases such as
-	// `AppResult<T>`, whose error type is the framework default.
-	let response_type = extract_result_ok_type(return_type);
-	let error_type = extract_result_err_type(return_type);
-
 	// Convert inject param names to string literals for INJECTED_PARAMS const
 	let inject_param_name_strs: Vec<String> = inject_params
 		.iter()
@@ -1488,17 +1483,40 @@ fn generate_server_handler(
 			}
 		})
 		.collect();
-	let query_param_bounds: Vec<_> = regular_param_types
-		.iter()
-		.map(|ty| quote! { #ty: ::std::clone::Clone + ::serde::Serialize + 'static })
+	let query_arg_generics: Vec<_> = (0..regular_param_idents.len())
+		.map(|index| quote::format_ident!("QueryArg{index}"))
 		.collect();
-	let key_where_clause = if query_param_bounds.is_empty() {
+	let key_generics = if query_arg_generics.is_empty() {
 		quote! {}
 	} else {
+		quote! { <#(#query_arg_generics),*> }
+	};
+	let query_param_bounds: Vec<_> = query_arg_generics
+		.iter()
+		.zip(regular_param_types.iter())
+		.map(|(generic, ty)| {
+			quote! {
+				#generic: #pages_crate::server_fn::ServerFnQueryArg<#ty>
+			}
+		})
+		.collect();
+	let key_where_clause = quote! {
+		where
+			#return_type: #pages_crate::server_fn::ServerFnQueryResult,
+			#(#query_param_bounds,)*
+	};
+	let query_result_conversion = |call: proc_macro2::TokenStream| {
 		quote! {
-			where
-				#(#query_param_bounds,)*
+			#pages_crate::server_fn::ServerFnQueryResult::into_query_result(#call)
 		}
+	};
+	let regular_query_call = query_result_conversion(quote! {
+		super::#name(
+			#(#pages_crate::server_fn::ServerFnQueryArg::into_query_arg(#regular_param_idents)),*
+		).await
+	});
+	let clone_query_args = quote! {
+		let (#(#regular_param_idents,)*) = (*__query_fetch_args).clone();
 	};
 	let native_query_call = if has_inject_or_extractor {
 		quote! {
@@ -1511,30 +1529,31 @@ fn generate_server_handler(
 			)
 		}
 	} else {
-		quote! {
-			super::#name(#(#regular_param_idents),*).await
-		}
+		regular_query_call.clone()
 	};
 	let query_fetcher = if has_inject_or_extractor && emits_typed_response_metadata {
 		quote! {
-			move || {
-				#(
-					#[cfg(any(
-						all(target_family = "wasm", target_os = "unknown"),
-						all(not(all(target_family = "wasm", target_os = "unknown")), feature = "msw"),
-					))]
-					let #regular_param_idents = #regular_param_idents.clone();
-				)*
-				async move {
+			{
+				let __query_fetch_args = ::std::rc::Rc::new((#(#regular_param_idents,)*));
+				move || {
+					let __query_fetch_args = ::std::rc::Rc::clone(&__query_fetch_args);
+					async move {
 					#[cfg(all(target_family = "wasm", target_os = "unknown"))]
 					{
-						super::#name(#(#regular_param_idents),*).await
+						#clone_query_args
+						#regular_query_call
 					}
 
 					#[cfg(all(not(all(target_family = "wasm", target_os = "unknown")), feature = "msw"))]
 					{
-						let __args = Args {
-							#(#regular_param_idents: #regular_param_idents.clone()),*
+						let __args = {
+							let (#(#regular_param_idents,)*) =
+								(*::std::rc::Rc::clone(&__query_fetch_args)).clone();
+							Args {
+								#(
+									#regular_param_names: #pages_crate::server_fn::ServerFnQueryArg::into_query_arg(#regular_param_idents)
+								),*
+							}
 						};
 						if let Some(__mock_result) =
 							#pages_crate::server_fn::try_call_active_mock::<marker>(__args)
@@ -1546,49 +1565,50 @@ fn generate_server_handler(
 								}
 							}
 						}
+						#clone_query_args
 						#native_query_call
 					}
 
 					#[cfg(all(not(all(target_family = "wasm", target_os = "unknown")), not(feature = "msw")))]
 					{
+						#clone_query_args
 						#native_query_call
 					}
+				}
 				}
 			}
 		}
 	} else if has_inject_or_extractor {
 		quote! {
-			move || {
-				#(
-					#[cfg(all(target_family = "wasm", target_os = "unknown"))]
-					let #regular_param_idents = #regular_param_idents.clone();
-				)*
-				async move {
+			{
+				let __query_fetch_args = ::std::rc::Rc::new((#(#regular_param_idents,)*));
+				move || {
+					let __query_fetch_args = ::std::rc::Rc::clone(&__query_fetch_args);
+					async move {
 					#[cfg(all(target_family = "wasm", target_os = "unknown"))]
 					{
-						super::#name(#(#regular_param_idents),*).await
+						#clone_query_args
+						#regular_query_call
 					}
 
 					#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 					{
+						#clone_query_args
 						#native_query_call
 					}
+				}
 				}
 			}
 		}
 	} else {
 		quote! {
-			move || {
-				#(let #regular_param_idents = #regular_param_idents.clone();)*
-				async move {
-					#[cfg(all(target_family = "wasm", target_os = "unknown"))]
-					{
-						super::#name(#(#regular_param_idents),*).await
-					}
-
-					#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-					{
-						#native_query_call
+			{
+				let __query_fetch_args = ::std::rc::Rc::new((#(#regular_param_idents,)*));
+				move || {
+					let __query_fetch_args = ::std::rc::Rc::clone(&__query_fetch_args);
+					async move {
+						#clone_query_args
+						#regular_query_call
 					}
 				}
 			}
@@ -1599,13 +1619,30 @@ fn generate_server_handler(
 	} else {
 		quote! { __query_key }
 	};
+	let private_interfaces_allowance = if info.allows_private_interfaces() {
+		quote! { #[allow(private_interfaces)] }
+	} else {
+		quote! {}
+	};
+	let key_cfg_allowances = if has_inject_or_extractor {
+		quote! { #[allow(unused_variables, unexpected_cfgs)] }
+	} else {
+		quote! {}
+	};
 	let query_key_tokens = quote! {
 		/// Builds a typed cache key for this server function and argument set.
-		pub fn key(
-			#(#regular_param_idents: #regular_param_types),*
+		// The generated signature mirrors endpoints that deliberately allow private
+		// request or response types on the source server function.
+		// Injected and extractor-only native paths intentionally cannot consume the
+		// client-visible arguments outside MSW or WASM builds, and consumer crates
+		// may intentionally omit the optional `msw` feature checked in the body.
+		#private_interfaces_allowance
+		#key_cfg_allowances
+		pub fn key #key_generics(
+			#(#regular_param_idents: #query_arg_generics),*
 		) -> #pages_crate::reactive::QueryKey<
-			#response_type,
-			#error_type,
+			<#return_type as #pages_crate::server_fn::ServerFnQueryResult>::Response,
+			<#return_type as #pages_crate::server_fn::ServerFnQueryResult>::Error,
 		>
 		#key_where_clause
 		{
@@ -1907,39 +1944,6 @@ fn extract_result_types(
 	None
 }
 
-/// Extracts the first generic argument `T` from `Result<T, E>` or a result alias.
-///
-/// Given `Result<User, ServerFnError>` or `AppResult<User>`, returns the token
-/// stream for `User`. Falls back to the full return type when no generic
-/// success payload is visible.
-fn extract_result_ok_type(return_type: &syn::Type) -> proc_macro2::TokenStream {
-	if let syn::Type::Path(type_path) = return_type
-		&& let Some(segment) = type_path.path.segments.last()
-		&& let syn::PathArguments::AngleBracketed(args) = &segment.arguments
-		&& let Some(syn::GenericArgument::Type(ok_type)) = args.args.first()
-	{
-		return quote! { #ok_type };
-	}
-	quote! { #return_type }
-}
-
-/// Extracts the second generic argument `E` from `Result<T, E>` or a result alias.
-///
-/// Given `Result<User, ServerFnError>` or `AppResult<User, AppError>`, returns
-/// the token stream for the visible error type. Single-parameter aliases fall
-/// back to the framework error type.
-fn extract_result_err_type(return_type: &syn::Type) -> proc_macro2::TokenStream {
-	if let syn::Type::Path(type_path) = return_type
-		&& let Some(segment) = type_path.path.segments.last()
-		&& let syn::PathArguments::AngleBracketed(args) = &segment.arguments
-		&& let Some(syn::GenericArgument::Type(err_type)) = args.args.iter().nth(1)
-	{
-		return quote! { #err_type };
-	}
-	let pages_crate = get_reinhardt_pages_crate();
-	quote! { #pages_crate::server_fn::ServerFnError }
-}
-
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -1985,33 +1989,6 @@ mod tests {
 		assert!(!options.use_inject);
 		assert_eq!(options.endpoint, None);
 		assert_eq!(options.codec, "json");
-	}
-
-	#[test]
-	fn extract_result_types_from_result_alias() {
-		use syn::parse_quote;
-
-		let return_type: syn::Type = parse_quote!(AppResult<User>);
-
-		assert_eq!(extract_result_ok_type(&return_type).to_string(), "User");
-		assert!(
-			extract_result_err_type(&return_type)
-				.to_string()
-				.contains("ServerFnError")
-		);
-	}
-
-	#[test]
-	fn extract_result_types_from_two_parameter_result_alias() {
-		use syn::parse_quote;
-
-		let return_type: syn::Type = parse_quote!(AppResult<User, AppError>);
-
-		assert_eq!(extract_result_ok_type(&return_type).to_string(), "User");
-		assert_eq!(
-			extract_result_err_type(&return_type).to_string(),
-			"AppError"
-		);
 	}
 
 	#[test]

@@ -35,6 +35,14 @@ fn test_form_macro_fail() {
 #[test]
 fn test_server_fn_macro_ui() {
 	let t = trybuild::TestCases::new();
+	// Guard query-key code generation against breaking existing server functions.
+	t.pass("tests/ui/server_fn/query_key_custom_result_alias.rs");
+	// MSW mock arguments intentionally require serializable, cloneable request types.
+	// This fixture isolates the non-MSW native compatibility guarantee.
+	#[cfg(not(feature = "msw"))]
+	t.pass("tests/ui/server_fn/query_key_non_query_args.rs");
+	t.pass("tests/ui/server_fn/query_key_private_interfaces.rs");
+	t.pass("tests/ui/server_fn/query_key_injected_no_msw.rs");
 	// Codec tests
 	t.pass("tests/ui/server_fn/codec_json.rs");
 	t.pass("tests/ui/server_fn/codec_url.rs");
