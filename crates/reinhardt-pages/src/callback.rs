@@ -476,17 +476,17 @@ where
 {
 	let handler = handler.into_typed_event_handler();
 	Arc::new(move |event| {
-		let actual_type = crate::platform::event_type(&event);
-		let listener_target = crate::platform::current_target(&event)
+		let _actual_type = crate::platform::event_type(&event);
+		let _listener_target = crate::platform::current_target(&event)
 			.map(|target| target.tag_name().to_owned())
 			.unwrap_or_else(|| "<none>".to_owned());
 		match P::try_from_raw(event) {
 			Ok(payload) => handler(payload),
-			Err(error) => crate::error_log!(
+			Err(_error) => crate::error_log!(
 				"typed event conversion failed for actual event type `{}` on listener target `{}`: {}",
-				actual_type,
-				listener_target,
-				error
+				_actual_type,
+				_listener_target,
+				_error
 			),
 		}
 	})
@@ -501,8 +501,8 @@ where
 	Fut: Future<Output = ()> + 'static,
 {
 	Arc::new(move |event| {
-		let actual_type = crate::platform::event_type(&event);
-		let listener_target = crate::platform::current_target(&event)
+		let _actual_type = crate::platform::event_type(&event);
+		let _listener_target = crate::platform::current_target(&event)
 			.map(|target| target.tag_name().to_owned())
 			.unwrap_or_else(|| "<none>".to_owned());
 		match P::try_from_raw(event) {
@@ -514,11 +514,11 @@ where
 				let future = crate::i18n::with_optional_i18n_context_async(i18n_context, future);
 				spawn_task(future);
 			}
-			Err(error) => crate::error_log!(
+			Err(_error) => crate::error_log!(
 				"typed async event conversion failed for actual event type `{}` on listener target `{}`: {}",
-				actual_type,
-				listener_target,
-				error
+				_actual_type,
+				_listener_target,
+				_error
 			),
 		}
 	})
@@ -533,17 +533,17 @@ where
 	Fut: Future<Output = ()> + 'static,
 {
 	Arc::new(move |event| {
-		let actual_type = crate::platform::event_type(&event);
-		let listener_target = crate::platform::current_target(&event)
+		let _actual_type = crate::platform::event_type(&event);
+		let _listener_target = crate::platform::current_target(&event)
 			.map(|target| target.tag_name().to_owned())
 			.unwrap_or_else(|| "<none>".to_owned());
 		match P::try_from_raw(event) {
 			Ok(payload) => spawn_task(handler(payload)),
-			Err(error) => crate::error_log!(
+			Err(_error) => crate::error_log!(
 				"typed async event conversion failed for actual event type `{}` on listener target `{}`: {}",
-				actual_type,
-				listener_target,
-				error
+				_actual_type,
+				_listener_target,
+				_error
 			),
 		}
 	})
