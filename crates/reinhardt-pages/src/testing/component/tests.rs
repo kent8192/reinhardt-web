@@ -1,11 +1,16 @@
 use std::cell::Cell;
 use std::rc::Rc;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use reinhardt_core::page::IntoPage;
 use reinhardt_core::reactive::{ReactiveScope, Signal};
 use reinhardt_core::types::page::{DeferredNode, Page, PageElement, SuspenseNode};
 
 use super::{EventError, QueryError, Role, render};
+use crate::Callback;
+use crate::reactive::hooks::use_effect;
+use serial_test::serial;
 
 #[test]
 fn renders_page_tree_and_pretty_output() {
@@ -20,6 +25,44 @@ fn renders_page_tree_and_pretty_output() {
 		screen.pretty(),
 		"<section id=\"hero\">\n  <h1>\n    Hello\n  </h1>\n  Intro\n</section>\n"
 	);
+}
+
+#[test]
+#[serial(reactive_runtime)]
+fn render_creates_a_scope_for_hook_using_views() {
+	let screen = render(|| {
+		let count = Signal::new(42_i32);
+		PageElement::new("p").child(count.get().to_string())
+	});
+
+	assert_eq!(screen.get_by_text("42").tag_name(), "p");
+}
+
+#[test]
+#[serial(reactive_runtime)]
+fn effect_cleanup_can_use_page_handles_until_scope_disposal_finishes() {
+	let calls = Arc::new(AtomicUsize::new(0));
+	let scope = ReactiveScope::new();
+
+	scope.enter(|| {
+		let callback = Callback::new({
+			let calls = Arc::clone(&calls);
+			move |_: ()| {
+				calls.fetch_add(1, Ordering::Relaxed);
+			}
+		});
+		use_effect(
+			move || {
+				let callback = callback;
+				Some(move || callback.call(()))
+			},
+			(),
+		);
+	});
+
+	scope.dispose();
+
+	assert_eq!(calls.load(Ordering::Relaxed), 1);
 }
 
 #[test]

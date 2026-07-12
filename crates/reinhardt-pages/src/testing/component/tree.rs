@@ -3,6 +3,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use reinhardt_core::reactive::ReactiveScope;
 use reinhardt_core::types::page::{EventType, Page, PageEventHandler};
 
 use super::scheduler::SchedulerScope;
@@ -16,11 +17,24 @@ pub(crate) type NodeId = usize;
 pub(crate) struct ScreenInner {
 	/// Rendered native test DOM.
 	pub dom: TestDom,
+	/// Reactive scope that owns hook state created by the rendered view.
+	pub reactive_scope: ReactiveScope,
 	/// Harness scheduler active for this screen.
 	pub scheduler: Rc<SchedulerScope>,
 	/// Server function mocks registered for this screen.
 	#[cfg(feature = "msw")]
 	pub mocks: SharedServerFnMocks,
+}
+
+impl ScreenInner {
+	pub(crate) fn rerender_reactive_anchors(&mut self) {
+		let Self {
+			dom,
+			reactive_scope,
+			..
+		} = self;
+		reactive_scope.enter(|| dom.rerender_reactive_anchors());
+	}
 }
 
 pub(crate) struct TestDom {
@@ -464,11 +478,13 @@ impl ElementNode {
 #[cfg(feature = "msw")]
 pub(crate) fn shared_screen_inner(
 	dom: TestDom,
+	reactive_scope: ReactiveScope,
 	scheduler: Rc<SchedulerScope>,
 	mocks: SharedServerFnMocks,
 ) -> Rc<RefCell<ScreenInner>> {
 	Rc::new(RefCell::new(ScreenInner {
 		dom,
+		reactive_scope,
 		scheduler,
 		mocks,
 	}))
@@ -477,7 +493,12 @@ pub(crate) fn shared_screen_inner(
 #[cfg(not(feature = "msw"))]
 pub(crate) fn shared_screen_inner(
 	dom: TestDom,
+	reactive_scope: ReactiveScope,
 	scheduler: Rc<SchedulerScope>,
 ) -> Rc<RefCell<ScreenInner>> {
-	Rc::new(RefCell::new(ScreenInner { dom, scheduler }))
+	Rc::new(RefCell::new(ScreenInner {
+		dom,
+		reactive_scope,
+		scheduler,
+	}))
 }

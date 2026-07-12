@@ -595,18 +595,23 @@ where
 						Ok(val) => {
 							let on_success = on_success.borrow().clone();
 							crate::reactive::batch(|| {
-								task_state.set(ActionPhase::Success(val.clone()));
-								on_success(&val);
-								if reset_on_success.get() {
-									task_state.set(ActionPhase::Idle);
+								if task_state
+									.try_set(ActionPhase::Success(val.clone()))
+									.is_ok()
+								{
+									on_success(&val);
+									if reset_on_success.get() {
+										let _ = task_state.try_set(ActionPhase::Idle);
+									}
 								}
 							});
 						}
 						Err(err) => {
 							let on_error = on_error.borrow().clone();
 							crate::reactive::batch(|| {
-								task_state.set(ActionPhase::Error(err.clone()));
-								on_error(&err);
+								if task_state.try_set(ActionPhase::Error(err.clone())).is_ok() {
+									on_error(&err);
+								}
 							});
 						}
 					}
@@ -647,6 +652,8 @@ impl<T: Clone + 'static, E: Clone + 'static> Action<T, E> {
 
 #[cfg(test)]
 mod tests {
+	#[cfg(all(native, feature = "testing"))]
+	use std::task::{Context, Poll, Waker};
 	use std::{cell::RefCell, rc::Rc};
 
 	use rstest::rstest;
@@ -737,6 +744,31 @@ mod tests {
 			// On non-WASM, dispatch sets Pending then immediately resets to Idle
 			assert!(action.is_idle());
 		});
+	}
+
+	#[cfg(all(native, feature = "testing"))]
+	#[rstest]
+	fn native_action_completion_ignores_a_disposed_scope() {
+		let queued = Rc::new(RefCell::new(None));
+		let queued_for_sink = Rc::clone(&queued);
+		let _task_sink = crate::platform::install_task_sink(move |task| {
+			*queued_for_sink.borrow_mut() = Some(task);
+		});
+		let scope = reinhardt_core::reactive::ReactiveScope::new();
+
+		scope.enter(|| {
+			let action = use_action(|_: ()| async { Ok::<i32, String>(42) });
+			action.dispatch(());
+		});
+		scope.dispose();
+
+		let mut task = queued
+			.borrow_mut()
+			.take()
+			.expect("dispatch should queue a native task");
+		let mut context = Context::from_waker(Waker::noop());
+
+		assert_eq!(task.as_mut().poll(&mut context), Poll::Ready(()));
 	}
 
 	#[rstest]

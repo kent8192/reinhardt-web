@@ -193,15 +193,14 @@ impl ReactiveIfNode {
 						}
 					}
 
-					// Generate the appropriate view
-					let view = if new_condition {
-						then_view()
-					} else {
-						else_view()
-					};
-
-					// Mount new nodes before the marker
-					let new_nodes = mount_before_marker(&marker_clone, view);
+					// Build and mount the branch in a scope that is owned by this render.
+					let new_nodes = mount_view_before_marker(&marker_clone, || {
+						if new_condition {
+							then_view()
+						} else {
+							else_view()
+						}
+					});
 					*current_nodes_clone.borrow_mut() = new_nodes;
 				});
 			},
@@ -284,12 +283,13 @@ impl ReactiveIfNode {
 							}
 						}
 
-						let view = if new_condition {
-							then_view()
-						} else {
-							else_view()
-						};
-						let new_nodes = mount_before_marker(&marker_clone, view);
+						let new_nodes = mount_view_before_marker(&marker_clone, || {
+							if new_condition {
+								then_view()
+							} else {
+								else_view()
+							}
+						});
 						*current_nodes_clone.borrow_mut() = new_nodes;
 					});
 				};
@@ -632,6 +632,22 @@ fn update_activity_boundary_attrs(
 /// nodes before the marker comment node.
 #[cfg(wasm)]
 fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::Node> {
+	mount_view_before_marker(marker, || view)
+}
+
+#[cfg(wasm)]
+fn mount_view_before_marker(
+	marker: &web_sys::Comment,
+	render: impl FnOnce() -> Page,
+) -> Vec<web_sys::Node> {
+	let scope = ReactiveScope::new();
+	let nodes = scope.enter(|| mount_before_marker_inner(marker, render()));
+	store_reactive_scope(scope);
+	nodes
+}
+
+#[cfg(wasm)]
+fn mount_before_marker_inner(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::Node> {
 	use wasm_bindgen::JsCast;
 
 	let document = web_sys::window()
@@ -704,18 +720,18 @@ fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::No
 		}
 		Page::Fragment(children) => {
 			for child in children {
-				nodes.extend(mount_before_marker(marker, child));
+				nodes.extend(mount_before_marker_inner(marker, child));
 			}
 		}
 		Page::KeyedFragment(children) => {
 			for (_, child) in children {
-				nodes.extend(mount_before_marker(marker, child));
+				nodes.extend(mount_before_marker_inner(marker, child));
 			}
 		}
 		Page::Outlet(outlet) => {
 			let id = outlet.id().map(str::to_string);
 			if let Some(child) = outlet.into_child() {
-				nodes.extend(mount_before_marker(marker, child));
+				nodes.extend(mount_before_marker_inner(marker, child));
 			} else if let Some(id) = id {
 				let element = document
 					.create_element("reinhardt-outlet")
@@ -729,7 +745,7 @@ fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::No
 		Page::Empty => {}
 		Page::WithHead { view, .. } => {
 			// Head is handled separately; just mount the content
-			nodes.extend(mount_before_marker(marker, *view));
+			nodes.extend(mount_before_marker_inner(marker, *view));
 		}
 		Page::ReactiveIf(reactive_if) => {
 			// Decompose the ReactiveIf to get the closures
@@ -772,14 +788,83 @@ fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::No
 			store_reactive_node(nested_node);
 		}
 		Page::Suspense(node) => {
-			nodes.extend(mount_before_marker(marker, node.render_branch()));
+			nodes.extend(mount_before_marker_inner(marker, node.render_branch()));
 		}
 		Page::Deferred(node) => {
-			nodes.extend(mount_before_marker(marker, node.content()));
+			nodes.extend(mount_before_marker_inner(marker, node.content()));
 		}
 	}
 
 	nodes
+}
+
+#[cfg(all(test, wasm))]
+mod tests {
+	use super::*;
+	use crate::reactive::{Effect, Signal, with_runtime};
+	use std::cell::{Cell, RefCell};
+	use std::rc::Rc;
+	use std::sync::Arc;
+	use wasm_bindgen_test::*;
+
+	wasm_bindgen_test_configure!(run_in_browser);
+
+	#[wasm_bindgen_test]
+	fn replacing_a_reactive_branch_disposes_its_nested_effects() {
+		let document = web_sys::window()
+			.expect("window should be available")
+			.document()
+			.expect("document should be available");
+		let host = document
+			.create_element("div")
+			.expect("host element should be created");
+		document
+			.body()
+			.expect("document should have a body")
+			.append_child(&host)
+			.expect("host should be attached");
+
+		let scope = ReactiveScope::new();
+		let effect_runs = Rc::new(Cell::new(0));
+		let nested_signal = Rc::new(RefCell::new(None));
+		let (branch, _node) = scope.enter(|| {
+			let branch = Signal::new(true);
+			let branch_for_condition = branch;
+			let effect_runs_for_view = Rc::clone(&effect_runs);
+			let nested_signal_for_view = Rc::clone(&nested_signal);
+			let then_view = Arc::new(move || {
+				let nested = Signal::new(0_i32);
+				*nested_signal_for_view.borrow_mut() = Some(nested);
+				let nested_for_effect = nested;
+				let effect_runs = Rc::clone(&effect_runs_for_view);
+				Effect::new(move || {
+					let _ = nested_for_effect.get();
+					effect_runs.set(effect_runs.get() + 1);
+				});
+				Page::text("then")
+			});
+			let node = ReactiveIfNode::new(
+				&crate::dom::Element::new(host.clone()),
+				Arc::new(move || branch_for_condition.get()),
+				then_view,
+				Arc::new(|| Page::text("else")),
+			);
+			(branch, node)
+		});
+
+		assert_eq!(effect_runs.get(), 1);
+		branch.set(false);
+		with_runtime(|runtime| runtime.flush_updates());
+
+		let nested = nested_signal
+			.borrow()
+			.expect("then branch should create a nested signal");
+		assert!(nested.try_set(1).is_err());
+		assert_eq!(effect_runs.get(), 1);
+
+		scope.dispose();
+		host.remove();
+	}
 }
 
 // Note: is_boolean_attr_truthy and BOOLEAN_ATTRS are imported from reinhardt_core::types::page

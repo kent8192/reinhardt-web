@@ -101,7 +101,7 @@ pub fn use_transition() -> TransitionState {
 				let is_pending = is_pending;
 				spawn_task(async move {
 					f();
-					is_pending.set(false);
+					let _ = is_pending.try_set(false);
 				});
 			}
 
@@ -194,6 +194,8 @@ mod tests {
 	use serial_test::serial;
 	use std::cell::RefCell;
 	use std::rc::Rc;
+	#[cfg(wasm)]
+	use wasm_bindgen_test::wasm_bindgen_test;
 
 	#[test]
 	#[serial]
@@ -228,5 +230,17 @@ mod tests {
 
 			assert_eq!(deferred.get(), 42);
 		});
+	}
+
+	#[cfg(wasm)]
+	#[wasm_bindgen_test]
+	async fn transition_completion_after_scope_disposal_does_not_panic() {
+		let scope = reinhardt_core::reactive::ReactiveScope::new();
+		let transition = scope.enter(use_transition);
+
+		transition.start_transition(|| {});
+		scope.dispose();
+
+		gloo_timers::future::TimeoutFuture::new(0).await;
 	}
 }
