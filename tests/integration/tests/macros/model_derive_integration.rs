@@ -12,6 +12,7 @@ use reinhardt_db::migrations::model_registry::global_registry;
 use reinhardt_db::migrations::{GeneratedStorage, SchemaExpr, SchemaFunc};
 use reinhardt_db::orm::Model as ModelTrait;
 use reinhardt_db::orm::fields::FieldKwarg;
+use reinhardt_db::orm::fixtures::global_fixture_registry;
 use reinhardt_db::orm::relationship::RelationshipType;
 use reinhardt_macros::model;
 use rstest::rstest;
@@ -50,6 +51,16 @@ struct MetadataWriter {
 	id: Option<i64>,
 
 	#[rel(foreign_key, db_column = "writer_pk")]
+	writer: ForeignKeyField<MetadataTarget>,
+}
+
+#[model(app_label = "metadata_test", table_name = "nullable_metadata_writers")]
+#[derive(Serialize, Deserialize)]
+struct NullableMetadataWriter {
+	#[field(primary_key = true)]
+	id: Option<i64>,
+
+	#[rel(foreign_key, db_column = "nullable_writer_pk", null = true)]
 	writer: ForeignKeyField<MetadataTarget>,
 }
 
@@ -104,6 +115,30 @@ struct GeneratedUser {
 		generated_stored = true
 	)]
 	full_name: String,
+}
+
+#[model(
+	app_label = "fixture_projection",
+	table_name = "fixture_projection_users"
+)]
+#[derive(Serialize, Deserialize)]
+struct FixtureProjectionUser {
+	#[field(primary_key = true)]
+	id: Option<i64>,
+
+	#[serde(rename = "displayName")]
+	#[field(max_length = 100)]
+	title: String,
+
+	#[field(max_length = 100)]
+	payload: String,
+
+	#[field(
+		max_length = 100,
+		generated_sql = "UPPER(payload)",
+		generated_stored = true
+	)]
+	generated_value: String,
 }
 
 #[test]
@@ -234,6 +269,53 @@ fn test_typed_generated_column_registration() {
 }
 
 #[test]
+fn test_fixture_projection_validates_writable_fields_without_api_serde_names() {
+	let mut fields = serde_json::Map::new();
+	fields.insert("id".to_string(), serde_json::json!(1));
+	fields.insert("title".to_string(), serde_json::json!("Fixture title"));
+	fields.insert("payload".to_string(), serde_json::json!("body"));
+
+	assert!(
+		FixtureProjectionUser::validate_fixture_fields(&fields).is_ok(),
+		"generated columns must be optional and fixture field names must not use serde renames"
+	);
+
+	let mut missing_payload = fields.clone();
+	missing_payload.remove("payload");
+	assert!(
+		FixtureProjectionUser::validate_fixture_fields(&missing_payload).is_err(),
+		"non-generated fixture fields must remain required"
+	);
+
+	let mut invalid_payload = fields;
+	invalid_payload.insert("payload".to_string(), serde_json::json!(42));
+	assert!(
+		FixtureProjectionUser::validate_fixture_fields(&invalid_payload).is_err(),
+		"non-generated fixture fields must retain their Rust type validation"
+	);
+}
+
+#[test]
+fn test_fixture_projection_uses_custom_foreign_key_columns() {
+	let mut fields = serde_json::Map::new();
+	fields.insert("id".to_string(), serde_json::json!(1));
+	fields.insert("writer_pk".to_string(), serde_json::json!(7));
+
+	assert!(
+		MetadataWriter::validate_fixture_fields(&fields).is_ok(),
+		"fixture validation must accept the canonical custom foreign-key column"
+	);
+
+	let mut nullable_fields = serde_json::Map::new();
+	nullable_fields.insert("id".to_string(), serde_json::json!(1));
+	nullable_fields.insert("nullable_writer_pk".to_string(), serde_json::Value::Null);
+	assert!(
+		NullableMetadataWriter::validate_fixture_fields(&nullable_fields).is_ok(),
+		"nullable custom foreign-key fixtures must accept explicit null"
+	);
+}
+
+#[test]
 fn test_model_registration() {
 	// Verify the model was automatically registered via ctor
 	let registry = global_registry();
@@ -261,6 +343,16 @@ fn test_model_registration() {
 	assert!(test_model.fields.contains_key("email"));
 	assert!(test_model.fields.contains_key("age"));
 	assert!(test_model.fields.contains_key("is_active"));
+}
+
+#[test]
+fn test_fixture_handler_registration_supports_derive_before_model() {
+	let handler = global_fixture_registry().get("test_app.TestUser");
+
+	assert!(
+		handler.is_some(),
+		"models that derive serde before #[model] must register a fixture handler"
+	);
 }
 
 #[test]

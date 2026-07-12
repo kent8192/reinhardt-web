@@ -181,6 +181,11 @@ pub mod db {
 	}
 
 	pub mod orm {
+		pub use serde;
+
+		pub type FixtureFields = serde_json::Map<String, serde_json::Value>;
+		pub type FixtureValue = serde_json::Value;
+
 		pub struct Manager<T>(core::marker::PhantomData<T>);
 
 		impl<T> Default for Manager<T> {
@@ -225,6 +230,11 @@ pub mod db {
 			fn primary_key(&self) -> Option<Self::PrimaryKey>;
 			fn set_primary_key(&mut self, value: Self::PrimaryKey);
 			fn field_is_none(&self, field_name: &str) -> bool;
+			fn validate_fixture_fields(
+				_fields: &FixtureFields,
+			) -> core::result::Result<(), String> {
+				Ok(())
+			}
 			fn field_metadata() -> Vec<inspection::FieldInfo>;
 			fn index_metadata() -> Vec<inspection::IndexInfo>;
 			fn constraint_metadata() -> Vec<inspection::ConstraintInfo>;
@@ -409,10 +419,19 @@ pub mod db {
 		pub mod fixtures {
 			pub struct FixtureRegistry;
 
+			pub fn __deserialize_fixture_projection<T>(
+				_fields: &super::FixtureFields,
+			) -> core::result::Result<T, String>
+			where
+				T: serde::de::DeserializeOwned,
+			{
+				Err("fixture projection validation is unavailable in UI test support".to_string())
+			}
+
 			impl FixtureRegistry {
 				pub fn register_model<T>(&self)
 				where
-					T: serde::Serialize + serde::de::DeserializeOwned + 'static,
+					T: super::Model + 'static,
 				{
 					let _ = core::any::type_name::<T>();
 				}

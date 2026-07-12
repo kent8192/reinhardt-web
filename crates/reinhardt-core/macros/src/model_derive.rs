@@ -2471,7 +2471,6 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 		fk_field_infos: &fk_field_infos,
 		unique_constraint_names: &unique_constraint_names,
 		unique_constraint_field_lists: &unique_constraint_field_lists,
-		register_fixture_handler: model_config.serde_serialize && model_config.serde_deserialize,
 	})?;
 
 	// Generate relationship registration code for RELATIONSHIPS registry
@@ -2672,6 +2671,8 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 		.filter(|field| field.config.generated.is_some() || field.config.generated_sql.is_some())
 		.map(|field| LitStr::new(&field.name.to_string(), field.name.span()))
 		.collect();
+	let fixture_validation =
+		generate_fixture_validation(struct_name, generics, &field_infos, &fk_field_infos);
 
 	// Generate the Model implementation
 	let expanded = quote! {
@@ -2743,6 +2744,8 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 				}
 			}
 
+			#fixture_validation
+
 			#pk_impl
 
 			#set_pk_impl
@@ -2807,6 +2810,93 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 	};
 
 	Ok(expanded)
+}
+
+fn generate_fixture_validation(
+	struct_name: &Ident,
+	generics: &syn::Generics,
+	field_infos: &[FieldInfo],
+	fk_field_infos: &[ForeignKeyFieldInfo],
+) -> TokenStream {
+	let orm_crate = get_reinhardt_orm_crate();
+	let mut projection_fields = Vec::new();
+	let mut projection_field_names = Vec::new();
+
+	for field in field_infos {
+		if field.config.skip
+			|| field.is_fk_id_field
+			|| is_relationship_field_type(&field.ty)
+			|| is_many_to_many_field_type(&field.ty)
+			|| field.config.generated.is_some()
+			|| field.config.generated_sql.is_some()
+		{
+			continue;
+		}
+
+		let field_name = &field.name;
+		let field_type = &field.ty;
+		projection_fields.push(quote! {
+			#field_name: #field_type
+		});
+		projection_field_names.push(field_name.clone());
+	}
+
+	for (index, foreign_key) in fk_field_infos.iter().enumerate() {
+		let field_name = Ident::new(
+			&format!("__reinhardt_fixture_foreign_key_{index}"),
+			foreign_key.field_name.span(),
+		);
+		let column_name = LitStr::new(&foreign_key.id_column_name, foreign_key.field_name.span());
+		let field_type = if foreign_key.rel_attr.null.unwrap_or(false) {
+			quote! { ::std::option::Option<#orm_crate::FixtureValue> }
+		} else {
+			quote! { #orm_crate::FixtureValue }
+		};
+		projection_fields.push(quote! {
+			#[serde(rename = #column_name)]
+			#field_name: #field_type
+		});
+		projection_field_names.push(field_name);
+	}
+
+	let (_, ty_generics, where_clause) = generics.split_for_impl();
+	let marker_field = if generics.params.is_empty() {
+		quote! {}
+	} else {
+		quote! {
+			#[serde(skip)]
+			__reinhardt_fixture_projection_marker: ::std::marker::PhantomData<#struct_name #ty_generics>,
+		}
+	};
+	let marker_pattern = if generics.params.is_empty() {
+		quote! {}
+	} else {
+		quote! {
+			__reinhardt_fixture_projection_marker: _,
+		}
+	};
+
+	quote! {
+		fn validate_fixture_fields(
+			fields: &#orm_crate::FixtureFields,
+		) -> ::std::result::Result<(), ::std::string::String> {
+			// This projection is deserialized only to validate fixture input.
+			#[allow(dead_code)]
+			#[derive(#orm_crate::serde::Deserialize)]
+			struct __ReinhardtFixtureProjection #generics #where_clause {
+				#(#projection_fields,)*
+				#marker_field
+			}
+
+			let __ReinhardtFixtureProjection {
+				#(#projection_field_names: _,)*
+				#marker_pattern
+			} = #orm_crate::fixtures::__deserialize_fixture_projection::<
+				__ReinhardtFixtureProjection #ty_generics,
+			>(fields)?;
+			Ok(())
+		}
+	}
 }
 
 /// Generate FieldInfo construction for field_metadata()
@@ -3242,7 +3332,6 @@ struct RegistrationCodeInput<'a> {
 	fk_field_infos: &'a [ForeignKeyFieldInfo],
 	unique_constraint_names: &'a [String],
 	unique_constraint_field_lists: &'a [Vec<String>],
-	register_fixture_handler: bool,
 }
 
 /// Generate automatic registration code using ctor.
@@ -3255,7 +3344,6 @@ fn generate_registration_code(input: RegistrationCodeInput<'_>) -> Result<TokenS
 		fk_field_infos,
 		unique_constraint_names,
 		unique_constraint_field_lists,
-		register_fixture_handler,
 	} = input;
 	let migrations_crate = get_reinhardt_migrations_crate();
 	let orm_crate = get_reinhardt_orm_crate();
@@ -3267,13 +3355,9 @@ fn generate_registration_code(input: RegistrationCodeInput<'_>) -> Result<TokenS
 		),
 		struct_name.span(),
 	);
-	let fixture_registration = if register_fixture_handler {
-		quote! {
-			// Register type-erased fixture handlers for dumpdata/loaddata.
-			#orm_crate::fixtures::global_fixture_registry().register_model::<#struct_name>();
-		}
-	} else {
-		quote! {}
+	let fixture_registration = quote! {
+		// Register type-erased fixture handlers for dumpdata/loaddata.
+		#orm_crate::fixtures::global_fixture_registry().register_model::<#struct_name>();
 	};
 
 	// Separate ManyToMany fields from regular fields (also exclude ForeignKeyField/OneToOneField and FK _id fields)
@@ -6194,5 +6278,25 @@ mod tests {
 		);
 		assert!(!output_str.contains("pub fn set_id"));
 		assert!(!output_str.contains("pub fn set_created_at"));
+	}
+
+	#[test]
+	fn test_fixture_handler_registration_does_not_depend_on_serde_config_flags() {
+		let input = quote! {
+			#[model_config(app_label = "fixture_tests", table_name = "fixture_models")]
+			struct FixtureModel {
+				#[field(primary_key = true)]
+				id: i64,
+			}
+		};
+
+		let output = model_derive_impl(syn::parse2(input).unwrap()).unwrap();
+
+		assert!(
+			output
+				.to_string()
+				.contains("register_model :: < FixtureModel >"),
+			"fixture handler registration must not depend on serde flags forwarded by #[model]"
+		);
 	}
 }
