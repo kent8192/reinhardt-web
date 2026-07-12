@@ -4355,7 +4355,7 @@ where
 			self.select_related_query()
 		};
 
-		let sql = stmt.to_string(PostgresQueryBuilder);
+		let sql = render_select_statement(&stmt, conn.backend());
 
 		let started_at = Instant::now();
 		let query_result = conn.query(&sql, vec![]).await;
@@ -6424,14 +6424,41 @@ fn escape_like_pattern(value: &str) -> String {
 	escaped
 }
 
+fn render_select_statement(
+	statement: &SelectStatement,
+	backend: super::connection::DatabaseBackend,
+) -> String {
+	match backend {
+		super::connection::DatabaseBackend::Postgres => statement.to_string(PostgresQueryBuilder),
+		super::connection::DatabaseBackend::MySql => statement.to_string(MySqlQueryBuilder),
+		super::connection::DatabaseBackend::Sqlite => statement.to_string(SqliteQueryBuilder),
+	}
+}
+
 #[cfg(test)]
 mod tests {
-	use super::{FilterCondition, MAX_FILTER_CONDITION_DEPTH};
+	use super::{FilterCondition, MAX_FILTER_CONDITION_DEPTH, render_select_statement};
+	use crate::orm::connection::DatabaseBackend;
 	use crate::orm::query::{FieldAssignment, UpdateValue};
 	use crate::orm::{FilterOperator, FilterValue, Manager, Model, QuerySet, query::Filter};
 	use rstest::rstest;
 	use serde::{Deserialize, Serialize};
 	use std::collections::HashMap;
+
+	#[test]
+	fn render_select_statement_uses_mysql_identifier_quoting() {
+		// Arrange
+		let mut statement = reinhardt_query::prelude::Query::select();
+		statement
+			.column(reinhardt_query::prelude::Alias::new("id"))
+			.from(reinhardt_query::prelude::Alias::new("articles"));
+
+		// Act
+		let sql = render_select_statement(&statement, DatabaseBackend::MySql);
+
+		// Assert
+		assert_eq!(sql, "SELECT `id` FROM `articles`");
+	}
 
 	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 	struct TestUser {
