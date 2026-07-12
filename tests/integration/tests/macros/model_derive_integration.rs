@@ -6,10 +6,13 @@
 //! - reinhardt-migrations (model_registry)
 
 use reinhardt_db::Json;
+use reinhardt_db::associations::{ForeignKeyField, OneToOneField};
 use reinhardt_db::migrations::FieldType;
 use reinhardt_db::migrations::model_registry::global_registry;
 use reinhardt_db::migrations::{GeneratedStorage, SchemaExpr, SchemaFunc};
 use reinhardt_db::orm::Model as ModelTrait;
+use reinhardt_db::orm::fields::FieldKwarg;
+use reinhardt_db::orm::relationship::RelationshipType;
 use reinhardt_macros::model;
 use rstest::rstest;
 use serde::{Deserialize, Serialize};
@@ -29,8 +32,35 @@ struct TestUser {
 	#[field(null = true)]
 	age: Option<i32>,
 
-	#[field(default = "true")]
+	#[field(default = true)]
 	is_active: bool,
+}
+
+#[derive(Serialize, Deserialize)]
+#[model(app_label = "metadata_test", table_name = "metadata_targets")]
+struct MetadataTarget {
+	#[field(primary_key = true)]
+	id: Option<i64>,
+}
+
+#[derive(Serialize, Deserialize)]
+#[model(app_label = "metadata_test", table_name = "metadata_writers")]
+struct MetadataWriter {
+	#[field(primary_key = true)]
+	id: Option<i64>,
+
+	#[rel(foreign_key, db_column = "writer_pk")]
+	writer: ForeignKeyField<MetadataTarget>,
+}
+
+#[derive(Serialize, Deserialize)]
+#[model(app_label = "metadata_test", table_name = "metadata_profiles")]
+struct MetadataProfile {
+	#[field(primary_key = true)]
+	id: Option<i64>,
+
+	#[rel(one_to_one)]
+	profile: OneToOneField<MetadataTarget>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -136,6 +166,26 @@ fn test_field_metadata_generation() {
 		is_active_field.field_type,
 		"reinhardt.orm.models.BooleanField"
 	);
+	assert_eq!(is_active_field.default, Some(FieldKwarg::Bool(true)));
+}
+
+#[test]
+fn test_relationship_metadata_uses_generated_fk_columns_and_targets() {
+	let writer = MetadataWriter::relationship_metadata()
+		.into_iter()
+		.next()
+		.expect("writer relationship should be present");
+	assert_eq!(writer.relationship_type, RelationshipType::ManyToOne);
+	assert_eq!(writer.foreign_key.as_deref(), Some("writer_pk"));
+	assert_eq!(writer.related_model, "MetadataTarget");
+
+	let profile = MetadataProfile::relationship_metadata()
+		.into_iter()
+		.next()
+		.expect("profile relationship should be present");
+	assert_eq!(profile.relationship_type, RelationshipType::OneToOne);
+	assert_eq!(profile.foreign_key.as_deref(), Some("profile_id"));
+	assert_eq!(profile.related_model, "MetadataTarget");
 }
 
 #[test]
