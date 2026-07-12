@@ -912,8 +912,8 @@ mod tests {
 		// `use_resource` stores its `new_with_deps` Effect inside an `Rc<Effect>`
 		// (`Resource::effect_guard`) so dependency-change refetch keeps firing for
 		// the Resource's lifetime. An Effect disposes on drop, so a handle that is
-		// created and immediately dropped — the original `create_resource_with_deps`
-		// bug — would stop tracking right after its first run.
+		// created and immediately dropped would stop tracking right after its
+		// first run.
 		let s = Signal::new(0_i32);
 		let runs = Rc::new(RefCell::new(0_i32));
 		let runs_for_effect = runs.clone();

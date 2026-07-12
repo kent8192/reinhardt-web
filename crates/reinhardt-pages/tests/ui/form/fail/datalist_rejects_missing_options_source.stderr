@@ -1,0 +1,5 @@
+error: Datalist requires either options or choices_from
+ --> tests/ui/form/fail/datalist_rejects_missing_options_source.rs:8:4
+  |
+8 |             suggestions: Datalist {}
+  |             ^^^^^^^^^^^

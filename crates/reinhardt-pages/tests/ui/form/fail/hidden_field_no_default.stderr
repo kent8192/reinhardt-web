@@ -1,4 +1,4 @@
-error: form! cannot generate a use_form runtime contract for unsupported field(s): data (HiddenField). FileField and ImageField are not supported by use_form(&form) yet.
+error: form! cannot generate a use_form runtime contract for unsupported field(s): data (HiddenField).
   --> tests/ui/form/fail/hidden_field_no_default.rs:26:10
    |
 26 |       let _ = form! {
@@ -24,7 +24,6 @@ error[E0277]: the trait bound `NoDefault: Default` is not satisfied
 32 | |     };
    | |_____^ the trait `Default` is not implemented for `NoDefault`
    |
-   = help: see issue #48214
    = note: this error originates in the macro `form` (in Nightly builds, run with -Z macro-backtrace for more info)
 help: consider annotating `NoDefault` with `#[derive(Default)]`
    |
@@ -45,7 +44,6 @@ error[E0277]: can't compare `NoDefault` with `NoDefault`
    | |_____^ no implementation for `NoDefault == NoDefault`
    |
    = help: the trait `PartialEq` is not implemented for `NoDefault`
-   = help: see issue #48214
    = note: this error originates in the macro `form` (in Nightly builds, run with -Z macro-backtrace for more info)
 help: consider annotating `NoDefault` with `#[derive(PartialEq)]`
    |
@@ -65,7 +63,6 @@ error[E0277]: the trait bound `NoDefault: Default` is not satisfied
 32 | |     };
    | |_____^ the trait `Default` is not implemented for `NoDefault`
    |
-   = help: see issue #48214
 help: consider annotating `NoDefault` with `#[derive(Default)]`
    |
  7 + #[derive(Default)]
@@ -85,7 +82,6 @@ error[E0277]: can't compare `NoDefault` with `NoDefault`
    | |_____^ no implementation for `NoDefault == NoDefault`
    |
    = help: the trait `PartialEq` is not implemented for `NoDefault`
-   = help: see issue #48214
 help: consider annotating `NoDefault` with `#[derive(PartialEq)]`
    |
  7 + #[derive(PartialEq)]
@@ -141,7 +137,7 @@ help: consider annotating `NoDefault` with `#[derive(Default)]`
  8 | struct NoDefault {
    |
 
-error[E0599]: the function or associated item `new` exists for struct `BadForm`, but its trait bounds were not satisfied
+error[E0599]: the associated function or constant `new` exists for struct `BadForm`, but its trait bounds were not satisfied
   --> tests/ui/form/fail/hidden_field_no_default.rs:26:10
    |
  7 |    struct NoDefault {
@@ -152,12 +148,12 @@ error[E0599]: the function or associated item `new` exists for struct `BadForm`,
    | | _____________|
    | ||
 27 | ||         name: BadForm,
-   | ||_____________________- function or associated item `new` not found for this struct
+   | ||_____________________- associated function or constant `new` not found for this struct
 28 | |          action: "/x",
 29 | |          fields: {
 ...  |
 32 | |      };
-   | |______^ function or associated item cannot be called on `BadForm` due to unsatisfied trait bounds
+   | |______^ associated function or constant cannot be called on `BadForm` due to unsatisfied trait bounds
    |
 note: the following trait bounds were not satisfied:
       `NoDefault: Default`

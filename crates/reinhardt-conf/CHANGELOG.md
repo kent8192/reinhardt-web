@@ -7,11 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.2.0...reinhardt-conf@v0.3.0) - 2026-06-28
+
+Stable release of `reinhardt-conf` for the Reinhardt 0.3.0 line. This
+entry consolidates the 0.3.0 release-candidate series into one
+stable release section.
+
+### Migration Notes
+
+- Review the root CHANGELOG and `instructions/MIGRATION_0.3.md` before upgrading from 0.2.x.
+
+### Fixed
+
+- *(todo-check)* clear public api audit markers
+- *(conf)* keep sectionless settings nodes embedded
+
+### Maintenance
+
+- migrate Rust toolchain to 1.96.0
+
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.3...reinhardt-conf@v0.2.0) - 2026-06-11
 
 Stable release of `reinhardt-conf` for the Reinhardt 0.2.0 line. This
-entry consolidates the 0.2.0 release-candidate series; the original
-RC entries remain below as detailed history.
+entry consolidates the 0.2.0 release-candidate series into one
+stable release section.
 
 ### Migration Notes
 
@@ -33,6 +52,7 @@ RC entries remain below as detailed history.
 ### Changed
 
 - *(conf)* delete deprecated Settings, AdvancedSettings, JsonFileSource, and related APIs
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
 
 ### Deprecated
 
@@ -53,83 +73,18 @@ RC entries remain below as detailed history.
 - *(conf)* emit fragment self settings impls
 
 - *(ci)* pin broken upstream transitive releases
-
-### Performance
-
-- atomize facade dependency feature gates
-
-### Documentation
-
-- *(conf)* document embedded settings nodes
-- *(settings)* document embedded schema nodes
-- *(mail,conf)* fix unresolved intra-doc links to settings fragments
-
-
-## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.2.0-rc.4...reinhardt-conf@v0.2.0-rc.5) - 2026-06-11
-
-### Documentation
-
-- *(conf)* document embedded settings nodes
-
-## [0.2.0-rc.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.2.0-rc.3...reinhardt-conf@v0.2.0-rc.4) - 2026-06-06
-
-### Added
-
-- *(settings)* add typed schema primitives
-- *(settings)* expose composed schema roots
-
-### Documentation
-
-- *(settings)* document embedded schema nodes
-
-### Fixed
-
-- *(settings)* preserve root section precedence
-- *(settings)* classify embedded config nodes
-- *(settings)* require explicit nested settings nodes
-- *(settings)* keep schema accessor compatibility
-- *(conf)* support secret source maps
-- *(conf)* escape secret source test paths
-
-### Added
-
-- Typed settings schema references now expose embedded settings nodes, including
-  wrapper-aware paths for `Option`, `Vec`, `HashMap<String, _>`,
-  `BTreeMap<String, _>`, `IndexMap<String, _>`, and `Box`.
-
-### Fixed
-
-- Required-field validation now reports missing nested required leaves as
-  `BuildError::MissingRequiredPath` while preserving
-  `BuildError::MissingRequiredField` for missing direct section fields.
-
-## [0.2.0-rc.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.2.0-rc.2...reinhardt-conf@v0.2.0-rc.3) - 2026-06-05
-
-### Performance
-
-- atomize facade dependency feature gates
-
-## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.1.3...reinhardt-conf@v0.2.0-rc.2) - 2026-06-03
-
-### Changed
-
-- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
-- *(conf)* delete deprecated Settings, AdvancedSettings, JsonFileSource, and related APIs
-
-### Deprecated
-
-- *(conf)* deprecate TemplateConfig in favor of TemplateSettings fragment
-
-### Documentation
-
-- *(mail,conf)* fix unresolved intra-doc links to settings fragments
-
-### Fixed
-
 - *(ci)* recover develop release-plz prerelease
 - *(ci)* resolve all pre-existing compilation failures on develop/0.2.0
-- *(conf)* [**breaking**] remove legacy advanced settings types
-- *(conf)* emit fragment self settings impls
+
+### Performance
+
+- atomize facade dependency feature gates
+
+### Documentation
+
+- *(conf)* document embedded settings nodes
+- *(settings)* document embedded schema nodes
+- *(mail,conf)* fix unresolved intra-doc links to settings fragments
 
 ### Styling
 

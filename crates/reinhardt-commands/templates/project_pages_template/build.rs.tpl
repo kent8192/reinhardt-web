@@ -5,7 +5,11 @@
 use cfg_aliases::cfg_aliases;
 
 fn main() {
+    println!("cargo:rustc-cfg=with_reinhardt");
+    println!("cargo:rerun-if-changed=build.rs");
+
     // Rust 2024 edition requires explicit check-cfg declarations
+    println!("cargo::rustc-check-cfg=cfg(with_reinhardt)");
     println!("cargo::rustc-check-cfg=cfg(client)");
     println!("cargo::rustc-check-cfg=cfg(server)");
     println!("cargo::rustc-check-cfg=cfg(wasm)");

@@ -18,9 +18,7 @@ fn main() {
 						r#type: "checkbox",
 						checked: todo.completed,
 					}
-					span { {
-						todo.title.clone()
-					} }
+					span { { todo.title.clone() } }
 				}
 			}
 		}

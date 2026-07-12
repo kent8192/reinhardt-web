@@ -7,7 +7,10 @@
 use bytes::Bytes;
 use criterion::{Criterion, criterion_group, criterion_main};
 use http::{HeaderMap, StatusCode};
-use reinhardt_db::orm::{CascadeOption, LoadingStrategy, Relationship, RelationshipType};
+use reinhardt_db::{
+	orm::{CascadeOption, LoadingStrategy, Relationship, RelationshipType},
+	pool::{ConnectionPool, PoolConfig},
+};
 use reinhardt_rest::serializers::{CharField, EmailField, IntegerField, JsonSerializer};
 use reinhardt_test::{APIClient, APIRequestFactory, MockFunction, Spy, TestResponse};
 use reinhardt_urls::proxy::{
@@ -287,6 +290,30 @@ fn benchmark_orm_relationship_operations(c: &mut Criterion) {
 	});
 }
 
+/// Benchmark database pool access overhead.
+fn benchmark_db_pool_access(c: &mut Criterion) {
+	let rt = Runtime::new().unwrap();
+	let pool = rt.block_on(async {
+		let mut config = PoolConfig::default();
+		config.min_connections = 1;
+		config.max_connections = 1;
+		config.test_before_acquire = false;
+
+		ConnectionPool::new_sqlite("sqlite::memory:", config)
+			.await
+			.expect("failed to create sqlite pool")
+	});
+
+	c.bench_function("db_pool_acquire_release_no_listener", |b| {
+		b.iter(|| {
+			rt.block_on(async {
+				let mut conn = pool.acquire().await.expect("failed to acquire connection");
+				black_box(conn.inner());
+			});
+		});
+	});
+}
+
 // For template benchmarks, see template_benchmarks.rs
 
 // For JWT and permission benchmarks, see auth_benchmarks.rs
@@ -341,6 +368,7 @@ criterion_group!(
 	benchmark_test_response_operations,
 	benchmark_proxy_operations,
 	benchmark_orm_relationship_operations,
+	benchmark_db_pool_access,
 	benchmark_serialization_operations,
 	benchmark_memory_usage
 );

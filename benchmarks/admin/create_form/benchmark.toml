@@ -1,0 +1,9 @@
+[scenario]
+category = "admin"
+name = "create_form"
+runner = "criterion"
+metric = "form_latency"
+unit = "us/render"
+workload = "Render and validate an admin create form with text, integer, boolean, and select fields."
+success = "The form renders, accepts valid input, and reports no validation errors."
+targets = ["reinhardt", "axum", "actix-web", "loco"]

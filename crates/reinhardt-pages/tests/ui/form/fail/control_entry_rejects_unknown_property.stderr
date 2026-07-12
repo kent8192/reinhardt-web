@@ -1,0 +1,5 @@
+error: unknown ResetButton property: 'accept'
+  --> tests/ui/form/fail/control_entry_rejects_unknown_property.rs:10:5
+   |
+10 |                 accept: "text/csv",
+   |                 ^^^^^^

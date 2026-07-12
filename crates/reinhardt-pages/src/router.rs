@@ -106,6 +106,32 @@ pub use components::{Link, Redirect, RouterOutlet, guard, guard_or};
 pub use history::{HistoryState, NavigationType};
 pub use navigate::navigate;
 pub use reinhardt_urls::routers::ClientRouter;
+pub use reinhardt_urls::routers::client_router::Path;
 // `setup_popstate_listener` is wasm-only — see `history` module docs.
 #[cfg(wasm)]
 pub use history::setup_popstate_listener;
+
+/// Query extractor marker used by `#[component]` function signatures.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Query<T>(pub T);
+
+impl<T> Query<T> {
+	/// Unwraps the inner value.
+	pub fn into_inner(self) -> T {
+		self.0
+	}
+}
+
+impl<T> std::ops::Deref for Query<T> {
+	type Target = T;
+
+	fn deref(&self) -> &T {
+		&self.0
+	}
+}
+
+impl<T> AsRef<T> for Query<T> {
+	fn as_ref(&self) -> &T {
+		&self.0
+	}
+}

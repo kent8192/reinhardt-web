@@ -9,15 +9,12 @@
 #[cfg(server)]
 use reinhardt::app_config;
 
-#[cfg(server)]
-pub mod admin;
 #[cfg(client)]
 pub mod client;
 pub mod models;
 #[cfg(server)]
-pub mod serializers;
+pub mod server;
 pub mod server_fn;
-#[cfg(server)]
 pub mod services;
 pub mod urls;
 

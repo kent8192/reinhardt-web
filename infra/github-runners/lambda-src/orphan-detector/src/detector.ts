@@ -1,3 +1,10 @@
+const MANAGED_RUNNER_LABELS = [
+	"self-hosted",
+	"linux",
+	"arm64",
+	"reinhardt-ci",
+] as const;
+
 export interface WorkflowJob {
 	id: number;
 	run_id: number;
@@ -8,6 +15,12 @@ export interface WorkflowJob {
 
 // Generic over the job type so callers with richer types (e.g. QueuedJobExtended
 // in github-client.ts) retain their extra fields through the filter.
+export function hasManagedRunnerLabels(labels: readonly string[]): boolean {
+	if (labels.length !== MANAGED_RUNNER_LABELS.length) return false;
+	const labelSet = new Set(labels);
+	return MANAGED_RUNNER_LABELS.every((label) => labelSet.has(label));
+}
+
 export function filterOrphans<J extends WorkflowJob>(
 	jobs: readonly J[],
 	nowMs: number,
@@ -17,6 +30,7 @@ export function filterOrphans<J extends WorkflowJob>(
 	const cutoffMs = nowMs - stalenessMin * 60_000;
 	return jobs.filter((job) => {
 		if (job.status !== "queued") return false;
+		if (!hasManagedRunnerLabels(job.labels)) return false;
 		if (processed.has(job.id)) return false;
 		const createdMs = Date.parse(job.created_at);
 		if (Number.isNaN(createdMs)) return false;

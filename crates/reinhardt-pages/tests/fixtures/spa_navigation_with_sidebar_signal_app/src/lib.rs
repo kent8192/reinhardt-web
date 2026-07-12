@@ -65,6 +65,7 @@ pub fn login_page() -> Page {
 
 #[wasm_bindgen(start)]
 pub fn start() -> Result<(), JsValue> {
+	#[cfg(debug_assertions)]
 	console_error_panic_hook::set_once();
 	ClientLauncher::new("#app")
 		.router_client(|| {

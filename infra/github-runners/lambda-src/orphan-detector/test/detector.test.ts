@@ -5,7 +5,7 @@ const mkJob = (overrides: Partial<WorkflowJob> = {}): WorkflowJob => ({
 	id: 100,
 	status: "queued",
 	created_at: "2026-04-22T10:00:00Z",
-	labels: ["self-hosted", "reinhardt-ci"],
+	labels: ["self-hosted", "linux", "arm64", "reinhardt-ci"],
 	run_id: 999,
 	...overrides,
 });
@@ -53,5 +53,20 @@ describe("filterOrphans", () => {
 	it("handles ISO 8601 UTC with milliseconds", () => {
 		const jobs = [mkJob({ id: 7, created_at: "2026-04-22T10:00:00.123Z" })];
 		expect(filterOrphans(jobs, now, staleness, new Map())).toHaveLength(1);
+	});
+
+	it("excludes jobs outside the managed runner label set", () => {
+		const jobs = [mkJob({ id: 8, labels: ["ubuntu-latest"] })];
+		expect(filterOrphans(jobs, now, staleness, new Map())).toHaveLength(0);
+	});
+
+	it("excludes jobs with extra self-hosted labels outside the managed fleet", () => {
+		const jobs = [
+			mkJob({
+				id: 9,
+				labels: ["self-hosted", "linux", "arm64", "reinhardt-ci", "gpu"],
+			}),
+		];
+		expect(filterOrphans(jobs, now, staleness, new Map())).toHaveLength(0);
 	});
 });

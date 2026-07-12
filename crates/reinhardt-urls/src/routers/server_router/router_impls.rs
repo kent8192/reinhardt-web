@@ -86,10 +86,7 @@ impl Handler for ServerRouter {
 			}
 		};
 
-		// Set path parameters in request
-		for (key, value) in route_match.params {
-			req.set_path_param(key, value);
-		}
+		req.path_params = route_match.params;
 
 		// Set DI context if available
 		if let Some(di_ctx) = &route_match.di_context {
@@ -101,10 +98,9 @@ impl Handler for ServerRouter {
 			// No middleware, execute handler directly
 			route_match.handler.handle(req).await
 		} else {
-			// Build middleware chain
-			let chain = route_match.middleware_stack.iter().fold(
-				MiddlewareChain::new(route_match.handler.clone()),
-				|chain, mw| chain.with_middleware(mw.clone()),
+			let chain = MiddlewareChain::with_middlewares(
+				route_match.handler.clone(),
+				route_match.middleware_stack,
 			);
 
 			// Execute chain

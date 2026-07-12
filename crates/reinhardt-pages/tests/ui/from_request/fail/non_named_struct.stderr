@@ -1,0 +1,5 @@
+error: FromRequest can only be derived for structs with named fields
+ --> tests/ui/from_request/fail/non_named_struct.rs:5:18
+  |
+5 | struct BadRequest(PathParam<i64>);
+  |                  ^^^^^^^^^^^^^^^^

@@ -1,256 +1,19 @@
 //! Route-registration methods for [`ServerRouter`].
 //!
-//! Covers function routes, handler routes, named routes, ViewSets,
-//! endpoint-trait registration, class-based views, and per-route
-//! middleware attachment.
+//! Covers endpoint-trait registration, ViewSets, class-based views, raw
+//! method-agnostic handlers, and per-route middleware attachment.
 
 use super::ServerRouter;
-use super::handlers::FunctionHandler;
 use super::types::{FunctionRoute, ViewRoute};
 use crate::routers::Route;
-use hyper::Method;
 use reinhardt_core::endpoint::EndpointInfo;
-use reinhardt_http::{Handler, Request, Response, Result};
+use reinhardt_http::Handler;
 use reinhardt_middleware::Middleware;
 #[cfg(feature = "viewsets")]
 use reinhardt_views::viewsets::ViewSet;
 use std::sync::Arc;
 
 impl ServerRouter {
-	/// Register a function-based route (FastAPI-style)
-	///
-	/// # Examples
-	///
-	/// ```rust,no_run
-	/// use reinhardt_urls::routers::ServerRouter;
-	/// use hyper::Method;
-	/// # use reinhardt_http::{Request, Response, Result};
-	///
-	/// async fn health_check(_req: Request) -> Result<Response> {
-	///     Ok(Response::ok())
-	/// }
-	///
-	/// let router = ServerRouter::new()
-	///     .function("/health", Method::GET, health_check);
-	/// ```
-	pub fn function<F, Fut>(mut self, path: &str, method: Method, func: F) -> Self
-	where
-		F: Fn(Request) -> Fut + Send + Sync + 'static,
-		Fut: std::future::Future<Output = Result<Response>> + Send + 'static,
-	{
-		let handler = Arc::new(FunctionHandler { func });
-		self.functions.push(FunctionRoute {
-			path: path.to_string(),
-			method,
-			handler,
-			name: None,
-			middleware: Vec::new(),
-		});
-		self
-	}
-
-	/// Register a route with a Handler trait implementation and HTTP method
-	///
-	/// This method accepts a type that implements the `Handler` trait,
-	/// allowing for stateful handlers and a more object-oriented approach.
-	/// Unlike `handler()`, this method requires specifying an HTTP method.
-	///
-	/// # Examples
-	///
-	/// ```rust,no_run
-	/// use reinhardt_urls::routers::ServerRouter;
-	/// use hyper::Method;
-	/// use reinhardt_http::{Request, Response, Result};
-	/// use reinhardt_http::Handler;
-	/// use async_trait::async_trait;
-	///
-	/// #[derive(Clone)]
-	/// struct ArticleHandler;
-	///
-	/// #[async_trait]
-	/// impl Handler for ArticleHandler {
-	///     async fn handle(&self, _request: Request) -> Result<Response> {
-	///         Ok(Response::ok())
-	///     }
-	/// }
-	///
-	/// let router = ServerRouter::new()
-	///     .handler_with_method("/articles", Method::GET, ArticleHandler);
-	/// ```
-	pub fn handler_with_method<H: Handler + 'static>(
-		mut self,
-		path: &str,
-		method: Method,
-		handler: H,
-	) -> Self {
-		self.functions.push(FunctionRoute {
-			path: path.to_string(),
-			method,
-			handler: Arc::new(handler),
-			name: None,
-			middleware: Vec::new(),
-		});
-		self
-	}
-
-	/// Register a route (alias for `function`)
-	///
-	/// This method is an alias for `function` and provides the same functionality.
-	/// Use it when you prefer the `route` naming convention.
-	///
-	/// # Examples
-	///
-	/// ```rust,no_run
-	/// use reinhardt_urls::routers::ServerRouter;
-	/// use hyper::Method;
-	/// # use reinhardt_http::{Request, Response, Result};
-	///
-	/// async fn health_check(_req: Request) -> Result<Response> {
-	///     Ok(Response::ok())
-	/// }
-	///
-	/// let router = ServerRouter::new()
-	///     .route("/health", Method::GET, health_check);
-	/// ```
-	#[inline]
-	pub fn route<F, Fut>(self, path: &str, method: Method, func: F) -> Self
-	where
-		F: Fn(Request) -> Fut + Send + Sync + 'static,
-		Fut: std::future::Future<Output = Result<Response>> + Send + 'static,
-	{
-		self.function(path, method, func)
-	}
-
-	/// Register a named function-based route (FastAPI-style with URL reversal)
-	///
-	/// # Examples
-	///
-	/// ```rust
-	/// use reinhardt_urls::routers::ServerRouter;
-	/// use hyper::Method;
-	/// # use reinhardt_http::{Request, Response, Result};
-	///
-	/// # async fn health_check(_req: Request) -> Result<Response> {
-	/// #     Ok(Response::ok())
-	/// # }
-	/// let mut router = ServerRouter::new()
-	///     .with_namespace("api")
-	///     .function_named("/health", Method::GET, "health", health_check);
-	///
-	/// router.register_all_routes();
-	/// let url = router.reverse("api:health", &[]).unwrap();
-	/// assert_eq!(url, "/health");
-	/// ```
-	#[deprecated(
-		since = "0.2.0",
-		note = "Use `#[get(\"/path\", name = \"name\")]` + `.endpoint()` instead"
-	)]
-	pub fn function_named<F, Fut>(mut self, path: &str, method: Method, name: &str, func: F) -> Self
-	where
-		F: Fn(Request) -> Fut + Send + Sync + 'static,
-		Fut: std::future::Future<Output = Result<Response>> + Send + 'static,
-	{
-		let handler = Arc::new(FunctionHandler { func });
-		self.functions.push(FunctionRoute {
-			path: path.to_string(),
-			method,
-			handler,
-			name: Some(name.to_string()),
-			middleware: Vec::new(),
-		});
-		self
-	}
-
-	/// Register a named route with a Handler trait implementation and HTTP method
-	///
-	/// This method accepts a type that implements the `Handler` trait,
-	/// allowing for stateful handlers with URL reversal support.
-	///
-	/// # Examples
-	///
-	/// ```rust
-	/// use reinhardt_urls::routers::ServerRouter;
-	/// use hyper::Method;
-	/// use reinhardt_http::{Request, Response, Result};
-	/// use reinhardt_http::Handler;
-	/// use async_trait::async_trait;
-	///
-	/// #[derive(Clone)]
-	/// struct ArticleHandler;
-	///
-	/// #[async_trait]
-	/// impl Handler for ArticleHandler {
-	///     async fn handle(&self, _request: Request) -> Result<Response> {
-	///         Ok(Response::ok())
-	///     }
-	/// }
-	///
-	/// let mut router = ServerRouter::new()
-	///     .with_namespace("api")
-	///     .handler_with_method_named("/articles", Method::GET, "list_articles", ArticleHandler);
-	///
-	/// router.register_all_routes();
-	/// let url = router.reverse("api:list_articles", &[]).unwrap();
-	/// assert_eq!(url, "/articles");
-	/// ```
-	#[deprecated(
-		since = "0.2.0",
-		note = "Use `#[get(\"/path\", name = \"name\")]` + `.endpoint()` instead"
-	)]
-	pub fn handler_with_method_named<H: Handler + 'static>(
-		mut self,
-		path: &str,
-		method: Method,
-		name: &str,
-		handler: H,
-	) -> Self {
-		self.functions.push(FunctionRoute {
-			path: path.to_string(),
-			method,
-			handler: Arc::new(handler),
-			name: Some(name.to_string()),
-			middleware: Vec::new(),
-		});
-		self
-	}
-
-	/// Register a named route (alias for `function_named`)
-	///
-	/// This method is an alias for `function_named` and provides the same functionality.
-	/// Use it when you prefer the `route` naming convention.
-	///
-	/// # Examples
-	///
-	/// ```rust
-	/// use reinhardt_urls::routers::ServerRouter;
-	/// use hyper::Method;
-	/// # use reinhardt_http::{Request, Response, Result};
-	///
-	/// # async fn health_check(_req: Request) -> Result<Response> {
-	/// #     Ok(Response::ok())
-	/// # }
-	/// let mut router = ServerRouter::new()
-	///     .with_namespace("api")
-	///     .route_named("/health", Method::GET, "health", health_check);
-	///
-	/// router.register_all_routes();
-	/// let url = router.reverse("api:health", &[]).unwrap();
-	/// assert_eq!(url, "/health");
-	/// ```
-	#[deprecated(
-		since = "0.2.0",
-		note = "Use `#[get(\"/path\", name = \"name\")]` + `.endpoint()` instead"
-	)]
-	#[inline]
-	pub fn route_named<F, Fut>(self, path: &str, method: Method, name: &str, func: F) -> Self
-	where
-		F: Fn(Request) -> Fut + Send + Sync + 'static,
-		Fut: std::future::Future<Output = Result<Response>> + Send + 'static,
-	{
-		#[allow(deprecated)]
-		self.function_named(path, method, name, func)
-	}
-
 	/// Register a ViewSet (DRF-style)
 	///
 	/// # Examples
@@ -511,21 +274,29 @@ impl ServerRouter {
 		self
 	}
 
-	/// Add middleware to the last registered function route
+	/// Add middleware to the last registered endpoint, view, or raw handler route.
 	///
 	/// # Examples
 	///
 	/// ```rust,no_run
 	/// use reinhardt_urls::routers::ServerRouter;
 	/// use reinhardt_middleware::LoggingMiddleware;
-	/// use hyper::Method;
-	/// # use reinhardt_http::{Request, Response, Result};
+	/// # use hyper::Method;
+	/// # use reinhardt_core::endpoint::EndpointInfo;
+	/// # use reinhardt_http::{Handler, Request, Response, Result};
 	///
-	/// # async fn health(_req: Request) -> Result<Response> {
-	/// #     Ok(Response::ok())
+	/// # struct Health;
+	/// # impl EndpointInfo for Health {
+	/// #     fn path() -> &'static str { "/health" }
+	/// #     fn method() -> Method { Method::GET }
+	/// #     fn name() -> &'static str { "health" }
+	/// # }
+	/// # #[async_trait::async_trait]
+	/// # impl Handler for Health {
+	/// #     async fn handle(&self, _req: Request) -> Result<Response> { Ok(Response::ok()) }
 	/// # }
 	/// let router = ServerRouter::new()
-	///     .function("/health", Method::GET, health)
+	///     .endpoint(|| Health)
 	///     .with_route_middleware(LoggingMiddleware::new());
 	/// ```
 	pub fn with_route_middleware<M: Middleware + 'static>(mut self, middleware: M) -> Self {

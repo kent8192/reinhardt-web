@@ -1,11 +1,154 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use reinhardt_pages::{
-	FieldError, FormEvent, ResetOnDeps, RevalidateOn, UseFormSubmitOutcome, form, use_form,
+	CollectionItem, CollectionItemKey, CustomWidgetContext, CustomWidgetRawValue, FieldError,
+	FormEvent, FormWidgetAdapter, FormWidgetError, FormWidgetValueKind, Page, ResetOnDeps,
+	RevalidateOn, UseFormSubmitOutcome, form, use_form,
 };
+
+thread_local! {
+	static LAST_CUSTOM_WIDGET_PROPS: RefCell<Option<DateRangeProps>> = const { RefCell::new(None) };
+}
+
+#[derive(Clone)]
+struct DateRangeProps {
+	value: String,
+	disabled: bool,
+	touched: bool,
+	error: Option<FieldError>,
+	on_raw_change: Rc<dyn Fn(CustomWidgetRawValue) -> Result<(), FormWidgetError>>,
+}
+
+fn capturing_date_range_picker(props: DateRangeProps) -> Page {
+	LAST_CUSTOM_WIDGET_PROPS.with(|slot| {
+		*slot.borrow_mut() = Some(props);
+	});
+	Page::Fragment(Vec::new())
+}
+
+fn take_last_custom_widget_props() -> DateRangeProps {
+	LAST_CUSTOM_WIDGET_PROPS.with(|slot| {
+		slot.borrow_mut()
+			.take()
+			.expect("custom widget props should be captured")
+	})
+}
+
+struct DateRangeAdapter;
+
+impl FormWidgetAdapter<String> for DateRangeAdapter {
+	type ComponentProps = DateRangeProps;
+
+	fn value_kind() -> FormWidgetValueKind {
+		FormWidgetValueKind::Value
+	}
+
+	fn props(ctx: CustomWidgetContext<String>) -> Self::ComponentProps {
+		DateRangeProps {
+			value: ctx.value,
+			disabled: ctx.disabled,
+			touched: ctx.touched,
+			error: ctx.error,
+			on_raw_change: ctx.on_raw_change,
+		}
+	}
+
+	fn parse(raw: CustomWidgetRawValue) -> Result<String, FormWidgetError> {
+		match raw {
+			CustomWidgetRawValue::String(value) if value.contains("..") => Ok(value),
+			CustomWidgetRawValue::String(_) => Err(FormWidgetError::new("invalid date range")),
+			_ => Err(FormWidgetError::new("expected string value")),
+		}
+	}
+
+	fn format(value: &String) -> CustomWidgetRawValue {
+		CustomWidgetRawValue::String(value.clone())
+	}
+}
+
+fn first_tag_html(html: &str, tag: &str) -> String {
+	let start = format!("<{tag}");
+	let start_index = html
+		.find(&start)
+		.expect("tag should exist in rendered HTML");
+	let tag_html = &html[start_index..];
+	let end_index = tag_html
+		.find('>')
+		.expect("tag should close in rendered HTML");
+	tag_html[..=end_index].to_string()
+}
+
+fn first_element_html(html: &str, tag: &str) -> String {
+	let start = format!("<{tag}");
+	let end = format!("</{tag}>");
+	let start_index = html
+		.find(&start)
+		.expect("element should exist in rendered HTML");
+	let element_html = &html[start_index..];
+	let end_index = element_html
+		.find(&end)
+		.expect("element should close in rendered HTML")
+		+ end.len();
+	element_html[..end_index].to_string()
+}
+
+fn attr_values(html: &str, attr: &str) -> Vec<String> {
+	let pattern = format!("{attr}=\"");
+	let mut values = Vec::new();
+	let mut rest = html;
+	while let Some((_, after_pattern)) = rest.split_once(&pattern) {
+		let (value, after_value) = after_pattern
+			.split_once('"')
+			.expect("attribute value should close in rendered HTML");
+		values.push(value.to_string());
+		rest = after_value;
+	}
+	values
+}
+
+fn input_tags(html: &str) -> Vec<String> {
+	let mut tags = Vec::new();
+	let mut rest = html;
+	while let Some(start_index) = rest.find("<input") {
+		let after_start = &rest[start_index..];
+		let end_index = after_start
+			.find('>')
+			.expect("input tag should close in rendered HTML");
+		tags.push(after_start[..=end_index].to_string());
+		rest = &after_start[end_index + 1..];
+	}
+	tags
+}
+
+fn attr_value(tag: &str, attr: &str) -> Option<String> {
+	let pattern = format!("{attr}=\"");
+	let (_, after_pattern) = tag.split_once(&pattern)?;
+	let (value, _) = after_pattern.split_once('"')?;
+	Some(value.to_string())
+}
+
+fn input_attr_values_for_name_prefix(html: &str, prefix: &str, attr: &str) -> Vec<String> {
+	input_tags(html)
+		.into_iter()
+		.filter(|tag| {
+			attr_value(tag, "name")
+				.as_deref()
+				.is_some_and(|name| name.starts_with(prefix))
+		})
+		.map(|tag| {
+			attr_value(&tag, attr).unwrap_or_else(|| {
+				panic!("input tag with matching name should have {attr} attribute")
+			})
+		})
+		.collect()
+}
+
+fn string_values(values: &[&str]) -> Vec<String> {
+	values.iter().map(|value| (*value).to_string()).collect()
+}
 
 #[test]
 fn use_form_builds_runtime_from_generated_form_contract() {
@@ -98,6 +241,234 @@ fn use_form_tracks_field_updates_errors_and_resets() {
 	runtime.reset();
 	assert_eq!(runtime.get_values().bio, "COBOL pioneer".to_string());
 	assert!(!runtime.form_state().is_dirty.get());
+}
+
+#[test]
+fn use_form_tracks_month_and_week_as_strings() {
+	let schedule = form! {
+		name: ScheduleForm,
+		action: "/schedule",
+		fields: {
+			billing_month: CharField {
+				widget: MonthInput,
+				initial: "2026-06".to_string(),
+			}
+			sprint_week: CharField {
+				widget: WeekInput,
+				initial: "2026-W24".to_string(),
+			}
+		}
+	};
+
+	let runtime = use_form(&schedule).build();
+	let billing_month = runtime.watch_field::<String>(schedule.billing_month_field());
+	let sprint_week = runtime.watch_field::<String>(schedule.sprint_week_field());
+
+	assert_eq!(runtime.get_values().billing_month, "2026-06".to_string());
+	assert_eq!(runtime.get_values().sprint_week, "2026-W24".to_string());
+	assert_eq!(billing_month.get(), "2026-06".to_string());
+	assert_eq!(sprint_week.get(), "2026-W24".to_string());
+	assert!(!runtime.form_state().is_dirty.get());
+	assert!(
+		!runtime
+			.get_field_state(schedule.billing_month_field())
+			.is_dirty
+	);
+	assert!(
+		!runtime
+			.get_field_state(schedule.sprint_week_field())
+			.is_dirty
+	);
+
+	runtime.set_value(schedule.billing_month_field(), "2026-07".to_string());
+
+	assert_eq!(runtime.get_values().billing_month, "2026-07".to_string());
+	assert!(runtime.form_state().is_dirty.get());
+	assert!(
+		runtime
+			.get_field_state(schedule.billing_month_field())
+			.is_dirty
+	);
+
+	runtime.reset();
+
+	assert_eq!(runtime.get_values().billing_month, "2026-06".to_string());
+	assert_eq!(runtime.get_values().sprint_week, "2026-W24".to_string());
+	assert!(!runtime.form_state().is_dirty.get());
+	assert!(
+		!runtime
+			.get_field_state(schedule.billing_month_field())
+			.is_dirty
+	);
+	assert!(
+		!runtime
+			.get_field_state(schedule.sprint_week_field())
+			.is_dirty
+	);
+}
+
+#[test]
+fn use_form_can_sync_after_native_reset() {
+	let profile = form! {
+		name: NativeResetForm,
+		action: "/profile",
+		fields: {
+			name: CharField {
+				initial: "before".to_string(),
+			}
+			reset: ResetButton {
+				label: "Reset",
+			}
+		}
+	};
+
+	let runtime = use_form(&profile).build();
+
+	runtime.set_value(profile.name_field(), "after".to_string());
+	runtime.set_error(profile.name_field(), FieldError::new("name is invalid"));
+
+	assert_eq!(runtime.get_values().name, "after".to_string());
+	assert!(runtime.form_state().is_dirty.get());
+	assert!(runtime.form_state().is_touched.get());
+	assert!(runtime.get_field_state(profile.name_field()).is_dirty);
+	assert!(runtime.get_field_state(profile.name_field()).is_touched);
+	assert_eq!(
+		runtime
+			.get_field_state(profile.name_field())
+			.error
+			.as_ref()
+			.map(FieldError::message),
+		Some("name is invalid")
+	);
+
+	profile.name().set("before".to_string());
+	runtime.sync_after_native_reset();
+
+	assert_eq!(runtime.get_values().name, "before".to_string());
+	assert!(!runtime.form_state().is_dirty.get());
+	assert!(!runtime.form_state().is_touched.get());
+	assert!(!runtime.get_field_state(profile.name_field()).is_dirty);
+	assert!(!runtime.get_field_state(profile.name_field()).is_touched);
+	assert!(
+		runtime
+			.get_field_state(profile.name_field())
+			.error
+			.is_none()
+	);
+
+	profile.name().set("native value".to_string());
+	runtime.set_value(profile.name_field(), "runtime touched".to_string());
+	profile.name().set("native value".to_string());
+	runtime.set_error(profile.name_field(), FieldError::new("native error"));
+
+	assert_eq!(runtime.get_values().name, "native value".to_string());
+	assert!(runtime.form_state().is_dirty.get());
+	assert!(runtime.form_state().is_touched.get());
+	assert!(runtime.get_field_state(profile.name_field()).is_dirty);
+	assert!(runtime.get_field_state(profile.name_field()).is_touched);
+	assert_eq!(
+		runtime
+			.get_field_state(profile.name_field())
+			.error
+			.as_ref()
+			.map(FieldError::message),
+		Some("native error")
+	);
+
+	runtime.sync_after_native_reset();
+	let name_state = runtime.get_field_state(profile.name_field());
+
+	assert_eq!(runtime.get_values().name, "native value".to_string());
+	assert!(runtime.form_state().is_dirty.get());
+	assert!(name_state.is_dirty);
+	assert_eq!(runtime.form_state().is_dirty.get(), name_state.is_dirty);
+	assert!(!runtime.form_state().is_touched.get());
+	assert!(!name_state.is_touched);
+	assert!(name_state.error.is_none());
+	assert!(runtime.form_state().error.get().is_none());
+}
+
+#[test]
+fn custom_widget_bridge_parse_error_sets_runtime_field_error() {
+	let booking = form! {
+		name: CustomWidgetRuntimeForm,
+		action: "/booking",
+		fields: {
+			date_range: CharField {
+				initial: "2026-06-01..2026-06-02".to_string(),
+				disabled,
+				widget: CustomWidget(capturing_date_range_picker) {
+					experimental,
+					adapter: DateRangeAdapter,
+				},
+			}
+		}
+	};
+	let runtime = use_form(&booking).build();
+	let _page = booking.clone().into_page();
+	let props = take_last_custom_widget_props();
+
+	assert_eq!(props.value, "2026-06-01..2026-06-02");
+	assert!(props.disabled);
+	assert!(!props.touched);
+	assert!(props.error.is_none());
+
+	let invalid_result = (props.on_raw_change)(CustomWidgetRawValue::String("invalid".to_string()));
+
+	assert!(invalid_result.is_err());
+	assert_eq!(
+		invalid_result.err().as_ref().map(FormWidgetError::message),
+		Some("invalid date range")
+	);
+	assert_eq!(
+		runtime
+			.get_field_state(booking.date_range_field())
+			.error
+			.as_ref()
+			.map(FieldError::message),
+		Some("invalid date range")
+	);
+	assert_eq!(
+		runtime.get_values().date_range,
+		"2026-06-01..2026-06-02".to_string()
+	);
+	assert!(runtime.trigger().is_err());
+	assert_eq!(
+		runtime.handle_submit(),
+		UseFormSubmitOutcome::ValidationFailed
+	);
+
+	let _page = booking.clone().into_page();
+	let props = take_last_custom_widget_props();
+	assert!(props.disabled);
+	assert!(props.touched);
+	assert_eq!(
+		props.error.as_ref().map(FieldError::message),
+		Some("invalid date range")
+	);
+
+	let valid_result = (props.on_raw_change)(CustomWidgetRawValue::String(
+		"2026-06-03..2026-06-04".to_string(),
+	));
+
+	assert!(valid_result.is_ok());
+	assert_eq!(
+		runtime.get_values().date_range,
+		"2026-06-03..2026-06-04".to_string()
+	);
+	assert!(
+		runtime
+			.get_field_state(booking.date_range_field())
+			.error
+			.is_none()
+	);
+
+	let _page = booking.clone().into_page();
+	let props = take_last_custom_widget_props();
+	assert_eq!(props.value, "2026-06-03..2026-06-04");
+	assert!(props.disabled);
+	assert!(props.touched);
+	assert!(props.error.is_none());
 }
 
 #[test]
@@ -212,7 +583,7 @@ fn use_form_accepts_json_field_runtime_contracts() {
 		action: "/settings",
 		fields: {
 			payload: JsonField<::serde_json::Value> {
-				initial: ::serde_json::json!({
+				initial: ::serde_json::json!( {
 					"theme": "dark"
 				}),
 			}
@@ -225,6 +596,916 @@ fn use_form_accepts_json_field_runtime_contracts() {
 		runtime.get_values().payload,
 		::serde_json::json!({"theme": "dark"})
 	);
+}
+
+#[test]
+fn use_form_pushes_inserts_removes_and_moves_collection_items() {
+	let invoice = form! {
+		name: InvoiceForm,
+		action: "/invoices",
+		fields: {
+			customer_name: CharField {
+				initial: "Ada",
+			}
+			line_items: FieldArray {
+				fields: {
+					description: CharField {
+						required,
+					}
+					quantity: IntegerField {
+						required,
+					}
+				}
+			}
+		}
+	};
+	let runtime = use_form(&invoice).build();
+	let values = runtime.watch();
+	let collection = invoice.line_items_collection();
+	let new_line_item = |description: &str, quantity: i64| {
+		let mut item = invoice.new_line_items_item();
+		item.description = description.to_string();
+		item.quantity = quantity;
+		item
+	};
+
+	assert!(runtime.get_values().line_items.is_empty());
+	assert!(!runtime.form_state().is_dirty.get());
+	assert!(!runtime.form_state().is_touched.get());
+
+	let keyboard_key = runtime.push_item(collection, new_line_item("Keyboard", 2));
+	let mouse_key = runtime.push_item(collection, new_line_item("Mouse", 1));
+	let monitor_key = runtime.insert_item(collection, 1, new_line_item("Monitor", 3));
+
+	assert_eq!(
+		runtime
+			.get_values()
+			.line_items
+			.iter()
+			.map(|item| item.description.as_str())
+			.collect::<Vec<_>>(),
+		vec!["Keyboard", "Monitor", "Mouse"]
+	);
+	assert_eq!(
+		invoice
+			.line_items()
+			.get()
+			.iter()
+			.map(|item| (item.key(), item.index()))
+			.collect::<Vec<_>>(),
+		vec![(keyboard_key, 0), (monitor_key, 1), (mouse_key, 2)]
+	);
+	assert_eq!(values.get().line_items.len(), 3);
+	assert!(runtime.form_state().is_dirty.get());
+	assert!(runtime.form_state().is_touched.get());
+
+	assert_eq!(runtime.move_item(collection, mouse_key, 0), Some((2, 0)));
+	assert_eq!(
+		runtime
+			.get_values()
+			.line_items
+			.iter()
+			.map(|item| item.description.as_str())
+			.collect::<Vec<_>>(),
+		vec!["Mouse", "Keyboard", "Monitor"]
+	);
+	assert_eq!(
+		invoice
+			.line_items()
+			.get()
+			.iter()
+			.map(|item| (item.key(), item.index()))
+			.collect::<Vec<_>>(),
+		vec![(mouse_key, 0), (keyboard_key, 1), (monitor_key, 2)]
+	);
+
+	assert!(runtime.remove_item(collection, keyboard_key));
+	assert!(!runtime.remove_item(collection, keyboard_key));
+	assert_eq!(runtime.move_item(collection, keyboard_key, 0), None);
+	assert_eq!(
+		runtime
+			.get_values()
+			.line_items
+			.iter()
+			.map(|item| item.description.as_str())
+			.collect::<Vec<_>>(),
+		vec!["Mouse", "Monitor"]
+	);
+	assert_eq!(
+		invoice
+			.line_items()
+			.get()
+			.iter()
+			.map(|item| (item.key(), item.index()))
+			.collect::<Vec<_>>(),
+		vec![(mouse_key, 0), (monitor_key, 1)]
+	);
+
+	assert!(runtime.remove_item(collection, mouse_key));
+	assert!(runtime.remove_item(collection, monitor_key));
+	assert!(runtime.get_values().line_items.is_empty());
+	assert!(values.get().line_items.is_empty());
+	assert!(!runtime.form_state().is_dirty.get());
+	assert!(runtime.form_state().is_touched.get());
+
+	let seeded_runtime = use_form(&invoice).build();
+	let mut seeded_values = seeded_runtime.get_values();
+	seeded_values
+		.line_items
+		.push(new_line_item("Replacement cable", 4));
+	seeded_values
+		.line_items
+		.push(new_line_item("Docking station", 1));
+	seeded_runtime.set_values(seeded_values);
+	assert!(seeded_runtime.form_state().is_dirty.get());
+	assert_eq!(seeded_runtime.watch().get().line_items.len(), 2);
+
+	let generated_keys = invoice
+		.line_items()
+		.get()
+		.iter()
+		.map(|item| item.key())
+		.collect::<Vec<_>>();
+	let extra_key = seeded_runtime.push_item(collection, new_line_item("Stand", 2));
+	assert!(!generated_keys.contains(&extra_key));
+
+	let keys = invoice
+		.line_items()
+		.get()
+		.iter()
+		.map(|item| item.key())
+		.collect::<Vec<_>>();
+	for (index, key) in keys.iter().enumerate() {
+		assert!(!keys[index + 1..].contains(key));
+	}
+}
+
+#[test]
+fn field_array_renders_runtime_items_with_deterministic_names() {
+	let invoice = form! {
+		name: InvoiceForm,
+		action: "/invoices",
+		fields: {
+			customer_name: CharField {
+				initial: "Ada",
+			}
+			line_items: FieldArray {
+				label: "Line items",
+				class: "invoice-lines",
+				min_items: 1,
+				max_items: 3,
+				fields: {
+					description: CharField {
+						label: "Description",
+						required,
+					}
+					quantity: IntegerField {
+						label: "Quantity",
+						required,
+					}
+				}
+			}
+		}
+	};
+	let runtime = use_form(&invoice).build();
+	let collection = invoice.line_items_collection();
+	let mut first = invoice.new_line_items_item();
+	first.description = "Keyboard".to_string();
+	first.quantity = 2;
+	let mut second = invoice.new_line_items_item();
+	second.description = "Mouse".to_string();
+	second.quantity = 1;
+
+	let first_key = runtime.push_item(collection, first);
+	let second_key = runtime.push_item(collection, second);
+	let html = invoice.clone().into_page().render_to_string();
+
+	assert_eq!(
+		first_tag_html(&html, "fieldset"),
+		r#"<fieldset class="invoice-lines" data-reinhardt-field-array="line_items" data-reinhardt-min-items="1" data-reinhardt-max-items="3">"#
+	);
+	assert_eq!(
+		first_element_html(&html, "legend"),
+		r#"<legend class="reinhardt-field-array-label">Line items</legend>"#
+	);
+	assert_eq!(
+		attr_values(&html, "data-reinhardt-item-key"),
+		vec![format!("{first_key:?}"), format!("{second_key:?}"),]
+	);
+	assert_eq!(
+		input_attr_values_for_name_prefix(&html, "line_items[", "name"),
+		string_values(&[
+			"line_items[0][description]",
+			"line_items[0][quantity]",
+			"line_items[1][description]",
+			"line_items[1][quantity]",
+		])
+	);
+	assert_eq!(
+		input_attr_values_for_name_prefix(&html, "line_items[", "id"),
+		string_values(&[
+			"line_items_0_description",
+			"line_items_0_quantity",
+			"line_items_1_description",
+			"line_items_1_quantity",
+		])
+	);
+	assert_eq!(
+		input_attr_values_for_name_prefix(&html, "line_items[", "value"),
+		string_values(&["Keyboard", "2", "Mouse", "1"])
+	);
+
+	assert_eq!(runtime.move_item(collection, second_key, 0), Some((1, 0)));
+	let moved_html = invoice.into_page().render_to_string();
+	assert_eq!(
+		input_attr_values_for_name_prefix(&moved_html, "line_items[", "name"),
+		string_values(&[
+			"line_items[0][description]",
+			"line_items[0][quantity]",
+			"line_items[1][description]",
+			"line_items[1][quantity]",
+		])
+	);
+	assert_eq!(
+		input_attr_values_for_name_prefix(&moved_html, "line_items[", "value"),
+		string_values(&["Mouse", "1", "Keyboard", "2"])
+	);
+}
+
+#[test]
+fn field_array_renders_datetime_local_values() {
+	let schedule = form! {
+		name: ScheduleForm,
+		action: "/schedule",
+		fields: {
+			slots: FieldArray {
+				fields: {
+					starts_at: DateTimeField {}
+				}
+			}
+		}
+	};
+	let runtime = use_form(&schedule).build();
+	let collection = schedule.slots_collection();
+	let mut slot = schedule.new_slots_item();
+	slot.starts_at = Some(
+		chrono::NaiveDate::from_ymd_opt(2026, 6, 16)
+			.expect("valid date")
+			.and_hms_opt(8, 30, 45)
+			.expect("valid time"),
+	);
+
+	runtime.push_item(collection, slot);
+	let html = schedule.into_page().render_to_string();
+
+	assert_eq!(
+		input_attr_values_for_name_prefix(&html, "slots[", "type"),
+		string_values(&["datetime-local"])
+	);
+	assert_eq!(
+		input_attr_values_for_name_prefix(&html, "slots[", "value"),
+		string_values(&["2026-06-16T08:30:45"])
+	);
+}
+
+#[test]
+fn field_array_required_validation_sets_path_errors_by_item_key() {
+	let invoice = form! {
+		name: InvoiceForm,
+		action: "/invoices",
+		fields: {
+			line_items: FieldArray {
+				fields: {
+					description: CharField {
+						required,
+					}
+					quantity: IntegerField {
+						required,
+					}
+				}
+			}
+		}
+	};
+	let runtime = use_form(&invoice).build();
+	let collection = invoice.line_items_collection();
+	let mut first = invoice.new_line_items_item();
+	first.quantity = 2;
+	let mut second = invoice.new_line_items_item();
+	second.description = "Mouse".to_string();
+	second.quantity = 1;
+
+	let first_key = runtime.push_item(collection, first);
+	let second_key = runtime.push_item(collection, second);
+	let first_description_path = invoice.line_items_description_path(first_key);
+	let second_description_path = invoice.line_items_description_path(second_key);
+
+	let result = runtime
+		.trigger()
+		.expect_err("empty required collection field should fail validation");
+	assert!(result.field_errors().is_empty());
+	assert_eq!(result.path_errors().len(), 1);
+	assert_eq!(
+		runtime
+			.get_path_state(first_description_path.clone())
+			.error
+			.as_ref()
+			.map(FieldError::message),
+		Some("line_items.description is required"),
+	);
+	assert!(
+		runtime
+			.get_path_state(second_description_path)
+			.error
+			.is_none()
+	);
+
+	assert_eq!(runtime.move_item(collection, first_key, 1), Some((0, 1)));
+	let result = runtime
+		.trigger()
+		.expect_err("reordered empty required collection field should still fail validation");
+	assert_eq!(result.path_errors().len(), 1);
+	assert_eq!(
+		runtime
+			.get_path_state(first_description_path.clone())
+			.error
+			.as_ref()
+			.map(FieldError::message),
+		Some("line_items.description is required"),
+	);
+
+	runtime.set_path_value(first_description_path.clone(), "Keyboard".to_string());
+	runtime
+		.trigger()
+		.expect("filled required collection field should pass validation");
+	assert!(
+		runtime
+			.get_path_state(first_description_path)
+			.error
+			.is_none()
+	);
+}
+
+#[test]
+fn field_array_min_and_max_items_set_collection_errors() {
+	let invoice = form! {
+		name: InvoiceForm,
+		action: "/invoices",
+		fields: {
+			line_items: FieldArray {
+				min_items: 1,
+				max_items: 2,
+				fields: {
+					description: CharField {}
+				}
+			}
+		}
+	};
+	let runtime = use_form(&invoice).build();
+	let collection = invoice.line_items_collection();
+
+	let result = runtime
+		.trigger()
+		.expect_err("empty collection should fail min_items validation");
+	assert_eq!(result.collection_errors().len(), 1);
+	assert_eq!(
+		runtime
+			.get_collection_state(collection)
+			.error
+			.as_ref()
+			.map(FieldError::message),
+		Some("line_items requires at least 1 item"),
+	);
+
+	for description in ["A", "B", "C"] {
+		let mut item = invoice.new_line_items_item();
+		item.description = description.to_string();
+		runtime.push_item(collection, item);
+	}
+
+	let result = runtime
+		.trigger()
+		.expect_err("oversized collection should fail max_items validation");
+	assert_eq!(result.collection_errors().len(), 1);
+	let collection_state = runtime.get_collection_state(collection);
+	assert_eq!(collection_state.len, 3);
+	assert!(collection_state.is_touched);
+	assert!(collection_state.is_dirty);
+	assert_eq!(
+		collection_state.error.as_ref().map(FieldError::message),
+		Some("line_items allows at most 2 items"),
+	);
+}
+
+#[test]
+fn use_form_watches_and_sets_collection_field_paths() {
+	let invoice = form! {
+		name: InvoiceForm,
+		action: "/invoices",
+		fields: {
+			line_items: FieldArray {
+				fields: {
+					description: CharField {
+						required,
+					}
+					quantity: IntegerField {
+						required,
+					}
+				}
+			}
+		}
+	};
+	let runtime = use_form(&invoice).build();
+	let collection = invoice.line_items_collection();
+	let mut item = invoice.new_line_items_item();
+	item.description = "Keyboard".to_string();
+	item.quantity = 2;
+
+	let key = runtime.push_item(collection, item);
+	let quantity_path = invoice.line_items_quantity_path(key);
+	let description_path = invoice.line_items_description_path(key);
+	let quantity = runtime.watch_path::<i64>(quantity_path.clone());
+	let description = runtime.watch_path::<String>(description_path.clone());
+
+	assert_eq!(quantity.get(), 2);
+	assert_eq!(description.get(), "Keyboard".to_string());
+	assert!(runtime.get_path_state(quantity_path.clone()).is_dirty);
+	assert!(!runtime.get_path_state(quantity_path.clone()).is_touched);
+
+	runtime.reset_default_values();
+
+	assert!(!runtime.get_path_state(quantity_path.clone()).is_dirty);
+
+	runtime.set_path_value(quantity_path.clone(), 3_i64);
+
+	assert_eq!(quantity.get(), 3);
+	assert_eq!(runtime.get_values().line_items[0].quantity, 3);
+	assert_eq!(runtime.watch().get().line_items[0].quantity, 3);
+	assert!(runtime.get_path_state(quantity_path.clone()).is_touched);
+	assert!(runtime.get_path_state(quantity_path.clone()).is_dirty);
+
+	let updated_item = invoice
+		.line_items()
+		.get()
+		.into_iter()
+		.next()
+		.map(|item| {
+			let mut value = item.into_value();
+			value.quantity = 5;
+			CollectionItem::new(key, 0, value)
+		})
+		.expect("line item exists");
+	invoice.line_items().set(vec![updated_item]);
+
+	let quantity_after_direct_set = runtime.watch_path::<i64>(quantity_path.clone());
+	assert_eq!(quantity_after_direct_set.get(), 5);
+	assert_eq!(quantity.get(), 5);
+
+	runtime.set_path_value(description_path.clone(), "Mechanical keyboard".to_string());
+
+	assert_eq!(description.get(), "Mechanical keyboard".to_string());
+	assert_eq!(
+		runtime.get_values().line_items[0].description,
+		"Mechanical keyboard".to_string()
+	);
+	assert!(runtime.get_path_state(description_path.clone()).is_touched);
+
+	assert!(runtime.remove_item(collection, key));
+	assert!(
+		::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+			runtime.watch_path::<String>(description_path.clone());
+		}))
+		.is_err()
+	);
+	assert!(
+		::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+			runtime.set_path_value(quantity_path.clone(), 4_i64);
+		}))
+		.is_err()
+	);
+}
+
+#[test]
+fn direct_collection_signal_set_syncs_path_watchers_and_state() {
+	let invoice = form! {
+		name: InvoiceForm,
+		action: "/invoices",
+		fields: {
+			line_items: FieldArray {
+				fields: {
+					description: CharField {}
+					quantity: IntegerField {}
+				}
+			}
+		}
+	};
+	let runtime = use_form(&invoice).build();
+	let collection = invoice.line_items_collection();
+	let key = CollectionItemKey::from_runtime_index(0);
+	let mut item = invoice.new_line_items_item();
+	item.description = "Keyboard".to_string();
+	item.quantity = 2;
+
+	invoice
+		.line_items()
+		.set(vec![CollectionItem::new(key, 0, item)]);
+
+	let quantity_path = invoice.line_items_quantity_path(key);
+	let quantity = runtime.watch_path::<i64>(quantity_path.clone());
+	assert_eq!(quantity.get(), 2);
+	assert!(runtime.get_collection_state(collection).is_touched);
+	assert!(runtime.get_path_state(quantity_path.clone()).is_touched);
+
+	let mut updated_item = invoice
+		.line_items()
+		.get()
+		.into_iter()
+		.next()
+		.expect("line item exists")
+		.into_value();
+	updated_item.quantity = 5;
+	invoice
+		.line_items()
+		.set(vec![CollectionItem::new(key, 0, updated_item)]);
+
+	assert_eq!(quantity.get(), 5);
+	assert_eq!(runtime.get_values().line_items[0].quantity, 5);
+	assert!(runtime.get_path_state(quantity_path).is_touched);
+}
+
+#[test]
+fn collection_path_state_follows_item_key_across_reorder() {
+	let invoice = form! {
+		name: InvoiceForm,
+		action: "/invoices",
+		fields: {
+			line_items: FieldArray {
+				fields: {
+					description: CharField {}
+					quantity: IntegerField {}
+				}
+			}
+		}
+	};
+	let runtime = use_form(&invoice).build();
+	let collection = invoice.line_items_collection();
+	let new_line_item = |description: &str, quantity: i64| {
+		let mut item = invoice.new_line_items_item();
+		item.description = description.to_string();
+		item.quantity = quantity;
+		item
+	};
+
+	let first = runtime.push_item(collection, new_line_item("Compiler", 1));
+	let second = runtime.push_item(collection, new_line_item("Notebook", 2));
+	let first_quantity = invoice.line_items_quantity_path(first);
+
+	runtime.reset_default_values();
+	assert!(!runtime.get_path_state(first_quantity.clone()).is_dirty);
+	assert_eq!(runtime.move_item(collection, first, 1), Some((0, 1)));
+	assert_eq!(runtime.get_values().line_items[1].quantity, 1);
+	assert!(!runtime.get_path_state(first_quantity.clone()).is_dirty);
+
+	runtime.set_path_value(first_quantity.clone(), 5_i64);
+	runtime.set_path_error(first_quantity.clone(), FieldError::new("invalid quantity"));
+
+	assert_eq!(runtime.get_values().line_items[1].quantity, 5);
+	let first_quantity_state = runtime.get_path_state(first_quantity.clone());
+	assert!(first_quantity_state.is_dirty);
+	assert!(first_quantity_state.is_touched);
+	assert_eq!(
+		first_quantity_state.error.as_ref().map(FieldError::message),
+		Some("invalid quantity")
+	);
+
+	let removed_quantity = invoice.line_items_quantity_path(second);
+	runtime.set_path_value(removed_quantity.clone(), 3_i64);
+	runtime.set_path_error(
+		removed_quantity.clone(),
+		FieldError::new("removed quantity"),
+	);
+
+	assert!(runtime.remove_item(collection, second));
+	assert_eq!(runtime.get_values().line_items.len(), 1);
+	let removed_quantity_state = runtime.get_path_state(removed_quantity);
+	assert!(!removed_quantity_state.is_touched);
+	assert_eq!(removed_quantity_state.error, None);
+}
+
+#[test]
+fn reconcile_defaults_preserves_path_defaults_across_dirty_reorder() {
+	let invoice = form! {
+		name: InvoiceForm,
+		action: "/invoices",
+		fields: {
+			line_items: FieldArray {
+				fields: {
+					description: CharField {}
+					quantity: IntegerField {}
+				}
+			}
+		}
+	};
+	let runtime = use_form(&invoice)
+		.deps(0_u8)
+		.reset_on_deps(ResetOnDeps::KeepDirtyValues)
+		.build();
+	let collection = invoice.line_items_collection();
+	let new_line_item = |description: &str, quantity: i64| {
+		let mut item = invoice.new_line_items_item();
+		item.description = description.to_string();
+		item.quantity = quantity;
+		item
+	};
+
+	let first = runtime.push_item(collection, new_line_item("Compiler", 1));
+	let second = runtime.push_item(collection, new_line_item("Notebook", 2));
+	let first_quantity = invoice.line_items_quantity_path(first);
+	runtime.reset_default_values();
+	let defaults = runtime.default_values();
+
+	assert_eq!(runtime.move_item(collection, first, 1), Some((0, 1)));
+	assert_eq!(
+		runtime
+			.get_values()
+			.line_items
+			.iter()
+			.map(|item| item.description.as_str())
+			.collect::<Vec<_>>(),
+		vec!["Notebook", "Compiler"]
+	);
+	runtime.reconcile_defaults(defaults, 1_u8);
+
+	assert_eq!(runtime.get_values().line_items[1].quantity, 1);
+	assert!(!runtime.get_path_state(first_quantity).is_dirty);
+	assert_eq!(runtime.move_item(collection, second, 0), Some((0, 0)));
+}
+
+#[test]
+fn set_values_clears_replaced_collection_path_state() {
+	let invoice = form! {
+		name: InvoiceForm,
+		action: "/invoices",
+		fields: {
+			line_items: FieldArray {
+				fields: {
+					description: CharField {}
+					quantity: IntegerField {}
+				}
+			}
+		}
+	};
+	let runtime = use_form(&invoice).build();
+	let collection = invoice.line_items_collection();
+	let mut item = invoice.new_line_items_item();
+	item.description = "Compiler".to_string();
+	item.quantity = 1;
+	let key = runtime.push_item(collection, item);
+	let quantity_path = invoice.line_items_quantity_path(key);
+
+	runtime.set_path_value(quantity_path.clone(), 2_i64);
+	runtime.set_path_error(quantity_path.clone(), FieldError::new("stale quantity"));
+	assert_eq!(
+		runtime.form_state().error.get(),
+		Some("stale quantity".to_string())
+	);
+
+	let mut values = runtime.get_values();
+	values.line_items.clear();
+	runtime.set_values(values);
+
+	assert_eq!(runtime.form_state().error.get(), None);
+	let quantity_state = runtime.get_path_state(quantity_path.clone());
+	assert!(!quantity_state.is_touched);
+	assert_eq!(quantity_state.error, None);
+	assert!(
+		::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+			runtime.watch_path::<i64>(quantity_path.clone());
+		}))
+		.is_err()
+	);
+}
+
+#[test]
+fn reconcile_defaults_clears_collection_path_errors_when_errors_are_kept() {
+	let invoice = form! {
+		name: InvoiceForm,
+		action: "/invoices",
+		fields: {
+			line_items: FieldArray {
+				fields: {
+					description: CharField {}
+					quantity: IntegerField {}
+				}
+			}
+		}
+	};
+	let runtime = use_form(&invoice)
+		.deps(0_u8)
+		.reset_on_deps(ResetOnDeps::ResetAll)
+		.keep_errors(true)
+		.build();
+	let collection = invoice.line_items_collection();
+	let mut item = invoice.new_line_items_item();
+	item.description = "Compiler".to_string();
+	item.quantity = 1;
+	let key = runtime.push_item(collection, item);
+	let quantity_path = invoice.line_items_quantity_path(key);
+
+	runtime.set_path_error(quantity_path.clone(), FieldError::new("old path error"));
+	assert_eq!(
+		runtime.form_state().error.get(),
+		Some("old path error".to_string())
+	);
+
+	let mut defaults = runtime.get_values();
+	defaults.line_items.clear();
+	runtime.reconcile_defaults(defaults, 1_u8);
+
+	assert_eq!(runtime.form_state().error.get(), None);
+	assert_eq!(runtime.get_values().line_items.len(), 0);
+	assert_eq!(runtime.get_path_state(quantity_path).error, None);
+}
+
+#[test]
+fn use_form_marks_collection_only_set_values_dirty() {
+	let invoice = form! {
+		name: InvoiceForm,
+		action: "/invoices",
+		fields: {
+			customer_name: CharField {
+				initial: "Ada",
+			}
+			line_items: FieldArray {
+				fields: {
+					description: CharField {
+						required,
+					}
+					quantity: IntegerField {
+						required,
+					}
+				}
+			}
+		}
+	};
+	let runtime = use_form(&invoice).build();
+	let _collection = invoice.line_items_collection();
+	let watched_values = runtime.watch();
+	let mut values = runtime.get_values();
+	let mut item = invoice.new_line_items_item();
+	item.description = "Replacement cable".to_string();
+	item.quantity = 4;
+
+	values.line_items.push(item);
+	runtime.set_values(values);
+
+	assert_eq!(runtime.get_values().customer_name, "Ada".to_string());
+	assert_eq!(runtime.get_values().line_items.len(), 1);
+	assert_eq!(watched_values.get().line_items.len(), 1);
+	assert!(runtime.form_state().is_dirty.get());
+	assert!(runtime.form_state().is_touched.get());
+}
+
+#[test]
+fn use_form_syncs_direct_collection_signal_changes() {
+	let invoice = form! {
+		name: InvoiceForm,
+		action: "/invoices",
+		fields: {
+			customer_name: CharField {
+				initial: "Ada",
+			}
+			line_items: FieldArray {
+				fields: {
+					description: CharField {
+						required,
+					}
+					quantity: IntegerField {
+						required,
+					}
+				}
+			}
+		}
+	};
+	let runtime = use_form(&invoice)
+		.revalidate_on(RevalidateOn::Change)
+		.build();
+	let _collection = invoice.line_items_collection();
+	let watched_values = runtime.watch();
+	let event_count = Rc::new(Cell::new(0));
+	let event_count_for_subscription = Rc::clone(&event_count);
+	let validated_count = Rc::new(Cell::new(0));
+	let validated_count_for_subscription = Rc::clone(&validated_count);
+	let _subscription = runtime.subscribe(move |event| {
+		if matches!(event, FormEvent::ValueChanged { .. }) {
+			event_count_for_subscription.set(event_count_for_subscription.get() + 1);
+		}
+		if matches!(event, FormEvent::Validated) {
+			validated_count_for_subscription.set(validated_count_for_subscription.get() + 1);
+		}
+	});
+	let mut item = invoice.new_line_items_item();
+	item.description = "Docking station".to_string();
+	item.quantity = 1;
+
+	invoice.line_items().set(vec![CollectionItem::new(
+		CollectionItemKey::from_runtime_index(0),
+		0,
+		item,
+	)]);
+
+	assert_eq!(runtime.get_values().customer_name, "Ada".to_string());
+	assert_eq!(
+		runtime.get_values().line_items[0].description,
+		"Docking station".to_string()
+	);
+	assert_eq!(watched_values.get().line_items.len(), 1);
+	assert!(runtime.form_state().is_dirty.get());
+	assert!(runtime.form_state().is_touched.get());
+	assert_eq!(event_count.get(), 0);
+	assert_eq!(validated_count.get(), 1);
+}
+
+#[test]
+fn deps_reconciliation_updates_pristine_collections_and_preserves_dirty_collections() {
+	let pristine_invoice = form! {
+		name: PristineInvoiceForm,
+		action: "/invoices",
+		fields: {
+			customer_name: CharField {
+				initial: "Ada",
+			}
+			line_items: FieldArray {
+				fields: {
+					description: CharField {}
+					quantity: IntegerField {}
+				}
+			}
+		}
+	};
+	let pristine_runtime = use_form(&pristine_invoice)
+		.deps((1_u64,))
+		.reset_on_deps(ResetOnDeps::KeepDirtyValues)
+		.build();
+	let _pristine_collection = pristine_invoice.line_items_collection();
+	let mut refreshed_defaults = pristine_runtime.default_values();
+	let mut default_item = pristine_invoice.new_line_items_item();
+	default_item.description = "Default cable".to_string();
+	default_item.quantity = 2;
+	refreshed_defaults.line_items.push(default_item);
+
+	pristine_runtime.reconcile_defaults(refreshed_defaults, (2_u64,));
+
+	assert_eq!(
+		pristine_runtime.get_values().line_items[0].description,
+		"Default cable".to_string()
+	);
+	assert_eq!(pristine_runtime.watch().get().line_items.len(), 1);
+	assert!(!pristine_runtime.form_state().is_dirty.get());
+
+	let dirty_invoice = form! {
+		name: DirtyInvoiceForm,
+		action: "/invoices",
+		fields: {
+			customer_name: CharField {
+				initial: "Ada",
+			}
+			line_items: FieldArray {
+				fields: {
+					description: CharField {}
+					quantity: IntegerField {}
+				}
+			}
+		}
+	};
+	let dirty_runtime = use_form(&dirty_invoice)
+		.deps((1_u64,))
+		.reset_on_deps(ResetOnDeps::KeepDirtyValues)
+		.build();
+	let dirty_collection = dirty_invoice.line_items_collection();
+	let mut user_item = dirty_invoice.new_line_items_item();
+	user_item.description = "User stand".to_string();
+	user_item.quantity = 1;
+	dirty_runtime.push_item(dirty_collection, user_item);
+
+	let mut dirty_refreshed_defaults = dirty_runtime.default_values();
+	let mut changed_default_item = dirty_invoice.new_line_items_item();
+	changed_default_item.description = "Default dock".to_string();
+	changed_default_item.quantity = 4;
+	dirty_refreshed_defaults
+		.line_items
+		.push(changed_default_item);
+
+	dirty_runtime.reconcile_defaults(dirty_refreshed_defaults, (2_u64,));
+
+	assert_eq!(
+		dirty_runtime.get_values().line_items[0].description,
+		"User stand".to_string()
+	);
+	assert_eq!(
+		dirty_runtime.default_values().line_items[0].description,
+		"Default dock".to_string()
+	);
+	assert!(dirty_runtime.form_state().is_dirty.get());
 }
 
 #[test]
@@ -355,6 +1636,48 @@ fn validation_failure_sets_form_error_and_submit_failure_state() {
 
 	assert!(runtime.trigger_field(signup.email_field()).is_ok());
 	assert!(runtime.form_state().error.get().is_none());
+}
+
+#[test]
+fn use_form_accepts_file_field_runtime_contracts() {
+	let upload = form! {
+		name: UploadForm,
+		action: "/upload",
+		fields: {
+			document: FileField {
+				required,
+			}
+			avatar: ImageField {}
+		}
+	};
+
+	let runtime = use_form(&upload).build();
+	let document = runtime.watch_field::<Option<web_sys::File>>(upload.document_field());
+	let avatar = runtime.watch_field::<Option<web_sys::File>>(upload.avatar_field());
+
+	assert!(runtime.get_values().document.is_none());
+	assert!(runtime.get_values().avatar.is_none());
+	assert!(document.get().is_none());
+	assert!(avatar.get().is_none());
+	assert!(!runtime.form_state().is_dirty.get());
+	assert!(!runtime.get_field_state(upload.document_field()).is_dirty);
+
+	let result = runtime.trigger();
+
+	assert!(result.is_err());
+	assert_eq!(
+		runtime
+			.get_field_state(upload.document_field())
+			.error
+			.as_ref()
+			.map(FieldError::message),
+		Some("document is required")
+	);
+
+	runtime.set_value(upload.document_field(), None::<web_sys::File>);
+
+	assert!(runtime.get_field_state(upload.document_field()).is_touched);
+	assert!(!runtime.get_field_state(upload.document_field()).is_dirty);
 }
 
 #[test]

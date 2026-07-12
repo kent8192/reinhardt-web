@@ -7,48 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-server@v0.2.0...reinhardt-server@v0.3.0) - 2026-06-28
+
+Stable release of `reinhardt-server` for the Reinhardt 0.3.0 line. This
+crate moves with the coordinated Reinhardt 0.3.0 release train.
+
+### Migration Notes
+
+- Review the root CHANGELOG and `instructions/MIGRATION_0.3.md` before upgrading from 0.2.x.
+
+### Maintenance
+
+- align crate release metadata with the Reinhardt 0.3.0 stable release train.
+
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-server@v0.1.3...reinhardt-server@v0.2.0) - 2026-06-11
 
 Stable release of `reinhardt-server` for the Reinhardt 0.2.0 line. This
-entry consolidates the 0.2.0 release-candidate series; the original
-RC entries remain below as detailed history.
+entry consolidates the 0.2.0 release-candidate series into one
+stable release section.
 
 ### Migration Notes
 
 - Review the breaking changes listed below before upgrading from 0.1.x.
 - See the root CHANGELOG and `instructions/MIGRATION_0.2.md` for cross-crate migration guidance.
-
-### Added
-
-- *(server)* add RateLimitSettings fragment
-
-### Deprecated
-
-- *(server)* deprecate RateLimitConfig in favor of RateLimitSettings
-
-### Performance
-
-- atomize facade dependency feature gates
-
-### Maintenance
-
-- update Cargo.toml dependencies
-- add reinhardt-conf and serde deps for rate-limit settings
-
-
-## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-server@v0.2.0-rc.4...reinhardt-server@v0.2.0-rc.5) - 2026-06-11
-
-### Maintenance
-
-- update Cargo.toml dependencies
-
-## [0.2.0-rc.3](https://github.com/kent8192/reinhardt-web/compare/reinhardt-server@v0.2.0-rc.2...reinhardt-server@v0.2.0-rc.3) - 2026-06-05
-
-### Performance
-
-- atomize facade dependency feature gates
-
-## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-server@v0.1.3...reinhardt-server@v0.2.0-rc.2) - 2026-06-03
 
 ### Added
 
@@ -66,8 +47,13 @@ RC entries remain below as detailed history.
 
 - *(ci)* recover develop release-plz prerelease
 
+### Performance
+
+- atomize facade dependency feature gates
+
 ### Maintenance
 
+- update Cargo.toml dependencies
 - add reinhardt-conf and serde deps for rate-limit settings
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-server@v0.1.0-rc.30...reinhardt-server@v0.1.0) - 2026-05-22

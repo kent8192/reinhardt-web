@@ -1,0 +1,9 @@
+[scenario]
+category = "contract"
+name = "dry_run_deploy"
+runner = "criterion"
+metric = "dry_run_latency"
+unit = "us/run"
+workload = "Execute a deployment dry run from the generated cloud plan without external side effects."
+success = "The dry run reports the expected resource operations."
+targets = ["reinhardt", "axum", "actix-web", "loco"]

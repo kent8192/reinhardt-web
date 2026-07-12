@@ -7,9 +7,7 @@
 use super::server_fn_helpers::server_fn_context;
 use reinhardt_admin::adapters::BulkDeleteRequest;
 use reinhardt_admin::core::AdminRecord;
-use reinhardt_admin::core::{AdminDatabase, AdminSite};
 use reinhardt_admin::server::{bulk_delete_records, delete_record};
-use reinhardt_di::Depends;
 use rstest::*;
 use serde_json::json;
 use std::collections::HashMap;
@@ -22,7 +20,7 @@ use super::server_fn_helpers::{TEST_CSRF_TOKEN, make_auth_user, make_staff_reque
 #[rstest]
 #[tokio::test]
 async fn test_delete_record_happy_path(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
@@ -60,7 +58,7 @@ async fn test_delete_record_happy_path(
 #[rstest]
 #[tokio::test]
 async fn test_delete_record_actually_removes(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
@@ -105,7 +103,7 @@ async fn test_delete_record_actually_removes(
 #[rstest]
 #[tokio::test]
 async fn test_delete_record_not_found(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
@@ -141,7 +139,7 @@ async fn test_delete_record_not_found(
 #[rstest]
 #[tokio::test]
 async fn test_delete_record_model_not_registered(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
@@ -173,7 +171,7 @@ async fn test_delete_record_model_not_registered(
 #[rstest]
 #[tokio::test]
 async fn test_bulk_delete_happy_path(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
@@ -219,7 +217,7 @@ async fn test_bulk_delete_happy_path(
 #[rstest]
 #[tokio::test]
 async fn test_bulk_delete_single_id(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
@@ -261,7 +259,7 @@ async fn test_bulk_delete_single_id(
 #[rstest]
 #[tokio::test]
 async fn test_bulk_delete_exceeds_limit(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
@@ -306,7 +304,7 @@ async fn test_bulk_delete_exceeds_limit(
 #[rstest]
 #[tokio::test]
 async fn test_bulk_delete_empty_ids(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
@@ -347,7 +345,7 @@ async fn test_bulk_delete_empty_ids(
 #[rstest]
 #[tokio::test]
 async fn test_bulk_delete_partial_match(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
@@ -392,7 +390,7 @@ async fn test_bulk_delete_partial_match(
 #[rstest]
 #[tokio::test]
 async fn test_bulk_delete_model_not_registered(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;

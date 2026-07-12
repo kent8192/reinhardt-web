@@ -1,0 +1,5 @@
+error: Datalist does not support choice_group; datalist options must be flat
+  --> tests/ui/form/fail/datalist_rejects_choice_group.rs:12:5
+   |
+12 |                 choice_group: "group",
+   |                 ^^^^^^^^^^^^

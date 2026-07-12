@@ -100,9 +100,9 @@ See instructions/ANTI_PATTERNS.md for comprehensive anti-patterns guide.
 
 See instructions/TESTING_STANDARDS.md for comprehensive testing standards including:
 - Testing philosophy (TP-1, TP-2)
-- Test organization (TO-1, TO-2)
-- Test implementation (TI-1 ~ TI-7)
-- Infrastructure testing (IT-1)
+- Test organization (TO-1)
+- Test implementation (TI-1 ~ TI-8)
+- Infrastructure testing (IT-1 ~ IT-2)
 
 ### File Management
 

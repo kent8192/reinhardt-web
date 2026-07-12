@@ -48,7 +48,7 @@ If you have written `ModelSerializer` or `Depends()` before, Reinhardt will feel
 ```bash
 # Pin the documented Reinhardt release for reproducibility.
 # Omit --version to let Cargo choose the latest stable release.
-cargo install reinhardt-admin-cli --version "0.2.2"
+cargo install reinhardt-admin-cli --version "0.3.1"
 
 reinhardt-admin startproject my-api && cd my-api
 cargo run --bin manage runserver  # Visit http://127.0.0.1:8000
@@ -103,12 +103,14 @@ Reinhardt follows a **three-phase lifecycle** for every crate:
 | **Stable** (`0.x.0`) | Full SemVer 2.0 guarantees. |
 
 <!-- reinhardt-version-sync -->
-**Current release line:** Reinhardt documentation tracks `0.2.2`. From
+**Current release line:** Reinhardt documentation tracks `0.3.1`. From
 `0.1.0` onward, all public APIs follow SemVer 2.0; future breaking changes
 move through the documented alpha and RC lifecycle before stable publication.
 
 For per-release detail (changelog summary, upgrade notes, known issues),
 see the [Release category in GitHub Discussions](https://github.com/kent8192/reinhardt-web/discussions/categories/release).
+For 0.2.x applications moving to 0.3.0, use the
+[0.3 migration guide](instructions/MIGRATION_0.3.md).
 The full lifecycle policy lives in
 [Stability Policy](instructions/STABILITY_POLICY.md).
 
@@ -129,7 +131,7 @@ Get a well-balanced feature set with zero configuration:
 [dependencies]
 # Import as 'reinhardt', published as 'reinhardt-web'
 # Default enables the "standard" preset (balanced feature set)
-reinhardt = { version = "0.2.2", package = "reinhardt-web" }
+reinhardt = { version = "0.3.1", package = "reinhardt-web" }
 ```
 
 **Includes:** Core, Database (PostgreSQL), REST API (serializers, parsers, pagination, filters, throttling, versioning, metadata, content negotiation), Auth, Middleware (sessions), Pages (WASM Frontend with SSR), Signals
@@ -151,7 +153,7 @@ For compatibility checks, framework development, and projects that intentionally
 <!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.2.2", package = "reinhardt-web", default-features = false, features = ["full"] }
+reinhardt = { version = "0.3.1", package = "reinhardt-web", default-features = false, features = ["full"] }
 ```
 
 **Includes:** Everything in Standard, plus Admin, GraphQL, WebSockets, Cache, i18n, Mail, Static Files, Storage, and more
@@ -165,7 +167,7 @@ Lightweight and fast, perfect for simple APIs:
 <!-- reinhardt-version-sync -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.2.2", package = "reinhardt-web", default-features = false, features = ["minimal"] }
+reinhardt = { version = "0.3.1", package = "reinhardt-web", default-features = false, features = ["minimal"] }
 ```
 
 **Includes:** HTTP, routing, DI, parameter extraction, server
@@ -180,24 +182,24 @@ Install only the components you need:
 ```toml
 [dependencies]
 # Core components
-reinhardt-http = "0.2.2"
-reinhardt-urls = "0.2.2"
+reinhardt-http = "0.3.1"
+reinhardt-urls = "0.3.1"
 
 # Optional: Database
-reinhardt-db = "0.2.2"
+reinhardt-db = "0.3.1"
 
 # Optional: Authentication
-reinhardt-auth = "0.2.2"
+reinhardt-auth = "0.3.1"
 
 # Optional: REST API features
-reinhardt-rest = "0.2.2"
+reinhardt-rest = "0.3.1"
 
 # Optional: Admin panel
-reinhardt-admin = "0.2.2"
+reinhardt-admin = "0.3.1"
 
 # Optional: Advanced features
-reinhardt-graphql = "0.2.2"
-reinhardt-websockets = "0.2.2"
+reinhardt-graphql = "0.3.1"
+reinhardt-websockets = "0.3.1"
 ```
 
 **Note on Crate Naming:**
@@ -215,7 +217,7 @@ the latest stable release. The literal below is release-managed.
 
 <!-- reinhardt-version-sync -->
 ```bash
-cargo install reinhardt-admin-cli --version "0.2.2"
+cargo install reinhardt-admin-cli --version "0.3.1"
 ```
 
 ### 2. Create a New Project
@@ -232,7 +234,7 @@ during project creation. Scripts can pass them explicitly:
 <!-- reinhardt-version-sync -->
 ```bash
 reinhardt-admin startproject my-api \
-  --reinhardt-version "0.2.2" \
+  --reinhardt-version "0.3.1" \
   --features standard,admin \
   --no-interactive
 ```
@@ -311,6 +313,18 @@ For build-loop performance work, use `cargo make bench-builds-dry-run`
 to inspect the benchmark commands and `cargo make bench-builds` to write
 a reproducible report under `docs/build-perf/`. See
 [Build Performance](instructions/BUILD_PERFORMANCE.md) for details.
+For cross-framework comparisons against Reinhardt, Axum, Actix Web, and Loco,
+use `cargo make benchmark-suite-list` to inspect the matrix and
+`cargo make benchmark-suite-check` to validate the committed scenario manifests
+under `benchmarks/`. Use `cargo make benchmark-suite-measure` to record the
+scenario coverage and manifest validation timing for PR evidence. Use
+`cargo make benchmark-runtime-http` to run the concrete loopback HTTP runtime
+benchmarks for all seven runtime scenarios across all four targets. Use
+`cargo make benchmark-matrix-measure` to run the concrete non-runtime
+comparison scenarios and write a dated Markdown report under
+`benchmarks/results/`. The list/check/dry-run/measure tasks run through the
+std-only `benchmark-suite` checker package, while the concrete comparison
+framework dependencies live in the separate benchmark package.
 
 ### 4. Create Your First App
 
@@ -359,22 +373,23 @@ src/
 ├── apps/
 │   ├── polls.rs                  # per-app entry (sibling of polls/)
 │   └── polls/
-│       ├── admin.rs              # #[cfg(server)] admin registration
-│       ├── client.rs             # #[cfg(client)] aggregator: pub mod components; pub mod pages;
+│       ├── client.rs             # #[cfg(client)] aggregator: pub mod components;
 │       ├── client/
-│       │   ├── components.rs     # per-app UI (placeholder() returning Page)
-│       │   └── pages.rs          # per-app pages (placeholder_page wraps with_nav)
-│       ├── models.rs             # #[cfg(server)] models
-│       ├── models/               # (.gitkeep — user adds submodules here)
-│       ├── serializers.rs        # #[cfg(server)] serializers
-│       ├── serializers/          # (.gitkeep)
+│       │   └── components.rs     # per-app UI (placeholder() returning Page)
+│       ├── pages.rs              # target-neutral page entry points
+│       ├── server.rs             # #[cfg(server)] aggregator
+│       ├── server/
+│       │   ├── admin.rs          # admin registration
+│       │   ├── models.rs         # models
+│       │   ├── serializers.rs    # serializers
+│       │   ├── models/           # (.gitkeep — user adds submodules here)
+│       │   └── serializers/      # (.gitkeep)
 │       ├── server_fn.rs          # bi-target #[server_fn] handlers (placeholder)
 │       ├── tests/                # (.gitkeep)
-│       ├── urls.rs               # urls aggregator (cfg-gated submodules)
-│       ├── urls/
-│       │   ├── server_urls.rs    # #[url_patterns(InstalledApp::polls, mode = server)]
-│       │   └── client_router.rs  # #[url_patterns(InstalledApp::polls, mode = client)]
-│       └── views.rs              # #[cfg(server)] views
+│       ├── urls.rs               # target-neutral server/client router aggregate
+│       └── urls/
+│           ├── client_router.rs  # client route table and reverse helper
+│           └── server_router.rs  # server-function marker registration
 ├── bin/
 │   └── manage.rs                 # native-only management CLI entry
 ├── client.rs                     # #[cfg(client)] aggregator: pub mod lib; pub mod components;
@@ -427,9 +442,10 @@ pub fn server_url_patterns() -> ServerRouter {
 ```
 
 The `#[url_patterns]` attribute registers this router with the framework for
-automatic discovery. For Pages apps, use `mode = unified` and return
-`UnifiedRouter` instead (see the generated `urls/{server,client,ws}_urls.rs`
-submodules).
+automatic discovery. For Pages apps, keep the app-level `urls.rs` as the
+target-neutral aggregate and put route implementations in
+`urls/client_router.rs` and `urls/server_router.rs`; the project-level
+`src/config/urls.rs` mounts the aggregate functions.
 
 Include in `src/config/urls.rs`:
 
@@ -808,7 +824,7 @@ let mut perms = ObjectPermissionManager::new();
 perms.grant_permission("alice", "article:123", "edit").await;
 ```
 
-Use JWT authentication in your app's `views/profile.rs`:
+Use authentication in your app's `views/profile.rs`:
 
 ```rust
 // users/views/profile.rs
@@ -816,7 +832,8 @@ use reinhardt::{Response, StatusCode, ViewResult, get};
 use reinhardt::auth::CurrentUser;
 use crate::models::User;
 
-// JwtAuthMiddleware must be registered in urls.rs to populate AuthState in request extensions
+// SessionMiddleware or JwtAuthMiddleware must be registered in urls.rs to
+// populate AuthState in request extensions.
 #[get("/profile", name = "get_profile")]
 pub async fn get_profile(
 	#[inject] CurrentUser(user): CurrentUser<User>,
@@ -843,104 +860,107 @@ runtime reflection or startup discovery cost.
 
 Three primitives drive everyday use:
 
-1. **`#[injectable]`** — turn a struct into an injectable service.
-2. **`#[injectable_factory]`** — register an async function as a factory for
-   types you *cannot* annotate yourself (foreign types, trait objects,
-   connection handles built from settings).
-3. **`#[inject]`** with **`Depends<T>`** — receive dependencies in a handler
-   (or another injectable) without wiring anything by hand.
+1. **`Injectable`** — implemented by framework-owned or application-owned
+   types that can be injected directly.
+2. **`#[injectable]` provider functions** — register async factories whose
+   return type is `FactoryOutput<K, T>`.
+3. **`#[inject]` with `Depends<K, T>`** — receive a keyed provider output in a
+   handler or another provider.
 
-#### 1. `#[injectable]` — struct-level injection
+#### 1. Direct `Injectable` types
 
-Apply `#[injectable]` to any struct whose fields are themselves injectable.
-Non-injected fields are marked with `#[no_inject]` and must implement
-`Default` (or be supplied via the generated builder):
+Application-owned types can implement `Injectable` directly when they are
+safe to identify by their own `TypeId`:
 
 ```rust
-use reinhardt::di::injectable;
+use reinhardt::di::{DiResult, Injectable, InjectionContext};
 
-// `scope` is passed as a macro argument; accepted values are
-// "singleton", "request", or "transient" (one literal, not an alternation).
-// When omitted, `#[injectable]` defaults to `request` and
-// `#[injectable_factory]` defaults to `singleton`. `Config` is registered
-// as a singleton here so it matches the singleton-scoped
-// `database_connection` factory below: mixing a longer-lived dependent
-// with a shorter-lived dependency is not rejected by the registry, but it
-// captures whichever request-scoped instance was live at first resolution
-// and reuses it for the singleton's lifetime — almost never what you want.
-#[injectable(scope = "singleton")]
 #[derive(Clone)]
 pub struct Config {
-    #[no_inject]
     pub database_url: String,
 }
-```
 
-`#[injectable]` generates an `impl Injectable for Config` and a compile-time
-registration entry (via `inventory::submit!`) so the type resolves from
-`InjectionContext` automatically.
-
-#### 2. `#[injectable_factory]` — the pseudo orphan rule
-
-Rust's orphan rule forbids `impl Injectable for SomeForeignType`. For those
-cases — database connections, `Arc<dyn Trait>`, third-party handles — Reinhardt
-offers `#[injectable_factory]`. You write an async function whose return type
-is the type to register; the macro wraps it, submits an `inventory` entry, and
-hands the returned value to the DI container:
-
-```rust
-use reinhardt::db::DatabaseConnection;
-use reinhardt::di::{Depends, injectable_factory};
-
-#[injectable_factory(scope = "singleton")]
-async fn database_connection(
-    #[inject] config: Depends<Config>,
-) -> DatabaseConnection {
-    DatabaseConnection::connect(&config.database_url)
-        .await
-        .expect("failed to open database connection")
+#[async_trait::async_trait]
+impl Injectable for Config {
+    async fn inject(_ctx: &InjectionContext) -> DiResult<Self> {
+        Ok(Self {
+            database_url: "sqlite://app.db".to_string(),
+        })
+    }
 }
 ```
 
-**Every parameter of an `#[injectable_factory]` function must be annotated
-with `#[inject]`.** There is no way to pass runtime arguments; factories only
-compose over other injectables.
+Direct injection is appropriate for framework-owned extractors and types with
+one obvious meaning in the application.
 
-When a factory can fail, prefer returning `Result<T, E>` where `T` is the
-dependency you want and `E` is an error type used only by that factory. The DI
-registry key is the literal return type's `TypeId`, so `Result<T,
-DatabaseConnectionError>` and `Result<T, OtherFactoryError>` are distinct even
-when both factories produce the same successful `T`. Inject that dependency as
-`DependsResult<T, E>` (or `Depends<Result<T, E>>`) and handle the factory-local
-error at the call site.
+#### 2. `#[injectable]` provider functions
+
+Use a keyed provider when the same value type can have multiple meanings, or
+when a foreign type should not be made globally injectable by its own `TypeId`.
+The provider returns `FactoryOutput<K, T>`, and consumers request
+`Depends<K, T>`:
 
 ```rust
 use reinhardt::db::DatabaseConnection;
-use reinhardt::{get, Response, StatusCode, ViewResult};
-use reinhardt::di::{Depends, DependsResult, injectable_factory};
+use reinhardt::di::{Depends, FactoryOutput, injectable, injectable_key};
+
+#[injectable_key]
+struct PrimaryDatabase;
+
+#[injectable(scope = "singleton")]
+async fn database_connection(
+    #[inject] config: Config,
+) -> FactoryOutput<PrimaryDatabase, DatabaseConnection> {
+    let connection = DatabaseConnection::connect(&config.database_url)
+        .await
+        .expect("failed to open database connection");
+
+    FactoryOutput::new(connection)
+}
+```
+
+**Every parameter of an `#[injectable]` provider function must be annotated
+with `#[inject]`.** There is no way to pass runtime arguments; providers only
+compose over other injectables.
+
+When a provider can fail, put the `Result<T, E>` in the `T` position and keep
+the provider key as the unique identity:
+
+```rust
+use reinhardt::db::DatabaseConnection;
+use reinhardt::{Response, StatusCode, ViewResult, get};
+use reinhardt::di::{Depends, FactoryOutput, injectable, injectable_key};
 
 #[derive(Debug)]
 struct DatabaseConnectionError;
 
-#[injectable_factory(scope = "singleton")]
+#[injectable_key]
+struct DatabaseHealth;
+
+#[injectable(scope = "singleton")]
 async fn database_connection_result(
-    #[inject] config: Depends<Config>,
-) -> Result<DatabaseConnection, DatabaseConnectionError> {
-    DatabaseConnection::connect(&config.database_url)
-        .await
-        .map_err(|_| DatabaseConnectionError)
+    #[inject] config: Config,
+) -> FactoryOutput<DatabaseHealth, Result<DatabaseConnection, DatabaseConnectionError>> {
+    FactoryOutput::new(
+        DatabaseConnection::connect(&config.database_url)
+            .await
+            .map_err(|_| DatabaseConnectionError),
+    )
 }
 
 #[get("/database/health", name = "database_health")]
 async fn database_health(
-    #[inject] db: DependsResult<DatabaseConnection, DatabaseConnectionError>,
+    #[inject] db: Depends<DatabaseHealth, Result<DatabaseConnection, DatabaseConnectionError>>,
 ) -> ViewResult<Response> {
-    match db.into_inner() {
+    match db.as_ref() {
         Ok(_) => Ok(Response::new(StatusCode::OK)),
         Err(_) => Ok(Response::new(StatusCode::SERVICE_UNAVAILABLE)),
     }
 }
 ```
+
+`#[injectable_factory]` remains as a deprecated compatibility alias for
+provider functions. New code should use `#[injectable]`.
 
 **The pseudo orphan rule.** To prevent user factories from silently shadowing
 framework-owned types (e.g., `reinhardt_di::InjectionContext`, routers,
@@ -953,23 +973,26 @@ types are fair game, framework types are not. The validator lives in
 [`crates/reinhardt-di/src/validation.rs`](crates/reinhardt-di/src/validation.rs)
 (`check_framework_type_override`, lines 51–129).
 
-#### 3. `#[inject]` + `Depends<T>` in handlers
+#### 3. `#[inject]` + `Depends<K, T>` in handlers
 
 Use `#[inject]` on a handler parameter to have the DI container resolve it
-before the handler runs. Wrap the requested type in `Depends<T>` so that
-caching and scope are honoured:
+before the handler runs. Use direct types for ordinary `Injectable`
+dependencies, and `Depends<K, T>` for keyed provider output:
 
 ```rust
 use reinhardt::{get, Response, StatusCode, ViewResult};
-use reinhardt::di::Depends;
+use reinhardt::di::{Depends, injectable_key};
 use reinhardt::db::DatabaseConnection;
 use reinhardt::extractors::Path;
 use crate::models::User;
 
+#[injectable_key]
+struct PrimaryDatabase;
+
 #[get("/users/{id}/", name = "get_user")]
 pub async fn get_user(
     Path(id): Path<i64>,
-    #[inject] db: Depends<DatabaseConnection>,
+    #[inject] db: Depends<PrimaryDatabase, DatabaseConnection>,
 ) -> ViewResult<Response> {
     let user = User::objects().filter(User::field_id().eq(id)).get().await?;
     let body = serde_json::to_string(&user)?;
@@ -977,13 +1000,43 @@ pub async fn get_user(
 }
 ```
 
-**Caching.** Within a scope boundary, resolving the same `Depends<T>` twice
+**Caching.** Within a scope boundary, resolving the same keyed dependency twice
 returns the *same* instance. Opt out per-call with `#[inject(cache = false)]`:
 
 ```rust
 pub async fn uncached_handler(
-    #[inject(cache = false)] db: Depends<DatabaseConnection>,
+    #[inject(cache = false)] db: Depends<PrimaryDatabase, DatabaseConnection>,
 ) -> ViewResult<Response> { /* always a fresh resolution within the scope */ }
+```
+
+`#[inject]` wrapper resolution is trait-based rather than name-based. Renamed
+imports and aliases of `Depends<K, T>` work, and custom wrappers can implement
+`InjectableType` to resolve a registry key while exposing a domain-specific
+parameter type:
+
+```rust
+use reinhardt::di::{Depends, FactoryOutput, InjectableKey, InjectableType};
+
+struct Lazy<K, T>(Depends<K, T>)
+where
+    K: InjectableKey,
+    T: Send + Sync + 'static;
+
+impl<K, T> InjectableType for Lazy<K, T>
+where
+    K: InjectableKey,
+    T: Send + Sync + 'static,
+{
+    type Inner = FactoryOutput<K, T>;
+
+    fn from_resolved(
+        inner: std::sync::Arc<Self::Inner>,
+        use_cache: bool,
+    ) -> Self {
+        let depends = Depends::from_output(inner, use_cache);
+        Self(depends)
+    }
+}
 ```
 
 #### Manual `impl Injectable`
@@ -1043,14 +1096,13 @@ Combine HTTP method decorators with `#[inject]` for automatic dependency injecti
 ```rust
 use reinhardt::{get, Response, StatusCode, ViewResult};
 use reinhardt::extractors::Path;
-use reinhardt::di::Depends;
 use reinhardt::db::DatabaseConnection;
 use crate::models::User;
 
 #[get("/users/{id}/", name = "get_user")]
 pub async fn get_user(
 	Path(id): Path<i64>,
-	#[inject] db: Depends<DatabaseConnection>,
+	#[inject] db: DatabaseConnection,
 ) -> ViewResult<Response> {
 	// Path extractor parses and validates the {id} segment automatically
 	let user = User::objects()
@@ -1085,7 +1137,6 @@ In your app's `views/user.rs`:
 // users/views/user.rs
 use reinhardt::{Response, StatusCode, ViewResult, get};
 use reinhardt::extractors::{Path, Query};
-use reinhardt::di::Depends;
 use reinhardt::db::DatabaseConnection;
 use crate::models::User;
 use serde::Deserialize;
@@ -1099,7 +1150,7 @@ pub struct GetUserParams {
 pub async fn get_user(
 	Path(id): Path<i64>,
 	Query(params): Query<GetUserParams>,
-	#[inject] db: Depends<DatabaseConnection>,
+	#[inject] db: DatabaseConnection,
 ) -> ViewResult<Response> {
 	let user = User::objects()
 		.filter(User::field_id().eq(id))
@@ -1121,7 +1172,7 @@ Register route with path parameter in `urls.rs`:
 // users/urls.rs
 use reinhardt::ServerRouter;
 
-use super::views;
+use crate::apps::users::views;
 
 pub fn url_patterns() -> ServerRouter {
 	ServerRouter::new()
@@ -1175,7 +1226,6 @@ In your app's `views/user.rs`:
 use reinhardt::{Response, StatusCode, ViewResult, post};
 use reinhardt::extractors::Json;
 use reinhardt::validation::Validated;
-use reinhardt::di::Depends;
 use reinhardt::db::DatabaseConnection;
 use crate::models::User;
 use crate::serializers::{CreateUserRequest, UserResponse};
@@ -1184,7 +1234,7 @@ use crate::serializers::{CreateUserRequest, UserResponse};
 pub async fn create_user(
 	Json(body): Json<CreateUserRequest>,
 	Validated(create_req): Validated<CreateUserRequest>,
-	#[inject] db: Depends<DatabaseConnection>,
+	#[inject] db: DatabaseConnection,
 ) -> ViewResult<Response> {
 	// Json<T> deserializes the body; Validated<T> runs #[validate] rules and yields the validated value
 
@@ -1283,16 +1333,16 @@ Reinhardt offers modular components you can mix and match:
 
 - 📚 [Getting Started Guide](https://reinhardt-web.dev/quickstart/getting-started/) - Step-by-step tutorial for beginners
 - 🎛️ [Feature Flags Guide](https://reinhardt-web.dev/docs/feature-flags/) - Optimize your build with granular feature control
-- 📖 [API Reference](https://docs.rs/reinhardt-web) (Coming soon)
+- 📖 [API Reference](https://docs.rs/reinhardt-web)
 - 📝 [Tutorials](https://reinhardt-web.dev/quickstart/tutorials/) - Learn by building real applications
 
-**For AI Assistants**: See [CLAUDE.md](CLAUDE.md) for project-specific coding standards, testing guidelines, and development conventions.
+For contributor automation and repository-specific development conventions,
+see [CLAUDE.md](CLAUDE.md).
 
 ## 💬 Getting Help
 
 Reinhardt is a community-driven project. Here's where you can get help:
 
-- 💬 **Discord**: Join our Discord server for real-time chat (coming soon)
 - 💭 **GitHub Discussions**: [Ask questions and share ideas](https://github.com/kent8192/reinhardt-web/discussions)
 - 🐛 **Issues**: [Report bugs](https://github.com/kent8192/reinhardt-web/issues)
 - 📖 **Documentation**: [Read the guides](docs/)

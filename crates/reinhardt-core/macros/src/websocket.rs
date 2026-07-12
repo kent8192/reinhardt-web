@@ -6,6 +6,7 @@ use syn::{
 };
 
 use crate::crate_paths::get_reinhardt_crate;
+use crate::injectable_common::generate_inject_resolver_expr;
 use crate::routes::{detect_inject_params, extract_url_params, to_resolver_trait_name};
 
 pub(crate) struct WebSocketArgs {
@@ -274,18 +275,11 @@ pub(crate) fn websocket_impl(args: TokenStream, mut input: ItemFn) -> Result<Tok
 			.map(|p| {
 				let pat = &p.pat;
 				let ty = &p.ty;
-				if let Some(inner) = crate::routes_registration::extract_depends_inner_type(ty) {
-					quote! {
-						let #pat: #ty =
-							#di_crate::Depends::<#inner>::resolve_from_registry(
-								&__di_ctx, true
-							).await;
-					}
-				} else {
-					quote! {
-						let #pat: #ty =
-							#di_crate::Depends::<#ty>::resolve(&__di_ctx, true).await;
-					}
+				let resolve_expr =
+					generate_inject_resolver_expr(&di_crate, ty, quote! { &__di_ctx }, true);
+				quote! {
+					let #pat: #ty = #resolve_expr
+						.expect("websocket dependency injection failed");
 				}
 			})
 			.collect();

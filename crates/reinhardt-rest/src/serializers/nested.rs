@@ -789,19 +789,9 @@ impl<M: Model, R: Model> Serializer for WritableNestedSerializer<M, R> {
 			// - ORM Layer: Performs database operations
 			// - Transaction: Ensures atomicity
 			//
-			// Example usage pattern:
-			// ```
-			// let serializer = WritableNestedSerializer::new("author").allow_create(true);
-			// let post: Post = serializer.deserialize(&json)?;
-			//
-			// // Caller handles database operations within transaction:
-			// let mut tx = Transaction::new();
-			// tx.begin()?;
-			// let author = Author::objects().create(&post.author).await?;
-			// post.author_id = author.id;
-			// let saved_post = Post::objects().create(&post).await?;
-			// tx.commit()?;
-			// ```
+			// The caller should deserialize the parent model, run related-object
+			// writes through the ORM, and wrap the sequence in a transaction when
+			// atomicity is required.
 		}
 
 		// This method intentionally deserializes only the parent model.

@@ -328,9 +328,6 @@ mod tests {
 #[cfg(test)]
 mod constraints_extended_tests {
 	use super::*;
-	// Tests use annotation types directly
-	// use crate::orm::annotation::*;
-	// use crate::orm::expressions::{F, Q};
 
 	#[test]
 	// From: Django/constraints

@@ -838,11 +838,7 @@ fn compose_openapi_type_only_syntax() {
 // Embedded settings node schema tests
 // ============================================================================
 
-#[settings(
-	fragment = true,
-	section = "schema_database_config",
-	default_policy = "required"
-)]
+#[settings(fragment = true, default_policy = "required")]
 struct SchemaDatabaseConfig {
 	pub engine: String,
 	pub host: String,

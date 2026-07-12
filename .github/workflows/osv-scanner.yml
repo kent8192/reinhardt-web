@@ -68,6 +68,8 @@ jobs:
         with:
           scan-args: |-
             --recursive
+            --no-ignore
+            .
             --format=sarif
             --output=osv-results.sarif
 

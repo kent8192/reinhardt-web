@@ -11,8 +11,6 @@ fn show(s: &Signal<i32>) -> i32 {
 
 fn main() {
 	let _ = page!(|count: Signal<i32>, show: fn(&Signal<i32>) -> i32| {
-		p { {
-			show(&count).to_string()
-		} }
+		p { { show(&count).to_string() } }
 	});
 }
