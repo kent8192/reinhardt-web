@@ -353,6 +353,7 @@ fn update_activity_boundary_attrs(
 	true
 }
 
+#[cfg(wasm)]
 fn create_nested_reactive_parent(
 	document: &web_sys::Document,
 	parent: &web_sys::Node,
