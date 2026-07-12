@@ -88,6 +88,9 @@ pub async fn init_database(url: &str) -> reinhardt_core::exception::Result<()> {
 
 /// Initialize the global database connection with a specific pool size
 ///
+/// If the global connection is already initialized, this function returns
+/// successfully without opening another connection.
+///
 /// # Arguments
 ///
 /// * `url` - Database connection URL
@@ -108,6 +111,12 @@ pub async fn init_database_with_pool_size(
 	url: &str,
 	pool_size: Option<u32>,
 ) -> reinhardt_core::exception::Result<()> {
+	if let Some(db_cell) = DB.get()
+		&& db_cell.read().await.is_some()
+	{
+		return Ok(());
+	}
+
 	let conn = DatabaseConnection::connect_with_pool_size(url, pool_size).await?;
 
 	if let Some(db_cell) = DB.get() {
@@ -1739,6 +1748,25 @@ mod tests {
 	use crate::orm::inspection::FieldInfo;
 	use serde::{Deserialize, Serialize};
 	use std::collections::HashMap;
+
+	#[serial_test::serial(sqlx_drivers)]
+	#[tokio::test]
+	async fn init_database_skips_connection_when_already_initialized() {
+		let connection = crate::orm::connection::DatabaseConnection::connect("sqlite::memory:")
+			.await
+			.unwrap();
+		let previous = super::replace_database_connection_for_testing(Some(connection)).await;
+
+		let result = super::init_database("unsupported://must-not-connect").await;
+		let backend = super::get_connection()
+			.await
+			.map(|connection| connection.backend());
+
+		super::replace_database_connection_for_testing(previous).await;
+
+		result.expect("repeated initialization should not reconnect");
+		assert_eq!(backend.unwrap(), DatabaseBackend::Sqlite);
+	}
 
 	#[derive(Debug, Clone, Serialize, Deserialize)]
 	struct TestUser {
