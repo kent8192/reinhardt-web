@@ -20,8 +20,7 @@ use reinhardt_conf::settings::sources::{DefaultSource, LowPriorityEnvSource, Tom
 use reinhardt_utils::staticfiles::StaticFilesConfig;
 use serde_json::Value;
 use std::env;
-#[allow(unused)]
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 #[cfg(feature = "routers")]
@@ -1223,9 +1222,9 @@ async fn execute_collectstatic(
 	let mut cmd = CollectStaticCommand::new(config, options);
 	cmd.set_index_source(index_source);
 	let style_context =
-		crate::StylePackageContext::resolve(base_dir.join("Cargo.toml"), package.as_deref())
+		resolve_collectstatic_style_context(&base_dir.join("Cargo.toml"), package.as_deref())
 			.map_err(|error| format!("failed to select component style package: {error}"))?;
-	cmd.set_style_context(Some(style_context));
+	cmd.set_style_context(style_context);
 	let result = tokio::task::spawn_blocking(move || {
 		// Call the sync execute() method directly (not the BaseCommand trait method)
 		CollectStaticCommand::execute(&mut cmd)
@@ -1237,6 +1236,26 @@ async fn execute_collectstatic(
 		Ok(Err(e)) => Err(Box::new(e) as Box<dyn std::error::Error>),
 		Err(e) => Err(Box::new(e) as Box<dyn std::error::Error>),
 	}
+}
+
+fn resolve_collectstatic_style_context(
+	manifest_path: &Path,
+	requested_package: Option<&str>,
+) -> Result<Option<crate::StylePackageContext>, String> {
+	match crate::StylePackageContext::resolve(manifest_path, requested_package) {
+		Ok(context) => Ok(Some(context)),
+		Err(error)
+			if requested_package.is_none() && virtual_workspace_has_no_style_package(&error) =>
+		{
+			Ok(None)
+		}
+		Err(error) => Err(error),
+	}
+}
+
+fn virtual_workspace_has_no_style_package(error: &str) -> bool {
+	error == "the Cargo workspace has no root package; pass --package <NAME>"
+		|| (error.contains("manifest is virtual") && error.contains("workspace has no members"))
 }
 
 /// Execute the showurls command
@@ -2108,6 +2127,22 @@ mod tests {
 			}
 			_ => panic!("expected collectstatic command"),
 		}
+	}
+
+	#[rstest]
+	fn collectstatic_without_package_allows_a_virtual_workspace_root() {
+		let directory = tempfile::tempdir().expect("create temporary workspace");
+		let manifest_path = directory.path().join("Cargo.toml");
+		std::fs::write(
+			&manifest_path,
+			"[workspace]\nmembers = []\nresolver = \"3\"\n",
+		)
+		.expect("write virtual workspace manifest");
+
+		let context = resolve_collectstatic_style_context(&manifest_path, None)
+			.expect("a virtual workspace has no component stylesheet package by default");
+
+		assert!(context.is_none());
 	}
 
 	#[rstest]

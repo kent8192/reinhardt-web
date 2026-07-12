@@ -83,6 +83,18 @@ pub struct ComponentStyleState {
 	extractor: StyleExtractor,
 	fingerprints: StyleFingerprints,
 	assets: GeneratedStyleAssets,
+	#[cfg(feature = "pages")]
+	pending: Option<PendingStyleBundle>,
+}
+
+/// A valid stylesheet candidate awaiting a matching Rust rebuild.
+#[cfg(feature = "pages")]
+#[derive(Debug)]
+struct PendingStyleBundle {
+	context: StylePackageContext,
+	extractor: StyleExtractor,
+	css: Vec<u8>,
+	fingerprints: StyleFingerprints,
 }
 
 impl ComponentStyleState {
@@ -104,6 +116,8 @@ impl ComponentStyleState {
 			extractor,
 			fingerprints,
 			assets,
+			#[cfg(feature = "pages")]
+			pending: None,
 		})
 	}
 
@@ -127,7 +141,7 @@ impl ComponentStyleState {
 		join_static_url(static_url, COMPONENT_STYLES_PATH)
 	}
 
-	/// Recompile and atomically advance the last-good snapshot on success.
+	/// Recompile generated styles and advance the last-good snapshot when safe.
 	pub fn refresh(&mut self, metadata_changed: bool) -> ComponentStyleStageResult {
 		let candidate_context = if metadata_changed {
 			match StylePackageContext::resolve(
@@ -136,6 +150,10 @@ impl ComponentStyleState {
 			) {
 				Ok(context) => context,
 				Err(error) => {
+					#[cfg(feature = "pages")]
+					{
+						self.pending = None;
+					}
 					eprintln!("component style metadata refresh failed: {error}");
 					return ComponentStyleStageResult::Failed;
 				}
@@ -147,6 +165,10 @@ impl ComponentStyleState {
 		let candidate = match candidate_extractor.extract() {
 			Ok(bundle) => bundle,
 			Err(error) => {
+				#[cfg(feature = "pages")]
+				{
+					self.pending = None;
+				}
 				eprintln!("component style compilation failed: {error}");
 				return ComponentStyleStageResult::Failed;
 			}
@@ -154,24 +176,64 @@ impl ComponentStyleState {
 
 		let old = self.fingerprints;
 		let new = candidate.fingerprints;
-		let result = if old == new {
-			ComponentStyleStageResult::Unchanged
-		} else if old.non_style_rust == new.non_style_rust && old.generated_api == new.generated_api
+		if old == new {
+			#[cfg(feature = "pages")]
+			{
+				self.pending = None;
+			}
+			return ComponentStyleStageResult::Unchanged;
+		}
+		if old.non_style_rust == new.non_style_rust && old.generated_api == new.generated_api {
+			if old.css != new.css
+				&& let Err(error) = self.assets.replace(&candidate.css)
+			{
+				eprintln!("component style asset replacement failed: {error}");
+				return ComponentStyleStageResult::Failed;
+			}
+			self.context = candidate_context;
+			self.extractor = candidate_extractor;
+			self.fingerprints = new;
+			#[cfg(feature = "pages")]
+			{
+				self.pending = None;
+			}
+			return ComponentStyleStageResult::CssOnly;
+		}
+
+		#[cfg(feature = "pages")]
 		{
-			ComponentStyleStageResult::CssOnly
-		} else {
-			ComponentStyleStageResult::RustOrApiChanged
+			self.pending = Some(PendingStyleBundle {
+				context: candidate_context,
+				extractor: candidate_extractor,
+				css: candidate.css,
+				fingerprints: candidate.fingerprints,
+			});
+		}
+		#[cfg(not(feature = "pages"))]
+		{
+			self.context = candidate_context;
+			self.extractor = candidate_extractor;
+			self.fingerprints = new;
+		}
+		ComponentStyleStageResult::RustOrApiChanged
+	}
+
+	/// Commit the newest API-changing stylesheet only after its rebuild succeeds.
+	#[cfg(feature = "pages")]
+	pub(crate) fn commit_pending(&mut self) -> Result<bool, String> {
+		let Some(candidate) = self.pending.take() else {
+			return Ok(false);
 		};
-		if old.css != new.css
+		if self.fingerprints.css != candidate.fingerprints.css
 			&& let Err(error) = self.assets.replace(&candidate.css)
 		{
-			eprintln!("component style asset replacement failed: {error}");
-			return ComponentStyleStageResult::Failed;
+			self.pending = Some(candidate);
+			return Err(error);
 		}
-		self.context = candidate_context;
-		self.extractor = candidate_extractor;
-		self.fingerprints = new;
-		result
+		self.context = candidate.context;
+		self.extractor = candidate.extractor;
+		self.fingerprints = candidate.fingerprints;
+		Ok(true)
 	}
 }
 
@@ -244,6 +306,42 @@ mod tests {
 		)
 		.unwrap();
 		assert_eq!(state.refresh(false), ComponentStyleStageResult::CssOnly);
+		assert_ne!(std::fs::read(&output).unwrap(), last_good);
+	}
+
+	#[cfg(feature = "pages")]
+	#[rstest]
+	fn refresh_defers_api_changing_stylesheet_until_the_rust_rebuild_succeeds() {
+		let directory = tempfile::tempdir().expect("create temporary package");
+		std::fs::create_dir(directory.path().join("src")).unwrap();
+		std::fs::write(
+			directory.path().join("Cargo.toml"),
+			"[package]\nname = \"style-api-refresh\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+		)
+		.unwrap();
+		let source_path = directory.path().join("src/lib.rs");
+		std::fs::write(
+			&source_path,
+			"#[style_def] static STYLES: Styles = style! { .card { color: red; } };\n",
+		)
+		.unwrap();
+		let mut state = ComponentStyleState::initialize(directory.path().join("Cargo.toml"), None)
+			.expect("initialize style state");
+		let output = state.generated_root().join(COMPONENT_STYLES_PATH);
+		let last_good = std::fs::read(&output).unwrap();
+
+		std::fs::write(
+			&source_path,
+			"#[style_def] static STYLES: Styles = style! { .card { color: red; } .label { color: blue; } };\n",
+		)
+		.unwrap();
+
+		assert_eq!(
+			state.refresh(false),
+			ComponentStyleStageResult::RustOrApiChanged
+		);
+		assert_eq!(std::fs::read(&output).unwrap(), last_good);
+		assert!(state.commit_pending().expect("commit rebuilt styles"));
 		assert_ne!(std::fs::read(&output).unwrap(), last_good);
 	}
 }

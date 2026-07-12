@@ -158,7 +158,9 @@ impl CollectStaticCommand {
 				bytes: bundle.css,
 			});
 		}
-		self.validate_reserved_sources()?;
+		let all_dirs = self.static_source_dirs();
+		self.validate_reserved_sources(&all_dirs)?;
+		self.register_virtual_assets(&virtual_assets)?;
 
 		// Clear destination if requested
 		if self.options.clear {
@@ -233,30 +235,6 @@ impl CollectStaticCommand {
 						e
 					);
 				}
-			}
-		}
-
-		// Collect files from all source directories
-		// Start with manually configured directories
-		let mut all_dirs = self.config.staticfiles_dirs.clone();
-
-		// Auto-discover static files from installed apps via inventory
-		let app_static_configs = ::reinhardt_apps::get_app_static_files();
-
-		for config in app_static_configs {
-			// Convert &'static str to PathBuf
-			let static_dir = std::path::PathBuf::from(config.static_dir);
-
-			// Skip if already in staticfiles_dirs (manual config takes precedence)
-			if !all_dirs.contains(&static_dir) {
-				if self.options.verbosity > 1 {
-					println!(
-						"Auto-discovered static files from app '{}': {}",
-						config.app_label,
-						static_dir.display()
-					);
-				}
-				all_dirs.push(static_dir);
 			}
 		}
 
@@ -363,8 +341,26 @@ impl CollectStaticCommand {
 		Ok(())
 	}
 
-	fn validate_reserved_sources(&self) -> Result<(), io::Error> {
-		for source in &self.config.staticfiles_dirs {
+	fn static_source_dirs(&self) -> Vec<PathBuf> {
+		let mut directories = self.config.staticfiles_dirs.clone();
+		for config in ::reinhardt_apps::get_app_static_files() {
+			let static_dir = PathBuf::from(config.static_dir);
+			if !directories.contains(&static_dir) {
+				if self.options.verbosity > 1 {
+					println!(
+						"Auto-discovered static files from app '{}': {}",
+						config.app_label,
+						static_dir.display()
+					);
+				}
+				directories.push(static_dir);
+			}
+		}
+		directories
+	}
+
+	fn validate_reserved_sources(&self, sources: &[PathBuf]) -> Result<(), io::Error> {
+		for source in sources {
 			let reserved = source.join("__reinhardt__");
 			if reserved.exists() {
 				return Err(io::Error::new(
@@ -379,7 +375,17 @@ impl CollectStaticCommand {
 		Ok(())
 	}
 
-	fn write_virtual_asset(&mut self, asset: &VirtualStaticAsset) -> Result<CopyResult, io::Error> {
+	fn register_virtual_assets(&mut self, assets: &[VirtualStaticAsset]) -> Result<(), io::Error> {
+		for asset in assets {
+			self.virtual_asset_output_path(asset)?;
+		}
+		Ok(())
+	}
+
+	fn virtual_asset_output_path(
+		&mut self,
+		asset: &VirtualStaticAsset,
+	) -> Result<String, io::Error> {
 		if !asset.logical_path.starts_with("__reinhardt__/") {
 			return Err(io::Error::new(
 				io::ErrorKind::InvalidInput,
@@ -389,15 +395,19 @@ impl CollectStaticCommand {
 				),
 			));
 		}
-		let output_path = if self.options.enable_hashing {
+		if self.options.enable_hashing {
 			let hash = Self::calculate_bytes_hash(&asset.bytes);
 			let hashed = self.get_hashed_filename(&asset.logical_path, &hash);
 			self.manifest
 				.insert(asset.logical_path.clone(), hashed.clone());
-			hashed
+			Ok(hashed)
 		} else {
-			asset.logical_path.clone()
-		};
+			Ok(asset.logical_path.clone())
+		}
+	}
+
+	fn write_virtual_asset(&mut self, asset: &VirtualStaticAsset) -> Result<CopyResult, io::Error> {
+		let output_path = self.virtual_asset_output_path(asset)?;
 		let destination = self.config.static_root.join(&output_path);
 		if destination.exists() && !self.options.clear && fs::read(&destination)? == asset.bytes {
 			return Ok(CopyResult::Unmodified);

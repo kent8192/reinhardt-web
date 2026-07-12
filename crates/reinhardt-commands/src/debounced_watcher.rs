@@ -225,6 +225,13 @@ fn normalized_path(path: &std::path::Path) -> String {
 	path.to_string_lossy().replace('\\', "/")
 }
 
+fn paths_change_cargo_metadata(paths: &[PathBuf]) -> bool {
+	paths.iter().any(|path| {
+		path.file_name()
+			.is_some_and(|name| name == "Cargo.toml" || name == "Cargo.lock")
+	})
+}
+
 #[cfg(feature = "pages")]
 fn wasm_rebuild_succeeded(outcome: &crate::wasm_rebuild_pipeline::WasmRebuildOutcome) -> bool {
 	matches!(
@@ -274,6 +281,28 @@ fn notify_browser_reload(hmr_tx: Option<&broadcast::Sender<String>>, reason: &st
 }
 
 #[cfg(feature = "pages")]
+fn commit_pending_component_styles(
+	component_styles: Option<&std::sync::Arc<std::sync::Mutex<crate::ComponentStyleState>>>,
+) -> bool {
+	let Some(state) = component_styles else {
+		return true;
+	};
+	match state.lock() {
+		Ok(mut state) => match state.commit_pending() {
+			Ok(_) => true,
+			Err(error) => {
+				eprintln!("component stylesheet replacement failed after rebuild: {error}");
+				false
+			}
+		},
+		Err(_) => {
+			eprintln!("component stylesheet state lock was poisoned after rebuild");
+			false
+		}
+	}
+}
+
+#[cfg(feature = "pages")]
 fn notify_static_page_patch(
 	hmr_tx: Option<&broadcast::Sender<String>>,
 	paths: &[PathBuf],
@@ -313,12 +342,11 @@ pub async fn run_rebuild_for_paths(
 		"[hot-reload] change detected ({} path(s))",
 		paths.len()
 	));
+	let targets = rebuild_targets_for_paths(&paths, config);
+	#[cfg(feature = "pages")]
+	let metadata_changed = paths_change_cargo_metadata(&paths);
 	#[cfg(feature = "pages")]
 	let style_stage = if let Some(state) = &config.component_styles {
-		let metadata_changed = paths.iter().any(|path| {
-			path.file_name()
-				.is_some_and(|name| name == "Cargo.toml" || name == "Cargo.lock")
-		});
 		match state.lock() {
 			Ok(mut state) => state.refresh(metadata_changed),
 			Err(_) => crate::ComponentStyleStageResult::Failed,
@@ -327,7 +355,7 @@ pub async fn run_rebuild_for_paths(
 		crate::ComponentStyleStageResult::Unchanged
 	};
 	#[cfg(feature = "pages")]
-	if style_stage == crate::ComponentStyleStageResult::CssOnly {
+	if style_stage == crate::ComponentStyleStageResult::CssOnly && !metadata_changed {
 		if let Some(tx) = &config.hmr_tx {
 			let message = reinhardt_pages::hmr::HmrMessage::CssUpdate {
 				path: crate::COMPONENT_STYLES_PATH.to_string(),
@@ -339,13 +367,12 @@ pub async fn run_rebuild_for_paths(
 		ctx.info("[hot-reload] component stylesheet updated without rebuilding");
 		return;
 	}
-	let targets = rebuild_targets_for_paths(&paths, config);
 	if !targets.has_work() {
 		ctx.info("[hot-reload] no rebuild target matched; waiting for next change");
 		return;
 	}
 	#[cfg(feature = "pages")]
-	if style_stage != crate::ComponentStyleStageResult::Failed
+	if style_stage == crate::ComponentStyleStageResult::Unchanged
 		&& notify_static_page_patch(config.hmr_tx.as_ref(), &paths, targets)
 	{
 		ctx.info("[hot-reload] static page patch sent without rebuilding WASM");
@@ -396,7 +423,10 @@ pub async fn run_rebuild_for_paths(
 			false
 		};
 		#[cfg(feature = "pages")]
-		if wasm_ok && server_ready {
+		if wasm_ok
+			&& server_ready
+			&& commit_pending_component_styles(config.component_styles.as_ref())
+		{
 			notify_browser_reload(
 				config.hmr_tx.as_ref(),
 				"Rust rebuild completed successfully",
@@ -407,7 +437,7 @@ pub async fn run_rebuild_for_paths(
 	} else if targets.wasm {
 		let wasm_ok = wasm_fut.await;
 		#[cfg(feature = "pages")]
-		if wasm_ok {
+		if wasm_ok && commit_pending_component_styles(config.component_styles.as_ref()) {
 			notify_browser_reload(
 				config.hmr_tx.as_ref(),
 				"WASM rebuild completed successfully",
@@ -434,7 +464,7 @@ pub async fn run_rebuild_for_paths(
 			false
 		};
 		#[cfg(feature = "pages")]
-		if server_ready {
+		if server_ready && commit_pending_component_styles(config.component_styles.as_ref()) {
 			notify_browser_reload(
 				config.hmr_tx.as_ref(),
 				"Server rebuild completed successfully",
@@ -665,6 +695,24 @@ mod tests {
 
 		// Assert
 		assert!(result.is_none());
+	}
+
+	#[test]
+	fn metadata_change_is_detected_when_batched_with_a_stylesheet_source_change() {
+		// Arrange
+		let paths = vec![
+			PathBuf::from("/project/src/styles.rs"),
+			PathBuf::from("/project/Cargo.toml"),
+		];
+
+		// Act
+		let changed = paths_change_cargo_metadata(&paths);
+
+		// Assert
+		assert!(
+			changed,
+			"Cargo metadata must keep the rebuild pipeline active"
+		);
 	}
 
 	#[cfg(feature = "pages")]

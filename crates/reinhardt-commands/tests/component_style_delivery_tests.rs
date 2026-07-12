@@ -49,6 +49,44 @@ fn physical_sources_cannot_claim_the_reserved_namespace() {
 	fs::create_dir_all(source.join("__reinhardt__")).unwrap();
 	fs::write(source.join("__reinhardt__/components.css"), "stale").unwrap();
 	let destination = directory.path().join("destination");
+	fs::create_dir_all(&destination).unwrap();
+	fs::write(destination.join("retained-before-preflight.txt"), "retain").unwrap();
+	let config = StaticFilesConfig {
+		static_root: destination.clone(),
+		static_url: "/static/".to_string(),
+		staticfiles_dirs: vec![source],
+		media_url: None,
+	};
+	let mut command = CollectStaticCommand::new(
+		config,
+		CollectStaticOptions {
+			clear: true,
+			..CollectStaticOptions::default()
+		},
+	);
+
+	let error = command
+		.execute()
+		.expect_err("reserved source must fail preflight");
+
+	assert_eq!(error.kind(), std::io::ErrorKind::AlreadyExists);
+	assert_eq!(
+		fs::read_to_string(destination.join("retained-before-preflight.txt")).unwrap(),
+		"retain"
+	);
+}
+
+#[rstest]
+fn physical_index_templates_resolve_hashed_virtual_component_styles() {
+	let directory = tempfile::tempdir().expect("create source tree");
+	let source = directory.path().join("source");
+	fs::create_dir_all(&source).expect("create static source");
+	fs::write(
+		source.join("index.html"),
+		"<link rel=\"stylesheet\" href=\"{{ static_url(\"__reinhardt__/components.css\") }}\">\n",
+	)
+	.expect("write static index template");
+	let destination = directory.path().join("destination");
 	let config = StaticFilesConfig {
 		static_root: destination.clone(),
 		static_url: "/static/".to_string(),
@@ -56,11 +94,21 @@ fn physical_sources_cannot_claim_the_reserved_namespace() {
 		media_url: None,
 	};
 	let mut command = CollectStaticCommand::new(config, CollectStaticOptions::default());
+	command.add_virtual_asset(VirtualStaticAsset {
+		logical_path: "__reinhardt__/components.css".to_string(),
+		bytes: b".card { color: red; }\n".to_vec(),
+	});
 
-	let error = command
-		.execute()
-		.expect_err("reserved source must fail preflight");
+	command.execute().expect("collect templated static assets");
 
-	assert_eq!(error.kind(), std::io::ErrorKind::AlreadyExists);
-	assert!(!destination.exists());
+	let manifest: serde_json::Value =
+		serde_json::from_slice(&fs::read(destination.join("manifest.json")).unwrap()).unwrap();
+	let hashed = manifest["paths"]["__reinhardt__/components.css"]
+		.as_str()
+		.expect("hashed virtual stylesheet mapping");
+	let rendered = fs::read_to_string(destination.join("index.html")).unwrap();
+	assert_eq!(
+		rendered,
+		format!("<link rel=\"stylesheet\" href=\"/static/{hashed}\">\n")
+	);
 }

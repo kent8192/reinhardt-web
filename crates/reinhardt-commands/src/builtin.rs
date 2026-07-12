@@ -1753,6 +1753,11 @@ struct AutoreloadChildOptions<'a> {
 	generated_style_root: Option<&'a std::path::Path>,
 }
 
+#[cfg(feature = "server")]
+fn configured_static_url(base_dir: &std::path::Path) -> Result<String, String> {
+	crate::StaticAssetSettings::from_project_dir(base_dir).map(|settings| settings.static_url)
+}
+
 impl RunServerCommand {
 	/// Consume `UrlPatternsRegistration` `inventory` entries and install the
 	/// merged `ServerRouter` as the process-wide HTTP router.
@@ -2351,8 +2356,7 @@ impl RunServerCommand {
 	// Allow many arguments: CLI command handler needs to accept all server configuration options
 	#[allow(clippy::too_many_arguments)]
 	async fn run_server(
-		// Context parameter reserved for future extensions (e.g., accessing global config)
-		#[allow(unused_variables)] ctx: &CommandContext,
+		ctx: &CommandContext,
 		address: &str,
 		noreload: bool,
 		// Only consumed by the autoreload pipeline; allow unused when feature is off.
@@ -2511,10 +2515,23 @@ impl RunServerCommand {
 			use reinhardt_utils::staticfiles::middleware::{
 				StaticFilesConfig, StaticFilesMiddleware,
 			};
+			let generated_style_url =
+				match PathResolver::find_project_root().or_else(|| std::env::current_dir().ok()) {
+					Some(project_root) => match configured_static_url(&project_root) {
+						Ok(url) => url,
+						Err(error) => {
+							ctx.warning(&format!(
+								"Failed to load static URL for generated component styles: {error}. Using /static/."
+							));
+							"/static/".to_string()
+						}
+					},
+					None => "/static/".to_string(),
+				};
 
 			if let Some(generated_root) = generated_style_root {
 				let mut generated_config = StaticFilesConfig::new(generated_root.to_path_buf())
-					.url_prefix("/static/")
+					.url_prefix(generated_style_url)
 					.spa_mode(false)
 					.auto_inject_wasm(false);
 				#[cfg(debug_assertions)]
@@ -4444,6 +4461,24 @@ mod tests {
 		let result = cmd.execute(&ctx).await;
 		// May fail if environment has strict checks, but should handle gracefully
 		assert!(result.is_ok() || result.is_err());
+	}
+
+	#[cfg(feature = "server")]
+	#[test]
+	fn generated_component_styles_use_the_project_static_url() {
+		let directory = tempfile::tempdir().expect("create project directory");
+		let settings_dir = directory.path().join("settings");
+		std::fs::create_dir_all(&settings_dir).expect("create settings directory");
+		std::fs::write(
+			settings_dir.join("base.toml"),
+			"[static]\nurl = \"/assets/\"\n",
+		)
+		.expect("write static settings");
+
+		let static_url = configured_static_url(directory.path())
+			.expect("resolve the generated stylesheet URL prefix");
+
+		assert_eq!(static_url, "/assets/");
 	}
 
 	#[test]
