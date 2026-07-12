@@ -66,8 +66,8 @@
 //!
 //!     let increment = use_callback({
 //!         let set_count = set_count.clone();
-//!         move |_| set_count(count.get() + 1)
-//!     });
+//!         move |_| set_count.update(|current| current + 1)
+//!     }, ());
 //!
 //!     use_effect({
 //!         let count = count.clone();
@@ -116,7 +116,8 @@ pub use memo::{use_callback, use_callback_with, use_memo};
 pub use refs::{Ref, use_ref};
 pub use router::{NavigateError, RouterHandle, use_router};
 pub use state::{
-	Dispatch, SetState, SharedSetState, SharedSignal, use_reducer, use_shared_state, use_state,
+	Dispatch, SetState, SetStateExt, SharedSetState, SharedSignal, use_reducer, use_shared_state,
+	use_state,
 };
 pub use sync::{SignalWithSubscription, SubscriptionHandle, use_sync_external_store};
 pub use transition::{TransitionState, use_deferred_value, use_transition};
