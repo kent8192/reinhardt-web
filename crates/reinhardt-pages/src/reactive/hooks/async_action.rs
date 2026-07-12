@@ -220,15 +220,15 @@ impl<T: Clone + 'static, E: Clone + 'static> Action<T, E> {
 	}
 
 	/// Returns an event callback that dispatches this action with `payload`.
-	///
-	/// Native component handlers can execute, but actions do not poll their async
-	/// operations on native targets. This adapter is therefore intentionally inert.
 	#[cfg(native)]
 	pub fn dispatching<Event: 'static, P: Clone + 'static>(
 		&self,
-		_payload: P,
+		payload: P,
 	) -> Callback<Event, ()> {
-		Callback::new(|_| {})
+		let action = self.clone();
+		Callback::new(move |_| {
+			action.dispatch(payload.clone());
+		})
 	}
 
 	/// Returns an event callback that computes its payload at dispatch time.
@@ -244,18 +244,15 @@ impl<T: Clone + 'static, E: Clone + 'static> Action<T, E> {
 	}
 
 	/// Returns an event callback that computes its payload at dispatch time.
-	///
-	/// Native component handlers can execute, but actions do not poll their async
-	/// operations on native targets. This adapter is therefore intentionally inert.
 	#[cfg(native)]
-	pub fn dispatching_with<Event: 'static, P: 'static, F>(
-		&self,
-		_payload: F,
-	) -> Callback<Event, ()>
+	pub fn dispatching_with<Event: 'static, P: 'static, F>(&self, payload: F) -> Callback<Event, ()>
 	where
 		F: Fn() -> P + 'static,
 	{
-		Callback::new(|_| {})
+		let action = self.clone();
+		Callback::new(move |_| {
+			action.dispatch(payload());
+		})
 	}
 
 	fn append_success_callback(&self, callback: SuccessCallback<T>) {

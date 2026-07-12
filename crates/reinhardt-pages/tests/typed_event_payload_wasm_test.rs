@@ -4,6 +4,8 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use js_sys::{Array, Function, Reflect};
+#[cfg(feature = "i18n")]
+use reinhardt_i18n::TranslationContext;
 use reinhardt_pages::event::{
 	AbortEvent, AnimationStartEvent, BeforeXrSelectEvent, BeginEvent, ChangeEvent, ClickEvent,
 	CommandEvent, CompositionStartEvent, CopyEvent, DblClickEvent, DragStartEvent, EncryptedEvent,
@@ -14,6 +16,11 @@ use reinhardt_pages::event::{
 use wasm_bindgen::JsCast;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen_test::*;
+
+#[cfg(feature = "i18n")]
+use reinhardt_pages::{
+	I18nContext, provide_i18n_context, raw_async_event_handler, use_i18n_context,
+};
 
 wasm_bindgen_test_configure!(run_in_browser);
 
@@ -122,6 +129,32 @@ async fn nested_targets_and_async_current_target_are_snapshotted() {
 		"div"
 	);
 	assert_eq!(payload.raw().type_(), "click");
+}
+
+#[cfg(feature = "i18n")]
+#[wasm_bindgen_test(async)]
+async fn raw_async_event_handlers_preserve_i18n_context_across_await() {
+	let context = I18nContext::new(TranslationContext::new("ja", "en-US"));
+	let observed_context = Rc::new(Cell::new(false));
+	let handler = raw_async_event_handler({
+		let observed_context = Rc::clone(&observed_context);
+		move |_| {
+			let observed_context = Rc::clone(&observed_context);
+			async move {
+				reinhardt_pages::platform::defer_yield().await;
+				observed_context.set(use_i18n_context().is_some());
+			}
+		}
+	});
+
+	let event = web_sys::Event::new("custom").expect("custom event must be created");
+	let _guard = provide_i18n_context(context);
+	handler(event);
+	drop(_guard);
+	reinhardt_pages::platform::defer_yield().await;
+	reinhardt_pages::platform::defer_yield().await;
+
+	assert!(observed_context.get());
 }
 
 #[wasm_bindgen_test]

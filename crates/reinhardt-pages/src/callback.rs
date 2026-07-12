@@ -67,7 +67,7 @@ type EventArg = crate::component::NativeEvent;
 ///     move |_| count.update(|n| *n += 1)
 /// });
 /// ```
-// Callback struct with conditional Send + Sync bounds for non-WASM targets
+// Callback struct for WASM targets.
 #[cfg(wasm)]
 pub struct Callback<Args = EventArg, Ret = ()> {
 	inner: Arc<dyn Fn(Args) -> Ret + 'static>,
@@ -76,10 +76,12 @@ pub struct Callback<Args = EventArg, Ret = ()> {
 /// A type-safe, cloneable callback wrapper for event handlers (server-side version).
 ///
 /// See the WASM version for full documentation.
-/// This version requires `Send + Sync` bounds for thread-safe server-side usage.
+///
+/// Native page handlers share the single-threaded event contract of
+/// [`PageEventHandler`], so callbacks may capture reactive state.
 #[cfg(native)]
 pub struct Callback<Args = EventArg, Ret = ()> {
-	inner: Arc<dyn Fn(Args) -> Ret + Send + Sync + 'static>,
+	inner: Arc<dyn Fn(Args) -> Ret + 'static>,
 }
 
 // WASM implementation without Send + Sync bounds
@@ -115,7 +117,7 @@ impl<Args, Ret> Callback<Args, Ret> {
 	}
 }
 
-// Non-WASM implementation with Send + Sync bounds
+// Non-WASM implementation
 #[cfg(native)]
 impl<Args, Ret> Callback<Args, Ret> {
 	/// Creates a new Callback from a function or closure.
@@ -133,7 +135,7 @@ impl<Args, Ret> Callback<Args, Ret> {
 	/// ```
 	pub fn new<F>(f: F) -> Self
 	where
-		F: Fn(Args) -> Ret + Send + Sync + 'static,
+		F: Fn(Args) -> Ret + 'static,
 	{
 		Self { inner: Arc::new(f) }
 	}
@@ -243,21 +245,19 @@ where
 
 /// Internal helper used by `use_callback` / `use_callback_with` (native).
 ///
-/// See the `cfg(wasm)` variant above for full documentation. The native
-/// variant additionally requires the closure to be `Send + Sync` so the
-/// resulting `Callback` matches `Callback::new`'s native bounds.
+/// See the `cfg(wasm)` variant above for full documentation.
 #[cfg(native)]
 #[track_caller]
 #[allow(dead_code)]
 pub(crate) fn callback_with_deps<Args, Ret>(
-	f: impl Fn(Args) -> Ret + Send + Sync + 'static,
+	f: impl Fn(Args) -> Ret + 'static,
 	deps: reinhardt_core::reactive::deps::Deps,
 ) -> Callback<Args, Ret>
 where
 	Args: 'static,
 	Ret: 'static,
 {
-	type InnerArc<A, R> = Arc<dyn Fn(A) -> R + Send + Sync + 'static>;
+	type InnerArc<A, R> = Arc<dyn Fn(A) -> R + 'static>;
 
 	let loc = std::panic::Location::caller();
 	let key: &'static str = {
@@ -574,7 +574,14 @@ where
 	H: Fn(crate::platform::Event) -> Fut + 'static,
 	Fut: Future<Output = ()> + 'static,
 {
-	Arc::new(move |event| spawn_task(handler(event)))
+	Arc::new(move |event| {
+		#[cfg(feature = "i18n")]
+		let i18n_context = crate::i18n::current_i18n_callback_context();
+		let future = handler(event);
+		#[cfg(feature = "i18n")]
+		let future = crate::i18n::with_optional_i18n_context_async(i18n_context, future);
+		spawn_task(future);
+	})
 }
 
 /// Stores an asynchronous raw cross-target event handler.

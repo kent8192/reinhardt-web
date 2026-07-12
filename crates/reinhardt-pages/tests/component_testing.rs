@@ -12,13 +12,13 @@ use reinhardt_core::types::page::{
 use reinhardt_pages::callback::async_handler;
 use reinhardt_pages::component::suspense::SuspenseBoundary;
 use reinhardt_pages::event::{ClickEvent, EventPayload, FocusEvent, typed_event_handler};
-use reinhardt_pages::page;
 use reinhardt_pages::prelude::spawn_task;
 use reinhardt_pages::reactive::hooks::use_action;
 use reinhardt_pages::reactive::{ResourceState, Signal, use_resource};
 #[cfg(feature = "msw")]
 use reinhardt_pages::server_fn::{ServerFnError, server_fn};
 use reinhardt_pages::testing::component::{EventError, EventFixture, Role, render};
+use reinhardt_pages::{Callback, NativeEvent, page};
 use rstest::rstest;
 use serial_test::serial;
 
@@ -93,6 +93,30 @@ fn save_component() -> Page {
 		)
 		.child(Page::reactive(move || match action.result() {
 			Some(value) => text_page(value),
+			None => text_page("Idle"),
+		}))
+		.into_page()
+}
+
+fn action_dispatching_component() -> Page {
+	let action = use_action(|value: i32| async move { Ok::<i32, String>(value) });
+	let dispatch: Callback<NativeEvent, ()> = action.dispatching(5);
+	let dispatch_with: Callback<NativeEvent, ()> = action.dispatching_with(|| 6);
+	let result_action = action.clone();
+
+	PageElement::new("div")
+		.child(
+			PageElement::new("button")
+				.listener("click", move |event| dispatch.call(event))
+				.child("Dispatch fixed payload"),
+		)
+		.child(
+			PageElement::new("button")
+				.listener("click", move |event| dispatch_with.call(event))
+				.child("Dispatch computed payload"),
+		)
+		.child(Page::reactive(move || match result_action.result() {
+			Some(value) => text_page(value.to_string()),
 			None => text_page("Idle"),
 		}))
 		.into_page()
@@ -261,6 +285,23 @@ async fn suspense_pages_rerender_resolved_resource_after_settle() {
 
 	assert!(screen.query_by_text("Ready").is_some());
 	assert!(screen.query_by_text("Loading").is_none());
+}
+
+#[tokio::test]
+async fn action_dispatching_callbacks_schedule_native_actions() {
+	let screen = render(action_dispatching_component);
+
+	screen
+		.get_by_role(Role::Button, "Dispatch fixed payload")
+		.click();
+	screen.settle().await;
+	assert!(screen.query_by_text("5").is_some());
+
+	screen
+		.get_by_role(Role::Button, "Dispatch computed payload")
+		.click();
+	screen.settle().await;
+	assert!(screen.query_by_text("6").is_some());
 }
 
 #[test]
