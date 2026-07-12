@@ -94,9 +94,8 @@ impl<T: Clone + 'static> SetStateExt<T> for SetState<T> {
 		let signal = registered_set_state_signal(self).unwrap_or_else(|| {
 			panic!("SetStateExt::update is only available on setters returned by use_state")
 		});
-		signal.update(|current| {
-			*current = f(current);
-		});
+		let current = signal.get_untracked();
+		signal.set(f(&current));
 	}
 }
 
@@ -542,6 +541,16 @@ mod tests {
 		set_name2.update(|current| format!("{current} Smith"));
 
 		assert_eq!(name.get(), "Bob Smith");
+	}
+
+	#[test]
+	fn test_use_state_setter_functional_update_allows_reading_state() {
+		let (count, set_count) = use_state(1);
+		let count_for_update = count.clone();
+
+		set_count.update(|current| current + count_for_update.get());
+
+		assert_eq!(count.get(), 2);
 	}
 
 	#[test]
