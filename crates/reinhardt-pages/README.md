@@ -416,7 +416,9 @@ async fn refresh_loads_jobs() {
 
 The mock API uses `MockableServerFn` markers and therefore requires the
 `msw` feature. Use direct `server_fn` calls for business logic tests and
-WASM/browser tests for hydration or browser API coverage.
+WASM/browser tests for hydration or browser API coverage. The native renderer
+resolves reactive views, active suspense branches, and deferred content branches
+before exposing queryable text and roles.
 
 ## Architecture
 
@@ -556,13 +558,13 @@ transparent; streaming metadata is emitted outside the branch DOM.
 use reinhardt_pages::prelude::*;
 
 fn counter() -> View {
-    let (count, set_count) = use_state(|| 0);
+    let (count, set_count) = use_state(0);
 
     page!({
         div {
             p { { format!("Count: {}", count.get()) } }
             button {
-                @click: move |_| set_count.update(|n| *n + 1),
+                @click: move |_| set_count.update(|current| current + 1),
                 "Increment"
             }
         }

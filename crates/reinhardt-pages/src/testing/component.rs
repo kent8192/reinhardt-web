@@ -1,4 +1,7 @@
 //! Native component testing harness.
+//!
+//! The in-memory renderer resolves reactive views, active suspense branches,
+//! and deferred content branches before exposing queryable text and roles.
 
 mod error;
 mod events;

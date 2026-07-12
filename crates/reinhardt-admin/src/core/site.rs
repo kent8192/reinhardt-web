@@ -11,7 +11,7 @@ use async_trait::async_trait;
 use dashmap::DashMap;
 use parking_lot::RwLock;
 use reinhardt_core::macros::injectable;
-use reinhardt_di::{DiResult, FactoryOutput, Injectable, InjectionContext};
+use reinhardt_di::{DiResult, Injectable, InjectionContext, KeyedFactoryOutput};
 use std::sync::Arc;
 
 /// The main admin site that manages all registered models
@@ -454,8 +454,10 @@ impl Injectable for AdminSite {
 }
 
 #[reinhardt_di::injectable(scope = "singleton")]
-async fn admin_site_provider(#[inject] site: AdminSite) -> FactoryOutput<AdminSiteKey, AdminSite> {
-	FactoryOutput::new(site)
+async fn admin_site_provider(
+	#[inject] site: AdminSite,
+) -> KeyedFactoryOutput<AdminSiteKey, AdminSite> {
+	KeyedFactoryOutput::new(site)
 }
 
 #[cfg(all(test, server))]
@@ -481,9 +483,10 @@ mod tests {
 		singleton.set_arc(site);
 		let ctx = reinhardt_di::InjectionContext::builder(singleton).build();
 
-		let result =
-			reinhardt_di::Depends::<AdminSiteKey, AdminSite>::resolve_from_registry(&ctx, true)
-				.await;
+		let result = reinhardt_di::KeyedDepends::<AdminSiteKey, AdminSite>::resolve_from_registry(
+			&ctx, true,
+		)
+		.await;
 
 		assert!(result.is_ok());
 		assert_eq!(result.unwrap().name(), "Registry Admin");

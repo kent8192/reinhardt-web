@@ -2,8 +2,8 @@ use std::cell::Cell;
 use std::rc::Rc;
 
 use reinhardt_core::page::IntoPage;
-use reinhardt_core::reactive::Signal;
-use reinhardt_core::types::page::{Page, PageElement};
+use reinhardt_core::reactive::{ReactiveScope, Signal};
+use reinhardt_core::types::page::{DeferredNode, Page, PageElement, SuspenseNode};
 
 use super::{EventError, QueryError, Role, render};
 
@@ -23,10 +23,78 @@ fn renders_page_tree_and_pretty_output() {
 }
 
 #[test]
+fn suspense_nodes_render_the_active_branch() {
+	let pending_screen = render(Page::Suspense(SuspenseNode::new(
+		None,
+		|| true,
+		|| PageElement::new("span").child("Loading").into_page(),
+		|| PageElement::new("span").child("Ready").into_page(),
+	)));
+
+	assert_eq!(pending_screen.get_by_text("Loading").tag_name(), "span");
+	assert!(pending_screen.query_by_text("Ready").is_none());
+
+	let resolved_screen = render(Page::Suspense(SuspenseNode::new(
+		None,
+		|| false,
+		|| PageElement::new("span").child("Loading").into_page(),
+		|| PageElement::new("span").child("Ready").into_page(),
+	)));
+
+	assert_eq!(resolved_screen.get_by_text("Ready").tag_name(), "span");
+	assert!(resolved_screen.query_by_text("Loading").is_none());
+}
+
+#[test]
+fn deferred_nodes_render_content_branch() {
+	let screen = render(Page::Deferred(DeferredNode::new(
+		"deferred-test",
+		|| {
+			PageElement::new("span")
+				.child("Deferred fallback")
+				.into_page()
+		},
+		|| {
+			PageElement::new("span")
+				.child("Deferred content")
+				.into_page()
+		},
+	)));
+
+	assert_eq!(screen.get_by_text("Deferred content").tag_name(), "span");
+	assert!(screen.query_by_text("Deferred fallback").is_none());
+}
+
+#[test]
 fn pretty_text_only_screen_has_trailing_newline() {
 	let screen = render(Page::text("Hello"));
 
 	assert_eq!(screen.pretty(), "Hello\n");
+}
+
+#[test]
+fn renders_pending_suspense_branch() {
+	let screen = render(Page::Suspense(SuspenseNode::new(
+		None,
+		|| true,
+		|| PageElement::new("p").child("Loading").into_page(),
+		|| PageElement::new("main").child("Ready").into_page(),
+	)));
+
+	assert_eq!(screen.get_by_text("Loading").tag_name(), "p");
+	assert!(screen.query_by_text("Ready").is_none());
+}
+
+#[test]
+fn renders_deferred_content_branch() {
+	let screen = render(Page::Deferred(DeferredNode::new(
+		"deferred-content",
+		|| PageElement::new("p").child("Deferred loading").into_page(),
+		|| PageElement::new("main").child("Deferred ready").into_page(),
+	)));
+
+	assert_eq!(screen.get_by_text("Deferred ready").tag_name(), "main");
+	assert!(screen.query_by_text("Deferred loading").is_none());
 }
 
 #[test]
@@ -171,18 +239,22 @@ fn input_updates_internal_value_before_dispatch() {
 
 #[tokio::test]
 async fn detached_element_reads_return_error() {
-	let show = Signal::new(true);
-	let show_for_render = show.clone();
-	let screen = render(Page::reactive(move || {
-		if show_for_render.get() {
-			PageElement::new("button").child("Save").into_page()
-		} else {
-			Page::Empty
-		}
-	}));
-	let button = screen.get_by_role(Role::Button, "Save");
+	let scope = ReactiveScope::new();
+	let (show, screen, button) = scope.enter(|| {
+		let show = Signal::new(true);
+		let show_for_render = show;
+		let screen = render(Page::reactive(move || {
+			if show_for_render.get() {
+				PageElement::new("button").child("Save").into_page()
+			} else {
+				Page::Empty
+			}
+		}));
+		let button = screen.get_by_role(Role::Button, "Save");
+		(show, screen, button)
+	});
 
-	show.set(false);
+	scope.enter(|| show.set(false));
 	screen.settle().await;
 
 	assert_eq!(button.try_text(), Err(EventError::DetachedElement));

@@ -6,6 +6,7 @@
 //! ## Module Organization
 //!
 //! - `loader` - Fixture data loading from JSON, factory patterns
+//! - `database` - Model-derived and migration-backed test database fixtures
 //! - `mock` - mockall-based mock implementations for database backends
 //! - `testcontainers` - Docker container fixtures (PostgreSQL, Redis, LocalStack)
 //! - `resources` - Suite-wide shared resources with automatic lifecycle management
@@ -55,6 +56,8 @@
 // Module declarations
 /// Fixture-based API client utilities.
 pub mod client;
+/// Model-derived and migration-backed test database fixtures.
+pub mod database;
 /// Fixture file loading from JSON, YAML, and TOML formats.
 pub mod loader;
 /// Mock database backend fixtures using mockall.
@@ -84,8 +87,7 @@ pub mod validator;
 // Migration registry test fixtures
 pub mod migrations;
 
-// Schema creation fixtures for model-based table creation
-#[cfg(feature = "testcontainers")]
+// Schema creation fixtures for model-based table creation.
 pub mod schema;
 
 // Dependency Injection test fixtures
@@ -109,6 +111,11 @@ pub use client::api_client_from_url;
 pub use loader::{
 	Factory, FactoryBuilder, FixtureError, FixtureLoader, FixtureResult, api_client,
 	fixture_loader, random_test_key, temp_dir, test_config_value,
+};
+
+pub use crate::test_database;
+pub use database::{
+	TestDatabase, TestDatabaseBackend, TestDatabaseBuilder, TestDatabaseError, test_database,
 };
 
 // From mock module
@@ -179,8 +186,6 @@ pub use di::{
 // From di_overrides module
 pub use di_overrides::{DiOverrideBuilder, DiOverrides, injection_context_with_di_overrides};
 
-// From schema module (conditional on feature)
-#[cfg(feature = "testcontainers")]
 pub use schema::{
 	ModelSchemaInfo, SchemaError, create_migration_from_model, create_table_for_model,
 	create_table_operation_from_model, create_table_operations_from_models,
