@@ -177,6 +177,10 @@ impl ComponentStyleState {
 		let old = self.fingerprints;
 		let new = candidate.fingerprints;
 		if old == new {
+			if metadata_changed {
+				self.context = candidate_context;
+				self.extractor = candidate_extractor;
+			}
 			#[cfg(feature = "pages")]
 			{
 				self.pending = None;
@@ -307,6 +311,57 @@ mod tests {
 		.unwrap();
 		assert_eq!(state.refresh(false), ComponentStyleStageResult::CssOnly);
 		assert_ne!(std::fs::read(&output).unwrap(), last_good);
+	}
+
+	#[rstest]
+	fn refresh_updates_context_after_metadata_only_changes() {
+		let directory = tempfile::tempdir().expect("create temporary package");
+		std::fs::create_dir(directory.path().join("src")).unwrap();
+		let manifest_path = directory.path().join("Cargo.toml");
+		std::fs::write(
+			&manifest_path,
+			"[package]\nname = \"style-context-refresh\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[features]\nalt = []\n",
+		)
+		.unwrap();
+		let source_path = directory.path().join("src/lib.rs");
+		std::fs::write(
+			&source_path,
+			r#"
+#[cfg(feature = "alt")]
+#[style_def]
+static STYLES: CardStyles = style! { .card { color: red; } };
+
+#[cfg(not(feature = "alt"))]
+#[style_def]
+static STYLES: CardStyles = style! { .card { color: red; } };
+"#,
+		)
+		.unwrap();
+		let mut state =
+			ComponentStyleState::initialize(&manifest_path, None).expect("initialize style state");
+
+		std::fs::write(
+			&manifest_path,
+			"[package]\nname = \"style-context-refresh\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[features]\ndefault = [\"alt\"]\nalt = []\n",
+		)
+		.unwrap();
+		assert_eq!(state.refresh(true), ComponentStyleStageResult::Unchanged);
+
+		std::fs::write(
+			&source_path,
+			r#"
+#[cfg(feature = "alt")]
+#[style_def]
+static STYLES: CardStyles = style! { .card { color: blue; } };
+
+#[cfg(not(feature = "alt"))]
+#[style_def]
+static STYLES: CardStyles = style! { .card { color: red; } };
+"#,
+		)
+		.unwrap();
+
+		assert_eq!(state.refresh(false), ComponentStyleStageResult::CssOnly);
 	}
 
 	#[cfg(feature = "pages")]
