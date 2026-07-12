@@ -89,10 +89,8 @@ async fn boot_test_server(fixture_dir: &Path) -> (String, ServerGuard) {
 	use axum::Router;
 	use tower_http::services::ServeDir;
 
-	let app = Router::new().nest_service(
-		"/",
-		ServeDir::new(fixture_dir).append_index_html_on_directories(true),
-	);
+	let app = Router::new()
+		.fallback_service(ServeDir::new(fixture_dir).append_index_html_on_directories(true));
 
 	// Bind to 0.0.0.0 so the chromedp container can reach the listener via
 	// `host.docker.internal` on Linux CI. Refs #4111.
