@@ -88,6 +88,9 @@ pub async fn init_database(url: &str) -> reinhardt_core::exception::Result<()> {
 
 /// Initialize the global database connection with a specific pool size
 ///
+/// If the global connection is already initialized, this function returns
+/// successfully without opening another connection.
+///
 /// # Arguments
 ///
 /// * `url` - Database connection URL
@@ -108,8 +111,23 @@ pub async fn init_database_with_pool_size(
 	url: &str,
 	pool_size: Option<u32>,
 ) -> reinhardt_core::exception::Result<()> {
+	if let Some(db_cell) = DB.get()
+		&& db_cell.read().await.is_some()
+	{
+		return Ok(());
+	}
+
 	let conn = DatabaseConnection::connect_with_pool_size(url, pool_size).await?;
-	DB.get_or_init(|| Arc::new(RwLock::new(Some(conn))));
+
+	if let Some(db_cell) = DB.get() {
+		let mut guard = db_cell.write().await;
+		if guard.is_none() {
+			*guard = Some(conn);
+		}
+	} else {
+		DB.get_or_init(|| Arc::new(RwLock::new(Some(conn))));
+	}
+
 	Ok(())
 }
 
@@ -170,6 +188,19 @@ pub async fn reinitialize_database_with_pool_size(
 	}
 
 	Ok(())
+}
+
+/// Replace the global ORM database connection and return the previous value.
+///
+/// This is intended for test fixtures that need to mutate global ORM state while
+/// preserving RAII cleanup semantics. Passing `None` clears the global connection.
+#[doc(hidden)]
+pub async fn replace_database_connection_for_testing(
+	connection: Option<DatabaseConnection>,
+) -> Option<DatabaseConnection> {
+	let db = DB.get_or_init(|| Arc::new(RwLock::new(None)));
+	let mut guard = db.write().await;
+	std::mem::replace(&mut *guard, connection)
 }
 
 /// Get a reference to the global database connection
@@ -1717,6 +1748,25 @@ mod tests {
 	use crate::orm::inspection::FieldInfo;
 	use serde::{Deserialize, Serialize};
 	use std::collections::HashMap;
+
+	#[serial_test::serial(sqlx_drivers)]
+	#[tokio::test]
+	async fn init_database_skips_connection_when_already_initialized() {
+		let connection = crate::orm::connection::DatabaseConnection::connect("sqlite::memory:")
+			.await
+			.unwrap();
+		let previous = super::replace_database_connection_for_testing(Some(connection)).await;
+
+		let result = super::init_database("unsupported://must-not-connect").await;
+		let backend = super::get_connection()
+			.await
+			.map(|connection| connection.backend());
+
+		super::replace_database_connection_for_testing(previous).await;
+
+		result.expect("repeated initialization should not reconnect");
+		assert_eq!(backend.unwrap(), DatabaseBackend::Sqlite);
+	}
 
 	#[derive(Debug, Clone, Serialize, Deserialize)]
 	struct TestUser {
