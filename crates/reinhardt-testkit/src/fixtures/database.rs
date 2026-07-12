@@ -3,6 +3,8 @@
 //! [`TestDatabase`] creates a ready-to-use database for tests without requiring
 //! hand-written table DDL in each test module. Schema can come from [`Model`]
 //! metadata or from application migrations.
+//! Model-derived schemas retain field defaults, generated columns,
+//! relationships, constraints, and indexes.
 //!
 //! # Model-derived database
 //!
@@ -363,6 +365,7 @@ fn models_to_migration(models: &[ModelSchemaInfo]) -> Result<Vec<Migration>, Tes
 			fields: model.fields.clone(),
 			relationships: model.relationships.clone(),
 			constraints: model.constraints.clone(),
+			indexes: model.indexes.clone(),
 		})
 		.collect();
 
@@ -829,6 +832,15 @@ mod tests {
 				},
 			]
 		}
+
+		fn index_metadata() -> Vec<reinhardt_db::orm::inspection::IndexInfo> {
+			vec![reinhardt_db::orm::inspection::IndexInfo {
+				name: "test_users_name_idx".to_string(),
+				fields: vec!["name".to_string()],
+				unique: false,
+				condition: Some("name IS NOT NULL".to_string()),
+			}]
+		}
 	}
 
 	#[rstest]
@@ -852,6 +864,7 @@ mod tests {
 				fields: Vec::new(),
 				relationships: Vec::new(),
 				constraints: Vec::new(),
+				indexes: Vec::new(),
 			})
 			.migrations_from_provider(Vec::new);
 
@@ -880,6 +893,7 @@ mod tests {
 			fields: Vec::new(),
 			relationships: Vec::new(),
 			constraints: Vec::new(),
+			indexes: Vec::new(),
 		};
 		let builder = TestDatabase::builder().model_info(model);
 
@@ -889,6 +903,25 @@ mod tests {
 		assert_eq!(migrations[0].name, "0001_test_database_schema");
 		assert_eq!(migrations[0].app_label, "test_database");
 		assert!(migrations[0].initial.unwrap());
+	}
+
+	#[rstest]
+	fn model_source_preserves_model_indexes() {
+		let builder = TestDatabase::builder().model::<TestUser>();
+
+		let migrations = builder.resolve_migrations_for_test().unwrap();
+
+		assert!(migrations[0].operations.iter().any(|operation| matches!(
+			operation,
+			reinhardt_db::migrations::Operation::CreateIndex {
+				table,
+				columns,
+				where_clause,
+				..
+			} if table == "test_users"
+				&& columns == &vec!["name".to_string()]
+				&& where_clause.as_deref() == Some("name IS NOT NULL")
+		)));
 	}
 
 	#[rstest]

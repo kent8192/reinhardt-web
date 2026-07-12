@@ -21,6 +21,9 @@ Use `test_database!(ModelA, ModelB)` for schemas derived from `Model`
 metadata, or `TestDatabase::builder().migrations::<AppMigrations>()` when a
 test should run against application migrations.
 
+Derived schemas include model field defaults and generated columns,
+relationships, constraints, and indexes.
+
 ## Installation
 
 Add `reinhardt` to your `Cargo.toml`:

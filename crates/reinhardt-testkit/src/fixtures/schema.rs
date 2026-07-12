@@ -49,7 +49,9 @@ use reinhardt_db::migrations::{
 };
 use reinhardt_db::orm::Model;
 use reinhardt_db::orm::fields::FieldKwarg;
-use reinhardt_db::orm::inspection::{ConstraintInfo, ConstraintType, FieldInfo, RelationInfo};
+use reinhardt_db::orm::inspection::{
+	ConstraintInfo, ConstraintType, FieldInfo, IndexInfo, RelationInfo,
+};
 use reinhardt_db::orm::relationship::RelationshipType;
 
 /// Error type for schema operations
@@ -499,22 +501,21 @@ pub struct ModelSchemaInfo {
 	pub relationships: Vec<RelationInfo>,
 	/// Model-level check, unique, and foreign-key metadata.
 	pub constraints: Vec<ConstraintInfo>,
+	/// Model index metadata.
+	pub indexes: Vec<IndexInfo>,
 }
 
 impl ModelSchemaInfo {
 	/// Create ModelSchemaInfo from a Model type
 	pub fn from_model<M: Model>() -> Self {
 		Self {
-			name: std::any::type_name::<M>()
-				.split("::")
-				.last()
-				.unwrap_or("Unknown")
-				.to_string(),
+			name: std::any::type_name::<M>().to_string(),
 			table_name: M::table_name().to_string(),
 			app_label: M::app_label().to_string(),
 			fields: M::field_metadata(),
 			relationships: M::relationship_metadata(),
 			constraints: M::constraint_metadata(),
+			indexes: M::index_metadata(),
 		}
 	}
 
@@ -530,10 +531,13 @@ fn model_constraints_to_operations(constraints: &[ConstraintInfo]) -> Vec<Constr
 		.filter_map(|constraint| match constraint.constraint_type {
 			ConstraintType::Check => Some(Constraint::Check {
 				name: constraint.name.clone(),
-				expression: constraint.definition.clone(),
+				expression: normalize_check_expression(&constraint.definition),
 			}),
 			ConstraintType::Unique => {
 				let definition = constraint.definition.trim();
+				if definition.contains(" WHERE ") {
+					return None;
+				}
 				let columns = definition
 					.strip_prefix("UNIQUE (")
 					.and_then(|value| value.split(')').next())
@@ -553,9 +557,69 @@ fn model_constraints_to_operations(constraints: &[ConstraintInfo]) -> Vec<Constr
 		.collect()
 }
 
+fn normalize_check_expression(definition: &str) -> String {
+	let definition = definition.trim();
+	let Some(check_start) = definition.find("CHECK (") else {
+		return definition.to_string();
+	};
+	let expression = &definition[check_start + "CHECK (".len()..];
+	expression
+		.strip_suffix(')')
+		.unwrap_or(expression)
+		.to_string()
+}
+
+fn model_index_operations(model: &ModelSchemaInfo) -> Vec<Operation> {
+	let mut indexes = model.indexes.clone();
+	indexes.extend(model.constraints.iter().filter_map(|constraint| {
+		if constraint.constraint_type != ConstraintType::Unique {
+			return None;
+		}
+		let (columns, condition) = constraint.definition.trim().split_once(") WHERE ")?;
+		let columns = columns.strip_prefix("UNIQUE (")?;
+		Some(IndexInfo {
+			name: constraint.name.clone(),
+			fields: columns
+				.split(',')
+				.map(|field| field.trim().to_string())
+				.collect(),
+			unique: true,
+			condition: Some(condition.to_string()),
+		})
+	}));
+
+	indexes
+		.into_iter()
+		.map(|index| Operation::CreateIndex {
+			table: model.table_name.clone(),
+			columns: index
+				.fields
+				.into_iter()
+				.map(|name| {
+					model
+						.fields
+						.iter()
+						.find(|field| field.name == name)
+						.map_or(name, |field| field.db_column_name().to_string())
+				})
+				.collect(),
+			unique: index.unique,
+			index_type: None,
+			where_clause: index.condition,
+			concurrently: false,
+			expressions: None,
+			mysql_options: None,
+			operator_class: None,
+		})
+		.collect()
+}
+
 fn many_to_many_operations(model_infos: &[ModelSchemaInfo]) -> Result<Vec<Operation>, SchemaError> {
 	let mut operations = Vec::new();
-	let mut created_tables = std::collections::HashSet::new();
+	let mut created_tables: std::collections::HashSet<String> = model_infos
+		.iter()
+		.map(|model| model.table_name.clone())
+		.collect();
 
 	for source in model_infos {
 		for relation in source
@@ -770,7 +834,22 @@ pub fn create_table_operations_from_models(
 	// Build dependency graph
 	let models_with_deps: Vec<(String, Vec<String>)> = model_infos
 		.iter()
-		.map(|info| (info.name.clone(), info.dependencies()))
+		.map(|info| {
+			let dependencies = info
+				.dependencies()
+				.into_iter()
+				.filter_map(|dependency| {
+					model_infos
+						.iter()
+						.find(|candidate| {
+							candidate.name == dependency
+								|| candidate.name.ends_with(&format!("::{dependency}"))
+						})
+						.map(|candidate| candidate.table_name.clone())
+				})
+				.collect();
+			(info.table_name.clone(), dependencies)
+		})
 		.collect();
 
 	// Resolve order
@@ -779,7 +858,7 @@ pub fn create_table_operations_from_models(
 	// Create operations in resolved order
 	let name_to_info: HashMap<String, &ModelSchemaInfo> = model_infos
 		.iter()
-		.map(|info| (info.name.clone(), info))
+		.map(|info| (info.table_name.clone(), info))
 		.collect();
 
 	let mut operations = Vec::new();
@@ -817,6 +896,9 @@ pub fn create_table_operations_from_models(
 		}
 	}
 	operations.extend(many_to_many_operations(&model_infos)?);
+	for model in &model_infos {
+		operations.extend(model_index_operations(model));
+	}
 
 	Ok(operations)
 }
@@ -1064,6 +1146,7 @@ mod tests {
 				"Tag",
 			)],
 			constraints: vec![],
+			indexes: vec![],
 		};
 		let tag = ModelSchemaInfo {
 			name: "Tag".to_string(),
@@ -1072,6 +1155,7 @@ mod tests {
 			fields: vec![primary_key],
 			relationships: vec![],
 			constraints: vec![],
+			indexes: vec![],
 		};
 
 		let operations = create_table_operations_from_models(vec![article, tag]).unwrap();
@@ -1083,6 +1167,123 @@ mod tests {
 					&& columns.iter().any(|column| column.name == "tags_id")
 					&& constraints.iter().any(|constraint| matches!(constraint, Constraint::Unique { columns, .. } if columns == &vec!["articles_id".to_string(), "tags_id".to_string()]))
 		)));
+	}
+
+	#[rstest]
+	fn test_create_table_operations_preserves_models_with_duplicate_names() {
+		let model = |table_name: &str| ModelSchemaInfo {
+			name: "User".to_string(),
+			table_name: table_name.to_string(),
+			app_label: table_name.to_string(),
+			fields: vec![],
+			relationships: vec![],
+			constraints: vec![],
+			indexes: vec![],
+		};
+
+		let operations =
+			create_table_operations_from_models(vec![model("app_a_users"), model("app_b_users")])
+				.unwrap();
+
+		assert_eq!(
+			operations
+				.iter()
+				.filter(|operation| matches!(operation, Operation::CreateTable { .. }))
+				.count(),
+			2
+		);
+	}
+
+	#[rstest]
+	fn test_model_check_constraint_normalizes_full_sql_fragment() {
+		let constraints = model_constraints_to_operations(&[ConstraintInfo {
+			name: "age_check".to_string(),
+			constraint_type: ConstraintType::Check,
+			definition: "CONSTRAINT age_check CHECK (age >= 18)".to_string(),
+		}]);
+
+		assert!(matches!(
+			constraints.as_slice(),
+			[Constraint::Check { expression, .. }] if expression == "age >= 18"
+		));
+	}
+
+	#[rstest]
+	fn test_partial_unique_constraint_becomes_partial_unique_index() {
+		let model = ModelSchemaInfo {
+			name: "User".to_string(),
+			table_name: "users".to_string(),
+			app_label: "test".to_string(),
+			fields: vec![],
+			relationships: vec![],
+			constraints: vec![ConstraintInfo {
+				name: "active_email_unique".to_string(),
+				constraint_type: ConstraintType::Unique,
+				definition: "UNIQUE (email) WHERE deleted_at IS NULL".to_string(),
+			}],
+			indexes: vec![],
+		};
+
+		let operations = create_table_operations_from_models(vec![model]).unwrap();
+
+		assert!(operations.iter().any(|operation| matches!(
+			operation,
+			Operation::CreateIndex { table, columns, unique: true, where_clause, .. }
+				if table == "users"
+					&& columns == &vec!["email".to_string()]
+					&& where_clause.as_deref() == Some("deleted_at IS NULL")
+		)));
+	}
+
+	#[rstest]
+	fn test_explicit_many_to_many_through_model_is_not_recreated() {
+		let primary_key = FieldInfo {
+			name: "id".to_string(),
+			field_type: "IntegerField".to_string(),
+			nullable: false,
+			primary_key: true,
+			unique: false,
+			blank: false,
+			editable: true,
+			default: None,
+			db_default: None,
+			db_column: None,
+			choices: None,
+			attributes: HashMap::new(),
+		};
+		let article = ModelSchemaInfo {
+			name: "Article".to_string(),
+			table_name: "articles".to_string(),
+			app_label: "test".to_string(),
+			fields: vec![primary_key.clone()],
+			relationships: vec![
+				RelationInfo::new("tags", RelationshipType::ManyToMany, "Tag")
+					.with_through_table("article_tags"),
+			],
+			constraints: vec![],
+			indexes: vec![],
+		};
+		let through = ModelSchemaInfo {
+			name: "ArticleTag".to_string(),
+			table_name: "article_tags".to_string(),
+			app_label: "test".to_string(),
+			fields: vec![primary_key],
+			relationships: vec![],
+			constraints: vec![],
+			indexes: vec![],
+		};
+
+		let operations = create_table_operations_from_models(vec![article, through]).unwrap();
+
+		assert_eq!(
+			operations
+				.iter()
+				.filter(
+					|operation| matches!(operation, Operation::CreateTable { name, .. } if name == "article_tags")
+				)
+				.count(),
+			1
+		);
 	}
 
 	#[rstest]
@@ -1118,6 +1319,7 @@ mod tests {
 			fields: vec![],
 			relationships: vec![],
 			constraints: vec![],
+			indexes: vec![],
 		}];
 
 		let table_name = resolve_table_name_for_model("User", Some(&model_infos));
@@ -1139,6 +1341,7 @@ mod tests {
 			fields: vec![],
 			relationships: vec![],
 			constraints: vec![],
+			indexes: vec![],
 		}];
 
 		// Model not in infos falls back to snake_case
@@ -1249,6 +1452,7 @@ mod tests {
 			fields: vec![],
 			relationships: vec![],
 			constraints: vec![],
+			indexes: vec![],
 		}];
 
 		let relation = RelationInfo::new("author", RelationshipType::ManyToOne, "User")

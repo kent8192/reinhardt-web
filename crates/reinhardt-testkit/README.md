@@ -7,6 +7,10 @@ Core testing infrastructure for the Reinhardt framework.
 `TestDatabase` creates an isolated database for tests and applies schema from
 either `Model` metadata or application migrations.
 
+Model-derived schemas preserve physical column names, defaults, generated
+columns, relationships and through tables, model constraints, and indexes so
+ORM behavior matches migration-backed databases.
+
 ```rust,ignore
 use reinhardt_testkit::fixtures::{TestDatabase, test_database};
 
