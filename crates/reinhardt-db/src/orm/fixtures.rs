@@ -416,8 +416,8 @@ where
 				let field_info = field_metadata.iter().find(|field| {
 					field.name == *column || field.db_column.as_deref() == Some(column.as_str())
 				});
-				let field_is_none = field_info
-					.is_some_and(|field| field.nullable && object[column].is_null());
+				let field_is_none =
+					field_info.is_some_and(|field| field.nullable && object[column].is_null());
 				Manager::<M>::json_to_sea_value_for_field(
 					&object[column],
 					field_info,
@@ -501,7 +501,6 @@ where
 	}
 	Ok(())
 }
-
 
 #[cfg(feature = "migrations")]
 fn foreign_key_fixture_field_names<M>(
@@ -1288,12 +1287,14 @@ mod tests {
 		}
 
 		fn relationship_metadata() -> Vec<crate::orm::inspection::RelationInfo> {
-			vec![crate::orm::inspection::RelationInfo::new(
-				"author",
-				crate::orm::relationship::RelationshipType::ManyToOne,
-				"Author",
-			)
-			.with_foreign_key("writer_id")]
+			vec![
+				crate::orm::inspection::RelationInfo::new(
+					"author",
+					crate::orm::relationship::RelationshipType::ManyToOne,
+					"Author",
+				)
+				.with_foreign_key("writer_id"),
+			]
 		}
 
 		fn generated_field_names() -> &'static [&'static str] {
