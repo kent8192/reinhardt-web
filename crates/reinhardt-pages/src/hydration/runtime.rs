@@ -11,7 +11,9 @@ use std::collections::HashMap;
 use crate::dom::{Element, document};
 
 #[cfg(wasm)]
-use crate::component::{Page, store_reactive_node, with_reactive_node_store};
+use crate::component::{
+	Page, new_reactive_node_store, store_reactive_node, with_reactive_node_store,
+};
 
 #[cfg(wasm)]
 use crate::ssr::HYDRATION_ATTR_ID;
@@ -241,7 +243,8 @@ fn install_hydrated_reactive_nodes(element: &Element, view: &Page) {
 			}
 		}
 		Page::Reactive(reactive) => {
-			let rendered = reactive.render();
+			let render_store = new_reactive_node_store();
+			let rendered = with_reactive_node_store(&render_store, || reactive.render());
 			split_coalesced_text_children(element, std::slice::from_ref(&rendered));
 			let nodes = relevant_child_nodes(element);
 			let hydrated_node = crate::component::ReactiveNode::hydrate_at(
@@ -249,6 +252,7 @@ fn install_hydrated_reactive_nodes(element: &Element, view: &Page) {
 				None,
 				nodes.clone(),
 				reactive.clone().into_render(),
+				render_store,
 			);
 			let boundary_sibling = hydrated_node.as_ref().map(|node| node.marker_node());
 			if let Some(node) = hydrated_node.as_ref() {
@@ -274,11 +278,14 @@ fn install_hydrated_reactive_nodes(element: &Element, view: &Page) {
 			}
 		}
 		Page::ReactiveIf(reactive_if) => {
-			let branch_view = if reactive_if.condition() {
-				reactive_if.then_view()
-			} else {
-				reactive_if.else_view()
-			};
+			let branch_store = new_reactive_node_store();
+			let branch_view = with_reactive_node_store(&branch_store, || {
+				if reactive_if.condition() {
+					reactive_if.then_view()
+				} else {
+					reactive_if.else_view()
+				}
+			});
 			split_coalesced_text_children(element, std::slice::from_ref(&branch_view));
 			let nodes = relevant_child_nodes(element);
 			let (condition, then_view, else_view) = reactive_if.clone().into_parts();
@@ -289,6 +296,7 @@ fn install_hydrated_reactive_nodes(element: &Element, view: &Page) {
 				condition,
 				then_view,
 				else_view,
+				branch_store,
 			);
 			let boundary_sibling = hydrated_node.as_ref().map(|node| node.marker_node());
 			if let Some(node) = hydrated_node.as_ref() {
@@ -360,13 +368,15 @@ fn install_hydrated_child_reactive_nodes(
 ) {
 	match view {
 		Page::Reactive(reactive) => {
-			let rendered = reactive.render();
+			let render_store = new_reactive_node_store();
+			let rendered = with_reactive_node_store(&render_store, || reactive.render());
 			let mut boundary_sibling = next_sibling.clone();
 			let hydrated_node = crate::component::ReactiveNode::hydrate_at(
 				parent.clone(),
 				next_sibling.clone(),
 				nodes.to_vec(),
 				reactive.clone().into_render(),
+				render_store,
 			);
 			if let Some(node) = hydrated_node.as_ref() {
 				boundary_sibling = Some(node.marker_node());
@@ -389,11 +399,14 @@ fn install_hydrated_child_reactive_nodes(
 			}
 		}
 		Page::ReactiveIf(reactive_if) => {
-			let branch_view = if reactive_if.condition() {
-				reactive_if.then_view()
-			} else {
-				reactive_if.else_view()
-			};
+			let branch_store = new_reactive_node_store();
+			let branch_view = with_reactive_node_store(&branch_store, || {
+				if reactive_if.condition() {
+					reactive_if.then_view()
+				} else {
+					reactive_if.else_view()
+				}
+			});
 			let (condition, then_view, else_view) = reactive_if.clone().into_parts();
 			let mut boundary_sibling = next_sibling.clone();
 			let hydrated_node = crate::component::ReactiveIfNode::hydrate_at(
@@ -403,6 +416,7 @@ fn install_hydrated_child_reactive_nodes(
 				condition,
 				then_view,
 				else_view,
+				branch_store,
 			);
 			if let Some(node) = hydrated_node.as_ref() {
 				boundary_sibling = Some(node.marker_node());
@@ -881,6 +895,21 @@ pub fn mark_hydration_complete() {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[cfg(wasm)]
+	use crate::component::{IntoPage, PageElement, cleanup_reactive_nodes};
+	#[cfg(wasm)]
+	use crate::reactive::hooks::use_retained_effect;
+	#[cfg(wasm)]
+	use crate::reactive::{Signal, with_runtime};
+	#[cfg(wasm)]
+	use std::cell::RefCell;
+	#[cfg(wasm)]
+	use std::rc::Rc;
+	#[cfg(wasm)]
+	use wasm_bindgen_test::*;
+
+	#[cfg(wasm)]
+	wasm_bindgen_test_configure!(run_in_browser);
 
 	#[test]
 	fn test_hydration_context_new() {
@@ -933,5 +962,57 @@ mod tests {
 		// Non-WASM version should return empty context
 		let ctx = HydrationContext::from_window().unwrap();
 		assert!(!ctx.is_hydrated());
+	}
+
+	#[cfg(wasm)]
+	#[wasm_bindgen_test]
+	fn hydration_preview_replaces_retained_effect_in_same_render_store() {
+		cleanup_reactive_nodes();
+		let document = web_sys::window().unwrap().document().unwrap();
+		let root = document.create_element("div").unwrap();
+		root.set_inner_html("<span>value:0</span>");
+		document.body().unwrap().append_child(&root).unwrap();
+
+		let render_signal = Signal::new(0_i32);
+		let effect_signal = Signal::new(0_i32);
+		let effect_log = Rc::new(RefCell::new(Vec::new()));
+		let view = Page::reactive({
+			let render_signal = render_signal.clone();
+			let effect_signal = effect_signal.clone();
+			let effect_log = Rc::clone(&effect_log);
+			move || {
+				let render_value = render_signal.get();
+				use_retained_effect(
+					{
+						let effect_signal = effect_signal.clone();
+						let effect_log = Rc::clone(&effect_log);
+						move || {
+							let value = effect_signal.get();
+							effect_log.borrow_mut().push(format!("run:{value}"));
+							let effect_log = Rc::clone(&effect_log);
+							Some(move || effect_log.borrow_mut().push("cleanup".to_string()))
+						}
+					},
+					(effect_signal.clone(),),
+				);
+				PageElement::new("span")
+					.child(format!("value:{render_value}"))
+					.into_page()
+			}
+		});
+
+		install_hydrated_reactive_nodes(&Element::new(root.clone()), &view);
+		effect_signal.set(1);
+		with_runtime(|runtime| runtime.flush_updates());
+
+		let log = effect_log.borrow();
+		assert_eq!(
+			log.iter().filter(|entry| entry.as_str() == "run:1").count(),
+			1,
+			"only the tracked hydration render should retain an effect: {log:?}"
+		);
+		drop(log);
+		cleanup_reactive_nodes();
+		root.remove();
 	}
 }

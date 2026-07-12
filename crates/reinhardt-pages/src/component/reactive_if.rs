@@ -14,6 +14,8 @@ use reinhardt_core::types::page::{BOOLEAN_ATTRS, Page, is_boolean_attr_truthy};
 #[cfg(wasm)]
 use std::cell::Cell;
 use std::cell::RefCell;
+#[cfg(native)]
+use std::future::Future;
 use std::rc::Rc;
 
 pub(crate) type ReactiveNodeStore = Rc<RefCell<Vec<Box<dyn std::any::Any>>>>;
@@ -28,6 +30,11 @@ thread_local! {
 	static ROOT_REACTIVE_NODES: ReactiveNodeStore = Rc::new(RefCell::new(Vec::new()));
 	#[cfg(wasm)]
 	static ACTIVE_REACTIVE_NODE_STORE: RefCell<Option<ReactiveNodeStore>> = RefCell::new(None);
+}
+
+#[cfg(native)]
+tokio::task_local! {
+	static SSR_REACTIVE_NODE_STORE: ReactiveNodeStore;
 }
 
 #[cfg(wasm)]
@@ -57,16 +64,20 @@ fn current_reactive_node_store() -> ReactiveNodeStore {
 
 #[cfg(native)]
 fn current_reactive_node_store() -> ReactiveNodeStore {
-	root_reactive_node_store()
+	SSR_REACTIVE_NODE_STORE
+		.try_with(Clone::clone)
+		.unwrap_or_else(|_| root_reactive_node_store())
 }
 
-#[cfg(wasm)]
 pub(crate) fn new_reactive_node_store() -> ReactiveNodeStore {
 	Rc::new(RefCell::new(Vec::new()))
 }
 
 pub(crate) fn clear_reactive_node_store(store: &ReactiveNodeStore) {
-	store.borrow_mut().clear();
+	let _stored_nodes = {
+		let mut stored_nodes = store.borrow_mut();
+		std::mem::take(&mut *stored_nodes)
+	};
 }
 
 #[cfg(wasm)]
@@ -74,6 +85,13 @@ pub(crate) fn with_reactive_node_store<R>(store: &ReactiveNodeStore, f: impl FnO
 	let previous = ACTIVE_REACTIVE_NODE_STORE.with(|active| active.replace(Some(store.clone())));
 	let _guard = ActiveReactiveNodeStoreGuard { previous };
 	f()
+}
+
+#[cfg(native)]
+pub(crate) async fn scope_reactive_node_store<R>(future: impl Future<Output = R>) -> R {
+	SSR_REACTIVE_NODE_STORE
+		.scope(new_reactive_node_store(), future)
+		.await
 }
 
 /// Stores a reactive node to keep it alive.
@@ -231,6 +249,7 @@ impl ReactiveIfNode {
 		condition: std::sync::Arc<dyn Fn() -> bool + 'static>,
 		then_view: std::sync::Arc<dyn Fn() -> Page + 'static>,
 		else_view: std::sync::Arc<dyn Fn() -> Page + 'static>,
+		reactive_nodes: ReactiveNodeStore,
 	) -> Option<Self> {
 		let document = web_sys::window()
 			.expect("window should be available")
@@ -248,7 +267,6 @@ impl ReactiveIfNode {
 		let last_condition_clone = last_condition.clone();
 		let start_marker_clone = Some(start_marker.clone());
 		let marker_clone = marker.clone();
-		let reactive_nodes = new_reactive_node_store();
 		let effect_reactive_node_store = current_reactive_node_store();
 		let branch_reactive_node_store = reactive_nodes.clone();
 		let first_run = Rc::new(Cell::new(true));
@@ -457,6 +475,7 @@ impl ReactiveNode {
 		next_sibling: Option<web_sys::Node>,
 		existing_nodes: Vec<web_sys::Node>,
 		render: std::sync::Arc<dyn Fn() -> Page + 'static>,
+		render_reactive_node_store: ReactiveNodeStore,
 	) -> Option<Self> {
 		let document = web_sys::window()
 			.expect("window should be available")
@@ -474,7 +493,6 @@ impl ReactiveNode {
 		let marker_clone = marker.clone();
 		let reactive_nodes = new_reactive_node_store();
 		let effect_reactive_node_store = current_reactive_node_store();
-		let render_reactive_node_store = new_reactive_node_store();
 		let mount_reactive_node_store = reactive_nodes.clone();
 		let first_run = Rc::new(Cell::new(true));
 		let first_run_clone = first_run.clone();

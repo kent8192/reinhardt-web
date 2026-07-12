@@ -146,9 +146,10 @@ where
 /// or portal scope is torn down, the stored guard is dropped and cleanup
 /// runs through the normal [`Effect`] RAII path.
 ///
-/// On native targets there is no DOM mount scope, so retained effects are
-/// held in the root reactive store until [`cleanup_reactive_nodes`] is
-/// called by tests or host code.
+/// Native SSR render passes use a request-scoped reactive store that disposes
+/// retained effects after each pass. Native calls outside SSR are held in the
+/// root reactive store until [`cleanup_reactive_nodes`] is called by tests or
+/// host code.
 ///
 /// # Example
 ///
@@ -172,7 +173,7 @@ where
 /// [`cleanup_reactive_nodes`]: crate::component::cleanup_reactive_nodes
 pub fn use_retained_effect<F, C, D>(f: F, deps: D)
 where
-	F: FnMut() -> Option<C> + 'static,
+	F: EffectCallback<C> + 'static,
 	C: FnOnce() + 'static,
 	D: IntoDeps,
 {
@@ -243,9 +244,10 @@ where
 /// underlying [`Effect`] alive in the active mounted view store and disposes
 /// it automatically when that store is cleared.
 ///
-/// On native targets there is no DOM mount scope, so retained layout effects
-/// are held in the root reactive store until [`cleanup_reactive_nodes`] is
-/// called by tests or host code.
+/// Native SSR render passes use a request-scoped reactive store that disposes
+/// retained layout effects after each pass. Native calls outside SSR are held
+/// in the root reactive store until [`cleanup_reactive_nodes`] is called by
+/// tests or host code.
 ///
 /// # Example
 ///
@@ -276,7 +278,7 @@ where
 /// [`cleanup_reactive_nodes`]: crate::component::cleanup_reactive_nodes
 pub fn use_retained_layout_effect<F, C, D>(f: F, deps: D)
 where
-	F: FnMut() -> Option<C> + 'static,
+	F: EffectCallback<C> + 'static,
 	C: FnOnce() + 'static,
 	D: IntoDeps,
 {
@@ -600,6 +602,50 @@ mod tests {
 
 	#[rstest::rstest]
 	#[serial]
+	fn test_use_retained_effect_accepts_unit_return() {
+		cleanup_reactive_nodes();
+		let called = Rc::new(RefCell::new(false));
+
+		use_retained_effect(
+			{
+				let called = Rc::clone(&called);
+				move || {
+					*called.borrow_mut() = true;
+				}
+			},
+			(),
+		);
+
+		assert!(*called.borrow());
+		cleanup_reactive_nodes();
+	}
+
+	#[rstest::rstest]
+	#[serial]
+	fn test_retained_cleanup_can_clear_own_scope_reentrantly() {
+		cleanup_reactive_nodes();
+		let cleanup_count = Rc::new(RefCell::new(0));
+
+		use_retained_effect(
+			{
+				let cleanup_count = Rc::clone(&cleanup_count);
+				move || {
+					let cleanup_count = Rc::clone(&cleanup_count);
+					Some(move || {
+						*cleanup_count.borrow_mut() += 1;
+						cleanup_reactive_nodes();
+					})
+				}
+			},
+			(),
+		);
+
+		cleanup_reactive_nodes();
+		assert_eq!(*cleanup_count.borrow(), 1);
+	}
+
+	#[rstest::rstest]
+	#[serial]
 	fn test_use_retained_effect_runs_cleanup_when_scope_clears_during_initial_run() {
 		cleanup_reactive_nodes();
 		let log = Rc::new(RefCell::new(Vec::new()));
@@ -653,6 +699,26 @@ mod tests {
 			"retained layout effect must run before subsequent synchronous work"
 		);
 
+		cleanup_reactive_nodes();
+	}
+
+	#[rstest::rstest]
+	#[serial]
+	fn test_use_retained_layout_effect_accepts_unit_return() {
+		cleanup_reactive_nodes();
+		let called = Rc::new(RefCell::new(false));
+
+		use_retained_layout_effect(
+			{
+				let called = Rc::clone(&called);
+				move || {
+					*called.borrow_mut() = true;
+				}
+			},
+			(),
+		);
+
+		assert!(*called.borrow());
 		cleanup_reactive_nodes();
 	}
 }

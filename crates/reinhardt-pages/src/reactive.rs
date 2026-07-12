@@ -73,8 +73,9 @@
 //!             }
 //!             None::<fn()>
 //!         }
-//!     }
-//! }, (element_ref,));
+//!     },
+//!     (element_ref,),
+//! );
 //! ```
 //!
 //! **When to use `use_layout_effect`**:
