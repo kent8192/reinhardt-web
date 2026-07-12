@@ -18,6 +18,7 @@
 ///     fn id(&self) -> String { self.id.to_string() }
 ///     fn is_authenticated(&self) -> bool { true }
 ///     fn is_admin(&self) -> bool { self.is_superuser }
+///     fn is_active(&self) -> bool { true }
 /// }
 ///
 /// let user = MyUser { id: 1, is_superuser: false };

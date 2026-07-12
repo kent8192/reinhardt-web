@@ -46,6 +46,7 @@ use reinhardt_auth::{AuthBackend, AuthIdentity};
 /// #     fn id(&self) -> String { self.id.to_string() }
 /// #     fn is_authenticated(&self) -> bool { true }
 /// #     fn is_admin(&self) -> bool { self.is_admin }
+/// #     fn is_active(&self) -> bool { true }
 /// # }
 /// #
 /// # struct MyHandler;
@@ -138,6 +139,7 @@ impl<S: SessionStore, A: AuthBackend> AuthenticationMiddleware<S, A> {
 	/// #     fn id(&self) -> String { self.id.to_string() }
 	/// #     fn is_authenticated(&self) -> bool { true }
 	/// #     fn is_admin(&self) -> bool { self.is_admin }
+	/// #     fn is_active(&self) -> bool { true }
 	/// # }
 	/// #
 	/// # // Simple test authentication backend
