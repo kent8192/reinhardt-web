@@ -109,6 +109,7 @@ docs/Gemfile.lock
 !.env.sample
 .ignore/
 .claude/
+.serena/
 .wtp.yml
 :memory:
 
