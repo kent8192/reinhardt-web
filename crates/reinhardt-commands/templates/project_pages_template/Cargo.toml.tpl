@@ -4,6 +4,11 @@ version = "0.1.0"
 edition = "2024"
 default-run = "manage"
 
+[workspace]
+resolver = "3"
+members = [
+]
+
 [profile.dev]
 codegen-units = 16
 debug = 0
@@ -49,19 +54,23 @@ clap = { version = "4", features = ["derive"] }
 console = "0.16.1"
 tokio = { version = "1", features = ["full"] }
 
-[features]
-default = ["with-reinhardt"]
-with-reinhardt = []
-
 [build-dependencies]
 cfg_aliases = "0.2"
 
+[features]
+default = ["with-reinhardt", "client-router"]
+client-router = []
+with-reinhardt = []
+msw = ["reinhardt/msw"]
+
 [dev-dependencies]
 rstest = "0.26.1"
-reqwest = { version = "0.12", features = ["json"] }
-tokio = { version = "1", features = ["full"] }
 
 [dev-dependencies.reinhardt]
 version = "{{ reinhardt_version }}"
 package = "reinhardt-web"
-features = ["test"]
+features = ["full", "test", "testcontainers"]
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+reqwest = { version = "0.12", features = ["json"] }
+tokio = { version = "1", features = ["full"] }

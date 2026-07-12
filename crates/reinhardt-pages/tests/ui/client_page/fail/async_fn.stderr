@@ -1,0 +1,5 @@
+error: #[client_page] functions must not be async
+ --> tests/ui/client_page/fail/async_fn.rs:4:5
+  |
+4 | pub async fn home_page() -> reinhardt_pages::Page {
+  |     ^^^^^

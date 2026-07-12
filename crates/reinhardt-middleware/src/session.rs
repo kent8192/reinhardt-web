@@ -13,9 +13,9 @@
 //! - `middleware` — `SessionMiddleware` that wires it all together
 //! - `injectable` — DI integration (`Injectable` impl for `SessionData`).
 //!   Handlers that want the store directly use
-//!   `#[inject] store: Depends<SessionStore>`; the middleware contributes
-//!   the store under `TypeId::of::<SessionStore>()` via `di_registrations()`.
-//!   See #4437.
+//!   `#[inject] store: Depends<SessionStoreKey, Arc<SessionStore>>`; the
+//!   middleware contributes both the raw store key used by `SessionData` and
+//!   the keyed factory output used by `Depends`. See #4437.
 //!
 //! All public types are re-exported here so existing call sites that
 //! used `crate::session::*` continue to work unchanged.
@@ -45,7 +45,7 @@ pub use config::SessionConfig;
 pub use data::{SessionData, USER_ID_SESSION_KEY};
 pub use id::{ActiveSessionId, SessionCookieName, SessionId};
 pub use middleware::SessionMiddleware;
-pub use store::SessionStore;
+pub use store::{SessionStore, SessionStoreKey};
 pub use value::{
 	OptionalSessionValue, OptionalSessionValueNamed, SessionKey, SessionValue, SessionValueNamed,
 	UserIdKey,

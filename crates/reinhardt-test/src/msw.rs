@@ -1,19 +1,15 @@
-//! MSW-style network-level request interception for WASM testing.
+//! MSW-style network-level request mocking for Reinhardt tests.
 //!
-//! Intercepts `window.fetch()` calls at the browser API level, providing
-//! realistic API mocking without modifying application code.
+//! On WASM targets, [`MockServiceWorker`] overrides `window.fetch()` in the
+//! browser environment. On native targets, [`MockServiceWorker`] starts a
+//! loopback HTTP mock server and exposes its base URL via
+//! [`MockServiceWorker::url`].
 //!
-//! # Overview
+//! Native MSW is explicit endpoint injection, not transparent interception:
+//! pass `worker.url()` into the HTTP client, SDK endpoint, or service
+//! configuration under test.
 //!
-//! This module provides `MockServiceWorker` which overrides `window.fetch`
-//! to intercept HTTP requests and return mock responses. It supports:
-//!
-//! - Type-safe `server_fn` mocking via `MockableServerFn`
-//! - REST endpoint mocking via [`rest`] builder helpers
-//! - Request recording and assertion via `CallQuery` and `ServerFnCallQuery`
-//! - Configurable behavior for unhandled requests via `UnhandledPolicy`
-//!
-//! # Example
+//! # WASM example
 //!
 //! ```rust,ignore
 //! use reinhardt_test::msw::*;
@@ -23,8 +19,27 @@
 //!     let worker = MockServiceWorker::new();
 //!     worker.handle(rest::get("/api/users").respond(MockResponse::json(vec![1, 2])));
 //!     worker.start().await;
-//!     // ... test component ...
+//!     // Render component that calls window.fetch().
 //!     worker.calls_to("/api/users").assert_called();
+//! }
+//! ```
+//!
+//! # Native example
+//!
+//! ```rust,ignore
+//! use reinhardt_test::msw::*;
+//!
+//! #[tokio::test]
+//! async fn test_http_client() {
+//!     let worker = MockServiceWorker::new();
+//!     worker.handle(rest::get("/api/users").respond(MockResponse::json(vec![1, 2])));
+//!     worker.start().await;
+//!
+//!     let endpoint = worker.url();
+//!     // Pass `endpoint` into the code under test.
+//!
+//!     worker.calls_to("/api/users").assert_called();
+//!     worker.stop().await;
 //! }
 //! ```
 
@@ -34,21 +49,28 @@
 #![allow(dead_code, clippy::type_complexity)]
 
 mod context;
+mod error;
 pub(crate) mod handler;
 mod interceptor;
 mod matcher;
+#[cfg(native)]
+mod native;
 pub(crate) mod recorder;
 mod response;
 pub mod rest;
+mod state;
 
 pub use context::TestContext;
+pub use error::MswError;
 pub use handler::InterceptedRequest;
 pub use matcher::{Segment, UrlMatcher};
 pub use recorder::{CallQuery, RecordedRequest, ServerFnCallQuery};
 pub use response::MockResponse;
 
-// WASM-only: MockServiceWorker requires window.fetch interop
 #[cfg(wasm)]
 mod worker;
 #[cfg(wasm)]
 pub use worker::{MockServiceWorker, UnhandledPolicy};
+
+#[cfg(native)]
+pub use native::{MockServiceWorker, UnhandledPolicy};

@@ -1,6 +1,6 @@
 //! HTTP client wrapper for OAuth2 requests
 
-use reqwest::Client;
+use reqwest::{Client, redirect::Policy};
 use std::time::Duration;
 
 /// OAuth2 HTTP client
@@ -18,6 +18,22 @@ impl OAuth2Client {
 		let client = Client::builder()
 			.timeout(Duration::from_secs(30))
 			.connect_timeout(Duration::from_secs(10))
+			.build()
+			.expect("Failed to build HTTP client");
+
+		Self { client }
+	}
+
+	/// Create an OAuth2 client that returns redirect responses without following them.
+	///
+	/// This is used for generic OIDC providers after discovery constrains endpoints
+	/// to the issuer origin. Following a redirect could otherwise bypass that
+	/// constraint after the initial endpoint URL has been validated.
+	pub(crate) fn without_redirects() -> Self {
+		let client = Client::builder()
+			.timeout(Duration::from_secs(30))
+			.connect_timeout(Duration::from_secs(10))
+			.redirect(Policy::none())
 			.build()
 			.expect("Failed to build HTTP client");
 

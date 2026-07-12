@@ -1,0 +1,5 @@
+error: WeekInput is only supported on string-valued fields
+ --> tests/ui/form/fail/week_input_rejects_ip_address_field.rs:8:4
+  |
+8 |             sprint_week: IpAddressField {
+  |             ^^^^^^^^^^^

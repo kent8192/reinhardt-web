@@ -167,7 +167,7 @@ impl DependencyRegistry {
 	///
 	/// Panics if a factory for the same `TypeId` is already registered.
 	/// This prevents silent overwrites that lead to non-deterministic behavior
-	/// when multiple `#[injectable_factory]` or `#[injectable]` macros produce
+	/// when multiple `#[injectable]` provider functions produce
 	/// the same return type. See [#3457].
 	///
 	/// To check before registering (e.g. in tests), use
@@ -566,7 +566,7 @@ fn initialize_registry(registry: &DependencyRegistry) {
 
 /// Helper macro for submitting registrations to inventory
 ///
-/// This is used internally by the `#[injectable]` and `#[injectable_factory]` macros.
+/// This is used internally by the `#[injectable]` provider macro.
 #[macro_export]
 macro_rules! submit_registration {
 	($registration:expr) => {

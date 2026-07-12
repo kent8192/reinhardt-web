@@ -111,6 +111,90 @@ async fn project_pages_layout_matches_tutorial() {
 	let project = tmp.path().join("polls_project");
 	let src = project.join("src");
 
+	let cargo_toml = fs::read_to_string(project.join("Cargo.toml")).expect("read Cargo.toml");
+	assert!(
+		cargo_toml.contains("[workspace]") && cargo_toml.contains("resolver = \"3\""),
+		"Pages projects must be standalone Cargo workspace roots so they build inside another workspace:\n{cargo_toml}"
+	);
+	assert!(
+		cargo_toml.contains("members = ["),
+		"Pages project Cargo.toml must include a members array for startapp --workspace:\n{cargo_toml}"
+	);
+	for feature in [
+		"minimal",
+		"pages",
+		"client-router",
+		"admin",
+		"conf",
+		"commands",
+		"commands-server",
+		"commands-autoreload",
+		"server",
+		"db-sqlite",
+		"forms",
+		"auth-session",
+		"middleware",
+		"argon2-hasher",
+	] {
+		assert!(
+			cargo_toml.contains(&format!("\"{feature}\"")),
+			"Pages project native dependency must include `{feature}` for the generated dev workflow:\n{cargo_toml}"
+		);
+	}
+	assert!(
+		!cargo_toml.contains("\"db-postgres\""),
+		"Pages project native dependency must keep the SQLite default:\n{cargo_toml}"
+	);
+	let makefile = fs::read_to_string(project.join("Makefile.toml")).expect("read Makefile.toml");
+	assert!(
+		makefile.contains("[tasks.install-tools]"),
+		"Pages project Makefile.toml must include the install-tools task advertised by startproject:\n{makefile}"
+	);
+	assert!(
+		makefile.contains("command = \"wasm-pack\"")
+			&& makefile.contains("\"--out-dir\", \"dist-wasm\""),
+		"Pages project Makefile.toml must build browser artifacts through wasm-pack:\n{makefile}"
+	);
+	assert!(
+		makefile.contains("[tasks.wasm-test]")
+			&& makefile.contains("\"--features\", \"client-router,msw\""),
+		"Pages project Makefile.toml must include the browser test task used by the tutorial:\n{makefile}"
+	);
+	assert!(
+		!makefile.contains("ls target/wasm32-unknown-unknown") && !makefile.contains("head -1"),
+		"Pages project Makefile.toml must not select an arbitrary .wasm artifact:\n{makefile}"
+	);
+	assert!(
+		project.join("scripts/wasm-build-dev.sh").exists()
+			&& project.join("scripts/wasm-build-release.sh").exists(),
+		"Pages project must include WASM post-build helper scripts"
+	);
+
+	let settings_rs =
+		fs::read_to_string(src.join("config").join("settings.rs")).expect("read settings.rs");
+	assert!(
+		settings_rs.contains("core: CoreSettings | contacts: ContactSettings"),
+		"ProjectSettings must compose common settings required by management commands:\n{settings_rs}"
+	);
+	let base_toml =
+		fs::read_to_string(project.join("settings").join("base.toml")).expect("read base.toml");
+	assert!(
+		base_toml.contains("secret_key = \"insecure-"),
+		"generated base.toml must contain the generated development secret:\n{base_toml}"
+	);
+	assert!(
+		base_toml.contains("[contacts]")
+			&& base_toml.contains("admins = []")
+			&& base_toml.contains("managers = []"),
+		"generated base.toml must include the contacts fragment:\n{base_toml}"
+	);
+	let base_example = fs::read_to_string(project.join("settings").join("base.example.toml"))
+		.expect("read base.example.toml");
+	assert!(
+		base_example.contains("secret_key = \"CHANGE_THIS_IN_PRODUCTION_MUST_BE_KEPT_SECRET\""),
+		"base.example.toml must keep a safe placeholder secret:\n{base_example}"
+	);
+
 	// 1. Per-app reorg: top-level `src/server_fn.rs` no longer exists; each
 	//    app owns its own under `apps/<app>/server_fn.rs`.
 	assert!(
@@ -133,7 +217,7 @@ async fn project_pages_layout_matches_tutorial() {
 	);
 
 	// 3. Client shell: lib.rs (WASM entry) + components.rs (`pub mod nav;`
-	//    only). Per-app pages and components live under `apps/<app>/client/`.
+	//    only). Per-app components live under `apps/<app>/client/`.
 	assert!(
 		src.join("client").join("lib.rs").exists(),
 		"src/client/lib.rs must exist (WASM entry point)"
@@ -151,11 +235,11 @@ async fn project_pages_layout_matches_tutorial() {
 	);
 	assert!(
 		!src.join("client").join("pages.rs").exists(),
-		"src/client/pages.rs must NOT exist (per-app under apps/<app>/client/pages.rs)"
+		"src/client/pages.rs must NOT exist (route-backed components live under apps/<app>/client/components/)"
 	);
 	assert!(
 		!src.join("client").join("router.rs").exists(),
-		"src/client/router.rs must NOT exist (replaced by per-app client_router.rs)"
+		"src/client/router.rs must NOT exist (replaced by per-app urls.rs)"
 	);
 	assert!(
 		!src.join("client").join("bootstrap.rs").exists(),
@@ -205,18 +289,12 @@ async fn project_pages_layout_matches_tutorial() {
 		);
 	}
 
-	// 5. shared/ now exposes types and forms (no more shared/errors.rs).
+	// 5. Root shared modules are not generated. Manual wire DTOs live inside
+	//    each app under serializers/, shared model info DTOs come from
+	//    app-level models.rs, and server forms live under server/forms/.
 	assert!(
-		src.join("shared").join("types.rs").exists(),
-		"src/shared/types.rs must exist"
-	);
-	assert!(
-		src.join("shared").join("forms.rs").exists(),
-		"src/shared/forms.rs must exist (Part 4 forms scaffold)"
-	);
-	assert!(
-		!src.join("shared").join("errors.rs").exists(),
-		"src/shared/errors.rs must not be generated"
+		!src.join("shared.rs").exists() && !src.join("shared").exists(),
+		"src/shared.rs and src/shared/ must not be generated"
 	);
 
 	// 6. Part 5 (Testing) directory is in place.
@@ -271,52 +349,50 @@ async fn app_pages_layout_matches_tutorial() {
 		polls_rs.contains("#[app_config(name = \"polls\", label = \"polls\")]"),
 		"apps/polls.rs must carry the #[app_config] attribute:\n{polls_rs}"
 	);
-	assert!(
-		polls_rs.contains("pub mod models;"),
-		"apps/polls.rs must expose models on both native and WASM targets:\n{polls_rs}"
-	);
-	let models_pos = polls_rs
-		.find("pub mod models;")
-		.expect("models module declaration checked above");
-	let models_prefix = &polls_rs[..models_pos];
-	let models_prior_line = models_prefix.lines().last().unwrap_or("").trim();
-	assert!(
-		!models_prior_line.starts_with("#[cfg("),
-		"`pub mod models;` must not be cfg-gated in apps/polls.rs (preceding line was: {models_prior_line:?}):\n{polls_rs}"
-	);
 
-	// 2. Sub-modules sit directly under apps/<app>/, mirroring the tutorial.
+	// 2. Shared models live at the app root; server-only implementation
+	//    submodules live under apps/<app>/server/.
 	let polls_dir = apps.join("polls");
 	assert!(
 		polls_dir.join("models.rs").exists(),
-		"apps/polls/models.rs must exist"
+		"apps/polls/models.rs must exist so generated info DTOs are shared with WASM"
 	);
 	let models_rs =
 		fs::read_to_string(polls_dir.join("models.rs")).expect("read apps/polls/models.rs");
 	assert_models_placeholder_is_tutorial_safe(&models_rs, "polls", "PollsItem");
 	assert!(
-		polls_dir.join("serializers.rs").exists(),
-		"apps/polls/serializers.rs must exist"
+		polls_dir.join("server.rs").exists(),
+		"apps/polls/server.rs must exist as the server facade"
+	);
+	let server_dir = polls_dir.join("server");
+	assert!(
+		server_dir.join("forms.rs").exists(),
+		"apps/polls/server/forms.rs must exist as the server forms facade"
 	);
 	assert!(
-		polls_dir.join("services.rs").exists(),
-		"apps/polls/services.rs must exist"
+		server_dir.join("forms").join(".gitkeep").exists(),
+		"apps/polls/server/forms/.gitkeep must preserve the empty forms directory"
 	);
 	assert!(
-		polls_dir.join("urls.rs").exists(),
-		"apps/polls/urls.rs must exist"
-	);
-	assert!(
-		polls_dir.join("views.rs").exists(),
-		"apps/polls/views.rs must exist"
+		server_dir.join("views.rs").exists(),
+		"apps/polls/server/views.rs must exist"
 	);
 
-	// 3. `server/`, `shared/`, and `urls/ws_urls.rs` remain forbidden.
-	//    `client/` is now REQUIRED at the per-app level (per-app UI lives
-	//    here). `urls/server_urls.rs` and `urls/client_router.rs` are also
-	//    REQUIRED (see `startapp_pages_layout_has_urls_submodule` and
-	//    `startapp_pages_layout_per_app_modules` for positive assertions).
-	for unwanted in ["server", "shared", "urls/ws_urls.rs"] {
+	// 3. Server-only implementation files must not be mixed into the app root.
+	//    `client/` is REQUIRED at the per-app level (per-app UI lives here).
+	for unwanted in [
+		"admin.rs",
+		"models",
+		"forms",
+		"forms.rs",
+		"views.rs",
+		"shared",
+		"pages.rs",
+		"server/models",
+		"server/models.rs",
+		"server/urls.rs",
+		"client/pages.rs",
+	] {
 		let path = polls_dir.join(unwanted);
 		assert!(
 			!path.exists(),
@@ -325,8 +401,16 @@ async fn app_pages_layout_matches_tutorial() {
 		);
 	}
 
-	// 4. Per-app server_fn / client.rs / client/{components,pages}.rs and
-	//    server_fn placeholder are generated.
+	// 4. Per-app common facades, cfg-gated client/server facades, and
+	//    implementation directories are generated.
+	assert!(
+		polls_dir.join("serializers.rs").exists(),
+		"apps/polls/serializers.rs must exist"
+	);
+	assert!(
+		polls_dir.join("serializers").join(".gitkeep").exists(),
+		"apps/polls/serializers/.gitkeep must preserve the empty serializers directory"
+	);
 	assert!(
 		polls_dir.join("server_fn.rs").exists(),
 		"apps/polls/server_fn.rs must exist"
@@ -334,8 +418,46 @@ async fn app_pages_layout_matches_tutorial() {
 	let server_fn_rs =
 		fs::read_to_string(polls_dir.join("server_fn.rs")).expect("read apps/polls/server_fn.rs");
 	assert!(
-		server_fn_rs.contains("#[server_fn]") && server_fn_rs.contains("pub async fn placeholder"),
-		"apps/polls/server_fn.rs must contain a #[server_fn]-annotated placeholder:\n{server_fn_rs}"
+		server_fn_rs.contains("pub mod placeholder;")
+			&& !server_fn_rs.contains("pub use placeholder::placeholder;"),
+		"apps/polls/server_fn.rs must be a declaration-only facade:\n{server_fn_rs}"
+	);
+	let server_fn_placeholder =
+		fs::read_to_string(polls_dir.join("server_fn").join("placeholder.rs"))
+			.expect("read apps/polls/server_fn/placeholder.rs");
+	assert!(
+		server_fn_placeholder.contains("#[server_fn]")
+			&& server_fn_placeholder.contains("pub async fn placeholder"),
+		"apps/polls/server_fn/placeholder.rs must contain the #[server_fn]-annotated placeholder:\n{server_fn_placeholder}"
+	);
+	assert!(
+		polls_dir.join("services.rs").exists(),
+		"apps/polls/services.rs must exist"
+	);
+	let services_rs =
+		fs::read_to_string(polls_dir.join("services.rs")).expect("read apps/polls/services.rs");
+	assert!(
+		services_rs.contains("#[cfg(client)]\npub mod client;")
+			&& services_rs.contains("#[cfg(server)]\npub mod server;"),
+		"apps/polls/services.rs must split client/server services with cfg gates:\n{services_rs}"
+	);
+	assert!(
+		polls_dir.join("services").join("client.rs").exists()
+			&& polls_dir
+				.join("services")
+				.join("client")
+				.join(".gitkeep")
+				.exists(),
+		"apps/polls/services/client.rs and services/client/.gitkeep must exist"
+	);
+	assert!(
+		polls_dir.join("services").join("server.rs").exists()
+			&& polls_dir
+				.join("services")
+				.join("server")
+				.join(".gitkeep")
+				.exists(),
+		"apps/polls/services/server.rs and services/server/.gitkeep must exist"
 	);
 
 	assert!(
@@ -345,42 +467,59 @@ async fn app_pages_layout_matches_tutorial() {
 	let client_rs =
 		fs::read_to_string(polls_dir.join("client.rs")).expect("read apps/polls/client.rs");
 	assert!(
-		client_rs.contains("pub mod components;") && client_rs.contains("pub mod pages;"),
-		"apps/polls/client.rs must declare `pub mod components;` and `pub mod pages;`:\n{client_rs}"
+		client_rs.contains("pub mod components;") && !client_rs.contains("pub mod pages;"),
+		"apps/polls/client.rs must be a client-only facade, not a mixed route-entry facade:\n{client_rs}"
 	);
 
 	let polls_components = polls_dir.join("client").join("components.rs");
-	let polls_pages = polls_dir.join("client").join("pages.rs");
 	assert!(
 		polls_components.exists(),
 		"apps/polls/client/components.rs must exist"
 	);
-	assert!(
-		polls_pages.exists(),
-		"apps/polls/client/pages.rs must exist"
-	);
 	let components_body = fs::read_to_string(&polls_components).expect("read components.rs");
 	assert!(
-		components_body.contains("pub fn placeholder"),
-		"apps/polls/client/components.rs must declare `pub fn placeholder`:\n{components_body}"
+		components_body.contains("pub mod placeholder;")
+			&& !components_body.contains("pub use placeholder::placeholder;"),
+		"apps/polls/client/components.rs must be a declaration-only facade:\n{components_body}"
 	);
-	let pages_body = fs::read_to_string(&polls_pages).expect("read pages.rs");
+	let placeholder_component = fs::read_to_string(
+		polls_dir
+			.join("client")
+			.join("components")
+			.join("placeholder.rs"),
+	)
+	.expect("read client/components/placeholder.rs");
 	assert!(
-		pages_body.contains("pub fn placeholder_page") && pages_body.contains("with_nav"),
-		"apps/polls/client/pages.rs must declare `pub fn placeholder_page` and call `with_nav`:\n{pages_body}"
+		placeholder_component
+			.contains("#[reinhardt::pages::component(\"/polls/\", \"placeholder\")]")
+			&& placeholder_component.contains("pub fn placeholder")
+			&& placeholder_component.contains("use crate::client::components::nav::with_nav;")
+			&& !placeholder_component.contains("super::"),
+		"apps/polls/client/components/placeholder.rs must define the route-backed component:\n{placeholder_component}"
 	);
 
-	// 5. urls.rs is the aggregator that declares the `server_urls` and
-	//    `client_router` submodules with the appropriate cfg gates. The
-	//    legacy `unified_url_patterns` scaffold is still forbidden.
+	// 5. urls.rs is the app router aggregate. It gates the split router modules
+	//    at declaration time so target-specific files do not leak across builds.
 	let urls_rs = fs::read_to_string(polls_dir.join("urls.rs")).expect("read apps/polls/urls.rs");
 	assert!(
-		urls_rs.contains("pub mod server_urls"),
-		"apps/polls/urls.rs must declare `pub mod server_urls`:\n{urls_rs}"
+		urls_rs.contains("#[cfg(client)]\npub mod client_router;")
+			&& urls_rs.contains("#[cfg(server)]\npub mod server_router;"),
+		"apps/polls/urls.rs must cfg-gate split router modules:\n{urls_rs}"
 	);
 	assert!(
-		urls_rs.contains("pub mod client_router"),
-		"apps/polls/urls.rs must declare `pub mod client_router`:\n{urls_rs}"
+		urls_rs.contains("#[cfg(client)]\npub use client_router::{client_url_patterns, reverse};"),
+		"apps/polls/urls.rs must expose client routes only on client builds:\n{urls_rs}"
+	);
+	assert!(
+		urls_rs.contains("#[cfg(server)]\npub use server_router::server_url_patterns;"),
+		"apps/polls/urls.rs must expose server routes only on server builds:\n{urls_rs}"
+	);
+	assert!(
+		!urls_rs.contains("pub fn client_url_patterns")
+			&& !urls_rs.contains("pub fn server_url_patterns")
+			&& !urls_rs.contains("ClientRouter")
+			&& !urls_rs.contains("ServerRouter"),
+		"apps/polls/urls.rs must not define native-safe client/server wrapper functions:\n{urls_rs}"
 	);
 	assert!(
 		!urls_rs.contains("unified_url_patterns"),
@@ -391,7 +530,7 @@ async fn app_pages_layout_matches_tutorial() {
 #[rstest]
 #[tokio::test]
 #[serial(cwd)]
-async fn startapp_pages_layout_has_urls_submodule() {
+async fn startapp_pages_layout_has_target_gated_route_surface() {
 	// Arrange — scaffold a project, then scaffold a pages app inside it.
 	let tmp = TempDir::new().unwrap();
 	let project_name = "polls_project";
@@ -410,71 +549,54 @@ async fn startapp_pages_layout_has_urls_submodule() {
 
 	let foo_dir = project_dir.join("src").join("apps").join("foo");
 
-	// 1. The aggregator and both submodules exist.
+	// 1. The target-gated aggregator and split router modules exist.
 	let urls_rs = foo_dir.join("urls.rs");
-	let server_urls = foo_dir.join("urls").join("server_urls.rs");
 	let client_router = foo_dir.join("urls").join("client_router.rs");
+	let server_router = foo_dir.join("urls").join("server_router.rs");
 	assert!(urls_rs.exists(), "apps/foo/urls.rs must exist");
-	assert!(
-		server_urls.exists(),
-		"apps/foo/urls/server_urls.rs must exist"
-	);
 	assert!(
 		client_router.exists(),
 		"apps/foo/urls/client_router.rs must exist"
 	);
+	assert!(
+		server_router.exists(),
+		"apps/foo/urls/server_router.rs must exist"
+	);
 
-	// 2. ws_urls.rs is explicitly out of scope (see #4308 scope boundaries).
+	// 2. ws_urls.rs remains out of scope.
 	assert!(
 		!foo_dir.join("urls").join("ws_urls.rs").exists(),
 		"apps/foo/urls/ws_urls.rs must NOT be generated"
 	);
 
-	// 3. The aggregator declares both submodules with the appropriate cfg
-	//    gates that match the project-level `build.rs` cfg_aliases
-	//    (`client` for wasm32, `server` for native).
+	// 3. The app-level route surface gates target-specific modules and exports
+	//    at declaration time.
 	let urls_contents = fs::read_to_string(&urls_rs).expect("read apps/foo/urls.rs");
 	assert!(
-		urls_contents.contains("#[cfg(server)]"),
-		"apps/foo/urls.rs must gate server_urls with #[cfg(server)]:\n{urls_contents}"
+		urls_contents.contains("#[cfg(client)]\npub mod client_router;")
+			&& urls_contents.contains("#[cfg(server)]\npub mod server_router;"),
+		"apps/foo/urls.rs must cfg-gate split router modules:\n{urls_contents}"
 	);
 	assert!(
-		urls_contents.contains("pub mod server_urls"),
-		"apps/foo/urls.rs must declare `pub mod server_urls`:\n{urls_contents}"
+		urls_contents
+			.contains("#[cfg(client)]\npub use client_router::{client_url_patterns, reverse};"),
+		"apps/foo/urls.rs must expose client routes only on client builds:\n{urls_contents}"
 	);
 	assert!(
-		urls_contents.contains("#[cfg(client)]"),
-		"apps/foo/urls.rs must gate client_router with #[cfg(client)]:\n{urls_contents}"
+		urls_contents.contains("#[cfg(server)]\npub use server_router::server_url_patterns;"),
+		"apps/foo/urls.rs must expose server routes only on server builds:\n{urls_contents}"
 	);
 	assert!(
-		urls_contents.contains("pub mod client_router"),
-		"apps/foo/urls.rs must declare `pub mod client_router`:\n{urls_contents}"
-	);
-	assert!(
-		urls_contents.contains("#[cfg(client)]\npub fn reverse"),
-		"apps/foo/urls.rs must expose a client-gated `reverse` helper:\n{urls_contents}"
+		!urls_contents.contains("pub fn client_url_patterns")
+			&& !urls_contents.contains("pub fn reverse")
+			&& !urls_contents.contains("pub fn server_url_patterns")
+			&& !urls_contents.contains("ClientRouter")
+			&& !urls_contents.contains("ServerRouter"),
+		"apps/foo/urls.rs must not keep native wrapper functions for target-specific routes:\n{urls_contents}"
 	);
 
-	// 4. Sub-routers define their url_patterns functions with empty bodies.
-	//    The bodies are isolated from the module doc-comment (which may
-	//    legitimately quote an example) by slicing the file at the `pub fn`
-	//    definition before searching for example calls.
-	let server_contents = fs::read_to_string(&server_urls).expect("read server_urls.rs");
-	assert_eq!(
-		server_contents.matches("#[url_patterns").count(),
-		0,
-		"server_urls.rs must NOT carry the removed #[url_patterns] attribute:\n{server_contents}"
-	);
-	let server_body_start = server_contents
-		.find("pub fn server_url_patterns")
-		.expect("server_urls.rs must define `pub fn server_url_patterns`");
-	let server_body = &server_contents[server_body_start..];
-	assert_eq!(
-		server_body.matches(".endpoint(views::").count(),
-		0,
-		"server_urls.rs function body must not embed example route calls:\n{server_body}"
-	);
-
+	// 4. Split router wiring defines url_patterns functions with generated
+	//    route-backed component registration on the client side.
 	let client_contents = fs::read_to_string(&client_router).expect("read client_router.rs");
 	assert_eq!(
 		client_contents.matches("#[url_patterns").count(),
@@ -485,10 +607,18 @@ async fn startapp_pages_layout_has_urls_submodule() {
 		.find("pub fn client_url_patterns")
 		.expect("client_router.rs must define `pub fn client_url_patterns`");
 	let client_body = &client_contents[client_body_start..];
-	assert_eq!(
-		client_body.matches(".route(\"index\",").count(),
-		0,
-		"client_router.rs function body must not embed example route calls:\n{client_body}"
+	assert!(
+		client_body.contains(".component(components::placeholder::placeholder)"),
+		"client_router.rs must register the route-backed placeholder component:\n{client_body}"
+	);
+	assert!(
+		client_contents.contains("use crate::apps::foo::client::components;")
+			&& !client_contents.contains("super::super::"),
+		"client_router.rs must use the app client component path instead of super::super:::\n{client_contents}"
+	);
+	assert!(
+		!client_contents.contains("#[cfg("),
+		"client_router.rs must rely on urls.rs module gates instead of internal cfg gates:\n{client_contents}"
 	);
 	assert!(
 		client_contents.contains("pub fn reverse"),
@@ -499,8 +629,29 @@ async fn startapp_pages_layout_has_urls_submodule() {
 		"client_router.rs reverse helper must include the generated app name in panic context:\n{client_contents}"
 	);
 
-	// 5. Per-app aggregator `apps/foo.rs` declares `#[cfg(client)] pub mod client;`
-	//    and bi-target `pub mod server_fn;` / `pub mod urls;` without cfg gates.
+	// Server-only router wiring defines its url_patterns function with an
+	//    empty body. The body is isolated from the module doc-comment (which
+	//    may quote an example) by slicing the file at the `pub fn` definition
+	//    before searching for example calls.
+	let server_contents = fs::read_to_string(&server_router).expect("read server_router.rs");
+	assert_eq!(
+		server_contents.matches("#[url_patterns").count(),
+		0,
+		"server_router.rs must NOT carry the removed #[url_patterns] attribute:\n{server_contents}"
+	);
+	let server_body_start = server_contents
+		.find("pub fn server_url_patterns")
+		.expect("server_router.rs must define `pub fn server_url_patterns`");
+	let server_body = &server_contents[server_body_start..];
+	assert_eq!(
+		server_body.matches(".endpoint(views::").count(),
+		0,
+		"server_router.rs function body must not embed example route calls:\n{server_body}"
+	);
+
+	// 5. Per-app aggregator `apps/foo.rs` declares cfg-gated facades and
+	//    cross-target `serializers` / `server_fn` / `services` / `urls`
+	//    surfaces without cfg gates.
 	let foo_rs = fs::read_to_string(foo_dir.parent().expect("apps/").join("foo.rs"))
 		.expect("read apps/foo.rs");
 	assert!(
@@ -508,11 +659,16 @@ async fn startapp_pages_layout_has_urls_submodule() {
 		"apps/foo.rs must declare `#[cfg(client)] pub mod client;`:\n{foo_rs}"
 	);
 	assert!(
-		foo_rs.contains("#[cfg(server)]\npub mod services;"),
-		"apps/foo.rs must declare `#[cfg(server)] pub mod services;`:\n{foo_rs}"
+		foo_rs.contains("#[cfg(server)]\npub mod server;"),
+		"apps/foo.rs must declare `#[cfg(server)] pub mod server;`:\n{foo_rs}"
 	);
 	// Bi-target lines: ensure they have no cfg attr immediately preceding.
-	for bi_target in ["pub mod models;", "pub mod server_fn;", "pub mod urls;"] {
+	for bi_target in [
+		"pub mod serializers;",
+		"pub mod server_fn;",
+		"pub mod services;",
+		"pub mod urls;",
+	] {
 		let pos = foo_rs
 			.find(bi_target)
 			.unwrap_or_else(|| panic!("`{bi_target}` not found in apps/foo.rs:\n{foo_rs}"));
@@ -546,17 +702,7 @@ async fn workspace_app_pages_uses_unified_template() {
 
 	let project_dir = tmp.path().join(project_name);
 	let _cwd_guard = CwdGuard::enter(&project_dir);
-
-	// The project needs a workspace Cargo.toml for `--workspace` to succeed.
 	let cargo_toml = project_dir.join("Cargo.toml");
-	let existing = fs::read_to_string(&cargo_toml).expect("read project Cargo.toml");
-	if !existing.contains("[workspace]") {
-		fs::write(
-			&cargo_toml,
-			format!("{existing}\n[workspace]\nmembers = [\n]\n"),
-		)
-		.expect("append [workspace] to Cargo.toml");
-	}
 
 	// Act
 	let res = StartAppCommand
@@ -601,19 +747,16 @@ async fn workspace_app_pages_uses_unified_template() {
 		"apps/bar/src/urls.rs must exist"
 	);
 	assert!(
-		src.join("urls").join("server_urls.rs").exists(),
-		"apps/bar/src/urls/server_urls.rs must exist"
-	);
-	assert!(
 		src.join("urls").join("client_router.rs").exists(),
 		"apps/bar/src/urls/client_router.rs must exist"
 	);
 	assert!(
-		src.join("services.rs").exists(),
-		"apps/bar/src/services.rs must exist"
+		src.join("urls").join("server_router.rs").exists(),
+		"apps/bar/src/urls/server_router.rs must exist"
 	);
 
-	// 3. The unified template now provides client/ and server_fn modules
+	// 3. The unified template now provides client/, server_fn/, serializers/,
+	//    and services/ modules
 	//    to workspace apps as well (previously absent from the workspace
 	//    template, closing the layout drift noted in #4363).
 	assert!(
@@ -625,16 +768,65 @@ async fn workspace_app_pages_uses_unified_template() {
 		"apps/bar/src/client/components.rs must exist"
 	);
 	assert!(
-		src.join("client").join("pages.rs").exists(),
-		"apps/bar/src/client/pages.rs must exist"
+		src.join("client")
+			.join("components")
+			.join("placeholder.rs")
+			.exists(),
+		"apps/bar/src/client/components/placeholder.rs must exist"
+	);
+	assert!(
+		!src.join("client").join("pages.rs").exists(),
+		"apps/bar/src/client/pages.rs must not exist; route-backed components live under client/components/"
+	);
+	assert!(
+		!src.join("pages.rs").exists(),
+		"apps/bar/src/pages.rs must not exist"
+	);
+	assert!(
+		src.join("server.rs").exists(),
+		"apps/bar/src/server.rs must exist"
 	);
 	assert!(
 		src.join("server_fn.rs").exists(),
 		"apps/bar/src/server_fn.rs must exist"
 	);
+	assert!(
+		src.join("server_fn").join("placeholder.rs").exists(),
+		"apps/bar/src/server_fn/placeholder.rs must exist"
+	);
+	assert!(
+		src.join("serializers.rs").exists() && src.join("serializers").join(".gitkeep").exists(),
+		"apps/bar/src/serializers.rs and serializers/.gitkeep must exist"
+	);
+	assert!(
+		src.join("services.rs").exists()
+			&& src.join("services").join("client.rs").exists()
+			&& src
+				.join("services")
+				.join("client")
+				.join(".gitkeep")
+				.exists()
+			&& src.join("services").join("server.rs").exists()
+			&& src
+				.join("services")
+				.join("server")
+				.join(".gitkeep")
+				.exists(),
+		"apps/bar/src/services split client/server surface must exist"
+	);
+	assert!(
+		src.join("server").join("forms.rs").exists()
+			&& src.join("server").join("forms").join(".gitkeep").exists(),
+		"apps/bar/src/server/forms.rs and server/forms/.gitkeep must exist"
+	);
 	let workspace_models =
 		fs::read_to_string(src.join("models.rs")).expect("read apps/bar/src/models.rs");
 	assert_models_placeholder_is_tutorial_safe(&workspace_models, "bar", "BarItem");
+	assert!(
+		!src.join("server").join("models.rs").exists()
+			&& !src.join("server").join("models").exists(),
+		"apps/bar/src/server/models* must not exist because shared models live at src/models.rs"
+	);
 
 	// 4. lib.rs has cfg gates (shared template, not the old workspace-only version)
 	let lib_rs = fs::read_to_string(src.join("lib.rs")).expect("read lib.rs");
@@ -658,15 +850,14 @@ async fn workspace_app_pages_uses_unified_template() {
 	//    would otherwise fail to compile under `-D warnings`).
 	let crate_import = "use crate::config::apps::InstalledApp;";
 	let project_import = format!("use {}::config::apps::InstalledApp;", project_name);
-	let server_urls =
-		fs::read_to_string(src.join("urls").join("server_urls.rs")).expect("read server_urls.rs");
+	let server_urls = fs::read_to_string(src.join("urls").join("server_router.rs"))
+		.expect("read server_router.rs");
 	assert!(
 		!server_urls
 			.lines()
 			.any(|l| l.trim() == crate_import || l.trim() == project_import),
-		"workspace server_urls.rs must NOT import InstalledApp:\n{server_urls}"
+		"workspace server_router.rs must NOT import InstalledApp:\n{server_urls}"
 	);
-
 	let client_router = fs::read_to_string(src.join("urls").join("client_router.rs"))
 		.expect("read client_router.rs");
 	assert!(
@@ -675,23 +866,38 @@ async fn workspace_app_pages_uses_unified_template() {
 			.any(|l| l.trim() == crate_import || l.trim() == project_import),
 		"workspace client_router.rs must NOT import InstalledApp:\n{client_router}"
 	);
-
-	// 6. client/pages.rs imports with_nav from project crate, not crate::
-	let expected_workspace_with_nav =
-		format!("use {}::client::components::nav::with_nav;", project_name);
-	let pages_rs =
-		fs::read_to_string(src.join("client").join("pages.rs")).expect("read client/pages.rs");
 	assert!(
-		!pages_rs
-			.lines()
-			.any(|l| l.trim() == "use crate::client::components::nav::with_nav;"),
-		"workspace client/pages.rs must NOT use crate:: for with_nav import:\n{pages_rs}"
+		client_router.contains("use crate::client::components;")
+			&& !client_router.contains("super::super::"),
+		"workspace client_router.rs must import client components through crate:: without internal cfg gates:\n{client_router}"
 	);
 	assert!(
-		pages_rs
+		!client_router.contains("#[cfg("),
+		"workspace client_router.rs must rely on urls.rs module gates instead of internal cfg gates:\n{client_router}"
+	);
+
+	// 6. placeholder component imports with_nav from project crate, not crate::
+	let expected_workspace_with_nav =
+		format!("use {}::client::components::nav::with_nav;", project_name);
+	let placeholder_rs =
+		fs::read_to_string(src.join("client").join("components").join("placeholder.rs"))
+			.expect("read client/components/placeholder.rs");
+	assert!(
+		!placeholder_rs
+			.lines()
+			.any(|l| l.trim() == "use crate::client::components::nav::with_nav;"),
+		"workspace placeholder component must NOT use crate:: for with_nav import:\n{placeholder_rs}"
+	);
+	assert!(
+		placeholder_rs
 			.lines()
 			.any(|l| l.trim() == expected_workspace_with_nav),
-		"workspace client/pages.rs must import with_nav from project crate:\n{pages_rs}"
+		"workspace placeholder component must import with_nav from project crate:\n{placeholder_rs}"
+	);
+	assert!(
+		placeholder_rs.contains("#[reinhardt::pages::component(\"/bar/\", \"placeholder\")]")
+			&& !placeholder_rs.contains("super::"),
+		"workspace placeholder component must be route-backed without super:: paths:\n{placeholder_rs}"
 	);
 
 	// 8. Cargo.toml is valid, references src/lib.rs, and depends on parent crate
@@ -755,15 +961,14 @@ async fn module_app_pages_does_not_generate_workspace_files() {
 	// app routers no longer reference it (an unused import would otherwise fail
 	// to compile under `-D warnings`).
 	let unwanted_module_import = "use crate::config::apps::InstalledApp;";
-	let server_urls = fs::read_to_string(apps.join("baz").join("urls").join("server_urls.rs"))
-		.expect("read server_urls.rs");
+	let server_urls = fs::read_to_string(apps.join("baz").join("urls").join("server_router.rs"))
+		.expect("read server_router.rs");
 	assert!(
 		!server_urls
 			.lines()
 			.any(|l| l.trim() == unwanted_module_import),
-		"module server_urls.rs must NOT import InstalledApp:\n{server_urls}"
+		"module server_router.rs must NOT import InstalledApp:\n{server_urls}"
 	);
-
 	let client_router = fs::read_to_string(apps.join("baz").join("urls").join("client_router.rs"))
 		.expect("read client_router.rs");
 	assert!(
@@ -772,15 +977,34 @@ async fn module_app_pages_does_not_generate_workspace_files() {
 			.any(|l| l.trim() == unwanted_module_import),
 		"module client_router.rs must NOT import InstalledApp:\n{client_router}"
 	);
-
-	// client/pages.rs with_nav import uses crate::, not project_crate_name::
-	let expected_module_with_nav = "use crate::client::components::nav::with_nav;";
-	let pages_rs = fs::read_to_string(apps.join("baz").join("client").join("pages.rs"))
-		.expect("read client/pages.rs");
 	assert!(
-		pages_rs
+		client_router.contains("use crate::apps::baz::client::components;")
+			&& !client_router.contains("super::super::"),
+		"module client_router.rs must import client components through the app's absolute crate path without internal cfg gates:\n{client_router}"
+	);
+	assert!(
+		!client_router.contains("#[cfg("),
+		"module client_router.rs must rely on urls.rs module gates instead of internal cfg gates:\n{client_router}"
+	);
+
+	// placeholder component with_nav import uses crate::, not project_crate_name::
+	let expected_module_with_nav = "use crate::client::components::nav::with_nav;";
+	let placeholder_rs = fs::read_to_string(
+		apps.join("baz")
+			.join("client")
+			.join("components")
+			.join("placeholder.rs"),
+	)
+	.expect("read client/components/placeholder.rs");
+	assert!(
+		placeholder_rs
 			.lines()
 			.any(|l| l.trim() == expected_module_with_nav),
-		"module client/pages.rs must use crate:: for with_nav import:\n{pages_rs}"
+		"module placeholder component must use crate:: for with_nav import:\n{placeholder_rs}"
+	);
+	assert!(
+		placeholder_rs.contains("#[reinhardt::pages::component(\"/baz/\", \"placeholder\")]")
+			&& !placeholder_rs.contains("super::"),
+		"module placeholder component must be route-backed without super:: paths:\n{placeholder_rs}"
 	);
 }

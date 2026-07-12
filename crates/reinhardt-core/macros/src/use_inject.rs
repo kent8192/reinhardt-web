@@ -11,6 +11,7 @@
 use crate::crate_paths::{
 	get_reinhardt_core_crate, get_reinhardt_di_crate, get_reinhardt_http_crate,
 };
+use crate::injectable_common::generate_inject_resolver_expr;
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{Attribute, FnArg, ItemFn, Pat, PatType, Result, Type};
@@ -229,21 +230,12 @@ pub(crate) fn use_inject_impl(_args: TokenStream, input: ItemFn) -> Result<Token
 	for arg in &inject_params {
 		let pat = &arg.pat;
 		let ty = &arg.ty;
+		let resolve_expr =
+			generate_inject_resolver_expr(&di_crate, ty, quote! { &__di_ctx }, arg.use_cache);
 
-		let injection_code = if arg.use_cache {
-			quote! {
-				let #pat: #ty = #di_crate::Depends::<#ty>::resolve(&__di_ctx, true)
-					.await
-					.map_err(#core_crate::exception::Error::from)?
-					.into_inner();
-			}
-		} else {
-			quote! {
-				let #pat: #ty = #di_crate::Depends::<#ty>::resolve(&__di_ctx, false)
-					.await
-					.map_err(#core_crate::exception::Error::from)?
-					.into_inner();
-			}
+		let injection_code = quote! {
+			let #pat: #ty = #resolve_expr
+				.map_err(#core_crate::exception::Error::from)?;
 		};
 
 		injection_stmts.push(injection_code);

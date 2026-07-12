@@ -217,6 +217,10 @@ name = "reinhardt-shortcuts"
 version_group = "reinhardt"
 
 [[package]]
+name = "reinhardt-storages"
+version_group = "reinhardt"
+
+[[package]]
 name = "reinhardt-streaming"
 version_group = "reinhardt"
 

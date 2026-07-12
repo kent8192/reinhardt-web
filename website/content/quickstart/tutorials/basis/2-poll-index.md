@@ -11,7 +11,7 @@ sidebar_weight = 20
 
 In this part you will build the first vertical slice: a `polls` app with `Question` and `Choice` models, a first migration, a `get_questions` server function, and a WASM index page that lists polls.
 
-Ownership and authentication come later. That is deliberate. The first migration creates polls without an `author` field; Part 5 adds ownership with a second migration.
+Ownership and authentication come later. That is deliberate. The first migration creates polls without an `author_id` column; Part 5 adds ownership with a second migration.
 
 ## Create the Polls App
 
@@ -21,7 +21,7 @@ Generate a pages app:
 reinhardt-admin startapp polls --template pages
 ```
 
-The app should be registered in `src/config/apps.rs`:
+`startapp` updates `src/config/apps.rs` for you. Check that `polls` is present, but do not hand-edit this file unless you created the app directory manually:
 
 ```rust
 use reinhardt::installed_apps;
@@ -31,9 +31,7 @@ installed_apps! {
 }
 ```
 
-The completed example also registers `users`, but do not add it until Part 4.
-
-The generated Pages app keeps `models`, `server_fn`, and `urls` available to both targets. Server-only modules such as `admin`, `serializers`, and `views` remain gated inside `src/apps/polls.rs`. That split lets the browser import the generated `QuestionInfo` and `ChoiceInfo` model-info types through `src/shared/types.rs`.
+The completed example also contains `users`, but that entry is added by the Part 4 `startapp users --template pages` command.
 
 ## Add the Initial Models
 
@@ -86,7 +84,7 @@ cargo make makemigrations
 cargo make migrate
 ```
 
-The generated migration should create `questions` with `id`, `pub_date`, and `question_text`, but no ownership column. The reference migration's `questions` table contains only these columns:
+The generated migration should create `questions` with `id`, `pub_date`, and `question_text`, but no `author_id`. The reference migration's `questions` table contains only these columns:
 
 ```rust
 Operation::CreateTable {
@@ -127,33 +125,34 @@ Operation::CreateTable {
 }
 ```
 
-If an ownership column appears in `0001_initial.rs`, you have accidentally skipped ahead to Part 5.
+If `author_id` appears in `0001_initial.rs`, you have accidentally skipped ahead to Part 5.
 
-## Re-export the Shared Info Types
+## Use the Generated Model Info DTOs
 
-The `#[model]` macro generates model-info companion types that are safe to send to the browser. Re-export them from `src/shared/types.rs`:
+`#[model]` generates serializable info companions for models that are not marked `server_only`. In this tutorial, `QuestionInfo` and `ChoiceInfo` come from `src/apps/polls/models.rs`; do not hand-write duplicate DTOs.
+
+Keep the `models` module available on both targets, while server-only helpers such as migrations, admin, and service code stay behind their module-level gates. Then server functions and WASM components can import the same generated DTOs:
 
 ```rust
-pub use crate::apps::polls::models::{ChoiceInfo, QuestionInfo};
+use crate::apps::polls::models::{ChoiceInfo, QuestionInfo};
 ```
 
-This keeps the server function return type and the WASM component type identical.
+This keeps the server function return type and the WASM component type identical. Part 5 adds the generated `author` relation to `QuestionInfo` after the `users` app exists.
 
 ## Add the Server Function
 
 Create `src/apps/polls/server_fn.rs` and expose a query for the index page:
 
 ```rust
-use crate::shared::types::QuestionInfo;
+use crate::apps::polls::models::{Question, QuestionInfo};
+use reinhardt::{DatabaseConnection, Model};
 use reinhardt::pages::server_fn::{ServerFnError, server_fn};
+use std::result::Result;
 
 #[server_fn]
 pub async fn get_questions(
-    #[inject] _db: reinhardt::DatabaseConnection,
-) -> std::result::Result<Vec<QuestionInfo>, ServerFnError> {
-    use crate::apps::polls::models::Question;
-    use reinhardt::Model;
-
+    #[inject] _db: DatabaseConnection,
+) -> Result<Vec<QuestionInfo>, ServerFnError> {
     let manager = Question::objects();
     let questions = manager
         .all()
@@ -171,35 +170,47 @@ pub async fn get_questions(
 }
 ```
 
-Both `.all()` calls are required with the current manager/queryset API: the
-first call starts a `QuerySet<Question>` from the manager, and the second call
-executes that queryset asynchronously. The current reference implementation
-takes five rows from the manager query. Do not rely on a specific ordering until
-you add one explicitly.
+The current reference implementation takes five rows from the manager query. Do not rely on a specific ordering until you add one explicitly.
 
 ## Split Server and Client Routes
 
-The app-level `src/apps/polls/urls.rs` exposes separate router builders for the two targets:
+The app-level `src/apps/polls/urls.rs` gates the split router modules at the declaration site:
 
 ```rust
-#[cfg(server)]
-pub mod server_urls;
-
 #[cfg(client)]
 pub mod client_router;
 
+#[cfg(client)]
+pub use client_router::{client_url_patterns, reverse};
+
 #[cfg(server)]
-pub fn server_url_patterns() -> reinhardt::ServerRouter {
-    server_urls::server_url_patterns()
+pub mod server_router;
+
+#[cfg(server)]
+pub use server_router::server_url_patterns;
+```
+
+Put the client route table in `src/apps/polls/urls/client_router.rs`:
+
+```rust
+use crate::apps::polls::client::components;
+use reinhardt::ClientRouter;
+
+pub fn client_url_patterns() -> ClientRouter {
+    ClientRouter::new().component(components::polls_index::polls_index)
 }
 
-#[cfg(client)]
-pub fn client_url_patterns() -> reinhardt::ClientRouter {
-    client_router::client_url_patterns()
+pub fn reverse(name: &str, params: &[(&str, &str)]) -> String {
+    client_url_patterns()
+        .reverse(name, params)
+        .unwrap_or_else(|error| panic!("failed to reverse polls client route `{name}`: {error}"))
 }
 ```
 
-Register the server function in `src/apps/polls/urls/server_urls.rs`:
+`client_router.rs` is gated by `#[cfg(client)]` at the module declaration. Native builds do not compile client component route tables; they only mount server-function routes.
+
+
+Register the server function in `src/apps/polls/urls/server_router.rs`:
 
 ```rust
 use crate::apps::polls::server_fn::get_questions;
@@ -211,33 +222,24 @@ pub fn server_url_patterns() -> ServerRouter {
 }
 ```
 
-Register the index client route in `src/apps/polls/urls/client_router.rs`:
-
-```rust
-use crate::apps::polls::client::pages::index_page;
-use reinhardt::ClientRouter;
-
-pub fn client_url_patterns() -> ClientRouter {
-    ClientRouter::new().route("index", "/", index_page)
-}
-```
-
 At the project level, aggregate app routers in `src/config/urls.rs`. Do not list individual poll server functions here:
 
 ```rust
+use crate::apps::polls::urls as polls_urls;
+
 #[routes]
 pub fn routes() -> UnifiedRouter {
     let router = UnifiedRouter::new();
 
     #[cfg(server)]
     let router = router.server(|s| {
-        s.mount("/", crate::apps::polls::urls::server_url_patterns())
+        s.mount("/", polls_urls::server_url_patterns())
     });
 
     #[cfg(client)]
     let router = router.mount_unified(
         "/",
-        UnifiedRouter::new().client(|_| crate::apps::polls::urls::client_url_patterns()),
+        UnifiedRouter::new().client(|_| polls_urls::client_url_patterns()),
     );
 
     router
@@ -254,18 +256,21 @@ ClientLauncher::new("#root")
     .launch()
 ```
 
-The app-local page wrapper maps the named route to the polls component. Replace the generated placeholder in `src/apps/polls/client/pages.rs` with:
+Create the app-local route-backed wrapper in `src/apps/polls/client/components/polls_index.rs`. The component macro owns the route metadata, so no separate `pages.rs` wrapper is needed:
 
 ```rust
-use crate::client::components::nav::with_nav;
+use reinhardt::pages::component;
 use reinhardt::pages::component::Page;
 
-pub fn index_page() -> Page {
-    with_nav(super::components::polls_index())
+use crate::client::components::nav::with_nav;
+
+#[component("/", "index")]
+pub fn polls_index() -> Page {
+    with_nav(super::polls_index())
 }
 ```
 
-The index component uses the server function as an async resource:
+Then implement the page body in `src/apps/polls/client/components.rs` so tests can exercise it directly and routes can wrap it with the shared nav:
 
 ```rust
 pub fn polls_index() -> Page {
@@ -318,19 +323,30 @@ The final example adds a "Create new poll" button and owner-only controls. Leave
 
 ## Seed a Poll
 
-Until the admin arrives in Part 6, the quickest local seed is SQL. Use the same SQLite database that `cargo make dev` points at:
+Until the admin arrives in Part 6, the quickest local seed is SQL. The generated tutorial project uses SQLite by default, so open the local database created by `cargo make migrate`:
 
-```sql
-insert into questions (question_text, pub_date)
-values ('What should we build next?', datetime('now'));
-
-insert into choices (question_id, choice_text, votes)
-values
-    (last_insert_rowid(), 'More tutorials', 0),
-    (last_insert_rowid(), 'More examples', 0);
+```bash
+sqlite3 db.sqlite3
 ```
 
-Run it with `sqlite3 db.sqlite3` from the project root after `cargo make migrate`.
+Then paste:
+
+```sql
+BEGIN;
+
+INSERT INTO questions (question_text, pub_date)
+VALUES ('What should we build next?', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+
+WITH inserted_question(id) AS (SELECT last_insert_rowid())
+INSERT INTO choices (question_id, choice_text, votes)
+SELECT id, 'More tutorials', 0 FROM inserted_question
+UNION ALL
+SELECT id, 'More examples', 0 FROM inserted_question;
+
+COMMIT;
+```
+
+If you switch the tutorial profile to PostgreSQL, open that database with `psql` and use PostgreSQL's `RETURNING` syntax instead of `last_insert_rowid()`.
 
 ## Checkpoint
 
@@ -344,7 +360,7 @@ Open `http://127.0.0.1:8000/`. You should see the poll list rendered by the WASM
 
 Before continuing:
 
-- `migrations/polls/0001_initial.rs` has no ownership column.
+- `migrations/polls/0001_initial.rs` has no `author_id`.
 - `get_questions` returns `Vec<QuestionInfo>`.
-- `src/config/urls.rs` aggregates `polls::urls::server_url_patterns()` and `polls::urls::client_url_patterns()`.
+- `src/config/urls.rs` aggregates `polls::urls::server_url_patterns()` on the server target and `polls::urls::client_url_patterns()` on the client target.
 - The browser renders the poll index through `ClientLauncher`.

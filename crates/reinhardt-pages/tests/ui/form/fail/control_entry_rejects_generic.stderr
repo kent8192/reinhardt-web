@@ -1,0 +1,5 @@
+error: ResetButton does not accept generic arguments
+ --> tests/ui/form/fail/control_entry_rejects_generic.rs:8:11
+  |
+8 |             reset: ResetButton<String> {
+  |                    ^^^^^^^^^^^

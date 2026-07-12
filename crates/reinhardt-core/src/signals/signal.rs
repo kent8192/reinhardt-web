@@ -170,7 +170,7 @@ impl<T: Send + Sync + 'static> Signal<T> {
 		});
 
 		// Sort by priority (descending - higher priority first)
-		receivers.sort_by(|a, b| b.priority.cmp(&a.priority));
+		receivers.sort_by_key(|receiver| std::cmp::Reverse(receiver.priority));
 	}
 
 	/// Connect a receiver function to this signal (simple version)

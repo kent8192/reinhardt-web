@@ -109,31 +109,6 @@ pub use server_fn_trait::{ServerFn, ServerFnError, parse_server_error_message};
 // Re-export the macro for convenience
 pub use reinhardt_pages_macros::server_fn;
 
-/// Resolves a server function endpoint path by prepending the mount prefix.
-///
-/// On WASM targets, reads the `<meta name="server-fn-prefix">` tag from the
-/// document to determine the mount prefix. The prefix is cached after the first
-/// DOM lookup for performance. Only same-origin absolute path prefixes are
-/// honored; absolute URLs, scheme-relative URLs, relative prefixes, parser
-/// slash equivalents, query or fragment delimiters, and dot-segment prefixes
-/// are ignored so credentialed server function requests cannot be redirected
-/// by DOM-controlled metadata.
-///
-/// On non-WASM targets, returns the path unchanged (server-side routing handles
-/// prefix resolution via router mounting).
-///
-/// # Examples
-///
-/// ```ignore
-/// // With <meta name="server-fn-prefix" content="/admin"> in the document:
-/// assert_eq!(resolve_endpoint("/api/server_fn/get_list"), "/admin/api/server_fn/get_list");
-///
-/// // Without the meta tag:
-/// assert_eq!(resolve_endpoint("/api/server_fn/get_list"), "/api/server_fn/get_list");
-///
-/// // Cross-origin prefixes are ignored:
-/// assert_eq!(resolve_endpoint("/api/server_fn/get_list"), "/api/server_fn/get_list");
-/// ```
 #[cfg(any(wasm, test))]
 fn prefixed_same_origin_path(prefix: &str, path: &str) -> String {
 	let prefix = prefix.trim();
@@ -196,6 +171,28 @@ fn hex_value(byte: u8) -> Option<u8> {
 	}
 }
 
+/// Resolves a server function endpoint path by prepending the client mount prefix.
+///
+/// Reads the `<meta name="server-fn-prefix">` tag from the document to
+/// determine the mount prefix. The prefix is cached after the first DOM lookup
+/// for performance. Only same-origin absolute path prefixes are honored;
+/// absolute URLs, scheme-relative URLs, relative prefixes, parser slash
+/// equivalents, query or fragment delimiters, and dot-segment prefixes are
+/// ignored so credentialed server function requests cannot be redirected by
+/// DOM-controlled metadata.
+///
+/// # Examples
+///
+/// ```ignore
+/// // With <meta name="server-fn-prefix" content="/admin"> in the document:
+/// assert_eq!(resolve_endpoint("/api/server_fn/get_list"), "/admin/api/server_fn/get_list");
+///
+/// // Without the meta tag:
+/// assert_eq!(resolve_endpoint("/api/server_fn/get_list"), "/api/server_fn/get_list");
+///
+/// // Cross-origin prefixes are ignored:
+/// assert_eq!(resolve_endpoint("/api/server_fn/get_list"), "/api/server_fn/get_list");
+/// ```
 #[cfg(wasm)]
 pub fn resolve_endpoint(path: &str) -> String {
 	use std::cell::RefCell;

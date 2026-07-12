@@ -7,10 +7,10 @@
 //! once the WASM client finishes its first roundtrip.
 //!
 //! All `href` values are resolved through each app's client router.
-use crate::apps::polls::urls::client_router as polls_routes;
+use crate::apps::polls::urls as polls_routes;
+use crate::apps::users::models::UserInfo;
 use crate::apps::users::server_fn::current_user;
-use crate::apps::users::urls::client_router as users_routes;
-use crate::shared::types::UserInfo;
+use crate::apps::users::urls as users_routes;
 use reinhardt::pages::component::Page;
 use reinhardt::pages::page;
 use reinhardt::pages::reactive::hooks::{Action, use_action};
@@ -30,17 +30,21 @@ pub fn nav_bar() -> Page {
 	let login_href = users_routes::reverse("login", &[]);
 	let logout_href = users_routes::reverse("logout", &[]);
 	let signup_href = users_routes::reverse("signup", &[]);
-	page!(|auth_signal: Action<Option<UserInfo>, String>, polls_index_href: String, login_href: String, logout_href: String, signup_href: String| {
+	page!(|auth_signal: Action<Option<UserInfo>, String>,
+	 polls_index_href: String,
+	 login_href: String,
+	 logout_href: String,
+	 signup_href: String| {
 		nav {
 			class: "nav-bar",
 			a {
 				href: polls_index_href,
-				class: "nav-brand font-bold text-lg text-content-primary",
+				class: "font-bold text-lg text-content-primary",
 				"Polls"
 			}
 			if auth_signal.is_pending() {
 				div {
-					class: "nav-actions flex items-center gap-3",
+					class: "flex items-center gap-3",
 					aria_busy: "true",
 					span {
 						class: "sr-only",
@@ -57,12 +61,10 @@ pub fn nav_bar() -> Page {
 				}
 			} else if let Some(Some(user)) = auth_signal.result() {
 				div {
-					class: "nav-actions flex items-center gap-3",
+					class: "flex items-center gap-3",
 					span {
-						class: "nav-username text-sm text-muted",
-						{
-							format!("Signed in as {}", user.username)
-						}
+						class: "text-sm text-muted",
+						{ format!("Signed in as {}", user.username) }
 					}
 					a {
 						href: logout_href.clone(),
@@ -72,7 +74,7 @@ pub fn nav_bar() -> Page {
 				}
 			} else {
 				div {
-					class: "nav-actions flex items-center gap-2",
+					class: "flex items-center gap-2",
 					a {
 						href: signup_href.clone(),
 						class: "btn-secondary",

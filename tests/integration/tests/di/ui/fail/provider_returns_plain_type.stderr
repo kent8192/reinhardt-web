@@ -1,0 +1,5 @@
+error: #[injectable] provider functions must return FactoryOutput<K, T>
+ --> tests/di/ui/fail/provider_returns_plain_type.rs:6:26
+  |
+6 | async fn app_config() -> AppConfig {
+  |                          ^^^^^^^^^

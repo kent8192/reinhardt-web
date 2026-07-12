@@ -461,6 +461,7 @@ impl BaseCommand for MigrateCommand {
 					.iter()
 					.filter(|m| !applied_names.contains(m.name.as_str()))
 					.collect();
+				let pending = dependency_ordered_migrations(pending)?;
 
 				if pending.is_empty() {
 					ctx.info(&format!(
@@ -571,6 +572,7 @@ impl BaseCommand for MigrateCommand {
 							.any(|r| r.app == m.app_label && r.name == m.name)
 					})
 					.collect();
+				let pending = dependency_ordered_migrations(pending)?;
 				if pending.is_empty() {
 					ctx.info("[plan] No unapplied migrations.");
 					return Ok(());
@@ -594,9 +596,10 @@ impl BaseCommand for MigrateCommand {
 
 				// Create migration executor for fake migrations
 				let mut executor = DatabaseMigrationExecutor::new(connection);
+				let migrations_to_fake = dependency_ordered_migrations(migrations_to_apply.iter())?;
 
 				// Record each migration as applied without executing
-				for migration in &migrations_to_apply {
+				for migration in migrations_to_fake {
 					executor
 						.record_migration(&migration.app_label, &migration.name)
 						.await
@@ -649,6 +652,50 @@ impl BaseCommand for MigrateCommand {
 			Ok(())
 		}
 	}
+}
+
+/// Sort migrations with the same dependency rules used by the migration executor.
+#[cfg(feature = "migrations")]
+fn dependency_ordered_migrations<'a>(
+	migrations: impl IntoIterator<Item = &'a reinhardt_db::migrations::Migration>,
+) -> CommandResult<Vec<&'a reinhardt_db::migrations::Migration>> {
+	use reinhardt_db::migrations::{MigrationGraph, MigrationKey};
+	use std::collections::HashMap;
+
+	let migrations: Vec<_> = migrations.into_iter().collect();
+	let mut by_key = HashMap::with_capacity(migrations.len());
+	let mut graph = MigrationGraph::new();
+
+	for migration in &migrations {
+		let key = MigrationKey::new(migration.app_label.as_str(), migration.name.as_str());
+		let dependencies = migration
+			.dependencies
+			.iter()
+			.map(|(app, name)| MigrationKey::new(app.as_str(), name.as_str()))
+			.collect();
+
+		by_key.insert(key.clone(), *migration);
+		graph.add_migration(key, dependencies);
+	}
+
+	graph
+		.topological_sort()
+		.map_err(|e| {
+			crate::CommandError::ExecutionError(format!(
+				"Failed to sort migration plan by dependencies: {}",
+				e
+			))
+		})?
+		.into_iter()
+		.map(|key| {
+			by_key.get(&key).copied().ok_or_else(|| {
+				crate::CommandError::ExecutionError(format!(
+					"Dependency-sorted migration not found: {}",
+					key.id()
+				))
+			})
+		})
+		.collect()
 }
 
 /// Resolve the applied-migration set for a `--plan` preview without creating the
@@ -1893,7 +1940,7 @@ impl BaseCommand for RunServerCommand {
 				"watch-delay",
 				"Watch delay in milliseconds for file change debouncing",
 			)
-			.with_default("500"),
+			.with_default("120"),
 			CommandOption::flag(None, "nothreading", "Disable threading"),
 			CommandOption::flag(None, "insecure", "Serve static files in production mode"),
 			CommandOption::flag(
@@ -1964,6 +2011,12 @@ impl BaseCommand for RunServerCommand {
 		let noreload = ctx.has_option("noreload");
 		#[cfg_attr(not(feature = "server"), allow(unused_variables))]
 		let no_wasm_rebuild = ctx.has_option("no-wasm-rebuild");
+		#[cfg(feature = "autoreload")]
+		let watch_delay = ctx
+			.option("watch-delay")
+			.and_then(|raw| raw.parse::<u64>().ok())
+			.map(std::time::Duration::from_millis)
+			.unwrap_or(crate::debounced_watcher::DEBOUNCE_WINDOW);
 		let insecure = ctx.has_option("insecure");
 		#[cfg_attr(
 			not(any(feature = "server", feature = "openapi-router")),
@@ -1978,9 +2031,13 @@ impl BaseCommand for RunServerCommand {
 		let no_spa = ctx.has_option("no-spa");
 		#[cfg_attr(not(feature = "server"), allow(unused_variables))]
 		let no_project_static = ctx.has_option("no-project-static");
+		#[cfg_attr(not(feature = "pages"), allow(unused_variables))]
 		let no_wasm = ctx.has_option("no-wasm");
+		#[cfg_attr(not(feature = "pages"), allow(unused_variables))]
 		let no_override_wasm = ctx.has_option("no-override-wasm");
+		#[cfg_attr(not(feature = "pages"), allow(unused_variables))]
 		let force_wasm_legacy = ctx.has_option("force-wasm");
+		#[cfg_attr(not(feature = "pages"), allow(unused_variables))]
 		let wasm_optional = ctx.has_option("wasm-optional");
 		// Build WASM frontend if --with-pages and not --no-wasm
 		#[cfg(feature = "pages")]
@@ -2187,6 +2244,7 @@ impl BaseCommand for RunServerCommand {
 					no_override_wasm,
 					force_wasm_legacy,
 					wasm_optional,
+					watch_delay,
 				)
 				.await;
 			}
@@ -2564,6 +2622,7 @@ impl RunServerCommand {
 					no_override_wasm,
 					force_wasm,
 					wasm_optional,
+					crate::debounced_watcher::DEBOUNCE_WINDOW,
 				)
 				.await
 			}
@@ -2674,6 +2733,7 @@ impl RunServerCommand {
 		no_override_wasm: bool,
 		force_wasm: bool,
 		wasm_optional: bool,
+		debounce_window: std::time::Duration,
 	) -> CommandResult<()> {
 		// Resolve the cargo metadata for the current working directory.
 		let metadata = cargo_metadata::MetadataCommand::new().exec().map_err(|e| {
@@ -2792,6 +2852,7 @@ impl RunServerCommand {
 			bin_name,
 			address: address.to_string(),
 			roots,
+			debounce_window,
 			server_address: Some(address.to_string()),
 			no_wasm_rebuild,
 			#[cfg(feature = "pages")]
@@ -3191,7 +3252,7 @@ impl BaseCommand for ShowUrlsCommand {
 	}
 
 	fn description(&self) -> &str {
-		"Display all registered URL patterns"
+		"Display all registered server URL patterns"
 	}
 
 	fn options(&self) -> Vec<CommandOption> {
@@ -3208,7 +3269,7 @@ impl BaseCommand for ShowUrlsCommand {
 			ctx.info("Example:");
 			ctx.info("  let router = UnifiedRouter::new()");
 			ctx.info("      .with_prefix(\"/api\")");
-			ctx.info("      .function(\"/health\", Method::GET, health_handler);");
+			ctx.info("      .endpoint(health_check);");
 			ctx.info("");
 			ctx.info("  reinhardt_urls::routers::register_router(Arc::new(router));");
 			return Ok(());
@@ -3222,7 +3283,7 @@ impl BaseCommand for ShowUrlsCommand {
 		let routes = router.get_all_routes();
 
 		if routes.is_empty() {
-			ctx.info("No routes registered.");
+			ctx.info("No server routes registered.");
 			return Ok(());
 		}
 
@@ -3230,7 +3291,7 @@ impl BaseCommand for ShowUrlsCommand {
 		let names_only = ctx.has_option("names");
 
 		// Display header
-		ctx.info("Registered URL patterns:");
+		ctx.info("Registered server URL patterns:");
 		ctx.info("");
 
 		if names_only {
@@ -3290,7 +3351,7 @@ impl BaseCommand for ShowUrlsCommand {
 		}
 
 		ctx.info("");
-		ctx.success(&format!("Total routes: {}", routes.len()));
+		ctx.success(&format!("Total server routes: {}", routes.len()));
 
 		Ok(())
 	}
@@ -3414,12 +3475,36 @@ impl CheckCommand {
 	///
 	/// Returns `None` when neither source produces a URL.
 	fn resolve_database_url(ctx: &CommandContext) -> Option<String> {
+		let env_database_url = std::env::var("DATABASE_URL").ok();
+
+		#[cfg(feature = "reinhardt-db")]
+		if let Some(settings) = ctx.settings.as_ref()
+			&& let Ok(url) = DatabaseConnection::database_url_from(
+				settings.as_ref(),
+				env_database_url.as_deref(),
+			) {
+			sync_database_url_to_env(env_database_url.as_deref(), &url, ctx);
+			return Some(url);
+		}
+
+		#[cfg(not(feature = "reinhardt-db"))]
 		if let Some(settings) = ctx.settings.as_ref()
 			&& let Some(db) = settings.core().databases.get("default")
 		{
 			return Some(db.to_url());
 		}
-		std::env::var("DATABASE_URL").ok()
+
+		if let Some(url) = env_database_url {
+			return Some(url);
+		}
+
+		#[cfg(feature = "reinhardt-db")]
+		if let Ok(url) = get_database_url_from_settings() {
+			sync_database_url_to_env(None, &url, ctx);
+			return Some(url);
+		}
+
+		None
 	}
 
 	/// Returns true when a static-files root is configured, either via
@@ -3846,9 +3931,9 @@ async fn connect_database(url: &str) -> CommandResult<(DatabaseType, DatabaseCon
 			}
 			#[cfg(not(feature = "postgres"))]
 			{
-				return Err(crate::CommandError::ExecutionError(
+				Err(crate::CommandError::ExecutionError(
 					"PostgreSQL support not enabled. Enable 'postgres' feature.".to_string(),
-				));
+				))
 			}
 		}
 		DatabaseType::Sqlite => {
@@ -4248,6 +4333,82 @@ fn detect_database_type(url: &str) -> Result<DatabaseType, crate::CommandError> 
 mod tests {
 	use super::*;
 
+	#[cfg(feature = "reinhardt-db")]
+	struct EnvVarGuard {
+		key: &'static str,
+		original: Option<std::ffi::OsString>,
+	}
+
+	#[cfg(feature = "reinhardt-db")]
+	impl EnvVarGuard {
+		fn capture(key: &'static str) -> Self {
+			Self {
+				key,
+				original: std::env::var_os(key),
+			}
+		}
+	}
+
+	#[cfg(feature = "reinhardt-db")]
+	impl Drop for EnvVarGuard {
+		fn drop(&mut self) {
+			// SAFETY: tests that mutate process environment are serial-protected.
+			unsafe {
+				match &self.original {
+					Some(value) => std::env::set_var(self.key, value),
+					None => std::env::remove_var(self.key),
+				}
+			}
+		}
+	}
+
+	#[cfg(feature = "reinhardt-db")]
+	struct CurrentDirGuard {
+		original: std::path::PathBuf,
+	}
+
+	#[cfg(feature = "reinhardt-db")]
+	impl CurrentDirGuard {
+		fn enter(path: &std::path::Path) -> Self {
+			let original = std::env::current_dir().expect("read current directory");
+			std::env::set_current_dir(path).expect("set current directory");
+			Self { original }
+		}
+	}
+
+	#[cfg(feature = "reinhardt-db")]
+	impl Drop for CurrentDirGuard {
+		fn drop(&mut self) {
+			let _ = std::env::set_current_dir(&self.original);
+		}
+	}
+
+	#[test]
+	#[cfg(feature = "migrations")]
+	fn test_dependency_ordered_migrations_sorts_cross_app_plan() {
+		// Arrange
+		let users = reinhardt_db::migrations::Migration::new("0001_initial", "users");
+		let profiles = reinhardt_db::migrations::Migration::new("0001_initial", "profiles")
+			.add_dependency("users", "0001_initial");
+		let articles = reinhardt_db::migrations::Migration::new("0001_initial", "articles")
+			.add_dependency("profiles", "0001_initial");
+		let unordered = vec![profiles, users, articles];
+
+		// Act
+		let ordered = dependency_ordered_migrations(unordered.iter()).expect("sort migration plan");
+
+		// Assert
+		let ids: Vec<_> = ordered.iter().map(|migration| migration.id()).collect();
+		assert_eq!(
+			ids,
+			vec![
+				"users.0001_initial",
+				"profiles.0001_initial",
+				"articles.0001_initial"
+			]
+		);
+	}
+
 	#[tokio::test]
 	async fn test_check_command_basic() {
 		let cmd = CheckCommand;
@@ -4257,6 +4418,49 @@ mod tests {
 		let result = cmd.execute(&ctx).await;
 		// May fail if environment has strict checks, but should handle gracefully
 		assert!(result.is_ok() || result.is_err());
+	}
+
+	#[test]
+	#[cfg(feature = "reinhardt-db")]
+	#[serial_test::serial(env)]
+	fn test_check_resolves_database_url_from_settings_files() {
+		// Arrange
+		let _database_url = EnvVarGuard::capture("DATABASE_URL");
+		let _reinhardt_env = EnvVarGuard::capture("REINHARDT_ENV");
+		// SAFETY: env mutation in this test is protected by #[serial(env)].
+		unsafe {
+			std::env::remove_var("DATABASE_URL");
+			std::env::set_var("REINHARDT_ENV", "local");
+		}
+
+		let temp_dir = tempfile::TempDir::new().expect("create temp dir");
+		let settings_dir = temp_dir.path().join("settings");
+		std::fs::create_dir_all(&settings_dir).expect("create settings dir");
+		std::fs::write(
+			settings_dir.join("base.toml"),
+			r#"
+[core]
+secret_key = "test-secret"
+
+[core.databases.default]
+engine = "sqlite"
+name = "db.sqlite3"
+"#,
+		)
+		.expect("write base settings");
+		std::fs::write(settings_dir.join("local.toml"), "").expect("write local settings");
+		let _cwd = CurrentDirGuard::enter(temp_dir.path());
+
+		// Act
+		let resolved = CheckCommand::resolve_database_url(&CommandContext::default())
+			.expect("database URL should resolve from settings files");
+
+		// Assert
+		assert_eq!(resolved, "sqlite:db.sqlite3");
+		assert_eq!(
+			std::env::var("DATABASE_URL").expect("DATABASE_URL should be synced"),
+			resolved
+		);
 	}
 
 	#[tokio::test]
@@ -4568,6 +4772,15 @@ mod tests {
 			"--force-wasm must remain registered (deprecated alias)"
 		);
 		assert!(option_names.contains(&"no-wasm"));
+		let watch_delay = options
+			.iter()
+			.find(|option| option.long == "watch-delay")
+			.expect("--watch-delay must be registered as a runserver option");
+		assert_eq!(
+			watch_delay.default.as_deref(),
+			Some("120"),
+			"--watch-delay default must match the hot-reload debounce default"
+		);
 	}
 
 	#[test]

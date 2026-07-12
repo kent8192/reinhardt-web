@@ -1,36 +1,17 @@
 //! Client-side routing for the {{ app_name }} SPA.
 //!
-//! Route names are namespaced under `{{ app_name }}` (e.g.
-//! `{{ app_name }}:index`). Pass `client_url_patterns()` explicitly to
-//! `UnifiedRouter::mount_unified(...)` from `src/config/urls.rs` for the
-//! routes to become active through route inventory.
-//!
-//! # Placeholder note
-//!
-//! The freshly generated function returns an empty `ClientRouter`. Wire
-//! the placeholder page (or your real pages) once they exist:
-//!
-//! ```rust,ignore
-//! use reinhardt::ClientPath;
-//! use crate::apps::{{ app_name }}::client::pages;
-//!
-//! ClientRouter::new()
-//!     .route("placeholder", "/", pages::placeholder_page)
-//!     .route_path(
-//!         "detail",
-//!         "/items/{id}/",
-//!         |ClientPath(id): ClientPath<i64>| pages::item_detail_page(id),
-//!     )
-//! ```
+//! Route names are defined by this app's route-backed client components and
+//! registered only in client builds.
 
+{% if is_workspace == "true" %}use crate::client::components;{% else %}use crate::apps::{{ app_name }}::client::components;{% endif %}
 use reinhardt::ClientRouter;
 
 pub fn client_url_patterns() -> ClientRouter {
-	ClientRouter::new()
+    ClientRouter::new().component(components::placeholder::placeholder)
 }
 
 pub fn reverse(name: &str, params: &[(&str, &str)]) -> String {
-	client_url_patterns()
-		.reverse(name, params)
-		.unwrap_or_else(|error| panic!("failed to reverse {{ app_name }} client route `{name}`: {error}"))
+    client_url_patterns()
+        .reverse(name, params)
+        .unwrap_or_else(|error| panic!("failed to reverse {{ app_name }} client route `{name}`: {error}"))
 }

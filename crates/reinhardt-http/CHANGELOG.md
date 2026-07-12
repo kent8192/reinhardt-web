@@ -7,29 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-http@v0.2.0...reinhardt-http@v0.3.0) - 2026-06-28
+
+Stable release of `reinhardt-http` for the Reinhardt 0.3.0 line. This
+entry consolidates the 0.3.0 release-candidate series into one
+stable release section.
+
+### Migration Notes
+
+- Review the root CHANGELOG and `instructions/MIGRATION_0.3.md` before upgrading from 0.2.x.
+
+### Fixed
+
+- *(http)* preserve PathParams iterator type
+
+### Performance
+
+- *(http)* reduce request allocation overhead
+- *(http)* reduce router allocation hot path
+
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-http@v0.1.3...reinhardt-http@v0.2.0) - 2026-06-11
 
 Stable release of `reinhardt-http` for the Reinhardt 0.2.0 line. This
-entry consolidates the 0.2.0 release-candidate series; the original
-RC entries remain below as detailed history.
+entry consolidates the 0.2.0 release-candidate series into one
+stable release section.
 
 ### Migration Notes
 
 - Review the breaking changes listed below before upgrading from 0.1.x.
 - See the root CHANGELOG and `instructions/MIGRATION_0.2.md` for cross-crate migration guidance.
-
-### Maintenance
-
-- update Cargo.toml dependencies
-
-
-## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-http@v0.2.0-rc.4...reinhardt-http@v0.2.0-rc.5) - 2026-06-11
-
-### Maintenance
-
-- update Cargo.toml dependencies
-
-## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-http@v0.1.3...reinhardt-http@v0.2.0-rc.2) - 2026-06-03
 
 ### Changed
 
@@ -38,6 +44,10 @@ RC entries remain below as detailed history.
 ### Fixed
 
 - *(ci)* recover develop release-plz prerelease
+
+### Maintenance
+
+- update Cargo.toml dependencies
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-http@v0.1.0-rc.30...reinhardt-http@v0.1.0) - 2026-05-22
 

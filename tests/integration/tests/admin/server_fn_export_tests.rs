@@ -5,9 +5,7 @@
 
 use super::server_fn_helpers::server_fn_context;
 use reinhardt_admin::core::ExportFormat;
-use reinhardt_admin::core::{AdminDatabase, AdminSite};
 use reinhardt_admin::server::export_data;
-use reinhardt_di::Depends;
 use rstest::*;
 use serde_json::json;
 use std::collections::HashMap;
@@ -20,7 +18,7 @@ use super::server_fn_helpers::{make_auth_user, make_staff_request};
 #[rstest]
 #[tokio::test]
 async fn test_export_json_happy_path(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
@@ -61,7 +59,7 @@ async fn test_export_json_happy_path(
 #[rstest]
 #[tokio::test]
 async fn test_export_csv_succeeds(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
@@ -103,7 +101,7 @@ async fn test_export_csv_succeeds(
 #[rstest]
 #[tokio::test]
 async fn test_export_tsv_succeeds(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
@@ -144,7 +142,7 @@ async fn test_export_tsv_succeeds(
 #[rstest]
 #[tokio::test]
 async fn test_export_truncation_flag(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
@@ -177,7 +175,7 @@ async fn test_export_truncation_flag(
 #[rstest]
 #[tokio::test]
 async fn test_export_empty_table(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
@@ -210,7 +208,7 @@ async fn test_export_empty_table(
 #[rstest]
 #[tokio::test]
 async fn test_export_json_content_type(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;
@@ -239,7 +237,7 @@ async fn test_export_json_content_type(
 #[rstest]
 #[tokio::test]
 async fn test_export_model_not_registered(
-	#[future] server_fn_context: (Depends<AdminSite>, Depends<AdminDatabase>),
+	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
 	let (site, db) = server_fn_context.await;

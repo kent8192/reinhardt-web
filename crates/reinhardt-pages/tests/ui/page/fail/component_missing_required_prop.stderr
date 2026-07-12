@@ -1,4 +1,4 @@
-error[E0277]: the member `Unset<item>` was not set, but this method requires it to be set
+error[E0277]: the member `bon::__::Unset<item>` was not set, but this method requires it to be set
   --> tests/ui/page/fail/component_missing_required_prop.rs:28:10
    |
 28 |       let _ = page!(|| {
@@ -7,14 +7,15 @@ error[E0277]: the member `Unset<item>` was not set, but this method requires it 
 30 | |             Card {}
 31 | |         }
 32 | |     });
-   | |______^ the member `Unset<item>` was not set, but this method requires it to be set
+   | |______^ the member `bon::__::Unset<item>` was not set, but this method requires it to be set
    |
-   = help: the trait `IsSet` is not implemented for `Unset<item>`
+   = help: the trait `bon::__::IsSet` is not implemented for `bon::__::Unset<item>`
 note: required for `card_props_builder::Empty` to implement `IsComplete`
   --> tests/ui/page/fail/component_missing_required_prop.rs:10:10
    |
 10 | #[derive(bon::Builder)]
-   |          ^^^^^^^^^^^^ unsatisfied trait bound introduced in this `derive` macro
+   |          ^^^^^^^^^^^^ type parameter would need to implement `IsComplete`
+   = help: consider manually implementing `IsComplete` to avoid undesired bounds
 note: required by a bound in `CardPropsBuilder::<S>::build`
   --> tests/ui/page/fail/component_missing_required_prop.rs:10:10
    |

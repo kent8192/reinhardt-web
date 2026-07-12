@@ -1817,13 +1817,11 @@ mod tests {
 #[cfg(test)]
 mod transaction_extended_tests {
 	use super::*;
-	use crate::orm::connection::{DatabaseBackend, DatabaseConnection};
-	// use crate::orm::expressions::{F, Q};
-	// use super::transaction::*;
 	use crate::backends::backend::DatabaseBackend as BackendTrait;
 	use crate::backends::connection::DatabaseConnection as BackendsConnection;
 	use crate::backends::error::Result;
 	use crate::backends::types::{DatabaseType, QueryResult, QueryValue, Row, TransactionExecutor};
+	use crate::orm::connection::{DatabaseBackend, DatabaseConnection};
 	use rstest::*;
 	use std::sync::Arc;
 

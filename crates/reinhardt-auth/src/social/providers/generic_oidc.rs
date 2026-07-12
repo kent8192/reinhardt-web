@@ -25,8 +25,10 @@
 //!   currently be used to validate ID-token signatures.
 //! - The discovery document and the JWKS are cached in-memory with
 //!   configurable TTLs (defaults: 1 hour each).
-//! - All endpoint URLs returned by discovery are required to use HTTPS
-//!   (HTTP is permitted only for loopback addresses for local development).
+//! - All endpoint URLs returned by discovery are required to use the same
+//!   origin as the configured issuer, and redirects are not followed. HTTPS
+//!   is required except for matching loopback HTTP origins used during local
+//!   development.
 //!
 //! # Example
 //!
@@ -209,7 +211,7 @@ impl GenericOidcProvider {
 		Self::validate_config(&config)?;
 
 		let provider_config = build_provider_config(&config);
-		let client = OAuth2Client::new();
+		let client = OAuth2Client::without_redirects();
 		let auth_flow = AuthorizationFlow::new(provider_config.clone());
 		let token_exchange = TokenExchangeFlow::new(client.clone(), provider_config.clone());
 		let refresh_flow = RefreshFlow::new(client.clone(), provider_config.clone());
@@ -301,7 +303,7 @@ impl GenericOidcProvider {
 	/// Fetches (and caches) the OIDC discovery document.
 	async fn discover(&self) -> Result<OIDCDiscovery, SocialAuthError> {
 		let issuer = issuer_from_discovery_url(&self.config.discovery_url);
-		self.discovery_client.discover(&issuer).await
+		self.discovery_client.discover_same_origin(&issuer).await
 	}
 
 	/// Returns the [`IdTokenValidator`], constructing it on first use from

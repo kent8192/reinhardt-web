@@ -1,5 +1,10 @@
-//! Server-side services for the {{ app_name }} application.
+//! Service modules for the {{ app_name }} application.
 //!
-//! Keep database-heavy orchestration here when a server function grows beyond
-//! request/response glue. Server functions can stay thin by delegating shared
-//! business operations to this module.
+//! Client-only services live under `services/client/`; server-only services
+//! live under `services/server/`.
+
+#[cfg(client)]
+pub mod client;
+
+#[cfg(server)]
+pub mod server;

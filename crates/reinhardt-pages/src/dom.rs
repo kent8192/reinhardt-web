@@ -7,6 +7,7 @@
 //! ## Architecture
 //!
 //! - **Element**: Wrapper around `web_sys::Element` with type-safe operations
+//!   plus explicit custom-element property and event helpers
 //! - **Document**: Wrapper around `web_sys::Document` for DOM creation
 //! - **EventHandle**: RAII wrapper for event listeners (Drop-based cleanup)
 //!
@@ -44,7 +45,7 @@ pub mod event;
 
 // Re-exports for convenience
 pub use document::Document;
-pub use element::{Element, EventHandle};
+pub use element::{CustomEventOptions, Element, EventHandle};
 pub use event::EventType;
 
 /// Get the global Document instance

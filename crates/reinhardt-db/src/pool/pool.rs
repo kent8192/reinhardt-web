@@ -5,8 +5,8 @@ use super::errors::{PoolError, PoolResult};
 use super::events::{PoolEvent, PoolEventListener};
 use sqlx::{Database, MySql, Pool, Postgres, Sqlite};
 use std::mem::ManuallyDrop;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, OnceLock};
 use tokio::sync::RwLock;
 
 /// Mask the password in a database URL for safe display.
@@ -37,12 +37,52 @@ pub(crate) fn mask_url_password(url: &str) -> String {
 	url.to_string()
 }
 
+fn generate_connection_id() -> String {
+	uuid::Uuid::now_v7().to_string()
+}
+
+struct PoolEventHub {
+	listeners: RwLock<Vec<Arc<dyn PoolEventListener>>>,
+	listener_count: AtomicUsize,
+}
+
+impl PoolEventHub {
+	fn new() -> Self {
+		Self {
+			listeners: RwLock::new(Vec::new()),
+			listener_count: AtomicUsize::new(0),
+		}
+	}
+
+	fn has_listeners(&self) -> bool {
+		self.listener_count.load(Ordering::Acquire) > 0
+	}
+
+	async fn add_listener(&self, listener: Arc<dyn PoolEventListener>) {
+		let mut listeners = self.listeners.write().await;
+		listeners.push(listener);
+		self.listener_count
+			.store(listeners.len(), Ordering::Release);
+	}
+
+	async fn emit_event(&self, event: PoolEvent) {
+		if !self.has_listeners() {
+			return;
+		}
+
+		let listeners = self.listeners.read().await;
+		for listener in listeners.iter() {
+			listener.on_event(event.clone()).await;
+		}
+	}
+}
+
 /// A database connection pool
 pub struct ConnectionPool<DB: Database> {
 	pool: Pool<DB>,
 	config: PoolConfig,
 	url: String,
-	listeners: Arc<RwLock<Vec<Arc<dyn PoolEventListener>>>>,
+	events: Arc<PoolEventHub>,
 	first_connect_fired: Arc<AtomicBool>,
 }
 
@@ -80,7 +120,7 @@ impl ConnectionPool<Postgres> {
 			pool,
 			config,
 			url: url.to_string(),
-			listeners: Arc::new(RwLock::new(Vec::new())),
+			events: Arc::new(PoolEventHub::new()),
 			first_connect_fired: Arc::new(AtomicBool::new(false)),
 		})
 	}
@@ -120,7 +160,7 @@ impl ConnectionPool<MySql> {
 			pool,
 			config,
 			url: url.to_string(),
-			listeners: Arc::new(RwLock::new(Vec::new())),
+			events: Arc::new(PoolEventHub::new()),
 			first_connect_fired: Arc::new(AtomicBool::new(false)),
 		})
 	}
@@ -160,7 +200,7 @@ impl ConnectionPool<Sqlite> {
 			pool,
 			config,
 			url: url.to_string(),
-			listeners: Arc::new(RwLock::new(Vec::new())),
+			events: Arc::new(PoolEventHub::new()),
 			first_connect_fired: Arc::new(AtomicBool::new(false)),
 		})
 	}
@@ -173,16 +213,12 @@ where
 	/// Add an event listener
 	///
 	pub async fn add_listener(&self, listener: Arc<dyn PoolEventListener>) {
-		let mut listeners = self.listeners.write().await;
-		listeners.push(listener);
+		self.events.add_listener(listener).await;
 	}
 
 	/// Emit an event to all listeners
 	pub(crate) async fn emit_event(&self, event: PoolEvent) {
-		let listeners = self.listeners.read().await;
-		for listener in listeners.iter() {
-			listener.on_event(event.clone()).await;
-		}
+		self.events.emit_event(event).await;
 	}
 	/// Acquire a connection from the pool with event emission
 	///
@@ -207,33 +243,25 @@ where
 		let is_first = !self.first_connect_fired.swap(true, Ordering::SeqCst);
 
 		let conn = self.pool.acquire().await?;
-		let connection_id = uuid::Uuid::now_v7().to_string();
+		let connection_id = OnceLock::new();
 
-		if is_first {
-			// Emit first_connect event (using ConnectionCreated as proxy)
-			self.emit_event(PoolEvent::connection_created(connection_id.clone()))
-				.await;
+		if self.events.has_listeners() {
+			let id = connection_id.get_or_init(generate_connection_id).clone();
+
+			if is_first {
+				// Emit first_connect event (using ConnectionCreated as proxy)
+				self.emit_event(PoolEvent::connection_created(id.clone()))
+					.await;
+			}
+
+			// Emit checkout event
+			self.emit_event(PoolEvent::connection_acquired(id)).await;
 		}
-
-		// Emit checkout event
-		self.emit_event(PoolEvent::connection_acquired(connection_id.clone()))
-			.await;
 
 		Ok(PooledConnection {
 			conn: ManuallyDrop::new(conn),
-			pool_ref: self.clone_arc(),
+			events: self.events.clone(),
 			connection_id,
-		})
-	}
-
-	/// Clone as Arc for sharing with PooledConnection
-	fn clone_arc(&self) -> Arc<Self> {
-		Arc::new(Self {
-			pool: self.pool.clone(),
-			config: self.config.clone(),
-			url: self.url.clone(),
-			listeners: self.listeners.clone(),
-			first_connect_fired: self.first_connect_fired.clone(),
 		})
 	}
 	/// Get the underlying pool
@@ -416,8 +444,8 @@ pub struct PooledConnection<DB: sqlx::Database> {
 	// When no tokio runtime is available, we detach the connection
 	// to avoid sqlx's PoolConnection::Drop calling rt::spawn().
 	conn: ManuallyDrop<sqlx::pool::PoolConnection<DB>>,
-	pool_ref: Arc<ConnectionPool<DB>>,
-	connection_id: String,
+	events: Arc<PoolEventHub>,
+	connection_id: OnceLock<String>,
 }
 
 impl<DB: sqlx::Database> PooledConnection<DB> {
@@ -445,34 +473,49 @@ impl<DB: sqlx::Database> PooledConnection<DB> {
 	/// # }
 	/// ```
 	pub fn connection_id(&self) -> &str {
-		&self.connection_id
+		self.connection_id
+			.get_or_init(generate_connection_id)
+			.as_str()
 	}
 	/// Invalidate this connection (hard invalidation - connection is unusable)
 	///
 	pub async fn invalidate(self, reason: String) {
-		self.pool_ref
-			.emit_event(PoolEvent::connection_invalidated(
-				self.connection_id.clone(),
-				reason,
-			))
-			.await;
+		if self.events.has_listeners() {
+			let connection_id = self
+				.connection_id
+				.get_or_init(generate_connection_id)
+				.clone();
+			self.events
+				.emit_event(PoolEvent::connection_invalidated(connection_id, reason))
+				.await;
+		}
 		// Connection will be dropped and not returned to pool
 	}
 	/// Soft invalidate this connection (can complete current operation)
 	///
 	pub async fn soft_invalidate(&mut self) {
-		self.pool_ref
-			.emit_event(PoolEvent::connection_soft_invalidated(
-				self.connection_id.clone(),
-			))
-			.await;
+		if self.events.has_listeners() {
+			let connection_id = self
+				.connection_id
+				.get_or_init(generate_connection_id)
+				.clone();
+			self.events
+				.emit_event(PoolEvent::connection_soft_invalidated(connection_id))
+				.await;
+		}
 	}
 	/// Reset this connection
 	///
 	pub async fn reset(&mut self) {
-		self.pool_ref
-			.emit_event(PoolEvent::connection_reset(self.connection_id.clone()))
-			.await;
+		if self.events.has_listeners() {
+			let connection_id = self
+				.connection_id
+				.get_or_init(generate_connection_id)
+				.clone();
+			self.events
+				.emit_event(PoolEvent::connection_reset(connection_id))
+				.await;
+		}
 	}
 }
 
@@ -487,14 +530,19 @@ impl<DB: sqlx::Database> Drop for PooledConnection<DB> {
 				// and emit the connection-returned event.
 				drop(conn);
 
-				let pool_ref = self.pool_ref.clone();
-				let connection_id = self.connection_id.clone();
+				if self.events.has_listeners() {
+					let events = self.events.clone();
+					let connection_id = self
+						.connection_id
+						.get_or_init(generate_connection_id)
+						.clone();
 
-				handle.spawn(async move {
-					pool_ref
-						.emit_event(PoolEvent::connection_returned(connection_id))
-						.await;
-				});
+					handle.spawn(async move {
+						events
+							.emit_event(PoolEvent::connection_returned(connection_id))
+							.await;
+					});
+				}
 			}
 			Err(_) => {
 				// No runtime available: prevent sqlx's PoolConnection::Drop
@@ -511,6 +559,31 @@ impl<DB: sqlx::Database> Drop for PooledConnection<DB> {
 mod tests {
 	use super::*;
 	use rstest::rstest;
+	use std::sync::Mutex;
+
+	struct RecordingListener {
+		events: Arc<Mutex<Vec<&'static str>>>,
+	}
+
+	#[async_trait::async_trait]
+	impl PoolEventListener for RecordingListener {
+		async fn on_event(&self, event: PoolEvent) {
+			let name = match event {
+				PoolEvent::ConnectionAcquired { .. } => "acquired",
+				PoolEvent::ConnectionReturned { .. } => "returned",
+				PoolEvent::ConnectionCreated { .. } => "created",
+				PoolEvent::ConnectionClosed { .. } => "closed",
+				PoolEvent::ConnectionTestFailed { .. } => "test_failed",
+				PoolEvent::ConnectionInvalidated { .. } => "invalidated",
+				PoolEvent::ConnectionSoftInvalidated { .. } => "soft_invalidated",
+				PoolEvent::ConnectionReset { .. } => "reset",
+			};
+			self.events
+				.lock()
+				.expect("events mutex should not be poisoned")
+				.push(name);
+		}
+	}
 
 	#[rstest]
 	#[case(
@@ -635,5 +708,31 @@ mod tests {
 
 		// Also drop the pool to ensure cleanup does not panic outside a runtime.
 		drop(pool);
+	}
+
+	#[tokio::test]
+	async fn test_pool_events_are_emitted_when_listener_registered() {
+		// Arrange
+		let events = Arc::new(Mutex::new(Vec::new()));
+		let listener = Arc::new(RecordingListener {
+			events: events.clone(),
+		});
+		let pool = ConnectionPool::new_sqlite("sqlite::memory:", PoolConfig::default())
+			.await
+			.expect("failed to create ConnectionPool");
+		pool.add_listener(listener).await;
+
+		// Act
+		let conn = pool.acquire().await.expect("failed to acquire connection");
+		drop(conn);
+		tokio::task::yield_now().await;
+
+		// Assert
+		let recorded = events.lock().expect("events mutex should not be poisoned");
+		assert_eq!(
+			recorded.as_slice(),
+			["created", "acquired", "returned"],
+			"pool listener should observe the first acquire and return events"
+		);
 	}
 }
