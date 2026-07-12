@@ -948,7 +948,7 @@ fn fixture_record_dependencies(
 			continue;
 		};
 		for (field_name, field) in &metadata.fields {
-			let Some(target_model) = field.params.get("fk_target") else {
+			let Some(target_key) = fixture_foreign_key_target_key(&metadata, field) else {
 				continue;
 			};
 			let Some(value) = fixture_field_value(record, field_name) else {
@@ -957,12 +957,6 @@ fn fixture_record_dependencies(
 			let Some(target_pk) = json_dependency_key(value) else {
 				continue;
 			};
-			let target_app = field
-				.params
-				.get("fk_target_app")
-				.map(String::as_str)
-				.unwrap_or(&metadata.app_label);
-			let target_key = canonical_model_key(target_app, target_model);
 			let Some(target_index) = record_indices.get(&(target_key, target_pk)).copied() else {
 				continue;
 			};
@@ -976,6 +970,28 @@ fn fixture_record_dependencies(
 	}
 
 	Ok(dependencies)
+}
+
+#[cfg(feature = "migrations")]
+fn fixture_foreign_key_target_key(
+	source_metadata: &crate::migrations::model_registry::ModelMetadata,
+	field: &crate::migrations::model_registry::FieldMetadata,
+) -> Option<String> {
+	if let Some(target_model) = field.params.get("fk_target") {
+		let target_app = field
+			.params
+			.get("fk_target_app")
+			.map(String::as_str)
+			.unwrap_or(&source_metadata.app_label);
+		return Some(canonical_model_key(target_app, target_model));
+	}
+
+	let referenced_table = &field.foreign_key.as_ref()?.referenced_table;
+	crate::migrations::model_registry::global_registry()
+		.get_models()
+		.into_iter()
+		.find(|metadata| metadata.table_name.eq_ignore_ascii_case(referenced_table))
+		.map(|metadata| canonical_label(&metadata.app_label, &metadata.model_name))
 }
 
 #[cfg(feature = "migrations")]
@@ -1288,6 +1304,46 @@ mod tests {
 
 		assert_eq!(ordered[0].model, "blog.Author");
 		assert_eq!(ordered[1].model, "blog.Post");
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	#[serial_test::serial(fixture_model_registry)]
+	fn dependency_order_places_scalar_field_fk_targets_first() {
+		let mut author = crate::migrations::ModelMetadata::new(
+			"fixture_scalar",
+			"Author",
+			"fixture_scalar_author",
+		);
+		author.add_field(
+			"id".to_string(),
+			crate::migrations::FieldMetadata::new(crate::migrations::FieldType::BigInteger),
+		);
+		let mut post =
+			crate::migrations::ModelMetadata::new("fixture_scalar", "Post", "fixture_scalar_post");
+		post.add_field(
+			"author_id".to_string(),
+			crate::migrations::FieldMetadata::new(crate::migrations::FieldType::BigInteger)
+				.with_foreign_key(crate::migrations::ForeignKeyInfo {
+					referenced_table: "fixture_scalar_author".to_string(),
+					referenced_column: "id".to_string(),
+					on_delete: crate::migrations::ForeignKeyAction::Cascade,
+					on_update: crate::migrations::ForeignKeyAction::Cascade,
+				}),
+		);
+		crate::migrations::model_registry::global_registry().register_model(author);
+		crate::migrations::model_registry::global_registry().register_model(post);
+		let mut post_fields = Map::new();
+		post_fields.insert("author".to_string(), Value::from(1));
+		let records = vec![
+			FixtureRecord::new("fixture_scalar.Post", Some(Value::from(1)), post_fields),
+			FixtureRecord::new("fixture_scalar.Author", Some(Value::from(1)), Map::new()),
+		];
+
+		let ordered = order_records_by_dependencies(&records).unwrap();
+
+		assert_eq!(ordered[0].model, "fixture_scalar.Author");
+		assert_eq!(ordered[1].model, "fixture_scalar.Post");
 	}
 
 	#[cfg(feature = "migrations")]
