@@ -1,0 +1,10 @@
+error[E0599]: no variant, associated function, or constant named `client_message` found for enum `ApiError` in the current scope
+ --> tests/macros/ui/http_error/fail/recursive_message_fn.rs:7:50
+  |
+4 | enum ApiError {
+  | ------------- variant, associated function, or constant `client_message` not found for this enum
+...
+7 |     #[http_error(status = BAD_REQUEST, message_fn = client_message)]
+  |                                                     ^^^^^^^^^^^^^^ variant, associated function, or constant not found in `ApiError`
+  |
+  = help: items from traits can only be used if the trait is in scope
