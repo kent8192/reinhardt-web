@@ -2580,8 +2580,13 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 	let fk_accessor_methods = generate_fk_accessor_methods(struct_name, &field_infos);
 
 	// Generate relationship metadata
-	let relationship_metadata =
-		generate_relationship_metadata(&rel_fields, &fk_field_infos, app_label, struct_name);
+	let relationship_metadata = generate_relationship_metadata(
+		&rel_fields,
+		&field_infos,
+		&fk_field_infos,
+		app_label,
+		struct_name,
+	);
 
 	// Generate new() as zero-arg alias of build()
 	let new_fn_impl = generate_new_alias(struct_name, &field_infos, &fk_id_field_names);
@@ -4023,8 +4028,12 @@ fn generate_composite_pk_type(struct_name: &syn::Ident, pk_fields: &[&FieldInfo]
 /// Generates two methods:
 /// - `relationship_metadata()` for Model trait (returns `Vec<RelationInfo>`)
 /// - `__migration_relationships()` for migration system (returns `Vec<RelationshipMetadata>`)
+///
+/// Many-to-many targets are inferred from `ManyToManyField<Source, Target>` because
+/// the corresponding `#[rel(many_to_many)]` attribute does not accept `to`.
 fn generate_relationship_metadata(
 	rel_fields: &[(Ident, RelAttribute)],
+	field_infos: &[FieldInfo],
 	fk_field_infos: &[ForeignKeyFieldInfo],
 	_app_label: &str,
 	_struct_name: &Ident,
@@ -4044,12 +4053,17 @@ fn generate_relationship_metadata(
 		.iter()
 		.map(|field| (field.field_name.to_string(), field))
 		.collect();
+	let fields: HashMap<String, &FieldInfo> = field_infos
+		.iter()
+		.map(|field| (field.name.to_string(), field))
+		.collect();
 
 	let relation_info_items: Vec<TokenStream> = rel_fields
 		.iter()
 		.map(|(field_name, rel)| {
 			let field_name_str = field_name.to_string();
 			let foreign_key_info = foreign_keys.get(&field_name_str);
+			let field_info = fields.get(&field_name_str);
 
 			// Map RelationType to RelationshipType
 			let relationship_type = match rel.rel_type {
@@ -4078,7 +4092,17 @@ fn generate_relationship_metadata(
 			let related_model = foreign_key_info.map_or_else(
 				|| {
 					rel.to.as_ref().map_or_else(
-						|| quote! { "" },
+						|| {
+							field_info
+								.and_then(|field| extract_m2m_target_type(&field.ty))
+								.map_or_else(
+									|| quote! { "" },
+									|target| {
+										let target = relation_target_model_name(target);
+										quote! { #target }
+									},
+								)
+						},
 						|path| {
 							let path_str = quote! { #path }.to_string();
 							quote! { #path_str }
@@ -6077,6 +6101,28 @@ mod tests {
 		assert!(output_str.contains("pub fn new () -> EmptyRequiredModelBuilder"));
 		assert!(output_str.contains("pub fn build () -> EmptyRequiredModelBuilder"));
 		assert!(!output_str.contains("EmptyRequiredModelBuilder < >"));
+	}
+
+	#[test]
+	fn test_relationship_metadata_infers_many_to_many_target_model() {
+		// Arrange
+		let input = quote! {
+			#[model(app_label = "test", table_name = "articles")]
+			pub struct Article {
+				#[field(primary_key = true)]
+				pub id: i64,
+				#[rel(many_to_many)]
+				pub tags: ManyToManyField<Article, Tag>,
+			}
+		};
+
+		// Act
+		let output = model_derive_impl(syn::parse2(input).unwrap()).unwrap();
+		let output_str = output.to_string();
+
+		// Assert
+		assert!(output_str.contains("related_model : \"Tag\" . to_string ()"));
+		assert!(!output_str.contains("related_model : \"\" . to_string ()"));
 	}
 
 	#[test]
