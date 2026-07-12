@@ -3,8 +3,7 @@
 use std::cell::{Cell, RefCell};
 use std::future::Future;
 use std::rc::Rc;
-use std::sync::Arc;
-use std::task::{Context, Poll, Wake, Waker};
+use std::task::{Context, Poll, Waker};
 
 use reinhardt_pages::{
 	CollectionItem, CollectionItemKey, CustomWidgetContext, CustomWidgetRawValue, FieldError,
@@ -14,12 +13,6 @@ use reinhardt_pages::{
 
 thread_local! {
 	static LAST_CUSTOM_WIDGET_PROPS: RefCell<Option<DateRangeProps>> = const { RefCell::new(None) };
-}
-
-struct NoopWake;
-
-impl Wake for NoopWake {
-	fn wake(self: Arc<Self>) {}
 }
 
 #[derive(Clone)]
@@ -1826,8 +1819,7 @@ fn submit_async_cancellation_clears_submitting_state() {
 	let mut submit = Box::pin(
 		runtime.submit_async(|| async { std::future::pending::<Result<(), String>>().await }),
 	);
-	let waker = Waker::from(Arc::new(NoopWake));
-	let mut context = Context::from_waker(&waker);
+	let mut context = Context::from_waker(Waker::noop());
 
 	assert!(matches!(submit.as_mut().poll(&mut context), Poll::Pending));
 	assert!(runtime.form_state().is_submitting.get());
