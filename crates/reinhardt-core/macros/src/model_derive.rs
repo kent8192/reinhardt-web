@@ -2471,6 +2471,7 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 		&fk_field_infos,
 		&unique_constraint_names,
 		&unique_constraint_field_lists,
+		model_config.serde_serialize && model_config.serde_deserialize,
 	)?;
 
 	// Generate relationship registration code for RELATIONSHIPS registry
@@ -3242,6 +3243,7 @@ fn generate_registration_code(
 	fk_field_infos: &[ForeignKeyFieldInfo],
 	unique_constraint_names: &[String],
 	unique_constraint_field_lists: &[Vec<String>],
+	register_fixture_handler: bool,
 ) -> Result<TokenStream> {
 	let migrations_crate = get_reinhardt_migrations_crate();
 	let orm_crate = get_reinhardt_orm_crate();
@@ -3253,6 +3255,14 @@ fn generate_registration_code(
 		),
 		struct_name.span(),
 	);
+	let fixture_registration = if register_fixture_handler {
+		quote! {
+			// Register type-erased fixture handlers for dumpdata/loaddata.
+			#orm_crate::fixtures::global_fixture_registry().register_model::<#struct_name>();
+		}
+	} else {
+		quote! {}
+	};
 
 	// Separate ManyToMany fields from regular fields (also exclude ForeignKeyField/OneToOneField and FK _id fields)
 	let (m2m_fields, regular_fields_with_fk_id): (Vec<_>, Vec<_>) =
@@ -3636,8 +3646,7 @@ fn generate_registration_code(
 				}
 			);
 
-			// Register type-erased fixture handlers for dumpdata/loaddata.
-			#orm_crate::fixtures::global_fixture_registry().register_model::<#struct_name>();
+			#fixture_registration
 		}
 	};
 

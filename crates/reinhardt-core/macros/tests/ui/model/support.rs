@@ -410,7 +410,10 @@ pub mod db {
 			pub struct FixtureRegistry;
 
 			impl FixtureRegistry {
-				pub fn register_model<T>(&self) {
+				pub fn register_model<T>(&self)
+				where
+					T: serde::Serialize + serde::de::DeserializeOwned + 'static,
+				{
 					let _ = core::any::type_name::<T>();
 				}
 			}
