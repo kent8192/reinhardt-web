@@ -8,7 +8,7 @@
 use super::error::ViewError;
 use reinhardt_auth::{Permission, PermissionContext};
 use reinhardt_db::orm::{Model, query_types::DbBackend};
-use reinhardt_http::{Request, Response};
+use reinhardt_http::{AuthState, Request, Response};
 use reinhardt_rest::filters::FilterBackend;
 use reinhardt_rest::serializers::{ModelSerializer, Serializer};
 use serde::Serialize;
@@ -375,30 +375,20 @@ where
 		//       request.extensions.insert(AuthenticatedUserId(user_id));
 		//   }
 
-		// Try to extract user_id from extensions
-		// Support both String and UUID formats
-		let user_id_string: Option<String> = request.extensions.get::<String>().or_else(|| {
-			request
-				.extensions
-				.get::<uuid::Uuid>()
-				.map(|id| id.to_string())
-		});
-
-		// Determine authentication status based on user_id presence
-		let is_authenticated = user_id_string.is_some();
-
-		// Load user from database if authenticated and pool is available
-		let (is_admin, is_active, user_obj) = if let (Some(user_id_str), Some(_pool)) =
-			(user_id_string.as_ref(), self.pool.as_ref())
-		{
-			{
-				let _ = user_id_str;
-				(false, true, None)
-			}
-		} else {
-			// Not authenticated or no pool, use defaults
-			(false, true, None)
-		};
+		let auth_state = AuthState::from_extensions(&request.extensions);
+		let is_authenticated = auth_state
+			.as_ref()
+			.map(|state| state.is_authenticated())
+			.unwrap_or(false);
+		let is_admin = auth_state
+			.as_ref()
+			.map(|state| state.is_admin())
+			.unwrap_or(false);
+		let is_active = auth_state
+			.as_ref()
+			.map(|state| state.is_active())
+			.unwrap_or(false);
+		let user_obj = None;
 
 		let context = PermissionContext {
 			request,
@@ -1051,6 +1041,7 @@ mod tests {
 	use super::*;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, Version};
+	use reinhardt_auth::{IsActiveUser, IsAuthenticated};
 	use reinhardt_http::Request;
 	use rstest::rstest;
 
@@ -1109,6 +1100,27 @@ mod tests {
 	/// Helper to build a ModelViewSetHandler with in-memory queryset
 	fn build_model_handler(items: Vec<TestItem>) -> ModelViewSetHandler<TestItem> {
 		ModelViewSetHandler::<TestItem>::new().with_queryset(items)
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_list_allows_legacy_user_id_extensions_for_active_permissions() {
+		// Arrange
+		let handler = build_model_handler(vec![TestItem {
+			id: Some(1),
+			name: "first".to_string(),
+		}])
+		.add_permission(Arc::new(IsAuthenticated))
+		.add_permission(Arc::new(IsActiveUser));
+		let request = build_request("/items/");
+		request.extensions.insert("legacy-user".to_string());
+
+		// Act
+		let result = handler.list(&request).await;
+
+		// Assert
+		let response = result.expect("legacy authenticated requests should remain authorized");
+		assert_eq!(response.status, hyper::StatusCode::OK);
 	}
 
 	#[rstest]
