@@ -195,6 +195,19 @@ pub enum Commands {
 		/// Cargo package containing component style definitions
 		#[arg(long, value_name = "NAME")]
 		package: Option<String>,
+
+		/// Cargo features enabled for the Pages component style package
+		#[arg(
+			long,
+			value_delimiter = ',',
+			value_name = "FEATURE",
+			conflicts_with = "all_features"
+		)]
+		features: Vec<String>,
+
+		/// Enable all Cargo features for the Pages component style package
+		#[arg(long)]
+		all_features: bool,
 	},
 
 	/// Run an interactive Rust shell (REPL)
@@ -245,6 +258,19 @@ pub enum Commands {
 		/// Cargo package containing component style definitions
 		#[arg(long, value_name = "NAME")]
 		package: Option<String>,
+
+		/// Cargo features enabled for the component style package
+		#[arg(
+			long,
+			value_delimiter = ',',
+			value_name = "FEATURE",
+			conflicts_with = "all_features"
+		)]
+		features: Vec<String>,
+
+		/// Enable all Cargo features for the component style package
+		#[arg(long)]
+		all_features: bool,
 	},
 
 	/// Display all registered server URL patterns
@@ -730,6 +756,8 @@ async fn run_command_core(
 			no_spa,
 			index,
 			package,
+			features,
+			all_features,
 		} => {
 			execute_runserver(RunServerOptions {
 				address,
@@ -747,6 +775,8 @@ async fn run_command_core(
 				no_spa,
 				index,
 				package,
+				features,
+				all_features,
 				verbosity,
 			})
 			.await
@@ -761,9 +791,20 @@ async fn run_command_core(
 			ignore,
 			index,
 			package,
+			features,
+			all_features,
 		} => {
 			execute_collectstatic(
-				clear, no_input, dry_run, link, ignore, index, package, verbosity,
+				clear,
+				no_input,
+				dry_run,
+				link,
+				ignore,
+				index,
+				package,
+				features,
+				all_features,
+				verbosity,
 			)
 			.await
 		}
@@ -1005,6 +1046,8 @@ struct RunServerOptions {
 	no_spa: bool,
 	index: Option<String>,
 	package: Option<String>,
+	features: Vec<String>,
+	all_features: bool,
 	verbosity: u8,
 }
 
@@ -1050,6 +1093,12 @@ fn runserver_context_from_options(options: &RunServerOptions) -> CommandContext 
 	}
 	if let Some(ref package) = options.package {
 		ctx.set_option("package".to_string(), package.clone());
+	}
+	if !options.features.is_empty() {
+		ctx.set_option("features".to_string(), options.features.join(","));
+	}
+	if options.all_features {
+		ctx.set_option("all-features".to_string(), "true".to_string());
 	}
 
 	ctx
@@ -1109,6 +1158,8 @@ async fn execute_collectstatic(
 	ignore: Vec<String>,
 	index: Option<String>,
 	package: Option<String>,
+	features: Vec<String>,
+	all_features: bool,
 	verbosity: u8,
 ) -> Result<(), Box<dyn std::error::Error>> {
 	// Load settings from TOML files
@@ -1221,9 +1272,17 @@ async fn execute_collectstatic(
 	// Create and execute command in blocking context
 	let mut cmd = CollectStaticCommand::new(config, options);
 	cmd.set_index_source(index_source);
-	let style_context =
-		resolve_collectstatic_style_context(&base_dir.join("Cargo.toml"), package.as_deref())
-			.map_err(|error| format!("failed to select component style package: {error}"))?;
+	let feature_selection = if all_features {
+		crate::StyleFeatureSelection::all_features()
+	} else {
+		crate::StyleFeatureSelection::with_features(features)
+	};
+	let style_context = resolve_collectstatic_style_context(
+		&base_dir.join("Cargo.toml"),
+		package.as_deref(),
+		feature_selection,
+	)
+	.map_err(|error| format!("failed to select component style package: {error}"))?;
 	cmd.set_style_context(style_context);
 	let result = tokio::task::spawn_blocking(move || {
 		// Call the sync execute() method directly (not the BaseCommand trait method)
@@ -1241,8 +1300,13 @@ async fn execute_collectstatic(
 fn resolve_collectstatic_style_context(
 	manifest_path: &Path,
 	requested_package: Option<&str>,
+	feature_selection: crate::StyleFeatureSelection,
 ) -> Result<Option<crate::StylePackageContext>, String> {
-	match crate::StylePackageContext::resolve(manifest_path, requested_package) {
+	match crate::StylePackageContext::resolve_with_features(
+		manifest_path,
+		requested_package,
+		feature_selection,
+	) {
 		Ok(context) => Ok(Some(context)),
 		Err(error)
 			if requested_package.is_none() && virtual_workspace_has_no_style_package(&error) =>
@@ -1617,6 +1681,8 @@ mod tests {
 			no_spa: false,
 			index: None,
 			package: None,
+			features: vec![],
+			all_features: false,
 		};
 
 		// Act
@@ -1714,6 +1780,8 @@ mod tests {
 			ignore: vec![],
 			index: None,
 			package: None,
+			features: vec![],
+			all_features: false,
 		};
 
 		// Act
@@ -1808,6 +1876,8 @@ mod tests {
 			no_spa: false,
 			index: Some("./index.html".to_string()),
 			package: None,
+			features: vec![],
+			all_features: false,
 		};
 
 		// Act & Assert
@@ -1837,6 +1907,8 @@ mod tests {
 			no_spa: false,
 			index: None,
 			package: None,
+			features: vec![],
+			all_features: false,
 		};
 
 		// Act & Assert
@@ -1866,6 +1938,8 @@ mod tests {
 			no_spa: true,
 			index: Some("./index.html".to_string()),
 			package: None,
+			features: vec![],
+			all_features: false,
 		};
 
 		// Assert
@@ -1896,6 +1970,8 @@ mod tests {
 			no_spa: false,
 			index: Some("./index.html".to_string()),
 			package: None,
+			features: vec![],
+			all_features: false,
 		};
 
 		// Assert
@@ -1929,6 +2005,8 @@ mod tests {
 			no_spa: false,
 			index: None,
 			package: None,
+			features: vec![],
+			all_features: false,
 			verbosity: 0,
 		};
 
@@ -1959,6 +2037,8 @@ mod tests {
 			no_spa: false,
 			index: None,
 			package: None,
+			features: vec![],
+			all_features: false,
 			verbosity: 0,
 		};
 
@@ -1991,6 +2071,8 @@ mod tests {
 			no_spa: false,
 			index: None,
 			package: None,
+			features: vec![],
+			all_features: false,
 			verbosity: 0,
 		};
 
@@ -2020,6 +2102,8 @@ mod tests {
 			no_spa: false,
 			index: None,
 			package: None,
+			features: vec![],
+			all_features: false,
 			verbosity: 0,
 		};
 
@@ -2106,6 +2190,8 @@ mod tests {
 			ignore: vec![],
 			index: Some("./index.html".to_string()),
 			package: None,
+			features: vec![],
+			all_features: false,
 		};
 
 		// Assert
@@ -2130,6 +2216,23 @@ mod tests {
 	}
 
 	#[rstest]
+	fn collectstatic_style_feature_options_parse() {
+		let cli = Cli::try_parse_from(["manage", "collectstatic", "--features", "theme,brand"])
+			.expect("collectstatic style features should parse");
+
+		let Commands::Collectstatic {
+			features,
+			all_features,
+			..
+		} = cli.command
+		else {
+			panic!("expected collectstatic command");
+		};
+		assert_eq!(features, ["theme", "brand"]);
+		assert!(!all_features);
+	}
+
+	#[rstest]
 	fn collectstatic_without_package_allows_a_virtual_workspace_root() {
 		let directory = tempfile::tempdir().expect("create temporary workspace");
 		let manifest_path = directory.path().join("Cargo.toml");
@@ -2139,8 +2242,12 @@ mod tests {
 		)
 		.expect("write virtual workspace manifest");
 
-		let context = resolve_collectstatic_style_context(&manifest_path, None)
-			.expect("a virtual workspace has no component stylesheet package by default");
+		let context = resolve_collectstatic_style_context(
+			&manifest_path,
+			None,
+			crate::StyleFeatureSelection::default(),
+		)
+		.expect("a virtual workspace has no component stylesheet package by default");
 
 		assert!(context.is_none());
 	}
@@ -2154,6 +2261,23 @@ mod tests {
 			panic!("expected runserver command");
 		};
 		assert_eq!(package.as_deref(), Some("poll-app"));
+	}
+
+	#[rstest]
+	fn runserver_all_style_features_option_parses() {
+		let cli = Cli::try_parse_from(["manage", "runserver", "--all-features"])
+			.expect("runserver all style features should parse");
+
+		let Commands::Runserver {
+			features,
+			all_features,
+			..
+		} = cli.command
+		else {
+			panic!("expected runserver command");
+		};
+		assert!(features.is_empty());
+		assert!(all_features);
 	}
 
 	#[cfg(feature = "reinhardt-db")]
@@ -2176,6 +2300,8 @@ mod tests {
 			no_spa: false,
 			index: None,
 			package: None,
+			features: vec![],
+			all_features: false,
 		};
 
 		// Act
@@ -2266,6 +2392,8 @@ mod tests {
 			ignore: vec![],
 			index: None,
 			package: None,
+			features: vec![],
+			all_features: false,
 		};
 
 		// Act

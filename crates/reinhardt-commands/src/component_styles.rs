@@ -5,7 +5,10 @@ use std::path::{Path, PathBuf};
 
 use tempfile::{NamedTempFile, TempDir};
 
-use crate::{COMPONENT_STYLES_PATH, StyleExtractor, StyleFingerprints, StylePackageContext};
+use crate::{
+	COMPONENT_STYLES_PATH, StyleExtractor, StyleFeatureSelection, StyleFingerprints,
+	StylePackageContext,
+};
 
 /// Result of comparing a newly compiled style bundle with the last-good state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -79,6 +82,7 @@ impl GeneratedStyleAssets {
 pub struct ComponentStyleState {
 	manifest_path: PathBuf,
 	requested_package: Option<String>,
+	feature_selection: StyleFeatureSelection,
 	context: StylePackageContext,
 	extractor: StyleExtractor,
 	fingerprints: StyleFingerprints,
@@ -103,8 +107,25 @@ impl ComponentStyleState {
 		manifest_path: impl Into<PathBuf>,
 		requested_package: Option<String>,
 	) -> Result<Self, String> {
+		Self::initialize_with_features(
+			manifest_path,
+			requested_package,
+			StyleFeatureSelection::default(),
+		)
+	}
+
+	/// Resolve component styles with the features enabled for the Pages build.
+	pub fn initialize_with_features(
+		manifest_path: impl Into<PathBuf>,
+		requested_package: Option<String>,
+		feature_selection: StyleFeatureSelection,
+	) -> Result<Self, String> {
 		let manifest_path = manifest_path.into();
-		let context = StylePackageContext::resolve(&manifest_path, requested_package.as_deref())?;
+		let context = StylePackageContext::resolve_with_features(
+			&manifest_path,
+			requested_package.as_deref(),
+			feature_selection.clone(),
+		)?;
 		let extractor = StyleExtractor::new(context.clone());
 		let bundle = extractor.extract()?;
 		let assets = GeneratedStyleAssets::new(&bundle.css)?;
@@ -112,6 +133,7 @@ impl ComponentStyleState {
 		Ok(Self {
 			manifest_path,
 			requested_package,
+			feature_selection,
 			context,
 			extractor,
 			fingerprints,
@@ -144,9 +166,10 @@ impl ComponentStyleState {
 	/// Recompile generated styles and advance the last-good snapshot when safe.
 	pub fn refresh(&mut self, metadata_changed: bool) -> ComponentStyleStageResult {
 		let candidate_context = if metadata_changed {
-			match StylePackageContext::resolve(
+			match StylePackageContext::resolve_with_features(
 				&self.manifest_path,
 				self.requested_package.as_deref(),
+				self.feature_selection.clone(),
 			) {
 				Ok(context) => context,
 				Err(error) => {

@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use reinhardt_commands::{StyleExtractor, StylePackageContext};
+use reinhardt_commands::{StyleExtractor, StyleFeatureSelection, StylePackageContext};
 use rstest::rstest;
 
 fn write_package(root: &Path, source: &str) -> PathBuf {
@@ -185,6 +185,62 @@ static CLIENT: ClientStyles = style! { .client { color: blue; } };
 
 	assert_eq!(bundle.definitions.len(), 1);
 	assert_eq!(bundle.definitions[0].style_type_name, "ClientStyles");
+}
+
+#[rstest]
+fn scanner_includes_style_definitions_enabled_by_selected_cargo_features() {
+	let directory = tempfile::tempdir().expect("create temporary package");
+	let manifest = write_package(
+		directory.path(),
+		r#"
+#[cfg(feature = "theme")]
+#[style_def]
+static THEME: ThemeStyles = style! { .theme { color: purple; } };
+"#,
+	);
+	fs::write(
+		&manifest,
+		"[package]\nname = \"poll-app\"\nversion = \"0.4.0\"\nedition = \"2024\"\n\n[features]\ntheme = []\n",
+	)
+	.expect("write package feature");
+
+	let context = StylePackageContext::resolve_with_features(
+		&manifest,
+		None,
+		StyleFeatureSelection::with_features(["theme"]),
+	)
+	.expect("select package with the active theme feature");
+	let bundle = StyleExtractor::new(context)
+		.extract()
+		.expect("extract feature-gated style definition");
+
+	assert_eq!(bundle.definitions.len(), 1);
+	assert_eq!(bundle.definitions[0].style_type_name, "ThemeStyles");
+}
+
+#[rstest]
+fn scanner_includes_style_definitions_enabled_by_pages_cfg_aliases() {
+	let directory = tempfile::tempdir().expect("create temporary package");
+	let manifest = write_package(
+		directory.path(),
+		r#"
+#[cfg(client)]
+#[style_def]
+static CLIENT: ClientStyles = style! { .client { color: blue; } };
+
+#[cfg(wasm)]
+#[style_def]
+static WASM: WasmStyles = style! { .wasm { color: green; } };
+"#,
+	);
+	let context = StylePackageContext::resolve(&manifest, None).expect("select root package");
+	let bundle = StyleExtractor::new(context)
+		.extract()
+		.expect("extract Pages alias-gated style definitions");
+
+	assert_eq!(bundle.definitions.len(), 2);
+	assert_eq!(bundle.definitions[0].style_type_name, "ClientStyles");
+	assert_eq!(bundle.definitions[1].style_type_name, "WasmStyles");
 }
 
 #[rstest]

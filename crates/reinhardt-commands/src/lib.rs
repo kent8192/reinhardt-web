@@ -260,7 +260,7 @@ pub use start_commands::{StartAppCommand, StartProjectCommand};
 pub use static_asset_settings::StaticAssetSettings;
 pub use style_extractor::{
 	COMPONENT_STYLES_PATH, ExtractedStyleDefinition, StyleBundle, StyleExtractor,
-	StyleFingerprints, StylePackageContext,
+	StyleFeatureSelection, StyleFingerprints, StylePackageContext,
 };
 pub use template::{TemplateCommand, TemplateContext, generate_secret_key, to_camel_case};
 pub use wasm_builder::{

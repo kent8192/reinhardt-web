@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use cargo_metadata::{Metadata, MetadataCommand, Package, PackageId};
+use cargo_metadata::{CargoOpt, Metadata, MetadataCommand, Package, PackageId};
 use quote::{ToTokens, quote};
 use reinhardt_manouche::{CompiledStyle, StyleCompileContext, compile_style, serialize_css};
 use sha2::{Digest, Sha256};
@@ -17,6 +17,50 @@ use syn::{
 
 /// Stable logical path used for generated component CSS.
 pub const COMPONENT_STYLES_PATH: &str = "__reinhardt__/components.css";
+
+/// Cargo feature selection used when extracting Pages component styles.
+///
+/// The selection must match the package features enabled for the WASM Pages
+/// build so `cfg(feature = "...")` definitions produce the same generated
+/// API and stylesheet in both pipelines.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct StyleFeatureSelection {
+	features: Vec<String>,
+	all_features: bool,
+}
+
+impl StyleFeatureSelection {
+	/// Select an explicit set of Cargo package features.
+	pub fn with_features<I, S>(features: I) -> Self
+	where
+		I: IntoIterator<Item = S>,
+		S: Into<String>,
+	{
+		let mut features: Vec<String> = features.into_iter().map(Into::into).collect();
+		features.sort();
+		features.dedup();
+		Self {
+			features,
+			all_features: false,
+		}
+	}
+
+	/// Select every Cargo package feature.
+	pub fn all_features() -> Self {
+		Self {
+			features: Vec::new(),
+			all_features: true,
+		}
+	}
+
+	fn apply_to_metadata(&self, command: &mut MetadataCommand) {
+		if self.all_features {
+			command.features(CargoOpt::AllFeatures);
+		} else if !self.features.is_empty() {
+			command.features(CargoOpt::SomeFeatures(self.features.clone()));
+		}
+	}
+}
 
 /// The selected Cargo package used by every component-style subsystem.
 #[derive(Debug, Clone)]
@@ -111,8 +155,22 @@ impl StylePackageContext {
 		manifest_path: impl AsRef<Path>,
 		requested_package: Option<&str>,
 	) -> Result<Self, String> {
+		Self::resolve_with_features(
+			manifest_path,
+			requested_package,
+			StyleFeatureSelection::default(),
+		)
+	}
+
+	/// Load Cargo metadata with the feature selection used for the Pages build.
+	pub fn resolve_with_features(
+		manifest_path: impl AsRef<Path>,
+		requested_package: Option<&str>,
+		feature_selection: StyleFeatureSelection,
+	) -> Result<Self, String> {
 		let mut command = MetadataCommand::new();
 		command.manifest_path(manifest_path.as_ref());
+		feature_selection.apply_to_metadata(&mut command);
 		let metadata = command
 			.exec()
 			.map_err(|error| format!("failed to load Cargo metadata: {error}"))?;
@@ -546,6 +604,14 @@ impl CfgTarget {
 			} else if !line.is_empty() {
 				flags.insert(line.to_string());
 			}
+		}
+
+		// Pages templates expose these aliases from their build scripts for
+		// client-only modules. Component CSS always mirrors the WASM build, so
+		// evaluate the aliases alongside the built-in WASM target cfgs.
+		if target == "wasm32-unknown-unknown" {
+			flags.insert("client".to_string());
+			flags.insert("wasm".to_string());
 		}
 
 		Ok(Self { flags, key_values })

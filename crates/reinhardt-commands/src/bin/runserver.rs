@@ -137,6 +137,19 @@ struct Args {
 	/// Cargo package containing component style definitions
 	#[arg(long, value_name = "NAME")]
 	package: Option<String>,
+
+	/// Cargo features enabled for the component style package
+	#[arg(
+		long,
+		value_delimiter = ',',
+		value_name = "FEATURE",
+		conflicts_with = "all_features"
+	)]
+	features: Vec<String>,
+
+	/// Enable all Cargo features for the component style package
+	#[arg(long)]
+	all_features: bool,
 }
 
 /// Get MIME type based on file extension
@@ -921,8 +934,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	}
 
 	let manifest = env::current_dir()?.join("Cargo.toml");
-	let component_style_state =
-		reinhardt_commands::ComponentStyleState::initialize(manifest, args.package.clone())?;
+	let style_feature_selection = if args.all_features {
+		reinhardt_commands::StyleFeatureSelection::all_features()
+	} else {
+		reinhardt_commands::StyleFeatureSelection::with_features(args.features.clone())
+	};
+	let component_style_state = reinhardt_commands::ComponentStyleState::initialize_with_features(
+		manifest,
+		args.package.clone(),
+		style_feature_selection,
+	)?;
 
 	// Phase 1: Build WASM targets
 	build_wasm_targets(args.no_wasm, args.no_override_wasm, args.force_wasm);

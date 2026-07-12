@@ -2010,6 +2010,17 @@ impl BaseCommand for RunServerCommand {
 		let wasm_optional = ctx.has_option("wasm-optional");
 		#[cfg(feature = "pages")]
 		let requested_package = ctx.option("package").cloned();
+		#[cfg(feature = "pages")]
+		let style_feature_selection = if ctx.has_option("all-features") {
+			crate::StyleFeatureSelection::all_features()
+		} else {
+			crate::StyleFeatureSelection::with_features(
+				ctx.option("features")
+					.into_iter()
+					.flat_map(|raw| raw.split(','))
+					.filter(|feature| !feature.is_empty()),
+			)
+		};
 		#[cfg(not(feature = "pages"))]
 		#[cfg_attr(not(feature = "server"), allow(unused_variables))]
 		let requested_package: Option<String> = None;
@@ -2021,8 +2032,12 @@ impl BaseCommand for RunServerCommand {
 				.map_err(crate::CommandError::IoError)?
 				.join("Cargo.toml");
 			Some(std::sync::Arc::new(std::sync::Mutex::new(
-				crate::ComponentStyleState::initialize(manifest, requested_package.clone())
-					.map_err(crate::CommandError::ExecutionError)?,
+				crate::ComponentStyleState::initialize_with_features(
+					manifest,
+					requested_package.clone(),
+					style_feature_selection,
+				)
+				.map_err(crate::CommandError::ExecutionError)?,
 			)))
 		} else {
 			None
