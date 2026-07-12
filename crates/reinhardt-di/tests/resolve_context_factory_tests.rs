@@ -1,7 +1,7 @@
 //! Macro expansion tests for `get_di_context` within factory-like scopes.
 //!
 //! These tests verify that `RESOLVE_CTX.scope()` (which is what the
-//! `#[injectable_factory]` macro generates) correctly sets the task-local
+//! `#[injectable]` provider macro generates) correctly sets the task-local
 //! resolve context, enabling `get_di_context()` within factory bodies.
 
 use std::sync::Arc;

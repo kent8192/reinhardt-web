@@ -355,7 +355,7 @@ mod tests {
 	async fn test_vault_provider_basic() {
 		let mut server = mockito::Server::new_async().await;
 
-		// Mock: POST /v1/secret/data/test/password (set_secret)
+		// Expected request: POST /v1/secret/data/test/password (set_secret)
 		let _m_set = server
 			.mock("POST", "/v1/secret/data/test/password")
 			.match_header("X-Vault-Token", "test-token")
@@ -366,7 +366,7 @@ mod tests {
 			.create_async()
 			.await;
 
-		// Mock: GET /v1/secret/data/test/password (get_secret - first call)
+		// Expected request: GET /v1/secret/data/test/password (get_secret - first call)
 		let _m_get1 = server
             .mock("GET", "/v1/secret/data/test/password")
             .match_header("X-Vault-Token", "test-token")
@@ -377,7 +377,7 @@ mod tests {
             .create_async()
             .await;
 
-		// Mock: DELETE /v1/secret/metadata/test/password (delete_secret)
+		// Expected request: DELETE /v1/secret/metadata/test/password (delete_secret)
 		let _m_delete = server
 			.mock("DELETE", "/v1/secret/metadata/test/password")
 			.match_header("X-Vault-Token", "test-token")
@@ -388,7 +388,7 @@ mod tests {
 			.create_async()
 			.await;
 
-		// Mock: GET /v1/secret/data/test/password (get_secret - after delete, should fail)
+		// Expected request: GET /v1/secret/data/test/password (get_secret after delete, should fail)
 		let _m_get2 = server
 			.mock("GET", "/v1/secret/data/test/password")
 			.match_header("X-Vault-Token", "test-token")

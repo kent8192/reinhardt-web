@@ -1,0 +1,9 @@
+[scenario]
+category = "runtime"
+name = "settings_access"
+runner = "criterion"
+metric = "request_latency"
+unit = "ns/request"
+workload = "GET /settings reads a typed application setting from shared app state."
+success = "HTTP 200 with the expected setting value."
+targets = ["reinhardt", "axum", "actix-web", "loco"]

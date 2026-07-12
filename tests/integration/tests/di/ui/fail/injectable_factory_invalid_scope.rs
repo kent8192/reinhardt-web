@@ -1,13 +1,19 @@
-// Compile-fail test: injectable_factory with invalid scope value
+// Compile-fail test: injectable with invalid scope value
 
-use reinhardt_di::injectable_factory;
+#![allow(unused_imports)] // Broad imports keep compile-fail diagnostics focused.
+
+use reinhardt_di::{FactoryOutput, injectable};
+
+struct MyServiceKey;
+
+impl reinhardt_di::InjectableKey for MyServiceKey {}
 
 #[derive(Clone)]
 struct MyService;
 
-#[injectable_factory(scope = "invalid_scope")]
-async fn make_service() -> MyService {
-	MyService
+#[injectable(scope = "invalid_scope")]
+async fn make_service() -> FactoryOutput<MyServiceKey, MyService> {
+	FactoryOutput::new(MyService)
 }
 
 fn main() {}

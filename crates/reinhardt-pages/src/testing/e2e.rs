@@ -22,7 +22,7 @@
 //!     let env = E2ETestEnv::new(router, config).await.unwrap();
 //!
 //!     // Server is now running at env.url()
-//!     // Make HTTP requests using reqwest or similar
+//!     // Make HTTP requests with your preferred native HTTP client
 //!
 //!     // Automatic cleanup on drop
 //! }
@@ -32,7 +32,6 @@
 //!
 //! ```rust,ignore
 //! use reinhardt_pages::testing::e2e::get_e2e_server_url;
-//! use reqwest::Client;
 //!
 //! #[wasm_bindgen_test]
 //! async fn test_wasm_e2e() {
@@ -376,45 +375,31 @@ pub async fn e2e_fetch(
 	method: &str,
 	body: Option<&str>,
 ) -> Result<(u16, String), E2ETestError> {
-	let client = reqwest::Client::new();
-
 	let server_url = get_e2e_server_url()
 		.ok_or_else(|| E2ETestError::Client("E2E server URL not set".into()))?;
 
 	let url = format!("{}{}", server_url, path);
 
-	let mut request = match method.to_uppercase().as_str() {
-		"GET" => client.get(&url),
-		"POST" => client.post(&url),
-		"PUT" => client.put(&url),
-		"DELETE" => client.delete(&url),
-		"PATCH" => client.patch(&url),
+	match method.to_uppercase().as_str() {
+		"GET" | "POST" | "PUT" | "DELETE" | "PATCH" => {}
 		_ => {
 			return Err(E2ETestError::Client(format!(
 				"Unsupported method: {}",
 				method
 			)));
 		}
-	};
-
-	request = request.header("Content-Type", "application/json");
-
-	if let Some(body) = body {
-		request = request.body(body.to_string());
 	}
 
-	let response = request
-		.send()
-		.await
-		.map_err(|e| E2ETestError::Client(e.to_string()))?;
+	let response = crate::fetch::request(
+		method,
+		&url,
+		body,
+		vec![("Content-Type".to_string(), "application/json".to_string())],
+	)
+	.await
+	.map_err(|e| E2ETestError::Client(e.to_string()))?;
 
-	let status = response.status().as_u16();
-	let text = response
-		.text()
-		.await
-		.map_err(|e| E2ETestError::Client(e.to_string()))?;
-
-	Ok((status, text))
+	Ok((response.status(), response.into_text()))
 }
 
 #[cfg(test)]

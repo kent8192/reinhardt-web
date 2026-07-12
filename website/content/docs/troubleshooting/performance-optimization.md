@@ -94,7 +94,7 @@ let count_query = Query::select()
 ### Avoid N+1 Problem
 
 ```rust
-use reinhardt::QuerySet;
+use reinhardt_db::orm::{NPlusOneConfig, NPlusOneScope};
 
 // ❌ N+1 problem
 let posts = Post::objects().all().await?;
@@ -102,12 +102,39 @@ for post in posts {
     let user = post.user().await?;  // Query in each loop
 }
 
-// ✅ Use preload
+// ✅ Use a JOIN for a single-object relationship
 let posts = Post::objects()
-    .preload("user")
+    .select_related(&["user"])
     .all()
     .await?;
+
+// ✅ Use prefetching or a batch query for collections
+let posts = Post::objects()
+    .prefetch_related(&["comments"])
+    .all()
+    .await?;
+
+// ✅ Make repeated query shapes visible in focused diagnostics
+let (_, report) = NPlusOneScope::warn("posts.index", NPlusOneConfig::default())
+    .run_with_report(async {
+        render_posts().await
+    })
+    .await;
+
+for finding in report.findings {
+    tracing::warn!(
+        fingerprint = %finding.fingerprint,
+        count = finding.execution_count,
+        "Repeated query shape detected"
+    );
+}
 ```
+
+Use `NPlusOneScope::fail(...).run(...)` in focused tests when a path must stay
+batched. QuerySet execution and relationship accessors are recorded by active
+scopes. Use `NPlusOneScope::spawn(...)` for spawned tasks that should inherit
+the active scope. The detector is disabled unless a scope is installed, so
+production requests are unchanged by default.
 
 ---
 

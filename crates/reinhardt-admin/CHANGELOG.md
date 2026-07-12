@@ -7,23 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.2.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.2.1...reinhardt-admin@v0.2.2) - 2026-06-25
+## [0.3.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.3.0...reinhardt-admin@v0.3.1) - 2026-07-04
 
-### Documentation
+### Fixed
 
-- update version references to v0.2.1
+- *(formatter)* wrap long page closure parameters
+- *(formatter)* normalize admin feature page closures
 
-## [0.2.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.2.0...reinhardt-admin@v0.2.1) - 2026-06-23
+## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.2.0...reinhardt-admin@v0.3.0) - 2026-06-28
 
-### Maintenance
+Stable release of `reinhardt-admin` for the Reinhardt 0.3.0 line. This
+entry consolidates the 0.3.0 release-candidate series into one
+stable release section.
 
-- update Cargo.toml dependencies
+### Migration Notes
+
+- Review the root CHANGELOG and `instructions/MIGRATION_0.3.md` before upgrading from 0.2.x.
+
+### Added
+
+- *(urls)* [**breaking**] remove raw server route registration APIs
+- *(formatter)* rustfmt page expression islands
+- feat!(di): introduce keyed injectable provider outputs
+
+### Changed
+
+- *(admin)* use keyed depends for server injections
+
+### Fixed
+
+- *(admin)* count zero-limit list pages
+- *(tutorial)* suppress basis runtime drift
+- *(di)* honor cache false for keyed wrappers
+
+### Performance
+
+- *(admin)* combine admin list count query
 
 ## [0.2.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.1.3...reinhardt-admin@v0.2.0) - 2026-06-11
 
 Stable release of `reinhardt-admin` for the Reinhardt 0.2.0 line. This
-entry consolidates the 0.2.0 release-candidate series; the original
-RC entries remain below as detailed history.
+entry consolidates the 0.2.0 release-candidate series into one
+stable release section.
 
 ### Migration Notes
 
@@ -46,6 +71,7 @@ RC entries remain below as detailed history.
 
 - *(auth)* make CurrentUser canonical extractor
 - *(admin)* migrate create_resource to use_resource
+- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
 
 ### Removed
 
@@ -56,92 +82,6 @@ RC entries remain below as detailed history.
   `0.1.0-rc.27`). All items moved to
   `reinhardt_utils::staticfiles::vendor`. Admin's own assets are
   declared via `inventory::submit!` in `crates/reinhardt-admin/src/lib.rs`.
-
-### Fixed
-
-- *(orm)* address lookup review edge cases
-- *(admin)* enable tutorial admin CRUD
-- *(admin)* build CRUD URLs with router reverse
-- *(admin)* preserve multi-select mutation values
-- *(auth)* replace InternalUser in UserManager public API with ManagedUser
-- *(admin)* compile admin wasm browser tests
-
-### Documentation
-
-- *(admin)* remove broken DefaultUser intra-doc links
-
-### Maintenance
-
-- include all main v0.1.1 PR changes
-
-
-## [0.2.0-rc.5](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.2.0-rc.4...reinhardt-admin@v0.2.0-rc.5) - 2026-06-11
-
-### Added
-
-- *(orm)* add Django-like lookup helpers
-
-### Fixed
-
-- *(orm)* address lookup review edge cases
-
-## [0.2.0-rc.4](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.2.0-rc.3...reinhardt-admin@v0.2.0-rc.4) - 2026-06-06
-
-### Changed
-
-- *(auth)* make CurrentUser canonical extractor
-
-### Fixed
-
-- *(admin)* enable tutorial admin CRUD
-- *(admin)* build CRUD URLs with router reverse
-- *(admin)* preserve multi-select mutation values
-
-### Styling
-
-- *(admin)* format admin feature controls
-
-## [0.2.0-rc.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.1.3...reinhardt-admin@v0.2.0-rc.2) - 2026-06-03
-
-### Added
-
-- *(db)* introduce type-safe nullable field on FieldMetadata
-- *(db,macros)* [**breaking**] unify custom managers with Model::objects() ([[#3984](https://github.com/kent8192/reinhardt-web/issues/3984)](https://github.com/kent8192/reinhardt-web/issues/3984))
-- *(forms)* add typed use_form ergonomics
-- feat!(forms): route use_form through form definitions
-
-### Changed
-
-- [**breaking**] align develop/0.2.0 with main, preserving 8 feature crates
-- *(admin)* migrate create_resource to use_resource
-
-### Documentation
-
-- *(admin)* remove broken DefaultUser intra-doc links
-
-### Fixed
-
-- *(ci)* recover develop release-plz prerelease
-- *(auth)* replace InternalUser in UserManager public API with ManagedUser
-- *(admin)* compile admin wasm browser tests
-- *(forms)* address review and CI failures
-- *(forms)* address bot review feedback
-
-### Maintenance
-
-- include all main v0.1.1 PR changes
-- forward merge main v0.1.2 changes into develop 0.2.0
-
-### Other
-
-- resolve conflicts with develop/0.2.0
-
-### Styling
-
-- apply formatter fixes across workspace
-- apply rustfmt to non-DSL files on develop/0.2.0
-
-### Removed
 
 #### BREAKING CHANGES
 
@@ -162,6 +102,37 @@ Removed all 6 RC-deprecated vendor-asset shim items from
 With this PR merged, every `#[deprecated(since = "0.1.0-rc.X", ...)]`
 item documented in Issue #4520 has been removed across all 12 affected
 crates. The `since = "0.1.0-rc.*"` namespace is retired.
+
+### Fixed
+
+- *(orm)* address lookup review edge cases
+- *(admin)* enable tutorial admin CRUD
+- *(admin)* build CRUD URLs with router reverse
+- *(admin)* preserve multi-select mutation values
+- *(auth)* replace InternalUser in UserManager public API with ManagedUser
+- *(admin)* compile admin wasm browser tests
+- *(ci)* recover develop release-plz prerelease
+- *(forms)* address review and CI failures
+- *(forms)* address bot review feedback
+
+### Documentation
+
+- *(admin)* remove broken DefaultUser intra-doc links
+
+### Styling
+
+- *(admin)* format admin feature controls
+- apply formatter fixes across workspace
+- apply rustfmt to non-DSL files on develop/0.2.0
+
+### Maintenance
+
+- include all main v0.1.1 PR changes
+- forward merge main v0.1.2 changes into develop 0.2.0
+
+### Other
+
+- resolve conflicts with develop/0.2.0
 
 ## [0.1.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.1.0-rc.30...reinhardt-admin@v0.1.0) - 2026-05-22
 

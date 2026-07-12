@@ -286,7 +286,7 @@ impl ProfileReport {
 	/// ```
 	pub fn slowest_dependencies(&self, n: usize) -> Vec<&DependencyStats> {
 		let mut deps: Vec<_> = self.dependencies.values().collect();
-		deps.sort_by(|a, b| b.avg_duration.cmp(&a.avg_duration));
+		deps.sort_by_key(|dep| std::cmp::Reverse(dep.avg_duration));
 		deps.into_iter().take(n).collect()
 	}
 
@@ -334,7 +334,7 @@ impl fmt::Display for ProfileReport {
 		)?;
 
 		let mut deps: Vec<_> = self.dependencies.values().collect();
-		deps.sort_by(|a, b| b.total_duration.cmp(&a.total_duration));
+		deps.sort_by_key(|dep| std::cmp::Reverse(dep.total_duration));
 
 		writeln!(f, "Per-Dependency Statistics:")?;
 		writeln!(

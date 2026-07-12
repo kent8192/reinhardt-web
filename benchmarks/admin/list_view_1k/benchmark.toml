@@ -1,0 +1,9 @@
+[scenario]
+category = "admin"
+name = "list_view_1k"
+runner = "criterion"
+metric = "render_latency"
+unit = "us/render"
+workload = "Render an admin list view over a 1,000-row fixture with default columns."
+success = "The response includes the first page of rows and pagination metadata."
+targets = ["reinhardt", "axum", "actix-web", "loco"]

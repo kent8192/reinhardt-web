@@ -23,10 +23,7 @@ use rstest::*;
 #[rstest]
 #[tokio::test]
 async fn test_middleware_e2e_get_dashboard_through_pipeline(
-	#[future] middleware_e2e_context: (
-		MiddlewareTestServer,
-		reinhardt_di::Depends<reinhardt_admin::core::AdminDatabase>,
-	),
+	#[future] middleware_e2e_context: (MiddlewareTestServer, reinhardt_admin::core::AdminDatabase),
 ) {
 	let (server, _db) = middleware_e2e_context.await;
 	let client = reqwest::Client::new();
@@ -50,10 +47,7 @@ async fn test_middleware_e2e_get_dashboard_through_pipeline(
 #[rstest]
 #[tokio::test]
 async fn test_middleware_e2e_get_list_through_pipeline(
-	#[future] middleware_e2e_context: (
-		MiddlewareTestServer,
-		reinhardt_di::Depends<reinhardt_admin::core::AdminDatabase>,
-	),
+	#[future] middleware_e2e_context: (MiddlewareTestServer, reinhardt_admin::core::AdminDatabase),
 ) {
 	let (server, _db) = middleware_e2e_context.await;
 	let client = reqwest::Client::new();
@@ -84,10 +78,7 @@ async fn test_middleware_e2e_get_list_through_pipeline(
 #[rstest]
 #[tokio::test]
 async fn test_middleware_e2e_bearer_header_authenticates(
-	#[future] middleware_e2e_context: (
-		MiddlewareTestServer,
-		reinhardt_di::Depends<reinhardt_admin::core::AdminDatabase>,
-	),
+	#[future] middleware_e2e_context: (MiddlewareTestServer, reinhardt_admin::core::AdminDatabase),
 ) {
 	let (server, _db) = middleware_e2e_context.await;
 	let client = reqwest::Client::new();
@@ -111,10 +102,7 @@ async fn test_middleware_e2e_bearer_header_authenticates(
 #[rstest]
 #[tokio::test]
 async fn test_middleware_e2e_no_auth_returns_401(
-	#[future] middleware_e2e_context: (
-		MiddlewareTestServer,
-		reinhardt_di::Depends<reinhardt_admin::core::AdminDatabase>,
-	),
+	#[future] middleware_e2e_context: (MiddlewareTestServer, reinhardt_admin::core::AdminDatabase),
 ) {
 	let (server, _db) = middleware_e2e_context.await;
 	let client = reqwest::Client::new();
@@ -140,10 +128,7 @@ async fn test_middleware_e2e_no_auth_returns_401(
 #[rstest]
 #[tokio::test]
 async fn test_middleware_e2e_invalid_jwt_returns_401(
-	#[future] middleware_e2e_context: (
-		MiddlewareTestServer,
-		reinhardt_di::Depends<reinhardt_admin::core::AdminDatabase>,
-	),
+	#[future] middleware_e2e_context: (MiddlewareTestServer, reinhardt_admin::core::AdminDatabase),
 ) {
 	let (server, _db) = middleware_e2e_context.await;
 	let client = reqwest::Client::new();
@@ -171,10 +156,7 @@ async fn test_middleware_e2e_invalid_jwt_returns_401(
 #[rstest]
 #[tokio::test]
 async fn test_middleware_e2e_cross_origin_returns_403(
-	#[future] middleware_e2e_context: (
-		MiddlewareTestServer,
-		reinhardt_di::Depends<reinhardt_admin::core::AdminDatabase>,
-	),
+	#[future] middleware_e2e_context: (MiddlewareTestServer, reinhardt_admin::core::AdminDatabase),
 ) {
 	let (server, _db) = middleware_e2e_context.await;
 	let client = reqwest::Client::new();
@@ -196,10 +178,7 @@ async fn test_middleware_e2e_cross_origin_returns_403(
 #[rstest]
 #[tokio::test]
 async fn test_middleware_e2e_missing_origin_returns_403(
-	#[future] middleware_e2e_context: (
-		MiddlewareTestServer,
-		reinhardt_di::Depends<reinhardt_admin::core::AdminDatabase>,
-	),
+	#[future] middleware_e2e_context: (MiddlewareTestServer, reinhardt_admin::core::AdminDatabase),
 ) {
 	let (server, _db) = middleware_e2e_context.await;
 	let client = reqwest::Client::new();
@@ -223,10 +202,7 @@ async fn test_middleware_e2e_missing_origin_returns_403(
 #[rstest]
 #[tokio::test]
 async fn test_middleware_e2e_oversized_body_rejected(
-	#[future] middleware_e2e_context: (
-		MiddlewareTestServer,
-		reinhardt_di::Depends<reinhardt_admin::core::AdminDatabase>,
-	),
+	#[future] middleware_e2e_context: (MiddlewareTestServer, reinhardt_admin::core::AdminDatabase),
 ) {
 	let (server, _db) = middleware_e2e_context.await;
 	let client = reqwest::Client::new();
@@ -265,10 +241,7 @@ async fn test_middleware_e2e_oversized_body_rejected(
 #[rstest]
 #[tokio::test]
 async fn test_middleware_e2e_non_staff_jwt_denied(
-	#[future] middleware_e2e_context: (
-		MiddlewareTestServer,
-		reinhardt_di::Depends<reinhardt_admin::core::AdminDatabase>,
-	),
+	#[future] middleware_e2e_context: (MiddlewareTestServer, reinhardt_admin::core::AdminDatabase),
 ) {
 	let (server, _db) = middleware_e2e_context.await;
 	let client = reqwest::Client::new();
@@ -296,10 +269,7 @@ async fn test_middleware_e2e_non_staff_jwt_denied(
 #[rstest]
 #[tokio::test]
 async fn test_middleware_e2e_inactive_user_jwt_denied(
-	#[future] middleware_e2e_context: (
-		MiddlewareTestServer,
-		reinhardt_di::Depends<reinhardt_admin::core::AdminDatabase>,
-	),
+	#[future] middleware_e2e_context: (MiddlewareTestServer, reinhardt_admin::core::AdminDatabase),
 ) {
 	let (server, _db) = middleware_e2e_context.await;
 	let client = reqwest::Client::new();

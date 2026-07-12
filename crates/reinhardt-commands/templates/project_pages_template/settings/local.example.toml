@@ -10,6 +10,10 @@
 # secret_key = "uncomment-this-line-and-replace-with-a-long-random-string"
 # allowed_hosts = ["localhost", "127.0.0.1"]
 
+# [contacts]
+# admins = []
+# managers = []
+
 # [core.databases.default]
 # engine = "postgresql"
 # host = "localhost"

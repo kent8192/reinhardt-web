@@ -78,9 +78,9 @@ pub struct Request {
 	parsers: Vec<Box<dyn Parser>>,
 	/// Cached parsed data (lazy parsing)
 	#[cfg(feature = "parsers")]
-	parsed_data: Arc<Mutex<Option<ParsedData>>>,
+	parsed_data: Mutex<Option<ParsedData>>,
 	/// Whether the body has been consumed
-	body_consumed: Arc<AtomicBool>,
+	body_consumed: AtomicBool,
 	/// Extensions for storing arbitrary typed data
 	pub extensions: Extensions,
 }
@@ -459,8 +459,8 @@ impl RequestBuilder {
 			#[cfg(feature = "parsers")]
 			parsers: self.parsers,
 			#[cfg(feature = "parsers")]
-			parsed_data: Arc::new(Mutex::new(None)),
-			body_consumed: Arc::new(AtomicBool::new(false)),
+			parsed_data: Mutex::new(None),
+			body_consumed: AtomicBool::new(false),
 			extensions: Extensions::new(),
 		})
 	}
@@ -980,8 +980,8 @@ impl Request {
 			#[cfg(feature = "parsers")]
 			parsers: Vec::new(),
 			#[cfg(feature = "parsers")]
-			parsed_data: Arc::new(Mutex::new(None)),
-			body_consumed: Arc::new(AtomicBool::new(false)),
+			parsed_data: Mutex::new(None),
+			body_consumed: AtomicBool::new(false),
 			extensions: self.extensions.clone(),
 		}
 	}

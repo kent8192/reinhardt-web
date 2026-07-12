@@ -57,9 +57,7 @@ pub fn dashboard(site_name: &str, models: &[ModelInfo]) -> Page {
 			class: "dashboard animate__animated animate__fadeIn",
 			h1 {
 				class: "font-display text-2xl font-bold text-slate-900 mb-6",
-				{
-					format!("{} Dashboard", site_name)
-				}
+				{ format!("{} Dashboard", site_name) }
 			}
 			{ grid }
 		}
@@ -198,7 +196,12 @@ pub fn list_view(
 			.render()
 	};
 
-	page!(|title: String, add_link: Page, filters_page: Page, summary: String, table_page: Page, pagination_page: Page| {
+	page!(|title: String,
+	 add_link: Page,
+	 filters_page: Page,
+	 summary: String,
+	 table_page: Page,
+	 pagination_page: Page| {
 		div {
 			class: "list-view animate__animated animate__fadeIn",
 			div {
@@ -383,7 +386,13 @@ pub fn detail_view(
 	let delete_id = record_id.to_string();
 	let delete_return_url = list_url.clone();
 
-	page!(|title: String, table_page: Page, edit_link: Page, back_link: Page, delete_model: String, delete_id: String, delete_return_url: String| {
+	page!(|title: String,
+	 table_page: Page,
+	 edit_link: Page,
+	 back_link: Page,
+	 delete_model: String,
+	 delete_id: String,
+	 delete_return_url: String| {
 		div {
 			class: "detail-view animate__animated animate__fadeIn",
 			h1 {
@@ -399,7 +408,12 @@ pub fn detail_view(
 					type: "button",
 					class: "admin-btn admin-btn-danger",
 					@click: move |_| {
-						#[cfg(client)]crate::pages::components::features::delete_model_record(delete_model.clone(), delete_id.clone(), delete_return_url.clone());
+						#[cfg(client)]
+						crate::pages::components::features::delete_model_record(
+							delete_model.clone(),
+							delete_id.clone(),
+							delete_return_url.clone(),
+						);
 					},
 					"Delete"
 				}
@@ -505,7 +519,13 @@ pub fn model_form(model_name: &str, fields: &[FormField], record_id: Option<&str
 	let submit_record_id = record_id.map(str::to_string);
 	let submit_return_url = list_url.clone();
 
-	page!(|form_title: String, action_url: String, form_groups: Page, cancel_link: Page, submit_model: String, submit_record_id: Option<String>, submit_return_url: String| {
+	page!(|form_title: String,
+	 action_url: String,
+	 form_groups: Page,
+	 cancel_link: Page,
+	 submit_model: String,
+	 submit_record_id: Option<String>,
+	 submit_return_url: String| {
 		div {
 			class: "model-form max-w-2xl animate__animated animate__fadeIn",
 			h1 {
@@ -517,7 +537,13 @@ pub fn model_form(model_name: &str, fields: &[FormField], record_id: Option<&str
 				action: action_url,
 				@submit: move |event| {
 					event.prevent_default();
-					#[cfg(client)]crate::pages::components::features::submit_model_form(event, submit_model.clone(), submit_record_id.clone(), submit_return_url.clone(), );
+					#[cfg(client)]
+					crate::pages::components::features::submit_model_form(
+						event,
+						submit_model.clone(),
+						submit_record_id.clone(),
+						submit_return_url.clone(),
+					);
 				},
 				{ form_groups }
 				div {
@@ -972,7 +998,9 @@ fn create_filter_select(
 	})(options);
 	let field_str = field.to_string();
 
-	page!(|field_str: String, _filters_signal: Signal<HashMap<String, String>>, options_container: Page| {
+	page!(|field_str: String,
+	 _filters_signal: Signal<HashMap<String, String>>,
+	 options_container: Page| {
 		select {
 			class: "admin-select",
 			data_filter_field: field_str.clone(),

@@ -1,8 +1,8 @@
 //! Database, ORM, and query builder re-exports.
 
 pub use reinhardt_db::orm::{
-	DatabaseBackend, DatabaseConnection, Model, QuerySet, SoftDeletable, SoftDelete, Timestamped,
-	Timestamps,
+	DatabaseBackend, DatabaseConnection, FieldAssignment, Model, QuerySet, SoftDeletable,
+	SoftDelete, Timestamped, Timestamps, UpdateValue,
 };
 
 // Query expressions (Django-style F/Q objects)

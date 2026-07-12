@@ -7,35 +7,152 @@
 //! - Error handling across Request/Response boundary
 
 use bytes::Bytes;
-use hyper::{Method, StatusCode};
-use reinhardt_http::{Error, Request, Response};
+use hyper::StatusCode;
+use reinhardt_http::{Request, Response, ViewResult};
+use reinhardt_macros::{get, post};
 use reinhardt_test::{ServerRouter as Router, api_client_from_url, test_server_guard};
+
+#[get("/api/data", name = "content-negotiation-json")]
+async fn content_negotiation_json_handler(req: Request) -> ViewResult<Response> {
+	let accept = req
+		.headers
+		.get("accept")
+		.and_then(|v| v.to_str().ok())
+		.unwrap_or("*/*");
+
+	let response = if accept.contains("application/json") {
+		Response::ok()
+			.with_header("Content-Type", "application/json")
+			.with_body(Bytes::from(r#"{"message":"JSON response"}"#))
+	} else {
+		Response::ok()
+			.with_header("Content-Type", "text/plain")
+			.with_body(Bytes::from("Plain text response"))
+	};
+
+	Ok(response)
+}
+
+#[get("/api/resource", name = "content-negotiation-wildcard")]
+async fn content_negotiation_wildcard_handler(req: Request) -> ViewResult<Response> {
+	let accept = req
+		.headers
+		.get("accept")
+		.and_then(|v| v.to_str().ok())
+		.unwrap_or("*/*");
+
+	let response = if accept == "*/*" || accept.is_empty() {
+		Response::ok()
+			.with_header("Content-Type", "application/json")
+			.with_body(Bytes::from(r#"{"format":"json"}"#))
+	} else {
+		Response::new(StatusCode::NOT_ACCEPTABLE).with_body(Bytes::from("Unsupported media type"))
+	};
+
+	Ok(response)
+}
+
+#[get("/stream", name = "streaming-response")]
+async fn streaming_response_handler() -> ViewResult<Response> {
+	let data = vec![
+		Bytes::from("chunk1"),
+		Bytes::from("chunk2"),
+		Bytes::from("chunk3"),
+	];
+
+	let mut combined = Vec::new();
+	for chunk in data {
+		combined.extend_from_slice(&chunk);
+	}
+
+	Ok(Response::ok()
+		.with_header("Content-Type", "application/octet-stream")
+		.with_body(Bytes::from(combined)))
+}
+
+#[get("/large-stream", name = "large-streaming-response")]
+async fn large_streaming_response_handler() -> ViewResult<Response> {
+	let chunks: Vec<String> = (0..1000).map(|i| format!("chunk{:04}", i)).collect();
+	let combined = chunks.join("");
+
+	Ok(Response::ok()
+		.with_header("Content-Type", "text/plain")
+		.with_body(Bytes::from(combined)))
+}
+
+#[post("/echo", name = "request-response-echo")]
+async fn request_response_echo_handler(req: Request) -> ViewResult<Response> {
+	let content_type = req
+		.headers
+		.get("content-type")
+		.and_then(|v| v.to_str().ok())
+		.unwrap_or("unknown");
+
+	let body_str = String::from_utf8_lossy(req.body()).to_string();
+	let response_data = serde_json::json!({
+		"received": body_str,
+		"content_type": content_type
+	});
+
+	Ok(Response::ok()
+		.with_header("Content-Type", "application/json")
+		.with_body(Bytes::from(response_data.to_string())))
+}
+
+#[get("/error", name = "request-response-error")]
+async fn request_response_error_handler() -> ViewResult<Response> {
+	Ok(Response::internal_server_error()
+		.with_header("Content-Type", "application/json")
+		.with_body(Bytes::from(r#"{"error":"Something went wrong"}"#)))
+}
+
+#[get("/formats", name = "multiple-accept-headers")]
+async fn multiple_accept_headers_handler(req: Request) -> ViewResult<Response> {
+	let accept = req
+		.headers
+		.get("accept")
+		.and_then(|v| v.to_str().ok())
+		.unwrap_or("*/*");
+
+	let response = if accept.contains("application/json") {
+		Response::ok()
+			.with_header("Content-Type", "application/json")
+			.with_body(Bytes::from(r#"{"format":"json"}"#))
+	} else if accept.contains("text/html") {
+		Response::ok()
+			.with_header("Content-Type", "text/html")
+			.with_body(Bytes::from("<html><body>HTML</body></html>"))
+	} else if accept.contains("text/plain") {
+		Response::ok()
+			.with_header("Content-Type", "text/plain")
+			.with_body(Bytes::from("Plain text"))
+	} else {
+		Response::new(StatusCode::NOT_ACCEPTABLE).with_body(Bytes::from("Not Acceptable"))
+	};
+
+	Ok(response)
+}
+
+#[get("/search", name = "request-response-query-params")]
+async fn request_response_query_params_handler(req: Request) -> ViewResult<Response> {
+	let query = req.query_params.get("q").map(|s| s.as_str()).unwrap_or("");
+	let limit = req
+		.query_params
+		.get("limit")
+		.map(|s| s.as_str())
+		.unwrap_or("10");
+
+	let response_body = format!(r#"{{"query":"{}","limit":"{}"}}"#, query, limit);
+
+	Ok(Response::ok()
+		.with_header("Content-Type", "application/json")
+		.with_body(Bytes::from(response_body)))
+}
 
 /// Test content negotiation: Accept header processing
 #[tokio::test]
 async fn test_content_negotiation_json() {
-	let mut router = Router::new();
-
-	// Register handler that responds based on Accept header
-	router = router.function("/api/data", Method::GET, |req: Request| async move {
-		let accept = req
-			.headers
-			.get("accept")
-			.and_then(|v| v.to_str().ok())
-			.unwrap_or("*/*");
-
-		let response = if accept.contains("application/json") {
-			Response::ok()
-				.with_header("Content-Type", "application/json")
-				.with_body(Bytes::from(r#"{"message":"JSON response"}"#))
-		} else {
-			Response::ok()
-				.with_header("Content-Type", "text/plain")
-				.with_body(Bytes::from("Plain text response"))
-		};
-
-		Ok::<Response, Error>(response)
-	});
+	let router = Router::new().endpoint(content_negotiation_json_handler);
 
 	let server = test_server_guard(router).await;
 	let client = api_client_from_url(&server.url);
@@ -69,27 +186,7 @@ async fn test_content_negotiation_json() {
 /// Test content negotiation with wildcard Accept header
 #[tokio::test]
 async fn test_content_negotiation_wildcard() {
-	let mut router = Router::new();
-
-	router = router.function("/api/resource", Method::GET, |req: Request| async move {
-		let accept = req
-			.headers
-			.get("accept")
-			.and_then(|v| v.to_str().ok())
-			.unwrap_or("*/*");
-
-		// Default to JSON for wildcard
-		let response = if accept == "*/*" || accept.is_empty() {
-			Response::ok()
-				.with_header("Content-Type", "application/json")
-				.with_body(Bytes::from(r#"{"format":"json"}"#))
-		} else {
-			Response::new(StatusCode::NOT_ACCEPTABLE)
-				.with_body(Bytes::from("Unsupported media type"))
-		};
-
-		Ok::<Response, Error>(response)
-	});
+	let router = Router::new().endpoint(content_negotiation_wildcard_handler);
 
 	let server = test_server_guard(router).await;
 	let client = api_client_from_url(&server.url);
@@ -107,28 +204,7 @@ async fn test_content_negotiation_wildcard() {
 /// Test streaming response with StreamBody
 #[tokio::test]
 async fn test_streaming_response() {
-	let mut router = Router::new();
-
-	router = router.function("/stream", Method::GET, |_req: Request| async move {
-		// Create streaming-like data (combined chunks)
-		let data = vec![
-			Bytes::from("chunk1"),
-			Bytes::from("chunk2"),
-			Bytes::from("chunk3"),
-		];
-
-		// Combine chunks into single response body
-		let mut combined = Vec::new();
-		for chunk in data {
-			combined.extend_from_slice(&chunk);
-		}
-
-		let response = Response::ok()
-			.with_header("Content-Type", "application/octet-stream")
-			.with_body(Bytes::from(combined));
-
-		Ok::<Response, Error>(response)
-	});
+	let router = Router::new().endpoint(streaming_response_handler);
 
 	let server = test_server_guard(router).await;
 	let client = api_client_from_url(&server.url);
@@ -149,20 +225,7 @@ async fn test_streaming_response() {
 /// Test large streaming response
 #[tokio::test]
 async fn test_large_streaming_response() {
-	let mut router = Router::new();
-
-	router = router.function("/large-stream", Method::GET, |_req: Request| async move {
-		// Generate 1000 chunks and combine them
-		let chunks: Vec<String> = (0..1000).map(|i| format!("chunk{:04}", i)).collect();
-
-		let combined = chunks.join("");
-
-		let response = Response::ok()
-			.with_header("Content-Type", "text/plain")
-			.with_body(Bytes::from(combined));
-
-		Ok::<Response, Error>(response)
-	});
+	let router = Router::new().endpoint(large_streaming_response_handler);
 
 	let server = test_server_guard(router).await;
 	let client = api_client_from_url(&server.url);
@@ -180,31 +243,7 @@ async fn test_large_streaming_response() {
 /// Test request/response round-trip with POST data
 #[tokio::test]
 async fn test_request_response_post_roundtrip() {
-	let mut router = Router::new();
-
-	router = router.function("/echo", Method::POST, |req: Request| async move {
-		// Echo back request body with added metadata
-		let content_type = req
-			.headers
-			.get("content-type")
-			.and_then(|v| v.to_str().ok())
-			.unwrap_or("unknown");
-
-		let body_str = String::from_utf8_lossy(req.body()).to_string();
-
-		// Use serde_json to properly escape the received body
-		let response_data = serde_json::json!({
-			"received": body_str,
-			"content_type": content_type
-		});
-		let response_body = response_data.to_string();
-
-		let response = Response::ok()
-			.with_header("Content-Type", "application/json")
-			.with_body(Bytes::from(response_body));
-
-		Ok::<Response, Error>(response)
-	});
+	let router = Router::new().endpoint(request_response_echo_handler);
 
 	let server = test_server_guard(router).await;
 	let client = api_client_from_url(&server.url);
@@ -237,16 +276,7 @@ async fn test_request_response_post_roundtrip() {
 /// Test error response in request/response flow
 #[tokio::test]
 async fn test_request_response_error_handling() {
-	let mut router = Router::new();
-
-	router = router.function("/error", Method::GET, |_req: Request| async move {
-		// Return error response
-		let response = Response::internal_server_error()
-			.with_header("Content-Type", "application/json")
-			.with_body(Bytes::from(r#"{"error":"Something went wrong"}"#));
-
-		Ok::<Response, Error>(response)
-	});
+	let router = Router::new().endpoint(request_response_error_handler);
 
 	let server = test_server_guard(router).await;
 	let client = api_client_from_url(&server.url);
@@ -261,33 +291,7 @@ async fn test_request_response_error_handling() {
 /// Test multiple Accept header types
 #[tokio::test]
 async fn test_multiple_accept_headers() {
-	let mut router = Router::new();
-
-	router = router.function("/formats", Method::GET, |req: Request| async move {
-		let accept = req
-			.headers
-			.get("accept")
-			.and_then(|v| v.to_str().ok())
-			.unwrap_or("*/*");
-
-		let response = if accept.contains("application/json") {
-			Response::ok()
-				.with_header("Content-Type", "application/json")
-				.with_body(Bytes::from(r#"{"format":"json"}"#))
-		} else if accept.contains("text/html") {
-			Response::ok()
-				.with_header("Content-Type", "text/html")
-				.with_body(Bytes::from("<html><body>HTML</body></html>"))
-		} else if accept.contains("text/plain") {
-			Response::ok()
-				.with_header("Content-Type", "text/plain")
-				.with_body(Bytes::from("Plain text"))
-		} else {
-			Response::new(StatusCode::NOT_ACCEPTABLE).with_body(Bytes::from("Not Acceptable"))
-		};
-
-		Ok::<Response, Error>(response)
-	});
+	let router = Router::new().endpoint(multiple_accept_headers_handler);
 
 	let server = test_server_guard(router).await;
 	let client = api_client_from_url(&server.url);
@@ -318,24 +322,7 @@ async fn test_multiple_accept_headers() {
 /// Test request/response round-trip with query parameters
 #[tokio::test]
 async fn test_request_response_query_params() {
-	let mut router = Router::new();
-
-	router = router.function("/search", Method::GET, |req: Request| async move {
-		let query = req.query_params.get("q").map(|s| s.as_str()).unwrap_or("");
-		let limit = req
-			.query_params
-			.get("limit")
-			.map(|s| s.as_str())
-			.unwrap_or("10");
-
-		let response_body = format!(r#"{{"query":"{}","limit":"{}"}}"#, query, limit);
-
-		let response = Response::ok()
-			.with_header("Content-Type", "application/json")
-			.with_body(Bytes::from(response_body));
-
-		Ok::<Response, Error>(response)
-	});
+	let router = Router::new().endpoint(request_response_query_params_handler);
 
 	let server = test_server_guard(router).await;
 	let client = api_client_from_url(&server.url);

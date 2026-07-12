@@ -42,18 +42,6 @@ use std::sync::Arc;
 #[derive(Debug, Clone)]
 pub struct CurrentUser<U: BaseUser>(pub U);
 
-/// Deprecated compatibility name for [`CurrentUser`].
-///
-/// Use [`CurrentUser`] in new code. This wrapper has the same tuple-struct
-/// shape and injection behavior so existing `AuthUser(user): AuthUser<U>`
-/// patterns continue to compile until the 0.3 removal.
-#[deprecated(
-	since = "0.2.0",
-	note = "use CurrentUser; AuthUser will be removed in 0.3"
-)]
-#[derive(Debug, Clone)]
-pub struct AuthUser<U: BaseUser>(pub U);
-
 #[cfg(feature = "params")]
 async fn resolve_current_user<U>(ctx: &InjectionContext) -> DiResult<U>
 where
@@ -156,42 +144,9 @@ where
 	}
 }
 
-#[cfg(feature = "params")]
-#[allow(deprecated)]
-#[async_trait]
-impl<U> Injectable for AuthUser<U>
-where
-	U: BaseUser + Model + Clone + Send + Sync + 'static,
-	<U as BaseUser>::PrimaryKey: std::str::FromStr + ToString + Send + Sync,
-	<<U as BaseUser>::PrimaryKey as std::str::FromStr>::Err: std::fmt::Debug,
-	<U as Model>::PrimaryKey: From<<U as BaseUser>::PrimaryKey>,
-{
-	async fn inject(ctx: &InjectionContext) -> DiResult<Self> {
-		resolve_current_user(ctx).await.map(AuthUser)
-	}
-}
-
-#[cfg(not(feature = "params"))]
-#[allow(deprecated)]
-#[async_trait]
-impl<U> Injectable for AuthUser<U>
-where
-	U: BaseUser + Model + Clone + Send + Sync + 'static,
-	<U as BaseUser>::PrimaryKey: std::str::FromStr + ToString + Send + Sync,
-	<<U as BaseUser>::PrimaryKey as std::str::FromStr>::Err: std::fmt::Debug,
-	<U as Model>::PrimaryKey: From<<U as BaseUser>::PrimaryKey>,
-{
-	async fn inject(_ctx: &InjectionContext) -> DiResult<Self> {
-		Err(DiError::NotFound(
-			"AuthUser requires the 'params' feature to be enabled".to_string(),
-		))
-	}
-}
-
 #[cfg(test)]
-#[allow(deprecated)]
 mod tests {
-	use super::{AuthUser, CurrentUser};
+	use super::CurrentUser;
 	use crate::{BaseUser, PasswordHasher};
 	use chrono::{DateTime, Utc};
 	use serde::{Deserialize, Serialize};
@@ -268,13 +223,5 @@ mod tests {
 		let CurrentUser(user): CurrentUser<TestUser> = CurrentUser(test_user("alice"));
 
 		assert_eq!(user.get_username(), "alice");
-	}
-
-	#[allow(deprecated)]
-	#[test]
-	fn deprecated_auth_user_keeps_tuple_struct_destructuring() {
-		let AuthUser(user): AuthUser<TestUser> = AuthUser(test_user("bob"));
-
-		assert_eq!(user.get_username(), "bob");
 	}
 }
