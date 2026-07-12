@@ -887,7 +887,7 @@ impl<M: Model> Manager<M> {
 		Ok((sql, values))
 	}
 
-	fn json_to_sea_value_for_field(
+	pub(crate) fn json_to_sea_value_for_field(
 		value: &serde_json::Value,
 		field_info: Option<&FieldInfo>,
 		field_is_none: bool,
