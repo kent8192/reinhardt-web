@@ -108,6 +108,12 @@ pub trait FixtureModelHandler: Send + Sync {
 		format!("{}.{}", self.app_label(), self.model_name())
 	}
 
+	/// Map physical foreign-key columns to Django fixture relation names.
+	#[cfg(feature = "migrations")]
+	fn fixture_foreign_key_fields(&self) -> Vec<(String, String)> {
+		Vec::new()
+	}
+
 	/// Load one fixture record through this model handler.
 	async fn load_record(
 		&self,
@@ -235,6 +241,13 @@ where
 
 	fn primary_key_field(&self) -> &'static str {
 		M::primary_key_field()
+	}
+
+	#[cfg(feature = "migrations")]
+	fn fixture_foreign_key_fields(&self) -> Vec<(String, String)> {
+		metadata_for_model::<M>().map_or_else(Vec::new, |metadata| {
+			foreign_key_fixture_field_names::<M>(&metadata)
+		})
 	}
 
 	async fn load_record(
@@ -987,11 +1000,24 @@ fn fixture_record_dependencies(
 		let Some(metadata) = find_model_metadata(&app_label, &model_name) else {
 			continue;
 		};
+		let relationship_names = global_fixture_registry()
+			.get(&record.model)
+			.map(|handler| {
+				handler
+					.fixture_foreign_key_fields()
+					.into_iter()
+					.collect::<HashMap<_, _>>()
+			})
+			.unwrap_or_default();
 		for (field_name, field) in &metadata.fields {
 			let Some(target_key) = fixture_foreign_key_target_key(&metadata, field) else {
 				continue;
 			};
-			let Some(value) = fixture_field_value(record, field_name) else {
+			let Some(value) = fixture_field_value(
+				record,
+				field_name,
+				relationship_names.get(field_name).map(String::as_str),
+			) else {
 				continue;
 			};
 			let Some(target_pk) = json_dependency_key(value) else {
@@ -1035,12 +1061,20 @@ fn fixture_foreign_key_target_key(
 }
 
 #[cfg(feature = "migrations")]
-fn fixture_field_value<'a>(record: &'a FixtureRecord, field_name: &str) -> Option<&'a Value> {
-	record.fields.get(field_name).or_else(|| {
-		field_name
-			.strip_suffix("_id")
-			.and_then(|relation_name| record.fields.get(relation_name))
-	})
+fn fixture_field_value<'a>(
+	record: &'a FixtureRecord,
+	field_name: &str,
+	relation_name: Option<&str>,
+) -> Option<&'a Value> {
+	record
+		.fields
+		.get(field_name)
+		.or_else(|| relation_name.and_then(|name| record.fields.get(name)))
+		.or_else(|| {
+			field_name
+				.strip_suffix("_id")
+				.and_then(|name| record.fields.get(name))
+		})
 }
 
 #[cfg(feature = "migrations")]
@@ -1539,6 +1573,58 @@ mod tests {
 
 		assert_eq!(object.get("author"), Some(&Value::from(7)));
 		assert_eq!(object.get("writer_id"), None);
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	#[serial_test::serial(fixture_model_registry)]
+	fn dependency_order_uses_relationship_names_for_custom_foreign_key_columns() {
+		let mut author = crate::migrations::ModelMetadata::new(
+			"fixture_field_aware",
+			"Author",
+			"fixture_field_aware_author",
+		);
+		author.add_field(
+			"id".to_string(),
+			crate::migrations::FieldMetadata::new(crate::migrations::FieldType::BigInteger),
+		);
+		let mut post = crate::migrations::ModelMetadata::new(
+			"fixture_field_aware",
+			"FixtureFieldAwarePost",
+			"fixture_field_aware_post",
+		);
+		post.add_field(
+			"writer_id".to_string(),
+			crate::migrations::FieldMetadata::new(crate::migrations::FieldType::BigInteger)
+				.with_param("fk_target", "Author")
+				.with_param("fk_target_app", "fixture_field_aware"),
+		);
+		crate::migrations::model_registry::global_registry().register_model(author);
+		crate::migrations::model_registry::global_registry().register_model(post);
+		global_fixture_registry().register_model::<FixtureFieldAwarePost>();
+
+		let mut post_fields = Map::new();
+		post_fields.insert("author".to_string(), Value::from(7));
+		let records = vec![
+			FixtureRecord::new(
+				"fixture_field_aware.FixtureFieldAwarePost",
+				Some(Value::from(1)),
+				post_fields,
+			),
+			FixtureRecord::new(
+				"fixture_field_aware.Author",
+				Some(Value::from(7)),
+				Map::new(),
+			),
+		];
+
+		let ordered = order_records_by_dependencies(&records).unwrap();
+
+		assert_eq!(ordered[0].model, "fixture_field_aware.Author");
+		assert_eq!(
+			ordered[1].model,
+			"fixture_field_aware.FixtureFieldAwarePost"
+		);
 	}
 
 	#[cfg(feature = "migrations")]
