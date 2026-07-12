@@ -362,6 +362,7 @@ fn models_to_migration(models: &[ModelSchemaInfo]) -> Result<Vec<Migration>, Tes
 			app_label: model.app_label.clone(),
 			fields: model.fields.clone(),
 			relationships: model.relationships.clone(),
+			constraints: model.constraints.clone(),
 		})
 		.collect();
 
@@ -850,6 +851,7 @@ mod tests {
 				app_label: "test".to_string(),
 				fields: Vec::new(),
 				relationships: Vec::new(),
+				constraints: Vec::new(),
 			})
 			.migrations_from_provider(Vec::new);
 
@@ -877,6 +879,7 @@ mod tests {
 			app_label: "accounts".to_string(),
 			fields: Vec::new(),
 			relationships: Vec::new(),
+			constraints: Vec::new(),
 		};
 		let builder = TestDatabase::builder().model_info(model);
 
