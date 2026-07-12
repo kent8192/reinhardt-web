@@ -9,6 +9,7 @@ use crate::orm::query_fields::GroupByFields;
 use crate::orm::query_fields::aggregate::{AggregateExpr, ComparisonExpr};
 use crate::orm::query_fields::comparison::FieldComparison;
 use crate::orm::query_fields::compiler::QueryFieldCompiler;
+use crate::orm::relations::traversal::step_aliases;
 use crate::orm::relations::{RelationJoinGraph, RelationJoinKind, RelationPathLike, RelationStep};
 use reinhardt_query::prelude::{
 	Alias, BinOper, ColumnRef, Condition, Expr, ExprTrait, Func, JoinType as SeaJoinType,
@@ -160,6 +161,12 @@ impl FilterRelation {
 	fn add_to_graph(&self, graph: &mut RelationJoinGraph) {
 		graph.add_steps_with_override(&self.steps, self.join_kind_override);
 	}
+
+	fn rebase_root_alias(&mut self, root_alias: &str) {
+		if let Some(alias) = step_aliases(&self.steps, root_alias).last() {
+			self.leaf_alias.clone_from(alias);
+		}
+	}
 }
 
 #[derive(Debug, Clone)]
@@ -259,6 +266,12 @@ impl Filter {
 	fn add_relation_joins(&self, graph: &mut RelationJoinGraph) {
 		if let Some(relation) = &self.relation {
 			relation.add_to_graph(graph);
+		}
+	}
+
+	fn rebase_relation_alias(&mut self, root_alias: &str) {
+		if let Some(relation) = &mut self.relation {
+			relation.rebase_root_alias(root_alias);
 		}
 	}
 
@@ -615,13 +628,47 @@ impl FilterCondition {
 		}
 	}
 
-	fn has_relation(&self) -> bool {
+	fn has_relation(&self) -> reinhardt_core::exception::Result<bool> {
+		self.has_relation_at_depth(0)
+	}
+
+	fn has_relation_at_depth(&self, depth: usize) -> reinhardt_core::exception::Result<bool> {
+		if depth >= MAX_FILTER_CONDITION_DEPTH {
+			return Err(reinhardt_core::exception::Error::Validation(format!(
+				"Filter condition exceeded maximum depth of {} levels",
+				MAX_FILTER_CONDITION_DEPTH
+			)));
+		}
+
 		match self {
-			FilterCondition::Single(filter) => filter.has_relation(),
+			FilterCondition::Single(filter) => Ok(filter.has_relation()),
 			FilterCondition::And(conditions) | FilterCondition::Or(conditions) => {
-				conditions.iter().any(Self::has_relation)
+				for condition in conditions {
+					if condition.has_relation_at_depth(depth + 1)? {
+						return Ok(true);
+					}
+				}
+				Ok(false)
 			}
-			FilterCondition::Not(condition) => condition.has_relation(),
+			FilterCondition::Not(condition) => condition.has_relation_at_depth(depth + 1),
+		}
+	}
+
+	fn rebase_relation_aliases(&mut self, root_alias: &str, depth: usize) {
+		if depth >= MAX_FILTER_CONDITION_DEPTH {
+			return;
+		}
+
+		match self {
+			FilterCondition::Single(filter) => filter.rebase_relation_alias(root_alias),
+			FilterCondition::And(conditions) | FilterCondition::Or(conditions) => {
+				for condition in conditions {
+					condition.rebase_relation_aliases(root_alias, depth + 1);
+				}
+			}
+			FilterCondition::Not(condition) => {
+				condition.rebase_relation_aliases(root_alias, depth + 1);
+			}
 		}
 	}
 }
@@ -913,10 +960,10 @@ where
 			!self.is_multi_valued(),
 			"typed select_related supports only single-valued relation paths; use prefetch_related for multi-valued relations"
 		);
-		let alias = self.leaf_alias().to_string();
+		let typed = TypedSelectRelation::from_path(&self);
 		queryset.relation_joins.add_path(&self);
-		if !queryset.typed_select_related_aliases.contains(&alias) {
-			queryset.typed_select_related_aliases.push(alias);
+		if !queryset.typed_select_related.contains(&typed) {
+			queryset.typed_select_related.push(typed);
 		}
 	}
 
@@ -943,6 +990,26 @@ where
 struct TypedPrefetchRelation {
 	field: String,
 	steps: SmallVec<[RelationStep; 4]>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TypedSelectRelation {
+	steps: SmallVec<[RelationStep; 4]>,
+}
+
+impl TypedSelectRelation {
+	fn from_path<P>(path: &P) -> Self
+	where
+		P: RelationPathLike,
+	{
+		let mut steps: SmallVec<[RelationStep; 4]> = SmallVec::new();
+		steps.extend(path.steps().iter().cloned());
+		Self { steps }
+	}
+
+	fn aliases(&self, root_alias: &str) -> SmallVec<[String; 4]> {
+		step_aliases(&self.steps, root_alias)
+	}
 }
 
 impl TypedPrefetchRelation {
@@ -984,7 +1051,7 @@ where
 	filters: SmallVec<[Filter; 10]>,
 	filter_conditions: SmallVec<[FilterCondition; 4]>,
 	select_related_fields: Vec<String>,
-	typed_select_related_aliases: Vec<String>,
+	typed_select_related: Vec<TypedSelectRelation>,
 	prefetch_related_fields: Vec<String>,
 	typed_prefetch_related: Vec<TypedPrefetchRelation>,
 	relation_joins: RelationJoinGraph,
@@ -1019,7 +1086,7 @@ where
 			filters: SmallVec::new(),
 			filter_conditions: SmallVec::new(),
 			select_related_fields: Vec::new(),
-			typed_select_related_aliases: Vec::new(),
+			typed_select_related: Vec::new(),
 			prefetch_related_fields: Vec::new(),
 			typed_prefetch_related: Vec::new(),
 			relation_joins: RelationJoinGraph::new(T::table_name()),
@@ -1049,7 +1116,7 @@ where
 			filters: SmallVec::new(),
 			filter_conditions: SmallVec::new(),
 			select_related_fields: Vec::new(),
-			typed_select_related_aliases: Vec::new(),
+			typed_select_related: Vec::new(),
 			prefetch_related_fields: Vec::new(),
 			typed_prefetch_related: Vec::new(),
 			relation_joins: RelationJoinGraph::new(T::table_name()),
@@ -1078,11 +1145,13 @@ where
 	/// relation filters must be rooted at this `QuerySet` model.
 	pub fn filter(mut self, filter: impl QueryFilterInput<T>) -> Self {
 		match filter.into_filter_condition() {
-			FilterCondition::Single(filter) => {
+			FilterCondition::Single(mut filter) => {
+				filter.rebase_relation_alias(self.root_alias());
 				filter.add_relation_joins(&mut self.relation_joins);
 				self.filters.push(filter);
 			}
-			condition => {
+			mut condition => {
+				condition.rebase_relation_aliases(self.root_alias(), 0);
 				self.collect_condition_relation_joins(&condition);
 				self.filter_conditions.push(condition);
 			}
@@ -1104,11 +1173,11 @@ where
 	}
 
 	fn collect_condition_relation_joins(&mut self, condition: &FilterCondition) {
-		self.collect_condition_relation_joins_at_depth(condition, 0);
+		Self::collect_condition_relation_joins_at_depth(&mut self.relation_joins, condition, 0);
 	}
 
 	fn collect_condition_relation_joins_at_depth(
-		&mut self,
+		graph: &mut RelationJoinGraph,
 		condition: &FilterCondition,
 		depth: usize,
 	) {
@@ -1117,16 +1186,26 @@ where
 		}
 		match condition {
 			FilterCondition::Single(filter) => {
-				filter.add_relation_joins(&mut self.relation_joins);
+				filter.add_relation_joins(graph);
 			}
 			FilterCondition::And(conditions) | FilterCondition::Or(conditions) => {
 				for condition in conditions {
-					self.collect_condition_relation_joins_at_depth(condition, depth + 1);
+					Self::collect_condition_relation_joins_at_depth(graph, condition, depth + 1);
 				}
 			}
 			FilterCondition::Not(condition) => {
-				self.collect_condition_relation_joins_at_depth(condition, depth + 1);
+				Self::collect_condition_relation_joins_at_depth(graph, condition, depth + 1);
 			}
+		}
+	}
+
+	fn rebase_filter_relation_aliases(&mut self) {
+		let root_alias = self.root_alias().to_string();
+		for filter in &mut self.filters {
+			filter.rebase_relation_alias(&root_alias);
+		}
+		for condition in &mut self.filter_conditions {
+			condition.rebase_relation_aliases(&root_alias, 0);
 		}
 	}
 
@@ -1137,22 +1216,26 @@ where
 	}
 
 	fn has_select_related(&self) -> bool {
-		!(self.select_related_fields.is_empty() && self.typed_select_related_aliases.is_empty())
+		!(self.select_related_fields.is_empty() && self.typed_select_related.is_empty())
 	}
 
-	fn has_related_filters(&self) -> bool {
-		self.filters.iter().any(Filter::has_relation)
-			|| self
-				.filter_conditions
-				.iter()
-				.any(FilterCondition::has_relation)
+	fn has_related_filters(&self) -> reinhardt_core::exception::Result<bool> {
+		if self.filters.iter().any(Filter::has_relation) {
+			return Ok(true);
+		}
+		for condition in &self.filter_conditions {
+			if condition.has_relation()? {
+				return Ok(true);
+			}
+		}
+		Ok(false)
 	}
 
 	fn validate_no_related_filters_for_write(
 		&self,
 		operation: &str,
 	) -> reinhardt_core::exception::Result<()> {
-		if self.has_related_filters() {
+		if self.has_related_filters()? {
 			return Err(reinhardt_core::exception::Error::Validation(format!(
 				"{operation} does not support typed related filters; use a subquery or select query first"
 			)));
@@ -1230,7 +1313,7 @@ where
 			filters: SmallVec::new(),
 			filter_conditions: SmallVec::new(),
 			select_related_fields: Vec::new(),
-			typed_select_related_aliases: Vec::new(),
+			typed_select_related: Vec::new(),
 			prefetch_related_fields: Vec::new(),
 			typed_prefetch_related: Vec::new(),
 			relation_joins: RelationJoinGraph::new(alias),
@@ -1591,6 +1674,7 @@ where
 	/// ```
 	pub fn from_as(mut self, alias: &str) -> Self {
 		self.from_alias = Some(alias.to_string());
+		self.rebase_filter_relation_aliases();
 		self
 	}
 
@@ -3121,6 +3205,17 @@ where
 			.with_root_alias(self.from_alias.as_deref().unwrap_or(T::table_name()))
 	}
 
+	fn filter_relation_join_graph_for_query(&self) -> RelationJoinGraph {
+		let mut graph = RelationJoinGraph::new(self.root_alias());
+		for filter in &self.filters {
+			filter.add_relation_joins(&mut graph);
+		}
+		for condition in &self.filter_conditions {
+			Self::collect_condition_relation_joins_at_depth(&mut graph, condition, 0);
+		}
+		graph
+	}
+
 	fn root_alias(&self) -> &str {
 		self.from_alias.as_deref().unwrap_or(T::table_name())
 	}
@@ -3182,6 +3277,10 @@ where
 
 	fn apply_relation_joins(&self, stmt: &mut SelectStatement) {
 		let graph = self.relation_join_graph_for_query();
+		Self::apply_relation_join_graph(stmt, &graph);
+	}
+
+	fn apply_relation_join_graph(stmt: &mut SelectStatement, graph: &RelationJoinGraph) {
 		for join in graph.joins() {
 			let sea_join_type = match join.join_kind {
 				RelationJoinKind::Inner => SeaJoinType::InnerJoin,
@@ -4084,13 +4183,18 @@ where
 
 		self.apply_relation_joins(&mut stmt);
 
-		for alias in &self.typed_select_related_aliases {
-			if !self
-				.select_related_fields
-				.iter()
-				.any(|field| field == alias)
-			{
-				stmt.column(ColumnRef::table_asterisk(Alias::new(alias)));
+		let mut typed_aliases = Vec::new();
+		for relation in &self.typed_select_related {
+			for alias in relation.aliases(root_alias) {
+				if !self
+					.select_related_fields
+					.iter()
+					.any(|field| field == &alias)
+					&& !typed_aliases.contains(&alias)
+				{
+					stmt.column(ColumnRef::table_asterisk(Alias::new(&alias)));
+					typed_aliases.push(alias);
+				}
 			}
 		}
 
@@ -5183,7 +5287,8 @@ where
 	fn count_select_query(&self) -> reinhardt_core::exception::Result<SelectStatement> {
 		let mut stmt = Query::select();
 		self.apply_model_from(&mut stmt);
-		if self.relation_join_graph_for_query().has_multi_valued_join() {
+		let filter_relation_joins = self.filter_relation_join_graph_for_query();
+		if filter_relation_joins.has_multi_valued_join() {
 			stmt.expr(Expr::cust(format!(
 				"COUNT(DISTINCT {}.{})",
 				quote_identifier(self.root_alias()),
@@ -5193,7 +5298,7 @@ where
 			stmt.expr(Func::count(Expr::asterisk().into_simple_expr()));
 		}
 
-		self.apply_relation_joins(&mut stmt);
+		Self::apply_relation_join_graph(&mut stmt, &filter_relation_joins);
 
 		if let Some(cond) = self.build_where_condition()? {
 			stmt.cond_where(cond);
@@ -7963,6 +8068,43 @@ mod tests {
 	}
 
 	#[test]
+	fn test_relation_filter_rebases_join_alias_that_matches_root_alias() {
+		let filter =
+			crate::orm::relations::RelationPath::<TestUser, TestCorpusFile>::from_descriptor::<
+				TestUserCorpusFile,
+			>()
+			.field(TestCorpusFile::field_normalized_path())
+			.eq("/docs/index.md");
+
+		let sql = QuerySet::<TestUser>::new()
+			.from_as("corpus_file")
+			.filter(filter)
+			.to_sql();
+
+		assert_eq!(
+			sql,
+			r#"SELECT "corpus_file".* FROM "test_users" AS "corpus_file" INNER JOIN "test_corpus_files" AS "corpus_file__corpus_file" ON "corpus_file"."corpus_file_id" = "corpus_file__corpus_file"."id" WHERE "corpus_file__corpus_file"."normalized_path" = '/docs/index.md'"#
+		);
+
+		let filter =
+			crate::orm::relations::RelationPath::<TestUser, TestCorpusFile>::from_descriptor::<
+				TestUserCorpusFile,
+			>()
+			.field(TestCorpusFile::field_normalized_path())
+			.eq("/docs/index.md");
+
+		let sql = QuerySet::<TestUser>::new()
+			.filter(filter)
+			.from_as("corpus_file")
+			.to_sql();
+
+		assert_eq!(
+			sql,
+			r#"SELECT "corpus_file".* FROM "test_users" AS "corpus_file" INNER JOIN "test_corpus_files" AS "corpus_file__corpus_file" ON "corpus_file"."corpus_file_id" = "corpus_file__corpus_file"."id" WHERE "corpus_file__corpus_file"."normalized_path" = '/docs/index.md'"#
+		);
+	}
+
+	#[test]
 	fn test_relation_filter_count_uses_from_alias_as_join_root() {
 		let filter =
 			crate::orm::relations::RelationPath::<TestUser, TestCorpusFile>::from_descriptor::<
@@ -8032,6 +8174,36 @@ mod tests {
 	}
 
 	#[test]
+	fn test_nested_typed_select_related_selects_intermediate_hops() {
+		let path =
+			crate::orm::relations::RelationPath::<TestUser, TestCorpusFile>::from_descriptor::<
+				TestUserCorpusFile,
+			>()
+			.then::<TestCorpusFileProject, TestProject>();
+
+		let sql = QuerySet::<TestUser>::new().select_related(path).to_sql();
+
+		assert!(sql.starts_with(
+			r#"SELECT "test_users".*, "corpus_file".*, "corpus_file__project".* FROM "test_users""#
+		));
+	}
+
+	#[test]
+	fn test_count_omits_eager_only_typed_select_related_joins() {
+		let path = crate::orm::relations::RelationPath::<TestUser, TestCorpusFile>::from_descriptor::<
+			TestUserCorpusFile,
+		>();
+
+		let sql = QuerySet::<TestUser>::new()
+			.select_related(path)
+			.count_select_query()
+			.expect("count select query")
+			.to_string(PostgresQueryBuilder);
+
+		assert_eq!(sql, r#"SELECT COUNT(*) FROM "test_users""#);
+	}
+
+	#[test]
 	fn test_custom_manager_trait_accepts_typed_relation_loaders() {
 		use crate::orm::custom_manager::CustomManager;
 
@@ -8047,7 +8219,7 @@ mod tests {
 			),
 		);
 
-		assert_eq!(selected.typed_select_related_aliases, vec!["corpus_file"]);
+		assert_eq!(selected.typed_select_related.len(), 1);
 		assert_eq!(prefetched.typed_prefetch_related.len(), 1);
 	}
 
@@ -8821,6 +8993,31 @@ mod tests {
 		assert!(matches!(
 			queryset.build_where_condition(),
 			Err(reinhardt_core::exception::Error::Validation(_))
+		));
+	}
+
+	#[rstest]
+	fn test_update_fields_rejects_over_deep_related_filter_before_relation_scan() {
+		let related =
+			crate::orm::relations::RelationPath::<TestUser, TestCorpusFile>::from_descriptor::<
+				TestUserCorpusFile,
+			>()
+			.field(TestCorpusFile::field_normalized_path())
+			.eq("/docs/index.md");
+		let mut condition = related.into_filter_condition();
+		for _ in 0..=MAX_FILTER_CONDITION_DEPTH {
+			condition = FilterCondition::not(condition);
+		}
+
+		let error = QuerySet::<TestUser>::new()
+			.filter(condition)
+			.update_fields_sql([("username", "alice")])
+			.expect_err("over-deep related filters must fail validation");
+
+		assert!(matches!(
+			error,
+			reinhardt_core::exception::Error::Validation(message)
+				if message.contains("maximum depth")
 		));
 	}
 

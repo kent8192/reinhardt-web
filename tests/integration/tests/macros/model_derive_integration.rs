@@ -63,6 +63,29 @@ struct MetadataProfile {
 	profile: OneToOneField<MetadataTarget>,
 }
 
+#[model(app_label = "traversal_test", table_name = "traversal_authors")]
+#[derive(Serialize, Deserialize)]
+struct TraversalAuthor {
+	#[field(primary_key = true)]
+	id: Option<i64>,
+
+	#[field(max_length = 255, db_column = "email_address")]
+	email: String,
+
+	#[field(max_length = 255, db_column = "author_slug")]
+	slug: String,
+}
+
+#[model(app_label = "traversal_test", table_name = "traversal_posts")]
+#[derive(Serialize, Deserialize)]
+struct TraversalPost {
+	#[field(primary_key = true)]
+	id: Option<i64>,
+
+	#[rel(foreign_key, db_column = "author_slug", to_field = "slug")]
+	author: ForeignKeyField<TraversalAuthor>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct JsonSettings {
 	indent_width: u8,
@@ -186,6 +209,24 @@ fn test_relationship_metadata_uses_generated_fk_columns_and_targets() {
 	assert_eq!(profile.relationship_type, RelationshipType::OneToOne);
 	assert_eq!(profile.foreign_key.as_deref(), Some("profile_id"));
 	assert_eq!(profile.related_model, "MetadataTarget");
+}
+
+#[test]
+fn test_related_field_accessor_uses_physical_column() {
+	assert_eq!(
+		TraversalPost::rel_author().field_email().name(),
+		"email_address"
+	);
+}
+
+#[test]
+fn test_relation_descriptor_resolves_to_field_physical_column() {
+	use reinhardt_db::orm::relations::RelationPathLike;
+
+	assert_eq!(
+		TraversalPost::rel_author().steps()[0].target_column,
+		"author_slug"
+	);
 }
 
 #[test]

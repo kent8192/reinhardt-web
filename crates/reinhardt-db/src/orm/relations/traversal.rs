@@ -5,6 +5,7 @@
 //! typed filters, `select_related`, and `prefetch_related` planning.
 
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::marker::PhantomData;
 
 use smallvec::SmallVec;
@@ -243,11 +244,20 @@ impl RelationJoinGraph {
 
 	/// Return a copy of this graph with a different root alias.
 	pub fn with_root_alias(mut self, root_alias: impl Into<String>) -> Self {
-		let previous_root_alias = std::mem::replace(&mut self.root_alias, root_alias.into());
+		let root_alias = root_alias.into();
+		if self.root_alias == root_alias {
+			return self;
+		}
+
+		let previous_root_alias = std::mem::replace(&mut self.root_alias, root_alias);
+		let mut aliases = HashMap::from([(previous_root_alias, self.root_alias.clone())]);
 		for join in &mut self.joins {
-			if join.source_alias == previous_root_alias {
-				join.source_alias.clone_from(&self.root_alias);
+			if let Some(source_alias) = aliases.get(&join.source_alias) {
+				join.source_alias.clone_from(source_alias);
 			}
+			let alias = step_alias(&join.source_alias, &join.relation_name, &self.root_alias);
+			let previous_alias = std::mem::replace(&mut join.alias, alias);
+			aliases.insert(previous_alias, join.alias.clone());
 		}
 		self
 	}
@@ -366,7 +376,7 @@ fn step_alias(source_alias: &str, step_name: &str, root_alias: &str) -> String {
 	}
 }
 
-fn step_aliases(steps: &[RelationStep], root_alias: &str) -> SmallVec<[String; 4]> {
+pub(crate) fn step_aliases(steps: &[RelationStep], root_alias: &str) -> SmallVec<[String; 4]> {
 	let mut aliases = SmallVec::new();
 	let mut source_alias = String::new();
 	for (index, step) in steps.iter().enumerate() {

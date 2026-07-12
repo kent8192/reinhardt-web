@@ -1858,6 +1858,11 @@ fn generate_relation_traversal_accessors(
 		.map(|field| {
 			let field_name = &field.name;
 			let field_name_str = field_name.to_string();
+			let field_column = field
+				.config
+				.db_column
+				.as_deref()
+				.unwrap_or(&field_name_str);
 			let field_type = &field.ty;
 			let method_name = syn::Ident::new(&format!("field_{}", field_name), field_name.span());
 			let doc_comment = format!("Reference the `{field_name_str}` field through this relation path.");
@@ -1865,7 +1870,7 @@ fn generate_relation_traversal_accessors(
 			quote! {
 				#[doc = #doc_comment]
 				pub fn #method_name(self) -> #orm_crate::relations::RelatedFieldRef<Root, #struct_name, #field_type> {
-					self.field(#struct_name::#method_name())
+					self.field(#orm_crate::expressions::FieldRef::new(#field_column))
 				}
 			}
 		})
@@ -1905,7 +1910,20 @@ fn generate_relation_traversal_accessors(
 						.unwrap_or_else(|| format!("{}_id", field_name_str));
 					let target_column = rel.to_field.as_ref().map_or_else(
 						|| quote! { <#target_ty as #orm_crate::Model>::primary_key_column() },
-						|field| quote! { #field },
+						|field| {
+							quote! {
+								<#target_ty as #orm_crate::Model>::field_metadata()
+									.into_iter()
+									.find_map(|field_info| {
+										if field_info.name == #field {
+											Some(field_info.db_column.unwrap_or(field_info.name))
+										} else {
+											None
+										}
+									})
+									.unwrap_or_else(|| #field.to_string())
+							}
+						},
 					);
 					let join_kind = if rel.null == Some(true) {
 						quote! { #orm_crate::relations::RelationJoinKind::Left }
@@ -2053,7 +2071,10 @@ fn generate_relation_traversal_accessors(
 				#native_cfg
 				impl #struct_name {
 					#[doc = #doc_comment]
-					#struct_vis fn #method_name() -> <#target_ty as #orm_crate::relations::RelationTarget>::Path<#struct_name> {
+					#struct_vis fn #method_name() -> <#target_ty as #orm_crate::relations::RelationTarget>::Path<#struct_name>
+					where
+						#target_ty: #orm_crate::relations::RelationTarget,
+					{
 						<#target_ty as #orm_crate::relations::RelationTarget>::wrap_relation_path(
 							#orm_crate::relations::RelationPath::<#struct_name, #target_ty>::from_descriptor::<#descriptor_name>()
 						)
@@ -2074,7 +2095,10 @@ fn generate_relation_traversal_accessors(
 
 			quote! {
 				#[doc = #doc_comment]
-				#struct_vis fn #method_name(self) -> <#target_ty as #orm_crate::relations::RelationTarget>::Path<Root> {
+				#struct_vis fn #method_name(self) -> <#target_ty as #orm_crate::relations::RelationTarget>::Path<Root>
+				where
+					#target_ty: #orm_crate::relations::RelationTarget,
+				{
 					<#target_ty as #orm_crate::relations::RelationTarget>::wrap_relation_path(
 						self.inner.then::<#descriptor_name, #target_ty>()
 					)
