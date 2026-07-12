@@ -344,13 +344,19 @@ impl DatabaseConnection {
 	/// Connects to a SQLite database at the given URL.
 	#[cfg(feature = "sqlite")]
 	pub async fn connect_sqlite(url: &str) -> Result<Self> {
-		use sqlx::sqlite::{SqliteConnectOptions, SqlitePool};
+		use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
 		use std::path::Path;
 		use std::str::FromStr;
 
 		// Handle in-memory database
 		if url == "sqlite::memory:" {
-			let pool = SqlitePool::connect(url).await?;
+			let pool = SqlitePoolOptions::new()
+				.max_connections(1)
+				.min_connections(1)
+				.idle_timeout(None)
+				.max_lifetime(None)
+				.connect(url)
+				.await?;
 			return Ok(Self {
 				backend: Arc::new(SqliteBackend::new(pool)),
 				is_cockroachdb: false,
@@ -760,5 +766,27 @@ mod tests {
 		// Assert
 		assert_eq!(db_name, "testdb");
 		assert_eq!(admin_url, "postgres://user:pass@localhost:5432/postgres");
+	}
+
+	#[cfg(feature = "sqlite")]
+	#[rstest]
+	#[tokio::test]
+	async fn sqlite_memory_connection_uses_single_pool_connection() {
+		// Arrange
+		let connection = super::DatabaseConnection::connect_sqlite("sqlite::memory:")
+			.await
+			.unwrap();
+		let pool = connection.into_sqlite().unwrap();
+
+		// Act
+		let first = pool.acquire().await.unwrap();
+		let second = pool.try_acquire();
+		drop(first);
+
+		// Assert
+		assert!(
+			second.is_none(),
+			"sqlite::memory: must stay single-connection so migrated schema remains visible"
+		);
 	}
 }

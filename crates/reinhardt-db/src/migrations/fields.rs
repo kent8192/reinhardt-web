@@ -189,9 +189,16 @@ impl FieldType {
 				SqlDialect::Mysql => "CHAR(36)".to_string(), // MySQL doesn't have native UUID
 				SqlDialect::Sqlite => "TEXT".to_string(),    // SQLite doesn't have native UUID
 			},
+			FieldType::Json => match dialect {
+				SqlDialect::Postgres | SqlDialect::Cockroachdb | SqlDialect::Mysql => {
+					"JSON".to_string()
+				}
+				SqlDialect::Sqlite => "TEXT".to_string(),
+			},
 			FieldType::JsonBinary => match dialect {
 				SqlDialect::Postgres | SqlDialect::Cockroachdb => "JSONB".to_string(),
-				SqlDialect::Mysql | SqlDialect::Sqlite => "JSON".to_string(), // Fallback to JSON
+				SqlDialect::Mysql => "JSON".to_string(),
+				SqlDialect::Sqlite => "TEXT".to_string(),
 			},
 			// PostgreSQL-specific types with dialect handling
 			FieldType::Array(inner) => match dialect {
@@ -540,5 +547,47 @@ pub mod prelude {
 impl std::fmt::Display for FieldType {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		write!(f, "{}", self.to_sql_string())
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::FieldType;
+	use crate::migrations::operations::SqlDialect;
+
+	#[test]
+	fn json_binary_sql_uses_native_or_text_storage_by_dialect() {
+		assert_eq!(
+			FieldType::JsonBinary.to_sql_for_dialect(&SqlDialect::Postgres),
+			"JSONB"
+		);
+		assert_eq!(
+			FieldType::JsonBinary.to_sql_for_dialect(&SqlDialect::Cockroachdb),
+			"JSONB"
+		);
+		assert_eq!(
+			FieldType::JsonBinary.to_sql_for_dialect(&SqlDialect::Mysql),
+			"JSON"
+		);
+		assert_eq!(
+			FieldType::JsonBinary.to_sql_for_dialect(&SqlDialect::Sqlite),
+			"TEXT"
+		);
+	}
+
+	#[test]
+	fn json_sql_uses_text_storage_on_sqlite() {
+		assert_eq!(
+			FieldType::Json.to_sql_for_dialect(&SqlDialect::Postgres),
+			"JSON"
+		);
+		assert_eq!(
+			FieldType::Json.to_sql_for_dialect(&SqlDialect::Mysql),
+			"JSON"
+		);
+		assert_eq!(
+			FieldType::Json.to_sql_for_dialect(&SqlDialect::Sqlite),
+			"TEXT"
+		);
 	}
 }

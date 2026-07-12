@@ -416,7 +416,9 @@ async fn refresh_loads_jobs() {
 
 The mock API uses `MockableServerFn` markers and therefore requires the
 `msw` feature. Use direct `server_fn` calls for business logic tests and
-WASM/browser tests for hydration or browser API coverage.
+WASM/browser tests for hydration or browser API coverage. The native renderer
+resolves reactive views, active suspense branches, and deferred content branches
+before exposing queryable text and roles.
 
 ## Architecture
 

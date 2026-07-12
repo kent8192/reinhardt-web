@@ -6,10 +6,7 @@
 use crate::crate_paths::{get_reinhardt_di_crate, get_reinhardt_graphql_crate};
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
-use syn::{
-	Error, FnArg, GenericArgument, ItemFn, Pat, PatType, PathArguments, Result, Token, Type,
-	punctuated::Punctuated,
-};
+use syn::{Error, FnArg, ItemFn, Pat, PatType, Result, Token, Type, punctuated::Punctuated};
 
 /// Information about parameter extractors
 #[derive(Clone)]
@@ -30,30 +27,6 @@ struct InjectInfo {
 #[derive(Clone, Default)]
 struct InjectOptions {
 	use_cache: bool,
-}
-
-fn depends_key_value_types(ty: &Type) -> Option<(&Type, &Type)> {
-	let Type::Path(type_path) = ty else {
-		return None;
-	};
-	let segment = type_path.path.segments.last()?;
-	if segment.ident != "Depends" {
-		return None;
-	}
-	let PathArguments::AngleBracketed(args) = &segment.arguments else {
-		return None;
-	};
-	if args.args.len() != 2 {
-		return None;
-	}
-	let mut generic_args = args.args.iter();
-	let GenericArgument::Type(key_ty) = generic_args.next()? else {
-		return None;
-	};
-	let GenericArgument::Type(value_ty) = generic_args.next()? else {
-		return None;
-	};
-	Some((key_ty, value_ty))
 }
 
 /// Check if an attribute is `#[inject]`
@@ -244,29 +217,19 @@ pub(crate) fn expand_graphql_handler(input: ItemFn) -> Result<TokenStream> {
 			let ty = &param.ty;
 			let use_cache = param.use_cache;
 
-			if let Some((key_ty, value_ty)) = depends_key_value_types(ty) {
-				quote! {
-					let #pat: #ty = #di_crate::Depends::<#key_ty, #value_ty>::resolve_from_registry(&__di_ctx, #use_cache)
-						.await
-						.map_err(|e| ::async_graphql::Error::new(
-							format!("Dependency injection failed for {}: {:?}", stringify!(#ty), e)
-						))?;
+			quote! {
+				let #pat: #ty = {
+					use #di_crate::{
+						__InjectFallbackResolver as _,
+						__InjectWrapperResolver as _,
+					};
+					#di_crate::__InjectResolver::<#ty>::new()
+						.__resolve_inject_parameter(&__di_ctx, #use_cache)
 				}
-			} else {
-				quote! {
-					let #pat: #ty = {
-						use #di_crate::{
-							__InjectFallbackResolver as _,
-							__InjectWrapperResolver as _,
-						};
-						#di_crate::__InjectResolver::<#ty>::new()
-							.__resolve_inject_parameter(&__di_ctx, #use_cache)
-					}
-						.await
-						.map_err(|e| ::async_graphql::Error::new(
-							format!("Dependency injection failed for {}: {:?}", stringify!(#ty), e)
-						))?;
-				}
+					.await
+					.map_err(|e| ::async_graphql::Error::new(
+						format!("Dependency injection failed for {}: {:?}", stringify!(#ty), e)
+					))?;
 			}
 		})
 		.collect();
