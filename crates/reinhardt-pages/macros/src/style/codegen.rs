@@ -9,8 +9,20 @@ pub(super) fn generate_style_items(
 	compiled: &reinhardt_manouche::CompiledStyle,
 ) -> syn::Result<TokenStream> {
 	let crate_info = get_reinhardt_pages_crate_info();
-	let pages = crate_info.ident;
-	let use_statement = crate_info.use_statement;
+	let (pages, use_statement) = if crate_info.needs_conditional {
+		let alias = format_ident!("__reinhardt_pages_for_{style_type}");
+		(
+			quote!(#alias),
+			quote! {
+				#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+				use ::reinhardt_pages as #alias;
+				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+				use ::reinhardt::pages as #alias;
+			},
+		)
+	} else {
+		(crate_info.ident, crate_info.use_statement)
+	};
 	let attributes = &item.attrs;
 	let visibility = &item.vis;
 	let static_name = &item.ident;

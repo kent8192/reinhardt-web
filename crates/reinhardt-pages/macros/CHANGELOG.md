@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add `style!` and `#[style_def]` code generation backed by the shared Manouche
   style compiler.
 
+### Fixed
+
+- Generate distinct conditional Pages-crate aliases for multiple `#[style_def]` declarations in one module.
+
 ### Changed
 
 - **BREAKING**: `#[component]` now requires `name = "..."` for route names and

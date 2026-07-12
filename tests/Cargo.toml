@@ -6,6 +6,9 @@ rust-version.workspace = true
 license.workspace = true
 publish = false
 
+[features]
+pages = []
+
 [dependencies]
 # Main reinhardt facade crate for proc macro path resolution.
 # Proc macros generate code with absolute paths like ::reinhardt::reinhardt_apps
@@ -99,3 +102,8 @@ tonic-prost-build = { workspace = true }
 
 [lib]
 path = "integration/src/lib.rs"
+
+[[test]]
+name = "pages_style_facade"
+path = "pages_style_facade.rs"
+required-features = ["pages"]
