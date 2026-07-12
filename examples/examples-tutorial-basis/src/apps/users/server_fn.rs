@@ -12,12 +12,12 @@ use reinhardt::pages::server_fn::{ServerFnError, server_fn};
 
 #[cfg(server)]
 use {
-	crate::apps::users::models::{AuthUserManager, AuthUserManagerKey, User},
+	crate::apps::users::models::{AuthUserManager, User},
 	reinhardt::BaseUser,
 	reinhardt::DatabaseConnection,
 	reinhardt::Validate,
 	reinhardt::db::orm::Model,
-	reinhardt::di::Depends,
+	reinhardt::di::{Depends, KeyedDepends},
 	reinhardt::middleware::session::{
 		SessionAuthExt, SessionData, SessionStore, SessionStoreKey, USER_ID_SESSION_KEY,
 	},
@@ -37,7 +37,7 @@ pub async fn login(
 	password: String,
 	#[inject] _db: DatabaseConnection,
 	#[inject] session: SessionData,
-	#[inject] store: Depends<SessionStoreKey, Arc<SessionStore>>,
+	#[inject] store: KeyedDepends<SessionStoreKey, Arc<SessionStore>>,
 ) -> Result<UserInfo, ServerFnError> {
 	let mut session = session;
 
@@ -106,9 +106,9 @@ pub async fn register(
 	username: String,
 	password: String,
 	password_confirmation: String,
-	#[inject] user_manager: Depends<AuthUserManagerKey, AuthUserManager>,
+	#[inject] user_manager: Depends<AuthUserManager>,
 	#[inject] session: SessionData,
-	#[inject] store: Depends<SessionStoreKey, Arc<SessionStore>>,
+	#[inject] store: KeyedDepends<SessionStoreKey, Arc<SessionStore>>,
 ) -> Result<UserInfo, ServerFnError> {
 	let mut session = session;
 
@@ -139,9 +139,9 @@ pub async fn register(
 	// `reinhardt::Error` that maps to a 400 via `ServerFnError::application`.
 	//
 	// `BaseUserManager::create_user` takes `&mut self`, but DI hands us a
-	// shared keyed `Depends`. Clone the inner manager — its only field is a
-	// database handle — so this is cheap and gives us the `&mut` access the
-	// trait method needs.
+	// shared `Depends`. Clone the inner manager — its only field is a database
+	// handle — so this is cheap and gives us the `&mut` access the trait method
+	// needs.
 	let mut user_manager: AuthUserManager = (*user_manager).clone();
 	let saved = user_manager
 		.create_user(
@@ -168,7 +168,7 @@ pub async fn register(
 #[server_fn]
 pub async fn logout(
 	#[inject] session: SessionData,
-	#[inject] store: Depends<SessionStoreKey, Arc<SessionStore>>,
+	#[inject] store: KeyedDepends<SessionStoreKey, Arc<SessionStore>>,
 ) -> Result<(), ServerFnError> {
 	let mut session = session;
 

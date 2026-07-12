@@ -86,7 +86,7 @@ pub fn routes() -> UnifiedRouter {
 	// via `Middleware::di_registrations` (keyed by `TypeId::of::<SessionStore>()`
 	// post-#4437), so server functions that
 	// `#[inject] session: SessionData` or
-	// `#[inject] store: Depends<SessionStoreKey, Arc<SessionStore>>`
+	// `#[inject] store: KeyedDepends<SessionStoreKey, Arc<SessionStore>>`
 	// can resolve the same store the middleware writes to without a parallel
 	// `with_di_registrations(...)` call. The same middleware also derives
 	// `AuthState` from `USER_ID_SESSION_KEY`, so authenticated handlers can use
