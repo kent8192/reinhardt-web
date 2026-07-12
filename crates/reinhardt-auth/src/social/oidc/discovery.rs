@@ -131,6 +131,7 @@ impl DiscoveryClient {
 			if let Some(cached) = cache.get(issuer_url)
 				&& !cached.is_expired()
 			{
+				validate_discovery_document(issuer_url, &cached.document, require_same_origin)?;
 				return Ok(cached.document.clone());
 			}
 		}
@@ -161,20 +162,7 @@ impl DiscoveryClient {
 		// OIDC metadata uses the stricter same-origin policy to prevent a
 		// discovery document from pivoting later server-side requests to an
 		// unrelated host.
-		validate_discovered_endpoint_url(
-			issuer_url,
-			&document.authorization_endpoint,
-			require_same_origin,
-		)?;
-		validate_discovered_endpoint_url(
-			issuer_url,
-			&document.token_endpoint,
-			require_same_origin,
-		)?;
-		validate_discovered_endpoint_url(issuer_url, &document.jwks_uri, require_same_origin)?;
-		if let Some(ref userinfo_url) = document.userinfo_endpoint {
-			validate_discovered_endpoint_url(issuer_url, userinfo_url, require_same_origin)?;
-		}
+		validate_discovery_document(issuer_url, &document, require_same_origin)?;
 
 		// Update cache keyed by issuer_url
 		{
@@ -193,6 +181,26 @@ impl DiscoveryClient {
 		let mut cache = self.cache.write().await;
 		cache.clear();
 	}
+}
+
+/// Validates every endpoint advertised in a discovery document.
+fn validate_discovery_document(
+	issuer_url: &str,
+	document: &OIDCDiscovery,
+	require_same_origin: bool,
+) -> Result<(), SocialAuthError> {
+	validate_discovered_endpoint_url(
+		issuer_url,
+		&document.authorization_endpoint,
+		require_same_origin,
+	)?;
+	validate_discovered_endpoint_url(issuer_url, &document.token_endpoint, require_same_origin)?;
+	validate_discovered_endpoint_url(issuer_url, &document.jwks_uri, require_same_origin)?;
+	if let Some(ref userinfo_url) = document.userinfo_endpoint {
+		validate_discovered_endpoint_url(issuer_url, userinfo_url, require_same_origin)?;
+	}
+
+	Ok(())
 }
 
 /// Validates that a discovery-provided endpoint stays on the issuer origin.
@@ -354,5 +362,37 @@ mod tests {
 
 		discovery_client.clear_cache().await;
 		assert!(discovery_client.cache.read().await.is_empty());
+	}
+
+	#[tokio::test]
+	async fn test_strict_discovery_revalidates_laxly_cached_document() {
+		// Arrange
+		let issuer = "https://issuer.example.com";
+		let client = OAuth2Client::new();
+		let discovery_client = DiscoveryClient::new(client);
+		let document = OIDCDiscovery {
+			issuer: issuer.to_string(),
+			authorization_endpoint: "https://issuer.example.com/authorize".to_string(),
+			token_endpoint: "https://attacker.example.com/token".to_string(),
+			jwks_uri: "https://issuer.example.com/jwks".to_string(),
+			userinfo_endpoint: None,
+			scopes_supported: None,
+			response_types_supported: None,
+			grant_types_supported: None,
+			subject_types_supported: None,
+			id_token_signing_alg_values_supported: None,
+			claims_supported: None,
+		};
+		discovery_client.cache.write().await.insert(
+			issuer.to_string(),
+			CachedDiscovery::new(document, Duration::hours(1)),
+		);
+
+		// Act
+		let result = discovery_client.discover_same_origin(issuer).await;
+
+		// Assert
+		let err = result.expect_err("strict discovery must revalidate cached endpoints");
+		assert!(matches!(err, SocialAuthError::InsecureEndpoint(_)));
 	}
 }
