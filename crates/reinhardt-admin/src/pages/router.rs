@@ -265,7 +265,6 @@ fn list_view_component(model_name: String) -> Page {
 	// separate from the render path.
 	{
 		let resource = list_resource.clone();
-		let page_signal = page_signal.clone();
 		let resource_for_deps = list_resource.clone();
 		use_effect(
 			move || {
@@ -280,8 +279,6 @@ fn list_view_component(model_name: String) -> Page {
 
 	let reactive_content = Page::reactive({
 		let resource = list_resource.clone();
-		let page_signal = page_signal.clone();
-		let filters_signal = filters_signal.clone();
 		move || match resource.get() {
 			ResourceState::Loading => loading_view(),
 			ResourceState::Success(response) => {
@@ -320,7 +317,7 @@ fn list_view_component(model_name: String) -> Page {
 					total_count: response.count,
 					filters: response.available_filters.unwrap_or_default(),
 				};
-				list_view(&data, page_signal.clone(), filters_signal.clone())
+				list_view(&data, page_signal, filters_signal)
 			}
 			ResourceState::Error(err) => error_view(&err),
 		}
@@ -745,6 +742,7 @@ pub fn init_router() -> ClientRouter {
 #[cfg(all(test, server))]
 mod tests {
 	use super::*;
+	use reinhardt_core::reactive::ReactiveScope;
 
 	#[test]
 	fn test_admin_route_enum() {
@@ -759,129 +757,9 @@ mod tests {
 
 	#[test]
 	fn test_init_router_creates_routes() {
-		let router = init_router();
-		assert_eq!(router.route_count(), 6); // login + dashboard + list + detail + create + edit
-		assert!(router.has_route("login"));
-		assert!(router.has_route("dashboard"));
-		assert!(router.has_route("list"));
-		assert!(router.has_route("detail"));
-		assert!(router.has_route("create"));
-		assert!(router.has_route("edit"));
-	}
-
-	#[test]
-	fn test_dashboard_route_match() {
-		let router = init_router();
-		let route_match = router.match_path("/admin/");
-		assert!(route_match.is_some());
-
-		let route_match = route_match.unwrap();
-		assert_eq!(route_match.route.name(), Some("dashboard"));
-	}
-
-	#[test]
-	fn test_list_route_match() {
-		let router = init_router();
-		let route_match = router.match_path("/admin/users/");
-		assert!(route_match.is_some());
-
-		let route_match = route_match.unwrap();
-		assert_eq!(route_match.route.name(), Some("list"));
-		assert_eq!(
-			route_match.params.get("model").map(String::as_str),
-			Some("users")
-		);
-	}
-
-	#[test]
-	fn test_detail_route_match() {
-		let router = init_router();
-		let route_match = router.match_path("/admin/users/42/");
-		assert!(route_match.is_some());
-
-		let route_match = route_match.unwrap();
-		assert_eq!(route_match.route.name(), Some("detail"));
-		assert_eq!(
-			route_match.params.get("model").map(String::as_str),
-			Some("users")
-		);
-		assert_eq!(route_match.params.get("id").map(String::as_str), Some("42"));
-	}
-
-	#[test]
-	fn test_create_route_match() {
-		let router = init_router();
-		let route_match = router.match_path("/admin/users/add/");
-		assert!(route_match.is_some());
-
-		let route_match = route_match.unwrap();
-		assert_eq!(route_match.route.name(), Some("create"));
-		assert_eq!(
-			route_match.params.get("model").map(String::as_str),
-			Some("users")
-		);
-	}
-
-	#[test]
-	fn test_edit_route_match() {
-		let router = init_router();
-		let route_match = router.match_path("/admin/users/42/change/");
-		assert!(route_match.is_some());
-
-		let route_match = route_match.unwrap();
-		assert_eq!(route_match.route.name(), Some("edit"));
-		assert_eq!(
-			route_match.params.get("model").map(String::as_str),
-			Some("users")
-		);
-		assert_eq!(route_match.params.get("id").map(String::as_str), Some("42"));
-	}
-
-	#[test]
-	fn test_reverse_url_dashboard() {
-		let router = init_router();
-		let url = router.reverse("dashboard", &[]).unwrap();
-		assert_eq!(url, "/admin/");
-	}
-
-	#[test]
-	fn test_reverse_url_list() {
-		let router = init_router();
-		let url = router.reverse("list", &[("model", "users")]).unwrap();
-		assert_eq!(url, "/admin/users/");
-	}
-
-	#[test]
-	fn test_reverse_url_detail() {
-		let router = init_router();
-		let url = router
-			.reverse("detail", &[("model", "users"), ("id", "42")])
-			.unwrap();
-		assert_eq!(url, "/admin/users/42/");
-	}
-
-	#[test]
-	fn test_reverse_url_create() {
-		let router = init_router();
-		let url = router.reverse("create", &[("model", "users")]).unwrap();
-		assert_eq!(url, "/admin/users/add/");
-	}
-
-	#[test]
-	fn test_reverse_url_edit() {
-		let router = init_router();
-		let url = router
-			.reverse("edit", &[("model", "users"), ("id", "42")])
-			.unwrap();
-		assert_eq!(url, "/admin/users/42/change/");
-	}
-
-	#[test]
-	fn test_init_global_router() {
-		init_global_router();
-
-		with_router(|router| {
-			assert_eq!(router.route_count(), 6);
+		ReactiveScope::run(|| {
+			let router = init_router();
+			assert_eq!(router.route_count(), 6); // login + dashboard + list + detail + create + edit
 			assert!(router.has_route("login"));
 			assert!(router.has_route("dashboard"));
 			assert!(router.has_route("list"));
@@ -892,14 +770,160 @@ mod tests {
 	}
 
 	#[test]
+	fn test_dashboard_route_match() {
+		ReactiveScope::run(|| {
+			let router = init_router();
+			let route_match = router.match_path("/admin/");
+			assert!(route_match.is_some());
+
+			let route_match = route_match.unwrap();
+			assert_eq!(route_match.route.name(), Some("dashboard"));
+		});
+	}
+
+	#[test]
+	fn test_list_route_match() {
+		ReactiveScope::run(|| {
+			let router = init_router();
+			let route_match = router.match_path("/admin/users/");
+			assert!(route_match.is_some());
+
+			let route_match = route_match.unwrap();
+			assert_eq!(route_match.route.name(), Some("list"));
+			assert_eq!(
+				route_match.params.get("model").map(String::as_str),
+				Some("users")
+			);
+		});
+	}
+
+	#[test]
+	fn test_detail_route_match() {
+		ReactiveScope::run(|| {
+			let router = init_router();
+			let route_match = router.match_path("/admin/users/42/");
+			assert!(route_match.is_some());
+
+			let route_match = route_match.unwrap();
+			assert_eq!(route_match.route.name(), Some("detail"));
+			assert_eq!(
+				route_match.params.get("model").map(String::as_str),
+				Some("users")
+			);
+			assert_eq!(route_match.params.get("id").map(String::as_str), Some("42"));
+		});
+	}
+
+	#[test]
+	fn test_create_route_match() {
+		ReactiveScope::run(|| {
+			let router = init_router();
+			let route_match = router.match_path("/admin/users/add/");
+			assert!(route_match.is_some());
+
+			let route_match = route_match.unwrap();
+			assert_eq!(route_match.route.name(), Some("create"));
+			assert_eq!(
+				route_match.params.get("model").map(String::as_str),
+				Some("users")
+			);
+		});
+	}
+
+	#[test]
+	fn test_edit_route_match() {
+		ReactiveScope::run(|| {
+			let router = init_router();
+			let route_match = router.match_path("/admin/users/42/change/");
+			assert!(route_match.is_some());
+
+			let route_match = route_match.unwrap();
+			assert_eq!(route_match.route.name(), Some("edit"));
+			assert_eq!(
+				route_match.params.get("model").map(String::as_str),
+				Some("users")
+			);
+			assert_eq!(route_match.params.get("id").map(String::as_str), Some("42"));
+		});
+	}
+
+	#[test]
+	fn test_reverse_url_dashboard() {
+		ReactiveScope::run(|| {
+			let router = init_router();
+			let url = router.reverse("dashboard", &[]).unwrap();
+			assert_eq!(url, "/admin/");
+		});
+	}
+
+	#[test]
+	fn test_reverse_url_list() {
+		ReactiveScope::run(|| {
+			let router = init_router();
+			let url = router.reverse("list", &[("model", "users")]).unwrap();
+			assert_eq!(url, "/admin/users/");
+		});
+	}
+
+	#[test]
+	fn test_reverse_url_detail() {
+		ReactiveScope::run(|| {
+			let router = init_router();
+			let url = router
+				.reverse("detail", &[("model", "users"), ("id", "42")])
+				.unwrap();
+			assert_eq!(url, "/admin/users/42/");
+		});
+	}
+
+	#[test]
+	fn test_reverse_url_create() {
+		ReactiveScope::run(|| {
+			let router = init_router();
+			let url = router.reverse("create", &[("model", "users")]).unwrap();
+			assert_eq!(url, "/admin/users/add/");
+		});
+	}
+
+	#[test]
+	fn test_reverse_url_edit() {
+		ReactiveScope::run(|| {
+			let router = init_router();
+			let url = router
+				.reverse("edit", &[("model", "users"), ("id", "42")])
+				.unwrap();
+			assert_eq!(url, "/admin/users/42/change/");
+		});
+	}
+
+	#[test]
+	fn test_init_global_router() {
+		ReactiveScope::run(|| {
+			init_global_router();
+
+			with_router(|router| {
+				assert_eq!(router.route_count(), 6);
+				assert!(router.has_route("login"));
+				assert!(router.has_route("dashboard"));
+				assert!(router.has_route("list"));
+				assert!(router.has_route("detail"));
+				assert!(router.has_route("create"));
+				assert!(router.has_route("edit"));
+			});
+		});
+	}
+
+	#[test]
 	fn test_with_router_access() {
-		init_global_router();
+		ReactiveScope::run(|| {
+			init_global_router();
 
-		let route_count = with_router(|router| router.route_count());
-		assert_eq!(route_count, 6);
+			let route_count = with_router(|router| router.route_count());
+			assert_eq!(route_count, 6);
 
-		let has_dashboard = with_router(|router| router.has_route("dashboard"));
-		assert!(has_dashboard);
+			let has_dashboard = with_router(|router| router.has_route("dashboard"));
+			assert!(has_dashboard);
+		});
 	}
 
 	#[test]
@@ -922,26 +946,31 @@ mod tests {
 
 	#[test]
 	fn test_try_with_router_returns_some_when_initialized() {
-		init_global_router();
+		ReactiveScope::run(|| {
+			init_global_router();
 
-		let result = try_with_router(|router| router.route_count());
-		assert_eq!(result, Some(6));
+			let result = try_with_router(|router| router.route_count());
+			assert_eq!(result, Some(6));
+		});
 	}
 
 	#[test]
 	fn test_list_view_with_model_name() {
-		let view = list_view_component("users".to_string());
-		// Verify basic rendering succeeds
-		let html = view.render_to_string();
+		let html = ReactiveScope::run(|| {
+			let view = list_view_component("users".to_string());
+			view.render_to_string()
+		});
 		assert!(html.contains("users") || html.contains("List"));
 	}
 
 	#[test]
 	fn test_direct_list_route_extracts_model_name() {
-		let router = init_router();
+		let html = ReactiveScope::run(|| {
+			let router = init_router();
 
-		router.push("/admin/question/").unwrap();
-		let html = router.render_current().render_to_string();
+			router.push("/admin/question/").unwrap();
+			router.render_current().render_to_string()
+		});
 
 		assert!(
 			html.contains("question"),
@@ -965,9 +994,10 @@ mod tests {
 
 	#[test]
 	fn test_detail_view_with_params() {
-		let view = detail_view_component("users".to_string(), "42".to_string());
-		// Verify basic rendering succeeds
-		let html = view.render_to_string();
+		let html = ReactiveScope::run(|| {
+			let view = detail_view_component("users".to_string(), "42".to_string());
+			view.render_to_string()
+		});
 		assert!(!html.is_empty());
 	}
 
@@ -978,12 +1008,12 @@ mod tests {
 	/// when the user is unauthenticated (#3114).
 	#[test]
 	fn test_admin_router_has_login_route() {
-		// Arrange & Act
-		let router = init_router();
+		// Act
+		let has_login_route = ReactiveScope::run(|| init_router().has_route("login"));
 
-		// Assert - a login route must exist for the auth flow
+		// Assert
 		assert!(
-			router.has_route("login"),
+			has_login_route,
 			"Admin router must have a 'login' route for authentication flow. \
 			 The SPA needs a login form to obtain JWT tokens (#3114)."
 		);
@@ -992,18 +1022,19 @@ mod tests {
 	/// Verify the /admin/login/ path matches the login route (#3114).
 	#[test]
 	fn test_login_route_match() {
-		// Arrange
-		let router = init_router();
-
 		// Act
-		let route_match = router.match_path("/admin/login/");
+		let route_name = ReactiveScope::run(|| {
+			let router = init_router();
+			router
+				.match_path("/admin/login/")
+				.and_then(|route_match| route_match.route.name().map(str::to_owned))
+		});
 
 		// Assert
 		assert!(
-			route_match.is_some(),
+			route_name.is_some(),
 			"Path /admin/login/ should match the login route (#3114)"
 		);
-		let route_match = route_match.unwrap();
-		assert_eq!(route_match.route.name(), Some("login"));
+		assert_eq!(route_name.as_deref(), Some("login"));
 	}
 }

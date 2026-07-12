@@ -1314,9 +1314,9 @@ impl ClientRouter {
 	/// navigation handling.
 	#[cfg(wasm)]
 	pub fn setup_history_listener(&self) {
-		let path_signal = self.current_path.clone();
-		let params_signal = self.current_params.clone();
-		let route_name_signal = self.current_route_name.clone();
+		let path_signal = self.current_path;
+		let params_signal = self.current_params;
+		let route_name_signal = self.current_route_name;
 		let navigation_observers = self.navigation_observers.clone();
 		let dispatch_count = self.dispatch_count.clone();
 
@@ -1413,6 +1413,7 @@ const _: fn() = || {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use reinhardt_core::reactive::ReactiveScope;
 	use rstest::*;
 
 	fn test_page() -> Page {
@@ -1449,124 +1450,148 @@ mod tests {
 
 	#[test]
 	fn test_router_new() {
-		let router = ClientRouter::new();
-		assert_eq!(router.route_count(), 0);
+		ReactiveScope::run(|| {
+			let router = ClientRouter::new();
+			assert_eq!(router.route_count(), 0);
+		});
 	}
 
 	#[test]
 	fn test_router_add_route() {
-		let router = ClientRouter::new()
-			.route("home", "/", home_page)
-			.route("users", "/users/", user_page);
+		ReactiveScope::run(|| {
+			let router = ClientRouter::new()
+				.route("home", "/", home_page)
+				.route("users", "/users/", user_page);
 
-		assert_eq!(router.route_count(), 2);
+			assert_eq!(router.route_count(), 2);
+		});
 	}
 
 	#[test]
 	fn test_router_route_with_name() {
-		let router = ClientRouter::new()
-			.route("home", "/", home_page)
-			.route("users", "/users/", user_page);
+		ReactiveScope::run(|| {
+			let router = ClientRouter::new()
+				.route("home", "/", home_page)
+				.route("users", "/users/", user_page);
 
-		assert!(router.has_route("home"));
-		assert!(router.has_route("users"));
-		assert!(!router.has_route("nonexistent"));
+			assert!(router.has_route("home"));
+			assert!(router.has_route("users"));
+			assert!(!router.has_route("nonexistent"));
+		});
 	}
 
 	#[test]
 	fn test_router_match_exact() {
-		let router = ClientRouter::new()
-			.route("home", "/", home_page)
-			.route("users", "/users/", user_page);
+		ReactiveScope::run(|| {
+			let router = ClientRouter::new()
+				.route("home", "/", home_page)
+				.route("users", "/users/", user_page);
 
-		assert!(router.match_path("/").is_some());
-		assert!(router.match_path("/users/").is_some());
-		assert!(router.match_path("/nonexistent/").is_none());
+			assert!(router.match_path("/").is_some());
+			assert!(router.match_path("/users/").is_some());
+			assert!(router.match_path("/nonexistent/").is_none());
+		});
 	}
 
 	#[test]
 	fn match_tree_does_not_fall_back_to_flat_copy_for_tree_routes() {
-		let mut router = ClientRouter::new()
-			.routes(|routes| routes.route("tree", "/tree/", || page_with_text("Tree")));
-		assert!(router.match_tree("/tree/").is_some());
+		ReactiveScope::run(|| {
+			let mut router = ClientRouter::new()
+				.routes(|routes| routes.route("tree", "/tree/", || page_with_text("Tree")));
+			assert!(router.match_tree("/tree/").is_some());
 
-		router.route_tree = RouteNode::root();
+			router.route_tree = RouteNode::root();
 
-		assert!(router.match_tree("/tree/").is_none());
-		assert!(router.match_path("/tree/").is_none());
+			assert!(router.match_tree("/tree/").is_none());
+			assert!(router.match_path("/tree/").is_none());
+		});
 	}
 
 	#[test]
 	fn test_router_match_params() {
-		let router = ClientRouter::new().route("user_detail", "/users/{id}/", user_page);
+		ReactiveScope::run(|| {
+			let router = ClientRouter::new().route("user_detail", "/users/{id}/", user_page);
 
-		let route_match = router.match_path("/users/42/");
-		assert!(route_match.is_some());
+			let route_match = router.match_path("/users/42/");
+			assert!(route_match.is_some());
 
-		let route_match = route_match.unwrap();
-		assert_eq!(route_match.params.get("id"), Some(&"42".to_string()));
+			let route_match = route_match.unwrap();
+			assert_eq!(route_match.params.get("id"), Some(&"42".to_string()));
+		});
 	}
 
 	#[test]
 	fn test_router_reverse() {
-		let router = ClientRouter::new().route("home", "/", home_page).route(
-			"user_detail",
-			"/users/{id}/",
-			user_page,
-		);
+		ReactiveScope::run(|| {
+			let router = ClientRouter::new().route("home", "/", home_page).route(
+				"user_detail",
+				"/users/{id}/",
+				user_page,
+			);
 
-		assert_eq!(router.reverse("home", &[]).unwrap(), "/");
-		assert_eq!(
-			router.reverse("user_detail", &[("id", "42")]).unwrap(),
-			"/users/42/"
-		);
+			assert_eq!(router.reverse("home", &[]).unwrap(), "/");
+			assert_eq!(
+				router.reverse("user_detail", &[("id", "42")]).unwrap(),
+				"/users/42/"
+			);
+		});
 	}
 
 	#[test]
 	fn test_router_reverse_invalid_name() {
-		let router = ClientRouter::new();
-		let result = router.reverse("nonexistent", &[]);
-		assert!(matches!(result, Err(RouterError::InvalidRouteName(_))));
+		ReactiveScope::run(|| {
+			let router = ClientRouter::new();
+			let result = router.reverse("nonexistent", &[]);
+			assert!(matches!(result, Err(RouterError::InvalidRouteName(_))));
+		});
 	}
 
 	#[test]
 	fn test_router_not_found() {
-		let router = ClientRouter::new().not_found(not_found_page);
+		ReactiveScope::run(|| {
+			let router = ClientRouter::new().not_found(not_found_page);
 
-		let _view = router.render_current();
+			let _view = router.render_current();
+		});
 	}
 
 	#[rstest]
 	fn test_render_current_returns_page_without_not_found() {
-		// Arrange
-		let router = ClientRouter::new().route("home", "/home/", home_page);
+		ReactiveScope::run(|| {
+			// Arrange
+			let router = ClientRouter::new().route("home", "/home/", home_page);
 
-		// Act — path does not match, no not_found registered
-		let page = router.render_current();
+			// Act — path does not match, no not_found registered
+			let page = router.render_current();
 
-		// Assert — returns Page::Empty as default fallback
-		assert!(matches!(page, Page::Empty));
+			// Assert — returns Page::Empty as default fallback
+			assert!(matches!(page, Page::Empty));
+		});
 	}
 
 	#[test]
 	fn test_router_with_guard() {
-		let router = ClientRouter::new()
-			.guarded_route("/admin/", test_page, |_| false)
-			.route("public", "/public/", test_page);
+		ReactiveScope::run(|| {
+			let router = ClientRouter::new()
+				.guarded_route("/admin/", test_page, |_| false)
+				.route("public", "/public/", test_page);
 
-		// Guard rejects
-		assert!(router.match_path("/admin/").is_none());
-		// No guard
-		assert!(router.match_path("/public/").is_some());
+			// Guard rejects
+			assert!(router.match_path("/admin/").is_none());
+			// No guard
+			assert!(router.match_path("/public/").is_some());
+		});
 	}
 
 	#[test]
 	fn named_route_guard_rejects_flat_route() {
-		let router = ClientRouter::new()
-			.route("admin", "/admin/", test_page)
-			.with_route_guard("admin", |_| false);
+		ReactiveScope::run(|| {
+			let router = ClientRouter::new()
+				.route("admin", "/admin/", test_page)
+				.with_route_guard("admin", |_| false);
 
-		assert!(router.match_path("/admin/").is_none());
+			assert!(router.match_path("/admin/").is_none());
+		});
 	}
 
 	#[test]
@@ -1583,20 +1608,24 @@ mod tests {
 
 	#[test]
 	fn test_router_push_non_wasm() {
-		let router = ClientRouter::new()
-			.route("home", "/", home_page)
-			.route("users", "/users/", user_page);
+		ReactiveScope::run(|| {
+			let router = ClientRouter::new()
+				.route("home", "/", home_page)
+				.route("users", "/users/", user_page);
 
-		// Non-WASM push should succeed
-		assert!(router.push("/users/").is_ok());
+			// Non-WASM push should succeed
+			assert!(router.push("/users/").is_ok());
+		});
 	}
 
 	#[test]
 	fn test_router_replace_non_wasm() {
-		let router = ClientRouter::new().route("home", "/", home_page);
+		ReactiveScope::run(|| {
+			let router = ClientRouter::new().route("home", "/", home_page);
 
-		// Non-WASM replace should succeed
-		assert!(router.replace("/").is_ok());
+			// Non-WASM replace should succeed
+			assert!(router.replace("/").is_ok());
+		});
 	}
 
 	// ============================================================================
@@ -1605,163 +1634,180 @@ mod tests {
 
 	#[test]
 	fn test_route_path_single() {
-		let router = ClientRouter::new().route_path(
-			"user_detail",
-			"/users/{id}/",
-			|Path(_id): Path<i64>| page_with_text("User"),
-		);
+		ReactiveScope::run(|| {
+			let router = ClientRouter::new().route_path(
+				"user_detail",
+				"/users/{id}/",
+				|Path(_id): Path<i64>| page_with_text("User"),
+			);
 
-		assert_eq!(router.route_count(), 1);
+			assert_eq!(router.route_count(), 1);
 
-		// Match and verify handler works
-		let route_match = router.match_path("/users/42/");
-		assert!(route_match.is_some());
+			// Match and verify handler works
+			let route_match = router.match_path("/users/42/");
+			assert!(route_match.is_some());
 
-		let route_match = route_match.unwrap();
-		assert_eq!(route_match.params.get("id"), Some(&"42".to_string()));
+			let route_match = route_match.unwrap();
+			assert_eq!(route_match.params.get("id"), Some(&"42".to_string()));
+		});
 	}
 
 	#[test]
 	fn test_route_path_two_params() {
-		// Two path parameters now flow through the unified `route_path`
-		// (Issue #4637). Closure signature is unchanged from the prior
-		// `route_path2`.
-		let router = ClientRouter::new().route_path(
-			"user_post",
-			"/users/{user_id}/posts/{post_id}/",
-			|Path(_user_id): Path<i64>, Path(_post_id): Path<i64>| page_with_text("UserPost"),
-		);
+		ReactiveScope::run(|| {
+			// Two path parameters now flow through the unified `route_path`
+			// (Issue #4637). Closure signature is unchanged from the prior
+			// `route_path2`.
+			let router = ClientRouter::new().route_path(
+				"user_post",
+				"/users/{user_id}/posts/{post_id}/",
+				|Path(_user_id): Path<i64>, Path(_post_id): Path<i64>| page_with_text("UserPost"),
+			);
 
-		assert_eq!(router.route_count(), 1);
+			assert_eq!(router.route_count(), 1);
 
-		let route_match = router.match_path("/users/123/posts/456/");
-		assert!(route_match.is_some());
+			let route_match = router.match_path("/users/123/posts/456/");
+			assert!(route_match.is_some());
 
-		let route_match = route_match.unwrap();
-		assert_eq!(route_match.params.get("user_id"), Some(&"123".to_string()));
-		assert_eq!(route_match.params.get("post_id"), Some(&"456".to_string()));
+			let route_match = route_match.unwrap();
+			assert_eq!(route_match.params.get("user_id"), Some(&"123".to_string()));
+			assert_eq!(route_match.params.get("post_id"), Some(&"456".to_string()));
+		});
 	}
 
 	#[test]
 	fn test_route_path_three_params() {
-		// Three path parameters via unified `route_path` (Issue #4637).
-		let router = ClientRouter::new().route_path(
-			"member",
-			"/orgs/{org_id}/teams/{team_id}/members/{member_id}/",
-			|Path(_org_id): Path<String>,
-			 Path(_team_id): Path<i64>,
-			 Path(_member_id): Path<i64>| page_with_text("Member"),
-		);
+		ReactiveScope::run(|| {
+			// Three path parameters via unified `route_path` (Issue #4637).
+			let router = ClientRouter::new().route_path(
+				"member",
+				"/orgs/{org_id}/teams/{team_id}/members/{member_id}/",
+				|Path(_org_id): Path<String>,
+				 Path(_team_id): Path<i64>,
+				 Path(_member_id): Path<i64>| page_with_text("Member"),
+			);
 
-		assert_eq!(router.route_count(), 1);
+			assert_eq!(router.route_count(), 1);
 
-		let route_match = router.match_path("/orgs/acme/teams/10/members/100/");
-		assert!(route_match.is_some());
+			let route_match = router.match_path("/orgs/acme/teams/10/members/100/");
+			assert!(route_match.is_some());
 
-		let route_match = route_match.unwrap();
-		assert_eq!(route_match.params.get("org_id"), Some(&"acme".to_string()));
-		assert_eq!(route_match.params.get("team_id"), Some(&"10".to_string()));
-		assert_eq!(
-			route_match.params.get("member_id"),
-			Some(&"100".to_string())
-		);
+			let route_match = route_match.unwrap();
+			assert_eq!(route_match.params.get("org_id"), Some(&"acme".to_string()));
+			assert_eq!(route_match.params.get("team_id"), Some(&"10".to_string()));
+			assert_eq!(
+				route_match.params.get("member_id"),
+				Some(&"100".to_string())
+			);
+		});
 	}
 
 	#[test]
 	fn test_route_path_four_params() {
-		// Guard against regression of the 1..=8 widening (Issue #4637).
-		// Arity-4 is the smallest case beyond the previously supported
-		// arity-3 ceiling, so exercising it proves the `impl_handler!`
-		// macro expansion actually reaches the higher tuples.
-		let router = ClientRouter::new().route_path(
-			"quad",
-			"/a/{a}/b/{b}/c/{c}/d/{d}/",
-			|Path(_a): Path<i64>, Path(_b): Path<i64>, Path(_c): Path<i64>, Path(_d): Path<i64>| {
-				page_with_text("Quad")
-			},
-		);
+		ReactiveScope::run(|| {
+			// Guard against regression of the 1..=8 widening (Issue #4637).
+			// Arity-4 is the smallest case beyond the previously supported
+			// arity-3 ceiling, so exercising it proves the `impl_handler!`
+			// macro expansion actually reaches the higher tuples.
+			let router = ClientRouter::new().route_path(
+				"quad",
+				"/a/{a}/b/{b}/c/{c}/d/{d}/",
+				|Path(_a): Path<i64>,
+				 Path(_b): Path<i64>,
+				 Path(_c): Path<i64>,
+				 Path(_d): Path<i64>| { page_with_text("Quad") },
+			);
 
-		assert_eq!(router.route_count(), 1);
+			assert_eq!(router.route_count(), 1);
 
-		let route_match = router.match_path("/a/1/b/2/c/3/d/4/");
-		assert!(route_match.is_some());
+			let route_match = router.match_path("/a/1/b/2/c/3/d/4/");
+			assert!(route_match.is_some());
 
-		let route_match = route_match.unwrap();
-		assert_eq!(route_match.params.get("a"), Some(&"1".to_string()));
-		assert_eq!(route_match.params.get("b"), Some(&"2".to_string()));
-		assert_eq!(route_match.params.get("c"), Some(&"3".to_string()));
-		assert_eq!(route_match.params.get("d"), Some(&"4".to_string()));
+			let route_match = route_match.unwrap();
+			assert_eq!(route_match.params.get("a"), Some(&"1".to_string()));
+			assert_eq!(route_match.params.get("b"), Some(&"2".to_string()));
+			assert_eq!(route_match.params.get("c"), Some(&"3".to_string()));
+			assert_eq!(route_match.params.get("d"), Some(&"4".to_string()));
+		});
 	}
 
 	#[test]
 	fn test_route_path_single_with_reverse() {
-		let router = ClientRouter::new().route_path(
-			"user_detail",
-			"/users/{id}/",
-			|Path(_id): Path<i64>| page_with_text("User"),
-		);
+		ReactiveScope::run(|| {
+			let router = ClientRouter::new().route_path(
+				"user_detail",
+				"/users/{id}/",
+				|Path(_id): Path<i64>| page_with_text("User"),
+			);
 
-		assert!(router.has_route("user_detail"));
-		assert_eq!(
-			router.reverse("user_detail", &[("id", "42")]).unwrap(),
-			"/users/42/"
-		);
+			assert!(router.has_route("user_detail"));
+			assert_eq!(
+				router.reverse("user_detail", &[("id", "42")]).unwrap(),
+				"/users/42/"
+			);
+		});
 	}
 
 	#[test]
 	fn test_route_path_two_params_with_reverse() {
-		// `route_path` now covers every arity (Issue #4637).
-		let router = ClientRouter::new().route_path(
-			"user_post",
-			"/users/{user_id}/posts/{post_id}/",
-			|Path(_user_id): Path<i64>, Path(_post_id): Path<i64>| page_with_text("UserPost"),
-		);
+		ReactiveScope::run(|| {
+			// `route_path` now covers every arity (Issue #4637).
+			let router = ClientRouter::new().route_path(
+				"user_post",
+				"/users/{user_id}/posts/{post_id}/",
+				|Path(_user_id): Path<i64>, Path(_post_id): Path<i64>| page_with_text("UserPost"),
+			);
 
-		assert!(router.has_route("user_post"));
-		assert_eq!(
-			router
-				.reverse("user_post", &[("user_id", "10"), ("post_id", "20")])
-				.unwrap(),
-			"/users/10/posts/20/"
-		);
+			assert!(router.has_route("user_post"));
+			assert_eq!(
+				router
+					.reverse("user_post", &[("user_id", "10"), ("post_id", "20")])
+					.unwrap(),
+				"/users/10/posts/20/"
+			);
+		});
 	}
 
 	#[test]
 	fn test_route_path_three_params_with_reverse() {
-		let router = ClientRouter::new().route_path(
-			"org_team_member",
-			"/orgs/{org}/teams/{team}/members/{member}/",
-			|Path(_org): Path<String>, Path(_team): Path<i64>, Path(_member): Path<i64>| {
-				page_with_text("Member")
-			},
-		);
+		ReactiveScope::run(|| {
+			let router = ClientRouter::new().route_path(
+				"org_team_member",
+				"/orgs/{org}/teams/{team}/members/{member}/",
+				|Path(_org): Path<String>, Path(_team): Path<i64>, Path(_member): Path<i64>| {
+					page_with_text("Member")
+				},
+			);
 
-		assert!(router.has_route("org_team_member"));
-		assert_eq!(
-			router
-				.reverse(
-					"org_team_member",
-					&[("org", "acme"), ("team", "5"), ("member", "42")]
-				)
-				.unwrap(),
-			"/orgs/acme/teams/5/members/42/"
-		);
+			assert!(router.has_route("org_team_member"));
+			assert_eq!(
+				router
+					.reverse(
+						"org_team_member",
+						&[("org", "acme"), ("team", "5"), ("member", "42")]
+					)
+					.unwrap(),
+				"/orgs/acme/teams/5/members/42/"
+			);
+		});
 	}
 
 	#[test]
 	fn test_route_path_with_string_param() {
-		let router = ClientRouter::new().route_path(
-			"post_detail",
-			"/posts/{slug}/",
-			|Path(_slug): Path<String>| page_with_text("Post"),
-		);
+		ReactiveScope::run(|| {
+			let router = ClientRouter::new().route_path(
+				"post_detail",
+				"/posts/{slug}/",
+				|Path(_slug): Path<String>| page_with_text("Post"),
+			);
 
-		let route_match = router.match_path("/posts/hello-world/");
-		assert!(route_match.is_some());
-		assert_eq!(
-			route_match.unwrap().params.get("slug"),
-			Some(&"hello-world".to_string())
-		);
+			let route_match = router.match_path("/posts/hello-world/");
+			assert!(route_match.is_some());
+			assert_eq!(
+				route_match.unwrap().params.get("slug"),
+				Some(&"hello-world".to_string())
+			);
+		});
 	}
 
 	// ----- merge / try_merge ---------------------------------------------
@@ -1780,109 +1826,121 @@ mod tests {
 
 	#[test]
 	fn merge_appends_routes_and_named_routes() {
-		let merged = polls_router().merge(users_router());
+		ReactiveScope::run(|| {
+			let merged = polls_router().merge(users_router());
 
-		assert_eq!(merged.route_count(), 4);
-		assert_eq!(merged.reverse("polls:index", &[]).unwrap(), "/polls/");
-		assert_eq!(
-			merged.reverse("polls:detail", &[("id", "1")]).unwrap(),
-			"/polls/1/"
-		);
-		assert_eq!(merged.reverse("users:login", &[]).unwrap(), "/users/login/");
-		assert_eq!(
-			merged.reverse("users:logout", &[]).unwrap(),
-			"/users/logout/"
-		);
+			assert_eq!(merged.route_count(), 4);
+			assert_eq!(merged.reverse("polls:index", &[]).unwrap(), "/polls/");
+			assert_eq!(
+				merged.reverse("polls:detail", &[("id", "1")]).unwrap(),
+				"/polls/1/"
+			);
+			assert_eq!(merged.reverse("users:login", &[]).unwrap(), "/users/login/");
+			assert_eq!(
+				merged.reverse("users:logout", &[]).unwrap(),
+				"/users/logout/"
+			);
+		});
 	}
 
 	#[test]
 	fn merge_last_wins_on_name_collision() {
-		let first = ClientRouter::new().route("shared", "/a/", || page_with_text("first"));
-		let second = ClientRouter::new().route("shared", "/b/", || page_with_text("second"));
+		ReactiveScope::run(|| {
+			let first = ClientRouter::new().route("shared", "/a/", || page_with_text("first"));
+			let second = ClientRouter::new().route("shared", "/b/", || page_with_text("second"));
 
-		let merged = first.merge(second);
+			let merged = first.merge(second);
 
-		// Both physical routes survive — merge appends, never deduplicates.
-		assert_eq!(merged.route_count(), 2);
-		// The named-route key points at the second router's entry, so reverse()
-		// resolves to `/b/`. This is the "last wins" contract documented on
-		// `ClientRouter::merge` and matches the pre-existing
-		// `UnifiedRouter::mount_unified` behavior.
-		assert_eq!(merged.reverse("shared", &[]).unwrap(), "/b/");
+			// Both physical routes survive — merge appends, never deduplicates.
+			assert_eq!(merged.route_count(), 2);
+			// The named-route key points at the second router's entry, so reverse()
+			// resolves to `/b/`. This is the "last wins" contract documented on
+			// `ClientRouter::merge` and matches the pre-existing
+			// `UnifiedRouter::mount_unified` behavior.
+			assert_eq!(merged.reverse("shared", &[]).unwrap(), "/b/");
+		});
 	}
 
 	#[test]
 	fn merge_discards_other_not_found() {
-		let other_not_found_seen = Arc::new(std::sync::atomic::AtomicBool::new(false));
-		let flag = Arc::clone(&other_not_found_seen);
-		let other = ClientRouter::new().not_found(move || {
-			flag.store(true, std::sync::atomic::Ordering::SeqCst);
-			page_with_text("other-not-found")
+		ReactiveScope::run(|| {
+			let other_not_found_seen = Arc::new(std::sync::atomic::AtomicBool::new(false));
+			let flag = Arc::clone(&other_not_found_seen);
+			let other = ClientRouter::new().not_found(move || {
+				flag.store(true, std::sync::atomic::Ordering::SeqCst);
+				page_with_text("other-not-found")
+			});
+
+			let merged = ClientRouter::new()
+				.route("home", "/home/", home_page)
+				.merge(other);
+
+			// Render against a non-matching path; `other`'s `not_found` must not
+			// fire because `merge` keeps `self`'s observation state and discards
+			// `other`'s. With no `not_found` on `self`, the default is Page::Empty.
+			let page = merged.render_current();
+			assert!(matches!(page, Page::Empty));
+			assert!(!other_not_found_seen.load(std::sync::atomic::Ordering::SeqCst));
 		});
-
-		let merged = ClientRouter::new()
-			.route("home", "/home/", home_page)
-			.merge(other);
-
-		// Render against a non-matching path; `other`'s `not_found` must not
-		// fire because `merge` keeps `self`'s observation state and discards
-		// `other`'s. With no `not_found` on `self`, the default is Page::Empty.
-		let page = merged.render_current();
-		assert!(matches!(page, Page::Empty));
-		assert!(!other_not_found_seen.load(std::sync::atomic::Ordering::SeqCst));
 	}
 
 	#[test]
 	fn try_merge_ok_when_no_collision() {
-		let merged = polls_router()
-			.try_merge(users_router())
-			.expect("disjoint named routes merge cleanly");
+		ReactiveScope::run(|| {
+			let merged = polls_router()
+				.try_merge(users_router())
+				.expect("disjoint named routes merge cleanly");
 
-		assert_eq!(merged.route_count(), 4);
-		assert!(merged.has_route("polls:index"));
-		assert!(merged.has_route("users:login"));
+			assert_eq!(merged.route_count(), 4);
+			assert!(merged.has_route("polls:index"));
+			assert!(merged.has_route("users:login"));
+		});
 	}
 
 	#[test]
 	fn try_merge_err_on_name_collision() {
-		let first = ClientRouter::new().route("polls:index", "/a/", home_page);
-		let second = ClientRouter::new().route("polls:index", "/b/", home_page);
+		ReactiveScope::run(|| {
+			let first = ClientRouter::new().route("polls:index", "/a/", home_page);
+			let second = ClientRouter::new().route("polls:index", "/b/", home_page);
 
-		let err = first
-			.try_merge(second)
-			.expect_err("collision must be reported");
+			let err = first
+				.try_merge(second)
+				.expect_err("collision must be reported");
 
-		assert_eq!(
-			err,
-			MergeError::NameCollision {
-				name: "polls:index".to_string(),
-			},
-		);
+			assert_eq!(
+				err,
+				MergeError::NameCollision {
+					name: "polls:index".to_string(),
+				},
+			);
+		});
 	}
 
 	#[test]
 	fn try_merge_err_leaves_neither_router_partially_merged() {
-		// Build a router whose routes vector would clearly grow if `try_merge`
-		// fell through to `merge` before validating. Then attempt a merge that
-		// must fail. We can only observe `merged`'s state on the Ok path, so
-		// the structural check is: on Err, `merge` was never called (validated
-		// by inspecting the original router we kept aside).
-		let original = polls_router();
-		let baseline_count = original.route_count();
-		let baseline_named = original.has_route("polls:index");
+		ReactiveScope::run(|| {
+			// Build a router whose routes vector would clearly grow if `try_merge`
+			// fell through to `merge` before validating. Then attempt a merge that
+			// must fail. We can only observe `merged`'s state on the Ok path, so
+			// the structural check is: on Err, `merge` was never called (validated
+			// by inspecting the original router we kept aside).
+			let original = polls_router();
+			let baseline_count = original.route_count();
+			let baseline_named = original.has_route("polls:index");
 
-		// Re-build the same router because `try_merge` takes `self` by value.
-		let attempt = polls_router();
-		let collide = ClientRouter::new().route("polls:index", "/x/", home_page);
-		let err = attempt
-			.try_merge(collide)
-			.expect_err("collision must be reported");
-		assert!(matches!(err, MergeError::NameCollision { .. }));
+			// Re-build the same router because `try_merge` takes `self` by value.
+			let attempt = polls_router();
+			let collide = ClientRouter::new().route("polls:index", "/x/", home_page);
+			let err = attempt
+				.try_merge(collide)
+				.expect_err("collision must be reported");
+			assert!(matches!(err, MergeError::NameCollision { .. }));
 
-		// The independent `original` is unchanged (sanity-checks that
-		// `try_merge`'s validation does not depend on hidden global state).
-		assert_eq!(original.route_count(), baseline_count);
-		assert!(baseline_named);
+			// The independent `original` is unchanged (sanity-checks that
+			// `try_merge`'s validation does not depend on hidden global state).
+			assert_eq!(original.route_count(), baseline_count);
+			assert!(baseline_named);
+		});
 	}
 
 	#[test]
@@ -1899,47 +1957,55 @@ mod tests {
 	#[rstest]
 	#[should_panic(expected = "Duplicate client route name 'home'")]
 	fn route_panics_on_duplicate_name() {
-		// Arrange — a router with an existing "home" route
-		let router = ClientRouter::new().route("home", "/", home_page);
+		ReactiveScope::run(|| {
+			// Arrange — a router with an existing "home" route
+			let router = ClientRouter::new().route("home", "/", home_page);
 
-		// Act — registering the same name again must panic
-		let _router = router.route("home", "/other/", user_page);
+			// Act — registering the same name again must panic
+			let _router = router.route("home", "/other/", user_page);
+		});
 	}
 
 	#[rstest]
 	#[should_panic(expected = "Duplicate client route name 'detail'")]
 	fn route_params_panics_on_duplicate_name() {
-		// Arrange
-		let router = ClientRouter::new().route("detail", "/items/{id}/", home_page);
+		ReactiveScope::run(|| {
+			// Arrange
+			let router = ClientRouter::new().route("detail", "/items/{id}/", home_page);
 
-		// Act
-		let _router = router.route_params("detail", "/users/{id}/", |Path(_id): Path<i64>| {
-			page_with_text("User")
+			// Act
+			let _router = router.route_params("detail", "/users/{id}/", |Path(_id): Path<i64>| {
+				page_with_text("User")
+			});
 		});
 	}
 
 	#[rstest]
 	#[should_panic(expected = "Duplicate client route name 'show'")]
 	fn route_path_panics_on_duplicate_name() {
-		// Arrange
-		let router = ClientRouter::new().route("show", "/a/", home_page);
+		ReactiveScope::run(|| {
+			// Arrange
+			let router = ClientRouter::new().route("show", "/a/", home_page);
 
-		// Act
-		let _router = router.route_path("show", "/b/{id}/", |Path(_id): Path<i64>| {
-			page_with_text("B")
+			// Act
+			let _router = router.route_path("show", "/b/{id}/", |Path(_id): Path<i64>| {
+				page_with_text("B")
+			});
 		});
 	}
 
 	#[rstest]
 	fn merge_does_not_panic_on_duplicate_name() {
-		// Arrange — merge intentionally uses last-wins semantics
-		let first = ClientRouter::new().route("shared", "/a/", || page_with_text("first"));
-		let second = ClientRouter::new().route("shared", "/b/", || page_with_text("second"));
+		ReactiveScope::run(|| {
+			// Arrange — merge intentionally uses last-wins semantics
+			let first = ClientRouter::new().route("shared", "/a/", || page_with_text("first"));
+			let second = ClientRouter::new().route("shared", "/b/", || page_with_text("second"));
 
-		// Act — must NOT panic (last-wins is the documented contract)
-		let merged = first.merge(second);
+			// Act — must NOT panic (last-wins is the documented contract)
+			let merged = first.merge(second);
 
-		// Assert — the second route wins
-		assert_eq!(merged.reverse("shared", &[]).unwrap(), "/b/");
+			// Assert — the second route wins
+			assert_eq!(merged.reverse("shared", &[]).unwrap(), "/b/");
+		});
 	}
 }

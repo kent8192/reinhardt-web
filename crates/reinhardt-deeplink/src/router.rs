@@ -206,7 +206,9 @@ impl DeeplinkRouter {
 ///
 /// # Example
 ///
-/// ```rust,ignore
+/// ```rust
+/// # #![allow(deprecated)]
+/// use reinhardt_core::reactive::ReactiveScope;
 /// use reinhardt_urls::routers::UnifiedRouter;
 /// use reinhardt_deeplink::{DeeplinkRouterExt, DeeplinkConfig, IosConfig};
 ///
@@ -219,9 +221,11 @@ impl DeeplinkRouter {
 ///     )
 ///     .build();
 ///
-/// let router = UnifiedRouter::new()
-///     .with_deeplinks(config)
-///     .unwrap();
+/// ReactiveScope::run(|| {
+///     let _router = UnifiedRouter::new()
+///         .with_deeplinks(config)
+///         .unwrap();
+/// });
 /// ```
 pub trait DeeplinkRouterExt {
 	/// The output type after adding deeplinks.
@@ -321,12 +325,14 @@ mod tests {
 
 	#[rstest]
 	fn test_extension_trait_unified() {
-		let config = DeeplinkConfig::builder().ios(create_ios_config()).build();
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let config = DeeplinkConfig::builder().ios(create_ios_config()).build();
 
-		let router = UnifiedRouter::new().with_deeplinks(config).unwrap();
+			let router = UnifiedRouter::new().with_deeplinks(config).unwrap();
 
-		// Verify the router was created (we can't easily test the routes without making requests)
-		let _ = router;
+			// Verify the router was created (we can't easily test the routes without making requests)
+			let _ = router;
+		});
 	}
 
 	#[rstest]
