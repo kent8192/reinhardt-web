@@ -9,7 +9,7 @@ use crate::adapters::{AdminDatabase, AdminRecord, AdminSite, FieldInfo, FieldTyp
 use crate::core::{AdminDatabaseKey, AdminSiteKey};
 use crate::types::FieldsResponse;
 #[cfg(server)]
-use reinhardt_di::Depends;
+use reinhardt_di::KeyedDepends;
 #[cfg(server)]
 use reinhardt_pages::server_fn::ServerFnRequest;
 use reinhardt_pages::server_fn::{ServerFnError, server_fn};
@@ -48,8 +48,8 @@ use reinhardt_utils::utils_core::text::humanize_field_name;
 pub async fn get_fields(
 	model_name: String,
 	id: Option<String>,
-	#[inject] site: Depends<AdminSiteKey, AdminSite>,
-	#[inject] db: Depends<AdminDatabaseKey, AdminDatabase>,
+	#[inject] site: KeyedDepends<AdminSiteKey, AdminSite>,
+	#[inject] db: KeyedDepends<AdminDatabaseKey, AdminDatabase>,
 	#[inject] http_request: ServerFnRequest,
 	#[inject] AdminAuthenticatedUser(user): AdminAuthenticatedUser,
 ) -> Result<FieldsResponse, ServerFnError> {

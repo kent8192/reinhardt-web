@@ -11,8 +11,8 @@
 //!
 //! See [`ModelMetadata`] for the architecture comparison diagram.
 
-use super::ConstraintDefinition;
 use super::autodetector::{FieldState, ModelState};
+use super::{ConstraintDefinition, GeneratedColumnDefinition};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
@@ -154,6 +154,7 @@ impl ModelMetadata {
 				}
 				field_state.params.insert(key.clone(), value.clone());
 			}
+			field_state.generated = field_meta.generated.clone();
 			// Set ForeignKey information if present
 			if let Some(ref fk_info) = field_meta.foreign_key {
 				field_state.foreign_key = Some(fk_info.clone());
@@ -217,6 +218,8 @@ pub struct FieldMetadata {
 	pub nullable: bool,
 	/// Field parameters (max_length, blank, default, etc.)
 	pub params: HashMap<String, String>,
+	/// Generated-column metadata.
+	pub generated: Option<GeneratedColumnDefinition>,
 	/// ForeignKey information if this field is a foreign key
 	pub foreign_key: Option<super::autodetector::ForeignKeyInfo>,
 }
@@ -228,6 +231,7 @@ impl FieldMetadata {
 			field_type,
 			nullable: false,
 			params: HashMap::new(),
+			generated: None,
 			foreign_key: None,
 		}
 	}
@@ -248,6 +252,12 @@ impl FieldMetadata {
 			return self;
 		}
 		self.params.insert(key_s, value_s);
+		self
+	}
+
+	/// Sets generated-column metadata and returns self for chaining.
+	pub fn with_generated(mut self, generated: GeneratedColumnDefinition) -> Self {
+		self.generated = Some(generated);
 		self
 	}
 
@@ -653,7 +663,7 @@ pub fn global_registry() -> &'static ModelRegistry {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::migrations::FieldType;
+	use crate::migrations::{FieldType, GeneratedStorage, SchemaExpr};
 	use rstest::rstest;
 
 	#[test]
@@ -808,6 +818,26 @@ mod tests {
 		assert_eq!(model_state.name, "Post");
 		assert_eq!(model_state.fields.len(), 1);
 		assert!(model_state.fields.contains_key("title"));
+	}
+
+	#[test]
+	fn test_model_metadata_to_model_state_preserves_generated_metadata() {
+		let mut metadata = ModelMetadata::new("blog", "Post", "blog_post");
+		let generated = GeneratedColumnDefinition::typed(
+			SchemaExpr::col("title"),
+			"SchemaExpr::col(\"title\")",
+			GeneratedStorage::Stored,
+		);
+		let field = FieldMetadata::new(FieldType::VarChar(255)).with_generated(generated.clone());
+		metadata.add_field("title_slug".to_string(), field);
+
+		let model_state = metadata.to_model_state();
+
+		let field_state = model_state
+			.fields
+			.get("title_slug")
+			.expect("generated field should be present");
+		assert_eq!(field_state.generated, Some(generated));
 	}
 
 	#[test]

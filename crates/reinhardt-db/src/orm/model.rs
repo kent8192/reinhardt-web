@@ -84,6 +84,24 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 		HashMap::new()
 	}
 
+	/// Returns whether the named model field is currently `None`.
+	///
+	/// Macro-generated implementations inspect `Option<T>` fields directly so
+	/// `None` remains distinguishable from a present value that serializes as
+	/// JSON `null`. Manual implementations use this serialization-based fallback,
+	/// which treats a serialized JSON `null` as `None`.
+	///
+	/// Returns `false` when serialization fails, the model does not serialize to
+	/// an object, or the field name is unknown.
+	fn field_is_none(&self, field_name: &str) -> bool {
+		match serde_json::to_value(self) {
+			Ok(serde_json::Value::Object(fields)) => {
+				fields.get(field_name).is_some_and(|value| value.is_null())
+			}
+			_ => false,
+		}
+	}
+
 	/// Get field metadata for inspection
 	///
 	/// This method should be implemented to provide introspection capabilities.
@@ -139,6 +157,11 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 	/// manual implementations to provide actual constraint metadata.
 	fn constraint_metadata() -> Vec<super::inspection::ConstraintInfo> {
 		Vec::new()
+	}
+
+	/// Get database-generated column names that must be omitted from ORM writes.
+	fn generated_field_names() -> &'static [&'static str] {
+		&[]
 	}
 
 	/// Django-style objects manager accessor

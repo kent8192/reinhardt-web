@@ -1,7 +1,7 @@
 //! Runserver lifecycle hooks for extending server startup behavior.
 //!
 //! Hooks are auto-discovered via `inventory` and invoked by
-//! [`RunServerCommand`](crate::RunServerCommand) at two lifecycle points:
+//! [`RunServerCommand`] at two lifecycle points:
 //!
 //! 1. **Validation** ([`RunserverHook::validate`]) — before DI setup; return `Err` to abort.
 //! 2. **Startup** ([`RunserverHook::on_server_start`]) — after DI is ready, before listen.

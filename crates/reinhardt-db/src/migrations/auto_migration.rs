@@ -230,6 +230,7 @@ impl AutoMigrationGenerator {
 				Operation::AddColumn { table, column, .. } => Some(Operation::DropColumn {
 					table: table.clone(),
 					column: column.name.clone(),
+					old_definition: None,
 				}),
 				Operation::DropColumn { .. } => None, // Cannot rollback - data is lost
 				Operation::RenameColumn {
@@ -245,12 +246,44 @@ impl AutoMigrationGenerator {
 
 				// Constraint operations
 				Operation::AddConstraint { .. } => None, // Cannot rollback without constraint name
+				Operation::AddConstraintRepair { .. } => None,
+				Operation::RestoreConstraintOnRollback {
+					table,
+					constraint_sql,
+				} => Some(Operation::AddConstraint {
+					table: table.clone(),
+					constraint_sql: constraint_sql.clone(),
+				}),
 				Operation::DropConstraint { .. } => None, // Cannot rollback without constraint SQL
 
 				// Index operations
 				Operation::CreateIndex { table, columns, .. } => Some(Operation::DropIndex {
 					table: table.clone(),
 					columns: columns.clone(),
+				}),
+				Operation::CreateIndexRepair { .. } => None,
+				Operation::RestoreIndexOnRollback {
+					table,
+					name,
+					columns,
+					unique,
+					index_type,
+					where_clause,
+					concurrently,
+					expressions,
+					mysql_options,
+					operator_class,
+				} => Some(Operation::CreateIndexRepair {
+					table: table.clone(),
+					name: name.clone(),
+					columns: columns.clone(),
+					unique: *unique,
+					index_type: *index_type,
+					where_clause: where_clause.clone(),
+					concurrently: *concurrently,
+					expressions: expressions.clone(),
+					mysql_options: *mysql_options,
+					operator_class: operator_class.clone(),
 				}),
 				Operation::DropIndex { .. } => None, // Cannot rollback without index definition
 
@@ -480,6 +513,7 @@ mod tests {
 				default: None,
 				primary_key: false,
 				auto_increment: false,
+				generated: None,
 			},
 		);
 		current.tables.insert("users".to_string(), current_table);
@@ -500,6 +534,7 @@ mod tests {
 				default: None,
 				primary_key: false,
 				auto_increment: false,
+				generated: None,
 			},
 		);
 		target.tables.insert("users".to_string(), target_table);

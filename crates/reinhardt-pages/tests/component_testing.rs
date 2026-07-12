@@ -184,20 +184,53 @@ fn outlet_pages_render_inline_children_and_placeholders() {
 }
 
 #[test]
-fn suspense_pages_render_active_branch() {
+fn suspense_and_deferred_pages_render_component_test_branches() {
+	let pending = render(Page::Suspense(SuspenseNode::new(
+		Some("pending".to_string()),
+		|| true,
+		|| text_page("Loading"),
+		|| text_page("Ready"),
+	)));
+	assert!(pending.query_by_text("Loading").is_some());
+	assert!(pending.query_by_text("Ready").is_none());
+
+	let resolved = render(Page::Suspense(SuspenseNode::new(
+		Some("resolved".to_string()),
+		|| false,
+		|| text_page("Loading"),
+		|| text_page("Ready"),
+	)));
+	assert!(resolved.query_by_text("Ready").is_some());
+	assert!(resolved.query_by_text("Loading").is_none());
+
+	let deferred = render(Page::Deferred(DeferredNode::new(
+		"deferred",
+		|| text_page("Deferred fallback"),
+		|| text_page("Deferred content"),
+	)));
+	assert!(deferred.query_by_text("Deferred content").is_some());
+	assert!(deferred.query_by_text("Deferred fallback").is_none());
+}
+
+#[tokio::test]
+async fn settle_rerenders_suspense_branch_changes() {
 	let pending = Rc::new(Cell::new(true));
-	let screen = {
-		let pending = Rc::clone(&pending);
-		render(Page::Suspense(SuspenseNode::new(
-			None,
-			move || pending.get(),
-			|| text_page("Loading"),
-			|| text_page("Ready"),
-		)))
-	};
+	let pending_for_boundary = Rc::clone(&pending);
+	let screen = render(Page::Suspense(SuspenseNode::new(
+		Some("async-boundary".to_string()),
+		move || pending_for_boundary.get(),
+		|| text_page("Loading"),
+		|| text_page("Ready"),
+	)));
 
 	assert!(screen.query_by_text("Loading").is_some());
 	assert!(screen.query_by_text("Ready").is_none());
+
+	pending.set(false);
+	screen.settle().await;
+
+	assert!(screen.query_by_text("Ready").is_some());
+	assert!(screen.query_by_text("Loading").is_none());
 }
 
 #[tokio::test]
@@ -208,18 +241,6 @@ async fn suspense_pages_rerender_resolved_resource_after_settle() {
 	assert!(screen.query_by_text("Ready").is_none());
 
 	screen.settle().await;
-
-	assert!(screen.query_by_text("Ready").is_some());
-	assert!(screen.query_by_text("Loading").is_none());
-}
-
-#[test]
-fn deferred_pages_render_content_branch() {
-	let screen = render(Page::Deferred(DeferredNode::new(
-		"component-test",
-		|| text_page("Loading"),
-		|| text_page("Ready"),
-	)));
 
 	assert!(screen.query_by_text("Ready").is_some());
 	assert!(screen.query_by_text("Loading").is_none());

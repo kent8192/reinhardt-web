@@ -18,7 +18,7 @@
 //! use reinhardt::pages::prelude::*;
 //!
 //! fn my_component() -> Page {
-//!     let (count, set_count) = use_state(|| 0);
+//!     let (count, set_count) = use_state(0);
 //!     // Component logic...
 //!     Page::empty()
 //! }
@@ -99,10 +99,10 @@ pub use crate::reactive::{
 // Hooks API
 pub use crate::reactive::{Action, ActionPhase, ActionStateBuilder, use_action, use_action_state};
 pub use crate::reactive::{
-	Dispatch, EffectReturn, OptimisticState, Ref, SetState, SharedSetState, SharedSignal,
-	TransitionState, use_callback, use_context, use_debug_value, use_deferred_value, use_effect,
-	use_id, use_layout_effect, use_memo, use_optimistic, use_reducer, use_ref, use_shared_state,
-	use_state, use_sync_external_store, use_transition,
+	Dispatch, EffectReturn, OptimisticState, Ref, SetState, SetStateExt, SharedSetState,
+	SharedSignal, TransitionState, use_callback, use_context, use_debug_value, use_deferred_value,
+	use_effect, use_id, use_layout_effect, use_memo, use_optimistic, use_reducer, use_ref,
+	use_shared_state, use_state, use_sync_external_store, use_transition,
 };
 pub use crate::reactive::{use_mutation, use_query};
 
