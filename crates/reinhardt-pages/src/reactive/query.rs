@@ -3,8 +3,8 @@
 //! `use_query` adds an app-wide cache layer for async reads while preserving
 //! the existing `ResourceState` loading/success/error model. Query keys are
 //! typed by their result and error payloads, and `#[server_fn]` generates
-//! key helpers that include the server function identity plus canonical JSON
-//! arguments.
+//! key helpers that include the server function identity plus an opaque digest
+//! of canonical JSON arguments.
 
 use std::any::Any;
 use std::cell::{Cell, RefCell};
@@ -19,6 +19,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
 use serde::de::DeserializeOwned;
+use sha2::{Digest, Sha256};
 
 use super::Signal;
 use super::hooks::async_action::{Action, use_action};
@@ -87,7 +88,8 @@ impl<T, E> QueryKey<T, E> {
 	/// Creates a typed key for a generated `#[server_fn]` marker.
 	///
 	/// JSON object keys are sorted recursively so logically equivalent argument
-	/// maps produce the same cache and hydration ID.
+	/// maps produce the same cache and hydration ID. The canonical argument
+	/// payload is SHA-256 hashed before it becomes part of the ID.
 	pub fn from_server_fn<M, Args, F, Fut>(args: Args, fetcher: F) -> Self
 	where
 		M: crate::server_fn::ServerFnMetadata,
@@ -99,8 +101,9 @@ impl<T, E> QueryKey<T, E> {
 			.map(canonicalize_json)
 			.and_then(|value| serde_json::to_string(&value))
 			.expect("server function query arguments must serialize into a cache key");
+		let args_digest = Sha256::digest(encoded_args.as_bytes());
 		Self::new(
-			format!("server_fn:{}:{}:{}", M::PATH, M::CODEC, encoded_args),
+			format!("server_fn:{}:{}:sha256:{args_digest:x}", M::PATH, M::CODEC),
 			fetcher,
 		)
 	}
@@ -590,11 +593,22 @@ fn spawn_query_task<F>(fut: F)
 where
 	F: Future<Output = ()> + 'static,
 {
-	tokio_test::block_on(fut);
+	if crate::platform::has_task_sink() {
+		schedule_query_task(fut);
+	} else {
+		tokio_test::block_on(fut);
+	}
 }
 
 #[cfg(any(not(test), wasm))]
 fn spawn_query_task<F>(fut: F)
+where
+	F: Future<Output = ()> + 'static,
+{
+	schedule_query_task(fut);
+}
+
+fn schedule_query_task<F>(fut: F)
 where
 	F: Future<Output = ()> + 'static,
 {
@@ -852,7 +866,7 @@ mod tests {
 
 	#[rstest]
 	#[serial(query_cache)]
-	fn server_fn_key_encodes_identity_and_args() {
+	fn server_fn_key_hashes_arguments_without_exposing_them() {
 		// Arrange
 		clear_query_cache_for_test();
 
@@ -870,7 +884,11 @@ mod tests {
 			QueryKey::from_server_fn::<Marker, _, _, _>((42_i64,), || async { Ok(vec![42]) });
 
 		// Assert
-		assert_eq!(key.id(), r#"server_fn:/api/server_fn/list_jobs:json:[42]"#);
+		assert_eq!(
+			key.id(),
+			"server_fn:/api/server_fn/list_jobs:json:sha256:b86b1ea11b28136fe5224b9d1e3017b7efb68d4fae0b90c4940e0c0f89b3907a"
+		);
+		assert!(!key.id().contains("[42]"));
 	}
 
 	#[rstest]
@@ -895,8 +913,9 @@ mod tests {
 		// Assert
 		assert_eq!(
 			key.id(),
-			format!("server_fn:/api/server_fn/load_job:json:[{}]", u128::MAX)
+			"server_fn:/api/server_fn/load_job:json:sha256:d80bcc323657a82faa939889d29892c9b53c3bb4f98ff3738140a27a3ac7b9df"
 		);
+		assert!(!key.id().contains(&u128::MAX.to_string()));
 	}
 
 	#[rstest]
@@ -930,7 +949,36 @@ mod tests {
 		assert_eq!(first.id(), second.id());
 		assert_eq!(
 			first.id(),
-			r#"server_fn:/api/server_fn/filter_jobs:json:[{"owner":2,"status":1}]"#
+			"server_fn:/api/server_fn/filter_jobs:json:sha256:b2b2c11c6c2d2aacfabe8dba6102508d46a7690b66d0662adc332e4802f078d2"
 		);
+	}
+
+	#[rstest]
+	#[serial(query_cache)]
+	fn server_fn_key_does_not_expose_sensitive_arguments() {
+		// Arrange
+		clear_query_cache_for_test();
+
+		struct Marker;
+
+		impl crate::server_fn::ServerFnMetadata for Marker {
+			const PATH: &'static str = "/api/server_fn/load_user";
+			const NAME: &'static str = "load_user";
+			const CODEC: &'static str = "json";
+			const IS_JSON_CODEC: bool = true;
+		}
+
+		let email = "sensitive@example.com";
+
+		// Act
+		let key: QueryKey<(), crate::server_fn::ServerFnError> =
+			QueryKey::from_server_fn::<Marker, _, _, _>((email,), || async { Ok(()) });
+
+		// Assert
+		assert_eq!(
+			key.id(),
+			"server_fn:/api/server_fn/load_user:json:sha256:5cb828e12cdd77b9af33cfac3c965b44acc673692df8ffb22bc6794506ea59bc"
+		);
+		assert!(!key.id().contains(email));
 	}
 }

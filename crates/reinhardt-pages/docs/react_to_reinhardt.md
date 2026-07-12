@@ -500,9 +500,10 @@ fn todo_form() -> Page {
 
 React Query and SWR patterns map to `use_query` and `use_mutation` when the
 read operation is a `#[server_fn]`. The server-function macro emits a typed key
-helper whose cache ID is derived from the generated marker metadata and
-canonical JSON arguments, so the fetcher and key cannot drift into unrelated
-strings and logically equivalent object arguments share the same cache entry.
+helper whose cache ID is derived from the generated marker metadata and a
+SHA-256 digest of canonical JSON arguments. The fetcher and key therefore
+cannot drift into unrelated strings, raw arguments do not appear in hydration
+keys, and logically equivalent object arguments share the same cache entry.
 
 ```rust,ignore
 use std::time::Duration;

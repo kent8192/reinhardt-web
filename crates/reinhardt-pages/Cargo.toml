@@ -134,6 +134,7 @@ js-sys = "0.3.83"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["arbitrary_precision"] }
 serde_urlencoded = "0.7"
+sha2 = { workspace = true }
 # serde-wasm-bindgen: serialize HistoryState directly to a JS object so
 # `history.state.field` works for external consumers. Replaces the
 # JSON-string-in-JsValue convention that surfaced as the SPA navigation

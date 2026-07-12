@@ -1384,8 +1384,8 @@ fn generate_server_handler(
 	let msw_enabled = cfg!(feature = "msw");
 
 	let result_types = extract_result_types(return_type);
-	let emits_typed_response_metadata =
-		info.emits_typed_response_metadata() && result_types.is_some();
+	let emits_msw_metadata = info.emits_typed_response_metadata();
+	let emits_typed_response_metadata = emits_msw_metadata && result_types.is_some();
 	let (metadata_response_type, metadata_error_type) =
 		result_types.unwrap_or_else(|| (quote! {}, quote! {}));
 	let response_metadata_type_aliases = if emits_typed_response_metadata {
@@ -1498,7 +1498,10 @@ fn generate_server_handler(
 	} else {
 		regular_query_call.clone()
 	};
-	let query_fetcher = if has_inject_or_extractor && emits_typed_response_metadata {
+	let query_response_type = quote! {
+		<#return_type as #pages_crate::server_fn::ServerFnQueryResult>::Response
+	};
+	let query_fetcher = if has_inject_or_extractor && emits_msw_metadata {
 		quote! {
 			{
 				let __query_fetch_args = ::std::rc::Rc::new((#(#regular_param_idents,)*));
@@ -1552,18 +1555,18 @@ fn generate_server_handler(
 				move || {
 					let __query_fetch_args = ::std::rc::Rc::clone(&__query_fetch_args);
 					async move {
-					#[cfg(all(target_family = "wasm", target_os = "unknown"))]
-					{
-						#clone_query_args
-						#regular_query_call
-					}
+						#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+						{
+							#clone_query_args
+							#regular_query_call
+						}
 
-					#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-					{
-						#clone_query_args
-						#native_query_call
+						#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+						{
+							#clone_query_args
+							#native_query_call
+						}
 					}
-				}
 				}
 			}
 		}
@@ -1623,13 +1626,16 @@ fn generate_server_handler(
 	};
 
 	// MSW: Generate server-side MockableServerFn tokens only when msw feature is enabled
-	let msw_server_tokens = if msw_enabled && emits_typed_response_metadata {
+	let msw_server_tokens = if msw_enabled && emits_msw_metadata {
 		quote! {
 			mod __msw {
 				// Generated MSW support may expand in crates that do not declare every
 				// optional cfg name used by this framework.
 				#![allow(unexpected_cfgs)]
 
+				// Import signature-local aliases and private types from the server function.
+				#[allow(unused_imports)]
+				use super::super::*;
 				use ::serde::{Serialize, Deserialize};
 
 				/// Public Args struct for MSW type-safe mocking.
@@ -1643,7 +1649,7 @@ fn generate_server_handler(
 
 			impl #pages_crate::server_fn::MockableServerFn for marker {
 				type Args = Args;
-				type Response = super::#response_alias;
+				type Response = #query_response_type;
 			}
 		}
 	} else {
@@ -1659,19 +1665,22 @@ fn generate_server_handler(
 	// the `MockableServerFn` impl whose trait isn't in scope for them.
 	// `#[allow(unexpected_cfgs)]` keeps the cfg quiet in consumer crates
 	// that don't themselves declare an `msw` feature.
-	let msw_wasm_inner_tokens = if msw_enabled && emits_typed_response_metadata {
+	let msw_wasm_inner_tokens = if msw_enabled && emits_msw_metadata {
 		quote! {
 			mod __msw {
 				// Generated MSW support may expand in crates that do not declare every
 				// optional cfg name used by this framework.
 				#![allow(unexpected_cfgs)]
+				// Import signature-local aliases and private types from the server function.
+				#[allow(unused_imports)]
+				use super::super::*;
 
 				#[cfg(feature = "msw")]
 				mod args {
 					// The generated args module reuses caller-local type paths from the
 					// original server function signature.
 					#[allow(unused_imports)]
-					use super::super::*;
+					use super::super::super::*;
 					use ::serde::{Serialize, Deserialize};
 
 					/// Public Args struct for MSW type-safe mocking.
@@ -1687,7 +1696,7 @@ fn generate_server_handler(
 				#[cfg(feature = "msw")]
 				impl #pages_crate::server_fn::MockableServerFn for super::marker {
 					type Args = Args;
-					type Response = super::super::#response_alias;
+					type Response = #query_response_type;
 				}
 			}
 

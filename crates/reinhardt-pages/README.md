@@ -467,14 +467,16 @@ let jobs = use_query(list_project_jobs::key(project_id)).poll(Duration::from_sec
 let retry = use_mutation(retry_job).invalidates(list_project_jobs::key(project_id));
 ```
 
-The cache canonicalizes JSON object arguments and deduplicates mounted queries
-with the same key. It keeps successful data available during refetch and uses
-the same SSR resource serialization channel as `use_resource` for hydration
-seeding. `is_pending()` reports the initial load, while `is_fetching()` also
-reports background refreshes. Server-function keys that depend on request
-extractors or injected parameters skip native SSR prefetching and are left for
-the browser fetch path or native component-test mocks. Query handles can also be
-tracked by `SuspenseBoundary::track(...)`.
+The cache canonicalizes JSON object arguments, hashes the canonical payload in
+the generated key ID, and deduplicates mounted queries with the same key. Raw
+server-function arguments are therefore not written into SSR hydration keys. It
+keeps successful data available during refetch and uses the same SSR resource
+serialization channel as `use_resource` for hydration seeding. `is_pending()`
+reports the initial load, while `is_fetching()` also reports background
+refreshes. Server-function keys that depend on request extractors or injected
+parameters skip native SSR prefetching and are left for the browser fetch path
+or native component-test mocks. Query handles can also be tracked by
+`SuspenseBoundary::track(...)`.
 
 ### Component System
 - `Component`, `ElementView`, `IntoView`, `View`, `Props`, `ViewEventHandler`

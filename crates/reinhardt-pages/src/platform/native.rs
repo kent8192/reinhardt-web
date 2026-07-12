@@ -54,6 +54,11 @@ where
 	})
 }
 
+#[cfg(test)]
+pub(crate) fn has_task_sink() -> bool {
+	TASK_SINK.with(|slot| slot.borrow().is_some())
+}
+
 /// Stub Window type for SSR compatibility.
 #[derive(Debug, Clone, Default)]
 pub struct Window;

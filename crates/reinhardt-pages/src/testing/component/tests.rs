@@ -7,6 +7,34 @@ use reinhardt_core::types::page::{DeferredNode, Page, PageElement, SuspenseNode}
 
 use super::{EventError, QueryError, Role, render};
 
+use crate::reactive::{QueryKey, ResourceState, use_query};
+
+fn scheduled_query_component() -> Page {
+	let query = use_query(QueryKey::new("scheduled-query", || async {
+		Ok::<_, String>("Scheduled query result".to_string())
+	}));
+	Page::reactive(move || match query.get() {
+		ResourceState::Loading => Page::text("Loading"),
+		ResourceState::Success(value) => Page::text(value),
+		ResourceState::Error(error) => Page::text(error.to_string()),
+	})
+}
+
+#[tokio::test]
+async fn query_fetches_are_scheduled_until_screen_settles() {
+	// Arrange
+	let screen = render(scheduled_query_component);
+
+	// Assert
+	assert_eq!(screen.pretty(), "Loading\n");
+
+	// Act
+	screen.settle().await;
+
+	// Assert
+	assert_eq!(screen.pretty(), "Scheduled query result\n");
+}
+
 #[test]
 fn renders_page_tree_and_pretty_output() {
 	let screen = render(

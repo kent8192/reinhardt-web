@@ -576,6 +576,17 @@ async fn load_injected_jobs(
 }
 
 #[cfg(feature = "msw")]
+type JobsResult<T> = Result<T, ServerFnError>;
+
+#[cfg(feature = "msw")]
+#[server_fn]
+async fn load_injected_alias_jobs(
+	#[inject] _database: reinhardt_di::KeyedDepends<JobsDatabaseKey, JobsDatabase>,
+) -> JobsResult<Vec<String>> {
+	Ok(vec!["real injected alias job".to_string()])
+}
+
+#[cfg(feature = "msw")]
 fn jobs_resource_page(state: ResourceState<Vec<String>, ServerFnError>) -> Page {
 	match state {
 		ResourceState::Loading => text_page("Loading"),
@@ -607,6 +618,12 @@ fn jobs_query_component() -> Page {
 #[cfg(feature = "msw")]
 fn injected_jobs_query_component() -> Page {
 	let jobs = use_query(load_injected_jobs::key());
+	Page::reactive(move || jobs_resource_page(jobs.get()))
+}
+
+#[cfg(feature = "msw")]
+fn injected_alias_jobs_query_component() -> Page {
+	let jobs = use_query(load_injected_alias_jobs::key());
 	Page::reactive(move || jobs_resource_page(jobs.get()))
 }
 
@@ -680,6 +697,28 @@ async fn injected_server_fn_query_mock_errors_render_query_errors() {
 	assert_eq!(
 		screen
 			.calls_to_server_fn::<load_injected_jobs::marker>()
+			.len(),
+		1
+	);
+}
+
+#[cfg(feature = "msw")]
+#[tokio::test]
+async fn injected_alias_server_fn_query_uses_native_mock() {
+	// Arrange
+	let screen = render(injected_alias_jobs_query_component);
+	screen.mock_server_fn::<load_injected_alias_jobs::marker>(|_args| {
+		Ok(vec!["Injected alias job".to_string()])
+	});
+
+	// Act
+	screen.settle().await;
+
+	// Assert
+	assert!(screen.query_by_text("Injected alias job").is_some());
+	assert_eq!(
+		screen
+			.calls_to_server_fn::<load_injected_alias_jobs::marker>()
 			.len(),
 		1
 	);

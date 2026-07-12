@@ -207,17 +207,18 @@ let retry = use_mutation(|job_id: i64| async move { retry_job(42, job_id).await 
     .invalidates(list_project_jobs::key(42));
 ```
 
-The key ID is derived from the server function endpoint, codec, and canonical
-JSON arguments. Mounted queries with logically equivalent object arguments
-share one cache entry regardless of map iteration order. Queries with the same
-key share one cache entry and in-flight request, `refetch()` refreshes manually,
+The key ID is derived from the server function endpoint, codec, and a SHA-256
+digest of canonical JSON arguments. Raw arguments are not embedded in cache or
+hydration IDs. Mounted queries with logically equivalent object arguments share
+one cache entry regardless of map iteration order. Queries with the same key
+share one cache entry and in-flight request, `refetch()` refreshes manually,
 and `poll(duration)` keeps a query current while the handle is alive.
 
 Generated keys support direct `Result<T, E>` returns and common result aliases
 such as `AppResult<T> = Result<T, ServerFnError>`. Server functions with
 request extractors or `#[inject]` parameters do not run their fetcher during
 native SSR prefetch; the key remains usable for browser fetches and native
-component-test server-function mocks.
+component-test server-function mocks, including result aliases.
 
 Use `server_fn_module::key(...)` for generated keys. The module-qualified helper
 binds the key to the selected server function even when another function has the
