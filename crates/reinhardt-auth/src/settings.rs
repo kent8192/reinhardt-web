@@ -145,6 +145,8 @@ mod jwt_session_settings {
 	use crate::sessions::backends::jwt::{JwtConfig, JwtSessionBackend, JwtSessionError};
 	use jsonwebtoken::Algorithm;
 	use reinhardt_core::macros::settings;
+	use serde::ser::SerializeStruct;
+	use std::fmt;
 
 	fn default_algorithm() -> String {
 		"HS256".to_string()
@@ -180,7 +182,7 @@ mod jwt_session_settings {
 	///
 	/// [`to_config`]: JwtSessionSettings::to_config
 	#[settings(fragment = true, section = "auth_jwt_session")]
-	#[derive(Clone, Debug, Serialize, Deserialize)]
+	#[derive(Clone, Deserialize)]
 	pub struct JwtSessionSettings {
 		/// Secret key used for HMAC signing.
 		#[serde(default)]
@@ -221,6 +223,34 @@ mod jwt_session_settings {
 				issuer: self.issuer.clone(),
 				audience: self.audience.clone(),
 			}
+		}
+	}
+
+	impl fmt::Debug for JwtSessionSettings {
+		fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+			formatter
+				.debug_struct("JwtSessionSettings")
+				.field("secret", &"[REDACTED]")
+				.field("algorithm", &self.algorithm)
+				.field("expiration", &self.expiration)
+				.field("issuer", &self.issuer)
+				.field("audience", &self.audience)
+				.finish()
+		}
+	}
+
+	impl Serialize for JwtSessionSettings {
+		fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+		where
+			S: serde::Serializer,
+		{
+			let mut state = serializer.serialize_struct("JwtSessionSettings", 5)?;
+			state.serialize_field("secret", "[REDACTED]")?;
+			state.serialize_field("algorithm", &self.algorithm)?;
+			state.serialize_field("expiration", &self.expiration)?;
+			state.serialize_field("issuer", &self.issuer)?;
+			state.serialize_field("audience", &self.audience)?;
+			state.end()
 		}
 	}
 
@@ -395,6 +425,27 @@ mod tests {
 		assert_eq!(config.expiration, legacy.expiration);
 		assert_eq!(config.issuer, legacy.issuer);
 		assert_eq!(config.audience, legacy.audience);
+	}
+
+	#[cfg(feature = "jwt")]
+	#[test]
+	fn jwt_session_settings_redacts_secret_in_debug_and_json() {
+		use super::JwtSessionSettings;
+
+		let raw_secret = "super-secret-signing-key";
+		let settings = JwtSessionSettings {
+			secret: raw_secret.to_string(),
+			..JwtSessionSettings::default()
+		};
+
+		let debug = format!("{settings:?}");
+		let json = serde_json::to_string(&settings).expect("settings should serialize");
+
+		assert_eq!(settings.to_config().secret, raw_secret);
+		assert!(!debug.contains(raw_secret));
+		assert!(debug.contains("[REDACTED]"));
+		assert!(!json.contains(raw_secret));
+		assert!(json.contains("[REDACTED]"));
 	}
 
 	#[cfg(feature = "token")]

@@ -1083,6 +1083,32 @@ pub async fn create_user() -> ViewResult<Response> {
 }
 ```
 
+### Deriving HTTP Error Responses
+
+Use `#[derive(HttpError)]` for application error enums that map directly to HTTP
+responses. `#[http_error(response)]` generates `From<AppError> for Response`.
+
+```rust
+use reinhardt::{HttpError, Response};
+
+#[derive(Debug, HttpError)]
+#[http_error(response)]
+enum AppError {
+	#[http_error(status = NOT_FOUND, message = "User not found")]
+	UserNotFound,
+	#[http_error(status = INTERNAL_SERVER_ERROR, message = "Database unavailable")]
+	Database,
+}
+
+fn to_response(error: AppError) -> Response {
+	Response::from(error)
+}
+```
+
+The default body mode exposes `detail` for 4xx responses and suppresses 5xx
+details. Use `#[http_error(response, body = "error")]` only when every message is
+safe to expose.
+
 **Features:**
 - Compile-time path validation
 - Concise syntax
