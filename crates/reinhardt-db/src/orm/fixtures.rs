@@ -103,6 +103,10 @@ pub trait FixtureModelHandler: Send + Sync {
 	fn table_name(&self) -> &'static str;
 	/// Primary key field name.
 	fn primary_key_field(&self) -> &'static str;
+	/// Physical database column for the primary key.
+	fn primary_key_database_column(&self) -> String {
+		self.primary_key_field().to_string()
+	}
 
 	/// Fully-qualified model label.
 	fn label(&self) -> String {
@@ -244,6 +248,10 @@ where
 		M::primary_key_field()
 	}
 
+	fn primary_key_database_column(&self) -> String {
+		fixture_primary_key_column::<M>()
+	}
+
 	#[cfg(feature = "migrations")]
 	fn fixture_foreign_key_fields(&self) -> Vec<(String, String)> {
 		metadata_for_model::<M>().map_or_else(Vec::new, |metadata| {
@@ -292,7 +300,11 @@ where
 	async fn dump_records(&self) -> FixtureResult<Vec<FixtureRecord>> {
 		ensure_single_column_primary_key::<M>()?;
 		let manager = Manager::<M>::new();
-		let rows = manager.order_by(&[M::primary_key_field()]).all().await?;
+		let primary_key_column = fixture_primary_key_column::<M>();
+		let rows = manager
+			.order_by(&[primary_key_column.as_str()])
+			.all()
+			.await?;
 		let conn = get_connection().await?;
 		let mut records = Vec::with_capacity(rows.len());
 		let model_label = self.label();
@@ -355,6 +367,7 @@ struct FixtureManyToManySpec {
 	through_table: String,
 	source_field: String,
 	target_field: String,
+	is_explicit_through: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -766,6 +779,9 @@ where
 		let Some(raw_value) = object.remove(&spec.field_name) else {
 			continue;
 		};
+		if spec.is_explicit_through {
+			continue;
+		}
 		let values = raw_value.as_array().cloned().ok_or_else(|| {
 			FixtureError::Database(format!(
 				"many-to-many fixture field '{}' must be an array",
@@ -876,6 +892,9 @@ where
 		return Ok(());
 	};
 	for spec in many_to_many_specs_for::<M>() {
+		if spec.is_explicit_through {
+			continue;
+		}
 		let mut select = Query::select();
 		select
 			.column(Alias::new(spec.target_field.as_str()))
@@ -916,6 +935,7 @@ where
 			let target_table = related_model_metadata(&metadata.app_label, &field.to_model)
 				.map(|target| target.table_name)
 				.unwrap_or_else(|| default_target_table_name(&field.to_model));
+			let is_explicit_through = field.through.is_some();
 			let through_table = field.through.clone().unwrap_or_else(|| {
 				crate::m2m_naming::default_through_table(M::table_name(), &field.field_name)
 			});
@@ -926,6 +946,7 @@ where
 				through_table,
 				source_field: field.source_field.clone().unwrap_or(default_source_field),
 				target_field: field.target_field.clone().unwrap_or(default_target_field),
+				is_explicit_through,
 			}
 		})
 		.collect()
@@ -967,26 +988,31 @@ async fn reset_sequences_after_explicit_pks(
 	}
 
 	for handler in handlers {
-		let table = quote_identifier_path(handler.table_name());
-		let pk_field = quote_identifier(handler.primary_key_field());
-		let sql = format!(
-			"SELECT CASE \
-			 WHEN pg_get_serial_sequence($1, $2) IS NULL THEN NULL \
-			 ELSE setval(pg_get_serial_sequence($1, $2), \
-			 COALESCE((SELECT MAX({pk_field}) FROM {table}), 1), \
-			 (SELECT MAX({pk_field}) FROM {table}) IS NOT NULL) \
-			 END",
-		);
+		let primary_key_column = handler.primary_key_database_column();
+		let sql = build_postgres_sequence_reset_sql(handler.table_name(), &primary_key_column);
 		tx.query_optional(
 			&sql,
 			vec![
 				QueryValue::String(handler.table_name().to_string()),
-				QueryValue::String(handler.primary_key_field().to_string()),
+				QueryValue::String(primary_key_column),
 			],
 		)
 		.await?;
 	}
 	Ok(())
+}
+
+fn build_postgres_sequence_reset_sql(table_name: &str, primary_key_column: &str) -> String {
+	let table = quote_identifier_path(table_name);
+	let primary_key_column = quote_identifier(primary_key_column);
+	format!(
+		"SELECT CASE \
+		 WHEN pg_get_serial_sequence($1, $2) IS NULL THEN NULL \
+		 ELSE setval(pg_get_serial_sequence($1, $2), \
+		 COALESCE((SELECT MAX({primary_key_column}) FROM {table}), 1), \
+		 (SELECT MAX({primary_key_column}) FROM {table}) IS NOT NULL) \
+		 END",
+	)
 }
 
 fn quote_identifier(identifier: &str) -> String {
@@ -1206,10 +1232,15 @@ fn fixture_record_dependencies(
 			let Some(target_key) = fixture_foreign_key_target_key(&metadata, field) else {
 				continue;
 			};
+			let is_primary_key_foreign_key = field
+				.params
+				.get("primary_key")
+				.is_some_and(|value| value == "true");
 			let Some(value) = fixture_field_value(
 				record,
 				field_name,
 				relationship_names.get(field_name).map(String::as_str),
+				is_primary_key_foreign_key,
 			) else {
 				continue;
 			};
@@ -1258,6 +1289,7 @@ fn fixture_field_value<'a>(
 	record: &'a FixtureRecord,
 	field_name: &str,
 	relation_name: Option<&str>,
+	is_primary_key_foreign_key: bool,
 ) -> Option<&'a Value> {
 	record
 		.fields
@@ -1267,6 +1299,13 @@ fn fixture_field_value<'a>(
 			field_name
 				.strip_suffix("_id")
 				.and_then(|name| record.fields.get(name))
+		})
+		.or_else(|| {
+			if is_primary_key_foreign_key {
+				record.pk.as_ref()
+			} else {
+				None
+			}
 		})
 }
 
@@ -2023,11 +2062,18 @@ mod tests {
 		.expect("fixture with writable fields should produce an update");
 		assert!(update_sql.contains("`fixture_title`"));
 		assert!(update_sql.contains("`fixture_id`"));
+
+		let handler = TypedFixtureModel::<FixtureDatabaseColumnPost>::new();
+		let primary_key_column = handler.primary_key_database_column();
+		assert_eq!(primary_key_column, "fixture_id");
+		let sequence_sql =
+			build_postgres_sequence_reset_sql(handler.table_name(), &primary_key_column);
+		assert!(sequence_sql.contains("MAX(\"fixture_id\")"));
 	}
 
 	#[cfg(feature = "migrations")]
 	#[test]
-	fn many_to_many_fixture_fields_are_removed_before_model_deserialize() {
+	fn explicit_through_many_to_many_fixture_fields_are_not_replayed() {
 		let mut post = crate::migrations::ModelMetadata::new(
 			"fixture_m2m",
 			"FixtureM2mPost",
@@ -2047,8 +2093,9 @@ mod tests {
 			Value::Array(vec![Value::from(1), Value::from(2)]),
 		);
 
-		remove_many_to_many_fixture_fields::<FixtureM2mPost>(&mut object).unwrap();
+		let assignments = extract_many_to_many_assignments::<FixtureM2mPost>(&mut object).unwrap();
 
+		assert!(assignments.is_empty());
 		assert_eq!(object.get("title"), Some(&Value::from("Fixture")));
 		assert!(object.get("tags").is_none());
 	}
@@ -2083,6 +2130,51 @@ mod tests {
 
 		assert_eq!(ordered[0].pk, Some(Value::from(1)));
 		assert_eq!(ordered[1].pk, Some(Value::from(2)));
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	fn dependency_order_uses_primary_key_foreign_key_fixture_pk() {
+		let mut parent = crate::migrations::ModelMetadata::new(
+			"fixture_primary_fk",
+			"Parent",
+			"fixture_primary_fk_parent",
+		);
+		parent.add_field(
+			"id".to_string(),
+			crate::migrations::FieldMetadata::new(crate::migrations::FieldType::BigInteger)
+				.with_param("primary_key", "true"),
+		);
+
+		let mut child = crate::migrations::ModelMetadata::new(
+			"fixture_primary_fk",
+			"Child",
+			"fixture_primary_fk_child",
+		);
+		child.add_field(
+			"parent_id".to_string(),
+			crate::migrations::FieldMetadata::new(crate::migrations::FieldType::BigInteger)
+				.with_param("primary_key", "true")
+				.with_param("fk_target", "Parent")
+				.with_param("fk_target_app", "fixture_primary_fk"),
+		);
+
+		crate::migrations::model_registry::global_registry().register_model(parent);
+		crate::migrations::model_registry::global_registry().register_model(child);
+
+		let records = vec![
+			FixtureRecord::new("fixture_primary_fk.Child", Some(Value::from(1)), Map::new()),
+			FixtureRecord::new(
+				"fixture_primary_fk.Parent",
+				Some(Value::from(1)),
+				Map::new(),
+			),
+		];
+
+		let ordered = order_records_by_dependencies(&records).unwrap();
+
+		assert_eq!(ordered[0].model, "fixture_primary_fk.Parent");
+		assert_eq!(ordered[1].model, "fixture_primary_fk.Child");
 	}
 
 	#[cfg(feature = "migrations")]
