@@ -363,6 +363,19 @@ mod tests {
 		});
 	}
 
+	#[rstest]
+	#[serial(reactive_runtime)]
+	fn signal_with_untracked_can_reenter_a_different_signal() {
+		crate::reactive::ReactiveScope::run(|| {
+			let source = Signal::new(1_i32);
+			let target = Signal::new(0_i32);
+
+			source.with_untracked(|_| target.set(42));
+
+			assert_eq!(target.get(), 42);
+		});
+	}
+
 	#[cfg(not(target_arch = "wasm32"))]
 	#[rstest]
 	#[serial(reactive_runtime)]

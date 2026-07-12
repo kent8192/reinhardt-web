@@ -41,8 +41,8 @@ use alloc::boxed::Box;
 
 use super::runtime::{EffectTiming, NodeId, NodeType, Observer, try_with_runtime, with_runtime};
 use super::scope::{
-	NodeKey, NodeKind, allocate_node, find_node_key, mark_node_disposed, node_is_dirty,
-	require_active_scope, set_node_dirty, with_node, with_node_mut,
+	NodeKey, NodeKind, allocate_node, enter_scope, find_node_key, mark_node_disposed,
+	node_is_dirty, require_active_scope, set_node_dirty, with_node, with_node_mut,
 };
 
 /// Computation function for a Memo
@@ -209,10 +209,13 @@ impl<T: Clone + 'static> Memo<T> {
 			f: with_node_mut::<MemoSlot<T>, _>(key, |slot| slot.f.take())
 				.unwrap_or_else(|err| panic!("{err}")),
 		};
-		guard
-			.f
-			.as_mut()
-			.expect("Memo function must exist while the memo is active")()
+		enter_scope(key.scope(), || {
+			guard
+				.f
+				.as_mut()
+				.expect("Memo function must exist while the memo is active")()
+		})
+		.unwrap_or_else(|err| panic!("{err}"))
 	}
 
 	/// Return the cached value, recomputing when dependencies marked it dirty.
@@ -304,6 +307,26 @@ mod tests {
 	fn memo_panics_after_scope_dispose() {
 		let memo = crate::reactive::ReactiveScope::run(|| Memo::new(|| 1_i32));
 		let _ = memo.get();
+	}
+
+	#[rstest]
+	#[serial(reactive_runtime)]
+	fn memo_recomputes_nested_reactive_nodes_in_its_owning_scope() {
+		let scope = crate::reactive::ReactiveScope::new();
+		let (source, memo) = scope.enter(|| {
+			let source = Signal::new(1_i32);
+			let source_for_memo = source;
+			let memo = Memo::new(move || {
+				let nested = Signal::new(source_for_memo.get());
+				nested.get()
+			});
+			(source, memo)
+		});
+
+		scope.enter(|| source.set(2));
+		memo.mark_dirty();
+
+		assert_eq!(memo.get(), 2);
 	}
 
 	#[test]

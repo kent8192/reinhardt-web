@@ -3,10 +3,12 @@
 use core::any::Any;
 use core::cell::{Cell, RefCell};
 use core::fmt;
+use core::marker::PhantomData;
 
 extern crate alloc;
 use alloc::boxed::Box;
 use alloc::collections::BTreeMap;
+use alloc::rc::Rc;
 use alloc::vec::Vec;
 
 use super::runtime::{NodeId, try_with_runtime};
@@ -133,6 +135,7 @@ struct CoreSlot {
 struct ScopeState {
 	slots: Vec<CoreSlot>,
 	cleanup: Vec<Box<dyn FnOnce()>>,
+	after_node_cleanup: Vec<Box<dyn FnOnce()>>,
 }
 
 struct TakenNodeValue<T: 'static> {
@@ -153,6 +156,7 @@ impl ScopeState {
 		Self {
 			slots: Vec::new(),
 			cleanup: Vec::new(),
+			after_node_cleanup: Vec::new(),
 		}
 	}
 }
@@ -164,9 +168,12 @@ thread_local! {
 }
 
 /// Owner for reactive nodes allocated during a scoped execution.
+///
+/// A scope is thread-affine and cannot be sent or shared across threads.
 pub struct ReactiveScope {
 	id: ScopeId,
 	disposed: Cell<bool>,
+	_thread_bound: PhantomData<Rc<()>>,
 }
 
 impl ReactiveScope {
@@ -183,6 +190,7 @@ impl ReactiveScope {
 		Self {
 			id,
 			disposed: Cell::new(false),
+			_thread_bound: PhantomData,
 		}
 	}
 
@@ -305,62 +313,31 @@ pub(crate) fn with_node<T: 'static, R>(
 	key: NodeKey,
 	f: impl FnOnce(&T) -> R,
 ) -> Result<R, ReactiveScopeError> {
-	ensure_owner_thread(key)?;
-	SCOPES.with(|scopes| {
-		let scopes = scopes.borrow();
-		let state = scopes
-			.get(&key.scope)
-			.ok_or(ReactiveScopeError::DisposedNode {
-				kind: key.kind,
-				scope: key.scope,
-				index: key.index,
-				expected_generation: key.generation,
-				actual_generation: None,
-			})?;
-		let slot = state
-			.slots
-			.get(key.index)
-			.ok_or(ReactiveScopeError::DisposedNode {
-				kind: key.kind,
-				scope: key.scope,
-				index: key.index,
-				expected_generation: key.generation,
-				actual_generation: None,
-			})?;
-		if slot.generation != key.generation {
-			return Err(ReactiveScopeError::DisposedNode {
-				kind: slot.kind,
-				scope: key.scope,
-				index: key.index,
-				expected_generation: key.generation,
-				actual_generation: Some(slot.generation),
-			});
-		}
-		if slot.disposed {
-			return Err(ReactiveScopeError::DisposedNode {
-				kind: slot.kind,
-				scope: key.scope,
-				index: key.index,
-				expected_generation: key.generation,
-				actual_generation: Some(slot.generation),
-			});
-		}
-		let value = slot
-			.value
-			.as_ref()
-			.and_then(|value| value.downcast_ref::<T>())
-			.ok_or(ReactiveScopeError::TypeMismatch {
-				kind: slot.kind,
-				type_name: core::any::type_name::<T>(),
-			})?;
-		Ok(f(value))
-	})
+	let value = take_node_value::<T>(key)?;
+	let value = TakenNodeValue {
+		key,
+		value: Some(value),
+	};
+	Ok(f(value.value.as_deref().expect(
+		"taken node value must remain available during reads",
+	)))
 }
 
 pub(crate) fn with_node_mut<T: 'static, R>(
 	key: NodeKey,
 	f: impl FnOnce(&mut T) -> R,
 ) -> Result<R, ReactiveScopeError> {
+	let value = take_node_value::<T>(key)?;
+	let mut value = TakenNodeValue {
+		key,
+		value: Some(value),
+	};
+	Ok(f(value.value.as_deref_mut().expect(
+		"taken node value must remain available during mutation",
+	)))
+}
+
+fn take_node_value<T: 'static>(key: NodeKey) -> Result<Box<T>, ReactiveScopeError> {
 	ensure_owner_thread(key)?;
 	let value = SCOPES.with(|scopes| {
 		let mut scopes = scopes.borrow_mut();
@@ -407,23 +384,16 @@ pub(crate) fn with_node_mut<T: 'static, R>(
 		})
 	})?;
 
-	let value = match value.downcast::<T>() {
-		Ok(value) => value,
+	match value.downcast::<T>() {
+		Ok(value) => Ok(value),
 		Err(value) => {
 			restore_node_value(key, value);
-			return Err(ReactiveScopeError::TypeMismatch {
+			Err(ReactiveScopeError::TypeMismatch {
 				kind: key.kind,
 				type_name: core::any::type_name::<T>(),
-			});
+			})
 		}
-	};
-	let mut value = TakenNodeValue {
-		key,
-		value: Some(value),
-	};
-	Ok(f(value.value.as_deref_mut().expect(
-		"taken node value must remain available during mutation",
-	)))
+	}
 }
 
 fn restore_node_value(key: NodeKey, value: Box<dyn Any>) {
@@ -603,6 +573,24 @@ pub fn on_scope_dispose(
 	})
 }
 
+/// Register a callback to run after the scope's stored nodes are dropped.
+///
+/// This is intended for teardown that may be observed by effect cleanup
+/// callbacks while the scope is disposing.
+pub fn on_scope_dispose_after_nodes(
+	scope: ScopeId,
+	cleanup: impl FnOnce() + 'static,
+) -> Result<(), ReactiveScopeError> {
+	SCOPES.with(|scopes| {
+		let mut scopes = scopes.borrow_mut();
+		let state = scopes
+			.get_mut(&scope)
+			.ok_or(ReactiveScopeError::DisposedScope { scope })?;
+		state.after_node_cleanup.push(Box::new(cleanup));
+		Ok(())
+	})
+}
+
 pub(crate) fn dispose_scope(scope: ScopeId) {
 	loop {
 		let cleanup = SCOPES.with(|scopes| {
@@ -650,6 +638,24 @@ pub(crate) fn dispose_scope(scope: ScopeId) {
 			break;
 		};
 		drop(value);
+	}
+
+	loop {
+		let cleanup = SCOPES.with(|scopes| {
+			scopes
+				.borrow_mut()
+				.get_mut(&scope)
+				.map(|state| core::mem::take(&mut state.after_node_cleanup))
+		});
+		let Some(cleanup) = cleanup else {
+			return;
+		};
+		if cleanup.is_empty() {
+			break;
+		}
+		for cleanup in cleanup.into_iter().rev() {
+			cleanup();
+		}
 	}
 
 	SCOPES.with(|scopes| {
@@ -741,5 +747,37 @@ mod tests {
 		scope.dispose();
 
 		assert_eq!(observed.get(), Some(42));
+	}
+
+	#[test]
+	#[serial(reactive_runtime)]
+	fn scope_post_node_cleanup_runs_after_node_values_drop() {
+		struct DropMarker(alloc::rc::Rc<Cell<bool>>);
+
+		impl Drop for DropMarker {
+			fn drop(&mut self) {
+				self.0.set(true);
+			}
+		}
+
+		let scope = ReactiveScope::new();
+		let dropped = alloc::rc::Rc::new(Cell::new(false));
+		let observed = alloc::rc::Rc::new(Cell::new(false));
+		let dropped_for_node = alloc::rc::Rc::clone(&dropped);
+		let dropped_for_cleanup = alloc::rc::Rc::clone(&dropped);
+		let observed_for_cleanup = alloc::rc::Rc::clone(&observed);
+		let scope_id = scope.id();
+
+		scope.enter(|| {
+			allocate_node(NodeKind::Signal, DropMarker(dropped_for_node));
+			on_scope_dispose_after_nodes(scope_id, move || {
+				observed_for_cleanup.set(dropped_for_cleanup.get());
+			})
+			.expect("live scope should accept post-node cleanup callbacks");
+		});
+
+		scope.dispose();
+
+		assert!(observed.get());
 	}
 }

@@ -63,5 +63,8 @@ pub use deps::{Deps, IntoDeps, Trackable};
 pub use effect::Effect;
 pub use memo::Memo;
 pub use runtime::{EffectTiming, NodeId, NodeType, Observer, Runtime, batch, with_runtime};
-pub use scope::{NodeKey, ReactiveScope, ReactiveScopeError, ScopeId, on_scope_dispose};
+pub use scope::{
+	NodeKey, ReactiveScope, ReactiveScopeError, ScopeId, on_scope_dispose,
+	on_scope_dispose_after_nodes,
+};
 pub use signal::Signal;
