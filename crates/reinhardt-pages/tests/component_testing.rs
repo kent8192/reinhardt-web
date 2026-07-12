@@ -570,7 +570,7 @@ impl reinhardt_di::InjectableKey for JobsDatabaseKey {}
 #[cfg(feature = "msw")]
 #[server_fn]
 async fn load_injected_jobs(
-	#[inject] _database: reinhardt_di::Depends<JobsDatabaseKey, JobsDatabase>,
+	#[inject] _database: reinhardt_di::KeyedDepends<JobsDatabaseKey, JobsDatabase>,
 ) -> Result<Vec<String>, ServerFnError> {
 	Ok(vec!["real injected job".to_string()])
 }

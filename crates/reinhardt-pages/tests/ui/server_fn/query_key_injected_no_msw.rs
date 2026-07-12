@@ -18,7 +18,7 @@ struct User {
 #[server_fn]
 async fn get_user(
 	id: u32,
-	#[inject] _database: reinhardt_di::Depends<DatabaseKey, Database>,
+	#[inject] _database: reinhardt_di::KeyedDepends<DatabaseKey, Database>,
 ) -> Result<User, reinhardt_pages::server_fn::ServerFnError> {
 	Ok(User { id })
 }

@@ -23,7 +23,7 @@ fn renders_page_tree_and_pretty_output() {
 }
 
 #[test]
-fn suspense_nodes_render_the_active_branch() {
+fn suspense_nodes_render_active_branch_without_boundary_id() {
 	let pending_screen = render(Page::Suspense(SuspenseNode::new(
 		None,
 		|| true,
@@ -46,7 +46,7 @@ fn suspense_nodes_render_the_active_branch() {
 }
 
 #[test]
-fn deferred_nodes_render_content_branch() {
+fn deferred_nodes_render_content_branch_with_custom_key() {
 	let screen = render(Page::Deferred(DeferredNode::new(
 		"deferred-test",
 		|| {
@@ -191,7 +191,7 @@ fn hidden_elements_are_excluded_from_queries() {
 }
 
 #[test]
-fn suspense_nodes_render_the_active_branch() {
+fn suspense_nodes_render_active_branch_with_boundary_id() {
 	let pending_screen = render(Page::Suspense(SuspenseNode::new(
 		Some("pending-boundary".to_string()),
 		|| true,
@@ -212,7 +212,7 @@ fn suspense_nodes_render_the_active_branch() {
 }
 
 #[test]
-fn deferred_nodes_render_content_branch() {
+fn deferred_nodes_render_content_branch_with_standard_key() {
 	let screen = render(Page::Deferred(DeferredNode::new(
 		"deferred-content",
 		|| PageElement::new("p").child("Deferred fallback").into_page(),
