@@ -8,18 +8,20 @@ use reinhardt_pages::reactive::Signal;
 use reinhardt_pages::reactive::hooks::use_effect;
 
 fn main() {
-	let count = Signal::new(0_i32);
-	// `count` is read but not listed in the deps tuple. Because this call is
-	// not inside a `page!` body, the static validator does not see it.
-	let _e = use_effect(
-		{
-			let count = count.clone();
-			move || {
-				let _ = count.get();
-				None::<fn()>
-			}
-		},
-		(),
-	);
-	let _ = count;
+	reinhardt_core::reactive::ReactiveScope::run(|| {
+		let count = Signal::new(0_i32);
+		// `count` is read but not listed in the deps tuple. Because this call is
+		// not inside a `page!` body, the static validator does not see it.
+		let _e = use_effect(
+			{
+				let count = count;
+				move || {
+					let _ = count.get();
+					None::<fn()>
+				}
+			},
+			(),
+		);
+		let _ = count;
+	});
 }

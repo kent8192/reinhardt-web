@@ -520,42 +520,50 @@ mod tests {
 
 	#[test]
 	fn test_use_state_setter_set_method() {
-		let (count, set_count) = use_state(0);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let (count, set_count) = use_state(0);
 
-		set_count.set(7);
+			set_count.set(7);
 
-		assert_eq!(count.get(), 7);
+			assert_eq!(count.get(), 7);
+		});
 	}
 
 	#[test]
 	fn test_use_state_setter_functional_update() {
-		let (count, set_count) = use_state(0);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let (count, set_count) = use_state(0);
 
-		set_count.update(|current| current + 1);
-		set_count.update(|current| current * 2);
+			set_count.update(|current| current + 1);
+			set_count.update(|current| current * 2);
 
-		assert_eq!(count.get(), 2);
+			assert_eq!(count.get(), 2);
+		});
 	}
 
 	#[test]
 	fn test_use_state_setter_functional_update_uses_latest_value() {
-		let (name, set_name) = use_state("Alice".to_string());
-		let set_name2 = set_name.clone();
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let (name, set_name) = use_state("Alice".to_string());
+			let set_name2 = set_name.clone();
 
-		set_name("Bob".to_string());
-		set_name2.update(|current| format!("{current} Smith"));
+			set_name("Bob".to_string());
+			set_name2.update(|current| format!("{current} Smith"));
 
-		assert_eq!(name.get(), "Bob Smith");
+			assert_eq!(name.get(), "Bob Smith");
+		});
 	}
 
 	#[test]
 	fn test_use_state_setter_functional_update_allows_reading_state() {
-		let (count, set_count) = use_state(1);
-		let count_for_update = count.clone();
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let (count, set_count) = use_state(1);
+			let count_for_update = count;
 
-		set_count.update(|current| current + count_for_update.get());
+			set_count.update(|current| current + count_for_update.get());
 
-		assert_eq!(count.get(), 2);
+			assert_eq!(count.get(), 2);
+		});
 	}
 
 	#[test]

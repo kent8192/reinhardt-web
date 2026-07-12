@@ -31,5 +31,7 @@ mod forms {
 }
 
 fn main() {
-	forms::exercise();
+	reinhardt_core::reactive::ReactiveScope::run(|| {
+		forms::exercise();
+	});
 }

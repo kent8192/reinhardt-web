@@ -37,49 +37,51 @@ fn panel(props: PanelProps) -> Page {
 }
 
 fn main() {
-	let heading = Label("Todos".to_string());
-	let button_label = Label("Refresh".to_string());
-	let selected = "todo-1".to_string();
-	let todos = vec![
-		Todo {
-			id: "todo-1".to_string(),
-			title: "Ship body form".to_string(),
-			completed: false,
-		},
-		Todo {
-			id: "todo-2".to_string(),
-			title: "Document migration".to_string(),
-			completed: true,
-		},
-	];
+	reinhardt_core::reactive::ReactiveScope::run(|| {
+		let heading = Label("Todos".to_string());
+		let button_label = Label("Refresh".to_string());
+		let selected = "todo-1".to_string();
+		let todos = vec![
+			Todo {
+				id: "todo-1".to_string(),
+				title: "Ship body form".to_string(),
+				completed: false,
+			},
+			Todo {
+				id: "todo-2".to_string(),
+				title: "Document migration".to_string(),
+				completed: true,
+			},
+		];
 
-	let view: Page = page!({
-		div {
-			Panel {
-				title: heading.text(),
-				@click: Callback::new(|_: DummyEvent| {}),
-				p { { selected.clone() } }
-			}
-			if !todos.is_empty() {
-				ul {
-					for todo in todos @key(format!("{}:{}", selected.as_str(), todo.id)) {
-						li {
-							class: if todo.completed { "done" } else { "pending" },
-							{ todo.title.clone() }
+		let view: Page = page!({
+			div {
+				Panel {
+					title: heading.text(),
+					@click: Callback::new(|_: DummyEvent| {}),
+					p { { selected.clone() } }
+				}
+				if !todos.is_empty() {
+					ul {
+						for todo in todos @key(format!("{}:{}", selected.as_str(), todo.id)) {
+							li {
+								class: if todo.completed { "done" } else { "pending" },
+								{ todo.title.clone() }
+							}
 						}
 					}
 				}
+				else {
+					p { "No todos" }
+				}button {
+					@click: move |_| {
+						let _ = button_label.text();
+					},
+					{ button_label.text() }
+				}
 			}
-			else {
-				p { "No todos" }
-			}button {
-				@click: move |_| {
-					let _ = button_label.text();
-				},
-				{ button_label.text() }
-			}
-		}
-	});
+		});
 
-	let _ = view;
+		let _ = view;
+	});
 }

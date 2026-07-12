@@ -14,16 +14,18 @@ mod server_fns {
 use server_fns::submit_vote;
 
 fn main() {
-	let _vote_form = form! {
-		name: VoteForm,
-		server_fn: submit_vote,
-		fields: {
-			_question_id: IntegerField {
-				widget: HiddenInput,
+	reinhardt_core::reactive::ReactiveScope::run(|| {
+		let _vote_form = form! {
+			name: VoteForm,
+			server_fn: submit_vote,
+			fields: {
+				_question_id: IntegerField {
+					widget: HiddenInput,
+				}
+				_choice_id: IntegerField {
+					required,
+				}
 			}
-			_choice_id: IntegerField {
-				required,
-			}
-		}
-	};
+		};
+	});
 }
