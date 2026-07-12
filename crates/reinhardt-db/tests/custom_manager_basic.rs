@@ -421,6 +421,37 @@ async fn default_bulk_update_invokes_before_bulk_update_veto_before_database_acc
 	);
 }
 
+#[tokio::test]
+async fn default_bulk_update_skips_hook_for_empty_models() {
+	// Arrange
+	let manager = DenyAllArticleManager;
+
+	// Act
+	let result = manager
+		.bulk_update(Vec::new(), vec!["title".to_string()], None)
+		.await;
+
+	// Assert
+	assert_eq!(result.unwrap(), 0);
+}
+
+#[tokio::test]
+async fn default_bulk_update_skips_hook_for_empty_fields() {
+	// Arrange
+	let manager = DenyAllArticleManager;
+	let articles = vec![Article {
+		id: Some(1),
+		title: "unchanged".into(),
+		is_archived: false,
+	}];
+
+	// Act
+	let result = manager.bulk_update(articles, Vec::new(), None).await;
+
+	// Assert
+	assert_eq!(result.unwrap(), 0);
+}
+
 // -----------------------------------------------------------------------------
 // Tests: SQL parity (delegation to Manager<M>)
 // -----------------------------------------------------------------------------

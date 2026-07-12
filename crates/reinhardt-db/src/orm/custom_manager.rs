@@ -463,6 +463,10 @@ pub trait CustomManager: Sized + Send + Sync {
 		Self::Model: 'a,
 	{
 		async move {
+			if models.is_empty() || fields.is_empty() {
+				return Ok(0);
+			}
+
 			let mut models = models;
 			self.before_bulk_update(&mut models)?;
 			Manager::<Self::Model>::new()
