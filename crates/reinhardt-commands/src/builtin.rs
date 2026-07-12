@@ -2510,11 +2510,11 @@ impl RunServerCommand {
 
 		// Add static files middleware for WASM frontend if enabled
 		if with_pages {
-			use reinhardt_utils::staticfiles::PathResolver;
 			use reinhardt_utils::staticfiles::caching::CacheControlConfig;
 			use reinhardt_utils::staticfiles::middleware::{
 				StaticFilesConfig, StaticFilesMiddleware,
 			};
+			use reinhardt_utils::staticfiles::{PathResolver, TemplateStaticConfig};
 			let generated_style_url =
 				match PathResolver::find_project_root().or_else(|| std::env::current_dir().ok()) {
 					Some(project_root) => match configured_static_url(&project_root) {
@@ -2531,7 +2531,7 @@ impl RunServerCommand {
 
 			if let Some(generated_root) = generated_style_root {
 				let mut generated_config = StaticFilesConfig::new(generated_root.to_path_buf())
-					.url_prefix(generated_style_url)
+					.url_prefix(generated_style_url.clone())
 					.spa_mode(false)
 					.auto_inject_wasm(false);
 				#[cfg(debug_assertions)]
@@ -2579,6 +2579,7 @@ impl RunServerCommand {
 			let mut static_config = StaticFilesConfig::new(resolved_static_dir.clone())
 				.url_prefix("/")
 				.spa_mode(!no_spa)
+				.template_static_config(TemplateStaticConfig::new(generated_style_url))
 				// Exclude framework-managed route prefixes from SPA fallback
 				// so that API endpoints and admin panel are handled by the
 				// application router instead of receiving index.html.

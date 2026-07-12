@@ -33,7 +33,7 @@ pub struct StylePackageContext {
 	pub workspace_manifest_path: PathBuf,
 	/// Selected package source root.
 	pub src_root: PathBuf,
-	/// Cargo target roots that participate in the selected package build.
+	/// Cargo library target roots served by the selected package Pages build.
 	source_roots: Vec<PathBuf>,
 	cfg: CfgEvaluator,
 }
@@ -81,7 +81,7 @@ impl StylePackageContext {
 			.targets
 			.iter()
 			.filter(|target| {
-				(target.is_lib() || target.is_bin())
+				target.is_lib()
 					&& target
 						.required_features
 						.iter()
@@ -286,12 +286,11 @@ fn collect_source_file(
 		.map_err(|error| format!("failed to read {}: {error}", source_path.display()))?;
 	let file = syn::parse_file(&source)
 		.map_err(|error| format!("failed to parse {}: {error}", source_path.display()))?;
-	collect_module_items(&file.items, &source_path, module_dir, cfg, files)
+	collect_module_items(&file.items, module_dir, cfg, files)
 }
 
 fn collect_module_items(
 	items: &[Item],
-	source_path: &Path,
 	module_dir: &Path,
 	cfg: &CfgEvaluator,
 	files: &mut BTreeSet<PathBuf>,
@@ -306,7 +305,6 @@ fn collect_module_items(
 		if let Some((_, nested_items)) = &module.content {
 			collect_module_items(
 				nested_items,
-				source_path,
 				&module_dir.join(module.ident.to_string()),
 				cfg,
 				files,
@@ -314,26 +312,16 @@ fn collect_module_items(
 			continue;
 		}
 
-		let module_source = external_module_source_path(source_path, module_dir, module)?;
+		let module_source = external_module_source_path(module_dir, module)?;
 		let nested_module_dir = module_directory(&module_source)?;
 		collect_source_file(&module_source, &nested_module_dir, cfg, files)?;
 	}
 	Ok(())
 }
 
-fn external_module_source_path(
-	source_path: &Path,
-	module_dir: &Path,
-	module: &ItemMod,
-) -> Result<PathBuf, String> {
+fn external_module_source_path(module_dir: &Path, module: &ItemMod) -> Result<PathBuf, String> {
 	if let Some(path) = module_path_attribute(module)? {
-		let parent = source_path.parent().ok_or_else(|| {
-			format!(
-				"module source has no parent directory: {}",
-				source_path.display()
-			)
-		})?;
-		let resolved = parent.join(path);
+		let resolved = module_dir.join(path);
 		if resolved.is_file() {
 			return Ok(resolved);
 		}
@@ -411,21 +399,48 @@ fn module_directory(source_path: &Path) -> Result<PathBuf, String> {
 /// Evaluates the `cfg` predicates that determine which authored declarations Cargo compiles.
 #[derive(Debug, Clone)]
 struct CfgEvaluator {
+	targets: Vec<CfgTarget>,
+	features: BTreeSet<String>,
+}
+
+/// One target-specific Rust compiler configuration.
+#[derive(Debug, Clone)]
+struct CfgTarget {
 	flags: BTreeSet<String>,
 	key_values: BTreeMap<String, BTreeSet<String>>,
-	features: BTreeSet<String>,
 }
 
 impl CfgEvaluator {
 	fn new(features: BTreeSet<String>) -> Result<Self, String> {
 		let rustc = std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into());
-		let output = Command::new(rustc)
-			.args(["--print", "cfg"])
-			.output()
-			.map_err(|error| format!("failed to query Rust compiler configuration: {error}"))?;
+		let targets = [None, Some("wasm32-unknown-unknown")]
+			.into_iter()
+			.map(|target| CfgTarget::from_rustc(&rustc, target))
+			.collect::<Result<_, _>>()?;
+		Ok(Self { targets, features })
+	}
+
+	fn items_are_enabled(&self, attributes: &[Attribute]) -> bool {
+		self.targets
+			.iter()
+			.any(|target| target.items_are_enabled(attributes, &self.features))
+	}
+}
+
+impl CfgTarget {
+	fn from_rustc(rustc: &std::ffi::OsStr, target: Option<&str>) -> Result<Self, String> {
+		let target_name = target.unwrap_or("the host target");
+		let mut command = Command::new(rustc);
+		command.args(["--print", "cfg"]);
+		if let Some(target) = target {
+			command.args(["--target", target]);
+		}
+		let output = command.output().map_err(|error| {
+			format!("failed to query Rust compiler configuration for {target_name}: {error}")
+		})?;
 		if !output.status.success() {
 			return Err(format!(
-				"failed to query Rust compiler configuration: {}",
+				"failed to query Rust compiler configuration for {target_name}: {}",
 				String::from_utf8_lossy(&output.stderr).trim()
 			));
 		}
@@ -447,33 +462,29 @@ impl CfgEvaluator {
 			}
 		}
 
-		Ok(Self {
-			flags,
-			key_values,
-			features,
-		})
+		Ok(Self { flags, key_values })
 	}
 
-	fn items_are_enabled(&self, attributes: &[Attribute]) -> bool {
+	fn items_are_enabled(&self, attributes: &[Attribute], features: &BTreeSet<String>) -> bool {
 		attributes
 			.iter()
-			.all(|attribute| self.attribute_is_enabled(attribute))
+			.all(|attribute| self.attribute_is_enabled(attribute, features))
 	}
 
-	fn attribute_is_enabled(&self, attribute: &Attribute) -> bool {
+	fn attribute_is_enabled(&self, attribute: &Attribute, features: &BTreeSet<String>) -> bool {
 		if attribute.path().is_ident("cfg") {
 			return attribute
 				.parse_args::<Meta>()
-				.map(|predicate| self.predicate_is_enabled(&predicate))
+				.map(|predicate| self.predicate_is_enabled(&predicate, features))
 				.unwrap_or(false);
 		}
 		if attribute.path().is_ident("cfg_attr") {
-			return self.cfg_attr_is_enabled(&attribute.meta);
+			return self.cfg_attr_is_enabled(&attribute.meta, features);
 		}
 		true
 	}
 
-	fn cfg_attr_is_enabled(&self, meta: &Meta) -> bool {
+	fn cfg_attr_is_enabled(&self, meta: &Meta, features: &BTreeSet<String>) -> bool {
 		let Meta::List(list) = meta else {
 			return false;
 		};
@@ -485,32 +496,32 @@ impl CfgEvaluator {
 		let Some(condition) = arguments.first() else {
 			return false;
 		};
-		if !self.predicate_is_enabled(condition) {
+		if !self.predicate_is_enabled(condition, features) {
 			return true;
 		}
 		arguments
 			.iter()
 			.skip(1)
-			.all(|nested| self.generated_attribute_is_enabled(nested))
+			.all(|nested| self.generated_attribute_is_enabled(nested, features))
 	}
 
-	fn generated_attribute_is_enabled(&self, meta: &Meta) -> bool {
+	fn generated_attribute_is_enabled(&self, meta: &Meta, features: &BTreeSet<String>) -> bool {
 		if meta.path().is_ident("cfg") {
 			let Meta::List(list) = meta else {
 				return false;
 			};
 			return list
 				.parse_args::<Meta>()
-				.map(|predicate| self.predicate_is_enabled(&predicate))
+				.map(|predicate| self.predicate_is_enabled(&predicate, features))
 				.unwrap_or(false);
 		}
 		if meta.path().is_ident("cfg_attr") {
-			return self.cfg_attr_is_enabled(meta);
+			return self.cfg_attr_is_enabled(meta, features);
 		}
 		true
 	}
 
-	fn predicate_is_enabled(&self, predicate: &Meta) -> bool {
+	fn predicate_is_enabled(&self, predicate: &Meta, features: &BTreeSet<String>) -> bool {
 		match predicate {
 			Meta::Path(path) => path
 				.get_ident()
@@ -526,7 +537,7 @@ impl CfgEvaluator {
 					return false;
 				};
 				if key == "feature" {
-					self.features.contains(&value.value())
+					features.contains(&value.value())
 				} else {
 					self.key_values
 						.get(&key.to_string())
@@ -545,11 +556,13 @@ impl CfgEvaluator {
 				match operator.to_string().as_str() {
 					"all" => predicates
 						.iter()
-						.all(|predicate| self.predicate_is_enabled(predicate)),
+						.all(|predicate| self.predicate_is_enabled(predicate, features)),
 					"any" => predicates
 						.iter()
-						.any(|predicate| self.predicate_is_enabled(predicate)),
-					"not" if predicates.len() == 1 => !self.predicate_is_enabled(&predicates[0]),
+						.any(|predicate| self.predicate_is_enabled(predicate, features)),
+					"not" if predicates.len() == 1 => {
+						!self.predicate_is_enabled(&predicates[0], features)
+					}
 					_ => false,
 				}
 			}
