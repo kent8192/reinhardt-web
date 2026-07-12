@@ -67,6 +67,16 @@ fn page_b() -> Page {
 		.into_page()
 }
 
+fn reactive_page_b() -> Page {
+	let content = Signal::new("ROUTE-B-CONTENT");
+	Page::reactive(move || {
+		PageElement::new("div")
+			.attr("id", "route-b")
+			.child(content.get())
+			.into_page()
+	})
+}
+
 fn layout_shell(outlet: Outlet) -> Page {
 	PageElement::new("div")
 		.attr("id", "layout-shell")
@@ -77,11 +87,11 @@ fn layout_shell(outlet: Outlet) -> Page {
 
 fn page_with_reentrant_nested_reactive() -> Page {
 	let trigger = Signal::new(0_i32);
-	let trigger_for_outer = trigger.clone();
+	let trigger_for_outer = trigger;
 
 	Page::reactive(move || {
 		let _ = trigger_for_outer.get();
-		let trigger_for_inner = trigger_for_outer.clone();
+		let trigger_for_inner = trigger_for_outer;
 
 		Page::reactive(move || {
 			if trigger_for_inner.get_untracked() == 0 {
@@ -237,7 +247,9 @@ async fn client_launcher_preserves_layout_shell_between_sibling_routes() {
 		.router_client(|| {
 			ClientRouter::new().routes(|routes| {
 				routes.layout_route("shell", "/", layout_shell, |children| {
-					children.route("a", "a", page_a).route("b", "b", page_b)
+					children
+						.route("a", "a", page_a)
+						.route("b", "b", reactive_page_b)
 				})
 			})
 		})

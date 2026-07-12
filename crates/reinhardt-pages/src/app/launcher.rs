@@ -123,22 +123,34 @@ impl PersistentLayoutRenderer {
 
 		for depth in start_depth..route_match.layouts().len() {
 			let outlet_id = Self::outlet_id(depth);
-			let page = router
-				.__render_tree_layout(route_match, depth, Outlet::placeholder(outlet_id))
-				.ok_or(MountError::CreateElementFailed)?;
 			let store = new_reactive_node_store();
-			let parent_wrapper = crate::dom::Element::new(parent.clone());
-			with_reactive_node_store(&store, || page.mount(&parent_wrapper))?;
+			let scope = reinhardt_core::reactive::ReactiveScope::new();
+			scope.enter(|| {
+				let page = router
+					.__render_tree_layout(route_match, depth, Outlet::placeholder(outlet_id))
+					.ok_or(MountError::CreateElementFailed)?;
+				let parent_wrapper = crate::dom::Element::new(parent.clone());
+				with_reactive_node_store(&store, || page.mount(&parent_wrapper))
+			})?;
+			with_reactive_node_store(&store, || {
+				crate::component::store_reactive_scope(scope);
+			});
 			self.layout_stores.push(store);
 			parent = Self::find_outlet(root_el, depth)?;
 		}
 
-		let leaf = router
-			.__render_tree_leaf(route_match)
-			.ok_or(MountError::CreateElementFailed)?;
 		let leaf_store = new_reactive_node_store();
-		let parent_wrapper = crate::dom::Element::new(parent);
-		with_reactive_node_store(&leaf_store, || leaf.mount(&parent_wrapper))?;
+		let leaf_scope = reinhardt_core::reactive::ReactiveScope::new();
+		leaf_scope.enter(|| {
+			let leaf = router
+				.__render_tree_leaf(route_match)
+				.ok_or(MountError::CreateElementFailed)?;
+			let parent_wrapper = crate::dom::Element::new(parent);
+			with_reactive_node_store(&leaf_store, || leaf.mount(&parent_wrapper))
+		})?;
+		with_reactive_node_store(&leaf_store, || {
+			crate::component::store_reactive_scope(leaf_scope);
+		});
 		self.leaf_store = Some(leaf_store);
 		Ok(())
 	}
@@ -678,6 +690,10 @@ impl ClientLauncher {
 
 	/// Start the WASM client application.
 	///
+	/// The launcher owns an application-lifetime reactive scope for setup,
+	/// router state, and persistent subscriptions. Individual route mounts use
+	/// separate scopes that are disposed when their rendered nodes are cleaned up.
+	///
 	/// Performs three phases in order:
 	///
 	/// 1. **Phase A — Setup.** Sets up the panic hook for readable
@@ -728,7 +744,16 @@ impl ClientLauncher {
 	/// `register_routes_from_inventory` path additionally returns `Err`
 	/// when no `#[routes]` registrations are found at runtime.
 	/// (Refs #4453)
-	pub fn launch(mut self) -> Result<(), wasm_bindgen::JsValue> {
+	pub fn launch(self) -> Result<(), wasm_bindgen::JsValue> {
+		let scope = std::rc::Rc::new(reinhardt_core::reactive::ReactiveScope::new());
+		let stored_scope = std::rc::Rc::clone(&scope);
+		scope.enter(move || self.launch_in_scope(stored_scope))
+	}
+
+	fn launch_in_scope(
+		mut self,
+		scope: std::rc::Rc<reinhardt_core::reactive::ReactiveScope>,
+	) -> Result<(), wasm_bindgen::JsValue> {
 		#[cfg(feature = "console_error_panic_hook")]
 		console_error_panic_hook::set_once();
 
@@ -782,7 +807,7 @@ impl ClientLauncher {
 					));
 				}
 			};
-		store_spa_router(spa_router);
+		store_spa_router(spa_router, std::rc::Rc::clone(&scope));
 
 		crate::nav_diag!(
 			"site=store_router router_id={} route_count={}",
@@ -896,6 +921,7 @@ impl ClientLauncher {
 			let callback_for_listener = callback.clone();
 			let last_params_for_listener = last_params.clone();
 			let document_for_listener = document.clone();
+			let scope_for_listener = std::rc::Rc::clone(&scope);
 			let listener_subscription = with_spa_router(|r| {
 				r.on_navigate_dyn(Box::new(move |path, _params_from_router| {
 					if let Some(params) = next_path_subscription_match(
@@ -908,7 +934,7 @@ impl ClientLauncher {
 							path,
 							params: &params,
 						};
-						callback_for_listener(&ctx);
+						scope_for_listener.enter(|| callback_for_listener(&ctx));
 					}
 				}))
 			});

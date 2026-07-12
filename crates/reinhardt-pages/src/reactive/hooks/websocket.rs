@@ -245,8 +245,6 @@ pub fn use_websocket(url: &str, options: UseWebSocketOptions) -> WebSocketHandle
 	let connect = {
 		let ws_ref = Rc::clone(&ws_ref);
 		let closures_ref = Rc::clone(&closures_ref);
-		let connection_state = connection_state.clone();
-		let latest_message = latest_message.clone();
 		let url = url.clone();
 		let on_open = options.on_open.clone();
 		let on_close = options.on_close.clone();
@@ -269,7 +267,7 @@ pub fn use_websocket(url: &str, options: UseWebSocketOptions) -> WebSocketHandle
 			ws.set_binary_type(web_sys::BinaryType::Arraybuffer);
 
 			// onopen handler
-			let connection_state_open = connection_state.clone();
+			let connection_state_open = connection_state;
 			let on_open_cb = on_open.clone();
 			let onopen = Closure::wrap(Box::new(move |_: JsValue| {
 				connection_state_open.set(ConnectionState::Open);
@@ -280,7 +278,7 @@ pub fn use_websocket(url: &str, options: UseWebSocketOptions) -> WebSocketHandle
 			ws.set_onopen(Some(onopen.as_ref().unchecked_ref()));
 
 			// onmessage handler
-			let latest_message_recv = latest_message.clone();
+			let latest_message_recv = latest_message;
 			let onmessage = Closure::wrap(Box::new(move |e: MessageEvent| {
 				// Try text message first
 				if let Ok(txt) = e.data().dyn_into::<js_sys::JsString>() {
@@ -297,7 +295,7 @@ pub fn use_websocket(url: &str, options: UseWebSocketOptions) -> WebSocketHandle
 			ws.set_onmessage(Some(onmessage.as_ref().unchecked_ref()));
 
 			// onclose handler
-			let connection_state_close = connection_state.clone();
+			let connection_state_close = connection_state;
 			let on_close_cb = on_close.clone();
 			let onclose = Closure::wrap(Box::new(move |_: CloseEvent| {
 				connection_state_close.set(ConnectionState::Closed);
@@ -308,7 +306,7 @@ pub fn use_websocket(url: &str, options: UseWebSocketOptions) -> WebSocketHandle
 			ws.set_onclose(Some(onclose.as_ref().unchecked_ref()));
 
 			// onerror handler
-			let connection_state_error = connection_state.clone();
+			let connection_state_error = connection_state;
 			let on_error_cb = on_error.clone();
 			let onerror = Closure::wrap(Box::new(move |_: ErrorEvent| {
 				let error_msg = "WebSocket error occurred".to_string();
