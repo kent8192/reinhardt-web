@@ -18,8 +18,9 @@
 //! `#[inject]` resolves wrapper parameters through [`InjectableType`]. This
 //! lets framework and application wrappers choose a concrete registry key while
 //! exposing a domain-specific parameter type. The keyed provider API uses
-//! [`FactoryOutput`] as the registered value and [`Depends`] as the consumer
-//! wrapper.
+//! [`KeyedFactoryOutput`] as the registered value and [`KeyedDepends`] as the
+//! explicit-key consumer wrapper. [`Depends`] resolves the same output shape
+//! through [`SelfKey`] for self-keyed providers.
 //!
 //! ## Cargo features
 //!
@@ -86,7 +87,7 @@
 //! // Use in endpoint
 //! // #[endpoint(GET "/users")]
 //! // async fn list_users(
-//! //     db: Depends<DatabaseKey, Database>,
+//! //     db: KeyedDepends<DatabaseKey, Database>,
 //! // ) -> Result<Vec<User>> {
 //! //     db.query("SELECT * FROM users").await
 //! // }
@@ -108,11 +109,13 @@
 //! let ctx = InjectionContext::builder(singleton).build();
 //! ```
 //!
-//! Optional request and param context can be added:
+//! When the `params` feature is enabled, optional request and param context can
+//! be added:
 //!
-//! ```no_run
-//! use reinhardt_di::{InjectionContext, SingletonScope};
-//! use reinhardt_http::Request;
+//! ```rust,no_run
+//! # #[cfg(feature = "params")]
+//! # fn main() {
+//! use reinhardt_di::{InjectionContext, Request, SingletonScope};
 //! use std::sync::Arc;
 //!
 //! let singleton = Arc::new(SingletonScope::new());
@@ -130,6 +133,9 @@
 //! let ctx = InjectionContext::builder(singleton)
 //!     .with_request(request)
 //!     .build();
+//! # }
+//! # #[cfg(not(feature = "params"))]
+//! # fn main() {}
 //! ```
 //!
 //! ## Resolve Context
@@ -141,22 +147,11 @@
 //! This enables factories to access the DI context for purposes like
 //! passing it to downstream consumers:
 //!
-//! ```rust,ignore
-//! use reinhardt_di::{ContextLevel, Depends, FactoryOutput, InjectableKey, get_di_context};
-//!
-//! struct AppConfigKey;
-//! impl InjectableKey for AppConfigKey {}
-//! struct RouterKey;
-//! impl InjectableKey for RouterKey {}
-//!
-//! #[injectable(scope = "transient")]
-//! async fn make_router(
-//!     #[inject] config: Depends<AppConfigKey, AppConfig>,
-//! ) -> FactoryOutput<RouterKey, Router> {
-//!     let di_ctx = get_di_context(ContextLevel::Current);
-//!     FactoryOutput::new(Router::new().with_di_context(di_ctx))
-//! }
-//! ```
+//! For example, an `#[injectable]` provider can accept
+//! `KeyedDepends<AppConfigKey, AppConfig>`, call
+//! `get_di_context(ContextLevel::Current)`, and return
+//! `KeyedFactoryOutput<RouterKey, Router>` after attaching the context to the
+//! constructed router.
 //!
 //! [`ContextLevel::Root`] returns the application-level context, while
 //! [`ContextLevel::Current`] returns the currently active context
@@ -308,6 +303,7 @@ pub mod registration;
 pub mod registry;
 pub mod resolve_context;
 pub mod scope;
+pub mod self_key;
 #[cfg(feature = "testing")]
 pub mod testing;
 pub mod validation;
@@ -319,14 +315,18 @@ pub use cycle_detection::{
 	CycleError, ResolutionGuard, begin_resolution, begin_scoped_resolution,
 	current_dependent_scope, register_type_name, with_cycle_detection_scope,
 };
-pub use factory_output::FactoryOutput;
+// FactoryOutput remains re-exported as deprecated compatibility API.
+// Keep the deprecated re-export available while migration code moves to
+// KeyedFactoryOutput.
+#[allow(deprecated)]
+pub use factory_output::{FactoryOutput, KeyedFactoryOutput};
 pub use function_handle::FunctionHandle;
 pub use injectable_key::InjectableKey;
 pub use override_registry::OverrideRegistry;
 
 #[cfg(feature = "params")]
 pub use context::{ParamContext, Request};
-pub use depends::{Depends, DependsBuilder};
+pub use depends::{Depends, DependsBuilder, KeyedDepends, KeyedDependsBuilder};
 pub use injectable::Injectable;
 pub use injectable_type::InjectableType;
 #[doc(hidden)]
@@ -343,6 +343,7 @@ pub use registry::{
 };
 pub use resolve_context::{ContextLevel, get_di_context, try_get_di_context};
 pub use scope::{RequestScope, Scope, SingletonScope};
+pub use self_key::SelfKey;
 #[cfg(feature = "testing")]
 pub use testing::OverrideGuard;
 pub use validation::{RegistryValidator, ValidationError, ValidationErrorKind};

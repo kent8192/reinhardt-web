@@ -11,7 +11,7 @@ use reinhardt_db::orm::execution::convert_values;
 use reinhardt_db::orm::{
 	DatabaseConnection, Filter, FilterCondition, FilterOperator, FilterValue, Model,
 };
-use reinhardt_di::{DiResult, FactoryOutput, Injectable, InjectionContext};
+use reinhardt_di::{DiResult, Injectable, InjectionContext, KeyedFactoryOutput};
 use reinhardt_query::prelude::{
 	Alias, BinOper, CaseStatement, ColumnRef, Condition, Expr, ExprTrait, IntoValue, Order,
 	PostgresQueryBuilder, Query, QueryStatementBuilder, SimpleExpr, Value,
@@ -1459,8 +1459,8 @@ impl Injectable for AdminDatabase {
 #[reinhardt_di::injectable(scope = "singleton")]
 async fn admin_database_provider(
 	#[inject] db: AdminDatabase,
-) -> FactoryOutput<AdminDatabaseKey, AdminDatabase> {
-	FactoryOutput::new(db)
+) -> KeyedFactoryOutput<AdminDatabaseKey, AdminDatabase> {
+	KeyedFactoryOutput::new(db)
 }
 
 // Register AdminDatabase in the global dependency registry so direct
@@ -2743,7 +2743,7 @@ mod tests {
 		let ctx = reinhardt_di::InjectionContext::builder(singleton).build();
 
 		let result =
-			reinhardt_di::Depends::<AdminDatabaseKey, AdminDatabase>::resolve_from_registry(
+			reinhardt_di::KeyedDepends::<AdminDatabaseKey, AdminDatabase>::resolve_from_registry(
 				&ctx, true,
 			)
 			.await;

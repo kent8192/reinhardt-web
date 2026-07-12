@@ -21,7 +21,7 @@
 
 use reinhardt_db::backends::connection::DatabaseConnection;
 use reinhardt_db::migrations::{
-	ColumnDefinition, FieldType, ForeignKeyAction, Migration,
+	ColumnDefinition, FieldType, ForeignKeyAction, Migration, MigrationError,
 	executor::DatabaseMigrationExecutor,
 	operations::{Constraint, Operation},
 };
@@ -1281,11 +1281,14 @@ async fn test_fk_violation_after_recreation(
 	// The important thing is the system handles this case gracefully
 	if result.is_err() {
 		// FK violation detected - expected behavior
-		let error_msg = format!("{:?}", result.err().unwrap());
-		assert!(
-			error_msg.contains("foreign") || error_msg.contains("constraint"),
-			"Error should mention FK violation"
-		);
+		match result.err().unwrap() {
+			MigrationError::ForeignKeyViolation(message) => assert_eq!(
+				message,
+				"Foreign key violations detected after table recreation: FK violation in \
+				 'recreation_child' row 1 referencing 'recreation_test'"
+			),
+			error => panic!("Expected FK violation after recreation, got {error:?}"),
+		}
 	}
 	// If it succeeds, the implementation allows recreation with orphaned data
 }

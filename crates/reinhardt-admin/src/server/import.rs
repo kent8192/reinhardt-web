@@ -8,7 +8,7 @@ use crate::adapters::{AdminDatabase, AdminRecord, AdminSite, ImportFormat, Impor
 #[cfg(server)]
 use crate::core::{AdminDatabaseKey, AdminSiteKey};
 #[cfg(server)]
-use reinhardt_di::Depends;
+use reinhardt_di::KeyedDepends;
 #[cfg(server)]
 use reinhardt_pages::server_fn::ServerFnRequest;
 use reinhardt_pages::server_fn::{ServerFnError, server_fn};
@@ -54,8 +54,8 @@ pub async fn import_data(
 	model_name: String,
 	format: crate::adapters::ImportFormat,
 	data: Vec<u8>,
-	#[inject] site: Depends<AdminSiteKey, AdminSite>,
-	#[inject] db: Depends<AdminDatabaseKey, AdminDatabase>,
+	#[inject] site: KeyedDepends<AdminSiteKey, AdminSite>,
+	#[inject] db: KeyedDepends<AdminDatabaseKey, AdminDatabase>,
 	#[inject] http_request: ServerFnRequest,
 	#[inject] AdminAuthenticatedUser(user): AdminAuthenticatedUser,
 ) -> Result<crate::adapters::ImportResponse, ServerFnError> {

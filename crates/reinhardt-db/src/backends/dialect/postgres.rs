@@ -1,7 +1,7 @@
 //! PostgreSQL dialect implementation
 
 use async_trait::async_trait;
-use sqlx::{Column, PgPool, Postgres, Transaction, postgres::PgRow};
+use sqlx::{Column, PgPool, Postgres, Transaction, TypeInfo, postgres::PgRow};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -44,6 +44,7 @@ impl PostgresBackend {
 			QueryValue::Bytes(b) => query.bind(b),
 			QueryValue::Timestamp(dt) => query.bind(dt),
 			QueryValue::Uuid(u) => query.bind(u),
+			QueryValue::Json(value) => query.bind(value.as_deref().cloned().map(sqlx::types::Json)),
 			QueryValue::Now => {
 				// PostgreSQL uses NOW() function, which should be part of SQL string
 				// For binding, we use current UTC time
@@ -167,6 +168,7 @@ impl PgTransactionExecutor {
 			QueryValue::Bytes(b) => query.bind(b),
 			QueryValue::Timestamp(dt) => query.bind(dt),
 			QueryValue::Uuid(u) => query.bind(u),
+			QueryValue::Json(value) => query.bind(value.as_deref().cloned().map(sqlx::types::Json)),
 			QueryValue::Now => query.bind(chrono::Utc::now()),
 		}
 	}
@@ -185,6 +187,18 @@ impl PostgresBackend {
 		let mut row = Row::new();
 		for column in pg_row.columns() {
 			let column_name = column.name();
+			let type_name = column.type_info().name().to_uppercase();
+			if matches!(type_name.as_str(), "JSON" | "JSONB") {
+				match pg_row.try_get::<Option<serde_json::Value>, _>(column_name) {
+					Ok(Some(value)) => row.insert(
+						column_name.to_string(),
+						QueryValue::Json(Some(Box::new(value))),
+					),
+					Ok(None) => row.insert(column_name.to_string(), QueryValue::Null),
+					Err(error) => return Err(error.into()),
+				};
+				continue;
+			}
 
 			if let Ok(value) = pg_row.try_get::<Uuid, _>(column_name) {
 				row.insert(column_name.to_string(), QueryValue::Uuid(value));

@@ -5,8 +5,8 @@
 //! and singleton caching work end-to-end.
 
 use reinhardt_di::{
-	DependencyScope, Depends, DiResult, FactoryOutput, Injectable, InjectableKey, InjectionContext,
-	SingletonScope, global_registry,
+	DependencyScope, DiResult, Injectable, InjectableKey, InjectionContext, KeyedDepends,
+	KeyedFactoryOutput, SingletonScope, global_registry,
 };
 use serial_test::serial;
 use std::sync::Arc;
@@ -19,8 +19,8 @@ async fn make_app_config(_ctx: Arc<InjectionContext>) -> DiResult<AppConfig> {
 
 async fn make_keyed_app_config(
 	_ctx: Arc<InjectionContext>,
-) -> DiResult<FactoryOutput<AppConfigKey, AppConfig>> {
-	Ok(FactoryOutput::new(AppConfig::default()))
+) -> DiResult<KeyedFactoryOutput<AppConfigKey, AppConfig>> {
+	Ok(KeyedFactoryOutput::new(AppConfig::default()))
 }
 
 async fn make_database_connection(_ctx: Arc<InjectionContext>) -> DiResult<DatabaseConnection> {
@@ -79,7 +79,7 @@ fn setup_registry() {
 	if !registry.is_registered::<AppConfig>() {
 		registry.register_async(DependencyScope::Singleton, make_app_config);
 	}
-	if !registry.is_registered::<FactoryOutput<AppConfigKey, AppConfig>>() {
+	if !registry.is_registered::<KeyedFactoryOutput<AppConfigKey, AppConfig>>() {
 		registry.register_async(DependencyScope::Singleton, make_keyed_app_config);
 	}
 	if !registry.is_registered::<DatabaseConnection>() {
@@ -190,10 +190,10 @@ async fn test_singleton_caching() {
 	);
 }
 
-/// Verify that factory outputs can be resolved via `Depends<K, T>`.
+/// Verify that factory outputs can be resolved via `KeyedDepends<K, T>`.
 ///
-/// This exercises the keyed registry path where `Depends<K, T>` resolves
-/// `FactoryOutput<K, T>` and dereferences to `T`.
+/// This exercises the keyed registry path where `KeyedDepends<K, T>` resolves
+/// `KeyedFactoryOutput<K, T>` and dereferences to `T`.
 #[tokio::test]
 #[serial(di_auto_injection)]
 async fn test_depends_resolve_for_registry_type() {
@@ -203,12 +203,12 @@ async fn test_depends_resolve_for_registry_type() {
 	let ctx = InjectionContext::builder(singleton_scope).build();
 
 	// Act
-	let depends = Depends::<AppConfigKey, AppConfig>::resolve_from_registry(&ctx, true).await;
+	let depends = KeyedDepends::<AppConfigKey, AppConfig>::resolve_from_registry(&ctx, true).await;
 
 	// Assert
 	assert!(
 		depends.is_ok(),
-		"Depends<AppConfigKey, AppConfig> should resolve FactoryOutput: {:?}",
+		"KeyedDepends<AppConfigKey, AppConfig> should resolve KeyedFactoryOutput: {:?}",
 		depends.err()
 	);
 	let depends = depends.unwrap();
@@ -216,12 +216,12 @@ async fn test_depends_resolve_for_registry_type() {
 	assert_eq!(depends.api_key, "test-key-12345");
 }
 
-/// Verify that `Depends<K, T>` caching works correctly for factory outputs.
+/// Verify that `KeyedDepends<K, T>` caching works correctly for factory outputs.
 ///
 /// When resolved twice with `use_cache=true`, `T::inject()` (and the
 /// underlying registry factory) is invoked only once. The second call
 /// returns a value from the request-scope cache. Note that each
-/// `Depends` wraps the resolved `FactoryOutput<K, T>` and dereferences to `T`.
+/// `KeyedDepends` wraps the resolved `KeyedFactoryOutput<K, T>` and dereferences to `T`.
 #[tokio::test]
 #[serial(di_auto_injection)]
 async fn test_depends_caching_for_registry_type() {
@@ -231,17 +231,17 @@ async fn test_depends_caching_for_registry_type() {
 	let ctx = InjectionContext::builder(singleton_scope).build();
 
 	// Act
-	let depends1 = Depends::<AppConfigKey, AppConfig>::resolve_from_registry(&ctx, true)
+	let depends1 = KeyedDepends::<AppConfigKey, AppConfig>::resolve_from_registry(&ctx, true)
 		.await
 		.unwrap();
-	let depends2 = Depends::<AppConfigKey, AppConfig>::resolve_from_registry(&ctx, true)
+	let depends2 = KeyedDepends::<AppConfigKey, AppConfig>::resolve_from_registry(&ctx, true)
 		.await
 		.unwrap();
 
 	// Assert - both wrappers point to the same cached output instance.
 	assert!(
 		Arc::ptr_eq(depends1.as_arc(), depends2.as_arc()),
-		"Expected Depends<AppConfigKey, AppConfig> to reuse cached FactoryOutput"
+		"Expected KeyedDepends<AppConfigKey, AppConfig> to reuse cached KeyedFactoryOutput"
 	);
 }
 
