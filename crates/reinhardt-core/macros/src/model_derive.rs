@@ -1431,6 +1431,7 @@ fn field_type_to_metadata_string(ty: &Type, _config: &FieldConfig) -> Result<Str
 				"Uuid" => "UuidField",
 				// Extended types (SQL generation is gated per-DB in map_type_to_field_type)
 				"Vec" => "ArrayField",
+				"Json" => "JsonField",
 				"Value" => "JsonField",
 				"HashMap" => "HStoreField",
 				other => {
@@ -1589,11 +1590,12 @@ fn map_type_to_field_type(ty: &Type, config: &FieldConfig) -> Result<TokenStream
 				"Vec" => {
 					return map_vec_to_array_type(ty, last_segment, config, &migrations_crate);
 				}
-				// PostgreSQL: serde_json::Value -> JSONB
-				#[cfg(feature = "db-postgres")]
+				// Json<T> and serde_json::Value -> JSONB on PostgreSQL, JSON/TEXT elsewhere.
+				"Json" => {
+					quote! { #migrations_crate::FieldType::JsonBinary }
+				}
 				"Value" => {
-					// Assume serde_json::Value for JSONB
-					quote! { #migrations_crate::FieldType::Jsonb }
+					quote! { #migrations_crate::FieldType::JsonBinary }
 				}
 				// PostgreSQL: HashMap<String, String> -> HStore
 				#[cfg(feature = "db-postgres")]
@@ -1623,7 +1625,7 @@ fn map_explicit_field_type(
 	migrations_crate: &proc_macro2::TokenStream,
 ) -> Result<TokenStream> {
 	let field_type = match field_type_str.to_lowercase().as_str() {
-		"jsonb" => quote! { #migrations_crate::FieldType::Jsonb },
+		"jsonb" => quote! { #migrations_crate::FieldType::JsonBinary },
 		"json" => quote! { #migrations_crate::FieldType::Json },
 		"hstore" => quote! { #migrations_crate::FieldType::HStore },
 		"citext" => quote! { #migrations_crate::FieldType::CIText },
@@ -1752,7 +1754,7 @@ fn parse_base_type_string(
 		"DATE" => quote! { #migrations_crate::FieldType::Date },
 		"TIME" => quote! { #migrations_crate::FieldType::Time },
 		"TIMESTAMP" => quote! { #migrations_crate::FieldType::DateTime },
-		"JSONB" => quote! { #migrations_crate::FieldType::Jsonb },
+		"JSONB" => quote! { #migrations_crate::FieldType::JsonBinary },
 		"JSON" => quote! { #migrations_crate::FieldType::Json },
 		_ => {
 			return Err(syn::Error::new(
@@ -2578,7 +2580,13 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 	let fk_accessor_methods = generate_fk_accessor_methods(struct_name, &field_infos);
 
 	// Generate relationship metadata
-	let relationship_metadata = generate_relationship_metadata(&rel_fields, app_label, struct_name);
+	let relationship_metadata = generate_relationship_metadata(
+		&rel_fields,
+		&field_infos,
+		&fk_field_infos,
+		app_label,
+		struct_name,
+	);
 
 	// Generate new() as zero-arg alias of build()
 	let new_fn_impl = generate_new_alias(struct_name, &field_infos, &fk_id_field_names);
@@ -2647,6 +2655,17 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 		Some(path) => quote! { #path },
 		None => quote! { #orm_crate::Manager<Self> },
 	};
+	let field_is_none_arms = field_infos.iter().filter_map(|field| {
+		let (is_option, _) = extract_option_type(&field.ty);
+		if !is_option {
+			return None;
+		}
+
+		let field_name = &field.name;
+		Some(quote! {
+			stringify!(#field_name) => self.#field_name.is_none(),
+		})
+	});
 	let generated_field_names: Vec<_> = field_infos
 		.iter()
 		.filter(|field| field.config.generated.is_some() || field.config.generated_sql.is_some())
@@ -2714,6 +2733,13 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 
 			fn primary_key_field() -> &'static str {
 				stringify!(#pk_name)
+			}
+
+			fn field_is_none(&self, field_name: &str) -> bool {
+				match field_name {
+					#(#field_is_none_arms)*
+					_ => false,
+				}
 			}
 
 			#pk_impl
@@ -3086,6 +3112,12 @@ fn generate_field_metadata(
 			None => quote! { None },
 		};
 
+		let default = config
+			.default
+			.as_ref()
+			.and_then(|value| field_default_to_metadata(value, &orm_crate))
+			.map_or_else(|| quote! { None }, |value| quote! { Some(#value) });
+
 		let item = quote! {
 			{
 				let mut attributes = ::std::collections::HashMap::new();
@@ -3099,7 +3131,7 @@ fn generate_field_metadata(
 					unique: #unique,
 					blank: #blank,
 					editable: #editable,
-					default: None,
+					default: #default,
 					db_default: None,
 					db_column: #db_column_value,
 					choices: None,
@@ -3131,6 +3163,10 @@ fn generate_field_metadata(
 						#orm_crate::fields::FieldKwarg::Bool(true)
 					);
 				}
+				attributes.insert(
+					"relation_managed".to_string(),
+					#orm_crate::fields::FieldKwarg::Bool(true)
+				);
 
 				#orm_crate::inspection::FieldInfo {
 					name: #name.to_string(),
@@ -3153,6 +3189,48 @@ fn generate_field_metadata(
 	}
 
 	Ok(items)
+}
+
+/// Convert a literal `#[field(default = ...)]` value into inspection metadata.
+///
+/// The migration registration path already supports the same literal set. Keeping
+/// this representation typed lets model-derived test schemas preserve SQL defaults.
+fn field_default_to_metadata(expr: &syn::Expr, orm_crate: &TokenStream) -> Option<TokenStream> {
+	let field_kwarg = quote! { #orm_crate::fields::FieldKwarg };
+
+	if let syn::Expr::Unary(unary) = expr
+		&& matches!(unary.op, syn::UnOp::Neg(_))
+		&& let syn::Expr::Lit(literal) = unary.expr.as_ref()
+		&& let syn::Lit::Int(value) = &literal.lit
+		&& let Ok(value) = value.base10_parse::<i64>()
+	{
+		let value = -value;
+		return Some(quote! { #field_kwarg::Int(#value) });
+	}
+
+	let syn::Expr::Lit(literal) = expr else {
+		return None;
+	};
+
+	match &literal.lit {
+		syn::Lit::Bool(value) => {
+			let value = value.value;
+			Some(quote! { #field_kwarg::Bool(#value) })
+		}
+		syn::Lit::Int(value) => {
+			let value = value.base10_parse::<i64>().ok()?;
+			Some(quote! { #field_kwarg::Int(#value) })
+		}
+		syn::Lit::Float(value) => {
+			let value = value.base10_parse::<f64>().ok()?;
+			Some(quote! { #field_kwarg::Float(#value) })
+		}
+		syn::Lit::Str(value) => {
+			let value = value.value();
+			Some(quote! { #field_kwarg::String(#value.to_string()) })
+		}
+		_ => None,
+	}
 }
 
 /// Generate automatic registration code using ctor
@@ -3953,8 +4031,13 @@ fn generate_composite_pk_type(struct_name: &syn::Ident, pk_fields: &[&FieldInfo]
 /// Generates two methods:
 /// - `relationship_metadata()` for Model trait (returns `Vec<RelationInfo>`)
 /// - `__migration_relationships()` for migration system (returns `Vec<RelationshipMetadata>`)
+///
+/// Many-to-many targets are inferred from `ManyToManyField<Source, Target>` because
+/// the corresponding `#[rel(many_to_many)]` attribute does not accept `to`.
 fn generate_relationship_metadata(
 	rel_fields: &[(Ident, RelAttribute)],
+	field_infos: &[FieldInfo],
+	fk_field_infos: &[ForeignKeyFieldInfo],
 	_app_label: &str,
 	_struct_name: &Ident,
 ) -> TokenStream {
@@ -3969,10 +4052,21 @@ fn generate_relationship_metadata(
 		};
 	}
 
+	let foreign_keys: HashMap<String, &ForeignKeyFieldInfo> = fk_field_infos
+		.iter()
+		.map(|field| (field.field_name.to_string(), field))
+		.collect();
+	let fields: HashMap<String, &FieldInfo> = field_infos
+		.iter()
+		.map(|field| (field.name.to_string(), field))
+		.collect();
+
 	let relation_info_items: Vec<TokenStream> = rel_fields
 		.iter()
 		.map(|(field_name, rel)| {
 			let field_name_str = field_name.to_string();
+			let foreign_key_info = foreign_keys.get(&field_name_str);
+			let field_info = fields.get(&field_name_str);
 
 			// Map RelationType to RelationshipType
 			let relationship_type = match rel.rel_type {
@@ -3998,11 +4092,29 @@ fn generate_relationship_metadata(
 				}
 			};
 
-			let related_model = rel.to.as_ref().map_or_else(
-				|| quote! { "" },
-				|path| {
-					let path_str = quote! { #path }.to_string();
-					quote! { #path_str }
+			let related_model = foreign_key_info.map_or_else(
+				|| {
+					rel.to.as_ref().map_or_else(
+						|| {
+							field_info
+								.and_then(|field| extract_m2m_target_type(&field.ty))
+								.map_or_else(
+									|| quote! { "" },
+									|target| {
+										let target = relation_target_model_name(target);
+										quote! { #target }
+									},
+								)
+						},
+						|path| {
+							let path_str = quote! { #path }.to_string();
+							quote! { #path_str }
+						},
+					)
+				},
+				|field| {
+					let target = relation_target_model_name(&field.target_type);
+					quote! { #target }
 				},
 			);
 
@@ -4014,7 +4126,11 @@ fn generate_relationship_metadata(
 			// For ForeignKey, the foreign key field is the field itself
 			let foreign_key = match rel.rel_type {
 				RelationType::ForeignKey | RelationType::OneToOne => {
-					quote! { Some(#field_name_str.to_string()) }
+					let column = foreign_key_info.map_or_else(
+						|| format!("{}_id", field_name_str),
+						|field| field.id_column_name.clone(),
+					);
+					quote! { Some(#column.to_string()) }
 				}
 				RelationType::OneToMany => rel
 					.foreign_key
@@ -4059,6 +4175,16 @@ fn generate_relationship_metadata(
 			]
 		}
 	}
+}
+
+fn relation_target_model_name(ty: &Type) -> String {
+	if let Type::Path(type_path) = ty
+		&& let Some(segment) = type_path.path.segments.last()
+	{
+		return segment.ident.to_string();
+	}
+
+	quote! { #ty }.to_string()
 }
 
 /// Check if a type is Uuid or `Option<Uuid>`.
@@ -5978,6 +6104,28 @@ mod tests {
 		assert!(output_str.contains("pub fn new () -> EmptyRequiredModelBuilder"));
 		assert!(output_str.contains("pub fn build () -> EmptyRequiredModelBuilder"));
 		assert!(!output_str.contains("EmptyRequiredModelBuilder < >"));
+	}
+
+	#[test]
+	fn test_relationship_metadata_infers_many_to_many_target_model() {
+		// Arrange
+		let input = quote! {
+			#[model(app_label = "test", table_name = "articles")]
+			pub struct Article {
+				#[field(primary_key = true)]
+				pub id: i64,
+				#[rel(many_to_many)]
+				pub tags: ManyToManyField<Article, Tag>,
+			}
+		};
+
+		// Act
+		let output = model_derive_impl(syn::parse2(input).unwrap()).unwrap();
+		let output_str = output.to_string();
+
+		// Assert
+		assert!(output_str.contains("related_model : \"Tag\" . to_string ()"));
+		assert!(!output_str.contains("related_model : \"\" . to_string ()"));
 	}
 
 	#[test]

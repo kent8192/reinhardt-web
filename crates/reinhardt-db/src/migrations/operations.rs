@@ -3583,6 +3583,19 @@ impl GeneratedColumnDefinition {
 		}
 	}
 
+	/// Create generated-column metadata from reconstructable expression tokens.
+	///
+	/// This is used by metadata-driven schema builders when the derive macro
+	/// records the expression tokens but cannot construct a runtime `SchemaExpr`.
+	pub fn tokens(expr_tokens: impl Into<String>, storage: GeneratedStorage) -> Self {
+		Self {
+			expr: None,
+			expr_tokens: Some(expr_tokens.into()),
+			raw_sql: None,
+			storage,
+		}
+	}
+
 	pub(crate) fn typed_expr(&self) -> Option<SchemaExpr> {
 		self.expr.as_deref().cloned().or_else(|| {
 			self.expr_tokens
@@ -3987,6 +4000,7 @@ pub fn field_type_string_to_field_type(
 
 		// JSON types
 		"JSONField" => Ok(FieldType::Json),
+		"JsonField" => Ok(FieldType::JsonBinary),
 
 		// File fields (stored as path strings)
 		"FileField" | "ImageField" => {

@@ -6,7 +6,7 @@
 
 use crate::{DiResult, Injectable, InjectionContext};
 use async_trait::async_trait;
-use dashmap::DashMap;
+use dashmap::{DashMap, DashSet};
 use std::any::{Any, TypeId};
 use std::future::Future;
 use std::marker::PhantomData;
@@ -147,6 +147,8 @@ pub struct DependencyRegistry {
 	/// Maps type ID to its fully-qualified type name from `std::any::type_name`.
 	/// Used for framework type detection (pseudo orphan rule).
 	qualified_type_names: DashMap<TypeId, &'static str>,
+	/// Registered output types emitted by syntactically direct provider functions.
+	direct_provider_types: DashSet<TypeId>,
 }
 
 impl DependencyRegistry {
@@ -158,6 +160,7 @@ impl DependencyRegistry {
 			dependencies: DashMap::new(),
 			type_names: DashMap::new(),
 			qualified_type_names: DashMap::new(),
+			direct_provider_types: DashSet::new(),
 		}
 	}
 
@@ -325,6 +328,19 @@ Use a distinct newtype (e.g., `struct Primary{short}({short})`) for each."
 	#[doc(hidden)]
 	pub fn register_qualified_type_name(&self, type_id: TypeId, qualified_name: &'static str) {
 		self.qualified_type_names.insert(type_id, qualified_name);
+	}
+
+	/// Mark a registered output as originating from a syntactically direct provider.
+	///
+	/// This is emitted by `#[injectable]` macro expansion so validation can
+	/// distinguish type aliases from explicit keyed provider return types.
+	#[doc(hidden)]
+	pub fn register_direct_provider_type(&self, type_id: TypeId) {
+		self.direct_provider_types.insert(type_id);
+	}
+
+	pub(crate) fn is_direct_provider_type(&self, type_id: TypeId) -> bool {
+		self.direct_provider_types.contains(&type_id)
 	}
 
 	/// Get the fully-qualified type name for a given `TypeId`.

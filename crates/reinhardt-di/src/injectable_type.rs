@@ -1,7 +1,8 @@
 //! Trait-based wrapper resolution for `#[inject]`.
 
 use crate::{
-	Depends, DiResult, FactoryOutput, Injectable, InjectableKey, context::InjectionContext,
+	Depends, DiResult, Injectable, InjectableKey, KeyedDepends, KeyedFactoryOutput, SelfKey,
+	context::InjectionContext,
 };
 use std::future::Future;
 use std::marker::PhantomData;
@@ -17,14 +18,14 @@ use std::sync::Arc;
 /// # Example
 ///
 /// ```rust
-/// use reinhardt_di::{Depends, FactoryOutput, InjectableKey, InjectableType};
+/// use reinhardt_di::{InjectableKey, InjectableType, KeyedDepends, KeyedFactoryOutput};
 /// use std::sync::Arc;
 ///
 /// struct ConfigKey;
 ///
 /// impl InjectableKey for ConfigKey {}
 ///
-/// struct Lazy<K, T>(Depends<K, T>)
+/// struct Lazy<K, T>(KeyedDepends<K, T>)
 /// where
 ///     K: InjectableKey,
 ///     T: Send + Sync + 'static;
@@ -34,10 +35,10 @@ use std::sync::Arc;
 ///     K: InjectableKey,
 ///     T: Send + Sync + 'static,
 /// {
-///     type Inner = FactoryOutput<K, T>;
+///     type Inner = KeyedFactoryOutput<K, T>;
 ///
 ///     fn from_resolved(output: Arc<Self::Inner>, use_cache: bool) -> Self {
-///         Self(Depends::from_output(output, use_cache))
+///         Self(KeyedDepends::from_output(output, use_cache))
 ///     }
 /// }
 /// ```
@@ -49,15 +50,26 @@ pub trait InjectableType: Sized + Send + 'static {
 	fn from_resolved(inner: Arc<Self::Inner>, use_cache: bool) -> Self;
 }
 
-impl<K, T> InjectableType for Depends<K, T>
+impl<T> InjectableType for Depends<T>
+where
+	T: Send + Sync + 'static,
+{
+	type Inner = KeyedFactoryOutput<SelfKey<T>, T>;
+
+	fn from_resolved(output: Arc<Self::Inner>, use_cache: bool) -> Self {
+		Depends::from_output(output, use_cache)
+	}
+}
+
+impl<K, T> InjectableType for KeyedDepends<K, T>
 where
 	K: InjectableKey,
 	T: Send + Sync + 'static,
 {
-	type Inner = FactoryOutput<K, T>;
+	type Inner = KeyedFactoryOutput<K, T>;
 
 	fn from_resolved(output: Arc<Self::Inner>, use_cache: bool) -> Self {
-		Depends::from_output(output, use_cache)
+		KeyedDepends::from_output(output, use_cache)
 	}
 }
 
@@ -135,7 +147,7 @@ where
 		self,
 		ctx: &'a InjectionContext,
 		use_cache: bool,
-	) -> __InjectResolveFuture<'a, Depends<K, T>>
+	) -> __InjectResolveFuture<'a, KeyedDepends<K, T>>
 	where
 		T: 'a;
 }
@@ -149,11 +161,11 @@ where
 		self,
 		ctx: &'a InjectionContext,
 		use_cache: bool,
-	) -> __InjectResolveFuture<'a, Depends<K, T>>
+	) -> __InjectResolveFuture<'a, KeyedDepends<K, T>>
 	where
 		T: 'a,
 	{
-		Box::pin(async move { Depends::<K, T>::resolve_from_registry(ctx, use_cache).await })
+		Box::pin(async move { KeyedDepends::<K, T>::resolve_from_registry(ctx, use_cache).await })
 	}
 }
 
@@ -167,7 +179,7 @@ where
 		self,
 		ctx: &'a InjectionContext,
 		use_cache: bool,
-	) -> __InjectResolveFuture<'a, Depends<K, T>>
+	) -> __InjectResolveFuture<'a, KeyedDepends<K, T>>
 	where
 		T: 'a;
 }
@@ -181,11 +193,11 @@ where
 		self,
 		ctx: &'a InjectionContext,
 		use_cache: bool,
-	) -> __InjectResolveFuture<'a, Depends<K, T>>
+	) -> __InjectResolveFuture<'a, KeyedDepends<K, T>>
 	where
 		T: 'a,
 	{
-		Box::pin(async move { Depends::<K, T>::resolve_from_registry(ctx, use_cache).await })
+		Box::pin(async move { KeyedDepends::<K, T>::resolve_from_registry(ctx, use_cache).await })
 	}
 }
 

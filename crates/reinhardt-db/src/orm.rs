@@ -115,6 +115,8 @@ pub mod indexes;
 pub mod inspection;
 /// Into primary key module.
 pub mod into_primary_key;
+/// Typed JSON field wrapper.
+pub mod json;
 /// Model module.
 pub mod model;
 pub mod query_fields;
@@ -219,6 +221,7 @@ pub use functions::{
 };
 pub use indexes::{BTreeIndex, GinIndex, GistIndex, HashIndex, Index};
 pub use into_primary_key::IntoPrimaryKey;
+pub use json::Json;
 pub use model::{FieldSelector, Model, SoftDeletable, SoftDelete, Timestamped, Timestamps};
 pub use query_fields::{
 	Comparable, DateTimeType, Field, GroupByFields, Lookup, LookupType, LookupValue, NumericType,

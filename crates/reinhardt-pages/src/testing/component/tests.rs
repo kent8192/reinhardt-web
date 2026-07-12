@@ -23,10 +23,78 @@ fn renders_page_tree_and_pretty_output() {
 }
 
 #[test]
+fn suspense_nodes_render_the_active_branch() {
+	let pending_screen = render(Page::Suspense(SuspenseNode::new(
+		None,
+		|| true,
+		|| PageElement::new("span").child("Loading").into_page(),
+		|| PageElement::new("span").child("Ready").into_page(),
+	)));
+
+	assert_eq!(pending_screen.get_by_text("Loading").tag_name(), "span");
+	assert!(pending_screen.query_by_text("Ready").is_none());
+
+	let resolved_screen = render(Page::Suspense(SuspenseNode::new(
+		None,
+		|| false,
+		|| PageElement::new("span").child("Loading").into_page(),
+		|| PageElement::new("span").child("Ready").into_page(),
+	)));
+
+	assert_eq!(resolved_screen.get_by_text("Ready").tag_name(), "span");
+	assert!(resolved_screen.query_by_text("Loading").is_none());
+}
+
+#[test]
+fn deferred_nodes_render_content_branch() {
+	let screen = render(Page::Deferred(DeferredNode::new(
+		"deferred-test",
+		|| {
+			PageElement::new("span")
+				.child("Deferred fallback")
+				.into_page()
+		},
+		|| {
+			PageElement::new("span")
+				.child("Deferred content")
+				.into_page()
+		},
+	)));
+
+	assert_eq!(screen.get_by_text("Deferred content").tag_name(), "span");
+	assert!(screen.query_by_text("Deferred fallback").is_none());
+}
+
+#[test]
 fn pretty_text_only_screen_has_trailing_newline() {
 	let screen = render(Page::text("Hello"));
 
 	assert_eq!(screen.pretty(), "Hello\n");
+}
+
+#[test]
+fn renders_pending_suspense_branch() {
+	let screen = render(Page::Suspense(SuspenseNode::new(
+		None,
+		|| true,
+		|| PageElement::new("p").child("Loading").into_page(),
+		|| PageElement::new("main").child("Ready").into_page(),
+	)));
+
+	assert_eq!(screen.get_by_text("Loading").tag_name(), "p");
+	assert!(screen.query_by_text("Ready").is_none());
+}
+
+#[test]
+fn renders_deferred_content_branch() {
+	let screen = render(Page::Deferred(DeferredNode::new(
+		"deferred-content",
+		|| PageElement::new("p").child("Deferred loading").into_page(),
+		|| PageElement::new("main").child("Deferred ready").into_page(),
+	)));
+
+	assert_eq!(screen.get_by_text("Deferred ready").tag_name(), "main");
+	assert!(screen.query_by_text("Deferred loading").is_none());
 }
 
 #[test]
@@ -122,27 +190,6 @@ fn hidden_elements_are_excluded_from_queries() {
 	assert_eq!(screen.get_by_text("Save").tag_name(), "button");
 }
 
-#[test]
-fn suspense_nodes_render_the_active_branch() {
-	let pending = render(Page::Suspense(SuspenseNode::new(
-		None,
-		|| true,
-		|| PageElement::new("span").child("Loading").into_page(),
-		|| PageElement::new("span").child("Loaded").into_page(),
-	)));
-	let resolved = render(Page::Suspense(SuspenseNode::new(
-		None,
-		|| false,
-		|| PageElement::new("span").child("Loading").into_page(),
-		|| PageElement::new("span").child("Loaded").into_page(),
-	)));
-
-	assert_eq!(pending.get_by_text("Loading").tag_name(), "span");
-	assert!(pending.query_by_text("Loaded").is_none());
-	assert_eq!(resolved.get_by_text("Loaded").tag_name(), "span");
-	assert!(resolved.query_by_text("Loading").is_none());
-}
-
 #[tokio::test]
 async fn suspense_nodes_rerender_the_active_branch_after_settle() {
 	let pending = Signal::new(true);
@@ -161,18 +208,6 @@ async fn suspense_nodes_rerender_the_active_branch_after_settle() {
 
 	assert!(screen.query_by_text("Loading").is_none());
 	assert_eq!(screen.get_by_text("Loaded").tag_name(), "span");
-}
-
-#[test]
-fn deferred_nodes_render_content_branch() {
-	let screen = render(Page::Deferred(DeferredNode::new(
-		"test-deferred",
-		|| PageElement::new("span").child("Fallback").into_page(),
-		|| PageElement::new("span").child("Content").into_page(),
-	)));
-
-	assert_eq!(screen.get_by_text("Content").tag_name(), "span");
-	assert!(screen.query_by_text("Fallback").is_none());
 }
 
 #[test]
