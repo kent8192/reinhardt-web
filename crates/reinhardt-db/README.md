@@ -368,14 +368,19 @@ explicit batch queries for collection relationships. Use
 
 Model derives generate typed relation path accessors such as
 `Post::rel_author().field_email()`. Use these paths in `filter()`,
-`select_related()`, and single-hop `prefetch_related()` to replace string
-traversal like `"author__email"` with compile-time checked relation and field
-names.
+single-valued `select_related()`, and direct multi-valued
+`prefetch_related()` to replace string traversal like `"author__email"` with
+compile-time checked relation and field names. Use `select_related()` for
+forward foreign keys and one-to-one paths; use `prefetch_related()` for reverse
+one-to-many and many-to-many paths.
 
 String relation APIs remain available in 0.4.0 for incremental migration. New
 code should prefer typed paths. Invalid string relation names fail during
-relation-loading builder construction, and typed related filters are limited to
-SELECT queries because write builders do not emit relation joins.
+relation-loading builder construction when relationship metadata is available;
+manual models without metadata retain legacy naming behavior. Typed related
+filters are limited to SELECT queries because write builders do not emit
+relation joins, and counts across multi-valued typed filters deduplicate root
+primary keys.
 
 ### Create Migrations
 

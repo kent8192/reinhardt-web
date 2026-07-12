@@ -1895,7 +1895,7 @@ fn generate_relation_traversal_accessors(
 			);
 
 			let source_table = quote! { <#struct_name as #orm_crate::Model>::table_name() };
-			let source_pk = quote! { <#struct_name as #orm_crate::Model>::primary_key_field() };
+			let source_pk = quote! { <#struct_name as #orm_crate::Model>::primary_key_column() };
 			let (target_ty, steps) = match rel.rel_type {
 				RelationType::ForeignKey | RelationType::OneToOne => {
 					let target_ty = extract_fk_target_type(&field.ty)?;
@@ -1904,7 +1904,7 @@ fn generate_relation_traversal_accessors(
 						.clone()
 						.unwrap_or_else(|| format!("{}_id", field_name_str));
 					let target_column = rel.to_field.as_ref().map_or_else(
-						|| quote! { <#target_ty as #orm_crate::Model>::primary_key_field() },
+						|| quote! { <#target_ty as #orm_crate::Model>::primary_key_column() },
 						|field| quote! { #field },
 					);
 					let join_kind = if rel.null == Some(true) {
@@ -1923,6 +1923,7 @@ fn generate_relation_traversal_accessors(
 									source_column: (#source_column).into(),
 									target_column: (#target_column).into(),
 									default_join_kind: #join_kind,
+									multiplicity: #orm_crate::relations::RelationMultiplicity::Single,
 								}
 							]
 						},
@@ -1942,6 +1943,7 @@ fn generate_relation_traversal_accessors(
 									source_column: (#source_pk).into(),
 									target_column: (#foreign_key).into(),
 									default_join_kind: #orm_crate::relations::RelationJoinKind::Left,
+									multiplicity: #orm_crate::relations::RelationMultiplicity::Multiple,
 								}
 							]
 						},
@@ -1951,7 +1953,7 @@ fn generate_relation_traversal_accessors(
 					let target_ty = extract_m2m_target_type(&field.ty)?;
 					let target_table = quote! { <#target_ty as #orm_crate::Model>::table_name() };
 					let target_pk =
-						quote! { <#target_ty as #orm_crate::Model>::primary_key_field() };
+						quote! { <#target_ty as #orm_crate::Model>::primary_key_column() };
 					let through = rel.through.as_ref().map_or_else(
 						|| {
 							quote! {
@@ -1997,6 +1999,7 @@ fn generate_relation_traversal_accessors(
 									source_column: (#source_pk).into(),
 									target_column: (#source_field).into(),
 									default_join_kind: #orm_crate::relations::RelationJoinKind::Left,
+									multiplicity: #orm_crate::relations::RelationMultiplicity::Multiple,
 								},
 								#orm_crate::relations::RelationStep {
 									name: (#field_name_str).into(),
@@ -2005,6 +2008,7 @@ fn generate_relation_traversal_accessors(
 									source_column: (#target_field).into(),
 									target_column: (#target_pk).into(),
 									default_join_kind: #orm_crate::relations::RelationJoinKind::Left,
+									multiplicity: #orm_crate::relations::RelationMultiplicity::Single,
 								}
 							]
 						},
@@ -2778,6 +2782,11 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 			composite_pk_type_ref,
 		)
 	};
+	let pk_column_name = pk_fields[0]
+		.config
+		.db_column
+		.clone()
+		.unwrap_or_else(|| pk_fields[0].name.to_string());
 
 	// Generate field_metadata implementation
 	let field_metadata_items = generate_field_metadata(&field_infos, &fk_field_infos)?;
@@ -3060,6 +3069,10 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 
 			fn primary_key_field() -> &'static str {
 				stringify!(#pk_name)
+			}
+
+			fn primary_key_column() -> &'static str {
+				#pk_column_name
 			}
 
 			fn field_is_none(&self, field_name: &str) -> bool {

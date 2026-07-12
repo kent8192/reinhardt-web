@@ -266,6 +266,7 @@ pub mod db {
 			fn new_fields() -> Self::Fields;
 			fn app_label() -> &'static str;
 			fn primary_key_field() -> &'static str;
+			fn primary_key_column() -> &'static str;
 			fn primary_key(&self) -> Option<Self::PrimaryKey>;
 			fn set_primary_key(&mut self, value: Self::PrimaryKey);
 			fn field_is_none(&self, field_name: &str) -> bool;
@@ -373,6 +374,12 @@ pub mod db {
 				Left,
 			}
 
+			#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+			pub enum RelationMultiplicity {
+				Single,
+				Multiple,
+			}
+
 			#[derive(Debug, Clone, PartialEq, Eq)]
 			pub struct RelationStep {
 				pub name: Cow<'static, str>,
@@ -381,6 +388,7 @@ pub mod db {
 				pub source_column: Cow<'static, str>,
 				pub target_column: Cow<'static, str>,
 				pub default_join_kind: RelationJoinKind,
+				pub multiplicity: RelationMultiplicity,
 			}
 
 			pub trait RelationDescriptor {
@@ -400,6 +408,11 @@ pub mod db {
 					None
 				}
 				fn leaf_alias(&self) -> &str;
+				fn is_multi_valued(&self) -> bool {
+					self.steps()
+						.iter()
+						.any(|step| step.multiplicity == RelationMultiplicity::Multiple)
+				}
 			}
 
 			pub struct RelationPath<Root: Model, Target: Model> {

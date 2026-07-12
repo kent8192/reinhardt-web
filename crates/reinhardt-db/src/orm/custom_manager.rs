@@ -120,7 +120,7 @@ use super::connection::{DatabaseBackend, DatabaseConnection};
 use super::cte::CTE;
 use super::manager::Manager;
 use super::model::Model;
-use super::query::{QueryFilterInput, QuerySet};
+use super::query::{QueryFilterInput, QuerySet, RelationLoadInput};
 
 /// Trait that exposes the full surface area of an object manager and provides
 /// extension hooks for custom behavior.
@@ -207,7 +207,10 @@ pub trait CustomManager: Sized + Send + Sync {
 	}
 
 	/// Eager-load related objects via SQL `JOIN`.
-	fn select_related(&self, fields: &[&str]) -> QuerySet<Self::Model> {
+	fn select_related<I>(&self, fields: I) -> QuerySet<Self::Model>
+	where
+		I: RelationLoadInput<Self::Model>,
+	{
 		Manager::<Self::Model>::new().select_related(fields)
 	}
 
@@ -222,7 +225,10 @@ pub trait CustomManager: Sized + Send + Sync {
 	}
 
 	/// Pre-fetch related objects in separate queries.
-	fn prefetch_related(&self, fields: &[&str]) -> QuerySet<Self::Model> {
+	fn prefetch_related<I>(&self, fields: I) -> QuerySet<Self::Model>
+	where
+		I: RelationLoadInput<Self::Model>,
+	{
 		Manager::<Self::Model>::new().prefetch_related(fields)
 	}
 

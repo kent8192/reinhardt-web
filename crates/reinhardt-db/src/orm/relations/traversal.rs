@@ -22,6 +22,15 @@ pub enum RelationJoinKind {
 	Left,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+/// Number of target rows that one source row can reach through a relation hop.
+pub enum RelationMultiplicity {
+	/// Each source row reaches at most one target row.
+	Single,
+	/// Each source row can reach multiple target rows.
+	Multiple,
+}
+
 impl RelationJoinKind {
 	/// Merge two join requirements, preserving left joins when either side needs one.
 	pub const fn merge(self, other: Self) -> Self {
@@ -47,6 +56,8 @@ pub struct RelationStep {
 	pub target_column: Cow<'static, str>,
 	/// Default join kind for this hop.
 	pub default_join_kind: RelationJoinKind,
+	/// Whether this hop can multiply root rows.
+	pub multiplicity: RelationMultiplicity,
 }
 
 /// Static descriptor generated for a concrete model relation.
@@ -88,6 +99,12 @@ pub trait RelationPathLike {
 	}
 	/// Alias of the final joined relation.
 	fn leaf_alias(&self) -> &str;
+	/// Return whether any hop can produce multiple target rows per source row.
+	fn is_multi_valued(&self) -> bool {
+		self.steps()
+			.iter()
+			.any(|step| step.multiplicity == RelationMultiplicity::Multiple)
+	}
 }
 
 #[derive(Debug, Clone)]
@@ -114,7 +131,7 @@ impl<Root: Model, Target: Model> RelationPath<Root, Target> {
 	}
 
 	fn from_smallvec(path_steps: SmallVec<[RelationStep; 4]>) -> Self {
-		let step_aliases = step_aliases(&path_steps);
+		let step_aliases = step_aliases(&path_steps, Root::table_name());
 		Self {
 			steps: path_steps,
 			step_aliases,
@@ -140,7 +157,7 @@ impl<Root: Model, Target: Model> RelationPath<Root, Target> {
 		let mut steps = self.steps;
 		steps.extend(D::steps());
 		RelationPath {
-			step_aliases: step_aliases(&steps),
+			step_aliases: step_aliases(&steps, Root::table_name()),
 			steps,
 			join_kind_override: self.join_kind_override,
 			_phantom: PhantomData,
@@ -204,6 +221,8 @@ pub struct PlannedRelationJoin {
 	pub target_column: String,
 	/// SQL join kind for this planned join.
 	pub join_kind: RelationJoinKind,
+	/// Whether this join can multiply root rows.
+	pub multiplicity: RelationMultiplicity,
 }
 
 #[derive(Debug, Clone)]
@@ -261,12 +280,19 @@ impl RelationJoinGraph {
 			} else {
 				join_kind_override.unwrap_or(step.default_join_kind)
 			};
-			if let Some(existing) = self.joins.iter_mut().find(|join| {
+			if let Some(existing_index) = self.joins.iter().position(|join| {
 				join.source_alias == source_alias && join.relation_name == step.name.as_ref()
 			}) {
+				let existing = &mut self.joins[existing_index];
+				let was_left = existing.join_kind == RelationJoinKind::Left;
 				existing.join_kind = existing.join_kind.merge(requested_join_kind);
-				force_downstream_left |= existing.join_kind == RelationJoinKind::Left;
-				source_alias = existing.alias.clone();
+				let is_left = existing.join_kind == RelationJoinKind::Left;
+				let existing_alias = existing.alias.clone();
+				if !was_left && is_left {
+					self.promote_descendants_to_left(&existing_alias);
+				}
+				force_downstream_left |= is_left;
+				source_alias = existing_alias;
 				continue;
 			}
 
@@ -278,9 +304,22 @@ impl RelationJoinGraph {
 				source_column: step.source_column.to_string(),
 				target_column: step.target_column.to_string(),
 				join_kind: requested_join_kind,
+				multiplicity: step.multiplicity,
 			});
 			force_downstream_left |= requested_join_kind == RelationJoinKind::Left;
 			source_alias = alias;
+		}
+	}
+
+	fn promote_descendants_to_left(&mut self, source_alias: &str) {
+		let mut pending = vec![source_alias.to_string()];
+		while let Some(parent_alias) = pending.pop() {
+			for join in &mut self.joins {
+				if join.source_alias == parent_alias {
+					join.join_kind = RelationJoinKind::Left;
+					pending.push(join.alias.clone());
+				}
+			}
 		}
 	}
 
@@ -292,6 +331,13 @@ impl RelationJoinGraph {
 	/// Return the planned joins in traversal order.
 	pub fn joins(&self) -> &[PlannedRelationJoin] {
 		&self.joins
+	}
+
+	/// Return whether any planned join can produce multiple rows per root row.
+	pub fn has_multi_valued_join(&self) -> bool {
+		self.joins
+			.iter()
+			.any(|join| join.multiplicity == RelationMultiplicity::Multiple)
 	}
 }
 
@@ -310,18 +356,22 @@ fn default_join_kind(steps: &[RelationStep]) -> RelationJoinKind {
 
 fn step_alias(source_alias: &str, step_name: &str, root_alias: &str) -> String {
 	if source_alias == root_alias {
-		step_name.to_string()
+		if step_name == root_alias {
+			format!("{}__{}", root_alias, step_name)
+		} else {
+			step_name.to_string()
+		}
 	} else {
 		format!("{}__{}", source_alias, step_name)
 	}
 }
 
-fn step_aliases(steps: &[RelationStep]) -> SmallVec<[String; 4]> {
+fn step_aliases(steps: &[RelationStep], root_alias: &str) -> SmallVec<[String; 4]> {
 	let mut aliases = SmallVec::new();
 	let mut source_alias = String::new();
 	for (index, step) in steps.iter().enumerate() {
 		let alias = if index == 0 {
-			step.name.to_string()
+			step_alias(root_alias, step.name.as_ref(), root_alias)
 		} else {
 			step_alias(&source_alias, step.name.as_ref(), "")
 		};
@@ -554,6 +604,7 @@ mod tests {
 				source_column: "corpus_file_id".into(),
 				target_column: "id".into(),
 				default_join_kind: RelationJoinKind::Inner,
+				multiplicity: RelationMultiplicity::Single,
 			}]
 		}
 	}
@@ -572,6 +623,7 @@ mod tests {
 				source_column: "corpus_file_id".into(),
 				target_column: "id".into(),
 				default_join_kind: RelationJoinKind::Left,
+				multiplicity: RelationMultiplicity::Single,
 			}]
 		}
 	}
@@ -590,6 +642,7 @@ mod tests {
 				source_column: "project_id".into(),
 				target_column: "id".into(),
 				default_join_kind: RelationJoinKind::Left,
+				multiplicity: RelationMultiplicity::Single,
 			}]
 		}
 	}
@@ -608,6 +661,26 @@ mod tests {
 				source_column: "project_id".into(),
 				target_column: "id".into(),
 				default_join_kind: RelationJoinKind::Inner,
+				multiplicity: RelationMultiplicity::Single,
+			}]
+		}
+	}
+
+	struct ProjectNamedProjects;
+
+	impl RelationDescriptor for ProjectNamedProjects {
+		type Source = Project;
+		type Target = Project;
+
+		fn steps() -> Vec<RelationStep> {
+			vec![RelationStep {
+				name: "projects".into(),
+				source_table: "projects".into(),
+				target_table: "projects".into(),
+				source_column: "parent_id".into(),
+				target_column: "id".into(),
+				default_join_kind: RelationJoinKind::Inner,
+				multiplicity: RelationMultiplicity::Single,
 			}]
 		}
 	}
@@ -624,6 +697,7 @@ mod tests {
 				source_column: "parent_id".into(),
 				target_column: "id".into(),
 				default_join_kind: RelationJoinKind::Inner,
+				multiplicity: RelationMultiplicity::Single,
 			}]
 		}
 	}
@@ -695,6 +769,34 @@ mod tests {
 		assert_eq!(joins[1].alias, "optional_corpus_file__required_project");
 		assert_eq!(joins[1].source_alias, "optional_corpus_file");
 		assert_eq!(joins[1].join_kind, RelationJoinKind::Left);
+	}
+
+	#[test]
+	fn join_graph_promotes_existing_descendants_when_prefix_becomes_left() {
+		let longer = RelationPath::<Document, CorpusFile>::from_descriptor::<DocumentCorpusFile>()
+			.then::<CorpusFileRequiredProject, Project>();
+		let prefix = RelationPath::<Document, CorpusFile>::from_descriptor::<DocumentCorpusFile>()
+			.optional();
+		let mut graph = RelationJoinGraph::new("documents");
+
+		graph.add_path(&longer);
+		graph.add_path(&prefix);
+
+		assert_eq!(graph.joins().len(), 2);
+		assert_eq!(graph.joins()[0].join_kind, RelationJoinKind::Left);
+		assert_eq!(graph.joins()[1].join_kind, RelationJoinKind::Left);
+	}
+
+	#[test]
+	fn join_graph_disambiguates_relation_alias_matching_root_alias() {
+		let path = RelationPath::<Project, Project>::from_descriptor::<ProjectNamedProjects>();
+		let mut graph = RelationJoinGraph::new("projects");
+
+		graph.add_path(&path);
+
+		assert_eq!(path.leaf_alias(), "projects__projects");
+		assert_eq!(graph.joins()[0].alias, "projects__projects");
+		assert_eq!(graph.joins()[0].source_alias, "projects");
 	}
 
 	#[test]

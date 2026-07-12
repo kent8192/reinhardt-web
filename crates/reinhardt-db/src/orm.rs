@@ -295,8 +295,8 @@ pub use query_options::{
 pub use registry::{ColumnInfo, Mapper, MapperRegistry, TableInfo, registry};
 pub use relations::{
 	GenericRelationConfig, GenericRelationSet, PlannedRelationJoin, RelatedFieldRef,
-	RelationDescriptor, RelationJoinGraph, RelationJoinKind, RelationPath, RelationPathLike,
-	RelationStep, RelationTarget,
+	RelationDescriptor, RelationJoinGraph, RelationJoinKind, RelationMultiplicity, RelationPath,
+	RelationPathLike, RelationStep, RelationTarget,
 };
 pub use relationship::{CascadeOption, Relationship, RelationshipDirection, RelationshipType};
 pub use session::{Session, SessionError};

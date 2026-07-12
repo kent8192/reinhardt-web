@@ -6,7 +6,7 @@ include!("../support.rs");
 #[model(table_name = "corpus_files")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct CorpusFile {
-	#[field(primary_key = true)]
+	#[field(primary_key = true, db_column = "corpus_pk")]
 	id: i64,
 	#[field(max_length = 255)]
 	normalized_path: String,
@@ -54,6 +54,12 @@ struct Document {
 }
 
 fn main() {
+	use db::orm::relations::RelationPathLike;
+
+	assert_eq!(
+		Document::rel_corpus_file().steps()[0].target_column,
+		"corpus_pk"
+	);
 	let _forward = Document::rel_project().field_name().eq("alpha");
 	let _forward_low_level = Document::rel_project()
 		.field(Project::field_name())
