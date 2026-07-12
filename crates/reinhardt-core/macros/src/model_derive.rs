@@ -2463,16 +2463,16 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 	let field_metadata_items = generate_field_metadata(&field_infos, &fk_field_infos)?;
 
 	// Generate auto-registration code
-	let registration_code = generate_registration_code(
+	let registration_code = generate_registration_code(RegistrationCodeInput {
 		struct_name,
 		app_label,
 		table_name,
-		&field_infos,
-		&fk_field_infos,
-		&unique_constraint_names,
-		&unique_constraint_field_lists,
-		model_config.serde_serialize && model_config.serde_deserialize,
-	)?;
+		field_infos: &field_infos,
+		fk_field_infos: &fk_field_infos,
+		unique_constraint_names: &unique_constraint_names,
+		unique_constraint_field_lists: &unique_constraint_field_lists,
+		register_fixture_handler: model_config.serde_serialize && model_config.serde_deserialize,
+	})?;
 
 	// Generate relationship registration code for RELATIONSHIPS registry
 	let relationship_registrations =
@@ -3234,17 +3234,29 @@ fn field_default_to_metadata(expr: &syn::Expr, orm_crate: &TokenStream) -> Optio
 	}
 }
 
-/// Generate automatic registration code using ctor
-fn generate_registration_code(
-	struct_name: &syn::Ident,
-	app_label: &str,
-	table_name: &str,
-	field_infos: &[FieldInfo],
-	fk_field_infos: &[ForeignKeyFieldInfo],
-	unique_constraint_names: &[String],
-	unique_constraint_field_lists: &[Vec<String>],
+struct RegistrationCodeInput<'a> {
+	struct_name: &'a syn::Ident,
+	app_label: &'a str,
+	table_name: &'a str,
+	field_infos: &'a [FieldInfo],
+	fk_field_infos: &'a [ForeignKeyFieldInfo],
+	unique_constraint_names: &'a [String],
+	unique_constraint_field_lists: &'a [Vec<String>],
 	register_fixture_handler: bool,
-) -> Result<TokenStream> {
+}
+
+/// Generate automatic registration code using ctor.
+fn generate_registration_code(input: RegistrationCodeInput<'_>) -> Result<TokenStream> {
+	let RegistrationCodeInput {
+		struct_name,
+		app_label,
+		table_name,
+		field_infos,
+		fk_field_infos,
+		unique_constraint_names,
+		unique_constraint_field_lists,
+		register_fixture_handler,
+	} = input;
 	let migrations_crate = get_reinhardt_migrations_crate();
 	let orm_crate = get_reinhardt_orm_crate();
 	let model_name = struct_name.to_string();
