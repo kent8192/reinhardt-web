@@ -564,10 +564,14 @@ impl SsrRenderer {
 		}
 	}
 
-	fn current_buffered_rendered_head_or_view_head(&self, view: &Page) -> Option<Head> {
-		self.rendered_head
-			.clone()
-			.or_else(|| view.find_topmost_head_owned())
+	fn record_buffered_view_head(&mut self, view: &Page) {
+		if self.rendered_head.is_none() {
+			self.rendered_head = view.find_topmost_head_owned();
+		}
+	}
+
+	fn current_buffered_rendered_head(&self) -> Option<Head> {
+		self.rendered_head.clone()
 	}
 
 	/// Renders a component to a full HTML page.
@@ -578,10 +582,10 @@ impl SsrRenderer {
 				.await;
 		}
 
-		let (view, content, body_tail) = self
+		let (_, content, body_tail) = self
 			.render_view_parts_from_factory(|| component.render(), true)
 			.await;
-		let view_head = self.current_buffered_rendered_head_or_view_head(&view);
+		let view_head = self.current_buffered_rendered_head();
 		SsrStream::from_chunks(self.wrap_in_html_with_head_and_body_tail_chunks(
 			&content,
 			&body_tail,
@@ -596,10 +600,10 @@ impl SsrRenderer {
 			return self.render_page_stream_from_factory(|| view.clone()).await;
 		}
 
-		let (view, content, body_tail) = self
+		let (_, content, body_tail) = self
 			.render_view_parts_from_factory(|| view.clone(), true)
 			.await;
-		let view_head = self.current_buffered_rendered_head_or_view_head(&view);
+		let view_head = self.current_buffered_rendered_head();
 		SsrStream::from_chunks(self.wrap_in_html_with_head_and_body_tail_chunks(
 			&content,
 			&body_tail,
@@ -639,10 +643,10 @@ impl SsrRenderer {
 			return self.render_page_stream_from_factory(|| view.clone()).await;
 		}
 
-		let (view, content, body_tail) = self
+		let (_, content, body_tail) = self
 			.render_view_parts_from_factory(|| view.clone(), true)
 			.await;
-		let view_head = self.current_buffered_rendered_head_or_view_head(&view);
+		let view_head = self.current_buffered_rendered_head();
 		SsrStream::from_chunks(self.wrap_in_html_with_head_and_body_tail_chunks(
 			&content,
 			&body_tail,
@@ -652,29 +656,29 @@ impl SsrRenderer {
 
 	/// Renders a component to a buffered full HTML page.
 	pub async fn render_page_to_string<C: Component>(&mut self, component: &C) -> String {
-		let (view, content, body_tail) = self
+		let (_, content, body_tail) = self
 			.render_view_parts_from_factory(|| component.render(), true)
 			.await;
-		let view_head = self.current_buffered_rendered_head_or_view_head(&view);
+		let view_head = self.current_buffered_rendered_head();
 		self.wrap_in_html_with_head_and_body_tail(&content, &body_tail, view_head.as_ref())
 	}
 
 	/// Renders an IntoPage to a buffered full HTML page.
 	pub async fn render_page_into_page_to_string<V: IntoPage>(&mut self, view: V) -> String {
 		let view = view.into_page();
-		let (view, content, body_tail) = self
+		let (_, content, body_tail) = self
 			.render_view_parts_from_factory(|| view.clone(), true)
 			.await;
-		let view_head = self.current_buffered_rendered_head_or_view_head(&view);
+		let view_head = self.current_buffered_rendered_head();
 		self.wrap_in_html_with_head_and_body_tail(&content, &body_tail, view_head.as_ref())
 	}
 
 	/// Renders a View to a buffered full HTML page, using attached head data.
 	pub async fn render_page_with_view_head_to_string(&mut self, view: Page) -> String {
-		let (view, content, body_tail) = self
+		let (_, content, body_tail) = self
 			.render_view_parts_from_factory(|| view.clone(), true)
 			.await;
-		let view_head = self.current_buffered_rendered_head_or_view_head(&view);
+		let view_head = self.current_buffered_rendered_head();
 		self.wrap_in_html_with_head_and_body_tail(&content, &body_tail, view_head.as_ref())
 	}
 
@@ -691,16 +695,17 @@ impl SsrRenderer {
 			let render = scope_context(Rc::clone(&context), async move {
 				self.begin_render(true);
 				let render_start = self.deterministic_render_snapshot();
-				let (view, content) = scope_reactive_node_store(async {
+				let (_, content) = scope_reactive_node_store(async {
 					let view = view_factory();
 					let mut boundaries = Vec::new();
 					self.restore_deterministic_render_snapshot(render_start);
 					self.begin_buffered_render_pass();
 					let content = self.render_stream_shell_page(&view, &mut boundaries).await;
+					self.record_buffered_view_head(&view);
 					(view, content)
 				})
 				.await;
-				let view_head = self.current_buffered_rendered_head_or_view_head(&view);
+				let view_head = self.current_buffered_rendered_head();
 				self.sync_i18n_state();
 				SsrStream::from_chunks(self.wrap_in_html_with_head_and_body_tail_chunks(
 					&content,
@@ -732,7 +737,7 @@ impl SsrRenderer {
 			.await;
 
 			resolve_external_resources(&context).await;
-			let (view, content, boundaries) = loop {
+			let (_, content, boundaries) = loop {
 				self.restore_deterministic_render_snapshot(render_start);
 				self.begin_buffered_render_pass();
 
@@ -742,6 +747,7 @@ impl SsrRenderer {
 						let mut boundaries = Vec::new();
 						let content = self.render_stream_shell_page(&view, &mut boundaries).await;
 						let has_pending_external = context.borrow().has_pending_external();
+						self.record_buffered_view_head(&view);
 						(view, content, boundaries, has_pending_external)
 					})
 					.await;
@@ -753,7 +759,7 @@ impl SsrRenderer {
 				drop(view);
 				resolve_external_resources(&context).await;
 			};
-			let view_head = self.current_buffered_rendered_head_or_view_head(&view);
+			let view_head = self.current_buffered_rendered_head();
 			self.add_resolved_resources_to_state(&context);
 			self.sync_i18n_state();
 
@@ -969,6 +975,7 @@ impl SsrRenderer {
 					let content = self
 						.render_async_page(&view, AsyncRenderMode::Buffered)
 						.await;
+					self.record_buffered_view_head(&view);
 					(view, content)
 				})
 				.await;
@@ -997,6 +1004,7 @@ impl SsrRenderer {
 						.render_async_page(&view, AsyncRenderMode::Buffered)
 						.await;
 					let has_pending = context.borrow().has_pending();
+					self.record_buffered_view_head(&view);
 					(view, content, has_pending)
 				})
 				.await;
@@ -1813,6 +1821,7 @@ mod tests {
 	use crate::reactive::Signal;
 	use crate::reactive::hooks::use_retained_effect;
 	use crate::reactive::runtime::with_runtime;
+	use reinhardt_core::types::page::DeferredNode;
 	use rstest::rstest;
 	use serial_test::serial;
 
@@ -1919,6 +1928,48 @@ mod tests {
 		signal.set(1);
 		with_runtime(|runtime| runtime.flush_updates());
 		assert_eq!(*effect_run_count.borrow(), runs_after_render);
+	}
+
+	#[tokio::test]
+	#[serial]
+	async fn test_ssr_head_lookup_does_not_retain_deferred_content_effects() {
+		let signal = Signal::new(0_i32);
+		let effect_run_count = Rc::new(RefCell::new(0_usize));
+		let view = Page::Deferred(DeferredNode::new(
+			"retained-effect-head-lookup",
+			|| Page::Empty,
+			{
+				let signal = signal.clone();
+				let effect_run_count = Rc::clone(&effect_run_count);
+				move || {
+					use_retained_effect(
+						{
+							let signal = signal.clone();
+							let effect_run_count = Rc::clone(&effect_run_count);
+							move || {
+								signal.get();
+								*effect_run_count.borrow_mut() += 1;
+							}
+						},
+						(signal.clone(),),
+					);
+					PageElement::new("div").child("retained").into_page()
+				}
+			},
+		));
+		let mut renderer = SsrRenderer::new();
+
+		let html = renderer.render_page_with_view_head_to_string(view).await;
+
+		assert!(html.contains("<div>retained</div>"));
+		let runs_after_render = *effect_run_count.borrow();
+		signal.set(1);
+		with_runtime(|runtime| runtime.flush_updates());
+		assert_eq!(
+			*effect_run_count.borrow(),
+			runs_after_render,
+			"head lookup must not retain deferred content effects after SSR"
+		);
 	}
 
 	#[tokio::test]

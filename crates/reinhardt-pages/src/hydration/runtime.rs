@@ -184,27 +184,35 @@ pub fn hydrate<C: Component>(component: &C, root: &Element) -> Result<(), Hydrat
 		HydrationError::StateParseError(format!("Failed to hydrate i18n state: {}", e))
 	})?;
 
-	// 2. Render the component to get expected structure
-	let view = component.render();
-	let resource_counter_offset = crate::reactive::resource::current_client_resource_counter();
-	let id_counter_offset = crate::reactive::hooks::id::id_counter_snapshot();
-	web_sys::console::log_1(&"[Hydration] View rendered".into());
+	let view = {
+		let prepass_store = new_reactive_node_store();
+		with_reactive_node_store(&prepass_store, || -> Result<_, HydrationError> {
+			// Reconciliation and event attachment only inspect lazy views. Keep retained
+			// hook effects from these prepasses out of the mounted root store.
+			let view = component.render();
+			let resource_counter_offset =
+				crate::reactive::resource::current_client_resource_counter();
+			let id_counter_offset = crate::reactive::hooks::id::id_counter_snapshot();
+			web_sys::console::log_1(&"[Hydration] View rendered".into());
 
-	// 3. Reconcile DOM structure
-	crate::reactive::resource::set_client_resource_counter(resource_counter_offset);
-	crate::reactive::hooks::id::restore_id_counter(id_counter_offset);
-	reconcile(root, &view)
-		.map_err(|e| HydrationError::StateParseError(format!("Reconciliation failed: {}", e)))?;
-	web_sys::console::log_1(&"[Hydration] Reconciliation complete".into());
+			crate::reactive::resource::set_client_resource_counter(resource_counter_offset);
+			crate::reactive::hooks::id::restore_id_counter(id_counter_offset);
+			reconcile(root, &view).map_err(|e| {
+				HydrationError::StateParseError(format!("Reconciliation failed: {}", e))
+			})?;
+			web_sys::console::log_1(&"[Hydration] Reconciliation complete".into());
 
-	// 4. Attach event handlers
-	crate::reactive::resource::set_client_resource_counter(resource_counter_offset);
-	crate::reactive::hooks::id::restore_id_counter(id_counter_offset);
-	let mut registry = EventRegistry::new();
-	attach_events_recursive(root, &view, &mut registry)?;
-	crate::reactive::resource::set_client_resource_counter(resource_counter_offset);
-	crate::reactive::hooks::id::restore_id_counter(id_counter_offset);
-	web_sys::console::log_1(&"[Hydration] Events attached".into());
+			crate::reactive::resource::set_client_resource_counter(resource_counter_offset);
+			crate::reactive::hooks::id::restore_id_counter(id_counter_offset);
+			let mut registry = EventRegistry::new();
+			attach_events_recursive(root, &view, &mut registry)?;
+			crate::reactive::resource::set_client_resource_counter(resource_counter_offset);
+			crate::reactive::hooks::id::restore_id_counter(id_counter_offset);
+			web_sys::console::log_1(&"[Hydration] Events attached".into());
+
+			Ok(view)
+		})?
+	};
 
 	// 5. Install reactive DOM owners for hydrated reactive views
 	install_hydrated_reactive_nodes(root, &view);
@@ -220,6 +228,12 @@ pub fn hydrate<C: Component>(component: &C, root: &Element) -> Result<(), Hydrat
 	web_sys::console::log_1(&"[Hydration] Complete!".into());
 
 	Ok(())
+}
+
+#[cfg(wasm)]
+fn with_hydration_prepass_store<R>(f: impl FnOnce() -> R) -> R {
+	let store = new_reactive_node_store();
+	with_reactive_node_store(&store, f)
 }
 
 #[cfg(wasm)]
@@ -245,7 +259,9 @@ fn install_hydrated_reactive_nodes(element: &Element, view: &Page) {
 		Page::Reactive(reactive) => {
 			let render_store = new_reactive_node_store();
 			let rendered = with_reactive_node_store(&render_store, || reactive.render());
-			split_coalesced_text_children(element, std::slice::from_ref(&rendered));
+			with_hydration_prepass_store(|| {
+				split_coalesced_text_children(element, std::slice::from_ref(&rendered));
+			});
 			let nodes = relevant_child_nodes(element);
 			let hydrated_node = crate::component::ReactiveNode::hydrate_at(
 				element.as_web_sys().clone().into(),
@@ -286,7 +302,9 @@ fn install_hydrated_reactive_nodes(element: &Element, view: &Page) {
 					reactive_if.else_view()
 				}
 			});
-			split_coalesced_text_children(element, std::slice::from_ref(&branch_view));
+			with_hydration_prepass_store(|| {
+				split_coalesced_text_children(element, std::slice::from_ref(&branch_view));
+			});
 			let nodes = relevant_child_nodes(element);
 			let (condition, then_view, else_view) = reactive_if.clone().into_parts();
 			let hydrated_node = crate::component::ReactiveIfNode::hydrate_at(
@@ -327,7 +345,7 @@ fn install_hydrated_reactive_nodes(element: &Element, view: &Page) {
 
 #[cfg(wasm)]
 fn install_hydrated_element_children(element: &Element, children: &[Page]) {
-	split_coalesced_text_children(element, children);
+	with_hydration_prepass_store(|| split_coalesced_text_children(element, children));
 	let actual_nodes = relevant_child_nodes(element);
 	install_hydrated_children_reactive_nodes(
 		&element.as_web_sys().clone().into(),
@@ -346,7 +364,7 @@ fn install_hydrated_children_reactive_nodes(
 ) {
 	let mut index = 0;
 	for child in children {
-		let node_count = hydrated_node_count(child);
+		let node_count = with_hydration_prepass_store(|| hydrated_node_count(child));
 		let end = (index + node_count).min(nodes.len());
 		let child_next_sibling = nodes.get(end).cloned().or_else(|| next_sibling.clone());
 		install_hydrated_child_reactive_nodes(
@@ -1010,6 +1028,55 @@ mod tests {
 			log.iter().filter(|entry| entry.as_str() == "run:1").count(),
 			1,
 			"only the tracked hydration render should retain an effect: {log:?}"
+		);
+		drop(log);
+		cleanup_reactive_nodes();
+		root.remove();
+	}
+
+	#[cfg(wasm)]
+	#[wasm_bindgen_test]
+	fn hydration_element_child_prepasses_do_not_retain_effects() {
+		cleanup_reactive_nodes();
+		let document = web_sys::window().unwrap().document().unwrap();
+		let root = document.create_element("div").unwrap();
+		root.set_inner_html("<span>value:0</span>");
+		document.body().unwrap().append_child(&root).unwrap();
+
+		let effect_signal = Signal::new(0_i32);
+		let effect_log = Rc::new(RefCell::new(Vec::new()));
+		let view = PageElement::new("div")
+			.child(Page::reactive({
+				let effect_signal = effect_signal.clone();
+				let effect_log = Rc::clone(&effect_log);
+				move || {
+					use_retained_effect(
+						{
+							let effect_signal = effect_signal.clone();
+							let effect_log = Rc::clone(&effect_log);
+							move || {
+								let value = effect_signal.get();
+								effect_log.borrow_mut().push(format!("run:{value}"));
+								let effect_log = Rc::clone(&effect_log);
+								Some(move || effect_log.borrow_mut().push("cleanup".to_string()))
+							}
+						},
+						(effect_signal.clone(),),
+					);
+					PageElement::new("span").child("value:0").into_page()
+				}
+			}))
+			.into_page();
+
+		install_hydrated_reactive_nodes(&Element::new(root.clone()), &view);
+		effect_signal.set(1);
+		with_runtime(|runtime| runtime.flush_updates());
+
+		let log = effect_log.borrow();
+		assert_eq!(
+			log.iter().filter(|entry| entry.as_str() == "run:1").count(),
+			1,
+			"hydration prepasses must not retain duplicate effects: {log:?}"
 		);
 		drop(log);
 		cleanup_reactive_nodes();
