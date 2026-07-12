@@ -126,19 +126,20 @@ fn scanner_builds_a_deterministic_bundle_and_three_fingerprints() {
 }
 
 #[rstest]
-fn scanner_rejects_noncanonical_style_envelopes() {
+fn scanner_accepts_qualified_style_def_attributes() {
 	let directory = tempfile::tempdir().expect("create temporary package");
 	let manifest = write_package(
 		directory.path(),
-		"#[crate::style_def]\nstatic STYLES: CardStyles = style! { .card { color: red; } };\n",
+		"#[reinhardt_pages::style_def]\nstatic STYLES: CardStyles = style! { .card { color: red; } };\n",
 	);
 	let context = StylePackageContext::resolve(&manifest, None).expect("select root package");
 
-	let error = StyleExtractor::new(context)
+	let bundle = StyleExtractor::new(context)
 		.extract()
-		.expect_err("qualified attribute must fail");
+		.expect("extract a qualified style attribute");
 
-	assert!(error.contains("canonical envelope"));
+	assert_eq!(bundle.definitions.len(), 1);
+	assert_eq!(bundle.definitions[0].style_type_name, "CardStyles");
 }
 
 #[rstest]

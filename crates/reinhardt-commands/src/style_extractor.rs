@@ -473,7 +473,7 @@ fn module_directory(source_path: &Path, has_path_attribute: bool) -> Result<Path
 	Ok(parent.join(stem))
 }
 
-/// Evaluates the `cfg` predicates for authored declarations compiled into the Pages WASM target.
+/// Evaluates `cfg` predicates for declarations compiled into the Pages WASM target and build profile.
 #[derive(Debug, Clone)]
 struct CfgEvaluator {
 	target: CfgTarget,
@@ -489,8 +489,15 @@ struct CfgTarget {
 
 impl CfgEvaluator {
 	fn new(features: BTreeSet<String>) -> Result<Self, String> {
+		Self::with_debug_assertions(features, cfg!(debug_assertions))
+	}
+
+	fn with_debug_assertions(
+		features: BTreeSet<String>,
+		debug_assertions: bool,
+	) -> Result<Self, String> {
 		let rustc = std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into());
-		let target = CfgTarget::from_rustc(&rustc, "wasm32-unknown-unknown")?;
+		let target = CfgTarget::from_rustc(&rustc, "wasm32-unknown-unknown", debug_assertions)?;
 		Ok(Self { target, features })
 	}
 
@@ -504,9 +511,16 @@ impl CfgEvaluator {
 }
 
 impl CfgTarget {
-	fn from_rustc(rustc: &std::ffi::OsStr, target: &str) -> Result<Self, String> {
+	fn from_rustc(
+		rustc: &std::ffi::OsStr,
+		target: &str,
+		debug_assertions: bool,
+	) -> Result<Self, String> {
 		let mut command = Command::new(rustc);
 		command.args(["--print", "cfg", "--target", target]);
+		if !debug_assertions {
+			command.args(["-C", "debug-assertions=no"]);
+		}
 		let output = command.output().map_err(|error| {
 			format!("failed to query Rust compiler configuration for {target}: {error}")
 		})?;
@@ -642,6 +656,26 @@ impl CfgTarget {
 	}
 }
 
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn wasm_release_cfgs_enable_not_debug_assertions_items() {
+		let evaluator = CfgEvaluator::with_debug_assertions(BTreeSet::new(), false)
+			.expect("load release WASM cfgs");
+		let release_only: ItemStatic =
+			syn::parse_str("#[cfg(not(debug_assertions))] static RELEASE: () = ();")
+				.expect("parse release-only static");
+		let debug_only: ItemStatic =
+			syn::parse_str("#[cfg(debug_assertions)] static DEBUG: () = ();")
+				.expect("parse debug-only static");
+
+		assert!(evaluator.items_are_enabled(&release_only.attrs));
+		assert!(!evaluator.items_are_enabled(&debug_only.attrs));
+	}
+}
+
 #[derive(Debug)]
 struct AuthoredDefinition {
 	style_type_name: String,
@@ -748,7 +782,7 @@ impl<'ast> Visit<'ast> for DefinitionScanner<'_> {
 		}
 
 		let exact_attribute = style_attributes.len() == 1
-			&& matches!(&style_attributes[0].meta, Meta::Path(path) if path.segments.len() == 1 && path.is_ident("style_def"));
+			&& matches!(&style_attributes[0].meta, Meta::Path(path) if path.segments.last().is_some_and(|segment| segment.ident == "style_def"));
 		let immutable = matches!(item.mutability, StaticMutability::None);
 		let style_type = match item.ty.as_ref() {
 			Type::Path(path) if path.qself.is_none() && path.path.segments.len() == 1 => {
