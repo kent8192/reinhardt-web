@@ -438,6 +438,62 @@ async fn client_launcher_handles_back_to_back_navigations() {
 }
 
 #[wasm_bindgen_test]
+async fn nested_reactive_content_is_removed_with_outer_owner() {
+	use reinhardt_pages::component::PageExt;
+	use reinhardt_pages::dom::Element;
+
+	let root = install_app_root();
+	let authorized = Signal::new(true);
+	let secret = Signal::new("SECRET-42".to_owned());
+	let authorized_for_outer = authorized.clone();
+	let secret_for_inner = secret.clone();
+
+	Page::reactive(move || {
+		if authorized_for_outer.get() {
+			let secret_for_render = secret_for_inner.clone();
+			Page::reactive(move || secret_for_render.get())
+		} else {
+			Page::Empty
+		}
+	})
+	.mount(&Element::new(root.clone()))
+	.expect("mount nested reactive page");
+
+	yield_to_microtasks().await;
+	assert!(
+		root.text_content()
+			.unwrap_or_default()
+			.contains("SECRET-42"),
+		"expected secret to render before authorization is revoked, got: {}",
+		root.inner_html()
+	);
+
+	authorized.set(false);
+	with_runtime(|rt| rt.flush_updates());
+	yield_to_microtasks().await;
+	assert!(
+		!root
+			.text_content()
+			.unwrap_or_default()
+			.contains("SECRET-42"),
+		"secret should be removed when the outer reactive owner rerenders, got: {}",
+		root.inner_html()
+	);
+
+	secret.set("SECRET-99".to_owned());
+	with_runtime(|rt| rt.flush_updates());
+	yield_to_microtasks().await;
+	assert!(
+		!root
+			.text_content()
+			.unwrap_or_default()
+			.contains("SECRET-99"),
+		"detached nested reactive effect should not reinsert secret content, got: {}",
+		root.inner_html()
+	);
+}
+
+#[wasm_bindgen_test]
 async fn client_launcher_handles_reentrant_reactive_mount_during_navigation() {
 	let root = install_app_root();
 
