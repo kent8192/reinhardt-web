@@ -42,9 +42,9 @@
 //! - [`security`]: CSRF, XSS prevention, security headers, HSTS, IP filtering, redirect validation, and resource limits
 //! - [`validators`]: Comprehensive input validation (IP, IBAN, phone, credit card)
 //! - [`serializers`]: Data serialization and deserialization framework
-//! - [`pagination`]: Cursor, page number, and limit-offset pagination strategies
+//! - `pagination`: Cursor, page number, and limit-offset pagination strategies
 //! - [`parsers`]: Request body parsing (JSON, form, multipart)
-//! - [`negotiation`]: HTTP content negotiation utilities
+//! - `negotiation`: HTTP content negotiation utilities
 //!
 //! ## Feature Flags
 //!
