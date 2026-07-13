@@ -47,11 +47,11 @@ fn generated_query_key_helper_encodes_server_fn_identity_and_args() {
 	// Assert
 	assert_eq!(
 		echo_key.id(),
-		r#"server_fn:/api/server_fn/echo_name:json:["Alice"]"#
+		"server_fn:/api/server_fn/echo_name:json:sha256:ab576365fddb09f8b9117212e0d01bf2b8ce8202923d6cff26034af8dfd88e15"
 	);
 	assert_eq!(
 		alias_key.id(),
-		r#"server_fn:/api/server_fn/echo_alias:json:["Alice"]"#
+		"server_fn:/api/server_fn/echo_alias:json:sha256:ab576365fddb09f8b9117212e0d01bf2b8ce8202923d6cff26034af8dfd88e15"
 	);
 	assert_ne!(echo_key.id(), alias_key.id());
 }

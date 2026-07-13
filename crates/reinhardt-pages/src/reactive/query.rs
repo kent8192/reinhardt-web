@@ -113,7 +113,10 @@ impl<T, E> QueryKey<T, E> {
 		&self.id
 	}
 
-	/// Configures how long a successful value is considered fresh.
+	/// Configures how long a resolved value is considered fresh.
+	///
+	/// SSR-replayed success and error states are both treated as freshly fetched
+	/// so the initial replay preserves the server-rendered state before a retry.
 	pub fn with_stale_time(mut self, stale_time: Duration) -> Self {
 		self.stale_time = stale_time;
 		self
@@ -204,11 +207,10 @@ impl<T: Clone + 'static, E: Clone + 'static> QueryEntry<T, E> {
 	}
 
 	#[cfg(native)]
-	fn mark_success_fetched(&self) {
-		if self
-			.state
-			.with_untracked(|state| matches!(state, ResourceState::Success(_)))
-		{
+	fn mark_resolved_fetched(&self) {
+		if self.state.with_untracked(|state| {
+			matches!(state, ResourceState::Success(_) | ResourceState::Error(_))
+		}) {
 			self.last_fetched_ms.set(Some(now_ms()));
 		}
 	}
@@ -535,7 +537,7 @@ where
 				move || fetcher(),
 				entry.state.clone(),
 			);
-			entry.mark_success_fetched();
+			entry.mark_resolved_fetched();
 		}
 		QueryHandle {
 			entry,
@@ -909,6 +911,42 @@ mod tests {
 			!entry.should_fetch_on_mount(),
 			"a freshly hydrated error must remain visible for the initial mount"
 		);
+	}
+
+	#[tokio::test]
+	#[serial(query_cache)]
+	async fn ssr_replayed_query_error_is_fresh_for_stale_time() {
+		// Arrange
+		let context = Rc::new(RefCell::new(
+			crate::ssr::resource_context::SsrResourceContext::new(Duration::from_secs(1)),
+		));
+
+		crate::ssr::resource_context::scope_context(Rc::clone(&context), async {
+			let query = try_create_ssr_query(QueryKey::new("ssr-replayed-query-error", || async {
+				Err::<String, _>("not found".to_string())
+			}))
+			.expect("active SSR context should create the query");
+			let _ = query.get();
+		})
+		.await;
+		assert!(crate::ssr::resource_context::resolve_external_resources(&context).await);
+
+		// Act
+		crate::ssr::resource_context::scope_context(Rc::clone(&context), async {
+			let query = try_create_ssr_query(QueryKey::new("ssr-replayed-query-error", || async {
+				Err::<String, _>("must not refetch during replay".to_string())
+			}))
+			.expect("active SSR context should replay the query");
+			let query = query.stale_time(Duration::from_secs(30));
+
+			// Assert
+			assert_eq!(query.get(), ResourceState::Error("not found".to_string()));
+			assert!(
+				!query.entry.is_stale(),
+				"a replayed error must remain fresh when stale_time is applied"
+			);
+		})
+		.await;
 	}
 
 	#[rstest]
