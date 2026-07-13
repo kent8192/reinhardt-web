@@ -36,6 +36,50 @@ pub trait Trackable {
 #[derive(Debug)]
 pub struct Deps(SmallVec<[NodeId; 8]>);
 
+/// An explicit collection of reactive dependencies.
+#[derive(Debug)]
+pub struct ExplicitDeps(Deps);
+
+impl ExplicitDeps {
+	#[doc(hidden)]
+	pub fn from_node_ids(ids: impl IntoIterator<Item = NodeId>) -> Self {
+		let mut nodes = SmallVec::new();
+		nodes.extend(ids);
+		Self(Deps(nodes))
+	}
+
+	// This bridge becomes live when the hook constructors migrate to ReactiveDeps.
+	#[allow(dead_code)]
+	pub(crate) fn from_deps(deps: Deps) -> Self {
+		Self(deps)
+	}
+
+	#[doc(hidden)]
+	pub fn into_deps(self) -> Deps {
+		self.0
+	}
+
+	#[doc(hidden)]
+	pub fn as_slice(&self) -> &[NodeId] {
+		self.0.as_slice()
+	}
+}
+
+/// Selects explicit or automatically tracked reactive dependencies.
+#[derive(Debug)]
+pub enum ReactiveDeps {
+	/// Uses the provided explicit dependency collection.
+	Explicit(ExplicitDeps),
+	/// Uses dependencies discovered while the reactive closure runs.
+	Auto,
+}
+
+impl From<ExplicitDeps> for ReactiveDeps {
+	fn from(deps: ExplicitDeps) -> Self {
+		Self::Explicit(deps)
+	}
+}
+
 impl Deps {
 	/// Returns the internal `NodeId` slice for subscription routing.
 	pub fn as_slice(&self) -> &[NodeId] {
@@ -85,6 +129,12 @@ impl IntoDeps for Deps {
 	}
 }
 
+impl IntoDeps for ExplicitDeps {
+	fn into_deps(self) -> Deps {
+		self.0
+	}
+}
+
 impl<T: 'static> Trackable for Signal<T> {
 	fn node_id(&self) -> NodeId {
 		self.id()
@@ -124,8 +174,28 @@ impl_into_deps_for_tuple!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10);
 impl_into_deps_for_tuple!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11);
 impl_into_deps_for_tuple!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12);
 
+/// Creates an explicit dependency collection from trackable expressions.
+#[macro_export]
+macro_rules! deps {
+	($($dependency:expr),* $(,)?) => {{
+		$crate::reactive::ExplicitDeps::from_node_ids([
+			$($crate::reactive::Trackable::node_id(&$dependency),)*
+		])
+	}};
+}
+
+/// Selects automatic reactive dependency tracking.
+#[macro_export]
+macro_rules! deps_auto {
+	() => {
+		$crate::reactive::ReactiveDeps::Auto
+	};
+}
+
 #[cfg(test)]
 mod tests {
+	use std::cell::Cell;
+
 	use rstest::rstest;
 	use serial_test::serial;
 
@@ -234,5 +304,74 @@ mod tests {
 			"single-element tuple of Memo must yield one NodeId"
 		);
 		assert_eq!(slice[0], memo_id, "deps element must be Memo::id()");
+	}
+
+	#[rstest]
+	#[serial(reactive_runtime)]
+	fn deps_macro_collects_heterogeneous_trackables_in_source_order() {
+		let count = Signal::new(1_i32);
+		let label = Signal::new(String::from("ready"));
+
+		let deps = crate::deps![count, label];
+
+		assert_eq!(deps.as_slice(), &[count.id(), label.id()]);
+	}
+
+	#[rstest]
+	fn deps_macro_empty_is_explicit() {
+		let deps = crate::deps![];
+
+		assert!(deps.as_slice().is_empty());
+	}
+
+	#[rstest]
+	#[serial(reactive_runtime)]
+	fn deps_macro_evaluates_each_expression_once() {
+		let signal = Signal::new(1_i32);
+		let evaluations = Cell::new(0_u8);
+
+		let deps = crate::deps![{
+			evaluations.set(evaluations.get() + 1);
+			signal.clone()
+		}];
+
+		assert_eq!(evaluations.get(), 1);
+		assert_eq!(deps.as_slice(), &[signal.id()]);
+	}
+
+	#[rstest]
+	fn deps_auto_macro_selects_auto_mode() {
+		assert!(matches!(crate::deps_auto!(), ReactiveDeps::Auto));
+	}
+
+	#[rstest]
+	#[serial(reactive_runtime)]
+	fn deps_macro_has_no_tuple_arity_limit() {
+		let signal = Signal::new(1_i32);
+
+		let deps = crate::deps![
+			signal, signal, signal, signal, signal, signal, signal, signal, signal, signal, signal,
+			signal, signal,
+		];
+
+		assert_eq!(deps.as_slice().len(), 13);
+	}
+
+	struct CustomTrackable(Signal<i32>);
+
+	impl Trackable for CustomTrackable {
+		fn node_id(&self) -> NodeId {
+			self.0.id()
+		}
+	}
+
+	#[rstest]
+	#[serial(reactive_runtime)]
+	fn deps_macro_accepts_third_party_trackable() {
+		let custom = CustomTrackable(Signal::new(1_i32));
+
+		let deps = crate::deps![custom];
+
+		assert_eq!(deps.as_slice(), &[custom.node_id()]);
 	}
 }
