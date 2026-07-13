@@ -411,14 +411,24 @@ impl Effect {
 	pub fn dispose(&self) {
 		*self.disposed.borrow_mut() = true;
 
+		struct TeardownGuard {
+			effect_id: NodeId,
+		}
+
+		impl Drop for TeardownGuard {
+			fn drop(&mut self) {
+				remove_effect_registration(self.effect_id);
+			}
+		}
+
+		let _teardown_guard = TeardownGuard { effect_id: self.id };
+
 		// Flush any pending cleanup before tearing down
 		// runtime state, matching React's "cleanup runs on unmount" semantics.
 		let cleanup = { self.cleanup_slot.borrow_mut().take() };
 		if let Some(c) = cleanup {
 			super::runtime::run_without_observer(c);
 		}
-
-		remove_effect_registration(self.id);
 	}
 }
 
@@ -694,6 +704,57 @@ mod tests {
 			with_runtime(|runtime| runtime.debug_observer_stack()),
 			alloc::vec![]
 		);
+	}
+
+	#[rstest::rstest]
+	#[serial(reactive_runtime)]
+	fn panicking_drop_cleanup_removes_effect_registration() {
+		let dependency = Signal::new(0_i32);
+		let cleanups = Rc::new(Cell::new(0_u8));
+		let effect = Effect::new_with_mode(
+			{
+				let dependency = dependency.clone();
+				let cleanups = Rc::clone(&cleanups);
+				move || {
+					let _ = dependency.get();
+					let cleanups = Rc::clone(&cleanups);
+					Some(move || {
+						cleanups.set(cleanups.get() + 1);
+						panic!("effect cleanup panic");
+					})
+				}
+			},
+			ReactiveDeps::Auto,
+		);
+		let effect_id = effect.id();
+		let outer_id = NodeId::new();
+		with_runtime(|runtime| {
+			runtime.push_observer(Observer {
+				id: outer_id,
+				node_type: NodeType::Effect,
+				timing: EffectTiming::Passive,
+				cleanup: None,
+			});
+		});
+
+		let result = catch_unwind(AssertUnwindSafe(|| drop(effect)));
+
+		assert!(result.is_err());
+		assert_eq!(cleanups.get(), 1);
+		assert_eq!(
+			with_runtime(|runtime| runtime.debug_observer_stack()),
+			alloc::vec![outer_id]
+		);
+		assert!(!EFFECT_FUNCTIONS.with(|storage| storage.borrow().contains_key(&effect_id)));
+		assert!(!EFFECT_TIMING.with(|storage| storage.borrow().contains_key(&effect_id)));
+		with_runtime(|runtime| {
+			assert!(!runtime.has_node(effect_id));
+			assert_eq!(runtime.subscriber_count(dependency.id()), 0);
+			assert_eq!(
+				runtime.pop_observer().map(|observer| observer.id),
+				Some(outer_id)
+			);
+		});
 	}
 
 	#[test]
