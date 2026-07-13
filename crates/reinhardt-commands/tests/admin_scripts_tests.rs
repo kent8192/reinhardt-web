@@ -544,10 +544,10 @@ async fn test_startapp_restful_style() {
 		models_rs.contains("use reinhardt::{Deserialize, Serialize};"),
 		"RESTful app models.rs example must avoid undeclared direct serde dependency:\n{models_rs}"
 	);
-	let model_attr = "#[model(app_label = \"api_app\", table_name = \"api_app_items\")]";
+	let model_attr = "#[model(app_label = \"api_app\")]";
 	assert!(
 		models_rs.contains(model_attr),
-		"RESTful app models.rs example must include the generated app label:\n{models_rs}"
+		"RESTful app models.rs example must include the generated app label and use the conventional table name:\n{models_rs}"
 	);
 	assert!(
 		models_rs.contains("pub struct ApiAppItem"),

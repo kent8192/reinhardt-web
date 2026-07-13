@@ -1,7 +1,65 @@
 # Migration Guide: 0.3.x to 0.4.0
 
-This guide currently covers the breaking Reinhardt Pages event API introduced
-for 0.4. Add later 0.4 migration topics as their public contracts stabilize.
+This guide covers the breaking model identity and Reinhardt Pages event API
+changes introduced for 0.4. Add later 0.4 migration topics as their public
+contracts stabilize.
+
+## Explicit model application labels and conventional table names
+
+`#[model(...)]` now requires `app_label`. The previous implicit `"default"`
+application label has been removed because it could silently group unrelated
+models in migrations, application discovery, the model registry, and admin
+configuration.
+
+`table_name` is now optional. When omitted, Reinhardt converts the Rust struct
+name to snake_case without pluralization or English inflection:
+
+| Struct | Default table name |
+|---|---|
+| `User` | `user` |
+| `BlogPost` | `blog_post` |
+| `HTTPRoute` | `http_route` |
+| `Person` | `person` |
+
+To preserve an existing schema, add the application label and keep the current
+table name explicit:
+
+```rust,ignore
+// Before: the model was registered in the implicit "default" application.
+#[model(table_name = "users")]
+pub struct User {
+    // Fields omitted.
+}
+
+// After: application ownership and the existing plural table are explicit.
+#[model(app_label = "default", table_name = "users")]
+pub struct User {
+    // Fields omitted.
+}
+```
+
+New models may adopt the convention by omitting only `table_name`:
+
+```rust,ignore
+#[model(app_label = "routing")]
+pub struct HTTPRoute {
+    // Uses the `http_route` table.
+}
+```
+
+Omitting an explicit `table_name` from an existing model is a schema decision,
+not a source-only cleanup. For example, changing `User` from `users` to the
+derived `user` name requires a table rename migration. `makemigrations`
+recognizes this same-model table-name change and emits `RenameTable` instead of
+destructive drop/create operations. Audit model attributes before upgrading:
+
+```bash
+rg -n '#\[model(?:\([^]]*\))?\]' src crates examples
+```
+
+For every result, add a meaningful `app_label`. Preserve `table_name` whenever
+the deployed database already uses that table; omit it only when the derived
+name is the intended schema contract.
 
 ## Typed intrinsic events
 

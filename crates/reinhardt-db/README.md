@@ -189,6 +189,11 @@ Available features:
 
 ### Define Models
 
+`app_label` is required and identifies the application used by migrations and
+the model registry. `table_name` may be omitted to derive a singular snake_case
+name from the struct (`HTTPRoute` becomes `http_route`). The examples below keep
+explicit plural table names because they represent an existing schema.
+
 ```rust
 use reinhardt_db::prelude::*;
 use serde::{Serialize, Deserialize};

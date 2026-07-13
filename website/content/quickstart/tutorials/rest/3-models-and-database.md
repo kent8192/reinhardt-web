@@ -45,6 +45,12 @@ pub struct Snippet {
 
 Keep the attribute order exactly like this: `#[model(...)]` comes before `#[derive(...)]`. Reinhardt's model macro reads the struct, generates schema metadata, and then leaves the derived serialization implementations in place.
 
+`app_label` is required because migrations and the model registry group models
+by application. `table_name` is optional for new schemas and defaults to the
+singular snake_case struct name (`HTTPRoute` becomes `http_route`); this
+tutorial keeps `table_name = "snippets"` because its schema intentionally uses
+the plural table name.
+
 The `app_label = "snippets"` value must match the label registered by `installed_apps!` in `src/config/apps.rs`. The `table_name = "snippets"` value is the database table name the migration will create.
 
 The fields are ordinary Rust fields with database metadata:

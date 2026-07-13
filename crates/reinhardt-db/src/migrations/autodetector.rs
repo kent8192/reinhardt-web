@@ -1875,6 +1875,8 @@ pub struct DetectedChanges {
 	pub altered_fields: Vec<(String, String, String)>,
 	/// Models that were renamed: (app_label, old_name, new_name)
 	pub renamed_models: Vec<(String, String, String)>,
+	/// Tables renamed without changing model identity: (app_label, model_name, old_table, new_table)
+	pub renamed_tables: Vec<(String, String, String, String)>,
 	/// Models that were moved between apps: (from_app, from_model, to_app, to_model, rename_table, old_table, new_table)
 	pub moved_models: Vec<MovedModelInfo>,
 	/// Fields that were renamed: (app_label, model_name, old_name, new_name)
@@ -4051,6 +4053,7 @@ impl MigrationAutodetector {
 		self.detect_created_models(&mut changes);
 		self.detect_deleted_models(&mut changes);
 		self.detect_renamed_models(&mut changes);
+		self.detect_renamed_tables(&mut changes);
 
 		// Detect field-level changes (only for models that exist in both states)
 		self.detect_added_fields(&mut changes);
@@ -4080,6 +4083,7 @@ impl MigrationAutodetector {
 		changes.removed_fields.sort();
 		changes.altered_fields.sort();
 		changes.renamed_models.sort();
+		changes.renamed_tables.sort();
 		changes.renamed_fields.sort();
 
 		// Sort by (app_label, model_name) for index and constraint changes
@@ -4226,6 +4230,20 @@ impl MigrationAutodetector {
 		self.from_state
 			.get_model_by_table_name(app_label, &to_model.table_name)
 			.or_else(|| {
+				if changes
+					.renamed_tables
+					.iter()
+					.any(|(app, model, _old_table, new_table)| {
+						app == app_label
+							&& model == to_model_name
+							&& new_table == &to_model.table_name
+					}) {
+					self.from_state.get_model(app_label, to_model_name)
+				} else {
+					None
+				}
+			})
+			.or_else(|| {
 				changes
 					.renamed_models
 					.iter()
@@ -4258,6 +4276,20 @@ impl MigrationAutodetector {
 	) -> Option<&'a ModelState> {
 		self.to_state
 			.get_model_by_table_name(app_label, &from_model.table_name)
+			.or_else(|| {
+				if changes
+					.renamed_tables
+					.iter()
+					.any(|(app, model, old_table, _new_table)| {
+						app == app_label
+							&& model == from_model_name
+							&& old_table == &from_model.table_name
+					}) {
+					self.to_state.get_model(app_label, from_model_name)
+				} else {
+					None
+				}
+			})
 			.or_else(|| {
 				changes
 					.renamed_models
@@ -4905,6 +4937,31 @@ impl MigrationAutodetector {
 					.deleted_models
 					.retain(|(app, model)| !(app == &from_app && model == &deleted_model_name));
 			}
+		}
+	}
+
+	/// Detect table-name changes for models whose app label and model name are unchanged.
+	fn detect_renamed_tables(&self, changes: &mut DetectedChanges) {
+		for ((app_label, model_name), to_model) in &self.to_state.models {
+			let Some(from_model) = self.from_state.get_model(app_label, model_name) else {
+				continue;
+			};
+			if from_model.table_name == to_model.table_name {
+				continue;
+			}
+
+			changes.renamed_tables.push((
+				app_label.clone(),
+				model_name.clone(),
+				from_model.table_name.clone(),
+				to_model.table_name.clone(),
+			));
+			changes
+				.created_models
+				.retain(|(app, model)| !(app == app_label && model == model_name));
+			changes
+				.deleted_models
+				.retain(|(app, model)| !(app == app_label && model == model_name));
 		}
 	}
 
@@ -6862,6 +6919,17 @@ impl MigrationAutodetector {
 						});
 				}
 			}
+		}
+
+		// Handle table-name changes that keep the same model identity.
+		for (app_label, _model_name, old_table_name, new_table_name) in &changes.renamed_tables {
+			migrations_by_app
+				.entry(app_label.clone())
+				.or_default()
+				.push(super::Operation::RenameTable {
+					old_name: old_table_name.clone(),
+					new_name: new_table_name.clone(),
+				});
 		}
 
 		// Handle cross-app model moves
@@ -8878,6 +8946,80 @@ mod tests {
 			super::super::Operation::RenameTable { old_name, new_name }
 				if old_name == "old_table" && new_name == "new_table"
 		));
+	}
+
+	#[rstest]
+	fn generate_migrations_renames_table_when_model_identity_is_unchanged() {
+		// Arrange: only the explicit table name changes; the model identity and
+		// fields remain unchanged.
+		let from_model =
+			build_model_state_with_table_name("users", "User", "users", sample_fields());
+		let to_model = build_model_state_with_table_name("users", "User", "user", sample_fields());
+
+		let from_state = build_project_state(vec![(
+			("users".to_string(), "User".to_string()),
+			from_model,
+		)]);
+		let to_state =
+			build_project_state(vec![(("users".to_string(), "User".to_string()), to_model)]);
+
+		let detector = MigrationAutodetector::new(from_state, to_state);
+
+		// Act
+		let migrations = detector.generate_migrations();
+
+		// Assert: adopting the table-name convention must preserve data with a
+		// rename instead of emitting a destructive drop/create pair.
+		assert_eq!(migrations.len(), 1, "unexpected migrations: {migrations:?}");
+		assert_eq!(migrations[0].app_label, "users");
+		assert_eq!(
+			migrations[0].operations,
+			vec![super::super::Operation::RenameTable {
+				old_name: "users".to_string(),
+				new_name: "user".to_string(),
+			}]
+		);
+	}
+
+	#[rstest]
+	fn generate_migrations_preserves_field_changes_with_table_rename() {
+		let from_model =
+			build_model_state_with_table_name("users", "User", "users", sample_fields());
+		let mut to_fields = sample_fields();
+		to_fields.push(FieldState::new(
+			"email",
+			super::super::FieldType::VarChar(255),
+			false,
+		));
+		let to_model = build_model_state_with_table_name("users", "User", "user", to_fields);
+		let detector = MigrationAutodetector::new(
+			build_project_state(vec![(
+				("users".to_string(), "User".to_string()),
+				from_model,
+			)]),
+			build_project_state(vec![(("users".to_string(), "User".to_string()), to_model)]),
+		);
+
+		let migrations = detector.generate_migrations();
+
+		assert_eq!(migrations.len(), 1, "unexpected migrations: {migrations:?}");
+		let operations = &migrations[0].operations;
+		assert!(
+			operations.iter().any(|operation| matches!(
+				operation,
+				super::super::Operation::RenameTable { old_name, new_name }
+					if old_name == "users" && new_name == "user"
+			)),
+			"table rename is missing: {operations:?}"
+		);
+		assert!(
+			operations.iter().any(|operation| matches!(
+				operation,
+				super::super::Operation::AddColumn { table, column, .. }
+					if table == "user" && column.name == "email"
+			)),
+			"field addition is missing: {operations:?}"
+		);
 	}
 
 	#[rstest]

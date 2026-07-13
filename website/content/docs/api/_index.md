@@ -221,6 +221,11 @@ ORM layer for database abstraction with Reinhardt's own query builder (reinhardt
 - ✅ `#[model(...)]` attribute macro (implemented - automatically applies Model trait)
 - ✅ Django-style lookup helpers on generated field accessors
 
+Models must declare `app_label` explicitly so migrations and registry lookups
+have unambiguous application ownership. `table_name` is optional and defaults
+to the struct name converted to snake_case without pluralization (`HTTPRoute`
+becomes `http_route`). Specify it when mapping to an existing or custom table.
+
 **Example (Current API):**
 
 ```rust
@@ -230,7 +235,7 @@ use reinhardt::db::orm::Model;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
-#[model(table_name = "users")]
+#[model(app_label = "accounts", table_name = "users")]
 struct User {
     #[field(primary_key = true)]
     id: i64,

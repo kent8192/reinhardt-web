@@ -37,6 +37,7 @@ use crate::crate_paths::{
 	get_linkme_crate, get_reinhardt_core_crate, get_reinhardt_crate,
 	get_reinhardt_migrations_crate, get_reinhardt_orm_crate,
 };
+use crate::identifier_case::to_snake_case;
 use crate::rel::RelAttribute;
 
 /// Constraint specification from `#[model(constraints = [...])]`
@@ -464,16 +465,16 @@ impl ModelConfig {
 			}
 		}
 
-		let table_name = table_name.ok_or_else(|| {
+		let app_label = app_label.ok_or_else(|| {
 			syn::Error::new_spanned(
 				struct_name,
-				"table_name attribute is required in #[model(...)]",
+				"app_label attribute is required in #[model(...)]",
 			)
 		})?;
 
 		Ok(Self {
-			app_label: app_label.unwrap_or_else(|| "default".to_string()),
-			table_name,
+			app_label,
+			table_name: table_name.unwrap_or_else(|| to_snake_case(&struct_name.to_string())),
 			constraints,
 			manager,
 			info: info.unwrap_or(true),
@@ -6017,6 +6018,53 @@ mod tests {
 		// Verify that fields are not pub
 		assert!(!output_str.contains("pub id"));
 		assert!(!output_str.contains("pub name"));
+	}
+
+	#[test]
+	fn test_table_name_defaults_to_struct_name_in_snake_case() {
+		let cases = [
+			("User", "user"),
+			("BlogPost", "blog_post"),
+			("Person", "person"),
+			("HTTPRoute", "http_route"),
+		];
+
+		for (struct_name, expected_table_name) in cases {
+			let struct_name = syn::Ident::new(struct_name, proc_macro2::Span::call_site());
+			let attrs = vec![parse_quote! { #[model(app_label = "test")] }];
+
+			let config = ModelConfig::from_attrs(&attrs, &struct_name)
+				.expect("table name should be derived from the struct name");
+
+			assert_eq!(config.table_name, expected_table_name);
+		}
+	}
+
+	#[test]
+	fn test_app_label_is_required() {
+		let struct_name = parse_quote! { User };
+		let attrs = vec![parse_quote! { #[model(table_name = "users")] }];
+
+		let error = ModelConfig::from_attrs(&attrs, &struct_name)
+			.expect_err("models without an app_label should be rejected");
+
+		assert_eq!(
+			error.to_string(),
+			"app_label attribute is required in #[model(...)]"
+		);
+	}
+
+	#[test]
+	fn test_explicit_table_name_overrides_convention() {
+		let struct_name = parse_quote! { User };
+		let attrs = vec![parse_quote! {
+			#[model(app_label = "users", table_name = "users_v2")]
+		}];
+
+		let config = ModelConfig::from_attrs(&attrs, &struct_name)
+			.expect("explicit table names should remain supported");
+
+		assert_eq!(config.table_name, "users_v2");
 	}
 
 	#[test]

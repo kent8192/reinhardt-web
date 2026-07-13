@@ -28,6 +28,7 @@ mod crate_paths;
 mod dto;
 mod flatten_imports;
 mod hook;
+mod identifier_case;
 mod injectable_common;
 mod injectable_fn;
 mod injectable_struct;
@@ -766,8 +767,10 @@ pub fn user(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// # Model Attributes
 ///
-/// - `app_label`: Application label (default: "default")
-/// - `table_name`: Database table name (default: struct name in snake_case)
+/// - `app_label`: Application label (required)
+/// - `table_name`: Database table name (optional; defaults to the struct name
+///   converted to snake_case without pluralization, such as `HTTPRoute` to
+///   `http_route`)
 /// - `constraints`: List of unique constraints (e.g., `unique(fields = ["field1", "field2"], name = "name")`)
 ///
 /// # Field Attributes

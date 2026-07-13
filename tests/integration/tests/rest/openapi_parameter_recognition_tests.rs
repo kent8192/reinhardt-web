@@ -37,7 +37,7 @@ use utoipa::openapi::{PathsBuilder, Required};
 
 /// Dummy model for ViewSet-based tests
 #[allow(dead_code)]
-#[model(table_name = "users")]
+#[model(app_label = "default", table_name = "users")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct TestUser {
 	#[field(primary_key = true)]

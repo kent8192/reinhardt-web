@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 include!("../support.rs");
 
-#[model(table_name = "categories")]
+#[model(app_label = "default", table_name = "categories")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Category {
 	#[field(primary_key = true)]
@@ -12,7 +12,7 @@ struct Category {
 	name: String,
 }
 
-#[model(table_name = "articles")]
+#[model(app_label = "default", table_name = "articles")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Article {
 	#[field(primary_key = true)]

@@ -8,6 +8,25 @@ This file defines the policy for using Reinhardt's macros (notably `#[model(...)
 
 ## `#[model(...)]` Macro
 
+### Model Identity Contract
+
+Every model MUST set `app_label` explicitly. The label determines how model
+metadata is grouped for migrations, application discovery, and registry
+lookups, so there is no implicit `"default"` application.
+
+`table_name` is optional. When omitted, it is derived from the Rust struct name
+using snake_case without pluralization or language-specific inflection:
+
+| Struct | Derived table name |
+|---|---|
+| `User` | `user` |
+| `BlogPost` | `blog_post` |
+| `HTTPRoute` | `http_route` |
+| `Person` | `person` |
+
+Set `table_name` explicitly when mapping a model to an existing table or when
+the database contract requires a different name.
+
 ### MU-1 (SHOULD): Do Not Combine with `#[derive(Model)]`
 
 The `#[model(...)]` attribute macro automatically applies `#[derive(Model)]` internally. If `#[derive(Model)]` is *also* written on the same struct, the attribute macro detects this and returns the input unchanged (the existing derive then handles the macro logic). Compilation succeeds today, but the explicit `Model` derive becomes redundant noise that obscures intent.
@@ -21,7 +40,7 @@ The `#[model(...)]` attribute macro automatically applies `#[derive(Model)]` int
 
 ```rust
 // ✅ Canonical — let #[model(...)] add the Model derive
-#[model(table = "people")]
+#[model(app_label = "people")]
 #[derive(Debug, Clone)]
 pub struct Person {
     pub id: i64,
@@ -29,7 +48,7 @@ pub struct Person {
 }
 
 // ⚠️ Redundant but supported — Model derive duplicates what #[model(...)] applies
-#[model(table = "people")]
+#[model(app_label = "people", table_name = "people")]
 #[derive(Debug, Clone, Model)]
 pub struct Person {
     pub id: i64,
@@ -308,6 +327,7 @@ the label is rendered as a `<legend>` inside the fieldset.
 ---
 
 ### ✅ MUST DO
+- Declare `app_label` explicitly on every model
 - Initialize `#[model(...)]` structs via the macro-generated `build()` builder or zero-argument `new()` alias
 - Add unrelated derives (e.g., `Debug`, `Clone`) via a separate `#[derive(...)]`
 - Keep stable `form!` widget coverage aligned with the documented native HTML output and value state
@@ -316,6 +336,7 @@ the label is rendered as a `<legend>` inside the fieldset.
 - Render `FieldGroup` as semantic `<fieldset>` output with `label` mapped to `<legend>`
 
 ### ✅ SHOULD DO
+- Omit `table_name` when the singular snake_case convention is the intended database name; keep it explicit for existing schemas
 - Use `#[model(...)]` alone (do not also write `#[derive(Model)]`) — the attribute applies the derive for you
 - Prefer `Model::build()` over the zero-argument `Model::new()` alias in tutorials, examples, and call sites where the model schema is expected to evolve (MU-3)
 - Pass FK values via `.<related>(&model)` in `build()` setters when the related instance is already in scope (composes with #4398)
