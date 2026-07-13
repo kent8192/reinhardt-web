@@ -127,34 +127,6 @@ pub enum Commands {
 		migrations_dir: Option<PathBuf>,
 	},
 
-	/// Export model data as Django-compatible JSON fixtures
-	#[cfg(feature = "reinhardt-db")]
-	Dumpdata {
-		/// App labels or app_label.ModelName selectors to export
-		#[arg(value_name = "APP_OR_MODEL")]
-		selectors: Vec<String>,
-
-		/// App labels or app_label.ModelName selectors to exclude
-		#[arg(long, value_name = "APP_OR_MODEL")]
-		exclude: Vec<String>,
-	},
-
-	/// Load Django-compatible JSON model fixtures
-	#[cfg(feature = "reinhardt-db")]
-	Loaddata {
-		/// Fixture JSON files to load
-		#[arg(value_name = "FIXTURE")]
-		fixtures: Vec<PathBuf>,
-	},
-
-	/// Run idempotent application seed hooks
-	#[cfg(feature = "reinhardt-db")]
-	Seed {
-		/// App labels to seed; runs all registered hooks when omitted
-		#[arg(value_name = "APP_LABEL")]
-		app_labels: Vec<String>,
-	},
-
 	/// Manage local development infrastructure containers
 	Infra {
 		/// Infrastructure subcommand to execute
@@ -339,7 +311,8 @@ pub enum Commands {
 	///
 	/// This variant is not exposed in the CLI help. It is used internally
 	/// by [`execute_from_command_line_with_registry`] to dispatch commands
-	/// that are not built-in but were registered by the downstream project.
+	/// registered by the downstream project and fixture commands that preserve
+	/// their CLI syntax without expanding this public enum.
 	#[command(skip)]
 	Custom {
 		/// The name of the custom command to execute.
@@ -347,6 +320,92 @@ pub enum Commands {
 		/// Positional arguments forwarded to the custom command.
 		args: Vec<String>,
 	},
+}
+
+#[cfg(feature = "reinhardt-db")]
+#[derive(Debug)]
+enum FixtureCommand {
+	Dumpdata {
+		selectors: Vec<String>,
+		exclude: Vec<String>,
+	},
+	Loaddata {
+		fixtures: Vec<PathBuf>,
+	},
+	Seed {
+		app_labels: Vec<String>,
+	},
+}
+
+#[cfg(feature = "reinhardt-db")]
+#[derive(Debug, Parser)]
+#[command(name = "dumpdata")]
+struct DumpdataArgs {
+	#[arg(value_name = "APP_OR_MODEL")]
+	selectors: Vec<String>,
+	#[arg(long, value_name = "APP_OR_MODEL")]
+	exclude: Vec<String>,
+}
+
+#[cfg(feature = "reinhardt-db")]
+#[derive(Debug, Parser)]
+#[command(name = "loaddata")]
+struct LoaddataArgs {
+	#[arg(value_name = "FIXTURE")]
+	fixtures: Vec<PathBuf>,
+}
+
+#[cfg(feature = "reinhardt-db")]
+#[derive(Debug, Parser)]
+#[command(name = "seed")]
+struct SeedArgs {
+	#[arg(value_name = "APP_LABEL")]
+	app_labels: Vec<String>,
+}
+
+#[cfg(feature = "reinhardt-db")]
+fn fixture_command_argv(name: &str, args: &[String]) -> Vec<String> {
+	std::iter::once(name.to_string())
+		.chain(args.iter().cloned())
+		.collect()
+}
+
+#[cfg(feature = "reinhardt-db")]
+fn parse_fixture_command(
+	name: &str,
+	args: &[String],
+) -> Result<Option<FixtureCommand>, clap::Error> {
+	match name {
+		"dumpdata" => DumpdataArgs::try_parse_from(fixture_command_argv(name, args)).map(|args| {
+			Some(FixtureCommand::Dumpdata {
+				selectors: args.selectors,
+				exclude: args.exclude,
+			})
+		}),
+		"loaddata" => LoaddataArgs::try_parse_from(fixture_command_argv(name, args)).map(|args| {
+			Some(FixtureCommand::Loaddata {
+				fixtures: args.fixtures,
+			})
+		}),
+		"seed" => SeedArgs::try_parse_from(fixture_command_argv(name, args)).map(|args| {
+			Some(FixtureCommand::Seed {
+				app_labels: args.app_labels,
+			})
+		}),
+		_ => Ok(None),
+	}
+}
+
+fn is_fixture_command_name(name: &str) -> bool {
+	#[cfg(feature = "reinhardt-db")]
+	{
+		matches!(name, "dumpdata" | "loaddata" | "seed")
+	}
+	#[cfg(not(feature = "reinhardt-db"))]
+	{
+		let _ = name;
+		false
+	}
 }
 
 /// Execute commands from command-line arguments
@@ -534,7 +593,15 @@ async fn execute_with_registry_and_optional_settings(
 			// Extract the raw arguments and try to find a matching custom command.
 			let raw_args: Vec<String> = env::args().collect();
 			match resolve_custom_command(&raw_args, &registry) {
-				Some((name, args, verbosity)) => (Commands::Custom { name, args }, verbosity),
+				Some((name, args, verbosity)) => {
+					#[cfg(feature = "reinhardt-db")]
+					if is_fixture_command_name(&name) {
+						if let Err(error) = parse_fixture_command(&name, &args) {
+							error.exit();
+						}
+					}
+					(Commands::Custom { name, args }, verbosity)
+				}
 				None => {
 					// No custom command matched either; let clap display its error.
 					clap_err.exit();
@@ -592,9 +659,7 @@ fn requires_database(command: &Commands) -> bool {
 	match command {
 		Commands::Runserver { .. } => true,
 		Commands::Migrate { .. } => true,
-		Commands::Dumpdata { .. } => true,
-		Commands::Loaddata { .. } => true,
-		Commands::Seed { .. } => true,
+		Commands::Custom { name, .. } => is_fixture_command_name(name),
 		#[cfg(feature = "auth")]
 		Commands::Createsuperuser { .. } => true,
 		_ => false,
@@ -607,8 +672,9 @@ fn requires_database(command: &Commands) -> bool {
 /// For most use cases, prefer using [`execute_from_command_line`] or
 /// [`execute_from_command_line_with_registry`] instead.
 ///
-/// Note: this function does **not** dispatch [`Commands::Custom`] variants.
-/// Use [`run_command_with_registry`] when custom commands may be present.
+/// Fixture command names carried by [`Commands::Custom`] are dispatched
+/// directly. Use [`run_command_with_registry`] when registered custom commands
+/// may be present.
 ///
 /// # Arguments
 ///
@@ -669,7 +735,10 @@ async fn run_command_core(
 	if requires_database(&command) {
 		let mut ctx = crate::CommandContext::new(vec![]);
 		ctx.verbosity = verbosity;
-		ctx.set_output_suppressed(matches!(command, Commands::Dumpdata { .. }));
+		ctx.set_output_suppressed(matches!(
+			&command,
+			Commands::Custom { name, .. } if name == "dumpdata"
+		));
 		// Thread the project's composed settings into the ORM-init context so the
 		// database URL can be resolved from `settings/*.toml`
 		// (`[core.databases.default]`) when `DATABASE_URL` is unset (#5042).
@@ -730,16 +799,6 @@ async fn run_command_core(
 				verbosity,
 			})
 			.await
-		}
-		#[cfg(feature = "reinhardt-db")]
-		Commands::Dumpdata { selectors, exclude } => {
-			crate::data_commands::execute_dumpdata(selectors, exclude).await
-		}
-		#[cfg(feature = "reinhardt-db")]
-		Commands::Loaddata { fixtures } => crate::data_commands::execute_loaddata(fixtures).await,
-		#[cfg(feature = "reinhardt-db")]
-		Commands::Seed { app_labels } => {
-			crate::data_commands::execute_seed(app_labels, verbosity, settings.clone()).await
 		}
 		Commands::Infra { command } => {
 			crate::local_infra::InfraCommand::execute(
@@ -822,6 +881,10 @@ async fn run_command_core(
 			.await
 		}
 		Commands::Custom { name, args } => {
+			#[cfg(feature = "reinhardt-db")]
+			if let Some(command) = parse_fixture_command(&name, &args)? {
+				return execute_fixture_command(command, verbosity, settings).await;
+			}
 			execute_custom_command(&name, &args, verbosity, &registry).await
 		}
 	}
@@ -881,7 +944,7 @@ fn resolve_custom_command(
 	}
 
 	let subcommand = iter.next()?;
-	if registry.get(subcommand).is_some() {
+	if registry.get(subcommand).is_some() || is_fixture_command_name(subcommand) {
 		let remaining: Vec<String> = iter.cloned().collect();
 		Some((subcommand.clone(), remaining, verbosity))
 	} else {
@@ -911,6 +974,25 @@ async fn execute_custom_command(
 	}
 
 	cmd.execute(&ctx).await.map_err(|e| e.into())
+}
+
+#[cfg(feature = "reinhardt-db")]
+async fn execute_fixture_command(
+	command: FixtureCommand,
+	verbosity: u8,
+	settings: Option<Arc<dyn HasCommonSettings>>,
+) -> Result<(), Box<dyn std::error::Error>> {
+	match command {
+		FixtureCommand::Dumpdata { selectors, exclude } => {
+			crate::data_commands::execute_dumpdata(selectors, exclude).await
+		}
+		FixtureCommand::Loaddata { fixtures } => {
+			crate::data_commands::execute_loaddata(fixtures).await
+		}
+		FixtureCommand::Seed { app_labels } => {
+			crate::data_commands::execute_seed(app_labels, verbosity, settings).await
+		}
+	}
 }
 
 /// Execute the makemigrations command
@@ -2089,22 +2171,21 @@ mod tests {
 
 	#[cfg(feature = "reinhardt-db")]
 	#[rstest]
-	fn test_dumpdata_clap_accepts_model_selectors_and_excludes() {
-		use clap::Parser;
-
-		// Arrange & Act
-		let cli = Cli::parse_from([
-			"manage",
+	fn test_fixture_commands_parse_without_public_command_variants() {
+		let command = parse_fixture_command(
 			"dumpdata",
-			"writing_sources.WritingProject",
-			"auth",
-			"--exclude",
-			"sessions.Session",
-		]);
+			&[
+				"writing_sources.WritingProject".to_string(),
+				"auth".to_string(),
+				"--exclude".to_string(),
+				"sessions.Session".to_string(),
+			],
+		)
+		.expect("dumpdata arguments must parse")
+		.expect("dumpdata must be recognized as a built-in fixture command");
 
-		// Assert
-		match cli.command {
-			Commands::Dumpdata { selectors, exclude } => {
+		match command {
+			FixtureCommand::Dumpdata { selectors, exclude } => {
 				assert_eq!(
 					selectors,
 					vec![
@@ -2114,50 +2195,63 @@ mod tests {
 				);
 				assert_eq!(exclude, vec!["sessions.Session".to_string()]);
 			}
-			#[allow(unreachable_patterns)]
-			_ => panic!("Expected Commands::Dumpdata"),
+			_ => panic!("Expected FixtureCommand::Dumpdata"),
 		}
+
+		let registry = CommandRegistry::new();
+		let resolved = resolve_custom_command(
+			&[
+				"manage".to_string(),
+				"dumpdata".to_string(),
+				"writing_sources.WritingProject".to_string(),
+			],
+			&registry,
+		);
+
+		assert_eq!(
+			resolved,
+			Some((
+				"dumpdata".to_string(),
+				vec!["writing_sources.WritingProject".to_string()],
+				0,
+			))
+		);
 	}
 
 	#[cfg(feature = "reinhardt-db")]
 	#[rstest]
-	fn test_loaddata_clap_accepts_fixture_paths() {
-		use clap::Parser;
+	fn test_loaddata_fixture_parser_accepts_paths() {
+		let command = parse_fixture_command("loaddata", &["fixtures/dev.json".to_string()])
+			.expect("loaddata arguments must parse")
+			.expect("loaddata must be recognized as a built-in fixture command");
 
-		// Arrange & Act
-		let cli = Cli::parse_from(["manage", "loaddata", "fixtures/dev.json"]);
-
-		// Assert
-		match cli.command {
-			Commands::Loaddata { fixtures } => {
+		match command {
+			FixtureCommand::Loaddata { fixtures } => {
 				assert_eq!(
 					fixtures,
 					vec![std::path::PathBuf::from("fixtures/dev.json")]
 				);
 			}
-			#[allow(unreachable_patterns)]
-			_ => panic!("Expected Commands::Loaddata"),
+			_ => panic!("Expected FixtureCommand::Loaddata"),
 		}
 	}
 
 	#[cfg(feature = "reinhardt-db")]
 	#[rstest]
-	fn test_seed_clap_accepts_app_labels() {
-		use clap::Parser;
+	fn test_seed_fixture_parser_accepts_app_labels() {
+		let command =
+			parse_fixture_command("seed", &["writing_sources".to_string(), "auth".to_string()])
+				.expect("seed arguments must parse")
+				.expect("seed must be recognized as a built-in fixture command");
 
-		// Arrange & Act
-		let cli = Cli::parse_from(["manage", "seed", "writing_sources", "auth"]);
-
-		// Assert
-		match cli.command {
-			Commands::Seed { app_labels } => {
+		match command {
+			FixtureCommand::Seed { app_labels } => {
 				assert_eq!(
 					app_labels,
 					vec!["writing_sources".to_string(), "auth".to_string()]
 				);
 			}
-			#[allow(unreachable_patterns)]
-			_ => panic!("Expected Commands::Seed"),
+			_ => panic!("Expected FixtureCommand::Seed"),
 		}
 	}
 
@@ -2254,14 +2348,18 @@ mod tests {
 	fn test_requires_database_for_model_fixture_commands() {
 		// Arrange
 		let commands = [
-			Commands::Dumpdata {
-				selectors: vec![],
-				exclude: vec![],
+			Commands::Custom {
+				name: "dumpdata".to_string(),
+				args: vec![],
 			},
-			Commands::Loaddata {
-				fixtures: vec![std::path::PathBuf::from("fixtures/dev.json")],
+			Commands::Custom {
+				name: "loaddata".to_string(),
+				args: vec!["fixtures/dev.json".to_string()],
 			},
-			Commands::Seed { app_labels: vec![] },
+			Commands::Custom {
+				name: "seed".to_string(),
+				args: vec![],
+			},
 		];
 
 		// Act & Assert
