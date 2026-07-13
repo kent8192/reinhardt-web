@@ -46,6 +46,8 @@ enum NotificationPhase {
 	Consuming,
 }
 
+const MAX_NOTIFICATION_EPOCHS: usize = 32;
+
 /// Unique identifier for reactive nodes (Signals, Effects, Memos)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct NodeId(usize);
@@ -181,6 +183,8 @@ pub struct Runtime {
 	notification_sources: RefCell<Vec<NodeId>>,
 	/// Source notifications raised while consumers execute.
 	notification_next_sources: RefCell<Vec<NodeId>>,
+	/// Consumer-raised sources retained after a consumer panic.
+	notification_recovery_sources: RefCell<Vec<NodeId>>,
 	/// Memos already propagated in the current epoch.
 	notification_memos_seen: RefCell<BTreeSet<NodeId>>,
 	/// Consumers already collected in the current epoch.
@@ -203,6 +207,7 @@ impl Runtime {
 			notification_phase: Cell::new(NotificationPhase::Idle),
 			notification_sources: RefCell::new(Vec::new()),
 			notification_next_sources: RefCell::new(Vec::new()),
+			notification_recovery_sources: RefCell::new(Vec::new()),
 			notification_memos_seen: RefCell::new(BTreeSet::new()),
 			notification_consumers_seen: RefCell::new(BTreeSet::new()),
 			notification_layout_effects: RefCell::new(Vec::new()),
@@ -270,7 +275,12 @@ impl Runtime {
 	pub fn notify_signal_change(&self, signal_id: NodeId) {
 		match self.notification_phase.get() {
 			NotificationPhase::Idle => {
-				self.notification_sources.borrow_mut().push(signal_id);
+				let recovery =
+					core::mem::take(&mut *self.notification_recovery_sources.borrow_mut());
+				let mut sources = self.notification_sources.borrow_mut();
+				sources.extend(recovery);
+				sources.push(signal_id);
+				drop(sources);
 				self.notification_phase.set(NotificationPhase::Propagating);
 				self.process_notification_epochs();
 			}
@@ -286,12 +296,29 @@ impl Runtime {
 	fn process_notification_epochs(&self) {
 		struct NotificationWaveGuard<'a> {
 			runtime: &'a Runtime,
+			completed: bool,
+			discard_pending: bool,
 		}
 
 		impl Drop for NotificationWaveGuard<'_> {
 			fn drop(&mut self) {
 				self.runtime.notification_sources.borrow_mut().clear();
-				self.runtime.notification_next_sources.borrow_mut().clear();
+				if self.discard_pending {
+					self.runtime.notification_next_sources.borrow_mut().clear();
+					self.runtime
+						.notification_recovery_sources
+						.borrow_mut()
+						.clear();
+				} else if self.completed {
+					self.runtime.notification_next_sources.borrow_mut().clear();
+				} else {
+					let pending =
+						core::mem::take(&mut *self.runtime.notification_next_sources.borrow_mut());
+					self.runtime
+						.notification_recovery_sources
+						.borrow_mut()
+						.extend(pending);
+				}
 				self.runtime.notification_memos_seen.borrow_mut().clear();
 				self.runtime
 					.notification_consumers_seen
@@ -306,8 +333,20 @@ impl Runtime {
 			}
 		}
 
-		let _wave_guard = NotificationWaveGuard { runtime: self };
+		let mut wave_guard = NotificationWaveGuard {
+			runtime: self,
+			completed: false,
+			discard_pending: false,
+		};
+		let mut epoch_count = 0_usize;
 		loop {
+			epoch_count += 1;
+			if epoch_count > MAX_NOTIFICATION_EPOCHS {
+				wave_guard.discard_pending = true;
+				panic!(
+					"reactive notification exceeded {MAX_NOTIFICATION_EPOCHS} epochs; possible non-converging layout update loop"
+				);
+			}
 			self.notification_phase.set(NotificationPhase::Propagating);
 			self.notification_memos_seen.borrow_mut().clear();
 			self.notification_consumers_seen.borrow_mut().clear();
@@ -339,6 +378,7 @@ impl Runtime {
 			}
 			self.notification_sources.borrow_mut().extend(next_sources);
 		}
+		wave_guard.completed = true;
 	}
 
 	fn propagate_notification_source(&self, node_id: NodeId) {
@@ -1035,5 +1075,103 @@ mod tests {
 		source.set(2);
 
 		assert_eq!(observed.get(), 4);
+	}
+
+	#[rstest::rstest]
+	#[serial(reactive_runtime)]
+	fn consumer_write_before_panic_recovers_on_unrelated_notification() {
+		use std::panic::{AssertUnwindSafe, catch_unwind};
+
+		let secondary = Signal::new(0_i32);
+		let observed = std::rc::Rc::new(std::cell::Cell::new(0_i32));
+		let _secondary_effect = Effect::new_with_timing(
+			{
+				let secondary = secondary.clone();
+				let observed = std::rc::Rc::clone(&observed);
+				move || observed.set(secondary.get())
+			},
+			EffectTiming::Layout,
+		);
+		let root = Signal::new(0_i32);
+		let _panicking = Effect::new_with_timing(
+			{
+				let root = root.clone();
+				let secondary = secondary.clone();
+				move || {
+					if root.get() == 1 {
+						secondary.set(1);
+						panic!("consumer panic after write");
+					}
+				}
+			},
+			EffectTiming::Layout,
+		);
+		let unrelated = Signal::new(0_i32);
+
+		let result = catch_unwind(AssertUnwindSafe(|| root.set(1)));
+		assert!(result.is_err());
+		assert_eq!(secondary.get(), 1);
+		assert_eq!(observed.get(), 0);
+
+		unrelated.set(1);
+
+		assert_eq!(observed.get(), 1);
+	}
+
+	#[rstest::rstest]
+	#[serial(reactive_runtime)]
+	fn non_converging_layout_updates_panic_and_runtime_remains_reusable() {
+		use std::panic::{AssertUnwindSafe, catch_unwind};
+		const EXPECTED_MAX_NOTIFICATION_EPOCHS: usize = 32;
+
+		let looping = Signal::new(0_u32);
+		let loop_enabled = std::rc::Rc::new(std::cell::Cell::new(false));
+		let runs = std::rc::Rc::new(std::cell::Cell::new(0_usize));
+		let _looping_effect = Effect::new_with_timing(
+			{
+				let looping = looping.clone();
+				let loop_enabled = std::rc::Rc::clone(&loop_enabled);
+				let runs = std::rc::Rc::clone(&runs);
+				move || {
+					let value = looping.get();
+					runs.set(runs.get() + 1);
+					if loop_enabled.get() {
+						looping.set(value + 1);
+					}
+				}
+			},
+			EffectTiming::Layout,
+		);
+		let unrelated = Signal::new(0_i32);
+		let observed = std::rc::Rc::new(std::cell::Cell::new(0_i32));
+		let _unrelated_effect = Effect::new_with_timing(
+			{
+				let unrelated = unrelated.clone();
+				let observed = std::rc::Rc::clone(&observed);
+				move || observed.set(unrelated.get())
+			},
+			EffectTiming::Layout,
+		);
+		loop_enabled.set(true);
+
+		let result = catch_unwind(AssertUnwindSafe(|| looping.set(1)));
+		let panic = result.expect_err("non-converging notification must panic");
+		let message = panic
+			.downcast_ref::<String>()
+			.map(String::as_str)
+			.or_else(|| panic.downcast_ref::<&str>().copied())
+			.expect("notification limit panic must have a string message");
+		assert_eq!(
+			message,
+			format!(
+				"reactive notification exceeded {EXPECTED_MAX_NOTIFICATION_EPOCHS} epochs; possible non-converging layout update loop"
+			)
+		);
+		assert_eq!(runs.get(), EXPECTED_MAX_NOTIFICATION_EPOCHS + 1);
+		loop_enabled.set(false);
+
+		unrelated.set(1);
+
+		assert_eq!(observed.get(), 1);
 	}
 }
