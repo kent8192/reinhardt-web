@@ -9,7 +9,6 @@ use crate::orm::query_fields::GroupByFields;
 use crate::orm::query_fields::aggregate::{AggregateExpr, ComparisonExpr};
 use crate::orm::query_fields::comparison::FieldComparison;
 use crate::orm::query_fields::compiler::QueryFieldCompiler;
-use crate::orm::relations::traversal::step_aliases;
 use crate::orm::relations::{RelationJoinGraph, RelationJoinKind, RelationPathLike, RelationStep};
 use reinhardt_query::prelude::{
 	Alias, BinOper, ColumnRef, Condition, Expr, ExprTrait, Func, JoinType as SeaJoinType,
@@ -162,9 +161,12 @@ impl FilterRelation {
 		graph.add_steps_with_override(&self.steps, self.join_kind_override);
 	}
 
-	fn rebase_root_alias(&mut self, root_alias: &str) {
-		if let Some(alias) = step_aliases(&self.steps, root_alias).last() {
-			self.leaf_alias.clone_from(alias);
+	fn rebase_join_alias(&mut self, graph: &RelationJoinGraph) {
+		if let Some(alias) = graph
+			.aliases_for_steps(&self.steps)
+			.and_then(|aliases| aliases.last().cloned())
+		{
+			self.leaf_alias = alias;
 		}
 	}
 }
@@ -269,9 +271,9 @@ impl Filter {
 		}
 	}
 
-	fn rebase_relation_alias(&mut self, root_alias: &str) {
+	fn rebase_relation_alias(&mut self, graph: &RelationJoinGraph) {
 		if let Some(relation) = &mut self.relation {
-			relation.rebase_root_alias(root_alias);
+			relation.rebase_join_alias(graph);
 		}
 	}
 
@@ -654,20 +656,20 @@ impl FilterCondition {
 		}
 	}
 
-	fn rebase_relation_aliases(&mut self, root_alias: &str, depth: usize) {
+	fn rebase_relation_aliases(&mut self, graph: &RelationJoinGraph, depth: usize) {
 		if depth >= MAX_FILTER_CONDITION_DEPTH {
 			return;
 		}
 
 		match self {
-			FilterCondition::Single(filter) => filter.rebase_relation_alias(root_alias),
+			FilterCondition::Single(filter) => filter.rebase_relation_alias(graph),
 			FilterCondition::And(conditions) | FilterCondition::Or(conditions) => {
 				for condition in conditions {
-					condition.rebase_relation_aliases(root_alias, depth + 1);
+					condition.rebase_relation_aliases(graph, depth + 1);
 				}
 			}
 			FilterCondition::Not(condition) => {
-				condition.rebase_relation_aliases(root_alias, depth + 1);
+				condition.rebase_relation_aliases(graph, depth + 1);
 			}
 		}
 	}
@@ -950,6 +952,48 @@ where
 	}
 }
 
+impl<T, S> RelationLoadInput<T> for &Vec<S>
+where
+	T: super::Model,
+	S: AsRef<str>,
+{
+	fn apply_select_related(self, queryset: &mut QuerySet<T>) {
+		for field in self {
+			queryset
+				.validate_relation_path(field.as_ref())
+				.expect("invalid relation path passed to select_related");
+		}
+		for field in self {
+			let field = field.as_ref();
+			if !queryset
+				.select_related_fields
+				.iter()
+				.any(|item| item == field)
+			{
+				queryset.select_related_fields.push(field.to_string());
+			}
+		}
+	}
+
+	fn apply_prefetch_related(self, queryset: &mut QuerySet<T>) {
+		for field in self {
+			queryset
+				.validate_relation_path(field.as_ref())
+				.expect("invalid relation path passed to prefetch_related");
+		}
+		for field in self {
+			let field = field.as_ref();
+			if !queryset
+				.prefetch_related_fields
+				.iter()
+				.any(|item| item == field)
+			{
+				queryset.prefetch_related_fields.push(field.to_string());
+			}
+		}
+	}
+}
+
 impl<T, P> RelationLoadInput<T> for P
 where
 	T: super::Model,
@@ -1007,8 +1051,8 @@ impl TypedSelectRelation {
 		Self { steps }
 	}
 
-	fn aliases(&self, root_alias: &str) -> SmallVec<[String; 4]> {
-		step_aliases(&self.steps, root_alias)
+	fn aliases(&self, graph: &RelationJoinGraph) -> SmallVec<[String; 4]> {
+		graph.aliases_for_steps(&self.steps).unwrap_or_default()
 	}
 }
 
@@ -1146,13 +1190,15 @@ where
 	pub fn filter(mut self, filter: impl QueryFilterInput<T>) -> Self {
 		match filter.into_filter_condition() {
 			FilterCondition::Single(mut filter) => {
-				filter.rebase_relation_alias(self.root_alias());
 				filter.add_relation_joins(&mut self.relation_joins);
+				let relation_joins = self.relation_join_graph_for_query();
+				filter.rebase_relation_alias(&relation_joins);
 				self.filters.push(filter);
 			}
 			mut condition => {
-				condition.rebase_relation_aliases(self.root_alias(), 0);
 				self.collect_condition_relation_joins(&condition);
+				let relation_joins = self.relation_join_graph_for_query();
+				condition.rebase_relation_aliases(&relation_joins, 0);
 				self.filter_conditions.push(condition);
 			}
 		}
@@ -1200,12 +1246,12 @@ where
 	}
 
 	fn rebase_filter_relation_aliases(&mut self) {
-		let root_alias = self.root_alias().to_string();
+		let relation_joins = self.relation_join_graph_for_query();
 		for filter in &mut self.filters {
-			filter.rebase_relation_alias(&root_alias);
+			filter.rebase_relation_alias(&relation_joins);
 		}
 		for condition in &mut self.filter_conditions {
-			condition.rebase_relation_aliases(&root_alias, 0);
+			condition.rebase_relation_aliases(&relation_joins, 0);
 		}
 	}
 
@@ -3873,6 +3919,29 @@ where
 		value.to_sql()
 	}
 
+	fn annotation_value_to_select_sql(&self, value: &super::annotation::AnnotationValue) -> String {
+		if let super::annotation::AnnotationValue::Aggregate(aggregate) = value
+			&& self.has_joined_tables()
+			&& let Some(field) = aggregate.field.as_deref()
+		{
+			let distinct = if aggregate.distinct { "DISTINCT " } else { "" };
+			return format!(
+				"{}({}{})",
+				aggregate.func,
+				distinct,
+				quote_identifier(&format!("{}.{}", self.root_alias(), field))
+			);
+		}
+
+		value.to_sql_expr()
+	}
+
+	fn has_joined_tables(&self) -> bool {
+		!self.relation_joins.is_empty()
+			|| !self.select_related_fields.is_empty()
+			|| !self.joins.is_empty()
+	}
+
 	fn filter_lhs_expr(&self, filter: &Filter) -> Expr {
 		if !self.relation_joins.is_empty()
 			&& filter.relation_alias().is_none()
@@ -4175,6 +4244,16 @@ where
 	pub fn select_related_query(&self) -> SelectStatement {
 		let table_name = T::table_name();
 		let root_alias = self.from_alias.as_deref().unwrap_or(table_name);
+		let relation_joins = self.relation_join_graph_for_query();
+		let typed_relation_aliases: Vec<_> = self
+			.typed_select_related
+			.iter()
+			.map(|relation| relation.aliases(&relation_joins))
+			.collect();
+		let typed_root_aliases: Vec<_> = typed_relation_aliases
+			.iter()
+			.filter_map(|aliases| aliases.first())
+			.collect();
 		let mut stmt = Query::select();
 
 		// Apply FROM clause with optional alias
@@ -4192,8 +4271,17 @@ where
 		// Add main table columns
 		stmt.column(ColumnRef::table_asterisk(Alias::new(root_alias)));
 
-		// Add LEFT JOIN for each related field
+		// Add LEFT JOIN for each legacy related field that is not already covered
+		// by a typed join. The typed graph owns its aliases and join order.
+		let mut legacy_selected_aliases = Vec::new();
 		for related_field in &self.select_related_fields {
+			if typed_root_aliases
+				.iter()
+				.any(|alias| alias.as_str() == related_field.as_str())
+			{
+				continue;
+			}
+
 			// Convention: related_field is the field name in the model
 			// We assume FK field is "{related_field}_id" and join to "{related_field}s" table
 			let fk_field = Alias::new(format!("{}_id", related_field));
@@ -4209,21 +4297,19 @@ where
 
 			// Add related table columns to SELECT
 			stmt.column(ColumnRef::table_asterisk(related_alias));
+			legacy_selected_aliases.push(related_field.clone());
 		}
 
-		self.apply_relation_joins(&mut stmt);
+		Self::apply_relation_join_graph(&mut stmt, &relation_joins);
 
-		let mut typed_aliases = Vec::new();
-		for relation in &self.typed_select_related {
-			for alias in relation.aliases(root_alias) {
-				if !self
-					.select_related_fields
-					.iter()
-					.any(|field| field == &alias)
-					&& !typed_aliases.contains(&alias)
+		let mut selected_typed_aliases = Vec::new();
+		for aliases in typed_relation_aliases {
+			for alias in aliases {
+				if !legacy_selected_aliases.contains(&alias)
+					&& !selected_typed_aliases.contains(&alias)
 				{
 					stmt.column(ColumnRef::table_asterisk(Alias::new(&alias)));
-					typed_aliases.push(alias);
+					selected_typed_aliases.push(alias);
 				}
 			}
 		}
@@ -6362,7 +6448,12 @@ where
 		let annotation_exprs: Vec<_> = self
 			.annotations
 			.iter()
-			.map(|a| (a.value.to_sql_expr(), a.alias.clone()))
+			.map(|a| {
+				(
+					self.annotation_value_to_select_sql(&a.value),
+					a.alias.clone(),
+				)
+			})
 			.collect();
 
 		for (value_sql, alias) in annotation_exprs {
@@ -8173,6 +8264,17 @@ mod tests {
 	}
 
 	#[test]
+	fn test_string_relation_loaders_accept_vec_references() {
+		let fields = vec!["corpus_file"];
+
+		let selected = QuerySet::<TestUser>::new().select_related(&fields);
+		let prefetched = QuerySet::<TestUser>::new().prefetch_related(&fields);
+
+		assert_eq!(selected.select_related_fields, vec!["corpus_file"]);
+		assert_eq!(prefetched.prefetch_related_fields, vec!["corpus_file"]);
+	}
+
+	#[test]
 	fn test_relation_filter_adds_inner_join() {
 		let filter =
 			crate::orm::relations::RelationPath::<TestUser, TestCorpusFile>::from_descriptor::<
@@ -8246,6 +8348,27 @@ mod tests {
 	}
 
 	#[test]
+	fn test_nested_relation_filter_uses_rebased_planned_leaf_alias() {
+		let filter =
+			crate::orm::relations::RelationPath::<TestUser, TestCorpusFile>::from_descriptor::<
+				TestUserCorpusFile,
+			>()
+			.then::<TestCorpusFileProject, TestProject>()
+			.field(crate::orm::expressions::FieldRef::<TestProject, String>::new("name"))
+			.eq("reinhardt");
+
+		let sql = QuerySet::<TestUser>::new()
+			.from_as("corpus_file__project")
+			.filter(filter)
+			.to_sql();
+
+		assert!(sql.contains(
+			r#"LEFT JOIN "test_projects" AS "corpus_file__project__project" ON "corpus_file"."project_id" = "corpus_file__project__project"."id""#
+		));
+		assert!(sql.ends_with(r#"WHERE "corpus_file__project__project"."name" = 'reinhardt'"#));
+	}
+
+	#[test]
 	fn test_relation_filter_count_uses_from_alias_as_join_root() {
 		let filter =
 			crate::orm::relations::RelationPath::<TestUser, TestCorpusFile>::from_descriptor::<
@@ -8295,6 +8418,11 @@ mod tests {
 			.select_related(path)
 			.to_sql();
 
+		assert_eq!(
+			sql.matches(r#"JOIN "test_corpus_files" AS "corpus_file""#)
+				.count(),
+			1
+		);
 		assert!(sql.contains(
 			r#"INNER JOIN "test_corpus_files" AS "corpus_file" ON "test_users"."corpus_file_id" = "corpus_file"."id""#
 		));
@@ -8326,6 +8454,27 @@ mod tests {
 
 		assert!(sql.starts_with(
 			r#"SELECT "test_users".*, "corpus_file".*, "corpus_file__project".* FROM "test_users""#
+		));
+	}
+
+	#[test]
+	fn test_typed_select_related_uses_rebased_planned_aliases() {
+		let path =
+			crate::orm::relations::RelationPath::<TestUser, TestCorpusFile>::from_descriptor::<
+				TestUserCorpusFile,
+			>()
+			.then::<TestCorpusFileProject, TestProject>();
+
+		let sql = QuerySet::<TestUser>::new()
+			.from_as("corpus_file__project")
+			.select_related(path)
+			.to_sql();
+
+		assert!(sql.starts_with(
+			r#"SELECT "corpus_file__project".*, "corpus_file".*, "corpus_file__project__project".* FROM "test_users" AS "corpus_file__project""#
+		));
+		assert!(sql.contains(
+			r#"LEFT JOIN "test_projects" AS "corpus_file__project__project" ON "corpus_file"."project_id" = "corpus_file__project__project"."id""#
 		));
 	}
 
@@ -8410,6 +8559,25 @@ mod tests {
 			sql,
 			r#"SELECT "test_users".* FROM "test_users" INNER JOIN "test_corpus_files" AS "corpus_file" ON "test_users"."corpus_file_id" = "corpus_file"."id" WHERE ("corpus_file"."normalized_path" = '/docs/index.md' AND "test_users"."id" = 1) ORDER BY "test_users"."id" ASC"#
 		);
+	}
+
+	#[test]
+	fn test_relation_filter_qualifies_root_aggregate_annotation() {
+		let related_filter =
+			crate::orm::relations::RelationPath::<TestUser, TestCorpusFile>::from_descriptor::<
+				TestUserCorpusFile,
+			>()
+			.field(TestCorpusFile::field_normalized_path())
+			.eq("/docs/index.md");
+
+		let sql = QuerySet::<TestUser>::new()
+			.filter(related_filter)
+			.aggregate(
+				crate::orm::aggregation::Aggregate::count(Some("id")).with_alias("user_count"),
+			)
+			.to_sql();
+
+		assert!(sql.contains(r#"COUNT("test_users"."id") AS "user_count""#));
 	}
 
 	#[test]

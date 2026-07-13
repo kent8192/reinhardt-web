@@ -363,6 +363,23 @@ impl RelationJoinGraph {
 		&self.joins
 	}
 
+	/// Return the planned aliases for a relation path's steps.
+	///
+	/// The aliases are resolved from this graph rather than recomputed so callers
+	/// observe the same collision handling used by the generated JOIN clauses.
+	pub fn aliases_for_steps(&self, steps: &[RelationStep]) -> Option<SmallVec<[String; 4]>> {
+		let mut source_alias = self.root_alias.clone();
+		let mut aliases = SmallVec::new();
+		for step in steps {
+			let join = self.joins.iter().find(|join| {
+				join.source_alias == source_alias && join.relation_name == step.name.as_ref()
+			})?;
+			source_alias.clone_from(&join.alias);
+			aliases.push(source_alias.clone());
+		}
+		Some(aliases)
+	}
+
 	/// Return whether any planned join can produce multiple rows per root row.
 	pub fn has_multi_valued_join(&self) -> bool {
 		self.joins
