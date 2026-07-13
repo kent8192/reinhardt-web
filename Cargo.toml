@@ -683,6 +683,7 @@ prost-build = "0.14.3"
 # gRPC
 tonic = "0.14.5"
 tonic-build = "0.14.5"
+tonic-prost = "0.14.5"
 tonic-prost-build = "0.14.5"
 
 # Redis (for sessions)
@@ -712,6 +713,8 @@ astral-tokio-tar = "0.6.2"
 proptest = "1.11.0"
 arbitrary = { version = "1.4", features = ["derive"] }
 tokio-test = "0.4.5"
+tokio-tungstenite = "0.28.0"
+tungstenite = "0.28.0"
 serial_test = "3.4.0"
 rstest = "0.26.1"
 clap = { version = "4.6.0", features = ["derive", "cargo"] }
@@ -728,6 +731,8 @@ insta = { version = "1.47.2", features = ["json", "toml"] }
 
 # Documentation
 aquamarine = "0.6.0"
+axum = "0.8.0"
+tower-http = "0.6.0"
 
 # Workaround for topiary/topiary#1246 (tracked in reinhardt-web#4827).
 # Remove this patch when Topiary publishes relaxed wasm-bindgen constraints.
