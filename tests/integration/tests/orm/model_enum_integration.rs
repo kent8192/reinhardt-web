@@ -50,6 +50,24 @@ struct CustomKeyJob {
 	name: String,
 }
 
+#[model(app_label = "jobs", table_name = "text_key_records")]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+struct TextKeyRecord {
+	#[field(primary_key = true, max_length = 40)]
+	key: Option<String>,
+	#[field(max_length = 64)]
+	name: String,
+}
+
+#[model(app_label = "jobs", table_name = "i32_key_records")]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+struct I32KeyRecord {
+	#[field(primary_key = true)]
+	id: Option<i32>,
+	#[field(max_length = 64)]
+	name: String,
+}
+
 fn sqlite_database_url() -> (tempfile::NamedTempFile, String) {
 	let database = tempfile::NamedTempFile::new().expect("temporary SQLite file should be created");
 	let url = format!("sqlite://{}", database.path().display());
@@ -392,4 +410,143 @@ async fn session_uses_custom_primary_key_field_and_database_column() {
 		.expect("custom primary key lookup should succeed")
 		.expect("custom primary key model should exist");
 	assert_eq!(hydrated, expected);
+}
+
+#[tokio::test]
+#[serial(model_enum_database)]
+async fn uuid_shaped_text_primary_key_stays_text_for_manager_writes() {
+	let (_database, url) = sqlite_database_url();
+	reinitialize_database(&url)
+		.await
+		.expect("SQLite ORM connection should initialize");
+	let connection = get_connection()
+		.await
+		.expect("SQLite ORM connection should be available");
+	connection
+		.execute(
+			"CREATE TABLE text_key_records (key TEXT PRIMARY KEY, name VARCHAR(64) NOT NULL)",
+			vec![],
+		)
+		.await
+		.expect("text_key_records table should be created");
+	let manager_key = "550e8400-e29b-41d4-a716-446655440000";
+	let bulk_key = "550e8400-e29b-41d4-a716-446655440001";
+	for (key, name) in [(manager_key, "manager before"), (bulk_key, "bulk before")] {
+		connection
+			.execute(
+				&format!("INSERT INTO text_key_records (key, name) VALUES ('{key}', '{name}')"),
+				vec![],
+			)
+			.await
+			.expect("text primary-key row should be inserted");
+	}
+
+	TextKeyRecord::objects()
+		.update(&TextKeyRecord {
+			key: Some(manager_key.to_string()),
+			name: "manager after".to_string(),
+		})
+		.await
+		.expect("manager update should target a UUID-shaped text primary key");
+	TextKeyRecord::objects()
+		.bulk_update(
+			vec![TextKeyRecord {
+				key: Some(bulk_key.to_string()),
+				name: "bulk after".to_string(),
+			}],
+			vec!["name".to_string()],
+			None,
+		)
+		.await
+		.expect("bulk update should target a UUID-shaped text primary key");
+
+	let rows = connection
+		.query(
+			"SELECT key, name, typeof(key) AS key_type FROM text_key_records ORDER BY key",
+			vec![],
+		)
+		.await
+		.expect("updated rows should be readable");
+	assert_eq!(rows.len(), 2);
+	assert_eq!(rows[0].get::<String>("key").as_deref(), Some(manager_key));
+	assert_eq!(
+		rows[0].get::<String>("name").as_deref(),
+		Some("manager after")
+	);
+	assert_eq!(rows[0].get::<String>("key_type").as_deref(), Some("text"));
+	assert_eq!(rows[1].get::<String>("key").as_deref(), Some(bulk_key));
+	assert_eq!(rows[1].get::<String>("name").as_deref(), Some("bulk after"));
+	assert_eq!(rows[1].get::<String>("key_type").as_deref(), Some("text"));
+}
+
+#[tokio::test]
+#[serial(model_enum_database)]
+async fn uuid_shaped_text_primary_key_stays_text_for_session_delete() {
+	let (_database, url) = sqlite_database_url();
+	let pool = sqlite_session_pool(&url).await;
+	sqlx::query("CREATE TABLE text_key_records (key TEXT PRIMARY KEY, name VARCHAR(64) NOT NULL)")
+		.execute(pool.as_ref())
+		.await
+		.expect("text_key_records table should be created");
+	let delete_key = "550e8400-e29b-41d4-a716-446655440002";
+	sqlx::query("INSERT INTO text_key_records (key, name) VALUES (?, 'delete me')")
+		.bind(delete_key)
+		.execute(pool.as_ref())
+		.await
+		.expect("text primary-key row should be inserted");
+
+	let mut session = Session::new(pool.clone(), DbBackend::Sqlite)
+		.await
+		.expect("session should initialize");
+	session
+		.delete(TextKeyRecord {
+			key: Some(delete_key.to_string()),
+			name: "delete me".to_string(),
+		})
+		.await
+		.expect("session should track the text primary key for deletion");
+	session
+		.flush()
+		.await
+		.expect("session should delete by the canonical text primary key");
+	let remaining: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM text_key_records")
+		.fetch_one(pool.as_ref())
+		.await
+		.expect("remaining row count should be readable");
+	assert_eq!(remaining, 0);
+}
+
+#[tokio::test]
+#[serial(model_enum_database)]
+async fn manager_omits_zero_i32_primary_key_for_autogeneration() {
+	let (_database, url) = sqlite_database_url();
+	reinitialize_database(&url)
+		.await
+		.expect("SQLite ORM connection should initialize");
+	let connection = get_connection()
+		.await
+		.expect("SQLite ORM connection should be available");
+	connection
+		.execute(
+			"CREATE TABLE i32_key_records (id INTEGER PRIMARY KEY AUTOINCREMENT, name VARCHAR(64) NOT NULL)",
+			vec![],
+		)
+		.await
+		.expect("i32_key_records table should be created");
+
+	let created = I32KeyRecord::objects()
+		.create(&I32KeyRecord {
+			id: Some(0),
+			name: "generated".to_string(),
+		})
+		.await
+		.expect("zero i32 primary key should use database generation");
+
+	assert_eq!(created.id, Some(1));
+	let row = connection
+		.query_one("SELECT id, name FROM i32_key_records", vec![])
+		.await
+		.expect("generated row should be readable");
+	assert_eq!(row.get::<i32>("id"), Some(1));
+	assert_eq!(row.get::<String>("name").as_deref(), Some("generated"));
 }

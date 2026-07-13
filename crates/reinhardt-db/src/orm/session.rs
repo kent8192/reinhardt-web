@@ -108,6 +108,13 @@ struct IdentityEntry {
 	is_dirty: bool,
 }
 
+#[derive(Clone)]
+struct PendingDelete {
+	table_name: &'static str,
+	primary_key_column: String,
+	primary_key_value: crate::orm::DatabaseValue,
+}
+
 /// SQLAlchemy-style ORM session with identity map and unit of work
 ///
 /// # Examples
@@ -139,9 +146,8 @@ pub struct Session {
 	identity_map: HashMap<String, IdentityEntry>,
 	/// Set of object keys that have been modified
 	dirty_objects: HashSet<String>,
-	/// Set of object keys marked for deletion
-	deleted_objects: HashSet<String>,
-	deleted_primary_key_columns: HashMap<String, String>,
+	/// Objects marked for deletion with canonical primary-key carriers.
+	deleted_objects: HashMap<String, PendingDelete>,
 	/// Whether session is closed
 	is_closed: bool,
 	/// Counter for generating temporary keys for new objects
@@ -174,8 +180,7 @@ impl Session {
 			transaction: None,
 			identity_map: HashMap::new(),
 			dirty_objects: HashSet::new(),
-			deleted_objects: HashSet::new(),
-			deleted_primary_key_columns: HashMap::new(),
+			deleted_objects: HashMap::new(),
 			is_closed: false,
 			new_object_counter: 0,
 			last_generated_ids: Vec::new(),
@@ -1055,36 +1060,15 @@ impl Session {
 		self.dirty_objects.clear();
 
 		// Process deleted objects (DELETE)
-		for key in &self.deleted_objects.clone() {
-			// Parse the identity key to get table name and primary key
-			let parts: Vec<&str> = key.split(':').collect();
-			if parts.len() != 2 {
-				continue;
-			}
-			let table_name = parts[0];
-			let pk_value_str = parts[1];
-			let primary_key_column =
-				self.deleted_primary_key_columns.get(key).ok_or_else(|| {
-					SessionError::FlushError(format!(
-						"Missing primary key column metadata for {table_name}"
-					))
-				})?;
-
+		for (key, pending) in self.deleted_objects.clone() {
 			// Build DELETE statement
 			let mut delete_stmt = RQuery::delete()
-				.from_table(Alias::new(table_name))
+				.from_table(Alias::new(pending.table_name))
 				.to_owned();
 
-			// Parse primary key as integer for BIGINT comparison
-			// Fall back to string comparison if parsing fails
-			if let Ok(pk_int) = pk_value_str.parse::<i64>() {
-				delete_stmt
-					.and_where(Expr::col(Alias::new(primary_key_column)).eq(Expr::val(pk_int)));
-			} else {
-				delete_stmt.and_where(
-					Expr::col(Alias::new(primary_key_column)).eq(Expr::val(pk_value_str)),
-				);
-			}
+			delete_stmt.and_where(Expr::col(Alias::new(&pending.primary_key_column)).eq(
+				Expr::val(database_value_to_query_value(pending.primary_key_value)),
+			));
 
 			// Build and execute SQL
 			let (sql, values) = match backend {
@@ -1096,11 +1080,10 @@ impl Session {
 			self.execute_with_values(&sql, &values).await?;
 
 			// Remove from identity map
-			self.identity_map.remove(key);
+			self.identity_map.remove(&key);
 		}
 
 		self.deleted_objects.clear();
-		self.deleted_primary_key_columns.clear();
 
 		Ok(())
 	}
@@ -1284,7 +1267,6 @@ impl Session {
 		// Clear dirty and deleted objects
 		self.dirty_objects.clear();
 		self.deleted_objects.clear();
-		self.deleted_primary_key_columns.clear();
 
 		// Rollback transaction if active
 		if let Some(mut tx) = self.transaction.take() {
@@ -1416,11 +1398,27 @@ impl Session {
 		let primary_key_column = primary_key_field_info(&field_metadata, T::primary_key_field())
 			.and_then(|field| field.db_column.clone())
 			.unwrap_or_else(|| T::primary_key_field().to_string());
+		let primary_key_value = obj
+			.encode_database_fields()?
+			.remove(T::primary_key_field())
+			.filter(|value| !matches!(value, crate::orm::DatabaseValue::Null))
+			.ok_or_else(|| {
+				SessionError::FieldCodec(FieldCodecError::Serialization(format!(
+					"encoded {} fields must contain a non-null primary key '{}'",
+					T::table_name(),
+					T::primary_key_field()
+				)))
+			})?;
 
 		// Mark for deletion
-		self.deleted_objects.insert(key.clone());
-		self.deleted_primary_key_columns
-			.insert(key.clone(), primary_key_column);
+		self.deleted_objects.insert(
+			key.clone(),
+			PendingDelete {
+				table_name: T::table_name(),
+				primary_key_column,
+				primary_key_value,
+			},
+		);
 
 		// Remove from dirty set if present
 		self.dirty_objects.remove(&key);

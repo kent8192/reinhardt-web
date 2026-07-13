@@ -257,10 +257,9 @@ impl<M: Model> Manager<M> {
 	}
 
 	fn build_update_statement_from_object(
-		pk: &M::PrimaryKey,
 		obj: &std::collections::BTreeMap<String, DatabaseValue>,
 		_field_is_none: impl Fn(&str) -> bool,
-	) -> reinhardt_query::prelude::UpdateStatement {
+	) -> Result<reinhardt_query::prelude::UpdateStatement, FieldCodecError> {
 		let mut stmt = Query::update();
 		stmt.table(Alias::new(M::table_name()));
 		let field_metadata = M::field_metadata();
@@ -291,19 +290,24 @@ impl<M: Model> Manager<M> {
 			);
 		}
 
-		let pk_str = pk.to_string();
-		let pk_value = if let Ok(int_value) = pk_str.parse::<i64>() {
-			reinhardt_query::value::Value::BigInt(Some(int_value))
-		} else if let Ok(uuid) = Uuid::parse_str(&pk_str) {
-			reinhardt_query::value::Value::Uuid(Some(Box::new(uuid)))
-		} else {
-			reinhardt_query::value::Value::String(Some(Box::new(pk_str)))
-		};
+		let pk_value = obj
+			.get(M::primary_key_field())
+			.filter(|value| !matches!(value, DatabaseValue::Null))
+			.cloned()
+			.ok_or_else(|| {
+				FieldCodecError::Serialization(format!(
+					"encoded {} fields must contain a non-null primary key '{}'",
+					M::table_name(),
+					M::primary_key_field()
+				))
+			})?;
 		let primary_key_column = Self::field_column(&field_metadata, M::primary_key_field());
-		stmt.and_where(Expr::col(Alias::new(primary_key_column)).eq(pk_value));
+		stmt.and_where(
+			Expr::col(Alias::new(primary_key_column)).eq(database_value_to_query_value(pk_value)),
+		);
 
 		stmt.returning(Self::returning_columns_from_object(obj));
-		stmt
+		Ok(stmt)
 	}
 
 	fn build_insert_statement_from_object(
@@ -326,8 +330,8 @@ impl<M: Model> Manager<M> {
 					if matches!(v, DatabaseValue::Null) {
 						return false;
 					}
-					if let DatabaseValue::I64(value) = v {
-						return *value != 0;
+					if matches!(v, DatabaseValue::I32(0) | DatabaseValue::I64(0)) {
+						return false;
 					}
 				}
 				if matches!(v, DatabaseValue::Null)
@@ -1075,7 +1079,7 @@ impl<M: Model> Manager<M> {
 		conn: &DatabaseConnection,
 		model: &M,
 	) -> reinhardt_core::exception::Result<M> {
-		let pk = model.primary_key().ok_or_else(|| {
+		model.primary_key().ok_or_else(|| {
 			reinhardt_core::exception::Error::Database("Model must have primary key".to_string())
 		})?;
 
@@ -1084,7 +1088,10 @@ impl<M: Model> Manager<M> {
 			.map_err(|error| reinhardt_core::exception::Error::Other(anyhow::Error::new(error)))?;
 
 		let stmt =
-			Self::build_update_statement_from_object(&pk, &obj, |field| model.field_is_none(field));
+			Self::build_update_statement_from_object(&obj, |field| model.field_is_none(field))
+				.map_err(|error| {
+					reinhardt_core::exception::Error::Other(anyhow::Error::new(error))
+				})?;
 
 		let (sql, values) = build_update_sql(&stmt, conn.backend());
 		let values: Vec<_> = values
@@ -1484,10 +1491,10 @@ impl<M: Model> Manager<M> {
 
 		for chunk in models.chunks(batch_size) {
 			// Build updates structure
-			let updates: Vec<(M::PrimaryKey, HashMap<String, DatabaseValue>)> = chunk
+			let updates: Vec<(DatabaseValue, HashMap<String, DatabaseValue>)> = chunk
 				.iter()
 				.map(|model| {
-					let pk = model.primary_key().ok_or_else(|| {
+					model.primary_key().ok_or_else(|| {
 						reinhardt_core::exception::Error::Database(
 							"Bulk update model must have primary key".to_string(),
 						)
@@ -1495,6 +1502,16 @@ impl<M: Model> Manager<M> {
 					let obj = model.encode_database_fields().map_err(|error| {
 						reinhardt_core::exception::Error::Other(anyhow::Error::new(error))
 					})?;
+					let pk = obj
+						.get(M::primary_key_field())
+						.filter(|value| !matches!(value, DatabaseValue::Null))
+						.cloned()
+						.ok_or_else(|| {
+							reinhardt_core::exception::Error::Database(format!(
+								"Encoded bulk update model must contain primary key '{}'",
+								M::primary_key_field()
+							))
+						})?;
 
 					let mut field_map = HashMap::new();
 					for field in fields
@@ -1660,13 +1677,10 @@ impl<M: Model> Manager<M> {
 	/// expression-based SET values (e.g., CASE WHEN ... END).
 	fn bulk_update_database_values_sql_detailed(
 		&self,
-		updates: &[(M::PrimaryKey, HashMap<String, DatabaseValue>)],
+		updates: &[(DatabaseValue, HashMap<String, DatabaseValue>)],
 		fields: &[String],
 		_backend: DatabaseBackend,
-	) -> String
-	where
-		M::PrimaryKey: std::fmt::Display + Clone,
-	{
+	) -> String {
 		if updates.is_empty() || fields.is_empty() {
 			return String::new();
 		}
@@ -1684,9 +1698,9 @@ impl<M: Model> Manager<M> {
 			for (pk, field_map) in updates {
 				if let Some(value) = field_map.get(field) {
 					when_clauses.push(format!(
-						"WHEN \"{}\" = '{}' THEN {}",
+						"WHEN \"{}\" = {} THEN {}",
 						primary_key_column,
-						pk.to_string().replace('\'', "''"),
+						database_value_to_query_value(pk.clone()).to_sql_literal(),
 						database_value_to_query_value(value.clone()).to_sql_literal()
 					));
 				}
@@ -1706,7 +1720,7 @@ impl<M: Model> Manager<M> {
 		}
 		let ids = updates
 			.iter()
-			.map(|(pk, _)| format!("'{}'", pk.to_string().replace('\'', "''")))
+			.map(|(pk, _)| database_value_to_query_value(pk.clone()).to_sql_literal())
 			.collect::<Vec<_>>()
 			.join(", ");
 		format!(
@@ -2336,9 +2350,8 @@ mod tests {
 			.encode_database_fields()
 			.expect("model fields should encode");
 		let stmt =
-			Manager::<GeneratedOnlyUser>::build_update_statement_from_object(&7_i64, &obj, |_| {
-				false
-			});
+			Manager::<GeneratedOnlyUser>::build_update_statement_from_object(&obj, |_| false)
+				.expect("encoded primary key should build an update statement");
 
 		let (sql, params) = super::build_update_sql(&stmt, DatabaseBackend::Postgres);
 
