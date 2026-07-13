@@ -139,7 +139,7 @@ impl ElementHandle {
 			event.payload(),
 			NativeEventPayload::Input(data) if data.is_composing
 		);
-		let (binding_handled, handlers, target, scheduler) = {
+		let (binding_handled, pending_binding_write, scheduler) = {
 			let mut borrowed = self.inner.borrow_mut();
 			if !borrowed.dom.contains(self.node_id) {
 				return Err(EventError::DetachedElement);
@@ -153,11 +153,36 @@ impl ElementHandle {
 			borrowed
 				.dom
 				.apply_target_state(self.node_id, fixture.target())?;
-			let binding_handled = borrowed.dom.commit_control_binding(
-				self.node_id,
-				fixture.name(),
-				input_is_composing,
-			)?;
+			let (binding_handled, pending_binding_write) = borrowed
+				.dom
+				.prepare_control_binding_commit(self.node_id, fixture.name(), input_is_composing)?;
+			(
+				binding_handled,
+				pending_binding_write,
+				Rc::clone(&borrowed.scheduler),
+			)
+		};
+		#[cfg(feature = "msw")]
+		let mocks = self.inner.borrow().mocks.clone();
+
+		if let Some(pending_binding_write) = pending_binding_write {
+			#[cfg(feature = "msw")]
+			let completed = server_fn_mock::with_active(mocks.clone(), || {
+				scheduler.with_current(|| pending_binding_write.execute())
+			})?;
+			#[cfg(not(feature = "msw"))]
+			let completed = scheduler.with_current(|| pending_binding_write.execute())?;
+			self.inner
+				.borrow_mut()
+				.dom
+				.record_control_binding_commit(completed);
+		}
+
+		let (handlers, target) = {
+			let borrowed = self.inner.borrow();
+			if !borrowed.dom.contains(self.node_id) {
+				return Err(EventError::DetachedElement);
+			}
 			let handlers: Vec<(NodeId, PageEventHandler, NativeEventTarget)> = borrowed
 				.dom
 				.event_handlers(self.node_id, fixture.name(), event.base().bubbles)
@@ -173,15 +198,8 @@ impl ElementHandle {
 				.dom
 				.event_target(self.node_id)
 				.ok_or(EventError::UnsupportedElement)?;
-			(
-				binding_handled,
-				handlers,
-				target,
-				Rc::clone(&borrowed.scheduler),
-			)
+			(handlers, target)
 		};
-		#[cfg(feature = "msw")]
-		let mocks = self.inner.borrow().mocks.clone();
 
 		if handlers.is_empty() && !binding_handled {
 			return Err(EventError::MissingHandler);

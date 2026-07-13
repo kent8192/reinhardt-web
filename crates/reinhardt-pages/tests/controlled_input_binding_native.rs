@@ -1,15 +1,19 @@
 #![cfg(all(native, feature = "testing"))]
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use reinhardt_pages::component::{ControlBinding, ControlBindingError, NumberParseErrorKind};
 use reinhardt_pages::event::{
 	ChangeEvent, CompositionEndEvent, CompositionStartEvent, EventPayload,
 };
+use reinhardt_pages::prelude::spawn_task;
 use reinhardt_pages::reactive::Signal;
+use reinhardt_pages::reactive::hooks::use_layout_effect;
 use reinhardt_pages::testing::component::{EventError, EventFixture, render};
 use reinhardt_pages::{PageElement, page};
 use rstest::rstest;
+use serial_test::serial;
 
 #[rstest]
 #[tokio::test]
@@ -36,6 +40,83 @@ async fn bound_input_updates_before_explicit_handler() {
 	assert_eq!(value.get(), "new");
 	assert_eq!(*observed.lock().unwrap(), "new");
 	assert_eq!(input.value().as_deref(), Some("new"));
+}
+
+#[rstest]
+#[serial(controlled_binding_effect)]
+fn binding_write_layout_effect_can_read_the_same_screen() {
+	// Arrange
+	let value = Signal::new("old".to_owned());
+	let screen = render(page!({
+		input {
+			aria_label: "Name",
+			bind: value,
+		}
+	}));
+	let input = screen.get_by_label("Name");
+	let observed = Arc::new(Mutex::new(Vec::new()));
+	let effect_input = input.clone();
+	let effect_value = value.clone();
+	let effect_observed = Arc::clone(&observed);
+	let _effect = use_layout_effect(
+		move || {
+			effect_observed
+				.lock()
+				.unwrap()
+				.push((effect_value.get(), effect_input.value()));
+			None::<fn()>
+		},
+		(value.clone(),),
+	);
+
+	// Act
+	input.input("new");
+
+	// Assert
+	assert_eq!(
+		*observed.lock().unwrap(),
+		vec![
+			("old".to_owned(), Some("old".to_owned())),
+			("new".to_owned(), Some("new".to_owned())),
+		]
+	);
+}
+
+#[rstest]
+#[serial(controlled_binding_effect)]
+#[tokio::test]
+async fn binding_write_layout_effect_spawns_on_the_screen_scheduler() {
+	// Arrange
+	let value = Signal::new("old".to_owned());
+	let screen = render(page!({
+		input {
+			aria_label: "Name",
+			bind: value,
+		}
+	}));
+	let input = screen.get_by_label("Name");
+	let completed = Arc::new(AtomicBool::new(false));
+	let effect_value = value.clone();
+	let effect_completed = Arc::clone(&completed);
+	let _effect = use_layout_effect(
+		move || {
+			if effect_value.get() == "new" {
+				let completed = Arc::clone(&effect_completed);
+				spawn_task(async move {
+					completed.store(true, Ordering::SeqCst);
+				});
+			}
+			None::<fn()>
+		},
+		(value.clone(),),
+	);
+
+	// Act
+	input.input("new");
+	screen.settle().await;
+
+	// Assert
+	assert_eq!(completed.load(Ordering::SeqCst), true);
 }
 
 #[rstest]
@@ -203,6 +284,29 @@ async fn select_one_binding_tracks_selected_value_in_both_directions() {
 		observed.lock().unwrap().as_ref(),
 		Some(&Ok::<Vec<String>, reinhardt_pages::event::EventTargetError>(vec!["rust".to_owned()]))
 	);
+}
+
+#[rstest]
+fn select_one_empty_selection_commits_the_browser_empty_value() {
+	// Arrange
+	let selected = Signal::new("rust".to_owned());
+	let screen = render(page!({
+		select {
+			aria_label: "Language",
+			bind: selected,
+			option { value: "rust", "Rust" }
+		}
+	}));
+	let select = screen.get_by_label("Language");
+
+	// Act
+	select
+		.dispatch(EventFixture::change().selected_values(Vec::<String>::new()))
+		.expect("empty select-one fixture should dispatch");
+
+	// Assert
+	assert_eq!(selected.get(), "");
+	assert_eq!(select.value().as_deref(), Some(""));
 }
 
 #[rstest]

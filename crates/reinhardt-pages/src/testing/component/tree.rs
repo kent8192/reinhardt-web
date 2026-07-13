@@ -69,6 +69,35 @@ enum TestNode {
 	},
 }
 
+pub(crate) struct PendingControlBindingWrite {
+	node_id: NodeId,
+	binding: ControlBinding,
+	value: ControlValue,
+	raw: Option<String>,
+	dedupe_next_input: bool,
+}
+
+pub(crate) struct CompletedControlBindingWrite {
+	node_id: NodeId,
+	binding: ControlBinding,
+	outcome: ControlWriteOutcome,
+	raw: Option<String>,
+	dedupe_next_input: bool,
+}
+
+impl PendingControlBindingWrite {
+	pub(crate) fn execute(self) -> Result<CompletedControlBindingWrite, ControlBindingError> {
+		let outcome = self.binding.write(self.value)?;
+		Ok(CompletedControlBindingWrite {
+			node_id: self.node_id,
+			binding: self.binding,
+			outcome,
+			raw: self.raw,
+			dedupe_next_input: self.dedupe_next_input,
+		})
+	}
+}
+
 impl TestDom {
 	/// Renders a Page into an in-memory native test DOM.
 	pub(crate) fn render(page: Page) -> Self {
@@ -276,7 +305,11 @@ impl TestDom {
 
 		node.content_editable = final_content_editable;
 		if let Some(selected_values) = &patch.selected_values {
-			node.value = selected_values.first().cloned();
+			node.value = if node.tag == "select" {
+				Some(selected_values.first().cloned().unwrap_or_default())
+			} else {
+				selected_values.first().cloned()
+			};
 			node.selected_values.clone_from(selected_values);
 		} else if let Some(value) = &patch.value {
 			node.value = Some(value.clone());
@@ -298,18 +331,18 @@ impl TestDom {
 		Ok(())
 	}
 
-	pub(crate) fn commit_control_binding(
+	pub(crate) fn prepare_control_binding_commit(
 		&mut self,
 		node_id: NodeId,
 		event_name: &EventName,
 		input_is_composing: bool,
-	) -> Result<bool, ControlBindingError> {
+	) -> Result<(bool, Option<PendingControlBindingWrite>), ControlBindingError> {
 		let node = match self.nodes.get_mut(node_id) {
 			Some(TestNode::Element(node)) => node,
-			_ => return Ok(false),
+			_ => return Ok((false, None)),
 		};
 		let Some(binding) = node.control_binding.clone() else {
-			return Ok(false);
+			return Ok((false, None));
 		};
 		node.validate_control_binding(&binding)?;
 
@@ -319,7 +352,7 @@ impl TestDom {
 				"compositionstart" => {
 					node.is_composing = true;
 					node.pending_raw.clone_from(&node.value);
-					Ok(true)
+					Ok((true, None))
 				}
 				"compositionend" => {
 					node.is_composing = false;
@@ -331,8 +364,16 @@ impl TestDom {
 							control: binding.kind(),
 							property: "value",
 						})?;
-					node.write_raw_control_value(&binding, raw, true)?;
-					Ok(true)
+					Ok((
+						true,
+						Some(PendingControlBindingWrite {
+							node_id,
+							binding,
+							value: ControlValue::Text(raw.clone()),
+							raw: Some(raw),
+							dedupe_next_input: true,
+						}),
+					))
 				}
 				"input" => {
 					let raw = node
@@ -345,41 +386,70 @@ impl TestDom {
 					if node.is_composing || input_is_composing {
 						node.is_composing = true;
 						node.pending_raw = Some(raw);
-						return Ok(true);
+						return Ok((true, None));
 					}
 					if node.last_committed_raw.take().as_deref() == Some(raw.as_str()) {
-						return Ok(true);
+						return Ok((true, None));
 					}
-					node.write_raw_control_value(&binding, raw, false)?;
-					Ok(true)
+					Ok((
+						true,
+						Some(PendingControlBindingWrite {
+							node_id,
+							binding,
+							value: ControlValue::Text(raw.clone()),
+							raw: Some(raw),
+							dedupe_next_input: false,
+						}),
+					))
 				}
-				_ => Ok(false),
+				_ => Ok((false, None)),
 			},
-			ControlKind::Checkbox | ControlKind::Radio if event_name == "change" => {
-				let outcome = binding.write(ControlValue::Checked(node.checked))?;
-				node.record_write_outcome(&binding, outcome, None);
-				Ok(true)
-			}
-			ControlKind::SelectOne if event_name == "change" => {
-				let value = node
-					.value
-					.clone()
-					.ok_or(ControlBindingError::MissingProperty {
-						control: binding.kind(),
-						property: "value",
-					})?;
-				let outcome = binding.write(ControlValue::Text(value))?;
-				node.record_write_outcome(&binding, outcome, None);
-				Ok(true)
-			}
-			ControlKind::SelectMany if event_name == "change" => {
-				let outcome =
-					binding.write(ControlValue::SelectedValues(node.selected_values.clone()))?;
-				node.record_write_outcome(&binding, outcome, None);
-				Ok(true)
-			}
-			_ => Ok(false),
+			ControlKind::Checkbox | ControlKind::Radio if event_name == "change" => Ok((
+				true,
+				Some(PendingControlBindingWrite {
+					node_id,
+					binding,
+					value: ControlValue::Checked(node.checked),
+					raw: None,
+					dedupe_next_input: false,
+				}),
+			)),
+			ControlKind::SelectOne if event_name == "change" => Ok((
+				true,
+				Some(PendingControlBindingWrite {
+					node_id,
+					binding,
+					value: ControlValue::Text(node.value.clone().unwrap_or_default()),
+					raw: None,
+					dedupe_next_input: false,
+				}),
+			)),
+			ControlKind::SelectMany if event_name == "change" => Ok((
+				true,
+				Some(PendingControlBindingWrite {
+					node_id,
+					binding,
+					value: ControlValue::SelectedValues(node.selected_values.clone()),
+					raw: None,
+					dedupe_next_input: false,
+				}),
+			)),
+			_ => Ok((false, None)),
 		}
+	}
+
+	pub(crate) fn record_control_binding_commit(
+		&mut self,
+		completed: CompletedControlBindingWrite,
+	) {
+		let Some(TestNode::Element(node)) = self.nodes.get_mut(completed.node_id) else {
+			return;
+		};
+		node.last_committed_raw = completed
+			.dedupe_next_input
+			.then(|| completed.raw.clone())
+			.flatten();
+		node.record_write_outcome(&completed.binding, completed.outcome, completed.raw);
 	}
 
 	pub(crate) fn refresh_control_bindings(&mut self) {
@@ -737,18 +807,6 @@ impl ElementNode {
 		}
 	}
 
-	fn write_raw_control_value(
-		&mut self,
-		binding: &ControlBinding,
-		raw: String,
-		dedupe_next_input: bool,
-	) -> Result<(), ControlBindingError> {
-		let outcome = binding.write(ControlValue::Text(raw.clone()))?;
-		self.last_committed_raw = dedupe_next_input.then(|| raw.clone());
-		self.record_write_outcome(binding, outcome, Some(raw));
-		Ok(())
-	}
-
 	fn record_write_outcome(
 		&mut self,
 		binding: &ControlBinding,
@@ -776,7 +834,7 @@ impl ElementNode {
 			}
 			ControlValue::Checked(checked) => self.checked = checked,
 			ControlValue::SelectedValues(values) => {
-				self.value = values.first().cloned();
+				self.value = Some(values.first().cloned().unwrap_or_default());
 				self.selected_values = values;
 			}
 		}
