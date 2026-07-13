@@ -30,7 +30,8 @@ page!({ input { aria_label: "Search", bind: query } })
 The compiler validates the binding shape: text, radio, and single-select
 controls use `Signal<String>`; checkboxes use `Signal<bool>`; multiple selects
 use `Signal<Vec<String>>`; and numeric controls accept supported primitives via
-`bind: number(value)` or `bind: number(value, parse_error)`.
+direct `bind: value`. Use `bind: number(value, parse_error)` only when rejected
+numeric text should also update an error signal.
 
 ## Typed intrinsic events
 
