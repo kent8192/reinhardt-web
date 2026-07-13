@@ -127,11 +127,20 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 		let fields = value.as_object().ok_or_else(|| {
 			FieldCodecError::Serialization("model must serialize to an object".to_owned())
 		})?;
+		let metadata = Self::field_metadata();
 
 		fields
 			.iter()
 			.map(|(name, value)| {
-				DatabaseValue::try_from_json_value(value.clone()).map(|value| (name.clone(), value))
+				let is_json_field = metadata.iter().any(|field| {
+					field.name == *name && super::json::is_json_field_type(&field.field_type)
+				});
+				let value = if is_json_field && !self.field_is_none(name) {
+					DatabaseValue::Json(value.clone())
+				} else {
+					DatabaseValue::try_from_json_value(value.clone())?
+				};
+				Ok((name.clone(), value))
 			})
 			.collect()
 	}

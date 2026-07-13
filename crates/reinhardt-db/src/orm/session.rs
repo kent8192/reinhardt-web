@@ -16,6 +16,7 @@
 
 use super::transaction::Transaction;
 use crate::orm::FieldCodecError;
+use crate::orm::field_codec::database_value_to_query_value;
 use crate::orm::inspection::FieldInfo;
 use crate::orm::model::Model;
 use crate::orm::query::OrmQuery;
@@ -29,8 +30,9 @@ use serde_json::Value;
 use sqlx::{AnyPool, Row};
 use std::any::TypeId;
 use std::borrow::Cow;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
+#[cfg(test)]
 use uuid::Uuid;
 
 /// Session error types
@@ -87,7 +89,7 @@ struct IdentityEntry {
 	/// The serialized object data
 	data: Value,
 	/// Canonical database field data used by type-erased flush processing.
-	database_data: Value,
+	database_data: BTreeMap<String, crate::orm::DatabaseValue>,
 	/// Type ID for runtime type checking
 	type_id: TypeId,
 	/// Model field metadata used by type-erased flush processing
@@ -531,12 +533,13 @@ impl Session {
 		// Add to identity map
 		let obj_data = serde_json::to_value(&obj)
 			.map_err(|e| SessionError::SerializationError(e.to_string()))?;
+		let database_data = encode_model_database_data(&obj)?;
 
 		self.identity_map.insert(
 			key.clone(),
 			IdentityEntry {
 				data: obj_data,
-				database_data: data,
+				database_data,
 				type_id: TypeId::of::<T>(),
 				field_metadata: field_metadata.clone(),
 				primary_key_field: T::primary_key_field().to_string(),
@@ -898,12 +901,12 @@ impl Session {
 				let primary_key_field = entry.primary_key_field.clone();
 				let primary_key_column = entry.primary_key_column.clone();
 
-				// Extract data from JSON
-				if let Some(obj) = entry.database_data.as_object() {
+				{
+					let obj = &entry.database_data;
 					// Check if this is an INSERT (no primary key) or UPDATE (has primary key)
 					let has_pk = obj
 						.get(&primary_key_field)
-						.map(|value| !value.is_null())
+						.map(|value| !matches!(value, crate::orm::DatabaseValue::Null))
 						.unwrap_or(false);
 
 					if has_pk {
@@ -926,18 +929,14 @@ impl Session {
 								continue;
 							}
 							// Skip null auto-managed datetime fields to let database defaults remain.
-							if col_value.is_null()
+							if matches!(col_value, crate::orm::DatabaseValue::Null)
 								&& is_auto_managed_datetime_column(col_name, column_name)
 							{
 								continue;
 							}
 							update_stmt.value(
 								Alias::new(column_name),
-								json_to_reinhardt_query_value_for_field(
-									col_value,
-									field_info,
-									entry.sql_null_json_fields.contains(col_name),
-								),
+								database_value_to_query_value(col_value.clone()),
 							);
 							has_update_values = true;
 						}
@@ -948,10 +947,10 @@ impl Session {
 
 						// Add WHERE clause for primary key
 						if let Some(pk_value) = obj.get(&primary_key_field) {
-							update_stmt.and_where(
-								Expr::col(Alias::new(&primary_key_column))
-									.eq(Expr::val(json_to_reinhardt_query_value(pk_value))),
-							);
+							update_stmt
+								.and_where(Expr::col(Alias::new(&primary_key_column)).eq(
+									Expr::val(database_value_to_query_value(pk_value.clone())),
+								));
 						}
 
 						// Build and execute SQL
@@ -986,17 +985,13 @@ impl Session {
 							}
 							// Skip null datetime fields to let database DEFAULT apply
 							// (e.g., created_at, updated_at with DEFAULT CURRENT_TIMESTAMP)
-							if col_value.is_null()
+							if matches!(col_value, crate::orm::DatabaseValue::Null)
 								&& is_auto_managed_datetime_column(col_name, column_name)
 							{
 								continue;
 							}
 							columns.push(Alias::new(column_name));
-							values_vec.push(json_to_reinhardt_query_value_for_field(
-								col_value,
-								field_info,
-								entry.sql_null_json_fields.contains(col_name),
-							));
+							values_vec.push(database_value_to_query_value(col_value.clone()));
 						}
 
 						if columns.is_empty() {
@@ -1135,12 +1130,10 @@ impl Session {
 					serde_json::Value::from(generated_id),
 				);
 			}
-			if let Some(obj) = entry.database_data.as_object_mut() {
-				obj.insert(
-					primary_key_field.to_string(),
-					serde_json::Value::from(generated_id),
-				);
-			}
+			entry.database_data.insert(
+				primary_key_field.to_string(),
+				crate::orm::DatabaseValue::I64(generated_id),
+			);
 
 			entry.is_dirty = false;
 			let new_key = format!("{}:{}", table_name, generated_id);
@@ -1565,19 +1558,12 @@ fn primary_key_field_info<'a>(
 		.or_else(|| find_field_info(field_metadata, model_primary_key_field))
 }
 
-fn encode_model_database_data<T: Model>(model: &T) -> Result<Value, SessionError> {
+fn encode_model_database_data<T: Model>(
+	model: &T,
+) -> Result<BTreeMap<String, crate::orm::DatabaseValue>, SessionError> {
 	model
 		.encode_database_fields()
-		.map_err(SessionError::FieldCodec)?
-		.into_iter()
-		.map(|(name, value)| {
-			value
-				.into_json_value()
-				.map(|value| (name, value))
-				.map_err(SessionError::FieldCodec)
-		})
-		.collect::<Result<serde_json::Map<_, _>, _>>()
-		.map(Value::Object)
+		.map_err(SessionError::FieldCodec)
 }
 
 fn flush_column_name<'a>(field_name: &'a str, field_info: Option<&'a FieldInfo>) -> &'a str {
@@ -1740,6 +1726,7 @@ fn parse_json_field_bytes(
 }
 
 /// Convert JSON value to reinhardt_query Value
+#[cfg(test)]
 fn json_to_reinhardt_query_value(value: &Value) -> RValue {
 	match value {
 		Value::Null => RValue::Int(None),
@@ -1764,6 +1751,7 @@ fn json_to_reinhardt_query_value(value: &Value) -> RValue {
 	}
 }
 
+#[cfg(test)]
 fn json_to_reinhardt_query_value_for_field(
 	value: &Value,
 	field_info: Option<&FieldInfo>,
@@ -1785,6 +1773,7 @@ fn json_to_reinhardt_query_value_for_field(
 	}
 }
 
+#[cfg(test)]
 fn null_reinhardt_query_value_for_field(field_info: Option<&FieldInfo>) -> RValue {
 	let Some(field_type) = field_info.map(|field| field.field_type.as_str()) else {
 		return RValue::Int(None);

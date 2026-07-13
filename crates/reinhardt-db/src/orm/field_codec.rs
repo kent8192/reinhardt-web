@@ -81,6 +81,27 @@ impl DatabaseValue {
 	}
 }
 
+/// Converts a canonical database value directly into the query builder carrier.
+pub(crate) fn database_value_to_query_value(value: DatabaseValue) -> reinhardt_query::value::Value {
+	use reinhardt_query::value::Value;
+
+	match value {
+		DatabaseValue::Null => Value::Int(None),
+		DatabaseValue::Bool(value) => Value::Bool(Some(value)),
+		DatabaseValue::I32(value) => Value::Int(Some(value)),
+		DatabaseValue::I64(value) => Value::BigInt(Some(value)),
+		DatabaseValue::F32(value) => Value::Float(Some(value)),
+		DatabaseValue::F64(value) => Value::Double(Some(value)),
+		DatabaseValue::String(value) => Value::String(Some(Box::new(value))),
+		DatabaseValue::Bytes(value) => Value::Bytes(Some(Box::new(value))),
+		DatabaseValue::Json(value) => Value::Json(Some(Box::new(value))),
+		DatabaseValue::Uuid(value) => Value::Uuid(Some(Box::new(value))),
+		DatabaseValue::Date(value) => Value::ChronoDate(Some(Box::new(value))),
+		DatabaseValue::Time(value) => Value::ChronoTime(Some(Box::new(value))),
+		DatabaseValue::DateTime(value) => Value::ChronoDateTimeUtc(Some(Box::new(value))),
+	}
+}
+
 fn json_number(value: f64) -> Result<serde_json::Value, FieldCodecError> {
 	serde_json::Number::from_f64(value)
 		.map(serde_json::Value::Number)
@@ -412,5 +433,28 @@ mod tests {
 	#[test]
 	fn database_value_keeps_i32_width() {
 		assert_eq!(DatabaseValue::from(7_i32), DatabaseValue::I32(7));
+	}
+
+	#[test]
+	fn uuid_shaped_database_string_binds_as_string() {
+		let value = super::database_value_to_query_value(DatabaseValue::String(
+			"550e8400-e29b-41d4-a716-446655440000".to_string(),
+		));
+		assert!(matches!(
+			value,
+			reinhardt_query::value::Value::String(Some(text))
+				if text.as_ref() == "550e8400-e29b-41d4-a716-446655440000"
+		));
+	}
+
+	#[test]
+	fn database_bytes_bind_as_bytes() {
+		let value =
+			super::database_value_to_query_value(DatabaseValue::Bytes(vec![0, 1, 127, 255]));
+		assert!(matches!(
+			value,
+			reinhardt_query::value::Value::Bytes(Some(bytes))
+				if bytes.as_ref() == &[0, 1, 127, 255]
+		));
 	}
 }

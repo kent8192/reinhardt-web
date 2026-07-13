@@ -1660,6 +1660,21 @@ fn builtin_storage_kind(ty: &Type, orm_crate: &TokenStream) -> Option<TokenStrea
 		return None;
 	};
 	let last_segment = type_path.path.segments.last()?;
+	if last_segment.ident == "Vec" {
+		let PathArguments::AngleBracketed(arguments) = &last_segment.arguments else {
+			return None;
+		};
+		if arguments.args.len() != 1 {
+			return None;
+		}
+		let Some(GenericArgument::Type(Type::Path(element))) = arguments.args.first() else {
+			return None;
+		};
+		return element
+			.path
+			.is_ident("u8")
+			.then(|| quote! { #orm_crate::DatabaseStorageKind::Bytes });
+	}
 	let kind = match last_segment.ident.to_string().as_str() {
 		"bool" => quote! { #orm_crate::DatabaseStorageKind::Bool },
 		"i32" => quote! { #orm_crate::DatabaseStorageKind::I32 },
@@ -6042,6 +6057,21 @@ fn generate_info_builder(
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn builtin_storage_kind_recognizes_only_byte_vectors() {
+		let orm_crate = quote! { orm };
+		let bytes: Type = parse_quote! { Vec<u8> };
+		let strings: Type = parse_quote! { Vec<String> };
+
+		assert_eq!(
+			builtin_storage_kind(&bytes, &orm_crate)
+				.expect("Vec<u8> should have byte storage")
+				.to_string(),
+			quote! { orm::DatabaseStorageKind::Bytes }.to_string()
+		);
+		assert!(builtin_storage_kind(&strings, &orm_crate).is_none());
+	}
 
 	#[test]
 	fn test_generated_schema_expr_validation_accepts_reconstructable_expr() {

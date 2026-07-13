@@ -18,6 +18,8 @@ enum Status {
 	Queued,
 	#[model_enum(value = "running")]
 	Running,
+	#[model_enum(value = "550e8400-e29b-41d4-a716-446655440000")]
+	UuidShaped,
 }
 
 #[model(app_label = "jobs", table_name = "async_jobs")]
@@ -25,10 +27,18 @@ enum Status {
 struct AsyncJob {
 	#[field(primary_key = true)]
 	id: Option<i64>,
-	#[field(db_column = "job_status", max_length = 16)]
+	#[field(db_column = "job_status", max_length = 40)]
 	status: Status,
-	#[field(db_column = "fallback_status", max_length = 16, null = true)]
+	#[field(db_column = "fallback_status", max_length = 40, null = true)]
 	fallback: Option<Status>,
+}
+
+#[model(app_label = "jobs", table_name = "byte_records")]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+struct ByteRecord {
+	#[field(primary_key = true)]
+	id: Option<i64>,
+	payload: Vec<u8>,
 }
 
 #[model(app_label = "jobs", table_name = "custom_key_jobs")]
@@ -67,7 +77,7 @@ async fn model_enum_uses_database_value_independently_of_serde() {
 		.expect("SQLite ORM connection should be available");
 	connection
 		.execute(
-			"CREATE TABLE async_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, job_status VARCHAR(16) NOT NULL, fallback_status VARCHAR(16))",
+			"CREATE TABLE async_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, job_status VARCHAR(40) NOT NULL, fallback_status VARCHAR(40))",
 			vec![],
 		)
 		.await
@@ -75,7 +85,7 @@ async fn model_enum_uses_database_value_independently_of_serde() {
 
 	let job = AsyncJob {
 		id: None,
-		status: Status::Queued,
+		status: Status::UuidShaped,
 		fallback: Some(Status::Running),
 	};
 	let created = AsyncJob::objects()
@@ -91,8 +101,8 @@ async fn model_enum_uses_database_value_independently_of_serde() {
 		.next()
 		.and_then(|row| row.get::<String>("job_status"))
 		.expect("job_status should be a string");
-	assert_eq!(raw_status, "queued");
-	assert_eq!(created.status, Status::Queued);
+	assert_eq!(raw_status, "550e8400-e29b-41d4-a716-446655440000");
+	assert_eq!(created.status, Status::UuidShaped);
 	assert_eq!(created.fallback, Some(Status::Running));
 
 	let hydrated = AsyncJob::objects()
@@ -100,7 +110,7 @@ async fn model_enum_uses_database_value_independently_of_serde() {
 		.get()
 		.await
 		.expect("enum-backed model should hydrate");
-	assert_eq!(hydrated.status, Status::Queued);
+	assert_eq!(hydrated.status, Status::UuidShaped);
 	assert_eq!(hydrated.fallback, Some(Status::Running));
 }
 
@@ -116,7 +126,7 @@ async fn nullable_model_enum_round_trips_sql_null() {
 		.expect("SQLite ORM connection should be available");
 	connection
 		.execute(
-			"CREATE TABLE async_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, job_status VARCHAR(16) NOT NULL, fallback_status VARCHAR(16))",
+			"CREATE TABLE async_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, job_status VARCHAR(40) NOT NULL, fallback_status VARCHAR(40))",
 			vec![],
 		)
 		.await
@@ -152,7 +162,7 @@ async fn invalid_legacy_database_value_reports_model_field_column_and_value() {
 		.expect("SQLite ORM connection should be available");
 	connection
 		.execute(
-			"CREATE TABLE async_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, job_status VARCHAR(16) NOT NULL, fallback_status VARCHAR(16))",
+			"CREATE TABLE async_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, job_status VARCHAR(40) NOT NULL, fallback_status VARCHAR(40))",
 			vec![],
 		)
 		.await
@@ -185,7 +195,7 @@ async fn session_model_enum_round_trip_uses_database_codecs() {
 	let (_database, url) = sqlite_database_url();
 	let pool = sqlite_session_pool(&url).await;
 	sqlx::query(
-		"CREATE TABLE async_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, job_status VARCHAR(16) NOT NULL, fallback_status VARCHAR(16))",
+		"CREATE TABLE async_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, job_status VARCHAR(40) NOT NULL, fallback_status VARCHAR(40))",
 	)
 	.execute(pool.as_ref())
 	.await
@@ -197,7 +207,7 @@ async fn session_model_enum_round_trip_uses_database_codecs() {
 	writer
 		.add(AsyncJob {
 			id: None,
-			status: Status::Queued,
+			status: Status::UuidShaped,
 			fallback: None,
 		})
 		.await
@@ -211,7 +221,10 @@ async fn session_model_enum_round_trip_uses_database_codecs() {
 		.fetch_one(pool.as_ref())
 		.await
 		.expect("raw enum columns should be readable");
-	assert_eq!(raw.get::<String, _>("job_status"), "queued");
+	assert_eq!(
+		raw.get::<String, _>("job_status"),
+		"550e8400-e29b-41d4-a716-446655440000"
+	);
 	assert_eq!(raw.get::<Option<String>, _>("fallback_status"), None);
 
 	let mut reader = Session::new(pool, DbBackend::Sqlite)
@@ -222,7 +235,7 @@ async fn session_model_enum_round_trip_uses_database_codecs() {
 		.await
 		.expect("session hydration should succeed")
 		.expect("enum-backed model should exist");
-	assert_eq!(hydrated.status, Status::Queued);
+	assert_eq!(hydrated.status, Status::UuidShaped);
 	assert_eq!(hydrated.fallback, None);
 }
 
@@ -232,7 +245,7 @@ async fn session_invalid_enum_error_preserves_codec_source() {
 	let (_database, url) = sqlite_database_url();
 	let pool = sqlite_session_pool(&url).await;
 	sqlx::query(
-		"CREATE TABLE async_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, job_status VARCHAR(16) NOT NULL, fallback_status VARCHAR(16))",
+		"CREATE TABLE async_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, job_status VARCHAR(40) NOT NULL, fallback_status VARCHAR(40))",
 	)
 	.execute(pool.as_ref())
 	.await
@@ -261,6 +274,81 @@ async fn session_invalid_enum_error_preserves_codec_source() {
 		"unexpected error: {message}"
 	);
 	assert!(message.contains("unknown"), "unexpected error: {message}");
+}
+
+#[tokio::test]
+#[serial(model_enum_database)]
+async fn manager_binds_database_bytes_without_json_reinterpretation() {
+	let (_database, url) = sqlite_database_url();
+	reinitialize_database(&url)
+		.await
+		.expect("SQLite ORM connection should initialize");
+	let connection = get_connection()
+		.await
+		.expect("SQLite ORM connection should be available");
+	connection
+		.execute(
+			"CREATE TABLE byte_records (id INTEGER PRIMARY KEY AUTOINCREMENT, payload BLOB NOT NULL)",
+			vec![],
+		)
+		.await
+		.expect("byte_records table should be created");
+	let payload = vec![0, 1, 127, 255];
+
+	let created = ByteRecord::objects()
+		.create(&ByteRecord {
+			id: None,
+			payload: payload.clone(),
+		})
+		.await
+		.expect("manager should bind byte payload");
+	let row = connection
+		.query_one(
+			"SELECT typeof(payload) AS storage_type, hex(payload) AS payload_hex FROM byte_records WHERE id = 1",
+			vec![],
+		)
+		.await
+		.expect("raw byte payload should be readable");
+	assert_eq!(row.get::<String>("storage_type").as_deref(), Some("blob"));
+	assert_eq!(
+		row.get::<String>("payload_hex").as_deref(),
+		Some("00017FFF")
+	);
+	assert_eq!(created.payload, payload);
+}
+
+#[tokio::test]
+#[serial(model_enum_database)]
+async fn session_binds_database_bytes_without_json_reinterpretation() {
+	let (_database, url) = sqlite_database_url();
+	let pool = sqlite_session_pool(&url).await;
+	sqlx::query(
+		"CREATE TABLE byte_records (id INTEGER PRIMARY KEY AUTOINCREMENT, payload BLOB NOT NULL)",
+	)
+	.execute(pool.as_ref())
+	.await
+	.expect("byte_records table should be created");
+	let payload = vec![0, 1, 127, 255];
+	let mut session = Session::new(pool.clone(), DbBackend::Sqlite)
+		.await
+		.expect("session should initialize");
+	session
+		.add(ByteRecord {
+			id: None,
+			payload: payload.clone(),
+		})
+		.await
+		.expect("session should track byte payload");
+	session
+		.flush()
+		.await
+		.expect("session should bind byte payload");
+
+	let row = sqlx::query("SELECT payload FROM byte_records WHERE id = 1")
+		.fetch_one(pool.as_ref())
+		.await
+		.expect("raw byte payload should be readable");
+	assert_eq!(row.get::<Vec<u8>, _>("payload"), payload);
 }
 
 #[tokio::test]
