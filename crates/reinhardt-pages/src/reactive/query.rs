@@ -148,18 +148,28 @@ struct QueryEntry<T: Clone + 'static, E: Clone + 'static> {
 	gc_time: Cell<Duration>,
 }
 
+fn initial_query_state<T, E>(
+	hydrated_state: Option<ResourceState<T, E>>,
+) -> (ResourceState<T, E>, Option<u64>) {
+	let initial_state = hydrated_state.unwrap_or(ResourceState::Loading);
+	let last_fetched_ms = if matches!(
+		&initial_state,
+		ResourceState::Success(_) | ResourceState::Error(_)
+	) {
+		Some(now_ms())
+	} else {
+		None
+	};
+	(initial_state, last_fetched_ms)
+}
+
 impl<T: Clone + 'static, E: Clone + 'static> QueryEntry<T, E> {
 	fn new(key: QueryKey<T, E>) -> Self
 	where
 		T: Serialize + DeserializeOwned,
 		E: Serialize + DeserializeOwned,
 	{
-		let initial_state = hydrated_query_state(&key.id).unwrap_or(ResourceState::Loading);
-		let last_fetched_ms = if matches!(initial_state, ResourceState::Success(_)) {
-			Some(now_ms())
-		} else {
-			None
-		};
+		let (initial_state, last_fetched_ms) = initial_query_state(hydrated_query_state(&key.id));
 		let id = key.id;
 
 		Self {
@@ -189,9 +199,8 @@ impl<T: Clone + 'static, E: Clone + 'static> QueryEntry<T, E> {
 	}
 
 	fn should_fetch_on_mount(&self) -> bool {
-		self.state.with_untracked(|state| {
-			matches!(state, ResourceState::Loading | ResourceState::Error(_)) || self.is_stale()
-		})
+		self.state
+			.with_untracked(|state| matches!(state, ResourceState::Loading) || self.is_stale())
 	}
 
 	#[cfg(native)]
@@ -479,6 +488,8 @@ where
 	E: Clone + Serialize + DeserializeOwned + 'static,
 {
 	let id = key.id.clone();
+	#[cfg(any(wasm, test))]
+	super::resource::reserve_client_resource_key(&id);
 	let cache_id = scoped_query_cache_id(&id);
 	QUERY_CACHE.with(|cache| {
 		let mut cache = cache.borrow_mut();
@@ -862,6 +873,42 @@ mod tests {
 		// Assert
 		assert_eq!(calls.get(), 2);
 		assert_eq!(query.data(), Some(2));
+	}
+
+	#[test]
+	#[serial(query_cache)]
+	fn manual_query_call_order_key_reserves_client_resource_counter() {
+		// Arrange
+		clear_query_cache_for_test();
+		super::super::resource::set_client_resource_counter(0);
+
+		// Act
+		let _entry = query_entry(QueryKey::new("rh-res-0", || async {
+			Ok::<_, String>("query".to_string())
+		}));
+
+		// Assert
+		assert_eq!(super::super::resource::current_client_resource_counter(), 1);
+		super::super::resource::set_client_resource_counter(0);
+	}
+
+	#[test]
+	#[serial(query_cache)]
+	fn hydrated_query_error_is_fresh_on_first_mount() {
+		// Arrange
+		let (hydrated_state, last_fetched_ms) =
+			initial_query_state(Some(ResourceState::Error("not found".to_string())));
+		let entry = QueryEntry::new(QueryKey::new("hydrated-query-error", || async {
+			Err::<String, _>("not found".to_string())
+		}));
+		entry.state.set(hydrated_state);
+		entry.last_fetched_ms.set(last_fetched_ms);
+
+		// Assert
+		assert!(
+			!entry.should_fetch_on_mount(),
+			"a freshly hydrated error must remain visible for the initial mount"
+		);
 	}
 
 	#[rstest]

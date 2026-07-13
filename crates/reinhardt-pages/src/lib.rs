@@ -11,7 +11,8 @@
 //! success values so screens can render the latest loaded or mutated data.
 //! [`use_query`] and [`use_mutation`] add a keyed, app-wide cache layer for
 //! server-function reads and invalidating mutations. Generated query keys
-//! canonicalize JSON object arguments, and query handles distinguish initial
+//! canonicalize JSON object arguments, hydrated success and error states remain
+//! visible through the first client mount, and query handles distinguish initial
 //! pending state from background fetching.
 //!
 //! ## Features

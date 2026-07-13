@@ -676,6 +676,31 @@ async fn server_fn_query_cache_is_scoped_per_screen() {
 }
 
 #[cfg(feature = "msw")]
+#[tokio::test]
+async fn server_fn_query_cache_does_not_leak_after_screen_drop() {
+	{
+		let first = render(jobs_query_component);
+		first.mock_server_fn::<load_jobs::marker>(|_args| Ok(vec!["First job".to_string()]));
+
+		first.get_by_role(Role::Button, "Refresh").click();
+		first.settle().await;
+
+		assert!(first.query_by_text("First job").is_some());
+		assert_eq!(first.calls_to_server_fn::<load_jobs::marker>().len(), 2);
+	}
+
+	let second = render(jobs_query_component);
+	second.mock_server_fn::<load_jobs::marker>(|_args| Ok(vec!["Second job".to_string()]));
+
+	second.get_by_role(Role::Button, "Refresh").click();
+	second.settle().await;
+
+	assert!(second.query_by_text("Second job").is_some());
+	assert!(second.query_by_text("First job").is_none());
+	assert_eq!(second.calls_to_server_fn::<load_jobs::marker>().len(), 2);
+}
+
+#[cfg(feature = "msw")]
 #[rstest]
 #[tokio::test]
 async fn injected_server_fn_query_mock_errors_render_query_errors() {
