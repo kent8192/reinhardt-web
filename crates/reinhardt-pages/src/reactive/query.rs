@@ -557,8 +557,8 @@ fn invalidate_query_id(id: &str) {
 }
 
 fn scoped_query_cache_id(id: &str) -> String {
-	#[cfg(all(native, feature = "testing", feature = "msw"))]
-	if let Some(scope_id) = crate::testing::component::server_fn_mock::active_scope_id() {
+	#[cfg(all(native, feature = "testing"))]
+	if let Some(scope_id) = crate::testing::component::active_query_scope_id() {
 		return format!("test-screen:{scope_id}:{id}");
 	}
 
