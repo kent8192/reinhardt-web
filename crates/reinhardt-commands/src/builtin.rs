@@ -2820,7 +2820,14 @@ impl RunServerCommand {
 		})?;
 		let cwd_manifest = cwd.join("Cargo.toml");
 
-		let roots = crate::source_roots::SourceRoots::from_metadata(&metadata, &cwd_manifest);
+		let watch_manifest = match package {
+			Some(package) => {
+				crate::source_roots::SourceRoots::selected_package_manifest(&metadata, package)
+					.map_err(crate::CommandError::ExecutionError)?
+			}
+			None => cwd_manifest,
+		};
+		let roots = crate::source_roots::SourceRoots::from_metadata(&metadata, &watch_manifest);
 
 		// Derive the bin name from the current executable file stem. The
 		// child server is always re-spawned by re-execing the same binary,
@@ -3294,6 +3301,11 @@ impl RunServerCommand {
 		)
 		.map_err(crate::wasm_builder::WasmBuildError::PackageResolutionFailed)?;
 		let package_manifest_path = &package_context.package_manifest_path;
+		let package_root = package_manifest_path.parent().ok_or_else(|| {
+			crate::wasm_builder::WasmBuildError::PackageResolutionFailed(
+				"selected package manifest has no parent directory".to_string(),
+			)
+		})?;
 
 		// Only build if this project exports cdylib
 		if !crate::wasm_builder::detect_cdylib_in_cargo_toml(package_manifest_path) {
@@ -3303,7 +3315,7 @@ impl RunServerCommand {
 
 		let js_name = crate_name.replace('-', "_");
 		let artifact = cwd.join("dist").join(format!("{}_bg.wasm", js_name));
-		if !force && !crate::wasm_builder::is_wasm_stale(&cwd, &artifact) {
+		if !force && !crate::wasm_builder::is_wasm_stale(package_root, &artifact) {
 			ctx.info("Pages WASM: artifacts up to date, skipping build (--no-override-wasm)");
 			return Ok(());
 		}

@@ -207,6 +207,14 @@ fn select_workspace_package<'a>(
 fn wasm_metadata_command(manifest_path: &Path) -> MetadataCommand {
 	let mut command = MetadataCommand::new();
 	command.manifest_path(manifest_path);
+	// Cargo still requires a valid working directory with an explicit manifest.
+	// Pin it to the selected package so concurrent callers cannot leak a removed cwd.
+	if let Some(package_root) = manifest_path
+		.parent()
+		.filter(|path| !path.as_os_str().is_empty())
+	{
+		command.current_dir(package_root);
+	}
 	command.other_options(vec![
 		"--filter-platform".to_string(),
 		"wasm32-unknown-unknown".to_string(),
@@ -224,6 +232,7 @@ fn style_source_roots(
 	metadata: &Metadata,
 	selected_package: &Package,
 ) -> Result<Vec<StyleSourceRoot>, String> {
+	let wasm_target = CfgEvaluator::new(BTreeSet::new())?.target;
 	let resolve = metadata
 		.resolve
 		.as_ref()
@@ -242,12 +251,7 @@ fn style_source_roots(
 			.find(|node| node.id == package_id)
 			.ok_or_else(|| format!("Cargo metadata omitted dependency node `{package_id}`"))?;
 		for dependency in &node.deps {
-			if dependency.dep_kinds.is_empty()
-				|| dependency
-					.dep_kinds
-					.iter()
-					.any(|kind| kind.kind == DependencyKind::Normal)
-			{
+			if dependency_is_enabled_for_wasm(dependency, &wasm_target) {
 				pending.push(dependency.pkg.clone());
 			}
 		}
@@ -263,7 +267,10 @@ fn style_source_roots(
 
 		let enabled_features: BTreeSet<String> =
 			node.features.iter().map(ToString::to_string).collect();
-		let cfg = CfgEvaluator::new(enabled_features.clone())?;
+		let cfg = CfgEvaluator {
+			target: wasm_target.clone(),
+			features: enabled_features.clone(),
+		};
 		let package_root = package
 			.manifest_path
 			.parent()
@@ -301,6 +308,20 @@ fn style_source_roots(
 	});
 	roots.dedup_by(|left, right| left.source_path == right.source_path);
 	Ok(roots)
+}
+
+fn dependency_is_enabled_for_wasm(
+	dependency: &cargo_metadata::NodeDep,
+	wasm_target: &CfgTarget,
+) -> bool {
+	dependency.dep_kinds.is_empty()
+		|| dependency.dep_kinds.iter().any(|kind| {
+			kind.kind == DependencyKind::Normal
+				&& kind
+					.target
+					.as_ref()
+					.is_none_or(|target| wasm_target.matches_platform(target))
+		})
 }
 
 /// One canonical style definition and its checked compiler output.
@@ -371,6 +392,9 @@ impl StyleExtractor {
 				let file = syn::parse_file(&source).map_err(|error| {
 					format!("failed to parse {}: {error}", source_path.display())
 				})?;
+				if !source_root.cfg.items_are_enabled(&file.attrs) {
+					continue;
+				}
 				let mut scanner = DefinitionScanner::new(&source_path, &source_root.cfg);
 				scanner.visit_file(&file);
 				if let Some(error) = scanner.error {
@@ -469,13 +493,17 @@ fn collect_source_file(
 	files: &mut BTreeSet<PathBuf>,
 ) -> Result<(), String> {
 	let source_path = source_path.to_path_buf();
-	if !files.insert(source_path.clone()) {
+	if files.contains(&source_path) {
 		return Ok(());
 	}
 	let source = std::fs::read_to_string(&source_path)
 		.map_err(|error| format!("failed to read {}: {error}", source_path.display()))?;
 	let file = syn::parse_file(&source)
 		.map_err(|error| format!("failed to parse {}: {error}", source_path.display()))?;
+	if !cfg.items_are_enabled(&file.attrs) {
+		return Ok(());
+	}
+	files.insert(source_path.clone());
 	collect_module_items(&file.items, module_dir, &source_path, cfg, files)
 }
 
@@ -716,6 +744,8 @@ struct CfgTarget {
 	key_values: BTreeMap<String, BTreeSet<String>>,
 }
 
+const WASM_TARGET: &str = "wasm32-unknown-unknown";
+
 impl CfgEvaluator {
 	fn new(features: BTreeSet<String>) -> Result<Self, String> {
 		Self::with_debug_assertions(features, cfg!(debug_assertions))
@@ -726,7 +756,7 @@ impl CfgEvaluator {
 		debug_assertions: bool,
 	) -> Result<Self, String> {
 		let rustc = std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into());
-		let target = CfgTarget::from_rustc(&rustc, "wasm32-unknown-unknown", debug_assertions)?;
+		let target = CfgTarget::from_rustc(&rustc, WASM_TARGET, debug_assertions)?;
 		Ok(Self { target, features })
 	}
 
@@ -771,12 +801,41 @@ impl CfgEvaluator {
 }
 
 impl CfgTarget {
+	fn matches_platform(&self, platform: &cargo_metadata::cargo_platform::Platform) -> bool {
+		platform.matches(WASM_TARGET, &self.cargo_platform_cfgs())
+	}
+
+	fn cargo_platform_cfgs(&self) -> Vec<cargo_metadata::cargo_platform::Cfg> {
+		let mut cfgs = Vec::new();
+		for flag in &self.flags {
+			// These aliases are used while scanning Pages source, but Cargo does
+			// not expose them as target cfgs for dependency predicates.
+			if matches!(flag.as_str(), "client" | "wasm") {
+				continue;
+			}
+			if let Ok(cfg) = flag.parse() {
+				cfgs.push(cfg);
+			}
+		}
+		for (key, values) in &self.key_values {
+			for value in values {
+				if let Ok(cfg) = format!("{key} = {value:?}").parse() {
+					cfgs.push(cfg);
+				}
+			}
+		}
+		cfgs
+	}
+
 	fn from_rustc(
 		rustc: &std::ffi::OsStr,
 		target: &str,
 		debug_assertions: bool,
 	) -> Result<Self, String> {
 		let mut command = Command::new(rustc);
+		// `rustc --print cfg` does not need project files. Use a stable directory
+		// instead of inheriting a process cwd that another caller may remove.
+		command.current_dir(std::env::temp_dir());
 		command.args(["--print", "cfg", "--target", target]);
 		if !debug_assertions {
 			command.args(["-C", "debug-assertions=no"]);
@@ -1084,6 +1143,110 @@ mod tests {
 		// Assert
 		assert_eq!(bundle.definitions.len(), 1);
 		assert_eq!(bundle.definitions[0].style_type_name, "AppStyles");
+	}
+
+	#[test]
+	fn style_extractor_ignores_files_disabled_by_an_inner_wasm_cfg() {
+		// Arrange
+		let directory = tempfile::tempdir().expect("create temporary package");
+		let package = directory.path();
+		fs::create_dir_all(package.join("src")).expect("create source directory");
+		fs::write(
+			package.join("Cargo.toml"),
+			"[package]\nname = \"inner-cfg-app\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+		)
+		.expect("write package manifest");
+		fs::write(package.join("src/lib.rs"), "mod host_only;\n").expect("write library source");
+		fs::write(
+			package.join("src/host_only.rs"),
+			"#![cfg(not(target_family = \"wasm\"))]\n#[style_def]\nstatic HOST: HostStyles = style! { .host { color: red; } };\n",
+		)
+		.expect("write host-only style source");
+
+		// Act
+		let context = StylePackageContext::resolve(package.join("Cargo.toml"), None)
+			.expect("resolve package");
+		let bundle = StyleExtractor::new(context)
+			.extract()
+			.expect("extract component styles");
+
+		// Assert
+		assert!(bundle.definitions.is_empty());
+		assert!(bundle.css.is_empty());
+	}
+
+	#[test]
+	fn style_extractor_ignores_host_only_normal_dependencies() {
+		// Arrange
+		let directory = tempfile::tempdir().expect("create temporary workspace");
+		let app = directory.path().join("app");
+		let host_only = directory.path().join("host-only");
+		fs::create_dir_all(app.join("src")).expect("create app source directory");
+		fs::create_dir_all(host_only.join("src")).expect("create dependency source directory");
+		fs::write(
+			directory.path().join("Cargo.toml"),
+			"[workspace]\nresolver = \"3\"\nmembers = [\"app\", \"host-only\"]\n",
+		)
+		.expect("write workspace manifest");
+		fs::write(
+			app.join("Cargo.toml"),
+			"[package]\nname = \"target-filter-app\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[dependencies]\nhost-only = { path = \"../host-only\" }\n",
+		)
+		.expect("write app manifest");
+		fs::write(app.join("src/lib.rs"), "pub fn app() {}\n").expect("write app source");
+		fs::write(
+			host_only.join("Cargo.toml"),
+			"[package]\nname = \"host-only\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+		)
+		.expect("write dependency manifest");
+		fs::write(
+			host_only.join("src/lib.rs"),
+			"#[style_def]\nstatic HOST: HostDependencyStyles = style! { .host { color: red; } };\n",
+		)
+		.expect("write dependency style source");
+
+		// Act
+		let metadata = load_wasm_metadata(&app.join("Cargo.toml")).expect("load app metadata");
+		let host_only_id = metadata
+			.packages
+			.iter()
+			.find(|package| package.name.as_str() == "host-only")
+			.expect("find host-only package")
+			.id
+			.to_string();
+		let mut metadata_json = serde_json::to_value(metadata).expect("serialize metadata");
+		let app_node = metadata_json["resolve"]["nodes"]
+			.as_array_mut()
+			.expect("metadata resolve nodes")
+			.iter_mut()
+			.find(|node| {
+				node["deps"].as_array().is_some_and(|dependencies| {
+					dependencies
+						.iter()
+						.any(|dependency| dependency["pkg"] == host_only_id)
+				})
+			})
+			.expect("find app dependency node");
+		let dependency = app_node["deps"]
+			.as_array_mut()
+			.expect("app dependencies")
+			.iter_mut()
+			.find(|dependency| dependency["pkg"] == host_only_id)
+			.expect("find host-only dependency");
+		// Cargo may prefilter this edge on the local host. Recreate the
+		// target-bearing resolved edge to exercise the metadata contract.
+		dependency["dep_kinds"][0]["target"] =
+			serde_json::Value::String("cfg(not(target_arch = \"wasm32\"))".to_string());
+		let metadata = serde_json::from_value(metadata_json).expect("deserialize target metadata");
+		let context = StylePackageContext::from_metadata(&metadata, Some("target-filter-app"))
+			.expect("resolve app package for WASM");
+		let bundle = StyleExtractor::new(context)
+			.extract()
+			.expect("extract component styles");
+
+		// Assert
+		assert!(bundle.definitions.is_empty());
+		assert!(bundle.css.is_empty());
 	}
 }
 

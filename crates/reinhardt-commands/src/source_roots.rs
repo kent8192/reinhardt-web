@@ -34,6 +34,30 @@ pub struct SourceRoots {
 }
 
 impl SourceRoots {
+	/// Resolve a supplied Cargo package name to its workspace member manifest.
+	///
+	/// `cargo metadata` represents virtual workspace roots without a package, so
+	/// callers that accept `--package` must use the selected member manifest as
+	/// the traversal anchor rather than the current directory's `Cargo.toml`.
+	pub fn selected_package_manifest(
+		metadata: &cargo_metadata::Metadata,
+		requested_package: &str,
+	) -> Result<PathBuf, String> {
+		let matches: Vec<_> = metadata
+			.workspace_packages()
+			.into_iter()
+			.filter(|package| package.name.as_str() == requested_package)
+			.collect();
+
+		match matches.as_slice() {
+			[package] => Ok(PathBuf::from(package.manifest_path.as_str())),
+			[] => Err(format!("Cargo package `{requested_package}` was not found")),
+			_ => Err(format!(
+				"Cargo package name `{requested_package}` is ambiguous; select a unique package"
+			)),
+		}
+	}
+
 	/// Compute watch targets by BFS from the package whose manifest matches
 	/// `cwd_manifest`, traversing only path-based dependencies.
 	///
@@ -167,6 +191,29 @@ mod tests {
 			roots.lockfile,
 			Some(PathBuf::from("/fixtures/ws/Cargo.lock"))
 		);
+	}
+
+	#[rstest]
+	fn selected_workspace_package_provides_the_watch_anchor() {
+		// Arrange
+		let metadata = parse_metadata(WORKSPACE_JSON);
+		let workspace_manifest = PathBuf::from("/fixtures/ws/Cargo.toml");
+
+		// Act
+		let anchor = SourceRoots::selected_package_manifest(&metadata, "app")
+			.expect("select the requested workspace package");
+		let roots = SourceRoots::from_metadata(&metadata, &anchor);
+
+		// Assert
+		assert_eq!(anchor, PathBuf::from("/fixtures/ws/app/Cargo.toml"));
+		assert_eq!(
+			roots.src_dirs,
+			vec![
+				PathBuf::from("/fixtures/ws/app/src"),
+				PathBuf::from("/fixtures/ws/shared/src"),
+			]
+		);
+		assert_ne!(anchor, workspace_manifest);
 	}
 
 	#[rstest]

@@ -687,6 +687,7 @@ fn build_admin_wasm(force: bool) -> bool {
 fn build_pages_wasm(
 	force: bool,
 	feature_selection: &reinhardt_commands::StyleFeatureSelection,
+	package: Option<&str>,
 ) -> bool {
 	let cwd = match env::current_dir() {
 		Ok(d) => d,
@@ -699,47 +700,42 @@ fn build_pages_wasm(
 		}
 	};
 	let cargo_toml_path = cwd.join("Cargo.toml");
-
-	// Only build if this project exports cdylib
-	if !detect_cdylib_in_cargo_toml(&cargo_toml_path) {
-		return false;
-	}
-
-	// Parse the crate name from Cargo.toml
-	let crate_name = match std::fs::read_to_string(&cargo_toml_path) {
-		Ok(content) => {
-			let mut name = String::new();
-			for line in content.lines() {
-				let trimmed = line.trim();
-				if trimmed.starts_with("name")
-					&& trimmed.contains('=')
-					&& let Some(val) = trimmed.split('=').nth(1)
-				{
-					name = val.trim().trim_matches('"').trim_matches('\'').to_string();
-					break;
-				}
-			}
-			if name.is_empty() {
-				eprintln!(
-					"{}",
-					"Warning: Could not determine crate name from Cargo.toml".yellow()
-				);
-				return false;
-			}
-			name
-		}
-		Err(e) => {
+	let package_context = match reinhardt_commands::StylePackageContext::resolve_with_features(
+		&cargo_toml_path,
+		package,
+		feature_selection.clone(),
+	) {
+		Ok(context) => context,
+		Err(error) => {
 			eprintln!(
 				"{}",
-				format!("Warning: Failed to read Cargo.toml: {}", e).yellow()
+				format!("Warning: Failed to resolve Pages package: {error}").yellow()
+			);
+			return false;
+		}
+	};
+	let package_manifest_path = &package_context.package_manifest_path;
+	let package_root = match package_manifest_path.parent() {
+		Some(path) => path,
+		None => {
+			eprintln!(
+				"{}",
+				"Warning: Selected Pages package manifest has no parent directory".yellow()
 			);
 			return false;
 		}
 	};
 
+	// Only build if this project exports cdylib
+	if !detect_cdylib_in_cargo_toml(package_manifest_path) {
+		return false;
+	}
+
+	let crate_name = package_context.package_name;
+
 	let js_name = crate_name.replace('-', "_");
 	let artifact = cwd.join("dist").join(format!("{}_bg.wasm", js_name));
-	if !force && !is_wasm_stale(&cwd, &artifact) {
+	if !force && !is_wasm_stale(package_root, &artifact) {
 		println!(
 			"{}",
 			"Pages WASM: artifacts up to date, skipping build (--no-override-wasm)".dimmed()
@@ -758,19 +754,10 @@ fn build_pages_wasm(
 		"{}",
 		format!("Building pages WASM for {} ({})...", crate_name, reason).cyan()
 	);
-	// Resolve workspace root so wasm-bindgen finds the artifact in the
-	// workspace-level target directory, not relative to the member crate CWD.
-	let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-	let workspace_root = manifest_dir
-		.parent()
-		.and_then(|p| p.parent())
-		.and_then(|p| p.parent())
-		.and_then(|p| p.parent())
-		.map(PathBuf::from)
-		.unwrap_or_else(|| PathBuf::from("."));
-	let config = WasmBuildConfig::new(".")
+	let config = WasmBuildConfig::new(&cwd)
 		.output_dir("dist")
-		.target_dir(workspace_root.join("target"));
+		.target_name(&crate_name)
+		.package(&crate_name);
 	let builder = WasmBuilder::new(config)
 		.features(feature_selection.features().iter().cloned())
 		.all_features(feature_selection.all_features_enabled());
@@ -800,6 +787,7 @@ fn build_wasm_targets(
 	no_override_wasm: bool,
 	force_wasm_legacy: bool,
 	_feature_selection: &reinhardt_commands::StyleFeatureSelection,
+	package: Option<&str>,
 ) {
 	if no_wasm {
 		println!("{}", "WASM builds skipped (--no-wasm)".dimmed());
@@ -816,7 +804,10 @@ fn build_wasm_targets(
 	}
 
 	#[cfg(not(any(feature = "admin", feature = "pages")))]
-	let _ = no_override_wasm;
+	let _ = (no_override_wasm, package);
+
+	#[cfg(all(feature = "admin", not(feature = "pages")))]
+	let _ = package;
 
 	#[cfg(any(feature = "admin", feature = "pages"))]
 	let force = !no_override_wasm;
@@ -825,7 +816,7 @@ fn build_wasm_targets(
 	build_admin_wasm(force);
 
 	#[cfg(feature = "pages")]
-	build_pages_wasm(force, _feature_selection);
+	build_pages_wasm(force, _feature_selection, package);
 }
 
 /// Run collectstatic to copy all static files into STATIC_ROOT.
@@ -963,6 +954,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 		args.no_override_wasm,
 		args.force_wasm,
 		&style_feature_selection,
+		args.package.as_deref(),
 	);
 
 	// Load settings at startup
