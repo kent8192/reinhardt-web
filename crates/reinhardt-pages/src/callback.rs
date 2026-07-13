@@ -170,7 +170,7 @@ impl<Args, Ret> Clone for Callback<Args, Ret> {
 /// Per-call-site state for [`callback_with_deps`].
 ///
 /// Keyed by leaked `&'static str` of the caller's `Location` and stores the
-/// most recent deps tuple together with a type-erased `Arc<dyn Fn>`. The
+/// most recent dependency list together with a type-erased `Arc<dyn Fn>`. The
 /// inner Arc is downcast and cloned into the returned `Callback`.
 #[allow(dead_code)]
 struct CallbackSlot {

@@ -21,7 +21,7 @@
 //!
 //! `use_effect`, `use_retained_effect`, `use_layout_effect`,
 //! `use_retained_layout_effect`, `use_memo`, `use_callback`, and
-//! `use_callback_with` take an explicit dependency tuple as the second
+//! `use_callback_with` take an explicit `deps![...]` dependency list as the second
 //! argument. Effect closures return `()` when no cleanup is needed, or
 //! `Option<C>` when they register cleanup:
 //!
@@ -29,18 +29,20 @@
 //! use reinhardt_pages::prelude::*;
 //!
 //! let count = Signal::new(0_i32);
-//! let count_for_effect = count.clone();
 //! use_retained_effect(
-//!     move || {
-//!         println!("count = {}", count_for_effect.get());
+//!     {
+//!         let count = count.clone();
+//!         move || {
+//!             println!("count = {}", count.get());
+//!         }
 //!     },
-//!     (count.clone(),),
+//!     deps![count],
 //! );
 //! ```
 //!
 //! Closures run with no active reactive Observer ("Option A"), so
 //! `Signal::get` inside does NOT auto-subscribe — subscriptions derive
-//! exclusively from the deps tuple. Pass `()` for mount-only effects.
+//! exclusively from the dependency list. Pass `deps![]` for mount-only effects.
 //!
 //! For a concept-by-concept mapping from React to Reinhardt Pages, see
 //! `docs/react_to_reinhardt.md` in this crate.

@@ -1,6 +1,6 @@
 //! Compile-fail: a Signal read inside a `use_effect` closure written directly
-//! in a `page!` body must be listed in the deps tuple (spec §4.5, #4721/#4746).
-//! Here `count.get()` is read but the deps tuple is empty `()`, so the hook
+//! in a `page!` body must be listed in the dependency list (spec §4.5, #4721/#4746).
+//! Here `count.get()` is read but the dependency list is empty, so the hook
 //! would silently never re-run — promoted to a hard compile error.
 //!
 //! The hook is called through a qualified path (`hooks::use_effect`) because

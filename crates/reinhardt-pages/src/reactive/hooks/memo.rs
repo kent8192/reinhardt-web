@@ -2,7 +2,7 @@
 //!
 //! React-aligned hooks built on top of [`Memo::new_with_deps`] and the
 //! `callback_with_deps` Rc-swap helper. All three take an explicit
-//! dependency tuple as the second argument (Refs #4195).
+//! dependency list as the second argument (Refs #4195).
 
 use reinhardt_core::reactive::deps::IntoDeps;
 
@@ -14,9 +14,9 @@ use crate::reactive::Memo;
 /// This is the React-like equivalent of `useMemo`. The calculation is re-run
 /// only when its reactive dependencies change.
 ///
-/// Reinhardt Pages uses an explicit dependency tuple instead of a React
+/// Reinhardt Pages uses an explicit `deps![...]` list instead of a React
 /// dependency array. Signal reads inside the calculation do not subscribe
-/// implicitly; the tuple passed as `deps` determines when the memo re-runs.
+/// implicitly; the list passed as `deps` determines when the memo re-runs.
 ///
 /// # Type Parameters
 ///
@@ -26,7 +26,7 @@ use crate::reactive::Memo;
 /// # Arguments
 ///
 /// * `f` - A function that performs the calculation
-/// * `deps` - Explicit dependency tuple; pass `()` for mount-only memoization
+/// * `deps` - Explicit dependency list; pass `deps![]` for mount-only memoization
 ///
 /// # Returns
 ///
@@ -114,7 +114,7 @@ where
 /// # Note
 ///
 /// Unlike React's dependency arrays, Reinhardt Pages uses an explicit
-/// dependency tuple. Capture Signals (which are cheap to clone) rather
+/// `deps![...]` dependency list. Capture Signals (which are cheap to clone) rather
 /// than their values when the callback should observe the latest state.
 #[cfg(wasm)]
 #[track_caller]

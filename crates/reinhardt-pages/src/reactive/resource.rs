@@ -224,7 +224,7 @@ impl<T: Clone + 'static, E: Clone + 'static> reinhardt_core::reactive::deps::Tra
 	for Resource<T, E>
 {
 	/// Returns the underlying state `Signal`'s `NodeId`, allowing this
-	/// `Resource` to participate in hook deps tuples alongside `Signal`
+	/// `Resource` to participate in hook dependency lists alongside `Signal`
 	/// and `Memo` (Refs #4195).
 	fn node_id(&self) -> reinhardt_core::reactive::runtime::NodeId {
 		self.state.id()
@@ -237,8 +237,8 @@ impl<T: Clone + 'static, E: Clone + 'static> reinhardt_core::reactive::deps::Tra
 /// [`Resource`] (`Loading → Success/Error`). The `deps` argument follows the
 /// same [`IntoDeps`] convention as [`use_effect`](super::hooks::use_effect):
 ///
-/// - `()` → fetch once on mount (never automatically refetches).
-/// - `(signal,)` / `(a, b, ..)` → refetch whenever any listed dependency
+/// - `deps![]` → fetch once on mount (never automatically refetches).
+/// - `deps![signal]` / `deps![a, b]` → refetch whenever any listed dependency
 ///   changes. Dependencies are the explicitly listed [`Trackable`]s
 ///   (`Signal`/`Memo`/`Resource`); signals merely *read* inside the async
 ///   `fetcher` do not subscribe (they cross an `await` boundary), so list
@@ -285,7 +285,7 @@ impl<T: Clone + 'static, E: Clone + 'static> reinhardt_core::reactive::deps::Tra
 ///             async move { fetch_user_from_api(id).await }
 ///         }
 ///     },
-///     (user_id.clone(),),
+///     deps![user_id],
 /// );
 /// user_id.set(100); // triggers a refetch
 /// ```

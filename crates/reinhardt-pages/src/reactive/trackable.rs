@@ -5,7 +5,7 @@ use crate::reactive::{Memo, Signal};
 /// A value whose identity can be tracked across reactivity cycles.
 ///
 /// Implemented by `Signal<T>`, `Memo<T>`, and `Resource<T>`. Used by
-/// `page!` codegen (auto-wrap visitor) and by hook deps tuples (#4195).
+/// `page!` codegen (auto-wrap visitor) and by hook dependency lists (#4195).
 pub trait Trackable {
 	/// Returns an opaque identifier stable across clones of the same source.
 	fn signal_id(&self) -> u64;

@@ -1,4 +1,4 @@
-//! Compile-pass: `use_effect` with an explicit single-element deps tuple
+//! Compile-pass: `use_effect` with an explicit single-element dependency list
 //! is the canonical React-parity shape (spec §4.2).
 
 use reinhardt_pages::deps;

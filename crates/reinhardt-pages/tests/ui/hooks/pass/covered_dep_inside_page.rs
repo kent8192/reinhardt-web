@@ -1,5 +1,5 @@
 //! Compile-pass: a Signal read inside a `use_effect` closure within a `page!`
-//! body whose base identifier IS listed in the deps tuple is accepted
+//! body whose base identifier IS listed in the dependency list is accepted
 //! (spec §4.5, #4721/#4746). The hook is called via a qualified path so it is
 //! exempt from `page!` capture discipline (spec §3.7).
 

@@ -88,10 +88,10 @@ fn test_wasm_server_api_macro_ui_fail() {
 	t.compile_fail("tests/ui/wasm_server_api/fail/*.rs");
 }
 
-// PR5 / Issue #4195: React-parity hooks require an explicit deps tuple
+// PR5 / Issue #4195: React-parity hooks require an explicit dependency list
 // (spec §4.2). These UI tests pin the public signature:
 // - `pass/explicit_deps_use_effect.rs`: canonical (closure, (s,))
-// - `pass/mount_only_unit_deps.rs`: mount-only `()`
+// - `pass/mount_only_unit_deps.rs`: mount-only dependency list
 // - `fail/missing_deps_use_effect.rs`: omitting deps is a hard compile error
 #[test]
 fn test_hooks_explicit_deps_ui_pass() {

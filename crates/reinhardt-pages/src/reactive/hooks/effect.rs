@@ -1,6 +1,6 @@
 //! Effect hooks: use_effect and use_layout_effect
 //!
-//! React-aligned side effect hooks. Both take an explicit dependency tuple
+//! React-aligned side effect hooks. Both take an explicit dependency list
 //! as the second argument; the closure runs with no active reactive Observer
 //! so only the listed deps subscribe (Option A semantics, Refs #4195).
 //! Effect closures can return either `()` for no cleanup or `Option<C>` when
@@ -81,13 +81,13 @@ where
 /// - The closure runs with no active reactive Observer
 ///   (`run_without_observer`); auto-tracking is disabled inside `f`.
 /// - Subscriptions are derived exclusively from `deps`.
-/// - Use `()` to opt out of re-runs (mount-only effect).
+/// - Use `deps![]` to opt out of re-runs (mount-only effect).
 ///
 /// # Type Parameters
 ///
 /// * `F` - The effect function type.
 /// * `C` - The cleanup function type.
-/// * `D` - Any tuple of [`Trackable`]s (or `()`) that implements
+/// * `D` - A `deps![...]` list of [`Trackable`]s that implements
 ///   [`IntoDeps`].
 ///
 /// # Arguments
@@ -95,11 +95,12 @@ where
 /// * `f` - A function that performs the side effect and optionally
 ///   returns a cleanup function. Cleanups run before the next re-run and
 ///   on dispose, matching React `useEffect`.
-/// * `deps` - The explicit dependency tuple. Pass `()` for no deps.
+/// * `deps` - The explicit dependency list. Pass `deps![]` for no dependencies.
 ///
 /// # Example
 ///
 /// ```ignore
+/// use reinhardt_pages::deps;
 /// use reinhardt_pages::reactive::hooks::{use_effect, use_state};
 ///
 /// let (count, _set_count) = use_state(0);
@@ -112,16 +113,16 @@ where
 ///             log!("Count is now: {}", count.get());
 ///         }
 ///     },
-///     (count.clone(),),
+///     deps![count],
 /// );
 ///
-/// // Effect with cleanup, mount-only deps `()`.
+/// // Effect with cleanup and a mount-only dependency list.
 /// let _interval_effect = use_effect(
 ///     move || {
 ///         let interval_id = set_interval(|| log!("tick"), 1000);
 ///         Some(move || clear_interval(interval_id))
 ///     },
-///     (),
+///     deps![],
 /// );
 /// ```
 ///
