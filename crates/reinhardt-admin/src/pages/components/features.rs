@@ -1021,19 +1021,15 @@ fn create_filter_select(
 			aria_label: label,
 			data_filter_field: field_str.clone(),
 			@change: move |event| {
-				use wasm_bindgen::JsCast;
-				if let Some(target) = event.target() {
-					if let Ok(select_el) = target.dyn_into::<web_sys::HtmlSelectElement>() {
-						let value = select_el.value();
-						let field = field_str.clone();
-						_filters_signal.update(move |map| {
-							if value.is_empty() {
-								map.remove(&field);
-							} else {
-								map.insert(field, value);
-							}
-						});
-					}
+				if let Ok(value) = event.value() {
+					let field = field_str.clone();
+					_filters_signal.update(move |map| {
+						if value.is_empty() {
+							map.remove(&field);
+						} else {
+							map.insert(field, value);
+						}
+					});
 				}
 			},
 			{ options_container }

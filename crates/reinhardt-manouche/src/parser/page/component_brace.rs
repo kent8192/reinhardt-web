@@ -11,7 +11,7 @@
 //! Body items are identified by the `{` disambiguation rule (spec §3.2):
 //!
 //! - `ident :` after an identifier → named prop (`PageComponentArg`)
-//! - `@ event :` → event prop (`PageEvent`)
+//! - `@ event :` → event prop (`ComponentEventProp`)
 //! - lowercase `ident { ... }` → child HTML element
 //! - PascalCase `Ident { ... }` → nested child component (brace form)
 //! - PascalCase `Ident ( ... )` → nested child component (paren form)
@@ -24,7 +24,8 @@
 use syn::{Expr, Ident, Result, Token, braced, ext::IdentExt, parse::ParseStream};
 
 use crate::{
-	ComponentInvocationForm, NamedSlot, PageComponent, PageComponentArg, PageEvent, PageNode,
+	ComponentEventProp, ComponentInvocationForm, NamedSlot, PageComponent, PageComponentArg,
+	PageNode,
 };
 
 /// Parses one brace-form component invocation, starting at the PascalCase
@@ -43,7 +44,7 @@ pub(super) fn parse_component_brace_node(input: ParseStream) -> Result<PageNode>
 	braced!(content in input);
 
 	let mut args: Vec<PageComponentArg> = Vec::new();
-	let mut events: Vec<PageEvent> = Vec::new();
+	let mut events: Vec<ComponentEventProp> = Vec::new();
 	let mut children: Vec<PageNode> = Vec::new();
 	let mut named_slots: Vec<NamedSlot> = Vec::new();
 
@@ -145,10 +146,15 @@ fn parse_named_prop(input: ParseStream) -> Result<PageComponentArg> {
 }
 
 /// Parses one `@event: handler` event prop, consuming an optional trailing comma.
-fn parse_event_inline(input: ParseStream) -> Result<PageEvent> {
+fn parse_event_inline(input: ParseStream) -> Result<ComponentEventProp> {
 	input.parse::<Token![@]>()?;
-	let event_type: Ident = input.parse()?;
-	let span = event_type.span();
+	let name: Ident = input.parse()?;
+	if name == "custom" && input.peek(syn::token::Paren) {
+		return Err(syn::Error::new(
+			name.span(),
+			"`@custom(\"...\")` is only valid on intrinsic elements",
+		));
+	}
 	input.parse::<Token![:]>()?;
 	let handler: Expr = input.parse()?;
 
@@ -156,9 +162,5 @@ fn parse_event_inline(input: ParseStream) -> Result<PageEvent> {
 		input.parse::<Token![,]>()?;
 	}
 
-	Ok(PageEvent {
-		event_type,
-		handler,
-		span,
-	})
+	Ok(ComponentEventProp { name, handler })
 }

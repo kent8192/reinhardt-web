@@ -19,11 +19,11 @@ use syn::visit::{self, Visit};
 use syn::{Expr, Result, Token};
 
 use crate::core::{
-	ImplicitPageCapture, PageAttr, PageBody, PageComponent, PageElement, PageElse, PageEvent,
-	PageExpression, PageFor, PageIf, PageMacro, PageMacroForm, PageNode, PageParam, PageWatch,
-	TypedNamedSlot, TypedPageAttr, TypedPageBody, TypedPageComponent, TypedPageElement,
-	TypedPageElse, TypedPageFor, TypedPageIf, TypedPageMacro, TypedPageMacroForm, TypedPageNode,
-	TypedPageWatch, types::AttrValue,
+	ComponentEventProp, ImplicitPageCapture, IntrinsicEvent, PageAttr, PageBody, PageComponent,
+	PageElement, PageElse, PageExpression, PageFor, PageIf, PageMacro, PageMacroForm, PageNode,
+	PageParam, PageWatch, TypedNamedSlot, TypedPageAttr, TypedPageBody, TypedPageComponent,
+	TypedPageElement, TypedPageElse, TypedPageFor, TypedPageIf, TypedPageMacro, TypedPageMacroForm,
+	TypedPageNode, TypedPageWatch, types::AttrValue,
 };
 
 /// Validates and transforms the entire PageMacro AST into a typed AST.
@@ -145,7 +145,7 @@ impl CaptureCollector {
 			self.visit_expr(&attr.value);
 		}
 		for event in &el.events {
-			self.visit_expr(&event.handler);
+			self.visit_expr(event.handler());
 		}
 		for child in &el.children {
 			self.visit_node(child);
@@ -517,7 +517,7 @@ fn transform_watch(watch_node: &PageWatch, parent_tags: &[String]) -> Result<Typ
 fn transform_component(comp: &PageComponent, parent_tags: &[String]) -> Result<TypedPageComponent> {
 	// Validate component event handlers (same as element events)
 	for event in &comp.events {
-		validate_event_handler(event)?;
+		validate_component_event_handler(event)?;
 	}
 
 	// Transform children if present
@@ -563,7 +563,7 @@ fn transform_element(elem: &PageElement, parent_tags: &[String]) -> Result<Typed
 
 	// 1. Validate events (unchanged from untyped version)
 	for event in &elem.events {
-		validate_event_handler(event)?;
+		validate_intrinsic_event_handler(event)?;
 	}
 
 	// 2. Transform and validate attributes
@@ -1626,15 +1626,30 @@ fn validate_attr_type(
 /// # Errors
 ///
 /// Returns a compilation error if the handler is a closure with more than 1 argument.
-fn validate_event_handler(event: &PageEvent) -> Result<()> {
+fn validate_intrinsic_event_handler(event: &IntrinsicEvent) -> Result<()> {
+	let handler = match event {
+		IntrinsicEvent::Standard { event, handler } => {
+			let _spec = event.spec();
+			handler
+		}
+		IntrinsicEvent::Custom { handler, .. } => handler,
+	};
+	validate_event_handler_expr(handler)
+}
+
+fn validate_component_event_handler(event: &ComponentEventProp) -> Result<()> {
+	validate_event_handler_expr(&event.handler)
+}
+
+fn validate_event_handler_expr(handler: &Expr) -> Result<()> {
 	// Only validate argument count for closure expressions
 	// Other expressions (variables, method calls, etc.) are allowed
 	// and will be type-checked by the Rust compiler
-	if let Expr::Closure(closure) = &event.handler {
+	if let Expr::Closure(closure) = handler {
 		let arg_count = closure.inputs.len();
 		if arg_count > 1 {
 			return Err(syn::Error::new_spanned(
-				&event.handler,
+				handler,
 				format!(
 					"Event handler closure must have 0 or 1 arguments, but this closure has {} arguments",
 					arg_count
@@ -2007,14 +2022,13 @@ mod tests {
 	#[rstest]
 	fn test_validate_valid_closure() {
 		// Arrange
-		let event = PageEvent {
-			event_type: syn::Ident::new("click", proc_macro2::Span::call_site()),
+		let event = IntrinsicEvent::Standard {
+			event: reinhardt_event_catalog::KnownEvent::Click,
 			handler: parse_quote!(|_| {}),
-			span: proc_macro2::Span::call_site(),
 		};
 
 		// Act
-		let result = validate_event_handler(&event);
+		let result = validate_intrinsic_event_handler(&event);
 
 		// Assert
 		assert!(result.is_ok());
@@ -2023,16 +2037,15 @@ mod tests {
 	#[rstest]
 	fn test_validate_closure_with_one_arg() {
 		// Arrange
-		let event = PageEvent {
-			event_type: syn::Ident::new("click", proc_macro2::Span::call_site()),
+		let event = IntrinsicEvent::Standard {
+			event: reinhardt_event_catalog::KnownEvent::Click,
 			handler: parse_quote!(|e| {
 				handle_click(e);
 			}),
-			span: proc_macro2::Span::call_site(),
 		};
 
 		// Act
-		let result = validate_event_handler(&event);
+		let result = validate_intrinsic_event_handler(&event);
 
 		// Assert
 		assert!(result.is_ok());
@@ -2041,14 +2054,13 @@ mod tests {
 	#[rstest]
 	fn test_validate_closure_too_many_args() {
 		// Arrange
-		let event = PageEvent {
-			event_type: syn::Ident::new("click", proc_macro2::Span::call_site()),
+		let event = IntrinsicEvent::Standard {
+			event: reinhardt_event_catalog::KnownEvent::Click,
 			handler: parse_quote!(|a, b, c| {}),
-			span: proc_macro2::Span::call_site(),
 		};
 
 		// Act
-		let result = validate_event_handler(&event);
+		let result = validate_intrinsic_event_handler(&event);
 
 		// Assert
 		assert!(result.is_err());

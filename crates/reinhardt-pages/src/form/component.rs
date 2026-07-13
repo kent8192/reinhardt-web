@@ -644,8 +644,7 @@ impl FormComponent {
 				.set_attribute("value", &value)
 				.expect("Failed to set value");
 
-			// Attach input event listener
-			let value_signal_clone = value_signal.clone();
+			let value_signal = value_signal.clone();
 			let input_clone = input.clone();
 
 			use wasm_bindgen::JsCast;
@@ -656,15 +655,14 @@ impl FormComponent {
 					.clone()
 					.dyn_into::<web_sys::HtmlInputElement>()
 					.expect("Failed to cast to HtmlInputElement");
-				let new_value = target.value();
-				value_signal_clone.set(new_value);
+				value_signal.set(target.value());
 			}) as Box<dyn FnMut(_)>);
 
 			input
 				.add_event_listener_with_callback("input", closure.as_ref().unchecked_ref())
-				.expect("Failed to add event listener");
+				.expect("Failed to add input listener");
 
-			closure.forget(); // Keep closure alive
+			closure.forget(); // Keep closure alive while the form is mounted.
 		}
 
 		input

@@ -15,12 +15,6 @@ use crate::reactive::Signal;
 use crate::reactive::pages_arena::{PageNodeKey, PageNodeKind, allocate_page_node, with_page_node};
 use reinhardt_core::reactive::deps::Trackable;
 
-#[cfg(wasm)]
-type EventArg = web_sys::Event;
-
-#[cfg(native)]
-type EventArg = crate::component::DummyEvent;
-
 type ErrorCallback<E> = Rc<dyn Fn(&E)>;
 type SuccessCallback<T> = Rc<dyn Fn(&T)>;
 type SharedErrorCallback<E> = Rc<RefCell<ErrorCallback<E>>>;
@@ -227,7 +221,10 @@ impl<T: Clone + 'static, E: Clone + 'static> Action<T, E> {
 	/// Use [`Action::dispatching_with`] when the payload should be read at click
 	/// time, or when the payload type is not cheaply cloneable.
 	#[cfg(wasm)]
-	pub fn dispatching<P: Clone + 'static>(&self, payload: P) -> Callback<EventArg, ()> {
+	pub fn dispatching<Event: 'static, P: Clone + 'static>(
+		&self,
+		payload: P,
+	) -> Callback<Event, ()> {
 		let action = *self;
 		Callback::new(move |_| {
 			action.dispatch(payload.clone());
@@ -235,17 +232,20 @@ impl<T: Clone + 'static, E: Clone + 'static> Action<T, E> {
 	}
 
 	/// Returns an event callback that dispatches this action with `payload`.
-	///
-	/// Native rendering ignores browser event handlers, so the returned callback
-	/// is intentionally inert on non-WASM targets.
 	#[cfg(native)]
-	pub fn dispatching<P: Clone + 'static>(&self, _payload: P) -> Callback<EventArg, ()> {
-		Callback::new(|_| {})
+	pub fn dispatching<Event: 'static, P: Clone + 'static>(
+		&self,
+		payload: P,
+	) -> Callback<Event, ()> {
+		let action = self.clone();
+		Callback::new(move |_| {
+			action.dispatch(payload.clone());
+		})
 	}
 
 	/// Returns an event callback that computes its payload at dispatch time.
 	#[cfg(wasm)]
-	pub fn dispatching_with<P: 'static, F>(&self, payload: F) -> Callback<EventArg, ()>
+	pub fn dispatching_with<Event: 'static, P: 'static, F>(&self, payload: F) -> Callback<Event, ()>
 	where
 		F: Fn() -> P + 'static,
 	{
@@ -256,15 +256,15 @@ impl<T: Clone + 'static, E: Clone + 'static> Action<T, E> {
 	}
 
 	/// Returns an event callback that computes its payload at dispatch time.
-	///
-	/// Native rendering ignores browser event handlers, so the returned callback
-	/// is intentionally inert on non-WASM targets.
 	#[cfg(native)]
-	pub fn dispatching_with<P: 'static, F>(&self, _payload: F) -> Callback<EventArg, ()>
+	pub fn dispatching_with<Event: 'static, P: 'static, F>(&self, payload: F) -> Callback<Event, ()>
 	where
 		F: Fn() -> P + 'static,
 	{
-		Callback::new(|_| {})
+		let action = self.clone();
+		Callback::new(move |_| {
+			action.dispatch(payload());
+		})
 	}
 
 	fn append_success_callback(&self, callback: SuccessCallback<T>) {
@@ -769,6 +769,19 @@ mod tests {
 		let mut context = Context::from_waker(Waker::noop());
 
 		assert_eq!(task.as_mut().poll(&mut context), Poll::Ready(()));
+	}
+
+	#[cfg(native)]
+	#[rstest]
+	fn dispatching_callbacks_accept_typed_event_arguments() {
+		use crate::event::ClickEvent;
+
+		let action = use_action(|value: i32| async move { Ok::<i32, String>(value * 2) });
+
+		let dispatch: Callback<ClickEvent, ()> = action.dispatching(5);
+		let dispatch_with: Callback<ClickEvent, ()> = action.dispatching_with(|| 6);
+
+		drop((dispatch, dispatch_with));
 	}
 
 	#[rstest]

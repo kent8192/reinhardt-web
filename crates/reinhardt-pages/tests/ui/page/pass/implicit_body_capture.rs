@@ -1,7 +1,7 @@
 //! UI compile-pass test for implicit captures in direct `page!({ ... })` form.
 
 use reinhardt_pages::callback::Callback;
-use reinhardt_pages::component::{DummyEvent, Page};
+use reinhardt_pages::component::Page;
 use reinhardt_pages::page;
 
 #[derive(Clone)]
@@ -23,7 +23,7 @@ impl Label {
 #[derive(bon::Builder)]
 struct PanelProps {
 	title: String,
-	on_click: Option<Callback<DummyEvent, ()>>,
+	on_click: Option<Callback<(), ()>>,
 	children: Option<Page>,
 }
 
@@ -58,7 +58,7 @@ fn main() {
 			div {
 				Panel {
 					title: heading.text(),
-					@click: Callback::new(|_: DummyEvent| {}),
+					@click: Callback::new(|_: ()| {}),
 					p { { selected.clone() } }
 				}
 				if !todos.is_empty() {

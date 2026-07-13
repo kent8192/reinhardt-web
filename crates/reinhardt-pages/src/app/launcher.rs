@@ -125,12 +125,14 @@ impl PersistentLayoutRenderer {
 			let outlet_id = Self::outlet_id(depth);
 			let store = new_reactive_node_store();
 			let scope = reinhardt_core::reactive::ReactiveScope::new();
+			let parent_wrapper = crate::dom::Element::new(parent.clone());
 			scope.enter(|| {
-				let page = router
-					.__render_tree_layout(route_match, depth, Outlet::placeholder(outlet_id))
-					.ok_or(MountError::CreateElementFailed)?;
-				let parent_wrapper = crate::dom::Element::new(parent.clone());
-				with_reactive_node_store(&store, || page.mount(&parent_wrapper))
+				with_reactive_node_store(&store, || {
+					let page = router
+						.__render_tree_layout(route_match, depth, Outlet::placeholder(outlet_id))
+						.ok_or(MountError::CreateElementFailed)?;
+					page.mount(&parent_wrapper)
+				})
 			})?;
 			with_reactive_node_store(&store, || {
 				crate::component::store_reactive_scope(scope);
@@ -141,12 +143,14 @@ impl PersistentLayoutRenderer {
 
 		let leaf_store = new_reactive_node_store();
 		let leaf_scope = reinhardt_core::reactive::ReactiveScope::new();
+		let parent_wrapper = crate::dom::Element::new(parent);
 		leaf_scope.enter(|| {
-			let leaf = router
-				.__render_tree_leaf(route_match)
-				.ok_or(MountError::CreateElementFailed)?;
-			let parent_wrapper = crate::dom::Element::new(parent);
-			with_reactive_node_store(&leaf_store, || leaf.mount(&parent_wrapper))
+			with_reactive_node_store(&leaf_store, || {
+				let leaf = router
+					.__render_tree_leaf(route_match)
+					.ok_or(MountError::CreateElementFailed)?;
+				leaf.mount(&parent_wrapper)
+			})
 		})?;
 		with_reactive_node_store(&leaf_store, || {
 			crate::component::store_reactive_scope(leaf_scope);

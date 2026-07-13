@@ -10,7 +10,154 @@ use std::cell::RefCell;
 use std::future::Future;
 use std::pin::Pin;
 
-pub use crate::component::DummyEvent as Event;
+use reinhardt_event_catalog::{EventInterface, KnownEvent};
+
+use super::{InputSnapshot, KeyboardSnapshot, MouseSnapshot, PointerSnapshot};
+use crate::event::EventTarget;
+
+pub use reinhardt_core::types::page::NativeEvent as Event;
+
+pub(crate) fn event_type(event: &Event) -> String {
+	event.event_type().to_owned()
+}
+
+pub(crate) fn event_name_matches(event: &Event, expected: KnownEvent) -> bool {
+	event.name().known() == Some(expected)
+}
+
+pub(crate) fn event_interface(
+	event: &Event,
+	primary: EventInterface,
+	fallbacks: &'static [EventInterface],
+) -> Result<EventInterface, EventInterface> {
+	let actual = event.payload().interface();
+	if actual == primary || fallbacks.contains(&actual) {
+		Ok(actual)
+	} else {
+		Err(actual)
+	}
+}
+
+pub(crate) fn target(event: &Event) -> Option<EventTarget> {
+	event.target().map(EventTarget::from_native)
+}
+
+pub(crate) fn current_target(event: &Event) -> Option<EventTarget> {
+	event.current_target().map(EventTarget::from_native)
+}
+
+pub(crate) fn bubbles(event: &Event) -> bool {
+	event.base().bubbles
+}
+
+pub(crate) fn cancelable(event: &Event) -> bool {
+	event.base().cancelable
+}
+
+pub(crate) fn composed(event: &Event) -> bool {
+	event.base().composed
+}
+
+pub(crate) fn time_stamp(event: &Event) -> f64 {
+	event.base().time_stamp
+}
+
+pub(crate) fn is_trusted(event: &Event) -> bool {
+	event.base().is_trusted
+}
+
+pub(crate) fn input_snapshot(event: &Event) -> InputSnapshot {
+	let reinhardt_core::types::page::NativeEventPayload::Input(data) = event.payload() else {
+		return InputSnapshot {
+			data: None,
+			input_type: None,
+			is_composing: false,
+		};
+	};
+	InputSnapshot {
+		data: data.data.clone(),
+		input_type: data.input_type.clone(),
+		is_composing: data.is_composing,
+	}
+}
+
+pub(crate) fn keyboard_snapshot(event: &Event) -> KeyboardSnapshot {
+	let reinhardt_core::types::page::NativeEventPayload::Keyboard(data) = event.payload() else {
+		unreachable!("validated keyboard payload changed interface")
+	};
+	KeyboardSnapshot {
+		key: data.key.clone(),
+		code: data.code.clone(),
+		location: data.location,
+		repeat: data.repeat,
+		is_composing: data.is_composing,
+		alt: data.modifiers.alt,
+		control: data.modifiers.control,
+		meta: data.modifiers.meta,
+		shift: data.modifiers.shift,
+	}
+}
+
+fn mouse_data(data: &reinhardt_core::types::page::MouseEventData) -> MouseSnapshot {
+	MouseSnapshot {
+		client_x: data.client_x,
+		client_y: data.client_y,
+		screen_x: data.screen_x,
+		screen_y: data.screen_y,
+		page_x: data.page_x,
+		page_y: data.page_y,
+		offset_x: data.offset_x,
+		offset_y: data.offset_y,
+		button: data.button,
+		buttons: data.buttons,
+		detail: data.detail,
+		alt: data.modifiers.alt,
+		control: data.modifiers.control,
+		meta: data.modifiers.meta,
+		shift: data.modifiers.shift,
+	}
+}
+
+pub(crate) fn mouse_snapshot(event: &Event) -> MouseSnapshot {
+	use reinhardt_core::types::page::NativeEventPayload;
+	match event.payload() {
+		NativeEventPayload::Mouse(data) => mouse_data(data),
+		NativeEventPayload::Pointer(data) => mouse_data(&data.mouse),
+		NativeEventPayload::Drag(data) => mouse_data(&data.mouse),
+		NativeEventPayload::Wheel(data) => mouse_data(&data.mouse),
+		_ => unreachable!("validated mouse-compatible payload changed interface"),
+	}
+}
+
+pub(crate) fn pointer_snapshot(event: &Event) -> PointerSnapshot {
+	if let reinhardt_core::types::page::NativeEventPayload::Pointer(data) = event.payload() {
+		PointerSnapshot {
+			pointer_id: data.pointer_id,
+			pointer_kind: data.pointer_kind.clone(),
+			pressure: data.pressure,
+			width: data.width,
+			height: data.height,
+			tangential_pressure: data.tangential_pressure,
+			tilt_x: data.tilt_x,
+			tilt_y: data.tilt_y,
+			twist: data.twist,
+			is_primary: data.is_primary,
+		}
+	} else {
+		PointerSnapshot {
+			pointer_id: 0,
+			pointer_kind: "mouse".to_owned(),
+			pressure: 0.0,
+			width: 0.0,
+			height: 0.0,
+			tangential_pressure: 0.0,
+			tilt_x: 0,
+			tilt_y: 0,
+			twist: 0,
+			is_primary: true,
+		}
+	}
+}
 
 type BoxedTask = Pin<Box<dyn Future<Output = ()> + 'static>>;
 type TaskSink = Box<dyn Fn(BoxedTask) + 'static>;

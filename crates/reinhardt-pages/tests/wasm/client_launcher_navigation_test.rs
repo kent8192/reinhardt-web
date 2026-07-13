@@ -23,12 +23,22 @@
 use reinhardt_core::page::Outlet;
 use reinhardt_pages::app::{ClientLauncher, with_spa_router};
 use reinhardt_pages::component::{IntoPage, Page, PageElement};
+use reinhardt_pages::reactive::hooks::use_retained_effect;
 use reinhardt_pages::reactive::{Signal, with_runtime};
 use reinhardt_urls::routers::ClientRouter;
+use std::cell::RefCell;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_test::*;
 
 wasm_bindgen_test_configure!(run_in_browser);
+
+thread_local! {
+	static RETAINED_ROUTE_TICK: RefCell<Option<Signal<i32>>> = const { RefCell::new(None) };
+	static RETAINED_ROUTE_LOG: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+	static RETAINED_REACTIVE_RENDER_TICK: RefCell<Option<Signal<i32>>> = const { RefCell::new(None) };
+	static RETAINED_REACTIVE_EFFECT_TICK: RefCell<Option<Signal<i32>>> = const { RefCell::new(None) };
+	static RETAINED_REACTIVE_LOG: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+}
 
 // Each route renders a div with a stable id and a unique text marker so the
 // assertions can be tight regardless of how `Page::Text` serialises into
@@ -83,6 +93,117 @@ fn layout_shell(outlet: Outlet) -> Page {
 		.child("LAYOUT-SHELL")
 		.child(outlet)
 		.into_page()
+}
+
+fn reset_retained_route_state() -> Signal<i32> {
+	let tick = Signal::new(0_i32);
+	RETAINED_ROUTE_TICK.with(|slot| {
+		*slot.borrow_mut() = Some(tick.clone());
+	});
+	RETAINED_ROUTE_LOG.with(|log| log.borrow_mut().clear());
+	tick
+}
+
+fn retained_route_log() -> Vec<String> {
+	RETAINED_ROUTE_LOG.with(|log| log.borrow().clone())
+}
+
+fn retained_route_page(label: &'static str) -> Page {
+	let tick = RETAINED_ROUTE_TICK.with(|slot| {
+		slot.borrow()
+			.as_ref()
+			.expect("retained route tick should be initialized")
+			.clone()
+	});
+
+	use_retained_effect(
+		{
+			let tick = tick.clone();
+			move || {
+				let value = tick.get();
+				RETAINED_ROUTE_LOG.with(|log| {
+					log.borrow_mut().push(format!("run:{label}:{value}"));
+				});
+				Some(move || {
+					RETAINED_ROUTE_LOG.with(|log| {
+						log.borrow_mut().push(format!("cleanup:{label}"));
+					});
+				})
+			}
+		},
+		(tick.clone(),),
+	);
+
+	PageElement::new("div")
+		.attr("id", format!("route-{label}"))
+		.child(format!("ROUTE-{label}-CONTENT"))
+		.into_page()
+}
+
+fn retained_route_a() -> Page {
+	retained_route_page("a")
+}
+
+fn retained_route_b() -> Page {
+	retained_route_page("b")
+}
+
+fn reset_retained_reactive_state() -> (Signal<i32>, Signal<i32>) {
+	let render_tick = Signal::new(0_i32);
+	let effect_tick = Signal::new(0_i32);
+	RETAINED_REACTIVE_RENDER_TICK.with(|slot| {
+		*slot.borrow_mut() = Some(render_tick.clone());
+	});
+	RETAINED_REACTIVE_EFFECT_TICK.with(|slot| {
+		*slot.borrow_mut() = Some(effect_tick.clone());
+	});
+	RETAINED_REACTIVE_LOG.with(|log| log.borrow_mut().clear());
+	(render_tick, effect_tick)
+}
+
+fn retained_reactive_log() -> Vec<String> {
+	RETAINED_REACTIVE_LOG.with(|log| log.borrow().clone())
+}
+
+fn page_with_retained_effect_in_reactive_body() -> Page {
+	Page::reactive(|| {
+		let render_tick = RETAINED_REACTIVE_RENDER_TICK.with(|slot| {
+			slot.borrow()
+				.as_ref()
+				.expect("retained reactive render tick should be initialized")
+				.clone()
+		});
+		let effect_tick = RETAINED_REACTIVE_EFFECT_TICK.with(|slot| {
+			slot.borrow()
+				.as_ref()
+				.expect("retained reactive effect tick should be initialized")
+				.clone()
+		});
+		let render_value = render_tick.get();
+
+		use_retained_effect(
+			{
+				let effect_tick = effect_tick.clone();
+				move || {
+					let value = effect_tick.get();
+					RETAINED_REACTIVE_LOG.with(|log| {
+						log.borrow_mut().push(format!("run:{value}"));
+					});
+					Some(move || {
+						RETAINED_REACTIVE_LOG.with(|log| {
+							log.borrow_mut().push("cleanup".to_string());
+						});
+					})
+				}
+			},
+			(effect_tick.clone(),),
+		);
+
+		PageElement::new("div")
+			.attr("id", "retained-reactive")
+			.child(format!("RETAINED-REACTIVE-{render_value}"))
+			.into_page()
+	})
 }
 
 fn page_with_reentrant_nested_reactive() -> Page {
@@ -291,6 +412,116 @@ async fn client_launcher_preserves_layout_shell_between_sibling_routes() {
 	assert!(
 		!html.contains("ROUTE-A-CONTENT"),
 		"/a outlet content should be replaced, got: {html}"
+	);
+	replace_history_path("/");
+}
+
+#[wasm_bindgen_test]
+async fn retained_route_effects_are_disposed_on_sibling_navigation() {
+	let root = install_app_root();
+	replace_history_path("/a");
+	let tick = reset_retained_route_state();
+
+	ClientLauncher::new("#app")
+		.router_client(|| {
+			ClientRouter::new().routes(|routes| {
+				routes.layout_route("shell", "/", layout_shell, |children| {
+					children
+						.route("a", "a", retained_route_a)
+						.route("b", "b", retained_route_b)
+				})
+			})
+		})
+		.launch()
+		.expect("launch");
+
+	yield_to_microtasks().await;
+	assert!(
+		root.inner_html().contains("ROUTE-a-CONTENT"),
+		"setup precondition: expected retained /a content, got: {}",
+		root.inner_html()
+	);
+
+	with_spa_router(|r| r.push("/b")).expect("push /b");
+	yield_to_microtasks().await;
+	yield_to_microtasks().await;
+	tick.set(1);
+	with_runtime(|rt| rt.flush_updates());
+
+	let log = retained_route_log();
+	assert_eq!(
+		log.iter()
+			.filter(|entry| entry.starts_with("run:a:"))
+			.count(),
+		1,
+		"previous leaf route retained effect must not re-run after sibling navigation: {log:?}"
+	);
+	assert!(
+		log.iter().any(|entry| entry == "cleanup:a"),
+		"previous leaf route retained effect cleanup should run on sibling navigation: {log:?}"
+	);
+	assert_eq!(
+		log.iter()
+			.filter(|entry| entry.starts_with("run:b:"))
+			.count(),
+		2,
+		"current leaf route retained effect should run initially and after tick update: {log:?}"
+	);
+	replace_history_path("/");
+}
+
+#[wasm_bindgen_test]
+async fn retained_effects_in_reactive_body_are_replaced_on_rerender() {
+	let root = install_app_root();
+	let (render_tick, effect_tick) = reset_retained_reactive_state();
+
+	ClientLauncher::new("#app")
+		.router_client(|| {
+			ClientRouter::new().route(
+				"retained-reactive",
+				"/",
+				page_with_retained_effect_in_reactive_body,
+			)
+		})
+		.launch()
+		.expect("launch");
+
+	yield_to_microtasks().await;
+	assert!(
+		root.inner_html().contains("RETAINED-REACTIVE-0"),
+		"setup precondition: expected retained reactive view, got: {}",
+		root.inner_html()
+	);
+
+	render_tick.set(1);
+	with_runtime(|rt| rt.flush_updates());
+	yield_to_microtasks().await;
+	assert!(
+		root.inner_html().contains("RETAINED-REACTIVE-1"),
+		"reactive body should rerender after render tick, got: {}",
+		root.inner_html()
+	);
+
+	effect_tick.set(1);
+	with_runtime(|rt| rt.flush_updates());
+
+	let log = retained_reactive_log();
+	assert_eq!(
+		log.iter().filter(|entry| entry.as_str() == "run:0").count(),
+		2,
+		"initial effect and replacement effect should each run once before dep update: {log:?}"
+	);
+	assert_eq!(
+		log.iter().filter(|entry| entry.as_str() == "run:1").count(),
+		1,
+		"only the current retained effect should re-run after dep update: {log:?}"
+	);
+	assert_eq!(
+		log.iter()
+			.filter(|entry| entry.as_str() == "cleanup")
+			.count(),
+		2,
+		"retained effects should clean up on reactive rerender and before the dependency-driven rerun: {log:?}"
 	);
 	replace_history_path("/");
 }

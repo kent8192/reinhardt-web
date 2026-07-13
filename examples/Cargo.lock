@@ -5759,6 +5759,8 @@ dependencies = [
  "reinhardt-urls",
  "reinhardt-utils",
  "reinhardt-views",
+ "serde",
+ "serde_json",
  "thiserror 2.0.18",
  "toml",
 ]

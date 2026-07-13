@@ -10,8 +10,8 @@ use proc_macro2::Span;
 use syn::{Expr, Ident, Pat};
 
 use super::{
-	ComponentInvocationForm, PageComponentArg, PageEvent, PageExpression, PageParam, PageText,
-	types::AttrValue,
+	ComponentEventProp, ComponentInvocationForm, IntrinsicEvent, PageComponentArg, PageExpression,
+	PageParam, PageText, types::AttrValue,
 };
 
 /// The top-level typed AST node representing a validated page! macro invocation.
@@ -129,8 +129,8 @@ pub struct TypedPageElement {
 	pub tag: Ident,
 	/// Typed attributes (with `AttrValue` instead of `Expr`)
 	pub attrs: Vec<TypedPageAttr>,
-	/// Event handlers (unchanged from untyped version)
-	pub events: Vec<PageEvent>,
+	/// Catalog-resolved intrinsic event handlers.
+	pub events: Vec<IntrinsicEvent>,
 	/// Validated child nodes
 	pub children: Vec<TypedPageNode>,
 	/// Whether compile-time accessibility validation is disabled for this element.
@@ -292,7 +292,7 @@ pub struct TypedPageComponent {
 	pub args: Vec<PageComponentArg>,
 	/// Event props (`@event: handler`). Only populated for the `Brace` form;
 	/// always empty for the `Paren` form.
-	pub events: Vec<PageEvent>,
+	pub events: Vec<ComponentEventProp>,
 	/// Optional typed children (content inside `{ }` after arguments)
 	pub children: Option<Vec<TypedPageNode>>,
 	/// Typed named children slots

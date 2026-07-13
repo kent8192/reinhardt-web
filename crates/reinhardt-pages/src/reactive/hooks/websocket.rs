@@ -218,6 +218,7 @@ use {
 ///                 WebSocketMessage::Text(text) => log!("Received: {}", text),
 ///                 _ => {}
 ///             }
+///             None::<fn()>
 ///         }
 ///     }
 /// }, (latest_message,));
