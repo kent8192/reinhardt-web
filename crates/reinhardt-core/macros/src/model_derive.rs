@@ -1950,6 +1950,23 @@ fn generate_relation_traversal_accessors(
 				RelationType::OneToMany => {
 					let target_path = rel.to.as_ref()?;
 					let foreign_key = rel.foreign_key.as_ref()?;
+					let source_column = rel.to_field.as_ref().map_or_else(
+						|| quote! { <#struct_name as #orm_crate::Model>::primary_key_column() },
+						|field| {
+							quote! {
+								<#struct_name as #orm_crate::Model>::field_metadata()
+									.into_iter()
+									.find_map(|field_info| {
+										if field_info.name == #field {
+											Some(field_info.db_column.unwrap_or(field_info.name))
+										} else {
+											None
+										}
+									})
+									.unwrap_or_else(|| #field.to_string())
+							}
+						},
+					);
 					(
 						quote! { #target_path },
 						quote! {
@@ -1958,7 +1975,7 @@ fn generate_relation_traversal_accessors(
 									name: (#field_name_str).into(),
 									source_table: (#source_table).into(),
 									target_table: (<#target_path as #orm_crate::Model>::table_name()).into(),
-									source_column: (#source_pk).into(),
+									source_column: (#source_column).into(),
 									target_column: (#foreign_key).into(),
 									default_join_kind: #orm_crate::relations::RelationJoinKind::Left,
 									multiplicity: #orm_crate::relations::RelationMultiplicity::Multiple,
@@ -6477,6 +6494,28 @@ mod tests {
 		// Assert
 		assert!(output_str.contains("related_model : \"Tag\" . to_string ()"));
 		assert!(!output_str.contains("related_model : \"\" . to_string ()"));
+	}
+
+	#[test]
+	fn test_one_to_many_traversal_uses_to_field_as_source_column() {
+		let input = quote! {
+			#[model(app_label = "test", table_name = "projects")]
+			pub struct Project {
+				#[field(primary_key = true)]
+				pub id: i64,
+				#[field(max_length = 120, db_column = "project_slug")]
+				pub slug: String,
+				#[field(skip = true)]
+				#[rel(one_to_many, to = Document, foreign_key = "project_slug", to_field = "slug")]
+				pub documents: Vec<Document>,
+			}
+		};
+
+		let output = model_derive_impl(syn::parse2(input).unwrap()).unwrap();
+		let output_str = output.to_string();
+
+		assert!(output_str.contains("field_info . name == \"slug\""));
+		assert!(output_str.contains("source_column"));
 	}
 
 	#[test]
