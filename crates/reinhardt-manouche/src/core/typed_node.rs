@@ -130,7 +130,7 @@ pub struct TypedPageElement {
 	/// Typed attributes (with `AttrValue` instead of `Expr`)
 	pub attrs: Vec<TypedPageAttr>,
 	/// Typed controlled-value binding, kept separate from HTML attributes.
-	pub control_binding: Option<TypedControlBinding>,
+	pub control_binding: Option<Box<TypedControlBinding>>,
 	/// Catalog-resolved intrinsic event handlers.
 	pub events: Vec<IntrinsicEvent>,
 	/// Validated child nodes

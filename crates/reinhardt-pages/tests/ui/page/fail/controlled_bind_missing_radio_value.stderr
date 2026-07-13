@@ -1,5 +1,5 @@
 error: a bound radio input requires a `value` attribute
- --> tests/ui/page/fail/controlled_bind_missing_radio_value.rs:4:58
+ --> tests/ui/page/fail/controlled_bind_missing_radio_value.rs:8:10
   |
-4 |     let _ = page!({ input { a11y: off, type: "radio", bind: () } });
-  |                                                             ^^
+8 |             bind: ()
+  |                   ^^

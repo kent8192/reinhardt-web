@@ -642,15 +642,15 @@ fn contenteditable_disable_and_value_patch_is_rejected_atomically() {
 
 #[rstest]
 fn known_and_custom_events_with_the_same_type_share_dom_dispatch() {
-	let calls = Rc::new(RefCell::new(Vec::new()));
-	let known_calls = Rc::clone(&calls);
-	let custom_calls = Rc::clone(&calls);
+	let calls = Arc::new(Mutex::new(Vec::new()));
+	let known_calls = Arc::clone(&calls);
+	let custom_calls = Arc::clone(&calls);
 	let screen = render(
 		PageElement::new("button")
-			.listener("click", move |_| known_calls.borrow_mut().push("known"))
+			.listener("click", move |_| known_calls.lock().unwrap().push("known"))
 			.on(
 				EventName::Custom(Cow::Borrowed("click")),
-				std::sync::Arc::new(move |_| custom_calls.borrow_mut().push("custom")),
+				Arc::new(move |_| custom_calls.lock().unwrap().push("custom")),
 			)
 			.child("Run"),
 	);
@@ -664,7 +664,7 @@ fn known_and_custom_events_with_the_same_type_share_dom_dispatch() {
 		.expect("custom click should dispatch");
 
 	assert_eq!(
-		calls.borrow().as_slice(),
+		calls.lock().unwrap().as_slice(),
 		["known", "custom", "known", "custom"]
 	);
 }
@@ -725,6 +725,8 @@ macro_rules! assert_catalog_wrapper_fixture_parity {
 			$fixture_defaults:ident;
 		)*
 	) => {
+		// Catalog coverage intentionally includes deprecated compatibility payloads.
+		#[allow(deprecated)]
 		#[rstest]
 		fn every_catalog_fixture_converts_to_its_generated_wrapper() {
 			$(

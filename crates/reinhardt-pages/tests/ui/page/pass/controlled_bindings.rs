@@ -12,17 +12,46 @@ fn main() {
 	let selected_many = Signal::new(Vec::<String>::new());
 
 	let _ = page!({
-		input { a11y: off, bind: text }
-		textarea { a11y: off, bind: text }
-		input { a11y: off, type: "checkbox", bind: checked }
-		input { a11y: off, type: "radio", value: "draft", bind: radio }
-		input { a11y: off, type: "number", bind: number(number, number_error) }
-		select { a11y: off, bind: selected, option { value: "a", "A" } }
+		input {
+			a11y: off,
+			bind: text
+		}
+		textarea {
+			a11y: off,
+			bind: text
+		}
+		input {
+			a11y: off,
+			type: "checkbox",
+			bind: checked
+		}
+		input {
+			a11y: off,
+			type: "radio",
+			value: "draft",
+			bind: radio
+		}
+		input {
+			a11y: off,
+			type: "number",
+			bind: number(number, number_error)
+		}
+		select {
+			a11y: off,
+			bind: selected,
+			option {
+				value: "a",
+				"A"
+			}
+		}
 		select {
 			a11y: off,
 			multiple: true,
 			bind: selected_many,
-			option { value: "a", "A" }
+			option {
+				value: "a",
+				"A"
+			}
 		}
 	});
 }

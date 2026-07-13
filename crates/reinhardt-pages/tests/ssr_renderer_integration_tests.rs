@@ -618,16 +618,32 @@ fn controlled_bindings_page() -> Page {
 	let selected = Signal::new(vec!["rust".to_owned(), "wasm".to_owned()]);
 
 	page!({
-		input { a11y: off, bind: text }
-		textarea { a11y: off, bind: text }
-		input { a11y: off, type: "checkbox", bind: checked }
+		input {
+			a11y: off,
+			bind: text
+		}
+		textarea {
+			a11y: off,
+			bind: text
+		}
+		input {
+			a11y: off,
+			type: "checkbox",
+			bind: checked
+		}
 		select {
 			a11y: off,
 			multiple: true,
 			bind: selected,
 			optgroup {
-				option { value: "rust", "Rust" }
-				option { value: "wasm", "WebAssembly" }
+				option {
+					value: "rust",
+					"Rust"
+				}
+				option {
+					value: "wasm",
+					"WebAssembly"
+				}
 			}
 		}
 	})

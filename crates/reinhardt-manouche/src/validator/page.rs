@@ -573,7 +573,8 @@ fn transform_element(elem: &PageElement, parent_tags: &[String]) -> Result<Typed
 	let control_binding = binding_attr
 		.as_ref()
 		.map(|attr| classify_control_binding(&tag, &ordinary_attrs, attr))
-		.transpose()?;
+		.transpose()?
+		.map(Box::new);
 	let transformed_attrs = transform_attrs(&ordinary_attrs, &tag)?;
 	let typed_attrs = transformed_attrs.attrs;
 
@@ -594,7 +595,7 @@ fn transform_element(elem: &PageElement, parent_tags: &[String]) -> Result<Typed
 	let typed_children = transform_nodes(&elem.children, &child_tags)?;
 	validate_control_binding_structure(
 		&tag,
-		control_binding.as_ref(),
+		control_binding.as_deref(),
 		&typed_attrs,
 		&typed_children,
 	)?;

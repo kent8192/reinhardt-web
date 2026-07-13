@@ -116,7 +116,7 @@ async fn binding_write_layout_effect_spawns_on_the_screen_scheduler() {
 	screen.settle().await;
 
 	// Assert
-	assert_eq!(completed.load(Ordering::SeqCst), true);
+	assert!(completed.load(Ordering::SeqCst));
 }
 
 #[rstest]
@@ -147,7 +147,7 @@ async fn checkbox_binding_tracks_fixture_and_external_signal_state() {
 		.expect("refreshed checkbox should dispatch");
 
 	// Assert
-	assert_eq!(checked.get(), false);
+	assert!(!checked.get());
 	assert_eq!(
 		observed.lock().unwrap().as_ref(),
 		Some(&Ok::<bool, reinhardt_pages::event::EventTargetError>(false))
@@ -234,8 +234,14 @@ async fn select_one_binding_tracks_selected_value_in_both_directions() {
 			@change: move |event: ChangeEvent| {
 				*observed_handler.lock().unwrap() = Some(event.selected_values());
 			},
-			option { value: "rust", "Rust" }
-			option { value: "wasm", "WebAssembly" }
+			option {
+				value: "rust",
+				"Rust"
+			}
+			option {
+				value: "wasm",
+				"WebAssembly"
+			}
 		}
 	}));
 	let select = screen.get_by_label("Language");
@@ -294,7 +300,10 @@ fn select_one_empty_selection_commits_the_browser_empty_value() {
 		select {
 			aria_label: "Language",
 			bind: selected,
-			option { value: "rust", "Rust" }
+			option {
+				value: "rust",
+				"Rust"
+			}
 		}
 	}));
 	let select = screen.get_by_label("Language");
@@ -324,8 +333,14 @@ async fn select_many_binding_tracks_all_selected_values_in_both_directions() {
 			@change: move |event: ChangeEvent| {
 				*observed_handler.lock().unwrap() = Some(event.selected_values());
 			},
-			option { value: "rust", "Rust" }
-			option { value: "wasm", "WebAssembly" }
+			option {
+				value: "rust",
+				"Rust"
+			}
+			option {
+				value: "wasm",
+				"WebAssembly"
+			}
 		}
 	}));
 	let select = screen.get_by_label("Targets");

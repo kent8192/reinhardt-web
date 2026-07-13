@@ -57,7 +57,7 @@ enum TestNode {
 	Root {
 		children: Vec<NodeId>,
 	},
-	Element(ElementNode),
+	Element(Box<ElementNode>),
 	Text {
 		text: String,
 		parent: Option<NodeId>,
@@ -559,7 +559,7 @@ impl TestDom {
 				if let Some(value) = last_observed_control_value {
 					element_node.apply_control_value(value);
 				}
-				let node_id = self.push_node(parent, TestNode::Element(element_node));
+				let node_id = self.push_node(parent, TestNode::Element(Box::new(element_node)));
 				for child in children {
 					self.append_page(node_id, child);
 				}
@@ -593,7 +593,7 @@ impl TestDom {
 				} else if let Some(id) = id {
 					self.push_node(
 						parent,
-						TestNode::Element(ElementNode {
+						TestNode::Element(Box::new(ElementNode {
 							tag: "reinhardt-outlet".to_string(),
 							attrs: vec![
 								("data-rh-outlet-id".to_string(), id),
@@ -613,7 +613,7 @@ impl TestDom {
 							pending_raw: None,
 							last_committed_raw: None,
 							last_observed_control_value: None,
-						}),
+						})),
 					);
 				}
 			}
