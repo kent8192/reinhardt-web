@@ -2812,6 +2812,41 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 	Ok(expanded)
 }
 
+fn fixture_projection_serde_meta_is_deserialization_adapter(meta: &syn::Meta) -> bool {
+	meta.path().is_ident("with") || meta.path().is_ident("deserialize_with")
+}
+
+fn fixture_projection_serde_attr(attr: &syn::Attribute) -> Option<syn::Attribute> {
+	if !attr.path().is_ident("serde") {
+		return None;
+	}
+
+	let syn::Meta::List(meta_list) = &attr.meta else {
+		return None;
+	};
+	let kept = meta_list
+		.parse_args_with(Punctuated::<syn::Meta, Token![,]>::parse_terminated)
+		.ok()?
+		.into_iter()
+		.filter(fixture_projection_serde_meta_is_deserialization_adapter)
+		.collect::<Vec<_>>();
+	if kept.is_empty() {
+		return None;
+	}
+
+	Some(parse_quote! {
+		#[serde(#(#kept),*)]
+	})
+}
+
+fn fixture_projection_serde_attrs(field: &FieldInfo) -> Vec<syn::Attribute> {
+	field
+		.serde_attrs
+		.iter()
+		.filter_map(fixture_projection_serde_attr)
+		.collect()
+}
+
 fn generate_fixture_validation(
 	struct_name: &Ident,
 	generics: &syn::Generics,
@@ -2836,7 +2871,13 @@ fn generate_fixture_validation(
 
 		let field_name = &field.name;
 		let field_type = &field.ty;
-		if field.config.default.is_some() {
+		let has_sql_default = field
+			.config
+			.default
+			.as_ref()
+			.and_then(serialize_field_default)
+			.is_some();
+		if has_sql_default {
 			has_defaulted_fixture_field = true;
 			let validator = LitStr::new(
 				"__reinhardt_validate_defaulted_fixture_field",
@@ -2847,7 +2888,9 @@ fn generate_fixture_validation(
 				#field_name: ::std::marker::PhantomData<#field_type>
 			});
 		} else {
+			let serde_attrs = fixture_projection_serde_attrs(field);
 			projection_fields.push(quote! {
+				#(#serde_attrs)*
 				#field_name: #field_type
 			});
 		}
@@ -6328,6 +6371,52 @@ mod tests {
 				.to_string()
 				.contains("register_model :: < FixtureModel >"),
 			"fixture handler registration must not depend on serde flags forwarded by #[model]"
+		);
+	}
+
+	#[test]
+	fn test_fixture_projection_rejects_omitted_non_sql_defaults() {
+		let input = quote! {
+			#[model(app_label = "fixture_tests", table_name = "fixture_models")]
+			struct FixtureModel {
+				#[field(primary_key = true)]
+				id: i64,
+				#[field(max_length = 255, default = default_title())]
+				title: String,
+			}
+		};
+
+		let output =
+			model_derive_impl(syn::parse2(input).unwrap()).expect("fixture model must generate");
+
+		assert!(
+			!output
+				.to_string()
+				.contains("__reinhardt_validate_defaulted_fixture_field"),
+			"fixture projections must not make fields with non-SQL defaults optional"
+		);
+	}
+
+	#[test]
+	fn test_fixture_projection_allows_omitted_sql_defaults() {
+		let input = quote! {
+			#[model(app_label = "fixture_tests", table_name = "fixture_models")]
+			struct FixtureModel {
+				#[field(primary_key = true)]
+				id: i64,
+				#[field(max_length = 255, default = "draft")]
+				title: String,
+			}
+		};
+
+		let output =
+			model_derive_impl(syn::parse2(input).unwrap()).expect("fixture model must generate");
+
+		assert!(
+			output
+				.to_string()
+				.contains("__reinhardt_validate_defaulted_fixture_field"),
+			"fixture projections must allow fields with serialized SQL defaults to be omitted"
 		);
 	}
 }
