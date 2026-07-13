@@ -38,7 +38,7 @@ use core::cell::RefCell;
 
 extern crate alloc;
 use alloc::boxed::Box;
-use alloc::collections::BTreeMap;
+use alloc::collections::{BTreeMap, BTreeSet};
 use alloc::rc::Rc;
 
 use super::deps::ReactiveDeps;
@@ -66,37 +66,56 @@ thread_local! {
 	static MEMO_VALUES: RefCell<BTreeMap<NodeId, Box<dyn core::any::Any>>> = RefCell::new(BTreeMap::new());
 }
 
-// Type-agnostic dirty map for `Memo::new_with_deps` (Refs #4195).
+// Lifecycle registry independent of the function storage. Memo computation
+// temporarily removes its function while running, so function presence cannot
+// reliably identify a live Memo during nested Signal notifications.
+thread_local! {
+	static MEMO_LIFECYCLE: RefCell<BTreeSet<NodeId>> = RefCell::new(BTreeSet::new());
+}
+
+// Type-agnostic dirty map for Memo invalidation (Refs #4195).
 //
 // `MemoState<T>::dirty` is stored type-erased so flipping it from outside
-// requires `T`. The dirty notifier created by `new_with_deps` is type-erased
-// (it only knows `NodeId`), so it writes here instead. `Memo::get` checks
-// both `MemoState<T>::dirty` and this map.
+// requires `T`. Runtime notifications and the notifier created by
+// `new_with_deps` only know `NodeId`, so they write here instead. `Memo::get`
+// checks both `MemoState<T>::dirty` and this map.
 thread_local! {
 	static MEMO_DIRTY: RefCell<BTreeMap<NodeId, bool>> = const { RefCell::new(BTreeMap::new()) };
 }
 
-/// Flag the Memo identified by `memo_id` as dirty without requiring `T`,
-/// and propagate the change to downstream subscribers.
+/// Flag the Memo identified by `memo_id` as dirty without requiring `T`.
 ///
 /// Called by the hidden notifier Effect created by [`Memo::new_with_deps`]
-/// whenever one of the listed deps changes. Cleared on the next
-/// [`Memo::get`] / [`Memo::get_untracked`] recompute.
+/// and by automatic dependency notifications. A clean-to-dirty transition
+/// propagates to downstream subscribers in the current runtime notification
+/// wave. Repeated dirty notifications do nothing until the next
+/// [`Memo::get`] / [`Memo::get_untracked`] recompute clears the flag.
 ///
 /// The `notify_signal_change` call is what makes downstream `use_effect` /
 /// `use_memo` calls that take this memo as a listed dep actually re-run.
-/// Without it, the dirty flag would be set but no consumer would be
-/// woken up. Mirrors the propagation behavior of `Memo::mark_dirty`.
-pub(crate) fn mark_memo_dirty_by_id(memo_id: NodeId) {
-	MEMO_DIRTY.with(|m| {
-		m.borrow_mut().insert(memo_id, true);
+/// Without it, the dirty flag would be set but no consumer would be woken up.
+pub(crate) fn mark_memo_dirty_by_id(memo_id: NodeId) -> bool {
+	if !is_memo_registered(memo_id) {
+		return false;
+	}
+	let transitioned = MEMO_DIRTY.with(|storage| {
+		let mut storage = storage.borrow_mut();
+		if storage.get(&memo_id).copied().unwrap_or(false) {
+			false
+		} else {
+			storage.insert(memo_id, true);
+			true
+		}
 	});
-	with_runtime(|rt| rt.notify_signal_change(memo_id));
+	if transitioned {
+		with_runtime(|runtime| runtime.notify_signal_change(memo_id));
+	}
+	transitioned
 }
 
 /// Returns whether `memo_id` belongs to a live Memo computation.
 pub(crate) fn is_memo_registered(memo_id: NodeId) -> bool {
-	MEMO_FUNCTIONS.with(|storage| storage.borrow().contains_key(&memo_id))
+	MEMO_LIFECYCLE.with(|storage| storage.borrow().contains(&memo_id))
 }
 
 /// Returns whether the type-agnostic dirty flag is set for `memo_id`.
@@ -109,6 +128,48 @@ fn clear_memo_dirty(memo_id: NodeId) {
 	MEMO_DIRTY.with(|m| {
 		m.borrow_mut().remove(&memo_id);
 	});
+}
+
+struct MemoConstructionGuard {
+	memo_id: NodeId,
+	committed: bool,
+}
+
+impl MemoConstructionGuard {
+	fn new(memo_id: NodeId) -> Self {
+		MEMO_LIFECYCLE.with(|storage| {
+			storage.borrow_mut().insert(memo_id);
+		});
+		Self {
+			memo_id,
+			committed: false,
+		}
+	}
+
+	fn commit(&mut self) {
+		self.committed = true;
+	}
+}
+
+impl Drop for MemoConstructionGuard {
+	fn drop(&mut self) {
+		if self.committed {
+			return;
+		}
+		let _ = MEMO_LIFECYCLE.try_with(|storage| {
+			storage.borrow_mut().remove(&self.memo_id);
+		});
+		let _ = MEMO_FUNCTIONS.try_with(|storage| {
+			storage.borrow_mut().remove(&self.memo_id);
+		});
+		let _ = MEMO_VALUES.try_with(|storage| {
+			storage.borrow_mut().remove(&self.memo_id);
+		});
+		let _ = MEMO_DIRTY.try_with(|storage| {
+			storage.borrow_mut().remove(&self.memo_id);
+		});
+		let _ = try_with_runtime(|runtime| runtime.remove_node(self.memo_id));
+	}
 }
 
 /// A memoized reactive computation that caches its result
@@ -188,6 +249,7 @@ impl<T: Clone + 'static> Memo<T> {
 	{
 		let id = NodeId::new();
 		let disposed = Rc::new(RefCell::new(false));
+		let mut construction_guard = MemoConstructionGuard::new(id);
 
 		// Store the computation function.
 		//
@@ -218,12 +280,14 @@ impl<T: Clone + 'static> Memo<T> {
 			storage.insert(id, boxed);
 		});
 
-		Self {
+		let memo = Self {
 			id,
 			disposed,
 			_phantom: core::marker::PhantomData,
 			deps_notifier: None,
-		}
+		};
+		construction_guard.commit();
+		memo
 	}
 
 	/// Create a Memo that recomputes only when one of the listed `deps` changes.
@@ -244,6 +308,7 @@ impl<T: Clone + 'static> Memo<T> {
 	{
 		let id = NodeId::new();
 		let disposed = Rc::new(RefCell::new(false));
+		let mut construction_guard = MemoConstructionGuard::new(id);
 
 		// Wrap the user closure to detach the Observer before each compute.
 		// `compute_value` pushes the memo's NodeId as Observer, but Option A
@@ -298,12 +363,14 @@ impl<T: Clone + 'static> Memo<T> {
 		// without spuriously recomputing.
 		clear_memo_dirty(id);
 
-		Self {
+		let memo = Self {
 			id,
 			disposed,
 			_phantom: core::marker::PhantomData,
 			deps_notifier,
-		}
+		};
+		construction_guard.commit();
+		memo
 	}
 
 	#[doc(hidden)]
@@ -333,6 +400,18 @@ impl<T: Clone + 'static> Memo<T> {
 				cleanup: None,
 			});
 		});
+
+		struct ObserverGuard;
+
+		impl Drop for ObserverGuard {
+			fn drop(&mut self) {
+				let _ = try_with_runtime(|runtime| {
+					runtime.pop_observer();
+				});
+			}
+		}
+
+		let _observer_guard = ObserverGuard;
 
 		// Execute the computation function using Remove-Execute-Reinsert pattern
 		// to avoid RefCell reentrant borrow panics when the closure creates nested effects or memos.
@@ -364,11 +443,6 @@ impl<T: Clone + 'static> Memo<T> {
 		} else {
 			panic!("Memo function not found - this should never happen")
 		};
-
-		// Pop observer from stack
-		with_runtime(|rt| {
-			rt.pop_observer();
-		});
 
 		result
 	}
@@ -519,6 +593,9 @@ impl<T: Clone + 'static> Memo<T> {
 	/// After calling this, the memo will no longer work and its resources will be cleaned up.
 	pub fn dispose(&self) {
 		*self.disposed.borrow_mut() = true;
+		let _ = MEMO_LIFECYCLE.try_with(|storage| {
+			storage.borrow_mut().remove(&self.id);
+		});
 
 		// Remove from runtime's dependency graph (ignore if TLS is destroyed)
 		let _ = try_with_runtime(|rt| rt.remove_node(self.id));
@@ -811,5 +888,188 @@ mod tests {
 		assert_eq!(memo.get(), 4);
 		with_runtime(|runtime| runtime.flush_updates());
 		assert_eq!(observed.get(), 4);
+	}
+
+	#[rstest::rstest]
+	#[serial(reactive_runtime)]
+	fn signal_write_during_initial_computation_preserves_memo_invalidation() {
+		use core::cell::Cell;
+
+		let source = Signal::new(1_i32);
+		let computations = Rc::new(Cell::new(0_u8));
+		let memo = Memo::new({
+			let source = source.clone();
+			let computations = Rc::clone(&computations);
+			move || {
+				computations.set(computations.get() + 1);
+				let value = source.get();
+				if value == 1 {
+					source.set(2);
+				}
+				value
+			}
+		});
+
+		assert_eq!(memo.get(), 2);
+		assert_eq!(computations.get(), 2);
+	}
+
+	#[rstest::rstest]
+	#[serial(reactive_runtime)]
+	fn panicking_initial_computation_rolls_back_memo_registration() {
+		use std::panic::{AssertUnwindSafe, catch_unwind};
+
+		let source = Signal::new(1_i32);
+		let allocated_id = Rc::new(RefCell::new(None));
+		let result = catch_unwind(AssertUnwindSafe({
+			let source = source.clone();
+			let allocated_id = Rc::clone(&allocated_id);
+			move || {
+				let _: Memo<i32> = Memo::new(move || {
+					let id = with_runtime(|runtime| runtime.current_observer())
+						.expect("Memo computation must have an active observer");
+					*allocated_id.borrow_mut() = Some(id);
+					let _ = source.get();
+					panic!("initial memo computation panic");
+				});
+			}
+		}));
+		let memo_id = allocated_id
+			.borrow()
+			.expect("panicking computation must capture its Memo ID");
+
+		assert!(result.is_err());
+		assert!(!is_memo_registered(memo_id));
+		assert!(!MEMO_FUNCTIONS.with(|storage| storage.borrow().contains_key(&memo_id)));
+		assert!(!MEMO_VALUES.with(|storage| storage.borrow().contains_key(&memo_id)));
+		assert!(!MEMO_DIRTY.with(|storage| storage.borrow().contains_key(&memo_id)));
+		assert!(!with_runtime(|runtime| runtime.has_node(memo_id)));
+		assert!(with_runtime(|runtime| runtime.current_observer()).is_none());
+		assert_eq!(
+			with_runtime(|runtime| runtime.debug_subscribers(source.id())),
+			[]
+		);
+	}
+
+	#[rstest::rstest]
+	#[serial(reactive_runtime)]
+	fn memo_notification_cycle_terminates_after_each_memo_is_dirtied_once() {
+		let first = Memo::new(|| 1_i32);
+		let second = Memo::new(|| 2_i32);
+		super::super::runtime::subscribe_node_to_observer(first.id(), second.id());
+		super::super::runtime::subscribe_node_to_observer(second.id(), first.id());
+
+		with_runtime(|runtime| runtime.notify_signal_change(first.id()));
+
+		assert!(is_memo_dirty_externally(first.id()));
+		assert!(is_memo_dirty_externally(second.id()));
+	}
+
+	#[rstest::rstest]
+	#[serial(reactive_runtime)]
+	fn diamond_memo_notification_runs_layout_effect_once_per_wave() {
+		use core::cell::Cell;
+
+		let source = Signal::new(1_i32);
+		let left = Memo::new({
+			let source = source.clone();
+			move || source.get() * 2
+		});
+		let right = Memo::new({
+			let source = source.clone();
+			move || source.get() * 3
+		});
+		let joined = Memo::new({
+			let left = left.clone();
+			let right = right.clone();
+			move || left.get() + right.get()
+		});
+		let runs = Rc::new(Cell::new(0_u8));
+		let _effect = Effect::new_with_timing(
+			{
+				let joined = joined.clone();
+				let runs = Rc::clone(&runs);
+				move || {
+					let _ = joined.get();
+					runs.set(runs.get() + 1);
+				}
+			},
+			EffectTiming::Layout,
+		);
+
+		source.set(2);
+
+		assert_eq!(runs.get(), 2);
+	}
+
+	#[rstest::rstest]
+	#[serial(reactive_runtime)]
+	fn direct_and_memo_layout_subscriptions_run_effect_once_per_wave() {
+		use core::cell::Cell;
+
+		let source = Signal::new(1_i32);
+		let memo = Memo::new({
+			let source = source.clone();
+			move || source.get() * 2
+		});
+		let runs = Rc::new(Cell::new(0_u8));
+		let _effect = Effect::new_with_timing(
+			{
+				let source = source.clone();
+				let memo = memo.clone();
+				let runs = Rc::clone(&runs);
+				move || {
+					let _ = source.get();
+					let _ = memo.get();
+					runs.set(runs.get() + 1);
+				}
+			},
+			EffectTiming::Layout,
+		);
+
+		source.set(2);
+
+		assert_eq!(runs.get(), 2);
+	}
+
+	#[rstest::rstest]
+	#[serial(reactive_runtime)]
+	fn stale_subscriber_snapshot_does_not_redirty_disposed_memo() {
+		use core::cell::Cell;
+
+		let source = Signal::new(1_i32);
+		let first = Memo::new({
+			let source = source.clone();
+			move || source.get() * 2
+		});
+		let second_slot = Rc::new(RefCell::new(None));
+		let should_dispose = Rc::new(Cell::new(false));
+		let _effect = Effect::new_with_timing(
+			{
+				let first = first.clone();
+				let second_slot = Rc::clone(&second_slot);
+				let should_dispose = Rc::clone(&should_dispose);
+				move || {
+					let _ = first.get();
+					if should_dispose.get() {
+						second_slot.borrow_mut().take();
+					}
+				}
+			},
+			EffectTiming::Layout,
+		);
+		let second = Memo::new({
+			let source = source.clone();
+			move || source.get() * 3
+		});
+		let second_id = second.id();
+		*second_slot.borrow_mut() = Some(second);
+		should_dispose.set(true);
+
+		source.set(2);
+
+		assert!(!is_memo_registered(second_id));
+		assert!(!is_memo_dirty_externally(second_id));
+		assert!(!with_runtime(|runtime| runtime.has_node(second_id)));
 	}
 }

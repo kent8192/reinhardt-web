@@ -31,13 +31,20 @@
 //! count.set(42);
 //! ```
 
-use core::cell::RefCell;
+use core::cell::{Cell, RefCell};
 use core::sync::atomic::{AtomicUsize, Ordering};
 
 extern crate alloc;
 use alloc::boxed::Box;
-use alloc::collections::BTreeMap;
+use alloc::collections::{BTreeMap, BTreeSet};
 use alloc::vec::Vec;
+
+enum NotificationAction {
+	Notify(NodeId),
+	DirtyMemo(NodeId),
+	RunLayoutEffect(NodeId),
+	SchedulePassive(NodeId),
+}
 
 /// Unique identifier for reactive nodes (Signals, Effects, Memos)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -168,6 +175,12 @@ pub struct Runtime {
 	pub(crate) update_scheduled: RefCell<bool>,
 	/// Active explicit batch nesting depth.
 	pub(crate) batch_depth: RefCell<usize>,
+	/// LIFO actions for the active synchronous notification wave.
+	notification_actions: RefCell<Vec<NotificationAction>>,
+	/// Subscribers already handled in the active notification wave.
+	notification_seen: RefCell<BTreeSet<NodeId>>,
+	/// Whether a notification wave is currently draining actions.
+	notification_processing: Cell<bool>,
 }
 
 impl Runtime {
@@ -179,6 +192,9 @@ impl Runtime {
 			pending_updates: RefCell::new(Vec::new()),
 			update_scheduled: RefCell::new(false),
 			batch_depth: RefCell::new(0),
+			notification_actions: RefCell::new(Vec::new()),
+			notification_seen: RefCell::new(BTreeSet::new()),
+			notification_processing: Cell::new(false),
 		}
 	}
 
@@ -231,52 +247,97 @@ impl Runtime {
 
 	/// Notify that a Signal has changed
 	///
-	/// This schedules all subscribers (Effects/Memos that depend on this Signal) for re-execution.
-	/// Layout effects are executed synchronously, while passive effects are scheduled asynchronously.
+	/// This processes subscribers in one deduplicated notification wave. Memos
+	/// are dirtied before their downstream actions, Layout effects execute
+	/// synchronously, and passive effects are scheduled asynchronously.
 	///
 	/// # Arguments
 	///
 	/// * `signal_id` - ID of the Signal that changed
 	pub fn notify_signal_change(&self, signal_id: NodeId) {
-		let graph = self.dependency_graph.borrow();
-		if let Some(node) = graph.get(&signal_id) {
-			// Collect layout effects and passive effects separately
-			let mut layout_effects = Vec::new();
-			let mut memos = Vec::new();
-			let mut passive_effects = Vec::new();
+		self.notification_actions
+			.borrow_mut()
+			.push(NotificationAction::Notify(signal_id));
+		if self.notification_processing.replace(true) {
+			return;
+		}
 
-			for &subscriber_id in &node.subscribers {
-				// Check if this is an effect and get its timing
-				if let Some(timing) = super::effect::get_effect_timing(subscriber_id) {
-					match timing {
-						EffectTiming::Layout => layout_effects.push(subscriber_id),
-						EffectTiming::Passive => passive_effects.push(subscriber_id),
+		struct NotificationWaveGuard<'a> {
+			runtime: &'a Runtime,
+		}
+
+		impl Drop for NotificationWaveGuard<'_> {
+			fn drop(&mut self) {
+				self.runtime.notification_actions.borrow_mut().clear();
+				self.runtime.notification_seen.borrow_mut().clear();
+				self.runtime.notification_processing.set(false);
+			}
+		}
+
+		let _wave_guard = NotificationWaveGuard { runtime: self };
+		loop {
+			let action = { self.notification_actions.borrow_mut().pop() };
+			let Some(action) = action else {
+				break;
+			};
+			match action {
+				NotificationAction::Notify(node_id) => self.enqueue_notification_actions(node_id),
+				NotificationAction::DirtyMemo(memo_id) => {
+					if self.mark_subscriber_seen(memo_id)
+						&& super::memo::is_memo_registered(memo_id)
+					{
+						super::memo::mark_memo_dirty_by_id(memo_id);
 					}
-				} else if super::memo::is_memo_registered(subscriber_id) {
-					memos.push(subscriber_id);
-				} else {
-					// Other non-effect subscribers are treated as passive.
-					passive_effects.push(subscriber_id);
+				}
+				NotificationAction::RunLayoutEffect(effect_id) => {
+					if self.mark_subscriber_seen(effect_id) {
+						super::effect::Effect::execute_effect(effect_id);
+					}
+				}
+				NotificationAction::SchedulePassive(node_id) => {
+					if self.mark_subscriber_seen(node_id) {
+						self.schedule_update(node_id);
+					}
 				}
 			}
+		}
+	}
 
-			// Drop the borrow before executing effects
-			drop(graph);
+	fn mark_subscriber_seen(&self, node_id: NodeId) -> bool {
+		self.notification_seen.borrow_mut().insert(node_id)
+	}
 
-			// Mark memos dirty before downstream effects can read them.
-			for memo_id in memos {
-				super::memo::mark_memo_dirty_by_id(memo_id);
+	fn enqueue_notification_actions(&self, node_id: NodeId) {
+		let graph = self.dependency_graph.borrow();
+		let Some(node) = graph.get(&node_id) else {
+			return;
+		};
+		let mut layout_effects = Vec::new();
+		let mut memos = Vec::new();
+		let mut passive = Vec::new();
+		for &subscriber_id in &node.subscribers {
+			if let Some(timing) = super::effect::get_effect_timing(subscriber_id) {
+				match timing {
+					EffectTiming::Layout => layout_effects.push(subscriber_id),
+					EffectTiming::Passive => passive.push(subscriber_id),
+				}
+			} else if super::memo::is_memo_registered(subscriber_id) {
+				memos.push(subscriber_id);
+			} else {
+				passive.push(subscriber_id);
 			}
+		}
+		drop(graph);
 
-			// Execute layout effects synchronously
-			for effect_id in layout_effects {
-				super::effect::Effect::execute_effect(effect_id);
-			}
-
-			// Schedule passive effects asynchronously
-			for effect_id in passive_effects {
-				self.schedule_update(effect_id);
-			}
+		let mut actions = self.notification_actions.borrow_mut();
+		for node_id in passive.into_iter().rev() {
+			actions.push(NotificationAction::SchedulePassive(node_id));
+		}
+		for effect_id in layout_effects.into_iter().rev() {
+			actions.push(NotificationAction::RunLayoutEffect(effect_id));
+		}
+		for memo_id in memos.into_iter().rev() {
+			actions.push(NotificationAction::DirtyMemo(memo_id));
 		}
 	}
 
