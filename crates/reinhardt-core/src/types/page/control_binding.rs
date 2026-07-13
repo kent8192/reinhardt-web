@@ -484,6 +484,10 @@ macro_rules! impl_float_number_value {
 					if let Some(error) = lexical_error(raw) {
 						return Err(error);
 					}
+					let unsigned = raw.strip_prefix(['+', '-']).unwrap_or(raw);
+					if !is_valid_unsigned_number_lexeme(unsigned) {
+						return Err(NumberParseError::new(raw, NumberParseErrorKind::Invalid));
+					}
 					let value = raw
 						.parse::<Self>()
 						.map_err(|_| NumberParseError::new(raw, NumberParseErrorKind::Invalid))?;
@@ -574,5 +578,57 @@ mod tests {
 
 		assert_eq!(error.raw(), raw);
 		assert_eq!(error.kind(), expected);
+	}
+
+	#[rstest]
+	#[case("NaN")]
+	#[case("nan")]
+	#[case("NAN")]
+	#[case("+NaN")]
+	#[case("-NaN")]
+	#[case("inf")]
+	#[case("INF")]
+	#[case("+inf")]
+	#[case("-inf")]
+	#[case("infinity")]
+	#[case("INFINITY")]
+	fn float_number_bindings_reject_non_numeric_special_lexemes(#[case] raw: &str) {
+		macro_rules! assert_special_lexeme_is_invalid {
+			($($type:ty),+ $(,)?) => {
+				$(
+					let error = <$type as NumberValue>::parse_control_value(raw).unwrap_err();
+					assert_eq!(error.raw(), raw);
+					assert_eq!(error.kind(), NumberParseErrorKind::Invalid);
+				)+
+			};
+		}
+
+		assert_special_lexeme_is_invalid!(f32, f64);
+	}
+
+	#[rstest]
+	fn float_number_bindings_accept_finite_limits_and_reject_numeric_overflow() {
+		let f32_max = f32::MAX.to_string();
+		let f64_max = f64::MAX.to_string();
+
+		assert_eq!(
+			<f32 as NumberValue>::parse_control_value(&f32_max).unwrap(),
+			f32::MAX
+		);
+		assert_eq!(
+			<f64 as NumberValue>::parse_control_value(&f64_max).unwrap(),
+			f64::MAX
+		);
+
+		for raw in ["3.4028236e38", "1e9999"] {
+			let error = <f32 as NumberValue>::parse_control_value(raw).unwrap_err();
+			assert_eq!(error.raw(), raw);
+			assert_eq!(error.kind(), NumberParseErrorKind::OutOfRange);
+		}
+		for raw in ["1.7976931348623159e308", "1e9999"] {
+			let error = <f64 as NumberValue>::parse_control_value(raw).unwrap_err();
+			assert_eq!(error.raw(), raw);
+			assert_eq!(error.kind(), NumberParseErrorKind::OutOfRange);
+		}
 	}
 }

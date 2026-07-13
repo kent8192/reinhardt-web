@@ -10,7 +10,7 @@ use crate::reactive::effect::Effect;
 #[cfg(wasm)]
 use crate::reactive::runtime::{EffectTiming, with_runtime};
 #[cfg(wasm)]
-use reinhardt_core::types::page::{BOOLEAN_ATTRS, Page, is_boolean_attr_truthy};
+use reinhardt_core::types::page::{BOOLEAN_ATTRS, MountError, Page, is_boolean_attr_truthy};
 #[cfg(wasm)]
 use std::cell::Cell;
 use std::cell::RefCell;
@@ -85,6 +85,56 @@ pub(crate) fn with_reactive_node_store<R>(store: &ReactiveNodeStore, f: impl FnO
 	let previous = ACTIVE_REACTIVE_NODE_STORE.with(|active| active.replace(Some(store.clone())));
 	let _guard = ActiveReactiveNodeStoreGuard { previous };
 	f()
+}
+
+#[cfg(any(wasm, test))]
+struct ReactiveNodeTransaction {
+	destination: ReactiveNodeStore,
+	staged: ReactiveNodeStore,
+	committed: bool,
+}
+
+#[cfg(any(wasm, test))]
+impl ReactiveNodeTransaction {
+	fn new(destination: ReactiveNodeStore) -> Self {
+		Self {
+			destination,
+			staged: new_reactive_node_store(),
+			committed: false,
+		}
+	}
+
+	fn store(&self) -> ReactiveNodeStore {
+		self.staged.clone()
+	}
+
+	fn commit(&mut self) {
+		self.destination
+			.borrow_mut()
+			.append(&mut self.staged.borrow_mut());
+		self.committed = true;
+	}
+}
+
+#[cfg(any(wasm, test))]
+impl Drop for ReactiveNodeTransaction {
+	fn drop(&mut self) {
+		if !self.committed {
+			clear_reactive_node_store(&self.staged);
+		}
+	}
+}
+
+#[cfg(wasm)]
+pub(crate) fn with_reactive_node_transaction<T, E>(
+	f: impl FnOnce() -> Result<T, E>,
+) -> Result<T, E> {
+	let mut transaction = ReactiveNodeTransaction::new(current_reactive_node_store());
+	let result = with_reactive_node_store(&transaction.store(), f);
+	if result.is_ok() {
+		transaction.commit();
+	}
+	result
 }
 
 #[cfg(native)]
@@ -241,6 +291,9 @@ impl ReactiveIfNode {
 		}
 	}
 
+	// DOM boundary coordinates, the precreated owner store, and the hydrated baseline must stay
+	// explicit so hydration adopts the exact server-rendered range without reconstructing state.
+	#[allow(clippy::too_many_arguments)]
 	pub(crate) fn hydrate_at(
 		parent: web_sys::Node,
 		next_sibling: Option<web_sys::Node>,
@@ -754,45 +807,57 @@ fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::No
 
 			let element_wrapper = crate::dom::Element::new(element.clone());
 			let mount_children_before_binding = tag == "select";
-			let mut children = children.into_iter();
-			if mount_children_before_binding {
-				for child in children.by_ref() {
-					let _ = child.mount(&element_wrapper);
+			let mount_element = || {
+				let mut children = children.into_iter();
+				if mount_children_before_binding {
+					for child in children.by_ref() {
+						child.mount(&element_wrapper)?;
+					}
 				}
-			}
 
-			let binding_controller = control_binding.and_then(|binding| {
-				crate::dom::control_binding::ControlBindingController::mount(
-					element_wrapper.clone(),
-					binding,
-				)
-				.ok()
-			});
+				let binding_controller = control_binding
+					.map(|binding| {
+						crate::dom::control_binding::ControlBindingController::mount(
+							element_wrapper.clone(),
+							binding,
+						)
+					})
+					.transpose()?;
 
-			// Attach event handlers
-			let mut event_handles = Vec::new();
-			for (event_type, handler) in event_handlers {
-				let handler_clone = handler.clone();
-				#[cfg(feature = "i18n")]
-				let i18n_context = crate::i18n::current_i18n_callback_context();
-				event_handles.push(element_wrapper.add_event_listener_with_event(
-					event_type.as_str(),
-					move |event| {
-						#[cfg(feature = "i18n")]
-						{
-							crate::i18n::with_optional_i18n_context(i18n_context.as_ref(), || {
-								handler_clone(event);
-							});
-						}
-						#[cfg(not(feature = "i18n"))]
-						handler_clone(event);
-					},
-				));
-			}
+				let mut event_handles = Vec::new();
+				for (event_type, handler) in event_handlers {
+					let handler_clone = handler.clone();
+					#[cfg(feature = "i18n")]
+					let i18n_context = crate::i18n::current_i18n_callback_context();
+					event_handles.push(element_wrapper.add_event_listener_with_event(
+						event_type.as_str(),
+						move |event| {
+							#[cfg(feature = "i18n")]
+							{
+								crate::i18n::with_optional_i18n_context(
+									i18n_context.as_ref(),
+									|| handler_clone(event),
+								);
+							}
+							#[cfg(not(feature = "i18n"))]
+							handler_clone(event);
+						},
+					));
+				}
 
-			for child in children {
-				let _ = child.mount(&element_wrapper);
-			}
+				for child in children {
+					child.mount(&element_wrapper)?;
+				}
+				Ok::<_, MountError>((binding_controller, event_handles))
+			};
+			let mounted = if mount_children_before_binding {
+				with_reactive_node_transaction(mount_element)
+			} else {
+				mount_element()
+			};
+			let Ok((binding_controller, event_handles)) = mounted else {
+				return nodes;
+			};
 
 			// Insert before marker
 			let _ = parent.insert_before(&element, Some(marker));
@@ -885,3 +950,72 @@ fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::No
 }
 
 // Note: is_boolean_attr_truthy and BOOLEAN_ATTRS are imported from reinhardt_core::types::page
+
+#[cfg(all(test, native))]
+mod tests {
+	use std::cell::Cell;
+	use std::panic::{AssertUnwindSafe, catch_unwind};
+	use std::rc::Rc;
+
+	use rstest::rstest;
+
+	use super::*;
+
+	struct CyclicDropProbe {
+		drops: Rc<Cell<usize>>,
+		_store_cycle: ReactiveNodeStore,
+	}
+
+	impl Drop for CyclicDropProbe {
+		fn drop(&mut self) {
+			self.drops.set(self.drops.get() + 1);
+		}
+	}
+
+	#[rstest]
+	fn reactive_node_transaction_rolls_back_cycles_during_unwind() {
+		// Arrange
+		let destination = new_reactive_node_store();
+		let drops = Rc::new(Cell::new(0));
+		let transaction_drops = Rc::clone(&drops);
+
+		// Act
+		let result = catch_unwind(AssertUnwindSafe(|| {
+			let transaction = ReactiveNodeTransaction::new(destination.clone());
+			let staged = transaction.store();
+			staged.borrow_mut().push(Box::new(CyclicDropProbe {
+				drops: transaction_drops,
+				_store_cycle: staged.clone(),
+			}));
+			panic!("transaction rollback");
+		}));
+
+		// Assert
+		assert!(result.is_err());
+		assert_eq!(drops.get(), 1);
+		assert!(destination.borrow().is_empty());
+	}
+
+	#[rstest]
+	fn reactive_node_transaction_transfers_committed_owners() {
+		// Arrange
+		let destination = new_reactive_node_store();
+		let drops = Rc::new(Cell::new(0));
+		let mut transaction = ReactiveNodeTransaction::new(destination.clone());
+		let staged = transaction.store();
+		staged.borrow_mut().push(Box::new(CyclicDropProbe {
+			drops: Rc::clone(&drops),
+			_store_cycle: staged.clone(),
+		}));
+
+		// Act
+		transaction.commit();
+		drop(transaction);
+
+		// Assert
+		assert_eq!(drops.get(), 0);
+		assert_eq!(destination.borrow().len(), 1);
+		clear_reactive_node_store(&destination);
+		assert_eq!(drops.get(), 1);
+	}
+}

@@ -105,6 +105,11 @@ fn install_listeners(element: &Element, binding: &ControlBinding) -> Vec<EventHa
 					};
 					let skip = input_state.borrow_mut().skip_next_input.take();
 					if skip.as_ref() == Some(&value) {
+						let current_value = untracked(|| input_binding.read());
+						if current_value != value {
+							let _ =
+								write_control(&input_element, input_binding.kind(), &current_value);
+						}
 						return;
 					}
 					let _ = input_binding.write(value);
@@ -165,9 +170,7 @@ fn validate_control(element: &Element, kind: ControlKind) -> Result<(), ControlB
 					&& element
 						.as_web_sys()
 						.dyn_ref::<web_sys::HtmlInputElement>()
-						.is_some_and(|input| {
-							!matches!(input.type_().as_str(), "checkbox" | "radio" | "number")
-						}))
+						.is_some_and(|input| input.type_() == "text"))
 		}
 		ControlKind::Number => input_has_type(element, &tag, "number"),
 		ControlKind::Checkbox => input_has_type(element, &tag, "checkbox"),
@@ -580,11 +583,13 @@ mod tests {
 			.dispatch_event(&web_sys::CompositionEvent::new("compositionend").expect("end"))
 			.expect("dispatch");
 		assert_eq!(signal.get(), "あ");
+		input.set_selection_range(0, 0).expect("selection");
 		input
 			.dispatch_event(&web_sys::InputEvent::new("input").expect("input"))
 			.expect("dispatch");
 		assert_eq!(signal.get(), "あ");
 		assert_eq!(commits.get(), 2);
+		assert_eq!(input.selection_start().expect("selection"), Some(0));
 	}
 
 	#[wasm_bindgen_test]
@@ -638,5 +643,42 @@ mod tests {
 				actual_tag: "select".to_owned(),
 			}
 		);
+	}
+
+	#[wasm_bindgen_test]
+	fn text_binding_rejects_non_text_input_types_without_writing_file_value() {
+		for input_type in ["search", "email", "file", "range", "password", "url"] {
+			let element = element("input");
+			let input: web_sys::HtmlInputElement = element.as_web_sys().clone().unchecked_into();
+			input.set_type(input_type);
+			let error = ControlBindingController::mount(
+				element,
+				ControlBinding::text(Signal::new("non-empty".to_owned())),
+			)
+			.expect_err("non-text input type should fail");
+
+			assert_eq!(
+				error,
+				ControlBindingError::UnsupportedElement {
+					control: ControlKind::Text,
+					actual_tag: "input".to_owned(),
+				}
+			);
+			if input_type == "file" {
+				assert_eq!(input.value(), "");
+			}
+		}
+	}
+
+	#[wasm_bindgen_test]
+	fn text_binding_accepts_textarea() {
+		let element = element("textarea");
+		let textarea: web_sys::HtmlTextAreaElement = element.as_web_sys().clone().unchecked_into();
+		let signal = Signal::new("bound".to_owned());
+
+		let _controller = ControlBindingController::mount(element, ControlBinding::text(signal))
+			.expect("textarea binding");
+
+		assert_eq!(textarea.value(), "bound");
 	}
 }

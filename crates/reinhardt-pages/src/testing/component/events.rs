@@ -150,6 +150,7 @@ impl ElementHandle {
 			if borrowed.dom.suppresses_events(self.node_id) {
 				return Ok(());
 			}
+			borrowed.dom.validate_control_binding(self.node_id)?;
 			borrowed
 				.dom
 				.apply_target_state(self.node_id, fixture.target())?;

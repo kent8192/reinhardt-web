@@ -17,7 +17,9 @@ pub use reinhardt_core::types::page::NativeEvent;
 pub(super) use reinhardt_core::types::page::{BOOLEAN_ATTRS, is_boolean_attr_truthy};
 
 #[cfg(wasm)]
-use crate::component::reactive_if::{ReactiveIfNode, ReactiveNode, store_reactive_node};
+use crate::component::reactive_if::{
+	ReactiveIfNode, ReactiveNode, store_reactive_node, with_reactive_node_transaction,
+};
 #[cfg(wasm)]
 use crate::dom::control_binding::ControlBindingController;
 #[cfg(wasm)]
@@ -82,45 +84,54 @@ fn mount_inner(page: Page, parent: &Element) -> Result<(), MountError> {
 			}
 
 			let mount_children_before_binding = tag == "select";
-			let mut children = children.into_iter();
-			if mount_children_before_binding {
-				for child in children.by_ref() {
+			let mount_element = || {
+				let mut children = children.into_iter();
+				if mount_children_before_binding {
+					for child in children.by_ref() {
+						mount_inner(child, &element)?;
+					}
+				}
+
+				let binding_controller = control_binding
+					.map(|binding| ControlBindingController::mount(element.clone(), binding))
+					.transpose()?;
+				let mut event_handles: Vec<EventHandle> = Vec::new();
+
+				for (event_type, handler) in event_handlers {
+					let handler_clone = handler.clone();
+					#[cfg(feature = "i18n")]
+					let i18n_context = crate::i18n::current_i18n_callback_context();
+					event_handles.push(element.add_event_listener_with_event(
+						event_type.as_str(),
+						move |event| {
+							#[cfg(feature = "i18n")]
+							{
+								crate::i18n::with_optional_i18n_context(
+									i18n_context.as_ref(),
+									|| handler_clone(event),
+								);
+							}
+							#[cfg(not(feature = "i18n"))]
+							handler_clone(event);
+						},
+					));
+				}
+
+				for child in children {
 					mount_inner(child, &element)?;
 				}
+
+				parent
+					.append_child(element)
+					.map_err(|_| MountError::AppendChildFailed)?;
+				store_reactive_node((binding_controller, event_handles));
+				Ok::<(), MountError>(())
+			};
+			if mount_children_before_binding {
+				with_reactive_node_transaction(mount_element)?;
+			} else {
+				mount_element()?;
 			}
-
-			let binding_controller = control_binding
-				.map(|binding| ControlBindingController::mount(element.clone(), binding))
-				.transpose()?;
-			let mut event_handles: Vec<EventHandle> = Vec::new();
-
-			for (event_type, handler) in event_handlers {
-				let handler_clone = handler.clone();
-				#[cfg(feature = "i18n")]
-				let i18n_context = crate::i18n::current_i18n_callback_context();
-				event_handles.push(element.add_event_listener_with_event(
-					event_type.as_str(),
-					move |event| {
-						#[cfg(feature = "i18n")]
-						{
-							crate::i18n::with_optional_i18n_context(i18n_context.as_ref(), || {
-								handler_clone(event);
-							});
-						}
-						#[cfg(not(feature = "i18n"))]
-						handler_clone(event);
-					},
-				));
-			}
-
-			for child in children {
-				mount_inner(child, &element)?;
-			}
-
-			parent
-				.append_child(element)
-				.map_err(|_| MountError::AppendChildFailed)?;
-			store_reactive_node((binding_controller, event_handles));
 		}
 		Page::Text(text) => {
 			let window = web_sys::window().ok_or(MountError::NoWindow)?;

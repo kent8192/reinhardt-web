@@ -294,6 +294,93 @@ async fn select_one_binding_tracks_selected_value_in_both_directions() {
 }
 
 #[rstest]
+#[tokio::test]
+async fn select_one_projection_uses_first_matching_option_and_ignores_absent_values() {
+	// Arrange
+	let selected = Signal::new("duplicate".to_owned());
+	let screen = render(page!({
+		select {
+			aria_label: "Duplicate",
+			bind: selected,
+			option {
+				value: "duplicate",
+				"First"
+			}
+			option {
+				value: "duplicate",
+				"Second"
+			}
+		}
+	}));
+	let select = screen.get_by_label("Duplicate");
+
+	// Act
+	let duplicate_projection = screen.pretty();
+	selected.set("absent".to_owned());
+	screen.settle().await;
+
+	// Assert
+	assert_eq!(select.value().as_deref(), Some(""));
+	assert_eq!(
+		duplicate_projection,
+		concat!(
+			"<select aria-label=\"Duplicate\">\n",
+			"  <option value=\"duplicate\" selected=\"selected\">\n",
+			"    First\n",
+			"  </option>\n",
+			"  <option value=\"duplicate\">\n",
+			"    Second\n",
+			"  </option>\n",
+			"</select>\n",
+		)
+	);
+	assert!(!screen.pretty().contains("selected=\"selected\""));
+}
+
+#[rstest]
+fn select_many_projection_uses_option_dom_order_and_preserves_duplicates() {
+	// Arrange
+	let selected = Signal::new(vec![
+		"missing".to_owned(),
+		"second".to_owned(),
+		"first".to_owned(),
+	]);
+	let screen = render(page!({
+		select {
+			aria_label: "Ordered",
+			multiple: true,
+			bind: selected,
+			option {
+				value: "first",
+				"First"
+			}
+			option {
+				value: "second",
+				"Second A"
+			}
+			option {
+				value: "second",
+				"Second B"
+			}
+		}
+	}));
+	let select = screen.get_by_label("Ordered");
+
+	// Act
+	select
+		.dispatch(EventFixture::change())
+		.expect("normalized select should dispatch");
+
+	// Assert
+	assert_eq!(select.value().as_deref(), Some("first"));
+	assert_eq!(
+		selected.get(),
+		vec!["first".to_owned(), "second".to_owned(), "second".to_owned(),]
+	);
+	assert_eq!(screen.pretty().matches("selected=\"selected\"").count(), 3);
+}
+
+#[rstest]
 fn select_one_empty_selection_commits_the_browser_empty_value() {
 	// Arrange
 	let selected = Signal::new("rust".to_owned());
@@ -532,6 +619,7 @@ async fn composition_defers_writes_and_deduplicates_the_final_input() {
 		]
 	);
 	assert_eq!(value.get(), "after-end");
+	assert_eq!(input.value().as_deref(), Some("after-end"));
 }
 
 #[rstest]
@@ -634,4 +722,85 @@ fn binding_failures_are_structured_event_errors() {
 			actual_tag: "input".to_owned(),
 		})
 	);
+}
+
+#[rstest]
+#[case("search")]
+#[case("email")]
+#[case("file")]
+#[case("range")]
+#[case("password")]
+#[case("url")]
+fn text_binding_rejects_non_text_input_types(#[case] input_type: &str) {
+	// Arrange
+	let value = Signal::new("bound".to_owned());
+	let screen = render(
+		PageElement::new("input")
+			.attr("aria-label", "Invalid text target")
+			.attr("type", input_type.to_owned())
+			.control_binding(ControlBinding::text(value)),
+	);
+	let input = screen.get_by_label("Invalid text target");
+	let value_before_dispatch = input.value();
+
+	// Act
+	let error = input
+		.dispatch(EventFixture::input().value("edited"))
+		.expect_err("non-text input type should fail");
+
+	// Assert
+	assert_eq!(
+		error,
+		EventError::ControlBinding(ControlBindingError::UnsupportedElement {
+			control: reinhardt_pages::component::ControlKind::Text,
+			actual_tag: "input".to_owned(),
+		})
+	);
+	if input_type == "file" {
+		assert_eq!(value_before_dispatch, None);
+		assert_eq!(input.value(), None);
+	}
+}
+
+#[rstest]
+#[case(PageElement::new("input"))]
+#[case(PageElement::new("input").attr("type", "text"))]
+#[case(PageElement::new("textarea"))]
+fn text_binding_accepts_exact_text_controls(#[case] element: PageElement) {
+	// Arrange
+	let value = Signal::new("bound".to_owned());
+	let screen = render(
+		element
+			.attr("aria-label", "Text target")
+			.control_binding(ControlBinding::text(value.clone())),
+	);
+	let input = screen.get_by_label("Text target");
+
+	// Act
+	input.input("edited");
+
+	// Assert
+	assert_eq!(value.get(), "edited");
+	assert_eq!(input.value().as_deref(), Some("edited"));
+}
+
+#[rstest]
+fn text_binding_accepts_an_input_type_with_text_fallback_semantics() {
+	// Arrange
+	let value = Signal::new("old".to_owned());
+	let screen = render(
+		PageElement::new("input")
+			.attr("aria-label", "Fallback text target")
+			.attr("type", "future-control")
+			.control_binding(ControlBinding::text(value.clone())),
+	);
+	let input = screen.get_by_label("Fallback text target");
+
+	// Act
+	input
+		.dispatch(EventFixture::input().value("edited"))
+		.expect("unknown input type should use text fallback semantics");
+
+	// Assert
+	assert_eq!(value.get(), "edited");
 }

@@ -796,12 +796,15 @@ fn select_file_and_contenteditable_target_snapshots_are_owned() {
 	let screen = render(Page::fragment([
 		PageElement::new("select")
 			.attr("aria-label", "Roles")
+			.attr("multiple", "multiple")
 			.on(
 				ChangeEvent::EVENT,
 				typed_event_handler::<ChangeEvent, _>(move |event: ChangeEvent| {
 					*selected_for_handler.lock().unwrap() = Some(event.selected_values());
 				}),
 			)
+			.child(PageElement::new("option").attr("value", "admin"))
+			.child(PageElement::new("option").attr("value", "editor"))
 			.into_page(),
 		PageElement::new("input")
 			.attr("aria-label", "Upload")

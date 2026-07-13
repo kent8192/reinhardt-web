@@ -332,6 +332,19 @@ impl TestDom {
 		Ok(())
 	}
 
+	pub(crate) fn validate_control_binding(
+		&self,
+		node_id: NodeId,
+	) -> Result<(), ControlBindingError> {
+		let Some(node) = self.element(node_id) else {
+			return Ok(());
+		};
+		if let Some(binding) = &node.control_binding {
+			node.validate_control_binding(binding)?;
+		}
+		Ok(())
+	}
+
 	pub(crate) fn prepare_control_binding_commit(
 		&mut self,
 		node_id: NodeId,
@@ -390,6 +403,12 @@ impl TestDom {
 						return Ok((true, None));
 					}
 					if node.last_committed_raw.take().as_deref() == Some(raw.as_str()) {
+						let current_value = binding.read();
+						if current_value != ControlValue::Text(raw) {
+							node.pending_raw = None;
+							node.apply_control_value(current_value.clone());
+							node.last_observed_control_value = Some(current_value);
+						}
 						return Ok((true, None));
 					}
 					Ok((
@@ -560,7 +579,11 @@ impl TestDom {
 					last_committed_raw: None,
 					last_observed_control_value: last_observed_control_value.clone(),
 				};
-				if let Some(value) = last_observed_control_value {
+				let binding_supported = element_node
+					.control_binding
+					.as_ref()
+					.is_none_or(|binding| element_node.validate_control_binding(binding).is_ok());
+				if binding_supported && let Some(value) = last_observed_control_value {
 					element_node.apply_control_value(value);
 				}
 				let node_id = self.push_node(parent, TestNode::Element(Box::new(element_node)));
@@ -758,14 +781,31 @@ impl TestDom {
 		if select.tag != "select" {
 			return;
 		}
-		let selected_values = select.selected_values.clone();
+		let requested_values = select.selected_values.clone();
+		let multiple = select.has_attr("multiple");
 		let children = select.children.clone();
+		let mut selected_values = Vec::new();
 		for child in children {
-			self.refresh_selected_options_in_subtree(child, &selected_values);
+			self.refresh_selected_options_in_subtree(
+				child,
+				&requested_values,
+				multiple,
+				&mut selected_values,
+			);
+		}
+		if let Some(TestNode::Element(select)) = self.nodes.get_mut(select_id) {
+			select.value = Some(selected_values.first().cloned().unwrap_or_default());
+			select.selected_values = selected_values;
 		}
 	}
 
-	fn refresh_selected_options_in_subtree(&mut self, node_id: NodeId, selected_values: &[String]) {
+	fn refresh_selected_options_in_subtree(
+		&mut self,
+		node_id: NodeId,
+		requested_values: &[String],
+		multiple: bool,
+		selected_values: &mut Vec<String>,
+	) {
 		let children = self.children(node_id).to_vec();
 		let effective_value = self.element(node_id).and_then(|node| {
 			(node.tag == "option").then(|| node.option_value.clone().unwrap_or_default())
@@ -773,17 +813,24 @@ impl TestDom {
 		if let Some(TestNode::Element(node)) = self.nodes.get_mut(node_id)
 			&& node.tag == "option"
 		{
-			let selected = effective_value
-				.as_ref()
-				.is_some_and(|value| selected_values.iter().any(|candidate| candidate == value));
+			let selected = effective_value.as_ref().is_some_and(|value| {
+				requested_values.iter().any(|candidate| candidate == value)
+					&& (multiple || selected_values.is_empty())
+			});
 			node.attrs.retain(|(name, _)| name != "selected");
 			if selected {
 				node.attrs
 					.push(("selected".to_owned(), "selected".to_owned()));
+				selected_values.push(effective_value.expect("option value should exist"));
 			}
 		}
 		for child in children {
-			self.refresh_selected_options_in_subtree(child, selected_values);
+			self.refresh_selected_options_in_subtree(
+				child,
+				requested_values,
+				multiple,
+				selected_values,
+			);
 		}
 	}
 }
@@ -796,8 +843,7 @@ impl ElementNode {
 		let supported = match binding.kind() {
 			ControlKind::Text => {
 				self.tag == "textarea"
-					|| (self.tag == "input"
-						&& !matches!(self.attr("type"), Some("checkbox" | "radio" | "number")))
+					|| (self.tag == "input" && has_effective_text_type(self.attr("type")))
 			}
 			ControlKind::Number => self.tag == "input" && self.attr("type") == Some("number"),
 			ControlKind::Checkbox => self.tag == "input" && self.attr("type") == Some("checkbox"),
@@ -880,6 +926,38 @@ impl ElementNode {
 				"button" | "fieldset" | "input" | "optgroup" | "option" | "select" | "textarea"
 			)
 	}
+}
+
+fn has_effective_text_type(input_type: Option<&str>) -> bool {
+	let Some(input_type) = input_type else {
+		return true;
+	};
+	input_type.eq_ignore_ascii_case("text")
+		|| ![
+			"button",
+			"checkbox",
+			"color",
+			"date",
+			"datetime-local",
+			"email",
+			"file",
+			"hidden",
+			"image",
+			"month",
+			"number",
+			"password",
+			"radio",
+			"range",
+			"reset",
+			"search",
+			"submit",
+			"tel",
+			"time",
+			"url",
+			"week",
+		]
+		.iter()
+		.any(|known| input_type.eq_ignore_ascii_case(known))
 }
 
 #[cfg(feature = "msw")]

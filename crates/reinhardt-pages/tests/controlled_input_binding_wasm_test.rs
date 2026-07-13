@@ -221,6 +221,157 @@ fn public_page_mount_preserves_a_structured_binding_error() {
 }
 
 #[wasm_bindgen_test]
+fn failed_select_mount_rolls_back_child_reactive_resources() {
+	let document = web_sys::window()
+		.expect("window")
+		.document()
+		.expect("document");
+	let root = Element::new(document.create_element("div").expect("root"));
+	let parent_checked = Signal::new(false);
+	let child_value = Signal::new("initial".to_owned());
+	let render_count = Rc::new(std::cell::Cell::new(0));
+	let listener_owner = Rc::new(());
+	let weak_listener_owner = Rc::downgrade(&listener_owner);
+	let render_value = child_value.clone();
+	let render_count_for_child = Rc::clone(&render_count);
+	let listener_owner_for_child = Rc::clone(&listener_owner);
+	let page = Page::Element(
+		PageElement::new("select")
+			.control_binding(ControlBinding::checkbox(parent_checked))
+			.child(Page::reactive(move || {
+				render_count_for_child.set(render_count_for_child.get() + 1);
+				let _ = render_value.get();
+				let bound = render_value.clone();
+				let listener_owner = Rc::clone(&listener_owner_for_child);
+				page!({
+					input {
+						a11y: off,
+						bind: bound,
+						@input: move |_| drop(Rc::clone(&listener_owner)),
+					}
+				})
+			})),
+	);
+	drop(listener_owner);
+
+	let error = page.mount(&root).expect_err("parent binding mismatch");
+
+	assert_eq!(
+		error,
+		MountError::ControlBinding(ControlBindingError::UnsupportedElement {
+			control: ControlKind::Checkbox,
+			actual_tag: "select".to_owned(),
+		})
+	);
+	assert_eq!(render_count.get(), 1);
+	assert!(weak_listener_owner.upgrade().is_none());
+	assert_eq!(root.as_web_sys().first_element_child(), None);
+	child_value.set("after failure".to_owned());
+	assert_eq!(render_count.get(), 1);
+}
+
+#[wasm_bindgen_test]
+fn reactive_failed_select_mount_rolls_back_child_reactive_resources() {
+	let document = web_sys::window()
+		.expect("window")
+		.document()
+		.expect("document");
+	let root = Element::new(document.create_element("div").expect("root"));
+	let trigger = Signal::new(0_u32);
+	let render_count = Rc::new(std::cell::Cell::new(0));
+	let last_listener_owner = Rc::new(RefCell::new(None));
+	let render_trigger = trigger.clone();
+	let render_count_for_page = Rc::clone(&render_count);
+	let last_listener_owner_for_page = Rc::clone(&last_listener_owner);
+	let page = Page::reactive(move || {
+		let _ = render_trigger.get();
+		render_count_for_page.set(render_count_for_page.get() + 1);
+		let listener_owner = Rc::new(());
+		*last_listener_owner_for_page.borrow_mut() = Some(Rc::downgrade(&listener_owner));
+		Page::Element(
+			PageElement::new("select")
+				.control_binding(ControlBinding::checkbox(Signal::new(false)))
+				.child(page!({
+					input {
+						a11y: off,
+						bind: Signal::new(String::new()),
+						@input: move |_| drop(Rc::clone(&listener_owner)),
+					}
+				})),
+		)
+	});
+
+	page.mount(&root).expect("reactive owner mount");
+
+	assert_eq!(
+		root.as_web_sys().query_selector("select").expect("query"),
+		None
+	);
+	assert_eq!(render_count.get(), 1);
+	assert!(
+		last_listener_owner
+			.borrow()
+			.as_ref()
+			.expect("owner observation")
+			.upgrade()
+			.is_none()
+	);
+	trigger.set(1);
+	assert_eq!(render_count.get(), 2);
+	assert!(
+		last_listener_owner
+			.borrow()
+			.as_ref()
+			.expect("rerendered owner observation")
+			.upgrade()
+			.is_none()
+	);
+	reinhardt_pages::cleanup_reactive_nodes();
+}
+
+#[wasm_bindgen_test]
+fn duplicate_final_input_reprojects_a_reentrant_compositionend_signal_change() {
+	let document = web_sys::window()
+		.expect("window")
+		.document()
+		.expect("document");
+	let root = Element::new(document.create_element("div").expect("root"));
+	let value = Signal::new("old".to_owned());
+	let end_value = value.clone();
+	page!({
+		input {
+			a11y: off,
+			bind: value,
+			@compositionend: move |_| end_value.set("after-end".to_owned()),
+		}
+	})
+	.mount(&root)
+	.expect("mount");
+	let input: web_sys::HtmlInputElement = root
+		.as_web_sys()
+		.first_element_child()
+		.expect("input")
+		.unchecked_into();
+	input
+		.dispatch_event(&web_sys::CompositionEvent::new("compositionstart").expect("start"))
+		.expect("dispatch");
+	input.set_value("かな");
+	input
+		.dispatch_event(&web_sys::CompositionEvent::new("compositionend").expect("end"))
+		.expect("dispatch");
+	assert_eq!(value.get(), "after-end");
+	input.set_value("かな");
+
+	input
+		.dispatch_event(&web_sys::InputEvent::new("input").expect("input"))
+		.expect("dispatch");
+
+	assert_eq!(value.get(), "after-end");
+	assert_eq!(input.value(), "after-end");
+	reinhardt_pages::cleanup_reactive_nodes();
+}
+
+#[wasm_bindgen_test]
 fn reactive_remount_drops_the_replaced_control_owner() {
 	let document = web_sys::window()
 		.expect("window")
@@ -401,14 +552,7 @@ fn hydrated_reactive_switch_drops_the_initial_branch_guards() {
 	)
 	.expect("hydrate");
 	assert_eq!(value.get(), "restored");
-	assert!(
-		raw_input.is_same_node(
-			root.as_web_sys()
-				.first_element_child()
-				.as_ref()
-				.map(|element| &**element),
-		)
-	);
+	assert!(raw_input.is_same_node(root.as_web_sys().first_element_child().as_deref(),));
 
 	alternate.set(true);
 	let replacement: web_sys::HtmlInputElement = root
@@ -538,14 +682,7 @@ fn hydrated_reactive_if_adopts_before_subscribing_and_transfers_guards() {
 	)
 	.expect("hydrate");
 	assert_eq!(value.get(), "restored");
-	assert!(
-		raw_input.is_same_node(
-			root.as_web_sys()
-				.first_element_child()
-				.as_ref()
-				.map(|element| &**element),
-		)
-	);
+	assert!(raw_input.is_same_node(root.as_web_sys().first_element_child().as_deref(),));
 	with_runtime(|runtime| runtime.flush_updates());
 	let converged: web_sys::HtmlInputElement = root
 		.as_web_sys()
