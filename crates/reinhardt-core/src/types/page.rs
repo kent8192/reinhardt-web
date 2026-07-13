@@ -480,6 +480,22 @@ impl std::fmt::Debug for PageElement {
 	}
 }
 
+#[cfg(feature = "reactive")]
+fn scoped_event_handler(handler: PageEventHandler) -> PageEventHandler {
+	let Some(scope) = crate::reactive::scope::current_scope_id() else {
+		return handler;
+	};
+
+	Arc::new(move |event| {
+		let _ = crate::reactive::scope::enter_scope(scope, || handler(event));
+	})
+}
+
+#[cfg(not(feature = "reactive"))]
+fn scoped_event_handler(handler: PageEventHandler) -> PageEventHandler {
+	handler
+}
+
 impl PageElement {
 	/// Creates a new element view.
 	pub fn new(tag: impl Into<Cow<'static, str>>) -> Self {
@@ -582,7 +598,8 @@ impl PageElement {
 
 	/// Adds an event handler.
 	pub fn on(mut self, event_type: impl Into<EventName>, handler: PageEventHandler) -> Self {
-		self.event_handlers.push((event_type.into(), handler));
+		self.event_handlers
+			.push((event_type.into(), scoped_event_handler(handler)));
 		self
 	}
 
@@ -662,7 +679,8 @@ impl PageElement {
 		event_type: impl Into<EventName>,
 		handler: PageEventHandler,
 	) {
-		self.event_handlers.push((event_type.into(), handler));
+		self.event_handlers
+			.push((event_type.into(), scoped_event_handler(handler)));
 	}
 
 	/// Returns the event handlers.
@@ -1132,7 +1150,7 @@ mod tests {
 		assert_eq!(event_type.as_str(), "pointerdown");
 	}
 
-	#[cfg(native)]
+	#[cfg(all(native, feature = "reactive"))]
 	#[test]
 	fn page_element_preserves_known_and_custom_event_names() {
 		let element = PageElement::new("button")
@@ -1147,6 +1165,45 @@ mod tests {
 			element.event_handlers()[1].0,
 			EventName::Custom(Cow::Owned("editor:commit".to_owned()))
 		);
+	}
+
+	#[cfg(native)]
+	#[test]
+	fn page_event_handlers_reenter_their_creation_scope() {
+		use crate::reactive::{ReactiveScope, Signal};
+		use std::cell::Cell;
+		use std::rc::Rc;
+
+		let scope = ReactiveScope::new();
+		let calls = Rc::new(Cell::new(0));
+		let handlers = scope.enter(|| {
+			let on_calls = Rc::clone(&calls);
+			let mut element = PageElement::new("button").on(
+				EventType::Click,
+				Arc::new(move |_| {
+					let signal = Signal::new(1);
+					assert_eq!(signal.get(), 1);
+					on_calls.set(on_calls.get() + 1);
+				}),
+			);
+			let added_calls = Rc::clone(&calls);
+			element.add_event_handler(
+				EventType::Input,
+				Arc::new(move |_| {
+					let signal = Signal::new(2);
+					assert_eq!(signal.get(), 2);
+					added_calls.set(added_calls.get() + 1);
+				}),
+			);
+			element.into_event_handlers()
+		});
+
+		let event = NativeEvent::for_known(EventType::Click, NativeEventPayload::default());
+		for (_, handler) in handlers {
+			handler(event.clone());
+		}
+
+		assert_eq!(calls.get(), 2);
 	}
 
 	#[cfg(native)]

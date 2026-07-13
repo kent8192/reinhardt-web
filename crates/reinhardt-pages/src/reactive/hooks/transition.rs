@@ -108,7 +108,7 @@ pub fn use_transition() -> TransitionState {
 			#[cfg(native)]
 			{
 				f();
-				is_pending.set(false);
+				let _ = is_pending.try_set(false);
 			}
 		})))
 	};
@@ -230,6 +230,17 @@ mod tests {
 
 			assert_eq!(deferred.get(), 42);
 		});
+	}
+
+	#[cfg(native)]
+	#[test]
+	#[serial]
+	fn transition_completion_after_scope_disposal_does_not_panic() {
+		let scope = Rc::new(reinhardt_core::reactive::ReactiveScope::new());
+		let transition = scope.enter(use_transition);
+		let scope_to_dispose = Rc::clone(&scope);
+
+		transition.start_transition(move || scope_to_dispose.dispose());
 	}
 
 	#[cfg(wasm)]

@@ -430,11 +430,14 @@ impl ReactiveNode {
 				let update = || {
 					with_reactive_node_store(&effect_reactive_node_store, || {
 						clear_reactive_node_store(&render_reactive_node_store);
-						// Render the view (this tracks Signal dependencies)
+						// Render the view in a child scope owned by this reactive node.
 						let view =
-							with_reactive_node_store(&render_reactive_node_store, || render());
+							render_view_in_reactive_node_store(&render_reactive_node_store, || {
+								render()
+							});
 
 						if update_activity_boundary_attrs(&current_nodes_clone, &view) {
+							clear_reactive_node_store(&render_reactive_node_store);
 							return;
 						}
 
@@ -517,7 +520,9 @@ impl ReactiveNode {
 						let first_run_id_counter =
 							crate::reactive::hooks::id::id_counter_snapshot();
 						let view =
-							with_reactive_node_store(&render_reactive_node_store, || render());
+							render_view_in_reactive_node_store(&render_reactive_node_store, || {
+								render()
+							});
 
 						if first_run_clone.replace(false) {
 							crate::reactive::resource::set_client_resource_counter(
@@ -528,6 +533,7 @@ impl ReactiveNode {
 						}
 
 						if update_activity_boundary_attrs(&current_nodes_clone, &view) {
+							clear_reactive_node_store(&render_reactive_node_store);
 							return;
 						}
 
@@ -694,6 +700,19 @@ fn mount_view_before_marker(
 	let nodes = scope.enter(|| mount_before_marker_inner(marker, render()));
 	store_reactive_scope(scope);
 	nodes
+}
+
+#[cfg(wasm)]
+fn render_view_in_reactive_node_store(
+	store: &ReactiveNodeStore,
+	render: impl FnOnce() -> Page,
+) -> Page {
+	with_reactive_node_store(store, || {
+		let scope = ReactiveScope::new();
+		let view = scope.enter(render);
+		store_reactive_scope(scope);
+		view
+	})
 }
 
 #[cfg(wasm)]
@@ -911,6 +930,60 @@ mod tests {
 			.expect("then branch should create a nested signal");
 		assert!(nested.try_set(1).is_err());
 		assert_eq!(effect_runs.get(), 1);
+
+		scope.dispose();
+		host.remove();
+	}
+
+	#[wasm_bindgen_test]
+	fn replacing_a_reactive_view_disposes_its_rendered_effects() {
+		let document = web_sys::window()
+			.expect("window should be available")
+			.document()
+			.expect("document should be available");
+		let host = document
+			.create_element("div")
+			.expect("host element should be created");
+		document
+			.body()
+			.expect("document should have a body")
+			.append_child(&host)
+			.expect("host should be attached");
+
+		let scope = ReactiveScope::new();
+		let effect_runs = Rc::new(Cell::new(0));
+		let nested_signals = Rc::new(RefCell::new(Vec::new()));
+		let (trigger, _node) = scope.enter(|| {
+			let trigger = Signal::new(false);
+			let trigger_for_render = trigger;
+			let effect_runs_for_view = Rc::clone(&effect_runs);
+			let nested_signals_for_view = Rc::clone(&nested_signals);
+			let node = ReactiveNode::new(
+				&crate::dom::Element::new(host.clone()),
+				Arc::new(move || {
+					let _ = trigger_for_render.get();
+					let nested = Signal::new(0_i32);
+					nested_signals_for_view.borrow_mut().push(nested);
+					let nested_for_effect = nested;
+					let effect_runs = Rc::clone(&effect_runs_for_view);
+					Effect::new(move || {
+						let _ = nested_for_effect.get();
+						effect_runs.set(effect_runs.get() + 1);
+					});
+					Page::text("reactive")
+				}),
+			);
+			(trigger, node)
+		});
+
+		assert_eq!(effect_runs.get(), 1);
+		trigger.set(true);
+		with_runtime(|runtime| runtime.flush_updates());
+
+		let nested = nested_signals.borrow();
+		assert_eq!(nested.len(), 2);
+		assert!(nested[0].try_set(1).is_err());
+		assert_eq!(effect_runs.get(), 2);
 
 		scope.dispose();
 		host.remove();

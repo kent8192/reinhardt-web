@@ -20,6 +20,8 @@ use super::tree::{ClientRouteTreeMatch, ResolvedRouteMetadata, RouteNode};
 use reinhardt_core::page::Outlet;
 use reinhardt_core::page::Page;
 use reinhardt_core::reactive::Signal;
+#[cfg(native)]
+use reinhardt_core::reactive::{ReactiveScope, scope::current_scope_id};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -42,6 +44,53 @@ type NavigationObservers = std::rc::Rc<std::cell::RefCell<Vec<std::rc::Weak<Navi
 /// [`ClientRouter::notify_observers`] filters out the dead `Weak`.
 #[cfg(wasm)]
 type NavigationListener = dyn Fn(&str, &HashMap<String, String>) + 'static;
+
+#[cfg(native)]
+thread_local! {
+	static DETACHED_CLIENT_ROUTER_SCOPE: ReactiveScope = ReactiveScope::new();
+}
+
+#[cfg(native)]
+fn create_navigation_signals(
+	initial_path: String,
+) -> (
+	Signal<String>,
+	Signal<HashMap<String, String>>,
+	Signal<Option<String>>,
+) {
+	if current_scope_id().is_some() {
+		return (
+			Signal::new(initial_path),
+			Signal::new(HashMap::new()),
+			Signal::new(None),
+		);
+	}
+
+	DETACHED_CLIENT_ROUTER_SCOPE.with(|scope| {
+		scope.enter(|| {
+			(
+				Signal::new(initial_path),
+				Signal::new(HashMap::new()),
+				Signal::new(None),
+			)
+		})
+	})
+}
+
+#[cfg(wasm)]
+fn create_navigation_signals(
+	initial_path: String,
+) -> (
+	Signal<String>,
+	Signal<HashMap<String, String>>,
+	Signal<Option<String>>,
+) {
+	(
+		Signal::new(initial_path),
+		Signal::new(HashMap::new()),
+		Signal::new(None),
+	)
+}
 
 /// RAII handle returned by [`ClientRouter::on_navigate`].
 ///
@@ -439,15 +488,17 @@ impl ClientRouter {
 	/// Creates a new router.
 	pub fn new() -> Self {
 		let initial_path = current_path().unwrap_or_else(|_| "/".to_string());
+		let (current_path, current_params, current_route_name) =
+			create_navigation_signals(initial_path);
 
 		Self {
 			routes: Vec::new(),
 			tree_route_indices: HashSet::new(),
 			route_tree: RouteNode::root(),
 			named_routes: HashMap::new(),
-			current_path: Signal::new(initial_path),
-			current_params: Signal::new(HashMap::new()),
-			current_route_name: Signal::new(None),
+			current_path,
+			current_params,
+			current_route_name,
 			not_found: None,
 			// (Fixes #4258) Reactive observation state is wasm-only; see field
 			// definitions on `ClientRouter`.
@@ -1454,6 +1505,15 @@ mod tests {
 			let router = ClientRouter::new();
 			assert_eq!(router.route_count(), 0);
 		});
+	}
+
+	#[cfg(native)]
+	#[test]
+	fn router_builds_route_table_without_an_active_reactive_scope() {
+		let router = ClientRouter::new().route("home", "/", home_page);
+
+		assert_eq!(router.route_count(), 1);
+		assert_eq!(router.reverse("home", &[]).unwrap(), "/");
 	}
 
 	#[test]

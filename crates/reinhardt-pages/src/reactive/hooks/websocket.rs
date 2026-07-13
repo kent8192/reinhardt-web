@@ -271,7 +271,7 @@ pub fn use_websocket(url: &str, options: UseWebSocketOptions) -> WebSocketHandle
 			let connection_state_open = connection_state;
 			let on_open_cb = on_open.clone();
 			let onopen = Closure::wrap(Box::new(move |_: JsValue| {
-				connection_state_open.set(ConnectionState::Open);
+				let _ = connection_state_open.try_set(ConnectionState::Open);
 				if let Some(cb) = &on_open_cb {
 					cb();
 				}
@@ -284,13 +284,13 @@ pub fn use_websocket(url: &str, options: UseWebSocketOptions) -> WebSocketHandle
 				// Try text message first
 				if let Ok(txt) = e.data().dyn_into::<js_sys::JsString>() {
 					let text = txt.as_string().unwrap_or_default();
-					latest_message_recv.set(Some(WebSocketMessage::Text(text)));
+					let _ = latest_message_recv.try_set(Some(WebSocketMessage::Text(text)));
 				}
 				// Try binary message (ArrayBuffer)
 				else if let Ok(array_buffer) = e.data().dyn_into::<js_sys::ArrayBuffer>() {
 					let array = js_sys::Uint8Array::new(&array_buffer);
 					let vec = array.to_vec();
-					latest_message_recv.set(Some(WebSocketMessage::Binary(vec)));
+					let _ = latest_message_recv.try_set(Some(WebSocketMessage::Binary(vec)));
 				}
 			}) as Box<dyn FnMut(MessageEvent)>);
 			ws.set_onmessage(Some(onmessage.as_ref().unchecked_ref()));
@@ -299,7 +299,7 @@ pub fn use_websocket(url: &str, options: UseWebSocketOptions) -> WebSocketHandle
 			let connection_state_close = connection_state;
 			let on_close_cb = on_close.clone();
 			let onclose = Closure::wrap(Box::new(move |_: CloseEvent| {
-				connection_state_close.set(ConnectionState::Closed);
+				let _ = connection_state_close.try_set(ConnectionState::Closed);
 				if let Some(cb) = &on_close_cb {
 					cb();
 				}
@@ -311,7 +311,7 @@ pub fn use_websocket(url: &str, options: UseWebSocketOptions) -> WebSocketHandle
 			let on_error_cb = on_error.clone();
 			let onerror = Closure::wrap(Box::new(move |_: ErrorEvent| {
 				let error_msg = "WebSocket error occurred".to_string();
-				connection_state_error.set(ConnectionState::Error(error_msg.clone()));
+				let _ = connection_state_error.try_set(ConnectionState::Error(error_msg.clone()));
 				if let Some(cb) = &on_error_cb {
 					cb(error_msg);
 				}

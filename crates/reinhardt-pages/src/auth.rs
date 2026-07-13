@@ -30,6 +30,7 @@
 use crate::reactive::{ReactiveScope, Signal};
 use std::cell::RefCell;
 use std::collections::HashSet;
+use std::rc::Rc;
 
 /// Deserializes a user ID that may be either a JSON string or a JSON number.
 ///
@@ -61,7 +62,6 @@ pub const SESSION_KEY_USERNAME: &str = "_auth_username";
 pub const SESSION_COOKIE_NAME: &str = "sessionid";
 
 struct AuthStateStore {
-	_scope: ReactiveScope,
 	state: AuthState,
 }
 
@@ -78,11 +78,8 @@ pub fn auth_state() -> AuthState {
 	AUTH_STATE.with(|state| {
 		let mut state = state.borrow_mut();
 		if state.is_none() {
-			let scope = ReactiveScope::new();
-			let auth_state = scope.enter(AuthState::new);
 			*state = Some(AuthStateStore {
-				_scope: scope,
-				state: auth_state,
+				state: AuthState::new(),
 			});
 		}
 		state
@@ -98,8 +95,10 @@ pub fn auth_state() -> AuthState {
 /// This struct provides reactive signals that automatically update
 /// when authentication state changes. It can be used to build
 /// authentication-aware UI components.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct AuthState {
+	/// Scope that owns this state's reactive signals.
+	_scope: Rc<ReactiveScope>,
 	/// Whether the user is authenticated.
 	is_authenticated: Signal<bool>,
 	/// The authenticated user's ID (string to support both integer and UUID PKs).
@@ -116,6 +115,12 @@ pub struct AuthState {
 	permissions: Signal<HashSet<String>>,
 }
 
+impl std::fmt::Debug for AuthState {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("AuthState").finish_non_exhaustive()
+	}
+}
+
 impl Default for AuthState {
 	fn default() -> Self {
 		Self::new()
@@ -125,15 +130,7 @@ impl Default for AuthState {
 impl AuthState {
 	/// Creates a new authentication state with default (unauthenticated) values.
 	pub fn new() -> Self {
-		Self {
-			is_authenticated: Signal::new(false),
-			user_id: Signal::new(None),
-			username: Signal::new(None),
-			email: Signal::new(None),
-			is_staff: Signal::new(false),
-			is_superuser: Signal::new(false),
-			permissions: Signal::new(HashSet::new()),
-		}
+		Self::from_data(AuthData::anonymous())
 	}
 
 	/// Creates an authentication state from server-provided data.
@@ -141,7 +138,13 @@ impl AuthState {
 	/// This is typically used during hydration when the server
 	/// embeds authentication data in the initial HTML.
 	pub fn from_server_data(data: AuthData) -> Self {
-		Self {
+		Self::from_data(data)
+	}
+
+	fn from_data(data: AuthData) -> Self {
+		let scope = Rc::new(ReactiveScope::new());
+		scope.enter(|| Self {
+			_scope: Rc::clone(&scope),
 			is_authenticated: Signal::new(data.is_authenticated),
 			user_id: Signal::new(data.user_id),
 			username: Signal::new(data.username),
@@ -149,7 +152,7 @@ impl AuthState {
 			is_staff: Signal::new(data.is_staff),
 			is_superuser: Signal::new(data.is_superuser),
 			permissions: Signal::new(data.permissions.into_iter().collect()),
-		}
+		})
 	}
 
 	/// Returns whether the user is authenticated.
@@ -635,6 +638,21 @@ mod tests {
 			assert!(state.user_id().is_none());
 			assert!(state.username().is_none());
 		});
+	}
+
+	#[test]
+	fn auth_state_constructors_retain_a_scope_without_an_active_parent_scope() {
+		let state = AuthState::new();
+		let is_authenticated = state.is_authenticated_signal();
+		state.login("42", "testuser");
+		assert!(is_authenticated.get());
+
+		let default_state = AuthState::default();
+		assert!(!default_state.is_authenticated());
+
+		let server_state = AuthState::from_server_data(AuthData::authenticated("7", "serveruser"));
+		assert!(server_state.is_authenticated());
+		assert_eq!(server_state.username(), Some("serveruser".to_string()));
 	}
 
 	#[test]
