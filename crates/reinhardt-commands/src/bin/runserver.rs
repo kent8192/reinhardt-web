@@ -756,6 +756,7 @@ fn build_pages_wasm(
 	);
 	let config = WasmBuildConfig::new(&cwd)
 		.output_dir("dist")
+		.release(!cfg!(debug_assertions))
 		.target_name(&crate_name)
 		.package(&crate_name);
 	let builder = WasmBuilder::new(config)

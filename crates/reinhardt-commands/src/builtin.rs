@@ -2897,6 +2897,7 @@ impl RunServerCommand {
 		let static_dir_owned = static_dir.to_string();
 		let index_owned = index.map(|s| s.to_string());
 		let package_owned = package.map(str::to_string);
+		let rebuild_package = package_owned.clone();
 		let style_feature_selection = Self::style_feature_selection_from_context(ctx);
 		let style_features = style_feature_selection.features().to_vec();
 		let all_style_features = style_feature_selection.all_features_enabled();
@@ -2954,11 +2955,16 @@ impl RunServerCommand {
 			component_styles: component_style_state,
 		};
 
-		crate::debounced_watcher::run_watcher(ctx, &cfg, shutdown_rx, child, respawn)
-			.await
-			.map_err(|e| {
-				crate::CommandError::ExecutionError(format!("File watcher error: {}", e))
-			})?;
+		crate::debounced_watcher::run_watcher_for_package(
+			ctx,
+			&cfg,
+			rebuild_package.as_deref(),
+			shutdown_rx,
+			child,
+			respawn,
+		)
+		.await
+		.map_err(|e| crate::CommandError::ExecutionError(format!("File watcher error: {}", e)))?;
 
 		Ok(())
 	}
@@ -3331,10 +3337,7 @@ impl RunServerCommand {
 			"Building pages WASM for {} ({})...",
 			crate_name, reason
 		));
-		let config = crate::wasm_builder::WasmBuildConfig::new(".")
-			.output_dir("dist")
-			.target_name(&crate_name)
-			.package(&crate_name);
+		let config = Self::pages_wasm_build_config(&crate_name);
 		let builder = crate::wasm_builder::WasmBuilder::new(config)
 			.features(feature_selection.features().iter().cloned())
 			.all_features(feature_selection.all_features_enabled());
@@ -3345,6 +3348,16 @@ impl RunServerCommand {
 			}
 			Err(e) => Err(e),
 		}
+	}
+
+	/// Configure the Pages bundle to use the same debug cfgs as style extraction.
+	#[cfg(feature = "pages")]
+	fn pages_wasm_build_config(crate_name: &str) -> crate::wasm_builder::WasmBuildConfig {
+		crate::wasm_builder::WasmBuildConfig::new(".")
+			.output_dir("dist")
+			.release(!cfg!(debug_assertions))
+			.target_name(crate_name)
+			.package(crate_name)
 	}
 }
 
@@ -4881,6 +4894,17 @@ name = "db.sqlite3"
 			Some("120"),
 			"--watch-delay default must match the hot-reload debounce default"
 		);
+	}
+
+	#[test]
+	#[cfg(feature = "pages")]
+	fn pages_wasm_build_profile_matches_style_extraction_cfg() {
+		// Act
+		let config = RunServerCommand::pages_wasm_build_config("style-app");
+
+		// Assert
+		assert_eq!(config.release, !cfg!(debug_assertions));
+		assert_eq!(config.package.as_deref(), Some("style-app"));
 	}
 
 	#[test]

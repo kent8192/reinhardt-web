@@ -357,6 +357,17 @@ pub async fn run_rebuild_for_paths(
 	current_child: &mut tokio::process::Child,
 	respawn: &(impl Fn() -> std::io::Result<tokio::process::Child> + Send + Sync),
 ) {
+	run_rebuild_for_paths_for_package(ctx, config, None, paths, current_child, respawn).await;
+}
+
+async fn run_rebuild_for_paths_for_package(
+	ctx: &CommandContext,
+	config: &WatcherConfig,
+	package: Option<&str>,
+	paths: Vec<PathBuf>,
+	current_child: &mut tokio::process::Child,
+	respawn: &(impl Fn() -> std::io::Result<tokio::process::Child> + Send + Sync),
+) {
 	ctx.info(&format!(
 		"[hot-reload] change detected ({} path(s))",
 		paths.len()
@@ -365,26 +376,32 @@ pub async fn run_rebuild_for_paths(
 	#[cfg(feature = "pages")]
 	let metadata_changed = paths_change_cargo_metadata(&paths);
 	#[cfg(feature = "pages")]
-	let style_stage = if let Some(state) = &config.component_styles {
+	let (style_stage, component_style_paths_only) = if let Some(state) = &config.component_styles {
 		match state.lock() {
-			Ok(mut state) => state.refresh(metadata_changed),
-			Err(_) => crate::ComponentStyleStageResult::Failed,
+			Ok(mut state) => {
+				let component_style_paths_only =
+					paths.iter().all(|path| state.tracks_source_path(path));
+				(state.refresh(metadata_changed), component_style_paths_only)
+			}
+			Err(_) => (crate::ComponentStyleStageResult::Failed, false),
 		}
 	} else {
-		crate::ComponentStyleStageResult::Unchanged
+		(crate::ComponentStyleStageResult::Unchanged, false)
 	};
 	#[cfg(feature = "pages")]
-	if style_stage == crate::ComponentStyleStageResult::CssOnly && !metadata_changed {
-		if let Some(tx) = &config.hmr_tx {
-			let message = reinhardt_pages::hmr::HmrMessage::CssUpdate {
-				path: crate::COMPONENT_STYLES_PATH.to_string(),
-			};
-			if let Ok(json) = message.to_json() {
-				let _ = tx.send(json);
-			}
-		}
+	let css_only = style_stage == crate::ComponentStyleStageResult::CssOnly && !metadata_changed;
+	#[cfg(feature = "pages")]
+	if css_only {
+		notify_component_stylesheet_update(config.hmr_tx.as_ref());
+	}
+	#[cfg(feature = "pages")]
+	if can_short_circuit_css_only(style_stage, metadata_changed, component_style_paths_only) {
 		ctx.info("[hot-reload] component stylesheet updated without rebuilding");
 		return;
+	}
+	#[cfg(feature = "pages")]
+	if css_only {
+		ctx.info("[hot-reload] component stylesheet updated; rebuilding other changed targets");
 	}
 	if !targets.has_work() {
 		ctx.info("[hot-reload] no rebuild target matched; waiting for next change");
@@ -425,12 +442,14 @@ pub async fn run_rebuild_for_paths(
 		// disjoint cargo target directories (`wasm32-unknown-unknown` vs
 		// `debug`) and the wasm pipeline does not interact with the running
 		// child process, so concurrent execution is safe.
-		let server_fut = crate::server_rebuild_pipeline::ServerRebuildPipeline::run_with_readiness(
-			&config.bin_name,
-			current_child,
-			respawn,
-			&config.address,
-		);
+		let server_fut =
+			crate::server_rebuild_pipeline::ServerRebuildPipeline::run_with_readiness_for_package(
+				&config.bin_name,
+				package,
+				current_child,
+				respawn,
+				&config.address,
+			);
 		let (wasm_ok, (server_outcome, new_child)) = tokio::join!(wasm_fut, server_fut);
 		let server_ok = server_rebuild_succeeded(&server_outcome);
 		if let Some(child) = new_child {
@@ -444,7 +463,8 @@ pub async fn run_rebuild_for_paths(
 		#[cfg(feature = "pages")]
 		if wasm_ok
 			&& server_ready
-			&& commit_pending_component_styles(config.component_styles.as_ref(), wasm_ok)
+			&& (css_only
+				|| commit_pending_component_styles(config.component_styles.as_ref(), wasm_ok))
 		{
 			notify_browser_reload(
 				config.hmr_tx.as_ref(),
@@ -466,8 +486,9 @@ pub async fn run_rebuild_for_paths(
 		let _ = wasm_ok;
 	} else {
 		let (server_outcome, new_child) =
-			crate::server_rebuild_pipeline::ServerRebuildPipeline::run_with_readiness(
+			crate::server_rebuild_pipeline::ServerRebuildPipeline::run_with_readiness_for_package(
 				&config.bin_name,
+				package,
 				current_child,
 				respawn,
 				&config.address,
@@ -484,6 +505,29 @@ pub async fn run_rebuild_for_paths(
 	}
 	// Pipeline failures are recorded as log lines and never propagate as Err;
 	// the caller's loop continues unconditionally.
+}
+
+#[cfg(feature = "pages")]
+fn can_short_circuit_css_only(
+	style_stage: crate::ComponentStyleStageResult,
+	metadata_changed: bool,
+	component_style_paths_only: bool,
+) -> bool {
+	style_stage == crate::ComponentStyleStageResult::CssOnly
+		&& !metadata_changed
+		&& component_style_paths_only
+}
+
+#[cfg(feature = "pages")]
+fn notify_component_stylesheet_update(hmr_tx: Option<&broadcast::Sender<String>>) {
+	if let Some(tx) = hmr_tx {
+		let message = reinhardt_pages::hmr::HmrMessage::CssUpdate {
+			path: crate::COMPONENT_STYLES_PATH.to_string(),
+		};
+		if let Ok(json) = message.to_json() {
+			let _ = tx.send(json);
+		}
+	}
 }
 
 /// Run the hot-reload watcher loop until shutdown.
@@ -508,6 +552,18 @@ pub async fn run_rebuild_for_paths(
 pub async fn run_watcher(
 	ctx: &CommandContext,
 	config: &WatcherConfig,
+	shutdown_rx: oneshot::Receiver<()>,
+	current_child: tokio::process::Child,
+	respawn: impl Fn() -> std::io::Result<tokio::process::Child> + Send + Sync,
+) -> Result<(), notify::Error> {
+	run_watcher_for_package(ctx, config, None, shutdown_rx, current_child, respawn).await
+}
+
+/// Run the watcher while forwarding a selected Cargo package to native rebuilds.
+pub(crate) async fn run_watcher_for_package(
+	ctx: &CommandContext,
+	config: &WatcherConfig,
+	package: Option<&str>,
 	shutdown_rx: oneshot::Receiver<()>,
 	mut current_child: tokio::process::Child,
 	respawn: impl Fn() -> std::io::Result<tokio::process::Child> + Send + Sync,
@@ -568,7 +624,15 @@ pub async fn run_watcher(
 						let _ = current_child.wait().await;
 						return Ok(());
 					};
-					run_rebuild_for_paths(ctx, config, paths, &mut current_child, &respawn).await;
+					run_rebuild_for_paths_for_package(
+						ctx,
+						config,
+						package,
+						paths,
+						&mut current_child,
+						&respawn,
+					)
+					.await;
 				}
 		}
 	}
@@ -812,6 +876,45 @@ mod tests {
 				server: true,
 				wasm: false,
 			},
+		);
+	}
+
+	#[cfg(feature = "pages")]
+	#[test]
+	fn css_only_shortcut_requires_a_component_style_only_batch() {
+		// Act & Assert
+		assert!(can_short_circuit_css_only(
+			crate::ComponentStyleStageResult::CssOnly,
+			false,
+			true,
+		));
+		assert!(!can_short_circuit_css_only(
+			crate::ComponentStyleStageResult::CssOnly,
+			false,
+			false,
+		));
+	}
+
+	#[cfg(feature = "pages")]
+	#[test]
+	fn component_stylesheet_update_sends_css_hmr_message() {
+		// Arrange
+		let (tx, mut rx) = broadcast::channel::<String>(8);
+
+		// Act
+		notify_component_stylesheet_update(Some(&tx));
+
+		// Assert
+		let json = rx
+			.try_recv()
+			.expect("stylesheet update should be broadcast");
+		let message: reinhardt_pages::hmr::HmrMessage =
+			serde_json::from_str(&json).expect("message should be valid HMR JSON");
+		assert_eq!(
+			message,
+			reinhardt_pages::hmr::HmrMessage::CssUpdate {
+				path: crate::COMPONENT_STYLES_PATH.to_string(),
+			}
 		);
 	}
 

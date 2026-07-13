@@ -378,6 +378,19 @@ impl StyleExtractor {
 		&self.context
 	}
 
+	/// Return whether `path` is a Rust source file scanned for component styles.
+	///
+	/// A failed scan is treated as not tracked so callers conservatively rebuild
+	/// rather than skipping a reload for an uncertain path.
+	#[cfg(feature = "pages")]
+	pub(crate) fn tracks_source_path(&self, path: &Path) -> bool {
+		self.context.source_roots.iter().any(|source_root| {
+			source_files(source_root).is_ok_and(|source_paths| {
+				source_paths.iter().any(|source_path| source_path == path)
+			})
+		})
+	}
+
 	/// Discover canonical definitions, compile them, and build stable outputs.
 	pub fn extract(&self) -> Result<StyleBundle, String> {
 		let mut definitions = Vec::new();

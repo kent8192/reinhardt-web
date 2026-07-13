@@ -190,6 +190,15 @@ impl ComponentStyleState {
 		join_static_url(static_url, COMPONENT_STYLES_PATH)
 	}
 
+	/// Return whether `path` is part of the source graph used for component styles.
+	///
+	/// The watcher uses this to distinguish a stylesheet-only batch from a
+	/// coalesced batch that also needs a native or WASM rebuild.
+	#[cfg(feature = "pages")]
+	pub(crate) fn tracks_source_path(&self, path: &Path) -> bool {
+		self.extractor.tracks_source_path(path)
+	}
+
 	/// Recompile generated styles and advance the last-good snapshot when safe.
 	pub fn refresh(&mut self, metadata_changed: bool) -> ComponentStyleStageResult {
 		let candidate_context = if metadata_changed {
@@ -386,6 +395,35 @@ mod tests {
 		.unwrap();
 		assert_eq!(state.refresh(false), ComponentStyleStageResult::CssOnly);
 		assert_ne!(std::fs::read(&output).unwrap(), last_good);
+	}
+
+	#[cfg(feature = "pages")]
+	#[rstest]
+	fn state_tracks_component_style_sources_but_not_server_bins() {
+		// Arrange
+		let directory = tempfile::tempdir().expect("create temporary package");
+		let source_dir = directory.path().join("src");
+		let bin_dir = source_dir.join("bin");
+		std::fs::create_dir_all(&bin_dir).expect("create source directories");
+		std::fs::write(
+			directory.path().join("Cargo.toml"),
+			"[package]\nname = \"style-source-tracking\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+		)
+		.expect("write manifest");
+		let style_source = source_dir.join("lib.rs");
+		let server_bin = bin_dir.join("server.rs");
+		std::fs::write(
+			&style_source,
+			"#[style_def] static STYLES: Styles = style! { .card { color: red; } };\n",
+		)
+		.expect("write style source");
+		std::fs::write(&server_bin, "fn main() {}\n").expect("write server binary");
+		let state = ComponentStyleState::initialize(directory.path().join("Cargo.toml"), None)
+			.expect("initialize style state");
+
+		// Act & Assert
+		assert!(state.tracks_source_path(&style_source));
+		assert!(!state.tracks_source_path(&server_bin));
 	}
 
 	#[rstest]
