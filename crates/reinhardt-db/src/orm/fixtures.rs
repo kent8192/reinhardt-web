@@ -887,19 +887,17 @@ fn fixture_writable_columns(
 	Ok(columns)
 }
 
-fn fixture_primary_key_is_identity_always<M>(object: &Map<String, Value>, primary_key: &str) -> bool
+fn fixture_writes_identity_always_column<M>(object: &Map<String, Value>) -> bool
 where
 	M: Model,
 {
-	object.contains_key(primary_key)
-		&& M::field_metadata().into_iter().any(|field| {
-			field.primary_key
-				&& field.db_column_name() == primary_key
-				&& matches!(
-					field.attributes.get("identity_always"),
-					Some(crate::orm::fields::FieldKwarg::Bool(true))
-				)
-		})
+	M::field_metadata().into_iter().any(|field| {
+		object.contains_key(field.db_column_name())
+			&& matches!(
+				field.attributes.get("identity_always"),
+				Some(crate::orm::fields::FieldKwarg::Bool(true))
+			)
+	})
 }
 
 fn fixture_field_is_none(
@@ -938,6 +936,28 @@ where
 		field_info,
 		field_is_none,
 	))
+}
+
+fn fixture_value_to_sea_value_for_database_column<M>(
+	value: &Value,
+	database_column: &str,
+	field_info: Option<&crate::orm::inspection::FieldInfo>,
+	field_is_none: bool,
+) -> FixtureResult<reinhardt_query::value::Value>
+where
+	M: Model,
+{
+	#[cfg(feature = "migrations")]
+	if fixture_foreign_key_binding_for_database_column::<M>(database_column)
+		== Some(FixturePrimaryKeyBinding::Text)
+		&& let Value::String(value) = value
+	{
+		return Ok(reinhardt_query::value::Value::String(Some(Box::new(
+			value.clone(),
+		))));
+	}
+
+	fixture_value_to_sea_value_for_field::<M>(value, field_info, field_is_none)
 }
 
 fn fixture_binary_value_to_sea_value(
@@ -1064,13 +1084,16 @@ where
 			});
 			let field_is_none =
 				fixture_field_is_none(&object[column], field_info, json_null_fields);
-			fixture_value_to_sea_value_for_field::<M>(&object[column], field_info, field_is_none)
+			fixture_value_to_sea_value_for_database_column::<M>(
+				&object[column],
+				column,
+				field_info,
+				field_is_none,
+			)
 		})
 		.collect::<FixtureResult<Vec<_>>>()?;
 	stmt.values_panic(values);
-	if backend == DatabaseBackend::Postgres
-		&& fixture_primary_key_is_identity_always::<M>(&object, &pk_field)
-	{
+	if backend == DatabaseBackend::Postgres && fixture_writes_identity_always_column::<M>(&object) {
 		stmt.overriding_system_value();
 	}
 
@@ -1131,8 +1154,12 @@ where
 		field.name == primary_key || field.db_column.as_deref() == Some(primary_key.as_str())
 	});
 	let field_is_none = fixture_field_is_none(primary_key_value, field_info, json_null_fields);
-	let primary_key_value =
-		fixture_value_to_sea_value_for_field::<M>(primary_key_value, field_info, field_is_none)?;
+	let primary_key_value = fixture_value_to_sea_value_for_database_column::<M>(
+		primary_key_value,
+		&primary_key,
+		field_info,
+		field_is_none,
+	)?;
 
 	let mut stmt = Query::select();
 	stmt.column(Alias::new(primary_key.as_str()))
@@ -1193,8 +1220,9 @@ where
 				fixture_field_is_none(&object[column], field_info, json_null_fields);
 			Ok((
 				Alias::new(column.as_str()),
-				fixture_value_to_sea_value_for_field::<M>(
+				fixture_value_to_sea_value_for_database_column::<M>(
 					&object[column],
+					column,
 					field_info,
 					field_is_none,
 				)?,
@@ -1208,8 +1236,9 @@ where
 	let primary_key_is_none =
 		fixture_field_is_none(primary_key_value, primary_key_field, json_null_fields);
 	stmt.and_where(Expr::col(Alias::new(primary_key.as_str())).eq(
-		fixture_value_to_sea_value_for_field::<M>(
+		fixture_value_to_sea_value_for_database_column::<M>(
 			primary_key_value,
+			&primary_key,
 			primary_key_field,
 			primary_key_is_none,
 		)?,
@@ -1643,6 +1672,84 @@ fn related_model_metadata(
 }
 
 #[cfg(feature = "migrations")]
+fn fixture_foreign_key_target_metadata(
+	source_metadata: &crate::migrations::model_registry::ModelMetadata,
+	field: &crate::migrations::model_registry::FieldMetadata,
+) -> Option<crate::migrations::model_registry::ModelMetadata> {
+	field
+		.params
+		.get("fk_target")
+		.and_then(|target_model| {
+			let target_app = field
+				.params
+				.get("fk_target_app")
+				.map(String::as_str)
+				.unwrap_or(&source_metadata.app_label);
+			related_model_metadata(target_app, target_model)
+		})
+		.or_else(|| {
+			let referenced_table = &field.foreign_key.as_ref()?.referenced_table;
+			crate::migrations::model_registry::global_registry()
+				.get_models()
+				.into_iter()
+				.find(|metadata| metadata.table_name.eq_ignore_ascii_case(referenced_table))
+		})
+}
+
+#[cfg(feature = "migrations")]
+fn fixture_primary_key_field_name(
+	metadata: &crate::migrations::model_registry::ModelMetadata,
+) -> String {
+	metadata
+		.fields
+		.iter()
+		.find(|(_, field)| {
+			field
+				.params
+				.get("primary_key")
+				.is_some_and(|value| value == "true")
+		})
+		.map(|(field_name, _)| field_name.clone())
+		.unwrap_or_else(|| "id".to_string())
+}
+
+#[cfg(feature = "migrations")]
+fn fixture_foreign_key_referenced_column(
+	field: &crate::migrations::model_registry::FieldMetadata,
+	target_metadata: &crate::migrations::model_registry::ModelMetadata,
+) -> String {
+	field
+		.foreign_key
+		.as_ref()
+		.map(|foreign_key| foreign_key.referenced_column.clone())
+		.unwrap_or_else(|| fixture_primary_key_field_name(target_metadata))
+}
+
+#[cfg(feature = "migrations")]
+fn fixture_foreign_key_binding_for_database_column<M>(
+	database_column: &str,
+) -> Option<FixturePrimaryKeyBinding>
+where
+	M: Model,
+{
+	let source_metadata = metadata_for_model::<M>()?;
+	let source_field = M::field_metadata()
+		.into_iter()
+		.find(|field| field.name == database_column || field.db_column_name() == database_column)
+		.and_then(|field| source_metadata.fields.get(&field.name))
+		.or_else(|| source_metadata.fields.get(database_column))?;
+	let target_metadata = fixture_foreign_key_target_metadata(&source_metadata, source_field)?;
+	let referenced_column = fixture_foreign_key_referenced_column(source_field, &target_metadata);
+	target_metadata.fields.get(&referenced_column).map(|field| {
+		if is_fixture_text_migration_field_type(&field.field_type) {
+			FixturePrimaryKeyBinding::Text
+		} else {
+			FixturePrimaryKeyBinding::Generic
+		}
+	})
+}
+
+#[cfg(feature = "migrations")]
 fn fixture_primary_key_binding_for_registered_model(
 	metadata: &crate::migrations::model_registry::ModelMetadata,
 ) -> FixturePrimaryKeyBinding {
@@ -1805,11 +1912,25 @@ fn fixture_record_dependencies(
 ) -> FixtureResult<HashMap<usize, HashSet<usize>>> {
 	let mut record_indices = HashMap::new();
 	for (index, record) in records.iter().enumerate() {
-		let Some(pk_key) = record.pk.as_ref().and_then(json_dependency_key) else {
-			continue;
-		};
 		let model_key = canonical_record_label(&record.model)?;
-		record_indices.entry((model_key, pk_key)).or_insert(index);
+		let primary_key_column = parse_model_label(&model_key)
+			.ok()
+			.and_then(|(app_label, model_name)| find_model_metadata(&app_label, &model_name))
+			.map(|metadata| fixture_primary_key_field_name(&metadata))
+			.unwrap_or_else(|| "id".to_string());
+		if let Some(pk_key) = record.pk.as_ref().and_then(json_dependency_key) {
+			record_indices
+				.entry((model_key.clone(), primary_key_column, pk_key))
+				.or_insert(index);
+		}
+		for (field_name, value) in &record.fields {
+			let Some(value_key) = json_dependency_key(value) else {
+				continue;
+			};
+			record_indices
+				.entry((model_key.clone(), field_name.clone(), value_key))
+				.or_insert(index);
+		}
 	}
 
 	let mut dependencies = (0..records.len())
@@ -1832,7 +1953,8 @@ fn fixture_record_dependencies(
 			})
 			.unwrap_or_default();
 		for (field_name, field) in &metadata.fields {
-			let Some(target_key) = fixture_foreign_key_target_key(&metadata, field) else {
+			let Some((target_key, target_column)) = fixture_foreign_key_target(&metadata, field)
+			else {
 				continue;
 			};
 			let is_primary_key_foreign_key = field
@@ -1847,10 +1969,13 @@ fn fixture_record_dependencies(
 			) else {
 				continue;
 			};
-			let Some(target_pk) = json_dependency_key(value) else {
+			let Some(target_value) = json_dependency_key(value) else {
 				continue;
 			};
-			let Some(target_index) = record_indices.get(&(target_key, target_pk)).copied() else {
+			let Some(target_index) = record_indices
+				.get(&(target_key, target_column, target_value))
+				.copied()
+			else {
 				continue;
 			};
 			if target_index != source_index {
@@ -1866,25 +1991,39 @@ fn fixture_record_dependencies(
 }
 
 #[cfg(feature = "migrations")]
-fn fixture_foreign_key_target_key(
+fn fixture_foreign_key_target(
 	source_metadata: &crate::migrations::model_registry::ModelMetadata,
 	field: &crate::migrations::model_registry::FieldMetadata,
-) -> Option<String> {
+) -> Option<(String, String)> {
 	if let Some(target_model) = field.params.get("fk_target") {
 		let target_app = field
 			.params
 			.get("fk_target_app")
 			.map(String::as_str)
 			.unwrap_or(&source_metadata.app_label);
-		return Some(canonical_model_key(target_app, target_model));
+		let target_metadata = related_model_metadata(target_app, target_model);
+		let referenced_column = target_metadata
+			.as_ref()
+			.map(|metadata| fixture_foreign_key_referenced_column(field, metadata))
+			.or_else(|| {
+				field
+					.foreign_key
+					.as_ref()
+					.map(|foreign_key| foreign_key.referenced_column.clone())
+			})
+			.unwrap_or_else(|| "id".to_string());
+		return Some((
+			canonical_model_key(target_app, target_model),
+			referenced_column,
+		));
 	}
 
-	let referenced_table = &field.foreign_key.as_ref()?.referenced_table;
-	crate::migrations::model_registry::global_registry()
-		.get_models()
-		.into_iter()
-		.find(|metadata| metadata.table_name.eq_ignore_ascii_case(referenced_table))
-		.map(|metadata| canonical_label(&metadata.app_label, &metadata.model_name))
+	let target_metadata = fixture_foreign_key_target_metadata(source_metadata, field)?;
+	let referenced_column = fixture_foreign_key_referenced_column(field, &target_metadata);
+	Some((
+		canonical_label(&target_metadata.app_label, &target_metadata.model_name),
+		referenced_column,
+	))
 }
 
 #[cfg(feature = "migrations")]
@@ -2328,6 +2467,116 @@ mod tests {
 
 	#[cfg(feature = "migrations")]
 	#[derive(Clone, Serialize, Deserialize)]
+	struct FixtureNonPrimaryIdentityAlwaysPost {
+		id: Option<i64>,
+		sequence_number: i64,
+		payload: String,
+	}
+
+	#[cfg(feature = "migrations")]
+	impl Model for FixtureNonPrimaryIdentityAlwaysPost {
+		type PrimaryKey = i64;
+		type Fields = FixturePostFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"fixture_non_primary_identity_always_post"
+		}
+
+		fn new_fields() -> Self::Fields {
+			FixturePostFields
+		}
+
+		fn app_label() -> &'static str {
+			"fixture_non_primary_identity_always"
+		}
+
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = Some(value);
+		}
+
+		fn field_metadata() -> Vec<crate::orm::inspection::FieldInfo> {
+			let mut id = fixture_field_info("id", "BigIntegerField", false);
+			id.primary_key = true;
+			let mut sequence_number =
+				fixture_field_info("sequence_number", "BigIntegerField", false);
+			sequence_number.attributes.insert(
+				"identity_always".to_string(),
+				crate::orm::fields::FieldKwarg::Bool(true),
+			);
+			vec![
+				id,
+				sequence_number,
+				fixture_field_info("payload", "CharField", false),
+			]
+		}
+	}
+
+	#[cfg(feature = "migrations")]
+	#[derive(Clone, Serialize, Deserialize)]
+	struct FixtureTextForeignKeyPost {
+		id: Option<i64>,
+		author_id: String,
+	}
+
+	#[cfg(feature = "migrations")]
+	impl Model for FixtureTextForeignKeyPost {
+		type PrimaryKey = i64;
+		type Fields = FixturePostFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"fixture_text_foreign_key_post"
+		}
+
+		fn new_fields() -> Self::Fields {
+			FixturePostFields
+		}
+
+		fn app_label() -> &'static str {
+			"fixture_text_foreign_key"
+		}
+
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = Some(value);
+		}
+
+		fn field_metadata() -> Vec<crate::orm::inspection::FieldInfo> {
+			let mut id = fixture_field_info("id", "BigIntegerField", false);
+			id.primary_key = true;
+			vec![id, fixture_field_info("author_id", "IntegerField", false)]
+		}
+
+		fn relationship_metadata() -> Vec<crate::orm::inspection::RelationInfo> {
+			vec![
+				crate::orm::inspection::RelationInfo::new(
+					"author",
+					crate::orm::relationship::RelationshipType::ManyToOne,
+					"FixtureTextForeignKeyAuthor",
+				)
+				.with_foreign_key("author_id"),
+			]
+		}
+	}
+
+	#[cfg(feature = "migrations")]
+	#[derive(Clone, Serialize, Deserialize)]
 	struct FixtureDatabaseColumnPost {
 		id: Option<i64>,
 		title: String,
@@ -2756,6 +3005,68 @@ mod tests {
 
 		assert_eq!(ordered[0].model, "fixture_scalar.Author");
 		assert_eq!(ordered[1].model, "fixture_scalar.Post");
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	#[serial_test::serial(fixture_model_registry)]
+	fn dependency_order_uses_referenced_foreign_key_columns() {
+		let mut author = crate::migrations::ModelMetadata::new(
+			"fixture_referenced_slug",
+			"Author",
+			"fixture_referenced_slug_author",
+		);
+		author.add_field(
+			"id".to_string(),
+			crate::migrations::FieldMetadata::new(crate::migrations::FieldType::BigInteger)
+				.with_param("primary_key", "true"),
+		);
+		author.add_field(
+			"slug".to_string(),
+			crate::migrations::FieldMetadata::new(crate::migrations::FieldType::VarChar(64))
+				.with_param("unique", "true"),
+		);
+		let mut post = crate::migrations::ModelMetadata::new(
+			"fixture_referenced_slug",
+			"Post",
+			"fixture_referenced_slug_post",
+		);
+		post.add_field(
+			"author_slug".to_string(),
+			crate::migrations::FieldMetadata::new(crate::migrations::FieldType::VarChar(64))
+				.with_param("fk_target", "Author")
+				.with_param("fk_target_app", "fixture_referenced_slug")
+				.with_foreign_key(crate::migrations::ForeignKeyInfo {
+					referenced_table: "fixture_referenced_slug_author".to_string(),
+					referenced_column: "slug".to_string(),
+					on_delete: crate::migrations::ForeignKeyAction::Cascade,
+					on_update: crate::migrations::ForeignKeyAction::Cascade,
+				}),
+		);
+		crate::migrations::model_registry::global_registry().register_model(author);
+		crate::migrations::model_registry::global_registry().register_model(post);
+
+		let mut post_fields = Map::new();
+		post_fields.insert("author_slug".to_string(), Value::from("author-one"));
+		let mut author_fields = Map::new();
+		author_fields.insert("slug".to_string(), Value::from("author-one"));
+		let records = vec![
+			FixtureRecord::new(
+				"fixture_referenced_slug.Post",
+				Some(Value::from(1)),
+				post_fields,
+			),
+			FixtureRecord::new(
+				"fixture_referenced_slug.Author",
+				Some(Value::from(7)),
+				author_fields,
+			),
+		];
+
+		let ordered = order_records_by_dependencies(&records).unwrap();
+
+		assert_eq!(ordered[0].model, "fixture_referenced_slug.Author");
+		assert_eq!(ordered[1].model, "fixture_referenced_slug.Post");
 	}
 
 	#[cfg(feature = "migrations")]
@@ -3311,6 +3622,25 @@ mod tests {
 
 	#[cfg(feature = "migrations")]
 	#[test]
+	fn postgres_fixture_upserts_override_non_primary_identity_always_columns() {
+		let mut object = Map::new();
+		object.insert("id".to_string(), Value::from(1));
+		object.insert("sequence_number".to_string(), Value::from(99));
+		object.insert("payload".to_string(), Value::from("fixture payload"));
+
+		let (sql, values) = build_fixture_upsert_sql_values::<FixtureNonPrimaryIdentityAlwaysPost>(
+			DatabaseBackend::Postgres,
+			&object,
+		)
+		.unwrap();
+
+		assert!(sql.contains("OVERRIDING SYSTEM VALUE"));
+		assert!(sql.contains("ON CONFLICT"));
+		assert_eq!(values.len(), 3);
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
 	fn fixture_upserts_use_database_column_names() {
 		let mut object = Map::new();
 		object.insert("id".to_string(), Value::from(1));
@@ -3371,6 +3701,58 @@ mod tests {
 				.iter()
 				.any(|value| matches!(value, QueryValue::Uuid(_) | QueryValue::Timestamp(_))),
 			"text fixture values must not be rebound as UUID or timestamp parameters"
+		);
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	#[serial_test::serial(fixture_model_registry)]
+	fn fixture_upserts_bind_generated_text_foreign_keys_as_strings() {
+		let mut author = crate::migrations::ModelMetadata::new(
+			"fixture_text_foreign_key",
+			"FixtureTextForeignKeyAuthor",
+			"fixture_text_foreign_key_author",
+		);
+		author.add_field(
+			"id".to_string(),
+			crate::migrations::FieldMetadata::new(crate::migrations::FieldType::Char(36))
+				.with_param("primary_key", "true"),
+		);
+		let mut post = crate::migrations::ModelMetadata::new(
+			"fixture_text_foreign_key",
+			"FixtureTextForeignKeyPost",
+			"fixture_text_foreign_key_post",
+		);
+		post.add_field(
+			"author_id".to_string(),
+			crate::migrations::FieldMetadata::new(crate::migrations::FieldType::BigInteger)
+				.with_foreign_key(crate::migrations::ForeignKeyInfo {
+					referenced_table: "fixture_text_foreign_key_author".to_string(),
+					referenced_column: "id".to_string(),
+					on_delete: crate::migrations::ForeignKeyAction::Cascade,
+					on_update: crate::migrations::ForeignKeyAction::Cascade,
+				}),
+		);
+		crate::migrations::model_registry::global_registry().register_model(author);
+		crate::migrations::model_registry::global_registry().register_model(post);
+
+		let author_id = "123e4567-e89b-12d3-a456-426614174000";
+		let mut object = Map::new();
+		object.insert("id".to_string(), Value::from(1));
+		object.insert("author_id".to_string(), Value::from(author_id));
+
+		let (_, values) = build_fixture_upsert_sql_values::<FixtureTextForeignKeyPost>(
+			DatabaseBackend::Postgres,
+			&object,
+		)
+		.unwrap();
+
+		assert!(values.contains(&QueryValue::String(author_id.to_string())));
+		assert!(
+			!values
+				.iter()
+				.any(|value| matches!(value, QueryValue::Uuid(_))),
+			"generated text foreign keys must not be rebound as UUID parameters"
 		);
 	}
 
