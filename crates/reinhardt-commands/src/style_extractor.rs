@@ -63,11 +63,27 @@ impl StyleFeatureSelection {
 		self.all_features
 	}
 
-	fn apply_to_metadata(&self, command: &mut MetadataCommand) {
-		if self.all_features {
-			command.features(CargoOpt::AllFeatures);
-		} else if !self.features.is_empty() {
-			command.features(CargoOpt::SomeFeatures(self.features.clone()));
+	fn apply_to_metadata(&self, command: &mut MetadataCommand, selected_package: &Package) {
+		let features: Vec<String> = if self.all_features {
+			selected_package
+				.features
+				.keys()
+				.map(|feature| format!("{}/{feature}", selected_package.name))
+				.collect()
+		} else {
+			self.features
+				.iter()
+				.map(|feature| {
+					if feature.contains('/') {
+						feature.clone()
+					} else {
+						format!("{}/{feature}", selected_package.name)
+					}
+				})
+				.collect()
+		};
+		if !features.is_empty() {
+			command.features(CargoOpt::SomeFeatures(features));
 		}
 	}
 }
@@ -107,26 +123,7 @@ impl StylePackageContext {
 		metadata: &Metadata,
 		requested_package: Option<&str>,
 	) -> Result<Self, String> {
-		let package = if let Some(requested) = requested_package {
-			let matches: Vec<&Package> = metadata
-				.workspace_packages()
-				.into_iter()
-				.filter(|package| package.name.as_str() == requested)
-				.collect();
-			match matches.as_slice() {
-				[package] => *package,
-				[] => return Err(format!("Cargo package `{requested}` was not found")),
-				_ => {
-					return Err(format!(
-						"Cargo package name `{requested}` is ambiguous; select a unique package"
-					));
-				}
-			}
-		} else {
-			metadata.root_package().ok_or_else(|| {
-				"the Cargo workspace has no root package; pass --package <NAME>".to_string()
-			})?
-		};
+		let package = select_workspace_package(metadata, requested_package)?;
 
 		let package_manifest_path = package.manifest_path.clone().into_std_path_buf();
 		let src_root = package_manifest_path
@@ -166,18 +163,61 @@ impl StylePackageContext {
 		requested_package: Option<&str>,
 		feature_selection: StyleFeatureSelection,
 	) -> Result<Self, String> {
-		let mut command = MetadataCommand::new();
-		command.manifest_path(manifest_path.as_ref());
-		feature_selection.apply_to_metadata(&mut command);
-		command.other_options(vec![
-			"--filter-platform".to_string(),
-			"wasm32-unknown-unknown".to_string(),
-		]);
+		let manifest_path = manifest_path.as_ref();
+		let initial_metadata = load_wasm_metadata(manifest_path)?;
+		if !feature_selection.all_features && feature_selection.features.is_empty() {
+			return Self::from_metadata(&initial_metadata, requested_package);
+		}
+
+		let selected_package = select_workspace_package(&initial_metadata, requested_package)?;
+		let selected_package_name = selected_package.name.to_string();
+		let mut command = wasm_metadata_command(manifest_path);
+		feature_selection.apply_to_metadata(&mut command, selected_package);
 		let metadata = command
 			.exec()
 			.map_err(|error| format!("failed to load Cargo metadata: {error}"))?;
-		Self::from_metadata(&metadata, requested_package)
+		Self::from_metadata(&metadata, Some(&selected_package_name))
 	}
+}
+
+fn select_workspace_package<'a>(
+	metadata: &'a Metadata,
+	requested_package: Option<&str>,
+) -> Result<&'a Package, String> {
+	if let Some(requested) = requested_package {
+		let matches: Vec<&Package> = metadata
+			.workspace_packages()
+			.into_iter()
+			.filter(|package| package.name.as_str() == requested)
+			.collect();
+		match matches.as_slice() {
+			[package] => Ok(*package),
+			[] => Err(format!("Cargo package `{requested}` was not found")),
+			_ => Err(format!(
+				"Cargo package name `{requested}` is ambiguous; select a unique package"
+			)),
+		}
+	} else {
+		metadata.root_package().ok_or_else(|| {
+			"the Cargo workspace has no root package; pass --package <NAME>".to_string()
+		})
+	}
+}
+
+fn wasm_metadata_command(manifest_path: &Path) -> MetadataCommand {
+	let mut command = MetadataCommand::new();
+	command.manifest_path(manifest_path);
+	command.other_options(vec![
+		"--filter-platform".to_string(),
+		"wasm32-unknown-unknown".to_string(),
+	]);
+	command
+}
+
+fn load_wasm_metadata(manifest_path: &Path) -> Result<Metadata, String> {
+	wasm_metadata_command(manifest_path)
+		.exec()
+		.map_err(|error| format!("failed to load Cargo metadata: {error}"))
 }
 
 fn style_source_roots(
@@ -994,6 +1034,56 @@ mod tests {
 		// Assert
 		assert_eq!(bundle.definitions.len(), 1);
 		assert_eq!(bundle.definitions[0].style_type_name, "SharedStyles");
+	}
+
+	#[test]
+	fn selected_package_features_do_not_enable_matching_dependency_features() {
+		// Arrange
+		let directory = tempfile::tempdir().expect("create temporary workspace");
+		let app = directory.path().join("app");
+		let shared = directory.path().join("shared");
+		fs::create_dir_all(app.join("src")).expect("create app source root");
+		fs::create_dir_all(shared.join("src")).expect("create shared source root");
+		fs::write(
+			directory.path().join("Cargo.toml"),
+			"[workspace]\nresolver = \"3\"\nmembers = [\"app\", \"shared\"]\n",
+		)
+		.expect("write workspace manifest");
+		fs::write(
+			app.join("Cargo.toml"),
+			"[package]\nname = \"style-app\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[features]\ntheme = []\n\n[dependencies]\nstyle-shared = { path = \"../shared\" }\n",
+		)
+		.expect("write app manifest");
+		fs::write(
+			app.join("src/lib.rs"),
+			"#[cfg(feature = \"theme\")]\n#[style_def]\nstatic APP: AppStyles = style! { .app { color: blue; } };\n",
+		)
+		.expect("write app source");
+		fs::write(
+			shared.join("Cargo.toml"),
+			"[package]\nname = \"style-shared\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[features]\ntheme = []\n",
+		)
+		.expect("write shared manifest");
+		fs::write(
+			shared.join("src/lib.rs"),
+			"#[cfg(feature = \"theme\")]\n#[style_def]\nstatic SHARED: SharedStyles = style! { .shared { color: red; } };\n",
+		)
+		.expect("write shared source");
+
+		// Act
+		let context = StylePackageContext::resolve_with_features(
+			app.join("Cargo.toml"),
+			None,
+			StyleFeatureSelection::with_features(["theme"]),
+		)
+		.expect("resolve selected app features");
+		let bundle = StyleExtractor::new(context)
+			.extract()
+			.expect("extract selected package styles");
+
+		// Assert
+		assert_eq!(bundle.definitions.len(), 1);
+		assert_eq!(bundle.definitions[0].style_type_name, "AppStyles");
 	}
 }
 

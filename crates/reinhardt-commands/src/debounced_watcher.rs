@@ -281,6 +281,21 @@ fn notify_browser_reload(hmr_tx: Option<&broadcast::Sender<String>>, reason: &st
 }
 
 #[cfg(feature = "pages")]
+async fn notify_server_reload_if_ready(
+	server_outcome: &crate::server_rebuild_pipeline::ServerRebuildOutcome,
+	config: &WatcherConfig,
+) {
+	if server_rebuild_succeeded(server_outcome)
+		&& wait_for_server_ready(config.server_address.as_deref()).await
+	{
+		notify_browser_reload(
+			config.hmr_tx.as_ref(),
+			"Server rebuild completed successfully",
+		);
+	}
+}
+
+#[cfg(feature = "pages")]
 fn commit_pending_component_styles(
 	component_styles: Option<&std::sync::Arc<std::sync::Mutex<crate::ComponentStyleState>>>,
 	wasm_rebuilt: bool,
@@ -450,7 +465,7 @@ pub async fn run_rebuild_for_paths(
 		#[cfg(not(feature = "pages"))]
 		let _ = wasm_ok;
 	} else {
-		let (_server_outcome, new_child) =
+		let (server_outcome, new_child) =
 			crate::server_rebuild_pipeline::ServerRebuildPipeline::run_with_readiness(
 				&config.bin_name,
 				current_child,
@@ -461,6 +476,8 @@ pub async fn run_rebuild_for_paths(
 		if let Some(child) = new_child {
 			*current_child = child;
 		}
+		#[cfg(feature = "pages")]
+		notify_server_reload_if_ready(&server_outcome, config).await;
 		// A server-only rebuild cannot activate pending component-style APIs:
 		// the browser still runs the previous WASM bundle. Keep the stylesheet
 		// staged until a successful WASM rebuild can commit it atomically.
@@ -824,6 +841,34 @@ mod tests {
 	fn notify_browser_reload_without_channel_is_noop() {
 		// Act & Assert
 		notify_browser_reload(None, "Server rebuild completed successfully");
+	}
+
+	#[cfg(feature = "pages")]
+	#[tokio::test]
+	async fn server_rebuild_reload_notifies_after_readiness() {
+		// Arrange
+		let (tx, mut rx) = broadcast::channel::<String>(8);
+		let mut config = pages_config(false);
+		config.hmr_tx = Some(tx);
+		let outcome = crate::server_rebuild_pipeline::ServerRebuildOutcome::Ok {
+			duration: Duration::ZERO,
+		};
+
+		// Act
+		notify_server_reload_if_ready(&outcome, &config).await;
+
+		// Assert
+		let json = rx
+			.try_recv()
+			.expect("server rebuild should notify the browser");
+		let message: reinhardt_pages::hmr::HmrMessage =
+			serde_json::from_str(&json).expect("message should be valid HMR JSON");
+		assert_eq!(
+			message,
+			reinhardt_pages::hmr::HmrMessage::FullReload {
+				reason: "Server rebuild completed successfully".to_string()
+			}
+		);
 	}
 
 	#[cfg(feature = "pages")]

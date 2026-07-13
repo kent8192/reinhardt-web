@@ -3286,37 +3286,20 @@ impl RunServerCommand {
 			}
 		};
 		let cargo_toml_path = cwd.join("Cargo.toml");
+		let feature_selection = Self::style_feature_selection_from_context(ctx);
+		let package_context = crate::StylePackageContext::resolve_with_features(
+			&cargo_toml_path,
+			ctx.option("package").map(String::as_str),
+			feature_selection.clone(),
+		)
+		.map_err(crate::wasm_builder::WasmBuildError::PackageResolutionFailed)?;
+		let package_manifest_path = &package_context.package_manifest_path;
 
 		// Only build if this project exports cdylib
-		if !crate::wasm_builder::detect_cdylib_in_cargo_toml(&cargo_toml_path) {
+		if !crate::wasm_builder::detect_cdylib_in_cargo_toml(package_manifest_path) {
 			return Ok(());
 		}
-
-		// Parse the crate name from Cargo.toml
-		let crate_name = match std::fs::read_to_string(&cargo_toml_path) {
-			Ok(content) => {
-				let mut name = String::new();
-				for line in content.lines() {
-					let trimmed = line.trim();
-					if trimmed.starts_with("name")
-						&& trimmed.contains('=')
-						&& let Some(val) = trimmed.split('=').nth(1)
-					{
-						name = val.trim().trim_matches('"').trim_matches('\'').to_string();
-						break;
-					}
-				}
-				if name.is_empty() {
-					ctx.warning("Could not determine crate name from Cargo.toml");
-					return Ok(());
-				}
-				name
-			}
-			Err(e) => {
-				ctx.warning(&format!("Failed to read Cargo.toml: {}", e));
-				return Ok(());
-			}
-		};
+		let crate_name = package_context.package_name;
 
 		let js_name = crate_name.replace('-', "_");
 		let artifact = cwd.join("dist").join(format!("{}_bg.wasm", js_name));
@@ -3336,8 +3319,10 @@ impl RunServerCommand {
 			"Building pages WASM for {} ({})...",
 			crate_name, reason
 		));
-		let feature_selection = Self::style_feature_selection_from_context(ctx);
-		let config = crate::wasm_builder::WasmBuildConfig::new(".").output_dir("dist");
+		let config = crate::wasm_builder::WasmBuildConfig::new(".")
+			.output_dir("dist")
+			.target_name(&crate_name)
+			.package(&crate_name);
 		let builder = crate::wasm_builder::WasmBuilder::new(config)
 			.features(feature_selection.features().iter().cloned())
 			.all_features(feature_selection.all_features_enabled());

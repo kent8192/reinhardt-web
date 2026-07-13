@@ -21,6 +21,8 @@ pub struct WasmBuildConfig {
 	pub optimize: bool,
 	/// Target name (crate name, used for output file naming)
 	pub target_name: Option<String>,
+	/// Cargo package selected from a workspace for the build.
+	pub package: Option<String>,
 	/// Override for the cargo target directory. When `None`, falls back to
 	/// `project_dir/target`. In workspace setups, this should point to the
 	/// workspace root's target directory.
@@ -35,6 +37,7 @@ impl Default for WasmBuildConfig {
 			release: false,
 			optimize: true,
 			target_name: None,
+			package: None,
 			target_dir: None,
 		}
 	}
@@ -73,6 +76,12 @@ impl WasmBuildConfig {
 		self
 	}
 
+	/// Select one Cargo package when the project directory is a workspace root.
+	pub fn package(mut self, package: impl Into<String>) -> Self {
+		self.package = Some(package.into());
+		self
+	}
+
 	/// Set the cargo target directory explicitly.
 	///
 	/// When building inside a Cargo workspace, the target directory is at
@@ -108,6 +117,9 @@ pub enum WasmBuildError {
 	/// The `wasm-bindgen-cli` tool is not installed.
 	#[error("wasm-bindgen-cli not installed. Run: cargo install wasm-bindgen-cli")]
 	WasmBindgenNotInstalled,
+	/// The selected Pages package could not be resolved from Cargo metadata.
+	#[error("Failed to resolve Pages Cargo package: {0}")]
+	PackageResolutionFailed(String),
 	/// The cargo build step failed.
 	#[error("Cargo build failed: {0}")]
 	CargoBuildFailed(String),
@@ -339,6 +351,10 @@ impl WasmBuilder {
 			"--target".to_string(),
 			"wasm32-unknown-unknown".to_string(),
 		];
+		if let Some(package) = &self.config.package {
+			arguments.push("--package".to_string());
+			arguments.push(package.clone());
+		}
 		if self.config.release {
 			arguments.push("--release".to_string());
 		}
@@ -542,13 +558,15 @@ mod tests {
 			.output_dir("build")
 			.release(true)
 			.optimize(false)
-			.target_name("my-app");
+			.target_name("my-app")
+			.package("selected-app");
 
 		assert_eq!(config.project_dir, PathBuf::from("/path/to/project"));
 		assert_eq!(config.output_dir, PathBuf::from("build"));
 		assert!(config.release);
 		assert!(!config.optimize);
 		assert_eq!(config.target_name, Some("my-app".to_string()));
+		assert_eq!(config.package, Some("selected-app".to_string()));
 	}
 
 	#[test]
@@ -591,6 +609,29 @@ mod tests {
 				"--target".to_string(),
 				"wasm32-unknown-unknown".to_string(),
 				"--all-features".to_string(),
+			]
+		);
+	}
+
+	#[test]
+	fn cargo_build_arguments_include_selected_package() {
+		// Arrange
+		let builder =
+			WasmBuilder::new(WasmBuildConfig::new("/path/to/workspace").package("style-app"));
+
+		// Act
+		let arguments = builder.cargo_build_arguments();
+
+		// Assert
+		assert_eq!(
+			arguments,
+			vec![
+				"build".to_string(),
+				"--lib".to_string(),
+				"--target".to_string(),
+				"wasm32-unknown-unknown".to_string(),
+				"--package".to_string(),
+				"style-app".to_string(),
 			]
 		);
 	}
