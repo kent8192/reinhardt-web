@@ -168,7 +168,8 @@ impl<Args: 'static, Ret: 'static> Callback<Args, Ret> {
 		let inner =
 			with_page_node::<CallbackSlot<Args, Ret>, _>(self.key, |slot| Arc::clone(&slot.inner))
 				.unwrap_or_else(|err| panic!("{err}"));
-		inner(args)
+		reinhardt_core::reactive::scope::enter_scope(self.key.scope(), || inner(args))
+			.unwrap_or_else(|err| panic!("{err}"))
 	}
 }
 
@@ -715,6 +716,7 @@ where
 mod tests {
 	use super::*;
 	use rstest::rstest;
+	use serial_test::serial;
 
 	#[rstest]
 	fn callback_is_copy() {
@@ -737,6 +739,20 @@ mod tests {
 			assert_eq!(callback.call(1), 2);
 			assert_eq!(copied.call(2), 3);
 		});
+	}
+
+	#[rstest]
+	#[serial(reactive_runtime)]
+	fn callback_call_reenters_its_owning_scope() {
+		let scope = reinhardt_core::reactive::ReactiveScope::new();
+		let callback = scope.enter(|| {
+			Callback::new(|_: ()| {
+				let signal = reinhardt_core::reactive::Signal::new(42_i32);
+				assert_eq!(signal.get(), 42);
+			})
+		});
+
+		callback.call(());
 	}
 
 	#[test]

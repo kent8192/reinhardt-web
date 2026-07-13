@@ -83,12 +83,13 @@ impl TransitionState {
 ///
 /// # Reactivity semantics
 ///
-/// On WASM, the closure runs in `spawn_task` (a new micro-task), so no
-/// reactive Observer is active when it executes. On native, the closure
-/// runs synchronously in the current turn; callers that require Observer
-/// isolation on native should wrap sensitive reads in `untracked`.
-/// (Option A, Refs #4195).
+/// On WASM, the closure runs in `spawn_task` (a new micro-task) and re-enters
+/// the scope that created this hook. On native, the closure runs synchronously
+/// in that same retained scope. In both cases no reactive Observer is active,
+/// so callers that require Observer isolation should wrap sensitive reads in
+/// `untracked`. (Option A, Refs #4195).
 pub fn use_transition() -> TransitionState {
+	let owner_scope = reinhardt_core::reactive::scope::require_active_scope("use_transition");
 	let is_pending = Signal::new(false);
 
 	let start_transition: StartTransitionFn = {
@@ -100,14 +101,14 @@ pub fn use_transition() -> TransitionState {
 				use crate::platform::spawn_task;
 				let is_pending = is_pending;
 				spawn_task(async move {
-					f();
+					let _ = reinhardt_core::reactive::scope::enter_scope(owner_scope, f);
 					let _ = is_pending.try_set(false);
 				});
 			}
 
 			#[cfg(native)]
 			{
-				f();
+				let _ = reinhardt_core::reactive::scope::enter_scope(owner_scope, f);
 				let _ = is_pending.try_set(false);
 			}
 		})))
@@ -192,7 +193,7 @@ pub fn use_deferred_value<T: Clone + 'static>(value: Signal<T>) -> Signal<T> {
 mod tests {
 	use super::*;
 	use serial_test::serial;
-	use std::cell::RefCell;
+	use std::cell::{Cell, RefCell};
 	use std::rc::Rc;
 	#[cfg(wasm)]
 	use wasm_bindgen_test::wasm_bindgen_test;
@@ -219,6 +220,46 @@ mod tests {
 			assert!(*ran.borrow());
 			assert!(!transition.is_pending.get()); // Back to false after sync execution
 		});
+	}
+
+	#[cfg(native)]
+	#[test]
+	#[serial]
+	fn transition_callback_reenters_its_owner_scope() {
+		let scope = reinhardt_core::reactive::ReactiveScope::new();
+		let transition = scope.enter(use_transition);
+		let ran = Rc::new(Cell::new(false));
+
+		transition.start_transition({
+			let ran = Rc::clone(&ran);
+			move || {
+				let signal = Signal::new(42_i32);
+				assert_eq!(signal.get(), 42);
+				ran.set(true);
+			}
+		});
+
+		assert!(ran.get());
+	}
+
+	#[cfg(wasm)]
+	#[wasm_bindgen_test]
+	async fn transition_callback_reenters_its_owner_scope() {
+		let scope = reinhardt_core::reactive::ReactiveScope::new();
+		let transition = scope.enter(use_transition);
+		let ran = Rc::new(Cell::new(false));
+
+		transition.start_transition({
+			let ran = Rc::clone(&ran);
+			move || {
+				let signal = Signal::new(42_i32);
+				assert_eq!(signal.get(), 42);
+				ran.set(true);
+			}
+		});
+
+		gloo_timers::future::TimeoutFuture::new(0).await;
+		assert!(ran.get());
 	}
 
 	#[test]

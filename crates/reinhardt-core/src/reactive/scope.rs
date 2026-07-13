@@ -236,10 +236,12 @@ pub fn current_scope_id() -> Option<ScopeId> {
 	ACTIVE_SCOPES.with(|active| active.borrow().last().copied())
 }
 
-pub(crate) fn enter_scope<R>(
-	scope: ScopeId,
-	f: impl FnOnce() -> R,
-) -> Result<R, ReactiveScopeError> {
+/// Run a closure with an existing live scope active.
+///
+/// This is intended for deferred callbacks that retain a [`ScopeId`] after
+/// their creating render turn has completed. The caller must handle a disposed
+/// scope, because the scope can be torn down before a deferred callback runs.
+pub fn enter_scope<R>(scope: ScopeId, f: impl FnOnce() -> R) -> Result<R, ReactiveScopeError> {
 	let exists = SCOPES.with(|scopes| scopes.borrow().contains_key(&scope));
 	if !exists {
 		return Err(ReactiveScopeError::DisposedScope { scope });

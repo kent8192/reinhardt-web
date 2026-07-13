@@ -23,16 +23,17 @@ use reinhardt_core::reactive::Signal;
 #[cfg(native)]
 use reinhardt_core::reactive::{ReactiveScope, scope::current_scope_id};
 use std::collections::{HashMap, HashSet};
+#[cfg(native)]
+use std::marker::PhantomData;
+#[cfg(native)]
+use std::rc::Rc;
 use std::sync::Arc;
 
 /// Type alias for route guard functions.
 pub(super) type RouteGuard = Arc<dyn Fn(&ClientRouteMatch) -> bool + Send + Sync>;
 
-// (Refs #4234, Fixes #4258) Mirrors `pages::Router NavigationObservers /
-// NavigationListener`. Gated `#[cfg(wasm)]` so `ClientRouter` stays
-// `Send + Sync` on native targets — `Rc<RefCell<_>>` is `!Send + !Sync`
-// and would otherwise propagate up through `UnifiedRouter` and break
-// multi-threaded DI registration on native.
+// (Refs #4234) Mirrors `pages::Router NavigationObservers / NavigationListener`.
+// Browser navigation observers are only available on wasm targets.
 //
 // `Rc<RefCell<...>>` because Routers are not `Send` on wasm32 anyway,
 // and the borrow is released before listeners run (see `notify_observers`).
@@ -443,11 +444,8 @@ pub struct ClientRouter {
 	// so dropping the returned `NavigationSubscription` deregisters the
 	// listener.
 	//
-	// Gated `#[cfg(wasm)]` because `Rc<RefCell<_>>` is `!Send + !Sync`
-	// and the reactive observation pattern only fires on WASM (the popstate
-	// listener is wasm-only and `notify_observers` is a no-op on native).
-	// Without this gate `ClientRouter` becomes `!Send + !Sync` on native,
-	// breaking `UnifiedRouter` registration in multi-threaded DI containers.
+	// Gated `#[cfg(wasm)]` because the popstate listener and reactive
+	// navigation observers are browser-only.
 	#[cfg(wasm)]
 	navigation_observers: NavigationObservers,
 	// (Refs #4234, Fixes #4258) Mirrors `pages::Router::dispatch_count`.
@@ -464,6 +462,10 @@ pub struct ClientRouter {
 	// across moves of the `ClientRouter` value itself.
 	#[cfg(native)]
 	diag_router_identity: Arc<()>,
+	// Native reactive signals are scope- and thread-affine, so a router must
+	// remain on the thread that created its navigation state.
+	#[cfg(native)]
+	_thread_bound: PhantomData<Rc<()>>,
 }
 
 impl std::fmt::Debug for ClientRouter {
@@ -508,6 +510,8 @@ impl ClientRouter {
 			dispatch_count: std::rc::Rc::new(std::cell::Cell::new(0)),
 			#[cfg(native)]
 			diag_router_identity: Arc::new(()),
+			#[cfg(native)]
+			_thread_bound: PhantomData,
 		}
 	}
 
@@ -1214,11 +1218,9 @@ impl ClientRouter {
 
 	/// Native no-op stub for `notify_observers` (Fixes #4258).
 	///
-	/// On native targets there is no popstate listener and no reactive
-	/// observation state, so navigation cannot dispatch listeners. This
-	/// stub keeps the call site in `ClientRouter::navigate` cross-target
-	/// without leaking `Rc<...>` reactive state into the native
-	/// `ClientRouter` (which would break `Send + Sync`).
+	/// On native targets there is no popstate listener, so navigation cannot
+	/// dispatch browser listeners. This stub keeps the call site in
+	/// `ClientRouter::navigate` cross-target.
 	#[cfg(native)]
 	fn notify_observers(&self, _path: &str, _params: &HashMap<String, String>) {}
 
@@ -1450,17 +1452,6 @@ fn dispatch_navigation_observers(
 	}
 }
 
-// (Fixes #4258) Compile-time guard: `ClientRouter` MUST be `Send + Sync`
-// on native targets so `UnifiedRouter` (which always contains it) can
-// be registered with multi-threaded DI containers. Regression of #4258
-// — for example, re-introducing an unguarded `Rc<...>` or `RefCell<...>`
-// field — would fail this assertion at native build time.
-#[cfg(all(test, native))]
-const _: fn() = || {
-	fn assert_send_sync<T: Send + Sync>() {}
-	assert_send_sync::<ClientRouter>();
-};
-
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -1514,6 +1505,16 @@ mod tests {
 
 		assert_eq!(router.route_count(), 1);
 		assert_eq!(router.reverse("home", &[]).unwrap(), "/");
+	}
+
+	#[cfg(native)]
+	#[test]
+	fn unscoped_router_keeps_navigation_state_on_its_owner_thread() {
+		let router = ClientRouter::new().route("home", "/", home_page);
+
+		assert_eq!(router.current_path().get(), "/");
+		router.push("/").expect("native navigation must succeed");
+		assert_eq!(router.current_path().get(), "/");
 	}
 
 	#[test]

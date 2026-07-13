@@ -22,6 +22,12 @@ pub(crate) struct PageNodeKey {
 	owner_thread: std::thread::ThreadId,
 }
 
+impl PageNodeKey {
+	pub(crate) fn scope(self) -> ScopeId {
+		self.scope
+	}
+}
+
 struct PageSlot {
 	generation: u32,
 	kind: PageNodeKind,

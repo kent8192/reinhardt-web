@@ -283,22 +283,29 @@ where
 }
 
 struct RetainedEffect {
-	effect: Rc<RefCell<Option<Effect>>>,
+	_state: Rc<RefCell<RetainedEffectState>>,
 }
 
-impl Drop for RetainedEffect {
+struct RetainedEffectState {
+	effect: Option<Effect>,
+}
+
+impl Drop for RetainedEffectState {
 	fn drop(&mut self) {
-		self.effect.borrow_mut().take();
+		let effect = self.effect.take();
+		if let Some(effect) = effect {
+			effect.dispose();
+		}
 	}
 }
 
 fn retain_effect(create_effect: impl FnOnce() -> Effect) {
-	let effect = Rc::new(RefCell::new(None));
+	let state = Rc::new(RefCell::new(RetainedEffectState { effect: None }));
 	crate::component::reactive_if::store_reactive_node(RetainedEffect {
-		effect: Rc::clone(&effect),
+		_state: Rc::clone(&state),
 	});
 	let created = create_effect();
-	*effect.borrow_mut() = Some(created);
+	state.borrow_mut().effect = Some(created);
 }
 
 #[cfg(test)]
@@ -547,189 +554,203 @@ mod tests {
 	#[serial]
 	fn test_use_retained_effect_survives_ignored_guard() {
 		cleanup_reactive_nodes();
-		let signal = Signal::new(0);
-		let run_count = Rc::new(RefCell::new(0));
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let signal = Signal::new(0);
+			let run_count = Rc::new(RefCell::new(0));
 
-		use_retained_effect(
-			{
-				let signal = signal.clone();
-				let run_count = Rc::clone(&run_count);
-				move || {
-					let _ = signal.get();
-					*run_count.borrow_mut() += 1;
-					None::<fn()>
-				}
-			},
-			(signal.clone(),),
-		);
+			use_retained_effect(
+				{
+					let signal = signal.clone();
+					let run_count = Rc::clone(&run_count);
+					move || {
+						let _ = signal.get();
+						*run_count.borrow_mut() += 1;
+						None::<fn()>
+					}
+				},
+				(signal.clone(),),
+			);
 
-		assert_eq!(*run_count.borrow(), 1);
+			assert_eq!(*run_count.borrow(), 1);
 
-		signal.set(1);
-		with_runtime(|rt| rt.flush_updates());
-		assert_eq!(
-			*run_count.borrow(),
-			2,
-			"retained effect must rerun even when the call result is ignored"
-		);
+			signal.set(1);
+			with_runtime(|rt| rt.flush_updates());
+			assert_eq!(
+				*run_count.borrow(),
+				2,
+				"retained effect must rerun even when the call result is ignored"
+			);
 
-		cleanup_reactive_nodes();
-		signal.set(2);
-		with_runtime(|rt| rt.flush_updates());
-		assert_eq!(
-			*run_count.borrow(),
-			2,
-			"clearing the retained scope must dispose the effect"
-		);
+			cleanup_reactive_nodes();
+			signal.set(2);
+			with_runtime(|rt| rt.flush_updates());
+			assert_eq!(
+				*run_count.borrow(),
+				2,
+				"clearing the retained scope must dispose the effect"
+			);
+		});
 	}
 
 	#[rstest::rstest]
 	#[serial]
 	fn test_use_retained_effect_runs_cleanup_on_scope_clear() {
 		cleanup_reactive_nodes();
-		let log = Rc::new(RefCell::new(Vec::new()));
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let log = Rc::new(RefCell::new(Vec::new()));
 
-		use_retained_effect(
-			{
-				let log = Rc::clone(&log);
-				move || {
-					log.borrow_mut().push("run");
-					let log_for_cleanup = Rc::clone(&log);
-					Some(move || log_for_cleanup.borrow_mut().push("cleanup"))
-				}
-			},
-			(),
-		);
+			use_retained_effect(
+				{
+					let log = Rc::clone(&log);
+					move || {
+						log.borrow_mut().push("run");
+						let log_for_cleanup = Rc::clone(&log);
+						Some(move || log_for_cleanup.borrow_mut().push("cleanup"))
+					}
+				},
+				(),
+			);
 
-		assert_eq!(*log.borrow(), vec!["run"]);
+			assert_eq!(*log.borrow(), vec!["run"]);
 
-		cleanup_reactive_nodes();
-		assert_eq!(
-			*log.borrow(),
-			vec!["run", "cleanup"],
-			"scope clear must drop the stored Effect guard and run cleanup"
-		);
+			cleanup_reactive_nodes();
+			assert_eq!(
+				*log.borrow(),
+				vec!["run", "cleanup"],
+				"scope clear must drop the stored Effect guard and run cleanup"
+			);
+		});
 	}
 
 	#[rstest::rstest]
 	#[serial]
 	fn test_use_retained_effect_accepts_unit_return() {
 		cleanup_reactive_nodes();
-		let called = Rc::new(RefCell::new(false));
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let called = Rc::new(RefCell::new(false));
 
-		use_retained_effect(
-			{
-				let called = Rc::clone(&called);
-				move || {
-					*called.borrow_mut() = true;
-				}
-			},
-			(),
-		);
+			use_retained_effect(
+				{
+					let called = Rc::clone(&called);
+					move || {
+						*called.borrow_mut() = true;
+					}
+				},
+				(),
+			);
 
-		assert!(*called.borrow());
-		cleanup_reactive_nodes();
+			assert!(*called.borrow());
+			cleanup_reactive_nodes();
+		});
 	}
 
 	#[rstest::rstest]
 	#[serial]
 	fn test_retained_cleanup_can_clear_own_scope_reentrantly() {
 		cleanup_reactive_nodes();
-		let cleanup_count = Rc::new(RefCell::new(0));
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let cleanup_count = Rc::new(RefCell::new(0));
 
-		use_retained_effect(
-			{
-				let cleanup_count = Rc::clone(&cleanup_count);
-				move || {
+			use_retained_effect(
+				{
 					let cleanup_count = Rc::clone(&cleanup_count);
-					Some(move || {
-						*cleanup_count.borrow_mut() += 1;
-						cleanup_reactive_nodes();
-					})
-				}
-			},
-			(),
-		);
+					move || {
+						let cleanup_count = Rc::clone(&cleanup_count);
+						Some(move || {
+							*cleanup_count.borrow_mut() += 1;
+							cleanup_reactive_nodes();
+						})
+					}
+				},
+				(),
+			);
 
-		cleanup_reactive_nodes();
-		assert_eq!(*cleanup_count.borrow(), 1);
+			cleanup_reactive_nodes();
+			assert_eq!(*cleanup_count.borrow(), 1);
+		});
 	}
 
 	#[rstest::rstest]
 	#[serial]
 	fn test_use_retained_effect_runs_cleanup_when_scope_clears_during_initial_run() {
 		cleanup_reactive_nodes();
-		let log = Rc::new(RefCell::new(Vec::new()));
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let log = Rc::new(RefCell::new(Vec::new()));
 
-		use_retained_effect(
-			{
-				let log = Rc::clone(&log);
-				move || {
-					log.borrow_mut().push("run");
-					cleanup_reactive_nodes();
-					let log_for_cleanup = Rc::clone(&log);
-					Some(move || log_for_cleanup.borrow_mut().push("cleanup"))
-				}
-			},
-			(),
-		);
+			use_retained_effect(
+				{
+					let log = Rc::clone(&log);
+					move || {
+						log.borrow_mut().push("run");
+						cleanup_reactive_nodes();
+						let log_for_cleanup = Rc::clone(&log);
+						Some(move || log_for_cleanup.borrow_mut().push("cleanup"))
+					}
+				},
+				(),
+			);
 
-		assert_eq!(
-			*log.borrow(),
-			vec!["run", "cleanup"],
-			"retained effect cleanup must run when the owning scope clears during initial execution"
-		);
+			assert_eq!(
+				*log.borrow(),
+				vec!["run", "cleanup"],
+				"retained effect cleanup must run when the owning scope clears during initial execution"
+			);
+		});
 	}
 
 	#[rstest::rstest]
 	#[serial]
 	fn test_use_retained_layout_effect_runs_synchronously() {
 		cleanup_reactive_nodes();
-		let signal = Signal::new(0);
-		let execution_order = Rc::new(RefCell::new(Vec::new()));
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let signal = Signal::new(0);
+			let execution_order = Rc::new(RefCell::new(Vec::new()));
 
-		use_retained_layout_effect(
-			{
-				let signal = signal.clone();
-				let execution_order = Rc::clone(&execution_order);
-				move || {
-					execution_order.borrow_mut().push(signal.get());
-					None::<fn()>
-				}
-			},
-			(signal.clone(),),
-		);
+			use_retained_layout_effect(
+				{
+					let signal = signal.clone();
+					let execution_order = Rc::clone(&execution_order);
+					move || {
+						execution_order.borrow_mut().push(signal.get());
+						None::<fn()>
+					}
+				},
+				(signal.clone(),),
+			);
 
-		assert_eq!(*execution_order.borrow(), vec![0]);
+			assert_eq!(*execution_order.borrow(), vec![0]);
 
-		signal.set(1);
-		execution_order.borrow_mut().push(100);
-		assert_eq!(
-			*execution_order.borrow(),
-			vec![0, 1, 100],
-			"retained layout effect must run before subsequent synchronous work"
-		);
+			signal.set(1);
+			execution_order.borrow_mut().push(100);
+			assert_eq!(
+				*execution_order.borrow(),
+				vec![0, 1, 100],
+				"retained layout effect must run before subsequent synchronous work"
+			);
 
-		cleanup_reactive_nodes();
+			cleanup_reactive_nodes();
+		});
 	}
 
 	#[rstest::rstest]
 	#[serial]
 	fn test_use_retained_layout_effect_accepts_unit_return() {
 		cleanup_reactive_nodes();
-		let called = Rc::new(RefCell::new(false));
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let called = Rc::new(RefCell::new(false));
 
-		use_retained_layout_effect(
-			{
-				let called = Rc::clone(&called);
-				move || {
-					*called.borrow_mut() = true;
-				}
-			},
-			(),
-		);
+			use_retained_layout_effect(
+				{
+					let called = Rc::clone(&called);
+					move || {
+						*called.borrow_mut() = true;
+					}
+				},
+				(),
+			);
 
-		assert!(*called.borrow());
-		cleanup_reactive_nodes();
+			assert!(*called.borrow());
+			cleanup_reactive_nodes();
+		});
 	}
 }

@@ -39,7 +39,7 @@ use alloc::rc::Rc;
 
 use super::runtime::{EffectTiming, NodeId, NodeType, Observer, try_with_runtime, with_runtime};
 use super::scope::{
-	NodeKey, NodeKind, allocate_node, enter_scope, find_node_key, mark_node_disposed,
+	NodeKey, NodeKind, ScopeId, allocate_node, enter_scope, find_node_key, mark_node_disposed,
 	require_active_scope, with_node, with_node_mut,
 };
 
@@ -53,6 +53,7 @@ struct EffectSlot {
 	f: Option<EffectFn>,
 	timing: EffectTiming,
 	cleanup_slot: CleanupSlot,
+	scope: ScopeId,
 }
 
 /// Get the timing for an effect by its ID.
@@ -108,7 +109,7 @@ impl Copy for Effect {}
 impl Drop for EffectSlot {
 	fn drop(&mut self) {
 		if let Some(cleanup) = self.cleanup_slot.borrow_mut().take() {
-			cleanup();
+			let _ = enter_scope(self.scope, cleanup);
 		}
 	}
 }
@@ -127,13 +128,14 @@ impl Effect {
 	where
 		F: FnMut() + 'static,
 	{
-		require_active_scope("Effect::new");
+		let scope = require_active_scope("Effect::new");
 		let key = allocate_node(
 			NodeKind::Effect,
 			EffectSlot {
 				f: Some(Box::new(f)),
 				timing,
 				cleanup_slot: Rc::new(RefCell::new(None)),
+				scope,
 			},
 		);
 		let effect = Self { key };
@@ -156,7 +158,7 @@ impl Effect {
 		F: FnMut() -> Option<C> + 'static,
 		C: FnOnce() + 'static,
 	{
-		require_active_scope("Effect::new");
+		let scope = require_active_scope("Effect::new");
 		let cleanup_slot: CleanupSlot = Rc::new(RefCell::new(None));
 		let key = allocate_node(
 			NodeKind::Effect,
@@ -164,6 +166,7 @@ impl Effect {
 				f: None,
 				timing,
 				cleanup_slot: Rc::clone(&cleanup_slot),
+				scope,
 			},
 		);
 		let effect_id = key.node_id();
@@ -270,7 +273,7 @@ impl Effect {
 		let _ = mark_node_disposed(self.key);
 		drop(f);
 		if let Some(cleanup) = cleanup {
-			cleanup();
+			let _ = enter_scope(self.key.scope(), cleanup);
 		}
 		let _ = try_with_runtime(|rt| rt.remove_node(self.id()));
 	}
@@ -348,6 +351,32 @@ mod tests {
 		});
 
 		assert!(*cleaned.borrow(), "scope disposal must run effect cleanup");
+	}
+
+	#[rstest]
+	#[serial(reactive_runtime)]
+	fn scope_drop_runs_effect_cleanup_inside_the_owner_scope() {
+		let scope = crate::reactive::ReactiveScope::new();
+		let cleaned = Rc::new(Cell::new(false));
+		let cleaned_for_effect = Rc::clone(&cleaned);
+
+		scope.enter(|| {
+			let _effect = Effect::new_with_deps(
+				move || {
+					let cleaned_for_cleanup = Rc::clone(&cleaned_for_effect);
+					Some(move || {
+						let signal = Signal::new(42_i32);
+						assert_eq!(signal.get(), 42);
+						cleaned_for_cleanup.set(true);
+					})
+				},
+				crate::reactive::Deps::empty(),
+			);
+		});
+
+		scope.dispose();
+
+		assert!(cleaned.get(), "cleanup must run inside its owner scope");
 	}
 
 	#[test]
