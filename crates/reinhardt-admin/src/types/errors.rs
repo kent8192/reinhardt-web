@@ -5,6 +5,10 @@ use thiserror::Error;
 /// Admin panel error type
 #[derive(Debug, Error)]
 pub enum AdminError {
+	/// Typed model field encoding failed before SQL compilation.
+	#[error("Field codec error: {0}")]
+	FieldCodec(#[from] reinhardt_db::orm::FieldCodecError),
+
 	/// Model not registered with admin
 	#[error("Model '{0}' is not registered with admin")]
 	ModelNotRegistered(String),
@@ -175,6 +179,9 @@ mod tests {
 impl From<AdminError> for reinhardt_core::exception::Error {
 	fn from(err: AdminError) -> Self {
 		match err {
+			AdminError::FieldCodec(error) => reinhardt_core::exception::Error::Other(
+				anyhow::Error::new(error).context("admin field codec failed"),
+			),
 			AdminError::ModelNotRegistered(msg) => reinhardt_core::exception::Error::NotFound(msg),
 			AdminError::PermissionDenied(msg) => {
 				reinhardt_core::exception::Error::Authorization(msg)

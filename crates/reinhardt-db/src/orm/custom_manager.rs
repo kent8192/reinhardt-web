@@ -471,7 +471,7 @@ pub trait CustomManager: Sized + Send + Sync {
 		&self,
 		queryset: &QuerySet<Self::Model>,
 		updates: &[(&str, &str)],
-	) -> (String, Vec<String>) {
+	) -> reinhardt_core::exception::Result<(String, Vec<String>)> {
 		Manager::<Self::Model>::new().update_queryset(queryset, updates)
 	}
 

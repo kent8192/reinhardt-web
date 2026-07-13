@@ -561,7 +561,7 @@ fn test_update_sql_single_field() {
 	);
 
 	// Act
-	let (sql, params) = qs.update_sql(&updates);
+	let (sql, params) = qs.update_sql(&updates).expect("update SQL should compile");
 
 	// Assert
 	assert_eq!(
@@ -584,7 +584,7 @@ fn test_update_sql_with_null() {
 	updates.insert("category".to_string(), UpdateValue::Null);
 
 	// Act
-	let (sql, _params) = qs.update_sql(&updates);
+	let (sql, _params) = qs.update_sql(&updates).expect("update SQL should compile");
 
 	// Assert
 	assert!(
@@ -1277,7 +1277,7 @@ fn test_update_sql_with_boolean_value() {
 	updates.insert("in_stock".to_string(), UpdateValue::Boolean(false));
 
 	// Act
-	let (sql, params) = qs.update_sql(&updates);
+	let (sql, params) = qs.update_sql(&updates).expect("update SQL should compile");
 
 	// Assert
 	assert!(
@@ -1306,7 +1306,7 @@ fn test_update_sql_with_integer_value() {
 	updates.insert("price".to_string(), UpdateValue::Integer(999));
 
 	// Act
-	let (sql, params) = qs.update_sql(&updates);
+	let (sql, params) = qs.update_sql(&updates).expect("update SQL should compile");
 
 	// Assert
 	assert!(
@@ -1336,7 +1336,7 @@ fn test_update_sql_with_float_value() {
 	updates.insert("price".to_string(), UpdateValue::Float(29.99));
 
 	// Act
-	let (sql, params) = qs.update_sql(&updates);
+	let (sql, params) = qs.update_sql(&updates).expect("update SQL should compile");
 
 	// Assert
 	assert!(

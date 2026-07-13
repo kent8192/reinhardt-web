@@ -3,7 +3,7 @@
 use reinhardt::db::orm::manager::{get_connection, reinitialize_database};
 use reinhardt::db::orm::query_types::DbBackend;
 use reinhardt::db::orm::session::Session;
-use reinhardt::db::orm::{FieldCodecError, Model};
+use reinhardt::db::orm::{DatabaseField, FieldCodecContext, FieldCodecError, Model};
 use reinhardt::{ModelEnum, model};
 use serde::{Deserialize, Serialize};
 use serial_test::serial;
@@ -31,6 +31,35 @@ struct AsyncJob {
 	status: Status,
 	#[field(db_column = "fallback_status", max_length = 40, null = true)]
 	fallback: Option<Status>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+struct RejectingStatus(String);
+
+impl DatabaseField for RejectingStatus {
+	type Storage = String;
+
+	fn encode_database(&self) -> Result<Self::Storage, FieldCodecError> {
+		Err(FieldCodecError::Serialization(
+			"rejected query value".to_owned(),
+		))
+	}
+
+	fn decode_database(
+		value: Self::Storage,
+		_context: &FieldCodecContext,
+	) -> Result<Self, FieldCodecError> {
+		Ok(Self(value))
+	}
+}
+
+#[model(app_label = "jobs", table_name = "codec_jobs")]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct CodecJob {
+	#[field(primary_key = true)]
+	id: Option<i64>,
+	#[field(max_length = 40)]
+	status: RejectingStatus,
 }
 
 #[model(app_label = "jobs", table_name = "byte_records")]
@@ -166,6 +195,136 @@ async fn nullable_model_enum_round_trips_sql_null() {
 		.await
 		.expect("nullable enum-backed model should hydrate");
 	assert_eq!(hydrated.fallback, None);
+}
+
+#[tokio::test]
+#[serial(model_enum_database)]
+async fn typed_model_enum_filters_lists_and_assignments_use_persistent_values() {
+	let (_database, url) = sqlite_database_url();
+	reinitialize_database(&url)
+		.await
+		.expect("SQLite ORM connection should initialize");
+	let connection = get_connection()
+		.await
+		.expect("SQLite ORM connection should be available");
+	connection
+		.execute(
+			"CREATE TABLE async_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, job_status VARCHAR(40) NOT NULL, fallback_status VARCHAR(40))",
+			vec![],
+		)
+		.await
+		.expect("async_jobs table should be created");
+
+	let queued = AsyncJob::objects()
+		.create(&AsyncJob {
+			id: None,
+			status: Status::Queued,
+			fallback: None,
+		})
+		.await
+		.expect("queued job should be created");
+	let running = AsyncJob::objects()
+		.create(&AsyncJob {
+			id: None,
+			status: Status::Running,
+			fallback: None,
+		})
+		.await
+		.expect("running job should be created");
+
+	let queued_rows = AsyncJob::objects()
+		.filter(AsyncJob::field_status().eq(Status::Queued))
+		.all()
+		.await
+		.expect("typed enum equality filter should execute");
+	assert_eq!(queued_rows.len(), 1);
+	assert_eq!(queued_rows[0].id, queued.id);
+
+	let matching_rows = AsyncJob::objects()
+		.filter(AsyncJob::field_status().is_in([Status::Queued, Status::Running]))
+		.all()
+		.await
+		.expect("typed enum list filter should execute");
+	assert_eq!(matching_rows.len(), 2);
+
+	let updated = AsyncJob::objects()
+		.filter(AsyncJob::field_id().eq(running.id))
+		.update_fields([AsyncJob::field_status().assign(Status::Queued)])
+		.await
+		.expect("typed enum assignment should execute");
+	assert_eq!(updated, 1);
+	let raw_status = connection
+		.query(
+			"SELECT job_status FROM async_jobs WHERE id = ?",
+			vec![running.id.expect("running job should have an id").into()],
+		)
+		.await
+		.expect("updated status should be readable")
+		.into_iter()
+		.next()
+		.and_then(|row| row.get::<String>("job_status"))
+		.expect("job_status should be a string");
+	assert_eq!(raw_status, "queued");
+}
+
+#[tokio::test]
+#[serial(model_enum_database)]
+async fn typed_codec_errors_surface_before_filter_or_update_execution() {
+	let (_database, url) = sqlite_database_url();
+	let connection = reinhardt::db::orm::connection::DatabaseConnection::connect(&url)
+		.await
+		.expect("SQLite connection should initialize");
+	connection
+		.execute(
+			"CREATE TABLE codec_jobs (id INTEGER PRIMARY KEY, status VARCHAR(40) NOT NULL)",
+			vec![],
+		)
+		.await
+		.expect("codec_jobs table should be created");
+	connection
+		.execute(
+			"INSERT INTO codec_jobs (id, status) VALUES (1, 'queued')",
+			vec![],
+		)
+		.await
+		.expect("codec job should be inserted");
+	connection
+		.execute(
+			"CREATE TRIGGER reject_codec_job_update BEFORE UPDATE ON codec_jobs BEGIN SELECT RAISE(FAIL, 'SQL update executed'); END",
+			vec![],
+		)
+		.await
+		.expect("update rejection trigger should be created");
+
+	let filter_error = CodecJob::objects()
+		.filter(CodecJob::field_status().eq(RejectingStatus("queued".to_owned())))
+		.all_with_db(&connection)
+		.await
+		.expect_err("filter codec error should surface before SQL execution");
+	let filter_source =
+		std::error::Error::source(&filter_error).expect("filter codec source should be preserved");
+	assert!(filter_source.downcast_ref::<FieldCodecError>().is_some());
+
+	let update_error = CodecJob::objects()
+		.filter(CodecJob::field_id().eq(Some(1)))
+		.update_fields_with_conn(
+			&connection,
+			[CodecJob::field_status().assign(RejectingStatus("running".to_owned()))],
+		)
+		.await
+		.expect_err("update codec error should surface before SQL execution");
+	let update_source =
+		std::error::Error::source(&update_error).expect("update codec source should be preserved");
+	assert!(update_source.downcast_ref::<FieldCodecError>().is_some());
+	let raw_status = connection
+		.query("SELECT status FROM codec_jobs WHERE id = 1", vec![])
+		.await
+		.expect("codec job status should remain readable")
+		.into_iter()
+		.next()
+		.and_then(|row| row.get::<String>("status"))
+		.expect("status should be a string");
+	assert_eq!(raw_status, "queued");
 }
 
 #[tokio::test]

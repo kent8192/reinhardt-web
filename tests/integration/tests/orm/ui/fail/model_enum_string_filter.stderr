@@ -1,0 +1,23 @@
+error[E0277]: the trait bound `&str: IntoFieldValue<Status>` is not satisfied
+  --> tests/orm/ui/fail/model_enum_string_filter.rs:24:33
+   |
+24 |     let _ = Job::field_status().eq("queued");
+   |                                 -- ^^^^^^^^ the trait `IntoFieldValue<Status>` is not implemented for `&str`
+   |                                 |
+   |                                 required by a bound introduced by this call
+   |
+help: the trait `IntoFieldValue<Status>` is not implemented for `&str`
+      but trait `IntoFieldValue<std::string::String>` is implemented for it
+  --> $WORKSPACE/crates/reinhardt-db/src/orm/field_codec.rs
+   |
+   | impl IntoFieldValue<String> for &str {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = help: for that trait implementation, expected `std::string::String`, found `Status`
+note: required by a bound in `reinhardt::FieldRef::<M, T>::eq`
+  --> $WORKSPACE/crates/reinhardt-db/src/orm/expressions.rs
+   |
+   |     pub fn eq<V>(&self, value: V) -> Filter
+   |            -- required by a bound in this associated function
+...
+   |         V: IntoFieldValue<T>,
+   |            ^^^^^^^^^^^^^^^^^ required by this bound in `FieldRef::<M, T>::eq`

@@ -1313,7 +1313,7 @@ impl<M: Model> Manager<M> {
 		&self,
 		queryset: &QuerySet<M>,
 		updates: &[(&str, &str)],
-	) -> (String, Vec<String>) {
+	) -> reinhardt_core::exception::Result<(String, Vec<String>)> {
 		use crate::orm::query::UpdateValue;
 		use std::collections::HashMap;
 

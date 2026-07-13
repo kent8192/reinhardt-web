@@ -82,7 +82,7 @@ impl DatabaseValue {
 }
 
 /// Converts a canonical database value directly into the query builder carrier.
-pub(crate) fn database_value_to_query_value(value: DatabaseValue) -> reinhardt_query::value::Value {
+pub fn database_value_to_query_value(value: DatabaseValue) -> reinhardt_query::value::Value {
 	use reinhardt_query::value::Value;
 
 	match value {
@@ -141,6 +141,31 @@ pub trait DatabaseField:
 	/// Returns structured constraints associated with the field.
 	fn domain() -> Option<FieldDomain> {
 		None
+	}
+}
+
+/// Converts a value whose Rust type is related to a typed model field.
+pub trait IntoFieldValue<T: DatabaseField> {
+	/// Encodes this value into the field's canonical database representation.
+	fn into_field_value(self) -> Result<DatabaseValue, FieldCodecError>;
+}
+
+impl<T: DatabaseField> IntoFieldValue<T> for T {
+	fn into_field_value(self) -> Result<DatabaseValue, FieldCodecError> {
+		self.encode_database()
+			.map(DatabaseScalar::into_database_value)
+	}
+}
+
+impl<T: DatabaseField> IntoFieldValue<T> for &T {
+	fn into_field_value(self) -> Result<DatabaseValue, FieldCodecError> {
+		self.clone().into_field_value()
+	}
+}
+
+impl IntoFieldValue<String> for &str {
+	fn into_field_value(self) -> Result<DatabaseValue, FieldCodecError> {
+		Ok(DatabaseValue::String(self.to_owned()))
 	}
 }
 

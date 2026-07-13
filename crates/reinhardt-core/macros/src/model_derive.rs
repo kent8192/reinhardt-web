@@ -1948,7 +1948,11 @@ fn generate_field_accessors(struct_name: &syn::Ident, field_infos: &[FieldInfo])
 			let field_name = &field.name;
 			let field_type = &field.ty;
 			let method_name = syn::Ident::new(&format!("field_{}", field_name), field_name.span());
-			let field_name_str = field_name.to_string();
+			let column_name = field
+				.config
+				.db_column
+				.clone()
+				.unwrap_or_else(|| field_name.to_string());
 
 			quote! {
 				/// Field accessor for type-safe field references
@@ -1956,7 +1960,7 @@ fn generate_field_accessors(struct_name: &syn::Ident, field_infos: &[FieldInfo])
 				/// Returns a `FieldRef<#struct_name, #field_type>` that provides compile-time
 				/// type safety for field operations.
 				pub const fn #method_name() -> #orm_crate::expressions::FieldRef<#struct_name, #field_type> {
-					#orm_crate::expressions::FieldRef::new(#field_name_str)
+					#orm_crate::expressions::FieldRef::new(#column_name)
 				}
 			}
 		})

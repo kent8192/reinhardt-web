@@ -4,6 +4,9 @@
 //! By default, it exports the expression-based query API (SQLAlchemy-style).
 
 use super::FieldSelector;
+use super::field_codec::{
+	DatabaseField, DatabaseValue, FieldCodecError, IntoFieldValue, database_value_to_query_value,
+};
 use crate::naming::to_snake_case;
 use crate::orm::query_fields::GroupByFields;
 use crate::orm::query_fields::aggregate::{AggregateExpr, ComparisonExpr};
@@ -100,6 +103,8 @@ pub enum FilterOperator {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// Defines possible filter value values.
 pub enum FilterValue {
+	/// Fallible scalar produced by a typed field codec.
+	Typed(Result<DatabaseValue, FieldCodecError>),
 	/// String variant.
 	String(String),
 	/// Integer variant.
@@ -204,6 +209,8 @@ impl Filter {
 /// Values that can be used in UPDATE statements
 #[derive(Debug, Clone)]
 pub enum UpdateValue {
+	/// Fallible scalar produced by a typed field codec.
+	Typed(Result<DatabaseValue, FieldCodecError>),
 	/// String variant.
 	String(String),
 	/// Integer variant.
@@ -316,10 +323,14 @@ impl FieldAssignment {
 
 impl<M, T, V> From<(super::expressions::FieldRef<M, T>, V)> for FieldAssignment
 where
-	V: Into<UpdateValue>,
+	T: DatabaseField,
+	V: IntoFieldValue<T>,
 {
 	fn from((field, value): (super::expressions::FieldRef<M, T>, V)) -> Self {
-		Self::new(field.name(), value)
+		Self {
+			field: field.name().to_owned(),
+			value: UpdateValue::Typed(value.into_field_value()),
+		}
 	}
 }
 
@@ -2780,20 +2791,100 @@ where
 				(FilterOperator::Lte, FilterValue::Expression(expr)) => {
 					col.lte(Self::expression_to_query_expr(expr))
 				}
+				// Typed scalar values retain codec errors until this compilation step.
+				(FilterOperator::Eq, FilterValue::Typed(value)) => {
+					match Self::typed_database_value(value)? {
+						DatabaseValue::Null => col.is_null(),
+						value => col.eq(database_value_to_query_value(value.clone())),
+					}
+				}
+				(FilterOperator::Ne, FilterValue::Typed(value)) => {
+					match Self::typed_database_value(value)? {
+						DatabaseValue::Null => col.is_not_null(),
+						value => col.ne(database_value_to_query_value(value.clone())),
+					}
+				}
+				(FilterOperator::Gt, FilterValue::Typed(value)) => col.gt(
+					database_value_to_query_value(Self::typed_database_value(value)?.clone()),
+				),
+				(FilterOperator::Gte, FilterValue::Typed(value)) => col.gte(
+					database_value_to_query_value(Self::typed_database_value(value)?.clone()),
+				),
+				(FilterOperator::Lt, FilterValue::Typed(value)) => col.lt(
+					database_value_to_query_value(Self::typed_database_value(value)?.clone()),
+				),
+				(FilterOperator::Lte, FilterValue::Typed(value)) => col.lte(
+					database_value_to_query_value(Self::typed_database_value(value)?.clone()),
+				),
+				(FilterOperator::IExact, FilterValue::Typed(value)) => {
+					match Self::typed_database_value(value)? {
+						DatabaseValue::String(value) => {
+							Self::like_expr(filter, value, LikePattern::Exact, true)
+						}
+						value => col.eq(database_value_to_query_value(value.clone())),
+					}
+				}
+				(
+					operator @ (FilterOperator::Contains
+					| FilterOperator::IContains
+					| FilterOperator::StartsWith
+					| FilterOperator::IStartsWith
+					| FilterOperator::EndsWith
+					| FilterOperator::IEndsWith),
+					FilterValue::Typed(value),
+				) => {
+					let value = Self::database_value_to_string(Self::typed_database_value(value)?);
+					let (pattern, insensitive) = match operator {
+						FilterOperator::Contains => (LikePattern::Contains, false),
+						FilterOperator::IContains => (LikePattern::Contains, true),
+						FilterOperator::StartsWith => (LikePattern::StartsWith, false),
+						FilterOperator::IStartsWith => (LikePattern::StartsWith, true),
+						FilterOperator::EndsWith => (LikePattern::EndsWith, false),
+						FilterOperator::IEndsWith => (LikePattern::EndsWith, true),
+						_ => unreachable!(),
+					};
+					Self::like_expr(filter, &value, pattern, insensitive)
+				}
+				(
+					operator @ (FilterOperator::Regex | FilterOperator::IRegex),
+					FilterValue::Typed(value),
+				) => {
+					let value = Self::database_value_to_string(Self::typed_database_value(value)?);
+					let sql_operator = if matches!(operator, FilterOperator::IRegex) {
+						"~*"
+					} else {
+						"~"
+					};
+					Expr::cust_with_values(
+						format!("{} {sql_operator} ?", Self::filter_lhs_sql(filter)),
+						[value],
+					)
+					.into_simple_expr()
+				}
+				(FilterOperator::In, FilterValue::Typed(value)) => {
+					col.is_in([database_value_to_query_value(
+						Self::typed_database_value(value)?.clone(),
+					)])
+				}
+				(FilterOperator::NotIn, FilterValue::Typed(value)) => {
+					col.is_not_in([database_value_to_query_value(
+						Self::typed_database_value(value)?.clone(),
+					)])
+				}
 				// NULL checks
 				(FilterOperator::Eq, FilterValue::Null) => col.is_null(),
 				(FilterOperator::Ne, FilterValue::Null) => col.is_not_null(),
 				(FilterOperator::IExact, FilterValue::String(s)) => {
 					Self::like_expr(filter, s, LikePattern::Exact, true)
 				}
-				(FilterOperator::IExact, v) => col.eq(Self::filter_value_to_sea_value(v)),
+				(FilterOperator::IExact, v) => col.eq(Self::filter_value_to_sea_value(v)?),
 				// Generic value comparisons (catch-all for other FilterValue types)
-				(FilterOperator::Eq, v) => col.eq(Self::filter_value_to_sea_value(v)),
-				(FilterOperator::Ne, v) => col.ne(Self::filter_value_to_sea_value(v)),
-				(FilterOperator::Gt, v) => col.gt(Self::filter_value_to_sea_value(v)),
-				(FilterOperator::Gte, v) => col.gte(Self::filter_value_to_sea_value(v)),
-				(FilterOperator::Lt, v) => col.lt(Self::filter_value_to_sea_value(v)),
-				(FilterOperator::Lte, v) => col.lte(Self::filter_value_to_sea_value(v)),
+				(FilterOperator::Eq, v) => col.eq(Self::filter_value_to_sea_value(v)?),
+				(FilterOperator::Ne, v) => col.ne(Self::filter_value_to_sea_value(v)?),
+				(FilterOperator::Gt, v) => col.gt(Self::filter_value_to_sea_value(v)?),
+				(FilterOperator::Gte, v) => col.gte(Self::filter_value_to_sea_value(v)?),
+				(FilterOperator::Lt, v) => col.lt(Self::filter_value_to_sea_value(v)?),
+				(FilterOperator::Lte, v) => col.lte(Self::filter_value_to_sea_value(v)?),
 				(FilterOperator::In, FilterValue::String(s)) => {
 					let values = Self::parse_array_string(s);
 					col.is_in(values)
@@ -2805,7 +2896,7 @@ where
 					values
 						.iter()
 						.map(Self::filter_value_to_sea_value)
-						.collect::<Vec<_>>(),
+						.collect::<reinhardt_core::exception::Result<Vec<_>>>()?,
 				),
 				(FilterOperator::NotIn, FilterValue::String(s)) => {
 					let values = Self::parse_array_string(s);
@@ -2818,7 +2909,7 @@ where
 					values
 						.iter()
 						.map(Self::filter_value_to_sea_value)
-						.collect::<Vec<_>>(),
+						.collect::<reinhardt_core::exception::Result<Vec<_>>>()?,
 				),
 				(FilterOperator::Contains, FilterValue::String(s)) => {
 					Self::like_expr(filter, s, LikePattern::Contains, false)
@@ -2863,8 +2954,8 @@ where
 				(FilterOperator::Range, FilterValue::Range(start, end)) => Expr::cust_with_values(
 					format!("{} BETWEEN ? AND ?", Self::filter_lhs_sql(filter)),
 					[
-						Self::filter_value_to_sea_value(start),
-						Self::filter_value_to_sea_value(end),
+						Self::filter_value_to_sea_value(start)?,
+						Self::filter_value_to_sea_value(end)?,
 					],
 				)
 				.into_simple_expr(),
@@ -3074,7 +3165,7 @@ where
 					// field @> ? - parameterized
 					Expr::cust_with_values(
 						format!("{} @> ?", Self::filter_lhs_sql(filter)),
-						[Self::filter_value_to_sea_value(v)],
+						[Self::filter_value_to_sea_value(v)?],
 					)
 					.into_simple_expr()
 				}
@@ -3097,7 +3188,7 @@ where
 				// Fallback for unsupported combinations
 				_ => {
 					// Default to equality for unhandled cases
-					col.eq(Self::filter_value_to_sea_value(&filter.value))
+					col.eq(Self::filter_value_to_sea_value(&filter.value)?)
 				}
 			};
 
@@ -3289,8 +3380,41 @@ where
 		.into_simple_expr()
 	}
 
-	fn filter_value_to_sea_value(v: &FilterValue) -> reinhardt_query::value::Value {
-		match v {
+	fn typed_database_value(
+		value: &Result<DatabaseValue, FieldCodecError>,
+	) -> reinhardt_core::exception::Result<&DatabaseValue> {
+		value.as_ref().map_err(|error| {
+			reinhardt_core::exception::Error::Other(
+				anyhow::Error::new(error.clone()).context("typed field codec failed"),
+			)
+		})
+	}
+
+	fn database_value_to_string(value: &DatabaseValue) -> String {
+		match value {
+			DatabaseValue::Null => String::new(),
+			DatabaseValue::Bool(value) => value.to_string(),
+			DatabaseValue::I32(value) => value.to_string(),
+			DatabaseValue::I64(value) => value.to_string(),
+			DatabaseValue::F32(value) => value.to_string(),
+			DatabaseValue::F64(value) => value.to_string(),
+			DatabaseValue::String(value) => value.clone(),
+			DatabaseValue::Bytes(value) => String::from_utf8_lossy(value).into_owned(),
+			DatabaseValue::Json(value) => value.to_string(),
+			DatabaseValue::Uuid(value) => value.to_string(),
+			DatabaseValue::Date(value) => value.to_string(),
+			DatabaseValue::Time(value) => value.to_string(),
+			DatabaseValue::DateTime(value) => value.to_rfc3339(),
+		}
+	}
+
+	fn filter_value_to_sea_value(
+		v: &FilterValue,
+	) -> reinhardt_core::exception::Result<reinhardt_query::value::Value> {
+		let value = match v {
+			FilterValue::Typed(value) => {
+				database_value_to_query_value(Self::typed_database_value(value)?.clone())
+			}
 			FilterValue::String(s) => {
 				// Try to parse as UUID first for proper PostgreSQL uuid column handling
 				if let Ok(uuid) = Uuid::parse_str(s) {
@@ -3307,13 +3431,13 @@ where
 			FilterValue::List(values) => values
 				.iter()
 				.map(Self::value_to_string)
-				.collect::<Vec<_>>()
+				.collect::<reinhardt_core::exception::Result<Vec<_>>>()?
 				.join(",")
 				.into(),
 			FilterValue::Range(start, end) => format!(
 				"{},{}",
-				Self::value_to_string(start),
-				Self::value_to_string(end)
+				Self::value_to_string(start)?,
+				Self::value_to_string(end)?
 			)
 			.into(),
 			// FieldRef, Expression, and OuterRef are typically handled separately
@@ -3321,14 +3445,18 @@ where
 			FilterValue::FieldRef(f) => f.field.clone().into(),
 			FilterValue::Expression(expr) => expr.to_sql().into(),
 			FilterValue::OuterRef(outer_ref) => outer_ref.field.clone().into(),
-		}
+		};
+		Ok(value)
 	}
 
 	/// Convert FilterValue to String representation
 	// Allow dead_code: internal conversion helper for filter value stringification in queries
 	#[allow(dead_code)]
-	fn value_to_string(v: &FilterValue) -> String {
-		match v {
+	fn value_to_string(v: &FilterValue) -> reinhardt_core::exception::Result<String> {
+		let value = match v {
+			FilterValue::Typed(value) => {
+				Self::database_value_to_string(Self::typed_database_value(value)?)
+			}
 			FilterValue::String(s) => s.clone(),
 			FilterValue::Integer(i) | FilterValue::Int(i) => i.to_string(),
 			FilterValue::Float(f) => f.to_string(),
@@ -3338,19 +3466,20 @@ where
 			FilterValue::List(values) => values
 				.iter()
 				.map(Self::value_to_string)
-				.collect::<Vec<_>>()
+				.collect::<reinhardt_core::exception::Result<Vec<_>>>()?
 				.join(","),
 			FilterValue::Range(start, end) => {
 				format!(
 					"{},{}",
-					Self::value_to_string(start),
-					Self::value_to_string(end)
+					Self::value_to_string(start)?,
+					Self::value_to_string(end)?
 				)
 			}
 			FilterValue::FieldRef(f) => f.field.clone(),
 			FilterValue::Expression(expr) => expr.to_sql(),
 			FilterValue::OuterRef(outer_ref) => outer_ref.field.clone(),
-		}
+		};
+		Ok(value)
 	}
 
 	/// Parse array string into `Vec<reinhardt_query::value::Value>`
@@ -3394,25 +3523,32 @@ where
 	/// Convert FilterValue to array of reinhardt_query::value::Value
 	// Allow dead_code: internal conversion for IN clause array parameter binding
 	#[allow(dead_code)]
-	fn value_to_array(v: &FilterValue) -> Vec<reinhardt_query::value::Value> {
-		match v {
+	fn value_to_array(
+		v: &FilterValue,
+	) -> reinhardt_core::exception::Result<Vec<reinhardt_query::value::Value>> {
+		let values = match v {
+			FilterValue::Typed(value) => vec![database_value_to_query_value(
+				Self::typed_database_value(value)?.clone(),
+			)],
 			FilterValue::String(s) => Self::parse_array_string(s),
 			FilterValue::Integer(i) | FilterValue::Int(i) => vec![(*i).into()],
 			FilterValue::Float(f) => vec![(*f).into()],
 			FilterValue::Boolean(b) | FilterValue::Bool(b) => vec![(*b).into()],
 			FilterValue::Null => vec![reinhardt_query::value::Value::Int(None)],
 			FilterValue::Array(arr) => arr.iter().map(|s| s.clone().into()).collect(),
-			FilterValue::List(values) => {
-				values.iter().map(Self::filter_value_to_sea_value).collect()
-			}
+			FilterValue::List(values) => values
+				.iter()
+				.map(Self::filter_value_to_sea_value)
+				.collect::<reinhardt_core::exception::Result<Vec<_>>>()?,
 			FilterValue::Range(start, end) => vec![
-				Self::filter_value_to_sea_value(start),
-				Self::filter_value_to_sea_value(end),
+				Self::filter_value_to_sea_value(start)?,
+				Self::filter_value_to_sea_value(end)?,
 			],
 			FilterValue::FieldRef(f) => vec![f.field.clone().into()],
 			FilterValue::Expression(expr) => vec![expr.to_sql().into()],
 			FilterValue::OuterRef(outer) => vec![outer.field.clone().into()],
-		}
+		};
+		Ok(values)
 	}
 
 	/// Build WHERE clause from accumulated filters
@@ -4668,7 +4804,7 @@ where
 	pub fn update_query(
 		&self,
 		updates: &HashMap<String, UpdateValue>,
-	) -> reinhardt_query::prelude::UpdateStatement {
+	) -> reinhardt_core::exception::Result<reinhardt_query::prelude::UpdateStatement> {
 		let mut stmt = Query::update();
 		stmt.table(Alias::new(T::table_name()));
 
@@ -4678,7 +4814,7 @@ where
 			if T::generated_field_names().contains(&field.as_str()) {
 				continue;
 			}
-			stmt.value_expr(Alias::new(field), Self::update_value_to_query_expr(value));
+			stmt.value_expr(Alias::new(field), Self::update_value_to_query_expr(value)?);
 			has_values = true;
 		}
 
@@ -4688,11 +4824,11 @@ where
 		}
 
 		// Add WHERE conditions
-		if let Some(cond) = self.build_where_condition_or_false() {
+		if let Some(cond) = self.build_where_condition()? {
 			stmt.cond_where(cond);
 		}
 
-		stmt.to_owned()
+		Ok(stmt.to_owned())
 	}
 
 	/// Generate an UPDATE statement for field assignments on rows matched by this `QuerySet`.
@@ -4799,7 +4935,7 @@ where
 		for assignment in assignments {
 			stmt.value_expr(
 				Alias::new(assignment.field()),
-				Self::update_value_to_query_expr(assignment.value()),
+				Self::update_value_to_query_expr(assignment.value())?,
 			);
 		}
 
@@ -4836,6 +4972,12 @@ where
 			)));
 		}
 
+		for assignment in assignments {
+			if let UpdateValue::Typed(value) = assignment.value() {
+				Self::typed_database_value(value)?;
+			}
+		}
+
 		Ok(())
 	}
 
@@ -4861,8 +5003,16 @@ where
 		}
 	}
 
-	fn update_value_to_query_expr(value: &UpdateValue) -> Expr {
-		match value {
+	fn update_value_to_query_expr(value: &UpdateValue) -> reinhardt_core::exception::Result<Expr> {
+		let expr = match value {
+			UpdateValue::Typed(Ok(value)) => {
+				Expr::val(database_value_to_query_value(value.clone()))
+			}
+			UpdateValue::Typed(Err(error)) => {
+				return Err(reinhardt_core::exception::Error::Other(
+					anyhow::Error::new(error.clone()).context("typed field codec failed"),
+				));
+			}
 			UpdateValue::String(s) => Expr::val(s.clone()),
 			UpdateValue::Integer(i) => Expr::val(*i),
 			UpdateValue::Float(f) => Expr::val(*f),
@@ -4876,7 +5026,8 @@ where
 			}
 			UpdateValue::FieldRef(f) => Expr::col(Alias::new(&f.field)),
 			UpdateValue::Expression(expr) => Self::expression_to_query_expr(expr),
-		}
+		};
+		Ok(expr)
 	}
 
 	/// Generate UPDATE SQL with WHERE clause and parameter binding
@@ -4913,19 +5064,22 @@ where
 	/// let mut updates = HashMap::new();
 	/// updates.insert("name".to_string(), UpdateValue::String("Alice".to_string()));
 	/// updates.insert("email".to_string(), UpdateValue::String("alice@example.com".to_string()));
-	/// let (sql, params) = queryset.update_sql(&updates);
+	/// let (sql, params) = queryset.update_sql(&updates).expect("update SQL should compile");
 	/// // sql: "UPDATE users SET name = $1, email = $2 WHERE id = $3"
 	/// // params: ["Alice", "alice@example.com", "1"]
 	/// ```
-	pub fn update_sql(&self, updates: &HashMap<String, UpdateValue>) -> (String, Vec<String>) {
-		let stmt = self.update_query(updates);
+	pub fn update_sql(
+		&self,
+		updates: &HashMap<String, UpdateValue>,
+	) -> reinhardt_core::exception::Result<(String, Vec<String>)> {
+		let stmt = self.update_query(updates)?;
 		use reinhardt_query::prelude::{PostgresQueryBuilder, QueryBuilder};
 		let (sql, values) = PostgresQueryBuilder.build_update(&stmt);
 		let params: Vec<String> = values
 			.iter()
 			.map(|v| Self::sea_value_to_string(v))
 			.collect();
-		(sql, params)
+		Ok((sql, params))
 	}
 
 	/// Convert reinhardt-query Value to String without SQL quoting
@@ -6476,7 +6630,10 @@ fn escape_like_pattern(value: &str) -> String {
 mod tests {
 	use super::{FilterCondition, MAX_FILTER_CONDITION_DEPTH};
 	use crate::orm::query::{FieldAssignment, UpdateValue};
-	use crate::orm::{FilterOperator, FilterValue, Manager, Model, QuerySet, query::Filter};
+	use crate::orm::{
+		DatabaseValue, FieldCodecError, FilterOperator, FilterValue, Manager, Model, QuerySet,
+		query::Filter,
+	};
 	use reinhardt_query::QueryBuilder;
 	use rstest::rstest;
 	use serde::{Deserialize, Serialize};
@@ -6516,7 +6673,8 @@ mod tests {
 			crate::orm::expressions::FieldRef::new("full_name")
 		}
 
-		const fn field_created_at() -> crate::orm::expressions::FieldRef<TestUser, String> {
+		const fn field_created_at()
+		-> crate::orm::expressions::FieldRef<TestUser, chrono::DateTime<chrono::Utc>> {
 			crate::orm::expressions::FieldRef::new("created_at")
 		}
 
@@ -6581,7 +6739,10 @@ mod tests {
 		let assignment: FieldAssignment = (TestUser::field_created_at(), timestamp).into();
 
 		assert_eq!(assignment.field(), "created_at");
-		assert!(matches!(assignment.value(), UpdateValue::Timestamp(_)));
+		assert!(matches!(
+			assignment.value(),
+			UpdateValue::Typed(Ok(DatabaseValue::DateTime(_)))
+		));
 	}
 
 	#[test]
@@ -6591,7 +6752,7 @@ mod tests {
 		assert_eq!(assignment.field(), "username");
 		assert!(matches!(
 			assignment.value(),
-			UpdateValue::String(value) if value == "alice"
+			UpdateValue::Typed(Ok(DatabaseValue::String(value))) if value == "alice"
 		));
 	}
 
@@ -6660,7 +6821,9 @@ mod tests {
 			UpdateValue::String("Alice Doe".to_string()),
 		);
 
-		let stmt = queryset.update_query(&updates);
+		let stmt = queryset
+			.update_query(&updates)
+			.expect("update query should compile");
 		let (sql, params) = super::PostgresQueryBuilder.build_update(&stmt);
 
 		assert_eq!(
@@ -6679,7 +6842,9 @@ mod tests {
 			UpdateValue::String("Alice Doe".to_string()),
 		);
 
-		let (sql, params) = queryset.update_sql(&updates);
+		let (sql, params) = queryset
+			.update_sql(&updates)
+			.expect("update SQL should compile");
 
 		assert_eq!(
 			sql,
@@ -6701,6 +6866,25 @@ mod tests {
 			reinhardt_core::exception::Error::Validation(message)
 				if message == "QuerySet::update_fields cannot assign generated field `full_name`"
 		));
+	}
+
+	#[test]
+	fn test_legacy_update_query_preserves_typed_codec_error() {
+		let queryset = QuerySet::<TestUser>::new().filter(TestUser::field_id().eq(7));
+		let mut updates = HashMap::new();
+		updates.insert(
+			"username".to_owned(),
+			UpdateValue::Typed(Err(FieldCodecError::Serialization(
+				"rejected update value".to_owned(),
+			))),
+		);
+
+		let error = queryset
+			.update_query(&updates)
+			.expect_err("typed codec error should stop legacy update compilation");
+		let source = std::error::Error::source(&error)
+			.expect("typed codec source should be preserved by update compilation");
+		assert!(source.downcast_ref::<FieldCodecError>().is_some());
 	}
 
 	#[tokio::test]
@@ -6825,7 +7009,9 @@ mod tests {
 			"username".to_string(),
 			UpdateValue::String("alice".to_string()),
 		);
-		let (sql, params) = queryset.update_sql(&updates);
+		let (sql, params) = queryset
+			.update_sql(&updates)
+			.expect("update SQL should compile");
 
 		assert_eq!(
 			sql,
@@ -6857,7 +7043,9 @@ mod tests {
 			"email".to_string(),
 			UpdateValue::String("bob@test.com".to_string()),
 		);
-		let (sql, params) = queryset.update_sql(&updates);
+		let (sql, params) = queryset
+			.update_sql(&updates)
+			.expect("update SQL should compile");
 
 		// HashMap iteration order is not guaranteed, so we check both possible orderings
 		let valid_sql_1 = "UPDATE \"test_users\" SET \"username\" = $1, \"email\" = $2 WHERE (\"id\" > $3 AND \"email\" LIKE $4 ESCAPE '\\')";
