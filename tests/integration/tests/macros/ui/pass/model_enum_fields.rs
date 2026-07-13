@@ -22,6 +22,13 @@ enum Priority {
 	High,
 }
 
+#[derive(ModelEnum, Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[model_enum(repr = "string")]
+enum Glyph {
+	#[model_enum(value = "é")]
+	AcuteE,
+}
+
 #[model(app_label = "jobs", table_name = "jobs")]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct Job {
@@ -32,7 +39,17 @@ struct Job {
 	priority: Option<Priority>,
 }
 
+#[model(app_label = "jobs", table_name = "glyphs")]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct GlyphRecord {
+	#[field(primary_key = true)]
+	id: i64,
+	#[field(max_length = 1)]
+	glyph: Glyph,
+}
+
 fn main() {
 	let _: FieldRef<Job, Status> = Job::field_status();
 	let _: FieldRef<Job, Option<Priority>> = Job::field_priority();
+	let _: FieldRef<GlyphRecord, Glyph> = GlyphRecord::field_glyph();
 }

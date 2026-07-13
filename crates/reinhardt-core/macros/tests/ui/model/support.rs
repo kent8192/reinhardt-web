@@ -332,14 +332,53 @@ pub mod db {
 			}
 		}
 
+		#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+		pub enum DatabaseStorageKind {
+			Bool,
+			I32,
+			I64,
+			F32,
+			F64,
+			String,
+			Bytes,
+			Json,
+			Uuid,
+			Date,
+			Time,
+			DateTime,
+		}
+
+		#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+		pub enum ModelEnumRepr {
+			String,
+			I32,
+		}
+
+		#[derive(Debug, Clone, PartialEq, Eq)]
+		pub enum ModelEnumValue {
+			String(String),
+			I32(i32),
+		}
+
+		#[derive(Debug, Clone, PartialEq, Eq)]
+		pub enum FieldDomain {
+			Enum {
+				repr: ModelEnumRepr,
+				values: Vec<ModelEnumValue>,
+			},
+		}
+
 		pub mod inspection {
 			use super::fields::FieldKwarg;
+			use super::{DatabaseStorageKind, FieldDomain};
 			use std::collections::HashMap;
 
 			#[derive(Debug, Clone, PartialEq)]
 			pub struct FieldInfo {
 				pub name: String,
 				pub field_type: String,
+				pub storage_kind: Option<DatabaseStorageKind>,
+				pub domain: Option<FieldDomain>,
 				pub nullable: bool,
 				pub primary_key: bool,
 				pub unique: bool,

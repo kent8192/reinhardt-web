@@ -2798,7 +2798,6 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 			#shared_info_output
 
 			#(
-				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 				#database_field_validations
 			)*
 
@@ -3312,9 +3311,7 @@ fn generate_field_metadata(
 				#orm_crate::inspection::FieldInfo {
 					name: #name.to_string(),
 					field_type: #field_type_path.to_string(),
-					storage_kind: ::core::option::Option::Some(
-						#orm_crate::DatabaseStorageKind::I32
-					),
+					storage_kind: ::core::option::Option::None,
 					domain: ::core::option::Option::None,
 					nullable: #nullable,
 					primary_key: false,
@@ -6162,6 +6159,67 @@ mod tests {
 		// Verify that fields are not pub
 		assert!(!output_str.contains("pub id"));
 		assert!(!output_str.contains("pub name"));
+	}
+
+	#[test]
+	fn test_database_field_validation_is_available_on_all_targets() {
+		let input = quote! {
+			#[model(app_label = "test", table_name = "test")]
+			pub struct TestModel {
+				#[field(primary_key = true)]
+				pub id: i64,
+				#[field(max_length = 1)]
+				pub status: Status,
+			}
+		};
+
+		let output = model_derive_impl(syn::parse2(input).unwrap()).unwrap();
+		let output_string = output.to_string();
+		let file: syn::File = syn::parse2(output).expect("model expansion should parse as a file");
+		let validation = file
+			.items
+			.iter()
+			.find_map(|item| {
+				let syn::Item::Const(item_const) = item else {
+					return None;
+				};
+				quote!(#item_const)
+					.to_string()
+					.contains("model enum value exceeds field max_length")
+					.then_some(item_const)
+			})
+			.unwrap_or_else(|| {
+				panic!(
+					"custom database field validation const should be generated: {output_string}"
+				)
+			});
+
+		assert!(
+			validation.attrs.is_empty(),
+			"database field schema validation must not be target-gated"
+		);
+	}
+
+	#[test]
+	fn test_foreign_key_metadata_does_not_guess_storage_kind() {
+		let field_info = ForeignKeyFieldInfo {
+			field_name: parse_quote! { owner },
+			target_type: parse_quote! { User },
+			id_column_name: "owner_id".to_string(),
+			related_name: None,
+			is_one_to_one: false,
+			rel_attr: RelAttribute::default(),
+		};
+
+		let metadata = generate_field_metadata(&[], &[field_info])
+			.expect("foreign key metadata should generate")
+			.into_iter()
+			.next()
+			.expect("foreign key metadata item should exist")
+			.to_string();
+
+		assert!(metadata.contains("storage_kind : :: core :: option :: Option :: None"));
+		assert!(metadata.contains("domain : :: core :: option :: Option :: None"));
 	}
 
 	#[test]

@@ -1044,6 +1044,8 @@ mod tests {
 		let field = FieldInfo {
 			name: "username".to_string(),
 			field_type: "CharField".to_string(),
+			storage_kind: None,
+			domain: None,
 			nullable: false,
 			primary_key: false,
 			unique: false,
@@ -1068,6 +1070,8 @@ mod tests {
 		let field_info = FieldInfo {
 			name: "publisher".to_string(),
 			field_type: "CharField".to_string(),
+			storage_kind: None,
+			domain: None,
 			nullable: false,
 			primary_key: false,
 			unique: false,
@@ -1093,6 +1097,8 @@ mod tests {
 		let field = FieldInfo {
 			name: "normalized_name".to_string(),
 			field_type: "CharField".to_string(),
+			storage_kind: None,
+			domain: None,
 			nullable: false,
 			primary_key: false,
 			unique: false,
@@ -1124,6 +1130,8 @@ mod tests {
 		let primary_key = FieldInfo {
 			name: "id".to_string(),
 			field_type: "IntegerField".to_string(),
+			storage_kind: None,
+			domain: None,
 			nullable: false,
 			primary_key: true,
 			unique: false,
@@ -1240,6 +1248,8 @@ mod tests {
 		let primary_key = FieldInfo {
 			name: "id".to_string(),
 			field_type: "IntegerField".to_string(),
+			storage_kind: None,
+			domain: None,
 			nullable: false,
 			primary_key: true,
 			unique: false,
@@ -1616,6 +1626,8 @@ mod tests {
 		let field_info = FieldInfo {
 			name: "author_id".to_string(),
 			field_type: "BigInteger".to_string(),
+			storage_kind: None,
+			domain: None,
 			nullable: true,
 			primary_key: false,
 			unique: false,
