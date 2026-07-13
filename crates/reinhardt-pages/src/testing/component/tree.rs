@@ -316,7 +316,8 @@ impl TestDom {
 	fn append_page(&mut self, parent: NodeId, page: Page) {
 		match page {
 			Page::Element(element) => {
-				let (tag, attrs, children, is_void, event_handlers) = element.into_parts();
+				let (tag, attrs, children, is_void, event_handlers, _control_binding) =
+					element.into_parts();
 				let attrs = attrs
 					.into_iter()
 					.map(|(name, value)| (name.into_owned(), value.into_owned()))

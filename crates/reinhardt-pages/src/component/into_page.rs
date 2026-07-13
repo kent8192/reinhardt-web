@@ -49,7 +49,8 @@ fn mount_inner(page: Page, parent: &Element) -> Result<(), MountError> {
 	match page {
 		Page::Element(el) => {
 			let doc = document();
-			let (tag, attrs, children, _is_void, event_handlers) = el.into_parts();
+			let (tag, attrs, children, _is_void, event_handlers, _control_binding) =
+				el.into_parts();
 
 			let element = doc
 				.create_element(&tag)

@@ -688,7 +688,8 @@ fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::No
 	match view {
 		Page::Element(el) => {
 			// Decompose the element to avoid ownership issues
-			let (tag, attrs, children, _is_void, event_handlers) = el.into_parts();
+			let (tag, attrs, children, _is_void, event_handlers, _control_binding) =
+				el.into_parts();
 
 			let element = document
 				.create_element(&tag)

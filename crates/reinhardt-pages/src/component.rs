@@ -56,6 +56,10 @@ pub(crate) use reactive_if::scope_reactive_node_store;
 pub use reactive_if::{ReactiveIfNode, ReactiveNode, store_reactive_node};
 #[cfg(wasm)]
 pub(crate) use reactive_if::{new_reactive_node_store, with_reactive_node_store};
+pub use reinhardt_core::types::page::{
+	ControlBinding, ControlBindingError, ControlKind, ControlValue, ControlWriteOutcome,
+	NumberParseError, NumberParseErrorKind, NumberValue,
+};
 pub use suspense::{ResourceTracker, SuspenseBoundary};
 pub use r#trait::Component;
 pub use view_transition::{

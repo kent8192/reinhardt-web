@@ -21,12 +21,18 @@
 //! let html = view.render_to_string();
 //! ```
 
+/// Controlled form-element binding descriptors.
+pub mod control_binding;
 pub mod event;
 pub mod head;
 #[cfg(native)]
 pub mod native_event;
 mod util;
 
+pub use control_binding::{
+	ControlBinding, ControlBindingError, ControlKind, ControlValue, ControlWriteOutcome,
+	NumberParseError, NumberParseErrorKind, NumberValue,
+};
 pub use event::{EventInterface, EventName, EventType};
 pub use head::{Head, LinkTag, MetaTag, ScriptTag, StyleTag};
 #[cfg(native)]
@@ -466,6 +472,8 @@ pub struct PageElement {
 	is_void: bool,
 	/// Event handlers attached to this element.
 	event_handlers: Vec<(EventName, PageEventHandler)>,
+	/// Optional controlled form-element binding.
+	control_binding: Option<ControlBinding>,
 }
 
 impl std::fmt::Debug for PageElement {
@@ -476,6 +484,7 @@ impl std::fmt::Debug for PageElement {
 			.field("children", &self.children)
 			.field("is_void", &self.is_void)
 			.field("event_handlers_count", &self.event_handlers.len())
+			.field("control_binding", &self.control_binding)
 			.finish()
 	}
 }
@@ -500,6 +509,7 @@ impl PageElement {
 			children: Vec::new(),
 			is_void,
 			event_handlers: Vec::new(),
+			control_binding: None,
 		}
 	}
 
@@ -583,6 +593,12 @@ impl PageElement {
 	/// Adds an event handler.
 	pub fn on(mut self, event_type: impl Into<EventName>, handler: PageEventHandler) -> Self {
 		self.event_handlers.push((event_type.into(), handler));
+		self
+	}
+
+	/// Attaches a controlled form-element binding.
+	pub fn control_binding(mut self, binding: ControlBinding) -> Self {
+		self.control_binding = Some(binding);
 		self
 	}
 
@@ -670,6 +686,11 @@ impl PageElement {
 		&self.event_handlers
 	}
 
+	/// Returns the controlled form-element binding, if present.
+	pub fn bound_control(&self) -> Option<&ControlBinding> {
+		self.control_binding.as_ref()
+	}
+
 	/// Consumes the element view and returns the children.
 	pub fn into_children(self) -> Vec<Page> {
 		self.children
@@ -682,7 +703,7 @@ impl PageElement {
 
 	/// Consumes the element view and returns all parts.
 	///
-	/// Returns a tuple of (tag, attrs, children, is_void, event_handlers).
+	/// Returns a tuple of (tag, attrs, children, is_void, event_handlers, control_binding).
 	#[allow(clippy::type_complexity)] // Tuple decomposition is intentional for destructuring
 	pub fn into_parts(
 		self,
@@ -692,6 +713,7 @@ impl PageElement {
 		Vec<Page>,
 		bool,
 		Vec<(EventName, PageEventHandler)>,
+		Option<ControlBinding>,
 	) {
 		(
 			self.tag,
@@ -699,6 +721,7 @@ impl PageElement {
 			self.children,
 			self.is_void,
 			self.event_handlers,
+			self.control_binding,
 		)
 	}
 }
