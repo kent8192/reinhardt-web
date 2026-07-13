@@ -27,7 +27,7 @@
 //! });
 //! ```
 
-use crate::reactive::Signal;
+use crate::reactive::{ReactiveScope, Signal};
 use std::cell::RefCell;
 use std::collections::HashSet;
 
@@ -60,9 +60,14 @@ pub const SESSION_KEY_USERNAME: &str = "_auth_username";
 /// Cookie name for session ID (matches reinhardt-auth).
 pub const SESSION_COOKIE_NAME: &str = "sessionid";
 
+struct AuthStateStore {
+	_scope: ReactiveScope,
+	state: AuthState,
+}
+
 thread_local! {
 	/// Global authentication state instance.
-	static AUTH_STATE: RefCell<Option<AuthState>> = const { RefCell::new(None) };
+	static AUTH_STATE: RefCell<Option<AuthStateStore>> = const { RefCell::new(None) };
 }
 
 /// Returns the global authentication state.
@@ -73,9 +78,18 @@ pub fn auth_state() -> AuthState {
 	AUTH_STATE.with(|state| {
 		let mut state = state.borrow_mut();
 		if state.is_none() {
-			*state = Some(AuthState::new());
+			let scope = ReactiveScope::new();
+			let auth_state = scope.enter(AuthState::new);
+			*state = Some(AuthStateStore {
+				_scope: scope,
+				state: auth_state,
+			});
 		}
-		state.clone().unwrap()
+		state
+			.as_ref()
+			.expect("authentication state must be initialized")
+			.state
+			.clone()
 	})
 }
 
@@ -608,6 +622,11 @@ pub fn clear_jwt_token() {
 mod tests {
 	use super::*;
 
+	fn clear_global_auth_state() {
+		let previous = AUTH_STATE.with(|state| state.borrow_mut().take());
+		drop(previous);
+	}
+
 	#[test]
 	fn test_auth_state_creation() {
 		reinhardt_core::reactive::ReactiveScope::run(|| {
@@ -701,6 +720,23 @@ mod tests {
 			state1.login("1", "test");
 			assert!(state2.is_authenticated());
 		});
+	}
+
+	#[test]
+	fn global_auth_state_outlives_initializer_scope() {
+		clear_global_auth_state();
+
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			auth_state().login("1", "test");
+		});
+
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let state = auth_state();
+			assert!(state.is_authenticated());
+			assert_eq!(state.username(), Some("test".to_string()));
+		});
+
+		clear_global_auth_state();
 	}
 
 	#[test]
