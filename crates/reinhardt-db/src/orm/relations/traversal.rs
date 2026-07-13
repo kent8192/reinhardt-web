@@ -303,8 +303,9 @@ impl RelationJoinGraph {
 	) {
 		let mut source_alias = self.root_alias.clone();
 		let mut force_downstream_left = false;
+		let mut reserved_aliases = HashSet::from([self.root_alias.clone()]);
+		reserved_aliases.extend(self.joins.iter().map(|join| join.alias.clone()));
 		for step in steps {
-			let alias = step_alias(&source_alias, step.name.as_ref(), &self.root_alias);
 			let requested_join_kind = if force_downstream_left {
 				RelationJoinKind::Left
 			} else {
@@ -326,6 +327,13 @@ impl RelationJoinGraph {
 				continue;
 			}
 
+			let alias = step_alias_with_reserved(
+				&source_alias,
+				step.name.as_ref(),
+				&self.root_alias,
+				&reserved_aliases,
+			);
+			reserved_aliases.insert(alias.clone());
 			self.joins.push(PlannedRelationJoin {
 				alias: alias.clone(),
 				relation_name: step.name.to_string(),
@@ -736,6 +744,25 @@ mod tests {
 		}
 	}
 
+	struct DocumentRelationNamedCorpusFileProject;
+
+	impl RelationDescriptor for DocumentRelationNamedCorpusFileProject {
+		type Source = Document;
+		type Target = Project;
+
+		fn steps() -> Vec<RelationStep> {
+			vec![RelationStep {
+				name: "corpus_file__project".into(),
+				source_table: "documents".into(),
+				target_table: "projects".into(),
+				source_column: "project_id".into(),
+				target_column: "id".into(),
+				default_join_kind: RelationJoinKind::Inner,
+				multiplicity: RelationMultiplicity::Single,
+			}]
+		}
+	}
+
 	struct ProjectNamedProjects;
 
 	impl RelationDescriptor for ProjectNamedProjects {
@@ -884,6 +911,25 @@ mod tests {
 		assert_eq!(joins[0].alias, "corpus_file");
 		assert_eq!(joins[1].source_alias, "corpus_file");
 		assert_eq!(joins[1].alias, "corpus_file__project__project");
+	}
+
+	#[test]
+	fn join_graph_reserves_aliases_while_adding_paths() {
+		let direct = RelationPath::<Document, Project>::from_descriptor::<
+			DocumentRelationNamedCorpusFileProject,
+		>();
+		let nested = RelationPath::<Document, CorpusFile>::from_descriptor::<DocumentCorpusFile>()
+			.then::<CorpusFileProject, Project>();
+		let mut graph = RelationJoinGraph::new("documents");
+
+		graph.add_path(&direct);
+		graph.add_path(&nested);
+
+		let joins = graph.joins();
+		assert_eq!(joins.len(), 3);
+		assert_eq!(joins[0].alias, "corpus_file__project");
+		assert_eq!(joins[1].alias, "corpus_file");
+		assert_eq!(joins[2].alias, "corpus_file__project__project");
 	}
 
 	#[test]
