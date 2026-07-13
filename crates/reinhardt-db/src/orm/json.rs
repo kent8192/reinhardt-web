@@ -1,6 +1,8 @@
 //! Typed JSON field wrapper for model fields.
 
 use super::model::Model;
+use super::{DatabaseStorageKind, DatabaseValue, FieldCodecError};
+use base64::Engine;
 use serde::de::value::{MapDeserializer, StringDeserializer};
 use serde::de::{IntoDeserializer, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::DeserializeOwned};
@@ -106,15 +108,13 @@ pub(crate) fn deserialize_model_row<M: Model>(
 	data: serde_json::Value,
 	mut json_null_fields: HashSet<String>,
 	mut native_json_fields: HashSet<String>,
-) -> Result<M, serde_json::Error> {
+) -> Result<M, FieldCodecError> {
 	let serde_json::Value::Object(mut fields) = data else {
-		return serde_json::from_value(data);
+		return serde_json::from_value(data)
+			.map_err(|error| FieldCodecError::Serialization(error.to_string()));
 	};
 
-	for field in M::field_metadata()
-		.into_iter()
-		.filter(|field| is_json_field_type(&field.field_type))
-	{
+	for field in M::field_metadata() {
 		let column_name = field.db_column_name().to_string();
 		let source_name = if fields.contains_key(&field.name) {
 			field.name.clone()
@@ -125,31 +125,104 @@ pub(crate) fn deserialize_model_row<M: Model>(
 			continue;
 		};
 
-		let was_native_json_null = json_null_fields.remove(&source_name);
-		let was_native_json = native_json_fields.remove(&source_name);
-		let was_json_text = stored_value.is_string() && !was_native_json;
+		let is_json = is_json_field_type(&field.field_type);
+		let was_native_json_null = is_json && json_null_fields.remove(&source_name);
+		let was_native_json = is_json && native_json_fields.remove(&source_name);
+		let was_json_text = is_json && stored_value.is_string() && !was_native_json;
 		let parsed_value = match stored_value {
-			serde_json::Value::String(text) if !was_native_json => serde_json::from_str(&text)
-				.map_err(|error| {
-					<serde_json::Error as serde::de::Error>::custom(format!(
+			serde_json::Value::String(text) if is_json && !was_native_json => {
+				serde_json::from_str(&text).map_err(|error| {
+					FieldCodecError::Serialization(format!(
 						"Failed to hydrate JSON field {}.{} from column '{}': {}",
 						M::table_name(),
 						field.name,
 						field.db_column_name(),
 						error
 					))
-				})?,
+				})?
+			}
 			value => value,
 		};
 
-		if field.nullable && parsed_value.is_null() && (was_native_json_null || was_json_text) {
+		let database_value = database_value_from_json(parsed_value, field.storage_kind)?;
+		let decoded_value = M::decode_database_field(&field.name, database_value)?;
+		if field.nullable && decoded_value.is_null() && (was_native_json_null || was_json_text) {
 			json_null_fields.insert(field.name.clone());
 		}
 
-		fields.insert(field.name.clone(), parsed_value);
+		fields.insert(field.name.clone(), decoded_value);
 	}
 
 	deserialize_model_value(serde_json::Value::Object(fields), &json_null_fields)
+		.map_err(|error| FieldCodecError::Serialization(error.to_string()))
+}
+
+fn database_value_from_json(
+	value: serde_json::Value,
+	storage_kind: Option<DatabaseStorageKind>,
+) -> Result<DatabaseValue, FieldCodecError> {
+	if value.is_null() {
+		return Ok(DatabaseValue::Null);
+	}
+
+	match storage_kind {
+		Some(DatabaseStorageKind::Bool) => serde_json::from_value(value)
+			.map(DatabaseValue::Bool)
+			.map_err(|error| FieldCodecError::Serialization(error.to_string())),
+		Some(DatabaseStorageKind::I32) => serde_json::from_value(value)
+			.map(DatabaseValue::I32)
+			.map_err(|error| FieldCodecError::Serialization(error.to_string())),
+		Some(DatabaseStorageKind::I64) => serde_json::from_value(value)
+			.map(DatabaseValue::I64)
+			.map_err(|error| FieldCodecError::Serialization(error.to_string())),
+		Some(DatabaseStorageKind::F32) => serde_json::from_value(value)
+			.map(DatabaseValue::F32)
+			.map_err(|error| FieldCodecError::Serialization(error.to_string())),
+		Some(DatabaseStorageKind::F64) => serde_json::from_value(value)
+			.map(DatabaseValue::F64)
+			.map_err(|error| FieldCodecError::Serialization(error.to_string())),
+		Some(DatabaseStorageKind::String) => serde_json::from_value(value)
+			.map(DatabaseValue::String)
+			.map_err(|error| FieldCodecError::Serialization(error.to_string())),
+		Some(DatabaseStorageKind::Bytes) => serde_json::from_value::<String>(value)
+			.map_err(|error| FieldCodecError::Serialization(error.to_string()))
+			.and_then(|value| {
+				base64::engine::general_purpose::STANDARD
+					.decode(value)
+					.map(DatabaseValue::Bytes)
+					.map_err(|error| FieldCodecError::Serialization(error.to_string()))
+			}),
+		Some(DatabaseStorageKind::Json) => Ok(DatabaseValue::Json(value)),
+		Some(DatabaseStorageKind::Uuid) => serde_json::from_value::<String>(value)
+			.map_err(|error| FieldCodecError::Serialization(error.to_string()))
+			.and_then(|value| {
+				uuid::Uuid::parse_str(&value)
+					.map(DatabaseValue::Uuid)
+					.map_err(|error| FieldCodecError::Serialization(error.to_string()))
+			}),
+		Some(DatabaseStorageKind::Date) => serde_json::from_value::<String>(value)
+			.map_err(|error| FieldCodecError::Serialization(error.to_string()))
+			.and_then(|value| {
+				chrono::NaiveDate::parse_from_str(&value, "%Y-%m-%d")
+					.map(DatabaseValue::Date)
+					.map_err(|error| FieldCodecError::Serialization(error.to_string()))
+			}),
+		Some(DatabaseStorageKind::Time) => serde_json::from_value::<String>(value)
+			.map_err(|error| FieldCodecError::Serialization(error.to_string()))
+			.and_then(|value| {
+				chrono::NaiveTime::parse_from_str(&value, "%H:%M:%S%.f")
+					.map(DatabaseValue::Time)
+					.map_err(|error| FieldCodecError::Serialization(error.to_string()))
+			}),
+		Some(DatabaseStorageKind::DateTime) => serde_json::from_value::<String>(value)
+			.map_err(|error| FieldCodecError::Serialization(error.to_string()))
+			.and_then(|value| {
+				chrono::DateTime::parse_from_rfc3339(&value)
+					.map(|value| DatabaseValue::DateTime(value.with_timezone(&chrono::Utc)))
+					.map_err(|error| FieldCodecError::Serialization(error.to_string()))
+			}),
+		None => DatabaseValue::try_from_json_value(value),
+	}
 }
 
 pub(crate) fn deserialize_model_value<M: Model>(

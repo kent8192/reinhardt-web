@@ -69,6 +69,8 @@ impl std::error::Error for SessionError {}
 struct IdentityEntry {
 	/// The serialized object data
 	data: Value,
+	/// Canonical database field data used by type-erased flush processing.
+	database_data: Value,
 	/// Type ID for runtime type checking
 	type_id: TypeId,
 	/// Model field metadata used by type-erased flush processing
@@ -225,6 +227,7 @@ impl Session {
 
 		let data = serde_json::to_value(&obj)
 			.map_err(|e| SessionError::SerializationError(e.to_string()))?;
+		let database_data = encode_model_database_data(&obj)?;
 		let field_metadata = T::field_metadata();
 		let sql_null_json_fields = field_metadata
 			.iter()
@@ -240,6 +243,7 @@ impl Session {
 			key.clone(),
 			IdentityEntry {
 				data,
+				database_data,
 				type_id: TypeId::of::<T>(),
 				field_metadata,
 				sql_null_json_fields,
@@ -478,13 +482,19 @@ impl Session {
 		let data = serde_json::Value::Object(json_map);
 		let json_null_fields =
 			json_null_fields_for_data(&data, &field_metadata, &sql_null_json_fields);
-		let obj: T =
-			super::json::deserialize_model_value(data, &json_null_fields).map_err(|e| {
-				SessionError::SerializationError(format!(
-					"Failed to deserialize query result: {}",
-					e
-				))
-			})?;
+		let native_json_fields = field_metadata
+			.iter()
+			.filter(|field| is_json_field_type(&field.field_type))
+			.map(|field| field.name.clone())
+			.collect();
+		let obj: T = super::json::deserialize_model_row(
+			data.clone(),
+			json_null_fields.clone(),
+			native_json_fields,
+		)
+		.map_err(|e| {
+			SessionError::SerializationError(format!("Failed to deserialize query result: {}", e))
+		})?;
 
 		// Add to identity map
 		let obj_data = serde_json::to_value(&obj)
@@ -494,6 +504,7 @@ impl Session {
 			key.clone(),
 			IdentityEntry {
 				data: obj_data,
+				database_data: data,
 				type_id: TypeId::of::<T>(),
 				field_metadata: field_metadata.clone(),
 				sql_null_json_fields,
@@ -747,13 +758,19 @@ impl Session {
 			let data = serde_json::Value::Object(json_map);
 			let json_null_fields =
 				json_null_fields_for_data(&data, &field_metadata, &sql_null_json_fields);
+			let native_json_fields = field_metadata
+				.iter()
+				.filter(|field| is_json_field_type(&field.field_type))
+				.map(|field| field.name.clone())
+				.collect();
 			let obj: T =
-				super::json::deserialize_model_value(data, &json_null_fields).map_err(|e| {
-					SessionError::SerializationError(format!(
-						"Failed to deserialize query result: {}",
-						e
-					))
-				})?;
+				super::json::deserialize_model_row(data, json_null_fields, native_json_fields)
+					.map_err(|e| {
+						SessionError::SerializationError(format!(
+							"Failed to deserialize query result: {}",
+							e
+						))
+					})?;
 
 			results.push(obj);
 		}
@@ -846,7 +863,7 @@ impl Session {
 				let table_name = parts[0];
 
 				// Extract data from JSON
-				if let Some(obj) = entry.data.as_object() {
+				if let Some(obj) = entry.database_data.as_object() {
 					// Check if this is an INSERT (no primary key) or UPDATE (has primary key)
 					// The "id" field must exist AND not be null for UPDATE
 					let has_pk = obj.get("id").map(|v| !v.is_null()).unwrap_or(false);
@@ -1053,6 +1070,9 @@ impl Session {
 		if let Some(mut entry) = self.identity_map.remove(old_key) {
 			// JSON update
 			if let Some(obj) = entry.data.as_object_mut() {
+				obj.insert("id".to_string(), serde_json::Value::from(generated_id));
+			}
+			if let Some(obj) = entry.database_data.as_object_mut() {
 				obj.insert("id".to_string(), serde_json::Value::from(generated_id));
 			}
 
@@ -1460,6 +1480,21 @@ fn describe_row_context(
 
 fn find_field_info<'a>(field_metadata: &'a [FieldInfo], field_name: &str) -> Option<&'a FieldInfo> {
 	field_metadata.iter().find(|field| field.name == field_name)
+}
+
+fn encode_model_database_data<T: Model>(model: &T) -> Result<Value, SessionError> {
+	model
+		.encode_database_fields()
+		.map_err(|error| SessionError::SerializationError(error.to_string()))?
+		.into_iter()
+		.map(|(name, value)| {
+			value
+				.into_json_value()
+				.map(|value| (name, value))
+				.map_err(|error| SessionError::SerializationError(error.to_string()))
+		})
+		.collect::<Result<serde_json::Map<_, _>, _>>()
+		.map(Value::Object)
 }
 
 fn flush_column_name<'a>(field_name: &'a str, field_info: Option<&'a FieldInfo>) -> &'a str {

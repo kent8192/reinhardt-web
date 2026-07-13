@@ -1,5 +1,19 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
+
+use super::{DatabaseValue, FieldCodecError};
+
+/// JSON carrier used only for final whole-model assembly after field decoding.
+#[doc(hidden)]
+pub type ModelFieldJsonValue = serde_json::Value;
+
+/// Serializes a decoded typed database field for final model assembly.
+#[doc(hidden)]
+pub fn serialize_decoded_database_field<T: Serialize>(
+	value: T,
+) -> Result<ModelFieldJsonValue, FieldCodecError> {
+	serde_json::to_value(value).map_err(|error| FieldCodecError::Serialization(error.to_string()))
+}
 
 /// Trait for type-safe field selectors
 ///
@@ -100,6 +114,36 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 			}
 			_ => false,
 		}
+	}
+
+	/// Encodes model fields into their canonical database representations.
+	///
+	/// Macro-generated models override this method with typed field codecs.
+	/// This serde-based implementation preserves compatibility for manual model
+	/// implementations.
+	fn encode_database_fields(&self) -> Result<BTreeMap<String, DatabaseValue>, FieldCodecError> {
+		let value = serde_json::to_value(self)
+			.map_err(|error| FieldCodecError::Serialization(error.to_string()))?;
+		let fields = value.as_object().ok_or_else(|| {
+			FieldCodecError::Serialization("model must serialize to an object".to_owned())
+		})?;
+
+		fields
+			.iter()
+			.map(|(name, value)| {
+				DatabaseValue::try_from_json_value(value.clone()).map(|value| (name.clone(), value))
+			})
+			.collect()
+	}
+
+	/// Decodes one canonical database value for final model assembly.
+	///
+	/// Macro-generated models override this method with typed field codecs.
+	fn decode_database_field(
+		_field_name: &str,
+		value: DatabaseValue,
+	) -> Result<serde_json::Value, FieldCodecError> {
+		value.into_json_value()
 	}
 
 	/// Get field metadata for inspection

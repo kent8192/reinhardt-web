@@ -2789,6 +2789,43 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 		.filter(|field| field.config.generated.is_some() || field.config.generated_sql.is_some())
 		.map(|field| LitStr::new(&field.name.to_string(), field.name.span()))
 		.collect();
+	let database_codec_fields: Vec<_> = field_infos
+		.iter()
+		.filter(|field| !field.injected_relation_serde_skip)
+		.collect();
+	let encode_database_fields = database_codec_fields.iter().map(|field| {
+		let field_name = &field.name;
+		let field_ty = &field.ty;
+		quote! {
+			fields.insert(
+				stringify!(#field_name).to_string(),
+				<<#field_ty as #orm_crate::DatabaseField>::Storage as #orm_crate::DatabaseScalar>::into_database_value(
+					<#field_ty as #orm_crate::DatabaseField>::encode_database(&self.#field_name)?
+				),
+			);
+		}
+	});
+	let decode_database_fields = database_codec_fields.iter().map(|field| {
+		let field_name = &field.name;
+		let field_ty = &field.ty;
+		let column_name = field
+			.config
+			.db_column
+			.clone()
+			.unwrap_or_else(|| field_name.to_string());
+		quote! {
+			stringify!(#field_name) => {
+				let storage = <<#field_ty as #orm_crate::DatabaseField>::Storage as #orm_crate::DatabaseScalar>::from_database_value(value)?;
+				let context = #orm_crate::FieldCodecContext::new(
+					stringify!(#struct_name),
+					stringify!(#field_name),
+					#column_name,
+				);
+				let decoded = <#field_ty as #orm_crate::DatabaseField>::decode_database(storage, &context)?;
+				#orm_crate::model::serialize_decoded_database_field(decoded)
+			}
+		}
+	});
 
 	// Generate the Model implementation
 	let expanded = quote! {
@@ -2861,6 +2898,27 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 				match field_name {
 					#(#field_is_none_arms)*
 					_ => false,
+				}
+			}
+
+			fn encode_database_fields(
+				&self,
+			) -> ::core::result::Result<
+				::std::collections::BTreeMap<::std::string::String, #orm_crate::DatabaseValue>,
+				#orm_crate::FieldCodecError,
+			> {
+				let mut fields = ::std::collections::BTreeMap::new();
+				#(#encode_database_fields)*
+				::core::result::Result::Ok(fields)
+			}
+
+			fn decode_database_field(
+				field_name: &str,
+				value: #orm_crate::DatabaseValue,
+			) -> ::core::result::Result<#orm_crate::model::ModelFieldJsonValue, #orm_crate::FieldCodecError> {
+				match field_name {
+					#(#decode_database_fields,)*
+					_ => value.into_json_value(),
 				}
 			}
 

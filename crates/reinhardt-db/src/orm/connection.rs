@@ -93,7 +93,7 @@ impl QueryRow {
 		}
 	}
 
-	pub(crate) fn deserialize_model<M: super::Model>(&self) -> Result<M, serde_json::Error> {
+	pub(crate) fn deserialize_model<M: super::Model>(&self) -> Result<M, super::FieldCodecError> {
 		super::json::deserialize_model_row::<M>(
 			self.data.clone(),
 			self.json_null_fields.clone(),

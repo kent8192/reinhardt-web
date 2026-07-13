@@ -4122,11 +4122,8 @@ where
 		};
 		rows.into_iter()
 			.map(|row| {
-				row.deserialize_model::<T>().map_err(|e| {
-					reinhardt_core::exception::Error::Database(format!(
-						"Deserialization error: {}",
-						e
-					))
+				row.deserialize_model::<T>().map_err(|error| {
+					reinhardt_core::exception::Error::Other(anyhow::Error::new(error))
 				})
 			})
 			.collect()
@@ -4371,11 +4368,8 @@ where
 		};
 		rows.into_iter()
 			.map(|row| {
-				row.deserialize_model::<T>().map_err(|e| {
-					reinhardt_core::exception::Error::Database(format!(
-						"Deserialization error: {}",
-						e
-					))
+				row.deserialize_model::<T>().map_err(|error| {
+					reinhardt_core::exception::Error::Other(anyhow::Error::new(error))
 				})
 			})
 			.collect()

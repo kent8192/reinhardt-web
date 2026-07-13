@@ -1,6 +1,6 @@
 use super::connection::{DatabaseBackend, DatabaseConnection};
 use super::inspection::FieldInfo;
-use super::{Model, QuerySet};
+use super::{DatabaseValue, FieldCodecError, Model, QuerySet};
 use reinhardt_query::prelude::{
 	Alias, ColumnRef, DeleteStatement, Expr, ExprTrait, Func, InsertStatement, MySqlQueryBuilder,
 	PostgresQueryBuilder, Query, QueryBuilder, SelectStatement, SqliteQueryBuilder,
@@ -232,6 +232,21 @@ impl<M: Model> Manager<M> {
 		M::generated_field_names().contains(&field)
 	}
 
+	fn field_column<'a>(field_metadata: &'a [FieldInfo], field_name: &'a str) -> &'a str {
+		find_field_info(field_metadata, field_name)
+			.map(FieldInfo::db_column_name)
+			.unwrap_or(field_name)
+	}
+
+	fn database_fields_to_object(
+		fields: std::collections::BTreeMap<String, DatabaseValue>,
+	) -> Result<serde_json::Map<String, serde_json::Value>, FieldCodecError> {
+		fields
+			.into_iter()
+			.map(|(name, value)| value.into_json_value().map(|value| (name, value)))
+			.collect()
+	}
+
 	fn returning_columns_from_object(
 		obj: &serde_json::Map<String, serde_json::Value>,
 	) -> Vec<Alias> {
@@ -242,7 +257,11 @@ impl<M: Model> Manager<M> {
 			let pk = columns.remove(index);
 			columns.insert(0, pk);
 		}
-		columns.into_iter().map(Alias::new).collect()
+		let field_metadata = M::field_metadata();
+		columns
+			.into_iter()
+			.map(|column| Alias::new(Self::field_column(&field_metadata, column)))
+			.collect()
 	}
 
 	fn build_update_statement_from_object(
@@ -260,25 +279,30 @@ impl<M: Model> Manager<M> {
 			key != M::primary_key_field() && !Self::is_generated_field(key)
 		}) {
 			let field_info = find_field_info(&field_metadata, k);
+			let column_name = Self::field_column(&field_metadata, k);
 			if field_info
 				.map(|field| super::json::is_json_field_type(&field.field_type))
 				.unwrap_or(false)
 			{
 				stmt.value(
-					Alias::new(k.as_str()),
+					Alias::new(column_name),
 					Self::json_to_sea_value_for_field(v, field_info, field_is_none(k)),
 				);
 			} else if v.is_null() {
-				stmt.value_expr(Alias::new(k.as_str()), Expr::cust("NULL"));
+				stmt.value_expr(Alias::new(column_name), Expr::cust("NULL"));
 			} else {
-				stmt.value(Alias::new(k.as_str()), Self::json_to_sea_value(v));
+				stmt.value(Alias::new(column_name), Self::json_to_sea_value(v));
 			}
 			has_values = true;
 		}
 
 		if !has_values {
 			let primary_key = M::primary_key_field();
-			stmt.value_expr(Alias::new(primary_key), Expr::col(Alias::new(primary_key)));
+			let primary_key_column = Self::field_column(&field_metadata, primary_key);
+			stmt.value_expr(
+				Alias::new(primary_key_column),
+				Expr::col(Alias::new(primary_key_column)),
+			);
 		}
 
 		let pk_str = pk.to_string();
@@ -289,7 +313,8 @@ impl<M: Model> Manager<M> {
 		} else {
 			reinhardt_query::value::Value::String(Some(Box::new(pk_str)))
 		};
-		stmt.and_where(Expr::col(Alias::new(M::primary_key_field())).eq(pk_value));
+		let primary_key_column = Self::field_column(&field_metadata, M::primary_key_field());
+		stmt.and_where(Expr::col(Alias::new(primary_key_column)).eq(pk_value));
 
 		stmt.returning(Self::returning_columns_from_object(obj));
 		stmt
@@ -333,7 +358,7 @@ impl<M: Model> Manager<M> {
 			.map(|(k, v)| {
 				let field_info = find_field_info(&field_metadata, k);
 				let value = Self::json_to_sea_value_for_field(v, field_info, field_is_none(k));
-				(Alias::new(k.as_str()), value)
+				(Alias::new(Self::field_column(&field_metadata, k)), value)
 			})
 			.unzip();
 
@@ -849,20 +874,18 @@ impl<M: Model> Manager<M> {
 		conn: &DatabaseConnection,
 		model: &M,
 	) -> reinhardt_core::exception::Result<M> {
-		let json = serde_json::to_value(model)
-			.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))?;
-
-		// Extract fields and values from model
-		let obj = json.as_object().ok_or_else(|| {
-			reinhardt_core::exception::Error::Database("Model must serialize to object".to_string())
-		})?;
+		let obj =
+			Self::database_fields_to_object(model.encode_database_fields().map_err(|error| {
+				reinhardt_core::exception::Error::Other(anyhow::Error::new(error))
+			})?)
+			.map_err(|error| reinhardt_core::exception::Error::Other(anyhow::Error::new(error)))?;
 
 		let mut stmt =
-			Self::build_insert_statement_from_object(obj, |field| model.field_is_none(field))?;
+			Self::build_insert_statement_from_object(&obj, |field| model.field_is_none(field))?;
 
 		// Add RETURNING clause with explicit column names from JSON object
 		// Note: Using Asterisk in columns() may not work correctly with reinhardt-query
-		stmt.returning(Self::returning_columns_from_object(obj));
+		stmt.returning(Self::returning_columns_from_object(&obj));
 
 		let (sql, values) = build_insert_sql(&stmt, conn.backend());
 		let values: Vec<_> = values
@@ -875,7 +898,7 @@ impl<M: Model> Manager<M> {
 
 		// row.data is already serde_json::Value::Object so deserialize directly
 		row.deserialize_model::<M>()
-			.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))
+			.map_err(|error| reinhardt_core::exception::Error::Other(anyhow::Error::new(error)))
 	}
 
 	fn json_to_sea_value_for_field(
@@ -1091,15 +1114,14 @@ impl<M: Model> Manager<M> {
 			reinhardt_core::exception::Error::Database("Model must have primary key".to_string())
 		})?;
 
-		let json = serde_json::to_value(model)
-			.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))?;
-
-		let obj = json.as_object().ok_or_else(|| {
-			reinhardt_core::exception::Error::Database("Model must serialize to object".to_string())
-		})?;
+		let obj =
+			Self::database_fields_to_object(model.encode_database_fields().map_err(|error| {
+				reinhardt_core::exception::Error::Other(anyhow::Error::new(error))
+			})?)
+			.map_err(|error| reinhardt_core::exception::Error::Other(anyhow::Error::new(error)))?;
 
 		let stmt =
-			Self::build_update_statement_from_object(&pk, obj, |field| model.field_is_none(field));
+			Self::build_update_statement_from_object(&pk, &obj, |field| model.field_is_none(field));
 
 		let (sql, values) = build_update_sql(&stmt, conn.backend());
 		let values: Vec<_> = values
@@ -1111,7 +1133,7 @@ impl<M: Model> Manager<M> {
 		let row = conn.query_one(&sql, values).await?;
 		// row.data is already serde_json::Value::Object so deserialize directly
 		row.deserialize_model::<M>()
-			.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))
+			.map_err(|error| reinhardt_core::exception::Error::Other(anyhow::Error::new(error)))
 	}
 
 	/// Delete a record using reinhardt-query for SQL injection protection
@@ -1236,23 +1258,31 @@ impl<M: Model> Manager<M> {
 
 	/// Bulk create multiple records using reinhardt-query (similar to Django's bulk_create())
 	pub fn bulk_create_query(&self, models: &[M]) -> Option<InsertStatement> {
+		self.try_bulk_create_query(models).ok().flatten()
+	}
+
+	fn try_bulk_create_query(
+		&self,
+		models: &[M],
+	) -> Result<Option<InsertStatement>, FieldCodecError> {
 		if models.is_empty() {
-			return None;
+			return Ok(None);
 		}
 
-		// Convert all models to JSON and extract field names from first model
-		let json_values: Vec<serde_json::Value> = models
+		let json_values: Vec<serde_json::Map<String, serde_json::Value>> = models
 			.iter()
-			.map(serde_json::to_value)
-			.collect::<Result<_, _>>()
-			.ok()?;
+			.map(|model| {
+				model
+					.encode_database_fields()
+					.and_then(Self::database_fields_to_object)
+			})
+			.collect::<Result<_, _>>()?;
 
 		if json_values.is_empty() {
-			return None;
+			return Ok(None);
 		}
 
-		// Get field names from first model
-		let first_obj = json_values[0].as_object()?;
+		let first_obj = &json_values[0];
 
 		let primary_key = M::primary_key_field();
 		let field_names: Vec<String> = first_obj
@@ -1267,12 +1297,13 @@ impl<M: Model> Manager<M> {
 				}
 			})
 			.collect();
+		let field_metadata = M::field_metadata();
 		let fields: Vec<_> = field_names
 			.iter()
-			.map(|name| Alias::new(name.as_str()))
+			.map(|name| Alias::new(Self::field_column(&field_metadata, name)))
 			.collect();
 		if fields.is_empty() {
-			return None;
+			return Ok(None);
 		}
 
 		// Build reinhardt-query INSERT statement
@@ -1280,13 +1311,11 @@ impl<M: Model> Manager<M> {
 		stmt.into_table(Alias::new(M::table_name())).columns(fields);
 
 		// Add value rows for each model
-		let field_metadata = M::field_metadata();
-		for (model, val) in models.iter().zip(&json_values) {
-			if let Some(obj) = val.as_object() {
-				let values: Vec<reinhardt_query::value::Value> = field_names
-					.iter()
-					.map(|field| {
-						obj.get(field.as_str())
+		for (model, obj) in models.iter().zip(&json_values) {
+			let values: Vec<reinhardt_query::value::Value> = field_names
+				.iter()
+				.map(|field| {
+					obj.get(field.as_str())
 							.map(|value| {
 								Self::json_to_sea_value_for_field(
 									value,
@@ -1296,13 +1325,12 @@ impl<M: Model> Manager<M> {
 							})
 							// Use untyped NULL for missing fields
 							.unwrap_or(reinhardt_query::value::Value::Int(None))
-					})
-					.collect();
-				stmt.values_panic(values);
-			}
+				})
+				.collect();
+			stmt.values_panic(values);
 		}
 
-		Some(stmt.to_owned())
+		Ok(Some(stmt.to_owned()))
 	}
 
 	/// Generate bulk create SQL (convenience method)
@@ -1368,9 +1396,9 @@ impl<M: Model> Manager<M> {
 
 		if let Ok(Some(row)) = conn.query_optional(&select_sql, vec![]).await {
 			// row.data is already serde_json::Value::Object so deserialize directly
-			let model: M = row
-				.deserialize_model()
-				.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))?;
+			let model: M = row.deserialize_model().map_err(|error| {
+				reinhardt_core::exception::Error::Other(anyhow::Error::new(error))
+			})?;
 			return Ok((model, false));
 		}
 
@@ -1394,7 +1422,7 @@ impl<M: Model> Manager<M> {
 		// row.data is already serde_json::Value::Object so deserialize directly
 		let model: M = row
 			.deserialize_model()
-			.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))?;
+			.map_err(|error| reinhardt_core::exception::Error::Other(anyhow::Error::new(error)))?;
 
 		Ok((model, true))
 	}
@@ -1430,7 +1458,10 @@ impl<M: Model> Manager<M> {
 		let mut results = Vec::new();
 
 		for chunk in models.chunks(batch_size) {
-			let Some(mut statement) = self.bulk_create_query(chunk) else {
+			let Some(mut statement) = self.try_bulk_create_query(chunk).map_err(|error| {
+				reinhardt_core::exception::Error::Other(anyhow::Error::new(error))
+			})?
+			else {
 				continue;
 			};
 			if !ignore_conflicts {
@@ -1461,9 +1492,9 @@ impl<M: Model> Manager<M> {
 			} else {
 				let rows = conn.query(&sql, values).await?;
 				for row in rows {
-					let model: M = row
-						.deserialize_model()
-						.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))?;
+					let model: M = row.deserialize_model().map_err(|error| {
+						reinhardt_core::exception::Error::Other(anyhow::Error::new(error))
+					})?;
 					results.push(model);
 				}
 			}
@@ -1501,10 +1532,20 @@ impl<M: Model> Manager<M> {
 			// Build updates structure
 			let updates: Vec<(M::PrimaryKey, HashMap<String, serde_json::Value>)> = chunk
 				.iter()
-				.filter_map(|model| {
-					let pk = model.primary_key()?.clone();
-					let json = serde_json::to_value(model).ok()?;
-					let obj = json.as_object()?;
+				.map(|model| {
+					let pk = model.primary_key().ok_or_else(|| {
+						reinhardt_core::exception::Error::Database(
+							"Bulk update model must have primary key".to_string(),
+						)
+					})?;
+					let obj = Self::database_fields_to_object(
+						model.encode_database_fields().map_err(|error| {
+							reinhardt_core::exception::Error::Other(anyhow::Error::new(error))
+						})?,
+					)
+					.map_err(|error| {
+						reinhardt_core::exception::Error::Other(anyhow::Error::new(error))
+					})?;
 
 					let mut field_map = HashMap::new();
 					for field in fields
@@ -1516,9 +1557,9 @@ impl<M: Model> Manager<M> {
 						}
 					}
 
-					Some((pk, field_map))
+					Ok((pk, field_map))
 				})
-				.collect();
+				.collect::<reinhardt_core::exception::Result<_>>()?;
 
 			if !updates.is_empty() {
 				let sql = self.bulk_update_sql_detailed(&updates, &fields, conn.backend());
@@ -1678,6 +1719,8 @@ impl<M: Model> Manager<M> {
 		}
 
 		let table_name = M::table_name();
+		let field_metadata = M::field_metadata();
+		let primary_key_column = Self::field_column(&field_metadata, M::primary_key_field());
 		let mut set_clauses = Vec::new();
 
 		for field in fields
@@ -1698,7 +1741,8 @@ impl<M: Model> Manager<M> {
 						}
 					};
 					when_clauses.push(format!(
-						"WHEN \"id\" = '{}' THEN {}",
+						"WHEN \"{}\" = '{}' THEN {}",
+						primary_key_column,
 						pk.to_string().replace('\'', "''"),
 						val_str
 					));
@@ -1706,9 +1750,10 @@ impl<M: Model> Manager<M> {
 			}
 
 			if !when_clauses.is_empty() {
+				let column_name = Self::field_column(&field_metadata, field);
 				set_clauses.push(format!(
 					"\"{}\" = CASE {} END",
-					field,
+					column_name,
 					when_clauses.join(" ")
 				));
 			}
@@ -1724,9 +1769,10 @@ impl<M: Model> Manager<M> {
 			.collect();
 
 		format!(
-			"UPDATE \"{}\" SET {} WHERE \"id\" IN ({})",
+			"UPDATE \"{}\" SET {} WHERE \"{}\" IN ({})",
 			table_name,
 			set_clauses.join(", "),
+			primary_key_column,
 			ids.join(", ")
 		)
 	}
