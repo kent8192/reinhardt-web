@@ -15,6 +15,7 @@
 use proc_macro2::Span;
 use std::collections::HashSet;
 use syn::punctuated::Punctuated;
+use syn::spanned::Spanned;
 use syn::visit::{self, Visit};
 use syn::{Expr, Result, Token};
 
@@ -688,7 +689,7 @@ fn classify_control_binding(
 		kind,
 		expression,
 		radio_value,
-		span: binding_attr.span,
+		span: binding_attr.value.span(),
 	})
 }
 
@@ -696,7 +697,12 @@ fn classify_input_binding(
 	attrs: &[PageAttr],
 	binding_attr: &PageAttr,
 ) -> Result<(TypedControlBindingKind, Option<Expr>)> {
-	let input_type = match find_untyped_attr(attrs, "type") {
+	let input_type = match unique_untyped_attr(
+		attrs,
+		"type",
+		binding_attr,
+		"a bound input requires a static `type`",
+	)? {
 		Some(attr) => static_string_value(&attr.value).ok_or_else(|| {
 			syn::Error::new_spanned(
 				&binding_attr.value,
@@ -730,7 +736,12 @@ fn classify_select_binding(
 	attrs: &[PageAttr],
 	binding_attr: &PageAttr,
 ) -> Result<TypedControlBindingKind> {
-	match find_untyped_attr(attrs, "multiple") {
+	match unique_untyped_attr(
+		attrs,
+		"multiple",
+		binding_attr,
+		"a bound select requires a static `multiple`",
+	)? {
 		None => Ok(TypedControlBindingKind::SelectOne),
 		Some(attr) => match &attr.value {
 			Expr::Lit(lit) => match &lit.lit {
@@ -751,6 +762,20 @@ fn classify_select_binding(
 
 fn find_untyped_attr<'a>(attrs: &'a [PageAttr], name: &str) -> Option<&'a PageAttr> {
 	attrs.iter().find(|attr| attr.html_name() == name)
+}
+
+fn unique_untyped_attr<'a>(
+	attrs: &'a [PageAttr],
+	name: &str,
+	binding_attr: &PageAttr,
+	diagnostic: &str,
+) -> Result<Option<&'a PageAttr>> {
+	let mut matching = attrs.iter().filter(|attr| attr.html_name() == name);
+	let attr = matching.next();
+	if matching.next().is_some() {
+		return Err(syn::Error::new_spanned(&binding_attr.value, diagnostic));
+	}
+	Ok(attr)
 }
 
 fn static_string_value(expr: &Expr) -> Option<String> {
@@ -2101,6 +2126,14 @@ mod tests {
 	)]
 	#[case(
 		quote!({ select { multiple: dynamic_multiple, bind: value } }),
+		"a bound select requires a static `multiple`"
+	)]
+	#[case(
+		quote!({ input { a11y: off, type: "text", type: dynamic_type, bind: value } }),
+		"a bound input requires a static `type`"
+	)]
+	#[case(
+		quote!({ select { a11y: off, multiple: false, multiple: dynamic_multiple, bind: value } }),
 		"a bound select requires a static `multiple`"
 	)]
 	#[case(
