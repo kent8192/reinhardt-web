@@ -39,11 +39,11 @@ use alloc::boxed::Box;
 use alloc::collections::{BTreeMap, BTreeSet};
 use alloc::vec::Vec;
 
-enum NotificationAction {
-	Notify(NodeId),
-	DirtyMemo(NodeId),
-	RunLayoutEffect(NodeId),
-	SchedulePassive(NodeId),
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum NotificationPhase {
+	Idle,
+	Propagating,
+	Consuming,
 }
 
 /// Unique identifier for reactive nodes (Signals, Effects, Memos)
@@ -175,12 +175,20 @@ pub struct Runtime {
 	pub(crate) update_scheduled: RefCell<bool>,
 	/// Active explicit batch nesting depth.
 	pub(crate) batch_depth: RefCell<usize>,
-	/// LIFO actions for the active synchronous notification wave.
-	notification_actions: RefCell<Vec<NotificationAction>>,
-	/// Subscribers already handled in the active notification wave.
-	notification_seen: RefCell<BTreeSet<NodeId>>,
-	/// Whether a notification wave is currently draining actions.
-	notification_processing: Cell<bool>,
+	/// Current notification processing phase.
+	notification_phase: Cell<NotificationPhase>,
+	/// Reactive nodes whose subscribers still need propagation.
+	notification_sources: RefCell<Vec<NodeId>>,
+	/// Source notifications raised while consumers execute.
+	notification_next_sources: RefCell<Vec<NodeId>>,
+	/// Memos already propagated in the current epoch.
+	notification_memos_seen: RefCell<BTreeSet<NodeId>>,
+	/// Consumers already collected in the current epoch.
+	notification_consumers_seen: RefCell<BTreeSet<NodeId>>,
+	/// Layout effects collected after propagation completes.
+	notification_layout_effects: RefCell<Vec<NodeId>>,
+	/// Passive consumers collected after propagation completes.
+	notification_passive: RefCell<Vec<NodeId>>,
 }
 
 impl Runtime {
@@ -192,9 +200,13 @@ impl Runtime {
 			pending_updates: RefCell::new(Vec::new()),
 			update_scheduled: RefCell::new(false),
 			batch_depth: RefCell::new(0),
-			notification_actions: RefCell::new(Vec::new()),
-			notification_seen: RefCell::new(BTreeSet::new()),
-			notification_processing: Cell::new(false),
+			notification_phase: Cell::new(NotificationPhase::Idle),
+			notification_sources: RefCell::new(Vec::new()),
+			notification_next_sources: RefCell::new(Vec::new()),
+			notification_memos_seen: RefCell::new(BTreeSet::new()),
+			notification_consumers_seen: RefCell::new(BTreeSet::new()),
+			notification_layout_effects: RefCell::new(Vec::new()),
+			notification_passive: RefCell::new(Vec::new()),
 		}
 	}
 
@@ -247,97 +259,129 @@ impl Runtime {
 
 	/// Notify that a Signal has changed
 	///
-	/// This processes subscribers in one deduplicated notification wave. Memos
-	/// are dirtied before their downstream actions, Layout effects execute
-	/// synchronously, and passive effects are scheduled asynchronously.
+	/// Each notification epoch first propagates dirty state through every Memo,
+	/// then executes Layout effects and schedules passive consumers. Writes
+	/// raised by a consumer are processed in a new epoch after the current
+	/// consumers finish.
 	///
 	/// # Arguments
 	///
 	/// * `signal_id` - ID of the Signal that changed
 	pub fn notify_signal_change(&self, signal_id: NodeId) {
-		self.notification_actions
-			.borrow_mut()
-			.push(NotificationAction::Notify(signal_id));
-		if self.notification_processing.replace(true) {
-			return;
+		match self.notification_phase.get() {
+			NotificationPhase::Idle => {
+				self.notification_sources.borrow_mut().push(signal_id);
+				self.notification_phase.set(NotificationPhase::Propagating);
+				self.process_notification_epochs();
+			}
+			NotificationPhase::Propagating => {
+				self.notification_sources.borrow_mut().push(signal_id);
+			}
+			NotificationPhase::Consuming => {
+				self.notification_next_sources.borrow_mut().push(signal_id);
+			}
 		}
+	}
 
+	fn process_notification_epochs(&self) {
 		struct NotificationWaveGuard<'a> {
 			runtime: &'a Runtime,
 		}
 
 		impl Drop for NotificationWaveGuard<'_> {
 			fn drop(&mut self) {
-				self.runtime.notification_actions.borrow_mut().clear();
-				self.runtime.notification_seen.borrow_mut().clear();
-				self.runtime.notification_processing.set(false);
+				self.runtime.notification_sources.borrow_mut().clear();
+				self.runtime.notification_next_sources.borrow_mut().clear();
+				self.runtime.notification_memos_seen.borrow_mut().clear();
+				self.runtime
+					.notification_consumers_seen
+					.borrow_mut()
+					.clear();
+				self.runtime
+					.notification_layout_effects
+					.borrow_mut()
+					.clear();
+				self.runtime.notification_passive.borrow_mut().clear();
+				self.runtime.notification_phase.set(NotificationPhase::Idle);
 			}
 		}
 
 		let _wave_guard = NotificationWaveGuard { runtime: self };
 		loop {
-			let action = { self.notification_actions.borrow_mut().pop() };
-			let Some(action) = action else {
-				break;
-			};
-			match action {
-				NotificationAction::Notify(node_id) => self.enqueue_notification_actions(node_id),
-				NotificationAction::DirtyMemo(memo_id) => {
-					if self.mark_subscriber_seen(memo_id)
-						&& super::memo::is_memo_registered(memo_id)
-					{
-						super::memo::mark_memo_dirty_by_id(memo_id);
-					}
-				}
-				NotificationAction::RunLayoutEffect(effect_id) => {
-					if self.mark_subscriber_seen(effect_id) {
-						super::effect::Effect::execute_effect(effect_id);
-					}
-				}
-				NotificationAction::SchedulePassive(node_id) => {
-					if self.mark_subscriber_seen(node_id) {
-						self.schedule_update(node_id);
-					}
-				}
+			self.notification_phase.set(NotificationPhase::Propagating);
+			self.notification_memos_seen.borrow_mut().clear();
+			self.notification_consumers_seen.borrow_mut().clear();
+			self.notification_layout_effects.borrow_mut().clear();
+			self.notification_passive.borrow_mut().clear();
+
+			loop {
+				let source_id = { self.notification_sources.borrow_mut().pop() };
+				let Some(source_id) = source_id else {
+					break;
+				};
+				self.propagate_notification_source(source_id);
 			}
+
+			self.notification_phase.set(NotificationPhase::Consuming);
+			let layout_effects =
+				core::mem::take(&mut *self.notification_layout_effects.borrow_mut());
+			for effect_id in layout_effects {
+				super::effect::Effect::execute_effect(effect_id);
+			}
+			let passive = core::mem::take(&mut *self.notification_passive.borrow_mut());
+			for node_id in passive {
+				self.schedule_update(node_id);
+			}
+
+			let next_sources = core::mem::take(&mut *self.notification_next_sources.borrow_mut());
+			if next_sources.is_empty() {
+				break;
+			}
+			self.notification_sources.borrow_mut().extend(next_sources);
 		}
 	}
 
-	fn mark_subscriber_seen(&self, node_id: NodeId) -> bool {
-		self.notification_seen.borrow_mut().insert(node_id)
-	}
-
-	fn enqueue_notification_actions(&self, node_id: NodeId) {
+	fn propagate_notification_source(&self, node_id: NodeId) {
 		let graph = self.dependency_graph.borrow();
 		let Some(node) = graph.get(&node_id) else {
 			return;
 		};
-		let mut layout_effects = Vec::new();
-		let mut memos = Vec::new();
-		let mut passive = Vec::new();
-		for &subscriber_id in &node.subscribers {
-			if let Some(timing) = super::effect::get_effect_timing(subscriber_id) {
-				match timing {
-					EffectTiming::Layout => layout_effects.push(subscriber_id),
-					EffectTiming::Passive => passive.push(subscriber_id),
-				}
-			} else if super::memo::is_memo_registered(subscriber_id) {
-				memos.push(subscriber_id);
-			} else {
-				passive.push(subscriber_id);
-			}
-		}
+		let subscribers = node.subscribers.clone();
 		drop(graph);
 
-		let mut actions = self.notification_actions.borrow_mut();
-		for node_id in passive.into_iter().rev() {
-			actions.push(NotificationAction::SchedulePassive(node_id));
-		}
-		for effect_id in layout_effects.into_iter().rev() {
-			actions.push(NotificationAction::RunLayoutEffect(effect_id));
-		}
-		for memo_id in memos.into_iter().rev() {
-			actions.push(NotificationAction::DirtyMemo(memo_id));
+		for subscriber_id in subscribers {
+			if let Some(timing) = super::effect::get_effect_timing(subscriber_id) {
+				if self
+					.notification_consumers_seen
+					.borrow_mut()
+					.insert(subscriber_id)
+				{
+					match timing {
+						EffectTiming::Layout => self
+							.notification_layout_effects
+							.borrow_mut()
+							.push(subscriber_id),
+						EffectTiming::Passive => {
+							self.notification_passive.borrow_mut().push(subscriber_id)
+						}
+					}
+				}
+			} else if super::memo::is_memo_registered(subscriber_id) {
+				if self
+					.notification_memos_seen
+					.borrow_mut()
+					.insert(subscriber_id)
+					&& super::memo::is_memo_registered(subscriber_id)
+				{
+					super::memo::mark_memo_dirty_by_id(subscriber_id);
+				}
+			} else if self
+				.notification_consumers_seen
+				.borrow_mut()
+				.insert(subscriber_id)
+			{
+				self.notification_passive.borrow_mut().push(subscriber_id);
+			}
 		}
 	}
 
@@ -629,6 +673,7 @@ pub(crate) fn subscribe_node_to_observer(node: NodeId, observer: NodeId) {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::reactive::{Effect, Memo, Signal};
 	use serial_test::serial;
 
 	#[test]
@@ -918,5 +963,77 @@ mod tests {
 		super::subscribe_node_to_observer(node, observer);
 		let subs2 = super::with_runtime(|rt| rt.debug_subscribers(node));
 		assert_eq!(subs2.len(), 1, "subscribe must be idempotent");
+	}
+
+	#[rstest::rstest]
+	#[serial(reactive_runtime)]
+	fn layout_effect_write_runs_in_next_notification_epoch() {
+		let source = Signal::new(0_i32);
+		let runs = std::rc::Rc::new(std::cell::Cell::new(0_u8));
+		let observed = std::rc::Rc::new(std::cell::Cell::new(-1_i32));
+		let _effect = Effect::new_with_timing(
+			{
+				let source = source.clone();
+				let runs = std::rc::Rc::clone(&runs);
+				let observed = std::rc::Rc::clone(&observed);
+				move || {
+					let value = source.get();
+					observed.set(value);
+					runs.set(runs.get() + 1);
+					if value == 1 {
+						source.set(2);
+					}
+				}
+			},
+			EffectTiming::Layout,
+		);
+
+		source.set(1);
+
+		assert_eq!(source.get(), 2);
+		assert_eq!(observed.get(), 2);
+		assert_eq!(runs.get(), 3);
+	}
+
+	#[rstest::rstest]
+	#[serial(reactive_runtime)]
+	fn notification_panic_recovers_pending_consumer_on_next_change() {
+		use std::panic::{AssertUnwindSafe, catch_unwind};
+
+		let source = Signal::new(0_i32);
+		let memo = Memo::new({
+			let source = source.clone();
+			move || source.get() * 2
+		});
+		let panic_next = std::rc::Rc::new(std::cell::Cell::new(false));
+		let _panicking = Effect::new_with_timing(
+			{
+				let memo = memo.clone();
+				let panic_next = std::rc::Rc::clone(&panic_next);
+				move || {
+					assert!(!panic_next.replace(false), "notification consumer panic");
+					let _ = memo.get();
+				}
+			},
+			EffectTiming::Layout,
+		);
+		let observed = std::rc::Rc::new(std::cell::Cell::new(0_i32));
+		let _observer = Effect::new_with_timing(
+			{
+				let memo = memo.clone();
+				let observed = std::rc::Rc::clone(&observed);
+				move || observed.set(memo.get())
+			},
+			EffectTiming::Layout,
+		);
+		panic_next.set(true);
+
+		let result = catch_unwind(AssertUnwindSafe(|| source.set(1)));
+		assert!(result.is_err());
+		assert_eq!(observed.get(), 0);
+
+		source.set(2);
+
+		assert_eq!(observed.get(), 4);
 	}
 }

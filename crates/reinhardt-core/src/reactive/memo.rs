@@ -86,10 +86,10 @@ thread_local! {
 /// Flag the Memo identified by `memo_id` as dirty without requiring `T`.
 ///
 /// Called by the hidden notifier Effect created by [`Memo::new_with_deps`]
-/// and by automatic dependency notifications. A clean-to-dirty transition
-/// propagates to downstream subscribers in the current runtime notification
-/// wave. Repeated dirty notifications do nothing until the next
-/// [`Memo::get`] / [`Memo::get_untracked`] recompute clears the flag.
+/// and by automatic dependency notifications. The dirty flag is idempotent,
+/// while the Runtime deduplicates propagation once per notification epoch.
+/// A later epoch may therefore reissue downstream notification for an
+/// already-dirty Memo after a consumer panic.
 ///
 /// The `notify_signal_change` call is what makes downstream `use_effect` /
 /// `use_memo` calls that take this memo as a listed dep actually re-run.
@@ -98,19 +98,11 @@ pub(crate) fn mark_memo_dirty_by_id(memo_id: NodeId) -> bool {
 	if !is_memo_registered(memo_id) {
 		return false;
 	}
-	let transitioned = MEMO_DIRTY.with(|storage| {
-		let mut storage = storage.borrow_mut();
-		if storage.get(&memo_id).copied().unwrap_or(false) {
-			false
-		} else {
-			storage.insert(memo_id, true);
-			true
-		}
+	MEMO_DIRTY.with(|storage| {
+		storage.borrow_mut().insert(memo_id, true);
 	});
-	if transitioned {
-		with_runtime(|runtime| runtime.notify_signal_change(memo_id));
-	}
-	transitioned
+	with_runtime(|runtime| runtime.notify_signal_change(memo_id));
+	true
 }
 
 /// Returns whether `memo_id` belongs to a live Memo computation.
@@ -967,7 +959,7 @@ mod tests {
 
 	#[rstest::rstest]
 	#[serial(reactive_runtime)]
-	fn diamond_memo_notification_runs_layout_effect_once_per_wave() {
+	fn diamond_memo_notification_observes_consistent_value_once_per_wave() {
 		use core::cell::Cell;
 
 		let source = Signal::new(1_i32);
@@ -985,12 +977,14 @@ mod tests {
 			move || left.get() + right.get()
 		});
 		let runs = Rc::new(Cell::new(0_u8));
+		let observed = Rc::new(Cell::new(0_i32));
 		let _effect = Effect::new_with_timing(
 			{
 				let joined = joined.clone();
 				let runs = Rc::clone(&runs);
+				let observed = Rc::clone(&observed);
 				move || {
-					let _ = joined.get();
+					observed.set(joined.get());
 					runs.set(runs.get() + 1);
 				}
 			},
@@ -1000,6 +994,47 @@ mod tests {
 		source.set(2);
 
 		assert_eq!(runs.get(), 2);
+		assert_eq!(observed.get(), 10);
+		assert!(!is_memo_dirty_externally(joined.id()));
+	}
+
+	#[rstest::rstest]
+	#[serial(reactive_runtime)]
+	fn signal_write_during_dirty_memo_recompute_runs_next_epoch() {
+		use core::cell::Cell;
+
+		let source = Signal::new(0_i32);
+		let memo = Memo::new({
+			let source = source.clone();
+			move || {
+				let value = source.get();
+				if value == 1 {
+					source.set(2);
+				}
+				value
+			}
+		});
+		let runs = Rc::new(Cell::new(0_u8));
+		let observed = Rc::new(Cell::new(-1_i32));
+		let _effect = Effect::new_with_timing(
+			{
+				let memo = memo.clone();
+				let runs = Rc::clone(&runs);
+				let observed = Rc::clone(&observed);
+				move || {
+					observed.set(memo.get());
+					runs.set(runs.get() + 1);
+				}
+			},
+			EffectTiming::Layout,
+		);
+
+		source.set(1);
+
+		assert_eq!(source.get(), 2);
+		assert_eq!(observed.get(), 2);
+		assert_eq!(runs.get(), 3);
+		assert!(!is_memo_dirty_externally(memo.id()));
 	}
 
 	#[rstest::rstest]
