@@ -69,6 +69,22 @@ pub(crate) fn get_effect_timing(effect_id: NodeId) -> Option<EffectTiming> {
 	EFFECT_TIMING.with(|storage| storage.borrow().get(&effect_id).copied())
 }
 
+fn remove_effect_registration(effect_id: NodeId) {
+	let _ = try_with_runtime(|runtime| runtime.remove_node(effect_id));
+
+	let mut effect_fn = None;
+	let _ = EFFECT_FUNCTIONS.try_with(|storage| {
+		let mut functions = storage.borrow_mut();
+		effect_fn = functions.get_mut(&effect_id).and_then(Option::take);
+		functions.remove(&effect_id);
+	});
+	drop(effect_fn);
+
+	let _ = EFFECT_TIMING.try_with(|storage| {
+		storage.borrow_mut().remove(&effect_id);
+	});
+}
+
 /// A reactive effect that automatically re-runs when its dependencies change
 ///
 /// Effects are the bridge between the reactive system and the outside world (DOM, console, etc.).
@@ -257,10 +273,29 @@ impl Effect {
 			storage.borrow_mut().insert(id, Some(Box::new(wrapped)));
 		});
 
+		struct InitialRegistrationGuard {
+			effect_id: NodeId,
+			active: bool,
+		}
+
+		impl Drop for InitialRegistrationGuard {
+			fn drop(&mut self) {
+				if self.active {
+					remove_effect_registration(self.effect_id);
+				}
+			}
+		}
+
+		let mut registration_guard = InitialRegistrationGuard {
+			effect_id: id,
+			active: true,
+		};
+
 		EFFECT_TIMING.with(|storage| {
 			storage.borrow_mut().insert(id, timing);
 		});
 		Self::execute_effect(id);
+		registration_guard.active = false;
 
 		Self {
 			id,
@@ -317,6 +352,18 @@ impl Effect {
 			});
 		});
 
+		struct ObserverGuard;
+
+		impl Drop for ObserverGuard {
+			fn drop(&mut self) {
+				let _ = try_with_runtime(|runtime| {
+					runtime.pop_observer();
+				});
+			}
+		}
+
+		let _observer_guard = ObserverGuard;
+
 		// Execute the effect function using Remove-Execute-Reinsert pattern
 		// to avoid RefCell reentrant borrow panics when the closure creates nested effects.
 		// An RAII guard ensures the closure is reinserted even if the user closure panics,
@@ -351,11 +398,6 @@ impl Effect {
 		if let Some(ref mut f) = guard.effect_fn {
 			f();
 		}
-
-		// Pop observer from stack
-		with_runtime(|rt| {
-			rt.pop_observer();
-		});
 	}
 
 	/// Get the NodeId of this effect (for testing)
@@ -373,25 +415,10 @@ impl Effect {
 		// runtime state, matching React's "cleanup runs on unmount" semantics.
 		let cleanup = { self.cleanup_slot.borrow_mut().take() };
 		if let Some(c) = cleanup {
-			c();
+			super::runtime::run_without_observer(c);
 		}
 
-		// Remove from runtime's dependency graph (ignore if TLS is destroyed)
-		let _ = try_with_runtime(|rt| rt.remove_node(self.id));
-
-		// Remove from storage (ignore if TLS is destroyed)
-		let mut effect_fn = None;
-		let _ = EFFECT_FUNCTIONS.try_with(|storage| {
-			let mut functions = storage.borrow_mut();
-			effect_fn = functions.get_mut(&self.id).and_then(Option::take);
-			functions.remove(&self.id);
-		});
-		drop(effect_fn);
-
-		// Remove timing entry so the RAII guard in execute_effect() knows not to reinsert
-		let _ = EFFECT_TIMING.try_with(|storage| {
-			storage.borrow_mut().remove(&self.id);
-		});
+		remove_effect_registration(self.id);
 	}
 }
 
@@ -436,6 +463,7 @@ impl super::runtime::Runtime {
 #[cfg(test)]
 mod tests {
 	use core::cell::Cell;
+	use std::panic::{AssertUnwindSafe, catch_unwind};
 
 	use super::*;
 	use crate::reactive::{ReactiveDeps, Signal};
@@ -549,6 +577,123 @@ mod tests {
 
 		let timing = EFFECT_TIMING.with(|storage| storage.borrow().get(&effect.id()).copied());
 		assert_eq!(timing, Some(EffectTiming::Layout));
+	}
+
+	#[rstest::rstest]
+	#[serial(reactive_runtime)]
+	fn dispose_cleanup_reads_do_not_subscribe_outer_effect() {
+		let cleanup_only = Signal::new(0_i32);
+		let cleanups = Rc::new(Cell::new(0_u8));
+		let outer_runs = Rc::new(Cell::new(0_u8));
+		let inner = Effect::new_with_mode(
+			{
+				let cleanup_only = cleanup_only.clone();
+				let cleanups = Rc::clone(&cleanups);
+				move || {
+					let cleanup_only = cleanup_only.clone();
+					let cleanups = Rc::clone(&cleanups);
+					Some(move || {
+						let _ = cleanup_only.get();
+						cleanups.set(cleanups.get() + 1);
+					})
+				}
+			},
+			ReactiveDeps::Auto,
+		);
+		let inner = Rc::new(RefCell::new(Some(inner)));
+
+		let _outer = Effect::new({
+			let inner = Rc::clone(&inner);
+			let outer_runs = Rc::clone(&outer_runs);
+			move || {
+				outer_runs.set(outer_runs.get() + 1);
+				drop(inner.borrow_mut().take());
+			}
+		});
+
+		assert_eq!((outer_runs.get(), cleanups.get()), (1, 1));
+		cleanup_only.set(1);
+		with_runtime(|runtime| runtime.flush_updates());
+		assert_eq!(outer_runs.get(), 1);
+	}
+
+	#[rstest::rstest]
+	#[serial(reactive_runtime)]
+	fn panicking_effect_rerun_restores_observer_stack() {
+		let dependency = Signal::new(0_i32);
+		let panic_next = Rc::new(Cell::new(false));
+		let effect = Effect::new({
+			let dependency = dependency.clone();
+			let panic_next = Rc::clone(&panic_next);
+			move || {
+				let _ = dependency.get();
+				assert!(!panic_next.replace(false), "effect setup panic");
+			}
+		});
+		let outer_id = NodeId::new();
+		with_runtime(|runtime| {
+			runtime.push_observer(Observer {
+				id: outer_id,
+				node_type: NodeType::Effect,
+				timing: EffectTiming::Passive,
+				cleanup: None,
+			});
+		});
+
+		panic_next.set(true);
+		dependency.set(1);
+		let result = catch_unwind(AssertUnwindSafe(|| {
+			with_runtime(|runtime| runtime.flush_updates());
+		}));
+
+		assert!(result.is_err());
+		assert_eq!(
+			with_runtime(|runtime| runtime.debug_observer_stack()),
+			alloc::vec![outer_id]
+		);
+		with_runtime(|runtime| {
+			assert_eq!(
+				runtime.pop_observer().map(|observer| observer.id),
+				Some(outer_id)
+			);
+		});
+		drop(effect);
+	}
+
+	#[rstest::rstest]
+	#[serial(reactive_runtime)]
+	fn panicking_initial_run_rolls_back_effect_registration() {
+		let dependency = Signal::new(0_i32);
+		let functions_before = EFFECT_FUNCTIONS.with(|storage| storage.borrow().len());
+		let timings_before = EFFECT_TIMING.with(|storage| storage.borrow().len());
+
+		let result = catch_unwind(AssertUnwindSafe({
+			let dependency = dependency.clone();
+			move || {
+				let _effect = Effect::new(move || {
+					let _ = dependency.get();
+					panic!("initial effect setup panic");
+				});
+			}
+		}));
+
+		assert!(result.is_err());
+		assert_eq!(
+			EFFECT_FUNCTIONS.with(|storage| storage.borrow().len()),
+			functions_before
+		);
+		assert_eq!(
+			EFFECT_TIMING.with(|storage| storage.borrow().len()),
+			timings_before
+		);
+		assert_eq!(
+			with_runtime(|runtime| runtime.subscriber_count(dependency.id())),
+			0
+		);
+		assert_eq!(
+			with_runtime(|runtime| runtime.debug_observer_stack()),
+			alloc::vec![]
+		);
 	}
 
 	#[test]
