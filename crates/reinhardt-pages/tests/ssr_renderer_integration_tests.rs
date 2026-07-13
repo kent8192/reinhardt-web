@@ -691,26 +691,43 @@ async fn controlled_select_uses_flattened_option_text_when_value_is_omitted() {
 	// Arrange
 	let selected = Signal::new(vec![
 		"Rust & WebAssembly".to_owned(),
-		"Nested <Choice>".to_owned(),
+		"Nested\u{a0}<Choice>".to_owned(),
 	]);
 	let component = PageElement::new("select")
 		.bool_attr("multiple", true)
 		.control_binding(ControlBinding::select_many(selected))
 		.child(
 			PageElement::new("optgroup")
-				.child(PageElement::new("option").child("Rust & WebAssembly"))
+				.child(
+					PageElement::new("option")
+						.child(" \tRust\n")
+						.child(PageElement::new("script").child("ignored"))
+						.child("  &\r\nWebAssembly\x0c "),
+				)
 				.child(PageElement::new("option").child(Page::Fragment(vec![
-					Page::text("Nested "),
+					Page::text(" Nested\u{a0}"),
 					PageElement::new("span").child("<Choice>").into_page(),
+					PageElement::new("script").child("ignored").into_page(),
+					Page::text(" "),
 				]))),
 		)
 		.into_page();
-	let mut renderer = SsrRenderer::new();
+	let mut buffered_renderer =
+		SsrRenderer::with_options(SsrOptions::new().suspense_streaming(false));
+	let mut streaming_renderer = SsrRenderer::new();
 
 	// Act
-	let html = renderer.render_page_into_page_to_string(component).await;
+	let html = buffered_renderer
+		.render_page_into_page_to_string(component.clone())
+		.await;
+	let streaming = streaming_renderer
+		.render_page_into_page(component)
+		.await
+		.collect_string()
+		.await;
 
 	// Assert
+	assert_eq!(streaming, html);
 	let body = html
 		.split_once("<body>")
 		.unwrap()
@@ -726,8 +743,8 @@ async fn controlled_select_uses_flattened_option_text_when_value_is_omitted() {
 		body,
 		concat!(
 			"<select multiple=\"multiple\"><optgroup>",
-			"<option selected=\"selected\">Rust &amp; WebAssembly</option>",
-			"<option selected=\"selected\">Nested <span>&lt;Choice&gt;</span></option>",
+			"<option selected=\"selected\"> \tRust\n<script>ignored</script>  &amp;\r\nWebAssembly\x0c </option>",
+			"<option selected=\"selected\"> Nested\u{a0}<span>&lt;Choice&gt;</span><script>ignored</script> </option>",
 			"</optgroup></select>"
 		)
 	);

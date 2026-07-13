@@ -36,7 +36,7 @@
 //! ```
 
 #[cfg(native)]
-mod control_binding;
+pub(crate) mod control_binding;
 mod markers;
 #[cfg(native)]
 mod renderer;

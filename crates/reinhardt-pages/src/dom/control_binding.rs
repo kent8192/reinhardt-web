@@ -96,6 +96,7 @@ fn install_listeners(element: &Element, binding: &ControlBinding) -> Vec<EventHa
 						.is_some_and(web_sys::InputEvent::is_composing);
 					let composing = input_state.borrow().composing;
 					if browser_is_composing || composing {
+						input_state.borrow_mut().skip_next_input = None;
 						return;
 					}
 
@@ -584,6 +585,44 @@ mod tests {
 			.expect("dispatch");
 		assert_eq!(signal.get(), "あ");
 		assert_eq!(commits.get(), 2);
+	}
+
+	#[wasm_bindgen_test]
+	fn isolated_composing_input_invalidates_stale_composition_dedupe() {
+		let element = element("input");
+		let input: web_sys::HtmlInputElement = element.as_web_sys().clone().unchecked_into();
+		let signal = Signal::new(String::new());
+		let commits = Rc::new(std::cell::Cell::new(0));
+		let effect_signal = signal.clone();
+		let effect_commits = Rc::clone(&commits);
+		let _commit_observer = Effect::new_with_timing(
+			move || {
+				let _ = effect_signal.get();
+				effect_commits.set(effect_commits.get() + 1);
+			},
+			EffectTiming::Layout,
+		);
+		let _controller =
+			ControlBindingController::mount(element, ControlBinding::text(signal.clone()))
+				.expect("binding");
+		input.set_value("same");
+		input
+			.dispatch_event(&web_sys::CompositionEvent::new("compositionend").expect("end"))
+			.expect("dispatch");
+		input
+			.dispatch_event(&{
+				let init = web_sys::InputEventInit::new();
+				init.set_is_composing(true);
+				web_sys::InputEvent::new_with_event_init_dict("input", &init)
+					.expect("composing input")
+					.into()
+			})
+			.expect("dispatch");
+		input
+			.dispatch_event(&web_sys::InputEvent::new("input").expect("input"))
+			.expect("dispatch");
+		assert_eq!(signal.get(), "same");
+		assert_eq!(commits.get(), 3);
 	}
 
 	#[wasm_bindgen_test]

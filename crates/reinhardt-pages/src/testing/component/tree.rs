@@ -46,6 +46,7 @@ pub(crate) struct ElementNode {
 	files: Vec<NativeEventFile>,
 	content_editable: bool,
 	control_binding: Option<ControlBinding>,
+	option_value: Option<String>,
 	is_composing: bool,
 	pending_raw: Option<String>,
 	last_committed_raw: Option<String>,
@@ -384,6 +385,7 @@ impl TestDom {
 							property: "value",
 						})?;
 					if node.is_composing || input_is_composing {
+						node.last_committed_raw = None;
 						node.pending_raw = Some(raw);
 						return Ok((true, None));
 					}
@@ -513,6 +515,8 @@ impl TestDom {
 	fn append_page(&mut self, parent: NodeId, page: Page) {
 		match page {
 			Page::Element(element) => {
+				let option_value = (element.tag_name() == "option")
+					.then(|| crate::ssr::control_binding::option_value(&element));
 				let (tag, attrs, children, is_void, event_handlers, control_binding) =
 					element.into_parts();
 				let attrs = attrs
@@ -550,6 +554,7 @@ impl TestDom {
 					files: Vec::new(),
 					content_editable,
 					control_binding,
+					option_value,
 					is_composing: false,
 					pending_raw: None,
 					last_committed_raw: None,
@@ -608,6 +613,7 @@ impl TestDom {
 							files: Vec::new(),
 							content_editable: false,
 							control_binding: None,
+							option_value: None,
 							is_composing: false,
 							pending_raw: None,
 							last_committed_raw: None,
@@ -762,11 +768,7 @@ impl TestDom {
 	fn refresh_selected_options_in_subtree(&mut self, node_id: NodeId, selected_values: &[String]) {
 		let children = self.children(node_id).to_vec();
 		let effective_value = self.element(node_id).and_then(|node| {
-			(node.tag == "option").then(|| {
-				node.attr("value")
-					.map(str::to_owned)
-					.unwrap_or_else(|| self.text_content(node_id))
-			})
+			(node.tag == "option").then(|| node.option_value.clone().unwrap_or_default())
 		});
 		if let Some(TestNode::Element(node)) = self.nodes.get_mut(node_id)
 			&& node.tag == "option"

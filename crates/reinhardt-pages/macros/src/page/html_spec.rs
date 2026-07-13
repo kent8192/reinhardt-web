@@ -13,7 +13,7 @@
 
 use syn::Result;
 
-use reinhardt_manouche::core::TypedPageElement;
+use reinhardt_manouche::core::{TypedPageElement, TypedPageNode};
 
 /// HTML element specification.
 #[derive(Debug, Clone)]
@@ -1584,6 +1584,17 @@ pub(crate) fn get_element_spec(tag: &str) -> Option<&'static ElementSpec> {
 ///
 /// Returns a compile error if any validation rule is violated.
 pub(crate) fn validate_against_spec(element: &TypedPageElement) -> Result<()> {
+	validate_against_spec_inner(element, false)
+}
+
+pub(crate) fn validate_bound_select_element(element: &TypedPageElement) -> Result<()> {
+	validate_against_spec_inner(element, true)
+}
+
+fn validate_against_spec_inner(
+	element: &TypedPageElement,
+	allow_option_phrasing: bool,
+) -> Result<()> {
 	let tag = element.tag.to_string();
 
 	// Get specification for this element (if it exists)
@@ -1601,7 +1612,7 @@ pub(crate) fn validate_against_spec(element: &TypedPageElement) -> Result<()> {
 	}
 
 	// Check content model (void elements, text-only, etc.)
-	validate_content_model(element, spec)?;
+	validate_content_model(element, spec, allow_option_phrasing)?;
 
 	Ok(())
 }
@@ -1668,7 +1679,11 @@ fn validate_allowed_attributes(element: &TypedPageElement, allowed: &[&str]) -> 
 }
 
 /// Validates content model constraints.
-fn validate_content_model(element: &TypedPageElement, spec: &ElementSpec) -> Result<()> {
+fn validate_content_model(
+	element: &TypedPageElement,
+	spec: &ElementSpec,
+	allow_option_phrasing: bool,
+) -> Result<()> {
 	match &spec.content_model {
 		Some(ContentModel::Empty) => {
 			if !element.children.is_empty() {
@@ -1679,6 +1694,15 @@ fn validate_content_model(element: &TypedPageElement, spec: &ElementSpec) -> Res
 			}
 		}
 		Some(ContentModel::TextOnly) => {
+			if spec.tag == "option" && allow_option_phrasing {
+				if element.children.iter().all(option_child_is_allowed) {
+					return Ok(());
+				}
+				return Err(syn::Error::new(
+					element.span,
+					"Element <option> in a bound select only supports non-interactive phrasing content",
+				));
+			}
 			// Text-only elements can have text and expressions, but not other elements
 			for child in &element.children {
 				if matches!(child, reinhardt_manouche::core::TypedPageNode::Element(_)) {
@@ -1716,6 +1740,28 @@ fn validate_content_model(element: &TypedPageElement, spec: &ElementSpec) -> Res
 	}
 
 	Ok(())
+}
+
+fn option_child_is_allowed(child: &TypedPageNode) -> bool {
+	match child {
+		TypedPageNode::Element(element) => {
+			matches!(
+				element.tag.to_string().as_str(),
+				"abbr"
+					| "b" | "bdi" | "bdo"
+					| "br" | "cite" | "code"
+					| "data" | "dfn"
+					| "em" | "i" | "kbd"
+					| "mark" | "q" | "rp"
+					| "rt" | "ruby" | "s"
+					| "samp" | "small"
+					| "span" | "strong"
+					| "sub" | "sup" | "time"
+					| "u" | "var" | "wbr"
+			) && element.children.iter().all(option_child_is_allowed)
+		}
+		_ => true,
+	}
 }
 
 /// Checks if an attribute is a global HTML attribute.

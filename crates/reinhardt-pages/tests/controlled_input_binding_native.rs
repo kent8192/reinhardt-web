@@ -2,6 +2,7 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use std::{cell::Cell, rc::Rc};
 
 use reinhardt_pages::component::{ControlBinding, ControlBindingError, NumberParseErrorKind};
 use reinhardt_pages::event::{
@@ -396,7 +397,7 @@ fn select_binding_uses_flattened_option_text_when_value_is_omitted() {
 	// Arrange
 	let selected = Signal::new(vec![
 		"Rust & WebAssembly".to_owned(),
-		"Nested <Choice>".to_owned(),
+		"Nested\u{a0}<Choice>".to_owned(),
 	]);
 	let screen = render(
 		PageElement::new("select")
@@ -405,10 +406,17 @@ fn select_binding_uses_flattened_option_text_when_value_is_omitted() {
 			.control_binding(ControlBinding::select_many(selected))
 			.child(
 				PageElement::new("optgroup")
-					.child(PageElement::new("option").child("Rust & WebAssembly"))
+					.child(
+						PageElement::new("option")
+							.child(" \tRust\n")
+							.child(PageElement::new("script").child("ignored"))
+							.child("  &\r\nWebAssembly\x0c "),
+					)
 					.child(PageElement::new("option").child(Page::Fragment(vec![
-						Page::text("Nested "),
+						Page::text(" Nested\u{a0}"),
 						PageElement::new("span").child("<Choice>").into_page(),
+						PageElement::new("script").child("ignored").into_page(),
+						Page::text(" "),
 					]))),
 			),
 	);
@@ -423,18 +431,54 @@ fn select_binding_uses_flattened_option_text_when_value_is_omitted() {
 			"<select aria-label=\"Targets\" multiple=\"multiple\">\n",
 			"  <optgroup>\n",
 			"    <option selected=\"selected\">\n",
-			"      Rust & WebAssembly\n",
+			"       \tRust\n\n",
+			"      <script>\n",
+			"        ignored\n",
+			"      </script>\n",
+			"        &\r\n",
+			"WebAssembly\x0c \n",
 			"    </option>\n",
 			"    <option selected=\"selected\">\n",
-			"      Nested \n",
+			"       Nested\u{a0}\n",
 			"      <span>\n",
 			"        <Choice>\n",
 			"      </span>\n",
+			"      <script>\n",
+			"        ignored\n",
+			"      </script>\n",
+			"       \n",
 			"    </option>\n",
 			"  </optgroup>\n",
 			"</select>\n",
 		)
 	);
+}
+
+#[rstest]
+fn inferred_option_value_uses_one_reactive_render() {
+	// Arrange
+	let renders = Rc::new(Cell::new(0));
+	let render_count = Rc::clone(&renders);
+	let selected = Signal::new("Static".to_owned());
+
+	// Act
+	let screen = render(
+		PageElement::new("select")
+			.attr("aria-label", "Target")
+			.control_binding(ControlBinding::select_one(selected))
+			.child(
+				PageElement::new("option")
+					.child("Static")
+					.child(Page::reactive(move || {
+						render_count.set(render_count.get() + 1);
+						Page::text(" Dynamic")
+					})),
+			),
+	);
+
+	// Assert
+	assert_eq!(renders.get(), 1);
+	assert!(screen.pretty().contains("<option selected=\"selected\">"));
 }
 
 #[rstest]
@@ -524,6 +568,46 @@ fn isolated_composing_input_skips_only_that_event() {
 		*observed.lock().unwrap(),
 		vec!["old".to_owned(), "committed".to_owned()]
 	);
+}
+
+#[rstest]
+fn isolated_composing_input_invalidates_stale_composition_dedupe() {
+	// Arrange
+	let value = Signal::new("old".to_owned());
+	let observed = Arc::new(Mutex::new(Vec::new()));
+	let observed_input = Arc::clone(&observed);
+	let input_value = value.clone();
+	let end_value = value.clone();
+	let screen = render(page!({
+		input {
+			aria_label: "Name",
+			bind: value,
+			@input: move |_| observed_input.lock().unwrap().push(input_value.get()),
+			@compositionend: move |_| end_value.set("after-end".to_owned()),
+		}
+	}));
+	let input = screen.get_by_label("Name");
+
+	// Act
+	input
+		.dispatch(EventFixture::new(CompositionStartEvent::EVENT))
+		.expect("composition start should dispatch");
+	input
+		.dispatch(EventFixture::new(CompositionEndEvent::EVENT).value("same"))
+		.expect("composition end should dispatch");
+	input
+		.dispatch(EventFixture::input().value("same").is_composing(true))
+		.expect("isolated composing input should dispatch");
+	input
+		.dispatch(EventFixture::input().value("same"))
+		.expect("normal input should dispatch");
+
+	// Assert
+	assert_eq!(
+		*observed.lock().unwrap(),
+		vec!["after-end".to_owned(), "same".to_owned()]
+	);
+	assert_eq!(value.get(), "same");
 }
 
 #[rstest]

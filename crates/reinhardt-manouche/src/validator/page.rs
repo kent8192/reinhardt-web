@@ -592,6 +592,9 @@ fn transform_element(elem: &PageElement, parent_tags: &[String]) -> Result<Typed
 	// 5. Recursively transform children
 	let mut child_tags = parent_tags.to_vec();
 	child_tags.push(tag.clone());
+	if tag == "select" && control_binding.is_some() {
+		child_tags.push("__reinhardt_bound_select".to_owned());
+	}
 	let typed_children = transform_nodes(&elem.children, &child_tags)?;
 	validate_control_binding_structure(
 		&tag,
@@ -612,7 +615,15 @@ fn transform_element(elem: &PageElement, parent_tags: &[String]) -> Result<Typed
 	};
 
 	// 6. Validate against HTML specification (Phase 2)
-	super::html_spec::validate_against_spec(&typed_element)?;
+	if tag == "option"
+		&& parent_tags
+			.iter()
+			.any(|parent| parent == "__reinhardt_bound_select")
+	{
+		super::html_spec::validate_bound_select_element(&typed_element)?;
+	} else {
+		super::html_spec::validate_against_spec(&typed_element)?;
+	}
 
 	Ok(typed_element)
 }
@@ -818,6 +829,13 @@ fn validate_control_binding_structure(
 		{
 			Some("a bound select cannot contain an option with a `selected` attribute")
 		}
+		TypedControlBindingKind::SelectOne | TypedControlBindingKind::SelectMany
+			if contains_dynamic_option_without_value(children) =>
+		{
+			Some(
+				"an option with dynamic content inside a bound select requires an explicit `value` attribute",
+			)
+		}
 		_ => None,
 	};
 
@@ -853,6 +871,58 @@ fn contains_selected_option(nodes: &[TypedPageNode]) -> bool {
 					.any(|slot| contains_selected_option(&slot.children))
 		}
 		TypedPageNode::Text(_) | TypedPageNode::Expression(_) => false,
+	})
+}
+
+fn contains_dynamic_option_without_value(nodes: &[TypedPageNode]) -> bool {
+	nodes.iter().any(|node| match node {
+		TypedPageNode::Element(element) => {
+			(element.tag == "option"
+				&& find_typed_attr(&element.attrs, "value").is_none()
+				&& contains_dynamic_option_content(&element.children))
+				|| contains_dynamic_option_without_value(&element.children)
+		}
+		TypedPageNode::If(page_if) => page_if_contains_dynamic_option_without_value(page_if),
+		TypedPageNode::For(page_for) => contains_dynamic_option_without_value(&page_for.body),
+		TypedPageNode::Component(component) => {
+			component
+				.children
+				.as_deref()
+				.is_some_and(contains_dynamic_option_without_value)
+				|| component
+					.named_slots
+					.iter()
+					.any(|slot| contains_dynamic_option_without_value(&slot.children))
+		}
+		TypedPageNode::Watch(watch) => {
+			contains_dynamic_option_without_value(std::slice::from_ref(watch.expr.as_ref()))
+		}
+		TypedPageNode::Text(_) | TypedPageNode::Expression(_) => false,
+	})
+}
+
+fn page_if_contains_dynamic_option_without_value(page_if: &TypedPageIf) -> bool {
+	contains_dynamic_option_without_value(&page_if.then_branch)
+		|| page_if
+			.else_branch
+			.as_ref()
+			.is_some_and(|branch| match branch {
+				TypedPageElse::Block(nodes) => contains_dynamic_option_without_value(nodes),
+				TypedPageElse::If(page_if) => {
+					page_if_contains_dynamic_option_without_value(page_if)
+				}
+			})
+}
+
+fn contains_dynamic_option_content(nodes: &[TypedPageNode]) -> bool {
+	nodes.iter().any(|node| match node {
+		TypedPageNode::Text(_) => false,
+		TypedPageNode::Element(element) => contains_dynamic_option_content(&element.children),
+		TypedPageNode::Expression(_)
+		| TypedPageNode::If(_)
+		| TypedPageNode::For(_)
+		| TypedPageNode::Component(_)
+		| TypedPageNode::Watch(_) => true,
 	})
 }
 

@@ -42,42 +42,109 @@ pub(crate) fn project(binding: Option<&ControlBinding>) -> SsrControlProjection 
 }
 
 pub(crate) fn option_selected(element: &PageElement, selected_values: &[String]) -> bool {
-	let effective_value = element
-		.attrs()
-		.iter()
-		.find_map(|(name, value)| (name.as_ref() == "value").then_some(value.as_ref()))
-		.map(str::to_owned)
-		.unwrap_or_else(|| flattened_text_content(element.child_views()));
+	let effective_value = option_value(element);
 	selected_values
 		.iter()
 		.any(|selected| selected == &effective_value)
 }
 
-fn flattened_text_content(pages: &[Page]) -> String {
-	pages.iter().map(page_text_content).collect()
+pub(crate) fn option_value(element: &PageElement) -> String {
+	element
+		.attrs()
+		.iter()
+		.find_map(|(name, value)| (name.as_ref() == "value").then_some(value.as_ref()))
+		.map(str::to_owned)
+		.unwrap_or_else(|| normalize_option_text(&collect_option_text(element.child_views())))
 }
 
-fn page_text_content(page: &Page) -> String {
+fn collect_option_text(pages: &[Page]) -> String {
+	pages.iter().map(page_option_text).collect()
+}
+
+fn page_option_text(page: &Page) -> String {
 	match page {
-		Page::Element(element) => flattened_text_content(element.child_views()),
+		Page::Element(element) if is_script(element.tag_name()) => String::new(),
+		Page::Element(element) => collect_option_text(element.child_views()),
 		Page::Text(text) => text.clone().into_owned(),
-		Page::Fragment(children) => flattened_text_content(children),
+		Page::Fragment(children) => collect_option_text(children),
 		Page::KeyedFragment(children) => children
 			.iter()
-			.map(|(_, child)| page_text_content(child))
+			.map(|(_, child)| page_option_text(child))
 			.collect(),
-		Page::Outlet(outlet) => outlet.child().map(page_text_content).unwrap_or_default(),
+		Page::Outlet(outlet) => outlet.child().map(page_option_text).unwrap_or_default(),
 		Page::Empty => String::new(),
-		Page::WithHead { view, .. } => page_text_content(view),
-		Page::ReactiveIf(reactive_if) => {
-			if reactive_if.condition() {
-				page_text_content(&reactive_if.then_view())
-			} else {
-				page_text_content(&reactive_if.else_view())
-			}
+		Page::WithHead { view, .. } => page_option_text(view),
+		Page::ReactiveIf(_) | Page::Reactive(_) | Page::Suspense(_) | Page::Deferred(_) => {
+			String::new()
 		}
-		Page::Reactive(reactive) => page_text_content(&reactive.render()),
-		Page::Suspense(node) => page_text_content(&node.render_branch()),
-		Page::Deferred(node) => page_text_content(&node.render_content()),
+	}
+}
+
+fn is_script(tag: &str) -> bool {
+	tag.rsplit_once(':')
+		.map_or(tag, |(_, local_name)| local_name)
+		.eq_ignore_ascii_case("script")
+}
+
+fn normalize_option_text(text: &str) -> String {
+	let mut normalized = String::with_capacity(text.len());
+	let mut pending_space = false;
+
+	for character in text.chars() {
+		if matches!(character, '\t' | '\n' | '\x0c' | '\r' | ' ') {
+			pending_space = !normalized.is_empty();
+		} else {
+			if pending_space {
+				normalized.push(' ');
+				pending_space = false;
+			}
+			normalized.push(character);
+		}
+	}
+
+	normalized
+}
+
+#[cfg(test)]
+mod tests {
+	use std::cell::Cell;
+	use std::rc::Rc;
+
+	use super::*;
+	use crate::component::IntoPage;
+
+	#[test]
+	fn inferred_value_does_not_invoke_reactive_factory() {
+		// Arrange
+		let renders = Rc::new(Cell::new(0));
+		let render_count = Rc::clone(&renders);
+		let option = PageElement::new("option")
+			.child("Static")
+			.child(Page::reactive(move || {
+				render_count.set(render_count.get() + 1);
+				Page::text(" Dynamic")
+			}));
+
+		// Act
+		let value = option_value(&option);
+
+		// Assert
+		assert_eq!(value, "Static");
+		assert_eq!(renders.get(), 0);
+	}
+
+	#[test]
+	fn inferred_value_skips_namespaced_script_and_normalizes_ascii_whitespace() {
+		// Arrange
+		let option = PageElement::new("option")
+			.child(" \tAlpha\n")
+			.child(PageElement::new("svg:script").child("ignored").into_page())
+			.child("\u{a0} Beta\x0c ");
+
+		// Act
+		let value = option_value(&option);
+
+		// Assert
+		assert_eq!(value, "Alpha \u{a0} Beta");
 	}
 }
