@@ -19,7 +19,8 @@
 //!
 //! ## React-aligned hook signatures (v0.2, Refs #4195)
 //!
-//! `use_effect`, `use_layout_effect`, `use_memo`, `use_callback`, and
+//! `use_effect`, `use_retained_effect`, `use_layout_effect`,
+//! `use_retained_layout_effect`, `use_memo`, `use_callback`, and
 //! `use_callback_with` take an explicit dependency tuple as the second
 //! argument. Effect closures return `()` when no cleanup is needed, or
 //! `Option<C>` when they register cleanup:
@@ -29,7 +30,7 @@
 //!
 //! let count = Signal::new(0_i32);
 //! let count_for_effect = count.clone();
-//! let _eff = use_effect(
+//! use_retained_effect(
 //!     move || {
 //!         println!("count = {}", count_for_effect.get());
 //!     },
@@ -499,7 +500,8 @@ pub use reactive::{
 	Dispatch, EffectReturn, OptimisticState, Ref, SetState, SetStateExt, SharedSetState,
 	SharedSignal, TransitionState, use_callback, use_context, use_debug_value, use_deferred_value,
 	use_effect, use_id, use_layout_effect, use_memo, use_optimistic, use_reducer, use_ref,
-	use_shared_state, use_state, use_sync_external_store, use_transition,
+	use_retained_effect, use_retained_layout_effect, use_shared_state, use_state,
+	use_sync_external_store, use_transition,
 };
 #[cfg(native)]
 pub use reinhardt_forms::{

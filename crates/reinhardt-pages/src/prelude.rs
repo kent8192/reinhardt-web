@@ -101,7 +101,8 @@ pub use crate::reactive::{
 	Dispatch, EffectReturn, OptimisticState, Ref, SetState, SetStateExt, SharedSetState,
 	SharedSignal, TransitionState, use_callback, use_context, use_debug_value, use_deferred_value,
 	use_effect, use_id, use_layout_effect, use_memo, use_optimistic, use_reducer, use_ref,
-	use_shared_state, use_state, use_sync_external_store, use_transition,
+	use_retained_effect, use_retained_layout_effect, use_shared_state, use_state,
+	use_sync_external_store, use_transition,
 };
 
 // Unified resource hooks (available on all targets)

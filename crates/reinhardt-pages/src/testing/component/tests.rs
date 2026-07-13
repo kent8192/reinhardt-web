@@ -32,7 +32,7 @@ fn renders_page_tree_and_pretty_output() {
 }
 
 #[test]
-fn suspense_nodes_render_the_active_branch() {
+fn suspense_nodes_without_ids_render_the_active_branch() {
 	let pending_screen = render(Page::Suspense(SuspenseNode::new(
 		None,
 		|| true,
@@ -55,7 +55,7 @@ fn suspense_nodes_render_the_active_branch() {
 }
 
 #[test]
-fn deferred_nodes_render_content_branch() {
+fn deferred_nodes_with_block_factories_render_content_branch() {
 	let screen = render(Page::Deferred(DeferredNode::new(
 		"deferred-test",
 		|| {
@@ -197,6 +197,39 @@ fn hidden_elements_are_excluded_from_queries() {
 	);
 
 	assert_eq!(screen.get_by_text("Save").tag_name(), "button");
+}
+
+#[test]
+fn suspense_nodes_with_ids_render_the_active_branch() {
+	let pending_screen = render(Page::Suspense(SuspenseNode::new(
+		Some("pending-boundary".to_string()),
+		|| true,
+		|| PageElement::new("p").child("Loading").into_page(),
+		|| PageElement::new("p").child("Ready").into_page(),
+	)));
+	let resolved_screen = render(Page::Suspense(SuspenseNode::new(
+		Some("resolved-boundary".to_string()),
+		|| false,
+		|| PageElement::new("p").child("Loading").into_page(),
+		|| PageElement::new("p").child("Ready").into_page(),
+	)));
+
+	assert_eq!(pending_screen.get_by_text("Loading").tag_name(), "p");
+	assert!(pending_screen.query_by_text("Ready").is_none());
+	assert_eq!(resolved_screen.get_by_text("Ready").tag_name(), "p");
+	assert!(resolved_screen.query_by_text("Loading").is_none());
+}
+
+#[test]
+fn deferred_nodes_with_inline_factories_render_content_branch() {
+	let screen = render(Page::Deferred(DeferredNode::new(
+		"deferred-content",
+		|| PageElement::new("p").child("Deferred fallback").into_page(),
+		|| PageElement::new("p").child("Deferred content").into_page(),
+	)));
+
+	assert_eq!(screen.get_by_text("Deferred content").tag_name(), "p");
+	assert!(screen.query_by_text("Deferred fallback").is_none());
 }
 
 #[test]

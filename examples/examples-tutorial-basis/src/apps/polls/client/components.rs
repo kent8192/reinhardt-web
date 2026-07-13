@@ -40,7 +40,7 @@ use crate::apps::users::models::UserInfo;
 use reinhardt::pages::component::Page;
 use reinhardt::pages::form;
 use reinhardt::pages::page;
-use reinhardt::pages::reactive::hooks::use_effect;
+use reinhardt::pages::reactive::hooks::use_retained_effect;
 use reinhardt::pages::reactive::{Resource, ResourceState, Signal, use_resource};
 use reinhardt::pages::resolve_static;
 
@@ -784,7 +784,7 @@ pub fn question_edit(question_id: i64) -> Page {
 		let load_detail_for_effect = load_detail.clone();
 		let load_detail_for_deps = load_detail.clone();
 		let edit_form_for_effect = edit_form.clone();
-		use_effect(
+		use_retained_effect(
 			move || {
 				if let ResourceState::Success((question, _)) = load_detail_for_effect.get() {
 					edit_form_for_effect

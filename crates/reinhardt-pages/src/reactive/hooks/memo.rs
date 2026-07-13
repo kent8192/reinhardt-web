@@ -111,9 +111,9 @@ where
 ///
 /// # Note
 ///
-/// Unlike React's useCallback, this doesn't require a dependency array.
-/// The callback captures values at creation time. To use the latest values,
-/// capture Signals (which are cheap to clone) rather than their values.
+/// Unlike React's dependency arrays, Reinhardt Pages uses an explicit
+/// dependency tuple. Capture Signals (which are cheap to clone) rather
+/// than their values when the callback should observe the latest state.
 #[cfg(wasm)]
 #[track_caller]
 pub fn use_callback<Args, F, D>(f: F, deps: D) -> Callback<Args, ()>
@@ -164,7 +164,7 @@ where
 /// ```no_run
 /// use reinhardt_pages::reactive::hooks::use_callback_with;
 ///
-/// let add = use_callback_with(|x: i32| x + 1);
+/// let add = use_callback_with(|x: i32| x + 1, ());
 /// assert_eq!(add.call(5), 6);
 /// ```
 #[cfg(wasm)]
