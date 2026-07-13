@@ -92,7 +92,7 @@ fn scan_node(node: &PageNode, out: &mut Vec<TokenStream>) {
 				scan_expr(&attr.value, out);
 			}
 			for event in &el.events {
-				scan_expr(&event.handler, out);
+				scan_expr(event.handler(), out);
 			}
 			for child in &el.children {
 				scan_node(child, out);

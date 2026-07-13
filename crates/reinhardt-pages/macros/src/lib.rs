@@ -435,82 +435,32 @@ pub fn wasm_server_api(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// ## Event Handlers
 ///
-/// Events use `@event: handler` syntax.
-///
-/// ### Mouse Events
-///
-/// | Event | Description |
-/// |-------|-------------|
-/// | `@click` | Mouse click |
-/// | `@dblclick` | Double click |
-/// | `@mousedown` | Mouse button pressed |
-/// | `@mouseup` | Mouse button released |
-/// | `@mouseenter` | Mouse enters element |
-/// | `@mouseleave` | Mouse leaves element |
-/// | `@mousemove` | Mouse moves over element |
-/// | `@mouseover` | Mouse over element (bubbles) |
-/// | `@mouseout` | Mouse out of element (bubbles) |
-///
-/// ### Keyboard Events
-///
-/// | Event | Description |
-/// |-------|-------------|
-/// | `@keydown` | Key pressed |
-/// | `@keyup` | Key released |
-/// | `@keypress` | Key pressed (character input) |
-///
-/// ### Form Events
-///
-/// | Event | Description |
-/// |-------|-------------|
-/// | `@input` | Input value changed |
-/// | `@change` | Value changed and committed |
-/// | `@submit` | Form submitted |
-/// | `@focus` | Element focused |
-/// | `@blur` | Element lost focus |
-///
-/// ### Touch Events
-///
-/// | Event | Description |
-/// |-------|-------------|
-/// | `@touchstart` | Touch started |
-/// | `@touchend` | Touch ended |
-/// | `@touchmove` | Touch moved |
-/// | `@touchcancel` | Touch cancelled |
-///
-/// ### Drag Events
-///
-/// | Event | Description |
-/// |-------|-------------|
-/// | `@dragstart` | Drag started |
-/// | `@drag` | Dragging |
-/// | `@drop` | Dropped |
-/// | `@dragenter` | Drag entered element |
-/// | `@dragleave` | Drag left element |
-/// | `@dragover` | Drag over element |
-/// | `@dragend` | Drag ended |
-///
-/// ### Other Events
-///
-/// | Event | Description |
-/// |-------|-------------|
-/// | `@load` | Resource loaded |
-/// | `@error` | Error occurred |
-/// | `@scroll` | Element scrolled |
-/// | `@resize` | Element/window resized |
+/// Standard intrinsic events use `@event: handler` syntax. The authoritative
+/// event catalog determines the accepted names and the distinct payload type
+/// for each event. Unknown names are rejected with a nearby-name suggestion.
+/// Arbitrary DOM events use the explicit raw form
+/// `@custom("event-name"): handler`.
+/// Component `@event` props are separate: their argument type comes from the
+/// component's declared prop and is not selected by the DOM event catalog.
+/// Typed custom `CustomEvent.detail` payloads are deferred to #5636.
 ///
 /// ### Handler Syntax
 ///
 /// ```ignore
-/// // Inline closure with event parameter
-/// button { @click: |e| { handle_click(e); } }
+/// use reinhardt_pages::event::{ClickEvent, InputEvent};
+/// use reinhardt_pages::platform::Event;
 ///
-/// // Closure ignoring event
-/// button { @click: |_| { do_something(); } }
+/// // The payload is inferred from the standard event name.
+/// button { @click: |event| { let _: ClickEvent = event; } }
 ///
-/// // Function reference
-/// fn handle_click(_event: Event) { ... }
-/// button { @click: handle_click }
+/// // Explicit typed signatures use the same catalog-selected payload.
+/// input { @input: |event: InputEvent| { let _ = event.value(); } }
+///
+/// // Zero-argument handlers remain supported.
+/// button { @click: || { do_something(); } }
+///
+/// // Custom events retain the raw cross-target event transport.
+/// div { @custom("item-selected"): |event: Event| { inspect(event); } }
 /// ```
 ///
 /// **Note**: Closures must have 0 or 1 parameter (compile error if more).
@@ -735,10 +685,10 @@ pub fn wasm_server_api(args: TokenStream, input: TokenStream) -> TokenStream {
 /// // Generates approximately:
 /// {
 ///     let name = reinhardt_pages::__private::capture(&name);
-///     ElementView::new("div")
+///     PageElement::new("div")
 ///         .attr("class", "greeting")
 ///         .child(name.clone())
-///         .into_view()
+///         .into_page()
 /// }
 /// ```
 ///
@@ -747,29 +697,32 @@ pub fn wasm_server_api(args: TokenStream, input: TokenStream) -> TokenStream {
 /// ```ignore
 /// // page!(|name: String| { div { class: "greeting", { name } } })
 /// // Generates approximately:
-/// |name: String| -> View {
-///     ElementView::new("div")
+/// |name: String| -> Page {
+///     PageElement::new("div")
 ///         .attr("class", "greeting")
 ///         .child(name)
-///         .into_view()
+///         .into_page()
 /// }
 /// ```
 ///
 /// ### Event Handler Generation
 ///
 /// ```ignore
-/// // button { @click: |_| { handle() } }
-/// // Generates (on WASM):
-/// ElementView::new("button")
-///     .on(EventType::Click, Arc::new(move |_| { handle() }))
+/// // button { @click: |event| { handle(event) } }
+/// // Generates on both native and WASM targets:
+/// PageElement::new("button")
+///     .on(
+///         KnownEvent::Click,
+///         typed_event_handler::<ClickEvent, _>(move |event| { handle(event) }),
+///     )
 /// ```
 ///
 /// ## SSR/CSR Considerations
 ///
-/// - **Event handlers**: Active on WASM (client), no-op on server (native)
+/// - **Event handlers**: Registered through the same raw storage path on WASM and native targets
 /// - **head directive**: Enables SSR metadata injection
 /// - **Same source code**: Works for both WASM and native targets
-/// - **Conditional compilation**: Events are type-checked but ignored on server
+/// - **Native testing**: Registered handlers are available to the component harness
 ///
 /// ## Complete Example
 ///

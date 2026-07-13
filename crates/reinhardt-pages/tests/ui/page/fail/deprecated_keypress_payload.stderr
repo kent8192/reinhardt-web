@@ -1,0 +1,17 @@
+error: use of deprecated struct `reinhardt_pages::event::KeyPressEvent`: keypress is deprecated; use keydown or keyup instead
+ --> tests/ui/page/fail/deprecated_keypress_payload.rs:3:44
+  |
+3 | use reinhardt_pages::event::{EventPayload, KeyPressEvent};
+  |                                            ^^^^^^^^^^^^^
+  |
+note: the lint level is defined here
+ --> tests/ui/page/fail/deprecated_keypress_payload.rs:1:9
+  |
+1 | #![deny(deprecated)]
+  |         ^^^^^^^^^^
+
+error: use of deprecated struct `reinhardt_pages::event::KeyPressEvent`: keypress is deprecated; use keydown or keyup instead
+ --> tests/ui/page/fail/deprecated_keypress_payload.rs:8:19
+  |
+8 |     assert_payload::<KeyPressEvent>();
+  |                      ^^^^^^^^^^^^^

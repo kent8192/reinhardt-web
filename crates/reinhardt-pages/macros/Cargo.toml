@@ -20,6 +20,7 @@ msw = []
 [dependencies]
 # DSL definitions (new canonical location)
 reinhardt-manouche = { workspace = true }
+reinhardt-event-catalog = { workspace = true }
 
 # Procedural macro essentials
 syn = { workspace = true, features = ["full", "extra-traits", "visit"] }

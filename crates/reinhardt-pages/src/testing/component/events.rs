@@ -3,9 +3,10 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use reinhardt_core::types::page::{DummyEvent, EventType};
+use reinhardt_core::types::page::{NativeEvent, NativeEventTarget, PageEventHandler};
 
 use super::error::EventError;
+use super::fixture::EventFixture;
 #[cfg(feature = "msw")]
 use super::server_fn_mock;
 use super::tree::{NodeId, ScreenInner};
@@ -29,7 +30,7 @@ impl ElementHandle {
 
 	/// Dispatches a click event.
 	pub fn try_click(&self) -> Result<(), EventError> {
-		self.dispatch(EventType::Click)
+		self.dispatch(EventFixture::click())
 	}
 
 	/// Dispatches a submit event and panics when dispatch fails.
@@ -39,7 +40,7 @@ impl ElementHandle {
 
 	/// Dispatches a submit event.
 	pub fn try_submit(&self) -> Result<(), EventError> {
-		self.dispatch(EventType::Submit)
+		self.dispatch(EventFixture::submit())
 	}
 
 	/// Updates the element value and dispatches an input event.
@@ -49,7 +50,7 @@ impl ElementHandle {
 
 	/// Updates the element value and dispatches an input event.
 	pub fn try_input(&self, value: impl Into<String>) -> Result<(), EventError> {
-		self.dispatch_value(EventType::Input, value.into())
+		self.dispatch(EventFixture::input().value(value))
 	}
 
 	/// Updates the element value and dispatches a change event.
@@ -59,7 +60,28 @@ impl ElementHandle {
 
 	/// Updates the element value and dispatches a change event.
 	pub fn try_change(&self, value: impl Into<String>) -> Result<(), EventError> {
-		self.dispatch_value(EventType::Change, value.into())
+		self.dispatch(EventFixture::change().value(value))
+	}
+
+	/// Updates the element checked state and dispatches a change event.
+	pub fn change_checked(&self, value: bool) {
+		self.try_change_checked(value)
+			.expect("checked change dispatch failed");
+	}
+
+	/// Updates the element checked state and dispatches a change event.
+	pub fn try_change_checked(&self, value: bool) -> Result<(), EventError> {
+		self.dispatch(EventFixture::change().checked(value))
+	}
+
+	/// Dispatches a key-down event with the supplied logical key.
+	pub fn key_down(&self, key: impl Into<String>) {
+		self.try_key_down(key).expect("key-down dispatch failed");
+	}
+
+	/// Dispatches a key-down event with the supplied logical key.
+	pub fn try_key_down(&self, key: impl Into<String>) -> Result<(), EventError> {
+		self.dispatch(EventFixture::key_down().key(key))
 	}
 
 	/// Returns the element text content.
@@ -108,9 +130,11 @@ impl ElementHandle {
 		Ok(borrowed.dom.value(self.node_id))
 	}
 
-	fn dispatch(&self, event_type: EventType) -> Result<(), EventError> {
-		let (handlers, scheduler) = {
-			let borrowed = self.inner.borrow();
+	/// Dispatches one validated synthetic event fixture.
+	pub fn dispatch(&self, fixture: EventFixture) -> Result<(), EventError> {
+		let event = fixture.build()?;
+		let (handlers, target, scheduler) = {
+			let mut borrowed = self.inner.borrow_mut();
 			if !borrowed.dom.contains(self.node_id) {
 				return Err(EventError::DetachedElement);
 			}
@@ -120,10 +144,25 @@ impl ElementHandle {
 			if borrowed.dom.suppresses_events(self.node_id) {
 				return Ok(());
 			}
-			(
-				borrowed.dom.event_handlers(self.node_id, event_type),
-				Rc::clone(&borrowed.scheduler),
-			)
+			borrowed
+				.dom
+				.apply_target_state(self.node_id, fixture.target())?;
+			let handlers: Vec<(NodeId, PageEventHandler, NativeEventTarget)> = borrowed
+				.dom
+				.event_handlers(self.node_id, fixture.name(), event.base().bubbles)
+				.into_iter()
+				.filter_map(|(node_id, handler)| {
+					borrowed
+						.dom
+						.event_target(node_id)
+						.map(|target| (node_id, handler, target))
+				})
+				.collect();
+			let target = borrowed
+				.dom
+				.event_target(self.node_id)
+				.ok_or(EventError::UnsupportedElement)?;
+			(handlers, target, Rc::clone(&borrowed.scheduler))
 		};
 		#[cfg(feature = "msw")]
 		let mocks = self.inner.borrow().mocks.clone();
@@ -131,65 +170,36 @@ impl ElementHandle {
 		if handlers.is_empty() {
 			return Err(EventError::MissingHandler);
 		}
+		let event = event.with_target(target);
 		#[cfg(feature = "msw")]
 		{
 			server_fn_mock::with_active(mocks, || {
 				scheduler.with_current(|| {
-					for handler in handlers {
-						handler(DummyEvent);
-					}
+					dispatch_handlers(&event, handlers);
 				});
 			});
 		}
 		#[cfg(not(feature = "msw"))]
-		scheduler.with_current(|| {
-			for handler in handlers {
-				handler(DummyEvent);
-			}
-		});
+		scheduler.with_current(|| dispatch_handlers(&event, handlers));
 		Ok(())
 	}
+}
 
-	fn dispatch_value(&self, event_type: EventType, value: String) -> Result<(), EventError> {
-		let (handlers, scheduler) = {
-			let mut borrowed = self.inner.borrow_mut();
-			if !borrowed.dom.contains(self.node_id) {
-				return Err(EventError::DetachedElement);
-			}
-			if borrowed.dom.suppresses_events(self.node_id) {
-				return Ok(());
-			}
-			if !borrowed.dom.set_value(self.node_id, value) {
-				return Err(EventError::UnsupportedElement);
-			}
-			(
-				borrowed.dom.event_handlers(self.node_id, event_type),
-				Rc::clone(&borrowed.scheduler),
-			)
-		};
-		#[cfg(feature = "msw")]
-		let mocks = self.inner.borrow().mocks.clone();
+fn dispatch_handlers(
+	event: &NativeEvent,
+	handlers: Vec<(NodeId, PageEventHandler, NativeEventTarget)>,
+) {
+	let mut previous_node = None;
+	for (node_id, handler, current_target) in handlers {
+		if event.propagation_stopped() && previous_node != Some(node_id) {
+			break;
+		}
+		if event.immediate_propagation_stopped() && previous_node == Some(node_id) {
+			continue;
+		}
 
-		if handlers.is_empty() {
-			return Err(EventError::MissingHandler);
-		}
-		#[cfg(feature = "msw")]
-		{
-			server_fn_mock::with_active(mocks, || {
-				scheduler.with_current(|| {
-					for handler in handlers {
-						handler(DummyEvent);
-					}
-				});
-			});
-		}
-		#[cfg(not(feature = "msw"))]
-		scheduler.with_current(|| {
-			for handler in handlers {
-				handler(DummyEvent);
-			}
-		});
-		Ok(())
+		handler(event.with_current_target(current_target));
+		previous_node = Some(node_id);
 	}
 }
 

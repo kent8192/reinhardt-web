@@ -42,7 +42,7 @@ pub mod view_transition;
 pub use activity::{ActivityBoundary, ActivityMode};
 pub use error_boundary::{BoundaryError, ErrorBoundary, ErrorTracker};
 #[cfg(native)]
-pub use into_page::DummyEvent;
+pub use into_page::NativeEvent;
 pub use into_page::PageExt;
 pub use into_page::{
 	Head, IntoPage, LinkTag, MetaTag, MountError, Outlet, Page, PageElement, PageEventHandler,
