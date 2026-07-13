@@ -49,7 +49,6 @@
 use crate::form::FormComponent;
 use crate::reactive::{Effect, Signal};
 use std::collections::HashMap;
-use std::rc::Rc;
 
 /// Form Binding for two-way data synchronization (Week 5 Day 4)
 ///
@@ -73,7 +72,17 @@ pub struct FormBinding {
 	bindings: HashMap<String, Signal<String>>,
 
 	/// Active effects for automatic sync (kept alive)
-	effects: Vec<Rc<dyn std::any::Any>>,
+	effects: HashMap<String, BoundEffect>,
+}
+
+struct BoundEffect {
+	effect: Effect,
+}
+
+impl Drop for BoundEffect {
+	fn drop(&mut self) {
+		self.effect.dispose();
+	}
 }
 
 impl FormBinding {
@@ -93,7 +102,7 @@ impl FormBinding {
 		Self {
 			form_component,
 			bindings: HashMap::new(),
-			effects: Vec::new(),
+			effects: HashMap::new(),
 		}
 	}
 
@@ -133,8 +142,9 @@ impl FormBinding {
 			form_component.set_value(&field_name_clone, value);
 		});
 
-		// Keep effect alive
-		self.effects.push(Rc::new(effect));
+		// Keep the effect alive until this field is unbound or the binding drops.
+		self.effects
+			.insert(field_name.clone(), BoundEffect { effect });
 
 		// Initial sync: FormComponent → Signal
 		let current_value = self.form_component.get_value(&field_name);
@@ -154,7 +164,7 @@ impl FormBinding {
 	/// ```
 	pub fn unbind_field(&mut self, field_name: &str) {
 		self.bindings.remove(field_name);
-		// Note: Effects are automatically cleaned up when dropped
+		self.effects.remove(field_name);
 	}
 
 	/// Get the Signal bound to a field
@@ -498,6 +508,24 @@ mod tests {
 			binding.unbind_field("username");
 
 			assert!(!binding.is_bound("username"));
+		});
+	}
+
+	#[test]
+	#[serial]
+	fn unbinding_field_disposes_the_synchronization_effect() {
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let form = create_test_form();
+			let mut binding = FormBinding::new(form);
+			let username_signal = Signal::new("initial".to_string());
+
+			binding.bind_field("username", username_signal.clone());
+			binding.unbind_field("username");
+
+			username_signal.set("after-unbind".to_string());
+			with_runtime(|runtime| runtime.flush_updates());
+
+			assert_eq!(binding.get_field_value("username"), "initial");
 		});
 	}
 

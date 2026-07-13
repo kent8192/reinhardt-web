@@ -198,9 +198,12 @@ where
 	let on_change: Rc<dyn Fn()> = Rc::new({
 		let state = state_clone;
 		move || {
+			let Ok(current_value) = state.try_get_untracked() else {
+				return;
+			};
 			let new_value = get_snapshot_clone();
-			if state.get() != new_value {
-				state.set(new_value);
+			if current_value != new_value {
+				let _ = state.try_set(new_value);
 			}
 		}
 	});
@@ -273,6 +276,8 @@ where
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use reinhardt_core::reactive::ReactiveScope;
+	use serial_test::serial;
 	use std::cell::RefCell;
 
 	#[test]
@@ -328,6 +333,34 @@ mod tests {
 
 			assert_eq!(signal_with_sub.get(), 100);
 		});
+	}
+
+	#[test]
+	#[serial(reactive_runtime)]
+	fn external_store_notification_ignores_a_disposed_scope() {
+		type OnChangeSlot = Rc<RefCell<Option<Rc<dyn Fn()>>>>;
+
+		let on_change_slot: OnChangeSlot = Rc::new(RefCell::new(None));
+		let scope = ReactiveScope::new();
+		let subscription = scope.enter(|| {
+			use_sync_external_store(
+				{
+					let on_change_slot = Rc::clone(&on_change_slot);
+					move |on_change| {
+						*on_change_slot.borrow_mut() = Some(on_change);
+						Box::new(|| {})
+					}
+				},
+				|| 0,
+			)
+		});
+
+		scope.dispose();
+		on_change_slot
+			.borrow()
+			.as_ref()
+			.expect("subscription must retain its callback")();
+		drop(subscription);
 	}
 
 	#[cfg(native)]

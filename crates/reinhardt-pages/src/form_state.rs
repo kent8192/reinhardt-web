@@ -1495,8 +1495,11 @@ where
 		}
 
 		if self.trigger().is_err() {
-			self.state.is_submitting.set(false);
+			let is_live = self.state.is_submitting.try_set(false).is_ok();
 			pending_guard.disarm();
+			if !is_live {
+				return Ok(UseFormAsyncSubmitOutcome::ValidationFailed);
+			}
 			if let Some(callback) = &self.on_submit_error {
 				callback(self);
 			}
@@ -1506,8 +1509,11 @@ where
 
 		match submit().await {
 			Ok(output) => {
-				self.state.is_submitting.set(false);
+				let is_live = self.state.is_submitting.try_set(false).is_ok();
 				pending_guard.disarm();
+				if !is_live {
+					return Ok(UseFormAsyncSubmitOutcome::Submitted(output));
+				}
 				self.state.is_submit_successful.set(true);
 				if let Some(callback) = &self.on_submit_success {
 					callback(self);
@@ -1516,8 +1522,11 @@ where
 				Ok(UseFormAsyncSubmitOutcome::Submitted(output))
 			}
 			Err(error) => {
-				self.state.is_submitting.set(false);
+				let is_live = self.state.is_submitting.try_set(false).is_ok();
 				pending_guard.disarm();
+				if !is_live {
+					return Err(error);
+				}
 				self.state.is_submit_successful.set(false);
 				self.state.submit_error.set(Some(error.to_string()));
 				self.sync_first_error();
@@ -2044,7 +2053,7 @@ impl SubmitPendingGuard {
 impl Drop for SubmitPendingGuard {
 	fn drop(&mut self) {
 		if self.active {
-			self.is_submitting.set(false);
+			let _ = self.is_submitting.try_set(false);
 		}
 	}
 }
@@ -2124,7 +2133,23 @@ where
 
 #[cfg(test)]
 mod tests {
-	use super::{CollectionItem, CollectionItemKey, CollectionState, FieldError, FieldPathState};
+	use super::{
+		CollectionItem, CollectionItemKey, CollectionState, FieldError, FieldPathState,
+		SubmitPendingGuard,
+	};
+	use crate::reactive::Signal;
+	use reinhardt_core::reactive::ReactiveScope;
+	use serial_test::serial;
+
+	#[test]
+	#[serial(reactive_runtime)]
+	fn submit_pending_guard_ignores_a_disposed_scope() {
+		let scope = ReactiveScope::new();
+		let pending_guard = scope.enter(|| SubmitPendingGuard::new(Signal::new(true)));
+
+		scope.dispose();
+		drop(pending_guard);
+	}
 
 	#[test]
 	fn collection_item_key_is_opaque_and_stable() {

@@ -170,6 +170,18 @@ impl<T: 'static> Signal<T> {
 	where
 		T: Clone,
 	{
+		self.try_get_untracked()
+			.unwrap_or_else(|err| panic!("{err}"))
+	}
+
+	/// Get the current value without tracking dependencies if the owner is live.
+	///
+	/// This non-panicking form is intended for asynchronous completion paths and
+	/// external notifications that can arrive after the owning scope is disposed.
+	pub fn try_get_untracked(&self) -> Result<T, ReactiveScopeError>
+	where
+		T: Clone,
+	{
 		with_node::<SignalSlot<T>, _>(self.key, |slot| {
 			#[cfg(not(target_arch = "wasm32"))]
 			{
@@ -180,7 +192,6 @@ impl<T: 'static> Signal<T> {
 				slot.value.borrow().clone()
 			}
 		})
-		.unwrap_or_else(|err| panic!("{err}"))
 	}
 
 	/// Applies a function to the current value without cloning or tracking dependencies.
