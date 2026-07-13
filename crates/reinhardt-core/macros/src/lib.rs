@@ -35,6 +35,7 @@ mod installed_apps;
 mod macro_state;
 mod model_attribute;
 mod model_derive;
+mod model_enum_derive;
 mod orm_reflectable_derive;
 mod pascal_case;
 mod path_macro;
@@ -1028,6 +1029,16 @@ pub fn derive_validate(input: TokenStream) -> TokenStream {
 
 	validate_derive::validate_derive_impl(input)
 		.unwrap_or_else(|e| e.to_compile_error())
+		.into()
+}
+
+/// Derives explicit database codecs for a unit enum.
+#[proc_macro_derive(ModelEnum, attributes(model_enum))]
+pub fn derive_model_enum(input: TokenStream) -> TokenStream {
+	let input = parse_macro_input!(input as syn::DeriveInput);
+
+	model_enum_derive::model_enum_derive_impl(input)
+		.unwrap_or_else(|error| error.to_compile_error())
 		.into()
 }
 

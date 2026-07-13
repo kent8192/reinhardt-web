@@ -8,7 +8,7 @@ pub use reinhardt_macros::{AppConfig, app_config, installed_apps};
 #[cfg(all(feature = "conf", native))]
 pub use reinhardt_macros::settings;
 
-pub use reinhardt_macros::{Model, model};
+pub use reinhardt_macros::{Model, ModelEnum, model};
 
 pub use reinhardt_macros::Validate;
 pub use reinhardt_macros::dto;
