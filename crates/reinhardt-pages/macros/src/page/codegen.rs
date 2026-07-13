@@ -25,7 +25,7 @@
 //! ```
 
 use proc_macro2::{Span, TokenStream};
-use quote::quote;
+use quote::{quote, quote_spanned};
 use std::collections::HashSet;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
@@ -38,8 +38,9 @@ use reinhardt_event_catalog::KnownEvent;
 use reinhardt_manouche::core::types::AttrValue;
 use reinhardt_manouche::core::{
 	ComponentInvocationForm, ImplicitPageCapture, IntrinsicEvent, PageExpression, PageParam,
-	PageText, TypedPageAttr, TypedPageBody, TypedPageComponent, TypedPageElement, TypedPageElse,
-	TypedPageFor, TypedPageIf, TypedPageMacro, TypedPageMacroForm, TypedPageNode, TypedPageWatch,
+	PageText, TypedControlBinding, TypedControlBindingExpr, TypedControlBindingKind, TypedPageAttr,
+	TypedPageBody, TypedPageComponent, TypedPageElement, TypedPageElse, TypedPageFor, TypedPageIf,
+	TypedPageMacro, TypedPageMacroForm, TypedPageNode, TypedPageWatch,
 };
 
 use super::scope_utils::collect_pat_idents;
@@ -588,6 +589,13 @@ fn generate_element(
 		};
 	}
 
+	if let Some(binding) = &elem.control_binding {
+		let control_binding = generate_control_binding(binding, pages_crate, ctx);
+		base_builder = quote! {
+			#base_builder #control_binding
+		};
+	}
+
 	// Fast path: no events - simple generation.
 	if elem.events.is_empty() {
 		return quote! {
@@ -607,6 +615,55 @@ fn generate_element(
 			#base_builder #(#event_bindings)*
 		)
 	}
+}
+
+fn generate_control_binding(
+	binding: &TypedControlBinding,
+	pages_crate: &TokenStream,
+	ctx: &CodegenContext,
+) -> TokenStream {
+	let value = match &binding.expression {
+		TypedControlBindingExpr::Direct(value) => value,
+		TypedControlBindingExpr::NumberWithError { value, .. } => value,
+	};
+	let value = wrap_expr_with_captures(value, pages_crate, ctx);
+	let binding_span = binding.span;
+	let descriptor = match (&binding.kind, &binding.expression) {
+		(TypedControlBindingKind::Text, _) => {
+			quote_spanned!(binding_span=> #pages_crate::component::ControlBinding::text((#value).clone()))
+		}
+		(TypedControlBindingKind::Checkbox, _) => {
+			quote_spanned!(binding_span=> #pages_crate::component::ControlBinding::checkbox((#value).clone()))
+		}
+		(TypedControlBindingKind::SelectOne, _) => {
+			quote_spanned!(binding_span=> #pages_crate::component::ControlBinding::select_one((#value).clone()))
+		}
+		(TypedControlBindingKind::SelectMany, _) => {
+			quote_spanned!(binding_span=> #pages_crate::component::ControlBinding::select_many((#value).clone()))
+		}
+		(TypedControlBindingKind::Number, TypedControlBindingExpr::Direct(_)) => {
+			quote_spanned!(binding_span=> #pages_crate::component::ControlBinding::number((#value).clone()))
+		}
+		(
+			TypedControlBindingKind::Number,
+			TypedControlBindingExpr::NumberWithError { error, .. },
+		) => {
+			let error = wrap_expr_with_captures(error, pages_crate, ctx);
+			quote_spanned!(binding_span=> #pages_crate::component::ControlBinding::number_with_error(
+				(#value).clone(),
+				(#error).clone()
+			))
+		}
+		(TypedControlBindingKind::Radio, _) => {
+			let radio_value = binding.radio_value.as_ref().expect("validated radio value");
+			let radio_value = wrap_expr_with_captures(radio_value, pages_crate, ctx);
+			quote_spanned!(binding_span=> #pages_crate::component::ControlBinding::radio(
+				(#value).clone(),
+				(#radio_value).to_string()
+			))
+		}
+	};
+	quote!(.control_binding(#descriptor))
 }
 
 /// Boolean attributes that should use `.bool_attr()` method.

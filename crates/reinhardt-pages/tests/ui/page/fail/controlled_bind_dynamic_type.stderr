@@ -1,0 +1,5 @@
+error: a bound input requires a static `type`
+ --> tests/ui/page/fail/controlled_bind_dynamic_type.rs:4:71
+  |
+4 |     let _ = page!({ input { a11y: off, type: String::from("text"), bind: () } });
+  |                                                                          ^^
