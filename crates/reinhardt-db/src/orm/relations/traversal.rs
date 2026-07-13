@@ -429,15 +429,25 @@ pub(crate) fn step_aliases(steps: &[RelationStep], root_alias: &str) -> SmallVec
 pub struct RelatedFieldRef<Root: Model, Target: Model, Value> {
 	path: RelationPath<Root, Target>,
 	field: &'static str,
+	column: String,
 	_phantom: PhantomData<Value>,
 }
 
 impl<Root: Model, Target: Model, Value> RelatedFieldRef<Root, Target, Value> {
 	/// Create a related field reference from a path and target field name.
 	pub fn new(path: RelationPath<Root, Target>, field: &'static str) -> Self {
+		let column = Target::field_metadata()
+			.into_iter()
+			.find(|metadata| metadata.name == field)
+			.map_or_else(
+				|| field.to_string(),
+				|metadata| metadata.db_column_name().to_string(),
+			);
+
 		Self {
 			path,
 			field,
+			column,
 			_phantom: PhantomData,
 		}
 	}
@@ -453,7 +463,7 @@ impl<Root: Model, Target: Model, Value> RelatedFieldRef<Root, Target, Value> {
 	}
 
 	fn filter(&self, operator: FilterOperator, value: FilterValue) -> TypedFilter<Root> {
-		TypedFilter::new(Filter::related(self.field, operator, value, &self.path))
+		TypedFilter::new(Filter::related(&self.column, operator, value, &self.path))
 	}
 
 	/// Build an equality filter for this related field.

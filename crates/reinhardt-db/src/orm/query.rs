@@ -3247,10 +3247,17 @@ where
 	fn distinct_root_primary_key_sql(&self) -> String {
 		let root_alias = quote_identifier(self.root_alias());
 		if let Some(composite_key) = T::composite_primary_key() {
+			let field_metadata = T::field_metadata();
 			let columns = composite_key
 				.fields()
 				.iter()
-				.map(|field| format!("{root_alias}.{}", quote_identifier(field)))
+				.map(|field| {
+					let column = field_metadata
+						.iter()
+						.find(|metadata| metadata.name == *field)
+						.map_or(field.as_str(), |metadata| metadata.db_column_name());
+					format!("{root_alias}.{}", quote_identifier(column))
+				})
 				.collect::<Vec<_>>()
 				.join(", ");
 			if composite_key.field_count() > 1 {
@@ -3335,22 +3342,22 @@ where
 			let expr = match (&filter.operator, &filter.value) {
 				// Field-to-field comparisons (must come before generic patterns)
 				(FilterOperator::Eq, FilterValue::FieldRef(f)) => {
-					col.eq(Expr::col(Alias::new(&f.field)))
+					col.eq(Expr::col(self.root_column_reference(&f.field)))
 				}
 				(FilterOperator::Ne, FilterValue::FieldRef(f)) => {
-					col.ne(Expr::col(Alias::new(&f.field)))
+					col.ne(Expr::col(self.root_column_reference(&f.field)))
 				}
 				(FilterOperator::Gt, FilterValue::FieldRef(f)) => {
-					col.gt(Expr::col(Alias::new(&f.field)))
+					col.gt(Expr::col(self.root_column_reference(&f.field)))
 				}
 				(FilterOperator::Gte, FilterValue::FieldRef(f)) => {
-					col.gte(Expr::col(Alias::new(&f.field)))
+					col.gte(Expr::col(self.root_column_reference(&f.field)))
 				}
 				(FilterOperator::Lt, FilterValue::FieldRef(f)) => {
-					col.lt(Expr::col(Alias::new(&f.field)))
+					col.lt(Expr::col(self.root_column_reference(&f.field)))
 				}
 				(FilterOperator::Lte, FilterValue::FieldRef(f)) => {
-					col.lte(Expr::col(Alias::new(&f.field)))
+					col.lte(Expr::col(self.root_column_reference(&f.field)))
 				}
 				// OuterRef comparisons for correlated subqueries
 				(FilterOperator::Eq, FilterValue::OuterRef(outer)) => {
@@ -4263,7 +4270,7 @@ where
 
 		// Apply GROUP BY
 		for group_field in &self.group_by_fields {
-			let col_ref = parse_column_reference(group_field);
+			let col_ref = self.root_column_reference(group_field);
 			stmt.group_by_col(col_ref);
 		}
 
@@ -6250,7 +6257,7 @@ where
 
 			// Apply GROUP BY
 			for group_field in &self.group_by_fields {
-				stmt.group_by_col(Alias::new(group_field));
+				stmt.group_by_col(self.root_column_reference(group_field));
 			}
 
 			// Apply HAVING
@@ -7259,6 +7266,27 @@ mod tests {
 	use serde::{Deserialize, Serialize};
 	use std::collections::HashMap;
 
+	fn test_field_info(
+		name: &str,
+		db_column: Option<&str>,
+		primary_key: bool,
+	) -> crate::orm::inspection::FieldInfo {
+		crate::orm::inspection::FieldInfo {
+			name: name.to_string(),
+			field_type: "reinhardt.orm.models.CharField".to_string(),
+			nullable: false,
+			primary_key,
+			unique: false,
+			blank: false,
+			editable: true,
+			default: None,
+			db_default: None,
+			db_column: db_column.map(str::to_string),
+			choices: None,
+			attributes: HashMap::new(),
+		}
+	}
+
 	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 	struct TestUser {
 		id: Option<i64>,
@@ -7408,7 +7436,7 @@ mod tests {
 		}
 
 		fn primary_key_column() -> &'static str {
-			"user_id"
+			"member_user_id"
 		}
 
 		fn composite_primary_key() -> Option<crate::orm::composite_pk::CompositePrimaryKey> {
@@ -7421,6 +7449,13 @@ mod tests {
 			)
 		}
 
+		fn field_metadata() -> Vec<crate::orm::inspection::FieldInfo> {
+			vec![
+				test_field_info("user_id", Some("member_user_id"), true),
+				test_field_info("role_id", Some("member_role_id"), true),
+			]
+		}
+
 		fn new_fields() -> Self::Fields {
 			TestMembershipFields
 		}
@@ -7430,12 +7465,17 @@ mod tests {
 	struct TestCorpusFile {
 		id: Option<i64>,
 		normalized_path: String,
+		email: String,
 	}
 
 	impl TestCorpusFile {
 		const fn field_normalized_path() -> crate::orm::expressions::FieldRef<TestCorpusFile, String>
 		{
 			crate::orm::expressions::FieldRef::new("normalized_path")
+		}
+
+		const fn field_email() -> crate::orm::expressions::FieldRef<TestCorpusFile, String> {
+			crate::orm::expressions::FieldRef::new("email")
 		}
 	}
 
@@ -7471,6 +7511,13 @@ mod tests {
 
 		fn new_fields() -> Self::Fields {
 			TestCorpusFileFields
+		}
+
+		fn field_metadata() -> Vec<crate::orm::inspection::FieldInfo> {
+			vec![
+				test_field_info("normalized_path", None, false),
+				test_field_info("email", Some("email_addr"), false),
+			]
 		}
 	}
 
@@ -7654,7 +7701,7 @@ mod tests {
 				name: "projects".into(),
 				source_table: "test_memberships".into(),
 				target_table: "test_projects".into(),
-				source_column: "user_id".into(),
+				source_column: "member_user_id".into(),
 				target_column: "test_membership_id".into(),
 				default_join_kind: crate::orm::relations::RelationJoinKind::Left,
 				multiplicity: crate::orm::relations::RelationMultiplicity::Multiple,
@@ -8366,6 +8413,66 @@ mod tests {
 	}
 
 	#[test]
+	fn test_related_field_filter_uses_target_db_column() {
+		let filter =
+			crate::orm::relations::RelationPath::<TestUser, TestCorpusFile>::from_descriptor::<
+				TestUserCorpusFile,
+			>()
+			.field(TestCorpusFile::field_email())
+			.eq("person@example.com");
+
+		let sql = QuerySet::<TestUser>::new().filter(filter).to_sql();
+
+		assert_eq!(
+			sql,
+			r#"SELECT "test_users".* FROM "test_users" INNER JOIN "test_corpus_files" AS "corpus_file" ON "test_users"."corpus_file_id" = "corpus_file"."id" WHERE "corpus_file"."email_addr" = 'person@example.com'"#
+		);
+	}
+
+	#[test]
+	fn test_relation_filter_qualifies_root_rhs_field_reference() {
+		let related_filter =
+			crate::orm::relations::RelationPath::<TestUser, TestCorpusFile>::from_descriptor::<
+				TestUserCorpusFile,
+			>()
+			.field(TestCorpusFile::field_normalized_path())
+			.eq("/docs/index.md");
+
+		let sql = QuerySet::<TestUser>::new()
+			.filter(related_filter)
+			.filter(Filter::new(
+				"username",
+				FilterOperator::Eq,
+				FilterValue::FieldRef(crate::orm::expressions::F::new("email")),
+			))
+			.to_sql();
+
+		assert_eq!(
+			sql,
+			r#"SELECT "test_users".* FROM "test_users" INNER JOIN "test_corpus_files" AS "corpus_file" ON "test_users"."corpus_file_id" = "corpus_file"."id" WHERE ("corpus_file"."normalized_path" = '/docs/index.md' AND "test_users"."username" = "test_users"."email")"#
+		);
+	}
+
+	#[test]
+	fn test_relation_filter_qualifies_root_grouping_field() {
+		let filter =
+			crate::orm::relations::RelationPath::<TestUser, TestCorpusFile>::from_descriptor::<
+				TestUserCorpusFile,
+			>()
+			.field(TestCorpusFile::field_normalized_path())
+			.eq("/docs/index.md");
+		let mut queryset = QuerySet::<TestUser>::new().filter(filter);
+		queryset.group_by_fields = vec!["id".to_string()];
+
+		let sql = queryset.to_sql();
+
+		assert_eq!(
+			sql,
+			r#"SELECT "test_users".* FROM "test_users" INNER JOIN "test_corpus_files" AS "corpus_file" ON "test_users"."corpus_file_id" = "corpus_file"."id" WHERE "corpus_file"."normalized_path" = '/docs/index.md' GROUP BY "test_users"."id""#
+		);
+	}
+
+	#[test]
 	#[should_panic(
 		expected = "typed prefetch_related supports only direct multi-valued relation paths"
 	)]
@@ -8472,7 +8579,7 @@ mod tests {
 
 		assert_eq!(
 			sql,
-			r#"SELECT COUNT(DISTINCT ("test_memberships"."user_id", "test_memberships"."role_id")) FROM "test_memberships" LEFT JOIN "test_projects" AS "projects" ON "test_memberships"."user_id" = "projects"."test_membership_id" WHERE "projects"."name" ILIKE '%rust%' ESCAPE '\'"#
+			r#"SELECT COUNT(DISTINCT ("test_memberships"."member_user_id", "test_memberships"."member_role_id")) FROM "test_memberships" LEFT JOIN "test_projects" AS "projects" ON "test_memberships"."member_user_id" = "projects"."test_membership_id" WHERE "projects"."name" ILIKE '%rust%' ESCAPE '\'"#
 		);
 	}
 
