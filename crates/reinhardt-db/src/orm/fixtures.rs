@@ -170,6 +170,12 @@ pub trait FixtureModelHandler: Send + Sync {
 		Vec::new()
 	}
 
+	/// Map a physical database column back to its fixture field name.
+	#[cfg(feature = "migrations")]
+	fn fixture_field_name_for_database_column(&self, _database_column: &str) -> Option<String> {
+		None
+	}
+
 	/// Load one fixture record through this model handler.
 	async fn load_record(
 		&self,
@@ -338,6 +344,16 @@ where
 	#[cfg(feature = "migrations")]
 	fn fixture_foreign_key_fields(&self) -> Vec<(String, String)> {
 		foreign_key_fixture_field_names_with_metadata_fallback::<M>()
+	}
+
+	#[cfg(feature = "migrations")]
+	fn fixture_field_name_for_database_column(&self, database_column: &str) -> Option<String> {
+		M::field_metadata()
+			.into_iter()
+			.find(|field| {
+				field.name == database_column || field.db_column_name() == database_column
+			})
+			.map(|field| field.name)
 	}
 
 	async fn load_record(
@@ -1917,11 +1933,31 @@ fn fixture_foreign_key_referenced_column(
 	field: &crate::migrations::model_registry::FieldMetadata,
 	target_metadata: &crate::migrations::model_registry::ModelMetadata,
 ) -> String {
-	field
+	let database_column = field
 		.foreign_key
 		.as_ref()
 		.map(|foreign_key| foreign_key.referenced_column.clone())
-		.unwrap_or_else(|| fixture_primary_key_field_name(target_metadata))
+		.unwrap_or_else(|| fixture_primary_key_field_name(target_metadata));
+	let target_label = canonical_label(&target_metadata.app_label, &target_metadata.model_name);
+	global_fixture_registry()
+		.get(&target_label)
+		.and_then(|handler| handler.fixture_field_name_for_database_column(&database_column))
+		.or_else(|| {
+			target_metadata
+				.fields
+				.contains_key(&database_column)
+				.then_some(database_column.clone())
+		})
+		.or_else(|| {
+			target_metadata
+				.fields
+				.iter()
+				.find_map(|(field_name, metadata)| {
+					(metadata.params.get("db_column") == Some(&database_column))
+						.then(|| field_name.clone())
+				})
+		})
+		.unwrap_or(database_column)
 }
 
 #[cfg(feature = "migrations")]
@@ -3941,6 +3977,72 @@ mod tests {
 
 	#[cfg(feature = "migrations")]
 	#[test]
+	#[serial_test::serial(fixture_model_registry)]
+	fn dependency_order_maps_referenced_database_columns_to_fixture_fields() {
+		let mut target = crate::migrations::ModelMetadata::new(
+			"fixture_database_column",
+			"FixtureDatabaseColumnPost",
+			"fixture_database_column_post",
+		);
+		target.add_field(
+			"id".to_string(),
+			crate::migrations::FieldMetadata::new(crate::migrations::FieldType::BigInteger)
+				.with_param("primary_key", "true"),
+		);
+		target.add_field(
+			"title".to_string(),
+			crate::migrations::FieldMetadata::new(crate::migrations::FieldType::VarChar(64))
+				.with_param("unique", "true"),
+		);
+		let mut source = crate::migrations::ModelMetadata::new(
+			"fixture_database_column_fk",
+			"Post",
+			"fixture_database_column_fk_post",
+		);
+		source.add_field(
+			"target_title".to_string(),
+			crate::migrations::FieldMetadata::new(crate::migrations::FieldType::VarChar(64))
+				.with_param("fk_target", "FixtureDatabaseColumnPost")
+				.with_param("fk_target_app", "fixture_database_column")
+				.with_foreign_key(crate::migrations::ForeignKeyInfo {
+					referenced_table: "fixture_database_column_post".to_string(),
+					referenced_column: "fixture_title".to_string(),
+					on_delete: crate::migrations::ForeignKeyAction::Cascade,
+					on_update: crate::migrations::ForeignKeyAction::Cascade,
+				}),
+		);
+		crate::migrations::model_registry::global_registry().register_model(target);
+		crate::migrations::model_registry::global_registry().register_model(source);
+		global_fixture_registry().register_model::<FixtureDatabaseColumnPost>();
+
+		let mut source_fields = Map::new();
+		source_fields.insert("target_title".to_string(), Value::from("fixture target"));
+		let mut target_fields = Map::new();
+		target_fields.insert("title".to_string(), Value::from("fixture target"));
+		let records = vec![
+			FixtureRecord::new(
+				"fixture_database_column_fk.Post",
+				Some(Value::from(1)),
+				source_fields,
+			),
+			FixtureRecord::new(
+				"fixture_database_column.FixtureDatabaseColumnPost",
+				Some(Value::from(2)),
+				target_fields,
+			),
+		];
+
+		let ordered = order_records_by_dependencies(&records).unwrap();
+
+		assert_eq!(
+			ordered[0].model,
+			"fixture_database_column.FixtureDatabaseColumnPost"
+		);
+		assert_eq!(ordered[1].model, "fixture_database_column_fk.Post");
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
 	fn foreign_key_fixture_fields_accept_django_relation_names() {
 		let mut post =
 			crate::migrations::ModelMetadata::new("fixture_tests", "FixturePost", "fixture_post");
@@ -4833,6 +4935,55 @@ mod tests {
 		assert_eq!(
 			Manager::<FixtureTextM2mPost>::sea_value_to_query_value(target_value),
 			QueryValue::String("2026-07-13T08:25:26+00:00".to_string())
+		);
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	#[serial_test::serial(fixture_model_registry)]
+	fn many_to_many_fixture_specs_resolve_qualified_cross_app_targets() {
+		let mut post = crate::migrations::ModelMetadata::new(
+			"fixture_text_m2m",
+			"FixtureTextM2mPost",
+			"fixture_text_m2m_post",
+		);
+		post.add_many_to_many(crate::migrations::ManyToManyMetadata::new(
+			"tags",
+			"fixture_external_m2m.FixtureTextM2mTag",
+		));
+		let mut local_tag = crate::migrations::ModelMetadata::new(
+			"fixture_text_m2m",
+			"FixtureTextM2mTag",
+			"fixture_text_m2m_tag",
+		);
+		local_tag.add_field(
+			"id".to_string(),
+			crate::migrations::FieldMetadata::new(crate::migrations::FieldType::BigInteger)
+				.with_param("primary_key", "true"),
+		);
+		let mut external_tag = crate::migrations::ModelMetadata::new(
+			"fixture_external_m2m",
+			"FixtureTextM2mTag",
+			"fixture_external_m2m_tag",
+		);
+		external_tag.add_field(
+			"id".to_string(),
+			crate::migrations::FieldMetadata::new(crate::migrations::FieldType::Char(36))
+				.with_param("primary_key", "true"),
+		);
+		crate::migrations::model_registry::global_registry().register_model(post);
+		crate::migrations::model_registry::global_registry().register_model(local_tag);
+		crate::migrations::model_registry::global_registry().register_model(external_tag);
+
+		let spec = many_to_many_specs_for::<FixtureTextM2mPost>()
+			.into_iter()
+			.next()
+			.expect("qualified many-to-many target should resolve metadata");
+
+		assert_eq!(spec.target_field, "fixture_external_m2m_tag_id");
+		assert_eq!(
+			spec.target_primary_key_binding,
+			FixturePrimaryKeyBinding::Text
 		);
 	}
 

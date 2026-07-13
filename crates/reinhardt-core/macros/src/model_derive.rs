@@ -2465,6 +2465,7 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 	// Generate auto-registration code
 	let registration_code = generate_registration_code(RegistrationCodeInput {
 		struct_name,
+		generics,
 		app_label,
 		table_name,
 		field_infos: &field_infos,
@@ -3459,6 +3460,7 @@ fn field_default_to_metadata(expr: &syn::Expr, orm_crate: &TokenStream) -> Optio
 
 struct RegistrationCodeInput<'a> {
 	struct_name: &'a syn::Ident,
+	generics: &'a syn::Generics,
 	app_label: &'a str,
 	table_name: &'a str,
 	field_infos: &'a [FieldInfo],
@@ -3471,6 +3473,7 @@ struct RegistrationCodeInput<'a> {
 fn generate_registration_code(input: RegistrationCodeInput<'_>) -> Result<TokenStream> {
 	let RegistrationCodeInput {
 		struct_name,
+		generics,
 		app_label,
 		table_name,
 		field_infos,
@@ -3488,9 +3491,13 @@ fn generate_registration_code(input: RegistrationCodeInput<'_>) -> Result<TokenS
 		),
 		struct_name.span(),
 	);
-	let fixture_registration = quote! {
-		// Register type-erased fixture handlers for dumpdata/loaddata.
-		#orm_crate::fixtures::global_fixture_registry().register_model::<#struct_name>();
+	let fixture_registration = if generics.params.is_empty() {
+		quote! {
+			// Register type-erased fixture handlers for dumpdata/loaddata.
+			#orm_crate::fixtures::global_fixture_registry().register_model::<#struct_name>();
+		}
+	} else {
+		quote! {}
 	};
 
 	// Separate ManyToMany fields from regular fields (also exclude ForeignKeyField/OneToOneField and FK _id fields)
@@ -3663,24 +3670,25 @@ fn generate_registration_code(input: RegistrationCodeInput<'_>) -> Result<TokenS
 	let mut m2m_registrations = Vec::new();
 	for field_info in &m2m_fields {
 		let field_name = field_info.name.to_string();
-
-		// Get target model name: from #[rel(to = "...")] or infer from ManyToManyField<Source, Target>
-		let to_model = if let Some(rel) = &field_info.rel
-			&& let Some(to_type) = &rel.to
-		{
-			// Explicit 'to' parameter in #[rel(...)]
-			quote! { #to_type }.to_string()
-		} else if let Some(target_ty) = extract_m2m_target_type(&field_info.ty) {
-			// Infer from ManyToManyField<Source, Target> - extract Target type name
-			if let Type::Path(type_path) = target_ty
-				&& let Some(last_segment) = type_path.path.segments.last()
-			{
-				last_segment.ident.to_string()
-			} else {
-				continue; // Skip if cannot extract target type
-			}
-		} else {
-			continue; // Skip if no 'to' parameter and cannot infer from type
+		let target_ty = extract_m2m_target_type(&field_info.ty)
+			.cloned()
+			.or_else(|| {
+				field_info.rel.as_ref().and_then(|rel| {
+					rel.to
+						.clone()
+						.map(|path| Type::Path(syn::TypePath { qself: None, path }))
+				})
+			});
+		let Some(target_ty) = target_ty else {
+			continue;
+		};
+		let target_model_name = relation_target_model_name(&target_ty);
+		let target_model_label = quote! {
+			format!(
+				"{}.{}",
+				<#target_ty as #orm_crate::Model>::app_label(),
+				#target_model_name,
+			)
 		};
 
 		// Get relationship attributes (may be None if no #[rel(...)] attribute)
@@ -3713,7 +3721,7 @@ fn generate_registration_code(input: RegistrationCodeInput<'_>) -> Result<TokenS
 			metadata.add_many_to_many(
 				#migrations_crate::model_registry::ManyToManyMetadata {
 					field_name: #field_name.to_string(),
-					to_model: #to_model.to_string(),
+					to_model: #target_model_label,
 					related_name: #related_name,
 					through: #through,
 					source_field: #source_field,
@@ -6364,6 +6372,9 @@ mod tests {
 		// Assert
 		assert!(output_str.contains("related_model : \"Tag\" . to_string ()"));
 		assert!(!output_str.contains("related_model : \"\" . to_string ()"));
+		assert!(output_str.contains("to_model : format !"));
+		assert!(output_str.contains("< Tag as"));
+		assert!(output_str.contains(":: app_label ()"));
 	}
 
 	#[test]
@@ -6430,6 +6441,26 @@ mod tests {
 				.to_string()
 				.contains("register_model :: < FixtureModel >"),
 			"fixture handler registration must not depend on serde flags forwarded by #[model]"
+		);
+	}
+
+	#[test]
+	fn test_generic_models_skip_fixture_handler_registration() {
+		let input = quote! {
+			#[model_config(app_label = "fixture_tests", table_name = "fixture_models")]
+			struct GenericFixtureModel<T> {
+				#[field(primary_key = true)]
+				id: i64,
+			}
+		};
+
+		let output = model_derive_impl(syn::parse2(input).unwrap()).unwrap();
+
+		assert!(
+			!output
+				.to_string()
+				.contains("register_model :: < GenericFixtureModel >"),
+			"generic model registration must not require an unspecified type parameter"
 		);
 	}
 

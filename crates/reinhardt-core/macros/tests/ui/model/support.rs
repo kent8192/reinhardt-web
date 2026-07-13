@@ -162,8 +162,22 @@ pub mod db {
 		#[derive(Debug, Clone, Copy)]
 		pub struct OneToOneField<T>(core::marker::PhantomData<T>);
 
-		#[derive(Debug, Clone, Copy)]
+		#[derive(
+			Debug,
+			Clone,
+			Copy,
+			PartialEq,
+			Eq,
+			serde::Serialize,
+			serde::Deserialize,
+		)]
 		pub struct ManyToManyField<Source, Target>(core::marker::PhantomData<(Source, Target)>);
+
+		impl<Source, Target> Default for ManyToManyField<Source, Target> {
+			fn default() -> Self {
+				Self(core::marker::PhantomData)
+			}
+		}
 
 		impl<T> Default for ForeignKeyField<T> {
 			fn default() -> Self {
@@ -178,10 +192,23 @@ pub mod db {
 		}
 
 		impl<T> Eq for ForeignKeyField<T> {}
+
+		pub struct ManyToManyAccessor<Source, Target>(core::marker::PhantomData<(Source, Target)>);
+
+		impl<Source, Target> ManyToManyAccessor<Source, Target> {
+			pub fn new(
+				_source: &Source,
+				_field_name: &str,
+				_db: super::orm::connection::DatabaseConnection,
+			) -> Self {
+				Self(core::marker::PhantomData)
+			}
+		}
 	}
 
 	pub mod orm {
 		pub use serde;
+		pub use super::associations::ManyToManyAccessor;
 
 		pub type FixtureFields = serde_json::Map<String, serde_json::Value>;
 		pub type FixtureValue = serde_json::Value;
