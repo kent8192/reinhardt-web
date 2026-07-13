@@ -15,7 +15,10 @@
 use reinhardt_pages::component::{
 	Component, Head, IntoPage, LinkTag, MetaTag, Page, PageElement, ScriptTag,
 };
+use reinhardt_pages::page;
+use reinhardt_pages::reactive::Signal;
 use reinhardt_pages::ssr::{HydrationStrategy, SsrOptions, SsrRenderer};
+use rstest::rstest;
 
 // ============================================================================
 // Test Components
@@ -607,6 +610,85 @@ async fn test_ssr_options_struct_literal_remains_exhaustive() {
 		.await;
 
 	assert!(html.contains("Count: 3"));
+}
+
+fn controlled_bindings_page() -> Page {
+	let text = Signal::new("A&B".to_owned());
+	let checked = Signal::new(true);
+	let selected = Signal::new(vec!["rust".to_owned(), "wasm".to_owned()]);
+
+	page!({
+		input { a11y: off, bind: text }
+		textarea { a11y: off, bind: text }
+		input { a11y: off, type: "checkbox", bind: checked }
+		select {
+			a11y: off,
+			multiple: true,
+			bind: selected,
+			optgroup {
+				option { value: "rust", "Rust" }
+				option { value: "wasm", "WebAssembly" }
+			}
+		}
+	})
+}
+
+#[rstest]
+#[tokio::test]
+async fn controlled_bindings_render_html_initial_state() {
+	// Arrange
+	let component = controlled_bindings_page();
+	let mut renderer = SsrRenderer::new();
+
+	// Act
+	let html = renderer.render_page_into_page_to_string(component).await;
+
+	// Assert
+	let body = html
+		.split_once("<body>")
+		.unwrap()
+		.1
+		.split_once("</body>")
+		.unwrap()
+		.0
+		.strip_prefix("\n<div id=\"app\">")
+		.unwrap()
+		.strip_suffix("</div>\n")
+		.unwrap();
+	assert_eq!(
+		body,
+		concat!(
+			"<input value=\"A&amp;B\" />",
+			"<textarea>A&amp;B</textarea>",
+			"<input type=\"checkbox\" checked=\"checked\" />",
+			"<select multiple=\"multiple\"><optgroup>",
+			"<option value=\"rust\" selected=\"selected\">Rust</option>",
+			"<option value=\"wasm\" selected=\"selected\">WebAssembly</option>",
+			"</optgroup></select>"
+		)
+	);
+}
+
+#[rstest]
+#[tokio::test]
+async fn controlled_bindings_have_buffered_streaming_byte_parity() {
+	// Arrange
+	let component = controlled_bindings_page();
+	let mut buffered_renderer = SsrRenderer::new();
+	let mut streaming_renderer = SsrRenderer::new();
+
+	// Act
+	let buffered = buffered_renderer
+		.render_page_into_page_to_string(component.clone())
+		.await;
+	let streaming = streaming_renderer
+		.render_page_into_page(component)
+		.await
+		.collect_string()
+		.await;
+
+	// Assert
+	assert_eq!(streaming, buffered);
 }
 
 // ============================================================================

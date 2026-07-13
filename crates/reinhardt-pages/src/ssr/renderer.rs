@@ -6,6 +6,7 @@ use std::fmt::Write as _;
 use std::rc::Rc;
 use std::time::Duration;
 
+use super::control_binding::{SsrControlProjection, option_selected, project};
 use super::markers::{HydrationMarker, HydrationStrategy};
 use super::resource_context::{
 	SsrResourceContext, enter_boundary, resolve_boundary_resources, resolve_external_resources,
@@ -14,7 +15,9 @@ use super::resource_context::{
 use super::state::SsrState;
 use super::stream::{SsrChunk, SsrStream};
 use crate::auth::AuthData;
-use crate::component::{Component, Head, IntoPage, Page, scope_reactive_node_store};
+use crate::component::{
+	Component, ControlKind, Head, IntoPage, Page, PageElement, scope_reactive_node_store,
+};
 use crate::reactive::hooks::id::{
 	id_counter_snapshot, reset_id_counter, restore_id_counter, scope_id_counter,
 	scope_id_counter_with,
@@ -1039,32 +1042,48 @@ impl SsrRenderer {
 		view: &'a Page,
 		boundaries: &'a mut Vec<PendingSuspenseBoundary>,
 	) -> LocalBoxFuture<'a, String> {
+		self.render_stream_shell_page_with_selection(view, boundaries, None)
+	}
+
+	fn render_stream_shell_page_with_selection<'a>(
+		&'a mut self,
+		view: &'a Page,
+		boundaries: &'a mut Vec<PendingSuspenseBoundary>,
+		selected_values: Option<Rc<[String]>>,
+	) -> LocalBoxFuture<'a, String> {
 		Box::pin(async move {
 			match view {
 				Page::Element(el) => {
-					let mut html = String::new();
-					html.push('<');
-					html.push_str(el.tag_name());
-
-					for (name, value) in el.attrs() {
-						let name_str = name.as_ref();
-						if BOOLEAN_ATTRS.contains(&name_str) && !is_boolean_attr_truthy(value) {
-							continue;
-						}
-
-						html.push(' ');
-						html.push_str(name.as_ref());
-						html.push_str("=\"");
-						html.push_str(&html_escape(value));
-						html.push('"');
-					}
+					let projection = project(el.bound_control());
+					let mut html =
+						render_element_opening(el, &projection, selected_values.as_deref());
 
 					if el.is_void() {
 						html.push_str(" />");
 					} else {
 						html.push('>');
-						for child in el.child_views() {
-							html.push_str(&self.render_stream_shell_page(child, boundaries).await);
+						if el.tag_name() == "textarea"
+							&& let Some(text) = projection.textarea_text.as_deref()
+						{
+							html.push_str(&html_escape(text));
+						} else {
+							let child_selected_values = if el.tag_name() == "select" {
+								el.bound_control()
+									.map(|_| Rc::from(projection.selected_values.clone()))
+							} else {
+								selected_values
+							};
+							for child in el.child_views() {
+								html.push_str(
+									&self
+										.render_stream_shell_page_with_selection(
+											child,
+											boundaries,
+											child_selected_values.clone(),
+										)
+										.await,
+								);
+							}
 						}
 						html.push_str("</");
 						html.push_str(el.tag_name());
@@ -1077,21 +1096,38 @@ impl SsrRenderer {
 				Page::Fragment(children) => {
 					let mut html = String::new();
 					for child in children {
-						html.push_str(&self.render_stream_shell_page(child, boundaries).await);
+						html.push_str(
+							&self
+								.render_stream_shell_page_with_selection(
+									child,
+									boundaries,
+									selected_values.clone(),
+								)
+								.await,
+						);
 					}
 					html
 				}
 				Page::KeyedFragment(children) => {
 					let mut html = String::new();
 					for (_, child) in children {
-						html.push_str(&self.render_stream_shell_page(child, boundaries).await);
+						html.push_str(
+							&self
+								.render_stream_shell_page_with_selection(
+									child,
+									boundaries,
+									selected_values.clone(),
+								)
+								.await,
+						);
 					}
 					html
 				}
 				Page::Empty => String::new(),
 				Page::WithHead { view, head } => {
 					self.record_buffered_rendered_head(head);
-					self.render_stream_shell_page(view, boundaries).await
+					self.render_stream_shell_page_with_selection(view, boundaries, selected_values)
+						.await
 				}
 				Page::ReactiveIf(reactive_if) => {
 					let branch = if reactive_if.condition() {
@@ -1099,11 +1135,21 @@ impl SsrRenderer {
 					} else {
 						reactive_if.else_view()
 					};
-					self.render_stream_shell_page(&branch, boundaries).await
+					self.render_stream_shell_page_with_selection(
+						&branch,
+						boundaries,
+						selected_values,
+					)
+					.await
 				}
 				Page::Reactive(reactive) => {
 					let rendered = reactive.render();
-					self.render_stream_shell_page(&rendered, boundaries).await
+					self.render_stream_shell_page_with_selection(
+						&rendered,
+						boundaries,
+						selected_values,
+					)
+					.await
 				}
 				Page::Suspense(node) => {
 					let boundary_id = self.suspense_boundary_id(node);
@@ -1121,7 +1167,11 @@ impl SsrRenderer {
 					});
 					let content_page = node.render_content();
 					let content = self
-						.render_stream_shell_page(&content_page, boundaries)
+						.render_stream_shell_page_with_selection(
+							&content_page,
+							boundaries,
+							selected_values.clone(),
+						)
 						.await;
 
 					drop(boundary_guard);
@@ -1135,7 +1185,11 @@ impl SsrRenderer {
 						self.restore_deterministic_render_snapshot(boundary_start);
 						let fallback_page = node.render_fallback();
 						let fallback = self
-							.render_stream_shell_page(&fallback_page, boundaries)
+							.render_stream_shell_page_with_selection(
+								&fallback_page,
+								boundaries,
+								selected_values,
+							)
 							.await;
 						if has_pending {
 							boundaries.push(PendingSuspenseBoundary {
@@ -1151,11 +1205,21 @@ impl SsrRenderer {
 				}
 				Page::Deferred(node) => {
 					let content = node.render_content();
-					self.render_stream_shell_page(&content, boundaries).await
+					self.render_stream_shell_page_with_selection(
+						&content,
+						boundaries,
+						selected_values,
+					)
+					.await
 				}
 				Page::Outlet(outlet) => {
 					if let Some(child) = outlet.child() {
-						self.render_stream_shell_page(child, boundaries).await
+						self.render_stream_shell_page_with_selection(
+							child,
+							boundaries,
+							selected_values,
+						)
+						.await
 					} else {
 						String::new()
 					}
@@ -1169,32 +1233,48 @@ impl SsrRenderer {
 		view: &'a Page,
 		mode: AsyncRenderMode,
 	) -> LocalBoxFuture<'a, String> {
+		self.render_async_page_with_selection(view, mode, None)
+	}
+
+	fn render_async_page_with_selection<'a>(
+		&'a mut self,
+		view: &'a Page,
+		mode: AsyncRenderMode,
+		selected_values: Option<Rc<[String]>>,
+	) -> LocalBoxFuture<'a, String> {
 		Box::pin(async move {
 			match view {
 				Page::Element(el) => {
-					let mut html = String::new();
-					html.push('<');
-					html.push_str(el.tag_name());
-
-					for (name, value) in el.attrs() {
-						let name_str = name.as_ref();
-						if BOOLEAN_ATTRS.contains(&name_str) && !is_boolean_attr_truthy(value) {
-							continue;
-						}
-
-						html.push(' ');
-						html.push_str(name.as_ref());
-						html.push_str("=\"");
-						html.push_str(&html_escape(value));
-						html.push('"');
-					}
+					let projection = project(el.bound_control());
+					let mut html =
+						render_element_opening(el, &projection, selected_values.as_deref());
 
 					if el.is_void() {
 						html.push_str(" />");
 					} else {
 						html.push('>');
-						for child in el.child_views() {
-							html.push_str(&self.render_async_page(child, mode).await);
+						if el.tag_name() == "textarea"
+							&& let Some(text) = projection.textarea_text.as_deref()
+						{
+							html.push_str(&html_escape(text));
+						} else {
+							let child_selected_values = if el.tag_name() == "select" {
+								el.bound_control()
+									.map(|_| Rc::from(projection.selected_values.clone()))
+							} else {
+								selected_values
+							};
+							for child in el.child_views() {
+								html.push_str(
+									&self
+										.render_async_page_with_selection(
+											child,
+											mode,
+											child_selected_values.clone(),
+										)
+										.await,
+								);
+							}
 						}
 						html.push_str("</");
 						html.push_str(el.tag_name());
@@ -1207,14 +1287,30 @@ impl SsrRenderer {
 				Page::Fragment(children) => {
 					let mut html = String::new();
 					for child in children {
-						html.push_str(&self.render_async_page(child, mode).await);
+						html.push_str(
+							&self
+								.render_async_page_with_selection(
+									child,
+									mode,
+									selected_values.clone(),
+								)
+								.await,
+						);
 					}
 					html
 				}
 				Page::KeyedFragment(children) => {
 					let mut html = String::new();
 					for (_, child) in children {
-						html.push_str(&self.render_async_page(child, mode).await);
+						html.push_str(
+							&self
+								.render_async_page_with_selection(
+									child,
+									mode,
+									selected_values.clone(),
+								)
+								.await,
+						);
 					}
 					html
 				}
@@ -1223,7 +1319,8 @@ impl SsrRenderer {
 					if !matches!(mode, AsyncRenderMode::Discovery) {
 						self.record_buffered_rendered_head(head);
 					}
-					self.render_async_page(view, mode).await
+					self.render_async_page_with_selection(view, mode, selected_values)
+						.await
 				}
 				Page::ReactiveIf(reactive_if) => {
 					let branch = if reactive_if.condition() {
@@ -1231,11 +1328,13 @@ impl SsrRenderer {
 					} else {
 						reactive_if.else_view()
 					};
-					self.render_async_page(&branch, mode).await
+					self.render_async_page_with_selection(&branch, mode, selected_values)
+						.await
 				}
 				Page::Reactive(reactive) => {
 					let rendered = reactive.render();
-					self.render_async_page(&rendered, mode).await
+					self.render_async_page_with_selection(&rendered, mode, selected_values)
+						.await
 				}
 				Page::Suspense(node) => {
 					let boundary_id = self.suspense_boundary_id(node);
@@ -1252,7 +1351,13 @@ impl SsrRenderer {
 						enter_boundary(context, boundary_id.clone())
 					});
 					let content_page = node.render_content();
-					let content = self.render_async_page(&content_page, mode).await;
+					let content = self
+						.render_async_page_with_selection(
+							&content_page,
+							mode,
+							selected_values.clone(),
+						)
+						.await;
 					let boundary_end_index =
 						super::resource_context::with_active_context(|context| {
 							context.borrow().call_order_index()
@@ -1276,7 +1381,11 @@ impl SsrRenderer {
 						self.restore_deterministic_render_snapshot(boundary_start);
 						let fallback_page = node.render_fallback();
 						let fallback = self
-							.render_async_page(&fallback_page, AsyncRenderMode::Buffered)
+							.render_async_page_with_selection(
+								&fallback_page,
+								AsyncRenderMode::Buffered,
+								selected_values.clone(),
+							)
 							.await;
 
 						if has_pending
@@ -1308,7 +1417,11 @@ impl SsrRenderer {
 							});
 						let replacement_page = node.render_content();
 						let replacement = self
-							.render_async_page(&replacement_page, AsyncRenderMode::Buffered)
+							.render_async_page_with_selection(
+								&replacement_page,
+								AsyncRenderMode::Buffered,
+								selected_values,
+							)
 							.await;
 						drop(boundary_guard);
 						if let Some(index) = boundary_end_index
@@ -1325,11 +1438,13 @@ impl SsrRenderer {
 				}
 				Page::Deferred(node) => {
 					let content = node.render_content();
-					self.render_async_page(&content, mode).await
+					self.render_async_page_with_selection(&content, mode, selected_values)
+						.await
 				}
 				Page::Outlet(outlet) => {
 					if let Some(child) = outlet.child() {
-						self.render_async_page(child, mode).await
+						self.render_async_page_with_selection(child, mode, selected_values)
+							.await
 					} else {
 						String::new()
 					}
@@ -1601,6 +1716,65 @@ impl SsrRenderer {
 			content
 		}
 	}
+}
+
+fn render_element_opening(
+	element: &PageElement,
+	projection: &SsrControlProjection,
+	selected_values: Option<&[String]>,
+) -> String {
+	let mut html = String::new();
+	html.push('<');
+	html.push_str(element.tag_name());
+
+	let projects_value = element.tag_name() == "input" && projection.value.is_some();
+	let projects_checked = element.bound_control().is_some_and(|binding| {
+		matches!(binding.kind(), ControlKind::Checkbox | ControlKind::Radio)
+	});
+	let projected_option_selection = if element.tag_name() == "option" {
+		selected_values.map(|values| option_selected(element.attrs(), values))
+	} else {
+		None
+	};
+
+	for (name, value) in element.attrs() {
+		let name = name.as_ref();
+		if (name == "value" && projects_value)
+			|| (name == "checked" && projects_checked)
+			|| (name == "selected" && projected_option_selection.is_some())
+		{
+			continue;
+		}
+		if BOOLEAN_ATTRS.contains(&name) && !is_boolean_attr_truthy(value) {
+			continue;
+		}
+
+		push_escaped_attribute(&mut html, name, value);
+	}
+
+	if projects_value {
+		push_escaped_attribute(
+			&mut html,
+			"value",
+			projection.value.as_deref().unwrap_or_default(),
+		);
+	}
+	if projects_checked && projection.checked {
+		push_escaped_attribute(&mut html, "checked", "checked");
+	}
+	if projected_option_selection == Some(true) {
+		push_escaped_attribute(&mut html, "selected", "selected");
+	}
+
+	html
+}
+
+fn push_escaped_attribute(html: &mut String, name: &str, value: &str) {
+	html.push(' ');
+	html.push_str(name);
+	html.push_str("=\"");
+	html.push_str(&html_escape(value));
+	html.push('"');
 }
 
 /// Simple HTML escape function.

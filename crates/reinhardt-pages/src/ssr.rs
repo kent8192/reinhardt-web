@@ -35,6 +35,8 @@
 //! let html = renderer.render_page_to_string(&my_component).await;
 //! ```
 
+#[cfg(native)]
+mod control_binding;
 mod markers;
 #[cfg(native)]
 mod renderer;
