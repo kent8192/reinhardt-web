@@ -102,7 +102,8 @@ pub use crate::reactive::{
 	Dispatch, EffectReturn, OptimisticState, Ref, SetState, SetStateExt, SharedSetState,
 	SharedSignal, TransitionState, use_callback, use_context, use_debug_value, use_deferred_value,
 	use_effect, use_id, use_layout_effect, use_memo, use_optimistic, use_reducer, use_ref,
-	use_shared_state, use_state, use_sync_external_store, use_transition,
+	use_retained_effect, use_retained_layout_effect, use_shared_state, use_state,
+	use_sync_external_store, use_transition,
 };
 pub use crate::reactive::{use_mutation, use_query};
 
@@ -124,7 +125,15 @@ pub use crate::component::{
 // Events and Callbacks
 // ============================================================================
 
-pub use crate::callback::{Callback, IntoEventHandler, into_event_handler};
+pub use crate::callback::{
+	Callback, IntoEventHandler, IntoTypedEventHandler, into_event_handler, raw_async_event_handler,
+	raw_event_handler, typed_async_event_handler, typed_event_handler,
+};
+
+pub use crate::event::{
+	EventConversionError, EventFile, EventPayload, EventTarget, EventTargetError, Modifiers,
+	MouseButton, MouseButtons, Point, PointerKind,
+};
 
 // Platform-agnostic Event type
 pub use crate::platform::Event;

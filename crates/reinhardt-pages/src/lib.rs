@@ -24,7 +24,8 @@
 //!
 //! ## React-aligned hook signatures (v0.2, Refs #4195)
 //!
-//! `use_effect`, `use_layout_effect`, `use_memo`, `use_callback`, and
+//! `use_effect`, `use_retained_effect`, `use_layout_effect`,
+//! `use_retained_layout_effect`, `use_memo`, `use_callback`, and
 //! `use_callback_with` take an explicit dependency tuple as the second
 //! argument. Effect closures return `()` when no cleanup is needed, or
 //! `Option<C>` when they register cleanup:
@@ -34,7 +35,7 @@
 //!
 //! let count = Signal::new(0_i32);
 //! let count_for_effect = count.clone();
-//! let _eff = use_effect(
+//! use_retained_effect(
 //!     move || {
 //!         println!("count = {}", count_for_effect.get());
 //!     },
@@ -72,6 +73,33 @@
 //! - [`portal`]: Explicit portal mounting into existing DOM targets
 //! - `i18n`: Reactive page translations with SSR-resolved catalogs (requires the `i18n` feature)
 //! - [`static_resolver`]: Static file URL resolution (collectstatic support)
+//!
+//! ## Typed events
+//!
+//! Standard intrinsic `page!` events use one catalog-generated payload type per
+//! event. Payloads expose common propagation and target snapshots, plus only
+//! the capabilities assigned to that event, such as `InputEvent::value` or
+//! `ChangeEvent::checked`. `current_target()` is captured while the listener is
+//! active, so it remains available after an async handler yields.
+//!
+//! ```ignore
+//! use reinhardt_pages::event::{ClickEvent, InputEvent};
+//! use reinhardt_pages::prelude::*;
+//!
+//! page!({
+//!     button { @click: |event: ClickEvent| { event.prevent_default(); }, "Run" }
+//!     input { @input: |event: InputEvent| {
+//!         if let Ok(value) = event.value() {
+//!             info_log!("{value}");
+//!         }
+//!     } }
+//! })
+//! ```
+//!
+//! Arbitrary intrinsic events use `@custom("name")` and the raw
+//! [`platform::Event`] transport. Typed custom detail values are outside this
+//! contract and tracked by #5636. Component `@event` props retain the type of
+//! their declared component prop instead of using the intrinsic event catalog.
 //!
 //! ## Forms
 //!
@@ -335,6 +363,7 @@ pub use reinhardt_pages_ast as ast;
 pub mod builder;
 pub mod callback;
 pub mod dom;
+pub mod event;
 #[cfg(feature = "i18n")]
 pub mod i18n;
 pub mod logging;
@@ -430,10 +459,13 @@ pub use builder::{
 		a, button, div, form, h1, h2, h3, img, input, li, ol, option, p, select, span, textarea, ul,
 	},
 };
-pub use callback::{Callback, IntoEventHandler, event_handler, into_event_handler};
+pub use callback::{
+	Callback, IntoEventHandler, IntoTypedEventHandler, event_handler, into_event_handler,
+	raw_async_event_handler, raw_event_handler, typed_async_event_handler, typed_event_handler,
+};
 pub use client_form::{ClientFormChoice, ClientFormChoiceSource};
 #[cfg(native)]
-pub use component::DummyEvent;
+pub use component::NativeEvent;
 #[cfg(wasm)]
 pub use component::cleanup_reactive_nodes;
 pub use component::{
@@ -474,7 +506,8 @@ pub use reactive::{
 	Dispatch, EffectReturn, OptimisticState, Ref, SetState, SetStateExt, SharedSetState,
 	SharedSignal, TransitionState, use_callback, use_context, use_debug_value, use_deferred_value,
 	use_effect, use_id, use_layout_effect, use_memo, use_optimistic, use_reducer, use_ref,
-	use_shared_state, use_state, use_sync_external_store, use_transition,
+	use_retained_effect, use_retained_layout_effect, use_shared_state, use_state,
+	use_sync_external_store, use_transition,
 };
 pub use reactive::{use_mutation, use_query};
 #[cfg(native)]

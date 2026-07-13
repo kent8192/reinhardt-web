@@ -22,7 +22,7 @@ mod component_brace;
 
 use proc_macro2::TokenStream;
 use syn::{
-	Expr, Ident, Pat, Result, Token, braced,
+	Expr, Ident, LitStr, Pat, Result, Token, braced,
 	ext::IdentExt,
 	parenthesized,
 	parse::{Parse, ParseStream},
@@ -30,9 +30,9 @@ use syn::{
 };
 
 use crate::{
-	ComponentInvocationForm, NamedSlot, PageAttr, PageBody, PageComponent, PageComponentArg,
-	PageElement, PageElse, PageEvent, PageExpression, PageFor, PageIf, PageMacro, PageMacroForm,
-	PageNode, PageParam, PageText, PageWatch,
+	ComponentInvocationForm, IntrinsicEvent, NamedSlot, PageAttr, PageBody, PageComponent,
+	PageComponentArg, PageElement, PageElse, PageExpression, PageFor, PageIf, PageMacro,
+	PageMacroForm, PageNode, PageParam, PageText, PageWatch,
 };
 
 /// Parses a `page!` macro invocation into an untyped AST.
@@ -326,10 +326,46 @@ fn parse_attr(input: ParseStream) -> Result<PageAttr> {
 }
 
 /// Parses an event handler: `@event: handler,`
-fn parse_event(input: ParseStream) -> Result<PageEvent> {
+fn parse_event(input: ParseStream) -> Result<IntrinsicEvent> {
 	input.parse::<Token![@]>()?;
-	let event_type: Ident = input.parse()?;
-	let span = event_type.span();
+	let event_name: Ident = input.parse()?;
+
+	if event_name == "custom" {
+		if !input.peek(token::Paren) {
+			return Err(syn::Error::new(
+				event_name.span(),
+				"`@custom` requires syntax `@custom(\"event-name\"): handler`",
+			));
+		}
+
+		let content;
+		parenthesized!(content in input);
+		if !content.peek(LitStr) {
+			return Err(syn::Error::new(
+				content.span(),
+				"`@custom` event name must be a string literal",
+			));
+		}
+		let name: LitStr = content.parse()?;
+		if !content.is_empty() {
+			return Err(syn::Error::new(
+				content.span(),
+				"`@custom` accepts exactly one string literal event name",
+			));
+		}
+		input.parse::<Token![:]>()?;
+		let handler: Expr = input.parse()?;
+
+		if input.peek(Token![,]) {
+			input.parse::<Token![,]>()?;
+		}
+
+		return Ok(IntrinsicEvent::Custom { name, handler });
+	}
+
+	let event = reinhardt_event_catalog::event_spec(&event_name.to_string())
+		.map(|spec| spec.kind)
+		.ok_or_else(|| unknown_standard_event_error(&event_name))?;
 	input.parse::<Token![:]>()?;
 	let handler: Expr = input.parse()?;
 
@@ -338,11 +374,66 @@ fn parse_event(input: ParseStream) -> Result<PageEvent> {
 		input.parse::<Token![,]>()?;
 	}
 
-	Ok(PageEvent {
-		event_type,
-		handler,
-		span,
-	})
+	Ok(IntrinsicEvent::Standard { event, handler })
+}
+
+fn unknown_standard_event_error(name: &Ident) -> syn::Error {
+	let name_text = name.to_string();
+	let mut candidates: Vec<(usize, &'static str)> = reinhardt_event_catalog::EVENT_SPECS
+		.iter()
+		.map(|spec| (edit_distance(&name_text, spec.dom_name), spec.dom_name))
+		.collect();
+	candidates.sort_unstable();
+
+	let max_distance = usize::max(2, name_text.chars().count() / 3);
+	let suggestions: Vec<&str> = candidates
+		.first()
+		.filter(|(distance, _)| *distance <= max_distance)
+		.map(|(minimum, _)| {
+			candidates
+				.iter()
+				.take_while(|(distance, _)| distance == minimum)
+				.take(3)
+				.map(|(_, candidate)| *candidate)
+				.collect()
+		})
+		.unwrap_or_default();
+
+	let message = match suggestions.as_slice() {
+		[] => format!("unknown standard element event `{name_text}`"),
+		[suggestion] => {
+			format!("unknown standard element event `{name_text}`; did you mean `{suggestion}`?")
+		}
+		_ => format!(
+			"unknown standard element event `{name_text}`; did you mean one of {}?",
+			suggestions
+				.iter()
+				.map(|suggestion| format!("`{suggestion}`"))
+				.collect::<Vec<_>>()
+				.join(", ")
+		),
+	};
+
+	syn::Error::new(name.span(), message)
+}
+
+fn edit_distance(left: &str, right: &str) -> usize {
+	let mut previous: Vec<usize> = (0..=right.chars().count()).collect();
+	let mut current = vec![0; previous.len()];
+
+	for (left_index, left_char) in left.chars().enumerate() {
+		current[0] = left_index + 1;
+		for (right_index, right_char) in right.chars().enumerate() {
+			let substitution = previous[right_index] + usize::from(left_char != right_char);
+			current[right_index + 1] = usize::min(
+				usize::min(previous[right_index + 1] + 1, current[right_index] + 1),
+				substitution,
+			);
+		}
+		std::mem::swap(&mut previous, &mut current);
+	}
+
+	previous[right.chars().count()]
 }
 
 /// Parses a braced expression: `{ expr }` (or `{ stmts...; expr }`).
@@ -813,10 +904,88 @@ mod tests {
 			PageNode::Element(elem) => {
 				assert_eq!(elem.tag.to_string(), "button");
 				assert_eq!(elem.events.len(), 1);
-				assert_eq!(elem.events[0].event_type.to_string(), "click");
+				assert!(matches!(
+					&elem.events[0],
+					crate::core::IntrinsicEvent::Standard {
+						event: reinhardt_event_catalog::KnownEvent::Click,
+						..
+					}
+				));
 			}
 			_ => panic!("expected Element"),
 		}
+	}
+
+	#[rstest]
+	fn test_parse_mixed_case_svg_timing_event_exactly() {
+		// Arrange
+		let input = quote!(|| { svg { @beginEvent: |_| {}, } });
+
+		// Act
+		let result: PageMacro = syn::parse2(input).unwrap();
+
+		// Assert
+		match &result.body().nodes[0] {
+			PageNode::Element(elem) => assert!(matches!(
+				&elem.events[0],
+				crate::core::IntrinsicEvent::Standard {
+					event: reinhardt_event_catalog::KnownEvent::BeginEvent,
+					..
+				}
+			)),
+			_ => panic!("expected Element"),
+		}
+	}
+
+	#[rstest]
+	fn test_parse_custom_intrinsic_event() {
+		// Arrange
+		let input = quote!(|| { div { @custom("item-selected"): |_| {}, } });
+
+		// Act
+		let result: PageMacro = syn::parse2(input).unwrap();
+
+		// Assert
+		match &result.body().nodes[0] {
+			PageNode::Element(elem) => match &elem.events[0] {
+				crate::core::IntrinsicEvent::Custom { name, .. } => {
+					assert_eq!(name.value(), "item-selected");
+				}
+				other => panic!("expected custom intrinsic event, got {other:?}"),
+			},
+			_ => panic!("expected Element"),
+		}
+	}
+
+	#[rstest]
+	fn test_parse_unknown_intrinsic_event_suggests_nearest_catalog_name() {
+		// Arrange
+		let input = quote!(|| { button { @clik: |_| {}, "Click" } });
+
+		// Act
+		let error = syn::parse2::<PageMacro>(input).expect_err("unknown event must fail");
+
+		// Assert
+		assert_eq!(
+			error.to_string(),
+			"unknown standard element event `clik`; did you mean `click`?"
+		);
+	}
+
+	#[rstest]
+	fn test_parse_custom_event_call_is_rejected_on_components() {
+		// Arrange
+		let input = quote!(|| { Card { @custom("item-selected"): |_| {}, } });
+
+		// Act
+		let error = syn::parse2::<PageMacro>(input)
+			.expect_err("custom intrinsic syntax must not parse as a component prop");
+
+		// Assert
+		assert_eq!(
+			error.to_string(),
+			"`@custom(\"...\")` is only valid on intrinsic elements"
+		);
 	}
 
 	#[rstest]
@@ -1352,7 +1521,7 @@ mod tests {
 				assert_eq!(c.invocation_form, ComponentInvocationForm::Brace);
 				assert_eq!(c.args.len(), 1);
 				assert_eq!(c.events.len(), 1);
-				assert_eq!(c.events[0].event_type.to_string(), "click");
+				assert_eq!(c.events[0].name.to_string(), "click");
 			}
 			other => panic!("expected Component, got {:?}", other),
 		}

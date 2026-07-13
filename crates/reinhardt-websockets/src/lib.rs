@@ -119,7 +119,9 @@
 //! On the client side, use the `use_websocket` hook from reinhardt-pages:
 //!
 //! ```ignore
-//! use reinhardt_pages::reactive::hooks::{use_websocket, UseWebSocketOptions};
+//! use reinhardt_pages::reactive::hooks::{
+//!     use_retained_effect, use_websocket, ConnectionState, UseWebSocketOptions,
+//! };
 //!
 //! let ws = use_websocket("ws://localhost:8000/ws/chat", UseWebSocketOptions::default());
 //!
@@ -127,17 +129,21 @@
 //! ws.send_text("Hello, server!".to_string()).ok();
 //!
 //! // Monitor connection state
-//! use_effect({
-//!     let ws = ws.clone();
-//!     move || {
-//!         match ws.connection_state().get() {
-//!             ConnectionState::Open => log!("Connected"),
-//!             ConnectionState::Closed => log!("Disconnected"),
-//!             _ => {}
+//! let connection_state = ws.connection_state().clone();
+//! use_retained_effect(
+//!     {
+//!         let connection_state = connection_state.clone();
+//!         move || {
+//!             match connection_state.get() {
+//!                 ConnectionState::Open => log!("Connected"),
+//!                 ConnectionState::Closed => log!("Disconnected"),
+//!                 _ => {}
+//!             }
+//!             None::<fn()>
 //!         }
-//!         None::<fn()>
-//!     }
-//! });
+//!     },
+//!     (connection_state.clone(),),
+//! );
 //! ```
 //!
 //! The authentication cookies from the user's HTTP session are automatically included

@@ -63,8 +63,9 @@
 //! On the client side (WASM), use the `use_websocket` hook from reinhardt-pages:
 //!
 //! ```ignore
-//! use reinhardt_pages::reactive::hooks::{use_websocket, use_effect, UseWebSocketOptions};
-//! use reinhardt_pages::reactive::hooks::{ConnectionState, WebSocketMessage};
+//! use reinhardt_pages::reactive::hooks::{
+//!     use_retained_effect, use_websocket, WebSocketMessage, UseWebSocketOptions,
+//! };
 //!
 //! fn chat_component(room_id: String) -> View {
 //!     let ws = use_websocket(
@@ -72,15 +73,19 @@
 //!         UseWebSocketOptions::default()
 //!     );
 //!
-//!     use_effect({
-//!         let ws = ws.clone();
-//!         move || {
-//!             if let Some(WebSocketMessage::Text(text)) = ws.latest_message().get() {
-//!                 log!("Received: {}", text);
+//!     let latest_message = ws.latest_message().clone();
+//!     use_retained_effect(
+//!         {
+//!             let latest_message = latest_message.clone();
+//!             move || {
+//!                 if let Some(WebSocketMessage::Text(text)) = latest_message.get() {
+//!                     log!("Received: {}", text);
+//!                 }
+//!                 None::<fn()>
 //!             }
-//!             None::<fn()>
-//!         }
-//!     });
+//!         },
+//!         (latest_message.clone(),),
+//!     );
 //!
 //!     page!(|| {
 //!         div {

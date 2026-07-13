@@ -33,18 +33,36 @@ use reinhardt_pages::prelude::*;
 use reinhardt::pages::prelude::*;
 ```
 
-### Platform-Agnostic Event Type
+### Typed standard events and raw custom events
 
-The `platform` module provides unified types that work across both WASM and native:
+Standard intrinsic events select an exact payload from the authoritative event
+catalog. The payload is inferred in `page!`, or can be named explicitly for an
+external function or `Callback`:
 
-```rust
-use reinhardt_pages::platform::Event;
+```rust,ignore
+use reinhardt_pages::event::{ClickEvent, InputEvent};
+use reinhardt_pages::prelude::*;
 
-// Works on both WASM and native targets
-fn handle_click(_event: Event) {
-    // Event handling logic
+fn inspect_click(event: ClickEvent) {
+    let _origin = event.target();
+    let _listener = event.current_target();
 }
+
+page!({
+    button { @click: inspect_click, "Inspect" }
+    input { @input: |event: InputEvent| {
+        match event.value() {
+            Ok(value) => info_log!("value={value}"),
+            Err(error) => warn_log!("input extraction failed: {error}"),
+        }
+    } }
+})
 ```
+
+Use `@custom("name")` and `platform::Event` for an arbitrary raw DOM event.
+Custom typed `detail` values are intentionally deferred to #5636. Component
+`@event` props remain typed by the component's declared prop type; the DOM
+event catalog applies only to intrinsic elements.
 
 ### Simplified cfg Attributes with cfg_aliases
 
@@ -97,7 +115,7 @@ use reinhardt_pages::prelude::*;
 
 // This works on both WASM and native targets!
 // On WASM: Event handlers are bound to DOM events
-// On native: Event handlers are automatically ignored
+// On native: Event handlers are stored and can be dispatched by component tests
 fn my_button(on_click: Signal<bool>) -> View {
     page!({
         button {
@@ -483,8 +501,11 @@ or native component-test mocks. Query handles can also be tracked by
 - `SuspenseBoundary`, `ErrorBoundary`, `BoundaryError`, `ErrorTracker`
 
 ### Events and Callbacks
-- `Callback`, `IntoEventHandler`, `into_event_handler`
-- `Event` (platform-agnostic via `platform` module)
+- `EventPayload`, catalog-generated payloads such as `ClickEvent` and `InputEvent`
+- `EventTarget`, `EventTargetError`, `EventFile`, `Modifiers`, `Point`
+- `Callback`, `IntoTypedEventHandler`, `typed_event_handler`
+- `raw_event_handler` and `platform::Event` for explicit raw custom events
+- [Native component testing](docs/native_component_testing.md)
 
 ### DOM
 - `Document`, `Element`, `EventHandle`, `EventType`, `document`

@@ -42,17 +42,20 @@ pub mod view_transition;
 pub use activity::{ActivityBoundary, ActivityMode};
 pub use error_boundary::{BoundaryError, ErrorBoundary, ErrorTracker};
 #[cfg(native)]
-pub use into_page::DummyEvent;
+pub use into_page::NativeEvent;
 pub use into_page::PageExt;
 pub use into_page::{
 	Head, IntoPage, LinkTag, MetaTag, MountError, Outlet, Page, PageElement, PageEventHandler,
 	Reactive, ReactiveIf, ScriptTag, StyleTag,
 };
 pub use props::Props;
+pub use reactive_if::cleanup_reactive_nodes;
+#[cfg(native)]
+pub(crate) use reactive_if::scope_reactive_node_store;
 #[cfg(wasm)]
-pub(crate) use reactive_if::with_reactive_node_store;
+pub use reactive_if::{ReactiveIfNode, ReactiveNode, store_reactive_node};
 #[cfg(wasm)]
-pub use reactive_if::{ReactiveIfNode, ReactiveNode, cleanup_reactive_nodes, store_reactive_node};
+pub(crate) use reactive_if::{new_reactive_node_store, with_reactive_node_store};
 pub use suspense::{ResourceTracker, SuspenseBoundary};
 pub use r#trait::Component;
 pub use view_transition::{
