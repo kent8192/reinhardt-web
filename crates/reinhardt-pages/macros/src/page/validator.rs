@@ -729,8 +729,16 @@ fn transform_element(
 	let mut child_tags = parent_tags.to_vec();
 	child_tags.push(tag.clone());
 	let child_context = ValidationContext {
-		inside_bound_select: context.inside_bound_select
-			|| (tag == "select" && control_binding.is_some()),
+		inside_bound_select: if tag == "select" {
+			control_binding.as_deref().is_some_and(|binding| {
+				matches!(
+					binding.kind,
+					TypedControlBindingKind::SelectOne | TypedControlBindingKind::SelectMany
+				)
+			})
+		} else {
+			context.inside_bound_select
+		},
 	};
 	let typed_children = transform_nodes(&elem.children, &child_tags, child_context)?;
 	validate_control_binding_structure(
@@ -1935,6 +1943,96 @@ mod tests {
 			error.to_string(),
 			"Element <option> can only contain text, not child elements"
 		);
+	}
+
+	#[rstest]
+	#[case(false, false)]
+	#[case(true, true)]
+	fn select_resets_inherited_bound_context(
+		#[case] nested_is_bound: bool,
+		#[case] should_accept_phrasing_option: bool,
+	) {
+		// Arrange
+		let input = if nested_is_bound {
+			quote::quote!({ select { a11y: off, bind: nested, option { span { "Nested" } } } })
+		} else {
+			quote::quote!({ select { a11y: off, option { span { "Nested" } } } })
+		};
+		let ast: PageMacro = syn::parse2(input).unwrap();
+		let PageNode::Element(element) = &ast.body().nodes[0] else {
+			panic!("expected an element");
+		};
+
+		// Act
+		let result = transform_element(
+			element,
+			&[],
+			ValidationContext {
+				inside_bound_select: true,
+			},
+		);
+
+		// Assert
+		assert_eq!(result.is_ok(), should_accept_phrasing_option);
+		if !should_accept_phrasing_option {
+			assert_eq!(
+				result.unwrap_err().to_string(),
+				"Element <option> can only contain text, not child elements"
+			);
+		}
+	}
+
+	#[test]
+	fn bound_select_context_does_not_leak_to_outside_sibling() {
+		// Arrange
+		let ast: PageMacro = syn::parse2(quote::quote!({
+			div {
+				select { a11y: off, bind: outer, option { value: "outer", "Outer" } }
+				select { a11y: off, option { selected: true, "Sibling" } }
+			}
+		}))
+		.unwrap();
+
+		// Act
+		let result = validate(&ast);
+
+		// Assert
+		assert!(result.is_ok());
+	}
+
+	#[rstest]
+	#[case(quote::quote!({
+		select {
+			a11y: off,
+			bind: selected,
+			if show { option { span { "Flow" } } }
+		}
+	}))]
+	#[case(quote::quote!({
+		select {
+			a11y: off,
+			bind: selected,
+			ChoiceList() { option { span { "Component" } } }
+		}
+	}))]
+	#[case(quote::quote!({
+		select {
+			a11y: off,
+			bind: selected,
+			ChoiceList() { $choices { option { span { "Slot" } } } }
+		}
+	}))]
+	fn bound_select_context_propagates_through_non_select_nodes(
+		#[case] input: proc_macro2::TokenStream,
+	) {
+		// Arrange
+		let ast: PageMacro = syn::parse2(input).unwrap();
+
+		// Act
+		let result = validate(&ast);
+
+		// Assert
+		assert!(result.is_ok());
 	}
 
 	#[rstest]
