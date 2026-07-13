@@ -264,6 +264,7 @@ struct PendingSuspenseBoundary {
 	boundary_id: String,
 	node: SuspenseNode,
 	boundary_start: DeterministicRenderSnapshot,
+	selected_values: Option<Rc<[String]>>,
 }
 
 #[derive(Clone, Copy)]
@@ -836,9 +837,10 @@ impl SsrRenderer {
 												let mut nested_boundaries = Vec::new();
 												let replacement = runtime
 													.renderer
-													.render_stream_shell_page(
+													.render_stream_shell_page_with_selection(
 														&replacement_page,
 														&mut nested_boundaries,
+														boundary.selected_values.clone(),
 													)
 													.await;
 												drop(boundary_guard);
@@ -1188,7 +1190,7 @@ impl SsrRenderer {
 							.render_stream_shell_page_with_selection(
 								&fallback_page,
 								boundaries,
-								selected_values,
+								selected_values.clone(),
 							)
 							.await;
 						if has_pending {
@@ -1196,6 +1198,7 @@ impl SsrRenderer {
 								boundary_id: boundary_id.clone(),
 								node: node.clone(),
 								boundary_start,
+								selected_values,
 							});
 						}
 						self.render_suspense_fallback(&boundary_id, fallback)

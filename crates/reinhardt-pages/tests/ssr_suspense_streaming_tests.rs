@@ -3,9 +3,12 @@
 use futures_util::StreamExt;
 use reinhardt_core::types::page::{DeferredNode, Head, SuspenseNode};
 use reinhardt_pages::component::suspense::SuspenseBoundary;
-use reinhardt_pages::component::{Component, IntoPage, Page, PageElement};
-use reinhardt_pages::reactive::{ResourceState, use_id, use_resource, use_resource_with_key};
+use reinhardt_pages::component::{Component, ControlBinding, IntoPage, Page, PageElement};
+use reinhardt_pages::reactive::{
+	ResourceState, Signal, use_id, use_resource, use_resource_with_key,
+};
 use reinhardt_pages::ssr::{SsrChunk, SsrOptions, SsrRenderer, SsrStream};
+use rstest::rstest;
 use std::cell::Cell;
 use std::rc::Rc;
 use std::time::Duration;
@@ -58,6 +61,43 @@ fn delayed_suspense_resource_view(delay: Duration, value: &'static str) -> Page 
 			})
 			.into_page()
 	})
+}
+
+fn controlled_select_suspense_option_view() -> Page {
+	let selected = Signal::new(vec!["rust".to_owned()]);
+
+	PageElement::new("select")
+		.attr("multiple", "multiple")
+		.control_binding(ControlBinding::select_many(selected))
+		.child(Page::reactive(|| {
+			let resource = use_resource(
+				|| async {
+					tokio::time::sleep(Duration::from_millis(5)).await;
+					Ok::<_, String>("rust".to_owned())
+				},
+				(),
+			);
+			let content_resource = resource.clone();
+
+			SuspenseBoundary::new()
+				.fallback(|| {
+					PageElement::new("option")
+						.attr("value", "loading")
+						.child("Loading")
+						.into_page()
+				})
+				.track(resource)
+				.content(move || {
+					resource_to_page(content_resource.get(), "option", "Loading", |value| {
+						PageElement::new("option")
+							.attr("value", value)
+							.child("Rust")
+							.into_page()
+					})
+				})
+				.into_page()
+		}))
+		.into_page()
 }
 
 fn pending_nested_boundary(label: &'static str) -> Page {
@@ -620,6 +660,39 @@ async fn streaming_page_without_state_script_skips_resource_replacements() {
 	assert!(!html.contains("resolved"));
 	assert!(!html.contains(r#"data-rh-suspense-chunk="rh-suspense-0""#));
 	assert!(!html.contains("ssr-state"));
+}
+
+#[rstest]
+#[tokio::test]
+async fn streaming_controlled_select_replacement_preserves_selected_values() {
+	// Arrange
+	let view = controlled_select_suspense_option_view();
+	let mut buffered_renderer = SsrRenderer::new();
+	let mut streaming_renderer = SsrRenderer::new();
+
+	// Act
+	let buffered = buffered_renderer
+		.render_page_with_view_head_to_string(view.clone())
+		.await;
+	let mut stream = streaming_renderer.render_page_with_view_head(view).await;
+	let _shell = stream.next().await.unwrap().into_string();
+	let replacement = stream.next().await.unwrap().into_string();
+	let replacement_content = replacement
+		.split_once('>')
+		.unwrap()
+		.1
+		.split_once("</template>")
+		.unwrap()
+		.0;
+
+	// Assert
+	assert!(buffered.contains(
+		"<select multiple=\"multiple\"><option value=\"rust\" selected=\"selected\">Rust</option></select>"
+	));
+	assert_eq!(
+		replacement_content,
+		"<option value=\"rust\" selected=\"selected\">Rust</option>"
+	);
 }
 
 #[tokio::test]
