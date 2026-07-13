@@ -452,12 +452,11 @@ impl SsrRenderer {
 	}
 
 	/// Renders an IntoPage to an HTML string.
+	///
+	/// The conversion runs once inside the renderer-owned reactive scope.
 	pub async fn render_into_page<V: IntoPage>(&mut self, view: V) -> String {
-		let scope = ReactiveScope::new();
-		let view = scope.enter(|| view.into_page());
-		let result = self.render_view(&view).await;
-		drop(scope);
-		result
+		self.render_view_factory(Self::into_page_factory(view))
+			.await
 	}
 
 	/// Renders a pre-built View to an HTML string.
@@ -577,6 +576,24 @@ impl SsrRenderer {
 		}
 	}
 
+	fn into_page_factory<V: IntoPage>(view: V) -> impl FnMut() -> Page {
+		let mut source = Some(view);
+		let mut rendered_page: Option<Page> = None;
+
+		move || {
+			if let Some(page) = rendered_page.as_ref() {
+				return page.clone();
+			}
+
+			let page = source
+				.take()
+				.expect("IntoPage source must be available before its first render")
+				.into_page();
+			rendered_page = Some(page.clone());
+			page
+		}
+	}
+
 	fn begin_buffered_render_pass(&mut self) {
 		self.rendered_head = None;
 	}
@@ -613,14 +630,17 @@ impl SsrRenderer {
 	}
 
 	/// Renders an IntoPage to a full HTML page.
+	///
+	/// The conversion runs once inside the renderer-owned reactive scope, which
+	/// remains alive through streaming replacement traversal.
 	pub async fn render_page_into_page<V: IntoPage>(&mut self, view: V) -> SsrStream {
-		let view = view.into_page();
+		let view_factory = Self::into_page_factory(view);
 		if self.options.suspense_streaming && !self.options.minify {
-			return self.render_page_stream_from_factory(|| view.clone()).await;
+			return self.render_page_stream_from_factory(view_factory).await;
 		}
 
 		let (view, content, body_tail) = self
-			.render_view_parts_from_factory(|| view.clone(), true)
+			.render_view_parts_from_factory(view_factory, true)
 			.await;
 		let view_head = self.current_buffered_rendered_head_or_view_head(&view);
 		SsrStream::from_chunks(self.wrap_in_html_with_head_and_body_tail_chunks(
@@ -683,10 +703,11 @@ impl SsrRenderer {
 	}
 
 	/// Renders an IntoPage to a buffered full HTML page.
+	///
+	/// The conversion runs once inside the renderer-owned reactive scope.
 	pub async fn render_page_into_page_to_string<V: IntoPage>(&mut self, view: V) -> String {
-		let view = view.into_page();
 		let (view, content, body_tail) = self
-			.render_view_parts_from_factory(|| view.clone(), true)
+			.render_view_parts_from_factory(Self::into_page_factory(view), true)
 			.await;
 		let view_head = self.current_buffered_rendered_head_or_view_head(&view);
 		self.wrap_in_html_with_head_and_body_tail(&content, &body_tail, view_head.as_ref())
@@ -1844,6 +1865,47 @@ mod tests {
 		}
 	}
 
+	struct ScopedIntoPage;
+
+	impl IntoPage for ScopedIntoPage {
+		fn into_page(self) -> Page {
+			use crate::reactive::Signal;
+
+			let value = Signal::new("scoped IntoPage conversion".to_string());
+			Page::reactive(move || Page::text(value.get()))
+		}
+	}
+
+	struct StreamingScopedIntoPage;
+
+	impl IntoPage for StreamingScopedIntoPage {
+		fn into_page(self) -> Page {
+			use crate::component::suspense::SuspenseBoundary;
+			use crate::reactive::{Signal, use_resource};
+
+			let value = Signal::new("streamed scoped IntoPage conversion".to_string());
+			Page::reactive(move || {
+				let resource = use_resource(
+					|| async {
+						tokio::time::sleep(Duration::from_millis(5)).await;
+						Ok::<_, String>(())
+					},
+					(),
+				);
+				let content_value = value.clone();
+
+				SuspenseBoundary::new()
+					.fallback(|| Page::text("streamed IntoPage loading"))
+					.track(resource)
+					.content(move || {
+						let value = content_value.clone();
+						Page::reactive(move || Page::text(value.get()))
+					})
+					.into_page()
+			})
+		}
+	}
+
 	#[test]
 	fn normalize_suspense_boundary_id_reserves_generated_namespace() {
 		let unsafe_id = normalize_suspense_boundary_id("--");
@@ -1931,6 +1993,31 @@ mod tests {
 			.await;
 
 		assert!(html.contains("streamed scoped traversal"));
+	}
+
+	#[tokio::test]
+	async fn buffered_full_page_into_page_conversion_runs_in_the_render_scope() {
+		let mut renderer = SsrRenderer::with_options(SsrOptions::new().suspense_streaming(false));
+
+		let html = renderer
+			.render_page_into_page_to_string(ScopedIntoPage)
+			.await;
+
+		assert!(html.contains("scoped IntoPage conversion"));
+	}
+
+	#[tokio::test]
+	async fn streaming_full_page_into_page_scope_lives_through_page_traversal() {
+		let mut renderer = SsrRenderer::new();
+
+		let html = renderer
+			.render_page_into_page(StreamingScopedIntoPage)
+			.await
+			.collect_string()
+			.await;
+
+		assert!(html.contains("streamed IntoPage loading"));
+		assert!(html.contains("streamed scoped IntoPage conversion"));
 	}
 
 	#[tokio::test]
