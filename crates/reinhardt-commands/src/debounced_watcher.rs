@@ -141,6 +141,34 @@ pub struct WatcherConfig {
 	pub component_styles: Option<std::sync::Arc<std::sync::Mutex<crate::ComponentStyleState>>>,
 }
 
+/// Cargo selection that native hot-reload rebuilds must preserve.
+#[derive(Clone, Copy)]
+pub(crate) struct ServerRebuildContext<'a> {
+	package: Option<&'a str>,
+	features: &'a [String],
+	all_features: bool,
+}
+
+impl<'a> ServerRebuildContext<'a> {
+	pub(crate) fn new(
+		package: Option<&'a str>,
+		features: &'a [String],
+		all_features: bool,
+	) -> Self {
+		Self {
+			package,
+			features,
+			all_features,
+		}
+	}
+}
+
+impl Default for ServerRebuildContext<'_> {
+	fn default() -> Self {
+		Self::new(None, &[], false)
+	}
+}
+
 /// Select rebuild pipelines for a debounced path batch.
 ///
 /// The classifier is deliberately conservative. It only suppresses a
@@ -357,13 +385,21 @@ pub async fn run_rebuild_for_paths(
 	current_child: &mut tokio::process::Child,
 	respawn: &(impl Fn() -> std::io::Result<tokio::process::Child> + Send + Sync),
 ) {
-	run_rebuild_for_paths_for_package(ctx, config, None, paths, current_child, respawn).await;
+	run_rebuild_for_paths_for_package(
+		ctx,
+		config,
+		ServerRebuildContext::default(),
+		paths,
+		current_child,
+		respawn,
+	)
+	.await;
 }
 
 async fn run_rebuild_for_paths_for_package(
 	ctx: &CommandContext,
 	config: &WatcherConfig,
-	package: Option<&str>,
+	rebuild_context: ServerRebuildContext<'_>,
 	paths: Vec<PathBuf>,
 	current_child: &mut tokio::process::Child,
 	respawn: &(impl Fn() -> std::io::Result<tokio::process::Child> + Send + Sync),
@@ -443,9 +479,11 @@ async fn run_rebuild_for_paths_for_package(
 		// `debug`) and the wasm pipeline does not interact with the running
 		// child process, so concurrent execution is safe.
 		let server_fut =
-			crate::server_rebuild_pipeline::ServerRebuildPipeline::run_with_readiness_for_package(
+			crate::server_rebuild_pipeline::ServerRebuildPipeline::run_with_readiness_for_package_with_features(
 				&config.bin_name,
-				package,
+				rebuild_context.package,
+				rebuild_context.features,
+				rebuild_context.all_features,
 				current_child,
 				respawn,
 				&config.address,
@@ -486,9 +524,11 @@ async fn run_rebuild_for_paths_for_package(
 		let _ = wasm_ok;
 	} else {
 		let (server_outcome, new_child) =
-			crate::server_rebuild_pipeline::ServerRebuildPipeline::run_with_readiness_for_package(
+			crate::server_rebuild_pipeline::ServerRebuildPipeline::run_with_readiness_for_package_with_features(
 				&config.bin_name,
-				package,
+				rebuild_context.package,
+				rebuild_context.features,
+				rebuild_context.all_features,
 				current_child,
 				respawn,
 				&config.address,
@@ -556,14 +596,22 @@ pub async fn run_watcher(
 	current_child: tokio::process::Child,
 	respawn: impl Fn() -> std::io::Result<tokio::process::Child> + Send + Sync,
 ) -> Result<(), notify::Error> {
-	run_watcher_for_package(ctx, config, None, shutdown_rx, current_child, respawn).await
+	run_watcher_for_package(
+		ctx,
+		config,
+		ServerRebuildContext::default(),
+		shutdown_rx,
+		current_child,
+		respawn,
+	)
+	.await
 }
 
-/// Run the watcher while forwarding a selected Cargo package to native rebuilds.
+/// Run the watcher while forwarding the selected Cargo build context to native rebuilds.
 pub(crate) async fn run_watcher_for_package(
 	ctx: &CommandContext,
 	config: &WatcherConfig,
-	package: Option<&str>,
+	rebuild_context: ServerRebuildContext<'_>,
 	shutdown_rx: oneshot::Receiver<()>,
 	mut current_child: tokio::process::Child,
 	respawn: impl Fn() -> std::io::Result<tokio::process::Child> + Send + Sync,
@@ -627,7 +675,7 @@ pub(crate) async fn run_watcher_for_package(
 					run_rebuild_for_paths_for_package(
 						ctx,
 						config,
-						package,
+						rebuild_context,
 						paths,
 						&mut current_child,
 						&respawn,

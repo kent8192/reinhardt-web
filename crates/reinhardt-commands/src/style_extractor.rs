@@ -118,6 +118,16 @@ struct StyleSourceRoot {
 }
 
 impl StylePackageContext {
+	/// Return every local package root that contributes code to the Pages bundle.
+	///
+	/// The result includes the selected package and enabled local path dependencies,
+	/// matching the style extraction graph used for generated CSS.
+	pub(crate) fn source_package_roots(&self) -> impl Iterator<Item = &Path> {
+		self.source_roots
+			.iter()
+			.map(|source| source.package_root.as_path())
+	}
+
 	/// Select a package from already loaded Cargo metadata.
 	pub fn from_metadata(
 		metadata: &Metadata,

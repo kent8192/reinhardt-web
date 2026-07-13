@@ -1760,6 +1760,15 @@ fn configured_static_url(base_dir: &std::path::Path) -> Result<String, String> {
 	crate::StaticAssetSettings::from_project_dir(base_dir).map(|settings| settings.static_url)
 }
 
+#[cfg(feature = "pages")]
+fn should_prepare_component_styles(
+	with_pages: bool,
+	no_wasm: bool,
+	has_inherited_style_root: bool,
+) -> bool {
+	with_pages && !no_wasm && !has_inherited_style_root
+}
+
 impl RunServerCommand {
 	#[cfg(any(feature = "pages", all(feature = "server", feature = "autoreload")))]
 	fn style_feature_selection_from_context(ctx: &CommandContext) -> crate::StyleFeatureSelection {
@@ -2032,23 +2041,27 @@ impl BaseCommand for RunServerCommand {
 		#[cfg_attr(not(feature = "server"), allow(unused_variables))]
 		let requested_package: Option<String> = None;
 		#[cfg(feature = "pages")]
-		let inherited_style_root = std::env::var_os(GENERATED_STYLE_ROOT_ENV).map(PathBuf::from);
+		let inherited_style_root = (!no_wasm)
+			.then(|| std::env::var_os(GENERATED_STYLE_ROOT_ENV).map(PathBuf::from))
+			.flatten();
 		#[cfg(feature = "pages")]
-		let component_style_state = if with_pages && inherited_style_root.is_none() {
-			let manifest = std::env::current_dir()
-				.map_err(crate::CommandError::IoError)?
-				.join("Cargo.toml");
-			Some(std::sync::Arc::new(std::sync::Mutex::new(
-				crate::ComponentStyleState::initialize_with_features(
-					manifest,
-					requested_package.clone(),
-					style_feature_selection,
-				)
-				.map_err(crate::CommandError::ExecutionError)?,
-			)))
-		} else {
-			None
-		};
+		let component_style_state =
+			if should_prepare_component_styles(with_pages, no_wasm, inherited_style_root.is_some())
+			{
+				let manifest = std::env::current_dir()
+					.map_err(crate::CommandError::IoError)?
+					.join("Cargo.toml");
+				Some(std::sync::Arc::new(std::sync::Mutex::new(
+					crate::ComponentStyleState::initialize_with_features(
+						manifest,
+						requested_package.clone(),
+						style_feature_selection,
+					)
+					.map_err(crate::CommandError::ExecutionError)?,
+				)))
+			} else {
+				None
+			};
 		#[cfg(all(not(feature = "pages"), feature = "server"))]
 		let component_style_state: Option<
 			std::sync::Arc<std::sync::Mutex<crate::ComponentStyleState>>,
@@ -2901,6 +2914,7 @@ impl RunServerCommand {
 		let style_feature_selection = Self::style_feature_selection_from_context(ctx);
 		let style_features = style_feature_selection.features().to_vec();
 		let all_style_features = style_feature_selection.all_features_enabled();
+		let respawn_features = style_features.clone();
 		let generated_style_root_owned = generated_style_root.map(std::path::Path::to_path_buf);
 		#[cfg(feature = "pages")]
 		let hmr = Self::start_autoreload_hmr(ctx, with_pages).await?;
@@ -2927,7 +2941,7 @@ impl RunServerCommand {
 				force_wasm,
 				wasm_optional,
 				package_owned.as_deref(),
-				&style_features,
+				&respawn_features,
 				all_style_features,
 				generated_style_root_owned.as_deref(),
 			)
@@ -2958,7 +2972,11 @@ impl RunServerCommand {
 		crate::debounced_watcher::run_watcher_for_package(
 			ctx,
 			&cfg,
-			rebuild_package.as_deref(),
+			crate::debounced_watcher::ServerRebuildContext::new(
+				rebuild_package.as_deref(),
+				&style_features,
+				all_style_features,
+			),
 			shutdown_rx,
 			child,
 			respawn,
@@ -3307,21 +3325,19 @@ impl RunServerCommand {
 		)
 		.map_err(crate::wasm_builder::WasmBuildError::PackageResolutionFailed)?;
 		let package_manifest_path = &package_context.package_manifest_path;
-		let package_root = package_manifest_path.parent().ok_or_else(|| {
-			crate::wasm_builder::WasmBuildError::PackageResolutionFailed(
-				"selected package manifest has no parent directory".to_string(),
-			)
-		})?;
-
 		// Only build if this project exports cdylib
 		if !crate::wasm_builder::detect_cdylib_in_cargo_toml(package_manifest_path) {
 			return Ok(());
 		}
-		let crate_name = package_context.package_name;
+		let crate_name = package_context.package_name.clone();
 
 		let js_name = crate_name.replace('-', "_");
 		let artifact = cwd.join("dist").join(format!("{}_bg.wasm", js_name));
-		if !force && !crate::wasm_builder::is_wasm_stale(package_root, &artifact) {
+		if !force
+			&& !crate::wasm_builder::is_wasm_stale_for_roots(
+				package_context.source_package_roots(),
+				&artifact,
+			) {
 			ctx.info("Pages WASM: artifacts up to date, skipping build (--no-override-wasm)");
 			return Ok(());
 		}
@@ -4531,6 +4547,15 @@ mod tests {
 			.expect("resolve the generated stylesheet URL prefix");
 
 		assert_eq!(static_url, "/assets/");
+	}
+
+	#[cfg(feature = "pages")]
+	#[test]
+	fn no_wasm_preserves_existing_component_style_artifacts() {
+		assert!(!should_prepare_component_styles(true, true, false));
+		assert!(!should_prepare_component_styles(true, true, true));
+		assert!(!should_prepare_component_styles(true, false, true));
+		assert!(should_prepare_component_styles(true, false, false));
 	}
 
 	#[test]

@@ -528,16 +528,35 @@ pub fn latest_source_mtime(crate_dir: &Path) -> Option<SystemTime> {
 /// to fail safely toward freshness rather than serving a potentially stale
 /// bundle.
 pub fn is_wasm_stale(crate_dir: &Path, artifact: &Path) -> bool {
+	is_wasm_stale_for_roots(std::iter::once(crate_dir), artifact)
+}
+
+/// Returns `true` if the WASM bundle at `artifact` is missing or older than
+/// any tracked source file in the supplied local package roots.
+///
+/// An unreadable root or an empty root set is treated as stale so callers do
+/// not serve a bundle whose dependency graph cannot be verified.
+pub(crate) fn is_wasm_stale_for_roots<'a>(
+	crate_dirs: impl IntoIterator<Item = &'a Path>,
+	artifact: &Path,
+) -> bool {
 	let Ok(artifact_meta) = std::fs::metadata(artifact) else {
 		return true;
 	};
 	let Ok(artifact_mtime) = artifact_meta.modified() else {
 		return true;
 	};
-	match latest_source_mtime(crate_dir) {
-		Some(src_mtime) => src_mtime > artifact_mtime,
-		None => true,
+	let mut saw_source_root = false;
+	for crate_dir in crate_dirs {
+		saw_source_root = true;
+		let Some(source_mtime) = latest_source_mtime(crate_dir) else {
+			return true;
+		};
+		if source_mtime > artifact_mtime {
+			return true;
+		}
 	}
+	!saw_source_root
 }
 
 #[cfg(test)]
@@ -766,6 +785,31 @@ version = "0.1.0"
 			);
 
 			assert!(is_wasm_stale(&crate_dir, &artifact));
+		}
+
+		#[test]
+		fn treats_newer_path_dependency_source_as_stale() {
+			let tmp = tempfile::tempdir().unwrap();
+			let app = make_crate(&tmp.path().join("app"));
+			let shared = make_crate(&tmp.path().join("shared"));
+			let dist = app.join("dist");
+			fs::create_dir_all(&dist).unwrap();
+			let artifact = dist.join("app_bg.wasm");
+			fs::write(&artifact, b"\0asm").unwrap();
+
+			let base = SystemTime::now() - Duration::from_secs(120);
+			for crate_dir in [&app, &shared] {
+				set_mtime(&crate_dir.join("Cargo.toml"), base);
+				set_mtime(&crate_dir.join("src/lib.rs"), base);
+				set_mtime(&crate_dir.join("src/nested/mod_a.rs"), base);
+			}
+			set_mtime(&artifact, base + Duration::from_secs(60));
+			set_mtime(&shared.join("src/lib.rs"), base + Duration::from_secs(90));
+
+			assert!(is_wasm_stale_for_roots(
+				[app.as_path(), shared.as_path()],
+				&artifact,
+			));
 		}
 	}
 }
