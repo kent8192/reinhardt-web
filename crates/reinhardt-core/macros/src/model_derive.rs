@@ -2821,6 +2821,7 @@ fn generate_fixture_validation(
 	let orm_crate = get_reinhardt_orm_crate();
 	let mut projection_fields = Vec::new();
 	let mut projection_field_names = Vec::new();
+	let mut has_defaulted_fixture_field = false;
 
 	for field in field_infos {
 		if field.config.skip
@@ -2835,9 +2836,21 @@ fn generate_fixture_validation(
 
 		let field_name = &field.name;
 		let field_type = &field.ty;
-		projection_fields.push(quote! {
-			#field_name: #field_type
-		});
+		if field.config.default.is_some() {
+			has_defaulted_fixture_field = true;
+			let validator = LitStr::new(
+				"__reinhardt_validate_defaulted_fixture_field",
+				field_name.span(),
+			);
+			projection_fields.push(quote! {
+				#[serde(default, deserialize_with = #validator)]
+				#field_name: ::std::marker::PhantomData<#field_type>
+			});
+		} else {
+			projection_fields.push(quote! {
+				#field_name: #field_type
+			});
+		}
 		projection_field_names.push(field_name.clone());
 	}
 
@@ -2875,11 +2888,29 @@ fn generate_fixture_validation(
 			__reinhardt_fixture_projection_marker: _,
 		}
 	};
+	let defaulted_fixture_field_validator = if has_defaulted_fixture_field {
+		quote! {
+			fn __reinhardt_validate_defaulted_fixture_field<'de, D, T>(
+				deserializer: D,
+			) -> ::std::result::Result<::std::marker::PhantomData<T>, D::Error>
+			where
+				D: #orm_crate::serde::Deserializer<'de>,
+				T: #orm_crate::serde::Deserialize<'de>,
+			{
+				let _ = <T as #orm_crate::serde::Deserialize>::deserialize(deserializer)?;
+				Ok(::std::marker::PhantomData)
+			}
+		}
+	} else {
+		quote! {}
+	};
 
 	quote! {
 		fn validate_fixture_fields(
 			fields: &#orm_crate::FixtureFields,
 		) -> ::std::result::Result<(), ::std::string::String> {
+			#defaulted_fixture_field_validator
+
 			// This projection is deserialized only to validate fixture input.
 			#[allow(dead_code)]
 			#[derive(#orm_crate::serde::Deserialize)]

@@ -141,6 +141,22 @@ struct FixtureProjectionUser {
 	generated_value: String,
 }
 
+#[model(
+	app_label = "fixture_projection",
+	table_name = "fixture_projection_default_users"
+)]
+#[derive(Serialize, Deserialize)]
+struct FixtureProjectionDefaultUser {
+	#[field(primary_key = true)]
+	id: Option<i64>,
+
+	#[field(max_length = 100)]
+	title: String,
+
+	#[field(default = true)]
+	is_active: bool,
+}
+
 #[test]
 fn test_model_trait_implementation() {
 	// Verify Model trait methods are correctly implemented
@@ -292,6 +308,24 @@ fn test_fixture_projection_validates_writable_fields_without_api_serde_names() {
 	assert!(
 		FixtureProjectionUser::validate_fixture_fields(&invalid_payload).is_err(),
 		"non-generated fixture fields must retain their Rust type validation"
+	);
+}
+
+#[test]
+fn test_fixture_projection_allows_missing_defaulted_fields() {
+	let mut fields = serde_json::Map::new();
+	fields.insert("id".to_string(), serde_json::json!(1));
+	fields.insert("title".to_string(), serde_json::json!("Fixture title"));
+
+	assert!(
+		FixtureProjectionDefaultUser::validate_fixture_fields(&fields).is_ok(),
+		"fixture validation must allow omitted fields that have model defaults"
+	);
+
+	fields.insert("is_active".to_string(), serde_json::json!("not-a-bool"));
+	assert!(
+		FixtureProjectionDefaultUser::validate_fixture_fields(&fields).is_err(),
+		"provided defaulted fields must retain their Rust type validation"
 	);
 }
 
