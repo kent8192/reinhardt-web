@@ -393,7 +393,15 @@ struct FixtureManyToManySpec {
 	through_table: String,
 	source_field: String,
 	target_field: String,
+	source_primary_key_binding: FixturePrimaryKeyBinding,
+	target_primary_key_binding: FixturePrimaryKeyBinding,
 	is_explicit_through: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FixturePrimaryKeyBinding {
+	Generic,
+	Text,
 }
 
 #[derive(Debug, Clone)]
@@ -720,7 +728,7 @@ where
 			))
 		})?;
 		let is_native_json = row.native_json_fields().contains(&database_column);
-		let hydrated_value = hydrate_fixture_json_value::<M>(
+		let hydrated_value = hydrate_fixture_database_value::<M>(
 			value.clone(),
 			Some(field_info),
 			&field_name,
@@ -768,7 +776,7 @@ where
 		let field_info = field_metadata
 			.iter()
 			.find(|field| field.name == field_name || field.db_column_name() == database_column);
-		let value = hydrate_fixture_json_value::<M>(
+		let value = hydrate_fixture_database_value::<M>(
 			value,
 			field_info,
 			&field_name,
@@ -787,7 +795,7 @@ where
 	Ok(fixture_fields)
 }
 
-fn hydrate_fixture_json_value<M>(
+fn hydrate_fixture_database_value<M>(
 	value: Value,
 	field_info: Option<&crate::orm::inspection::FieldInfo>,
 	field_name: &str,
@@ -797,21 +805,55 @@ fn hydrate_fixture_json_value<M>(
 where
 	M: Model,
 {
-	if is_native_json
+	let value = if is_native_json
 		|| !field_info.is_some_and(|field| crate::orm::json::is_json_field_type(&field.field_type))
 	{
+		value
+	} else {
+		match value {
+			Value::String(text) => serde_json::from_str(&text).map_err(|error| {
+				FixtureError::Database(format!(
+					"failed to hydrate JSON fixture field '{}.{}' from database column '{}': {error}",
+					M::app_label(),
+					field_name,
+					database_column
+				))
+			})?,
+			value => value,
+		}
+	};
+
+	hydrate_fixture_binary_value::<M>(value, field_info, field_name, database_column)
+}
+
+fn hydrate_fixture_binary_value<M>(
+	value: Value,
+	field_info: Option<&crate::orm::inspection::FieldInfo>,
+	field_name: &str,
+	database_column: &str,
+) -> FixtureResult<Value>
+where
+	M: Model,
+{
+	if !field_info.is_some_and(|field| is_fixture_binary_field_type(&field.field_type)) {
 		return Ok(value);
 	}
 
 	match value {
-		Value::String(text) => serde_json::from_str(&text).map_err(|error| {
-			FixtureError::Database(format!(
-				"failed to hydrate JSON fixture field '{}.{}' from database column '{}': {error}",
-				M::app_label(),
-				field_name,
-				database_column
-			))
-		}),
+		Value::String(encoded) => {
+			use base64::Engine;
+			let bytes = base64::engine::general_purpose::STANDARD
+				.decode(&encoded)
+				.map_err(|error| {
+					FixtureError::Database(format!(
+						"failed to decode binary fixture field '{}.{}' from database column '{}': {error}",
+						M::app_label(),
+						field_name,
+						database_column
+					))
+				})?;
+			Ok(Value::Array(bytes.into_iter().map(Value::from).collect()))
+		}
 		value => Ok(value),
 	}
 }
@@ -877,16 +919,92 @@ fn fixture_value_to_sea_value_for_field<M>(
 	value: &Value,
 	field_info: Option<&crate::orm::inspection::FieldInfo>,
 	field_is_none: bool,
+) -> FixtureResult<reinhardt_query::value::Value>
+where
+	M: Model,
+{
+	if field_info.is_some_and(|field| is_fixture_binary_field_type(&field.field_type)) {
+		return fixture_binary_value_to_sea_value(value, field_is_none);
+	}
+	if field_info.is_some_and(|field| is_fixture_text_field_type(&field.field_type))
+		&& let Value::String(value) = value
+	{
+		return Ok(reinhardt_query::value::Value::String(Some(Box::new(
+			value.clone(),
+		))));
+	}
+	Ok(Manager::<M>::json_to_sea_value_for_field(
+		value,
+		field_info,
+		field_is_none,
+	))
+}
+
+fn fixture_binary_value_to_sea_value(
+	value: &Value,
+	field_is_none: bool,
+) -> FixtureResult<reinhardt_query::value::Value> {
+	if field_is_none {
+		return Ok(reinhardt_query::value::Value::Bytes(None));
+	}
+	let values = value.as_array().ok_or_else(|| {
+		FixtureError::Database("binary fixture fields must be JSON byte arrays".to_string())
+	})?;
+	let bytes = values
+		.iter()
+		.enumerate()
+		.map(|(index, value)| {
+			value
+				.as_u64()
+				.filter(|value| *value <= u8::MAX as u64)
+				.map_or_else(
+					|| {
+						Err(FixtureError::Database(format!(
+							"binary fixture byte at index {index} must be an integer between 0 and {}",
+							u8::MAX
+						)))
+					},
+					|value| Ok(value as u8),
+				)
+		})
+		.collect::<FixtureResult<Vec<_>>>()?;
+	Ok(reinhardt_query::value::Value::Bytes(Some(Box::new(bytes))))
+}
+
+fn fixture_many_to_many_key_value<M>(
+	value: &Value,
+	binding: FixturePrimaryKeyBinding,
 ) -> reinhardt_query::value::Value
 where
 	M: Model,
 {
-	if field_info.is_some_and(|field| is_fixture_text_field_type(&field.field_type))
+	if binding == FixturePrimaryKeyBinding::Text
 		&& let Value::String(value) = value
 	{
 		return reinhardt_query::value::Value::String(Some(Box::new(value.clone())));
 	}
-	Manager::<M>::json_to_sea_value_for_field(value, field_info, field_is_none)
+	Manager::<M>::json_to_sea_value(value)
+}
+
+fn fixture_primary_key_binding_for_model<M>() -> FixturePrimaryKeyBinding
+where
+	M: Model,
+{
+	let primary_key = M::primary_key_field();
+	let field_info = M::field_metadata()
+		.into_iter()
+		.find(|field| field.primary_key || field.name == primary_key);
+	fixture_primary_key_binding_from_field_info(field_info.as_ref())
+}
+
+fn fixture_primary_key_binding_from_field_info(
+	field_info: Option<&crate::orm::inspection::FieldInfo>,
+) -> FixturePrimaryKeyBinding {
+	if field_info.is_some_and(|field| is_fixture_text_field_type(&field.field_type)) {
+		FixturePrimaryKeyBinding::Text
+	} else {
+		FixturePrimaryKeyBinding::Generic
+	}
 }
 
 fn is_fixture_text_field_type(field_type: &str) -> bool {
@@ -898,9 +1016,16 @@ fn is_fixture_text_field_type(field_type: &str) -> bool {
 		"SlugField",
 		"FilePathField",
 		"GenericIPAddressField",
+		"CITextField",
 	]
 	.iter()
 	.any(|field_name| field_type.ends_with(field_name))
+}
+
+fn is_fixture_binary_field_type(field_type: &str) -> bool {
+	["BinaryField", "BlobField", "ByteaField"]
+		.iter()
+		.any(|field_name| field_type.ends_with(field_name))
 }
 
 #[cfg(test)]
@@ -931,23 +1056,18 @@ where
 	stmt.into_table(Alias::new(M::table_name()));
 	stmt.columns(columns.iter().map(|column| Alias::new(column.as_str())));
 	let field_metadata = M::field_metadata();
-	stmt.values_panic(
-		columns
-			.iter()
-			.map(|column| {
-				let field_info = field_metadata.iter().find(|field| {
-					field.name == *column || field.db_column.as_deref() == Some(column.as_str())
-				});
-				let field_is_none =
-					fixture_field_is_none(&object[column], field_info, json_null_fields);
-				fixture_value_to_sea_value_for_field::<M>(
-					&object[column],
-					field_info,
-					field_is_none,
-				)
-			})
-			.collect::<Vec<_>>(),
-	);
+	let values = columns
+		.iter()
+		.map(|column| {
+			let field_info = field_metadata.iter().find(|field| {
+				field.name == *column || field.db_column.as_deref() == Some(column.as_str())
+			});
+			let field_is_none =
+				fixture_field_is_none(&object[column], field_info, json_null_fields);
+			fixture_value_to_sea_value_for_field::<M>(&object[column], field_info, field_is_none)
+		})
+		.collect::<FixtureResult<Vec<_>>>()?;
+	stmt.values_panic(values);
 	if backend == DatabaseBackend::Postgres
 		&& fixture_primary_key_is_identity_always::<M>(&object, &pk_field)
 	{
@@ -1012,7 +1132,7 @@ where
 	});
 	let field_is_none = fixture_field_is_none(primary_key_value, field_info, json_null_fields);
 	let primary_key_value =
-		fixture_value_to_sea_value_for_field::<M>(primary_key_value, field_info, field_is_none);
+		fixture_value_to_sea_value_for_field::<M>(primary_key_value, field_info, field_is_none)?;
 
 	let mut stmt = Query::select();
 	stmt.column(Alias::new(primary_key.as_str()))
@@ -1063,16 +1183,25 @@ where
 	let field_metadata = M::field_metadata();
 	let mut stmt = Query::update();
 	stmt.table(Alias::new(M::table_name()));
-	stmt.values(update_columns.iter().map(|column| {
-		let field_info = field_metadata.iter().find(|field| {
-			field.name == *column || field.db_column.as_deref() == Some(column.as_str())
-		});
-		let field_is_none = fixture_field_is_none(&object[column], field_info, json_null_fields);
-		(
-			Alias::new(column.as_str()),
-			fixture_value_to_sea_value_for_field::<M>(&object[column], field_info, field_is_none),
-		)
-	}));
+	let update_values = update_columns
+		.iter()
+		.map(|column| {
+			let field_info = field_metadata.iter().find(|field| {
+				field.name == *column || field.db_column.as_deref() == Some(column.as_str())
+			});
+			let field_is_none =
+				fixture_field_is_none(&object[column], field_info, json_null_fields);
+			Ok((
+				Alias::new(column.as_str()),
+				fixture_value_to_sea_value_for_field::<M>(
+					&object[column],
+					field_info,
+					field_is_none,
+				)?,
+			))
+		})
+		.collect::<FixtureResult<Vec<_>>>()?;
+	stmt.values(update_values);
 	let primary_key_field = field_metadata.iter().find(|field| {
 		field.name == primary_key || field.db_column.as_deref() == Some(primary_key.as_str())
 	});
@@ -1083,7 +1212,7 @@ where
 			primary_key_value,
 			primary_key_field,
 			primary_key_is_none,
-		),
+		)?,
 	));
 	let (sql, values) = build_update_sql(&stmt, backend);
 	Ok(Some((sql, super::execution::convert_values(values))))
@@ -1266,18 +1395,26 @@ where
 	})?;
 
 	for assignment in assignments {
+		let source_value = fixture_many_to_many_key_value::<M>(
+			source_pk,
+			assignment.spec.source_primary_key_binding,
+		);
 		let mut delete = Query::delete();
 		delete
 			.from_table(Alias::new(assignment.spec.through_table.as_str()))
 			.and_where(
 				Expr::col(Alias::new(assignment.spec.source_field.as_str()))
-					.eq(Manager::<M>::json_to_sea_value(source_pk)),
+					.eq(source_value.clone()),
 			);
 		let (sql, values) = build_delete_sql(&delete, conn.backend());
 		tx.execute(&sql, super::execution::convert_values(values))
 			.await?;
 
 		for target_pk in &assignment.values {
+			let target_value = fixture_many_to_many_key_value::<M>(
+				target_pk,
+				assignment.spec.target_primary_key_binding,
+			);
 			let mut insert = Query::insert();
 			insert
 				.into_table(Alias::new(assignment.spec.through_table.as_str()))
@@ -1285,10 +1422,7 @@ where
 					Alias::new(assignment.spec.source_field.as_str()),
 					Alias::new(assignment.spec.target_field.as_str()),
 				])
-				.values_panic([
-					Manager::<M>::json_to_sea_value(source_pk),
-					Manager::<M>::json_to_sea_value(target_pk),
-				])
+				.values_panic([source_value.clone(), target_value])
 				.on_conflict(
 					OnConflict::columns([
 						Alias::new(assignment.spec.source_field.as_str()),
@@ -1320,14 +1454,12 @@ where
 		if spec.is_explicit_through {
 			continue;
 		}
+		let source_value = fixture_many_to_many_key_value::<M>(pk, spec.source_primary_key_binding);
 		let mut select = Query::select();
 		select
 			.column(Alias::new(spec.target_field.as_str()))
 			.from(Alias::new(spec.through_table.as_str()))
-			.and_where(
-				Expr::col(Alias::new(spec.source_field.as_str()))
-					.eq(Manager::<M>::json_to_sea_value(pk)),
-			)
+			.and_where(Expr::col(Alias::new(spec.source_field.as_str())).eq(source_value))
 			.order_by(
 				Alias::new(spec.target_field.as_str()),
 				reinhardt_query::prelude::Order::Asc,
@@ -1357,9 +1489,16 @@ where
 		.many_to_many_fields
 		.iter()
 		.map(|field| {
-			let target_table = related_model_metadata(&metadata.app_label, &field.to_model)
-				.map(|target| target.table_name)
+			let target_metadata = related_model_metadata(&metadata.app_label, &field.to_model);
+			let target_table = target_metadata
+				.as_ref()
+				.map(|target| target.table_name.clone())
 				.unwrap_or_else(|| default_target_table_name(&field.to_model));
+			let source_primary_key_binding = fixture_primary_key_binding_for_model::<M>();
+			let target_primary_key_binding = target_metadata
+				.as_ref()
+				.map(fixture_primary_key_binding_for_registered_model)
+				.unwrap_or(FixturePrimaryKeyBinding::Generic);
 			let is_explicit_through = field.through.is_some();
 			let through_table = field.through.clone().unwrap_or_else(|| {
 				crate::m2m_naming::default_through_table(M::table_name(), &field.field_name)
@@ -1371,6 +1510,8 @@ where
 				through_table,
 				source_field: field.source_field.clone().unwrap_or(default_source_field),
 				target_field: field.target_field.clone().unwrap_or(default_target_field),
+				source_primary_key_binding,
+				target_primary_key_binding,
 				is_explicit_through,
 			}
 		})
@@ -1499,6 +1640,43 @@ fn related_model_metadata(
 				.find(|metadata| metadata.model_name.eq_ignore_ascii_case(to_model))
 		})
 	})
+}
+
+#[cfg(feature = "migrations")]
+fn fixture_primary_key_binding_for_registered_model(
+	metadata: &crate::migrations::model_registry::ModelMetadata,
+) -> FixturePrimaryKeyBinding {
+	let field = metadata
+		.fields
+		.iter()
+		.find(|(_, field)| {
+			field
+				.params
+				.get("primary_key")
+				.is_some_and(|value| value == "true")
+		})
+		.or_else(|| metadata.fields.get_key_value("id"));
+	if field.is_some_and(|(_, field)| is_fixture_text_migration_field_type(&field.field_type)) {
+		FixturePrimaryKeyBinding::Text
+	} else {
+		FixturePrimaryKeyBinding::Generic
+	}
+}
+
+#[cfg(feature = "migrations")]
+fn is_fixture_text_migration_field_type(field_type: &crate::migrations::FieldType) -> bool {
+	matches!(
+		field_type,
+		crate::migrations::FieldType::Char(_)
+			| crate::migrations::FieldType::VarChar(_)
+			| crate::migrations::FieldType::Text
+			| crate::migrations::FieldType::TinyText
+			| crate::migrations::FieldType::MediumText
+			| crate::migrations::FieldType::LongText
+			| crate::migrations::FieldType::CIText
+			| crate::migrations::FieldType::Enum { .. }
+			| crate::migrations::FieldType::Set { .. }
+	)
 }
 
 #[cfg(feature = "migrations")]
@@ -1931,6 +2109,94 @@ mod tests {
 
 		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
 			self.id = Some(value);
+		}
+	}
+
+	#[cfg(feature = "migrations")]
+	#[derive(Clone, Serialize, Deserialize)]
+	struct FixtureTextM2mPost {
+		id: Option<String>,
+		title: String,
+	}
+
+	#[cfg(feature = "migrations")]
+	impl Model for FixtureTextM2mPost {
+		type PrimaryKey = String;
+		type Fields = FixturePostFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"fixture_text_m2m_post"
+		}
+
+		fn new_fields() -> Self::Fields {
+			FixturePostFields
+		}
+
+		fn app_label() -> &'static str {
+			"fixture_text_m2m"
+		}
+
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id.clone()
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = Some(value);
+		}
+
+		fn field_metadata() -> Vec<crate::orm::inspection::FieldInfo> {
+			let mut id = fixture_field_info("id", "CharField", false);
+			id.primary_key = true;
+			vec![id]
+		}
+	}
+
+	#[cfg(feature = "migrations")]
+	#[derive(Clone, Serialize, Deserialize)]
+	struct FixtureBinaryPost {
+		id: Option<i64>,
+		payload: Vec<u8>,
+	}
+
+	#[cfg(feature = "migrations")]
+	impl Model for FixtureBinaryPost {
+		type PrimaryKey = i64;
+		type Fields = FixturePostFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"fixture_binary_post"
+		}
+
+		fn new_fields() -> Self::Fields {
+			FixturePostFields
+		}
+
+		fn app_label() -> &'static str {
+			"fixture_binary"
+		}
+
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = Some(value);
+		}
+
+		fn field_metadata() -> Vec<crate::orm::inspection::FieldInfo> {
+			let mut id = fixture_field_info("id", "BigIntegerField", false);
+			id.primary_key = true;
+			vec![id, fixture_field_info("payload", "BinaryField", false)]
 		}
 	}
 
@@ -3105,6 +3371,93 @@ mod tests {
 				.iter()
 				.any(|value| matches!(value, QueryValue::Uuid(_) | QueryValue::Timestamp(_))),
 			"text fixture values must not be rebound as UUID or timestamp parameters"
+		);
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	fn fixture_binary_values_round_trip_between_dump_and_load_bindings() {
+		let mut row = Map::new();
+		row.insert("id".to_string(), Value::from(1));
+		row.insert("payload".to_string(), Value::from("AAECA/8="));
+
+		let fields = fixture_fields_from_database_row::<FixtureBinaryPost>(&row)
+			.expect("binary query values should be representable in fixture JSON");
+		assert_eq!(
+			fields.get("payload"),
+			Some(&serde_json::json!([0, 1, 2, 3, 255]))
+		);
+
+		let (_, values) = build_fixture_upsert_sql_values::<FixtureBinaryPost>(
+			DatabaseBackend::Postgres,
+			&fields,
+		)
+		.expect("binary fixture values should bind as bytes");
+		assert!(values.contains(&QueryValue::Bytes(vec![0, 1, 2, 3, 255])));
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	#[serial_test::serial(fixture_model_registry)]
+	fn many_to_many_fixture_keys_bind_text_primary_keys_as_strings() {
+		let mut post = crate::migrations::ModelMetadata::new(
+			"fixture_text_m2m",
+			"FixtureTextM2mPost",
+			"fixture_text_m2m_post",
+		);
+		post.add_field(
+			"id".to_string(),
+			crate::migrations::FieldMetadata::new(crate::migrations::FieldType::Char(36))
+				.with_param("primary_key", "true"),
+		);
+		post.add_many_to_many(crate::migrations::ManyToManyMetadata::new(
+			"tags",
+			"FixtureTextM2mTag",
+		));
+		let mut tag = crate::migrations::ModelMetadata::new(
+			"fixture_text_m2m",
+			"FixtureTextM2mTag",
+			"fixture_text_m2m_tag",
+		);
+		tag.add_field(
+			"id".to_string(),
+			crate::migrations::FieldMetadata::new(crate::migrations::FieldType::Char(36))
+				.with_param("primary_key", "true"),
+		);
+		crate::migrations::model_registry::global_registry().register_model(post);
+		crate::migrations::model_registry::global_registry().register_model(tag);
+
+		let spec = many_to_many_specs_for::<FixtureTextM2mPost>()
+			.into_iter()
+			.next()
+			.expect("registered many-to-many relation should produce fixture metadata");
+		assert_eq!(
+			spec.source_primary_key_binding,
+			FixturePrimaryKeyBinding::Text
+		);
+		assert_eq!(
+			spec.target_primary_key_binding,
+			FixturePrimaryKeyBinding::Text
+		);
+
+		let uuid_like = Value::from("123e4567-e89b-12d3-a456-426614174000");
+		let timestamp_like = Value::from("2026-07-13T08:25:26+00:00");
+		let source_value = fixture_many_to_many_key_value::<FixtureTextM2mPost>(
+			&uuid_like,
+			spec.source_primary_key_binding,
+		);
+		let target_value = fixture_many_to_many_key_value::<FixtureTextM2mPost>(
+			&timestamp_like,
+			spec.target_primary_key_binding,
+		);
+
+		assert_eq!(
+			Manager::<FixtureTextM2mPost>::sea_value_to_query_value(source_value),
+			QueryValue::String("123e4567-e89b-12d3-a456-426614174000".to_string())
+		);
+		assert_eq!(
+			Manager::<FixtureTextM2mPost>::sea_value_to_query_value(target_value),
+			QueryValue::String("2026-07-13T08:25:26+00:00".to_string())
 		);
 	}
 
