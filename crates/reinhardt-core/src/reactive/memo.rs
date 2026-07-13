@@ -41,6 +41,7 @@ use alloc::boxed::Box;
 use alloc::collections::BTreeMap;
 use alloc::rc::Rc;
 
+use super::deps::ReactiveDeps;
 use super::runtime::{EffectTiming, NodeId, NodeType, Observer, try_with_runtime, with_runtime};
 
 /// Computation function for a Memo
@@ -91,6 +92,11 @@ pub(crate) fn mark_memo_dirty_by_id(memo_id: NodeId) {
 		m.borrow_mut().insert(memo_id, true);
 	});
 	with_runtime(|rt| rt.notify_signal_change(memo_id));
+}
+
+/// Returns whether `memo_id` belongs to a live Memo computation.
+pub(crate) fn is_memo_registered(memo_id: NodeId) -> bool {
+	MEMO_FUNCTIONS.with(|storage| storage.borrow().contains_key(&memo_id))
 }
 
 /// Returns whether the type-agnostic dirty flag is set for `memo_id`.
@@ -297,6 +303,17 @@ impl<T: Clone + 'static> Memo<T> {
 			disposed,
 			_phantom: core::marker::PhantomData,
 			deps_notifier,
+		}
+	}
+
+	#[doc(hidden)]
+	pub fn new_with_mode<F>(f: F, deps: ReactiveDeps) -> Self
+	where
+		F: FnMut() -> T + 'static,
+	{
+		match deps {
+			ReactiveDeps::Explicit(deps) => Self::new_with_deps(f, deps.into_deps()),
+			ReactiveDeps::Auto => Self::new(f),
 		}
 	}
 
@@ -540,7 +557,7 @@ impl<T: Clone + 'static> Drop for Memo<T> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::reactive::Signal;
+	use crate::reactive::{Effect, ReactiveDeps, Signal};
 	use serial_test::serial;
 
 	#[test]
@@ -731,5 +748,68 @@ mod tests {
 			before_changes + 1,
 			"memo MUST recompute exactly once when listed dep changes"
 		);
+	}
+
+	#[rstest::rstest]
+	#[serial(reactive_runtime)]
+	fn new_with_mode_auto_replaces_conditional_dependencies() {
+		use core::cell::Cell;
+
+		let choose_left = Signal::new(true);
+		let left = Signal::new(10_i32);
+		let right = Signal::new(20_i32);
+		let computations = Rc::new(Cell::new(0_u8));
+
+		let memo = Memo::new_with_mode(
+			{
+				let choose_left = choose_left.clone();
+				let left = left.clone();
+				let right = right.clone();
+				let computations = Rc::clone(&computations);
+				move || {
+					computations.set(computations.get() + 1);
+					if choose_left.get() {
+						left.get()
+					} else {
+						right.get()
+					}
+				}
+			},
+			ReactiveDeps::Auto,
+		);
+
+		assert_eq!(memo.get(), 10);
+		choose_left.set(false);
+		assert_eq!(memo.get(), 20);
+		left.set(11);
+		assert_eq!(memo.get(), 20);
+		assert_eq!(computations.get(), 2);
+		right.set(21);
+		assert_eq!(memo.get(), 21);
+	}
+
+	#[rstest::rstest]
+	#[serial(reactive_runtime)]
+	fn auto_memo_becomes_dirty_and_notifies_downstream() {
+		use core::cell::Cell;
+
+		let source = Signal::new(1_i32);
+		let memo = Memo::new({
+			let source = source.clone();
+			move || source.get() * 2
+		});
+		let observed = Rc::new(Cell::new(0_i32));
+		let _effect = Effect::new({
+			let memo = memo.clone();
+			let observed = Rc::clone(&observed);
+			move || observed.set(memo.get())
+		});
+
+		assert_eq!(memo.get(), 2);
+		assert_eq!(observed.get(), 2);
+		source.set(2);
+		assert_eq!(memo.get(), 4);
+		with_runtime(|runtime| runtime.flush_updates());
+		assert_eq!(observed.get(), 4);
 	}
 }

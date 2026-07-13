@@ -242,6 +242,7 @@ impl Runtime {
 		if let Some(node) = graph.get(&signal_id) {
 			// Collect layout effects and passive effects separately
 			let mut layout_effects = Vec::new();
+			let mut memos = Vec::new();
 			let mut passive_effects = Vec::new();
 
 			for &subscriber_id in &node.subscribers {
@@ -251,14 +252,21 @@ impl Runtime {
 						EffectTiming::Layout => layout_effects.push(subscriber_id),
 						EffectTiming::Passive => passive_effects.push(subscriber_id),
 					}
+				} else if super::memo::is_memo_registered(subscriber_id) {
+					memos.push(subscriber_id);
 				} else {
-					// Non-effect subscribers (like Memos) are treated as passive
+					// Other non-effect subscribers are treated as passive.
 					passive_effects.push(subscriber_id);
 				}
 			}
 
 			// Drop the borrow before executing effects
 			drop(graph);
+
+			// Mark memos dirty before downstream effects can read them.
+			for memo_id in memos {
+				super::memo::mark_memo_dirty_by_id(memo_id);
+			}
 
 			// Execute layout effects synchronously
 			for effect_id in layout_effects {
