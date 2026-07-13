@@ -1988,16 +1988,19 @@ mod tests {
 		let ast: PageMacro = syn::parse2(quote::quote!({
 			div {
 				select { a11y: off, bind: outer, option { value: "outer", "Outer" } }
-				select { a11y: off, option { selected: true, "Sibling" } }
+				select { a11y: off, option { span { "Sibling" } } }
 			}
 		}))
 		.unwrap();
 
 		// Act
-		let result = validate(&ast);
+		let error = validate(&ast).unwrap_err();
 
 		// Assert
-		assert!(result.is_ok());
+		assert_eq!(
+			error.to_string(),
+			"Element <option> can only contain text, not child elements"
+		);
 	}
 
 	#[rstest]
