@@ -225,6 +225,13 @@ pub mod db {
 			fn primary_key(&self) -> Option<Self::PrimaryKey>;
 			fn set_primary_key(&mut self, value: Self::PrimaryKey);
 			fn field_is_none(&self, field_name: &str) -> bool;
+			fn encode_database_fields(
+				&self,
+			) -> Result<std::collections::BTreeMap<String, DatabaseValue>, FieldCodecError>;
+			fn decode_database_field(
+				field_name: &str,
+				value: DatabaseValue,
+			) -> Result<model::ModelFieldJsonValue, FieldCodecError>;
 			fn field_metadata() -> Vec<inspection::FieldInfo>;
 			fn index_metadata() -> Vec<inspection::IndexInfo>;
 			fn constraint_metadata() -> Vec<inspection::ConstraintInfo>;
@@ -366,6 +373,152 @@ pub mod db {
 				repr: ModelEnumRepr,
 				values: Vec<ModelEnumValue>,
 			},
+		}
+
+		#[derive(Debug, Clone)]
+		pub struct FieldCodecContext;
+
+		impl FieldCodecContext {
+			pub fn new(
+				_model: impl Into<String>,
+				_field: impl Into<String>,
+				_column: impl Into<String>,
+			) -> Self {
+				Self
+			}
+		}
+
+		#[derive(Debug, Clone)]
+		pub struct FieldCodecError;
+
+		#[derive(Debug, Clone)]
+		pub struct DatabaseValue(serde_json::Value);
+
+		impl DatabaseValue {
+			pub fn into_json_value(self) -> Result<serde_json::Value, FieldCodecError> {
+				Ok(self.0)
+			}
+		}
+
+		pub trait DatabaseScalar: Clone {
+			const STORAGE_KIND: DatabaseStorageKind;
+			fn into_database_value(self) -> DatabaseValue;
+			fn from_database_value(value: DatabaseValue) -> Result<Self, FieldCodecError>;
+		}
+
+		pub trait DatabaseField:
+			Clone + serde::Serialize + serde::de::DeserializeOwned + Send + Sync + 'static
+		{
+			type Storage: DatabaseScalar;
+			const MAX_STRING_VALUE_CHARS: Option<usize> = None;
+
+			fn encode_database(&self) -> Result<Self::Storage, FieldCodecError>;
+			fn decode_database(
+				value: Self::Storage,
+				_context: &FieldCodecContext,
+			) -> Result<Self, FieldCodecError>;
+		}
+
+		macro_rules! scalar_codec {
+			($type:ty, $kind:ident) => {
+				impl DatabaseScalar for $type {
+					const STORAGE_KIND: DatabaseStorageKind = DatabaseStorageKind::$kind;
+
+					fn into_database_value(self) -> DatabaseValue {
+						DatabaseValue(serde_json::to_value(self).unwrap())
+					}
+
+					fn from_database_value(value: DatabaseValue) -> Result<Self, FieldCodecError> {
+						serde_json::from_value(value.0).map_err(|_| FieldCodecError)
+					}
+				}
+
+				impl DatabaseField for $type {
+					type Storage = Self;
+
+					fn encode_database(&self) -> Result<Self::Storage, FieldCodecError> {
+						Ok(self.clone())
+					}
+
+					fn decode_database(
+						value: Self::Storage,
+						_context: &FieldCodecContext,
+					) -> Result<Self, FieldCodecError> {
+						Ok(value)
+					}
+				}
+			};
+		}
+
+		scalar_codec!(bool, Bool);
+		scalar_codec!(i32, I32);
+		scalar_codec!(i64, I64);
+		scalar_codec!(String, String);
+
+		impl<S: DatabaseScalar> DatabaseScalar for Option<S> {
+			const STORAGE_KIND: DatabaseStorageKind = S::STORAGE_KIND;
+
+			fn into_database_value(self) -> DatabaseValue {
+				self.map_or_else(
+					|| DatabaseValue(serde_json::Value::Null),
+					DatabaseScalar::into_database_value,
+				)
+			}
+
+			fn from_database_value(value: DatabaseValue) -> Result<Self, FieldCodecError> {
+				if value.0.is_null() {
+					Ok(None)
+				} else {
+					S::from_database_value(value).map(Some)
+				}
+			}
+		}
+
+		impl<T: DatabaseField> DatabaseField for Option<T> {
+			type Storage = Option<T::Storage>;
+
+			fn encode_database(&self) -> Result<Self::Storage, FieldCodecError> {
+				self.as_ref().map(DatabaseField::encode_database).transpose()
+			}
+
+			fn decode_database(
+				value: Self::Storage,
+				context: &FieldCodecContext,
+			) -> Result<Self, FieldCodecError> {
+				value
+					.map(|value| T::decode_database(value, context))
+					.transpose()
+			}
+		}
+
+		impl<T> DatabaseField for super::Json<T>
+		where
+			T: Clone + serde::Serialize + serde::de::DeserializeOwned + Send + Sync + 'static,
+		{
+			type Storage = String;
+
+			fn encode_database(&self) -> Result<Self::Storage, FieldCodecError> {
+				serde_json::to_string(&self.0).map_err(|_| FieldCodecError)
+			}
+
+			fn decode_database(
+				value: Self::Storage,
+				_context: &FieldCodecContext,
+			) -> Result<Self, FieldCodecError> {
+				serde_json::from_str(&value)
+					.map(super::Json)
+					.map_err(|_| FieldCodecError)
+			}
+		}
+
+		pub mod model {
+			pub type ModelFieldJsonValue = serde_json::Value;
+
+			pub fn serialize_decoded_database_field<T: serde::Serialize>(
+				value: T,
+			) -> Result<ModelFieldJsonValue, super::FieldCodecError> {
+				serde_json::to_value(value).map_err(|_| super::FieldCodecError)
+			}
 		}
 
 		pub mod inspection {

@@ -15,6 +15,7 @@
 //! object tracking, identity mapping, and transaction management.
 
 use super::transaction::Transaction;
+use crate::orm::FieldCodecError;
 use crate::orm::inspection::FieldInfo;
 use crate::orm::model::Model;
 use crate::orm::query::OrmQuery;
@@ -34,7 +35,7 @@ use uuid::Uuid;
 
 /// Session error types
 #[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum SessionError {
 	/// Database error occurred
 	DatabaseError(String),
@@ -44,6 +45,8 @@ pub enum SessionError {
 	TransactionError(String),
 	/// Serialization/deserialization error
 	SerializationError(String),
+	/// Model database field codec error
+	FieldCodec(FieldCodecError),
 	/// Invalid state
 	InvalidState(String),
 	/// Flush operation error
@@ -57,13 +60,27 @@ impl std::fmt::Display for SessionError {
 			Self::ObjectNotFound(msg) => write!(f, "Object not found: {}", msg),
 			Self::TransactionError(msg) => write!(f, "Transaction error: {}", msg),
 			Self::SerializationError(msg) => write!(f, "Serialization error: {}", msg),
+			Self::FieldCodec(error) => write!(f, "Field codec error: {}", error),
 			Self::InvalidState(msg) => write!(f, "Invalid state: {}", msg),
 			Self::FlushError(msg) => write!(f, "Flush error: {}", msg),
 		}
 	}
 }
 
-impl std::error::Error for SessionError {}
+impl std::error::Error for SessionError {
+	fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+		match self {
+			Self::FieldCodec(error) => Some(error),
+			_ => None,
+		}
+	}
+}
+
+impl From<FieldCodecError> for SessionError {
+	fn from(error: FieldCodecError) -> Self {
+		Self::FieldCodec(error)
+	}
+}
 
 /// Identity map entry storing tracked objects
 struct IdentityEntry {
@@ -75,6 +92,10 @@ struct IdentityEntry {
 	type_id: TypeId,
 	/// Model field metadata used by type-erased flush processing
 	field_metadata: Vec<FieldInfo>,
+	/// Rust model field name for the primary key.
+	primary_key_field: String,
+	/// Resolved database column name for the primary key.
+	primary_key_column: String,
 	/// Nullable JSON fields whose model value is `None` and must be written as SQL NULL.
 	sql_null_json_fields: HashSet<String>,
 	/// Database-generated columns that must be omitted from INSERT/UPDATE writes.
@@ -118,6 +139,7 @@ pub struct Session {
 	dirty_objects: HashSet<String>,
 	/// Set of object keys marked for deletion
 	deleted_objects: HashSet<String>,
+	deleted_primary_key_columns: HashMap<String, String>,
 	/// Whether session is closed
 	is_closed: bool,
 	/// Counter for generating temporary keys for new objects
@@ -151,6 +173,7 @@ impl Session {
 			identity_map: HashMap::new(),
 			dirty_objects: HashSet::new(),
 			deleted_objects: HashSet::new(),
+			deleted_primary_key_columns: HashMap::new(),
 			is_closed: false,
 			new_object_counter: 0,
 			last_generated_ids: Vec::new(),
@@ -229,6 +252,10 @@ impl Session {
 			.map_err(|e| SessionError::SerializationError(e.to_string()))?;
 		let database_data = encode_model_database_data(&obj)?;
 		let field_metadata = T::field_metadata();
+		let primary_key_field = T::primary_key_field().to_string();
+		let primary_key_column = primary_key_field_info(&field_metadata, T::primary_key_field())
+			.and_then(|field| field.db_column.clone())
+			.unwrap_or_else(|| primary_key_field.clone());
 		let sql_null_json_fields = field_metadata
 			.iter()
 			.filter(|field| {
@@ -246,6 +273,8 @@ impl Session {
 				database_data,
 				type_id: TypeId::of::<T>(),
 				field_metadata,
+				primary_key_field,
+				primary_key_column,
 				sql_null_json_fields,
 				generated_fields: T::generated_field_names()
 					.iter()
@@ -340,7 +369,12 @@ impl Session {
 		}
 
 		// Build SELECT query using reinhardt_query
-		let pk_field = T::primary_key_field();
+		let pk_field = primary_key_field_info(&field_metadata, T::primary_key_field());
+		let pk_column = pk_field
+			.and_then(|field| field.db_column.as_deref())
+			.unwrap_or_else(|| {
+				pk_field.map_or(T::primary_key_field(), |field| field.name.as_str())
+			});
 		let mut select_query = RQuery::select();
 		select_query.from(Alias::new(T::table_name()));
 
@@ -358,7 +392,7 @@ impl Session {
 		}
 
 		// Add WHERE clause for primary key
-		select_query.and_where(Expr::col(Alias::new(pk_field)).eq(id.to_string()));
+		select_query.and_where(Expr::col(Alias::new(pk_column)).eq(id.to_string()));
 
 		// Build SQL query based on backend
 		let sql = match self.db_backend {
@@ -492,9 +526,7 @@ impl Session {
 			json_null_fields.clone(),
 			native_json_fields,
 		)
-		.map_err(|e| {
-			SessionError::SerializationError(format!("Failed to deserialize query result: {}", e))
-		})?;
+		.map_err(SessionError::FieldCodec)?;
 
 		// Add to identity map
 		let obj_data = serde_json::to_value(&obj)
@@ -507,6 +539,10 @@ impl Session {
 				database_data: data,
 				type_id: TypeId::of::<T>(),
 				field_metadata: field_metadata.clone(),
+				primary_key_field: T::primary_key_field().to_string(),
+				primary_key_column: primary_key_field_info(&field_metadata, T::primary_key_field())
+					.and_then(|field| field.db_column.clone())
+					.unwrap_or_else(|| T::primary_key_field().to_string()),
 				sql_null_json_fields,
 				generated_fields: T::generated_field_names()
 					.iter()
@@ -635,8 +671,11 @@ impl Session {
 
 		let mut results = Vec::with_capacity(rows.len());
 
+		let primary_key_column = primary_key_field_info(&field_metadata, T::primary_key_field())
+			.and_then(|field| field.db_column.as_deref())
+			.unwrap_or(T::primary_key_field());
 		for row in rows {
-			let row_context = describe_row_context(&row, table_name, T::primary_key_field());
+			let row_context = describe_row_context(&row, table_name, primary_key_column);
 
 			// Build JSON object from row data
 			let mut json_map = serde_json::Map::new();
@@ -765,12 +804,7 @@ impl Session {
 				.collect();
 			let obj: T =
 				super::json::deserialize_model_row(data, json_null_fields, native_json_fields)
-					.map_err(|e| {
-						SessionError::SerializationError(format!(
-							"Failed to deserialize query result: {}",
-							e
-						))
-					})?;
+					.map_err(SessionError::FieldCodec)?;
 
 			results.push(obj);
 		}
@@ -861,12 +895,16 @@ impl Session {
 					continue;
 				}
 				let table_name = parts[0];
+				let primary_key_field = entry.primary_key_field.clone();
+				let primary_key_column = entry.primary_key_column.clone();
 
 				// Extract data from JSON
 				if let Some(obj) = entry.database_data.as_object() {
 					// Check if this is an INSERT (no primary key) or UPDATE (has primary key)
-					// The "id" field must exist AND not be null for UPDATE
-					let has_pk = obj.get("id").map(|v| !v.is_null()).unwrap_or(false);
+					let has_pk = obj
+						.get(&primary_key_field)
+						.map(|value| !value.is_null())
+						.unwrap_or(false);
 
 					if has_pk {
 						// UPDATE existing record
@@ -876,6 +914,9 @@ impl Session {
 
 						// Set all columns except primary key and auto-managed datetime fields
 						for (col_name, col_value) in obj {
+							if col_name == &primary_key_field {
+								continue;
+							}
 							let field_info = find_field_info(&entry.field_metadata, col_name);
 							let column_name = flush_column_name(col_name, field_info);
 							if should_skip_flush_column(col_name, column_name, field_info) {
@@ -906,9 +947,9 @@ impl Session {
 						}
 
 						// Add WHERE clause for primary key
-						if let Some(pk_value) = obj.get("id") {
+						if let Some(pk_value) = obj.get(&primary_key_field) {
 							update_stmt.and_where(
-								Expr::col(Alias::new("id"))
+								Expr::col(Alias::new(&primary_key_column))
 									.eq(Expr::val(json_to_reinhardt_query_value(pk_value))),
 							);
 						}
@@ -931,9 +972,12 @@ impl Session {
 						let mut values_vec: Vec<RValue> = Vec::new();
 
 						for (col_name, col_value) in obj {
+							if col_name == &primary_key_field {
+								continue;
+							}
 							let field_info = find_field_info(&entry.field_metadata, col_name);
 							let column_name = flush_column_name(col_name, field_info);
-							// Skip id/primary key column - auto-generated
+							// Skip the primary key column.
 							if should_skip_flush_column(col_name, column_name, field_info) {
 								continue;
 							}
@@ -971,7 +1015,7 @@ impl Session {
 
 						// Add RETURNING clause for PostgreSQL to get generated ID
 						if backend == DbBackend::Postgres {
-							insert_stmt.returning_col(Alias::new("id"));
+							insert_stmt.returning_col(Alias::new(&primary_key_column));
 						}
 
 						// Build and execute SQL
@@ -985,9 +1029,13 @@ impl Session {
 						if backend == DbBackend::Postgres {
 							if let Ok(row) = self.execute_returning(&sql, &values).await {
 								// Extract the generated ID
-								let generated_id: i64 = row.try_get("id").map_err(|e| {
-									SessionError::FlushError(format!("Failed to extract ID: {}", e))
-								})?;
+								let generated_id: i64 =
+									row.try_get(primary_key_column.as_str()).map_err(|e| {
+										SessionError::FlushError(format!(
+											"Failed to extract ID: {}",
+											e
+										))
+									})?;
 
 								// Track the generated ID for retrieval after flush
 								self.last_generated_ids
@@ -997,6 +1045,7 @@ impl Session {
 								self.update_identity_map_with_generated_id(
 									key,
 									table_name,
+									&primary_key_field,
 									generated_id,
 								)?;
 							}
@@ -1019,6 +1068,12 @@ impl Session {
 			}
 			let table_name = parts[0];
 			let pk_value_str = parts[1];
+			let primary_key_column =
+				self.deleted_primary_key_columns.get(key).ok_or_else(|| {
+					SessionError::FlushError(format!(
+						"Missing primary key column metadata for {table_name}"
+					))
+				})?;
 
 			// Build DELETE statement
 			let mut delete_stmt = RQuery::delete()
@@ -1028,9 +1083,12 @@ impl Session {
 			// Parse primary key as integer for BIGINT comparison
 			// Fall back to string comparison if parsing fails
 			if let Ok(pk_int) = pk_value_str.parse::<i64>() {
-				delete_stmt.and_where(Expr::col(Alias::new("id")).eq(Expr::val(pk_int)));
+				delete_stmt
+					.and_where(Expr::col(Alias::new(primary_key_column)).eq(Expr::val(pk_int)));
 			} else {
-				delete_stmt.and_where(Expr::col(Alias::new("id")).eq(Expr::val(pk_value_str)));
+				delete_stmt.and_where(
+					Expr::col(Alias::new(primary_key_column)).eq(Expr::val(pk_value_str)),
+				);
 			}
 
 			// Build and execute SQL
@@ -1047,6 +1105,7 @@ impl Session {
 		}
 
 		self.deleted_objects.clear();
+		self.deleted_primary_key_columns.clear();
 
 		Ok(())
 	}
@@ -1065,15 +1124,22 @@ impl Session {
 		&mut self,
 		old_key: &str,
 		table_name: &str,
+		primary_key_field: &str,
 		generated_id: i64,
 	) -> Result<(), SessionError> {
 		if let Some(mut entry) = self.identity_map.remove(old_key) {
 			// JSON update
 			if let Some(obj) = entry.data.as_object_mut() {
-				obj.insert("id".to_string(), serde_json::Value::from(generated_id));
+				obj.insert(
+					primary_key_field.to_string(),
+					serde_json::Value::from(generated_id),
+				);
 			}
 			if let Some(obj) = entry.database_data.as_object_mut() {
-				obj.insert("id".to_string(), serde_json::Value::from(generated_id));
+				obj.insert(
+					primary_key_field.to_string(),
+					serde_json::Value::from(generated_id),
+				);
 			}
 
 			entry.is_dirty = false;
@@ -1225,6 +1291,7 @@ impl Session {
 		// Clear dirty and deleted objects
 		self.dirty_objects.clear();
 		self.deleted_objects.clear();
+		self.deleted_primary_key_columns.clear();
 
 		// Rollback transaction if active
 		if let Some(mut tx) = self.transaction.take() {
@@ -1352,9 +1419,15 @@ impl Session {
 			.ok_or_else(|| SessionError::InvalidState("Object has no primary key".to_string()))?;
 
 		let key = format!("{}:{}", T::table_name(), pk);
+		let field_metadata = T::field_metadata();
+		let primary_key_column = primary_key_field_info(&field_metadata, T::primary_key_field())
+			.and_then(|field| field.db_column.clone())
+			.unwrap_or_else(|| T::primary_key_field().to_string());
 
 		// Mark for deletion
 		self.deleted_objects.insert(key.clone());
+		self.deleted_primary_key_columns
+			.insert(key.clone(), primary_key_column);
 
 		// Remove from dirty set if present
 		self.dirty_objects.remove(&key);
@@ -1482,16 +1555,26 @@ fn find_field_info<'a>(field_metadata: &'a [FieldInfo], field_name: &str) -> Opt
 	field_metadata.iter().find(|field| field.name == field_name)
 }
 
+fn primary_key_field_info<'a>(
+	field_metadata: &'a [FieldInfo],
+	model_primary_key_field: &str,
+) -> Option<&'a FieldInfo> {
+	field_metadata
+		.iter()
+		.find(|field| field.primary_key)
+		.or_else(|| find_field_info(field_metadata, model_primary_key_field))
+}
+
 fn encode_model_database_data<T: Model>(model: &T) -> Result<Value, SessionError> {
 	model
 		.encode_database_fields()
-		.map_err(|error| SessionError::SerializationError(error.to_string()))?
+		.map_err(SessionError::FieldCodec)?
 		.into_iter()
 		.map(|(name, value)| {
 			value
 				.into_json_value()
 				.map(|value| (name, value))
-				.map_err(|error| SessionError::SerializationError(error.to_string()))
+				.map_err(SessionError::FieldCodec)
 		})
 		.collect::<Result<serde_json::Map<_, _>, _>>()
 		.map(Value::Object)
@@ -1504,13 +1587,11 @@ fn flush_column_name<'a>(field_name: &'a str, field_info: Option<&'a FieldInfo>)
 }
 
 fn should_skip_flush_column(
-	field_name: &str,
-	column_name: &str,
+	_field_name: &str,
+	_column_name: &str,
 	field_info: Option<&FieldInfo>,
 ) -> bool {
 	field_info.map(|field| field.primary_key).unwrap_or(false)
-		|| field_name == "id"
-		|| column_name == "id"
 		|| field_info
 			.map(|field| field.attributes.contains_key("relation_managed"))
 			.unwrap_or(false)

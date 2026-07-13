@@ -37,6 +37,8 @@ struct Job {
 	#[field(max_length = 16)]
 	status: Status,
 	priority: Option<Priority>,
+	#[field(skip = true)]
+	transient_tags: Vec<String>,
 }
 
 #[model(app_label = "jobs", table_name = "glyphs")]
