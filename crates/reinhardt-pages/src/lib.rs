@@ -96,6 +96,48 @@
 //! contract and tracked by #5636. Component `@event` props retain the type of
 //! their declared component prop instead of using the intrinsic event catalog.
 //!
+//! ## Controlled form elements
+//!
+//! The `bind:` directive connects native form controls to typed [`Signal`]
+//! values. Text and radio groups use `Signal<String>`, checkboxes use
+//! `Signal<bool>`, numeric inputs use a primitive implementing [`NumberValue`],
+//! and multiple selects use `Signal<Vec<String>>`. Numeric bindings may expose
+//! a [`NumberParseError`] signal without discarding the user's invalid text.
+//!
+//! ```rust
+//! use reinhardt_pages::prelude::*;
+//!
+//! let query = Signal::new(String::new());
+//! let enabled = Signal::new(false);
+//! let mode = Signal::new("draft".to_owned());
+//! let amount = Signal::new(0_f64);
+//! let amount_error = Signal::new(None::<NumberParseError>);
+//! let targets = Signal::new(Vec::<String>::new());
+//!
+//! let _form = page!({
+//!     input { aria_label: "Search", bind: query }
+//!     input { aria_label: "Enabled", type: "checkbox", bind: enabled }
+//!     input {
+//!         aria_label: "Draft",
+//!         type: "radio",
+//!         value: "draft",
+//!         bind: mode,
+//!     }
+//!     input {
+//!         aria_label: "Amount",
+//!         type: "number",
+//!         bind: number(amount, amount_error),
+//!     }
+//!     select {
+//!         aria_label: "Targets",
+//!         multiple: true,
+//!         bind: targets,
+//!         option { value: "native", "Native" }
+//!         option { value: "wasm", "WebAssembly" }
+//!     }
+//! });
+//! ```
+//!
 //! ## Forms
 //!
 //! `form!` owns static form definition: field names, widgets, labels,
@@ -357,6 +399,7 @@ pub use reinhardt_pages_ast as ast;
 // Core modules
 pub mod builder;
 pub mod callback;
+pub mod control_binding;
 pub mod dom;
 pub mod event;
 #[cfg(feature = "i18n")]
@@ -468,6 +511,9 @@ pub use component::{
 	IntoPage, LinkTag, MetaTag, Outlet, Page, PageElement, PageExt, Props, ResourceTracker,
 	ScriptTag, StyleTag, SuspenseBoundary, ViewTransitionBoundary, ViewTransitionHandle,
 	ViewTransitionStatus, start_view_transition,
+};
+pub use control_binding::{
+	ControlBindingError, NumberParseError, NumberParseErrorKind, NumberValue,
 };
 pub use csrf::{CsrfManager, get_csrf_token};
 pub use dom::{CustomEventOptions, Document, Element, EventHandle, EventType, document};

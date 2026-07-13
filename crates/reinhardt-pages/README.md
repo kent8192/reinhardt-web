@@ -11,6 +11,7 @@ WASM-based reactive frontend framework for Reinhardt with Django-like API.
 - **Security First**: Built-in CSRF protection, XSS prevention, and session management
 - **Simplified Conditional Compilation**: `cfg_aliases` integration and automatic event handler handling
 - **Action State Helpers**: `use_action_state` and `Action::dispatching*` reduce async mutation boilerplate
+- **Controlled Form Elements**: `bind:` synchronizes typed signals with text, checkbox, radio, numeric, and select controls
 
 For a React concept mapping, see
 [Reinhardt Pages for React developers](docs/react_to_reinhardt.md).
@@ -63,6 +64,35 @@ Use `@custom("name")` and `platform::Event` for an arbitrary raw DOM event.
 Custom typed `detail` values are intentionally deferred to #5636. Component
 `@event` props remain typed by the component's declared prop type; the DOM
 event catalog applies only to intrinsic elements.
+
+### Controlled form elements
+
+Use `bind:` when a signal should own a native control after hydration. The
+control shape determines the signal type: `String` for text, radio, and
+single-select controls; `bool` for checkboxes; a supported numeric primitive
+for number inputs; and `Vec<String>` for multiple selects.
+
+```rust
+use reinhardt_pages::prelude::*;
+
+let query = Signal::new(String::new());
+let parse_error = Signal::new(None::<NumberParseError>);
+let amount = Signal::new(0_f64);
+
+let _controls = page!({
+    input { aria_label: "Search", bind: query, placeholder: "Search" }
+    input {
+        aria_label: "Amount",
+        type: "number",
+        bind: number(amount, parse_error),
+    }
+});
+```
+
+Hydration first adopts the live DOM value, preserving browser restoration and
+edits made before hydration. Later signal changes update the control. See the
+[React migration guide](docs/react_to_reinhardt.md#controlled-and-uncontrolled-form-controls)
+for event ordering, IME, numeric-error, and low-level escape-hatch details.
 
 ### Simplified cfg Attributes with cfg_aliases
 
@@ -485,6 +515,7 @@ The prelude includes:
 - `EventTarget`, `EventTargetError`, `EventFile`, `Modifiers`, `Point`
 - `Callback`, `IntoTypedEventHandler`, `typed_event_handler`
 - `raw_event_handler` and `platform::Event` for explicit raw custom events
+- `ControlBindingError`, `NumberParseError`, `NumberParseErrorKind`, `NumberValue`
 - [Native component testing](docs/native_component_testing.md)
 
 ### DOM

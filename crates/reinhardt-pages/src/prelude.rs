@@ -49,6 +49,8 @@
 //! ## Events and Callbacks
 //! - [`Callback`], [`IntoEventHandler`], [`into_event_handler`]
 //! - [`Event`] (platform-agnostic event type)
+//! - Controlled form support: [`ControlBindingError`], [`NumberParseError`],
+//!   [`NumberParseErrorKind`], [`NumberValue`]
 //!
 //! ## DOM
 //! - [`Document`], [`Element`], [`CustomEventOptions`], [`EventHandle`],
@@ -131,6 +133,10 @@ pub use crate::callback::{
 pub use crate::event::{
 	EventConversionError, EventFile, EventPayload, EventTarget, EventTargetError, Modifiers,
 	MouseButton, MouseButtons, Point, PointerKind,
+};
+
+pub use crate::control_binding::{
+	ControlBindingError, NumberParseError, NumberParseErrorKind, NumberValue,
 };
 
 // Platform-agnostic Event type

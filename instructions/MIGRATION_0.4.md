@@ -1,7 +1,36 @@
 # Migration Guide: 0.3.x to 0.4.0
 
 This guide currently covers the breaking Reinhardt Pages event API introduced
-for 0.4. Add later 0.4 migration topics as their public contracts stabilize.
+for 0.4 and the stabilized controlled form-element binding contract.
+
+## Reserved `bind` directive
+
+`bind:` is now a reserved `page!` directive on supported `input`, `textarea`,
+and `select` controls. It connects a typed `Signal` to the control property and
+must not be used to emit a literal nonstandard HTML attribute.
+
+```rust,ignore
+// Before: emitted a nonstandard literal `bind` attribute.
+page!({ input { bind: "search-model" } })
+
+// After: prefer a standards-compatible data attribute.
+page!({ input { data_bind: "search-model" } })
+
+// Or use the low-level builder when the literal attribute name is required.
+PageElement::new("input").attr("bind", "search-model")
+```
+
+For controlled state, replace imperative DOM reads with a typed signal:
+
+```rust,ignore
+let query = Signal::new(String::new());
+page!({ input { aria_label: "Search", bind: query } })
+```
+
+The compiler validates the binding shape: text, radio, and single-select
+controls use `Signal<String>`; checkboxes use `Signal<bool>`; multiple selects
+use `Signal<Vec<String>>`; and numeric controls accept supported primitives via
+`bind: number(value)` or `bind: number(value, parse_error)`.
 
 ## Typed intrinsic events
 

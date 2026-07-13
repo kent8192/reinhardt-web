@@ -207,6 +207,90 @@ event props are not DOM events: their argument type comes from the component's
 declared prop. Native component tests execute standard handlers with
 `EventFixture`, including bubbling, target state, and async settling.
 
+## Controlled and uncontrolled form controls
+
+A control without `bind:` is uncontrolled: its current value belongs to the
+DOM, and application code reads it through an event payload or another
+explicit DOM integration. A control with `bind:` connects the DOM property to
+a `Signal`, providing the Reinhardt equivalent of a React controlled input.
+
+| Control shape | Bound signal |
+| --- | --- |
+| text-like `input` or `textarea` | `Signal<String>` |
+| checkbox | `Signal<bool>` |
+| radio group | `Signal<String>`; each radio also declares its literal `value` |
+| number or range | `Signal<T>` where `T: NumberValue`; optionally an error signal |
+| single select | `Signal<String>` |
+| multiple select | `Signal<Vec<String>>` |
+
+```rust
+use reinhardt_pages::prelude::*;
+
+let query = Signal::new(String::new());
+let parse_error = Signal::new(None::<NumberParseError>);
+let amount = Signal::new(0_f64);
+
+page!({
+    input { aria_label: "Search", bind: query, placeholder: "Search" }
+    input {
+        aria_label: "Amount",
+        type: "number",
+        bind: number(amount, parse_error),
+    }
+})
+```
+
+The ownership transition during hydration is deliberate. The live DOM wins
+initially: Reinhardt adopts browser-restored values and user edits made before
+hydration instead of overwriting them with the server-time signal snapshot.
+After hydration, the signal wins: application writes update the corresponding
+DOM property. User input updates the signal before an explicit handler for the
+same event runs, so the handler observes the new signal value.
+
+Text writes are deferred while an IME composition is active. The completed
+value is committed at `compositionend`, and a duplicate final `input` event is
+not committed twice. Explicit composition and input handlers still run in
+normal dispatch order.
+
+For numeric controls, `bind: number(value, error)` preserves the last valid
+numeric signal and the user's raw text when parsing fails. The error signal is
+cleared after a valid value and otherwise contains a `NumberParseError` with
+one of these stable meanings:
+
+- `Empty`: no text was entered.
+- `Incomplete`: the text is a valid prefix such as `-`, `1.`, or `1e-`.
+- `Invalid`: the text is not a numeric lexeme.
+- `OutOfRange`: the number cannot be represented by the bound primitive.
+
+Use an explicit typed handler when the binding is not the only response to an
+event. For browser-specific integrations that truly need the underlying DOM
+event, use `payload.raw()` on WASM or wrap a low-level handler with
+`raw_event_handler`. Keep `bind:` responsible for synchronization; the raw
+event path is an escape hatch, not a second source of control state.
+
+Imperative DOM lookup is therefore unnecessary for ordinary controlled input:
+
+```rust,ignore
+// Before: WASM-only DOM ownership.
+let input = document
+    .get_element_by_id("search")
+    .unwrap()
+    .dyn_into::<web_sys::HtmlInputElement>()
+    .unwrap();
+let query = input.value();
+
+// After: cross-target signal ownership.
+let query = Signal::new(String::new());
+let query_for_submit = query.clone();
+page!({
+    input { id: "search", aria_label: "Search", bind: query }
+    button {
+        @click: move |_| submit(query_for_submit.get()),
+        "Search"
+    }
+})
+```
+
 ## State and reactivity
 
 React state is component-local and re-rendered through the virtual DOM.
