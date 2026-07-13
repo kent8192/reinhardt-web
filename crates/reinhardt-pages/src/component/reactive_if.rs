@@ -688,8 +688,7 @@ fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::No
 	match view {
 		Page::Element(el) => {
 			// Decompose the element to avoid ownership issues
-			let (tag, attrs, children, _is_void, event_handlers, _control_binding) =
-				el.into_parts();
+			let (tag, attrs, children, _is_void, event_handlers, control_binding) = el.into_parts();
 
 			let element = document
 				.create_element(&tag)
@@ -705,40 +704,45 @@ fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::No
 				let _ = element.set_attribute(&name, &value);
 			}
 
-			// Mount children
 			let element_wrapper = crate::dom::Element::new(element.clone());
+			let binding_controller = control_binding.and_then(|binding| {
+				crate::dom::control_binding::ControlBindingController::mount(
+					element_wrapper.clone(),
+					binding,
+				)
+				.ok()
+			});
+
+			// Mount children
 			for child in children {
 				let _ = child.mount(&element_wrapper);
 			}
 
 			// Attach event handlers
+			let mut event_handles = Vec::new();
 			for (event_type, handler) in event_handlers {
-				use wasm_bindgen::closure::Closure;
-
 				let handler_clone = handler.clone();
 				#[cfg(feature = "i18n")]
 				let i18n_context = crate::i18n::current_i18n_callback_context();
-				let closure = Closure::wrap(Box::new(move |event: web_sys::Event| {
-					#[cfg(feature = "i18n")]
-					{
-						crate::i18n::with_optional_i18n_context(i18n_context.as_ref(), || {
-							handler_clone(event);
-						});
-					}
-					#[cfg(not(feature = "i18n"))]
-					handler_clone(event);
-				}) as Box<dyn FnMut(web_sys::Event)>);
-
-				let _ = element.add_event_listener_with_callback(
+				event_handles.push(element_wrapper.add_event_listener_with_event(
 					event_type.as_str(),
-					closure.as_ref().unchecked_ref(),
-				);
-				closure.forget();
+					move |event| {
+						#[cfg(feature = "i18n")]
+						{
+							crate::i18n::with_optional_i18n_context(i18n_context.as_ref(), || {
+								handler_clone(event);
+							});
+						}
+						#[cfg(not(feature = "i18n"))]
+						handler_clone(event);
+					},
+				));
 			}
 
 			// Insert before marker
 			let _ = parent.insert_before(&element, Some(marker));
 			nodes.push(element.unchecked_into());
+			store_reactive_node((binding_controller, event_handles));
 		}
 		Page::Text(text) => {
 			let text_node = document.create_text_node(&text);

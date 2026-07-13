@@ -184,7 +184,7 @@ pub fn hydrate<C: Component>(component: &C, root: &Element) -> Result<(), Hydrat
 		HydrationError::StateParseError(format!("Failed to hydrate i18n state: {}", e))
 	})?;
 
-	let view = {
+	let (view, registry) = {
 		let prepass_store = new_reactive_node_store();
 		with_reactive_node_store(&prepass_store, || -> Result<_, HydrationError> {
 			// Reconciliation and event attachment only inspect lazy views. Keep retained
@@ -210,9 +210,10 @@ pub fn hydrate<C: Component>(component: &C, root: &Element) -> Result<(), Hydrat
 			crate::reactive::hooks::id::restore_id_counter(id_counter_offset);
 			web_sys::console::log_1(&"[Hydration] Events attached".into());
 
-			Ok(view)
+			Ok((view, registry))
 		})?
 	};
+	store_reactive_node(registry);
 
 	// 5. Install reactive DOM owners for hydrated reactive views
 	install_hydrated_reactive_nodes(root, &view);
@@ -720,6 +721,7 @@ pub fn attach_events_to_mounted_view(
 
 	let mut registry = EventRegistry::new();
 	attach_events_recursive(element, view, &mut registry)?;
+	store_reactive_node(registry);
 
 	web_sys::console::log_1(&"[CSR] Events attached successfully!".into());
 
@@ -743,6 +745,14 @@ pub(crate) fn attach_events_recursive(
 		Page::Element(el_view) => {
 			let tag = el_view.tag_name();
 			let event_count = el_view.event_handlers().len();
+			if let Some(binding) = el_view.bound_control() {
+				let controller = crate::dom::control_binding::ControlBindingController::hydrate(
+					element.clone(),
+					binding.clone(),
+				)
+				.map_err(|error| HydrationError::EventAttachmentFailed(error.to_string()))?;
+				registry.register_control_binding(controller);
+			}
 
 			if event_count > 0 {
 				web_sys::console::log_1(

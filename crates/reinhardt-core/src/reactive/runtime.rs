@@ -530,6 +530,14 @@ pub(crate) fn run_without_observer<R>(f: impl FnOnce() -> R) -> R {
 	result
 }
 
+/// Executes a closure without subscribing the active reactive observer.
+///
+/// This is useful for imperative initialization that must read signal-backed
+/// state without turning the surrounding render or effect into a subscriber.
+pub fn untracked<R>(f: impl FnOnce() -> R) -> R {
+	run_without_observer(f)
+}
+
 /// Wire an explicit subscription edge from `node` to `observer` in the
 /// reactive dependency graph, bypassing the auto-tracking Observer stack.
 ///

@@ -65,6 +65,8 @@ pub enum MountError {
 	SetAttributeFailed,
 	/// Failed to append a child element.
 	AppendChildFailed,
+	/// Failed to install a controlled form-element binding.
+	ControlBinding(ControlBindingError),
 }
 
 impl std::fmt::Display for MountError {
@@ -75,11 +77,25 @@ impl std::fmt::Display for MountError {
 			MountError::CreateElementFailed => write!(f, "Failed to create element"),
 			MountError::SetAttributeFailed => write!(f, "Failed to set attribute"),
 			MountError::AppendChildFailed => write!(f, "Failed to append child"),
+			MountError::ControlBinding(error) => write!(f, "Failed to bind control: {error}"),
 		}
 	}
 }
 
-impl std::error::Error for MountError {}
+impl std::error::Error for MountError {
+	fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+		match self {
+			Self::ControlBinding(error) => Some(error),
+			_ => None,
+		}
+	}
+}
+
+impl From<ControlBindingError> for MountError {
+	fn from(error: ControlBindingError) -> Self {
+		Self::ControlBinding(error)
+	}
+}
 
 /// Reactive conditional rendering.
 ///
@@ -1147,6 +1163,19 @@ impl<A: IntoPage, B: IntoPage, C: IntoPage, D: IntoPage> IntoPage for (A, B, C, 
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn mount_error_preserves_control_binding_failure() {
+		let binding_error = ControlBindingError::UnsupportedElement {
+			control: ControlKind::Checkbox,
+			actual_tag: "select".to_owned(),
+		};
+
+		let mount_error = MountError::from(binding_error.clone());
+
+		assert_eq!(mount_error, MountError::ControlBinding(binding_error));
+		assert!(std::error::Error::source(&mount_error).is_some());
+	}
 
 	#[test]
 	fn event_type_reexports_the_complete_catalog() {

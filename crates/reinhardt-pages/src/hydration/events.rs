@@ -10,6 +10,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 #[cfg(wasm)]
+use crate::dom::control_binding::ControlBindingController;
+#[cfg(wasm)]
 use crate::dom::{Element, EventHandle};
 #[cfg(any(wasm, test))]
 use reinhardt_core::types::page::EventName;
@@ -77,6 +79,12 @@ pub struct EventRegistry {
 	/// Event handles indexed by element ID.
 	#[cfg(wasm)]
 	handles: HashMap<String, Vec<EventHandle>>,
+	/// Event handles on elements without hydration IDs.
+	#[cfg(wasm)]
+	anonymous_handles: Vec<EventHandle>,
+	/// Controlled form-element bindings installed during hydration.
+	#[cfg(wasm)]
+	control_bindings: Vec<ControlBindingController>,
 	/// Event handles for non-WASM (placeholder).
 	#[cfg(native)]
 	handles: HashMap<String, Vec<String>>,
@@ -97,6 +105,18 @@ impl EventRegistry {
 			.push(handle);
 	}
 
+	/// Registers an event handle for an element without a hydration ID.
+	#[cfg(wasm)]
+	pub(crate) fn register_anonymous(&mut self, handle: EventHandle) {
+		self.anonymous_handles.push(handle);
+	}
+
+	/// Retains a controlled form-element binding for the hydration lifetime.
+	#[cfg(wasm)]
+	pub(crate) fn register_control_binding(&mut self, controller: ControlBindingController) {
+		self.control_bindings.push(controller);
+	}
+
 	/// Registers an event handle (non-WASM placeholder).
 	#[cfg(native)]
 	pub fn register(&mut self, element_id: impl Into<String>, handle: String) {
@@ -114,16 +134,39 @@ impl EventRegistry {
 	/// Removes all registered event handles.
 	pub fn clear(&mut self) {
 		self.handles.clear();
+		#[cfg(wasm)]
+		{
+			self.anonymous_handles.clear();
+			self.control_bindings.clear();
+		}
 	}
 
-	/// Returns the number of registered elements.
+	/// Returns the number of registered keyed elements and anonymous handles.
 	pub fn len(&self) -> usize {
-		self.handles.len()
+		self.handles.len() + {
+			#[cfg(wasm)]
+			{
+				self.anonymous_handles.len()
+			}
+			#[cfg(native)]
+			{
+				0
+			}
+		}
 	}
 
 	/// Returns true if no event handles are registered.
 	pub fn is_empty(&self) -> bool {
-		self.handles.is_empty()
+		self.handles.is_empty() && {
+			#[cfg(wasm)]
+			{
+				self.anonymous_handles.is_empty() && self.control_bindings.is_empty()
+			}
+			#[cfg(native)]
+			{
+				true
+			}
+		}
 	}
 }
 
@@ -208,6 +251,8 @@ pub fn attach_event(
 	// Get element ID for registry
 	if let Some(id) = element.get_attribute("data-rh-id") {
 		registry.register(id, handle);
+	} else {
+		registry.register_anonymous(handle);
 	}
 
 	Ok(())

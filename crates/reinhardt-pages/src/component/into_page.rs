@@ -19,11 +19,9 @@ pub(super) use reinhardt_core::types::page::{BOOLEAN_ATTRS, is_boolean_attr_trut
 #[cfg(wasm)]
 use crate::component::reactive_if::{ReactiveIfNode, ReactiveNode, store_reactive_node};
 #[cfg(wasm)]
-use crate::dom::Element;
+use crate::dom::control_binding::ControlBindingController;
 #[cfg(wasm)]
-use wasm_bindgen::JsCast;
-#[cfg(wasm)]
-use wasm_bindgen::closure::Closure;
+use crate::dom::{Element, EventHandle};
 
 /// Extension trait for mounting Page to DOM (WASM only).
 ///
@@ -49,8 +47,7 @@ fn mount_inner(page: Page, parent: &Element) -> Result<(), MountError> {
 	match page {
 		Page::Element(el) => {
 			let doc = document();
-			let (tag, attrs, children, _is_void, event_handlers, _control_binding) =
-				el.into_parts();
+			let (tag, attrs, children, _is_void, event_handlers, control_binding) = el.into_parts();
 
 			let element = doc
 				.create_element(&tag)
@@ -84,36 +81,29 @@ fn mount_inner(page: Page, parent: &Element) -> Result<(), MountError> {
 					})?;
 			}
 
-			// Attach event handlers before mounting children
+			let binding_controller = control_binding
+				.map(|binding| ControlBindingController::mount(element.clone(), binding))
+				.transpose()?;
+			let mut event_handles: Vec<EventHandle> = Vec::new();
+
+			// Attach event handlers before mounting children.
 			for (event_type, handler) in event_handlers {
 				let handler_clone = handler.clone();
 				#[cfg(feature = "i18n")]
 				let i18n_context = crate::i18n::current_i18n_callback_context();
-				let closure = Closure::wrap(Box::new(move |event: web_sys::Event| {
-					#[cfg(feature = "i18n")]
-					{
-						crate::i18n::with_optional_i18n_context(i18n_context.as_ref(), || {
-							handler_clone(event);
-						});
-					}
-					#[cfg(not(feature = "i18n"))]
-					handler_clone(event);
-				}) as Box<dyn FnMut(web_sys::Event)>);
-
-				element
-					.inner()
-					.add_event_listener_with_callback(
-						event_type.as_str(),
-						closure.as_ref().unchecked_ref(),
-					)
-					.expect("Failed to add event listener");
-
-				// Intentional memory leak: the closure must outlive the element's DOM
-				// lifetime. Since mount_inner creates closures in a recursive loop
-				// with no parent struct to store them, forget() is the practical
-				// choice here. For components with frequent mount/unmount cycles,
-				// consider using a lifecycle-managed approach instead.
-				closure.forget();
+				event_handles.push(element.add_event_listener_with_event(
+					event_type.as_str(),
+					move |event| {
+						#[cfg(feature = "i18n")]
+						{
+							crate::i18n::with_optional_i18n_context(i18n_context.as_ref(), || {
+								handler_clone(event);
+							});
+						}
+						#[cfg(not(feature = "i18n"))]
+						handler_clone(event);
+					},
+				));
 			}
 
 			for child in children {
@@ -123,6 +113,7 @@ fn mount_inner(page: Page, parent: &Element) -> Result<(), MountError> {
 			parent
 				.append_child(element)
 				.map_err(|_| MountError::AppendChildFailed)?;
+			store_reactive_node((binding_controller, event_handles));
 		}
 		Page::Text(text) => {
 			let window = web_sys::window().ok_or(MountError::NoWindow)?;
