@@ -904,13 +904,6 @@ fn is_unknown_subcommand(err: &clap::Error) -> bool {
 	matches!(err.kind(), clap::error::ErrorKind::InvalidSubcommand)
 }
 
-/// Known global options that accept a separate value argument.
-///
-/// When skipping leading flags we must also consume the following token for
-/// options that take a value (e.g. `--verbosity 2`). Without this, the value
-/// would be mistaken for the subcommand name.
-const GLOBAL_OPTIONS_WITH_VALUE: &[&str] = &["--verbosity"];
-
 /// Try to resolve raw CLI arguments into a custom command from the registry.
 ///
 /// The convention is: `manage <subcommand> [args...]`.  Global flags that
@@ -930,21 +923,8 @@ fn resolve_custom_command(
 		}
 		let flag = iter.next().unwrap(); // safe: peeked above
 
-		if flag == "-v" || flag == "--verbose" {
+		if flag == "-v" || flag == "--verbose" || flag == "--verbosity" {
 			verbosity = verbosity.saturating_add(1);
-		} else if flag == "--verbosity" {
-			// Consume the next token as the value.
-			if let Some(val) = iter.peek()
-				&& !val.starts_with('-')
-			{
-				verbosity = val.parse().unwrap_or(0);
-				iter.next();
-			}
-		} else if let Some(val) = flag.strip_prefix("--verbosity=") {
-			verbosity = val.parse().unwrap_or(0);
-		} else if GLOBAL_OPTIONS_WITH_VALUE.contains(&flag.as_str()) {
-			// Skip the value for other known options that take one.
-			iter.next();
 		}
 	}
 
@@ -2242,6 +2222,25 @@ mod tests {
 				0,
 			))
 		);
+	}
+
+	#[cfg(feature = "reinhardt-db")]
+	#[rstest]
+	fn test_fixture_commands_resolve_after_count_style_verbosity() {
+		let registry = CommandRegistry::new();
+
+		for fixture_command in ["dumpdata", "seed"] {
+			let resolved = resolve_custom_command(
+				&[
+					"manage".to_string(),
+					"--verbosity".to_string(),
+					fixture_command.to_string(),
+				],
+				&registry,
+			);
+
+			assert_eq!(resolved, Some((fixture_command.to_string(), Vec::new(), 1)));
+		}
 	}
 
 	#[cfg(feature = "reinhardt-db")]

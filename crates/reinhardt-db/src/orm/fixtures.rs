@@ -316,6 +316,7 @@ where
 		record: &FixtureRecord,
 	) -> FixtureResult<Vec<String>> {
 		let mut object = record.fields.clone();
+		remove_many_to_many_fixture_fields::<M>(&mut object)?;
 		normalize_foreign_key_fixture_fields::<M>(&mut object)?;
 		if let Some(primary_key) = &record.pk {
 			object.insert(M::primary_key_field().to_string(), primary_key.clone());
@@ -4558,6 +4559,57 @@ mod tests {
 
 		let targets = fixture_identity_sequence_reset_targets(&registry, &records)
 			.expect("written identity-always columns must select sequence reset targets");
+		let targets = targets
+			.into_iter()
+			.map(|(handler, column)| (handler.label(), column))
+			.collect::<Vec<_>>();
+
+		assert_eq!(
+			targets,
+			vec![
+				(
+					"fixture_non_primary_identity_always.FixtureNonPrimaryIdentityAlwaysPost"
+						.to_string(),
+					"id".to_string(),
+				),
+				(
+					"fixture_non_primary_identity_always.FixtureNonPrimaryIdentityAlwaysPost"
+						.to_string(),
+					"sequence_number".to_string(),
+				),
+			]
+		);
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	#[serial_test::serial(fixture_model_registry)]
+	fn fixture_sequence_reset_ignores_many_to_many_fields() {
+		let mut post = crate::migrations::ModelMetadata::new(
+			"fixture_non_primary_identity_always",
+			"FixtureNonPrimaryIdentityAlwaysPost",
+			"fixture_non_primary_identity_always_post",
+		);
+		post.add_many_to_many(crate::migrations::ManyToManyMetadata::new(
+			"tags",
+			"FixtureSequenceResetTag",
+		));
+		crate::migrations::model_registry::global_registry().register_model(post);
+
+		let registry = FixtureRegistry::new();
+		registry.register_model::<FixtureNonPrimaryIdentityAlwaysPost>();
+		let mut fields = Map::new();
+		fields.insert("sequence_number".to_string(), Value::from(99));
+		fields.insert("payload".to_string(), Value::from("fixture payload"));
+		fields.insert("tags".to_string(), Value::Array(vec![Value::from(1)]));
+		let records = vec![FixtureRecord::new(
+			"fixture_non_primary_identity_always.FixtureNonPrimaryIdentityAlwaysPost",
+			Some(Value::from(1)),
+			fields,
+		)];
+
+		let targets = fixture_identity_sequence_reset_targets(&registry, &records)
+			.expect("many-to-many fixture fields must not block sequence reset planning");
 		let targets = targets
 			.into_iter()
 			.map(|(handler, column)| (handler.label(), column))
