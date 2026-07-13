@@ -24,6 +24,11 @@ pub(super) fn generate_style_items(
 		(crate_info.ident, crate_info.use_statement)
 	};
 	let attributes = &item.attrs;
+	let generated_attributes: Vec<_> = item
+		.attrs
+		.iter()
+		.filter(|attribute| !is_lint_attribute(attribute))
+		.collect();
 	let visibility = &item.vis;
 	let static_name = &item.ident;
 	let builder = format_ident!("{}Vars", style_type);
@@ -60,13 +65,13 @@ pub(super) fn generate_style_items(
 	Ok(quote! {
 		#use_statement
 
-		#(#attributes)*
+		#(#generated_attributes)*
 		#visibility struct #style_type;
 
 		#(#attributes)*
 		#visibility static #static_name: #style_type = #style_type;
 
-		#(#attributes)*
+		#(#generated_attributes)*
 		#generated_reachability_allow
 		impl #style_type {
 			#(#class_accessors)*
@@ -77,24 +82,52 @@ pub(super) fn generate_style_items(
 			}
 		}
 
-		#(#attributes)*
+		#(#generated_attributes)*
 		#visibility struct #builder {
 			inner: #pages::StyleVars,
 		}
 
-		#(#attributes)*
+		#(#generated_attributes)*
 		#generated_reachability_allow
 		impl #builder {
 			#(#setters)*
 		}
 
-		#(#attributes)*
+		#(#generated_attributes)*
 		impl ::std::convert::From<#builder> for ::std::borrow::Cow<'static, str> {
 			fn from(value: #builder) -> Self {
 				value.inner.into()
 			}
 		}
 	})
+}
+
+fn is_lint_attribute(attribute: &syn::Attribute) -> bool {
+	is_lint_meta(&attribute.meta)
+}
+
+fn is_lint_meta(meta: &syn::Meta) -> bool {
+	if is_lint_path(meta.path()) {
+		return true;
+	}
+	if !meta.path().is_ident("cfg_attr") {
+		return false;
+	}
+	let syn::Meta::List(list) = meta else {
+		return false;
+	};
+	let Ok(arguments) = list.parse_args_with(
+		syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated,
+	) else {
+		return false;
+	};
+	arguments.iter().skip(1).any(is_lint_meta)
+}
+
+fn is_lint_path(path: &syn::Path) -> bool {
+	["allow", "warn", "deny", "forbid", "expect"]
+		.iter()
+		.any(|name| path.is_ident(name))
 }
 
 fn runtime_type_path(

@@ -101,7 +101,7 @@ fn validate_attributes(attributes: &[syn::Attribute]) -> syn::Result<()> {
 
 #[cfg(test)]
 mod tests {
-	use quote::quote;
+	use quote::{ToTokens, quote};
 	use rstest::rstest;
 
 	use super::{expand_standalone_style, expand_style_def};
@@ -122,6 +122,92 @@ mod tests {
 
 		// Assert
 		assert_eq!(file.items.len(), 6);
+	}
+
+	#[test]
+	fn style_expectation_is_only_applied_to_the_authored_static() {
+		// Arrange
+		let item = quote! {
+			#[expect(dead_code)]
+			static STYLES: CardStyles = style! { .card { color: red; } };
+		};
+
+		// Act
+		let output = expand_style_def(quote!(), item).expect("style definition should expand");
+		let file = syn::parse2::<syn::File>(output).expect("generated output should be Rust");
+		let expectation_count = file
+			.items
+			.iter()
+			.filter(|item| match item {
+				syn::Item::Struct(item) => item
+					.attrs
+					.iter()
+					.any(|attribute| attribute.path().is_ident("expect")),
+				syn::Item::Static(item) => item
+					.attrs
+					.iter()
+					.any(|attribute| attribute.path().is_ident("expect")),
+				syn::Item::Impl(item) => item
+					.attrs
+					.iter()
+					.any(|attribute| attribute.path().is_ident("expect")),
+				_ => false,
+			})
+			.count();
+
+		// Assert
+		assert_eq!(expectation_count, 1);
+		let authored_static = file
+			.items
+			.iter()
+			.find_map(|item| match item {
+				syn::Item::Static(item) if item.ident == "STYLES" => Some(item),
+				_ => None,
+			})
+			.expect("generated static should retain the authored name");
+		assert!(
+			authored_static
+				.attrs
+				.iter()
+				.any(|attribute| attribute.path().is_ident("expect"))
+		);
+	}
+
+	#[test]
+	fn style_cfg_attr_lint_expectation_is_not_applied_to_generated_items() {
+		// Arrange
+		let item = quote! {
+			#[cfg_attr(all(), expect(dead_code))]
+			static STYLES: CardStyles = style! { .card { color: red; } };
+		};
+
+		// Act
+		let output = expand_style_def(quote!(), item).expect("style definition should expand");
+		let file = syn::parse2::<syn::File>(output).expect("generated output should be Rust");
+
+		// Assert
+		let generated_tokens = file
+			.items
+			.iter()
+			.filter(|item| !matches!(item, syn::Item::Static(item) if item.ident == "STYLES"))
+			.map(ToTokens::to_token_stream)
+			.collect::<proc_macro2::TokenStream>()
+			.to_string();
+		assert!(!generated_tokens.contains("expect"));
+		let authored_static = file
+			.items
+			.iter()
+			.find_map(|item| match item {
+				syn::Item::Static(item) if item.ident == "STYLES" => Some(item),
+				_ => None,
+			})
+			.expect("generated static should retain the authored name");
+		assert!(
+			authored_static
+				.attrs
+				.iter()
+				.any(|attribute| attribute.path().is_ident("cfg_attr"))
+		);
 	}
 
 	#[rstest]
