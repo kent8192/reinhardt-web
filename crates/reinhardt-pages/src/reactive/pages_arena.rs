@@ -3,6 +3,8 @@
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
+use std::marker::PhantomData;
+use std::rc::Rc;
 
 use reinhardt_core::reactive::{ReactiveScopeError, ScopeId, on_scope_dispose_after_nodes};
 
@@ -20,6 +22,7 @@ pub(crate) struct PageNodeKey {
 	generation: u32,
 	kind: PageNodeKind,
 	owner_thread: std::thread::ThreadId,
+	_thread_bound: PhantomData<Rc<()>>,
 }
 
 impl PageNodeKey {
@@ -69,6 +72,7 @@ pub(crate) fn allocate_page_node<T: 'static>(
 				generation,
 				kind,
 				owner_thread: std::thread::current().id(),
+				_thread_bound: PhantomData,
 			},
 			register_cleanup,
 		)
@@ -126,7 +130,7 @@ fn stale_error(key: PageNodeKey, actual_generation: Option<u32>) -> String {
 }
 
 fn dispose_pages_scope(scope: ScopeId) {
-	PAGES_ARENAS.with(|arenas| {
+	let _ = PAGES_ARENAS.try_with(|arenas| {
 		arenas.borrow_mut().remove(&scope);
 	});
 }
@@ -138,19 +142,11 @@ mod tests {
 
 	#[test]
 	#[serial(reactive_runtime)]
-	fn page_node_rejects_access_from_a_different_thread() {
+	fn page_node_accesses_its_owner_scope() {
 		let scope = reinhardt_core::reactive::ReactiveScope::new();
 		let key =
 			scope.enter(|| allocate_page_node("test page node", PageNodeKind::Callback, 1_i32));
 
-		let result = std::thread::spawn(move || with_page_node::<i32, _>(key, |value| *value))
-			.join()
-			.expect("worker thread should finish without panicking");
-
-		assert!(
-			result
-				.expect_err("page node access from another thread must fail")
-				.contains("different thread")
-		);
+		assert_eq!(with_page_node::<i32, _>(key, |value| *value), Ok(1));
 	}
 }

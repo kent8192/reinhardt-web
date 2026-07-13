@@ -262,13 +262,14 @@ impl<T: Clone + 'static> Memo<T> {
 
 	/// Dispose this memo and its explicit dependency notifier.
 	pub fn dispose(&self) {
-		let Ok((f, notifier)) = with_node_mut::<MemoSlot<T>, _>(self.key, |slot| {
-			(slot.f.take(), slot.deps_notifier.take())
+		let Ok((f, value, notifier)) = with_node_mut::<MemoSlot<T>, _>(self.key, |slot| {
+			(slot.f.take(), slot.value.take(), slot.deps_notifier.take())
 		}) else {
 			return;
 		};
 		let _ = mark_node_disposed(self.key);
 		drop(f);
+		drop(value);
 		if let Some(notifier) = notifier {
 			notifier.dispose();
 		}
@@ -307,6 +308,35 @@ mod tests {
 	fn memo_panics_after_scope_dispose() {
 		let memo = crate::reactive::ReactiveScope::run(|| Memo::new(|| 1_i32));
 		let _ = memo.get();
+	}
+
+	#[derive(Clone)]
+	struct DropTrackedValue {
+		drops: Rc<RefCell<usize>>,
+	}
+
+	impl Drop for DropTrackedValue {
+		fn drop(&mut self) {
+			*self.drops.borrow_mut() += 1;
+		}
+	}
+
+	#[rstest]
+	#[serial(reactive_runtime)]
+	fn memo_dispose_drops_its_cached_value() {
+		crate::reactive::ReactiveScope::run(|| {
+			let drops = Rc::new(RefCell::new(0));
+			let memo = Memo::new({
+				let drops = Rc::clone(&drops);
+				move || DropTrackedValue {
+					drops: Rc::clone(&drops),
+				}
+			});
+
+			memo.dispose();
+
+			assert_eq!(*drops.borrow(), 1);
+		});
 	}
 
 	#[rstest]

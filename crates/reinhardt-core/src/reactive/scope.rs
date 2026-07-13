@@ -4,6 +4,7 @@ use core::any::Any;
 use core::cell::{Cell, RefCell};
 use core::fmt;
 use core::marker::PhantomData;
+use core::sync::atomic::{AtomicU32, Ordering as AtomicOrdering};
 
 extern crate alloc;
 use alloc::boxed::Box;
@@ -14,8 +15,27 @@ use alloc::vec::Vec;
 use super::runtime::{NodeId, try_with_runtime};
 
 /// Identifier for a live reactive scope.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ScopeId(u64);
+///
+/// The identifier records its owner thread so deferred work cannot enter an
+/// unrelated worker-local scope that happens to have the same local counter.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ScopeId {
+	value: u64,
+	owner_thread: std::thread::ThreadId,
+	owner_thread_index: u32,
+}
+
+impl PartialOrd for ScopeId {
+	fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+		Some(self.cmp(other))
+	}
+}
+
+impl Ord for ScopeId {
+	fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+		(self.owner_thread_index, self.value).cmp(&(other.owner_thread_index, other.value))
+	}
+}
 
 /// Generational key for a node stored inside a reactive scope.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -161,8 +181,11 @@ impl ScopeState {
 	}
 }
 
+static NEXT_SCOPE_OWNER_INDEX: AtomicU32 = AtomicU32::new(1);
+
 thread_local! {
 	static NEXT_SCOPE_ID: Cell<u64> = const { Cell::new(1) };
+	static SCOPE_OWNER_INDEX: u32 = NEXT_SCOPE_OWNER_INDEX.fetch_add(1, AtomicOrdering::Relaxed);
 	static ACTIVE_SCOPES: RefCell<Vec<ScopeId>> = const { RefCell::new(Vec::new()) };
 	static SCOPES: RefCell<BTreeMap<ScopeId, ScopeState>> = const { RefCell::new(BTreeMap::new()) };
 }
@@ -180,7 +203,11 @@ impl ReactiveScope {
 	/// Create an empty reactive scope.
 	pub fn new() -> Self {
 		let id = NEXT_SCOPE_ID.with(|next| {
-			let id = ScopeId(next.get());
+			let id = ScopeId {
+				value: next.get(),
+				owner_thread: std::thread::current().id(),
+				owner_thread_index: SCOPE_OWNER_INDEX.with(|index| *index),
+			};
 			next.set(next.get() + 1);
 			id
 		});
@@ -227,13 +254,21 @@ impl Default for ReactiveScope {
 
 impl Drop for ReactiveScope {
 	fn drop(&mut self) {
-		self.dispose();
+		if self.disposed.replace(true) {
+			return;
+		}
+
+		// A scope retained in thread-local storage can outlive the `SCOPES`
+		// thread-local during process or worker teardown.
+		let _ = SCOPES.try_with(|_| dispose_scope(self.id));
 	}
 }
 
 /// Return the current active scope identifier, if any.
 pub fn current_scope_id() -> Option<ScopeId> {
-	ACTIVE_SCOPES.with(|active| active.borrow().last().copied())
+	ACTIVE_SCOPES
+		.try_with(|active| active.borrow().last().copied())
+		.unwrap_or(None)
 }
 
 /// Run a closure with an existing live scope active.
@@ -242,16 +277,29 @@ pub fn current_scope_id() -> Option<ScopeId> {
 /// their creating render turn has completed. The caller must handle a disposed
 /// scope, because the scope can be torn down before a deferred callback runs.
 pub fn enter_scope<R>(scope: ScopeId, f: impl FnOnce() -> R) -> Result<R, ReactiveScopeError> {
-	let exists = SCOPES.with(|scopes| scopes.borrow().contains_key(&scope));
+	let current_thread = std::thread::current().id();
+	if scope.owner_thread != current_thread {
+		return Err(ReactiveScopeError::WrongThread {
+			scope,
+			owner_thread: scope.owner_thread,
+			current_thread,
+		});
+	}
+
+	let exists = SCOPES
+		.try_with(|scopes| scopes.borrow().contains_key(&scope))
+		.unwrap_or(false);
 	if !exists {
 		return Err(ReactiveScopeError::DisposedScope { scope });
 	}
 
-	ACTIVE_SCOPES.with(|active| active.borrow_mut().push(scope));
+	ACTIVE_SCOPES
+		.try_with(|active| active.borrow_mut().push(scope))
+		.map_err(|_| ReactiveScopeError::DisposedScope { scope })?;
 	struct PopScope;
 	impl Drop for PopScope {
 		fn drop(&mut self) {
-			ACTIVE_SCOPES.with(|active| {
+			let _ = ACTIVE_SCOPES.try_with(|active| {
 				active.borrow_mut().pop();
 			});
 		}
@@ -530,6 +578,13 @@ fn take_scope_node_value(scope: ScopeId, kind: Option<NodeKind>) -> Option<Box<d
 }
 
 pub(crate) fn dispose_scope(scope: ScopeId) {
+	let is_live = SCOPES
+		.try_with(|scopes| scopes.borrow().contains_key(&scope))
+		.unwrap_or(false);
+	if !is_live {
+		return;
+	}
+
 	loop {
 		let cleanup = SCOPES.with(|scopes| {
 			scopes
@@ -633,6 +688,26 @@ mod tests {
 			assert_eq!(active_scope_id(), id);
 		});
 		assert!(current_scope_id().is_none());
+	}
+
+	#[cfg(not(target_arch = "wasm32"))]
+	#[test]
+	#[serial(reactive_runtime)]
+	fn entering_a_same_numbered_worker_scope_is_rejected() {
+		let scope = ReactiveScope::new();
+		let scope_id = scope.id();
+
+		let result = std::thread::spawn(move || {
+			let _worker_scope = ReactiveScope::new();
+			enter_scope(scope_id, || ())
+		})
+		.join()
+		.expect("worker thread should finish without panicking");
+
+		assert!(matches!(
+			result,
+			Err(ReactiveScopeError::WrongThread { .. })
+		));
 	}
 
 	#[test]

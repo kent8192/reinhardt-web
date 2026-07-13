@@ -32,6 +32,7 @@
 //! ```
 
 use core::cell::RefCell;
+use core::marker::PhantomData;
 
 extern crate alloc;
 use alloc::boxed::Box;
@@ -94,8 +95,18 @@ pub(crate) fn get_effect_timing(effect_id: NodeId) -> Option<EffectTiming> {
 ///     count.set(5);
 /// });
 /// ```
+///
+/// Effect handles are bound to the thread that owns their reactive scope.
+///
+/// ```compile_fail
+/// use reinhardt_core::reactive::{Effect, ReactiveScope};
+///
+/// let effect = ReactiveScope::run(|| Effect::new(|| {}));
+/// std::thread::spawn(move || effect.dispose());
+/// ```
 pub struct Effect {
 	key: NodeKey,
+	_thread_bound: PhantomData<Rc<()>>,
 }
 
 impl Clone for Effect {
@@ -138,7 +149,10 @@ impl Effect {
 				scope,
 			},
 		);
-		let effect = Self { key };
+		let effect = Self {
+			key,
+			_thread_bound: PhantomData,
+		};
 		Self::execute_effect(effect.id());
 		effect
 	}
@@ -191,7 +205,10 @@ impl Effect {
 			slot.f = Some(Box::new(wrapped));
 		})
 		.unwrap_or_else(|err| panic!("{err}"));
-		let effect = Self { key };
+		let effect = Self {
+			key,
+			_thread_bound: PhantomData,
+		};
 		Self::execute_effect(effect_id);
 		effect
 	}

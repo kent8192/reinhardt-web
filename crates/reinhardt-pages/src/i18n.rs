@@ -9,6 +9,7 @@ use std::cell::RefCell;
 use std::fmt;
 #[cfg(wasm)]
 use std::future::Future;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use reinhardt_i18n::{I18nError, MessageCatalog, TranslationContext};
@@ -42,6 +43,8 @@ pub enum I18nStateError {
 /// Reactive translation context for pages.
 #[derive(Clone)]
 pub struct I18nContext {
+	/// Retains the scope for contexts constructed outside a page render.
+	_scope: Option<Rc<crate::reactive::ReactiveScope>>,
 	locale: Signal<String>,
 	translations: Arc<TranslationContext>,
 }
@@ -59,7 +62,21 @@ impl I18nContext {
 	/// Creates a reactive page i18n context from a translation context.
 	pub fn new(translations: TranslationContext) -> Self {
 		let locale = translations.get_locale().to_string();
+		if reinhardt_core::reactive::scope::current_scope_id().is_some() {
+			return Self::from_parts(locale, translations, None);
+		}
+
+		let scope = Rc::new(crate::reactive::ReactiveScope::new());
+		scope.enter(|| Self::from_parts(locale, translations, Some(Rc::clone(&scope))))
+	}
+
+	fn from_parts(
+		locale: String,
+		translations: TranslationContext,
+		scope: Option<Rc<crate::reactive::ReactiveScope>>,
+	) -> Self {
 		Self {
+			_scope: scope,
 			locale: Signal::new(locale),
 			translations: Arc::new(translations),
 		}

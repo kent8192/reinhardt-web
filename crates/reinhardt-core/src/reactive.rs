@@ -64,7 +64,7 @@ pub use effect::Effect;
 pub use memo::Memo;
 pub use runtime::{EffectTiming, NodeId, NodeType, Observer, Runtime, batch, with_runtime};
 pub use scope::{
-	NodeKey, ReactiveScope, ReactiveScopeError, ScopeId, on_scope_dispose,
+	NodeKey, ReactiveScope, ReactiveScopeError, ScopeId, current_scope_id, on_scope_dispose,
 	on_scope_dispose_after_nodes,
 };
 pub use signal::Signal;

@@ -703,7 +703,7 @@ fn mount_view_before_marker(
 }
 
 #[cfg(wasm)]
-fn render_view_in_reactive_node_store(
+pub(crate) fn render_view_in_reactive_node_store(
 	store: &ReactiveNodeStore,
 	render: impl FnOnce() -> Page,
 ) -> Page {

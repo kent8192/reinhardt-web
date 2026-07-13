@@ -12,7 +12,8 @@ use crate::dom::{Element, document};
 
 #[cfg(wasm)]
 use crate::component::{
-	Page, new_reactive_node_store, store_reactive_node, with_reactive_node_store,
+	Page, new_reactive_node_store, render_view_in_reactive_node_store, store_reactive_node,
+	with_reactive_node_store,
 };
 
 #[cfg(wasm)]
@@ -238,7 +239,11 @@ pub fn hydrate<C: Component>(component: &C, root: &Element) -> Result<(), Hydrat
 #[cfg(wasm)]
 fn with_hydration_prepass_store<R>(f: impl FnOnce() -> R) -> R {
 	let store = new_reactive_node_store();
-	with_reactive_node_store(&store, f)
+	with_reactive_node_store(&store, || {
+		// Prepass allocations only establish DOM shape and must not outlive the pass.
+		let scope = reinhardt_core::reactive::ReactiveScope::new();
+		scope.enter(f)
+	})
 }
 
 #[cfg(wasm)]
@@ -263,7 +268,7 @@ fn install_hydrated_reactive_nodes(element: &Element, view: &Page) {
 		}
 		Page::Reactive(reactive) => {
 			let render_store = new_reactive_node_store();
-			let rendered = with_reactive_node_store(&render_store, || reactive.render());
+			let rendered = render_view_in_reactive_node_store(&render_store, || reactive.render());
 			with_hydration_prepass_store(|| {
 				split_coalesced_text_children(element, std::slice::from_ref(&rendered));
 			});
@@ -300,7 +305,7 @@ fn install_hydrated_reactive_nodes(element: &Element, view: &Page) {
 		}
 		Page::ReactiveIf(reactive_if) => {
 			let branch_store = new_reactive_node_store();
-			let branch_view = with_reactive_node_store(&branch_store, || {
+			let branch_view = render_view_in_reactive_node_store(&branch_store, || {
 				if reactive_if.condition() {
 					reactive_if.then_view()
 				} else {
@@ -392,7 +397,7 @@ fn install_hydrated_child_reactive_nodes(
 	match view {
 		Page::Reactive(reactive) => {
 			let render_store = new_reactive_node_store();
-			let rendered = with_reactive_node_store(&render_store, || reactive.render());
+			let rendered = render_view_in_reactive_node_store(&render_store, || reactive.render());
 			let mut boundary_sibling = next_sibling.clone();
 			let hydrated_node = crate::component::ReactiveNode::hydrate_at(
 				parent.clone(),
@@ -423,7 +428,7 @@ fn install_hydrated_child_reactive_nodes(
 		}
 		Page::ReactiveIf(reactive_if) => {
 			let branch_store = new_reactive_node_store();
-			let branch_view = with_reactive_node_store(&branch_store, || {
+			let branch_view = render_view_in_reactive_node_store(&branch_store, || {
 				if reactive_if.condition() {
 					reactive_if.then_view()
 				} else {
@@ -923,7 +928,7 @@ mod tests {
 	#[cfg(wasm)]
 	use crate::reactive::hooks::use_retained_effect;
 	#[cfg(wasm)]
-	use crate::reactive::{Signal, with_runtime};
+	use crate::reactive::{ReactiveScope, Signal, with_runtime};
 	#[cfg(wasm)]
 	use std::cell::RefCell;
 	#[cfg(wasm)]
@@ -996,65 +1001,17 @@ mod tests {
 		root.set_inner_html("<span>value:0</span>");
 		document.body().unwrap().append_child(&root).unwrap();
 
-		let render_signal = Signal::new(0_i32);
-		let effect_signal = Signal::new(0_i32);
-		let effect_log = Rc::new(RefCell::new(Vec::new()));
-		let view = Page::reactive({
-			let render_signal = render_signal.clone();
-			let effect_signal = effect_signal.clone();
-			let effect_log = Rc::clone(&effect_log);
-			move || {
-				let render_value = render_signal.get();
-				use_retained_effect(
-					{
-						let effect_signal = effect_signal.clone();
-						let effect_log = Rc::clone(&effect_log);
-						move || {
-							let value = effect_signal.get();
-							effect_log.borrow_mut().push(format!("run:{value}"));
-							let effect_log = Rc::clone(&effect_log);
-							Some(move || effect_log.borrow_mut().push("cleanup".to_string()))
-						}
-					},
-					(effect_signal.clone(),),
-				);
-				PageElement::new("span")
-					.child(format!("value:{render_value}"))
-					.into_page()
-			}
-		});
-
-		install_hydrated_reactive_nodes(&Element::new(root.clone()), &view);
-		effect_signal.set(1);
-		with_runtime(|runtime| runtime.flush_updates());
-
-		let log = effect_log.borrow();
-		assert_eq!(
-			log.iter().filter(|entry| entry.as_str() == "run:1").count(),
-			1,
-			"only the tracked hydration render should retain an effect: {log:?}"
-		);
-		drop(log);
-		cleanup_reactive_nodes();
-		root.remove();
-	}
-
-	#[cfg(wasm)]
-	#[wasm_bindgen_test]
-	fn hydration_element_child_prepasses_do_not_retain_effects() {
-		cleanup_reactive_nodes();
-		let document = web_sys::window().unwrap().document().unwrap();
-		let root = document.create_element("div").unwrap();
-		root.set_inner_html("<span>value:0</span>");
-		document.body().unwrap().append_child(&root).unwrap();
-
-		let effect_signal = Signal::new(0_i32);
-		let effect_log = Rc::new(RefCell::new(Vec::new()));
-		let view = PageElement::new("div")
-			.child(Page::reactive({
+		let scope = ReactiveScope::new();
+		scope.enter(|| {
+			let render_signal = Signal::new(0_i32);
+			let effect_signal = Signal::new(0_i32);
+			let effect_log = Rc::new(RefCell::new(Vec::new()));
+			let view = Page::reactive({
+				let render_signal = render_signal.clone();
 				let effect_signal = effect_signal.clone();
 				let effect_log = Rc::clone(&effect_log);
 				move || {
+					let render_value = render_signal.get();
 					use_retained_effect(
 						{
 							let effect_signal = effect_signal.clone();
@@ -1068,23 +1025,79 @@ mod tests {
 						},
 						(effect_signal.clone(),),
 					);
-					PageElement::new("span").child("value:0").into_page()
+					PageElement::new("span")
+						.child(format!("value:{render_value}"))
+						.into_page()
 				}
-			}))
-			.into_page();
+			});
 
-		install_hydrated_reactive_nodes(&Element::new(root.clone()), &view);
-		effect_signal.set(1);
-		with_runtime(|runtime| runtime.flush_updates());
+			install_hydrated_reactive_nodes(&Element::new(root.clone()), &view);
+			effect_signal.set(1);
+			with_runtime(|runtime| runtime.flush_updates());
 
-		let log = effect_log.borrow();
-		assert_eq!(
-			log.iter().filter(|entry| entry.as_str() == "run:1").count(),
-			1,
-			"hydration prepasses must not retain duplicate effects: {log:?}"
-		);
-		drop(log);
+			let log = effect_log.borrow();
+			assert_eq!(
+				log.iter().filter(|entry| entry.as_str() == "run:1").count(),
+				1,
+				"only the tracked hydration render should retain an effect: {log:?}"
+			);
+			drop(log);
+			cleanup_reactive_nodes();
+		});
+		root.remove();
+	}
+
+	#[cfg(wasm)]
+	#[wasm_bindgen_test]
+	fn hydration_element_child_prepasses_do_not_retain_effects() {
 		cleanup_reactive_nodes();
+		let document = web_sys::window().unwrap().document().unwrap();
+		let root = document.create_element("div").unwrap();
+		root.set_inner_html("<span>value:0</span>");
+		document.body().unwrap().append_child(&root).unwrap();
+
+		let scope = ReactiveScope::new();
+		scope.enter(|| {
+			let effect_signal = Signal::new(0_i32);
+			let effect_log = Rc::new(RefCell::new(Vec::new()));
+			let view = PageElement::new("div")
+				.child(Page::reactive({
+					let effect_signal = effect_signal.clone();
+					let effect_log = Rc::clone(&effect_log);
+					move || {
+						use_retained_effect(
+							{
+								let effect_signal = effect_signal.clone();
+								let effect_log = Rc::clone(&effect_log);
+								move || {
+									let value = effect_signal.get();
+									effect_log.borrow_mut().push(format!("run:{value}"));
+									let effect_log = Rc::clone(&effect_log);
+									Some(move || {
+										effect_log.borrow_mut().push("cleanup".to_string())
+									})
+								}
+							},
+							(effect_signal.clone(),),
+						);
+						PageElement::new("span").child("value:0").into_page()
+					}
+				}))
+				.into_page();
+
+			install_hydrated_reactive_nodes(&Element::new(root.clone()), &view);
+			effect_signal.set(1);
+			with_runtime(|runtime| runtime.flush_updates());
+
+			let log = effect_log.borrow();
+			assert_eq!(
+				log.iter().filter(|entry| entry.as_str() == "run:1").count(),
+				1,
+				"hydration prepasses must not retain duplicate effects: {log:?}"
+			);
+			drop(log);
+			cleanup_reactive_nodes();
+		});
 		root.remove();
 	}
 }

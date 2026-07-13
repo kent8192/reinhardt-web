@@ -409,6 +409,15 @@ mod tests {
 		));
 	}
 
+	#[cfg(not(target_arch = "wasm32"))]
+	#[test]
+	fn signal_is_send_sync_on_native() {
+		fn assert_send_sync<T: Send + Sync>() {}
+		assert_send_sync::<Signal<String>>();
+		assert_send_sync::<Signal<Option<String>>>();
+		assert_send_sync::<Signal<i32>>();
+	}
+
 	#[rstest]
 	#[serial(reactive_runtime)]
 	fn signal_tracks_and_updates_inside_scope() {
@@ -420,15 +429,6 @@ mod tests {
 			signal.update(|value| *value += 3);
 			assert_eq!(signal.get(), 5);
 		});
-	}
-
-	#[cfg(not(target_arch = "wasm32"))]
-	#[test]
-	fn signal_is_send_sync_on_native() {
-		fn assert_send_sync<T: Send + Sync>() {}
-		assert_send_sync::<Signal<String>>();
-		assert_send_sync::<Signal<Option<String>>>();
-		assert_send_sync::<Signal<i32>>();
 	}
 
 	#[test]

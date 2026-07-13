@@ -56,12 +56,13 @@ use crate::dom::{Document, Element};
 use crate::platform::spawn_task;
 #[cfg(wasm)]
 use crate::reactive::Effect;
-use crate::reactive::Signal;
+use crate::reactive::{ReactiveScope, Signal};
 #[cfg(wasm)]
 use js_sys::Function;
 #[cfg(wasm)]
 use reinhardt_forms::wasm_compat::ValidationRule;
 use std::collections::HashMap;
+use std::rc::Rc;
 #[cfg(wasm)]
 use wasm_bindgen::JsValue;
 
@@ -79,6 +80,8 @@ use wasm_bindgen::JsValue;
 /// - `method`: HTTP method (default: "POST")
 #[derive(Clone)]
 pub struct FormComponent {
+	/// Retains the scope for components constructed outside a page render.
+	_scope: Option<Rc<ReactiveScope>>,
 	/// Form metadata from server
 	metadata: reinhardt_forms::wasm_compat::FormMetadata,
 
@@ -412,6 +415,20 @@ impl FormComponent {
 		metadata: reinhardt_forms::wasm_compat::FormMetadata,
 		action: impl Into<String>,
 	) -> Self {
+		let action = action.into();
+		if reinhardt_core::reactive::scope::current_scope_id().is_some() {
+			return Self::from_metadata(metadata, action, None);
+		}
+
+		let scope = Rc::new(ReactiveScope::new());
+		scope.enter(|| Self::from_metadata(metadata, action, Some(Rc::clone(&scope))))
+	}
+
+	fn from_metadata(
+		metadata: reinhardt_forms::wasm_compat::FormMetadata,
+		action: String,
+		scope: Option<Rc<ReactiveScope>>,
+	) -> Self {
 		// Initialize field values from initial data
 		let values: HashMap<String, Signal<String>> = metadata
 			.fields
@@ -434,10 +451,11 @@ impl FormComponent {
 		let initial_errors = metadata.errors.clone();
 
 		Self {
+			_scope: scope,
 			metadata,
 			values,
 			errors: Signal::new(initial_errors),
-			action: action.into(),
+			action,
 			method: "POST".to_string(),
 		}
 	}

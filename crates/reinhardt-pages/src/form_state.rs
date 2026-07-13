@@ -9,7 +9,9 @@ use std::future::Future;
 use std::hash::Hash;
 use std::rc::{Rc, Weak};
 
-use crate::reactive::{Action, ActionPhase, Effect, EffectTiming, Signal, use_action};
+use crate::reactive::{
+	Action, ActionPhase, Effect, EffectTiming, ReactiveScope, Signal, use_action,
+};
 
 /// Default reset behavior when runtime dependencies change.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -498,6 +500,11 @@ pub trait FormRuntimeSource: Clone + 'static {
 	type Values: Clone + 'static;
 	/// Generated field token enum for this form.
 	type Field: Copy + Eq + Hash + Debug + 'static;
+
+	/// Returns the retained scope for a form constructed outside a page render.
+	fn runtime_reactive_scope(&self) -> Option<Rc<ReactiveScope>> {
+		None
+	}
 
 	/// Returns current defaults captured by the form definition.
 	fn runtime_initial_values(&self) -> Self::Values;
@@ -1056,6 +1063,14 @@ where
 
 	/// Builds the runtime form handle.
 	pub fn build(self) -> UseFormReturn<Form, Deps> {
+		if let Some(scope) = self.form.runtime_reactive_scope() {
+			scope.enter(|| self.build_in_active_scope())
+		} else {
+			self.build_in_active_scope()
+		}
+	}
+
+	fn build_in_active_scope(self) -> UseFormReturn<Form, Deps> {
 		let default_values = self.form.runtime_initial_values();
 		let current_values = self.form.runtime_current_values();
 		let is_dirty = form_values_are_dirty(&self.form, &current_values, &default_values);

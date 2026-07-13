@@ -13,7 +13,9 @@ use super::action::OptimisticState;
 use crate::callback::Callback;
 use crate::reactive::Signal;
 use crate::reactive::pages_arena::{PageNodeKey, PageNodeKind, allocate_page_node, with_page_node};
+use reinhardt_core::reactive::current_scope_id;
 use reinhardt_core::reactive::deps::Trackable;
+use reinhardt_core::reactive::scope::enter_scope;
 
 type ErrorCallback<E> = Rc<dyn Fn(&E)>;
 type SuccessCallback<T> = Rc<dyn Fn(&T)>;
@@ -524,6 +526,7 @@ where
 	Fut: Future<Output = Result<T, E>> + 'static,
 {
 	let state = Signal::new(ActionPhase::Idle);
+	let scope = current_scope_id().expect("use_action requires an active ReactiveScope");
 	let on_error: SharedErrorCallback<E> = Rc::new(RefCell::new(Rc::new(|_: &E| {})));
 	let on_success: SharedSuccessCallback<T> = Rc::new(RefCell::new(Rc::new(|_: &T| {})));
 	let reset_on_success = Rc::new(Cell::new(false));
@@ -561,22 +564,26 @@ where
 				spawn_task(async move {
 					match fut.await {
 						Ok(val) => {
-							let on_success = on_success.borrow().clone();
-							crate::reactive::batch(|| {
-								if state.try_set(ActionPhase::Success(val.clone())).is_ok() {
-									on_success(&val);
-									if reset_on_success.get() {
-										let _ = state.try_set(ActionPhase::Idle);
+							let _ = enter_scope(scope, || {
+								crate::reactive::batch(|| {
+									if state.try_set(ActionPhase::Success(val.clone())).is_ok() {
+										let on_success = on_success.borrow().clone();
+										on_success(&val);
+										if reset_on_success.get() {
+											let _ = state.try_set(ActionPhase::Idle);
+										}
 									}
-								}
+								});
 							});
 						}
 						Err(err) => {
-							let on_error = on_error.borrow().clone();
-							crate::reactive::batch(|| {
-								if state.try_set(ActionPhase::Error(err.clone())).is_ok() {
-									on_error(&err);
-								}
+							let _ = enter_scope(scope, || {
+								crate::reactive::batch(|| {
+									if state.try_set(ActionPhase::Error(err.clone())).is_ok() {
+										let on_error = on_error.borrow().clone();
+										on_error(&err);
+									}
+								});
 							});
 						}
 					}
@@ -593,25 +600,29 @@ where
 				let spawned = crate::platform::try_spawn_task(async move {
 					match fut.await {
 						Ok(val) => {
-							let on_success = on_success.borrow().clone();
-							crate::reactive::batch(|| {
-								if task_state
-									.try_set(ActionPhase::Success(val.clone()))
-									.is_ok()
-								{
-									on_success(&val);
-									if reset_on_success.get() {
-										let _ = task_state.try_set(ActionPhase::Idle);
+							let _ = enter_scope(scope, || {
+								crate::reactive::batch(|| {
+									if task_state
+										.try_set(ActionPhase::Success(val.clone()))
+										.is_ok()
+									{
+										let on_success = on_success.borrow().clone();
+										on_success(&val);
+										if reset_on_success.get() {
+											let _ = task_state.try_set(ActionPhase::Idle);
+										}
 									}
-								}
+								});
 							});
 						}
 						Err(err) => {
-							let on_error = on_error.borrow().clone();
-							crate::reactive::batch(|| {
-								if task_state.try_set(ActionPhase::Error(err.clone())).is_ok() {
-									on_error(&err);
-								}
+							let _ = enter_scope(scope, || {
+								crate::reactive::batch(|| {
+									if task_state.try_set(ActionPhase::Error(err.clone())).is_ok() {
+										let on_error = on_error.borrow().clone();
+										on_error(&err);
+									}
+								});
 							});
 						}
 					}
@@ -771,17 +782,52 @@ mod tests {
 		assert_eq!(task.as_mut().poll(&mut context), Poll::Ready(()));
 	}
 
+	#[cfg(all(native, feature = "testing"))]
+	#[rstest]
+	fn native_action_completion_reenters_its_owner_scope_for_callbacks() {
+		let queued = Rc::new(RefCell::new(None));
+		let queued_for_sink = Rc::clone(&queued);
+		let _task_sink = crate::platform::install_task_sink(move |task| {
+			*queued_for_sink.borrow_mut() = Some(task);
+		});
+		let callback_ran = Rc::new(Cell::new(false));
+		let scope = reinhardt_core::reactive::ReactiveScope::new();
+
+		scope.enter(|| {
+			let action = use_action(|_: ()| async { Ok::<i32, String>(42) }).on_success({
+				let callback_ran = Rc::clone(&callback_ran);
+				move |_| {
+					let signal = crate::reactive::Signal::new(1_i32);
+					assert_eq!(signal.get(), 1);
+					callback_ran.set(true);
+				}
+			});
+			action.dispatch(());
+		});
+
+		let mut task = queued
+			.borrow_mut()
+			.take()
+			.expect("dispatch should queue a native task");
+		let mut context = Context::from_waker(Waker::noop());
+
+		assert_eq!(task.as_mut().poll(&mut context), Poll::Ready(()));
+		assert!(callback_ran.get());
+	}
+
 	#[cfg(native)]
 	#[rstest]
 	fn dispatching_callbacks_accept_typed_event_arguments() {
 		use crate::event::ClickEvent;
 
-		let action = use_action(|value: i32| async move { Ok::<i32, String>(value * 2) });
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let action = use_action(|value: i32| async move { Ok::<i32, String>(value * 2) });
 
-		let dispatch: Callback<ClickEvent, ()> = action.dispatching(5);
-		let dispatch_with: Callback<ClickEvent, ()> = action.dispatching_with(|| 6);
+			let dispatch: Callback<ClickEvent, ()> = action.dispatching(5);
+			let dispatch_with: Callback<ClickEvent, ()> = action.dispatching_with(|| 6);
 
-		drop((dispatch, dispatch_with));
+			let _ = (dispatch, dispatch_with);
+		});
 	}
 
 	#[rstest]

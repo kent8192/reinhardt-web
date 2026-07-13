@@ -29,12 +29,55 @@
 
 use core::marker::PhantomData;
 use std::future::Future;
+use std::rc::Rc;
 use std::sync::Arc;
+
+#[cfg(wasm)]
+use std::pin::Pin;
+#[cfg(wasm)]
+use std::task::{Context, Poll};
 
 use crate::component::PageEventHandler;
 use crate::event::EventPayload;
 use crate::platform::spawn_task;
 use crate::reactive::pages_arena::{PageNodeKey, PageNodeKind, allocate_page_node, with_page_node};
+use reinhardt_core::reactive::{ReactiveScope, current_scope_id};
+
+#[cfg(wasm)]
+struct ScopedAsyncEventFuture<Fut> {
+	scope: Option<reinhardt_core::reactive::ScopeId>,
+	future: Pin<Box<Fut>>,
+}
+
+#[cfg(wasm)]
+impl<Fut> Future for ScopedAsyncEventFuture<Fut>
+where
+	Fut: Future<Output = ()>,
+{
+	type Output = ();
+
+	fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+		let this = self.get_mut();
+		let mut poll = || this.future.as_mut().poll(cx);
+		match this.scope {
+			Some(scope) => {
+				reinhardt_core::reactive::scope::enter_scope(scope, poll).unwrap_or(Poll::Ready(()))
+			}
+			None => poll(),
+		}
+	}
+}
+
+#[cfg(wasm)]
+fn scope_async_event_future<Fut>(future: Fut) -> ScopedAsyncEventFuture<Fut>
+where
+	Fut: Future<Output = ()> + 'static,
+{
+	ScopedAsyncEventFuture {
+		scope: current_scope_id(),
+		future: Box::pin(future),
+	}
+}
 
 #[cfg(wasm)]
 type EventArg = web_sys::Event;
@@ -51,6 +94,15 @@ type EventArg = crate::component::NativeEvent;
 ///
 /// - `Args`: The argument type the callback receives (defaults to Event)
 /// - `Ret`: The return type of the callback (defaults to `()`)
+///
+/// Callbacks are bound to the thread that owns their page arena storage.
+///
+/// ```compile_fail
+/// use reinhardt_pages::Callback;
+///
+/// let callback = Callback::<(), ()>::new(|_| {});
+/// std::thread::spawn(move || callback.call(()));
+/// ```
 ///
 /// ## Example
 ///
@@ -86,6 +138,29 @@ struct CallbackSlot<Args, Ret> {
 	inner: Arc<dyn Fn(Args) -> Ret + 'static>,
 }
 
+thread_local! {
+	/// Retains callbacks assembled before a page render creates an active scope.
+	static EXTERNAL_CALLBACK_SCOPE: Rc<ReactiveScope> = Rc::new(ReactiveScope::new());
+}
+
+fn allocate_callback<Args: 'static, Ret: 'static>(
+	f: impl Fn(Args) -> Ret + 'static,
+) -> PageNodeKey {
+	let allocate = || {
+		allocate_page_node(
+			"Callback::new",
+			PageNodeKind::Callback,
+			CallbackSlot { inner: Arc::new(f) },
+		)
+	};
+
+	if current_scope_id().is_some() {
+		allocate()
+	} else {
+		EXTERNAL_CALLBACK_SCOPE.with(|scope| scope.enter(allocate))
+	}
+}
+
 /// A copied key to a callback stored in the current reactive scope.
 pub struct Callback<Args = EventArg, Ret = ()> {
 	key: PageNodeKey,
@@ -113,11 +188,7 @@ impl<Args: 'static, Ret: 'static> Callback<Args, Ret> {
 		F: Fn(Args) -> Ret + 'static,
 	{
 		Self {
-			key: allocate_page_node(
-				"Callback::new",
-				PageNodeKind::Callback,
-				CallbackSlot { inner: Arc::new(f) },
-			),
+			key: allocate_callback(f),
 			_marker: PhantomData,
 		}
 	}
@@ -144,11 +215,7 @@ impl<Args: 'static, Ret: 'static> Callback<Args, Ret> {
 		F: Fn(Args) -> Ret + 'static,
 	{
 		Self {
-			key: allocate_page_node(
-				"Callback::new",
-				PageNodeKind::Callback,
-				CallbackSlot { inner: Arc::new(f) },
-			),
+			key: allocate_callback(f),
 			_marker: PhantomData,
 		}
 	}
@@ -554,7 +621,7 @@ where
 				let future = handler(payload);
 				#[cfg(feature = "i18n")]
 				let future = crate::i18n::with_optional_i18n_context_async(i18n_context, future);
-				spawn_task(future);
+				spawn_task(scope_async_event_future(future));
 			}
 			Err(_error) => crate::error_log!(
 				"typed async event conversion failed for actual event type `{}` on listener target `{}`: {}",
@@ -622,7 +689,7 @@ where
 		let future = handler(event);
 		#[cfg(feature = "i18n")]
 		let future = crate::i18n::with_optional_i18n_context_async(i18n_context, future);
-		spawn_task(future);
+		spawn_task(scope_async_event_future(future));
 	})
 }
 
@@ -696,7 +763,7 @@ where
 		let fut = f(event);
 		#[cfg(feature = "i18n")]
 		let fut = crate::i18n::with_optional_i18n_context_async(i18n_context, fut);
-		spawn_task(fut);
+		spawn_task(scope_async_event_future(fut));
 	})
 }
 
@@ -726,9 +793,10 @@ mod tests {
 	}
 
 	#[rstest]
-	#[should_panic(expected = "Callback::new requires an active ReactiveScope")]
-	fn callback_new_requires_scope() {
-		let _ = Callback::new(|value: i32| value + 1);
+	fn callback_new_works_outside_a_reactive_scope() {
+		let callback = Callback::new(|value: i32| value + 1);
+
+		assert_eq!(callback.call(1), 2);
 	}
 
 	#[rstest]
@@ -834,6 +902,50 @@ mod tests {
 			EventType::Click,
 			NativeEventPayload::Pointer(PointerEventData::default()),
 		));
+	}
+}
+
+#[cfg(all(test, wasm))]
+mod wasm_tests {
+	use super::*;
+	use reinhardt_core::reactive::{ReactiveScope, Signal};
+	use reinhardt_core::types::page::{EventType, PageElement};
+	use std::cell::Cell;
+	use std::rc::Rc;
+	use wasm_bindgen_test::*;
+
+	wasm_bindgen_test_configure!(run_in_browser);
+
+	#[wasm_bindgen_test(async)]
+	async fn async_handler_reenters_its_owner_scope_after_an_await() {
+		let scope = ReactiveScope::new();
+		let callback_ran = Rc::new(Cell::new(false));
+		let handler = scope.enter(|| {
+			let callback_ran = Rc::clone(&callback_ran);
+			PageElement::new("button")
+				.on(
+					EventType::Click,
+					async_handler(move |_| {
+						let callback_ran = Rc::clone(&callback_ran);
+						async move {
+							crate::platform::defer_yield().await;
+							let signal = Signal::new(1_i32);
+							assert_eq!(signal.get(), 1);
+							callback_ran.set(true);
+						}
+					}),
+				)
+				.into_event_handlers()
+				.pop()
+				.expect("button should retain its click handler")
+				.1
+		});
+
+		handler(web_sys::Event::new("click").expect("click event should construct"));
+		crate::platform::defer_yield().await;
+		crate::platform::defer_yield().await;
+
+		assert!(callback_ran.get());
 	}
 }
 

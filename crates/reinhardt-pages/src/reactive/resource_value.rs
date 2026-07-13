@@ -117,7 +117,17 @@ pub struct LatestResourceValue<T: Clone + 'static, E: Clone + 'static> {
 	resource: Resource<T, E>,
 	actions: Vec<Action<T, E>>,
 	refetch_on_success: bool,
-	_refetch_effect: Option<Effect>,
+	_refetch_effect: Option<Rc<RefetchEffect>>,
+}
+
+struct RefetchEffect {
+	effect: Effect,
+}
+
+impl Drop for RefetchEffect {
+	fn drop(&mut self) {
+		self.effect.dispose();
+	}
 }
 
 impl<T: Clone + 'static, E: Clone + 'static> Clone for LatestResourceValue<T, E> {
@@ -126,7 +136,7 @@ impl<T: Clone + 'static, E: Clone + 'static> Clone for LatestResourceValue<T, E>
 			resource: self.resource,
 			actions: self.actions.clone(),
 			refetch_on_success: self.refetch_on_success,
-			_refetch_effect: self._refetch_effect,
+			_refetch_effect: self._refetch_effect.clone(),
 		}
 	}
 }
@@ -261,7 +271,10 @@ impl<T: Clone + 'static, E: Clone + 'static> Resource<T, E> {
 	}
 }
 
-fn build_refetch_effect<T, E>(resource: &Resource<T, E>, actions: &[Action<T, E>]) -> Option<Effect>
+fn build_refetch_effect<T, E>(
+	resource: &Resource<T, E>,
+	actions: &[Action<T, E>],
+) -> Option<Rc<RefetchEffect>>
 where
 	T: Clone + 'static,
 	E: Clone + 'static,
@@ -278,27 +291,29 @@ where
 	let actions = actions.to_vec();
 	let resource = *resource;
 
-	Some(Effect::new_with_deps(
-		move || {
-			let current_success = action_successes(&actions);
-			let should_refetch = {
-				let mut previous_success = previous_success.borrow_mut();
-				let should_refetch = current_success
-					.iter()
-					.zip(previous_success.iter())
-					.any(|(current, previous)| *current && !*previous);
-				*previous_success = current_success;
-				should_refetch
-			};
+	Some(Rc::new(RefetchEffect {
+		effect: Effect::new_with_deps(
+			move || {
+				let current_success = action_successes(&actions);
+				let should_refetch = {
+					let mut previous_success = previous_success.borrow_mut();
+					let should_refetch = current_success
+						.iter()
+						.zip(previous_success.iter())
+						.any(|(current, previous)| *current && !*previous);
+					*previous_success = current_success;
+					should_refetch
+				};
 
-			if should_refetch {
-				resource.refetch();
-			}
+				if should_refetch {
+					resource.refetch();
+				}
 
-			None::<fn()>
-		},
-		deps,
-	))
+				None::<fn()>
+			},
+			deps,
+		),
+	}))
 }
 
 fn action_successes<T, E>(actions: &[Action<T, E>]) -> Vec<bool>
@@ -319,6 +334,7 @@ mod tests {
 	use super::*;
 	use crate::reactive::hooks::use_action;
 	use crate::reactive::resource::use_resource;
+	use crate::reactive::with_runtime;
 
 	#[test]
 	#[serial(reactive_runtime)]
@@ -412,6 +428,75 @@ mod tests {
 
 			assert_eq!(resource.get(), ResourceState::Loading);
 			assert_eq!(latest.get(), ResourceState::Success("mutated".to_string()));
+		});
+	}
+
+	#[test]
+	#[serial(reactive_runtime)]
+	fn dropping_latest_resource_value_disposes_its_refetch_effect() {
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let resource =
+				use_resource(|| async { Ok::<String, String>("loaded".to_string()) }, ());
+			let action = use_action(|_: ()| async { Ok::<String, String>("saved".to_string()) });
+			let latest = use_latest_resource_value(resource)
+				.with_action(&action)
+				.refetch_on_success()
+				.build();
+			let effect_id = latest
+				._refetch_effect
+				.as_ref()
+				.expect("refetch-on-success should retain an effect")
+				.effect
+				.id();
+
+			drop(latest);
+
+			with_runtime(|runtime| {
+				assert!(
+					!runtime.has_node(effect_id),
+					"dropping the latest-value handle must dispose its refetch effect"
+				);
+			});
+		});
+	}
+
+	#[test]
+	#[serial(reactive_runtime)]
+	fn rebuilding_latest_resource_value_disposes_replaced_refetch_effect() {
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let resource =
+				use_resource(|| async { Ok::<String, String>("loaded".to_string()) }, ());
+			let action = use_action(|_: ()| async { Ok::<String, String>("saved".to_string()) });
+			let next_action =
+				use_action(|_: ()| async { Ok::<String, String>("next".to_string()) });
+			let latest = use_latest_resource_value(resource)
+				.with_action(&action)
+				.refetch_on_success()
+				.build();
+			let replaced_effect_id = latest
+				._refetch_effect
+				.as_ref()
+				.expect("refetch-on-success should retain an effect")
+				.effect
+				.id();
+
+			let latest = latest.latest_after(&next_action);
+
+			with_runtime(|runtime| {
+				assert!(
+					!runtime.has_node(replaced_effect_id),
+					"rebuilding the latest-value handle must dispose its replaced refetch effect"
+				);
+			});
+			assert_ne!(
+				latest
+					._refetch_effect
+					.as_ref()
+					.expect("rebuilt latest value should retain an effect")
+					.effect
+					.id(),
+				replaced_effect_id
+			);
 		});
 	}
 }
