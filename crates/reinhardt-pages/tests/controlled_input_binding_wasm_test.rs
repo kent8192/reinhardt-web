@@ -8,7 +8,7 @@ use reinhardt_pages::component::{
 	PageExt,
 };
 use reinhardt_pages::dom::Element;
-use reinhardt_pages::reactive::Signal;
+use reinhardt_pages::reactive::{Signal, with_runtime};
 use reinhardt_pages::{PageElement, page};
 use wasm_bindgen::JsCast;
 use wasm_bindgen_test::*;
@@ -425,10 +425,20 @@ fn hydrated_reactive_if_adopts_before_subscribing_and_transfers_guards() {
 				.map(|element| &**element),
 		)
 	);
+	with_runtime(|runtime| runtime.flush_updates());
+	let converged: web_sys::HtmlInputElement = root
+		.as_web_sys()
+		.first_element_child()
+		.expect("converged false branch")
+		.unchecked_into();
+	assert_eq!(converged.id(), "replacement");
+	assert!(!raw_input.is_same_node(Some(&converged)));
+	primary.set_value("stale after convergence");
 	primary
 		.dispatch_event(&web_sys::InputEvent::new("input").expect("event"))
 		.expect("dispatch");
-	assert_eq!(&*observed.borrow(), "restored");
+	assert_eq!(value.get(), "restored");
+	assert_eq!(&*observed.borrow(), "");
 
 	alternate.set(true);
 	let switched: web_sys::HtmlInputElement = root
@@ -436,16 +446,16 @@ fn hydrated_reactive_if_adopts_before_subscribing_and_transfers_guards() {
 		.first_element_child()
 		.expect("switched branch")
 		.unchecked_into();
-	assert!(!raw_input.is_same_node(Some(&switched)));
-	primary.set_value("stale");
-	primary
+	assert_eq!(switched.id(), "primary");
+	converged.set_value("stale");
+	converged
 		.dispatch_event(&web_sys::InputEvent::new("input").expect("event"))
 		.expect("dispatch");
 	assert_eq!(value.get(), "restored");
-	assert_eq!(&*observed.borrow(), "restored");
+	assert_eq!(&*observed.borrow(), "");
 
 	value.set("fresh".to_owned());
-	assert_eq!(primary.value(), "stale");
+	assert_eq!(primary.value(), "stale after convergence");
 	assert_eq!(switched.value(), "fresh");
 	switched.set_value("new branch");
 	switched

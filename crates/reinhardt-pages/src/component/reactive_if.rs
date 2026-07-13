@@ -8,7 +8,7 @@ use crate::component::into_page::PageExt;
 #[cfg(wasm)]
 use crate::reactive::effect::Effect;
 #[cfg(wasm)]
-use crate::reactive::runtime::EffectTiming;
+use crate::reactive::runtime::{EffectTiming, with_runtime};
 #[cfg(wasm)]
 use reinhardt_core::types::page::{BOOLEAN_ATTRS, Page, is_boolean_attr_truthy};
 #[cfg(wasm)]
@@ -246,6 +246,7 @@ impl ReactiveIfNode {
 		parent: web_sys::Node,
 		next_sibling: Option<web_sys::Node>,
 		existing_nodes: Vec<web_sys::Node>,
+		hydrated_condition: bool,
 		condition: std::sync::Arc<dyn Fn() -> bool + 'static>,
 		then_view: std::sync::Arc<dyn Fn() -> Page + 'static>,
 		else_view: std::sync::Arc<dyn Fn() -> Page + 'static>,
@@ -262,7 +263,8 @@ impl ReactiveIfNode {
 		let _ = parent.insert_before(&marker, next_sibling.as_ref());
 
 		let current_nodes: Rc<RefCell<Vec<web_sys::Node>>> = Rc::new(RefCell::new(existing_nodes));
-		let last_condition: Rc<RefCell<Option<bool>>> = Rc::new(RefCell::new(None));
+		let last_condition: Rc<RefCell<Option<bool>>> =
+			Rc::new(RefCell::new(Some(hydrated_condition)));
 		let current_nodes_clone = current_nodes.clone();
 		let last_condition_clone = last_condition.clone();
 		let start_marker_clone = Some(start_marker.clone());
@@ -271,6 +273,8 @@ impl ReactiveIfNode {
 		let branch_reactive_node_store = reactive_nodes.clone();
 		let first_run = Rc::new(Cell::new(true));
 		let first_run_clone = first_run.clone();
+		let hydration_mismatch = Rc::new(Cell::new(false));
+		let hydration_mismatch_clone = hydration_mismatch.clone();
 		#[cfg(feature = "i18n")]
 		let i18n_context = crate::i18n::current_i18n_callback_context();
 
@@ -281,7 +285,7 @@ impl ReactiveIfNode {
 						let new_condition = condition();
 
 						if first_run_clone.replace(false) {
-							*last_condition_clone.borrow_mut() = Some(new_condition);
+							hydration_mismatch_clone.set(new_condition != hydrated_condition);
 							return;
 						}
 
@@ -328,6 +332,9 @@ impl ReactiveIfNode {
 			},
 			EffectTiming::Layout,
 		);
+		if hydration_mismatch.get() {
+			with_runtime(|runtime| runtime.schedule_update(effect.id()));
+		}
 
 		Some(Self {
 			marker,
@@ -349,6 +356,15 @@ impl ReactiveIfNode {
 			&self.marker,
 			&self.current_nodes,
 		);
+	}
+}
+
+#[cfg(wasm)]
+impl Drop for ReactiveIfNode {
+	fn drop(&mut self) {
+		clear_reactive_node_store(&self.reactive_nodes);
+		remove_marker_from_dom(self.start_marker.as_ref());
+		remove_marker_from_dom(Some(&self.marker));
 	}
 }
 
@@ -570,6 +586,24 @@ impl ReactiveNode {
 			&self.marker,
 			&self.current_nodes,
 		);
+	}
+}
+
+#[cfg(wasm)]
+impl Drop for ReactiveNode {
+	fn drop(&mut self) {
+		clear_reactive_node_store(&self.reactive_nodes);
+		remove_marker_from_dom(self.start_marker.as_ref());
+		remove_marker_from_dom(Some(&self.marker));
+	}
+}
+
+#[cfg(wasm)]
+fn remove_marker_from_dom(marker: Option<&web_sys::Comment>) {
+	let Some(marker) = marker else { return };
+	let marker_node: web_sys::Node = marker.clone().into();
+	if let Some(parent) = marker_node.parent_node() {
+		let _ = parent.remove_child(&marker_node);
 	}
 }
 
