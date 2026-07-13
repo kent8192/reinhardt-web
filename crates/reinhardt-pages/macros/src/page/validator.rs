@@ -48,6 +48,11 @@ use reinhardt_manouche::core::{
 
 use super::scope_utils::collect_pat_idents;
 
+#[derive(Clone, Copy, Default)]
+struct ValidationContext {
+	inside_bound_select: bool,
+}
+
 /// Check if a URL is safe (no dangerous schemes like javascript:).
 ///
 /// Inlined from `reinhardt_core::security::xss::is_safe_url` to avoid
@@ -85,7 +90,7 @@ pub(super) fn validate(ast: &PageMacro) -> Result<TypedPageMacro> {
 	let form = match &ast.form {
 		PageMacroForm::StrictClosure { params, body } => {
 			enforce_strict_captures(ast.head.as_ref(), body, params)?;
-			let typed_body = transform_body(body, &[])?;
+			let typed_body = transform_body(body, &[], ValidationContext::default())?;
 			reinhardt_manouche::validator::validate_page_accessibility(&typed_body)?;
 			TypedPageMacroForm::StrictClosure {
 				params: params.clone(),
@@ -93,7 +98,7 @@ pub(super) fn validate(ast: &PageMacro) -> Result<TypedPageMacro> {
 			}
 		}
 		PageMacroForm::ImplicitBody { body } => {
-			let typed_body = transform_body(body, &[])?;
+			let typed_body = transform_body(body, &[], ValidationContext::default())?;
 			reinhardt_manouche::validator::validate_page_accessibility(&typed_body)?;
 			TypedPageMacroForm::ImplicitBody {
 				captures: collect_free_idents(ast.head.as_ref(), body, &[]),
@@ -466,8 +471,12 @@ fn missing_param_error(ident: &syn::Ident) -> syn::Error {
 ///
 /// * `body` - The untyped body to transform
 /// * `parent_tags` - Stack of parent element tag names (for nesting validation)
-fn transform_body(body: &PageBody, parent_tags: &[String]) -> Result<TypedPageBody> {
-	let nodes = transform_nodes(&body.nodes, parent_tags)?;
+fn transform_body(
+	body: &PageBody,
+	parent_tags: &[String],
+	context: ValidationContext,
+) -> Result<TypedPageBody> {
+	let nodes = transform_nodes(&body.nodes, parent_tags, context)?;
 	Ok(TypedPageBody {
 		nodes,
 		span: body.span,
@@ -480,11 +489,15 @@ fn transform_body(body: &PageBody, parent_tags: &[String]) -> Result<TypedPageBo
 ///
 /// * `nodes` - The nodes to transform
 /// * `parent_tags` - Stack of parent element tag names (for nesting validation)
-fn transform_nodes(nodes: &[PageNode], parent_tags: &[String]) -> Result<Vec<TypedPageNode>> {
+fn transform_nodes(
+	nodes: &[PageNode],
+	parent_tags: &[String],
+	context: ValidationContext,
+) -> Result<Vec<TypedPageNode>> {
 	let mut typed_nodes = Vec::new();
 
 	for node in nodes {
-		typed_nodes.push(transform_node(node, parent_tags)?);
+		typed_nodes.push(transform_node(node, parent_tags, context)?);
 	}
 
 	Ok(typed_nodes)
@@ -493,11 +506,16 @@ fn transform_nodes(nodes: &[PageNode], parent_tags: &[String]) -> Result<Vec<Typ
 /// Transforms a single PageNode into a TypedPageNode.
 ///
 /// Dispatches to the appropriate transformation function based on node type.
-fn transform_node(node: &PageNode, parent_tags: &[String]) -> Result<TypedPageNode> {
+fn transform_node(
+	node: &PageNode,
+	parent_tags: &[String],
+	context: ValidationContext,
+) -> Result<TypedPageNode> {
 	match node {
 		PageNode::Element(elem) => Ok(TypedPageNode::Element(transform_element(
 			elem,
 			parent_tags,
+			context,
 		)?)),
 		PageNode::Text(text) => Ok(TypedPageNode::Text(text.clone())),
 		PageNode::Expression(expr) => {
@@ -525,14 +543,20 @@ fn transform_node(node: &PageNode, parent_tags: &[String]) -> Result<TypedPageNo
 			}
 			Ok(TypedPageNode::Expression(expr.clone()))
 		}
-		PageNode::If(if_node) => Ok(TypedPageNode::If(transform_if(if_node, parent_tags)?)),
+		PageNode::If(if_node) => Ok(TypedPageNode::If(transform_if(
+			if_node,
+			parent_tags,
+			context,
+		)?)),
 		PageNode::For(for_node) => Ok(TypedPageNode::For(Box::new(transform_for(
 			for_node,
 			parent_tags,
+			context,
 		)?))),
 		PageNode::Component(comp) => Ok(TypedPageNode::Component(transform_component(
 			comp,
 			parent_tags,
+			context,
 		)?)),
 		PageNode::Watch(watch_node) => Err(syn::Error::new(
 			watch_node.span,
@@ -550,13 +574,14 @@ fn transform_node(node: &PageNode, parent_tags: &[String]) -> Result<TypedPageNo
 fn transform_if(
 	if_node: &reinhardt_manouche::core::PageIf,
 	parent_tags: &[String],
+	context: ValidationContext,
 ) -> Result<TypedPageIf> {
 	// Transform then branch
-	let then_branch = transform_nodes(&if_node.then_branch, parent_tags)?;
+	let then_branch = transform_nodes(&if_node.then_branch, parent_tags, context)?;
 
 	// Transform else branch if present
 	let else_branch = if let Some(else_br) = &if_node.else_branch {
-		Some(transform_else(else_br, parent_tags)?)
+		Some(transform_else(else_br, parent_tags, context)?)
 	} else {
 		None
 	};
@@ -570,15 +595,19 @@ fn transform_if(
 }
 
 /// Transforms a PageElse branch.
-fn transform_else(else_branch: &PageElse, parent_tags: &[String]) -> Result<TypedPageElse> {
+fn transform_else(
+	else_branch: &PageElse,
+	parent_tags: &[String],
+	context: ValidationContext,
+) -> Result<TypedPageElse> {
 	match else_branch {
 		PageElse::Block(nodes) => {
-			let typed_nodes = transform_nodes(nodes, parent_tags)?;
+			let typed_nodes = transform_nodes(nodes, parent_tags, context)?;
 			Ok(TypedPageElse::Block(typed_nodes))
 		}
 		PageElse::If(nested_if) => {
 			// Recursively transform nested if
-			let typed_if = transform_if(nested_if, parent_tags)?;
+			let typed_if = transform_if(nested_if, parent_tags, context)?;
 			Ok(TypedPageElse::If(Box::new(typed_if)))
 		}
 	}
@@ -588,8 +617,9 @@ fn transform_else(else_branch: &PageElse, parent_tags: &[String]) -> Result<Type
 fn transform_for(
 	for_node: &reinhardt_manouche::core::PageFor,
 	parent_tags: &[String],
+	context: ValidationContext,
 ) -> Result<TypedPageFor> {
-	let body = transform_nodes(&for_node.body, parent_tags)?;
+	let body = transform_nodes(&for_node.body, parent_tags, context)?;
 
 	Ok(TypedPageFor {
 		pat: for_node.pat.clone(),
@@ -606,8 +636,12 @@ fn transform_for(
 /// outright (Task 11 / spec §4.1 removal). Retained as a thin scaffold so
 /// the future PR3 codemod can re-use it if a deprecation window is added.
 #[allow(dead_code)] // Task 11: watch is rejected before this is reached.
-fn transform_watch(watch_node: &PageWatch, parent_tags: &[String]) -> Result<TypedPageWatch> {
-	let inner = transform_node(&watch_node.expr, parent_tags)?;
+fn transform_watch(
+	watch_node: &PageWatch,
+	parent_tags: &[String],
+	context: ValidationContext,
+) -> Result<TypedPageWatch> {
+	let inner = transform_node(&watch_node.expr, parent_tags, context)?;
 
 	Ok(TypedPageWatch {
 		expr: Box::new(inner),
@@ -618,7 +652,11 @@ fn transform_watch(watch_node: &PageWatch, parent_tags: &[String]) -> Result<Typ
 /// Transforms a PageComponent node.
 ///
 /// Recursively transforms the component's children (if any) and named slots.
-fn transform_component(comp: &PageComponent, parent_tags: &[String]) -> Result<TypedPageComponent> {
+fn transform_component(
+	comp: &PageComponent,
+	parent_tags: &[String],
+	context: ValidationContext,
+) -> Result<TypedPageComponent> {
 	// Validate component event handlers (same as element events)
 	for event in &comp.events {
 		validate_component_event_handler(event)?;
@@ -626,7 +664,7 @@ fn transform_component(comp: &PageComponent, parent_tags: &[String]) -> Result<T
 
 	// Transform children if present
 	let typed_children = if let Some(children) = &comp.children {
-		Some(transform_nodes(children, parent_tags)?)
+		Some(transform_nodes(children, parent_tags, context)?)
 	} else {
 		None
 	};
@@ -637,7 +675,7 @@ fn transform_component(comp: &PageComponent, parent_tags: &[String]) -> Result<T
 		.map(|slot| {
 			Ok(TypedNamedSlot {
 				name: slot.name.clone(),
-				children: transform_nodes(&slot.children, parent_tags)?,
+				children: transform_nodes(&slot.children, parent_tags, context)?,
 				span: slot.span,
 			})
 		})
@@ -662,7 +700,11 @@ fn transform_component(comp: &PageComponent, parent_tags: &[String]) -> Result<T
 /// - Element nesting rules
 /// - Required attributes
 /// - HTML specification compliance (Phase 2)
-fn transform_element(elem: &PageElement, parent_tags: &[String]) -> Result<TypedPageElement> {
+fn transform_element(
+	elem: &PageElement,
+	parent_tags: &[String],
+	context: ValidationContext,
+) -> Result<TypedPageElement> {
 	let tag = elem.tag.to_string();
 
 	// 1. Validate events (unchanged from untyped version)
@@ -686,10 +728,11 @@ fn transform_element(elem: &PageElement, parent_tags: &[String]) -> Result<Typed
 	// 4. Recursively transform children
 	let mut child_tags = parent_tags.to_vec();
 	child_tags.push(tag.clone());
-	if tag == "select" && control_binding.is_some() {
-		child_tags.push("__reinhardt_bound_select".to_owned());
-	}
-	let typed_children = transform_nodes(&elem.children, &child_tags)?;
+	let child_context = ValidationContext {
+		inside_bound_select: context.inside_bound_select
+			|| (tag == "select" && control_binding.is_some()),
+	};
+	let typed_children = transform_nodes(&elem.children, &child_tags, child_context)?;
 	validate_control_binding_structure(
 		&tag,
 		control_binding.as_deref(),
@@ -709,11 +752,7 @@ fn transform_element(elem: &PageElement, parent_tags: &[String]) -> Result<Typed
 	};
 
 	// 6. Validate against HTML specification (Phase 2)
-	if tag == "option"
-		&& parent_tags
-			.iter()
-			.any(|parent| parent == "__reinhardt_bound_select")
-	{
+	if tag == "option" && context.inside_bound_select {
 		super::html_spec::validate_bound_select_element(&typed_element)?;
 	} else {
 		super::html_spec::validate_against_spec(&typed_element)?;
@@ -1750,6 +1789,19 @@ mod tests {
 			(
 				quote::quote!({
 					select {
+						a11y: off,
+						bind: value,
+						option {
+							value: "explicit",
+							span { strong { tabindex: dynamic_tabindex, "Label" } }
+						}
+					}
+				}),
+				"Element <option> in a bound select cannot contain a descendant with a `tabindex` attribute",
+			),
+			(
+				quote::quote!({
+					select {
 						bind: value,
 						optgroup { option { value: "one", selected: true, "One" } }
 					}
@@ -1865,6 +1917,43 @@ mod tests {
 
 		// Assert
 		assert_eq!(error.to_string(), expected);
+	}
+
+	#[test]
+	fn literal_bound_select_marker_tag_does_not_enable_option_phrasing() {
+		// Arrange
+		let ast: PageMacro = syn::parse2(quote::quote!({
+			__reinhardt_bound_select { option { span { "Label" } } }
+		}))
+		.unwrap();
+
+		// Act
+		let error = validate(&ast).unwrap_err();
+
+		// Assert
+		assert_eq!(
+			error.to_string(),
+			"Element <option> can only contain text, not child elements"
+		);
+	}
+
+	#[rstest]
+	#[case(quote::quote!({ select { a11y: off, bind: selected, option { span { tabindex: 0, "Zero" } } } }))]
+	#[case(quote::quote!({ select { a11y: off, bind: selected, option { span { tabindex: -1, "Negative" } } } }))]
+	#[case(quote::quote!({ select { a11y: off, bind: selected, option { span { tabindex: dynamic_tabindex, "Dynamic" } } } }))]
+	#[case(quote::quote!({ select { a11y: off, bind: selected, option { value: "explicit", span { strong { tabindex: 0, "Nested" } } } } }))]
+	fn bound_option_rejects_descendant_tabindex(#[case] input: proc_macro2::TokenStream) {
+		// Arrange
+		let ast: PageMacro = syn::parse2(input).unwrap();
+
+		// Act
+		let error = validate(&ast).unwrap_err();
+
+		// Assert
+		assert_eq!(
+			error.to_string(),
+			"Element <option> in a bound select cannot contain a descendant with a `tabindex` attribute"
+		);
 	}
 
 	#[rstest]

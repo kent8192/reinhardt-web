@@ -81,9 +81,7 @@ fn page_option_text(page: &Page) -> String {
 }
 
 fn is_script(tag: &str) -> bool {
-	tag.rsplit_once(':')
-		.map_or(tag, |(_, local_name)| local_name)
-		.eq_ignore_ascii_case("script")
+	tag == "script" || tag == "svg:script"
 }
 
 fn normalize_option_text(text: &str) -> String {
@@ -134,17 +132,19 @@ mod tests {
 	}
 
 	#[test]
-	fn inferred_value_skips_namespaced_script_and_normalizes_ascii_whitespace() {
+	fn inferred_value_only_skips_html_and_svg_scripts_and_normalizes_ascii_whitespace() {
 		// Arrange
 		let option = PageElement::new("option")
 			.child(" \tAlpha\n")
+			.child(PageElement::new("script").child("html ignored").into_page())
 			.child(PageElement::new("svg:script").child("ignored").into_page())
+			.child(PageElement::new("math:script").child(" Gamma ").into_page())
 			.child("\u{a0} Beta\x0c ");
 
 		// Act
 		let value = option_value(&option);
 
 		// Assert
-		assert_eq!(value, "Alpha \u{a0} Beta");
+		assert_eq!(value, "Alpha Gamma \u{a0} Beta");
 	}
 }

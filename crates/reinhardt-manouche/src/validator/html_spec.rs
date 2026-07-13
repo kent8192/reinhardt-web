@@ -13,7 +13,7 @@
 
 use syn::Result;
 
-use crate::core::{TypedPageElement, TypedPageNode};
+use crate::core::{TypedPageAttr, TypedPageElement, TypedPageElse, TypedPageNode};
 
 /// HTML element specification.
 #[derive(Debug, Clone)]
@@ -1694,6 +1694,13 @@ fn validate_content_model(
 		}
 		Some(ContentModel::TextOnly) => {
 			if spec.tag == "option" && allow_option_phrasing {
+				if let Some(tabindex) = element.children.iter().find_map(option_descendant_tabindex)
+				{
+					return Err(syn::Error::new(
+						tabindex.span,
+						"Element <option> in a bound select cannot contain a descendant with a `tabindex` attribute",
+					));
+				}
 				if element.children.iter().all(option_child_is_allowed) {
 					return Ok(());
 				}
@@ -1739,6 +1746,55 @@ fn validate_content_model(
 	}
 
 	Ok(())
+}
+
+fn option_descendant_tabindex(node: &TypedPageNode) -> Option<&TypedPageAttr> {
+	match node {
+		TypedPageNode::Element(element) => element
+			.attrs
+			.iter()
+			.find(|attr| attr.html_name() == "tabindex")
+			.or_else(|| element.children.iter().find_map(option_descendant_tabindex)),
+		TypedPageNode::If(if_node) => if_node
+			.then_branch
+			.iter()
+			.find_map(option_descendant_tabindex)
+			.or_else(|| {
+				if_node
+					.else_branch
+					.as_ref()
+					.and_then(option_else_descendant_tabindex)
+			}),
+		TypedPageNode::For(for_node) => for_node.body.iter().find_map(option_descendant_tabindex),
+		TypedPageNode::Component(component) => component
+			.children
+			.as_ref()
+			.and_then(|children| children.iter().find_map(option_descendant_tabindex))
+			.or_else(|| {
+				component
+					.named_slots
+					.iter()
+					.find_map(|slot| slot.children.iter().find_map(option_descendant_tabindex))
+			}),
+		TypedPageNode::Watch(watch) => option_descendant_tabindex(&watch.expr),
+		TypedPageNode::Text(_) | TypedPageNode::Expression(_) => None,
+	}
+}
+
+fn option_else_descendant_tabindex(else_branch: &TypedPageElse) -> Option<&TypedPageAttr> {
+	match else_branch {
+		TypedPageElse::Block(nodes) => nodes.iter().find_map(option_descendant_tabindex),
+		TypedPageElse::If(if_node) => if_node
+			.then_branch
+			.iter()
+			.find_map(option_descendant_tabindex)
+			.or_else(|| {
+				if_node
+					.else_branch
+					.as_ref()
+					.and_then(option_else_descendant_tabindex)
+			}),
+	}
 }
 
 fn option_child_is_allowed(child: &TypedPageNode) -> bool {
