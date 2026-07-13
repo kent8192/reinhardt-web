@@ -1858,11 +1858,6 @@ fn generate_relation_traversal_accessors(
 		.map(|field| {
 			let field_name = &field.name;
 			let field_name_str = field_name.to_string();
-			let field_column = field
-				.config
-				.db_column
-				.as_deref()
-				.unwrap_or(&field_name_str);
 			let field_type = &field.ty;
 			let method_name = syn::Ident::new(&format!("field_{}", field_name), field_name.span());
 			let doc_comment = format!("Reference the `{field_name_str}` field through this relation path.");
@@ -1870,7 +1865,7 @@ fn generate_relation_traversal_accessors(
 			quote! {
 				#[doc = #doc_comment]
 				pub fn #method_name(self) -> #orm_crate::relations::RelatedFieldRef<Root, #struct_name, #field_type> {
-					self.field(#orm_crate::expressions::FieldRef::new(#field_column))
+					self.field(#orm_crate::expressions::FieldRef::new(#field_name_str))
 				}
 			}
 		})
@@ -6516,6 +6511,32 @@ mod tests {
 
 		assert!(output_str.contains("field_info . name == \"slug\""));
 		assert!(output_str.contains("source_column"));
+	}
+
+	#[test]
+	fn test_relation_traversal_field_accessors_use_rust_field_names() {
+		let input = quote! {
+			#[model(app_label = "test", table_name = "projects")]
+			pub struct Project {
+				#[field(primary_key = true)]
+				pub id: i64,
+				#[field(max_length = 120, db_column = "email")]
+				pub slug: String,
+				#[field(max_length = 120, db_column = "email_addr")]
+				pub email: String,
+			}
+		};
+
+		let output = model_derive_impl(syn::parse2(input).unwrap()).unwrap();
+		let output_str = output.to_string();
+		let slug_accessor = output_str
+			.split("pub fn field_slug")
+			.nth(1)
+			.and_then(|output| output.split("pub fn field_email").next())
+			.expect("generated relation traversal slug accessor");
+
+		assert!(slug_accessor.contains("FieldRef :: new (\"slug\")"));
+		assert!(!slug_accessor.contains("FieldRef :: new (\"email\")"));
 	}
 
 	#[test]

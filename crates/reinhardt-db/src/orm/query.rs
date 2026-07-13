@@ -1050,8 +1050,8 @@ where
 	fn apply_prefetch_related(self, queryset: &mut QuerySet<T>) {
 		let typed = TypedPrefetchRelation::from_path(&self);
 		assert!(
-			typed.is_direct_multi_valued_relation(),
-			"typed prefetch_related supports only direct multi-valued relation paths; use select_related for single-valued relations"
+			typed.is_direct_multi_valued_relation() && typed.uses_root_primary_key::<T>(),
+			"typed prefetch_related supports only direct multi-valued relation paths through the root primary key; use select_related for single-valued relations"
 		);
 		if !queryset.prefetch_related_fields.contains(&typed.field) {
 			queryset.prefetch_related_fields.push(typed.field.clone());
@@ -1131,6 +1131,15 @@ impl TypedPrefetchRelation {
 			}
 			_ => false,
 		}
+	}
+
+	fn uses_root_primary_key<T>(&self) -> bool
+	where
+		T: super::Model,
+	{
+		self.steps
+			.first()
+			.is_some_and(|step| step.source_column.as_ref() == T::primary_key_column())
 	}
 }
 
@@ -3454,6 +3463,11 @@ where
 	}
 
 	fn validate_relation_path(&self, path: &str) -> reinhardt_core::exception::Result<()> {
+		let relations = T::relationship_metadata();
+		if relations.is_empty() {
+			return Ok(());
+		}
+
 		if path.contains("__") {
 			return Err(reinhardt_core::exception::Error::Validation(format!(
 				"Nested string relation path `{}` is not supported for {}; use typed relation paths instead",
@@ -3463,11 +3477,6 @@ where
 		}
 
 		let first = path.split("__").next().unwrap_or(path);
-		let relations = T::relationship_metadata();
-		if relations.is_empty() {
-			return Ok(());
-		}
-
 		if relations.iter().any(|relation| relation.name == first) {
 			Ok(())
 		} else {
@@ -8256,6 +8265,25 @@ mod tests {
 		}
 	}
 
+	struct TestUserProjectsByUsername;
+
+	impl crate::orm::relations::RelationDescriptor for TestUserProjectsByUsername {
+		type Source = TestUser;
+		type Target = TestProject;
+
+		fn steps() -> Vec<crate::orm::relations::RelationStep> {
+			vec![crate::orm::relations::RelationStep {
+				name: "projects".into(),
+				source_table: "test_users".into(),
+				target_table: "test_projects".into(),
+				source_column: "username".into(),
+				target_column: "test_user_username".into(),
+				default_join_kind: crate::orm::relations::RelationJoinKind::Left,
+				multiplicity: crate::orm::relations::RelationMultiplicity::Multiple,
+			}]
+		}
+	}
+
 	struct TestProjectsChildren;
 
 	impl crate::orm::relations::RelationDescriptor for TestProjectsChildren {
@@ -9516,6 +9544,18 @@ mod tests {
 	}
 
 	#[test]
+	#[should_panic(
+		expected = "typed prefetch_related supports only direct multi-valued relation paths through the root primary key"
+	)]
+	fn test_typed_prefetch_related_rejects_non_primary_reverse_source_column() {
+		let path = crate::orm::relations::RelationPath::<TestUser, TestProject>::from_descriptor::<
+			TestUserProjectsByUsername,
+		>();
+
+		let _ = QuerySet::<TestUser>::new().prefetch_related(path);
+	}
+
+	#[test]
 	fn test_typed_prefetch_keeps_relation_name_when_sql_alias_collides_with_root_table() {
 		use crate::orm::relations::RelationPathLike;
 
@@ -9574,6 +9614,12 @@ mod tests {
 
 	#[test]
 	fn test_legacy_relation_loaders_allow_models_without_relationship_metadata() {
+		assert!(
+			QuerySet::<TestCorpusFile>::new()
+				.validate_relation_path_for_test("owner__profile")
+				.is_ok()
+		);
+
 		let queryset = QuerySet::<TestCorpusFile>::new()
 			.select_related(&["owner"])
 			.prefetch_related(&["documents"]);
