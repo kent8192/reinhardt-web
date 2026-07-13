@@ -1091,10 +1091,6 @@ impl TypedSelectRelation {
 	fn aliases(&self, graph: &RelationJoinGraph) -> SmallVec<[String; 4]> {
 		graph.aliases_for_steps(&self.steps).unwrap_or_default()
 	}
-
-	fn root_relation_name(&self) -> Option<&str> {
-		self.steps.first().map(|step| step.name.as_ref())
-	}
 }
 
 impl TypedPrefetchRelation {
@@ -3369,6 +3365,34 @@ where
 		}
 	}
 
+	fn add_select_related_root_columns(&self, stmt: &mut SelectStatement) {
+		if let Some(ref fields) = self.selected_fields {
+			for field in fields {
+				if field.contains('(') && field.contains(')') {
+					stmt.expr(Expr::cust(field.clone()));
+				} else if field.contains('.') {
+					stmt.column(parse_column_reference(field));
+				} else {
+					stmt.column(ColumnRef::table_column(
+						Alias::new(self.root_alias()),
+						Alias::new(field),
+					));
+				}
+			}
+		} else if !self.deferred_fields.is_empty() {
+			for field in T::field_metadata() {
+				if !self.deferred_fields.contains(&field.name) {
+					stmt.column(ColumnRef::table_column(
+						Alias::new(self.root_alias()),
+						Alias::new(&field.name),
+					));
+				}
+			}
+		} else {
+			stmt.column(ColumnRef::table_asterisk(Alias::new(self.root_alias())));
+		}
+	}
+
 	fn root_column_reference(&self, field: &str) -> ColumnRef {
 		if !self.relation_joins.is_empty() && !field.contains('.') {
 			ColumnRef::table_column(Alias::new(self.root_alias()), Alias::new(field))
@@ -4628,6 +4652,8 @@ where
 	/// Generate SELECT query with JOIN clauses for select_related fields
 	///
 	/// Returns reinhardt-query SelectStatement with LEFT JOIN for each related field to enable eager loading.
+	/// Explicit root projections configured by `values` or `only` are preserved while related
+	/// table columns remain eagerly selected.
 	///
 	/// # Examples
 	///
@@ -4663,6 +4689,17 @@ where
 	/// //   WHERE posts.published = $1
 	/// ```
 	pub fn select_related_query(&self) -> SelectStatement {
+		self.select_related_query_with_condition(self.build_where_condition_or_false())
+	}
+
+	fn select_related_query_result(&self) -> reinhardt_core::exception::Result<SelectStatement> {
+		Ok(self.select_related_query_with_condition(self.build_where_condition()?))
+	}
+
+	fn select_related_query_with_condition(
+		&self,
+		where_condition: Option<Condition>,
+	) -> SelectStatement {
 		let table_name = T::table_name();
 		let root_alias = self.from_alias.as_deref().unwrap_or(table_name);
 		let relation_joins = self.relation_join_graph_for_query();
@@ -4670,11 +4707,6 @@ where
 			.typed_select_related
 			.iter()
 			.map(|relation| relation.aliases(&relation_joins))
-			.collect();
-		let typed_root_relation_names: Vec<_> = self
-			.typed_select_related
-			.iter()
-			.filter_map(TypedSelectRelation::root_relation_name)
 			.collect();
 		let mut stmt = Query::select();
 
@@ -4690,14 +4722,25 @@ where
 			stmt.distinct();
 		}
 
-		// Add main table columns
-		stmt.column(ColumnRef::table_asterisk(Alias::new(root_alias)));
+		// Add main table columns while preserving explicit projections.
+		self.add_select_related_root_columns(&mut stmt);
 
 		// Add LEFT JOIN for each legacy related field that is not already covered
 		// by a typed join. The typed graph owns its aliases and join order.
-		let mut legacy_selected_aliases = Vec::new();
+		let mut selected_relation_aliases = Vec::new();
 		for related_field in &self.select_related_fields {
-			if typed_root_relation_names.contains(&related_field.as_str()) {
+			if let Some(alias) = relation_joins
+				.joins()
+				.iter()
+				.find(|join| {
+					join.source_alias == root_alias && join.relation_name == *related_field
+				})
+				.map(|join| join.alias.clone())
+			{
+				if !selected_relation_aliases.contains(&alias) {
+					stmt.column(ColumnRef::table_asterisk(Alias::new(&alias)));
+					selected_relation_aliases.push(alias);
+				}
 				continue;
 			}
 
@@ -4716,7 +4759,7 @@ where
 
 			// Add related table columns to SELECT
 			stmt.column(ColumnRef::table_asterisk(related_alias));
-			legacy_selected_aliases.push(related_field.clone());
+			selected_relation_aliases.push(related_field.clone());
 		}
 
 		Self::apply_relation_join_graph(&mut stmt, &relation_joins);
@@ -4724,7 +4767,7 @@ where
 		let mut selected_typed_aliases = Vec::new();
 		for aliases in typed_relation_aliases {
 			for alias in aliases {
-				if !legacy_selected_aliases.contains(&alias)
+				if !selected_relation_aliases.contains(&alias)
 					&& !selected_typed_aliases.contains(&alias)
 				{
 					stmt.column(ColumnRef::table_asterisk(Alias::new(&alias)));
@@ -4769,7 +4812,7 @@ where
 		}
 
 		// Apply WHERE conditions
-		if let Some(cond) = self.build_where_condition_or_false() {
+		if let Some(cond) = where_condition {
 			stmt.cond_where(cond);
 		}
 
@@ -5326,7 +5369,7 @@ where
 			stmt.to_owned()
 		} else {
 			// SELECT with JOINs for select_related
-			self.select_related_query()
+			self.select_related_query_result()?
 		};
 
 		// Convert statement to SQL with inline values (no placeholders)
@@ -5579,7 +5622,7 @@ where
 
 			stmt.to_owned()
 		} else {
-			self.select_related_query()
+			self.select_related_query_result()?
 		};
 
 		let sql = stmt.to_string(PostgresQueryBuilder);
@@ -9068,6 +9111,50 @@ mod tests {
 	}
 
 	#[test]
+	fn test_legacy_select_related_reuses_typed_filter_join() {
+		let filter =
+			crate::orm::relations::RelationPath::<TestUser, TestCorpusFile>::from_descriptor::<
+				TestUserCorpusFile,
+			>()
+			.field(TestCorpusFile::field_normalized_path())
+			.eq("/docs/index.md");
+
+		let sql = QuerySet::<TestUser>::new()
+			.select_related(&["corpus_file"])
+			.filter(filter)
+			.to_sql();
+
+		assert!(sql.starts_with(r#"SELECT "test_users".*, "corpus_file".* FROM "test_users""#));
+		assert_eq!(
+			sql.matches(r#"JOIN "test_corpus_files" AS "corpus_file""#)
+				.count(),
+			1
+		);
+	}
+
+	#[test]
+	fn test_typed_select_related_preserves_explicit_root_projection() {
+		let path = crate::orm::relations::RelationPath::<TestUser, TestCorpusFile>::from_descriptor::<
+			TestUserCorpusFile,
+		>();
+
+		let values_sql = QuerySet::<TestUser>::new()
+			.values(&["id"])
+			.select_related(path.clone())
+			.to_sql();
+		let only_sql = QuerySet::<TestUser>::new()
+			.only(&["id"])
+			.select_related(path)
+			.to_sql();
+
+		assert_eq!(
+			values_sql,
+			r#"SELECT "test_users"."id", "corpus_file".* FROM "test_users" INNER JOIN "test_corpus_files" AS "corpus_file" ON "test_users"."corpus_file_id" = "corpus_file"."id""#
+		);
+		assert_eq!(only_sql, values_sql);
+	}
+
+	#[test]
 	fn test_typed_join_skips_legacy_loader_when_root_alias_rebases_it() {
 		let path = crate::orm::relations::RelationPath::<TestUser, TestCorpusFile>::from_descriptor::<
 			TestUserCorpusFile,
@@ -10326,6 +10413,31 @@ mod tests {
 			Err(reinhardt_core::exception::Error::Validation(_))
 		));
 		assert_eq!(sql, r#"SELECT * FROM "test_users" WHERE FALSE"#);
+	}
+
+	#[rstest]
+	fn test_select_related_query_result_propagates_over_deep_filter_error() {
+		let path = crate::orm::relations::RelationPath::<TestUser, TestCorpusFile>::from_descriptor::<
+			TestUserCorpusFile,
+		>();
+		let mut condition = FilterCondition::Single(TestUser::field_username().exact("alice"));
+		for _ in 0..=MAX_FILTER_CONDITION_DEPTH {
+			condition = FilterCondition::not(condition);
+		}
+		let queryset = QuerySet::<TestUser>::new()
+			.filter(condition)
+			.select_related(path);
+
+		assert!(matches!(
+			queryset.select_related_query_result(),
+			Err(reinhardt_core::exception::Error::Validation(_))
+		));
+		assert_eq!(
+			queryset
+				.select_related_query()
+				.to_string(PostgresQueryBuilder),
+			r#"SELECT "test_users".*, "corpus_file".* FROM "test_users" INNER JOIN "test_corpus_files" AS "corpus_file" ON "test_users"."corpus_file_id" = "corpus_file"."id" WHERE FALSE"#
+		);
 	}
 
 	#[rstest]
