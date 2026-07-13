@@ -256,15 +256,21 @@ impl RelationJoinGraph {
 	}
 
 	/// Return a copy of this graph with a different root alias.
-	pub fn with_root_alias(mut self, root_alias: impl Into<String>) -> Self {
-		let root_alias = root_alias.into();
-		if self.root_alias == root_alias {
-			return self;
-		}
+	pub fn with_root_alias(self, root_alias: impl Into<String>) -> Self {
+		self.with_root_alias_and_reserved_aliases(root_alias, std::iter::empty())
+	}
 
+	/// Return a copy of this graph with a different root alias and externally reserved aliases.
+	pub(crate) fn with_root_alias_and_reserved_aliases(
+		mut self,
+		root_alias: impl Into<String>,
+		reserved_aliases: impl IntoIterator<Item = String>,
+	) -> Self {
+		let root_alias = root_alias.into();
 		let previous_root_alias = std::mem::replace(&mut self.root_alias, root_alias);
 		let mut aliases = HashMap::from([(previous_root_alias, self.root_alias.clone())]);
-		let mut reserved_aliases = HashSet::from([self.root_alias.clone()]);
+		let mut reserved_aliases: HashSet<_> = reserved_aliases.into_iter().collect();
+		reserved_aliases.insert(self.root_alias.clone());
 		for join in &mut self.joins {
 			if let Some(source_alias) = aliases.get(&join.source_alias) {
 				join.source_alias.clone_from(source_alias);
