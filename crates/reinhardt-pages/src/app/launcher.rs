@@ -949,7 +949,7 @@ impl ClientLauncher {
 					path: &initial_path,
 					params: &params,
 				};
-				callback(&ctx);
+				scope.enter(|| callback(&ctx));
 			}
 		}
 
