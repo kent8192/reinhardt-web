@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.3.1...reinhardt-auth@v0.3.2) - 2026-07-13
+
+### Fixed
+
+- *(auth)* constrain generic OIDC discovery endpoints
+- *(auth)* reject generic OIDC endpoint redirects
+- *(auth)* redact jwt settings secrets
+
 ## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.2.0...reinhardt-auth@v0.3.0) - 2026-06-28
 
 Stable release of `reinhardt-auth` for the Reinhardt 0.3.0 line. This
