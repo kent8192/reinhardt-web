@@ -177,6 +177,36 @@ The syntax is intentionally Rust-first:
   reusable factories that are called later. Closure forms keep strict capture
   discipline, so values used in the body must be declared as parameters.
 
+### Event payloads
+
+React's `SyntheticEvent` is one broad wrapper. Reinhardt selects one Rust
+payload type for each standard intrinsic event. `@click` receives
+`ClickEvent`, `@input` receives `InputEvent`, and capability methods exist only
+where the catalog permits them. `target()` identifies the originating element;
+`current_target()` is an owned listener-element snapshot and remains usable in
+an async handler after an await.
+
+```rust,ignore
+use reinhardt_pages::event::{ClickEvent, InputEvent};
+use reinhardt_pages::prelude::*;
+
+page!({
+    button { @click: |event: ClickEvent| {
+        event.stop_propagation();
+    }, "Stop" }
+    input { @input: |event: InputEvent| {
+        if let Ok(value) = event.value() {
+            info_log!("{value}");
+        }
+    } }
+})
+```
+
+Use `@custom("widget-change")` for an arbitrary raw intrinsic event. Component
+event props are not DOM events: their argument type comes from the component's
+declared prop. Native component tests execute standard handlers with
+`EventFixture`, including bubbling, target state, and async settling.
+
 ## State and reactivity
 
 React state is component-local and re-rendered through the virtual DOM.
@@ -607,8 +637,8 @@ intentional:
 - Effect, memo, and callback dependencies are explicit tuples, not arrays and
   not implicit captures.
 - Updates are fine-grained through signals instead of virtual DOM diffing.
-- Event and DOM APIs are typed Rust APIs over `web-sys` on WASM and native
-  stubs during SSR.
+- Event and DOM APIs are typed Rust APIs over `web-sys` on WASM and owned event
+  snapshots on native; native component tests can execute the same handlers.
 - Missing context is represented as `Option<T>`.
 - There is no catch-all React-style `use(...)` API. Async resource reads,
   context reads, and loading boundaries use separate typed APIs.
