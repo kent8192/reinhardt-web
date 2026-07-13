@@ -298,6 +298,8 @@ pub full_name: String,
 - Model fixture handler registration for `dumpdata` and `loaddata`
 - Django-compatible fixture upserts with explicit null, foreign key, many-to-many,
   and PostgreSQL sequence handling
+- Nullable JSON fixture values preserve SQL `NULL` versus JSON `null` using the
+  stable `_reinhardt_json_null_fields` sidecar emitted by `dumpdata`
 - Fixture field names derived from model metadata, independent of API-facing serde renames
   and omission rules
 - Writable fixture validation that omits database-generated columns while preserving

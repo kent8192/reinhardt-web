@@ -36,7 +36,7 @@
 //! - **Field Types**: Rich set of field types with validation
 //! - **Relationships**: ForeignKey, ManyToMany, OneToOne
 //! - **Fixtures**: Django-compatible model fixture dump/load runtime with upsert,
-//!   explicit null, foreign key, many-to-many, and PostgreSQL sequence handling
+//!   SQL/JSON null provenance, foreign key, many-to-many, and PostgreSQL sequence handling
 //! - **Scoped N+1 Detection**: Opt-in query shape detection for focused diagnostics and tests
 //!
 //! ### Migrations (`migrations` module)

@@ -17,7 +17,7 @@ use reinhardt_query::prelude::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::{Arc, RwLock};
 
 /// Result type for fixture operations.
@@ -68,8 +68,11 @@ impl From<reinhardt_core::exception::Error> for FixtureError {
 
 /// Django-style serialized fixture record.
 ///
-/// The JSON shape is compatible with Django fixtures:
+/// The default JSON shape is compatible with Django fixtures:
 /// `{ "model": "app_label.ModelName", "pk": 1, "fields": { ... } }`.
+///
+/// Records that need to retain a JSON null additionally emit the Reinhardt-only
+/// `_reinhardt_json_null_fields` sidecar.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FixtureRecord {
 	/// Fully-qualified model label.
@@ -79,6 +82,15 @@ pub struct FixtureRecord {
 	pub pk: Option<Value>,
 	/// Non-primary-key field values.
 	pub fields: Map<String, Value>,
+	/// Nullable JSON fields whose `null` values represent JSON null rather than SQL NULL.
+	///
+	/// This Reinhardt extension preserves the distinction for fixture round trips.
+	#[serde(
+		default,
+		skip_serializing_if = "BTreeSet::is_empty",
+		rename = "_reinhardt_json_null_fields"
+	)]
+	pub json_null_fields: BTreeSet<String>,
 }
 
 impl FixtureRecord {
@@ -88,6 +100,7 @@ impl FixtureRecord {
 			model: model.into(),
 			pk,
 			fields,
+			json_null_fields: BTreeSet::new(),
 		}
 	}
 }
@@ -290,8 +303,11 @@ where
 		if let Some(pk) = &record.pk {
 			object.insert(M::primary_key_field().to_string(), pk.clone());
 		}
-		validate_fixture_writable_projection::<M>(&object)?;
-		execute_fixture_upsert::<M>(conn, tx, &object).await?;
+		validate_fixture_writable_projection_with_json_null_fields::<M>(
+			&object,
+			&record.json_null_fields,
+		)?;
+		execute_fixture_upsert::<M>(conn, tx, &object, &record.json_null_fields).await?;
 		Ok(())
 	}
 
@@ -319,10 +335,14 @@ where
 		let model_label = self.label();
 		for row in rows {
 			let mut object = fixture_fields_from_query_row::<M>(&row)?;
+			let mut json_null_fields = fixture_json_null_field_names_from_query_row::<M>(&row)?;
 			let pk = object.remove(M::primary_key_field());
+			json_null_fields.remove(M::primary_key_field());
 			denormalize_foreign_key_fixture_fields::<M>(&mut object)?;
 			append_many_to_many_fixture_fields::<M>(&conn, pk.as_ref(), &mut object).await?;
-			records.push(FixtureRecord::new(model_label.clone(), pk, object));
+			let mut record = FixtureRecord::new(model_label.clone(), pk, object);
+			record.json_null_fields = json_null_fields;
+			records.push(record);
 		}
 		Ok(records)
 	}
@@ -418,6 +438,7 @@ async fn execute_fixture_upsert<M>(
 	conn: &DatabaseConnection,
 	tx: &mut TransactionScope,
 	object: &Map<String, Value>,
+	json_null_fields: &BTreeSet<String>,
 ) -> FixtureResult<()>
 where
 	M: Model,
@@ -426,22 +447,33 @@ where
 	let primary_key = fixture_primary_key_column::<M>();
 	if conn.backend() == DatabaseBackend::MySql && database_object.contains_key(&primary_key) {
 		let (lookup_sql, lookup_values) =
-			build_fixture_primary_key_lookup_sql_values::<M>(conn.backend(), object)?;
+			build_fixture_primary_key_lookup_sql_values_with_json_null_fields::<M>(
+				conn.backend(),
+				object,
+				json_null_fields,
+			)?;
 		if tx
 			.query_optional(&lookup_sql, lookup_values)
 			.await?
 			.is_some()
 		{
 			if let Some((update_sql, update_values)) =
-				build_fixture_update_sql_values::<M>(conn.backend(), object)?
-			{
+				build_fixture_update_sql_values_with_json_null_fields::<M>(
+					conn.backend(),
+					object,
+					json_null_fields,
+				)? {
 				tx.execute(&update_sql, update_values).await?;
 			}
 			return Ok(());
 		}
 	}
 
-	let (sql, values) = build_fixture_upsert_sql_values::<M>(conn.backend(), object)?;
+	let (sql, values) = build_fixture_upsert_sql_values_with_json_null_fields::<M>(
+		conn.backend(),
+		object,
+		json_null_fields,
+	)?;
 	tx.execute(&sql, values).await?;
 	Ok(())
 }
@@ -451,18 +483,24 @@ where
 	M: Model,
 {
 	let generated_fields = M::generated_field_names();
-	let field_metadata = M::field_metadata();
+	let database_fields = fixture_database_fields::<M>()?;
 	let mut database_object = Map::new();
 	for (field_name, value) in object {
 		if generated_fields.contains(&field_name.as_str()) {
 			continue;
 		}
-		let database_column = field_metadata
+		let database_column = database_fields
 			.iter()
-			.find(|field| field.name == *field_name)
-			.map(crate::orm::inspection::FieldInfo::db_column_name)
-			.unwrap_or(field_name)
-			.to_string();
+			.find(|(known_field_name, _)| known_field_name == field_name)
+			.map(|(_, database_column)| database_column.clone())
+			.ok_or_else(|| {
+				FixtureError::Database(format!(
+					"fixture field '{}' is not mapped for '{}.{}'",
+					field_name,
+					M::app_label(),
+					rust_model_name::<M>()
+				))
+			})?;
 		if database_object
 			.insert(database_column.clone(), value.clone())
 			.is_some()
@@ -478,7 +516,18 @@ where
 	Ok(database_object)
 }
 
+#[cfg(test)]
 fn validate_fixture_writable_projection<M>(object: &Map<String, Value>) -> FixtureResult<()>
+where
+	M: Model,
+{
+	validate_fixture_writable_projection_with_json_null_fields::<M>(object, &BTreeSet::new())
+}
+
+fn validate_fixture_writable_projection_with_json_null_fields<M>(
+	object: &Map<String, Value>,
+	json_null_fields: &BTreeSet<String>,
+) -> FixtureResult<()>
 where
 	M: Model,
 {
@@ -489,9 +538,53 @@ where
 			rust_model_name::<M>()
 		))
 	})?;
+	validate_fixture_json_null_fields::<M>(object, json_null_fields)?;
 	let database_object = fixture_database_object::<M>(object)?;
 	let primary_key = fixture_primary_key_column::<M>();
 	fixture_writable_columns(&database_object, &primary_key)?;
+	Ok(())
+}
+
+fn validate_fixture_json_null_fields<M>(
+	object: &Map<String, Value>,
+	json_null_fields: &BTreeSet<String>,
+) -> FixtureResult<()>
+where
+	M: Model,
+{
+	let field_metadata = M::field_metadata();
+	for field_name in json_null_fields {
+		let Some(value) = object.get(field_name) else {
+			return Err(FixtureError::Database(format!(
+				"fixture JSON-null field '{}' is missing from '{}.{}'",
+				field_name,
+				M::app_label(),
+				rust_model_name::<M>()
+			)));
+		};
+		let Some(field) = field_metadata
+			.iter()
+			.find(|field| field.name == *field_name)
+		else {
+			return Err(FixtureError::Database(format!(
+				"fixture JSON-null field '{}' is not a model field for '{}.{}'",
+				field_name,
+				M::app_label(),
+				rust_model_name::<M>()
+			)));
+		};
+		if !field.nullable
+			|| !crate::orm::json::is_json_field_type(&field.field_type)
+			|| !value.is_null()
+		{
+			return Err(FixtureError::Database(format!(
+				"fixture JSON-null field '{}' for '{}.{}' must be a nullable JSON field with a null value",
+				field_name,
+				M::app_label(),
+				rust_model_name::<M>()
+			)));
+		}
+	}
 	Ok(())
 }
 
@@ -595,6 +688,53 @@ where
 		database_row,
 		row.native_json_fields(),
 	)
+}
+
+fn fixture_json_null_field_names_from_query_row<M>(
+	row: &super::connection::QueryRow,
+) -> FixtureResult<BTreeSet<String>>
+where
+	M: Model,
+{
+	let database_row = row.data.as_object().ok_or_else(|| {
+		FixtureError::Database("fixture query must return object rows".to_string())
+	})?;
+	let field_metadata = M::field_metadata();
+	let mut json_null_fields = BTreeSet::new();
+	for (field_name, database_column) in fixture_database_fields::<M>()? {
+		let Some(field_info) = field_metadata
+			.iter()
+			.find(|field| field.name == field_name || field.db_column_name() == database_column)
+		else {
+			continue;
+		};
+		if !field_info.nullable || !crate::orm::json::is_json_field_type(&field_info.field_type) {
+			continue;
+		}
+		let value = database_row.get(&database_column).cloned().ok_or_else(|| {
+			FixtureError::Database(format!(
+				"fixture dump row for '{}.{}' is missing database column '{}'",
+				M::app_label(),
+				rust_model_name::<M>(),
+				database_column
+			))
+		})?;
+		let is_native_json = row.native_json_fields().contains(&database_column);
+		let hydrated_value = hydrate_fixture_json_value::<M>(
+			value.clone(),
+			Some(field_info),
+			&field_name,
+			&database_column,
+			is_native_json,
+		)?;
+		if hydrated_value.is_null()
+			&& (row.json_null_fields().contains(&database_column)
+				|| (!is_native_json && value.is_string()))
+		{
+			json_null_fields.insert(field_name);
+		}
+	}
+	Ok(json_null_fields)
 }
 
 #[cfg(test)]
@@ -720,9 +860,64 @@ where
 		})
 }
 
+fn fixture_field_is_none(
+	value: &Value,
+	field_info: Option<&crate::orm::inspection::FieldInfo>,
+	json_null_fields: &BTreeSet<String>,
+) -> bool {
+	field_info.is_some_and(|field| {
+		field.nullable
+			&& value.is_null()
+			&& !(crate::orm::json::is_json_field_type(&field.field_type)
+				&& json_null_fields.contains(&field.name))
+	})
+}
+
+fn fixture_value_to_sea_value_for_field<M>(
+	value: &Value,
+	field_info: Option<&crate::orm::inspection::FieldInfo>,
+	field_is_none: bool,
+) -> reinhardt_query::value::Value
+where
+	M: Model,
+{
+	if field_info.is_some_and(|field| is_fixture_text_field_type(&field.field_type))
+		&& let Value::String(value) = value
+	{
+		return reinhardt_query::value::Value::String(Some(Box::new(value.clone())));
+	}
+	Manager::<M>::json_to_sea_value_for_field(value, field_info, field_is_none)
+}
+
+fn is_fixture_text_field_type(field_type: &str) -> bool {
+	[
+		"CharField",
+		"TextField",
+		"EmailField",
+		"URLField",
+		"SlugField",
+		"FilePathField",
+		"GenericIPAddressField",
+	]
+	.iter()
+	.any(|field_name| field_type.ends_with(field_name))
+}
+
+#[cfg(test)]
 fn build_fixture_upsert_sql_values<M>(
 	backend: DatabaseBackend,
 	object: &Map<String, Value>,
+) -> FixtureResult<(String, Vec<QueryValue>)>
+where
+	M: Model,
+{
+	build_fixture_upsert_sql_values_with_json_null_fields::<M>(backend, object, &BTreeSet::new())
+}
+
+fn build_fixture_upsert_sql_values_with_json_null_fields<M>(
+	backend: DatabaseBackend,
+	object: &Map<String, Value>,
+	json_null_fields: &BTreeSet<String>,
 ) -> FixtureResult<(String, Vec<QueryValue>)>
 where
 	M: Model,
@@ -744,8 +939,8 @@ where
 					field.name == *column || field.db_column.as_deref() == Some(column.as_str())
 				});
 				let field_is_none =
-					field_info.is_some_and(|field| field.nullable && object[column].is_null());
-				Manager::<M>::json_to_sea_value_for_field(
+					fixture_field_is_none(&object[column], field_info, json_null_fields);
+				fixture_value_to_sea_value_for_field::<M>(
 					&object[column],
 					field_info,
 					field_is_none,
@@ -777,9 +972,25 @@ where
 	Ok((sql, super::execution::convert_values(values)))
 }
 
+#[cfg(test)]
 fn build_fixture_primary_key_lookup_sql_values<M>(
 	backend: DatabaseBackend,
 	object: &Map<String, Value>,
+) -> FixtureResult<(String, Vec<QueryValue>)>
+where
+	M: Model,
+{
+	build_fixture_primary_key_lookup_sql_values_with_json_null_fields::<M>(
+		backend,
+		object,
+		&BTreeSet::new(),
+	)
+}
+
+fn build_fixture_primary_key_lookup_sql_values_with_json_null_fields<M>(
+	backend: DatabaseBackend,
+	object: &Map<String, Value>,
+	json_null_fields: &BTreeSet<String>,
 ) -> FixtureResult<(String, Vec<QueryValue>)>
 where
 	M: Model,
@@ -799,10 +1010,9 @@ where
 	let field_info = field_metadata.iter().find(|field| {
 		field.name == primary_key || field.db_column.as_deref() == Some(primary_key.as_str())
 	});
-	let field_is_none =
-		field_info.is_some_and(|field| field.nullable && primary_key_value.is_null());
+	let field_is_none = fixture_field_is_none(primary_key_value, field_info, json_null_fields);
 	let primary_key_value =
-		Manager::<M>::json_to_sea_value_for_field(primary_key_value, field_info, field_is_none);
+		fixture_value_to_sea_value_for_field::<M>(primary_key_value, field_info, field_is_none);
 
 	let mut stmt = Query::select();
 	stmt.column(Alias::new(primary_key.as_str()))
@@ -812,9 +1022,21 @@ where
 	Ok((sql, super::execution::convert_values(values)))
 }
 
+#[cfg(test)]
 fn build_fixture_update_sql_values<M>(
 	backend: DatabaseBackend,
 	object: &Map<String, Value>,
+) -> FixtureResult<Option<(String, Vec<QueryValue>)>>
+where
+	M: Model,
+{
+	build_fixture_update_sql_values_with_json_null_fields::<M>(backend, object, &BTreeSet::new())
+}
+
+fn build_fixture_update_sql_values_with_json_null_fields<M>(
+	backend: DatabaseBackend,
+	object: &Map<String, Value>,
+	json_null_fields: &BTreeSet<String>,
 ) -> FixtureResult<Option<(String, Vec<QueryValue>)>>
 where
 	M: Model,
@@ -845,20 +1067,19 @@ where
 		let field_info = field_metadata.iter().find(|field| {
 			field.name == *column || field.db_column.as_deref() == Some(column.as_str())
 		});
-		let field_is_none =
-			field_info.is_some_and(|field| field.nullable && object[column].is_null());
+		let field_is_none = fixture_field_is_none(&object[column], field_info, json_null_fields);
 		(
 			Alias::new(column.as_str()),
-			Manager::<M>::json_to_sea_value_for_field(&object[column], field_info, field_is_none),
+			fixture_value_to_sea_value_for_field::<M>(&object[column], field_info, field_is_none),
 		)
 	}));
 	let primary_key_field = field_metadata.iter().find(|field| {
 		field.name == primary_key || field.db_column.as_deref() == Some(primary_key.as_str())
 	});
 	let primary_key_is_none =
-		primary_key_field.is_some_and(|field| field.nullable && primary_key_value.is_null());
+		fixture_field_is_none(primary_key_value, primary_key_field, json_null_fields);
 	stmt.and_where(Expr::col(Alias::new(primary_key.as_str())).eq(
-		Manager::<M>::json_to_sea_value_for_field(
+		fixture_value_to_sea_value_for_field::<M>(
 			primary_key_value,
 			primary_key_field,
 			primary_key_is_none,
@@ -1872,6 +2093,14 @@ mod tests {
 	}
 
 	#[cfg(feature = "migrations")]
+	#[derive(Clone, Serialize, Deserialize)]
+	struct FixtureTextPost {
+		id: Option<i64>,
+		uuid_like: String,
+		timestamp_like: String,
+	}
+
+	#[cfg(feature = "migrations")]
 	impl Model for FixtureDatabaseColumnPost {
 		type PrimaryKey = i64;
 		type Fields = FixturePostFields;
@@ -2057,6 +2286,47 @@ mod tests {
 	}
 
 	#[cfg(feature = "migrations")]
+	impl Model for FixtureTextPost {
+		type PrimaryKey = i64;
+		type Fields = FixturePostFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"fixture_text_post"
+		}
+
+		fn new_fields() -> Self::Fields {
+			FixturePostFields
+		}
+
+		fn app_label() -> &'static str {
+			"fixture_text"
+		}
+
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = Some(value);
+		}
+
+		fn field_metadata() -> Vec<crate::orm::inspection::FieldInfo> {
+			let mut id = fixture_field_info("id", "BigIntegerField", false);
+			id.primary_key = true;
+			vec![
+				id,
+				fixture_field_info("uuid_like", "CharField", false),
+				fixture_field_info("timestamp_like", "TextField", false),
+			]
+		}
+	}
+
+	#[cfg(feature = "migrations")]
 	fn fixture_field_info(
 		name: &str,
 		field_type: &str,
@@ -2137,6 +2407,7 @@ mod tests {
 		assert_eq!(records[0].model, "blog.Post");
 		assert_eq!(records[0].pk, Some(Value::from(1)));
 		assert_eq!(records[0].fields["title"], Value::from("Hello"));
+		assert!(records[0].json_null_fields.is_empty());
 	}
 
 	#[test]
@@ -2395,6 +2666,26 @@ mod tests {
 
 	#[cfg(feature = "migrations")]
 	#[test]
+	fn fixture_validation_rejects_unknown_canonical_fields_before_sql() {
+		let mut object = Map::new();
+		object.insert("id".to_string(), Value::from(1));
+		object.insert("title".to_string(), Value::from("Fixture title"));
+		object.insert("stale_field".to_string(), Value::from("unexpected"));
+
+		let error = build_fixture_upsert_sql_values::<FixtureSerdeMappedPost>(
+			DatabaseBackend::Sqlite,
+			&object,
+		)
+		.expect_err("unknown fixture fields must fail before SQL execution");
+
+		assert!(
+			error.to_string().contains("stale_field"),
+			"error must name the unknown fixture field: {error}"
+		);
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
 	fn fixture_dump_fields_ignore_serde_names_and_omissions() {
 		let mut row = Map::new();
 		row.insert("fixture_id".to_string(), Value::from(1));
@@ -2499,6 +2790,135 @@ mod tests {
 			Some(&Value::String("draft".to_string()))
 		);
 		assert_eq!(fields.get("optional_payload"), Some(&Value::Null));
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	fn fixture_json_null_sidecar_preserves_native_json_nulls() {
+		let mut backend_row = crate::backends::types::Row::new();
+		backend_row.insert("id".to_string(), QueryValue::Int(1));
+		backend_row.insert(
+			"payload".to_string(),
+			QueryValue::Json(Some(Box::new(serde_json::json!({"theme": "paper"})))),
+		);
+		backend_row.insert(
+			"optional_payload".to_string(),
+			QueryValue::Json(Some(Box::new(Value::Null))),
+		);
+		let row = crate::orm::connection::QueryRow::from_backend_row(backend_row);
+
+		let mut fields = fixture_fields_from_query_row::<FixtureJsonPost>(&row).unwrap();
+		let json_null_fields =
+			fixture_json_null_field_names_from_query_row::<FixtureJsonPost>(&row).unwrap();
+		assert_eq!(
+			json_null_fields,
+			BTreeSet::from(["optional_payload".to_string()])
+		);
+
+		let pk = fields.remove("id");
+		let mut record = FixtureRecord::new("fixture_json.FixtureJsonPost", pk, fields);
+		record.json_null_fields = json_null_fields;
+		let encoded = serde_json::to_value(&record).unwrap();
+		assert_eq!(
+			encoded["_reinhardt_json_null_fields"],
+			serde_json::json!(["optional_payload"])
+		);
+		let record: FixtureRecord = serde_json::from_value(encoded).unwrap();
+		assert_eq!(
+			record.json_null_fields,
+			BTreeSet::from(["optional_payload".to_string()])
+		);
+
+		let mut object = record.fields;
+		object.insert("id".to_string(), record.pk.unwrap());
+		let (_, values) = build_fixture_upsert_sql_values_with_json_null_fields::<FixtureJsonPost>(
+			DatabaseBackend::Postgres,
+			&object,
+			&record.json_null_fields,
+		)
+		.unwrap();
+		assert!(
+			values
+				.iter()
+				.any(|value| matches!(value, QueryValue::Json(Some(value)) if value.is_null())),
+			"marked fixture nulls must bind as JSON nulls"
+		);
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	fn fixture_json_text_nulls_are_marked_but_sql_nulls_are_not() {
+		let mut json_text_row = crate::backends::types::Row::new();
+		json_text_row.insert("id".to_string(), QueryValue::Int(1));
+		json_text_row.insert(
+			"payload".to_string(),
+			QueryValue::String(r#"{"theme":"paper"}"#.to_string()),
+		);
+		json_text_row.insert(
+			"optional_payload".to_string(),
+			QueryValue::String("null".to_string()),
+		);
+		let json_text_row = crate::orm::connection::QueryRow::from_backend_row(json_text_row);
+		assert_eq!(
+			fixture_json_null_field_names_from_query_row::<FixtureJsonPost>(&json_text_row)
+				.unwrap(),
+			BTreeSet::from(["optional_payload".to_string()])
+		);
+
+		let mut sql_null_row = crate::backends::types::Row::new();
+		sql_null_row.insert("id".to_string(), QueryValue::Int(1));
+		sql_null_row.insert(
+			"payload".to_string(),
+			QueryValue::String(r#"{"theme":"paper"}"#.to_string()),
+		);
+		sql_null_row.insert("optional_payload".to_string(), QueryValue::Null);
+		let sql_null_row = crate::orm::connection::QueryRow::from_backend_row(sql_null_row);
+		assert!(
+			fixture_json_null_field_names_from_query_row::<FixtureJsonPost>(&sql_null_row)
+				.unwrap()
+				.is_empty()
+		);
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	fn fixture_unmarked_json_nulls_remain_sql_nulls() {
+		let mut object = Map::new();
+		object.insert("id".to_string(), Value::from(1));
+		object.insert("payload".to_string(), serde_json::json!({"theme": "paper"}));
+		object.insert("optional_payload".to_string(), Value::Null);
+
+		let (sql, values) =
+			build_fixture_upsert_sql_values::<FixtureJsonPost>(DatabaseBackend::Postgres, &object)
+				.unwrap();
+
+		assert!(
+			sql.contains("NULL"),
+			"unmarked fixture JSON nulls must produce SQL NULL: {sql}"
+		);
+		assert!(
+			!values
+				.iter()
+				.any(|value| matches!(value, QueryValue::Json(Some(value)) if value.is_null())),
+			"unmarked fixture JSON nulls must not bind as JSON nulls: {values:?}"
+		);
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	fn fixture_validation_rejects_invalid_json_null_sidecar_fields() {
+		let mut object = Map::new();
+		object.insert("id".to_string(), Value::from(1));
+		object.insert("payload".to_string(), serde_json::json!({"theme": "paper"}));
+		object.insert("optional_payload".to_string(), Value::Null);
+		let json_null_fields = BTreeSet::from(["missing_field".to_string()]);
+
+		let error = validate_fixture_writable_projection_with_json_null_fields::<FixtureJsonPost>(
+			&object,
+			&json_null_fields,
+		)
+		.expect_err("unknown JSON-null sidecar fields must fail validation");
+		assert!(error.to_string().contains("missing_field"));
 	}
 
 	#[cfg(feature = "migrations")]
@@ -2662,6 +3082,30 @@ mod tests {
 		let sequence_sql =
 			build_postgres_sequence_reset_sql(handler.table_name(), &primary_key_column);
 		assert!(sequence_sql.contains("MAX(\"fixture_id\")"));
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	fn fixture_upserts_bind_uuid_and_timestamp_shaped_text_as_strings() {
+		let uuid_like = "123e4567-e89b-12d3-a456-426614174000";
+		let timestamp_like = "2026-07-13T08:25:26+00:00";
+		let mut object = Map::new();
+		object.insert("id".to_string(), Value::from(1));
+		object.insert("uuid_like".to_string(), Value::from(uuid_like));
+		object.insert("timestamp_like".to_string(), Value::from(timestamp_like));
+
+		let (_, values) =
+			build_fixture_upsert_sql_values::<FixtureTextPost>(DatabaseBackend::Postgres, &object)
+				.unwrap();
+
+		assert!(values.contains(&QueryValue::String(uuid_like.to_string())));
+		assert!(values.contains(&QueryValue::String(timestamp_like.to_string())));
+		assert!(
+			!values
+				.iter()
+				.any(|value| matches!(value, QueryValue::Uuid(_) | QueryValue::Timestamp(_))),
+			"text fixture values must not be rebound as UUID or timestamp parameters"
+		);
 	}
 
 	#[cfg(feature = "migrations")]
