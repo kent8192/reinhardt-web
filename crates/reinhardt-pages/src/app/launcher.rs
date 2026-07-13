@@ -123,22 +123,26 @@ impl PersistentLayoutRenderer {
 
 		for depth in start_depth..route_match.layouts().len() {
 			let outlet_id = Self::outlet_id(depth);
-			let page = router
-				.__render_tree_layout(route_match, depth, Outlet::placeholder(outlet_id))
-				.ok_or(MountError::CreateElementFailed)?;
 			let store = new_reactive_node_store();
 			let parent_wrapper = crate::dom::Element::new(parent.clone());
-			with_reactive_node_store(&store, || page.mount(&parent_wrapper))?;
+			with_reactive_node_store(&store, || {
+				let page = router
+					.__render_tree_layout(route_match, depth, Outlet::placeholder(outlet_id))
+					.ok_or(MountError::CreateElementFailed)?;
+				page.mount(&parent_wrapper)
+			})?;
 			self.layout_stores.push(store);
 			parent = Self::find_outlet(root_el, depth)?;
 		}
 
-		let leaf = router
-			.__render_tree_leaf(route_match)
-			.ok_or(MountError::CreateElementFailed)?;
 		let leaf_store = new_reactive_node_store();
 		let parent_wrapper = crate::dom::Element::new(parent);
-		with_reactive_node_store(&leaf_store, || leaf.mount(&parent_wrapper))?;
+		with_reactive_node_store(&leaf_store, || {
+			let leaf = router
+				.__render_tree_leaf(route_match)
+				.ok_or(MountError::CreateElementFailed)?;
+			leaf.mount(&parent_wrapper)
+		})?;
 		self.leaf_store = Some(leaf_store);
 		Ok(())
 	}

@@ -81,9 +81,9 @@ tempfile = { workspace = true }
 testcontainers = { workspace = true }
 testcontainers-modules = { workspace = true }
 serial_test = { workspace = true }
-rstest = "0.26.1"
+rstest = { workspace = true }
 sqlx = { workspace = true }
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { workspace = true, features = ["json"] }
 reinhardt-query = { workspace = true, features = ["derive"] }
 utoipa = { version = "^5.4.0", features = ["url", "uuid", "yaml"] }
 ctor = "0.6.0"
@@ -92,9 +92,9 @@ linkme = "0.3"
 # gRPC integration dependencies
 reinhardt-grpc = { workspace = true }
 reinhardt-graphql-macros = { workspace = true }
-tonic = { version = "0.14.2", features = ["transport"] }
+tonic = { workspace = true, features = ["transport"] }
 tokio-stream = { workspace = true, features = ["sync"] }
-prost = "0.14.1"
+prost = { workspace = true }
 async-stream = "0.3"
 
 [build-dependencies]

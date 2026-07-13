@@ -2,6 +2,8 @@
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use reinhardt_core::types::page::{
@@ -9,13 +11,32 @@ use reinhardt_core::types::page::{
 };
 use reinhardt_pages::callback::async_handler;
 use reinhardt_pages::component::suspense::SuspenseBoundary;
-use reinhardt_pages::page;
+use reinhardt_pages::event::{ClickEvent, EventPayload, FocusEvent, typed_event_handler};
 use reinhardt_pages::prelude::spawn_task;
 use reinhardt_pages::reactive::hooks::use_action;
 use reinhardt_pages::reactive::{ResourceState, Signal, use_resource};
 #[cfg(feature = "msw")]
 use reinhardt_pages::server_fn::{ServerFnError, server_fn};
-use reinhardt_pages::testing::component::{Role, render};
+use reinhardt_pages::testing::component::{EventError, EventFixture, Role, render};
+use reinhardt_pages::{Callback, NativeEvent, page};
+use rstest::rstest;
+use serial_test::serial;
+
+static TYPED_ASYNC_CALLED: AtomicBool = AtomicBool::new(false);
+
+struct AtomicReset(&'static AtomicBool);
+
+impl Drop for AtomicReset {
+	fn drop(&mut self) {
+		self.0.store(false, Ordering::SeqCst);
+	}
+}
+
+async fn record_typed_async_click(event: ClickEvent) {
+	assert_eq!(event.event_type(), "click");
+	tokio::task::yield_now().await;
+	TYPED_ASYNC_CALLED.store(true, Ordering::SeqCst);
+}
 
 fn text_page(text: impl Into<String>) -> Page {
 	PageElement::new("div").child(text.into()).into_page()
@@ -72,6 +93,30 @@ fn save_component() -> Page {
 		)
 		.child(Page::reactive(move || match action.result() {
 			Some(value) => text_page(value),
+			None => text_page("Idle"),
+		}))
+		.into_page()
+}
+
+fn action_dispatching_component() -> Page {
+	let action = use_action(|value: i32| async move { Ok::<i32, String>(value) });
+	let dispatch: Callback<NativeEvent, ()> = action.dispatching(5);
+	let dispatch_with: Callback<NativeEvent, ()> = action.dispatching_with(|| 6);
+	let result_action = action.clone();
+
+	PageElement::new("div")
+		.child(
+			PageElement::new("button")
+				.listener("click", move |event| dispatch.call(event))
+				.child("Dispatch fixed payload"),
+		)
+		.child(
+			PageElement::new("button")
+				.listener("click", move |event| dispatch_with.call(event))
+				.child("Dispatch computed payload"),
+		)
+		.child(Page::reactive(move || match result_action.result() {
+			Some(value) => text_page(value.to_string()),
 			None => text_page("Idle"),
 		}))
 		.into_page()
@@ -240,6 +285,23 @@ async fn suspense_pages_rerender_resolved_resource_after_settle() {
 
 	assert!(screen.query_by_text("Ready").is_some());
 	assert!(screen.query_by_text("Loading").is_none());
+}
+
+#[tokio::test]
+async fn action_dispatching_callbacks_schedule_native_actions() {
+	let screen = render(action_dispatching_component);
+
+	screen
+		.get_by_role(Role::Button, "Dispatch fixed payload")
+		.click();
+	screen.settle().await;
+	assert!(screen.query_by_text("5").is_some());
+
+	screen
+		.get_by_role(Role::Button, "Dispatch computed payload")
+		.click();
+	screen.settle().await;
+	assert!(screen.query_by_text("6").is_some());
 }
 
 #[test]
@@ -482,6 +544,211 @@ fn submit_helper_dispatches_submit_event() {
 	screen.get_by_role(Role::Form, "Job form").submit();
 
 	assert!(submitted.get());
+}
+
+#[rstest]
+fn typed_page_handler_preserves_originating_and_listener_targets() {
+	let observed = Arc::new(Mutex::new(None));
+	let screen = render(page!(|observed: Arc<Mutex<Option<(String, String)>>>| {
+		button {
+			aria_label: "Parent button",
+			@click: move |event: ClickEvent| {
+				let target = event.target().expect("click target should exist");
+				let current_target = event
+					.current_target()
+					.expect("click current target should exist");
+				*observed.lock().unwrap() = Some((
+					target.tag_name().to_string(),
+					current_target.tag_name().to_string(),
+				));
+			},
+			span { "Nested target" }
+		}
+	})(Arc::clone(&observed)));
+
+	screen.get_by_text("Nested target").click();
+
+	assert_eq!(
+		observed.lock().unwrap().as_ref(),
+		Some(&("span".to_string(), "button".to_string()))
+	);
+}
+
+#[rstest]
+fn non_bubbling_fixture_does_not_reach_an_ancestor_listener() {
+	let called = Arc::new(AtomicBool::new(false));
+	let called_for_handler = Arc::clone(&called);
+	let screen = render(
+		PageElement::new("div")
+			.on(
+				FocusEvent::EVENT,
+				typed_event_handler::<FocusEvent, _>(move |_event: FocusEvent| {
+					called_for_handler.store(true, Ordering::SeqCst);
+				}),
+			)
+			.child(PageElement::new("span").child("Focusable child")),
+	);
+
+	let result = screen
+		.get_by_text("Focusable child")
+		.dispatch(EventFixture::new(EventType::Focus));
+
+	assert_eq!(result, Err(EventError::MissingHandler));
+	assert!(!called.load(Ordering::SeqCst));
+}
+
+#[rstest]
+fn stop_propagation_keeps_same_target_handlers_and_skips_ancestors() {
+	let calls = Arc::new(Mutex::new(Vec::new()));
+	let outer_calls = Arc::clone(&calls);
+	let first_calls = Arc::clone(&calls);
+	let second_calls = Arc::clone(&calls);
+	let screen = render(
+		PageElement::new("div")
+			.on(
+				ClickEvent::EVENT,
+				typed_event_handler::<ClickEvent, _>(move |_event: ClickEvent| {
+					outer_calls.lock().unwrap().push("outer");
+				}),
+			)
+			.child(
+				PageElement::new("button")
+					.on(
+						ClickEvent::EVENT,
+						typed_event_handler::<ClickEvent, _>(move |event: ClickEvent| {
+							first_calls.lock().unwrap().push("first");
+							event.stop_propagation();
+						}),
+					)
+					.on(
+						ClickEvent::EVENT,
+						typed_event_handler::<ClickEvent, _>(move |_event: ClickEvent| {
+							second_calls.lock().unwrap().push("second");
+						}),
+					)
+					.child("Stop propagation"),
+			),
+	);
+
+	screen.get_by_role(Role::Button, "Stop propagation").click();
+
+	assert_eq!(calls.lock().unwrap().as_slice(), ["first", "second"]);
+}
+
+#[rstest]
+fn stop_immediate_propagation_skips_same_target_and_ancestor_handlers() {
+	let calls = Arc::new(Mutex::new(Vec::new()));
+	let outer_calls = Arc::clone(&calls);
+	let first_calls = Arc::clone(&calls);
+	let second_calls = Arc::clone(&calls);
+	let screen = render(
+		PageElement::new("div")
+			.on(
+				ClickEvent::EVENT,
+				typed_event_handler::<ClickEvent, _>(move |_event: ClickEvent| {
+					outer_calls.lock().unwrap().push("outer");
+				}),
+			)
+			.child(
+				PageElement::new("button")
+					.on(
+						ClickEvent::EVENT,
+						typed_event_handler::<ClickEvent, _>(move |event: ClickEvent| {
+							first_calls.lock().unwrap().push("first");
+							event.stop_immediate_propagation();
+						}),
+					)
+					.on(
+						ClickEvent::EVENT,
+						typed_event_handler::<ClickEvent, _>(move |_event: ClickEvent| {
+							second_calls.lock().unwrap().push("second");
+						}),
+					)
+					.child("Stop immediately"),
+			),
+	);
+
+	screen.get_by_role(Role::Button, "Stop immediately").click();
+
+	assert_eq!(calls.lock().unwrap().as_slice(), ["first"]);
+}
+
+#[rstest]
+fn prevent_default_state_is_shared_with_ancestor_listeners() {
+	let default_prevented = Arc::new(AtomicBool::new(false));
+	let default_prevented_for_handler = Arc::clone(&default_prevented);
+	let screen = render(
+		PageElement::new("div")
+			.on(
+				ClickEvent::EVENT,
+				typed_event_handler::<ClickEvent, _>(move |event: ClickEvent| {
+					default_prevented_for_handler
+						.store(event.default_prevented(), Ordering::SeqCst);
+				}),
+			)
+			.child(
+				PageElement::new("button")
+					.on(
+						ClickEvent::EVENT,
+						typed_event_handler::<ClickEvent, _>(move |event: ClickEvent| {
+							event.prevent_default();
+						}),
+					)
+					.child("Prevent default"),
+			),
+	);
+
+	screen.get_by_role(Role::Button, "Prevent default").click();
+
+	assert!(default_prevented.load(Ordering::SeqCst));
+}
+
+#[rstest]
+#[tokio::test]
+#[serial(component_typed_async)]
+async fn typed_async_page_handler_settles_deterministically() {
+	TYPED_ASYNC_CALLED.store(false, Ordering::SeqCst);
+	let _reset = AtomicReset(&TYPED_ASYNC_CALLED);
+	let screen = render(page!(|| {
+		button {
+			@click: async |event: ClickEvent| {
+				crate::record_typed_async_click(event).await;
+			},
+			"Run typed async"
+		}
+	}));
+
+	screen.get_by_role(Role::Button, "Run typed async").click();
+	screen.settle().await;
+
+	assert!(TYPED_ASYNC_CALLED.load(Ordering::SeqCst));
+}
+
+#[rstest]
+#[tokio::test]
+async fn typed_sync_page_handler_rerenders_after_settle() {
+	let message = Signal::new("Idle".to_string());
+	let handler_message = message.clone();
+	let rendered_message = message.clone();
+	let screen = render(
+		page!(|handler_message: Signal<String>, rendered_message: Signal<String>| {
+			div {
+				button {
+					@click: move |event: ClickEvent| {
+						assert_eq!(event.event_type(), "click");
+						handler_message.set("Typed sync complete".to_string());
+					},
+					"Run typed sync"
+				}
+				p { { rendered_message.get() } }
+			}
+		})(handler_message, rendered_message),
+	);
+
+	screen.get_by_role(Role::Button, "Run typed sync").click();
+	screen.settle().await;
+
+	assert!(screen.query_by_text("Typed sync complete").is_some());
 }
 
 #[tokio::test]

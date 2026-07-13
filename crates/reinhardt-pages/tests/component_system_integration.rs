@@ -26,9 +26,17 @@
 #[cfg(not(target_arch = "wasm32"))]
 use proptest::prelude::*;
 #[cfg(native)]
-use reinhardt_pages::component::DummyEvent;
+use reinhardt_pages::component::NativeEvent;
 use reinhardt_pages::component::{Component, IntoPage, Page, PageElement};
+#[cfg(native)]
+use reinhardt_pages::event::{ClickEvent, EventPayload, typed_event_handler};
+#[cfg(native)]
+use reinhardt_pages::testing::component::{EventFixture, Role, render};
 use rstest::*;
+#[cfg(native)]
+use std::sync::Arc;
+#[cfg(native)]
+use std::sync::atomic::{AtomicBool, Ordering};
 
 // ============================================================================
 // Test Components
@@ -546,7 +554,7 @@ fn test_component_decision_case4_props_and_children() {
 fn test_component_decision_case5_with_listener() {
 	#[cfg(native)]
 	let view = PageElement::new("button")
-		.listener("click", |_event: DummyEvent| {
+		.listener("click", |_event: NativeEvent| {
 			// Handler logic
 		})
 		.into_page();
@@ -576,4 +584,30 @@ fn test_component_decision_case6_fragment() {
 fn test_component_decision_case7_void_element() {
 	let view = PageElement::new("br").attr("class", "break").into_page();
 	assert_eq!(view.render_to_string(), "<br class=\"break\" />");
+}
+
+/// Tests typed payload dispatch through the public native component harness.
+#[cfg(native)]
+#[rstest]
+fn test_component_native_typed_event_fixture() {
+	let called = Arc::new(AtomicBool::new(false));
+	let called_for_handler = Arc::clone(&called);
+	let screen = render(
+		PageElement::new("button")
+			.on(
+				ClickEvent::EVENT,
+				typed_event_handler::<ClickEvent, _>(move |event: ClickEvent| {
+					assert_eq!(event.event_type(), "click");
+					called_for_handler.store(true, Ordering::SeqCst);
+				}),
+			)
+			.child("Run"),
+	);
+
+	screen
+		.get_by_role(Role::Button, "Run")
+		.dispatch(EventFixture::click())
+		.expect("typed fixture should dispatch");
+
+	assert!(called.load(Ordering::SeqCst));
 }

@@ -5,13 +5,16 @@
 //! Refs #4668 (P7) #4524.
 
 use reinhardt_pages::callback::Callback;
-use reinhardt_pages::component::{DummyEvent, Page};
+use reinhardt_pages::component::Page;
 use reinhardt_pages::page;
+
+#[derive(Clone, Copy)]
+struct ButtonClick;
 
 #[derive(bon::Builder)]
 struct ButtonProps {
 	label: String,
-	on_click: Option<Callback<DummyEvent, ()>>,
+	on_click: Option<Callback<ButtonClick, ()>>,
 }
 
 fn button(p: ButtonProps) -> Page {
@@ -25,7 +28,7 @@ fn main() {
 		div {
 			Button {
 				label: "click me".to_string(),
-				@click: Callback::new(|_: DummyEvent| {}),
+				@click: Callback::new(|_: ButtonClick| {}),
 			}
 		}
 	});
