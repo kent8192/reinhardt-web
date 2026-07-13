@@ -4,7 +4,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use reinhardt_core::types::page::{
-	EventName, NativeEventFile, NativeEventTarget, Page, PageEventHandler,
+	ControlBinding, ControlBindingError, ControlKind, ControlValue, ControlWriteOutcome, EventName,
+	NativeEventFile, NativeEventTarget, Page, PageEventHandler,
 };
 
 use super::fixture::{EventFixtureError, TargetStatePatch};
@@ -44,6 +45,11 @@ pub(crate) struct ElementNode {
 	selected_values: Vec<String>,
 	files: Vec<NativeEventFile>,
 	content_editable: bool,
+	control_binding: Option<ControlBinding>,
+	is_composing: bool,
+	pending_raw: Option<String>,
+	last_committed_raw: Option<String>,
+	last_observed_control_value: Option<ControlValue>,
 }
 
 enum TestNode {
@@ -274,6 +280,9 @@ impl TestDom {
 			node.selected_values.clone_from(selected_values);
 		} else if let Some(value) = &patch.value {
 			node.value = Some(value.clone());
+			if node.tag == "select" {
+				node.selected_values = vec![value.clone()];
+			}
 		}
 		if let Some(checked) = patch.checked {
 			node.checked = checked;
@@ -281,7 +290,126 @@ impl TestDom {
 		if let Some(files) = &patch.files {
 			node.files.clone_from(files);
 		}
+		let refresh_selected_options =
+			node.tag == "select" && (patch.value.is_some() || patch.selected_values.is_some());
+		if refresh_selected_options {
+			self.refresh_selected_options(node_id);
+		}
 		Ok(())
+	}
+
+	pub(crate) fn commit_control_binding(
+		&mut self,
+		node_id: NodeId,
+		event_name: &EventName,
+		input_is_composing: bool,
+	) -> Result<bool, ControlBindingError> {
+		let node = match self.nodes.get_mut(node_id) {
+			Some(TestNode::Element(node)) => node,
+			_ => return Ok(false),
+		};
+		let Some(binding) = node.control_binding.clone() else {
+			return Ok(false);
+		};
+		node.validate_control_binding(&binding)?;
+
+		let event_name = event_name.as_str();
+		match binding.kind() {
+			ControlKind::Text | ControlKind::Number => match event_name {
+				"compositionstart" => {
+					node.is_composing = true;
+					node.pending_raw.clone_from(&node.value);
+					Ok(true)
+				}
+				"compositionend" => {
+					node.is_composing = false;
+					let raw = node
+						.value
+						.clone()
+						.or_else(|| node.pending_raw.clone())
+						.ok_or(ControlBindingError::MissingProperty {
+							control: binding.kind(),
+							property: "value",
+						})?;
+					node.write_raw_control_value(&binding, raw, true)?;
+					Ok(true)
+				}
+				"input" => {
+					let raw = node
+						.value
+						.clone()
+						.ok_or(ControlBindingError::MissingProperty {
+							control: binding.kind(),
+							property: "value",
+						})?;
+					if node.is_composing || input_is_composing {
+						node.is_composing = true;
+						node.pending_raw = Some(raw);
+						return Ok(true);
+					}
+					if node.last_committed_raw.take().as_deref() == Some(raw.as_str()) {
+						return Ok(true);
+					}
+					node.write_raw_control_value(&binding, raw, false)?;
+					Ok(true)
+				}
+				_ => Ok(false),
+			},
+			ControlKind::Checkbox | ControlKind::Radio if event_name == "change" => {
+				let outcome = binding.write(ControlValue::Checked(node.checked))?;
+				node.record_write_outcome(&binding, outcome, None);
+				Ok(true)
+			}
+			ControlKind::SelectOne if event_name == "change" => {
+				let value = node
+					.value
+					.clone()
+					.ok_or(ControlBindingError::MissingProperty {
+						control: binding.kind(),
+						property: "value",
+					})?;
+				let outcome = binding.write(ControlValue::Text(value))?;
+				node.record_write_outcome(&binding, outcome, None);
+				Ok(true)
+			}
+			ControlKind::SelectMany if event_name == "change" => {
+				let outcome =
+					binding.write(ControlValue::SelectedValues(node.selected_values.clone()))?;
+				node.record_write_outcome(&binding, outcome, None);
+				Ok(true)
+			}
+			_ => Ok(false),
+		}
+	}
+
+	pub(crate) fn refresh_control_bindings(&mut self) {
+		let mut selects = Vec::new();
+		for (node_id, node) in self.nodes.iter_mut().enumerate() {
+			let TestNode::Element(element) = node else {
+				continue;
+			};
+			let Some(binding) = element.control_binding.clone() else {
+				continue;
+			};
+			let value = binding.read();
+			let retain_invalid_raw = binding.kind() == ControlKind::Number
+				&& element.pending_raw.is_some()
+				&& element.last_observed_control_value.as_ref() == Some(&value);
+			if !retain_invalid_raw {
+				element.pending_raw = None;
+				element.apply_control_value(value.clone());
+			}
+			element.last_observed_control_value = Some(value);
+			if matches!(
+				binding.kind(),
+				ControlKind::SelectOne | ControlKind::SelectMany
+			) {
+				selects.push(node_id);
+			}
+		}
+		for select in selects {
+			self.refresh_selected_options(select);
+		}
 	}
 
 	pub(crate) fn value(&self, node_id: NodeId) -> Option<String> {
@@ -316,7 +444,7 @@ impl TestDom {
 	fn append_page(&mut self, parent: NodeId, page: Page) {
 		match page {
 			Page::Element(element) => {
-				let (tag, attrs, children, is_void, event_handlers, _control_binding) =
+				let (tag, attrs, children, is_void, event_handlers, control_binding) =
 					element.into_parts();
 				let attrs = attrs
 					.into_iter()
@@ -332,24 +460,41 @@ impl TestDom {
 					.iter()
 					.find(|(name, _)| name == "contenteditable")
 					.is_some_and(|(_, value)| value != "false");
-				let node_id = self.push_node(
-					parent,
-					TestNode::Element(ElementNode {
-						tag: tag.into_owned(),
-						attrs,
-						children: Vec::new(),
-						parent: Some(parent),
-						is_void,
-						event_handlers,
-						value,
-						checked,
-						selected_values,
-						files: Vec::new(),
-						content_editable,
-					}),
-				);
+				let last_observed_control_value =
+					control_binding.as_ref().map(ControlBinding::read);
+				let refresh_controlled_select = control_binding.as_ref().is_some_and(|binding| {
+					matches!(
+						binding.kind(),
+						ControlKind::SelectOne | ControlKind::SelectMany
+					)
+				});
+				let mut element_node = ElementNode {
+					tag: tag.into_owned(),
+					attrs,
+					children: Vec::new(),
+					parent: Some(parent),
+					is_void,
+					event_handlers,
+					value,
+					checked,
+					selected_values,
+					files: Vec::new(),
+					content_editable,
+					control_binding,
+					is_composing: false,
+					pending_raw: None,
+					last_committed_raw: None,
+					last_observed_control_value: last_observed_control_value.clone(),
+				};
+				if let Some(value) = last_observed_control_value {
+					element_node.apply_control_value(value);
+				}
+				let node_id = self.push_node(parent, TestNode::Element(element_node));
 				for child in children {
 					self.append_page(node_id, child);
+				}
+				if refresh_controlled_select {
+					self.refresh_selected_options(node_id);
 				}
 			}
 			Page::Text(text) => {
@@ -393,6 +538,11 @@ impl TestDom {
 							selected_values: Vec::new(),
 							files: Vec::new(),
 							content_editable: false,
+							control_binding: None,
+							is_composing: false,
+							pending_raw: None,
+							last_committed_raw: None,
+							last_observed_control_value: None,
 						}),
 					);
 				}
@@ -525,9 +675,113 @@ impl TestDom {
 			*node = TestNode::Removed;
 		}
 	}
+
+	fn refresh_selected_options(&mut self, select_id: NodeId) {
+		let Some(select) = self.element(select_id) else {
+			return;
+		};
+		if select.tag != "select" {
+			return;
+		}
+		let selected_values = select.selected_values.clone();
+		let children = select.children.clone();
+		for child in children {
+			self.refresh_selected_options_in_subtree(child, &selected_values);
+		}
+	}
+
+	fn refresh_selected_options_in_subtree(&mut self, node_id: NodeId, selected_values: &[String]) {
+		let children = self.children(node_id).to_vec();
+		if let Some(TestNode::Element(node)) = self.nodes.get_mut(node_id)
+			&& node.tag == "option"
+		{
+			let selected = node
+				.attr("value")
+				.is_some_and(|value| selected_values.iter().any(|candidate| candidate == value));
+			node.attrs.retain(|(name, _)| name != "selected");
+			if selected {
+				node.attrs
+					.push(("selected".to_owned(), "selected".to_owned()));
+			}
+		}
+		for child in children {
+			self.refresh_selected_options_in_subtree(child, selected_values);
+		}
+	}
 }
 
 impl ElementNode {
+	fn validate_control_binding(
+		&self,
+		binding: &ControlBinding,
+	) -> Result<(), ControlBindingError> {
+		let supported = match binding.kind() {
+			ControlKind::Text => {
+				self.tag == "textarea"
+					|| (self.tag == "input"
+						&& !matches!(self.attr("type"), Some("checkbox" | "radio" | "number")))
+			}
+			ControlKind::Number => self.tag == "input" && self.attr("type") == Some("number"),
+			ControlKind::Checkbox => self.tag == "input" && self.attr("type") == Some("checkbox"),
+			ControlKind::Radio => self.tag == "input" && self.attr("type") == Some("radio"),
+			ControlKind::SelectOne => self.tag == "select" && !self.has_attr("multiple"),
+			ControlKind::SelectMany => self.tag == "select" && self.has_attr("multiple"),
+		};
+		if supported {
+			Ok(())
+		} else {
+			Err(ControlBindingError::UnsupportedElement {
+				control: binding.kind(),
+				actual_tag: self.tag.clone(),
+			})
+		}
+	}
+
+	fn write_raw_control_value(
+		&mut self,
+		binding: &ControlBinding,
+		raw: String,
+		dedupe_next_input: bool,
+	) -> Result<(), ControlBindingError> {
+		let outcome = binding.write(ControlValue::Text(raw.clone()))?;
+		self.last_committed_raw = dedupe_next_input.then(|| raw.clone());
+		self.record_write_outcome(binding, outcome, Some(raw));
+		Ok(())
+	}
+
+	fn record_write_outcome(
+		&mut self,
+		binding: &ControlBinding,
+		outcome: ControlWriteOutcome,
+		raw: Option<String>,
+	) {
+		match outcome {
+			ControlWriteOutcome::Committed | ControlWriteOutcome::Ignored => {
+				self.pending_raw = None;
+				self.last_observed_control_value = Some(binding.read());
+			}
+			ControlWriteOutcome::Rejected(_) => {
+				self.pending_raw = raw;
+			}
+		}
+	}
+
+	fn apply_control_value(&mut self, value: ControlValue) {
+		match value {
+			ControlValue::Text(value) => {
+				self.value = Some(value.clone());
+				if self.tag == "select" {
+					self.selected_values = vec![value];
+				}
+			}
+			ControlValue::Checked(checked) => self.checked = checked,
+			ControlValue::SelectedValues(values) => {
+				self.value = values.first().cloned();
+				self.selected_values = values;
+			}
+		}
+	}
+
 	pub(crate) fn attr(&self, name: &str) -> Option<&str> {
 		self.attrs
 			.iter()

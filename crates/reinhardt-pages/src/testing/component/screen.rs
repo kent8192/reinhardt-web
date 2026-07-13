@@ -236,13 +236,17 @@ impl Screen {
 			#[cfg(feature = "msw")]
 			server_fn_mock::with_active(mocks.clone(), || {
 				scheduler.with_current(|| {
-					self.inner.borrow_mut().dom.rerender_reactive_anchors();
+					let mut inner = self.inner.borrow_mut();
+					inner.dom.rerender_reactive_anchors();
+					inner.dom.refresh_control_bindings();
 				});
 			});
 			#[cfg(not(feature = "msw"))]
 			{
 				scheduler.with_current(|| {
-					self.inner.borrow_mut().dom.rerender_reactive_anchors();
+					let mut inner = self.inner.borrow_mut();
+					inner.dom.rerender_reactive_anchors();
+					inner.dom.refresh_control_bindings();
 				});
 			}
 			match result {

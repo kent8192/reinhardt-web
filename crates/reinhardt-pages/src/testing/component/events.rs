@@ -3,7 +3,9 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use reinhardt_core::types::page::{NativeEvent, NativeEventTarget, PageEventHandler};
+use reinhardt_core::types::page::{
+	NativeEvent, NativeEventPayload, NativeEventTarget, PageEventHandler,
+};
 
 use super::error::EventError;
 use super::fixture::EventFixture;
@@ -133,7 +135,11 @@ impl ElementHandle {
 	/// Dispatches one validated synthetic event fixture.
 	pub fn dispatch(&self, fixture: EventFixture) -> Result<(), EventError> {
 		let event = fixture.build()?;
-		let (handlers, target, scheduler) = {
+		let input_is_composing = matches!(
+			event.payload(),
+			NativeEventPayload::Input(data) if data.is_composing
+		);
+		let (binding_handled, handlers, target, scheduler) = {
 			let mut borrowed = self.inner.borrow_mut();
 			if !borrowed.dom.contains(self.node_id) {
 				return Err(EventError::DetachedElement);
@@ -147,6 +153,11 @@ impl ElementHandle {
 			borrowed
 				.dom
 				.apply_target_state(self.node_id, fixture.target())?;
+			let binding_handled = borrowed.dom.commit_control_binding(
+				self.node_id,
+				fixture.name(),
+				input_is_composing,
+			)?;
 			let handlers: Vec<(NodeId, PageEventHandler, NativeEventTarget)> = borrowed
 				.dom
 				.event_handlers(self.node_id, fixture.name(), event.base().bubbles)
@@ -162,12 +173,17 @@ impl ElementHandle {
 				.dom
 				.event_target(self.node_id)
 				.ok_or(EventError::UnsupportedElement)?;
-			(handlers, target, Rc::clone(&borrowed.scheduler))
+			(
+				binding_handled,
+				handlers,
+				target,
+				Rc::clone(&borrowed.scheduler),
+			)
 		};
 		#[cfg(feature = "msw")]
 		let mocks = self.inner.borrow().mocks.clone();
 
-		if handlers.is_empty() {
+		if handlers.is_empty() && !binding_handled {
 			return Err(EventError::MissingHandler);
 		}
 		let event = event.with_target(target);
