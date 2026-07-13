@@ -46,7 +46,8 @@
 
 use subtle::ConstantTimeEq;
 
-use crate::reactive::Signal;
+use crate::reactive::{ReactiveScope, Signal};
+use std::rc::Rc;
 
 /// The cookie name used by Django for CSRF tokens.
 pub const CSRF_COOKIE_NAME: &str = "csrftoken";
@@ -64,10 +65,20 @@ pub const CSRF_FORM_FIELD: &str = "csrfmiddlewaretoken";
 ///
 /// This struct provides a reactive interface to CSRF token management,
 /// with automatic caching and multiple retrieval strategies.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct CsrfManager {
+	/// Retains the scope for managers constructed outside a page render.
+	_scope: Option<Rc<ReactiveScope>>,
 	/// Cached CSRF token as a reactive Signal.
 	token: Signal<Option<String>>,
+}
+
+impl std::fmt::Debug for CsrfManager {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("CsrfManager")
+			.field("token", &self.token)
+			.finish()
+	}
 }
 
 impl Default for CsrfManager {
@@ -81,7 +92,17 @@ impl CsrfManager {
 	///
 	/// The token is not fetched until explicitly requested.
 	pub fn new() -> Self {
+		if reinhardt_core::reactive::scope::current_scope_id().is_some() {
+			return Self::from_scope(None);
+		}
+
+		let scope = Rc::new(ReactiveScope::new());
+		scope.enter(|| Self::from_scope(Some(Rc::clone(&scope))))
+	}
+
+	fn from_scope(scope: Option<Rc<ReactiveScope>>) -> Self {
 		Self {
+			_scope: scope,
 			token: Signal::new(None),
 		}
 	}
@@ -469,6 +490,16 @@ mod tests {
 			let manager = CsrfManager::new();
 			assert!(manager.cached_token().is_none());
 		});
+	}
+
+	#[test]
+	#[serial_test::serial(reactive_runtime)]
+	fn csrf_manager_created_outside_scope_retains_its_token_state() {
+		let manager = CsrfManager::new();
+
+		manager.set_token("retained-token");
+
+		assert_eq!(manager.cached_token(), Some("retained-token".to_string()));
 	}
 
 	#[test]

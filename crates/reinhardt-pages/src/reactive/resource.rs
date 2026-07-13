@@ -9,14 +9,50 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::cell::Cell;
 use std::fmt;
+use std::future::Future;
 use std::marker::PhantomData;
+use std::pin::Pin;
 use std::rc::Rc;
+use std::task::{Context, Poll};
 
 use crate::platform::{defer_yield, spawn_task};
 use crate::reactive::pages_arena::{PageNodeKey, PageNodeKind, allocate_page_node, with_page_node};
-use reinhardt_core::reactive::deps::IntoDeps;
+use reinhardt_core::reactive::{ScopeId, current_scope_id, deps::IntoDeps, scope::enter_scope};
 
 type RefetchCallback = Rc<dyn Fn()>;
+
+/// Polls a resource fetch future with the scope that owns its state active.
+///
+/// Browser task executors poll futures after their creator's render turn has
+/// completed. Re-entering the owner scope keeps fetchers free to allocate
+/// reactive primitives while still treating a disposed scope as cancellation.
+struct ScopedResourceFuture<Fut> {
+	scope: ScopeId,
+	future: Pin<Box<Fut>>,
+}
+
+impl<Fut> Future for ScopedResourceFuture<Fut>
+where
+	Fut: Future<Output = ()>,
+{
+	type Output = ();
+
+	fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+		let this = self.get_mut();
+		let poll = || this.future.as_mut().poll(cx);
+		enter_scope(this.scope, poll).unwrap_or(Poll::Ready(()))
+	}
+}
+
+fn scope_resource_future<Fut>(scope: ScopeId, future: Fut) -> ScopedResourceFuture<Fut>
+where
+	Fut: Future<Output = ()> + 'static,
+{
+	ScopedResourceFuture {
+		scope,
+		future: Box::pin(future),
+	}
+}
 
 struct ResourceSlot<T: Clone + 'static, E: Clone + 'static> {
 	state: Signal<ResourceState<T, E>>,
@@ -250,6 +286,8 @@ impl<T: Clone + 'static, E: Clone + 'static> reinhardt_core::reactive::deps::Tra
 /// The initial fetch and every dependency-driven refetch are deferred one
 /// microtask (`defer_yield`) so they cannot hang when created during WASM
 /// initialization before the event loop is running (#3316).
+/// Each poll re-enters the resource's owning reactive scope, so fetchers may
+/// allocate scoped primitives after an `await` without outliving their owner.
 ///
 /// [`Trackable`]: reinhardt_core::reactive::deps::Trackable
 /// [`IntoDeps`]: reinhardt_core::reactive::deps::IntoDeps
@@ -372,6 +410,7 @@ where
 
 	let run_initial_fetch = initial_state.is_none();
 	let state = Signal::new(initial_state.unwrap_or(ResourceState::Loading));
+	let owner_scope = current_scope_id().expect("resource state requires an active scope");
 
 	// Single fetch routine shared by the dependency-driven Effect and manual
 	// refetch. `defer_yield` runs on every path (initial, dependency change, and
@@ -382,7 +421,7 @@ where
 		Rc::new(move || {
 			state.set(ResourceState::Loading);
 			let fetcher = Rc::clone(&fetcher);
-			spawn_task(async move {
+			spawn_task(scope_resource_future(owner_scope, async move {
 				defer_yield().await;
 				match fetcher().await {
 					Ok(data) => {
@@ -392,7 +431,7 @@ where
 						let _ = state.try_set(ResourceState::Error(err));
 					}
 				}
-			});
+			}));
 		})
 	};
 
@@ -516,6 +555,10 @@ where
 mod tests {
 	use super::*;
 	use rstest::rstest;
+	#[cfg(all(native, feature = "testing"))]
+	use std::cell::RefCell;
+	#[cfg(all(native, feature = "testing"))]
+	use std::task::Waker;
 
 	#[rstest]
 	fn resource_is_copy() {
@@ -572,5 +615,43 @@ mod tests {
 		let value = serde_json::json!({"Success": "server"});
 		let state: ResourceState<String, String> = deserialize_resource_state(&value).unwrap();
 		assert_eq!(state, ResourceState::Success("server".to_string()));
+	}
+
+	#[cfg(all(native, feature = "testing"))]
+	#[test]
+	#[serial_test::serial(reactive_runtime)]
+	fn resource_fetcher_is_polled_in_its_owner_scope() {
+		let queued = Rc::new(RefCell::new(None));
+		let queued_for_sink = Rc::clone(&queued);
+		let _task_sink = crate::platform::install_task_sink(move |task| {
+			*queued_for_sink.borrow_mut() = Some(task);
+		});
+		let scope = reinhardt_core::reactive::ReactiveScope::new();
+		let fetcher_ran = Rc::new(Cell::new(false));
+
+		scope.enter(|| {
+			let fetcher_ran = Rc::clone(&fetcher_ran);
+			let _resource: Resource<i32, String> = use_resource(
+				move || {
+					let fetcher_ran = Rc::clone(&fetcher_ran);
+					async move {
+						let scoped_signal = Signal::new(1_i32);
+						assert_eq!(scoped_signal.get(), 1);
+						fetcher_ran.set(true);
+						Ok(42)
+					}
+				},
+				(),
+			);
+		});
+
+		let mut task = queued
+			.borrow_mut()
+			.take()
+			.expect("resource creation should queue a native task");
+		let mut context = Context::from_waker(Waker::noop());
+
+		assert_eq!(task.as_mut().poll(&mut context), Poll::Ready(()));
+		assert!(fetcher_ran.get());
 	}
 }

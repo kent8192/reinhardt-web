@@ -460,6 +460,14 @@ impl FormComponent {
 		}
 	}
 
+	#[cfg(any(wasm, test))]
+	fn with_reactive_scope<R>(&self, f: impl FnOnce() -> R) -> R {
+		match &self._scope {
+			Some(scope) => scope.enter(f),
+			None => f(),
+		}
+	}
+
 	/// Render the form to a DOM element (WASM only)
 	///
 	/// This method creates a `<form>` element with all fields, labels,
@@ -477,6 +485,11 @@ impl FormComponent {
 	/// ```
 	#[cfg(wasm)]
 	pub fn render(&self) -> web_sys::Element {
+		self.with_reactive_scope(|| self.render_in_scope())
+	}
+
+	#[cfg(wasm)]
+	fn render_in_scope(&self) -> web_sys::Element {
 		use crate::builder::html;
 
 		// Create form element
@@ -1267,6 +1280,37 @@ mod tests {
 			assert_eq!(component.values.len(), 1);
 			assert!(component.values.contains_key("username"));
 		});
+	}
+
+	#[rstest]
+	fn standalone_form_reenters_its_retained_scope() {
+		let metadata = FormMetadata {
+			fields: vec![FieldMetadata {
+				name: "email".to_string(),
+				label: Some("Email".to_string()),
+				required: true,
+				help_text: None,
+				widget: Widget::EmailInput,
+				initial: None,
+			}],
+			initial: HashMap::new(),
+			prefix: String::new(),
+			is_bound: false,
+			errors: HashMap::new(),
+			validation_rules: Vec::new(),
+			non_field_errors: Vec::new(),
+		};
+		let component = FormComponent::new(metadata, "/api/submit");
+		let effect_ran = Rc::new(std::cell::Cell::new(false));
+
+		component.with_reactive_scope({
+			let effect_ran = Rc::clone(&effect_ran);
+			move || {
+				let _effect = crate::reactive::Effect::new(move || effect_ran.set(true));
+			}
+		});
+
+		assert!(effect_ran.get());
 	}
 
 	#[rstest]

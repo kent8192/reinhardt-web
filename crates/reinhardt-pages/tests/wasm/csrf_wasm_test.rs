@@ -109,6 +109,15 @@ fn test_csrf_token_from_hidden_input_missing() {
 // Token Source Priority Tests
 // ============================================================================
 
+#[wasm_bindgen_test]
+fn csrf_manager_created_outside_scope_retains_token_state() {
+	let manager = CsrfManager::new();
+
+	manager.set_token("retained-token");
+
+	assert_eq!(manager.cached_token(), Some("retained-token".to_string()));
+}
+
 /// Test that get_csrf_token() retrieves from cookie first (highest priority)
 #[wasm_bindgen_test]
 fn test_csrf_token_priority_cookie_first() {

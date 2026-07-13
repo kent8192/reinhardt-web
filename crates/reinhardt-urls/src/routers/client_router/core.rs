@@ -19,13 +19,10 @@ use super::scope::{RegisteredRouteScope, RouteScope};
 use super::tree::{ClientRouteTreeMatch, ResolvedRouteMetadata, RouteNode};
 use reinhardt_core::page::Outlet;
 use reinhardt_core::page::Page;
-use reinhardt_core::reactive::Signal;
-#[cfg(native)]
-use reinhardt_core::reactive::{ReactiveScope, scope::current_scope_id};
+use reinhardt_core::reactive::{ReactiveScope, Signal, scope::current_scope_id};
 use std::collections::{HashMap, HashSet};
 #[cfg(native)]
 use std::marker::PhantomData;
-#[cfg(native)]
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -46,7 +43,6 @@ type NavigationObservers = std::rc::Rc<std::cell::RefCell<Vec<std::rc::Weak<Navi
 #[cfg(wasm)]
 type NavigationListener = dyn Fn(&str, &HashMap<String, String>) + 'static;
 
-#[cfg(native)]
 type NavigationSignals = (
 	Signal<String>,
 	Signal<HashMap<String, String>>,
@@ -54,7 +50,6 @@ type NavigationSignals = (
 	Option<Rc<ReactiveScope>>,
 );
 
-#[cfg(native)]
 fn create_navigation_signals(initial_path: String) -> NavigationSignals {
 	if current_scope_id().is_some() {
 		return (
@@ -78,21 +73,6 @@ fn create_navigation_signals(initial_path: String) -> NavigationSignals {
 		current_params,
 		current_route_name,
 		Some(scope),
-	)
-}
-
-#[cfg(wasm)]
-fn create_navigation_signals(
-	initial_path: String,
-) -> (
-	Signal<String>,
-	Signal<HashMap<String, String>>,
-	Signal<Option<String>>,
-) {
-	(
-		Signal::new(initial_path),
-		Signal::new(HashMap::new()),
-		Signal::new(None),
 	)
 }
 
@@ -440,11 +420,10 @@ pub struct ClientRouter {
 	current_params: Signal<HashMap<String, String>>,
 	/// Current matched route name signal.
 	current_route_name: Signal<Option<String>>,
-	/// Owns navigation state created outside an active native reactive scope.
+	/// Owns navigation state created outside an active reactive scope.
 	///
 	/// The final router clone drops this scope and disposes its navigation
 	/// signals instead of retaining them in a process-wide thread-local scope.
-	#[cfg(native)]
 	_navigation_scope: Option<Rc<ReactiveScope>>,
 	/// Not found handler.
 	not_found: Option<Arc<dyn Fn() -> Page + Send + Sync>>,
@@ -499,11 +478,8 @@ impl ClientRouter {
 	/// Creates a new router.
 	pub fn new() -> Self {
 		let initial_path = current_path().unwrap_or_else(|_| "/".to_string());
-		#[cfg(native)]
 		let (current_path, current_params, current_route_name, navigation_scope) =
 			create_navigation_signals(initial_path);
-		#[cfg(wasm)]
-		let (current_path, current_params, current_route_name) = create_navigation_signals(initial_path);
 
 		Self {
 			routes: Vec::new(),
@@ -513,7 +489,6 @@ impl ClientRouter {
 			current_path,
 			current_params,
 			current_route_name,
-			#[cfg(native)]
 			_navigation_scope: navigation_scope,
 			not_found: None,
 			// (Fixes #4258) Reactive observation state is wasm-only; see field
