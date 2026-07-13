@@ -25,6 +25,7 @@ use crate::types::ModelInfo;
 use reinhardt_pages::Signal;
 use reinhardt_pages::component::{Component, Page};
 use reinhardt_pages::page;
+use reinhardt_pages::reactive::ReactiveScope;
 use reinhardt_pages::router::Link;
 #[cfg(client)]
 use reinhardt_pages::{ResourceState, use_resource};
@@ -71,8 +72,13 @@ pub enum AdminRoute {
 
 // Global Router instance
 // Initialized by init_global_router() and accessed via with_router()
+struct GlobalRouter {
+	scope: ReactiveScope,
+	router: ClientRouter,
+}
+
 thread_local! {
-	static ROUTER: RefCell<Option<ClientRouter>> = const { RefCell::new(None) };
+	static ROUTER: RefCell<Option<GlobalRouter>> = const { RefCell::new(None) };
 }
 
 #[cfg(any(client, test))]
@@ -136,9 +142,11 @@ pub(crate) fn get_login_url() -> String {
 /// init_global_router();
 /// ```
 pub fn init_global_router() {
-	ROUTER.with(|r| {
-		*r.borrow_mut() = Some(init_router());
-	});
+	let scope = ReactiveScope::new();
+	let router = scope.enter(init_router);
+	let previous =
+		ROUTER.with(|stored| stored.borrow_mut().replace(GlobalRouter { scope, router }));
+	drop(previous);
 }
 
 /// Provides access to the global router instance
@@ -158,7 +166,12 @@ pub fn try_with_router<F, R>(f: F) -> Option<R>
 where
 	F: FnOnce(&ClientRouter) -> R,
 {
-	ROUTER.with(|r| r.borrow().as_ref().map(f))
+	ROUTER.with(|stored| {
+		let stored = stored.borrow();
+		stored
+			.as_ref()
+			.map(|stored| stored.scope.enter(|| f(&stored.router)))
+	})
 }
 
 /// Provides access to the global router instance
@@ -744,6 +757,11 @@ mod tests {
 	use super::*;
 	use reinhardt_core::reactive::ReactiveScope;
 
+	fn clear_global_router() {
+		let previous = ROUTER.with(|router| router.borrow_mut().take());
+		drop(previous);
+	}
+
 	#[test]
 	fn test_admin_route_enum() {
 		let route = AdminRoute::Dashboard;
@@ -914,6 +932,19 @@ mod tests {
 	}
 
 	#[test]
+	fn global_router_scope_outlives_initializer_scope() {
+		clear_global_router();
+
+		ReactiveScope::run(init_global_router);
+
+		with_router(|router| {
+			assert_eq!(router.current_path().get(), "/");
+		});
+
+		clear_global_router();
+	}
+
+	#[test]
 	fn test_with_router_access() {
 		ReactiveScope::run(|| {
 			init_global_router();
@@ -929,16 +960,14 @@ mod tests {
 	#[test]
 	#[should_panic(expected = "Router not initialized")]
 	fn test_with_router_panics_when_not_initialized() {
-		// Clear ROUTER (this operation is actually dangerous, but for test purposes)
-		ROUTER.with(|r| *r.borrow_mut() = None);
+		clear_global_router();
 
 		with_router(|_| {});
 	}
 
 	#[test]
 	fn test_try_with_router_returns_none_when_not_initialized() {
-		// Clear ROUTER to simulate uninitialized state
-		ROUTER.with(|r| *r.borrow_mut() = None);
+		clear_global_router();
 
 		let result = try_with_router(|router| router.route_count());
 		assert!(result.is_none());
