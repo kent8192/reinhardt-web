@@ -56,9 +56,11 @@ pub(crate) fn model_enum_derive_impl(input: DeriveInput) -> Result<TokenStream> 
 	Ok(quote! {
 		impl #impl_generics #orm::DatabaseField for #enum_ident #type_generics #where_clause {
 			type Storage = #storage;
-			const MAX_STRING_VALUE_CHARS: Option<usize> = #max_chars;
+			const MAX_STRING_VALUE_CHARS: ::core::option::Option<usize> = #max_chars;
 
-			fn encode_database(&self) -> Result<Self::Storage, #orm::FieldCodecError> {
+			fn encode_database(
+				&self,
+			) -> ::core::result::Result<Self::Storage, #orm::FieldCodecError> {
 				match self {
 					#(#encode_arms),*
 				}
@@ -67,14 +69,14 @@ pub(crate) fn model_enum_derive_impl(input: DeriveInput) -> Result<TokenStream> 
 			fn decode_database(
 				value: Self::Storage,
 				context: &#orm::FieldCodecContext,
-			) -> Result<Self, #orm::FieldCodecError> {
+			) -> ::core::result::Result<Self, #orm::FieldCodecError> {
 				#decode_body
 			}
 
-			fn domain() -> Option<#orm::FieldDomain> {
-				Some(#orm::FieldDomain::Enum {
+			fn domain() -> ::core::option::Option<#orm::FieldDomain> {
+				::core::option::Option::Some(#orm::FieldDomain::Enum {
 					repr: #repr_token,
-					values: vec![#(#domain_values),*],
+					values: ::std::vec![#(#domain_values),*],
 				})
 			}
 		}
@@ -283,7 +285,11 @@ fn generate_string_parts(orm: &TokenStream, variants: &[VariantValue]) -> Genera
 			let EnumValue::String(value) = &variant.value else {
 				unreachable!("representation validated during parsing")
 			};
-			quote!(Self::#ident => Ok(#value.to_owned()))
+			quote!(
+				Self::#ident => ::core::result::Result::Ok(
+					::std::string::String::from(#value)
+				)
+			)
 		})
 		.collect();
 	let decode_arms = variants.iter().map(|variant| {
@@ -291,7 +297,7 @@ fn generate_string_parts(orm: &TokenStream, variants: &[VariantValue]) -> Genera
 		let EnumValue::String(value) = &variant.value else {
 			unreachable!("representation validated during parsing")
 		};
-		quote!(#value => Ok(Self::#ident))
+		quote!(#value => ::core::result::Result::Ok(Self::#ident))
 	});
 	let values = variants
 		.iter()
@@ -308,20 +314,20 @@ fn generate_string_parts(orm: &TokenStream, variants: &[VariantValue]) -> Genera
 			let EnumValue::String(value) = &variant.value else {
 				unreachable!("representation validated during parsing")
 			};
-			quote!(#orm::ModelEnumValue::String(#value.to_owned()))
+			quote!(#orm::ModelEnumValue::String(::std::string::String::from(#value)))
 		})
 		.collect();
 
 	GeneratedParts {
 		storage: quote!(::std::string::String),
 		repr: quote!(#orm::ModelEnumRepr::String),
-		max_chars: quote!(Some(#max_chars)),
+		max_chars: quote!(::core::option::Option::Some(#max_chars)),
 		encode_arms,
 		decode_body: quote! {
 			match value.as_str() {
 				#(#decode_arms),*,
-				_ => Err(#orm::FieldCodecError::invalid_enum(
-					context.clone(),
+				_ => ::core::result::Result::Err(#orm::FieldCodecError::invalid_enum(
+					::core::clone::Clone::clone(context),
 					#orm::ModelEnumRepr::String,
 					#orm::ModelEnumValue::String(value),
 				)),
@@ -341,7 +347,7 @@ fn generate_i32_parts(orm: &TokenStream, variants: &[VariantValue]) -> Generated
 				unreachable!("representation validated during parsing")
 			};
 			let value = LitInt::new(&format!("{value}i32"), span);
-			quote!(Self::#ident => Ok(#value))
+			quote!(Self::#ident => ::core::result::Result::Ok(#value))
 		})
 		.collect();
 	let decode_arms = variants.iter().map(|variant| {
@@ -350,7 +356,7 @@ fn generate_i32_parts(orm: &TokenStream, variants: &[VariantValue]) -> Generated
 			unreachable!("representation validated during parsing")
 		};
 		let value = LitInt::new(&format!("{value}i32"), span);
-		quote!(#value => Ok(Self::#ident))
+		quote!(#value => ::core::result::Result::Ok(Self::#ident))
 	});
 	let values = variants
 		.iter()
@@ -376,13 +382,13 @@ fn generate_i32_parts(orm: &TokenStream, variants: &[VariantValue]) -> Generated
 	GeneratedParts {
 		storage: quote!(i32),
 		repr: quote!(#orm::ModelEnumRepr::I32),
-		max_chars: quote!(None),
+		max_chars: quote!(::core::option::Option::None),
 		encode_arms,
 		decode_body: quote! {
 			match value {
 				#(#decode_arms),*,
-				value => Err(#orm::FieldCodecError::invalid_enum(
-					context.clone(),
+				value => ::core::result::Result::Err(#orm::FieldCodecError::invalid_enum(
+					::core::clone::Clone::clone(context),
 					#orm::ModelEnumRepr::I32,
 					#orm::ModelEnumValue::I32(value),
 				)),
@@ -414,9 +420,23 @@ mod tests {
 		let tokens = model_enum_derive_impl(input).unwrap().to_string();
 
 		assert!(tokens.contains("type Storage = :: std :: string :: String"));
-		assert!(tokens.contains("MAX_STRING_VALUE_CHARS : Option < usize > = Some (9usize)"));
-		assert!(tokens.contains("Self :: Queued => Ok (\"queued\" . to_owned ())"));
-		assert!(tokens.contains("\"completed\" => Ok (Self :: Completed)"));
+		assert!(tokens.contains(
+			"MAX_STRING_VALUE_CHARS : :: core :: option :: Option < usize > = :: core :: option :: Option :: Some (9usize)"
+		));
+		assert!(tokens.contains(
+			"Self :: Queued => :: core :: result :: Result :: Ok (:: std :: string :: String :: from (\"queued\"))"
+		));
+		assert!(
+			tokens
+				.contains("\"completed\" => :: core :: result :: Result :: Ok (Self :: Completed)")
+		);
+		assert!(tokens.contains("-> :: core :: result :: Result < Self :: Storage"));
+		assert!(tokens.contains(":: std :: vec ! ["));
+		assert!(tokens.contains(":: core :: result :: Result :: Err ("));
+		assert!(tokens.contains(":: core :: clone :: Clone :: clone (context)"));
+		assert!(tokens.contains(
+			"ModelEnumValue :: String (:: std :: string :: String :: from (\"queued\"))"
+		));
 		assert!(tokens.contains("FieldCodecError :: invalid_enum"));
 		assert!(tokens.contains("ModelEnumValueRef :: String (\"queued\")"));
 	}
@@ -436,8 +456,11 @@ mod tests {
 		let tokens = model_enum_derive_impl(input).unwrap().to_string();
 
 		assert!(tokens.contains("type Storage = i32"));
-		assert!(tokens.contains("Self :: Low => Ok (- 1i32)"));
-		assert!(tokens.contains("2i32 => Ok (Self :: High)"));
+		assert!(tokens.contains(
+			"MAX_STRING_VALUE_CHARS : :: core :: option :: Option < usize > = :: core :: option :: Option :: None"
+		));
+		assert!(tokens.contains("Self :: Low => :: core :: result :: Result :: Ok (- 1i32)"));
+		assert!(tokens.contains("2i32 => :: core :: result :: Result :: Ok (Self :: High)"));
 		assert!(tokens.contains("ModelEnumValueRef :: I32 (- 1i32)"));
 	}
 }
