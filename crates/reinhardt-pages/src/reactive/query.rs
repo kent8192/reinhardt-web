@@ -6,6 +6,8 @@
 //! key helpers that include the server function identity plus an opaque digest
 //! of canonical JSON arguments.
 
+mod canonical_json;
+
 use std::any::Any;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -97,9 +99,7 @@ impl<T, E> QueryKey<T, E> {
 		F: Fn() -> Fut + 'static,
 		Fut: Future<Output = Result<T, E>> + 'static,
 	{
-		let encoded_args = serde_json::to_value(&args)
-			.map(canonicalize_json)
-			.and_then(|value| serde_json::to_string(&value))
+		let encoded_args = canonical_json::encode(&args)
 			.expect("server function query arguments must serialize into a cache key");
 		let args_digest = Sha256::digest(encoded_args.as_bytes());
 		Self::new(
@@ -565,23 +565,6 @@ fn scoped_query_cache_id(id: &str) -> String {
 	id.to_string()
 }
 
-fn canonicalize_json(value: serde_json::Value) -> serde_json::Value {
-	match value {
-		serde_json::Value::Array(values) => {
-			serde_json::Value::Array(values.into_iter().map(canonicalize_json).collect())
-		}
-		serde_json::Value::Object(entries) => {
-			let mut entries: Vec<_> = entries
-				.into_iter()
-				.map(|(key, value)| (key, canonicalize_json(value)))
-				.collect();
-			entries.sort_unstable_by(|(left, _), (right, _)| left.cmp(right));
-			serde_json::Value::Object(entries.into_iter().collect())
-		}
-		value => value,
-	}
-}
-
 #[cfg(wasm)]
 fn hydrated_query_state<T, E>(key: &str) -> Option<ResourceState<T, E>>
 where
@@ -731,6 +714,21 @@ mod tests {
 	struct OrderedMapArgs(&'static [(&'static str, i64)]);
 
 	impl Serialize for OrderedMapArgs {
+		fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+		where
+			S: Serializer,
+		{
+			let mut map = serializer.serialize_map(Some(self.0.len()))?;
+			for (key, value) in self.0 {
+				map.serialize_entry(key, value)?;
+			}
+			map.end()
+		}
+	}
+
+	struct OrderedLargeMapArgs(&'static [(&'static str, u128)]);
+
+	impl Serialize for OrderedLargeMapArgs {
 		fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 		where
 			S: Serializer,
@@ -1062,6 +1060,37 @@ mod tests {
 			first.id(),
 			"server_fn:/api/server_fn/filter_jobs:json:sha256:b2b2c11c6c2d2aacfabe8dba6102508d46a7690b66d0662adc332e4802f078d2"
 		);
+	}
+
+	#[rstest]
+	#[serial(query_cache)]
+	fn server_fn_key_canonicalizes_large_integer_object_arguments() {
+		// Arrange
+		clear_query_cache_for_test();
+
+		struct Marker;
+
+		impl crate::server_fn::ServerFnMetadata for Marker {
+			const PATH: &'static str = "/api/server_fn/filter_large_jobs";
+			const NAME: &'static str = "filter_large_jobs";
+			const CODEC: &'static str = "json";
+			const IS_JSON_CODEC: bool = true;
+		}
+
+		// Act
+		let first: QueryKey<(), crate::server_fn::ServerFnError> =
+			QueryKey::from_server_fn::<Marker, _, _, _>(
+				(OrderedLargeMapArgs(&[("status", u128::MAX), ("owner", 2)]),),
+				|| async { Ok(()) },
+			);
+		let second: QueryKey<(), crate::server_fn::ServerFnError> =
+			QueryKey::from_server_fn::<Marker, _, _, _>(
+				(OrderedLargeMapArgs(&[("owner", 2), ("status", u128::MAX)]),),
+				|| async { Ok(()) },
+			);
+
+		// Assert
+		assert_eq!(first.id(), second.id());
 	}
 
 	#[rstest]
