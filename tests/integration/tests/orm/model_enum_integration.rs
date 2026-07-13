@@ -276,7 +276,14 @@ async fn typed_codec_errors_surface_before_filter_or_update_execution() {
 		.expect("SQLite connection should initialize");
 	connection
 		.execute(
-			"CREATE TABLE codec_jobs (id INTEGER PRIMARY KEY, status VARCHAR(40) NOT NULL)",
+			"CREATE TABLE owners (id INTEGER PRIMARY KEY, name VARCHAR(40) NOT NULL)",
+			vec![],
+		)
+		.await
+		.expect("owners table should be created");
+	connection
+		.execute(
+			"CREATE TABLE codec_jobs (id INTEGER PRIMARY KEY, status VARCHAR(40) NOT NULL, owner_id INTEGER)",
 			vec![],
 		)
 		.await
@@ -295,6 +302,13 @@ async fn typed_codec_errors_surface_before_filter_or_update_execution() {
 		)
 		.await
 		.expect("update rejection trigger should be created");
+	connection
+		.execute(
+			"CREATE TRIGGER reject_codec_job_delete BEFORE DELETE ON codec_jobs BEGIN SELECT RAISE(FAIL, 'SQL delete executed'); END",
+			vec![],
+		)
+		.await
+		.expect("delete rejection trigger should be created");
 
 	let filter_error = CodecJob::objects()
 		.filter(CodecJob::field_status().eq(RejectingStatus("queued".to_owned())))
@@ -304,6 +318,28 @@ async fn typed_codec_errors_surface_before_filter_or_update_execution() {
 	let filter_source =
 		std::error::Error::source(&filter_error).expect("filter codec source should be preserved");
 	assert!(filter_source.downcast_ref::<FieldCodecError>().is_some());
+
+	let select_related_error = CodecJob::objects()
+		.select_related(&["owner"])
+		.filter(CodecJob::field_status().eq(RejectingStatus("queued".to_owned())))
+		.all_with_db(&connection)
+		.await
+		.expect_err("select-related codec error should surface before SQL execution");
+	let select_related_source = std::error::Error::source(&select_related_error)
+		.expect("select-related codec source should be preserved");
+	assert!(
+		select_related_source
+			.downcast_ref::<FieldCodecError>()
+			.is_some()
+	);
+
+	let delete_error = CodecJob::objects()
+		.filter(CodecJob::field_status().eq(RejectingStatus("queued".to_owned())))
+		.delete_sql()
+		.expect_err("delete codec error should surface before SQL execution");
+	let delete_source =
+		std::error::Error::source(&delete_error).expect("delete codec source should be preserved");
+	assert!(delete_source.downcast_ref::<FieldCodecError>().is_some());
 
 	let update_error = CodecJob::objects()
 		.filter(CodecJob::field_id().eq(Some(1)))

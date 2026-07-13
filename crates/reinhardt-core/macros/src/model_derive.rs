@@ -2097,10 +2097,17 @@ fn generate_fk_accessor_methods(
 					// Get FK _id value.
 					let fk_id = self.#fk_id_field_name();
 
-					// Query the target model using the FK _id via the typed
-					// `FieldRef::eq` builder (Issue #4650).
+					// Query the target model using the FK primary key's database codec.
 					#target_ty::objects()
-						.filter(#target_ty::field_id().eq(fk_id.to_string()))
+						.filter(#orm_crate::Filter::new(
+							<#target_ty as #orm_crate::Model>::primary_key_field(),
+							#orm_crate::FilterOperator::Eq,
+							#orm_crate::FilterValue::Typed(
+								<<#target_ty as #orm_crate::Model>::PrimaryKey as #orm_crate::IntoFieldValue<
+									<#target_ty as #orm_crate::Model>::PrimaryKey
+								>>::into_field_value(fk_id)
+							)
+						))
 						.first_with_db(db)
 						.await
 				}
@@ -6231,6 +6238,26 @@ mod tests {
 		// Verify that fields are not pub
 		assert!(!output_str.contains("pub id"));
 		assert!(!output_str.contains("pub name"));
+	}
+
+	#[test]
+	fn test_full_expansion_keeps_foreign_key_primary_key_type() {
+		let input = quote! {
+			#[model(app_label = "test", table_name = "audits", info = false)]
+			pub struct Audit {
+				#[field(primary_key = true)]
+				pub id: i64,
+				#[rel(foreign_key)]
+				pub owner: db::associations::ForeignKeyField<Account>,
+			}
+		};
+
+		let output = model_derive_impl(syn::parse2(input).unwrap()).unwrap();
+		let compact = output.to_string().replace(' ', "");
+
+		assert!(compact.contains("IntoFieldValue"));
+		assert!(compact.contains("into_field_value(fk_id)"));
+		assert!(!compact.contains("fk_id.to_string()"));
 	}
 
 	#[test]

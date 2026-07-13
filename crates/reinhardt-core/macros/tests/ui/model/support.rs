@@ -299,7 +299,7 @@ pub mod db {
 					}
 				}
 
-				pub fn eq(self, _value: impl Into<String>) -> bool {
+				pub fn eq(self, _value: Type) -> bool {
 					true
 				}
 			}
@@ -417,6 +417,37 @@ pub mod db {
 				value: Self::Storage,
 				_context: &FieldCodecContext,
 			) -> Result<Self, FieldCodecError>;
+		}
+
+		pub trait IntoFieldValue<T> {
+			fn into_field_value(self) -> Result<DatabaseValue, FieldCodecError>;
+		}
+
+		impl<T: DatabaseField> IntoFieldValue<T> for T {
+			fn into_field_value(self) -> Result<DatabaseValue, FieldCodecError> {
+				self.encode_database()
+					.map(DatabaseScalar::into_database_value)
+			}
+		}
+
+		pub enum FilterOperator {
+			Eq,
+		}
+
+		pub enum FilterValue {
+			Typed(Result<DatabaseValue, FieldCodecError>),
+		}
+
+		pub struct Filter;
+
+		impl Filter {
+			pub fn new(
+				_field: impl Into<String>,
+				_operator: FilterOperator,
+				_value: FilterValue,
+			) -> Self {
+				Self
+			}
 		}
 
 		macro_rules! scalar_codec {

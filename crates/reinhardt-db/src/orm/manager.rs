@@ -671,7 +671,11 @@ impl<M: Model> Manager<M> {
 	///     .all()
 	///     .await?;
 	/// ```
-	pub fn filter_in_subquery<R: super::Model, F>(&self, field: &str, subquery_fn: F) -> QuerySet<M>
+	pub fn filter_in_subquery<R: super::Model, F>(
+		&self,
+		field: &str,
+		subquery_fn: F,
+	) -> reinhardt_core::exception::Result<QuerySet<M>>
 	where
 		F: FnOnce(QuerySet<R>) -> QuerySet<R>,
 	{
@@ -697,7 +701,7 @@ impl<M: Model> Manager<M> {
 		&self,
 		field: &str,
 		subquery_fn: F,
-	) -> QuerySet<M>
+	) -> reinhardt_core::exception::Result<QuerySet<M>>
 	where
 		F: FnOnce(QuerySet<R>) -> QuerySet<R>,
 	{
@@ -718,7 +722,10 @@ impl<M: Model> Manager<M> {
 	///     .all()
 	///     .await?;
 	/// ```
-	pub fn filter_exists<R: super::Model, F>(&self, subquery_fn: F) -> QuerySet<M>
+	pub fn filter_exists<R: super::Model, F>(
+		&self,
+		subquery_fn: F,
+	) -> reinhardt_core::exception::Result<QuerySet<M>>
 	where
 		F: FnOnce(QuerySet<R>) -> QuerySet<R>,
 	{
@@ -739,7 +746,10 @@ impl<M: Model> Manager<M> {
 	///     .all()
 	///     .await?;
 	/// ```
-	pub fn filter_not_exists<R: super::Model, F>(&self, subquery_fn: F) -> QuerySet<M>
+	pub fn filter_not_exists<R: super::Model, F>(
+		&self,
+		subquery_fn: F,
+	) -> reinhardt_core::exception::Result<QuerySet<M>>
 	where
 		F: FnOnce(QuerySet<R>) -> QuerySet<R>,
 	{
@@ -794,7 +804,11 @@ impl<M: Model> Manager<M> {
 	///     .all()
 	///     .await?;
 	/// ```
-	pub fn annotate_subquery<R, F>(&self, name: &str, builder: F) -> QuerySet<M>
+	pub fn annotate_subquery<R, F>(
+		&self,
+		name: &str,
+		builder: F,
+	) -> reinhardt_core::exception::Result<QuerySet<M>>
 	where
 		R: super::Model + 'static,
 		F: FnOnce(QuerySet<R>) -> QuerySet<R>,
@@ -1327,7 +1341,10 @@ impl<M: Model> Manager<M> {
 	}
 
 	/// Generate DELETE query for QuerySet
-	pub fn delete_queryset(&self, queryset: &QuerySet<M>) -> (String, Vec<String>) {
+	pub fn delete_queryset(
+		&self,
+		queryset: &QuerySet<M>,
+	) -> reinhardt_core::exception::Result<(String, Vec<String>)> {
 		queryset.delete_sql()
 	}
 

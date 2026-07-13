@@ -68,7 +68,7 @@ fn test_basic_eq_filter() {
 	));
 
 	// Act
-	let sql = qs.to_sql();
+	let sql = qs.to_sql().expect("query SQL should compile");
 
 	// Assert
 	assert!(
@@ -99,7 +99,7 @@ fn test_multiple_filters_chained_as_and() {
 		));
 
 	// Act
-	let sql = qs.to_sql();
+	let sql = qs.to_sql().expect("query SQL should compile");
 
 	// Assert
 	assert!(
@@ -131,7 +131,7 @@ fn test_filter_operator_ne() {
 	));
 
 	// Act
-	let sql = qs.to_sql();
+	let sql = qs.to_sql().expect("query SQL should compile");
 
 	// Assert
 	assert!(sql.contains("<>"), "Ne operator should produce <>: {}", sql);
@@ -147,7 +147,7 @@ fn test_filter_operator_gt() {
 	));
 
 	// Act
-	let sql = qs.to_sql();
+	let sql = qs.to_sql().expect("query SQL should compile");
 
 	// Assert
 	assert!(sql.contains(">"), "Gt operator should produce >: {}", sql);
@@ -163,7 +163,7 @@ fn test_filter_operator_gte() {
 	));
 
 	// Act
-	let sql = qs.to_sql();
+	let sql = qs.to_sql().expect("query SQL should compile");
 
 	// Assert
 	assert!(
@@ -183,7 +183,7 @@ fn test_filter_operator_lt() {
 	));
 
 	// Act
-	let sql = qs.to_sql();
+	let sql = qs.to_sql().expect("query SQL should compile");
 
 	// Assert
 	assert!(sql.contains("<"), "Lt operator should produce <: {}", sql);
@@ -199,7 +199,7 @@ fn test_filter_operator_lte() {
 	));
 
 	// Act
-	let sql = qs.to_sql();
+	let sql = qs.to_sql().expect("query SQL should compile");
 
 	// Assert
 	assert!(
@@ -219,7 +219,7 @@ fn test_filter_operator_contains() {
 	));
 
 	// Act
-	let sql = qs.to_sql();
+	let sql = qs.to_sql().expect("query SQL should compile");
 
 	// Assert
 	assert!(
@@ -239,7 +239,7 @@ fn test_filter_operator_starts_with() {
 	));
 
 	// Act
-	let sql = qs.to_sql();
+	let sql = qs.to_sql().expect("query SQL should compile");
 
 	// Assert
 	assert!(
@@ -259,7 +259,7 @@ fn test_filter_operator_ends_with() {
 	));
 
 	// Act
-	let sql = qs.to_sql();
+	let sql = qs.to_sql().expect("query SQL should compile");
 
 	// Assert
 	assert!(
@@ -279,7 +279,7 @@ fn test_filter_operator_in() {
 	));
 
 	// Act
-	let sql = qs.to_sql();
+	let sql = qs.to_sql().expect("query SQL should compile");
 
 	// Assert
 	assert!(sql.contains("IN"), "In operator should produce IN: {}", sql);
@@ -295,7 +295,7 @@ fn test_filter_operator_is_null() {
 	));
 
 	// Act
-	let sql = qs.to_sql();
+	let sql = qs.to_sql().expect("query SQL should compile");
 
 	// Assert
 	assert!(
@@ -315,7 +315,7 @@ fn test_filter_operator_is_not_null() {
 	));
 
 	// Act
-	let sql = qs.to_sql();
+	let sql = qs.to_sql().expect("query SQL should compile");
 
 	// Assert
 	assert!(
@@ -333,7 +333,7 @@ fn test_order_by_ascending() {
 	let qs = QuerySet::<TestProduct>::new().order_by(&["name"]);
 
 	// Act
-	let sql = qs.to_sql();
+	let sql = qs.to_sql().expect("query SQL should compile");
 
 	// Assert
 	assert!(
@@ -354,7 +354,7 @@ fn test_order_by_descending() {
 	let qs = QuerySet::<TestProduct>::new().order_by(&["-price"]);
 
 	// Act
-	let sql = qs.to_sql();
+	let sql = qs.to_sql().expect("query SQL should compile");
 
 	// Assert
 	assert!(
@@ -375,7 +375,7 @@ fn test_order_by_multiple_fields() {
 	let qs = QuerySet::<TestProduct>::new().order_by(&["category", "-price"]);
 
 	// Act
-	let sql = qs.to_sql();
+	let sql = qs.to_sql().expect("query SQL should compile");
 
 	// Assert
 	assert!(
@@ -398,7 +398,7 @@ fn test_limit() {
 	let qs = QuerySet::<TestProduct>::new().limit(10);
 
 	// Act
-	let sql = qs.to_sql();
+	let sql = qs.to_sql().expect("query SQL should compile");
 
 	// Assert
 	assert!(sql.contains("LIMIT"), "SQL should contain LIMIT: {}", sql);
@@ -415,7 +415,7 @@ fn test_offset() {
 	let qs = QuerySet::<TestProduct>::new().limit(10).offset(20);
 
 	// Act
-	let sql = qs.to_sql();
+	let sql = qs.to_sql().expect("query SQL should compile");
 
 	// Assert
 	assert!(sql.contains("OFFSET"), "SQL should contain OFFSET: {}", sql);
@@ -433,7 +433,7 @@ fn test_paginate() {
 	let qs = QuerySet::<TestProduct>::new().paginate(3, 10);
 
 	// Act
-	let sql = qs.to_sql();
+	let sql = qs.to_sql().expect("query SQL should compile");
 
 	// Assert
 	assert!(sql.contains("LIMIT"), "Paginate should set LIMIT: {}", sql);
@@ -461,7 +461,7 @@ fn test_paginate_first_page() {
 	let qs = QuerySet::<TestProduct>::new().paginate(1, 5);
 
 	// Act
-	let sql = qs.to_sql();
+	let sql = qs.to_sql().expect("query SQL should compile");
 
 	// Assert
 	assert!(sql.contains("LIMIT"), "Paginate should set LIMIT: {}", sql);
@@ -478,7 +478,7 @@ fn test_distinct() {
 	let qs = QuerySet::<TestProduct>::new().distinct();
 
 	// Act
-	let sql = qs.to_sql();
+	let sql = qs.to_sql().expect("query SQL should compile");
 
 	// Assert
 	assert!(
@@ -496,7 +496,7 @@ fn test_values_selects_specific_fields() {
 	let qs = QuerySet::<TestProduct>::new().values(&["name", "price"]);
 
 	// Act
-	let sql = qs.to_sql();
+	let sql = qs.to_sql().expect("query SQL should compile");
 
 	// Assert
 	assert!(
@@ -523,7 +523,7 @@ fn test_values_list_selects_specific_fields() {
 	let qs = QuerySet::<TestProduct>::new().values_list(&["id", "name"]);
 
 	// Act
-	let sql = qs.to_sql();
+	let sql = qs.to_sql().expect("query SQL should compile");
 
 	// Assert
 	assert!(
@@ -606,7 +606,7 @@ fn test_delete_sql_with_eq_filter() {
 	));
 
 	// Act
-	let (sql, params) = qs.delete_sql();
+	let (sql, params) = qs.delete_sql().expect("delete SQL should compile");
 
 	// Assert
 	assert_eq!(sql, "DELETE FROM \"products\" WHERE \"id\" = $1");
@@ -629,7 +629,7 @@ fn test_delete_sql_with_multiple_filters() {
 		));
 
 	// Act
-	let (sql, params) = qs.delete_sql();
+	let (sql, params) = qs.delete_sql().expect("delete SQL should compile");
 
 	// Assert
 	assert_eq!(
@@ -814,7 +814,7 @@ fn test_full_query_chain() {
 		.limit(10)
 		.offset(0);
 
-	let sql = qs.to_sql();
+	let sql = qs.to_sql().expect("query SQL should compile");
 
 	// Assert
 	assert!(sql.contains("\"name\""), "SQL should select name: {}", sql);
@@ -842,7 +842,7 @@ fn test_distinct_with_values_and_order() {
 		.values(&["category"])
 		.order_by(&["category"]);
 
-	let sql = qs.to_sql();
+	let sql = qs.to_sql().expect("query SQL should compile");
 
 	// Assert
 	assert!(
@@ -868,7 +868,7 @@ fn test_queryset_from_table() {
 
 	// Act
 	let qs = QuerySet::<TestProduct>::new();
-	let sql = qs.to_sql();
+	let sql = qs.to_sql().expect("query SQL should compile");
 
 	// Assert
 	assert!(
@@ -893,7 +893,7 @@ fn test_filter_with_integer_value() {
 	));
 
 	// Act
-	let sql = qs.to_sql();
+	let sql = qs.to_sql().expect("query SQL should compile");
 
 	// Assert
 	assert!(
@@ -918,7 +918,7 @@ fn test_filter_with_boolean_value() {
 	));
 
 	// Act
-	let sql = qs.to_sql();
+	let sql = qs.to_sql().expect("query SQL should compile");
 
 	// Assert
 	assert!(
@@ -944,7 +944,8 @@ fn test_filter_with_null_eq_produces_is_null() {
 			FilterOperator::Eq,
 			FilterValue::Integer(1),
 		))
-		.delete_sql();
+		.delete_sql()
+		.expect("delete SQL should compile");
 
 	// Assert
 	assert!(
@@ -971,7 +972,8 @@ fn test_filter_with_null_ne_produces_is_not_null() {
 			FilterOperator::Eq,
 			FilterValue::Integer(1),
 		))
-		.delete_sql();
+		.delete_sql()
+		.expect("delete SQL should compile");
 
 	// Assert
 	assert!(
@@ -1102,7 +1104,7 @@ fn test_filter_with_from_i32_value() {
 	));
 
 	// Act
-	let sql = qs.to_sql();
+	let sql = qs.to_sql().expect("query SQL should compile");
 
 	// Assert
 	assert!(
@@ -1255,7 +1257,7 @@ fn test_queryset_default_selects_all_columns() {
 
 	// Act
 	let qs = QuerySet::<TestProduct>::new();
-	let sql = qs.to_sql();
+	let sql = qs.to_sql().expect("query SQL should compile");
 
 	// Assert
 	assert_eq!(
@@ -1362,7 +1364,7 @@ fn test_delete_sql_with_string_filter() {
 	));
 
 	// Act
-	let (sql, params) = qs.delete_sql();
+	let (sql, params) = qs.delete_sql().expect("delete SQL should compile");
 
 	// Assert
 	assert_eq!(sql, "DELETE FROM \"products\" WHERE \"category\" = $1");
@@ -1375,7 +1377,7 @@ fn test_order_by_ascending_contains_asc() {
 	let qs = QuerySet::<TestProduct>::new().order_by(&["name"]);
 
 	// Act
-	let sql = qs.to_sql();
+	let sql = qs.to_sql().expect("query SQL should compile");
 
 	// Assert
 	assert!(
@@ -1395,7 +1397,7 @@ fn test_filter_not_in_operator() {
 	));
 
 	// Act
-	let sql = qs.to_sql();
+	let sql = qs.to_sql().expect("query SQL should compile");
 
 	// Assert
 	assert!(
@@ -1412,7 +1414,7 @@ fn test_paginate_page_zero_saturates() {
 	let qs = QuerySet::<TestProduct>::new().paginate(0, 10);
 
 	// Act
-	let sql = qs.to_sql();
+	let sql = qs.to_sql().expect("query SQL should compile");
 
 	// Assert
 	assert!(

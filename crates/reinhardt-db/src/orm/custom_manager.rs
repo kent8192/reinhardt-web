@@ -257,7 +257,11 @@ pub trait CustomManager: Sized + Send + Sync {
 	}
 
 	/// Filter where a field is `IN` the result of a sub-query.
-	fn filter_in_subquery<R: Model, F>(&self, field: &str, subquery_fn: F) -> QuerySet<Self::Model>
+	fn filter_in_subquery<R: Model, F>(
+		&self,
+		field: &str,
+		subquery_fn: F,
+	) -> reinhardt_core::exception::Result<QuerySet<Self::Model>>
 	where
 		F: FnOnce(QuerySet<R>) -> QuerySet<R>,
 	{
@@ -269,7 +273,7 @@ pub trait CustomManager: Sized + Send + Sync {
 		&self,
 		field: &str,
 		subquery_fn: F,
-	) -> QuerySet<Self::Model>
+	) -> reinhardt_core::exception::Result<QuerySet<Self::Model>>
 	where
 		F: FnOnce(QuerySet<R>) -> QuerySet<R>,
 	{
@@ -277,7 +281,10 @@ pub trait CustomManager: Sized + Send + Sync {
 	}
 
 	/// Filter using a correlated `EXISTS (...)` sub-query.
-	fn filter_exists<R: Model, F>(&self, subquery_fn: F) -> QuerySet<Self::Model>
+	fn filter_exists<R: Model, F>(
+		&self,
+		subquery_fn: F,
+	) -> reinhardt_core::exception::Result<QuerySet<Self::Model>>
 	where
 		F: FnOnce(QuerySet<R>) -> QuerySet<R>,
 	{
@@ -285,7 +292,10 @@ pub trait CustomManager: Sized + Send + Sync {
 	}
 
 	/// Filter using a correlated `NOT EXISTS (...)` sub-query.
-	fn filter_not_exists<R: Model, F>(&self, subquery_fn: F) -> QuerySet<Self::Model>
+	fn filter_not_exists<R: Model, F>(
+		&self,
+		subquery_fn: F,
+	) -> reinhardt_core::exception::Result<QuerySet<Self::Model>>
 	where
 		F: FnOnce(QuerySet<R>) -> QuerySet<R>,
 	{
@@ -303,7 +313,11 @@ pub trait CustomManager: Sized + Send + Sync {
 	}
 
 	/// Annotate using a sub-query expression.
-	fn annotate_subquery<R, F>(&self, name: &str, builder: F) -> QuerySet<Self::Model>
+	fn annotate_subquery<R, F>(
+		&self,
+		name: &str,
+		builder: F,
+	) -> reinhardt_core::exception::Result<QuerySet<Self::Model>>
 	where
 		R: Model + 'static,
 		F: FnOnce(QuerySet<R>) -> QuerySet<R>,
@@ -476,7 +490,10 @@ pub trait CustomManager: Sized + Send + Sync {
 	}
 
 	/// Build the `DELETE` SQL for a `QuerySet`.
-	fn delete_queryset(&self, queryset: &QuerySet<Self::Model>) -> (String, Vec<String>) {
+	fn delete_queryset(
+		&self,
+		queryset: &QuerySet<Self::Model>,
+	) -> reinhardt_core::exception::Result<(String, Vec<String>)> {
 		Manager::<Self::Model>::new().delete_queryset(queryset)
 	}
 

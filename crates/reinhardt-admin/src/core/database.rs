@@ -362,6 +362,21 @@ fn escape_like_pattern(input: &str) -> String {
 /// Build a SimpleExpr from a single Filter
 #[doc(hidden)]
 pub fn build_single_filter_expr(filter: &Filter) -> AdminResult<Option<SimpleExpr>> {
+	if let FilterValue::Typed(Ok(value)) = &filter.value {
+		let raw_value = match value {
+			reinhardt_db::orm::DatabaseValue::String(value) => {
+				Some(FilterValue::String(value.clone()))
+			}
+			reinhardt_db::orm::DatabaseValue::Null => Some(FilterValue::Null),
+			_ => None,
+		};
+		if let Some(raw_value) = raw_value {
+			let mut normalized = filter.clone();
+			normalized.value = raw_value;
+			return build_single_filter_expr(&normalized);
+		}
+	}
+
 	let col = filter.lhs_expr();
 	let lhs_sql = filter.lhs_sql();
 
@@ -1510,6 +1525,59 @@ mod tests {
 				.downcast_ref::<reinhardt_db::orm::FieldCodecError>()
 				.is_some()
 		);
+	}
+
+	fn render_admin_filter(filter: &Filter) -> String {
+		let expr = build_single_filter_expr(filter)
+			.expect("filter should compile")
+			.expect("operator should produce a condition");
+		let mut query = Query::select();
+		query
+			.column(Alias::new("id"))
+			.from(Alias::new("records"))
+			.cond_where(Condition::all().add(expr));
+		query.to_string(PostgresQueryBuilder)
+	}
+
+	#[rstest]
+	#[case(FilterOperator::IExact)]
+	#[case(FilterOperator::Contains)]
+	#[case(FilterOperator::IContains)]
+	#[case(FilterOperator::StartsWith)]
+	#[case(FilterOperator::IStartsWith)]
+	#[case(FilterOperator::EndsWith)]
+	#[case(FilterOperator::IEndsWith)]
+	#[case(FilterOperator::Regex)]
+	#[case(FilterOperator::IRegex)]
+	fn typed_string_filter_uses_raw_string_operator_semantics(#[case] operator: FilterOperator) {
+		let raw = Filter::new(
+			"name",
+			operator.clone(),
+			FilterValue::String("a%b_c".to_owned()),
+		);
+		let typed = Filter::new(
+			"name",
+			operator,
+			FilterValue::Typed(Ok(reinhardt_db::orm::DatabaseValue::String(
+				"a%b_c".to_owned(),
+			))),
+		);
+
+		assert_eq!(render_admin_filter(&typed), render_admin_filter(&raw));
+	}
+
+	#[rstest]
+	#[case(FilterOperator::Eq)]
+	#[case(FilterOperator::Ne)]
+	fn typed_null_filter_uses_raw_null_operator_semantics(#[case] operator: FilterOperator) {
+		let raw = Filter::new("deleted_at", operator.clone(), FilterValue::Null);
+		let typed = Filter::new(
+			"deleted_at",
+			operator,
+			FilterValue::Typed(Ok(reinhardt_db::orm::DatabaseValue::Null)),
+		);
+
+		assert_eq!(render_admin_filter(&typed), render_admin_filter(&raw));
 	}
 
 	// ==================== escape_like_pattern tests ====================
