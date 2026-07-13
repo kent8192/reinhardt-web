@@ -1407,7 +1407,8 @@ struct ForeignKeyFieldInfo {
 }
 
 /// Generate field metadata string from Rust type
-fn field_type_to_metadata_string(ty: &Type, _config: &FieldConfig) -> Result<String> {
+fn field_type_to_metadata_string(ty: &Type, _config: &FieldConfig) -> Result<TokenStream> {
+	let orm_crate = get_reinhardt_orm_crate();
 	let (_is_option, inner_ty) = extract_option_type(ty);
 
 	match inner_ty {
@@ -1434,15 +1435,17 @@ fn field_type_to_metadata_string(ty: &Type, _config: &FieldConfig) -> Result<Str
 				"Json" => "JsonField",
 				"Value" => "JsonField",
 				"HashMap" => "HStoreField",
-				other => {
-					return Err(syn::Error::new_spanned(
-						ty,
-						format!("Unsupported field type: {}", other),
-					));
+				_ => {
+					return Ok(quote! {
+						#orm_crate::inspection::database_field_type_path(
+							<<#inner_ty as #orm_crate::DatabaseField>::Storage as #orm_crate::DatabaseScalar>::STORAGE_KIND
+						)
+					});
 				}
 			};
 
-			Ok(format!("reinhardt.orm.models.{}", type_name))
+			let field_type_path = format!("reinhardt.orm.models.{}", type_name);
+			Ok(quote! { #field_type_path })
 		}
 		_ => Err(syn::Error::new_spanned(ty, "Unsupported field type")),
 	}
@@ -1533,6 +1536,7 @@ fn generated_column_registration(
 /// Map Rust type to ORM field type
 fn map_type_to_field_type(ty: &Type, config: &FieldConfig) -> Result<TokenStream> {
 	let migrations_crate = get_reinhardt_migrations_crate();
+	let orm_crate = get_reinhardt_orm_crate();
 
 	// PostgreSQL: Check for explicit field_type attribute first
 	#[cfg(feature = "db-postgres")]
@@ -1603,10 +1607,19 @@ fn map_type_to_field_type(ty: &Type, config: &FieldConfig) -> Result<TokenStream
 					quote! { #migrations_crate::FieldType::HStore }
 				}
 				_ => {
-					return Err(syn::Error::new_spanned(
-						ty,
-						format!("Unsupported field type: {}", last_segment.ident),
-					));
+					let max_length = config
+						.max_length
+						.map(|value| {
+							let value = value as u32;
+							quote! { ::core::option::Option::Some(#value) }
+						})
+						.unwrap_or_else(|| quote! { ::core::option::Option::None });
+					quote! {
+						#orm_crate::inspection::database_storage_field_type(
+							<<#inner_ty as #orm_crate::DatabaseField>::Storage as #orm_crate::DatabaseScalar>::STORAGE_KIND,
+							#max_length,
+						)
+					}
 				}
 			}
 		}
@@ -1616,6 +1629,110 @@ fn map_type_to_field_type(ty: &Type, config: &FieldConfig) -> Result<TokenStream
 	};
 
 	Ok(field_type)
+}
+
+fn is_builtin_model_field_type(ty: &Type) -> bool {
+	let (_is_option, inner_ty) = extract_option_type(ty);
+	let Type::Path(type_path) = inner_ty else {
+		return false;
+	};
+	let Some(last_segment) = type_path.path.segments.last() else {
+		return false;
+	};
+
+	matches!(
+		last_segment.ident.to_string().as_str(),
+		"i32"
+			| "i64" | "String"
+			| "bool" | "f32"
+			| "f64" | "DateTime"
+			| "Date" | "Time"
+			| "Decimal"
+			| "Uuid" | "Vec"
+			| "Json" | "Value"
+			| "HashMap"
+	)
+}
+
+fn builtin_storage_kind(ty: &Type, orm_crate: &TokenStream) -> Option<TokenStream> {
+	let (_is_option, inner_ty) = extract_option_type(ty);
+	let Type::Path(type_path) = inner_ty else {
+		return None;
+	};
+	let last_segment = type_path.path.segments.last()?;
+	let kind = match last_segment.ident.to_string().as_str() {
+		"bool" => quote! { #orm_crate::DatabaseStorageKind::Bool },
+		"i32" => quote! { #orm_crate::DatabaseStorageKind::I32 },
+		"i64" => quote! { #orm_crate::DatabaseStorageKind::I64 },
+		"f32" => quote! { #orm_crate::DatabaseStorageKind::F32 },
+		"f64" => quote! { #orm_crate::DatabaseStorageKind::F64 },
+		"String" => quote! { #orm_crate::DatabaseStorageKind::String },
+		"Json" | "Value" => quote! { #orm_crate::DatabaseStorageKind::Json },
+		"Uuid" => quote! { #orm_crate::DatabaseStorageKind::Uuid },
+		"Date" => quote! { #orm_crate::DatabaseStorageKind::Date },
+		"Time" => quote! { #orm_crate::DatabaseStorageKind::Time },
+		"DateTime" => quote! { #orm_crate::DatabaseStorageKind::DateTime },
+		_ => return None,
+	};
+
+	Some(kind)
+}
+
+fn generate_database_field_validations(field_infos: &[FieldInfo]) -> Vec<TokenStream> {
+	let orm_crate = get_reinhardt_orm_crate();
+
+	field_infos
+		.iter()
+		.filter(|field| {
+			!field.config.skip
+				&& !field.is_fk_id_field
+				&& !is_relationship_field_type(&field.ty)
+				&& !field
+					.rel
+					.as_ref()
+					.map(|relation| {
+						matches!(relation.rel_type, crate::rel::RelationType::ManyToMany)
+					})
+					.unwrap_or(false)
+				&& !is_builtin_model_field_type(&field.ty)
+		})
+		.map(|field| {
+			let (_is_option, inner_ty) = extract_option_type(&field.ty);
+			let storage_kind = quote! {
+				<<#inner_ty as #orm_crate::DatabaseField>::Storage as #orm_crate::DatabaseScalar>::STORAGE_KIND
+			};
+			let max_length_validation = if let Some(max_length) = field.config.max_length {
+				let max_length = max_length as usize;
+				quote! {
+					match #storage_kind {
+						#orm_crate::DatabaseStorageKind::String => {
+							if let ::core::option::Option::Some(required) =
+								<#inner_ty as #orm_crate::DatabaseField>::MAX_STRING_VALUE_CHARS
+							{
+								assert!(required <= #max_length, "model enum value exceeds field max_length");
+							}
+						}
+						#orm_crate::DatabaseStorageKind::I32 => {
+							panic!("integer database fields do not accept max_length");
+						}
+						_ => {}
+					}
+				}
+			} else {
+				quote! {
+					if let #orm_crate::DatabaseStorageKind::String = #storage_kind {
+						panic!("string database fields require max_length attribute");
+					}
+				}
+			};
+
+			quote! {
+				const _: () = {
+					#max_length_validation
+				};
+			}
+		})
+		.collect()
 }
 
 /// Map explicit PostgreSQL field type string to FieldType
@@ -2461,6 +2578,7 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 
 	// Generate field_metadata implementation
 	let field_metadata_items = generate_field_metadata(&field_infos, &fk_field_infos)?;
+	let database_field_validations = generate_database_field_validations(&field_infos);
 
 	// Generate auto-registration code
 	let registration_code = generate_registration_code(
@@ -2679,6 +2797,11 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 
 			#shared_info_output
 
+			#(
+				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+				#database_field_validations
+			)*
+
 			// Generate new() as a zero-arg alias of build()
 			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 			#new_fn_impl
@@ -2855,6 +2978,22 @@ fn generate_field_metadata(
 		let field_type_path = field_type_to_metadata_string(&field_info.ty, &field_info.config)?;
 		let _field_type = map_type_to_field_type(&field_info.ty, &field_info.config)?;
 		let config = &field_info.config;
+		let (_is_option, inner_ty) = extract_option_type(&field_info.ty);
+		let (storage_kind, domain) = if is_builtin_model_field_type(&field_info.ty) {
+			let storage_kind = builtin_storage_kind(&field_info.ty, &orm_crate)
+				.map(|kind| quote! { ::core::option::Option::Some(#kind) })
+				.unwrap_or_else(|| quote! { ::core::option::Option::None });
+			(storage_kind, quote! { ::core::option::Option::None })
+		} else {
+			(
+				quote! {
+					::core::option::Option::Some(
+						<<#inner_ty as #orm_crate::DatabaseField>::Storage as #orm_crate::DatabaseScalar>::STORAGE_KIND
+					)
+				},
+				quote! { <#inner_ty as #orm_crate::DatabaseField>::domain() },
+			)
+		};
 
 		let (is_option, _) = extract_option_type(&field_info.ty);
 		let nullable = config.null.unwrap_or(is_option);
@@ -3126,6 +3265,8 @@ fn generate_field_metadata(
 				#orm_crate::inspection::FieldInfo {
 					name: #name.to_string(),
 					field_type: #field_type_path.to_string(),
+					storage_kind: #storage_kind,
+					domain: #domain,
 					nullable: #nullable,
 					primary_key: #primary_key,
 					unique: #unique,
@@ -3171,6 +3312,10 @@ fn generate_field_metadata(
 				#orm_crate::inspection::FieldInfo {
 					name: #name.to_string(),
 					field_type: #field_type_path.to_string(),
+					storage_kind: ::core::option::Option::Some(
+						#orm_crate::DatabaseStorageKind::I32
+					),
+					domain: ::core::option::Option::None,
 					nullable: #nullable,
 					primary_key: false,
 					unique: #unique,

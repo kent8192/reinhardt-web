@@ -30,3 +30,6 @@ mod model_info_integration;
 
 #[path = "macros/model_info_ui.rs"]
 mod model_info_ui;
+
+#[path = "macros/model_enum_ui.rs"]
+mod model_enum_ui;
