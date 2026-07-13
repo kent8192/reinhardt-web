@@ -86,6 +86,17 @@ impl<T> SignalSlot<T> {
 /// A signal key records the thread that owns its reactive scope. Access from a
 /// different thread is rejected rather than resolving a same-numbered scope
 /// from that thread's local arena.
+///
+/// Signals are neither `Send` nor `Sync`, even when `T` is. Their storage is
+/// owned by a thread-local reactive scope.
+///
+/// ```compile_fail
+/// use reinhardt_core::reactive::Signal;
+///
+/// fn assert_send_sync<T: Send + Sync>() {}
+///
+/// assert_send_sync::<Signal<i32>>();
+/// ```
 pub struct Signal<T: 'static> {
 	key: NodeKey,
 	_marker: PhantomData<fn() -> T>,
@@ -385,37 +396,6 @@ mod tests {
 
 			assert_eq!(target.get(), 42);
 		});
-	}
-
-	#[cfg(not(target_arch = "wasm32"))]
-	#[rstest]
-	#[serial(reactive_runtime)]
-	fn signal_rejects_access_from_a_different_thread() {
-		let scope = crate::reactive::ReactiveScope::new();
-		let signal = scope.enter(|| Signal::new(1_i32));
-
-		let result = std::thread::spawn(move || {
-			crate::reactive::ReactiveScope::run(|| {
-				let _same_slot_on_this_thread = Signal::new(2_i32);
-				signal.try_set(3)
-			})
-		})
-		.join()
-		.expect("worker thread should finish without panicking");
-
-		assert!(matches!(
-			result,
-			Err(ReactiveScopeError::WrongThread { .. })
-		));
-	}
-
-	#[cfg(not(target_arch = "wasm32"))]
-	#[test]
-	fn signal_is_send_sync_on_native() {
-		fn assert_send_sync<T: Send + Sync>() {}
-		assert_send_sync::<Signal<String>>();
-		assert_send_sync::<Signal<Option<String>>>();
-		assert_send_sync::<Signal<i32>>();
 	}
 
 	#[rstest]

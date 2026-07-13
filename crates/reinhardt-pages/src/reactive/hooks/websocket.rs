@@ -7,6 +7,11 @@
 use crate::reactive::Signal;
 use std::rc::Rc;
 
+#[cfg(any(wasm, test))]
+fn invoke_in_owner_scope(owner_scope: reinhardt_core::reactive::ScopeId, callback: impl FnOnce()) {
+	let _ = reinhardt_core::reactive::scope::enter_scope(owner_scope, callback);
+}
+
 /// WebSocket connection state
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConnectionState {
@@ -227,12 +232,13 @@ use {
 /// # Reactivity semantics
 ///
 /// Event-callback closures inside `UseWebSocketOptions` (`on_open`,
-/// `on_close`, `on_error`) run outside any active reactive
-/// Observer. Reading `Signal::get()`, `Memo::get()`, or `Resource::get()`
-/// inside returns the latest value WITHOUT subscribing for future changes
-/// (Option A, Refs #4195).
+/// `on_close`, `on_error`) re-enter the scope that created this hook, but run
+/// outside any active reactive Observer. Reading `Signal::get()`, `Memo::get()`,
+/// or `Resource::get()` inside returns the latest value WITHOUT subscribing for
+/// future changes (Option A, Refs #4195).
 #[cfg(wasm)]
 pub fn use_websocket(url: &str, options: UseWebSocketOptions) -> WebSocketHandle {
+	let owner_scope = reinhardt_core::reactive::scope::require_active_scope("use_websocket");
 	// WebSocket instance holder
 	let ws_ref: Rc<RefCell<Option<WebSocket>>> = Rc::new(RefCell::new(None));
 	let closures_ref: Rc<RefCell<Option<WsClosures>>> = Rc::new(RefCell::new(None));
@@ -273,7 +279,7 @@ pub fn use_websocket(url: &str, options: UseWebSocketOptions) -> WebSocketHandle
 			let onopen = Closure::wrap(Box::new(move |_: JsValue| {
 				let _ = connection_state_open.try_set(ConnectionState::Open);
 				if let Some(cb) = &on_open_cb {
-					cb();
+					invoke_in_owner_scope(owner_scope, || cb());
 				}
 			}) as Box<dyn FnMut(JsValue)>);
 			ws.set_onopen(Some(onopen.as_ref().unchecked_ref()));
@@ -301,7 +307,7 @@ pub fn use_websocket(url: &str, options: UseWebSocketOptions) -> WebSocketHandle
 			let onclose = Closure::wrap(Box::new(move |_: CloseEvent| {
 				let _ = connection_state_close.try_set(ConnectionState::Closed);
 				if let Some(cb) = &on_close_cb {
-					cb();
+					invoke_in_owner_scope(owner_scope, || cb());
 				}
 			}) as Box<dyn FnMut(CloseEvent)>);
 			ws.set_onclose(Some(onclose.as_ref().unchecked_ref()));
@@ -313,7 +319,7 @@ pub fn use_websocket(url: &str, options: UseWebSocketOptions) -> WebSocketHandle
 				let error_msg = "WebSocket error occurred".to_string();
 				let _ = connection_state_error.try_set(ConnectionState::Error(error_msg.clone()));
 				if let Some(cb) = &on_error_cb {
-					cb(error_msg);
+					invoke_in_owner_scope(owner_scope, || cb(error_msg));
 				}
 			}) as Box<dyn FnMut(ErrorEvent)>);
 			ws.set_onerror(Some(onerror.as_ref().unchecked_ref()));
@@ -401,6 +407,27 @@ pub fn use_websocket(_url: &str, _options: UseWebSocketOptions) -> WebSocketHand
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[cfg(native)]
+	use std::cell::Cell;
+	#[cfg(native)]
+	use std::rc::Rc;
+
+	#[cfg(native)]
+	#[test]
+	#[serial_test::serial(reactive_runtime)]
+	fn websocket_callback_reenters_its_owner_scope() {
+		let scope = reinhardt_core::reactive::ReactiveScope::new();
+		let callback_ran = Rc::new(Cell::new(false));
+		let callback_ran_for_callback = Rc::clone(&callback_ran);
+
+		invoke_in_owner_scope(scope.id(), move || {
+			let signal = Signal::new(42_i32);
+			assert_eq!(signal.get(), 42);
+			callback_ran_for_callback.set(true);
+		});
+
+		assert!(callback_ran.get());
+	}
 
 	#[test]
 	#[cfg(native)]

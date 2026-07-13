@@ -239,7 +239,7 @@ impl<T: Clone + 'static, E: Clone + 'static> Action<T, E> {
 		&self,
 		payload: P,
 	) -> Callback<Event, ()> {
-		let action = self.clone();
+		let action = *self;
 		Callback::new(move |_| {
 			action.dispatch(payload.clone());
 		})
@@ -263,7 +263,7 @@ impl<T: Clone + 'static, E: Clone + 'static> Action<T, E> {
 	where
 		F: Fn() -> P + 'static,
 	{
-		let action = self.clone();
+		let action = *self;
 		Callback::new(move |_| {
 			action.dispatch(payload());
 		})

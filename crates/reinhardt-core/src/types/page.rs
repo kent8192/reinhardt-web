@@ -481,6 +481,10 @@ impl std::fmt::Debug for PageElement {
 }
 
 #[cfg(feature = "reactive")]
+#[allow(
+	clippy::arc_with_non_send_sync,
+	reason = "PageEventHandler stays Arc-backed for cloneable Page trees while allowing handlers to capture thread-affine reactive state."
+)]
 fn scoped_event_handler(handler: PageEventHandler) -> PageEventHandler {
 	let Some(scope) = crate::reactive::scope::current_scope_id() else {
 		return handler;

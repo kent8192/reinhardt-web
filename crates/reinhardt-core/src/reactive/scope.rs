@@ -46,6 +46,7 @@ pub struct NodeKey {
 	node_id: NodeId,
 	kind: NodeKind,
 	owner_thread: std::thread::ThreadId,
+	_thread_bound: PhantomData<Rc<()>>,
 }
 
 /// Kind of reactive node stored in a scope arena.
@@ -345,6 +346,7 @@ pub(crate) fn allocate_node<T: 'static>(kind: NodeKind, value: T) -> NodeKey {
 			node_id,
 			kind,
 			owner_thread: std::thread::current().id(),
+			_thread_bound: PhantomData,
 		}
 	})
 }
@@ -467,6 +469,7 @@ pub(crate) fn find_node_key(node_id: NodeId, kind: NodeKind) -> Option<NodeKey> 
 						node_id,
 						kind,
 						owner_thread: std::thread::current().id(),
+						_thread_bound: PhantomData,
 					});
 				}
 			}
@@ -577,6 +580,25 @@ fn take_scope_node_value(scope: ScopeId, kind: Option<NodeKind>) -> Option<Box<d
 	slot.and_then(|slot| slot.value.borrow_mut().take())
 }
 
+fn remove_scope_runtime_nodes(scope: ScopeId) {
+	let node_ids = SCOPES.with(|scopes| {
+		scopes
+			.borrow()
+			.get(&scope)
+			.map(|state| {
+				state
+					.slots
+					.iter()
+					.map(|slot| slot.node_id)
+					.collect::<Vec<_>>()
+			})
+			.unwrap_or_default()
+	});
+	for node_id in node_ids {
+		let _ = try_with_runtime(|runtime| runtime.remove_node(node_id));
+	}
+}
+
 pub(crate) fn dispose_scope(scope: ScopeId) {
 	let is_live = SCOPES
 		.try_with(|scopes| scopes.borrow().contains_key(&scope))
@@ -603,27 +625,15 @@ pub(crate) fn dispose_scope(scope: ScopeId) {
 		}
 	}
 
-	let node_ids = SCOPES.with(|scopes| {
-		scopes
-			.borrow()
-			.get(&scope)
-			.map(|state| {
-				state
-					.slots
-					.iter()
-					.map(|slot| slot.node_id)
-					.collect::<Vec<_>>()
-			})
-			.unwrap_or_default()
-	});
-	for node_id in node_ids {
-		let _ = try_with_runtime(|runtime| runtime.remove_node(node_id));
-	}
+	remove_scope_runtime_nodes(scope);
 
 	// Effect cleanup callbacks may read signals captured by the effect. Drop those
 	// slots while every non-effect node remains available in the scope arena.
 	while let Some(value) = take_scope_node_value(scope, Some(NodeKind::Effect)) {
 		drop(value);
+		// Effect cleanup may allocate more reactive nodes. Snapshot after every
+		// cleanup so their graph entries and pending updates cannot outlive the scope.
+		remove_scope_runtime_nodes(scope);
 	}
 
 	loop {
@@ -788,6 +798,51 @@ mod tests {
 		scope.dispose();
 
 		assert_eq!(observed.get(), Some(42));
+	}
+
+	#[test]
+	#[serial(reactive_runtime)]
+	fn scope_dispose_removes_nodes_created_by_effect_cleanup() {
+		let scope = ReactiveScope::new();
+		let cleanup_nodes = alloc::rc::Rc::new(RefCell::new(None));
+		let cleanup_nodes_for_effect = alloc::rc::Rc::clone(&cleanup_nodes);
+
+		scope.enter(|| {
+			let _effect = Effect::new_with_deps(
+				move || {
+					let cleanup_nodes = alloc::rc::Rc::clone(&cleanup_nodes_for_effect);
+					Some(move || {
+						let signal = Signal::new(0_i32);
+						let signal_for_effect = signal;
+						let effect = Effect::new(move || {
+							let _ = signal_for_effect.get();
+						});
+						*cleanup_nodes.borrow_mut() = Some((signal.id(), effect.id()));
+					})
+				},
+				Deps::empty(),
+			);
+		});
+
+		scope.dispose();
+
+		let (signal_id, effect_id) = cleanup_nodes
+			.borrow()
+			.expect("effect cleanup should create reactive nodes");
+		super::super::runtime::with_runtime(|runtime| {
+			assert!(
+				!runtime.has_node(signal_id),
+				"scope disposal must remove cleanup-created signal nodes"
+			);
+			assert!(
+				!runtime.has_node(effect_id),
+				"scope disposal must remove cleanup-created effect nodes"
+			);
+			assert!(
+				!runtime.debug_pending_updates().contains(&effect_id),
+				"scope disposal must clear cleanup-created pending updates"
+			);
+		});
 	}
 
 	#[test]

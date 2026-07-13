@@ -47,35 +47,38 @@ type NavigationObservers = std::rc::Rc<std::cell::RefCell<Vec<std::rc::Weak<Navi
 type NavigationListener = dyn Fn(&str, &HashMap<String, String>) + 'static;
 
 #[cfg(native)]
-thread_local! {
-	static DETACHED_CLIENT_ROUTER_SCOPE: ReactiveScope = ReactiveScope::new();
-}
-
-#[cfg(native)]
-fn create_navigation_signals(
-	initial_path: String,
-) -> (
+type NavigationSignals = (
 	Signal<String>,
 	Signal<HashMap<String, String>>,
 	Signal<Option<String>>,
-) {
+	Option<Rc<ReactiveScope>>,
+);
+
+#[cfg(native)]
+fn create_navigation_signals(initial_path: String) -> NavigationSignals {
 	if current_scope_id().is_some() {
 		return (
 			Signal::new(initial_path),
 			Signal::new(HashMap::new()),
 			Signal::new(None),
+			None,
 		);
 	}
 
-	DETACHED_CLIENT_ROUTER_SCOPE.with(|scope| {
-		scope.enter(|| {
-			(
-				Signal::new(initial_path),
-				Signal::new(HashMap::new()),
-				Signal::new(None),
-			)
-		})
-	})
+	let scope = Rc::new(ReactiveScope::new());
+	let (current_path, current_params, current_route_name) = scope.enter(|| {
+		(
+			Signal::new(initial_path),
+			Signal::new(HashMap::new()),
+			Signal::new(None),
+		)
+	});
+	(
+		current_path,
+		current_params,
+		current_route_name,
+		Some(scope),
+	)
 }
 
 #[cfg(wasm)]
@@ -437,6 +440,12 @@ pub struct ClientRouter {
 	current_params: Signal<HashMap<String, String>>,
 	/// Current matched route name signal.
 	current_route_name: Signal<Option<String>>,
+	/// Owns navigation state created outside an active native reactive scope.
+	///
+	/// The final router clone drops this scope and disposes its navigation
+	/// signals instead of retaining them in a process-wide thread-local scope.
+	#[cfg(native)]
+	_navigation_scope: Option<Rc<ReactiveScope>>,
 	/// Not found handler.
 	not_found: Option<Arc<dyn Fn() -> Page + Send + Sync>>,
 	// (Refs #4234, Fixes #4258) Mirrors `pages::Router::navigation_observers`.
@@ -490,8 +499,11 @@ impl ClientRouter {
 	/// Creates a new router.
 	pub fn new() -> Self {
 		let initial_path = current_path().unwrap_or_else(|_| "/".to_string());
-		let (current_path, current_params, current_route_name) =
+		#[cfg(native)]
+		let (current_path, current_params, current_route_name, navigation_scope) =
 			create_navigation_signals(initial_path);
+		#[cfg(wasm)]
+		let (current_path, current_params, current_route_name) = create_navigation_signals(initial_path);
 
 		Self {
 			routes: Vec::new(),
@@ -501,6 +513,8 @@ impl ClientRouter {
 			current_path,
 			current_params,
 			current_route_name,
+			#[cfg(native)]
+			_navigation_scope: navigation_scope,
 			not_found: None,
 			// (Fixes #4258) Reactive observation state is wasm-only; see field
 			// definitions on `ClientRouter`.
@@ -1455,7 +1469,7 @@ fn dispatch_navigation_observers(
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use reinhardt_core::reactive::ReactiveScope;
+	use reinhardt_core::reactive::{Effect, ReactiveScope, with_runtime};
 	use rstest::*;
 
 	fn test_page() -> Page {
@@ -1515,6 +1529,41 @@ mod tests {
 		assert_eq!(router.current_path().get(), "/");
 		router.push("/").expect("native navigation must succeed");
 		assert_eq!(router.current_path().get(), "/");
+	}
+
+	#[cfg(native)]
+	#[test]
+	#[serial_test::serial(reactive_runtime)]
+	fn dropping_an_unscoped_router_removes_its_navigation_nodes() {
+		let (path_id, params_id, route_name_id) = {
+			let router = ClientRouter::new();
+			let path = *router.current_path();
+			let params = *router.current_params();
+			let route_name = *router.current_route_name();
+
+			ReactiveScope::run(|| {
+				let _effect = Effect::new(move || {
+					let _ = (path.get(), params.get(), route_name.get());
+				});
+			});
+
+			(path.id(), params.id(), route_name.id())
+		};
+
+		with_runtime(|runtime| {
+			assert!(
+				!runtime.has_node(path_id),
+				"dropping an unscoped router must remove its path signal node"
+			);
+			assert!(
+				!runtime.has_node(params_id),
+				"dropping an unscoped router must remove its params signal node"
+			);
+			assert!(
+				!runtime.has_node(route_name_id),
+				"dropping an unscoped router must remove its route-name signal node"
+			);
+		});
 	}
 
 	#[test]

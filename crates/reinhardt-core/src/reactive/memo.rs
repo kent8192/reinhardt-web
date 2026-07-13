@@ -94,6 +94,17 @@ pub(crate) fn mark_memo_dirty_by_id(memo_id: NodeId) {
 ///     });
 /// });
 /// ```
+///
+/// Memos are neither `Send` nor `Sync`, even when `T` is. Their computation
+/// and cached value are owned by a thread-local reactive scope.
+///
+/// ```compile_fail
+/// use reinhardt_core::reactive::Memo;
+///
+/// fn assert_send_sync<T: Send + Sync>() {}
+///
+/// assert_send_sync::<Memo<i32>>();
+/// ```
 pub struct Memo<T: Clone + 'static> {
 	key: NodeKey,
 	_phantom: core::marker::PhantomData<fn() -> T>,

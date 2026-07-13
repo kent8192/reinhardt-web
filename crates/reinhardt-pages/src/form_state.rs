@@ -710,6 +710,21 @@ type SubmitCallback<Form, Deps> = Rc<dyn Fn(&UseFormReturn<Form, Deps>)>;
 type Subscriber<Form> = Rc<dyn Fn(FormEvent<Form>)>;
 type SubscriberSlots<Form> = Rc<RefCell<Vec<Option<Subscriber<Form>>>>>;
 
+/// Owns the form synchronization effect until the final runtime handle drops.
+///
+/// Forms created outside an active render retain their own reactive scope. The
+/// synchronization effect captures a form clone, so disposing it during handle
+/// teardown is necessary to break that retention path.
+struct SignalSyncEffectGuard {
+	effect: Effect,
+}
+
+impl Drop for SignalSyncEffectGuard {
+	fn drop(&mut self) {
+		self.effect.dispose();
+	}
+}
+
 fn form_values_are_dirty<Form>(form: &Form, current: &Form::Values, defaults: &Form::Values) -> bool
 where
 	Form: FormRuntimeSource,
@@ -736,11 +751,11 @@ fn build_signal_sync_effect<Form>(
 	custom_widget_error_fields: Rc<RefCell<HashMap<Form::Field, FieldError>>>,
 	signal_sync_suppressed: Rc<Cell<bool>>,
 	revalidate_on: RevalidateOn,
-) -> Rc<Effect>
+) -> Rc<SignalSyncEffectGuard>
 where
 	Form: FormRuntimeSource,
 {
-	Rc::new(Effect::new_with_timing(
+	let effect = Effect::new_with_timing(
 		move || {
 			let current = form.runtime_current_values();
 			let previous = observed_values.borrow().clone();
@@ -827,7 +842,8 @@ where
 			}
 		},
 		EffectTiming::Layout,
-	))
+	);
+	Rc::new(SignalSyncEffectGuard { effect })
 }
 
 fn collect_custom_widget_errors<Form>(form: &Form) -> HashMap<Form::Field, FieldError>
@@ -1170,7 +1186,7 @@ where
 	custom_widget_error_fields: Rc<RefCell<HashMap<Form::Field, FieldError>>>,
 	next_collection_item_key: Rc<Cell<u64>>,
 	signal_sync_suppressed: Rc<Cell<bool>>,
-	_signal_sync_effect: Rc<Effect>,
+	_signal_sync_effect: Rc<SignalSyncEffectGuard>,
 	on_submit_start: Option<SubmitCallback<Form, Deps>>,
 	on_submit_success: Option<SubmitCallback<Form, Deps>>,
 	on_submit_error: Option<SubmitCallback<Form, Deps>>,
@@ -2150,11 +2166,100 @@ where
 mod tests {
 	use super::{
 		CollectionItem, CollectionItemKey, CollectionState, FieldError, FieldPathState,
-		SubmitPendingGuard,
+		FormRuntimeSource, SubmitPendingGuard, use_form,
 	};
 	use crate::reactive::Signal;
 	use reinhardt_core::reactive::ReactiveScope;
 	use serial_test::serial;
+	use std::any::Any;
+	use std::rc::Rc;
+
+	#[derive(Clone)]
+	struct RetainedScopeForm {
+		scope: Rc<ReactiveScope>,
+		value: Signal<String>,
+	}
+
+	impl FormRuntimeSource for RetainedScopeForm {
+		type Values = String;
+		type Field = ();
+
+		fn runtime_reactive_scope(&self) -> Option<Rc<ReactiveScope>> {
+			Some(Rc::clone(&self.scope))
+		}
+
+		fn runtime_initial_values(&self) -> Self::Values {
+			self.value.get_untracked()
+		}
+
+		fn runtime_current_values(&self) -> Self::Values {
+			self.value.get_untracked()
+		}
+
+		fn runtime_apply_values(&self, values: &Self::Values) {
+			self.value.set(values.clone());
+		}
+
+		fn runtime_set_field_value<T>(&self, _field: Self::Field, value: T)
+		where
+			T: Any + 'static,
+		{
+			let value = (&value as &dyn Any)
+				.downcast_ref::<String>()
+				.expect("test form only accepts String values");
+			self.value.set(value.clone());
+		}
+
+		fn runtime_apply_field_value(&self, _field: Self::Field, values: &Self::Values) {
+			self.value.set(values.clone());
+		}
+
+		fn runtime_field_is_dirty(
+			&self,
+			_field: Self::Field,
+			current: &Self::Values,
+			defaults: &Self::Values,
+		) -> bool {
+			current != defaults
+		}
+
+		fn runtime_watch_field<T>(&self, _field: Self::Field) -> Option<Signal<T>>
+		where
+			T: Clone + 'static,
+		{
+			None
+		}
+
+		fn runtime_fields(&self) -> &'static [Self::Field] {
+			&[()]
+		}
+	}
+
+	#[test]
+	#[serial(reactive_runtime)]
+	fn dropping_the_last_form_runtime_releases_its_retained_scope() {
+		let scope = Rc::new(ReactiveScope::new());
+		let form = scope.enter(|| RetainedScopeForm {
+			scope: Rc::clone(&scope),
+			value: Signal::new("initial".to_string()),
+		});
+		let weak_scope = Rc::downgrade(&scope);
+		let runtime = use_form(&form).build();
+
+		drop(form);
+		drop(scope);
+		assert!(
+			weak_scope.upgrade().is_some(),
+			"the live form runtime owns the retained scope"
+		);
+
+		drop(runtime);
+
+		assert!(
+			weak_scope.upgrade().is_none(),
+			"dropping the final form runtime must dispose its sync effect and release the scope"
+		);
+	}
 
 	#[test]
 	#[serial(reactive_runtime)]

@@ -252,14 +252,14 @@ impl<Args: 'static, Ret: 'static> Callback<Args, Ret> {
 /// Per-call-site state for [`callback_with_deps`].
 ///
 /// Keyed by leaked `&'static str` of the caller's `Location` and stores the
-/// most recent deps tuple together with a type-erased `Arc<dyn Fn>`. The
-/// inner Arc is downcast and cloned into the returned `Callback`.
+/// most recent deps tuple together with a type-erased `Rc`. The inner value is
+/// downcast and copied into the returned `Callback`.
 #[allow(dead_code)]
 struct CallbackSlotEntry {
 	deps: smallvec::SmallVec<[reinhardt_core::reactive::runtime::NodeId; 8]>,
 	scope: reinhardt_core::reactive::ScopeId,
 	callback_type: std::any::TypeId,
-	key_any: Arc<dyn std::any::Any>,
+	key_any: Rc<dyn std::any::Any>,
 }
 
 thread_local! {
@@ -312,7 +312,7 @@ where
 			deps: smallvec::SmallVec::new(),
 			scope,
 			callback_type: std::any::TypeId::of::<()>(),
-			key_any: Arc::new(()) as Arc<dyn std::any::Any>,
+			key_any: Rc::new(()) as Rc<dyn std::any::Any>,
 		});
 
 		let needs_replace = slot.scope != scope
@@ -325,7 +325,7 @@ where
 			slot.deps = new_ids;
 			slot.scope = scope;
 			slot.callback_type = std::any::TypeId::of::<(Args, Ret)>();
-			slot.key_any = Arc::new(callback.key) as Arc<dyn std::any::Any>;
+			slot.key_any = Rc::new(callback.key) as Rc<dyn std::any::Any>;
 		}
 
 		let saved_key = slot
@@ -379,7 +379,7 @@ where
 			deps: smallvec::SmallVec::new(),
 			scope,
 			callback_type: std::any::TypeId::of::<()>(),
-			key_any: Arc::new(()) as Arc<dyn std::any::Any>,
+			key_any: Rc::new(()) as Rc<dyn std::any::Any>,
 		});
 
 		let needs_replace = slot.scope != scope
@@ -392,7 +392,7 @@ where
 			slot.deps = new_ids;
 			slot.scope = scope;
 			slot.callback_type = std::any::TypeId::of::<(Args, Ret)>();
-			slot.key_any = Arc::new(callback.key) as Arc<dyn std::any::Any>;
+			slot.key_any = Rc::new(callback.key) as Rc<dyn std::any::Any>;
 		}
 
 		let saved_key = slot
@@ -485,6 +485,10 @@ where
 
 /// Implementation for Callback type.
 impl IntoEventHandler for Callback<EventArg, ()> {
+	#[allow(
+		clippy::arc_with_non_send_sync,
+		reason = "PageEventHandler is Arc-backed for cloneable Page elements while Callback intentionally retains thread-affine reactive state."
+	)]
 	fn into_event_handler(self) -> PageEventHandler {
 		Arc::new(move |event| self.call(event))
 	}
