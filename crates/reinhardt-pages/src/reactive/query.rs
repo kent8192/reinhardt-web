@@ -246,6 +246,7 @@ impl<T: Clone + 'static, E: Clone + 'static> QueryEntry<T, E> {
 						entry.state.set(ResourceState::Success(value));
 					}
 					Err(error) => {
+						entry.last_fetched_ms.set(Some(now_ms()));
 						entry.state.set(ResourceState::Error(error));
 					}
 				}
@@ -792,6 +793,31 @@ mod tests {
 		// Assert
 		assert_eq!(calls.get(), 2);
 		assert_eq!(query.data(), Some(2));
+	}
+
+	#[rstest]
+	#[serial(query_cache)]
+	fn failed_query_respects_stale_time_before_retrying() {
+		// Arrange
+		clear_query_cache_for_test();
+		let calls = Rc::new(Cell::new(0));
+		let key = QueryKey::new("failed-query", {
+			let calls = Rc::clone(&calls);
+			move || {
+				calls.set(calls.get() + 1);
+				async { Err::<String, _>("not found".to_string()) }
+			}
+		})
+		.with_stale_time(Duration::from_secs(30));
+
+		// Act
+		let first = use_query(key.clone());
+		let second = use_query(key);
+
+		// Assert
+		assert_eq!(calls.get(), 1);
+		assert_eq!(first.error(), Some("not found".to_string()));
+		assert_eq!(second.error(), Some("not found".to_string()));
 	}
 
 	#[rstest]
