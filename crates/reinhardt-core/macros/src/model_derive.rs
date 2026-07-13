@@ -2847,6 +2847,43 @@ fn fixture_projection_serde_attrs(field: &FieldInfo) -> Vec<syn::Attribute> {
 		.collect()
 }
 
+fn fixture_projection_serde_deserializer(field: &FieldInfo) -> Option<TokenStream> {
+	field.serde_attrs.iter().find_map(|attr| {
+		if !attr.path().is_ident("serde") {
+			return None;
+		}
+
+		let syn::Meta::List(meta_list) = &attr.meta else {
+			return None;
+		};
+		meta_list
+			.parse_args_with(Punctuated::<syn::Meta, Token![,]>::parse_terminated)
+			.ok()?
+			.iter()
+			.find_map(fixture_projection_serde_meta_deserializer)
+	})
+}
+
+fn fixture_projection_serde_meta_deserializer(meta: &syn::Meta) -> Option<TokenStream> {
+	let syn::Meta::NameValue(meta) = meta else {
+		return None;
+	};
+	let syn::Expr::Lit(value) = &meta.value else {
+		return None;
+	};
+	let syn::Lit::Str(path) = &value.lit else {
+		return None;
+	};
+	let path = path.parse::<syn::Path>().ok()?;
+	if meta.path.is_ident("with") {
+		return Some(quote! { #path::deserialize });
+	}
+	if meta.path.is_ident("deserialize_with") {
+		return Some(quote! { #path });
+	}
+	None
+}
+
 fn generate_fixture_validation(
 	struct_name: &Ident,
 	generics: &syn::Generics,
@@ -2857,6 +2894,7 @@ fn generate_fixture_validation(
 	let mut projection_fields = Vec::new();
 	let mut projection_field_names = Vec::new();
 	let mut has_defaulted_fixture_field = false;
+	let mut defaulted_fixture_field_validators = Vec::new();
 
 	for field in field_infos {
 		if field.config.skip
@@ -2878,11 +2916,31 @@ fn generate_fixture_validation(
 			.and_then(serialize_field_default)
 			.is_some();
 		if has_sql_default {
-			has_defaulted_fixture_field = true;
-			let validator = LitStr::new(
-				"__reinhardt_validate_defaulted_fixture_field",
-				field_name.span(),
-			);
+			let validator = if let Some(deserializer) = fixture_projection_serde_deserializer(field)
+			{
+				let validator_name = Ident::new(
+					&format!("__reinhardt_validate_defaulted_fixture_field_{field_name}"),
+					field_name.span(),
+				);
+				defaulted_fixture_field_validators.push(quote! {
+					fn #validator_name<'de, D>(
+						deserializer: D,
+					) -> ::std::result::Result<::std::marker::PhantomData<#field_type>, D::Error>
+					where
+						D: #orm_crate::serde::Deserializer<'de>,
+					{
+						let _: #field_type = #deserializer(deserializer)?;
+						Ok(::std::marker::PhantomData)
+					}
+				});
+				LitStr::new(&validator_name.to_string(), field_name.span())
+			} else {
+				has_defaulted_fixture_field = true;
+				LitStr::new(
+					"__reinhardt_validate_defaulted_fixture_field",
+					field_name.span(),
+				)
+			};
 			projection_fields.push(quote! {
 				#[serde(default, deserialize_with = #validator)]
 				#field_name: ::std::marker::PhantomData<#field_type>
@@ -2949,9 +3007,10 @@ fn generate_fixture_validation(
 	};
 
 	quote! {
-		fn validate_fixture_fields(
+	fn validate_fixture_fields(
 			fields: &#orm_crate::FixtureFields,
 		) -> ::std::result::Result<(), ::std::string::String> {
+			#(#defaulted_fixture_field_validators)*
 			#defaulted_fixture_field_validator
 
 			// This projection is deserialized only to validate fixture input.

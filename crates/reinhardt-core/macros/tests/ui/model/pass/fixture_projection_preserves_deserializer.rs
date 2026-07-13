@@ -38,8 +38,10 @@ mod uuid_serde {
 struct FixtureProjectionModel {
 	#[field(primary_key = true)]
 	id: i64,
+	#[field(default = "fixture")]
 	#[serde(deserialize_with = "deserialize_uuid")]
 	payload: Uuid,
+	#[field(default = "fixture")]
 	#[serde(with = "uuid_serde")]
 	persisted_payload: Uuid,
 }

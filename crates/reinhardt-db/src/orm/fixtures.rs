@@ -17,7 +17,7 @@ use reinhardt_query::prelude::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::{Arc, RwLock};
 
 /// Result type for fixture operations.
@@ -149,6 +149,14 @@ pub trait FixtureModelHandler: Send + Sync {
 	/// Return the foreign-key relations needed for fixture value binding and ordering.
 	fn fixture_foreign_key_relations(&self) -> Vec<FixtureForeignKeyRelation> {
 		Vec::new()
+	}
+
+	/// Return identity-always columns explicitly written by a fixture record.
+	fn fixture_written_identity_always_columns(
+		&self,
+		_record: &FixtureRecord,
+	) -> FixtureResult<Vec<String>> {
+		Ok(Vec::new())
 	}
 
 	/// Fully-qualified model label.
@@ -303,11 +311,32 @@ where
 		fixture_foreign_key_relations_from_relationship_metadata::<M>()
 	}
 
+	fn fixture_written_identity_always_columns(
+		&self,
+		record: &FixtureRecord,
+	) -> FixtureResult<Vec<String>> {
+		let mut object = record.fields.clone();
+		normalize_foreign_key_fixture_fields::<M>(&mut object)?;
+		if let Some(primary_key) = &record.pk {
+			object.insert(M::primary_key_field().to_string(), primary_key.clone());
+		}
+		let database_object = fixture_database_object::<M>(&object)?;
+		Ok(M::field_metadata()
+			.into_iter()
+			.filter(|field| {
+				database_object.contains_key(field.db_column_name())
+					&& matches!(
+						field.attributes.get("identity_always"),
+						Some(crate::orm::fields::FieldKwarg::Bool(true))
+					)
+			})
+			.map(|field| field.db_column_name().to_string())
+			.collect())
+	}
+
 	#[cfg(feature = "migrations")]
 	fn fixture_foreign_key_fields(&self) -> Vec<(String, String)> {
-		metadata_for_model::<M>().map_or_else(Vec::new, |metadata| {
-			foreign_key_fixture_field_names::<M>(&metadata)
-		})
+		foreign_key_fixture_field_names_with_metadata_fallback::<M>()
 	}
 
 	async fn load_record(
@@ -975,11 +1004,17 @@ fn fixture_value_to_sea_value_for_database_column<M>(
 where
 	M: Model,
 {
-	let foreign_key_binding =
-		fixture_foreign_key_binding_from_relationship_metadata::<M>(database_column);
 	#[cfg(feature = "migrations")]
-	let foreign_key_binding = fixture_foreign_key_binding_for_database_column::<M>(database_column)
-		.or(foreign_key_binding);
+	let foreign_key_binding = if let Some(binding) =
+		fixture_foreign_key_binding_for_database_column::<M>(database_column)
+	{
+		Some(binding)
+	} else {
+		fixture_foreign_key_binding_from_relationship_metadata::<M>(database_column)?
+	};
+	#[cfg(not(feature = "migrations"))]
+	let foreign_key_binding =
+		fixture_foreign_key_binding_from_relationship_metadata::<M>(database_column)?;
 
 	if foreign_key_binding == Some(FixturePrimaryKeyBinding::Text)
 		&& let Value::String(value) = value
@@ -1342,41 +1377,61 @@ where
 fn fixture_related_model_handler(
 	current_app_label: &str,
 	related_model: &str,
-) -> Option<Arc<dyn FixtureModelHandler>> {
+) -> FixtureResult<Option<Arc<dyn FixtureModelHandler>>> {
 	let registry = global_fixture_registry();
 	if related_model.contains('.') {
-		return registry.get(related_model);
+		return Ok(registry.get(related_model));
 	}
 
 	let related_model = related_model.rsplit("::").next().unwrap_or(related_model);
-	let handlers = registry.all();
-	if let Some(handler) = handlers.iter().find(|handler| {
-		handler.app_label().eq_ignore_ascii_case(current_app_label)
-			&& handler.model_name().eq_ignore_ascii_case(related_model)
-	}) {
-		return Some(handler.clone());
-	}
-	handlers
+	let mut handlers = registry
+		.all()
 		.into_iter()
-		.find(|handler| handler.model_name().eq_ignore_ascii_case(related_model))
+		.filter(|handler| handler.model_name().eq_ignore_ascii_case(related_model));
+	let Some(handler) = handlers.next() else {
+		return Ok(None);
+	};
+	if handlers.next().is_some() {
+		return Err(FixtureError::Database(format!(
+			"fixture relation from app '{}' references ambiguous model '{}'; use an app-qualified related model name",
+			current_app_label, related_model
+		)));
+	}
+	Ok(Some(handler))
 }
 
 fn fixture_foreign_key_binding_from_relationship_metadata<M>(
 	database_column: &str,
-) -> Option<FixturePrimaryKeyBinding>
+) -> FixtureResult<Option<FixturePrimaryKeyBinding>>
 where
 	M: Model,
 {
 	let relation = fixture_foreign_key_relations_from_relationship_metadata::<M>()
 		.into_iter()
-		.find(|relation| relation.database_column == database_column)?;
-	fixture_related_model_handler(M::app_label(), &relation.related_model).map(|handler| {
-		if handler.fixture_primary_key_is_text() {
-			FixturePrimaryKeyBinding::Text
-		} else {
-			FixturePrimaryKeyBinding::Generic
-		}
-	})
+		.find(|relation| relation.database_column == database_column);
+	let Some(relation) = relation else {
+		return Ok(None);
+	};
+	let Some(handler) = fixture_related_model_handler(M::app_label(), &relation.related_model)?
+	else {
+		return Ok(None);
+	};
+	Ok(Some(if handler.fixture_primary_key_is_text() {
+		FixturePrimaryKeyBinding::Text
+	} else {
+		FixturePrimaryKeyBinding::Generic
+	}))
+}
+
+#[cfg(feature = "migrations")]
+fn foreign_key_fixture_field_names_with_metadata_fallback<M>() -> Vec<(String, String)>
+where
+	M: Model,
+{
+	metadata_for_model::<M>().map_or_else(
+		foreign_key_fixture_field_names_from_relationship_metadata::<M>,
+		|metadata| foreign_key_fixture_field_names::<M>(&metadata),
+	)
 }
 
 #[cfg(feature = "migrations")]
@@ -1384,10 +1439,8 @@ fn normalize_foreign_key_fixture_fields<M>(object: &mut Map<String, Value>) -> F
 where
 	M: Model,
 {
-	let Some(metadata) = metadata_for_model::<M>() else {
-		return Ok(());
-	};
-	for (field_name, relation_name) in foreign_key_fixture_field_names::<M>(&metadata) {
+	for (field_name, relation_name) in foreign_key_fixture_field_names_with_metadata_fallback::<M>()
+	{
 		if object.contains_key(&field_name) {
 			continue;
 		}
@@ -1403,11 +1456,9 @@ fn denormalize_foreign_key_fixture_fields<M>(object: &mut Map<String, Value>) ->
 where
 	M: Model,
 {
-	let Some(metadata) = metadata_for_model::<M>() else {
-		return Ok(());
-	};
 	let mut renames = Vec::new();
-	for (field_name, relation_name) in foreign_key_fixture_field_names::<M>(&metadata) {
+	for (field_name, relation_name) in foreign_key_fixture_field_names_with_metadata_fallback::<M>()
+	{
 		if !object.contains_key(&field_name) || object.contains_key(&relation_name) {
 			continue;
 		}
@@ -1700,37 +1751,48 @@ async fn reset_sequences_after_explicit_pks(
 		return Ok(());
 	}
 
-	let mut handlers = Vec::<Arc<dyn FixtureModelHandler>>::new();
-	let mut seen = HashSet::new();
-	for record in records {
-		let Some(pk) = &record.pk else {
-			continue;
-		};
-		if pk.as_i64().is_none() && pk.as_u64().is_none() {
-			continue;
-		}
-		let handler = global_fixture_registry()
-			.get(&record.model)
-			.ok_or_else(|| FixtureError::ModelNotRegistered(record.model.clone()))?;
-		let label = handler.label();
-		if seen.insert(label) {
-			handlers.push(handler);
-		}
-	}
-
-	for handler in handlers {
-		let primary_key_column = handler.primary_key_database_column();
-		let sql = build_postgres_sequence_reset_sql(handler.table_name(), &primary_key_column);
+	for (handler, column) in
+		fixture_identity_sequence_reset_targets(global_fixture_registry(), records)?
+	{
+		let sql = build_postgres_sequence_reset_sql(handler.table_name(), &column);
 		tx.query_optional(
 			&sql,
 			vec![
 				QueryValue::String(handler.table_name().to_string()),
-				QueryValue::String(primary_key_column),
+				QueryValue::String(column),
 			],
 		)
 		.await?;
 	}
 	Ok(())
+}
+
+fn fixture_identity_sequence_reset_targets(
+	registry: &FixtureRegistry,
+	records: &[FixtureRecord],
+) -> FixtureResult<Vec<(Arc<dyn FixtureModelHandler>, String)>> {
+	let mut targets = BTreeMap::new();
+	for record in records {
+		let handler = registry
+			.get(&record.model)
+			.ok_or_else(|| FixtureError::ModelNotRegistered(record.model.clone()))?;
+		if record.pk.as_ref().is_some_and(|primary_key| {
+			primary_key.as_i64().is_some() || primary_key.as_u64().is_some()
+		}) {
+			targets
+				.entry((handler.label(), handler.primary_key_database_column()))
+				.or_insert_with(|| Arc::clone(&handler));
+		}
+		for column in handler.fixture_written_identity_always_columns(record)? {
+			targets
+				.entry((handler.label(), column))
+				.or_insert_with(|| Arc::clone(&handler));
+		}
+	}
+	Ok(targets
+		.into_iter()
+		.map(|((_, column), handler)| (handler, column))
+		.collect())
 }
 
 fn build_postgres_sequence_reset_sql(table_name: &str, primary_key_column: &str) -> String {
@@ -2162,11 +2224,13 @@ fn fixture_record_dependencies_from_relationship_metadata(
 			continue;
 		};
 		for relation in source_handler.fixture_foreign_key_relations() {
+			let is_primary_key_foreign_key =
+				relation.database_column == source_handler.primary_key_database_column();
 			let Some(value) = fixture_field_value(
 				record,
 				&relation.database_column,
 				Some(&relation.fixture_field),
-				false,
+				is_primary_key_foreign_key,
 			) else {
 				continue;
 			};
@@ -2174,7 +2238,7 @@ fn fixture_record_dependencies_from_relationship_metadata(
 				continue;
 			};
 			let Some(target_handler) =
-				fixture_related_model_handler(source_handler.app_label(), &relation.related_model)
+				fixture_related_model_handler(source_handler.app_label(), &relation.related_model)?
 			else {
 				continue;
 			};
@@ -2526,6 +2590,241 @@ mod tests {
 	}
 
 	#[cfg(not(feature = "migrations"))]
+	#[derive(Clone, Serialize, Deserialize)]
+	struct FixtureOrmOnlyPrimaryKeyForeignKeyParent {
+		id: Option<i64>,
+	}
+
+	#[cfg(not(feature = "migrations"))]
+	impl Model for FixtureOrmOnlyPrimaryKeyForeignKeyParent {
+		type PrimaryKey = i64;
+		type Fields = FixtureOrmOnlyPostFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"fixture_orm_only_primary_key_foreign_key_parent"
+		}
+
+		fn new_fields() -> Self::Fields {
+			FixtureOrmOnlyPostFields
+		}
+
+		fn app_label() -> &'static str {
+			"fixture_orm_only_primary_key_foreign_key"
+		}
+
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = Some(value);
+		}
+
+		fn field_metadata() -> Vec<crate::orm::inspection::FieldInfo> {
+			let mut id = fixture_field_info("id", "BigIntegerField", false);
+			id.primary_key = true;
+			vec![id]
+		}
+	}
+
+	#[cfg(not(feature = "migrations"))]
+	#[derive(Clone, Serialize, Deserialize)]
+	struct FixtureOrmOnlyPrimaryKeyForeignKeyChild {
+		id: Option<i64>,
+	}
+
+	#[cfg(not(feature = "migrations"))]
+	impl Model for FixtureOrmOnlyPrimaryKeyForeignKeyChild {
+		type PrimaryKey = i64;
+		type Fields = FixtureOrmOnlyPostFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"fixture_orm_only_primary_key_foreign_key_child"
+		}
+
+		fn new_fields() -> Self::Fields {
+			FixtureOrmOnlyPostFields
+		}
+
+		fn app_label() -> &'static str {
+			"fixture_orm_only_primary_key_foreign_key"
+		}
+
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = Some(value);
+		}
+
+		fn field_metadata() -> Vec<crate::orm::inspection::FieldInfo> {
+			let mut id = fixture_field_info("id", "BigIntegerField", false);
+			id.primary_key = true;
+			vec![id]
+		}
+
+		fn relationship_metadata() -> Vec<crate::orm::inspection::RelationInfo> {
+			vec![
+				crate::orm::inspection::RelationInfo::new(
+					"parent",
+					crate::orm::relationship::RelationshipType::OneToOne,
+					"FixtureOrmOnlyPrimaryKeyForeignKeyParent",
+				)
+				.with_foreign_key("id"),
+			]
+		}
+	}
+
+	#[cfg(not(feature = "migrations"))]
+	mod fixture_orm_only_ambiguous_auth {
+		use super::*;
+
+		#[derive(Clone, Serialize, Deserialize)]
+		pub(super) struct User {
+			id: Option<i64>,
+		}
+
+		impl Model for User {
+			type PrimaryKey = i64;
+			type Fields = FixtureOrmOnlyPostFields;
+			type Objects = Manager<Self>;
+
+			fn table_name() -> &'static str {
+				"fixture_orm_only_ambiguous_auth_user"
+			}
+
+			fn new_fields() -> Self::Fields {
+				FixtureOrmOnlyPostFields
+			}
+
+			fn app_label() -> &'static str {
+				"fixture_orm_only_ambiguous_auth"
+			}
+
+			fn primary_key_field() -> &'static str {
+				"id"
+			}
+
+			fn primary_key(&self) -> Option<Self::PrimaryKey> {
+				self.id
+			}
+
+			fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+				self.id = Some(value);
+			}
+		}
+	}
+
+	#[cfg(not(feature = "migrations"))]
+	mod fixture_orm_only_ambiguous_blog {
+		use super::*;
+
+		#[derive(Clone, Serialize, Deserialize)]
+		pub(super) struct User {
+			id: Option<i64>,
+		}
+
+		impl Model for User {
+			type PrimaryKey = i64;
+			type Fields = FixtureOrmOnlyPostFields;
+			type Objects = Manager<Self>;
+
+			fn table_name() -> &'static str {
+				"fixture_orm_only_ambiguous_blog_user"
+			}
+
+			fn new_fields() -> Self::Fields {
+				FixtureOrmOnlyPostFields
+			}
+
+			fn app_label() -> &'static str {
+				"fixture_orm_only_ambiguous_blog"
+			}
+
+			fn primary_key_field() -> &'static str {
+				"id"
+			}
+
+			fn primary_key(&self) -> Option<Self::PrimaryKey> {
+				self.id
+			}
+
+			fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+				self.id = Some(value);
+			}
+		}
+	}
+
+	#[cfg(not(feature = "migrations"))]
+	#[derive(Clone, Serialize, Deserialize)]
+	struct FixtureOrmOnlyAmbiguousPost {
+		id: Option<i64>,
+		author_id: i64,
+	}
+
+	#[cfg(not(feature = "migrations"))]
+	impl Model for FixtureOrmOnlyAmbiguousPost {
+		type PrimaryKey = i64;
+		type Fields = FixtureOrmOnlyPostFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"fixture_orm_only_ambiguous_post"
+		}
+
+		fn new_fields() -> Self::Fields {
+			FixtureOrmOnlyPostFields
+		}
+
+		fn app_label() -> &'static str {
+			"fixture_orm_only_ambiguous_blog"
+		}
+
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = Some(value);
+		}
+
+		fn field_metadata() -> Vec<crate::orm::inspection::FieldInfo> {
+			let mut id = fixture_field_info("id", "BigIntegerField", false);
+			id.primary_key = true;
+			vec![
+				id,
+				fixture_field_info("author_id", "BigIntegerField", false),
+			]
+		}
+
+		fn relationship_metadata() -> Vec<crate::orm::inspection::RelationInfo> {
+			vec![
+				crate::orm::inspection::RelationInfo::new(
+					"author",
+					crate::orm::relationship::RelationshipType::ManyToOne,
+					"User",
+				)
+				.with_foreign_key("author_id"),
+			]
+		}
+	}
+
+	#[cfg(not(feature = "migrations"))]
 	struct FixtureRegistryReset;
 
 	#[cfg(not(feature = "migrations"))]
@@ -2616,6 +2915,63 @@ mod tests {
 			ordered[1].model,
 			"fixture_orm_only.FixtureOrmOnlyTextForeignKeyPost"
 		);
+	}
+
+	#[cfg(not(feature = "migrations"))]
+	#[test]
+	#[serial_test::serial(fixture_model_registry)]
+	fn orm_only_fixture_order_uses_primary_key_foreign_key_fixture_pk() {
+		let _registry_reset = FixtureRegistryReset;
+		global_fixture_registry().clear();
+		global_fixture_registry().register_model::<FixtureOrmOnlyPrimaryKeyForeignKeyParent>();
+		global_fixture_registry().register_model::<FixtureOrmOnlyPrimaryKeyForeignKeyChild>();
+		let records = vec![
+			FixtureRecord::new(
+				"fixture_orm_only_primary_key_foreign_key.FixtureOrmOnlyPrimaryKeyForeignKeyChild",
+				Some(Value::from(1)),
+				Map::new(),
+			),
+			FixtureRecord::new(
+				"fixture_orm_only_primary_key_foreign_key.FixtureOrmOnlyPrimaryKeyForeignKeyParent",
+				Some(Value::from(1)),
+				Map::new(),
+			),
+		];
+
+		let ordered = order_records_by_dependencies(&records)
+			.expect("ORM-only primary-key foreign keys must use fixture pk values");
+
+		assert_eq!(
+			ordered[0].model,
+			"fixture_orm_only_primary_key_foreign_key.FixtureOrmOnlyPrimaryKeyForeignKeyParent"
+		);
+		assert_eq!(
+			ordered[1].model,
+			"fixture_orm_only_primary_key_foreign_key.FixtureOrmOnlyPrimaryKeyForeignKeyChild"
+		);
+	}
+
+	#[cfg(not(feature = "migrations"))]
+	#[test]
+	#[serial_test::serial(fixture_model_registry)]
+	fn orm_only_fixture_order_rejects_ambiguous_related_model_names() {
+		let _registry_reset = FixtureRegistryReset;
+		global_fixture_registry().clear();
+		global_fixture_registry().register_model::<fixture_orm_only_ambiguous_auth::User>();
+		global_fixture_registry().register_model::<fixture_orm_only_ambiguous_blog::User>();
+		global_fixture_registry().register_model::<FixtureOrmOnlyAmbiguousPost>();
+		let mut post_fields = Map::new();
+		post_fields.insert("author".to_string(), Value::from(1));
+		let records = vec![FixtureRecord::new(
+			"fixture_orm_only_ambiguous_blog.FixtureOrmOnlyAmbiguousPost",
+			Some(Value::from(1)),
+			post_fields,
+		)];
+
+		let error = order_records_by_dependencies(&records)
+			.expect_err("ambiguous ORM-only related models must not select a target by source app");
+
+		assert!(error.to_string().contains("ambiguous model 'User'"));
 	}
 
 	#[cfg(feature = "migrations")]
@@ -2870,6 +3226,64 @@ mod tests {
 
 		fn generated_field_names() -> &'static [&'static str] {
 			&["generated_value"]
+		}
+	}
+
+	#[cfg(feature = "migrations")]
+	#[derive(Clone, Serialize, Deserialize)]
+	struct FixtureMigrationMetadataFallbackPost {
+		id: Option<i64>,
+		author_id: i64,
+	}
+
+	#[cfg(feature = "migrations")]
+	impl Model for FixtureMigrationMetadataFallbackPost {
+		type PrimaryKey = i64;
+		type Fields = FixturePostFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"fixture_migration_metadata_fallback_post"
+		}
+
+		fn new_fields() -> Self::Fields {
+			FixturePostFields
+		}
+
+		fn app_label() -> &'static str {
+			"fixture_migration_metadata_fallback"
+		}
+
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = Some(value);
+		}
+
+		fn field_metadata() -> Vec<crate::orm::inspection::FieldInfo> {
+			let mut id = fixture_field_info("id", "BigIntegerField", false);
+			id.primary_key = true;
+			vec![
+				id,
+				fixture_field_info("author_id", "BigIntegerField", false),
+			]
+		}
+
+		fn relationship_metadata() -> Vec<crate::orm::inspection::RelationInfo> {
+			vec![
+				crate::orm::inspection::RelationInfo::new(
+					"author",
+					crate::orm::relationship::RelationshipType::ManyToOne,
+					"FixtureMigrationMetadataFallbackAuthor",
+				)
+				.with_foreign_key("author_id"),
+			]
 		}
 	}
 
@@ -3570,6 +3984,40 @@ mod tests {
 
 	#[cfg(feature = "migrations")]
 	#[test]
+	fn migration_fixture_fields_fall_back_to_relationship_metadata() {
+		let mut object = Map::new();
+		object.insert("author".to_string(), Value::from(7));
+
+		normalize_foreign_key_fixture_fields::<FixtureMigrationMetadataFallbackPost>(&mut object)
+			.expect(
+				"manual models must normalize fixture relation names without migration metadata",
+			);
+
+		assert_eq!(object.get("author_id"), Some(&Value::from(7)));
+		assert!(object.get("author").is_none());
+		assert_eq!(
+			fixture_database_object::<FixtureMigrationMetadataFallbackPost>(&object)
+				.expect("normalized relation names must map to database columns")
+				.get("author_id"),
+			Some(&Value::from(7))
+		);
+
+		denormalize_foreign_key_fixture_fields::<FixtureMigrationMetadataFallbackPost>(&mut object)
+			.expect(
+				"manual models must denormalize fixture relation names without migration metadata",
+			);
+
+		assert_eq!(object.get("author"), Some(&Value::from(7)));
+		assert!(object.get("author_id").is_none());
+		assert_eq!(
+			TypedFixtureModel::<FixtureMigrationMetadataFallbackPost>::new()
+				.fixture_foreign_key_fields(),
+			vec![("author_id".to_string(), "author".to_string())]
+		);
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
 	#[serial_test::serial(fixture_model_registry)]
 	fn custom_foreign_key_columns_use_relationship_names() {
 		let mut post = crate::migrations::ModelMetadata::new(
@@ -4092,6 +4540,44 @@ mod tests {
 		assert!(sql.contains("OVERRIDING SYSTEM VALUE"));
 		assert!(sql.contains("ON CONFLICT"));
 		assert_eq!(values.len(), 3);
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	fn fixture_sequence_reset_targets_include_written_non_primary_identity_columns() {
+		let registry = FixtureRegistry::new();
+		registry.register_model::<FixtureNonPrimaryIdentityAlwaysPost>();
+		let mut fields = Map::new();
+		fields.insert("sequence_number".to_string(), Value::from(99));
+		fields.insert("payload".to_string(), Value::from("fixture payload"));
+		let records = vec![FixtureRecord::new(
+			"fixture_non_primary_identity_always.FixtureNonPrimaryIdentityAlwaysPost",
+			Some(Value::from(1)),
+			fields,
+		)];
+
+		let targets = fixture_identity_sequence_reset_targets(&registry, &records)
+			.expect("written identity-always columns must select sequence reset targets");
+		let targets = targets
+			.into_iter()
+			.map(|(handler, column)| (handler.label(), column))
+			.collect::<Vec<_>>();
+
+		assert_eq!(
+			targets,
+			vec![
+				(
+					"fixture_non_primary_identity_always.FixtureNonPrimaryIdentityAlwaysPost"
+						.to_string(),
+					"id".to_string(),
+				),
+				(
+					"fixture_non_primary_identity_always.FixtureNonPrimaryIdentityAlwaysPost"
+						.to_string(),
+					"sequence_number".to_string(),
+				),
+			]
+		);
 	}
 
 	#[cfg(feature = "migrations")]
