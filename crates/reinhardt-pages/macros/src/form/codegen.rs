@@ -3438,7 +3438,8 @@ fn generate_onsubmit_handler(macro_ast: &TypedFormMacro, pages_crate: &TokenStre
 					{
 						#[cfg(all(target_family = "wasm", target_os = "unknown"))]
 						{
-							::std::sync::Arc::new(move |event: web_sys::Event| {
+							#pages_crate::typed_event_handler::<#pages_crate::event::SubmitEvent, _>(
+							move |event: #pages_crate::event::SubmitEvent| {
 								// Prevent default form submission by handling it ourselves
 								event.prevent_default();
 
@@ -3478,7 +3479,8 @@ fn generate_onsubmit_handler(macro_ast: &TypedFormMacro, pages_crate: &TokenStre
 						}
 						#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 						{
-							::std::sync::Arc::new(move |event: #pages_crate::component::DummyEvent| {
+							#pages_crate::typed_event_handler::<#pages_crate::event::SubmitEvent, _>(
+							move |event: #pages_crate::event::SubmitEvent| {
 								// Non-WASM: form submission is handled via HTTP, not JavaScript
 								event.prevent_default();
 							})
@@ -4166,21 +4168,22 @@ fn generate_collection_bind_listener(
 	let field_name_str = field.name.to_string();
 	let field_type = field_type_to_value_type(&field.field_type);
 	let collection_name_str = collection_name.to_string();
-	let event_name = match field.widget {
-		TypedWidget::Textarea => "input",
-		TypedWidget::Select | TypedWidget::SelectMultiple => "change",
-		TypedWidget::CheckboxInput | TypedWidget::RadioSelect => "change",
-		_ => "input",
-	};
-	let element_type = match field.widget {
-		TypedWidget::Textarea => quote! { HtmlTextAreaElement },
-		TypedWidget::Select | TypedWidget::SelectMultiple => quote! { HtmlSelectElement },
-		_ => quote! { HtmlInputElement },
-	};
-	let element_var = match field.widget {
-		TypedWidget::Textarea => quote::format_ident!("textarea"),
-		TypedWidget::Select | TypedWidget::SelectMultiple => quote::format_ident!("select"),
-		_ => quote::format_ident!("input"),
+	let (event_type, payload_type) = match field.widget {
+		TypedWidget::Textarea => (
+			quote! { #pages_crate::event::KnownEvent::Input },
+			quote! { #pages_crate::event::InputEvent },
+		),
+		TypedWidget::Select
+		| TypedWidget::SelectMultiple
+		| TypedWidget::CheckboxInput
+		| TypedWidget::RadioSelect => (
+			quote! { #pages_crate::event::KnownEvent::Change },
+			quote! { #pages_crate::event::ChangeEvent },
+		),
+		_ => (
+			quote! { #pages_crate::event::KnownEvent::Input },
+			quote! { #pages_crate::event::InputEvent },
+		),
 	};
 	let assignment = quote! {
 		let mut __items = __field_collection_signal.get();
@@ -4216,42 +4219,136 @@ fn generate_collection_bind_listener(
 			}
 		}
 	};
-	let wasm_update =
-		collection_field_wasm_update(&field.field_type, &field.widget, &element_var, assignment);
+	let typed_update = collection_field_typed_update(
+		&field.field_type,
+		&field.widget,
+		pages_crate,
+		&field_name_str,
+		assignment,
+	);
 
 	quote! {
-		.listener(#event_name, {
+		.on(#event_type, {
 			let __field_collection_signal = __collection_signal.clone();
 			let __field_path_signals = __path_signals.clone();
 			let __item_key = item.key();
-			move |event| {
-				#[cfg(all(target_family = "wasm", target_os = "unknown"))]
-				{
-					use wasm_bindgen::JsCast;
-					if let ::core::option::Option::Some(target) = event.target() {
-						if let ::core::result::Result::Ok(#element_var) =
-							target.dyn_into::<web_sys::#element_type>()
-						{
-							#wasm_update
-						}
-					}
-				}
-				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-				{
-					let _ = event;
+			#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+			{
+				#pages_crate::typed_event_handler::<#payload_type, _>(
+					move |event: #payload_type| {
+						#typed_update
+					},
+				)
+			}
+			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+			{
+				::std::sync::Arc::new(move |_event: #pages_crate::component::NativeEvent| {
 					let _ = &__field_collection_signal;
 					let _ = &__field_path_signals;
 					let _ = __item_key;
-				}
+				})
 			}
 		})
 	}
 }
 
-fn collection_field_wasm_update(
+fn collection_field_typed_update(
 	field_type: &TypedFieldType,
 	widget: &TypedWidget,
-	element_var: &syn::Ident,
+	pages_crate: &TokenStream,
+	field_name: &str,
+	assignment: TokenStream,
+) -> TokenStream {
+	if matches!(field_type, TypedFieldType::BooleanField)
+		&& matches!(widget, TypedWidget::CheckboxInput)
+	{
+		return quote! {
+			match event.checked() {
+				::core::result::Result::Ok(__new_value) => { #assignment }
+				::core::result::Result::Err(__error) => {
+					#pages_crate::warn_log!(
+						"form collection field `{}` failed to extract `checked`: {}",
+						#field_name,
+						__error,
+					);
+				}
+			}
+		};
+	}
+
+	if let TypedFieldType::MultipleChoiceField { inner } = field_type {
+		return quote! {
+			match event.selected_values() {
+				::core::result::Result::Ok(__selected_values) => {
+					let __new_value = __selected_values
+						.into_iter()
+						.filter_map(|value| value.parse::<#inner>().ok())
+						.collect::<::std::vec::Vec<_>>();
+					#assignment
+				}
+				::core::result::Result::Err(__error) => {
+					#pages_crate::warn_log!(
+						"form collection field `{}` failed to extract `selected_values`: {}",
+						#field_name,
+						__error,
+					);
+				}
+			}
+		};
+	}
+
+	if matches!(
+		field_type,
+		TypedFieldType::FileField | TypedFieldType::ImageField
+	) {
+		return quote! {
+			match event.files() {
+				::core::result::Result::Ok(__files) => {
+					#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+					{
+						let __new_value = __files.first().map(|file| file.raw().clone());
+						#assignment
+					}
+					#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+					{
+						let _ = (
+							&__field_collection_signal,
+							&__field_path_signals,
+							__item_key,
+							__files,
+						);
+					}
+				}
+				::core::result::Result::Err(__error) => {
+					#pages_crate::warn_log!(
+						"form collection field `{}` failed to extract `files`: {}",
+						#field_name,
+						__error,
+					);
+				}
+			}
+		};
+	}
+
+	let raw_value = quote::format_ident!("__raw_value");
+	let value_update = collection_field_value_update(field_type, &raw_value, assignment);
+	quote! {
+		match event.value() {
+			::core::result::Result::Ok(#raw_value) => { #value_update }
+			::core::result::Result::Err(__error) => {
+				#pages_crate::warn_log!(
+					"form collection field `{}` failed to extract `value`: {}",
+					#field_name,
+					__error,
+				);
+			}
+		}
+	}
+}
+
+fn collection_field_value_update(
+	field_type: &TypedFieldType,
+	raw_value: &syn::Ident,
 	assignment: TokenStream,
 ) -> TokenStream {
 	match field_type {
@@ -4261,90 +4358,69 @@ fn collection_field_wasm_update(
 		| TypedFieldType::PasswordField
 		| TypedFieldType::UrlField
 		| TypedFieldType::SlugField => quote! {
-			let __new_value = #element_var.value();
-			#assignment
-		},
-		TypedFieldType::BooleanField if matches!(widget, TypedWidget::CheckboxInput) => quote! {
-			let __new_value = #element_var.checked();
+			let __new_value = #raw_value;
 			#assignment
 		},
 		TypedFieldType::BooleanField => quote! {
-			if let ::core::result::Result::Ok(__new_value) =
-				#element_var.value().parse::<bool>()
+			if let ::core::result::Result::Ok(__new_value) = #raw_value.parse::<bool>()
 			{
 				#assignment
 			}
 		},
 		TypedFieldType::IntegerField => quote! {
 			if let ::core::result::Result::Ok(__new_value) =
-				#element_var.value().parse::<i64>()
+				#raw_value.parse::<i64>()
 			{
 				#assignment
 			}
 		},
 		TypedFieldType::FloatField | TypedFieldType::DecimalField => quote! {
 			if let ::core::result::Result::Ok(__new_value) =
-				#element_var.value().parse::<f64>()
+				#raw_value.parse::<f64>()
 			{
 				#assignment
 			}
 		},
 		TypedFieldType::DateField => {
-			collection_option_parse_update(element_var, quote! { chrono::NaiveDate }, assignment)
+			collection_option_parse_update(raw_value, quote! { chrono::NaiveDate }, assignment)
 		}
 		TypedFieldType::TimeField => {
-			collection_option_parse_update(element_var, quote! { chrono::NaiveTime }, assignment)
+			collection_option_parse_update(raw_value, quote! { chrono::NaiveTime }, assignment)
 		}
-		TypedFieldType::DateTimeField => collection_datetime_parse_update(element_var, assignment),
+		TypedFieldType::DateTimeField => collection_datetime_parse_update(raw_value, assignment),
 		TypedFieldType::UuidField => {
-			collection_option_parse_update(element_var, quote! { uuid::Uuid }, assignment)
+			collection_option_parse_update(raw_value, quote! { uuid::Uuid }, assignment)
 		}
 		TypedFieldType::IpAddressField => {
-			collection_option_parse_update(element_var, quote! { ::std::net::IpAddr }, assignment)
+			collection_option_parse_update(raw_value, quote! { ::std::net::IpAddr }, assignment)
 		}
 		TypedFieldType::HiddenField { inner } | TypedFieldType::ChoiceField { inner } => quote! {
 			if let ::core::result::Result::Ok(__new_value) =
-				#element_var.value().parse::<#inner>()
+				#raw_value.parse::<#inner>()
 			{
 				#assignment
 			}
 		},
 		TypedFieldType::JsonField { inner } => quote! {
 			if let ::core::result::Result::Ok(__new_value) =
-				::serde_json::from_str::<#inner>(&#element_var.value())
+				::serde_json::from_str::<#inner>(&#raw_value)
 			{
 				#assignment
 			}
 		},
-		TypedFieldType::MultipleChoiceField { inner } => quote! {
-			let __options = #element_var.selected_options();
-			let mut __new_value = ::std::vec::Vec::new();
-			for __i in 0..__options.length() {
-				if let ::core::option::Option::Some(__option) = __options.item(__i) {
-					if let ::core::result::Result::Ok(__option_el) =
-						__option.dyn_into::<web_sys::HtmlOptionElement>()
-					{
-						if let ::core::result::Result::Ok(__parsed) =
-							__option_el.value().parse::<#inner>()
-						{
-							__new_value.push(__parsed);
-						}
-					}
-				}
-			}
-			#assignment
-		},
-		TypedFieldType::FileField | TypedFieldType::ImageField => quote! {},
+		TypedFieldType::MultipleChoiceField { .. }
+		| TypedFieldType::FileField
+		| TypedFieldType::ImageField => quote! {},
 	}
 }
 
 fn collection_option_parse_update(
-	element_var: &syn::Ident,
+	raw_value: &syn::Ident,
 	value_type: TokenStream,
 	assignment: TokenStream,
 ) -> TokenStream {
 	quote! {
-		let __raw = #element_var.value();
+		let __raw = #raw_value;
 		if __raw.is_empty() {
 			let __new_value = ::core::option::Option::None;
 			#assignment
@@ -4358,11 +4434,11 @@ fn collection_option_parse_update(
 }
 
 fn collection_datetime_parse_update(
-	element_var: &syn::Ident,
+	raw_value: &syn::Ident,
 	assignment: TokenStream,
 ) -> TokenStream {
 	quote! {
-		let __raw = #element_var.value();
+		let __raw = #raw_value;
 		if __raw.is_empty() {
 			let __new_value = ::core::option::Option::None;
 			#assignment
@@ -4409,8 +4485,13 @@ fn generate_field_view(
 	let native_attrs = generate_native_attrs(&field.native_attrs);
 
 	// Generate event listener for two-way binding
-	let event_listener =
-		generate_bind_listener(signal_ident, &field.widget, &field.field_type, pages_crate);
+	let event_listener = generate_bind_listener(
+		signal_ident,
+		&field.widget,
+		&field.field_type,
+		pages_crate,
+		&field_name_str,
+	);
 
 	// Generate input element based on widget type
 	let input_element = match &field.widget {
@@ -4997,58 +5078,81 @@ fn generate_bind_listener(
 	widget: &TypedWidget,
 	field_type: &TypedFieldType,
 	pages_crate: &TokenStream,
+	field_name: &str,
 ) -> TokenStream {
 	let Some(signal_ident) = signal_ident else {
 		return TokenStream::new();
 	};
 
 	if matches!(field_type, TypedFieldType::MultipleChoiceField { .. }) {
-		return generate_multi_select_listener(signal_ident, field_type, pages_crate);
+		return generate_multi_select_listener(signal_ident, field_type, pages_crate, field_name);
 	}
 	if matches!(
 		field_type,
 		TypedFieldType::FileField | TypedFieldType::ImageField
 	) {
-		return generate_file_input_listener(signal_ident, pages_crate);
+		return generate_file_input_listener(signal_ident, pages_crate, field_name);
 	}
 
-	// Determine event type and element type based on widget
-	let (event_name, element_type) = match widget {
-		TypedWidget::Textarea => ("input", "HtmlTextAreaElement"),
-		TypedWidget::Select | TypedWidget::SelectMultiple => ("change", "HtmlSelectElement"),
-		TypedWidget::CheckboxInput => ("change", "HtmlInputElement"),
-		TypedWidget::RadioSelect => ("change", "HtmlInputElement"),
-		_ => ("input", "HtmlInputElement"),
+	let (event_type, payload_type) = match widget {
+		TypedWidget::Textarea => (
+			quote! { #pages_crate::event::KnownEvent::Input },
+			quote! { #pages_crate::event::InputEvent },
+		),
+		TypedWidget::Select
+		| TypedWidget::SelectMultiple
+		| TypedWidget::CheckboxInput
+		| TypedWidget::RadioSelect => (
+			quote! { #pages_crate::event::KnownEvent::Change },
+			quote! { #pages_crate::event::ChangeEvent },
+		),
+		_ => (
+			quote! { #pages_crate::event::KnownEvent::Input },
+			quote! { #pages_crate::event::InputEvent },
+		),
 	};
-
-	let element_type_ident = quote::format_ident!("{}", element_type);
-	let element_var = match widget {
-		TypedWidget::Textarea => quote::format_ident!("textarea"),
-		TypedWidget::Select | TypedWidget::SelectMultiple => quote::format_ident!("select"),
-		_ => quote::format_ident!("input"),
-	};
-
-	let conversion = generate_value_conversion(field_type, widget, &element_var);
-
-	quote! {
-		.listener(#event_name, {
-			let signal = #signal_ident.clone();
-			move |event| {
-				#[cfg(all(target_family = "wasm", target_os = "unknown"))]
-				{
-					use wasm_bindgen::JsCast;
-					if let Some(target) = event.target() {
-						if let Ok(#element_var) = target.dyn_into::<web_sys::#element_type_ident>() {
-							#conversion
-						}
-					}
-				}
-				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-				{
-					let _ = event;
-					let _ = &#pages_crate::component::DummyEvent;
+	let extraction = if matches!(field_type, TypedFieldType::BooleanField)
+		&& matches!(widget, TypedWidget::CheckboxInput)
+	{
+		quote! {
+			match event.checked() {
+				::core::result::Result::Ok(__checked) => signal.set(__checked),
+				::core::result::Result::Err(__error) => {
+					#pages_crate::warn_log!(
+						"form field `{}` failed to extract `checked`: {}",
+						#field_name,
+						__error,
+					);
 				}
 			}
+		}
+	} else {
+		let raw_value = quote::format_ident!("__raw_value");
+		let conversion = generate_value_conversion(field_type, &raw_value);
+		quote! {
+			match event.value() {
+				::core::result::Result::Ok(#raw_value) => {
+					#conversion
+				}
+				::core::result::Result::Err(__error) => {
+					#pages_crate::warn_log!(
+						"form field `{}` failed to extract `value`: {}",
+						#field_name,
+						__error,
+					);
+				}
+			}
+		}
+	};
+
+	quote! {
+		.on(#event_type, {
+			let signal = #signal_ident.clone();
+			#pages_crate::typed_event_handler::<#payload_type, _>(
+				move |event: #payload_type| {
+					#extraction
+				},
+			)
 		})
 	}
 }
@@ -5057,27 +5161,34 @@ fn generate_bind_listener(
 fn generate_file_input_listener(
 	signal_ident: &syn::Ident,
 	pages_crate: &TokenStream,
+	field_name: &str,
 ) -> TokenStream {
 	quote! {
-		.listener("change", {
+		.on(#pages_crate::event::KnownEvent::Change, {
 			let signal = #signal_ident.clone();
-			move |event| {
-				#[cfg(all(target_family = "wasm", target_os = "unknown"))]
-				{
-					use wasm_bindgen::JsCast;
-					if let Some(target) = event.target() {
-						if let Ok(input) = target.dyn_into::<web_sys::HtmlInputElement>() {
-							let file = input.files().and_then(|files| files.item(0));
-							signal.set(file);
+			#pages_crate::typed_event_handler::<#pages_crate::event::ChangeEvent, _>(
+				move |event: #pages_crate::event::ChangeEvent| {
+					match event.files() {
+						::core::result::Result::Ok(files) => {
+							#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+							{
+								signal.set(files.first().map(|file| file.raw().clone()));
+							}
+							#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+							{
+								let _ = (&signal, files);
+							}
+						}
+						::core::result::Result::Err(__error) => {
+							#pages_crate::warn_log!(
+								"form field `{}` failed to extract `files`: {}",
+								#field_name,
+								__error,
+							);
 						}
 					}
-				}
-				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-				{
-					let _ = event;
-					let _ = &#pages_crate::component::DummyEvent;
-				}
-			}
+				},
+			)
 		})
 	}
 }
@@ -5085,11 +5196,7 @@ fn generate_file_input_listener(
 /// Generates the value conversion code that transforms a DOM element value into
 /// the appropriate Rust type for the signal. Parse failures are silently ignored,
 /// preserving the previous signal value.
-fn generate_value_conversion(
-	field_type: &TypedFieldType,
-	widget: &TypedWidget,
-	element_var: &syn::Ident,
-) -> TokenStream {
+fn generate_value_conversion(field_type: &TypedFieldType, raw_value: &syn::Ident) -> TokenStream {
 	match field_type {
 		// String fields: direct assignment
 		TypedFieldType::CharField
@@ -5098,18 +5205,13 @@ fn generate_value_conversion(
 		| TypedFieldType::PasswordField
 		| TypedFieldType::UrlField
 		| TypedFieldType::SlugField => {
-			quote! { signal.set(#element_var.value()); }
-		}
-
-		// BooleanField with CheckboxInput: use .checked() directly
-		TypedFieldType::BooleanField if matches!(widget, TypedWidget::CheckboxInput) => {
-			quote! { signal.set(#element_var.checked()); }
+			quote! { signal.set(#raw_value); }
 		}
 
 		// BooleanField with other widgets (e.g. select "true"/"false")
 		TypedFieldType::BooleanField => {
 			quote! {
-				if let Ok(v) = #element_var.value().parse::<bool>() {
+				if let Ok(v) = #raw_value.parse::<bool>() {
 					signal.set(v);
 				}
 			}
@@ -5118,14 +5220,14 @@ fn generate_value_conversion(
 		// Numeric types
 		TypedFieldType::IntegerField => {
 			quote! {
-				if let Ok(v) = #element_var.value().parse::<i64>() {
+				if let Ok(v) = #raw_value.parse::<i64>() {
 					signal.set(v);
 				}
 			}
 		}
 		TypedFieldType::FloatField | TypedFieldType::DecimalField => {
 			quote! {
-				if let Ok(v) = #element_var.value().parse::<f64>() {
+				if let Ok(v) = #raw_value.parse::<f64>() {
 					signal.set(v);
 				}
 			}
@@ -5134,7 +5236,7 @@ fn generate_value_conversion(
 		// Option-wrapped types: empty string → None, otherwise parse to Some
 		TypedFieldType::DateField => {
 			quote! {
-				let raw = #element_var.value();
+				let raw = #raw_value;
 				if raw.is_empty() {
 					signal.set(::core::option::Option::None);
 				} else if let Ok(v) = raw.parse::<chrono::NaiveDate>() {
@@ -5144,7 +5246,7 @@ fn generate_value_conversion(
 		}
 		TypedFieldType::TimeField => {
 			quote! {
-				let raw = #element_var.value();
+				let raw = #raw_value;
 				if raw.is_empty() {
 					signal.set(::core::option::Option::None);
 				} else if let Ok(v) = raw.parse::<chrono::NaiveTime>() {
@@ -5154,7 +5256,7 @@ fn generate_value_conversion(
 		}
 		TypedFieldType::DateTimeField => {
 			quote! {
-				let raw = #element_var.value();
+				let raw = #raw_value;
 				if raw.is_empty() {
 					signal.set(::core::option::Option::None);
 				} else if let Ok(v) =
@@ -5167,7 +5269,7 @@ fn generate_value_conversion(
 		}
 		TypedFieldType::UuidField => {
 			quote! {
-				let raw = #element_var.value();
+				let raw = #raw_value;
 				if raw.is_empty() {
 					signal.set(::core::option::Option::None);
 				} else if let Ok(v) = raw.parse::<uuid::Uuid>() {
@@ -5177,7 +5279,7 @@ fn generate_value_conversion(
 		}
 		TypedFieldType::IpAddressField => {
 			quote! {
-				let raw = #element_var.value();
+				let raw = #raw_value;
 				if raw.is_empty() {
 					signal.set(::core::option::Option::None);
 				} else if let Ok(v) = raw.parse::<::std::net::IpAddr>() {
@@ -5189,7 +5291,7 @@ fn generate_value_conversion(
 		// Generic-capable fields using FromStr
 		TypedFieldType::HiddenField { inner } | TypedFieldType::ChoiceField { inner } => {
 			quote! {
-				if let Ok(v) = #element_var.value().parse::<#inner>() {
+				if let Ok(v) = #raw_value.parse::<#inner>() {
 					signal.set(v);
 				}
 			}
@@ -5198,7 +5300,7 @@ fn generate_value_conversion(
 		// JsonField: use serde_json (FromStr not required)
 		TypedFieldType::JsonField { inner } => {
 			quote! {
-				if let Ok(v) = ::serde_json::from_str::<#inner>(&#element_var.value()) {
+				if let Ok(v) = ::serde_json::from_str::<#inner>(&#raw_value) {
 					signal.set(v);
 				}
 			}
@@ -5221,41 +5323,35 @@ fn generate_multi_select_listener(
 	signal_ident: &syn::Ident,
 	field_type: &TypedFieldType,
 	pages_crate: &TokenStream,
+	field_name: &str,
 ) -> TokenStream {
 	let TypedFieldType::MultipleChoiceField { inner } = field_type else {
 		unreachable!("generate_multi_select_listener called with non-MultipleChoiceField");
 	};
 
 	quote! {
-		.listener("change", {
+		.on(#pages_crate::event::KnownEvent::Change, {
 			let signal = #signal_ident.clone();
-			move |event| {
-				#[cfg(all(target_family = "wasm", target_os = "unknown"))]
-				{
-					use wasm_bindgen::JsCast;
-					if let Some(target) = event.target() {
-						if let Ok(select) = target.dyn_into::<web_sys::HtmlSelectElement>() {
-							let options = select.selected_options();
-							let mut values = ::std::vec::Vec::new();
-							for i in 0..options.length() {
-								if let Some(opt) = options.item(i) {
-									if let Ok(opt_el) = opt.dyn_into::<web_sys::HtmlOptionElement>() {
-										if let Ok(v) = opt_el.value().parse::<#inner>() {
-											values.push(v);
-										}
-									}
-								}
-							}
+			#pages_crate::typed_event_handler::<#pages_crate::event::ChangeEvent, _>(
+				move |event: #pages_crate::event::ChangeEvent| {
+					match event.selected_values() {
+						::core::result::Result::Ok(__selected_values) => {
+							let values = __selected_values
+								.into_iter()
+								.filter_map(|value| value.parse::<#inner>().ok())
+								.collect::<::std::vec::Vec<_>>();
 							signal.set(values);
 						}
+						::core::result::Result::Err(__error) => {
+							#pages_crate::warn_log!(
+								"form field `{}` failed to extract `selected_values`: {}",
+								#field_name,
+								__error,
+							);
+						}
 					}
-				}
-				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-				{
-					let _ = event;
-					let _ = &#pages_crate::component::DummyEvent;
-				}
-			}
+				},
+			)
 		})
 	}
 }
@@ -6834,6 +6930,9 @@ mod tests {
 		// But without callback-specific code (no explicit callback variable)
 		// The basic structure should still work
 		assert!(output_str.contains("submit_form"));
+		assert!(output_str.contains("typed_event_handler :: <"));
+		assert!(output_str.contains("SubmitEvent"));
+		assert!(output_str.contains("event . prevent_default ()"));
 	}
 
 	#[rstest::rstest]
@@ -7462,7 +7561,8 @@ mod tests {
 
 		// Default bind is true, so should generate signal binding and listener
 		assert!(output_str.contains("let username_signal = self . username . clone ()"));
-		assert!(output_str.contains(". listener (\"input\""));
+		assert!(output_str.contains("KnownEvent :: Input"));
+		assert!(output_str.contains("typed_event_handler :: <"));
 		assert!(output_str.contains("signal . set"));
 	}
 
@@ -7484,8 +7584,8 @@ mod tests {
 
 		// bind: true should generate signal binding and listener
 		assert!(output_str.contains("let email_signal = self . email . clone ()"));
-		assert!(output_str.contains(". listener (\"input\""));
-		assert!(output_str.contains("HtmlInputElement"));
+		assert!(output_str.contains("KnownEvent :: Input"));
+		assert!(output_str.contains("InputEvent"));
 	}
 
 	#[rstest::rstest]
@@ -7529,10 +7629,12 @@ mod tests {
 		let output = parse_validate_generate(input);
 		let output_str = output.to_string();
 
-		// Textarea should use "input" event and HtmlTextAreaElement
-		assert!(output_str.contains(". listener (\"input\""));
-		assert!(output_str.contains("HtmlTextAreaElement"));
-		assert!(output_str.contains("textarea . value ()"));
+		assert!(output_str.contains("typed_event_handler :: <"));
+		assert!(output_str.contains("InputEvent"));
+		assert!(output_str.contains("event . value ()"));
+		assert!(output_str.contains("failed to extract `value`"));
+		assert!(output_str.contains("\"description\""));
+		assert!(!output_str.contains("HtmlTextAreaElement"));
 	}
 
 	#[rstest::rstest]
@@ -7551,10 +7653,12 @@ mod tests {
 		let output = parse_validate_generate(input);
 		let output_str = output.to_string();
 
-		// Select should use "change" event and HtmlSelectElement
-		assert!(output_str.contains(". listener (\"change\""));
-		assert!(output_str.contains("HtmlSelectElement"));
-		assert!(output_str.contains("select . value ()"));
+		assert!(output_str.contains("typed_event_handler :: <"));
+		assert!(output_str.contains("ChangeEvent"));
+		assert!(output_str.contains("event . value ()"));
+		assert!(output_str.contains("failed to extract `value`"));
+		assert!(output_str.contains("\"country\""));
+		assert!(!output_str.contains("HtmlSelectElement"));
 	}
 
 	#[rstest::rstest]
@@ -7588,7 +7692,9 @@ mod tests {
 		assert!(output_str.contains(". attr (\"value\" , choice_value . to_string ())"));
 		assert!(output_str.contains(". bool_attr (\"disabled\" , choice . disabled)"));
 		assert!(output_str.contains(". child (choice . label)"));
-		assert!(output_str.contains(". listener (\"change\""));
+		assert!(output_str.contains("KnownEvent :: Change"));
+		assert!(output_str.contains("ChangeEvent"));
+		assert!(output_str.contains("event . value ()"));
 	}
 
 	#[rstest::rstest]
@@ -7650,10 +7756,12 @@ mod tests {
 		let output = parse_validate_generate(input);
 		let output_str = output.to_string();
 
-		// Checkbox should use "change" event and checked property
-		assert!(output_str.contains(". listener (\"change\""));
-		assert!(output_str.contains("HtmlInputElement"));
-		assert!(output_str.contains("input . checked ()"));
+		assert!(output_str.contains("typed_event_handler :: <"));
+		assert!(output_str.contains("ChangeEvent"));
+		assert!(output_str.contains("event . checked ()"));
+		assert!(output_str.contains("failed to extract `checked`"));
+		assert!(output_str.contains("\"agree\""));
+		assert!(!output_str.contains("HtmlInputElement"));
 	}
 
 	#[rstest::rstest]
@@ -7672,10 +7780,12 @@ mod tests {
 		let output = parse_validate_generate(input);
 		let output_str = output.to_string();
 
-		assert!(output_str.contains(". listener (\"change\""));
-		assert!(output_str.contains("HtmlInputElement"));
-		assert!(output_str.contains("input . files ()"));
-		assert!(output_str.contains("files . item (0)"));
+		assert!(output_str.contains("typed_event_handler :: <"));
+		assert!(output_str.contains("ChangeEvent"));
+		assert!(output_str.contains("event . files ()"));
+		assert!(output_str.contains("file . raw () . clone ()"));
+		assert!(output_str.contains("failed to extract `files`"));
+		assert!(output_str.contains("\"document\""));
 	}
 
 	#[rstest::rstest]

@@ -43,8 +43,8 @@ struct MetadataTarget {
 	id: Option<i64>,
 }
 
-#[derive(Serialize, Deserialize)]
 #[model(app_label = "metadata_test", table_name = "metadata_writers")]
+#[derive(Serialize, Deserialize)]
 struct MetadataWriter {
 	#[field(primary_key = true)]
 	id: Option<i64>,
@@ -53,8 +53,8 @@ struct MetadataWriter {
 	writer: ForeignKeyField<MetadataTarget>,
 }
 
-#[derive(Serialize, Deserialize)]
 #[model(app_label = "metadata_test", table_name = "metadata_profiles")]
+#[derive(Serialize, Deserialize)]
 struct MetadataProfile {
 	#[field(primary_key = true)]
 	id: Option<i64>,

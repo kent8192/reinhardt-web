@@ -1,0 +1,5 @@
+error: `@custom` event name must be a string literal
+ --> tests/ui/page/fail/custom_event_invalid_syntax.rs:9:17
+  |
+9 |         div { @custom(item_selected): |_| {}, }
+  |                       ^^^^^^^^^^^^^

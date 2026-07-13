@@ -23,10 +23,14 @@
 
 pub mod event;
 pub mod head;
+#[cfg(native)]
+pub mod native_event;
 mod util;
 
-pub use event::EventType;
+pub use event::{EventInterface, EventName, EventType};
 pub use head::{Head, LinkTag, MetaTag, ScriptTag, StyleTag};
+#[cfg(native)]
+pub use native_event::*;
 pub(crate) use util::html_escape;
 pub use util::{BOOLEAN_ATTRS, is_boolean_attr_truthy};
 
@@ -37,31 +41,9 @@ use std::sync::Arc;
 #[cfg(wasm)]
 pub type PageEventHandler = Arc<dyn Fn(web_sys::Event) + 'static>;
 
-/// Dummy event type for non-WASM environments.
-///
-/// This type exists to maintain API compatibility between WASM and non-WASM builds.
-/// In non-WASM environments, event handlers still accept an argument (this dummy type)
-/// so that user code doesn't need conditional compilation for event handler signatures.
+/// Type alias for event handler functions on native targets.
 #[cfg(native)]
-#[derive(Debug, Clone, Default)]
-pub struct DummyEvent;
-
-#[cfg(native)]
-impl DummyEvent {
-	/// No-op method for API compatibility with web_sys::Event.
-	///
-	/// This method exists to maintain API compatibility between WASM and non-WASM builds.
-	/// In non-WASM environments, this is a no-op.
-	pub fn prevent_default(&self) {}
-}
-
-/// Type alias for event handler functions (non-WASM placeholder).
-///
-/// Uses `DummyEvent` to maintain API compatibility with the WASM version,
-/// allowing the same event handler signatures (e.g., `|_| { ... }`) to work
-/// in both WASM and non-WASM environments.
-#[cfg(native)]
-pub type PageEventHandler = Arc<dyn Fn(DummyEvent) + 'static>;
+pub type PageEventHandler = Arc<dyn Fn(NativeEvent) + 'static>;
 
 /// Error type for mounting views to the DOM.
 #[non_exhaustive]
@@ -483,7 +465,7 @@ pub struct PageElement {
 	/// Whether this is a void element (no closing tag).
 	is_void: bool,
 	/// Event handlers attached to this element.
-	event_handlers: Vec<(EventType, PageEventHandler)>,
+	event_handlers: Vec<(EventName, PageEventHandler)>,
 }
 
 impl std::fmt::Debug for PageElement {
@@ -599,24 +581,21 @@ impl PageElement {
 	}
 
 	/// Adds an event handler.
-	pub fn on(mut self, event_type: EventType, handler: PageEventHandler) -> Self {
-		self.event_handlers.push((event_type, handler));
+	pub fn on(mut self, event_type: impl Into<EventName>, handler: PageEventHandler) -> Self {
+		self.event_handlers.push((event_type.into(), handler));
 		self
 	}
 
 	/// Adds an event listener using string event name (convenience method).
 	///
 	/// This is a convenience wrapper around [`on`] that accepts a string event name
-	/// and a closure. The event name is parsed to [`EventType`] at runtime.
+	/// and a closure. Catalog names are stored as known events, while all other
+	/// names are preserved as explicit custom events.
 	///
 	/// # Arguments
 	///
 	/// * `event_name` - The event name (e.g., "click", "submit", "input")
 	/// * `handler` - The event handler closure
-	///
-	/// # Panics
-	///
-	/// Panics if the event name is not a recognized event type.
 	///
 	/// # Example
 	///
@@ -631,25 +610,16 @@ impl PageElement {
 	where
 		F: Fn(web_sys::Event) + 'static,
 	{
-		use std::str::FromStr;
-		let event_type = EventType::from_str(event_name)
-			.unwrap_or_else(|_| panic!("Unknown event type: {}", event_name));
-		self.on(event_type, Arc::new(handler))
+		self.on(classify_event_name(event_name), Arc::new(handler))
 	}
 
-	/// Adds an event listener using string event name (non-WASM stub).
-	///
-	/// In non-WASM environments, this is a stub that stores the handler
-	/// for API compatibility but won't actually attach to DOM events.
+	/// Adds a native event listener using a string event name.
 	#[cfg(native)]
 	pub fn listener<F>(self, event_name: &str, handler: F) -> Self
 	where
-		F: Fn(DummyEvent) + 'static,
+		F: Fn(NativeEvent) + 'static,
 	{
-		use std::str::FromStr;
-		let event_type = EventType::from_str(event_name)
-			.unwrap_or_else(|_| panic!("Unknown event type: {}", event_name));
-		self.on(event_type, Arc::new(handler))
+		self.on(classify_event_name(event_name), Arc::new(handler))
 	}
 
 	/// Returns the tag name.
@@ -687,12 +657,16 @@ impl PageElement {
 	}
 
 	/// Adds an event handler mutably (for parser use).
-	pub fn add_event_handler(&mut self, event_type: EventType, handler: PageEventHandler) {
-		self.event_handlers.push((event_type, handler));
+	pub fn add_event_handler(
+		&mut self,
+		event_type: impl Into<EventName>,
+		handler: PageEventHandler,
+	) {
+		self.event_handlers.push((event_type.into(), handler));
 	}
 
 	/// Returns the event handlers.
-	pub fn event_handlers(&self) -> &[(EventType, PageEventHandler)] {
+	pub fn event_handlers(&self) -> &[(EventName, PageEventHandler)] {
 		&self.event_handlers
 	}
 
@@ -702,7 +676,7 @@ impl PageElement {
 	}
 
 	/// Consumes the element view and returns the event handlers.
-	pub fn into_event_handlers(self) -> Vec<(EventType, PageEventHandler)> {
+	pub fn into_event_handlers(self) -> Vec<(EventName, PageEventHandler)> {
 		self.event_handlers
 	}
 
@@ -717,7 +691,7 @@ impl PageElement {
 		Vec<(Cow<'static, str>, Cow<'static, str>)>,
 		Vec<Page>,
 		bool,
-		Vec<(EventType, PageEventHandler)>,
+		Vec<(EventName, PageEventHandler)>,
 	) {
 		(
 			self.tag,
@@ -726,6 +700,13 @@ impl PageElement {
 			self.is_void,
 			self.event_handlers,
 		)
+	}
+}
+
+fn classify_event_name(event_name: &str) -> EventName {
+	match event::event_spec(event_name) {
+		Some(spec) => EventName::Known(spec.kind),
+		None => EventName::Custom(Cow::Owned(event_name.to_owned())),
 	}
 }
 
@@ -1143,6 +1124,147 @@ impl<A: IntoPage, B: IntoPage, C: IntoPage, D: IntoPage> IntoPage for (A, B, C, 
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn event_type_reexports_the_complete_catalog() {
+		let event_type: EventType = EventType::PointerDown;
+
+		assert_eq!(event_type.as_str(), "pointerdown");
+	}
+
+	#[cfg(native)]
+	#[test]
+	fn page_element_preserves_known_and_custom_event_names() {
+		let element = PageElement::new("button")
+			.on(EventType::Click, Arc::new(|_| {}))
+			.listener("editor:commit", |_| {});
+
+		assert_eq!(
+			element.event_handlers()[0].0,
+			EventName::Known(EventType::Click)
+		);
+		assert_eq!(
+			element.event_handlers()[1].0,
+			EventName::Custom(Cow::Owned("editor:commit".to_owned()))
+		);
+	}
+
+	#[cfg(native)]
+	#[test]
+	fn native_target_owns_control_state_snapshot() {
+		let target = NativeEventTarget::new("INPUT")
+			.with_attribute("type", "checkbox")
+			.with_value("enabled")
+			.with_checked(true)
+			.with_selected_values(["primary", "secondary"])
+			.with_file(NativeEventFile::new("avatar.png", "image/png", 128, 42))
+			.with_text_content("Enabled")
+			.with_content_editable(true);
+
+		assert_eq!(target.tag_name(), "input");
+		assert_eq!(target.attribute("type"), Some("checkbox"));
+		assert_eq!(target.value(), Some("enabled"));
+		assert_eq!(target.checked(), Some(true));
+		assert_eq!(target.selected_values(), &["primary", "secondary"]);
+		assert_eq!(target.files()[0].name(), "avatar.png");
+		assert_eq!(target.text_content(), Some("Enabled"));
+		assert!(target.is_content_editable());
+	}
+
+	#[cfg(native)]
+	#[test]
+	fn native_payload_exposes_its_interface_family_data() {
+		assert_eq!(
+			NativeEventPayload::for_interface(EventInterface::Keyboard).interface(),
+			EventInterface::Keyboard
+		);
+		let payload = NativeEventPayload::Pointer(PointerEventData {
+			mouse: MouseEventData {
+				client_x: 120.0,
+				client_y: 80.0,
+				button: 0,
+				buttons: 1,
+				modifiers: ModifierState {
+					shift: true,
+					..ModifierState::default()
+				},
+				..MouseEventData::default()
+			},
+			pointer_id: 7,
+			pointer_kind: "pen".to_owned(),
+			pressure: 0.5,
+			..PointerEventData::default()
+		});
+
+		assert_eq!(payload.interface(), EventInterface::Pointer);
+		let NativeEventPayload::Pointer(pointer) = payload else {
+			panic!("pointer payload must retain its family data");
+		};
+		assert_eq!(
+			(pointer.mouse.client_x, pointer.mouse.client_y),
+			(120.0, 80.0)
+		);
+		assert_eq!(pointer.pointer_id, 7);
+		assert_eq!(pointer.pointer_kind, "pen");
+		assert_eq!(pointer.pressure, 0.5);
+		assert!(pointer.mouse.modifiers.shift);
+	}
+
+	#[cfg(native)]
+	#[test]
+	fn native_event_snapshots_share_cancelation_and_propagation_state() {
+		let target = NativeEventTarget::new("span").with_text_content("Save");
+		let button = NativeEventTarget::new("button").with_attribute("type", "submit");
+		let ancestor = NativeEventTarget::new("form");
+		let event = NativeEvent::for_known(
+			EventType::Click,
+			NativeEventPayload::Pointer(PointerEventData::default()),
+		)
+		.with_target(target.clone())
+		.with_current_target(button.clone());
+		let ancestor_event = event.with_current_target(ancestor.clone());
+
+		assert_eq!(event.target(), Some(&target));
+		assert_eq!(event.current_target(), Some(&button));
+		assert_eq!(ancestor_event.target(), Some(&target));
+		assert_eq!(ancestor_event.current_target(), Some(&ancestor));
+		assert!(event.base().cancelable);
+		event.prevent_default();
+		ancestor_event.stop_propagation();
+
+		assert!(ancestor_event.default_prevented());
+		assert!(event.propagation_stopped());
+		assert!(!event.immediate_propagation_stopped());
+	}
+
+	#[cfg(native)]
+	#[test]
+	fn native_event_respects_cancelable_and_immediate_propagation_semantics() {
+		let event = NativeEvent::new(
+			EventName::Known(EventType::Input),
+			BaseEventData {
+				bubbles: true,
+				cancelable: false,
+				composed: true,
+				time_stamp: 12.5,
+				is_trusted: false,
+			},
+			NativeEventPayload::Input(InputEventData {
+				data: Some("x".to_owned()),
+				input_type: Some("insertText".to_owned()),
+				is_composing: false,
+			}),
+		);
+
+		event.prevent_default();
+		event.stop_immediate_propagation();
+
+		assert!(!event.default_prevented());
+		assert!(event.propagation_stopped());
+		assert!(event.immediate_propagation_stopped());
+		assert_eq!(event.base().time_stamp, 12.5);
+		assert_eq!(event.name(), &EventName::Known(EventType::Input));
+	}
 
 	#[test]
 	fn test_element_view_creation() {

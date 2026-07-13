@@ -122,7 +122,15 @@ pub use crate::component::{
 // Events and Callbacks
 // ============================================================================
 
-pub use crate::callback::{Callback, IntoEventHandler, into_event_handler};
+pub use crate::callback::{
+	Callback, IntoEventHandler, IntoTypedEventHandler, into_event_handler, raw_async_event_handler,
+	raw_event_handler, typed_async_event_handler, typed_event_handler,
+};
+
+pub use crate::event::{
+	EventConversionError, EventFile, EventPayload, EventTarget, EventTargetError, Modifiers,
+	MouseButton, MouseButtons, Point, PointerKind,
+};
 
 // Platform-agnostic Event type
 pub use crate::platform::Event;

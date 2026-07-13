@@ -63,14 +63,36 @@ web-sys-full = [
 	"web-sys/Comment",
 	"web-sys/Text",
 	"web-sys/Event",
+	"web-sys/EventInit",
 	"web-sys/EventTarget",
 	"web-sys/CustomEvent",
 	"web-sys/CustomEventInit",
 	"web-sys/console",
 	"web-sys/MouseEvent",
+	"web-sys/MouseEventInit",
+	"web-sys/PointerEvent",
+	"web-sys/WheelEvent",
+	"web-sys/DragEvent",
+	"web-sys/TouchEvent",
+	"web-sys/Touch",
+	"web-sys/TouchList",
+	"web-sys/ClipboardEvent",
+	"web-sys/DataTransfer",
+	"web-sys/CompositionEvent",
 	"web-sys/InputEvent",
 	"web-sys/KeyboardEvent",
 	"web-sys/FocusEvent",
+	"web-sys/AnimationEvent",
+	"web-sys/TransitionEvent",
+	"web-sys/SubmitEvent",
+	"web-sys/SecurityPolicyViolationEvent",
+	"web-sys/MediaEncryptedEvent",
+	"web-sys/PictureInPictureEvent",
+	"web-sys/PictureInPictureWindow",
+	"web-sys/TimeEvent",
+	"web-sys/ToggleEvent",
+	"web-sys/CommandEvent",
+	"web-sys/XrInputSourceEvent",
 	"web-sys/PopStateEvent",
 	"web-sys/File",
 	"web-sys/FileList",
@@ -82,6 +104,7 @@ web-sys-full = [
 	"web-sys/HtmlTextAreaElement",
 	"web-sys/HtmlSelectElement",
 	"web-sys/HtmlOptionElement",
+	"web-sys/HtmlOptionsCollection",
 	"web-sys/DomTokenList",
 	"web-sys/NamedNodeMap",
 	"web-sys/Attr",
@@ -119,6 +142,7 @@ subtle = { workspace = true }
 
 # AST definitions
 reinhardt-pages-ast = { workspace = true }
+reinhardt-event-catalog = { workspace = true }
 
 # Procedural macros
 reinhardt-pages-macros = { workspace = true }
@@ -168,15 +192,37 @@ web-sys = { version = "0.3.83", features = [
 	"Comment",
 	"Text",
 	"Event",
+	"EventInit",
 	"EventTarget",
 	"CustomEvent",
 	"CustomEventInit",
 	"console",
 	# Event types
 	"MouseEvent",
+	"MouseEventInit",
+	"PointerEvent",
+	"WheelEvent",
+	"DragEvent",
+	"TouchEvent",
+	"Touch",
+	"TouchList",
+	"ClipboardEvent",
+	"DataTransfer",
+	"CompositionEvent",
 	"InputEvent",
 	"KeyboardEvent",
 	"FocusEvent",
+	"AnimationEvent",
+	"TransitionEvent",
+	"SubmitEvent",
+	"SecurityPolicyViolationEvent",
+	"MediaEncryptedEvent",
+	"PictureInPictureEvent",
+	"PictureInPictureWindow",
+	"TimeEvent",
+	"ToggleEvent",
+	"CommandEvent",
+	"XrInputSourceEvent",
 	"PopStateEvent",
 	# HTML element types
 	"File",
@@ -188,6 +234,8 @@ web-sys = { version = "0.3.83", features = [
 	"HtmlFormElement",
 	"HtmlTextAreaElement",
 	"HtmlSelectElement",
+	"HtmlOptionElement",
+	"HtmlOptionsCollection",
 	# DOM manipulation
 	"DomTokenList",
 	"NamedNodeMap",
@@ -310,12 +358,12 @@ harness = false
 [[test]]
 name = "csrf_wasm_test"
 path = "tests/wasm/csrf_wasm_test.rs"
-required-features = []
+required-features = ["testing"]
 
 [[test]]
 name = "server_fn_wasm_test"
 path = "tests/wasm/server_fn_wasm_test.rs"
-required-features = []
+required-features = ["testing"]
 
 [[test]]
 name = "suspense_boundary_wasm_test"

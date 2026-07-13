@@ -1,0 +1,17 @@
+[package]
+name = "reinhardt-event-catalog"
+version = "0.3.1"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Authoritative HTML and SVG event metadata for Reinhardt pages"
+repository.workspace = true
+readme = "README.md"
+keywords = ["dom", "events", "wasm", "frontend"]
+categories = ["wasm", "web-programming"]
+
+[dependencies]
+
+[lints]
+workspace = true

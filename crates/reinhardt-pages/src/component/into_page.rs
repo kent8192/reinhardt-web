@@ -9,9 +9,8 @@ pub use reinhardt_core::types::page::{
 	Reactive, ReactiveIf, ScriptTag, StyleTag,
 };
 
-// DummyEvent is only available on non-WASM targets
 #[cfg(native)]
-pub use reinhardt_core::types::page::DummyEvent;
+pub use reinhardt_core::types::page::NativeEvent;
 // Re-export boolean attribute utilities (used in WASM mount)
 // Note: EventType is re-exported from dom::event module
 #[cfg(wasm)]

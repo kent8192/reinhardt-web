@@ -68,6 +68,33 @@
 //! - `i18n`: Reactive page translations with SSR-resolved catalogs (requires the `i18n` feature)
 //! - [`static_resolver`]: Static file URL resolution (collectstatic support)
 //!
+//! ## Typed events
+//!
+//! Standard intrinsic `page!` events use one catalog-generated payload type per
+//! event. Payloads expose common propagation and target snapshots, plus only
+//! the capabilities assigned to that event, such as `InputEvent::value` or
+//! `ChangeEvent::checked`. `current_target()` is captured while the listener is
+//! active, so it remains available after an async handler yields.
+//!
+//! ```ignore
+//! use reinhardt_pages::event::{ClickEvent, InputEvent};
+//! use reinhardt_pages::prelude::*;
+//!
+//! page!({
+//!     button { @click: |event: ClickEvent| { event.prevent_default(); }, "Run" }
+//!     input { @input: |event: InputEvent| {
+//!         if let Ok(value) = event.value() {
+//!             info_log!("{value}");
+//!         }
+//!     } }
+//! })
+//! ```
+//!
+//! Arbitrary intrinsic events use `@custom("name")` and the raw
+//! [`platform::Event`] transport. Typed custom detail values are outside this
+//! contract and tracked by #5636. Component `@event` props retain the type of
+//! their declared component prop instead of using the intrinsic event catalog.
+//!
 //! ## Forms
 //!
 //! `form!` owns static form definition: field names, widgets, labels,
@@ -330,6 +357,7 @@ pub use reinhardt_pages_ast as ast;
 pub mod builder;
 pub mod callback;
 pub mod dom;
+pub mod event;
 #[cfg(feature = "i18n")]
 pub mod i18n;
 pub mod logging;
@@ -425,10 +453,13 @@ pub use builder::{
 		a, button, div, form, h1, h2, h3, img, input, li, ol, option, p, select, span, textarea, ul,
 	},
 };
-pub use callback::{Callback, IntoEventHandler, event_handler, into_event_handler};
+pub use callback::{
+	Callback, IntoEventHandler, IntoTypedEventHandler, event_handler, into_event_handler,
+	raw_async_event_handler, raw_event_handler, typed_async_event_handler, typed_event_handler,
+};
 pub use client_form::{ClientFormChoice, ClientFormChoiceSource};
 #[cfg(native)]
-pub use component::DummyEvent;
+pub use component::NativeEvent;
 #[cfg(wasm)]
 pub use component::cleanup_reactive_nodes;
 pub use component::{
