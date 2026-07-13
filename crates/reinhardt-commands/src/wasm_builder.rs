@@ -128,12 +128,42 @@ pub enum WasmBuildError {
 /// WASM build executor.
 pub struct WasmBuilder {
 	config: WasmBuildConfig,
+	features: Vec<String>,
+	all_features: bool,
 }
 
 impl WasmBuilder {
 	/// Create a new builder with the given configuration.
 	pub fn new(config: WasmBuildConfig) -> Self {
-		Self { config }
+		Self {
+			config,
+			features: Vec::new(),
+			all_features: false,
+		}
+	}
+
+	/// Select the Cargo features used for the frontend build.
+	pub fn features<I, S>(mut self, features: I) -> Self
+	where
+		I: IntoIterator<Item = S>,
+		S: Into<String>,
+	{
+		self.features = features.into_iter().map(Into::into).collect();
+		self.features.sort();
+		self.features.dedup();
+		if !self.features.is_empty() {
+			self.all_features = false;
+		}
+		self
+	}
+
+	/// Select every Cargo feature for the frontend build.
+	pub fn all_features(mut self, enabled: bool) -> Self {
+		self.all_features = enabled;
+		if enabled {
+			self.features.clear();
+		}
+		self
 	}
 
 	/// Detect the cargo target directory by running `cargo metadata`.
@@ -289,18 +319,10 @@ impl WasmBuilder {
 	}
 
 	fn run_cargo_build(&self) -> Result<(), WasmBuildError> {
-		let mut cmd = Command::new("cargo");
-		cmd.arg("build")
-			.arg("--lib")
-			.arg("--target")
-			.arg("wasm32-unknown-unknown")
-			.current_dir(&self.config.project_dir);
-
-		if self.config.release {
-			cmd.arg("--release");
-		}
-
-		let output = cmd.output()?;
+		let output = Command::new("cargo")
+			.args(self.cargo_build_arguments())
+			.current_dir(&self.config.project_dir)
+			.output()?;
 
 		if output.status.success() {
 			Ok(())
@@ -308,6 +330,25 @@ impl WasmBuilder {
 			let stderr = String::from_utf8_lossy(&output.stderr);
 			Err(WasmBuildError::CargoBuildFailed(stderr.to_string()))
 		}
+	}
+
+	fn cargo_build_arguments(&self) -> Vec<String> {
+		let mut arguments = vec![
+			"build".to_string(),
+			"--lib".to_string(),
+			"--target".to_string(),
+			"wasm32-unknown-unknown".to_string(),
+		];
+		if self.config.release {
+			arguments.push("--release".to_string());
+		}
+		if self.all_features {
+			arguments.push("--all-features".to_string());
+		} else if !self.features.is_empty() {
+			arguments.push("--features".to_string());
+			arguments.push(self.features.join(","));
+		}
+		arguments
 	}
 
 	fn run_wasm_bindgen(&self, wasm_path: &Path, output_dir: &Path) -> Result<(), WasmBuildError> {
@@ -508,6 +549,50 @@ mod tests {
 		assert!(config.release);
 		assert!(!config.optimize);
 		assert_eq!(config.target_name, Some("my-app".to_string()));
+	}
+
+	#[test]
+	fn cargo_build_arguments_include_selected_features() {
+		// Arrange
+		let builder =
+			WasmBuilder::new(WasmBuildConfig::new("/path/to/project")).features(["theme", "brand"]);
+
+		// Act
+		let arguments = builder.cargo_build_arguments();
+
+		// Assert
+		assert_eq!(
+			arguments,
+			vec![
+				"build".to_string(),
+				"--lib".to_string(),
+				"--target".to_string(),
+				"wasm32-unknown-unknown".to_string(),
+				"--features".to_string(),
+				"brand,theme".to_string(),
+			]
+		);
+	}
+
+	#[test]
+	fn cargo_build_arguments_include_all_features() {
+		// Arrange
+		let builder = WasmBuilder::new(WasmBuildConfig::new("/path/to/project")).all_features(true);
+
+		// Act
+		let arguments = builder.cargo_build_arguments();
+
+		// Assert
+		assert_eq!(
+			arguments,
+			vec![
+				"build".to_string(),
+				"--lib".to_string(),
+				"--target".to_string(),
+				"wasm32-unknown-unknown".to_string(),
+				"--all-features".to_string(),
+			]
+		);
 	}
 
 	#[test]

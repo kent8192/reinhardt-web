@@ -684,7 +684,10 @@ fn build_admin_wasm(force: bool) -> bool {
 /// Returns `true` if the build succeeded or was skipped, `false` on failure or if the
 /// current project is not a cdylib.
 #[cfg(feature = "pages")]
-fn build_pages_wasm(force: bool) -> bool {
+fn build_pages_wasm(
+	force: bool,
+	feature_selection: &reinhardt_commands::StyleFeatureSelection,
+) -> bool {
 	let cwd = match env::current_dir() {
 		Ok(d) => d,
 		Err(e) => {
@@ -768,7 +771,10 @@ fn build_pages_wasm(force: bool) -> bool {
 	let config = WasmBuildConfig::new(".")
 		.output_dir("dist")
 		.target_dir(workspace_root.join("target"));
-	match WasmBuilder::new(config).build() {
+	let builder = WasmBuilder::new(config)
+		.features(feature_selection.features().iter().cloned())
+		.all_features(feature_selection.all_features_enabled());
+	match builder.build() {
 		Ok(_) => {
 			println!("{}", "Pages WASM build succeeded.".green());
 			true
@@ -789,7 +795,12 @@ fn build_pages_wasm(force: bool) -> bool {
 /// without it, WASM is rebuilt unconditionally to avoid serving stale bundles.
 /// `force_wasm_legacy` accepts the deprecated `--force-wasm` flag and emits a
 /// warning; rebuild is otherwise the default.
-fn build_wasm_targets(no_wasm: bool, no_override_wasm: bool, force_wasm_legacy: bool) {
+fn build_wasm_targets(
+	no_wasm: bool,
+	no_override_wasm: bool,
+	force_wasm_legacy: bool,
+	_feature_selection: &reinhardt_commands::StyleFeatureSelection,
+) {
 	if no_wasm {
 		println!("{}", "WASM builds skipped (--no-wasm)".dimmed());
 		return;
@@ -814,7 +825,7 @@ fn build_wasm_targets(no_wasm: bool, no_override_wasm: bool, force_wasm_legacy: 
 	build_admin_wasm(force);
 
 	#[cfg(feature = "pages")]
-	build_pages_wasm(force);
+	build_pages_wasm(force, _feature_selection);
 }
 
 /// Run collectstatic to copy all static files into STATIC_ROOT.
@@ -943,11 +954,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 		reinhardt_commands::ComponentStyleState::initialize_optional_with_features(
 			manifest,
 			args.package.clone(),
-			style_feature_selection,
+			style_feature_selection.clone(),
 		)?;
 
 	// Phase 1: Build WASM targets
-	build_wasm_targets(args.no_wasm, args.no_override_wasm, args.force_wasm);
+	build_wasm_targets(
+		args.no_wasm,
+		args.no_override_wasm,
+		args.force_wasm,
+		&style_feature_selection,
+	);
 
 	// Load settings at startup
 	let mut loaded_settings = load_settings();

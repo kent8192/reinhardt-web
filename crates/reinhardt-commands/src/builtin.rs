@@ -1750,6 +1750,8 @@ struct AutoreloadChildOptions<'a> {
 	force_wasm: bool,
 	wasm_optional: bool,
 	package: Option<&'a str>,
+	features: &'a [String],
+	all_features: bool,
 	generated_style_root: Option<&'a std::path::Path>,
 }
 
@@ -1759,6 +1761,20 @@ fn configured_static_url(base_dir: &std::path::Path) -> Result<String, String> {
 }
 
 impl RunServerCommand {
+	#[cfg(any(feature = "pages", all(feature = "server", feature = "autoreload")))]
+	fn style_feature_selection_from_context(ctx: &CommandContext) -> crate::StyleFeatureSelection {
+		if ctx.has_option("all-features") {
+			crate::StyleFeatureSelection::all_features()
+		} else {
+			crate::StyleFeatureSelection::with_features(
+				ctx.option("features")
+					.into_iter()
+					.flat_map(|raw| raw.split(','))
+					.filter(|feature| !feature.is_empty()),
+			)
+		}
+	}
+
 	/// Consume `UrlPatternsRegistration` `inventory` entries and install the
 	/// merged `ServerRouter` as the process-wide HTTP router.
 	///
@@ -2011,16 +2027,7 @@ impl BaseCommand for RunServerCommand {
 		#[cfg(feature = "pages")]
 		let requested_package = ctx.option("package").cloned();
 		#[cfg(feature = "pages")]
-		let style_feature_selection = if ctx.has_option("all-features") {
-			crate::StyleFeatureSelection::all_features()
-		} else {
-			crate::StyleFeatureSelection::with_features(
-				ctx.option("features")
-					.into_iter()
-					.flat_map(|raw| raw.split(','))
-					.filter(|feature| !feature.is_empty()),
-			)
-		};
+		let style_feature_selection = Self::style_feature_selection_from_context(ctx);
 		#[cfg(not(feature = "pages"))]
 		#[cfg_attr(not(feature = "server"), allow(unused_variables))]
 		let requested_package: Option<String> = None;
@@ -2883,6 +2890,9 @@ impl RunServerCommand {
 		let static_dir_owned = static_dir.to_string();
 		let index_owned = index.map(|s| s.to_string());
 		let package_owned = package.map(str::to_string);
+		let style_feature_selection = Self::style_feature_selection_from_context(ctx);
+		let style_features = style_feature_selection.features().to_vec();
+		let all_style_features = style_feature_selection.all_features_enabled();
 		let generated_style_root_owned = generated_style_root.map(std::path::Path::to_path_buf);
 		#[cfg(feature = "pages")]
 		let hmr = Self::start_autoreload_hmr(ctx, with_pages).await?;
@@ -2909,6 +2919,8 @@ impl RunServerCommand {
 				force_wasm,
 				wasm_optional,
 				package_owned.as_deref(),
+				&style_features,
+				all_style_features,
 				generated_style_root_owned.as_deref(),
 			)
 			.map_err(|e| std::io::Error::other(e.to_string()))
@@ -3120,6 +3132,8 @@ impl RunServerCommand {
 		force_wasm: bool,
 		wasm_optional: bool,
 		package: Option<&str>,
+		features: &[String],
+		all_features: bool,
 		generated_style_root: Option<&std::path::Path>,
 	) -> CommandResult<tokio::process::Child> {
 		let current_exe = std::env::current_exe().map_err(|e| {
@@ -3159,6 +3173,8 @@ impl RunServerCommand {
 			force_wasm,
 			wasm_optional,
 			package,
+			features,
+			all_features,
 			generated_style_root,
 		};
 		cmd.args(Self::build_autoreload_child_args(&child_options));
@@ -3242,6 +3258,12 @@ impl RunServerCommand {
 			args.push("--package".to_string());
 			args.push(package.to_string());
 		}
+		if options.all_features {
+			args.push("--all-features".to_string());
+		} else if !options.features.is_empty() {
+			args.push("--features".to_string());
+			args.push(options.features.join(","));
+		}
 
 		args
 	}
@@ -3314,8 +3336,12 @@ impl RunServerCommand {
 			"Building pages WASM for {} ({})...",
 			crate_name, reason
 		));
+		let feature_selection = Self::style_feature_selection_from_context(ctx);
 		let config = crate::wasm_builder::WasmBuildConfig::new(".").output_dir("dist");
-		match crate::wasm_builder::WasmBuilder::new(config).build() {
+		let builder = crate::wasm_builder::WasmBuilder::new(config)
+			.features(feature_selection.features().iter().cloned())
+			.all_features(feature_selection.all_features_enabled());
+		match builder.build() {
 			Ok(_) => {
 				ctx.info("Pages WASM build succeeded.");
 				Ok(())
@@ -4863,6 +4889,7 @@ name = "db.sqlite3"
 	#[test]
 	#[cfg(all(feature = "server", feature = "autoreload"))]
 	fn test_autoreload_child_args_forward_wasm_startup_flags() {
+		let features = vec!["brand".to_string(), "theme".to_string()];
 		let args = RunServerCommand::build_autoreload_child_args(&AutoreloadChildOptions {
 			address: "127.0.0.1:8000",
 			insecure: true,
@@ -4878,6 +4905,8 @@ name = "db.sqlite3"
 			force_wasm: true,
 			wasm_optional: true,
 			package: Some("poll-app"),
+			features: &features,
+			all_features: false,
 			generated_style_root: None,
 		});
 
@@ -4902,6 +4931,43 @@ name = "db.sqlite3"
 				"--wasm-optional",
 				"--package",
 				"poll-app",
+				"--features",
+				"brand,theme",
+			]
+		);
+	}
+
+	#[test]
+	#[cfg(all(feature = "server", feature = "autoreload"))]
+	fn test_autoreload_child_args_forward_all_features() {
+		let args = RunServerCommand::build_autoreload_child_args(&AutoreloadChildOptions {
+			address: "127.0.0.1:8000",
+			insecure: false,
+			no_docs: false,
+			with_pages: true,
+			static_dir: "",
+			no_spa: false,
+			no_project_static: false,
+			index: None,
+			hmr_port: None,
+			no_wasm: false,
+			no_override_wasm: false,
+			force_wasm: false,
+			wasm_optional: false,
+			package: None,
+			features: &[],
+			all_features: true,
+			generated_style_root: None,
+		});
+
+		assert_eq!(
+			args,
+			vec![
+				"runserver",
+				"127.0.0.1:8000",
+				"--noreload",
+				"--with-pages",
+				"--all-features",
 			]
 		);
 	}
@@ -4924,6 +4990,8 @@ name = "db.sqlite3"
 			force_wasm: false,
 			wasm_optional: false,
 			package: None,
+			features: &[],
+			all_features: false,
 			generated_style_root: None,
 		});
 

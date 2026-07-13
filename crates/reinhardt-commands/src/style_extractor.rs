@@ -1,10 +1,10 @@
 //! Compile canonical component style definitions from one Cargo package.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use cargo_metadata::{CargoOpt, Metadata, MetadataCommand, Package, PackageId};
+use cargo_metadata::{CargoOpt, DependencyKind, Metadata, MetadataCommand, Package, PackageId};
 use quote::{ToTokens, quote};
 use reinhardt_manouche::{CompiledStyle, StyleCompileContext, compile_style, serialize_css};
 use sha2::{Digest, Sha256};
@@ -53,6 +53,16 @@ impl StyleFeatureSelection {
 		}
 	}
 
+	/// Return the explicit Cargo features selected for the Pages build.
+	pub fn features(&self) -> &[String] {
+		&self.features
+	}
+
+	/// Return whether the Pages build enables every Cargo feature.
+	pub fn all_features_enabled(&self) -> bool {
+		self.all_features
+	}
+
 	fn apply_to_metadata(&self, command: &mut MetadataCommand) {
 		if self.all_features {
 			command.features(CargoOpt::AllFeatures);
@@ -77,8 +87,17 @@ pub struct StylePackageContext {
 	pub workspace_manifest_path: PathBuf,
 	/// Selected package source root.
 	pub src_root: PathBuf,
-	/// Cargo library target roots served by the selected package Pages build.
-	source_roots: Vec<PathBuf>,
+	/// Cargo library targets compiled into the selected Pages WASM bundle.
+	source_roots: Vec<StyleSourceRoot>,
+}
+
+/// One local Cargo package target that can contribute component styles.
+#[derive(Debug, Clone)]
+struct StyleSourceRoot {
+	package_name: String,
+	package_version: String,
+	package_root: PathBuf,
+	source_path: PathBuf,
 	cfg: CfgEvaluator,
 }
 
@@ -114,27 +133,7 @@ impl StylePackageContext {
 			.parent()
 			.ok_or_else(|| "selected package manifest has no parent directory".to_string())?
 			.join("src");
-		let enabled_features: BTreeSet<String> = metadata
-			.resolve
-			.as_ref()
-			.and_then(|resolve| resolve.nodes.iter().find(|node| node.id == package.id))
-			.map(|node| node.features.iter().map(ToString::to_string).collect())
-			.unwrap_or_default();
-		let cfg = CfgEvaluator::new(enabled_features.clone())?;
-		let mut source_roots: Vec<PathBuf> = package
-			.targets
-			.iter()
-			.filter(|target| {
-				target.is_lib()
-					&& target
-						.required_features
-						.iter()
-						.all(|feature| enabled_features.contains(feature))
-			})
-			.map(|target| target.src_path.clone().into_std_path_buf())
-			.collect();
-		source_roots.sort();
-		source_roots.dedup();
+		let source_roots = style_source_roots(metadata, package)?;
 		Ok(Self {
 			package_id: package.id.clone(),
 			package_name: package.name.to_string(),
@@ -146,7 +145,6 @@ impl StylePackageContext {
 				.into_std_path_buf(),
 			src_root,
 			source_roots,
-			cfg,
 		})
 	}
 
@@ -171,11 +169,98 @@ impl StylePackageContext {
 		let mut command = MetadataCommand::new();
 		command.manifest_path(manifest_path.as_ref());
 		feature_selection.apply_to_metadata(&mut command);
+		command.other_options(vec![
+			"--filter-platform".to_string(),
+			"wasm32-unknown-unknown".to_string(),
+		]);
 		let metadata = command
 			.exec()
 			.map_err(|error| format!("failed to load Cargo metadata: {error}"))?;
 		Self::from_metadata(&metadata, requested_package)
 	}
+}
+
+fn style_source_roots(
+	metadata: &Metadata,
+	selected_package: &Package,
+) -> Result<Vec<StyleSourceRoot>, String> {
+	let resolve = metadata
+		.resolve
+		.as_ref()
+		.ok_or_else(|| "Cargo metadata did not include a dependency graph".to_string())?;
+	let mut pending = vec![selected_package.id.clone()];
+	let mut visited = HashSet::new();
+	let mut roots = Vec::new();
+
+	while let Some(package_id) = pending.pop() {
+		if !visited.insert(package_id.clone()) {
+			continue;
+		}
+		let node = resolve
+			.nodes
+			.iter()
+			.find(|node| node.id == package_id)
+			.ok_or_else(|| format!("Cargo metadata omitted dependency node `{package_id}`"))?;
+		for dependency in &node.deps {
+			if dependency.dep_kinds.is_empty()
+				|| dependency
+					.dep_kinds
+					.iter()
+					.any(|kind| kind.kind == DependencyKind::Normal)
+			{
+				pending.push(dependency.pkg.clone());
+			}
+		}
+
+		let package = metadata
+			.packages
+			.iter()
+			.find(|package| package.id == package_id)
+			.ok_or_else(|| format!("Cargo metadata omitted package `{package_id}`"))?;
+		if package.id != selected_package.id && package.source.is_some() {
+			continue;
+		}
+
+		let enabled_features: BTreeSet<String> =
+			node.features.iter().map(ToString::to_string).collect();
+		let cfg = CfgEvaluator::new(enabled_features.clone())?;
+		let package_root = package
+			.manifest_path
+			.parent()
+			.ok_or_else(|| format!("package manifest has no parent: {}", package.manifest_path))?
+			.to_path_buf()
+			.into_std_path_buf();
+		for target in package.targets.iter().filter(|target| {
+			target.is_lib()
+				&& target
+					.required_features
+					.iter()
+					.all(|feature| enabled_features.contains(feature))
+		}) {
+			roots.push(StyleSourceRoot {
+				package_name: package.name.to_string(),
+				package_version: package.version.to_string(),
+				package_root: package_root.clone(),
+				source_path: target.src_path.clone().into_std_path_buf(),
+				cfg: cfg.clone(),
+			});
+		}
+	}
+
+	roots.sort_by(|left, right| {
+		(
+			left.package_name.as_str(),
+			left.package_version.as_str(),
+			left.source_path.as_os_str(),
+		)
+			.cmp(&(
+				right.package_name.as_str(),
+				right.package_version.as_str(),
+				right.source_path.as_os_str(),
+			))
+	});
+	roots.dedup_by(|left, right| left.source_path == right.source_path);
+	Ok(roots)
 }
 
 /// One canonical style definition and its checked compiler output.
@@ -234,64 +319,68 @@ impl StyleExtractor {
 
 	/// Discover canonical definitions, compile them, and build stable outputs.
 	pub fn extract(&self) -> Result<StyleBundle, String> {
-		let source_files = source_files(&self.context)?;
 		let mut definitions = Vec::new();
 		let mut non_style_hasher = Sha256::new();
 
-		for source_path in &source_files {
-			let source = std::fs::read_to_string(source_path)
-				.map_err(|error| format!("failed to read {}: {error}", source_path.display()))?;
-			let file = syn::parse_file(&source)
-				.map_err(|error| format!("failed to parse {}: {error}", source_path.display()))?;
-			let mut scanner = DefinitionScanner::new(source_path, &self.context.cfg);
-			scanner.visit_file(&file);
-			if let Some(error) = scanner.error {
-				return Err(error);
-			}
-			for authored in scanner.definitions {
-				let compile_context = StyleCompileContext {
-					package_name: &self.context.package_name,
-					package_version: &self.context.package_version,
-					style_type_name: &authored.style_type_name,
-				};
-				let compiled =
-					compile_style(authored.tokens, &compile_context).map_err(|error| {
-						format!(
-							"{}:{}:{}: {error}",
-							source_path.display(),
-							authored.line,
-							authored.column
-						)
-					})?;
-				definitions.push(ExtractedStyleDefinition {
-					style_type_name: authored.style_type_name,
-					source_path: source_path.clone(),
-					line: authored.line,
-					column: authored.column,
-					compiled,
-				});
-			}
+		for source_root in &self.context.source_roots {
+			let source_files = source_files(source_root)?;
+			for source_path in source_files {
+				let source = std::fs::read_to_string(&source_path).map_err(|error| {
+					format!("failed to read {}: {error}", source_path.display())
+				})?;
+				let file = syn::parse_file(&source).map_err(|error| {
+					format!("failed to parse {}: {error}", source_path.display())
+				})?;
+				let mut scanner = DefinitionScanner::new(&source_path, &source_root.cfg);
+				scanner.visit_file(&file);
+				if let Some(error) = scanner.error {
+					return Err(error);
+				}
+				for authored in scanner.definitions {
+					let compile_context = StyleCompileContext {
+						package_name: &source_root.package_name,
+						package_version: &source_root.package_version,
+						style_type_name: &authored.style_type_name,
+					};
+					let compiled =
+						compile_style(authored.tokens, &compile_context).map_err(|error| {
+							format!(
+								"{}:{}:{}: {error}",
+								source_path.display(),
+								authored.line,
+								authored.column
+							)
+						})?;
+					definitions.push(ExtractedStyleDefinition {
+						style_type_name: authored.style_type_name,
+						source_path: source_path.clone(),
+						line: authored.line,
+						column: authored.column,
+						compiled,
+					});
+				}
 
-			let mut normalized_file = file;
-			StyleBodyMarker.visit_file_mut(&mut normalized_file);
-			let relative = source_path
-				.strip_prefix(&self.context.src_root)
-				.unwrap_or(source_path);
-			non_style_hasher.update(relative.to_string_lossy().replace('\\', "/").as_bytes());
-			non_style_hasher.update([0]);
-			non_style_hasher.update(normalized_file.into_token_stream().to_string().as_bytes());
-			non_style_hasher.update([0]);
+				let mut normalized_file = file;
+				StyleBodyMarker.visit_file_mut(&mut normalized_file);
+				let relative = source_path
+					.strip_prefix(&source_root.package_root)
+					.unwrap_or(&source_path);
+				non_style_hasher.update(source_root.package_name.as_bytes());
+				non_style_hasher.update([0]);
+				non_style_hasher.update(source_root.package_version.as_bytes());
+				non_style_hasher.update([0]);
+				non_style_hasher.update(relative.to_string_lossy().replace('\\', "/").as_bytes());
+				non_style_hasher.update([0]);
+				non_style_hasher.update(normalized_file.into_token_stream().to_string().as_bytes());
+				non_style_hasher.update([0]);
+			}
 		}
 
 		definitions.sort_by(|left, right| {
-			(
-				self.context.package_name.as_str(),
-				left.style_type_name.as_str(),
-			)
-				.cmp(&(
-					self.context.package_name.as_str(),
-					right.style_type_name.as_str(),
-				))
+			left.compiled
+				.scope
+				.identity
+				.cmp(&right.compiled.scope.identity)
 		});
 		validate_scopes(&definitions)?;
 
@@ -313,20 +402,23 @@ impl StyleExtractor {
 	}
 }
 
-fn source_files(context: &StylePackageContext) -> Result<Vec<PathBuf>, String> {
+fn source_files(source_root: &StyleSourceRoot) -> Result<Vec<PathBuf>, String> {
 	let mut files = BTreeSet::new();
-	for source_root in &context.source_roots {
-		if !source_root.is_file() {
-			continue;
-		}
-		let module_dir = source_root.parent().ok_or_else(|| {
-			format!(
-				"Cargo target root has no parent directory: {}",
-				source_root.display()
-			)
-		})?;
-		collect_source_file(source_root, module_dir, &context.cfg, &mut files)?;
+	if !source_root.source_path.is_file() {
+		return Ok(Vec::new());
 	}
+	let module_dir = source_root.source_path.parent().ok_or_else(|| {
+		format!(
+			"Cargo target root has no parent directory: {}",
+			source_root.source_path.display()
+		)
+	})?;
+	collect_source_file(
+		&source_root.source_path,
+		module_dir,
+		&source_root.cfg,
+		&mut files,
+	)?;
 	Ok(files.into_iter().collect())
 }
 
@@ -378,7 +470,13 @@ fn collect_module_items(
 			}
 			Item::Macro(item_macro) if cfg.items_are_enabled(&item_macro.attrs) => {
 				if let Some(include_path) = include_source_path(source_path, item_macro)? {
-					collect_source_file(&include_path, module_dir, cfg, files)?;
+					let included_module_dir = include_path.parent().ok_or_else(|| {
+						format!(
+							"included source has no parent directory: {}",
+							include_path.display()
+						)
+					})?;
+					collect_source_file(&include_path, included_module_dir, cfg, files)?;
 				}
 			}
 			_ => {}
@@ -391,12 +489,9 @@ fn include_source_path(source_path: &Path, item: &ItemMacro) -> Result<Option<Pa
 	if item.mac.path.segments.len() != 1 || !item.mac.path.is_ident("include") {
 		return Ok(None);
 	}
-	let included = syn::parse2::<LitStr>(item.mac.tokens.clone()).map_err(|_| {
-		format!(
-			"{}: include! must use a string literal for component-style extraction",
-			source_path.display()
-		)
-	})?;
+	let Ok(included) = syn::parse2::<LitStr>(item.mac.tokens.clone()) else {
+		return Ok(None);
+	};
 	let parent = source_path.parent().ok_or_else(|| {
 		format!(
 			"included source has no parent directory: {}",
@@ -792,6 +887,7 @@ impl CfgTarget {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use std::fs;
 
 	#[test]
 	fn wasm_release_cfgs_enable_not_debug_assertions_items() {
@@ -806,6 +902,98 @@ mod tests {
 
 		assert!(evaluator.items_are_enabled(&release_only.attrs));
 		assert!(!evaluator.items_are_enabled(&debug_only.attrs));
+	}
+
+	#[test]
+	fn source_collection_ignores_nonliteral_include_expressions() {
+		// Arrange
+		let directory = tempfile::tempdir().expect("create temporary source tree");
+		let source_root = directory.path().join("src");
+		fs::create_dir_all(&source_root).expect("create source root");
+		let source_path = source_root.join("lib.rs");
+		fs::write(
+			&source_path,
+			"include!(concat!(env!(\"OUT_DIR\"), \"/bindings.rs\"));\n",
+		)
+		.expect("write source");
+		let evaluator = CfgEvaluator::new(BTreeSet::new()).expect("load WASM cfgs");
+		let mut files = BTreeSet::new();
+
+		// Act
+		collect_source_file(&source_path, &source_root, &evaluator, &mut files)
+			.expect("nonliteral include should not prevent style extraction");
+
+		// Assert
+		assert_eq!(files, BTreeSet::from([source_path]));
+	}
+
+	#[test]
+	fn source_collection_resolves_submodules_relative_to_included_file() {
+		// Arrange
+		let directory = tempfile::tempdir().expect("create temporary source tree");
+		let source_root = directory.path().join("src");
+		let nested_root = source_root.join("nested");
+		fs::create_dir_all(&nested_root).expect("create nested source root");
+		let source_path = source_root.join("lib.rs");
+		let included_path = nested_root.join("mods.rs");
+		let child_path = nested_root.join("child.rs");
+		fs::write(&source_path, "include!(\"nested/mods.rs\");\n").expect("write source");
+		fs::write(&included_path, "mod child;\n").expect("write included source");
+		fs::write(&child_path, "pub const CHILD: () = ();\n").expect("write child source");
+		let evaluator = CfgEvaluator::new(BTreeSet::new()).expect("load WASM cfgs");
+		let mut files = BTreeSet::new();
+
+		// Act
+		collect_source_file(&source_path, &source_root, &evaluator, &mut files)
+			.expect("included child module should resolve");
+
+		// Assert
+		assert_eq!(
+			files,
+			BTreeSet::from([source_path, included_path, child_path])
+		);
+	}
+
+	#[test]
+	fn style_extractor_collects_local_path_dependency_definitions() {
+		// Arrange
+		let directory = tempfile::tempdir().expect("create temporary workspace");
+		let app = directory.path().join("app");
+		let shared = directory.path().join("shared");
+		fs::create_dir_all(app.join("src")).expect("create app source root");
+		fs::create_dir_all(shared.join("src")).expect("create shared source root");
+		fs::write(
+			directory.path().join("Cargo.toml"),
+			"[workspace]\nresolver = \"3\"\nmembers = [\"app\", \"shared\"]\n",
+		)
+		.expect("write workspace manifest");
+		fs::write(
+			app.join("Cargo.toml"),
+			"[package]\nname = \"style-app\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[dependencies]\nstyle-shared = { path = \"../shared\" }\n",
+		)
+		.expect("write app manifest");
+		fs::write(app.join("src/lib.rs"), "pub fn app() {}\n").expect("write app source");
+		fs::write(
+			shared.join("Cargo.toml"),
+			"[package]\nname = \"style-shared\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+		)
+		.expect("write shared manifest");
+		fs::write(
+			shared.join("src/lib.rs"),
+			"#[style_def]\nstatic SHARED: SharedStyles = style! { .shared { color: red; } };\n",
+		)
+		.expect("write shared source");
+
+		// Act
+		let context = StylePackageContext::resolve(app.join("Cargo.toml"), None)
+			.expect("resolve selected app package");
+		let bundle = StyleExtractor::new(context)
+			.extract()
+			.expect("extract local dependency styles");
+
+		// Assert
+		assert_eq!(bundle.definitions.len(), 1);
+		assert_eq!(bundle.definitions[0].style_type_name, "SharedStyles");
 	}
 }
 

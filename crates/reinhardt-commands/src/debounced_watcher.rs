@@ -283,7 +283,11 @@ fn notify_browser_reload(hmr_tx: Option<&broadcast::Sender<String>>, reason: &st
 #[cfg(feature = "pages")]
 fn commit_pending_component_styles(
 	component_styles: Option<&std::sync::Arc<std::sync::Mutex<crate::ComponentStyleState>>>,
+	wasm_rebuilt: bool,
 ) -> bool {
+	if !wasm_rebuilt {
+		return false;
+	}
 	let Some(state) = component_styles else {
 		return true;
 	};
@@ -425,7 +429,7 @@ pub async fn run_rebuild_for_paths(
 		#[cfg(feature = "pages")]
 		if wasm_ok
 			&& server_ready
-			&& commit_pending_component_styles(config.component_styles.as_ref())
+			&& commit_pending_component_styles(config.component_styles.as_ref(), wasm_ok)
 		{
 			notify_browser_reload(
 				config.hmr_tx.as_ref(),
@@ -437,7 +441,7 @@ pub async fn run_rebuild_for_paths(
 	} else if targets.wasm {
 		let wasm_ok = wasm_fut.await;
 		#[cfg(feature = "pages")]
-		if wasm_ok && commit_pending_component_styles(config.component_styles.as_ref()) {
+		if wasm_ok && commit_pending_component_styles(config.component_styles.as_ref(), wasm_ok) {
 			notify_browser_reload(
 				config.hmr_tx.as_ref(),
 				"WASM rebuild completed successfully",
@@ -446,7 +450,7 @@ pub async fn run_rebuild_for_paths(
 		#[cfg(not(feature = "pages"))]
 		let _ = wasm_ok;
 	} else {
-		let (server_outcome, new_child) =
+		let (_server_outcome, new_child) =
 			crate::server_rebuild_pipeline::ServerRebuildPipeline::run_with_readiness(
 				&config.bin_name,
 				current_child,
@@ -454,24 +458,12 @@ pub async fn run_rebuild_for_paths(
 				&config.address,
 			)
 			.await;
-		let server_ok = server_rebuild_succeeded(&server_outcome);
 		if let Some(child) = new_child {
 			*current_child = child;
 		}
-		let server_ready = if server_ok {
-			wait_for_server_ready(config.server_address.as_deref()).await
-		} else {
-			false
-		};
-		#[cfg(feature = "pages")]
-		if server_ready && commit_pending_component_styles(config.component_styles.as_ref()) {
-			notify_browser_reload(
-				config.hmr_tx.as_ref(),
-				"Server rebuild completed successfully",
-			);
-		}
-		#[cfg(not(feature = "pages"))]
-		let _ = server_ready;
+		// A server-only rebuild cannot activate pending component-style APIs:
+		// the browser still runs the previous WASM bundle. Keep the stylesheet
+		// staged until a successful WASM rebuild can commit it atomically.
 	}
 	// Pipeline failures are recorded as log lines and never propagate as Err;
 	// the caller's loop continues unconditionally.
@@ -832,6 +824,54 @@ mod tests {
 	fn notify_browser_reload_without_channel_is_noop() {
 		// Act & Assert
 		notify_browser_reload(None, "Server rebuild completed successfully");
+	}
+
+	#[cfg(feature = "pages")]
+	#[test]
+	fn pending_component_styles_are_not_committed_without_a_wasm_rebuild() {
+		// Arrange
+		let directory = tempfile::tempdir().expect("create temporary package");
+		std::fs::create_dir(directory.path().join("src")).expect("create source root");
+		std::fs::write(
+			directory.path().join("Cargo.toml"),
+			"[package]\nname = \"watcher-style-api\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+		)
+		.expect("write manifest");
+		let source_path = directory.path().join("src/lib.rs");
+		std::fs::write(
+			&source_path,
+			"#[style_def] static STYLES: Styles = style! { .card { color: red; } };\n",
+		)
+		.expect("write initial source");
+		let state = std::sync::Arc::new(std::sync::Mutex::new(
+			crate::ComponentStyleState::initialize(directory.path().join("Cargo.toml"), None)
+				.expect("initialize component styles"),
+		));
+		let stylesheet = state
+			.lock()
+			.expect("lock component styles")
+			.generated_root()
+			.join(crate::COMPONENT_STYLES_PATH);
+		let before = std::fs::read(&stylesheet).expect("read initial stylesheet");
+		std::fs::write(
+			&source_path,
+			"#[style_def] static STYLES: Styles = style! { .card { color: red; } .label { color: blue; } };\n",
+		)
+		.expect("write API-changing source");
+		assert_eq!(
+			state.lock().expect("lock component styles").refresh(false),
+			crate::ComponentStyleStageResult::RustOrApiChanged
+		);
+
+		// Act
+		let committed = commit_pending_component_styles(Some(&state), false);
+
+		// Assert
+		assert!(!committed);
+		assert_eq!(
+			std::fs::read(&stylesheet).expect("read retained stylesheet"),
+			before
+		);
 	}
 
 	#[cfg(feature = "pages")]
