@@ -260,45 +260,40 @@ fn install_hydrated_reactive_nodes(
 		}
 		Page::Reactive(reactive) => {
 			let render_store = new_reactive_node_store();
+			let branch_store = new_reactive_node_store();
 			let rendered = with_reactive_node_store(&render_store, || reactive.render());
 			with_hydration_prepass_store(|| {
 				split_coalesced_text_children(element, std::slice::from_ref(&rendered));
 			});
 			let nodes = relevant_child_nodes(element);
+			let mut branch_registry = super::events::EventRegistry::new();
+			with_reactive_node_store(&branch_store, || {
+				install_hydrated_child_reactive_nodes(
+					&element.as_web_sys().clone().into(),
+					&nodes,
+					None,
+					&rendered,
+					&mut branch_registry,
+				)
+			})?;
 			let hydrated_node = crate::component::ReactiveNode::hydrate_at(
 				element.as_web_sys().clone().into(),
 				None,
 				nodes.clone(),
 				reactive.clone().into_render(),
 				render_store,
-			);
-			let boundary_sibling = hydrated_node.as_ref().map(|node| node.marker_node());
-			if let Some(node) = hydrated_node.as_ref() {
-				with_reactive_node_store(&node.reactive_node_store(), || {
-					let mut branch_registry = super::events::EventRegistry::new();
-					install_hydrated_child_reactive_nodes(
-						&element.as_web_sys().clone().into(),
-						&nodes,
-						boundary_sibling,
-						&rendered,
-						&mut branch_registry,
-					)?;
-					store_reactive_node(branch_registry);
-					Ok::<_, HydrationError>(())
-				})?;
-			} else {
-				install_hydrated_child_reactive_nodes(
-					&element.as_web_sys().clone().into(),
-					&nodes,
-					boundary_sibling,
-					&rendered,
-					registry,
-				)?;
-			}
-			if let Some(node) = hydrated_node {
-				node.refresh_hydrated_current_nodes();
-				store_reactive_node(node);
-			}
+				branch_store,
+			)
+			.ok_or_else(|| {
+				HydrationError::EventAttachmentFailed(
+					"failed to install hydrated reactive owner".to_string(),
+				)
+			})?;
+			with_reactive_node_store(&hydrated_node.reactive_node_store(), || {
+				store_reactive_node(branch_registry);
+			});
+			hydrated_node.refresh_hydrated_current_nodes();
+			store_reactive_node(hydrated_node);
 		}
 		Page::ReactiveIf(reactive_if) => {
 			let branch_store = new_reactive_node_store();
@@ -313,6 +308,16 @@ fn install_hydrated_reactive_nodes(
 				split_coalesced_text_children(element, std::slice::from_ref(&branch_view));
 			});
 			let nodes = relevant_child_nodes(element);
+			let mut branch_registry = super::events::EventRegistry::new();
+			with_reactive_node_store(&branch_store, || {
+				install_hydrated_child_reactive_nodes(
+					&element.as_web_sys().clone().into(),
+					&nodes,
+					None,
+					&branch_view,
+					&mut branch_registry,
+				)
+			})?;
 			let (condition, then_view, else_view) = reactive_if.clone().into_parts();
 			let hydrated_node = crate::component::ReactiveIfNode::hydrate_at(
 				element.as_web_sys().clone().into(),
@@ -322,34 +327,17 @@ fn install_hydrated_reactive_nodes(
 				then_view,
 				else_view,
 				branch_store,
-			);
-			let boundary_sibling = hydrated_node.as_ref().map(|node| node.marker_node());
-			if let Some(node) = hydrated_node.as_ref() {
-				with_reactive_node_store(&node.reactive_node_store(), || {
-					let mut branch_registry = super::events::EventRegistry::new();
-					install_hydrated_child_reactive_nodes(
-						&element.as_web_sys().clone().into(),
-						&nodes,
-						boundary_sibling,
-						&branch_view,
-						&mut branch_registry,
-					)?;
-					store_reactive_node(branch_registry);
-					Ok::<_, HydrationError>(())
-				})?;
-			} else {
-				install_hydrated_child_reactive_nodes(
-					&element.as_web_sys().clone().into(),
-					&nodes,
-					boundary_sibling,
-					&branch_view,
-					registry,
-				)?;
-			}
-			if let Some(node) = hydrated_node {
-				node.refresh_hydrated_current_nodes();
-				store_reactive_node(node);
-			}
+			)
+			.ok_or_else(|| {
+				HydrationError::EventAttachmentFailed(
+					"failed to install hydrated reactive-if owner".to_string(),
+				)
+			})?;
+			with_reactive_node_store(&hydrated_node.reactive_node_store(), || {
+				store_reactive_node(branch_registry);
+			});
+			hydrated_node.refresh_hydrated_current_nodes();
+			store_reactive_node(hydrated_node);
 		}
 		Page::Suspense(node) => {
 			let branch_view = node.render_branch();
@@ -417,44 +405,36 @@ fn install_hydrated_child_reactive_nodes(
 	match view {
 		Page::Reactive(reactive) => {
 			let render_store = new_reactive_node_store();
+			let branch_store = new_reactive_node_store();
 			let rendered = with_reactive_node_store(&render_store, || reactive.render());
-			let mut boundary_sibling = next_sibling.clone();
+			let mut branch_registry = super::events::EventRegistry::new();
+			with_reactive_node_store(&branch_store, || {
+				install_hydrated_child_reactive_nodes(
+					parent,
+					nodes,
+					next_sibling.clone(),
+					&rendered,
+					&mut branch_registry,
+				)
+			})?;
 			let hydrated_node = crate::component::ReactiveNode::hydrate_at(
 				parent.clone(),
 				next_sibling.clone(),
 				nodes.to_vec(),
 				reactive.clone().into_render(),
 				render_store,
-			);
-			if let Some(node) = hydrated_node.as_ref() {
-				boundary_sibling = Some(node.marker_node());
-			}
-			if let Some(node) = hydrated_node.as_ref() {
-				with_reactive_node_store(&node.reactive_node_store(), || {
-					let mut branch_registry = super::events::EventRegistry::new();
-					install_hydrated_child_reactive_nodes(
-						parent,
-						nodes,
-						boundary_sibling,
-						&rendered,
-						&mut branch_registry,
-					)?;
-					store_reactive_node(branch_registry);
-					Ok::<_, HydrationError>(())
-				})?;
-			} else {
-				install_hydrated_child_reactive_nodes(
-					parent,
-					nodes,
-					boundary_sibling,
-					&rendered,
-					registry,
-				)?;
-			}
-			if let Some(node) = hydrated_node {
-				node.refresh_hydrated_current_nodes();
-				store_reactive_node(node);
-			}
+				branch_store,
+			)
+			.ok_or_else(|| {
+				HydrationError::EventAttachmentFailed(
+					"failed to install nested hydrated reactive owner".to_string(),
+				)
+			})?;
+			with_reactive_node_store(&hydrated_node.reactive_node_store(), || {
+				store_reactive_node(branch_registry);
+			});
+			hydrated_node.refresh_hydrated_current_nodes();
+			store_reactive_node(hydrated_node);
 		}
 		Page::ReactiveIf(reactive_if) => {
 			let branch_store = new_reactive_node_store();
@@ -465,8 +445,17 @@ fn install_hydrated_child_reactive_nodes(
 					reactive_if.else_view()
 				}
 			});
+			let mut branch_registry = super::events::EventRegistry::new();
+			with_reactive_node_store(&branch_store, || {
+				install_hydrated_child_reactive_nodes(
+					parent,
+					nodes,
+					next_sibling.clone(),
+					&branch_view,
+					&mut branch_registry,
+				)
+			})?;
 			let (condition, then_view, else_view) = reactive_if.clone().into_parts();
-			let mut boundary_sibling = next_sibling.clone();
 			let hydrated_node = crate::component::ReactiveIfNode::hydrate_at(
 				parent.clone(),
 				next_sibling.clone(),
@@ -475,36 +464,17 @@ fn install_hydrated_child_reactive_nodes(
 				then_view,
 				else_view,
 				branch_store,
-			);
-			if let Some(node) = hydrated_node.as_ref() {
-				boundary_sibling = Some(node.marker_node());
-			}
-			if let Some(node) = hydrated_node.as_ref() {
-				with_reactive_node_store(&node.reactive_node_store(), || {
-					let mut branch_registry = super::events::EventRegistry::new();
-					install_hydrated_child_reactive_nodes(
-						parent,
-						nodes,
-						boundary_sibling,
-						&branch_view,
-						&mut branch_registry,
-					)?;
-					store_reactive_node(branch_registry);
-					Ok::<_, HydrationError>(())
-				})?;
-			} else {
-				install_hydrated_child_reactive_nodes(
-					parent,
-					nodes,
-					boundary_sibling,
-					&branch_view,
-					registry,
-				)?;
-			}
-			if let Some(node) = hydrated_node {
-				node.refresh_hydrated_current_nodes();
-				store_reactive_node(node);
-			}
+			)
+			.ok_or_else(|| {
+				HydrationError::EventAttachmentFailed(
+					"failed to install nested hydrated reactive-if owner".to_string(),
+				)
+			})?;
+			with_reactive_node_store(&hydrated_node.reactive_node_store(), || {
+				store_reactive_node(branch_registry);
+			});
+			hydrated_node.refresh_hydrated_current_nodes();
+			store_reactive_node(hydrated_node);
 		}
 		Page::Element(_) => {
 			if let Some(element) = nodes

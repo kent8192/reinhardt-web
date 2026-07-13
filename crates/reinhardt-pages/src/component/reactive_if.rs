@@ -339,10 +339,6 @@ impl ReactiveIfNode {
 		})
 	}
 
-	pub(crate) fn marker_node(&self) -> web_sys::Node {
-		self.marker.clone().into()
-	}
-
 	pub(crate) fn reactive_node_store(&self) -> ReactiveNodeStore {
 		self.reactive_nodes.clone()
 	}
@@ -476,6 +472,7 @@ impl ReactiveNode {
 		existing_nodes: Vec<web_sys::Node>,
 		render: std::sync::Arc<dyn Fn() -> Page + 'static>,
 		render_reactive_node_store: ReactiveNodeStore,
+		reactive_nodes: ReactiveNodeStore,
 	) -> Option<Self> {
 		let document = web_sys::window()
 			.expect("window should be available")
@@ -491,7 +488,6 @@ impl ReactiveNode {
 		let current_nodes_clone = current_nodes.clone();
 		let start_marker_clone = Some(start_marker.clone());
 		let marker_clone = marker.clone();
-		let reactive_nodes = new_reactive_node_store();
 		let effect_reactive_node_store = current_reactive_node_store();
 		let mount_reactive_node_store = reactive_nodes.clone();
 		let first_run = Rc::new(Cell::new(true));
@@ -562,10 +558,6 @@ impl ReactiveNode {
 			reactive_nodes,
 			effect,
 		})
-	}
-
-	pub(crate) fn marker_node(&self) -> web_sys::Node {
-		self.marker.clone().into()
 	}
 
 	pub(crate) fn reactive_node_store(&self) -> ReactiveNodeStore {

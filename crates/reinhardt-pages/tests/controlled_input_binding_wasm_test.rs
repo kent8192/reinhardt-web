@@ -229,6 +229,7 @@ impl Component for HydratedReactiveInput {
 		let observed = Rc::clone(&self.observed);
 		PageElement::new("div")
 			.child(Page::reactive(move || {
+				let _rendered_value = value.get();
 				let bound = value.clone();
 				let handler_value = value.clone();
 				let handler_observed = Rc::clone(&observed);
@@ -242,7 +243,7 @@ impl Component for HydratedReactiveInput {
 						a11y: off,
 						id: id,
 						bind: bound,
-						@input: move |_| {
+						@change: move |_| {
 							*handler_observed.borrow_mut() = handler_value.get();
 						},
 					}
@@ -279,6 +280,14 @@ fn hydrated_reactive_switch_drops_the_initial_branch_guards() {
 	)
 	.expect("hydrate");
 	assert_eq!(value.get(), "restored");
+	assert!(
+		raw_input.is_same_node(
+			root.as_web_sys()
+				.first_element_child()
+				.as_ref()
+				.map(|element| &**element),
+		)
+	);
 
 	alternate.set(true);
 	let replacement: web_sys::HtmlInputElement = root
@@ -291,14 +300,155 @@ fn hydrated_reactive_switch_drops_the_initial_branch_guards() {
 	original
 		.dispatch_event(&web_sys::InputEvent::new("input").expect("event"))
 		.expect("dispatch");
+	original
+		.dispatch_event(&web_sys::Event::new("change").expect("event"))
+		.expect("dispatch");
 	assert_eq!(value.get(), "restored");
 	assert_eq!(&*observed.borrow(), "");
 
 	value.set("fresh".to_owned());
 	assert_eq!(original.value(), "stale");
-	assert_eq!(replacement.value(), "fresh");
-	replacement.set_value("new branch");
-	replacement
+	let fresh_control: web_sys::HtmlInputElement = root
+		.as_web_sys()
+		.first_element_child()
+		.expect("fresh control")
+		.unchecked_into();
+	assert_eq!(fresh_control.value(), "fresh");
+	fresh_control
+		.dispatch_event(&web_sys::Event::new("change").expect("event"))
+		.expect("dispatch");
+	assert_eq!(&*observed.borrow(), "fresh");
+	fresh_control.set_value("new branch");
+	fresh_control
+		.dispatch_event(&web_sys::InputEvent::new("input").expect("event"))
+		.expect("dispatch");
+	assert_eq!(value.get(), "new branch");
+	assert_eq!(&*observed.borrow(), "fresh");
+	let live_control: web_sys::HtmlInputElement = root
+		.as_web_sys()
+		.first_element_child()
+		.expect("live control")
+		.unchecked_into();
+	assert_eq!(live_control.value(), "new branch");
+	reinhardt_pages::cleanup_reactive_nodes();
+}
+
+struct HydratedReactiveIfInput {
+	alternate: Signal<bool>,
+	value: Signal<String>,
+	observed: Rc<RefCell<String>>,
+}
+
+impl Component for HydratedReactiveIfInput {
+	fn name() -> &'static str {
+		"HydratedReactiveIfInput"
+	}
+
+	fn render(&self) -> Page {
+		let condition_alternate = self.alternate.clone();
+		let condition_value = self.value.clone();
+		let primary_value = self.value.clone();
+		let primary_observed = Rc::clone(&self.observed);
+		let replacement_value = self.value.clone();
+		let replacement_observed = Rc::clone(&self.observed);
+		PageElement::new("div")
+			.child(Page::reactive_if(
+				move || condition_alternate.get() || condition_value.get() == "server",
+				move || {
+					let bound = primary_value.clone();
+					let handler_value = primary_value.clone();
+					let handler_observed = Rc::clone(&primary_observed);
+					page!({
+						input {
+							a11y: off,
+							id: "primary",
+							bind: bound,
+							@input: move |_| {
+								*handler_observed.borrow_mut() = handler_value.get();
+							},
+						}
+					})
+				},
+				move || {
+					let bound = replacement_value.clone();
+					let handler_value = replacement_value.clone();
+					let handler_observed = Rc::clone(&replacement_observed);
+					page!({
+						input {
+							a11y: off,
+							id: "replacement",
+							bind: bound,
+							@input: move |_| {
+								*handler_observed.borrow_mut() = handler_value.get();
+							},
+						}
+					})
+				},
+			))
+			.into_page()
+	}
+}
+
+#[wasm_bindgen_test]
+fn hydrated_reactive_if_adopts_before_subscribing_and_transfers_guards() {
+	let document = web_sys::window()
+		.expect("window")
+		.document()
+		.expect("document");
+	let raw_root = document.create_element("div").expect("root");
+	let raw_input = document.create_element("input").expect("input");
+	raw_input.set_id("primary");
+	let primary: web_sys::HtmlInputElement = raw_input.clone().unchecked_into();
+	primary.set_value("restored");
+	raw_root.append_child(&raw_input).expect("SSR child");
+	let root = Element::new(raw_root);
+	let alternate = Signal::new(false);
+	let value = Signal::new("server".to_owned());
+	let observed = Rc::new(RefCell::new(String::new()));
+	let _state = SsrStateElement::install(&document);
+
+	reinhardt_pages::hydration::hydrate(
+		&HydratedReactiveIfInput {
+			alternate: alternate.clone(),
+			value: value.clone(),
+			observed: Rc::clone(&observed),
+		},
+		&root,
+	)
+	.expect("hydrate");
+	assert_eq!(value.get(), "restored");
+	assert!(
+		raw_input.is_same_node(
+			root.as_web_sys()
+				.first_element_child()
+				.as_ref()
+				.map(|element| &**element),
+		)
+	);
+	primary
+		.dispatch_event(&web_sys::InputEvent::new("input").expect("event"))
+		.expect("dispatch");
+	assert_eq!(&*observed.borrow(), "restored");
+
+	alternate.set(true);
+	let switched: web_sys::HtmlInputElement = root
+		.as_web_sys()
+		.first_element_child()
+		.expect("switched branch")
+		.unchecked_into();
+	assert!(!raw_input.is_same_node(Some(&switched)));
+	primary.set_value("stale");
+	primary
+		.dispatch_event(&web_sys::InputEvent::new("input").expect("event"))
+		.expect("dispatch");
+	assert_eq!(value.get(), "restored");
+	assert_eq!(&*observed.borrow(), "restored");
+
+	value.set("fresh".to_owned());
+	assert_eq!(primary.value(), "stale");
+	assert_eq!(switched.value(), "fresh");
+	switched.set_value("new branch");
+	switched
 		.dispatch_event(&web_sys::InputEvent::new("input").expect("event"))
 		.expect("dispatch");
 	assert_eq!(value.get(), "new branch");
