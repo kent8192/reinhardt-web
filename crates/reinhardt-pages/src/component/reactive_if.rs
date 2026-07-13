@@ -12,21 +12,29 @@ use crate::reactive::runtime::EffectTiming;
 #[cfg(wasm)]
 use reinhardt_core::types::page::{BOOLEAN_ATTRS, Page, is_boolean_attr_truthy};
 #[cfg(wasm)]
-use std::cell::{Cell, RefCell};
-#[cfg(wasm)]
+use std::cell::Cell;
+use std::cell::RefCell;
+#[cfg(native)]
+use std::future::Future;
 use std::rc::Rc;
 
-#[cfg(wasm)]
 pub(crate) type ReactiveNodeStore = Rc<RefCell<Vec<Box<dyn std::any::Any>>>>;
 
 // Thread-local storage for reactive nodes to prevent them from being dropped.
 //
-// When a ReactiveIfNode is created during view mounting, it must be kept alive
-// for the lifetime of the DOM element. This storage prevents premature cleanup.
-#[cfg(wasm)]
+// When a reactive node or retained hook effect is created during view mounting,
+// it must be kept alive for the lifetime of the current mounted view. This
+// storage prevents premature cleanup while still allowing route and portal
+// teardown to drop stored values through RAII.
 thread_local! {
 	static ROOT_REACTIVE_NODES: ReactiveNodeStore = Rc::new(RefCell::new(Vec::new()));
+	#[cfg(wasm)]
 	static ACTIVE_REACTIVE_NODE_STORE: RefCell<Option<ReactiveNodeStore>> = RefCell::new(None);
+}
+
+#[cfg(native)]
+tokio::task_local! {
+	static SSR_REACTIVE_NODE_STORE: ReactiveNodeStore;
 }
 
 #[cfg(wasm)]
@@ -43,7 +51,6 @@ impl Drop for ActiveReactiveNodeStoreGuard {
 	}
 }
 
-#[cfg(wasm)]
 fn root_reactive_node_store() -> ReactiveNodeStore {
 	ROOT_REACTIVE_NODES.with(Clone::clone)
 }
@@ -55,14 +62,22 @@ fn current_reactive_node_store() -> ReactiveNodeStore {
 		.unwrap_or_else(root_reactive_node_store)
 }
 
-#[cfg(wasm)]
+#[cfg(native)]
+fn current_reactive_node_store() -> ReactiveNodeStore {
+	SSR_REACTIVE_NODE_STORE
+		.try_with(Clone::clone)
+		.unwrap_or_else(|_| root_reactive_node_store())
+}
+
 pub(crate) fn new_reactive_node_store() -> ReactiveNodeStore {
 	Rc::new(RefCell::new(Vec::new()))
 }
 
-#[cfg(wasm)]
 pub(crate) fn clear_reactive_node_store(store: &ReactiveNodeStore) {
-	store.borrow_mut().clear();
+	let _stored_nodes = {
+		let mut stored_nodes = store.borrow_mut();
+		std::mem::take(&mut *stored_nodes)
+	};
 }
 
 #[cfg(wasm)]
@@ -70,6 +85,13 @@ pub(crate) fn with_reactive_node_store<R>(store: &ReactiveNodeStore, f: impl FnO
 	let previous = ACTIVE_REACTIVE_NODE_STORE.with(|active| active.replace(Some(store.clone())));
 	let _guard = ActiveReactiveNodeStoreGuard { previous };
 	f()
+}
+
+#[cfg(native)]
+pub(crate) async fn scope_reactive_node_store<R>(future: impl Future<Output = R>) -> R {
+	SSR_REACTIVE_NODE_STORE
+		.scope(new_reactive_node_store(), future)
+		.await
 }
 
 /// Stores a reactive node to keep it alive.
@@ -80,11 +102,18 @@ pub fn store_reactive_node<T: 'static>(node: T) {
 		.push(Box::new(node));
 }
 
+/// Stores a reactive node to keep it alive.
+#[cfg(native)]
+pub(crate) fn store_reactive_node<T: 'static>(node: T) {
+	current_reactive_node_store()
+		.borrow_mut()
+		.push(Box::new(node));
+}
+
 /// Cleanup function to release all reactive nodes.
 ///
 /// This should be called when the application is being torn down or
 /// when a complete re-render is needed.
-#[cfg(wasm)]
 pub fn cleanup_reactive_nodes() {
 	clear_reactive_node_store(&root_reactive_node_store());
 }
@@ -152,7 +181,8 @@ impl ReactiveIfNode {
 		let last_condition_clone = last_condition.clone();
 		let marker_clone = marker.clone();
 		let reactive_nodes = new_reactive_node_store();
-		let effect_reactive_node_store = reactive_nodes.clone();
+		let effect_reactive_node_store = current_reactive_node_store();
+		let branch_reactive_node_store = reactive_nodes.clone();
 
 		// Create the Effect that will re-run when condition dependencies change
 		let effect = Effect::new_with_timing(
@@ -170,7 +200,7 @@ impl ReactiveIfNode {
 					*last = Some(new_condition);
 					drop(last);
 
-					clear_reactive_node_store(&effect_reactive_node_store);
+					clear_reactive_node_store(&branch_reactive_node_store);
 
 					// Refs #5100: remove old nodes before mounting the replacement view. The
 					// mount path may synchronously run layout effects, so do not
@@ -185,15 +215,17 @@ impl ReactiveIfNode {
 						}
 					}
 
-					// Generate the appropriate view
-					let view = if new_condition {
-						then_view()
-					} else {
-						else_view()
-					};
+					let new_nodes = with_reactive_node_store(&branch_reactive_node_store, || {
+						// Generate the appropriate view
+						let view = if new_condition {
+							then_view()
+						} else {
+							else_view()
+						};
 
-					// Mount new nodes before the marker
-					let new_nodes = mount_before_marker(&marker_clone, view);
+						// Mount new nodes before the marker
+						mount_before_marker(&marker_clone, view)
+					});
 					*current_nodes_clone.borrow_mut() = new_nodes;
 				});
 			},
@@ -217,6 +249,7 @@ impl ReactiveIfNode {
 		condition: std::sync::Arc<dyn Fn() -> bool + 'static>,
 		then_view: std::sync::Arc<dyn Fn() -> Page + 'static>,
 		else_view: std::sync::Arc<dyn Fn() -> Page + 'static>,
+		reactive_nodes: ReactiveNodeStore,
 	) -> Option<Self> {
 		let document = web_sys::window()
 			.expect("window should be available")
@@ -234,8 +267,8 @@ impl ReactiveIfNode {
 		let last_condition_clone = last_condition.clone();
 		let start_marker_clone = Some(start_marker.clone());
 		let marker_clone = marker.clone();
-		let reactive_nodes = new_reactive_node_store();
-		let effect_reactive_node_store = reactive_nodes.clone();
+		let effect_reactive_node_store = current_reactive_node_store();
+		let branch_reactive_node_store = reactive_nodes.clone();
 		let first_run = Rc::new(Cell::new(true));
 		let first_run_clone = first_run.clone();
 		#[cfg(feature = "i18n")]
@@ -259,7 +292,7 @@ impl ReactiveIfNode {
 						*last = Some(new_condition);
 						drop(last);
 
-						clear_reactive_node_store(&effect_reactive_node_store);
+						clear_reactive_node_store(&branch_reactive_node_store);
 
 						refresh_current_nodes_before_marker(
 							start_marker_clone.as_ref(),
@@ -276,12 +309,15 @@ impl ReactiveIfNode {
 							}
 						}
 
-						let view = if new_condition {
-							then_view()
-						} else {
-							else_view()
-						};
-						let new_nodes = mount_before_marker(&marker_clone, view);
+						let new_nodes =
+							with_reactive_node_store(&branch_reactive_node_store, || {
+								let view = if new_condition {
+									then_view()
+								} else {
+									else_view()
+								};
+								mount_before_marker(&marker_clone, view)
+							});
 						*current_nodes_clone.borrow_mut() = new_nodes;
 					});
 				};
@@ -374,7 +410,9 @@ impl ReactiveNode {
 		let current_nodes_clone = current_nodes.clone();
 		let marker_clone = marker.clone();
 		let reactive_nodes = new_reactive_node_store();
-		let effect_reactive_node_store = reactive_nodes.clone();
+		let effect_reactive_node_store = current_reactive_node_store();
+		let render_reactive_node_store = new_reactive_node_store();
+		let mount_reactive_node_store = reactive_nodes.clone();
 		#[cfg(feature = "i18n")]
 		let i18n_context = crate::i18n::current_i18n_callback_context();
 
@@ -383,14 +421,16 @@ impl ReactiveNode {
 			move || {
 				let update = || {
 					with_reactive_node_store(&effect_reactive_node_store, || {
+						clear_reactive_node_store(&render_reactive_node_store);
 						// Render the view (this tracks Signal dependencies)
-						let view = render();
+						let view =
+							with_reactive_node_store(&render_reactive_node_store, || render());
 
 						if update_activity_boundary_attrs(&current_nodes_clone, &view) {
 							return;
 						}
 
-						clear_reactive_node_store(&effect_reactive_node_store);
+						clear_reactive_node_store(&mount_reactive_node_store);
 
 						// Refs #5100: remove old nodes before mounting the replacement view. The
 						// mount path may synchronously run layout effects, so do not
@@ -406,7 +446,10 @@ impl ReactiveNode {
 						}
 
 						// Mount new nodes before the marker
-						let new_nodes = mount_before_marker(&marker_clone, view);
+						let new_nodes =
+							with_reactive_node_store(&mount_reactive_node_store, || {
+								mount_before_marker(&marker_clone, view)
+							});
 						*current_nodes_clone.borrow_mut() = new_nodes;
 					});
 				};
@@ -432,6 +475,7 @@ impl ReactiveNode {
 		next_sibling: Option<web_sys::Node>,
 		existing_nodes: Vec<web_sys::Node>,
 		render: std::sync::Arc<dyn Fn() -> Page + 'static>,
+		render_reactive_node_store: ReactiveNodeStore,
 	) -> Option<Self> {
 		let document = web_sys::window()
 			.expect("window should be available")
@@ -448,7 +492,8 @@ impl ReactiveNode {
 		let start_marker_clone = Some(start_marker.clone());
 		let marker_clone = marker.clone();
 		let reactive_nodes = new_reactive_node_store();
-		let effect_reactive_node_store = reactive_nodes.clone();
+		let effect_reactive_node_store = current_reactive_node_store();
+		let mount_reactive_node_store = reactive_nodes.clone();
 		let first_run = Rc::new(Cell::new(true));
 		let first_run_clone = first_run.clone();
 		#[cfg(feature = "i18n")]
@@ -458,11 +503,13 @@ impl ReactiveNode {
 			move || {
 				let update = || {
 					with_reactive_node_store(&effect_reactive_node_store, || {
+						clear_reactive_node_store(&render_reactive_node_store);
 						let first_run_resource_counter =
 							crate::reactive::resource::current_client_resource_counter();
 						let first_run_id_counter =
 							crate::reactive::hooks::id::id_counter_snapshot();
-						let view = render();
+						let view =
+							with_reactive_node_store(&render_reactive_node_store, || render());
 
 						if first_run_clone.replace(false) {
 							crate::reactive::resource::set_client_resource_counter(
@@ -476,7 +523,7 @@ impl ReactiveNode {
 							return;
 						}
 
-						clear_reactive_node_store(&effect_reactive_node_store);
+						clear_reactive_node_store(&mount_reactive_node_store);
 
 						refresh_current_nodes_before_marker(
 							start_marker_clone.as_ref(),
@@ -493,7 +540,10 @@ impl ReactiveNode {
 							}
 						}
 
-						let new_nodes = mount_before_marker(&marker_clone, view);
+						let new_nodes =
+							with_reactive_node_store(&mount_reactive_node_store, || {
+								mount_before_marker(&marker_clone, view)
+							});
 						*current_nodes_clone.borrow_mut() = new_nodes;
 					});
 				};
