@@ -184,11 +184,11 @@ pub fn hydrate<C: Component>(component: &C, root: &Element) -> Result<(), Hydrat
 		HydrationError::StateParseError(format!("Failed to hydrate i18n state: {}", e))
 	})?;
 
-	let (view, registry) = {
+	let (view, resource_counter_offset, id_counter_offset) = {
 		let prepass_store = new_reactive_node_store();
 		with_reactive_node_store(&prepass_store, || -> Result<_, HydrationError> {
-			// Reconciliation and event attachment only inspect lazy views. Keep retained
-			// hook effects from these prepasses out of the mounted root store.
+			// Reconciliation only inspects lazy views. Keep retained hook effects from
+			// this prepass out of the mounted root store.
 			let view = component.render();
 			let resource_counter_offset =
 				crate::reactive::resource::current_client_resource_counter();
@@ -202,21 +202,17 @@ pub fn hydrate<C: Component>(component: &C, root: &Element) -> Result<(), Hydrat
 			})?;
 			web_sys::console::log_1(&"[Hydration] Reconciliation complete".into());
 
-			crate::reactive::resource::set_client_resource_counter(resource_counter_offset);
-			crate::reactive::hooks::id::restore_id_counter(id_counter_offset);
-			let mut registry = EventRegistry::new();
-			attach_events_recursive(root, &view, &mut registry)?;
-			crate::reactive::resource::set_client_resource_counter(resource_counter_offset);
-			crate::reactive::hooks::id::restore_id_counter(id_counter_offset);
-			web_sys::console::log_1(&"[Hydration] Events attached".into());
-
-			Ok((view, registry))
+			Ok((view, resource_counter_offset, id_counter_offset))
 		})?
 	};
-	store_reactive_node(registry);
+	crate::reactive::resource::set_client_resource_counter(resource_counter_offset);
+	crate::reactive::hooks::id::restore_id_counter(id_counter_offset);
 
-	// 5. Install reactive DOM owners for hydrated reactive views
-	install_hydrated_reactive_nodes(root, &view);
+	// 5. Install hydration guards and reactive DOM owners in the same ownership pass.
+	let mut root_registry = EventRegistry::new();
+	install_hydrated_reactive_nodes(root, &view, &mut root_registry)?;
+	store_reactive_node(root_registry);
+	web_sys::console::log_1(&"[Hydration] Events attached".into());
 	web_sys::console::log_1(&"[Hydration] Reactive nodes installed".into());
 
 	// 6. Mark hydration complete
@@ -238,23 +234,28 @@ fn with_hydration_prepass_store<R>(f: impl FnOnce() -> R) -> R {
 }
 
 #[cfg(wasm)]
-fn install_hydrated_reactive_nodes(element: &Element, view: &Page) {
+fn install_hydrated_reactive_nodes(
+	element: &Element,
+	view: &Page,
+	registry: &mut super::events::EventRegistry,
+) -> Result<(), HydrationError> {
 	match view {
 		Page::Element(element_view) => {
-			install_hydrated_element_children(element, element_view.child_views());
+			attach_hydrated_element_events(element, element_view, registry)?;
+			install_hydrated_element_children(element, element_view.child_views(), registry)?;
 		}
-		Page::WithHead { view, .. } => install_hydrated_reactive_nodes(element, view),
-		Page::Fragment(children) => install_hydrated_element_children(element, children),
+		Page::WithHead { view, .. } => install_hydrated_reactive_nodes(element, view, registry)?,
+		Page::Fragment(children) => install_hydrated_element_children(element, children, registry)?,
 		Page::KeyedFragment(children) => {
 			let child_views = children
 				.iter()
 				.map(|(_, child)| child.clone())
 				.collect::<Vec<_>>();
-			install_hydrated_element_children(element, &child_views);
+			install_hydrated_element_children(element, &child_views, registry)?;
 		}
 		Page::Outlet(outlet) => {
 			if let Some(child) = outlet.child() {
-				install_hydrated_reactive_nodes(element, child);
+				install_hydrated_reactive_nodes(element, child, registry)?;
 			}
 		}
 		Page::Reactive(reactive) => {
@@ -274,20 +275,25 @@ fn install_hydrated_reactive_nodes(element: &Element, view: &Page) {
 			let boundary_sibling = hydrated_node.as_ref().map(|node| node.marker_node());
 			if let Some(node) = hydrated_node.as_ref() {
 				with_reactive_node_store(&node.reactive_node_store(), || {
+					let mut branch_registry = super::events::EventRegistry::new();
 					install_hydrated_child_reactive_nodes(
 						&element.as_web_sys().clone().into(),
 						&nodes,
 						boundary_sibling,
 						&rendered,
-					);
-				});
+						&mut branch_registry,
+					)?;
+					store_reactive_node(branch_registry);
+					Ok::<_, HydrationError>(())
+				})?;
 			} else {
 				install_hydrated_child_reactive_nodes(
 					&element.as_web_sys().clone().into(),
 					&nodes,
 					boundary_sibling,
 					&rendered,
-				);
+					registry,
+				)?;
 			}
 			if let Some(node) = hydrated_node {
 				node.refresh_hydrated_current_nodes();
@@ -320,32 +326,50 @@ fn install_hydrated_reactive_nodes(element: &Element, view: &Page) {
 			let boundary_sibling = hydrated_node.as_ref().map(|node| node.marker_node());
 			if let Some(node) = hydrated_node.as_ref() {
 				with_reactive_node_store(&node.reactive_node_store(), || {
+					let mut branch_registry = super::events::EventRegistry::new();
 					install_hydrated_child_reactive_nodes(
 						&element.as_web_sys().clone().into(),
 						&nodes,
 						boundary_sibling,
 						&branch_view,
-					);
-				});
+						&mut branch_registry,
+					)?;
+					store_reactive_node(branch_registry);
+					Ok::<_, HydrationError>(())
+				})?;
 			} else {
 				install_hydrated_child_reactive_nodes(
 					&element.as_web_sys().clone().into(),
 					&nodes,
 					boundary_sibling,
 					&branch_view,
-				);
+					registry,
+				)?;
 			}
 			if let Some(node) = hydrated_node {
 				node.refresh_hydrated_current_nodes();
 				store_reactive_node(node);
 			}
 		}
+		Page::Suspense(node) => {
+			let branch_view = node.render_branch();
+			install_hydrated_reactive_nodes(element, &branch_view, registry)?;
+		}
+		Page::Deferred(node) => {
+			let content_view = node.content();
+			install_hydrated_reactive_nodes(element, &content_view, registry)?;
+		}
 		_ => {}
 	}
+	Ok(())
 }
 
 #[cfg(wasm)]
-fn install_hydrated_element_children(element: &Element, children: &[Page]) {
+fn install_hydrated_element_children(
+	element: &Element,
+	children: &[Page],
+	registry: &mut super::events::EventRegistry,
+) -> Result<(), HydrationError> {
 	with_hydration_prepass_store(|| split_coalesced_text_children(element, children));
 	let actual_nodes = relevant_child_nodes(element);
 	install_hydrated_children_reactive_nodes(
@@ -353,7 +377,8 @@ fn install_hydrated_element_children(element: &Element, children: &[Page]) {
 		&actual_nodes,
 		None,
 		children,
-	);
+		registry,
+	)
 }
 
 #[cfg(wasm)]
@@ -362,7 +387,8 @@ fn install_hydrated_children_reactive_nodes(
 	nodes: &[web_sys::Node],
 	next_sibling: Option<web_sys::Node>,
 	children: &[Page],
-) {
+	registry: &mut super::events::EventRegistry,
+) -> Result<(), HydrationError> {
 	let mut index = 0;
 	for child in children {
 		let node_count = with_hydration_prepass_store(|| hydrated_node_count(child));
@@ -373,9 +399,11 @@ fn install_hydrated_children_reactive_nodes(
 			&nodes[index..end],
 			child_next_sibling,
 			child,
-		);
+			registry,
+		)?;
 		index = end;
 	}
+	Ok(())
 }
 
 #[cfg(wasm)]
@@ -384,7 +412,8 @@ fn install_hydrated_child_reactive_nodes(
 	nodes: &[web_sys::Node],
 	next_sibling: Option<web_sys::Node>,
 	view: &Page,
-) {
+	registry: &mut super::events::EventRegistry,
+) -> Result<(), HydrationError> {
 	match view {
 		Page::Reactive(reactive) => {
 			let render_store = new_reactive_node_store();
@@ -402,15 +431,25 @@ fn install_hydrated_child_reactive_nodes(
 			}
 			if let Some(node) = hydrated_node.as_ref() {
 				with_reactive_node_store(&node.reactive_node_store(), || {
+					let mut branch_registry = super::events::EventRegistry::new();
 					install_hydrated_child_reactive_nodes(
 						parent,
 						nodes,
 						boundary_sibling,
 						&rendered,
-					);
-				});
+						&mut branch_registry,
+					)?;
+					store_reactive_node(branch_registry);
+					Ok::<_, HydrationError>(())
+				})?;
 			} else {
-				install_hydrated_child_reactive_nodes(parent, nodes, boundary_sibling, &rendered);
+				install_hydrated_child_reactive_nodes(
+					parent,
+					nodes,
+					boundary_sibling,
+					&rendered,
+					registry,
+				)?;
 			}
 			if let Some(node) = hydrated_node {
 				node.refresh_hydrated_current_nodes();
@@ -442,20 +481,25 @@ fn install_hydrated_child_reactive_nodes(
 			}
 			if let Some(node) = hydrated_node.as_ref() {
 				with_reactive_node_store(&node.reactive_node_store(), || {
+					let mut branch_registry = super::events::EventRegistry::new();
 					install_hydrated_child_reactive_nodes(
 						parent,
 						nodes,
 						boundary_sibling,
 						&branch_view,
-					);
-				});
+						&mut branch_registry,
+					)?;
+					store_reactive_node(branch_registry);
+					Ok::<_, HydrationError>(())
+				})?;
 			} else {
 				install_hydrated_child_reactive_nodes(
 					parent,
 					nodes,
 					boundary_sibling,
 					&branch_view,
-				);
+					registry,
+				)?;
 			}
 			if let Some(node) = hydrated_node {
 				node.refresh_hydrated_current_nodes();
@@ -467,37 +511,68 @@ fn install_hydrated_child_reactive_nodes(
 				.first()
 				.and_then(|node| wasm_bindgen::JsCast::dyn_ref::<web_sys::Element>(node))
 			{
-				install_hydrated_reactive_nodes(&Element::new(element.clone()), view);
+				install_hydrated_reactive_nodes(&Element::new(element.clone()), view, registry)?;
 			}
 		}
 		Page::WithHead { view, .. } => {
-			install_hydrated_child_reactive_nodes(parent, nodes, next_sibling, view);
+			install_hydrated_child_reactive_nodes(parent, nodes, next_sibling, view, registry)?;
 		}
 		Page::Fragment(children) => {
-			install_hydrated_children_reactive_nodes(parent, nodes, next_sibling, children)
+			install_hydrated_children_reactive_nodes(
+				parent,
+				nodes,
+				next_sibling,
+				children,
+				registry,
+			)?;
 		}
 		Page::KeyedFragment(children) => {
 			let child_views = children
 				.iter()
 				.map(|(_, child)| child.clone())
 				.collect::<Vec<_>>();
-			install_hydrated_children_reactive_nodes(parent, nodes, next_sibling, &child_views);
+			install_hydrated_children_reactive_nodes(
+				parent,
+				nodes,
+				next_sibling,
+				&child_views,
+				registry,
+			)?;
 		}
 		Page::Outlet(outlet) => {
 			if let Some(child) = outlet.child() {
-				install_hydrated_child_reactive_nodes(parent, nodes, next_sibling, child);
+				install_hydrated_child_reactive_nodes(
+					parent,
+					nodes,
+					next_sibling,
+					child,
+					registry,
+				)?;
 			}
 		}
 		Page::Suspense(node) => {
 			let branch_view = node.render_branch();
-			install_hydrated_child_reactive_nodes(parent, nodes, next_sibling, &branch_view);
+			install_hydrated_child_reactive_nodes(
+				parent,
+				nodes,
+				next_sibling,
+				&branch_view,
+				registry,
+			)?;
 		}
 		Page::Deferred(node) => {
 			let content_view = node.content();
-			install_hydrated_child_reactive_nodes(parent, nodes, next_sibling, &content_view);
+			install_hydrated_child_reactive_nodes(
+				parent,
+				nodes,
+				next_sibling,
+				&content_view,
+				registry,
+			)?;
 		}
 		Page::Text(_) | Page::Empty => {}
 	}
+	Ok(())
 }
 
 #[cfg(wasm)]
@@ -738,37 +813,11 @@ pub(crate) fn attach_events_recursive(
 	view: &crate::component::Page,
 	registry: &mut super::events::EventRegistry,
 ) -> Result<(), HydrationError> {
-	use super::events::attach_event;
 	use crate::component::Page;
 
 	match view {
 		Page::Element(el_view) => {
-			let tag = el_view.tag_name();
-			let event_count = el_view.event_handlers().len();
-			if let Some(binding) = el_view.bound_control() {
-				let controller = crate::dom::control_binding::ControlBindingController::hydrate(
-					element.clone(),
-					binding.clone(),
-				)
-				.map_err(|error| HydrationError::EventAttachmentFailed(error.to_string()))?;
-				registry.register_control_binding(controller);
-			}
-
-			if event_count > 0 {
-				web_sys::console::log_1(
-					&format!("[attach_events] {} has {} event handlers", tag, event_count).into(),
-				);
-			}
-
-			// Attach events from the view's event handlers
-			for (event_type, handler) in el_view.event_handlers() {
-				web_sys::console::log_1(
-					&format!("[attach_events] Attaching {:?} to {}", event_type, tag).into(),
-				);
-
-				attach_event(element, event_type, handler.clone(), registry)
-					.map_err(|e| HydrationError::EventAttachmentFailed(e.to_string()))?;
-			}
+			attach_hydrated_element_events(element, el_view, registry)?;
 
 			// Recursively process children
 			let children = element.children();
@@ -831,6 +880,43 @@ pub(crate) fn attach_events_recursive(
 			let content_view = node.content();
 			attach_events_recursive(element, &content_view, registry)?;
 		}
+	}
+
+	Ok(())
+}
+
+#[cfg(wasm)]
+fn attach_hydrated_element_events(
+	element: &Element,
+	element_view: &crate::component::PageElement,
+	registry: &mut super::events::EventRegistry,
+) -> Result<(), HydrationError> {
+	use super::events::attach_event;
+
+	let tag = element_view.tag_name();
+	let event_count = element_view.event_handlers().len();
+	if let Some(binding) = element_view.bound_control() {
+		let controller = crate::dom::control_binding::ControlBindingController::hydrate(
+			element.clone(),
+			binding.clone(),
+		)
+		.map_err(|error| HydrationError::EventAttachmentFailed(error.to_string()))?;
+		registry.register_control_binding(controller);
+	}
+
+	if event_count > 0 {
+		web_sys::console::log_1(
+			&format!("[attach_events] {} has {} event handlers", tag, event_count).into(),
+		);
+	}
+
+	for (event_type, handler) in element_view.event_handlers() {
+		web_sys::console::log_1(
+			&format!("[attach_events] Attaching {:?} to {}", event_type, tag).into(),
+		);
+
+		attach_event(element, event_type, handler.clone(), registry)
+			.map_err(|error| HydrationError::EventAttachmentFailed(error.to_string()))?;
 	}
 
 	Ok(())
@@ -1029,7 +1115,10 @@ mod tests {
 			}
 		});
 
-		install_hydrated_reactive_nodes(&Element::new(root.clone()), &view);
+		let mut registry = crate::hydration::events::EventRegistry::new();
+		install_hydrated_reactive_nodes(&Element::new(root.clone()), &view, &mut registry)
+			.expect("hydration node installation should succeed");
+		store_reactive_node(registry);
 		effect_signal.set(1);
 		with_runtime(|runtime| runtime.flush_updates());
 
@@ -1078,7 +1167,10 @@ mod tests {
 			}))
 			.into_page();
 
-		install_hydrated_reactive_nodes(&Element::new(root.clone()), &view);
+		let mut registry = crate::hydration::events::EventRegistry::new();
+		install_hydrated_reactive_nodes(&Element::new(root.clone()), &view, &mut registry)
+			.expect("hydration node installation should succeed");
+		store_reactive_node(registry);
 		effect_signal.set(1);
 		with_runtime(|runtime| runtime.flush_updates());
 
