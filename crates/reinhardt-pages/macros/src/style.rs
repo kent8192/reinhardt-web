@@ -210,6 +210,31 @@ mod tests {
 		);
 	}
 
+	#[test]
+	fn style_cfg_attr_keeps_non_lint_generated_attributes() {
+		// Arrange
+		let item = quote! {
+			#[cfg_attr(feature = "admin", cfg(feature = "admin"), expect(dead_code))]
+			static STYLES: CardStyles = style! { .card { color: red; } };
+		};
+
+		// Act
+		let output = expand_style_def(quote!(), item).expect("style definition should expand");
+		let file = syn::parse2::<syn::File>(output).expect("generated output should be Rust");
+
+		// Assert
+		let generated_tokens = file
+			.items
+			.iter()
+			.filter(|item| !matches!(item, syn::Item::Static(item) if item.ident == "STYLES"))
+			.map(ToTokens::to_token_stream)
+			.collect::<proc_macro2::TokenStream>()
+			.to_string();
+		assert!(generated_tokens.contains("cfg_attr"));
+		assert!(generated_tokens.contains("cfg (feature = \"admin\")"));
+		assert!(!generated_tokens.contains("expect"));
+	}
+
 	#[rstest]
 	#[case(
 		quote!(configured),

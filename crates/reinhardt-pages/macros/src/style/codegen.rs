@@ -24,11 +24,7 @@ pub(super) fn generate_style_items(
 		(crate_info.ident, crate_info.use_statement)
 	};
 	let attributes = &item.attrs;
-	let generated_attributes: Vec<_> = item
-		.attrs
-		.iter()
-		.filter(|attribute| !is_lint_attribute(attribute))
-		.collect();
+	let generated_attributes: Vec<_> = item.attrs.iter().filter_map(generated_attribute).collect();
 	let visibility = &item.vis;
 	let static_name = &item.ident;
 	let builder = format_ident!("{}Vars", style_type);
@@ -102,26 +98,41 @@ pub(super) fn generate_style_items(
 	})
 }
 
-fn is_lint_attribute(attribute: &syn::Attribute) -> bool {
-	is_lint_meta(&attribute.meta)
+fn generated_attribute(attribute: &syn::Attribute) -> Option<syn::Attribute> {
+	let meta = generated_meta(&attribute.meta)?;
+	let mut generated = attribute.clone();
+	generated.meta = meta;
+	Some(generated)
 }
 
-fn is_lint_meta(meta: &syn::Meta) -> bool {
+fn generated_meta(meta: &syn::Meta) -> Option<syn::Meta> {
 	if is_lint_path(meta.path()) {
-		return true;
+		return None;
 	}
 	if !meta.path().is_ident("cfg_attr") {
-		return false;
+		return Some(meta.clone());
 	}
 	let syn::Meta::List(list) = meta else {
-		return false;
+		return Some(meta.clone());
 	};
 	let Ok(arguments) = list.parse_args_with(
 		syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated,
 	) else {
-		return false;
+		return Some(meta.clone());
 	};
-	arguments.iter().skip(1).any(is_lint_meta)
+	let Some(condition) = arguments.first() else {
+		return Some(meta.clone());
+	};
+	let mut nested_attributes = syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::new();
+	for nested in arguments.iter().skip(1) {
+		if let Some(nested) = generated_meta(nested) {
+			nested_attributes.push(nested);
+		}
+	}
+	if nested_attributes.is_empty() {
+		return None;
+	}
+	Some(syn::parse_quote!(cfg_attr(#condition, #nested_attributes)))
 }
 
 fn is_lint_path(path: &syn::Path) -> bool {
