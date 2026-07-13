@@ -61,6 +61,7 @@
 //! ## Example
 //!
 //! ```ignore
+//! use reinhardt_pages::deps;
 //! use reinhardt_pages::reactive::hooks::*;
 //!
 //! fn counter() -> Page {
@@ -69,14 +70,14 @@
 //!     let increment = use_callback({
 //!         let set_count = set_count.clone();
 //!         move |_| set_count.update(|current| current + 1)
-//!     }, ());
+//!     }, deps![]);
 //!
 //!     use_effect({
 //!         let count = count.clone();
 //!         move || {
 //!             log!("Count changed to: {}", count.get());
 //!         }
-//!     }, (count.clone(),));
+//!     }, deps![count]);
 //!
 //!     page!(|| {
 //!         div {

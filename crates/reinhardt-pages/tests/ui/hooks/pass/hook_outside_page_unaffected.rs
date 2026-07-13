@@ -4,6 +4,7 @@
 //! limitation, #4721/#4746). The runtime arity check still guarantees a deps
 //! tuple is present.
 
+use reinhardt_pages::deps;
 use reinhardt_pages::reactive::Signal;
 use reinhardt_pages::reactive::hooks::use_effect;
 
@@ -19,7 +20,7 @@ fn main() {
 				None::<fn()>
 			}
 		},
-		(),
+		deps![],
 	);
 	let _ = count;
 }

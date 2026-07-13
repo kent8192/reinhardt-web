@@ -122,8 +122,11 @@ fn view(name: String, count: usize) {
             }
         }
     };
-    use_effect(move || {
-        let _ = count;
+    use_effect({
+        let count = count.clone();
+        move || {
+            let _ = count.get();
+        }
     });
 }
 "#,
@@ -154,8 +157,12 @@ pub struct CardProps {
 		"watch wrapper should be removed:\n{page}"
 	);
 	assert!(
-		page.contains("compile_error!"),
-		"use_effect placeholder deps were not inserted:\n{page}"
+		compact_ws(&page).contains("deps![count]"),
+		"use_effect dependency list was not inserted:\n{page}"
+	);
+	assert!(
+		page.contains("use reinhardt_pages::deps;"),
+		"deps macro import was not inserted:\n{page}"
 	);
 	assert!(
 		props.contains("bon::Builder"),

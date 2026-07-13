@@ -31,6 +31,7 @@
 
 #[cfg(not(target_arch = "wasm32"))]
 use proptest::prelude::*;
+use reinhardt_pages::deps;
 use reinhardt_pages::reactive::Signal;
 use reinhardt_pages::reactive::hooks::{use_effect, use_memo, use_ref, use_state};
 use rstest::*;
@@ -83,7 +84,7 @@ fn test_hooks_use_effect_dependency_tracking(
 			*effect_counter_clone.borrow_mut() += 1;
 			None::<fn()>
 		},
-		(counter_signal.clone(),),
+		deps![counter_signal],
 	);
 
 	// Effect should run at least once
@@ -108,7 +109,7 @@ fn test_hooks_use_memo_caching(counter_signal: Signal<i32>) {
 			*computation_count_clone.borrow_mut() += 1;
 			counter_clone.get() * 2
 		},
-		(counter_signal.clone(),),
+		deps![counter_signal],
 	);
 
 	let _value1 = memoized.get();
@@ -140,7 +141,7 @@ fn test_hooks_circular_dependency_detection() {
 			signal_b_clone.set(a + 1);
 			None::<fn()>
 		},
-		(signal_a.clone(),),
+		deps![signal_a],
 	);
 
 	// If circular dependencies are properly handled, this should not hang
@@ -165,7 +166,7 @@ fn test_hooks_infinite_loop_protection(effect_counter: Rc<RefCell<usize>>) {
 			}
 			None::<fn()>
 		},
-		(signal.clone(),),
+		deps![signal],
 	);
 
 	// Effect should have run but stopped before reaching 1000 iterations
@@ -187,7 +188,7 @@ fn test_hooks_effect_empty_dependencies(effect_counter: Rc<RefCell<usize>>) {
 			*effect_counter_clone.borrow_mut() += 1;
 			None::<fn()>
 		},
-		(),
+		deps![],
 	);
 
 	let initial_count = *effect_counter.borrow();
@@ -220,7 +221,7 @@ fn test_hooks_all_dependencies(effect_counter: Rc<RefCell<usize>>) {
 			*effect_counter_clone.borrow_mut() += 1;
 			None::<fn()>
 		},
-		(signal1.clone(), signal2.clone(), signal3.clone()),
+		deps![signal1, signal2, signal3],
 	);
 
 	// Effect should track all three signals
@@ -242,7 +243,7 @@ fn test_hooks_memo_expensive_computation() {
 			let value = signal_clone.get();
 			(1..=value).product::<i32>()
 		},
-		(signal.clone(),),
+		deps![signal],
 	);
 
 	let result = memoized.get();
@@ -271,7 +272,7 @@ fn test_hooks_state_update_triggers_effect(effect_counter: Rc<RefCell<usize>>) {
 			*effect_counter_clone.borrow_mut() += 1;
 			None::<fn()>
 		},
-		(signal.clone(),),
+		deps![signal],
 	);
 
 	let initial_count = *effect_counter.borrow();
@@ -304,7 +305,7 @@ fn test_hooks_cleanup_on_unmount() {
 			}
 			None::<fn()>
 		},
-		(),
+		deps![],
 	);
 
 	// Simulate unmount
@@ -354,7 +355,7 @@ fn test_hooks_use_case_form_validation() {
 			let email_value = email_clone.get();
 			email_value.contains('@') && email_value.contains('.')
 		},
-		(email.clone(),),
+		deps![email],
 	);
 
 	set_email("invalid".to_string());
@@ -382,8 +383,7 @@ fn test_hooks_property_memo_deterministic() {
 
 		let memoized = use_memo(
 			move || signal_clone.get() * 2,
-			(signal.clone(),),
-		);
+			deps![signal],		);
 
 		let result1 = memoized.get();
 		let result2 = memoized.get();
@@ -413,7 +413,7 @@ fn test_hooks_combination_effect_state(effect_counter: Rc<RefCell<usize>>) {
 			*effect_counter_clone.borrow_mut() += 1;
 			None::<fn()>
 		},
-		(count.clone(),),
+		deps![count],
 	);
 
 	let initial_count = *effect_counter.borrow();
@@ -432,7 +432,7 @@ fn test_hooks_combination_memo_state() {
 	let (count, set_count) = use_state(5);
 
 	let count_clone = count.clone();
-	let doubled = use_memo(move || count_clone.get() * 2, (count.clone(),));
+	let doubled = use_memo(move || count_clone.get() * 2, deps![count]);
 
 	let first_value = doubled.get();
 	assert_eq!(first_value, 10);
@@ -459,7 +459,7 @@ fn test_hooks_sanity() {
 	assert_eq!(*ref_val.current(), 100);
 
 	// use_memo
-	let memoized = use_memo(|| 2 + 2, ());
+	let memoized = use_memo(|| 2 + 2, deps![]);
 	assert_eq!(memoized.get(), 4);
 
 	// All hooks work independently
@@ -514,7 +514,7 @@ fn test_hooks_partition_hook_types_effect(effect_counter: Rc<RefCell<usize>>) {
 			*effect_counter_clone.borrow_mut() += 1;
 			None::<fn()>
 		},
-		(),
+		deps![],
 	);
 
 	assert!(*effect_counter.borrow() >= 1);
@@ -588,7 +588,7 @@ fn test_hooks_decision_table_case3_effect_runs_once(effect_counter: Rc<RefCell<u
 			*effect_counter_clone.borrow_mut() += 1;
 			None::<fn()>
 		},
-		(),
+		deps![],
 	);
 
 	assert_eq!(*effect_counter.borrow(), 1);
@@ -607,7 +607,7 @@ fn test_hooks_decision_table_case4_memo_no_recompute() {
 			*computation_count_clone.borrow_mut() += 1;
 			signal_clone.get() * 2
 		},
-		(signal.clone(),),
+		deps![signal],
 	);
 
 	let _value1 = memoized.get();
@@ -630,7 +630,7 @@ fn test_hooks_decision_table_case5_memo_with_recompute() {
 			*computation_count_clone.borrow_mut() += 1;
 			signal_clone.get() * 2
 		},
-		(signal.clone(),),
+		deps![signal],
 	);
 
 	let count_before = *computation_count.borrow();

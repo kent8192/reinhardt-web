@@ -123,13 +123,14 @@ impl<T: fmt::Display, E: fmt::Display> fmt::Display for ResourceState<T, E> {
 /// # Example
 ///
 /// ```ignore
+/// use reinhardt_pages::deps;
 /// use reinhardt_pages::reactive::{Resource, use_resource};
 ///
 /// async fn fetch_user(id: u32) -> Result<User, String> {
 ///     // Fetch from API...
 /// }
 ///
-/// let resource = use_resource(|| fetch_user(42), ());
+/// let resource = use_resource(|| fetch_user(42), deps![]);
 ///
 /// match resource.get() {
 ///     ResourceState::Loading => println!("Loading..."),
@@ -268,10 +269,11 @@ impl<T: Clone + 'static, E: Clone + 'static> reinhardt_core::reactive::deps::Tra
 /// # Example
 ///
 /// ```ignore
+/// use reinhardt_pages::deps;
 /// use reinhardt_pages::reactive::{Signal, use_resource};
 ///
 /// // Fetch once on mount:
-/// let user = use_resource(|| async { fetch_user_from_api(42).await }, ());
+/// let user = use_resource(|| async { fetch_user_from_api(42).await }, deps![]);
 ///
 /// // Refetch whenever `user_id` changes:
 /// let user_id = Signal::new(42u32);

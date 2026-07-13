@@ -35,6 +35,7 @@ use crate::reactive::Memo;
 /// # Example
 ///
 /// ```no_run
+/// use reinhardt_pages::deps;
 /// use reinhardt_pages::reactive::hooks::{use_state, use_memo};
 ///
 /// let (items, set_items) = use_state(vec![1, 2, 3, 4, 5]);
@@ -52,7 +53,7 @@ use crate::reactive::Memo;
 ///                 .collect::<Vec<_>>()
 ///         }
 ///     },
-///     (items.clone(), filter.clone()),
+///     deps![items, filter],
 /// );
 ///
 /// // Reading the memoized value
@@ -88,6 +89,7 @@ where
 /// # Example
 ///
 /// ```ignore
+/// use reinhardt_pages::deps;
 /// use reinhardt_pages::reactive::hooks::{SetStateExt, use_callback, use_state};
 /// use reinhardt_pages::page;
 ///
@@ -99,7 +101,7 @@ where
 ///     move |_event| {
 ///         set_count.update(|current| current + 1);
 ///     }
-/// }, ());
+/// }, deps![]);
 ///
 /// page!(|| {
 ///     button {
@@ -162,9 +164,10 @@ where
 /// # Example
 ///
 /// ```no_run
+/// use reinhardt_pages::deps;
 /// use reinhardt_pages::reactive::hooks::use_callback_with;
 ///
-/// let add = use_callback_with(|x: i32| x + 1, ());
+/// let add = use_callback_with(|x: i32| x + 1, deps![]);
 /// assert_eq!(add.call(5), 6);
 /// ```
 #[cfg(wasm)]
@@ -199,12 +202,13 @@ where
 mod tests {
 	use super::*;
 	use crate::reactive::Signal;
+	use reinhardt_core::deps;
 	use serial_test::serial;
 
 	#[test]
 	#[serial]
 	fn test_use_memo_basic() {
-		let memo = use_memo(|| 42, ());
+		let memo = use_memo(|| 42, deps![]);
 		assert_eq!(memo.get(), 42);
 	}
 
@@ -218,7 +222,7 @@ mod tests {
 				let count = count.clone();
 				move || count.get() * 2
 			},
-			(count.clone(),),
+			deps![count],
 		);
 
 		assert_eq!(doubled.get(), 10);
@@ -234,7 +238,7 @@ mod tests {
 				let items = items.clone();
 				move || items.get().iter().sum::<i32>()
 			},
-			(items.clone(),),
+			deps![items],
 		);
 
 		assert_eq!(sum.get(), 15);
@@ -251,7 +255,7 @@ mod tests {
 			|event: ClickEvent| {
 				assert_eq!(event.event_type(), "click");
 			},
-			(),
+			deps![],
 		);
 		let raw = NativeEvent::for_known(
 			EventType::Click,
@@ -263,11 +267,11 @@ mod tests {
 	#[cfg(native)]
 	#[test]
 	fn test_use_callback_with() {
-		let add_one = use_callback_with::<i32, i32, _, _>(|x: i32| x + 1, ());
+		let add_one = use_callback_with::<i32, i32, _, _>(|x: i32| x + 1, deps![]);
 		assert_eq!(add_one.call(5), 6);
 
 		let concat =
-			use_callback_with::<String, String, _, _>(|s: String| format!("Hello, {}", s), ());
+			use_callback_with::<String, String, _, _>(|s: String| format!("Hello, {}", s), deps![]);
 		assert_eq!(concat.call("World".to_string()), "Hello, World");
 	}
 }

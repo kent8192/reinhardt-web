@@ -14,6 +14,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use reinhardt_core::reactive::Signal;
+use reinhardt_pages::deps;
 use reinhardt_pages::reactive::hooks::{use_effect, use_memo};
 use serial_test::serial;
 
@@ -28,7 +29,7 @@ fn memo_feeding_effect_propagates_listed_dep_changes() {
 
 	// Memo doubles the count; listed deps = (count,).
 	let count_for_memo = count.clone();
-	let doubled = use_memo(move || count_for_memo.get() * 2, (count.clone(),));
+	let doubled = use_memo(move || count_for_memo.get() * 2, deps![count]);
 
 	// Effect re-runs when the memo changes; listed deps = (doubled,).
 	let runs_for_effect = runs.clone();
@@ -39,7 +40,7 @@ fn memo_feeding_effect_propagates_listed_dep_changes() {
 			*runs_for_effect.borrow_mut() += 1;
 			None::<fn()>
 		},
-		(doubled.clone(),),
+		deps![doubled],
 	);
 
 	// Act — change the upstream Signal; both Memo and Effect must
@@ -86,7 +87,7 @@ fn effect_does_not_subscribe_to_unlisted_signal_read() {
 			*runs_for_effect.borrow_mut() += 1;
 			None::<fn()>
 		},
-		(listed.clone(),),
+		deps![listed],
 	);
 
 	let runs_after_mount = *runs.borrow();
@@ -121,7 +122,7 @@ fn effect_cleanup_runs_before_rerun() {
 			let log_inner = log_for_effect.clone();
 			Some(move || log_inner.borrow_mut().push("cleanup"))
 		},
-		(s.clone(),),
+		deps![s],
 	);
 
 	// Act — trigger one re-run.
@@ -151,7 +152,7 @@ fn effect_with_empty_deps_is_mount_only() {
 			*runs_for_effect.borrow_mut() += 1;
 			None::<fn()>
 		},
-		(),
+		deps![],
 	);
 
 	assert_eq!(*runs.borrow(), 1, "effect must run once at mount");

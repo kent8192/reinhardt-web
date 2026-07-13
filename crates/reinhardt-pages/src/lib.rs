@@ -473,6 +473,7 @@ pub use csrf::{CsrfManager, get_csrf_token};
 pub use dom::{CustomEventOptions, Document, Element, EventHandle, EventType, document};
 #[cfg(native)]
 pub use form::{FormBinding, FormComponent};
+pub use reinhardt_core::deps;
 // Static form metadata types (always available, used by form! macro)
 pub use form_generated::{StaticFieldMetadata, StaticFormMetadata};
 pub use form_state::{
