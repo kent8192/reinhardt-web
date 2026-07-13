@@ -128,12 +128,12 @@ where
 /// Memoizes a callback function to maintain a stable reference (server-side version).
 ///
 /// See the WASM version for full documentation.
-/// Requires `Send + Sync` bounds for thread-safe server-side usage.
+/// Native callbacks share the thread-affine reactive scope contract.
 #[cfg(native)]
 #[track_caller]
 pub fn use_callback<Args, F, D>(f: F, deps: D) -> Callback<Args, ()>
 where
-	F: Fn(Args) + Send + Sync + 'static,
+	F: Fn(Args) + 'static,
 	Args: 'static,
 	D: IntoDeps,
 {
@@ -182,12 +182,12 @@ where
 /// Creates a memoized callback with custom argument and return types (server-side version).
 ///
 /// See the WASM version for full documentation.
-/// Requires `Send + Sync` bounds for thread-safe server-side usage.
+/// Native callbacks share the thread-affine reactive scope contract.
 #[cfg(native)]
 #[track_caller]
 pub fn use_callback_with<Args, Ret, F, D>(f: F, deps: D) -> Callback<Args, Ret>
 where
-	F: Fn(Args) -> Ret + Send + Sync + 'static,
+	F: Fn(Args) -> Ret + 'static,
 	Args: 'static,
 	Ret: 'static,
 	D: IntoDeps,

@@ -264,7 +264,7 @@ where
 				class: "admin-page-link",
 				href: "#",
 				@click: move |_| {
-					_handler(_signal.clone());
+					_handler(_signal);
 				},
 				{ text }
 			}

@@ -14,7 +14,6 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use reinhardt_core::reactive::Signal;
-use reinhardt_pages::component::DummyEvent;
 use reinhardt_pages::reactive::hooks::{use_action, use_callback, use_effect, use_memo};
 use serial_test::serial;
 
@@ -39,7 +38,7 @@ fn callback_accepts_copy_handles_without_clone_ceremony() {
 			(route_project_id,),
 		);
 
-		upload_click.call(DummyEvent::default());
+		upload_click.call(());
 		assert!(index_action.is_idle());
 		assert!(search_action.is_idle());
 	});
