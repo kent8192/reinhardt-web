@@ -595,10 +595,11 @@ async fn execute_with_registry_and_optional_settings(
 			match resolve_custom_command(&raw_args, &registry) {
 				Some((name, args, verbosity)) => {
 					#[cfg(feature = "reinhardt-db")]
-					if is_fixture_command_name(&name) {
-						if let Err(error) = parse_fixture_command(&name, &args) {
-							error.exit();
-						}
+					if registry.get(&name).is_none()
+						&& is_fixture_command_name(&name)
+						&& let Err(error) = parse_fixture_command(&name, &args)
+					{
+						error.exit();
 					}
 					(Commands::Custom { name, args }, verbosity)
 				}
@@ -655,11 +656,13 @@ fn requires_router(command: &Commands) -> bool {
 /// before execution via [`initialize_orm_database()`].
 /// This is symmetric with [`requires_router()`] which controls HTTP route registration.
 #[cfg(feature = "reinhardt-db")]
-fn requires_database(command: &Commands) -> bool {
+fn requires_database(command: &Commands, registry: &CommandRegistry) -> bool {
 	match command {
 		Commands::Runserver { .. } => true,
 		Commands::Migrate { .. } => true,
-		Commands::Custom { name, .. } => is_fixture_command_name(name),
+		Commands::Custom { name, .. } => {
+			registry.get(name).is_none() && is_fixture_command_name(name)
+		}
 		#[cfg(feature = "auth")]
 		Commands::Createsuperuser { .. } => true,
 		_ => false,
@@ -732,7 +735,7 @@ async fn run_command_core(
 	// This must happen before command dispatch so that commands like
 	// createsuperuser can use the ORM connection pool. (#3186)
 	#[cfg(feature = "reinhardt-db")]
-	if requires_database(&command) {
+	if requires_database(&command, &registry) {
 		let mut ctx = crate::CommandContext::new(vec![]);
 		ctx.verbosity = verbosity;
 		ctx.set_output_suppressed(matches!(
@@ -882,7 +885,9 @@ async fn run_command_core(
 		}
 		Commands::Custom { name, args } => {
 			#[cfg(feature = "reinhardt-db")]
-			if let Some(command) = parse_fixture_command(&name, &args)? {
+			if registry.get(&name).is_none()
+				&& let Some(command) = parse_fixture_command(&name, &args)?
+			{
 				return execute_fixture_command(command, verbosity, settings).await;
 			}
 			execute_custom_command(&name, &args, verbosity, &registry).await
@@ -1675,6 +1680,27 @@ pub(crate) fn generate_random_secret_key() -> String {
 mod tests {
 	use super::*;
 	use rstest::rstest;
+	#[cfg(feature = "reinhardt-db")]
+	use std::sync::atomic::{AtomicBool, Ordering};
+
+	#[cfg(feature = "reinhardt-db")]
+	struct RegisteredFixtureNameCommand;
+
+	#[cfg(feature = "reinhardt-db")]
+	static REGISTERED_FIXTURE_NAME_COMMAND_EXECUTED: AtomicBool = AtomicBool::new(false);
+
+	#[cfg(feature = "reinhardt-db")]
+	#[async_trait::async_trait]
+	impl BaseCommand for RegisteredFixtureNameCommand {
+		fn name(&self) -> &str {
+			"seed"
+		}
+
+		async fn execute(&self, _ctx: &CommandContext) -> crate::CommandResult<()> {
+			REGISTERED_FIXTURE_NAME_COMMAND_EXECUTED.store(true, Ordering::SeqCst);
+			Ok(())
+		}
+	}
 
 	/// `Runserver` is intentionally **not** in the pre-dispatch
 	/// `requires_router` list (Refs #4453): the HTTP-route inventory
@@ -2219,6 +2245,24 @@ mod tests {
 	}
 
 	#[cfg(feature = "reinhardt-db")]
+	#[tokio::test]
+	async fn test_registered_fixture_name_dispatches_before_fixture_commands() {
+		REGISTERED_FIXTURE_NAME_COMMAND_EXECUTED.store(false, Ordering::SeqCst);
+		let mut registry = CommandRegistry::new();
+		registry.register(Box::new(RegisteredFixtureNameCommand));
+		let command = Commands::Custom {
+			name: "seed".to_string(),
+			args: vec!["project".to_string()],
+		};
+
+		assert!(!requires_database(&command, &registry));
+		run_command_with_registry(command, 0, registry)
+			.await
+			.expect("registered fixture-named commands must dispatch through the registry");
+		assert!(REGISTERED_FIXTURE_NAME_COMMAND_EXECUTED.load(Ordering::SeqCst));
+	}
+
+	#[cfg(feature = "reinhardt-db")]
 	#[rstest]
 	fn test_loaddata_fixture_parser_accepts_paths() {
 		let command = parse_fixture_command("loaddata", &["fixtures/dev.json".to_string()])
@@ -2297,7 +2341,7 @@ mod tests {
 		};
 
 		// Act
-		let result = requires_database(&command);
+		let result = requires_database(&command, &CommandRegistry::new());
 
 		// Assert
 		assert!(result);
@@ -2316,7 +2360,7 @@ mod tests {
 		};
 
 		// Act
-		let result = requires_database(&command);
+		let result = requires_database(&command, &CommandRegistry::new());
 
 		// Assert
 		assert!(result);
@@ -2337,7 +2381,7 @@ mod tests {
 		};
 
 		// Act
-		let result = requires_database(&command);
+		let result = requires_database(&command, &CommandRegistry::new());
 
 		// Assert
 		assert!(result);
@@ -2364,7 +2408,7 @@ mod tests {
 
 		// Act & Assert
 		for command in commands {
-			assert!(requires_database(&command));
+			assert!(requires_database(&command, &CommandRegistry::new()));
 		}
 	}
 
@@ -2375,7 +2419,7 @@ mod tests {
 		let command = Commands::Shell { command: None };
 
 		// Act
-		let result = requires_database(&command);
+		let result = requires_database(&command, &CommandRegistry::new());
 
 		// Assert
 		assert!(!result);
@@ -2391,7 +2435,7 @@ mod tests {
 		};
 
 		// Act
-		let result = requires_database(&command);
+		let result = requires_database(&command, &CommandRegistry::new());
 
 		// Assert
 		assert!(!result);
@@ -2411,7 +2455,7 @@ mod tests {
 		};
 
 		// Act
-		let result = requires_database(&command);
+		let result = requires_database(&command, &CommandRegistry::new());
 
 		// Assert
 		assert!(!result);
