@@ -1033,6 +1033,7 @@ where
 #[derive(Debug, Clone)]
 struct TypedPrefetchRelation {
 	field: String,
+	alias: String,
 	steps: SmallVec<[RelationStep; 4]>,
 }
 
@@ -1063,13 +1064,21 @@ impl TypedPrefetchRelation {
 	{
 		let mut steps: SmallVec<[RelationStep; 4]> = SmallVec::new();
 		steps.extend(path.steps().iter().cloned());
-		let field = match steps.as_slice() {
+		let field = steps.last().map_or_else(
+			|| path.leaf_alias().to_string(),
+			|step| step.name.to_string(),
+		);
+		let alias = match steps.as_slice() {
 			[through_step, target_step] if through_step.name.to_string().ends_with("__through") => {
 				target_step.name.to_string()
 			}
 			_ => path.leaf_alias().to_string(),
 		};
-		Self { field, steps }
+		Self {
+			field,
+			alias,
+			steps,
+		}
 	}
 
 	fn is_direct_multi_valued_relation(&self) -> bool {
@@ -3920,20 +3929,94 @@ where
 	}
 
 	fn annotation_value_to_select_sql(&self, value: &super::annotation::AnnotationValue) -> String {
-		if let super::annotation::AnnotationValue::Aggregate(aggregate) = value
-			&& self.has_joined_tables()
-			&& let Some(field) = aggregate.field.as_deref()
-		{
-			let distinct = if aggregate.distinct { "DISTINCT " } else { "" };
-			return format!(
-				"{}({}{})",
-				aggregate.func,
-				distinct,
-				quote_identifier(&format!("{}.{}", self.root_alias(), field))
-			);
+		if self.has_joined_tables() {
+			match value {
+				super::annotation::AnnotationValue::Aggregate(aggregate)
+					if let Some(field) = aggregate.field.as_deref() =>
+				{
+					let distinct = if aggregate.distinct { "DISTINCT " } else { "" };
+					return format!(
+						"{}({}{})",
+						aggregate.func,
+						distinct,
+						quote_identifier(&format!("{}.{}", self.root_alias(), field))
+					);
+				}
+				super::annotation::AnnotationValue::Field(field) => {
+					return self.annotation_field_to_select_sql(field);
+				}
+				super::annotation::AnnotationValue::Expression(expression) => {
+					return self.annotation_expression_to_select_sql(expression);
+				}
+				_ => {}
+			}
 		}
 
 		value.to_sql_expr()
+	}
+
+	fn annotation_field_to_select_sql(&self, field: &super::expressions::F) -> String {
+		if field.field.contains('.') {
+			field.to_sql()
+		} else {
+			quote_identifier(&format!("{}.{}", self.root_alias(), field.field))
+		}
+	}
+
+	fn annotation_expression_to_select_sql(
+		&self,
+		expression: &super::annotation::Expression,
+	) -> String {
+		use super::annotation::Expression;
+
+		match expression {
+			Expression::Add(left, right) => format!(
+				"({} + {})",
+				self.annotation_value_to_select_sql(left),
+				self.annotation_value_to_select_sql(right)
+			),
+			Expression::Subtract(left, right) => format!(
+				"({} - {})",
+				self.annotation_value_to_select_sql(left),
+				self.annotation_value_to_select_sql(right)
+			),
+			Expression::Multiply(left, right) => format!(
+				"({} * {})",
+				self.annotation_value_to_select_sql(left),
+				self.annotation_value_to_select_sql(right)
+			),
+			Expression::Divide(left, right) => format!(
+				"({} / {})",
+				self.annotation_value_to_select_sql(left),
+				self.annotation_value_to_select_sql(right)
+			),
+			Expression::Case { whens, default } => {
+				let mut case_sql = "CASE".to_string();
+				for when in whens {
+					case_sql.push_str(&format!(
+						" WHEN {} THEN {}",
+						when.condition.to_sql(),
+						self.annotation_value_to_select_sql(&when.then)
+					));
+				}
+				if let Some(default_value) = default {
+					case_sql.push_str(&format!(
+						" ELSE {}",
+						self.annotation_value_to_select_sql(default_value)
+					));
+				}
+				case_sql.push_str(" END");
+				case_sql
+			}
+			Expression::Coalesce(values) => format!(
+				"COALESCE({})",
+				values
+					.iter()
+					.map(|value| self.annotation_value_to_select_sql(value))
+					.collect::<Vec<_>>()
+					.join(", ")
+			),
+		}
 	}
 
 	fn has_joined_tables(&self) -> bool {
@@ -4616,7 +4699,7 @@ where
 		step: &RelationStep,
 		pk_values: &[i64],
 	) -> SelectStatement {
-		let related_alias = Alias::new(&relation.field);
+		let related_alias = Alias::new(&relation.alias);
 		let mut stmt = Query::select();
 		stmt.from_as(
 			Alias::new(step.target_table.as_ref()),
@@ -4640,7 +4723,7 @@ where
 		target_step: &RelationStep,
 		pk_values: &[i64],
 	) -> SelectStatement {
-		let target_alias = Alias::new(&relation.field);
+		let target_alias = Alias::new(&relation.alias);
 		let through_alias = Alias::new(through_step.name.as_ref());
 
 		let mut stmt = Query::select();
@@ -7654,6 +7737,37 @@ mod tests {
 	}
 
 	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+	struct TestProjects {
+		id: Option<i64>,
+	}
+
+	impl Model for TestProjects {
+		type PrimaryKey = i64;
+		type Fields = TestProjectFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"projects"
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = Some(value);
+		}
+
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+
+		fn new_fields() -> Self::Fields {
+			TestProjectFields
+		}
+	}
+
+	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 	struct TestTag {
 		id: Option<i64>,
 		name: String,
@@ -7775,6 +7889,25 @@ mod tests {
 				target_table: "test_projects".into(),
 				source_column: "id".into(),
 				target_column: "test_user_id".into(),
+				default_join_kind: crate::orm::relations::RelationJoinKind::Left,
+				multiplicity: crate::orm::relations::RelationMultiplicity::Multiple,
+			}]
+		}
+	}
+
+	struct TestProjectsChildren;
+
+	impl crate::orm::relations::RelationDescriptor for TestProjectsChildren {
+		type Source = TestProjects;
+		type Target = TestProjects;
+
+		fn steps() -> Vec<crate::orm::relations::RelationStep> {
+			vec![crate::orm::relations::RelationStep {
+				name: "projects".into(),
+				source_table: "projects".into(),
+				target_table: "projects".into(),
+				source_column: "id".into(),
+				target_column: "parent_id".into(),
 				default_join_kind: crate::orm::relations::RelationJoinKind::Left,
 				multiplicity: crate::orm::relations::RelationMultiplicity::Multiple,
 			}]
@@ -8581,6 +8714,37 @@ mod tests {
 	}
 
 	#[test]
+	fn test_relation_filter_qualifies_root_field_and_expression_annotations() {
+		use crate::orm::annotation::{Annotation, AnnotationValue, Expression, Value};
+		use crate::orm::expressions::F;
+
+		let related_filter =
+			crate::orm::relations::RelationPath::<TestUser, TestCorpusFile>::from_descriptor::<
+				TestUserCorpusFile,
+			>()
+			.field(TestCorpusFile::field_normalized_path())
+			.eq("/docs/index.md");
+
+		let sql = QuerySet::<TestUser>::new()
+			.filter(related_filter)
+			.annotate(Annotation::field(
+				"user_id",
+				AnnotationValue::Field(F::new("id")),
+			))
+			.annotate(Annotation::field(
+				"next_user_id",
+				AnnotationValue::Expression(Expression::Add(
+					Box::new(AnnotationValue::Field(F::new("id"))),
+					Box::new(AnnotationValue::Value(Value::Int(1))),
+				)),
+			))
+			.to_sql();
+
+		assert!(sql.contains(r#""test_users"."id" AS "user_id""#));
+		assert!(sql.contains(r#"("test_users"."id" + 1) AS "next_user_id""#));
+	}
+
+	#[test]
 	fn test_related_field_filter_uses_target_db_column() {
 		let filter =
 			crate::orm::relations::RelationPath::<TestUser, TestCorpusFile>::from_descriptor::<
@@ -8666,6 +8830,30 @@ mod tests {
 		assert_eq!(
 			sql,
 			r#"SELECT "projects".* FROM "test_projects" AS "projects" WHERE "projects"."test_user_id" IN (1, 2)"#
+		);
+	}
+
+	#[test]
+	fn test_typed_prefetch_keeps_relation_name_when_sql_alias_collides_with_root_table() {
+		use crate::orm::relations::RelationPathLike;
+
+		let path =
+			crate::orm::relations::RelationPath::<TestProjects, TestProjects>::from_descriptor::<
+				TestProjectsChildren,
+			>();
+		assert_eq!(path.leaf_alias(), "projects__projects");
+
+		let queryset = QuerySet::<TestProjects>::new()
+			.prefetch_related(path)
+			.prefetch_related(&["projects"]);
+		let queries = queryset.prefetch_related_queries(&[1, 2]);
+		let sql = queries[0].1.to_string(PostgresQueryBuilder);
+
+		assert_eq!(queries.len(), 1);
+		assert_eq!(queries[0].0, "projects");
+		assert_eq!(
+			sql,
+			r#"SELECT "projects__projects".* FROM "projects" AS "projects__projects" WHERE "projects__projects"."parent_id" IN (1, 2)"#
 		);
 	}
 
