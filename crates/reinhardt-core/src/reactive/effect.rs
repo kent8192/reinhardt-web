@@ -36,6 +36,7 @@ use alloc::boxed::Box;
 use alloc::collections::BTreeMap;
 use alloc::rc::Rc;
 
+use super::deps::{ExplicitDeps, ReactiveDeps};
 use super::runtime::{EffectTiming, NodeId, NodeType, Observer, try_with_runtime, with_runtime};
 
 /// Type alias for effect functions
@@ -101,11 +102,11 @@ pub struct Effect {
 	id: NodeId,
 	/// Whether this effect has been disposed
 	disposed: Rc<RefCell<bool>>,
-	/// Pending cleanup function from the most recent run (Option A hooks only).
+	/// Pending cleanup function from the most recent cleanup-aware run.
 	///
-	/// Populated by `new_with_deps` when the user's closure returns `Some(c)`;
-	/// flushed before each re-run and on dispose. `Effect::new` and
-	/// `Effect::new_with_timing` leave this slot empty.
+	/// Populated by mode constructors when the user's closure returns `Some(c)`;
+	/// flushed before each re-run and on dispose. Infallible constructors leave
+	/// this slot empty.
 	cleanup_slot: CleanupSlot,
 }
 
@@ -131,39 +132,11 @@ impl Effect {
 	///     println!("Count: {}", count_clone.get());
 	/// });
 	/// ```
-	pub fn new<F>(mut f: F) -> Self
+	pub fn new<F>(f: F) -> Self
 	where
 		F: FnMut() + 'static,
 	{
-		let id = NodeId::new();
-		let disposed = Rc::new(RefCell::new(false));
-
-		// Store the effect function
-		let disposed_clone = disposed.clone();
-		EFFECT_FUNCTIONS.with(|storage| {
-			storage.borrow_mut().insert(
-				id,
-				Some(Box::new(move || {
-					if !*disposed_clone.borrow() {
-						f();
-					}
-				})),
-			);
-		});
-
-		// Store the timing information (default: Passive)
-		EFFECT_TIMING.with(|storage| {
-			storage.borrow_mut().insert(id, EffectTiming::Passive);
-		});
-
-		// Run the effect for the first time
-		Self::execute_effect(id);
-
-		Self {
-			id,
-			disposed,
-			cleanup_slot: Rc::new(RefCell::new(None)),
-		}
+		Self::new_with_timing(f, EffectTiming::Passive)
 	}
 
 	/// Create a new Effect with specified execution timing
@@ -192,35 +165,14 @@ impl Effect {
 	where
 		F: FnMut() + 'static,
 	{
-		let id = NodeId::new();
-		let disposed = Rc::new(RefCell::new(false));
-
-		// Store the effect function
-		let disposed_clone = disposed.clone();
-		EFFECT_FUNCTIONS.with(|storage| {
-			storage.borrow_mut().insert(
-				id,
-				Some(Box::new(move || {
-					if !*disposed_clone.borrow() {
-						f();
-					}
-				})),
-			);
-		});
-
-		// Store the timing information
-		EFFECT_TIMING.with(|storage| {
-			storage.borrow_mut().insert(id, timing);
-		});
-
-		// Run the effect for the first time
-		Self::execute_effect(id);
-
-		Self {
-			id,
-			disposed,
-			cleanup_slot: Rc::new(RefCell::new(None)),
-		}
+		Self::new_with_mode_and_timing(
+			move || {
+				f();
+				None::<fn()>
+			},
+			ReactiveDeps::Auto,
+			timing,
+		)
 	}
 
 	/// Create a new Effect that subscribes only to the listed `deps` (Option A).
@@ -243,46 +195,61 @@ impl Effect {
 		F: FnMut() -> Option<C> + 'static,
 		C: FnOnce() + 'static,
 	{
-		Self::new_with_deps_internal(f, deps, EffectTiming::Passive)
+		Self::new_with_mode(f, ReactiveDeps::Explicit(ExplicitDeps::from_deps(deps)))
 	}
 
-	/// Internal helper: constructs an Effect with deps and a specified timing,
-	/// inserting the timing entry *before* the initial execution so the first
-	/// run respects the requested timing.
-	fn new_with_deps_internal<F, C>(mut f: F, deps: super::deps::Deps, timing: EffectTiming) -> Self
+	#[doc(hidden)]
+	pub fn new_with_mode<F, C>(f: F, deps: ReactiveDeps) -> Self
 	where
 		F: FnMut() -> Option<C> + 'static,
 		C: FnOnce() + 'static,
 	{
+		Self::new_with_mode_and_timing(f, deps, EffectTiming::Passive)
+	}
+
+	#[doc(hidden)]
+	pub fn new_with_mode_and_timing<F, C>(
+		mut f: F,
+		deps: ReactiveDeps,
+		timing: EffectTiming,
+	) -> Self
+	where
+		F: FnMut() -> Option<C> + 'static,
+		C: FnOnce() + 'static,
+	{
+		let explicit = match deps {
+			ReactiveDeps::Explicit(deps) => Some(deps.into_deps().into_inner()),
+			ReactiveDeps::Auto => None,
+		};
 		let id = NodeId::new();
 		let disposed = Rc::new(RefCell::new(false));
 		let cleanup_slot: CleanupSlot = Rc::new(RefCell::new(None));
-
-		// Capture deps so the wrapped closure can re-subscribe after every
-		// run: `execute_effect` calls `clear_dependencies(id)` before each
-		// invocation, which would otherwise erase our explicit subscriptions.
-		let deps_for_closure = deps.into_inner();
-		let cleanup_for_closure = cleanup_slot.clone();
-		let disposed_for_closure = disposed.clone();
+		let cleanup_for_closure = Rc::clone(&cleanup_slot);
+		let disposed_for_closure = Rc::clone(&disposed);
 
 		let wrapped = move || {
 			if *disposed_for_closure.borrow() {
 				return;
 			}
-			// Flush any cleanup from the previous run before re-executing.
-			let previous_cleanup = { cleanup_for_closure.borrow_mut().take() };
-			if let Some(prev) = previous_cleanup {
-				prev();
+
+			let previous_cleanup = cleanup_for_closure.borrow_mut().take();
+			if let Some(previous_cleanup) = previous_cleanup {
+				super::runtime::run_without_observer(previous_cleanup);
 			}
-			// Run the user's closure with the Observer stack detached so
-			// in-closure Signal reads do not auto-subscribe.
-			let next = super::runtime::run_without_observer(&mut f);
-			if let Some(c) = next {
-				*cleanup_for_closure.borrow_mut() = Some(Box::new(c));
+
+			let next_cleanup = if explicit.is_some() {
+				super::runtime::run_without_observer(&mut f)
+			} else {
+				f()
+			};
+			if let Some(cleanup) = next_cleanup {
+				*cleanup_for_closure.borrow_mut() = Some(Box::new(cleanup));
 			}
-			// Re-subscribe the listed deps (cleared by `clear_dependencies`).
-			for &dep in &deps_for_closure {
-				super::runtime::subscribe_node_to_observer(dep, id);
+
+			if let Some(explicit) = &explicit {
+				for &dependency in explicit {
+					super::runtime::subscribe_node_to_observer(dependency, id);
+				}
 			}
 		};
 
@@ -290,13 +257,9 @@ impl Effect {
 			storage.borrow_mut().insert(id, Some(Box::new(wrapped)));
 		});
 
-		// Insert timing *before* initial execution so the first
-		// `execute_effect` dispatches with the requested timing.
 		EFFECT_TIMING.with(|storage| {
 			storage.borrow_mut().insert(id, timing);
 		});
-
-		// Initial run.
 		Self::execute_effect(id);
 
 		Self {
@@ -321,7 +284,11 @@ impl Effect {
 		F: FnMut() -> Option<C> + 'static,
 		C: FnOnce() + 'static,
 	{
-		Self::new_with_deps_internal(f, deps, timing)
+		Self::new_with_mode_and_timing(
+			f,
+			ReactiveDeps::Explicit(ExplicitDeps::from_deps(deps)),
+			timing,
+		)
 	}
 
 	/// Execute an effect by its ID
@@ -402,7 +369,7 @@ impl Effect {
 	pub fn dispose(&self) {
 		*self.disposed.borrow_mut() = true;
 
-		// Flush any pending cleanup from new_with_deps before tearing down
+		// Flush any pending cleanup before tearing down
 		// runtime state, matching React's "cleanup runs on unmount" semantics.
 		let cleanup = { self.cleanup_slot.borrow_mut().take() };
 		if let Some(c) = cleanup {
@@ -468,9 +435,121 @@ impl super::runtime::Runtime {
 
 #[cfg(test)]
 mod tests {
+	use core::cell::Cell;
+
 	use super::*;
-	use crate::reactive::Signal;
+	use crate::reactive::{ReactiveDeps, Signal};
 	use serial_test::serial;
+
+	#[rstest::rstest]
+	#[serial(reactive_runtime)]
+	fn auto_mode_replaces_conditional_dependencies() {
+		let enabled = Signal::new(true);
+		let left = Signal::new(0_i32);
+		let right = Signal::new(0_i32);
+		let runs = Rc::new(Cell::new(0_u8));
+
+		let _effect = Effect::new_with_mode::<_, fn()>(
+			{
+				let enabled = enabled.clone();
+				let left = left.clone();
+				let right = right.clone();
+				let runs = Rc::clone(&runs);
+				move || {
+					runs.set(runs.get() + 1);
+					if enabled.get() {
+						let _ = left.get();
+					} else {
+						let _ = right.get();
+					}
+					None
+				}
+			},
+			ReactiveDeps::Auto,
+		);
+
+		enabled.set(false);
+		with_runtime(|runtime| runtime.flush_updates());
+		left.set(1);
+		with_runtime(|runtime| runtime.flush_updates());
+		right.set(1);
+		with_runtime(|runtime| runtime.flush_updates());
+		assert_eq!(runs.get(), 3);
+	}
+
+	#[rstest::rstest]
+	#[serial(reactive_runtime)]
+	fn auto_mode_does_not_track_cleanup_reads() {
+		let setup_dep = Signal::new(0_i32);
+		let cleanup_only = Signal::new(0_i32);
+		let setups = Rc::new(Cell::new(0_u8));
+		let cleanups = Rc::new(Cell::new(0_u8));
+
+		let effect = Effect::new_with_mode(
+			{
+				let setup_dep = setup_dep.clone();
+				let cleanup_only = cleanup_only.clone();
+				let setups = Rc::clone(&setups);
+				let cleanups = Rc::clone(&cleanups);
+				move || {
+					let _ = setup_dep.get();
+					setups.set(setups.get() + 1);
+					let cleanup_only = cleanup_only.clone();
+					let cleanups = Rc::clone(&cleanups);
+					Some(move || {
+						let _ = cleanup_only.get();
+						cleanups.set(cleanups.get() + 1);
+					})
+				}
+			},
+			ReactiveDeps::Auto,
+		);
+
+		setup_dep.set(1);
+		with_runtime(|runtime| runtime.flush_updates());
+		cleanup_only.set(1);
+		with_runtime(|runtime| runtime.flush_updates());
+		assert_eq!((setups.get(), cleanups.get()), (2, 1));
+		drop(effect);
+		assert_eq!(cleanups.get(), 2);
+	}
+
+	#[rstest::rstest]
+	#[serial(reactive_runtime)]
+	fn auto_mode_ignores_untracked_reads() {
+		let signal = Signal::new(0_i32);
+		let runs = Rc::new(Cell::new(0_u8));
+		let _effect = Effect::new_with_mode::<_, fn()>(
+			{
+				let signal = signal.clone();
+				let runs = Rc::clone(&runs);
+				move || {
+					let _ = signal.get_untracked();
+					let _ = signal.with_untracked(|value| *value);
+					runs.set(runs.get() + 1);
+					None
+				}
+			},
+			ReactiveDeps::Auto,
+		);
+
+		signal.set(1);
+		with_runtime(|runtime| runtime.flush_updates());
+		assert_eq!(runs.get(), 1);
+	}
+
+	#[rstest::rstest]
+	#[serial(reactive_runtime)]
+	fn auto_mode_preserves_layout_timing() {
+		let effect = Effect::new_with_mode_and_timing::<_, fn()>(
+			|| None,
+			ReactiveDeps::Auto,
+			EffectTiming::Layout,
+		);
+
+		let timing = EFFECT_TIMING.with(|storage| storage.borrow().get(&effect.id()).copied());
+		assert_eq!(timing, Some(EffectTiming::Layout));
+	}
 
 	#[test]
 	#[serial]

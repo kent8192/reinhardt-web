@@ -27,12 +27,6 @@ pub trait Trackable {
 /// Opaque container of `NodeId`s used by `*::new_with_deps` constructors to
 /// route subscriptions. Uses an inline `SmallVec` capacity of 8 to avoid heap
 /// allocation in the common case (React deps are empirically 0–3 entries).
-//
-// The inner `SmallVec` and the `as_slice` / `into_inner` accessors are unused
-// in Task 1 of the Layer ② plan and will become live once Task 5 (`Effect::
-// new_with_deps`) and Task 6 (`Memo::new_with_deps`) land. Suppress dead-code
-// noise during the foundational commit.
-#[allow(dead_code)]
 #[derive(Debug)]
 pub struct Deps(SmallVec<[NodeId; 8]>);
 
@@ -48,8 +42,6 @@ impl ExplicitDeps {
 		Self(Deps(nodes))
 	}
 
-	// This bridge becomes live when the hook constructors migrate to ReactiveDeps.
-	#[allow(dead_code)]
 	pub(crate) fn from_deps(deps: Deps) -> Self {
 		Self(deps)
 	}
@@ -86,8 +78,6 @@ impl Deps {
 		&self.0
 	}
 
-	// See struct-level note: consumed by Task 5 / Task 6.
-	#[allow(dead_code)]
 	pub(crate) fn into_inner(self) -> SmallVec<[NodeId; 8]> {
 		self.0
 	}
