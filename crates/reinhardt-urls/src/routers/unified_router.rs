@@ -83,7 +83,8 @@ use std::sync::Arc;
 #[cfg(all(feature = "client-router", native))]
 pub struct UnifiedRouter {
 	server: ServerRouter,
-	client: ClientRouter,
+	client: Option<ClientRouter>,
+	client_namespace: Option<String>,
 	/// WebSocket router for `urls.ws().<app>().<handler>()` URL resolution.
 	pub websocket: reinhardt_core::ws::WebSocketRouter,
 	di_registrations: reinhardt_di::DiRegistrationList,
@@ -97,11 +98,23 @@ impl UnifiedRouter {
 	pub fn new() -> Self {
 		Self {
 			server: ServerRouter::new(),
-			client: ClientRouter::new(),
+			client: None,
+			client_namespace: None,
 			websocket: reinhardt_core::ws::WebSocketRouter::new(),
 			di_registrations: reinhardt_di::DiRegistrationList::new(),
 			#[cfg(feature = "streaming")]
 			streaming_handlers: Vec::new(),
+		}
+	}
+
+	fn take_client_or_new(&mut self) -> ClientRouter {
+		self.client.take().unwrap_or_default()
+	}
+
+	fn apply_pending_client_namespace(&mut self, client: ClientRouter) -> ClientRouter {
+		match self.client_namespace.take() {
+			Some(namespace) => client.with_namespace(&namespace),
+			None => client,
 		}
 	}
 
@@ -147,7 +160,8 @@ impl UnifiedRouter {
 	where
 		F: FnOnce(ClientRouter) -> ClientRouter,
 	{
-		self.client = f(self.client);
+		let client = f(self.take_client_or_new());
+		self.client = Some(self.apply_pending_client_namespace(client));
 		self
 	}
 
@@ -161,14 +175,28 @@ impl UnifiedRouter {
 		&mut self.server
 	}
 
-	/// Returns a reference to the client router.
+	/// Returns a reference to the initialized client router.
+	///
+	/// # Panics
+	///
+	/// Panics when no client routes have been configured. Call [`Self::client`]
+	/// before accessing the client router.
 	pub fn client_ref(&self) -> &ClientRouter {
-		&self.client
+		self.client
+			.as_ref()
+			.expect("Client router not initialized. Call UnifiedRouter::client() first.")
 	}
 
-	/// Returns a mutable reference to the client router.
+	/// Returns a mutable reference to the initialized client router.
+	///
+	/// # Panics
+	///
+	/// Panics when no client routes have been configured. Call [`Self::client`]
+	/// before accessing the client router.
 	pub fn client_mut(&mut self) -> &mut ClientRouter {
-		&mut self.client
+		self.client
+			.as_mut()
+			.expect("Client router not initialized. Call UnifiedRouter::client() first.")
 	}
 
 	/// Configure WebSocket routing with a closure.
@@ -234,17 +262,20 @@ impl UnifiedRouter {
 	/// Consumes the router and returns the client router.
 	pub fn into_client(mut self) -> ClientRouter {
 		self.flush_di_registrations();
-		self.client
+		let client = self.take_client_or_new();
+		self.apply_pending_client_namespace(client)
 	}
 
 	/// Consumes the router and returns both parts.
 	pub fn into_parts(mut self) -> (ServerRouter, ClientRouter) {
 		self.flush_di_registrations();
+		let client = self.take_client_or_new();
+		let client = self.apply_pending_client_namespace(client);
 		let errors = self.server.register_all_routes();
 		for error in &errors {
 			tracing::warn!("{}", error);
 		}
-		(self.server, self.client)
+		(self.server, client)
 	}
 
 	/// Registers server router globally and returns client router.
@@ -301,10 +332,11 @@ impl UnifiedRouter {
 	/// with `"<namespace>:"`. Fixes #3726.
 	pub fn with_namespace(mut self, namespace: impl Into<String>) -> Self {
 		let ns: String = namespace.into();
-		// Borrow for the client (accepts `&str`) first, then move the owned
-		// `String` into the server (accepts `impl Into<String>`) to avoid a
-		// redundant `String` allocation.
-		self.client = self.client.with_namespace(&ns);
+		if let Some(client) = self.client.take() {
+			self.client = Some(client.with_namespace(&ns));
+		} else {
+			self.client_namespace = Some(ns.clone());
+		}
 		self.server = self.server.with_namespace(ns);
 		self
 	}
@@ -360,7 +392,11 @@ impl UnifiedRouter {
 	/// The `prefix` argument is applied to server routes only; client routes
 	/// keep their patterns as-declared, mirroring the WASM behavior.
 	pub fn mount_unified(mut self, prefix: &str, child: UnifiedRouter) -> Self {
-		self.client = self.client.merge(child.client);
+		if let Some(child_client) = child.client {
+			let client = self.take_client_or_new();
+			let client = self.apply_pending_client_namespace(client);
+			self.client = Some(client.merge(child_client));
+		}
 		self.mount(prefix, child.server)
 	}
 
@@ -393,6 +429,7 @@ impl std::fmt::Debug for UnifiedRouter {
 		f.debug_struct("UnifiedRouter")
 			.field("server", &self.server)
 			.field("client", &self.client)
+			.field("client_namespace", &self.client_namespace)
 			.field("di_registrations", &self.di_registrations)
 			.finish()
 	}
@@ -939,6 +976,16 @@ mod tests {
 			// Should have default server router
 			assert_eq!(router.server_ref().prefix(), "");
 		});
+	}
+
+	#[cfg(all(feature = "client-router", native))]
+	#[test]
+	fn server_only_router_does_not_require_a_reactive_scope() {
+		let router = UnifiedRouter::new()
+			.server(|server| server.with_prefix("/api"))
+			.into_server();
+
+		assert_eq!(router.prefix(), "/api");
 	}
 
 	#[test]
