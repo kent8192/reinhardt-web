@@ -105,6 +105,17 @@ impl FixtureRecord {
 	}
 }
 
+/// Foreign-key metadata exposed by a fixture model handler.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FixtureForeignKeyRelation {
+	/// Fixture field name used for the relation.
+	pub fixture_field: String,
+	/// Physical database column that stores the foreign key.
+	pub database_column: String,
+	/// Name of the related model.
+	pub related_model: String,
+}
+
 /// Deserialize a macro-generated fixture projection without requiring callers
 /// to depend on `serde_json` directly.
 #[doc(hidden)]
@@ -129,6 +140,15 @@ pub trait FixtureModelHandler: Send + Sync {
 	/// Physical database column for the primary key.
 	fn primary_key_database_column(&self) -> String {
 		self.primary_key_field().to_string()
+	}
+	/// Return whether the primary key is bound as text in fixture statements.
+	fn fixture_primary_key_is_text(&self) -> bool {
+		false
+	}
+
+	/// Return the foreign-key relations needed for fixture value binding and ordering.
+	fn fixture_foreign_key_relations(&self) -> Vec<FixtureForeignKeyRelation> {
+		Vec::new()
 	}
 
 	/// Fully-qualified model label.
@@ -273,6 +293,14 @@ where
 
 	fn primary_key_database_column(&self) -> String {
 		fixture_primary_key_column::<M>()
+	}
+
+	fn fixture_primary_key_is_text(&self) -> bool {
+		fixture_primary_key_binding_for_model::<M>() == FixturePrimaryKeyBinding::Text
+	}
+
+	fn fixture_foreign_key_relations(&self) -> Vec<FixtureForeignKeyRelation> {
+		fixture_foreign_key_relations_from_relationship_metadata::<M>()
 	}
 
 	#[cfg(feature = "migrations")]
@@ -947,12 +975,13 @@ fn fixture_value_to_sea_value_for_database_column<M>(
 where
 	M: Model,
 {
-	#[cfg(not(feature = "migrations"))]
-	let _ = database_column;
-
+	let foreign_key_binding =
+		fixture_foreign_key_binding_from_relationship_metadata::<M>(database_column);
 	#[cfg(feature = "migrations")]
-	if fixture_foreign_key_binding_for_database_column::<M>(database_column)
-		== Some(FixturePrimaryKeyBinding::Text)
+	let foreign_key_binding = fixture_foreign_key_binding_for_database_column::<M>(database_column)
+		.or(foreign_key_binding);
+
+	if foreign_key_binding == Some(FixturePrimaryKeyBinding::Text)
 		&& let Value::String(value) = value
 	{
 		return Ok(reinhardt_query::value::Value::String(Some(Box::new(
@@ -1277,6 +1306,77 @@ where
 				.map(|field_name| (field_name, relationship.name))
 		})
 		.collect()
+}
+
+fn fixture_foreign_key_relations_from_relationship_metadata<M>() -> Vec<FixtureForeignKeyRelation>
+where
+	M: Model,
+{
+	let field_metadata = M::field_metadata();
+	M::relationship_metadata()
+		.into_iter()
+		.filter_map(|relationship| {
+			if !matches!(
+				relationship.relationship_type,
+				crate::orm::relationship::RelationshipType::ManyToOne
+					| crate::orm::relationship::RelationshipType::OneToOne
+			) {
+				return None;
+			}
+			let foreign_key = relationship.foreign_key?;
+			let database_column = field_metadata
+				.iter()
+				.find(|field| field.name == foreign_key || field.db_column_name() == foreign_key)
+				.map(crate::orm::inspection::FieldInfo::db_column_name)
+				.unwrap_or(&foreign_key)
+				.to_string();
+			Some(FixtureForeignKeyRelation {
+				fixture_field: relationship.name,
+				database_column,
+				related_model: relationship.related_model,
+			})
+		})
+		.collect()
+}
+
+fn fixture_related_model_handler(
+	current_app_label: &str,
+	related_model: &str,
+) -> Option<Arc<dyn FixtureModelHandler>> {
+	let registry = global_fixture_registry();
+	if related_model.contains('.') {
+		return registry.get(related_model);
+	}
+
+	let related_model = related_model.rsplit("::").next().unwrap_or(related_model);
+	let handlers = registry.all();
+	if let Some(handler) = handlers.iter().find(|handler| {
+		handler.app_label().eq_ignore_ascii_case(current_app_label)
+			&& handler.model_name().eq_ignore_ascii_case(related_model)
+	}) {
+		return Some(handler.clone());
+	}
+	handlers
+		.into_iter()
+		.find(|handler| handler.model_name().eq_ignore_ascii_case(related_model))
+}
+
+fn fixture_foreign_key_binding_from_relationship_metadata<M>(
+	database_column: &str,
+) -> Option<FixturePrimaryKeyBinding>
+where
+	M: Model,
+{
+	let relation = fixture_foreign_key_relations_from_relationship_metadata::<M>()
+		.into_iter()
+		.find(|relation| relation.database_column == database_column)?;
+	fixture_related_model_handler(M::app_label(), &relation.related_model).map(|handler| {
+		if handler.fixture_primary_key_is_text() {
+			FixturePrimaryKeyBinding::Text
+		} else {
+			FixturePrimaryKeyBinding::Generic
+		}
+	})
 }
 
 #[cfg(feature = "migrations")]
@@ -1927,10 +2027,12 @@ fn order_records_by_dependencies(records: &[FixtureRecord]) -> FixtureResult<Vec
 
 #[cfg(not(feature = "migrations"))]
 fn order_records_by_dependencies(records: &[FixtureRecord]) -> FixtureResult<Vec<FixtureRecord>> {
-	for record in records {
-		parse_model_label(&record.model)?;
-	}
-	Ok(records.to_vec())
+	let dependencies = fixture_record_dependencies_from_relationship_metadata(records)?;
+	let order = topological_record_order(records, dependencies)?;
+	Ok(order
+		.into_iter()
+		.map(|index| records[index].clone())
+		.collect())
 }
 
 #[cfg(feature = "migrations")]
@@ -2026,6 +2128,76 @@ fn fixture_record_dependencies(
 	Ok(dependencies)
 }
 
+#[cfg(not(feature = "migrations"))]
+fn fixture_record_dependencies_from_relationship_metadata(
+	records: &[FixtureRecord],
+) -> FixtureResult<HashMap<usize, HashSet<usize>>> {
+	let mut record_indices = HashMap::new();
+	for (index, record) in records.iter().enumerate() {
+		let model_key = canonical_record_label(&record.model)?;
+		let primary_key_field = global_fixture_registry()
+			.get(&record.model)
+			.map(|handler| handler.primary_key_field().to_string())
+			.unwrap_or_else(|| "id".to_string());
+		if let Some(pk_key) = record.pk.as_ref().and_then(json_dependency_key) {
+			record_indices
+				.entry((model_key.clone(), primary_key_field, pk_key))
+				.or_insert(index);
+		}
+		for (field_name, value) in &record.fields {
+			let Some(value_key) = json_dependency_key(value) else {
+				continue;
+			};
+			record_indices
+				.entry((model_key.clone(), field_name.clone(), value_key))
+				.or_insert(index);
+		}
+	}
+
+	let mut dependencies = (0..records.len())
+		.map(|index| (index, HashSet::new()))
+		.collect::<HashMap<_, _>>();
+	for (source_index, record) in records.iter().enumerate() {
+		let Some(source_handler) = global_fixture_registry().get(&record.model) else {
+			continue;
+		};
+		for relation in source_handler.fixture_foreign_key_relations() {
+			let Some(value) = fixture_field_value(
+				record,
+				&relation.database_column,
+				Some(&relation.fixture_field),
+				false,
+			) else {
+				continue;
+			};
+			let Some(target_value) = json_dependency_key(value) else {
+				continue;
+			};
+			let Some(target_handler) =
+				fixture_related_model_handler(source_handler.app_label(), &relation.related_model)
+			else {
+				continue;
+			};
+			let target_key = target_handler.label();
+			let target_primary_key = target_handler.primary_key_field().to_string();
+			let Some(target_index) = record_indices
+				.get(&(target_key, target_primary_key, target_value))
+				.copied()
+			else {
+				continue;
+			};
+			if target_index != source_index {
+				dependencies
+					.entry(source_index)
+					.or_default()
+					.insert(target_index);
+			}
+		}
+	}
+
+	Ok(dependencies)
+}
+
 #[cfg(feature = "migrations")]
 fn fixture_foreign_key_target(
 	source_metadata: &crate::migrations::model_registry::ModelMetadata,
@@ -2062,7 +2234,6 @@ fn fixture_foreign_key_target(
 	))
 }
 
-#[cfg(feature = "migrations")]
 fn fixture_field_value<'a>(
 	record: &'a FixtureRecord,
 	field_name: &str,
@@ -2087,7 +2258,6 @@ fn fixture_field_value<'a>(
 		})
 }
 
-#[cfg(feature = "migrations")]
 fn json_dependency_key(value: &Value) -> Option<String> {
 	if value.is_null() {
 		None
@@ -2096,7 +2266,6 @@ fn json_dependency_key(value: &Value) -> Option<String> {
 	}
 }
 
-#[cfg(feature = "migrations")]
 fn topological_record_order(
 	records: &[FixtureRecord],
 	mut dependencies: HashMap<usize, HashSet<usize>>,
@@ -2134,12 +2303,12 @@ fn topological_record_order(
 	Ok(ordered)
 }
 
-#[cfg(feature = "migrations")]
 fn canonical_record_label(label: &str) -> FixtureResult<String> {
 	let (app_label, model_name) = parse_model_label(label)?;
 	if let Some(handler) = global_fixture_registry().get(label) {
 		return Ok(handler.label());
 	}
+	#[cfg(feature = "migrations")]
 	if let Some(metadata) = find_model_metadata(&app_label, &model_name) {
 		return Ok(canonical_label(&metadata.app_label, &metadata.model_name));
 	}
@@ -2259,6 +2428,114 @@ mod tests {
 	}
 
 	#[cfg(not(feature = "migrations"))]
+	#[derive(Clone, Serialize, Deserialize)]
+	struct FixtureOrmOnlyTextAuthor {
+		id: Option<String>,
+	}
+
+	#[cfg(not(feature = "migrations"))]
+	impl Model for FixtureOrmOnlyTextAuthor {
+		type PrimaryKey = String;
+		type Fields = FixtureOrmOnlyPostFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"fixture_orm_only_text_author"
+		}
+
+		fn new_fields() -> Self::Fields {
+			FixtureOrmOnlyPostFields
+		}
+
+		fn app_label() -> &'static str {
+			"fixture_orm_only"
+		}
+
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id.clone()
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = Some(value);
+		}
+
+		fn field_metadata() -> Vec<crate::orm::inspection::FieldInfo> {
+			let mut id = fixture_field_info("id", "CharField", false);
+			id.primary_key = true;
+			vec![id]
+		}
+	}
+
+	#[cfg(not(feature = "migrations"))]
+	#[derive(Clone, Serialize, Deserialize)]
+	struct FixtureOrmOnlyTextForeignKeyPost {
+		id: Option<i64>,
+		author_id: String,
+	}
+
+	#[cfg(not(feature = "migrations"))]
+	impl Model for FixtureOrmOnlyTextForeignKeyPost {
+		type PrimaryKey = i64;
+		type Fields = FixtureOrmOnlyPostFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"fixture_orm_only_text_foreign_key_post"
+		}
+
+		fn new_fields() -> Self::Fields {
+			FixtureOrmOnlyPostFields
+		}
+
+		fn app_label() -> &'static str {
+			"fixture_orm_only"
+		}
+
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = Some(value);
+		}
+
+		fn field_metadata() -> Vec<crate::orm::inspection::FieldInfo> {
+			let mut id = fixture_field_info("id", "BigIntegerField", false);
+			id.primary_key = true;
+			vec![id, fixture_field_info("author_id", "IntegerField", false)]
+		}
+
+		fn relationship_metadata() -> Vec<crate::orm::inspection::RelationInfo> {
+			vec![
+				crate::orm::inspection::RelationInfo::new(
+					"author",
+					crate::orm::relationship::RelationshipType::ManyToOne,
+					"FixtureOrmOnlyTextAuthor",
+				)
+				.with_foreign_key("author_id"),
+			]
+		}
+	}
+
+	#[cfg(not(feature = "migrations"))]
+	struct FixtureRegistryReset;
+
+	#[cfg(not(feature = "migrations"))]
+	impl Drop for FixtureRegistryReset {
+		fn drop(&mut self) {
+			global_fixture_registry().clear();
+		}
+	}
+
+	#[cfg(not(feature = "migrations"))]
 	#[test]
 	fn orm_only_fixture_fields_normalize_relationship_names() {
 		let mut object = Map::new();
@@ -2275,6 +2552,70 @@ mod tests {
 
 		assert_eq!(object.get("author"), Some(&Value::from(42)));
 		assert!(!object.contains_key("author_id"));
+	}
+
+	#[cfg(not(feature = "migrations"))]
+	#[test]
+	#[serial_test::serial(fixture_model_registry)]
+	fn orm_only_fixture_upserts_bind_text_foreign_keys_as_strings() {
+		let _registry_reset = FixtureRegistryReset;
+		global_fixture_registry().clear();
+		global_fixture_registry().register_model::<FixtureOrmOnlyTextAuthor>();
+		let author_id = "123e4567-e89b-12d3-a456-426614174000";
+		let mut object = Map::new();
+		object.insert("id".to_string(), Value::from(1));
+		object.insert("author_id".to_string(), Value::from(author_id));
+
+		let (_, values) = build_fixture_upsert_sql_values::<FixtureOrmOnlyTextForeignKeyPost>(
+			DatabaseBackend::Postgres,
+			&object,
+		)
+		.expect("ORM-only text foreign keys must build fixture statements");
+
+		assert!(values.contains(&QueryValue::String(author_id.to_string())));
+		assert!(
+			!values
+				.iter()
+				.any(|value| matches!(value, QueryValue::Uuid(_) | QueryValue::Timestamp(_))),
+			"ORM-only text foreign keys must not be rebound as UUID or timestamp parameters"
+		);
+	}
+
+	#[cfg(not(feature = "migrations"))]
+	#[test]
+	#[serial_test::serial(fixture_model_registry)]
+	fn orm_only_fixture_order_places_foreign_key_targets_first() {
+		let _registry_reset = FixtureRegistryReset;
+		global_fixture_registry().clear();
+		global_fixture_registry().register_model::<FixtureOrmOnlyTextAuthor>();
+		global_fixture_registry().register_model::<FixtureOrmOnlyTextForeignKeyPost>();
+		let author_id = "author-1";
+		let mut post_fields = Map::new();
+		post_fields.insert("author".to_string(), Value::from(author_id));
+		let records = vec![
+			FixtureRecord::new(
+				"fixture_orm_only.FixtureOrmOnlyTextForeignKeyPost",
+				Some(Value::from(1)),
+				post_fields,
+			),
+			FixtureRecord::new(
+				"fixture_orm_only.FixtureOrmOnlyTextAuthor",
+				Some(Value::from(author_id)),
+				Map::new(),
+			),
+		];
+
+		let ordered = order_records_by_dependencies(&records)
+			.expect("ORM-only fixture records must be ordered by foreign keys");
+
+		assert_eq!(
+			ordered[0].model,
+			"fixture_orm_only.FixtureOrmOnlyTextAuthor"
+		);
+		assert_eq!(
+			ordered[1].model,
+			"fixture_orm_only.FixtureOrmOnlyTextForeignKeyPost"
+		);
 	}
 
 	#[cfg(feature = "migrations")]
@@ -2956,7 +3297,6 @@ mod tests {
 		}
 	}
 
-	#[cfg(feature = "migrations")]
 	fn fixture_field_info(
 		name: &str,
 		field_type: &str,
