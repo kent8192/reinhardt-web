@@ -3261,14 +3261,14 @@ where
 	}
 
 	fn filter_relation_join_graph_for_query(&self) -> RelationJoinGraph {
-		let mut graph = RelationJoinGraph::new(self.root_alias());
+		let mut graph = RelationJoinGraph::new(T::table_name());
 		for filter in &self.filters {
 			filter.add_relation_joins(&mut graph);
 		}
 		for condition in &self.filter_conditions {
 			Self::collect_condition_relation_joins_at_depth(&mut graph, condition, 0);
 		}
-		graph
+		graph.with_root_alias(self.root_alias())
 	}
 
 	fn root_alias(&self) -> &str {
@@ -3296,6 +3296,30 @@ where
 			ColumnRef::table_column(Alias::new(self.root_alias()), Alias::new(field))
 		} else {
 			parse_column_reference(field)
+		}
+	}
+
+	fn having_aggregate_expr(&self, func: &AggregateFunc, field: &str) -> SimpleExpr {
+		match func {
+			AggregateFunc::Avg => {
+				Func::avg(Expr::col(self.root_column_reference(field)).into_simple_expr())
+			}
+			AggregateFunc::Count => {
+				if field == "*" {
+					Func::count(Expr::asterisk().into_simple_expr())
+				} else {
+					Func::count(Expr::col(self.root_column_reference(field)).into_simple_expr())
+				}
+			}
+			AggregateFunc::Sum => {
+				Func::sum(Expr::col(self.root_column_reference(field)).into_simple_expr())
+			}
+			AggregateFunc::Min => {
+				Func::min(Expr::col(self.root_column_reference(field)).into_simple_expr())
+			}
+			AggregateFunc::Max => {
+				Func::max(Expr::col(self.root_column_reference(field)).into_simple_expr())
+			}
 		}
 	}
 
@@ -4026,27 +4050,103 @@ where
 	}
 
 	fn filter_lhs_expr(&self, filter: &Filter) -> Expr {
-		if !self.relation_joins.is_empty()
-			&& filter.relation_alias().is_none()
-			&& matches!(&filter.field_source, FilterField::Column)
-			&& !filter.field.contains('.')
-		{
-			return Expr::col((Alias::new(self.root_alias()), Alias::new(&filter.field)));
+		if !self.relation_joins.is_empty() && filter.relation_alias().is_none() {
+			match &filter.field_source {
+				FilterField::Column if !filter.field.contains('.') => {
+					return Expr::col((Alias::new(self.root_alias()), Alias::new(&filter.field)));
+				}
+				FilterField::Expression(sql) if filter.field == *sql => {
+					return Expr::cust(self.root_qualified_filter_expression_sql(sql));
+				}
+				_ => {}
+			}
 		}
 
 		filter_lhs_expr(filter)
 	}
 
 	fn filter_lhs_sql(&self, filter: &Filter) -> String {
-		if !self.relation_joins.is_empty()
-			&& filter.relation_alias().is_none()
-			&& matches!(&filter.field_source, FilterField::Column)
-			&& !filter.field.contains('.')
-		{
-			return quote_identifier(&format!("{}.{}", self.root_alias(), filter.field));
+		if !self.relation_joins.is_empty() && filter.relation_alias().is_none() {
+			match &filter.field_source {
+				FilterField::Column if !filter.field.contains('.') => {
+					return quote_identifier(&format!("{}.{}", self.root_alias(), filter.field));
+				}
+				FilterField::Expression(sql) if filter.field == *sql => {
+					return self.root_qualified_filter_expression_sql(sql);
+				}
+				_ => {}
+			}
 		}
 
 		filter_lhs_sql(filter)
+	}
+
+	fn root_qualified_filter_expression_sql(&self, sql: &str) -> String {
+		let root_alias = quote_identifier(self.root_alias());
+		let mut qualified = String::with_capacity(sql.len() + root_alias.len());
+		let mut cursor = 0;
+
+		while cursor < sql.len() {
+			let next_identifier = sql[cursor..].find('"');
+			let next_literal = sql[cursor..].find('\'');
+			let relative_start = match (next_identifier, next_literal) {
+				(Some(identifier), Some(literal)) => identifier.min(literal),
+				(Some(start), None) | (None, Some(start)) => start,
+				(None, None) => {
+					qualified.push_str(&sql[cursor..]);
+					return qualified;
+				}
+			};
+			let start = cursor + relative_start;
+			if sql.as_bytes()[start] == b'\'' {
+				let mut end = start + 1;
+				loop {
+					let Some(relative_end) = sql[end..].find('\'') else {
+						qualified.push_str(&sql[cursor..]);
+						return qualified;
+					};
+					end += relative_end;
+					if sql.as_bytes().get(end + 1) == Some(&b'\'') {
+						end += 2;
+						continue;
+					}
+					end += 1;
+					qualified.push_str(&sql[cursor..end]);
+					cursor = end;
+					break;
+				}
+				continue;
+			}
+
+			let mut end = start + 1;
+			loop {
+				let Some(relative_end) = sql[end..].find('"') else {
+					qualified.push_str(&sql[cursor..]);
+					return qualified;
+				};
+				end += relative_end;
+				if sql.as_bytes().get(end + 1) == Some(&b'"') {
+					end += 2;
+					continue;
+				}
+				break;
+			}
+
+			qualified.push_str(&sql[cursor..start]);
+			let previous = sql[..start].chars().next_back();
+			let next = sql[end + 1..].chars().next();
+			if previous == Some('.') || next == Some('.') {
+				qualified.push_str(&sql[start..=end]);
+			} else {
+				qualified.push_str(&root_alias);
+				qualified.push('.');
+				qualified.push_str(&sql[start..=end]);
+			}
+			cursor = end + 1;
+		}
+
+		qualified.push_str(&sql[cursor..]);
+		qualified
 	}
 
 	fn like_expr(
@@ -4452,28 +4552,7 @@ where
 					operator,
 					value,
 				} => {
-					// Build aggregate function expression
-					let agg_expr = match func {
-						AggregateFunc::Avg => {
-							Func::avg(Expr::col(Alias::new(field)).into_simple_expr())
-						}
-						AggregateFunc::Count => {
-							if field == "*" {
-								Func::count(Expr::asterisk().into_simple_expr())
-							} else {
-								Func::count(Expr::col(Alias::new(field)).into_simple_expr())
-							}
-						}
-						AggregateFunc::Sum => {
-							Func::sum(Expr::col(Alias::new(field)).into_simple_expr())
-						}
-						AggregateFunc::Min => {
-							Func::min(Expr::col(Alias::new(field)).into_simple_expr())
-						}
-						AggregateFunc::Max => {
-							Func::max(Expr::col(Alias::new(field)).into_simple_expr())
-						}
-					};
+					let agg_expr = self.having_aggregate_expr(func, field);
 
 					// Build comparison expression
 					let having_expr = match operator {
@@ -6438,28 +6517,7 @@ where
 						operator,
 						value,
 					} => {
-						// Build aggregate function expression
-						let agg_expr = match func {
-							AggregateFunc::Avg => {
-								Func::avg(Expr::col(Alias::new(field)).into_simple_expr())
-							}
-							AggregateFunc::Count => {
-								if field == "*" {
-									Func::count(Expr::asterisk().into_simple_expr())
-								} else {
-									Func::count(Expr::col(Alias::new(field)).into_simple_expr())
-								}
-							}
-							AggregateFunc::Sum => {
-								Func::sum(Expr::col(Alias::new(field)).into_simple_expr())
-							}
-							AggregateFunc::Min => {
-								Func::min(Expr::col(Alias::new(field)).into_simple_expr())
-							}
-							AggregateFunc::Max => {
-								Func::max(Expr::col(Alias::new(field)).into_simple_expr())
-							}
-						};
+						let agg_expr = self.having_aggregate_expr(func, field);
 
 						// Build comparison expression
 						let having_expr = match operator {
@@ -7429,7 +7487,10 @@ fn escape_like_pattern(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-	use super::{FilterCondition, MAX_FILTER_CONDITION_DEPTH, QueryFilterInput};
+	use super::{
+		AggregateFunc, AggregateValue, ComparisonOp, FilterCondition, HavingCondition,
+		MAX_FILTER_CONDITION_DEPTH, QueryFilterInput,
+	};
 	use crate::orm::query::{FieldAssignment, UpdateValue};
 	use crate::orm::{FilterOperator, FilterValue, Manager, Model, QuerySet, query::Filter};
 	use reinhardt_query::{
@@ -8523,6 +8584,29 @@ mod tests {
 	}
 
 	#[test]
+	fn test_nested_relation_filter_count_reuses_rebased_aliases() {
+		let filter =
+			crate::orm::relations::RelationPath::<TestUser, TestCorpusFile>::from_descriptor::<
+				TestUserCorpusFile,
+			>()
+			.then::<TestCorpusFileProject, TestProject>()
+			.field(crate::orm::expressions::FieldRef::<TestProject, String>::new("name"))
+			.eq("reinhardt");
+
+		let stmt = QuerySet::<TestUser>::new()
+			.from_as("corpus_file__project")
+			.filter(filter)
+			.count_select_query()
+			.expect("count select query");
+		let sql = stmt.to_string(PostgresQueryBuilder);
+
+		assert!(sql.contains(
+			r#"LEFT JOIN "test_projects" AS "corpus_file__project__project" ON "corpus_file"."project_id" = "corpus_file__project__project"."id""#
+		));
+		assert!(sql.ends_with(r#"WHERE "corpus_file__project__project"."name" = 'reinhardt'"#));
+	}
+
+	#[test]
 	fn test_optional_relation_filter_promotes_left_join() {
 		let filter =
 			crate::orm::relations::RelationPath::<TestUser, TestCorpusFile>::from_descriptor::<
@@ -8695,6 +8779,44 @@ mod tests {
 	}
 
 	#[test]
+	fn test_relation_filter_qualifies_transformed_root_filter() {
+		let related_filter =
+			crate::orm::relations::RelationPath::<TestUser, TestCorpusFile>::from_descriptor::<
+				TestUserCorpusFile,
+			>()
+			.field(TestCorpusFile::field_normalized_path())
+			.eq("/docs/index.md");
+
+		let sql = QuerySet::<TestUser>::new()
+			.filter(related_filter)
+			.filter(TestUser::field_created_at().year().eq(2026))
+			.to_sql();
+
+		assert!(sql.contains(r#"EXTRACT(YEAR FROM "test_users"."created_at") = 2026"#));
+	}
+
+	#[test]
+	fn test_relation_filter_qualification_preserves_expression_string_literals() {
+		let related_filter =
+			crate::orm::relations::RelationPath::<TestUser, TestCorpusFile>::from_descriptor::<
+				TestUserCorpusFile,
+			>()
+			.field(TestCorpusFile::field_normalized_path())
+			.eq("/docs/index.md");
+
+		let sql = QuerySet::<TestUser>::new()
+			.filter(related_filter)
+			.filter(Filter::expression(
+				r#"COALESCE("created_at", '"created_at"')"#,
+				FilterOperator::Eq,
+				FilterValue::Integer(2026),
+			))
+			.to_sql();
+
+		assert!(sql.contains(r#"COALESCE("test_users"."created_at", '"created_at"') = 2026"#));
+	}
+
+	#[test]
 	fn test_relation_filter_qualifies_root_aggregate_annotation() {
 		let related_filter =
 			crate::orm::relations::RelationPath::<TestUser, TestCorpusFile>::from_descriptor::<
@@ -8711,6 +8833,30 @@ mod tests {
 			.to_sql();
 
 		assert!(sql.contains(r#"COUNT("test_users"."id") AS "user_count""#));
+	}
+
+	#[test]
+	fn test_relation_filter_qualifies_root_having_aggregate() {
+		let related_filter =
+			crate::orm::relations::RelationPath::<TestUser, TestCorpusFile>::from_descriptor::<
+				TestUserCorpusFile,
+			>()
+			.field(TestCorpusFile::field_normalized_path())
+			.eq("/docs/index.md");
+
+		let mut queryset = QuerySet::<TestUser>::new().filter(related_filter);
+		queryset
+			.having_conditions
+			.push(HavingCondition::AggregateCompare {
+				func: AggregateFunc::Sum,
+				field: "id".to_string(),
+				operator: ComparisonOp::Gt,
+				value: AggregateValue::Int(1),
+			});
+
+		let sql = queryset.to_sql();
+
+		assert!(sql.contains(r#"HAVING SUM("test_users"."id") > 1"#));
 	}
 
 	#[test]
