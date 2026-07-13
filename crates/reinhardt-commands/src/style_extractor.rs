@@ -11,7 +11,7 @@ use sha2::{Digest, Sha256};
 use syn::visit::Visit;
 use syn::visit_mut::VisitMut;
 use syn::{
-	Attribute, Expr, Item, ItemConst, ItemFn, ItemMod, ItemStatic, Lit, LitStr, Meta,
+	Attribute, Expr, Item, ItemConst, ItemFn, ItemMacro, ItemMod, ItemStatic, Lit, LitStr, Meta,
 	StaticMutability, Type,
 };
 
@@ -344,38 +344,74 @@ fn collect_source_file(
 		.map_err(|error| format!("failed to read {}: {error}", source_path.display()))?;
 	let file = syn::parse_file(&source)
 		.map_err(|error| format!("failed to parse {}: {error}", source_path.display()))?;
-	collect_module_items(&file.items, module_dir, cfg, files)
+	collect_module_items(&file.items, module_dir, &source_path, cfg, files)
 }
 
 fn collect_module_items(
 	items: &[Item],
 	module_dir: &Path,
+	source_path: &Path,
 	cfg: &CfgEvaluator,
 	files: &mut BTreeSet<PathBuf>,
 ) -> Result<(), String> {
 	for item in items {
-		let Item::Mod(module) = item else {
-			continue;
-		};
-		if !cfg.items_are_enabled(&module.attrs) {
-			continue;
-		}
-		if let Some((_, nested_items)) = &module.content {
-			collect_module_items(
-				nested_items,
-				&module_dir.join(module.ident.to_string()),
-				cfg,
-				files,
-			)?;
-			continue;
-		}
+		match item {
+			Item::Mod(module) => {
+				if !cfg.items_are_enabled(&module.attrs) {
+					continue;
+				}
+				if let Some((_, nested_items)) = &module.content {
+					collect_module_items(
+						nested_items,
+						&module_dir.join(module.ident.to_string()),
+						source_path,
+						cfg,
+						files,
+					)?;
+					continue;
+				}
 
-		let module_source = external_module_source_path(module_dir, module, cfg)?;
-		let nested_module_dir =
-			module_directory(&module_source.path, module_source.has_path_attribute)?;
-		collect_source_file(&module_source.path, &nested_module_dir, cfg, files)?;
+				let module_source = external_module_source_path(module_dir, module, cfg)?;
+				let nested_module_dir =
+					module_directory(&module_source.path, module_source.has_path_attribute)?;
+				collect_source_file(&module_source.path, &nested_module_dir, cfg, files)?;
+			}
+			Item::Macro(item_macro) if cfg.items_are_enabled(&item_macro.attrs) => {
+				if let Some(include_path) = include_source_path(source_path, item_macro)? {
+					collect_source_file(&include_path, module_dir, cfg, files)?;
+				}
+			}
+			_ => {}
+		}
 	}
 	Ok(())
+}
+
+fn include_source_path(source_path: &Path, item: &ItemMacro) -> Result<Option<PathBuf>, String> {
+	if item.mac.path.segments.len() != 1 || !item.mac.path.is_ident("include") {
+		return Ok(None);
+	}
+	let included = syn::parse2::<LitStr>(item.mac.tokens.clone()).map_err(|_| {
+		format!(
+			"{}: include! must use a string literal for component-style extraction",
+			source_path.display()
+		)
+	})?;
+	let parent = source_path.parent().ok_or_else(|| {
+		format!(
+			"included source has no parent directory: {}",
+			source_path.display()
+		)
+	})?;
+	let resolved = parent.join(included.value());
+	if !resolved.is_file() {
+		return Err(format!(
+			"{}: include! references missing source file {}",
+			source_path.display(),
+			resolved.display()
+		));
+	}
+	Ok(Some(resolved))
 }
 
 /// One resolved external module source and its child-module resolution mode.
@@ -565,6 +601,37 @@ impl CfgEvaluator {
 
 	fn predicate_is_enabled(&self, predicate: &Meta) -> bool {
 		self.target.predicate_is_enabled(predicate, &self.features)
+	}
+
+	fn active_style_def_attributes(&self, attributes: &[Attribute]) -> Vec<Meta> {
+		let mut active = Vec::new();
+		for attribute in attributes {
+			self.collect_active_attributes(&attribute.meta, &mut active);
+		}
+		active.into_iter().filter(is_style_def_attribute).collect()
+	}
+
+	fn collect_active_attributes(&self, meta: &Meta, active: &mut Vec<Meta>) {
+		if !meta.path().is_ident("cfg_attr") {
+			active.push(meta.clone());
+			return;
+		}
+		let Meta::List(list) = meta else {
+			return;
+		};
+		let Ok(arguments) = list
+			.parse_args_with(syn::punctuated::Punctuated::<Meta, syn::Token![,]>::parse_terminated)
+		else {
+			return;
+		};
+		let Some(condition) = arguments.first() else {
+			return;
+		};
+		if self.predicate_is_enabled(condition) {
+			for generated in arguments.iter().skip(1) {
+				self.collect_active_attributes(generated, active);
+			}
+		}
 	}
 }
 
@@ -780,18 +847,25 @@ impl<'a> DefinitionScanner<'a> {
 	}
 }
 
+fn is_style_def_attribute(meta: &Meta) -> bool {
+	meta.path()
+		.segments
+		.last()
+		.is_some_and(|segment| segment.ident == "style_def")
+}
+
+fn is_style_def_path(path: &syn::Path) -> bool {
+	path.segments
+		.last()
+		.is_some_and(|segment| segment.ident == "style_def")
+}
+
 impl<'ast> Visit<'ast> for DefinitionScanner<'_> {
 	fn visit_item_fn(&mut self, item: &'ast ItemFn) {
 		if !self.cfg.items_are_enabled(&item.attrs) {
 			return;
 		}
-		if item.attrs.iter().any(|attribute| {
-			attribute
-				.path()
-				.segments
-				.last()
-				.is_some_and(|segment| segment.ident == "style_def")
-		}) {
+		if !self.cfg.active_style_def_attributes(&item.attrs).is_empty() {
 			self.reject(
 				item.sig.fn_token.span,
 				"the style_def attribute is supported only on immutable static items",
@@ -805,13 +879,7 @@ impl<'ast> Visit<'ast> for DefinitionScanner<'_> {
 		if !self.cfg.items_are_enabled(&item.attrs) {
 			return;
 		}
-		if item.attrs.iter().any(|attribute| {
-			attribute
-				.path()
-				.segments
-				.last()
-				.is_some_and(|segment| segment.ident == "style_def")
-		}) {
+		if !self.cfg.active_style_def_attributes(&item.attrs).is_empty() {
 			self.reject(
 				item.mod_token.span,
 				"the style_def attribute is supported only on immutable static items",
@@ -825,17 +893,7 @@ impl<'ast> Visit<'ast> for DefinitionScanner<'_> {
 		if !self.cfg.items_are_enabled(&item.attrs) {
 			return;
 		}
-		let style_attributes: Vec<_> = item
-			.attrs
-			.iter()
-			.filter(|attribute| {
-				attribute
-					.path()
-					.segments
-					.last()
-					.is_some_and(|segment| segment.ident == "style_def")
-			})
-			.collect();
+		let style_attributes = self.cfg.active_style_def_attributes(&item.attrs);
 		let style_macro = match item.expr.as_ref() {
 			Expr::Macro(expression) if expression.mac.path.is_ident("style") => {
 				Some(&expression.mac)
@@ -848,7 +906,7 @@ impl<'ast> Visit<'ast> for DefinitionScanner<'_> {
 		}
 
 		let exact_attribute = style_attributes.len() == 1
-			&& matches!(&style_attributes[0].meta, Meta::Path(path) if path.segments.last().is_some_and(|segment| segment.ident == "style_def"));
+			&& matches!(&style_attributes[0], Meta::Path(path) if is_style_def_path(path));
 		let immutable = matches!(item.mutability, StaticMutability::None);
 		let style_type = match item.ty.as_ref() {
 			Type::Path(path) if path.qself.is_none() && path.path.segments.len() == 1 => {
@@ -883,13 +941,7 @@ impl<'ast> Visit<'ast> for DefinitionScanner<'_> {
 		if !self.cfg.items_are_enabled(&item.attrs) {
 			return;
 		}
-		let has_style_attribute = item.attrs.iter().any(|attribute| {
-			attribute
-				.path()
-				.segments
-				.last()
-				.is_some_and(|segment| segment.ident == "style_def")
-		});
+		let has_style_attribute = !self.cfg.active_style_def_attributes(&item.attrs).is_empty();
 		let has_style_macro = matches!(item.expr.as_ref(), Expr::Macro(expression) if expression.mac.path.is_ident("style"));
 		if has_style_attribute || has_style_macro {
 			self.reject(

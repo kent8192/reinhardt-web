@@ -219,6 +219,32 @@ static THEME: ThemeStyles = style! { .theme { color: purple; } };
 }
 
 #[rstest]
+fn scanner_expands_active_cfg_attr_style_definitions() {
+	let directory = tempfile::tempdir().expect("create temporary package");
+	let manifest = write_package(
+		directory.path(),
+		r#"
+#[cfg_attr(feature = "theme", style_def)]
+static THEME: ThemeStyles = style! { .theme { color: purple; } };
+"#,
+	);
+	fs::write(
+		&manifest,
+		"[package]\nname = \"poll-app\"\nversion = \"0.4.0\"\nedition = \"2024\"\n\n[features]\ndefault = [\"theme\"]\ntheme = []\n",
+	)
+	.expect("enable the theme feature by default");
+
+	let context = StylePackageContext::resolve(&manifest, None)
+		.expect("select package with the active theme feature");
+	let bundle = StyleExtractor::new(context)
+		.extract()
+		.expect("extract a cfg_attr-generated style definition");
+
+	assert_eq!(bundle.definitions.len(), 1);
+	assert_eq!(bundle.definitions[0].style_type_name, "ThemeStyles");
+}
+
+#[rstest]
 fn scanner_includes_style_definitions_enabled_by_pages_cfg_aliases() {
 	let directory = tempfile::tempdir().expect("create temporary package");
 	let manifest = write_package(
@@ -290,6 +316,26 @@ fn scanner_follows_compiled_modules_and_ignores_unreferenced_source_files() {
 
 	assert_eq!(bundle.definitions.len(), 1);
 	assert_eq!(bundle.definitions[0].style_type_name, "Styles");
+}
+
+#[rstest]
+fn scanner_follows_literal_include_sources() {
+	let directory = tempfile::tempdir().expect("create temporary package");
+	let manifest = write_package(directory.path(), "include!(\"styles.rs\");\n");
+	fs::write(
+		directory.path().join("src/styles.rs"),
+		"#[style_def] static STYLES: IncludedStyles = style! { .card { color: red; } };\n",
+	)
+	.expect("write included style definitions");
+	let context = StylePackageContext::resolve(&manifest, None).expect("select root package");
+
+	let bundle = StyleExtractor::new(context)
+		.extract()
+		.expect("extract style definitions from an included source");
+
+	assert_eq!(bundle.definitions.len(), 1);
+	assert_eq!(bundle.definitions[0].style_type_name, "IncludedStyles");
+	assert!(bundle.definitions[0].source_path.ends_with("src/styles.rs"));
 }
 
 #[rstest]
