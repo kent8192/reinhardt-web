@@ -947,6 +947,9 @@ fn fixture_value_to_sea_value_for_database_column<M>(
 where
 	M: Model,
 {
+	#[cfg(not(feature = "migrations"))]
+	let _ = database_column;
+
 	#[cfg(feature = "migrations")]
 	if fixture_foreign_key_binding_for_database_column::<M>(database_column)
 		== Some(FixturePrimaryKeyBinding::Text)
@@ -1262,6 +1265,20 @@ where
 	Ok(())
 }
 
+fn foreign_key_fixture_field_names_from_relationship_metadata<M>() -> Vec<(String, String)>
+where
+	M: Model,
+{
+	M::relationship_metadata()
+		.into_iter()
+		.filter_map(|relationship| {
+			relationship
+				.foreign_key
+				.map(|field_name| (field_name, relationship.name))
+		})
+		.collect()
+}
+
 #[cfg(feature = "migrations")]
 fn normalize_foreign_key_fixture_fields<M>(object: &mut Map<String, Value>) -> FixtureResult<()>
 where
@@ -1311,13 +1328,8 @@ fn foreign_key_fixture_field_names<M>(
 where
 	M: Model,
 {
-	let relationship_names = M::relationship_metadata()
+	let relationship_names = foreign_key_fixture_field_names_from_relationship_metadata::<M>()
 		.into_iter()
-		.filter_map(|relationship| {
-			relationship
-				.foreign_key
-				.map(|field_name| (field_name, relationship.name))
-		})
 		.collect::<HashMap<_, _>>();
 
 	metadata
@@ -1339,14 +1351,38 @@ fn denormalize_foreign_key_fixture_fields<M>(_object: &mut Map<String, Value>) -
 where
 	M: Model,
 {
+	let mut renames = Vec::new();
+	for (field_name, relation_name) in
+		foreign_key_fixture_field_names_from_relationship_metadata::<M>()
+	{
+		if !_object.contains_key(&field_name) || _object.contains_key(&relation_name) {
+			continue;
+		}
+		renames.push((field_name, relation_name));
+	}
+	for (field_name, relation_name) in renames {
+		if let Some(value) = _object.remove(&field_name) {
+			_object.insert(relation_name, value);
+		}
+	}
 	Ok(())
 }
 
 #[cfg(not(feature = "migrations"))]
-fn normalize_foreign_key_fixture_fields<M>(_object: &mut Map<String, Value>) -> FixtureResult<()>
+fn normalize_foreign_key_fixture_fields<M>(object: &mut Map<String, Value>) -> FixtureResult<()>
 where
 	M: Model,
 {
+	for (field_name, relation_name) in
+		foreign_key_fixture_field_names_from_relationship_metadata::<M>()
+	{
+		if object.contains_key(&field_name) {
+			continue;
+		}
+		if let Some(value) = object.remove(&relation_name) {
+			object.insert(field_name, value);
+		}
+	}
 	Ok(())
 }
 
@@ -2161,6 +2197,85 @@ mod tests {
 	use super::*;
 	#[cfg(feature = "migrations")]
 	use crate::orm::model::FieldSelector;
+
+	#[cfg(not(feature = "migrations"))]
+	#[derive(Clone, Serialize, Deserialize)]
+	struct FixtureOrmOnlyPost {
+		id: Option<i64>,
+		author_id: i64,
+	}
+
+	#[cfg(not(feature = "migrations"))]
+	#[derive(Clone)]
+	struct FixtureOrmOnlyPostFields;
+
+	#[cfg(not(feature = "migrations"))]
+	impl crate::orm::model::FieldSelector for FixtureOrmOnlyPostFields {
+		fn with_alias(self, _alias: &str) -> Self {
+			self
+		}
+	}
+
+	#[cfg(not(feature = "migrations"))]
+	impl Model for FixtureOrmOnlyPost {
+		type PrimaryKey = i64;
+		type Fields = FixtureOrmOnlyPostFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"fixture_orm_only_post"
+		}
+
+		fn new_fields() -> Self::Fields {
+			FixtureOrmOnlyPostFields
+		}
+
+		fn app_label() -> &'static str {
+			"fixture_orm_only"
+		}
+
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = Some(value);
+		}
+
+		fn relationship_metadata() -> Vec<crate::orm::inspection::RelationInfo> {
+			vec![
+				crate::orm::inspection::RelationInfo::new(
+					"author",
+					crate::orm::relationship::RelationshipType::ManyToOne,
+					"FixtureOrmOnlyAuthor",
+				)
+				.with_foreign_key("author_id"),
+			]
+		}
+	}
+
+	#[cfg(not(feature = "migrations"))]
+	#[test]
+	fn orm_only_fixture_fields_normalize_relationship_names() {
+		let mut object = Map::new();
+		object.insert("author".to_string(), Value::from(42));
+
+		normalize_foreign_key_fixture_fields::<FixtureOrmOnlyPost>(&mut object)
+			.expect("ORM-only fixtures must accept relation names");
+
+		assert_eq!(object.get("author_id"), Some(&Value::from(42)));
+		assert!(!object.contains_key("author"));
+
+		denormalize_foreign_key_fixture_fields::<FixtureOrmOnlyPost>(&mut object)
+			.expect("ORM-only fixture dumps must use relation names");
+
+		assert_eq!(object.get("author"), Some(&Value::from(42)));
+		assert!(!object.contains_key("author_id"));
+	}
 
 	#[cfg(feature = "migrations")]
 	#[derive(Clone, Serialize, Deserialize)]
