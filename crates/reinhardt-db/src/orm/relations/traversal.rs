@@ -5,7 +5,7 @@
 //! typed filters, `select_related`, and `prefetch_related` planning.
 
 use std::borrow::Cow;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::marker::PhantomData;
 
 use smallvec::SmallVec;
@@ -264,11 +264,18 @@ impl RelationJoinGraph {
 
 		let previous_root_alias = std::mem::replace(&mut self.root_alias, root_alias);
 		let mut aliases = HashMap::from([(previous_root_alias, self.root_alias.clone())]);
+		let mut reserved_aliases = HashSet::from([self.root_alias.clone()]);
 		for join in &mut self.joins {
 			if let Some(source_alias) = aliases.get(&join.source_alias) {
 				join.source_alias.clone_from(source_alias);
 			}
-			let alias = step_alias(&join.source_alias, &join.relation_name, &self.root_alias);
+			let alias = step_alias_with_reserved(
+				&join.source_alias,
+				&join.relation_name,
+				&self.root_alias,
+				&reserved_aliases,
+			);
+			reserved_aliases.insert(alias.clone());
 			let previous_alias = std::mem::replace(&mut join.alias, alias);
 			aliases.insert(previous_alias, join.alias.clone());
 		}
@@ -387,6 +394,19 @@ fn step_alias(source_alias: &str, step_name: &str, root_alias: &str) -> String {
 	} else {
 		format!("{}__{}", source_alias, step_name)
 	}
+}
+
+fn step_alias_with_reserved(
+	source_alias: &str,
+	step_name: &str,
+	root_alias: &str,
+	reserved_aliases: &HashSet<String>,
+) -> String {
+	let mut alias = step_alias(source_alias, step_name, root_alias);
+	while reserved_aliases.contains(&alias) {
+		alias = format!("{alias}__{step_name}");
+	}
+	alias
 }
 
 pub(crate) fn step_aliases(steps: &[RelationStep], root_alias: &str) -> SmallVec<[String; 4]> {
@@ -820,6 +840,23 @@ mod tests {
 		assert_eq!(path.leaf_alias(), "projects__projects");
 		assert_eq!(graph.joins()[0].alias, "projects__projects");
 		assert_eq!(graph.joins()[0].source_alias, "projects");
+	}
+
+	#[test]
+	fn join_graph_rebases_nested_alias_that_matches_root_alias() {
+		let path = RelationPath::<Document, CorpusFile>::from_descriptor::<DocumentCorpusFile>()
+			.then::<CorpusFileProject, Project>();
+		let mut graph = RelationJoinGraph::new("documents");
+		graph.add_path(&path);
+
+		let graph = graph.with_root_alias("corpus_file__project");
+		let joins = graph.joins();
+
+		assert_eq!(joins.len(), 2);
+		assert_eq!(joins[0].source_alias, "corpus_file__project");
+		assert_eq!(joins[0].alias, "corpus_file");
+		assert_eq!(joins[1].source_alias, "corpus_file");
+		assert_eq!(joins[1].alias, "corpus_file__project__project");
 	}
 
 	#[test]

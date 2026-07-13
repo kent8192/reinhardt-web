@@ -3244,6 +3244,25 @@ where
 		}
 	}
 
+	fn distinct_root_primary_key_sql(&self) -> String {
+		let root_alias = quote_identifier(self.root_alias());
+		if let Some(composite_key) = T::composite_primary_key() {
+			let columns = composite_key
+				.fields()
+				.iter()
+				.map(|field| format!("{root_alias}.{}", quote_identifier(field)))
+				.collect::<Vec<_>>()
+				.join(", ");
+			if composite_key.field_count() > 1 {
+				format!("({columns})")
+			} else {
+				columns
+			}
+		} else {
+			format!("{root_alias}.{}", quote_identifier(T::primary_key_column()))
+		}
+	}
+
 	fn validate_relation_path(&self, path: &str) -> reinhardt_core::exception::Result<()> {
 		if path.contains("__") {
 			return Err(reinhardt_core::exception::Error::Validation(format!(
@@ -3311,7 +3330,7 @@ where
 		let mut added = false;
 
 		for filter in &self.filters {
-			let col = Self::filter_lhs_expr(filter);
+			let col = self.filter_lhs_expr(filter);
 
 			let expr = match (&filter.operator, &filter.value) {
 				// Field-to-field comparisons (must come before generic patterns)
@@ -3377,7 +3396,7 @@ where
 				(FilterOperator::Eq, FilterValue::Null) => col.is_null(),
 				(FilterOperator::Ne, FilterValue::Null) => col.is_not_null(),
 				(FilterOperator::IExact, FilterValue::String(s)) => {
-					Self::like_expr(filter, s, LikePattern::Exact, true)
+					self.like_expr(filter, s, LikePattern::Exact, true)
 				}
 				(FilterOperator::IExact, v) => col.eq(Self::filter_value_to_sea_value(v)),
 				// Generic value comparisons (catch-all for other FilterValue types)
@@ -3414,47 +3433,47 @@ where
 						.collect::<Vec<_>>(),
 				),
 				(FilterOperator::Contains, FilterValue::String(s)) => {
-					Self::like_expr(filter, s, LikePattern::Contains, false)
+					self.like_expr(filter, s, LikePattern::Contains, false)
 				}
 				(FilterOperator::IContains, FilterValue::String(s)) => {
-					Self::like_expr(filter, s, LikePattern::Contains, true)
+					self.like_expr(filter, s, LikePattern::Contains, true)
 				}
 				(FilterOperator::Contains, FilterValue::Array(arr)) => {
 					let value = arr.first().map(String::as_str).unwrap_or("");
-					Self::like_expr(filter, value, LikePattern::Contains, false)
+					self.like_expr(filter, value, LikePattern::Contains, false)
 				}
 				(FilterOperator::StartsWith, FilterValue::String(s)) => {
-					Self::like_expr(filter, s, LikePattern::StartsWith, false)
+					self.like_expr(filter, s, LikePattern::StartsWith, false)
 				}
 				(FilterOperator::IStartsWith, FilterValue::String(s)) => {
-					Self::like_expr(filter, s, LikePattern::StartsWith, true)
+					self.like_expr(filter, s, LikePattern::StartsWith, true)
 				}
 				(FilterOperator::StartsWith, FilterValue::Array(arr)) => {
 					let value = arr.first().map(String::as_str).unwrap_or("");
-					Self::like_expr(filter, value, LikePattern::StartsWith, false)
+					self.like_expr(filter, value, LikePattern::StartsWith, false)
 				}
 				(FilterOperator::EndsWith, FilterValue::String(s)) => {
-					Self::like_expr(filter, s, LikePattern::EndsWith, false)
+					self.like_expr(filter, s, LikePattern::EndsWith, false)
 				}
 				(FilterOperator::IEndsWith, FilterValue::String(s)) => {
-					Self::like_expr(filter, s, LikePattern::EndsWith, true)
+					self.like_expr(filter, s, LikePattern::EndsWith, true)
 				}
 				(FilterOperator::EndsWith, FilterValue::Array(arr)) => {
 					let value = arr.first().map(String::as_str).unwrap_or("");
-					Self::like_expr(filter, value, LikePattern::EndsWith, false)
+					self.like_expr(filter, value, LikePattern::EndsWith, false)
 				}
 				(FilterOperator::Regex, FilterValue::String(pattern)) => Expr::cust_with_values(
-					format!("{} ~ ?", Self::filter_lhs_sql(filter)),
+					format!("{} ~ ?", self.filter_lhs_sql(filter)),
 					[pattern.clone()],
 				)
 				.into_simple_expr(),
 				(FilterOperator::IRegex, FilterValue::String(pattern)) => Expr::cust_with_values(
-					format!("{} ~* ?", Self::filter_lhs_sql(filter)),
+					format!("{} ~* ?", self.filter_lhs_sql(filter)),
 					[pattern.clone()],
 				)
 				.into_simple_expr(),
 				(FilterOperator::Range, FilterValue::Range(start, end)) => Expr::cust_with_values(
-					format!("{} BETWEEN ? AND ?", Self::filter_lhs_sql(filter)),
+					format!("{} BETWEEN ? AND ?", self.filter_lhs_sql(filter)),
 					[
 						Self::filter_value_to_sea_value(start),
 						Self::filter_value_to_sea_value(end),
@@ -3551,11 +3570,7 @@ where
 					// field @> ARRAY[?, ?] - parameterized
 					let placeholders = arr.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
 					Expr::cust_with_values(
-						format!(
-							"{} @> ARRAY[{}]",
-							Self::filter_lhs_sql(filter),
-							placeholders
-						),
+						format!("{} @> ARRAY[{}]", self.filter_lhs_sql(filter), placeholders),
 						arr.iter().cloned(),
 					)
 					.into_simple_expr()
@@ -3564,11 +3579,7 @@ where
 					// field <@ ARRAY[?, ?] - parameterized
 					let placeholders = arr.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
 					Expr::cust_with_values(
-						format!(
-							"{} <@ ARRAY[{}]",
-							Self::filter_lhs_sql(filter),
-							placeholders
-						),
+						format!("{} <@ ARRAY[{}]", self.filter_lhs_sql(filter), placeholders),
 						arr.iter().cloned(),
 					)
 					.into_simple_expr()
@@ -3577,11 +3588,7 @@ where
 					// field && ARRAY[?, ?] - parameterized
 					let placeholders = arr.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
 					Expr::cust_with_values(
-						format!(
-							"{} && ARRAY[{}]",
-							Self::filter_lhs_sql(filter),
-							placeholders
-						),
+						format!("{} && ARRAY[{}]", self.filter_lhs_sql(filter), placeholders),
 						arr.iter().cloned(),
 					)
 					.into_simple_expr()
@@ -3592,7 +3599,7 @@ where
 					Expr::cust_with_values(
 						format!(
 							"{} @@ plainto_tsquery('english', ?)",
-							Self::filter_lhs_sql(filter)
+							self.filter_lhs_sql(filter)
 						),
 						[query.clone()],
 					)
@@ -3602,7 +3609,7 @@ where
 				(FilterOperator::JsonbContains, FilterValue::String(json)) => {
 					// field @> ?::jsonb - parameterized
 					Expr::cust_with_values(
-						format!("{} @> ?::jsonb", Self::filter_lhs_sql(filter)),
+						format!("{} @> ?::jsonb", self.filter_lhs_sql(filter)),
 						[json.clone()],
 					)
 					.into_simple_expr()
@@ -3610,14 +3617,14 @@ where
 				(FilterOperator::JsonbContainedBy, FilterValue::String(json)) => {
 					// field <@ ?::jsonb - parameterized
 					Expr::cust_with_values(
-						format!("{} <@ ?::jsonb", Self::filter_lhs_sql(filter)),
+						format!("{} <@ ?::jsonb", self.filter_lhs_sql(filter)),
 						[json.clone()],
 					)
 					.into_simple_expr()
 				}
 				(FilterOperator::JsonbKeyExists, FilterValue::String(key)) => {
 					// field ? 'key' - using PgBinOper for safe parameterization
-					Expr::cust(Self::filter_lhs_sql(filter))
+					Expr::cust(self.filter_lhs_sql(filter))
 						.into_simple_expr()
 						.binary(
 							BinOper::PgOperator(PgBinOper::JsonContainsKey),
@@ -3632,7 +3639,7 @@ where
 						keys.iter().cloned(),
 					)
 					.into_simple_expr();
-					Expr::cust(Self::filter_lhs_sql(filter))
+					Expr::cust(self.filter_lhs_sql(filter))
 						.into_simple_expr()
 						.binary(
 							BinOper::PgOperator(PgBinOper::JsonContainsAnyKey),
@@ -3647,7 +3654,7 @@ where
 						keys.iter().cloned(),
 					)
 					.into_simple_expr();
-					Expr::cust(Self::filter_lhs_sql(filter))
+					Expr::cust(self.filter_lhs_sql(filter))
 						.into_simple_expr()
 						.binary(
 							BinOper::PgOperator(PgBinOper::JsonContainsAllKeys),
@@ -3657,7 +3664,7 @@ where
 				(FilterOperator::JsonbPathExists, FilterValue::String(path)) => {
 					// field @? ? - parameterized
 					Expr::cust_with_values(
-						format!("{} @? ?", Self::filter_lhs_sql(filter)),
+						format!("{} @? ?", self.filter_lhs_sql(filter)),
 						[path.clone()],
 					)
 					.into_simple_expr()
@@ -3666,7 +3673,7 @@ where
 				(FilterOperator::RangeContains, v) => {
 					// field @> ? - parameterized
 					Expr::cust_with_values(
-						format!("{} @> ?", Self::filter_lhs_sql(filter)),
+						format!("{} @> ?", self.filter_lhs_sql(filter)),
 						[Self::filter_value_to_sea_value(v)],
 					)
 					.into_simple_expr()
@@ -3674,7 +3681,7 @@ where
 				(FilterOperator::RangeContainedBy, FilterValue::String(range)) => {
 					// field <@ ? - parameterized
 					Expr::cust_with_values(
-						format!("{} <@ ?", Self::filter_lhs_sql(filter)),
+						format!("{} <@ ?", self.filter_lhs_sql(filter)),
 						[range.clone()],
 					)
 					.into_simple_expr()
@@ -3682,7 +3689,7 @@ where
 				(FilterOperator::RangeOverlaps, FilterValue::String(range)) => {
 					// field && ? - parameterized
 					Expr::cust_with_values(
-						format!("{} && ?", Self::filter_lhs_sql(filter)),
+						format!("{} && ?", self.filter_lhs_sql(filter)),
 						[range.clone()],
 					)
 					.into_simple_expr()
@@ -3699,7 +3706,7 @@ where
 		}
 
 		for filter_condition in &self.filter_conditions {
-			if let Some(expr) = Self::build_filter_condition(filter_condition, 0)? {
+			if let Some(expr) = self.build_filter_condition(filter_condition, 0)? {
 				cond = cond.add(expr);
 				added = true;
 			}
@@ -3736,6 +3743,7 @@ where
 	}
 
 	fn build_filter_condition(
+		&self,
 		filter_condition: &FilterCondition,
 		depth: usize,
 	) -> reinhardt_core::exception::Result<Option<Condition>> {
@@ -3748,7 +3756,10 @@ where
 
 		match filter_condition {
 			FilterCondition::Single(filter) => {
-				let mut queryset = Self::new();
+				let mut queryset = self.clone();
+				queryset.filters.clear();
+				queryset.filter_conditions.clear();
+				queryset.subquery_conditions.clear();
 				queryset.filters.push(filter.clone());
 				queryset.build_where_condition()
 			}
@@ -3756,7 +3767,7 @@ where
 				let mut condition = Condition::all();
 				let mut added = false;
 				for item in conditions {
-					if let Some(sub_condition) = Self::build_filter_condition(item, depth + 1)? {
+					if let Some(sub_condition) = self.build_filter_condition(item, depth + 1)? {
 						condition = condition.add(sub_condition);
 						added = true;
 					}
@@ -3767,17 +3778,16 @@ where
 				let mut condition = Condition::any();
 				let mut added = false;
 				for item in conditions {
-					if let Some(sub_condition) = Self::build_filter_condition(item, depth + 1)? {
+					if let Some(sub_condition) = self.build_filter_condition(item, depth + 1)? {
 						condition = condition.add(sub_condition);
 						added = true;
 					}
 				}
 				Ok(added.then_some(condition))
 			}
-			FilterCondition::Not(condition) => {
-				Ok(Self::build_filter_condition(condition, depth + 1)?
-					.map(|condition| condition.not()))
-			}
+			FilterCondition::Not(condition) => Ok(self
+				.build_filter_condition(condition, depth + 1)?
+				.map(|condition| condition.not())),
 		}
 	}
 
@@ -3856,15 +3866,32 @@ where
 		value.to_sql()
 	}
 
-	fn filter_lhs_expr(filter: &Filter) -> Expr {
+	fn filter_lhs_expr(&self, filter: &Filter) -> Expr {
+		if !self.relation_joins.is_empty()
+			&& filter.relation_alias().is_none()
+			&& matches!(&filter.field_source, FilterField::Column)
+			&& !filter.field.contains('.')
+		{
+			return Expr::col((Alias::new(self.root_alias()), Alias::new(&filter.field)));
+		}
+
 		filter_lhs_expr(filter)
 	}
 
-	fn filter_lhs_sql(filter: &Filter) -> String {
+	fn filter_lhs_sql(&self, filter: &Filter) -> String {
+		if !self.relation_joins.is_empty()
+			&& filter.relation_alias().is_none()
+			&& matches!(&filter.field_source, FilterField::Column)
+			&& !filter.field.contains('.')
+		{
+			return quote_identifier(&format!("{}.{}", self.root_alias(), filter.field));
+		}
+
 		filter_lhs_sql(filter)
 	}
 
 	fn like_expr(
+		&self,
 		filter: &Filter,
 		value: &str,
 		pattern: LikePattern,
@@ -3872,11 +3899,7 @@ where
 	) -> SimpleExpr {
 		let operator = if case_insensitive { "ILIKE" } else { "LIKE" };
 		Expr::cust_with_values(
-			format!(
-				"{} {} ? ESCAPE '\\'",
-				Self::filter_lhs_sql(filter),
-				operator
-			),
+			format!("{} {} ? ESCAPE '\\'", self.filter_lhs_sql(filter), operator),
 			[pattern.apply(value)],
 		)
 		.into_simple_expr()
@@ -4317,7 +4340,7 @@ where
 				(order_field.as_str(), false)
 			};
 
-			let col_ref = parse_column_reference(field);
+			let col_ref = self.root_column_reference(field);
 			let expr = Expr::col(col_ref);
 			if is_desc {
 				stmt.order_by_expr(expr, Order::Desc);
@@ -4792,7 +4815,7 @@ where
 					(order_field.as_str(), false)
 				};
 
-				let col_ref = parse_column_reference(field);
+				let col_ref = self.root_column_reference(field);
 				let expr = Expr::col(col_ref);
 				if is_desc {
 					stmt.order_by_expr(expr, Order::Desc);
@@ -5046,7 +5069,7 @@ where
 					(order_field.as_str(), false)
 				};
 
-				let col_ref = parse_column_reference(field);
+				let col_ref = self.root_column_reference(field);
 				let expr = Expr::col(col_ref);
 				if is_desc {
 					stmt.order_by_expr(expr, Order::Desc);
@@ -5290,9 +5313,8 @@ where
 		let filter_relation_joins = self.filter_relation_join_graph_for_query();
 		if filter_relation_joins.has_multi_valued_join() {
 			stmt.expr(Expr::cust(format!(
-				"COUNT(DISTINCT {}.{})",
-				quote_identifier(self.root_alias()),
-				quote_identifier(T::primary_key_column())
+				"COUNT(DISTINCT {})",
+				self.distinct_root_primary_key_sql()
 			)));
 		} else {
 			stmt.expr(Func::count(Expr::asterisk().into_simple_expr()));
@@ -6304,7 +6326,7 @@ where
 					(order_field.as_str(), false)
 				};
 
-				let col_ref = parse_column_reference(field);
+				let col_ref = self.root_column_reference(field);
 				let expr = Expr::col(col_ref);
 				if is_desc {
 					stmt.order_by_expr(expr, Order::Desc);
@@ -7351,6 +7373,59 @@ mod tests {
 		}
 	}
 
+	#[derive(Debug, Clone, Serialize, Deserialize)]
+	struct TestMembership {
+		user_id: i64,
+		role_id: i64,
+	}
+
+	#[derive(Debug, Clone)]
+	struct TestMembershipFields;
+
+	impl crate::orm::model::FieldSelector for TestMembershipFields {
+		fn with_alias(self, _alias: &str) -> Self {
+			self
+		}
+	}
+
+	impl Model for TestMembership {
+		type PrimaryKey = String;
+		type Fields = TestMembershipFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"test_memberships"
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			None
+		}
+
+		fn set_primary_key(&mut self, _value: Self::PrimaryKey) {}
+
+		fn primary_key_field() -> &'static str {
+			"user_id"
+		}
+
+		fn primary_key_column() -> &'static str {
+			"user_id"
+		}
+
+		fn composite_primary_key() -> Option<crate::orm::composite_pk::CompositePrimaryKey> {
+			Some(
+				crate::orm::composite_pk::CompositePrimaryKey::new(vec![
+					"user_id".to_string(),
+					"role_id".to_string(),
+				])
+				.expect("valid composite primary key"),
+			)
+		}
+
+		fn new_fields() -> Self::Fields {
+			TestMembershipFields
+		}
+	}
+
 	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 	struct TestCorpusFile {
 		id: Option<i64>,
@@ -7562,6 +7637,25 @@ mod tests {
 				target_table: "test_projects".into(),
 				source_column: "id".into(),
 				target_column: "test_user_id".into(),
+				default_join_kind: crate::orm::relations::RelationJoinKind::Left,
+				multiplicity: crate::orm::relations::RelationMultiplicity::Multiple,
+			}]
+		}
+	}
+
+	struct TestMembershipProjects;
+
+	impl crate::orm::relations::RelationDescriptor for TestMembershipProjects {
+		type Source = TestMembership;
+		type Target = TestProject;
+
+		fn steps() -> Vec<crate::orm::relations::RelationStep> {
+			vec![crate::orm::relations::RelationStep {
+				name: "projects".into(),
+				source_table: "test_memberships".into(),
+				target_table: "test_projects".into(),
+				source_column: "user_id".into(),
+				target_column: "test_membership_id".into(),
 				default_join_kind: crate::orm::relations::RelationJoinKind::Left,
 				multiplicity: crate::orm::relations::RelationMultiplicity::Multiple,
 			}]
@@ -8251,6 +8345,27 @@ mod tests {
 	}
 
 	#[test]
+	fn test_relation_filter_qualifies_root_predicate_and_ordering() {
+		let related_filter =
+			crate::orm::relations::RelationPath::<TestUser, TestCorpusFile>::from_descriptor::<
+				TestUserCorpusFile,
+			>()
+			.field(TestCorpusFile::field_normalized_path())
+			.eq("/docs/index.md");
+
+		let sql = QuerySet::<TestUser>::new()
+			.filter(related_filter)
+			.filter(Filter::new("id", FilterOperator::Eq, FilterValue::Int(1)))
+			.order_by(&["id"])
+			.to_sql();
+
+		assert_eq!(
+			sql,
+			r#"SELECT "test_users".* FROM "test_users" INNER JOIN "test_corpus_files" AS "corpus_file" ON "test_users"."corpus_file_id" = "corpus_file"."id" WHERE ("corpus_file"."normalized_path" = '/docs/index.md' AND "test_users"."id" = 1) ORDER BY "test_users"."id" ASC"#
+		);
+	}
+
+	#[test]
 	#[should_panic(
 		expected = "typed prefetch_related supports only direct multi-valued relation paths"
 	)]
@@ -8338,6 +8453,27 @@ mod tests {
 			.to_string(PostgresQueryBuilder);
 
 		assert!(sql.starts_with(r#"SELECT COUNT(DISTINCT "test_users"."id") FROM "test_users""#));
+	}
+
+	#[test]
+	fn test_multi_valued_relation_filter_count_uses_all_composite_root_pk_columns() {
+		let filter =
+			crate::orm::relations::RelationPath::<TestMembership, TestProject>::from_descriptor::<
+				TestMembershipProjects,
+			>()
+			.field(crate::orm::expressions::FieldRef::<TestProject, String>::new("name"))
+			.icontains("rust");
+
+		let sql = QuerySet::<TestMembership>::new()
+			.filter(filter)
+			.count_select_query()
+			.expect("count select query")
+			.to_string(PostgresQueryBuilder);
+
+		assert_eq!(
+			sql,
+			r#"SELECT COUNT(DISTINCT ("test_memberships"."user_id", "test_memberships"."role_id")) FROM "test_memberships" LEFT JOIN "test_projects" AS "projects" ON "test_memberships"."user_id" = "projects"."test_membership_id" WHERE "projects"."name" ILIKE '%rust%' ESCAPE '\'"#
+		);
 	}
 
 	#[test]
