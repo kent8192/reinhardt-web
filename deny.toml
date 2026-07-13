@@ -132,7 +132,7 @@ skip = [
   { crate = "sha1:>=0.10,<0.11", reason = "Upstream dependencies retain sha1 0.10 while AWS SDK components use sha1 0.11." },
   { crate = "simple_asn1@0.4.1", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   { crate = "spin@0.5.2", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
-  { crate = "spin@0.9.8", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
+  { crate = "spin:>=0.9,<0.10", reason = "Upstream dependencies retain spin 0.9 while newer dependency lines use spin 0.10." },
   { crate = "sync_wrapper@0.1.2", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   { crate = "system-configuration@0.5.1", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   { crate = "system-configuration-sys@0.5.0", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
