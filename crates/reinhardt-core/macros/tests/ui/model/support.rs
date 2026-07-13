@@ -442,6 +442,13 @@ pub mod db {
 					self
 				}
 
+				pub fn into_typed(self) -> <Target as RelationTarget>::Path<Root>
+				where
+					Target: RelationTarget,
+				{
+					Target::wrap_relation_path(self)
+				}
+
 				pub fn then<D, Next>(self) -> RelationPath<Root, Next>
 				where
 					D: RelationDescriptor<Source = Target, Target = Next>,

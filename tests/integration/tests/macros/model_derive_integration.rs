@@ -214,7 +214,10 @@ fn test_relationship_metadata_uses_generated_fk_columns_and_targets() {
 #[test]
 fn test_related_field_accessor_uses_physical_column() {
 	assert_eq!(
-		TraversalPost::rel_author().field_email().name(),
+		TraversalPost::rel_author()
+			.into_typed()
+			.field_email()
+			.name(),
 		"email_address"
 	);
 }

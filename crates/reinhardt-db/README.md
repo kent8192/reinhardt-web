@@ -367,12 +367,16 @@ explicit batch queries for collection relationships. Use
 ### Typed Relation Traversal
 
 Model derives generate typed relation path accessors such as
-`Post::rel_author().field_email()`. Use these paths in `filter()`,
+`Post::rel_author().into_typed().field_email()`. Use these paths in `filter()`,
 single-valued `select_related()`, and direct multi-valued
 `prefetch_related()` to replace string traversal like `"author__email"` with
 compile-time checked relation and field names. Use `select_related()` for
 forward foreign keys and one-to-one paths; use `prefetch_related()` for reverse
 one-to-many and many-to-many paths.
+
+Each `rel_*` accessor first returns a raw path, which remains usable with a
+manually implemented `Model` target. Call `into_typed()` when the target uses
+`#[model]` and its generated field or nested relation helpers are needed.
 
 String relation APIs remain available in 0.4.0 for incremental migration. New
 code should prefer typed paths. Invalid string relation names fail during

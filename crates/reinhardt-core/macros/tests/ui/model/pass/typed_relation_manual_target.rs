@@ -90,5 +90,9 @@ struct DerivedSource {
 }
 
 fn main() {
+	use db::orm::relations::RelationPathLike;
+
+	let relation = DerivedSource::rel_manual_target();
+	assert_eq!(relation.steps()[0].target_table, "manual_targets");
 	let _ = DerivedSource::field_id();
 }

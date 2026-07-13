@@ -2071,13 +2071,8 @@ fn generate_relation_traversal_accessors(
 				#native_cfg
 				impl #struct_name {
 					#[doc = #doc_comment]
-					#struct_vis fn #method_name() -> <#target_ty as #orm_crate::relations::RelationTarget>::Path<#struct_name>
-					where
-						#target_ty: #orm_crate::relations::RelationTarget,
-					{
-						<#target_ty as #orm_crate::relations::RelationTarget>::wrap_relation_path(
-							#orm_crate::relations::RelationPath::<#struct_name, #target_ty>::from_descriptor::<#descriptor_name>()
-						)
+					#struct_vis fn #method_name() -> #orm_crate::relations::RelationPath<#struct_name, #target_ty> {
+						#orm_crate::relations::RelationPath::<#struct_name, #target_ty>::from_descriptor::<#descriptor_name>()
 					}
 				}
 			}
@@ -2095,13 +2090,8 @@ fn generate_relation_traversal_accessors(
 
 			quote! {
 				#[doc = #doc_comment]
-				#struct_vis fn #method_name(self) -> <#target_ty as #orm_crate::relations::RelationTarget>::Path<Root>
-				where
-					#target_ty: #orm_crate::relations::RelationTarget,
-				{
-					<#target_ty as #orm_crate::relations::RelationTarget>::wrap_relation_path(
-						self.inner.then::<#descriptor_name, #target_ty>()
-					)
+				#struct_vis fn #method_name(self) -> #orm_crate::relations::RelationPath<Root, #target_ty> {
+					self.inner.then::<#descriptor_name, #target_ty>()
 				}
 			}
 		})

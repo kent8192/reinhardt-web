@@ -149,6 +149,19 @@ impl<Root: Model, Target: Model> RelationPath<Root, Target> {
 		Self::from_owned_steps(D::steps())
 	}
 
+	/// Convert this raw path into the target model's generated typed wrapper.
+	///
+	/// Raw paths remain available for relations whose target is a manually
+	/// implemented [`Model`]. Calling this method requires the target to provide
+	/// a [`RelationTarget`] implementation, which `#[model]` generates
+	/// automatically.
+	pub fn into_typed(self) -> <Target as RelationTarget>::Path<Root>
+	where
+		Target: RelationTarget,
+	{
+		Target::wrap_relation_path(self)
+	}
+
 	/// Append another generated relation descriptor to this path.
 	pub fn then<D, Next>(self) -> RelationPath<Root, Next>
 	where

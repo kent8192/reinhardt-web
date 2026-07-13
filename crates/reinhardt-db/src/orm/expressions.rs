@@ -19,7 +19,7 @@ impl F {
 	///
 	/// `F::new("relation__field")` remains accepted for compatibility, but relation
 	/// traversal strings are deprecated. Prefer typed relation paths such as
-	/// `Post::rel_author().field_email()` so relation and field names are checked at
+	/// `Post::rel_author().into_typed().field_email()` so relation and field names are checked at
 	/// compile time.
 	///
 	/// # Examples
