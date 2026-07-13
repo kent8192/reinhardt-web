@@ -1883,16 +1883,19 @@ mod tests {
 	}
 
 	#[rstest]
-	fn unordered_grammar_still_requires_non_optional_members() {
-		// Arrange and Act
-		let kind = diagnostic_kind_text(".card { grid-auto-flow: dense; }");
+	fn unordered_grammars_accept_optional_shorthand_members() {
+		// Arrange
+		let sources = [
+			".card { flex-flow: row; }",
+			".card { flex-flow: wrap; }",
+			".card { grid-auto-flow: dense; }",
+		];
 
-		// Assert
-		assert!(matches!(
-			kind,
-			StyleDiagnosticKind::PropertyValueMismatch { property, .. }
-				if property == "grid-auto-flow"
-		));
+		// Act and Assert
+		for source in sources {
+			let typed = validated_text(source);
+			assert_eq!(typed.items.len(), 1, "source should validate: {source}");
+		}
 	}
 
 	#[rstest]

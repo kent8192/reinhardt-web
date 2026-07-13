@@ -1309,10 +1309,10 @@ const FLEX_ORDERED: ValueGrammar = ValueGrammar::Ordered(&[
 const FLEX: ValueGrammar = ValueGrammar::Or(&[KW_FLEX, FLEX_ORDERED]);
 const FLEX_FLOW: ValueGrammar = ValueGrammar::Unordered {
 	members: &[
-		required("direction", &KW_FLEX_DIRECTION),
-		required("wrap", &KW_FLEX_WRAP),
+		optional("direction", &KW_FLEX_DIRECTION),
+		optional("wrap", &KW_FLEX_WRAP),
 	],
-	min_members: 2,
+	min_members: 1,
 	preserve_source_order: false,
 };
 const GAP: ValueGrammar = ValueGrammar::Or(&[
@@ -1347,7 +1347,7 @@ const GRID_AREAS: ValueGrammar = ValueGrammar::Or(&[
 ]);
 const GRID_AUTO_FLOW: ValueGrammar = ValueGrammar::Unordered {
 	members: &[
-		required("axis", &KW_GRID_FLOW_AXIS),
+		optional("axis", &KW_GRID_FLOW_AXIS),
 		optional("density", &KW_DENSE),
 	],
 	min_members: 1,
@@ -2771,7 +2771,11 @@ mod tests {
 	)]
 	#[case(
 		"flex-flow",
-		"UNORDERED(min=2,source-order=false,direction:KW(flex-direction),wrap:KW(flex-wrap))"
+		"UNORDERED(min=1,source-order=false,direction?:KW(flex-direction),wrap?:KW(flex-wrap))"
+	)]
+	#[case(
+		"grid-auto-flow",
+		"UNORDERED(min=1,source-order=false,axis?:KW(grid-flow-axis),density?:KW(dense))"
 	)]
 	#[case(
 		"grid",
