@@ -81,12 +81,19 @@ fn mount_inner(page: Page, parent: &Element) -> Result<(), MountError> {
 					})?;
 			}
 
+			let mount_children_before_binding = tag == "select";
+			let mut children = children.into_iter();
+			if mount_children_before_binding {
+				for child in children.by_ref() {
+					mount_inner(child, &element)?;
+				}
+			}
+
 			let binding_controller = control_binding
 				.map(|binding| ControlBindingController::mount(element.clone(), binding))
 				.transpose()?;
 			let mut event_handles: Vec<EventHandle> = Vec::new();
 
-			// Attach event handlers before mounting children.
 			for (event_type, handler) in event_handlers {
 				let handler_clone = handler.clone();
 				#[cfg(feature = "i18n")]

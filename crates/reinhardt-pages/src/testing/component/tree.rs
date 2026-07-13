@@ -384,7 +384,6 @@ impl TestDom {
 							property: "value",
 						})?;
 					if node.is_composing || input_is_composing {
-						node.is_composing = true;
 						node.pending_raw = Some(raw);
 						return Ok((true, None));
 					}
@@ -762,11 +761,18 @@ impl TestDom {
 
 	fn refresh_selected_options_in_subtree(&mut self, node_id: NodeId, selected_values: &[String]) {
 		let children = self.children(node_id).to_vec();
+		let effective_value = self.element(node_id).and_then(|node| {
+			(node.tag == "option").then(|| {
+				node.attr("value")
+					.map(str::to_owned)
+					.unwrap_or_else(|| self.text_content(node_id))
+			})
+		});
 		if let Some(TestNode::Element(node)) = self.nodes.get_mut(node_id)
 			&& node.tag == "option"
 		{
-			let selected = node
-				.attr("value")
+			let selected = effective_value
+				.as_ref()
 				.is_some_and(|value| selected_values.iter().any(|candidate| candidate == value));
 			node.attrs.retain(|(name, _)| name != "selected");
 			if selected {

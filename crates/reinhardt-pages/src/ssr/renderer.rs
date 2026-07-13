@@ -1735,7 +1735,7 @@ fn render_element_opening(
 		matches!(binding.kind(), ControlKind::Checkbox | ControlKind::Radio)
 	});
 	let projected_option_selection = if element.tag_name() == "option" {
-		selected_values.map(|values| option_selected(element.attrs(), values))
+		selected_values.map(|values| option_selected(element, values))
 	} else {
 		None
 	};

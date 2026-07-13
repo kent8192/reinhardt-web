@@ -13,7 +13,7 @@
 //! 6. Edge Cases - SVG, custom attributes, fragments
 
 use reinhardt_pages::component::{
-	Component, Head, IntoPage, LinkTag, MetaTag, Page, PageElement, ScriptTag,
+	Component, ControlBinding, Head, IntoPage, LinkTag, MetaTag, Page, PageElement, ScriptTag,
 };
 use reinhardt_pages::page;
 use reinhardt_pages::reactive::Signal;
@@ -680,6 +680,54 @@ async fn controlled_bindings_render_html_initial_state() {
 			"<select multiple=\"multiple\"><optgroup>",
 			"<option value=\"rust\" selected=\"selected\">Rust</option>",
 			"<option value=\"wasm\" selected=\"selected\">WebAssembly</option>",
+			"</optgroup></select>"
+		)
+	);
+}
+
+#[rstest]
+#[tokio::test]
+async fn controlled_select_uses_flattened_option_text_when_value_is_omitted() {
+	// Arrange
+	let selected = Signal::new(vec![
+		"Rust & WebAssembly".to_owned(),
+		"Nested <Choice>".to_owned(),
+	]);
+	let component = PageElement::new("select")
+		.bool_attr("multiple", true)
+		.control_binding(ControlBinding::select_many(selected))
+		.child(
+			PageElement::new("optgroup")
+				.child(PageElement::new("option").child("Rust & WebAssembly"))
+				.child(PageElement::new("option").child(Page::Fragment(vec![
+					Page::text("Nested "),
+					PageElement::new("span").child("<Choice>").into_page(),
+				]))),
+		)
+		.into_page();
+	let mut renderer = SsrRenderer::new();
+
+	// Act
+	let html = renderer.render_page_into_page_to_string(component).await;
+
+	// Assert
+	let body = html
+		.split_once("<body>")
+		.unwrap()
+		.1
+		.split_once("</body>")
+		.unwrap()
+		.0
+		.strip_prefix("\n<div id=\"app\">")
+		.unwrap()
+		.strip_suffix("</div>\n")
+		.unwrap();
+	assert_eq!(
+		body,
+		concat!(
+			"<select multiple=\"multiple\"><optgroup>",
+			"<option selected=\"selected\">Rust &amp; WebAssembly</option>",
+			"<option selected=\"selected\">Nested <span>&lt;Choice&gt;</span></option>",
 			"</optgroup></select>"
 		)
 	);

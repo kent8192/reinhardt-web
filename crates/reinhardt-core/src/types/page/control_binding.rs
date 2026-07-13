@@ -388,6 +388,36 @@ fn is_incomplete_number(raw: &str) -> bool {
 		&& significand.parse::<f64>().is_ok()
 }
 
+fn is_valid_unsigned_number_lexeme(raw: &str) -> bool {
+	let (significand, exponent) = match raw.find(['e', 'E']) {
+		Some(index) => {
+			let (significand, exponent) = raw.split_at(index);
+			let exponent = &exponent[1..];
+			if exponent.contains(['e', 'E']) {
+				return false;
+			}
+			(significand, Some(exponent))
+		}
+		None => (raw, None),
+	};
+	let significand_is_valid = match significand.split_once('.') {
+		Some((integer, fraction)) => {
+			!fraction.is_empty()
+				&& (integer.is_empty() || integer.bytes().all(|byte| byte.is_ascii_digit()))
+				&& fraction.bytes().all(|byte| byte.is_ascii_digit())
+		}
+		None => !significand.is_empty() && significand.bytes().all(|byte| byte.is_ascii_digit()),
+	};
+	if !significand_is_valid {
+		return false;
+	}
+
+	exponent.is_none_or(|exponent| {
+		let digits = exponent.strip_prefix(['+', '-']).unwrap_or(exponent);
+		!digits.is_empty() && digits.bytes().all(|byte| byte.is_ascii_digit())
+	})
+}
+
 macro_rules! impl_signed_number_value {
 	($($type:ty),+ $(,)?) => {
 		$(
@@ -425,7 +455,7 @@ macro_rules! impl_unsigned_number_value {
 					}
 					if raw
 						.strip_prefix('-')
-						.is_some_and(|digits| !digits.is_empty() && digits.bytes().all(|byte| byte.is_ascii_digit()))
+						.is_some_and(is_valid_unsigned_number_lexeme)
 					{
 						return Err(NumberParseError::new(raw, NumberParseErrorKind::OutOfRange));
 					}
@@ -513,5 +543,36 @@ mod tests {
 		// Assert
 		assert_eq!(binding.read(), ControlValue::Text("new".to_owned()));
 		assert_eq!(signal.get(), "new");
+	}
+
+	#[rstest]
+	fn unsigned_number_bindings_classify_valid_negative_lexemes_as_out_of_range() {
+		macro_rules! assert_negative_lexemes_are_out_of_range {
+			($($type:ty),+ $(,)?) => {
+				$(
+					for raw in ["-1.5", "-1e2"] {
+						let error = <$type as NumberValue>::parse_control_value(raw).unwrap_err();
+						assert_eq!(error.raw(), raw);
+						assert_eq!(error.kind(), NumberParseErrorKind::OutOfRange);
+					}
+				)+
+			};
+		}
+
+		assert_negative_lexemes_are_out_of_range!(u8, u16, u32, u64, u128, usize);
+	}
+
+	#[rstest]
+	#[case("-invalid", NumberParseErrorKind::Invalid)]
+	#[case("-", NumberParseErrorKind::Incomplete)]
+	#[case("-1e-", NumberParseErrorKind::Incomplete)]
+	fn unsigned_number_bindings_preserve_invalid_and_incomplete_classification(
+		#[case] raw: &str,
+		#[case] expected: NumberParseErrorKind,
+	) {
+		let error = <u8 as NumberValue>::parse_control_value(raw).unwrap_err();
+
+		assert_eq!(error.raw(), raw);
+		assert_eq!(error.kind(), expected);
 	}
 }

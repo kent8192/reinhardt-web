@@ -11,7 +11,7 @@ use reinhardt_pages::prelude::spawn_task;
 use reinhardt_pages::reactive::Signal;
 use reinhardt_pages::reactive::hooks::use_layout_effect;
 use reinhardt_pages::testing::component::{EventError, EventFixture, render};
-use reinhardt_pages::{PageElement, page};
+use reinhardt_pages::{IntoPage, Page, PageElement, page};
 use rstest::rstest;
 use serial_test::serial;
 
@@ -392,6 +392,52 @@ async fn select_many_binding_tracks_all_selected_values_in_both_directions() {
 }
 
 #[rstest]
+fn select_binding_uses_flattened_option_text_when_value_is_omitted() {
+	// Arrange
+	let selected = Signal::new(vec![
+		"Rust & WebAssembly".to_owned(),
+		"Nested <Choice>".to_owned(),
+	]);
+	let screen = render(
+		PageElement::new("select")
+			.attr("aria-label", "Targets")
+			.bool_attr("multiple", true)
+			.control_binding(ControlBinding::select_many(selected))
+			.child(
+				PageElement::new("optgroup")
+					.child(PageElement::new("option").child("Rust & WebAssembly"))
+					.child(PageElement::new("option").child(Page::Fragment(vec![
+						Page::text("Nested "),
+						PageElement::new("span").child("<Choice>").into_page(),
+					]))),
+			),
+	);
+
+	// Act
+	let html = screen.pretty();
+
+	// Assert
+	assert_eq!(
+		html,
+		concat!(
+			"<select aria-label=\"Targets\" multiple=\"multiple\">\n",
+			"  <optgroup>\n",
+			"    <option selected=\"selected\">\n",
+			"      Rust & WebAssembly\n",
+			"    </option>\n",
+			"    <option selected=\"selected\">\n",
+			"      Nested \n",
+			"      <span>\n",
+			"        <Choice>\n",
+			"      </span>\n",
+			"    </option>\n",
+			"  </optgroup>\n",
+			"</select>\n",
+		)
+	);
+}
+
+#[rstest]
 #[tokio::test]
 async fn composition_defers_writes_and_deduplicates_the_final_input() {
 	// Arrange
@@ -442,6 +488,42 @@ async fn composition_defers_writes_and_deduplicates_the_final_input() {
 		]
 	);
 	assert_eq!(value.get(), "after-end");
+}
+
+#[rstest]
+fn isolated_composing_input_skips_only_that_event() {
+	// Arrange
+	let value = Signal::new("old".to_owned());
+	let observed = Arc::new(Mutex::new(Vec::new()));
+	let observed_input = Arc::clone(&observed);
+	let input_value = value.clone();
+	let screen = render(page!({
+		input {
+			aria_label: "Name",
+			bind: value,
+			@input: move |_| observed_input.lock().unwrap().push(input_value.get()),
+		}
+	}));
+	let input = screen.get_by_label("Name");
+
+	// Act
+	input
+		.dispatch(EventFixture::input().value("pending").is_composing(true))
+		.expect("isolated composing input should dispatch");
+	let value_after_composing_input = value.get();
+	let raw_after_composing_input = input.value();
+	input
+		.dispatch(EventFixture::input().value("committed"))
+		.expect("normal input after an isolated composing input should dispatch");
+
+	// Assert
+	assert_eq!(value_after_composing_input, "old");
+	assert_eq!(raw_after_composing_input.as_deref(), Some("pending"));
+	assert_eq!(value.get(), "committed");
+	assert_eq!(
+		*observed.lock().unwrap(),
+		vec!["old".to_owned(), "committed".to_owned()]
+	);
 }
 
 #[rstest]

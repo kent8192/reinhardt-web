@@ -753,6 +753,14 @@ fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::No
 			}
 
 			let element_wrapper = crate::dom::Element::new(element.clone());
+			let mount_children_before_binding = tag == "select";
+			let mut children = children.into_iter();
+			if mount_children_before_binding {
+				for child in children.by_ref() {
+					let _ = child.mount(&element_wrapper);
+				}
+			}
+
 			let binding_controller = control_binding.and_then(|binding| {
 				crate::dom::control_binding::ControlBindingController::mount(
 					element_wrapper.clone(),
@@ -760,11 +768,6 @@ fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::No
 				)
 				.ok()
 			});
-
-			// Mount children
-			for child in children {
-				let _ = child.mount(&element_wrapper);
-			}
 
 			// Attach event handlers
 			let mut event_handles = Vec::new();
@@ -785,6 +788,10 @@ fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::No
 						handler_clone(event);
 					},
 				));
+			}
+
+			for child in children {
+				let _ = child.mount(&element_wrapper);
 			}
 
 			// Insert before marker

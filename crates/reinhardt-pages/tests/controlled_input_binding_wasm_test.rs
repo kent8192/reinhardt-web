@@ -77,6 +77,127 @@ fn public_page_mount_installs_control_binding() {
 }
 
 #[wasm_bindgen_test]
+fn public_page_mount_applies_initial_select_one_after_mounting_options() {
+	let document = web_sys::window()
+		.expect("window")
+		.document()
+		.expect("document");
+	let root = Element::new(document.create_element("div").expect("root"));
+	let selected = Signal::new("wasm".to_owned());
+	page!({
+		select {
+			a11y: off,
+			bind: selected,
+			option {
+				value: "rust",
+				"Rust"
+			}
+			option {
+				value: "wasm",
+				"WebAssembly"
+			}
+		}
+	})
+	.mount(&root)
+	.expect("mount");
+	let select: web_sys::HtmlSelectElement = root
+		.as_web_sys()
+		.first_element_child()
+		.expect("select")
+		.unchecked_into();
+
+	assert_eq!(select.value(), "wasm");
+	reinhardt_pages::cleanup_reactive_nodes();
+}
+
+#[wasm_bindgen_test]
+fn public_page_mount_applies_initial_select_many_after_mounting_options() {
+	let document = web_sys::window()
+		.expect("window")
+		.document()
+		.expect("document");
+	let root = Element::new(document.create_element("div").expect("root"));
+	let selected = Signal::new(vec!["rust".to_owned(), "wasm".to_owned()]);
+	page!({
+		select {
+			a11y: off,
+			multiple: true,
+			bind: selected,
+			option {
+				value: "rust",
+				"Rust"
+			}
+			option {
+				value: "wasm",
+				"WebAssembly"
+			}
+		}
+	})
+	.mount(&root)
+	.expect("mount");
+	let select: web_sys::HtmlSelectElement = root
+		.as_web_sys()
+		.first_element_child()
+		.expect("select")
+		.unchecked_into();
+
+	let rust: web_sys::HtmlOptionElement = select.item(0).expect("rust option").unchecked_into();
+	let wasm: web_sys::HtmlOptionElement = select.item(1).expect("wasm option").unchecked_into();
+	assert_eq!(select.selected_options().length(), 2);
+	assert!(rust.selected());
+	assert!(wasm.selected());
+	reinhardt_pages::cleanup_reactive_nodes();
+}
+
+#[wasm_bindgen_test]
+fn reactive_select_remount_applies_binding_after_mounting_replacement_options() {
+	let document = web_sys::window()
+		.expect("window")
+		.document()
+		.expect("document");
+	let root = Element::new(document.create_element("div").expect("root"));
+	let alternate = Signal::new(false);
+	let selected = Signal::new("wasm".to_owned());
+	let render_alternate = alternate.clone();
+	let render_selected = selected.clone();
+	Page::reactive(move || {
+		let bound = render_selected.clone();
+		let id = if render_alternate.get() {
+			"replacement"
+		} else {
+			"original"
+		};
+		page!({
+			select {
+				a11y: off,
+				id: id,
+				bind: bound,
+				option {
+					value: "rust",
+					"Rust"
+				}
+				option {
+					value: "wasm",
+					"WebAssembly"
+				}
+			}
+		})
+	})
+	.mount(&root)
+	.expect("mount");
+
+	alternate.set(true);
+	let replacement: web_sys::HtmlSelectElement = root
+		.as_web_sys()
+		.first_element_child()
+		.expect("replacement")
+		.unchecked_into();
+	assert_eq!(replacement.id(), "replacement");
+	assert_eq!(replacement.value(), "wasm");
+	reinhardt_pages::cleanup_reactive_nodes();
+}
+
+#[wasm_bindgen_test]
 fn public_page_mount_preserves_a_structured_binding_error() {
 	let document = web_sys::window()
 		.expect("window")
