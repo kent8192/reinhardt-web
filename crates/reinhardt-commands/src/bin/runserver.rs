@@ -822,7 +822,7 @@ fn build_wasm_targets(no_wasm: bool, no_override_wasm: bool, force_wasm_legacy: 
 /// Returns `true` on success, `false` on failure.
 fn run_collectstatic(
 	settings: &RunServerSettings,
-	style_context: reinhardt_commands::StylePackageContext,
+	style_context: Option<reinhardt_commands::StylePackageContext>,
 ) -> bool {
 	let cwd = match env::current_dir() {
 		Ok(d) => d,
@@ -867,7 +867,7 @@ fn run_collectstatic(
 	};
 
 	let mut cmd = CollectStaticCommand::new(config, options);
-	cmd.set_style_context(Some(style_context));
+	cmd.set_style_context(style_context);
 
 	// If dist/index.html exists in cwd, set it as the index source
 	let index_path = cwd.join("dist").join("index.html");
@@ -939,24 +939,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	} else {
 		reinhardt_commands::StyleFeatureSelection::with_features(args.features.clone())
 	};
-	let component_style_state = reinhardt_commands::ComponentStyleState::initialize_with_features(
-		manifest,
-		args.package.clone(),
-		style_feature_selection,
-	)?;
+	let component_style_state =
+		reinhardt_commands::ComponentStyleState::initialize_optional_with_features(
+			manifest,
+			args.package.clone(),
+			style_feature_selection,
+		)?;
 
 	// Phase 1: Build WASM targets
 	build_wasm_targets(args.no_wasm, args.no_override_wasm, args.force_wasm);
 
 	// Load settings at startup
 	let mut loaded_settings = load_settings();
-	loaded_settings.generated_style_root =
-		Some(component_style_state.generated_root().to_path_buf());
+	if let Some(component_style_state) = &component_style_state {
+		loaded_settings.generated_style_root =
+			Some(component_style_state.generated_root().to_path_buf());
+	}
 	let settings = Arc::new(loaded_settings);
 
 	// Phase 2: Run collectstatic
 	if !args.no_collectstatic {
-		run_collectstatic(&settings, component_style_state.package_context().clone());
+		run_collectstatic(
+			&settings,
+			component_style_state
+				.as_ref()
+				.map(|state| state.package_context().clone()),
+		);
 	} else {
 		println!("{}", "collectstatic skipped (--no-collectstatic)".dimmed());
 	}

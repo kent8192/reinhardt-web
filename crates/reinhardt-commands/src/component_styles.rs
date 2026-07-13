@@ -114,6 +114,33 @@ impl ComponentStyleState {
 		)
 	}
 
+	/// Initialize component styles when Cargo selects a package for the Pages bundle.
+	///
+	/// A virtual workspace without a root package can still run commands that do
+	/// not serve component styles. In that case, omitting `--package` returns
+	/// `Ok(None)` instead of preventing the command from starting.
+	pub fn initialize_optional_with_features(
+		manifest_path: impl Into<PathBuf>,
+		requested_package: Option<String>,
+		feature_selection: StyleFeatureSelection,
+	) -> Result<Option<Self>, String> {
+		let manifest_path = manifest_path.into();
+		match Self::initialize_with_features(
+			manifest_path,
+			requested_package.clone(),
+			feature_selection,
+		) {
+			Ok(state) => Ok(Some(state)),
+			Err(error)
+				if requested_package.is_none()
+					&& virtual_workspace_has_no_style_package(&error) =>
+			{
+				Ok(None)
+			}
+			Err(error) => Err(error),
+		}
+	}
+
 	/// Resolve component styles with the features enabled for the Pages build.
 	pub fn initialize_with_features(
 		manifest_path: impl Into<PathBuf>,
@@ -264,6 +291,11 @@ impl ComponentStyleState {
 	}
 }
 
+fn virtual_workspace_has_no_style_package(error: &str) -> bool {
+	error == "the Cargo workspace has no root package; pass --package <NAME>"
+		|| (error.contains("manifest is virtual") && error.contains("workspace has no members"))
+}
+
 /// Join a configured static URL and a logical asset path without duplicate separators.
 pub fn join_static_url(static_url: &str, logical_path: &str) -> String {
 	format!(
@@ -297,6 +329,26 @@ mod tests {
 		assets.replace(b"").expect("replace assets");
 		assert_eq!(std::fs::read(assets.stylesheet_path()).unwrap(), b"");
 		assert!(assets.stylesheet_path().ends_with(COMPONENT_STYLES_PATH));
+	}
+
+	#[rstest]
+	fn optional_initialization_skips_a_virtual_workspace_without_a_package() {
+		let directory = tempfile::tempdir().expect("create virtual workspace");
+		let manifest_path = directory.path().join("Cargo.toml");
+		std::fs::write(
+			&manifest_path,
+			"[workspace]\nresolver = \"3\"\nmembers = []\n",
+		)
+		.expect("write virtual workspace manifest");
+
+		let state = ComponentStyleState::initialize_optional_with_features(
+			&manifest_path,
+			None,
+			StyleFeatureSelection::default(),
+		)
+		.expect("skip component styles without a selected package");
+
+		assert!(state.is_none());
 	}
 
 	#[rstest]
