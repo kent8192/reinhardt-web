@@ -103,6 +103,7 @@ pub mod connection_ext; // reinhardt-query connection support
 pub mod constraints;
 /// Expressions module.
 pub mod expressions;
+pub mod field_codec;
 /// Fields module.
 pub mod fields;
 /// Functions module.
@@ -271,6 +272,7 @@ pub use events::{
 	with_event_registry,
 };
 pub use execution::{ExecutionResult, QueryExecution, SelectExecution};
+pub use field_codec::*;
 // Re-export from reinhardt-hybrid
 pub use crate::hybrid::{
 	Comparator as HybridComparator, HybridMethod, HybridProperty, UpperCaseComparator,

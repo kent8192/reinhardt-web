@@ -159,6 +159,8 @@ pub mod backends;
 pub mod backends_pool;
 #[cfg(feature = "contenttypes")]
 pub mod contenttypes;
+#[cfg(any(feature = "orm", feature = "migrations"))]
+pub mod field_domain;
 #[cfg(feature = "hybrid")]
 pub mod hybrid;
 #[cfg(any(feature = "orm", feature = "migrations"))]
