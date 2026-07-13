@@ -11,7 +11,7 @@ publish = true
 
 [dependencies]
 # Documentation
-aquamarine = "0.5"
+aquamarine = { workspace = true }
 
 reinhardt-commands = { workspace = true, features = ["plugins"] }
 reinhardt-dentdelion = { workspace = true, features = ["cli"] }
