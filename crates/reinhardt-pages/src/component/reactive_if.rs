@@ -139,8 +139,7 @@ pub struct ReactiveIfNode {
 	/// Nested reactive nodes owned by the current branch.
 	reactive_nodes: ReactiveNodeStore,
 	/// Effect handle (kept alive to maintain reactivity)
-	#[allow(dead_code)] // Effect is kept alive for its side effects
-	effect: Effect,
+	effect: Option<Effect>,
 }
 
 #[cfg(wasm)]
@@ -238,7 +237,7 @@ impl ReactiveIfNode {
 			current_nodes,
 			last_condition,
 			reactive_nodes,
-			effect,
+			effect: Some(effect),
 		}
 	}
 
@@ -342,7 +341,7 @@ impl ReactiveIfNode {
 			current_nodes,
 			last_condition,
 			reactive_nodes,
-			effect,
+			effect: Some(effect),
 		})
 	}
 
@@ -362,9 +361,9 @@ impl ReactiveIfNode {
 #[cfg(wasm)]
 impl Drop for ReactiveIfNode {
 	fn drop(&mut self) {
+		let _marker_removal = MarkerRemovalGuard::new(self.start_marker.as_ref(), &self.marker);
+		drop(self.effect.take());
 		clear_reactive_node_store(&self.reactive_nodes);
-		remove_marker_from_dom(self.start_marker.as_ref());
-		remove_marker_from_dom(Some(&self.marker));
 	}
 }
 
@@ -386,8 +385,7 @@ pub struct ReactiveNode {
 	/// Nested reactive nodes owned by the current render.
 	reactive_nodes: ReactiveNodeStore,
 	/// Effect handle (kept alive to maintain reactivity)
-	#[allow(dead_code)] // Effect is kept alive for its side effects
-	effect: Effect,
+	effect: Option<Effect>,
 }
 
 #[cfg(wasm)]
@@ -478,7 +476,7 @@ impl ReactiveNode {
 			start_marker: None,
 			current_nodes,
 			reactive_nodes,
-			effect,
+			effect: Some(effect),
 		}
 	}
 
@@ -572,7 +570,7 @@ impl ReactiveNode {
 			start_marker: Some(start_marker),
 			current_nodes,
 			reactive_nodes,
-			effect,
+			effect: Some(effect),
 		})
 	}
 
@@ -592,7 +590,31 @@ impl ReactiveNode {
 #[cfg(wasm)]
 impl Drop for ReactiveNode {
 	fn drop(&mut self) {
+		let _marker_removal = MarkerRemovalGuard::new(self.start_marker.as_ref(), &self.marker);
+		drop(self.effect.take());
 		clear_reactive_node_store(&self.reactive_nodes);
+	}
+}
+
+#[cfg(wasm)]
+struct MarkerRemovalGuard {
+	start_marker: Option<web_sys::Comment>,
+	marker: web_sys::Comment,
+}
+
+#[cfg(wasm)]
+impl MarkerRemovalGuard {
+	fn new(start_marker: Option<&web_sys::Comment>, marker: &web_sys::Comment) -> Self {
+		Self {
+			start_marker: start_marker.cloned(),
+			marker: marker.clone(),
+		}
+	}
+}
+
+#[cfg(wasm)]
+impl Drop for MarkerRemovalGuard {
+	fn drop(&mut self) {
 		remove_marker_from_dom(self.start_marker.as_ref());
 		remove_marker_from_dom(Some(&self.marker));
 	}

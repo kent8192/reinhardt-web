@@ -1027,13 +1027,15 @@ pub fn mark_hydration_complete() {
 mod tests {
 	use super::*;
 	#[cfg(wasm)]
-	use crate::component::{ControlBinding, IntoPage, PageElement, cleanup_reactive_nodes};
+	use crate::component::{
+		ControlBinding, IntoPage, PageElement, PageExt, cleanup_reactive_nodes,
+	};
 	#[cfg(wasm)]
 	use crate::reactive::hooks::use_retained_effect;
 	#[cfg(wasm)]
 	use crate::reactive::{Signal, with_runtime};
 	#[cfg(wasm)]
-	use std::cell::RefCell;
+	use std::cell::{Cell, RefCell};
 	#[cfg(wasm)]
 	use std::rc::Rc;
 	#[cfg(wasm)]
@@ -1199,6 +1201,144 @@ mod tests {
 		);
 		drop(log);
 		cleanup_reactive_nodes();
+		root.remove();
+	}
+
+	#[cfg(wasm)]
+	fn retained_cleanup_child(
+		parent_dependency: Signal<i32>,
+		effect_dependency: Signal<i32>,
+		cleanup_count: Rc<Cell<usize>>,
+	) -> Page {
+		Page::reactive(move || {
+			use_retained_effect(
+				{
+					let parent_dependency = parent_dependency.clone();
+					let effect_dependency = effect_dependency.clone();
+					let cleanup_count = Rc::clone(&cleanup_count);
+					move || {
+						let _ = effect_dependency.get();
+						let parent_dependency = parent_dependency.clone();
+						let cleanup_count = Rc::clone(&cleanup_count);
+						Some(move || {
+							cleanup_count.set(cleanup_count.get() + 1);
+							parent_dependency.set(1);
+						})
+					}
+				},
+				(effect_dependency.clone(),),
+			);
+			PageElement::new("span").child("initial").into_page()
+		})
+	}
+
+	#[cfg(wasm)]
+	fn direct_comment_count(root: &web_sys::Element) -> usize {
+		(0..root.child_nodes().length())
+			.filter_map(|index| root.child_nodes().item(index))
+			.filter(|node| node.node_type() == web_sys::Node::COMMENT_NODE)
+			.count()
+	}
+
+	#[cfg(wasm)]
+	#[wasm_bindgen_test]
+	fn reactive_drop_disposes_parent_before_child_cleanup_updates_dependency() {
+		cleanup_reactive_nodes();
+		let document = web_sys::window().unwrap().document().unwrap();
+		let root = document.create_element("div").unwrap();
+		document.body().unwrap().append_child(&root).unwrap();
+		let parent_dependency = Signal::new(0_i32);
+		let effect_dependency = Signal::new(0_i32);
+		let render_count = Rc::new(Cell::new(0_usize));
+		let cleanup_count = Rc::new(Cell::new(0_usize));
+		let view = Page::reactive({
+			let parent_dependency = parent_dependency.clone();
+			let effect_dependency = effect_dependency.clone();
+			let render_count = Rc::clone(&render_count);
+			let cleanup_count = Rc::clone(&cleanup_count);
+			move || {
+				let _ = parent_dependency.get();
+				render_count.set(render_count.get() + 1);
+				retained_cleanup_child(
+					parent_dependency.clone(),
+					effect_dependency.clone(),
+					Rc::clone(&cleanup_count),
+				)
+			}
+		});
+		view.mount(&Element::new(root.clone())).unwrap();
+		with_runtime(|runtime| runtime.flush_updates());
+
+		assert_eq!(render_count.get(), 1);
+		cleanup_reactive_nodes();
+		parent_dependency.set(2);
+		with_runtime(|runtime| runtime.flush_updates());
+
+		assert_eq!(cleanup_count.get(), 1);
+		assert_eq!(render_count.get(), 1, "drop must not re-render the parent");
+		assert_eq!(root.text_content().as_deref(), Some("initial"));
+		assert_eq!(direct_comment_count(&root), 1, "{}", root.inner_html());
+		assert_eq!(
+			root.inner_html(),
+			"<!--reactive-nested--><span>initial</span>"
+		);
+		root.remove();
+	}
+
+	#[cfg(wasm)]
+	#[wasm_bindgen_test]
+	fn reactive_if_drop_disposes_parent_before_child_cleanup_updates_condition() {
+		cleanup_reactive_nodes();
+		let document = web_sys::window().unwrap().document().unwrap();
+		let root = document.create_element("div").unwrap();
+		document.body().unwrap().append_child(&root).unwrap();
+		let parent_dependency = Signal::new(0_i32);
+		let effect_dependency = Signal::new(0_i32);
+		let render_count = Rc::new(Cell::new(0_usize));
+		let cleanup_count = Rc::new(Cell::new(0_usize));
+		let view = Page::reactive_if(
+			{
+				let parent_dependency = parent_dependency.clone();
+				let render_count = Rc::clone(&render_count);
+				move || {
+					render_count.set(render_count.get() + 1);
+					parent_dependency.get() == 0
+				}
+			},
+			{
+				let parent_dependency = parent_dependency.clone();
+				let effect_dependency = effect_dependency.clone();
+				let cleanup_count = Rc::clone(&cleanup_count);
+				move || {
+					retained_cleanup_child(
+						parent_dependency.clone(),
+						effect_dependency.clone(),
+						Rc::clone(&cleanup_count),
+					)
+				}
+			},
+			|| PageElement::new("span").child("replacement").into_page(),
+		);
+		view.mount(&Element::new(root.clone())).unwrap();
+		with_runtime(|runtime| runtime.flush_updates());
+
+		assert_eq!(render_count.get(), 1);
+		cleanup_reactive_nodes();
+		parent_dependency.set(2);
+		with_runtime(|runtime| runtime.flush_updates());
+
+		assert_eq!(cleanup_count.get(), 1);
+		assert_eq!(
+			render_count.get(),
+			1,
+			"drop must not re-evaluate the condition"
+		);
+		assert_eq!(root.text_content().as_deref(), Some("initial"));
+		assert_eq!(direct_comment_count(&root), 1, "{}", root.inner_html());
+		assert_eq!(
+			root.inner_html(),
+			"<!--reactive-nested--><span>initial</span>"
+		);
 		root.remove();
 	}
 
