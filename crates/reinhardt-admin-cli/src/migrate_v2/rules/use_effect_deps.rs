@@ -212,14 +212,11 @@ impl VisitMut for HookVisitor {
 					.imports
 					.as_ref()
 					.and_then(|_| dependency_list(callback));
-				if deps.is_some() {
-					if let Some(imports) = &resolution.imports {
-						for import in imports {
-							self.record_generated_import(
-								import.facade.clone(),
-								import.attrs.clone(),
-							);
-						}
+				if deps.is_some()
+					&& let Some(imports) = &resolution.imports
+				{
+					for import in imports {
+						self.record_generated_import(import.facade.clone(), import.attrs.clone());
 					}
 				}
 				call.args
@@ -616,8 +613,7 @@ fn clone_aliases(stmts: &[syn::Stmt]) -> HashMap<String, syn::Expr> {
 		let receiver_was_self = base_ident_of(&receiver).is_some_and(|ident| ident == &alias.ident);
 		let receiver = resolve_place(&receiver, &aliases, &mut Vec::new());
 		let receiver = receiver.filter(|resolved| {
-			!(base_ident_of(resolved).is_some_and(|ident| ident == &alias.ident)
-				&& !receiver_was_self)
+			base_ident_of(resolved).is_none_or(|ident| ident != &alias.ident) || receiver_was_self
 		});
 		if let Some(receiver) = receiver {
 			invalidate_shadowed_aliases(&mut aliases, &bindings);
