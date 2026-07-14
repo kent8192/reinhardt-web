@@ -157,7 +157,7 @@ pub(crate) fn deserialize_model_row<M: Model>(
 		.map_err(|error| FieldCodecError::Serialization(error.to_string()))
 }
 
-fn database_value_from_json(
+pub(crate) fn database_value_from_json(
 	value: serde_json::Value,
 	storage_kind: Option<DatabaseStorageKind>,
 ) -> Result<DatabaseValue, FieldCodecError> {

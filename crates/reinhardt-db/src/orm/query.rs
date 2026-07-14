@@ -6687,6 +6687,10 @@ mod tests {
 			crate::orm::expressions::FieldRef::new("full_name")
 		}
 
+		const fn field_display_name() -> crate::orm::expressions::FieldRef<TestUser, String> {
+			crate::orm::expressions::FieldRef::new("display_name")
+		}
+
 		const fn field_created_at()
 		-> crate::orm::expressions::FieldRef<TestUser, chrono::DateTime<chrono::Utc>> {
 			crate::orm::expressions::FieldRef::new("created_at")
@@ -6740,7 +6744,7 @@ mod tests {
 		}
 
 		fn generated_field_names() -> &'static [&'static str] {
-			&["full_name"]
+			&["full_name", "display_name"]
 		}
 	}
 
@@ -6879,6 +6883,19 @@ mod tests {
 			error,
 			reinhardt_core::exception::Error::Validation(message)
 				if message == "QuerySet::update_fields cannot assign generated field `full_name`"
+		));
+	}
+
+	#[test]
+	fn test_update_fields_sql_rejects_db_column_generated_fields() {
+		let queryset = QuerySet::<TestUser>::new().filter(TestUser::field_id().eq(7));
+		let error = queryset
+			.update_fields_sql([(TestUser::field_display_name(), "Alice Doe")])
+			.expect_err("generated database columns should be rejected");
+		assert!(matches!(
+			error,
+			reinhardt_core::exception::Error::Validation(message)
+				if message == "QuerySet::update_fields cannot assign generated field `display_name`"
 		));
 	}
 

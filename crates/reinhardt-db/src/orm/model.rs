@@ -137,13 +137,16 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 		fields
 			.iter()
 			.map(|(name, value)| {
-				let is_json_field = metadata.iter().any(|field| {
-					field.name == *name && super::json::is_json_field_type(&field.field_type)
-				});
+				let metadata = metadata.iter().find(|field| field.name == *name);
+				let is_json_field = metadata
+					.is_some_and(|field| super::json::is_json_field_type(&field.field_type));
 				let value = if is_json_field && !self.field_is_none(name) {
 					DatabaseValue::Json(value.clone())
 				} else {
-					DatabaseValue::try_from_json_value(value.clone())?
+					super::json::database_value_from_json(
+						value.clone(),
+						metadata.and_then(|field| field.storage_kind),
+					)?
 				};
 				Ok((name.clone(), value))
 			})

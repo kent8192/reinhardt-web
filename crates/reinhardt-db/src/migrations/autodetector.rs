@@ -4378,12 +4378,25 @@ impl MigrationAutodetector {
 				let Some(from_field) = from_model.fields.get(column) else {
 					continue;
 				};
-				let (Some(old_domain), Some(new_domain)) = (&from_field.domain, &to_field.domain)
-				else {
-					continue;
+				let (old_domain, new_domain) = match (&from_field.domain, &to_field.domain) {
+					(Some(old_domain), Some(new_domain)) => (
+						old_domain.clone().canonicalized(),
+						new_domain.clone().canonicalized(),
+					),
+					(None, Some(new_domain @ crate::field_domain::FieldDomain::Enum { .. })) => {
+						let new_domain = new_domain.clone().canonicalized();
+						changes.warnings.push(
+							AutodetectorWarning::EnumDomainDataMigrationRequired {
+								table: to_model.table_name.clone(),
+								column: column.clone(),
+								old_domain: new_domain.clone(),
+								new_domain,
+							},
+						);
+						continue;
+					}
+					_ => continue,
 				};
-				let old_domain = old_domain.clone().canonicalized();
-				let new_domain = new_domain.clone().canonicalized();
 				if old_domain == new_domain {
 					continue;
 				}

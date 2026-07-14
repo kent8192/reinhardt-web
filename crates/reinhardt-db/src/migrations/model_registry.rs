@@ -185,7 +185,11 @@ impl ModelMetadata {
 		// Generate ForeignKey constraints from fields
 		for (field_name, field_meta) in &self.fields {
 			if field_meta.foreign_key.is_some() {
-				model_state.add_foreign_key_constraint_from_field(field_name);
+				let column_name = field_meta
+					.params
+					.get("db_column")
+					.map_or(field_name, |name| name);
+				model_state.add_foreign_key_constraint_from_field(column_name);
 			}
 		}
 
@@ -195,15 +199,19 @@ impl ModelMetadata {
 		// Generate Unique constraints from field params
 		for (field_name, field_meta) in &self.fields {
 			if field_meta.params.get("unique").map(String::as_str) == Some("true") {
+				let column_name = field_meta
+					.params
+					.get("db_column")
+					.map_or(field_name, |name| name);
 				let constraint = ConstraintDefinition {
 					name: format!(
 						"{}_{}_{}_uniq",
 						self.app_label,
 						self.model_name.to_lowercase(),
-						field_name
+						column_name
 					),
 					constraint_type: "unique".to_string(),
-					fields: vec![field_name.clone()],
+					fields: vec![column_name.clone()],
 					expression: None,
 					foreign_key_info: None,
 				};
@@ -730,6 +738,24 @@ mod tests {
 	fn test_model_registry_new() {
 		let registry = ModelRegistry::new();
 		assert_eq!(registry.count(), 0);
+	}
+
+	#[test]
+	fn model_state_constraints_use_db_column_names() {
+		let mut metadata = ModelMetadata::new("accounts", "User", "accounts_user");
+		metadata.add_field(
+			"email".to_string(),
+			FieldMetadata::new(FieldType::VarChar(255))
+				.with_param("db_column", "email_addr")
+				.with_param("unique", "true"),
+		);
+		let state = metadata.to_model_state();
+		assert!(
+			state
+				.constraints
+				.iter()
+				.any(|constraint| constraint.fields == ["email_addr"])
+		);
 	}
 
 	#[test]

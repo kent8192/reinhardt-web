@@ -1023,6 +1023,14 @@ impl<M: Model> Manager<M> {
 				QueryValue::Timestamp(*dt)
 			}
 			reinhardt_query::value::Value::ChronoDateTimeUtc(None) => QueryValue::Null,
+			reinhardt_query::value::Value::ChronoDate(Some(date)) => {
+				QueryValue::String(date.to_string())
+			}
+			reinhardt_query::value::Value::ChronoDate(None) => QueryValue::Null,
+			reinhardt_query::value::Value::ChronoTime(Some(time)) => {
+				QueryValue::String(time.to_string())
+			}
+			reinhardt_query::value::Value::ChronoTime(None) => QueryValue::Null,
 
 			// UUID handling
 			reinhardt_query::value::Value::Uuid(Some(u)) => QueryValue::Uuid(*u),

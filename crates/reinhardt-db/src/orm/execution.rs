@@ -131,11 +131,9 @@ fn convert_value_to_query_value(value: reinhardt_query::value::Value) -> QueryVa
 			QueryValue::Timestamp((*dt).with_timezone(&chrono::Utc))
 		}
 
-		// Other datetime types that cannot be easily converted
-		SV::ChronoDate(_) | SV::ChronoTime(_) | SV::ChronoDateTime(_) => {
-			// Convert to string representation as fallback
-			QueryValue::String(format!("{:?}", value))
-		}
+		SV::ChronoDate(Some(date)) => QueryValue::String(date.to_string()),
+		SV::ChronoTime(Some(time)) => QueryValue::String(time.to_string()),
+		SV::ChronoDateTime(Some(datetime)) => QueryValue::Timestamp(datetime.and_utc()),
 
 		// JSON - convert to string
 		SV::Json(_) => QueryValue::String(format!("{:?}", value)),
@@ -969,5 +967,23 @@ mod tests {
 
 		// Assert
 		assert!(matches!(result, QueryValue::Null));
+	}
+
+	#[test]
+	fn date_and_time_values_bind_with_sql_literals() {
+		let date = chrono::NaiveDate::from_ymd_opt(2026, 7, 14).expect("valid date");
+		let time = chrono::NaiveTime::from_hms_opt(12, 34, 56).expect("valid time");
+		assert_eq!(
+			convert_value_to_query_value(reinhardt_query::value::Value::ChronoDate(Some(
+				Box::new(date)
+			))),
+			QueryValue::String("2026-07-14".to_owned())
+		);
+		assert_eq!(
+			convert_value_to_query_value(reinhardt_query::value::Value::ChronoTime(Some(
+				Box::new(time)
+			))),
+			QueryValue::String("12:34:56".to_owned())
+		);
 	}
 }

@@ -2821,7 +2821,12 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 	let generated_field_names: Vec<_> = field_infos
 		.iter()
 		.filter(|field| field.config.generated.is_some() || field.config.generated_sql.is_some())
-		.map(|field| LitStr::new(&field.name.to_string(), field.name.span()))
+		.map(|field| {
+			field.config.db_column.as_ref().map_or_else(
+				|| LitStr::new(&field.name.to_string(), field.name.span()),
+				|name| LitStr::new(name, field.name.span()),
+			)
+		})
 		.collect();
 	let database_codec_fields: Vec<_> = field_infos
 		.iter()

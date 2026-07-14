@@ -123,6 +123,8 @@ pub enum DatabaseValue {
 	Bytes(Vec<u8>),
 	/// Native JSON value.
 	Json(serde_json::Value),
+	/// Native SQL array values.
+	Array(Vec<DatabaseValue>),
 	/// UUID value.
 	Uuid(uuid::Uuid),
 	/// Calendar date value.
@@ -171,6 +173,11 @@ impl DatabaseValue {
 			Self::Bytes(value) => serde_json::to_value(value)
 				.map_err(|error| FieldCodecError::Serialization(error.to_string())),
 			Self::Json(value) => Ok(value),
+			Self::Array(values) => values
+				.into_iter()
+				.map(DatabaseValue::into_json_value)
+				.collect::<Result<Vec<_>, _>>()
+				.map(serde_json::Value::Array),
 			Self::Uuid(value) => Ok(serde_json::Value::String(value.to_string())),
 			Self::Date(value) => Ok(serde_json::Value::String(value.to_string())),
 			Self::Time(value) => Ok(serde_json::Value::String(value.to_string())),
@@ -194,6 +201,30 @@ pub fn database_value_to_query_value(value: DatabaseValue) -> reinhardt_query::v
 		DatabaseValue::String(value) => Value::String(Some(Box::new(value))),
 		DatabaseValue::Bytes(value) => Value::Bytes(Some(Box::new(value))),
 		DatabaseValue::Json(value) => Value::Json(Some(Box::new(value))),
+		DatabaseValue::Array(values) => {
+			use reinhardt_query::value::ArrayType;
+			let array_type = match values.first() {
+				Some(DatabaseValue::Bool(_)) => ArrayType::Bool,
+				Some(DatabaseValue::I32(_)) => ArrayType::Int,
+				Some(DatabaseValue::I64(_)) => ArrayType::BigInt,
+				Some(DatabaseValue::F32(_)) => ArrayType::Float,
+				Some(DatabaseValue::F64(_)) => ArrayType::Double,
+				Some(DatabaseValue::Uuid(_)) => ArrayType::Uuid,
+				Some(DatabaseValue::Date(_)) => ArrayType::ChronoDate,
+				Some(DatabaseValue::Time(_)) => ArrayType::ChronoTime,
+				Some(DatabaseValue::DateTime(_)) => ArrayType::ChronoDateTimeUtc,
+				_ => ArrayType::String,
+			};
+			Value::Array(
+				array_type,
+				Some(Box::new(
+					values
+						.into_iter()
+						.map(database_value_to_query_value)
+						.collect(),
+				)),
+			)
+		}
 		DatabaseValue::Uuid(value) => Value::Uuid(Some(Box::new(value))),
 		DatabaseValue::Date(value) => Value::ChronoDate(Some(Box::new(value))),
 		DatabaseValue::Time(value) => Value::ChronoTime(Some(Box::new(value))),
@@ -548,13 +579,59 @@ macro_rules! impl_json_database_field {
 	};
 }
 
-impl_json_database_field!(Vec<String>);
-impl_json_database_field!(Vec<i32>);
-impl_json_database_field!(Vec<i64>);
-impl_json_database_field!(Vec<f32>);
-impl_json_database_field!(Vec<f64>);
-impl_json_database_field!(Vec<bool>);
-impl_json_database_field!(Vec<uuid::Uuid>);
+macro_rules! impl_array_database_field {
+	($type:ty) => {
+		impl private::Sealed for Vec<$type> {}
+
+		impl DatabaseScalar for Vec<$type> {
+			const STORAGE_KIND: DatabaseStorageKind = DatabaseStorageKind::Json;
+
+			fn into_database_value(self) -> DatabaseValue {
+				DatabaseValue::Array(
+					self.into_iter()
+						.map(DatabaseScalar::into_database_value)
+						.collect(),
+				)
+			}
+
+			fn from_database_value(value: DatabaseValue) -> Result<Self, FieldCodecError> {
+				match value {
+					DatabaseValue::Array(values) => values
+						.into_iter()
+						.map(<$type as DatabaseScalar>::from_database_value)
+						.collect(),
+					actual => Err(FieldCodecError::type_mismatch(
+						stringify!(Vec<$type>),
+						actual,
+					)),
+				}
+			}
+		}
+
+		impl DatabaseField for Vec<$type> {
+			type Storage = Self;
+
+			fn encode_database(&self) -> Result<Self::Storage, FieldCodecError> {
+				Ok(self.clone())
+			}
+
+			fn decode_database(
+				value: Self::Storage,
+				_context: &FieldCodecContext,
+			) -> Result<Self, FieldCodecError> {
+				Ok(value)
+			}
+		}
+	};
+}
+
+impl_array_database_field!(String);
+impl_array_database_field!(i32);
+impl_array_database_field!(i64);
+impl_array_database_field!(f32);
+impl_array_database_field!(f64);
+impl_array_database_field!(bool);
+impl_array_database_field!(uuid::Uuid);
 impl_json_database_field!(std::collections::HashMap<String, String>);
 
 mod private {
@@ -678,6 +755,20 @@ mod tests {
 			value,
 			reinhardt_query::value::Value::Bytes(Some(bytes))
 				if bytes.as_ref() == &[0, 1, 127, 255]
+		));
+	}
+
+	#[test]
+	fn string_vectors_bind_as_postgres_arrays() {
+		let value = vec!["red".to_owned(), "blue".to_owned()]
+			.encode_database()
+			.expect("array fields should encode")
+			.into_database_value();
+		let query_value = super::database_value_to_query_value(value);
+		assert!(matches!(
+			query_value,
+			reinhardt_query::value::Value::Array(reinhardt_query::value::ArrayType::String, Some(values))
+				if values.len() == 2
 		));
 	}
 }
