@@ -70,11 +70,7 @@ mod tests {
 	use rstest::rstest;
 
 	#[rstest]
-	#[case(
-		DatabaseErrorKind::Connection,
-		503,
-		"Service temporarily unavailable"
-	)]
+	#[case(DatabaseErrorKind::Connection, 503, "Service temporarily unavailable")]
 	#[case(DatabaseErrorKind::Query, 500, "Internal server error")]
 	fn framework_database_error_is_retained_server_side_and_redacted_for_clients(
 		#[case] kind: DatabaseErrorKind,
