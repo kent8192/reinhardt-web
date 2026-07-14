@@ -152,7 +152,7 @@ pub mod types;
 
 // Re-export commonly used types
 pub use error::DatabaseError as QueryDatabaseError;
-pub use error::{DatabaseError, Result};
+pub use error::{DatabaseError, DatabaseErrorKind, Result};
 pub use schema::{BaseDatabaseSchemaEditor, SchemaEditorError, SchemaEditorResult};
 
 // Re-export query abstraction types

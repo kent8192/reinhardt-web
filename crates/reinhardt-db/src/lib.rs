@@ -211,7 +211,7 @@ pub mod prelude {
 
 // Re-export top-level commonly used types
 #[cfg(feature = "backends")]
-pub use backends::{DatabaseBackend, DatabaseError};
+pub use backends::{DatabaseBackend, DatabaseError, DatabaseErrorKind};
 
 // Re-export ORM's DatabaseConnection which wraps BackendsConnection
 // This is the type used by Manager and other ORM components
