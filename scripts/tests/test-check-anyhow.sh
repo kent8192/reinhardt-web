@@ -113,6 +113,58 @@ expect_rejected "dotted dependency key" 'Cargo.toml:6:dependencies.anyhow.versio
 
 reset_fixture
 cat >> "$FIXTURE/Cargo.toml" <<'EOF'
+anyhow.version = "1"
+EOF
+expect_rejected "dependency-table local dotted key" 'Cargo.toml:7:anyhow.version = "1"'
+
+reset_fixture
+cat >> "$FIXTURE/Cargo.toml" <<'EOF'
+"anyhow".version = "1"
+EOF
+expect_rejected "quoted dependency-table local dotted key" 'Cargo.toml:7:"anyhow".version = "1"'
+
+reset_fixture
+cat >> "$FIXTURE/Cargo.toml" <<'EOF'
+
+[dev-dependencies]
+anyhow.version = "1"
+EOF
+expect_rejected "dev-dependency-table local dotted key" 'Cargo.toml:9:anyhow.version = "1"'
+
+reset_fixture
+cat >> "$FIXTURE/Cargo.toml" <<'EOF'
+
+[build-dependencies]
+anyhow.version = "1"
+EOF
+expect_rejected "build-dependency-table local dotted key" 'Cargo.toml:9:anyhow.version = "1"'
+
+reset_fixture
+cat >> "$FIXTURE/Cargo.toml" <<'EOF'
+
+[workspace.dependencies]
+anyhow.version = "1"
+EOF
+expect_rejected "workspace-dependency-table local dotted key" 'Cargo.toml:9:anyhow.version = "1"'
+
+reset_fixture
+cat >> "$FIXTURE/Cargo.toml" <<'EOF'
+
+[target.'cfg(unix)'.dependencies]
+anyhow.version = "1"
+EOF
+expect_rejected "target-dependency-table local dotted key" 'Cargo.toml:9:anyhow.version = "1"'
+
+reset_fixture
+cat >> "$FIXTURE/Cargo.toml" <<'EOF'
+
+[package.metadata]
+anyhow.version = "application metadata"
+EOF
+expect_clean "non-dependency table local dotted key"
+
+reset_fixture
+cat >> "$FIXTURE/Cargo.toml" <<'EOF'
 errors = { package = "anyhow", version = "1" }
 EOF
 expect_rejected "package alias" 'Cargo.toml:7:errors = { package = "anyhow", version = "1" }'
@@ -201,12 +253,13 @@ mkdir -p \
 	"$FIXTURE/target/debug" \
 	"$FIXTURE/nested/vendor/example/src" \
 	"$FIXTURE/nested/target/debug" \
+	"$FIXTURE/nested/.git" \
 	"$FIXTURE/docs/superpowers/specs"
 cat > "$FIXTURE/Cargo.lock" <<'EOF'
 name = "anyhow"
 EOF
 cat > "$FIXTURE/CHANGELOG.md" <<'EOF'
-- Removed anyhow from owned code.
+- Removed `anyhow::Error` from owned code.
 EOF
 cat > "$FIXTURE/vendor/example/Cargo.toml" <<'EOF'
 [dependencies]
@@ -225,14 +278,30 @@ EOF
 cat > "$FIXTURE/nested/vendor/example/src/lib.rs" <<'EOF'
 pub type Error = anyhow :: Error;
 EOF
+cat > "$FIXTURE/nested/vendor/Cargo.toml" <<'EOF'
+[dependencies]
+anyhow = "1"
+EOF
 cat > "$FIXTURE/nested/target/debug/generated.rs" <<'EOF'
 let _ = anyhow !("generated");
+EOF
+cat > "$FIXTURE/nested/target/generated.rs" <<'EOF'
+use anyhow::Result;
+EOF
+cat > "$FIXTURE/nested/.git/Cargo.toml" <<'EOF'
+[dependencies]
+anyhow = "1"
 EOF
 cat > "$FIXTURE/docs/superpowers/specs/error-design.md" <<'EOF'
 ```rust
 use anyhow::Result;
 ```
 EOF
-expect_clean "lockfile, changelog, nested vendor, nested target, and design artifacts are ignored"
+cat > "$FIXTURE/docs/superpowers/error.md" <<'EOF'
+```rust
+use anyhow::Result;
+```
+EOF
+expect_clean "lockfile, changelog, nested generated trees, and design artifacts are ignored"
 
 exit "$FAIL"
