@@ -2150,6 +2150,34 @@ fn parse_sqlite_unique_constraint_metadata(
 	let Some(body) = sqlite_create_table_body(create_sql) else {
 		return Vec::new();
 	};
+	let column_collations = split_sqlite_top_level_list(body)
+		.into_iter()
+		.filter_map(|definition| {
+			let column = sqlite_column_name(definition)?;
+			let tokens = tokenize_sqlite_definition(definition);
+			let collation = tokens
+				.windows(2)
+				.find_map(|pair| {
+					sqlite_token_is_word(&pair[0], "COLLATE")
+						.then(|| sqlite_token_identifier(&pair[1]))
+						.flatten()
+				})
+				.unwrap_or_else(|| "BINARY".to_string());
+			Some((column, collation))
+		})
+		.collect::<Vec<_>>();
+	let normalize_indexed_columns = |columns: &mut [SqliteIndexedColumnMetadata]| {
+		for column in columns {
+			if column.collation.is_none() {
+				column.collation = column_collations
+					.iter()
+					.find(|(name, _)| name.eq_ignore_ascii_case(&column.name))
+					.map(|(_, collation)| collation.clone())
+					.or_else(|| Some("BINARY".to_string()));
+			}
+			column.descending.get_or_insert(false);
+		}
+	};
 	let mut metadata = Vec::new();
 	for definition in split_sqlite_top_level_list(body) {
 		let tokens = tokenize_sqlite_definition(definition);
@@ -2175,7 +2203,8 @@ fn parse_sqlite_unique_constraint_metadata(
 			else {
 				continue;
 			};
-			let indexed_columns = sqlite_indexed_column_metadata(&tokens, open_index);
+			let mut indexed_columns = sqlite_indexed_column_metadata(&tokens, open_index);
+			normalize_indexed_columns(&mut indexed_columns);
 			if !indexed_columns.is_empty() {
 				metadata.push(SqliteUniqueConstraintMetadata {
 					name,
@@ -2201,14 +2230,16 @@ fn parse_sqlite_unique_constraint_metadata(
 		}) else {
 			continue;
 		};
+		let mut indexed_columns = vec![SqliteIndexedColumnMetadata {
+			name: column.clone(),
+			collation: None,
+			descending: None,
+		}];
+		normalize_indexed_columns(&mut indexed_columns);
 		metadata.push(SqliteUniqueConstraintMetadata {
 			name: Some(name),
 			columns: vec![column.clone()],
-			indexed_columns: vec![SqliteIndexedColumnMetadata {
-				name: column,
-				collation: None,
-				descending: None,
-			}],
+			indexed_columns,
 			raw_sql: None,
 		});
 	}
@@ -2655,13 +2686,13 @@ mod sqlite_generated_column_tests {
 				indexed_columns: vec![
 					SqliteIndexedColumnMetadata {
 						name: "tenant id".to_string(),
-						collation: None,
-						descending: None,
+						collation: Some("BINARY".to_string()),
+						descending: Some(false),
 					},
 					SqliteIndexedColumnMetadata {
 						name: "code,value".to_string(),
-						collation: None,
-						descending: None,
+						collation: Some("BINARY".to_string()),
+						descending: Some(false),
 					},
 				],
 				raw_sql: Some(
@@ -2689,8 +2720,8 @@ mod sqlite_generated_column_tests {
 				columns: vec!["code".to_string()],
 				indexed_columns: vec![SqliteIndexedColumnMetadata {
 					name: "code".to_string(),
-					collation: None,
-					descending: None,
+					collation: Some("BINARY".to_string()),
+					descending: Some(false),
 				}],
 				raw_sql: None,
 			}]
@@ -2720,13 +2751,13 @@ mod sqlite_generated_column_tests {
 					indexed_columns: vec![
 						SqliteIndexedColumnMetadata {
 							name: "tenant".to_string(),
-							collation: None,
-							descending: None,
+							collation: Some("BINARY".to_string()),
+							descending: Some(false),
 						},
 						SqliteIndexedColumnMetadata {
 							name: "code".to_string(),
-							collation: None,
-							descending: None,
+							collation: Some("BINARY".to_string()),
+							descending: Some(false),
 						},
 					],
 					raw_sql: Some("CONSTRAINT uq_jobs_primary UNIQUE (tenant, code)".to_string(),),
@@ -2737,13 +2768,13 @@ mod sqlite_generated_column_tests {
 					indexed_columns: vec![
 						SqliteIndexedColumnMetadata {
 							name: "tenant".to_string(),
-							collation: None,
-							descending: None,
+							collation: Some("BINARY".to_string()),
+							descending: Some(false),
 						},
 						SqliteIndexedColumnMetadata {
 							name: "code".to_string(),
-							collation: None,
-							descending: None,
+							collation: Some("BINARY".to_string()),
+							descending: Some(false),
 						},
 					],
 					raw_sql: Some("CONSTRAINT uq_jobs_secondary UNIQUE (tenant, code)".to_string(),),
@@ -2788,6 +2819,34 @@ mod sqlite_generated_column_tests {
 				&metadata[1].indexed_columns
 			)
 			.is_none()
+		);
+	}
+
+	#[rstest]
+	fn parse_sqlite_unique_metadata_normalizes_default_binary_collation() {
+		// Arrange
+		let create_sql = r#"CREATE TABLE jobs (
+			code TEXT,
+			UNIQUE (code),
+			UNIQUE (code COLLATE BINARY)
+		)"#;
+
+		// Act
+		let metadata = parse_sqlite_unique_constraint_metadata(create_sql);
+
+		// Assert
+		assert_eq!(metadata.len(), 2);
+		assert_eq!(
+			metadata[0].indexed_columns[0].collation.as_deref(),
+			Some("BINARY")
+		);
+		assert_eq!(metadata[0].indexed_columns[0].descending, Some(false));
+		assert_eq!(
+			sqlite_unique_index_match_score(
+				&metadata[0].indexed_columns,
+				&metadata[1].indexed_columns
+			),
+			Some(2)
 		);
 	}
 }
