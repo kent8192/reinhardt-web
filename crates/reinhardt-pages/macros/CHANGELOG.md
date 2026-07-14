@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Add fn-form `#[server_fnset]` generation for named low-level marker sets and
+  model-backed CRUD namespaces.
+- Add impl-form checked standard overrides and custom actions with detail and
+  transaction metadata, normalized endpoints, and compile-time diagnostics for
+  invalid names, links, lookups, signatures, collisions, and REST-only options.
+- Generate all six checked standard override paths, including the dedicated
+  transaction-only create context.
+
 ### Changed
 
 - **BREAKING**: `#[component]` now requires `name = "..."` for route names and

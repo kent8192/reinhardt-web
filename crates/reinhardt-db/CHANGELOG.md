@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Add typed `UniqueFieldRef` descriptors for compile-time model and lookup-value
+  matching, sealed against arbitrary downstream field-name construction by
+  model-owned indexed proofs.
+- Add executor-aware queryset and model operations plus backend-aware
+  transaction executor behavior, including MySQL mutation paths that do not
+  depend on `RETURNING`.
+
 ## [0.3.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.3.0...reinhardt-db@v0.3.1) - 2026-07-04
 
 ### Added

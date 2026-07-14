@@ -670,6 +670,22 @@ impl<T> QuerySet<T>
 where
 	T: super::Model,
 {
+	fn executor_backend(
+		executor: &dyn super::connection::TransactionExecutor,
+	) -> super::connection::DatabaseBackend {
+		match executor.backend() {
+			crate::backends::types::DatabaseType::Postgres => {
+				super::connection::DatabaseBackend::Postgres
+			}
+			crate::backends::types::DatabaseType::Mysql => {
+				super::connection::DatabaseBackend::MySql
+			}
+			crate::backends::types::DatabaseType::Sqlite => {
+				super::connection::DatabaseBackend::Sqlite
+			}
+		}
+	}
+
 	/// Creates a new instance.
 	pub fn new() -> Self {
 		Self {
@@ -695,6 +711,89 @@ where
 			from_alias: None,
 			from_subquery_sql: None,
 		}
+	}
+
+	fn build_select_statement(&self) -> reinhardt_core::exception::Result<SelectStatement> {
+		if !self.select_related_fields.is_empty() {
+			return Ok(self.select_related_query());
+		}
+
+		let mut stmt = Query::select();
+		stmt.from(Alias::new(T::table_name()));
+
+		if let Some(ref fields) = self.selected_fields {
+			for field in fields {
+				if field.contains('(') && field.contains(')') {
+					stmt.expr(Expr::cust(field.clone()));
+				} else {
+					stmt.column(parse_column_reference(field));
+				}
+			}
+		} else if !self.deferred_fields.is_empty() {
+			for field in T::field_metadata() {
+				if !self.deferred_fields.contains(&field.name) {
+					stmt.column(parse_column_reference(&field.name));
+				}
+			}
+		} else {
+			stmt.column(ColumnRef::Asterisk);
+		}
+
+		if let Some(condition) = self.build_where_condition()? {
+			stmt.cond_where(condition);
+		}
+
+		for order_field in &self.order_by_fields {
+			let (field, order) = order_field
+				.strip_prefix('-')
+				.map_or((order_field.as_str(), Order::Asc), |field| {
+					(field, Order::Desc)
+				});
+			stmt.order_by_expr(Expr::col(parse_column_reference(field)), order);
+		}
+
+		if let Some(limit) = self.limit {
+			stmt.limit(limit as u64);
+		}
+		if let Some(offset) = self.offset {
+			stmt.offset(offset as u64);
+		}
+
+		Ok(stmt.to_owned())
+	}
+
+	fn build_count_statement(&self) -> reinhardt_core::exception::Result<SelectStatement> {
+		let mut stmt = Query::select();
+		stmt.from(Alias::new(T::table_name()))
+			.expr_as(Func::count(Expr::asterisk().into()), Alias::new("count"));
+		if let Some(condition) = self.build_where_condition()? {
+			stmt.cond_where(condition);
+		}
+		Ok(stmt.to_owned())
+	}
+
+	fn decode_backend_rows(
+		rows: Vec<crate::backends::types::Row>,
+	) -> Result<Vec<T>, crate::backends::error::DatabaseError>
+	where
+		T: serde::de::DeserializeOwned,
+	{
+		rows.into_iter()
+			.map(|row| {
+				Self::decode_query_row(super::connection::QueryRow::from_backend_row(row)).map_err(
+					|error| {
+						crate::backends::error::DatabaseError::SerializationError(error.to_string())
+					},
+				)
+			})
+			.collect()
+	}
+
+	fn decode_query_row(row: super::connection::QueryRow) -> Result<T, serde_json::Error>
+	where
+		T: serde::de::DeserializeOwned,
+	{
+		row.deserialize_model::<T>()
 	}
 
 	/// Sets the manager and returns self for chaining.
@@ -3976,6 +4075,81 @@ where
 		stmt.to_owned()
 	}
 
+	/// Execute this queryset through a caller-owned transaction executor.
+	///
+	/// This method never resolves a global database connection. SQL is compiled
+	/// for the executor's backend and every row is decoded through the canonical
+	/// model row decoder.
+	///
+	/// # Errors
+	///
+	/// Returns an error if query compilation, executor fetch, or row decoding fails.
+	pub async fn all_with_executor(
+		&self,
+		executor: &mut dyn super::connection::TransactionExecutor,
+	) -> Result<Vec<T>, crate::backends::error::DatabaseError>
+	where
+		T: serde::de::DeserializeOwned,
+	{
+		let stmt = self.build_select_statement().map_err(|error| {
+			crate::backends::error::DatabaseError::QueryError(error.to_string())
+		})?;
+		let (sql, values) = Self::build_select_for_backend(&stmt, Self::executor_backend(executor));
+		let param_samples = values
+			.iter()
+			.map(|value| value.to_sql_literal())
+			.collect::<Vec<_>>();
+		let params = super::execution::convert_values(values);
+		let started_at = Instant::now();
+		let result = executor.fetch_all(&sql, params).await;
+		let duration = started_at.elapsed();
+
+		let rows = match result {
+			Ok(rows) => {
+				super::instrumentation::instrumentation()
+					.orm_query_end_with_params(&sql, &param_samples, duration)
+					.await;
+				rows
+			}
+			Err(error) => {
+				super::instrumentation::instrumentation()
+					.orm_query_error(&sql, &format!("{error:?}"))
+					.await;
+				return Err(error);
+			}
+		};
+
+		Self::decode_backend_rows(rows)
+	}
+
+	/// Execute this queryset through a transaction executor and return at most two rows.
+	pub async fn one_with_executor(
+		&self,
+		executor: &mut dyn super::connection::TransactionExecutor,
+	) -> Result<Vec<T>, crate::backends::error::DatabaseError>
+	where
+		T: serde::de::DeserializeOwned,
+	{
+		let mut queryset = self.clone();
+		queryset.limit = Some(queryset.limit.map_or(2, |limit| limit.min(2)));
+		queryset.all_with_executor(executor).await
+	}
+
+	/// Count this queryset through a caller-owned transaction executor.
+	pub async fn count_with_executor(
+		&self,
+		executor: &mut dyn super::connection::TransactionExecutor,
+	) -> Result<u64, crate::backends::error::DatabaseError> {
+		let stmt = self.build_count_statement().map_err(|error| {
+			crate::backends::error::DatabaseError::QueryError(error.to_string())
+		})?;
+
+		let (sql, values) = Self::build_select_for_backend(&stmt, Self::executor_backend(executor));
+		let params = super::execution::convert_values(values);
+		let row = executor.fetch_one(&sql, params).await?;
+		row.get::<u64>("count")
+	}
+
 	/// Execute the queryset and return all matching records
 	///
 	/// Fetches all records from the database that match the accumulated filters.
@@ -4033,83 +4207,23 @@ where
 	{
 		let conn = super::manager::get_connection().await?;
 
-		let stmt = if self.select_related_fields.is_empty() {
-			// Simple SELECT without JOINs
-			let mut stmt = Query::select();
-			stmt.from(Alias::new(T::table_name()));
-
-			// Column selection considering selected_fields and deferred_fields
-			if let Some(ref fields) = self.selected_fields {
-				for field in fields {
-					// Detect raw SQL expressions (like COUNT(*), AVG(price), etc.)
-					if field.contains('(') && field.contains(')') {
-						// Use expr() for raw SQL expressions - clone to satisfy lifetime
-						stmt.expr(Expr::cust(field.clone()));
-					} else {
-						// Regular column reference
-						let col_ref = parse_column_reference(field);
-						stmt.column(col_ref);
-					}
-				}
-			} else if !self.deferred_fields.is_empty() {
-				let all_fields = T::field_metadata();
-				for field in all_fields {
-					if !self.deferred_fields.contains(&field.name) {
-						let col_ref = parse_column_reference(&field.name);
-						stmt.column(col_ref);
-					}
-				}
-			} else {
-				stmt.column(ColumnRef::Asterisk);
-			}
-
-			if let Some(cond) = self.build_where_condition()? {
-				stmt.cond_where(cond);
-			}
-
-			// Apply ORDER BY clause
-			for order_field in &self.order_by_fields {
-				let (field, is_desc) = if let Some(stripped) = order_field.strip_prefix('-') {
-					(stripped, true)
-				} else {
-					(order_field.as_str(), false)
-				};
-
-				let col_ref = parse_column_reference(field);
-				let expr = Expr::col(col_ref);
-				if is_desc {
-					stmt.order_by_expr(expr, Order::Desc);
-				} else {
-					stmt.order_by_expr(expr, Order::Asc);
-				}
-			}
-
-			// Apply LIMIT/OFFSET
-			if let Some(limit) = self.limit {
-				stmt.limit(limit as u64);
-			}
-			if let Some(offset) = self.offset {
-				stmt.offset(offset as u64);
-			}
-
-			stmt.to_owned()
-		} else {
-			// SELECT with JOINs for select_related
-			self.select_related_query()
-		};
-
-		// Convert statement to SQL with inline values (no placeholders)
-		let sql = stmt.to_string(PostgresQueryBuilder);
+		let stmt = self.build_select_statement()?;
+		let (sql, values) = Self::build_select_for_backend(&stmt, conn.backend());
+		let param_samples = values
+			.iter()
+			.map(|value| value.to_sql_literal())
+			.collect::<Vec<_>>();
+		let params = super::execution::convert_values(values);
 
 		// Execute query and deserialize results
 		let started_at = Instant::now();
-		let query_result = conn.query(&sql, vec![]).await;
+		let query_result = conn.query(&sql, params).await;
 		let duration = started_at.elapsed();
 
 		let rows = match query_result {
 			Ok(rows) => {
 				super::instrumentation::instrumentation()
-					.orm_query_end_with_params(&sql, &[], duration)
+					.orm_query_end_with_params(&sql, &param_samples, duration)
 					.await;
 				rows
 			}
@@ -4122,7 +4236,7 @@ where
 		};
 		rows.into_iter()
 			.map(|row| {
-				row.deserialize_model::<T>().map_err(|e| {
+				Self::decode_query_row(row).map_err(|e| {
 					reinhardt_core::exception::Error::Database(format!(
 						"Deserialization error: {}",
 						e
@@ -4286,79 +4400,22 @@ where
 	where
 		T: serde::de::DeserializeOwned,
 	{
-		let stmt = if self.select_related_fields.is_empty() {
-			let mut stmt = Query::select();
-			stmt.from(Alias::new(T::table_name()));
-
-			// Column selection considering selected_fields and deferred_fields
-			if let Some(ref fields) = self.selected_fields {
-				for field in fields {
-					// Detect raw SQL expressions (like COUNT(*), AVG(price), etc.)
-					if field.contains('(') && field.contains(')') {
-						// Use expr() for raw SQL expressions - clone to satisfy lifetime
-						stmt.expr(Expr::cust(field.clone()));
-					} else {
-						// Regular column reference
-						let col_ref = parse_column_reference(field);
-						stmt.column(col_ref);
-					}
-				}
-			} else if !self.deferred_fields.is_empty() {
-				let all_fields = T::field_metadata();
-				for field in all_fields {
-					if !self.deferred_fields.contains(&field.name) {
-						let col_ref = parse_column_reference(&field.name);
-						stmt.column(col_ref);
-					}
-				}
-			} else {
-				stmt.column(ColumnRef::Asterisk);
-			}
-
-			if let Some(cond) = self.build_where_condition()? {
-				stmt.cond_where(cond);
-			}
-
-			// Apply ORDER BY clause
-			for order_field in &self.order_by_fields {
-				let (field, is_desc) = if let Some(stripped) = order_field.strip_prefix('-') {
-					(stripped, true)
-				} else {
-					(order_field.as_str(), false)
-				};
-
-				let col_ref = parse_column_reference(field);
-				let expr = Expr::col(col_ref);
-				if is_desc {
-					stmt.order_by_expr(expr, Order::Desc);
-				} else {
-					stmt.order_by_expr(expr, Order::Asc);
-				}
-			}
-
-			// Apply LIMIT/OFFSET
-			if let Some(limit) = self.limit {
-				stmt.limit(limit as u64);
-			}
-			if let Some(offset) = self.offset {
-				stmt.offset(offset as u64);
-			}
-
-			stmt.to_owned()
-		} else {
-			self.select_related_query()
-		};
-
-		let sql = stmt.to_string(PostgresQueryBuilder);
+		let stmt = self.build_select_statement()?;
+		let (sql, values) = Self::build_select_for_backend(&stmt, conn.backend());
+		let param_samples = values
+			.iter()
+			.map(|value| value.to_sql_literal())
+			.collect::<Vec<_>>();
+		let params = super::execution::convert_values(values);
 
 		let started_at = Instant::now();
-		let query_result = conn.query(&sql, vec![]).await;
+		let query_result = conn.query(&sql, params).await;
 		let duration = started_at.elapsed();
 
 		let rows = match query_result {
 			Ok(rows) => {
 				super::instrumentation::instrumentation()
-					.orm_query_end_with_params(&sql, &[], duration)
+					.orm_query_end_with_params(&sql, &param_samples, duration)
 					.await;
 				rows
 			}
@@ -4371,7 +4428,7 @@ where
 		};
 		rows.into_iter()
 			.map(|row| {
-				row.deserialize_model::<T>().map_err(|e| {
+				Self::decode_query_row(row).map_err(|e| {
 					reinhardt_core::exception::Error::Database(format!(
 						"Deserialization error: {}",
 						e
@@ -4379,6 +4436,41 @@ where
 				})
 			})
 			.collect()
+	}
+
+	/// Execute this queryset with an explicit connection and return at most two rows.
+	///
+	/// An existing stricter limit is preserved. This method never resolves the
+	/// process-global ORM connection and does not open a transaction.
+	pub async fn one_with_db(
+		&self,
+		conn: &super::connection::DatabaseConnection,
+	) -> reinhardt_core::exception::Result<Vec<T>>
+	where
+		T: serde::de::DeserializeOwned,
+	{
+		let mut queryset = self.clone();
+		queryset.limit = Some(queryset.limit.map_or(2, |limit| limit.min(2)));
+		queryset.all_with_db(conn).await
+	}
+
+	/// Count this queryset through an explicit database connection.
+	///
+	/// The count uses the same filters as the queryset while intentionally
+	/// excluding pagination. It never resolves the process-global ORM connection.
+	pub async fn count_with_db(
+		&self,
+		conn: &super::connection::DatabaseConnection,
+	) -> reinhardt_core::exception::Result<u64> {
+		let stmt = self.build_count_statement()?;
+		let (sql, values) = Self::build_select_for_backend(&stmt, conn.backend());
+		let params = super::execution::convert_values(values);
+		let row = conn.query_one(&sql, params).await?;
+		row.get::<u64>("count").ok_or_else(|| {
+			reinhardt_core::exception::Error::Database(
+				"COUNT query did not return a numeric count column".to_owned(),
+			)
+		})
 	}
 
 	/// Execute the queryset with an explicit database connection and return a single record
@@ -4519,22 +4611,9 @@ where
 	/// # }
 	/// ```
 	pub async fn count(&self) -> reinhardt_core::exception::Result<usize> {
-		use reinhardt_query::prelude::{Func, PostgresQueryBuilder, QueryBuilder};
-
 		let conn = super::manager::get_connection().await?;
-
-		// Build COUNT query using reinhardt-query
-		let mut stmt = Query::select();
-		stmt.from(Alias::new(T::table_name()))
-			.expr(Func::count(Expr::asterisk().into_simple_expr()));
-
-		// Add WHERE conditions
-		if let Some(cond) = self.build_where_condition()? {
-			stmt.cond_where(cond);
-		}
-
-		// Convert to SQL and extract parameter values
-		let (sql, values) = PostgresQueryBuilder.build_select(&stmt);
+		let stmt = self.build_count_statement()?;
+		let (sql, values) = Self::build_select_for_backend(&stmt, conn.backend());
 		let param_samples = values
 			.iter()
 			.map(|value| value.to_sql_literal())

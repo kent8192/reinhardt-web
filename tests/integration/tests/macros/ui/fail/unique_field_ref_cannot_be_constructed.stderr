@@ -1,0 +1,11 @@
+error[E0599]: no associated function or constant named `new` found for struct `UniqueFieldRef<M, T>` in the current scope
+ --> tests/macros/ui/fail/unique_field_ref_cannot_be_constructed.rs:6:48
+  |
+6 |     let _ = UniqueFieldRef::<Article, String>::new("title");
+  |                                                ^^^ associated function or constant not found in `UniqueFieldRef<Article, std::string::String>`
+  |
+note: if you're trying to build a new `UniqueFieldRef<Article, std::string::String>`, consider using `UniqueFieldRef::<M, T>::from_model_field` which returns `UniqueFieldRef<_, _>`
+ --> $WORKSPACE/crates/reinhardt-db/src/orm/expressions.rs
+  |
+  |     pub const unsafe fn from_model_field(name: &'static str) -> Self {
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

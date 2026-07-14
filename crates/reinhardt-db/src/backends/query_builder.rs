@@ -1463,6 +1463,10 @@ mod tests {
 
 	#[async_trait::async_trait]
 	impl TransactionExecutor for MockTransactionExecutor {
+		fn backend(&self) -> DatabaseType {
+			DatabaseType::Postgres
+		}
+
 		async fn execute(&mut self, _sql: &str, _params: Vec<QueryValue>) -> Result<QueryResult> {
 			Ok(QueryResult { rows_affected: 0 })
 		}

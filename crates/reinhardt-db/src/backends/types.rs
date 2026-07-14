@@ -476,6 +476,9 @@ fn validate_savepoint_name(name: &str) -> Result<(), String> {
 /// maintains connection affinity.
 #[async_trait::async_trait]
 pub trait TransactionExecutor: Send + Sync {
+	/// Return the database backend used by this transaction executor.
+	fn backend(&self) -> DatabaseType;
+
 	/// Execute a query that modifies the database within the transaction
 	async fn execute(
 		&mut self,

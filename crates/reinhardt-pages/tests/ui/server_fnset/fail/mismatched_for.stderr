@@ -1,0 +1,35 @@
+error[E0277]: the trait bound `DeclaredActions: ServerFnSetActions<ArticleResource>` is not satisfied
+ --> tests/ui/server_fnset/fail/mismatched_for.rs:5:44
+  |
+5 | #[server_fnset(name = "article", actions = DeclaredActions)]
+  |                                            ^^^^^^^^^^^^^^^ unsatisfied trait bound
+  |
+help: the trait `ServerFnSetActions<ArticleResource>` is not implemented for `DeclaredActions`
+ --> tests/ui/server_fnset/fail/mismatched_for.rs:3:1
+  |
+3 | struct DeclaredActions;
+  | ^^^^^^^^^^^^^^^^^^^^^^
+help: the trait `ServerFnSetActions<<__ReinhardtServerFnSetLinkArticleFns as reinhardt_pages::server_fn::ModelServerFnSetLink>::Resource>` is implemented for `OtherActions`
+ --> tests/ui/server_fnset/fail/mismatched_for.rs:7:1
+  |
+7 | #[server_fnset(for = article_fns)]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  = note: this error originates in the macro `__reinhardt_generate_server_fnset_OtherActions` which comes from the expansion of the attribute macro `server_fnset` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `DeclaredActions: ServerFnSetActions<ArticleResource>` is not satisfied
+ --> tests/ui/server_fnset/fail/mismatched_for.rs:5:1
+  |
+5 | #[server_fnset(name = "article", actions = DeclaredActions)]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
+  |
+help: the trait `ServerFnSetActions<ArticleResource>` is not implemented for `DeclaredActions`
+ --> tests/ui/server_fnset/fail/mismatched_for.rs:3:1
+  |
+3 | struct DeclaredActions;
+  | ^^^^^^^^^^^^^^^^^^^^^^
+help: the trait `ServerFnSetActions<<__ReinhardtServerFnSetLinkArticleFns as reinhardt_pages::server_fn::ModelServerFnSetLink>::Resource>` is implemented for `OtherActions`
+ --> tests/ui/server_fnset/fail/mismatched_for.rs:7:1
+  |
+7 | #[server_fnset(for = article_fns)]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  = note: this error originates in the attribute macro `server_fnset` (in Nightly builds, run with -Z macro-backtrace for more info)

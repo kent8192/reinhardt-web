@@ -1,0 +1,149 @@
+error[E0599]: the associated function or constant `list` exists for struct `reinhardt_pages::server_fn::ModelServerFnSet<MissingMappingResource>`, but its trait bounds were not satisfied
+  --> tests/ui/server_fnset/fail/missing_dto_mapping.rs:25:1
+   |
+25 | #[server_fnset(name = "missing-mapping")]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ associated function or constant cannot be called due to unsatisfied trait bounds
+   |
+  ::: tests/ui/server_fnset/fail/../pass/model_crud_types.inc
+   |
+   | #[derive(Clone, Serialize, Deserialize)] pub struct PublishArticle { label: String }
+   |                                          ------------------------- doesn't satisfy `_: CreateModelInput<Article>`
+   |
+note: if you're trying to build a new `reinhardt_pages::server_fn::ModelServerFnSet<MissingMappingResource>`, consider using `reinhardt_pages::server_fn::ModelServerFnSet::<R>::new` which returns `reinhardt_pages::server_fn::ModelServerFnSet<_>`
+  --> src/server_fn/model_set/runtime.rs
+   |
+   |     pub const fn new() -> Self {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = note: the following trait bounds were not satisfied:
+           `PublishArticle: reinhardt_pages::server_fn::CreateModelInput<Article>`
+note: the trait `reinhardt_pages::server_fn::CreateModelInput` must be implemented
+  --> src/server_fn/model_set/resource.rs
+   |
+   | pub trait CreateModelInput<M> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = note: this error originates in the attribute macro `server_fnset` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0599]: the associated function or constant `retrieve` exists for struct `reinhardt_pages::server_fn::ModelServerFnSet<MissingMappingResource>`, but its trait bounds were not satisfied
+  --> tests/ui/server_fnset/fail/missing_dto_mapping.rs:25:1
+   |
+25 | #[server_fnset(name = "missing-mapping")]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ associated function or constant cannot be called due to unsatisfied trait bounds
+   |
+  ::: tests/ui/server_fnset/fail/../pass/model_crud_types.inc
+   |
+   | #[derive(Clone, Serialize, Deserialize)] pub struct PublishArticle { label: String }
+   |                                          ------------------------- doesn't satisfy `_: CreateModelInput<Article>`
+   |
+note: if you're trying to build a new `reinhardt_pages::server_fn::ModelServerFnSet<MissingMappingResource>`, consider using `reinhardt_pages::server_fn::ModelServerFnSet::<R>::new` which returns `reinhardt_pages::server_fn::ModelServerFnSet<_>`
+  --> src/server_fn/model_set/runtime.rs
+   |
+   |     pub const fn new() -> Self {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = note: the following trait bounds were not satisfied:
+           `PublishArticle: reinhardt_pages::server_fn::CreateModelInput<Article>`
+note: the trait `reinhardt_pages::server_fn::CreateModelInput` must be implemented
+  --> src/server_fn/model_set/resource.rs
+   |
+   | pub trait CreateModelInput<M> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = note: this error originates in the attribute macro `server_fnset` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0599]: the associated function or constant `create` exists for struct `reinhardt_pages::server_fn::ModelServerFnSet<MissingMappingResource>`, but its trait bounds were not satisfied
+  --> tests/ui/server_fnset/fail/missing_dto_mapping.rs:25:1
+   |
+25 | #[server_fnset(name = "missing-mapping")]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ associated function or constant cannot be called due to unsatisfied trait bounds
+   |
+  ::: tests/ui/server_fnset/fail/../pass/model_crud_types.inc
+   |
+   | #[derive(Clone, Serialize, Deserialize)] pub struct PublishArticle { label: String }
+   |                                          ------------------------- doesn't satisfy `_: CreateModelInput<Article>`
+   |
+note: if you're trying to build a new `reinhardt_pages::server_fn::ModelServerFnSet<MissingMappingResource>`, consider using `reinhardt_pages::server_fn::ModelServerFnSet::<R>::new` which returns `reinhardt_pages::server_fn::ModelServerFnSet<_>`
+  --> src/server_fn/model_set/runtime.rs
+   |
+   |     pub const fn new() -> Self {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = note: the following trait bounds were not satisfied:
+           `PublishArticle: reinhardt_pages::server_fn::CreateModelInput<Article>`
+note: the trait `reinhardt_pages::server_fn::CreateModelInput` must be implemented
+  --> src/server_fn/model_set/resource.rs
+   |
+   | pub trait CreateModelInput<M> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = note: this error originates in the attribute macro `server_fnset` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0599]: the associated function or constant `update` exists for struct `reinhardt_pages::server_fn::ModelServerFnSet<MissingMappingResource>`, but its trait bounds were not satisfied
+  --> tests/ui/server_fnset/fail/missing_dto_mapping.rs:25:1
+   |
+25 | #[server_fnset(name = "missing-mapping")]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ associated function or constant cannot be called due to unsatisfied trait bounds
+   |
+  ::: tests/ui/server_fnset/fail/../pass/model_crud_types.inc
+   |
+   | #[derive(Clone, Serialize, Deserialize)] pub struct PublishArticle { label: String }
+   |                                          ------------------------- doesn't satisfy `_: CreateModelInput<Article>`
+   |
+note: if you're trying to build a new `reinhardt_pages::server_fn::ModelServerFnSet<MissingMappingResource>`, consider using `reinhardt_pages::server_fn::ModelServerFnSet::<R>::new` which returns `reinhardt_pages::server_fn::ModelServerFnSet<_>`
+  --> src/server_fn/model_set/runtime.rs
+   |
+   |     pub const fn new() -> Self {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = note: the following trait bounds were not satisfied:
+           `PublishArticle: reinhardt_pages::server_fn::CreateModelInput<Article>`
+note: the trait `reinhardt_pages::server_fn::CreateModelInput` must be implemented
+  --> src/server_fn/model_set/resource.rs
+   |
+   | pub trait CreateModelInput<M> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = note: this error originates in the attribute macro `server_fnset` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0599]: the associated function or constant `partial_update` exists for struct `reinhardt_pages::server_fn::ModelServerFnSet<MissingMappingResource>`, but its trait bounds were not satisfied
+  --> tests/ui/server_fnset/fail/missing_dto_mapping.rs:25:1
+   |
+25 | #[server_fnset(name = "missing-mapping")]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ associated function or constant cannot be called due to unsatisfied trait bounds
+   |
+  ::: tests/ui/server_fnset/fail/../pass/model_crud_types.inc
+   |
+   | #[derive(Clone, Serialize, Deserialize)] pub struct PublishArticle { label: String }
+   |                                          ------------------------- doesn't satisfy `_: CreateModelInput<Article>`
+   |
+note: if you're trying to build a new `reinhardt_pages::server_fn::ModelServerFnSet<MissingMappingResource>`, consider using `reinhardt_pages::server_fn::ModelServerFnSet::<R>::new` which returns `reinhardt_pages::server_fn::ModelServerFnSet<_>`
+  --> src/server_fn/model_set/runtime.rs
+   |
+   |     pub const fn new() -> Self {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = note: the following trait bounds were not satisfied:
+           `PublishArticle: reinhardt_pages::server_fn::CreateModelInput<Article>`
+note: the trait `reinhardt_pages::server_fn::CreateModelInput` must be implemented
+  --> src/server_fn/model_set/resource.rs
+   |
+   | pub trait CreateModelInput<M> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = note: this error originates in the attribute macro `server_fnset` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0599]: the associated function or constant `destroy` exists for struct `reinhardt_pages::server_fn::ModelServerFnSet<MissingMappingResource>`, but its trait bounds were not satisfied
+  --> tests/ui/server_fnset/fail/missing_dto_mapping.rs:25:1
+   |
+25 | #[server_fnset(name = "missing-mapping")]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ associated function or constant cannot be called due to unsatisfied trait bounds
+   |
+  ::: tests/ui/server_fnset/fail/../pass/model_crud_types.inc
+   |
+   | #[derive(Clone, Serialize, Deserialize)] pub struct PublishArticle { label: String }
+   |                                          ------------------------- doesn't satisfy `_: CreateModelInput<Article>`
+   |
+note: if you're trying to build a new `reinhardt_pages::server_fn::ModelServerFnSet<MissingMappingResource>`, consider using `reinhardt_pages::server_fn::ModelServerFnSet::<R>::new` which returns `reinhardt_pages::server_fn::ModelServerFnSet<_>`
+  --> src/server_fn/model_set/runtime.rs
+   |
+   |     pub const fn new() -> Self {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = note: the following trait bounds were not satisfied:
+           `PublishArticle: reinhardt_pages::server_fn::CreateModelInput<Article>`
+note: the trait `reinhardt_pages::server_fn::CreateModelInput` must be implemented
+  --> src/server_fn/model_set/resource.rs
+   |
+   | pub trait CreateModelInput<M> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = note: this error originates in the attribute macro `server_fnset` (in Nightly builds, run with -Z macro-backtrace for more info)

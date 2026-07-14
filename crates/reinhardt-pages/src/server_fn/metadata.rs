@@ -63,6 +63,12 @@ pub trait ServerFnMetadata: 'static {
 	/// Names of `#[inject]` parameters (for documentation / debugging).
 	const INJECTED_PARAMS: &'static [&'static str] = &[];
 
+	/// Whether this action operates on one resource selected by its lookup.
+	const DETAIL: bool = false;
+
+	/// Whether this action executes inside a framework-owned transaction.
+	const TRANSACTIONAL: bool = false;
+
 	/// Whether the generated handler can access request extensions and set response cookies.
 	///
 	/// Plain server functions with only body-deserialized parameters cannot reach

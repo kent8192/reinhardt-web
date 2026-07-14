@@ -228,6 +228,24 @@ impl<M: Model> Manager<M> {
 		}
 	}
 
+	fn executor_backend(executor: &dyn super::connection::TransactionExecutor) -> DatabaseBackend {
+		match executor.backend() {
+			crate::backends::types::DatabaseType::Postgres => DatabaseBackend::Postgres,
+			crate::backends::types::DatabaseType::Mysql => DatabaseBackend::MySql,
+			crate::backends::types::DatabaseType::Sqlite => DatabaseBackend::Sqlite,
+		}
+	}
+
+	fn decode_executor_row(
+		row: crate::backends::types::Row,
+	) -> Result<M, crate::backends::error::DatabaseError> {
+		super::connection::QueryRow::from_backend_row(row)
+			.deserialize_model::<M>()
+			.map_err(|error| {
+				crate::backends::error::DatabaseError::SerializationError(error.to_string())
+			})
+	}
+
 	fn is_generated_field(field: &str) -> bool {
 		M::generated_field_names().contains(&field)
 	}
@@ -245,7 +263,7 @@ impl<M: Model> Manager<M> {
 		columns.into_iter().map(Alias::new).collect()
 	}
 
-	fn build_update_statement_from_object(
+	fn build_update_statement_without_returning(
 		pk: &M::PrimaryKey,
 		obj: &serde_json::Map<String, serde_json::Value>,
 		field_is_none: impl Fn(&str) -> bool,
@@ -291,6 +309,15 @@ impl<M: Model> Manager<M> {
 		};
 		stmt.and_where(Expr::col(Alias::new(M::primary_key_field())).eq(pk_value));
 
+		stmt
+	}
+
+	fn build_update_statement_from_object(
+		pk: &M::PrimaryKey,
+		obj: &serde_json::Map<String, serde_json::Value>,
+		field_is_none: impl Fn(&str) -> bool,
+	) -> reinhardt_query::prelude::UpdateStatement {
+		let mut stmt = Self::build_update_statement_without_returning(pk, obj, field_is_none);
 		stmt.returning(Self::returning_columns_from_object(obj));
 		stmt
 	}
@@ -816,6 +843,87 @@ impl<M: Model> Manager<M> {
 		self.create_with_conn(&conn, model).await
 	}
 
+	async fn create_with_executor(
+		&self,
+		executor: &mut dyn super::connection::TransactionExecutor,
+		model: &M,
+	) -> Result<M, crate::backends::error::DatabaseError> {
+		let json = serde_json::to_value(model)?;
+		let obj = json.as_object().ok_or_else(|| {
+			crate::backends::error::DatabaseError::SerializationError(
+				"Model must serialize to object".to_string(),
+			)
+		})?;
+		let mut stmt =
+			Self::build_insert_statement_from_object(obj, |field| model.field_is_none(field))
+				.map_err(|error| {
+					crate::backends::error::DatabaseError::QueryError(error.to_string())
+				})?;
+		let backend = Self::executor_backend(executor);
+		if backend != DatabaseBackend::MySql {
+			stmt.returning(Self::returning_columns_from_object(obj));
+		}
+		let (sql, values) = build_insert_sql(&stmt, backend);
+		let params = values
+			.0
+			.into_iter()
+			.map(Self::sea_value_to_query_value)
+			.collect();
+		if backend == DatabaseBackend::MySql {
+			executor
+				.fetch_one("SELECT LAST_INSERT_ID(0) AS generated_id", Vec::new())
+				.await?;
+			executor.execute(&sql, params).await?;
+
+			let row = executor
+				.fetch_one(
+					"SELECT CAST(LAST_INSERT_ID() AS SIGNED) AS generated_id",
+					Vec::new(),
+				)
+				.await?;
+			let generated_id = row.get::<i64>("generated_id")?;
+			if generated_id <= 0 {
+				return Err(crate::backends::error::DatabaseError::NotSupported(
+					"MySQL executor inserts without an explicit primary key require an auto-increment integer primary key"
+						.to_string(),
+				));
+			}
+
+			let mut select = Query::select();
+			select
+				.from(Alias::new(M::table_name()))
+				.column(ColumnRef::Asterisk)
+				.and_where(
+					Expr::col(Alias::new(M::primary_key_field()))
+						.eq(reinhardt_query::value::Value::BigInt(Some(generated_id))),
+				);
+			let (select_sql, select_values) = build_select_sql(&select, backend);
+			let select_params = select_values
+				.0
+				.into_iter()
+				.map(Self::sea_value_to_query_value)
+				.collect();
+			let row = executor.fetch_one(&select_sql, select_params).await?;
+			return Self::decode_executor_row(row);
+		}
+
+		let row = executor.fetch_one(&sql, params).await?;
+		Self::decode_executor_row(row)
+	}
+
+	/// Save a model through a caller-owned transaction executor.
+	pub async fn save_with_executor(
+		&self,
+		executor: &mut dyn super::connection::TransactionExecutor,
+		model: &M,
+	) -> Result<M, crate::backends::error::DatabaseError> {
+		if model.primary_key().is_some() {
+			self.update_with_executor(executor, model).await
+		} else {
+			self.create_with_executor(executor, model).await
+		}
+	}
+
 	/// Create a new record with an explicit database connection
 	///
 	/// This method allows using a specific connection, which is essential for
@@ -1055,6 +1163,65 @@ impl<M: Model> Manager<M> {
 		self.update_with_conn(&conn, model).await
 	}
 
+	async fn update_with_executor(
+		&self,
+		executor: &mut dyn super::connection::TransactionExecutor,
+		model: &M,
+	) -> Result<M, crate::backends::error::DatabaseError> {
+		let pk = model.primary_key().ok_or_else(|| {
+			crate::backends::error::DatabaseError::QueryError(
+				"Model must have primary key".to_string(),
+			)
+		})?;
+		let json = serde_json::to_value(model)?;
+		let obj = json.as_object().ok_or_else(|| {
+			crate::backends::error::DatabaseError::SerializationError(
+				"Model must serialize to object".to_string(),
+			)
+		})?;
+		let backend = Self::executor_backend(executor);
+		let stmt = if backend == DatabaseBackend::MySql {
+			Self::build_update_statement_without_returning(&pk, obj, |field| {
+				model.field_is_none(field)
+			})
+		} else {
+			Self::build_update_statement_from_object(&pk, obj, |field| model.field_is_none(field))
+		};
+		let (sql, values) = build_update_sql(&stmt, backend);
+		let params = values
+			.0
+			.into_iter()
+			.map(Self::sea_value_to_query_value)
+			.collect();
+		if backend == DatabaseBackend::MySql {
+			executor.execute(&sql, params).await?;
+			let mut select = Query::select();
+			let pk_string = pk.to_string();
+			let pk_value = if let Ok(value) = pk_string.parse::<i64>() {
+				reinhardt_query::value::Value::BigInt(Some(value))
+			} else if let Ok(value) = Uuid::parse_str(&pk_string) {
+				reinhardt_query::value::Value::Uuid(Some(Box::new(value)))
+			} else {
+				reinhardt_query::value::Value::String(Some(Box::new(pk_string)))
+			};
+			select
+				.from(Alias::new(M::table_name()))
+				.column(ColumnRef::Asterisk)
+				.and_where(Expr::col(Alias::new(M::primary_key_field())).eq(pk_value));
+			let (select_sql, select_values) = build_select_sql(&select, backend);
+			let select_params = select_values
+				.0
+				.into_iter()
+				.map(Self::sea_value_to_query_value)
+				.collect();
+			let row = executor.fetch_one(&select_sql, select_params).await?;
+			return Self::decode_executor_row(row);
+		}
+
+		let row = executor.fetch_one(&sql, params).await?;
+		Self::decode_executor_row(row)
+	}
+
 	/// Update an existing record with an explicit database connection
 	///
 	/// This method allows using a specific connection, which is essential for
@@ -1118,6 +1285,33 @@ impl<M: Model> Manager<M> {
 	pub async fn delete(&self, pk: M::PrimaryKey) -> reinhardt_core::exception::Result<()> {
 		let conn = get_connection().await?;
 		self.delete_with_conn(&conn, pk).await
+	}
+
+	/// Delete a model by primary key through a caller-owned transaction executor.
+	pub async fn delete_with_executor(
+		&self,
+		executor: &mut dyn super::connection::TransactionExecutor,
+		pk: M::PrimaryKey,
+	) -> Result<(), crate::backends::error::DatabaseError> {
+		let mut stmt = Query::delete();
+		let pk_string = pk.to_string();
+		let pk_value = if let Ok(value) = pk_string.parse::<i64>() {
+			reinhardt_query::value::Value::BigInt(Some(value))
+		} else if let Ok(value) = Uuid::parse_str(&pk_string) {
+			reinhardt_query::value::Value::Uuid(Some(Box::new(value)))
+		} else {
+			reinhardt_query::value::Value::String(Some(Box::new(pk_string)))
+		};
+		stmt.from_table(Alias::new(M::table_name()))
+			.and_where(Expr::col(Alias::new(M::primary_key_field())).eq(pk_value));
+		let (sql, values) = build_delete_sql(&stmt, Self::executor_backend(executor));
+		let params = values
+			.0
+			.into_iter()
+			.map(Self::sea_value_to_query_value)
+			.collect();
+		executor.execute(&sql, params).await?;
+		Ok(())
 	}
 
 	/// Delete a record with an explicit database connection

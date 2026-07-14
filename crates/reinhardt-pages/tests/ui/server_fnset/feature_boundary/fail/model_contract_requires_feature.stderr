@@ -1,0 +1,19 @@
+error[E0432]: unresolved import `reinhardt_pages::server_fn::ModelServerFnResource`
+ --> tests/ui/server_fnset/feature_boundary/fail/model_contract_requires_feature.rs:1:5
+  |
+1 | use reinhardt_pages::server_fn::ModelServerFnResource;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ no `ModelServerFnResource` in `server_fn`
+  |
+note: found an item that was configured out
+ --> src/server_fn.rs
+  |
+  | #[cfg(all(native, feature = "model-server-fnset"))]
+  |                   ------------------------------ the item is gated behind the `model-server-fnset` feature
+...
+  |     DetailActionContext, ModelServerFnResource, PatchModelInput, ServerFnSetAction,
+  |                          ^^^^^^^^^^^^^^^^^^^^^
+help: a similar name exists in the module
+  |
+1 - use reinhardt_pages::server_fn::ModelServerFnResource;
+1 + use reinhardt_pages::server_fn::ServerFnResource;
+  |

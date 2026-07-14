@@ -1,0 +1,16 @@
+error[E0308]: mismatched types
+ --> tests/ui/server_fnset/fail/wrong_standard_input.rs:6:1
+  |
+6 |   #[server_fnset(for = article_fns)]
+  |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `PatchArticle`, found `UpdateArticle`
+7 |   impl Actions {
+  |  ______-
+8 | |     async fn update(lookup: i64, input: PatchArticle, #[inject] context: DetailActionContext<ArticleResource>) -> Result<ArticleDto...
+  | |___________________- arguments to this function are incorrect
+  |
+note: associated function defined here
+ --> tests/ui/server_fnset/fail/wrong_standard_input.rs:8:11
+  |
+8 |     async fn update(lookup: i64, input: PatchArticle, #[inject] context: DetailActionContext<ArticleResource>) -> Result<ArticleDto, ...
+  |              ^^^^^^              -------------------
+  = note: this error originates in the macro `__reinhardt_generate_server_fnset_Actions` which comes from the expansion of the attribute macro `server_fnset` (in Nightly builds, run with -Z macro-backtrace for more info)

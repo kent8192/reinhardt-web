@@ -338,6 +338,76 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 		}
 	}
 
+	/// Save this model through a caller-owned transaction executor.
+	fn save_with_executor(
+		&mut self,
+		executor: &mut dyn super::connection::TransactionExecutor,
+	) -> impl std::future::Future<Output = Result<(), crate::backends::error::DatabaseError>> + Send
+	where
+		Self: Sized,
+	{
+		async move {
+			use super::events::{EventResult, get_active_registry};
+
+			let registry = get_active_registry();
+			let manager = super::Manager::<Self>::new();
+			let json = serde_json::to_value(&*self)?;
+			let is_insert = self.primary_key().is_none();
+			let instance_id = if is_insert {
+				format!("{}-new-{}", Self::table_name(), uuid::Uuid::now_v7())
+			} else {
+				format!(
+					"{}-{}",
+					Self::table_name(),
+					self.primary_key()
+						.map(|pk| pk.to_string())
+						.unwrap_or_default()
+				)
+			};
+
+			if let Some(ref registry) = registry {
+				let result = if is_insert {
+					registry
+						.dispatch_before_insert(Self::table_name(), &instance_id, &json)
+						.await
+				} else {
+					registry
+						.dispatch_before_update(Self::table_name(), &instance_id, &json)
+						.await
+				};
+				if result == EventResult::Veto {
+					let operation = if is_insert { "Insert" } else { "Update" };
+					return Err(crate::backends::error::DatabaseError::QueryError(format!(
+						"{operation} operation vetoed by event listener"
+					)));
+				}
+			}
+
+			*self = manager.save_with_executor(executor, self).await?;
+
+			if let Some(ref registry) = registry {
+				if is_insert {
+					let final_id = format!(
+						"{}-{}",
+						Self::table_name(),
+						self.primary_key()
+							.map(|pk| pk.to_string())
+							.unwrap_or_default()
+					);
+					registry
+						.dispatch_after_insert(Self::table_name(), &final_id)
+						.await;
+				} else {
+					registry
+						.dispatch_after_update(Self::table_name(), &instance_id)
+						.await;
+				}
+			}
+
+			Ok(())
+		}
+	}
+
 	/// Delete the model instance from the database with event dispatching
 	///
 	/// Dispatches before_delete/after_delete events. Event listeners can veto
@@ -413,6 +483,49 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 			manager.delete_with_conn(&conn, pk.clone()).await?;
 
 			// Dispatch after_delete event if registry is available
+			if let Some(registry) = get_active_registry() {
+				registry
+					.dispatch_after_delete(Self::table_name(), &instance_id)
+					.await;
+			}
+
+			Ok(())
+		}
+	}
+
+	/// Delete this model through a caller-owned transaction executor.
+	fn delete_with_executor(
+		&self,
+		executor: &mut dyn super::connection::TransactionExecutor,
+	) -> impl std::future::Future<Output = Result<(), crate::backends::error::DatabaseError>> + Send
+	where
+		Self: Sized,
+	{
+		async move {
+			use super::events::{EventResult, get_active_registry};
+
+			let pk = self.primary_key().ok_or_else(|| {
+				crate::backends::error::DatabaseError::QueryError(
+					"Cannot delete model without primary key".to_string(),
+				)
+			})?;
+			let instance_id = format!("{}-{}", Self::table_name(), pk);
+
+			if let Some(registry) = get_active_registry() {
+				let result = registry
+					.dispatch_before_delete(Self::table_name(), &instance_id)
+					.await;
+				if result == EventResult::Veto {
+					return Err(crate::backends::error::DatabaseError::QueryError(
+						"Delete operation vetoed by event listener".to_string(),
+					));
+				}
+			}
+
+			super::Manager::<Self>::new()
+				.delete_with_executor(executor, pk)
+				.await?;
+
 			if let Some(registry) = get_active_registry() {
 				registry
 					.dispatch_after_delete(Self::table_name(), &instance_id)

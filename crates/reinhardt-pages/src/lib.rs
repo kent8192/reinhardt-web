@@ -74,6 +74,35 @@
 //! - `i18n`: Reactive page translations with SSR-resolved catalogs (requires the `i18n` feature)
 //! - [`static_resolver`]: Static file URL resolution (collectstatic support)
 //!
+//! ## Typed server function sets
+//!
+//! [`server_fn::server_fnset`] groups existing server function markers into a
+//! named, typed registration chain. Members retain their codec, CSRF,
+//! dependency-injection, extractor, metadata, and mock contracts; applications
+//! explicitly attach the completed set with
+//! [`server_fn::ServerFnRouterExt::server_fnset`]. Mixed-codec sets are valid.
+//!
+//! The opt-in `model-server-fnset` feature generates exactly six standard POST
+//! RPCs for a [`server_fn::ServerFnResource`]: `list`, `retrieve`, `create`,
+//! `update`, `partial_update`, and `destroy`. Native resources select an
+//! explicit `ServerFnSetPolicy`, provide model-to-DTO mappings, and
+//! return a typed unique lookup. Pagination defaults to 25, accepts `1..=100`,
+//! and reports the policy-scoped total before slicing. Checked standard
+//! overrides and custom transactional actions share the same policy and
+//! transaction runtime.
+//!
+//! Wire contracts, structured errors, metadata, generated markers, and client
+//! stubs are cross-target. ORM resources, policies, action contexts, database
+//! executors, native CRUD handlers, and `ModelServerFnSet` are
+//! native-only. Generated model failures map to stable 400/401/403/404/409/500
+//! responses, and internal details are sanitized before serialization. Action
+//! markers remain independent for component and MSW mocks.
+//!
+//! Model sets intentionally do not provide subsets, a read-only set type,
+//! REST/OpenAPI generation, cursor pagination, bulk or nested actions,
+//! composite lookups, global discovery, or automatic model-to-DTO derivation.
+//! See `docs/server_fn_macro.md` for a complete resource and action example.
+//!
 //! ## Typed events
 //!
 //! Standard intrinsic `page!` events use one catalog-generated payload type per

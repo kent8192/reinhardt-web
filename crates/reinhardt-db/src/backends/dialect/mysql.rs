@@ -233,6 +233,10 @@ impl MySqlTransactionExecutor {
 
 #[async_trait]
 impl TransactionExecutor for MySqlTransactionExecutor {
+	fn backend(&self) -> DatabaseType {
+		DatabaseType::Mysql
+	}
+
 	async fn execute(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<QueryResult> {
 		let tx = self.tx.as_mut().ok_or_else(|| {
 			crate::backends::error::DatabaseError::TransactionError(
@@ -383,6 +387,10 @@ impl MySqlRawTransactionExecutor {
 
 #[async_trait]
 impl TransactionExecutor for MySqlRawTransactionExecutor {
+	fn backend(&self) -> DatabaseType {
+		DatabaseType::Mysql
+	}
+
 	async fn execute(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<QueryResult> {
 		let conn = self.conn.as_mut().ok_or_else(|| {
 			crate::backends::error::DatabaseError::TransactionError(

@@ -1,0 +1,18 @@
+error[E0308]: mismatched types
+ --> tests/ui/server_fnset/fail/wrong_detail_lookup.rs:9:19
+  |
+6 | #[server_fnset(for = article_fns)]
+  | ----------------------------------
+  | |
+  | arguments to this function are incorrect
+  | in this attribute macro expansion
+...
+9 |     async fn preview(lookup: String, #[inject] context: reinhardt_pages::server_fn::DetailReadActionContext<ArticleResource>) -> Re...
+  |                      ^^^^^^ expected `i64`, found `String`
+  |
+note: associated function defined here
+ --> src/server_fn/model_set/runtime.rs
+  |
+  |     pub async fn read_detail_action<T, F>(
+  |                  ^^^^^^^^^^^^^^^^^^
+  = note: this error originates in the macro `__reinhardt_generate_server_fnset_Actions` which comes from the expansion of the attribute macro `server_fnset` (in Nightly builds, run with -Z macro-backtrace for more info)
