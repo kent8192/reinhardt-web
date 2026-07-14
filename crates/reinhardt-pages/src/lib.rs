@@ -102,8 +102,9 @@
 //! values. Text and radio groups use `Signal<String>`, checkboxes use
 //! `Signal<bool>`, numeric inputs use a primitive implementing [`NumberValue`],
 //! and multiple selects use `Signal<Vec<String>>`. Numeric bindings may expose
-//! a [`NumberParseError`] signal without discarding the user's invalid text,
-//! including incomplete number editor states sanitized by the browser.
+//! a [`NumberParseError`] signal that retains recoverable invalid editor text.
+//! When a pointer-positioned number edit is sanitized before its inaccessible
+//! selection can be recovered, the error reports the browser's empty value.
 //! Radio `value` expressions are evaluated once per rendered element. A bound
 //! single select projects only its first matching option in tree order during
 //! SSR, including options resolved inside a pending boundary; a multiple

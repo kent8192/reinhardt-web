@@ -94,8 +94,10 @@ edits made before hydration. Later signal changes update the control. See the
 [React migration guide](docs/react_to_reinhardt.md#controlled-and-uncontrolled-form-controls)
 for event ordering, IME, numeric-error, and low-level escape-hatch details.
 For `input[type=number]`, the binding combines `beforeinput` metadata with the
-browser value so parse errors retain incomplete editor states such as `-` and
-`1.` even when the browser sanitizes its exposed `value`.
+browser value so parse errors retain incomplete editor states when their edit
+position is known. Browsers do not expose number-input selection ranges; after
+a pointer move followed immediately by sanitization, the error safely reports
+the browser's empty value instead of inventing raw text.
 
 ### Simplified cfg Attributes with cfg_aliases
 
