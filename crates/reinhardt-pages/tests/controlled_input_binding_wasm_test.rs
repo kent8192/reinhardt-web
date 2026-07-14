@@ -588,6 +588,154 @@ fn dispatch_input(input: &web_sys::HtmlInputElement, data: Option<&str>, input_t
 		.expect("dispatch input");
 }
 
+fn dispatch_before_input_with_transfer(
+	input: &web_sys::HtmlInputElement,
+	data: &str,
+	input_type: &str,
+) {
+	let transfer = web_sys::DataTransfer::new().expect("data transfer");
+	transfer
+		.set_data("text/plain", data)
+		.expect("set transfer data");
+	let init = web_sys::InputEventInit::new();
+	init.set_data_transfer(Some(&transfer));
+	init.set_input_type(input_type);
+	input
+		.dispatch_event(
+			&web_sys::InputEvent::new_with_event_init_dict("beforeinput", &init)
+				.expect("beforeinput"),
+		)
+		.expect("dispatch beforeinput");
+}
+
+fn mounted_number_control(
+	initial: i32,
+) -> (
+	Element,
+	web_sys::HtmlInputElement,
+	Signal<i32>,
+	Signal<Option<NumberParseError>>,
+) {
+	let document = web_sys::window()
+		.expect("window")
+		.document()
+		.expect("document");
+	let root = Element::new(document.create_element("div").expect("root"));
+	let value = Signal::new(initial);
+	let error = Signal::new(None::<NumberParseError>);
+	page!({
+		input {
+			a11y: off,
+			type: "number",
+			bind: number(value, error),
+		}
+	})
+	.mount(&root)
+	.expect("mount");
+	let input = root
+		.as_web_sys()
+		.first_element_child()
+		.expect("input")
+		.unchecked_into();
+	(root, input, value, error)
+}
+
+fn select_number_editor_range(input: &web_sys::HtmlInputElement, start: u32, end: u32) {
+	input.set_type("text");
+	input
+		.set_selection_range(start, end)
+		.expect("selection range");
+}
+
+#[wasm_bindgen_test]
+fn number_binding_inserts_at_the_browser_selection() {
+	let (_root, input, value, _error) = mounted_number_control(123);
+	select_number_editor_range(&input, 1, 1);
+	dispatch_before_input(&input, Some("4"), "insertText");
+	input.set_type("number");
+	input.set_value("1423");
+	dispatch_input(&input, Some("4"), "insertText");
+
+	assert_eq!(value.get(), 1423);
+	reinhardt_pages::cleanup_reactive_nodes();
+}
+
+#[wasm_bindgen_test]
+fn number_binding_replaces_the_browser_selection() {
+	let (_root, input, value, _error) = mounted_number_control(12345);
+	select_number_editor_range(&input, 1, 4);
+	dispatch_before_input(&input, Some("9"), "insertReplacementText");
+	input.set_type("number");
+	input.set_value("195");
+	dispatch_input(&input, Some("9"), "insertReplacementText");
+
+	assert_eq!(value.get(), 195);
+	reinhardt_pages::cleanup_reactive_nodes();
+}
+
+#[wasm_bindgen_test]
+fn number_binding_tracks_backward_and_forward_deletes() {
+	let (_root, input, value, _error) = mounted_number_control(1234);
+	select_number_editor_range(&input, 2, 2);
+	dispatch_before_input(&input, None, "deleteContentBackward");
+	input.set_type("number");
+	input.set_value("134");
+	dispatch_input(&input, None, "deleteContentBackward");
+
+	select_number_editor_range(&input, 1, 1);
+	dispatch_before_input(&input, None, "deleteContentForward");
+	input.set_type("number");
+	input.set_value("14");
+	dispatch_input(&input, None, "deleteContentForward");
+
+	assert_eq!(value.get(), 14);
+	reinhardt_pages::cleanup_reactive_nodes();
+}
+
+#[wasm_bindgen_test]
+fn number_binding_uses_transfer_data_and_live_replacement_fallback() {
+	let (_root, input, value, _error) = mounted_number_control(12);
+	select_number_editor_range(&input, 1, 1);
+	dispatch_before_input_with_transfer(&input, "34", "insertFromPaste");
+	input.set_type("number");
+	input.set_value("1342");
+	dispatch_input(&input, None, "insertFromPaste");
+	assert_eq!(value.get(), 1342);
+
+	select_number_editor_range(&input, 1, 3);
+	dispatch_before_input(&input, None, "insertReplacementText");
+	input.set_type("number");
+	input.set_value("12");
+	dispatch_input(&input, None, "insertReplacementText");
+	assert_eq!(value.get(), 12);
+	reinhardt_pages::cleanup_reactive_nodes();
+}
+
+#[wasm_bindgen_test]
+fn number_binding_deduplicates_a_composition_selection_replacement() {
+	let (_root, input, value, error) = mounted_number_control(123);
+	input
+		.dispatch_event(
+			&web_sys::CompositionEvent::new("compositionstart").expect("compositionstart"),
+		)
+		.expect("dispatch compositionstart");
+	select_number_editor_range(&input, 1, 3);
+	dispatch_before_input(&input, Some("."), "insertCompositionText");
+	input.set_type("number");
+	input.set_value("");
+	dispatch_input(&input, Some("."), "insertCompositionText");
+	input
+		.dispatch_event(&web_sys::CompositionEvent::new("compositionend").expect("compositionend"))
+		.expect("dispatch compositionend");
+	dispatch_input(&input, Some("."), "insertCompositionText");
+
+	assert_eq!(value.get(), 123);
+	let parse_error = error.get().expect("incomplete replacement");
+	assert_eq!(parse_error.raw(), "1.");
+	assert_eq!(parse_error.kind(), NumberParseErrorKind::Incomplete);
+	reinhardt_pages::cleanup_reactive_nodes();
+}
+
 #[wasm_bindgen_test]
 fn number_binding_recovers_incomplete_raw_from_sanitized_browser_input() {
 	let document = web_sys::window()
