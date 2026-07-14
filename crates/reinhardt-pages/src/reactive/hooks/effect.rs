@@ -1,9 +1,10 @@
 //! Effect hooks: use_effect and use_layout_effect
 //!
 //! React-aligned side effect hooks. The second argument selects either an
-//! explicit dependency list or automatic tracking; explicit effects run with
+//! explicit dependency list or automatic tracking. Explicit effects run with
 //! no active reactive Observer so only the listed deps subscribe (Option A
-//! semantics, Refs #4195).
+//! semantics); automatic effects subscribe to signals read by the closure
+//! (Refs #4195).
 //! Effect closures can return either `()` for no cleanup or `Option<C>` when
 //! they need to register teardown.
 
@@ -67,20 +68,23 @@ where
 	}
 }
 
-/// Runs a side effect when one of the listed `deps` changes.
+/// Runs a side effect according to the selected dependency mode.
 ///
-/// React-aligned equivalent of `useEffect(f, deps)`. The effect function
-/// runs immediately, and re-runs whenever any of the dependencies listed
-/// in `deps` changes. Signal reads inside `f` do **not** auto-subscribe.
+/// React-aligned equivalent of `useEffect(f, deps)`. The effect function runs
+/// immediately. With `deps![...]`, it re-runs whenever a listed dependency
+/// changes and signal reads inside `f` do **not** auto-subscribe. With
+/// `deps_auto!()`, it re-runs when a signal read by `f` changes.
 /// The returned [`Effect`] is an RAII guard and must be retained by the
 /// caller. Use [`use_retained_effect`] for registration-style hook calls
 /// whose guard is owned by the mounted view scope.
 ///
 /// # Reactivity Semantics
 ///
-/// - The closure runs with no active reactive Observer
-///   (`run_without_observer`); auto-tracking is disabled inside `f`.
-/// - Subscriptions are derived exclusively from `deps`.
+/// - Explicit mode runs the closure with no active reactive Observer
+///   (`run_without_observer`); subscriptions are derived exclusively from
+///   `deps`.
+/// - Automatic mode keeps an Observer active while `f` runs and subscribes to
+///   signals read by the closure.
 /// - Use `deps![]` to opt out of re-runs (mount-only effect).
 ///
 /// # Type Parameters
@@ -94,7 +98,8 @@ where
 /// * `f` - A function that performs the side effect and optionally
 ///   returns a cleanup function. Cleanups run before the next re-run and
 ///   on dispose, matching React `useEffect`.
-/// * `deps` - The explicit dependency list. Pass `deps![]` for no dependencies.
+/// * `deps` - Either an explicit dependency list (`deps![...]`, including
+///   `deps![]`) or `deps_auto!()` for automatic tracking.
 ///
 /// # Example
 ///
@@ -178,11 +183,12 @@ where
 	retain_effect(|| use_effect(f, deps));
 }
 
-/// Runs a side effect synchronously before browser paint when any listed
-/// `dep` changes.
+/// Runs a side effect synchronously before browser paint according to the
+/// selected dependency mode.
 ///
-/// React-aligned equivalent of `useLayoutEffect(f, deps)`. Same Option A
-/// semantics as [`use_effect`] but with [`EffectTiming::Layout`] so
+/// React-aligned equivalent of `useLayoutEffect(f, deps)`. Explicit mode has
+/// the same Option A semantics as [`use_effect`], while `deps_auto!()` tracks
+/// signals read by the closure. Both modes use [`EffectTiming::Layout`] so
 /// re-runs propagate synchronously rather than via the passive scheduler.
 ///
 /// # When to Use
@@ -199,7 +205,8 @@ where
 ///
 /// # Reactivity Semantics
 ///
-/// See [`use_effect`] — identical, plus Layout timing.
+/// See [`use_effect`] for dependency-mode semantics; this hook adds Layout
+/// timing.
 ///
 /// # Example
 ///

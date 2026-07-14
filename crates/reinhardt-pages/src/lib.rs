@@ -39,11 +39,14 @@
 //! );
 //! ```
 //!
-//! Closures run with no active reactive Observer ("Option A"), so
-//! `Signal::get` inside does NOT auto-subscribe — subscriptions derive
-//! exclusively from the dependency list. Pass `deps![]` for mount-only effects.
+//! In explicit dependency mode (`deps![...]`), effect, layout-effect, and memo
+//! closures run with no active reactive Observer ("Option A"); `Signal::get`
+//! inside does not auto-subscribe, and subscriptions derive exclusively from
+//! the dependency list. Pass `deps![]` for a mount-only effect or memo.
 //! Automatic tracking is available only for effects, layout effects, and memos;
-//! use `deps_auto!()` as their second argument when that mode is desired.
+//! pass `deps_auto!()` as their second argument to subscribe to signals read by
+//! the closure. Retained effects, callbacks, and resources always use explicit
+//! dependency lists.
 //!
 //! For a concept-by-concept mapping from React to Reinhardt Pages, see
 //! `docs/react_to_reinhardt.md` in this crate.

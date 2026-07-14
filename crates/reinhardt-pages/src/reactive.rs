@@ -104,6 +104,7 @@ pub use reinhardt_core::reactive::{
 	ReactiveDeps, Runtime, Signal, Trackable, batch, context, create_context, effect, get_context,
 	memo, provide_context, remove_context, runtime, signal, with_runtime,
 };
+pub use reinhardt_core::{deps, deps_auto};
 
 // WASM-specific modules (kept in reinhardt-pages)
 pub mod hooks;

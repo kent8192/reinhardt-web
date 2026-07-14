@@ -776,7 +776,7 @@ mod tests_with_deps {
 						let _ = (x, s.get());
 					}
 				},
-				deps![s],
+				deps![s].into_deps(),
 			);
 			let rc = cb.inner_rc_ptr();
 
@@ -802,7 +802,7 @@ mod tests_with_deps {
 		// Act — same call site (loop body) re-entered with different
 		// deps each iteration.
 		for s in &signals {
-			let cb = callback_with_deps::<i32, ()>(|_: i32| {}, deps![s]);
+			let cb = callback_with_deps::<i32, ()>(|_: i32| {}, deps![s.clone()].into_deps());
 			let rc = cb.inner_rc_ptr();
 
 			// Assert

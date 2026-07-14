@@ -260,11 +260,11 @@ mod tests {
 	#[cfg(native)]
 	#[test]
 	fn test_use_callback_with() {
-		let add_one = use_callback_with::<i32, i32, _, _>(|x: i32| x + 1, deps![]);
+		let add_one = use_callback_with::<i32, i32, _>(|x: i32| x + 1, deps![]);
 		assert_eq!(add_one.call(5), 6);
 
 		let concat =
-			use_callback_with::<String, String, _, _>(|s: String| format!("Hello, {}", s), deps![]);
+			use_callback_with::<String, String, _>(|s: String| format!("Hello, {}", s), deps![]);
 		assert_eq!(concat.call("World".to_string()), "Hello, World");
 	}
 }
