@@ -1857,6 +1857,18 @@ type MovedModelInfo = (
 	Option<String>,
 );
 
+/// Operations needed to preserve an implicit ManyToMany through table when
+/// its source model's convention-derived table name changes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ImplicitManyToManyTableRename {
+	old_table: String,
+	old_source_column: String,
+	old_target_column: String,
+	new_table: String,
+	new_source_column: String,
+	new_target_column: String,
+}
+
 /// Type alias for model match result: ((deleted_app, deleted_model), (created_app, created_model), similarity_score)
 type ModelMatchResult = ((String, String), (String, String), f64);
 
@@ -5749,9 +5761,8 @@ impl MigrationAutodetector {
 	/// - Unchanged: same constraint name and identical fields → no operation
 	fn detect_composite_pk_changes(&self, changes: &mut DetectedChanges) {
 		for ((app_label, model_name), to_model) in &self.to_state.models {
-			let from_model = self
-				.from_state
-				.get_model_by_table_name(app_label, &to_model.table_name);
+			let from_model =
+				self.matching_from_model_for_to_model(app_label, model_name, to_model, changes);
 			for constraint in &to_model.constraints {
 				if constraint.constraint_type != "primary_key" || constraint.fields.len() < 2 {
 					continue;
@@ -6980,6 +6991,79 @@ impl MigrationAutodetector {
 			);
 		}
 
+		// Preserve implicit ManyToMany through tables when a source table adopts
+		// a new convention-derived name. Rename the table and any convention-
+		// derived FK columns so existing relationship rows remain intact (#5673).
+		for ((app_label, model_name), model_state) in &self.to_state.models {
+			for m2m in &model_state.many_to_many_fields {
+				let Some(through_rename) = self
+					.find_implicit_many_to_many_table_rename(changes, app_label, model_name, m2m)
+				else {
+					continue;
+				};
+
+				let operations = migrations_by_app.entry(app_label.clone()).or_default();
+				let table_rename_exists = operations.iter().any(|operation| {
+					matches!(
+						operation,
+						super::Operation::RenameTable { old_name, new_name }
+							if old_name == &through_rename.old_table
+								&& new_name == &through_rename.new_table
+					)
+				});
+				if !table_rename_exists {
+					operations.push(super::Operation::RenameTable {
+						old_name: through_rename.old_table.clone(),
+						new_name: through_rename.new_table.clone(),
+					});
+				}
+				if through_rename.old_source_column != through_rename.new_source_column {
+					let column_rename_exists = operations.iter().any(|operation| {
+						matches!(
+							operation,
+							super::Operation::RenameColumn {
+								table,
+								old_name,
+								new_name
+							}
+								if table == &through_rename.new_table
+									&& old_name == &through_rename.old_source_column
+									&& new_name == &through_rename.new_source_column
+						)
+					});
+					if !column_rename_exists {
+						operations.push(super::Operation::RenameColumn {
+							table: through_rename.new_table.clone(),
+							old_name: through_rename.old_source_column.clone(),
+							new_name: through_rename.new_source_column.clone(),
+						});
+					}
+				}
+				if through_rename.old_target_column != through_rename.new_target_column {
+					let column_rename_exists = operations.iter().any(|operation| {
+						matches!(
+							operation,
+							super::Operation::RenameColumn {
+								table,
+								old_name,
+								new_name
+							}
+								if table == &through_rename.new_table
+									&& old_name == &through_rename.old_target_column
+									&& new_name == &through_rename.new_target_column
+						)
+					});
+					if !column_rename_exists {
+						operations.push(super::Operation::RenameColumn {
+							table: through_rename.new_table.clone(),
+							old_name: through_rename.old_target_column.clone(),
+							new_name: through_rename.new_target_column.clone(),
+						});
+					}
+				}
+			}
+		}
+
 		// Second-line defence against redundant single-column `AddConstraint
 		// UNIQUE` operations. The primary fix lives in
 		// `detect_added_constraints` (shape-match); this pass also catches
@@ -7008,6 +7092,80 @@ impl MigrationAutodetector {
 		migrations
 	}
 
+	fn find_implicit_many_to_many_table_rename(
+		&self,
+		changes: &DetectedChanges,
+		app_label: &str,
+		model_name: &str,
+		m2m: &ManyToManyMetadata,
+	) -> Option<ImplicitManyToManyTableRename> {
+		if m2m.through.is_some() {
+			return None;
+		}
+
+		let (_, _, old_source_table, new_source_table) = changes
+			.renamed_tables
+			.iter()
+			.find(|(app, model, _, _)| app == app_label && model == model_name)?;
+		let (target_app, target_model) = self.resolve_model_reference(&m2m.to_model, app_label);
+
+		let new_target_table = self
+			.to_state
+			.get_model(&target_app, &target_model)
+			.map(|model| model.table_name.clone())
+			.or_else(|| {
+				super::model_registry::global_registry()
+					.get_model(&target_app, &target_model)
+					.map(|model| model.table_name)
+			})
+			.unwrap_or_else(|| to_snake_case(&target_model));
+		let old_target_table = self
+			.to_state
+			.get_model(&target_app, &target_model)
+			.and_then(|target| {
+				self.matching_from_model_for_to_model(&target_app, &target_model, target, changes)
+			})
+			.map(|model| model.table_name.clone())
+			.or_else(|| {
+				self.from_state
+					.get_model(&target_app, &target_model)
+					.map(|model| model.table_name.clone())
+			})
+			.unwrap_or_else(|| new_target_table.clone());
+
+		let old_table = crate::m2m_naming::default_through_table(old_source_table, &m2m.field_name);
+		let new_table = crate::m2m_naming::default_through_table(new_source_table, &m2m.field_name);
+		if old_table == new_table || self.from_state.find_model_by_table(&old_table).is_none() {
+			return None;
+		}
+
+		let (old_default_source_column, old_default_target_column) =
+			crate::m2m_naming::default_m2m_columns(old_source_table, &old_target_table);
+		let (new_default_source_column, new_default_target_column) =
+			crate::m2m_naming::default_m2m_columns(new_source_table, &new_target_table);
+
+		Some(ImplicitManyToManyTableRename {
+			old_table,
+			old_source_column: m2m
+				.source_field
+				.clone()
+				.unwrap_or(old_default_source_column),
+			old_target_column: m2m
+				.target_field
+				.clone()
+				.unwrap_or(old_default_target_column),
+			new_table,
+			new_source_column: m2m
+				.source_field
+				.clone()
+				.unwrap_or(new_default_source_column),
+			new_target_column: m2m
+				.target_field
+				.clone()
+				.unwrap_or(new_default_target_column),
+		})
+	}
+
 	/// Detect newly created ManyToMany relationships
 	///
 	/// This method compares ManyToMany fields between from_state and to_state
@@ -7015,8 +7173,12 @@ impl MigrationAutodetector {
 	///
 	/// # Detection Logic
 	/// 1. Iterate through all models in to_state
-	/// 2. For each ManyToMany field, check if it exists in from_state
-	/// 3. If not, mark it as a newly created ManyToMany relationship
+	/// 2. For each ManyToMany field, check whether its convention-derived
+	///    through table already exists in either state
+	/// 3. If the source table was renamed and the old implicit through table is
+	///    present, preserve it for a table and convention-derived column rename
+	/// 4. Otherwise, if the through table is absent from both states, mark it as
+	///    a newly created ManyToMany relationship
 	///
 	/// # Intermediate Table Naming
 	/// Uses Django naming convention: `{app}_{model}_{field}`
@@ -7091,7 +7253,37 @@ impl MigrationAutodetector {
 					.is_some();
 				let exists_in_to = self.to_state.find_model_by_table(&through_table).is_some();
 
-				if !exists_in_from && !exists_in_to {
+				if let Some(through_rename) = self
+					.find_implicit_many_to_many_table_rename(changes, app_label, model_name, m2m)
+				{
+					// The old convention-derived through table is still present in
+					// from_state. Keep it alive so migration generation can rename it
+					// instead of dropping and recreating the table (#5673). This also
+					// covers the path where to_state already contains the newly
+					// materialized synthetic through model.
+					if let Some((old_app, old_model)) = self
+						.from_state
+						.models
+						.iter()
+						.find(|(_, model)| model.table_name == through_rename.old_table)
+						.map(|((app, model), _)| (app.clone(), model.clone()))
+					{
+						changes
+							.deleted_models
+							.retain(|(app, model)| app != &old_app || model != &old_model);
+					}
+					if let Some((new_app, new_model)) = self
+						.to_state
+						.models
+						.iter()
+						.find(|(_, model)| model.table_name == through_rename.new_table)
+						.map(|((app, model), _)| (app.clone(), model.clone()))
+					{
+						changes
+							.created_models
+							.retain(|(app, model)| app != &new_app || model != &new_model);
+					}
+				} else if !exists_in_from && !exists_in_to {
 					// Add to created_many_to_many
 					changes.created_many_to_many.push((
 						app_label.clone(),
@@ -8867,6 +9059,112 @@ mod tests {
 	}
 
 	#[rstest]
+	fn generate_migrations_renames_implicit_many_to_many_table_with_source_table() {
+		// Arrange
+		let from_user =
+			build_model_state_with_table_name("users", "User", "users", sample_fields());
+		let from_group =
+			build_model_state_with_table_name("users", "Group", "groups", sample_fields());
+		let from_through = build_model_state_with_table_name(
+			"users",
+			"UsersGroups",
+			"users_groups",
+			vec![
+				FieldState::new("id", super::super::FieldType::Integer, false),
+				FieldState::new("users_id", super::super::FieldType::Integer, false),
+				FieldState::new("groups_id", super::super::FieldType::Integer, false),
+			],
+		);
+		let from_state = build_project_state(vec![
+			(("users".to_string(), "User".to_string()), from_user),
+			(("users".to_string(), "Group".to_string()), from_group),
+			(
+				("users".to_string(), "UsersGroups".to_string()),
+				from_through,
+			),
+		]);
+
+		let mut to_user =
+			build_model_state_with_table_name("users", "User", "user", sample_fields());
+		to_user
+			.many_to_many_fields
+			.push(ManyToManyMetadata::new("groups", "Group"));
+		let to_group =
+			build_model_state_with_table_name("users", "Group", "groups", sample_fields());
+		let to_through = build_model_state_with_table_name(
+			"users",
+			"UserGroups",
+			"user_groups",
+			vec![
+				FieldState::new("id", super::super::FieldType::Integer, false),
+				FieldState::new("user_id", super::super::FieldType::Integer, false),
+				FieldState::new("groups_id", super::super::FieldType::Integer, false),
+			],
+		);
+		let to_state = build_project_state(vec![
+			(("users".to_string(), "User".to_string()), to_user),
+			(("users".to_string(), "Group".to_string()), to_group),
+			(("users".to_string(), "UserGroups".to_string()), to_through),
+		]);
+		let detector = MigrationAutodetector::new(from_state, to_state);
+
+		// Act
+		let changes = detector.detect_changes();
+		let migrations = detector.generate_migrations();
+		let operations = &migrations
+			.iter()
+			.find(|migration| migration.app_label == "users")
+			.expect("users migration should be generated")
+			.operations;
+
+		// Assert
+		assert!(
+			changes.created_many_to_many.is_empty(),
+			"existing through table must not be recreated: {:?}",
+			changes.created_many_to_many
+		);
+		assert!(
+			!changes
+				.deleted_models
+				.contains(&("users".to_string(), "UsersGroups".to_string())),
+			"existing through table must not be dropped: {:?}",
+			changes.deleted_models
+		);
+		assert!(operations.iter().any(|operation| matches!(
+			operation,
+			super::super::Operation::RenameTable { old_name, new_name }
+				if old_name == "users_groups" && new_name == "user_groups"
+		)));
+		assert!(operations.iter().any(|operation| matches!(
+			operation,
+			super::super::Operation::RenameColumn {
+				table,
+				old_name,
+				new_name
+			}
+				if table == "user_groups"
+					&& old_name == "users_id"
+					&& new_name == "user_id"
+		)));
+		assert!(
+			operations.iter().all(|operation| !matches!(
+				operation,
+				super::super::Operation::CreateTable { name, .. }
+					if name == "user_groups"
+			)),
+			"through table must be renamed rather than recreated: {operations:?}"
+		);
+		assert!(
+			operations.iter().all(|operation| !matches!(
+				operation,
+				super::super::Operation::DropTable { name }
+					if name == "users_groups"
+			)),
+			"through table must be renamed rather than dropped: {operations:?}"
+		);
+	}
+
+	#[rstest]
 	fn detect_renamed_models_skips_struct_only_rename_with_same_table_name() {
 		// Arrange: struct name changed (Clusters -> Cluster) but table name is the same
 		let from_model =
@@ -9019,6 +9317,53 @@ mod tests {
 					if table == "user" && column.name == "email"
 			)),
 			"field addition is missing: {operations:?}"
+		);
+	}
+
+	#[rstest]
+	fn generate_migrations_preserves_composite_pk_with_table_rename() {
+		// Arrange
+		let composite_pk = ConstraintDefinition {
+			name: "users_user_pkey".to_string(),
+			constraint_type: "primary_key".to_string(),
+			fields: vec!["id".to_string(), "tenant_id".to_string()],
+			expression: None,
+			foreign_key_info: None,
+		};
+		let fields = vec![
+			FieldState::new("id", super::super::FieldType::Integer, false),
+			FieldState::new("tenant_id", super::super::FieldType::Integer, false),
+		];
+		let mut from_model =
+			build_model_state_with_table_name("users", "User", "users", fields.clone());
+		from_model.constraints.push(composite_pk.clone());
+		let mut to_model = build_model_state_with_table_name("users", "User", "user", fields);
+		to_model.constraints.push(composite_pk);
+		let detector = MigrationAutodetector::new(
+			build_project_state(vec![(
+				("users".to_string(), "User".to_string()),
+				from_model,
+			)]),
+			build_project_state(vec![(("users".to_string(), "User".to_string()), to_model)]),
+		);
+
+		// Act
+		let changes = detector.detect_changes();
+		let migrations = detector.generate_migrations();
+
+		// Assert
+		assert!(
+			changes.added_composite_primary_keys.is_empty(),
+			"unchanged composite PK must not be recreated: {:?}",
+			changes.added_composite_primary_keys
+		);
+		assert_eq!(migrations.len(), 1, "unexpected migrations: {migrations:?}");
+		assert_eq!(
+			migrations[0].operations,
+			vec![super::super::Operation::RenameTable {
+				old_name: "users".to_string(),
+				new_name: "user".to_string(),
+			}]
 		);
 	}
 

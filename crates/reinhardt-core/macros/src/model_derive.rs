@@ -907,13 +907,14 @@ impl FieldConfig {
 					Ok(())
 				} else if meta.path.is_ident("foreign_key") {
 					// Try parsing as Type first (direct type specification)
-					if let Ok(ty) = meta.value()?.parse::<syn::Type>() {
+					let value = meta.value()?;
+					if let Ok(ty) = value.parse::<syn::Type>() {
 						config.foreign_key = Some(ForeignKeySpec::Type(ty));
 						return Ok(());
 					}
 
 					// Fall back to string specification
-					if let Ok(value) = meta.value()?.parse::<syn::LitStr>() {
+					if let Ok(value) = value.parse::<syn::LitStr>() {
 						let spec_str = value.value();
 
 						if spec_str.contains('.') {
@@ -3393,10 +3394,11 @@ fn generate_registration_code(
 					app_label,
 					model_name,
 				} => {
-					let table_name_str = format!("{}_{}", app_label, model_name.to_lowercase());
 					quote! {
+						.with_param("fk_target_app", #app_label)
+						.with_param("fk_target_model", #model_name)
 						.with_foreign_key(#migrations_crate::ForeignKeyInfo {
-							referenced_table: #table_name_str.to_string(),
+							referenced_table: #migrations_crate::to_snake_case(#model_name),
 							referenced_column: "id".to_string(),
 							on_delete: #migrations_crate::ForeignKeyAction::Cascade,
 							on_update: #migrations_crate::ForeignKeyAction::Cascade,
@@ -6065,6 +6067,26 @@ mod tests {
 			.expect("explicit table names should remain supported");
 
 		assert_eq!(config.table_name, "users_v2");
+	}
+
+	#[test]
+	fn test_qualified_foreign_key_registration_preserves_target_identity() {
+		let input = quote! {
+			#[model(app_label = "comments", table_name = "comments")]
+			pub struct Comment {
+				#[field(primary_key = true)]
+				pub id: i64,
+				#[field(foreign_key = "blog.Post")]
+				pub post: i64,
+			}
+		};
+
+		let output = model_derive_impl(syn::parse2(input).unwrap()).unwrap();
+		let output_str = output.to_string();
+
+		assert!(output_str.contains("fk_target_app"));
+		assert!(output_str.contains("fk_target_model"));
+		assert!(output_str.contains("to_snake_case"));
 	}
 
 	#[test]

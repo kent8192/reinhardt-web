@@ -57,6 +57,13 @@ destructive drop/create operations. Audit model attributes before upgrading:
 rg -n '#\[model(?:\([^]]*\))?\]' src crates examples
 ```
 
+For an implicit `ManyToMany` relationship, the same migration also renames the
+convention-derived through table and any affected foreign-key columns. This
+preserves existing relationship rows when the source model changes from a
+plural table name to its singular convention-derived name. Qualified string
+foreign keys such as `#[field(foreign_key = "blog.Post")]` resolve the target
+model's registered `table_name`, including explicit table-name overrides.
+
 For every result, add a meaningful `app_label`. Preserve `table_name` whenever
 the deployed database already uses that table; omit it only when the derived
 name is the intended schema contract.
