@@ -3233,6 +3233,73 @@ async fn typed_enum_constraint_recreation_preserves_collated_named_unique_constr
 
 #[rstest]
 #[tokio::test]
+async fn typed_enum_constraint_recreation_drops_unnamed_unique_by_autoindex_name() {
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("connect to in-memory SQLite");
+	connection
+		.execute(
+			"CREATE TABLE unnamed_unique_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, tenant TEXT NOT NULL, code TEXT NOT NULL, status TEXT NOT NULL, UNIQUE (tenant, code))",
+			vec![],
+		)
+		.await
+		.expect("create table with unnamed composite unique constraint");
+	let conn = Arc::new(connection.clone());
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+	let add_enum = create_test_migration(
+		"testapp",
+		"0001_add_unnamed_unique_enum_domain",
+		vec![Operation::AddConstraintDefinition {
+			table: "unnamed_unique_jobs".to_string(),
+			constraint: Constraint::EnumDomain {
+				name: "unnamed_unique_jobs_status_model_enum_check".to_string(),
+				column: "status".to_string(),
+				domain: FieldDomain::Enum {
+					repr: ModelEnumRepr::String,
+					values: vec![ModelEnumValue::String("queued".to_string())],
+				},
+			},
+		}],
+	);
+	executor
+		.apply_migrations(&[add_enum])
+		.await
+		.expect("add typed enum domain through table recreation");
+
+	let autoindex_name = conn
+		.fetch_all("PRAGMA index_list('unnamed_unique_jobs')", vec![])
+		.await
+		.expect("inspect unnamed unique autoindex")
+		.into_iter()
+		.find(|row| row.get::<String>("origin").ok().as_deref() == Some("u"))
+		.and_then(|row| row.get::<String>("name").ok())
+		.expect("unnamed unique constraint should have an autoindex name");
+	let drop_unique = create_test_migration(
+		"testapp",
+		"0002_drop_unnamed_unique",
+		vec![Operation::DropConstraintDefinition {
+			table: "unnamed_unique_jobs".to_string(),
+			constraint: Constraint::Unique {
+				name: autoindex_name,
+				columns: vec!["tenant".to_string(), "code".to_string()],
+			},
+		}],
+	);
+	executor
+		.apply_migrations(&[drop_unique])
+		.await
+		.expect("drop unnamed unique constraint by autoindex name");
+
+	conn.execute(
+		"INSERT INTO unnamed_unique_jobs (tenant, code, status) VALUES ('acme', 'same', 'queued'), ('acme', 'same', 'queued')",
+		vec![],
+	)
+	.await
+	.expect("duplicates should be allowed after dropping the unnamed unique constraint");
+}
+
+#[rstest]
+#[tokio::test]
 async fn typed_enum_constraint_recreation_preserves_strict_table_option() {
 	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
 		.await
