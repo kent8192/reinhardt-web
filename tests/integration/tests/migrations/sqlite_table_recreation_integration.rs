@@ -3125,6 +3125,114 @@ async fn typed_enum_constraint_recreation_preserves_duplicate_named_unique_const
 
 #[rstest]
 #[tokio::test]
+async fn typed_enum_constraint_recreation_preserves_collated_named_unique_constraints() {
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("connect to in-memory SQLite");
+	connection
+		.execute(
+			r#"CREATE TABLE collated_unique_jobs (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				code TEXT NOT NULL,
+				status TEXT NOT NULL,
+				CONSTRAINT "uq_jobs_code_nocase" UNIQUE ("code" COLLATE NOCASE),
+				CONSTRAINT "uq_jobs_code_binary" UNIQUE ("code" COLLATE BINARY)
+			)"#,
+			vec![],
+		)
+		.await
+		.expect("create table with distinct collated unique constraints");
+	let conn = Arc::new(connection.clone());
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+	let add_enum = create_test_migration(
+		"testapp",
+		"0001_add_collated_unique_enum_domain",
+		vec![Operation::AddConstraintDefinition {
+			table: "collated_unique_jobs".to_string(),
+			constraint: Constraint::EnumDomain {
+				name: "collated_unique_jobs_status_model_enum_check".to_string(),
+				column: "status".to_string(),
+				domain: FieldDomain::Enum {
+					repr: ModelEnumRepr::String,
+					values: vec![ModelEnumValue::String("queued".to_string())],
+				},
+			},
+		}],
+	);
+	executor
+		.apply_migrations(&[add_enum])
+		.await
+		.expect("add typed enum domain through table recreation");
+
+	let case_variant_duplicate = conn
+		.execute(
+			"INSERT INTO collated_unique_jobs (code, status) VALUES ('alpha', 'queued'), ('ALPHA', 'queued')",
+			vec![],
+		)
+		.await;
+	assert!(
+		case_variant_duplicate.is_err(),
+		"the NOCASE unique constraint should reject case variants"
+	);
+
+	let drop_nocase = create_test_migration(
+		"testapp",
+		"0002_drop_nocase_unique",
+		vec![Operation::DropConstraintDefinition {
+			table: "collated_unique_jobs".to_string(),
+			constraint: Constraint::Unique {
+				name: "uq_jobs_code_nocase".to_string(),
+				columns: vec!["code".to_string()],
+			},
+		}],
+	);
+	executor
+		.apply_migrations(&[drop_nocase])
+		.await
+		.expect("drop the NOCASE named unique constraint");
+
+	conn.execute(
+		"INSERT INTO collated_unique_jobs (code, status) VALUES ('alpha', 'queued'), ('ALPHA', 'queued')",
+		vec![],
+	)
+	.await
+	.expect("the BINARY unique constraint should allow case variants");
+	let exact_duplicate = conn
+		.execute(
+			"INSERT INTO collated_unique_jobs (code, status) VALUES ('alpha', 'queued')",
+			vec![],
+		)
+		.await;
+	assert!(
+		exact_duplicate.is_err(),
+		"the BINARY unique constraint should reject exact duplicates"
+	);
+
+	let drop_binary = create_test_migration(
+		"testapp",
+		"0003_drop_binary_unique",
+		vec![Operation::DropConstraintDefinition {
+			table: "collated_unique_jobs".to_string(),
+			constraint: Constraint::Unique {
+				name: "uq_jobs_code_binary".to_string(),
+				columns: vec!["code".to_string()],
+			},
+		}],
+	);
+	executor
+		.apply_migrations(&[drop_binary])
+		.await
+		.expect("drop the BINARY named unique constraint");
+	conn.execute(
+		"INSERT INTO collated_unique_jobs (code, status) VALUES ('alpha', 'queued')",
+		vec![],
+	)
+	.await
+	.expect("exact duplicates should be allowed after dropping both constraints");
+}
+
+#[rstest]
+#[tokio::test]
 async fn typed_enum_constraint_recreation_preserves_strict_table_option() {
 	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
 		.await
