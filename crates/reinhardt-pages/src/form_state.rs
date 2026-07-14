@@ -7,12 +7,48 @@ use std::collections::HashMap;
 use std::fmt::{Debug, Display};
 use std::future::Future;
 use std::hash::Hash;
+use std::pin::Pin;
 use std::rc::{Rc, Weak};
+use std::task::{Context, Poll};
 
 use crate::reactive::{
 	Action, ActionPhase, Effect, EffectTiming, ReactiveScope, Signal, use_action,
 };
 use reinhardt_core::reactive::{ScopeId, current_scope_id, scope::enter_scope};
+
+/// Polls form submission work inside the scope that owns the form state.
+///
+/// A disposed form scope cancels the submit future before it can access
+/// disposed reactive handles.
+struct ScopedFormFuture<Fut> {
+	scope: ScopeId,
+	future: Option<Pin<Box<Fut>>>,
+}
+
+impl<Fut> Future for ScopedFormFuture<Fut>
+where
+	Fut: Future,
+{
+	type Output = Option<Fut::Output>;
+
+	fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+		let this = self.get_mut();
+		let Some(future) = this.future.as_mut() else {
+			return Poll::Ready(None);
+		};
+		match enter_scope(this.scope, || future.as_mut().poll(cx)) {
+			Ok(Poll::Pending) => Poll::Pending,
+			Ok(Poll::Ready(output)) => {
+				this.future.take();
+				Poll::Ready(Some(output))
+			}
+			Err(_) => {
+				this.future.take();
+				Poll::Ready(None)
+			}
+		}
+	}
+}
 
 /// Default reset behavior when runtime dependencies change.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1562,7 +1598,21 @@ where
 			return Ok(UseFormAsyncSubmitOutcome::ValidationFailed);
 		}
 
-		match submit().await {
+		let Ok(future) = enter_scope(self.scope, submit) else {
+			pending_guard.disarm();
+			return Ok(UseFormAsyncSubmitOutcome::AlreadyPending);
+		};
+		let Some(result) = (ScopedFormFuture {
+			scope: self.scope,
+			future: Some(Box::pin(future)),
+		})
+		.await
+		else {
+			pending_guard.disarm();
+			return Ok(UseFormAsyncSubmitOutcome::AlreadyPending);
+		};
+
+		match result {
 			Ok(output) => {
 				let is_live = self.state.is_submitting.try_set(false).is_ok();
 				pending_guard.disarm();

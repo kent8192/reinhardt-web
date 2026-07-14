@@ -287,7 +287,7 @@ struct CallbackSlotEntry {
 thread_local! {
 	#[allow(clippy::type_complexity)]
 	static CALLBACK_REGISTRY: std::cell::RefCell<
-		std::collections::HashMap<&'static str, CallbackSlotEntry>,
+		std::collections::HashMap<(&'static str, reinhardt_core::reactive::ScopeId), CallbackSlotEntry>,
 	> = std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
@@ -330,15 +330,16 @@ where
 		let new_ids: smallvec::SmallVec<[reinhardt_core::reactive::runtime::NodeId; 8]> =
 			deps.as_slice().iter().copied().collect();
 
-		let slot = reg.entry(key).or_insert_with(|| CallbackSlotEntry {
-			deps: smallvec::SmallVec::new(),
-			scope,
-			callback_type: std::any::TypeId::of::<()>(),
-			key_any: Rc::new(()) as Rc<dyn std::any::Any>,
-		});
+		let slot = reg
+			.entry((key, scope))
+			.or_insert_with(|| CallbackSlotEntry {
+				deps: smallvec::SmallVec::new(),
+				scope,
+				callback_type: std::any::TypeId::of::<()>(),
+				key_any: Rc::new(()) as Rc<dyn std::any::Any>,
+			});
 
-		let needs_replace = slot.scope != scope
-			|| slot.deps.as_slice() != new_ids.as_slice()
+		let needs_replace = slot.deps.as_slice() != new_ids.as_slice()
 			|| slot.callback_type != std::any::TypeId::of::<(Args, Ret)>()
 			|| !slot.key_any.is::<PageNodeKey>();
 
@@ -400,15 +401,16 @@ where
 		let new_ids: smallvec::SmallVec<[reinhardt_core::reactive::runtime::NodeId; 8]> =
 			deps.as_slice().iter().copied().collect();
 
-		let slot = reg.entry(key).or_insert_with(|| CallbackSlotEntry {
-			deps: smallvec::SmallVec::new(),
-			scope,
-			callback_type: std::any::TypeId::of::<()>(),
-			key_any: Rc::new(()) as Rc<dyn std::any::Any>,
-		});
+		let slot = reg
+			.entry((key, scope))
+			.or_insert_with(|| CallbackSlotEntry {
+				deps: smallvec::SmallVec::new(),
+				scope,
+				callback_type: std::any::TypeId::of::<()>(),
+				key_any: Rc::new(()) as Rc<dyn std::any::Any>,
+			});
 
-		let needs_replace = slot.scope != scope
-			|| slot.deps.as_slice() != new_ids.as_slice()
+		let needs_replace = slot.deps.as_slice() != new_ids.as_slice()
 			|| slot.callback_type != std::any::TypeId::of::<(Args, Ret)>()
 			|| !slot.key_any.is::<PageNodeKey>();
 
@@ -1095,5 +1097,18 @@ mod tests_with_deps {
 			let string_callback = callback_from_shared_call_site::<String, String>();
 			assert_eq!(string_callback.call(String::from("input")), "");
 		});
+	}
+
+	#[cfg(native)]
+	#[test]
+	#[serial]
+	fn callback_slots_are_isolated_between_live_scopes() {
+		let first_scope = reinhardt_core::reactive::ReactiveScope::new();
+		let first = first_scope.enter(callback_from_shared_call_site::<i32, i32>);
+		let second_scope = reinhardt_core::reactive::ReactiveScope::new();
+		let second = second_scope.enter(callback_from_shared_call_site::<i32, i32>);
+
+		assert_eq!(first.call(1), 0);
+		assert_eq!(second.call(2), 0);
 	}
 }
