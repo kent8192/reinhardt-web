@@ -19,6 +19,8 @@ use reinhardt_pages::page;
 use reinhardt_pages::reactive::Signal;
 use reinhardt_pages::ssr::{HydrationStrategy, SsrOptions, SsrRenderer};
 use rstest::rstest;
+use std::cell::Cell;
+use std::rc::Rc;
 
 // ============================================================================
 // Test Components
@@ -682,6 +684,49 @@ async fn controlled_bindings_render_html_initial_state() {
 			"<option value=\"wasm\" selected=\"selected\">WebAssembly</option>",
 			"</optgroup></select>"
 		)
+	);
+}
+
+#[rstest]
+#[tokio::test]
+async fn bound_radio_value_expression_is_evaluated_once_for_attribute_and_binding() {
+	// Arrange
+	let selected = Signal::new("first".to_owned());
+	let evaluations = Rc::new(Cell::new(0));
+	let value_evaluations = Rc::clone(&evaluations);
+	let component = page!({
+		input {
+			a11y: off,
+			type: "radio",
+			value: {
+				let count = value_evaluations.get() + 1;
+				value_evaluations.set(count);
+				if count == 1 { "first" } else { "second" }
+			},
+			bind: selected
+		}
+	});
+	let mut renderer = SsrRenderer::new();
+
+	// Act
+	let html = renderer.render_page_into_page_to_string(component).await;
+
+	// Assert
+	assert_eq!(evaluations.get(), 1);
+	let body = html
+		.split_once("<body>")
+		.unwrap()
+		.1
+		.split_once("</body>")
+		.unwrap()
+		.0
+		.strip_prefix("\n<div id=\"app\">")
+		.unwrap()
+		.strip_suffix("</div>\n")
+		.unwrap();
+	assert_eq!(
+		body,
+		"<input type=\"radio\" value=\"first\" checked=\"checked\" />"
 	);
 }
 

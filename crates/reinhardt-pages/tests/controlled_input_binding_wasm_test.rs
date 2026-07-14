@@ -77,6 +77,42 @@ fn public_page_mount_installs_control_binding() {
 }
 
 #[wasm_bindgen_test]
+fn public_page_mount_evaluates_dynamic_radio_value_once() {
+	let document = web_sys::window()
+		.expect("window")
+		.document()
+		.expect("document");
+	let root = Element::new(document.create_element("div").expect("root"));
+	let selected = Signal::new("first".to_owned());
+	let evaluations = Rc::new(Cell::new(0));
+	let value_evaluations = Rc::clone(&evaluations);
+	page!({
+		input {
+			a11y: off,
+			type: "radio",
+			value: {
+				let count = value_evaluations.get() + 1;
+				value_evaluations.set(count);
+				if count == 1 { "first" } else { "second" }
+			},
+			bind: selected,
+		}
+	})
+	.mount(&root)
+	.expect("mount");
+	let input: web_sys::HtmlInputElement = root
+		.as_web_sys()
+		.first_element_child()
+		.expect("input")
+		.unchecked_into();
+
+	assert_eq!(evaluations.get(), 1);
+	assert_eq!(input.value(), "first");
+	assert!(input.checked());
+	reinhardt_pages::cleanup_reactive_nodes();
+}
+
+#[wasm_bindgen_test]
 fn public_page_mount_applies_initial_select_one_after_mounting_options() {
 	let document = web_sys::window()
 		.expect("window")

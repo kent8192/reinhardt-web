@@ -191,6 +191,37 @@ async fn radio_binding_writes_only_the_checked_choice_and_refreshes_comparison()
 }
 
 #[rstest]
+#[test]
+fn radio_binding_evaluates_dynamic_value_once() {
+	// Arrange
+	let selected = Signal::new("first".to_owned());
+	let evaluations = Rc::new(Cell::new(0));
+	let value_evaluations = Rc::clone(&evaluations);
+
+	// Act
+	let screen = render(page!({
+		input {
+			aria_label: "Choice",
+			type: "radio",
+			value: {
+				let count = value_evaluations.get() + 1;
+				value_evaluations.set(count);
+				if count == 1 { "first" } else { "second" }
+			},
+			bind: selected,
+		}
+	}));
+	let input = screen.get_by_label("Choice");
+	selected.set("other".to_owned());
+	input.change_checked(true);
+
+	// Assert
+	assert_eq!(evaluations.get(), 1);
+	assert_eq!(input.value().as_deref(), Some("first"));
+	assert_eq!(selected.get(), "first");
+}
+
+#[rstest]
 #[tokio::test]
 async fn invalid_number_raw_survives_settle_until_the_value_signal_changes() {
 	// Arrange

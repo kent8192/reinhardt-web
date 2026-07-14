@@ -542,13 +542,35 @@ fn generate_element(
 	ctx: &CodegenContext,
 ) -> TokenStream {
 	let tag = elem.tag.to_string();
+	let radio_value_ident = syn::Ident::new("__reinhardt_radio_value", Span::mixed_site());
+	let radio_value = elem.control_binding.as_ref().and_then(|binding| {
+		(binding.kind == TypedControlBindingKind::Radio).then(|| {
+			let value = binding.radio_value.as_ref().expect("validated radio value");
+			let value = wrap_expr_with_captures(value, pages_crate, ctx);
+			quote! { (#value).to_string() }
+		})
+	});
+	let radio_value_initializer = radio_value.as_ref().map(|value| {
+		quote! { let #radio_value_ident = #value; }
+	});
 
 	// Generate attributes
 	let regular_attrs: Vec<TokenStream> = elem
 		.attrs
 		.iter()
 		.filter(|attr| !BOOLEAN_ATTRS.contains(&attr.html_name().as_str()))
-		.map(|attr| generate_regular_attr_pair(attr, pages_crate, ctx))
+		.map(|attr| {
+			if radio_value.is_some() && attr.html_name() == "value" {
+				quote! {
+					(
+						::std::borrow::Cow::Borrowed("value"),
+						::std::borrow::Cow::Owned(#radio_value_ident.clone())
+					)
+				}
+			} else {
+				generate_regular_attr_pair(attr, pages_crate, ctx)
+			}
+		})
 		.collect();
 	let bool_attrs: Vec<TokenStream> = elem
 		.attrs
@@ -590,7 +612,14 @@ fn generate_element(
 	}
 
 	if let Some(binding) = &elem.control_binding {
-		let control_binding = generate_control_binding(binding, pages_crate, ctx);
+		let control_binding = generate_control_binding(
+			binding,
+			pages_crate,
+			ctx,
+			radio_value
+				.as_ref()
+				.map(|_| quote! { #radio_value_ident.clone() }),
+		);
 		base_builder = quote! {
 			#base_builder #control_binding
 		};
@@ -598,8 +627,13 @@ fn generate_element(
 
 	// Fast path: no events - simple generation.
 	if elem.events.is_empty() {
-		return quote! {
+		let page = quote! {
 			#pages_crate::component::IntoPage::into_page(#base_builder)
+		};
+		return if let Some(initializer) = radio_value_initializer {
+			quote! {{ #initializer #page }}
+		} else {
+			page
 		};
 	}
 
@@ -610,10 +644,15 @@ fn generate_element(
 		.map(|event| generate_event(event, pages_crate, ctx))
 		.collect();
 
-	quote! {
+	let page = quote! {
 		#pages_crate::component::IntoPage::into_page(
 			#base_builder #(#event_bindings)*
 		)
+	};
+	if let Some(initializer) = radio_value_initializer {
+		quote! {{ #initializer #page }}
+	} else {
+		page
 	}
 }
 
@@ -621,6 +660,7 @@ fn generate_control_binding(
 	binding: &TypedControlBinding,
 	pages_crate: &TokenStream,
 	ctx: &CodegenContext,
+	radio_value_override: Option<TokenStream>,
 ) -> TokenStream {
 	let value = match &binding.expression {
 		TypedControlBindingExpr::Direct(value) => value,
@@ -655,11 +695,14 @@ fn generate_control_binding(
 			))
 		}
 		(TypedControlBindingKind::Radio, _) => {
-			let radio_value = binding.radio_value.as_ref().expect("validated radio value");
-			let radio_value = wrap_expr_with_captures(radio_value, pages_crate, ctx);
+			let radio_value = radio_value_override.unwrap_or_else(|| {
+				let radio_value = binding.radio_value.as_ref().expect("validated radio value");
+				let radio_value = wrap_expr_with_captures(radio_value, pages_crate, ctx);
+				quote! { (#radio_value).to_string() }
+			});
 			quote_spanned!(binding_span=> #pages_crate::component::ControlBinding::radio(
 				(#value).clone(),
-				(#radio_value).to_string()
+				#radio_value
 			))
 		}
 	};
