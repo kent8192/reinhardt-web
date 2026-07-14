@@ -147,8 +147,19 @@ fn rewrite_scope(items: &mut Vec<syn::Item>) {
 			.iter()
 			.position(|item| matches!(item, syn::Item::Use(_)))
 			.unwrap_or(0);
+		let unconditional_facades = visitor
+			.generated_imports
+			.iter()
+			.filter(|generated| generated.attrs.is_empty())
+			.map(|generated| facade_key(&generated.facade))
+			.collect::<HashSet<_>>();
 		let mut inserted = 0;
 		for generated in visitor.generated_imports {
+			if !generated.attrs.is_empty()
+				&& unconditional_facades.contains(&facade_key(&generated.facade))
+			{
+				continue;
+			}
 			if has_deps_import(&imports, &generated.facade, &generated.attrs) {
 				continue;
 			}
@@ -285,6 +296,12 @@ impl HookVisitor {
 				.collect::<Vec<_>>();
 			if let Some((spec, _)) = candidates.first() {
 				let spec = *spec;
+				if candidates.iter().any(|(candidate, _)| *candidate != spec) {
+					return Some(HookResolution {
+						spec: select_hook_spec(&candidates, call.args.len()),
+						imports: None,
+					});
+				}
 				let matching = candidates
 					.into_iter()
 					.filter(|(candidate, _)| *candidate == spec)
@@ -326,6 +343,12 @@ impl HookVisitor {
 		}
 		if let Some((spec, _)) = candidates.first() {
 			let spec = *spec;
+			if candidates.iter().any(|(candidate, _)| *candidate != spec) {
+				return Some(HookResolution {
+					spec: select_hook_spec(&candidates, call.args.len()),
+					imports: None,
+				});
+			}
 			let matching = candidates
 				.into_iter()
 				.filter(|(candidate, _)| *candidate == spec)
@@ -355,8 +378,8 @@ impl HookVisitor {
 		};
 		if first == "crate" {
 			return segments
-				.get(1)
-				.is_some_and(|segment| self.local_modules.contains(&segment.to_string()));
+				.iter()
+				.any(|segment| self.local_modules.contains(&segment.to_string()));
 		}
 		self.local_modules.contains(&first.to_string())
 	}
@@ -364,6 +387,17 @@ impl HookVisitor {
 
 fn hook_spec(name: &str) -> Option<HookSpec> {
 	HOOK_SPECS.iter().copied().find(|spec| spec.name == name)
+}
+
+fn select_hook_spec(
+	candidates: &[(HookSpec, Option<GeneratedDepsImport>)],
+	arity: usize,
+) -> HookSpec {
+	candidates
+		.iter()
+		.find(|(spec, _)| spec.omitted_arity == arity || spec.explicit_arity == arity)
+		.map(|(spec, _)| *spec)
+		.unwrap_or(candidates[0].0)
 }
 
 fn facade_from_segments(segments: &[syn::Ident]) -> Option<syn::Path> {
@@ -485,6 +519,21 @@ impl<'ast> Visit<'ast> for OuterTrackedReadVisitor {
 		visit::visit_expr_method_call(self, call);
 	}
 
+	fn visit_expr_for_loop(&mut self, expr: &'ast syn::ExprForLoop) {
+		collect_pattern_idents(&expr.pat, &mut self.shadowed);
+		visit::visit_expr_for_loop(self, expr);
+	}
+
+	fn visit_arm(&mut self, arm: &'ast syn::Arm) {
+		collect_pattern_idents(&arm.pat, &mut self.shadowed);
+		visit::visit_arm(self, arm);
+	}
+
+	fn visit_expr_let(&mut self, expr: &'ast syn::ExprLet) {
+		collect_pattern_idents(&expr.pat, &mut self.shadowed);
+		visit::visit_expr_let(self, expr);
+	}
+
 	fn visit_local(&mut self, local: &'ast syn::Local) {
 		collect_pattern_idents(&local.pat, &mut self.shadowed);
 		visit::visit_local(self, local);
@@ -534,9 +583,10 @@ fn clone_aliases(stmts: &[syn::Stmt]) -> HashMap<String, syn::Expr> {
 		let syn::Stmt::Local(local) = stmt else {
 			continue;
 		};
+		let mut bindings = HashSet::new();
+		collect_pattern_idents(&local.pat, &mut bindings);
 		let syn::Pat::Ident(alias) = &local.pat else {
-			let mut bindings = HashSet::new();
-			collect_pattern_idents(&local.pat, &mut bindings);
+			invalidate_shadowed_aliases(&mut aliases, &bindings);
 			for binding in bindings {
 				aliases.remove(&binding);
 			}
@@ -544,18 +594,22 @@ fn clone_aliases(stmts: &[syn::Stmt]) -> HashMap<String, syn::Expr> {
 		};
 		let alias_name = alias.ident.to_string();
 		let Some(init) = &local.init else {
+			invalidate_shadowed_aliases(&mut aliases, &bindings);
 			aliases.remove(&alias_name);
 			continue;
 		};
 		let syn::Expr::MethodCall(call) = strip_parens(&init.expr) else {
+			invalidate_shadowed_aliases(&mut aliases, &bindings);
 			aliases.remove(&alias_name);
 			continue;
 		};
 		if call.method != "clone" || !call.args.is_empty() {
+			invalidate_shadowed_aliases(&mut aliases, &bindings);
 			aliases.remove(&alias_name);
 			continue;
 		}
 		let Some(receiver) = safe_clone_place(&call.receiver) else {
+			invalidate_shadowed_aliases(&mut aliases, &bindings);
 			aliases.remove(&alias_name);
 			continue;
 		};
@@ -566,12 +620,31 @@ fn clone_aliases(stmts: &[syn::Stmt]) -> HashMap<String, syn::Expr> {
 				&& !receiver_was_self)
 		});
 		if let Some(receiver) = receiver {
+			invalidate_shadowed_aliases(&mut aliases, &bindings);
 			aliases.insert(alias_name, receiver);
 		} else {
+			invalidate_shadowed_aliases(&mut aliases, &bindings);
 			aliases.remove(&alias.ident.to_string());
 		}
 	}
 	aliases
+}
+
+fn invalidate_shadowed_aliases(
+	aliases: &mut HashMap<String, syn::Expr>,
+	bindings: &HashSet<String>,
+) {
+	let stale = aliases
+		.iter()
+		.filter_map(|(name, expr)| {
+			base_ident_of(expr)
+				.is_some_and(|base| bindings.contains(&base.to_string()))
+				.then_some(name.clone())
+		})
+		.collect::<Vec<_>>();
+	for name in stale {
+		aliases.remove(&name);
+	}
 }
 
 fn safe_clone_place(expr: &syn::Expr) -> Option<syn::Expr> {
@@ -591,7 +664,33 @@ fn safe_clone_place(expr: &syn::Expr) -> Option<syn::Expr> {
 fn resolve_alias(name: &str, aliases: &HashMap<String, syn::Expr>) -> Option<syn::Expr> {
 	let mut stack = vec![name.to_owned()];
 	let expr = aliases.get(name)?;
-	resolve_place(expr, aliases, &mut stack)
+	resolve_alias_place(expr, aliases, &mut stack)
+}
+
+fn resolve_alias_place(
+	expr: &syn::Expr,
+	aliases: &HashMap<String, syn::Expr>,
+	stack: &mut Vec<String>,
+) -> Option<syn::Expr> {
+	match strip_parens(expr) {
+		syn::Expr::Path(path) if path.qself.is_none() && path.path.segments.len() == 1 => {
+			let ident = path.path.segments.first()?.ident.to_string();
+			let Some(alias) = aliases.get(&ident) else {
+				return Some(syn::Expr::Path(path.clone()));
+			};
+			if stack.last().is_some_and(|current| current == &ident) {
+				return Some(syn::Expr::Path(path.clone()));
+			}
+			if stack.iter().any(|current| current == &ident) {
+				return None;
+			}
+			stack.push(ident);
+			let resolved = resolve_alias_place(alias, aliases, stack);
+			stack.pop();
+			resolved
+		}
+		_ => Some(strip_parens(expr).clone()),
+	}
 }
 
 fn resolve_place(
@@ -735,13 +834,20 @@ fn import_key(facade: &syn::Path, attrs: &[syn::Attribute]) -> String {
 	quote!(#facade #(#attrs)*).to_string()
 }
 
+fn facade_key(facade: &syn::Path) -> String {
+	quote!(#facade).to_string()
+}
+
 fn has_deps_import(imports: &[UseEntry], facade: &syn::Path, attrs: &[syn::Attribute]) -> bool {
 	let key = import_key(facade, attrs);
+	let facade_path_key = facade_key(facade);
 	imports.iter().any(|entry| {
 		entry.bound == "deps"
 			&& entry.original.last().is_some_and(|ident| ident == "deps")
-			&& facade_from_segments(&entry.original)
-				.is_some_and(|entry_facade| import_key(&entry_facade, &entry.attrs) == key)
+			&& facade_from_segments(&entry.original).is_some_and(|entry_facade| {
+				facade_key(&entry_facade) == facade_path_key
+					&& (entry.attrs.is_empty() || import_key(&entry_facade, &entry.attrs) == key)
+			})
 	})
 }
 
@@ -976,6 +1082,61 @@ fn view(count: Signal<i32>, other: Signal<i32>) {
 	}
 
 	#[test]
+	fn clone_alias_dependents_are_invalidated_by_base_shadowing() {
+		let output = compact(&rewrite(
+			r#"
+use reinhardt_pages::use_effect;
+fn view(state: Signal<i32>, other: Signal<i32>) {
+    let _ = use_effect({
+        let first = state.clone();
+        let second = first.clone();
+        let state = other.clone();
+        move || { let _ = second.get(); }
+    });
+}
+"#,
+		));
+		assert_eq!(output.matches("compile_error!").count(), 1);
+		assert!(!output.contains("deps![other]"));
+	}
+
+	#[test]
+	fn field_alias_cycles_keep_the_review_marker() {
+		let output = compact(&rewrite(
+			r#"
+use reinhardt_pages::use_effect;
+fn view() {
+    let _ = use_effect({
+        let first = second.field.clone();
+        let second = first.clone();
+        move || { let _ = first.get(); }
+    });
+}
+"#,
+		));
+		assert_eq!(output.matches("compile_error!").count(), 1);
+		assert!(!output.contains("deps![second.field]"));
+	}
+
+	#[test]
+	fn field_clone_aliases_snapshot_before_base_shadowing() {
+		let output = compact(&rewrite(
+			r#"
+use reinhardt_pages::use_effect;
+fn view(state: State, other: Signal<i32>) {
+    let _ = use_effect({
+        let first = state.count.clone();
+        let state = other.clone();
+        move || { let _ = first.get(); }
+    });
+}
+"#,
+		));
+		assert!(!output.contains("deps![other.count]"));
+		assert_eq!(output.matches("compile_error!").count(), 1);
+	}
+
+	#[test]
 	fn side_effecting_or_indexed_clone_receivers_keep_review_markers() {
 		let output = compact(&rewrite(
 			r#"
@@ -1079,6 +1240,29 @@ fn view() {
 	}
 
 	#[test]
+	fn unconditional_deps_import_supersedes_cfg_variant() {
+		let output = rewrite(
+			r#"
+#[cfg(feature = "foo")]
+use foo::reactive::hooks as wasm_hooks;
+use foo::reactive::hooks as native_hooks;
+fn view(signal: Signal<i32>) {
+    let _ = wasm_hooks::use_effect({
+        let signal = signal.clone();
+        move || { let _ = signal.get(); }
+    });
+    let _ = native_hooks::use_effect({
+        let signal = signal.clone();
+        move || { let _ = signal.get(); }
+    });
+}
+"#,
+		);
+		assert_eq!(output.matches("use foo::deps;").count(), 1);
+		assert!(!output.contains("#[cfg(feature = \"foo\")]\nuse foo::deps;"));
+	}
+
+	#[test]
 	fn same_bound_hook_imports_generate_deps_for_each_cfg_path() {
 		let output = rewrite(
 			r#"
@@ -1097,6 +1281,27 @@ fn view(signal: Signal<i32>) {
 		assert!(output.contains("#[cfg(feature = \"foo\")]\nuse foo::deps;"));
 		assert!(output.contains("#[cfg(not(feature = \"foo\"))]\nuse bar::deps;"));
 		assert_eq!(output.matches("deps![signal]").count(), 1);
+	}
+
+	#[test]
+	fn ambiguous_same_bound_hook_specs_keep_a_review_marker() {
+		let output = rewrite(
+			r#"
+#[cfg(feature = "foo")]
+use foo::reactive::hooks::use_effect as hook;
+#[cfg(not(feature = "foo"))]
+use bar::reactive::hooks::use_resource as hook;
+fn view(signal: Signal<i32>) {
+    let _ = hook({
+        let signal = signal.clone();
+        move || { let _ = signal.get(); }
+    });
+}
+"#,
+		);
+		assert!(!output.contains("use foo::deps;"));
+		assert!(!output.contains("use bar::deps;"));
+		assert!(output.contains("compile_error!"));
 	}
 
 	#[test]
@@ -1148,6 +1353,30 @@ fn view(count: Signal<i32>) {
         move || {
             let (alias, _) = make_pair();
             let _ = alias.get();
+        }
+    });
+}
+"#,
+		));
+		assert_eq!(output.matches("compile_error!").count(), 1);
+		assert!(!output.contains(",deps![count]);"));
+	}
+
+	#[test]
+	fn control_flow_pattern_shadow_keeps_the_review_marker() {
+		let output = compact(&rewrite(
+			r#"
+use reinhardt_pages::use_effect;
+fn view(count: Signal<i32>) {
+    let _ = use_effect({
+        let alias = count.clone();
+        move || {
+            for alias in make_iter() { let _ = alias.get(); }
+            if let Some(alias) = make_option() { let _ = alias.get(); }
+            match make_option() {
+                Some(alias) => { let _ = alias.get(); }
+                None => {}
+            }
         }
     });
 }
@@ -1223,6 +1452,23 @@ fn view(signal: Signal<i32>) {
 "#,
 		);
 		assert!(!output.contains("use crate::custom::deps;"));
+		assert!(output.contains("compile_error!"));
+	}
+
+	#[test]
+	fn nested_crate_local_module_hook_does_not_generate_an_unresolved_deps_import() {
+		let output = rewrite(
+			r#"
+mod parent {
+    mod custom {}
+    use crate::parent::custom::reactive::hooks::use_effect;
+    fn view(signal: Signal<i32>) {
+        let _ = use_effect(|| { let _ = signal.get(); });
+    }
+}
+"#,
+		);
+		assert!(!output.contains("use crate::parent::custom::deps;"));
 		assert!(output.contains("compile_error!"));
 	}
 
