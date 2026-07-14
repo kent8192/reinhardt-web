@@ -489,7 +489,7 @@ impl DatabaseConnection {
 	/// # Example
 	///
 	/// ```no_run
-	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+	/// # async fn example() -> reinhardt_core::exception::Result<()> {
 	/// use reinhardt_db::orm::connection::DatabaseConnection;
 	///
 	/// let conn = DatabaseConnection::connect("postgres://localhost/mydb").await?;
@@ -517,7 +517,7 @@ impl DatabaseConnection {
 	/// # Examples
 	///
 	/// ```no_run
-	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+	/// # async fn example() -> reinhardt_core::exception::Result<()> {
 	/// use reinhardt_db::orm::connection::{DatabaseConnection, IsolationLevel};
 	///
 	/// let conn = DatabaseConnection::connect("postgres://localhost/mydb").await?;

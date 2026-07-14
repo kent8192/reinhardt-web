@@ -15,10 +15,10 @@
 //! use reinhardt_db::orm::transaction::transaction;
 //! use reinhardt_db::orm::connection::DatabaseConnection;
 //!
-//! # async fn example() -> Result<(), anyhow::Error> {
+//! # async fn example() -> reinhardt_core::exception::Result<()> {
 //! let conn = DatabaseConnection::connect("sqlite::memory:").await?;
 //!
-//! let result = transaction(&conn, |_tx| async move {
+//! let result = transaction(&conn, async |_tx| {
 //!     // Your operations here
 //!     Ok(42)
 //! }).await?;
@@ -42,7 +42,7 @@
 //! use reinhardt_db::orm::transaction::TransactionScope;
 //! use reinhardt_db::orm::connection::DatabaseConnection;
 //!
-//! # async fn example() -> Result<(), anyhow::Error> {
+//! # async fn example() -> reinhardt_core::exception::Result<()> {
 //! let conn = DatabaseConnection::connect("sqlite::memory:").await?;
 //! let tx = TransactionScope::begin(&conn).await?;
 //!
@@ -63,7 +63,7 @@
 //!
 //! ```rust
 //! # use reinhardt_db::orm::connection::DatabaseConnection;
-//! # async fn example() -> Result<(), anyhow::Error> {
+//! # async fn example() -> reinhardt_core::exception::Result<()> {
 //! # let conn = DatabaseConnection::connect("sqlite::memory:").await?;
 //! // Old API (atomic)
 //! use reinhardt_db::orm::transaction::atomic;
@@ -73,7 +73,7 @@
 //!
 //! // New API (transaction) - preferred
 //! use reinhardt_db::orm::transaction::transaction;
-//! let result = transaction(&conn, |_tx| async move {
+//! let result = transaction(&conn, async |_tx| {
 //!     Ok(42)
 //! }).await?;
 //! # Ok(())
@@ -81,6 +81,8 @@
 //! ```
 
 use std::sync::{Arc, Mutex};
+
+use reinhardt_core::exception::{DatabaseError, DatabaseErrorKind};
 
 /// Transaction isolation levels
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -462,7 +464,7 @@ impl Transaction {
 	pub async fn begin_db(&mut self) -> reinhardt_core::exception::Result<()> {
 		let sql = self
 			.begin()
-			.map_err(reinhardt_core::exception::Error::Database)?;
+			.map_err(|message| DatabaseError::new(DatabaseErrorKind::Transaction, message))?;
 		let conn = super::manager::get_connection().await?;
 		conn.execute(&sql, vec![]).await?;
 		Ok(())
@@ -474,7 +476,7 @@ impl Transaction {
 	pub async fn commit_db(&mut self) -> reinhardt_core::exception::Result<()> {
 		let sql = self
 			.commit()
-			.map_err(reinhardt_core::exception::Error::Database)?;
+			.map_err(|message| DatabaseError::new(DatabaseErrorKind::Transaction, message))?;
 		let conn = super::manager::get_connection().await?;
 		conn.execute(&sql, vec![]).await?;
 		Ok(())
@@ -486,7 +488,7 @@ impl Transaction {
 	pub async fn rollback_db(&mut self) -> reinhardt_core::exception::Result<()> {
 		let sql = self
 			.rollback()
-			.map_err(reinhardt_core::exception::Error::Database)?;
+			.map_err(|message| DatabaseError::new(DatabaseErrorKind::Transaction, message))?;
 		let conn = super::manager::get_connection().await?;
 		conn.execute(&sql, vec![]).await?;
 		Ok(())
@@ -686,6 +688,14 @@ pub struct TransactionScope {
 	committed: bool,
 }
 
+fn transaction_consumed_error() -> reinhardt_core::exception::Error {
+	DatabaseError::new(
+		DatabaseErrorKind::Transaction,
+		"Transaction already consumed",
+	)
+	.into()
+}
+
 impl TransactionScope {
 	/// Begin a new transaction scope
 	///
@@ -710,7 +720,7 @@ impl TransactionScope {
 	/// ```
 	pub async fn begin(
 		conn: &super::connection::DatabaseConnection,
-	) -> Result<Self, anyhow::Error> {
+	) -> reinhardt_core::exception::Result<Self> {
 		let executor = conn.begin().await?;
 		Ok(Self {
 			executor: Some(executor),
@@ -746,7 +756,7 @@ impl TransactionScope {
 	pub async fn begin_with_isolation(
 		conn: &super::connection::DatabaseConnection,
 		level: IsolationLevel,
-	) -> Result<Self, anyhow::Error> {
+	) -> reinhardt_core::exception::Result<Self> {
 		let executor = conn.begin_with_isolation(level.to_backends_level()).await?;
 		Ok(Self {
 			executor: Some(executor),
@@ -777,11 +787,11 @@ impl TransactionScope {
 		&mut self,
 		sql: &str,
 		params: Vec<super::connection::QueryValue>,
-	) -> Result<u64, anyhow::Error> {
+	) -> reinhardt_core::exception::Result<u64> {
 		let executor = self
 			.executor
 			.as_mut()
-			.ok_or_else(|| anyhow::anyhow!("Transaction already consumed"))?;
+			.ok_or_else(transaction_consumed_error)?;
 		let result = executor.execute(sql, params).await?;
 		Ok(result.rows_affected)
 	}
@@ -791,11 +801,11 @@ impl TransactionScope {
 		&mut self,
 		sql: &str,
 		params: Vec<super::connection::QueryValue>,
-	) -> Result<super::connection::QueryRow, anyhow::Error> {
+	) -> reinhardt_core::exception::Result<super::connection::QueryRow> {
 		let executor = self
 			.executor
 			.as_mut()
-			.ok_or_else(|| anyhow::anyhow!("Transaction already consumed"))?;
+			.ok_or_else(transaction_consumed_error)?;
 		let row = executor.fetch_one(sql, params).await?;
 		Ok(super::connection::QueryRow::from_backend_row(row))
 	}
@@ -805,11 +815,11 @@ impl TransactionScope {
 		&mut self,
 		sql: &str,
 		params: Vec<super::connection::QueryValue>,
-	) -> Result<Vec<super::connection::QueryRow>, anyhow::Error> {
+	) -> reinhardt_core::exception::Result<Vec<super::connection::QueryRow>> {
 		let executor = self
 			.executor
 			.as_mut()
-			.ok_or_else(|| anyhow::anyhow!("Transaction already consumed"))?;
+			.ok_or_else(transaction_consumed_error)?;
 		let rows = executor.fetch_all(sql, params).await?;
 		Ok(rows
 			.into_iter()
@@ -822,11 +832,11 @@ impl TransactionScope {
 		&mut self,
 		sql: &str,
 		params: Vec<super::connection::QueryValue>,
-	) -> Result<Option<super::connection::QueryRow>, anyhow::Error> {
+	) -> reinhardt_core::exception::Result<Option<super::connection::QueryRow>> {
 		let executor = self
 			.executor
 			.as_mut()
-			.ok_or_else(|| anyhow::anyhow!("Transaction already consumed"))?;
+			.ok_or_else(transaction_consumed_error)?;
 		let row = executor.fetch_optional(sql, params).await?;
 		Ok(row.map(super::connection::QueryRow::from_backend_row))
 	}
@@ -848,11 +858,11 @@ impl TransactionScope {
 	/// # }
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
 	/// ```
-	pub async fn commit(mut self) -> Result<(), anyhow::Error> {
+	pub async fn commit(mut self) -> reinhardt_core::exception::Result<()> {
 		let executor = self
 			.executor
 			.take()
-			.ok_or_else(|| anyhow::anyhow!("Transaction already consumed"))?;
+			.ok_or_else(transaction_consumed_error)?;
 		executor.commit().await?;
 		self.committed = true;
 		Ok(())
@@ -875,11 +885,11 @@ impl TransactionScope {
 	/// # }
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
 	/// ```
-	pub async fn rollback(mut self) -> Result<(), anyhow::Error> {
+	pub async fn rollback(mut self) -> reinhardt_core::exception::Result<()> {
 		let executor = self
 			.executor
 			.take()
-			.ok_or_else(|| anyhow::anyhow!("Transaction already consumed"))?;
+			.ok_or_else(transaction_consumed_error)?;
 		executor.rollback().await?;
 		self.committed = true; // Mark as handled to prevent double rollback in Drop
 		Ok(())
@@ -901,7 +911,7 @@ impl TransactionScope {
 	/// use reinhardt_db::orm::connection::DatabaseConnection;
 	/// use reinhardt_db::orm::transaction::TransactionScope;
 	///
-	/// # async fn example() -> Result<(), anyhow::Error> {
+	/// # async fn example() -> reinhardt_core::exception::Result<()> {
 	/// let conn = DatabaseConnection::connect("postgres://localhost/test").await?;
 	/// let mut tx = TransactionScope::begin(&conn).await?;
 	///
@@ -920,11 +930,11 @@ impl TransactionScope {
 	/// # Ok(())
 	/// # }
 	/// ```
-	pub async fn savepoint(&mut self, name: &str) -> Result<(), anyhow::Error> {
+	pub async fn savepoint(&mut self, name: &str) -> reinhardt_core::exception::Result<()> {
 		let executor = self
 			.executor
 			.as_mut()
-			.ok_or_else(|| anyhow::anyhow!("Transaction already consumed"))?;
+			.ok_or_else(transaction_consumed_error)?;
 		executor.savepoint(name).await?;
 		Ok(())
 	}
@@ -945,7 +955,7 @@ impl TransactionScope {
 	/// use reinhardt_db::orm::connection::DatabaseConnection;
 	/// use reinhardt_db::orm::transaction::TransactionScope;
 	///
-	/// # async fn example() -> Result<(), anyhow::Error> {
+	/// # async fn example() -> reinhardt_core::exception::Result<()> {
 	/// let conn = DatabaseConnection::connect("postgres://localhost/test").await?;
 	/// let mut tx = TransactionScope::begin(&conn).await?;
 	///
@@ -957,11 +967,11 @@ impl TransactionScope {
 	/// # Ok(())
 	/// # }
 	/// ```
-	pub async fn release_savepoint(&mut self, name: &str) -> Result<(), anyhow::Error> {
+	pub async fn release_savepoint(&mut self, name: &str) -> reinhardt_core::exception::Result<()> {
 		let executor = self
 			.executor
 			.as_mut()
-			.ok_or_else(|| anyhow::anyhow!("Transaction already consumed"))?;
+			.ok_or_else(transaction_consumed_error)?;
 		executor.release_savepoint(name).await?;
 		Ok(())
 	}
@@ -981,7 +991,7 @@ impl TransactionScope {
 	/// use reinhardt_db::orm::connection::DatabaseConnection;
 	/// use reinhardt_db::orm::transaction::TransactionScope;
 	///
-	/// # async fn example() -> Result<(), anyhow::Error> {
+	/// # async fn example() -> reinhardt_core::exception::Result<()> {
 	/// let conn = DatabaseConnection::connect("postgres://localhost/test").await?;
 	/// let mut tx = TransactionScope::begin(&conn).await?;
 	///
@@ -998,11 +1008,14 @@ impl TransactionScope {
 	/// # Ok(())
 	/// # }
 	/// ```
-	pub async fn rollback_to_savepoint(&mut self, name: &str) -> Result<(), anyhow::Error> {
+	pub async fn rollback_to_savepoint(
+		&mut self,
+		name: &str,
+	) -> reinhardt_core::exception::Result<()> {
 		let executor = self
 			.executor
 			.as_mut()
-			.ok_or_else(|| anyhow::anyhow!("Transaction already consumed"))?;
+			.ok_or_else(transaction_consumed_error)?;
 		executor.rollback_to_savepoint(name).await?;
 		Ok(())
 	}
@@ -1013,17 +1026,20 @@ impl TransactionScope {
 	/// the transaction scope. The transaction is automatically committed if the
 	/// closure returns Ok, or rolled back if it returns Err.
 	///
+	/// Use an async closure when the operation borrows the transaction scope
+	/// across an await point, for example `async |tx| { tx.execute(...).await }`.
+	///
 	/// # Examples
 	///
 	/// ```no_run
 	/// use reinhardt_db::orm::connection::DatabaseConnection;
 	/// use reinhardt_db::orm::transaction::TransactionScope;
 	///
-	/// # async fn example() -> Result<(), anyhow::Error> {
+	/// # async fn example() -> reinhardt_core::exception::Result<()> {
 	/// let conn = DatabaseConnection::connect("sqlite::memory:").await?;
 	/// let mut tx = TransactionScope::begin(&conn).await?;
 	///
-	/// let result = tx.run(|tx| async move {
+	/// let result = tx.run(async |tx| {
 	///     // Perform operations via tx.execute(), tx.query(), etc.
 	///     Ok(42)
 	/// }).await?;
@@ -1033,20 +1049,27 @@ impl TransactionScope {
 	/// # }
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
 	/// ```
-	pub async fn run<F, Fut, T>(mut self, f: F) -> Result<T, anyhow::Error>
+	pub async fn run<F, T, E>(mut self, f: F) -> std::result::Result<T, E>
 	where
-		F: FnOnce(&mut Self) -> Fut,
-		Fut: std::future::Future<Output = Result<T, anyhow::Error>>,
+		F: for<'scope> std::ops::AsyncFnOnce(&'scope mut Self) -> std::result::Result<T, E>,
+		E: std::error::Error + From<reinhardt_core::exception::Error>,
 	{
 		match f(&mut self).await {
 			Ok(result) => {
-				self.commit().await?;
+				self.commit().await.map_err(E::from)?;
 				Ok(result)
 			}
-			Err(e) => {
-				self.rollback().await?;
-				Err(e)
-			}
+			Err(operation_error) => match self.rollback().await {
+				Ok(()) => Err(operation_error),
+				Err(rollback_error) => {
+					tracing::error!(
+						operation_error = %operation_error,
+						rollback_error = %rollback_error,
+						"Transaction operation and rollback both failed"
+					);
+					Err(E::from(rollback_error))
+				}
+			},
 		}
 	}
 }
@@ -1131,25 +1154,40 @@ impl Drop for TransactionScope {
 /// let result = atomic(&conn, || async move {
 ///     // Perform operations using conn...
 ///     // The transaction is automatically managed
-///     Ok::<_, anyhow::Error>(42)
+///     Ok::<_, reinhardt_core::exception::Error>(42)
 /// }).await.unwrap();
 ///
 /// assert_eq!(result, 42);
 /// # }
 /// # tokio::runtime::Runtime::new().unwrap().block_on(example());
 /// ```
-pub async fn atomic<F, Fut, T>(
+pub async fn atomic<F, Fut, T, E>(
 	conn: &super::connection::DatabaseConnection,
 	f: F,
-) -> Result<T, anyhow::Error>
+) -> std::result::Result<T, E>
 where
 	F: FnOnce() -> Fut,
-	Fut: std::future::Future<Output = Result<T, anyhow::Error>>,
+	Fut: std::future::Future<Output = std::result::Result<T, E>>,
+	E: std::error::Error + From<reinhardt_core::exception::Error>,
 {
-	let tx = TransactionScope::begin(conn).await?;
-	let result = f().await?;
-	tx.commit().await?;
-	Ok(result)
+	let tx = TransactionScope::begin(conn).await.map_err(E::from)?;
+	match f().await {
+		Ok(result) => {
+			tx.commit().await.map_err(E::from)?;
+			Ok(result)
+		}
+		Err(operation_error) => match tx.rollback().await {
+			Ok(()) => Err(operation_error),
+			Err(rollback_error) => {
+				tracing::error!(
+					operation_error = %operation_error,
+					rollback_error = %rollback_error,
+					"Transaction operation and rollback both failed"
+				);
+				Err(E::from(rollback_error))
+			}
+		},
+	}
 }
 
 /// Execute a function within a transaction with specific isolation level
@@ -1169,7 +1207,7 @@ where
 ///     IsolationLevel::Serializable,
 ///     || async move {
 ///         // Perform operations...
-///         Ok::<_, anyhow::Error>(42)
+///         Ok::<_, reinhardt_core::exception::Error>(42)
 ///     }
 /// ).await.unwrap();
 ///
@@ -1177,19 +1215,36 @@ where
 /// # }
 /// # tokio::runtime::Runtime::new().unwrap().block_on(example());
 /// ```
-pub async fn atomic_with_isolation<F, Fut, T>(
+pub async fn atomic_with_isolation<F, Fut, T, E>(
 	conn: &super::connection::DatabaseConnection,
 	level: IsolationLevel,
 	f: F,
-) -> Result<T, anyhow::Error>
+) -> std::result::Result<T, E>
 where
 	F: FnOnce() -> Fut,
-	Fut: std::future::Future<Output = Result<T, anyhow::Error>>,
+	Fut: std::future::Future<Output = std::result::Result<T, E>>,
+	E: std::error::Error + From<reinhardt_core::exception::Error>,
 {
-	let tx = TransactionScope::begin_with_isolation(conn, level).await?;
-	let result = f().await?;
-	tx.commit().await?;
-	Ok(result)
+	let tx = TransactionScope::begin_with_isolation(conn, level)
+		.await
+		.map_err(E::from)?;
+	match f().await {
+		Ok(result) => {
+			tx.commit().await.map_err(E::from)?;
+			Ok(result)
+		}
+		Err(operation_error) => match tx.rollback().await {
+			Ok(()) => Err(operation_error),
+			Err(rollback_error) => {
+				tracing::error!(
+					operation_error = %operation_error,
+					rollback_error = %rollback_error,
+					"Transaction operation and rollback both failed"
+				);
+				Err(E::from(rollback_error))
+			}
+		},
+	}
 }
 
 /// Execute a closure within a transaction scope with automatic commit/rollback
@@ -1200,6 +1255,8 @@ where
 ///
 /// The closure receives a mutable reference to the `TransactionScope` which can be used
 /// to execute SQL within the transaction.
+/// Use the `async |tx| { ... }` closure form when the returned future borrows
+/// the transaction scope across an await point.
 ///
 /// # Examples
 ///
@@ -1208,21 +1265,18 @@ where
 /// # async fn main() {
 /// use reinhardt_db::orm::connection::DatabaseConnection;
 /// use reinhardt_db::orm::transaction::transaction;
-/// use std::future::Future;
-/// use std::pin::Pin;
-///
-/// # async fn example() -> Result<(), anyhow::Error> {
+/// # async fn example() -> reinhardt_core::exception::Result<()> {
 /// // For doctest purposes, using mock connection (URL is ignored in current implementation)
 /// let conn = DatabaseConnection::connect("sqlite::memory:").await?;
 ///
 /// // Simple transaction
-/// transaction(&conn, |tx| async {
+/// transaction(&conn, async |tx| {
 ///     tx.execute("INSERT INTO users (name) VALUES (?)", vec!["Alice".into()]).await?;
 ///     Ok(())
 /// }).await?;
 ///
 /// // Transaction with return value
-/// let user_id: i64 = transaction(&conn, |tx| async {
+/// let user_id: i64 = transaction(&conn, async |tx| {
 ///     tx.execute("INSERT INTO users (name) VALUES (?)", vec!["Bob".into()]).await?;
 ///     Ok(42_i64) // Example return value
 /// }).await?;
@@ -1242,12 +1296,22 @@ where
 /// use reinhardt_db::orm::connection::DatabaseConnection;
 /// use reinhardt_db::orm::transaction::transaction;
 ///
-/// # async fn example() -> Result<(), anyhow::Error> {
+/// use reinhardt_core::exception::Error;
+///
+/// #[derive(Debug, thiserror::Error)]
+/// enum ApplicationError {
+///     #[error("application rejected the operation")]
+///     Rejected,
+///     #[error(transparent)]
+///     Framework(#[from] Error),
+/// }
+///
+/// # async fn example() -> Result<(), ApplicationError> {
 /// let conn = DatabaseConnection::connect("sqlite::memory:").await?;
 ///
-/// let result: Result<(), anyhow::Error> = transaction(&conn, |_tx| async move {
+/// let result: Result<(), ApplicationError> = transaction(&conn, async |_tx| {
 ///     // Simulate an error
-///     Err(anyhow::anyhow!("Operation failed"))
+///     Err(ApplicationError::Rejected)
 /// }).await;
 ///
 /// assert!(result.is_err()); // Transaction was automatically rolled back
@@ -1255,25 +1319,32 @@ where
 /// # }
 /// # tokio::runtime::Runtime::new().unwrap().block_on(example());
 /// ```
-pub async fn transaction<F, Fut, T>(
+pub async fn transaction<F, T, E>(
 	conn: &super::connection::DatabaseConnection,
 	f: F,
-) -> Result<T, anyhow::Error>
+) -> std::result::Result<T, E>
 where
-	F: FnOnce(&mut TransactionScope) -> Fut,
-	Fut: std::future::Future<Output = Result<T, anyhow::Error>>,
+	F: for<'scope> std::ops::AsyncFnOnce(&'scope mut TransactionScope) -> std::result::Result<T, E>,
+	E: std::error::Error + From<reinhardt_core::exception::Error>,
 {
-	let mut tx = TransactionScope::begin(conn).await?;
+	let mut tx = TransactionScope::begin(conn).await.map_err(E::from)?;
 
 	match f(&mut tx).await {
 		Ok(result) => {
-			tx.commit().await?;
+			tx.commit().await.map_err(E::from)?;
 			Ok(result)
 		}
-		Err(e) => {
-			tx.rollback().await?;
-			Err(e)
-		}
+		Err(operation_error) => match tx.rollback().await {
+			Ok(()) => Err(operation_error),
+			Err(rollback_error) => {
+				tracing::error!(
+					operation_error = %operation_error,
+					rollback_error = %rollback_error,
+					"Transaction operation and rollback both failed"
+				);
+				Err(E::from(rollback_error))
+			}
+		},
 	}
 }
 
@@ -1287,10 +1358,10 @@ where
 /// use reinhardt_db::orm::connection::DatabaseConnection;
 /// use reinhardt_db::orm::transaction::{transaction_with_isolation, IsolationLevel};
 ///
-/// # async fn example() -> Result<(), anyhow::Error> {
+/// # async fn example() -> reinhardt_core::exception::Result<()> {
 /// let conn = DatabaseConnection::connect("sqlite::memory:").await?;
 ///
-/// transaction_with_isolation(&conn, IsolationLevel::Serializable, |_tx| async move {
+/// transaction_with_isolation(&conn, IsolationLevel::Serializable, async |_tx| {
 ///     // Critical operation requiring serializable isolation
 ///     // update_inventory().await?;
 ///     Ok(())
@@ -1299,26 +1370,35 @@ where
 /// # }
 /// # tokio::runtime::Runtime::new().unwrap().block_on(example());
 /// ```
-pub async fn transaction_with_isolation<F, Fut, T>(
+pub async fn transaction_with_isolation<F, T, E>(
 	conn: &super::connection::DatabaseConnection,
 	level: IsolationLevel,
 	f: F,
-) -> Result<T, anyhow::Error>
+) -> std::result::Result<T, E>
 where
-	F: FnOnce(&mut TransactionScope) -> Fut,
-	Fut: std::future::Future<Output = Result<T, anyhow::Error>>,
+	F: for<'scope> std::ops::AsyncFnOnce(&'scope mut TransactionScope) -> std::result::Result<T, E>,
+	E: std::error::Error + From<reinhardt_core::exception::Error>,
 {
-	let mut tx = TransactionScope::begin_with_isolation(conn, level).await?;
+	let mut tx = TransactionScope::begin_with_isolation(conn, level)
+		.await
+		.map_err(E::from)?;
 
 	match f(&mut tx).await {
 		Ok(result) => {
-			tx.commit().await?;
+			tx.commit().await.map_err(E::from)?;
 			Ok(result)
 		}
-		Err(e) => {
-			tx.rollback().await?;
-			Err(e)
-		}
+		Err(operation_error) => match tx.rollback().await {
+			Ok(()) => Err(operation_error),
+			Err(rollback_error) => {
+				tracing::error!(
+					operation_error = %operation_error,
+					rollback_error = %rollback_error,
+					"Transaction operation and rollback both failed"
+				);
+				Err(E::from(rollback_error))
+			}
+		},
 	}
 }
 
@@ -1332,11 +1412,38 @@ mod tests {
 	use crate::orm::Manager;
 	use crate::orm::connection::{DatabaseBackend, DatabaseConnection};
 	use crate::prelude::Model;
+	use reinhardt_core::exception::{DatabaseError, DatabaseErrorKind};
 	use rstest::*;
-	use std::sync::Arc;
+	use std::collections::BTreeSet;
+	use std::fmt;
+	use std::sync::{Arc, Mutex};
+	use tracing::field::{Field, Visit};
+	use tracing_subscriber::layer::{Context, Layer};
+	use tracing_subscriber::prelude::*;
+	use tracing_subscriber::registry::LookupSpan;
+
+	#[derive(Debug, thiserror::Error)]
+	pub(super) enum ApplicationError {
+		#[error("application rejected the operation")]
+		Rejected,
+		#[error(transparent)]
+		Framework(#[from] reinhardt_core::exception::Error),
+	}
+
+	#[derive(Clone, Copy, Debug, Default)]
+	struct FailurePlan {
+		begin: bool,
+		commit: bool,
+		rollback: bool,
+	}
+
+	type TransactionCalls = Arc<Mutex<Vec<&'static str>>>;
 
 	// Mock transaction executor for testing
-	struct MockTransactionExecutor;
+	struct MockTransactionExecutor {
+		failure_plan: FailurePlan,
+		calls: TransactionCalls,
+	}
 
 	#[async_trait::async_trait]
 	impl TransactionExecutor for MockTransactionExecutor {
@@ -1361,15 +1468,28 @@ mod tests {
 		}
 
 		async fn commit(self: Box<Self>) -> Result<()> {
-			Ok(())
+			self.calls.lock().unwrap().push("commit");
+			if self.failure_plan.commit {
+				Err(transaction_failure("commit failed"))
+			} else {
+				Ok(())
+			}
 		}
 
 		async fn rollback(self: Box<Self>) -> Result<()> {
-			Ok(())
+			self.calls.lock().unwrap().push("rollback");
+			if self.failure_plan.rollback {
+				Err(transaction_failure("rollback failed"))
+			} else {
+				Ok(())
+			}
 		}
 	}
 
-	struct MockBackend;
+	struct MockBackend {
+		failure_plan: FailurePlan,
+		calls: TransactionCalls,
+	}
 
 	#[async_trait::async_trait]
 	impl BackendTrait for MockBackend {
@@ -1405,15 +1525,156 @@ mod tests {
 			self
 		}
 		async fn begin(&self) -> Result<Box<dyn TransactionExecutor>> {
-			Ok(Box::new(MockTransactionExecutor))
+			self.calls.lock().unwrap().push("begin");
+			if self.failure_plan.begin {
+				Err(transaction_failure("begin failed"))
+			} else {
+				Ok(Box::new(MockTransactionExecutor {
+					failure_plan: self.failure_plan,
+					calls: Arc::clone(&self.calls),
+				}))
+			}
 		}
+	}
+
+	fn transaction_failure(message: &str) -> reinhardt_core::exception::Error {
+		DatabaseError::new(DatabaseErrorKind::Transaction, message).into()
+	}
+
+	fn mock_connection_with_failures(
+		failure_plan: FailurePlan,
+	) -> (DatabaseConnection, TransactionCalls) {
+		let calls = Arc::new(Mutex::new(Vec::new()));
+		let mock_backend = Arc::new(MockBackend {
+			failure_plan,
+			calls: Arc::clone(&calls),
+		});
+		let backends_conn = BackendsConnection::new(mock_backend);
+		(
+			DatabaseConnection::new(DatabaseBackend::Postgres, backends_conn),
+			calls,
+		)
 	}
 
 	#[fixture]
 	fn mock_connection() -> DatabaseConnection {
-		let mock_backend = Arc::new(MockBackend);
-		let backends_conn = BackendsConnection::new(mock_backend);
-		DatabaseConnection::new(DatabaseBackend::Postgres, backends_conn)
+		mock_connection_with_failures(FailurePlan::default()).0
+	}
+
+	#[derive(Clone, Default)]
+	struct EventCaptureLayer {
+		events: Arc<Mutex<Vec<BTreeSet<String>>>>,
+	}
+
+	#[derive(Default)]
+	struct EventFieldVisitor {
+		fields: BTreeSet<String>,
+	}
+
+	impl Visit for EventFieldVisitor {
+		fn record_debug(&mut self, field: &Field, _value: &dyn fmt::Debug) {
+			self.fields.insert(field.name().to_string());
+		}
+	}
+
+	impl<S> Layer<S> for EventCaptureLayer
+	where
+		S: tracing::Subscriber + for<'span> LookupSpan<'span>,
+	{
+		fn on_event(&self, event: &tracing::Event<'_>, _context: Context<'_, S>) {
+			let mut visitor = EventFieldVisitor::default();
+			event.record(&mut visitor);
+			self.events.lock().unwrap().push(visitor.fields);
+		}
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_typed_transaction_preserves_success(mock_connection: DatabaseConnection) {
+		let result: std::result::Result<u64, ApplicationError> =
+			transaction(&mock_connection, async |tx| {
+				let rows_affected = tx.execute("SELECT 1", vec![]).await?;
+				Ok(rows_affected)
+			})
+			.await;
+
+		assert_eq!(result.unwrap(), 0);
+	}
+
+	#[tokio::test]
+	async fn test_typed_transaction_converts_begin_failure() {
+		let (connection, calls) = mock_connection_with_failures(FailurePlan {
+			begin: true,
+			..FailurePlan::default()
+		});
+
+		let result: std::result::Result<(), ApplicationError> =
+			transaction(&connection, async |_tx| Ok(())).await;
+
+		match result {
+			Err(ApplicationError::Framework(error)) => {
+				assert_eq!(error.database_kind(), Some(DatabaseErrorKind::Transaction));
+			}
+			other => panic!("expected a framework begin failure, got {other:?}"),
+		}
+		assert_eq!(*calls.lock().unwrap(), vec!["begin"]);
+	}
+
+	#[tokio::test]
+	async fn test_typed_transaction_preserves_operation_failure_after_rollback() {
+		let (connection, calls) = mock_connection_with_failures(FailurePlan::default());
+
+		let result: std::result::Result<(), ApplicationError> =
+			transaction(&connection, async |_tx| Err(ApplicationError::Rejected)).await;
+
+		assert!(matches!(result, Err(ApplicationError::Rejected)));
+		assert_eq!(*calls.lock().unwrap(), vec!["begin", "rollback"]);
+	}
+
+	#[tokio::test]
+	async fn test_typed_transaction_converts_commit_failure() {
+		let (connection, calls) = mock_connection_with_failures(FailurePlan {
+			commit: true,
+			..FailurePlan::default()
+		});
+
+		let result: std::result::Result<(), ApplicationError> =
+			transaction(&connection, async |_tx| Ok(())).await;
+
+		match result {
+			Err(ApplicationError::Framework(error)) => {
+				assert_eq!(error.database_kind(), Some(DatabaseErrorKind::Transaction));
+			}
+			other => panic!("expected a framework commit failure, got {other:?}"),
+		}
+		assert_eq!(*calls.lock().unwrap(), vec!["begin", "commit"]);
+	}
+
+	#[tokio::test]
+	async fn test_typed_transaction_rollback_failure_wins_and_records_both_errors() {
+		let (connection, calls) = mock_connection_with_failures(FailurePlan {
+			rollback: true,
+			..FailurePlan::default()
+		});
+		let events = Arc::new(Mutex::new(Vec::new()));
+		let subscriber = tracing_subscriber::registry().with(EventCaptureLayer {
+			events: Arc::clone(&events),
+		});
+		let _subscriber_guard = tracing::subscriber::set_default(subscriber);
+
+		let result: std::result::Result<(), ApplicationError> =
+			transaction(&connection, async |_tx| Err(ApplicationError::Rejected)).await;
+
+		match result {
+			Err(ApplicationError::Framework(error)) => {
+				assert_eq!(error.database_kind(), Some(DatabaseErrorKind::Transaction));
+			}
+			other => panic!("expected the framework rollback failure, got {other:?}"),
+		}
+		assert_eq!(*calls.lock().unwrap(), vec!["begin", "rollback"]);
+		assert!(events.lock().unwrap().iter().any(|fields| {
+			fields.contains("operation_error") && fields.contains("rollback_error")
+		}));
 	}
 
 	#[rstest]
@@ -1455,23 +1716,36 @@ mod tests {
 	async fn test_atomic_helper(mock_connection: DatabaseConnection) {
 		let conn = mock_connection;
 
-		let result = atomic(&conn, || async move { Ok::<_, anyhow::Error>(42) }).await;
+		let result = atomic(&conn, || async move { Ok::<_, ApplicationError>(42) }).await;
 
 		assert!(result.is_ok());
 		assert_eq!(result.unwrap(), 42);
 	}
 
-	#[rstest]
 	#[tokio::test]
-	async fn test_atomic_helper_with_error(mock_connection: DatabaseConnection) {
-		let conn = mock_connection;
+	async fn test_atomic_helper_with_error() {
+		let (connection, calls) = mock_connection_with_failures(FailurePlan::default());
 
-		let result = atomic(&conn, || async move {
-			Err::<i32, _>(anyhow::anyhow!("test error"))
+		let result = atomic(&connection, || async move {
+			Err::<i32, _>(ApplicationError::Rejected)
 		})
 		.await;
 
-		assert!(result.is_err());
+		assert!(matches!(result, Err(ApplicationError::Rejected)));
+		assert_eq!(*calls.lock().unwrap(), vec!["begin", "rollback"]);
+	}
+
+	#[tokio::test]
+	async fn test_transaction_scope_run_preserves_typed_error_after_rollback() {
+		let (connection, calls) = mock_connection_with_failures(FailurePlan::default());
+		let transaction = TransactionScope::begin(&connection).await.unwrap();
+
+		let result: std::result::Result<(), ApplicationError> = transaction
+			.run(async |_tx| Err(ApplicationError::Rejected))
+			.await;
+
+		assert!(matches!(result, Err(ApplicationError::Rejected)));
+		assert_eq!(*calls.lock().unwrap(), vec!["begin", "rollback"]);
 	}
 
 	#[rstest]
@@ -1480,7 +1754,7 @@ mod tests {
 		let conn = mock_connection;
 
 		let result = atomic_with_isolation(&conn, IsolationLevel::Serializable, || async move {
-			Ok::<_, anyhow::Error>(100)
+			Ok::<_, ApplicationError>(100)
 		})
 		.await;
 
@@ -1684,18 +1958,21 @@ mod tests {
 		)
 		.execute(pool)
 		.await
-		.map_err(|e| {
-			reinhardt_core::exception::Error::Database(format!("Create table failed: {}", e))
+		.map_err(|error| {
+			reinhardt_core::exception::Error::from(DatabaseError::new(
+				DatabaseErrorKind::Query,
+				format!("Create table failed: {error}"),
+			))
 		})?;
 
 		// Clear any existing data
 		sqlx::query("DELETE FROM test_items")
 			.execute(pool)
 			.await
-			.map_err(|e| {
-				reinhardt_core::exception::Error::Database(format!(
-					"Clear table data failed: {}",
-					e
+			.map_err(|error| {
+				reinhardt_core::exception::Error::from(DatabaseError::new(
+					DatabaseErrorKind::Query,
+					format!("Clear table data failed: {error}"),
 				))
 			})?;
 
@@ -1816,6 +2093,7 @@ mod tests {
 
 #[cfg(test)]
 mod transaction_extended_tests {
+	use super::tests::ApplicationError;
 	use super::*;
 	use crate::backends::backend::DatabaseBackend as BackendTrait;
 	use crate::backends::connection::DatabaseConnection as BackendsConnection;
@@ -2701,7 +2979,8 @@ mod transaction_extended_tests {
 	async fn test_transaction_closure_success(mock_connection: DatabaseConnection) {
 		let conn = mock_connection;
 
-		let result = transaction(&conn, |_tx| async move { Ok(42) }).await;
+		let result: std::result::Result<_, ApplicationError> =
+			transaction(&conn, async |_tx| Ok(42)).await;
 
 		assert!(result.is_ok());
 		assert_eq!(result.unwrap(), 42);
@@ -2712,15 +2991,10 @@ mod transaction_extended_tests {
 	async fn test_transaction_closure_error_rollback(mock_connection: DatabaseConnection) {
 		let conn = mock_connection;
 
-		let result: std::result::Result<(), _> =
-			transaction(
-				&conn,
-				|_tx| async move { Err(anyhow::anyhow!("Test error")) },
-			)
-			.await;
+		let result: std::result::Result<(), ApplicationError> =
+			transaction(&conn, async |_tx| Err(ApplicationError::Rejected)).await;
 
-		assert!(result.is_err());
-		assert_eq!(result.unwrap_err().to_string(), "Test error");
+		assert!(matches!(result, Err(ApplicationError::Rejected)));
 	}
 
 	#[rstest]
@@ -2728,12 +3002,9 @@ mod transaction_extended_tests {
 	async fn test_transaction_with_isolation_level(mock_connection: DatabaseConnection) {
 		let conn = mock_connection;
 
-		let result = transaction_with_isolation(
-			&conn,
-			IsolationLevel::Serializable,
-			|_tx| async move { Ok(()) },
-		)
-		.await;
+		let result: std::result::Result<_, ApplicationError> =
+			transaction_with_isolation(&conn, IsolationLevel::Serializable, async |_tx| Ok(()))
+				.await;
 
 		assert!(result.is_ok());
 	}
