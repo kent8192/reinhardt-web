@@ -1015,6 +1015,10 @@ impl DatabaseMigrationExecutor {
 			super::sqlite_pragma::quote_pragma_identifier(table_name)
 		);
 		let idx_rows = editor.fetch_all(&idx_list_sql, vec![]).await?;
+		let mut unique_constraint_metadata = create_sql
+			.as_deref()
+			.map(parse_sqlite_unique_constraint_metadata)
+			.unwrap_or_default();
 		let mut indexes = Vec::new();
 		for row in &idx_rows {
 			let origin: String = row.get("origin").unwrap_or_default();
@@ -1041,8 +1045,19 @@ impl DatabaseMigrationExecutor {
 				.filter_map(|r| r.get::<String>("name").ok())
 				.collect();
 			if origin == "u" && unique == 1 {
+				let declared_name = unique_constraint_metadata
+					.iter()
+					.position(|metadata| {
+						metadata.columns.len() == cols.len()
+							&& metadata
+								.columns
+								.iter()
+								.zip(&cols)
+								.all(|(declared, actual)| declared.eq_ignore_ascii_case(actual))
+					})
+					.map(|index| unique_constraint_metadata.remove(index).name);
 				constraints.push(super::Constraint::Unique {
-					name: idx_name,
+					name: declared_name.unwrap_or(idx_name),
 					columns: cols,
 				});
 			} else if origin == "c" && (!cols.is_empty() || idx_sql.is_some()) {
@@ -1889,6 +1904,13 @@ struct SqliteFkMetadata {
 }
 
 #[cfg(feature = "sqlite")]
+#[derive(Debug, PartialEq, Eq)]
+struct SqliteUniqueConstraintMetadata {
+	name: String,
+	columns: Vec<String>,
+}
+
+#[cfg(feature = "sqlite")]
 #[derive(Debug)]
 enum SqliteDdlToken {
 	Word(String),
@@ -1974,6 +1996,57 @@ fn parse_sqlite_fk_metadata(
 			(source_columns, referenced_table, referenced_columns),
 			SqliteFkMetadata { name, deferrable },
 		);
+	}
+	metadata
+}
+
+#[cfg(feature = "sqlite")]
+fn parse_sqlite_unique_constraint_metadata(
+	create_sql: &str,
+) -> Vec<SqliteUniqueConstraintMetadata> {
+	let Some(body) = sqlite_create_table_body(create_sql) else {
+		return Vec::new();
+	};
+	let mut metadata = Vec::new();
+	for definition in split_sqlite_top_level_list(body) {
+		let tokens = tokenize_sqlite_definition(definition);
+		if tokens.len() >= 4
+			&& sqlite_token_is_word(&tokens[0], "CONSTRAINT")
+			&& sqlite_token_is_word(&tokens[2], "UNIQUE")
+		{
+			let Some(name) = sqlite_token_identifier(&tokens[1]) else {
+				continue;
+			};
+			let Some(open_index) = tokens
+				.iter()
+				.skip(3)
+				.position(|token| matches!(token, SqliteDdlToken::OpenParen))
+				.map(|index| index + 3)
+			else {
+				continue;
+			};
+			let columns = sqlite_indexed_columns(&tokens, open_index);
+			if !columns.is_empty() {
+				metadata.push(SqliteUniqueConstraintMetadata { name, columns });
+			}
+			continue;
+		}
+
+		let Some(column) = tokens.first().and_then(sqlite_token_identifier) else {
+			continue;
+		};
+		let Some(name) = tokens.windows(3).find_map(|sequence| {
+			(sqlite_token_is_word(&sequence[0], "CONSTRAINT")
+				&& sqlite_token_is_word(&sequence[2], "UNIQUE"))
+			.then(|| sqlite_token_identifier(&sequence[1]))
+			.flatten()
+		}) else {
+			continue;
+		};
+		metadata.push(SqliteUniqueConstraintMetadata {
+			name,
+			columns: vec![column],
+		});
 	}
 	metadata
 }
@@ -2080,6 +2153,26 @@ fn sqlite_identifier_list(tokens: &[SqliteDdlToken], open_index: usize) -> Vec<S
 		.take_while(|token| !matches!(token, SqliteDdlToken::CloseParen))
 		.filter_map(sqlite_token_identifier)
 		.collect()
+}
+
+#[cfg(feature = "sqlite")]
+fn sqlite_indexed_columns(tokens: &[SqliteDdlToken], open_index: usize) -> Vec<String> {
+	let mut columns = Vec::new();
+	let mut expect_column = true;
+	for token in tokens.iter().skip(open_index + 1) {
+		match token {
+			SqliteDdlToken::CloseParen => break,
+			SqliteDdlToken::Comma => expect_column = true,
+			_ if expect_column => {
+				if let Some(column) = sqlite_token_identifier(token) {
+					columns.push(column);
+					expect_column = false;
+				}
+			}
+			_ => {}
+		}
+	}
+	columns
 }
 
 #[cfg(feature = "sqlite")]
@@ -2309,6 +2402,48 @@ mod sqlite_generated_column_tests {
 		let create_sql = r#"CREATE TABLE users (id integer primary key, name text)"#;
 
 		assert!(parse_sqlite_generated_column(Some(create_sql), "name", 0).is_none());
+	}
+
+	#[rstest]
+	fn parse_sqlite_unique_metadata_preserves_quoted_composite_constraint() {
+		// Arrange
+		let create_sql = r#"CREATE TABLE jobs (
+			"tenant id" TEXT,
+			"code,value" TEXT,
+			note TEXT CHECK (note != 'CONSTRAINT fake UNIQUE (code)'),
+			CONSTRAINT "unique jobs code" UNIQUE ("tenant id", "code,value")
+		)"#;
+
+		// Act
+		let metadata = parse_sqlite_unique_constraint_metadata(create_sql);
+
+		// Assert
+		assert_eq!(
+			metadata,
+			vec![SqliteUniqueConstraintMetadata {
+				name: "unique jobs code".to_string(),
+				columns: vec!["tenant id".to_string(), "code,value".to_string()],
+			}]
+		);
+	}
+
+	#[rstest]
+	fn parse_sqlite_unique_metadata_preserves_inline_constraint() {
+		// Arrange
+		let create_sql =
+			"CREATE TABLE jobs (code TEXT CONSTRAINT `unique jobs code` UNIQUE, status TEXT)";
+
+		// Act
+		let metadata = parse_sqlite_unique_constraint_metadata(create_sql);
+
+		// Assert
+		assert_eq!(
+			metadata,
+			vec![SqliteUniqueConstraintMetadata {
+				name: "unique jobs code".to_string(),
+				columns: vec!["code".to_string()],
+			}]
+		);
 	}
 }
 
