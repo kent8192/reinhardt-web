@@ -3094,3 +3094,93 @@ async fn recreation_preserves_foreign_key_deferral_modes() {
 		"{table_sql}"
 	);
 }
+
+#[rstest]
+#[tokio::test]
+async fn enum_recreation_preserves_deferral_for_all_sqlite_foreign_key_forms() {
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("connect to in-memory SQLite");
+	for table in ["anonymous_parents", "inline_parents", "quoted_parents"] {
+		connection
+			.execute(
+				&format!("CREATE TABLE {table} (id INTEGER PRIMARY KEY)"),
+				vec![],
+			)
+			.await
+			.expect("create parent table");
+	}
+	connection
+		.execute(
+			"CREATE TABLE fk_form_children (id INTEGER PRIMARY KEY, anonymous_parent_id INTEGER, inline_parent_id INTEGER REFERENCES inline_parents(id) DEFERRABLE INITIALLY IMMEDIATE, \"quoted parent id\" INTEGER, status TEXT, FOREIGN KEY (anonymous_parent_id) REFERENCES anonymous_parents(id) DEFERRABLE INITIALLY DEFERRED, CONSTRAINT \"quoted fk-name\" FOREIGN KEY (\"quoted parent id\") REFERENCES quoted_parents(id) DEFERRABLE INITIALLY DEFERRED)",
+			vec![],
+		)
+		.await
+		.expect("create child table with all SQLite foreign key forms");
+	let conn = Arc::new(connection.clone());
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+	let add_enum = create_test_migration(
+		"testapp",
+		"0001_add_enum",
+		vec![Operation::AddConstraintDefinition {
+			table: "fk_form_children".to_string(),
+			constraint: Constraint::EnumDomain {
+				name: "fk_form_children_status_model_enum_check".to_string(),
+				column: "status".to_string(),
+				domain: FieldDomain::Enum {
+					repr: ModelEnumRepr::String,
+					values: vec![ModelEnumValue::String("queued".to_string())],
+				},
+			},
+		}],
+	);
+
+	executor
+		.apply_migrations(&[add_enum])
+		.await
+		.expect("recreate table while adding enum constraint");
+
+	let table_sql: String = conn
+		.fetch_one(
+			"SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'fk_form_children'",
+			vec![],
+		)
+		.await
+		.expect("read recreated table SQL")
+		.get("sql")
+		.expect("table SQL should be text");
+	assert_eq!(
+		table_sql.matches("DEFERRABLE INITIALLY DEFERRED").count(),
+		2,
+		"{table_sql}"
+	);
+	assert_eq!(
+		table_sql.matches("DEFERRABLE INITIALLY IMMEDIATE").count(),
+		1,
+		"{table_sql}"
+	);
+	assert!(table_sql.contains("quoted fk-name"), "{table_sql}");
+
+	let verify_deferred = create_test_migration(
+		"testapp",
+		"0002_verify_deferred_forms",
+		vec![Operation::RunSQL {
+			sql: "INSERT INTO fk_form_children (id, anonymous_parent_id, \"quoted parent id\", status) VALUES (1, 10, 20, 'queued'); INSERT INTO anonymous_parents (id) VALUES (10); INSERT INTO quoted_parents (id) VALUES (20)".to_string(),
+			reverse_sql: None,
+		}],
+	);
+	executor
+		.apply_migrations(&[verify_deferred])
+		.await
+		.expect("anonymous and quoted deferred foreign keys should remain deferred");
+	let immediate_violation = conn
+		.execute(
+			"INSERT INTO fk_form_children (id, inline_parent_id, status) VALUES (2, 30, 'queued')",
+			vec![],
+		)
+		.await;
+	assert!(
+		immediate_violation.is_err(),
+		"inline initially immediate foreign key should reject a missing parent"
+	);
+}

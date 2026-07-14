@@ -880,6 +880,64 @@ fn report_autodetector_warnings_with(
 }
 
 #[cfg(feature = "migrations")]
+fn makemigrations_operation_description(operation: &reinhardt_db::migrations::Operation) -> String {
+	use reinhardt_db::migrations::Operation;
+
+	match operation {
+		Operation::CreateTable { name, .. } => format!("Create model {}", name),
+		Operation::DropTable { name } => format!("Delete model {}", name),
+		Operation::RenameTable { old_name, new_name } => {
+			format!("Rename model {} to {}", old_name, new_name)
+		}
+		Operation::AddColumn { table, column, .. } => {
+			format!("Add field {} to {}", column.name, table)
+		}
+		Operation::DropColumn { table, column, .. } => {
+			format!("Remove field {} from {}", column, table)
+		}
+		Operation::AlterColumn { table, column, .. } => {
+			format!("Alter field {} on {}", column, table)
+		}
+		Operation::RenameColumn {
+			table,
+			old_name,
+			new_name,
+		} => format!("Rename field {} to {} on {}", old_name, new_name, table),
+		Operation::CreateIndex {
+			table,
+			columns,
+			unique,
+			..
+		} => {
+			let index_type = if *unique { "unique index" } else { "index" };
+			format!(
+				"Create {} on {} ({})",
+				index_type,
+				table,
+				columns.join(", ")
+			)
+		}
+		Operation::DropIndex { table, columns } => {
+			format!("Remove index on {} ({})", table, columns.join(", "))
+		}
+		Operation::AddConstraint { table, .. } => format!("Add constraint on {}", table),
+		Operation::AddConstraintDefinition { table, constraint } => {
+			format!("Add constraint {} on {}", constraint.name(), table)
+		}
+		Operation::DropConstraint {
+			table,
+			constraint_name,
+		} => format!("Remove constraint {} from {}", constraint_name, table),
+		Operation::DropConstraintDefinition { table, constraint } => {
+			format!("Remove constraint {} from {}", constraint.name(), table)
+		}
+		Operation::RunSQL { .. } => "Execute custom SQL".to_string(),
+		Operation::RunRust { .. } => "Execute custom Rust code".to_string(),
+		_ => format!("{:?}", operation),
+	}
+}
+
+#[cfg(feature = "migrations")]
 #[async_trait]
 impl BaseCommand for MakeMigrationsCommand {
 	fn name(&self) -> &str {
@@ -923,74 +981,6 @@ impl BaseCommand for MakeMigrationsCommand {
 	}
 
 	async fn execute(&self, ctx: &CommandContext) -> CommandResult<()> {
-		fn operation_description(operation: &reinhardt_db::migrations::Operation) -> String {
-			use reinhardt_db::migrations::Operation;
-
-			match operation {
-				// Table operations (corresponds to Model operations in Django)
-				Operation::CreateTable { name, .. } => format!("Create model {}", name),
-				Operation::DropTable { name } => format!("Delete model {}", name),
-				Operation::RenameTable { old_name, new_name } => {
-					format!("Rename model {} to {}", old_name, new_name)
-				}
-
-				// Column operations (corresponds to Field operations in Django)
-				Operation::AddColumn { table, column, .. } => {
-					format!("Add field {} to {}", column.name, table)
-				}
-				Operation::DropColumn { table, column, .. } => {
-					format!("Remove field {} from {}", column, table)
-				}
-				Operation::AlterColumn { table, column, .. } => {
-					format!("Alter field {} on {}", column, table)
-				}
-				Operation::RenameColumn {
-					table,
-					old_name,
-					new_name,
-				} => {
-					format!("Rename field {} to {} on {}", old_name, new_name, table)
-				}
-
-				// Index operations
-				Operation::CreateIndex {
-					table,
-					columns,
-					unique,
-					..
-				} => {
-					let index_type = if *unique { "unique index" } else { "index" };
-					format!(
-						"Create {} on {} ({})",
-						index_type,
-						table,
-						columns.join(", ")
-					)
-				}
-				Operation::DropIndex { table, columns } => {
-					format!("Remove index on {} ({})", table, columns.join(", "))
-				}
-
-				// Constraint operations
-				Operation::AddConstraint { table, .. } => {
-					format!("Add constraint on {}", table)
-				}
-				Operation::DropConstraint {
-					table,
-					constraint_name,
-					..
-				} => {
-					format!("Remove constraint {} from {}", constraint_name, table)
-				}
-
-				// Special operations
-				Operation::RunSQL { .. } => "Execute custom SQL".to_string(),
-				Operation::RunRust { .. } => "Execute custom Rust code".to_string(),
-
-				// Other operations
-				_ => format!("{:?}", operation),
-			}
-		}
 		use std::path::PathBuf;
 		ctx.info("Detecting model changes...");
 
@@ -1585,7 +1575,7 @@ impl BaseCommand for MakeMigrationsCommand {
 						// Show detailed operations if --verbose
 						if is_verbose {
 							for operation in &result.migration.operations {
-								let description = operation_description(operation);
+								let description = makemigrations_operation_description(operation);
 								ctx.info(&format!("    - {}", description));
 							}
 						}
@@ -1597,7 +1587,7 @@ impl BaseCommand for MakeMigrationsCommand {
 
 						if is_verbose {
 							for operation in &result.migration.operations {
-								let description = operation_description(operation);
+								let description = makemigrations_operation_description(operation);
 								ctx.info(&format!("    - {}", description));
 							}
 						}
@@ -4620,6 +4610,34 @@ name = "db.sqlite3"
 		assert_eq!(
 			message,
 			"enum domain change for jobs.status removes or re-encodes values [running]; place a data migration before the new constraint"
+		);
+	}
+
+	#[test]
+	#[cfg(feature = "migrations")]
+	fn makemigrations_describes_typed_constraint_operations_for_people() {
+		use reinhardt_db::migrations::{Constraint, Operation};
+
+		let constraint = Constraint::Unique {
+			name: "jobs_code_key".to_string(),
+			columns: vec!["code".to_string()],
+		};
+		let add = Operation::AddConstraintDefinition {
+			table: "jobs".to_string(),
+			constraint: constraint.clone(),
+		};
+		let drop = Operation::DropConstraintDefinition {
+			table: "jobs".to_string(),
+			constraint,
+		};
+
+		assert_eq!(
+			super::makemigrations_operation_description(&add),
+			"Add constraint jobs_code_key on jobs"
+		);
+		assert_eq!(
+			super::makemigrations_operation_description(&drop),
+			"Remove constraint jobs_code_key from jobs"
 		);
 	}
 

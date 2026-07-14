@@ -558,7 +558,8 @@ pub enum Constraint {
 }
 
 impl Constraint {
-	pub(crate) fn name(&self) -> &str {
+	/// Returns the database constraint name.
+	pub fn name(&self) -> &str {
 		match self {
 			Constraint::PrimaryKey { name, .. }
 			| Constraint::ForeignKey { name, .. }

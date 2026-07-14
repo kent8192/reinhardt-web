@@ -981,13 +981,9 @@ impl DatabaseMigrationExecutor {
 			})
 			.collect();
 
-		let named_fks = create_sql
-			.as_ref()
-			.map(|sql| SQLiteIntrospector::parse_fk_constraint_names(sql))
-			.unwrap_or_default();
-		let named_fk_deferrals = create_sql
+		let fk_metadata = create_sql
 			.as_deref()
-			.map(parse_sqlite_fk_deferrals)
+			.map(parse_sqlite_fk_metadata)
 			.unwrap_or_default();
 
 		let mut fk_groups: std::collections::HashMap<i64, Vec<FkRow>> =
@@ -1020,13 +1016,21 @@ impl DatabaseMigrationExecutor {
 			group.sort_by_key(|r| r.seq);
 			let referenced_table = group[0].table.clone();
 			let columns_from: Vec<String> = group.iter().map(|r| r.from.clone()).collect();
-			let columns_to: Vec<String> = group.iter().map(|r| r.to.clone()).collect();
-			let signature = (columns_from.clone(), referenced_table.clone());
-			let name = named_fks
-				.get(&signature)
-				.cloned()
+			let columns_to: Vec<String> = group
+				.iter()
+				.map(|r| r.to.clone())
+				.filter(|column| !column.is_empty())
+				.collect();
+			let signature = (
+				columns_from.clone(),
+				referenced_table.clone(),
+				columns_to.clone(),
+			);
+			let metadata = fk_metadata.get(&signature);
+			let name = metadata
+				.and_then(|metadata| metadata.name.clone())
 				.unwrap_or_else(|| format!("fk_{}_{}", table_name, fk_id));
-			let deferrable = named_fk_deferrals.get(&name).copied();
+			let deferrable = metadata.and_then(|metadata| metadata.deferrable);
 			constraints.push(super::Constraint::ForeignKey {
 				name,
 				columns: columns_from,
@@ -1878,59 +1882,187 @@ fn split_sqlite_top_level_list(sql: &str) -> Vec<&str> {
 }
 
 #[cfg(feature = "sqlite")]
-fn parse_sqlite_fk_deferrals(
-	create_sql: &str,
-) -> std::collections::HashMap<String, super::operations::DeferrableOption> {
-	let Some(body) = sqlite_create_table_body(create_sql) else {
-		return std::collections::HashMap::new();
-	};
-	let mut deferrals = std::collections::HashMap::new();
-	for definition in split_sqlite_top_level_list(body) {
-		let Some(name) = sqlite_named_constraint_name(definition) else {
-			continue;
-		};
-		let normalized = definition.to_ascii_uppercase();
-		if !normalized.contains("FOREIGN KEY") {
-			continue;
-		}
-		let option = if normalized.contains("NOT DEFERRABLE") {
-			None
-		} else if normalized.contains("DEFERRABLE INITIALLY DEFERRED") {
-			Some(super::operations::DeferrableOption::Deferred)
-		} else if normalized.contains("DEFERRABLE INITIALLY IMMEDIATE") {
-			Some(super::operations::DeferrableOption::Immediate)
-		} else {
-			None
-		};
-		if let Some(option) = option {
-			deferrals.insert(name, option);
-		}
-	}
-	deferrals
+#[derive(Debug)]
+struct SqliteFkMetadata {
+	name: Option<String>,
+	deferrable: Option<super::operations::DeferrableOption>,
 }
 
 #[cfg(feature = "sqlite")]
-fn sqlite_named_constraint_name(definition: &str) -> Option<String> {
-	let trimmed = definition.trim_start();
-	let keyword_end = trimmed.find(char::is_whitespace)?;
-	if !trimmed[..keyword_end].eq_ignore_ascii_case("CONSTRAINT") {
+#[derive(Debug)]
+enum SqliteDdlToken {
+	Word(String),
+	Identifier(String),
+	OpenParen,
+	CloseParen,
+	Comma,
+}
+
+#[cfg(feature = "sqlite")]
+fn parse_sqlite_fk_metadata(
+	create_sql: &str,
+) -> std::collections::HashMap<(Vec<String>, String, Vec<String>), SqliteFkMetadata> {
+	let Some(body) = sqlite_create_table_body(create_sql) else {
+		return std::collections::HashMap::new();
+	};
+	let mut metadata = std::collections::HashMap::new();
+	for definition in split_sqlite_top_level_list(body) {
+		let tokens = tokenize_sqlite_definition(definition);
+		let Some(references_index) = tokens
+			.iter()
+			.position(|token| sqlite_token_is_word(token, "REFERENCES"))
+		else {
+			continue;
+		};
+		let Some(referenced_table) = tokens
+			.get(references_index + 1)
+			.and_then(sqlite_token_identifier)
+		else {
+			continue;
+		};
+		let referenced_columns = tokens
+			.iter()
+			.enumerate()
+			.skip(references_index + 2)
+			.find(|(_, token)| matches!(token, SqliteDdlToken::OpenParen))
+			.map(|(index, _)| sqlite_identifier_list(&tokens, index))
+			.unwrap_or_default();
+
+		let foreign_index = tokens.windows(2).position(|pair| {
+			sqlite_token_is_word(&pair[0], "FOREIGN") && sqlite_token_is_word(&pair[1], "KEY")
+		});
+		let (name, source_columns) = if let Some(foreign_index) = foreign_index {
+			let source_columns = tokens
+				.iter()
+				.enumerate()
+				.skip(foreign_index + 2)
+				.find(|(_, token)| matches!(token, SqliteDdlToken::OpenParen))
+				.map(|(index, _)| sqlite_identifier_list(&tokens, index))
+				.unwrap_or_default();
+			let name = if tokens
+				.first()
+				.is_some_and(|token| sqlite_token_is_word(token, "CONSTRAINT"))
+			{
+				tokens.get(1).and_then(sqlite_token_identifier)
+			} else {
+				None
+			};
+			(name, source_columns)
+		} else {
+			let Some(column) = sqlite_column_name(definition) else {
+				continue;
+			};
+			(None, vec![column])
+		};
+		if source_columns.is_empty() {
+			continue;
+		}
+
+		let deferrable = sqlite_fk_deferrable(&tokens);
+		metadata.insert(
+			(source_columns, referenced_table, referenced_columns),
+			SqliteFkMetadata { name, deferrable },
+		);
+	}
+	metadata
+}
+
+#[cfg(feature = "sqlite")]
+fn tokenize_sqlite_definition(definition: &str) -> Vec<SqliteDdlToken> {
+	fn flush_word(tokens: &mut Vec<SqliteDdlToken>, word: &mut String) {
+		if !word.is_empty() {
+			tokens.push(SqliteDdlToken::Word(std::mem::take(word)));
+		}
+	}
+
+	let mut tokens = Vec::new();
+	let mut word = String::new();
+	let mut chars = definition.chars().peekable();
+	while let Some(ch) = chars.next() {
+		match ch {
+			'"' | '`' | '\'' | '[' => {
+				flush_word(&mut tokens, &mut word);
+				let closing = if ch == '[' { ']' } else { ch };
+				let mut identifier = String::new();
+				while let Some(next) = chars.next() {
+					if next == closing {
+						if chars.peek() == Some(&closing) {
+							identifier.push(closing);
+							chars.next();
+							continue;
+						}
+						break;
+					}
+					identifier.push(next);
+				}
+				tokens.push(SqliteDdlToken::Identifier(identifier));
+			}
+			'(' => {
+				flush_word(&mut tokens, &mut word);
+				tokens.push(SqliteDdlToken::OpenParen);
+			}
+			')' => {
+				flush_word(&mut tokens, &mut word);
+				tokens.push(SqliteDdlToken::CloseParen);
+			}
+			',' => {
+				flush_word(&mut tokens, &mut word);
+				tokens.push(SqliteDdlToken::Comma);
+			}
+			ch if ch.is_whitespace() => flush_word(&mut tokens, &mut word),
+			_ => word.push(ch),
+		}
+	}
+	flush_word(&mut tokens, &mut word);
+	tokens
+}
+
+#[cfg(feature = "sqlite")]
+fn sqlite_token_is_word(token: &SqliteDdlToken, expected: &str) -> bool {
+	matches!(token, SqliteDdlToken::Word(word) if word.eq_ignore_ascii_case(expected))
+}
+
+#[cfg(feature = "sqlite")]
+fn sqlite_token_identifier(token: &SqliteDdlToken) -> Option<String> {
+	match token {
+		SqliteDdlToken::Word(identifier) | SqliteDdlToken::Identifier(identifier) => {
+			Some(identifier.clone())
+		}
+		_ => None,
+	}
+}
+
+#[cfg(feature = "sqlite")]
+fn sqlite_fk_deferrable(tokens: &[SqliteDdlToken]) -> Option<super::operations::DeferrableOption> {
+	if tokens.windows(2).any(|pair| {
+		sqlite_token_is_word(&pair[0], "NOT") && sqlite_token_is_word(&pair[1], "DEFERRABLE")
+	}) {
 		return None;
 	}
-	let rest = trimmed[keyword_end..].trim_start();
-	let first = rest.chars().next()?;
-	let (closing, content) = match first {
-		'"' | '`' | '\'' => (first, &rest[first.len_utf8()..]),
-		'[' => (']', &rest[first.len_utf8()..]),
-		_ => {
-			return rest
-				.split_whitespace()
-				.next()
-				.filter(|name| !name.is_empty())
-				.map(str::to_string);
+	tokens.windows(3).find_map(|sequence| {
+		if !sqlite_token_is_word(&sequence[0], "DEFERRABLE")
+			|| !sqlite_token_is_word(&sequence[1], "INITIALLY")
+		{
+			return None;
 		}
-	};
-	let end = content.find(closing)?;
-	Some(content[..end].to_string())
+		if sqlite_token_is_word(&sequence[2], "DEFERRED") {
+			Some(super::operations::DeferrableOption::Deferred)
+		} else if sqlite_token_is_word(&sequence[2], "IMMEDIATE") {
+			Some(super::operations::DeferrableOption::Immediate)
+		} else {
+			None
+		}
+	})
+}
+
+#[cfg(feature = "sqlite")]
+fn sqlite_identifier_list(tokens: &[SqliteDdlToken], open_index: usize) -> Vec<String> {
+	tokens
+		.iter()
+		.skip(open_index + 1)
+		.take_while(|token| !matches!(token, SqliteDdlToken::CloseParen))
+		.filter_map(sqlite_token_identifier)
+		.collect()
 }
 
 #[cfg(feature = "sqlite")]
