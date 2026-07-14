@@ -26,7 +26,7 @@ impl FileRewriter for Rule {
 	}
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 struct HookSpec {
 	name: &'static str,
 	callback_index: usize,
@@ -114,16 +114,30 @@ struct GeneratedDepsImport {
 	attrs: Vec<syn::Attribute>,
 }
 
+struct HookResolution {
+	spec: HookSpec,
+	imports: Option<Vec<GeneratedDepsImport>>,
+}
+
 struct HookVisitor {
 	generated_imports: Vec<GeneratedDepsImport>,
 	imports: Vec<UseEntry>,
+	local_modules: HashSet<String>,
 }
 
 fn rewrite_scope(items: &mut Vec<syn::Item>) {
 	let imports = collect_imports(items);
+	let local_modules = items
+		.iter()
+		.filter_map(|item| match item {
+			syn::Item::Mod(module) => Some(module.ident.to_string()),
+			_ => None,
+		})
+		.collect();
 	let mut visitor = HookVisitor {
 		generated_imports: Vec::new(),
 		imports: imports.clone(),
+		local_modules,
 	};
 	for item in items.iter_mut() {
 		visitor.visit_item_mut(item);
@@ -158,17 +172,44 @@ fn rewrite_scope(items: &mut Vec<syn::Item>) {
 impl VisitMut for HookVisitor {
 	fn visit_item_mod_mut(&mut self, _module: &mut syn::ItemMod) {}
 
+	fn visit_block_mut(&mut self, block: &mut syn::Block) {
+		let previous_imports = self.imports.clone();
+		let mut local_imports = Vec::new();
+		for stmt in &block.stmts {
+			if let syn::Stmt::Item(syn::Item::Use(item_use)) = stmt {
+				flatten_use_tree(&item_use.tree, &[], &item_use.attrs, &mut local_imports);
+			}
+		}
+		for local in local_imports {
+			self.imports.retain(|entry| entry.bound != local.bound);
+			self.imports.push(local);
+		}
+		visit_mut::visit_block_mut(self, block);
+		self.imports = previous_imports;
+	}
+
 	fn visit_expr_call_mut(&mut self, call: &mut syn::ExprCall) {
-		if let Some((spec, facade, attrs)) = self.resolve_hook(call) {
+		if let Some(resolution) = self.resolve_hook(call) {
+			let spec = resolution.spec;
 			if call.args.len() == spec.omitted_arity {
 				let callback = call
 					.args
 					.iter()
 					.nth(spec.callback_index)
 					.expect("hook callback must exist");
-				let deps = dependency_list(callback);
+				let deps = resolution
+					.imports
+					.as_ref()
+					.and_then(|_| dependency_list(callback));
 				if deps.is_some() {
-					self.record_generated_import(facade.clone(), attrs.clone());
+					if let Some(imports) = &resolution.imports {
+						for import in imports {
+							self.record_generated_import(
+								import.facade.clone(),
+								import.attrs.clone(),
+							);
+						}
+					}
 				}
 				call.args
 					.insert(spec.deps_index, deps.unwrap_or_else(review_marker));
@@ -179,12 +220,22 @@ impl VisitMut for HookVisitor {
 						.nth(spec.deps_index)
 						.expect("hook dependencies must exist"),
 				) {
-				self.record_generated_import(facade, attrs);
-				*call
-					.args
-					.iter_mut()
-					.nth(spec.deps_index)
-					.expect("hook dependencies must exist") = deps;
+				if let Some(imports) = &resolution.imports {
+					for import in imports {
+						self.record_generated_import(import.facade.clone(), import.attrs.clone());
+					}
+					*call
+						.args
+						.iter_mut()
+						.nth(spec.deps_index)
+						.expect("hook dependencies must exist") = deps;
+				} else {
+					*call
+						.args
+						.iter_mut()
+						.nth(spec.deps_index)
+						.expect("hook dependencies must exist") = review_marker();
+				}
 			}
 		}
 		visit_mut::visit_expr_call_mut(self, call);
@@ -204,10 +255,7 @@ impl HookVisitor {
 		}
 	}
 
-	fn resolve_hook(
-		&self,
-		call: &syn::ExprCall,
-	) -> Option<(HookSpec, syn::Path, Vec<syn::Attribute>)> {
+	fn resolve_hook(&self, call: &syn::ExprCall) -> Option<HookResolution> {
 		let syn::Expr::Path(path) = &*call.func else {
 			return None;
 		};
@@ -219,36 +267,98 @@ impl HookVisitor {
 			.collect();
 		let called = segments.last()?;
 		if segments.len() == 1 {
-			if let Some(entry) = self.imports.iter().find(|entry| entry.bound == *called) {
-				let original = entry.original.last()?;
-				let spec = hook_spec(&original.to_string())?;
-				let facade = facade_from_segments(&entry.original)
-					.unwrap_or_else(|| syn::parse_quote!(reinhardt_pages));
-				return Some((spec, facade, entry.attrs.clone()));
+			let candidates = self
+				.imports
+				.iter()
+				.filter(|entry| entry.bound == *called)
+				.filter_map(|entry| {
+					let original = entry.original.last()?;
+					let spec = hook_spec(&original.to_string())?;
+					let import = facade_from_segments(&entry.original)
+						.filter(|_| !self.is_local_facade(&entry.original))
+						.map(|facade| GeneratedDepsImport {
+							facade,
+							attrs: entry.attrs.clone(),
+						});
+					Some((spec, import))
+				})
+				.collect::<Vec<_>>();
+			if let Some((spec, _)) = candidates.first() {
+				let spec = *spec;
+				let matching = candidates
+					.into_iter()
+					.filter(|(candidate, _)| *candidate == spec)
+					.collect::<Vec<_>>();
+				let imports = matching
+					.iter()
+					.map(|(_, import)| import.clone())
+					.collect::<Option<Vec<_>>>();
+				return Some(HookResolution { spec, imports });
 			}
 			let spec = hook_spec(&called.to_string())?;
-			return Some((spec, syn::parse_quote!(reinhardt_pages), Vec::new()));
+			return Some(HookResolution {
+				spec,
+				imports: Some(vec![GeneratedDepsImport {
+					facade: syn::parse_quote!(reinhardt_pages),
+					attrs: Vec::new(),
+				}]),
+			});
 		}
+		let mut candidates = Vec::new();
 		for (index, segment) in segments.iter().enumerate().take(segments.len() - 1) {
-			let Some(entry) = self.imports.iter().find(|entry| entry.bound == *segment) else {
-				continue;
-			};
-			let mut resolved = entry.original.clone();
-			resolved.extend(segments.iter().skip(index + 1).cloned());
-			let Some(original) = resolved.last() else {
-				continue;
-			};
-			let Some(spec) = hook_spec(&original.to_string()) else {
-				continue;
-			};
-			let facade = facade_from_segments(&resolved)
-				.unwrap_or_else(|| syn::parse_quote!(reinhardt_pages));
-			return Some((spec, facade, entry.attrs.clone()));
+			for entry in self.imports.iter().filter(|entry| entry.bound == *segment) {
+				let mut resolved = entry.original.clone();
+				resolved.extend(segments.iter().skip(index + 1).cloned());
+				let Some(original) = resolved.last() else {
+					continue;
+				};
+				let Some(spec) = hook_spec(&original.to_string()) else {
+					continue;
+				};
+				let import = facade_from_segments(&resolved)
+					.filter(|_| !self.is_local_facade(&resolved))
+					.map(|facade| GeneratedDepsImport {
+						facade,
+						attrs: entry.attrs.clone(),
+					});
+				candidates.push((spec, import));
+			}
+		}
+		if let Some((spec, _)) = candidates.first() {
+			let spec = *spec;
+			let matching = candidates
+				.into_iter()
+				.filter(|(candidate, _)| *candidate == spec)
+				.collect::<Vec<_>>();
+			let imports = matching
+				.iter()
+				.map(|(_, import)| import.clone())
+				.collect::<Option<Vec<_>>>();
+			return Some(HookResolution { spec, imports });
 		}
 		let spec = hook_spec(&called.to_string())?;
-		let facade =
-			facade_from_segments(&segments).unwrap_or_else(|| syn::parse_quote!(reinhardt_pages));
-		Some((spec, facade, Vec::new()))
+		let facade = facade_from_segments(&segments).filter(|_| !self.is_local_facade(&segments));
+		Some(HookResolution {
+			spec,
+			imports: facade.map(|facade| {
+				vec![GeneratedDepsImport {
+					facade,
+					attrs: Vec::new(),
+				}]
+			}),
+		})
+	}
+
+	fn is_local_facade(&self, segments: &[syn::Ident]) -> bool {
+		let Some(first) = segments.first() else {
+			return false;
+		};
+		if first == "crate" {
+			return segments
+				.get(1)
+				.is_some_and(|segment| self.local_modules.contains(&segment.to_string()));
+		}
+		self.local_modules.contains(&first.to_string())
 	}
 }
 
@@ -258,6 +368,12 @@ fn hook_spec(name: &str) -> Option<HookSpec> {
 
 fn facade_from_segments(segments: &[syn::Ident]) -> Option<syn::Path> {
 	if segments.is_empty() {
+		return None;
+	}
+	if segments
+		.first()
+		.is_some_and(|ident| ident == "self" || ident == "super")
+	{
 		return None;
 	}
 	let end = segments
@@ -307,8 +423,11 @@ fn dependency_list(callback: &syn::Expr) -> Option<syn::Expr> {
 		_ => return None,
 	};
 	let mut reads = OuterTrackedReadVisitor::default();
+	for input in &closure.inputs {
+		collect_pattern_idents(input, &mut reads.shadowed);
+	}
 	reads.visit_expr(&closure.body);
-	if reads.nested_tracked_read {
+	if reads.nested_tracked_read || reads.shadowed_tracked_read {
 		return None;
 	}
 	let mut dependencies = Vec::new();
@@ -338,7 +457,9 @@ fn review_marker() -> syn::Expr {
 struct OuterTrackedReadVisitor {
 	reads: Vec<String>,
 	seen: HashSet<String>,
+	shadowed: HashSet<String>,
 	nested_tracked_read: bool,
+	shadowed_tracked_read: bool,
 }
 
 impl<'ast> Visit<'ast> for OuterTrackedReadVisitor {
@@ -353,13 +474,20 @@ impl<'ast> Visit<'ast> for OuterTrackedReadVisitor {
 		let tracked_read = (matches!(method.as_str(), "get" | "into_value")
 			&& call.args.is_empty())
 			|| (method == "with" && call.args.len() == 1);
-		if tracked_read
-			&& let Some(ident) = base_ident_of(&call.receiver)
-			&& self.seen.insert(ident.to_string())
-		{
-			self.reads.push(ident.to_string());
+		if tracked_read && let Some(ident) = base_ident_of(&call.receiver) {
+			let ident = ident.to_string();
+			if self.shadowed.contains(&ident) {
+				self.shadowed_tracked_read = true;
+			} else if self.seen.insert(ident.clone()) {
+				self.reads.push(ident);
+			}
 		}
 		visit::visit_expr_method_call(self, call);
+	}
+
+	fn visit_local(&mut self, local: &'ast syn::Local) {
+		collect_pattern_idents(&local.pat, &mut self.shadowed);
+		visit::visit_local(self, local);
 	}
 }
 
@@ -407,19 +535,40 @@ fn clone_aliases(stmts: &[syn::Stmt]) -> HashMap<String, syn::Expr> {
 			continue;
 		};
 		let syn::Pat::Ident(alias) = &local.pat else {
+			let mut bindings = HashSet::new();
+			collect_pattern_idents(&local.pat, &mut bindings);
+			for binding in bindings {
+				aliases.remove(&binding);
+			}
 			continue;
 		};
+		let alias_name = alias.ident.to_string();
 		let Some(init) = &local.init else {
+			aliases.remove(&alias_name);
 			continue;
 		};
 		let syn::Expr::MethodCall(call) = strip_parens(&init.expr) else {
+			aliases.remove(&alias_name);
 			continue;
 		};
-		if call.method == "clone"
-			&& call.args.is_empty()
-			&& let Some(receiver) = safe_clone_place(&call.receiver)
-		{
-			aliases.insert(alias.ident.to_string(), receiver);
+		if call.method != "clone" || !call.args.is_empty() {
+			aliases.remove(&alias_name);
+			continue;
+		}
+		let Some(receiver) = safe_clone_place(&call.receiver) else {
+			aliases.remove(&alias_name);
+			continue;
+		};
+		let receiver_was_self = base_ident_of(&receiver).is_some_and(|ident| ident == &alias.ident);
+		let receiver = resolve_place(&receiver, &aliases, &mut Vec::new());
+		let receiver = receiver.filter(|resolved| {
+			!(base_ident_of(resolved).is_some_and(|ident| ident == &alias.ident)
+				&& !receiver_was_self)
+		});
+		if let Some(receiver) = receiver {
+			aliases.insert(alias_name, receiver);
+		} else {
+			aliases.remove(&alias.ident.to_string());
 		}
 	}
 	aliases
@@ -490,6 +639,46 @@ fn base_ident_of(expr: &syn::Expr) -> Option<&syn::Ident> {
 		syn::Expr::Reference(reference) => base_ident_of(&reference.expr),
 		syn::Expr::Try(try_expr) => base_ident_of(&try_expr.expr),
 		_ => None,
+	}
+}
+
+fn collect_pattern_idents(pattern: &syn::Pat, bindings: &mut HashSet<String>) {
+	match pattern {
+		syn::Pat::Ident(ident) => {
+			bindings.insert(ident.ident.to_string());
+			if let Some((_, subpat)) = &ident.subpat {
+				collect_pattern_idents(subpat, bindings);
+			}
+		}
+		syn::Pat::Tuple(tuple) => {
+			for element in &tuple.elems {
+				collect_pattern_idents(element, bindings);
+			}
+		}
+		syn::Pat::TupleStruct(tuple_struct) => {
+			for element in &tuple_struct.elems {
+				collect_pattern_idents(element, bindings);
+			}
+		}
+		syn::Pat::Struct(struct_pattern) => {
+			for field in &struct_pattern.fields {
+				collect_pattern_idents(&field.pat, bindings);
+			}
+		}
+		syn::Pat::Reference(reference) => collect_pattern_idents(&reference.pat, bindings),
+		syn::Pat::Type(typed) => collect_pattern_idents(&typed.pat, bindings),
+		syn::Pat::Or(or_pattern) => {
+			for case in &or_pattern.cases {
+				collect_pattern_idents(case, bindings);
+			}
+		}
+		syn::Pat::Slice(slice) => {
+			for element in &slice.elems {
+				collect_pattern_idents(element, bindings);
+			}
+		}
+		syn::Pat::Paren(paren) => collect_pattern_idents(&paren.pat, bindings),
+		_ => {}
 	}
 }
 
@@ -748,6 +937,45 @@ fn view(state: State) {
 	}
 
 	#[test]
+	fn same_name_clone_shadow_resolves_through_the_previous_alias() {
+		let output = compact(&rewrite(
+			r#"
+use reinhardt_pages::use_effect;
+fn view(count: Signal<i32>) {
+    let _ = use_effect({
+        let first = count.clone();
+        let first = first.clone();
+        move || { let _ = first.get(); }
+    });
+}
+"#,
+		));
+		assert!(output.contains("deps![count]"));
+		assert!(!output.contains("deps![first]"));
+		assert!(!output.contains("compile_error!"));
+	}
+
+	#[test]
+	fn clone_aliases_snapshot_before_later_shadowing() {
+		let output = compact(&rewrite(
+			r#"
+use reinhardt_pages::use_effect;
+fn view(count: Signal<i32>, other: Signal<i32>) {
+    let _ = use_effect({
+        let first = count.clone();
+        let second = first.clone();
+        let first = other.clone();
+        move || { let _ = second.get(); }
+    });
+}
+"#,
+		));
+		assert!(output.contains("deps![count]"));
+		assert!(!output.contains("},deps![other]"));
+		assert!(!output.contains("compile_error!"));
+	}
+
+	#[test]
 	fn side_effecting_or_indexed_clone_receivers_keep_review_markers() {
 		let output = compact(&rewrite(
 			r#"
@@ -848,5 +1076,174 @@ fn view() {
 				.count(),
 			1
 		);
+	}
+
+	#[test]
+	fn same_bound_hook_imports_generate_deps_for_each_cfg_path() {
+		let output = rewrite(
+			r#"
+#[cfg(feature = "foo")]
+use foo::reactive::hooks::use_effect;
+#[cfg(not(feature = "foo"))]
+use bar::reactive::hooks::use_effect;
+fn view(signal: Signal<i32>) {
+    let _ = use_effect({
+        let signal = signal.clone();
+        move || { let _ = signal.get(); }
+    });
+}
+"#,
+		);
+		assert!(output.contains("#[cfg(feature = \"foo\")]\nuse foo::deps;"));
+		assert!(output.contains("#[cfg(not(feature = \"foo\"))]\nuse bar::deps;"));
+		assert_eq!(output.matches("deps![signal]").count(), 1);
+	}
+
+	#[test]
+	fn shadowed_clone_alias_keeps_the_review_marker() {
+		let output = compact(&rewrite(
+			r#"
+use reinhardt_pages::use_effect;
+fn view(count: Signal<i32>) {
+    let _ = use_effect({
+        let alias = count.clone();
+        let alias = make_signal();
+        move || { let _ = alias.get(); }
+    });
+}
+"#,
+		));
+		assert_eq!(output.matches("compile_error!").count(), 1);
+		assert!(!output.contains(",deps![count]);"));
+	}
+
+	#[test]
+	fn closure_local_shadow_keeps_the_review_marker() {
+		let output = compact(&rewrite(
+			r#"
+use reinhardt_pages::use_effect;
+fn view(count: Signal<i32>) {
+    let _ = use_effect({
+        let alias = count.clone();
+        move || {
+            let alias = make_signal();
+            let _ = alias.get();
+        }
+    });
+}
+"#,
+		));
+		assert_eq!(output.matches("compile_error!").count(), 1);
+		assert!(!output.contains(",deps![count]);"));
+	}
+
+	#[test]
+	fn closure_destructure_shadow_keeps_the_review_marker() {
+		let output = compact(&rewrite(
+			r#"
+use reinhardt_pages::use_effect;
+fn view(count: Signal<i32>) {
+    let _ = use_effect({
+        let alias = count.clone();
+        move || {
+            let (alias, _) = make_pair();
+            let _ = alias.get();
+        }
+    });
+}
+"#,
+		));
+		assert_eq!(output.matches("compile_error!").count(), 1);
+		assert!(!output.contains(",deps![count]);"));
+	}
+
+	#[test]
+	fn relative_reexport_does_not_generate_an_unresolved_deps_import() {
+		let output = rewrite(
+			r#"
+mod parent {
+    use reinhardt_pages::use_effect;
+    mod child {
+        use super::use_effect;
+        fn view(signal: Signal<i32>) {
+            let _ = use_effect(|| { let _ = signal.get(); });
+        }
+    }
+}
+"#,
+		);
+		assert!(!output.contains("use super::deps;"));
+		assert!(output.contains("compile_error!"));
+	}
+
+	#[test]
+	fn relative_reexport_tuple_is_replaced_with_a_review_marker() {
+		let output = compact(&rewrite(
+			r#"
+mod parent {
+    use reinhardt_pages::use_effect;
+    mod child {
+        use super::use_effect;
+        fn view(signal: Signal<i32>) {
+            let _ = use_effect(|| {}, (signal.clone(),));
+        }
+    }
+}
+"#,
+		));
+		assert!(!output.contains("use super::deps;"));
+		assert!(!output.contains("(signal.clone(),)"));
+		assert!(output.contains("compile_error!"));
+	}
+
+	#[test]
+	fn local_module_hook_does_not_generate_an_unresolved_deps_import() {
+		let output = rewrite(
+			r#"
+mod custom {}
+use custom::reactive::hooks::use_effect;
+fn view(signal: Signal<i32>) {
+    let _ = use_effect(|| { let _ = signal.get(); });
+}
+"#,
+		);
+		assert!(!output.contains("use custom::deps;"));
+		assert!(output.contains("compile_error!"));
+	}
+
+	#[test]
+	fn crate_local_module_hook_does_not_generate_an_unresolved_deps_import() {
+		let output = rewrite(
+			r#"
+mod custom {}
+use crate::custom::reactive::hooks::use_effect;
+fn view(signal: Signal<i32>) {
+    let _ = use_effect(|| { let _ = signal.get(); });
+}
+"#,
+		);
+		assert!(!output.contains("use crate::custom::deps;"));
+		assert!(output.contains("compile_error!"));
+	}
+
+	#[test]
+	fn function_local_hook_import_does_not_fall_back_to_reinhardt_pages() {
+		let output = rewrite(
+			r#"
+mod custom {}
+fn view(signal: Signal<i32>) {
+    use custom::reactive::hooks::use_effect;
+    let _ = use_effect({
+        let signal = signal.clone();
+        move || { let _ = signal.get(); }
+    });
+    let _ = use_effect(|| {}, (signal.clone(),));
+}
+"#,
+		);
+		assert!(!output.contains("use reinhardt_pages::deps;"));
+		assert!(!output.contains("use custom::deps;"));
+		assert_eq!(output.matches("compile_error!").count(), 2);
+		assert!(!output.contains("(signal.clone(),)"));
 	}
 }
