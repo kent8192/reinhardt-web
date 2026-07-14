@@ -731,9 +731,10 @@ fn build_pages_wasm(
 		return false;
 	}
 
-	let crate_name = package_context.package_name;
+	let target_name = package_context.wasm_target_name().to_owned();
+	let package_name = package_context.package_name;
 
-	let js_name = crate_name.replace('-', "_");
+	let js_name = target_name.replace('-', "_");
 	let artifact = cwd.join("dist").join(format!("{}_bg.wasm", js_name));
 	if !force && !is_wasm_stale(package_root, &artifact) {
 		println!(
@@ -752,13 +753,13 @@ fn build_pages_wasm(
 	};
 	println!(
 		"{}",
-		format!("Building pages WASM for {} ({})...", crate_name, reason).cyan()
+		format!("Building pages WASM for {} ({})...", package_name, reason).cyan()
 	);
 	let config = WasmBuildConfig::new(&cwd)
 		.output_dir("dist")
 		.release(!cfg!(debug_assertions))
-		.target_name(&crate_name)
-		.package(&crate_name);
+		.target_name(&target_name)
+		.package(&package_name);
 	let builder = WasmBuilder::new(config)
 		.features(feature_selection.features().iter().cloned())
 		.all_features(feature_selection.all_features_enabled());

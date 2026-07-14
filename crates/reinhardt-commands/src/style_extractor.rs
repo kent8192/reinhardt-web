@@ -103,6 +103,8 @@ pub struct StylePackageContext {
 	pub workspace_manifest_path: PathBuf,
 	/// Selected package source root.
 	pub src_root: PathBuf,
+	/// Cargo library target name used for the selected Pages WASM bundle.
+	wasm_target_name: String,
 	/// Cargo library targets compiled into the selected Pages WASM bundle.
 	source_roots: Vec<StyleSourceRoot>,
 }
@@ -128,6 +130,11 @@ impl StylePackageContext {
 			.map(|source| source.package_root.as_path())
 	}
 
+	/// Return the selected package's cdylib target name used by wasm-bindgen.
+	pub fn wasm_target_name(&self) -> &str {
+		&self.wasm_target_name
+	}
+
 	/// Select a package from already loaded Cargo metadata.
 	pub fn from_metadata(
 		metadata: &Metadata,
@@ -141,6 +148,20 @@ impl StylePackageContext {
 			.ok_or_else(|| "selected package manifest has no parent directory".to_string())?
 			.join("src");
 		let source_roots = style_source_roots(metadata, package)?;
+		let wasm_target_name = package
+			.targets
+			.iter()
+			.find(|target| {
+				(target.is_cdylib() || target.is_lib())
+					&& target
+						.crate_types
+						.iter()
+						.any(|kind| matches!(kind, cargo_metadata::CrateType::CDyLib))
+			})
+			.or_else(|| package.targets.iter().find(|target| target.is_cdylib()))
+			.or_else(|| package.targets.iter().find(|target| target.is_lib()))
+			.map(|target| target.name.to_string())
+			.unwrap_or_else(|| package.name.to_string());
 		Ok(Self {
 			package_id: package.id.clone(),
 			package_name: package.name.to_string(),
@@ -151,6 +172,7 @@ impl StylePackageContext {
 				.join("Cargo.toml")
 				.into_std_path_buf(),
 			src_root,
+			wasm_target_name,
 			source_roots,
 		})
 	}

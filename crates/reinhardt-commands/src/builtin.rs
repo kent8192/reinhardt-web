@@ -3329,9 +3329,10 @@ impl RunServerCommand {
 		if !crate::wasm_builder::detect_cdylib_in_cargo_toml(package_manifest_path) {
 			return Ok(());
 		}
-		let crate_name = package_context.package_name.clone();
+		let package_name = package_context.package_name.clone();
+		let target_name = package_context.wasm_target_name().to_owned();
 
-		let js_name = crate_name.replace('-', "_");
+		let js_name = target_name.replace('-', "_");
 		let artifact = cwd.join("dist").join(format!("{}_bg.wasm", js_name));
 		if !force
 			&& !crate::wasm_builder::is_wasm_stale_for_roots(
@@ -3351,9 +3352,9 @@ impl RunServerCommand {
 		};
 		ctx.info(&format!(
 			"Building pages WASM for {} ({})...",
-			crate_name, reason
+			package_name, reason
 		));
-		let config = Self::pages_wasm_build_config(&crate_name);
+		let config = Self::pages_wasm_build_config(&package_name, &target_name);
 		let builder = crate::wasm_builder::WasmBuilder::new(config)
 			.features(feature_selection.features().iter().cloned())
 			.all_features(feature_selection.all_features_enabled());
@@ -3368,12 +3369,15 @@ impl RunServerCommand {
 
 	/// Configure the Pages bundle to use the same debug cfgs as style extraction.
 	#[cfg(feature = "pages")]
-	fn pages_wasm_build_config(crate_name: &str) -> crate::wasm_builder::WasmBuildConfig {
+	fn pages_wasm_build_config(
+		package_name: &str,
+		target_name: &str,
+	) -> crate::wasm_builder::WasmBuildConfig {
 		crate::wasm_builder::WasmBuildConfig::new(".")
 			.output_dir("dist")
 			.release(!cfg!(debug_assertions))
-			.target_name(crate_name)
-			.package(crate_name)
+			.target_name(target_name)
+			.package(package_name)
 	}
 }
 
@@ -4925,11 +4929,12 @@ name = "db.sqlite3"
 	#[cfg(feature = "pages")]
 	fn pages_wasm_build_profile_matches_style_extraction_cfg() {
 		// Act
-		let config = RunServerCommand::pages_wasm_build_config("style-app");
+		let config = RunServerCommand::pages_wasm_build_config("style-app", "client_app");
 
 		// Assert
 		assert_eq!(config.release, !cfg!(debug_assertions));
 		assert_eq!(config.package.as_deref(), Some("style-app"));
+		assert_eq!(config.target_name.as_deref(), Some("client_app"));
 	}
 
 	#[test]

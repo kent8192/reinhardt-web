@@ -19,7 +19,7 @@ pub struct WasmBuildConfig {
 	pub release: bool,
 	/// Enable wasm-opt optimization (release only)
 	pub optimize: bool,
-	/// Target name (crate name, used for output file naming)
+	/// Library target name used for output file naming.
 	pub target_name: Option<String>,
 	/// Cargo package selected from a workspace for the build.
 	pub package: Option<String>,

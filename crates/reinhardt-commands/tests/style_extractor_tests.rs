@@ -62,6 +62,25 @@ fn package_selection_uses_the_metadata_root_package() {
 }
 
 #[rstest]
+fn wasm_target_name_uses_the_selected_cdylib_library_target() {
+	// Arrange
+	let directory = tempfile::tempdir().expect("create temporary package");
+	let manifest = write_package(directory.path(), "pub fn value() -> usize { 1 }\n");
+	fs::write(
+		&manifest,
+		"[package]\nname = \"poll-app\"\nversion = \"0.4.0\"\nedition = \"2024\"\n\n[lib]\nname = \"client_app\"\ncrate-type = [\"cdylib\"]\n",
+	)
+	.expect("write cdylib package manifest");
+
+	// Act
+	let context = StylePackageContext::resolve(&manifest, None).expect("select root package");
+
+	// Assert
+	assert_eq!(context.package_name, "poll-app");
+	assert_eq!(context.wasm_target_name(), "client_app");
+}
+
+#[rstest]
 fn package_selection_ignores_transitive_dependencies_with_the_same_name() {
 	let directory = tempfile::tempdir().expect("create temporary workspace");
 	let manifest = write_workspace_with_duplicate_package_name(directory.path());
