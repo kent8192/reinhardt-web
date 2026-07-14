@@ -24,6 +24,13 @@ impl std::fmt::Debug for ControlBindingController {
 struct CompositionState {
 	composing: bool,
 	skip_next_input: Option<ControlValue>,
+	number_editor: Option<NumberEditorState>,
+}
+
+#[derive(Default)]
+struct NumberEditorState {
+	raw: String,
+	pending_raw: Option<String>,
 }
 
 impl ControlBindingController {
@@ -42,10 +49,10 @@ impl ControlBindingController {
 		binding: ControlBinding,
 	) -> Result<Self, ControlBindingError> {
 		validate_control(&element, binding.kind())?;
-		let listeners = install_listeners(&element, &binding);
+		let (listeners, state) = install_listeners(&element, &binding);
 		let live_value = read_control(&element, binding.kind())?;
 		binding.write(live_value)?;
-		let effect = install_effect(element, binding, true);
+		let effect = install_effect(element, binding, true, state);
 		Ok(Self {
 			_effect: effect,
 			_listeners: listeners,
@@ -57,8 +64,8 @@ impl ControlBindingController {
 		binding: ControlBinding,
 		skip_first_write: bool,
 	) -> Result<Self, ControlBindingError> {
-		let listeners = install_listeners(&element, &binding);
-		let effect = install_effect(element, binding, skip_first_write);
+		let (listeners, state) = install_listeners(&element, &binding);
+		let effect = install_effect(element, binding, skip_first_write, state);
 		Ok(Self {
 			_effect: effect,
 			_listeners: listeners,
@@ -66,7 +73,12 @@ impl ControlBindingController {
 	}
 }
 
-fn install_effect(element: Element, binding: ControlBinding, skip_first_write: bool) -> Effect {
+fn install_effect(
+	element: Element,
+	binding: ControlBinding,
+	skip_first_write: bool,
+	state: Rc<RefCell<CompositionState>>,
+) -> Effect {
 	let first_run = Rc::new(std::cell::Cell::new(skip_first_write));
 	Effect::new_with_timing(
 		move || {
@@ -74,18 +86,75 @@ fn install_effect(element: Element, binding: ControlBinding, skip_first_write: b
 			if first_run.replace(false) {
 				return;
 			}
+			if let (ControlKind::Number, ControlValue::Text(raw)) = (binding.kind(), &value)
+				&& let Some(editor) = &mut state.borrow_mut().number_editor
+			{
+				editor.raw.clone_from(raw);
+				editor.pending_raw = None;
+			}
 			let _ = write_control(&element, binding.kind(), &value);
 		},
 		EffectTiming::Layout,
 	)
 }
 
-fn install_listeners(element: &Element, binding: &ControlBinding) -> Vec<EventHandle> {
-	let state = Rc::new(RefCell::new(CompositionState::default()));
+fn install_listeners(
+	element: &Element,
+	binding: &ControlBinding,
+) -> (Vec<EventHandle>, Rc<RefCell<CompositionState>>) {
+	let number_editor = if binding.kind() == ControlKind::Number {
+		read_control(element, ControlKind::Number)
+			.ok()
+			.and_then(|value| match value {
+				ControlValue::Text(raw) => Some(NumberEditorState {
+					raw,
+					pending_raw: None,
+				}),
+				_ => None,
+			})
+	} else {
+		None
+	};
+	let state = Rc::new(RefCell::new(CompositionState {
+		number_editor,
+		..CompositionState::default()
+	}));
 	let mut listeners = Vec::new();
 
 	match binding.kind() {
 		ControlKind::Text | ControlKind::Number => {
+			if binding.kind() == ControlKind::Number {
+				let before_state = Rc::clone(&state);
+				let before_element = element.clone();
+				listeners.push(element.add_event_listener_with_event(
+					"beforeinput",
+					move |event| {
+						let Some(input_event) = event.dyn_ref::<web_sys::InputEvent>() else {
+							return;
+						};
+						let Some(input) = before_element
+							.as_web_sys()
+							.dyn_ref::<web_sys::HtmlInputElement>()
+						else {
+							return;
+						};
+						let mut state = before_state.borrow_mut();
+						let Some(editor) = &mut state.number_editor else {
+							return;
+						};
+						let live = input.value();
+						if !live.is_empty() {
+							editor.raw = live;
+						}
+						editor.pending_raw = edit_number_raw(
+							&editor.raw,
+							&input_event.input_type(),
+							input_event.data().as_deref(),
+						);
+					},
+				));
+			}
+
 			let input_element = element.clone();
 			let input_binding = binding.clone();
 			let input_state = Rc::clone(&state);
@@ -96,11 +165,19 @@ fn install_listeners(element: &Element, binding: &ControlBinding) -> Vec<EventHa
 						.is_some_and(web_sys::InputEvent::is_composing);
 					let composing = input_state.borrow().composing;
 					if browser_is_composing || composing {
+						capture_number_input_raw(&input_element, &input_state, false);
 						input_state.borrow_mut().skip_next_input = None;
 						return;
 					}
 
-					let Ok(value) = read_control(&input_element, input_binding.kind()) else {
+					let has_pending_composition_dedupe =
+						input_state.borrow().skip_next_input.is_some();
+					let Ok(value) = read_input_event_value(
+						&input_element,
+						input_binding.kind(),
+						&input_state,
+						has_pending_composition_dedupe,
+					) else {
 						return;
 					};
 					let skip = input_state.borrow_mut().skip_next_input.take();
@@ -135,7 +212,9 @@ fn install_listeners(element: &Element, binding: &ControlBinding) -> Vec<EventHa
 						state.composing = false;
 						state.skip_next_input = None;
 					}
-					let Ok(value) = read_control(&end_element, end_binding.kind()) else {
+					let Ok(value) =
+						read_input_event_value(&end_element, end_binding.kind(), &end_state, true)
+					else {
 						return;
 					};
 					end_state.borrow_mut().skip_next_input = Some(value.clone());
@@ -158,10 +237,69 @@ fn install_listeners(element: &Element, binding: &ControlBinding) -> Vec<EventHa
 		}
 	}
 
-	listeners
+	(listeners, state)
 }
 
-fn validate_control(element: &Element, kind: ControlKind) -> Result<(), ControlBindingError> {
+fn edit_number_raw(raw: &str, input_type: &str, data: Option<&str>) -> Option<String> {
+	if input_type.starts_with("insert") {
+		let data = data?;
+		let mut edited = raw.to_owned();
+		edited.push_str(data);
+		Some(edited)
+	} else if input_type == "deleteContentBackward" {
+		let mut edited = raw.to_owned();
+		edited.pop();
+		Some(edited)
+	} else if input_type.starts_with("delete") {
+		Some(String::new())
+	} else {
+		None
+	}
+}
+
+fn capture_number_input_raw(
+	element: &Element,
+	state: &Rc<RefCell<CompositionState>>,
+	allow_editor_fallback: bool,
+) -> Option<ControlValue> {
+	let input = element
+		.as_web_sys()
+		.dyn_ref::<web_sys::HtmlInputElement>()?;
+	let live = input.value();
+	let mut state = state.borrow_mut();
+	let editor = state.number_editor.as_mut()?;
+	let raw = if !live.is_empty() {
+		editor.pending_raw = None;
+		live
+	} else if let Some(pending) = editor.pending_raw.take() {
+		pending
+	} else if allow_editor_fallback {
+		editor.raw.clone()
+	} else {
+		String::new()
+	};
+	editor.raw.clone_from(&raw);
+	Some(ControlValue::Text(raw))
+}
+
+fn read_input_event_value(
+	element: &Element,
+	kind: ControlKind,
+	state: &Rc<RefCell<CompositionState>>,
+	allow_editor_fallback: bool,
+) -> Result<ControlValue, ControlBindingError> {
+	if kind == ControlKind::Number
+		&& let Some(value) = capture_number_input_raw(element, state, allow_editor_fallback)
+	{
+		return Ok(value);
+	}
+	read_control(element, kind)
+}
+
+pub(crate) fn validate_control(
+	element: &Element,
+	kind: ControlKind,
+) -> Result<(), ControlBindingError> {
 	let tag = element.as_web_sys().tag_name().to_ascii_lowercase();
 	let supported = match kind {
 		ControlKind::Text => {
