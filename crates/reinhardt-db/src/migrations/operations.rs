@@ -1545,8 +1545,19 @@ impl Operation {
 					model.add_field(field);
 				}
 			}
+			Operation::AddConstraintDefinition { table, constraint } => {
+				if let Some(model) = state.find_model_by_table_mut(table) {
+					let definition = ProjectState::constraint_to_definition(constraint);
+					if !model
+						.constraints
+						.iter()
+						.any(|existing| existing.name == definition.name)
+					{
+						model.constraints.push(definition);
+					}
+				}
+			}
 			Operation::AddConstraint { .. }
-			| Operation::AddConstraintDefinition { .. }
 			| Operation::AddConstraintRepair { .. }
 			| Operation::RestoreConstraintOnRollback { .. }
 			| Operation::DropConstraint { .. }
@@ -2126,6 +2137,24 @@ impl Operation {
 		parts.join(" ")
 	}
 
+	fn create_table_column_to_sql(
+		col: &ColumnDefinition,
+		dialect: &SqlDialect,
+		without_primary_key: bool,
+	) -> String {
+		let sql = if without_primary_key {
+			Self::column_to_sql_without_pk(col, dialect)
+		} else {
+			Self::column_to_sql(col, dialect)
+		};
+		let current_identifier = quote_identifier(&col.name).to_string();
+		let dialect_identifier = Self::quote_schema_identifier(&col.name, dialect);
+		let Some(rest) = sql.strip_prefix(&current_identifier) else {
+			return sql;
+		};
+		format!("{dialect_identifier}{rest}")
+	}
+
 	/// Generate forward SQL
 	pub fn to_sql(&self, dialect: &SqlDialect) -> String {
 		match self {
@@ -2150,14 +2179,10 @@ impl Operation {
 				let mut parts = Vec::new();
 				for col in columns {
 					// Use column_to_sql_without_pk for composite PKs to avoid duplicate PRIMARY KEY
-					if has_composite_pk {
-						parts.push(format!(
-							"  {}",
-							Self::column_to_sql_without_pk(col, dialect)
-						));
-					} else {
-						parts.push(format!("  {}", Self::column_to_sql(col, dialect)));
-					}
+					parts.push(format!(
+						"  {}",
+						Self::create_table_column_to_sql(col, dialect, has_composite_pk)
+					));
 				}
 
 				// Add composite primary key constraint if detected
@@ -2165,12 +2190,12 @@ impl Operation {
 					let pk_constraint_name = format!("{}_pkey", name);
 					let quoted_pk_columns = pk_columns
 						.iter()
-						.map(|s| quote_identifier(s))
+						.map(|s| Self::quote_schema_identifier(s, dialect))
 						.collect::<Vec<_>>()
 						.join(", ");
 					let pk_constraint = format!(
 						"  CONSTRAINT {} PRIMARY KEY ({})",
-						quote_identifier(&pk_constraint_name),
+						Self::quote_schema_identifier(&pk_constraint_name, dialect),
 						quoted_pk_columns
 					);
 					parts.push(pk_constraint);
@@ -2181,7 +2206,7 @@ impl Operation {
 				}
 				let mut sql = format!(
 					"CREATE TABLE {} (\n{}\n)",
-					quote_identifier(name),
+					Self::quote_schema_identifier(name, dialect),
 					parts.join(",\n")
 				);
 
@@ -3169,8 +3194,8 @@ impl Operation {
 			}
 			Operation::AddConstraintDefinition { table, constraint } => Ok(Some(vec![format!(
 				"ALTER TABLE {} DROP CONSTRAINT {};",
-				quote_identifier(table),
-				quote_identifier(constraint.name())
+				Self::quote_schema_identifier(table, dialect),
+				Self::quote_dialect_identifier(constraint.name(), dialect)
 			)])),
 			Operation::AddConstraintRepair { .. } => Ok(None),
 			Operation::RestoreConstraintOnRollback {
@@ -3320,11 +3345,18 @@ impl Operation {
 						.find(|c| c.name == *constraint_name)
 				{
 					let constraint = constraint_def.to_constraint();
-					return Ok(Some(vec![format!(
-						"ALTER TABLE {} ADD {};",
-						quote_identifier(table),
-						constraint
-					)]));
+					return Ok(Some(vec![match constraint {
+						Constraint::EnumDomain { .. } => Operation::AddConstraintDefinition {
+							table: table.clone(),
+							constraint,
+						}
+						.to_sql(dialect),
+						_ => format!(
+							"ALTER TABLE {} ADD {};",
+							quote_identifier(table),
+							constraint
+						),
+					}]));
 				}
 				// Cannot reconstruct without state
 				Ok(None)
@@ -4376,6 +4408,28 @@ impl SqliteTableRecreation {
 		}
 	}
 
+	/// Creates a recreation plan that adds a typed constraint.
+	pub fn for_add_constraint_definition(
+		table_name: impl Into<String>,
+		current_columns: Vec<ColumnDefinition>,
+		mut current_constraints: Vec<Constraint>,
+		constraint: Constraint,
+	) -> Self {
+		let table_name = table_name.into();
+		let columns_to_copy = Self::columns_to_copy(&current_columns);
+		current_constraints.push(constraint);
+
+		Self {
+			table_name,
+			new_columns: current_columns,
+			columns_to_copy,
+			constraints: current_constraints,
+			raw_constraint_sqls: Vec::new(),
+			indexes: Vec::new(),
+			without_rowid: false,
+		}
+	}
+
 	/// Create a new table recreation for dropping a constraint
 	///
 	/// Since SQLite doesn't support `ALTER TABLE DROP CONSTRAINT`, we need to
@@ -4725,9 +4779,15 @@ impl Operation {
 						.find(|c| c.name == *constraint_name)
 				{
 					let constraint = constraint_def.to_constraint();
-					return Ok(Some(Operation::AddConstraint {
-						table: table.clone(),
-						constraint_sql: format!("{}", constraint),
+					return Ok(Some(match constraint {
+						Constraint::EnumDomain { .. } => Operation::AddConstraintDefinition {
+							table: table.clone(),
+							constraint,
+						},
+						_ => Operation::AddConstraint {
+							table: table.clone(),
+							constraint_sql: constraint.to_string(),
+						},
 					}));
 				}
 				Ok(None)
@@ -4796,6 +4856,8 @@ pub enum OperationStatement {
 	IndexDrop(DropIndexStatement),
 	/// Sanitized raw SQL (identifiers escaped with pg_escape::quote_identifier)
 	RawSql(String),
+	/// An operation whose SQL must be rendered after the database dialect is known.
+	DialectOperation(Box<Operation>),
 }
 
 impl OperationStatement {
@@ -4836,6 +4898,10 @@ impl OperationStatement {
 				// Already sanitized with pg_escape::quote_identifier
 				sqlx::query(sql).execute(executor).await?;
 			}
+			OperationStatement::DialectOperation(operation) => {
+				let sql = operation.to_sql(&SqlDialect::Postgres);
+				sqlx::query(&sql).execute(executor).await?;
+			}
 		}
 		Ok(())
 	}
@@ -4868,6 +4934,14 @@ impl OperationStatement {
 				sql_build_helpers::build_drop_index_sql(db_type, stmt)
 			}
 			OperationStatement::RawSql(sql) => sql.clone(),
+			OperationStatement::DialectOperation(operation) => {
+				let dialect = match db_type {
+					crate::backends::types::DatabaseType::Postgres => SqlDialect::Postgres,
+					crate::backends::types::DatabaseType::Mysql => SqlDialect::Mysql,
+					crate::backends::types::DatabaseType::Sqlite => SqlDialect::Sqlite,
+				};
+				operation.to_sql(&dialect)
+			}
 		}
 	}
 }
@@ -4882,7 +4956,18 @@ impl Operation {
 				constraints,
 				..
 			} => {
-				OperationStatement::TableCreate(self.build_create_table(name, columns, constraints))
+				if constraints
+					.iter()
+					.any(|constraint| matches!(constraint, Constraint::EnumDomain { .. }))
+				{
+					OperationStatement::DialectOperation(Box::new(self.clone()))
+				} else {
+					OperationStatement::TableCreate(self.build_create_table(
+						name,
+						columns,
+						constraints,
+					))
+				}
 			}
 			Operation::DropTable { name } => {
 				OperationStatement::TableDrop(self.build_drop_table(name))
@@ -4932,12 +5017,8 @@ impl Operation {
 					constraint_sql
 				))
 			}
-			Operation::AddConstraintDefinition { table, constraint } => {
-				OperationStatement::RawSql(format!(
-					"ALTER TABLE {} ADD {}",
-					quote_identifier(table),
-					constraint.to_sql_for_dialect(&SqlDialect::Postgres)
-				))
+			Operation::AddConstraintDefinition { .. } => {
+				OperationStatement::DialectOperation(Box::new(self.clone()))
 			}
 			Operation::RestoreConstraintOnRollback { .. } => OperationStatement::RawSql(
 				"-- rollback-only generated-column constraint restore".to_string(),
@@ -6296,6 +6377,128 @@ mod tests {
 		let sql = operation.to_sql(&SqlDialect::Mysql);
 
 		assert!(sql.contains("CHECK (`job_status` IN ('queued'))"), "{sql}");
+	}
+
+	#[test]
+	fn enum_domain_constraint_statement_preserves_mysql_dialect() {
+		let operation = Operation::AddConstraintDefinition {
+			table: "jobs".to_string(),
+			constraint: Constraint::EnumDomain {
+				name: "jobs_status_model_enum_check".to_string(),
+				column: "job_status".to_string(),
+				domain: crate::field_domain::FieldDomain::Enum {
+					repr: crate::field_domain::ModelEnumRepr::String,
+					values: vec![crate::field_domain::ModelEnumValue::String(
+						"queued".to_string(),
+					)],
+				},
+			},
+		};
+
+		let sql = operation
+			.to_statement()
+			.to_sql_string(crate::backends::types::DatabaseType::Mysql);
+
+		assert!(
+			sql.contains("ALTER TABLE `jobs` ADD CONSTRAINT jobs_status_model_enum_check"),
+			"{sql}"
+		);
+		assert!(sql.contains("CHECK (`job_status` IN ('queued'))"), "{sql}");
+	}
+
+	#[test]
+	fn create_table_statement_preserves_enum_domain_check_for_mysql() {
+		let operation = Operation::CreateTable {
+			name: "jobs".to_string(),
+			columns: vec![ColumnDefinition::new("job_status", FieldType::VarChar(32))],
+			constraints: vec![Constraint::EnumDomain {
+				name: "jobs_status_model_enum_check".to_string(),
+				column: "job_status".to_string(),
+				domain: crate::field_domain::FieldDomain::Enum {
+					repr: crate::field_domain::ModelEnumRepr::String,
+					values: vec![crate::field_domain::ModelEnumValue::String(
+						"queued".to_string(),
+					)],
+				},
+			}],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
+		};
+
+		let sql = operation
+			.to_statement()
+			.to_sql_string(crate::backends::types::DatabaseType::Mysql);
+
+		assert!(sql.starts_with("CREATE TABLE `jobs`"), "{sql}");
+		assert!(sql.contains("`job_status` VARCHAR(32)"), "{sql}");
+		assert!(sql.contains("CHECK (`job_status` IN ('queued'))"), "{sql}");
+	}
+
+	#[test]
+	fn add_constraint_definition_state_transitions_are_symmetric() {
+		let domain = crate::field_domain::FieldDomain::Enum {
+			repr: crate::field_domain::ModelEnumRepr::String,
+			values: vec![crate::field_domain::ModelEnumValue::String(
+				"queued".to_string(),
+			)],
+		};
+		let constraint = Constraint::EnumDomain {
+			name: "jobs_status_model_enum_check".to_string(),
+			column: "job_status".to_string(),
+			domain: domain.clone(),
+		};
+		let operation = Operation::AddConstraintDefinition {
+			table: "jobs".to_string(),
+			constraint: constraint.clone(),
+		};
+		let mut state = ProjectState::new();
+		state.add_model(ModelState::new("tasks", "jobs"));
+
+		operation.state_forwards("tasks", &mut state);
+
+		let model = state.get_model("tasks", "jobs").expect("jobs model");
+		assert_eq!(model.constraints.len(), 1);
+		assert_eq!(model.constraints[0].name, "jobs_status_model_enum_check");
+		assert_eq!(model.constraints[0].constraint_type, "enum_domain");
+		assert_eq!(model.constraints[0].to_constraint(), constraint);
+
+		operation.state_backwards("tasks", &mut state);
+
+		assert!(
+			state
+				.get_model("tasks", "jobs")
+				.expect("jobs model")
+				.constraints
+				.is_empty()
+		);
+	}
+
+	#[test]
+	fn add_constraint_definition_reverse_sql_uses_mysql_quoting() {
+		let operation = Operation::AddConstraintDefinition {
+			table: "jobs".to_string(),
+			constraint: Constraint::EnumDomain {
+				name: "jobs_status_model_enum_check".to_string(),
+				column: "job_status".to_string(),
+				domain: crate::field_domain::FieldDomain::Enum {
+					repr: crate::field_domain::ModelEnumRepr::String,
+					values: vec![crate::field_domain::ModelEnumValue::String(
+						"queued".to_string(),
+					)],
+				},
+			},
+		};
+
+		let sql = operation
+			.to_reverse_sql(&SqlDialect::Mysql, &ProjectState::new())
+			.expect("reverse SQL")
+			.expect("reversible operation");
+
+		assert_eq!(
+			sql,
+			vec!["ALTER TABLE `jobs` DROP CONSTRAINT `jobs_status_model_enum_check`;".to_string()]
+		);
 	}
 
 	#[test]
@@ -8461,6 +8664,75 @@ mod tests {
 			sql.contains("DROP CONSTRAINT"),
 			"Should contain DROP CONSTRAINT, got: {}",
 			sql
+		);
+	}
+
+	fn project_state_with_long_enum_constraint() -> (ProjectState, String, String, String) {
+		let table = "model_enum_jobs_with_a_name_that_exceeds_postgres_identifier_limits";
+		let column = "job_status_with_a_name_that_exceeds_postgres_identifier_limits";
+		let name = truncate_identifier_with_hash(&format!("{table}_{column}_model_enum_check"));
+		let mut model = ModelState::new("tasks", "Job");
+		model.table_name = table.to_string();
+		model.constraints.push(
+			crate::migrations::autodetector::ConstraintDefinition::enum_domain(
+				name.clone(),
+				column,
+				crate::field_domain::FieldDomain::Enum {
+					repr: crate::field_domain::ModelEnumRepr::String,
+					values: vec![crate::field_domain::ModelEnumValue::String(
+						"queued".to_string(),
+					)],
+				},
+			),
+		);
+		let mut state = ProjectState::new();
+		state.add_model(model);
+
+		(state, table.to_string(), column.to_string(), name)
+	}
+
+	#[test]
+	fn drop_enum_constraint_reverses_to_typed_constraint_operation() {
+		let (state, table, _column, name) = project_state_with_long_enum_constraint();
+		let operation = Operation::DropConstraint {
+			table: table.clone(),
+			constraint_name: name.clone(),
+		};
+
+		let reverse = operation
+			.to_reverse_operation(&state)
+			.expect("reverse operation should resolve")
+			.expect("enum constraint should be reversible");
+
+		assert!(matches!(
+			reverse,
+			Operation::AddConstraintDefinition {
+				table: reverse_table,
+				constraint: Constraint::EnumDomain {
+					name: reverse_name,
+					..
+				},
+			} if reverse_table == table && reverse_name == name
+		));
+	}
+
+	#[test]
+	fn drop_enum_constraint_reverse_sql_uses_mysql_identifier_quoting() {
+		let (state, table, column, name) = project_state_with_long_enum_constraint();
+		let operation = Operation::DropConstraint {
+			table,
+			constraint_name: name,
+		};
+
+		let sql = operation
+			.to_reverse_sql(&SqlDialect::Mysql, &state)
+			.expect("reverse SQL should resolve")
+			.expect("enum constraint should be reversible")
+			.join("\n");
+
+		assert!(
+			sql.contains(&format!("CHECK (`{column}` IN ('queued'))")),
+			"{sql}"
 		);
 	}
 

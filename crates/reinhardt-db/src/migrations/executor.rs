@@ -1176,6 +1176,21 @@ impl DatabaseMigrationExecutor {
 				)
 				.with_indexes(indexes)
 			}
+			Operation::AddConstraintDefinition { table, constraint } => {
+				tracing::debug!(
+					"Handling SQLite table recreation for typed constraint: table={}",
+					table
+				);
+				let (columns, constraints, indexes) =
+					Self::read_sqlite_table_via_editor(editor, table).await?;
+				SqliteTableRecreation::for_add_constraint_definition(
+					table,
+					columns,
+					constraints,
+					constraint.clone(),
+				)
+				.with_indexes(indexes)
+			}
 			Operation::DropConstraint {
 				table,
 				constraint_name,
@@ -2361,8 +2376,13 @@ mod rollback_orchestration_tests {
 
 	use super::*;
 	use crate::backends::DatabaseConnection;
+	use crate::field_domain::{FieldDomain, ModelEnumRepr, ModelEnumValue};
 	use crate::migrations::recorder::DatabaseMigrationRecorder;
-	use crate::migrations::{ColumnDefinition, FieldType, Migration};
+	use crate::migrations::{
+		ColumnDefinition, Constraint, FieldType, ForeignKeyAction, GeneratedColumnDefinition,
+		Migration,
+	};
+	use reinhardt_query::prelude::GeneratedStorage;
 	use rstest::*;
 
 	/// Open a fresh SQLite `:memory:` database and wrap it in a
@@ -2580,5 +2600,114 @@ mod rollback_orchestration_tests {
 				.expect("query recorder after"),
 			"recorder must reflect unapplied state after warn-and-skip rollback"
 		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn typed_enum_constraint_uses_sqlite_recreation_and_preserves_schema() {
+		let mut parent_id = ColumnDefinition::new("id", FieldType::Integer);
+		parent_id.primary_key = true;
+		let mut job_id = ColumnDefinition::new("id", FieldType::Integer);
+		job_id.primary_key = true;
+		let parent_ref = ColumnDefinition::new("parent_id", FieldType::Integer);
+		let mut status = ColumnDefinition::new("status", FieldType::VarChar(32));
+		status.default = Some("'queued'".to_string());
+		let mut status_copy = ColumnDefinition::new("status_copy", FieldType::VarChar(32));
+		status_copy.generated = Some(GeneratedColumnDefinition::raw_sql(
+			"status || '_copy'",
+			GeneratedStorage::Stored,
+		));
+
+		let mut initial = Migration::new("0001_initial", "rolltest");
+		initial.operations = vec![
+			Operation::CreateTable {
+				name: "enum_parents".to_string(),
+				columns: vec![parent_id],
+				constraints: vec![],
+				without_rowid: None,
+				interleave_in_parent: None,
+				partition: None,
+			},
+			Operation::CreateTable {
+				name: "enum_jobs".to_string(),
+				columns: vec![job_id, parent_ref, status, status_copy],
+				constraints: vec![Constraint::ForeignKey {
+					name: "enum_jobs_parent_fk".to_string(),
+					columns: vec!["parent_id".to_string()],
+					referenced_table: "enum_parents".to_string(),
+					referenced_columns: vec!["id".to_string()],
+					on_delete: ForeignKeyAction::Cascade,
+					on_update: ForeignKeyAction::NoAction,
+					deferrable: None,
+				}],
+				without_rowid: None,
+				interleave_in_parent: None,
+				partition: None,
+			},
+			Operation::CreateIndex {
+				table: "enum_jobs".to_string(),
+				columns: vec!["status".to_string()],
+				unique: false,
+				index_type: None,
+				where_clause: None,
+				concurrently: false,
+				expressions: None,
+				mysql_options: None,
+				operator_class: None,
+			},
+		];
+		let mut add_domain = Migration::new("0002_status_domain", "rolltest");
+		add_domain
+			.operations
+			.push(Operation::AddConstraintDefinition {
+				table: "enum_jobs".to_string(),
+				constraint: Constraint::EnumDomain {
+					name: "enum_jobs_status_model_enum_check".to_string(),
+					column: "status".to_string(),
+					domain: FieldDomain::Enum {
+						repr: ModelEnumRepr::String,
+						values: vec![
+							ModelEnumValue::String("queued".to_string()),
+							ModelEnumValue::String("running".to_string()),
+						],
+					},
+				},
+			});
+		let mut executor = make_executor().await;
+
+		executor
+			.apply_migrations(&[initial, add_domain])
+			.await
+			.expect("typed enum constraint should recreate the SQLite table");
+
+		let table_sql = executor
+			.connection()
+			.fetch_optional(
+				"SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?",
+				vec!["enum_jobs".into()],
+			)
+			.await
+			.expect("read recreated table")
+			.expect("enum_jobs should exist")
+			.get::<String>("sql")
+			.expect("table SQL should be text");
+		assert!(
+			table_sql.contains("enum_jobs_status_model_enum_check"),
+			"{table_sql}"
+		);
+		assert!(table_sql.contains("REFERENCES enum_parents"), "{table_sql}");
+		assert!(table_sql.contains("DEFAULT 'queued'"), "{table_sql}");
+		assert!(table_sql.contains("GENERATED ALWAYS AS"), "{table_sql}");
+
+		let index_exists = executor
+			.connection()
+			.fetch_optional(
+				"SELECT name FROM sqlite_master WHERE type = 'index' AND name = ?",
+				vec!["idx_enum_jobs_status".into()],
+			)
+			.await
+			.expect("read recreated index")
+			.is_some();
+		assert_eq!(index_exists, true);
 	}
 }

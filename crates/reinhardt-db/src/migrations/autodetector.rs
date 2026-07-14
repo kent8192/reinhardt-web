@@ -1430,7 +1430,7 @@ impl ProjectState {
 			.collect()
 	}
 
-	fn constraint_to_definition(
+	pub(crate) fn constraint_to_definition(
 		constraint: &super::operations::Constraint,
 	) -> ConstraintDefinition {
 		match constraint {
