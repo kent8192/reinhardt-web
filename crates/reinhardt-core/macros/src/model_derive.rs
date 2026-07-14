@@ -2521,6 +2521,13 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 		.collect();
 
 	// Process unique constraints from model config
+	let resolve_db_column = |field_name: &str| {
+		field_infos
+			.iter()
+			.find(|field| field.name == field_name)
+			.and_then(|field| field.config.db_column.clone())
+			.unwrap_or_else(|| field_name.to_string())
+	};
 	let unique_constraints: Vec<(Vec<String>, Option<String>, Option<String>)> = model_config
 		.constraints
 		.iter()
@@ -2529,7 +2536,14 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 				fields,
 				name,
 				condition,
-			} => (fields.clone(), name.clone(), condition.clone()),
+			} => (
+				fields
+					.iter()
+					.map(|field| resolve_db_column(field))
+					.collect(),
+				name.clone(),
+				condition.clone(),
+			),
 		})
 		.collect();
 
@@ -2821,16 +2835,17 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 	let generated_field_names: Vec<_> = field_infos
 		.iter()
 		.filter(|field| field.config.generated.is_some() || field.config.generated_sql.is_some())
-		.map(|field| {
-			field.config.db_column.as_ref().map_or_else(
-				|| LitStr::new(&field.name.to_string(), field.name.span()),
-				|name| LitStr::new(name, field.name.span()),
-			)
+		.flat_map(|field| {
+			let rust_name = LitStr::new(&field.name.to_string(), field.name.span());
+			let column_name = field.config.db_column.as_ref().and_then(|name| {
+				(name != &field.name.to_string()).then(|| LitStr::new(name, field.name.span()))
+			});
+			std::iter::once(rust_name).chain(column_name)
 		})
 		.collect();
 	let database_codec_fields: Vec<_> = field_infos
 		.iter()
-		.filter(|field| is_regular_persisted_field(field))
+		.filter(|field| is_regular_persisted_field(field) || field.is_fk_id_field)
 		.collect();
 	let encode_database_fields = database_codec_fields.iter().map(|field| {
 		let field_name = &field.name;
@@ -5480,7 +5495,11 @@ fn generate_field_selector_struct(
 		.iter()
 		.map(|field| {
 			let field_name = &field.name;
-			let field_name_str = field_name.to_string();
+			let field_name_str = field
+				.config
+				.db_column
+				.clone()
+				.unwrap_or_else(|| field_name.to_string());
 			quote! {
 				#field_name: #orm_crate::query_fields::Field::new(vec![#field_name_str])
 			}
@@ -6298,6 +6317,38 @@ mod tests {
 		assert!(compact.contains("into_field_value(fk_id)"));
 		assert!(compact.contains("primary_key_column()"));
 		assert!(!compact.contains("fk_id.to_string()"));
+	}
+
+	#[test]
+	fn test_db_column_expansion_preserves_write_filters_constraints_and_selectors() {
+		let input = quote! {
+			#[model(
+				app_label = "test",
+				table_name = "records",
+				unique_together = ("email", "full_name")
+			)]
+			pub struct Record {
+				#[field(primary_key = true)]
+				pub id: i64,
+				#[field(db_column = "email_addr")]
+				pub email: String,
+				#[field(db_column = "display_name", generated_sql = "lower(email_addr)")]
+				pub full_name: String,
+				#[rel(foreign_key)]
+				pub owner: db::associations::ForeignKeyField<Account>,
+			}
+		};
+
+		let output = model_derive_impl(syn::parse2(input).unwrap()).unwrap();
+		let compact = output.to_string().replace(' ', "");
+
+		assert!(compact.contains("stringify!(owner_id).to_string()"));
+		assert!(compact.contains("\"full_name\",\"display_name\""));
+		assert!(
+			compact
+				.contains("fields:vec![\"email_addr\".to_string(),\"display_name\".to_string()]")
+		);
+		assert!(compact.contains("Field::new(vec![\"email_addr\"])"));
 	}
 
 	#[test]
