@@ -194,6 +194,7 @@ pub fn database_field_type_path(storage_kind: DatabaseStorageKind) -> &'static s
 }
 
 /// Maps typed database storage metadata into migration field metadata.
+#[cfg(feature = "migrations")]
 #[doc(hidden)]
 pub fn database_storage_field_type(
 	storage_kind: DatabaseStorageKind,
