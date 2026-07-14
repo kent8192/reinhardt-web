@@ -1331,19 +1331,17 @@ impl DatabaseMigrationExecutor {
 						);
 						editor.execute(&stmt).await?;
 					}
+					let violations = editor.check_foreign_key_integrity().await?;
+					if !violations.is_empty() {
+						return Err(MigrationError::ForeignKeyViolation(format!(
+							"Foreign key violations detected after table recreation: {}",
+							violations.join("; ")
+						)));
+					}
 					Ok(())
 				})
 			})
 			.await?;
-
-		// Check for FK integrity violations (logs warning if any found)
-		let violations = editor.check_foreign_key_integrity().await?;
-		if !violations.is_empty() {
-			return Err(MigrationError::ForeignKeyViolation(format!(
-				"Foreign key violations detected after table recreation: {}",
-				violations.join("; ")
-			)));
-		}
 
 		tracing::debug!(
 			"SQLite table recreation completed for {:?}",

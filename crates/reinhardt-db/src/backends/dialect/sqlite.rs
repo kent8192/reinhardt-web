@@ -31,7 +31,7 @@ impl SqliteBackend {
 		&self.pool
 	}
 
-	fn bind_value<'q>(
+	pub(crate) fn bind_value<'q>(
 		query: sqlx::query::Query<'q, sqlx::Sqlite, sqlx::sqlite::SqliteArguments<'q>>,
 		value: &'q QueryValue,
 	) -> sqlx::query::Query<'q, sqlx::Sqlite, sqlx::sqlite::SqliteArguments<'q>> {
@@ -54,7 +54,7 @@ impl SqliteBackend {
 		}
 	}
 
-	fn convert_row(sqlite_row: SqliteRow) -> Result<Row> {
+	pub(crate) fn convert_row(sqlite_row: SqliteRow) -> Result<Row> {
 		let mut row = Row::new();
 		for column in sqlite_row.columns() {
 			let column_name = column.name();
