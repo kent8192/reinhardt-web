@@ -63,6 +63,12 @@ pub(crate) fn map_sqlx_error(error: sqlx::Error) -> DatabaseError {
 			DatabaseError::new(DatabaseErrorKind::Type, error.to_string())
 		}
 		sqlx::Error::RowNotFound => DatabaseError::new(DatabaseErrorKind::Query, "Row not found"),
+		error @ sqlx::Error::InvalidSavePointStatement => {
+			DatabaseError::new(DatabaseErrorKind::Transaction, error.to_string())
+		}
+		error @ sqlx::Error::BeginFailed => {
+			DatabaseError::new(DatabaseErrorKind::Transaction, error.to_string())
+		}
 		sqlx::Error::Migrate(error) => DatabaseError::new(
 			DatabaseErrorKind::Query,
 			format!("Migration error: {error}"),
@@ -211,6 +217,8 @@ mod tests {
 		DatabaseErrorKind::Type
 	)]
 	#[case(sqlx::Error::RowNotFound, DatabaseErrorKind::Query)]
+	#[case(sqlx::Error::InvalidSavePointStatement, DatabaseErrorKind::Transaction)]
+	#[case(sqlx::Error::BeginFailed, DatabaseErrorKind::Transaction)]
 	fn map_sqlx_error_classifies_non_database_errors(
 		#[case] sqlx_error: sqlx::Error,
 		#[case] expected_kind: DatabaseErrorKind,
