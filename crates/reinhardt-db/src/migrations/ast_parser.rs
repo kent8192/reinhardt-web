@@ -330,13 +330,19 @@ fn parse_single_operation(expr: &Expr) -> Option<super::Operation> {
 			"DropConstraint" => {
 				let table = extract_string_field(&expr_struct.fields, "table")?;
 				let constraint_name = extract_string_field(&expr_struct.fields, "constraint_name")?;
-				let old_constraint =
-					extract_optional_constraint_field(&expr_struct.fields, "old_constraint");
 				return Some(super::Operation::DropConstraint {
 					table,
 					constraint_name,
-					old_constraint,
 				});
+			}
+			"DropConstraintDefinition" => {
+				let table = extract_string_field(&expr_struct.fields, "table")?;
+				let constraint = expr_struct
+					.fields
+					.iter()
+					.find(|field| field.member.to_token_stream().to_string() == "constraint")
+					.and_then(|field| parse_single_constraint(&field.expr))?;
+				return Some(super::Operation::DropConstraintDefinition { table, constraint });
 			}
 			"RunSQL" => {
 				// Use extract_string_field to handle both literal and .to_string() patterns (#1336)
@@ -787,23 +793,6 @@ fn extract_constraints_field(
 		}
 	}
 	Vec::new()
-}
-
-fn extract_optional_constraint_field(
-	fields: &syn::punctuated::Punctuated<syn::FieldValue, syn::token::Comma>,
-	field_name: &str,
-) -> Option<super::Constraint> {
-	for field in fields {
-		if let syn::Member::Named(ident) = &field.member
-			&& ident == field_name
-			&& let Expr::Call(call) = &field.expr
-			&& let Expr::Path(path) = &*call.func
-			&& path.path.is_ident("Some")
-		{
-			return parse_single_constraint(call.args.first()?);
-		}
-	}
-	None
 }
 
 /// Extract a single ColumnDefinition field
@@ -1604,7 +1593,7 @@ mod tests {
 	use crate::migrations::{ColumnType, Constraint, GeneratedStorage, Operation, SchemaExpr};
 
 	#[test]
-	fn drop_constraint_ast_accepts_legacy_and_typed_shapes() {
+	fn drop_constraint_ast_accepts_legacy_and_typed_variants() {
 		let legacy: syn::Expr = syn::parse_str(
 			r#"Operation::DropConstraint {
 				table: "jobs".to_string(),
@@ -1617,29 +1606,27 @@ mod tests {
 			Some(Operation::DropConstraint {
 				table: "jobs".to_string(),
 				constraint_name: "jobs_status_check".to_string(),
-				old_constraint: None,
 			})
 		);
 
 		let typed: syn::Expr = syn::parse_str(
-			r#"Operation::DropConstraint {
+			r#"Operation::DropConstraintDefinition {
 				table: "jobs".to_string(),
-				constraint_name: "jobs_status_check".to_string(),
-				old_constraint: Some(Constraint::EnumDomain {
+				constraint: Constraint::EnumDomain {
 					name: "jobs_status_check".to_string(),
 					column: "status".to_string(),
 					domain: FieldDomain::Enum {
 						repr: ModelEnumRepr::String,
 						values: vec![ModelEnumValue::String("queued".to_string())],
 					},
-				}),
+				},
 			}"#,
 		)
 		.expect("typed operation should parse as Rust syntax");
 		assert!(matches!(
 			super::parse_single_operation(&typed),
-			Some(Operation::DropConstraint {
-				old_constraint: Some(Constraint::EnumDomain { column, .. }),
+			Some(Operation::DropConstraintDefinition {
+				constraint: Constraint::EnumDomain { column, .. },
 				..
 			}) if column == "status"
 		));

@@ -157,12 +157,11 @@ fn enum_domain_value_replacement_recreates_the_constraint() {
 	assert_eq!(operations.len(), 2, "operations = {operations:?}");
 	assert!(matches!(
 		&operations[0],
-		Operation::DropConstraint {
+		Operation::DropConstraintDefinition {
 			table,
-			constraint_name,
-			..
+			constraint: Constraint::EnumDomain { name, .. },
 		} if table == "model_enum_state_jobs"
-			&& constraint_name == "model_enum_state_jobs_job_status_model_enum_check"
+			&& name == "model_enum_state_jobs_job_status_model_enum_check"
 	));
 	assert!(
 		matches!(
@@ -196,7 +195,7 @@ fn enum_domain_value_addition_replaces_the_constraint_without_warning() {
 	assert!(matches!(
 		operations.as_slice(),
 		[
-			Operation::DropConstraint { .. },
+			Operation::DropConstraintDefinition { .. },
 			Operation::AddConstraintDefinition { .. },
 		]
 	));
@@ -214,7 +213,7 @@ fn enum_domain_value_removal_warns_with_the_removed_value() {
 	assert!(matches!(
 		operations.as_slice(),
 		[
-			Operation::DropConstraint { .. },
+			Operation::DropConstraintDefinition { .. },
 			Operation::AddConstraintDefinition { .. },
 		]
 	));
@@ -236,6 +235,27 @@ fn enum_domain_value_removal_warns_with_the_removed_value() {
 }
 
 #[test]
+fn migration_generation_returns_enum_domain_warnings_without_breaking_legacy_api() {
+	let from_state = project_state_with_domain(&["queued", "running"]);
+	let to_state = project_state_with_domain(&["queued"]);
+	let detector = MigrationAutodetector::new(from_state, to_state);
+
+	let generated = detector.generate_migrations_with_warnings();
+	let legacy_migrations = detector.generate_migrations();
+
+	assert_eq!(generated.migrations.len(), legacy_migrations.len());
+	for (generated_migration, legacy_migration) in
+		generated.migrations.iter().zip(&legacy_migrations)
+	{
+		assert_eq!(generated_migration.name, legacy_migration.name);
+		assert_eq!(generated_migration.app_label, legacy_migration.app_label);
+		assert_eq!(generated_migration.operations, legacy_migration.operations);
+	}
+	assert_eq!(generated.warnings.len(), 1);
+	assert!(generated.warnings[0].to_string().contains("running"));
+}
+
+#[test]
 fn enum_storage_change_drops_alters_adds_and_warns_actionably() {
 	let from_state = project_state_with_domain(&["queued", "running"]);
 	let to_state = project_state_with_field(FieldType::Integer, Some(i32_domain(&[1, 2])));
@@ -245,7 +265,7 @@ fn enum_storage_change_drops_alters_adds_and_warns_actionably() {
 	let operations = detector.generate_operations();
 
 	assert!(matches!(operations.as_slice(), [
-		Operation::DropConstraint { .. },
+		Operation::DropConstraintDefinition { .. },
 		Operation::AlterColumn {
 			column,
 			new_definition,
@@ -281,7 +301,7 @@ fn enum_to_plain_string_drops_constraint_and_clears_state_domain() {
 
 	assert!(matches!(
 		operations.as_slice(),
-		[Operation::DropConstraint { .. }]
+		[Operation::DropConstraintDefinition { .. }]
 	));
 	let mut migrated_state = from_state;
 	migrated_state.apply_migration_operations(&operations, "model_enum_state");
@@ -303,8 +323,8 @@ fn enum_constraint_replacement_retains_old_typed_definition() {
 
 	assert!(matches!(
 		&operations[0],
-		Operation::DropConstraint {
-			old_constraint: Some(Constraint::EnumDomain { domain, .. }),
+		Operation::DropConstraintDefinition {
+			constraint: Constraint::EnumDomain { domain, .. },
 			..
 		} if domain == &string_domain(&["queued", "running"])
 	));

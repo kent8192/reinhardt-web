@@ -78,6 +78,7 @@ pub use autodetector::{
 	ForeignKeyAction,
 	ForeignKeyConstraintInfo,
 	ForeignKeyInfo,
+	GeneratedMigrations,
 	IndexDefinition,
 	InferenceEngine,
 	InferenceRule,

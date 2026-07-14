@@ -862,6 +862,24 @@ async fn build_from_state_from_files(
 pub struct MakeMigrationsCommand;
 
 #[cfg(feature = "migrations")]
+fn format_makemigrations_warning(
+	warning: &reinhardt_db::migrations::AutodetectorWarning,
+) -> String {
+	warning.to_string()
+}
+
+#[cfg(feature = "migrations")]
+fn report_autodetector_warnings_with(
+	warnings: &[reinhardt_db::migrations::AutodetectorWarning],
+	mut report: impl FnMut(&str),
+) {
+	for warning in warnings {
+		let message = format_makemigrations_warning(warning);
+		report(&message);
+	}
+}
+
+#[cfg(feature = "migrations")]
 #[async_trait]
 impl BaseCommand for MakeMigrationsCommand {
 	fn name(&self) -> &str {
@@ -1447,7 +1465,11 @@ impl BaseCommand for MakeMigrationsCommand {
 					app_from_state,
 					app_target_state,
 				);
-				let generated_migrations = detector.generate_migrations();
+				let generated = detector.generate_migrations_with_warnings();
+				report_autodetector_warnings_with(&generated.warnings, |message| {
+					ctx.warning(message);
+				});
+				let generated_migrations = generated.migrations;
 
 				// Process generated migrations for this app
 				for migration in generated_migrations {
@@ -4287,6 +4309,38 @@ fn detect_database_type(url: &str) -> Result<DatabaseType, crate::CommandError> 
 mod tests {
 	use super::*;
 
+	#[test]
+	#[cfg(feature = "migrations")]
+	fn makemigrations_reports_enum_domain_warnings_to_the_command_sink() {
+		use reinhardt_db::field_domain::{FieldDomain, ModelEnumRepr, ModelEnumValue};
+		use reinhardt_db::migrations::AutodetectorWarning;
+
+		let warning = AutodetectorWarning::EnumDomainDataMigrationRequired {
+			table: "jobs".to_string(),
+			column: "status".to_string(),
+			old_domain: FieldDomain::Enum {
+				repr: ModelEnumRepr::String,
+				values: vec![
+					ModelEnumValue::String("queued".to_string()),
+					ModelEnumValue::String("running".to_string()),
+				],
+			},
+			new_domain: FieldDomain::Enum {
+				repr: ModelEnumRepr::String,
+				values: vec![ModelEnumValue::String("queued".to_string())],
+			},
+		};
+		let mut reported = Vec::new();
+
+		report_autodetector_warnings_with(&[warning], |message| {
+			reported.push(message.to_string());
+		});
+
+		assert_eq!(reported.len(), 1);
+		assert!(reported[0].contains("running"), "{}", reported[0]);
+		assert!(reported[0].contains("data migration"), "{}", reported[0]);
+	}
+
 	#[cfg(feature = "reinhardt-db")]
 	struct EnvVarGuard {
 		key: &'static str,
@@ -4540,6 +4594,33 @@ name = "db.sqlite3"
 
 		// Should succeed (dry-run mode, no actual files created)
 		assert!(result.is_ok(), "Failed with: {:?}", result.err());
+	}
+
+	#[test]
+	#[cfg(feature = "migrations")]
+	fn makemigrations_formats_enum_domain_warning_for_stderr() {
+		use reinhardt_db::field_domain::{FieldDomain, ModelEnumRepr, ModelEnumValue};
+		use reinhardt_db::migrations::AutodetectorWarning;
+
+		let warning = AutodetectorWarning::EnumDomainDataMigrationRequired {
+			table: "jobs".to_string(),
+			column: "status".to_string(),
+			old_domain: FieldDomain::Enum {
+				repr: ModelEnumRepr::String,
+				values: vec![ModelEnumValue::String("running".to_string())],
+			},
+			new_domain: FieldDomain::Enum {
+				repr: ModelEnumRepr::String,
+				values: vec![ModelEnumValue::String("queued".to_string())],
+			},
+		};
+
+		let message = super::format_makemigrations_warning(&warning);
+
+		assert_eq!(
+			message,
+			"enum domain change for jobs.status removes or re-encodes values [running]; place a data migration before the new constraint"
+		);
 	}
 
 	#[tokio::test]

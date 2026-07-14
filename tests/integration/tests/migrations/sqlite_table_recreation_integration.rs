@@ -507,7 +507,6 @@ async fn test_drop_foreign_key_constraint(
 		vec![Operation::DropConstraint {
 			table: "recreation_child".to_string(),
 			constraint_name: "fk_child_parent".to_string(),
-			old_constraint: None,
 		}],
 	);
 
@@ -1871,7 +1870,6 @@ async fn test_drop_and_add_constraint_same_migration() {
 			Operation::DropConstraint {
 				table: "combo_test".to_string(),
 				constraint_name: "unique_code".to_string(),
-				old_constraint: None,
 			},
 			Operation::AddConstraint {
 				table: "combo_test".to_string(),
@@ -2869,6 +2867,15 @@ async fn typed_enum_constraint_recreation_preserves_without_rowid() {
 	let mut id = create_column("id", FieldType::Integer);
 	id.not_null = true;
 	id.primary_key = true;
+	let constraint_name = "enum_without_rowid_status_model_enum_check";
+	let old_constraint = Constraint::EnumDomain {
+		name: constraint_name.to_string(),
+		column: "status".to_string(),
+		domain: FieldDomain::Enum {
+			repr: ModelEnumRepr::String,
+			values: vec![ModelEnumValue::String("queued".to_string())],
+		},
+	};
 
 	let create = create_test_migration(
 		"testapp",
@@ -2876,32 +2883,41 @@ async fn typed_enum_constraint_recreation_preserves_without_rowid() {
 		vec![Operation::CreateTable {
 			name: "enum_without_rowid".to_string(),
 			columns: vec![id, create_column("status", FieldType::VarChar(32))],
-			constraints: vec![],
+			constraints: vec![old_constraint.clone()],
 			without_rowid: Some(true),
 			interleave_in_parent: None,
 			partition: None,
 		}],
 	);
-	let add_domain = create_test_migration(
+	let replace_domain = create_test_migration(
 		"testapp",
-		"0002_add_enum_domain",
-		vec![Operation::AddConstraintDefinition {
-			table: "enum_without_rowid".to_string(),
-			constraint: Constraint::EnumDomain {
-				name: "enum_without_rowid_status_model_enum_check".to_string(),
-				column: "status".to_string(),
-				domain: FieldDomain::Enum {
-					repr: ModelEnumRepr::String,
-					values: vec![ModelEnumValue::String("queued".to_string())],
+		"0002_replace_enum_domain",
+		vec![
+			Operation::DropConstraintDefinition {
+				table: "enum_without_rowid".to_string(),
+				constraint: old_constraint,
+			},
+			Operation::AddConstraintDefinition {
+				table: "enum_without_rowid".to_string(),
+				constraint: Constraint::EnumDomain {
+					name: constraint_name.to_string(),
+					column: "status".to_string(),
+					domain: FieldDomain::Enum {
+						repr: ModelEnumRepr::String,
+						values: vec![
+							ModelEnumValue::String("queued".to_string()),
+							ModelEnumValue::String("running".to_string()),
+						],
+					},
 				},
 			},
-		}],
+		],
 	);
 
 	executor
-		.apply_migrations(&[create, add_domain])
+		.apply_migrations(&[create, replace_domain])
 		.await
-		.expect("add typed enum domain through table recreation");
+		.expect("replace typed enum domain through table recreation");
 
 	let table_sql: String = conn
 		.fetch_one(
@@ -2912,9 +2928,169 @@ async fn typed_enum_constraint_recreation_preserves_without_rowid() {
 		.expect("read recreated table SQL")
 		.get("sql")
 		.expect("table SQL should be text");
-	assert!(table_sql.contains("IN ('queued')"), "{table_sql}");
+	assert!(
+		table_sql.contains("IN ('queued', 'running')"),
+		"{table_sql}"
+	);
 	assert!(
 		table_sql.trim_end().ends_with("WITHOUT ROWID"),
+		"{table_sql}"
+	);
+}
+
+#[rstest]
+#[tokio::test]
+async fn recreation_preserves_composite_primary_key_ordinal_order() {
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("connect to in-memory SQLite");
+	connection
+		.execute(
+			"CREATE TABLE composite_jobs (tenant_id INTEGER NOT NULL, job_id INTEGER NOT NULL, obsolete TEXT, PRIMARY KEY (tenant_id, job_id)) WITHOUT ROWID",
+			vec![],
+		)
+		.await
+		.expect("create composite primary key table");
+	let conn = Arc::new(connection.clone());
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+	let recreate = create_test_migration(
+		"testapp",
+		"0002_drop_obsolete",
+		vec![Operation::DropColumn {
+			table: "composite_jobs".to_string(),
+			column: "obsolete".to_string(),
+			old_definition: None,
+		}],
+	);
+
+	executor
+		.apply_migrations(&[recreate])
+		.await
+		.expect("recreate composite primary key table");
+
+	let rows = conn
+		.fetch_all("PRAGMA table_info(composite_jobs)", vec![])
+		.await
+		.expect("read composite primary key metadata");
+	let mut primary_key_columns: Vec<(i64, String)> = rows
+		.iter()
+		.filter_map(|row| {
+			let ordinal = row.get::<i64>("pk").ok()?;
+			(ordinal > 0).then(|| {
+				(
+					ordinal,
+					row.get::<String>("name")
+						.expect("column name should be text"),
+				)
+			})
+		})
+		.collect();
+	primary_key_columns.sort_by_key(|(ordinal, _)| *ordinal);
+	assert_eq!(
+		primary_key_columns,
+		vec![(1, "tenant_id".to_string()), (2, "job_id".to_string())]
+	);
+
+	let table_sql: String = conn
+		.fetch_one(
+			"SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'composite_jobs'",
+			vec![],
+		)
+		.await
+		.expect("read recreated table SQL")
+		.get("sql")
+		.expect("table SQL should be text");
+	assert_eq!(table_sql.matches("PRIMARY KEY").count(), 1, "{table_sql}");
+	assert!(
+		table_sql
+			.contains("CONSTRAINT \"composite_jobs_pkey\" PRIMARY KEY (\"tenant_id\", \"job_id\")"),
+		"{table_sql}"
+	);
+}
+
+#[rstest]
+#[tokio::test]
+async fn recreation_preserves_foreign_key_deferral_modes() {
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("connect to in-memory SQLite");
+	connection
+		.execute(
+			"CREATE TABLE deferred_parents (id INTEGER PRIMARY KEY)",
+			vec![],
+		)
+		.await
+		.expect("create deferred parent table");
+	connection
+		.execute(
+			"CREATE TABLE immediate_parents (id INTEGER PRIMARY KEY)",
+			vec![],
+		)
+		.await
+		.expect("create immediate parent table");
+	connection
+		.execute(
+			"CREATE TABLE deferred_children (id INTEGER PRIMARY KEY, deferred_parent_id INTEGER, immediate_parent_id INTEGER, obsolete TEXT, CONSTRAINT \"deferred_parent_fk\" FOREIGN KEY (deferred_parent_id) REFERENCES deferred_parents(id) DEFERRABLE INITIALLY DEFERRED, CONSTRAINT `immediate_parent_fk` FOREIGN KEY (immediate_parent_id) REFERENCES immediate_parents(id) DEFERRABLE INITIALLY IMMEDIATE)",
+			vec![],
+		)
+		.await
+		.expect("create child table with deferrable foreign keys");
+	let conn = Arc::new(connection.clone());
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+	let recreate = create_test_migration(
+		"testapp",
+		"0002_drop_obsolete",
+		vec![Operation::DropColumn {
+			table: "deferred_children".to_string(),
+			column: "obsolete".to_string(),
+			old_definition: None,
+		}],
+	);
+
+	executor
+		.apply_migrations(&[recreate])
+		.await
+		.expect("recreate table with deferrable foreign keys");
+	let verify_deferred = create_test_migration(
+		"testapp",
+		"0003_verify_deferred",
+		vec![Operation::RunSQL {
+			sql: "INSERT INTO deferred_children (id, deferred_parent_id) VALUES (1, 42); INSERT INTO deferred_parents (id) VALUES (42)".to_string(),
+			reverse_sql: None,
+		}],
+	);
+	executor
+		.apply_migrations(&[verify_deferred])
+		.await
+		.expect("deferred foreign key should permit child-before-parent insertion");
+	let immediate_violation = conn
+		.execute(
+			"INSERT INTO deferred_children (id, immediate_parent_id) VALUES (2, 77)",
+			vec![],
+		)
+		.await;
+	assert!(
+		immediate_violation.is_err(),
+		"initially immediate foreign key should reject a missing parent"
+	);
+
+	let table_sql: String = conn
+		.fetch_one(
+			"SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'deferred_children'",
+			vec![],
+		)
+		.await
+		.expect("read recreated table SQL")
+		.get("sql")
+		.expect("table SQL should be text");
+	assert!(
+		table_sql.contains("deferred_parent_fk")
+			&& table_sql.contains("DEFERRABLE INITIALLY DEFERRED"),
+		"{table_sql}"
+	);
+	assert!(
+		table_sql.contains("immediate_parent_fk")
+			&& table_sql.contains("DEFERRABLE INITIALLY IMMEDIATE"),
 		"{table_sql}"
 	);
 }

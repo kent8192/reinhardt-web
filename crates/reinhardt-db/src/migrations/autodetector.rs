@@ -328,6 +328,10 @@ impl ConstraintDefinition {
 				name: self.name.clone(),
 				columns: self.fields.clone(),
 			},
+			"primary_key" => super::operations::Constraint::PrimaryKey {
+				name: self.name.clone(),
+				columns: self.fields.clone(),
+			},
 			"check" => super::operations::Constraint::Check {
 				name: self.name.clone(),
 				expression: self.expression.clone().unwrap_or_default(),
@@ -1375,17 +1379,23 @@ impl ProjectState {
 				Operation::DropConstraint {
 					table,
 					constraint_name,
-					old_constraint,
 				} => {
 					if let Some(model) = self.find_model_by_table_mut(table) {
-						if let Some(super::Constraint::EnumDomain { column, .. }) = old_constraint
+						model
+							.constraints
+							.retain(|constraint| constraint.name != *constraint_name);
+					}
+				}
+				Operation::DropConstraintDefinition { table, constraint } => {
+					if let Some(model) = self.find_model_by_table_mut(table) {
+						if let super::Constraint::EnumDomain { column, .. } = constraint
 							&& let Some(field) = model.fields.get_mut(column)
 						{
 							field.domain = None;
 						}
 						model
 							.constraints
-							.retain(|constraint| constraint.name != *constraint_name);
+							.retain(|definition| definition.name != constraint.name());
 					}
 				}
 				// Other operations don't affect the schema state in ways we track.
@@ -1925,6 +1935,15 @@ pub enum AutodetectorWarning {
 		/// Domain enforced after the migration.
 		new_domain: crate::field_domain::FieldDomain,
 	},
+}
+
+/// Migration generation output including actionable schema-change warnings.
+#[derive(Debug, Clone)]
+pub struct GeneratedMigrations {
+	/// Generated migrations grouped by application.
+	pub migrations: Vec<super::Migration>,
+	/// Warnings discovered while comparing the migration states.
+	pub warnings: Vec<AutodetectorWarning>,
 }
 
 impl std::fmt::Display for AutodetectorWarning {
@@ -6196,6 +6215,7 @@ impl MigrationAutodetector {
 			| super::Operation::AddConstraintRepair { table, .. }
 			| super::Operation::RestoreConstraintOnRollback { table, .. }
 			| super::Operation::DropConstraint { table, .. }
+			| super::Operation::DropConstraintDefinition { table, .. }
 			| super::Operation::CreateIndex { table, .. }
 			| super::Operation::CreateIndexRepair { table, .. }
 			| super::Operation::RestoreIndexOnRollback { table, .. }
@@ -6516,10 +6536,9 @@ impl MigrationAutodetector {
 			};
 			if constraint.constraint_type == "enum_domain" {
 				by_app.entry(app_label.clone()).or_default().push(
-					super::Operation::DropConstraint {
+					super::Operation::DropConstraintDefinition {
 						table: from_model.table_name.clone(),
-						constraint_name: constraint_name.clone(),
-						old_constraint: Some(constraint.to_constraint()),
+						constraint: constraint.to_constraint(),
 					},
 				);
 			}
@@ -6729,17 +6748,21 @@ impl MigrationAutodetector {
 		// DropConstraint for modified composite PKs (drop before recreate).
 		for (app_label, model_name, constraint_name) in &changes.removed_composite_primary_keys {
 			if let Some(model) = self.from_state.get_model(app_label, model_name) {
-				by_app.entry(app_label.clone()).or_default().push(
-					super::Operation::DropConstraint {
-						table: model.table_name.clone(),
-						constraint_name: constraint_name.clone(),
-						old_constraint: model
-							.constraints
-							.iter()
-							.find(|constraint| constraint.name == *constraint_name)
-							.map(ConstraintDefinition::to_constraint),
-					},
-				);
+				let operation = model
+					.constraints
+					.iter()
+					.find(|constraint| constraint.name == *constraint_name)
+					.map_or_else(
+						|| super::Operation::DropConstraint {
+							table: model.table_name.clone(),
+							constraint_name: constraint_name.clone(),
+						},
+						|constraint| super::Operation::DropConstraintDefinition {
+							table: model.table_name.clone(),
+							constraint: constraint.to_constraint(),
+						},
+					);
+				by_app.entry(app_label.clone()).or_default().push(operation);
 			}
 		}
 
@@ -6796,18 +6819,21 @@ impl MigrationAutodetector {
 					}) {
 				continue;
 			}
-			by_app
-				.entry(app_label.clone())
-				.or_default()
-				.push(super::Operation::DropConstraint {
-					table: from_model.table_name.clone(),
-					constraint_name: constraint_name.clone(),
-					old_constraint: from_model
-						.constraints
-						.iter()
-						.find(|constraint| constraint.name == *constraint_name)
-						.map(ConstraintDefinition::to_constraint),
-				});
+			let operation = from_model
+				.constraints
+				.iter()
+				.find(|constraint| constraint.name == *constraint_name)
+				.map_or_else(
+					|| super::Operation::DropConstraint {
+						table: from_model.table_name.clone(),
+						constraint_name: constraint_name.clone(),
+					},
+					|constraint| super::Operation::DropConstraintDefinition {
+						table: from_model.table_name.clone(),
+						constraint: constraint.to_constraint(),
+					},
+				);
+			by_app.entry(app_label.clone()).or_default().push(operation);
 		}
 
 		// AddConstraint for non-PK constraints added to existing tables.
@@ -6900,14 +6926,30 @@ impl MigrationAutodetector {
 	/// assert!(!migrations[0].operations.is_empty());
 	/// ```
 	pub fn generate_migrations(&self) -> Vec<super::Migration> {
+		self.generate_migrations_with_warnings().migrations
+	}
+
+	/// Generate migrations together with actionable schema-change warnings.
+	pub fn generate_migrations_with_warnings(&self) -> GeneratedMigrations {
 		let changes = self.detect_changes();
-		self.generate_migrations_from_changes(&changes)
+		GeneratedMigrations {
+			migrations: self.generate_migrations_from_changes(&changes),
+			warnings: changes.warnings,
+		}
 	}
 
 	/// Generate migrations and fail on ambiguous rename-like changes.
 	pub fn try_generate_migrations(&self) -> super::Result<Vec<super::Migration>> {
+		Ok(self.try_generate_migrations_with_warnings()?.migrations)
+	}
+
+	/// Generate migrations and warnings, failing on ambiguous rename-like changes.
+	pub fn try_generate_migrations_with_warnings(&self) -> super::Result<GeneratedMigrations> {
 		let changes = self.try_detect_changes()?;
-		Ok(self.generate_migrations_from_changes(&changes))
+		Ok(GeneratedMigrations {
+			migrations: self.generate_migrations_from_changes(&changes),
+			warnings: changes.warnings,
+		})
 	}
 
 	fn generate_migrations_from_changes(&self, changes: &DetectedChanges) -> Vec<super::Migration> {
@@ -10727,8 +10769,10 @@ mod tests {
 
 		// Assert — expect DropConstraint followed by CreateCompositePrimaryKey
 		let drop_op = operations.iter().find(|op| {
-			matches!(op, super::super::Operation::DropConstraint { constraint_name, .. }
-				if constraint_name == "billing_invoice_pkey")
+			matches!(op, super::super::Operation::DropConstraintDefinition {
+				constraint: super::super::Constraint::PrimaryKey { name, columns }, ..
+			} if name == "billing_invoice_pkey"
+				&& columns == &["id".to_string(), "tenant_id".to_string()])
 		});
 		let create_op = operations.iter().find(|op| {
 			matches!(op, super::super::Operation::CreateCompositePrimaryKey { columns, .. }
@@ -10736,7 +10780,7 @@ mod tests {
 		});
 		assert!(
 			drop_op.is_some(),
-			"expected DropConstraint for modified composite PK, got: {:?}",
+			"expected typed DropConstraintDefinition for modified composite PK, got: {:?}",
 			operations
 		);
 		assert!(
@@ -10930,22 +10974,18 @@ mod tests {
 			"expected exactly one DropConstraint operation, got: {:?}",
 			operations
 		);
-		let super::super::Operation::DropConstraint {
+		let super::super::Operation::DropConstraintDefinition {
 			table,
-			constraint_name,
-			..
+			constraint: super::super::Constraint::Unique { name, .. },
 		} = &operations[0]
 		else {
 			panic!(
-				"expected Operation::DropConstraint, got: {:?}",
+				"expected Operation::DropConstraintDefinition, got: {:?}",
 				operations[0]
 			);
 		};
 		assert_eq!(table, "clusters_cluster");
-		assert_eq!(
-			constraint_name,
-			"clusters_cluster_organization_id_name_uniq"
-		);
+		assert_eq!(name, "clusters_cluster_organization_id_name_uniq");
 	}
 
 	#[rstest]
@@ -11087,22 +11127,18 @@ mod tests {
 			"expected exactly one DropConstraint operation, got: {:?}",
 			operations
 		);
-		let super::super::Operation::DropConstraint {
+		let super::super::Operation::DropConstraintDefinition {
 			table,
-			constraint_name,
-			..
+			constraint: super::super::Constraint::Unique { name, .. },
 		} = &operations[0]
 		else {
 			panic!(
-				"expected Operation::DropConstraint, got: {:?}",
+				"expected Operation::DropConstraintDefinition, got: {:?}",
 				operations[0]
 			);
 		};
 		assert_eq!(table, "clusters_cluster");
-		assert_eq!(
-			constraint_name,
-			"clusters_cluster_organization_id_name_uniq"
-		);
+		assert_eq!(name, "clusters_cluster_organization_id_name_uniq");
 	}
 
 	#[rstest]
@@ -11965,22 +12001,18 @@ mod tests {
 			"expected exactly one operation in the migration, got: {:?}",
 			migrations[0].operations
 		);
-		let super::super::Operation::DropConstraint {
+		let super::super::Operation::DropConstraintDefinition {
 			table,
-			constraint_name,
-			..
+			constraint: super::super::Constraint::Unique { name, .. },
 		} = &migrations[0].operations[0]
 		else {
 			panic!(
-				"expected Operation::DropConstraint, got: {:?}",
+				"expected Operation::DropConstraintDefinition, got: {:?}",
 				migrations[0].operations[0]
 			);
 		};
 		assert_eq!(table, "clusters_cluster");
-		assert_eq!(
-			constraint_name,
-			"clusters_cluster_organization_id_name_uniq"
-		);
+		assert_eq!(name, "clusters_cluster_organization_id_name_uniq");
 	}
 
 	#[rstest]

@@ -1046,9 +1046,13 @@ pub enum Operation {
 		table: String,
 		/// The constraint name.
 		constraint_name: String,
-		/// Typed definition captured before the constraint is dropped.
-		#[serde(default, skip_serializing_if = "Option::is_none")]
-		old_constraint: Option<Constraint>,
+	},
+	/// Drops a typed constraint while retaining its definition for rollback.
+	DropConstraintDefinition {
+		/// The table.
+		table: String,
+		/// The typed constraint definition captured before it is dropped.
+		constraint: Constraint,
 	},
 	/// CreateIndex variant.
 	CreateIndex {
@@ -1645,17 +1649,23 @@ impl Operation {
 			Operation::DropConstraint {
 				table,
 				constraint_name,
-				old_constraint,
 			} => {
 				if let Some(model) = state.find_model_by_table_mut(table) {
-					if let Some(Constraint::EnumDomain { column, .. }) = old_constraint
+					model
+						.constraints
+						.retain(|constraint| constraint.name != *constraint_name);
+				}
+			}
+			Operation::DropConstraintDefinition { table, constraint } => {
+				if let Some(model) = state.find_model_by_table_mut(table) {
+					if let Constraint::EnumDomain { column, .. } = constraint
 						&& let Some(field) = model.fields.get_mut(column)
 					{
 						field.domain = None;
 					}
 					model
 						.constraints
-						.retain(|constraint| constraint.name != *constraint_name);
+						.retain(|definition| definition.name != constraint.name());
 				}
 			}
 			Operation::AddConstraint { .. }
@@ -2492,7 +2502,6 @@ impl Operation {
 			Operation::DropConstraint {
 				table,
 				constraint_name,
-				..
 			} => {
 				format!(
 					"ALTER TABLE {} DROP CONSTRAINT {};",
@@ -2500,6 +2509,11 @@ impl Operation {
 					quote_identifier(constraint_name)
 				)
 			}
+			Operation::DropConstraintDefinition { table, constraint } => format!(
+				"ALTER TABLE {} DROP CONSTRAINT {};",
+				Self::quote_schema_identifier(table, dialect),
+				Self::quote_dialect_identifier(constraint.name(), dialect)
+			),
 			Operation::CreateIndex {
 				table,
 				columns,
@@ -3437,22 +3451,7 @@ impl Operation {
 			Operation::DropConstraint {
 				table,
 				constraint_name,
-				old_constraint,
 			} => {
-				if let Some(constraint) = old_constraint {
-					return Ok(Some(vec![match constraint {
-						Constraint::EnumDomain { .. } => Operation::AddConstraintDefinition {
-							table: table.clone(),
-							constraint: constraint.clone(),
-						}
-						.to_sql(dialect),
-						_ => format!(
-							"ALTER TABLE {} ADD {};",
-							quote_identifier(table),
-							constraint
-						),
-					}]));
-				}
 				// Retrieve constraint definition from ProjectState
 				if let Some(model) = project_state.find_model_by_table(table)
 					&& let Some(constraint_def) = model
@@ -3476,6 +3475,20 @@ impl Operation {
 				}
 				// Cannot reconstruct without state
 				Ok(None)
+			}
+			Operation::DropConstraintDefinition { table, constraint } => {
+				Ok(Some(vec![match constraint {
+					Constraint::EnumDomain { .. } => Operation::AddConstraintDefinition {
+						table: table.clone(),
+						constraint: constraint.clone(),
+					}
+					.to_sql(dialect),
+					_ => format!(
+						"ALTER TABLE {} ADD {};",
+						quote_identifier(table),
+						constraint
+					),
+				}]))
 			}
 			Operation::DropTable { name } => {
 				// Retrieve table definition from ProjectState and reconstruct CREATE TABLE
@@ -3614,18 +3627,16 @@ impl Operation {
 				}
 			}
 			Operation::DropConstraint {
-				table,
-				constraint_name,
-				old_constraint,
-			} => {
-				if let (Some(model), Some(constraint)) =
-					(state.find_model_by_table_mut(table), old_constraint)
-				{
+				table: _,
+				constraint_name: _,
+			} => {}
+			Operation::DropConstraintDefinition { table, constraint } => {
+				if let Some(model) = state.find_model_by_table_mut(table) {
 					let definition = ProjectState::constraint_to_definition(constraint);
 					if !model
 						.constraints
 						.iter()
-						.any(|item| item.name == *constraint_name)
+						.any(|item| item.name == constraint.name())
 					{
 						if let Constraint::EnumDomain { column, domain, .. } = constraint
 							&& let Some(field) = model.fields.get_mut(column)
@@ -4732,6 +4743,7 @@ impl Operation {
 				| Operation::AddConstraintDefinition { .. }
 				| Operation::AddConstraintRepair { .. }
 				| Operation::DropConstraint { .. }
+				| Operation::DropConstraintDefinition { .. }
 		) || matches!(
 			self,
 			Operation::AddColumn { column, .. }
@@ -4765,6 +4777,7 @@ impl Operation {
 					| Operation::AddConstraintDefinition { .. }
 					// DropConstraint → Reverse AddConstraint (requires recreation)
 					| Operation::DropConstraint { .. }
+					| Operation::DropConstraintDefinition { .. }
 					// RestoreConstraintOnRollback → Reverse AddConstraint (requires recreation)
 					| Operation::RestoreConstraintOnRollback { .. }
 		) || matches!(
@@ -4893,7 +4906,6 @@ impl Operation {
 					return Ok(Some(Operation::DropConstraint {
 						table: table.clone(),
 						constraint_name,
-						old_constraint: None,
 					}));
 				}
 				Err(super::MigrationError::InvalidMigration(format!(
@@ -4902,10 +4914,9 @@ impl Operation {
 				)))
 			}
 			Operation::AddConstraintDefinition { table, constraint } => {
-				Ok(Some(Operation::DropConstraint {
+				Ok(Some(Operation::DropConstraintDefinition {
 					table: table.clone(),
-					constraint_name: constraint.name().to_string(),
-					old_constraint: Some(constraint.clone()),
+					constraint: constraint.clone(),
 				}))
 			}
 			Operation::AddConstraintRepair { .. } => Ok(None),
@@ -4919,20 +4930,7 @@ impl Operation {
 			Operation::DropConstraint {
 				table,
 				constraint_name,
-				old_constraint,
 			} => {
-				if let Some(constraint) = old_constraint {
-					return Ok(Some(match constraint {
-						Constraint::EnumDomain { .. } => Operation::AddConstraintDefinition {
-							table: table.clone(),
-							constraint: constraint.clone(),
-						},
-						_ => Operation::AddConstraint {
-							table: table.clone(),
-							constraint_sql: constraint.to_string(),
-						},
-					}));
-				}
 				// Reconstruct AddConstraint from ProjectState
 				if let Some(model) = project_state.find_model_by_table(table)
 					&& let Some(constraint_def) = model
@@ -4953,6 +4951,18 @@ impl Operation {
 					}));
 				}
 				Ok(None)
+			}
+			Operation::DropConstraintDefinition { table, constraint } => {
+				Ok(Some(match constraint {
+					Constraint::EnumDomain { .. } => Operation::AddConstraintDefinition {
+						table: table.clone(),
+						constraint: constraint.clone(),
+					},
+					_ => Operation::AddConstraint {
+						table: table.clone(),
+						constraint_sql: constraint.to_string(),
+					},
+				}))
 			}
 			Operation::RenameTable { old_name, new_name } => Ok(Some(Operation::RenameTable {
 				old_name: new_name.clone(),
@@ -5164,6 +5174,9 @@ impl Operation {
 				quote_identifier(old_name),
 				quote_identifier(new_name)
 			)),
+			Operation::DropConstraintDefinition { .. } => {
+				OperationStatement::DialectOperation(Box::new(self.clone()))
+			}
 			Operation::AddConstraint {
 				table,
 				constraint_sql,
@@ -5854,6 +5867,10 @@ impl MigrationOperation for Operation {
 				table.to_lowercase(),
 				new_name.to_lowercase()
 			)),
+			Operation::DropConstraintDefinition { constraint, .. } => Some(format!(
+				"drop_constraint_{}",
+				constraint.name().to_lowercase()
+			)),
 			Operation::AddConstraint { table, .. }
 			| Operation::AddConstraintDefinition { table, .. }
 			| Operation::AddConstraintRepair { table, .. }
@@ -5964,6 +5981,9 @@ impl MigrationOperation for Operation {
 				constraint_name,
 				..
 			} => format!("Drop constraint {} from {}", constraint_name, table),
+			Operation::DropConstraintDefinition { table, constraint } => {
+				format!("Drop constraint {} from {}", constraint.name(), table)
+			}
 			Operation::CreateIndex { table, unique, .. }
 			| Operation::CreateIndexRepair { table, unique, .. }
 			| Operation::RestoreIndexOnRollback { table, unique, .. } => {
@@ -6446,7 +6466,7 @@ mod tests {
 
 		assert_eq!(
 			constraint.to_string(),
-			"CONSTRAINT jobs_status_model_enum_check CHECK (\"job_status\" IN ('owner''s', 'queued'))"
+			"CONSTRAINT \"jobs_status_model_enum_check\" CHECK (\"job_status\" IN ('owner''s', 'queued'))"
 		);
 	}
 
@@ -6466,7 +6486,7 @@ mod tests {
 
 		assert_eq!(
 			constraint.to_string(),
-			"CONSTRAINT jobs_status_model_enum_check CHECK (\"status_code\" IN (2, 10))"
+			"CONSTRAINT \"jobs_status_model_enum_check\" CHECK (\"status_code\" IN (2, 10))"
 		);
 	}
 
@@ -6566,7 +6586,7 @@ mod tests {
 			.to_sql_string(crate::backends::types::DatabaseType::Mysql);
 
 		assert!(
-			sql.contains("ALTER TABLE `jobs` ADD CONSTRAINT jobs_status_model_enum_check"),
+			sql.contains("ALTER TABLE `jobs` ADD CONSTRAINT `jobs_status_model_enum_check`"),
 			"{sql}"
 		);
 		assert!(sql.contains("CHECK (`job_status` IN ('queued'))"), "{sql}");
@@ -6687,9 +6707,18 @@ mod tests {
 			Operation::DropConstraint {
 				table: "jobs".to_string(),
 				constraint_name: "jobs_status_check".to_string(),
-				old_constraint: None,
 			}
 		);
+	}
+
+	#[test]
+	fn legacy_drop_constraint_rust_source_shape_still_typechecks() {
+		let operation = Operation::DropConstraint {
+			table: "users".to_string(),
+			constraint_name: "users_status_check".to_string(),
+		};
+
+		assert!(matches!(operation, Operation::DropConstraint { .. }));
 	}
 
 	#[test]
@@ -6866,7 +6895,6 @@ mod tests {
 		let op = Operation::DropConstraint {
 			table: "users".to_string(),
 			constraint_name: "age_check".to_string(),
-			old_constraint: None,
 		};
 
 		let stmt = op.to_statement();
@@ -8955,7 +8983,6 @@ mod tests {
 		let operation = Operation::DropConstraint {
 			table: table.clone(),
 			constraint_name: name.clone(),
-			old_constraint: None,
 		};
 
 		let reverse = operation
@@ -8981,7 +9008,6 @@ mod tests {
 		let operation = Operation::DropConstraint {
 			table,
 			constraint_name: name,
-			old_constraint: None,
 		};
 
 		let sql = operation

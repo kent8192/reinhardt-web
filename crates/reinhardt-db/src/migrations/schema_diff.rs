@@ -1261,7 +1261,6 @@ impl SchemaDiff {
 			operations.push(Operation::DropConstraint {
 				table: table_name.clone(),
 				constraint_name: constraint.name.clone(),
-				old_constraint: None,
 			});
 		}
 

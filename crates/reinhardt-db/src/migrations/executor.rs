@@ -895,12 +895,19 @@ impl DatabaseMigrationExecutor {
 		// 3. Build ColumnDefinition list, mirroring the introspector's
 		//    semantics (PK columns are implicitly NOT NULL; AUTOINCREMENT is
 		//    only meaningful on PK columns).
+		let mut composite_primary_key: Vec<(i64, String)> = col_rows
+			.iter()
+			.filter(|column| column.pk > 0)
+			.map(|column| (column.pk, column.name.clone()))
+			.collect();
+		composite_primary_key.sort_by_key(|(ordinal, _)| *ordinal);
+		let has_composite_primary_key = composite_primary_key.len() > 1;
 		let mut columns: Vec<super::ColumnDefinition> = col_rows
 			.iter()
 			.map(|c| {
-				let is_pk = c.pk > 0;
+				let is_pk = c.pk > 0 && !has_composite_primary_key;
 				let is_auto = is_pk && has_autoincrement;
-				let nullable = if is_pk { false } else { c.notnull == 0 };
+				let nullable = if c.pk > 0 { false } else { c.notnull == 0 };
 				// Preserve `dflt_value` verbatim as the raw SQL fragment
 				// (e.g. `'pending'` including surrounding quotes). The
 				// downstream `format!("DEFAULT {}", default)` paths in
@@ -978,6 +985,10 @@ impl DatabaseMigrationExecutor {
 			.as_ref()
 			.map(|sql| SQLiteIntrospector::parse_fk_constraint_names(sql))
 			.unwrap_or_default();
+		let named_fk_deferrals = create_sql
+			.as_deref()
+			.map(parse_sqlite_fk_deferrals)
+			.unwrap_or_default();
 
 		let mut fk_groups: std::collections::HashMap<i64, Vec<FkRow>> =
 			std::collections::HashMap::new();
@@ -996,6 +1007,15 @@ impl DatabaseMigrationExecutor {
 		}
 
 		let mut constraints: Vec<super::Constraint> = Vec::new();
+		if has_composite_primary_key {
+			constraints.push(super::Constraint::PrimaryKey {
+				name: format!("{}_pkey", table_name),
+				columns: composite_primary_key
+					.into_iter()
+					.map(|(_, column)| column)
+					.collect(),
+			});
+		}
 		for (fk_id, mut group) in fk_groups {
 			group.sort_by_key(|r| r.seq);
 			let referenced_table = group[0].table.clone();
@@ -1006,6 +1026,7 @@ impl DatabaseMigrationExecutor {
 				.get(&signature)
 				.cloned()
 				.unwrap_or_else(|| format!("fk_{}_{}", table_name, fk_id));
+			let deferrable = named_fk_deferrals.get(&name).copied();
 			constraints.push(super::Constraint::ForeignKey {
 				name,
 				columns: columns_from,
@@ -1013,7 +1034,7 @@ impl DatabaseMigrationExecutor {
 				referenced_columns: columns_to,
 				on_delete: fk_action(&group[0].on_delete),
 				on_update: fk_action(&group[0].on_update),
-				deferrable: None,
+				deferrable,
 			});
 		}
 
@@ -1219,6 +1240,23 @@ impl DatabaseMigrationExecutor {
 					columns,
 					constraints,
 					constraint_name,
+				)
+				.with_indexes(indexes)
+				.with_without_rowid(without_rowid)
+			}
+			Operation::DropConstraintDefinition { table, constraint } => {
+				tracing::debug!(
+					"Handling SQLite table recreation for typed constraint drop: table={}, constraint={}",
+					table,
+					constraint.name()
+				);
+				let (columns, constraints, indexes, without_rowid) =
+					Self::read_sqlite_table_via_editor(editor, table).await?;
+				SqliteTableRecreation::for_drop_constraint(
+					table,
+					columns,
+					constraints,
+					constraint.name(),
 				)
 				.with_indexes(indexes)
 				.with_without_rowid(without_rowid)
@@ -1837,6 +1875,62 @@ fn split_sqlite_top_level_list(sql: &str) -> Vec<&str> {
 		parts.push(tail);
 	}
 	parts
+}
+
+#[cfg(feature = "sqlite")]
+fn parse_sqlite_fk_deferrals(
+	create_sql: &str,
+) -> std::collections::HashMap<String, super::operations::DeferrableOption> {
+	let Some(body) = sqlite_create_table_body(create_sql) else {
+		return std::collections::HashMap::new();
+	};
+	let mut deferrals = std::collections::HashMap::new();
+	for definition in split_sqlite_top_level_list(body) {
+		let Some(name) = sqlite_named_constraint_name(definition) else {
+			continue;
+		};
+		let normalized = definition.to_ascii_uppercase();
+		if !normalized.contains("FOREIGN KEY") {
+			continue;
+		}
+		let option = if normalized.contains("NOT DEFERRABLE") {
+			None
+		} else if normalized.contains("DEFERRABLE INITIALLY DEFERRED") {
+			Some(super::operations::DeferrableOption::Deferred)
+		} else if normalized.contains("DEFERRABLE INITIALLY IMMEDIATE") {
+			Some(super::operations::DeferrableOption::Immediate)
+		} else {
+			None
+		};
+		if let Some(option) = option {
+			deferrals.insert(name, option);
+		}
+	}
+	deferrals
+}
+
+#[cfg(feature = "sqlite")]
+fn sqlite_named_constraint_name(definition: &str) -> Option<String> {
+	let trimmed = definition.trim_start();
+	let keyword_end = trimmed.find(char::is_whitespace)?;
+	if !trimmed[..keyword_end].eq_ignore_ascii_case("CONSTRAINT") {
+		return None;
+	}
+	let rest = trimmed[keyword_end..].trim_start();
+	let first = rest.chars().next()?;
+	let (closing, content) = match first {
+		'"' | '`' | '\'' => (first, &rest[first.len_utf8()..]),
+		'[' => (']', &rest[first.len_utf8()..]),
+		_ => {
+			return rest
+				.split_whitespace()
+				.next()
+				.filter(|name| !name.is_empty())
+				.map(str::to_string);
+		}
+	};
+	let end = content.find(closing)?;
+	Some(content[..end].to_string())
 }
 
 #[cfg(feature = "sqlite")]
@@ -2759,10 +2853,9 @@ mod rollback_orchestration_tests {
 		});
 		let mut replacement = Migration::new("0002_replace_status", "rolltest");
 		replacement.operations = vec![
-			Operation::DropConstraint {
+			Operation::DropConstraintDefinition {
 				table: "enum_jobs".to_string(),
-				constraint_name: constraint_name.to_string(),
-				old_constraint: Some(old_constraint),
+				constraint: old_constraint,
 			},
 			Operation::AddConstraintDefinition {
 				table: "enum_jobs".to_string(),
