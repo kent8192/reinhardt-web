@@ -268,6 +268,8 @@ impl CockroachDBTransactionManager {
 		error.database_error().is_some_and(|database_error| {
 			database_error.kind() == DatabaseErrorKind::Serialization
 				|| database_error.code() == Some("40001")
+				|| database_error.message().contains("restart transaction")
+				|| database_error.message().contains("serialization failure")
 		})
 	}
 
@@ -375,6 +377,14 @@ mod tests {
 			"serialization failure",
 		));
 		assert!(CockroachDBTransactionManager::is_serialization_error(&err2));
+
+		let message_only = Error::from(DatabaseError::new(
+			DatabaseErrorKind::Query,
+			"restart transaction: TransactionRetryWithProtoRefreshError",
+		));
+		assert!(CockroachDBTransactionManager::is_serialization_error(
+			&message_only
+		));
 
 		let err3 = Error::from(DatabaseError::new(
 			DatabaseErrorKind::Query,

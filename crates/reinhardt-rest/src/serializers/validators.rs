@@ -163,7 +163,7 @@ impl From<DatabaseValidatorError> for reinhardt_core::exception::Error {
 				reinhardt_core::exception::Error::Validation(source.to_string())
 			}
 			DatabaseValidatorError::SerializationError { message } => {
-				reinhardt_core::exception::Error::Serialization(message)
+				DatabaseError::new(DatabaseErrorKind::Query, message).into()
 			}
 			DatabaseValidatorError::InvalidModelShape { message } => {
 				reinhardt_core::exception::Error::Validation(message)
@@ -677,7 +677,7 @@ mod tests {
 	}
 
 	#[rstest]
-	fn serialization_failure_converts_to_framework_serialization_error() {
+	fn serialization_failure_converts_to_framework_database_error() {
 		let error = DatabaseValidatorError::SerializationError {
 			message: "failed to serialize model".to_string(),
 		};
@@ -685,8 +685,9 @@ mod tests {
 		let framework_error: reinhardt_core::exception::Error = error.into();
 
 		match framework_error {
-			reinhardt_core::exception::Error::Serialization(message) => {
-				assert_eq!(message, "failed to serialize model");
+			reinhardt_core::exception::Error::Database(error) => {
+				assert_eq!(error.kind(), DatabaseErrorKind::Query);
+				assert_eq!(error.message(), "failed to serialize model");
 			}
 			other => panic!("unexpected framework error variant: {other:?}"),
 		}

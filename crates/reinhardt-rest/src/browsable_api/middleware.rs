@@ -5,7 +5,7 @@
 
 use async_trait::async_trait;
 use hyper::{Method, Uri};
-use reinhardt_core::exception::Result;
+use reinhardt_core::exception::{DatabaseError, DatabaseErrorKind, Result};
 use reinhardt_http::{Handler, Middleware};
 use reinhardt_http::{Request, Response};
 use std::sync::Arc;
@@ -139,9 +139,10 @@ impl BrowsableApiMiddleware {
 		// Parse JSON response
 		let json_body: serde_json::Value =
 			serde_json::from_slice(&response.body).map_err(|error| {
-				reinhardt_core::exception::Error::Serialization(format!(
-					"Failed to parse JSON: {error}"
-				))
+				DatabaseError::new(
+					DatabaseErrorKind::Query,
+					format!("Failed to parse downstream JSON response: {error}"),
+				)
 			})?;
 
 		// Extract CSRF token from response cookies for form inclusion
