@@ -108,40 +108,51 @@ scan_cargo_manifests() {
 			return value
 		}
 
-		function toml_tokens(value, position, character, in_basic_string, in_literal_string, escaped, result) {
+		function canonical_toml_string(value, simple_string) {
+			if (simple_string && (value == "package" || value == "anyhow")) {
+				return "\"" value "\""
+			}
+			return "\"\""
+		}
+
+		function toml_tokens(value, position, character, in_basic_string, in_literal_string, escaped, result, string_value, simple_string) {
 			in_basic_string = 0
 			in_literal_string = 0
 			escaped = 0
 			result = ""
+			string_value = ""
+			simple_string = 1
 
 			for (position = 1; position <= length(value); position++) {
 				character = substr(value, position, 1)
 
 				if (in_basic_string) {
 					if (escaped) {
-						result = result character
+						string_value = string_value character
 						escaped = 0
 					} else if (character == "\\") {
-						result = result character
+						simple_string = 0
 						escaped = 1
 					} else if (character == "\"") {
-						result = result "\""
+						result = result canonical_toml_string(string_value, simple_string)
 						in_basic_string = 0
 					} else {
-						result = result character
+						string_value = string_value character
 					}
 				} else if (in_literal_string) {
 					if (character == "\047") {
-						result = result "\""
+						result = result canonical_toml_string(string_value, simple_string)
 						in_literal_string = 0
 					} else {
-						result = result character
+						string_value = string_value character
 					}
 				} else if (character == "\"") {
-					result = result "\""
+					string_value = ""
+					simple_string = 1
 					in_basic_string = 1
 				} else if (character == "\047") {
-					result = result "\""
+					string_value = ""
+					simple_string = 1
 					in_literal_string = 1
 				} else if (character !~ /[[:space:]]/) {
 					result = result character
@@ -195,7 +206,7 @@ scan_cargo_manifests() {
 		}
 
 		function is_prohibited_dependency_entry(value) {
-			return value ~ /^anyhow([.][[:alnum:]_-]+)?=/ || value ~ /^[[:alnum:]_-]+[.]package=anyhow$/ || value ~ /^[[:alnum:]_-]+=\{.*package=anyhow([,}])/
+			return value ~ /^anyhow([.][[:alnum:]_-]+)?=/ || value ~ /^[[:alnum:]_-]+[.]package=anyhow$/
 		}
 
 		function is_prohibited_root_dependency_entry(value) {

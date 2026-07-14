@@ -297,6 +297,30 @@ expect_clean "multiline dependency package text in a real comment"
 
 reset_fixture
 cat >> "$FIXTURE/Cargo.toml" <<'EOF'
+serde = {
+  version = "1",
+  note = ',package="anyhow",',
+}
+EOF
+expect_clean "multiline literal string with package-like syntax"
+
+reset_fixture
+cat >> "$FIXTURE/Cargo.toml" <<'EOF'
+serde = {
+  version = "1",
+  note = ",package=\"anyhow\",",
+}
+EOF
+expect_clean "multiline basic string with escaped package-like syntax"
+
+reset_fixture
+cat >> "$FIXTURE/Cargo.toml" <<'EOF'
+serde = { version = "1", note = ',package="anyhow",' }
+EOF
+expect_clean "single-line literal string with package-like syntax"
+
+reset_fixture
+cat >> "$FIXTURE/Cargo.toml" <<'EOF'
 
 [dependencies.errors]
 package = "anyhow"
