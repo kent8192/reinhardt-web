@@ -303,7 +303,7 @@ Resource hook migration:
 let questions = create_resource_with_deps(fetch_questions, (page,));
 
 // After
-let questions = use_resource(fetch_questions, (page,));
+let questions = use_resource(fetch_questions, deps![page]);
 ```
 
 Form runtime migration:
