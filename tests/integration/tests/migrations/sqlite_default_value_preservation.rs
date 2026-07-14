@@ -33,6 +33,7 @@ fn pk_column(name: &str) -> ColumnDefinition {
 		auto_increment: true,
 		default: None,
 		generated: None,
+		domain: None,
 	}
 }
 
@@ -93,6 +94,7 @@ async fn issue_4454_string_default_survives_drop_column_recreation() {
 					default: Some("'pending'".to_string()),
 
 					generated: None,
+					domain: None,
 				},
 				ColumnDefinition {
 					name: "note".to_string(),
@@ -104,6 +106,7 @@ async fn issue_4454_string_default_survives_drop_column_recreation() {
 					default: None,
 
 					generated: None,
+					domain: None,
 				},
 			],
 			constraints: vec![],

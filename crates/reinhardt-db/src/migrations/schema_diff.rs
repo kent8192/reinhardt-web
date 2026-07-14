@@ -342,6 +342,7 @@ impl SchemaDiff {
 			primary_key: col.primary_key,
 			auto_increment: Self::is_auto_increment(col),
 			generated: col.generated.clone(),
+			domain: None,
 		}
 	}
 

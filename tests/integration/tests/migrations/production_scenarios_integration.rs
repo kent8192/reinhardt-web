@@ -67,6 +67,7 @@ fn create_basic_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 		auto_increment: false,
 		default: None,
 		generated: None,
+		domain: None,
 	}
 }
 
@@ -81,6 +82,7 @@ fn create_nullable_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 		auto_increment: false,
 		default: None,
 		generated: None,
+		domain: None,
 	}
 }
 
@@ -136,6 +138,7 @@ async fn test_zero_downtime_deployment_scenario(
 					default: None,
 
 					generated: None,
+					domain: None,
 				},
 				create_basic_column("name", FieldType::VarChar(Some(200))),
 				create_basic_column("email", FieldType::VarChar(Some(255))),
@@ -479,6 +482,7 @@ async fn test_backward_compatibility_preservation(
 					default: None,
 
 					generated: None,
+					domain: None,
 				},
 				create_basic_column("name", FieldType::VarChar(Some(200))),
 				create_basic_column("price", FieldType::Decimal(Some((10, 2)))),
@@ -542,6 +546,7 @@ async fn test_backward_compatibility_preservation(
 					default: Some("0".to_string()),
 
 					generated: None,
+					domain: None,
 				},
 				mysql_options: None,
 			},
@@ -702,6 +707,7 @@ async fn test_migration_rollforward_on_failure(
 						default: None,
 
 						generated: None,
+						domain: None,
 					},
 					create_basic_column("username", FieldType::VarChar(Some(100))),
 				],
@@ -719,6 +725,7 @@ async fn test_migration_rollforward_on_failure(
 						default: None,
 
 						generated: None,
+						domain: None,
 					},
 					create_basic_column("username", FieldType::VarChar(Some(100))),
 					create_basic_column("email", FieldType::VarChar(Some(255))),
@@ -847,6 +854,7 @@ async fn test_migration_rollforward_on_failure(
 					default: None,
 
 					generated: None,
+					domain: None,
 				},
 				create_basic_column("username", FieldType::VarChar(Some(100))),
 			],
@@ -924,6 +932,7 @@ async fn test_hot_schema_changes(
 					default: None,
 
 					generated: None,
+					domain: None,
 				},
 				create_basic_column("user_id", FieldType::Integer),
 				create_basic_column("event_type", FieldType::VarChar(Some(50))),
@@ -937,6 +946,7 @@ async fn test_hot_schema_changes(
 					default: Some("CURRENT_TIMESTAMP".to_string()),
 
 					generated: None,
+					domain: None,
 				},
 			],
 		}],
@@ -1111,6 +1121,7 @@ async fn test_disaster_recovery_migration(
 					default: None,
 
 					generated: None,
+					domain: None,
 				},
 				create_basic_column("customer_name", FieldType::VarChar(Some(200))),
 				create_basic_column("total", FieldType::Decimal(Some((10, 2)))),
@@ -1168,6 +1179,7 @@ async fn test_disaster_recovery_migration(
 				default: Some("'pending'".to_string()),
 
 				generated: None,
+				domain: None,
 			},
 		}],
 	);
@@ -1188,6 +1200,7 @@ async fn test_disaster_recovery_migration(
 					default: Some("CURRENT_TIMESTAMP".to_string()),
 
 					generated: None,
+					domain: None,
 				},
 				mysql_options: None,
 			},
@@ -1203,6 +1216,7 @@ async fn test_disaster_recovery_migration(
 					default: Some("CURRENT_TIMESTAMP".to_string()),
 
 					generated: None,
+					domain: None,
 				},
 				mysql_options: None,
 			},

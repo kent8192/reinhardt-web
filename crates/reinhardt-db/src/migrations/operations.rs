@@ -501,6 +501,15 @@ pub enum Constraint {
 		/// The SQL check expression.
 		expression: String,
 	},
+	/// Typed finite-value domain for a model enum.
+	EnumDomain {
+		/// The constraint name.
+		name: String,
+		/// The constrained database column.
+		column: String,
+		/// The structured enum domain.
+		domain: crate::field_domain::FieldDomain,
+	},
 	/// OneToOne constraint (ForeignKey + Unique combination)
 	OneToOne {
 		/// The constraint name.
@@ -587,6 +596,32 @@ impl std::fmt::Display for Constraint {
 			}
 			Constraint::Check { name, expression } => {
 				write!(f, "CONSTRAINT {} CHECK ({})", name, expression)
+			}
+			Constraint::EnumDomain {
+				name,
+				column,
+				domain,
+			} => {
+				let crate::field_domain::FieldDomain::Enum { values, .. } = domain;
+				let mut literals = values
+					.iter()
+					.map(|value| match value {
+						crate::field_domain::ModelEnumValue::String(value) => {
+							Value::String(Some(Box::new(value.clone()))).to_sql_literal()
+						}
+						crate::field_domain::ModelEnumValue::I32(value) => {
+							Value::Int(Some(*value)).to_sql_literal()
+						}
+					})
+					.collect::<Vec<_>>();
+				literals.sort();
+				write!(
+					f,
+					"CONSTRAINT {} CHECK ({} IN ({}))",
+					name,
+					format_args!("\"{}\"", column.replace('"', "\"\"")),
+					literals.join(", ")
+				)
 			}
 			Constraint::OneToOne {
 				name,
@@ -789,6 +824,9 @@ impl BulkLoadOptions {
 /// This enum is maintained for backward compatibility with existing code.
 /// New code should use the specific operation types from the `models`, `fields`,
 /// and `special` modules instead.
+// The legacy public variants embed ColumnDefinition by value, so boxing them would break
+// migration source compatibility. Structured field domains intentionally preserve that shape.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type")]
 pub enum Operation {
@@ -3419,6 +3457,9 @@ pub struct ColumnDefinition {
 	#[serde(default)]
 	/// Generated-column metadata.
 	pub generated: Option<GeneratedColumnDefinition>,
+	/// Structured domain constraints for this column.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub domain: Option<crate::field_domain::FieldDomain>,
 }
 
 impl ColumnDefinition {
@@ -3433,7 +3474,14 @@ impl ColumnDefinition {
 			auto_increment: false,
 			default: None,
 			generated: None,
+			domain: None,
 		}
+	}
+
+	/// Sets structured column-domain metadata and returns self for chaining.
+	pub fn with_domain(mut self, domain: crate::field_domain::FieldDomain) -> Self {
+		self.domain = Some(domain.canonicalized());
+		self
 	}
 
 	/// Create a ColumnDefinition from FieldState with attribute parsing
@@ -3519,8 +3567,31 @@ impl ColumnDefinition {
 			auto_increment,
 			default,
 			generated,
+			domain: field_state.domain.clone(),
 		}
 	}
+}
+
+pub(crate) fn truncate_identifier_with_hash(logical_name: &str) -> String {
+	use std::collections::hash_map::DefaultHasher;
+	use std::hash::{Hash, Hasher};
+
+	const MAX_IDENTIFIER_LENGTH: usize = 63;
+	if logical_name.len() <= MAX_IDENTIFIER_LENGTH {
+		return logical_name.to_string();
+	}
+
+	let mut hasher = DefaultHasher::new();
+	logical_name.hash(&mut hasher);
+	let hash = format!("{:016x}", hasher.finish());
+	let prefix_len = MAX_IDENTIFIER_LENGTH - hash.len() - 1;
+	let boundary = logical_name
+		.char_indices()
+		.map(|(index, _)| index)
+		.take_while(|index| *index <= prefix_len)
+		.last()
+		.unwrap_or(0);
+	format!("{}_{}", &logical_name[..boundary], hash)
 }
 
 /// Generated-column metadata for migration operations.
@@ -4359,6 +4430,7 @@ impl SqliteTableRecreation {
 			Constraint::ForeignKey { columns, .. } => columns.iter().any(|c| c == column_name),
 			Constraint::Unique { columns, .. } => columns.iter().any(|c| c == column_name),
 			Constraint::Check { expression, .. } => expression.contains(column_name),
+			Constraint::EnumDomain { column, .. } => column == column_name,
 			Constraint::OneToOne { column, .. } => column == column_name,
 			Constraint::ManyToMany { source_column, .. } => source_column == column_name,
 			Constraint::Exclude { elements, .. } => {
@@ -4374,6 +4446,7 @@ impl SqliteTableRecreation {
 			Constraint::ForeignKey { name, .. } => name == constraint_name,
 			Constraint::Unique { name, .. } => name == constraint_name,
 			Constraint::Check { name, .. } => name == constraint_name,
+			Constraint::EnumDomain { name, .. } => name == constraint_name,
 			Constraint::OneToOne { name, .. } => name == constraint_name,
 			Constraint::ManyToMany { name, .. } => name == constraint_name,
 			Constraint::Exclude { name, .. } => name == constraint_name,
@@ -5096,6 +5169,9 @@ impl Operation {
 					// This would need to be handled with raw SQL if needed
 					let _ = (name, expression); // Suppress unused warnings
 				}
+				Constraint::EnumDomain { .. } => {
+					// Typed CHECK constraints are emitted through the operation SQL path.
+				}
 				Constraint::OneToOne {
 					name,
 					column,
@@ -5758,6 +5834,7 @@ mod tests {
 					auto_increment: true,
 					default: None,
 					generated: None,
+					domain: None,
 				},
 				ColumnDefinition {
 					name: "name".to_string(),
@@ -5768,6 +5845,7 @@ mod tests {
 					auto_increment: false,
 					default: None,
 					generated: None,
+					domain: None,
 				},
 			],
 			constraints: vec![],
@@ -5833,6 +5911,7 @@ mod tests {
 				auto_increment: false,
 				default: Some("''".to_string()),
 				generated: None,
+				domain: None,
 			},
 			mysql_options: None,
 		};
@@ -5908,6 +5987,7 @@ mod tests {
 				auto_increment: false,
 				default: None,
 				generated: None,
+				domain: None,
 			},
 			mysql_options: None,
 		};
@@ -6017,6 +6097,64 @@ mod tests {
 			sql.contains("age_check"),
 			"SQL should contain constraint name 'age_check', got: {}",
 			sql
+		);
+	}
+
+	#[test]
+	fn enum_domain_constraint_escapes_string_literals() {
+		let constraint = Constraint::EnumDomain {
+			name: "jobs_status_model_enum_check".to_string(),
+			column: "job_status".to_string(),
+			domain: crate::field_domain::FieldDomain::Enum {
+				repr: crate::field_domain::ModelEnumRepr::String,
+				values: vec![
+					crate::field_domain::ModelEnumValue::String("queued".to_string()),
+					crate::field_domain::ModelEnumValue::String("owner's".to_string()),
+				],
+			},
+		};
+
+		assert_eq!(
+			constraint.to_string(),
+			"CONSTRAINT jobs_status_model_enum_check CHECK (\"job_status\" IN ('owner''s', 'queued'))"
+		);
+	}
+
+	#[test]
+	fn enum_domain_constraint_renders_integer_literals() {
+		let constraint = Constraint::EnumDomain {
+			name: "jobs_status_model_enum_check".to_string(),
+			column: "status_code".to_string(),
+			domain: crate::field_domain::FieldDomain::Enum {
+				repr: crate::field_domain::ModelEnumRepr::I32,
+				values: vec![
+					crate::field_domain::ModelEnumValue::I32(20),
+					crate::field_domain::ModelEnumValue::I32(10),
+				],
+			},
+		};
+
+		assert_eq!(
+			constraint.to_string(),
+			"CONSTRAINT jobs_status_model_enum_check CHECK (\"status_code\" IN (10, 20))"
+		);
+	}
+
+	#[test]
+	fn enum_domain_constraint_names_are_deterministic_and_bounded() {
+		let logical = format!(
+			"{}_{}_model_enum_check",
+			"very_long_model_enum_table_name".repeat(2),
+			"very_long_resolved_database_column".repeat(2)
+		);
+		let first = truncate_identifier_with_hash(&logical);
+		let second = truncate_identifier_with_hash(&logical);
+
+		assert_eq!(first, second);
+		assert_eq!(first.len(), 63);
+		assert_ne!(
+			first,
+			truncate_identifier_with_hash(&format!("{logical}_different"))
 		);
 	}
 
@@ -6290,6 +6428,7 @@ mod tests {
 				auto_increment: false,
 				default: Some("1".to_string()),
 				generated: None,
+				domain: None,
 			}],
 			base_table: "users".to_string(),
 			join_column: "user_id".to_string(),
@@ -6361,6 +6500,7 @@ mod tests {
 					auto_increment: true,
 					default: None,
 					generated: None,
+					domain: None,
 				},
 				ColumnDefinition {
 					name: "name".to_string(),
@@ -6371,6 +6511,7 @@ mod tests {
 					auto_increment: false,
 					default: None,
 					generated: None,
+					domain: None,
 				},
 			],
 			constraints: vec![],
@@ -6435,6 +6576,7 @@ mod tests {
 				auto_increment: false,
 				default: None,
 				generated: None,
+				domain: None,
 			},
 			mysql_options: None,
 		};
@@ -6594,6 +6736,7 @@ mod tests {
 				auto_increment: false,
 				default: None,
 				generated: None,
+				domain: None,
 			},
 			mysql_options: None,
 		};
@@ -6634,6 +6777,7 @@ mod tests {
 				auto_increment: false,
 				default: None,
 				generated: None,
+				domain: None,
 			}),
 			new_definition: ColumnDefinition {
 				name: "name".to_string(),
@@ -6644,6 +6788,7 @@ mod tests {
 				auto_increment: false,
 				default: None,
 				generated: None,
+				domain: None,
 			},
 			mysql_options: None,
 		}
@@ -6758,6 +6903,7 @@ mod tests {
 				auto_increment: false,
 				default: None,
 				generated: None,
+				domain: None,
 			}),
 			new_definition: ColumnDefinition {
 				name: "is_active".to_string(),
@@ -6768,6 +6914,7 @@ mod tests {
 				auto_increment: false,
 				default: Some("true".to_string()),
 				generated: None,
+				domain: None,
 			},
 			mysql_options: None,
 		};
@@ -6800,6 +6947,7 @@ mod tests {
 				auto_increment: false,
 				default: Some("true".to_string()),
 				generated: None,
+				domain: None,
 			}),
 			new_definition: ColumnDefinition {
 				name: "is_active".to_string(),
@@ -6810,6 +6958,7 @@ mod tests {
 				auto_increment: false,
 				default: None,
 				generated: None,
+				domain: None,
 			},
 			mysql_options: None,
 		};
@@ -6841,6 +6990,7 @@ mod tests {
 				auto_increment: false,
 				default: Some("true".to_string()),
 				generated: None,
+				domain: None,
 			},
 			mysql_options: None,
 		};
@@ -7028,6 +7178,7 @@ mod tests {
 				auto_increment: false,
 				default: None,
 				generated: Some(generated.clone()),
+				domain: None,
 			}),
 		};
 		let state = ProjectState::default();
@@ -7203,6 +7354,7 @@ mod tests {
 				auto_increment: false,
 				default: None,
 				generated: Some(generated),
+				domain: None,
 			}),
 		};
 
@@ -7741,6 +7893,7 @@ mod tests {
 				auto_increment: false,
 				default: None,
 				generated: None,
+				domain: None,
 			},
 			mysql_options: None,
 		};
@@ -7770,6 +7923,7 @@ mod tests {
 				auto_increment: false,
 				default: None,
 				generated: None,
+				domain: None,
 			}],
 			base_table: "users".to_string(),
 			join_column: "user_id".to_string(),
@@ -7862,6 +8016,7 @@ mod tests {
 				auto_increment: false,
 				default: None,
 				generated: None,
+				domain: None,
 			},
 			mysql_options: None,
 		};

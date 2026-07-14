@@ -150,6 +150,7 @@ pub fn field_info_to_column_definition(
 		auto_increment,
 		default,
 		generated: generated_column_definition(field_info),
+		domain: None,
 	})
 }
 
@@ -673,6 +674,7 @@ fn many_to_many_operations(model_infos: &[ModelSchemaInfo]) -> Result<Vec<Operat
 						auto_increment: true,
 						default: None,
 						generated: None,
+						domain: None,
 					},
 					source_definition,
 					target_definition,

@@ -141,6 +141,8 @@ pub struct FieldState {
 	pub params: std::collections::HashMap<String, String>,
 	/// Generated-column metadata.
 	pub generated: Option<super::GeneratedColumnDefinition>,
+	/// Structured database value domain.
+	pub domain: Option<crate::field_domain::FieldDomain>,
 	/// ForeignKey information if this field is a foreign key
 	pub foreign_key: Option<ForeignKeyInfo>,
 }
@@ -154,6 +156,7 @@ impl FieldState {
 			nullable,
 			params: std::collections::HashMap::new(),
 			generated: None,
+			domain: None,
 			foreign_key: None,
 		}
 	}
@@ -171,8 +174,15 @@ impl FieldState {
 			nullable,
 			params: std::collections::HashMap::new(),
 			generated: None,
+			domain: None,
 			foreign_key: Some(foreign_key),
 		}
+	}
+
+	/// Sets structured database value domain metadata.
+	pub fn with_domain(mut self, domain: crate::field_domain::FieldDomain) -> Self {
+		self.domain = Some(domain.canonicalized());
+		self
 	}
 }
 
@@ -284,9 +294,32 @@ fn parse_single_column_unique(constraint_sql: &str) -> Option<&str> {
 }
 
 impl ConstraintDefinition {
+	/// Creates a typed enum-domain constraint definition.
+	pub fn enum_domain(
+		name: impl Into<String>,
+		column: impl Into<String>,
+		domain: crate::field_domain::FieldDomain,
+	) -> Self {
+		Self {
+			name: name.into(),
+			constraint_type: "enum_domain".to_string(),
+			fields: vec![column.into()],
+			expression: Some(
+				serde_json::to_string(&domain).expect("FieldDomain serialization must succeed"),
+			),
+			foreign_key_info: None,
+		}
+	}
+
 	/// Convert ConstraintDefinition to operations::Constraint
 	pub fn to_constraint(&self) -> super::operations::Constraint {
 		match self.constraint_type.as_str() {
+			"enum_domain" => super::operations::Constraint::EnumDomain {
+				name: self.name.clone(),
+				column: self.fields.first().cloned().unwrap_or_default(),
+				domain: serde_json::from_str(self.expression.as_deref().unwrap_or(""))
+					.expect("enum-domain constraint metadata must contain a FieldDomain"),
+			},
 			"unique" => super::operations::Constraint::Unique {
 				name: self.name.clone(),
 				columns: self.fields.clone(),
@@ -1426,6 +1459,11 @@ impl ProjectState {
 				expression: Some(expression.clone()),
 				foreign_key_info: None,
 			},
+			super::operations::Constraint::EnumDomain {
+				name,
+				column,
+				domain,
+			} => ConstraintDefinition::enum_domain(name.clone(), column.clone(), domain.clone()),
 			super::operations::Constraint::OneToOne {
 				name,
 				column,
@@ -1620,6 +1658,7 @@ impl ProjectState {
 			nullable: !col.not_null,
 			params,
 			generated: col.generated.clone(),
+			domain: col.domain.clone(),
 			foreign_key: None,
 		}
 	}
@@ -5442,11 +5481,7 @@ impl MigrationAutodetector {
 				self.matching_from_model_for_to_model(app_label, model_name, to_model, changes)
 			{
 				for to_constraint in &to_model.constraints {
-					if from_model
-						.constraints
-						.iter()
-						.any(|c| c.name == to_constraint.name)
-					{
+					if from_model.constraints.iter().any(|c| c == to_constraint) {
 						continue;
 					}
 					if Self::single_field_unique_already_present(to_constraint, from_model) {
@@ -5492,11 +5527,7 @@ impl MigrationAutodetector {
 				self.matching_to_model_for_from_model(app_label, model_name, from_model, changes)
 			{
 				for from_constraint in &from_model.constraints {
-					if to_model
-						.constraints
-						.iter()
-						.any(|c| c.name == from_constraint.name)
-					{
+					if to_model.constraints.iter().any(|c| c == from_constraint) {
 						continue;
 					}
 					if Self::single_field_unique_already_present(from_constraint, to_model) {
@@ -5878,6 +5909,7 @@ impl MigrationAutodetector {
 				auto_increment: true,
 				default: None,
 				generated: None,
+				domain: None,
 			},
 			// source_id column
 			super::ColumnDefinition {
@@ -5889,6 +5921,7 @@ impl MigrationAutodetector {
 				auto_increment: false,
 				default: None,
 				generated: None,
+				domain: None,
 			},
 			// target_id column
 			super::ColumnDefinition {
@@ -5900,6 +5933,7 @@ impl MigrationAutodetector {
 				auto_increment: false,
 				default: None,
 				generated: None,
+				domain: None,
 			},
 		];
 
@@ -6056,6 +6090,7 @@ impl MigrationAutodetector {
 			super::Constraint::PrimaryKey { .. }
 			| super::Constraint::Unique { .. }
 			| super::Constraint::Check { .. }
+			| super::Constraint::EnumDomain { .. }
 			| super::Constraint::Exclude { .. } => false,
 		}
 	}
@@ -6778,6 +6813,7 @@ impl MigrationAutodetector {
 					auto_increment: true,
 					default: None,
 					generated: None,
+					domain: None,
 				},
 				super::ColumnDefinition {
 					name: source_column.clone(),
@@ -6788,6 +6824,7 @@ impl MigrationAutodetector {
 					auto_increment: false,
 					default: None,
 					generated: None,
+					domain: None,
 				},
 				super::ColumnDefinition {
 					name: target_column.clone(),
@@ -6798,6 +6835,7 @@ impl MigrationAutodetector {
 					auto_increment: false,
 					default: None,
 					generated: None,
+					domain: None,
 				},
 			];
 
@@ -7413,6 +7451,7 @@ mod tests {
 					auto_increment: true,
 					default: None,
 					generated: None,
+					domain: None,
 				},
 				super::super::ColumnDefinition {
 					name: "user_id".to_string(),
@@ -7423,6 +7462,7 @@ mod tests {
 					auto_increment: false,
 					default: None,
 					generated: None,
+					domain: None,
 				},
 			],
 			constraints: vec![],
@@ -7475,6 +7515,7 @@ mod tests {
 					auto_increment: true,
 					default: None,
 					generated: None,
+					domain: None,
 				},
 				super::super::ColumnDefinition {
 					name: "user_id".to_string(),
@@ -7485,6 +7526,7 @@ mod tests {
 					auto_increment: false,
 					default: None,
 					generated: None,
+					domain: None,
 				},
 			],
 			constraints: vec![],
@@ -7529,6 +7571,7 @@ mod tests {
 					auto_increment: true,
 					default: None,
 					generated: None,
+					domain: None,
 				},
 				super::super::ColumnDefinition {
 					name: "user_id".to_string(),
@@ -7539,6 +7582,7 @@ mod tests {
 					auto_increment: false,
 					default: None,
 					generated: None,
+					domain: None,
 				},
 			],
 			constraints: vec![],
@@ -8889,6 +8933,7 @@ mod tests {
 			nullable: false,
 			params: std::collections::HashMap::new(),
 			generated: None,
+			domain: None,
 			foreign_key: None,
 		};
 		let mut to_params = std::collections::HashMap::new();
@@ -8901,6 +8946,7 @@ mod tests {
 			nullable: false,
 			params: to_params,
 			generated: None,
+			domain: None,
 			foreign_key: None,
 		};
 
@@ -10893,6 +10939,7 @@ mod tests {
 			nullable: false,
 			params: from_params,
 			generated: None,
+			domain: None,
 			foreign_key: None,
 		};
 
@@ -10915,6 +10962,7 @@ mod tests {
 			nullable: false,
 			params: to_params,
 			generated: None,
+			domain: None,
 			foreign_key: None,
 		};
 
@@ -10956,6 +11004,7 @@ mod tests {
 			nullable: false,
 			params: from_id_params,
 			generated: None,
+			domain: None,
 			foreign_key: None,
 		};
 		let org_field = FieldState::new("organization_id", super::super::FieldType::Integer, false);
@@ -10990,6 +11039,7 @@ mod tests {
 			nullable: false,
 			params: to_id_params,
 			generated: None,
+			domain: None,
 			foreign_key: None,
 		};
 		let unique_constraint = ConstraintDefinition {
@@ -11131,6 +11181,7 @@ mod tests {
 					auto_increment: true,
 					default: None,
 					generated: None,
+					domain: None,
 				},
 				super::super::ColumnDefinition {
 					name: "name".to_string(),
@@ -11141,6 +11192,7 @@ mod tests {
 					auto_increment: false,
 					default: None,
 					generated: None,
+					domain: None,
 				},
 			],
 			constraints: vec![],
@@ -11238,6 +11290,7 @@ mod tests {
 					auto_increment: true,
 					default: None,
 					generated: None,
+					domain: None,
 				},
 				super::super::ColumnDefinition {
 					name: "target_id".to_string(),
@@ -11248,6 +11301,7 @@ mod tests {
 					auto_increment: false,
 					default: None,
 					generated: None,
+					domain: None,
 				},
 			],
 			constraints: vec![],
@@ -11330,6 +11384,7 @@ mod tests {
 					auto_increment: false,
 					default: None,
 					generated: None,
+					domain: None,
 				},
 				super::super::ColumnDefinition {
 					name: "username".to_string(),
@@ -11340,6 +11395,7 @@ mod tests {
 					auto_increment: false,
 					default: None,
 					generated: None,
+					domain: None,
 				},
 				super::super::ColumnDefinition {
 					name: "email".to_string(),
@@ -11350,6 +11406,7 @@ mod tests {
 					auto_increment: false,
 					default: None,
 					generated: None,
+					domain: None,
 				},
 				super::super::ColumnDefinition {
 					name: "first_name".to_string(),
@@ -11360,6 +11417,7 @@ mod tests {
 					auto_increment: false,
 					default: Some("''".to_string()),
 					generated: None,
+					domain: None,
 				},
 				super::super::ColumnDefinition {
 					name: "last_name".to_string(),
@@ -11370,6 +11428,7 @@ mod tests {
 					auto_increment: false,
 					default: Some("''".to_string()),
 					generated: None,
+					domain: None,
 				},
 				super::super::ColumnDefinition {
 					name: "is_active".to_string(),
@@ -11380,6 +11439,7 @@ mod tests {
 					auto_increment: false,
 					default: Some("true".to_string()),
 					generated: None,
+					domain: None,
 				},
 				super::super::ColumnDefinition {
 					name: "is_staff".to_string(),
@@ -11390,6 +11450,7 @@ mod tests {
 					auto_increment: false,
 					default: Some("false".to_string()),
 					generated: None,
+					domain: None,
 				},
 				super::super::ColumnDefinition {
 					name: "is_superuser".to_string(),
@@ -11400,6 +11461,7 @@ mod tests {
 					auto_increment: false,
 					default: Some("false".to_string()),
 					generated: None,
+					domain: None,
 				},
 			],
 			constraints: vec![super::super::operations::Constraint::Unique {
@@ -11426,6 +11488,7 @@ mod tests {
 					auto_increment: true,
 					default: None,
 					generated: None,
+					domain: None,
 				},
 				super::super::ColumnDefinition {
 					name: "name".to_string(),
@@ -11436,6 +11499,7 @@ mod tests {
 					auto_increment: false,
 					default: None,
 					generated: None,
+					domain: None,
 				},
 			],
 			constraints: vec![],
@@ -12108,6 +12172,7 @@ mod tests {
 					auto_increment: false,
 					default: None,
 					generated: None,
+					domain: None,
 				},
 				mysql_options: None,
 			},

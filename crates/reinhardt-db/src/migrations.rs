@@ -302,4 +302,5 @@ pub mod prelude {
 		ColumnDefinition, ColumnType, Constraint, ForeignKeyAction, GeneratedColumnDefinition,
 		GeneratedStorage, Migration, Operation, SchemaBinOper, SchemaExpr, SchemaFunc,
 	};
+	pub use crate::field_domain::{FieldDomain, ModelEnumRepr, ModelEnumValue};
 }

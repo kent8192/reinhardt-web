@@ -30,7 +30,9 @@ pub enum DatabaseStorageKind {
 }
 
 /// Persistent representation used by a model enum.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(
+	Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub enum ModelEnumRepr {
 	/// String-backed enum values.
 	String,
@@ -39,7 +41,7 @@ pub enum ModelEnumRepr {
 }
 
 /// Owned persistent value for a model enum variant.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub enum ModelEnumValue {
 	/// An owned string enum value.
 	String(String),
@@ -48,7 +50,7 @@ pub enum ModelEnumValue {
 }
 
 /// Additional value constraints associated with a model field.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub enum FieldDomain {
 	/// A finite set of model enum values.
 	Enum {
@@ -57,4 +59,18 @@ pub enum FieldDomain {
 		/// Canonical persistent values.
 		values: Vec<ModelEnumValue>,
 	},
+}
+
+impl FieldDomain {
+	/// Returns schema metadata in a declaration-order-independent form.
+	#[must_use]
+	pub fn canonicalized(mut self) -> Self {
+		match &mut self {
+			Self::Enum { values, .. } => {
+				values.sort();
+				values.dedup();
+			}
+		}
+		self
+	}
 }

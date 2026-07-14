@@ -12,6 +12,35 @@ use reinhardt_query::prelude::{
 	ColumnType as QueryColumnType, GeneratedStorage, SchemaBinOper, SchemaExpr, SchemaFunc, Value,
 };
 
+impl ToTokens for crate::field_domain::FieldDomain {
+	fn to_tokens(&self, tokens: &mut TokenStream) {
+		match self {
+			Self::Enum { repr, values } => {
+				let repr = match repr {
+					crate::field_domain::ModelEnumRepr::String => {
+						quote! { ModelEnumRepr::String }
+					}
+					crate::field_domain::ModelEnumRepr::I32 => quote! { ModelEnumRepr::I32 },
+				};
+				let values = values.iter().map(|value| match value {
+					crate::field_domain::ModelEnumValue::String(value) => {
+						quote! { ModelEnumValue::String(#value.to_string()) }
+					}
+					crate::field_domain::ModelEnumValue::I32(value) => {
+						quote! { ModelEnumValue::I32(#value) }
+					}
+				});
+				tokens.extend(quote! {
+					FieldDomain::Enum {
+						repr: #repr,
+						values: vec![#(#values),*],
+					}
+				});
+			}
+		}
+	}
+}
+
 /// Helper function to convert FieldType to TokenStream (for recursive Array handling)
 fn field_type_to_tokens(field_type: &FieldType) -> TokenStream {
 	match field_type {
@@ -323,6 +352,19 @@ impl ToTokens for Constraint {
 					Constraint::Check {
 						name: #name.to_string(),
 						expression: #expression.to_string(),
+					}
+				});
+			}
+			Constraint::EnumDomain {
+				name,
+				column,
+				domain,
+			} => {
+				tokens.extend(quote! {
+					Constraint::EnumDomain {
+						name: #name.to_string(),
+						column: #column.to_string(),
+						domain: #domain,
 					}
 				});
 			}
@@ -951,6 +993,10 @@ impl ToTokens for ColumnDefinition {
 			Some(generated) => quote! { Some(#generated) },
 			None => quote! { None },
 		};
+		let domain_token = match &self.domain {
+			Some(domain) => quote! { Some(#domain) },
+			None => quote! { None },
+		};
 
 		// Generate FieldType token based on the actual type
 		let field_type_token = match &self.type_definition {
@@ -1083,6 +1129,7 @@ impl ToTokens for ColumnDefinition {
 				auto_increment: #auto_increment,
 				default: #default_token,
 				generated: #generated_token,
+				domain: #domain_token,
 			}
 		});
 	}
@@ -1343,6 +1390,26 @@ impl ToTokens for super::BulkLoadOptions {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use quote::ToTokens;
+
+	#[test]
+	fn column_definition_tokens_preserve_model_enum_domain() {
+		let column = ColumnDefinition::new("job_status", FieldType::VarChar(32)).with_domain(
+			crate::field_domain::FieldDomain::Enum {
+				repr: crate::field_domain::ModelEnumRepr::String,
+				values: vec![
+					crate::field_domain::ModelEnumValue::String("queued".to_string()),
+					crate::field_domain::ModelEnumValue::String("running".to_string()),
+				],
+			},
+		);
+
+		let tokens = column.to_token_stream().to_string();
+
+		assert!(tokens.contains("domain : Some (FieldDomain :: Enum"));
+		assert!(tokens.contains("ModelEnumRepr :: String"));
+		assert!(tokens.contains("ModelEnumValue :: String (\"queued\" . to_string ())"));
+	}
 
 	#[test]
 	fn generated_schema_expr_tokens_emit_option_cast_lengths() {

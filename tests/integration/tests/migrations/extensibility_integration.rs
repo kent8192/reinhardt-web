@@ -67,6 +67,7 @@ fn create_basic_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 		auto_increment: false,
 		default: None,
 		generated: None,
+		domain: None,
 	}
 }
 
@@ -122,6 +123,7 @@ async fn test_custom_operation_integration(
 					default: None,
 
 					generated: None,
+					domain: None,
 				},
 				create_basic_column("event_type", FieldType::VarChar(Some(50))),
 				create_basic_column("event_data", FieldType::Text),
@@ -323,6 +325,7 @@ async fn test_data_migration_patterns(
 					default: None,
 
 					generated: None,
+					domain: None,
 				},
 				create_basic_column("full_name", FieldType::VarChar(Some(200))),
 				create_basic_column("email", FieldType::VarChar(Some(255))),
@@ -544,6 +547,7 @@ async fn test_complex_data_transformation(
 					default: None,
 
 					generated: None,
+					domain: None,
 				},
 				create_basic_column("item_name", FieldType::VarChar(Some(200))),
 				create_basic_column("item_category", FieldType::VarChar(Some(50))),
@@ -770,6 +774,7 @@ async fn test_external_configuration_integration(
 					default: None,
 
 					generated: None,
+					domain: None,
 				},
 				create_basic_column("name", FieldType::VarChar(Some(100))),
 				create_basic_column("tier", FieldType::VarChar(Some(20))),
@@ -969,6 +974,7 @@ async fn test_future_extensibility_patterns(
 					default: None,
 
 					generated: None,
+					domain: None,
 				},
 				create_basic_column("migration_name", FieldType::VarChar(Some(255))),
 				create_basic_column("schema_version", FieldType::VarChar(Some(20))),

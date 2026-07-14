@@ -3497,8 +3497,13 @@ fn generate_registration_code(
 	let mut field_registrations = Vec::new();
 	for field_info in &regular_fields {
 		let field_name = field_info.name.to_string();
+		let field_ty = &field_info.ty;
 		let field_type = map_type_to_field_type(&field_info.ty, &field_info.config)?;
 		let config = &field_info.config;
+		let resolved_column = config
+			.db_column
+			.clone()
+			.unwrap_or_else(|| field_name.clone());
 
 		let mut params = Vec::new();
 		if config.primary_key {
@@ -3625,13 +3630,19 @@ fn generate_registration_code(
 		let generated_registration = generated_column_registration(config, &migrations_crate);
 
 		field_registrations.push(quote! {
+			let field_domain = <#field_ty as #orm_crate::DatabaseField>::domain();
 			metadata.add_field(
-				#field_name.to_string(),
+				#resolved_column.to_string(),
 				#migrations_crate::model_registry::FieldMetadata::new(#field_type)
 					#(#params)*
+					.with_param("db_column", #resolved_column)
+					.with_domain_opt(field_domain.clone())
 					#generated_registration
 					#fk_registration
 			);
+			if let Some(field_domain) = field_domain {
+				metadata.add_enum_domain_constraint(#resolved_column, field_domain);
+			}
 		});
 	}
 

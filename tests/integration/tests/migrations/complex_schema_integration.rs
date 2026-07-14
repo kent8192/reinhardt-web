@@ -68,6 +68,7 @@ fn create_basic_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 		auto_increment: false,
 		default: None,
 		generated: None,
+		domain: None,
 	}
 }
 
@@ -82,6 +83,7 @@ fn create_not_null_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 		auto_increment: false,
 		default: None,
 		generated: None,
+		domain: None,
 	}
 }
 
@@ -144,6 +146,7 @@ async fn test_large_scale_schema_changes(
 			default: None,
 
 			generated: None,
+			domain: None,
 		}];
 
 		for field_idx in 0..fields_per_table {
@@ -220,6 +223,7 @@ async fn test_large_scale_schema_changes(
 					default: Some("CURRENT_TIMESTAMP".to_string()),
 
 					generated: None,
+					domain: None,
 				},
 				mysql_options: None,
 			}],
@@ -384,6 +388,7 @@ async fn test_composite_foreign_keys_migration(
 					default: None,
 
 					generated: None,
+					domain: None,
 				},
 				create_not_null_column("order_id", FieldType::Integer),
 				create_not_null_column("customer_id", FieldType::Integer),
@@ -598,6 +603,7 @@ async fn test_circular_dependencies_with_data(
 					default: None,
 
 					generated: None,
+					domain: None,
 				},
 				create_basic_column("name", FieldType::VarChar(Some(100))),
 				create_basic_column("email", FieldType::VarChar(Some(255))),
@@ -629,6 +635,7 @@ async fn test_circular_dependencies_with_data(
 					default: None,
 
 					generated: None,
+					domain: None,
 				},
 				create_basic_column("name", FieldType::VarChar(Some(100))),
 				create_basic_column("head_user_id", FieldType::Integer), // FK to users (deferred)
@@ -897,6 +904,7 @@ async fn test_virtual_or_generated_columns(
 					default: None,
 
 					generated: None,
+					domain: None,
 				},
 				create_basic_column("name", FieldType::VarChar(Some(200))),
 				create_basic_column("price", FieldType::Custom("DECIMAL(10, 2)".to_string())),
@@ -1119,6 +1127,7 @@ async fn test_spatial_data_types_migration(
 					default: None,
 
 					generated: None,
+					domain: None,
 				},
 				create_basic_column("name", FieldType::VarChar(Some(200))),
 				create_basic_column(
@@ -1304,6 +1313,7 @@ async fn test_composite_primary_key_creation(
 					default: None,
 
 					generated: None,
+					domain: None,
 				},
 				create_basic_column("customer_name", FieldType::VarChar(Some(200))),
 				ColumnDefinition {
@@ -1316,6 +1326,7 @@ async fn test_composite_primary_key_creation(
 					default: Some("CURRENT_TIMESTAMP".to_string()),
 
 					generated: None,
+					domain: None,
 				},
 			],
 		}],
@@ -1369,6 +1380,7 @@ async fn test_composite_primary_key_creation(
 						default: None,
 
 						generated: None,
+						domain: None,
 					},
 					ColumnDefinition {
 						name: "line_number".to_string(),
@@ -1380,6 +1392,7 @@ async fn test_composite_primary_key_creation(
 						default: None,
 
 						generated: None,
+						domain: None,
 					},
 					create_basic_column("product_name", FieldType::VarChar(Some(200))),
 					ColumnDefinition {
@@ -1392,6 +1405,7 @@ async fn test_composite_primary_key_creation(
 						default: None,
 
 						generated: None,
+						domain: None,
 					},
 					ColumnDefinition {
 						name: "price".to_string(),
@@ -1403,6 +1417,7 @@ async fn test_composite_primary_key_creation(
 						default: None,
 
 						generated: None,
+						domain: None,
 					},
 				],
 			},

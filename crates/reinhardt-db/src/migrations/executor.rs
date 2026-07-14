@@ -918,6 +918,7 @@ impl DatabaseMigrationExecutor {
 						&c.name,
 						c.hidden,
 					),
+					domain: None,
 				}
 			})
 			.collect();
