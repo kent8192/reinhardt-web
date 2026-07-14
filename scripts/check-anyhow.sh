@@ -69,8 +69,40 @@ scan_cargo_manifests() {
 
 	set +e
 	output=$(awk -v root="$SCAN_ROOT/" '
+		function strip_toml_comment(value, position, character, in_basic_string, in_literal_string, escaped) {
+			in_basic_string = 0
+			in_literal_string = 0
+			escaped = 0
+
+			for (position = 1; position <= length(value); position++) {
+				character = substr(value, position, 1)
+
+				if (in_basic_string) {
+					if (escaped) {
+						escaped = 0
+					} else if (character == "\\") {
+						escaped = 1
+					} else if (character == "\"") {
+						in_basic_string = 0
+					}
+				} else if (in_literal_string) {
+					if (character == "\047") {
+						in_literal_string = 0
+					}
+				} else if (character == "\"") {
+					in_basic_string = 1
+				} else if (character == "\047") {
+					in_literal_string = 1
+				} else if (character == "#") {
+					return substr(value, 1, position - 1)
+				}
+			}
+
+			return value
+		}
+
 		function normalized_table(value) {
-			sub(/[[:space:]]*#.*/, "", value)
+			value = strip_toml_comment(value)
 			gsub(/[[:space:]]/, "", value)
 			gsub(/["\047]/, "", value)
 			return value
@@ -124,8 +156,7 @@ scan_cargo_manifests() {
 		}
 
 		{
-			code = $0
-			sub(/[[:space:]]*#.*/, "", code)
+			code = strip_toml_comment($0)
 			compact = code
 			gsub(/[[:space:]"\047]/, "", compact)
 			matched = 0

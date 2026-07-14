@@ -195,6 +195,32 @@ expect_rejected "package alias" 'Cargo.toml:7:errors = { package = "anyhow", ver
 
 reset_fixture
 cat >> "$FIXTURE/Cargo.toml" <<'EOF'
+errors = { git = "https://example.com/repository#main", package = "anyhow" }
+EOF
+expect_rejected "package alias after double-quoted URL fragment" 'Cargo.toml:7:errors = { git = "https://example.com/repository#main", package = "anyhow" }'
+
+reset_fixture
+cat >> "$FIXTURE/Cargo.toml" <<'EOF'
+errors = { git = 'https://example.com/repository#main', package = "anyhow" }
+EOF
+expect_rejected "package alias after single-quoted URL fragment" 'Cargo.toml:7:errors = { git = '\''https://example.com/repository#main'\'', package = "anyhow" }'
+
+reset_fixture
+cat >> "$FIXTURE/Cargo.toml" <<'EOF'
+serde = "1" # package = "anyhow"
+EOF
+expect_clean "package alias text in a real comment"
+
+reset_fixture
+cat >> "$FIXTURE/Cargo.toml" <<'EOF'
+
+[package.metadata]
+example = "escaped quote: \" and fragment # package = \"anyhow\""
+EOF
+expect_clean "metadata string with escaped quotes and fragment"
+
+reset_fixture
+cat >> "$FIXTURE/Cargo.toml" <<'EOF'
 
 [dependencies.errors]
 package = "anyhow"
