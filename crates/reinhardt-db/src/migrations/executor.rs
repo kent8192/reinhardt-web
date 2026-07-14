@@ -221,90 +221,6 @@ impl DatabaseMigrationExecutor {
 		self.db_type
 	}
 
-	/// Check if a table exists in the database
-	///
-	/// # Examples
-	///
-	/// ```ignore
-	/// use reinhardt_db::migrations::executor::DatabaseMigrationExecutor;
-	/// use reinhardt_db::backends::DatabaseConnection;
-	///
-	/// # async fn example() {
-	/// let db = DatabaseConnection::connect_postgres("postgres://localhost/mydb").await.unwrap();
-	/// let executor = DatabaseMigrationExecutor::new(db);
-	/// let exists = executor.table_exists("users").await.unwrap();
-	/// # }
-	/// ```
-	async fn table_exists(&self, table_name: &str) -> Result<bool> {
-		use reinhardt_query::prelude::{
-			Alias, Cond, Expr, ExprTrait, MySqlQueryBuilder, PostgresQueryBuilder, Query,
-			QueryStatementBuilder, SqliteQueryBuilder,
-		};
-
-		match self.db_type {
-			DatabaseType::Postgres => {
-				// Build parameterized query using reinhardt-query
-				let subquery = Query::select()
-					.expr(Expr::asterisk())
-					.from((Alias::new("information_schema"), Alias::new("tables")))
-					.cond_where(
-						Cond::all()
-							.add(Expr::col(Alias::new("table_schema")).eq("public"))
-							.add(Expr::col(Alias::new("table_name")).eq(table_name)),
-					)
-					.to_owned();
-
-				let query_str = format!(
-					"SELECT EXISTS ({})",
-					subquery.to_string(PostgresQueryBuilder)
-				);
-
-				// For PostgreSQL, EXISTS returns a boolean value
-				let result = self.connection.fetch_one(&query_str, vec![]).await?;
-				match result.data.get("exists") {
-					Some(crate::backends::types::QueryValue::Bool(b)) => Ok(*b),
-					_ => Ok(false),
-				}
-			}
-			DatabaseType::Sqlite => {
-				// Build parameterized query using reinhardt-query
-				let query = Query::select()
-					.column(Alias::new("name"))
-					.from(Alias::new("sqlite_master"))
-					.cond_where(
-						Cond::all()
-							.add(Expr::col(Alias::new("type")).eq("table"))
-							.add(Expr::col(Alias::new("name")).eq(table_name)),
-					)
-					.to_owned();
-
-				let query_str = query.to_string(SqliteQueryBuilder);
-
-				// For SQLite, check if any row is returned
-				let result = self.connection.fetch_optional(&query_str, vec![]).await?;
-				Ok(result.is_some())
-			}
-			DatabaseType::Mysql => {
-				// Build parameterized query using reinhardt-query
-				let query = Query::select()
-					.column(Alias::new("TABLE_NAME"))
-					.from((Alias::new("information_schema"), Alias::new("tables")))
-					.cond_where(
-						Cond::all()
-							.add(Expr::col(Alias::new("table_schema")).eq(Expr::cust("DATABASE()")))
-							.add(Expr::col(Alias::new("table_name")).eq(table_name)),
-					)
-					.to_owned();
-
-				let query_str = query.to_string(MySqlQueryBuilder);
-
-				// For MySQL, check if any row is returned
-				let result = self.connection.fetch_optional(&query_str, vec![]).await?;
-				Ok(result.is_some())
-			}
-		}
-	}
-
 	/// Performs the apply migrations operation.
 	pub async fn apply_migrations(&mut self, migrations: &[Migration]) -> Result<ExecutionResult> {
 		#[cfg(feature = "postgres")]
@@ -491,11 +407,18 @@ impl DatabaseMigrationExecutor {
 			crate::backends::types::DatabaseType::Sqlite => SqlDialect::Sqlite,
 		};
 
+		let requires_sqlite_recreation = matches!(dialect, SqlDialect::Sqlite)
+			&& migration
+				.operations
+				.iter()
+				.any(Operation::reverse_requires_sqlite_recreation);
+
 		// Create SchemaEditor for atomic operations
-		let mut editor = SchemaEditor::new(
+		let mut editor = SchemaEditor::new_for_migration(
 			self.connection.clone(),
 			migration.atomic,
 			self.connection.database_type(),
+			requires_sqlite_recreation,
 		)
 		.await?;
 
@@ -585,9 +508,20 @@ impl DatabaseMigrationExecutor {
 			DatabaseType::Mysql => SqlDialect::Mysql,
 		};
 
+		let requires_sqlite_recreation = matches!(dialect, SqlDialect::Sqlite)
+			&& migration
+				.operations
+				.iter()
+				.any(Operation::requires_sqlite_recreation);
+
 		// Create schema editor with atomic support based on migration's atomic flag
-		let mut editor =
-			SchemaEditor::new(self.connection.clone(), migration.atomic, self.db_type).await?;
+		let mut editor = SchemaEditor::new_for_migration(
+			self.connection.clone(),
+			migration.atomic,
+			self.db_type,
+			requires_sqlite_recreation,
+		)
+		.await?;
 
 		// Log if database_only flag is set
 		// Note: ProjectState tracking during migration execution is a planned enhancement.
@@ -725,12 +659,6 @@ impl DatabaseMigrationExecutor {
 	async fn apply_after_schema_table(&mut self, plan: &MigrationPlan) -> Result<ExecutionResult> {
 		let mut applied = Vec::new();
 
-		let dialect = match self.db_type {
-			DatabaseType::Postgres => SqlDialect::Postgres,
-			DatabaseType::Sqlite => SqlDialect::Sqlite,
-			DatabaseType::Mysql => SqlDialect::Mysql,
-		};
-
 		for migration in &plan.migrations {
 			// Check if already applied
 			if self
@@ -741,41 +669,7 @@ impl DatabaseMigrationExecutor {
 				continue;
 			}
 
-			// Apply migration
-			for operation in &migration.operations {
-				// Check if this is a CreateTable operation and if the table already exists
-				if let Operation::CreateTable { name, .. } = operation {
-					let table_exists = self.table_exists(name).await?;
-					if table_exists {
-						eprintln!(
-							"⏭️  Table '{}' already exists, skipping CREATE TABLE operation",
-							name
-						);
-						continue;
-					}
-				}
-
-				#[cfg(feature = "sqlite")]
-				if matches!(dialect, SqlDialect::Sqlite) && operation.requires_sqlite_recreation() {
-					let mut editor =
-						SchemaEditor::new(self.connection.clone(), migration.atomic, self.db_type)
-							.await?;
-					self.handle_sqlite_recreation(operation, &mut editor)
-						.await?;
-					editor.finish().await?;
-					continue;
-				}
-
-				let sql = operation.to_sql(&dialect);
-
-				// Split SQL into individual statements to handle PostgreSQL's
-				// prepared statement limitation (cannot execute multiple commands)
-				for statement in split_sql_statements(&sql) {
-					if !statement.trim().is_empty() {
-						self.connection.execute(&statement, vec![]).await?;
-					}
-				}
-			}
+			self.apply_migration(migration).await?;
 
 			// Record migration as applied
 			self.recorder

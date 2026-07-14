@@ -202,7 +202,7 @@ pub struct SchemaEditor {
 	db_type: DatabaseType,
 	/// Deferred SQL statements to execute at finish
 	deferred_sql: Vec<String>,
-	/// Dedicated physical connection used by non-atomic SQLite recreation.
+	/// Dedicated physical connection used by SQLite recreation.
 	#[cfg(feature = "sqlite")]
 	sqlite_recreation_session: Option<SqliteRecreationSession>,
 }
@@ -233,9 +233,24 @@ impl SchemaEditor {
 		atomic: bool,
 		db_type: DatabaseType,
 	) -> Result<Self> {
-		let effective_atomic = atomic && db_type.supports_transactional_ddl();
+		Self::new_for_migration(connection, atomic, db_type, false).await
+	}
 
-		let executor = if effective_atomic {
+	pub(crate) async fn new_for_migration(
+		connection: DatabaseConnection,
+		atomic: bool,
+		db_type: DatabaseType,
+		requires_sqlite_recreation: bool,
+	) -> Result<Self> {
+		let effective_atomic = atomic && db_type.supports_transactional_ddl();
+		#[cfg(feature = "sqlite")]
+		let use_sqlite_recreation_session = effective_atomic
+			&& matches!(db_type, DatabaseType::Sqlite)
+			&& requires_sqlite_recreation;
+		#[cfg(not(feature = "sqlite"))]
+		let use_sqlite_recreation_session = false;
+
+		let executor = if effective_atomic && !use_sqlite_recreation_session {
 			Some(connection.begin().await?)
 		} else {
 			if atomic && !db_type.supports_transactional_ddl() {
@@ -248,7 +263,7 @@ impl SchemaEditor {
 			None
 		};
 
-		Ok(Self {
+		let mut editor = Self {
 			connection,
 			executor,
 			atomic: effective_atomic,
@@ -256,7 +271,14 @@ impl SchemaEditor {
 			deferred_sql: Vec::new(),
 			#[cfg(feature = "sqlite")]
 			sqlite_recreation_session: None,
-		})
+		};
+
+		#[cfg(feature = "sqlite")]
+		if use_sqlite_recreation_session {
+			editor.begin_atomic_sqlite_recreation_session().await?;
+		}
+
+		Ok(editor)
 	}
 
 	/// Execute a DDL statement
@@ -463,12 +485,26 @@ impl SchemaEditor {
 	/// Ok(()) on success
 	pub async fn finish(mut self) -> Result<()> {
 		// Execute deferred SQL
-		for sql in self.deferred_sql.drain(..) {
-			if let Some(ref mut tx) = self.executor {
-				tx.execute(&sql, vec![]).await?;
-			} else {
-				self.connection.execute(&sql, vec![]).await?;
+		for sql in std::mem::take(&mut self.deferred_sql) {
+			self.execute(&sql).await?;
+		}
+
+		#[cfg(feature = "sqlite")]
+		if self.sqlite_recreation_session.is_some() {
+			let violations = self.check_foreign_key_integrity().await?;
+			if !violations.is_empty() {
+				let violation_error = Err(MigrationError::ForeignKeyViolation(format!(
+					"Foreign key violations detected after migration: {}",
+					violations.join("; ")
+				)));
+				let rollback_result = self.rollback_sqlite_recreation_session().await;
+				return merge_foreign_key_scope_results(violation_error, rollback_result);
 			}
+			self.execute("COMMIT").await?;
+			self.mark_sqlite_recreation_transaction_finished();
+			self.restore_sqlite_recreation_foreign_keys().await?;
+			self.release_sqlite_recreation_session();
+			return Ok(());
 		}
 
 		// Commit if in transaction
@@ -484,6 +520,11 @@ impl SchemaEditor {
 	/// For databases that don't support transactional DDL (MySQL),
 	/// this is a no-op as DDL statements have already been implicitly committed.
 	pub async fn rollback(mut self) -> Result<()> {
+		#[cfg(feature = "sqlite")]
+		if self.sqlite_recreation_session.is_some() {
+			return self.rollback_sqlite_recreation_session().await;
+		}
+
 		if let Some(tx) = self.executor.take() {
 			tx.rollback().await?;
 		}
@@ -567,6 +608,29 @@ impl SchemaEditor {
 			&'a mut Self,
 		) -> Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>,
 	) -> Result<T> {
+		if self.sqlite_recreation_session.is_some() {
+			let operation_result =
+				match std::panic::catch_unwind(AssertUnwindSafe(|| operation(self))) {
+					Ok(operation) => AssertUnwindSafe(operation).catch_unwind().await,
+					Err(payload) => Err(payload),
+				};
+			return match operation_result {
+				Ok(Ok(value)) => Ok(value),
+				Ok(Err(operation_error)) => {
+					let rollback_result = self.rollback_sqlite_recreation_session().await;
+					merge_foreign_key_scope_results(Err(operation_error), rollback_result)
+				}
+				Err(payload) => {
+					if let Err(cleanup_error) = self.rollback_sqlite_recreation_session().await {
+						tracing::error!(
+							"failed to clean up atomic SQLite recreation session after panic: {cleanup_error}"
+						);
+					}
+					resume_unwind(payload)
+				}
+			};
+		}
+
 		if self.executor.is_none() && matches!(self.db_type, DatabaseType::Sqlite) {
 			return self
 				.with_non_atomic_sqlite_recreation_session(operation)
@@ -600,6 +664,49 @@ impl SchemaEditor {
 				resume_unwind(payload)
 			}
 		}
+	}
+
+	#[cfg(feature = "sqlite")]
+	async fn begin_atomic_sqlite_recreation_session(&mut self) -> Result<()> {
+		let pool = self.connection.into_sqlite().ok_or_else(|| {
+			MigrationError::UnsupportedDatabase(
+				"SQLite recreation requires an SQLite connection pool".to_string(),
+			)
+		})?;
+		let connection = pool.acquire().await?;
+		self.sqlite_recreation_session = Some(SqliteRecreationSession::new(connection));
+
+		let was_enabled = self.foreign_keys_enabled().await?;
+		self.set_sqlite_recreation_previous_foreign_keys(was_enabled);
+		if was_enabled {
+			self.disable_foreign_keys().await?;
+		}
+		self.mark_sqlite_recreation_transaction_started();
+		self.execute("BEGIN").await?;
+		Ok(())
+	}
+
+	#[cfg(feature = "sqlite")]
+	async fn restore_sqlite_recreation_foreign_keys(&mut self) -> Result<()> {
+		let was_enabled = self
+			.sqlite_recreation_session
+			.as_ref()
+			.and_then(|session| session.previous_foreign_keys)
+			.unwrap_or(false);
+		if was_enabled {
+			self.enable_foreign_keys().await
+		} else {
+			self.disable_foreign_keys().await
+		}
+	}
+
+	#[cfg(feature = "sqlite")]
+	async fn rollback_sqlite_recreation_session(&mut self) -> Result<()> {
+		self.execute("ROLLBACK").await?;
+		self.mark_sqlite_recreation_transaction_finished();
+		self.restore_sqlite_recreation_foreign_keys().await?;
+		self.release_sqlite_recreation_session();
+		Ok(())
 	}
 
 	#[cfg(feature = "sqlite")]
@@ -938,6 +1045,88 @@ mod tests {
 				.await
 				.expect("read restored foreign key state"),
 			"foreign key enforcement must be restored before resuming the panic"
+		);
+	}
+
+	#[cfg(feature = "sqlite")]
+	#[tokio::test]
+	async fn atomic_sqlite_recreation_abort_restores_connection_and_schema() {
+		use sqlx::sqlite::SqlitePoolOptions;
+		use tokio::sync::oneshot;
+
+		// Arrange
+		let pool = SqlitePoolOptions::new()
+			.max_connections(1)
+			.connect("sqlite::memory:")
+			.await
+			.expect("connect to in-memory SQLite");
+		let connection = DatabaseConnection::from_sqlite_pool(pool);
+		connection
+			.execute("PRAGMA foreign_keys = ON", vec![])
+			.await
+			.expect("enable foreign key enforcement");
+		connection
+			.execute(
+				"CREATE TABLE atomic_cleanup_parent (id INTEGER PRIMARY KEY)",
+				vec![],
+			)
+			.await
+			.expect("create parent table");
+		connection
+			.execute("INSERT INTO atomic_cleanup_parent (id) VALUES (1)", vec![])
+			.await
+			.expect("insert parent row");
+		let assertion_connection = connection.clone();
+		let (recreation_started_tx, recreation_started_rx) = oneshot::channel();
+
+		// Act
+		let recreation = tokio::spawn(async move {
+			let mut editor =
+				SchemaEditor::new_for_migration(connection, true, DatabaseType::Sqlite, true)
+					.await
+					.expect("create atomic SQLite recreation editor");
+			editor
+				.execute("CREATE TABLE atomic_cleanup_temporary (id INTEGER)")
+				.await
+				.expect("create temporary table inside migration transaction");
+			let _ = recreation_started_tx.send(());
+			std::future::pending::<()>().await;
+		});
+		recreation_started_rx
+			.await
+			.expect("recreation should reach the cancellation point");
+		recreation.abort();
+		let cancellation = recreation.await;
+
+		// Assert
+		assert!(cancellation.is_err(), "recreation task must be cancelled");
+		let foreign_keys: i64 = assertion_connection
+			.fetch_one("PRAGMA foreign_keys", vec![])
+			.await
+			.expect("read restored foreign key state")
+			.get("foreign_keys")
+			.expect("foreign_keys should be an integer");
+		assert_eq!(foreign_keys, 1, "foreign key enforcement must be restored");
+		let original_rows: i64 = assertion_connection
+			.fetch_one(
+				"SELECT COUNT(*) AS count FROM atomic_cleanup_parent",
+				vec![],
+			)
+			.await
+			.expect("read original table")
+			.get("count")
+			.expect("count should be an integer");
+		assert_eq!(original_rows, 1, "original data must remain intact");
+		let temporary_table = assertion_connection
+			.fetch_optional(
+				"SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'atomic_cleanup_temporary'",
+				vec![],
+			)
+			.await
+			.expect("check temporary table cleanup");
+		assert!(
+			temporary_table.is_none(),
+			"uncommitted temporary table must be rolled back"
 		);
 	}
 

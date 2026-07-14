@@ -3551,6 +3551,264 @@ async fn non_atomic_recreation_restores_foreign_keys_after_ddl_failure() {
 
 #[rstest]
 #[tokio::test]
+async fn atomic_recreation_rolls_back_after_ddl_failure() {
+	// Arrange
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("connect to in-memory SQLite");
+	connection
+		.execute(
+			"CREATE TABLE atomic_failure_parent (id INTEGER PRIMARY KEY)",
+			vec![],
+		)
+		.await
+		.expect("create parent table");
+	connection
+		.execute(
+			"CREATE TABLE atomic_failure_child (id INTEGER PRIMARY KEY, parent_id INTEGER REFERENCES atomic_failure_parent(id), obsolete TEXT)",
+			vec![],
+		)
+		.await
+		.expect("create child table");
+	connection
+		.execute("INSERT INTO atomic_failure_parent (id) VALUES (1)", vec![])
+		.await
+		.expect("insert parent row");
+	connection
+		.execute(
+			"INSERT INTO atomic_failure_child (id, parent_id, obsolete) VALUES (1, 1, 'keep')",
+			vec![],
+		)
+		.await
+		.expect("insert child row");
+	connection
+		.execute("PRAGMA foreign_keys = ON", vec![])
+		.await
+		.expect("enable foreign key enforcement");
+	let conn = Arc::new(connection.clone());
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+	let recreate = create_test_migration(
+		"testapp",
+		"0001_fail_atomic_recreation",
+		vec![Operation::AddConstraint {
+			table: "atomic_failure_child".to_string(),
+			constraint_sql: "CONSTRAINT".to_string(),
+		}],
+	);
+
+	// Act
+	let result = executor.apply_migrations(&[recreate]).await;
+
+	// Assert
+	assert!(result.is_err(), "invalid recreation DDL must fail");
+	let foreign_keys: i64 = conn
+		.fetch_one("PRAGMA foreign_keys", vec![])
+		.await
+		.expect("read restored foreign key setting")
+		.get("foreign_keys")
+		.expect("foreign_keys should be an integer");
+	assert_eq!(foreign_keys, 1, "foreign key enforcement must be restored");
+	let columns = conn
+		.fetch_all("PRAGMA table_info(atomic_failure_child)", vec![])
+		.await
+		.expect("read original child table columns");
+	assert!(
+		columns
+			.iter()
+			.any(|row| row.get::<String>("name").ok().as_deref() == Some("obsolete")),
+		"original child table must remain intact"
+	);
+	let original_rows: i64 = conn
+		.fetch_one("SELECT COUNT(*) AS count FROM atomic_failure_child", vec![])
+		.await
+		.expect("read original child rows")
+		.get("count")
+		.expect("count should be an integer");
+	assert_eq!(original_rows, 1, "original child data must remain intact");
+	let temporary_table = conn
+		.fetch_optional(
+			"SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'atomic_failure_child_new'",
+			vec![],
+		)
+		.await
+		.expect("check temporary table cleanup");
+	assert!(
+		temporary_table.is_none(),
+		"failed recreation temporary table must be removed"
+	);
+	let invalid_write = conn
+		.execute(
+			"INSERT INTO atomic_failure_child (id, parent_id) VALUES (2, 999)",
+			vec![],
+		)
+		.await;
+	assert!(
+		invalid_write.is_err(),
+		"restored foreign key enforcement must reject invalid child rows"
+	);
+}
+
+#[rstest]
+#[tokio::test]
+async fn atomic_parent_recreation_preserves_cascade_children() {
+	// Arrange
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("connect to in-memory SQLite");
+	connection
+		.execute(
+			"CREATE TABLE atomic_parent (id INTEGER PRIMARY KEY, obsolete TEXT)",
+			vec![],
+		)
+		.await
+		.expect("create parent table");
+	connection
+		.execute(
+			"CREATE TABLE atomic_cascade_child (id INTEGER PRIMARY KEY, parent_id INTEGER REFERENCES atomic_parent(id) ON DELETE CASCADE)",
+			vec![],
+		)
+		.await
+		.expect("create cascade child table");
+	connection
+		.execute(
+			"INSERT INTO atomic_parent (id, obsolete) VALUES (1, 'remove')",
+			vec![],
+		)
+		.await
+		.expect("insert parent row");
+	connection
+		.execute(
+			"INSERT INTO atomic_cascade_child (id, parent_id) VALUES (1, 1)",
+			vec![],
+		)
+		.await
+		.expect("insert child row");
+	let assertion_connection = Arc::new(connection.clone());
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+	let recreate = create_test_migration(
+		"testapp",
+		"0001_recreate_cascade_parent",
+		vec![Operation::DropColumn {
+			table: "atomic_parent".to_string(),
+			column: "obsolete".to_string(),
+			old_definition: None,
+		}],
+	);
+
+	// Act
+	let result = executor.apply_migrations(&[recreate]).await;
+
+	// Assert
+	result.expect("atomic parent recreation should succeed");
+	let child_count: i64 = assertion_connection
+		.fetch_one("SELECT COUNT(*) AS count FROM atomic_cascade_child", vec![])
+		.await
+		.expect("count cascade child rows")
+		.get("count")
+		.expect("count should be an integer");
+	assert_eq!(child_count, 1, "cascade child rows must be preserved");
+	let foreign_keys: i64 = assertion_connection
+		.fetch_one("PRAGMA foreign_keys", vec![])
+		.await
+		.expect("read foreign key state")
+		.get("foreign_keys")
+		.expect("foreign_keys should be an integer");
+	assert_eq!(foreign_keys, 1, "foreign key enforcement must be restored");
+	let invalid_write = assertion_connection
+		.execute(
+			"INSERT INTO atomic_cascade_child (id, parent_id) VALUES (2, 999)",
+			vec![],
+		)
+		.await;
+	assert!(
+		invalid_write.is_err(),
+		"restored foreign key enforcement must reject invalid child rows"
+	);
+}
+
+#[rstest]
+#[tokio::test]
+async fn atomic_parent_recreation_supports_restrict_children() {
+	// Arrange
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("connect to in-memory SQLite");
+	connection
+		.execute(
+			"CREATE TABLE atomic_restrict_parent (id INTEGER PRIMARY KEY, obsolete TEXT)",
+			vec![],
+		)
+		.await
+		.expect("create parent table");
+	connection
+		.execute(
+			"CREATE TABLE atomic_restrict_child (id INTEGER PRIMARY KEY, parent_id INTEGER REFERENCES atomic_restrict_parent(id) ON DELETE RESTRICT)",
+			vec![],
+		)
+		.await
+		.expect("create restrict child table");
+	connection
+		.execute(
+			"INSERT INTO atomic_restrict_parent (id, obsolete) VALUES (1, 'remove')",
+			vec![],
+		)
+		.await
+		.expect("insert parent row");
+	connection
+		.execute(
+			"INSERT INTO atomic_restrict_child (id, parent_id) VALUES (1, 1)",
+			vec![],
+		)
+		.await
+		.expect("insert child row");
+	let assertion_connection = Arc::new(connection.clone());
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+	let recreate = create_test_migration(
+		"testapp",
+		"0001_recreate_restrict_parent",
+		vec![Operation::DropColumn {
+			table: "atomic_restrict_parent".to_string(),
+			column: "obsolete".to_string(),
+			old_definition: None,
+		}],
+	);
+
+	// Act
+	let result = executor.apply_migrations(&[recreate]).await;
+
+	// Assert
+	result.expect("atomic recreation should temporarily suspend restrict enforcement");
+	let child_count: i64 = assertion_connection
+		.fetch_one(
+			"SELECT COUNT(*) AS count FROM atomic_restrict_child",
+			vec![],
+		)
+		.await
+		.expect("count restrict child rows")
+		.get("count")
+		.expect("count should be an integer");
+	assert_eq!(child_count, 1, "restrict child rows must be preserved");
+	let foreign_keys: i64 = assertion_connection
+		.fetch_one("PRAGMA foreign_keys", vec![])
+		.await
+		.expect("read foreign key state")
+		.get("foreign_keys")
+		.expect("foreign_keys should be an integer");
+	assert_eq!(foreign_keys, 1, "foreign key enforcement must be restored");
+	let invalid_write = assertion_connection
+		.execute(
+			"INSERT INTO atomic_restrict_child (id, parent_id) VALUES (2, 999)",
+			vec![],
+		)
+		.await;
+	assert!(
+		invalid_write.is_err(),
+		"restored foreign key enforcement must reject invalid child rows"
+	);
+}
+
+#[rstest]
+#[tokio::test]
 async fn recreation_preserves_bare_deferrable_as_initially_immediate() {
 	// Arrange
 	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
