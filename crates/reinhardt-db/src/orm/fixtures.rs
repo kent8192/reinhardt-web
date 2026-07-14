@@ -1757,6 +1757,10 @@ where
 		.iter()
 		.map(|field| {
 			let target_metadata = related_model_metadata(&metadata.app_label, &field.to_model);
+			let target_handler = global_fixture_registry().get(&field.to_model).or_else(|| {
+				global_fixture_registry()
+					.get(&canonical_label(&metadata.app_label, &field.to_model))
+			});
 			let target_table = target_metadata
 				.as_ref()
 				.map(|target| target.table_name.clone())
@@ -1771,6 +1775,15 @@ where
 			let target_primary_key_binding = target_metadata
 				.as_ref()
 				.map(fixture_primary_key_binding_for_registered_model)
+				.or_else(|| {
+					target_handler.as_ref().map(|handler| {
+						if handler.fixture_primary_key_is_text() {
+							FixturePrimaryKeyBinding::Text
+						} else {
+							FixturePrimaryKeyBinding::Generic
+						}
+					})
+				})
 				.unwrap_or(FixturePrimaryKeyBinding::Generic);
 			let is_explicit_through = field.through.is_some();
 			let through_table = field.through.clone().unwrap_or_else(|| {
@@ -2247,9 +2260,7 @@ fn fixture_record_dependencies(
 		}
 	}
 
-	let mut dependencies = (0..records.len())
-		.map(|index| (index, HashSet::new()))
-		.collect::<HashMap<_, _>>();
+	let mut dependencies = fixture_record_dependencies_from_relationship_metadata(records)?;
 
 	for (source_index, record) in records.iter().enumerate() {
 		let source_key = canonical_record_label(&record.model)?;
@@ -2304,7 +2315,6 @@ fn fixture_record_dependencies(
 	Ok(dependencies)
 }
 
-#[cfg(not(feature = "migrations"))]
 fn fixture_record_dependencies_from_relationship_metadata(
 	records: &[FixtureRecord],
 ) -> FixtureResult<HashMap<usize, HashSet<usize>>> {
@@ -2334,6 +2344,14 @@ fn fixture_record_dependencies_from_relationship_metadata(
 		.map(|index| (index, HashSet::new()))
 		.collect::<HashMap<_, _>>();
 	for (source_index, record) in records.iter().enumerate() {
+		#[cfg(feature = "migrations")]
+		if parse_model_label(&record.model)
+			.ok()
+			.and_then(|(app_label, model_name)| find_model_metadata(&app_label, &model_name))
+			.is_some()
+		{
+			continue;
+		}
 		let Some(source_handler) = global_fixture_registry().get(&record.model) else {
 			continue;
 		};
@@ -2398,10 +2416,11 @@ fn fixture_foreign_key_target(
 					.map(|foreign_key| foreign_key.referenced_column.clone())
 			})
 			.unwrap_or_else(|| "id".to_string());
-		return Some((
-			canonical_model_key(target_app, target_model),
-			referenced_column,
-		));
+		let target_key = target_metadata.as_ref().map_or_else(
+			|| canonical_model_key(target_app, target_model),
+			|metadata| canonical_label(&metadata.app_label, &metadata.model_name),
+		);
+		return Some((target_key, referenced_column));
 	}
 
 	let target_metadata = fixture_foreign_key_target_metadata(source_metadata, field)?;
@@ -3273,6 +3292,71 @@ mod tests {
 		id: Option<String>,
 		title: String,
 	}
+
+	#[cfg(feature = "migrations")]
+	#[derive(Clone, Serialize, Deserialize)]
+	struct FixtureRegisteredM2mSource {
+		id: Option<i64>,
+	}
+
+	#[cfg(feature = "migrations")]
+	#[derive(Clone, Serialize, Deserialize)]
+	struct FixtureRegisteredTextTarget {
+		id: Option<String>,
+	}
+
+	#[cfg(feature = "migrations")]
+	macro_rules! impl_registered_m2m_model {
+		($model:ty, $pk:ty, $table:literal, $app:literal, $field_type:literal) => {
+			impl Model for $model {
+				type PrimaryKey = $pk;
+				type Fields = FixturePostFields;
+				type Objects = Manager<Self>;
+
+				fn table_name() -> &'static str {
+					$table
+				}
+				fn new_fields() -> Self::Fields {
+					FixturePostFields
+				}
+				fn app_label() -> &'static str {
+					$app
+				}
+				fn primary_key_field() -> &'static str {
+					"id"
+				}
+				fn primary_key(&self) -> Option<Self::PrimaryKey> {
+					self.id.clone()
+				}
+				fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+					self.id = Some(value);
+				}
+				fn field_metadata() -> Vec<crate::orm::inspection::FieldInfo> {
+					let mut id = fixture_field_info("id", $field_type, false);
+					id.primary_key = true;
+					vec![id]
+				}
+			}
+		};
+	}
+
+	#[cfg(feature = "migrations")]
+	impl_registered_m2m_model!(
+		FixtureRegisteredM2mSource,
+		i64,
+		"fixture_registered_m2m_source",
+		"fixture_registered_m2m",
+		"BigIntegerField"
+	);
+
+	#[cfg(feature = "migrations")]
+	impl_registered_m2m_model!(
+		FixtureRegisteredTextTarget,
+		String,
+		"fixture_registered_text_target",
+		"fixture_registered_m2m",
+		"CharField"
+	);
 
 	#[cfg(feature = "migrations")]
 	impl Model for FixtureTextM2mPost {
@@ -5227,26 +5311,28 @@ mod tests {
 	#[cfg(feature = "migrations")]
 	#[test]
 	#[serial_test::serial(fixture_model_registry)]
-	fn many_to_many_fixture_specs_use_registered_target_table_names() {
-		global_fixture_registry().clear();
-		global_fixture_registry().register_model::<FixtureDefaultedPost>();
+	fn many_to_many_fixture_specs_use_registered_target_binding_without_metadata() {
 		let mut post = crate::migrations::ModelMetadata::new(
-			"fixture_m2m",
-			"FixtureM2mPost",
-			"fixture_m2m_post",
+			"fixture_registered_m2m",
+			"FixtureRegisteredM2mSource",
+			"fixture_registered_m2m_source",
 		);
 		post.add_many_to_many(crate::migrations::ManyToManyMetadata::new(
 			"tags",
-			"fixture_defaulted.FixtureDefaultedPost",
+			"fixture_registered_m2m.FixtureRegisteredTextTarget",
 		));
 		crate::migrations::model_registry::global_registry().register_model(post);
+		global_fixture_registry().register_model::<FixtureRegisteredTextTarget>();
 
-		let spec = many_to_many_specs_for::<FixtureM2mPost>()
+		let spec = many_to_many_specs_for::<FixtureRegisteredM2mSource>()
 			.into_iter()
 			.next()
-			.expect("registered many-to-many targets must produce fixture metadata");
+			.expect("registered many-to-many target should produce fixture metadata");
 
-		assert_eq!(spec.target_field, "fixture_defaulted_post_id");
+		assert_eq!(
+			spec.target_primary_key_binding,
+			FixturePrimaryKeyBinding::Text
+		);
 	}
 
 	#[cfg(feature = "migrations")]
@@ -5353,6 +5439,53 @@ mod tests {
 
 		assert_eq!(ordered[0].model, "fixture_primary_fk.Parent");
 		assert_eq!(ordered[1].model, "fixture_primary_fk.Child");
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	fn dependency_order_uses_resolved_app_qualified_target_metadata() {
+		let mut parent = crate::migrations::ModelMetadata::new(
+			"fixture_qualified_parent",
+			"Parent",
+			"fixture_qualified_parent",
+		);
+		parent.add_field(
+			"id".to_string(),
+			crate::migrations::FieldMetadata::new(crate::migrations::FieldType::BigInteger)
+				.with_param("primary_key", "true"),
+		);
+		let mut child = crate::migrations::ModelMetadata::new(
+			"fixture_qualified_child",
+			"Child",
+			"fixture_qualified_child",
+		);
+		child.add_field(
+			"parent_id".to_string(),
+			crate::migrations::FieldMetadata::new(crate::migrations::FieldType::BigInteger)
+				.with_param("fk_target", "fixture_qualified_parent.Parent"),
+		);
+		crate::migrations::model_registry::global_registry().register_model(parent);
+		crate::migrations::model_registry::global_registry().register_model(child);
+
+		let mut child_fields = Map::new();
+		child_fields.insert("parent".to_string(), Value::from(1));
+		let records = vec![
+			FixtureRecord::new(
+				"fixture_qualified_child.Child",
+				Some(Value::from(1)),
+				child_fields,
+			),
+			FixtureRecord::new(
+				"fixture_qualified_parent.Parent",
+				Some(Value::from(1)),
+				Map::new(),
+			),
+		];
+
+		let ordered = order_records_by_dependencies(&records).unwrap();
+
+		assert_eq!(ordered[0].model, "fixture_qualified_parent.Parent");
+		assert_eq!(ordered[1].model, "fixture_qualified_child.Child");
 	}
 
 	#[cfg(feature = "migrations")]
