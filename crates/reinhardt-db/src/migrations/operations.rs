@@ -1417,7 +1417,7 @@ impl Operation {
 				}
 			}
 			Operation::RenameTable { old_name, new_name } => {
-				state.rename_model(app_label, old_name, new_name.to_string());
+				state.rename_table(old_name, new_name);
 			}
 			Operation::RenameColumn {
 				table,
@@ -3307,16 +3307,7 @@ impl Operation {
 				// For proper rollback, use to_reverse_sql with pre-operation ProjectState.
 			}
 			Operation::RenameTable { old_name, new_name } => {
-				// Reverse: Rename back from new_name to old_name
-				if let Some(mut model) = state
-					.models
-					.remove(&(app_label.to_string(), new_name.to_string()))
-				{
-					model.table_name = old_name.to_string();
-					state
-						.models
-						.insert((app_label.to_string(), old_name.to_string()), model);
-				}
+				state.rename_table(new_name, old_name);
 			}
 			Operation::AddColumn { table, column, .. } => {
 				// Reverse: Remove the column from the model
@@ -6488,7 +6479,8 @@ mod tests {
 	#[test]
 	fn test_state_forwards_rename_table() {
 		let mut state = ProjectState::new();
-		let mut model = ModelState::new("myapp", "users");
+		let mut model = ModelState::new("myapp", "User");
+		model.table_name = "users".to_string();
 		model.add_field(FieldState::new("id".to_string(), FieldType::Integer, false));
 		state.add_model(model);
 
@@ -6499,12 +6491,61 @@ mod tests {
 
 		op.state_forwards("myapp", &mut state);
 		assert!(
-			state.get_model("myapp", "users").is_none(),
-			"Old model name 'users' should not exist after rename"
+			state.get_model("myapp", "User").is_some(),
+			"Model identity should remain unchanged after a table rename"
 		);
-		assert!(
-			state.get_model("myapp", "accounts").is_some(),
-			"New model name 'accounts' should exist after rename"
+		assert_eq!(
+			state.get_model("myapp", "User").unwrap().table_name,
+			"accounts"
+		);
+	}
+
+	#[test]
+	fn test_state_forwards_rename_table_updates_table_and_foreign_key_metadata() {
+		let mut state = ProjectState::new();
+		let mut user = ModelState::new("myapp", "User");
+		user.table_name = "users".to_string();
+		state.add_model(user);
+
+		let mut post = ModelState::new("myapp", "Post");
+		post.table_name = "posts".to_string();
+		post.add_field(FieldState::with_foreign_key(
+			"user_id",
+			FieldType::Integer,
+			false,
+			ForeignKeyInfo {
+				referenced_table: "users".to_string(),
+				referenced_column: "id".to_string(),
+				on_delete: ForeignKeyAction::Cascade,
+				on_update: ForeignKeyAction::Cascade,
+			},
+		));
+		post.add_foreign_key_constraint_from_field("user_id");
+		state.add_model(post);
+
+		Operation::RenameTable {
+			old_name: "users".to_string(),
+			new_name: "user".to_string(),
+		}
+		.state_forwards("myapp", &mut state);
+
+		assert_eq!(state.get_model("myapp", "User").unwrap().table_name, "user");
+		let post = state.get_model("myapp", "Post").unwrap();
+		assert_eq!(
+			post.fields["user_id"]
+				.foreign_key
+				.as_ref()
+				.unwrap()
+				.referenced_table,
+			"user"
+		);
+		assert_eq!(
+			post.constraints[0]
+				.foreign_key_info
+				.as_ref()
+				.unwrap()
+				.referenced_table,
+			"user"
 		);
 	}
 

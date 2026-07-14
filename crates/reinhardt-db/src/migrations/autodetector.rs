@@ -948,6 +948,30 @@ impl ProjectState {
 		}
 	}
 
+	/// Rename a database table while preserving model identities and references.
+	pub fn rename_table(&mut self, old_table_name: &str, new_table_name: &str) {
+		if let Some(model) = self.find_model_by_table_mut(old_table_name) {
+			model.table_name = new_table_name.to_string();
+		}
+
+		for model in self.models.values_mut() {
+			for field in model.fields.values_mut() {
+				if let Some(foreign_key) = &mut field.foreign_key
+					&& foreign_key.referenced_table == old_table_name
+				{
+					foreign_key.referenced_table = new_table_name.to_string();
+				}
+			}
+			for constraint in &mut model.constraints {
+				if let Some(foreign_key) = &mut constraint.foreign_key_info
+					&& foreign_key.referenced_table == old_table_name
+				{
+					foreign_key.referenced_table = new_table_name.to_string();
+				}
+			}
+		}
+	}
+
 	/// Load ProjectState from the global model registry
 	///
 	/// Django equivalent: `ProjectState.from_apps()` in django/db/migrations/state.py:594-600
@@ -7118,8 +7142,28 @@ impl MigrationAutodetector {
 			super::Operation::DropColumn { table, column, .. } => {
 				!([&rename.old_table, &rename.new_table].contains(&table) && column == old_column)
 			}
+			super::Operation::AddConstraint {
+				table,
+				constraint_sql,
+			} => {
+				!([&rename.old_table, &rename.new_table].contains(&table)
+					&& Self::constraint_references_column(constraint_sql, old_column, new_column))
+			}
+			super::Operation::DropConstraint {
+				table,
+				constraint_name,
+			} => {
+				!([&rename.old_table, &rename.new_table].contains(&table)
+					&& Self::constraint_references_column(constraint_name, old_column, new_column))
+			}
 			_ => true,
 		});
+	}
+
+	fn constraint_references_column(constraint: &str, old_column: &str, new_column: &str) -> bool {
+		constraint
+			.split(|character: char| !character.is_ascii_alphanumeric() && character != '_')
+			.any(|identifier| identifier == old_column || identifier == new_column)
 	}
 
 	fn find_many_to_many_artifact_rename(
@@ -7165,8 +7209,6 @@ impl MigrationAutodetector {
 		let new_table = m2m.through.clone().unwrap_or_else(|| {
 			crate::m2m_naming::default_through_table(new_source_table, &m2m.field_name)
 		});
-		self.from_state.find_model_by_table(&old_table)?;
-
 		let (old_default_source_column, old_default_target_column) =
 			crate::m2m_naming::default_m2m_columns(old_source_table, &old_target_table);
 		let (new_default_source_column, new_default_target_column) =
@@ -7192,6 +7234,16 @@ impl MigrationAutodetector {
 				.clone()
 				.unwrap_or(new_default_target_column),
 		};
+		let old_through_model = self.from_state.find_model_by_table(&rename.old_table)?;
+		if !old_through_model
+			.fields
+			.contains_key(&rename.old_source_column)
+			|| !old_through_model
+				.fields
+				.contains_key(&rename.old_target_column)
+		{
+			return None;
+		}
 		(rename.old_table != rename.new_table
 			|| rename.old_source_column != rename.new_source_column
 			|| rename.old_target_column != rename.new_target_column)
@@ -9205,6 +9257,99 @@ mod tests {
 			)),
 			"through table must be renamed rather than dropped: {operations:?}"
 		);
+	}
+
+	#[rstest]
+	fn generate_migrations_does_not_rename_unrelated_table_matching_old_m2m_name() {
+		let from_user =
+			build_model_state_with_table_name("users", "User", "users", sample_fields());
+		let from_group =
+			build_model_state_with_table_name("users", "Group", "groups", sample_fields());
+		let unrelated = build_model_state_with_table_name(
+			"users",
+			"UsersGroupsArchive",
+			"users_groups",
+			vec![FieldState::new(
+				"id",
+				super::super::FieldType::Integer,
+				false,
+			)],
+		);
+		let from_state = build_project_state(vec![
+			(("users".to_string(), "User".to_string()), from_user),
+			(("users".to_string(), "Group".to_string()), from_group),
+			(
+				("users".to_string(), "UsersGroupsArchive".to_string()),
+				unrelated,
+			),
+		]);
+
+		let mut to_user =
+			build_model_state_with_table_name("users", "User", "user", sample_fields());
+		to_user
+			.many_to_many_fields
+			.push(ManyToManyMetadata::new("groups", "Group"));
+		let to_group =
+			build_model_state_with_table_name("users", "Group", "groups", sample_fields());
+		let to_state = build_project_state(vec![
+			(("users".to_string(), "User".to_string()), to_user),
+			(("users".to_string(), "Group".to_string()), to_group),
+		]);
+		let detector = MigrationAutodetector::new(from_state, to_state);
+
+		let operations = &detector.generate_migrations()[0].operations;
+
+		assert!(operations.iter().any(|operation| matches!(
+			operation,
+			super::super::Operation::CreateTable { name, .. } if name == "user_groups"
+		)));
+		assert!(operations.iter().all(|operation| !matches!(
+			operation,
+			super::super::Operation::RenameTable { old_name, new_name }
+				if old_name == "users_groups" && new_name == "user_groups"
+		)));
+	}
+
+	#[test]
+	fn removes_m2m_constraint_replacements_for_renamed_columns() {
+		let rename = ManyToManyArtifactRename {
+			old_table: "users_groups".to_string(),
+			old_source_column: "users_id".to_string(),
+			old_target_column: "groups_id".to_string(),
+			new_table: "user_groups".to_string(),
+			new_source_column: "user_id".to_string(),
+			new_target_column: "groups_id".to_string(),
+		};
+		let mut operations = vec![
+			super::super::Operation::AddConstraint {
+				table: "user_groups".to_string(),
+				constraint_sql:
+					"CONSTRAINT fk_user_groups_user_id FOREIGN KEY (user_id) REFERENCES user(id)"
+						.to_string(),
+			},
+			super::super::Operation::DropConstraint {
+				table: "users_groups".to_string(),
+				constraint_name: "fk_users_groups_users_id".to_string(),
+			},
+			super::super::Operation::AddConstraint {
+				table: "user_groups".to_string(),
+				constraint_sql: "CONSTRAINT user_groups_check CHECK (rank > 0)".to_string(),
+			},
+		];
+
+		MigrationAutodetector::remove_many_to_many_column_replacement_operations(
+			&mut operations,
+			&rename,
+			"users_id",
+			"user_id",
+		);
+
+		assert_eq!(operations.len(), 1, "unexpected operations: {operations:?}");
+		assert!(matches!(
+			&operations[0],
+			super::super::Operation::AddConstraint { constraint_sql, .. }
+				if constraint_sql == "CONSTRAINT user_groups_check CHECK (rank > 0)"
+		));
 	}
 
 	#[rstest]
