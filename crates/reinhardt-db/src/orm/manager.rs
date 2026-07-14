@@ -999,6 +999,13 @@ impl<M: Model> Manager<M> {
 			reinhardt_query::value::Value::Float(None) => QueryValue::Null,
 			reinhardt_query::value::Value::Double(Some(f)) => QueryValue::Float(f),
 			reinhardt_query::value::Value::Double(None) => QueryValue::Null,
+			// QueryValue has no dedicated decimal variant. Preserve the exact
+			// decimal spelling as text so the backend can coerce it to DECIMAL
+			// without losing precision through an intermediate float.
+			reinhardt_query::value::Value::Decimal(Some(value)) => {
+				QueryValue::String(value.to_string())
+			}
+			reinhardt_query::value::Value::Decimal(None) => QueryValue::Null,
 
 			reinhardt_query::value::Value::String(Some(s)) => QueryValue::String((*s).clone()),
 			reinhardt_query::value::Value::String(None) => QueryValue::Null,

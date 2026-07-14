@@ -13,6 +13,8 @@ pub enum DatabaseStorageKind {
 	F32,
 	/// 64-bit floating-point storage.
 	F64,
+	/// Fixed-precision decimal storage.
+	Decimal,
 	/// UTF-8 string storage.
 	String,
 	/// Binary byte storage.

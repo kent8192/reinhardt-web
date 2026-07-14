@@ -3403,6 +3403,7 @@ where
 			DatabaseValue::I64(value) => value.to_string(),
 			DatabaseValue::F32(value) => value.to_string(),
 			DatabaseValue::F64(value) => value.to_string(),
+			DatabaseValue::Decimal(value) => value.to_string(),
 			DatabaseValue::String(value) => value.clone(),
 			DatabaseValue::Bytes(value) => String::from_utf8_lossy(value).into_owned(),
 			DatabaseValue::Json(value) => value.to_string(),

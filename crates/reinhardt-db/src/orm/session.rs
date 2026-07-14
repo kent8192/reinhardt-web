@@ -1902,6 +1902,9 @@ fn bind_reinhardt_query_value<'a>(
 		})),
 		RValue::Float(Some(f)) => query.bind(*f),
 		RValue::Double(Some(f)) => query.bind(*f),
+		// Bind decimals as text for sqlx::Any. This preserves precision while
+		// allowing each backend to coerce the parameter to its numeric column.
+		RValue::Decimal(Some(value)) => query.bind(value.to_string()),
 		RValue::String(Some(s)) => query.bind(s.as_ref().clone()),
 		RValue::Bytes(Some(b)) => query.bind(b.as_ref().clone()),
 		// UUID: sqlx::Any doesn't natively support UUID, bind as string
@@ -1919,6 +1922,7 @@ fn bind_reinhardt_query_value<'a>(
 		RValue::BigInt(None) => query.bind(None::<i64>),
 		RValue::Float(None) => query.bind(None::<f32>),
 		RValue::Double(None) => query.bind(None::<f64>),
+		RValue::Decimal(None) => query.bind(None::<String>),
 		RValue::String(None) | RValue::Uuid(None) => query.bind(None::<String>),
 		RValue::Bytes(None) => query.bind(None::<Vec<u8>>),
 		_ => query.bind(None::<i32>),

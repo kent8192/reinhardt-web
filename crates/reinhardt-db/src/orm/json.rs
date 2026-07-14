@@ -181,6 +181,11 @@ fn database_value_from_json(
 		Some(DatabaseStorageKind::F64) => serde_json::from_value(value)
 			.map(DatabaseValue::F64)
 			.map_err(|error| FieldCodecError::Serialization(error.to_string())),
+		Some(DatabaseStorageKind::Decimal) => {
+			serde_json::from_value::<rust_decimal::Decimal>(value)
+				.map(DatabaseValue::Decimal)
+				.map_err(|error| FieldCodecError::Serialization(error.to_string()))
+		}
 		Some(DatabaseStorageKind::String) => serde_json::from_value(value)
 			.map(DatabaseValue::String)
 			.map_err(|error| FieldCodecError::Serialization(error.to_string())),

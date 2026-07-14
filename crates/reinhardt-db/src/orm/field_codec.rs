@@ -115,6 +115,8 @@ pub enum DatabaseValue {
 	F32(f32),
 	/// 64-bit floating-point value.
 	F64(f64),
+	/// Fixed-precision decimal value.
+	Decimal(rust_decimal::Decimal),
 	/// UTF-8 string value.
 	String(String),
 	/// Binary byte value.
@@ -164,6 +166,7 @@ impl DatabaseValue {
 			Self::I64(value) => Ok(serde_json::Value::Number(value.into())),
 			Self::F32(value) => json_number(f64::from(value)),
 			Self::F64(value) => json_number(value),
+			Self::Decimal(value) => Ok(serde_json::Value::String(value.to_string())),
 			Self::String(value) => Ok(serde_json::Value::String(value)),
 			Self::Bytes(value) => serde_json::to_value(value)
 				.map_err(|error| FieldCodecError::Serialization(error.to_string())),
@@ -187,6 +190,7 @@ pub fn database_value_to_query_value(value: DatabaseValue) -> reinhardt_query::v
 		DatabaseValue::I64(value) => Value::BigInt(Some(value)),
 		DatabaseValue::F32(value) => Value::Float(Some(value)),
 		DatabaseValue::F64(value) => Value::Double(Some(value)),
+		DatabaseValue::Decimal(value) => Value::Decimal(Some(Box::new(value))),
 		DatabaseValue::String(value) => Value::String(Some(Box::new(value))),
 		DatabaseValue::Bytes(value) => Value::Bytes(Some(Box::new(value))),
 		DatabaseValue::Json(value) => Value::Json(Some(Box::new(value))),
@@ -254,11 +258,32 @@ impl<T: DatabaseField> IntoFieldValue<T> for T {
 
 impl<T: DatabaseField> IntoFieldValue<T> for &T {
 	fn into_field_value(self) -> Result<DatabaseValue, FieldCodecError> {
-		self.clone().into_field_value()
+		self.encode_database()
+			.map(DatabaseScalar::into_database_value)
+	}
+}
+
+impl<T: DatabaseField> IntoFieldValue<Option<T>> for T {
+	fn into_field_value(self) -> Result<DatabaseValue, FieldCodecError> {
+		self.encode_database()
+			.map(DatabaseScalar::into_database_value)
+	}
+}
+
+impl<T: DatabaseField> IntoFieldValue<Option<T>> for &T {
+	fn into_field_value(self) -> Result<DatabaseValue, FieldCodecError> {
+		self.encode_database()
+			.map(DatabaseScalar::into_database_value)
 	}
 }
 
 impl IntoFieldValue<String> for &str {
+	fn into_field_value(self) -> Result<DatabaseValue, FieldCodecError> {
+		Ok(DatabaseValue::String(self.to_owned()))
+	}
+}
+
+impl IntoFieldValue<Option<String>> for &str {
 	fn into_field_value(self) -> Result<DatabaseValue, FieldCodecError> {
 		Ok(DatabaseValue::String(self.to_owned()))
 	}
@@ -432,6 +457,7 @@ impl_scalar_field!(i32, I32, I32);
 impl_scalar_field!(i64, I64, I64);
 impl_scalar_field!(f32, F32, F32);
 impl_scalar_field!(f64, F64, F64);
+impl_scalar_field!(rust_decimal::Decimal, Decimal, Decimal);
 impl_scalar_field!(String, String, String);
 impl_scalar_field!(Vec<u8>, Bytes, Bytes);
 impl_scalar_field!(serde_json::Value, Json, Json);
@@ -501,6 +527,36 @@ where
 	}
 }
 
+macro_rules! impl_json_database_field {
+	($type:ty) => {
+		impl DatabaseField for $type {
+			type Storage = serde_json::Value;
+
+			fn encode_database(&self) -> Result<Self::Storage, FieldCodecError> {
+				serde_json::to_value(self)
+					.map_err(|error| FieldCodecError::Serialization(error.to_string()))
+			}
+
+			fn decode_database(
+				value: Self::Storage,
+				_context: &FieldCodecContext,
+			) -> Result<Self, FieldCodecError> {
+				serde_json::from_value(value)
+					.map_err(|error| FieldCodecError::Serialization(error.to_string()))
+			}
+		}
+	};
+}
+
+impl_json_database_field!(Vec<String>);
+impl_json_database_field!(Vec<i32>);
+impl_json_database_field!(Vec<i64>);
+impl_json_database_field!(Vec<f32>);
+impl_json_database_field!(Vec<f64>);
+impl_json_database_field!(Vec<bool>);
+impl_json_database_field!(Vec<uuid::Uuid>);
+impl_json_database_field!(std::collections::HashMap<String, String>);
+
 mod private {
 	pub trait Sealed {}
 }
@@ -508,9 +564,28 @@ mod private {
 #[cfg(test)]
 mod tests {
 	use super::{
-		DatabaseField, DatabaseValue, FieldCodecContext, FieldCodecError, ModelEnumRepr,
-		ModelEnumValue,
+		DatabaseField, DatabaseScalar, DatabaseValue, FieldCodecContext, FieldCodecError,
+		IntoFieldValue, ModelEnumRepr, ModelEnumValue,
 	};
+	use std::collections::HashMap;
+
+	fn assert_database_field_round_trip<T>(value: T)
+	where
+		T: DatabaseField + std::fmt::Debug + PartialEq,
+	{
+		let database_value = value
+			.encode_database()
+			.map(DatabaseScalar::into_database_value)
+			.unwrap();
+		let storage = T::Storage::from_database_value(database_value).unwrap();
+		let decoded = T::decode_database(
+			storage,
+			&FieldCodecContext::new("LegacyModel", "value", "value"),
+		)
+		.unwrap();
+
+		assert_eq!(decoded, value);
+	}
 
 	#[test]
 	fn string_database_field_round_trips() {
@@ -534,6 +609,34 @@ mod tests {
 			)
 			.unwrap(),
 			None
+		);
+	}
+
+	#[test]
+	fn legacy_builtin_database_fields_round_trip() {
+		assert_database_field_round_trip(vec!["alpha".to_owned(), "beta".to_owned()]);
+		assert_database_field_round_trip(vec![1_i32, 2_i32]);
+		assert_database_field_round_trip(vec![1_i64, 2_i64]);
+		assert_database_field_round_trip(vec![1.5_f32, 2.5_f32]);
+		assert_database_field_round_trip(vec![1.5_f64, 2.5_f64]);
+		assert_database_field_round_trip(vec![true, false]);
+		assert_database_field_round_trip(vec![uuid::Uuid::nil()]);
+		assert_database_field_round_trip(HashMap::from([
+			("language".to_owned(), "rust".to_owned()),
+			("framework".to_owned(), "reinhardt".to_owned()),
+		]));
+		assert_database_field_round_trip(rust_decimal::Decimal::new(12345, 2));
+	}
+
+	#[test]
+	fn nullable_field_accepts_non_null_inner_values() {
+		assert_eq!(
+			<i64 as IntoFieldValue<Option<i64>>>::into_field_value(42).unwrap(),
+			DatabaseValue::I64(42)
+		);
+		assert_eq!(
+			<&str as IntoFieldValue<Option<String>>>::into_field_value("alice").unwrap(),
+			DatabaseValue::String("alice".to_owned())
 		);
 	}
 

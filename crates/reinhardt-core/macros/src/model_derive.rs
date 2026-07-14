@@ -1681,6 +1681,7 @@ fn builtin_storage_kind(ty: &Type, orm_crate: &TokenStream) -> Option<TokenStrea
 		"i64" => quote! { #orm_crate::DatabaseStorageKind::I64 },
 		"f32" => quote! { #orm_crate::DatabaseStorageKind::F32 },
 		"f64" => quote! { #orm_crate::DatabaseStorageKind::F64 },
+		"Decimal" => quote! { #orm_crate::DatabaseStorageKind::Decimal },
 		"String" => quote! { #orm_crate::DatabaseStorageKind::String },
 		"Json" | "Value" => quote! { #orm_crate::DatabaseStorageKind::Json },
 		"Uuid" => quote! { #orm_crate::DatabaseStorageKind::Uuid },
@@ -6102,6 +6103,19 @@ mod tests {
 			quote! { orm::DatabaseStorageKind::Bytes }.to_string()
 		);
 		assert!(builtin_storage_kind(&strings, &orm_crate).is_none());
+	}
+
+	#[test]
+	fn builtin_storage_kind_recognizes_decimal_fields() {
+		let orm_crate = quote! { orm };
+		let decimal: Type = parse_quote! { rust_decimal::Decimal };
+
+		assert_eq!(
+			builtin_storage_kind(&decimal, &orm_crate)
+				.expect("Decimal should have decimal storage")
+				.to_string(),
+			quote! { orm::DatabaseStorageKind::Decimal }.to_string()
+		);
 	}
 
 	#[test]

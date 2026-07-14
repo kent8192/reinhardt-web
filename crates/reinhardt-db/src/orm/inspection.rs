@@ -182,6 +182,7 @@ pub fn database_field_type_path(storage_kind: DatabaseStorageKind) -> &'static s
 		DatabaseStorageKind::I32 => "reinhardt.orm.models.IntegerField",
 		DatabaseStorageKind::I64 => "reinhardt.orm.models.BigIntegerField",
 		DatabaseStorageKind::F32 | DatabaseStorageKind::F64 => "reinhardt.orm.models.FloatField",
+		DatabaseStorageKind::Decimal => "reinhardt.orm.models.DecimalField",
 		DatabaseStorageKind::String => "reinhardt.orm.models.CharField",
 		DatabaseStorageKind::Bytes => "reinhardt.orm.models.BinaryField",
 		DatabaseStorageKind::Json => "reinhardt.orm.models.JsonField",
@@ -206,6 +207,10 @@ pub fn database_storage_field_type(
 		DatabaseStorageKind::I64 => FieldType::BigInteger,
 		DatabaseStorageKind::F32 => FieldType::Float,
 		DatabaseStorageKind::F64 => FieldType::Double,
+		DatabaseStorageKind::Decimal => FieldType::Decimal {
+			precision: 38,
+			scale: 10,
+		},
 		DatabaseStorageKind::String => FieldType::VarChar(
 			max_length.expect("string database fields require max_length attribute"),
 		),
