@@ -667,7 +667,10 @@ pub(crate) fn run_without_observer<R>(f: impl FnOnce() -> R) -> R {
 		}
 	}
 
-	let saved = with_runtime(|rt| core::mem::take(&mut *rt.observer_stack.borrow_mut()));
+	let Some(saved) = try_with_runtime(|rt| core::mem::take(&mut *rt.observer_stack.borrow_mut()))
+	else {
+		return f();
+	};
 	let mut guard = Restore {
 		saved,
 		active: true,
