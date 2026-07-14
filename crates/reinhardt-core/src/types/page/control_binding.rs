@@ -66,7 +66,7 @@ pub enum NumberParseErrorKind {
 	Incomplete,
 	/// The input is not a valid numeric lexeme.
 	Invalid,
-	/// The input cannot be represented by the target primitive.
+	/// The input overflows or a nonzero value underflows the target primitive.
 	OutOfRange,
 }
 
@@ -441,6 +441,15 @@ fn is_valid_unsigned_number_lexeme(raw: &str) -> bool {
 	!raw.starts_with(['+', '-']) && classify_number_lexeme(raw) == NumberLexemeState::Complete
 }
 
+fn significand_has_nonzero_digit(raw: &str) -> bool {
+	raw.trim_start_matches(['+', '-'])
+		.split(['e', 'E'])
+		.next()
+		.unwrap_or_default()
+		.bytes()
+		.any(|digit| digit.is_ascii_digit() && digit != b'0')
+}
+
 macro_rules! impl_signed_number_value {
 	($($type:ty),+ $(,)?) => {
 		$(
@@ -511,6 +520,9 @@ macro_rules! impl_float_number_value {
 						.parse::<Self>()
 						.map_err(|_| NumberParseError::new(raw, NumberParseErrorKind::Invalid))?;
 					if !value.is_finite() {
+						return Err(NumberParseError::new(raw, NumberParseErrorKind::OutOfRange));
+					}
+					if value == 0.0 && significand_has_nonzero_digit(raw) {
 						return Err(NumberParseError::new(raw, NumberParseErrorKind::OutOfRange));
 					}
 					Ok(value)
@@ -698,5 +710,48 @@ mod tests {
 			assert_eq!(error.raw(), raw);
 			assert_eq!(error.kind(), NumberParseErrorKind::OutOfRange);
 		}
+	}
+
+	#[rstest]
+	#[case("1e-46")]
+	#[case("-1e-46")]
+	fn f32_number_bindings_reject_nonzero_underflow(#[case] raw: &str) {
+		let error = <f32 as NumberValue>::parse_control_value(raw).unwrap_err();
+		assert_eq!(error.raw(), raw);
+		assert_eq!(error.kind(), NumberParseErrorKind::OutOfRange);
+	}
+
+	#[rstest]
+	#[case("1e-324")]
+	#[case("-1e-324")]
+	fn f64_number_bindings_reject_nonzero_underflow(#[case] raw: &str) {
+		let error = <f64 as NumberValue>::parse_control_value(raw).unwrap_err();
+		assert_eq!(error.raw(), raw);
+		assert_eq!(error.kind(), NumberParseErrorKind::OutOfRange);
+	}
+
+	#[rstest]
+	#[case("0")]
+	#[case("+0")]
+	#[case("-0")]
+	#[case("0.000e-999")]
+	#[case("-0e-999")]
+	fn float_number_bindings_accept_mathematical_zero(#[case] raw: &str) {
+		assert_eq!(<f32 as NumberValue>::parse_control_value(raw).unwrap(), 0.0);
+		assert_eq!(<f64 as NumberValue>::parse_control_value(raw).unwrap(), 0.0);
+	}
+
+	#[test]
+	fn float_number_bindings_accept_smallest_nonzero_subnormal_values() {
+		let f32_min = f32::from_bits(1);
+		let f64_min = f64::from_bits(1);
+		assert_eq!(
+			<f32 as NumberValue>::parse_control_value(&f32_min.to_string()).unwrap(),
+			f32_min
+		);
+		assert_eq!(
+			<f64 as NumberValue>::parse_control_value(&f64_min.to_string()).unwrap(),
+			f64_min
+		);
 	}
 }
