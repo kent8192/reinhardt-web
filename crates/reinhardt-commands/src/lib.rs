@@ -266,7 +266,7 @@ pub use template::{TemplateCommand, TemplateContext, generate_secret_key, to_cam
 pub use wasm_builder::{
 	WasmBuildConfig, WasmBuildError, WasmBuildOutput, WasmBuilder, check_wasm_tools_installed,
 	detect_cdylib_in_cargo_toml, detect_cdylib_in_cargo_toml_content, is_wasm_stale,
-	latest_source_mtime,
+	is_wasm_stale_for_roots, latest_source_mtime,
 };
 pub use welcome_page::WelcomePage;
 
