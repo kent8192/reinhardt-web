@@ -39,6 +39,7 @@
 //! - [`use_id`], [`use_layout_effect`], [`use_debug_value`]
 //! - [`use_optimistic`], [`use_shared_state`]
 //! - [`use_action`], [`use_action_state`], [`use_sync_external_store`]
+//! - [`use_query`], [`use_mutation`]
 //!
 //! ## Component System
 //! - [`Component`], [`PageElement`], [`IntoPage`], [`Page`], [`Props`]
@@ -86,8 +87,8 @@
 // ============================================================================
 
 pub use crate::reactive::{
-	Effect, LatestResourceState, LatestResourceValue, LatestResourceValueBuilder, Memo, Resource,
-	ResourceState, Signal, use_latest_resource_value,
+	Effect, LatestResourceState, LatestResourceValue, LatestResourceValueBuilder, Memo,
+	QueryHandle, QueryKey, QueryPhase, Resource, ResourceState, Signal, use_latest_resource_value,
 };
 
 // Context system
@@ -104,6 +105,7 @@ pub use crate::reactive::{
 	use_retained_effect, use_retained_layout_effect, use_shared_state, use_state,
 	use_sync_external_store, use_transition,
 };
+pub use crate::reactive::{use_mutation, use_query};
 
 // Unified resource hooks (available on all targets)
 pub use crate::reactive::{use_resource, use_resource_with_key};
