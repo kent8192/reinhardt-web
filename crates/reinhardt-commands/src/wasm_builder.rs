@@ -536,7 +536,7 @@ pub fn is_wasm_stale(crate_dir: &Path, artifact: &Path) -> bool {
 ///
 /// An unreadable root or an empty root set is treated as stale so callers do
 /// not serve a bundle whose dependency graph cannot be verified.
-pub(crate) fn is_wasm_stale_for_roots<'a>(
+pub fn is_wasm_stale_for_roots<'a>(
 	crate_dirs: impl IntoIterator<Item = &'a Path>,
 	artifact: &Path,
 ) -> bool {

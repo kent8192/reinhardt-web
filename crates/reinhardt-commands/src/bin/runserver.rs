@@ -19,6 +19,7 @@ use reinhardt_commands::{CollectStaticCommand, CollectStaticOptions};
 #[cfg(any(feature = "admin", feature = "pages"))]
 use reinhardt_commands::{
 	WasmBuildConfig, WasmBuilder, detect_cdylib_in_cargo_toml, is_wasm_stale,
+	is_wasm_stale_for_roots,
 };
 use reinhardt_pages::ssr::SsrRenderer;
 use reinhardt_utils::safe_path_join;
@@ -715,17 +716,6 @@ fn build_pages_wasm(
 		}
 	};
 	let package_manifest_path = &package_context.package_manifest_path;
-	let package_root = match package_manifest_path.parent() {
-		Some(path) => path,
-		None => {
-			eprintln!(
-				"{}",
-				"Warning: Selected Pages package manifest has no parent directory".yellow()
-			);
-			return false;
-		}
-	};
-
 	// Only build if this project exports cdylib
 	if !detect_cdylib_in_cargo_toml(package_manifest_path) {
 		return false;
@@ -736,7 +726,7 @@ fn build_pages_wasm(
 
 	let js_name = target_name.replace('-', "_");
 	let artifact = cwd.join("dist").join(format!("{}_bg.wasm", js_name));
-	if !force && !is_wasm_stale(package_root, &artifact) {
+	if !force && !is_wasm_stale_for_roots(package_context.source_package_roots(), &artifact) {
 		println!(
 			"{}",
 			"Pages WASM: artifacts up to date, skipping build (--no-override-wasm)".dimmed()
@@ -943,12 +933,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	} else {
 		reinhardt_commands::StyleFeatureSelection::with_features(args.features.clone())
 	};
-	let component_style_state =
+	let component_style_state = if args.no_wasm {
+		None
+	} else {
 		reinhardt_commands::ComponentStyleState::initialize_optional_with_features(
 			manifest,
 			args.package.clone(),
 			style_feature_selection.clone(),
-		)?;
+		)?
+	};
 
 	// Phase 1: Build WASM targets
 	build_wasm_targets(

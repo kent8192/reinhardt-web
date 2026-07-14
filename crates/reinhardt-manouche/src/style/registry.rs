@@ -311,6 +311,8 @@ pub struct GrammarMember {
 pub enum ValueGrammar {
 	/// One primitive semantic type.
 	Primitive(SemanticType),
+	/// One primitive grammar whose literal value cannot be negative.
+	NonNegative(&'static ValueGrammar),
 	/// One member of an explicit keyword domain.
 	Keyword(&'static KeywordDomain),
 	/// A validated CSS custom identifier.
@@ -380,6 +382,7 @@ impl ValueGrammar {
 			Self::Primitive(semantic_type) | Self::FunctionResult(semantic_type) => {
 				semantic_type_name(*semantic_type).to_owned()
 			}
+			Self::NonNegative(grammar) => format!("NON_NEGATIVE({})", grammar.describe()),
 			Self::Keyword(domain) => format!("KW({})", domain.name),
 			Self::Identifier => "IDENT".to_owned(),
 			Self::Or(alternatives) => format!(
@@ -427,6 +430,9 @@ impl ValueGrammar {
 		match self {
 			Self::Primitive(semantic_type) | Self::FunctionResult(semantic_type) => {
 				semantic_type_name(*semantic_type).to_owned()
+			}
+			Self::NonNegative(grammar) => {
+				format!("NON_NEGATIVE({})", grammar.describe_with_keywords())
 			}
 			Self::Keyword(domain) => format!("KW({}:[{}])", domain.name, domain.keywords.join("|")),
 			Self::Identifier => "IDENT".to_owned(),
@@ -1268,6 +1274,9 @@ const N: ValueGrammar = ValueGrammar::Primitive(SemanticType::Number);
 const I: ValueGrammar = ValueGrammar::Primitive(SemanticType::Integer);
 const L: ValueGrammar = ValueGrammar::Primitive(SemanticType::Length);
 const LP: ValueGrammar = ValueGrammar::Primitive(SemanticType::LengthPercentage);
+const NN: ValueGrammar = ValueGrammar::NonNegative(&N);
+const NL: ValueGrammar = ValueGrammar::NonNegative(&L);
+const NLP: ValueGrammar = ValueGrammar::NonNegative(&LP);
 const P: ValueGrammar = ValueGrammar::Primitive(SemanticType::Percentage);
 const A: ValueGrammar = ValueGrammar::Primitive(SemanticType::Angle);
 const T: ValueGrammar = ValueGrammar::Primitive(SemanticType::Time);
@@ -1285,7 +1294,7 @@ const POSITION: ValueGrammar = ValueGrammar::Space {
 	max: Some(4),
 	item: &POSITION_ITEM,
 };
-const LINE_WIDTH: ValueGrammar = ValueGrammar::Or(&[L, KW_LINE_WIDTH]);
+const LINE_WIDTH: ValueGrammar = ValueGrammar::Or(&[NL, KW_LINE_WIDTH]);
 const LINE_STYLE: ValueGrammar = KW_LINE_STYLE;
 const BORDER: ValueGrammar = ValueGrammar::Unordered {
 	members: &[
@@ -1335,11 +1344,11 @@ const MARGIN: ValueGrammar = ValueGrammar::Space {
 const PADDING: ValueGrammar = ValueGrammar::Space {
 	min: 1,
 	max: Some(4),
-	item: &LP,
+	item: &NLP,
 };
 const FLEX_ORDERED: ValueGrammar = ValueGrammar::Ordered(&[
-	required("grow", &N),
-	optional("shrink", &N),
+	required("grow", &NN),
+	optional("shrink", &NN),
 	optional("basis", &SIZE),
 ]);
 const FLEX: ValueGrammar = ValueGrammar::Or(&[KW_FLEX, SIZE, FLEX_ORDERED]);
@@ -1412,24 +1421,32 @@ const FONT_STYLE: ValueGrammar = ValueGrammar::Or(&[KW_FONT_STYLE, FONT_STYLE_OB
 const FONT_WEIGHT: ValueGrammar = ValueGrammar::Or(&[N, KW_FONT_WEIGHT]);
 const LINE_HEIGHT: ValueGrammar = ValueGrammar::Or(&[KW_NORMAL, N, LP]);
 const LETTER_SPACING: ValueGrammar = ValueGrammar::Or(&[KW_NORMAL, L]);
-const FONT_WITHOUT_LINE_HEIGHT: ValueGrammar = ValueGrammar::Ordered(&[
-	optional("style", &FONT_STYLE),
-	optional("variant", &KW_FONT_VARIANT),
-	optional("weight", &FONT_WEIGHT),
-	required("size", &FONT_SIZE),
-	required("family", &FONT_FAMILY),
-]);
+const FONT_WITHOUT_LINE_HEIGHT: ValueGrammar = ValueGrammar::Unordered {
+	members: &[
+		optional("style", &FONT_STYLE),
+		optional("variant", &KW_FONT_VARIANT),
+		optional("weight", &FONT_WEIGHT),
+		required("size", &FONT_SIZE),
+		required("family", &FONT_FAMILY),
+	],
+	min_members: 2,
+	preserve_source_order: true,
+};
 const FONT_SIZE_AND_LINE_HEIGHT: ValueGrammar = ValueGrammar::Slash {
 	left: &FONT_SIZE,
 	right: &LINE_HEIGHT,
 };
-const FONT_WITH_LINE_HEIGHT: ValueGrammar = ValueGrammar::Ordered(&[
-	optional("style", &FONT_STYLE),
-	optional("variant", &KW_FONT_VARIANT),
-	optional("weight", &FONT_WEIGHT),
-	required("size-and-line-height", &FONT_SIZE_AND_LINE_HEIGHT),
-	required("family", &FONT_FAMILY),
-]);
+const FONT_WITH_LINE_HEIGHT: ValueGrammar = ValueGrammar::Unordered {
+	members: &[
+		optional("style", &FONT_STYLE),
+		optional("variant", &KW_FONT_VARIANT),
+		optional("weight", &FONT_WEIGHT),
+		required("size-and-line-height", &FONT_SIZE_AND_LINE_HEIGHT),
+		required("family", &FONT_FAMILY),
+	],
+	min_members: 2,
+	preserve_source_order: true,
+};
 const FONT: ValueGrammar = ValueGrammar::Or(&[
 	KW_SYSTEM_FONT,
 	FONT_WITHOUT_LINE_HEIGHT,
@@ -1525,7 +1542,7 @@ const BORDER_COLOR: ValueGrammar = ValueGrammar::Space {
 const RADIUS_VALUES: ValueGrammar = ValueGrammar::Space {
 	min: 1,
 	max: Some(4),
-	item: &LP,
+	item: &NLP,
 };
 const BORDER_RADIUS_SLASH: ValueGrammar = ValueGrammar::Slash {
 	left: &RADIUS_VALUES,
@@ -1535,7 +1552,7 @@ const BORDER_RADIUS: ValueGrammar = ValueGrammar::Or(&[RADIUS_VALUES, BORDER_RAD
 const CORNER_RADIUS: ValueGrammar = ValueGrammar::Space {
 	min: 1,
 	max: Some(2),
-	item: &LP,
+	item: &NLP,
 };
 
 const SHADOW: ValueGrammar = ValueGrammar::Unordered {
@@ -1670,16 +1687,16 @@ static PROPERTY_SPECS: &[PropertySpec] = property_registry!(
 		"margin-bottom" => INSET_VALUE,
 		"margin-left" => INSET_VALUE,
 		"padding" => PADDING,
-		"padding-top" => LP,
-		"padding-right" => LP,
-		"padding-bottom" => LP,
-		"padding-left" => LP,
+		"padding-top" => NLP,
+		"padding-right" => NLP,
+		"padding-bottom" => NLP,
+		"padding-left" => NLP,
 	},
 	PropertyFamily::FlexAndGrid => {
 		"flex" => FLEX,
 		"flex-basis" => SIZE,
-		"flex-grow" => N,
-		"flex-shrink" => N,
+		"flex-grow" => NN,
+		"flex-shrink" => NN,
 		"order" => I,
 		"flex-direction" => KW_FLEX_DIRECTION,
 		"flex-wrap" => KW_FLEX_WRAP,
@@ -3050,6 +3067,7 @@ mod tests {
 	) {
 		match grammar {
 			ValueGrammar::Keyword(domain) => domains.push(domain),
+			ValueGrammar::NonNegative(grammar) => collect_keyword_domains(grammar, domains),
 			ValueGrammar::Or(alternatives) => {
 				for alternative in *alternatives {
 					collect_keyword_domains(alternative, domains);

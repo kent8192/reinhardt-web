@@ -124,7 +124,7 @@ impl StylePackageContext {
 	///
 	/// The result includes the selected package and enabled local path dependencies,
 	/// matching the style extraction graph used for generated CSS.
-	pub(crate) fn source_package_roots(&self) -> impl Iterator<Item = &Path> {
+	pub fn source_package_roots(&self) -> impl Iterator<Item = &Path> {
 		self.source_roots
 			.iter()
 			.map(|source| source.package_root.as_path())

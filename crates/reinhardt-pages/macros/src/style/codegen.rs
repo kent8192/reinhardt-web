@@ -9,13 +9,16 @@ pub(super) fn generate_style_items(
 	compiled: &reinhardt_manouche::CompiledStyle,
 ) -> syn::Result<TokenStream> {
 	let crate_info = get_reinhardt_pages_crate_info();
+	let generated_attributes: Vec<_> = item.attrs.iter().filter_map(generated_attribute).collect();
 	let (pages, use_statement) = if crate_info.needs_conditional {
 		let alias = format_ident!("__reinhardt_pages_for_{style_type}");
 		(
 			quote!(#alias),
 			quote! {
+				#(#generated_attributes)*
 				#[cfg(all(target_family = "wasm", target_os = "unknown"))]
 				use ::reinhardt_pages as #alias;
+				#(#generated_attributes)*
 				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 				use ::reinhardt::pages as #alias;
 			},
@@ -24,7 +27,6 @@ pub(super) fn generate_style_items(
 		(crate_info.ident, crate_info.use_statement)
 	};
 	let attributes = &item.attrs;
-	let generated_attributes: Vec<_> = item.attrs.iter().filter_map(generated_attribute).collect();
 	let visibility = &item.vis;
 	let static_name = &item.ident;
 	let builder = format_ident!("{}Vars", style_type);

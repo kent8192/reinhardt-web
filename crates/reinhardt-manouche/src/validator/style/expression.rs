@@ -901,6 +901,9 @@ fn matches_grammar(expression: &TypedValueExpr, grammar: &ValueGrammar) -> bool 
 		ValueGrammar::Primitive(value_type) | ValueGrammar::FunctionResult(value_type) => {
 			expression_matches_type(expression, *value_type)
 		}
+		ValueGrammar::NonNegative(grammar) => {
+			matches_grammar(expression, grammar) && !is_negative_literal(expression)
+		}
 		ValueGrammar::Keyword(domain) => keyword_matches(expression, domain),
 		ValueGrammar::Identifier => custom_identifier_matches(expression),
 		ValueGrammar::Or(alternatives) => alternatives
@@ -970,21 +973,39 @@ fn custom_identifier_matches(expression: &TypedValueExpr) -> bool {
 		return false;
 	};
 	let value = keyword.as_str();
-	!value.starts_with('-')
-		&& !is_css_wide_keyword(value)
-		&& value
-			.bytes()
-			.next()
-			.is_some_and(|byte| byte.is_ascii_alphabetic() || byte == b'_')
-		&& value
-			.bytes()
-			.all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+	!is_css_wide_keyword(value)
+		&& value.bytes().next().is_some_and(|byte| {
+			byte.is_ascii_alphabetic()
+				|| byte == b'_'
+				|| (byte == b'-'
+					&& value.bytes().nth(1).is_some_and(|next| {
+						next.is_ascii_alphabetic() || next == b'_' || next == b'-'
+					}))
+		}) && value
+		.bytes()
+		.all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
 }
 
 fn is_css_wide_keyword(value: &str) -> bool {
 	["inherit", "initial", "unset", "revert", "revert-layer"]
 		.iter()
 		.any(|keyword| value.eq_ignore_ascii_case(keyword))
+}
+
+fn is_negative_literal(expression: &TypedValueExpr) -> bool {
+	match &expression.kind {
+		TypedValueExprKind::Unary { operator, operand }
+			if matches!(operator.kind, StyleUnaryOperatorKind::Minus) =>
+		{
+			matches!(
+				operand.kind,
+				TypedValueExprKind::Literal(StyleValueLiteral::Integer(_))
+					| TypedValueExprKind::Literal(StyleValueLiteral::Number(_))
+			)
+		}
+		TypedValueExprKind::Group(operand) => is_negative_literal(operand),
+		_ => false,
+	}
 }
 
 fn sequence_items(expression: &TypedValueExpr) -> Vec<&TypedValueExpr> {
@@ -1116,6 +1137,7 @@ fn matching_prefix_lengths(items: &[&TypedValueExpr], grammar: &ValueGrammar) ->
 			}
 		}
 		ValueGrammar::Primitive(_)
+		| ValueGrammar::NonNegative(_)
 		| ValueGrammar::Keyword(_)
 		| ValueGrammar::Identifier
 		| ValueGrammar::FunctionResult(_)
@@ -2041,5 +2063,58 @@ mod tests {
 			StyleDiagnosticKind::PropertyValueMismatch { property, .. }
 				if property == "font-family"
 		));
+	}
+
+	#[rstest]
+	#[case("padding", "-1px")]
+	#[case("padding-left", "-0.5rem")]
+	#[case("flex-grow", "-1")]
+	#[case("flex-shrink", "-1")]
+	#[case("flex", "(-1, 0, auto)")]
+	#[case("border-width", "-1px")]
+	#[case("border", "(-1px, solid, red)")]
+	#[case("outline-width", "-2px")]
+	#[case("border-radius", "-1px")]
+	#[case("border-top-left-radius", "-10%")]
+	fn rejects_negative_values_for_nonnegative_property_grammars(
+		#[case] property: &str,
+		#[case] value: &str,
+	) {
+		// Arrange
+		let source = format!(".card {{ {property}: {value}; }}");
+
+		// Act
+		let kind = diagnostic_kind_text(&source);
+
+		// Assert
+		assert!(matches!(
+			kind,
+			StyleDiagnosticKind::PropertyValueMismatch { property: actual, .. }
+				if actual == property
+		));
+	}
+
+	#[rstest]
+	fn accepts_unordered_font_members_before_the_size() {
+		// Arrange
+		let source = ".card { font: (bold, italic, 16px, serif); }";
+
+		// Act
+		let typed = validated_text(source);
+
+		// Assert
+		assert_eq!(typed.items.len(), 1);
+	}
+
+	#[rstest]
+	fn accepts_hyphen_leading_custom_identifiers() {
+		// Arrange
+		let source = ".card { font-family: [-apple-system, sans-serif]; }";
+
+		// Act
+		let typed = validated_text(source);
+
+		// Assert
+		assert_eq!(typed.items.len(), 1);
 	}
 }

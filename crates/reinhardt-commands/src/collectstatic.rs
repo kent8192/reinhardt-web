@@ -11,7 +11,7 @@ use reinhardt_utils::staticfiles::{StaticFilesConfig, StaticFilesFinder};
 use std::collections::BTreeMap;
 use std::fs;
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 /// Options for the `collectstatic` management command.
 #[derive(Debug, Clone)]
@@ -391,6 +391,18 @@ impl CollectStaticCommand {
 				io::ErrorKind::InvalidInput,
 				format!(
 					"virtual framework asset must use the reserved namespace: {}",
+					asset.logical_path
+				),
+			));
+		}
+		if Path::new(&asset.logical_path)
+			.components()
+			.any(|component| !matches!(component, Component::Normal(_)))
+		{
+			return Err(io::Error::new(
+				io::ErrorKind::InvalidInput,
+				format!(
+					"virtual framework asset has an invalid logical path: {}",
 					asset.logical_path
 				),
 			));

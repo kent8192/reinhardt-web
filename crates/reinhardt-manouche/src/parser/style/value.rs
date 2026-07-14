@@ -58,6 +58,23 @@ fn parse_expression(
 }
 
 fn parse_prefix_expression(input: ParseStream) -> syn::Result<StyleValueExpression> {
+	if input.peek(Token![-]) {
+		let fork = input.fork();
+		fork.parse::<Token![-]>()?;
+		if fork.peek(Ident::peek_any) {
+			let hyphen: Token![-] = input.parse()?;
+			let mut name = parse_value_name(input)?;
+			name.value.insert(0, '-');
+			name.span = joined_span(hyphen.span(), name.span);
+			let name = parse_kebab_keyword_name(input, name)?;
+			let span = name.span;
+			return Ok(StyleValueExpression {
+				kind: StyleValueExpr::Literal(StyleValueLiteral::Keyword(name)),
+				span,
+			});
+		}
+	}
+
 	if input.peek(Token![+]) || input.peek(Token![-]) {
 		let (kind, span) = if input.peek(Token![+]) {
 			let token: Token![+] = input.parse()?;

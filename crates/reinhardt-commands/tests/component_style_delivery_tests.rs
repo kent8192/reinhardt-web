@@ -80,6 +80,34 @@ fn physical_sources_cannot_claim_the_reserved_namespace() {
 }
 
 #[rstest]
+fn virtual_assets_cannot_escape_the_static_root() {
+	// Arrange
+	let directory = tempfile::tempdir().expect("create destination");
+	let destination = directory.path().join("static-root");
+	let outside = directory.path().join("outside.css");
+	let config = StaticFilesConfig {
+		static_root: destination,
+		static_url: "/static/".to_string(),
+		staticfiles_dirs: Vec::new(),
+		media_url: None,
+	};
+	let mut command = CollectStaticCommand::new(config, CollectStaticOptions::default());
+	command.add_virtual_asset(VirtualStaticAsset {
+		logical_path: "__reinhardt__/../../outside.css".to_string(),
+		bytes: b"escaped".to_vec(),
+	});
+
+	// Act
+	let error = command
+		.execute()
+		.expect_err("traversal path must be rejected before writing");
+
+	// Assert
+	assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+	assert!(!outside.exists());
+}
+
+#[rstest]
 fn physical_index_templates_resolve_hashed_virtual_component_styles() {
 	let directory = tempfile::tempdir().expect("create source tree");
 	let source = directory.path().join("source");
