@@ -300,6 +300,7 @@ impl ConstraintDefinition {
 		column: impl Into<String>,
 		domain: crate::field_domain::FieldDomain,
 	) -> Self {
+		let domain = domain.canonicalized();
 		Self {
 			name: name.into(),
 			constraint_type: "enum_domain".to_string(),
@@ -317,8 +318,11 @@ impl ConstraintDefinition {
 			"enum_domain" => super::operations::Constraint::EnumDomain {
 				name: self.name.clone(),
 				column: self.fields.first().cloned().unwrap_or_default(),
-				domain: serde_json::from_str(self.expression.as_deref().unwrap_or(""))
-					.expect("enum-domain constraint metadata must contain a FieldDomain"),
+				domain: serde_json::from_str::<crate::field_domain::FieldDomain>(
+					self.expression.as_deref().unwrap_or(""),
+				)
+				.expect("enum-domain constraint metadata must contain a FieldDomain")
+				.canonicalized(),
 			},
 			"unique" => super::operations::Constraint::Unique {
 				name: self.name.clone(),

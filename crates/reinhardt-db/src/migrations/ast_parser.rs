@@ -669,6 +669,21 @@ fn parse_single_constraint(expr: &Expr) -> Option<super::Constraint> {
 
 				return Some(super::Constraint::Check { name, expression });
 			}
+			"EnumDomain" => {
+				let name = extract_string_field(&expr_struct.fields, "name")?;
+				let column = extract_string_field(&expr_struct.fields, "column")?;
+				let domain = expr_struct.fields.iter().find_map(|field| {
+					matches!(&field.member, syn::Member::Named(ident) if ident == "domain")
+						.then(|| parse_field_domain(&field.expr))
+						.flatten()
+				})?;
+
+				return Some(super::Constraint::EnumDomain {
+					name,
+					column,
+					domain,
+				});
+			}
 			"OneToOne" => {
 				let name = extract_string_field(&expr_struct.fields, "name")?;
 				let column = extract_string_field(&expr_struct.fields, "column")?;
@@ -945,16 +960,20 @@ fn parse_model_enum_value(expr: &Expr) -> Option<crate::field_domain::ModelEnumV
 	let value = call.args.first()?;
 	match variant.as_str() {
 		"String" => extract_string_expr(value).map(crate::field_domain::ModelEnumValue::String),
-		"I32" => match value {
-			Expr::Lit(syn::ExprLit {
-				lit: syn::Lit::Int(value),
-				..
-			}) => value
-				.base10_parse()
-				.ok()
-				.map(crate::field_domain::ModelEnumValue::I32),
-			_ => None,
-		},
+		"I32" => parse_i32_expr(value).map(crate::field_domain::ModelEnumValue::I32),
+		_ => None,
+	}
+}
+
+fn parse_i32_expr(expr: &Expr) -> Option<i32> {
+	match expr {
+		Expr::Lit(syn::ExprLit {
+			lit: syn::Lit::Int(value),
+			..
+		}) => value.base10_parse().ok(),
+		Expr::Unary(unary) if matches!(unary.op, syn::UnOp::Neg(_)) => {
+			parse_i32_expr(&unary.expr)?.checked_neg()
+		}
 		_ => None,
 	}
 }
@@ -1585,6 +1604,7 @@ pub(super) fn migration() -> Migration {
 		state_only: false, database_only: false,
 		swappable_dependencies: vec![], optional_dependencies: vec![],
 	}
+
 }
 "#;
 		let ast = syn::parse_file(source).expect("migration source must parse");
@@ -1604,6 +1624,53 @@ pub(super) fn migration() -> Migration {
 					ModelEnumValue::String("running".to_string()),
 				],
 			})
+		);
+	}
+
+	#[test]
+	fn extract_migration_metadata_restores_negative_enum_domain_constraint() {
+		let source = r#"
+use reinhardt_db::migrations::prelude::*;
+
+pub(super) fn migration() -> Migration {
+	Migration {
+		app_label: "jobs".to_string(), name: "0001_initial".to_string(),
+		operations: vec![Operation::CreateTable {
+			name: "jobs".to_string(), columns: vec![],
+			constraints: vec![Constraint::EnumDomain {
+				name: "jobs_status_model_enum_check".to_string(),
+				column: "status".to_string(),
+				domain: FieldDomain::Enum {
+					repr: ModelEnumRepr::I32,
+					values: vec![ModelEnumValue::I32(-2), ModelEnumValue::I32(1)],
+				},
+			}],
+			without_rowid: None, interleave_in_parent: None, partition: None,
+		}],
+		dependencies: vec![], atomic: true, replaces: vec![], initial: Some(true),
+		state_only: false, database_only: false,
+		swappable_dependencies: vec![], optional_dependencies: vec![],
+	}
+}
+"#;
+		let ast = syn::parse_file(source).expect("migration source must parse");
+
+		let migration = extract_migration_metadata(&ast, "jobs", "0001_initial")
+			.expect("migration metadata must parse");
+		let Operation::CreateTable { constraints, .. } = &migration.operations[0] else {
+			panic!("expected CreateTable operation");
+		};
+
+		assert_eq!(
+			constraints,
+			&vec![crate::migrations::Constraint::EnumDomain {
+				name: "jobs_status_model_enum_check".to_string(),
+				column: "status".to_string(),
+				domain: FieldDomain::Enum {
+					repr: ModelEnumRepr::I32,
+					values: vec![ModelEnumValue::I32(-2), ModelEnumValue::I32(1)],
+				},
+			}]
 		);
 	}
 

@@ -18,6 +18,15 @@ enum MigrationStatus {
 	Running,
 }
 
+#[derive(ModelEnum, Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[model_enum(repr = "string")]
+enum ReorderedMigrationStatus {
+	#[model_enum(value = "running")]
+	Running,
+	#[model_enum(value = "queued")]
+	Queued,
+}
+
 #[model(
 	app_label = "model_enum_migrations",
 	table_name = "model_enum_migration_jobs"
@@ -28,6 +37,20 @@ struct MigrationJob {
 	id: Option<i64>,
 	#[field(db_column = "job_status", max_length = 32)]
 	status: MigrationStatus,
+}
+
+#[model(
+	app_label = "model_enum_migrations",
+	table_name = "model_enum_migration_jobs_reordered"
+)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+// This fixture is registered through its generated constructor and inspected via migration metadata.
+#[allow(dead_code)]
+struct ReorderedMigrationJob {
+	#[field(primary_key = true)]
+	id: Option<i64>,
+	#[field(db_column = "job_status", max_length = 32)]
+	status: ReorderedMigrationStatus,
 }
 
 #[model(
@@ -70,6 +93,44 @@ fn project_state_with_domain(values: &[&str]) -> ProjectState {
 fn enum_domain_order_is_canonical_for_autodetection() {
 	let from_state = project_state_with_domain(&["queued", "running"]);
 	let to_state = project_state_with_domain(&["running", "queued"]);
+
+	let operations = MigrationAutodetector::new(from_state, to_state).generate_operations();
+
+	assert_eq!(operations, Vec::<Operation>::new());
+}
+
+#[test]
+fn macro_registered_variant_reorder_is_a_migration_noop() {
+	let registry = reinhardt_db::migrations::global_registry();
+	let from_model = registry
+		.get_model("model_enum_migrations", "MigrationJob")
+		.expect("MigrationJob should be registered")
+		.to_model_state();
+	let mut to_model = registry
+		.get_model("model_enum_migrations", "ReorderedMigrationJob")
+		.expect("ReorderedMigrationJob should be registered")
+		.to_model_state();
+
+	to_model.name = from_model.name.clone();
+	to_model.table_name = from_model.table_name.clone();
+	let constraint_name = from_model
+		.constraints
+		.iter()
+		.find(|constraint| constraint.constraint_type == "enum_domain")
+		.expect("source enum-domain constraint should exist")
+		.name
+		.clone();
+	to_model
+		.constraints
+		.iter_mut()
+		.find(|constraint| constraint.constraint_type == "enum_domain")
+		.expect("reordered enum-domain constraint should exist")
+		.name = constraint_name;
+
+	let mut from_state = ProjectState::new();
+	from_state.add_model(from_model);
+	let mut to_state = ProjectState::new();
+	to_state.add_model(to_model);
 
 	let operations = MigrationAutodetector::new(from_state, to_state).generate_operations();
 

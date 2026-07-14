@@ -55,9 +55,10 @@ pub use special::{RunCode, RunSQL, StateOperation};
 use super::{FieldState, FieldType, ModelState, ProjectState};
 use pg_escape::{quote_identifier, quote_literal};
 use reinhardt_query::prelude::{
-	Alias, AlterTableStatement, ColumnDef, ColumnType as QueryColumnType, CreateIndexStatement,
-	CreateTableStatement, DropIndexStatement, DropTableStatement, GeneratedColumn,
-	GeneratedStorage, Query, SchemaExpr, SchemaFunc, SimpleExpr, Value,
+	Alias, AlterTableStatement, CockroachDBQueryBuilder, ColumnDef, ColumnType as QueryColumnType,
+	CreateIndexStatement, CreateTableStatement, DropIndexStatement, DropTableStatement,
+	GeneratedColumn, GeneratedStorage, MySqlQueryBuilder, PostgresQueryBuilder, Query,
+	QueryBuilder, SchemaExpr, SchemaFunc, SimpleExpr, SqliteQueryBuilder, Value,
 };
 use serde::{Deserialize, Serialize, ser::SerializeStruct};
 
@@ -556,6 +557,37 @@ pub enum Constraint {
 	},
 }
 
+impl Constraint {
+	fn to_sql_for_dialect(&self, dialect: &SqlDialect) -> String {
+		let Constraint::EnumDomain {
+			name,
+			column,
+			domain,
+		} = self
+		else {
+			return self.to_string();
+		};
+		let crate::field_domain::FieldDomain::Enum { values, .. } = domain.clone().canonicalized();
+		let literals = values
+			.into_iter()
+			.map(|value| match value {
+				crate::field_domain::ModelEnumValue::String(value) => {
+					Value::String(Some(Box::new(value))).to_sql_literal()
+				}
+				crate::field_domain::ModelEnumValue::I32(value) => {
+					Value::Int(Some(value)).to_sql_literal()
+				}
+			})
+			.collect::<Vec<_>>();
+		format!(
+			"CONSTRAINT {} CHECK ({} IN ({}))",
+			name,
+			Operation::quote_dialect_identifier(column, dialect),
+			literals.join(", ")
+		)
+	}
+}
+
 impl std::fmt::Display for Constraint {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
@@ -598,30 +630,11 @@ impl std::fmt::Display for Constraint {
 				write!(f, "CONSTRAINT {} CHECK ({})", name, expression)
 			}
 			Constraint::EnumDomain {
-				name,
-				column,
-				domain,
+				name: _,
+				column: _,
+				domain: _,
 			} => {
-				let crate::field_domain::FieldDomain::Enum { values, .. } = domain;
-				let mut literals = values
-					.iter()
-					.map(|value| match value {
-						crate::field_domain::ModelEnumValue::String(value) => {
-							Value::String(Some(Box::new(value.clone()))).to_sql_literal()
-						}
-						crate::field_domain::ModelEnumValue::I32(value) => {
-							Value::Int(Some(*value)).to_sql_literal()
-						}
-					})
-					.collect::<Vec<_>>();
-				literals.sort();
-				write!(
-					f,
-					"CONSTRAINT {} CHECK ({} IN ({}))",
-					name,
-					format_args!("\"{}\"", column.replace('"', "\"\"")),
-					literals.join(", ")
-				)
+				write!(f, "{}", self.to_sql_for_dialect(&SqlDialect::Postgres))
 			}
 			Constraint::OneToOne {
 				name,
@@ -1415,6 +1428,7 @@ impl Operation {
 						false,
 					);
 					field.generated = column.generated.clone();
+					field.domain = column.domain.clone();
 					model.add_field(field);
 				}
 				state.add_model(model);
@@ -1430,6 +1444,7 @@ impl Operation {
 						false,
 					);
 					field.generated = column.generated.clone();
+					field.domain = column.domain.clone();
 					model.add_field(field);
 				}
 			}
@@ -1451,6 +1466,7 @@ impl Operation {
 						false,
 					);
 					field.generated = new_definition.generated.clone();
+					field.domain = new_definition.domain.clone();
 					model.alter_field(column, field);
 				}
 			}
@@ -1729,6 +1745,49 @@ impl Operation {
 		} else {
 			quote_identifier(ident).to_string()
 		}
+	}
+
+	fn quote_dialect_identifier(ident: &str, dialect: &SqlDialect) -> String {
+		match dialect {
+			SqlDialect::Postgres => PostgresQueryBuilder::new().escape_identifier(ident),
+			SqlDialect::Mysql => MySqlQueryBuilder.escape_identifier(ident),
+			SqlDialect::Sqlite => SqliteQueryBuilder::new().escape_identifier(ident),
+			SqlDialect::Cockroachdb => CockroachDBQueryBuilder::new().escape_identifier(ident),
+		}
+	}
+
+	fn constraint_sql_for_dialect(constraint_sql: &str, dialect: &SqlDialect) -> String {
+		let Some(after_constraint) = constraint_sql.strip_prefix("CONSTRAINT ") else {
+			return constraint_sql.to_string();
+		};
+		let Some((name, check_body)) = after_constraint.split_once(" CHECK (") else {
+			return constraint_sql.to_string();
+		};
+		if !name.ends_with("_model_enum_check") {
+			return constraint_sql.to_string();
+		}
+		let Some(check_body) = check_body.strip_suffix(')') else {
+			return constraint_sql.to_string();
+		};
+		let Some((quoted_column, literals)) = check_body.split_once(" IN (") else {
+			return constraint_sql.to_string();
+		};
+		let Some(literals) = literals.strip_suffix(')') else {
+			return constraint_sql.to_string();
+		};
+		let Some(column) = quoted_column
+			.strip_prefix('"')
+			.and_then(|column| column.strip_suffix('"'))
+		else {
+			return constraint_sql.to_string();
+		};
+		let column = column.replace("\"\"", "\"");
+		format!(
+			"CONSTRAINT {} CHECK ({} IN ({}))",
+			name,
+			Self::quote_dialect_identifier(&column, dialect),
+			literals
+		)
 	}
 
 	fn query_column_type_to_sql(ty: &QueryColumnType, dialect: &SqlDialect) -> String {
@@ -2131,7 +2190,7 @@ impl Operation {
 				}
 
 				for constraint in constraints {
-					parts.push(format!("  {}", constraint));
+					parts.push(format!("  {}", constraint.to_sql_for_dialect(dialect)));
 				}
 				let mut sql = format!(
 					"CREATE TABLE {} (\n{}\n)",
@@ -2306,8 +2365,8 @@ impl Operation {
 			} => {
 				format!(
 					"ALTER TABLE {} ADD {};",
-					quote_identifier(table),
-					constraint_sql
+					Self::quote_schema_identifier(table, dialect),
+					Self::constraint_sql_for_dialect(constraint_sql, dialect)
 				)
 			}
 			Operation::RestoreConstraintOnRollback { .. } => {
@@ -3573,17 +3632,20 @@ impl ColumnDefinition {
 }
 
 pub(crate) fn truncate_identifier_with_hash(logical_name: &str) -> String {
-	use std::collections::hash_map::DefaultHasher;
-	use std::hash::{Hash, Hasher};
-
 	const MAX_IDENTIFIER_LENGTH: usize = 63;
+	const FNV_OFFSET_BASIS: u64 = 0xcbf29ce484222325;
+	const FNV_PRIME: u64 = 0x00000100000001b3;
 	if logical_name.len() <= MAX_IDENTIFIER_LENGTH {
 		return logical_name.to_string();
 	}
 
-	let mut hasher = DefaultHasher::new();
-	logical_name.hash(&mut hasher);
-	let hash = format!("{:016x}", hasher.finish());
+	let hash = logical_name
+		.as_bytes()
+		.iter()
+		.fold(FNV_OFFSET_BASIS, |hash, byte| {
+			(hash ^ u64::from(*byte)).wrapping_mul(FNV_PRIME)
+		});
+	let hash = format!("{hash:016x}");
 	let prefix_len = MAX_IDENTIFIER_LENGTH - hash.len() - 1;
 	let boundary = logical_name
 		.char_indices()
@@ -6128,15 +6190,15 @@ mod tests {
 			domain: crate::field_domain::FieldDomain::Enum {
 				repr: crate::field_domain::ModelEnumRepr::I32,
 				values: vec![
-					crate::field_domain::ModelEnumValue::I32(20),
 					crate::field_domain::ModelEnumValue::I32(10),
+					crate::field_domain::ModelEnumValue::I32(2),
 				],
 			},
 		};
 
 		assert_eq!(
 			constraint.to_string(),
-			"CONSTRAINT jobs_status_model_enum_check CHECK (\"status_code\" IN (10, 20))"
+			"CONSTRAINT jobs_status_model_enum_check CHECK (\"status_code\" IN (2, 10))"
 		);
 	}
 
@@ -6155,6 +6217,138 @@ mod tests {
 		assert_ne!(
 			first,
 			truncate_identifier_with_hash(&format!("{logical}_different"))
+		);
+	}
+
+	#[test]
+	fn enum_domain_constraint_name_has_a_stable_known_hash_suffix() {
+		let logical = "model_enum_jobs_with_a_name_that_exceeds_postgres_identifier_limits_job_status_model_enum_check";
+
+		assert_eq!(
+			truncate_identifier_with_hash(logical),
+			"model_enum_jobs_with_a_name_that_exceeds_postg_cb8793507fca29f1"
+		);
+	}
+
+	#[test]
+	fn enum_domain_constraint_uses_mysql_identifier_quoting_in_create_table() {
+		let operation = Operation::CreateTable {
+			name: "jobs".to_string(),
+			columns: vec![],
+			constraints: vec![Constraint::EnumDomain {
+				name: "jobs_status_model_enum_check".to_string(),
+				column: "job_status".to_string(),
+				domain: crate::field_domain::FieldDomain::Enum {
+					repr: crate::field_domain::ModelEnumRepr::String,
+					values: vec![crate::field_domain::ModelEnumValue::String(
+						"queued".to_string(),
+					)],
+				},
+			}],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
+		};
+
+		let sql = operation.to_sql(&SqlDialect::Mysql);
+
+		assert!(sql.contains("CHECK (`job_status` IN ('queued'))"), "{sql}");
+	}
+
+	#[test]
+	fn enum_domain_constraint_uses_mysql_identifier_quoting_when_added() {
+		let constraint = Constraint::EnumDomain {
+			name: "jobs_status_model_enum_check".to_string(),
+			column: "job_status".to_string(),
+			domain: crate::field_domain::FieldDomain::Enum {
+				repr: crate::field_domain::ModelEnumRepr::String,
+				values: vec![crate::field_domain::ModelEnumValue::String(
+					"queued".to_string(),
+				)],
+			},
+		};
+		let operation = Operation::AddConstraint {
+			table: "jobs".to_string(),
+			constraint_sql: constraint.to_string(),
+		};
+
+		let sql = operation.to_sql(&SqlDialect::Mysql);
+
+		assert!(sql.contains("CHECK (`job_status` IN ('queued'))"), "{sql}");
+	}
+
+	#[test]
+	fn create_table_state_forwards_preserves_column_domain() {
+		let domain = crate::field_domain::FieldDomain::Enum {
+			repr: crate::field_domain::ModelEnumRepr::I32,
+			values: vec![crate::field_domain::ModelEnumValue::I32(1)],
+		};
+		let operation = Operation::CreateTable {
+			name: "jobs".to_string(),
+			columns: vec![
+				ColumnDefinition::new("status", FieldType::Integer).with_domain(domain.clone()),
+			],
+			constraints: vec![],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
+		};
+		let mut state = ProjectState::new();
+
+		operation.state_forwards("tasks", &mut state);
+
+		assert_eq!(
+			state.get_model("tasks", "jobs").unwrap().fields["status"].domain,
+			Some(domain)
+		);
+	}
+
+	#[test]
+	fn add_column_state_forwards_preserves_column_domain() {
+		let domain = crate::field_domain::FieldDomain::Enum {
+			repr: crate::field_domain::ModelEnumRepr::I32,
+			values: vec![crate::field_domain::ModelEnumValue::I32(1)],
+		};
+		let mut state = ProjectState::new();
+		state.add_model(ModelState::new("tasks", "jobs"));
+		let operation = Operation::AddColumn {
+			table: "jobs".to_string(),
+			column: ColumnDefinition::new("status", FieldType::Integer).with_domain(domain.clone()),
+			mysql_options: None,
+		};
+
+		operation.state_forwards("tasks", &mut state);
+
+		assert_eq!(
+			state.get_model("tasks", "jobs").unwrap().fields["status"].domain,
+			Some(domain)
+		);
+	}
+
+	#[test]
+	fn alter_column_state_forwards_preserves_column_domain() {
+		let domain = crate::field_domain::FieldDomain::Enum {
+			repr: crate::field_domain::ModelEnumRepr::I32,
+			values: vec![crate::field_domain::ModelEnumValue::I32(1)],
+		};
+		let mut model = ModelState::new("tasks", "jobs");
+		model.add_field(FieldState::new("status", FieldType::Integer, false));
+		let mut state = ProjectState::new();
+		state.add_model(model);
+		let operation = Operation::AlterColumn {
+			table: "jobs".to_string(),
+			column: "status".to_string(),
+			new_definition: ColumnDefinition::new("status", FieldType::Integer)
+				.with_domain(domain.clone()),
+			old_definition: None,
+			mysql_options: None,
+		};
+
+		operation.state_forwards("tasks", &mut state);
+
+		assert_eq!(
+			state.get_model("tasks", "jobs").unwrap().fields["status"].domain,
+			Some(domain)
 		);
 	}
 

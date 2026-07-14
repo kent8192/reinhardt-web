@@ -2594,4 +2594,70 @@ pub fn replaces() -> Vec<(String, String)> {
 		assert!(model.fields.contains_key("avatar_url"));
 		assert!(model.fields.contains_key("bio"));
 	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn model_enum_domain_constraint_survives_migration_file_state_roundtrip() {
+		let tmp = TempDir::new().unwrap();
+		write_migration_file(
+			tmp.path(),
+			"jobs",
+			"0001_initial",
+			r#"
+use reinhardt_db::migrations::prelude::*;
+
+pub fn migration() -> Migration {
+	Migration {
+		name: "0001_initial".to_string(), app_label: "jobs".to_string(),
+		operations: vec![Operation::CreateTable {
+			name: "jobs".to_string(),
+			columns: vec![ColumnDefinition {
+				name: "status".to_string(), type_definition: FieldType::Integer,
+				not_null: true, primary_key: false, unique: false, auto_increment: false,
+				default: None, generated: None,
+				domain: Some(FieldDomain::Enum {
+					repr: ModelEnumRepr::I32,
+					values: vec![ModelEnumValue::I32(-2), ModelEnumValue::I32(1)],
+				}),
+			}],
+			constraints: vec![Constraint::EnumDomain {
+				name: "jobs_status_model_enum_check".to_string(),
+				column: "status".to_string(),
+				domain: FieldDomain::Enum {
+					repr: ModelEnumRepr::I32,
+					values: vec![ModelEnumValue::I32(-2), ModelEnumValue::I32(1)],
+				},
+			}],
+			without_rowid: None, interleave_in_parent: None, partition: None,
+		}],
+		dependencies: vec![], replaces: vec![], atomic: true, initial: Some(true),
+		state_only: false, database_only: false,
+		swappable_dependencies: vec![], optional_dependencies: vec![],
+	}
+}
+"#,
+		);
+
+		let state = build_state_from_files(&FilesystemSource::new(tmp.path()))
+			.await
+			.unwrap();
+		let model = state.find_model_by_table("jobs").unwrap();
+
+		assert_eq!(
+			model.fields["status"].domain,
+			Some(crate::field_domain::FieldDomain::Enum {
+				repr: crate::field_domain::ModelEnumRepr::I32,
+				values: vec![
+					crate::field_domain::ModelEnumValue::I32(-2),
+					crate::field_domain::ModelEnumValue::I32(1),
+				],
+			})
+		);
+		let constraint = model
+			.constraints
+			.iter()
+			.find(|constraint| constraint.name == "jobs_status_model_enum_check")
+			.expect("enum-domain constraint should survive state reconstruction");
+		assert_eq!(constraint.constraint_type, "enum_domain");
+	}
 }
