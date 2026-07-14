@@ -548,8 +548,8 @@ fn test_hooks_boundary_dependency_array_size(
 			None::<fn()>
 		},
 		// Dynamic deps construction — opaque to the compile-time verifier.
-		reinhardt_core::reactive::deps::Deps::from_signals(
-			&signals_for_deps.iter().map(|s| s.id()).collect::<Vec<_>>(),
+		reinhardt_pages::reactive::ExplicitDeps::from_node_ids(
+			signals_for_deps.iter().map(|signal| signal.id()),
 		),
 	);
 
