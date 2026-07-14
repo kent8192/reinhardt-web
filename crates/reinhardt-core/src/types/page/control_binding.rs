@@ -380,9 +380,13 @@ impl ControlBinding {
 				let restore_error = snapshot_error.clone();
 				ControlBindingSnapshot {
 					restore: Some(Box::new(move || {
-						restore_signal.set(value);
-						if let (Some(error), Some(parse_error)) = (restore_error, parse_error) {
-							error.set(parse_error);
+						restore_signal.set_without_notify(value);
+						if let (Some(error), Some(parse_error)) = (&restore_error, parse_error) {
+							error.set_without_notify(parse_error);
+						}
+						restore_signal.notify_subscribers();
+						if let Some(error) = restore_error {
+							error.notify_subscribers();
 						}
 					})),
 				}
@@ -602,8 +606,10 @@ impl_float_number_value!(f32, f64);
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::reactive::Signal;
+	use crate::reactive::{Effect, EffectTiming, Signal};
 	use rstest::rstest;
+	use std::cell::RefCell;
+	use std::rc::Rc;
 
 	#[rstest]
 	#[case("", NumberParseErrorKind::Empty)]
@@ -676,6 +682,43 @@ mod tests {
 
 		// Assert
 		assert_eq!(signal.get(), "browser");
+	}
+
+	#[rstest]
+	fn numeric_snapshot_rollback_never_notifies_a_mixed_state() {
+		// Arrange
+		let value = Signal::new(7_i32);
+		let original_error = NumberParseError::new("pending", NumberParseErrorKind::Invalid);
+		let error = Signal::new(Some(original_error.clone()));
+		let binding = ControlBinding::number_with_error(value.clone(), error.clone());
+		let snapshot = binding.snapshot();
+		value.set(12);
+		error.set(None);
+		let observations = Rc::new(RefCell::new(Vec::new()));
+		let effect_value = value.clone();
+		let effect_error = error.clone();
+		let effect_observations = Rc::clone(&observations);
+		let _effect = Effect::new_with_timing(
+			move || {
+				effect_observations
+					.borrow_mut()
+					.push((effect_value.get(), effect_error.get()));
+			},
+			EffectTiming::Layout,
+		);
+		observations.borrow_mut().clear();
+
+		// Act
+		drop(snapshot);
+
+		// Assert
+		assert!(!observations.borrow().is_empty());
+		assert!(
+			observations
+				.borrow()
+				.iter()
+				.all(|pair| pair == &(7, Some(original_error.clone())))
+		);
 	}
 
 	#[rstest]

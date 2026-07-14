@@ -222,6 +222,11 @@ impl<T: 'static> Signal<T> {
 	/// assert_eq!(count.get(), 42);
 	/// ```
 	pub fn set(&self, value: T) {
+		self.set_without_notify(value);
+		self.notify_subscribers();
+	}
+
+	pub(crate) fn set_without_notify(&self, value: T) {
 		#[cfg(not(target_arch = "wasm32"))]
 		{
 			*self.value.write().expect("Signal lock poisoned") = value;
@@ -230,6 +235,9 @@ impl<T: 'static> Signal<T> {
 		{
 			*self.value.borrow_mut() = value;
 		}
+	}
+
+	pub(crate) fn notify_subscribers(&self) {
 		with_runtime(|rt| rt.notify_signal_change(self.id));
 	}
 
