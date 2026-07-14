@@ -15,11 +15,12 @@ use hyper::service::service_fn;
 use hyper::{Request, Response, StatusCode, body::Incoming};
 use hyper_util::rt::TokioIo;
 use reinhardt_commands::WelcomePage;
+#[cfg(feature = "admin")]
+use reinhardt_commands::is_wasm_stale;
 use reinhardt_commands::{CollectStaticCommand, CollectStaticOptions};
 #[cfg(any(feature = "admin", feature = "pages"))]
 use reinhardt_commands::{
-	WasmBuildConfig, WasmBuilder, detect_cdylib_in_cargo_toml, is_wasm_stale,
-	is_wasm_stale_for_roots,
+	WasmBuildConfig, WasmBuilder, detect_cdylib_in_cargo_toml, is_wasm_stale_for_roots,
 };
 use reinhardt_pages::ssr::SsrRenderer;
 use reinhardt_utils::safe_path_join;
@@ -722,7 +723,7 @@ fn build_pages_wasm(
 	}
 
 	let target_name = package_context.wasm_target_name().to_owned();
-	let package_name = package_context.package_name;
+	let package_name = package_context.package_name.clone();
 
 	let js_name = target_name.replace('-', "_");
 	let artifact = cwd.join("dist").join(format!("{}_bg.wasm", js_name));
