@@ -74,6 +74,11 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 		"id"
 	}
 
+	/// Get the database column name for the primary key
+	fn primary_key_column() -> &'static str {
+		Self::primary_key_field()
+	}
+
 	/// Get the primary key value
 	///
 	/// Returns an owned copy of the primary key. For composite primary keys,

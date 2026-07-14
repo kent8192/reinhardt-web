@@ -1,5 +1,6 @@
 //! Model enum persistence integration tests.
 
+use reinhardt::db::associations::ForeignKeyField;
 use reinhardt::db::orm::manager::{get_connection, reinitialize_database};
 use reinhardt::db::orm::query_types::DbBackend;
 use reinhardt::db::orm::session::Session;
@@ -77,6 +78,15 @@ struct CustomKeyJob {
 	key: Option<i64>,
 	#[field(max_length = 64)]
 	name: String,
+}
+
+#[model(app_label = "jobs", table_name = "custom_key_job_attempts")]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct CustomKeyJobAttempt {
+	#[field(primary_key = true)]
+	id: Option<i64>,
+	#[rel(foreign_key)]
+	job: ForeignKeyField<CustomKeyJob>,
 }
 
 #[model(app_label = "jobs", table_name = "text_key_records")]
@@ -605,6 +615,42 @@ async fn session_uses_custom_primary_key_field_and_database_column() {
 		.expect("custom primary key lookup should succeed")
 		.expect("custom primary key model should exist");
 	assert_eq!(hydrated, expected);
+}
+
+#[tokio::test]
+#[serial(model_enum_database)]
+async fn foreign_key_loader_uses_target_primary_key_database_column() {
+	let (_database, url) = sqlite_database_url();
+	reinitialize_database(&url)
+		.await
+		.expect("SQLite ORM connection should initialize");
+	let connection = get_connection()
+		.await
+		.expect("SQLite ORM connection should be available");
+	connection
+		.execute(
+			"CREATE TABLE custom_key_jobs (job_key INTEGER PRIMARY KEY, name VARCHAR(64) NOT NULL)",
+			vec![],
+		)
+		.await
+		.expect("custom_key_jobs table should be created");
+	connection
+		.execute(
+			"INSERT INTO custom_key_jobs (job_key, name) VALUES (41, 'related job')",
+			vec![],
+		)
+		.await
+		.expect("related custom key row should be inserted");
+	let attempt = CustomKeyJobAttempt::build().job(41_i64).finish();
+
+	let related = attempt
+		.job(&connection)
+		.await
+		.expect("foreign-key loader should use the target database column")
+		.expect("related custom key job should exist");
+
+	assert_eq!(related.key, Some(41));
+	assert_eq!(related.name, "related job");
 }
 
 #[tokio::test]

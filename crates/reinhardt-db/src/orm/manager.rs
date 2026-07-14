@@ -667,7 +667,7 @@ impl<M: Model> Manager<M> {
 	///     .filter_in_subquery("id", |subq: QuerySet<Book>| {
 	///         subq.filter(Filter::new("price", FilterOperator::Gt, FilterValue::Int(1500)))
 	///             .values(&["author_id"])
-	///     })
+	///     })?
 	///     .all()
 	///     .await?;
 	/// ```
@@ -693,7 +693,7 @@ impl<M: Model> Manager<M> {
 	///     .filter_not_in_subquery("id", |subq: QuerySet<Book>| {
 	///         subq.filter(Filter::new("status", FilterOperator::Eq, FilterValue::String("archived".into())))
 	///             .values(&["author_id"])
-	///     })
+	///     })?
 	///     .all()
 	///     .await?;
 	/// ```
@@ -718,7 +718,7 @@ impl<M: Model> Manager<M> {
 	/// let authors = Author::objects()
 	///     .filter_exists(|subq: QuerySet<Book>| {
 	///         subq.filter(Filter::new("author_id", FilterOperator::Eq, FilterValue::FieldRef(F::new("authors.id"))))
-	///     })
+	///     })?
 	///     .all()
 	///     .await?;
 	/// ```
@@ -742,7 +742,7 @@ impl<M: Model> Manager<M> {
 	/// let authors = Author::objects()
 	///     .filter_not_exists(|subq: QuerySet<Book>| {
 	///         subq.filter(Filter::new("author_id", FilterOperator::Eq, FilterValue::FieldRef(F::new("authors.id"))))
-	///     })
+	///     })?
 	///     .all()
 	///     .await?;
 	/// ```
@@ -800,7 +800,7 @@ impl<M: Model> Manager<M> {
 	///     .annotate_subquery::<Book, _>("book_count", |subq| {
 	///         subq.filter("author_id", FilterOperator::Eq, FilterValue::OuterRef(OuterRef::new("authors.id")))
 	///             .values(&["COUNT(*)"])
-	///     })
+	///     })?
 	///     .all()
 	///     .await?;
 	/// ```

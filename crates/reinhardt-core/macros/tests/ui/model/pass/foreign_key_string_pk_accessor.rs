@@ -6,7 +6,7 @@ include!("../support.rs");
 #[model(table_name = "projects")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Project {
-	#[field(primary_key = true, max_length = 64)]
+	#[field(primary_key = true, db_column = "project_key", max_length = 64)]
 	id: Option<String>,
 	#[field(max_length = 120)]
 	name: String,

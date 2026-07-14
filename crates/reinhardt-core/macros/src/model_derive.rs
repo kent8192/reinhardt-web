@@ -2100,7 +2100,7 @@ fn generate_fk_accessor_methods(
 					// Query the target model using the FK primary key's database codec.
 					#target_ty::objects()
 						.filter(#orm_crate::Filter::new(
-							<#target_ty as #orm_crate::Model>::primary_key_field(),
+							<#target_ty as #orm_crate::Model>::primary_key_column(),
 							#orm_crate::FilterOperator::Eq,
 							#orm_crate::FilterValue::Typed(
 								<<#target_ty as #orm_crate::Model>::PrimaryKey as #orm_crate::IntoFieldValue<
@@ -2603,6 +2603,11 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 			composite_pk_type_ref,
 		)
 	};
+	let pk_column = pk_fields[0]
+		.config
+		.db_column
+		.clone()
+		.unwrap_or_else(|| pk_fields[0].name.to_string());
 
 	// Generate field_metadata implementation
 	let field_metadata_items = generate_field_metadata(&field_infos, &fk_field_infos)?;
@@ -2920,6 +2925,10 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 
 			fn primary_key_field() -> &'static str {
 				stringify!(#pk_name)
+			}
+
+			fn primary_key_column() -> &'static str {
+				#pk_column
 			}
 
 			fn field_is_none(&self, field_name: &str) -> bool {
@@ -6257,6 +6266,7 @@ mod tests {
 
 		assert!(compact.contains("IntoFieldValue"));
 		assert!(compact.contains("into_field_value(fk_id)"));
+		assert!(compact.contains("primary_key_column()"));
 		assert!(!compact.contains("fk_id.to_string()"));
 	}
 

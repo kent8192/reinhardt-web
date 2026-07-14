@@ -222,6 +222,9 @@ pub mod db {
 			fn new_fields() -> Self::Fields;
 			fn app_label() -> &'static str;
 			fn primary_key_field() -> &'static str;
+			fn primary_key_column() -> &'static str {
+				Self::primary_key_field()
+			}
 			fn primary_key(&self) -> Option<Self::PrimaryKey>;
 			fn set_primary_key(&mut self, value: Self::PrimaryKey);
 			fn field_is_none(&self, field_name: &str) -> bool;
