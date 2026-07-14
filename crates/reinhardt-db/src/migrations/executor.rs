@@ -3091,7 +3091,44 @@ mod sqlite_generated_column_tests {
 
 		assert_eq!(
 			metadata[0].raw_sql.as_deref(),
-			Some("CONSTRAINT uq_jobs_code UNIQUE (code COLLATE BINARY ASC) ON CONFLICT IGNORE")
+			Some(
+				"CONSTRAINT \"uq_jobs_code\" UNIQUE (\"code\" COLLATE \"BINARY\" ASC) ON CONFLICT IGNORE"
+			)
+		);
+	}
+
+	#[rstest]
+	#[case(
+		"code TEXT NOT NULL ON CONFLICT IGNORE UNIQUE ON CONFLICT REPLACE",
+		"REPLACE"
+	)]
+	#[case(
+		"code TEXT PRIMARY KEY ON CONFLICT FAIL UNIQUE ON CONFLICT REPLACE",
+		"REPLACE"
+	)]
+	fn parse_sqlite_unique_metadata_attributes_inline_conflict_to_unique_constraint(
+		#[case] column_definition: &str,
+		#[case] expected_mode: &str,
+	) {
+		let create_sql = format!("CREATE TABLE jobs ({column_definition})");
+		let expected_sql =
+			format!("UNIQUE (\"code\" COLLATE \"BINARY\" ASC) ON CONFLICT {expected_mode}");
+
+		let metadata = parse_sqlite_unique_constraint_metadata(&create_sql);
+
+		assert_eq!(metadata[0].raw_sql.as_deref(), Some(expected_sql.as_str()));
+	}
+
+	#[rstest]
+	fn parse_sqlite_unique_metadata_quotes_keyword_identifiers() {
+		let create_sql =
+			r#"CREATE TABLE jobs ("select" TEXT, CONSTRAINT "unique" UNIQUE ("select"))"#;
+
+		let metadata = parse_sqlite_unique_constraint_metadata(create_sql);
+
+		assert_eq!(
+			metadata[0].raw_sql.as_deref(),
+			Some("CONSTRAINT \"unique\" UNIQUE (\"select\" COLLATE \"BINARY\" ASC)")
 		);
 	}
 

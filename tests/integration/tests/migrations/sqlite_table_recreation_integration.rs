@@ -3478,6 +3478,19 @@ async fn typed_enum_constraint_recreation_preserves_column_collation_for_unique_
 	)
 	.await
 	.expect("insert the initial case-insensitive unique value");
+	let matching_rows: i64 = conn
+		.fetch_one(
+			"SELECT COUNT(*) AS count FROM column_collation_jobs WHERE code = 'ALPHA'",
+			vec![],
+		)
+		.await
+		.expect("query with the declared column collation")
+		.get("count")
+		.unwrap_or_default();
+	assert_eq!(
+		matching_rows, 1,
+		"NOCASE comparison semantics should survive table recreation"
+	);
 	let duplicate = conn
 		.execute(
 			"INSERT INTO column_collation_jobs (code, status) VALUES ('ALPHA', 'queued')",
@@ -3498,7 +3511,7 @@ async fn typed_enum_constraint_recreation_preserves_inline_unique_conflict_mode(
 		.expect("connect to in-memory SQLite");
 	connection
 		.execute(
-			"CREATE TABLE inline_conflict_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT UNIQUE ON CONFLICT IGNORE, status TEXT NOT NULL)",
+			"CREATE TABLE inline_conflict_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT NOT NULL ON CONFLICT IGNORE UNIQUE ON CONFLICT REPLACE, status TEXT NOT NULL)",
 			vec![],
 		)
 		.await
@@ -3515,7 +3528,10 @@ async fn typed_enum_constraint_recreation_preserves_inline_unique_conflict_mode(
 				column: "status".to_string(),
 				domain: FieldDomain::Enum {
 					repr: ModelEnumRepr::String,
-					values: vec![ModelEnumValue::String("queued".to_string())],
+					values: vec![
+						ModelEnumValue::String("queued".to_string()),
+						ModelEnumValue::String("running".to_string()),
+					],
 				},
 			},
 		}],
@@ -3526,18 +3542,80 @@ async fn typed_enum_constraint_recreation_preserves_inline_unique_conflict_mode(
 		.expect("add typed enum domain through table recreation");
 
 	conn.execute(
-		"INSERT INTO inline_conflict_jobs (code, status) VALUES ('same', 'queued'), ('same', 'queued')",
+		"INSERT INTO inline_conflict_jobs (code, status) VALUES ('same', 'queued')",
 		vec![],
 	)
 	.await
-	.expect("duplicate unique values should retain IGNORE conflict handling");
-	let count: i64 = conn
-		.fetch_one("SELECT COUNT(*) AS count FROM inline_conflict_jobs", vec![])
+	.expect("insert the initial unique value");
+	conn.execute(
+		"INSERT INTO inline_conflict_jobs (code, status) VALUES ('same', 'running')",
+		vec![],
+	)
+	.await
+	.expect("duplicate unique values should retain REPLACE conflict handling");
+	let status: String = conn
+		.fetch_one(
+			"SELECT status FROM inline_conflict_jobs WHERE code = 'same'",
+			vec![],
+		)
 		.await
-		.expect("count rows after ignored duplicate")
-		.get("count")
-		.unwrap_or_default();
-	assert_eq!(count, 1);
+		.expect("read the replacement row")
+		.get("status")
+		.expect("replacement status should be text");
+	assert_eq!(status, "running");
+}
+
+#[rstest]
+#[tokio::test]
+async fn typed_enum_constraint_recreation_quotes_keyword_unique_identifiers() {
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("connect to in-memory SQLite");
+	connection
+		.execute(
+			"CREATE TABLE keyword_unique_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, \"select\" TEXT NOT NULL, status TEXT NOT NULL, CONSTRAINT \"unique\" UNIQUE (\"select\"))",
+			vec![],
+		)
+		.await
+		.expect("create table with keyword unique identifiers");
+	let conn = Arc::new(connection.clone());
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+	let add_enum = create_test_migration(
+		"testapp",
+		"0001_add_keyword_unique_enum_domain",
+		vec![Operation::AddConstraintDefinition {
+			table: "keyword_unique_jobs".to_string(),
+			constraint: Constraint::EnumDomain {
+				name: "keyword_unique_jobs_status_model_enum_check".to_string(),
+				column: "status".to_string(),
+				domain: FieldDomain::Enum {
+					repr: ModelEnumRepr::String,
+					values: vec![ModelEnumValue::String("queued".to_string())],
+				},
+			},
+		}],
+	);
+	executor
+		.apply_migrations(&[add_enum])
+		.await
+		.expect("recreate a table with keyword unique identifiers");
+
+	conn.execute(
+		"INSERT INTO keyword_unique_jobs (\"select\", status) VALUES ('same', 'queued')",
+		vec![],
+	)
+	.await
+	.expect("insert the initial keyword column value");
+	let duplicate = conn
+		.execute(
+			"INSERT INTO keyword_unique_jobs (\"select\", status) VALUES ('same', 'queued')",
+			vec![],
+		)
+		.await;
+	assert!(
+		duplicate.is_err(),
+		"keyword-named unique constraint should survive recreation"
+	);
 }
 
 #[rstest]
