@@ -1184,6 +1184,7 @@ impl SsrRenderer {
 					let mut inline_single_select_uses_fallback = false;
 
 					if has_pending
+						&& self.should_resolve_resources()
 						&& selection
 							.as_ref()
 							.is_some_and(SsrSelectionState::selects_one)

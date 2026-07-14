@@ -49,7 +49,14 @@ impl ControlBindingController {
 		validate_control(&element, binding.kind())?;
 		let listeners = install_listeners(&element, &binding);
 		let live_value = read_control(&element, binding.kind())?;
-		binding.write(live_value)?;
+		let expected_value = untracked(|| binding.read());
+		if binding.kind() == ControlKind::SelectOne
+			&& !select_has_option_value(&element, &expected_value)
+		{
+			write_control(&element, binding.kind(), &expected_value)?;
+		} else {
+			binding.write(live_value)?;
+		}
 		let effect = install_effect(element, binding, true);
 		Ok(Self {
 			_effect: effect,
@@ -69,6 +76,21 @@ impl ControlBindingController {
 			_listeners: listeners,
 		})
 	}
+}
+
+fn select_has_option_value(element: &Element, value: &ControlValue) -> bool {
+	let ControlValue::Text(value) = value else {
+		return true;
+	};
+	let Some(select) = element.as_web_sys().dyn_ref::<web_sys::HtmlSelectElement>() else {
+		return true;
+	};
+	let options = select.options();
+	(0..options.length()).any(|index| {
+		options
+			.item(index)
+			.is_some_and(|option| option.value() == *value)
+	})
 }
 
 fn install_effect(element: Element, binding: ControlBinding, skip_first_write: bool) -> Effect {

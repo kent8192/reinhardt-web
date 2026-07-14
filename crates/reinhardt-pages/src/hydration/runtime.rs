@@ -244,6 +244,9 @@ fn validate_hydrated_controls(element: &Element, view: &Page) -> Result<(), Hydr
 			if let Some(binding) = element_view.bound_control() {
 				crate::dom::control_binding::validate_control(element, binding.kind())
 					.map_err(|error| HydrationError::EventAttachmentFailed(error.to_string()))?;
+				if element_view.tag_name().eq_ignore_ascii_case("textarea") {
+					return Ok(());
+				}
 			}
 			validate_hydrated_element_children(element, element_view.child_views())?;
 		}

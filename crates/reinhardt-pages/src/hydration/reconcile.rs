@@ -317,6 +317,9 @@ fn reconcile_element_at_path(
 	}
 
 	reconcile_attrs_at_path(element, el_view, element_path.clone())?;
+	if el_view.tag_name().eq_ignore_ascii_case("textarea") && el_view.bound_control().is_some() {
+		return Ok(());
+	}
 	reconcile_children_at_path(element, el_view.child_views(), element_path)
 }
 

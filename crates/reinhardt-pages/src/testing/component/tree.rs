@@ -415,12 +415,9 @@ impl TestDom {
 						return Ok((true, None));
 					}
 					if node.last_committed_raw.take().as_deref() == Some(raw.as_str()) {
-						let current_value = binding.read();
-						if current_value != ControlValue::Text(raw) {
-							node.pending_raw = None;
-							node.apply_control_value(current_value.clone());
-							node.last_observed_control_value = Some(current_value);
-						}
+						// The matching post-composition input is already committed by
+						// compositionend. Retain rejected raw numeric text until the
+						// bound signal changes, matching browser behavior.
 						return Ok((true, None));
 					}
 					Ok((

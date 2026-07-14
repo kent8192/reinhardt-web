@@ -324,10 +324,12 @@ impl ControlBinding {
 
 				match T::parse_control_value(&raw) {
 					Ok(value) => {
-						signal.set(value);
-						if let Some(error) = &error {
-							error.set(None);
-						}
+						crate::reactive::batch(|| {
+							signal.set(value);
+							if let Some(error) = &error {
+								error.set(None);
+							}
+						});
 						Ok(ControlWriteOutcome::Committed)
 					}
 					Err(parse_error) => {
