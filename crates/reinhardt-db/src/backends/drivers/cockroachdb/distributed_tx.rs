@@ -29,6 +29,7 @@ const BASE_BACKOFF_MS: u64 = 100;
 ///
 /// ```no_run
 /// use reinhardt_db::backends::drivers::cockroachdb::distributed_tx::CockroachDBTransactionManager;
+/// use reinhardt_db::{DatabaseError, DatabaseErrorKind};
 /// use sqlx::PgPool;
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -40,7 +41,8 @@ const BASE_BACKOFF_MS: u64 = 100;
 ///     sqlx::query("INSERT INTO users (name) VALUES ($1)")
 ///         .bind("Alice")
 ///         .execute(&mut **tx)
-///         .await?;
+///         .await
+///         .map_err(|error| DatabaseError::new(DatabaseErrorKind::Query, error.to_string()))?;
 ///     Ok(())
 /// })).await?;
 /// # Ok(())
@@ -135,6 +137,7 @@ impl CockroachDBTransactionManager {
 	///
 	/// ```no_run
 	/// use reinhardt_db::backends::drivers::cockroachdb::distributed_tx::CockroachDBTransactionManager;
+	/// use reinhardt_db::{DatabaseError, DatabaseErrorKind};
 	/// use sqlx::PgPool;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -145,7 +148,8 @@ impl CockroachDBTransactionManager {
 	///         .bind(100)
 	///         .bind(1)
 	///         .execute(&mut **tx)
-	///         .await?;
+	///         .await
+	///         .map_err(|error| DatabaseError::new(DatabaseErrorKind::Query, error.to_string()))?;
 	///     Ok(())
 	/// })).await?;
 	/// # Ok(())
@@ -219,6 +223,7 @@ impl CockroachDBTransactionManager {
 	///
 	/// ```no_run
 	/// use reinhardt_db::backends::drivers::cockroachdb::distributed_tx::CockroachDBTransactionManager;
+	/// use reinhardt_db::{DatabaseError, DatabaseErrorKind};
 	/// use sqlx::PgPool;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -228,7 +233,8 @@ impl CockroachDBTransactionManager {
 	///     sqlx::query("INSERT INTO users (name) VALUES ($1)")
 	///         .bind("Alice")
 	///         .execute(&mut **tx)
-	///         .await?;
+	///         .await
+	///         .map_err(|error| DatabaseError::new(DatabaseErrorKind::Query, error.to_string()))?;
 	///     Ok(())
 	/// })).await?;
 	/// # Ok(())
