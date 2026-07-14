@@ -1,5 +1,5 @@
 error: method `mix` is not available on `Length`; use a method registered for that receiver type
- --> tests/ui/style/fail/invalid_receiver_method.rs:4:53
+ --> tests/ui/style/fail/invalid_receiver_method.rs:6:10
   |
-4 | static STYLES: CardStyles = style! { .card { color: 1px.mix(red, 10%); } };
-  |                                                     ^^^
+6 |         color: 1px.mix(red, 10%);
+  |                ^^^

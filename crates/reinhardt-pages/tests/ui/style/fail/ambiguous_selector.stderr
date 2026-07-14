@@ -1,5 +1,5 @@
 error: style syntax error: selector heads must contain exactly one simple selector; express relationships and refinements with nested rules
- --> tests/ui/style/fail/ambiguous_selector.rs:4:43
+ --> tests/ui/style/fail/ambiguous_selector.rs:5:7
   |
-4 | static STYLES: CardStyles = style! { .card.label { color: red; } };
-  |                                           ^
+5 |     .card.label {
+  |          ^

@@ -1,5 +1,5 @@
 error: direct `calc(...)` is unsupported; write arithmetic with style operators
- --> tests/ui/style/fail/direct_calc.rs:4:53
+ --> tests/ui/style/fail/direct_calc.rs:6:10
   |
-4 | static STYLES: CardStyles = style! { .card { width: calc(100% - 1rem); } };
-  |                                                     ^^^^
+6 |         width: calc(100% - 1rem);
+  |                ^^^^

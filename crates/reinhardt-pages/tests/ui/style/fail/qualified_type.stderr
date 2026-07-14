@@ -1,5 +1,5 @@
 error: style_def requires one unqualified style type identifier
  --> tests/ui/style/fail/qualified_type.rs:4:16
   |
-4 | static STYLES: crate::CardStyles = style! { .card { color: red; } };
+4 | static STYLES: crate::CardStyles = style! {
   |                ^^^^^^^^^^^^^^^^^

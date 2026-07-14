@@ -1,5 +1,5 @@
 error: direct `var(...)` is unsupported; declare a typed `global` or component `var` and reference it
- --> tests/ui/style/fail/direct_var.rs:4:53
+ --> tests/ui/style/fail/direct_var.rs:6:10
   |
-4 | static STYLES: CardStyles = style! { .card { color: var(accent); } };
-  |                                                     ^^^
+6 |         color: var(accent);
+  |                ^^^

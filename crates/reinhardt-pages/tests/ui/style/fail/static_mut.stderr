@@ -1,5 +1,5 @@
 error: style_def requires an immutable static
  --> tests/ui/style/fail/static_mut.rs:4:8
   |
-4 | static mut STYLES: CardStyles = style! { .card { color: red; } };
+4 | static mut STYLES: CardStyles = style! {
   |        ^^^

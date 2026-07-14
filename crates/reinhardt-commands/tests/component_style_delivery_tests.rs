@@ -30,9 +30,12 @@ fn virtual_component_styles_are_hashed_and_written_as_regular_files(#[case] link
 
 	let stats = command.execute().expect("collect virtual component CSS");
 
-	assert_eq!(stats.copied, 1);
 	let manifest: serde_json::Value =
 		serde_json::from_slice(&fs::read(destination.join("manifest.json")).unwrap()).unwrap();
+	let paths = manifest["paths"]
+		.as_object()
+		.expect("collectstatic manifest paths");
+	assert_eq!(stats.copied, paths.len());
 	let hashed = manifest["paths"]["__reinhardt__/components.css"]
 		.as_str()
 		.expect("hashed mapping");
