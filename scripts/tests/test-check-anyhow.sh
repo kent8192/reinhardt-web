@@ -102,14 +102,14 @@ expect_rejected "dependency subtable" 'Cargo.toml:8:[dependencies.anyhow]'
 
 reset_fixture
 cat > "$FIXTURE/Cargo.toml" <<'EOF'
+dependencies.thiserror = "2"
+dependencies.anyhow.version = "1"
+
 [package]
 name = "scanner-fixture"
 version = "0.1.0"
-
-dependencies.thiserror = "2"
-dependencies.anyhow.version = "1"
 EOF
-expect_rejected "dotted dependency key" 'Cargo.toml:6:dependencies.anyhow.version = "1"'
+expect_rejected "dotted dependency key" 'Cargo.toml:2:dependencies.anyhow.version = "1"'
 
 reset_fixture
 cat >> "$FIXTURE/Cargo.toml" <<'EOF'
@@ -165,9 +165,48 @@ expect_clean "non-dependency table local dotted key"
 
 reset_fixture
 cat >> "$FIXTURE/Cargo.toml" <<'EOF'
+
+[package.metadata]
+anyhow = "application metadata"
+EOF
+expect_clean "metadata bare key"
+
+reset_fixture
+cat >> "$FIXTURE/Cargo.toml" <<'EOF'
+
+[package.metadata.tool]
+package = "anyhow"
+EOF
+expect_clean "metadata package value"
+
+reset_fixture
+cat >> "$FIXTURE/Cargo.toml" <<'EOF'
+
+[package.metadata.tool]
+example = "dep:anyhow"
+EOF
+expect_clean "metadata dependency-token example"
+
+reset_fixture
+cat >> "$FIXTURE/Cargo.toml" <<'EOF'
 errors = { package = "anyhow", version = "1" }
 EOF
 expect_rejected "package alias" 'Cargo.toml:7:errors = { package = "anyhow", version = "1" }'
+
+reset_fixture
+cat >> "$FIXTURE/Cargo.toml" <<'EOF'
+
+[dependencies.errors]
+package = "anyhow"
+version = "1"
+EOF
+expect_rejected "package alias dependency subtable" 'Cargo.toml:9:package = "anyhow"'
+
+reset_fixture
+cat >> "$FIXTURE/Cargo.toml" <<'EOF'
+errors.package = "anyhow"
+EOF
+expect_rejected "package alias dotted dependency entry" 'Cargo.toml:7:errors.package = "anyhow"'
 
 reset_fixture
 cat >> "$FIXTURE/Cargo.toml" <<'EOF'
@@ -176,6 +215,17 @@ cat >> "$FIXTURE/Cargo.toml" <<'EOF'
 dynamic = ["dep:anyhow"]
 EOF
 expect_rejected "feature token" 'Cargo.toml:9:dynamic = ["dep:anyhow"]'
+
+reset_fixture
+cat > "$FIXTURE/Cargo.toml" <<'EOF'
+dependencies.anyhow = { version = "1", optional = true }
+features.dynamic = ["dep:anyhow"]
+
+[package]
+name = "scanner-fixture"
+version = "0.1.0"
+EOF
+expect_rejected "dotted feature token" 'Cargo.toml:2:features.dynamic = ["dep:anyhow"]'
 
 reset_fixture
 cat > "$FIXTURE/src/lib.rs" <<'EOF'

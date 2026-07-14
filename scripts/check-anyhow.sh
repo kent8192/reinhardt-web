@@ -43,7 +43,7 @@ scan() {
 	fi
 }
 
-scan_dependency_table_dotted_keys() {
+scan_cargo_manifests() {
 	local manifest
 	local manifests
 	local output
@@ -76,13 +76,75 @@ scan_dependency_table_dotted_keys() {
 			return value
 		}
 
-		/^[[:space:]]*\[/ {
-			table = normalized_table($0)
-			dependency_table = table ~ /^\[(dependencies|dev-dependencies|build-dependencies)\]$/ || table ~ /^\[workspace[.]dependencies\]$/ || table ~ /^\[target[.].*[.](dependencies|dev-dependencies|build-dependencies)\]$/
+		function is_dependency_table(value) {
+			return value ~ /^\[(dependencies|dev-dependencies|build-dependencies)\]$/ || value ~ /^\[workspace[.]dependencies\]$/ || value ~ /^\[target[.].*[.](dependencies|dev-dependencies|build-dependencies)\]$/
 		}
 
-		dependency_table && /^[[:space:]]*["\047]?anyhow["\047]?[[:space:]]*[.][[:space:]]*["\047]?[[:alnum:]_-]+["\047]?[[:space:]]*=/ {
+		function is_dependency_subtable(value) {
+			return value ~ /^\[(dependencies|dev-dependencies|build-dependencies)[.][[:alnum:]_-]+\]$/ || value ~ /^\[workspace[.]dependencies[.][[:alnum:]_-]+\]$/ || value ~ /^\[target[.].*[.](dependencies|dev-dependencies|build-dependencies)[.][[:alnum:]_-]+\]$/
+		}
+
+		function is_prohibited_dependency_entry(value) {
+			return value ~ /^anyhow([.][[:alnum:]_-]+)?=/ || value ~ /^[[:alnum:]_-]+[.]package=anyhow$/ || value ~ /^[[:alnum:]_-]+=\{.*package=anyhow([,}])/
+		}
+
+		function is_prohibited_root_dependency_entry(value) {
+			if (value ~ /^(dependencies|dev-dependencies|build-dependencies)[.]/) {
+				sub(/^(dependencies|dev-dependencies|build-dependencies)[.]/, "", value)
+			} else if (value ~ /^workspace[.]dependencies[.]/) {
+				sub(/^workspace[.]dependencies[.]/, "", value)
+			} else if (value ~ /^target[.].*[.](dependencies|dev-dependencies|build-dependencies)[.]/) {
+				sub(/^target[.].*[.](dependencies|dev-dependencies|build-dependencies)[.]/, "", value)
+			} else {
+				return 0
+			}
+			return is_prohibited_dependency_entry(value)
+		}
+
+		function emit_match() {
 			print substr(FILENAME, length(root) + 1) ":" FNR ":" $0
+		}
+
+		FNR == 1 {
+			table = ""
+			dependency_table = 0
+			dependency_subtable = 0
+			feature_table = 0
+		}
+
+		/^[[:space:]]*\[/ {
+			table = normalized_table($0)
+			dependency_table = is_dependency_table(table)
+			dependency_subtable = is_dependency_subtable(table)
+			feature_table = table == "[features]"
+			if (dependency_subtable && table ~ /[.]anyhow\]$/) {
+				emit_match()
+			}
+			next
+		}
+
+		{
+			code = $0
+			sub(/[[:space:]]*#.*/, "", code)
+			compact = code
+			gsub(/[[:space:]"\047]/, "", compact)
+			matched = 0
+
+			if (table == "" && is_prohibited_root_dependency_entry(compact)) {
+				matched = 1
+			} else if (dependency_table && is_prohibited_dependency_entry(compact)) {
+				matched = 1
+			} else if (dependency_subtable && compact == "package=anyhow") {
+				matched = 1
+			}
+
+			if ((table == "" && compact ~ /^features[.][[:alnum:]_-]+=/ || feature_table) && compact ~ /dep:anyhow/) {
+				matched = 1
+			}
+
+			if (matched) {
+				emit_match()
+			}
 		}
 	' "${manifest_paths[@]}")
 	status=$?
@@ -98,15 +160,7 @@ scan_dependency_table_dotted_keys() {
 	fi
 }
 
-scan \
-	--glob 'Cargo.toml' \
-	--regexp "^[[:space:]]*(anyhow|\"anyhow\"|'anyhow')[[:space:]]*=" \
-	--regexp "^[[:space:]]*\\[[^]#]*(dependencies|\"dependencies\"|'dependencies'|dev-dependencies|\"dev-dependencies\"|'dev-dependencies'|build-dependencies|\"build-dependencies\"|'build-dependencies')[[:space:]]*[.][[:space:]]*(anyhow|\"anyhow\"|'anyhow')[[:space:]]*\\]" \
-	--regexp "^[[:space:]]*([^#=]+[.][[:space:]]*)?(dependencies|\"dependencies\"|'dependencies'|dev-dependencies|\"dev-dependencies\"|'dev-dependencies'|build-dependencies|\"build-dependencies\"|'build-dependencies')[[:space:]]*[.][[:space:]]*(anyhow|\"anyhow\"|'anyhow')([[:space:]]*[.][[:space:]]*[[:alnum:]_-]+)?[[:space:]]*=" \
-	--regexp "package[[:space:]]*=[[:space:]]*(\"anyhow\"|'anyhow')" \
-	--regexp 'dep:anyhow'
-
-scan_dependency_table_dotted_keys
+scan_cargo_manifests
 
 scan \
 	--glob '*.rs' \
