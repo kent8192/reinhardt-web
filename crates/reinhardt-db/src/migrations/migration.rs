@@ -2476,6 +2476,7 @@ mod migrations_extended_tests {
 		let drop_op = Operation::DropConstraint {
 			table: "users".to_string(),
 			constraint_name: "old_constraint".to_string(),
+			old_constraint: None,
 		};
 
 		let add_op = Operation::AddConstraint {
@@ -2499,6 +2500,7 @@ mod migrations_extended_tests {
 		let drop_op = Operation::DropConstraint {
 			table: "products".to_string(),
 			constraint_name: "price_check".to_string(),
+			old_constraint: None,
 		};
 
 		let add_op = Operation::AddConstraint {

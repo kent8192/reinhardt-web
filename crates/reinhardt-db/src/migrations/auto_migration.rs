@@ -250,6 +250,7 @@ impl AutoMigrationGenerator {
 					Some(Operation::DropConstraint {
 						table: table.clone(),
 						constraint_name: constraint.name().to_string(),
+						old_constraint: Some(constraint.clone()),
 					})
 				}
 				Operation::AddConstraintRepair { .. } => None,

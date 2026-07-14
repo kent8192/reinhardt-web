@@ -833,6 +833,7 @@ impl DatabaseMigrationExecutor {
 		Vec<super::ColumnDefinition>,
 		Vec<super::Constraint>,
 		Vec<super::operations::SqliteRecreatedIndex>,
+		bool,
 	)> {
 		// 1. PRAGMA table_xinfo(<table>) → columns. Identifier interpolation
 		//    via the shared `sqlite_pragma` helper. See issue #4454.
@@ -885,6 +886,11 @@ impl DatabaseMigrationExecutor {
 			.as_ref()
 			.map(|sql| sql.to_uppercase().contains("AUTOINCREMENT"))
 			.unwrap_or(false);
+		let without_rowid = create_sql.as_deref().is_some_and(|sql| {
+			sql.trim_end()
+				.to_ascii_uppercase()
+				.ends_with("WITHOUT ROWID")
+		});
 
 		// 3. Build ColumnDefinition list, mirroring the introspector's
 		//    semantics (PK columns are implicitly NOT NULL; AUTOINCREMENT is
@@ -1075,7 +1081,7 @@ impl DatabaseMigrationExecutor {
 			}
 		}
 
-		Ok((columns, constraints, indexes))
+		Ok((columns, constraints, indexes, without_rowid))
 	}
 
 	/// Handle SQLite table recreation for operations that require it
@@ -1115,10 +1121,11 @@ impl DatabaseMigrationExecutor {
 					table,
 					column.name
 				);
-				let (columns, constraints, indexes) =
+				let (columns, constraints, indexes, without_rowid) =
 					Self::read_sqlite_table_via_editor(editor, table).await?;
 				SqliteTableRecreation::for_add_column(table, columns, column.clone(), constraints)
 					.with_indexes(indexes)
+					.with_without_rowid(without_rowid)
 			}
 			Operation::DropColumn { table, column, .. } => {
 				tracing::debug!(
@@ -1126,10 +1133,11 @@ impl DatabaseMigrationExecutor {
 					table,
 					column
 				);
-				let (columns, constraints, indexes) =
+				let (columns, constraints, indexes, without_rowid) =
 					Self::read_sqlite_table_via_editor(editor, table).await?;
 				SqliteTableRecreation::for_drop_column(table, columns, column, constraints)
 					.with_indexes(indexes)
+					.with_without_rowid(without_rowid)
 					.without_indexes_referencing(column)
 			}
 			Operation::AlterColumn {
@@ -1143,7 +1151,7 @@ impl DatabaseMigrationExecutor {
 					table,
 					column
 				);
-				let (columns, constraints, indexes) =
+				let (columns, constraints, indexes, without_rowid) =
 					Self::read_sqlite_table_via_editor(editor, table).await?;
 				SqliteTableRecreation::for_alter_column(
 					table,
@@ -1153,6 +1161,7 @@ impl DatabaseMigrationExecutor {
 					constraints,
 				)
 				.with_indexes(indexes)
+				.with_without_rowid(without_rowid)
 			}
 			Operation::AddConstraint {
 				table,
@@ -1166,7 +1175,7 @@ impl DatabaseMigrationExecutor {
 					"Handling SQLite table recreation for AddConstraint: table={}",
 					table
 				);
-				let (columns, constraints, indexes) =
+				let (columns, constraints, indexes, without_rowid) =
 					Self::read_sqlite_table_via_editor(editor, table).await?;
 				SqliteTableRecreation::for_add_constraint(
 					table,
@@ -1175,13 +1184,14 @@ impl DatabaseMigrationExecutor {
 					constraint_sql.clone(),
 				)
 				.with_indexes(indexes)
+				.with_without_rowid(without_rowid)
 			}
 			Operation::AddConstraintDefinition { table, constraint } => {
 				tracing::debug!(
 					"Handling SQLite table recreation for typed constraint: table={}",
 					table
 				);
-				let (columns, constraints, indexes) =
+				let (columns, constraints, indexes, without_rowid) =
 					Self::read_sqlite_table_via_editor(editor, table).await?;
 				SqliteTableRecreation::for_add_constraint_definition(
 					table,
@@ -1190,17 +1200,19 @@ impl DatabaseMigrationExecutor {
 					constraint.clone(),
 				)
 				.with_indexes(indexes)
+				.with_without_rowid(without_rowid)
 			}
 			Operation::DropConstraint {
 				table,
 				constraint_name,
+				..
 			} => {
 				tracing::debug!(
 					"Handling SQLite table recreation for DropConstraint: table={}, constraint={}",
 					table,
 					constraint_name
 				);
-				let (columns, constraints, indexes) =
+				let (columns, constraints, indexes, without_rowid) =
 					Self::read_sqlite_table_via_editor(editor, table).await?;
 				SqliteTableRecreation::for_drop_constraint(
 					table,
@@ -1209,6 +1221,7 @@ impl DatabaseMigrationExecutor {
 					constraint_name,
 				)
 				.with_indexes(indexes)
+				.with_without_rowid(without_rowid)
 			}
 			_ => {
 				// This branch should not be reached if requires_sqlite_recreation() is correct
@@ -1618,6 +1631,7 @@ impl OperationOptimizer {
 						Operation::DropConstraint {
 							table: t2,
 							constraint_name,
+							..
 						},
 					) if t1 == t2 => {
 						// Try to extract constraint name from SQL for exact matching
@@ -2709,5 +2723,128 @@ mod rollback_orchestration_tests {
 			.expect("read recreated index")
 			.is_some();
 		assert_eq!(index_exists, true);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn enum_constraint_replacement_rollback_restores_old_domain_without_runtime_state() {
+		let mut id = ColumnDefinition::new("id", FieldType::Integer);
+		id.primary_key = true;
+		let status = ColumnDefinition::new("status", FieldType::VarChar(32));
+		let constraint_name = "enum_jobs_status_model_enum_check";
+		let old_constraint = Constraint::EnumDomain {
+			name: constraint_name.to_string(),
+			column: "status".to_string(),
+			domain: FieldDomain::Enum {
+				repr: ModelEnumRepr::String,
+				values: vec![ModelEnumValue::String("queued".to_string())],
+			},
+		};
+		let new_constraint = Constraint::EnumDomain {
+			name: constraint_name.to_string(),
+			column: "status".to_string(),
+			domain: FieldDomain::Enum {
+				repr: ModelEnumRepr::String,
+				values: vec![ModelEnumValue::String("running".to_string())],
+			},
+		};
+		let mut initial = Migration::new("0001_initial", "rolltest");
+		initial.operations.push(Operation::CreateTable {
+			name: "enum_jobs".to_string(),
+			columns: vec![id, status],
+			constraints: vec![old_constraint.clone()],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
+		});
+		let mut replacement = Migration::new("0002_replace_status", "rolltest");
+		replacement.operations = vec![
+			Operation::DropConstraint {
+				table: "enum_jobs".to_string(),
+				constraint_name: constraint_name.to_string(),
+				old_constraint: Some(old_constraint),
+			},
+			Operation::AddConstraintDefinition {
+				table: "enum_jobs".to_string(),
+				constraint: new_constraint,
+			},
+		];
+		let mut executor = make_executor().await;
+		executor
+			.apply_migrations(&[initial, replacement.clone()])
+			.await
+			.expect("apply enum replacement");
+
+		executor
+			.rollback_migrations(std::slice::from_ref(&replacement))
+			.await
+			.expect("rollback enum replacement");
+
+		let table_sql = executor
+			.connection()
+			.fetch_optional(
+				"SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?",
+				vec!["enum_jobs".into()],
+			)
+			.await
+			.expect("read rolled-back table")
+			.expect("enum_jobs should exist")
+			.get::<String>("sql")
+			.expect("table SQL should be text");
+		assert!(table_sql.contains("IN ('queued')"), "{table_sql}");
+		assert!(!table_sql.contains("IN ('running')"), "{table_sql}");
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn typed_enum_constraint_recreation_preserves_without_rowid() {
+		let mut id = ColumnDefinition::new("id", FieldType::Integer);
+		id.primary_key = true;
+		let status = ColumnDefinition::new("status", FieldType::VarChar(32));
+		let mut initial = Migration::new("0001_without_rowid", "rolltest");
+		initial.operations.push(Operation::CreateTable {
+			name: "enum_jobs_without_rowid".to_string(),
+			columns: vec![id, status],
+			constraints: vec![],
+			without_rowid: Some(true),
+			interleave_in_parent: None,
+			partition: None,
+		});
+		let mut add_domain = Migration::new("0002_status_domain", "rolltest");
+		add_domain
+			.operations
+			.push(Operation::AddConstraintDefinition {
+				table: "enum_jobs_without_rowid".to_string(),
+				constraint: Constraint::EnumDomain {
+					name: "enum_jobs_without_rowid_status_model_enum_check".to_string(),
+					column: "status".to_string(),
+					domain: FieldDomain::Enum {
+						repr: ModelEnumRepr::String,
+						values: vec![ModelEnumValue::String("queued".to_string())],
+					},
+				},
+			});
+		let mut executor = make_executor().await;
+
+		executor
+			.apply_migrations(&[initial, add_domain])
+			.await
+			.expect("typed enum constraint should recreate WITHOUT ROWID table");
+
+		let table_sql = executor
+			.connection()
+			.fetch_optional(
+				"SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?",
+				vec!["enum_jobs_without_rowid".into()],
+			)
+			.await
+			.expect("read recreated table")
+			.expect("table should exist")
+			.get::<String>("sql")
+			.expect("table SQL should be text");
+		assert!(
+			table_sql.trim_end().ends_with("WITHOUT ROWID"),
+			"{table_sql}"
+		);
 	}
 }

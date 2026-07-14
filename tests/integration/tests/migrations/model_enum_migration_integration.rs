@@ -2,8 +2,8 @@
 
 use reinhardt_db::field_domain::{FieldDomain, ModelEnumRepr, ModelEnumValue};
 use reinhardt_db::migrations::{
-	ColumnDefinition, FieldMetadata, FieldType, MigrationAutodetector, ModelMetadata, Operation,
-	ProjectState,
+	AutodetectorWarning, ColumnDefinition, Constraint, FieldMetadata, FieldType, ForeignKeyAction,
+	MigrationAutodetector, ModelMetadata, Operation, ProjectState, SqlDialect,
 };
 use reinhardt_db::orm::DatabaseField;
 use reinhardt_macros::{ModelEnum, model};
@@ -75,18 +75,28 @@ fn string_domain(values: &[&str]) -> FieldDomain {
 	}
 }
 
-fn project_state_with_domain(values: &[&str]) -> ProjectState {
+fn i32_domain(values: &[i32]) -> FieldDomain {
+	FieldDomain::Enum {
+		repr: ModelEnumRepr::I32,
+		values: values.iter().copied().map(ModelEnumValue::I32).collect(),
+	}
+}
+
+fn project_state_with_field(field_type: FieldType, domain: Option<FieldDomain>) -> ProjectState {
 	let mut metadata = ModelMetadata::new("model_enum_state", "Job", "model_enum_state_jobs");
-	metadata.add_field(
-		"status".to_string(),
-		FieldMetadata::new(FieldType::VarChar(32))
-			.with_param("db_column", "job_status")
-			.with_domain(string_domain(values)),
-	);
+	let mut field = FieldMetadata::new(field_type).with_param("db_column", "job_status");
+	if let Some(domain) = domain {
+		field = field.with_domain(domain);
+	}
+	metadata.add_field("status".to_string(), field);
 
 	let mut state = ProjectState::new();
 	state.add_model(metadata.to_model_state());
 	state
+}
+
+fn project_state_with_domain(values: &[&str]) -> ProjectState {
+	project_state_with_field(FieldType::VarChar(32), Some(string_domain(values)))
 }
 
 #[test]
@@ -150,6 +160,7 @@ fn enum_domain_value_replacement_recreates_the_constraint() {
 		Operation::DropConstraint {
 			table,
 			constraint_name,
+			..
 		} if table == "model_enum_state_jobs"
 			&& constraint_name == "model_enum_state_jobs_job_status_model_enum_check"
 	));
@@ -170,6 +181,191 @@ fn enum_domain_value_replacement_recreates_the_constraint() {
 		),
 		"operations = {operations:?}"
 	);
+}
+
+#[test]
+fn enum_domain_value_addition_replaces_the_constraint_without_warning() {
+	let from_state = project_state_with_domain(&["queued"]);
+	let to_state = project_state_with_domain(&["queued", "running"]);
+	let detector = MigrationAutodetector::new(from_state, to_state);
+
+	let changes = detector.detect_changes();
+	let operations = detector.generate_operations();
+
+	assert_eq!(changes.warnings, Vec::<AutodetectorWarning>::new());
+	assert!(matches!(
+		operations.as_slice(),
+		[
+			Operation::DropConstraint { .. },
+			Operation::AddConstraintDefinition { .. },
+		]
+	));
+}
+
+#[test]
+fn enum_domain_value_removal_warns_with_the_removed_value() {
+	let from_state = project_state_with_domain(&["queued", "running"]);
+	let to_state = project_state_with_domain(&["queued"]);
+	let detector = MigrationAutodetector::new(from_state, to_state);
+
+	let changes = detector.detect_changes();
+	let operations = detector.generate_operations();
+
+	assert!(matches!(
+		operations.as_slice(),
+		[
+			Operation::DropConstraint { .. },
+			Operation::AddConstraintDefinition { .. },
+		]
+	));
+	assert_eq!(changes.warnings.len(), 1);
+	let warning = &changes.warnings[0];
+	assert!(matches!(
+		warning,
+		AutodetectorWarning::EnumDomainDataMigrationRequired {
+			table,
+			column,
+			old_domain,
+			new_domain,
+		} if table == "model_enum_state_jobs"
+			&& column == "job_status"
+			&& old_domain == &string_domain(&["queued", "running"])
+			&& new_domain == &string_domain(&["queued"])
+	));
+	assert!(warning.to_string().contains("running"), "{warning}");
+}
+
+#[test]
+fn enum_storage_change_drops_alters_adds_and_warns_actionably() {
+	let from_state = project_state_with_domain(&["queued", "running"]);
+	let to_state = project_state_with_field(FieldType::Integer, Some(i32_domain(&[1, 2])));
+	let detector = MigrationAutodetector::new(from_state, to_state);
+
+	let changes = detector.detect_changes();
+	let operations = detector.generate_operations();
+
+	assert!(matches!(operations.as_slice(), [
+		Operation::DropConstraint { .. },
+		Operation::AlterColumn {
+			column,
+			new_definition,
+			..
+		},
+		Operation::AddConstraintDefinition { .. },
+	] if column == "job_status"
+		&& new_definition.type_definition == FieldType::Integer));
+	assert_eq!(changes.warnings.len(), 1);
+	assert!(matches!(
+		&changes.warnings[0],
+		AutodetectorWarning::EnumDomainDataMigrationRequired {
+			table,
+			column,
+			old_domain,
+			new_domain,
+		} if table == "model_enum_state_jobs"
+			&& column == "job_status"
+			&& old_domain == &string_domain(&["queued", "running"])
+			&& new_domain == &i32_domain(&[1, 2])
+	));
+	let message = changes.warnings[0].to_string();
+	assert!(message.contains("data migration"), "{message}");
+	assert!(message.contains("before the new constraint"), "{message}");
+}
+
+#[test]
+fn enum_to_plain_string_drops_constraint_and_clears_state_domain() {
+	let from_state = project_state_with_domain(&["queued", "running"]);
+	let to_state = project_state_with_field(FieldType::VarChar(32), None);
+	let detector = MigrationAutodetector::new(from_state.clone(), to_state);
+	let operations = detector.generate_operations();
+
+	assert!(matches!(
+		operations.as_slice(),
+		[Operation::DropConstraint { .. }]
+	));
+	let mut migrated_state = from_state;
+	migrated_state.apply_migration_operations(&operations, "model_enum_state");
+	let field = migrated_state
+		.find_model_by_table("model_enum_state_jobs")
+		.expect("model should remain")
+		.fields
+		.get("job_status")
+		.expect("field should remain");
+	assert_eq!(field.domain, None);
+}
+
+#[test]
+fn enum_constraint_replacement_retains_old_typed_definition() {
+	let from_state = project_state_with_domain(&["queued", "running"]);
+	let to_state = project_state_with_domain(&["queued", "executing"]);
+
+	let operations = MigrationAutodetector::new(from_state, to_state).generate_operations();
+
+	assert!(matches!(
+		&operations[0],
+		Operation::DropConstraint {
+			old_constraint: Some(Constraint::EnumDomain { domain, .. }),
+			..
+		} if domain == &string_domain(&["queued", "running"])
+	));
+}
+
+#[test]
+fn enum_bearing_create_table_quotes_every_constraint_identifier() {
+	let operation = Operation::CreateTable {
+		name: "order".to_string(),
+		columns: vec![
+			ColumnDefinition::new("select", FieldType::Integer),
+			ColumnDefinition::new("status", FieldType::VarChar(32)),
+		],
+		constraints: vec![
+			Constraint::EnumDomain {
+				name: "enum check".to_string(),
+				column: "status".to_string(),
+				domain: string_domain(&["queued"]),
+			},
+			Constraint::ForeignKey {
+				name: "foreign key".to_string(),
+				columns: vec!["select".to_string()],
+				referenced_table: "group".to_string(),
+				referenced_columns: vec!["primary".to_string()],
+				on_delete: ForeignKeyAction::Cascade,
+				on_update: ForeignKeyAction::Restrict,
+				deferrable: None,
+			},
+			Constraint::Unique {
+				name: "unique key".to_string(),
+				columns: vec!["select".to_string()],
+			},
+			Constraint::OneToOne {
+				name: "one key".to_string(),
+				column: "select".to_string(),
+				referenced_table: "group".to_string(),
+				referenced_column: "primary".to_string(),
+				on_delete: ForeignKeyAction::Cascade,
+				on_update: ForeignKeyAction::Restrict,
+				deferrable: None,
+			},
+		],
+		without_rowid: None,
+		interleave_in_parent: None,
+		partition: None,
+	};
+
+	let sql = operation.to_sql(&SqlDialect::Mysql);
+
+	for identifier in [
+		"`enum check`",
+		"`foreign key`",
+		"`select`",
+		"`group`",
+		"`primary`",
+		"`unique key`",
+		"`one key`",
+		"`one key_unique`",
+	] {
+		assert!(sql.contains(identifier), "missing {identifier} in {sql}");
+	}
 }
 
 #[test]

@@ -1357,6 +1357,11 @@ impl ProjectState {
 				}
 				Operation::AddConstraintDefinition { table, constraint } => {
 					if let Some(model) = self.find_model_by_table_mut(table) {
+						if let super::Constraint::EnumDomain { column, domain, .. } = constraint
+							&& let Some(field) = model.fields.get_mut(column)
+						{
+							field.domain = Some(domain.clone().canonicalized());
+						}
 						let constraint = Self::constraint_to_definition(constraint);
 						if !model
 							.constraints
@@ -1370,8 +1375,14 @@ impl ProjectState {
 				Operation::DropConstraint {
 					table,
 					constraint_name,
+					old_constraint,
 				} => {
 					if let Some(model) = self.find_model_by_table_mut(table) {
+						if let Some(super::Constraint::EnumDomain { column, .. }) = old_constraint
+							&& let Some(field) = model.fields.get_mut(column)
+						{
+							field.domain = None;
+						}
 						model
 							.constraints
 							.retain(|constraint| constraint.name != *constraint_name);
@@ -1900,6 +1911,55 @@ pub struct MigrationAutodetector {
 	similarity_config: SimilarityConfig,
 }
 
+/// A structured warning produced while comparing migration states.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AutodetectorWarning {
+	/// Existing rows may not satisfy the replacement enum-domain constraint.
+	EnumDomainDataMigrationRequired {
+		/// Database table containing the enum-backed column.
+		table: String,
+		/// Resolved database column name.
+		column: String,
+		/// Domain enforced before the migration.
+		old_domain: crate::field_domain::FieldDomain,
+		/// Domain enforced after the migration.
+		new_domain: crate::field_domain::FieldDomain,
+	},
+}
+
+impl std::fmt::Display for AutodetectorWarning {
+	fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Self::EnumDomainDataMigrationRequired {
+				table,
+				column,
+				old_domain,
+				new_domain,
+			} => {
+				let crate::field_domain::FieldDomain::Enum {
+					values: old_values, ..
+				} = old_domain;
+				let crate::field_domain::FieldDomain::Enum {
+					values: new_values, ..
+				} = new_domain;
+				let removed_values = old_values
+					.iter()
+					.filter(|value| !new_values.contains(value))
+					.map(|value| match value {
+						crate::field_domain::ModelEnumValue::String(value) => value.clone(),
+						crate::field_domain::ModelEnumValue::I32(value) => value.to_string(),
+					})
+					.collect::<Vec<_>>()
+					.join(", ");
+				write!(
+					formatter,
+					"enum domain change for {table}.{column} removes or re-encodes values [{removed_values}]; place a data migration before the new constraint"
+				)
+			}
+		}
+	}
+}
+
 /// Type alias for moved model information:
 /// (from_app, from_model, to_app, to_model, rename_table, old_table, new_table)
 type MovedModelInfo = (
@@ -1918,6 +1978,8 @@ type ModelMatchResult = ((String, String), (String, String), f64);
 /// Detected changes between two project states
 #[derive(Debug, Clone, Default)]
 pub struct DetectedChanges {
+	/// Actionable warnings discovered while comparing schema metadata.
+	pub warnings: Vec<AutodetectorWarning>,
 	/// Models that were created: (app_label, model_name)
 	pub created_models: Vec<(String, String)>,
 	/// Models that were deleted: (app_label, model_name)
@@ -4111,6 +4173,7 @@ impl MigrationAutodetector {
 		self.detect_added_fields(&mut changes);
 		self.detect_removed_fields(&mut changes);
 		self.detect_altered_fields(&mut changes);
+		self.detect_enum_domain_warnings(&mut changes);
 		self.detect_renamed_fields(&mut changes, strict_rename_ambiguity)?;
 
 		// Detect index and constraint changes
@@ -4136,6 +4199,20 @@ impl MigrationAutodetector {
 		changes.altered_fields.sort();
 		changes.renamed_models.sort();
 		changes.renamed_fields.sort();
+		changes.warnings.sort_by(|left, right| match (left, right) {
+			(
+				AutodetectorWarning::EnumDomainDataMigrationRequired {
+					table: left_table,
+					column: left_column,
+					..
+				},
+				AutodetectorWarning::EnumDomainDataMigrationRequired {
+					table: right_table,
+					column: right_column,
+					..
+				},
+			) => (left_table, left_column).cmp(&(right_table, right_column)),
+		});
 
 		// Sort by (app_label, model_name) for index and constraint changes
 		changes
@@ -4266,6 +4343,50 @@ impl MigrationAutodetector {
 							));
 						}
 					}
+				}
+			}
+		}
+	}
+
+	fn detect_enum_domain_warnings(&self, changes: &mut DetectedChanges) {
+		for ((app_label, model_name), to_model) in &self.to_state.models {
+			let Some(from_model) =
+				self.matching_from_model_for_to_model(app_label, model_name, to_model, changes)
+			else {
+				continue;
+			};
+			for (column, to_field) in &to_model.fields {
+				let Some(from_field) = from_model.fields.get(column) else {
+					continue;
+				};
+				let (Some(old_domain), Some(new_domain)) = (&from_field.domain, &to_field.domain)
+				else {
+					continue;
+				};
+				let old_domain = old_domain.clone().canonicalized();
+				let new_domain = new_domain.clone().canonicalized();
+				if old_domain == new_domain {
+					continue;
+				}
+				let crate::field_domain::FieldDomain::Enum {
+					repr: old_repr,
+					values: old_values,
+				} = &old_domain;
+				let crate::field_domain::FieldDomain::Enum {
+					repr: new_repr,
+					values: new_values,
+				} = &new_domain;
+				if old_repr != new_repr
+					|| old_values.iter().any(|value| !new_values.contains(value))
+				{
+					changes
+						.warnings
+						.push(AutodetectorWarning::EnumDomainDataMigrationRequired {
+							table: to_model.table_name.clone(),
+							column: column.clone(),
+							old_domain,
+							new_domain,
+						});
 				}
 			}
 		}
@@ -6380,6 +6501,30 @@ impl MigrationAutodetector {
 			}
 		}
 
+		// Enum-domain checks must be removed before a storage-type alteration.
+		// The replacement constraint is emitted after column changes below.
+		for (app_label, model_name, constraint_name) in &changes.removed_constraints {
+			let Some(from_model) = self.from_state.get_model(app_label, model_name) else {
+				continue;
+			};
+			let Some(constraint) = from_model
+				.constraints
+				.iter()
+				.find(|constraint| constraint.name == *constraint_name)
+			else {
+				continue;
+			};
+			if constraint.constraint_type == "enum_domain" {
+				by_app.entry(app_label.clone()).or_default().push(
+					super::Operation::DropConstraint {
+						table: from_model.table_name.clone(),
+						constraint_name: constraint_name.clone(),
+						old_constraint: Some(constraint.to_constraint()),
+					},
+				);
+			}
+		}
+
 		// AlterColumn for changed fields.
 		let mut generated_replacement_columns: BTreeSet<(String, String, String)> = BTreeSet::new();
 		for (app_label, model_name, field_name) in &changes.altered_fields {
@@ -6588,6 +6733,11 @@ impl MigrationAutodetector {
 					super::Operation::DropConstraint {
 						table: model.table_name.clone(),
 						constraint_name: constraint_name.clone(),
+						old_constraint: model
+							.constraints
+							.iter()
+							.find(|constraint| constraint.name == *constraint_name)
+							.map(ConstraintDefinition::to_constraint),
 					},
 				);
 			}
@@ -6623,6 +6773,14 @@ impl MigrationAutodetector {
 			if is_composite_pk {
 				continue;
 			}
+			let is_enum_domain = from_model
+				.constraints
+				.iter()
+				.find(|constraint| constraint.name == *constraint_name)
+				.is_some_and(|constraint| constraint.constraint_type == "enum_domain");
+			if is_enum_domain {
+				continue;
+			}
 			let replaced_fields = Self::generated_replacement_fields_for_model(
 				&generated_replacement_columns,
 				app_label,
@@ -6644,6 +6802,11 @@ impl MigrationAutodetector {
 				.push(super::Operation::DropConstraint {
 					table: from_model.table_name.clone(),
 					constraint_name: constraint_name.clone(),
+					old_constraint: from_model
+						.constraints
+						.iter()
+						.find(|constraint| constraint.name == *constraint_name)
+						.map(ConstraintDefinition::to_constraint),
 				});
 		}
 
@@ -10770,6 +10933,7 @@ mod tests {
 		let super::super::Operation::DropConstraint {
 			table,
 			constraint_name,
+			..
 		} = &operations[0]
 		else {
 			panic!(
@@ -10926,6 +11090,7 @@ mod tests {
 		let super::super::Operation::DropConstraint {
 			table,
 			constraint_name,
+			..
 		} = &operations[0]
 		else {
 			panic!(
@@ -11803,6 +11968,7 @@ mod tests {
 		let super::super::Operation::DropConstraint {
 			table,
 			constraint_name,
+			..
 		} = &migrations[0].operations[0]
 		else {
 			panic!(

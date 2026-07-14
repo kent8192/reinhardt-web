@@ -378,6 +378,7 @@ mod tests {
 		let ops = vec![Operation::DropConstraint {
 			table: "orders".to_string(),
 			constraint_name: "CK_Amount".to_string(),
+			old_constraint: None,
 		}];
 		let name = MigrationNamer::generate_name(&ops, false);
 		assert_eq!(name, "drop_constraint_ck_amount");

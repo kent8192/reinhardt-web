@@ -20,6 +20,7 @@
 //! - postgres_container: For cross-database comparison
 
 use reinhardt_db::backends::connection::DatabaseConnection;
+use reinhardt_db::field_domain::{FieldDomain, ModelEnumRepr, ModelEnumValue};
 use reinhardt_db::migrations::{
 	ColumnDefinition, FieldType, ForeignKeyAction, Migration, MigrationError,
 	executor::DatabaseMigrationExecutor,
@@ -506,6 +507,7 @@ async fn test_drop_foreign_key_constraint(
 		vec![Operation::DropConstraint {
 			table: "recreation_child".to_string(),
 			constraint_name: "fk_child_parent".to_string(),
+			old_constraint: None,
 		}],
 	);
 
@@ -1869,6 +1871,7 @@ async fn test_drop_and_add_constraint_same_migration() {
 			Operation::DropConstraint {
 				table: "combo_test".to_string(),
 				constraint_name: "unique_code".to_string(),
+				old_constraint: None,
 			},
 			Operation::AddConstraint {
 				table: "combo_test".to_string(),
@@ -2853,4 +2856,65 @@ async fn test_decision_c5_pk_drop_error() {
 		.expect("Should have data");
 	let data: String = row.get("data").unwrap_or_default();
 	assert_eq!(data, "test", "Data should be preserved");
+}
+
+#[rstest]
+#[tokio::test]
+async fn typed_enum_constraint_recreation_preserves_without_rowid() {
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("connect to in-memory SQLite");
+	let conn = Arc::new(connection.clone());
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+	let mut id = create_column("id", FieldType::Integer);
+	id.not_null = true;
+	id.primary_key = true;
+
+	let create = create_test_migration(
+		"testapp",
+		"0001_create_without_rowid",
+		vec![Operation::CreateTable {
+			name: "enum_without_rowid".to_string(),
+			columns: vec![id, create_column("status", FieldType::VarChar(32))],
+			constraints: vec![],
+			without_rowid: Some(true),
+			interleave_in_parent: None,
+			partition: None,
+		}],
+	);
+	let add_domain = create_test_migration(
+		"testapp",
+		"0002_add_enum_domain",
+		vec![Operation::AddConstraintDefinition {
+			table: "enum_without_rowid".to_string(),
+			constraint: Constraint::EnumDomain {
+				name: "enum_without_rowid_status_model_enum_check".to_string(),
+				column: "status".to_string(),
+				domain: FieldDomain::Enum {
+					repr: ModelEnumRepr::String,
+					values: vec![ModelEnumValue::String("queued".to_string())],
+				},
+			},
+		}],
+	);
+
+	executor
+		.apply_migrations(&[create, add_domain])
+		.await
+		.expect("add typed enum domain through table recreation");
+
+	let table_sql: String = conn
+		.fetch_one(
+			"SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'enum_without_rowid'",
+			vec![],
+		)
+		.await
+		.expect("read recreated table SQL")
+		.get("sql")
+		.expect("table SQL should be text");
+	assert!(table_sql.contains("IN ('queued')"), "{table_sql}");
+	assert!(
+		table_sql.trim_end().ends_with("WITHOUT ROWID"),
+		"{table_sql}"
+	);
 }

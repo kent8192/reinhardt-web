@@ -960,6 +960,7 @@ impl BaseCommand for MakeMigrationsCommand {
 				Operation::DropConstraint {
 					table,
 					constraint_name,
+					..
 				} => {
 					format!("Remove constraint {} from {}", constraint_name, table)
 				}

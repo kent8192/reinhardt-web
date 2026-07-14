@@ -572,32 +572,109 @@ impl Constraint {
 	}
 
 	fn to_sql_for_dialect(&self, dialect: &SqlDialect) -> String {
-		let Constraint::EnumDomain {
-			name,
-			column,
-			domain,
-		} = self
-		else {
-			return self.to_string();
+		let quote = |identifier: &str| Operation::quote_dialect_identifier(identifier, dialect);
+		let quote_columns = |columns: &[String]| {
+			columns
+				.iter()
+				.map(|column| quote(column))
+				.collect::<Vec<_>>()
+				.join(", ")
 		};
-		let crate::field_domain::FieldDomain::Enum { values, .. } = domain.clone().canonicalized();
-		let literals = values
-			.into_iter()
-			.map(|value| match value {
-				crate::field_domain::ModelEnumValue::String(value) => {
-					Value::String(Some(Box::new(value))).to_sql_literal()
+
+		match self {
+			Constraint::PrimaryKey { name, columns } => format!(
+				"CONSTRAINT {} PRIMARY KEY ({})",
+				quote(name),
+				quote_columns(columns)
+			),
+			Constraint::ForeignKey {
+				name,
+				columns,
+				referenced_table,
+				referenced_columns,
+				on_delete,
+				on_update,
+				deferrable,
+			} => {
+				let mut sql = format!(
+					"CONSTRAINT {} FOREIGN KEY ({}) REFERENCES {}({}) ON DELETE {} ON UPDATE {}",
+					quote(name),
+					quote_columns(columns),
+					Operation::quote_schema_identifier(referenced_table, dialect),
+					quote_columns(referenced_columns),
+					on_delete.to_sql_keyword(),
+					on_update.to_sql_keyword()
+				);
+				if let Some(option) = deferrable {
+					sql.push(' ');
+					sql.push_str(&option.to_string());
 				}
-				crate::field_domain::ModelEnumValue::I32(value) => {
-					Value::Int(Some(value)).to_sql_literal()
+				sql
+			}
+			Constraint::Unique { name, columns } => format!(
+				"CONSTRAINT {} UNIQUE ({})",
+				quote(name),
+				quote_columns(columns)
+			),
+			Constraint::Check { name, expression } => {
+				format!("CONSTRAINT {} CHECK ({})", quote(name), expression)
+			}
+			Constraint::EnumDomain {
+				name,
+				column,
+				domain,
+			} => {
+				let crate::field_domain::FieldDomain::Enum { values, .. } =
+					domain.clone().canonicalized();
+				let literals = values
+					.into_iter()
+					.map(|value| match value {
+						crate::field_domain::ModelEnumValue::String(value) => {
+							Value::String(Some(Box::new(value))).to_sql_literal()
+						}
+						crate::field_domain::ModelEnumValue::I32(value) => {
+							Value::Int(Some(value)).to_sql_literal()
+						}
+					})
+					.collect::<Vec<_>>();
+				format!(
+					"CONSTRAINT {} CHECK ({} IN ({}))",
+					quote(name),
+					quote(column),
+					literals.join(", ")
+				)
+			}
+			Constraint::OneToOne {
+				name,
+				column,
+				referenced_table,
+				referenced_column,
+				on_delete,
+				on_update,
+				deferrable,
+			} => {
+				let mut sql = format!(
+					"CONSTRAINT {} FOREIGN KEY ({}) REFERENCES {}({}) ON DELETE {} ON UPDATE {}",
+					quote(name),
+					quote(column),
+					Operation::quote_schema_identifier(referenced_table, dialect),
+					quote(referenced_column),
+					on_delete.to_sql_keyword(),
+					on_update.to_sql_keyword()
+				);
+				if let Some(option) = deferrable {
+					sql.push(' ');
+					sql.push_str(&option.to_string());
 				}
-			})
-			.collect::<Vec<_>>();
-		format!(
-			"CONSTRAINT {} CHECK ({} IN ({}))",
-			name,
-			Operation::quote_dialect_identifier(column, dialect),
-			literals.join(", ")
-		)
+				sql.push_str(&format!(
+					", CONSTRAINT {} UNIQUE ({})",
+					quote(&format!("{name}_unique")),
+					quote(column)
+				));
+				sql
+			}
+			_ => self.to_string(),
+		}
 	}
 }
 
@@ -969,6 +1046,9 @@ pub enum Operation {
 		table: String,
 		/// The constraint name.
 		constraint_name: String,
+		/// Typed definition captured before the constraint is dropped.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		old_constraint: Option<Constraint>,
 	},
 	/// CreateIndex variant.
 	CreateIndex {
@@ -1547,6 +1627,11 @@ impl Operation {
 			}
 			Operation::AddConstraintDefinition { table, constraint } => {
 				if let Some(model) = state.find_model_by_table_mut(table) {
+					if let Constraint::EnumDomain { column, domain, .. } = constraint
+						&& let Some(field) = model.fields.get_mut(column)
+					{
+						field.domain = Some(domain.clone().canonicalized());
+					}
 					let definition = ProjectState::constraint_to_definition(constraint);
 					if !model
 						.constraints
@@ -1557,10 +1642,25 @@ impl Operation {
 					}
 				}
 			}
+			Operation::DropConstraint {
+				table,
+				constraint_name,
+				old_constraint,
+			} => {
+				if let Some(model) = state.find_model_by_table_mut(table) {
+					if let Some(Constraint::EnumDomain { column, .. }) = old_constraint
+						&& let Some(field) = model.fields.get_mut(column)
+					{
+						field.domain = None;
+					}
+					model
+						.constraints
+						.retain(|constraint| constraint.name != *constraint_name);
+				}
+			}
 			Operation::AddConstraint { .. }
 			| Operation::AddConstraintRepair { .. }
 			| Operation::RestoreConstraintOnRollback { .. }
-			| Operation::DropConstraint { .. }
 			| Operation::CreateIndex { .. }
 			| Operation::CreateIndexRepair { .. }
 			| Operation::RestoreIndexOnRollback { .. }
@@ -2392,6 +2492,7 @@ impl Operation {
 			Operation::DropConstraint {
 				table,
 				constraint_name,
+				..
 			} => {
 				format!(
 					"ALTER TABLE {} DROP CONSTRAINT {};",
@@ -3336,7 +3437,22 @@ impl Operation {
 			Operation::DropConstraint {
 				table,
 				constraint_name,
+				old_constraint,
 			} => {
+				if let Some(constraint) = old_constraint {
+					return Ok(Some(vec![match constraint {
+						Constraint::EnumDomain { .. } => Operation::AddConstraintDefinition {
+							table: table.clone(),
+							constraint: constraint.clone(),
+						}
+						.to_sql(dialect),
+						_ => format!(
+							"ALTER TABLE {} ADD {};",
+							quote_identifier(table),
+							constraint
+						),
+					}]));
+				}
 				// Retrieve constraint definition from ProjectState
 				if let Some(model) = project_state.find_model_by_table(table)
 					&& let Some(constraint_def) = model
@@ -3487,17 +3603,38 @@ impl Operation {
 			}
 			Operation::AddConstraintDefinition { table, constraint } => {
 				if let Some(model) = state.find_model_by_table_mut(table) {
+					if let Constraint::EnumDomain { column, .. } = constraint
+						&& let Some(field) = model.fields.get_mut(column)
+					{
+						field.domain = None;
+					}
 					model
 						.constraints
 						.retain(|definition| definition.name != constraint.name());
 				}
 			}
 			Operation::DropConstraint {
-				table: _,
-				constraint_name: _,
+				table,
+				constraint_name,
+				old_constraint,
 			} => {
-				// Cannot reconstruct constraint definition without snapshot.
-				// For proper rollback, use to_reverse_sql with pre-operation ProjectState.
+				if let (Some(model), Some(constraint)) =
+					(state.find_model_by_table_mut(table), old_constraint)
+				{
+					let definition = ProjectState::constraint_to_definition(constraint);
+					if !model
+						.constraints
+						.iter()
+						.any(|item| item.name == *constraint_name)
+					{
+						if let Constraint::EnumDomain { column, domain, .. } = constraint
+							&& let Some(field) = model.fields.get_mut(column)
+						{
+							field.domain = Some(domain.clone().canonicalized());
+						}
+						model.constraints.push(definition);
+					}
+				}
 			}
 			_ => {
 				// Other operations don't affect schema state
@@ -4466,6 +4603,12 @@ impl SqliteTableRecreation {
 		self
 	}
 
+	/// Preserves whether the recreated table uses SQLite's WITHOUT ROWID storage.
+	pub fn with_without_rowid(mut self, without_rowid: bool) -> Self {
+		self.without_rowid = without_rowid;
+		self
+	}
+
 	/// Removes indexes that reference a column no longer present in the replacement table.
 	pub fn without_indexes_referencing(mut self, column_name: &str) -> Self {
 		self.indexes
@@ -4484,7 +4627,11 @@ impl SqliteTableRecreation {
 			.map(|c| Operation::column_to_sql(c, &SqlDialect::Sqlite))
 			.collect();
 
-		let constraint_defs: Vec<String> = self.constraints.iter().map(|c| c.to_string()).collect();
+		let constraint_defs: Vec<String> = self
+			.constraints
+			.iter()
+			.map(|constraint| constraint.to_sql_for_dialect(&SqlDialect::Sqlite))
+			.collect();
 
 		let mut create_parts = column_defs;
 		create_parts.extend(constraint_defs);
@@ -4746,6 +4893,7 @@ impl Operation {
 					return Ok(Some(Operation::DropConstraint {
 						table: table.clone(),
 						constraint_name,
+						old_constraint: None,
 					}));
 				}
 				Err(super::MigrationError::InvalidMigration(format!(
@@ -4757,6 +4905,7 @@ impl Operation {
 				Ok(Some(Operation::DropConstraint {
 					table: table.clone(),
 					constraint_name: constraint.name().to_string(),
+					old_constraint: Some(constraint.clone()),
 				}))
 			}
 			Operation::AddConstraintRepair { .. } => Ok(None),
@@ -4770,7 +4919,20 @@ impl Operation {
 			Operation::DropConstraint {
 				table,
 				constraint_name,
+				old_constraint,
 			} => {
+				if let Some(constraint) = old_constraint {
+					return Ok(Some(match constraint {
+						Constraint::EnumDomain { .. } => Operation::AddConstraintDefinition {
+							table: table.clone(),
+							constraint: constraint.clone(),
+						},
+						_ => Operation::AddConstraint {
+							table: table.clone(),
+							constraint_sql: constraint.to_string(),
+						},
+					}));
+				}
 				// Reconstruct AddConstraint from ProjectState
 				if let Some(model) = project_state.find_model_by_table(table)
 					&& let Some(constraint_def) = model
@@ -5026,6 +5188,7 @@ impl Operation {
 			Operation::DropConstraint {
 				table,
 				constraint_name,
+				..
 			} => OperationStatement::RawSql(format!(
 				"ALTER TABLE {} DROP CONSTRAINT {}",
 				quote_identifier(table),
@@ -5700,6 +5863,7 @@ impl MigrationOperation for Operation {
 			Operation::DropConstraint {
 				table: _,
 				constraint_name,
+				..
 			} => Some(format!(
 				"drop_constraint_{}",
 				constraint_name.to_lowercase()
@@ -5798,6 +5962,7 @@ impl MigrationOperation for Operation {
 			Operation::DropConstraint {
 				table,
 				constraint_name,
+				..
 			} => format!("Drop constraint {} from {}", constraint_name, table),
 			Operation::CreateIndex { table, unique, .. }
 			| Operation::CreateIndexRepair { table, unique, .. }
@@ -5980,6 +6145,7 @@ impl MigrationOperation for Operation {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::migrations::ForeignKeyAction;
 	use FieldType;
 	use reinhardt_query::prelude::SchemaBinOper;
 	use rstest::rstest;
@@ -6436,6 +6602,97 @@ mod tests {
 	}
 
 	#[test]
+	fn enum_bearing_create_table_quotes_mixed_constraints_for_mysql() {
+		let operation = Operation::CreateTable {
+			name: "order-items".to_string(),
+			columns: vec![
+				ColumnDefinition::new("select", FieldType::VarChar(32)),
+				ColumnDefinition::new("owner-id", FieldType::Integer),
+				ColumnDefinition::new("profile-id", FieldType::Integer),
+			],
+			constraints: vec![
+				Constraint::EnumDomain {
+					name: "order-status-check".to_string(),
+					column: "select".to_string(),
+					domain: crate::field_domain::FieldDomain::Enum {
+						repr: crate::field_domain::ModelEnumRepr::String,
+						values: vec![crate::field_domain::ModelEnumValue::String(
+							"queued".to_string(),
+						)],
+					},
+				},
+				Constraint::ForeignKey {
+					name: "fk-order-owner".to_string(),
+					columns: vec!["owner-id".to_string()],
+					referenced_table: "user-table".to_string(),
+					referenced_columns: vec!["primary-id".to_string()],
+					on_delete: ForeignKeyAction::Cascade,
+					on_update: ForeignKeyAction::NoAction,
+					deferrable: None,
+				},
+				Constraint::Unique {
+					name: "uq-order-select".to_string(),
+					columns: vec!["select".to_string()],
+				},
+				Constraint::OneToOne {
+					name: "oto-order-profile".to_string(),
+					column: "profile-id".to_string(),
+					referenced_table: "profile-table".to_string(),
+					referenced_column: "primary-id".to_string(),
+					on_delete: ForeignKeyAction::Cascade,
+					on_update: ForeignKeyAction::NoAction,
+					deferrable: None,
+				},
+			],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
+		};
+
+		let sql = operation.to_sql(&SqlDialect::Mysql);
+
+		assert!(
+			sql.contains(
+				"CONSTRAINT `fk-order-owner` FOREIGN KEY (`owner-id`) REFERENCES `user-table`(`primary-id`)"
+			),
+			"{sql}"
+		);
+		assert!(
+			sql.contains("CONSTRAINT `uq-order-select` UNIQUE (`select`)"),
+			"{sql}"
+		);
+		assert!(
+			sql.contains("CONSTRAINT `oto-order-profile` FOREIGN KEY (`profile-id`) REFERENCES `profile-table`(`primary-id`)"),
+			"{sql}"
+		);
+		assert!(
+			sql.contains("CONSTRAINT `oto-order-profile_unique` UNIQUE (`profile-id`)"),
+			"{sql}"
+		);
+	}
+
+	#[test]
+	fn drop_constraint_deserializes_legacy_shape_without_typed_snapshot() {
+		let operation: Operation = serde_json::from_str(
+			r#"{
+				"type": "DropConstraint",
+				"table": "jobs",
+				"constraint_name": "jobs_status_check"
+			}"#,
+		)
+		.expect("legacy DropConstraint JSON should remain readable");
+
+		assert_eq!(
+			operation,
+			Operation::DropConstraint {
+				table: "jobs".to_string(),
+				constraint_name: "jobs_status_check".to_string(),
+				old_constraint: None,
+			}
+		);
+	}
+
+	#[test]
 	fn add_constraint_definition_state_transitions_are_symmetric() {
 		let domain = crate::field_domain::FieldDomain::Enum {
 			repr: crate::field_domain::ModelEnumRepr::String,
@@ -6609,6 +6866,7 @@ mod tests {
 		let op = Operation::DropConstraint {
 			table: "users".to_string(),
 			constraint_name: "age_check".to_string(),
+			old_constraint: None,
 		};
 
 		let stmt = op.to_statement();
@@ -8697,6 +8955,7 @@ mod tests {
 		let operation = Operation::DropConstraint {
 			table: table.clone(),
 			constraint_name: name.clone(),
+			old_constraint: None,
 		};
 
 		let reverse = operation
@@ -8722,6 +8981,7 @@ mod tests {
 		let operation = Operation::DropConstraint {
 			table,
 			constraint_name: name,
+			old_constraint: None,
 		};
 
 		let sql = operation

@@ -589,11 +589,17 @@ impl ToTokens for Operation {
 			Operation::DropConstraint {
 				table,
 				constraint_name,
+				old_constraint,
 			} => {
+				let old_constraint = match old_constraint {
+					Some(constraint) => quote! { Some(#constraint) },
+					None => quote! { None },
+				};
 				tokens.extend(quote! {
 					Operation::DropConstraint {
 						table: #table.to_string(),
 						constraint_name: #constraint_name.to_string(),
+						old_constraint: #old_constraint,
 					}
 				});
 			}
@@ -1399,6 +1405,30 @@ impl ToTokens for super::BulkLoadOptions {
 mod tests {
 	use super::*;
 	use quote::ToTokens;
+
+	#[test]
+	fn drop_constraint_tokens_preserve_old_typed_constraint() {
+		let operation = Operation::DropConstraint {
+			table: "jobs".to_string(),
+			constraint_name: "jobs_status_check".to_string(),
+			old_constraint: Some(Constraint::EnumDomain {
+				name: "jobs_status_check".to_string(),
+				column: "status".to_string(),
+				domain: crate::field_domain::FieldDomain::Enum {
+					repr: crate::field_domain::ModelEnumRepr::String,
+					values: vec![crate::field_domain::ModelEnumValue::String(
+						"queued".to_string(),
+					)],
+				},
+			}),
+		};
+
+		let tokens = operation.to_token_stream().to_string();
+
+		assert!(tokens.contains("old_constraint : Some"), "{tokens}");
+		assert!(tokens.contains("Constraint :: EnumDomain"), "{tokens}");
+		assert!(tokens.contains("ModelEnumValue :: String"), "{tokens}");
+	}
 
 	#[test]
 	fn column_definition_tokens_preserve_model_enum_domain() {

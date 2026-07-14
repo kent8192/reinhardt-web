@@ -70,6 +70,7 @@ pub mod zero_downtime;
 pub use crate::contenttypes::migration::MigrationRecord;
 pub use autodetector::{
 	// Pattern Learning and Inference
+	AutodetectorWarning,
 	ChangeTracker,
 	ConstraintDefinition,
 	DetectedChanges,

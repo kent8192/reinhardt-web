@@ -1249,16 +1249,7 @@ impl SchemaDiff {
 			});
 		}
 
-		// Add constraints
-		for (table_name, constraint) in &diff.constraints_to_add {
-			let constraint_sql = Self::constraint_schema_to_sql(constraint);
-			operations.push(Operation::AddConstraint {
-				table: table_name.clone(),
-				constraint_sql,
-			});
-		}
-
-		// Remove constraints
+		// Remove constraints before adding replacements with the same name.
 		for (table_name, constraint) in &diff.constraints_to_remove {
 			let recreated_columns =
 				Self::recreated_columns_for_table(&recreated_generated_columns, table_name);
@@ -1270,6 +1261,16 @@ impl SchemaDiff {
 			operations.push(Operation::DropConstraint {
 				table: table_name.clone(),
 				constraint_name: constraint.name.clone(),
+				old_constraint: None,
+			});
+		}
+
+		// Add constraints after obsolete definitions have been removed.
+		for (table_name, constraint) in &diff.constraints_to_add {
+			let constraint_sql = Self::constraint_schema_to_sql(constraint);
+			operations.push(Operation::AddConstraint {
+				table: table_name.clone(),
+				constraint_sql,
 			});
 		}
 
@@ -3205,6 +3206,15 @@ mod tests {
 		assert_eq!(result.constraints_to_add.len(), 1);
 		assert_eq!(result.constraints_to_remove[0].1.definition, "amount > 0");
 		assert_eq!(result.constraints_to_add[0].1.definition, "amount >= 0");
+		let operations = diff.generate_operations();
+		assert!(matches!(
+			operations.as_slice(),
+			[
+				Operation::DropConstraint { constraint_name, .. },
+				Operation::AddConstraint { constraint_sql, .. },
+			] if constraint_name == "ck_amount"
+				&& constraint_sql.contains("amount >= 0")
+		));
 	}
 
 	#[test]
@@ -3305,6 +3315,7 @@ mod tests {
 			Operation::DropConstraint {
 				table,
 				constraint_name,
+				..
 			} => {
 				assert_eq!(table, "orders");
 				assert_eq!(constraint_name, "uq_orders_amount");
