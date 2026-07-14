@@ -640,99 +640,116 @@ fn mounted_number_control(
 	(root, input, value, error)
 }
 
-fn select_number_editor_range(input: &web_sys::HtmlInputElement, start: u32, end: u32) {
-	input.set_type("text");
-	input
-		.set_selection_range(start, end)
-		.expect("selection range");
-}
-
-#[wasm_bindgen_test]
-fn number_binding_inserts_at_the_browser_selection() {
-	let (_root, input, value, _error) = mounted_number_control(123);
-	select_number_editor_range(&input, 1, 1);
-	dispatch_before_input(&input, Some("4"), "insertText");
-	input.set_type("number");
-	input.set_value("1423");
-	dispatch_input(&input, Some("4"), "insertText");
-
-	assert_eq!(value.get(), 1423);
-	reinhardt_pages::cleanup_reactive_nodes();
-}
-
-#[wasm_bindgen_test]
-fn number_binding_replaces_the_browser_selection() {
-	let (_root, input, value, _error) = mounted_number_control(12345);
-	select_number_editor_range(&input, 1, 4);
-	dispatch_before_input(&input, Some("9"), "insertReplacementText");
-	input.set_type("number");
-	input.set_value("195");
-	dispatch_input(&input, Some("9"), "insertReplacementText");
-
-	assert_eq!(value.get(), 195);
-	reinhardt_pages::cleanup_reactive_nodes();
-}
-
-#[wasm_bindgen_test]
-fn number_binding_tracks_backward_and_forward_deletes() {
-	let (_root, input, value, _error) = mounted_number_control(1234);
-	select_number_editor_range(&input, 2, 2);
-	dispatch_before_input(&input, None, "deleteContentBackward");
-	input.set_type("number");
-	input.set_value("134");
-	dispatch_input(&input, None, "deleteContentBackward");
-
-	select_number_editor_range(&input, 1, 1);
-	dispatch_before_input(&input, None, "deleteContentForward");
-	input.set_type("number");
-	input.set_value("14");
-	dispatch_input(&input, None, "deleteContentForward");
-
-	assert_eq!(value.get(), 14);
-	reinhardt_pages::cleanup_reactive_nodes();
-}
-
-#[wasm_bindgen_test]
-fn number_binding_uses_transfer_data_and_live_replacement_fallback() {
-	let (_root, input, value, _error) = mounted_number_control(12);
-	select_number_editor_range(&input, 1, 1);
-	dispatch_before_input_with_transfer(&input, "34", "insertFromPaste");
-	input.set_type("number");
-	input.set_value("1342");
-	dispatch_input(&input, None, "insertFromPaste");
-	assert_eq!(value.get(), 1342);
-
-	select_number_editor_range(&input, 1, 3);
-	dispatch_before_input(&input, None, "insertReplacementText");
-	input.set_type("number");
-	input.set_value("12");
-	dispatch_input(&input, None, "insertReplacementText");
-	assert_eq!(value.get(), 12);
-	reinhardt_pages::cleanup_reactive_nodes();
-}
-
-#[wasm_bindgen_test]
-fn number_binding_deduplicates_a_composition_selection_replacement() {
-	let (_root, input, value, error) = mounted_number_control(123);
+fn dispatch_keydown(input: &web_sys::HtmlInputElement, key: &str, shift: bool) {
+	let init = web_sys::KeyboardEventInit::new();
+	init.set_key(key);
+	init.set_shift_key(shift);
 	input
 		.dispatch_event(
-			&web_sys::CompositionEvent::new("compositionstart").expect("compositionstart"),
+			&web_sys::KeyboardEvent::new_with_keyboard_event_init_dict("keydown", &init)
+				.expect("keydown"),
 		)
-		.expect("dispatch compositionstart");
-	select_number_editor_range(&input, 1, 3);
-	dispatch_before_input(&input, Some("."), "insertCompositionText");
-	input.set_type("number");
+		.expect("dispatch keydown");
+}
+
+#[wasm_bindgen_test]
+fn number_binding_tracks_keyboard_caret_for_sanitized_input() {
+	let (_root, input, value, error) = mounted_number_control(12);
+	dispatch_keydown(&input, "ArrowLeft", false);
+	dispatch_before_input(&input, Some("-"), "insertText");
 	input.set_value("");
-	dispatch_input(&input, Some("."), "insertCompositionText");
-	input
-		.dispatch_event(&web_sys::CompositionEvent::new("compositionend").expect("compositionend"))
-		.expect("dispatch compositionend");
-	dispatch_input(&input, Some("."), "insertCompositionText");
+	dispatch_input(&input, Some("-"), "insertText");
+
+	assert_eq!(value.get(), 12);
+	let parse_error = error.get().expect("invalid middle insertion");
+	assert_eq!(parse_error.raw(), "1-2");
+	assert_eq!(parse_error.kind(), NumberParseErrorKind::Invalid);
+	reinhardt_pages::cleanup_reactive_nodes();
+}
+
+#[wasm_bindgen_test]
+fn number_binding_tracks_shift_selection_for_sanitized_replacement() {
+	let (_root, input, value, error) = mounted_number_control(123);
+	dispatch_keydown(&input, "ArrowLeft", false);
+	dispatch_keydown(&input, "ArrowLeft", true);
+	dispatch_before_input(&input, Some("-"), "insertReplacementText");
+	input.set_value("");
+	dispatch_input(&input, Some("-"), "insertReplacementText");
 
 	assert_eq!(value.get(), 123);
-	let parse_error = error.get().expect("incomplete replacement");
-	assert_eq!(parse_error.raw(), "1.");
-	assert_eq!(parse_error.kind(), NumberParseErrorKind::Incomplete);
+	let parse_error = error.get().expect("invalid selection replacement");
+	assert_eq!(parse_error.raw(), "1-3");
+	assert_eq!(parse_error.kind(), NumberParseErrorKind::Invalid);
+	reinhardt_pages::cleanup_reactive_nodes();
+}
+
+#[wasm_bindgen_test]
+fn number_binding_resynchronizes_after_an_unknown_valid_pointer_edit() {
+	let (_root, input, value, error) = mounted_number_control(12);
+	input
+		.dispatch_event(&web_sys::MouseEvent::new("mousedown").expect("mousedown"))
+		.expect("dispatch mousedown");
+	dispatch_before_input(&input, Some("3"), "insertText");
+	input.set_value("132");
+	dispatch_input(&input, Some("3"), "insertText");
+	assert_eq!(value.get(), 132);
+
+	dispatch_before_input(&input, Some("-"), "insertText");
+	input.set_value("");
+	dispatch_input(&input, Some("-"), "insertText");
+
+	assert_eq!(value.get(), 132);
+	let parse_error = error.get().expect("invalid edit after resync");
+	assert_eq!(parse_error.raw(), "13-2");
+	reinhardt_pages::cleanup_reactive_nodes();
+}
+
+#[wasm_bindgen_test]
+fn number_binding_tracks_word_and_line_deletes() {
+	let (_root, input, value, error) = mounted_number_control(1234);
+	dispatch_keydown(&input, "ArrowLeft", false);
+	dispatch_keydown(&input, "ArrowLeft", false);
+	dispatch_before_input(&input, None, "deleteWordBackward");
+	input.set_value("34");
+	dispatch_input(&input, None, "deleteWordBackward");
+	assert_eq!(value.get(), 34);
+
+	dispatch_before_input(&input, None, "deleteSoftLineForward");
+	input.set_value("");
+	dispatch_input(&input, None, "deleteSoftLineForward");
+	assert_eq!(value.get(), 34);
+	assert_eq!(error.get().expect("empty line delete").raw(), "");
+	reinhardt_pages::cleanup_reactive_nodes();
+}
+
+#[wasm_bindgen_test]
+fn number_binding_uses_transfer_data_for_sanitized_paste() {
+	let (_root, input, value, error) = mounted_number_control(12);
+	dispatch_before_input_with_transfer(&input, "-", "insertFromPaste");
+	input.set_value("");
+	dispatch_input(&input, None, "insertFromPaste");
+
+	assert_eq!(value.get(), 12);
+	let parse_error = error.get().expect("invalid pasted raw");
+	assert_eq!(parse_error.raw(), "12-");
+	assert_eq!(parse_error.kind(), NumberParseErrorKind::Invalid);
+	reinhardt_pages::cleanup_reactive_nodes();
+}
+
+#[wasm_bindgen_test]
+fn number_binding_does_not_invent_raw_after_an_unknown_pointer_edit() {
+	let (_root, input, value, error) = mounted_number_control(12);
+	input
+		.dispatch_event(&web_sys::MouseEvent::new("mousedown").expect("mousedown"))
+		.expect("dispatch mousedown");
+	dispatch_before_input(&input, Some("-"), "insertText");
+	input.set_value("");
+	dispatch_input(&input, Some("-"), "insertText");
+
+	assert_eq!(value.get(), 12);
+	let parse_error = error.get().expect("sanitized fallback");
+	assert_eq!(parse_error.raw(), "");
+	assert_eq!(parse_error.kind(), NumberParseErrorKind::Empty);
 	reinhardt_pages::cleanup_reactive_nodes();
 }
 
@@ -763,16 +780,14 @@ fn number_binding_recovers_incomplete_raw_from_sanitized_browser_input() {
 	dispatch_before_input(&input, None, "deleteContentBackward");
 	input.set_value("");
 	dispatch_input(&input, None, "deleteContentBackward");
-	for (raw, fragment) in [("-", "-"), ("-1", "1"), ("-1.", ".")] {
-		dispatch_before_input(&input, Some(fragment), "insertText");
-		input.set_value(raw);
-		dispatch_input(&input, Some(fragment), "insertText");
-	}
+	dispatch_before_input(&input, Some("-"), "insertText");
+	input.set_value("-");
+	dispatch_input(&input, Some("-"), "insertText");
 
 	assert_eq!(input.value(), "", "Chrome sanitizes an incomplete number");
-	assert_eq!(value.get(), -1);
+	assert_eq!(value.get(), 7);
 	let parse_error = error.get().expect("incomplete raw should be reported");
-	assert_eq!(parse_error.raw(), "-1.");
+	assert_eq!(parse_error.raw(), "-");
 	assert_eq!(parse_error.kind(), NumberParseErrorKind::Incomplete);
 	reinhardt_pages::cleanup_reactive_nodes();
 }
@@ -801,26 +816,26 @@ fn number_binding_deduplicates_sanitized_final_input_after_composition() {
 		.expect("input")
 		.unchecked_into();
 
+	dispatch_keydown(&input, "Home", false);
+	dispatch_keydown(&input, "End", true);
 	input
 		.dispatch_event(
 			&web_sys::CompositionEvent::new("compositionstart").expect("compositionstart"),
 		)
 		.expect("dispatch compositionstart");
-	for (raw, fragment) in [("-", "-"), ("-1", "1"), ("-1.", ".")] {
-		dispatch_before_input(&input, Some(fragment), "insertCompositionText");
-		input.set_value(raw);
-		dispatch_input(&input, Some(fragment), "insertCompositionText");
-	}
+	dispatch_before_input(&input, Some("-"), "insertCompositionText");
+	input.set_value("-");
+	dispatch_input(&input, Some("-"), "insertCompositionText");
 	input
 		.dispatch_event(&web_sys::CompositionEvent::new("compositionend").expect("compositionend"))
 		.expect("dispatch compositionend");
-	dispatch_input(&input, Some("."), "insertCompositionText");
+	dispatch_input(&input, Some("-"), "insertCompositionText");
 
 	assert_eq!(value.get(), 7);
 	let parse_error = error
 		.get()
 		.expect("duplicate final input should retain the incomplete raw");
-	assert_eq!(parse_error.raw(), "-1.");
+	assert_eq!(parse_error.raw(), "-");
 	assert_eq!(parse_error.kind(), NumberParseErrorKind::Incomplete);
 	reinhardt_pages::cleanup_reactive_nodes();
 }
