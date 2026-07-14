@@ -16,6 +16,66 @@ use crate::event::{
 	PointerMoveEvent, typed_event_handler,
 };
 
+use crate::reactive::{QueryKey, ResourceState, use_query};
+
+fn scheduled_query_component() -> Page {
+	let query = use_query(QueryKey::new("scheduled-query", || async {
+		Ok::<_, String>("Scheduled query result".to_string())
+	}));
+	Page::reactive(move || match query.get() {
+		ResourceState::Loading => Page::text("Loading"),
+		ResourceState::Success(value) => Page::text(value),
+		ResourceState::Error(error) => Page::text(error.to_string()),
+	})
+}
+
+#[cfg(not(feature = "msw"))]
+fn screen_scoped_query_component(value: &'static str) -> Page {
+	let query = use_query(QueryKey::new("screen-scoped-query", move || async move {
+		Ok::<_, String>(value.to_string())
+	}));
+	Page::reactive(move || match query.get() {
+		ResourceState::Loading => Page::text("Loading"),
+		ResourceState::Success(value) => Page::text(value),
+		ResourceState::Error(error) => Page::text(error),
+	})
+}
+
+#[tokio::test]
+async fn query_fetches_are_scheduled_until_screen_settles() {
+	// Arrange
+	let screen = render(scheduled_query_component);
+
+	// Assert
+	assert_eq!(screen.pretty(), "Loading\n");
+
+	// Act
+	screen.settle().await;
+
+	// Assert
+	assert_eq!(screen.pretty(), "Scheduled query result\n");
+}
+
+#[cfg(not(feature = "msw"))]
+#[tokio::test]
+#[serial_test::serial(query_cache)]
+async fn query_cache_is_scoped_per_screen_without_msw() {
+	// Arrange
+	crate::reactive::query::clear_query_cache_for_test();
+	let first = render(|| screen_scoped_query_component("first"));
+	first.settle().await;
+
+	// Act
+	let second = render(|| screen_scoped_query_component("second"));
+	second.settle().await;
+	let second_output = second.pretty();
+	crate::reactive::query::clear_query_cache_for_test();
+
+	// Assert
+	assert_eq!(first.pretty(), "first\n");
+	assert_eq!(second_output, "second\n");
+}
+
 #[test]
 fn renders_page_tree_and_pretty_output() {
 	let screen = render(
