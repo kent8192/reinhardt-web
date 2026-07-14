@@ -1173,8 +1173,17 @@ where
 	M: Model,
 {
 	ensure_single_column_primary_key::<M>()?;
-	let object = fixture_database_object::<M>(object)?;
+	let mut object = fixture_database_object::<M>(object)?;
 	let pk_field = fixture_primary_key_column::<M>();
+	if object.contains_key(&pk_field) {
+		for field in M::field_metadata()
+			.into_iter()
+			.filter(|field| field.nullable && !field.primary_key)
+		{
+			let column = field.db_column_name().to_string();
+			object.entry(column).or_insert(Value::Null);
+		}
+	}
 	let columns = fixture_writable_columns(&object, &pk_field)?;
 	if columns.is_empty() {
 		return Ok(fixture_default_values_insert_sql(M::table_name(), backend));

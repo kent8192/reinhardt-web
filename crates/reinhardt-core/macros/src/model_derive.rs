@@ -2928,6 +2928,8 @@ fn generate_fixture_validation(
 			|| is_many_to_many_field_type(&field.ty)
 			|| field.config.generated.is_some()
 			|| field.config.generated_sql.is_some()
+			|| field.config.identity_always == Some(true)
+			|| field.config.identity_by_default == Some(true)
 		{
 			continue;
 		}
@@ -2974,6 +2976,12 @@ fn generate_fixture_validation(
 			});
 		} else {
 			let serde_attrs = fixture_projection_serde_attrs(field);
+			let (is_option, inner_type) = extract_option_type(field_type);
+			let field_type = if is_option && field.config.null == Some(false) {
+				inner_type
+			} else {
+				field_type
+			};
 			projection_fields.push(quote! {
 				#(#serde_attrs)*
 				#field_name: #field_type
