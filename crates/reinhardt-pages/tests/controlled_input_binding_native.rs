@@ -6,7 +6,7 @@ use std::{cell::Cell, rc::Rc};
 
 use reinhardt_pages::component::{ControlBinding, ControlBindingError, NumberParseErrorKind};
 use reinhardt_pages::event::{
-	ChangeEvent, CompositionEndEvent, CompositionStartEvent, EventPayload,
+	ChangeEvent, CompositionEndEvent, CompositionStartEvent, EventPayload, typed_event_handler,
 };
 use reinhardt_pages::prelude::spawn_task;
 use reinhardt_pages::reactive::Signal;
@@ -191,6 +191,43 @@ async fn radio_binding_writes_only_the_checked_choice_and_refreshes_comparison()
 }
 
 #[rstest]
+fn uppercase_radio_updates_binding_and_projects_checked_event_state() {
+	// Arrange
+	let selected = Signal::new("draft".to_owned());
+	let observed = Arc::new(Mutex::new(None));
+	let observed_handler = Arc::clone(&observed);
+	let screen = render(
+		PageElement::new("INPUT")
+			.attr("aria-label", "Published uppercase")
+			.attr("type", "RADIO")
+			.attr("value", "published")
+			.control_binding(ControlBinding::radio(
+				selected.clone(),
+				"published".to_owned(),
+			))
+			.on(
+				ChangeEvent::EVENT,
+				typed_event_handler::<ChangeEvent, _>(move |event: ChangeEvent| {
+					*observed_handler.lock().unwrap() = Some(event.checked());
+				}),
+			),
+	);
+	let radio = screen.get_by_label("Published uppercase");
+
+	// Act
+	radio
+		.try_change_checked(true)
+		.expect("uppercase radio should accept checked target state");
+
+	// Assert
+	assert_eq!(selected.get(), "published");
+	assert_eq!(
+		observed.lock().unwrap().as_ref(),
+		Some(&Ok::<bool, reinhardt_pages::event::EventTargetError>(true))
+	);
+}
+
+#[rstest]
 #[test]
 fn radio_binding_evaluates_dynamic_value_once() {
 	// Arrange
@@ -321,6 +358,88 @@ async fn select_one_binding_tracks_selected_value_in_both_directions() {
 	assert_eq!(
 		observed.lock().unwrap().as_ref(),
 		Some(&Ok::<Vec<String>, reinhardt_pages::event::EventTargetError>(vec!["rust".to_owned()]))
+	);
+}
+
+#[rstest]
+#[tokio::test]
+async fn uppercase_select_updates_binding_event_state_and_option_projection() {
+	// Arrange
+	let selected = Signal::new("rust".to_owned());
+	let observed = Arc::new(Mutex::new(Vec::new()));
+	let observed_handler = Arc::clone(&observed);
+	let screen = render(
+		PageElement::new("SELECT")
+			.attr("aria-label", "Uppercase language")
+			.control_binding(ControlBinding::select_one(selected.clone()))
+			.on(
+				ChangeEvent::EVENT,
+				typed_event_handler::<ChangeEvent, _>(move |event: ChangeEvent| {
+					observed_handler
+						.lock()
+						.unwrap()
+						.push(event.selected_values());
+				}),
+			)
+			.child(
+				PageElement::new("OPTION")
+					.attr("value", "rust")
+					.child("Rust"),
+			)
+			.child(
+				PageElement::new("OPTION")
+					.attr("value", "wasm")
+					.child("WebAssembly"),
+			),
+	);
+	let select = screen.get_by_label("Uppercase language");
+
+	// Act
+	select
+		.dispatch(EventFixture::change().selected_values(["wasm"]))
+		.expect("uppercase select should accept selected target state");
+	let wasm_dom = screen.pretty();
+	selected.set("rust".to_owned());
+	screen.settle().await;
+	select
+		.dispatch(EventFixture::change())
+		.expect("uppercase select should project refreshed selected state");
+
+	// Assert
+	assert_eq!(selected.get(), "rust");
+	assert_eq!(select.value().as_deref(), Some("rust"));
+	assert_eq!(
+		wasm_dom,
+		concat!(
+			"<SELECT aria-label=\"Uppercase language\">\n",
+			"  <OPTION value=\"rust\">\n",
+			"    Rust\n",
+			"  </OPTION>\n",
+			"  <OPTION value=\"wasm\" selected=\"selected\">\n",
+			"    WebAssembly\n",
+			"  </OPTION>\n",
+			"</SELECT>\n",
+		)
+	);
+	assert_eq!(
+		screen.pretty(),
+		concat!(
+			"<SELECT aria-label=\"Uppercase language\">\n",
+			"  <OPTION value=\"rust\" selected=\"selected\">\n",
+			"    Rust\n",
+			"  </OPTION>\n",
+			"  <OPTION value=\"wasm\">\n",
+			"    WebAssembly\n",
+			"  </OPTION>\n",
+			"</SELECT>\n",
+		)
+	);
+	assert_eq!(
+		*observed.lock().unwrap(),
+		vec![
+			Ok::<Vec<String>, reinhardt_pages::event::EventTargetError>(vec!["wasm".to_owned()]),
+			Ok::<Vec<String>, reinhardt_pages::event::EventTargetError>(vec!["rust".to_owned()]),
+		]
 	);
 }
 

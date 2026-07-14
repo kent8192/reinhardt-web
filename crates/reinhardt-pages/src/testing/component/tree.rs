@@ -247,7 +247,12 @@ impl TestDom {
 			target = target.with_value(self.text_content(node_id));
 		}
 
-		if node.tag == "input" && matches!(node.attr("type"), Some("checkbox" | "radio")) {
+		if node.tag.eq_ignore_ascii_case("input")
+			&& node.attr("type").is_some_and(|kind| {
+				["checkbox", "radio"]
+					.iter()
+					.any(|known| kind.eq_ignore_ascii_case(known))
+			}) {
 			target = target.with_checked(node.checked);
 		}
 
@@ -285,13 +290,20 @@ impl TestDom {
 		let unsupported_property = if patch.value.is_some() && !supports_final_value {
 			Some("value")
 		} else if patch.checked.is_some()
-			&& !(node.tag == "input" && matches!(node.attr("type"), Some("checkbox" | "radio")))
-		{
+			&& !(node.tag.eq_ignore_ascii_case("input")
+				&& node.attr("type").is_some_and(|kind| {
+					["checkbox", "radio"]
+						.iter()
+						.any(|known| kind.eq_ignore_ascii_case(known))
+				})) {
 			Some("checked")
-		} else if patch.selected_values.is_some() && node.tag != "select" {
+		} else if patch.selected_values.is_some() && !node.tag.eq_ignore_ascii_case("select") {
 			Some("selected_values")
 		} else if patch.files.is_some()
-			&& !(node.tag == "input" && node.attr("type") == Some("file"))
+			&& !(node.tag.eq_ignore_ascii_case("input")
+				&& node
+					.attr("type")
+					.is_some_and(|kind| kind.eq_ignore_ascii_case("file")))
 		{
 			Some("files")
 		} else {
@@ -306,7 +318,7 @@ impl TestDom {
 
 		node.content_editable = final_content_editable;
 		if let Some(selected_values) = &patch.selected_values {
-			node.value = if node.tag == "select" {
+			node.value = if node.tag.eq_ignore_ascii_case("select") {
 				Some(selected_values.first().cloned().unwrap_or_default())
 			} else {
 				selected_values.first().cloned()
@@ -314,7 +326,7 @@ impl TestDom {
 			node.selected_values.clone_from(selected_values);
 		} else if let Some(value) = &patch.value {
 			node.value = Some(value.clone());
-			if node.tag == "select" {
+			if node.tag.eq_ignore_ascii_case("select") {
 				node.selected_values = vec![value.clone()];
 			}
 		}
@@ -324,8 +336,8 @@ impl TestDom {
 		if let Some(files) = &patch.files {
 			node.files.clone_from(files);
 		}
-		let refresh_selected_options =
-			node.tag == "select" && (patch.value.is_some() || patch.selected_values.is_some());
+		let refresh_selected_options = node.tag.eq_ignore_ascii_case("select")
+			&& (patch.value.is_some() || patch.selected_values.is_some());
 		if refresh_selected_options {
 			self.refresh_selected_options(node_id);
 		}
