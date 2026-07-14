@@ -70,7 +70,7 @@ thread_local! {
 // temporarily removes its function while running, so function presence cannot
 // reliably identify a live Memo during nested Signal notifications.
 thread_local! {
-	static MEMO_LIFECYCLE: RefCell<BTreeSet<NodeId>> = RefCell::new(BTreeSet::new());
+	static MEMO_LIFECYCLE: RefCell<BTreeSet<NodeId>> = const { RefCell::new(BTreeSet::new()) };
 }
 
 // Type-agnostic dirty map for Memo invalidation (Refs #4195).
@@ -428,15 +428,13 @@ impl<T: Clone + 'static> Memo<T> {
 			memo_fn_box: MEMO_FUNCTIONS.with(|storage| storage.borrow_mut().remove(&memo_id)),
 		};
 
-		let result = if let Some(ref mut boxed) = guard.memo_fn_box
+		if let Some(ref mut boxed) = guard.memo_fn_box
 			&& let Some(memo_fn) = boxed.downcast_mut::<MemoFn<T>>()
 		{
 			memo_fn()
 		} else {
 			panic!("Memo function not found - this should never happen")
-		};
-
-		result
+		}
 	}
 
 	/// Get the current value of the memo
