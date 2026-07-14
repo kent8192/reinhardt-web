@@ -153,6 +153,52 @@ fn controlled_single_select_suspense_duplicate_view(
 		.into_page()
 }
 
+fn controlled_single_select_timed_out_suspense_view(fallback_matches: bool) -> Page {
+	let selected = Signal::new("duplicate".to_owned());
+	let fallback_value = if fallback_matches {
+		"duplicate"
+	} else {
+		"loading"
+	};
+
+	PageElement::new("select")
+		.control_binding(ControlBinding::select_one(selected))
+		.child(Page::reactive(move || {
+			let resource = use_resource(
+				|| async {
+					tokio::time::sleep(Duration::from_secs(60)).await;
+					Ok::<_, String>("duplicate".to_owned())
+				},
+				(),
+			);
+			let content_resource = resource.clone();
+
+			SuspenseBoundary::new()
+				.fallback(move || {
+					PageElement::new("option")
+						.attr("value", fallback_value)
+						.child("Fallback")
+						.into_page()
+				})
+				.track(resource)
+				.content(move || {
+					resource_to_page(content_resource.get(), "option", "Loading", |value| {
+						PageElement::new("option")
+							.attr("value", value)
+							.child("Inside Suspense")
+							.into_page()
+					})
+				})
+				.into_page()
+		}))
+		.child(
+			PageElement::new("option")
+				.attr("value", "duplicate")
+				.child("After"),
+		)
+		.into_page()
+}
+
 fn pending_nested_boundary(label: &'static str) -> Page {
 	Page::Suspense(SuspenseNode::new(
 		None,
@@ -786,6 +832,32 @@ async fn streaming_controlled_single_select_preserves_first_duplicate_in_tree_or
 		"{streaming}"
 	);
 	assert!(streaming.contains(&format!("selected=\"selected\">{selected_label}</option>")));
+}
+
+#[rstest]
+#[case(true, "Fallback")]
+#[case(false, "After")]
+#[tokio::test]
+async fn streaming_timed_out_single_select_uses_emitted_fallback_tree_order(
+	#[case] fallback_matches: bool,
+	#[case] selected_label: &str,
+) {
+	// Arrange
+	let view = controlled_single_select_timed_out_suspense_view(fallback_matches);
+	let mut renderer =
+		SsrRenderer::with_options(SsrOptions::new().resource_timeout(Duration::from_millis(1)));
+
+	// Act
+	let html = renderer
+		.render_page_with_view_head(view)
+		.await
+		.collect_string()
+		.await;
+
+	// Assert
+	assert_eq!(html.matches("selected=\"selected\"").count(), 1, "{html}");
+	assert!(html.contains(&format!("selected=\"selected\">{selected_label}</option>")));
+	assert!(!html.contains("data-rh-suspense-chunk"));
 }
 
 #[tokio::test]

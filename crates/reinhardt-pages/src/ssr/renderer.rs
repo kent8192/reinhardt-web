@@ -1181,6 +1181,7 @@ impl SsrRenderer {
 						context.borrow().has_pending_for_boundary(&boundary_id)
 					})
 					.unwrap_or(false);
+					let mut inline_single_select_uses_fallback = false;
 
 					if has_pending
 						&& selection
@@ -1220,28 +1221,41 @@ impl SsrRenderer {
 							}
 							return resolved;
 						}
+						inline_single_select_uses_fallback = true;
 					}
 
 					if has_pending {
-						if let Some(parent) = selection.as_ref() {
+						if !inline_single_select_uses_fallback
+							&& let Some(parent) = selection.as_ref()
+						{
 							parent.reserve_pending_match();
 						}
 						self.restore_deterministic_render_snapshot(boundary_start);
 						let fallback_page = node.render_fallback();
+						let fallback_selection = if inline_single_select_uses_fallback {
+							selection.clone()
+						} else {
+							boundary_selection
+								.as_ref()
+								.map(SsrSelectionState::fork_after_pending_match)
+						};
 						let fallback = self
 							.render_stream_shell_page_with_selection(
 								&fallback_page,
 								boundaries,
-								boundary_selection
-									.as_ref()
-									.map(SsrSelectionState::fork_after_pending_match),
+								fallback_selection,
 							)
 							.await;
+						let pending_selection = if inline_single_select_uses_fallback {
+							selection.as_ref().map(SsrSelectionState::fork)
+						} else {
+							boundary_selection
+						};
 						boundaries.push(PendingSuspenseBoundary {
 							boundary_id: boundary_id.clone(),
 							node: node.clone(),
 							boundary_start,
-							selection: boundary_selection,
+							selection: pending_selection,
 						});
 						self.render_suspense_fallback(&boundary_id, fallback)
 					} else if node.is_pending() {
