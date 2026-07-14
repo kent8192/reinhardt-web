@@ -12,6 +12,7 @@ use std::rc::{Rc, Weak};
 use crate::reactive::{
 	Action, ActionPhase, Effect, EffectTiming, ReactiveScope, Signal, use_action,
 };
+use reinhardt_core::reactive::{ScopeId, current_scope_id, scope::enter_scope};
 
 /// Default reset behavior when runtime dependencies change.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -911,6 +912,7 @@ where
 	Rc::new(move |handle| {
 		let no_deps_handle = UseFormReturn {
 			form: handle.form.clone(),
+			scope: handle.scope,
 			default_values: Rc::clone(&handle.default_values),
 			deps: Rc::new(RefCell::new(NoDeps)),
 			reset_on_deps: handle.reset_on_deps,
@@ -1087,6 +1089,7 @@ where
 	}
 
 	fn build_in_active_scope(self) -> UseFormReturn<Form, Deps> {
+		let scope = current_scope_id().expect("use_form requires an active ReactiveScope");
 		let default_values = self.form.runtime_initial_values();
 		let current_values = self.form.runtime_current_values();
 		let is_dirty = form_values_are_dirty(&self.form, &current_values, &default_values);
@@ -1135,6 +1138,7 @@ where
 		);
 		UseFormReturn {
 			form,
+			scope,
 			default_values,
 			deps,
 			reset_on_deps: self.reset_on_deps,
@@ -1168,6 +1172,7 @@ where
 	Deps: Clone + PartialEq + 'static,
 {
 	form: Form,
+	scope: ScopeId,
 	default_values: Rc<RefCell<Form::Values>>,
 	deps: Rc<RefCell<Deps>>,
 	reset_on_deps: ResetOnDeps,
@@ -1200,6 +1205,7 @@ where
 	fn clone(&self) -> Self {
 		Self {
 			form: self.form.clone(),
+			scope: self.scope,
 			default_values: Rc::clone(&self.default_values),
 			deps: Rc::clone(&self.deps),
 			reset_on_deps: self.reset_on_deps,
@@ -1457,17 +1463,22 @@ where
 		self.state.is_submitting.set(true);
 		self.state.is_submit_successful.set(false);
 		self.state.submit_error.set(None);
-		self.notify(FormEvent::SubmitStarted);
-		if let Some(callback) = &self.on_submit_start {
-			callback(self);
-		}
-
-		if self.trigger().is_err() {
-			self.state.is_submitting.set(false);
-			if let Some(callback) = &self.on_submit_error {
+		let _ = self.in_owner_scope(|| {
+			self.notify(FormEvent::SubmitStarted);
+			if let Some(callback) = &self.on_submit_start {
 				callback(self);
 			}
-			self.notify(FormEvent::SubmitFailed);
+		});
+
+		let validation_failed = enter_scope(self.scope, || self.trigger().is_err()).unwrap_or(true);
+		if validation_failed {
+			self.state.is_submitting.set(false);
+			let _ = self.in_owner_scope(|| {
+				if let Some(callback) = &self.on_submit_error {
+					callback(self);
+				}
+				self.notify(FormEvent::SubmitFailed);
+			});
 			return UseFormSubmitOutcome::ValidationFailed;
 		}
 
@@ -1475,25 +1486,33 @@ where
 	}
 
 	fn complete_submit_success(&self) {
-		self.state.is_submitting.set(false);
-		self.state.is_submit_successful.set(true);
-		self.state.submit_error.set(None);
-		self.sync_first_error();
-		if let Some(callback) = &self.on_submit_success {
-			callback(self);
-		}
-		self.notify(FormEvent::Submitted);
+		let _ = self.in_owner_scope(|| {
+			self.state.is_submitting.set(false);
+			self.state.is_submit_successful.set(true);
+			self.state.submit_error.set(None);
+			self.sync_first_error();
+			if let Some(callback) = &self.on_submit_success {
+				callback(self);
+			}
+			self.notify(FormEvent::Submitted);
+		});
 	}
 
 	fn complete_submit_error(&self, error: impl Into<String>) {
-		self.state.is_submitting.set(false);
-		self.state.is_submit_successful.set(false);
-		self.state.submit_error.set(Some(error.into()));
-		self.sync_first_error();
-		if let Some(callback) = &self.on_submit_error {
-			callback(self);
-		}
-		self.notify(FormEvent::SubmitFailed);
+		let _ = self.in_owner_scope(|| {
+			self.state.is_submitting.set(false);
+			self.state.is_submit_successful.set(false);
+			self.state.submit_error.set(Some(error.into()));
+			self.sync_first_error();
+			if let Some(callback) = &self.on_submit_error {
+				callback(self);
+			}
+			self.notify(FormEvent::SubmitFailed);
+		});
+	}
+
+	fn in_owner_scope(&self, callback: impl FnOnce()) -> bool {
+		enter_scope(self.scope, callback).is_ok()
 	}
 
 	#[cfg(native)]
@@ -1520,21 +1539,26 @@ where
 		self.state.is_submit_successful.set(false);
 		self.state.submit_error.set(None);
 		self.sync_first_error();
-		self.notify(FormEvent::SubmitStarted);
-		if let Some(callback) = &self.on_submit_start {
-			callback(self);
-		}
+		let _ = self.in_owner_scope(|| {
+			self.notify(FormEvent::SubmitStarted);
+			if let Some(callback) = &self.on_submit_start {
+				callback(self);
+			}
+		});
 
-		if self.trigger().is_err() {
+		let validation_failed = enter_scope(self.scope, || self.trigger().is_err()).unwrap_or(true);
+		if validation_failed {
 			let is_live = self.state.is_submitting.try_set(false).is_ok();
 			pending_guard.disarm();
 			if !is_live {
 				return Ok(UseFormAsyncSubmitOutcome::ValidationFailed);
 			}
-			if let Some(callback) = &self.on_submit_error {
-				callback(self);
-			}
-			self.notify(FormEvent::SubmitFailed);
+			let _ = self.in_owner_scope(|| {
+				if let Some(callback) = &self.on_submit_error {
+					callback(self);
+				}
+				self.notify(FormEvent::SubmitFailed);
+			});
 			return Ok(UseFormAsyncSubmitOutcome::ValidationFailed);
 		}
 
@@ -1545,11 +1569,13 @@ where
 				if !is_live {
 					return Ok(UseFormAsyncSubmitOutcome::Submitted(output));
 				}
-				self.state.is_submit_successful.set(true);
-				if let Some(callback) = &self.on_submit_success {
-					callback(self);
-				}
-				self.notify(FormEvent::Submitted);
+				let _ = self.in_owner_scope(|| {
+					self.state.is_submit_successful.set(true);
+					if let Some(callback) = &self.on_submit_success {
+						callback(self);
+					}
+					self.notify(FormEvent::Submitted);
+				});
 				Ok(UseFormAsyncSubmitOutcome::Submitted(output))
 			}
 			Err(error) => {
@@ -1558,13 +1584,15 @@ where
 				if !is_live {
 					return Err(error);
 				}
-				self.state.is_submit_successful.set(false);
-				self.state.submit_error.set(Some(error.to_string()));
-				self.sync_first_error();
-				if let Some(callback) = &self.on_submit_error {
-					callback(self);
-				}
-				self.notify(FormEvent::SubmitFailed);
+				let _ = self.in_owner_scope(|| {
+					self.state.is_submit_successful.set(false);
+					self.state.submit_error.set(Some(error.to_string()));
+					self.sync_first_error();
+					if let Some(callback) = &self.on_submit_error {
+						callback(self);
+					}
+					self.notify(FormEvent::SubmitFailed);
+				});
 				Err(error)
 			}
 		}

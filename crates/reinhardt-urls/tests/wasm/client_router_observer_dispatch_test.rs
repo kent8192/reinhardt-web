@@ -10,7 +10,7 @@
 #![cfg(all(target_arch = "wasm32", feature = "wasm-diag-test"))]
 
 use reinhardt_core::page::Page;
-use reinhardt_core::reactive::ReactiveScope;
+use reinhardt_core::reactive::{ReactiveScope, Signal};
 use reinhardt_urls::routers::ClientRouter;
 use std::cell::Cell;
 use std::rc::Rc;
@@ -51,4 +51,26 @@ fn push_dispatches_observer_once_inv1_inv5() {
 			"Inv-5: dispatch_count incremented by one"
 		);
 	});
+}
+
+#[wasm_bindgen_test]
+fn navigation_observer_reenters_its_registration_scope() {
+	let scope = ReactiveScope::new();
+	let router = scope.enter(|| ClientRouter::new().route("a", "/a", page_a));
+	let callback_ran = Rc::new(Cell::new(false));
+	let callback_ran_for_listener = Rc::clone(&callback_ran);
+	let _subscription = scope.enter(|| {
+		router.on_navigate(move |_, _| {
+			let signal = Signal::new(1_i32);
+			assert_eq!(signal.get(), 1);
+			callback_ran_for_listener.set(true);
+		})
+	});
+
+	router
+		.push("/a")
+		.expect("push must succeed outside the render scope");
+
+	assert!(callback_ran.get());
+	scope.dispose();
 }

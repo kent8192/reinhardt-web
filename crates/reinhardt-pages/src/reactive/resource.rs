@@ -61,19 +61,19 @@ struct ResourceSlot<T: Clone + 'static, E: Clone + 'static> {
 	_effect_guard: Effect,
 }
 
-#[cfg(wasm)]
+#[cfg(any(wasm, test))]
 thread_local! {
 	static CLIENT_RESOURCE_COUNTER: Cell<usize> = const { Cell::new(0) };
 }
 
 /// Returns the current client call-order resource ID offset.
-#[cfg(wasm)]
+#[cfg(any(wasm, test))]
 pub(crate) fn current_client_resource_counter() -> usize {
 	CLIENT_RESOURCE_COUNTER.with(Cell::get)
 }
 
 /// Restores the client call-order resource ID offset.
-#[cfg(wasm)]
+#[cfg(any(wasm, test))]
 pub(crate) fn set_client_resource_counter(value: usize) {
 	CLIENT_RESOURCE_COUNTER.with(|counter| counter.set(value));
 }
@@ -87,8 +87,8 @@ fn next_client_resource_key() -> String {
 	})
 }
 
-#[cfg(wasm)]
-fn reserve_client_resource_key(key: &str) {
+#[cfg(any(wasm, test))]
+pub(crate) fn reserve_client_resource_key(key: &str) {
 	if let Some(id) = key.strip_prefix("rh-res-")
 		&& let Ok(index) = id.parse::<usize>()
 	{

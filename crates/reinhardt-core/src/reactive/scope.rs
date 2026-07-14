@@ -315,9 +315,14 @@ pub fn active_scope_id() -> ScopeId {
 }
 
 /// Return the current active scope identifier or panic for the given operation.
-pub fn require_active_scope(operation: &'static str) -> ScopeId {
+pub fn require_active_scope(_operation: &'static str) -> ScopeId {
 	current_scope_id().unwrap_or_else(|| {
-		panic!("{}", ReactiveScopeError::NoActiveScope { operation });
+		panic!(
+			"{}",
+			ReactiveScopeError::NoActiveScope {
+				operation: _operation,
+			}
+		);
 	})
 }
 
@@ -599,6 +604,23 @@ fn remove_scope_runtime_nodes(scope: ScopeId) {
 	}
 }
 
+fn drop_scope_nodes(scope: ScopeId) {
+	remove_scope_runtime_nodes(scope);
+
+	// Effect cleanup callbacks may read signals captured by the effect. Drop those
+	// slots while every non-effect node remains available in the scope arena.
+	while let Some(value) = take_scope_node_value(scope, Some(NodeKind::Effect)) {
+		drop(value);
+		// Effect cleanup may allocate more reactive nodes. Snapshot after every
+		// cleanup so their graph entries and pending updates cannot outlive the scope.
+		remove_scope_runtime_nodes(scope);
+	}
+
+	while let Some(value) = take_scope_node_value(scope, None) {
+		drop(value);
+	}
+}
+
 pub(crate) fn dispose_scope(scope: ScopeId) {
 	let is_live = SCOPES
 		.try_with(|scopes| scopes.borrow().contains_key(&scope))
@@ -621,28 +643,11 @@ pub(crate) fn dispose_scope(scope: ScopeId) {
 			break;
 		}
 		for cleanup in cleanup.into_iter().rev() {
-			cleanup();
+			let _ = enter_scope(scope, cleanup);
 		}
 	}
 
-	remove_scope_runtime_nodes(scope);
-
-	// Effect cleanup callbacks may read signals captured by the effect. Drop those
-	// slots while every non-effect node remains available in the scope arena.
-	while let Some(value) = take_scope_node_value(scope, Some(NodeKind::Effect)) {
-		drop(value);
-		// Effect cleanup may allocate more reactive nodes. Snapshot after every
-		// cleanup so their graph entries and pending updates cannot outlive the scope.
-		remove_scope_runtime_nodes(scope);
-	}
-
-	loop {
-		let value = take_scope_node_value(scope, None);
-		let Some(value) = value else {
-			break;
-		};
-		drop(value);
-	}
+	drop_scope_nodes(scope);
 
 	loop {
 		let cleanup = SCOPES.with(|scopes| {
@@ -658,9 +663,13 @@ pub(crate) fn dispose_scope(scope: ScopeId) {
 			break;
 		}
 		for cleanup in cleanup.into_iter().rev() {
-			cleanup();
+			let _ = enter_scope(scope, cleanup);
 		}
 	}
+
+	// After-node callbacks are allowed to allocate while their owner is active.
+	// Dispose anything they created before removing the scope state itself.
+	drop_scope_nodes(scope);
 
 	SCOPES.with(|scopes| {
 		scopes.borrow_mut().remove(&scope);
@@ -776,6 +785,36 @@ mod tests {
 
 	#[test]
 	#[serial(reactive_runtime)]
+	fn scope_cleanup_can_allocate_nodes_in_owner_scope() {
+		let scope = ReactiveScope::new();
+		let created_id = alloc::rc::Rc::new(Cell::new(None));
+		let created_id_for_cleanup = alloc::rc::Rc::clone(&created_id);
+		let scope_id = scope.id();
+
+		scope.enter(|| {
+			on_scope_dispose(scope_id, move || {
+				let signal = Signal::new(7_i32);
+				created_id_for_cleanup.set(Some(signal.id()));
+			})
+			.expect("live scope should accept cleanup callbacks");
+		});
+
+		scope.dispose();
+
+		let created_id = created_id
+			.get()
+			.expect("cleanup should create a signal in the owner scope");
+		super::super::runtime::with_runtime(|runtime| {
+			let removed = !runtime.has_node(created_id);
+			assert!(
+				removed,
+				"cleanup-created nodes must be removed with their scope"
+			);
+		});
+	}
+
+	#[test]
+	#[serial(reactive_runtime)]
 	fn scope_effect_cleanup_can_read_captured_signal_before_node_drop() {
 		let scope = ReactiveScope::new();
 		let observed = alloc::rc::Rc::new(Cell::new(None));
@@ -830,16 +869,19 @@ mod tests {
 			.borrow()
 			.expect("effect cleanup should create reactive nodes");
 		super::super::runtime::with_runtime(|runtime| {
+			let signal_removed = !runtime.has_node(signal_id);
+			let effect_removed = !runtime.has_node(effect_id);
+			let effect_not_pending = !runtime.debug_pending_updates().contains(&effect_id);
 			assert!(
-				!runtime.has_node(signal_id),
+				signal_removed,
 				"scope disposal must remove cleanup-created signal nodes"
 			);
 			assert!(
-				!runtime.has_node(effect_id),
+				effect_removed,
 				"scope disposal must remove cleanup-created effect nodes"
 			);
 			assert!(
-				!runtime.debug_pending_updates().contains(&effect_id),
+				effect_not_pending,
 				"scope disposal must clear cleanup-created pending updates"
 			);
 		});
@@ -887,5 +929,34 @@ mod tests {
 		scope.dispose();
 
 		assert!(observed.get());
+	}
+
+	#[test]
+	#[serial(reactive_runtime)]
+	fn scope_post_node_cleanup_can_allocate_nodes_in_owner_scope() {
+		let scope = ReactiveScope::new();
+		let created_id = alloc::rc::Rc::new(Cell::new(None));
+		let created_id_for_cleanup = alloc::rc::Rc::clone(&created_id);
+		let scope_id = scope.id();
+
+		scope.enter(|| {
+			on_scope_dispose_after_nodes(scope_id, move || {
+				let signal = Signal::new(8_i32);
+				created_id_for_cleanup.set(Some(signal.id()));
+			})
+			.expect("live scope should accept post-node cleanup callbacks");
+		});
+
+		scope.dispose();
+
+		let created_id = created_id
+			.get()
+			.expect("post-node cleanup should create a signal in the owner scope");
+		super::super::runtime::with_runtime(|runtime| {
+			assert!(
+				!runtime.has_node(created_id),
+				"post-node cleanup-created nodes must be removed with their scope"
+			);
+		});
 	}
 }

@@ -11,20 +11,23 @@
 //! ## Example
 //!
 //! ```ignore
+//! use reinhardt_core::reactive::ReactiveScope;
 //! use reinhardt_pages::{Callback, page};
 //!
-//! // Define handler outside macro
-//! let handle_click = Callback::new(|_event| {
-//!     log!("Button clicked!");
-//! });
+//! ReactiveScope::run(|| {
+//!     // Define handler outside macro
+//!     let handle_click = Callback::new(|_event| {
+//!         log!("Button clicked!");
+//!     });
 //!
-//! // Use in page! macro
-//! page!(|| {
-//!     button {
-//!         @click: handle_click,
-//!         "Click me"
-//!     }
-//! })
+//!     // Use in page! macro
+//!     page!(|| {
+//!         button {
+//!             @click: handle_click,
+//!             "Click me"
+//!         }
+//!     })
+//! });
 //! ```
 
 use core::marker::PhantomData;
@@ -41,7 +44,9 @@ use crate::component::PageEventHandler;
 use crate::event::EventPayload;
 use crate::platform::spawn_task;
 use crate::reactive::pages_arena::{PageNodeKey, PageNodeKind, allocate_page_node, with_page_node};
-use reinhardt_core::reactive::{ReactiveScope, current_scope_id};
+use reinhardt_core::reactive::ReactiveScope;
+#[cfg(wasm)]
+use reinhardt_core::reactive::current_scope_id;
 
 #[cfg(wasm)]
 struct ScopedAsyncEventFuture<Fut> {
@@ -110,8 +115,10 @@ type EventArg = crate::component::NativeEvent;
 /// use reinhardt_pages::Callback;
 ///
 /// // Simple click handler
-/// let on_click = Callback::new(|_event| {
-///     log!("Clicked!");
+/// ReactiveScope::run(|| {
+///     let on_click = Callback::new(|_event| {
+///         log!("Clicked!");
+///     });
 /// });
 ///
 /// // Handler with state capture
@@ -138,27 +145,14 @@ struct CallbackSlot<Args, Ret> {
 	inner: Arc<dyn Fn(Args) -> Ret + 'static>,
 }
 
-thread_local! {
-	/// Retains callbacks assembled before a page render creates an active scope.
-	static EXTERNAL_CALLBACK_SCOPE: Rc<ReactiveScope> = Rc::new(ReactiveScope::new());
-}
-
 fn allocate_callback<Args: 'static, Ret: 'static>(
 	f: impl Fn(Args) -> Ret + 'static,
 ) -> PageNodeKey {
-	let allocate = || {
-		allocate_page_node(
-			"Callback::new",
-			PageNodeKind::Callback,
-			CallbackSlot { inner: Arc::new(f) },
-		)
-	};
-
-	if current_scope_id().is_some() {
-		allocate()
-	} else {
-		EXTERNAL_CALLBACK_SCOPE.with(|scope| scope.enter(allocate))
-	}
+	allocate_page_node(
+		"Callback::new",
+		PageNodeKind::Callback,
+		CallbackSlot { inner: Arc::new(f) },
+	)
 }
 
 /// A copied key to a callback stored in the current reactive scope.
@@ -171,6 +165,9 @@ pub struct Callback<Args = EventArg, Ret = ()> {
 #[cfg(wasm)]
 impl<Args: 'static, Ret: 'static> Callback<Args, Ret> {
 	/// Creates a new Callback from a function or closure.
+	///
+	/// The callback is stored in the active [`ReactiveScope`]. For callbacks assembled outside
+	/// a render, use [`Callback::new_in_scope`] with an owner that outlives the callback.
 	///
 	/// # Arguments
 	///
@@ -198,6 +195,9 @@ impl<Args: 'static, Ret: 'static> Callback<Args, Ret> {
 #[cfg(native)]
 impl<Args: 'static, Ret: 'static> Callback<Args, Ret> {
 	/// Creates a new Callback from a function or closure.
+	///
+	/// The callback is stored in the active [`ReactiveScope`]. For callbacks assembled outside
+	/// a render, use [`Callback::new_in_scope`] with an owner that outlives the callback.
 	///
 	/// # Arguments
 	///
@@ -230,6 +230,26 @@ impl<Args, Ret> Clone for Callback<Args, Ret> {
 impl<Args, Ret> Copy for Callback<Args, Ret> {}
 
 impl<Args: 'static, Ret: 'static> Callback<Args, Ret> {
+	/// Creates a callback in an explicitly owned reactive scope.
+	///
+	/// This is the lifecycle-safe entry point for callbacks created outside a render. The
+	/// callback remains [`Copy`], while the supplied [`ReactiveScope`] owns its storage and
+	/// disposes it when the scope is dropped or explicitly disposed.
+	pub fn new_in_scope<F>(scope: &ReactiveScope, f: F) -> Self
+	where
+		F: Fn(Args) -> Ret + 'static,
+	{
+		scope.enter(|| Self::new(f))
+	}
+
+	pub(crate) fn new_in_scope_id<F>(scope: reinhardt_core::reactive::ScopeId, f: F) -> Self
+	where
+		F: Fn(Args) -> Ret + 'static,
+	{
+		reinhardt_core::reactive::scope::enter_scope(scope, || Self::new(f))
+			.unwrap_or_else(|err| panic!("{err}"))
+	}
+
 	/// Call this callback with the supplied arguments.
 	pub fn call(&self, args: Args) -> Ret {
 		let inner =
@@ -775,8 +795,8 @@ where
 #[cfg(native)]
 pub fn async_handler<F, Fut>(f: F) -> PageEventHandler
 where
-	F: Fn(crate::component::NativeEvent) -> Fut + Send + Sync + 'static,
-	Fut: Future<Output = ()> + Send + 'static,
+	F: Fn(crate::component::NativeEvent) -> Fut + 'static,
+	Fut: Future<Output = ()> + 'static,
 {
 	Arc::new(move |event| {
 		spawn_task(f(event));
@@ -797,10 +817,31 @@ mod tests {
 	}
 
 	#[rstest]
-	fn callback_new_works_outside_a_reactive_scope() {
-		let callback = Callback::new(|value: i32| value + 1);
+	#[serial(reactive_runtime)]
+	fn callback_new_requires_an_active_scope() {
+		let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+			let _callback = Callback::<i32, i32>::new(|value| value + 1);
+		}));
+		assert!(
+			result.is_err(),
+			"callbacks without an active owner must use Callback::new_in_scope"
+		);
+	}
+
+	#[rstest]
+	#[serial(reactive_runtime)]
+	fn callback_new_in_scope_uses_a_disposable_owner() {
+		let scope = ReactiveScope::new();
+		let callback = Callback::new_in_scope(&scope, |value: i32| value + 1);
 
 		assert_eq!(callback.call(1), 2);
+		scope.dispose();
+
+		let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| callback.call(1)));
+		assert!(
+			result.is_err(),
+			"disposed callback owners must invalidate their slots"
+		);
 	}
 
 	#[rstest]

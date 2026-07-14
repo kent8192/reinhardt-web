@@ -47,12 +47,17 @@ thread_local! {
 }
 
 pub(crate) fn allocate_page_node<T: 'static>(
-	operation: &'static str,
+	_operation: &'static str,
 	kind: PageNodeKind,
 	value: T,
 ) -> PageNodeKey {
 	let scope = reinhardt_core::reactive::scope::current_scope_id().unwrap_or_else(|| {
-		panic!("{}", ReactiveScopeError::NoActiveScope { operation });
+		panic!(
+			"{}",
+			ReactiveScopeError::NoActiveScope {
+				operation: _operation,
+			}
+		);
 	});
 	let (key, register_cleanup) = PAGES_ARENAS.with(|arenas| {
 		let mut arenas = arenas.borrow_mut();

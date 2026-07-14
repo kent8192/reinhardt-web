@@ -5,6 +5,7 @@ use std::future::Future;
 use std::rc::Rc;
 use std::task::{Context, Poll, Waker};
 
+use reinhardt_pages::reactive::Signal;
 use reinhardt_pages::{
 	CollectionItem, CollectionItemKey, CustomWidgetContext, CustomWidgetRawValue, FieldError,
 	FormEvent, FormWidgetAdapter, FormWidgetError, FormWidgetValueKind, Page, ResetOnDeps,
@@ -1664,6 +1665,8 @@ async fn submit_async_success_updates_state_and_runs_callbacks() {
 		.on_submit_success(move |handle| {
 			assert!(!handle.form_state().is_submitting.get());
 			assert!(handle.form_state().is_submit_successful.get());
+			let callback_signal = Signal::new(1_i32);
+			assert_eq!(callback_signal.get(), 1);
 			assert_eq!(success_order.get(), 1);
 			success_order.set(2);
 		})

@@ -20,6 +20,8 @@ use super::tree::{ClientRouteTreeMatch, ResolvedRouteMetadata, RouteNode};
 use reinhardt_core::page::Outlet;
 use reinhardt_core::page::Page;
 use reinhardt_core::reactive::{ReactiveScope, Signal, scope::current_scope_id};
+#[cfg(wasm)]
+use reinhardt_core::reactive::{ScopeId, scope::enter_scope};
 use std::collections::{HashMap, HashSet};
 #[cfg(native)]
 use std::marker::PhantomData;
@@ -37,11 +39,14 @@ pub(super) type RouteGuard = Arc<dyn Fn(&ClientRouteMatch) -> bool + Send + Sync
 #[cfg(wasm)]
 type NavigationObservers = std::rc::Rc<std::cell::RefCell<Vec<std::rc::Weak<NavigationListener>>>>;
 
-/// Boxed closure stored behind a `Weak<...>` so a dropped
+/// Listener stored behind a `Weak<...>` so a dropped
 /// [`NavigationSubscription`] drops its strong `Rc`, after which
 /// [`ClientRouter::notify_observers`] filters out the dead `Weak`.
 #[cfg(wasm)]
-type NavigationListener = dyn Fn(&str, &HashMap<String, String>) + 'static;
+struct NavigationListener {
+	owner_scope: Option<ScopeId>,
+	callback: Box<dyn Fn(&str, &HashMap<String, String>) + 'static>,
+}
 
 type NavigationSignals = (
 	Signal<String>,
@@ -97,7 +102,10 @@ impl NavigationSubscription {
 	where
 		F: Fn(&str, &HashMap<String, String>) + 'static,
 	{
-		let listener: std::rc::Rc<NavigationListener> = std::rc::Rc::new(listener);
+		let listener = std::rc::Rc::new(NavigationListener {
+			owner_scope: current_scope_id(),
+			callback: Box::new(listener),
+		});
 		router
 			.navigation_observers
 			.borrow_mut()
@@ -1417,6 +1425,10 @@ impl ClientRouter {
 /// `on_navigate`, or drop existing `NavigationSubscription` handles
 /// without panicking on `RefCell` reentry.
 ///
+/// Each listener is also invoked inside the reactive scope that was active at
+/// registration time. If that owner scope has been disposed, the listener is
+/// skipped along with its scoped reactive work.
+///
 /// Used by both `ClientRouter::notify_observers` (programmatic
 /// push/replace) and the popstate listener (browser back/forward) so
 /// the two code paths stay observably identical. (Refs #4234, Inv-4)
@@ -1437,7 +1449,12 @@ fn dispatch_navigation_observers(
 		observers.iter().filter_map(|w| w.upgrade()).collect()
 	};
 	for listener in listeners_snapshot {
-		listener(path, params);
+		match listener.owner_scope {
+			Some(scope) => {
+				let _ = enter_scope(scope, || (listener.callback)(path, params));
+			}
+			None => (listener.callback)(path, params),
+		}
 	}
 }
 
@@ -1526,16 +1543,19 @@ mod tests {
 		};
 
 		with_runtime(|runtime| {
+			let path_removed = !runtime.has_node(path_id);
+			let params_removed = !runtime.has_node(params_id);
+			let route_name_removed = !runtime.has_node(route_name_id);
 			assert!(
-				!runtime.has_node(path_id),
+				path_removed,
 				"dropping an unscoped router must remove its path signal node"
 			);
 			assert!(
-				!runtime.has_node(params_id),
+				params_removed,
 				"dropping an unscoped router must remove its params signal node"
 			);
 			assert!(
-				!runtime.has_node(route_name_id),
+				route_name_removed,
 				"dropping an unscoped router must remove its route-name signal node"
 			);
 		});

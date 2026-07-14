@@ -45,7 +45,7 @@
 //! ```
 
 use crate::component::{IntoPage, Page, PageElement};
-use crate::reactive::Resource;
+use crate::reactive::{QueryHandle, Resource};
 use reinhardt_core::types::page::SuspenseNode;
 
 /// Trait for checking whether a resource is in the loading state.
@@ -70,6 +70,16 @@ impl<T: Clone + 'static, E: Clone + 'static> ResourceTracker for Resource<T, E> 
 
 	fn ssr_resource_key(&self) -> Option<String> {
 		self.ssr_key()
+	}
+}
+
+impl<T: Clone + 'static, E: Clone + 'static> ResourceTracker for QueryHandle<T, E> {
+	fn is_loading(&self) -> bool {
+		self.is_pending()
+	}
+
+	fn ssr_resource_key(&self) -> Option<String> {
+		Some(self.ssr_key().to_owned())
 	}
 }
 
@@ -136,20 +146,16 @@ impl SuspenseBoundary {
 		self
 	}
 
-	/// Tracks a resource for loading state detection.
+	/// Tracks a resource-like value for loading state detection.
 	///
-	/// Multiple resources can be tracked by chaining `.track()` calls.
-	/// The fallback is shown until **all** tracked resources have resolved.
+	/// Multiple resources or queries can be tracked by chaining `.track()` calls.
+	/// The fallback is shown until **all** tracked values have resolved.
 	///
 	/// # Arguments
 	///
-	/// * `resource` - A [`Resource`] to monitor
-	pub fn track<T, E>(mut self, resource: Resource<T, E>) -> Self
-	where
-		T: Clone + 'static,
-		E: Clone + 'static,
-	{
-		self.trackers.push(Box::new(resource) as BoxedTracker);
+	/// * `tracker` - A [`ResourceTracker`] to monitor
+	pub fn track(mut self, tracker: impl ResourceTracker + 'static) -> Self {
+		self.trackers.push(Box::new(tracker) as BoxedTracker);
 		self
 	}
 

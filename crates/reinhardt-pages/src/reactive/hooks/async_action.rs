@@ -7,20 +7,67 @@
 use std::cell::{Cell, RefCell};
 use std::future::Future;
 use std::marker::PhantomData;
+use std::pin::Pin;
 use std::rc::Rc;
+use std::task::{Context, Poll};
 
 use super::action::OptimisticState;
 use crate::callback::Callback;
 use crate::reactive::Signal;
 use crate::reactive::pages_arena::{PageNodeKey, PageNodeKind, allocate_page_node, with_page_node};
-use reinhardt_core::reactive::current_scope_id;
 use reinhardt_core::reactive::deps::Trackable;
 use reinhardt_core::reactive::scope::enter_scope;
+use reinhardt_core::reactive::{ScopeId, current_scope_id};
 
 type ErrorCallback<E> = Rc<dyn Fn(&E)>;
 type SuccessCallback<T> = Rc<dyn Fn(&T)>;
 type SharedErrorCallback<E> = Rc<RefCell<ErrorCallback<E>>>;
 type SharedSuccessCallback<T> = Rc<RefCell<SuccessCallback<T>>>;
+
+/// Polls an action future with the scope that owns its state active.
+///
+/// A disposed owner cancels the future instead of polling user code after its
+/// reactive nodes have been removed.
+struct ScopedActionFuture<Fut> {
+	scope: ScopeId,
+	future: Option<Pin<Box<Fut>>>,
+}
+
+impl<Fut> Future for ScopedActionFuture<Fut>
+where
+	Fut: Future,
+{
+	type Output = Option<Fut::Output>;
+
+	fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+		let this = self.get_mut();
+		let Some(future) = this.future.as_mut() else {
+			return Poll::Ready(None);
+		};
+		let poll = enter_scope(this.scope, || future.as_mut().poll(cx));
+		match poll {
+			Ok(Poll::Pending) => Poll::Pending,
+			Ok(Poll::Ready(output)) => {
+				this.future.take();
+				Poll::Ready(Some(output))
+			}
+			Err(_) => {
+				this.future.take();
+				Poll::Ready(None)
+			}
+		}
+	}
+}
+
+fn scope_action_future<Fut>(scope: ScopeId, future: Fut) -> ScopedActionFuture<Fut>
+where
+	Fut: Future + 'static,
+{
+	ScopedActionFuture {
+		scope,
+		future: Some(Box::pin(future)),
+	}
+}
 
 struct ActionSlot<T: Clone + 'static, E: Clone + 'static> {
 	state: Signal<ActionPhase<T, E>>,
@@ -228,7 +275,7 @@ impl<T: Clone + 'static, E: Clone + 'static> Action<T, E> {
 		payload: P,
 	) -> Callback<Event, ()> {
 		let action = *self;
-		Callback::new(move |_| {
+		Callback::new_in_scope_id(self.key.scope(), move |_| {
 			action.dispatch(payload.clone());
 		})
 	}
@@ -240,7 +287,7 @@ impl<T: Clone + 'static, E: Clone + 'static> Action<T, E> {
 		payload: P,
 	) -> Callback<Event, ()> {
 		let action = *self;
-		Callback::new(move |_| {
+		Callback::new_in_scope_id(self.key.scope(), move |_| {
 			action.dispatch(payload.clone());
 		})
 	}
@@ -252,7 +299,7 @@ impl<T: Clone + 'static, E: Clone + 'static> Action<T, E> {
 		F: Fn() -> P + 'static,
 	{
 		let action = *self;
-		Callback::new(move |_| {
+		Callback::new_in_scope_id(self.key.scope(), move |_| {
 			action.dispatch(payload());
 		})
 	}
@@ -264,7 +311,7 @@ impl<T: Clone + 'static, E: Clone + 'static> Action<T, E> {
 		F: Fn() -> P + 'static,
 	{
 		let action = *self;
-		Callback::new(move |_| {
+		Callback::new_in_scope_id(self.key.scope(), move |_| {
 			action.dispatch(payload());
 		})
 	}
@@ -512,11 +559,12 @@ where
 ///
 /// # Reactivity semantics
 ///
-/// The action closure runs outside any active reactive Observer. Reading
-/// `Signal::get()`, `Memo::get()`, or `Resource::get()` inside returns the
-/// latest value WITHOUT subscribing for future changes (Option A, Refs
-/// #4195). The async action body further crosses an await boundary; no
-/// Observer would survive that regardless of the surrounding context.
+/// The action closure and every poll of its future run with the owning
+/// [`ReactiveScope`](reinhardt_core::reactive::ReactiveScope) active, but
+/// outside any reactive Observer. Reading `Signal::get()`, `Memo::get()`, or
+/// `Resource::get()` therefore returns the latest value WITHOUT subscribing
+/// for future changes (Option A, Refs #4195). A disposed owner cancels the
+/// pending future before it is polled again.
 pub fn use_action<P, T, E, F, Fut>(action_fn: F) -> Action<T, E>
 where
 	P: 'static,
@@ -552,7 +600,17 @@ where
 				.downcast::<P>()
 				.expect("dispatch payload type must match use_action");
 
-			state.set(ActionPhase::Pending);
+			if state.try_set(ActionPhase::Pending).is_err() {
+				return;
+			}
+
+			let fut = match enter_scope(scope, || action_fn(*payload)) {
+				Ok(fut) => fut,
+				Err(_) => {
+					let _ = state.try_set(ActionPhase::Idle);
+					return;
+				}
+			};
 
 			#[cfg(wasm)]
 			{
@@ -560,9 +618,12 @@ where
 				let on_error = Rc::clone(&on_error_for_dispatch);
 				let on_success = Rc::clone(&on_success_for_dispatch);
 				let reset_on_success = Rc::clone(&reset_on_success_for_dispatch);
-				let fut = action_fn(*payload);
+				let fut = scope_action_future(scope, fut);
 				spawn_task(async move {
-					match fut.await {
+					let Some(result) = fut.await else {
+						return;
+					};
+					match result {
 						Ok(val) => {
 							let _ = enter_scope(scope, || {
 								crate::reactive::batch(|| {
@@ -596,9 +657,12 @@ where
 				let on_error = Rc::clone(&on_error_for_dispatch);
 				let on_success = Rc::clone(&on_success_for_dispatch);
 				let reset_on_success = Rc::clone(&reset_on_success_for_dispatch);
-				let fut = action_fn(*payload);
+				let fut = scope_action_future(scope, fut);
 				let spawned = crate::platform::try_spawn_task(async move {
-					match fut.await {
+					let Some(result) = fut.await else {
+						return;
+					};
+					match result {
 						Ok(val) => {
 							let _ = enter_scope(scope, || {
 								crate::reactive::batch(|| {
@@ -813,6 +877,47 @@ mod tests {
 
 		assert_eq!(task.as_mut().poll(&mut context), Poll::Ready(()));
 		assert!(callback_ran.get());
+	}
+
+	#[cfg(all(native, feature = "testing"))]
+	#[rstest]
+	fn native_action_invocation_and_poll_reenter_the_owner_scope() {
+		let queued = Rc::new(RefCell::new(None));
+		let queued_for_sink = Rc::clone(&queued);
+		let _task_sink = crate::platform::install_task_sink(move |task| {
+			*queued_for_sink.borrow_mut() = Some(task);
+		});
+		let invocation_ran = Rc::new(Cell::new(false));
+		let poll_ran = Rc::new(Cell::new(false));
+		let scope = reinhardt_core::reactive::ReactiveScope::new();
+
+		let action = scope.enter(|| {
+			let invocation_ran = Rc::clone(&invocation_ran);
+			let poll_ran = Rc::clone(&poll_ran);
+			use_action(move |_: ()| {
+				invocation_ran.set(true);
+				let poll_ran = Rc::clone(&poll_ran);
+				async move {
+					let signal = crate::reactive::Signal::new(1_i32);
+					assert_eq!(signal.get(), 1);
+					poll_ran.set(true);
+					Ok::<i32, String>(42)
+				}
+			})
+		});
+
+		action.dispatch(());
+		assert!(invocation_ran.get());
+
+		let mut task = queued
+			.borrow_mut()
+			.take()
+			.expect("dispatch should queue a native task");
+		let mut context = Context::from_waker(Waker::noop());
+
+		assert_eq!(task.as_mut().poll(&mut context), Poll::Ready(()));
+		assert!(poll_ran.get());
+		assert_eq!(action.phase(), ActionPhase::Success(42));
 	}
 
 	#[cfg(native)]
