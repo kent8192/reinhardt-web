@@ -6273,7 +6273,7 @@ impl MigrationAutodetector {
 					after_rename.push(operation);
 				} else if matches!(
 					operation,
-					super::Operation::CreateTable { name, .. } if name == &old_name
+					super::Operation::CreateTable { name, .. } if name == old_name
 				) {
 					after_rename.push(operation);
 				} else if Self::operation_targets_table(&operation, &old_name) {
