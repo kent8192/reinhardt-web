@@ -71,6 +71,53 @@ pub trait ServerFnMetadata: 'static {
 	const USES_RESPONSE_COOKIE_JAR: bool = false;
 }
 
+/// Normalizes a server function's `Result` return type for generated query keys.
+///
+/// The [`crate::server_fn`] macro uses this trait instead of syntactically
+/// inspecting a return type, so aliases such as `type AppResult<T> =
+/// Result<T, AppError>` retain their declared error type in generated query
+/// helpers.
+#[doc(hidden)]
+pub trait ServerFnQueryResult {
+	/// The successful response payload.
+	type Response;
+	/// The declared server function error type.
+	type Error;
+
+	/// Converts the return value into the canonical query result shape.
+	fn into_query_result(self) -> Result<Self::Response, Self::Error>;
+}
+
+impl<T, E> ServerFnQueryResult for Result<T, E> {
+	type Response = T;
+	type Error = E;
+
+	fn into_query_result(self) -> Result<Self::Response, Self::Error> {
+		self
+	}
+}
+
+/// Defers query-key argument requirements until a generated `key(...)` helper is called.
+///
+/// Server functions only require request deserialization on the native side. The
+/// query cache additionally needs owned, serializable arguments, so this trait
+/// keeps those requirements on the opt-in helper rather than on every
+/// `#[server_fn]` expansion.
+#[doc(hidden)]
+pub trait ServerFnQueryArg<T>: Clone + serde::Serialize + 'static {
+	/// Converts an opt-in query-key argument to the server function argument type.
+	fn into_query_arg(self) -> T;
+}
+
+impl<T> ServerFnQueryArg<T> for T
+where
+	T: Clone + serde::Serialize + 'static,
+{
+	fn into_query_arg(self) -> T {
+		self
+	}
+}
+
 /// Exposes the success response type of a `#[server_fn]` marker.
 ///
 /// This is implemented by the `#[server_fn]` macro for public server function

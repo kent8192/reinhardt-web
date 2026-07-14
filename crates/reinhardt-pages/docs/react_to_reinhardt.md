@@ -262,7 +262,7 @@ numeric signal and the user's raw text when parsing fails. The error signal is
 cleared after a valid value and otherwise contains a `NumberParseError` with
 one of these stable meanings:
 
-- `Empty`: no text was entered.
+- `Empty`: the browser-exposed value is empty.
 - `Incomplete`: the text is a valid prefix such as `-`, `1.`, or `1e-`.
 - `Invalid`: the text is not a numeric lexeme.
 - `OutOfRange`: the number cannot be represented by the bound primitive.
@@ -628,6 +628,73 @@ fn todo_form() -> Page {
     })
 }
 ```
+
+## Keyed queries and invalidating mutations
+
+React Query and SWR patterns map to `use_query` and `use_mutation` when the
+read operation is a `#[server_fn]`. The server-function macro emits a typed key
+helper whose cache ID is derived from the generated marker metadata and a
+SHA-256 digest of canonical JSON arguments. The fetcher and key therefore
+cannot drift into unrelated strings, raw arguments do not appear in hydration
+keys, and logically equivalent object arguments share the same cache entry.
+
+```rust,ignore
+use std::time::Duration;
+
+use reinhardt::pages::prelude::*;
+use reinhardt::pages::server_fn::{ServerFnError, server_fn};
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+struct JobSnapshot {
+    id: i64,
+    status: String,
+}
+
+#[server_fn]
+pub async fn list_project_jobs(project_id: i64) -> Result<Vec<JobSnapshot>, ServerFnError> {
+    Ok(Vec::new())
+}
+
+#[server_fn]
+pub async fn retry_job(project_id: i64, job_id: i64) -> Result<(), ServerFnError> {
+    Ok(())
+}
+
+fn jobs_panel(project_id: i64, failed_job_id: i64) -> Page {
+    let jobs = use_query(list_project_jobs::key(project_id)).poll(Duration::from_secs(5));
+    let retry = use_mutation(move |job_id: i64| async move {
+        retry_job(project_id, job_id).await
+    })
+    .invalidates(list_project_jobs::key(project_id));
+
+    page!({
+        button {
+            disabled: retry.is_pending(),
+            @click: retry.dispatching(failed_job_id),
+            "Retry"
+        }
+        if let Some(items) = jobs.data() {
+            p { { format!("{} jobs", items.len()) } }
+        }
+        if jobs.is_pending() {
+            p { role: "status", "Loading" }
+        }
+        if jobs.is_fetching() && !jobs.is_pending() {
+            p { role: "status", "Refreshing" }
+        }
+    })
+}
+```
+
+Use `server_fn_module::key(args...)` to build generated query keys. Keeping the
+helper in the marker module binds every key to exactly one server function,
+including when multiple functions have identical signatures.
+
+`QueryHandle` implements the same Suspense tracking interface as `Resource`, so
+`SuspenseBoundary::track(jobs.clone())` can associate a keyed query with the
+boundary for SSR streaming and native component tests. Queries keep prior
+successful data visible during background refetches; use `is_fetching()` when a
+UI needs to distinguish refresh work from the initial pending state.
 
 For generated forms, read submit state from the runtime returned by `use_form`:
 

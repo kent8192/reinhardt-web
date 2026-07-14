@@ -6,87 +6,6 @@ use wasm_bindgen::JsCast;
 use crate::component::{ControlBinding, ControlBindingError, ControlKind, ControlValue};
 use crate::dom::{Element, EventHandle};
 use crate::reactive::{Effect, EffectTiming, untracked};
-use reinhardt_core::types::page::ControlBindingSnapshot;
-
-type HydrationSnapshotStore = Rc<RefCell<Vec<ControlBindingSnapshot>>>;
-
-thread_local! {
-	static ACTIVE_HYDRATION_SNAPSHOT_STORE: RefCell<Option<HydrationSnapshotStore>> =
-		const { RefCell::new(None) };
-}
-
-struct ActiveHydrationSnapshotStoreGuard {
-	previous: Option<HydrationSnapshotStore>,
-}
-
-impl Drop for ActiveHydrationSnapshotStoreGuard {
-	fn drop(&mut self) {
-		ACTIVE_HYDRATION_SNAPSHOT_STORE.with(|active| {
-			active.replace(self.previous.take());
-		});
-	}
-}
-
-struct HydrationSnapshotTransaction {
-	store: HydrationSnapshotStore,
-	committed: bool,
-}
-
-impl HydrationSnapshotTransaction {
-	fn new() -> Self {
-		Self {
-			store: Rc::new(RefCell::new(Vec::new())),
-			committed: false,
-		}
-	}
-
-	fn commit(&mut self) {
-		for snapshot in self.store.borrow_mut().drain(..) {
-			snapshot.commit();
-		}
-		self.committed = true;
-	}
-}
-
-impl Drop for HydrationSnapshotTransaction {
-	fn drop(&mut self) {
-		if !self.committed {
-			let mut snapshots = self.store.borrow_mut();
-			while let Some(snapshot) = snapshots.pop() {
-				drop(snapshot);
-			}
-		}
-	}
-}
-
-pub(crate) fn with_hydration_snapshot_transaction<T, E>(
-	f: impl FnOnce() -> Result<T, E>,
-) -> Result<T, E> {
-	let mut transaction = HydrationSnapshotTransaction::new();
-	let previous = ACTIVE_HYDRATION_SNAPSHOT_STORE
-		.with(|active| active.replace(Some(transaction.store.clone())));
-	let guard = ActiveHydrationSnapshotStoreGuard { previous };
-	let result = f();
-	drop(guard);
-	if result.is_ok() {
-		transaction.commit();
-	}
-	result
-}
-
-fn commit_or_stage_hydration_snapshot(snapshot: ControlBindingSnapshot) {
-	let snapshot = ACTIVE_HYDRATION_SNAPSHOT_STORE.with(|active| {
-		if let Some(store) = active.borrow().as_ref() {
-			store.borrow_mut().push(snapshot);
-			None
-		} else {
-			Some(snapshot)
-		}
-	});
-	if let Some(snapshot) = snapshot {
-		snapshot.commit();
-	}
-}
 
 pub(crate) struct ControlBindingController {
 	_effect: Effect,
@@ -105,7 +24,7 @@ impl std::fmt::Debug for ControlBindingController {
 struct CompositionState {
 	composing: bool,
 	applying_input: bool,
-	skip_next_input: Option<ControlValue>,
+	skip_next_input: Option<CompletedComposition>,
 	number_editor: Option<NumberEditorState>,
 }
 
@@ -127,6 +46,11 @@ struct EditorSelection {
 struct PendingNumberEdit {
 	raw: String,
 	selection: EditorSelection,
+}
+
+struct CompletedComposition {
+	value: ControlValue,
+	signal_baseline: ControlValue,
 }
 
 impl ControlBindingController {
@@ -323,10 +247,12 @@ fn install_listeners(
 					) else {
 						return;
 					};
-					let skip = input_state.borrow_mut().skip_next_input.take();
-					if skip.as_ref() == Some(&value) {
+					let completed = input_state.borrow_mut().skip_next_input.take();
+					if let Some(completed) = completed
+						&& completed.value == value
+					{
 						let current_value = untracked(|| input_binding.read());
-						if current_value != value {
+						if current_value != completed.signal_baseline {
 							let _ =
 								write_control(&input_element, input_binding.kind(), &current_value);
 						}
@@ -360,8 +286,15 @@ fn install_listeners(
 					else {
 						return;
 					};
-					end_state.borrow_mut().skip_next_input = Some(value.clone());
-					let _ = write_binding_from_input(&end_binding, &end_state, value);
+					let Ok(_) = write_binding_from_input(&end_binding, &end_state, value.clone())
+					else {
+						return;
+					};
+					let signal_baseline = untracked(|| end_binding.read());
+					end_state.borrow_mut().skip_next_input = Some(CompletedComposition {
+						value,
+						signal_baseline,
+					});
 				}),
 			);
 		}

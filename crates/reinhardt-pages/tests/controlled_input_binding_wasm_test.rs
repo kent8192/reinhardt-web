@@ -861,11 +861,59 @@ fn number_binding_deduplicates_sanitized_final_input_after_composition() {
 	dispatch_input(&input, Some("-"), "insertCompositionText");
 
 	assert_eq!(value.get(), 7);
+	assert_eq!(input.value(), "");
 	let parse_error = error
 		.get()
 		.expect("duplicate final input should retain the incomplete raw");
 	assert_eq!(parse_error.raw(), "-");
 	assert_eq!(parse_error.kind(), NumberParseErrorKind::Incomplete);
+	reinhardt_pages::cleanup_reactive_nodes();
+}
+
+#[wasm_bindgen_test]
+fn rejected_number_composition_reprojects_a_reentrant_signal_change() {
+	let document = web_sys::window()
+		.expect("window")
+		.document()
+		.expect("document");
+	let root = Element::new(document.create_element("div").expect("root"));
+	let value = Signal::new(7_i32);
+	let end_value = value.clone();
+	let error = Signal::new(None::<NumberParseError>);
+	page!({
+		input {
+			a11y: off,
+			type: "number",
+			bind: number(value, error),
+			@compositionend: move |_| end_value.set(42),
+		}
+	})
+	.mount(&root)
+	.expect("mount");
+	let input: web_sys::HtmlInputElement = root
+		.as_web_sys()
+		.first_element_child()
+		.expect("input")
+		.unchecked_into();
+
+	input
+		.dispatch_event(&web_sys::CompositionEvent::new("compositionstart").expect("start"))
+		.expect("dispatch");
+	input.set_value("-");
+	dispatch_input(&input, Some("-"), "insertCompositionText");
+	input
+		.dispatch_event(&web_sys::CompositionEvent::new("compositionend").expect("end"))
+		.expect("dispatch");
+	assert_eq!(value.get(), 42);
+	input.set_value("-");
+
+	dispatch_input(&input, Some("-"), "insertCompositionText");
+
+	assert_eq!(value.get(), 42);
+	assert_eq!(input.value(), "42");
+	let parse_error = error.get().expect("sanitized value should be rejected");
+	assert_eq!(parse_error.raw(), "");
+	assert_eq!(parse_error.kind(), NumberParseErrorKind::Empty);
 	reinhardt_pages::cleanup_reactive_nodes();
 }
 

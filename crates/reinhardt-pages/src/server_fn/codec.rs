@@ -327,6 +327,18 @@ mod tests {
 		assert_eq!(codec.name(), "msgpack");
 	}
 
+	#[cfg(feature = "msgpack")]
+	#[test]
+	fn messagepack_codec_round_trips_json_numbers() {
+		let codec = MessagePackCodec;
+		let value = serde_json::json!([1, 2, 3]);
+
+		let encoded = codec.encode(&value).unwrap();
+		let decoded: serde_json::Value = codec.decode(&encoded).unwrap();
+
+		assert_eq!(decoded, value);
+	}
+
 	#[test]
 	fn test_codec_error_handling() {
 		let codec = JsonCodec;

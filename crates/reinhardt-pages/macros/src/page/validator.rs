@@ -803,12 +803,12 @@ fn parse_binding_expression(expr: &Expr) -> Result<TypedControlBindingExpr> {
 			));
 		}
 		return Ok(TypedControlBindingExpr::NumberWithError {
-			value: call.args[0].clone(),
-			error: call.args[1].clone(),
+			value: Box::new(call.args[0].clone()),
+			error: Box::new(call.args[1].clone()),
 		});
 	}
 
-	Ok(TypedControlBindingExpr::Direct(expr.clone()))
+	Ok(TypedControlBindingExpr::Direct(Box::new(expr.clone())))
 }
 
 fn classify_control_binding(
