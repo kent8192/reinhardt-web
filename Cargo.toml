@@ -120,7 +120,7 @@ websockets = ["reinhardt-websockets"]
 websockets-pages = ["websockets", "reinhardt-websockets/pages-integration"]
 cache = ["dep:reinhardt-utils", "reinhardt-utils/cache"]
 redis-backend = ["cache", "reinhardt-utils/redis-backend"]
-i18n = ["reinhardt-i18n"]
+i18n = ["reinhardt-i18n", "reinhardt-pages?/i18n"]
 mail = ["reinhardt-mail"]
 sessions = ["reinhardt-auth", "reinhardt-auth/sessions"]
 session-redis = ["sessions", "middleware", "reinhardt-middleware/session-redis"]
@@ -134,6 +134,7 @@ static-files = ["dep:reinhardt-utils", "reinhardt-utils/staticfiles"]
 storage = ["dep:reinhardt-utils", "reinhardt-utils/storage"]
 shortcuts = ["reinhardt-shortcuts"]
 tasks = ["reinhardt-tasks"]
+tasks-durable = ["tasks", "reinhardt-tasks/durable"]
 streaming = ["dep:reinhardt-streaming", "reinhardt-streaming/kafka"]
 server = ["reinhardt-server"]
 commands = ["reinhardt-commands", "reinhardt-commands/migrations"]
@@ -157,7 +158,7 @@ signals = ["reinhardt-core/signals"]
 # Also directly enables reinhardt-di/params for macro support (extern crate reinhardt_di)
 # reinhardt-db/di enables Injectable implementation for DatabaseConnection
 di = ["reinhardt-di", "reinhardt-di/params", "reinhardt-di/macros", "reinhardt-db?/di"]
-test = ["reinhardt-test"]
+test = ["reinhardt-test", "reinhardt-pages?/testing"]
 testcontainers = ["test", "reinhardt-test/testcontainers"]
 server-fn-test = ["test", "reinhardt-test/server-fn-test"]
 # MSW (Mock Service Worker) for WASM testing — exposes
@@ -183,7 +184,7 @@ viewset-routing = ["routing", "reinhardt-urls/viewsets"]
 dentdelion = ["reinhardt-dentdelion"]
 deeplink = ["reinhardt-deeplink"]
 dispatch = ["reinhardt-dispatch"]
-grpc = ["reinhardt-grpc"]
+grpc = ["reinhardt-grpc", "reinhardt-grpc?/di"]
 
 # Meta features
 full = [
@@ -325,6 +326,8 @@ reinhardt-core = {workspace = true, default-features = false, features = ["types
 # Proc-macro crate: runs host-side at compile time, safe on every target
 # (re-exported as `reinhardt::routes` / `reinhardt::url_patterns` for cross-target consumers)
 reinhardt-macros = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
 
 # Server-side dependencies (NOT for WASM)
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]

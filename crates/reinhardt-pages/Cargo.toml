@@ -11,6 +11,7 @@ keywords = ["wasm", "web", "frontend", "reactive", "django"]
 categories = ["wasm", "web-programming"]
 
 [features]
+i18n = []
 default = []
 console_error_panic_hook = ["dep:console_error_panic_hook"]
 msgpack = ["dep:rmp-serde"]
@@ -214,7 +215,7 @@ web-sys = { version = "0.3.83", features = [
 ] }
 
 # Async support for WASM
-reinhardt-core = {workspace = true, default-features = false, features = ["reactive", "page", "security"]}
+reinhardt-core = {workspace = true, default-features = false, features = ["reactive", "page", "security", "validators"]}
 smallvec = { workspace = true }
 [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
 wasm-bindgen-futures = "0.4.56"
