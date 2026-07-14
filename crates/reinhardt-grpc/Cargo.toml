@@ -16,7 +16,6 @@ tokio = { workspace = true }
 tokio-stream = { version = "0.1", features = ["sync"] }
 async-trait = { workspace = true }
 thiserror = { workspace = true }
-anyhow = { workspace = true }
 uuid = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }

@@ -24,7 +24,6 @@ serde_json = { workspace = true }
 
 # Error handling
 thiserror = { workspace = true }
-anyhow = { workspace = true }
 
 # Utilities
 bytes = { workspace = true }

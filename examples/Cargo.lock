@@ -4831,7 +4831,6 @@ dependencies = [
 name = "reinhardt-apps"
 version = "0.3.1"
 dependencies = [
- "anyhow",
  "async-trait",
  "bytes",
  "cfg_aliases",
@@ -5132,7 +5131,6 @@ version = "0.3.1"
 name = "reinhardt-forms"
 version = "0.3.1"
 dependencies = [
- "anyhow",
  "aquamarine",
  "chrono",
  "regex",
@@ -5148,7 +5146,6 @@ dependencies = [
 name = "reinhardt-grpc"
 version = "0.3.1"
 dependencies = [
- "anyhow",
  "async-trait",
  "prost",
  "reinhardt-conf",
@@ -5625,7 +5622,6 @@ dependencies = [
 name = "reinhardt-utils"
 version = "0.3.1"
 dependencies = [
- "anyhow",
  "async-trait",
  "base64",
  "bytes",

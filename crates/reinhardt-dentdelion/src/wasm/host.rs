@@ -1075,7 +1075,7 @@ impl crate::wasm::runtime::reinhardt::dentdelion::types::Host for HostState {}
 impl crate::wasm::runtime::reinhardt::dentdelion::host::Host for HostState {
 	// ===== Configuration Access =====
 
-	async fn get_config(&mut self, key: String) -> Result<Option<Vec<u8>>, anyhow::Error> {
+	async fn get_config(&mut self, key: String) -> wasmtime::Result<Option<Vec<u8>>> {
 		// Get config value and serialize to MessagePack
 		let result = Self::get_config(self, &key).and_then(|v| rmp_serde::to_vec(&v).ok());
 		Ok(result)
@@ -1085,10 +1085,10 @@ impl crate::wasm::runtime::reinhardt::dentdelion::host::Host for HostState {
 		&mut self,
 		key: String,
 		value: Vec<u8>,
-	) -> Result<Result<(), GeneratedPluginError>, anyhow::Error> {
+	) -> wasmtime::Result<Result<(), GeneratedPluginError>> {
 		// Deserialize MessagePack to ConfigValue
 		let config_value: ConfigValue = rmp_serde::from_slice(&value)
-			.map_err(|e| anyhow::anyhow!("Invalid config value: {}", e))?;
+			.map_err(|error| wasmtime::Error::msg(format!("Invalid config value: {error}")))?;
 
 		let result = Self::set_config(self, &key, config_value)
 			.map_err(|e| to_generated_error(WitPluginError::from_plugin_error(&e)));
@@ -1097,22 +1097,22 @@ impl crate::wasm::runtime::reinhardt::dentdelion::host::Host for HostState {
 
 	// ===== Logging =====
 
-	async fn log_debug(&mut self, message: String) -> Result<(), anyhow::Error> {
+	async fn log_debug(&mut self, message: String) -> wasmtime::Result<()> {
 		Self::log_debug(self, &message);
 		Ok(())
 	}
 
-	async fn log_info(&mut self, message: String) -> Result<(), anyhow::Error> {
+	async fn log_info(&mut self, message: String) -> wasmtime::Result<()> {
 		Self::log_info(self, &message);
 		Ok(())
 	}
 
-	async fn log_warn(&mut self, message: String) -> Result<(), anyhow::Error> {
+	async fn log_warn(&mut self, message: String) -> wasmtime::Result<()> {
 		Self::log_warn(self, &message);
 		Ok(())
 	}
 
-	async fn log_error(&mut self, message: String) -> Result<(), anyhow::Error> {
+	async fn log_error(&mut self, message: String) -> wasmtime::Result<()> {
 		Self::log_error(self, &message);
 		Ok(())
 	}
@@ -1123,20 +1123,20 @@ impl crate::wasm::runtime::reinhardt::dentdelion::host::Host for HostState {
 		&mut self,
 		name: String,
 		data: Vec<u8>,
-	) -> Result<Result<(), GeneratedPluginError>, anyhow::Error> {
+	) -> wasmtime::Result<Result<(), GeneratedPluginError>> {
 		let result = Self::register_service(self, &name, data)
 			.map_err(|e| to_generated_error(WitPluginError::from_plugin_error(&e)));
 		Ok(result)
 	}
 
-	async fn get_service(&mut self, name: String) -> Result<Option<Vec<u8>>, anyhow::Error> {
+	async fn get_service(&mut self, name: String) -> wasmtime::Result<Option<Vec<u8>>> {
 		Ok(Self::get_service(self, &name))
 	}
 
 	async fn unregister_service(
 		&mut self,
 		name: String,
-	) -> Result<Result<(), GeneratedPluginError>, anyhow::Error> {
+	) -> wasmtime::Result<Result<(), GeneratedPluginError>> {
 		let result = Self::unregister_service(self, &name)
 			.map_err(|e| to_generated_error(WitPluginError::from_plugin_error(&e)));
 		Ok(result)
@@ -1148,7 +1148,7 @@ impl crate::wasm::runtime::reinhardt::dentdelion::host::Host for HostState {
 		&mut self,
 		url: String,
 		headers: Vec<(String, String)>,
-	) -> Result<Result<GeneratedHttpResponse, GeneratedPluginError>, anyhow::Error> {
+	) -> wasmtime::Result<Result<GeneratedHttpResponse, GeneratedPluginError>> {
 		// Call async function directly (no longer need to block)
 		let result = Self::http_get(self, &url, &headers)
 			.await
@@ -1162,7 +1162,7 @@ impl crate::wasm::runtime::reinhardt::dentdelion::host::Host for HostState {
 		url: String,
 		body: Vec<u8>,
 		headers: Vec<(String, String)>,
-	) -> Result<Result<GeneratedHttpResponse, GeneratedPluginError>, anyhow::Error> {
+	) -> wasmtime::Result<Result<GeneratedHttpResponse, GeneratedPluginError>> {
 		// Call async function directly (no longer need to block)
 		let result = Self::http_post(self, &url, &body, &headers)
 			.await
@@ -1177,7 +1177,7 @@ impl crate::wasm::runtime::reinhardt::dentdelion::host::Host for HostState {
 		&mut self,
 		sql: String,
 		params: Vec<u8>,
-	) -> Result<Result<Vec<u8>, GeneratedPluginError>, anyhow::Error> {
+	) -> wasmtime::Result<Result<Vec<u8>, GeneratedPluginError>> {
 		// Call async function directly (no longer need to block)
 		let result = Self::db_query(self, &sql, &params)
 			.await
@@ -1189,7 +1189,7 @@ impl crate::wasm::runtime::reinhardt::dentdelion::host::Host for HostState {
 		&mut self,
 		sql: String,
 		params: Vec<u8>,
-	) -> Result<Result<u64, GeneratedPluginError>, anyhow::Error> {
+	) -> wasmtime::Result<Result<u64, GeneratedPluginError>> {
 		// Call async function directly (no longer need to block)
 		let result = Self::db_execute(self, &sql, &params)
 			.await
@@ -1222,7 +1222,7 @@ impl crate::wasm::runtime::reinhardt::dentdelion::events::Host for HostState {
 		&mut self,
 		name: String,
 		payload: Vec<u8>,
-	) -> Result<Result<(), GeneratedPluginError>, anyhow::Error> {
+	) -> wasmtime::Result<Result<(), GeneratedPluginError>> {
 		let _delivered = self.emit_event(&name, payload);
 		Ok(Ok(()))
 	}
@@ -1230,7 +1230,7 @@ impl crate::wasm::runtime::reinhardt::dentdelion::events::Host for HostState {
 	async fn subscribe(
 		&mut self,
 		pattern: String,
-	) -> Result<Result<u64, GeneratedPluginError>, anyhow::Error> {
+	) -> wasmtime::Result<Result<u64, GeneratedPluginError>> {
 		match self.subscribe_events(&pattern) {
 			Ok(subscription_id) => Ok(Ok(subscription_id)),
 			Err(e) => Ok(Err(to_generated_error(WitPluginError::new(
@@ -1240,10 +1240,7 @@ impl crate::wasm::runtime::reinhardt::dentdelion::events::Host for HostState {
 		}
 	}
 
-	async fn unsubscribe(
-		&mut self,
-		id: u64,
-	) -> Result<Result<(), GeneratedPluginError>, anyhow::Error> {
+	async fn unsubscribe(&mut self, id: u64) -> wasmtime::Result<Result<(), GeneratedPluginError>> {
 		let removed = self.unsubscribe_events(id);
 		if removed {
 			Ok(Ok(()))
@@ -1255,11 +1252,7 @@ impl crate::wasm::runtime::reinhardt::dentdelion::events::Host for HostState {
 		}
 	}
 
-	async fn poll_events(
-		&mut self,
-		id: u64,
-		limit: u32,
-	) -> Result<Vec<GeneratedEvent>, anyhow::Error> {
+	async fn poll_events(&mut self, id: u64, limit: u32) -> wasmtime::Result<Vec<GeneratedEvent>> {
 		let events = self.poll_pending_events(id, limit as usize);
 		Ok(events.into_iter().map(to_generated_event).collect())
 	}
@@ -1358,7 +1351,7 @@ impl crate::wasm::runtime::reinhardt::dentdelion::models::Host for HostState {
 	async fn register_model(
 		&mut self,
 		schema: GeneratedModelSchema,
-	) -> Result<Result<(), GeneratedPluginError>, anyhow::Error> {
+	) -> wasmtime::Result<Result<(), GeneratedPluginError>> {
 		let internal_schema = from_generated_model_schema(schema);
 		let result = self
 			.register_model_schema(internal_schema)
@@ -1369,7 +1362,7 @@ impl crate::wasm::runtime::reinhardt::dentdelion::models::Host for HostState {
 	async fn register_migration(
 		&mut self,
 		migration: GeneratedSqlMigration,
-	) -> Result<Result<(), GeneratedPluginError>, anyhow::Error> {
+	) -> wasmtime::Result<Result<(), GeneratedPluginError>> {
 		let internal_migration = from_generated_sql_migration(migration);
 		let result = self
 			.register_sql_migration(internal_migration)
@@ -1377,7 +1370,7 @@ impl crate::wasm::runtime::reinhardt::dentdelion::models::Host for HostState {
 		Ok(result)
 	}
 
-	async fn list_models(&mut self) -> Result<Vec<String>, anyhow::Error> {
+	async fn list_models(&mut self) -> wasmtime::Result<Vec<String>> {
 		Ok(self.list_registered_models())
 	}
 }
@@ -1439,7 +1432,7 @@ impl crate::wasm::runtime::reinhardt::dentdelion::ssr::Host for HostState {
 		component_path: String,
 		props: Vec<u8>,
 		options: GeneratedRenderOptions,
-	) -> Result<Result<GeneratedRenderResult, GeneratedPluginError>, anyhow::Error> {
+	) -> wasmtime::Result<Result<GeneratedRenderResult, GeneratedPluginError>> {
 		let internal_options = from_generated_render_options(options);
 		let result = self
 			.ssr_proxy
@@ -1453,12 +1446,12 @@ impl crate::wasm::runtime::reinhardt::dentdelion::ssr::Host for HostState {
 	async fn eval_js(
 		&mut self,
 		code: String,
-	) -> Result<Result<Vec<u8>, GeneratedPluginError>, anyhow::Error> {
+	) -> wasmtime::Result<Result<Vec<u8>, GeneratedPluginError>> {
 		let result = Self::eval_js(self, &code).map_err(ssr_error_to_plugin_error);
 		Ok(result)
 	}
 
-	async fn is_available(&mut self) -> Result<bool, anyhow::Error> {
+	async fn is_available(&mut self) -> wasmtime::Result<bool> {
 		Ok(self.is_ssr_available())
 	}
 }

@@ -41,9 +41,6 @@ serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.145"
 chrono = { version = "0.4.42", features = ["serde"] }
 
-# Error handling
-anyhow = "1.0.100"
-
 # Shared lint configuration for all examples.
 # reinhardt_macros generates code with cfg(native), cfg(wasm) that are defined
 # in the main workspace but not in the examples workspace. Declare them here so
