@@ -2940,6 +2940,92 @@ async fn typed_enum_constraint_recreation_preserves_without_rowid() {
 
 #[rstest]
 #[tokio::test]
+async fn typed_enum_constraint_recreation_preserves_named_unique_constraint() {
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("connect to in-memory SQLite");
+	let conn = Arc::new(connection.clone());
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+	let unique_constraint = Constraint::Unique {
+		name: "unique_jobs_code".to_string(),
+		columns: vec!["code".to_string()],
+	};
+	let enum_constraint = Constraint::EnumDomain {
+		name: "jobs_status_model_enum_check".to_string(),
+		column: "status".to_string(),
+		domain: FieldDomain::Enum {
+			repr: ModelEnumRepr::String,
+			values: vec![ModelEnumValue::String("queued".to_string())],
+		},
+	};
+
+	let create = create_test_migration(
+		"testapp",
+		"0001_create_jobs",
+		vec![Operation::CreateTable {
+			name: "jobs".to_string(),
+			columns: vec![
+				create_pk_column("id"),
+				create_required_column("code", FieldType::VarChar(32)),
+				create_required_column("status", FieldType::VarChar(32)),
+			],
+			constraints: vec![unique_constraint.clone()],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
+		}],
+	);
+	let add_enum = create_test_migration(
+		"testapp",
+		"0002_add_enum_domain",
+		vec![Operation::AddConstraintDefinition {
+			table: "jobs".to_string(),
+			constraint: enum_constraint,
+		}],
+	);
+
+	executor
+		.apply_migrations(&[create, add_enum])
+		.await
+		.expect("add typed enum domain through table recreation");
+
+	let table_sql: String = conn
+		.fetch_one(
+			"SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'jobs'",
+			vec![],
+		)
+		.await
+		.expect("read recreated table SQL")
+		.get("sql")
+		.expect("table SQL should be text");
+	assert!(
+		table_sql.contains("CONSTRAINT \"unique_jobs_code\" UNIQUE (\"code\")"),
+		"{table_sql}"
+	);
+
+	let drop_unique = create_test_migration(
+		"testapp",
+		"0003_drop_named_unique",
+		vec![Operation::DropConstraintDefinition {
+			table: "jobs".to_string(),
+			constraint: unique_constraint,
+		}],
+	);
+	executor
+		.apply_migrations(&[drop_unique])
+		.await
+		.expect("drop named unique constraint after enum recreation");
+
+	conn.execute(
+		"INSERT INTO jobs (code, status) VALUES ('same', 'queued'), ('same', 'queued')",
+		vec![],
+	)
+	.await
+	.expect("duplicate codes should be allowed after dropping the named unique constraint");
+}
+
+#[rstest]
+#[tokio::test]
 async fn typed_enum_constraint_recreation_preserves_strict_table_option() {
 	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
 		.await
