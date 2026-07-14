@@ -2000,16 +2000,44 @@ fn split_sqlite_top_level_list(sql: &str) -> Vec<&str> {
 	let mut start = 0;
 	let mut depth = 0usize;
 	let mut quote: Option<char> = None;
+	let mut line_comment = false;
+	let mut block_comment = false;
+	let mut chars = sql.char_indices().peekable();
 
-	for (index, ch) in sql.char_indices() {
+	while let Some((index, ch)) = chars.next() {
+		if line_comment {
+			if ch == '\n' {
+				line_comment = false;
+			}
+			continue;
+		}
+		if block_comment {
+			if ch == '*' && chars.peek().is_some_and(|(_, next)| *next == '/') {
+				chars.next();
+				block_comment = false;
+			}
+			continue;
+		}
 		if let Some(quote_ch) = quote {
 			if ch == quote_ch {
-				quote = None;
+				if chars.peek().is_some_and(|(_, next)| *next == quote_ch) {
+					chars.next();
+				} else {
+					quote = None;
+				}
 			}
 			continue;
 		}
 
 		match ch {
+			'-' if chars.peek().is_some_and(|(_, next)| *next == '-') => {
+				chars.next();
+				line_comment = true;
+			}
+			'/' if chars.peek().is_some_and(|(_, next)| *next == '*') => {
+				chars.next();
+				block_comment = true;
+			}
 			'\'' | '"' | '`' => quote = Some(ch),
 			'[' => quote = Some(']'),
 			'(' => depth += 1,
@@ -2051,6 +2079,90 @@ struct SqliteIndexedColumnMetadata {
 	name: String,
 	collation: Option<String>,
 	descending: Option<bool>,
+}
+
+#[cfg(feature = "sqlite")]
+fn sqlite_top_level_word_index(tokens: &[SqliteDdlToken], word: &str) -> Option<usize> {
+	let mut depth = 0usize;
+	for (index, token) in tokens.iter().enumerate() {
+		match token {
+			SqliteDdlToken::OpenParen => depth += 1,
+			SqliteDdlToken::CloseParen => depth = depth.saturating_sub(1),
+			token if depth == 0 && sqlite_token_is_word(token, word) => return Some(index),
+			_ => {}
+		}
+	}
+	None
+}
+
+#[cfg(feature = "sqlite")]
+fn sqlite_unique_conflict_mode(tokens: &[SqliteDdlToken]) -> Option<String> {
+	let mut depth = 0usize;
+	for (index, token) in tokens.iter().enumerate() {
+		match token {
+			SqliteDdlToken::OpenParen => depth += 1,
+			SqliteDdlToken::CloseParen => depth = depth.saturating_sub(1),
+			token
+				if depth == 0
+					&& sqlite_token_is_word(token, "ON")
+					&& tokens
+						.get(index + 1)
+						.is_some_and(|token| sqlite_token_is_word(token, "CONFLICT")) =>
+			{
+				return tokens.get(index + 2).and_then(sqlite_token_identifier);
+			}
+			_ => {}
+		}
+	}
+	None
+}
+
+#[cfg(feature = "sqlite")]
+fn sqlite_canonical_unique_sql(
+	name: Option<&str>,
+	columns: &[SqliteIndexedColumnMetadata],
+	conflict_mode: Option<&str>,
+) -> String {
+	let quote = |identifier: &str| {
+		let simple = identifier.chars().enumerate().all(|(index, ch)| {
+			if index == 0 {
+				ch == '_' || ch.is_ascii_alphabetic()
+			} else {
+				ch == '_' || ch.is_ascii_alphanumeric()
+			}
+		});
+		if simple {
+			identifier.to_string()
+		} else {
+			format!("\"{}\"", identifier.replace('"', "\"\""))
+		}
+	};
+	let columns = columns
+		.iter()
+		.map(|column| {
+			let collation = column.collation.as_deref().unwrap_or("BINARY");
+			let ordering = if column.descending == Some(true) {
+				"DESC"
+			} else {
+				"ASC"
+			};
+			format!(
+				"{} COLLATE {} {ordering}",
+				quote(&column.name),
+				quote(collation)
+			)
+		})
+		.collect::<Vec<_>>()
+		.join(", ");
+	let mut sql = match name {
+		Some(name) => format!("CONSTRAINT {} UNIQUE ({columns})", quote(name)),
+		None => format!("UNIQUE ({columns})"),
+	};
+	if let Some(conflict_mode) = conflict_mode {
+		sql.push_str(" ON CONFLICT ");
+		sql.push_str(conflict_mode);
+	}
+	sql
 }
 
 #[cfg(feature = "sqlite")]
@@ -2155,14 +2267,8 @@ fn parse_sqlite_unique_constraint_metadata(
 		.filter_map(|definition| {
 			let column = sqlite_column_name(definition)?;
 			let tokens = tokenize_sqlite_definition(definition);
-			let collation = tokens
-				.windows(2)
-				.find_map(|pair| {
-					sqlite_token_is_word(&pair[0], "COLLATE")
-						.then(|| sqlite_token_identifier(&pair[1]))
-						.flatten()
-				})
-				.unwrap_or_else(|| "BINARY".to_string());
+			let collation =
+				sqlite_top_level_collation(tokens.iter()).unwrap_or_else(|| "BINARY".to_string());
 			Some((column, collation))
 		})
 		.collect::<Vec<_>>();
@@ -2219,28 +2325,39 @@ fn parse_sqlite_unique_constraint_metadata(
 			continue;
 		}
 
-		let Some(column) = tokens.first().and_then(sqlite_token_identifier) else {
+		let Some(column) = sqlite_column_name(definition) else {
 			continue;
 		};
-		let Some(name) = tokens.windows(3).find_map(|sequence| {
-			(sqlite_token_is_word(&sequence[0], "CONSTRAINT")
-				&& sqlite_token_is_word(&sequence[2], "UNIQUE"))
-			.then(|| sqlite_token_identifier(&sequence[1]))
-			.flatten()
-		}) else {
+		let Some(unique_index) = sqlite_top_level_word_index(&tokens, "UNIQUE") else {
 			continue;
 		};
+		let mut depth = 0usize;
+		let mut name = None;
+		for (index, token) in tokens.iter().take(unique_index).enumerate() {
+			match token {
+				SqliteDdlToken::OpenParen => depth += 1,
+				SqliteDdlToken::CloseParen => depth = depth.saturating_sub(1),
+				token if depth == 0 && sqlite_token_is_word(token, "CONSTRAINT") => {
+					name = tokens.get(index + 1).and_then(sqlite_token_identifier);
+				}
+				_ => {}
+			}
+		}
 		let mut indexed_columns = vec![SqliteIndexedColumnMetadata {
 			name: column.clone(),
 			collation: None,
 			descending: None,
 		}];
 		normalize_indexed_columns(&mut indexed_columns);
+		let conflict_mode = sqlite_unique_conflict_mode(&tokens);
+		let raw_sql = conflict_mode
+			.as_deref()
+			.map(|mode| sqlite_canonical_unique_sql(name.as_deref(), &indexed_columns, Some(mode)));
 		metadata.push(SqliteUniqueConstraintMetadata {
-			name: Some(name),
+			name,
 			columns: vec![column.clone()],
 			indexed_columns,
-			raw_sql: None,
+			raw_sql,
 		});
 	}
 	metadata
@@ -2292,6 +2409,25 @@ fn tokenize_sqlite_definition(definition: &str) -> Vec<SqliteDdlToken> {
 	let mut chars = definition.chars().peekable();
 	while let Some(ch) = chars.next() {
 		match ch {
+			'-' if chars.peek() == Some(&'-') => {
+				flush_word(&mut tokens, &mut word);
+				chars.next();
+				for next in chars.by_ref() {
+					if next == '\n' {
+						break;
+					}
+				}
+			}
+			'/' if chars.peek() == Some(&'*') => {
+				flush_word(&mut tokens, &mut word);
+				chars.next();
+				while let Some(next) = chars.next() {
+					if next == '*' && chars.peek() == Some(&'/') {
+						chars.next();
+						break;
+					}
+				}
+			}
 			'"' | '`' | '\'' | '[' => {
 				flush_word(&mut tokens, &mut word);
 				let closing = if ch == '[' { ']' } else { ch };
@@ -2345,6 +2481,28 @@ fn sqlite_token_identifier(token: &SqliteDdlToken) -> Option<String> {
 }
 
 #[cfg(feature = "sqlite")]
+fn sqlite_top_level_collation<'a>(
+	tokens: impl IntoIterator<Item = &'a SqliteDdlToken>,
+) -> Option<String> {
+	let mut depth = 0usize;
+	let mut collation = None;
+	let mut tokens = tokens.into_iter().peekable();
+	while let Some(token) = tokens.next() {
+		match token {
+			SqliteDdlToken::OpenParen => depth += 1,
+			SqliteDdlToken::CloseParen => depth = depth.saturating_sub(1),
+			token if depth == 0 && sqlite_token_is_word(token, "COLLATE") => {
+				collation = tokens
+					.peek()
+					.and_then(|token| sqlite_token_identifier(token));
+			}
+			_ => {}
+		}
+	}
+	collation
+}
+
+#[cfg(feature = "sqlite")]
 fn sqlite_fk_deferrable(tokens: &[SqliteDdlToken]) -> Option<super::operations::DeferrableOption> {
 	if tokens.windows(2).any(|pair| {
 		sqlite_token_is_word(&pair[0], "NOT") && sqlite_token_is_word(&pair[1], "DEFERRABLE")
@@ -2392,11 +2550,7 @@ fn sqlite_indexed_column_metadata(
 		let name = tokens
 			.first()
 			.and_then(|token| sqlite_token_identifier(token))?;
-		let collation = tokens.windows(2).find_map(|pair| {
-			sqlite_token_is_word(pair[0], "COLLATE")
-				.then(|| sqlite_token_identifier(pair[1]))
-				.flatten()
-		});
+		let collation = sqlite_top_level_collation(tokens.iter().copied());
 		let descending = tokens.iter().find_map(|token| {
 			if sqlite_token_is_word(token, "DESC") {
 				Some(true)
@@ -2437,36 +2591,15 @@ fn sqlite_indexed_column_metadata(
 
 #[cfg(feature = "sqlite")]
 fn sqlite_column_name(definition: &str) -> Option<String> {
-	let trimmed = definition.trim_start();
-	let first_word = trimmed
-		.split_whitespace()
-		.next()
-		.unwrap_or("")
-		.to_ascii_uppercase();
-	if matches!(
-		first_word.as_str(),
-		"CONSTRAINT" | "PRIMARY" | "FOREIGN" | "UNIQUE" | "CHECK"
-	) {
+	let tokens = tokenize_sqlite_definition(definition);
+	let first = tokens.first()?;
+	if ["CONSTRAINT", "PRIMARY", "FOREIGN", "UNIQUE", "CHECK"]
+		.iter()
+		.any(|keyword| sqlite_token_is_word(first, keyword))
+	{
 		return None;
 	}
-
-	if let Some(rest) = trimmed.strip_prefix('"') {
-		let end = rest.find('"')?;
-		return Some(rest[..end].to_string());
-	}
-	if let Some(rest) = trimmed.strip_prefix('`') {
-		let end = rest.find('`')?;
-		return Some(rest[..end].to_string());
-	}
-	if let Some(rest) = trimmed.strip_prefix('[') {
-		let end = rest.find(']')?;
-		return Some(rest[..end].to_string());
-	}
-
-	trimmed
-		.split_whitespace()
-		.next()
-		.map(|name| name.trim_matches(',').to_string())
+	sqlite_token_identifier(first)
 }
 
 #[cfg(feature = "sqlite")]
@@ -2531,16 +2664,47 @@ fn sqlite_keyword_boundary(ch: char) -> bool {
 fn find_matching_sqlite_paren(sql: &str, open_index: usize) -> Option<usize> {
 	let mut depth = 0usize;
 	let mut quote: Option<char> = None;
+	let mut line_comment = false;
+	let mut block_comment = false;
+	let mut chars = sql
+		.char_indices()
+		.filter(|(index, _)| *index >= open_index)
+		.peekable();
 
-	for (index, ch) in sql.char_indices().filter(|(index, _)| *index >= open_index) {
+	while let Some((index, ch)) = chars.next() {
+		if line_comment {
+			if ch == '\n' {
+				line_comment = false;
+			}
+			continue;
+		}
+		if block_comment {
+			if ch == '*' && chars.peek().is_some_and(|(_, next)| *next == '/') {
+				chars.next();
+				block_comment = false;
+			}
+			continue;
+		}
 		if let Some(quote_ch) = quote {
 			if ch == quote_ch {
-				quote = None;
+				if chars.peek().is_some_and(|(_, next)| *next == quote_ch) {
+					chars.next();
+				} else {
+					quote = None;
+				}
 			}
 			continue;
 		}
 
 		match ch {
+			'-' if chars.peek().is_some_and(|(_, next)| *next == '-') => {
+				chars.next();
+				line_comment = true;
+			}
+			'/' if chars.peek().is_some_and(|(_, next)| *next == '*') => {
+				chars.next();
+				block_comment = true;
+			}
 			'\'' | '"' | '`' => quote = Some(ch),
 			'[' => quote = Some(']'),
 			'(' => depth += 1,
@@ -2847,6 +3011,87 @@ mod sqlite_generated_column_tests {
 				&metadata[1].indexed_columns
 			),
 			Some(2)
+		);
+	}
+
+	#[rstest]
+	#[case("code TEXT CHECK (code COLLATE NOCASE <> '')", "BINARY")]
+	#[case(
+		"code TEXT GENERATED ALWAYS AS (source COLLATE NOCASE) STORED",
+		"BINARY"
+	)]
+	#[case("code TEXT COLLATE NOCASE COLLATE RTRIM", "RTRIM")]
+	#[case(
+		"code TEXT COLLATE NOCASE CHECK (code COLLATE BINARY <> '') COLLATE RTRIM",
+		"RTRIM"
+	)]
+	fn parse_sqlite_unique_metadata_uses_last_top_level_column_collation(
+		#[case] column_definition: &str,
+		#[case] expected_collation: &str,
+	) {
+		let create_sql =
+			format!("CREATE TABLE jobs (source TEXT, {column_definition}, UNIQUE (code))");
+
+		let metadata = parse_sqlite_unique_constraint_metadata(&create_sql);
+
+		assert_eq!(
+			metadata[0].indexed_columns[0].collation.as_deref(),
+			Some(expected_collation)
+		);
+	}
+
+	#[rstest]
+	fn parse_sqlite_unique_metadata_uses_last_indexed_column_collation() {
+		let create_sql =
+			"CREATE TABLE jobs (code TEXT, UNIQUE (code COLLATE NOCASE COLLATE RTRIM))";
+
+		let metadata = parse_sqlite_unique_constraint_metadata(create_sql);
+
+		assert_eq!(
+			metadata[0].indexed_columns[0].collation.as_deref(),
+			Some("RTRIM")
+		);
+	}
+
+	#[rstest]
+	fn parse_sqlite_unique_metadata_ignores_parentheses_inside_comments() {
+		let create_sql = "CREATE TABLE jobs (code TEXT, UNIQUE (code /* ) */ COLLATE NOCASE), -- )\n UNIQUE (code COLLATE BINARY))";
+
+		let metadata = parse_sqlite_unique_constraint_metadata(create_sql);
+
+		assert_eq!(metadata.len(), 2);
+		assert_eq!(
+			metadata[0].indexed_columns[0].collation.as_deref(),
+			Some("NOCASE")
+		);
+	}
+
+	#[rstest]
+	fn parse_sqlite_unique_metadata_preserves_inline_conflict_mode() {
+		let create_sql =
+			"CREATE TABLE jobs (code TEXT CONSTRAINT uq_jobs_code UNIQUE ON CONFLICT IGNORE)";
+
+		let metadata = parse_sqlite_unique_constraint_metadata(create_sql);
+
+		assert_eq!(
+			metadata[0].raw_sql.as_deref(),
+			Some("CONSTRAINT uq_jobs_code UNIQUE (code COLLATE BINARY ASC) ON CONFLICT IGNORE")
+		);
+	}
+
+	#[rstest]
+	fn parse_sqlite_unique_metadata_decodes_quoted_column_names() {
+		let create_sql = r#"CREATE TABLE jobs ("a""b" TEXT COLLATE NOCASE, UNIQUE ("a""b"), 'c' TEXT COLLATE RTRIM, UNIQUE ('c'))"#;
+
+		let metadata = parse_sqlite_unique_constraint_metadata(create_sql);
+
+		assert_eq!(
+			metadata[0].indexed_columns[0].collation.as_deref(),
+			Some("NOCASE")
+		);
+		assert_eq!(
+			metadata[1].indexed_columns[0].collation.as_deref(),
+			Some("RTRIM")
 		);
 	}
 }
