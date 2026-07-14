@@ -4115,11 +4115,20 @@ where
 					if let Some(field) = aggregate.field.as_deref() =>
 				{
 					let distinct = if aggregate.distinct { "DISTINCT " } else { "" };
+					let field_sql = if matches!(
+						aggregate.func,
+						super::aggregation::AggregateFunc::Count
+					) && field == "*"
+					{
+						"*".to_string()
+					} else {
+						quote_identifier(&format!("{}.{}", self.root_alias(), field))
+					};
 					return format!(
 						"{}({}{})",
 						aggregate.func,
 						distinct,
-						quote_identifier(&format!("{}.{}", self.root_alias(), field))
+						field_sql
 					);
 				}
 				super::annotation::AnnotationValue::Field(field) => {
@@ -9409,6 +9418,26 @@ mod tests {
 			.to_sql();
 
 		assert!(sql.contains(r#"COUNT("test_users"."id") AS "user_count""#));
+	}
+
+	#[test]
+	fn test_relation_filter_keeps_count_wildcard_unqualified() {
+		let related_filter =
+			crate::orm::relations::RelationPath::<TestUser, TestCorpusFile>::from_descriptor::<
+				TestUserCorpusFile,
+			>()
+			.field(TestCorpusFile::field_normalized_path())
+			.eq("/docs/index.md");
+
+		let sql = QuerySet::<TestUser>::new()
+			.filter(related_filter)
+			.aggregate(
+				crate::orm::aggregation::Aggregate::count(Some("*")).with_alias("user_count"),
+			)
+			.to_sql();
+
+		assert!(sql.contains(r#"COUNT(*) AS "user_count""#));
+		assert!(!sql.contains(r#""test_users"."*""#));
 	}
 
 	#[test]
