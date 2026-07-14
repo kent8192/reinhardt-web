@@ -313,6 +313,15 @@ pub enum ValueGrammar {
 	Primitive(SemanticType),
 	/// One primitive grammar whose literal value cannot be negative.
 	NonNegative(&'static ValueGrammar),
+	/// One numeric grammar whose literal value must fall within an inclusive range.
+	NumericRange {
+		/// The underlying numeric grammar.
+		grammar: &'static ValueGrammar,
+		/// The inclusive lower bound.
+		minimum: i16,
+		/// The inclusive upper bound.
+		maximum: i16,
+	},
 	/// One member of an explicit keyword domain.
 	Keyword(&'static KeywordDomain),
 	/// A validated CSS custom identifier.
@@ -383,6 +392,11 @@ impl ValueGrammar {
 				semantic_type_name(*semantic_type).to_owned()
 			}
 			Self::NonNegative(grammar) => format!("NON_NEGATIVE({})", grammar.describe()),
+			Self::NumericRange {
+				grammar,
+				minimum,
+				maximum,
+			} => format!("RANGE({minimum},{maximum},{})", grammar.describe()),
 			Self::Keyword(domain) => format!("KW({})", domain.name),
 			Self::Identifier => "IDENT".to_owned(),
 			Self::Or(alternatives) => format!(
@@ -434,6 +448,14 @@ impl ValueGrammar {
 			Self::NonNegative(grammar) => {
 				format!("NON_NEGATIVE({})", grammar.describe_with_keywords())
 			}
+			Self::NumericRange {
+				grammar,
+				minimum,
+				maximum,
+			} => format!(
+				"RANGE({minimum},{maximum},{})",
+				grammar.describe_with_keywords()
+			),
 			Self::Keyword(domain) => format!("KW({}:[{}])", domain.name, domain.keywords.join("|")),
 			Self::Identifier => "IDENT".to_owned(),
 			Self::Or(alternatives) => format!(
@@ -1125,6 +1147,12 @@ keyword_grammar!(
 	]
 );
 keyword_grammar!(
+	BACKGROUND_REPEAT_PAIR_DOMAIN,
+	KW_BACKGROUND_REPEAT_PAIR,
+	"background-repeat-pair",
+	["repeat", "space", "round", "no-repeat",]
+);
+keyword_grammar!(
 	BACKGROUND_SIZE_DOMAIN,
 	KW_BACKGROUND_SIZE,
 	"background-size",
@@ -1277,9 +1305,15 @@ const LP: ValueGrammar = ValueGrammar::Primitive(SemanticType::LengthPercentage)
 const NN: ValueGrammar = ValueGrammar::NonNegative(&N);
 const NL: ValueGrammar = ValueGrammar::NonNegative(&L);
 const NLP: ValueGrammar = ValueGrammar::NonNegative(&LP);
+const FONT_WEIGHT_NUMBER: ValueGrammar = ValueGrammar::NumericRange {
+	grammar: &N,
+	minimum: 1,
+	maximum: 1000,
+};
 const P: ValueGrammar = ValueGrammar::Primitive(SemanticType::Percentage);
 const A: ValueGrammar = ValueGrammar::Primitive(SemanticType::Angle);
 const T: ValueGrammar = ValueGrammar::Primitive(SemanticType::Time);
+const NT: ValueGrammar = ValueGrammar::NonNegative(&T);
 const C: ValueGrammar = ValueGrammar::Primitive(SemanticType::Color);
 const S: ValueGrammar = ValueGrammar::Primitive(SemanticType::QuotedString);
 const FR: ValueGrammar = ValueGrammar::Primitive(SemanticType::GridFraction);
@@ -1287,7 +1321,7 @@ const IMG: ValueGrammar = ValueGrammar::FunctionResult(SemanticType::Image);
 const TF: ValueGrammar = ValueGrammar::FunctionResult(SemanticType::TransformFunction);
 const IDENT: ValueGrammar = ValueGrammar::Identifier;
 
-const SIZE: ValueGrammar = ValueGrammar::Or(&[LP, KW_SIZE]);
+const SIZE: ValueGrammar = ValueGrammar::Or(&[NLP, KW_SIZE]);
 const POSITION_ITEM: ValueGrammar = ValueGrammar::Or(&[LP, KW_POSITION_VALUE]);
 const POSITION: ValueGrammar = ValueGrammar::Space {
 	min: 1,
@@ -1311,7 +1345,7 @@ const SPAN_GRID_LINE: ValueGrammar = ValueGrammar::Ordered(&[
 	required("line", &INTEGER_OR_IDENT),
 ]);
 const GRID_LINE: ValueGrammar = ValueGrammar::Or(&[KW_AUTO, I, IDENT, SPAN_GRID_LINE]);
-const TRACK: ValueGrammar = ValueGrammar::Or(&[LP, FR, KW_TRACK, IDENT]);
+const TRACK: ValueGrammar = ValueGrammar::Or(&[NLP, FR, KW_TRACK]);
 const TRACK_LIST: ValueGrammar = ValueGrammar::Space {
 	min: 1,
 	max: None,
@@ -1365,10 +1399,10 @@ const GAP: ValueGrammar = ValueGrammar::Or(&[
 	ValueGrammar::Space {
 		min: 1,
 		max: Some(2),
-		item: &LP,
+		item: &NLP,
 	},
 ]);
-const SINGLE_GAP: ValueGrammar = ValueGrammar::Or(&[KW_NORMAL, LP]);
+const SINGLE_GAP: ValueGrammar = ValueGrammar::Or(&[KW_NORMAL, NLP]);
 const PLACE_CONTENT: ValueGrammar = ValueGrammar::Ordered(&[
 	required("align", &KW_ALIGN_CONTENT),
 	optional("justify", &KW_JUSTIFY_CONTENT),
@@ -1414,12 +1448,12 @@ const GRID_TRACK_PAIR: ValueGrammar = ValueGrammar::Slash {
 };
 const GRID_TEMPLATE: ValueGrammar = ValueGrammar::Or(&[KW_NONE, GRID_TRACK_PAIR]);
 
-const FONT_SIZE: ValueGrammar = ValueGrammar::Or(&[LP, KW_FONT_SIZE]);
+const FONT_SIZE: ValueGrammar = ValueGrammar::Or(&[NLP, KW_FONT_SIZE]);
 const FONT_STYLE_OBLIQUE: ValueGrammar =
 	ValueGrammar::Ordered(&[required("oblique", &KW_OBLIQUE), optional("angle", &A)]);
 const FONT_STYLE: ValueGrammar = ValueGrammar::Or(&[KW_FONT_STYLE, FONT_STYLE_OBLIQUE]);
-const FONT_WEIGHT: ValueGrammar = ValueGrammar::Or(&[N, KW_FONT_WEIGHT]);
-const LINE_HEIGHT: ValueGrammar = ValueGrammar::Or(&[KW_NORMAL, N, LP]);
+const FONT_WEIGHT: ValueGrammar = ValueGrammar::Or(&[FONT_WEIGHT_NUMBER, KW_FONT_WEIGHT]);
+const LINE_HEIGHT: ValueGrammar = ValueGrammar::Or(&[KW_NORMAL, NN, NLP]);
 const LETTER_SPACING: ValueGrammar = ValueGrammar::Or(&[KW_NORMAL, L]);
 const FONT_WITHOUT_LINE_HEIGHT: ValueGrammar = ValueGrammar::Unordered {
 	members: &[
@@ -1474,11 +1508,16 @@ const BACKGROUND_POSITION: ValueGrammar = ValueGrammar::Comma {
 	min: 1,
 	item: &POSITION,
 };
-const BACKGROUND_REPEAT_LAYER: ValueGrammar = ValueGrammar::Space {
-	min: 1,
+const BACKGROUND_REPEAT_PAIR: ValueGrammar = ValueGrammar::Space {
+	min: 2,
 	max: Some(2),
-	item: &KW_BACKGROUND_REPEAT,
+	item: &KW_BACKGROUND_REPEAT_PAIR,
 };
+const BACKGROUND_REPEAT_LAYER: ValueGrammar = ValueGrammar::Or(&[
+	KW_BACKGROUND_REPEAT,
+	KW_BACKGROUND_REPEAT_PAIR,
+	BACKGROUND_REPEAT_PAIR,
+]);
 const BACKGROUND_REPEAT: ValueGrammar = ValueGrammar::Comma {
 	min: 1,
 	item: &BACKGROUND_REPEAT_LAYER,
@@ -1486,8 +1525,9 @@ const BACKGROUND_REPEAT: ValueGrammar = ValueGrammar::Comma {
 const BACKGROUND_SIZE_VALUES: ValueGrammar = ValueGrammar::Space {
 	min: 1,
 	max: Some(2),
-	item: &SIZE,
+	item: &BACKGROUND_SIZE_VALUE,
 };
+const BACKGROUND_SIZE_VALUE: ValueGrammar = ValueGrammar::Or(&[KW_AUTO, NLP]);
 const BACKGROUND_SIZE_LAYER: ValueGrammar =
 	ValueGrammar::Or(&[KW_BACKGROUND_SIZE, BACKGROUND_SIZE_VALUES]);
 const BACKGROUND_SIZE: ValueGrammar = ValueGrammar::Comma {
@@ -1600,6 +1640,7 @@ const TRANSITION_PROPERTY_LIST: ValueGrammar = ValueGrammar::Comma {
 	item: &TRANSITION_PROPERTY,
 };
 const TIME_LIST: ValueGrammar = ValueGrammar::Comma { min: 1, item: &T };
+const DURATION_LIST: ValueGrammar = ValueGrammar::Comma { min: 1, item: &NT };
 const TIMING_LIST: ValueGrammar = ValueGrammar::Comma {
 	min: 1,
 	item: &TIMING,
@@ -1607,7 +1648,7 @@ const TIMING_LIST: ValueGrammar = ValueGrammar::Comma {
 const TRANSITION_LAYER: ValueGrammar = ValueGrammar::Unordered {
 	members: &[
 		optional("property", &TRANSITION_PROPERTY),
-		optional("duration", &T),
+		optional("duration", &NT),
 		optional("timing-function", &TIMING),
 		optional("delay", &T),
 	],
@@ -1791,7 +1832,7 @@ static PROPERTY_SPECS: &[PropertySpec] = property_registry!(
 		"transform" => TRANSFORM,
 		"transform-origin" => TRANSFORM_ORIGIN,
 		"transition-property" => TRANSITION_PROPERTY_LIST,
-		"transition-duration" => TIME_LIST,
+		"transition-duration" => DURATION_LIST,
 		"transition-timing-function" => TIMING_LIST,
 		"transition-delay" => TIME_LIST,
 		"transition" => TRANSITION,
@@ -2840,11 +2881,11 @@ mod tests {
 	#[rstest]
 	#[case(
 		"border",
-		"UNORDERED(min=1,source-order=false,width?:OR(LENGTH,KW(line-width)),style?:KW(line-style),color?:COLOR)"
+		"UNORDERED(min=1,source-order=false,width?:OR(NON_NEGATIVE(LENGTH),KW(line-width)),style?:KW(line-style),color?:COLOR)"
 	)]
 	#[case(
 		"flex",
-		"OR(KW(flex),OR(LENGTH_PERCENTAGE,KW(size)),ORDERED(grow:NUMBER,shrink?:NUMBER,basis?:OR(LENGTH_PERCENTAGE,KW(size))))"
+		"OR(KW(flex),OR(NON_NEGATIVE(LENGTH_PERCENTAGE),KW(size)),ORDERED(grow:NON_NEGATIVE(NUMBER),shrink?:NON_NEGATIVE(NUMBER),basis?:OR(NON_NEGATIVE(LENGTH_PERCENTAGE),KW(size))))"
 	)]
 	#[case(
 		"flex-flow",
@@ -2856,15 +2897,15 @@ mod tests {
 	)]
 	#[case(
 		"grid",
-		"OR(KW(none),SLASH(SPACE(1,*,OR(LENGTH_PERCENTAGE,GRID_FRACTION,KW(track),IDENT)),SPACE(1,*,OR(LENGTH_PERCENTAGE,GRID_FRACTION,KW(track),IDENT))))"
+		"OR(KW(none),SLASH(SPACE(1,*,OR(NON_NEGATIVE(LENGTH_PERCENTAGE),GRID_FRACTION,KW(track))),SPACE(1,*,OR(NON_NEGATIVE(LENGTH_PERCENTAGE),GRID_FRACTION,KW(track)))))"
 	)]
 	#[case(
 		"border-radius",
-		"OR(SPACE(1,4,LENGTH_PERCENTAGE),SLASH(SPACE(1,4,LENGTH_PERCENTAGE),SPACE(1,4,LENGTH_PERCENTAGE)))"
+		"OR(SPACE(1,4,NON_NEGATIVE(LENGTH_PERCENTAGE)),SLASH(SPACE(1,4,NON_NEGATIVE(LENGTH_PERCENTAGE)),SPACE(1,4,NON_NEGATIVE(LENGTH_PERCENTAGE))))"
 	)]
 	#[case(
 		"transition",
-		"COMMA(1,UNORDERED(min=1,source-order=true,property?:OR(KW(transition-property),IDENT),duration?:TIME,timing-function?:KW(timing),delay?:TIME))"
+		"COMMA(1,UNORDERED(min=1,source-order=true,property?:OR(KW(transition-property),IDENT),duration?:NON_NEGATIVE(TIME),timing-function?:KW(timing),delay?:TIME))"
 	)]
 	fn key_shorthand_has_exact_structural_grammar(#[case] property: &str, #[case] expected: &str) {
 		// Arrange
@@ -3067,7 +3108,9 @@ mod tests {
 	) {
 		match grammar {
 			ValueGrammar::Keyword(domain) => domains.push(domain),
-			ValueGrammar::NonNegative(grammar) => collect_keyword_domains(grammar, domains),
+			ValueGrammar::NonNegative(grammar) | ValueGrammar::NumericRange { grammar, .. } => {
+				collect_keyword_domains(grammar, domains)
+			}
 			ValueGrammar::Or(alternatives) => {
 				for alternative in *alternatives {
 					collect_keyword_domains(alternative, domains);

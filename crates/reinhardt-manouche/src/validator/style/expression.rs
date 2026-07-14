@@ -904,6 +904,16 @@ fn matches_grammar(expression: &TypedValueExpr, grammar: &ValueGrammar) -> bool 
 		ValueGrammar::NonNegative(grammar) => {
 			matches_grammar(expression, grammar) && !is_negative_literal(expression)
 		}
+		ValueGrammar::NumericRange {
+			grammar,
+			minimum,
+			maximum,
+		} => {
+			matches_grammar(expression, grammar)
+				&& numeric_literal_value(expression).is_none_or(|value| {
+					value >= f64::from(*minimum) && value <= f64::from(*maximum)
+				})
+		}
 		ValueGrammar::Keyword(domain) => keyword_matches(expression, domain),
 		ValueGrammar::Identifier => custom_identifier_matches(expression),
 		ValueGrammar::Or(alternatives) => alternatives
@@ -978,7 +988,7 @@ fn custom_identifier_matches(expression: &TypedValueExpr) -> bool {
 			byte.is_ascii_alphabetic()
 				|| byte == b'_'
 				|| (byte == b'-'
-					&& value.bytes().nth(1).is_some_and(|next| {
+					&& value.as_bytes().get(1).copied().is_some_and(|next| {
 						next.is_ascii_alphabetic() || next == b'_' || next == b'-'
 					}))
 		}) && value
@@ -1005,6 +1015,22 @@ fn is_negative_literal(expression: &TypedValueExpr) -> bool {
 		}
 		TypedValueExprKind::Group(operand) => is_negative_literal(operand),
 		_ => false,
+	}
+}
+
+fn numeric_literal_value(expression: &TypedValueExpr) -> Option<f64> {
+	match &expression.kind {
+		TypedValueExprKind::Literal(StyleValueLiteral::Integer(number))
+		| TypedValueExprKind::Literal(StyleValueLiteral::Number(number)) => number.source.parse().ok(),
+		TypedValueExprKind::Unary { operator, operand } => {
+			let value = numeric_literal_value(operand)?;
+			match operator.kind {
+				StyleUnaryOperatorKind::Minus => Some(-value),
+				StyleUnaryOperatorKind::Plus => Some(value),
+			}
+		}
+		TypedValueExprKind::Group(operand) => numeric_literal_value(operand),
+		_ => None,
 	}
 }
 
@@ -1138,6 +1164,7 @@ fn matching_prefix_lengths(items: &[&TypedValueExpr], grammar: &ValueGrammar) ->
 		}
 		ValueGrammar::Primitive(_)
 		| ValueGrammar::NonNegative(_)
+		| ValueGrammar::NumericRange { .. }
 		| ValueGrammar::Keyword(_)
 		| ValueGrammar::Identifier
 		| ValueGrammar::FunctionResult(_)
@@ -2116,5 +2143,33 @@ mod tests {
 
 		// Assert
 		assert_eq!(typed.items.len(), 1);
+	}
+
+	#[rstest]
+	#[case("gap", "-1px")]
+	#[case("row-gap", "-10%")]
+	#[case("width", "-1px")]
+	#[case("flex", "-1px")]
+	#[case("grid-template-columns", "sidebar")]
+	#[case("font-size", "-1rem")]
+	#[case("line-height", "-1.2")]
+	#[case("background-repeat", "(repeat-x, no-repeat)")]
+	#[case("background-size", "min-content")]
+	#[case("font-weight", "0")]
+	#[case("font-weight", "2000")]
+	#[case("transition-duration", "-1s")]
+	fn rejects_invalid_css_value_constraints(#[case] property: &str, #[case] value: &str) {
+		// Arrange
+		let source = format!(".card {{ {property}: {value}; }}");
+
+		// Act
+		let kind = diagnostic_kind_text(&source);
+
+		// Assert
+		assert!(matches!(
+			kind,
+			StyleDiagnosticKind::PropertyValueMismatch { property: actual, .. }
+				if actual == property
+		));
 	}
 }
