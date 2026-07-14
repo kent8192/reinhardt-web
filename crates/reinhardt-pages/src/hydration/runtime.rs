@@ -209,11 +209,16 @@ pub fn hydrate<C: Component>(component: &C, root: &Element) -> Result<(), Hydrat
 	crate::reactive::hooks::id::restore_id_counter(id_counter_offset);
 
 	// 5. Install hydration guards and reactive DOM owners in the same ownership pass.
-	crate::component::reactive_if::with_reactive_node_transaction(|| {
-		let mut root_registry = EventRegistry::new();
-		install_hydrated_reactive_nodes(root, &view, &mut root_registry)?;
-		store_reactive_node(root_registry);
-		Ok::<_, HydrationError>(())
+	let adoption_store = crate::dom::control_binding::new_hydration_adoption_store();
+	crate::dom::control_binding::with_hydration_adoption_store(&adoption_store, || {
+		crate::component::reactive_if::with_reactive_node_transaction(|| {
+			let mut root_registry = EventRegistry::new();
+			install_hydrated_reactive_nodes(root, &view, &mut root_registry)?;
+			crate::dom::control_binding::commit_hydration_adoptions(&adoption_store)
+				.map_err(|error| HydrationError::EventAttachmentFailed(error.to_string()))?;
+			store_reactive_node(root_registry);
+			Ok::<_, HydrationError>(())
+		})
 	})?;
 	web_sys::console::log_1(&"[Hydration] Events attached".into());
 	web_sys::console::log_1(&"[Hydration] Reactive nodes installed".into());
@@ -815,7 +820,12 @@ pub fn attach_events_to_mounted_view(
 	web_sys::console::log_1(&"[CSR] Attaching events to mounted view...".into());
 
 	let mut registry = EventRegistry::new();
-	attach_events_recursive(element, view, &mut registry)?;
+	let adoption_store = crate::dom::control_binding::new_hydration_adoption_store();
+	crate::dom::control_binding::with_hydration_adoption_store(&adoption_store, || {
+		attach_events_recursive(element, view, &mut registry)
+	})?;
+	crate::dom::control_binding::commit_hydration_adoptions(&adoption_store)
+		.map_err(|error| HydrationError::EventAttachmentFailed(error.to_string()))?;
 	store_reactive_node(registry);
 
 	web_sys::console::log_1(&"[CSR] Events attached successfully!".into());
