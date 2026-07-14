@@ -15,6 +15,7 @@ use std::future::Future;
 use std::marker::PhantomData;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::task::{Context, Poll};
 use std::time::Duration;
 #[cfg(not(wasm))]
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -26,6 +27,7 @@ use sha2::{Digest, Sha256};
 use super::Signal;
 use super::hooks::async_action::{Action, use_action};
 use super::resource::ResourceState;
+use reinhardt_core::reactive::{ReactiveScope, ScopeId, scope::enter_scope};
 
 type QueryFuture<T, E> = Pin<Box<dyn Future<Output = Result<T, E>> + 'static>>;
 type QueryFetcher<T, E> = dyn Fn() -> QueryFuture<T, E> + 'static;
@@ -140,6 +142,7 @@ impl<T, E> QueryKey<T, E> {
 }
 
 struct QueryEntry<T: Clone + 'static, E: Clone + 'static> {
+	_scope: Rc<ReactiveScope>,
 	id: String,
 	state: Signal<ResourceState<T, E>>,
 	is_fetching: Signal<bool>,
@@ -149,6 +152,23 @@ struct QueryEntry<T: Clone + 'static, E: Clone + 'static> {
 	last_fetched_ms: Cell<Option<u64>>,
 	stale_time: Cell<Duration>,
 	gc_time: Cell<Duration>,
+}
+
+struct ScopedQueryFuture<Fut> {
+	scope: ScopeId,
+	future: Pin<Box<Fut>>,
+}
+
+impl<Fut> Future for ScopedQueryFuture<Fut>
+where
+	Fut: Future<Output = ()>,
+{
+	type Output = ();
+
+	fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+		let this = self.get_mut();
+		enter_scope(this.scope, || this.future.as_mut().poll(cx)).unwrap_or(Poll::Ready(()))
+	}
 }
 
 fn initial_query_state<T, E>(
@@ -174,11 +194,14 @@ impl<T: Clone + 'static, E: Clone + 'static> QueryEntry<T, E> {
 	{
 		let (initial_state, last_fetched_ms) = initial_query_state(hydrated_query_state(&key.id));
 		let id = key.id;
+		let scope = Rc::new(ReactiveScope::new());
+		let (state, is_fetching) = scope.enter(|| (Signal::new(initial_state), Signal::new(false)));
 
 		Self {
+			_scope: scope,
 			id,
-			state: Signal::new(initial_state),
-			is_fetching: Signal::new(false),
+			state,
+			is_fetching,
 			fetcher: RefCell::new(key.fetcher),
 			in_flight: Cell::new(false),
 			refetch_after_in_flight: Cell::new(false),
@@ -236,33 +259,37 @@ impl<T: Clone + 'static, E: Clone + 'static> QueryEntry<T, E> {
 		}
 
 		let entry = Rc::clone(self);
-		spawn_query_task(async move {
-			loop {
-				let fetcher = entry.fetcher.borrow().clone();
-				let result = fetcher().await;
-				match result {
-					Ok(value) => {
-						entry.last_fetched_ms.set(Some(now_ms()));
-						entry.state.set(ResourceState::Success(value));
+		let scope = entry._scope.id();
+		spawn_query_task(ScopedQueryFuture {
+			scope,
+			future: Box::pin(async move {
+				loop {
+					let fetcher = entry.fetcher.borrow().clone();
+					let result = fetcher().await;
+					match result {
+						Ok(value) => {
+							entry.last_fetched_ms.set(Some(now_ms()));
+							entry.state.set(ResourceState::Success(value));
+						}
+						Err(error) => {
+							entry.last_fetched_ms.set(Some(now_ms()));
+							entry.state.set(ResourceState::Error(error));
+						}
 					}
-					Err(error) => {
-						entry.last_fetched_ms.set(Some(now_ms()));
-						entry.state.set(ResourceState::Error(error));
+					if entry.refetch_after_in_flight.replace(false) {
+						let has_success = entry
+							.state
+							.with_untracked(|state| matches!(state, ResourceState::Success(_)));
+						if !has_success {
+							entry.state.set(ResourceState::Loading);
+						}
+						continue;
 					}
+					entry.is_fetching.set(false);
+					entry.in_flight.set(false);
+					break;
 				}
-				if entry.refetch_after_in_flight.replace(false) {
-					let has_success = entry
-						.state
-						.with_untracked(|state| matches!(state, ResourceState::Success(_)));
-					if !has_success {
-						entry.state.set(ResourceState::Loading);
-					}
-					continue;
-				}
-				entry.is_fetching.set(false);
-				entry.in_flight.set(false);
-				break;
-			}
+			}),
 		});
 	}
 }
@@ -768,6 +795,27 @@ mod tests {
 		assert_eq!(calls.get(), 1);
 		assert_eq!(first.data(), Some("value".to_string()));
 		assert_eq!(second.data(), Some("value".to_string()));
+	}
+
+	#[rstest]
+	#[serial(query_cache)]
+	fn cached_query_survives_the_scope_that_created_it() {
+		// Arrange
+		clear_query_cache_for_test();
+		let key = QueryKey::new("retained-cache-entry", || async {
+			Ok::<_, String>("cached".to_string())
+		});
+		let scope = ReactiveScope::new();
+		let first = scope.enter(|| use_query(key.clone()));
+		assert_eq!(first.data(), Some("cached".to_string()));
+		drop(first);
+		drop(scope);
+
+		// Act
+		let cached = ReactiveScope::run(|| use_query(key));
+
+		// Assert
+		assert_eq!(cached.data(), Some("cached".to_string()));
 	}
 
 	#[rstest]

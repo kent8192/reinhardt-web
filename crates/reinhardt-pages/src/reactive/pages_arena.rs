@@ -115,6 +115,25 @@ pub(crate) fn with_page_node<T: 'static, R>(
 	})
 }
 
+pub(crate) fn dispose_page_node(key: PageNodeKey) {
+	if ensure_owner_thread(key).is_err() {
+		return;
+	}
+	PAGES_ARENAS.with(|arenas| {
+		let mut arenas = arenas.borrow_mut();
+		let Some(slot) = arenas
+			.get_mut(&key.scope)
+			.and_then(|arena| arena.slots.get_mut(key.index))
+		else {
+			return;
+		};
+		if slot.generation == key.generation {
+			slot.value.take();
+			slot.generation = slot.generation.wrapping_add(1);
+		}
+	});
+}
+
 fn ensure_owner_thread(key: PageNodeKey) -> Result<(), String> {
 	let current_thread = std::thread::current().id();
 	if key.owner_thread == current_thread {

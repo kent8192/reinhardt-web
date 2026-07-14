@@ -1367,10 +1367,12 @@ impl ClientRouter {
 		let path_signal = self.current_path;
 		let params_signal = self.current_params;
 		let route_name_signal = self.current_route_name;
+		let navigation_scope = self._navigation_scope.clone();
 		let navigation_observers = self.navigation_observers.clone();
 		let dispatch_count = self.dispatch_count.clone();
 
 		let closure = setup_popstate_listener(move |path, state| {
+			let _ = &navigation_scope;
 			// (Refs #4234, Inv-1, Inv-5) Update Signals first, then notify
 			// observers, so listeners that read `Signal::get` from inside
 			// their closure see the new state. Mirrors

@@ -43,7 +43,9 @@ use std::task::{Context, Poll};
 use crate::component::PageEventHandler;
 use crate::event::EventPayload;
 use crate::platform::spawn_task;
-use crate::reactive::pages_arena::{PageNodeKey, PageNodeKind, allocate_page_node, with_page_node};
+use crate::reactive::pages_arena::{
+	PageNodeKey, PageNodeKind, allocate_page_node, dispose_page_node, with_page_node,
+};
 use reinhardt_core::reactive::ReactiveScope;
 #[cfg(wasm)]
 use reinhardt_core::reactive::current_scope_id;
@@ -341,6 +343,9 @@ where
 			|| !slot.key_any.is::<PageNodeKey>();
 
 		if needs_replace {
+			if let Some(key) = slot.key_any.downcast_ref::<PageNodeKey>() {
+				dispose_page_node(*key);
+			}
 			let callback = Callback::new(f);
 			slot.deps = new_ids;
 			slot.scope = scope;
@@ -408,6 +413,9 @@ where
 			|| !slot.key_any.is::<PageNodeKey>();
 
 		if needs_replace {
+			if let Some(key) = slot.key_any.downcast_ref::<PageNodeKey>() {
+				dispose_page_node(*key);
+			}
 			let callback = Callback::new(f);
 			slot.deps = new_ids;
 			slot.scope = scope;
