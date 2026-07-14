@@ -369,7 +369,7 @@ fn reactive_nonselect_mount_keeps_parent_when_a_child_mount_fails() {
 				.child(Page::Element(
 					PageElement::new("span")
 						.attr("id", "valid-sibling")
-						.child(Page::Text("ready".to_owned())),
+						.child(Page::Text("ready".into())),
 				)),
 		)
 	});
