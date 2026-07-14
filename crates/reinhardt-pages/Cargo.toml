@@ -159,6 +159,7 @@ js-sys = "0.3.83"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_urlencoded = "0.7"
+sha2 = { workspace = true }
 # serde-wasm-bindgen: serialize HistoryState directly to a JS object so
 # `history.state.field` works for external consumers. Replaces the
 # JSON-string-in-JsValue convention that surfaced as the SPA navigation
@@ -330,6 +331,7 @@ hyper-util = { workspace = true }
 http-body-util = { workspace = true }
 bytes = { workspace = true }
 tokio-tungstenite = { workspace = true }
+tokio-test = { workspace = true }
 futures-util = "0.3"
 # Enable `validation` feature for trybuild UI tests that exercise
 # `Validated<Form<T>>` extractors in `tests/ui/server_fn/with_extractors.rs`

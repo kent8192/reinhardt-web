@@ -93,7 +93,10 @@ pub use codec::MessagePackCodec;
 pub use codec::{Codec, JsonCodec, UrlCodec};
 #[cfg(native)]
 pub use injectable::{ServerFnBody, ServerFnRequest};
-pub use metadata::{ServerFnMetadata, ServerFnRequestMetadata, ServerFnResponseMetadata};
+pub use metadata::{
+	ServerFnMetadata, ServerFnQueryArg, ServerFnQueryResult, ServerFnRequestMetadata,
+	ServerFnResponseMetadata,
+};
 #[cfg(feature = "msw")]
 pub use mockable::MockableServerFn;
 #[cfg(native)]
