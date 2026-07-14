@@ -2850,6 +2850,28 @@ fn fixture_projection_serde_attrs(field: &FieldInfo) -> Vec<syn::Attribute> {
 		.collect()
 }
 
+fn fixture_projection_serde_bounds(field: &FieldInfo) -> Vec<syn::Attribute> {
+	field
+		.serde_attrs
+		.iter()
+		.filter_map(|attr| {
+			if !attr.path().is_ident("serde") {
+				return None;
+			}
+			let syn::Meta::List(meta_list) = &attr.meta else {
+				return None;
+			};
+			let bounds = meta_list
+				.parse_args_with(Punctuated::<syn::Meta, Token![,]>::parse_terminated)
+				.ok()?
+				.into_iter()
+				.filter(|meta| meta.path().is_ident("bound"))
+				.collect::<Vec<_>>();
+			(!bounds.is_empty()).then(|| parse_quote!(#[serde(#(#bounds),*)]))
+		})
+		.collect()
+}
+
 fn fixture_projection_serde_deserializer(field: &FieldInfo) -> Option<TokenStream> {
 	field.serde_attrs.iter().find_map(|attr| {
 		if !attr.path().is_ident("serde") {
@@ -2919,6 +2941,7 @@ fn generate_fixture_validation(
 			.and_then(serialize_field_default)
 			.is_some();
 		if has_sql_default {
+			let serde_bounds = fixture_projection_serde_bounds(field);
 			let validator = if let Some(deserializer) = fixture_projection_serde_deserializer(field)
 			{
 				let validator_name = Ident::new(
@@ -2945,6 +2968,7 @@ fn generate_fixture_validation(
 				)
 			};
 			projection_fields.push(quote! {
+				#(#serde_bounds)*
 				#[serde(default, deserialize_with = #validator)]
 				#field_name: ::std::marker::PhantomData<#field_type>
 			});
@@ -6529,5 +6553,26 @@ mod tests {
 		assert!(projected.contains("bound"));
 		assert!(projected.contains("deserialize"));
 		assert!(!projected.contains("skip_serializing_if"));
+	}
+
+	#[test]
+	fn test_defaulted_fixture_projection_preserves_deserialize_bounds() {
+		let input = quote! {
+			#[model(app_label = "fixture_tests", table_name = "fixture_models")]
+			struct FixtureModel {
+				#[field(primary_key = true)]
+				id: i64,
+				#[field(default = "draft")]
+				#[serde(bound(deserialize = "String: serde::Deserialize<'de>"))]
+				title: String,
+			}
+		};
+
+		let output = model_derive_impl(syn::parse2(input).unwrap())
+			.expect("fixture model must generate")
+			.to_string();
+
+		assert!(output.contains("bound"));
+		assert!(output.contains("__reinhardt_validate_defaulted_fixture_field"));
 	}
 }

@@ -964,10 +964,11 @@ fn fixture_default_values_insert_sql(
 		DatabaseBackend::MySql => format!("`{table_name}`"),
 		DatabaseBackend::Postgres | DatabaseBackend::Sqlite => format!("\"{table_name}\""),
 	};
-	(
-		format!("INSERT INTO {quoted_table} DEFAULT VALUES"),
-		Vec::new(),
-	)
+	let values = match backend {
+		DatabaseBackend::MySql => "() VALUES ()",
+		DatabaseBackend::Postgres | DatabaseBackend::Sqlite => "DEFAULT VALUES",
+	};
+	(format!("INSERT INTO {quoted_table} {values}"), Vec::new())
 }
 
 fn fixture_omitted_database_default_columns<M>(object: &Map<String, Value>) -> Vec<String>
@@ -1588,7 +1589,6 @@ where
 	Ok(())
 }
 
-#[cfg(feature = "migrations")]
 fn extract_many_to_many_assignments<M>(
 	object: &mut Map<String, Value>,
 ) -> FixtureResult<Vec<FixtureManyToManyAssignment>>
@@ -1614,31 +1614,12 @@ where
 	Ok(assignments)
 }
 
-#[cfg(feature = "migrations")]
 fn remove_many_to_many_fixture_fields<M>(object: &mut Map<String, Value>) -> FixtureResult<()>
 where
 	M: Model,
 {
 	let _ = extract_many_to_many_assignments::<M>(object)?;
 	Ok(())
-}
-
-#[cfg(not(feature = "migrations"))]
-fn remove_many_to_many_fixture_fields<M>(_object: &mut Map<String, Value>) -> FixtureResult<()>
-where
-	M: Model,
-{
-	Ok(())
-}
-
-#[cfg(not(feature = "migrations"))]
-fn extract_many_to_many_assignments<M>(
-	_object: &mut Map<String, Value>,
-) -> FixtureResult<Vec<FixtureManyToManyAssignment>>
-where
-	M: Model,
-{
-	Ok(Vec::new())
 }
 
 async fn load_many_to_many_assignments<M>(
@@ -2417,7 +2398,13 @@ fn fixture_foreign_key_target(
 			})
 			.unwrap_or_else(|| "id".to_string());
 		let target_key = target_metadata.as_ref().map_or_else(
-			|| canonical_model_key(target_app, target_model),
+			|| {
+				fixture_related_model_handler(target_app, target_model)
+					.ok()
+					.flatten()
+					.map(|handler| handler.label())
+					.unwrap_or_else(|| canonical_model_key(target_app, target_model))
+			},
 			|metadata| canonical_label(&metadata.app_label, &metadata.model_name),
 		);
 		return Some((target_key, referenced_column));
@@ -3074,6 +3061,24 @@ mod tests {
 		assert_eq!(spec.through_table, "fixture_orm_only_m2m_post_tags");
 		assert_eq!(spec.source_field, "fixture_orm_only_m2m_post_id");
 		assert_eq!(spec.target_field, "fixture_orm_only_custom_tags_id");
+	}
+
+	#[cfg(not(feature = "migrations"))]
+	#[test]
+	#[serial_test::serial(fixture_model_registry)]
+	fn orm_only_fixture_many_to_many_assignments_are_extracted() {
+		let _registry_reset = FixtureRegistryReset;
+		global_fixture_registry().clear();
+		global_fixture_registry().register_model::<FixtureOrmOnlyM2mTag>();
+		let mut object = Map::from_iter([("tags".to_string(), Value::Array(vec![Value::from(1)]))]);
+
+		let assignments = extract_many_to_many_assignments::<FixtureOrmOnlyM2mPost>(&mut object)
+			.expect("ORM-only many-to-many fixture fields must be extracted");
+
+		assert_eq!(assignments.len(), 1);
+		assert_eq!(assignments[0].spec.field_name, "tags");
+		assert_eq!(assignments[0].values, vec![Value::from(1)]);
+		assert!(object.is_empty());
 	}
 
 	#[cfg(not(feature = "migrations"))]
@@ -4877,6 +4882,12 @@ mod tests {
 		.expect("an empty fixture projection must be inserted with database defaults");
 
 		assert_eq!(sql, "INSERT INTO \"fixture_text_post\" DEFAULT VALUES");
+		assert!(values.is_empty());
+
+		let (sql, values) =
+			build_fixture_upsert_sql_values::<FixtureTextPost>(DatabaseBackend::MySql, &Map::new())
+				.expect("MySQL must accept default-only fixture inserts");
+		assert_eq!(sql, "INSERT INTO `fixture_text_post` () VALUES ()");
 		assert!(values.is_empty());
 	}
 
