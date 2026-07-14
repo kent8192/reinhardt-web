@@ -1,6 +1,6 @@
 #![cfg(wasm)]
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use reinhardt_pages::component::{
@@ -330,41 +330,90 @@ fn reactive_failed_select_mount_rolls_back_child_reactive_resources() {
 }
 
 #[wasm_bindgen_test]
+fn reactive_invalid_nonselect_binding_is_omitted() {
+	let document = web_sys::window()
+		.expect("window")
+		.document()
+		.expect("document");
+	let root = Element::new(document.create_element("div").expect("root"));
+	let page = Page::reactive(|| {
+		PageElement::new("input")
+			.attr("id", "invalid-nonselect")
+			.control_binding(ControlBinding::select_one(Signal::new(String::new())))
+			.into_page()
+	});
+
+	page.mount(&root).expect("reactive owner mount");
+
+	assert_eq!(
+		root.as_web_sys()
+			.query_selector("#invalid-nonselect")
+			.expect("query"),
+		None
+	);
+	reinhardt_pages::cleanup_reactive_nodes();
+}
+
+#[wasm_bindgen_test]
 fn reactive_nonselect_mount_keeps_parent_when_a_child_mount_fails() {
 	let document = web_sys::window()
 		.expect("window")
 		.document()
 		.expect("document");
 	let root = Element::new(document.create_element("div").expect("root"));
-	let trigger = Signal::new(0_u32);
-	let render_count = Rc::new(std::cell::Cell::new(0));
+	let retained_trigger = Signal::new(0_u32);
+	let retained_render_count = Rc::new(Cell::new(0));
+	let failed_trigger = Signal::new(0_u32);
+	let failed_render_count = Rc::new(Cell::new(0));
 	let listener_owner = Rc::new(RefCell::new(None));
-	let render_trigger = trigger.clone();
-	let render_count_for_child = Rc::clone(&render_count);
+	let retained_trigger_for_child = retained_trigger.clone();
+	let retained_render_count_for_child = Rc::clone(&retained_render_count);
+	let failed_trigger_for_child = failed_trigger.clone();
+	let failed_render_count_for_child = Rc::clone(&failed_render_count);
 	let listener_owner_for_child = Rc::clone(&listener_owner);
 	let page = Page::reactive(move || {
-		let render_trigger = render_trigger.clone();
-		let render_count_for_child = Rc::clone(&render_count_for_child);
+		let retained_trigger = retained_trigger_for_child.clone();
+		let retained_render_count = Rc::clone(&retained_render_count_for_child);
+		let failed_trigger = failed_trigger_for_child.clone();
+		let failed_render_count = Rc::clone(&failed_render_count_for_child);
 		let listener_owner_for_child = Rc::clone(&listener_owner_for_child);
 		Page::Element(
 			PageElement::new("div")
 				.attr("id", "retained-parent")
 				.child(Page::Element(
-					PageElement::new("select")
-						.control_binding(ControlBinding::checkbox(Signal::new(false)))
+					PageElement::new("section")
+						.attr("id", "retained-child")
 						.child(Page::reactive(move || {
-							let _ = render_trigger.get();
-							render_count_for_child.set(render_count_for_child.get() + 1);
-							let owner = Rc::new(());
-							*listener_owner_for_child.borrow_mut() = Some(Rc::downgrade(&owner));
-							page!({
-								input {
-									a11y: off,
-									bind: Signal::new(String::new()),
-									@input: move |_| drop(Rc::clone(&owner)),
-								}
-							})
-						})),
+							let value = retained_trigger.get();
+							retained_render_count.set(retained_render_count.get() + 1);
+							PageElement::new("span")
+								.attr("id", "retained-reactive")
+								.child(value.to_string())
+								.into_page()
+						}))
+						.child(Page::Element(
+							PageElement::new("select")
+								.control_binding(ControlBinding::checkbox(Signal::new(false)))
+								.child(Page::reactive(move || {
+									let _ = failed_trigger.get();
+									failed_render_count.set(failed_render_count.get() + 1);
+									let owner = Rc::new(());
+									*listener_owner_for_child.borrow_mut() =
+										Some(Rc::downgrade(&owner));
+									page!({
+										input {
+											a11y: off,
+											bind: Signal::new(String::new()),
+											@input: move |_| drop(Rc::clone(&owner)),
+										}
+									})
+								})),
+						))
+						.child(
+							PageElement::new("span")
+								.attr("id", "nested-valid-sibling")
+								.child("nested ready"),
+						),
 				))
 				.child(Page::Element(
 					PageElement::new("span")
@@ -382,10 +431,32 @@ fn reactive_nonselect_mount_keeps_parent_when_a_child_mount_fails() {
 		.expect("query")
 		.expect("non-select parent should remain mounted");
 	assert_eq!(
-		parent.inner_html(),
-		r#"<span id="valid-sibling">ready</span>"#
+		parent
+			.query_selector("#retained-child")
+			.expect("retained child query")
+			.is_some(),
+		true
 	);
-	assert_eq!(render_count.get(), 1);
+	assert_eq!(
+		parent
+			.query_selector("#nested-valid-sibling")
+			.expect("nested sibling query")
+			.expect("nested sibling")
+			.text_content(),
+		Some("nested ready".to_owned())
+	);
+	assert_eq!(
+		parent
+			.query_selector("#valid-sibling")
+			.expect("sibling query")
+			.expect("sibling")
+			.text_content(),
+		Some("ready".to_owned())
+	);
+	assert_eq!(
+		(retained_render_count.get(), failed_render_count.get()),
+		(1, 1)
+	);
 	assert!(
 		listener_owner
 			.borrow()
@@ -394,8 +465,18 @@ fn reactive_nonselect_mount_keeps_parent_when_a_child_mount_fails() {
 			.upgrade()
 			.is_none()
 	);
-	trigger.set(1);
-	assert_eq!(render_count.get(), 1);
+	retained_trigger.set(1);
+	failed_trigger.set(1);
+	assert_eq!(retained_render_count.get(), 2);
+	assert_eq!(failed_render_count.get(), 1);
+	assert_eq!(
+		parent
+			.query_selector("#retained-reactive")
+			.expect("reactive query")
+			.expect("retained reactive")
+			.text_content(),
+		Some("1".to_owned())
+	);
 	reinhardt_pages::cleanup_reactive_nodes();
 }
 
@@ -500,6 +581,93 @@ fn reactive_remount_drops_the_replaced_control_owner() {
 struct HydratedInput {
 	value: Signal<String>,
 	observed: Rc<RefCell<String>>,
+}
+
+struct FailingHydrationRoot {
+	trigger: Signal<u32>,
+	render_count: Rc<Cell<u32>>,
+	listener_count: Rc<Cell<u32>>,
+}
+
+impl Component for FailingHydrationRoot {
+	fn name() -> &'static str {
+		"FailingHydrationRoot"
+	}
+
+	fn render(&self) -> Page {
+		let trigger = self.trigger.clone();
+		let render_count = Rc::clone(&self.render_count);
+		let listener_count = Rc::clone(&self.listener_count);
+		PageElement::new("div")
+			.child(Page::reactive(move || {
+				let _ = trigger.get();
+				render_count.set(render_count.get() + 1);
+				let listener_count = Rc::clone(&listener_count);
+				page!({
+					button {
+						id: "reactive-sibling",
+						@input: move |_| listener_count.set(listener_count.get() + 1),
+						"ready"
+					}
+				})
+			}))
+			.child(Page::Element(
+				PageElement::new("select")
+					.control_binding(ControlBinding::checkbox(Signal::new(false))),
+			))
+			.into_page()
+	}
+}
+
+#[wasm_bindgen_test]
+fn failed_root_hydration_rolls_back_earlier_reactive_siblings() {
+	let document = web_sys::window()
+		.expect("window")
+		.document()
+		.expect("document");
+	let raw_root = document.create_element("div").expect("root");
+	let raw_button = document.create_element("button").expect("button");
+	raw_button.set_id("reactive-sibling");
+	raw_button.set_text_content(Some("ready"));
+	raw_root
+		.append_child(&raw_button)
+		.expect("reactive sibling");
+	let raw_select = document.create_element("select").expect("select");
+	raw_root.append_child(&raw_select).expect("invalid sibling");
+	let root = Element::new(raw_root.clone());
+	let trigger = Signal::new(0_u32);
+	let render_count = Rc::new(Cell::new(0));
+	let listener_count = Rc::new(Cell::new(0));
+	let _state = SsrStateElement::install(&document);
+
+	let error = reinhardt_pages::hydration::hydrate(
+		&FailingHydrationRoot {
+			trigger: trigger.clone(),
+			render_count: Rc::clone(&render_count),
+			listener_count: Rc::clone(&listener_count),
+		},
+		&root,
+	)
+	.expect_err("later invalid binding");
+	let renders_after_failure = render_count.get();
+	raw_button
+		.dispatch_event(&web_sys::InputEvent::new("input").expect("event"))
+		.expect("dispatch");
+	trigger.set(1);
+	with_runtime(|runtime| runtime.flush_updates());
+	let marker_count = (0..raw_root.child_nodes().length())
+		.filter_map(|index| raw_root.child_nodes().item(index))
+		.filter(|node| node.node_type() == web_sys::Node::COMMENT_NODE)
+		.count();
+
+	assert_eq!(
+		error.to_string(),
+		"Event attachment failed: checkbox control does not support a <select> element"
+	);
+	assert_eq!(
+		(render_count.get(), listener_count.get(), marker_count),
+		(renders_after_failure, 0, 0)
+	);
 }
 
 impl Component for HydratedInput {

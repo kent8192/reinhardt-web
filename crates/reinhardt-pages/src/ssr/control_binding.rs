@@ -1,5 +1,8 @@
 //! Server-side projection of controlled form-element state.
 
+use std::cell::Cell;
+use std::rc::Rc;
+
 use crate::component::{ControlBinding, ControlKind, ControlValue, Page, PageElement};
 
 pub(crate) struct SsrControlProjection {
@@ -41,7 +44,66 @@ pub(crate) fn project(binding: Option<&ControlBinding>) -> SsrControlProjection 
 	projection
 }
 
-pub(crate) fn option_selected(element: &PageElement, selected_values: &[String]) -> bool {
+#[derive(Clone)]
+pub(crate) struct SsrSelectionState {
+	selected_values: Rc<[String]>,
+	selects_many: bool,
+	first_match_claimed: Rc<Cell<bool>>,
+}
+
+impl SsrSelectionState {
+	pub(crate) fn new(binding: &ControlBinding, selected_values: Vec<String>) -> Self {
+		Self {
+			selected_values: Rc::from(selected_values),
+			selects_many: binding.kind() == ControlKind::SelectMany,
+			first_match_claimed: Rc::new(Cell::new(false)),
+		}
+	}
+
+	pub(crate) fn fork(&self) -> Self {
+		Self {
+			selected_values: Rc::clone(&self.selected_values),
+			selects_many: self.selects_many,
+			first_match_claimed: Rc::new(Cell::new(self.first_match_claimed.get())),
+		}
+	}
+
+	pub(crate) fn selects_one(&self) -> bool {
+		!self.selects_many
+	}
+
+	pub(crate) fn commit_from(&self, rendered: &Self) {
+		if !self.selects_many {
+			self.first_match_claimed
+				.set(rendered.first_match_claimed.get());
+		}
+	}
+
+	pub(crate) fn reserve_pending_match(&self) {
+		if !self.selects_many {
+			self.first_match_claimed.set(true);
+		}
+	}
+
+	pub(crate) fn fork_after_pending_match(&self) -> Self {
+		let fork = self.fork();
+		fork.reserve_pending_match();
+		fork
+	}
+
+	pub(crate) fn option_selected(&self, element: &PageElement) -> bool {
+		let matches = option_matches(element, &self.selected_values);
+		if self.selects_many {
+			return matches;
+		}
+		if !matches || self.first_match_claimed.replace(true) {
+			return false;
+		}
+		true
+	}
+}
+
+fn option_matches(element: &PageElement, selected_values: &[String]) -> bool {
 	let effective_value = option_value(element);
 	selected_values
 		.iter()

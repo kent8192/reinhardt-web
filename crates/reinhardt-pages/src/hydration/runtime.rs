@@ -209,9 +209,12 @@ pub fn hydrate<C: Component>(component: &C, root: &Element) -> Result<(), Hydrat
 	crate::reactive::hooks::id::restore_id_counter(id_counter_offset);
 
 	// 5. Install hydration guards and reactive DOM owners in the same ownership pass.
-	let mut root_registry = EventRegistry::new();
-	install_hydrated_reactive_nodes(root, &view, &mut root_registry)?;
-	store_reactive_node(root_registry);
+	crate::component::reactive_if::with_reactive_node_transaction(|| {
+		let mut root_registry = EventRegistry::new();
+		install_hydrated_reactive_nodes(root, &view, &mut root_registry)?;
+		store_reactive_node(root_registry);
+		Ok::<_, HydrationError>(())
+	})?;
 	web_sys::console::log_1(&"[Hydration] Events attached".into());
 	web_sys::console::log_1(&"[Hydration] Reactive nodes installed".into());
 

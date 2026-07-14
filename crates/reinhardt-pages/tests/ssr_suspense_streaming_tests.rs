@@ -100,6 +100,59 @@ fn controlled_select_suspense_option_view() -> Page {
 		.into_page()
 }
 
+fn controlled_single_select_suspense_duplicate_view(
+	before_matches: bool,
+	inside_matches: bool,
+) -> Page {
+	let selected = Signal::new("duplicate".to_owned());
+	let before_value = if before_matches { "duplicate" } else { "other" };
+	let resolved_value = if inside_matches { "duplicate" } else { "other" };
+
+	PageElement::new("select")
+		.control_binding(ControlBinding::select_one(selected))
+		.child(
+			PageElement::new("option")
+				.attr("value", before_value)
+				.child("Before"),
+		)
+		.child(Page::reactive(move || {
+			let resource = use_resource(
+				move || async move {
+					tokio::time::sleep(Duration::from_millis(5)).await;
+					Ok::<_, String>(resolved_value.to_owned())
+				},
+				(),
+			);
+			let content_resource = resource.clone();
+
+			SuspenseBoundary::new()
+				.fallback(|| {
+					PageElement::new("option")
+						.attr("value", "loading")
+						.child("Loading")
+						.into_page()
+				})
+				.track(resource)
+				.content(move || {
+					resource_to_page(content_resource.get(), "option", "Loading", |value| {
+						PageElement::new("option")
+							.attr("value", value)
+							.child("Inside Suspense")
+							.into_page()
+					})
+				})
+				.into_page()
+		}))
+		.child(
+			PageElement::new("optgroup").child(
+				PageElement::new("option")
+					.attr("value", "duplicate")
+					.child("After"),
+			),
+		)
+		.into_page()
+}
+
 fn pending_nested_boundary(label: &'static str) -> Page {
 	Page::Suspense(SuspenseNode::new(
 		None,
@@ -693,6 +746,46 @@ async fn streaming_controlled_select_replacement_preserves_selected_values() {
 		replacement_content,
 		"<option value=\"rust\" selected=\"selected\">Rust</option>"
 	);
+}
+
+#[rstest]
+#[case(true, true, "Before")]
+#[case(false, true, "Inside Suspense")]
+#[case(false, false, "After")]
+#[tokio::test]
+async fn streaming_controlled_single_select_preserves_first_duplicate_in_tree_order(
+	#[case] before_matches: bool,
+	#[case] inside_matches: bool,
+	#[case] selected_label: &str,
+) {
+	// Arrange
+	let view = controlled_single_select_suspense_duplicate_view(before_matches, inside_matches);
+	let mut buffered_renderer = SsrRenderer::new();
+	let mut streaming_renderer = SsrRenderer::new();
+
+	// Act
+	let buffered = buffered_renderer
+		.render_page_with_view_head_to_string(view.clone())
+		.await;
+	let streaming = streaming_renderer
+		.render_page_with_view_head(view)
+		.await
+		.collect_string()
+		.await;
+
+	// Assert
+	assert_eq!(
+		buffered.matches("selected=\"selected\"").count(),
+		1,
+		"{buffered}"
+	);
+	assert!(buffered.contains(&format!("selected=\"selected\">{selected_label}</option>")));
+	assert_eq!(
+		streaming.matches("selected=\"selected\"").count(),
+		1,
+		"{streaming}"
+	);
+	assert!(streaming.contains(&format!("selected=\"selected\">{selected_label}</option>")));
 }
 
 #[tokio::test]

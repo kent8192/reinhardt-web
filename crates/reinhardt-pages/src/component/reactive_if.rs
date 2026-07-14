@@ -788,79 +788,41 @@ fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::No
 
 	match view {
 		Page::Element(el) => {
-			// Decompose the element to avoid ownership issues
-			let (tag, attrs, children, _is_void, event_handlers, control_binding) = el.into_parts();
+			let mount_element = || {
+				// Decompose the element to avoid ownership issues
+				let (tag, attrs, children, _is_void, event_handlers, control_binding) =
+					el.into_parts();
+				let element = document
+					.create_element(&tag)
+					.expect("should create element");
 
-			let element = document
-				.create_element(&tag)
-				.expect("should create element");
-
-			// Set attributes
-			for (name, value) in attrs {
-				// Skip falsy boolean attributes
-				let name_str: &str = name.as_ref();
-				if BOOLEAN_ATTRS.contains(&name_str) && !is_boolean_attr_truthy(&value) {
-					continue;
+				// Set attributes
+				for (name, value) in attrs {
+					// Skip falsy boolean attributes
+					let name_str: &str = name.as_ref();
+					if BOOLEAN_ATTRS.contains(&name_str) && !is_boolean_attr_truthy(&value) {
+						continue;
+					}
+					let _ = element.set_attribute(&name, &value);
 				}
-				let _ = element.set_attribute(&name, &value);
-			}
 
-			let element_wrapper = crate::dom::Element::new(element.clone());
-			let mount_children_before_binding = tag == "select";
-			let (binding_controller, event_handles) = if mount_children_before_binding {
-				let mount_select = || {
-					let mut children = children.into_iter();
+				let element_wrapper = crate::dom::Element::new(element.clone());
+				let mount_children_before_binding = tag == "select";
+				let mut children = children.into_iter();
+				if mount_children_before_binding {
 					for child in children.by_ref() {
 						child.mount(&element_wrapper)?;
 					}
+				}
 
-					let binding_controller = control_binding
-						.map(|binding| {
-							crate::dom::control_binding::ControlBindingController::mount(
-								element_wrapper.clone(),
-								binding,
-							)
-						})
-						.transpose()?;
-
-					let mut event_handles = Vec::new();
-					for (event_type, handler) in event_handlers {
-						let handler_clone = handler.clone();
-						#[cfg(feature = "i18n")]
-						let i18n_context = crate::i18n::current_i18n_callback_context();
-						event_handles.push(element_wrapper.add_event_listener_with_event(
-							event_type.as_str(),
-							move |event| {
-								#[cfg(feature = "i18n")]
-								{
-									crate::i18n::with_optional_i18n_context(
-										i18n_context.as_ref(),
-										|| handler_clone(event),
-									);
-								}
-								#[cfg(not(feature = "i18n"))]
-								handler_clone(event);
-							},
-						));
-					}
-
-					for child in children {
-						child.mount(&element_wrapper)?;
-					}
-					Ok::<_, MountError>((binding_controller, event_handles))
-				};
-				let Ok(mounted) = with_reactive_node_transaction(mount_select) else {
-					return nodes;
-				};
-				mounted
-			} else {
-				let binding_controller = control_binding.and_then(|binding| {
-					crate::dom::control_binding::ControlBindingController::mount(
-						element_wrapper.clone(),
-						binding,
-					)
-					.ok()
-				});
+				let binding_controller = control_binding
+					.map(|binding| {
+						crate::dom::control_binding::ControlBindingController::mount(
+							element_wrapper.clone(),
+							binding,
+						)
+					})
+					.transpose()?;
 				let mut event_handles = Vec::new();
 				for (event_type, handler) in event_handlers {
 					let handler_clone = handler.clone();
@@ -881,16 +843,28 @@ fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::No
 						},
 					));
 				}
-				for child in children {
-					let _ = child.mount(&element_wrapper);
-				}
-				(binding_controller, event_handles)
-			};
 
-			// Insert before marker
-			let _ = parent.insert_before(&element, Some(marker));
-			nodes.push(element.unchecked_into());
-			store_reactive_node((binding_controller, event_handles));
+				if !mount_children_before_binding {
+					let child_marker = document.create_comment("reactive-element-children");
+					element
+						.append_child(&child_marker)
+						.map_err(|_| MountError::AppendChildFailed)?;
+					for child in children {
+						mount_before_marker(&child_marker, child);
+					}
+					let _ = element.remove_child(&child_marker);
+				}
+
+				parent
+					.insert_before(&element, Some(marker))
+					.map_err(|_| MountError::AppendChildFailed)?;
+				store_reactive_node((binding_controller, event_handles));
+				Ok::<_, MountError>(element.unchecked_into::<web_sys::Node>())
+			};
+			let Ok(element) = with_reactive_node_transaction(mount_element) else {
+				return nodes;
+			};
+			nodes.push(element);
 		}
 		Page::Text(text) => {
 			let text_node = document.create_text_node(&text);

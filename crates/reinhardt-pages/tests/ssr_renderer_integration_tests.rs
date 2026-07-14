@@ -687,6 +687,86 @@ async fn controlled_bindings_render_html_initial_state() {
 
 #[rstest]
 #[tokio::test]
+async fn controlled_single_select_marks_only_the_first_duplicate_in_tree_order() {
+	// Arrange
+	let selected = Signal::new("duplicate".to_owned());
+	let component = PageElement::new("select")
+		.control_binding(ControlBinding::select_one(selected))
+		.child(
+			PageElement::new("option")
+				.attr("value", "duplicate")
+				.child("Before"),
+		)
+		.child(
+			PageElement::new("optgroup")
+				.child(
+					PageElement::new("option")
+						.attr("value", "duplicate")
+						.child("Inside"),
+				)
+				.child(
+					PageElement::new("option")
+						.attr("value", "duplicate")
+						.child("Inside after"),
+				),
+		)
+		.child(
+			PageElement::new("option")
+				.attr("value", "duplicate")
+				.child("After"),
+		)
+		.into_page();
+	let mut buffered_renderer = SsrRenderer::new();
+	let mut streaming_renderer = SsrRenderer::new();
+
+	// Act
+	let buffered = buffered_renderer
+		.render_page_into_page_to_string(component.clone())
+		.await;
+	let streaming = streaming_renderer
+		.render_page_into_page(component)
+		.await
+		.collect_string()
+		.await;
+
+	// Assert
+	assert_eq!(streaming, buffered);
+	assert_eq!(buffered.matches("selected=\"selected\"").count(), 1);
+	assert!(buffered.contains("<option value=\"duplicate\" selected=\"selected\">Before</option>"));
+}
+
+#[rstest]
+#[tokio::test]
+async fn controlled_multiple_select_marks_every_duplicate() {
+	// Arrange
+	let selected = Signal::new(vec!["duplicate".to_owned()]);
+	let component = PageElement::new("select")
+		.bool_attr("multiple", true)
+		.control_binding(ControlBinding::select_many(selected))
+		.child(
+			PageElement::new("option")
+				.attr("value", "duplicate")
+				.child("First"),
+		)
+		.child(
+			PageElement::new("optgroup").child(
+				PageElement::new("option")
+					.attr("value", "duplicate")
+					.child("Second"),
+			),
+		)
+		.into_page();
+	let mut renderer = SsrRenderer::new();
+
+	// Act
+	let html = renderer.render_page_into_page_to_string(component).await;
+
+	// Assert
+	assert_eq!(html.matches("selected=\"selected\"").count(), 2);
+}
+
+#[rstest]
+#[tokio::test]
 async fn controlled_select_uses_flattened_option_text_when_value_is_omitted() {
 	// Arrange
 	let selected = Signal::new(vec![
