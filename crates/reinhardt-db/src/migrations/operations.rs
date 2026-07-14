@@ -4413,6 +4413,8 @@ pub struct SqliteRecreatedIndex {
 pub struct SqliteRecreatedConstraint {
 	/// Declared constraint name, when the original clause was named.
 	pub name: Option<String>,
+	/// SQLite autoindex name assigned to an unnamed table constraint.
+	pub physical_name: Option<String>,
 	/// Columns referenced by the constraint in declaration order.
 	pub columns: Vec<String>,
 	/// Original table-level constraint clause.
@@ -4692,10 +4694,15 @@ impl SqliteTableRecreation {
 	/// Removes a preserved raw constraint by its declared name.
 	pub fn without_raw_constraint_named(mut self, constraint_name: &str) -> Self {
 		self.raw_constraints.retain(|constraint| {
-			constraint
+			let logical_name_differs = constraint
 				.name
 				.as_deref()
-				.is_none_or(|name| !name.eq_ignore_ascii_case(constraint_name))
+				.is_none_or(|name| !name.eq_ignore_ascii_case(constraint_name));
+			let physical_name_differs = constraint
+				.physical_name
+				.as_deref()
+				.is_none_or(|name| !name.eq_ignore_ascii_case(constraint_name));
+			logical_name_differs && physical_name_differs
 		});
 		self
 	}
@@ -10061,11 +10068,13 @@ mod tests {
 		.with_raw_constraints(vec![
 			SqliteRecreatedConstraint {
 				name: Some("uq_articles_title".to_string()),
+				physical_name: None,
 				columns: vec!["title".to_string()],
 				sql: "CONSTRAINT uq_articles_title UNIQUE (title)".to_string(),
 			},
 			SqliteRecreatedConstraint {
 				name: Some("uq_articles_slug".to_string()),
+				physical_name: None,
 				columns: vec!["slug".to_string()],
 				sql: "CONSTRAINT uq_articles_slug UNIQUE (slug)".to_string(),
 			},
@@ -10088,11 +10097,13 @@ mod tests {
 		.with_raw_constraints(vec![
 			SqliteRecreatedConstraint {
 				name: Some("uq_jobs_nocase".to_string()),
+				physical_name: None,
 				columns: vec!["code".to_string()],
 				sql: "CONSTRAINT uq_jobs_nocase UNIQUE (code COLLATE NOCASE)".to_string(),
 			},
 			SqliteRecreatedConstraint {
 				name: Some("uq_jobs_binary".to_string()),
+				physical_name: None,
 				columns: vec!["code".to_string()],
 				sql: "CONSTRAINT uq_jobs_binary UNIQUE (code COLLATE BINARY)".to_string(),
 			},
@@ -10102,6 +10113,26 @@ mod tests {
 		let create_sql = &recreation.to_sql_statements()[0];
 		assert!(!create_sql.contains("uq_jobs_nocase"), "{create_sql}");
 		assert!(create_sql.contains("uq_jobs_binary"), "{create_sql}");
+	}
+
+	#[test]
+	fn test_sqlite_recreation_filters_unnamed_raw_constraint_by_physical_name() {
+		let recreation = SqliteTableRecreation::for_drop_constraint(
+			"jobs",
+			vec![ColumnDefinition::new("code", FieldType::Text)],
+			vec![],
+			"sqlite_autoindex_jobs_1",
+		)
+		.with_raw_constraints(vec![SqliteRecreatedConstraint {
+			name: None,
+			physical_name: Some("sqlite_autoindex_jobs_1".to_string()),
+			columns: vec!["code".to_string()],
+			sql: "UNIQUE (code)".to_string(),
+		}])
+		.without_raw_constraint_named("sqlite_autoindex_jobs_1");
+
+		let create_sql = &recreation.to_sql_statements()[0];
+		assert!(!create_sql.contains("UNIQUE (code)"), "{create_sql}");
 	}
 
 	#[test]

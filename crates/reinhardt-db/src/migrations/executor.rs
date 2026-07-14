@@ -1020,17 +1020,17 @@ impl DatabaseMigrationExecutor {
 			.as_deref()
 			.map(parse_sqlite_unique_constraint_metadata)
 			.unwrap_or_default();
-		let raw_constraints = unique_constraint_metadata
+		let raw_constraint_metadata = unique_constraint_metadata
 			.iter()
-			.filter_map(|metadata| {
-				metadata
-					.raw_sql
-					.as_ref()
-					.map(|sql| super::operations::SqliteRecreatedConstraint {
-						name: metadata.name.clone(),
-						columns: metadata.columns.clone(),
-						sql: sql.clone(),
-					})
+			.filter(|metadata| metadata.raw_sql.is_some())
+			.collect::<Vec<_>>();
+		let mut raw_constraints = raw_constraint_metadata
+			.iter()
+			.map(|metadata| super::operations::SqliteRecreatedConstraint {
+				name: metadata.name.clone(),
+				physical_name: None,
+				columns: metadata.columns.clone(),
+				sql: metadata.raw_sql.clone().unwrap_or_default(),
 			})
 			.collect::<Vec<_>>();
 		let mut restored_unique_constraint_names = std::collections::HashSet::new();
@@ -1060,6 +1060,43 @@ impl DatabaseMigrationExecutor {
 				.filter_map(|r| r.get::<String>("name").ok())
 				.collect();
 			if origin == "u" && unique == 1 {
+				// nosemgrep: rust.actix.sql.sqlx-taint.sqlx-taint
+				let xinfo_sql = format!(
+					"PRAGMA index_xinfo({})",
+					super::sqlite_pragma::quote_pragma_identifier(&idx_name)
+				);
+				let indexed_columns = editor
+					.fetch_all(&xinfo_sql, vec![])
+					.await?
+					.into_iter()
+					.filter(|row| row.get::<i64>("key").unwrap_or(1) == 1)
+					.filter_map(|row| {
+						Some(SqliteIndexedColumnMetadata {
+							name: row.get::<String>("name").ok()?,
+							collation: row.get::<String>("coll").ok(),
+							descending: Some(row.get::<i64>("desc").unwrap_or(0) != 0),
+						})
+					})
+					.collect::<Vec<_>>();
+				let scored_raw_constraints = raw_constraint_metadata
+					.iter()
+					.enumerate()
+					.filter(|(index, _)| raw_constraints[*index].physical_name.is_none())
+					.filter_map(|(index, metadata)| {
+						sqlite_unique_index_match_score(&metadata.indexed_columns, &indexed_columns)
+							.map(|score| (index, score))
+					})
+					.collect::<Vec<_>>();
+				if let Some(max_score) =
+					scored_raw_constraints.iter().map(|(_, score)| *score).max()
+				{
+					for (index, _) in scored_raw_constraints
+						.into_iter()
+						.filter(|(_, score)| *score == max_score)
+					{
+						raw_constraints[index].physical_name = Some(idx_name.clone());
+					}
+				}
 				let matches_columns = |metadata: &SqliteUniqueConstraintMetadata| {
 					metadata.columns.len() == cols.len()
 						&& metadata
@@ -2004,7 +2041,16 @@ struct SqliteFkMetadata {
 struct SqliteUniqueConstraintMetadata {
 	name: Option<String>,
 	columns: Vec<String>,
+	indexed_columns: Vec<SqliteIndexedColumnMetadata>,
 	raw_sql: Option<String>,
+}
+
+#[cfg(feature = "sqlite")]
+#[derive(Debug, PartialEq, Eq)]
+struct SqliteIndexedColumnMetadata {
+	name: String,
+	collation: Option<String>,
+	descending: Option<bool>,
 }
 
 #[cfg(feature = "sqlite")]
@@ -2129,11 +2175,15 @@ fn parse_sqlite_unique_constraint_metadata(
 			else {
 				continue;
 			};
-			let columns = sqlite_indexed_columns(&tokens, open_index);
-			if !columns.is_empty() {
+			let indexed_columns = sqlite_indexed_column_metadata(&tokens, open_index);
+			if !indexed_columns.is_empty() {
 				metadata.push(SqliteUniqueConstraintMetadata {
 					name,
-					columns,
+					columns: indexed_columns
+						.iter()
+						.map(|column| column.name.clone())
+						.collect(),
+					indexed_columns,
 					raw_sql: Some(definition.to_string()),
 				});
 			}
@@ -2153,11 +2203,49 @@ fn parse_sqlite_unique_constraint_metadata(
 		};
 		metadata.push(SqliteUniqueConstraintMetadata {
 			name: Some(name),
-			columns: vec![column],
+			columns: vec![column.clone()],
+			indexed_columns: vec![SqliteIndexedColumnMetadata {
+				name: column,
+				collation: None,
+				descending: None,
+			}],
 			raw_sql: None,
 		});
 	}
 	metadata
+}
+
+#[cfg(feature = "sqlite")]
+fn sqlite_unique_index_match_score(
+	declared: &[SqliteIndexedColumnMetadata],
+	actual: &[SqliteIndexedColumnMetadata],
+) -> Option<usize> {
+	if declared.len() != actual.len() {
+		return None;
+	}
+	let mut score = 0;
+	for (declared, actual) in declared.iter().zip(actual) {
+		if !declared.name.eq_ignore_ascii_case(&actual.name) {
+			return None;
+		}
+		if let Some(collation) = &declared.collation {
+			if !actual
+				.collation
+				.as_deref()
+				.is_some_and(|actual| collation.eq_ignore_ascii_case(actual))
+			{
+				return None;
+			}
+			score += 1;
+		}
+		if let Some(descending) = declared.descending {
+			if actual.descending != Some(descending) {
+				return None;
+			}
+			score += 1;
+		}
+	}
+	Some(score)
 }
 
 #[cfg(feature = "sqlite")]
@@ -2265,20 +2353,52 @@ fn sqlite_identifier_list(tokens: &[SqliteDdlToken], open_index: usize) -> Vec<S
 }
 
 #[cfg(feature = "sqlite")]
-fn sqlite_indexed_columns(tokens: &[SqliteDdlToken], open_index: usize) -> Vec<String> {
+fn sqlite_indexed_column_metadata(
+	tokens: &[SqliteDdlToken],
+	open_index: usize,
+) -> Vec<SqliteIndexedColumnMetadata> {
+	fn parse_column(tokens: &[&SqliteDdlToken]) -> Option<SqliteIndexedColumnMetadata> {
+		let name = tokens
+			.first()
+			.and_then(|token| sqlite_token_identifier(token))?;
+		let collation = tokens.windows(2).find_map(|pair| {
+			sqlite_token_is_word(pair[0], "COLLATE")
+				.then(|| sqlite_token_identifier(pair[1]))
+				.flatten()
+		});
+		let descending = tokens.iter().find_map(|token| {
+			if sqlite_token_is_word(token, "DESC") {
+				Some(true)
+			} else if sqlite_token_is_word(token, "ASC") {
+				Some(false)
+			} else {
+				None
+			}
+		});
+		Some(SqliteIndexedColumnMetadata {
+			name,
+			collation,
+			descending,
+		})
+	}
+
 	let mut columns = Vec::new();
-	let mut expect_column = true;
+	let mut current = Vec::new();
 	for token in tokens.iter().skip(open_index + 1) {
 		match token {
-			SqliteDdlToken::CloseParen => break,
-			SqliteDdlToken::Comma => expect_column = true,
-			_ if expect_column => {
-				if let Some(column) = sqlite_token_identifier(token) {
+			SqliteDdlToken::CloseParen => {
+				if let Some(column) = parse_column(&current) {
 					columns.push(column);
-					expect_column = false;
 				}
+				break;
 			}
-			_ => {}
+			SqliteDdlToken::Comma => {
+				if let Some(column) = parse_column(&current) {
+					columns.push(column);
+				}
+				current.clear();
+			}
+			_ => current.push(token),
 		}
 	}
 	columns
@@ -2532,6 +2652,18 @@ mod sqlite_generated_column_tests {
 			vec![SqliteUniqueConstraintMetadata {
 				name: Some("unique jobs code".to_string()),
 				columns: vec!["tenant id".to_string(), "code,value".to_string()],
+				indexed_columns: vec![
+					SqliteIndexedColumnMetadata {
+						name: "tenant id".to_string(),
+						collation: None,
+						descending: None,
+					},
+					SqliteIndexedColumnMetadata {
+						name: "code,value".to_string(),
+						collation: None,
+						descending: None,
+					},
+				],
 				raw_sql: Some(
 					"CONSTRAINT \"unique jobs code\" UNIQUE (\"tenant id\", \"code,value\")"
 						.to_string(),
@@ -2555,6 +2687,11 @@ mod sqlite_generated_column_tests {
 			vec![SqliteUniqueConstraintMetadata {
 				name: Some("unique jobs code".to_string()),
 				columns: vec!["code".to_string()],
+				indexed_columns: vec![SqliteIndexedColumnMetadata {
+					name: "code".to_string(),
+					collation: None,
+					descending: None,
+				}],
 				raw_sql: None,
 			}]
 		);
@@ -2580,11 +2717,35 @@ mod sqlite_generated_column_tests {
 				SqliteUniqueConstraintMetadata {
 					name: Some("uq_jobs_primary".to_string()),
 					columns: vec!["tenant".to_string(), "code".to_string()],
+					indexed_columns: vec![
+						SqliteIndexedColumnMetadata {
+							name: "tenant".to_string(),
+							collation: None,
+							descending: None,
+						},
+						SqliteIndexedColumnMetadata {
+							name: "code".to_string(),
+							collation: None,
+							descending: None,
+						},
+					],
 					raw_sql: Some("CONSTRAINT uq_jobs_primary UNIQUE (tenant, code)".to_string(),),
 				},
 				SqliteUniqueConstraintMetadata {
 					name: Some("uq_jobs_secondary".to_string()),
 					columns: vec!["tenant".to_string(), "code".to_string()],
+					indexed_columns: vec![
+						SqliteIndexedColumnMetadata {
+							name: "tenant".to_string(),
+							collation: None,
+							descending: None,
+						},
+						SqliteIndexedColumnMetadata {
+							name: "code".to_string(),
+							collation: None,
+							descending: None,
+						},
+					],
 					raw_sql: Some("CONSTRAINT uq_jobs_secondary UNIQUE (tenant, code)".to_string(),),
 				},
 			]
@@ -2612,6 +2773,21 @@ mod sqlite_generated_column_tests {
 		assert_eq!(
 			metadata[1].raw_sql.as_deref(),
 			Some(r#"CONSTRAINT "uq_jobs_binary" UNIQUE ("code" COLLATE BINARY)"#)
+		);
+		assert_eq!(
+			metadata[0].indexed_columns[0].collation.as_deref(),
+			Some("NOCASE")
+		);
+		assert_eq!(
+			metadata[1].indexed_columns[0].collation.as_deref(),
+			Some("BINARY")
+		);
+		assert!(
+			sqlite_unique_index_match_score(
+				&metadata[0].indexed_columns,
+				&metadata[1].indexed_columns
+			)
+			.is_none()
 		);
 	}
 }
