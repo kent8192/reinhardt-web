@@ -27,22 +27,20 @@
 use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
 
-fn mapped_ordering_sql<F>(ordering: &[String], map_field: &F) -> String
+fn mapped_ordering_sql<F>(ordering: &[String], mapper: F) -> String
 where
 	F: Fn(&str) -> String,
 {
-	ordering
-		.iter()
-		.map(|ordering| {
-			let field_end = ordering
-				.char_indices()
-				.find_map(|(index, character)| character.is_whitespace().then_some(index))
-				.unwrap_or(ordering.len());
-			let (field, suffix) = ordering.split_at(field_end);
-			format!("{}{}", map_field(field), suffix)
-		})
-		.collect::<Vec<_>>()
-		.join(", ")
+	let mut mapped_orderings = Vec::with_capacity(ordering.len());
+	for ordering in ordering {
+		let field_end = ordering
+			.char_indices()
+			.find_map(|(index, character)| character.is_whitespace().then_some(index))
+			.unwrap_or(ordering.len());
+		let (field, suffix) = ordering.split_at(field_end);
+		mapped_orderings.push(format!("{}{}", mapper(field), suffix));
+	}
+	mapped_orderings.join(", ")
 }
 
 /// PostgreSQL ARRAY_AGG aggregation function
