@@ -275,7 +275,7 @@ let rollback_sql: Vec<String> = operation.to_reverse_sql(&builder)?;
 These are 0.2 behavior changes, not the removed-deprecated list above:
 
 - closure-taking hooks such as `use_effect`, `use_layout_effect`, `use_memo`,
-  and `use_callback` take a named dependency list; use `deps![]` for
+  and `use_callback` take an explicit dependency tuple; pass `()` for
   mount-only behavior,
 - hook closures do not auto-subscribe from `Signal::get`; listed deps drive
   subscription,
@@ -285,7 +285,7 @@ These are 0.2 behavior changes, not the removed-deprecated list above:
 - bare identifier shorthand in element bodies is removed; write `{name}`,
 - `form!` fields can carry typed generic parameters for server function values,
 - `create_resource` / `create_resource_with_deps` call sites should move to
-  `use_resource(fetcher, deps![...])` before 0.3, where the deprecated constructors
+  `use_resource(fetcher, deps)` before 0.3, where the deprecated constructors
   are removed,
 - `use_form` now starts from a generated form definition and returns a runtime
   builder; do not build runtime state from `FormOptions::new(...)`.
@@ -303,7 +303,7 @@ Resource hook migration:
 let questions = create_resource_with_deps(fetch_questions, (page,));
 
 // After
-let questions = use_resource(fetch_questions, deps![page]);
+let questions = use_resource(fetch_questions, (page,));
 ```
 
 Form runtime migration:
