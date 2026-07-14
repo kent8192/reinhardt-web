@@ -2312,6 +2312,12 @@ fn parse_sqlite_unique_constraint_metadata(
 			let mut indexed_columns = sqlite_indexed_column_metadata(&tokens, open_index);
 			normalize_indexed_columns(&mut indexed_columns);
 			if !indexed_columns.is_empty() {
+				let conflict_mode = sqlite_unique_conflict_mode(&tokens);
+				let raw_sql = sqlite_canonical_unique_sql(
+					name.as_deref(),
+					&indexed_columns,
+					conflict_mode.as_deref(),
+				);
 				metadata.push(SqliteUniqueConstraintMetadata {
 					name,
 					columns: indexed_columns
@@ -2319,7 +2325,7 @@ fn parse_sqlite_unique_constraint_metadata(
 						.map(|column| column.name.clone())
 						.collect(),
 					indexed_columns,
-					raw_sql: Some(definition.to_string()),
+					raw_sql: Some(raw_sql),
 				});
 			}
 			continue;
@@ -2350,14 +2356,16 @@ fn parse_sqlite_unique_constraint_metadata(
 		}];
 		normalize_indexed_columns(&mut indexed_columns);
 		let conflict_mode = sqlite_unique_conflict_mode(&tokens);
-		let raw_sql = conflict_mode
-			.as_deref()
-			.map(|mode| sqlite_canonical_unique_sql(name.as_deref(), &indexed_columns, Some(mode)));
+		let raw_sql = sqlite_canonical_unique_sql(
+			name.as_deref(),
+			&indexed_columns,
+			conflict_mode.as_deref(),
+		);
 		metadata.push(SqliteUniqueConstraintMetadata {
 			name,
 			columns: vec![column.clone()],
 			indexed_columns,
-			raw_sql,
+			raw_sql: Some(raw_sql),
 		});
 	}
 	metadata
@@ -2860,7 +2868,7 @@ mod sqlite_generated_column_tests {
 					},
 				],
 				raw_sql: Some(
-					"CONSTRAINT \"unique jobs code\" UNIQUE (\"tenant id\", \"code,value\")"
+					"CONSTRAINT \"unique jobs code\" UNIQUE (\"tenant id\" COLLATE BINARY ASC, \"code,value\" COLLATE BINARY ASC)"
 						.to_string(),
 				),
 			}]
@@ -2887,7 +2895,9 @@ mod sqlite_generated_column_tests {
 					collation: Some("BINARY".to_string()),
 					descending: Some(false),
 				}],
-				raw_sql: None,
+				raw_sql: Some(
+					"CONSTRAINT \"unique jobs code\" UNIQUE (code COLLATE BINARY ASC)".to_string(),
+				),
 			}]
 		);
 	}
@@ -2924,7 +2934,10 @@ mod sqlite_generated_column_tests {
 							descending: Some(false),
 						},
 					],
-					raw_sql: Some("CONSTRAINT uq_jobs_primary UNIQUE (tenant, code)".to_string(),),
+					raw_sql: Some(
+						"CONSTRAINT uq_jobs_primary UNIQUE (tenant COLLATE BINARY ASC, code COLLATE BINARY ASC)"
+							.to_string(),
+					),
 				},
 				SqliteUniqueConstraintMetadata {
 					name: Some("uq_jobs_secondary".to_string()),
@@ -2941,7 +2954,10 @@ mod sqlite_generated_column_tests {
 							descending: Some(false),
 						},
 					],
-					raw_sql: Some("CONSTRAINT uq_jobs_secondary UNIQUE (tenant, code)".to_string(),),
+					raw_sql: Some(
+						"CONSTRAINT uq_jobs_secondary UNIQUE (tenant COLLATE BINARY ASC, code COLLATE BINARY ASC)"
+							.to_string(),
+					),
 				},
 			]
 		);
@@ -2963,11 +2979,11 @@ mod sqlite_generated_column_tests {
 		assert_eq!(metadata.len(), 2);
 		assert_eq!(
 			metadata[0].raw_sql.as_deref(),
-			Some(r#"CONSTRAINT "uq_jobs_nocase" UNIQUE ("code" COLLATE NOCASE)"#)
+			Some("CONSTRAINT uq_jobs_nocase UNIQUE (code COLLATE NOCASE ASC)")
 		);
 		assert_eq!(
 			metadata[1].raw_sql.as_deref(),
-			Some(r#"CONSTRAINT "uq_jobs_binary" UNIQUE ("code" COLLATE BINARY)"#)
+			Some("CONSTRAINT uq_jobs_binary UNIQUE (code COLLATE BINARY ASC)")
 		);
 		assert_eq!(
 			metadata[0].indexed_columns[0].collation.as_deref(),
