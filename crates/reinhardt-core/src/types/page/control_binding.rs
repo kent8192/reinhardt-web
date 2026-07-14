@@ -2,7 +2,6 @@
 
 use std::fmt;
 use std::num::IntErrorKind;
-use std::sync::Arc;
 
 use crate::reactive::Signal;
 
@@ -168,9 +167,14 @@ impl fmt::Display for ControlBindingError {
 
 impl std::error::Error for ControlBindingError {}
 
-type ReadValue = Arc<dyn Fn() -> ControlValue + 'static>;
+#[cfg(target_arch = "wasm32")]
+type Shared<T> = std::rc::Rc<T>;
+#[cfg(not(target_arch = "wasm32"))]
+type Shared<T> = std::sync::Arc<T>;
+
+type ReadValue = Shared<dyn Fn() -> ControlValue + 'static>;
 type WriteValue =
-	Arc<dyn Fn(ControlValue) -> Result<ControlWriteOutcome, ControlBindingError> + 'static>;
+	Shared<dyn Fn(ControlValue) -> Result<ControlWriteOutcome, ControlBindingError> + 'static>;
 
 /// Cloneable type-erased reader and writer for a controlled form element.
 #[derive(Clone)]
@@ -202,8 +206,8 @@ impl ControlBinding {
 		Self {
 			kind: ControlKind::Checkbox,
 			radio_value: None,
-			read: Arc::new(move || ControlValue::Checked(read_signal.get())),
-			write: Arc::new(move |value| match value {
+			read: Shared::new(move || ControlValue::Checked(read_signal.get())),
+			write: Shared::new(move |value| match value {
 				ControlValue::Checked(value) => {
 					signal.set(value);
 					Ok(ControlWriteOutcome::Committed)
@@ -221,8 +225,8 @@ impl ControlBinding {
 		Self {
 			kind: ControlKind::Radio,
 			radio_value: Some(value),
-			read: Arc::new(move || ControlValue::Checked(read_signal.get() == read_value)),
-			write: Arc::new(move |value| match value {
+			read: Shared::new(move || ControlValue::Checked(read_signal.get() == read_value)),
+			write: Shared::new(move |value| match value {
 				ControlValue::Checked(true) => {
 					signal.set(write_value.clone());
 					Ok(ControlWriteOutcome::Committed)
@@ -244,8 +248,8 @@ impl ControlBinding {
 		Self {
 			kind: ControlKind::SelectMany,
 			radio_value: None,
-			read: Arc::new(move || ControlValue::SelectedValues(read_signal.get())),
-			write: Arc::new(move |value| match value {
+			read: Shared::new(move || ControlValue::SelectedValues(read_signal.get())),
+			write: Shared::new(move |value| match value {
 				ControlValue::SelectedValues(values) => {
 					signal.set(values);
 					Ok(ControlWriteOutcome::Committed)
@@ -293,8 +297,8 @@ impl ControlBinding {
 		Self {
 			kind,
 			radio_value: None,
-			read: Arc::new(move || ControlValue::Text(read_signal.get())),
-			write: Arc::new(move |value| match value {
+			read: Shared::new(move || ControlValue::Text(read_signal.get())),
+			write: Shared::new(move |value| match value {
 				ControlValue::Text(value) => {
 					signal.set(value);
 					Ok(ControlWriteOutcome::Committed)
@@ -312,8 +316,8 @@ impl ControlBinding {
 		Self {
 			kind: ControlKind::Number,
 			radio_value: None,
-			read: Arc::new(move || ControlValue::Text(read_signal.get().to_string())),
-			write: Arc::new(move |value| {
+			read: Shared::new(move || ControlValue::Text(read_signal.get().to_string())),
+			write: Shared::new(move |value| {
 				let ControlValue::Text(raw) = value else {
 					return Err(value_kind_mismatch(ControlKind::Number, &value));
 				};
