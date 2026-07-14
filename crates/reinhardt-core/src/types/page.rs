@@ -30,8 +30,8 @@ pub mod native_event;
 mod util;
 
 pub use control_binding::{
-	ControlBinding, ControlBindingError, ControlKind, ControlValue, ControlWriteOutcome,
-	NumberParseError, NumberParseErrorKind, NumberValue,
+	ControlBinding, ControlBindingError, ControlBindingSnapshot, ControlKind, ControlValue,
+	ControlWriteOutcome, NumberParseError, NumberParseErrorKind, NumberValue,
 };
 pub use event::{EventInterface, EventName, EventType};
 pub use head::{Head, LinkTag, MetaTag, ScriptTag, StyleTag};

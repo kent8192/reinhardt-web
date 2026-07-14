@@ -171,6 +171,28 @@ impl std::error::Error for ControlBindingError {}
 type ReadValue = Arc<dyn Fn() -> ControlValue + 'static>;
 type WriteValue =
 	Arc<dyn Fn(ControlValue) -> Result<ControlWriteOutcome, ControlBindingError> + 'static>;
+type SnapshotValue = Arc<dyn Fn() -> ControlBindingSnapshot + 'static>;
+
+/// Restores the signals mutated by a control binding unless the snapshot is committed.
+#[doc(hidden)]
+pub struct ControlBindingSnapshot {
+	restore: Option<Box<dyn FnOnce() + 'static>>,
+}
+
+impl ControlBindingSnapshot {
+	/// Keeps signal changes made after this snapshot was captured.
+	pub fn commit(mut self) {
+		self.restore = None;
+	}
+}
+
+impl Drop for ControlBindingSnapshot {
+	fn drop(&mut self) {
+		if let Some(restore) = self.restore.take() {
+			restore();
+		}
+	}
+}
 
 /// Cloneable type-erased reader and writer for a controlled form element.
 #[derive(Clone)]
@@ -179,6 +201,7 @@ pub struct ControlBinding {
 	radio_value: Option<String>,
 	read: ReadValue,
 	write: WriteValue,
+	snapshot: SnapshotValue,
 }
 
 impl fmt::Debug for ControlBinding {
@@ -199,6 +222,7 @@ impl ControlBinding {
 	/// Creates a binding for a checkbox signal.
 	pub fn checkbox(signal: Signal<bool>) -> Self {
 		let read_signal = signal.clone();
+		let snapshot = signal_snapshot(signal.clone());
 		Self {
 			kind: ControlKind::Checkbox,
 			radio_value: None,
@@ -210,12 +234,14 @@ impl ControlBinding {
 				}
 				actual => Err(value_kind_mismatch(ControlKind::Checkbox, &actual)),
 			}),
+			snapshot,
 		}
 	}
 
 	/// Creates a binding for one radio choice within a string-valued group.
 	pub fn radio(signal: Signal<String>, value: String) -> Self {
 		let read_signal = signal.clone();
+		let snapshot = signal_snapshot(signal.clone());
 		let read_value = value.clone();
 		let write_value = value.clone();
 		Self {
@@ -230,6 +256,7 @@ impl ControlBinding {
 				ControlValue::Checked(false) => Ok(ControlWriteOutcome::Ignored),
 				actual => Err(value_kind_mismatch(ControlKind::Radio, &actual)),
 			}),
+			snapshot,
 		}
 	}
 
@@ -241,6 +268,7 @@ impl ControlBinding {
 	/// Creates a binding for a multiple-selection signal.
 	pub fn select_many(signal: Signal<Vec<String>>) -> Self {
 		let read_signal = signal.clone();
+		let snapshot = signal_snapshot(signal.clone());
 		Self {
 			kind: ControlKind::SelectMany,
 			radio_value: None,
@@ -252,6 +280,7 @@ impl ControlBinding {
 				}
 				actual => Err(value_kind_mismatch(ControlKind::SelectMany, &actual)),
 			}),
+			snapshot,
 		}
 	}
 
@@ -288,8 +317,15 @@ impl ControlBinding {
 		(self.write)(value)
 	}
 
+	/// Captures the complete signal state that this binding may mutate.
+	#[doc(hidden)]
+	pub fn snapshot(&self) -> ControlBindingSnapshot {
+		(self.snapshot)()
+	}
+
 	fn string_value(kind: ControlKind, signal: Signal<String>) -> Self {
 		let read_signal = signal.clone();
+		let snapshot = signal_snapshot(signal.clone());
 		Self {
 			kind,
 			radio_value: None,
@@ -301,6 +337,7 @@ impl ControlBinding {
 				}
 				actual => Err(value_kind_mismatch(kind, &actual)),
 			}),
+			snapshot,
 		}
 	}
 
@@ -309,6 +346,8 @@ impl ControlBinding {
 		error: Option<Signal<Option<NumberParseError>>>,
 	) -> Self {
 		let read_signal = signal.clone();
+		let snapshot_signal = signal.clone();
+		let snapshot_error = error.clone();
 		Self {
 			kind: ControlKind::Number,
 			radio_value: None,
@@ -334,8 +373,32 @@ impl ControlBinding {
 					}
 				}
 			}),
+			snapshot: Arc::new(move || {
+				let value = snapshot_signal.get();
+				let parse_error = snapshot_error.as_ref().map(Signal::get);
+				let restore_signal = snapshot_signal.clone();
+				let restore_error = snapshot_error.clone();
+				ControlBindingSnapshot {
+					restore: Some(Box::new(move || {
+						restore_signal.set(value);
+						if let (Some(error), Some(parse_error)) = (restore_error, parse_error) {
+							error.set(parse_error);
+						}
+					})),
+				}
+			}),
 		}
 	}
+}
+
+fn signal_snapshot<T: Clone + 'static>(signal: Signal<T>) -> SnapshotValue {
+	Arc::new(move || {
+		let value = signal.get();
+		let restore_signal = signal.clone();
+		ControlBindingSnapshot {
+			restore: Some(Box::new(move || restore_signal.set(value))),
+		}
+	})
 }
 
 fn value_kind_mismatch(control: ControlKind, actual: &ControlValue) -> ControlBindingError {
@@ -578,6 +641,41 @@ mod tests {
 		// Assert
 		assert_eq!(binding.read(), ControlValue::Text("new".to_owned()));
 		assert_eq!(signal.get(), "new");
+	}
+
+	#[rstest]
+	fn binding_snapshot_restores_numeric_value_and_error_state() {
+		// Arrange
+		let value = Signal::new(7_i32);
+		let original_error = NumberParseError::new("pending", NumberParseErrorKind::Invalid);
+		let error = Signal::new(Some(original_error.clone()));
+		let binding = ControlBinding::number_with_error(value.clone(), error.clone());
+		let snapshot = binding.snapshot();
+
+		// Act
+		binding.write(ControlValue::Text("12".to_owned())).unwrap();
+		drop(snapshot);
+
+		// Assert
+		assert_eq!(value.get(), 7);
+		assert_eq!(error.get(), Some(original_error));
+	}
+
+	#[rstest]
+	fn committed_binding_snapshot_keeps_the_new_state() {
+		// Arrange
+		let signal = Signal::new("server".to_owned());
+		let binding = ControlBinding::text(signal.clone());
+		let snapshot = binding.snapshot();
+
+		// Act
+		binding
+			.write(ControlValue::Text("browser".to_owned()))
+			.unwrap();
+		snapshot.commit();
+
+		// Assert
+		assert_eq!(signal.get(), "browser");
 	}
 
 	#[rstest]
