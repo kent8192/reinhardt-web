@@ -351,7 +351,7 @@ mod tests {
 	use reinhardt_db::backends::types::{
 		DatabaseType, IsolationLevel, QueryResult, QueryValue, Row, TransactionExecutor,
 	};
-	use reinhardt_db::backends::{DatabaseConnection, DatabaseError};
+	use reinhardt_db::backends::{DatabaseConnection, Result as BackendResult};
 	use reinhardt_db::orm::FieldSelector;
 
 	#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -410,23 +410,15 @@ mod tests {
 			&self,
 			_sql: &str,
 			_params: Vec<QueryValue>,
-		) -> Result<QueryResult, DatabaseError> {
+		) -> BackendResult<QueryResult> {
 			panic!("synchronous validators should fail before database access")
 		}
 
-		async fn fetch_one(
-			&self,
-			_sql: &str,
-			_params: Vec<QueryValue>,
-		) -> Result<Row, DatabaseError> {
+		async fn fetch_one(&self, _sql: &str, _params: Vec<QueryValue>) -> BackendResult<Row> {
 			panic!("synchronous validators should fail before database access")
 		}
 
-		async fn fetch_all(
-			&self,
-			_sql: &str,
-			_params: Vec<QueryValue>,
-		) -> Result<Vec<Row>, DatabaseError> {
+		async fn fetch_all(&self, _sql: &str, _params: Vec<QueryValue>) -> BackendResult<Vec<Row>> {
 			panic!("synchronous validators should fail before database access")
 		}
 
@@ -434,18 +426,18 @@ mod tests {
 			&self,
 			_sql: &str,
 			_params: Vec<QueryValue>,
-		) -> Result<Option<Row>, DatabaseError> {
+		) -> BackendResult<Option<Row>> {
 			panic!("synchronous validators should fail before database access")
 		}
 
-		async fn begin(&self) -> Result<Box<dyn TransactionExecutor>, DatabaseError> {
+		async fn begin(&self) -> BackendResult<Box<dyn TransactionExecutor>> {
 			panic!("synchronous validators should fail before database access")
 		}
 
 		async fn begin_with_isolation(
 			&self,
 			_isolation_level: IsolationLevel,
-		) -> Result<Box<dyn TransactionExecutor>, DatabaseError> {
+		) -> BackendResult<Box<dyn TransactionExecutor>> {
 			panic!("synchronous validators should fail before database access")
 		}
 

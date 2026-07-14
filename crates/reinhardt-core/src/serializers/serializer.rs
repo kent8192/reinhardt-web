@@ -239,6 +239,18 @@ impl From<ValidatorError> for SerializerError {
 	}
 }
 
+/// Converts a framework error into cloneable serializer context.
+///
+/// The source message is retained without storing a dynamic error object so
+/// `SerializerError` remains cloneable and comparable.
+impl From<crate::exception::Error> for SerializerError {
+	fn from(error: crate::exception::Error) -> Self {
+		SerializerError::Other {
+			message: error.to_string(),
+		}
+	}
+}
+
 impl SerializerError {
 	/// Create a new generic serializer error
 	pub fn new(message: String) -> Self {
@@ -322,9 +334,6 @@ impl SerializerError {
 		}
 	}
 }
-
-// Integration with reinhardt_exception is moved to REST layer
-// Base layer remains exception-agnostic
 
 /// JSON serializer implementation
 ///
@@ -496,5 +505,31 @@ mod tests {
 			SerializerError::Validation(_) => {}
 			_ => panic!("Expected Validation error"),
 		}
+	}
+
+	#[test]
+	fn test_serializer_error_from_framework_error() {
+		use crate::exception::{DatabaseError, DatabaseErrorKind, Error};
+
+		// Arrange
+		let framework_error = Error::from(DatabaseError::new(
+			DatabaseErrorKind::Transaction,
+			"rollback failed",
+		));
+
+		// Act
+		let serializer_error = SerializerError::from(framework_error);
+
+		// Assert
+		assert_eq!(
+			serializer_error,
+			SerializerError::Other {
+				message: "Database error: rollback failed".to_string(),
+			}
+		);
+		assert_eq!(
+			serializer_error.to_string(),
+			"Serialization error: Database error: rollback failed"
+		);
 	}
 }

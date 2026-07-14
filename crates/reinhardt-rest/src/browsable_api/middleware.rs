@@ -137,9 +137,12 @@ impl BrowsableApiMiddleware {
 		response: Response,
 	) -> reinhardt_core::exception::Result<Response> {
 		// Parse JSON response
-		let json_body: serde_json::Value = serde_json::from_slice(&response.body).map_err(|e| {
-			reinhardt_core::exception::Error::Other(anyhow::anyhow!("Failed to parse JSON: {}", e))
-		})?;
+		let json_body: serde_json::Value =
+			serde_json::from_slice(&response.body).map_err(|error| {
+				reinhardt_core::exception::Error::Serialization(format!(
+					"Failed to parse JSON: {error}"
+				))
+			})?;
 
 		// Extract CSRF token from response cookies for form inclusion
 		let csrf_token = Self::extract_csrf_token(&response);
@@ -171,8 +174,8 @@ impl BrowsableApiMiddleware {
 		};
 
 		// Render HTML
-		let html = self.renderer.render(&context).map_err(|e| {
-			reinhardt_core::exception::Error::Other(anyhow::anyhow!("Failed to render HTML: {}", e))
+		let html = self.renderer.render(&context).map_err(|error| {
+			reinhardt_core::exception::Error::Internal(format!("Failed to render HTML: {error}"))
 		})?;
 
 		// Create new response with HTML body, preserving Set-Cookie headers

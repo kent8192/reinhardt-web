@@ -56,6 +56,7 @@
 //! ```
 
 use super::{SerializerError, ValidatorError};
+use reinhardt_core::exception::{DatabaseError, DatabaseErrorKind};
 use reinhardt_db::backends::DatabaseConnection;
 use reinhardt_db::orm::{CustomManager, Filter, FilterOperator, FilterValue, Model};
 use std::marker::PhantomData;
@@ -176,7 +177,7 @@ impl From<DatabaseValidatorError> for reinhardt_core::exception::Error {
 				))
 			}
 			DatabaseValidatorError::DatabaseError { message, .. } => {
-				reinhardt_core::exception::Error::Database(message)
+				DatabaseError::new(DatabaseErrorKind::Query, message).into()
 			}
 		}
 	}

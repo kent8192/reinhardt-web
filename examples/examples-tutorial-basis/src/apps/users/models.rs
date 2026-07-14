@@ -77,7 +77,7 @@ mod manager {
 	use reinhardt::DatabaseConnection;
 	use reinhardt::Model;
 	use reinhardt::core::async_trait;
-	use reinhardt::core::exception::Error;
+	use reinhardt::core::exception::{DatabaseError, DatabaseErrorKind, Error};
 	use reinhardt::di::injectable;
 	// `BaseUserManager` lives in `reinhardt-auth` and is not yet re-exported
 	// at the top level of `reinhardt`; reach it via the doc-hidden module
@@ -142,7 +142,7 @@ mod manager {
 				.filter(User::field_username().eq(username.to_string()))
 				.first()
 				.await
-				.map_err(|e| Error::Database(e.to_string()))?;
+				.map_err(|error| DatabaseError::new(DatabaseErrorKind::Query, error.to_string()))?;
 			if existing.is_some() {
 				return Err(Error::Validation("Username is already taken".to_string()));
 			}
@@ -187,7 +187,9 @@ mod manager {
 			User::objects()
 				.create_with_conn(&self.db, &new_user)
 				.await
-				.map_err(|e| Error::Database(e.to_string()))
+				.map_err(|error| {
+					DatabaseError::new(DatabaseErrorKind::Query, error.to_string()).into()
+				})
 		}
 
 		async fn create_superuser(
@@ -201,7 +203,9 @@ mod manager {
 			User::objects()
 				.create_with_conn(&self.db, &new_user)
 				.await
-				.map_err(|e| Error::Database(e.to_string()))
+				.map_err(|error| {
+					DatabaseError::new(DatabaseErrorKind::Query, error.to_string()).into()
+				})
 		}
 	}
 }
