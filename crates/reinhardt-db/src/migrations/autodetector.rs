@@ -4090,6 +4090,7 @@ impl MigrationAutodetector {
 		self.detect_deleted_models(&mut changes);
 		self.detect_renamed_models(&mut changes);
 		self.detect_renamed_tables(&mut changes);
+		self.detect_deleted_rename_target_owners(&mut changes);
 
 		// Detect field-level changes (only for models that exist in both states)
 		self.detect_added_fields(&mut changes);
@@ -5006,6 +5007,36 @@ impl MigrationAutodetector {
 				.filter(|(_, reused_model)| reused_model != model_name)
 			{
 				changes.created_models.push((reused_app, reused_model));
+			}
+		}
+	}
+
+	/// Detect models deleted while owning a table newly claimed by a rename.
+	///
+	/// Table-name based deletion detection intentionally retains a source model
+	/// when its table exists in the target state. A same-app table rename can
+	/// otherwise mask a distinct deleted model that owns the rename target.
+	fn detect_deleted_rename_target_owners(&self, changes: &mut DetectedChanges) {
+		for (app_label, renamed_model_name, _old_name, new_name) in &changes.renamed_tables {
+			for ((owner_app_label, owner_model_name), owner_model) in &self.from_state.models {
+				if owner_app_label != app_label
+					|| owner_model_name == renamed_model_name
+					|| owner_model.table_name != *new_name
+					|| self
+						.to_state
+						.get_model(owner_app_label, owner_model_name)
+						.is_some()
+				{
+					continue;
+				}
+				if !changes
+					.deleted_models
+					.contains(&(owner_app_label.clone(), owner_model_name.clone()))
+				{
+					changes
+						.deleted_models
+						.push((owner_app_label.clone(), owner_model_name.clone()));
+				}
 			}
 		}
 	}
@@ -6276,7 +6307,11 @@ impl MigrationAutodetector {
 					super::Operation::CreateTable { name, .. } if name == old_name
 				) {
 					after_rename.push(operation);
-				} else if Self::operation_targets_table(&operation, &old_name) {
+				} else if matches!(
+					operation,
+					super::Operation::DropTable { name } if name == &new_name
+				) || Self::operation_targets_table(&operation, &old_name)
+				{
 					before_rename.push(operation);
 				} else if Self::operation_needs_table_after_rename(&operation, &new_name) {
 					after_rename.push(operation);
@@ -6316,6 +6351,7 @@ impl MigrationAutodetector {
 		// (issue #4040).
 		self.emit_shared_per_app_operations(changes, &mut by_app);
 		Self::emit_table_rename_operations(changes, &mut by_app);
+		self.preserve_many_to_many_artifact_renames(changes, &mut by_app);
 
 		// `generate_operations()`-specific extra: walk ManyToMany fields on
 		// new and added models and emit intermediate `CreateTable`s via
@@ -6358,6 +6394,9 @@ impl MigrationAutodetector {
 		Self::dedup_redundant_unique_add_constraints(&mut by_app);
 
 		// Flatten and sort by dependency to ensure correct execution order.
+		for operations in by_app.values_mut() {
+			Self::order_renamed_table_operations(operations);
+		}
 		let operations: Vec<super::Operation> = by_app.into_values().flatten().collect();
 		self.sort_operations_by_dependency(operations)
 	}
@@ -7353,6 +7392,75 @@ impl MigrationAutodetector {
 			|| rename.old_source_column != rename.new_source_column
 			|| rename.old_target_column != rename.new_target_column)
 			.then_some(rename)
+	}
+
+	/// Preserve convention-derived many-to-many artifacts for direct operation
+	/// generation.
+	fn preserve_many_to_many_artifact_renames(
+		&self,
+		changes: &DetectedChanges,
+		by_app: &mut BTreeMap<String, Vec<super::Operation>>,
+	) {
+		for ((app_label, model_name), model_state) in &self.to_state.models {
+			for m2m in &model_state.many_to_many_fields {
+				let Some(through_rename) =
+					self.find_many_to_many_artifact_rename(changes, app_label, model_name, m2m)
+				else {
+					continue;
+				};
+
+				let operations = by_app.entry(app_label.clone()).or_default();
+				let table_rename_exists = operations.iter().any(|operation| {
+					matches!(
+						operation,
+						super::Operation::RenameTable { old_name, new_name }
+							if old_name == &through_rename.old_table
+								&& new_name == &through_rename.new_table
+					)
+				});
+				if through_rename.old_table != through_rename.new_table && !table_rename_exists {
+					operations.push(super::Operation::RenameTable {
+						old_name: through_rename.old_table.clone(),
+						new_name: through_rename.new_table.clone(),
+					});
+				}
+				for (old_column, new_column) in [
+					(
+						&through_rename.old_source_column,
+						&through_rename.new_source_column,
+					),
+					(
+						&through_rename.old_target_column,
+						&through_rename.new_target_column,
+					),
+				] {
+					if old_column == new_column {
+						continue;
+					}
+					Self::remove_many_to_many_column_replacement_operations(
+						operations,
+						&through_rename,
+						old_column,
+						new_column,
+					);
+					let column_rename_exists = operations.iter().any(|operation| {
+						matches!(
+							operation,
+							super::Operation::RenameColumn { table, old_name, new_name }
+								if table == &through_rename.new_table
+									&& old_name == old_column && new_name == new_column
+						)
+					});
+					if !column_rename_exists {
+						operations.push(super::Operation::RenameColumn {
+							table: through_rename.new_table.clone(),
+							old_name: old_column.clone(),
+							new_name: new_column.clone(),
+						});
+					}
+				}
+			}
+		}
 	}
 
 	/// Detect newly created ManyToMany relationships
@@ -9827,6 +9935,140 @@ mod tests {
 				old_name: "users".to_string(),
 				new_name: "user".to_string(),
 			}]
+		);
+	}
+
+	#[rstest]
+	fn generate_migrations_drops_deleted_rename_target_owner_before_renaming() {
+		let from_user =
+			build_model_state_with_table_name("users", "User", "users", sample_fields());
+		let from_archive =
+			build_model_state_with_table_name("users", "Archive", "user", sample_fields());
+		let to_user = build_model_state_with_table_name("users", "User", "user", sample_fields());
+		let detector = MigrationAutodetector::new(
+			build_project_state(vec![
+				(("users".to_string(), "User".to_string()), from_user),
+				(("users".to_string(), "Archive".to_string()), from_archive),
+			]),
+			build_project_state(vec![(("users".to_string(), "User".to_string()), to_user)]),
+		);
+
+		let operations = &detector.generate_migrations()[0].operations;
+		let drop_index = operations
+			.iter()
+			.position(
+				|operation| matches!(operation, super::super::Operation::DropTable { name } if name == "user"),
+			)
+			.expect("deleted rename-target owner must be dropped: {operations:?}");
+		let rename_index = operations
+			.iter()
+			.position(|operation| matches!(operation, super::super::Operation::RenameTable { old_name, new_name } if old_name == "users" && new_name == "user"))
+			.expect("table rename is missing: {operations:?}");
+
+		assert!(
+			drop_index < rename_index,
+			"target owner must be dropped before rename: {operations:?}"
+		);
+	}
+
+	#[rstest]
+	fn generate_operations_orders_table_rename_before_new_table_edits() {
+		let from_model =
+			build_model_state_with_table_name("users", "User", "users", sample_fields());
+		let mut to_fields = sample_fields();
+		to_fields.push(FieldState::new(
+			"email",
+			super::super::FieldType::VarChar(255),
+			false,
+		));
+		let to_model = build_model_state_with_table_name("users", "User", "user", to_fields);
+		let detector = MigrationAutodetector::new(
+			build_project_state(vec![(
+				("users".to_string(), "User".to_string()),
+				from_model,
+			)]),
+			build_project_state(vec![(("users".to_string(), "User".to_string()), to_model)]),
+		);
+
+		let operations = detector.generate_operations();
+		assert!(
+			matches!(
+				&operations[..2],
+				[
+					super::super::Operation::RenameTable { old_name, new_name },
+					super::super::Operation::AddColumn { table, column, .. },
+				]
+					if old_name == "users" && new_name == "user" && table == "user" && column.name == "email"
+			),
+			"rename must precede edits to its new table: {operations:?}"
+		);
+	}
+
+	#[rstest]
+	fn generate_operations_preserves_implicit_many_to_many_artifact_renames() {
+		let from_user =
+			build_model_state_with_table_name("users", "User", "users", sample_fields());
+		let from_group =
+			build_model_state_with_table_name("users", "Group", "groups", sample_fields());
+		let from_through = build_model_state_with_table_name(
+			"users",
+			"UsersGroups",
+			"users_groups",
+			vec![
+				FieldState::new("id", super::super::FieldType::Integer, false),
+				many_to_many_foreign_key_field("users_id", "users"),
+				many_to_many_foreign_key_field("groups_id", "groups"),
+			],
+		);
+		let mut to_user =
+			build_model_state_with_table_name("users", "User", "user", sample_fields());
+		to_user
+			.many_to_many_fields
+			.push(ManyToManyMetadata::new("groups", "Group"));
+		let to_group =
+			build_model_state_with_table_name("users", "Group", "groups", sample_fields());
+		let to_through = build_model_state_with_table_name(
+			"users",
+			"UserGroups",
+			"user_groups",
+			vec![
+				FieldState::new("id", super::super::FieldType::Integer, false),
+				many_to_many_foreign_key_field("user_id", "user"),
+				many_to_many_foreign_key_field("groups_id", "groups"),
+			],
+		);
+		let detector = MigrationAutodetector::new(
+			build_project_state(vec![
+				(("users".to_string(), "User".to_string()), from_user),
+				(("users".to_string(), "Group".to_string()), from_group),
+				(
+					("users".to_string(), "UsersGroups".to_string()),
+					from_through,
+				),
+			]),
+			build_project_state(vec![
+				(("users".to_string(), "User".to_string()), to_user),
+				(("users".to_string(), "Group".to_string()), to_group),
+				(("users".to_string(), "UserGroups".to_string()), to_through),
+			]),
+		);
+
+		let operations = detector.generate_operations();
+		assert!(
+			operations.iter().any(|operation| matches!(
+				operation,
+				super::super::Operation::RenameTable { old_name, new_name }
+					if old_name == "users_groups" && new_name == "user_groups"
+			)),
+			"through-table rename is missing: {operations:?}"
+		);
+		assert!(
+			operations.iter().any(|operation| matches!(
+				operation,
+				super::super::Operation::RenameColumn { table, old_name, new_name }
+					if table == "user_groups" && old_name == "users_id" && new_name == "user_id"
+			)),
+			"through-table source-column rename is missing: {operations:?}"
 		);
 	}
 
