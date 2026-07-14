@@ -6304,12 +6304,12 @@ impl MigrationAutodetector {
 					after_rename.push(operation);
 				} else if matches!(
 					operation,
-					super::Operation::CreateTable { name, .. } if name == old_name
+					super::Operation::CreateTable { ref name, .. } if *name == old_name
 				) {
 					after_rename.push(operation);
 				} else if matches!(
 					operation,
-					super::Operation::DropTable { name } if name == &new_name
+					super::Operation::DropTable { ref name } if *name == new_name
 				) || Self::operation_targets_table(&operation, &old_name)
 				{
 					before_rename.push(operation);
@@ -6350,7 +6350,7 @@ impl MigrationAutodetector {
 		// with `generate_migrations()` so the two paths cannot diverge again
 		// (issue #4040).
 		self.emit_shared_per_app_operations(changes, &mut by_app);
-		Self::emit_table_rename_operations(changes, &mut by_app);
+		self.emit_table_rename_operations(changes, &mut by_app);
 		self.preserve_many_to_many_artifact_renames(changes, &mut by_app);
 
 		// `generate_operations()`-specific extra: walk ManyToMany fields on
@@ -6402,6 +6402,7 @@ impl MigrationAutodetector {
 	}
 
 	fn emit_table_rename_operations(
+		&self,
 		changes: &DetectedChanges,
 		by_app: &mut BTreeMap<String, Vec<super::Operation>>,
 	) {
@@ -6412,12 +6413,31 @@ impl MigrationAutodetector {
 				.or_default()
 				.push((old_name.clone(), new_name.clone()));
 		}
+		for (app_label, old_model, new_model) in &changes.renamed_models {
+			if let (Some(old), Some(new)) = (
+				self.from_state.get_model(app_label, old_model),
+				self.to_state.get_model(app_label, new_model),
+			) {
+				if old.table_name != new.table_name {
+					pending_by_app
+						.entry(app_label.clone())
+						.or_default()
+						.push((old.table_name.clone(), new.table_name.clone()));
+				}
+			}
+		}
 
 		for (app_label, mut pending) in pending_by_app {
 			let mut reserved_names: BTreeSet<_> = pending
 				.iter()
 				.flat_map(|(old_name, new_name)| [old_name.clone(), new_name.clone()])
 				.collect();
+			reserved_names.extend(
+				self.from_state
+					.models
+					.values()
+					.map(|model| model.table_name.clone()),
+			);
 			while !pending.is_empty() {
 				let source_names: BTreeSet<_> = pending
 					.iter()
@@ -6917,7 +6937,7 @@ impl MigrationAutodetector {
 		// `generate_operations()` — see `emit_shared_per_app_operations` and
 		// issue #4040.
 		self.emit_shared_per_app_operations(changes, &mut migrations_by_app);
-		Self::emit_table_rename_operations(changes, &mut migrations_by_app);
+		self.emit_table_rename_operations(changes, &mut migrations_by_app);
 
 		// Generate intermediate tables for ManyToMany relationships
 		for (app_label, model_name, through_table, m2m) in &changes.created_many_to_many {
