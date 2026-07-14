@@ -48,6 +48,14 @@ run_scanner() {
 	set -e
 }
 
+assert_manifest_valid() {
+	local name="$1"
+	if ! cargo metadata --no-deps --format-version 1 --manifest-path "$FIXTURE/Cargo.toml" >"$FIXTURE/metadata.log" 2>&1; then
+		fail "$name (cargo metadata rejected fixture syntax)"
+		cat "$FIXTURE/metadata.log" >&2
+	fi
+}
+
 expect_clean() {
 	local name="$1"
 	run_scanner
@@ -91,6 +99,20 @@ cat >> "$FIXTURE/Cargo.toml" <<'EOF'
 "anyhow" = "1"
 EOF
 expect_rejected "quoted dependency key" 'Cargo.toml:7:"anyhow" = "1"'
+
+reset_fixture
+cat >> "$FIXTURE/Cargo.toml" <<'EOF'
+"any\u0068ow" = "1"
+EOF
+assert_manifest_valid "unicode-escaped dependency key"
+expect_rejected "unicode-escaped dependency key" 'Cargo.toml:7:"any\u0068ow" = "1"'
+
+reset_fixture
+cat >> "$FIXTURE/Cargo.toml" <<'EOF'
+"any\U00000068ow" = "1"
+EOF
+assert_manifest_valid "long-unicode-escaped dependency key"
+expect_rejected "long-unicode-escaped dependency key" 'Cargo.toml:7:"any\U00000068ow" = "1"'
 
 reset_fixture
 cat >> "$FIXTURE/Cargo.toml" <<'EOF'
@@ -195,6 +217,34 @@ expect_rejected "package alias" 'Cargo.toml:7:errors = { package = "anyhow", ver
 
 reset_fixture
 cat >> "$FIXTURE/Cargo.toml" <<'EOF'
+errors = { package = "any\u0068ow", version = "1" }
+EOF
+assert_manifest_valid "unicode-escaped package alias"
+expect_rejected "unicode-escaped package alias" 'Cargo.toml:7:errors = { package = "any\u0068ow", version = "1" }'
+
+reset_fixture
+cat >> "$FIXTURE/Cargo.toml" <<'EOF'
+errors = { "pack\u0061ge" = "any\u0068ow", version = "1" }
+EOF
+assert_manifest_valid "unicode-escaped package alias key and value"
+expect_rejected "unicode-escaped package alias key and value" 'Cargo.toml:7:errors = { "pack\u0061ge" = "any\u0068ow", version = "1" }'
+
+reset_fixture
+cat >> "$FIXTURE/Cargo.toml" <<'EOF'
+errors = { package = """anyhow""", version = "1" }
+EOF
+assert_manifest_valid "triple-basic package alias"
+expect_rejected "triple-basic package alias" 'Cargo.toml:7:errors = { package = """anyhow""", version = "1" }'
+
+reset_fixture
+cat >> "$FIXTURE/Cargo.toml" <<'EOF'
+errors = { package = '''anyhow''', version = "1" }
+EOF
+assert_manifest_valid "triple-literal package alias"
+expect_rejected "triple-literal package alias" "Cargo.toml:7:errors = { package = '''anyhow''', version = \"1\" }"
+
+reset_fixture
+cat >> "$FIXTURE/Cargo.toml" <<'EOF'
 errors = { git = "https://example.com/repository#main", package = "anyhow" }
 EOF
 expect_rejected "package alias after double-quoted URL fragment" 'Cargo.toml:7:errors = { git = "https://example.com/repository#main", package = "anyhow" }'
@@ -227,6 +277,16 @@ errors = {
 }
 EOF
 expect_rejected "multiline package alias in dependency table" 'Cargo.toml:9:  package = "anyhow",'
+
+reset_fixture
+cat >> "$FIXTURE/Cargo.toml" <<'EOF'
+errors = {
+  version = "1",
+  package = """anyhow""",
+}
+EOF
+assert_manifest_valid "multiline dependency with triple-basic package alias"
+expect_rejected "multiline dependency with triple-basic package alias" 'Cargo.toml:9:  package = """anyhow""",'
 
 reset_fixture
 cat >> "$FIXTURE/Cargo.toml" <<'EOF'
@@ -318,6 +378,18 @@ cat >> "$FIXTURE/Cargo.toml" <<'EOF'
 serde = { version = "1", note = ',package="anyhow",' }
 EOF
 expect_clean "single-line literal string with package-like syntax"
+
+reset_fixture
+cat >> "$FIXTURE/Cargo.toml" <<'EOF'
+serde = { version = "1", note = "any\u0068ow" }
+EOF
+expect_clean "unicode-escaped dependency name in unrelated string"
+
+reset_fixture
+cat >> "$FIXTURE/Cargo.toml" <<'EOF'
+serde = { version = "1", note = """anyhow""" }
+EOF
+expect_clean "triple-basic dependency name in unrelated string"
 
 reset_fixture
 cat >> "$FIXTURE/Cargo.toml" <<'EOF'

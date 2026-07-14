@@ -69,9 +69,10 @@ scan_cargo_manifests() {
 
 	set +e
 	output=$(awk -v root="$SCAN_ROOT/" '
-		function strip_toml_comment(value, position, character, in_basic_string, in_literal_string, escaped) {
+		function strip_toml_comment(value, position, character, in_basic_string, in_literal_string, triple_string, escaped) {
 			in_basic_string = 0
 			in_literal_string = 0
+			triple_string = 0
 			escaped = 0
 
 			for (position = 1; position <= length(value); position++) {
@@ -82,13 +83,29 @@ scan_cargo_manifests() {
 						escaped = 0
 					} else if (character == "\\") {
 						escaped = 1
-					} else if (character == "\"") {
+					} else if (triple_string && substr(value, position, 3) == "\"\"\"") {
+						in_basic_string = 0
+						triple_string = 0
+						position += 2
+					} else if (!triple_string && character == "\"") {
 						in_basic_string = 0
 					}
 				} else if (in_literal_string) {
-					if (character == "\047") {
+					if (triple_string && substr(value, position, 3) == "\047\047\047") {
+						in_literal_string = 0
+						triple_string = 0
+						position += 2
+					} else if (!triple_string && character == "\047") {
 						in_literal_string = 0
 					}
+				} else if (substr(value, position, 3) == "\"\"\"") {
+					in_basic_string = 1
+					triple_string = 1
+					position += 2
+				} else if (substr(value, position, 3) == "\047\047\047") {
+					in_literal_string = 1
+					triple_string = 1
+					position += 2
 				} else if (character == "\"") {
 					in_basic_string = 1
 				} else if (character == "\047") {
@@ -115,9 +132,32 @@ scan_cargo_manifests() {
 			return "\"\""
 		}
 
-		function toml_tokens(value, position, character, in_basic_string, in_literal_string, escaped, result, string_value, simple_string) {
+		function decode_ascii_unicode_escape(value, position, width, digits, digit_index, digit, digit_value, codepoint) {
+			digits = substr(value, position + 2, width)
+			if (length(digits) != width) {
+				return ""
+			}
+
+			codepoint = 0
+			for (digit_index = 1; digit_index <= width; digit_index++) {
+				digit = tolower(substr(digits, digit_index, 1))
+				digit_value = index("0123456789abcdef", digit) - 1
+				if (digit_value < 0) {
+					return ""
+				}
+				codepoint = codepoint * 16 + digit_value
+			}
+
+			if (codepoint < 1 || codepoint > 127) {
+				return ""
+			}
+			return sprintf("%c", codepoint)
+		}
+
+		function toml_tokens(value, position, character, in_basic_string, in_literal_string, triple_string, escaped, result, string_value, simple_string, escape_type, decoded) {
 			in_basic_string = 0
 			in_literal_string = 0
+			triple_string = 0
 			escaped = 0
 			result = ""
 			string_value = ""
@@ -131,21 +171,57 @@ scan_cargo_manifests() {
 						string_value = string_value character
 						escaped = 0
 					} else if (character == "\\") {
-						simple_string = 0
-						escaped = 1
-					} else if (character == "\"") {
+						escape_type = substr(value, position + 1, 1)
+						if (escape_type == "u") {
+							decoded = decode_ascii_unicode_escape(value, position, 4)
+						} else if (escape_type == "U") {
+							decoded = decode_ascii_unicode_escape(value, position, 8)
+						} else {
+							decoded = ""
+						}
+
+						if (decoded != "") {
+							string_value = string_value decoded
+							position += escape_type == "u" ? 5 : 9
+						} else {
+							simple_string = 0
+							escaped = 1
+						}
+					} else if (triple_string && substr(value, position, 3) == "\"\"\"") {
+						result = result canonical_toml_string(string_value, simple_string)
+						in_basic_string = 0
+						triple_string = 0
+						position += 2
+					} else if (!triple_string && character == "\"") {
 						result = result canonical_toml_string(string_value, simple_string)
 						in_basic_string = 0
 					} else {
 						string_value = string_value character
 					}
 				} else if (in_literal_string) {
-					if (character == "\047") {
+					if (triple_string && substr(value, position, 3) == "\047\047\047") {
+						result = result canonical_toml_string(string_value, simple_string)
+						in_literal_string = 0
+						triple_string = 0
+						position += 2
+					} else if (!triple_string && character == "\047") {
 						result = result canonical_toml_string(string_value, simple_string)
 						in_literal_string = 0
 					} else {
 						string_value = string_value character
 					}
+				} else if (substr(value, position, 3) == "\"\"\"") {
+					string_value = ""
+					simple_string = 1
+					in_basic_string = 1
+					triple_string = 1
+					position += 2
+				} else if (substr(value, position, 3) == "\047\047\047") {
+					string_value = ""
+					simple_string = 1
+					in_literal_string = 1
+					triple_string = 1
+					position += 2
 				} else if (character == "\"") {
 					string_value = ""
 					simple_string = 1
@@ -162,9 +238,10 @@ scan_cargo_manifests() {
 			return result
 		}
 
-		function toml_brace_delta(value, position, character, in_basic_string, in_literal_string, escaped, delta) {
+		function toml_brace_delta(value, position, character, in_basic_string, in_literal_string, triple_string, escaped, delta) {
 			in_basic_string = 0
 			in_literal_string = 0
+			triple_string = 0
 			escaped = 0
 			delta = 0
 
@@ -176,13 +253,29 @@ scan_cargo_manifests() {
 						escaped = 0
 					} else if (character == "\\") {
 						escaped = 1
-					} else if (character == "\"") {
+					} else if (triple_string && substr(value, position, 3) == "\"\"\"") {
+						in_basic_string = 0
+						triple_string = 0
+						position += 2
+					} else if (!triple_string && character == "\"") {
 						in_basic_string = 0
 					}
 				} else if (in_literal_string) {
-					if (character == "\047") {
+					if (triple_string && substr(value, position, 3) == "\047\047\047") {
+						in_literal_string = 0
+						triple_string = 0
+						position += 2
+					} else if (!triple_string && character == "\047") {
 						in_literal_string = 0
 					}
+				} else if (substr(value, position, 3) == "\"\"\"") {
+					in_basic_string = 1
+					triple_string = 1
+					position += 2
+				} else if (substr(value, position, 3) == "\047\047\047") {
+					in_literal_string = 1
+					triple_string = 1
+					position += 2
 				} else if (character == "\"") {
 					in_basic_string = 1
 				} else if (character == "\047") {
@@ -209,6 +302,10 @@ scan_cargo_manifests() {
 			return value ~ /^anyhow([.][[:alnum:]_-]+)?=/ || value ~ /^[[:alnum:]_-]+[.]package=anyhow$/
 		}
 
+		function is_prohibited_dependency_tokens(value) {
+			return value ~ /^(anyhow|"anyhow")([.][[:alnum:]_-]+)?=/ || value ~ /^[[:alnum:]_-]+[.](package|"package")="anyhow"$/
+		}
+
 		function is_prohibited_root_dependency_entry(value) {
 			if (value ~ /^(dependencies|dev-dependencies|build-dependencies)[.]/) {
 				sub(/^(dependencies|dev-dependencies|build-dependencies)[.]/, "", value)
@@ -220,6 +317,19 @@ scan_cargo_manifests() {
 				return 0
 			}
 			return is_prohibited_dependency_entry(value)
+		}
+
+		function is_prohibited_root_dependency_tokens(value) {
+			if (value ~ /^(dependencies|dev-dependencies|build-dependencies)[.]/) {
+				sub(/^(dependencies|dev-dependencies|build-dependencies)[.]/, "", value)
+			} else if (value ~ /^workspace[.]dependencies[.]/) {
+				sub(/^workspace[.]dependencies[.]/, "", value)
+			} else if (value ~ /^target[.].*[.](dependencies|dev-dependencies|build-dependencies)[.]/) {
+				sub(/^target[.].*[.](dependencies|dev-dependencies|build-dependencies)[.]/, "", value)
+			} else {
+				return 0
+			}
+			return is_prohibited_dependency_tokens(value)
 		}
 
 		function is_root_dependency_inline_start(value) {
@@ -277,11 +387,11 @@ scan_cargo_manifests() {
 				inline_dependency_depth = 0
 			}
 
-			if (table == "" && is_prohibited_root_dependency_entry(compact)) {
+			if (table == "" && (is_prohibited_root_dependency_entry(compact) || is_prohibited_root_dependency_tokens(tokens))) {
 				matched = 1
-			} else if (dependency_table && is_prohibited_dependency_entry(compact)) {
+			} else if (dependency_table && (is_prohibited_dependency_entry(compact) || is_prohibited_dependency_tokens(tokens))) {
 				matched = 1
-			} else if (dependency_subtable && compact == "package=anyhow") {
+			} else if (dependency_subtable && (compact == "package=anyhow" || has_anyhow_package_field(tokens))) {
 				matched = 1
 			}
 
