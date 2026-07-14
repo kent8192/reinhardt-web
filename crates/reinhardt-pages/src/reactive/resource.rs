@@ -14,7 +14,6 @@ use std::rc::Rc;
 use crate::platform::{defer_yield, spawn_task};
 use crate::reactive::ExplicitDeps;
 #[cfg(native)]
-#[cfg(native)]
 use reinhardt_core::deps;
 
 /// Type alias for the refetch callback function
