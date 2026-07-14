@@ -2134,6 +2134,35 @@ mod tests {
 	}
 
 	#[rstest]
+	fn rejects_font_family_before_the_size() {
+		let kind = diagnostic_kind_text(".card { font: (Arial, 16px); }");
+
+		assert!(matches!(
+			kind,
+			StyleDiagnosticKind::PropertyValueMismatch { property, .. } if property == "font"
+		));
+	}
+
+	#[rstest]
+	fn accepts_multi_token_font_family_names() {
+		let typed = validated_text(
+			".card { font-family: [(Times, New, Roman), sans-serif]; font: (16px, Times, New, Roman); }",
+		);
+
+		assert_eq!(typed.items.len(), 1);
+	}
+
+	#[rstest]
+	fn rejects_negative_box_shadow_blur_radius() {
+		let kind = diagnostic_kind_text(".card { box-shadow: (0, 0, -4px, red); }");
+
+		assert!(matches!(
+			kind,
+			StyleDiagnosticKind::PropertyValueMismatch { property, .. } if property == "box-shadow"
+		));
+	}
+
+	#[rstest]
 	fn accepts_hyphen_leading_custom_identifiers() {
 		// Arrange
 		let source = ".card { font-family: [-apple-system, sans-serif]; }";

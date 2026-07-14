@@ -63,14 +63,12 @@ impl StyleFeatureSelection {
 		self.all_features
 	}
 
-	fn apply_to_metadata(&self, command: &mut MetadataCommand, selected_package: &Package) {
-		let features: Vec<String> = if self.all_features {
-			selected_package
-				.features
-				.keys()
-				.map(|feature| format!("{}/{feature}", selected_package.name))
-				.collect()
-		} else {
+	fn apply_to_metadata(&self, command: &mut MetadataCommand, _selected_package: &Package) {
+		if self.all_features {
+			command.features(CargoOpt::AllFeatures);
+			return;
+		}
+		let features: Vec<String> = {
 			self.features
 				.iter()
 				.map(|feature| {
@@ -310,7 +308,7 @@ fn style_source_roots(
 			.to_path_buf()
 			.into_std_path_buf();
 		for target in package.targets.iter().filter(|target| {
-			target.is_lib()
+			(target.is_lib() || target.is_cdylib())
 				&& target
 					.required_features
 					.iter()

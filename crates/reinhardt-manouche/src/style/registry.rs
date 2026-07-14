@@ -1351,7 +1351,12 @@ const TRACK_LIST: ValueGrammar = ValueGrammar::Space {
 	max: None,
 	item: &TRACK,
 };
-const FONT_FAMILY_ITEM: ValueGrammar = ValueGrammar::Or(&[S, IDENT]);
+const FONT_FAMILY_IDENTIFIERS: ValueGrammar = ValueGrammar::Space {
+	min: 1,
+	max: None,
+	item: &IDENT,
+};
+const FONT_FAMILY_ITEM: ValueGrammar = ValueGrammar::Or(&[S, FONT_FAMILY_IDENTIFIERS]);
 const FONT_FAMILY: ValueGrammar = ValueGrammar::Comma {
 	min: 1,
 	item: &FONT_FAMILY_ITEM,
@@ -1455,32 +1460,29 @@ const FONT_STYLE: ValueGrammar = ValueGrammar::Or(&[KW_FONT_STYLE, FONT_STYLE_OB
 const FONT_WEIGHT: ValueGrammar = ValueGrammar::Or(&[FONT_WEIGHT_NUMBER, KW_FONT_WEIGHT]);
 const LINE_HEIGHT: ValueGrammar = ValueGrammar::Or(&[KW_NORMAL, NN, NLP]);
 const LETTER_SPACING: ValueGrammar = ValueGrammar::Or(&[KW_NORMAL, L]);
-const FONT_WITHOUT_LINE_HEIGHT: ValueGrammar = ValueGrammar::Unordered {
+const FONT_PREFIX: ValueGrammar = ValueGrammar::Unordered {
 	members: &[
 		optional("style", &FONT_STYLE),
 		optional("variant", &KW_FONT_VARIANT),
 		optional("weight", &FONT_WEIGHT),
-		required("size", &FONT_SIZE),
-		required("family", &FONT_FAMILY),
 	],
-	min_members: 2,
+	min_members: 0,
 	preserve_source_order: true,
 };
+const FONT_WITHOUT_LINE_HEIGHT: ValueGrammar = ValueGrammar::Ordered(&[
+	required("prefix", &FONT_PREFIX),
+	required("size", &FONT_SIZE),
+	required("family", &FONT_FAMILY),
+]);
 const FONT_SIZE_AND_LINE_HEIGHT: ValueGrammar = ValueGrammar::Slash {
 	left: &FONT_SIZE,
 	right: &LINE_HEIGHT,
 };
-const FONT_WITH_LINE_HEIGHT: ValueGrammar = ValueGrammar::Unordered {
-	members: &[
-		optional("style", &FONT_STYLE),
-		optional("variant", &KW_FONT_VARIANT),
-		optional("weight", &FONT_WEIGHT),
-		required("size-and-line-height", &FONT_SIZE_AND_LINE_HEIGHT),
-		required("family", &FONT_FAMILY),
-	],
-	min_members: 2,
-	preserve_source_order: true,
-};
+const FONT_WITH_LINE_HEIGHT: ValueGrammar = ValueGrammar::Ordered(&[
+	required("prefix", &FONT_PREFIX),
+	required("size-and-line-height", &FONT_SIZE_AND_LINE_HEIGHT),
+	required("family", &FONT_FAMILY),
+]);
 const FONT: ValueGrammar = ValueGrammar::Or(&[
 	KW_SYSTEM_FONT,
 	FONT_WITHOUT_LINE_HEIGHT,
@@ -1600,7 +1602,7 @@ const SHADOW: ValueGrammar = ValueGrammar::Unordered {
 		optional("inset", &KW_INSET),
 		required("offset-x", &L),
 		required("offset-y", &L),
-		optional("blur", &L),
+		optional("blur", &NL),
 		optional("spread", &L),
 		optional("color", &C),
 	],
