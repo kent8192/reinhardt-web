@@ -5,8 +5,8 @@
 
 // Re-export core types from reinhardt-types
 pub use reinhardt_core::types::page::{
-	Head, IntoPage, LinkTag, MetaTag, MountError, Outlet, Page, PageElement, PageEventHandler,
-	Reactive, ReactiveIf, ScriptTag, StyleTag,
+	ControlBinding, ControlKind, Head, IntoPage, LinkTag, MetaTag, MountError, Outlet, Page,
+	PageElement, PageEventHandler, Reactive, ReactiveIf, ScriptTag, StyleTag,
 };
 
 #[cfg(native)]
@@ -43,6 +43,18 @@ impl PageExt for Page {
 }
 
 #[cfg(wasm)]
+pub(crate) fn controlled_attribute_is_overridden(
+	binding: Option<&ControlBinding>,
+	name: &str,
+) -> bool {
+	binding.is_some_and(|binding| match binding.kind() {
+		ControlKind::Text | ControlKind::Number => name == "value",
+		ControlKind::Checkbox | ControlKind::Radio => name == "checked",
+		ControlKind::SelectOne | ControlKind::SelectMany => false,
+	})
+}
+
+#[cfg(wasm)]
 fn mount_inner(page: Page, parent: &Element) -> Result<(), MountError> {
 	use crate::dom::document;
 
@@ -65,6 +77,9 @@ fn mount_inner(page: Page, parent: &Element) -> Result<(), MountError> {
 				let is_falsy = !is_boolean_attr_truthy(value_str);
 
 				if is_boolean && is_falsy {
+					continue;
+				}
+				if controlled_attribute_is_overridden(control_binding.as_ref(), name.as_ref()) {
 					continue;
 				}
 

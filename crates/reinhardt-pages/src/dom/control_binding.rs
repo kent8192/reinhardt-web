@@ -4,7 +4,9 @@ use std::rc::Rc;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::closure::Closure;
 
-use crate::component::{ControlBinding, ControlBindingError, ControlKind, ControlValue};
+use crate::component::{
+	ControlBinding, ControlBindingError, ControlKind, ControlValue, ControlWriteOutcome,
+};
 use crate::dom::{Element, EventHandle};
 use crate::reactive::{Effect, EffectTiming, untracked};
 
@@ -69,8 +71,10 @@ impl ControlBindingController {
 			write_control(&element, binding.kind(), &expected_value)?;
 			false
 		} else {
-			binding.write(live_value.clone())?;
-			expected_value != live_value
+			matches!(
+				binding.write(live_value.clone())?,
+				ControlWriteOutcome::Committed
+			) && expected_value != live_value
 		};
 		let option_observer = install_select_option_observer(&element, &binding);
 		let effect = install_effect(element, binding, true);

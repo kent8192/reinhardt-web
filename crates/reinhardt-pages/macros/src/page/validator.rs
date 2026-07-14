@@ -201,6 +201,17 @@ impl CaptureChecker {
 			if a.html_name() == "a11y" {
 				continue;
 			}
+			if a.html_name() == "bind"
+				&& let Expr::Call(call) = &a.value
+				&& let Expr::Path(path) = call.func.as_ref()
+				&& path.qself.is_none()
+				&& path.path.is_ident("number")
+			{
+				for argument in &call.args {
+					self.visit_expr(argument);
+				}
+				continue;
+			}
 			self.visit_expr(&a.value);
 		}
 		for e in &el.events {
@@ -713,12 +724,21 @@ fn transform_element(
 	}
 
 	// 2. Extract the binding before transforming ordinary attributes
-	let (ordinary_attrs, binding_attr) = split_binding_attr(&elem.attrs)?;
+	let (mut ordinary_attrs, binding_attr) = split_binding_attr(&elem.attrs)?;
 	let control_binding = binding_attr
 		.as_ref()
 		.map(|attr| classify_control_binding(&tag, &ordinary_attrs, attr))
 		.transpose()?
 		.map(Box::new);
+	if control_binding
+		.as_deref()
+		.is_some_and(|binding| binding.kind == TypedControlBindingKind::SelectOne)
+	{
+		ordinary_attrs.retain(|attr| {
+			!(attr.html_name() == "multiple"
+				&& matches!(&attr.value, Expr::Lit(lit) if matches!(&lit.lit, syn::Lit::Bool(value) if !value.value())))
+		});
+	}
 	let transformed_attrs = transform_attrs(&ordinary_attrs, &tag)?;
 	let typed_attrs = transformed_attrs.attrs;
 
@@ -2172,6 +2192,11 @@ mod tests {
 		TypedControlBindingKind::SelectMany,
 		false
 	)]
+	#[case(
+		quote::quote!({ select { a11y: off, multiple: false, bind: value } }),
+		TypedControlBindingKind::SelectOne,
+		false
+	)]
 	fn controlled_binding_accepts_supported_structure(
 		#[case] input: proc_macro2::TokenStream,
 		#[case] expected_kind: TypedControlBindingKind,
@@ -2197,6 +2222,14 @@ mod tests {
 			),
 			expects_number_error
 		);
+		if expected_kind == TypedControlBindingKind::SelectOne {
+			assert!(
+				element
+					.attrs
+					.iter()
+					.all(|attr| attr.html_name() != "multiple")
+			);
+		}
 		assert_eq!(
 			binding.radio_value.is_some(),
 			expected_kind == TypedControlBindingKind::Radio
@@ -2906,6 +2939,19 @@ mod capture_tests {
 		let result = enforce_strict_captures(ast.head.as_ref(), ast.body(), ast.params());
 
 		// Assert
+		assert!(result.is_ok());
+	}
+
+	#[rstest]
+	fn accepts_numeric_binding_sentinel_without_a_bogus_parameter() {
+		let ast = parse(quote! {
+			|amount, parse_error| {
+				input { a11y: off, type: "number", bind: number(amount, parse_error) }
+			}
+		});
+
+		let result = enforce_strict_captures(ast.head.as_ref(), ast.body(), ast.params());
+
 		assert!(result.is_ok());
 	}
 
