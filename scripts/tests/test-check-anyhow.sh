@@ -88,6 +88,37 @@ expect_rejected "dependency key" 'Cargo.toml:7:anyhow = "1"'
 
 reset_fixture
 cat >> "$FIXTURE/Cargo.toml" <<'EOF'
+"anyhow" = "1"
+EOF
+expect_rejected "quoted dependency key" 'Cargo.toml:7:"anyhow" = "1"'
+
+reset_fixture
+cat >> "$FIXTURE/Cargo.toml" <<'EOF'
+
+[dependencies.anyhow]
+version = "1"
+EOF
+expect_rejected "dependency subtable" 'Cargo.toml:8:[dependencies.anyhow]'
+
+reset_fixture
+cat > "$FIXTURE/Cargo.toml" <<'EOF'
+[package]
+name = "scanner-fixture"
+version = "0.1.0"
+
+dependencies.thiserror = "2"
+dependencies.anyhow.version = "1"
+EOF
+expect_rejected "dotted dependency key" 'Cargo.toml:6:dependencies.anyhow.version = "1"'
+
+reset_fixture
+cat >> "$FIXTURE/Cargo.toml" <<'EOF'
+errors = { package = "anyhow", version = "1" }
+EOF
+expect_rejected "package alias" 'Cargo.toml:7:errors = { package = "anyhow", version = "1" }'
+
+reset_fixture
+cat >> "$FIXTURE/Cargo.toml" <<'EOF'
 
 [features]
 dynamic = ["dep:anyhow"]
@@ -99,6 +130,12 @@ cat > "$FIXTURE/src/lib.rs" <<'EOF'
 use anyhow::Result;
 EOF
 expect_rejected "Rust Result import" 'src/lib.rs:1:use anyhow::Result;'
+
+reset_fixture
+cat > "$FIXTURE/src/lib.rs" <<'EOF'
+pub type Error = anyhow :: Error;
+EOF
+expect_rejected "Rust path with separator whitespace" 'src/lib.rs:1:pub type Error = anyhow :: Error;'
 
 reset_fixture
 cat > "$FIXTURE/src/lib.rs" <<'EOF'
@@ -121,7 +158,50 @@ EOF
 expect_rejected "README code" 'README.md:4:fn run() -> Result<(), anyhow::Error> {'
 
 reset_fixture
-mkdir -p "$FIXTURE/vendor/example/src" "$FIXTURE/target/debug" "$FIXTURE/docs/superpowers/specs"
+cat > "$FIXTURE/README.md" <<'EOF'
+# Migration guidance
+
+Applications should not use anyhow for framework boundaries.
+EOF
+expect_clean "ordinary Markdown prose may name the removed dependency"
+
+reset_fixture
+cat > "$FIXTURE/README.md" <<'EOF'
+# Example
+
+```rust
+use anyhow;
+```
+EOF
+expect_rejected "Markdown crate import" 'README.md:4:use anyhow;'
+
+reset_fixture
+cat > "$FIXTURE/README.md" <<'EOF'
+# Example
+
+```rust
+type Error = anyhow :: Error;
+```
+EOF
+expect_rejected "Markdown path with separator whitespace" 'README.md:4:type Error = anyhow :: Error;'
+
+reset_fixture
+cat > "$FIXTURE/README.md" <<'EOF'
+# Example
+
+```rust
+let error = anyhow !("failure");
+```
+EOF
+expect_rejected "Markdown macro with separator whitespace" 'README.md:4:let error = anyhow !("failure");'
+
+reset_fixture
+mkdir -p \
+	"$FIXTURE/vendor/example/src" \
+	"$FIXTURE/target/debug" \
+	"$FIXTURE/nested/vendor/example/src" \
+	"$FIXTURE/nested/target/debug" \
+	"$FIXTURE/docs/superpowers/specs"
 cat > "$FIXTURE/Cargo.lock" <<'EOF'
 name = "anyhow"
 EOF
@@ -138,11 +218,21 @@ EOF
 cat > "$FIXTURE/target/debug/generated.rs" <<'EOF'
 use anyhow::Result;
 EOF
+cat > "$FIXTURE/nested/vendor/example/Cargo.toml" <<'EOF'
+[dependencies]
+"anyhow" = "1"
+EOF
+cat > "$FIXTURE/nested/vendor/example/src/lib.rs" <<'EOF'
+pub type Error = anyhow :: Error;
+EOF
+cat > "$FIXTURE/nested/target/debug/generated.rs" <<'EOF'
+let _ = anyhow !("generated");
+EOF
 cat > "$FIXTURE/docs/superpowers/specs/error-design.md" <<'EOF'
 ```rust
 use anyhow::Result;
 ```
 EOF
-expect_clean "lockfile, changelog, vendor, target, and design artifacts are ignored"
+expect_clean "lockfile, changelog, nested vendor, nested target, and design artifacts are ignored"
 
 exit "$FAIL"

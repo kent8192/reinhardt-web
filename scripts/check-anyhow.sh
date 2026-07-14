@@ -12,8 +12,8 @@ COMMON_ARGS=(
 	--no-heading
 	--color never
 	--glob '!.git/**'
-	--glob '!target/**'
-	--glob '!vendor/**'
+	--glob '!**/target/**'
+	--glob '!**/vendor/**'
 	--glob '!Cargo.lock'
 	--glob '!CHANGELOG*'
 	--glob '!docs/superpowers/**'
@@ -42,20 +42,23 @@ scan() {
 
 scan \
 	--glob 'Cargo.toml' \
-	--regexp '^[[:space:]]*anyhow[[:space:]]*=' \
+	--regexp "^[[:space:]]*(anyhow|\"anyhow\"|'anyhow')[[:space:]]*=" \
+	--regexp "^[[:space:]]*\\[[^]#]*(dependencies|\"dependencies\"|'dependencies'|dev-dependencies|\"dev-dependencies\"|'dev-dependencies'|build-dependencies|\"build-dependencies\"|'build-dependencies')[[:space:]]*[.][[:space:]]*(anyhow|\"anyhow\"|'anyhow')[[:space:]]*\\]" \
+	--regexp "^[[:space:]]*([^#=]+[.][[:space:]]*)?(dependencies|\"dependencies\"|'dependencies'|dev-dependencies|\"dev-dependencies\"|'dev-dependencies'|build-dependencies|\"build-dependencies\"|'build-dependencies')[[:space:]]*[.][[:space:]]*(anyhow|\"anyhow\"|'anyhow')([[:space:]]*[.][[:space:]]*[[:alnum:]_-]+)?[[:space:]]*=" \
+	--regexp "package[[:space:]]*=[[:space:]]*(\"anyhow\"|'anyhow')" \
 	--regexp 'dep:anyhow'
 
 scan \
 	--glob '*.rs' \
-	--regexp 'anyhow::' \
+	--regexp 'anyhow[[:space:]]*::' \
 	--regexp 'anyhow[[:space:]]*!' \
-	--regexp 'use[[:space:]]+anyhow::\{[^}]*\b(bail|ensure|Context)\b'
+	--regexp 'use[[:space:]]+anyhow([[:space:]]*;|[[:space:]]*::|[[:space:]]+as[[:space:]])'
 
 scan \
 	--glob '*.md' \
-	--regexp 'anyhow::' \
+	--regexp 'anyhow[[:space:]]*::' \
 	--regexp 'anyhow[[:space:]]*!' \
-	--regexp 'use[[:space:]]+anyhow'
+	--regexp 'use[[:space:]]+anyhow[[:space:]]*(;|::)'
 
 if [ "$FOUND" -ne 0 ]; then
 	echo "Remove direct anyhow dependencies and replace owned usage with repository error types." >&2
