@@ -6,13 +6,14 @@ error[E0277]: the trait bound `&str: IntoFieldValue<Status>` is not satisfied
    |                                 |
    |                                 required by a bound introduced by this call
    |
-help: the trait `IntoFieldValue<Status>` is not implemented for `&str`
-      but trait `IntoFieldValue<std::string::String>` is implemented for it
+help: `&str` implements trait `IntoFieldValue<T>`
   --> $WORKSPACE/crates/reinhardt-db/src/orm/field_codec.rs
    |
    | impl IntoFieldValue<String> for &str {
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-   = help: for that trait implementation, expected `std::string::String`, found `Status`
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `IntoFieldValue<std::string::String>`
+...
+   | impl IntoFieldValue<Option<String>> for &str {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `IntoFieldValue<std::option::Option<std::string::String>>`
 note: required by a bound in `reinhardt::FieldRef::<M, T>::eq`
   --> $WORKSPACE/crates/reinhardt-db/src/orm/expressions.rs
    |

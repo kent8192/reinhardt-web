@@ -12,8 +12,14 @@ help: the following other types implement trait `IntoFieldValue<T>`
    | impl<T: DatabaseField> IntoFieldValue<T> for &T {
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&T` implements `IntoFieldValue<T>`
 ...
+   | impl<T: DatabaseField> IntoFieldValue<Option<T>> for &T {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&T` implements `IntoFieldValue<std::option::Option<T>>`
+...
    | impl IntoFieldValue<String> for &str {
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&str` implements `IntoFieldValue<std::string::String>`
+...
+   | impl IntoFieldValue<Option<String>> for &str {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&str` implements `IntoFieldValue<std::option::Option<std::string::String>>`
 note: required by a bound in `reinhardt::FieldRef::<M, T>::eq`
   --> $WORKSPACE/crates/reinhardt-db/src/orm/expressions.rs
    |
