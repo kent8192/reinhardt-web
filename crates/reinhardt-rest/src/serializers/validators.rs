@@ -72,6 +72,20 @@ pub enum DatabaseValidatorError {
 		source: ValidatorError,
 	},
 
+	/// Model serialization failed before database-backed validation.
+	#[error("Failed to serialize model for validation: {message}")]
+	SerializationError {
+		/// The serialization failure message.
+		message: String,
+	},
+
+	/// The serialized model did not have the object shape required for validation.
+	#[error("Invalid model shape for validation: {message}")]
+	InvalidModelShape {
+		/// The model shape failure message.
+		message: String,
+	},
+
 	/// A unique constraint was violated for a single field
 	#[error("Unique constraint violated: {field} = '{value}' already exists in table {table}")]
 	UniqueConstraintViolation {
@@ -123,6 +137,12 @@ impl From<DatabaseValidatorError> for SerializerError {
 			DatabaseValidatorError::ValidationError { source } => {
 				SerializerError::Validation(source)
 			}
+			DatabaseValidatorError::SerializationError { message } => {
+				SerializerError::Serde { message }
+			}
+			DatabaseValidatorError::InvalidModelShape { message } => {
+				SerializerError::Validation(ValidatorError::Custom { message })
+			}
 			other => SerializerError::Other {
 				message: other.to_string(),
 			},
@@ -141,6 +161,12 @@ impl From<DatabaseValidatorError> for reinhardt_core::exception::Error {
 		match err {
 			DatabaseValidatorError::ValidationError { source } => {
 				reinhardt_core::exception::Error::Validation(source.to_string())
+			}
+			DatabaseValidatorError::SerializationError { message } => {
+				reinhardt_core::exception::Error::Serialization(message)
+			}
+			DatabaseValidatorError::InvalidModelShape { message } => {
+				reinhardt_core::exception::Error::Validation(message)
 			}
 			DatabaseValidatorError::UniqueConstraintViolation {
 				field,
@@ -580,6 +606,7 @@ impl<M: Model> UniqueTogetherValidator<M> {
 mod tests {
 	use super::*;
 	use reinhardt_db::orm::FieldSelector;
+	use rstest::rstest;
 
 	#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 	struct TestUser {
@@ -647,5 +674,55 @@ mod tests {
 			.with_message("Custom combination message");
 		assert_eq!(validator.field_names().len(), 2);
 		assert!(validator.message.is_some());
+	}
+
+	#[rstest]
+	fn serialization_failure_converts_to_framework_serialization_error() {
+		let error = DatabaseValidatorError::SerializationError {
+			message: "failed to serialize model".to_string(),
+		};
+
+		let framework_error: reinhardt_core::exception::Error = error.into();
+
+		match framework_error {
+			reinhardt_core::exception::Error::Serialization(message) => {
+				assert_eq!(message, "failed to serialize model");
+			}
+			other => panic!("unexpected framework error variant: {other:?}"),
+		}
+	}
+
+	#[rstest]
+	fn invalid_model_shape_converts_to_framework_validation_error() {
+		let error = DatabaseValidatorError::InvalidModelShape {
+			message: "model must serialize to an object".to_string(),
+		};
+
+		let framework_error: reinhardt_core::exception::Error = error.into();
+
+		match framework_error {
+			reinhardt_core::exception::Error::Validation(message) => {
+				assert_eq!(message, "model must serialize to an object");
+			}
+			other => panic!("unexpected framework error variant: {other:?}"),
+		}
+	}
+
+	#[rstest]
+	fn database_failure_converts_to_structured_query_error() {
+		let error = DatabaseValidatorError::DatabaseError {
+			message: "count query failed".to_string(),
+			query: Some("SELECT COUNT(*) FROM test_users".to_string()),
+		};
+
+		let framework_error: reinhardt_core::exception::Error = error.into();
+
+		match framework_error {
+			reinhardt_core::exception::Error::Database(error) => {
+				assert_eq!(error.kind(), DatabaseErrorKind::Query);
+				assert_eq!(error.message(), "count query failed");
+			}
+			other => panic!("unexpected framework error variant: {other:?}"),
+		}
 	}
 }

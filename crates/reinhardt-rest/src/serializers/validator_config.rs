@@ -280,17 +280,16 @@ impl<M: Model> ValidatorConfig<M> {
 		self.validate(instance)?;
 
 		// Convert model instance to JSON for field extraction
-		let value =
-			serde_json::to_value(instance).map_err(|e| DatabaseValidatorError::DatabaseError {
-				message: format!("Failed to serialize model: {}", e),
-				query: None,
-			})?;
+		let value = serde_json::to_value(instance).map_err(|error| {
+			DatabaseValidatorError::SerializationError {
+				message: error.to_string(),
+			}
+		})?;
 
 		let obj = value
 			.as_object()
-			.ok_or_else(|| DatabaseValidatorError::DatabaseError {
+			.ok_or_else(|| DatabaseValidatorError::InvalidModelShape {
 				message: "Model must serialize to an object".to_string(),
-				query: None,
 			})?;
 
 		// Validate unique constraints
