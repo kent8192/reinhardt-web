@@ -111,6 +111,8 @@ web-sys-full = [
 	"web-sys/Attr",
 	"web-sys/HtmlCollection",
 	"web-sys/NodeList",
+	"web-sys/MutationObserver",
+	"web-sys/MutationObserverInit",
 	"web-sys/HtmlDocument",
 	"web-sys/History",
 	"web-sys/Location",
@@ -245,6 +247,8 @@ web-sys = { version = "0.3.83", features = [
 	"Attr",
 	"HtmlCollection",
 	"NodeList",
+	"MutationObserver",
+	"MutationObserverInit",
 	"HtmlDocument",
 	"HtmlHeadElement",
 	# History API (for router)

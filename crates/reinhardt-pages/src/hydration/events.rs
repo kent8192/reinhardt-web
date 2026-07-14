@@ -85,6 +85,9 @@ pub struct EventRegistry {
 	/// Controlled form-element bindings installed during hydration.
 	#[cfg(wasm)]
 	control_bindings: Vec<ControlBindingController>,
+	/// Whether hydration adopted a live control value into a signal.
+	#[cfg(wasm)]
+	control_binding_adopted: bool,
 	/// Event handles for non-WASM (placeholder).
 	#[cfg(native)]
 	handles: HashMap<String, Vec<String>>,
@@ -113,8 +116,19 @@ impl EventRegistry {
 
 	/// Retains a controlled form-element binding for the hydration lifetime.
 	#[cfg(wasm)]
-	pub(crate) fn register_control_binding(&mut self, controller: ControlBindingController) {
+	pub(crate) fn register_control_binding(
+		&mut self,
+		controller: ControlBindingController,
+		adopted: bool,
+	) {
+		self.control_binding_adopted |= adopted;
 		self.control_bindings.push(controller);
+	}
+
+	/// Returns whether this registry adopted a live form-control value.
+	#[cfg(wasm)]
+	pub(crate) fn control_binding_adopted(&self) -> bool {
+		self.control_binding_adopted
 	}
 
 	/// Registers an event handle (non-WASM placeholder).
