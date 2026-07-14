@@ -3154,8 +3154,7 @@ mod sqlite_generated_column_tests {
 
 	#[rstest]
 	fn parse_sqlite_unique_metadata_does_not_use_later_constraint_conflict_mode() {
-		let create_sql =
-			"CREATE TABLE jobs (code TEXT UNIQUE NOT NULL ON CONFLICT IGNORE)";
+		let create_sql = "CREATE TABLE jobs (code TEXT UNIQUE NOT NULL ON CONFLICT IGNORE)";
 
 		let metadata = parse_sqlite_unique_constraint_metadata(create_sql);
 
