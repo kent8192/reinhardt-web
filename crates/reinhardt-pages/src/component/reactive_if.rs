@@ -540,6 +540,7 @@ impl ReactiveNode {
 		render: std::sync::Arc<dyn Fn() -> Page + 'static>,
 		render_reactive_node_store: ReactiveNodeStore,
 		reactive_nodes: ReactiveNodeStore,
+		refresh_after_control_adoption: bool,
 	) -> Option<Self> {
 		let document = web_sys::window()
 			.expect("window should be available")
@@ -574,7 +575,11 @@ impl ReactiveNode {
 						let view =
 							with_reactive_node_store(&render_reactive_node_store, || render());
 
-						if first_run_clone.replace(false) {
+						let preserve_adopted_control =
+							refresh_after_control_adoption && is_single_control_view(&view);
+						if first_run_clone.replace(false)
+							&& (!refresh_after_control_adoption || preserve_adopted_control)
+						{
 							crate::reactive::resource::set_client_resource_counter(
 								first_run_resource_counter,
 							);
@@ -637,6 +642,19 @@ impl ReactiveNode {
 			&self.marker,
 			&self.current_nodes,
 		);
+	}
+}
+
+#[cfg(wasm)]
+fn is_single_control_view(view: &Page) -> bool {
+	match view {
+		Page::Element(element) => {
+			element.bound_control().is_some() && element.child_views().is_empty()
+		}
+		Page::Fragment(children) => {
+			children.len() == 1 && children.first().is_some_and(is_single_control_view)
+		}
+		_ => false,
 	}
 }
 

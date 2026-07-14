@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use wasm_bindgen::JsCast;
+use wasm_bindgen::closure::Closure;
 
 use crate::component::{ControlBinding, ControlBindingError, ControlKind, ControlValue};
 use crate::dom::{Element, EventHandle};
@@ -91,6 +92,18 @@ fn commit_or_stage_hydration_snapshot(snapshot: ControlBindingSnapshot) {
 pub(crate) struct ControlBindingController {
 	_effect: Effect,
 	_listeners: Vec<EventHandle>,
+	_option_observer: Option<SelectOptionObserver>,
+}
+
+struct SelectOptionObserver {
+	observer: web_sys::MutationObserver,
+	_callback: Closure<dyn FnMut(js_sys::Array, web_sys::MutationObserver)>,
+}
+
+impl Drop for SelectOptionObserver {
+	fn drop(&mut self) {
+		self.observer.disconnect();
+	}
 }
 
 impl std::fmt::Debug for ControlBindingController {
@@ -148,18 +161,32 @@ impl ControlBindingController {
 	pub(crate) fn hydrate(
 		element: Element,
 		binding: ControlBinding,
-	) -> Result<Self, ControlBindingError> {
+	) -> Result<(Self, bool), ControlBindingError> {
 		validate_control(&element, binding.kind())?;
 		let (listeners, state) = install_listeners(&element, &binding);
 		let live_value = read_control(&element, binding.kind())?;
-		let snapshot = binding.snapshot();
-		binding.write(live_value)?;
-		commit_or_stage_hydration_snapshot(snapshot);
+		let expected_value = untracked(|| binding.read());
+		let adopted = if binding.kind() == ControlKind::SelectOne
+			&& !select_has_option_value(&element, &expected_value)
+		{
+			write_control(&element, binding.kind(), &expected_value)?;
+			false
+		} else {
+			let snapshot = binding.snapshot();
+			binding.write(live_value.clone())?;
+			commit_or_stage_hydration_snapshot(snapshot);
+			expected_value != live_value
+		};
+		let option_observer = install_select_option_observer(&element, &binding);
 		let effect = install_effect(element, binding, true, state);
-		Ok(Self {
-			_effect: effect,
-			_listeners: listeners,
-		})
+		Ok((
+			Self {
+				_effect: effect,
+				_listeners: listeners,
+				_option_observer: option_observer,
+			},
+			adopted,
+		))
 	}
 
 	fn install(
@@ -168,12 +195,63 @@ impl ControlBindingController {
 		skip_first_write: bool,
 	) -> Result<Self, ControlBindingError> {
 		let (listeners, state) = install_listeners(&element, &binding);
+		let option_observer = install_select_option_observer(&element, &binding);
 		let effect = install_effect(element, binding, skip_first_write, state);
 		Ok(Self {
 			_effect: effect,
 			_listeners: listeners,
+			_option_observer: option_observer,
 		})
 	}
+}
+
+fn install_select_option_observer(
+	element: &Element,
+	binding: &ControlBinding,
+) -> Option<SelectOptionObserver> {
+	if !matches!(
+		binding.kind(),
+		ControlKind::SelectOne | ControlKind::SelectMany
+	) {
+		return None;
+	}
+
+	let observed_element = element.clone();
+	let observed_binding = binding.clone();
+	let callback = Closure::wrap(
+		Box::new(move |_: js_sys::Array, _: web_sys::MutationObserver| {
+			let value = untracked(|| observed_binding.read());
+			let _ = write_control(&observed_element, observed_binding.kind(), &value);
+		}) as Box<dyn FnMut(js_sys::Array, web_sys::MutationObserver)>,
+	);
+	let observer = web_sys::MutationObserver::new(callback.as_ref().unchecked_ref()).ok()?;
+	let options = web_sys::MutationObserverInit::new();
+	options.set_child_list(true);
+	options.set_subtree(true);
+	observer
+		.observe_with_options(element.as_web_sys(), &options)
+		.ok()?;
+
+	Some(SelectOptionObserver {
+		observer,
+		_callback: callback,
+	})
+}
+
+fn select_has_option_value(element: &Element, value: &ControlValue) -> bool {
+	let ControlValue::Text(value) = value else {
+		return true;
+	};
+	let Some(select) = element.as_web_sys().dyn_ref::<web_sys::HtmlSelectElement>() else {
+		return true;
+	};
+	let options = select.options();
+	(0..options.length()).any(|index| {
+		options
+			.item(index)
+			.and_then(|option| option.dyn_into::<web_sys::HtmlOptionElement>().ok())
+			.is_some_and(|option| option.value() == *value)
+	})
 }
 
 fn install_effect(

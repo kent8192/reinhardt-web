@@ -10,7 +10,8 @@ use reinhardt_pages::component::{
 use reinhardt_pages::dom::Element;
 use reinhardt_pages::reactive::{Signal, with_runtime};
 use reinhardt_pages::{PageElement, page};
-use wasm_bindgen::JsCast;
+use wasm_bindgen::{JsCast, JsValue};
+use wasm_bindgen_futures::JsFuture;
 use wasm_bindgen_test::*;
 
 wasm_bindgen_test_configure!(run_in_browser);
@@ -182,6 +183,48 @@ fn public_page_mount_applies_initial_select_many_after_mounting_options() {
 	assert_eq!(select.selected_options().length(), 2);
 	assert!(rust.selected());
 	assert!(wasm.selected());
+	reinhardt_pages::cleanup_reactive_nodes();
+}
+
+#[wasm_bindgen_test(async)]
+async fn reactive_select_options_refresh_the_bound_value_without_a_signal_write() {
+	let document = web_sys::window()
+		.expect("window")
+		.document()
+		.expect("document");
+	let root = Element::new(document.create_element("div").expect("root"));
+	let show_options = Signal::new(false);
+	let selected = Signal::new(vec!["wasm".to_owned()]);
+	let render_show_options = show_options.clone();
+	PageElement::new("select")
+		.attr("multiple", "multiple")
+		.control_binding(ControlBinding::select_many(selected))
+		.child(Page::reactive(move || {
+			if render_show_options.get() {
+				PageElement::new("option")
+					.attr("value", "wasm")
+					.child("WebAssembly")
+					.into_page()
+			} else {
+				Page::Empty
+			}
+		}))
+		.into_page()
+		.mount(&root)
+		.expect("mount");
+
+	show_options.set(true);
+	JsFuture::from(js_sys::Promise::resolve(&JsValue::UNDEFINED))
+		.await
+		.expect("microtask");
+
+	let select: web_sys::HtmlSelectElement = root
+		.as_web_sys()
+		.first_element_child()
+		.expect("select")
+		.unchecked_into();
+	let option: web_sys::HtmlOptionElement = select.item(0).expect("option").unchecked_into();
+	assert!(option.selected());
 	reinhardt_pages::cleanup_reactive_nodes();
 }
 

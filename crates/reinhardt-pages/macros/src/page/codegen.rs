@@ -291,6 +291,20 @@ impl NodeCaptureCollector<'_> {
 				for attr in &elem.attrs {
 					self.expr_collector.visit_expr(&attr.value.to_expr());
 				}
+				if let Some(binding) = &elem.control_binding {
+					match &binding.expression {
+						TypedControlBindingExpr::Direct(value) => {
+							self.expr_collector.visit_expr(value);
+						}
+						TypedControlBindingExpr::NumberWithError { value, error } => {
+							self.expr_collector.visit_expr(value);
+							self.expr_collector.visit_expr(error);
+						}
+					}
+					if let Some(value) = &binding.radio_value {
+						self.expr_collector.visit_expr(value);
+					}
+				}
 				for event in &elem.events {
 					self.expr_collector.visit_expr(event.handler());
 				}
@@ -1725,6 +1739,30 @@ mod tests {
 			.collect();
 
 		assert_eq!(captures, vec!["items"]);
+	}
+
+	#[test]
+	fn test_if_capture_includes_control_binding_expression() {
+		let input = quote::quote!({
+			if visible.get() {
+				input {
+					a11y: off,
+					bind: selected,
+				}
+			}
+		});
+		let untyped_ast: reinhardt_manouche::core::PageMacro = syn::parse2(input).unwrap();
+		let typed_ast = crate::page::validator::validate(&untyped_ast).unwrap();
+		let if_node = &typed_ast.body().nodes[0];
+		let ctx = CodegenContext::new(typed_ast.implicit_captures());
+
+		let captures: Vec<String> = ctx
+			.captures_in_node(if_node)
+			.into_iter()
+			.map(|ident| ident.to_string())
+			.collect();
+
+		assert_eq!(captures, vec!["visible", "selected"]);
 	}
 
 	#[test]

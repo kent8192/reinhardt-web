@@ -246,6 +246,9 @@ fn validate_hydrated_controls(element: &Element, view: &Page) -> Result<(), Hydr
 			if let Some(binding) = element_view.bound_control() {
 				crate::dom::control_binding::validate_control(element, binding.kind())
 					.map_err(|error| HydrationError::EventAttachmentFailed(error.to_string()))?;
+				if element_view.tag_name().eq_ignore_ascii_case("textarea") {
+					return Ok(());
+				}
 			}
 			validate_hydrated_element_children(element, element_view.child_views())?;
 		}
@@ -428,6 +431,7 @@ fn install_hydrated_reactive_nodes(
 					&mut branch_registry,
 				)
 			})?;
+			let control_binding_adopted = branch_registry.control_binding_adopted();
 			let hydrated_node = crate::component::ReactiveNode::hydrate_at(
 				element.as_web_sys().clone().into(),
 				None,
@@ -435,6 +439,7 @@ fn install_hydrated_reactive_nodes(
 				reactive.clone().into_render(),
 				render_store,
 				branch_store,
+				control_binding_adopted,
 			)
 			.ok_or_else(|| {
 				HydrationError::EventAttachmentFailed(
@@ -576,6 +581,7 @@ fn install_hydrated_child_reactive_nodes(
 					&mut branch_registry,
 				)
 			})?;
+			let control_binding_adopted = branch_registry.control_binding_adopted();
 			let hydrated_node = crate::component::ReactiveNode::hydrate_at(
 				parent.clone(),
 				next_sibling.clone(),
@@ -583,6 +589,7 @@ fn install_hydrated_child_reactive_nodes(
 				reactive.clone().into_render(),
 				render_store,
 				branch_store,
+				control_binding_adopted,
 			)
 			.ok_or_else(|| {
 				HydrationError::EventAttachmentFailed(
@@ -1034,12 +1041,12 @@ fn attach_hydrated_element_events(
 	let tag = element_view.tag_name();
 	let event_count = element_view.event_handlers().len();
 	if let Some(binding) = element_view.bound_control() {
-		let controller = crate::dom::control_binding::ControlBindingController::hydrate(
+		let (controller, adopted) = crate::dom::control_binding::ControlBindingController::hydrate(
 			element.clone(),
 			binding.clone(),
 		)
 		.map_err(|error| HydrationError::EventAttachmentFailed(error.to_string()))?;
-		registry.register_control_binding(controller);
+		registry.register_control_binding(controller, adopted);
 	}
 
 	if event_count > 0 {
@@ -1460,6 +1467,36 @@ mod tests {
 			root.inner_html(),
 			"<!--reactive-nested--><span>initial</span>"
 		);
+		root.remove();
+	}
+
+	#[cfg(wasm)]
+	#[wasm_bindgen_test]
+	fn hydrated_reactive_owner_refreshes_after_control_adoption() {
+		cleanup_reactive_nodes();
+		let document = web_sys::window().unwrap().document().unwrap();
+		let root = document.create_element("div").unwrap();
+		root.set_inner_html("<span>server</span><input value=\"live\">");
+		let value = Signal::new("server".to_owned());
+		let view = Page::reactive({
+			let value = value.clone();
+			move || {
+				Page::Fragment(vec![
+					PageElement::new("span").child(value.get()).into_page(),
+					PageElement::new("input")
+						.control_binding(ControlBinding::text(value.clone()))
+						.into_page(),
+				])
+			}
+		});
+		let mut registry = crate::hydration::events::EventRegistry::new();
+
+		install_hydrated_reactive_nodes(&Element::new(root.clone()), &view, &mut registry)
+			.expect("hydrate");
+
+		assert_eq!(value.get(), "live");
+		assert_eq!(root.text_content().as_deref(), Some("live"));
+		cleanup_reactive_nodes();
 		root.remove();
 	}
 

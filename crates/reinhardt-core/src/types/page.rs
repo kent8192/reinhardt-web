@@ -1008,11 +1008,19 @@ impl Page {
 			Page::Element(el) => {
 				output.push('<');
 				output.push_str(el.tag_name());
+				let binding = el.bound_control();
+				let binding_value = binding.map(ControlBinding::read);
+				let projects_value = el.tag_name() == "input"
+					&& matches!(binding_value, Some(ControlValue::Text(_)));
+				let projects_checked = matches!(binding_value, Some(ControlValue::Checked(true)));
 
 				for (name, value) in el.attrs() {
 					// Skip boolean attributes with falsy values (empty, "false", "0")
 					let name_str: &str = name.as_ref();
-					if BOOLEAN_ATTRS.contains(&name_str) && !is_boolean_attr_truthy(value) {
+					if (name_str == "value" && projects_value)
+						|| (name_str == "checked" && binding.is_some())
+						|| (BOOLEAN_ATTRS.contains(&name_str) && !is_boolean_attr_truthy(value))
+					{
 						continue;
 					}
 
@@ -1022,13 +1030,29 @@ impl Page {
 					output.push_str(&html_escape(value));
 					output.push('"');
 				}
+				if let Some(ControlValue::Text(value)) = &binding_value
+					&& el.tag_name() == "input"
+				{
+					output.push_str(" value=\"");
+					output.push_str(&html_escape(value));
+					output.push('"');
+				}
+				if projects_checked {
+					output.push_str(" checked=\"checked\"");
+				}
 
 				if el.is_void() {
 					output.push_str(" />");
 				} else {
 					output.push('>');
-					for child in el.child_views() {
-						child.render_to_string_inner(output);
+					if el.tag_name() == "textarea"
+						&& let Some(ControlValue::Text(value)) = &binding_value
+					{
+						output.push_str(&html_escape(value));
+					} else {
+						for child in el.child_views() {
+							child.render_to_string_inner(output);
+						}
 					}
 					output.push_str("</");
 					output.push_str(el.tag_name());
@@ -1185,6 +1209,7 @@ impl<A: IntoPage, B: IntoPage, C: IntoPage, D: IntoPage> IntoPage for (A, B, C, 
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::reactive::Signal;
 
 	#[test]
 	fn mount_error_preserves_control_binding_failure() {
@@ -1395,6 +1420,24 @@ mod tests {
 	fn test_render_simple_element() {
 		let view = PageElement::new("div").into_page();
 		assert_eq!(view.render_to_string(), "<div></div>");
+	}
+
+	#[test]
+	fn render_to_string_projects_bound_input_and_textarea_values() {
+		let input = PageElement::new("input")
+			.attr("type", "text")
+			.attr("value", "stale")
+			.control_binding(ControlBinding::text(Signal::new("current".to_owned())))
+			.into_page();
+		let textarea = PageElement::new("textarea")
+			.control_binding(ControlBinding::text(Signal::new("current".to_owned())))
+			.into_page();
+
+		assert_eq!(
+			input.render_to_string(),
+			"<input type=\"text\" value=\"current\" />"
+		);
+		assert_eq!(textarea.render_to_string(), "<textarea>current</textarea>");
 	}
 
 	#[test]

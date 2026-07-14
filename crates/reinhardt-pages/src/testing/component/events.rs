@@ -177,6 +177,7 @@ impl ElementHandle {
 				.borrow_mut()
 				.dom
 				.record_control_binding_commit(completed);
+			self.inner.borrow_mut().dom.refresh_control_bindings();
 		}
 
 		let (handlers, target) = {
