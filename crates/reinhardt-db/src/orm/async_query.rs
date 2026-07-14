@@ -327,7 +327,7 @@ mod tests {
 		use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
 		use std::time::Duration;
 
-		async fn create_sqlite_pool() -> Result<SqlitePool, sqlx::Error> {
+		async fn create_sqlite_pool() -> std::result::Result<SqlitePool, sqlx::Error> {
 			SqlitePoolOptions::new()
 				.min_connections(1)
 				.max_connections(5)
