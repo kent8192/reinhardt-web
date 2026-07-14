@@ -4118,7 +4118,7 @@ where
 				super::instrumentation::instrumentation()
 					.orm_query_error(&sql, &format!("{error:?}"))
 					.await;
-				return Err(error.into());
+				return Err(error);
 			}
 		};
 		rows.into_iter()
@@ -4370,7 +4370,7 @@ where
 				super::instrumentation::instrumentation()
 					.orm_query_error(&sql, &format!("{error:?}"))
 					.await;
-				return Err(error.into());
+				return Err(error);
 			}
 		};
 		rows.into_iter()
@@ -4563,7 +4563,7 @@ where
 				super::instrumentation::instrumentation()
 					.orm_query_error(&sql, &format!("{error:?}"))
 					.await;
-				return Err(error.into());
+				return Err(error);
 			}
 		};
 		if let Some(row) = rows.first() {
@@ -5165,7 +5165,7 @@ where
 				super::instrumentation::instrumentation()
 					.orm_query_error(&sql, &format!("{error:?}"))
 					.await;
-				return Err(error.into());
+				return Err(error);
 			}
 		};
 

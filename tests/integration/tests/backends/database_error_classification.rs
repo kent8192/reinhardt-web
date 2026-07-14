@@ -4,7 +4,7 @@ use reinhardt_core::exception::Error;
 use reinhardt_db::DatabaseErrorKind;
 use reinhardt_db::orm::connection::{DatabaseBackend, DatabaseConnection};
 use reinhardt_query::prelude::{
-	ColumnDef, Expr, Iden, MySqlQueryBuilder, PostgresQueryBuilder, Query, QueryStatementBuilder,
+	ColumnDef, Expr, ExprTrait, Iden, IntoIden, MySqlQueryBuilder, PostgresQueryBuilder, Query,
 	QueryStatementWriter, SqliteQueryBuilder, Value,
 };
 #[cfg(feature = "postgres")]
@@ -17,13 +17,13 @@ use std::sync::Arc;
 #[cfg(feature = "postgres")]
 use testcontainers::{ContainerAsync, GenericImage};
 
-#[derive(Iden)]
+#[derive(Debug, Clone, Copy, Iden)]
 enum ErrorKindParents {
 	Table,
 	Id,
 }
 
-#[derive(Iden)]
+#[derive(Debug, Clone, Copy, Iden)]
 enum ErrorKindRecords {
 	Table,
 	Id,
@@ -51,7 +51,7 @@ fn sql_for_backend(statement: &impl QueryStatementWriter, backend: DatabaseBacke
 fn parent_insert_sql(backend: DatabaseBackend) -> String {
 	let mut statement = Query::insert();
 	statement
-		.into_table(ErrorKindParents::Table)
+		.into_table(ErrorKindParents::Table.into_iden())
 		.columns([ErrorKindParents::Id])
 		.values_panic([Value::BigInt(Some(1))]);
 
@@ -68,7 +68,7 @@ fn record_insert_sql(
 ) -> String {
 	let mut statement = Query::insert();
 	statement
-		.into_table(ErrorKindRecords::Table)
+		.into_table(ErrorKindRecords::Table.into_iden())
 		.columns([
 			ErrorKindRecords::Id,
 			ErrorKindRecords::UniqueValue,
@@ -104,14 +104,14 @@ fn assert_database_kind(error: Error, expected: DatabaseErrorKind) {
 async fn create_portable_schema(connection: &DatabaseConnection) {
 	let backend = connection.backend();
 	let mut parent_table = Query::create_table();
-	parent_table.table(ErrorKindParents::Table).col(
+	parent_table.table(ErrorKindParents::Table.into_iden()).col(
 		ColumnDef::new(ErrorKindParents::Id)
 			.big_integer()
 			.primary_key(true),
 	);
 	let mut record_table = Query::create_table();
 	record_table
-		.table(ErrorKindRecords::Table)
+		.table(ErrorKindRecords::Table.into_iden())
 		.col(
 			ColumnDef::new(ErrorKindRecords::Id)
 				.big_integer()
@@ -141,7 +141,7 @@ async fn create_portable_schema(connection: &DatabaseConnection) {
 		.unique([ErrorKindRecords::UniqueValue])
 		.foreign_key(
 			[ErrorKindRecords::ParentId],
-			ErrorKindParents::Table,
+			ErrorKindParents::Table.into_iden(),
 			[ErrorKindParents::Id],
 			None,
 			None,

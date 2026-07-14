@@ -463,7 +463,7 @@ is fully opt-in and backward compatible.
 
 ```rust,ignore
 use reinhardt_db::orm::custom_manager::CustomManager;
-use reinhardt_core::exception::Result;
+use reinhardt_core::exception::{DatabaseError, DatabaseErrorKind, Result};
 
 #[derive(Default)]
 struct ActiveUserManager;
@@ -487,9 +487,11 @@ impl CustomManager for ActiveUserManager {
     // Veto saves with empty usernames.
     fn before_save(&self, user: &mut User) -> Result<()> {
         if user.username.is_empty() {
-            return Err(reinhardt_core::exception::Error::Database(
-                "username must not be empty".into(),
-            ));
+            return Err(DatabaseError::new(
+                DatabaseErrorKind::Query,
+                "username must not be empty",
+            )
+            .into());
         }
         Ok(())
     }

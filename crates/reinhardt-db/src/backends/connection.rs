@@ -4,9 +4,19 @@ use std::sync::Arc;
 
 use super::{
 	backend::DatabaseBackend,
-	error::{DatabaseError, DatabaseErrorKind, Result, map_sqlx_error},
+	error::Result,
 	query_builder::{DeleteBuilder, InsertBuilder, SelectBuilder, UpdateBuilder},
 };
+
+#[cfg(any(feature = "postgres", feature = "sqlite", feature = "mysql"))]
+use super::error::map_sqlx_error;
+#[cfg(any(
+	feature = "postgres",
+	feature = "sqlite",
+	feature = "mysql",
+	feature = "settings"
+))]
+use super::error::{DatabaseError, DatabaseErrorKind};
 
 #[cfg(feature = "postgres")]
 use super::dialect::PostgresBackend;

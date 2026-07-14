@@ -46,13 +46,40 @@ impl std::error::Error for ViewError {}
 /// | `DatabaseError`    | `Database`      | 500    |
 impl From<ViewError> for reinhardt_core::exception::Error {
 	fn from(value: ViewError) -> Self {
+		use reinhardt_core::exception::{DatabaseError, DatabaseErrorKind};
+
 		match value {
 			ViewError::Serialization(m) => Self::Serialization(m),
 			ViewError::Permission(m) => Self::Authorization(m),
 			ViewError::NotFound(m) => Self::NotFound(m),
 			ViewError::BadRequest(m) => Self::Http(m),
 			ViewError::Internal(m) => Self::Internal(m),
-			ViewError::DatabaseError(m) => Self::Database(m),
+			ViewError::DatabaseError(m) => DatabaseError::new(DatabaseErrorKind::Query, m).into(),
+		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use reinhardt_core::exception::DatabaseErrorKind;
+
+	use super::ViewError;
+
+	#[test]
+	fn database_failure_converts_to_structured_query_error() {
+		// Arrange
+		let error = ViewError::DatabaseError("query failed".to_string());
+
+		// Act
+		let framework_error: reinhardt_core::exception::Error = error.into();
+
+		// Assert
+		match framework_error {
+			reinhardt_core::exception::Error::Database(error) => {
+				assert_eq!(error.kind(), DatabaseErrorKind::Query);
+				assert_eq!(error.message(), "query failed");
+			}
+			other => panic!("unexpected framework error variant: {other:?}"),
 		}
 	}
 }

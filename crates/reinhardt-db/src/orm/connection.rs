@@ -501,7 +501,7 @@ impl DatabaseConnection {
 	/// # }
 	/// ```
 	pub async fn begin(&self) -> Result<Box<dyn TransactionExecutor>> {
-		Ok(self.inner.begin().await?)
+		self.inner.begin().await
 	}
 
 	/// Begin a transaction with a specific isolation level using TransactionExecutor
@@ -532,7 +532,7 @@ impl DatabaseConnection {
 		&self,
 		level: IsolationLevel,
 	) -> Result<Box<dyn TransactionExecutor>> {
-		Ok(self.inner.begin_with_isolation(level).await?)
+		self.inner.begin_with_isolation(level).await
 	}
 }
 

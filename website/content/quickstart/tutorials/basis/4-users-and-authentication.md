@@ -109,7 +109,9 @@ impl BaseUserManager<User> for AuthUserManager {
         User::objects()
             .create_with_conn(&self.db, &new_user)
             .await
-            .map_err(|e| Error::Database(e.to_string()))
+            .map_err(|error| {
+                DatabaseError::new(DatabaseErrorKind::Query, error.to_string()).into()
+            })
     }
 }
 ```

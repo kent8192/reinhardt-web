@@ -5,6 +5,13 @@ pub use reinhardt_core::exception::{DatabaseError, DatabaseErrorKind};
 /// Result type for database operations
 pub type Result<T> = reinhardt_core::exception::Result<T>;
 
+#[cfg(any(
+	feature = "orm",
+	feature = "postgres",
+	feature = "sqlite",
+	feature = "mysql",
+	test
+))]
 pub(crate) fn map_sqlx_error(error: sqlx::Error) -> DatabaseError {
 	use sqlx::error::ErrorKind;
 

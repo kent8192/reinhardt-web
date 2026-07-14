@@ -1,10 +1,13 @@
 //! Migration recorder
 
-use crate::backends::error::map_sqlx_error;
 use crate::backends::{DatabaseConnection, DatabaseError, DatabaseErrorKind};
 use chrono::{DateTime, Utc};
 use reinhardt_core::exception::Error as FrameworkError;
 
+#[cfg(any(feature = "postgres", feature = "mysql"))]
+use crate::backends::error::map_sqlx_error;
+
+#[cfg(any(feature = "postgres", feature = "mysql"))]
 fn map_sqlx_migration_error(error: sqlx::Error) -> super::MigrationError {
 	super::MigrationError::DatabaseError(map_sqlx_error(error))
 }
