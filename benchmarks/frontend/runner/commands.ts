@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { performance } from "node:perf_hooks";
 import { terminateProcessTree } from "./process-tree.js";
+import { registerSignalCleanup } from "./signal-cleanup.js";
 import type { CommandResult } from "./types.js";
 
 export function runShellCommand(command: string, cwd: string, timeoutMs: number): Promise<CommandResult> {
@@ -19,6 +20,7 @@ export function runShellCommand(command: string, cwd: string, timeoutMs: number)
     let resolved = false;
     let killTimer: NodeJS.Timeout | undefined;
     let forceTimer: NodeJS.Timeout | undefined;
+    let removeSignalCleanup: (() => void) | undefined;
     const timer = setTimeout(() => {
       timedOut = true;
       terminateProcessTree(child, "SIGTERM");
@@ -29,11 +31,34 @@ export function runShellCommand(command: string, cwd: string, timeoutMs: number)
         finish(124);
       }, 2_500);
     }, timeoutMs);
+    function childIsClosed(): boolean {
+      return child.exitCode !== null || child.signalCode !== null;
+    }
+    function waitForClose(timeoutMs: number): Promise<void> {
+      return new Promise((resolve) => {
+        const timeout = setTimeout(resolve, timeoutMs);
+        child.once("close", () => {
+          clearTimeout(timeout);
+          resolve();
+        });
+      });
+    }
+    removeSignalCleanup = registerSignalCleanup(async () => {
+      if (!child.pid || childIsClosed()) {
+        return;
+      }
+      terminateProcessTree(child, "SIGTERM");
+      await waitForClose(2_000);
+      if (!childIsClosed()) {
+        terminateProcessTree(child, "SIGKILL");
+      }
+    });
     function finish(code: number): void {
       if (resolved) {
         return;
       }
       resolved = true;
+      removeSignalCleanup?.();
       clearTimeout(timer);
       if (killTimer) {
         clearTimeout(killTimer);

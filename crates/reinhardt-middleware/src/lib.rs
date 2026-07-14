@@ -198,7 +198,7 @@ pub mod xframe;
 pub mod xss;
 
 // Re-export core middleware traits from reinhardt-http
-pub use reinhardt_http::{Handler, Middleware, MiddlewareChain};
+pub use reinhardt_http::{Handler, Middleware, MiddlewareChain, SyncHandler, SyncHandlerAdapter};
 
 pub use allowed_hosts::{AllowedHostsConfig, AllowedHostsMiddleware};
 #[cfg(feature = "sessions")]

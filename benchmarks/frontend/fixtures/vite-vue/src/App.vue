@@ -61,7 +61,7 @@ function reorderRows() {
       <output data-benchmark-value="list-count">Rows: {{ rows.length }}</output>
       <output data-benchmark-value="list-first">First: {{ rows[0]?.label }}</output>
       <ul>
-        <li v-for="row in rows.slice(0, 25)" :key="row.id" :data-benchmark-row="row.id">{{ row.label }}</li>
+        <li v-for="row in rows" :key="row.id" :data-benchmark-row="row.id">{{ row.label }}</li>
       </ul>
     </section>
   </main>

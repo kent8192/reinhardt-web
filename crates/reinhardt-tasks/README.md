@@ -82,6 +82,15 @@ use reinhardt::tasks::backend::{TaskBackend, RedisTaskBackend};
 - **QueueSettings**: `[tasks_queue]` settings fragment
   - Defines the queue name and max-retries fields
 
+#### Durable Jobs
+
+- **DurableQueue** (feature: `durable`): Database-backed job queue for long-running work
+  - Persists job records and lifecycle events in SQLite through `SqliteDurableJobStore`
+  - Tracks typed states: `Queued`, `Running`, `Succeeded`, `FailedRetryable`, `FailedFinal`, `Canceled`
+  - Supports attempt counting, retry scheduling, cancellation requests, and queryable snapshots
+  - Emits sequenced lifecycle events for status polling or streaming adapters
+  - Provides `SharedDurableQueue` and `DurableQueueKey` (feature: `di`) for server-function injection
+
 #### Task Scheduling
 
 - **Scheduler**: Task scheduler

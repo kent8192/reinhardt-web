@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- *(pages)* add `SetStateExt::update` for previous-value state updates from
+  `use_state` setters.
+- Add native component testing utilities under
+  `reinhardt_pages::testing::component`, including in-memory `Page` rendering,
+  role/text/label queries, event helpers, async settling, pretty DOM output,
+  and in-process `server_fn` mocks for `MockableServerFn` markers.
+
+### Changed
+
+- **BREAKING**: Route-backed component macros now require the route name as
+  `name = "..."`, for example `#[component("/path", name = "name")]`.
+
 ## [0.3.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.3.1...reinhardt-pages@v0.3.2) - 2026-07-14
 
 ### Fixed

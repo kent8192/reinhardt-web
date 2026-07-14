@@ -50,7 +50,7 @@ pub async fn vote_internal(
 			.map_err(|e| anyhow::anyhow!(e.to_string()))?
 			.ok_or_else(|| anyhow::Error::new(VoteRequestError::ChoiceNotFound))?;
 
-		if *choice.question_id() != request.question_id {
+		if choice.question_id() != request.question_id {
 			return Err(anyhow::Error::new(VoteRequestError::ChoiceQuestionMismatch));
 		}
 

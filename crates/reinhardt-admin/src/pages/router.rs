@@ -239,7 +239,7 @@ fn dashboard_view() -> Page {
 /// List view component for router
 #[cfg(client)]
 fn list_view_component(model_name: String) -> Page {
-	use reinhardt_pages::use_effect;
+	use reinhardt_pages::use_retained_effect;
 
 	let list_resource = use_resource(
 		move || {
@@ -261,13 +261,13 @@ fn list_view_component(model_name: String) -> Page {
 	// Sync page_signal from the completed resource outside the rendering closure.
 	// Updating signals inside a rendering closure is an anti-pattern: it causes
 	// a state change during render and could create an infinite loop if the
-	// resource ever reads page_signal. Using use_effect keeps side-effects
+	// resource ever reads page_signal. Using use_retained_effect keeps side-effects
 	// separate from the render path.
 	{
 		let resource = list_resource.clone();
 		let page_signal = page_signal.clone();
 		let resource_for_deps = list_resource.clone();
-		use_effect(
+		use_retained_effect(
 			move || {
 				if let ResourceState::Success(ref response) = resource.get() {
 					page_signal.set(response.page);
@@ -787,7 +787,10 @@ mod tests {
 
 		let route_match = route_match.unwrap();
 		assert_eq!(route_match.route.name(), Some("list"));
-		assert_eq!(route_match.params.get("model"), Some(&"users".to_string()));
+		assert_eq!(
+			route_match.params.get("model").map(String::as_str),
+			Some("users")
+		);
 	}
 
 	#[test]
@@ -798,8 +801,11 @@ mod tests {
 
 		let route_match = route_match.unwrap();
 		assert_eq!(route_match.route.name(), Some("detail"));
-		assert_eq!(route_match.params.get("model"), Some(&"users".to_string()));
-		assert_eq!(route_match.params.get("id"), Some(&"42".to_string()));
+		assert_eq!(
+			route_match.params.get("model").map(String::as_str),
+			Some("users")
+		);
+		assert_eq!(route_match.params.get("id").map(String::as_str), Some("42"));
 	}
 
 	#[test]
@@ -810,7 +816,10 @@ mod tests {
 
 		let route_match = route_match.unwrap();
 		assert_eq!(route_match.route.name(), Some("create"));
-		assert_eq!(route_match.params.get("model"), Some(&"users".to_string()));
+		assert_eq!(
+			route_match.params.get("model").map(String::as_str),
+			Some("users")
+		);
 	}
 
 	#[test]
@@ -821,8 +830,11 @@ mod tests {
 
 		let route_match = route_match.unwrap();
 		assert_eq!(route_match.route.name(), Some("edit"));
-		assert_eq!(route_match.params.get("model"), Some(&"users".to_string()));
-		assert_eq!(route_match.params.get("id"), Some(&"42".to_string()));
+		assert_eq!(
+			route_match.params.get("model").map(String::as_str),
+			Some("users")
+		);
+		assert_eq!(route_match.params.get("id").map(String::as_str), Some("42"));
 	}
 
 	#[test]

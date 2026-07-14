@@ -207,12 +207,12 @@ impl Middleware for SessionMiddleware {
 	/// Exposes the middleware-owned `Arc<SessionStore>` as DI singletons.
 	///
 	/// The raw `SessionStore` key is retained for `SessionData::inject`.
-	/// The keyed `FactoryOutput<SessionStoreKey, Arc<SessionStore>>` key is
+	/// The keyed `KeyedFactoryOutput<SessionStoreKey, Arc<SessionStore>>` key is
 	/// used by handlers that request
-	/// `#[inject] store: Depends<SessionStoreKey, Arc<SessionStore>>`.
+	/// `#[inject] store: KeyedDepends<SessionStoreKey, Arc<SessionStore>>`.
 	fn di_registrations(&self) -> Vec<MiddlewareDiRegistration> {
 		let store = Arc::clone(&self.store);
-		let keyed_store = Arc::new(reinhardt_di::FactoryOutput::<
+		let keyed_store = Arc::new(reinhardt_di::KeyedFactoryOutput::<
 			SessionStoreKey,
 			Arc<SessionStore>,
 		>::new(Arc::clone(&self.store)));
@@ -222,7 +222,8 @@ impl Middleware for SessionMiddleware {
 				store as Arc<dyn std::any::Any + Send + Sync>,
 			),
 			(
-				TypeId::of::<reinhardt_di::FactoryOutput<SessionStoreKey, Arc<SessionStore>>>(),
+				TypeId::of::<reinhardt_di::KeyedFactoryOutput<SessionStoreKey, Arc<SessionStore>>>(
+				),
 				keyed_store as Arc<dyn std::any::Any + Send + Sync>,
 			),
 		]
@@ -393,11 +394,11 @@ mod tests {
 		let (type_id, value) = &registrations[1];
 		assert_eq!(
 			*type_id,
-			TypeId::of::<reinhardt_di::FactoryOutput<SessionStoreKey, Arc<SessionStore>>>()
+			TypeId::of::<reinhardt_di::KeyedFactoryOutput<SessionStoreKey, Arc<SessionStore>>>()
 		);
 		let downcast = value
 			.clone()
-			.downcast::<reinhardt_di::FactoryOutput<SessionStoreKey, Arc<SessionStore>>>()
+			.downcast::<reinhardt_di::KeyedFactoryOutput<SessionStoreKey, Arc<SessionStore>>>()
 			.expect("registered Arc must downcast to keyed SessionStore factory output");
 		assert!(
 			Arc::ptr_eq(downcast.as_ref(), &store_arc),

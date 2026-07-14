@@ -9,12 +9,6 @@ use reinhardt_core::reactive::deps::IntoDeps;
 use crate::callback::{Callback, callback_with_deps};
 use crate::reactive::Memo;
 
-#[cfg(wasm)]
-type EventArg = web_sys::Event;
-
-#[cfg(native)]
-type EventArg = crate::component::DummyEvent;
-
 /// Memoizes an expensive calculation.
 ///
 /// This is the React-like equivalent of `useMemo`. The calculation is re-run
@@ -89,24 +83,23 @@ where
 ///
 /// # Returns
 ///
-/// A `Callback<EventArg, ()>` that can be passed to event handlers
+/// A `Callback<Args, ()>` that can be passed to typed event handlers
 ///
 /// # Example
 ///
 /// ```ignore
-/// use reinhardt_pages::reactive::hooks::{use_state, use_callback};
+/// use reinhardt_pages::reactive::hooks::{SetStateExt, use_callback, use_state};
 /// use reinhardt_pages::page;
 ///
 /// let (count, set_count) = use_state(0);
 ///
 /// // Memoized callback - reference won't change between renders
 /// let increment = use_callback({
-///     let count = count.clone();
 ///     let set_count = set_count.clone();
 ///     move |_event| {
-///         set_count(count.get() + 1);
+///         set_count.update(|current| current + 1);
 ///     }
-/// });
+/// }, ());
 ///
 /// page!(|| {
 ///     button {
@@ -118,17 +111,18 @@ where
 ///
 /// # Note
 ///
-/// Unlike React's useCallback, this doesn't require a dependency array.
-/// The callback captures values at creation time. To use the latest values,
-/// capture Signals (which are cheap to clone) rather than their values.
+/// Unlike React's dependency arrays, Reinhardt Pages uses an explicit
+/// dependency tuple. Capture Signals (which are cheap to clone) rather
+/// than their values when the callback should observe the latest state.
 #[cfg(wasm)]
 #[track_caller]
-pub fn use_callback<F, D>(f: F, deps: D) -> Callback<EventArg, ()>
+pub fn use_callback<Args, F, D>(f: F, deps: D) -> Callback<Args, ()>
 where
-	F: Fn(EventArg) + 'static,
+	F: Fn(Args) + 'static,
+	Args: 'static,
 	D: IntoDeps,
 {
-	callback_with_deps::<EventArg, ()>(f, deps.into_deps())
+	callback_with_deps::<Args, ()>(f, deps.into_deps())
 }
 
 /// Memoizes a callback function to maintain a stable reference (server-side version).
@@ -137,12 +131,13 @@ where
 /// Requires `Send + Sync` bounds for thread-safe server-side usage.
 #[cfg(native)]
 #[track_caller]
-pub fn use_callback<F, D>(f: F, deps: D) -> Callback<EventArg, ()>
+pub fn use_callback<Args, F, D>(f: F, deps: D) -> Callback<Args, ()>
 where
-	F: Fn(EventArg) + Send + Sync + 'static,
+	F: Fn(Args) + Send + Sync + 'static,
+	Args: 'static,
 	D: IntoDeps,
 {
-	callback_with_deps::<EventArg, ()>(f, deps.into_deps())
+	callback_with_deps::<Args, ()>(f, deps.into_deps())
 }
 
 /// Creates a memoized callback with custom argument and return types.
@@ -169,7 +164,7 @@ where
 /// ```no_run
 /// use reinhardt_pages::reactive::hooks::use_callback_with;
 ///
-/// let add = use_callback_with(|x: i32| x + 1);
+/// let add = use_callback_with(|x: i32| x + 1, ());
 /// assert_eq!(add.call(5), 6);
 /// ```
 #[cfg(wasm)]
@@ -247,11 +242,22 @@ mod tests {
 
 	#[cfg(native)]
 	#[test]
-	fn test_use_callback() {
-		use crate::component::DummyEvent;
+	fn test_use_callback_accepts_typed_event_arguments() {
+		use crate::component::NativeEvent;
+		use crate::event::{ClickEvent, EventPayload};
+		use reinhardt_core::types::page::{EventType, NativeEventPayload, PointerEventData};
 
-		let callback = use_callback(|_: DummyEvent| {}, ());
-		callback.call(DummyEvent::default());
+		let callback: Callback<ClickEvent, ()> = use_callback(
+			|event: ClickEvent| {
+				assert_eq!(event.event_type(), "click");
+			},
+			(),
+		);
+		let raw = NativeEvent::for_known(
+			EventType::Click,
+			NativeEventPayload::Pointer(PointerEventData::default()),
+		);
+		callback.call(ClickEvent::try_from_raw(raw).expect("click payload must convert"));
 	}
 
 	#[cfg(native)]

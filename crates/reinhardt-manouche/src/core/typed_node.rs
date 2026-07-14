@@ -10,8 +10,8 @@ use proc_macro2::Span;
 use syn::{Expr, Ident, Pat};
 
 use super::{
-	ComponentInvocationForm, PageComponentArg, PageEvent, PageExpression, PageParam, PageText,
-	types::AttrValue,
+	ComponentEventProp, ComponentInvocationForm, IntrinsicEvent, PageComponentArg, PageExpression,
+	PageParam, PageText, types::AttrValue,
 };
 
 /// The top-level typed AST node representing a validated page! macro invocation.
@@ -24,12 +24,69 @@ pub struct TypedPageMacro {
 	///
 	/// When present, the generated view will be wrapped with `.with_head(head_expr)`.
 	pub head: Option<syn::Expr>,
-	/// Closure-style parameters (props)
-	pub params: Vec<PageParam>,
-	/// The validated and typed body
-	pub body: TypedPageBody,
+	/// The validated and typed page macro form.
+	pub form: TypedPageMacroForm,
 	/// Span for error reporting
 	pub span: Span,
+}
+
+impl TypedPageMacro {
+	/// Returns the validated and typed body.
+	pub fn body(&self) -> &TypedPageBody {
+		match &self.form {
+			TypedPageMacroForm::StrictClosure { body, .. }
+			| TypedPageMacroForm::ImplicitBody { body, .. } => body,
+		}
+	}
+
+	/// Returns the closure-style parameters when this macro uses strict closure form.
+	pub fn params(&self) -> &[PageParam] {
+		match &self.form {
+			TypedPageMacroForm::StrictClosure { params, .. } => params,
+			TypedPageMacroForm::ImplicitBody { .. } => &[],
+		}
+	}
+
+	/// Returns implicit captures discovered for body-only form.
+	pub fn implicit_captures(&self) -> &[ImplicitPageCapture] {
+		match &self.form {
+			TypedPageMacroForm::StrictClosure { .. } => &[],
+			TypedPageMacroForm::ImplicitBody { captures, .. } => captures,
+		}
+	}
+
+	/// Returns `true` when this macro uses body-only implicit capture form.
+	pub fn is_implicit_body(&self) -> bool {
+		matches!(self.form, TypedPageMacroForm::ImplicitBody { .. })
+	}
+}
+
+/// A captured identifier used by body-only `page!` form.
+#[derive(Debug, Clone)]
+pub struct ImplicitPageCapture {
+	/// Captured identifier.
+	pub ident: syn::Ident,
+	/// Span for error reporting.
+	pub span: Span,
+}
+
+/// The typed syntactic form used by a `page!` macro invocation.
+#[derive(Debug)]
+pub enum TypedPageMacroForm {
+	/// A strict closure form such as `page!(|name: String| { ... })`.
+	StrictClosure {
+		/// Closure-style parameters (props).
+		params: Vec<PageParam>,
+		/// The validated and typed body.
+		body: TypedPageBody,
+	},
+	/// A body-only form with implicit captures.
+	ImplicitBody {
+		/// Captured identifiers discovered in the body.
+		captures: Vec<ImplicitPageCapture>,
+		/// The validated and typed body.
+		body: TypedPageBody,
+	},
 }
 
 /// The typed body of a page! macro, containing validated nodes.
@@ -72,10 +129,12 @@ pub struct TypedPageElement {
 	pub tag: Ident,
 	/// Typed attributes (with `AttrValue` instead of `Expr`)
 	pub attrs: Vec<TypedPageAttr>,
-	/// Event handlers (unchanged from untyped version)
-	pub events: Vec<PageEvent>,
+	/// Catalog-resolved intrinsic event handlers.
+	pub events: Vec<IntrinsicEvent>,
 	/// Validated child nodes
 	pub children: Vec<TypedPageNode>,
+	/// Whether compile-time accessibility validation is disabled for this element.
+	pub a11y_disabled: bool,
 	/// Span for error reporting
 	pub span: Span,
 }
@@ -88,6 +147,7 @@ impl TypedPageElement {
 			attrs: Vec::new(),
 			events: Vec::new(),
 			children: Vec::new(),
+			a11y_disabled: false,
 			span,
 		}
 	}
@@ -232,7 +292,7 @@ pub struct TypedPageComponent {
 	pub args: Vec<PageComponentArg>,
 	/// Event props (`@event: handler`). Only populated for the `Brace` form;
 	/// always empty for the `Paren` form.
-	pub events: Vec<PageEvent>,
+	pub events: Vec<ComponentEventProp>,
 	/// Optional typed children (content inside `{ }` after arguments)
 	pub children: Option<Vec<TypedPageNode>>,
 	/// Typed named children slots

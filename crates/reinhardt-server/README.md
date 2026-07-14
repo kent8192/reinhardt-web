@@ -19,6 +19,7 @@ This crate provides the following features:
   - Builder pattern for middleware configuration
   - Efficient TCP connection management
   - Automatic request/response conversion
+  - Empty HTTP/1.1 `GET` and `HEAD` requests skip body collection when no body is declared
   - Built-in error handling
 
 - **WebSocket Support** (feature = "websocket"): WebSocket server implementation

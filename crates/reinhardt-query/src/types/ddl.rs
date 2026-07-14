@@ -10,7 +10,7 @@
 
 use crate::{
 	expr::SimpleExpr,
-	types::{DynIden, IntoIden, TableRef},
+	types::{DynIden, GeneratedColumn, GeneratedStorage, IntoIden, SchemaExpr, TableRef},
 };
 
 /// SQL column types
@@ -105,6 +105,7 @@ pub struct ColumnDef {
 	pub(crate) auto_increment: bool,
 	pub(crate) default: Option<SimpleExpr>,
 	pub(crate) check: Option<SimpleExpr>,
+	pub(crate) generated: Option<GeneratedColumn>,
 	pub(crate) comment: Option<String>,
 }
 
@@ -123,6 +124,7 @@ impl ColumnDef {
 			auto_increment: false,
 			default: None,
 			check: None,
+			generated: None,
 			comment: None,
 		}
 	}
@@ -153,12 +155,18 @@ impl ColumnDef {
 
 	/// Set AUTO_INCREMENT attribute
 	pub fn auto_increment(mut self, auto_increment: bool) -> Self {
+		if auto_increment && self.generated.is_some() {
+			panic!("generated columns cannot use AUTO_INCREMENT");
+		}
 		self.auto_increment = auto_increment;
 		self
 	}
 
 	/// Set DEFAULT value
 	pub fn default(mut self, value: SimpleExpr) -> Self {
+		if self.generated.is_some() {
+			panic!("generated columns cannot use DEFAULT");
+		}
 		self.default = Some(value);
 		self
 	}
@@ -167,6 +175,42 @@ impl ColumnDef {
 	pub fn check(mut self, expr: SimpleExpr) -> Self {
 		self.check = Some(expr);
 		self
+	}
+
+	/// Set generated-column metadata from a typed schema expression.
+	pub fn generated(mut self, expr: SchemaExpr, storage: GeneratedStorage) -> Self {
+		self.validate_generated_modifiers();
+		self.generated = Some(GeneratedColumn::typed(expr, storage));
+		self
+	}
+
+	/// Set a stored generated-column expression.
+	pub fn generated_stored(self, expr: SchemaExpr) -> Self {
+		self.generated(expr, GeneratedStorage::Stored)
+	}
+
+	/// Set a virtual generated-column expression.
+	pub fn generated_virtual(self, expr: SchemaExpr) -> Self {
+		self.generated(expr, GeneratedStorage::Virtual)
+	}
+
+	/// Set explicit raw SQL generated-column metadata.
+	///
+	/// Prefer [`Self::generated`] for backend-aware typed expressions. This
+	/// escape hatch is intended for trusted backend-specific SQL fragments.
+	pub fn generated_sql(mut self, sql: impl Into<String>, storage: GeneratedStorage) -> Self {
+		self.validate_generated_modifiers();
+		self.generated = Some(GeneratedColumn::raw_sql(sql, storage));
+		self
+	}
+
+	fn validate_generated_modifiers(&self) {
+		if self.default.is_some() {
+			panic!("generated columns cannot use DEFAULT");
+		}
+		if self.auto_increment {
+			panic!("generated columns cannot use AUTO_INCREMENT");
+		}
 	}
 
 	/// Set column comment
@@ -560,5 +604,36 @@ mod tests {
 			col.column_type,
 			Some(ColumnType::Custom("CITEXT".to_string()))
 		);
+	}
+
+	#[test]
+	#[should_panic(expected = "generated columns cannot use DEFAULT")]
+	fn generated_column_rejects_existing_default() {
+		let _ = ColumnDef::new("full_name")
+			.string()
+			.default(SimpleExpr::Value(crate::Value::String(Some(Box::new(
+				"fallback".to_string(),
+			)))))
+			.generated_stored(SchemaExpr::col("name"));
+	}
+
+	#[test]
+	#[should_panic(expected = "generated columns cannot use DEFAULT")]
+	fn generated_column_rejects_later_default() {
+		let _ = ColumnDef::new("full_name")
+			.string()
+			.generated_stored(SchemaExpr::col("name"))
+			.default(SimpleExpr::Value(crate::Value::String(Some(Box::new(
+				"fallback".to_string(),
+			)))));
+	}
+
+	#[test]
+	#[should_panic(expected = "generated columns cannot use AUTO_INCREMENT")]
+	fn generated_column_rejects_auto_increment() {
+		let _ = ColumnDef::new("full_name")
+			.string()
+			.generated_stored(SchemaExpr::col("name"))
+			.auto_increment(true);
 	}
 }

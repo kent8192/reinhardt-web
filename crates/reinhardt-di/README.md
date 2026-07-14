@@ -26,8 +26,8 @@ Then import DI features:
 
 ```rust
 use reinhardt::di::{
-    Depends, FactoryOutput, Injectable, InjectableKey, InjectionContext,
-    SingletonScope, injectable, injectable_key,
+    Depends, Injectable, InjectableKey, InjectionContext, KeyedDepends,
+    KeyedFactoryOutput, SingletonScope, injectable, injectable_key,
 };
 ```
 
@@ -43,9 +43,9 @@ use reinhardt::di::{
 ### Injection Models
 
 Application-owned types can implement `Injectable` directly when their own
-type is the dependency identity. Provider functions use `#[injectable]` and
-return `FactoryOutput<K, T>` when the dependency should be keyed by an
-application-defined `K` instead.
+type is the dependency identity. Provider functions use `#[injectable]`; they
+can return a direct `T`, or `KeyedFactoryOutput<K, T>` when the dependency
+should be keyed by an application-defined `K` instead.
 
 ## Implemented Features ✓
 
@@ -53,22 +53,34 @@ application-defined `K` instead.
 
 #### Dependency Wrappers
 
-`reinhardt-di` provides keyed wrappers for provider outputs:
+`reinhardt-di` provides wrappers for provider outputs:
 
-- ✓ **`FactoryOutput<K, T>`**: return type for `#[injectable]` provider functions
-  - registered by `TypeId::of::<FactoryOutput<K, T>>()`
+- ✓ **`KeyedFactoryOutput<K, T>`**: keyed return type for `#[injectable]` provider functions
+  - registered by `TypeId::of::<KeyedFactoryOutput<K, T>>()`
   - stores the produced `T`
   - lets multiple providers return the same `T` without colliding
 
-- ✓ **`Depends<K, T>`**: handler/provider parameter wrapper for keyed outputs
-  - resolves `FactoryOutput<K, T>` from the registry
+- ✓ **`KeyedDepends<K, T>`**: handler/provider parameter wrapper for keyed outputs
+  - resolves `KeyedFactoryOutput<K, T>` from the registry
   - dereferences to `T` for ergonomic use
-  - `Depends::<K, T>::builder()` - cache enabled metadata
-  - `Depends::<K, T>::builder_no_cache()` - cache disabled metadata
+  - `KeyedDepends::<K, T>::builder()` - cache enabled metadata
+  - `KeyedDepends::<K, T>::builder_no_cache()` - cache disabled metadata
   - `from_value(value)` - build from a value for tests
 
+- ✓ **`Depends<T>`**: handler/provider parameter wrapper for self-keyed outputs
+  - resolves `KeyedFactoryOutput<SelfKey<T>, T>` from the registry
+  - dereferences to `T` for ergonomic use
+
 Use direct `T` parameters for ordinary `Injectable` values. Use
-`Depends<K, T>` when consuming output from a provider function.
+`Depends<T>` for self-keyed provider output and `KeyedDepends<K, T>` when
+consuming explicitly keyed provider output.
+
+`FactoryOutput<K, T>` remains available as a deprecated compatibility alias for
+`KeyedFactoryOutput<K, T>`. New code should use `KeyedFactoryOutput`.
+Explicit-key provider return types must be written as `KeyedFactoryOutput<K, T>`
+or the deprecated `FactoryOutput<K, T>` compatibility name. User-defined aliases
+for those wrappers are treated as ordinary direct provider return types by the
+attribute macro.
 
 - ✓ **Injectable Trait**: Define types that can be injected directly
   - Manual implementation: When the type itself is the dependency identity
@@ -124,7 +136,7 @@ Use direct `T` parameters for ordinary `Injectable` values. Use
   - Support for connection info injection
 
 - ✓ **WebSocket Support**: Dependency injection into WebSocket connections
-  - Use direct `Injectable` values or `Depends<K, T>` in WebSocket handlers
+  - Use direct `Injectable` values, `Depends<T>`, or `KeyedDepends<K, T>` in WebSocket handlers
 
 ### Advanced Dependency Patterns ✓
 
@@ -218,12 +230,12 @@ impl Injectable for UserData {
 
 ## Usage Examples
 
-### Basic Usage with `Depends<K, T>`
+### Basic Usage with `KeyedDepends<K, T>`
 
 ```rust
 use reinhardt::di::{
-    Depends, FactoryOutput, InjectionContext, InjectableKey, SingletonScope,
-    injectable, injectable_key,
+    InjectionContext, InjectableKey, KeyedDepends, KeyedFactoryOutput,
+    SingletonScope, injectable, injectable_key,
 };
 use std::sync::Arc;
 
@@ -237,8 +249,8 @@ struct Config {
 struct ConfigKey;
 
 #[injectable(scope = "singleton")]
-async fn config_provider() -> FactoryOutput<ConfigKey, Config> {
-    FactoryOutput::new(Config {
+async fn config_provider() -> KeyedFactoryOutput<ConfigKey, Config> {
+    KeyedFactoryOutput::new(Config {
         api_key: "test-key".to_string(),
         database_url: "sqlite://app.db".to_string(),
     })
@@ -253,7 +265,7 @@ async fn main() {
     let ctx = InjectionContext::builder(singleton).build();
 
     // Keyed dependency resolution (cache enabled metadata)
-    let config = Depends::<ConfigKey, Config>::builder()
+    let config = KeyedDepends::<ConfigKey, Config>::builder()
         .resolve(&ctx)
         .await
         .unwrap();
@@ -378,13 +390,13 @@ mod tests {
 
 ```rust
 // Cache enabled (default) - Returns the same instance
-let config1 = Depends::<ConfigKey, Config>::builder().resolve(&ctx).await?;
-let config2 = Depends::<ConfigKey, Config>::builder().resolve(&ctx).await?;
+let config1 = KeyedDepends::<ConfigKey, Config>::builder().resolve(&ctx).await?;
+let config2 = KeyedDepends::<ConfigKey, Config>::builder().resolve(&ctx).await?;
 // config1 and config2 are the same instance
 
 // Cache disabled - Creates new instance each time
-let config3 = Depends::<ConfigKey, Config>::builder_no_cache().resolve(&ctx).await?;
-let config4 = Depends::<ConfigKey, Config>::builder_no_cache().resolve(&ctx).await?;
+let config3 = KeyedDepends::<ConfigKey, Config>::builder_no_cache().resolve(&ctx).await?;
+let config4 = KeyedDepends::<ConfigKey, Config>::builder_no_cache().resolve(&ctx).await?;
 // config3 and config4 are different instances
 ```
 
@@ -500,25 +512,25 @@ initialization logic.
 #[injectable(scope = "singleton")]
 async fn factory_function(
     #[inject] dep: Dependency,
-) -> FactoryOutput<MyKey, ReturnType> {
+) -> KeyedFactoryOutput<MyKey, ReturnType> {
     // Initialization logic
-    FactoryOutput::new(value)
+    KeyedFactoryOutput::new(value)
 }
 ```
 
 When initialization can fail, put `Result<T, E>` in the provider value
-position. Reinhardt registers `FactoryOutput<K, Result<T, E>>`, so the key `K`
-remains the provider identity and callers do not need factory-local wrapper
+position. Reinhardt registers `KeyedFactoryOutput<K, Result<T, E>>`, so the key
+`K` remains the provider identity and callers do not need factory-local wrapper
 types only to avoid `TypeId` collisions.
 
-`#[inject]` wrapper detection is trait-based. `Depends<K, T>` resolves
-`FactoryOutput<K, T>`, and applications can define their own wrapper types by
-implementing `InjectableType` with the registry key in `type Inner`.
+`#[inject]` wrapper detection is trait-based. `KeyedDepends<K, T>` resolves
+`KeyedFactoryOutput<K, T>`, and applications can define their own wrapper types
+by implementing `InjectableType` with the registry key in `type Inner`.
 
 ```rust
-use reinhardt::di::{Depends, FactoryOutput, InjectableKey, InjectableType};
+use reinhardt::di::{InjectableKey, InjectableType, KeyedDepends, KeyedFactoryOutput};
 
-struct Lazy<K, T>(Depends<K, T>)
+struct Lazy<K, T>(KeyedDepends<K, T>)
 where
     K: InjectableKey,
     T: Send + Sync + 'static;
@@ -528,13 +540,13 @@ where
     K: InjectableKey,
     T: Send + Sync + 'static,
 {
-    type Inner = FactoryOutput<K, T>;
+    type Inner = KeyedFactoryOutput<K, T>;
 
     fn from_resolved(
         inner: std::sync::Arc<Self::Inner>,
         use_cache: bool,
     ) -> Self {
-        let depends = Depends::from_output(inner, use_cache);
+        let depends = KeyedDepends::from_output(inner, use_cache);
         Self(depends)
     }
 }
@@ -562,7 +574,7 @@ targets.
 
 **Example:**
 ```rust
-use reinhardt::di::{Depends, FactoryOutput, injectable, injectable_key};
+use reinhardt::di::{KeyedDepends, KeyedFactoryOutput, injectable, injectable_key};
 use reinhardt::{get, Response, StatusCode, ViewResult};
 
 #[derive(Debug)]
@@ -574,8 +586,8 @@ struct DatabaseKey;
 #[injectable(scope = "singleton")]
 async fn create_database(
     #[inject] config: Config,
-) -> FactoryOutput<DatabaseKey, Result<DatabaseConnection, DatabaseConnectionError>> {
-    FactoryOutput::new(
+) -> KeyedFactoryOutput<DatabaseKey, Result<DatabaseConnection, DatabaseConnectionError>> {
+    KeyedFactoryOutput::new(
         DatabaseConnection::connect(&config.database_url)
             .await
             .map_err(|_| DatabaseConnectionError),
@@ -584,7 +596,7 @@ async fn create_database(
 
 #[get("/database/health", name = "database_health")]
 async fn database_health(
-    #[inject] db: Depends<DatabaseKey, Result<DatabaseConnection, DatabaseConnectionError>>,
+    #[inject] db: KeyedDepends<DatabaseKey, Result<DatabaseConnection, DatabaseConnectionError>>,
 ) -> ViewResult<Response> {
     match db.as_ref() {
         Ok(_) => Ok(Response::new(StatusCode::OK)),
@@ -609,7 +621,7 @@ async fn database_health(
 
 ```rust
 use reinhardt::di::{
-    Depends, DiResult, FactoryOutput, Injectable, InjectionContext,
+    DiResult, Injectable, InjectionContext, KeyedDepends, KeyedFactoryOutput,
     injectable, injectable_key,
 };
 
@@ -634,12 +646,12 @@ struct ServiceKey;
 #[injectable(scope = "request")]
 async fn create_service(
     #[inject] config: AppConfig,
-) -> FactoryOutput<ServiceKey, MyService> {
-    FactoryOutput::new(MyService::new(config.db_url, config.cache_size))
+) -> KeyedFactoryOutput<ServiceKey, MyService> {
+    KeyedFactoryOutput::new(MyService::new(config.db_url, config.cache_size))
 }
 
 async fn handler(
-    #[inject] service: Depends<ServiceKey, MyService>,
+    #[inject] service: KeyedDepends<ServiceKey, MyService>,
 ) {
     service.run().await;
 }

@@ -9,7 +9,17 @@ use super::link_interceptor::install_link_interceptor;
 #[cfg(wasm)]
 use super::{store_spa_router, with_spa_router};
 #[cfg(wasm)]
+use crate::component::MountError;
+#[cfg(wasm)]
 use crate::component::PageExt as _;
+#[cfg(wasm)]
+use crate::component::reactive_if::{
+	ReactiveNodeStore, clear_reactive_node_store, new_reactive_node_store, with_reactive_node_store,
+};
+#[cfg(wasm)]
+use reinhardt_core::page::Outlet;
+#[cfg(wasm)]
+use reinhardt_urls::routers::client_router::{ClientRouteTreeMatch, ClientRouter, LayoutKey};
 
 #[cfg(wasm)]
 thread_local! {
@@ -17,6 +27,149 @@ thread_local! {
 	/// since the WASM module loaded. Backs `ClientLauncher::__diag_render_count()`.
 	/// Hidden diagnostic counter for testing — Refs #4122.
 	static RENDER_COUNT: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+	static PERSISTENT_LAYOUT_RENDERER: RefCell<PersistentLayoutRenderer> =
+		RefCell::new(PersistentLayoutRenderer::new());
+}
+
+#[cfg(wasm)]
+struct PersistentLayoutRenderer {
+	layout_keys: Vec<LayoutKey>,
+	layout_stores: Vec<ReactiveNodeStore>,
+	leaf_store: Option<ReactiveNodeStore>,
+}
+
+#[cfg(wasm)]
+impl PersistentLayoutRenderer {
+	fn new() -> Self {
+		Self {
+			layout_keys: Vec::new(),
+			layout_stores: Vec::new(),
+			leaf_store: None,
+		}
+	}
+
+	fn reset(&mut self) {
+		for store in self.layout_stores.drain(..) {
+			clear_reactive_node_store(&store);
+		}
+		if let Some(store) = self.leaf_store.take() {
+			clear_reactive_node_store(&store);
+		}
+		self.layout_keys.clear();
+	}
+
+	fn clear_from_layout_depth(&mut self, depth: usize) {
+		for store in self.layout_stores.drain(depth..) {
+			clear_reactive_node_store(&store);
+		}
+		if let Some(store) = self.leaf_store.take() {
+			clear_reactive_node_store(&store);
+		}
+		self.layout_keys.truncate(depth);
+	}
+
+	fn render(
+		&mut self,
+		root_el: &web_sys::Element,
+		router: &ClientRouter,
+	) -> Result<bool, MountError> {
+		let path = router.current_path().get();
+		let Some(route_match) = router.match_tree(&path) else {
+			self.reset();
+			return Ok(false);
+		};
+		if route_match.layouts().is_empty() {
+			self.reset();
+			return Ok(false);
+		}
+
+		let next_keys = route_match
+			.layouts()
+			.iter()
+			.map(|layout| layout.key().clone())
+			.collect::<Vec<_>>();
+		let mut preserved = common_layout_prefix_len(&self.layout_keys, &next_keys);
+		if preserved > 0 && Self::find_outlet(root_el, preserved - 1).is_err() {
+			preserved = 0;
+		}
+
+		if preserved == 0 {
+			self.reset();
+			crate::component::cleanup_reactive_nodes();
+			root_el.set_inner_html("");
+		} else {
+			self.clear_from_layout_depth(preserved);
+			let outlet = Self::find_outlet(root_el, preserved - 1)?;
+			outlet.set_inner_html("");
+		}
+
+		self.mount_suffix(root_el, router, &route_match, preserved)?;
+		self.layout_keys = next_keys;
+		Ok(true)
+	}
+
+	fn mount_suffix(
+		&mut self,
+		root_el: &web_sys::Element,
+		router: &ClientRouter,
+		route_match: &ClientRouteTreeMatch,
+		start_depth: usize,
+	) -> Result<(), MountError> {
+		let mut parent = if start_depth == 0 {
+			root_el.clone()
+		} else {
+			Self::find_outlet(root_el, start_depth - 1)?
+		};
+
+		for depth in start_depth..route_match.layouts().len() {
+			let outlet_id = Self::outlet_id(depth);
+			let store = new_reactive_node_store();
+			let parent_wrapper = crate::dom::Element::new(parent.clone());
+			with_reactive_node_store(&store, || {
+				let page = router
+					.__render_tree_layout(route_match, depth, Outlet::placeholder(outlet_id))
+					.ok_or(MountError::CreateElementFailed)?;
+				page.mount(&parent_wrapper)
+			})?;
+			self.layout_stores.push(store);
+			parent = Self::find_outlet(root_el, depth)?;
+		}
+
+		let leaf_store = new_reactive_node_store();
+		let parent_wrapper = crate::dom::Element::new(parent);
+		with_reactive_node_store(&leaf_store, || {
+			let leaf = router
+				.__render_tree_leaf(route_match)
+				.ok_or(MountError::CreateElementFailed)?;
+			leaf.mount(&parent_wrapper)
+		})?;
+		self.leaf_store = Some(leaf_store);
+		Ok(())
+	}
+
+	fn outlet_id(depth: usize) -> String {
+		format!("__reinhardt_layout_outlet_{depth}")
+	}
+
+	fn find_outlet(
+		root_el: &web_sys::Element,
+		depth: usize,
+	) -> Result<web_sys::Element, MountError> {
+		let selector = format!("[data-rh-outlet-id=\"{}\"]", Self::outlet_id(depth));
+		root_el
+			.query_selector(&selector)
+			.map_err(|_| MountError::CreateElementFailed)?
+			.ok_or(MountError::AppendChildFailed)
+	}
+}
+
+#[cfg(wasm)]
+fn common_layout_prefix_len(previous: &[LayoutKey], next: &[LayoutKey]) -> usize {
+	previous
+		.iter()
+		.zip(next)
+		.take_while(|(previous, next)| previous == next)
+		.count()
 }
 
 /// WASM client application launcher.
@@ -483,6 +636,15 @@ impl ClientLauncher {
 	/// Refs #4101.
 	fn render_and_mount(root_el: &web_sys::Element) -> Result<(), crate::component::MountError> {
 		RENDER_COUNT.with(|c| c.set(c.get() + 1));
+		let client_router = with_spa_router(|r| r.as_any().downcast_ref::<ClientRouter>().cloned());
+		if let Some(router) = client_router {
+			let handled_by_layout_renderer = PERSISTENT_LAYOUT_RENDERER
+				.with(|renderer| renderer.borrow_mut().render(root_el, &router))?;
+			if handled_by_layout_renderer {
+				return Ok(());
+			}
+		}
+
 		// Refs #5104: tear down the previous route's reactive graph before
 		// constructing the next route. Route construction can create forms,
 		// resources, and reactive blocks that synchronously touch signals; if
@@ -646,6 +808,7 @@ impl ClientLauncher {
 					self.root_selector
 				))
 			})?;
+		PERSISTENT_LAYOUT_RENDERER.with(|renderer| renderer.borrow_mut().reset());
 
 		// Phase B: initial mount runs inline (no Effect). Errors
 		// propagate directly because no Effect/Signal indirection

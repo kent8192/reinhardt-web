@@ -9,6 +9,7 @@
 //! - `form!` - Type-safe form component macro with reactive bindings
 //! - `#[server_fn]` - Server Functions (RPC) macro
 //! - `#[client_page]` - Client page function macro with native route-table stubs
+//! - `#[layout]` - Route-backed layout component macro for `ClientRouter`
 //! - `#[wasm_server_api]` - API parity guard for matching WASM/server surfaces
 //!
 //! ## Form Design
@@ -28,12 +29,22 @@
 //! ```ignore
 //! use reinhardt_pages::page;
 //!
-//! // Define an anonymous component with closure-style props
+//! // Build a Page directly from surrounding Rust values.
+//! let initial = 42;
+//! let view = page!({
+//!     div {
+//!         class: "counter",
+//!         h1 { "Counter" }
+//!         span { { format!("Count: {}", initial) } }
+//!     }
+//! });
+//!
+//! // Define a reusable factory with closure-style props.
 //! let counter = page!(|initial: i32| {
 //!     div {
 //!         class: "counter",
 //!         h1 { "Counter" }
-//!         span { format!("Count: {}", initial) }
+//!         span { { format!("Count: {}", initial) } }
 //!         button {
 //!             @click: |_| { /* handler */ },
 //!             "+"
@@ -41,7 +52,6 @@
 //!     }
 //! });
 //!
-//! // Use like a function
 //! let view = counter(42);
 //! ```
 //!
@@ -65,6 +75,8 @@
 
 use proc_macro::TokenStream;
 
+mod client_form;
+mod client_form_choices;
 mod client_page;
 mod component;
 mod crate_paths;
@@ -121,6 +133,18 @@ pub fn derive_from_request(input: TokenStream) -> TokenStream {
 	from_request::derive_from_request_impl(input)
 }
 
+/// Derives client-form choice metadata for fieldless enums.
+#[proc_macro_derive(ClientFormChoices, attributes(serde, default))]
+pub fn derive_client_form_choices(input: TokenStream) -> TokenStream {
+	client_form_choices::derive_client_form_choices_impl(input)
+}
+
+/// Derives a `use_form` compatible companion form for a DTO request type.
+#[proc_macro_derive(ClientForm, attributes(client_form, serde))]
+pub fn derive_client_form(input: TokenStream) -> TokenStream {
+	client_form::derive_client_form_impl(input)
+}
+
 /// Adds builder support and `FromRequest` extraction to a named props struct.
 #[proc_macro_attribute]
 pub fn page_props(args: TokenStream, input: TokenStream) -> TokenStream {
@@ -131,6 +155,12 @@ pub fn page_props(args: TokenStream, input: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn component(args: TokenStream, input: TokenStream) -> TokenStream {
 	component::component_impl(args, input)
+}
+
+/// Declares a route-backed layout component.
+#[proc_macro_attribute]
+pub fn layout(args: TokenStream, input: TokenStream) -> TokenStream {
+	component::layout_impl(args, input)
 }
 
 /// Declares public APIs with matching WASM and server-side surfaces.
@@ -164,13 +194,30 @@ pub fn wasm_server_api(args: TokenStream, input: TokenStream) -> TokenStream {
 /// Derives typed field signals and form traits for a form values struct.
 /// Page component macro
 ///
-/// Creates an anonymous component with a closure-style DSL for defining views.
-/// The component is returned as a callable function that takes props and returns a View.
+/// Creates a `Page` directly or a reusable page factory with a closure-style DSL.
+///
+/// `page!({ ... })` returns a `Page` immediately and implicitly captures free
+/// value identifiers from the surrounding Rust scope. Captured values are cloned
+/// into generated reactive and event closures, so they must implement `Clone`.
+///
+/// `page!(|| { ... })` and `page!(|props: Props| { ... })` return callable
+/// factories. Closure forms keep strict capture discipline: values used in the
+/// body must be declared in the closure parameter list.
 ///
 /// ## Syntax
 ///
 /// ```text
-/// // Basic syntax
+/// // Direct Page form
+/// page!({
+///     element {
+///         attr: "value",
+///         @event: |e| { handler(e) },
+///         child_element { ... }
+///         "text content"
+///     }
+/// })
+///
+/// // Factory syntax
 /// page!(|prop1: Type1, prop2: Type2| {
 ///     element {
 ///         attr: "value",
@@ -183,22 +230,24 @@ pub fn wasm_server_api(args: TokenStream, input: TokenStream) -> TokenStream {
 /// // With head directive (for SSR)
 /// page! {
 ///     #head: my_head,
-///     |prop1: Type1| {
+///     {
 ///         element { ... }
 ///     }
 /// }
 /// ```
 ///
-/// ## Closure Parameters
+/// ## Body Forms
 ///
-/// Define props using closure syntax:
+/// Choose direct pages for app screens and ordinary functions that return
+/// `Page`. Choose closure forms for factories that are called later:
 ///
 /// | Pattern | Example | Description |
 /// |---------|---------|-------------|
-/// | No parameters | `page!(\|\| { ... })` | Static view |
-/// | Single parameter | `page!(\|name: String\| { ... })` | One prop |
-/// | Multiple parameters | `page!(\|a: T1, b: T2\| { ... })` | Multiple props |
-/// | Signal parameter | `page!(\|sig: Signal<T>\| { ... })` | Reactive signal |
+/// | Direct body | `page!({ ... })` | Immediate `Page` with implicit `Clone` captures |
+/// | No-arg factory | `page!(\|\| { ... })` | Callable factory with no params |
+/// | Single parameter | `page!(\|name: String\| { ... })` | Callable factory with one prop |
+/// | Multiple parameters | `page!(\|a: T1, b: T2\| { ... })` | Callable factory with multiple props |
+/// | Signal parameter | `page!(\|sig: Signal<T>\| { ... })` | Callable factory with reactive signal prop |
 ///
 /// ## HTML Elements
 ///
@@ -333,7 +382,7 @@ pub fn wasm_server_api(args: TokenStream, input: TokenStream) -> TokenStream {
 /// |------|--------|---------|
 /// | String literal | `attr: "value"` | `class: "container"` |
 /// | Expression | `attr: expr` | `class: css_class` |
-/// | Integer literal | `attr: number` | `tabindex: 1` |
+/// | Integer literal | `attr: number` | `tabindex: 0` |
 /// | Boolean expression | `attr: expr` | `disabled: is_disabled` |
 ///
 /// ### Boolean Attributes
@@ -386,82 +435,32 @@ pub fn wasm_server_api(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// ## Event Handlers
 ///
-/// Events use `@event: handler` syntax.
-///
-/// ### Mouse Events
-///
-/// | Event | Description |
-/// |-------|-------------|
-/// | `@click` | Mouse click |
-/// | `@dblclick` | Double click |
-/// | `@mousedown` | Mouse button pressed |
-/// | `@mouseup` | Mouse button released |
-/// | `@mouseenter` | Mouse enters element |
-/// | `@mouseleave` | Mouse leaves element |
-/// | `@mousemove` | Mouse moves over element |
-/// | `@mouseover` | Mouse over element (bubbles) |
-/// | `@mouseout` | Mouse out of element (bubbles) |
-///
-/// ### Keyboard Events
-///
-/// | Event | Description |
-/// |-------|-------------|
-/// | `@keydown` | Key pressed |
-/// | `@keyup` | Key released |
-/// | `@keypress` | Key pressed (character input) |
-///
-/// ### Form Events
-///
-/// | Event | Description |
-/// |-------|-------------|
-/// | `@input` | Input value changed |
-/// | `@change` | Value changed and committed |
-/// | `@submit` | Form submitted |
-/// | `@focus` | Element focused |
-/// | `@blur` | Element lost focus |
-///
-/// ### Touch Events
-///
-/// | Event | Description |
-/// |-------|-------------|
-/// | `@touchstart` | Touch started |
-/// | `@touchend` | Touch ended |
-/// | `@touchmove` | Touch moved |
-/// | `@touchcancel` | Touch cancelled |
-///
-/// ### Drag Events
-///
-/// | Event | Description |
-/// |-------|-------------|
-/// | `@dragstart` | Drag started |
-/// | `@drag` | Dragging |
-/// | `@drop` | Dropped |
-/// | `@dragenter` | Drag entered element |
-/// | `@dragleave` | Drag left element |
-/// | `@dragover` | Drag over element |
-/// | `@dragend` | Drag ended |
-///
-/// ### Other Events
-///
-/// | Event | Description |
-/// |-------|-------------|
-/// | `@load` | Resource loaded |
-/// | `@error` | Error occurred |
-/// | `@scroll` | Element scrolled |
-/// | `@resize` | Element/window resized |
+/// Standard intrinsic events use `@event: handler` syntax. The authoritative
+/// event catalog determines the accepted names and the distinct payload type
+/// for each event. Unknown names are rejected with a nearby-name suggestion.
+/// Arbitrary DOM events use the explicit raw form
+/// `@custom("event-name"): handler`.
+/// Component `@event` props are separate: their argument type comes from the
+/// component's declared prop and is not selected by the DOM event catalog.
+/// Typed custom `CustomEvent.detail` payloads are deferred to #5636.
 ///
 /// ### Handler Syntax
 ///
 /// ```ignore
-/// // Inline closure with event parameter
-/// button { @click: |e| { handle_click(e); } }
+/// use reinhardt_pages::event::{ClickEvent, InputEvent};
+/// use reinhardt_pages::platform::Event;
 ///
-/// // Closure ignoring event
-/// button { @click: |_| { do_something(); } }
+/// // The payload is inferred from the standard event name.
+/// button { @click: |event| { let _: ClickEvent = event; } }
 ///
-/// // Function reference
-/// fn handle_click(_event: Event) { ... }
-/// button { @click: handle_click }
+/// // Explicit typed signatures use the same catalog-selected payload.
+/// input { @input: |event: InputEvent| { let _ = event.value(); } }
+///
+/// // Zero-argument handlers remain supported.
+/// button { @click: || { do_something(); } }
+///
+/// // Custom events retain the raw cross-target event transport.
+/// div { @custom("item-selected"): |event: Event| { inspect(event); } }
 /// ```
 ///
 /// **Note**: Closures must have 0 or 1 parameter (compile error if more).
@@ -573,44 +572,32 @@ pub fn wasm_server_api(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// ## Reactive Features
 ///
-/// ### watch Blocks
+/// ### Auto-wrapped expressions and control flow
 ///
-/// Use `watch` for Signal-dependent reactive rendering:
+/// Expression, `if`, and `for` nodes are wrapped in `Page::reactive(move || ...)`.
+/// Read signals inside those nodes when the rendered output should update as
+/// the signals change:
 ///
 /// ```ignore
-/// page!(|error: Signal<Option<String>>| {
+/// page!({
 ///     div {
-///         watch {
-///             if error.get().is_some() {
-///                 div {
-///                     class: "alert",
-///                     { error.get().unwrap_or_default() }
-///                 }
+///         if error.get().is_some() {
+///             div {
+///                 class: "alert",
+///                 { error.get().unwrap_or_default() }
 ///             }
 ///         }
 ///     }
-/// })(error.clone())
+/// })
 /// ```
 ///
-/// ### When to Use watch
+/// ### Reactive vs static values
 ///
 /// | Scenario | Solution |
 /// |----------|----------|
-/// | Static condition on Copy type | Plain `if` |
-/// | Dynamic Signal-dependent condition | `watch { if signal.get() { ... } }` |
-/// | Multiple reactive branches | `watch { match state.get() { ... } }` |
-///
-/// ### watch with match
-///
-/// ```ignore
-/// watch {
-///     match state.get() {
-///         State::Loading => div { "Loading..." },
-///         State::Ready(data) => div { { data } },
-///         State::Error(msg) => div { class: "error", { msg } },
-///     }
-/// }
-/// ```
+/// | Signal-dependent condition | Read the signal inside `if` |
+/// | Signal-dependent list | Read the signal inside `for` |
+/// | Static snapshot | Extract the value before calling `page!` |
 ///
 /// ## Components
 ///
@@ -657,7 +644,17 @@ pub fn wasm_server_api(args: TokenStream, input: TokenStream) -> TokenStream {
 /// | Element | Requirement |
 /// |---------|-------------|
 /// | `img` | Must have `src` (string literal) and `alt` attributes |
-/// | `button` | Must have text content or `aria-label`/`aria-labelledby` |
+/// | `input`, `select`, `textarea` | Must have a non-empty `aria-label`, `aria-labelledby`, wrapping `label`, or matching `label for="id"` |
+/// | `button`, `a` | Must have text content, `aria-label`, `aria-labelledby`, or an `img` child with non-empty `alt` |
+/// | `iframe` | Must have a non-empty `title` |
+///
+/// Static `role` values must use a concrete WAI-ARIA 1.3 role. Static
+/// `tabindex` values are limited to `0` and `-1` so generated markup does not
+/// create positive keyboard tab order.
+///
+/// Add `a11y: off` to a specific element to opt out of accessibility checks for
+/// that element when the markup intentionally relies on runtime behavior or
+/// external labeling.
 ///
 /// ### Security Validation
 ///
@@ -681,34 +678,51 @@ pub fn wasm_server_api(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// ## Generated Code Structure
 ///
-/// The `page!` macro generates a closure returning a `View`:
+/// The direct `page!({ ... })` form generates a `Page` expression:
+///
+/// ```ignore
+/// // page!({ div { class: "greeting", { name.clone() } } })
+/// // Generates approximately:
+/// {
+///     let name = reinhardt_pages::__private::capture(&name);
+///     PageElement::new("div")
+///         .attr("class", "greeting")
+///         .child(name.clone())
+///         .into_page()
+/// }
+/// ```
+///
+/// Closure forms generate callable factories:
 ///
 /// ```ignore
 /// // page!(|name: String| { div { class: "greeting", { name } } })
 /// // Generates approximately:
-/// |name: String| -> View {
-///     ElementView::new("div")
+/// |name: String| -> Page {
+///     PageElement::new("div")
 ///         .attr("class", "greeting")
 ///         .child(name)
-///         .into_view()
+///         .into_page()
 /// }
 /// ```
 ///
 /// ### Event Handler Generation
 ///
 /// ```ignore
-/// // button { @click: |_| { handle() } }
-/// // Generates (on WASM):
-/// ElementView::new("button")
-///     .on(EventType::Click, Arc::new(move |_| { handle() }))
+/// // button { @click: |event| { handle(event) } }
+/// // Generates on both native and WASM targets:
+/// PageElement::new("button")
+///     .on(
+///         KnownEvent::Click,
+///         typed_event_handler::<ClickEvent, _>(move |event| { handle(event) }),
+///     )
 /// ```
 ///
 /// ## SSR/CSR Considerations
 ///
-/// - **Event handlers**: Active on WASM (client), no-op on server (native)
+/// - **Event handlers**: Registered through the same raw storage path on WASM and native targets
 /// - **head directive**: Enables SSR metadata injection
 /// - **Same source code**: Works for both WASM and native targets
-/// - **Conditional compilation**: Events are type-checked but ignored on server
+/// - **Native testing**: Registered handlers are available to the component harness
 ///
 /// ## Complete Example
 ///
@@ -716,7 +730,7 @@ pub fn wasm_server_api(args: TokenStream, input: TokenStream) -> TokenStream {
 /// use reinhardt_pages::prelude::*;
 ///
 /// fn todo_app(todos: Signal<Vec<String>>, filter: Signal<String>) -> View {
-///     page!(|todos: Signal<Vec<String>>, filter: Signal<String>| {
+///     page!({
 ///         div {
 ///             class: "todo-app",
 ///
@@ -740,10 +754,8 @@ pub fn wasm_server_api(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 ///             ul {
 ///                 class: "todo-list",
-///                 watch {
-///                     if todos.get().is_empty() {
-///                         li { class: "empty", "No todos yet" }
-///                     }
+///                 if todos.get().is_empty() {
+///                     li { class: "empty", "No todos yet" }
 ///                 }
 ///             }
 ///
@@ -753,7 +765,7 @@ pub fn wasm_server_api(args: TokenStream, input: TokenStream) -> TokenStream {
 ///                 { format!("{} items", todos.get().len()) }
 ///             }
 ///         }
-///     })(todos, filter)
+///     })
 /// }
 /// ```
 #[proc_macro]

@@ -71,7 +71,7 @@ export function App() {
         <output data-benchmark-value="list-count">Rows: {rows.length}</output>
         <output data-benchmark-value="list-first">First: {rows[0]?.label}</output>
         <ul>
-          {rows.slice(0, 25).map((row) => (
+          {rows.map((row) => (
             <li key={row.id} data-benchmark-row={row.id}>{row.label}</li>
           ))}
         </ul>

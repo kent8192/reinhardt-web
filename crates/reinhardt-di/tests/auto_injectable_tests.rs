@@ -6,7 +6,9 @@
 #![cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 
 #[cfg(feature = "testing")]
-use reinhardt_di::{DependencyScope, Depends, FactoryOutput, InjectableKey, global_registry};
+use reinhardt_di::{
+	DependencyScope, InjectableKey, KeyedDepends, KeyedFactoryOutput, global_registry,
+};
 use reinhardt_di::{Injectable, InjectionContext, SingletonScope};
 use reinhardt_macros::injectable;
 #[cfg(feature = "testing")]
@@ -48,16 +50,17 @@ async fn test_auto_injectable_simple() {
 #[tokio::test]
 #[serial(di_registry)]
 async fn test_auto_injectable_with_depends() {
-	// Register the factory output that Depends<K, T> resolves from the registry.
+	// Register the factory output that KeyedDepends<K, T> resolves from the registry.
 	let registry = global_registry();
-	let _guard = registry.register_override::<FactoryOutput<SimpleConfigKey, SimpleConfig>, _, _>(
-		DependencyScope::Request,
-		|_ctx| async { Ok(FactoryOutput::new(SimpleConfig::default())) },
-	);
+	let _guard = registry
+		.register_override::<KeyedFactoryOutput<SimpleConfigKey, SimpleConfig>, _, _>(
+			DependencyScope::Request,
+			|_ctx| async { Ok(KeyedFactoryOutput::new(SimpleConfig::default())) },
+		);
 
 	let singleton_scope = Arc::new(SingletonScope::new());
 	let ctx = InjectionContext::builder(singleton_scope).build();
-	let depends_config = Depends::<SimpleConfigKey, SimpleConfig>::builder()
+	let depends_config = KeyedDepends::<SimpleConfigKey, SimpleConfig>::builder()
 		.resolve(&ctx)
 		.await
 		.unwrap();

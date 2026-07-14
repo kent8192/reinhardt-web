@@ -1,8 +1,8 @@
 //! Attribute macro implementation for `#[dto]`
 //!
-//! Absorbs the `cfg_attr(native, ...)` boilerplate required for DTOs shared
-//! between native (server) and wasm (client) builds. See the public-facing
-//! rustdoc on `crate::dto` in `lib.rs` for the user-facing contract.
+//! Emits shared `Validate` derives for DTOs used by native/server and wasm/client
+//! builds while normalizing legacy native-only `Validate` derives. See the
+//! public-facing rustdoc on `crate::dto` in `lib.rs` for the user-facing contract.
 
 use crate::crate_paths::get_reinhardt_crate;
 use proc_macro2::TokenStream;
@@ -22,11 +22,15 @@ pub(crate) fn dto_impl(args: TokenStream, mut input: DeriveInput) -> Result<Toke
 
 	let reinhardt = get_reinhardt_crate();
 
-	let fields = match &mut input.data {
-		Data::Struct(s) => match &mut s.fields {
-			Fields::Named(f) => Some(&mut f.named),
-			Fields::Unnamed(f) => Some(&mut f.unnamed),
-			Fields::Unit => None,
+	match &input.data {
+		Data::Struct(struct_data) => match &struct_data.fields {
+			Fields::Named(_) => {}
+			Fields::Unnamed(_) | Fields::Unit => {
+				return Err(syn::Error::new_spanned(
+					&input.ident,
+					"#[dto] requires a struct with named fields",
+				));
+			}
 		},
 		Data::Enum(_) | Data::Union(_) => {
 			return Err(syn::Error::new_spanned(
@@ -34,41 +38,12 @@ pub(crate) fn dto_impl(args: TokenStream, mut input: DeriveInput) -> Result<Toke
 				"#[dto] can only be applied to structs",
 			));
 		}
-	};
-
-	if let Some(fields) = fields {
-		for field in fields.iter_mut() {
-			for attr in field.attrs.iter_mut() {
-				if attr.path().is_ident("validate") {
-					*attr = wrap_in_cfg_attr_native(attr);
-				}
-			}
-		}
 	}
 
-	// Reject unconditional `#[derive(Validate)]` upfront. `Validate` lives
-	// behind the `native` cfg, so an unconditional derive cannot resolve on wasm
-	// builds and would duplicate the macro's `cfg_attr(native, derive(...))` on
-	// native builds. OpenAPI `Schema` is intentionally not emitted implicitly:
-	// it pulls in the OpenAPI feature graph and must remain an explicit opt-in.
-	if let Some(attr) = find_unconditional_derive(&input.attrs, "Validate")? {
-		return Err(syn::Error::new_spanned(
-			attr,
-			"#[dto] cannot be combined with unconditional `#[derive(Validate)]`. \
-			 Remove the derive so #[dto] can emit it as `cfg_attr(native, ...)` for you, \
-			 or replace it with `#[cfg_attr(native, derive(Validate))]`.",
-		));
-	}
-
-	let needs_validate = !has_native_derive(&input.attrs, "Validate")?;
-
-	let mut derives: Punctuated<Path, Token![,]> = Punctuated::new();
-	if needs_validate {
-		derives.push(parse_quote!(#reinhardt::Validate));
-	}
-
-	if !derives.is_empty() {
-		let new_attr: Attribute = parse_quote!(#[cfg_attr(native, derive(#derives))]);
+	let has_unconditional_validate = has_unconditional_derive(&input.attrs, "Validate")?;
+	remove_native_validate_derives(&mut input.attrs, "Validate")?;
+	if !has_unconditional_validate {
+		let new_attr: Attribute = parse_quote!(#[derive(#reinhardt::Validate)]);
 		input.attrs.push(new_attr);
 	}
 
@@ -77,21 +52,7 @@ pub(crate) fn dto_impl(args: TokenStream, mut input: DeriveInput) -> Result<Toke
 	})
 }
 
-fn wrap_in_cfg_attr_native(attr: &Attribute) -> Attribute {
-	let meta = &attr.meta;
-	parse_quote!(#[cfg_attr(native, #meta)])
-}
-
-/// Returns the first unconditional `#[derive(... TraitName ...)]` attribute on
-/// `attrs`, if any. Used to detect derives that would clash with the
-/// macro-emitted `cfg_attr(native, derive(...))`.
-///
-/// Path matching is by the last segment's identifier, mirroring `has_native_derive`,
-/// so both `Validate` and `validator::Validate`-style paths are caught.
-fn find_unconditional_derive<'a>(
-	attrs: &'a [Attribute],
-	trait_name: &str,
-) -> Result<Option<&'a Attribute>> {
+fn has_unconditional_derive(attrs: &[Attribute], trait_name: &str) -> Result<bool> {
 	for attr in attrs {
 		if !attr.path().is_ident("derive") {
 			continue;
@@ -105,49 +66,72 @@ fn find_unconditional_derive<'a>(
 			.iter()
 			.any(|p| p.segments.last().is_some_and(|seg| seg.ident == trait_name))
 		{
-			return Ok(Some(attr));
-		}
-	}
-	Ok(None)
-}
-
-/// Returns true if `attrs` already contains `#[cfg_attr(native, derive(... TraitName ...))]`.
-///
-/// Only inspects the `native` cfg branch — unconditional `#[derive(TraitName)]`
-/// is handled separately by `find_unconditional_derive` and reported as an error.
-fn has_native_derive(attrs: &[Attribute], trait_name: &str) -> Result<bool> {
-	for attr in attrs {
-		if !attr.path().is_ident("cfg_attr") {
-			continue;
-		}
-		let Meta::List(list) = &attr.meta else {
-			continue;
-		};
-		let nested = Punctuated::<Meta, Token![,]>::parse_terminated.parse2(list.tokens.clone())?;
-		let mut iter = nested.iter();
-		let Some(first) = iter.next() else {
-			continue;
-		};
-		// First arg must be the `native` predicate (bare `native` Path).
-		if !matches!(first, Meta::Path(p) if p.is_ident("native")) {
-			continue;
-		}
-		for inner in iter {
-			let Meta::List(inner_list) = inner else {
-				continue;
-			};
-			if !inner_list.path.is_ident("derive") {
-				continue;
-			}
-			let derives = Punctuated::<Path, Token![,]>::parse_terminated
-				.parse2(inner_list.tokens.clone())?;
-			if derives
-				.iter()
-				.any(|p| p.segments.last().is_some_and(|seg| seg.ident == trait_name))
-			{
-				return Ok(true);
-			}
+			return Ok(true);
 		}
 	}
 	Ok(false)
+}
+
+fn remove_native_validate_derives(attrs: &mut Vec<Attribute>, trait_name: &str) -> Result<()> {
+	let mut normalized = Vec::with_capacity(attrs.len());
+
+	for attr in attrs.drain(..) {
+		if !attr.path().is_ident("cfg_attr") {
+			normalized.push(attr);
+			continue;
+		}
+		let Meta::List(list) = &attr.meta else {
+			normalized.push(attr);
+			continue;
+		};
+		let nested = Punctuated::<Meta, Token![,]>::parse_terminated.parse2(list.tokens.clone())?;
+		let mut iter = nested.into_iter();
+		let Some(first) = iter.next() else {
+			normalized.push(attr);
+			continue;
+		};
+		if !matches!(&first, Meta::Path(p) if p.is_ident("native")) {
+			normalized.push(attr);
+			continue;
+		}
+
+		let mut rebuilt = Punctuated::<Meta, Token![,]>::new();
+		rebuilt.push(first);
+		for inner in iter {
+			let Meta::List(inner_list) = inner else {
+				rebuilt.push(inner);
+				continue;
+			};
+			if !inner_list.path.is_ident("derive") {
+				rebuilt.push(Meta::List(inner_list));
+				continue;
+			}
+
+			let derives = Punctuated::<Path, Token![,]>::parse_terminated
+				.parse2(inner_list.tokens.clone())?;
+			let mut filtered = Punctuated::<Path, Token![,]>::new();
+			for derive in derives {
+				if derive
+					.segments
+					.last()
+					.is_some_and(|seg| seg.ident == trait_name)
+				{
+					continue;
+				}
+				filtered.push(derive);
+			}
+			if !filtered.is_empty() {
+				let derive_meta: Meta = parse_quote!(derive(#filtered));
+				rebuilt.push(derive_meta);
+			}
+		}
+
+		if rebuilt.len() > 1 {
+			let new_attr: Attribute = parse_quote!(#[cfg_attr(#rebuilt)]);
+			normalized.push(new_attr);
+		}
+	}
+
+	*attrs = normalized;
+	Ok(())
 }

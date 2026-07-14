@@ -15,6 +15,7 @@ documentation = "https://docs.rs/reinhardt-core"
 [dependencies]
 # Re-export all internal crates
 reinhardt-macros = { workspace = true, optional = true }
+reinhardt-event-catalog = { workspace = true, optional = true }
 
 # External dependencies for re-export
 serde = { workspace = true, features = ["derive"], optional = true}
@@ -103,7 +104,7 @@ pagination = ["serde"]
 reactive = []
 
 # Page types feature
-page = ["types"]
+page = ["types", "dep:reinhardt-event-catalog"]
 
 # External dependency features
 macros = ["dep:reinhardt-macros"]

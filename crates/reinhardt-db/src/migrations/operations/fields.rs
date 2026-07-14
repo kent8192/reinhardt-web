@@ -33,6 +33,7 @@
 
 use super::{FieldState, ProjectState};
 use crate::backends::schema::BaseDatabaseSchemaEditor;
+use crate::migrations::operations::models::sql_dialect_for_database_type;
 use serde::{Deserialize, Serialize};
 
 pub use super::models::FieldDefinition;
@@ -123,7 +124,8 @@ impl AddField {
 	/// assert!(sql[0].contains("\"email\""));
 	/// ```
 	pub fn database_forwards(&self, schema_editor: &dyn BaseDatabaseSchemaEditor) -> Vec<String> {
-		let definition = self.field.to_sql_definition();
+		let dialect = sql_dialect_for_database_type(schema_editor.database_type());
+		let definition = self.field.to_sql_definition_for_dialect(&dialect);
 		let stmt =
 			schema_editor.add_column_statement(&self.model_name, &self.field.name, &definition);
 		vec![schema_editor.build_alter_table_sql(&stmt)]
@@ -291,10 +293,11 @@ impl AlterField {
 		// Use database-specific ALTER COLUMN statement from schema editor
 		// Each database backend (PostgreSQL, MySQL, SQLite, CockroachDB) provides
 		// its own implementation via the alter_column_statement() method
+		let dialect = sql_dialect_for_database_type(schema_editor.database_type());
 		vec![schema_editor.alter_column_statement(
 			&self.model_name,
 			&self.field.name,
-			&self.field.field_type.to_sql_string(),
+			&self.field.field_type.to_sql_for_dialect(&dialect),
 		)]
 	}
 }
@@ -453,6 +456,8 @@ impl MigrationOperation for RenameField {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[cfg(feature = "mysql")]
+	use crate::backends::drivers::mysql::schema::MySQLSchemaEditor;
 	use crate::migrations::FieldType;
 	use crate::migrations::operations::models::CreateModel;
 
@@ -609,6 +614,58 @@ mod tests {
 		assert!(sql[0].contains("ALTER TABLE"));
 		assert!(sql[0].contains("ADD COLUMN"));
 		assert!(sql[0].contains("\"email\""));
+	}
+
+	#[cfg(feature = "mysql")]
+	#[rstest::rstest]
+	fn test_add_json_field_database_forwards_uses_mysql_json_type() {
+		// Arrange
+		let add = AddField::new(
+			"users",
+			FieldDefinition::new(
+				"metadata",
+				FieldType::JsonBinary,
+				false,
+				false,
+				None::<String>,
+			),
+		);
+		let editor = MySQLSchemaEditor::new();
+
+		// Act
+		let sql = add.database_forwards(&editor);
+
+		// Assert
+		assert_eq!(
+			sql,
+			vec!["ALTER TABLE `users` ADD COLUMN `metadata` JSON NOT NULL".to_string()]
+		);
+	}
+
+	#[cfg(feature = "mysql")]
+	#[rstest::rstest]
+	fn test_alter_json_field_database_forwards_uses_mysql_json_type() {
+		// Arrange
+		let alter = AlterField::new(
+			"users",
+			FieldDefinition::new(
+				"metadata",
+				FieldType::JsonBinary,
+				false,
+				false,
+				None::<String>,
+			),
+		);
+		let editor = MySQLSchemaEditor::new();
+
+		// Act
+		let sql = alter.database_forwards(&editor);
+
+		// Assert
+		assert_eq!(
+			sql,
+			vec!["ALTER TABLE `users` MODIFY COLUMN `metadata` JSON".to_string()]
+		);
 	}
 
 	#[cfg(feature = "postgres")]

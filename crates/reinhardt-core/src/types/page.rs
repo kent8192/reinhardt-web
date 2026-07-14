@@ -23,10 +23,14 @@
 
 pub mod event;
 pub mod head;
+#[cfg(native)]
+pub mod native_event;
 mod util;
 
-pub use event::EventType;
+pub use event::{EventInterface, EventName, EventType};
 pub use head::{Head, LinkTag, MetaTag, ScriptTag, StyleTag};
+#[cfg(native)]
+pub use native_event::*;
 pub(crate) use util::html_escape;
 pub use util::{BOOLEAN_ATTRS, is_boolean_attr_truthy};
 
@@ -37,31 +41,9 @@ use std::sync::Arc;
 #[cfg(wasm)]
 pub type PageEventHandler = Arc<dyn Fn(web_sys::Event) + 'static>;
 
-/// Dummy event type for non-WASM environments.
-///
-/// This type exists to maintain API compatibility between WASM and non-WASM builds.
-/// In non-WASM environments, event handlers still accept an argument (this dummy type)
-/// so that user code doesn't need conditional compilation for event handler signatures.
+/// Type alias for event handler functions on native targets.
 #[cfg(native)]
-#[derive(Debug, Clone, Default)]
-pub struct DummyEvent;
-
-#[cfg(native)]
-impl DummyEvent {
-	/// No-op method for API compatibility with web_sys::Event.
-	///
-	/// This method exists to maintain API compatibility between WASM and non-WASM builds.
-	/// In non-WASM environments, this is a no-op.
-	pub fn prevent_default(&self) {}
-}
-
-/// Type alias for event handler functions (non-WASM placeholder).
-///
-/// Uses `DummyEvent` to maintain API compatibility with the WASM version,
-/// allowing the same event handler signatures (e.g., `|_| { ... }`) to work
-/// in both WASM and non-WASM environments.
-#[cfg(native)]
-pub type PageEventHandler = Arc<dyn Fn(DummyEvent) + 'static>;
+pub type PageEventHandler = Arc<dyn Fn(NativeEvent) + 'static>;
 
 /// Error type for mounting views to the DOM.
 #[non_exhaustive]
@@ -127,6 +109,37 @@ pub struct Reactive {
 	render: std::sync::Arc<dyn Fn() -> Page + 'static>,
 }
 
+/// Suspense view node with lazy branch factories.
+///
+/// The branch factories are stored as `Arc<dyn Fn>` so the enclosing `Page`
+/// remains cloneable while each traversal can render a fresh branch.
+pub struct SuspenseNode {
+	/// Optional boundary identifier for matching SSR and hydration boundaries.
+	boundary_id: Option<String>,
+	/// Resource hydration keys explicitly tracked by this boundary.
+	tracked_resource_ids: Vec<String>,
+	/// Pending-state closure used to choose the active branch on the client.
+	is_pending: Arc<dyn Fn() -> bool + 'static>,
+	/// Fallback view factory invoked while the boundary is pending.
+	fallback: Arc<dyn Fn() -> Page + 'static>,
+	/// Content view factory invoked after the boundary has resolved.
+	content: Arc<dyn Fn() -> Page + 'static>,
+}
+
+/// Deferred view node with lazy fallback and content factories.
+///
+/// Deferred nodes preserve both branches for async SSR orchestration while
+/// normal page traversal renders the content branch.
+#[derive(Clone)]
+pub struct DeferredNode {
+	/// Stable node identifier for SSR and hydration coordination.
+	node_id: String,
+	/// Fallback view factory reserved for deferred streaming boundaries.
+	fallback: Arc<dyn Fn() -> Page + 'static>,
+	/// Content view factory rendered by normal traversal.
+	content: Arc<dyn Fn() -> Page + 'static>,
+}
+
 impl std::fmt::Debug for Reactive {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.debug_struct("Reactive")
@@ -144,6 +157,161 @@ impl Reactive {
 	/// Consumes the Reactive and returns the render closure.
 	pub fn into_render(self) -> std::sync::Arc<dyn Fn() -> Page + 'static> {
 		self.render
+	}
+}
+
+impl std::fmt::Debug for SuspenseNode {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("SuspenseNode")
+			.field("boundary_id", &self.boundary_id)
+			.field("tracked_resource_ids", &self.tracked_resource_ids)
+			.field("is_pending", &"<closure>")
+			.field("fallback", &"<closure>")
+			.field("content", &"<closure>")
+			.finish()
+	}
+}
+
+impl Clone for SuspenseNode {
+	fn clone(&self) -> Self {
+		Self {
+			boundary_id: self.boundary_id.clone(),
+			tracked_resource_ids: self.tracked_resource_ids.clone(),
+			is_pending: Arc::clone(&self.is_pending),
+			fallback: Arc::clone(&self.fallback),
+			content: Arc::clone(&self.content),
+		}
+	}
+}
+
+impl SuspenseNode {
+	/// Creates a new suspense node.
+	pub fn new(
+		boundary_id: Option<String>,
+		is_pending: impl Fn() -> bool + 'static,
+		fallback: impl Fn() -> Page + 'static,
+		content: impl Fn() -> Page + 'static,
+	) -> Self {
+		Self::new_with_tracked_resources(boundary_id, Vec::new(), is_pending, fallback, content)
+	}
+
+	/// Creates a new suspense node with tracked SSR resource keys.
+	pub fn new_with_tracked_resources(
+		boundary_id: Option<String>,
+		tracked_resource_ids: Vec<String>,
+		is_pending: impl Fn() -> bool + 'static,
+		fallback: impl Fn() -> Page + 'static,
+		content: impl Fn() -> Page + 'static,
+	) -> Self {
+		Self {
+			boundary_id,
+			tracked_resource_ids,
+			is_pending: Arc::new(is_pending),
+			fallback: Arc::new(fallback),
+			content: Arc::new(content),
+		}
+	}
+
+	/// Returns the optional boundary identifier.
+	pub fn boundary_id(&self) -> Option<&str> {
+		self.boundary_id.as_deref()
+	}
+
+	/// Returns resource hydration keys explicitly tracked by this boundary.
+	pub fn tracked_resource_ids(&self) -> &[String] {
+		&self.tracked_resource_ids
+	}
+
+	/// Returns `true` when the fallback branch should render.
+	pub fn is_pending(&self) -> bool {
+		(self.is_pending)()
+	}
+
+	/// Renders the fallback branch.
+	pub fn fallback(&self) -> Page {
+		(self.fallback)()
+	}
+
+	/// Renders the fallback branch.
+	pub fn render_fallback(&self) -> Page {
+		self.fallback()
+	}
+
+	/// Renders the content branch.
+	pub fn content(&self) -> Page {
+		(self.content)()
+	}
+
+	/// Renders the content branch.
+	pub fn render_content(&self) -> Page {
+		self.content()
+	}
+
+	/// Renders the currently active branch.
+	pub fn render_branch(&self) -> Page {
+		if self.is_pending() {
+			self.fallback()
+		} else {
+			self.content()
+		}
+	}
+
+	fn find_topmost_content_head_owned(&self) -> Option<Head> {
+		self.content().find_topmost_head_owned()
+	}
+}
+
+impl std::fmt::Debug for DeferredNode {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("DeferredNode")
+			.field("node_id", &self.node_id)
+			.field("fallback", &"<closure>")
+			.field("content", &"<closure>")
+			.finish()
+	}
+}
+
+impl DeferredNode {
+	/// Creates a new deferred node.
+	pub fn new(
+		node_id: impl Into<String>,
+		fallback: impl Fn() -> Page + 'static,
+		content: impl Fn() -> Page + 'static,
+	) -> Self {
+		Self {
+			node_id: node_id.into(),
+			fallback: Arc::new(fallback),
+			content: Arc::new(content),
+		}
+	}
+
+	/// Returns the stable node identifier.
+	pub fn node_id(&self) -> &str {
+		&self.node_id
+	}
+
+	/// Renders the fallback branch.
+	pub fn fallback(&self) -> Page {
+		(self.fallback)()
+	}
+
+	/// Renders the fallback branch.
+	pub fn render_fallback(&self) -> Page {
+		self.fallback()
+	}
+
+	/// Renders the content branch.
+	pub fn content(&self) -> Page {
+		(self.content)()
+	}
+
+	/// Renders the content branch.
+	pub fn render_content(&self) -> Page {
+		self.content()
+	}
+
+	fn find_topmost_content_head_owned(&self) -> Option<Head> {
+		self.content().find_topmost_head_owned()
 	}
 }
 
@@ -188,6 +356,46 @@ impl ReactiveIf {
 	}
 }
 
+/// Router-managed outlet content used by layout routes.
+#[derive(Debug, Clone)]
+pub struct Outlet {
+	id: Option<String>,
+	child: Option<Box<Page>>,
+}
+
+impl Outlet {
+	/// Creates an inline outlet for stateless native and SSR rendering.
+	pub fn inline(child: impl IntoPage) -> Self {
+		Self {
+			id: None,
+			child: Some(Box::new(child.into_page())),
+		}
+	}
+
+	/// Creates a placeholder outlet for browser mount managers.
+	pub fn placeholder(id: impl Into<String>) -> Self {
+		Self {
+			id: Some(id.into()),
+			child: None,
+		}
+	}
+
+	/// Returns the placeholder id, if this outlet is a browser placeholder.
+	pub fn id(&self) -> Option<&str> {
+		self.id.as_deref()
+	}
+
+	/// Returns the inline child page, if present.
+	pub fn child(&self) -> Option<&Page> {
+		self.child.as_deref()
+	}
+
+	/// Consumes the outlet and returns the inline child page.
+	pub fn into_child(self) -> Option<Page> {
+		self.child.map(|child| *child)
+	}
+}
+
 /// A unified representation of renderable content.
 ///
 /// Page is the core abstraction for all UI elements in the component system.
@@ -208,6 +416,8 @@ pub enum Page {
 	Fragment(Vec<Page>),
 	/// A fragment whose children have stable identity keys.
 	KeyedFragment(Vec<(String, Page)>),
+	/// A router-managed outlet used by layout routes.
+	Outlet(Outlet),
 	/// An empty view (renders nothing).
 	Empty,
 	/// A view with associated head section.
@@ -232,6 +442,10 @@ pub enum Page {
 	/// automatic DOM updates when Signal values accessed within the
 	/// closure change.
 	Reactive(Reactive),
+	/// A suspense boundary with pending and resolved branch factories.
+	Suspense(SuspenseNode),
+	/// A deferred node with fallback and content branch factories.
+	Deferred(DeferredNode),
 }
 
 /// Represents a DOM element in the view tree.
@@ -251,7 +465,7 @@ pub struct PageElement {
 	/// Whether this is a void element (no closing tag).
 	is_void: bool,
 	/// Event handlers attached to this element.
-	event_handlers: Vec<(EventType, PageEventHandler)>,
+	event_handlers: Vec<(EventName, PageEventHandler)>,
 }
 
 impl std::fmt::Debug for PageElement {
@@ -367,24 +581,21 @@ impl PageElement {
 	}
 
 	/// Adds an event handler.
-	pub fn on(mut self, event_type: EventType, handler: PageEventHandler) -> Self {
-		self.event_handlers.push((event_type, handler));
+	pub fn on(mut self, event_type: impl Into<EventName>, handler: PageEventHandler) -> Self {
+		self.event_handlers.push((event_type.into(), handler));
 		self
 	}
 
 	/// Adds an event listener using string event name (convenience method).
 	///
 	/// This is a convenience wrapper around [`on`] that accepts a string event name
-	/// and a closure. The event name is parsed to [`EventType`] at runtime.
+	/// and a closure. Catalog names are stored as known events, while all other
+	/// names are preserved as explicit custom events.
 	///
 	/// # Arguments
 	///
 	/// * `event_name` - The event name (e.g., "click", "submit", "input")
 	/// * `handler` - The event handler closure
-	///
-	/// # Panics
-	///
-	/// Panics if the event name is not a recognized event type.
 	///
 	/// # Example
 	///
@@ -399,25 +610,16 @@ impl PageElement {
 	where
 		F: Fn(web_sys::Event) + 'static,
 	{
-		use std::str::FromStr;
-		let event_type = EventType::from_str(event_name)
-			.unwrap_or_else(|_| panic!("Unknown event type: {}", event_name));
-		self.on(event_type, Arc::new(handler))
+		self.on(classify_event_name(event_name), Arc::new(handler))
 	}
 
-	/// Adds an event listener using string event name (non-WASM stub).
-	///
-	/// In non-WASM environments, this is a stub that stores the handler
-	/// for API compatibility but won't actually attach to DOM events.
+	/// Adds a native event listener using a string event name.
 	#[cfg(native)]
 	pub fn listener<F>(self, event_name: &str, handler: F) -> Self
 	where
-		F: Fn(DummyEvent) + 'static,
+		F: Fn(NativeEvent) + 'static,
 	{
-		use std::str::FromStr;
-		let event_type = EventType::from_str(event_name)
-			.unwrap_or_else(|_| panic!("Unknown event type: {}", event_name));
-		self.on(event_type, Arc::new(handler))
+		self.on(classify_event_name(event_name), Arc::new(handler))
 	}
 
 	/// Returns the tag name.
@@ -455,12 +657,16 @@ impl PageElement {
 	}
 
 	/// Adds an event handler mutably (for parser use).
-	pub fn add_event_handler(&mut self, event_type: EventType, handler: PageEventHandler) {
-		self.event_handlers.push((event_type, handler));
+	pub fn add_event_handler(
+		&mut self,
+		event_type: impl Into<EventName>,
+		handler: PageEventHandler,
+	) {
+		self.event_handlers.push((event_type.into(), handler));
 	}
 
 	/// Returns the event handlers.
-	pub fn event_handlers(&self) -> &[(EventType, PageEventHandler)] {
+	pub fn event_handlers(&self) -> &[(EventName, PageEventHandler)] {
 		&self.event_handlers
 	}
 
@@ -470,7 +676,7 @@ impl PageElement {
 	}
 
 	/// Consumes the element view and returns the event handlers.
-	pub fn into_event_handlers(self) -> Vec<(EventType, PageEventHandler)> {
+	pub fn into_event_handlers(self) -> Vec<(EventName, PageEventHandler)> {
 		self.event_handlers
 	}
 
@@ -485,7 +691,7 @@ impl PageElement {
 		Vec<(Cow<'static, str>, Cow<'static, str>)>,
 		Vec<Page>,
 		bool,
-		Vec<(EventType, PageEventHandler)>,
+		Vec<(EventName, PageEventHandler)>,
 	) {
 		(
 			self.tag,
@@ -494,6 +700,13 @@ impl PageElement {
 			self.is_void,
 			self.event_handlers,
 		)
+	}
+}
+
+fn classify_event_name(event_name: &str) -> EventName {
+	match event::event_spec(event_name) {
+		Some(spec) => EventName::Known(spec.kind),
+		None => EventName::Custom(Cow::Owned(event_name.to_owned())),
 	}
 }
 
@@ -530,6 +743,11 @@ impl Page {
 	/// Creates an empty view.
 	pub fn empty() -> Self {
 		Self::Empty
+	}
+
+	/// Creates an outlet page node.
+	pub fn outlet(outlet: Outlet) -> Self {
+		Page::Outlet(outlet)
 	}
 
 	/// Attaches a head section to this view.
@@ -671,15 +889,46 @@ impl Page {
 	/// # Search Order
 	///
 	/// 1. If this view is a `WithHead`, returns its head
-	/// 2. For `Fragment` views, searches children in order and returns the first found
-	/// 3. For other variants, returns `None`
+	/// 2. For element and fragment views, searches children in order and returns the first found
+	/// 3. For inline `Outlet` views, searches the child page
+	/// 4. For other variants, returns `None`
+	///
+	/// Use [`Page::find_topmost_head_owned`] when lazy Suspense/Deferred content
+	/// should participate in the lookup.
 	pub fn find_topmost_head(&self) -> Option<&Head> {
 		match self {
 			Page::WithHead { head, .. } => Some(head),
+			Page::Element(element) => element
+				.child_views()
+				.iter()
+				.find_map(|view| view.find_topmost_head()),
 			Page::Fragment(children) => children.iter().find_map(|v| v.find_topmost_head()),
 			Page::KeyedFragment(children) => {
 				children.iter().find_map(|(_, v)| v.find_topmost_head())
 			}
+			Page::Outlet(outlet) => outlet.child().and_then(Page::find_topmost_head),
+			_ => None,
+		}
+	}
+
+	/// Finds the topmost head section and returns an owned copy.
+	///
+	/// Unlike [`Page::find_topmost_head`], this method can evaluate lazy
+	/// Suspense/Deferred content without storing request state on the `Page`.
+	pub fn find_topmost_head_owned(&self) -> Option<Head> {
+		match self {
+			Page::WithHead { head, .. } => Some(head.clone()),
+			Page::Element(element) => element
+				.child_views()
+				.iter()
+				.find_map(Page::find_topmost_head_owned),
+			Page::Fragment(children) => children.iter().find_map(Page::find_topmost_head_owned),
+			Page::KeyedFragment(children) => children
+				.iter()
+				.find_map(|(_, v)| v.find_topmost_head_owned()),
+			Page::Outlet(outlet) => outlet.child().and_then(Page::find_topmost_head_owned),
+			Page::Suspense(node) => node.find_topmost_content_head_owned(),
+			Page::Deferred(node) => node.find_topmost_content_head_owned(),
 			_ => None,
 		}
 	}
@@ -738,6 +987,11 @@ impl Page {
 					child.render_to_string_inner(output);
 				}
 			}
+			Page::Outlet(outlet) => {
+				if let Some(child) = outlet.child() {
+					child.render_to_string_inner(output);
+				}
+			}
 			Page::Empty => {}
 			Page::WithHead { view, .. } => {
 				// The head is extracted separately during SSR; here we just render the content
@@ -756,6 +1010,14 @@ impl Page {
 			Page::Reactive(reactive) => {
 				// For SSR, evaluate render once and render the result
 				let view = reactive.render();
+				view.render_to_string_inner(output);
+			}
+			Page::Suspense(node) => {
+				let view = node.render_branch();
+				view.render_to_string_inner(output);
+			}
+			Page::Deferred(node) => {
+				let view = node.content();
 				view.render_to_string_inner(output);
 			}
 		}
@@ -782,6 +1044,12 @@ impl IntoPage for Page {
 impl IntoPage for PageElement {
 	fn into_page(self) -> Page {
 		Page::Element(self)
+	}
+}
+
+impl IntoPage for Outlet {
+	fn into_page(self) -> Page {
+		Page::Outlet(self)
 	}
 }
 
@@ -856,6 +1124,147 @@ impl<A: IntoPage, B: IntoPage, C: IntoPage, D: IntoPage> IntoPage for (A, B, C, 
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn event_type_reexports_the_complete_catalog() {
+		let event_type: EventType = EventType::PointerDown;
+
+		assert_eq!(event_type.as_str(), "pointerdown");
+	}
+
+	#[cfg(native)]
+	#[test]
+	fn page_element_preserves_known_and_custom_event_names() {
+		let element = PageElement::new("button")
+			.on(EventType::Click, Arc::new(|_| {}))
+			.listener("editor:commit", |_| {});
+
+		assert_eq!(
+			element.event_handlers()[0].0,
+			EventName::Known(EventType::Click)
+		);
+		assert_eq!(
+			element.event_handlers()[1].0,
+			EventName::Custom(Cow::Owned("editor:commit".to_owned()))
+		);
+	}
+
+	#[cfg(native)]
+	#[test]
+	fn native_target_owns_control_state_snapshot() {
+		let target = NativeEventTarget::new("INPUT")
+			.with_attribute("type", "checkbox")
+			.with_value("enabled")
+			.with_checked(true)
+			.with_selected_values(["primary", "secondary"])
+			.with_file(NativeEventFile::new("avatar.png", "image/png", 128, 42))
+			.with_text_content("Enabled")
+			.with_content_editable(true);
+
+		assert_eq!(target.tag_name(), "input");
+		assert_eq!(target.attribute("type"), Some("checkbox"));
+		assert_eq!(target.value(), Some("enabled"));
+		assert_eq!(target.checked(), Some(true));
+		assert_eq!(target.selected_values(), &["primary", "secondary"]);
+		assert_eq!(target.files()[0].name(), "avatar.png");
+		assert_eq!(target.text_content(), Some("Enabled"));
+		assert!(target.is_content_editable());
+	}
+
+	#[cfg(native)]
+	#[test]
+	fn native_payload_exposes_its_interface_family_data() {
+		assert_eq!(
+			NativeEventPayload::for_interface(EventInterface::Keyboard).interface(),
+			EventInterface::Keyboard
+		);
+		let payload = NativeEventPayload::Pointer(PointerEventData {
+			mouse: MouseEventData {
+				client_x: 120.0,
+				client_y: 80.0,
+				button: 0,
+				buttons: 1,
+				modifiers: ModifierState {
+					shift: true,
+					..ModifierState::default()
+				},
+				..MouseEventData::default()
+			},
+			pointer_id: 7,
+			pointer_kind: "pen".to_owned(),
+			pressure: 0.5,
+			..PointerEventData::default()
+		});
+
+		assert_eq!(payload.interface(), EventInterface::Pointer);
+		let NativeEventPayload::Pointer(pointer) = payload else {
+			panic!("pointer payload must retain its family data");
+		};
+		assert_eq!(
+			(pointer.mouse.client_x, pointer.mouse.client_y),
+			(120.0, 80.0)
+		);
+		assert_eq!(pointer.pointer_id, 7);
+		assert_eq!(pointer.pointer_kind, "pen");
+		assert_eq!(pointer.pressure, 0.5);
+		assert!(pointer.mouse.modifiers.shift);
+	}
+
+	#[cfg(native)]
+	#[test]
+	fn native_event_snapshots_share_cancelation_and_propagation_state() {
+		let target = NativeEventTarget::new("span").with_text_content("Save");
+		let button = NativeEventTarget::new("button").with_attribute("type", "submit");
+		let ancestor = NativeEventTarget::new("form");
+		let event = NativeEvent::for_known(
+			EventType::Click,
+			NativeEventPayload::Pointer(PointerEventData::default()),
+		)
+		.with_target(target.clone())
+		.with_current_target(button.clone());
+		let ancestor_event = event.with_current_target(ancestor.clone());
+
+		assert_eq!(event.target(), Some(&target));
+		assert_eq!(event.current_target(), Some(&button));
+		assert_eq!(ancestor_event.target(), Some(&target));
+		assert_eq!(ancestor_event.current_target(), Some(&ancestor));
+		assert!(event.base().cancelable);
+		event.prevent_default();
+		ancestor_event.stop_propagation();
+
+		assert!(ancestor_event.default_prevented());
+		assert!(event.propagation_stopped());
+		assert!(!event.immediate_propagation_stopped());
+	}
+
+	#[cfg(native)]
+	#[test]
+	fn native_event_respects_cancelable_and_immediate_propagation_semantics() {
+		let event = NativeEvent::new(
+			EventName::Known(EventType::Input),
+			BaseEventData {
+				bubbles: true,
+				cancelable: false,
+				composed: true,
+				time_stamp: 12.5,
+				is_trusted: false,
+			},
+			NativeEventPayload::Input(InputEventData {
+				data: Some("x".to_owned()),
+				input_type: Some("insertText".to_owned()),
+				is_composing: false,
+			}),
+		);
+
+		event.prevent_default();
+		event.stop_immediate_propagation();
+
+		assert!(!event.default_prevented());
+		assert!(event.propagation_stopped());
+		assert!(event.immediate_propagation_stopped());
+		assert_eq!(event.base().time_stamp, 12.5);
+		assert_eq!(event.name(), &EventName::Known(EventType::Input));
+	}
 
 	#[test]
 	fn test_element_view_creation() {
@@ -974,6 +1383,61 @@ mod tests {
 	fn test_render_empty() {
 		let view = Page::empty();
 		assert_eq!(view.render_to_string(), "");
+	}
+
+	#[test]
+	fn outlet_inline_renders_child_page() {
+		let view = Page::outlet(Outlet::inline(Page::text("Child")));
+
+		assert_eq!(view.render_to_string(), "Child");
+	}
+
+	#[test]
+	fn outlet_placeholder_renders_empty_on_string_render() {
+		let view = Page::outlet(Outlet::placeholder("layout-0"));
+
+		assert_eq!(view.render_to_string(), "");
+	}
+
+	#[test]
+	fn outlet_inline_participates_in_head_lookup() {
+		let view = Page::outlet(Outlet::inline(
+			Page::text("Child").with_head(Head::new().title("Child")),
+		));
+
+		assert_eq!(
+			view.find_topmost_head()
+				.and_then(|head| head.title.as_deref()),
+			Some("Child")
+		);
+	}
+
+	#[test]
+	fn suspense_head_lookup_uses_fresh_content_per_call() {
+		let title = std::rc::Rc::new(std::cell::RefCell::new("first".to_string()));
+		let content_title = std::rc::Rc::clone(&title);
+		let node = SuspenseNode::new(
+			Some("head-boundary".to_string()),
+			|| false,
+			|| Page::text("loading"),
+			move || {
+				Page::text("content").with_head(Head::new().title(content_title.borrow().clone()))
+			},
+		);
+
+		let view = Page::Suspense(node);
+		assert_eq!(
+			view.find_topmost_head_owned()
+				.and_then(|head| head.title.map(|title| title.into_owned())),
+			Some("first".to_string())
+		);
+
+		*title.borrow_mut() = "second".to_string();
+		assert_eq!(
+			view.find_topmost_head_owned()
+				.and_then(|head| head.title.map(|title| title.into_owned())),
+			Some("second".to_string())
+		);
 	}
 
 	#[test]

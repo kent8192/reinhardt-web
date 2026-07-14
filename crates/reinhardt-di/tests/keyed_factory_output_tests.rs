@@ -1,8 +1,8 @@
 #![cfg(feature = "testing")]
 
 use reinhardt_di::{
-	DependencyScope, Depends, FactoryOutput, InjectableKey, InjectionContext, SingletonScope,
-	global_registry,
+	DependencyScope, InjectableKey, InjectionContext, KeyedDepends, KeyedFactoryOutput,
+	SingletonScope, global_registry,
 };
 use serial_test::serial;
 use std::sync::Arc;
@@ -20,20 +20,21 @@ struct DatabaseConnection {
 #[tokio::test]
 async fn depends_resolves_factory_output_by_key_and_value_type() {
 	let registry = global_registry();
-	let _guard = registry.register_override::<FactoryOutput<PrimaryDb, DatabaseConnection>, _, _>(
-		DependencyScope::Transient,
-		|_ctx| async {
-			Ok(FactoryOutput::new(DatabaseConnection {
-				url: "postgres://primary".to_string(),
-			}))
-		},
-	);
+	let _guard = registry
+		.register_override::<KeyedFactoryOutput<PrimaryDb, DatabaseConnection>, _, _>(
+			DependencyScope::Transient,
+			|_ctx| async {
+				Ok(KeyedFactoryOutput::new(DatabaseConnection {
+					url: "postgres://primary".to_string(),
+				}))
+			},
+		);
 	let scope = Arc::new(SingletonScope::new());
 	let ctx = InjectionContext::builder(scope).build();
 
-	let db = Depends::<PrimaryDb, DatabaseConnection>::resolve_from_registry(&ctx, true)
+	let db = KeyedDepends::<PrimaryDb, DatabaseConnection>::resolve_from_registry(&ctx, true)
 		.await
-		.expect("keyed dependency must resolve from FactoryOutput");
+		.expect("keyed dependency must resolve from KeyedFactoryOutput");
 
 	assert_eq!(db.url, "postgres://primary");
 	assert_eq!(
@@ -53,19 +54,19 @@ impl InjectableKey for ReplicaDb {}
 async fn same_value_type_can_be_registered_under_different_keys() {
 	let registry = global_registry();
 	let _primary = registry
-		.register_override::<FactoryOutput<PrimaryDb, DatabaseConnection>, _, _>(
+		.register_override::<KeyedFactoryOutput<PrimaryDb, DatabaseConnection>, _, _>(
 			DependencyScope::Transient,
 			|_ctx| async {
-				Ok(FactoryOutput::new(DatabaseConnection {
+				Ok(KeyedFactoryOutput::new(DatabaseConnection {
 					url: "postgres://primary".to_string(),
 				}))
 			},
 		);
 	let _replica = registry
-		.register_override::<FactoryOutput<ReplicaDb, DatabaseConnection>, _, _>(
+		.register_override::<KeyedFactoryOutput<ReplicaDb, DatabaseConnection>, _, _>(
 			DependencyScope::Transient,
 			|_ctx| async {
-				Ok(FactoryOutput::new(DatabaseConnection {
+				Ok(KeyedFactoryOutput::new(DatabaseConnection {
 					url: "postgres://replica".to_string(),
 				}))
 			},
@@ -73,10 +74,10 @@ async fn same_value_type_can_be_registered_under_different_keys() {
 	let scope = Arc::new(SingletonScope::new());
 	let ctx = InjectionContext::builder(scope).build();
 
-	let primary = Depends::<PrimaryDb, DatabaseConnection>::resolve_from_registry(&ctx, true)
+	let primary = KeyedDepends::<PrimaryDb, DatabaseConnection>::resolve_from_registry(&ctx, true)
 		.await
 		.expect("primary key must resolve");
-	let replica = Depends::<ReplicaDb, DatabaseConnection>::resolve_from_registry(&ctx, true)
+	let replica = KeyedDepends::<ReplicaDb, DatabaseConnection>::resolve_from_registry(&ctx, true)
 		.await
 		.expect("replica key must resolve");
 

@@ -4,11 +4,17 @@
 //! during hydration. SSR cannot serialize JavaScript event handlers,
 //! so they must be reattached on the client side.
 
+#[cfg(any(wasm, test))]
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 #[cfg(wasm)]
-use crate::dom::{Element, EventHandle, EventType};
+use crate::dom::{Element, EventHandle};
+#[cfg(any(wasm, test))]
+use reinhardt_core::types::page::EventName;
+#[cfg(any(wasm, test))]
+use reinhardt_core::types::page::event::event_spec;
 
 /// A binding between an event and its handler.
 #[derive(Debug, Clone)]
@@ -184,11 +190,18 @@ impl AttachOptions {
 #[cfg(wasm)]
 pub fn attach_event(
 	element: &Element,
-	event_type: &EventType,
+	event_type: &EventName,
 	handler: EventHandler,
 	registry: &mut EventRegistry,
 ) -> Result<(), EventAttachError> {
+	#[cfg(feature = "i18n")]
+	let i18n_context = crate::i18n::current_i18n_callback_context();
 	let handle = element.add_event_listener_with_event(event_type.as_str(), move |event| {
+		#[cfg(feature = "i18n")]
+		{
+			crate::i18n::with_optional_i18n_context(i18n_context.as_ref(), || handler(event));
+		}
+		#[cfg(not(feature = "i18n"))]
 		handler(event);
 	});
 
@@ -261,8 +274,8 @@ pub fn attach_events_recursive(
 			for binding in bindings {
 				if binding.element_id == element_id
 					&& let Some(handler) = handlers.get(&binding.event_type)
-					&& let Some(event_type) = event_type_from_string(&binding.event_type)
 				{
+					let event_type = event_name_from_string(&binding.event_type);
 					attach_event(element, &event_type, handler.clone(), registry)?;
 				}
 			}
@@ -329,68 +342,20 @@ pub(super) fn attach_events(
 	registry: &mut EventRegistry,
 ) -> Result<(), EventAttachError> {
 	for binding in bindings {
-		if let Some(handler) = handlers.get(&binding.event_type)
-			&& let Some(event_type) = event_type_from_string(&binding.event_type)
-		{
+		if let Some(handler) = handlers.get(&binding.event_type) {
+			let event_type = event_name_from_string(&binding.event_type);
 			attach_event(element, &event_type, handler.clone(), registry)?;
 		}
 	}
 	Ok(())
 }
 
-/// Converts a string to an EventType.
-///
-/// Returns `None` if the event type string is not recognized. Unknown event
-/// types are logged as warnings rather than silently falling back to a
-/// default value.
-#[cfg(wasm)]
-fn event_type_from_string(s: &str) -> Option<EventType> {
-	match s {
-		// Mouse events
-		"click" => Some(EventType::Click),
-		"dblclick" => Some(EventType::DblClick),
-		"mousedown" => Some(EventType::MouseDown),
-		"mouseup" => Some(EventType::MouseUp),
-		"mouseenter" => Some(EventType::MouseEnter),
-		"mouseleave" => Some(EventType::MouseLeave),
-		"mousemove" => Some(EventType::MouseMove),
-		"mouseover" => Some(EventType::MouseOver),
-		"mouseout" => Some(EventType::MouseOut),
-		// Keyboard events
-		"keydown" => Some(EventType::KeyDown),
-		"keyup" => Some(EventType::KeyUp),
-		"keypress" => Some(EventType::KeyPress),
-		// Form events
-		"input" => Some(EventType::Input),
-		"change" => Some(EventType::Change),
-		"submit" => Some(EventType::Submit),
-		"focus" => Some(EventType::Focus),
-		"blur" => Some(EventType::Blur),
-		// Touch events
-		"touchstart" => Some(EventType::TouchStart),
-		"touchend" => Some(EventType::TouchEnd),
-		"touchmove" => Some(EventType::TouchMove),
-		"touchcancel" => Some(EventType::TouchCancel),
-		// Drag events
-		"dragstart" => Some(EventType::DragStart),
-		"drag" => Some(EventType::Drag),
-		"drop" => Some(EventType::Drop),
-		"dragenter" => Some(EventType::DragEnter),
-		"dragleave" => Some(EventType::DragLeave),
-		"dragover" => Some(EventType::DragOver),
-		"dragend" => Some(EventType::DragEnd),
-		// Other events
-		"load" => Some(EventType::Load),
-		"error" => Some(EventType::Error),
-		"scroll" => Some(EventType::Scroll),
-		"resize" => Some(EventType::Resize),
-		_unknown => {
-			crate::warn_log!(
-				"Unknown event type '{}' encountered during hydration, skipping",
-				_unknown
-			);
-			None
-		}
+/// Classifies a hydration event name through the authoritative catalog.
+#[cfg(any(wasm, test))]
+fn event_name_from_string(name: &str) -> EventName {
+	match event_spec(name) {
+		Some(spec) => EventName::Known(spec.kind),
+		None => EventName::Custom(Cow::Owned(name.to_owned())),
 	}
 }
 
@@ -456,6 +421,23 @@ fn test_attach_events_recursive_non_wasm() {
 #[cfg(all(test, native))]
 mod tests {
 	use super::*;
+	use reinhardt_core::types::page::{EventName, EventType};
+
+	#[test]
+	fn event_name_classification_preserves_known_and_custom_names() {
+		assert_eq!(
+			event_name_from_string("click"),
+			EventName::Known(EventType::Click)
+		);
+		assert_eq!(
+			event_name_from_string("editor:commit").as_str(),
+			"editor:commit"
+		);
+		assert!(matches!(
+			event_name_from_string("editor:commit"),
+			EventName::Custom(_)
+		));
+	}
 
 	#[test]
 	fn test_event_binding_new() {

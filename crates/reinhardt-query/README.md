@@ -19,6 +19,7 @@ A type-safe SQL query builder for the Reinhardt framework.
 
 ### DDL (Data Definition Language)
 - **Table operations** - CREATE TABLE, ALTER TABLE, DROP TABLE
+- **Typed generated columns** - DDL-safe `SchemaExpr` builders with backend-specific rendering
 - **Index operations** - CREATE INDEX, ALTER INDEX, DROP INDEX, REINDEX
 - **View operations** - CREATE VIEW, DROP VIEW
 - **Schema management** - CREATE/ALTER/DROP SCHEMA (PostgreSQL, CockroachDB)
@@ -139,6 +140,31 @@ stmt.table("users")
 let builder = PostgresQueryBuilder::new();
 let (sql, values) = builder.build_create_table(&stmt);
 // sql = r#"CREATE TABLE IF NOT EXISTS "users" ("id" INTEGER NOT NULL PRIMARY KEY, "email" VARCHAR(255) NOT NULL UNIQUE)"#
+```
+
+### GENERATED Columns
+
+Use `SchemaExpr` for portable generated-column expressions. The query builder renders
+string concatenation as `||` on PostgreSQL/SQLite and `CONCAT(...)` on MySQL.
+Use `generated_sql` only when a backend-specific raw SQL body is required.
+
+```rust
+use reinhardt_query::prelude::*;
+use reinhardt_query::types::{ColumnDef, ColumnType};
+
+let mut stmt = Query::create_table();
+stmt.table("users")
+    .column(ColumnDef::new("first_name").column_type(ColumnType::String(Some(100))))
+    .column(ColumnDef::new("last_name").column_type(ColumnType::String(Some(100))))
+    .column(
+        ColumnDef::new("full_name")
+            .column_type(ColumnType::String(Some(201)))
+            .generated_stored(SchemaExpr::concat([
+                SchemaExpr::col("first_name"),
+                SchemaExpr::val(" "),
+                SchemaExpr::col("last_name"),
+            ])),
+    );
 ```
 
 ### ALTER TABLE

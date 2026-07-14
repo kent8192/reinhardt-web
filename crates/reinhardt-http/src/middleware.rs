@@ -21,6 +21,23 @@
 //! }
 //! ```
 //!
+//! ## SyncHandler
+//!
+//! `SyncHandler` is a fast path for handlers that can produce a response
+//! without awaiting I/O:
+//!
+//! ```rust
+//! use reinhardt_http::{Request, Response, SyncHandler};
+//!
+//! struct HealthHandler;
+//!
+//! impl SyncHandler for HealthHandler {
+//!     fn handle_sync(&self, _request: Request) -> reinhardt_core::exception::Result<Response> {
+//!         Ok(Response::ok().with_body("ok"))
+//!     }
+//! }
+//! ```
+//!
 //! ## Middleware
 //!
 //! Middleware wraps handlers to add cross-cutting concerns:
@@ -69,6 +86,85 @@ pub trait Handler: Send + Sync {
 	///
 	/// Returns an error if the request cannot be processed.
 	async fn handle(&self, request: Request) -> Result<Response>;
+}
+
+/// Handler trait for request processing that does not need to await.
+///
+/// This is an optional fast path for simple routes such as health checks,
+/// static responses, and synchronous request parsing. Routers can call this
+/// trait directly to avoid creating the boxed future required by
+/// `async_trait` on [`Handler`].
+pub trait SyncHandler: Send + Sync {
+	/// Handles an HTTP request synchronously and produces a response.
+	///
+	/// # Errors
+	///
+	/// Returns an error if the request cannot be processed.
+	fn handle_sync(&self, request: Request) -> Result<Response>;
+}
+
+/// Synchronous handler for endpoints that do not inspect the request.
+///
+/// This is a lower-level fast path for generated endpoints whose signature has
+/// no request, parameter, extractor, middleware, or dependency input. Routers
+/// and server adapters can call this trait before constructing a full
+/// [`Request`].
+pub trait RequestlessSyncHandler: Send + Sync {
+	/// Produces a response without reading request state.
+	///
+	/// # Errors
+	///
+	/// Returns an error if the endpoint cannot produce a response.
+	fn handle_requestless_sync(&self) -> Result<Response>;
+}
+
+/// Adapter that exposes a [`SyncHandler`] through the async [`Handler`] trait.
+///
+/// Middleware chains still operate on `Arc<dyn Handler>`, so synchronous
+/// handlers use this adapter whenever they pass through middleware or any
+/// legacy async-only API.
+pub struct SyncHandlerAdapter {
+	inner: Arc<dyn SyncHandler>,
+}
+
+impl SyncHandlerAdapter {
+	/// Creates an adapter around a synchronous handler.
+	pub fn new(inner: Arc<dyn SyncHandler>) -> Self {
+		Self { inner }
+	}
+}
+
+#[async_trait]
+impl Handler for SyncHandlerAdapter {
+	async fn handle(&self, request: Request) -> Result<Response> {
+		self.inner.handle_sync(request)
+	}
+}
+
+/// Adapter that exposes a [`RequestlessSyncHandler`] through request-shaped
+/// handler traits.
+pub struct RequestlessSyncHandlerAdapter {
+	inner: Arc<dyn RequestlessSyncHandler>,
+}
+
+impl RequestlessSyncHandlerAdapter {
+	/// Creates an adapter around a requestless synchronous handler.
+	pub fn new(inner: Arc<dyn RequestlessSyncHandler>) -> Self {
+		Self { inner }
+	}
+}
+
+impl SyncHandler for RequestlessSyncHandlerAdapter {
+	fn handle_sync(&self, _request: Request) -> Result<Response> {
+		self.inner.handle_requestless_sync()
+	}
+}
+
+#[async_trait]
+impl Handler for RequestlessSyncHandlerAdapter {
+	async fn handle(&self, _request: Request) -> Result<Response> {
+		self.inner.handle_requestless_sync()
+	}
 }
 
 /// Blanket implementation for `Arc<T>` where T: Handler.
@@ -280,13 +376,13 @@ impl MiddlewareChain {
 impl Handler for MiddlewareChain {
 	async fn handle(&self, request: Request) -> Result<Response> {
 		if self.middlewares.is_empty() {
-			return self.handler.handle(request).await;
+			return self.handler.as_ref().handle(request).await;
 		}
 
 		if self.middlewares.len() == 1 {
 			let middleware = &self.middlewares[0];
 			if !middleware.should_continue(&request) {
-				return match self.handler.handle(request).await {
+				return match self.handler.as_ref().handle(request).await {
 					Ok(response) => Ok(response),
 					Err(e) => Ok(Response::from(e)),
 				};
@@ -331,7 +427,7 @@ impl Handler for MiddlewareChain {
 			});
 		}
 
-		current_handler.handle(request).await
+		current_handler.as_ref().handle(request).await
 	}
 }
 
@@ -444,7 +540,7 @@ struct ErrorToResponseHandler {
 #[async_trait]
 impl Handler for ErrorToResponseHandler {
 	async fn handle(&self, request: Request) -> Result<Response> {
-		match self.inner.handle(request).await {
+		match self.inner.as_ref().handle(request).await {
 			Ok(response) => Ok(response),
 			Err(e) => Ok(Response::from(e)),
 		}

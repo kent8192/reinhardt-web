@@ -17,6 +17,7 @@
 //!     .server_fn(logout);
 //! ```
 
+use bytes::Bytes;
 use reinhardt_http::Request;
 use std::future::Future;
 use std::pin::Pin;
@@ -24,11 +25,11 @@ use std::pin::Pin;
 /// Handler function type for server functions.
 ///
 /// This is the signature of the generated `__server_fn_static_wrapper_{name}` functions.
-/// Returns `Result<String, String>` where:
-/// - `Ok(json)` is the serialized successful response
-/// - `Err(json)` is the serialized error response
+/// Returns `Result<Bytes, Bytes>` where:
+/// - `Ok(bytes)` is the serialized successful response
+/// - `Err(bytes)` is the serialized error response
 pub type ServerFnHandler =
-	fn(Request) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send>>;
+	fn(Request) -> Pin<Box<dyn Future<Output = Result<Bytes, Bytes>> + Send>>;
 
 /// Server Function route registration entry.
 ///

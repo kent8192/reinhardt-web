@@ -4115,20 +4115,14 @@ where
 			}
 			Err(error) => {
 				super::instrumentation::instrumentation()
-					.query_error(&sql, &format!("{error:?}"), duration)
+					.orm_query_error(&sql, &format!("{error:?}"))
 					.await;
 				return Err(error.into());
 			}
 		};
 		rows.into_iter()
 			.map(|row| {
-				serde_json::from_value(serde_json::to_value(&row.data).map_err(|e| {
-					reinhardt_core::exception::Error::Database(format!(
-						"Serialization error: {}",
-						e
-					))
-				})?)
-				.map_err(|e| {
+				row.deserialize_model::<T>().map_err(|e| {
 					reinhardt_core::exception::Error::Database(format!(
 						"Deserialization error: {}",
 						e
@@ -4370,20 +4364,14 @@ where
 			}
 			Err(error) => {
 				super::instrumentation::instrumentation()
-					.query_error(&sql, &format!("{error:?}"), duration)
+					.orm_query_error(&sql, &format!("{error:?}"))
 					.await;
 				return Err(error.into());
 			}
 		};
 		rows.into_iter()
 			.map(|row| {
-				serde_json::from_value(serde_json::to_value(&row.data).map_err(|e| {
-					reinhardt_core::exception::Error::Database(format!(
-						"Serialization error: {}",
-						e
-					))
-				})?)
-				.map_err(|e| {
+				row.deserialize_model::<T>().map_err(|e| {
 					reinhardt_core::exception::Error::Database(format!(
 						"Deserialization error: {}",
 						e
@@ -4547,12 +4535,32 @@ where
 
 		// Convert to SQL and extract parameter values
 		let (sql, values) = PostgresQueryBuilder.build_select(&stmt);
+		let param_samples = values
+			.iter()
+			.map(|value| value.to_sql_literal())
+			.collect::<Vec<_>>();
 
 		// Convert reinhardt_query::value::Values to QueryValue
 		let params = super::execution::convert_values(values);
 
 		// Execute query with parameters
-		let rows = conn.query(&sql, params).await?;
+		let started_at = Instant::now();
+		let query_result = conn.query(&sql, params).await;
+		let duration = started_at.elapsed();
+		let rows = match query_result {
+			Ok(rows) => {
+				super::instrumentation::instrumentation()
+					.orm_query_end_with_params(&sql, &param_samples, duration)
+					.await;
+				rows
+			}
+			Err(error) => {
+				super::instrumentation::instrumentation()
+					.orm_query_error(&sql, &format!("{error:?}"))
+					.await;
+				return Err(error.into());
+			}
+		};
 		if let Some(row) = rows.first() {
 			// Extract count from first row
 			if let Some(count_value) = row.data.get("count")
@@ -4671,8 +4679,18 @@ where
 		stmt.table(Alias::new(T::table_name()));
 
 		// Add SET clauses
+		let mut has_values = false;
 		for (field, value) in updates {
+			if T::generated_field_names().contains(&field.as_str()) {
+				continue;
+			}
 			stmt.value_expr(Alias::new(field), Self::update_value_to_query_expr(value));
+			has_values = true;
+		}
+
+		if !has_values {
+			let primary_key = T::primary_key_field();
+			stmt.value_expr(Alias::new(primary_key), Expr::col(Alias::new(primary_key)));
 		}
 
 		// Add WHERE conditions
@@ -4814,6 +4832,16 @@ where
 			));
 		}
 
+		if let Some(assignment) = assignments
+			.iter()
+			.find(|assignment| T::generated_field_names().contains(&assignment.field()))
+		{
+			return Err(reinhardt_core::exception::Error::Validation(format!(
+				"QuerySet::update_fields cannot assign generated field `{}`",
+				assignment.field()
+			)));
+		}
+
 		Ok(())
 	}
 
@@ -4825,6 +4853,17 @@ where
 			super::connection::DatabaseBackend::Postgres => PostgresQueryBuilder.build_update(stmt),
 			super::connection::DatabaseBackend::MySql => MySqlQueryBuilder.build_update(stmt),
 			super::connection::DatabaseBackend::Sqlite => SqliteQueryBuilder.build_update(stmt),
+		}
+	}
+
+	fn build_select_for_backend(
+		stmt: &SelectStatement,
+		backend: super::connection::DatabaseBackend,
+	) -> (String, reinhardt_query::prelude::Values) {
+		match backend {
+			super::connection::DatabaseBackend::Postgres => PostgresQueryBuilder.build_select(stmt),
+			super::connection::DatabaseBackend::MySql => MySqlQueryBuilder.build_select(stmt),
+			super::connection::DatabaseBackend::Sqlite => SqliteQueryBuilder.build_select(stmt),
 		}
 	}
 
@@ -5044,9 +5083,7 @@ where
 	where
 		T: super::Model + Clone,
 	{
-		use reinhardt_query::prelude::{
-			Alias, BinOper, ColumnRef, Expr, PostgresQueryBuilder, Value,
-		};
+		use reinhardt_query::prelude::{Alias, BinOper, ColumnRef, Expr, Value};
 
 		// Get composite primary key definition from the model
 		let composite_pk = T::composite_primary_key().ok_or_else(|| {
@@ -5102,14 +5139,31 @@ where
 			}
 		}
 
-		// Build SQL with inline values (no placeholders)
-		let sql = query.to_string(PostgresQueryBuilder);
-
-		// Execute query using database connection
 		let conn = super::manager::get_connection().await?;
+		let (sql, values) = Self::build_select_for_backend(&query, conn.backend());
+		let param_samples = values
+			.iter()
+			.map(|value| value.to_sql_literal())
+			.collect::<Vec<_>>();
+		let params = super::execution::convert_values(values);
 
-		// Execute the SELECT query
-		let rows = conn.query(&sql, vec![]).await?;
+		let started_at = Instant::now();
+		let query_result = conn.query(&sql, params).await;
+		let duration = started_at.elapsed();
+		let rows = match query_result {
+			Ok(rows) => {
+				super::instrumentation::instrumentation()
+					.orm_query_end_with_params(&sql, &param_samples, duration)
+					.await;
+				rows
+			}
+			Err(error) => {
+				super::instrumentation::instrumentation()
+					.orm_query_error(&sql, &format!("{error:?}"))
+					.await;
+				return Err(error.into());
+			}
+		};
 
 		// Composite PK queries should return exactly one row
 		if rows.is_empty() {
@@ -6441,6 +6495,7 @@ mod tests {
 	use crate::orm::connection::DatabaseBackend;
 	use crate::orm::query::{FieldAssignment, UpdateValue};
 	use crate::orm::{FilterOperator, FilterValue, Manager, Model, QuerySet, query::Filter};
+	use reinhardt_query::QueryBuilder;
 	use rstest::rstest;
 	use serde::{Deserialize, Serialize};
 	use std::collections::HashMap;
@@ -6488,6 +6543,10 @@ mod tests {
 
 		const fn field_email() -> crate::orm::expressions::FieldRef<TestUser, String> {
 			crate::orm::expressions::FieldRef::new("email")
+		}
+
+		const fn field_full_name() -> crate::orm::expressions::FieldRef<TestUser, String> {
+			crate::orm::expressions::FieldRef::new("full_name")
 		}
 
 		const fn field_created_at() -> crate::orm::expressions::FieldRef<TestUser, String> {
@@ -6539,6 +6598,10 @@ mod tests {
 
 		fn new_fields() -> Self::Fields {
 			TestUserFields
+		}
+
+		fn generated_field_names() -> &'static [&'static str] {
+			&["full_name"]
 		}
 	}
 
@@ -6611,9 +6674,65 @@ mod tests {
 			.expect_err("missing predicate should fail");
 
 		assert!(matches!(
+		error,
+		reinhardt_core::exception::Error::Validation(message)
+			if message.contains("filter predicate")
+		));
+	}
+
+	#[test]
+	fn test_update_query_omits_generated_fields() {
+		let queryset = QuerySet::<TestUser>::new().filter(TestUser::field_id().eq(7));
+		let mut updates = HashMap::new();
+		updates.insert(
+			"username".to_string(),
+			UpdateValue::String("alice".to_string()),
+		);
+		updates.insert(
+			"full_name".to_string(),
+			UpdateValue::String("Alice Doe".to_string()),
+		);
+
+		let stmt = queryset.update_query(&updates);
+		let (sql, params) = super::PostgresQueryBuilder.build_update(&stmt);
+
+		assert_eq!(
+			sql,
+			"UPDATE \"test_users\" SET \"username\" = $1 WHERE \"id\" = $2"
+		);
+		assert_eq!(params.len(), 2);
+	}
+
+	#[test]
+	fn test_update_sql_generated_only_fields_builds_noop_set() {
+		let queryset = QuerySet::<TestUser>::new().filter(TestUser::field_id().eq(7));
+		let mut updates = HashMap::new();
+		updates.insert(
+			"full_name".to_string(),
+			UpdateValue::String("Alice Doe".to_string()),
+		);
+
+		let (sql, params) = queryset.update_sql(&updates);
+
+		assert_eq!(
+			sql,
+			"UPDATE \"test_users\" SET \"id\" = \"id\" WHERE \"id\" = $1"
+		);
+		assert_eq!(params, vec!["7"]);
+	}
+
+	#[test]
+	fn test_update_fields_sql_rejects_generated_fields() {
+		let queryset = QuerySet::<TestUser>::new().filter(TestUser::field_id().eq(7));
+
+		let error = queryset
+			.update_fields_sql([(TestUser::field_full_name(), "Alice Doe")])
+			.expect_err("generated fields should be rejected");
+
+		assert!(matches!(
 			error,
 			reinhardt_core::exception::Error::Validation(message)
-				if message.contains("filter predicate")
+				if message == "QuerySet::update_fields cannot assign generated field `full_name`"
 		));
 	}
 

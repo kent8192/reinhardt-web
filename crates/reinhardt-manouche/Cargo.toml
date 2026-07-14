@@ -15,9 +15,10 @@ categories = ["parser-implementations", "development-tools::procedural-macro-hel
 aquamarine = { workspace = true, optional = true }
 
 # Parsing and AST manipulation
-syn = { workspace = true, features = ["full", "extra-traits", "visit-mut"] }
+syn = { workspace = true, features = ["full", "extra-traits", "visit", "visit-mut"] }
 quote = { workspace = true }
 proc-macro2 = { workspace = true }
+reinhardt-event-catalog = { workspace = true }
 
 # Diagnostic and error handling
 darling = "0.20"

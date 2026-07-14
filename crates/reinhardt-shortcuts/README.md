@@ -265,16 +265,12 @@ fn IndexPage(title: String, user: String) -> impl IntoView {
 }
 
 async fn index_view(request: Request) -> Result<Response, Response> {
-    let renderer = SsrRenderer::new(SsrOptions {
-        include_hydration_markers: true,
-        serialize_state: true,
-        ..Default::default()
-    });
+    let mut renderer = SsrRenderer::with_options(SsrOptions::new());
 
-    let html = renderer.render_page(IndexPage {
+    let html = renderer.render_page_to_string(&IndexPage {
         title: "Welcome".to_string(),
         user: request.user().name().to_string(),
-    })?;
+    }).await;
 
     Ok(Response::html(html))
 }

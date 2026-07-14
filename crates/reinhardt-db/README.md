@@ -231,8 +231,64 @@ pub struct User {
 - `#[field(null = true)]` - Allow NULL values
 - `#[field(default = value)]` - Default value
 - `#[field(foreign_key = "ModelType")]` - Foreign key relationship
+- `#[field(generated = SchemaExpr::..., generated_stored = true)]` - Typed generated column expression
+- `#[field(generated_sql = "...", generated_stored = true)]` - Backend-specific raw SQL generated column expression
+
+Typed JSON fields use `Json<T>` to keep the Rust field type explicit while
+storing JSON in the database. Migrations emit JSONB for PostgreSQL/CockroachDB,
+JSON for MySQL, and TEXT for SQLite. Scalar wrappers such as `Json<String>` and
+`Json<bool>` are still stored and hydrated as JSON values. Manager, QuerySet,
+relationship accessor, and session operations preserve the typed value during
+writes and hydration. For nullable fields, `None` maps to SQL `NULL`, while
+`Some(Json::new(serde_json::Value::Null))` maps to a present JSON `null` value.
+
+```rust
+use reinhardt_db::Json;
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize)]
+pub struct StyleSettings {
+    pub indent_width: u8,
+}
+
+#[derive(Serialize, Deserialize)]
+#[model(app_label = "myapp", table_name = "projects")]
+pub struct Project {
+    #[field(primary_key = true)]
+    pub id: i64,
+
+    #[field]
+    pub style_settings: Json<StyleSettings>,
+
+    #[field(null = true)]
+    pub metadata: Option<Json<serde_json::Value>>,
+}
+```
 
 For a complete list of field attributes, see the `#[field(...)]` macro documentation in `reinhardt-db-macros`.
+
+Generated columns should use `reinhardt_db::migrations::SchemaExpr` when the
+expression can be represented with the portable DDL-safe subset:
+
+The typed `generated` form accepts `SchemaExpr::col`, `SchemaExpr::val`,
+`SchemaExpr::concat`, and `SchemaExpr::coalesce`, plus chained `binary` and
+`cast` calls. Use `generated_sql` for backend-specific functions or expression
+forms that cannot be reconstructed from migration files.
+
+```rust
+use reinhardt_db::migrations::SchemaExpr;
+
+#[field(
+    max_length = 201,
+    generated = SchemaExpr::concat([
+        SchemaExpr::col("first_name"),
+        SchemaExpr::val(" "),
+        SchemaExpr::col("last_name"),
+    ]),
+    generated_stored = true
+)]
+pub full_name: String,
+```
 
 **Note**: The `#[model(...)]` attribute macro automatically generates:
 - `Model` trait implementation
@@ -304,9 +360,8 @@ assert!(report.findings.is_empty());
 For tests that should fail on suspicious repeated query shapes, use
 `NPlusOneScope::fail(...).run(...)` around the focused code path. Fix reported
 patterns by using `select_related()` for single-object relationships and
-`prefetch_related()` or explicit batch queries for collection relationships.
-Use `NPlusOneScope::spawn(...)` for spawned tasks that should inherit the active
-scope.
+explicit batch queries for collection relationships. Use
+`NPlusOneScope::spawn(...)` for spawned tasks that should inherit the active scope.
 
 ### Create Migrations
 

@@ -939,7 +939,7 @@ mod tests {
 
 		// Assert
 		assert_eq!(data.get("age").unwrap().as_i64().unwrap(), 25);
-		assert_eq!(data.get("active").unwrap().as_bool().unwrap(), true);
+		assert!(data.get("active").unwrap().as_bool().unwrap());
 		assert!(data.get("tags").unwrap().is_null());
 	}
 

@@ -236,7 +236,7 @@ fn create_page_item<F>(
 	handler: F,
 ) -> Page
 where
-	F: Fn(Signal<u64>) + 'static,
+	F: Fn(Signal<u64>) + Send + Sync + 'static,
 {
 	let text = text.to_string();
 
@@ -258,8 +258,8 @@ where
 			}
 		})(text)
 	} else {
-		let handler: Arc<dyn Fn(Signal<u64>)> = Arc::new(handler);
-		page!(|text: String, _signal: Signal<u64>, _handler: Arc<dyn Fn(Signal<u64>)>| {
+		let handler: Arc<dyn Fn(Signal<u64>) + Send + Sync> = Arc::new(handler);
+		page!(|text: String, _signal: Signal<u64>, _handler: Arc<dyn Fn(Signal<u64>) + Send + Sync>| {
 			a {
 				class: "admin-page-link",
 				href: "#",
@@ -303,6 +303,7 @@ pub fn search_bar(value: Signal<String>, placeholder: &str) -> Page {
 			input {
 				class: "admin-input rounded-l-none border-l-0",
 				type: "text",
+				aria_label: "Search",
 				placeholder: placeholder,
 				value: current_value,
 			}

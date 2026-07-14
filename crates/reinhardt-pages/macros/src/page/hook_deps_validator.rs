@@ -4,8 +4,9 @@
 //!
 //! # What this checks
 //!
-//! For every `use_effect` / `use_layout_effect` / `use_memo` / `use_callback`
-//! / `use_callback_with` call written **directly inside a `page!` body**, this
+//! For every `use_effect` / `use_retained_effect` / `use_layout_effect` /
+//! `use_retained_layout_effect` / `use_memo` / `use_callback` /
+//! `use_callback_with` call written **directly inside a `page!` body**, this
 //! pass walks the hook's closure (positional arg 0) and collects the Signal
 //! reads — `signal.get()`, `signal.with(...)`, `signal.into_value()`. Reads
 //! through the explicit escape hatches `get_untracked` / `with_untracked` are
@@ -47,7 +48,9 @@ use super::scope_utils::collect_pat_idents;
 /// signatures shipped in #4195.
 pub(crate) const VERIFIED_HOOKS: &[&str] = &[
 	"use_effect",
+	"use_retained_effect",
 	"use_layout_effect",
+	"use_retained_layout_effect",
 	"use_memo",
 	"use_callback",
 	"use_callback_with",
@@ -71,7 +74,7 @@ pub(crate) fn verify_hook_deps(input: &PageMacro) -> TokenStream {
 	if let Some(head) = &input.head {
 		scan_expr(head, &mut diagnostics);
 	}
-	for node in &input.body.nodes {
+	for node in &input.body().nodes {
 		scan_node(node, &mut diagnostics);
 	}
 
@@ -89,7 +92,7 @@ fn scan_node(node: &PageNode, out: &mut Vec<TokenStream>) {
 				scan_expr(&attr.value, out);
 			}
 			for event in &el.events {
-				scan_expr(&event.handler, out);
+				scan_expr(event.handler(), out);
 			}
 			for child in &el.children {
 				scan_node(child, out);
@@ -458,6 +461,38 @@ mod tests {
 		assert!(
 			out.contains("compile_error"),
 			"a missing dep must emit compile_error, got: {out}"
+		);
+		assert!(
+			out.contains("count"),
+			"diagnostic should name the missing dep"
+		);
+	}
+
+	#[rstest]
+	fn missing_dep_inside_retained_effect_emits_error() {
+		// Arrange
+		let input = quote! {
+			|count: Signal<i32>| {
+				p { {
+					use_retained_effect(
+						{
+							let count = count.clone();
+							move || { let _ = count.get(); None::<fn()> }
+						},
+						(),
+					);
+					"x"
+				} }
+			}
+		};
+
+		// Act
+		let out = diagnostics(input);
+
+		// Assert
+		assert!(
+			out.contains("compile_error"),
+			"a retained effect missing dep must emit compile_error, got: {out}"
 		);
 		assert!(
 			out.contains("count"),

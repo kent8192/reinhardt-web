@@ -3,7 +3,7 @@
 #![cfg(all(feature = "macros", feature = "testing"))]
 
 use reinhardt_di::{
-	DependencyScope, Depends, FactoryOutput, Injectable, InjectableKey, InjectionContext,
+	DependencyScope, Injectable, InjectableKey, InjectionContext, KeyedDepends, KeyedFactoryOutput,
 	OverrideGuard, SingletonScope, global_registry,
 };
 use serial_test::serial;
@@ -22,9 +22,9 @@ struct CommonQueryParams {
 
 fn register_common_query_params() -> OverrideGuard {
 	let registry = global_registry();
-	registry.register_override::<FactoryOutput<CommonQueryParamsKey, CommonQueryParams>, _, _>(
+	registry.register_override::<KeyedFactoryOutput<CommonQueryParamsKey, CommonQueryParams>, _, _>(
 		DependencyScope::Request,
-		|_ctx| async { Ok(FactoryOutput::new(CommonQueryParams::default())) },
+		|_ctx| async { Ok(KeyedFactoryOutput::new(CommonQueryParams::default())) },
 	)
 }
 
@@ -66,25 +66,25 @@ impl Injectable for CountedService {
 	}
 }
 
-/// Register CountedService output so `Depends<K, T>` can resolve it from the registry.
+/// Register CountedService output so `KeyedDepends<K, T>` can resolve it from the registry.
 /// Uses Request scope: same instance within one `InjectionContext`, new instance per context.
 fn register_counted_service() -> OverrideGuard {
 	let registry = global_registry();
-	registry.register_override::<FactoryOutput<CountedServiceKey, CountedService>, _, _>(
+	registry.register_override::<KeyedFactoryOutput<CountedServiceKey, CountedService>, _, _>(
 		DependencyScope::Request,
 		|_ctx| async {
 			let instance_id = INSTANCE_COUNTER.fetch_add(1, Ordering::SeqCst) + 1;
-			Ok(FactoryOutput::new(CountedService { instance_id }))
+			Ok(KeyedFactoryOutput::new(CountedService { instance_id }))
 		},
 	)
 }
 
 fn register_config() -> OverrideGuard {
 	let registry = global_registry();
-	registry.register_override::<FactoryOutput<ConfigKey, Config>, _, _>(
+	registry.register_override::<KeyedFactoryOutput<ConfigKey, Config>, _, _>(
 		DependencyScope::Request,
 		|_ctx| async {
-			Ok(FactoryOutput::new(Config {
+			Ok(KeyedFactoryOutput::new(Config {
 				api_key: String::new(),
 			}))
 		},
@@ -100,11 +100,11 @@ async fn test_injected_with_cache_default() {
 
 	// Cache is enabled by default
 	let params1 =
-		Depends::<CommonQueryParamsKey, CommonQueryParams>::resolve_from_registry(&ctx, true)
+		KeyedDepends::<CommonQueryParamsKey, CommonQueryParams>::resolve_from_registry(&ctx, true)
 			.await
 			.unwrap();
 	let params2 =
-		Depends::<CommonQueryParamsKey, CommonQueryParams>::resolve_from_registry(&ctx, true)
+		KeyedDepends::<CommonQueryParamsKey, CommonQueryParams>::resolve_from_registry(&ctx, true)
 			.await
 			.unwrap();
 
@@ -126,12 +126,14 @@ async fn test_separate_contexts_create_new_instances() {
 	let singleton2 = SingletonScope::new();
 	let ctx2 = InjectionContext::builder(singleton2).build();
 
-	let service1 = Depends::<CountedServiceKey, CountedService>::resolve_from_registry(&ctx1, true)
-		.await
-		.unwrap();
-	let service2 = Depends::<CountedServiceKey, CountedService>::resolve_from_registry(&ctx2, true)
-		.await
-		.unwrap();
+	let service1 =
+		KeyedDepends::<CountedServiceKey, CountedService>::resolve_from_registry(&ctx1, true)
+			.await
+			.unwrap();
+	let service2 =
+		KeyedDepends::<CountedServiceKey, CountedService>::resolve_from_registry(&ctx2, true)
+			.await
+			.unwrap();
 
 	// Different contexts produce different instances (IDs are sequential)
 	assert_ne!(service1.instance_id, service2.instance_id);
@@ -149,12 +151,14 @@ async fn test_injected_with_cache_enabled() {
 	let ctx = InjectionContext::builder(singleton).build();
 
 	// Cache enabled (default)
-	let service1 = Depends::<CountedServiceKey, CountedService>::resolve_from_registry(&ctx, true)
-		.await
-		.unwrap();
-	let service2 = Depends::<CountedServiceKey, CountedService>::resolve_from_registry(&ctx, true)
-		.await
-		.unwrap();
+	let service1 =
+		KeyedDepends::<CountedServiceKey, CountedService>::resolve_from_registry(&ctx, true)
+			.await
+			.unwrap();
+	let service2 =
+		KeyedDepends::<CountedServiceKey, CountedService>::resolve_from_registry(&ctx, true)
+			.await
+			.unwrap();
 
 	// Returns the same instance (same ID)
 	assert_eq!(service1.instance_id, service2.instance_id);
@@ -166,7 +170,7 @@ async fn test_injected_from_value() {
 	let db = Database {
 		connection_count: 10,
 	};
-	let depends = Depends::<DatabaseKey, Database>::from_value(db);
+	let depends = KeyedDepends::<DatabaseKey, Database>::from_value(db);
 
 	assert_eq!(depends.connection_count, 10);
 }
@@ -179,7 +183,7 @@ async fn test_injected_deref() {
 	let ctx = InjectionContext::builder(singleton).build();
 
 	let params =
-		Depends::<CommonQueryParamsKey, CommonQueryParams>::resolve_from_registry(&ctx, true)
+		KeyedDepends::<CommonQueryParamsKey, CommonQueryParams>::resolve_from_registry(&ctx, true)
 			.await
 			.unwrap();
 
@@ -196,7 +200,7 @@ async fn test_fastapi_injected_clone() {
 	let ctx = InjectionContext::builder(singleton).build();
 
 	let params1 =
-		Depends::<CommonQueryParamsKey, CommonQueryParams>::resolve_from_registry(&ctx, true)
+		KeyedDepends::<CommonQueryParamsKey, CommonQueryParams>::resolve_from_registry(&ctx, true)
 			.await
 			.unwrap();
 	let params2 = params1.clone();
@@ -211,8 +215,8 @@ async fn test_fastapi_injected_clone() {
 #[serial(di_registry)]
 async fn test_fastapi_style_usage() {
 	async fn endpoint_handler(
-		config: Depends<ConfigKey, Config>,
-		params: Depends<CommonQueryParamsKey, CommonQueryParams>,
+		config: KeyedDepends<ConfigKey, Config>,
+		params: KeyedDepends<CommonQueryParamsKey, CommonQueryParams>,
 	) -> String {
 		format!("API Key: {}, Skip: {}", config.api_key, params.skip)
 	}
@@ -223,11 +227,11 @@ async fn test_fastapi_style_usage() {
 	let ctx = InjectionContext::builder(singleton).build();
 
 	// Simulate endpoint usage
-	let config = Depends::<ConfigKey, Config>::resolve_from_registry(&ctx, true)
+	let config = KeyedDepends::<ConfigKey, Config>::resolve_from_registry(&ctx, true)
 		.await
 		.unwrap();
 	let params =
-		Depends::<CommonQueryParamsKey, CommonQueryParams>::resolve_from_registry(&ctx, true)
+		KeyedDepends::<CommonQueryParamsKey, CommonQueryParams>::resolve_from_registry(&ctx, true)
 			.await
 			.unwrap();
 

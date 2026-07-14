@@ -4,9 +4,11 @@
 //! for different handler signatures, enabling type-safe path parameter
 //! extraction in route definitions.
 
+use super::component::FromLayoutRequest;
 use super::error::RouterError;
 use super::from_request::{FromRequest, RouteContext};
 use super::params::{FromPath, ParamContext, Path, SingleFromPath};
+use reinhardt_core::page::Outlet;
 use reinhardt_core::types::page::Page;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -24,6 +26,24 @@ pub trait RouteHandler: Send + Sync {
 	///
 	/// Returns [`RouterError::PathExtraction`] if parameter extraction fails.
 	fn handle(&self, ctx: &ParamContext) -> Result<Page, RouterError>;
+}
+
+/// Trait for layout handlers that render a child outlet.
+pub(crate) trait LayoutRouteHandler: Send + Sync {
+	/// Handles the layout route request with the child outlet.
+	///
+	/// # Errors
+	///
+	/// Returns [`RouterError::PathExtraction`] if parameter extraction fails.
+	fn handle(&self, ctx: &ParamContext, outlet: Outlet) -> Result<Page, RouterError>;
+}
+
+fn route_context_from_param_context(ctx: &ParamContext) -> RouteContext {
+	RouteContext::new(
+		ctx.path().unwrap_or("").to_string(),
+		ctx.params().clone(),
+		ctx.query().unwrap_or("").to_string(),
+	)
 }
 
 /// Handler for routes without parameters.
@@ -309,11 +329,7 @@ where
 	P: FromRequest + Send + Sync,
 {
 	fn handle(&self, ctx: &ParamContext) -> Result<Page, RouterError> {
-		let route_ctx = RouteContext::new(
-			ctx.path().unwrap_or("").to_string(),
-			ctx.params().clone(),
-			ctx.query().unwrap_or("").to_string(),
-		);
+		let route_ctx = route_context_from_param_context(ctx);
 		match P::from_request(&route_ctx) {
 			Ok(props) => Ok((self.handler)(props)),
 			Err(e) => Ok(Page::Text(
@@ -330,6 +346,88 @@ where
 	P: FromRequest + Send + Sync + 'static,
 {
 	Arc::new(FromRequestHandler::new(handler, pattern))
+}
+
+/// Handler for layout routes registered via `RouteScope::layout`.
+pub(crate) struct FromLayoutRequestHandler<F, P> {
+	handler: F,
+	pattern: String,
+	_phantom: PhantomData<fn(P) -> ()>,
+}
+
+impl<F, P> FromLayoutRequestHandler<F, P> {
+	pub(crate) fn new(handler: F, pattern: String) -> Self {
+		Self {
+			handler,
+			pattern,
+			_phantom: PhantomData,
+		}
+	}
+}
+
+// SAFETY: FromLayoutRequestHandler is Send + Sync when F is Send + Sync.
+// The PhantomData<P> marker does not store P.
+unsafe impl<F: Send, P> Send for FromLayoutRequestHandler<F, P> {}
+unsafe impl<F: Sync, P> Sync for FromLayoutRequestHandler<F, P> {}
+
+impl<F, P> LayoutRouteHandler for FromLayoutRequestHandler<F, P>
+where
+	F: Fn(P) -> Page + Send + Sync,
+	P: FromLayoutRequest,
+{
+	fn handle(&self, ctx: &ParamContext, outlet: Outlet) -> Result<Page, RouterError> {
+		let route_ctx = route_context_from_param_context(ctx);
+		match P::from_layout_request(&route_ctx, outlet) {
+			Ok(props) => Ok((self.handler)(props)),
+			Err(e) => Ok(Page::Text(
+				format!("layout extraction error on `{}`: {e}", self.pattern).into(),
+			)),
+		}
+	}
+}
+
+/// Handler for test layout routes that only receive an outlet.
+pub(crate) struct OutletLayoutHandler<F> {
+	handler: F,
+}
+
+impl<F> OutletLayoutHandler<F> {
+	pub(crate) fn new(handler: F) -> Self {
+		Self { handler }
+	}
+}
+
+// SAFETY: OutletLayoutHandler is Send + Sync when F is Send + Sync.
+unsafe impl<F: Send> Send for OutletLayoutHandler<F> {}
+unsafe impl<F: Sync> Sync for OutletLayoutHandler<F> {}
+
+impl<F> LayoutRouteHandler for OutletLayoutHandler<F>
+where
+	F: Fn(Outlet) -> Page + Send + Sync,
+{
+	fn handle(&self, _ctx: &ParamContext, outlet: Outlet) -> Result<Page, RouterError> {
+		Ok((self.handler)(outlet))
+	}
+}
+
+/// Helper function to create a `FromLayoutRequest`-based handler.
+pub(crate) fn from_layout_request_handler<F, P>(
+	handler: F,
+	pattern: String,
+) -> Arc<dyn LayoutRouteHandler>
+where
+	F: Fn(P) -> Page + Send + Sync + 'static,
+	P: FromLayoutRequest + 'static,
+{
+	Arc::new(FromLayoutRequestHandler::new(handler, pattern))
+}
+
+/// Helper function to create an outlet-only layout handler.
+pub(crate) fn outlet_layout_handler<F>(handler: F) -> Arc<dyn LayoutRouteHandler>
+where
+	F: Fn(Outlet) -> Page + Send + Sync + 'static,
+{
+	Arc::new(OutletLayoutHandler::new(handler))
 }
 
 #[cfg(test)]

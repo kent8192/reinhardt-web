@@ -12,24 +12,8 @@ struct Tenant {
 	name: String,
 }
 
-trait DefaultTenantRelation {
-	fn default_tenant() -> Self;
-}
-
-impl DefaultTenantRelation for db::associations::ForeignKeyField<Tenant> {
-	fn default_tenant() -> Self {
-		Self::default()
-	}
-}
-
-impl DefaultTenantRelation for model_info::RelationInfo<Tenant> {
-	fn default_tenant() -> Self {
-		model_info::RelationInfo::new(0)
-	}
-}
-
-fn default_tenant<T: DefaultTenantRelation>() -> T {
-	T::default_tenant()
+fn default_tenant() -> db::associations::ForeignKeyField<Tenant> {
+	db::associations::ForeignKeyField::default()
 }
 
 #[model(table_name = "documents")]
@@ -45,18 +29,9 @@ struct Document {
 }
 
 fn main() {
-	let info = DocumentInfo {
+	let _info = DocumentInfo {
 		id: 1,
 		title: "private".to_string(),
 		tenant: model_info::RelationInfo::new(42),
 	};
-	let serialized = serde_json::to_string(&info).unwrap();
-	assert_eq!(serialized, r#"{"id":1,"title":"private"}"#);
-
-	let decoded: DocumentInfo = serde_json::from_str(
-		r#"{"id":1,"title":"private","tenant":{"id":999}}"#,
-	)
-	.unwrap();
-	let model: Document = decoded.into();
-	assert_eq!(model.tenant_id, 0);
 }

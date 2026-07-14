@@ -89,7 +89,9 @@ fn build_delete_sql(stmt: &DeleteStatement, backend: DatabaseBackend) -> (String
 pub struct ManyToManyAccessor<S, T>
 where
 	S: Model,
+	S::PrimaryKey: reinhardt_query::IntoValue,
 	T: Model + Serialize + DeserializeOwned,
+	T::PrimaryKey: reinhardt_query::IntoValue,
 {
 	source_id: S::PrimaryKey,
 	through_table: String,
@@ -105,7 +107,9 @@ where
 impl<S, T> ManyToManyAccessor<S, T>
 where
 	S: Model,
+	S::PrimaryKey: reinhardt_query::IntoValue,
 	T: Model + Serialize + DeserializeOwned,
+	T::PrimaryKey: reinhardt_query::IntoValue,
 {
 	/// Create a new ManyToManyAccessor.
 	///
@@ -323,14 +327,15 @@ where
 			.expr(Func::count(Expr::asterisk().into_simple_expr()))
 			.and_where(
 				Expr::col(Alias::new(&self.source_field))
-					.binary(BinOper::Equal, Expr::val(self.source_id.to_string())),
+					.binary(BinOper::Equal, Expr::val(self.source_id.clone())),
 			);
 
 		let query = query.to_owned();
 		let (sql, values) = build_select_sql(&query, self.db.backend());
 		let params = value_samples(&values);
+		let query_values = super::execution::convert_values(values);
 		let started_at = Instant::now();
-		let query_result = self.db.query(&sql, vec![]).await;
+		let query_result = self.db.query(&sql, query_values).await;
 		let duration = started_at.elapsed();
 		let rows = match query_result {
 			Ok(rows) => {
@@ -339,7 +344,12 @@ where
 					.await;
 				rows
 			}
-			Err(error) => return Err(error.to_string()),
+			Err(error) => {
+				super::instrumentation::instrumentation()
+					.orm_query_error(&sql, &error.to_string())
+					.await;
+				return Err(error.to_string());
+			}
 		};
 
 		if let Some(row) = rows.first()
@@ -399,7 +409,7 @@ where
 					Alias::new(&self.through_table),
 					Alias::new(&self.source_field),
 				))
-				.binary(BinOper::Equal, Expr::val(self.source_id.to_string())),
+				.binary(BinOper::Equal, Expr::val(self.source_id.clone())),
 			);
 
 		// Apply LIMIT/OFFSET
@@ -413,8 +423,9 @@ where
 		let query = query.to_owned();
 		let (sql, values) = build_select_sql(&query, self.db.backend());
 		let params = value_samples(&values);
+		let query_values = super::execution::convert_values(values);
 		let started_at = Instant::now();
-		let query_result = self.db.query(&sql, vec![]).await;
+		let query_result = self.db.query(&sql, query_values).await;
 		let duration = started_at.elapsed();
 		let rows = match query_result {
 			Ok(rows) => {
@@ -423,11 +434,16 @@ where
 					.await;
 				rows
 			}
-			Err(error) => return Err(error.to_string()),
+			Err(error) => {
+				super::instrumentation::instrumentation()
+					.orm_query_error(&sql, &error.to_string())
+					.await;
+				return Err(error.to_string());
+			}
 		};
 
 		rows.into_iter()
-			.map(|row| serde_json::from_value(row.data).map_err(|e| e.to_string()))
+			.map(|row| row.deserialize_model::<T>().map_err(|e| e.to_string()))
 			.collect()
 	}
 
@@ -638,14 +654,15 @@ where
 			)
 			.and_where(
 				Expr::col((Alias::new(&through_table), Alias::new(&target_field)))
-					.binary(BinOper::Equal, Expr::val(target_id.to_string())),
+					.binary(BinOper::Equal, Expr::val(target_id.clone())),
 			)
 			.to_owned();
 
 		let (sql, values) = build_select_sql(&query, db.backend());
 		let params = value_samples(&values);
+		let query_values = super::execution::convert_values(values);
 		let started_at = Instant::now();
-		let query_result = db.query(&sql, vec![]).await;
+		let query_result = db.query(&sql, query_values).await;
 		let duration = started_at.elapsed();
 		let rows = match query_result {
 			Ok(rows) => {
@@ -654,11 +671,16 @@ where
 					.await;
 				rows
 			}
-			Err(error) => return Err(error.to_string()),
+			Err(error) => {
+				super::instrumentation::instrumentation()
+					.orm_query_error(&sql, &error.to_string())
+					.await;
+				return Err(error.to_string());
+			}
 		};
 
 		rows.into_iter()
-			.map(|row| serde_json::from_value(row.data).map_err(|e| e.to_string()))
+			.map(|row| row.deserialize_model::<S>().map_err(|e| e.to_string()))
 			.collect()
 	}
 }

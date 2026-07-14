@@ -29,48 +29,15 @@ fn generate_inject_resolver_expr(
 	ctx: proc_macro2::TokenStream,
 	use_cache: bool,
 ) -> proc_macro2::TokenStream {
-	fn depends_key_value_types(ty: &syn::Type) -> Option<(&syn::Type, &syn::Type)> {
-		let syn::Type::Path(type_path) = ty else {
-			return None;
-		};
-		let segment = type_path.path.segments.last()?;
-		if segment.ident != "Depends" {
-			return None;
-		}
-		let syn::PathArguments::AngleBracketed(args) = &segment.arguments else {
-			return None;
-		};
-		if args.args.len() != 2 {
-			return None;
-		}
-		let mut generic_args = args.args.iter();
-		let syn::GenericArgument::Type(key_ty) = generic_args.next()? else {
-			return None;
-		};
-		let syn::GenericArgument::Type(value_ty) = generic_args.next()? else {
-			return None;
-		};
-		Some((key_ty, value_ty))
-	}
-
-	if let Some((key_ty, value_ty)) = depends_key_value_types(ty) {
-		quote! {
-			{
-				#di_crate::Depends::<#key_ty, #value_ty>::resolve_from_registry(#ctx, #use_cache)
-					.await
-			}
-		}
-	} else {
-		quote! {
-			{
-				use #di_crate::{
-					__InjectFallbackResolver as _,
-					__InjectWrapperResolver as _,
-				};
-				#di_crate::__InjectResolver::<#ty>::new()
-					.__resolve_inject_parameter(#ctx, #use_cache)
-					.await
-			}
+	quote! {
+		{
+			use #di_crate::{
+				__InjectFallbackResolver as _,
+				__InjectWrapperResolver as _,
+			};
+			#di_crate::__InjectResolver::<#ty>::new()
+				.__resolve_inject_parameter(#ctx, #use_cache)
+				.await
 		}
 	}
 }
@@ -442,6 +409,17 @@ impl ServerFnInfo {
 		&self.func.vis
 	}
 
+	fn allows_private_interfaces(&self) -> bool {
+		self.func
+			.attrs
+			.iter()
+			.any(attribute_allows_private_interfaces)
+	}
+
+	fn emits_typed_response_metadata(&self) -> bool {
+		!self.allows_private_interfaces() && !matches!(self.vis(), syn::Visibility::Restricted(_))
+	}
+
 	/// Get the endpoint path
 	///
 	/// Returns the custom endpoint if specified, otherwise generates default.
@@ -461,6 +439,54 @@ impl ServerFnInfo {
 	fn use_inject_enabled(&self) -> bool {
 		self.options.use_inject
 	}
+}
+
+fn attribute_allows_private_interfaces(attr: &syn::Attribute) -> bool {
+	if !attr.path().is_ident("allow") {
+		return false;
+	}
+	let mut found = false;
+	let _ = attr.parse_nested_meta(|meta| {
+		if meta.path.is_ident("private_interfaces") {
+			found = true;
+		}
+		Ok(())
+	});
+	found
+}
+
+fn marker_struct_visibility(vis: &syn::Visibility) -> proc_macro2::TokenStream {
+	match vis {
+		syn::Visibility::Public(_) => quote! { pub },
+		syn::Visibility::Restricted(restricted) => {
+			let path = marker_struct_restricted_visibility_path(&restricted.path);
+			if path.is_ident("crate") {
+				quote! { pub(crate) }
+			} else {
+				quote! { pub(in #path) }
+			}
+		}
+		syn::Visibility::Inherited => quote! { pub(super) },
+	}
+}
+
+fn marker_struct_restricted_visibility_path(path: &syn::Path) -> syn::Path {
+	let mut marker_path = path.clone();
+	if marker_path.leading_colon.is_none()
+		&& let Some(first_segment) = marker_path.segments.first_mut()
+	{
+		if first_segment.ident == "crate" {
+			return marker_path;
+		}
+		if first_segment.ident == "self" {
+			first_segment.ident = quote::format_ident!("super");
+			return marker_path;
+		}
+		if first_segment.ident == "super" {
+			return syn::parse_quote!(super::#marker_path);
+		}
+	}
+	marker_path
 }
 
 /// Validate server_fn endpoint path.
@@ -532,6 +558,80 @@ pub(crate) fn server_fn_impl(args: TokenStream, input: TokenStream) -> TokenStre
 	generate_server_fn(&info).into()
 }
 
+fn regular_server_fn_params(inputs: &Punctuated<FnArg, Token![,]>) -> Vec<&syn::PatType> {
+	inputs
+		.iter()
+		.filter_map(|arg| {
+			if let syn::FnArg::Typed(pat_type) = arg {
+				let has_inject = pat_type.attrs.iter().any(is_inject_attr);
+				if has_inject || is_extractor_type(&pat_type.ty) {
+					return None;
+				}
+				Some(pat_type)
+			} else {
+				None
+			}
+		})
+		.collect()
+}
+
+fn add_native_mock_probe(
+	info: &ServerFnInfo,
+	clean_func: &ItemFn,
+	regular_params: &[&syn::PatType],
+	pages_crate_info: &CratePathInfo,
+) -> Result<ItemFn, proc_macro2::TokenStream> {
+	let mut param_idents = Vec::new();
+	for param in regular_params {
+		let syn::Pat::Ident(pat_ident) = &*param.pat else {
+			return Err(quote! {
+				compile_error!("server_fn component-test mocks require identifier parameters");
+			});
+		};
+		param_idents.push(pat_ident.ident.clone());
+	}
+
+	let mut func = clean_func.clone();
+	let pages_use_statement = &pages_crate_info.use_statement;
+	let pages_crate = &pages_crate_info.ident;
+	let name = info.name();
+	let original_block = func.block;
+	let native_mock_probe = if cfg!(feature = "msw") {
+		quote! {
+			{
+				// Generated server functions may expand into consumer crates that do not
+				// declare an `msw` feature, even when the dependency feature is active.
+				#![allow(unexpected_cfgs)]
+
+				#[cfg(all(native, feature = "msw"))]
+				{
+					let __args = #name::Args {
+						#(#param_idents: #param_idents.clone()),*
+					};
+					if let Some(__mock_result) =
+						#pages_crate::server_fn::try_call_active_mock::<#name::marker>(__args)
+					{
+							match __mock_result {
+								Ok(__mock_value) => return Ok(__mock_value),
+								Err(__mock_error) => {
+									return Err(::std::convert::Into::into(__mock_error));
+								}
+							}
+					}
+				}
+			}
+		}
+	} else {
+		quote! {}
+	};
+	func.block = Box::new(syn::parse_quote!({
+		#pages_use_statement
+		#native_mock_probe
+		#original_block
+	}));
+	Ok(func)
+}
+
 /// Generate server function code
 ///
 /// This generates both client and server code with conditional compilation.
@@ -575,6 +675,12 @@ fn generate_server_fn(info: &ServerFnInfo) -> proc_macro2::TokenStream {
 
 	// Dynamically resolve reinhardt_pages crate path for client stub
 	let pages_crate_info = get_reinhardt_pages_crate_info();
+	let regular_params = regular_server_fn_params(&func.sig.inputs);
+	let native_clean_func =
+		match add_native_mock_probe(info, &clean_func, &regular_params, &pages_crate_info) {
+			Ok(func) => quote! { #func },
+			Err(err) => err,
+		};
 
 	// Generate client stub (with DI and extractor parameter filtering)
 	let client_stub =
@@ -589,7 +695,7 @@ fn generate_server_fn(info: &ServerFnInfo) -> proc_macro2::TokenStream {
 
 		// Server-side: Original function (with #[inject] attributes removed)
 		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-		#clean_func
+		#native_clean_func
 
 		// Client-side: HTTP request stub
 		#client_stub
@@ -1098,23 +1204,36 @@ fn generate_server_handler(
 		quote! {}
 	};
 
+	// Dynamically resolve crate paths for body extraction, serialization, and registration
+	let pages_crate = get_reinhardt_pages_crate();
+
 	// Generate codec-specific serialization code for server response
 	let serialize_response_code = match codec {
 		"json" => quote! {
-			::serde_json::to_string(&value)
-				.map_err(|e| format!("Failed to serialize response: {}", e))
+			::serde_json::to_vec(&value)
+				.map(#pages_crate::__private::bytes::Bytes::from)
+				.map_err(|e| #pages_crate::__private::bytes::Bytes::from(
+					format!("Failed to serialize response: {}", e)
+				))
 		},
 		"url" => quote! {
 			// For URL-encoded codec, response is still JSON
-			::serde_json::to_string(&value)
-				.map_err(|e| format!("Failed to serialize response: {}", e))
+			::serde_json::to_vec(&value)
+				.map(#pages_crate::__private::bytes::Bytes::from)
+				.map_err(|e| #pages_crate::__private::bytes::Bytes::from(
+					format!("Failed to serialize response: {}", e)
+				))
 		},
 		"msgpack" => quote! {
 			// Serialize to msgpack bytes
 			let bytes = ::rmp_serde::to_vec(&value)
-				.map_err(|e| format!("Failed to serialize response: {}", e))?;
+				.map_err(|e| #pages_crate::__private::bytes::Bytes::from(
+					format!("Failed to serialize response: {}", e)
+				))?;
 			// Encode as base64 for HTTP transport
-			Ok(::base64::Engine::encode(&::base64::engine::general_purpose::STANDARD, &bytes))
+			Ok(#pages_crate::__private::bytes::Bytes::from(
+				::base64::Engine::encode(&::base64::engine::general_purpose::STANDARD, &bytes)
+			))
 		},
 		// Fixes #843: emit compile error for unknown codec instead of silent fallback
 		unknown => {
@@ -1126,54 +1245,82 @@ fn generate_server_handler(
 		}
 	};
 
-	// Dynamically resolve crate paths for body extraction and registration
-	let pages_crate = get_reinhardt_pages_crate();
-
 	// Generate handler signature and body extraction.
 	// The handler receives Request in every native configuration. This keeps body
 	// handling in one place and lets JSON decode directly from Bytes when content
 	// negotiation is not needed.
 	let http_crate = get_reinhardt_http_crate();
 	let handler_signature = quote! {
-		pub async fn #handler_name(__req: #http_crate::Request) -> ::std::result::Result<::std::string::String, ::std::string::String>
+		pub async fn #handler_name(__req: #http_crate::Request) -> ::std::result::Result<#pages_crate::__private::bytes::Bytes, #pages_crate::__private::bytes::Bytes>
 	};
 	let handler_body_extraction = if regular_params.is_empty() {
 		quote! {}
 	} else {
 		match codec {
-			"json" => quote! {
-				let __content_type = __req
-					.headers
-					.get("content-type")
-					.and_then(|value| value.to_str().ok())
-					.unwrap_or("");
-				let body = __req.read_body()
-					.map_err(|e| format!("Failed to read body: {}", e))?;
-				let __media_type = __content_type
-					.split(';')
-					.next()
-					.unwrap_or("")
-					.trim();
-				let __converted_body;
-				let body: &[u8] = if __media_type.is_empty()
-					|| __media_type.eq_ignore_ascii_case("application/json")
-				{
-					body.as_ref()
-				} else {
-					let __body_text = ::std::string::String::from_utf8(body.to_vec())
-						.map_err(|e| format!("Body is not valid UTF-8: {}", e))?;
-					__converted_body = #pages_crate::server_fn::convert_body_for_codec(
-						__body_text,
-						&__content_type,
-						#codec,
-					)?;
-					__converted_body.as_bytes()
-				};
-			},
+			"json" if !has_inject_or_extractor => {
+				quote! {
+					let __content_type = __req
+						.headers
+						.get(#pages_crate::__private::hyper::header::CONTENT_TYPE)
+						.and_then(|value| value.to_str().ok())
+						.unwrap_or("");
+					let __media_type = __content_type
+						.split(';')
+						.next()
+						.unwrap_or("")
+						.trim();
+					let __converted_body;
+					let body: &[u8] = if __media_type.is_empty()
+						|| __media_type.eq_ignore_ascii_case("application/json")
+					{
+						__req.body().as_ref()
+					} else {
+						let __body_text = ::std::string::String::from_utf8(__req.body().to_vec())
+							.map_err(|e| format!("Body is not valid UTF-8: {}", e))?;
+						__converted_body = #pages_crate::server_fn::convert_body_for_codec(
+							__body_text,
+							&__content_type,
+							#codec,
+						)?;
+						__converted_body.as_bytes()
+					};
+				}
+			}
+			"json" => {
+				quote! {
+					let __content_type = __req
+						.headers
+						.get(#pages_crate::__private::hyper::header::CONTENT_TYPE)
+						.and_then(|value| value.to_str().ok())
+						.unwrap_or("");
+					let body = __req.read_body()
+						.map_err(|e| format!("Failed to read body: {}", e))?;
+					let __media_type = __content_type
+						.split(';')
+						.next()
+						.unwrap_or("")
+						.trim();
+					let __converted_body;
+					let body: &[u8] = if __media_type.is_empty()
+						|| __media_type.eq_ignore_ascii_case("application/json")
+					{
+						body.as_ref()
+					} else {
+						let __body_text = ::std::string::String::from_utf8(body.to_vec())
+							.map_err(|e| format!("Body is not valid UTF-8: {}", e))?;
+						__converted_body = #pages_crate::server_fn::convert_body_for_codec(
+							__body_text,
+							&__content_type,
+							#codec,
+						)?;
+						__converted_body.as_bytes()
+					};
+				}
+			}
 			_ => quote! {
 				let __content_type = __req
 					.headers
-					.get("content-type")
+					.get(#pages_crate::__private::hyper::header::CONTENT_TYPE)
 					.and_then(|value| value.to_str().ok())
 					.unwrap_or("");
 				let body = __req.read_body()
@@ -1190,6 +1337,7 @@ fn generate_server_handler(
 	// Generate unique name for the static wrapper function
 	let static_wrapper_name = quote::format_ident!("__server_fn_static_wrapper_{}", name);
 	let name_str = name.to_string();
+	let is_json_codec = codec == "json";
 
 	// Note: pages_crate is already resolved above for body extraction.
 	// http_crate is resolved above when inject_params is not empty,
@@ -1198,6 +1346,7 @@ fn generate_server_handler(
 
 	// Get visibility for marker struct (same as original function)
 	let vis = info.vis();
+	let marker_struct_vis = marker_struct_visibility(vis);
 
 	// Generate marker module name for `.server_fn(login::marker)` pattern
 	// Example: login -> pub mod login { pub struct marker; }
@@ -1210,6 +1359,10 @@ fn generate_server_handler(
 	// the function because Rust's value namespace doesn't allow both a function
 	// and a `use` item with the same name in the same module.
 	let marker_module_name = name.clone();
+	let metadata_alias_prefix = name.to_string().to_case(Case::Pascal);
+	let response_alias = quote::format_ident!("__ServerFn{}Response", metadata_alias_prefix);
+	let error_alias = quote::format_ident!("__ServerFn{}Error", metadata_alias_prefix);
+	let request_alias = quote::format_ident!("__ServerFn{}Request", metadata_alias_prefix);
 
 	// MSW: Generate MockableServerFn impl when the macro crate was compiled
 	// with `msw` feature.
@@ -1230,8 +1383,50 @@ fn generate_server_handler(
 	// `reinhardt-web/msw`) so that `MockableServerFn` is in scope.
 	let msw_enabled = cfg!(feature = "msw");
 
-	// MSW: Extract the Ok type from Result<T, ServerFnError> for MockableServerFn::Response
-	let response_type = extract_result_ok_type(return_type);
+	let result_types = extract_result_types(return_type);
+	let emits_msw_metadata = info.emits_typed_response_metadata();
+	let emits_typed_response_metadata = emits_msw_metadata && result_types.is_some();
+	let (metadata_response_type, metadata_error_type) =
+		result_types.unwrap_or_else(|| (quote! {}, quote! {}));
+	let response_metadata_type_aliases = if emits_typed_response_metadata {
+		quote! {
+			#[doc(hidden)]
+			#vis type #response_alias = #metadata_response_type;
+			#[doc(hidden)]
+			#vis type #error_alias = #metadata_error_type;
+		}
+	} else {
+		quote! {}
+	};
+	let response_metadata_impl = if emits_typed_response_metadata {
+		quote! {
+			impl #pages_crate::server_fn::ServerFnResponseMetadata for marker {
+				type Response = super::#response_alias;
+				type Error = super::#error_alias;
+			}
+		}
+	} else {
+		quote! {}
+	};
+	let request_metadata_type_aliases =
+		if emits_typed_response_metadata && regular_param_types.len() == 1 {
+			let request_type = regular_param_types[0];
+			quote! {
+				#[doc(hidden)]
+				#vis type #request_alias = #request_type;
+			}
+		} else {
+			quote! {}
+		};
+	let request_metadata_impl = if emits_typed_response_metadata && regular_param_types.len() == 1 {
+		quote! {
+			impl #pages_crate::server_fn::ServerFnRequestMetadata for marker {
+				type Request = super::#request_alias;
+			}
+		}
+	} else {
+		quote! {}
+	};
 
 	// Convert inject param names to string literals for INJECTED_PARAMS const
 	let inject_param_name_strs: Vec<String> = inject_params
@@ -1245,15 +1440,206 @@ fn generate_server_handler(
 		})
 		.collect();
 	let uses_response_cookie_jar = !inject_params.is_empty() || !extractor_params.is_empty();
+	let regular_param_idents: Vec<_> = regular_params
+		.iter()
+		.filter_map(|p| {
+			if let syn::Pat::Ident(pat_ident) = &*p.pat {
+				Some(pat_ident.ident.clone())
+			} else {
+				None
+			}
+		})
+		.collect();
+	let query_arg_generics: Vec<_> = (0..regular_param_idents.len())
+		.map(|index| quote::format_ident!("QueryArg{index}"))
+		.collect();
+	let key_generics = if query_arg_generics.is_empty() {
+		quote! {}
+	} else {
+		quote! { <#(#query_arg_generics),*> }
+	};
+	let query_param_bounds: Vec<_> = query_arg_generics
+		.iter()
+		.zip(regular_param_types.iter())
+		.map(|(generic, ty)| {
+			quote! {
+				#generic: #pages_crate::server_fn::ServerFnQueryArg<#ty>
+			}
+		})
+		.collect();
+	let key_where_clause = quote! {
+		where
+			#return_type: #pages_crate::server_fn::ServerFnQueryResult,
+			#(#query_param_bounds,)*
+	};
+	let query_result_conversion = |call: proc_macro2::TokenStream| {
+		quote! {
+			#pages_crate::server_fn::ServerFnQueryResult::into_query_result(#call)
+		}
+	};
+	let regular_query_call = query_result_conversion(quote! {
+		super::#name(
+			#(#pages_crate::server_fn::ServerFnQueryArg::into_query_arg(#regular_param_idents)),*
+		).await
+	});
+	let clone_query_args = quote! {
+		let (#(#regular_param_idents,)*) = (*__query_fetch_args).clone();
+	};
+	let native_query_call = if has_inject_or_extractor {
+		quote! {
+			::std::panic!(
+				concat!(
+					"server function `",
+					#name_str,
+					"` query cannot run natively because it has injected or extractor parameters",
+				),
+			)
+		}
+	} else {
+		regular_query_call.clone()
+	};
+	let query_response_type = quote! {
+		<#return_type as #pages_crate::server_fn::ServerFnQueryResult>::Response
+	};
+	let query_fetcher = if has_inject_or_extractor && emits_msw_metadata {
+		quote! {
+			{
+				let __query_fetch_args = ::std::rc::Rc::new((#(#regular_param_idents,)*));
+				move || {
+					let __query_fetch_args = ::std::rc::Rc::clone(&__query_fetch_args);
+					async move {
+					#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+					{
+						#clone_query_args
+						#regular_query_call
+					}
+
+					#[cfg(all(not(all(target_family = "wasm", target_os = "unknown")), feature = "msw"))]
+					{
+						let __args = {
+							let (#(#regular_param_idents,)*) =
+								(*::std::rc::Rc::clone(&__query_fetch_args)).clone();
+							Args {
+								#(
+									#regular_param_names: #pages_crate::server_fn::ServerFnQueryArg::into_query_arg(#regular_param_idents)
+								),*
+							}
+						};
+						if let Some(__mock_result) =
+							#pages_crate::server_fn::try_call_active_mock::<marker>(__args)
+						{
+							match __mock_result {
+								Ok(__mock_value) => return Ok(__mock_value),
+								Err(__mock_error) => {
+									return Err(::std::convert::Into::into(__mock_error));
+								}
+							}
+						}
+						#clone_query_args
+						#native_query_call
+					}
+
+					#[cfg(all(not(all(target_family = "wasm", target_os = "unknown")), not(feature = "msw")))]
+					{
+						#clone_query_args
+						#native_query_call
+					}
+				}
+				}
+			}
+		}
+	} else if has_inject_or_extractor {
+		quote! {
+			{
+				let __query_fetch_args = ::std::rc::Rc::new((#(#regular_param_idents,)*));
+				move || {
+					let __query_fetch_args = ::std::rc::Rc::clone(&__query_fetch_args);
+					async move {
+						#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+						{
+							#clone_query_args
+							#regular_query_call
+						}
+
+						#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+						{
+							#clone_query_args
+							#native_query_call
+						}
+					}
+				}
+			}
+		}
+	} else {
+		quote! {
+			{
+				let __query_fetch_args = ::std::rc::Rc::new((#(#regular_param_idents,)*));
+				move || {
+					let __query_fetch_args = ::std::rc::Rc::clone(&__query_fetch_args);
+					async move {
+						#clone_query_args
+						#regular_query_call
+					}
+				}
+			}
+		}
+	};
+	let query_ssr_policy = if has_inject_or_extractor {
+		quote! { __query_key.with_ssr_prefetch(false) }
+	} else {
+		quote! { __query_key }
+	};
+	let private_interfaces_allowance = if info.allows_private_interfaces() {
+		quote! { #[allow(private_interfaces)] }
+	} else {
+		quote! {}
+	};
+	let key_cfg_allowances = if has_inject_or_extractor {
+		quote! { #[allow(unused_variables, unexpected_cfgs)] }
+	} else {
+		quote! {}
+	};
+	let query_key_tokens = quote! {
+		/// Builds a typed cache key for this server function and argument set.
+		// The generated signature mirrors endpoints that deliberately allow private
+		// request or response types on the source server function.
+		// Injected and extractor-only native paths intentionally cannot consume the
+		// client-visible arguments outside MSW or WASM builds, and consumer crates
+		// may intentionally omit the optional `msw` feature checked in the body.
+		#private_interfaces_allowance
+		#key_cfg_allowances
+		pub fn key #key_generics(
+			#(#regular_param_idents: #query_arg_generics),*
+		) -> #pages_crate::reactive::QueryKey<
+			<#return_type as #pages_crate::server_fn::ServerFnQueryResult>::Response,
+			<#return_type as #pages_crate::server_fn::ServerFnQueryResult>::Error,
+		>
+		#key_where_clause
+		{
+			let __query_args = (#(#regular_param_idents.clone(),)*);
+			let __query_key = #pages_crate::reactive::QueryKey::from_server_fn::<marker, _, _, _>(
+				__query_args,
+				#query_fetcher,
+			);
+			#query_ssr_policy
+		}
+	};
 
 	// MSW: Generate server-side MockableServerFn tokens only when msw feature is enabled
-	let msw_server_tokens = if msw_enabled {
+	let msw_server_tokens = if msw_enabled && emits_msw_metadata {
 		quote! {
 			mod __msw {
+				// Generated MSW support may expand in crates that do not declare every
+				// optional cfg name used by this framework.
+				#![allow(unexpected_cfgs)]
+
+				// Import signature-local aliases and private types from the server function.
+				#[allow(unused_imports)]
+				use super::super::*;
 				use ::serde::{Serialize, Deserialize};
 
 				/// Public Args struct for MSW type-safe mocking.
-				#[derive(Serialize, Deserialize)]
+				#[derive(Serialize, Deserialize, Clone)]
 				pub struct Args {
 					#(pub #regular_param_names: #regular_param_types),*
 				}
@@ -1263,7 +1649,7 @@ fn generate_server_handler(
 
 			impl #pages_crate::server_fn::MockableServerFn for marker {
 				type Args = Args;
-				type Response = #response_type;
+				type Response = #query_response_type;
 			}
 		}
 	} else {
@@ -1279,32 +1665,42 @@ fn generate_server_handler(
 	// the `MockableServerFn` impl whose trait isn't in scope for them.
 	// `#[allow(unexpected_cfgs)]` keeps the cfg quiet in consumer crates
 	// that don't themselves declare an `msw` feature.
-	let msw_wasm_inner_tokens = if msw_enabled {
+	let msw_wasm_inner_tokens = if msw_enabled && emits_msw_metadata {
 		quote! {
-			#[cfg(feature = "msw")]
-			#[allow(unexpected_cfgs)]
-			mod __msw_args {
+			mod __msw {
+				// Generated MSW support may expand in crates that do not declare every
+				// optional cfg name used by this framework.
+				#![allow(unexpected_cfgs)]
+				// Import signature-local aliases and private types from the server function.
 				#[allow(unused_imports)]
-				use super::*;
-				use ::serde::{Serialize, Deserialize};
+				use super::super::*;
 
-				/// Public Args struct for MSW type-safe mocking.
-				#[derive(Serialize, Deserialize)]
-				pub struct Args {
-					#(pub #regular_param_names: #regular_param_types),*
+				#[cfg(feature = "msw")]
+				mod args {
+					// The generated args module reuses caller-local type paths from the
+					// original server function signature.
+					#[allow(unused_imports)]
+					use super::super::super::*;
+					use ::serde::{Serialize, Deserialize};
+
+					/// Public Args struct for MSW type-safe mocking.
+					#[derive(Serialize, Deserialize, Clone)]
+					pub struct Args {
+						#(pub #regular_param_names: #regular_param_types),*
+					}
+				}
+
+				#[cfg(feature = "msw")]
+				pub use args::Args;
+
+				#[cfg(feature = "msw")]
+				impl #pages_crate::server_fn::MockableServerFn for super::marker {
+					type Args = Args;
+					type Response = #query_response_type;
 				}
 			}
 
-			#[cfg(feature = "msw")]
-			#[allow(unexpected_cfgs)]
-			pub use __msw_args::Args;
-
-			#[cfg(feature = "msw")]
-			#[allow(unexpected_cfgs)]
-			impl #pages_crate::server_fn::MockableServerFn for marker {
-				type Args = Args;
-				type Response = #response_type;
-			}
+			pub use __msw::*;
 		}
 	} else {
 		quote! {}
@@ -1339,15 +1735,20 @@ fn generate_server_handler(
 			#[doc = "Parity: P1."]
 			#[doc = ""]
 			#[doc = "The marker is emitted on WASM so shared route declarations can name it, but server route registration is native-only behavior."]
-			pub struct marker;
+			#marker_struct_vis struct marker;
 
 			impl #pages_crate::server_fn::ServerFnMetadata for marker {
 				const PATH: &'static str = #endpoint;
 				const NAME: &'static str = #name_str;
 				const CODEC: &'static str = #codec;
+				const IS_JSON_CODEC: bool = #is_json_codec;
 				const INJECTED_PARAMS: &'static [&'static str] = &[#(#inject_param_name_strs),*];
 				const USES_RESPONSE_COOKIE_JAR: bool = #uses_response_cookie_jar;
 			}
+
+			#response_metadata_impl
+			#request_metadata_impl
+			#query_key_tokens
 
 			#msw_wasm_inner_tokens
 		}
@@ -1396,8 +1797,10 @@ fn generate_server_handler(
 				Err(e) => {
 					// Serialize the error as ServerFnError
 					let error_json = ::serde_json::to_string(&e)
-						.map_err(|e| format!("Failed to serialize error: {}", e))?;
-					Err(error_json)
+						.map_err(|e| #pages_crate::__private::bytes::Bytes::from(
+							format!("Failed to serialize error: {}", e)
+						))?;
+					Err(#pages_crate::__private::bytes::Bytes::from(error_json))
 				}
 			}
 		}
@@ -1421,12 +1824,15 @@ fn generate_server_handler(
 			#endpoint
 		}
 
+		#response_metadata_type_aliases
+		#request_metadata_type_aliases
+
 		// Static wrapper function for explicit registration
 		// This is used by ServerFnRegistration::handler() to provide a function pointer.
 		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 		fn #static_wrapper_name(
 			req: #http_crate_for_wrapper::Request
-		) -> ::std::pin::Pin<::std::boxed::Box<dyn ::std::future::Future<Output = ::std::result::Result<::std::string::String, ::std::string::String>> + ::std::marker::Send>> {
+		) -> ::std::pin::Pin<::std::boxed::Box<dyn ::std::future::Future<Output = ::std::result::Result<#pages_crate::__private::bytes::Bytes, #pages_crate::__private::bytes::Bytes>> + ::std::marker::Send>> {
 			::std::boxed::Box::pin(async move {
 				// When DI is enabled, pass Request directly
 				// When DI is disabled, extract body from Request
@@ -1453,7 +1859,7 @@ fn generate_server_handler(
 			#[doc = "Parity: P1."]
 			#[doc = ""]
 			#[doc = "The marker is emitted on both native and WASM so shared route declarations can name it. Native builds register the server handler; WASM builds keep the marker metadata inert."]
-			pub struct marker;
+			#marker_struct_vis struct marker;
 
 			// Cross-target metadata. ServerFnMetadata lives in reinhardt-pages
 			// and is available on both native and wasm — the constants below
@@ -1464,16 +1870,28 @@ fn generate_server_handler(
 				const PATH: &'static str = #endpoint;
 				const NAME: &'static str = #name_str;
 				const CODEC: &'static str = #codec;
+				const IS_JSON_CODEC: bool = #is_json_codec;
 				const INJECTED_PARAMS: &'static [&'static str] = &[#(#inject_param_name_strs),*];
 				const USES_RESPONSE_COOKIE_JAR: bool = #uses_response_cookie_jar;
 			}
+
+			#response_metadata_impl
+			#request_metadata_impl
 
 			// Native-only handler entry point for explicit router registration.
 			impl #pages_crate::server_fn::ServerFnRegistration for marker {
 				fn handler() -> #pages_crate::server_fn::ServerFnHandler {
 					super::#static_wrapper_name
 				}
+
+				fn handle(
+					req: #http_crate_for_wrapper::Request
+				) -> impl ::std::future::Future<Output = ::std::result::Result<#pages_crate::__private::bytes::Bytes, #pages_crate::__private::bytes::Bytes>> + ::std::marker::Send {
+					super::#handler_name(req)
+				}
 			}
+
+			#query_key_tokens
 
 			// MSW: server-side MockableServerFn (conditionally generated; Issue #3673)
 			#msw_server_tokens
@@ -1485,26 +1903,61 @@ fn generate_server_handler(
 	}
 }
 
-/// Extracts the first generic argument `T` from `Result<T, E>`.
-///
-/// Given `Result<User, ServerFnError>`, returns the token stream for `User`.
-/// Falls back to the full return type if it cannot be parsed as `Result<T, E>`.
-fn extract_result_ok_type(return_type: &syn::Type) -> proc_macro2::TokenStream {
+/// Extracts both result types when the return type is a direct `Result<T, E>`.
+fn extract_result_types(
+	return_type: &syn::Type,
+) -> Option<(proc_macro2::TokenStream, proc_macro2::TokenStream)> {
 	if let syn::Type::Path(type_path) = return_type
 		&& let Some(segment) = type_path.path.segments.last()
 		&& segment.ident == "Result"
 		&& let syn::PathArguments::AngleBracketed(args) = &segment.arguments
 		&& let Some(syn::GenericArgument::Type(ok_type)) = args.args.first()
+		&& args.args.len() >= 2
+		&& let Some(syn::GenericArgument::Type(err_type)) = args.args.iter().nth(1)
 	{
-		return quote! { #ok_type };
+		return Some((quote! { #ok_type }, quote! { #err_type }));
 	}
-	// Fallback: use the full type
-	quote! { #return_type }
+	None
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn test_marker_struct_visibility_rewrites_relative_restrictions_for_marker_module() {
+		use syn::parse_quote;
+
+		let crate_vis: syn::Visibility = parse_quote!(pub(crate));
+		assert_eq!(
+			marker_struct_visibility(&crate_vis).to_string(),
+			quote! { pub(crate) }.to_string()
+		);
+
+		let super_vis: syn::Visibility = parse_quote!(pub(super));
+		assert_eq!(
+			marker_struct_visibility(&super_vis).to_string(),
+			quote! { pub(in super::super) }.to_string()
+		);
+
+		let super_nested_vis: syn::Visibility = parse_quote!(pub(in super::endpoints));
+		assert_eq!(
+			marker_struct_visibility(&super_nested_vis).to_string(),
+			quote! { pub(in super::super::endpoints) }.to_string()
+		);
+
+		let self_vis: syn::Visibility = parse_quote!(pub(self));
+		assert_eq!(
+			marker_struct_visibility(&self_vis).to_string(),
+			quote! { pub(in super) }.to_string()
+		);
+
+		let self_nested_vis: syn::Visibility = parse_quote!(pub(in self::endpoints));
+		assert_eq!(
+			marker_struct_visibility(&self_nested_vis).to_string(),
+			quote! { pub(in super::endpoints) }.to_string()
+		);
+	}
 
 	#[test]
 	fn test_server_fn_options_default() {

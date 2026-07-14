@@ -10,7 +10,7 @@ use reinhardt_di::InjectionContext;
 use reinhardt_http::PathParams;
 use reinhardt_middleware::Middleware;
 use std::borrow::Cow;
-use std::sync::{Arc, PoisonError};
+use std::sync::Arc;
 
 impl ServerRouter {
 	/// Strip `prefix` from `path` and ensure the result always has a leading `/`.
@@ -52,9 +52,18 @@ impl ServerRouter {
 	/// 1. Check prefix match
 	/// 2. Try child routers first (depth-first search)
 	/// 3. Try own routes
-	pub(crate) fn resolve(&self, path: &str, method: &Method) -> Option<RouteMatch> {
+	pub(crate) fn resolve(&self, path: &str, method: &Method) -> Option<RouteMatch<'_>> {
 		// 1. Check prefix and normalize remaining path (ensures leading `/`)
 		let remaining_path = Self::strip_prefix_normalized(&self.prefix, path)?;
+
+		if self.children.is_empty() && self.middleware.is_empty() {
+			return self.match_own_routes_with_context(
+				&remaining_path,
+				method,
+				Vec::new(),
+				self.di_context.clone(),
+			);
+		}
 
 		// 2. Try child routers first
 		let own_middleware = self.build_middleware_with_exclusions();
@@ -82,7 +91,7 @@ impl ServerRouter {
 		method: &Method,
 		parent_middleware: &[Arc<dyn Middleware>],
 		parent_di: &Option<Arc<InjectionContext>>,
-	) -> Option<RouteMatch> {
+	) -> Option<RouteMatch<'_>> {
 		// Check prefix and normalize remaining path (ensures leading `/`)
 		let remaining_path = Self::strip_prefix_normalized(&self.prefix, path)?;
 
@@ -108,7 +117,7 @@ impl ServerRouter {
 
 	/// Match routes in this router (without context)
 	#[cfg(test)]
-	pub(crate) fn match_own_routes(&self, path: &str, method: &Method) -> Option<RouteMatch> {
+	pub(crate) fn match_own_routes(&self, path: &str, method: &Method) -> Option<RouteMatch<'_>> {
 		self.match_own_routes_with_context(
 			path,
 			method,
@@ -127,9 +136,10 @@ impl ServerRouter {
 		method: &Method,
 		middleware_stack: Vec<Arc<dyn Middleware>>,
 		di_context: Option<Arc<InjectionContext>>,
-	) -> Option<RouteMatch> {
-		// Compile routes on first use (lazy compilation with interior mutability)
-		self.compile_routes();
+	) -> Option<RouteMatch<'_>> {
+		// Compile routes on first use, then read immutable method routers
+		// without taking a per-request lock.
+		let compiled_routes = self.compiled_routes();
 
 		// Normalize path for matchit lookup - routes are registered with leading slash.
 		// Borrow the common already-normalized path to avoid per-request allocation.
@@ -139,51 +149,51 @@ impl ServerRouter {
 			Cow::Owned(format!("/{path}"))
 		};
 
-		// Use matchit to find matching route - O(m) complexity
-		let router_lock = match *method {
-			Method::GET => &self.get_router,
-			Method::POST => &self.post_router,
-			Method::PUT => &self.put_router,
-			Method::DELETE => &self.delete_router,
-			Method::PATCH => &self.patch_router,
-			Method::HEAD => &self.head_router,
-			Method::OPTIONS => &self.options_router,
-			_ => &self.get_router,
-		};
+		// Use matchit to find matching route - O(m) complexity.
+		let router = compiled_routes.router_for_method(method)?;
 
-		let router = router_lock.read().unwrap_or_else(PoisonError::into_inner);
-
-		macro_rules! return_route_match {
-			($matched:expr) => {{
-				let matched = $matched;
-				let route_handler = matched.value;
-
-				// Extract parameters from matchit. matchit's `Params` iterator
-				// yields parameters in URL pattern declaration order, so we
-				// store them in ordered `PathParams` all the way down to the
-				// tuple extractor (see issue #4013).
-				let mut params = PathParams::with_capacity(matched.params.iter().count());
-				for (key, value) in matched.params.iter() {
-					params.insert(key, value);
-				}
-
+		macro_rules! return_route_handler_match {
+			($route_handler:expr, $params:expr) => {{
+				let route_handler = $route_handler;
 				// Combine router-level and route-level middleware.
 				let mut combined_middleware = middleware_stack;
 				combined_middleware.extend(route_handler.middleware.iter().cloned());
 
 				return Some(RouteMatch {
-					handler: route_handler.handler.clone(),
-					params,
+					handler: &route_handler.handler,
+					sync_handler: route_handler.sync_handler.as_ref(),
+					requestless_sync_handler: route_handler.requestless_sync_handler.as_ref(),
+					params: $params,
 					middleware_stack: combined_middleware,
 					di_context,
 				});
 			}};
 		}
 
+		if let Some(route_handler) = compiled_routes
+			.exact_for_method(method)
+			.and_then(|routes| routes.get(search_path.as_ref()))
+		{
+			return_route_handler_match!(route_handler, None);
+		}
+
 		// Try matching with the original path first. Only allocate the
 		// Django-style APPEND_SLASH fallback path if the primary lookup misses.
 		if let Ok(matched) = router.at(search_path.as_ref()) {
-			return_route_match!(matched);
+			let route_handler = matched.value;
+			// Extract parameters from matchit. matchit's `Params` iterator
+			// yields parameters in URL pattern declaration order, so we
+			// store them in ordered `PathParams` all the way down to the
+			// tuple extractor (see issue #4013).
+			let params = if route_handler.param_names.is_empty() {
+				None
+			} else {
+				Some(PathParams::from_shared_names(
+					route_handler.param_names.clone(),
+					matched.params.iter().map(|(_, value)| value),
+				))
+			};
+			return_route_handler_match!(route_handler, params);
 		}
 
 		if search_path.as_ref().ends_with('/') {
@@ -197,12 +207,30 @@ impl ServerRouter {
 			if fallback_path != search_path.as_ref()
 				&& let Ok(matched) = router.at(fallback_path)
 			{
-				return_route_match!(matched);
+				let route_handler = matched.value;
+				let params = if route_handler.param_names.is_empty() {
+					None
+				} else {
+					Some(PathParams::from_shared_names(
+						route_handler.param_names.clone(),
+						matched.params.iter().map(|(_, value)| value),
+					))
+				};
+				return_route_handler_match!(route_handler, params);
 			}
 		} else {
 			let fallback_path = format!("{}/", search_path.as_ref());
 			if let Ok(matched) = router.at(&fallback_path) {
-				return_route_match!(matched);
+				let route_handler = matched.value;
+				let params = if route_handler.param_names.is_empty() {
+					None
+				} else {
+					Some(PathParams::from_shared_names(
+						route_handler.param_names.clone(),
+						matched.params.iter().map(|(_, value)| value),
+					))
+				};
+				return_route_handler_match!(route_handler, params);
 			}
 		}
 
@@ -214,7 +242,7 @@ impl ServerRouter {
 	/// This is used to determine whether to return 404 (path not found)
 	/// or 405 (method not allowed) when a route doesn't match.
 	pub(crate) fn path_exists_for_any_method(&self, path: &str) -> bool {
-		self.compile_routes();
+		let compiled_routes = self.compiled_routes();
 
 		// Apply prefix stripping logic (same as resolve method, ensures leading `/`)
 		let search_path = match Self::strip_prefix_normalized(&self.prefix, path) {
@@ -222,19 +250,8 @@ impl ServerRouter {
 			None => return false,
 		};
 
-		let method_routers = [
-			&self.get_router,
-			&self.post_router,
-			&self.put_router,
-			&self.delete_router,
-			&self.patch_router,
-			&self.head_router,
-			&self.options_router,
-		];
-
 		let path_exists = |candidate_path: &str| {
-			for router_lock in method_routers {
-				let router = router_lock.read().unwrap_or_else(PoisonError::into_inner);
+			for router in compiled_routes.method_routers() {
 				if router.at(candidate_path).is_ok() {
 					return true;
 				}

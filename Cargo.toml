@@ -82,6 +82,7 @@ api = [
 ]
 auth = ["reinhardt-auth", "reinhardt-commands?/auth"]
 argon2-hasher = ["auth", "reinhardt-auth/argon2-hasher"]
+bcrypt-hasher = ["auth", "reinhardt-auth/bcrypt-hasher"]
 admin = [
   "pages",
   "reinhardt-admin",
@@ -492,6 +493,7 @@ reinhardt-views = { path = "crates/reinhardt-views", version = "0.3.2", default-
 reinhardt-urls = { path = "crates/reinhardt-urls", version = "0.3.2", default-features = false }
 reinhardt-router = { path = "crates/reinhardt-router", version = "0.3.2" }
 reinhardt-middleware = { path = "crates/reinhardt-middleware", version = "0.3.2", default-features = false }
+reinhardt-event-catalog = { path = "crates/reinhardt-event-catalog", version = "0.3.2" }
 reinhardt-pages = { path = "crates/reinhardt-pages", version = "0.3.2" }
 reinhardt-pages-macros = { path = "crates/reinhardt-pages/macros", version = "0.3.2" }
 reinhardt-pages-ast = { path = "crates/reinhardt-pages/ast", version = "0.3.2" }
@@ -599,6 +601,7 @@ native-tls = ">=0.2.18, <0.3"
 
 # Authentication & Security
 argon2 = { version = "0.5", features = ["std"] }
+bcrypt = "0.19.2"
 password-hash = "0.5"
 rand = "0.9"
 getrandom = { version = "0.3", features = ["wasm_js"] }  # WASM support with wasm_js feature

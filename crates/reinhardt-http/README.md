@@ -14,7 +14,7 @@ Core HTTP abstractions for the Reinhardt framework. Provides comprehensive reque
 
 - **Complete HTTP request representation** with all standard components
   - HTTP method, URI, version, headers, body
-  - Path parameters (`path_params`) and query string parsing (`query_params`)
+  - Path parameters (`path_params`) and lazy query string parsing (`query_params`)
   - HTTPS detection (`is_secure`)
   - Remote address tracking (`remote_addr`)
   - Type-safe extensions system (`Extensions`)
@@ -53,6 +53,7 @@ Core HTTP abstractions for the Reinhardt framework. Provides comprehensive reque
   - `Response::temporary_redirect_preserve_method(url)` - 307 Temporary Redirect
 - **Builder pattern methods**
   - `.with_body(data)` - Set response body (bytes or string)
+  - `.with_static_body(data)` - Set a static byte body without copying
   - `.with_header(name, value)` - Add single header
   - `.with_typed_header(header)` - Add typed header
   - `.with_json(data)` - Serialize data to JSON and set Content-Type
@@ -73,12 +74,18 @@ Core HTTP abstractions for the Reinhardt framework. Provides comprehensive reque
 - **Type-safe request extensions** for storing arbitrary typed data
   - `request.extensions.insert::<T>(value)` - Store typed data
   - `request.extensions.get::<T>()` - Retrieve typed data
-  - Thread-safe with `Arc<Mutex<TypeMap>>`
+  - Thread-safe with lazily initialized `Arc<Mutex<TypeMap>>`
   - Common use cases: authentication context, request ID, user data
 
 #### Error Integration
 
 - Re-exports `reinhardt_core::exception::Error` and `Result` for consistent error handling
+
+#### Handler Traits
+
+- `Handler` - Async request handler trait for routes that await I/O
+- `SyncHandler` - Synchronous fast path for routes that only inspect the request and build a response
+- `SyncHandlerAdapter` - Compatibility adapter used when synchronous handlers pass through async middleware APIs
 
 ## Installation
 
@@ -115,7 +122,7 @@ let request = Request::builder()
 
 assert_eq!(request.method, Method::POST);
 assert_eq!(request.path(), "/api/users");
-assert_eq!(request.query_params.get("page"), Some(&"1".to_string()));
+assert_eq!(request.query_params.get("page"), Some("1"));
 ```
 
 ### Path and Query Parameters
@@ -131,12 +138,12 @@ let mut request = Request::builder()
 	.unwrap();
 
 // Access query parameters
-assert_eq!(request.query_params.get("sort"), Some(&"name".to_string()));
-assert_eq!(request.query_params.get("order"), Some(&"asc".to_string()));
+assert_eq!(request.query_params.get("sort"), Some("name"));
+assert_eq!(request.query_params.get("order"), Some("asc"));
 
 // Add path parameters (typically done by router)
-request.path_params.insert("id".to_string(), "123".to_string());
-assert_eq!(request.path_params.get("id"), Some(&"123".to_string()));
+request.path_params.insert("id", "123");
+assert_eq!(request.path_params.get("id"), Some("123"));
 ```
 
 ### Request Extensions
@@ -160,6 +167,20 @@ request.extensions.insert(UserId(42));
 // Retrieve typed data
 let user_id = request.extensions.get::<UserId>().unwrap();
 assert_eq!(user_id.0, 42);
+```
+
+### Synchronous Handlers
+
+```rust
+use reinhardt::http::{Request, Response, Result, SyncHandler};
+
+struct HealthHandler;
+
+impl SyncHandler for HealthHandler {
+    fn handle_sync(&self, _request: Request) -> Result<Response> {
+        Ok(Response::ok().with_static_body(b"ok"))
+    }
+}
 ```
 
 ### Response Helpers
@@ -298,8 +319,8 @@ let response = StreamingResponse::with_status(
 - `uri: Uri` - Request URI
 - `version: Version` - HTTP version
 - `headers: HeaderMap` - HTTP headers
-- `path_params: HashMap<String, String>` - Path parameters from URL routing
-- `query_params: HashMap<String, String>` - Query string parameters
+- `path_params: PathParams` - Path parameters from URL routing
+- `query_params: QueryParams` - Lazily parsed query string parameters
 - `is_secure: bool` - Whether request is over HTTPS
 - `remote_addr: Option<SocketAddr>` - Client's remote address
 - `extensions: Extensions` - Type-safe extension storage
@@ -308,6 +329,7 @@ let response = StreamingResponse::with_status(
 - `Request::builder()` - Create builder
 - `.path()` - Get URI path without query
 - `.body()` - Get request body as `Option<&Bytes>`
+- `.read_body()` - Read the body with consumption tracking
 - `.json::<T>()` - Parse body as JSON (requires `parsers` feature)
 - `.post()` - Parse POST data (form/JSON, requires `parsers` feature)
 - `.data()` - Get parsed data from body

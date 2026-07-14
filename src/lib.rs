@@ -200,6 +200,13 @@ pub mod reinhardt_core {
 	pub use reinhardt_core::*;
 }
 
+#[cfg(all(feature = "core", not(native)))]
+#[doc(hidden)]
+pub mod reinhardt_core {
+	pub use reinhardt_core::model_info;
+	pub use reinhardt_core::validators;
+}
+
 #[cfg(all(feature = "core", native))]
 #[doc(hidden)]
 pub mod reinhardt_http {
@@ -457,6 +464,7 @@ pub mod query;
 pub mod db {
 	pub use reinhardt_db::DatabaseConnection;
 	pub use reinhardt_db::DatabaseError as Error;
+	pub use reinhardt_db::Json;
 
 	/// Database migration types and utilities.
 	pub mod migrations {
@@ -486,6 +494,96 @@ pub mod db {
 /// not expose ORM, connection, query, or migration APIs.
 #[cfg(not(native))]
 pub mod db {
+	use serde::{Deserialize, Deserializer, Serialize, Serializer, de::DeserializeOwned};
+	use std::ops::{Deref, DerefMut};
+
+	/// WASM-compatible typed JSON field wrapper.
+	#[repr(transparent)]
+	#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+	pub struct Json<T>(pub T);
+
+	impl<T> Json<T> {
+		/// Creates a typed JSON wrapper.
+		pub const fn new(value: T) -> Self {
+			Self(value)
+		}
+
+		/// Returns the wrapped value.
+		pub fn into_inner(self) -> T {
+			self.0
+		}
+
+		/// Borrows the wrapped value.
+		pub const fn as_inner(&self) -> &T {
+			&self.0
+		}
+
+		/// Mutably borrows the wrapped value.
+		pub fn as_inner_mut(&mut self) -> &mut T {
+			&mut self.0
+		}
+
+		/// Converts the wrapped value into a JSON value.
+		pub fn to_json_value(&self) -> Result<serde_json::Value, serde_json::Error>
+		where
+			T: Serialize,
+		{
+			serde_json::to_value(&self.0)
+		}
+
+		/// Builds a typed JSON wrapper from a JSON value.
+		pub fn from_json_value(value: serde_json::Value) -> Result<Self, serde_json::Error>
+		where
+			T: DeserializeOwned,
+		{
+			serde_json::from_value(value).map(Self)
+		}
+	}
+
+	impl<T> Deref for Json<T> {
+		type Target = T;
+
+		fn deref(&self) -> &Self::Target {
+			&self.0
+		}
+	}
+
+	impl<T> DerefMut for Json<T> {
+		fn deref_mut(&mut self) -> &mut Self::Target {
+			&mut self.0
+		}
+	}
+
+	impl<T> From<T> for Json<T> {
+		fn from(value: T) -> Self {
+			Self(value)
+		}
+	}
+
+	impl<T> Serialize for Json<T>
+	where
+		T: Serialize,
+	{
+		fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+		where
+			S: Serializer,
+		{
+			self.0.serialize(serializer)
+		}
+	}
+
+	impl<'de, T> Deserialize<'de> for Json<T>
+	where
+		T: Deserialize<'de>,
+	{
+		fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+		where
+			D: Deserializer<'de>,
+		{
+			T::deserialize(deserializer).map(Self)
+		}
+	}
+
 	/// Relationship marker types accepted by `#[model]` on WASM.
 	pub mod associations {
 		use std::marker::PhantomData;

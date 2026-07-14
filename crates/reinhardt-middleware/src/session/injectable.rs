@@ -3,8 +3,8 @@
 //! The session store is contributed to the DI container by
 //! [`SessionMiddleware::di_registrations`] both under
 //! `TypeId::of::<SessionStore>()` for direct session loading and under
-//! `FactoryOutput<SessionStoreKey, Arc<SessionStore>>` for handlers that use
-//! `#[inject] store: Depends<SessionStoreKey, Arc<SessionStore>>`.
+//! `KeyedFactoryOutput<SessionStoreKey, Arc<SessionStore>>` for handlers that use
+//! `#[inject] store: KeyedDepends<SessionStoreKey, Arc<SessionStore>>`.
 //! This module's `Injectable for SessionData` impl reaches into the raw
 //! singleton entry by `TypeId` to load the per-request session.
 
@@ -48,7 +48,7 @@ impl Injectable for SessionData {
 		// Look up the raw store under TypeId::of::<SessionStore>() — the same
 		// singleton entry SessionMiddleware::di_registrations keeps for
 		// SessionData loading. Handler code should use the keyed
-		// FactoryOutput<SessionStoreKey, Arc<SessionStore>> registration.
+		// KeyedFactoryOutput<SessionStoreKey, Arc<SessionStore>> registration.
 		let store = ctx.get_singleton::<SessionStore>().ok_or_else(|| {
 			DiError::NotFound(
 				concat!(

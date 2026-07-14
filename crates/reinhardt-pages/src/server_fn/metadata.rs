@@ -32,6 +32,7 @@
 ///         const PATH: &'static str = "/api/server_fn/login";
 ///         const NAME: &'static str = "login";
 ///         const CODEC: &'static str = "json";
+///         const IS_JSON_CODEC: bool = true;
 ///     }
 /// }
 /// ```
@@ -53,6 +54,12 @@ pub trait ServerFnMetadata: 'static {
 	/// only the request format differs.
 	const CODEC: &'static str = "json";
 
+	/// Whether this server function uses the default JSON request codec.
+	///
+	/// This mirrors [`Self::CODEC`] as a boolean so native hot paths can avoid
+	/// per-request string comparisons when selecting response assembly.
+	const IS_JSON_CODEC: bool;
+
 	/// Names of `#[inject]` parameters (for documentation / debugging).
 	const INJECTED_PARAMS: &'static [&'static str] = &[];
 
@@ -62,4 +69,78 @@ pub trait ServerFnMetadata: 'static {
 	/// the request extension map, so the router can skip creating the shared
 	/// response-cookie jar on that hot path.
 	const USES_RESPONSE_COOKIE_JAR: bool = false;
+}
+
+/// Normalizes a server function's `Result` return type for generated query keys.
+///
+/// The [`crate::server_fn`] macro uses this trait instead of syntactically
+/// inspecting a return type, so aliases such as `type AppResult<T> =
+/// Result<T, AppError>` retain their declared error type in generated query
+/// helpers.
+#[doc(hidden)]
+pub trait ServerFnQueryResult {
+	/// The successful response payload.
+	type Response;
+	/// The declared server function error type.
+	type Error;
+
+	/// Converts the return value into the canonical query result shape.
+	fn into_query_result(self) -> Result<Self::Response, Self::Error>;
+}
+
+impl<T, E> ServerFnQueryResult for Result<T, E> {
+	type Response = T;
+	type Error = E;
+
+	fn into_query_result(self) -> Result<Self::Response, Self::Error> {
+		self
+	}
+}
+
+/// Defers query-key argument requirements until a generated `key(...)` helper is called.
+///
+/// Server functions only require request deserialization on the native side. The
+/// query cache additionally needs owned, serializable arguments, so this trait
+/// keeps those requirements on the opt-in helper rather than on every
+/// `#[server_fn]` expansion.
+#[doc(hidden)]
+pub trait ServerFnQueryArg<T>: Clone + serde::Serialize + 'static {
+	/// Converts an opt-in query-key argument to the server function argument type.
+	fn into_query_arg(self) -> T;
+}
+
+impl<T> ServerFnQueryArg<T> for T
+where
+	T: Clone + serde::Serialize + 'static,
+{
+	fn into_query_arg(self) -> T {
+		self
+	}
+}
+
+/// Exposes the success response type of a `#[server_fn]` marker.
+///
+/// This is implemented by the `#[server_fn]` macro for public server function
+/// markers whose return type is a direct `Result<T, E>`. Generated code can
+/// use it to name the declared `Ok(T)` response type without changing the
+/// public server function call signature. Scoped or private server functions
+/// keep their basic [`ServerFnMetadata`] and native registration metadata, but
+/// do not expose typed response metadata because the associated types may be
+/// private to the defining module.
+pub trait ServerFnResponseMetadata: ServerFnMetadata {
+	/// Success response type (the `Ok` variant of the function's return type).
+	type Response: 'static;
+	/// Error type returned by the public server function stub.
+	type Error: 'static;
+}
+
+/// Exposes the client-visible request argument type of a `#[server_fn]` marker.
+///
+/// This is implemented by the `#[server_fn]` macro when the public client call
+/// shape has exactly one body-deserialized request argument. Parameters resolved
+/// by `#[inject]` or `FromRequest` extractors are intentionally excluded because
+/// clients and form submit helpers cannot provide them directly.
+pub trait ServerFnRequestMetadata: ServerFnMetadata {
+	/// Request type accepted by the client-visible server function call.
+	type Request: 'static;
 }

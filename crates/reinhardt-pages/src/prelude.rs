@@ -18,7 +18,7 @@
 //! use reinhardt::pages::prelude::*;
 //!
 //! fn my_component() -> Page {
-//!     let (count, set_count) = use_state(|| 0);
+//!     let (count, set_count) = use_state(0);
 //!     // Component logic...
 //!     Page::empty()
 //! }
@@ -28,6 +28,8 @@
 //!
 //! ## Reactive System
 //! - [`Signal`], [`Effect`], [`Memo`], [`Resource`], [`ResourceState`]
+//! - [`LatestResourceValue`], [`LatestResourceState`],
+//!   [`use_latest_resource_value`]
 //! - Context: [`Context`], [`ContextGuard`], [`create_context`], [`get_context`],
 //!   [`provide_context`], [`remove_context`]
 //!
@@ -36,7 +38,8 @@
 //! - [`use_ref`], [`use_reducer`], [`use_transition`], [`use_deferred_value`]
 //! - [`use_id`], [`use_layout_effect`], [`use_debug_value`]
 //! - [`use_optimistic`], [`use_shared_state`]
-//! - [`use_action`], [`use_sync_external_store`]
+//! - [`use_action`], [`use_action_state`], [`use_sync_external_store`]
+//! - [`use_query`], [`use_mutation`]
 //!
 //! ## Component System
 //! - [`Component`], [`PageElement`], [`IntoPage`], [`Page`], [`Props`]
@@ -58,6 +61,7 @@
 //! ## Macros
 //! - [`page`] - Component DSL for defining views
 //! - [`head`] - HTML head section DSL
+//! - `#[component]` / `#[layout]` - Route-backed SPA component declarations
 //!
 //! ## Static Files
 //! - [`resolve_static`] - Resolve static file URLs
@@ -65,17 +69,27 @@
 //! - [`is_initialized`] - Check if static resolver is initialized
 //!
 //! ## Typed Forms
-//! - [`use_form`], [`UseFormReturn`], [`UseFormBuilder`]
+//! - [`use_form`], [`use_form_action`], [`UseFormReturn`], [`UseFormBuilder`], [`FormAction`]
 //!
 //! ## Task Spawning
 //! - [`spawn_task`], [`defer_yield`] - cross-target async task spawning
 //!   (no-op on native; replaces the deprecated `spawn_local` re-export)
+//!
+//! ## I18n
+//! - `I18nContext`, `I18nStateError`, `TranslatedText`, `tr`, `tn`, `tp`, `tnp`
+//! - `provide_i18n_context`, `use_i18n_context`, `with_i18n_context`
+//! - `set_locale`, `locale`
+//! - `t!` for inline page translations with named interpolation
+//! - Requires the `i18n` feature.
 
 // ============================================================================
 // Reactive System
 // ============================================================================
 
-pub use crate::reactive::{Effect, Memo, Resource, ResourceState, Signal};
+pub use crate::reactive::{
+	Effect, LatestResourceState, LatestResourceValue, LatestResourceValueBuilder, Memo,
+	QueryHandle, QueryKey, QueryPhase, Resource, ResourceState, Signal, use_latest_resource_value,
+};
 
 // Context system
 pub use crate::reactive::{
@@ -83,16 +97,18 @@ pub use crate::reactive::{
 };
 
 // Hooks API
-pub use crate::reactive::{Action, ActionPhase, use_action};
+pub use crate::reactive::{Action, ActionPhase, ActionStateBuilder, use_action, use_action_state};
 pub use crate::reactive::{
-	Dispatch, OptimisticState, Ref, SetState, SharedSetState, SharedSignal, TransitionState,
-	use_callback, use_context, use_debug_value, use_deferred_value, use_effect, use_id,
-	use_layout_effect, use_memo, use_optimistic, use_reducer, use_ref, use_shared_state, use_state,
+	Dispatch, EffectReturn, OptimisticState, Ref, SetState, SetStateExt, SharedSetState,
+	SharedSignal, TransitionState, use_callback, use_context, use_debug_value, use_deferred_value,
+	use_effect, use_id, use_layout_effect, use_memo, use_optimistic, use_reducer, use_ref,
+	use_retained_effect, use_retained_layout_effect, use_shared_state, use_state,
 	use_sync_external_store, use_transition,
 };
+pub use crate::reactive::{use_mutation, use_query};
 
-// Unified resource hook (available on all targets)
-pub use crate::reactive::use_resource;
+// Unified resource hooks (available on all targets)
+pub use crate::reactive::{use_resource, use_resource_with_key};
 
 // ============================================================================
 // Component System
@@ -100,7 +116,7 @@ pub use crate::reactive::use_resource;
 
 pub use crate::component::{
 	ActivityBoundary, ActivityMode, BoundaryError, Component, ErrorBoundary, ErrorTracker, Head,
-	IntoPage, LinkTag, MetaTag, Page, PageElement, PageEventHandler, PageExt, Props,
+	IntoPage, LinkTag, MetaTag, Outlet, Page, PageElement, PageEventHandler, PageExt, Props,
 	ResourceTracker, ScriptTag, StyleTag, SuspenseBoundary, ViewTransitionBoundary,
 	ViewTransitionHandle, ViewTransitionStatus, start_view_transition,
 };
@@ -109,7 +125,15 @@ pub use crate::component::{
 // Events and Callbacks
 // ============================================================================
 
-pub use crate::callback::{Callback, IntoEventHandler, into_event_handler};
+pub use crate::callback::{
+	Callback, IntoEventHandler, IntoTypedEventHandler, into_event_handler, raw_async_event_handler,
+	raw_event_handler, typed_async_event_handler, typed_event_handler,
+};
+
+pub use crate::event::{
+	EventConversionError, EventFile, EventPayload, EventTarget, EventTargetError, Modifiers,
+	MouseButton, MouseButtons, Point, PointerKind,
+};
 
 // Platform-agnostic Event type
 pub use crate::platform::Event;
@@ -158,7 +182,17 @@ pub use crate::hydration::{
 pub use crate::hydration::mark_hydration_complete;
 pub use crate::ssr::SsrState;
 #[cfg(native)]
-pub use crate::ssr::{SsrOptions, SsrRenderer};
+pub use crate::ssr::{SsrChunk, SsrOptions, SsrRenderer, SsrStream};
+
+// ============================================================================
+// I18n
+// ============================================================================
+
+#[cfg(feature = "i18n")]
+pub use crate::i18n::{
+	I18nContext, I18nStateError, TranslatedText, locale, provide_i18n_context, set_locale, tn, tnp,
+	tp, tr, use_i18n_context, with_i18n_context,
+};
 
 // ============================================================================
 // Static File URL Resolver
@@ -170,12 +204,14 @@ pub use crate::static_resolver::{init_static_resolver, is_initialized, resolve_s
 // Forms (native only)
 // ============================================================================
 
+pub use crate::client_form::{ClientFormChoice, ClientFormChoiceSource};
 pub use crate::form_state::{
 	CollectionItem, CollectionItemKey, CollectionState, CustomWidgetContext, CustomWidgetRawValue,
-	FieldError, FieldPathState, FieldState, FocusError, FormCollectionRuntimeSource, FormEvent,
-	FormRuntimeSource, FormState, FormSubscription, FormValidationError, FormWidgetAdapter,
-	FormWidgetError, FormWidgetValueKind, NoDeps, ResetOnDeps, RevalidateOn, UseFormBuilder,
-	UseFormReturn, UseFormSubmitOutcome, use_form,
+	FieldError, FieldPathState, FieldState, FocusError, FormAction, FormCollectionRuntimeSource,
+	FormEvent, FormRuntimeSource, FormState, FormSubscription, FormValidationError,
+	FormWidgetAdapter, FormWidgetError, FormWidgetValueKind, NoDeps, ResetOnDeps, RevalidateOn,
+	UseFormAsyncSubmitOutcome, UseFormBuilder, UseFormReturn, UseFormSubmitOutcome, use_form,
+	use_form_action,
 };
 
 #[cfg(native)]
@@ -191,10 +227,17 @@ pub use reinhardt_forms::{
 // Macros
 // ============================================================================
 
+pub use crate::ClientForm;
+pub use crate::ClientFormChoices;
 pub use crate::client_page;
+pub use crate::component;
 pub use crate::form;
 pub use crate::head;
+pub use crate::layout;
 pub use crate::page;
+pub use crate::page_props;
+#[cfg(feature = "i18n")]
+pub use crate::t;
 pub use crate::wasm_server_api;
 
 // ============================================================================

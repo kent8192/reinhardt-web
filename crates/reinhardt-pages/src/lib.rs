@@ -6,7 +6,14 @@
 //! Use [`reactive::batch`] to group related reactive writes into one update
 //! cycle. Async [`Action`] handles can be connected to [`OptimisticState`] with
 //! [`Action::with_optimistic`] so failed mutations automatically roll back
-//! optimistic UI state.
+//! optimistic UI state. [`Resource::latest_after`] and
+//! [`use_latest_resource_value`] compose loaded resource state with action
+//! success values so screens can render the latest loaded or mutated data.
+//! [`use_query`] and [`use_mutation`] add a keyed, app-wide cache layer for
+//! server-function reads and invalidating mutations. Generated query keys
+//! canonicalize JSON object arguments, hydrated success and error states remain
+//! visible through the first client mount, and query handles distinguish initial
+//! pending state from background fetching.
 //!
 //! ## Features
 //!
@@ -17,19 +24,20 @@
 //!
 //! ## React-aligned hook signatures (v0.2, Refs #4195)
 //!
-//! `use_effect`, `use_layout_effect`, `use_memo`, `use_callback`, and
+//! `use_effect`, `use_retained_effect`, `use_layout_effect`,
+//! `use_retained_layout_effect`, `use_memo`, `use_callback`, and
 //! `use_callback_with` take an explicit dependency tuple as the second
-//! argument:
+//! argument. Effect closures return `()` when no cleanup is needed, or
+//! `Option<C>` when they register cleanup:
 //!
 //! ```ignore
 //! use reinhardt_pages::prelude::*;
 //!
 //! let count = Signal::new(0_i32);
 //! let count_for_effect = count.clone();
-//! let _eff = use_effect(
+//! use_retained_effect(
 //!     move || {
 //!         println!("count = {}", count_for_effect.get());
-//!         None::<fn()>
 //!     },
 //!     (count.clone(),),
 //! );
@@ -54,6 +62,7 @@
 //! - [`component`](mod@component): Component system with IntoPage trait, Head management
 //! - [`form`](mod@form): Django Form integration
 //! - [`form_state`]: Typed `use_form` runtime state
+//! - [`client_form`]: Runtime support for DTO-derived client forms
 //! - [`csrf`]: CSRF protection
 //! - [`auth`]: Authentication integration
 //! - [`api`]: API client with Django QuerySet-like interface
@@ -62,7 +71,35 @@
 //! - [`hydration`]: Client-side hydration
 //! - [`router`]: Client-side routing (reinhardt-urls compatible)
 //! - [`portal`]: Explicit portal mounting into existing DOM targets
+//! - `i18n`: Reactive page translations with SSR-resolved catalogs (requires the `i18n` feature)
 //! - [`static_resolver`]: Static file URL resolution (collectstatic support)
+//!
+//! ## Typed events
+//!
+//! Standard intrinsic `page!` events use one catalog-generated payload type per
+//! event. Payloads expose common propagation and target snapshots, plus only
+//! the capabilities assigned to that event, such as `InputEvent::value` or
+//! `ChangeEvent::checked`. `current_target()` is captured while the listener is
+//! active, so it remains available after an async handler yields.
+//!
+//! ```ignore
+//! use reinhardt_pages::event::{ClickEvent, InputEvent};
+//! use reinhardt_pages::prelude::*;
+//!
+//! page!({
+//!     button { @click: |event: ClickEvent| { event.prevent_default(); }, "Run" }
+//!     input { @input: |event: InputEvent| {
+//!         if let Ok(value) = event.value() {
+//!             info_log!("{value}");
+//!         }
+//!     } }
+//! })
+//! ```
+//!
+//! Arbitrary intrinsic events use `@custom("name")` and the raw
+//! [`platform::Event`] transport. Typed custom detail values are outside this
+//! contract and tracked by #5636. Component `@event` props retain the type of
+//! their declared component prop instead of using the intrinsic event catalog.
 //!
 //! ## Forms
 //!
@@ -88,6 +125,66 @@
 //!
 //! let runtime = use_form(&login_form).build();
 //! runtime.set_value(login_form.username_field(), "ada".to_string());
+//! ```
+//!
+//! DTO request types can opt in to generated client-form companions with
+//! [`ClientForm`]. The generated form keeps enum choices and typed request
+//! assembly tied to the request type while using the same [`use_form`] runtime.
+//! Add `#[client_form(validate)]` when the DTO implements `Validate` and should
+//! feed those errors into the generated form runtime:
+//!
+//! ```ignore
+//! use reinhardt_pages::{ClientForm, ClientFormChoices, use_form};
+//!
+//! #[derive(Clone, Default, PartialEq, ClientFormChoices)]
+//! #[serde(rename_all = "snake_case")]
+//! enum ProviderMode {
+//!     #[default]
+//!     Fake,
+//!     LiveApi,
+//! }
+//!
+//! #[reinhardt::dto]
+//! #[derive(Clone, serde::Serialize, serde::Deserialize, ClientForm)]
+//! #[client_form(server_fn = crate::server::submit_project, validate)]
+//! struct ProjectRequest {
+//!     name: String,
+//!     title: Option<String>,
+//!     provider_mode: ProviderMode,
+//! }
+//!
+//! let form = ProjectRequestClientForm::new();
+//! let runtime = use_form(&form).build();
+//! runtime.set_value(ProjectRequestClientFormField::Title, "  ".to_string());
+//! let request = ProjectRequestClientForm::to_request(&runtime);
+//! assert_eq!(request.title, None);
+//! let outcome = form.submit(&runtime).await?;
+//! ```
+//!
+//! [`ClientFormChoices`] mirrors serde's externally tagged string names for
+//! unit variants, including matching `rename_all` and variant `rename`; tagged,
+//! untagged, or directionally renamed enum representations are rejected because
+//! form choices submit bare strings. DTO fields marked with serde skip
+//! attributes are kept out of editable form fields and preserved through
+//! generated request values. Exported DTOs cannot use private editable fields;
+//! mark the field public or make it an explicit hidden field with
+//! `#[client_form(skip)]` or a serde skip attribute. Forms with generated
+//! `server_fn` submit helpers reject serde-skipped request fields because the
+//! browser payload must match native request deserialization exactly.
+//!
+//! Compose validated submit flows with [`use_form_action`]:
+//!
+//! ```ignore
+//! use reinhardt_pages::{form, use_form, use_form_action};
+//!
+//! let runtime = use_form(&login_form).build();
+//! let save = use_form_action(&runtime, |values: LoginFormValues| async move {
+//!     submit_login(values).await
+//! });
+//!
+//! if !save.is_pending() {
+//!     save.submit();
+//! }
 //! ```
 //!
 //! `FileField` and `ImageField` participate in this runtime contract as
@@ -147,7 +244,10 @@
 //! - [`page!`]: JSX-like macro for defining view components
 //! - [`head!`]: JSX-like macro for defining HTML head sections
 //! - [`form!`]: Type-safe form component macro
+//! - `t!`: Reactive page translation macro (requires the `i18n` feature)
 //! - [`client_page`]: Client page function macro with native route-table stubs
+//! - `#[component]`: Route-backed page component macro
+//! - `#[layout]`: Route-backed layout component macro for nested SPA shells
 //! - [`wasm_server_api`]: WASM/server API parity macro
 //!
 //! See `docs/wasm_server_api.md` for the target-specific API parity contract.
@@ -198,7 +298,7 @@
 //! The `use_websocket` hook provides reactive WebSocket connections:
 //!
 //! ```ignore
-//! use reinhardt_pages::reactive::hooks::{use_websocket, use_effect, UseWebSocketOptions};
+//! use reinhardt_pages::reactive::hooks::{use_effect, use_websocket, UseWebSocketOptions};
 //! use reinhardt_pages::reactive::hooks::{ConnectionState, WebSocketMessage};
 //!
 //! fn chat_component() -> Page {
@@ -206,34 +306,34 @@
 //!     let ws = use_websocket("ws://localhost:8000/ws/chat", UseWebSocketOptions::default());
 //!
 //!     // Monitor connection state reactively
+//!     let connection_state = ws.connection_state().clone();
 //!     use_effect(
 //!         {
-//!             let ws = ws.clone();
+//!             let connection_state = connection_state.clone();
 //!             move || {
-//!                 match ws.connection_state().get() {
+//!                 match connection_state.get() {
 //!                     ConnectionState::Open => log!("Connected to chat"),
 //!                     ConnectionState::Closed => log!("Disconnected from chat"),
 //!                     ConnectionState::Error(e) => log!("Connection error: {}", e),
 //!                     _ => {}
 //!                 }
-//!                 None::<fn()>
 //!             }
 //!         },
-//!         (),
+//!         (connection_state,),
 //!     );
 //!
 //!     // Handle incoming messages
+//!     let latest_message = ws.latest_message().clone();
 //!     use_effect(
 //!         {
-//!             let ws = ws.clone();
+//!             let latest_message = latest_message.clone();
 //!             move || {
-//!                 if let Some(WebSocketMessage::Text(text)) = ws.latest_message().get() {
+//!                 if let Some(WebSocketMessage::Text(text)) = latest_message.get() {
 //!                     log!("Received: {}", text);
 //!                 }
-//!                 None::<fn()>
 //!             }
 //!         },
-//!         (),
+//!         (latest_message,),
 //!     );
 //!
 //!     page!(|| {
@@ -263,6 +363,9 @@ pub use reinhardt_pages_ast as ast;
 pub mod builder;
 pub mod callback;
 pub mod dom;
+pub mod event;
+#[cfg(feature = "i18n")]
+pub mod i18n;
 pub mod logging;
 pub mod reactive;
 
@@ -304,6 +407,8 @@ mod fetch;
 pub mod form_generated;
 // Typed form runtime state (WASM-compatible)
 pub mod form_state;
+// Runtime support for DTO-derived client forms.
+pub mod client_form;
 // FormComponent requires reinhardt-forms which is not WASM-compatible yet.
 // Client-side forms use PageElement.
 #[cfg(native)]
@@ -354,16 +459,20 @@ pub use builder::{
 		a, button, div, form, h1, h2, h3, img, input, li, ol, option, p, select, span, textarea, ul,
 	},
 };
-pub use callback::{Callback, IntoEventHandler, event_handler, into_event_handler};
+pub use callback::{
+	Callback, IntoEventHandler, IntoTypedEventHandler, event_handler, into_event_handler,
+	raw_async_event_handler, raw_event_handler, typed_async_event_handler, typed_event_handler,
+};
+pub use client_form::{ClientFormChoice, ClientFormChoiceSource};
 #[cfg(native)]
-pub use component::DummyEvent;
+pub use component::NativeEvent;
 #[cfg(wasm)]
 pub use component::cleanup_reactive_nodes;
 pub use component::{
 	ActivityBoundary, ActivityMode, BoundaryError, Component, ErrorBoundary, ErrorTracker, Head,
-	IntoPage, LinkTag, MetaTag, Page, PageElement, PageExt, Props, ResourceTracker, ScriptTag,
-	StyleTag, SuspenseBoundary, ViewTransitionBoundary, ViewTransitionHandle, ViewTransitionStatus,
-	start_view_transition,
+	IntoPage, LinkTag, MetaTag, Outlet, Page, PageElement, PageExt, Props, ResourceTracker,
+	ScriptTag, StyleTag, SuspenseBoundary, ViewTransitionBoundary, ViewTransitionHandle,
+	ViewTransitionStatus, start_view_transition,
 };
 pub use csrf::{CsrfManager, get_csrf_token};
 pub use dom::{CustomEventOptions, Document, Element, EventHandle, EventType, document};
@@ -373,27 +482,34 @@ pub use form::{FormBinding, FormComponent};
 pub use form_generated::{StaticFieldMetadata, StaticFormMetadata};
 pub use form_state::{
 	CollectionItem, CollectionItemKey, CollectionState, CustomWidgetContext, CustomWidgetRawValue,
-	FieldError, FieldPathState, FieldState, FocusError, FormCollectionRuntimeSource, FormEvent,
-	FormRuntimeSource, FormState, FormSubscription, FormValidationError, FormWidgetAdapter,
-	FormWidgetError, FormWidgetValueKind, NoDeps, ResetOnDeps, RevalidateOn, UseFormBuilder,
-	UseFormReturn, UseFormSubmitOutcome, use_form,
+	FieldError, FieldPathState, FieldState, FocusError, FormAction, FormCollectionRuntimeSource,
+	FormEvent, FormRuntimeSource, FormState, FormSubscription, FormValidationError,
+	FormWidgetAdapter, FormWidgetError, FormWidgetValueKind, NoDeps, ResetOnDeps, RevalidateOn,
+	UseFormAsyncSubmitOutcome, UseFormBuilder, UseFormReturn, UseFormSubmitOutcome, use_form,
+	use_form_action,
 };
 pub use hydration::{HydrationContext, HydrationError, hydrate};
 pub use portal::{Portal, PortalError, PortalHandle, PortalTarget, mount_portal};
-pub use reactive::{Effect, Memo, Resource, ResourceState, Signal, use_resource};
+pub use reactive::{
+	Effect, LatestResourceState, LatestResourceValue, LatestResourceValueBuilder, Memo,
+	QueryHandle, QueryKey, QueryPhase, Resource, ResourceState, Signal, use_latest_resource_value,
+	use_resource, use_resource_with_key,
+};
 // Re-export Context system
 pub use reactive::{
 	Context, ContextGuard, create_context, get_context, provide_context, remove_context,
 };
 // Re-export Hooks API
 pub use app::{ClientLauncher, LaunchCtx, PathCtx, PathParams};
-pub use reactive::{Action, ActionPhase, use_action};
+pub use reactive::{Action, ActionPhase, ActionStateBuilder, use_action, use_action_state};
 pub use reactive::{
-	Dispatch, OptimisticState, Ref, SetState, SharedSetState, SharedSignal, TransitionState,
-	use_callback, use_context, use_debug_value, use_deferred_value, use_effect, use_id,
-	use_layout_effect, use_memo, use_optimistic, use_reducer, use_ref, use_shared_state, use_state,
+	Dispatch, EffectReturn, OptimisticState, Ref, SetState, SetStateExt, SharedSetState,
+	SharedSignal, TransitionState, use_callback, use_context, use_debug_value, use_deferred_value,
+	use_effect, use_id, use_layout_effect, use_memo, use_optimistic, use_reducer, use_ref,
+	use_retained_effect, use_retained_layout_effect, use_shared_state, use_state,
 	use_sync_external_store, use_transition,
 };
+pub use reactive::{use_mutation, use_query};
 #[cfg(native)]
 pub use reinhardt_forms::{
 	Widget,
@@ -409,25 +525,45 @@ pub use router::{Path, Query};
 pub use server_fn::{ServerFn, ServerFnError, parse_server_error_message};
 pub use ssr::SsrState;
 #[cfg(native)]
-pub use ssr::{SsrOptions, SsrRenderer};
+pub use ssr::{SsrChunk, SsrOptions, SsrRenderer, SsrStream};
 pub use static_resolver::{init_static_resolver, is_initialized, resolve_static};
+
+#[cfg(feature = "i18n")]
+pub use i18n::{
+	I18nContext, I18nStateError, TranslatedText, locale, provide_i18n_context, set_locale, tn, tnp,
+	tp, tr, use_i18n_context, with_i18n_context,
+};
 
 // Re-export procedural macros
 pub use reinhardt_pages_macros::form;
 pub use reinhardt_pages_macros::head;
+pub use reinhardt_pages_macros::layout;
 pub use reinhardt_pages_macros::page;
 pub use reinhardt_pages_macros::wasm_server_api;
-pub use reinhardt_pages_macros::{FromRequest, client_page, component, page_props};
+pub use reinhardt_pages_macros::{
+	ClientForm, ClientFormChoices, FromRequest, client_page, component, page_props,
+};
 
 // Private re-exports used by macro-generated code. Not part of the public API.
 #[doc(hidden)]
 pub mod __private {
+	pub mod client_form {
+		pub use crate::client_form::__private::*;
+	}
+
+	pub fn capture<T: Clone>(value: &T) -> T {
+		value.clone()
+	}
+
 	pub mod fetch {
 		pub use crate::fetch::{
 			FetchCredentials, FetchResponse, request, request_with_credentials,
 		};
 	}
 	pub use bon;
+	pub use bytes;
+	#[cfg(native)]
+	pub use hyper;
 	pub use inventory;
 	pub use reinhardt_urls;
 

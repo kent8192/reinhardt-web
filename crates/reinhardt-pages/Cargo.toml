@@ -274,6 +274,7 @@ hyper-util = { workspace = true }
 http-body-util = { workspace = true }
 bytes = { workspace = true }
 tokio-tungstenite = { workspace = true }
+tokio-test = { workspace = true }
 futures-util = "0.3"
 # Enable `validation` feature for trybuild UI tests that exercise
 # `Validated<Form<T>>` extractors in `tests/ui/server_fn/with_extractors.rs`

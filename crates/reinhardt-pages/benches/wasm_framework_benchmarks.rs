@@ -6,9 +6,12 @@
 //! 1. Reactive System (7 benchmarks)
 //! 2. SSR Rendering (7 benchmarks)
 //! 3. Routing (4 benchmarks)
+//!
 //! Total: 18 benchmarks
 
-use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
+use std::hint::black_box;
+
+use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use reinhardt_pages::component::{Component, IntoPage, Page, PageElement};
 use reinhardt_pages::reactive::{Effect, Memo, Signal};
 use reinhardt_pages::ssr::{SsrOptions, SsrRenderer};
@@ -72,7 +75,7 @@ fn bench_reactive_graph_scale(c: &mut Criterion) {
 	for size in [10, 100, 1000] {
 		group.bench_with_input(BenchmarkId::from_parameter(size), &size, |b, &size| {
 			b.iter(|| {
-				let signals: Vec<Signal<i32>> = (0..size).map(|i| Signal::new(i as i32)).collect();
+				let signals: Vec<Signal<i32>> = (0..size).map(Signal::new).collect();
 
 				// Create effects that depend on signals
 				let _effects: Vec<Effect> = signals
@@ -123,9 +126,13 @@ fn bench_ssr_simple_component(c: &mut Criterion) {
 		message: "Hello, World!".to_string(),
 	};
 	let mut renderer = SsrRenderer::new();
+	let runtime = tokio::runtime::Builder::new_current_thread()
+		.enable_all()
+		.build()
+		.expect("failed to build benchmark runtime");
 
 	c.bench_function("ssr_simple_component", |b| {
-		b.iter(|| renderer.render(black_box(&component)))
+		b.iter(|| runtime.block_on(renderer.render(black_box(&component))))
 	});
 }
 
@@ -136,9 +143,13 @@ fn bench_ssr_full_page(c: &mut Criterion) {
 	};
 	let options = SsrOptions::default();
 	let mut renderer = SsrRenderer::with_options(options);
+	let runtime = tokio::runtime::Builder::new_current_thread()
+		.enable_all()
+		.build()
+		.expect("failed to build benchmark runtime");
 
 	c.bench_function("ssr_full_page", |b| {
-		b.iter(|| renderer.render_page(black_box(&component)))
+		b.iter(|| runtime.block_on(renderer.render_page_to_string(black_box(&component))))
 	});
 }
 
@@ -181,7 +192,11 @@ fn bench_ssr_nested_components(c: &mut Criterion) {
 				content: "Nested".to_string(),
 			};
 			let mut renderer = SsrRenderer::new();
-			b.iter(|| renderer.render(black_box(&component)))
+			let runtime = tokio::runtime::Builder::new_current_thread()
+				.enable_all()
+				.build()
+				.expect("failed to build benchmark runtime");
+			b.iter(|| runtime.block_on(renderer.render(black_box(&component))))
 		});
 	}
 
@@ -216,7 +231,11 @@ fn bench_ssr_list_rendering(c: &mut Criterion) {
 				items: (0..count).map(|i| format!("Item {}", i)).collect(),
 			};
 			let mut renderer = SsrRenderer::new();
-			b.iter(|| renderer.render(black_box(&component)))
+			let runtime = tokio::runtime::Builder::new_current_thread()
+				.enable_all()
+				.build()
+				.expect("failed to build benchmark runtime");
+			b.iter(|| runtime.block_on(renderer.render(black_box(&component))))
 		});
 	}
 
@@ -234,9 +253,13 @@ fn bench_ssr_with_state_script(c: &mut Criterion) {
 	// Add some state
 	renderer.state_mut().add_metadata("user_id", 123);
 	renderer.state_mut().add_metadata("username", "testuser");
+	let runtime = tokio::runtime::Builder::new_current_thread()
+		.enable_all()
+		.build()
+		.expect("failed to build benchmark runtime");
 
 	c.bench_function("ssr_with_state_script", |b| {
-		b.iter(|| renderer.render_page(black_box(&component)))
+		b.iter(|| runtime.block_on(renderer.render_page_to_string(black_box(&component))))
 	});
 }
 
@@ -248,9 +271,13 @@ fn bench_ssr_minification(c: &mut Criterion) {
 	};
 	let options = SsrOptions::new().minify();
 	let mut renderer = SsrRenderer::with_options(options);
+	let runtime = tokio::runtime::Builder::new_current_thread()
+		.enable_all()
+		.build()
+		.expect("failed to build benchmark runtime");
 
 	c.bench_function("ssr_minification", |b| {
-		b.iter(|| renderer.render_page(black_box(&component)))
+		b.iter(|| runtime.block_on(renderer.render_page_to_string(black_box(&component))))
 	});
 }
 
@@ -260,9 +287,13 @@ fn bench_ssr_with_hydration_markers(c: &mut Criterion) {
 		message: "Hydration test".to_string(),
 	};
 	let mut renderer = SsrRenderer::new();
+	let runtime = tokio::runtime::Builder::new_current_thread()
+		.enable_all()
+		.build()
+		.expect("failed to build benchmark runtime");
 
 	c.bench_function("ssr_with_hydration_markers", |b| {
-		b.iter(|| renderer.render_with_marker(black_box(&component)))
+		b.iter(|| runtime.block_on(renderer.render_with_marker(black_box(&component))))
 	});
 }
 

@@ -739,8 +739,8 @@ let users = slug_field.get_instances(vec!["alice", "bob", "charlie"]).await?;
 Serializer performance helpers are local diagnostics for REST serialization
 work. For cross-layer N+1 query detection, wrap the ORM workload in
 `reinhardt_db::orm::NPlusOneScope`; it observes repeated ORM query shapes and
-points fixes back to `select_related()`, `prefetch_related()`, or explicit batch
-queries.
+points single-object relationship fixes to `select_related()` and collection
+relationship fixes to explicit batch queries.
 
 ```rust
 use reinhardt::rest::serializers::{IntrospectionCache, QueryCache, BatchValidator, PerformanceMetrics};

@@ -108,9 +108,10 @@ let posts = Post::objects()
     .all()
     .await?;
 
-// ✅ Use prefetching or a batch query for collections
-let posts = Post::objects()
-    .prefetch_related(&["comments"])
+// ✅ Use an explicit batch query for collections
+let post_ids = posts.iter().filter_map(Post::primary_key).collect::<Vec<_>>();
+let comments = Comment::objects()
+    .filter(Comment::field_post_id().is_in(post_ids))
     .all()
     .await?;
 

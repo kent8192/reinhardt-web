@@ -1,6 +1,6 @@
 //! Code generation for the page! macro.
 //!
-//! This module converts typed AST nodes into Rust code that uses the ElementView API.
+//! This module converts typed AST nodes into Rust code that uses the `PageElement` API.
 //!
 //! ## Generated Code Structure
 //!
@@ -16,26 +16,33 @@
 //!
 //! ```text
 //! {
-//!     |initial: i32| -> View {
-//!         ElementView::new("div")
+//!     |initial: i32| -> Page {
+//!         PageElement::new("div")
 //!             .child("hello")
-//!             .into_view()
+//!             .into_page()
 //!     }
 //! }
 //! ```
 
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
-use syn::LitStr;
+use std::collections::HashSet;
+use syn::punctuated::Punctuated;
+use syn::spanned::Spanned;
+use syn::visit::{self, Visit};
+use syn::{LitStr, Token};
 
 // Import AST types from reinhardt-manouche
 use crate::crate_paths::get_reinhardt_pages_crate_info;
+use reinhardt_event_catalog::KnownEvent;
 use reinhardt_manouche::core::types::AttrValue;
 use reinhardt_manouche::core::{
-	ComponentInvocationForm, PageEvent, PageExpression, PageParam, PageText, TypedPageAttr,
-	TypedPageBody, TypedPageComponent, TypedPageElement, TypedPageElse, TypedPageFor, TypedPageIf,
-	TypedPageMacro, TypedPageNode, TypedPageWatch,
+	ComponentInvocationForm, ImplicitPageCapture, IntrinsicEvent, PageExpression, PageParam,
+	PageText, TypedPageAttr, TypedPageBody, TypedPageComponent, TypedPageElement, TypedPageElse,
+	TypedPageFor, TypedPageIf, TypedPageMacro, TypedPageMacroForm, TypedPageNode, TypedPageWatch,
 };
+
+use super::scope_utils::collect_pat_idents;
 
 /// Generates code for the entire page! macro.
 ///
@@ -49,12 +56,9 @@ pub(super) fn generate(macro_ast: &TypedPageMacro) -> TokenStream {
 	let crate_info = get_reinhardt_pages_crate_info();
 	let use_statement = &crate_info.use_statement;
 	let pages_crate = &crate_info.ident;
+	let ctx = CodegenContext::new(macro_ast.implicit_captures());
 
-	// Generate closure parameters
-	let params = generate_params(&macro_ast.params);
-
-	// Generate body
-	let body = generate_body(&macro_ast.body, pages_crate);
+	let body = generate_body(macro_ast.body(), pages_crate, &ctx);
 
 	// If head is provided, wrap the view with .with_head()
 	let body_with_head = if let Some(head_expr) = &macro_ast.head {
@@ -69,17 +73,375 @@ pub(super) fn generate(macro_ast: &TypedPageMacro) -> TokenStream {
 		body
 	};
 
-	// Wrap in a closure with conditional use statement if needed.
-	// #[allow(unused_variables)] suppresses warnings for closure parameters that are
-	// only used inside @event handlers, which are cfg-gated to wasm32 (#3327).
-	quote! {
-		{
-			#use_statement
-			#[allow(unused_variables)]
-			#params -> #pages_crate::component::Page {
-				#body_with_head
+	match &macro_ast.form {
+		TypedPageMacroForm::StrictClosure { params, .. } => {
+			let params = generate_params(params);
+			// Wrap in a closure with conditional use statement if needed.
+			// Some generated paths consume parameters only after later macro expansion.
+			quote! {
+				{
+					#use_statement
+					#[allow(unused_variables)]
+					#params -> #pages_crate::component::Page {
+						#body_with_head
+					}
+				}
 			}
 		}
+		TypedPageMacroForm::ImplicitBody { .. } => {
+			quote! {
+				{
+					#use_statement
+					#body_with_head
+				}
+			}
+		}
+	}
+}
+
+struct CodegenContext {
+	capture_names: HashSet<String>,
+}
+
+impl CodegenContext {
+	fn new(captures: &[ImplicitPageCapture]) -> Self {
+		Self {
+			capture_names: captures.iter().map(|c| c.ident.to_string()).collect(),
+		}
+	}
+
+	fn captures_in_expr(&self, expr: &syn::Expr) -> Vec<syn::Ident> {
+		let mut collector = ExprCaptureCollector {
+			capture_names: &self.capture_names,
+			locals_stack: Vec::new(),
+			seen: HashSet::new(),
+			captures: Vec::new(),
+		};
+		collector.visit_expr(expr);
+		collector.captures
+	}
+
+	fn captures_in_node(&self, node: &TypedPageNode) -> Vec<syn::Ident> {
+		let mut collector = NodeCaptureCollector {
+			expr_collector: ExprCaptureCollector {
+				capture_names: &self.capture_names,
+				locals_stack: Vec::new(),
+				seen: HashSet::new(),
+				captures: Vec::new(),
+			},
+		};
+		collector.visit_node(node);
+		collector.expr_collector.captures
+	}
+
+	fn captures_in_for_iteration(&self, for_node: &TypedPageFor) -> Vec<syn::Ident> {
+		let mut collector = NodeCaptureCollector {
+			expr_collector: ExprCaptureCollector {
+				capture_names: &self.capture_names,
+				locals_stack: Vec::new(),
+				seen: HashSet::new(),
+				captures: Vec::new(),
+			},
+		};
+
+		let mut locals = HashSet::new();
+		collect_pat_idents(&for_node.pat, &mut locals);
+		collector.expr_collector.locals_stack.push(locals);
+		if let Some(key) = &for_node.key {
+			collector.expr_collector.visit_expr(key);
+		}
+		for node in &for_node.body {
+			collector.visit_node(node);
+		}
+		collector.expr_collector.locals_stack.pop();
+
+		collector.expr_collector.captures
+	}
+}
+
+struct ExprCaptureCollector<'a> {
+	capture_names: &'a HashSet<String>,
+	locals_stack: Vec<HashSet<String>>,
+	seen: HashSet<String>,
+	captures: Vec<syn::Ident>,
+}
+
+impl ExprCaptureCollector<'_> {
+	fn is_local(&self, name: &str) -> bool {
+		self.locals_stack.iter().any(|s| s.contains(name))
+	}
+
+	fn record(&mut self, ident: &syn::Ident) {
+		let name = ident.to_string();
+		if self.capture_names.contains(&name) && !self.is_local(&name) && self.seen.insert(name) {
+			self.captures.push(ident.clone());
+		}
+	}
+}
+
+impl<'ast> Visit<'ast> for ExprCaptureCollector<'_> {
+	fn visit_expr_path(&mut self, ep: &'ast syn::ExprPath) {
+		if ep.qself.is_none() && ep.path.segments.len() == 1 {
+			self.record(&ep.path.segments[0].ident);
+		}
+		visit::visit_expr_path(self, ep);
+	}
+
+	fn visit_expr_closure(&mut self, c: &'ast syn::ExprClosure) {
+		let mut locals = HashSet::new();
+		for input in &c.inputs {
+			collect_pat_idents(input, &mut locals);
+		}
+		self.locals_stack.push(locals);
+		visit::visit_expr_closure(self, c);
+		self.locals_stack.pop();
+	}
+
+	fn visit_expr_let(&mut self, l: &'ast syn::ExprLet) {
+		let mut locals = HashSet::new();
+		collect_pat_idents(&l.pat, &mut locals);
+		self.locals_stack.push(locals);
+		visit::visit_expr_let(self, l);
+		self.locals_stack.pop();
+	}
+
+	fn visit_expr_if(&mut self, i: &'ast syn::ExprIf) {
+		if let syn::Expr::Let(let_expr) = &*i.cond {
+			let mut locals = HashSet::new();
+			collect_pat_idents(&let_expr.pat, &mut locals);
+			self.visit_expr(&let_expr.expr);
+			self.locals_stack.push(locals);
+			self.visit_block(&i.then_branch);
+			self.locals_stack.pop();
+			if let Some((_, else_branch)) = &i.else_branch {
+				self.visit_expr(else_branch);
+			}
+		} else {
+			visit::visit_expr_if(self, i);
+		}
+	}
+
+	fn visit_arm(&mut self, a: &'ast syn::Arm) {
+		let mut locals = HashSet::new();
+		collect_pat_idents(&a.pat, &mut locals);
+		self.locals_stack.push(locals);
+		if let Some((_, guard)) = &a.guard {
+			self.visit_expr(guard);
+		}
+		self.visit_expr(&a.body);
+		self.locals_stack.pop();
+	}
+
+	fn visit_expr_for_loop(&mut self, f: &'ast syn::ExprForLoop) {
+		self.visit_expr(&f.expr);
+		let mut locals = HashSet::new();
+		collect_pat_idents(&f.pat, &mut locals);
+		self.locals_stack.push(locals);
+		self.visit_block(&f.body);
+		self.locals_stack.pop();
+	}
+
+	fn visit_expr_macro(&mut self, expr_macro: &'ast syn::ExprMacro) {
+		if let Ok(args) = expr_macro
+			.mac
+			.parse_body_with(Punctuated::<syn::Expr, Token![,]>::parse_terminated)
+		{
+			for arg in args {
+				self.visit_expr(&arg);
+			}
+		}
+	}
+
+	fn visit_block(&mut self, b: &'ast syn::Block) {
+		let mut pushed = 0_usize;
+		for stmt in &b.stmts {
+			match stmt {
+				syn::Stmt::Local(local) => {
+					if let Some(init) = &local.init {
+						self.visit_expr(&init.expr);
+						if let Some((_, diverge)) = &init.diverge {
+							self.visit_expr(diverge);
+						}
+					}
+					let mut locals = HashSet::new();
+					collect_pat_idents(&local.pat, &mut locals);
+					self.locals_stack.push(locals);
+					pushed += 1;
+				}
+				syn::Stmt::Item(_) => {}
+				syn::Stmt::Expr(e, _) => self.visit_expr(e),
+				syn::Stmt::Macro(m) => visit::visit_stmt_macro(self, m),
+			}
+		}
+		for _ in 0..pushed {
+			self.locals_stack.pop();
+		}
+	}
+}
+
+struct NodeCaptureCollector<'a> {
+	expr_collector: ExprCaptureCollector<'a>,
+}
+
+impl NodeCaptureCollector<'_> {
+	fn visit_node(&mut self, node: &TypedPageNode) {
+		match node {
+			TypedPageNode::Element(elem) => {
+				for attr in &elem.attrs {
+					self.expr_collector.visit_expr(&attr.value.to_expr());
+				}
+				for event in &elem.events {
+					self.expr_collector.visit_expr(event.handler());
+				}
+				for child in &elem.children {
+					self.visit_node(child);
+				}
+			}
+			TypedPageNode::Text(_) => {}
+			TypedPageNode::Expression(expr) => self.expr_collector.visit_expr(&expr.expr),
+			TypedPageNode::If(if_node) => self.visit_if(if_node),
+			TypedPageNode::For(for_node) => self.visit_for(for_node),
+			TypedPageNode::Component(comp) => self.visit_component(comp),
+			TypedPageNode::Watch(watch) => self.visit_node(&watch.expr),
+		}
+	}
+
+	fn visit_if(&mut self, if_node: &TypedPageIf) {
+		let mut then_locals = None;
+		if let syn::Expr::Let(let_expr) = &if_node.condition {
+			let mut locals = HashSet::new();
+			collect_pat_idents(&let_expr.pat, &mut locals);
+			self.expr_collector.visit_expr(&let_expr.expr);
+			then_locals = Some(locals);
+		} else {
+			self.expr_collector.visit_expr(&if_node.condition);
+		}
+		let pushed_then_locals = then_locals.is_some();
+		if let Some(locals) = then_locals {
+			self.expr_collector.locals_stack.push(locals);
+		}
+		for node in &if_node.then_branch {
+			self.visit_node(node);
+		}
+		if pushed_then_locals {
+			self.expr_collector.locals_stack.pop();
+		}
+		if let Some(else_branch) = &if_node.else_branch {
+			match else_branch {
+				TypedPageElse::Block(nodes) => {
+					for node in nodes {
+						self.visit_node(node);
+					}
+				}
+				TypedPageElse::If(inner) => self.visit_if(inner),
+			}
+		}
+	}
+
+	fn visit_for(&mut self, for_node: &TypedPageFor) {
+		self.expr_collector.visit_expr(&for_node.iter);
+		let mut locals = HashSet::new();
+		collect_pat_idents(&for_node.pat, &mut locals);
+		self.expr_collector.locals_stack.push(locals);
+		if let Some(key) = &for_node.key {
+			self.expr_collector.visit_expr(key);
+		}
+		for node in &for_node.body {
+			self.visit_node(node);
+		}
+		self.expr_collector.locals_stack.pop();
+	}
+
+	fn visit_component(&mut self, comp: &TypedPageComponent) {
+		for arg in &comp.args {
+			self.expr_collector.visit_expr(&arg.value);
+		}
+		for event in &comp.events {
+			self.expr_collector.visit_expr(&event.handler);
+		}
+		if let Some(children) = &comp.children {
+			for child in children {
+				self.visit_node(child);
+			}
+		}
+		for slot in &comp.named_slots {
+			for child in &slot.children {
+				self.visit_node(child);
+			}
+		}
+	}
+}
+
+fn capture_statements(captures: &[syn::Ident], pages_crate: &TokenStream) -> Vec<TokenStream> {
+	captures
+		.iter()
+		.map(|ident| {
+			quote! {
+				let #ident = #pages_crate::__private::capture(&#ident);
+			}
+		})
+		.collect()
+}
+
+fn wrap_expr_with_captures(
+	expr: &syn::Expr,
+	pages_crate: &TokenStream,
+	ctx: &CodegenContext,
+) -> TokenStream {
+	wrap_value_expr_with_captures(quote! { #expr }, expr, pages_crate, ctx)
+}
+
+fn wrap_value_expr_with_captures(
+	value: TokenStream,
+	source_expr: &syn::Expr,
+	pages_crate: &TokenStream,
+	ctx: &CodegenContext,
+) -> TokenStream {
+	let captures = ctx.captures_in_expr(source_expr);
+	if captures.is_empty() {
+		value
+	} else {
+		let capture_statements = capture_statements(&captures, pages_crate);
+		quote! {
+			{
+				#(#capture_statements)*
+				#value
+			}
+		}
+	}
+}
+
+fn closure_expr_with_move_captures(
+	expr: &syn::Expr,
+	pages_crate: &TokenStream,
+	ctx: &CodegenContext,
+) -> TokenStream {
+	let captures = ctx.captures_in_expr(expr);
+	if captures.is_empty() {
+		return quote! { #expr };
+	}
+
+	let capture_statements = capture_statements(&captures, pages_crate);
+	match expr {
+		syn::Expr::Closure(closure) => {
+			let mut modified = closure.clone();
+			modified.capture = Some(syn::token::Move {
+				span: Span::call_site(),
+			});
+			let modified = syn::Expr::Closure(modified);
+			quote! {
+				{
+					#(#capture_statements)*
+					#modified
+				}
+			}
+		}
+		_ => quote! {
+			{
+				#(#capture_statements)*
+				#expr
+			}
+		},
 	}
 }
 
@@ -102,8 +464,12 @@ fn generate_params(params: &[PageParam]) -> TokenStream {
 }
 
 /// Generates code for the page body.
-fn generate_body(body: &TypedPageBody, pages_crate: &TokenStream) -> TokenStream {
-	let nodes = generate_nodes(&body.nodes, pages_crate);
+fn generate_body(
+	body: &TypedPageBody,
+	pages_crate: &TokenStream,
+	ctx: &CodegenContext,
+) -> TokenStream {
+	let nodes = generate_nodes(&body.nodes, pages_crate, ctx);
 
 	// If there's exactly one node, return it directly
 	// Otherwise, wrap in a fragment
@@ -117,10 +483,14 @@ fn generate_body(body: &TypedPageBody, pages_crate: &TokenStream) -> TokenStream
 }
 
 /// Generates code for multiple nodes.
-fn generate_nodes(nodes: &[TypedPageNode], pages_crate: &TokenStream) -> TokenStream {
+fn generate_nodes(
+	nodes: &[TypedPageNode],
+	pages_crate: &TokenStream,
+	ctx: &CodegenContext,
+) -> TokenStream {
 	let node_tokens: Vec<TokenStream> = nodes
 		.iter()
-		.map(|n| generate_node(n, pages_crate))
+		.map(|n| generate_node(n, pages_crate, ctx))
 		.collect();
 
 	if node_tokens.len() == 1 {
@@ -137,36 +507,39 @@ fn generate_nodes(nodes: &[TypedPageNode], pages_crate: &TokenStream) -> TokenSt
 /// codegen time. The wrap is the single point of truth so reactive reads
 /// inside helper-routed Signals (#4515) "just work" without a static
 /// detection step.
-fn generate_node(node: &TypedPageNode, pages_crate: &TokenStream) -> TokenStream {
+fn generate_node(
+	node: &TypedPageNode,
+	pages_crate: &TokenStream,
+	ctx: &CodegenContext,
+) -> TokenStream {
 	match node {
-		TypedPageNode::Element(elem) => generate_element(elem, pages_crate),
+		TypedPageNode::Element(elem) => generate_element(elem, pages_crate, ctx),
 		TypedPageNode::Text(text) => generate_text(text, pages_crate),
 		TypedPageNode::Expression(expr) => {
 			let inner = generate_expression(expr, pages_crate);
-			wrap_reactive(inner, pages_crate)
+			wrap_reactive(inner, pages_crate, &ctx.captures_in_node(node))
 		}
 		TypedPageNode::If(if_node) => {
-			let inner = generate_if(if_node, pages_crate);
-			wrap_reactive(inner, pages_crate)
+			let inner = generate_if(if_node, pages_crate, ctx);
+			wrap_reactive(inner, pages_crate, &ctx.captures_in_node(node))
 		}
 		TypedPageNode::For(for_node) => {
-			let inner = generate_for(for_node, pages_crate);
-			wrap_reactive(inner, pages_crate)
+			let inner = generate_for(for_node, pages_crate, ctx);
+			wrap_reactive(inner, pages_crate, &ctx.captures_in_node(node))
 		}
-		TypedPageNode::Component(comp) => generate_component(comp, pages_crate),
-		TypedPageNode::Watch(watch_node) => generate_watch(watch_node, pages_crate),
+		TypedPageNode::Component(comp) => generate_component(comp, pages_crate, ctx),
+		TypedPageNode::Watch(watch_node) => generate_watch(watch_node, pages_crate, ctx),
 	}
 }
 
 /// Generates code for an element node.
 ///
-/// When the element has event handlers, this function generates conditional compilation
-/// code that:
-/// - On WASM targets: Binds event handlers to DOM events
-/// - On native targets: Suppresses unused variable warnings for captured variables
-///
-/// This allows users to write event handlers once without manual `#[cfg]` annotations.
-fn generate_element(elem: &TypedPageElement, pages_crate: &TokenStream) -> TokenStream {
+/// Event handlers use the same raw storage path on native and WASM targets.
+fn generate_element(
+	elem: &TypedPageElement,
+	pages_crate: &TokenStream,
+	ctx: &CodegenContext,
+) -> TokenStream {
 	let tag = elem.tag.to_string();
 
 	// Generate attributes
@@ -174,20 +547,20 @@ fn generate_element(elem: &TypedPageElement, pages_crate: &TokenStream) -> Token
 		.attrs
 		.iter()
 		.filter(|attr| !BOOLEAN_ATTRS.contains(&attr.html_name().as_str()))
-		.map(generate_regular_attr_pair)
+		.map(|attr| generate_regular_attr_pair(attr, pages_crate, ctx))
 		.collect();
 	let bool_attrs: Vec<TokenStream> = elem
 		.attrs
 		.iter()
 		.filter(|attr| BOOLEAN_ATTRS.contains(&attr.html_name().as_str()))
-		.map(generate_bool_attr_pair)
+		.map(|attr| generate_bool_attr_pair(attr, pages_crate, ctx))
 		.collect();
 
 	// Generate children
 	let children: Vec<TokenStream> = elem
 		.children
 		.iter()
-		.map(|child| generate_child(child, pages_crate))
+		.map(|child| generate_child(child, pages_crate, ctx))
 		.collect();
 
 	// Build the base element (attributes and children, without events)
@@ -215,71 +588,24 @@ fn generate_element(elem: &TypedPageElement, pages_crate: &TokenStream) -> Token
 		};
 	}
 
-	// Fast path: no events - simple generation (preserves current behavior)
+	// Fast path: no events - simple generation.
 	if elem.events.is_empty() {
 		return quote! {
 			#pages_crate::component::IntoPage::into_page(#base_builder)
 		};
 	}
 
-	// Has events - generate conditional compilation code
-	// This eliminates the need for users to write #[cfg(all(target_family = "wasm", target_os = "unknown"))] blocks
-
-	// Generate event bindings for WASM target
+	// Register every intrinsic handler on both native and WASM targets.
 	let event_bindings: Vec<TokenStream> = elem
 		.events
 		.iter()
-		.map(|event| generate_event(event, pages_crate))
-		.collect();
-
-	// Generate typed wrappers for non-WASM to enable closure type inference.
-	// We wrap each handler in a typed closure that calls it, which forces Rust to
-	// infer the closure parameter type from the wrapper's explicit type annotation.
-	//
-	// For Callback types and other non-closure handlers, we use into_event_handler
-	// to convert them first, since they can't be called directly.
-	let handler_exprs: Vec<&syn::Expr> = elem.events.iter().map(|event| &event.handler).collect();
-	let typed_handler_refs: Vec<TokenStream> = handler_exprs
-		.iter()
-		.map(|handler| {
-			// Check if the handler is a closure expression
-			if matches!(handler, syn::Expr::Closure(_)) {
-				// Closures now have explicit type annotations on their parameters,
-				// so no wrapper is needed for type inference. The closure body may
-				// reference WASM-only types (JsCast, web_sys::HtmlSelectElement),
-				// so we skip compiling it on non-WASM targets entirely.
-				quote! {}
-			} else {
-				// For non-closure handlers (Callback, variables, etc.),
-				// convert to ViewEventHandler first then reference it
-				quote! {
-					{
-						let __vh = #pages_crate::callback::into_event_handler(#handler);
-						let _ = &__vh;
-					}
-				}
-			}
-		})
+		.map(|event| generate_event(event, pages_crate, ctx))
 		.collect();
 
 	quote! {
-		{
-			let __elem_base = #base_builder;
-
-			#[cfg(all(target_family = "wasm", target_os = "unknown"))]
-			let __elem_with_events = __elem_base #(#event_bindings)*;
-
-			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-			let __elem_with_events = {
-				// Create typed wrappers to enable closure parameter type inference.
-				// The wrapper calls the user's handler with a typed argument, which forces
-				// Rust to infer the closure parameter type.
-				#(#typed_handler_refs)*
-				__elem_base
-			};
-
-			#pages_crate::component::IntoPage::into_page(__elem_with_events)
-		}
+		#pages_crate::component::IntoPage::into_page(
+			#base_builder #(#event_bindings)*
+		)
 	}
 }
 
@@ -315,7 +641,11 @@ const BOOLEAN_ATTRS: &[&str] = &[
 ];
 
 /// Generates code for a regular attribute pair.
-fn generate_regular_attr_pair(attr: &TypedPageAttr) -> TokenStream {
+fn generate_regular_attr_pair(
+	attr: &TypedPageAttr,
+	pages_crate: &TokenStream,
+	ctx: &CodegenContext,
+) -> TokenStream {
 	let name_str = attr.html_name();
 
 	// Handle different attribute value types
@@ -329,12 +659,17 @@ fn generate_regular_attr_pair(attr: &TypedPageAttr) -> TokenStream {
 			// Generate: lit.to_string()
 			quote! { #lit.to_string() }
 		}
+		AttrValue::Dynamic(expr) if is_negative_integer_literal(expr) => {
+			quote! { (#expr).to_string() }
+		}
 		_ => {
 			// For StringLit, BoolLit, Dynamic: use as-is
 			let expr = attr.value.to_expr();
 			quote! { #expr }
 		}
 	};
+	let value_expr =
+		wrap_value_expr_with_captures(value_expr, &attr.value.to_expr(), pages_crate, ctx);
 
 	quote! {
 		(
@@ -344,10 +679,26 @@ fn generate_regular_attr_pair(attr: &TypedPageAttr) -> TokenStream {
 	}
 }
 
+fn is_negative_integer_literal(expr: &syn::Expr) -> bool {
+	if let syn::Expr::Unary(unary) = expr
+		&& matches!(unary.op, syn::UnOp::Neg(_))
+		&& let syn::Expr::Lit(lit) = unary.expr.as_ref()
+	{
+		return matches!(lit.lit, syn::Lit::Int(_));
+	}
+
+	false
+}
+
 /// Generates code for a boolean attribute pair.
-fn generate_bool_attr_pair(attr: &TypedPageAttr) -> TokenStream {
+fn generate_bool_attr_pair(
+	attr: &TypedPageAttr,
+	pages_crate: &TokenStream,
+	ctx: &CodegenContext,
+) -> TokenStream {
 	let name_str = attr.html_name();
 	let value_expr = attr.value.to_expr();
+	let value_expr = wrap_expr_with_captures(&value_expr, pages_crate, ctx);
 	quote! {
 		(::std::borrow::Cow::Borrowed(#name_str), #value_expr)
 	}
@@ -361,126 +712,121 @@ fn is_async_closure(expr: &syn::Expr) -> bool {
 	}
 }
 
-/// Generates code for an event handler.
-///
-/// This function generates platform-aware code that handles event handler type inference.
-/// The key challenge is that Rust cannot infer closure parameter types from `impl Fn(Event)`
-/// bounds or type annotations on Box.
-///
-/// The solution is to wrap the handler in a typed closure that explicitly calls the handler.
-/// This works because calling `(#handler)(__event)` where `__event` is typed forces Rust
-/// to infer that `#handler` implements `Fn(EventType)`, thereby typing the closure parameter.
-fn generate_event(event: &PageEvent, pages_crate: &TokenStream) -> TokenStream {
-	let event_type = event.dom_event_type();
-	let handler = &event.handler;
-
-	// Convert event type string to EventType enum variant
-	// NOTE: Variant names must match exactly with dom::EventType definition
-	let event_type_ident = match event_type.as_str() {
-		// Mouse events
-		"click" => quote!(Click),
-		"dblclick" => quote!(DblClick),
-		"mousedown" => quote!(MouseDown),
-		"mouseup" => quote!(MouseUp),
-		"mouseenter" => quote!(MouseEnter),
-		"mouseleave" => quote!(MouseLeave),
-		"mousemove" => quote!(MouseMove),
-		"mouseover" => quote!(MouseOver),
-		"mouseout" => quote!(MouseOut),
-		// Keyboard events
-		"keydown" => quote!(KeyDown),
-		"keyup" => quote!(KeyUp),
-		"keypress" => quote!(KeyPress),
-		// Form events
-		"input" => quote!(Input),
-		"change" => quote!(Change),
-		"submit" => quote!(Submit),
-		"focus" => quote!(Focus),
-		"blur" => quote!(Blur),
-		// Touch events
-		"touchstart" => quote!(TouchStart),
-		"touchend" => quote!(TouchEnd),
-		"touchmove" => quote!(TouchMove),
-		"touchcancel" => quote!(TouchCancel),
-		// Drag events
-		"dragstart" => quote!(DragStart),
-		"drag" => quote!(Drag),
-		"drop" => quote!(Drop),
-		"dragenter" => quote!(DragEnter),
-		"dragleave" => quote!(DragLeave),
-		"dragover" => quote!(DragOver),
-		"dragend" => quote!(DragEnd),
-		// Other events
-		"load" => quote!(Load),
-		"error" => quote!(Error),
-		"scroll" => quote!(Scroll),
-		"resize" => quote!(Resize),
-		other => {
-			// Unsupported event type - emit compile error
-			let error_msg = format!("unsupported event type: '{}'", other);
-			return quote! {
-				compile_error!(#error_msg)
-			};
+macro_rules! define_known_event_variant_ident {
+	(
+		$(
+			$kind:ident,
+			$dom_name:literal,
+			$payload:ident,
+			$interface:ident,
+			[$($fallback:ident),* $(,)?],
+			[$($capability:ident),* $(,)?],
+			$bubbles:literal,
+			$cancelable:literal,
+			$composed:literal,
+			$fixture_defaults:ident;
+		)*
+	) => {
+		fn known_event_variant_ident(event: KnownEvent, span: Span) -> syn::Ident {
+			match event {
+				$(KnownEvent::$kind => syn::Ident::new(stringify!($kind), span),)*
+			}
 		}
 	};
+}
 
-	// ✅ NEW: Async closure detection
-	if is_async_closure(handler) {
-		// Automatically wrap async closures in async_handler
-		return quote! {
-			.on(
-				#pages_crate::dom::EventType::#event_type_ident,
-				#pages_crate::callback::async_handler(#handler)
-			)
-		};
+reinhardt_event_catalog::__reinhardt_event_catalog!(define_known_event_variant_ident);
+
+/// Applies the inferred payload type while preserving explicit annotations.
+fn lower_intrinsic_closure(handler: &syn::Expr, payload_type: TokenStream) -> syn::Expr {
+	let syn::Expr::Closure(closure) = handler else {
+		return handler.clone();
+	};
+
+	let mut closure = closure.clone();
+	let payload_type = syn::parse2(payload_type).expect("generated event payload type must parse");
+	match closure.inputs.first_mut() {
+		None => closure.inputs.push(syn::Pat::Type(syn::PatType {
+			attrs: Vec::new(),
+			pat: Box::new(syn::Pat::Ident(syn::PatIdent {
+				attrs: Vec::new(),
+				by_ref: None,
+				mutability: None,
+				ident: syn::Ident::new("_event", handler.span()),
+				subpat: None,
+			})),
+			colon_token: Default::default(),
+			ty: Box::new(payload_type),
+		})),
+		Some(syn::Pat::Type(_)) => {}
+		Some(parameter) => {
+			let pattern = parameter.clone();
+			*parameter = syn::Pat::Type(syn::PatType {
+				attrs: Vec::new(),
+				pat: Box::new(pattern),
+				colon_token: Default::default(),
+				ty: Box::new(payload_type),
+			});
+		}
 	}
+	syn::Expr::Closure(closure)
+}
 
-	// Generate event handler code.
-	// For closure expressions, add explicit type annotation to the parameter and
-	// wrap directly in Arc — no nested wrapper closure needed.
-	// For non-closure handlers (Callback, variables), we use into_event_handler.
-	if let syn::Expr::Closure(closure) = handler {
-		// Add ::web_sys::Event type annotation to the closure's first parameter.
-		// This replaces the previous nested wrapper pattern that caused FnOnce issues
-		// when the user's closure captured variables via `move` (#3322).
-		let mut modified = closure.clone();
-		if let Some(first_param) = modified.inputs.first_mut() {
-			match first_param {
-				syn::Pat::Type(pat_type) => {
-					// Already has type annotation — replace with web_sys::Event
-					*pat_type.ty = syn::parse_quote!(::web_sys::Event);
+/// Generates code for an intrinsic event handler.
+fn generate_event(
+	event: &IntrinsicEvent,
+	pages_crate: &TokenStream,
+	ctx: &CodegenContext,
+) -> TokenStream {
+	match event {
+		IntrinsicEvent::Standard { event, handler } => {
+			let spec = event.spec();
+			let event_ident = known_event_variant_ident(*event, handler.span());
+			let payload_ident = syn::Ident::new(spec.payload_name, handler.span());
+			let payload_type = quote! { #pages_crate::event::#payload_ident };
+			let lowered_handler = lower_intrinsic_closure(handler, payload_type.clone());
+			let lowered_handler = if matches!(handler, syn::Expr::Closure(_)) {
+				closure_expr_with_move_captures(&lowered_handler, pages_crate, ctx)
+			} else {
+				wrap_expr_with_captures(handler, pages_crate, ctx)
+			};
+
+			if is_async_closure(handler) {
+				quote! {
+					.on(
+						#pages_crate::event::KnownEvent::#event_ident,
+						#pages_crate::callback::typed_async_event_handler::<#payload_type, _, _>(#lowered_handler)
+					)
 				}
-				other => {
-					// No type annotation — wrap in PatType
-					let pat = other.clone();
-					*other = syn::Pat::Type(syn::PatType {
-						attrs: vec![],
-						pat: Box::new(pat),
-						colon_token: Default::default(),
-						ty: Box::new(syn::parse_quote!(::web_sys::Event)),
-					});
+			} else {
+				quote! {
+					.on(
+						#pages_crate::event::KnownEvent::#event_ident,
+						#pages_crate::callback::typed_event_handler::<#payload_type, _>(#lowered_handler)
+					)
 				}
 			}
 		}
-		let typed_closure = syn::Expr::Closure(modified);
-		// The entire .on() call is cfg-gated to wasm32 only, because event handlers
-		// are no-ops on SSR and DummyEvent lacks web_sys::Event methods (#3312),
-		// and Signal is !Send+!Sync which conflicts with non-WASM bounds (#3315).
-		quote! {
-			.on(
-				#pages_crate::dom::EventType::#event_type_ident,
-				::std::sync::Arc::new(#typed_closure)
-			)
-		}
-	} else {
-		// For non-closure handlers (Callback, variables, etc.),
-		// use into_event_handler which handles all handler types correctly.
-		// Also cfg-gated to wasm32 only for the same reasons as above.
-		quote! {
-			.on(
-				#pages_crate::dom::EventType::#event_type_ident,
-				#pages_crate::callback::into_event_handler(#handler)
-			)
+		IntrinsicEvent::Custom { name, handler } => {
+			let raw_type = quote! { #pages_crate::platform::Event };
+			let lowered_handler = lower_intrinsic_closure(handler, raw_type);
+			let lowered_handler = if matches!(handler, syn::Expr::Closure(_)) {
+				closure_expr_with_move_captures(&lowered_handler, pages_crate, ctx)
+			} else {
+				wrap_expr_with_captures(handler, pages_crate, ctx)
+			};
+			let adapter = if is_async_closure(handler) {
+				quote! { #pages_crate::callback::raw_async_event_handler(#lowered_handler) }
+			} else {
+				quote! { #pages_crate::callback::raw_event_handler(#lowered_handler) }
+			};
+
+			quote! {
+				.on(
+					#pages_crate::event::EventName::Custom(::std::borrow::Cow::Borrowed(#name)),
+					#adapter
+				)
+			}
 		}
 	}
 }
@@ -498,14 +844,18 @@ fn generate_event(event: &PageEvent, pages_crate: &TokenStream) -> TokenStream {
 /// `IntoPage::into_page` consumes the value. Compose such values inline
 /// from their underlying data (or pass them in via a `Clone`able wrapper
 /// once Page-Clone lands) instead.
-fn generate_child(node: &TypedPageNode, pages_crate: &TokenStream) -> TokenStream {
+fn generate_child(
+	node: &TypedPageNode,
+	pages_crate: &TokenStream,
+	ctx: &CodegenContext,
+) -> TokenStream {
 	match node {
 		TypedPageNode::Text(text) => {
 			// Create a proper string literal token
 			let lit = LitStr::new(&text.content, Span::call_site());
 			quote!(#lit)
 		}
-		_ => generate_node(node, pages_crate),
+		_ => generate_node(node, pages_crate, ctx),
 	}
 }
 
@@ -529,9 +879,35 @@ fn generate_text(text: &PageText, pages_crate: &TokenStream) -> TokenStream {
 /// on the owned result is a no-op.
 fn generate_expression(expr: &PageExpression, pages_crate: &TokenStream) -> TokenStream {
 	let e = &expr.expr;
+	if is_i18n_t_macro_expr(e) {
+		return quote! {
+			#pages_crate::component::Page::text((#e).render_string())
+		};
+	}
 	quote! {
 		#pages_crate::component::IntoPage::into_page((#e).clone())
 	}
+}
+
+fn is_i18n_t_macro_expr(expr: &syn::Expr) -> bool {
+	let syn::Expr::Macro(expr_macro) = expr else {
+		return false;
+	};
+	let segments: Vec<_> = expr_macro
+		.mac
+		.path
+		.segments
+		.iter()
+		.map(|segment| segment.ident.to_string())
+		.collect();
+	matches!(
+		segments.as_slice(),
+		[crate_name, macro_name] if crate_name == "reinhardt_pages" && macro_name == "t"
+	) || matches!(
+		segments.as_slice(),
+		[crate_name, module_name, macro_name]
+			if crate_name == "reinhardt_pages" && module_name == "prelude" && macro_name == "t"
+	)
 }
 
 /// Generates code for an if node.
@@ -545,18 +921,22 @@ fn generate_expression(expr: &PageExpression, pages_crate: &TokenStream) -> Toke
 ///
 /// Future enhancements may include automatic Signal detection or explicit
 /// reactive syntax (e.g., `@if condition { ... }`).
-fn generate_if(if_node: &TypedPageIf, pages_crate: &TokenStream) -> TokenStream {
+fn generate_if(
+	if_node: &TypedPageIf,
+	pages_crate: &TokenStream,
+	ctx: &CodegenContext,
+) -> TokenStream {
 	let condition = &if_node.condition;
-	let then_branch = generate_if_branch(&if_node.then_branch, pages_crate);
+	let then_branch = generate_if_branch(&if_node.then_branch, pages_crate, ctx);
 
 	let else_branch = match &if_node.else_branch {
 		Some(TypedPageElse::Block(nodes)) => {
 			// else { ... } block - generate view directly
-			generate_if_branch(nodes, pages_crate)
+			generate_if_branch(nodes, pages_crate, ctx)
 		}
 		Some(TypedPageElse::If(nested_if)) => {
 			// else if { ... } - recursively generate another if
-			generate_if(nested_if, pages_crate)
+			generate_if(nested_if, pages_crate, ctx)
 		}
 		None => {
 			// No else branch - use Empty view
@@ -576,15 +956,19 @@ fn generate_if(if_node: &TypedPageIf, pages_crate: &TokenStream) -> TokenStream 
 }
 
 /// Generates code for an if branch (then or else block).
-fn generate_if_branch(nodes: &[TypedPageNode], pages_crate: &TokenStream) -> TokenStream {
+fn generate_if_branch(
+	nodes: &[TypedPageNode],
+	pages_crate: &TokenStream,
+	ctx: &CodegenContext,
+) -> TokenStream {
 	if nodes.is_empty() {
 		quote! { #pages_crate::component::Page::Empty }
 	} else if nodes.len() == 1 {
-		generate_node(&nodes[0], pages_crate)
+		generate_node(&nodes[0], pages_crate, ctx)
 	} else {
 		let node_tokens: Vec<TokenStream> = nodes
 			.iter()
-			.map(|n| generate_node(n, pages_crate))
+			.map(|n| generate_node(n, pages_crate, ctx))
 			.collect();
 		quote! {
 			#pages_crate::component::Page::fragment([#(#node_tokens),*])
@@ -603,26 +987,38 @@ fn generate_if_branch(nodes: &[TypedPageNode], pages_crate: &TokenStream) -> Tok
 /// with `Page::keyed_fragment<K: Into<String>, V: IntoPage>`, and the unkeyed
 /// branch yields `#body` (`Page`, which implements `IntoPage`) for
 /// `Page::fragment`.
-fn generate_for(for_node: &TypedPageFor, pages_crate: &TokenStream) -> TokenStream {
+fn generate_for(
+	for_node: &TypedPageFor,
+	pages_crate: &TokenStream,
+	ctx: &CodegenContext,
+) -> TokenStream {
 	let pat = &for_node.pat;
 	let iter = &for_node.iter;
-	let body = generate_if_branch(&for_node.body, pages_crate);
+	let body = generate_if_branch(&for_node.body, pages_crate, ctx);
+	let iteration_captures = ctx.captures_in_for_iteration(for_node);
+	let iteration_capture_statements = capture_statements(&iteration_captures, pages_crate);
 
 	if let Some(key) = &for_node.key {
 		quote! {
-			#pages_crate::component::Page::keyed_fragment(
-				(#iter).clone().into_iter().map(|#pat| {
-					(#key, #body)
-				}).collect::<::std::vec::Vec<_>>()
-			)
+			{
+				#(#iteration_capture_statements)*
+				#pages_crate::component::Page::keyed_fragment(
+					(#iter).clone().into_iter().map(move |#pat| {
+						(#key, #body)
+					}).collect::<::std::vec::Vec<_>>()
+				)
+			}
 		}
 	} else {
 		quote! {
-			#pages_crate::component::Page::fragment(
-				(#iter).clone().into_iter().map(|#pat| {
-					#body
-				}).collect::<::std::vec::Vec<_>>()
-			)
+			{
+				#(#iteration_capture_statements)*
+				#pages_crate::component::Page::fragment(
+					(#iter).clone().into_iter().map(move |#pat| {
+						#body
+					}).collect::<::std::vec::Vec<_>>()
+				)
+			}
 		}
 	}
 }
@@ -650,15 +1046,23 @@ fn generate_for(for_node: &TypedPageFor, pages_crate: &TokenStream) -> TokenStre
 /// ```text
 /// Page::reactive(move || {
 ///     if signal.get() > 0 {
-///         ElementView::new("div").child("Positive").into_view()
+///         PageElement::new("div").child("Positive").into_page()
 ///     } else {
-///         ElementView::new("div").child("Non-positive").into_view()
+///         PageElement::new("div").child("Non-positive").into_page()
 ///     }
 /// })
 /// ```
-fn generate_watch(watch_node: &TypedPageWatch, pages_crate: &TokenStream) -> TokenStream {
-	let inner_expr = generate_node(&watch_node.expr, pages_crate);
-	wrap_reactive(inner_expr, pages_crate)
+fn generate_watch(
+	watch_node: &TypedPageWatch,
+	pages_crate: &TokenStream,
+	ctx: &CodegenContext,
+) -> TokenStream {
+	let inner_expr = generate_node(&watch_node.expr, pages_crate, ctx);
+	wrap_reactive(
+		inner_expr,
+		pages_crate,
+		&ctx.captures_in_node(&watch_node.expr),
+	)
 }
 
 /// Wraps a generated TokenStream in `Page::reactive(move || ...)`.
@@ -666,11 +1070,19 @@ fn generate_watch(watch_node: &TypedPageWatch, pages_crate: &TokenStream) -> Tok
 /// This is the single point of truth for spec §4.1 auto-wrap. Used by
 /// `generate_expression`, `generate_if`, `generate_for`, and (kept for
 /// backward compat) `generate_watch`.
-fn wrap_reactive(inner: TokenStream, pages_crate: &TokenStream) -> TokenStream {
+fn wrap_reactive(
+	inner: TokenStream,
+	pages_crate: &TokenStream,
+	captures: &[syn::Ident],
+) -> TokenStream {
+	let capture_statements = capture_statements(captures, pages_crate);
 	quote! {
-		#pages_crate::component::Page::reactive(move || {
-			#inner
-		})
+		{
+			#(#capture_statements)*
+			#pages_crate::component::Page::reactive(move || {
+				#inner
+			})
+		}
 	}
 }
 
@@ -679,10 +1091,14 @@ fn wrap_reactive(inner: TokenStream, pages_crate: &TokenStream) -> TokenStream {
 /// Branches on [`ComponentInvocationForm`]: the legacy positional form is
 /// emitted as a direct function call (spec §3.5 backward-compat), while the
 /// brace form is emitted as a `bon::Builder` chain per spec §3.5.3.
-fn generate_component(comp: &TypedPageComponent, pages_crate: &TokenStream) -> TokenStream {
+fn generate_component(
+	comp: &TypedPageComponent,
+	pages_crate: &TokenStream,
+	ctx: &CodegenContext,
+) -> TokenStream {
 	match comp.invocation_form {
-		ComponentInvocationForm::Paren => generate_component_paren(comp, pages_crate),
-		ComponentInvocationForm::Brace => generate_component_brace(comp, pages_crate),
+		ComponentInvocationForm::Paren => generate_component_paren(comp, pages_crate, ctx),
+		ComponentInvocationForm::Brace => generate_component_brace(comp, pages_crate, ctx),
 	}
 }
 
@@ -697,16 +1113,17 @@ fn generate_component(comp: &TypedPageComponent, pages_crate: &TokenStream) -> T
 /// // Generated code
 /// MyButton("Click", false)
 /// ```
-fn generate_component_paren(comp: &TypedPageComponent, pages_crate: &TokenStream) -> TokenStream {
+fn generate_component_paren(
+	comp: &TypedPageComponent,
+	pages_crate: &TokenStream,
+	ctx: &CodegenContext,
+) -> TokenStream {
 	let name = &comp.name;
 
 	let args: Vec<TokenStream> = comp
 		.args
 		.iter()
-		.map(|arg| {
-			let value = &arg.value;
-			quote! { #value }
-		})
+		.map(|arg| wrap_expr_with_captures(&arg.value, pages_crate, ctx))
 		.collect();
 
 	// Build the base function call: Component(args...)
@@ -718,7 +1135,7 @@ fn generate_component_paren(comp: &TypedPageComponent, pages_crate: &TokenStream
 
 	// Generate children setter if present
 	let children_setter = comp.children.as_ref().map(|children| {
-		let children_view = generate_if_branch(children, pages_crate);
+		let children_view = generate_if_branch(children, pages_crate, ctx);
 		quote! { .children (#children_view) }
 	});
 
@@ -729,7 +1146,7 @@ fn generate_component_paren(comp: &TypedPageComponent, pages_crate: &TokenStream
 		.map(|slot| {
 			let setter_name = slot_name_to_snake_case(&slot.name.to_string());
 			let setter_ident = syn::Ident::new(&setter_name, slot.name.span());
-			let slot_view = generate_if_branch(&slot.children, pages_crate);
+			let slot_view = generate_if_branch(&slot.children, pages_crate, ctx);
 			quote! { .#setter_ident (#slot_view) }
 		})
 		.collect();
@@ -797,7 +1214,11 @@ fn slot_name_to_snake_case(name: &str) -> String {
 ///     .children(<p_element_view>)
 ///     .build())
 /// ```
-fn generate_component_brace(comp: &TypedPageComponent, pages_crate: &TokenStream) -> TokenStream {
+fn generate_component_brace(
+	comp: &TypedPageComponent,
+	pages_crate: &TokenStream,
+	ctx: &CodegenContext,
+) -> TokenStream {
 	let props_ty = props_struct_name(&comp.name);
 	let fn_name = component_fn_name(&comp.name);
 
@@ -807,7 +1228,7 @@ fn generate_component_brace(comp: &TypedPageComponent, pages_crate: &TokenStream
 		.iter()
 		.map(|arg| {
 			let n = &arg.name;
-			let v = &arg.value;
+			let v = wrap_expr_with_captures(&arg.value, pages_crate, ctx);
 			quote! { .#n(#v) }
 		})
 		.collect();
@@ -817,8 +1238,8 @@ fn generate_component_brace(comp: &TypedPageComponent, pages_crate: &TokenStream
 		.events
 		.iter()
 		.map(|ev| {
-			let on_name = syn::Ident::new(&format!("on_{}", ev.event_type), ev.event_type.span());
-			let h = &ev.handler;
+			let on_name = syn::Ident::new(&format!("on_{}", ev.name), ev.name.span());
+			let h = closure_expr_with_move_captures(&ev.handler, pages_crate, ctx);
 			quote! { .#on_name(#h) }
 		})
 		.collect();
@@ -831,11 +1252,14 @@ fn generate_component_brace(comp: &TypedPageComponent, pages_crate: &TokenStream
 	let children_setter = match &comp.children {
 		None => quote! {},
 		Some(cs) if cs.len() == 1 => {
-			let one = generate_node(&cs[0], pages_crate);
+			let one = generate_node(&cs[0], pages_crate, ctx);
 			quote! { .children(#one) }
 		}
 		Some(cs) => {
-			let many: Vec<TokenStream> = cs.iter().map(|c| generate_node(c, pages_crate)).collect();
+			let many: Vec<TokenStream> = cs
+				.iter()
+				.map(|c| generate_node(c, pages_crate, ctx))
+				.collect();
 			quote! {
 				.children(
 					#pages_crate::component::Page::fragment(::std::vec![ #(#many),* ])
@@ -851,7 +1275,7 @@ fn generate_component_brace(comp: &TypedPageComponent, pages_crate: &TokenStream
 		.map(|slot| {
 			let setter_name = slot_name_to_snake_case(&slot.name.to_string());
 			let setter_ident = syn::Ident::new(&setter_name, slot.name.span());
-			let slot_view = generate_if_branch(&slot.children, pages_crate);
+			let slot_view = generate_if_branch(&slot.children, pages_crate, ctx);
 			quote! { .#setter_ident (#slot_view) }
 		})
 		.collect();
@@ -949,6 +1373,88 @@ mod tests {
 		assert!(output_str.contains(". with_attrs"));
 		assert!(output_str.contains("\"class\""));
 		assert!(output_str.contains("\"container\""));
+	}
+
+	#[test]
+	fn test_generate_standard_event_uses_catalog_typed_adapter() {
+		let input = quote::quote!(|| {
+			button { @click: |event| { let _ = event; }, "Click" }
+		});
+
+		let output = parse_and_generate(input).to_string();
+
+		assert!(output.contains(". on"));
+		assert!(output.contains("event :: KnownEvent :: Click"));
+		assert!(output.contains("event :: ClickEvent"));
+		assert!(output.contains("callback :: typed_event_handler"));
+		assert!(!output.contains("cfg"));
+	}
+
+	macro_rules! assert_catalog_lowering_parity {
+		(
+			$(
+				$kind:ident,
+				$dom_name:literal,
+				$payload:ident,
+				$interface:ident,
+				[$($fallback:ident),* $(,)?],
+				[$($capability:ident),* $(,)?],
+				$bubbles:literal,
+				$cancelable:literal,
+				$composed:literal,
+				$fixture_defaults:ident;
+			)*
+		) => {
+			#[test]
+			fn every_catalog_event_has_a_macro_lowering_variant() {
+				$(
+					assert_eq!(
+						known_event_variant_ident(KnownEvent::$kind, Span::call_site()).to_string(),
+						stringify!($kind),
+					);
+				)*
+			}
+		};
+	}
+
+	reinhardt_event_catalog::__reinhardt_event_catalog!(assert_catalog_lowering_parity);
+
+	#[test]
+	fn test_generate_async_standard_event_uses_typed_async_adapter() {
+		let input = quote::quote!(|| {
+			button { @click: async |event| { let _ = event; }, "Click" }
+		});
+
+		let output = parse_and_generate(input).to_string();
+
+		assert!(output.contains("callback :: typed_async_event_handler"));
+		assert!(output.contains("event :: ClickEvent"));
+	}
+
+	#[test]
+	fn test_generate_zero_argument_standard_event_adds_typed_parameter() {
+		let input = quote::quote!(|| {
+			button { @click: || {}, "Click" }
+		});
+
+		let output = parse_and_generate(input).to_string();
+
+		assert!(output.contains("_event"));
+		assert!(output.contains("event :: ClickEvent"));
+		assert!(output.contains("callback :: typed_event_handler"));
+	}
+
+	#[test]
+	fn test_generate_custom_event_uses_raw_adapter() {
+		let input = quote::quote!(|| {
+			div { @custom("item-selected"): |event| { let _ = event; }, }
+		});
+
+		let output = parse_and_generate(input).to_string();
+
+		assert!(output.contains("event :: EventName :: Custom"));
+		assert!(output.contains("\"item-selected\""));
+		assert!(output.contains("callback :: raw_event_handler"));
 	}
 
 	#[test]
@@ -1092,5 +1598,61 @@ mod tests {
 		// No builder chain for simple component
 		assert!(output_str.contains("MyButton"));
 		assert!(!output_str.contains(". build ()"));
+	}
+
+	#[test]
+	fn test_for_key_capture_scope_uses_loop_local() {
+		let input = quote::quote!({
+			div {
+				{ item.clone() }
+				for item in items @key(item.clone()) {
+					li { { item.clone() } }
+				}
+			}
+		});
+		let untyped_ast: reinhardt_manouche::core::PageMacro = syn::parse2(input).unwrap();
+		let typed_ast = crate::page::validator::validate(&untyped_ast).unwrap();
+		let for_node = match &typed_ast.body().nodes[0] {
+			TypedPageNode::Element(element) => &element.children[1],
+			_ => panic!("expected root element"),
+		};
+		let ctx = CodegenContext::new(typed_ast.implicit_captures());
+
+		let captures: Vec<String> = ctx
+			.captures_in_node(for_node)
+			.into_iter()
+			.map(|ident| ident.to_string())
+			.collect();
+
+		assert_eq!(captures, vec!["items"]);
+	}
+
+	#[test]
+	fn test_for_key_iteration_captures_macro_arguments() {
+		let input = quote::quote!({
+			ul {
+				for todo in todos @key(format!("{}:{}", selected.as_str(), todo.id)) {
+					li { { todo.title.clone() } }
+				}
+			}
+		});
+		let untyped_ast: reinhardt_manouche::core::PageMacro = syn::parse2(input).unwrap();
+		let typed_ast = crate::page::validator::validate(&untyped_ast).unwrap();
+		let for_node = match &typed_ast.body().nodes[0] {
+			TypedPageNode::Element(element) => &element.children[0],
+			_ => panic!("expected root element"),
+		};
+		let TypedPageNode::For(for_node) = for_node else {
+			panic!("expected for node");
+		};
+		let ctx = CodegenContext::new(typed_ast.implicit_captures());
+
+		let captures: Vec<String> = ctx
+			.captures_in_for_iteration(for_node)
+			.into_iter()
+			.map(|ident| ident.to_string())
+			.collect();
+
+		assert_eq!(captures, vec!["selected"]);
 	}
 }

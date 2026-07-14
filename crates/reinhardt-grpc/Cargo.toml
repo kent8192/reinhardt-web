@@ -43,3 +43,5 @@ tokio-test = { workspace = true }
 rstest = { workspace = true }
 tracing = { workspace = true }
 toml = { workspace = true }
+tempfile = { workspace = true }
+serial_test = { workspace = true }
