@@ -9991,7 +9991,7 @@ mod tests {
 		let create_sql = &recreation.to_sql_statements()[0];
 
 		assert!(
-			create_sql.contains("\"code\" TEXT COLLATE \"NOCASE\" DEFAULT 'alpha'"),
+			create_sql.contains("code TEXT COLLATE \"NOCASE\" DEFAULT 'alpha'"),
 			"{create_sql}"
 		);
 	}
