@@ -104,6 +104,7 @@ impl std::fmt::Debug for ControlBindingController {
 #[derive(Default)]
 struct CompositionState {
 	composing: bool,
+	applying_input: bool,
 	skip_next_input: Option<ControlValue>,
 	number_editor: Option<NumberEditorState>,
 }
@@ -119,6 +120,8 @@ struct NumberEditorState {
 struct EditorSelection {
 	start: usize,
 	end: usize,
+	anchor: usize,
+	focus: usize,
 }
 
 struct PendingNumberEdit {
@@ -181,12 +184,16 @@ fn install_effect(
 			if first_run.replace(false) {
 				return;
 			}
-			if let (ControlKind::Number, ControlValue::Text(raw)) = (binding.kind(), &value)
-				&& let Some(editor) = &mut state.borrow_mut().number_editor
 			{
-				editor.raw.clone_from(raw);
-				editor.selection = Some(EditorSelection::collapsed(raw.len()));
-				editor.pending_edit = None;
+				let mut state = state.borrow_mut();
+				if !state.applying_input
+					&& let (ControlKind::Number, ControlValue::Text(raw)) = (binding.kind(), &value)
+					&& let Some(editor) = &mut state.number_editor
+				{
+					editor.raw.clone_from(raw);
+					editor.selection = Some(EditorSelection::collapsed(raw.len()));
+					editor.pending_edit = None;
+				}
 			}
 			let _ = write_control(&element, binding.kind(), &value);
 		},
@@ -221,6 +228,31 @@ fn install_listeners(
 	match binding.kind() {
 		ControlKind::Text | ControlKind::Number => {
 			if binding.kind() == ControlKind::Number {
+				let key_state = Rc::clone(&state);
+				listeners.push(
+					element.add_event_listener_with_event("keydown", move |event| {
+						let Some(keyboard) = event.dyn_ref::<web_sys::KeyboardEvent>() else {
+							return;
+						};
+						let mut state = key_state.borrow_mut();
+						let Some(editor) = &mut state.number_editor else {
+							return;
+						};
+						move_number_selection(editor, &keyboard.key(), keyboard.shift_key());
+					}),
+				);
+
+				for event_name in ["pointerdown", "mousedown"] {
+					let pointer_state = Rc::clone(&state);
+					listeners.push(element.add_event_listener_with_event(event_name, move |_| {
+						let mut state = pointer_state.borrow_mut();
+						if let Some(editor) = &mut state.number_editor {
+							editor.selection = None;
+							editor.pending_edit = None;
+						}
+					}));
+				}
+
 				let before_state = Rc::clone(&state);
 				let before_element = element.clone();
 				listeners.push(element.add_event_listener_with_event(
@@ -240,12 +272,14 @@ fn install_listeners(
 							return;
 						};
 						let live = input.value();
-						if !live.is_empty() {
+						if !live.is_empty() && live != editor.raw {
+							editor.selection = infer_selection_after_live_edit(&editor.raw, &live);
 							editor.raw = live;
 						}
-						let selection = input_selection(input)
-							.or(editor.selection)
-							.unwrap_or_else(|| EditorSelection::collapsed(editor.raw.len()));
+						let Some(selection) = input_selection(input).or(editor.selection) else {
+							editor.pending_edit = None;
+							return;
+						};
 						editor.pending_edit = edit_number_raw(
 							&editor.raw,
 							selection,
@@ -290,7 +324,7 @@ fn install_listeners(
 						}
 						return;
 					}
-					let _ = input_binding.write(value);
+					let _ = write_binding_from_input(&input_binding, &input_state, value);
 				}),
 			);
 
@@ -319,7 +353,7 @@ fn install_listeners(
 						return;
 					};
 					end_state.borrow_mut().skip_next_input = Some(value.clone());
-					let _ = end_binding.write(value);
+					let _ = write_binding_from_input(&end_binding, &end_state, value);
 				}),
 			);
 		}
@@ -341,25 +375,125 @@ fn install_listeners(
 	(listeners, state)
 }
 
+struct ApplyingInputGuard {
+	state: Rc<RefCell<CompositionState>>,
+}
+
+impl ApplyingInputGuard {
+	fn new(state: &Rc<RefCell<CompositionState>>) -> Self {
+		state.borrow_mut().applying_input = true;
+		Self {
+			state: Rc::clone(state),
+		}
+	}
+}
+
+impl Drop for ApplyingInputGuard {
+	fn drop(&mut self) {
+		self.state.borrow_mut().applying_input = false;
+	}
+}
+
+fn write_binding_from_input(
+	binding: &ControlBinding,
+	state: &Rc<RefCell<CompositionState>>,
+	value: ControlValue,
+) -> Result<crate::component::ControlWriteOutcome, ControlBindingError> {
+	let _guard = ApplyingInputGuard::new(state);
+	binding.write(value)
+}
+
 impl EditorSelection {
 	fn collapsed(position: usize) -> Self {
 		Self {
 			start: position,
 			end: position,
+			anchor: position,
+			focus: position,
 		}
 	}
 
 	fn clamped(self, len: usize) -> Self {
 		let start = self.start.min(len);
 		let end = self.end.min(len).max(start);
-		Self { start, end }
+		Self {
+			start,
+			end,
+			anchor: self.anchor.min(len),
+			focus: self.focus.min(len),
+		}
 	}
 }
 
 fn input_selection(input: &web_sys::HtmlInputElement) -> Option<EditorSelection> {
 	let start = input.selection_start().ok().flatten()? as usize;
 	let end = input.selection_end().ok().flatten()? as usize;
-	Some(EditorSelection { start, end })
+	Some(EditorSelection {
+		start,
+		end,
+		anchor: start,
+		focus: end,
+	})
+}
+
+fn move_number_selection(editor: &mut NumberEditorState, key: &str, shift: bool) {
+	let Some(selection) = editor.selection else {
+		if key == "Home" {
+			editor.selection = Some(EditorSelection::collapsed(0));
+		} else if key == "End" {
+			editor.selection = Some(EditorSelection::collapsed(editor.raw.len()));
+		}
+		return;
+	};
+	let position = if shift {
+		match key {
+			"ArrowLeft" => previous_char_boundary(&editor.raw, selection.focus),
+			"ArrowRight" => next_char_boundary(&editor.raw, selection.focus),
+			"Home" => 0,
+			"End" => editor.raw.len(),
+			_ => return,
+		}
+	} else {
+		match key {
+			"ArrowLeft" if selection.start != selection.end => selection.start,
+			"ArrowLeft" => previous_char_boundary(&editor.raw, selection.focus),
+			"ArrowRight" if selection.start != selection.end => selection.end,
+			"ArrowRight" => next_char_boundary(&editor.raw, selection.focus),
+			"Home" => 0,
+			"End" => editor.raw.len(),
+			_ => return,
+		}
+	};
+	if shift {
+		editor.selection = Some(EditorSelection {
+			start: selection.anchor.min(position),
+			end: selection.anchor.max(position),
+			anchor: selection.anchor,
+			focus: position,
+		});
+	} else {
+		editor.selection = Some(EditorSelection::collapsed(position));
+	}
+}
+
+fn infer_selection_after_live_edit(old: &str, new: &str) -> Option<EditorSelection> {
+	if old == new {
+		return None;
+	}
+	let prefix = old
+		.bytes()
+		.zip(new.bytes())
+		.take_while(|(old, new)| old == new)
+		.count();
+	let max_suffix = old.len().min(new.len()).saturating_sub(prefix);
+	let suffix = old
+		.bytes()
+		.rev()
+		.zip(new.bytes().rev())
+		.take(max_suffix)
+		.take_while(|(old, new)| old == new)
+		.count();
+	Some(EditorSelection::collapsed(new.len() - suffix))
 }
 
 fn input_event_text(event: &web_sys::InputEvent) -> Option<String> {
@@ -466,10 +600,10 @@ fn capture_number_input_raw(
 	let mut state = state.borrow_mut();
 	let editor = state.number_editor.as_mut()?;
 	let raw = if !live.is_empty() {
-		let pending = editor.pending_edit.take();
+		editor.pending_edit = None;
 		editor.selection = input_selection(input)
-			.or_else(|| pending.map(|edit| edit.selection))
-			.or_else(|| Some(EditorSelection::collapsed(live.len())));
+			.or_else(|| infer_selection_after_live_edit(&editor.raw, &live))
+			.or(editor.selection);
 		live
 	} else if let Some(pending) = editor.pending_edit.take() {
 		editor.selection = Some(pending.selection);
@@ -477,6 +611,7 @@ fn capture_number_input_raw(
 	} else if allow_editor_fallback {
 		editor.raw.clone()
 	} else {
+		editor.selection = None;
 		String::new()
 	};
 	editor.raw.clone_from(&raw);
