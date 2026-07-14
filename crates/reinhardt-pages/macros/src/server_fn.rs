@@ -611,10 +611,12 @@ fn add_native_mock_probe(
 					if let Some(__mock_result) =
 						#pages_crate::server_fn::try_call_active_mock::<#name::marker>(__args)
 					{
-						match __mock_result {
-							Ok(__mock_value) => return Ok(__mock_value),
-							Err(__mock_error) => return Err(__mock_error),
-						}
+							match __mock_result {
+								Ok(__mock_value) => return Ok(__mock_value),
+								Err(__mock_error) => {
+									return Err(::std::convert::Into::into(__mock_error));
+								}
+							}
 					}
 				}
 			}
@@ -1382,15 +1384,16 @@ fn generate_server_handler(
 	let msw_enabled = cfg!(feature = "msw");
 
 	let result_types = extract_result_types(return_type);
-	let emits_typed_response_metadata =
-		info.emits_typed_response_metadata() && result_types.is_some();
-	let (response_type, error_type) = result_types.unwrap_or_else(|| (quote! {}, quote! {}));
+	let emits_msw_metadata = info.emits_typed_response_metadata();
+	let emits_typed_response_metadata = emits_msw_metadata && result_types.is_some();
+	let (metadata_response_type, metadata_error_type) =
+		result_types.unwrap_or_else(|| (quote! {}, quote! {}));
 	let response_metadata_type_aliases = if emits_typed_response_metadata {
 		quote! {
 			#[doc(hidden)]
-			#vis type #response_alias = #response_type;
+			#vis type #response_alias = #metadata_response_type;
 			#[doc(hidden)]
-			#vis type #error_alias = #error_type;
+			#vis type #error_alias = #metadata_error_type;
 		}
 	} else {
 		quote! {}
@@ -1437,15 +1440,202 @@ fn generate_server_handler(
 		})
 		.collect();
 	let uses_response_cookie_jar = !inject_params.is_empty() || !extractor_params.is_empty();
+	let regular_param_idents: Vec<_> = regular_params
+		.iter()
+		.filter_map(|p| {
+			if let syn::Pat::Ident(pat_ident) = &*p.pat {
+				Some(pat_ident.ident.clone())
+			} else {
+				None
+			}
+		})
+		.collect();
+	let query_arg_generics: Vec<_> = (0..regular_param_idents.len())
+		.map(|index| quote::format_ident!("QueryArg{index}"))
+		.collect();
+	let key_generics = if query_arg_generics.is_empty() {
+		quote! {}
+	} else {
+		quote! { <#(#query_arg_generics),*> }
+	};
+	let query_param_bounds: Vec<_> = query_arg_generics
+		.iter()
+		.zip(regular_param_types.iter())
+		.map(|(generic, ty)| {
+			quote! {
+				#generic: #pages_crate::server_fn::ServerFnQueryArg<#ty>
+			}
+		})
+		.collect();
+	let key_where_clause = quote! {
+		where
+			#return_type: #pages_crate::server_fn::ServerFnQueryResult,
+			#(#query_param_bounds,)*
+	};
+	let query_result_conversion = |call: proc_macro2::TokenStream| {
+		quote! {
+			#pages_crate::server_fn::ServerFnQueryResult::into_query_result(#call)
+		}
+	};
+	let regular_query_call = query_result_conversion(quote! {
+		super::#name(
+			#(#pages_crate::server_fn::ServerFnQueryArg::into_query_arg(#regular_param_idents)),*
+		).await
+	});
+	let clone_query_args = quote! {
+		let (#(#regular_param_idents,)*) = (*__query_fetch_args).clone();
+	};
+	let native_query_call = if has_inject_or_extractor {
+		quote! {
+			::std::panic!(
+				concat!(
+					"server function `",
+					#name_str,
+					"` query cannot run natively because it has injected or extractor parameters",
+				),
+			)
+		}
+	} else {
+		regular_query_call.clone()
+	};
+	let query_response_type = quote! {
+		<#return_type as #pages_crate::server_fn::ServerFnQueryResult>::Response
+	};
+	let query_fetcher = if has_inject_or_extractor && emits_msw_metadata {
+		quote! {
+			{
+				let __query_fetch_args = ::std::rc::Rc::new((#(#regular_param_idents,)*));
+				move || {
+					let __query_fetch_args = ::std::rc::Rc::clone(&__query_fetch_args);
+					async move {
+					#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+					{
+						#clone_query_args
+						#regular_query_call
+					}
+
+					#[cfg(all(not(all(target_family = "wasm", target_os = "unknown")), feature = "msw"))]
+					{
+						let __args = {
+							let (#(#regular_param_idents,)*) =
+								(*::std::rc::Rc::clone(&__query_fetch_args)).clone();
+							Args {
+								#(
+									#regular_param_names: #pages_crate::server_fn::ServerFnQueryArg::into_query_arg(#regular_param_idents)
+								),*
+							}
+						};
+						if let Some(__mock_result) =
+							#pages_crate::server_fn::try_call_active_mock::<marker>(__args)
+						{
+							match __mock_result {
+								Ok(__mock_value) => return Ok(__mock_value),
+								Err(__mock_error) => {
+									return Err(::std::convert::Into::into(__mock_error));
+								}
+							}
+						}
+						#clone_query_args
+						#native_query_call
+					}
+
+					#[cfg(all(not(all(target_family = "wasm", target_os = "unknown")), not(feature = "msw")))]
+					{
+						#clone_query_args
+						#native_query_call
+					}
+				}
+				}
+			}
+		}
+	} else if has_inject_or_extractor {
+		quote! {
+			{
+				let __query_fetch_args = ::std::rc::Rc::new((#(#regular_param_idents,)*));
+				move || {
+					let __query_fetch_args = ::std::rc::Rc::clone(&__query_fetch_args);
+					async move {
+						#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+						{
+							#clone_query_args
+							#regular_query_call
+						}
+
+						#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+						{
+							#clone_query_args
+							#native_query_call
+						}
+					}
+				}
+			}
+		}
+	} else {
+		quote! {
+			{
+				let __query_fetch_args = ::std::rc::Rc::new((#(#regular_param_idents,)*));
+				move || {
+					let __query_fetch_args = ::std::rc::Rc::clone(&__query_fetch_args);
+					async move {
+						#clone_query_args
+						#regular_query_call
+					}
+				}
+			}
+		}
+	};
+	let query_ssr_policy = if has_inject_or_extractor {
+		quote! { __query_key.with_ssr_prefetch(false) }
+	} else {
+		quote! { __query_key }
+	};
+	let private_interfaces_allowance = if info.allows_private_interfaces() {
+		quote! { #[allow(private_interfaces)] }
+	} else {
+		quote! {}
+	};
+	let key_cfg_allowances = if has_inject_or_extractor {
+		quote! { #[allow(unused_variables, unexpected_cfgs)] }
+	} else {
+		quote! {}
+	};
+	let query_key_tokens = quote! {
+		/// Builds a typed cache key for this server function and argument set.
+		// The generated signature mirrors endpoints that deliberately allow private
+		// request or response types on the source server function.
+		// Injected and extractor-only native paths intentionally cannot consume the
+		// client-visible arguments outside MSW or WASM builds, and consumer crates
+		// may intentionally omit the optional `msw` feature checked in the body.
+		#private_interfaces_allowance
+		#key_cfg_allowances
+		pub fn key #key_generics(
+			#(#regular_param_idents: #query_arg_generics),*
+		) -> #pages_crate::reactive::QueryKey<
+			<#return_type as #pages_crate::server_fn::ServerFnQueryResult>::Response,
+			<#return_type as #pages_crate::server_fn::ServerFnQueryResult>::Error,
+		>
+		#key_where_clause
+		{
+			let __query_args = (#(#regular_param_idents.clone(),)*);
+			let __query_key = #pages_crate::reactive::QueryKey::from_server_fn::<marker, _, _, _>(
+				__query_args,
+				#query_fetcher,
+			);
+			#query_ssr_policy
+		}
+	};
 
 	// MSW: Generate server-side MockableServerFn tokens only when msw feature is enabled
-	let msw_server_tokens = if msw_enabled && emits_typed_response_metadata {
+	let msw_server_tokens = if msw_enabled && emits_msw_metadata {
 		quote! {
 			mod __msw {
 				// Generated MSW support may expand in crates that do not declare every
 				// optional cfg name used by this framework.
 				#![allow(unexpected_cfgs)]
 
+				// Import signature-local aliases and private types from the server function.
+				#[allow(unused_imports)]
+				use super::super::*;
 				use ::serde::{Serialize, Deserialize};
 
 				/// Public Args struct for MSW type-safe mocking.
@@ -1459,7 +1649,7 @@ fn generate_server_handler(
 
 			impl #pages_crate::server_fn::MockableServerFn for marker {
 				type Args = Args;
-				type Response = super::#response_alias;
+				type Response = #query_response_type;
 			}
 		}
 	} else {
@@ -1475,19 +1665,22 @@ fn generate_server_handler(
 	// the `MockableServerFn` impl whose trait isn't in scope for them.
 	// `#[allow(unexpected_cfgs)]` keeps the cfg quiet in consumer crates
 	// that don't themselves declare an `msw` feature.
-	let msw_wasm_inner_tokens = if msw_enabled && emits_typed_response_metadata {
+	let msw_wasm_inner_tokens = if msw_enabled && emits_msw_metadata {
 		quote! {
 			mod __msw {
 				// Generated MSW support may expand in crates that do not declare every
 				// optional cfg name used by this framework.
 				#![allow(unexpected_cfgs)]
+				// Import signature-local aliases and private types from the server function.
+				#[allow(unused_imports)]
+				use super::super::*;
 
 				#[cfg(feature = "msw")]
 				mod args {
 					// The generated args module reuses caller-local type paths from the
 					// original server function signature.
 					#[allow(unused_imports)]
-					use super::super::*;
+					use super::super::super::*;
 					use ::serde::{Serialize, Deserialize};
 
 					/// Public Args struct for MSW type-safe mocking.
@@ -1503,7 +1696,7 @@ fn generate_server_handler(
 				#[cfg(feature = "msw")]
 				impl #pages_crate::server_fn::MockableServerFn for super::marker {
 					type Args = Args;
-					type Response = super::super::#response_alias;
+					type Response = #query_response_type;
 				}
 			}
 
@@ -1555,6 +1748,7 @@ fn generate_server_handler(
 
 			#response_metadata_impl
 			#request_metadata_impl
+			#query_key_tokens
 
 			#msw_wasm_inner_tokens
 		}
@@ -1697,6 +1891,8 @@ fn generate_server_handler(
 				}
 			}
 
+			#query_key_tokens
+
 			// MSW: server-side MockableServerFn (conditionally generated; Issue #3673)
 			#msw_server_tokens
 		}
@@ -1707,6 +1903,7 @@ fn generate_server_handler(
 	}
 }
 
+/// Extracts both result types when the return type is a direct `Result<T, E>`.
 fn extract_result_types(
 	return_type: &syn::Type,
 ) -> Option<(proc_macro2::TokenStream, proc_macro2::TokenStream)> {
