@@ -26,7 +26,7 @@ prettyplease = "0.2"
 colored = { workspace = true }
 ctrlc = "3.4"
 regex = "1.10"
-anyhow = { workspace = true }
+thiserror = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3.8"
