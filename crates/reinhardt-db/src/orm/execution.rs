@@ -31,9 +31,9 @@ pub enum ExecutionResult<T> {
 #[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 pub enum ExecutionError {
-	/// Database error
-	#[error("Database error: {0}")]
-	Database(#[from] crate::backends::DatabaseError),
+	/// Framework error
+	#[error("Framework error: {0}")]
+	Framework(#[from] reinhardt_core::exception::Error),
 
 	/// No result found (for .one())
 	#[error("No result found")]
@@ -50,10 +50,6 @@ pub enum ExecutionError {
 	/// Query building error
 	#[error("Query building error: {0}")]
 	QueryBuild(String),
-
-	/// Generic error from anyhow
-	#[error("Generic error: {0}")]
-	Generic(#[from] anyhow::Error),
 }
 
 /// Convert reinhardt_query Value to QueryValue for parameter binding

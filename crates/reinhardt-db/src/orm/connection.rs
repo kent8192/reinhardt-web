@@ -4,6 +4,7 @@
 //! the backend-specific connection implementations.
 
 use async_trait::async_trait;
+use reinhardt_core::exception::{DatabaseError, DatabaseErrorKind, Result};
 
 /// Re-export backends types
 pub use crate::backends::connection::DatabaseConnection as BackendsConnection;
@@ -93,7 +94,9 @@ impl QueryRow {
 		}
 	}
 
-	pub(crate) fn deserialize_model<M: super::Model>(&self) -> Result<M, serde_json::Error> {
+	pub(crate) fn deserialize_model<M: super::Model>(
+		&self,
+	) -> std::result::Result<M, serde_json::Error> {
 		super::json::deserialize_model_row::<M>(
 			self.data.clone(),
 			self.json_null_fields.clone(),
@@ -116,9 +119,9 @@ impl QueryRow {
 /// Trait defining database executor behavior.
 pub trait DatabaseExecutor: Send + Sync {
 	/// Executes a SQL statement and returns the number of affected rows.
-	async fn execute(&self, sql: &str) -> Result<u64, anyhow::Error>;
+	async fn execute(&self, sql: &str) -> Result<u64>;
 	/// Executes a SQL query and returns the resulting rows.
-	async fn query(&self, sql: &str) -> Result<Vec<QueryRow>, anyhow::Error>;
+	async fn query(&self, sql: &str) -> Result<Vec<QueryRow>>;
 }
 
 /// Database connection wrapper
@@ -151,7 +154,7 @@ impl DatabaseConnection {
 	/// # }
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
 	/// ```
-	pub async fn connect(url: &str) -> Result<Self, anyhow::Error> {
+	pub async fn connect(url: &str) -> Result<Self> {
 		Self::connect_with_pool_size(url, None).await
 	}
 
@@ -168,7 +171,7 @@ impl DatabaseConnection {
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
 	/// ```
 	#[cfg(feature = "postgres")]
-	pub async fn connect_postgres(url: &str) -> Result<Self, anyhow::Error> {
+	pub async fn connect_postgres(url: &str) -> Result<Self> {
 		let inner = BackendsConnection::connect_postgres(url).await?;
 		Ok(Self {
 			backend: DatabaseBackend::Postgres,
@@ -189,7 +192,7 @@ impl DatabaseConnection {
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
 	/// ```
 	#[cfg(feature = "mysql")]
-	pub async fn connect_mysql(url: &str) -> Result<Self, anyhow::Error> {
+	pub async fn connect_mysql(url: &str) -> Result<Self> {
 		let inner = BackendsConnection::connect_mysql(url).await?;
 		Ok(Self {
 			backend: DatabaseBackend::MySql,
@@ -210,7 +213,7 @@ impl DatabaseConnection {
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
 	/// ```
 	#[cfg(feature = "sqlite")]
-	pub async fn connect_sqlite(url: &str) -> Result<Self, anyhow::Error> {
+	pub async fn connect_sqlite(url: &str) -> Result<Self> {
 		let inner = BackendsConnection::connect_sqlite(url).await?;
 		Ok(Self {
 			backend: DatabaseBackend::Sqlite,
@@ -242,10 +245,7 @@ impl DatabaseConnection {
 	// Allow unused_variables because pool_size is only used with Postgres backend.
 	// MySQL and SQLite backends don't support pool size configuration yet.
 	#[allow(unused_variables)]
-	pub async fn connect_with_pool_size(
-		url: &str,
-		pool_size: Option<u32>,
-	) -> Result<Self, anyhow::Error> {
+	pub async fn connect_with_pool_size(url: &str, pool_size: Option<u32>) -> Result<Self> {
 		let backend_type = if url.starts_with("postgres://") || url.starts_with("postgresql://") {
 			DatabaseBackend::Postgres
 		} else if url.starts_with("mysql://") {
@@ -253,7 +253,11 @@ impl DatabaseConnection {
 		} else if url.starts_with("sqlite://") || url.starts_with("sqlite:") {
 			DatabaseBackend::Sqlite
 		} else {
-			return Err(anyhow::anyhow!("Unsupported database URL scheme: {}", url));
+			return Err(DatabaseError::new(
+				DatabaseErrorKind::Configuration,
+				format!("Unsupported database URL scheme: {url}"),
+			)
+			.into());
 		};
 
 		#[cfg(feature = "postgres")]
@@ -283,14 +287,18 @@ impl DatabaseConnection {
 			});
 		}
 
-		Err(anyhow::anyhow!(
-			"Database backend not compiled in. Enable the '{}' feature.",
-			match backend_type {
-				DatabaseBackend::Postgres => "postgres",
-				DatabaseBackend::MySql => "mysql",
-				DatabaseBackend::Sqlite => "sqlite",
-			}
-		))
+		Err(DatabaseError::new(
+			DatabaseErrorKind::Configuration,
+			format!(
+				"Database backend not compiled in. Enable the '{}' feature.",
+				match backend_type {
+					DatabaseBackend::Postgres => "postgres",
+					DatabaseBackend::MySql => "mysql",
+					DatabaseBackend::Sqlite => "sqlite",
+				}
+			),
+		)
+		.into())
 	}
 
 	/// Performs the backend operation.
@@ -315,11 +323,7 @@ impl DatabaseConnection {
 	}
 
 	/// Execute a SQL query and return a single row
-	pub async fn query_one(
-		&self,
-		sql: &str,
-		params: Vec<QueryValue>,
-	) -> Result<QueryRow, anyhow::Error> {
+	pub async fn query_one(&self, sql: &str, params: Vec<QueryValue>) -> Result<QueryRow> {
 		let row = self.inner.fetch_one(sql, params).await?;
 		Ok(QueryRow::from_backend_row(row))
 	}
@@ -329,7 +333,7 @@ impl DatabaseConnection {
 		&self,
 		sql: &str,
 		params: Vec<QueryValue>,
-	) -> Result<Option<QueryRow>, anyhow::Error> {
+	) -> Result<Option<QueryRow>> {
 		match self.inner.fetch_one(sql, params).await {
 			Ok(row) => Ok(Some(QueryRow::from_backend_row(row))),
 			Err(_) => Ok(None),
@@ -337,17 +341,13 @@ impl DatabaseConnection {
 	}
 
 	/// Execute a SQL statement (INSERT, UPDATE, DELETE, etc.)
-	pub async fn execute(&self, sql: &str, params: Vec<QueryValue>) -> Result<u64, anyhow::Error> {
+	pub async fn execute(&self, sql: &str, params: Vec<QueryValue>) -> Result<u64> {
 		let result = self.inner.execute(sql, params).await?;
 		Ok(result.rows_affected)
 	}
 
 	/// Execute a SQL query and return all rows
-	pub async fn query(
-		&self,
-		sql: &str,
-		params: Vec<QueryValue>,
-	) -> Result<Vec<QueryRow>, anyhow::Error> {
+	pub async fn query(&self, sql: &str, params: Vec<QueryValue>) -> Result<Vec<QueryRow>> {
 		let rows = self.inner.fetch_all(sql, params).await?;
 		Ok(rows.into_iter().map(QueryRow::from_backend_row).collect())
 	}
@@ -366,7 +366,7 @@ impl DatabaseConnection {
 	/// # }
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
 	/// ```
-	pub async fn begin_transaction(&self) -> Result<(), anyhow::Error> {
+	pub async fn begin_transaction(&self) -> Result<()> {
 		self.execute("BEGIN TRANSACTION", vec![]).await?;
 		Ok(())
 	}
@@ -389,7 +389,7 @@ impl DatabaseConnection {
 	pub async fn begin_transaction_with_isolation(
 		&self,
 		level: super::transaction::IsolationLevel,
-	) -> Result<(), anyhow::Error> {
+	) -> Result<()> {
 		let sql = format!("BEGIN TRANSACTION ISOLATION LEVEL {}", level.to_sql());
 		self.execute(&sql, vec![]).await?;
 		Ok(())
@@ -411,7 +411,7 @@ impl DatabaseConnection {
 	/// # }
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
 	/// ```
-	pub async fn commit_transaction(&self) -> Result<(), anyhow::Error> {
+	pub async fn commit_transaction(&self) -> Result<()> {
 		self.execute("COMMIT", vec![]).await?;
 		Ok(())
 	}
@@ -432,7 +432,7 @@ impl DatabaseConnection {
 	/// # }
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
 	/// ```
-	pub async fn rollback_transaction(&self) -> Result<(), anyhow::Error> {
+	pub async fn rollback_transaction(&self) -> Result<()> {
 		self.execute("ROLLBACK", vec![]).await?;
 		Ok(())
 	}
@@ -454,21 +454,21 @@ impl DatabaseConnection {
 	/// # }
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
 	/// ```
-	pub async fn savepoint(&self, name: &str) -> Result<(), anyhow::Error> {
+	pub async fn savepoint(&self, name: &str) -> Result<()> {
 		let sql = format!("SAVEPOINT {}", name);
 		self.execute(&sql, vec![]).await?;
 		Ok(())
 	}
 
 	/// Release a savepoint
-	pub async fn release_savepoint(&self, name: &str) -> Result<(), anyhow::Error> {
+	pub async fn release_savepoint(&self, name: &str) -> Result<()> {
 		let sql = format!("RELEASE SAVEPOINT {}", name);
 		self.execute(&sql, vec![]).await?;
 		Ok(())
 	}
 
 	/// Rollback to a savepoint
-	pub async fn rollback_to_savepoint(&self, name: &str) -> Result<(), anyhow::Error> {
+	pub async fn rollback_to_savepoint(&self, name: &str) -> Result<()> {
 		let sql = format!("ROLLBACK TO SAVEPOINT {}", name);
 		self.execute(&sql, vec![]).await?;
 		Ok(())
@@ -500,7 +500,7 @@ impl DatabaseConnection {
 	/// # Ok(())
 	/// # }
 	/// ```
-	pub async fn begin(&self) -> Result<Box<dyn TransactionExecutor>, anyhow::Error> {
+	pub async fn begin(&self) -> Result<Box<dyn TransactionExecutor>> {
 		Ok(self.inner.begin().await?)
 	}
 
@@ -531,18 +531,18 @@ impl DatabaseConnection {
 	pub async fn begin_with_isolation(
 		&self,
 		level: IsolationLevel,
-	) -> Result<Box<dyn TransactionExecutor>, anyhow::Error> {
+	) -> Result<Box<dyn TransactionExecutor>> {
 		Ok(self.inner.begin_with_isolation(level).await?)
 	}
 }
 
 #[async_trait]
 impl DatabaseExecutor for DatabaseConnection {
-	async fn execute(&self, sql: &str) -> Result<u64, anyhow::Error> {
+	async fn execute(&self, sql: &str) -> Result<u64> {
 		self.execute(sql, vec![]).await
 	}
 
-	async fn query(&self, sql: &str) -> Result<Vec<QueryRow>, anyhow::Error> {
+	async fn query(&self, sql: &str) -> Result<Vec<QueryRow>> {
 		self.query(sql, vec![]).await
 	}
 }
@@ -598,5 +598,66 @@ impl reinhardt_di::Injectable for DatabaseConnection {
 		// For DatabaseConnection, inject_uncached behaves the same as inject
 		// since database connections are typically shared (singleton or request-scoped)
 		Self::inject(ctx).await
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::DatabaseConnection;
+	use crate::backends::DatabaseErrorKind;
+
+	#[tokio::test]
+	async fn test_error_kind_for_unsupported_url_scheme() {
+		let Err(error) = DatabaseConnection::connect("unsupported://database").await else {
+			panic!("an unsupported URL scheme must fail");
+		};
+
+		assert_eq!(
+			error.database_kind(),
+			Some(DatabaseErrorKind::Configuration)
+		);
+	}
+
+	#[cfg(feature = "postgres")]
+	#[tokio::test]
+	async fn test_error_kind_for_refused_postgres_connection() {
+		let listener = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
+			.expect("a local ephemeral port must be available");
+		let address = listener
+			.local_addr()
+			.expect("the bound listener must have a local address");
+		drop(listener);
+		let url = format!(
+			"postgres://postgres@{}:{}/postgres?connect_timeout=1",
+			address.ip(),
+			address.port()
+		);
+
+		let Err(error) = DatabaseConnection::connect_postgres(&url).await else {
+			panic!("a closed local endpoint must refuse the connection");
+		};
+
+		assert_eq!(error.database_kind(), Some(DatabaseErrorKind::Connection));
+	}
+
+	#[cfg(feature = "sqlite")]
+	#[tokio::test]
+	async fn test_error_kind_for_missing_sqlite_column() {
+		let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+			.await
+			.expect("the in-memory SQLite database must connect");
+		connection
+			.execute("CREATE TABLE records (id INTEGER PRIMARY KEY)", vec![])
+			.await
+			.expect("the fixture table must be created");
+
+		let Err(error) = connection
+			.query("SELECT missing_column FROM records", vec![])
+			.await
+		else {
+			panic!("querying a missing column must fail");
+		};
+
+		assert_eq!(error.database_kind(), Some(DatabaseErrorKind::Query));
 	}
 }

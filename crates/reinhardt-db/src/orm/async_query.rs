@@ -8,9 +8,11 @@
 
 use super::engine::Engine;
 use super::types::DatabaseDialect;
+use crate::backends::error::map_sqlx_error;
 use crate::orm::Model;
 use crate::orm::expressions::Q;
 use crate::orm::query_execution::QueryCompiler;
+use reinhardt_core::exception::Result;
 use reinhardt_query::prelude::{
 	MySqlQueryBuilder, PostgresQueryBuilder, QueryStatementBuilder, SqliteQueryBuilder,
 };
@@ -163,25 +165,25 @@ impl<T: Model> AsyncQuery<T> {
 	}
 	/// Execute query and fetch all results
 	///
-	pub async fn all(&self) -> Result<Vec<sqlx::any::AnyRow>, sqlx::Error> {
+	pub async fn all(&self) -> Result<Vec<sqlx::any::AnyRow>> {
 		let sql = self.to_sql();
 		self.engine.fetch_all(&sql).await
 	}
 	/// Execute query and fetch first result
 	///
-	pub async fn first(&self) -> Result<Option<sqlx::any::AnyRow>, sqlx::Error> {
+	pub async fn first(&self) -> Result<Option<sqlx::any::AnyRow>> {
 		let sql = self.to_sql();
 		self.engine.fetch_optional(&sql).await
 	}
 	/// Execute query and fetch one result (error if not exactly one)
 	///
-	pub async fn one(&self) -> Result<sqlx::any::AnyRow, sqlx::Error> {
+	pub async fn one(&self) -> Result<sqlx::any::AnyRow> {
 		let sql = self.to_sql();
 		self.engine.fetch_one(&sql).await
 	}
 	/// Count the number of rows
 	///
-	pub async fn count(&self) -> Result<i64, sqlx::Error> {
+	pub async fn count(&self) -> Result<i64> {
 		let mut count_query = self.clone();
 		count_query.columns = vec!["COUNT(*)".to_string()];
 		count_query.limit = None;
@@ -192,12 +194,12 @@ impl<T: Model> AsyncQuery<T> {
 
 		// Extract count value from row
 		use sqlx::Row;
-		let count: i64 = row.try_get(0).unwrap_or(0);
+		let count: i64 = row.try_get(0).map_err(map_sqlx_error)?;
 		Ok(count)
 	}
 	/// Check if any rows exist
 	///
-	pub async fn exists(&self) -> Result<bool, sqlx::Error> {
+	pub async fn exists(&self) -> Result<bool> {
 		let count = self.count().await?;
 		Ok(count > 0)
 	}
@@ -255,12 +257,12 @@ impl AsyncSession {
 	}
 	/// Execute raw SQL
 	///
-	pub async fn execute(&self, sql: &str) -> Result<u64, sqlx::Error> {
+	pub async fn execute(&self, sql: &str) -> Result<u64> {
 		self.engine.execute(sql).await
 	}
 	/// Begin a transaction
 	///
-	pub async fn begin(&self) -> Result<sqlx::Transaction<'_, sqlx::Any>, sqlx::Error> {
+	pub async fn begin(&self) -> Result<sqlx::Transaction<'_, sqlx::Any>> {
 		self.engine.begin().await
 	}
 }

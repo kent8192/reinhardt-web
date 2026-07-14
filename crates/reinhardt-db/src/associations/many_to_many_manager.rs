@@ -4,7 +4,7 @@
 //! through junction tables. It abstracts CRUD operations on the intermediate table.
 
 use crate::orm::{DatabaseConnection, QueryRow};
-use reinhardt_core::exception::Result;
+use reinhardt_core::exception::{DatabaseError, DatabaseErrorKind, Error, Result};
 use reinhardt_query::prelude::{
 	Alias, Expr, ExprTrait, Func, OnConflict, PostgresQueryBuilder, Query, QueryBuilder,
 };
@@ -242,9 +242,7 @@ where
 		let (sql, _) = pg.build_select(&stmt);
 
 		// Execute SQL
-		conn.query(&sql, vec![])
-			.await
-			.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))
+		conn.query(&sql, vec![]).await
 	}
 
 	/// Clear all relationships for the source instance
@@ -302,9 +300,10 @@ where
 			.get::<i64>("count")
 			.or_else(|| row.get::<i64>("COUNT"))
 			.ok_or_else(|| {
-				reinhardt_core::exception::Error::Database(
-					"Failed to extract count value from query result".to_string(),
-				)
+				Error::from(DatabaseError::new(
+					DatabaseErrorKind::Query,
+					"Failed to extract count value from query result",
+				))
 			})?;
 
 		Ok(count_value as usize)

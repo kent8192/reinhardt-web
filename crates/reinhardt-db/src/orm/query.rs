@@ -9,6 +9,7 @@ use crate::orm::query_fields::GroupByFields;
 use crate::orm::query_fields::aggregate::{AggregateExpr, ComparisonExpr};
 use crate::orm::query_fields::comparison::FieldComparison;
 use crate::orm::query_fields::compiler::QueryFieldCompiler;
+use reinhardt_core::exception::{DatabaseError, DatabaseErrorKind, Error};
 use reinhardt_query::prelude::{
 	Alias, BinOper, ColumnRef, Condition, Expr, ExprTrait, Func, JoinType as SeaJoinType,
 	MySqlQueryBuilder, Order, PostgresQueryBuilder, Query, QueryBuilder, QueryStatementBuilder,
@@ -4122,10 +4123,10 @@ where
 		};
 		rows.into_iter()
 			.map(|row| {
-				row.deserialize_model::<T>().map_err(|e| {
-					reinhardt_core::exception::Error::Database(format!(
-						"Deserialization error: {}",
-						e
+				row.deserialize_model::<T>().map_err(|error| {
+					Error::from(DatabaseError::new(
+						DatabaseErrorKind::Serialization,
+						format!("Deserialization error: {error}"),
 					))
 				})
 			})
@@ -4236,14 +4237,17 @@ where
 	{
 		let results = self.all().await?;
 		match results.len() {
-			0 => Err(reinhardt_core::exception::Error::Database(
-				"No record found matching the query".to_string(),
-			)),
+			0 => Err(DatabaseError::new(
+				DatabaseErrorKind::Query,
+				"No record found matching the query",
+			)
+			.into()),
 			1 => Ok(results.into_iter().next().unwrap()),
-			n => Err(reinhardt_core::exception::Error::Database(format!(
-				"Multiple records found ({}), expected exactly one",
-				n
-			))),
+			n => Err(DatabaseError::new(
+				DatabaseErrorKind::Query,
+				format!("Multiple records found ({n}), expected exactly one"),
+			)
+			.into()),
 		}
 	}
 
@@ -4371,10 +4375,10 @@ where
 		};
 		rows.into_iter()
 			.map(|row| {
-				row.deserialize_model::<T>().map_err(|e| {
-					reinhardt_core::exception::Error::Database(format!(
-						"Deserialization error: {}",
-						e
+				row.deserialize_model::<T>().map_err(|error| {
+					Error::from(DatabaseError::new(
+						DatabaseErrorKind::Serialization,
+						format!("Deserialization error: {error}"),
 					))
 				})
 			})
@@ -4427,10 +4431,11 @@ where
 				"No record found matching the query".to_string(),
 			)),
 			1 => Ok(results.into_iter().next().unwrap()),
-			n => Err(reinhardt_core::exception::Error::Database(format!(
-				"Multiple records found ({}), expected exactly one",
-				n
-			))),
+			n => Err(DatabaseError::new(
+				DatabaseErrorKind::Query,
+				format!("Multiple records found ({n}), expected exactly one"),
+			)
+			.into()),
 		}
 	}
 
@@ -4767,9 +4772,7 @@ where
 		let (sql, values) = Self::build_update_for_backend(&stmt, conn.backend());
 		let params = super::execution::convert_values(values);
 
-		conn.execute(&sql, params)
-			.await
-			.map_err(|error| reinhardt_core::exception::Error::Database(error.to_string()))
+		conn.execute(&sql, params).await
 	}
 
 	fn collect_field_assignments<I, A>(values: I) -> Vec<FieldAssignment>
@@ -5087,16 +5090,17 @@ where
 
 		// Get composite primary key definition from the model
 		let composite_pk = T::composite_primary_key().ok_or_else(|| {
-			reinhardt_core::exception::Error::Database(
-				"Model does not have a composite primary key".to_string(),
-			)
+			Error::from(DatabaseError::new(
+				DatabaseErrorKind::Query,
+				"Model does not have a composite primary key",
+			))
 		})?;
 
 		// Validate that all required PK fields are provided
-		composite_pk.validate(pk_values).map_err(|e| {
-			reinhardt_core::exception::Error::Database(format!(
-				"Composite PK validation failed: {}",
-				e
+		composite_pk.validate(pk_values).map_err(|error| {
+			Error::from(DatabaseError::new(
+				DatabaseErrorKind::Query,
+				format!("Composite PK validation failed: {error}"),
 			))
 		})?;
 
@@ -5167,26 +5171,38 @@ where
 
 		// Composite PK queries should return exactly one row
 		if rows.is_empty() {
-			return Err(reinhardt_core::exception::Error::Database(
-				"No record found matching the composite primary key".to_string(),
-			));
+			return Err(DatabaseError::new(
+				DatabaseErrorKind::Query,
+				"No record found matching the composite primary key",
+			)
+			.into());
 		}
 
 		if rows.len() > 1 {
-			return Err(reinhardt_core::exception::Error::Database(format!(
-				"Multiple records found ({}) for composite primary key, expected exactly one",
-				rows.len()
-			)));
+			return Err(DatabaseError::new(
+				DatabaseErrorKind::Query,
+				format!(
+					"Multiple records found ({}) for composite primary key, expected exactly one",
+					rows.len()
+				),
+			)
+			.into());
 		}
 
 		// Deserialize the single row into the model
 		let row = &rows[0];
-		let value = serde_json::to_value(&row.data).map_err(|e| {
-			reinhardt_core::exception::Error::Database(format!("Serialization error: {}", e))
+		let value = serde_json::to_value(&row.data).map_err(|error| {
+			Error::from(DatabaseError::new(
+				DatabaseErrorKind::Serialization,
+				format!("Serialization error: {error}"),
+			))
 		})?;
 
-		serde_json::from_value(value).map_err(|e| {
-			reinhardt_core::exception::Error::Database(format!("Deserialization error: {}", e))
+		serde_json::from_value(value).map_err(|error| {
+			Error::from(DatabaseError::new(
+				DatabaseErrorKind::Serialization,
+				format!("Deserialization error: {error}"),
+			))
 		})
 	}
 

@@ -22,6 +22,7 @@ use std::collections::HashMap;
 use rstest::rstest;
 use serde::{Deserialize, Serialize};
 
+use reinhardt_core::exception::{DatabaseError, DatabaseErrorKind};
 use reinhardt_db::orm::connection::DatabaseBackend;
 use reinhardt_db::orm::custom_manager::CustomManager;
 use reinhardt_db::orm::manager::Manager;
@@ -112,9 +113,9 @@ impl CustomManager for GuardedArticleManager {
 
 	fn before_save(&self, model: &mut Article) -> reinhardt_core::exception::Result<()> {
 		if model.title.trim().is_empty() {
-			return Err(reinhardt_core::exception::Error::Database(
-				"title must not be empty".into(),
-			));
+			return Err(
+				DatabaseError::new(DatabaseErrorKind::Query, "title must not be empty").into(),
+			);
 		}
 		Ok(())
 	}
