@@ -1,0 +1,21 @@
+error[E0277]: the trait bound `ReactiveDeps: From<(reinhardt_pages::Signal<i32>,)>` is not satisfied
+ --> tests/ui/hooks/fail/tuple_deps_removed.rs:9:39
+  |
+9 |     let _effect = use_effect(move || {}, (count.clone(),));
+  |                   ----------             ^^^^^^^^^^^^^^^^ the trait `From<(reinhardt_pages::Signal<i32>,)>` is not implemented for `ReactiveDeps`
+  |                   |
+  |                   required by a bound introduced by this call
+  |
+help: the trait `From<(reinhardt_pages::Signal<i32>,)>` is not implemented for `ReactiveDeps`
+      but trait `From<ExplicitDeps>` is implemented for it
+ --> $WORKSPACE/crates/reinhardt-core/src/reactive/deps.rs
+  |
+  | impl From<ExplicitDeps> for ReactiveDeps {
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  = help: for that trait implementation, expected `ExplicitDeps`, found `(reinhardt_pages::Signal<i32>,)`
+  = note: required for `(reinhardt_pages::Signal<i32>,)` to implement `Into<ReactiveDeps>`
+note: required by a bound in `use_effect`
+ --> src/reactive/hooks/effect.rs
+  |
+  | pub fn use_effect<F, C>(f: F, deps: impl Into<ReactiveDeps>) -> Effect
+  |                                          ^^^^^^^^^^^^^^^^^^ required by this bound in `use_effect`
