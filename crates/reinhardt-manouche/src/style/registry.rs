@@ -1603,7 +1603,7 @@ const SHADOW: ValueGrammar = ValueGrammar::Unordered {
 		required("offset-x", &L),
 		required("offset-y", &L),
 		optional("blur", &NL),
-		optional("spread", &L),
+		optional("spread", &NL),
 		optional("color", &C),
 	],
 	min_members: 2,

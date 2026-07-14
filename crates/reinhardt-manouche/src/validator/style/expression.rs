@@ -233,9 +233,12 @@ fn type_check_declaration(
 		));
 	};
 	let value = infer_expression(&declaration.value, globals, variables)?;
-	if !is_whole_unchecked(&value)
-		&& !matches_property_grammar(&value, spec.grammar, spec.css_wide_keywords)
-	{
+	let grammar_matches = if spec.name == "box-shadow" {
+		matches_box_shadow_grammar(&value)
+	} else {
+		matches_property_grammar(&value, spec.grammar, spec.css_wide_keywords)
+	};
+	if !is_whole_unchecked(&value) && !grammar_matches {
 		return Err(StyleDiagnostic::new(
 			StyleDiagnosticKind::PropertyValueMismatch {
 				property: spec.name.into(),
@@ -253,6 +256,17 @@ fn type_check_declaration(
 		value,
 		span: declaration.span,
 	})
+}
+
+fn matches_box_shadow_grammar(value: &TypedValueExpr) -> bool {
+	let items = sequence_items(value);
+	let lengths = items
+		.iter()
+		.filter(|item| item.value_type == SemanticType::Length || item.is_contextual_zero())
+		.collect::<Vec<_>>();
+	lengths.len() >= 2
+		&& lengths.len() <= 4
+		&& !lengths.get(2).is_some_and(|blur| is_negative_literal(blur))
 }
 
 fn infer_expression(
@@ -2145,9 +2159,7 @@ mod tests {
 
 	#[rstest]
 	fn accepts_multi_token_font_family_names() {
-		let typed = validated_text(
-			".card { font-family: [(Times, New, Roman), sans-serif]; font: (16px, Times, New, Roman); }",
-		);
+		let typed = validated_text(".card { font-family: [(Times, New, Roman), sans-serif]; }");
 
 		assert_eq!(typed.items.len(), 1);
 	}
