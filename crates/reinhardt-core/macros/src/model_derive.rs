@@ -2926,10 +2926,7 @@ fn generate_fixture_validation(
 			|| field.is_fk_id_field
 			|| is_relationship_field_type(&field.ty)
 			|| is_many_to_many_field_type(&field.ty)
-			|| field.config.generated.is_some()
-			|| field.config.generated_sql.is_some()
-			|| field.config.identity_always == Some(true)
-			|| field.config.identity_by_default == Some(true)
+			|| is_fixture_generated_field(field)
 		{
 			continue;
 		}
@@ -3065,6 +3062,24 @@ fn generate_fixture_validation(
 			Ok(())
 		}
 	}
+}
+
+/// Determine whether a field can be omitted from fixture validation because the database generates it.
+fn is_fixture_generated_field(field: &FieldInfo) -> bool {
+	if field.config.generated.is_some() || field.config.generated_sql.is_some() {
+		return true;
+	}
+
+	// PostgreSQL identity metadata is only available when the macro is compiled
+	// with PostgreSQL support, matching attribute parsing and model metadata generation.
+	#[cfg(feature = "db-postgres")]
+	{
+		return field.config.identity_always == Some(true)
+			|| field.config.identity_by_default == Some(true);
+	}
+
+	#[cfg(not(feature = "db-postgres"))]
+	false
 }
 
 /// Generate FieldInfo construction for field_metadata()
@@ -6541,6 +6556,36 @@ mod tests {
 				.to_string()
 				.contains("__reinhardt_validate_defaulted_fixture_field"),
 			"fixture projections must allow fields with serialized SQL defaults to be omitted"
+		);
+	}
+
+	#[cfg(feature = "db-postgres")]
+	#[test]
+	fn test_fixture_projection_allows_omitted_identity_columns() {
+		let input = quote! {
+			#[model(app_label = "fixture_tests", table_name = "fixture_models")]
+			struct FixtureModel {
+				#[field(primary_key = true)]
+				id: i64,
+				#[field(identity_always = true)]
+				sequence: i64,
+			}
+		};
+
+		let output =
+			model_derive_impl(syn::parse2(input).unwrap()).expect("fixture model must generate");
+		let output = output.to_string();
+		let fixture_projection = output
+			.split("struct __ReinhardtFixtureProjection")
+			.nth(1)
+			.expect("fixture validation must generate a projection")
+			.split('}')
+			.next()
+			.expect("fixture projection must have a body");
+
+		assert!(
+			!fixture_projection.contains("sequence : i64"),
+			"fixture projections must not require database-generated identity columns"
 		);
 	}
 
