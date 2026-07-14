@@ -4275,22 +4275,16 @@ impl MigrationAutodetector {
 		to_model: &ModelState,
 		changes: &DetectedChanges,
 	) -> Option<&'a ModelState> {
+		if changes
+			.renamed_tables
+			.iter()
+			.any(|(app, model, _old_table, new_table)| {
+				app == app_label && model == to_model_name && new_table == &to_model.table_name
+			}) {
+			return self.from_state.get_model(app_label, to_model_name);
+		}
 		self.from_state
 			.get_model_by_table_name(app_label, &to_model.table_name)
-			.or_else(|| {
-				if changes
-					.renamed_tables
-					.iter()
-					.any(|(app, model, _old_table, new_table)| {
-						app == app_label
-							&& model == to_model_name
-							&& new_table == &to_model.table_name
-					}) {
-					self.from_state.get_model(app_label, to_model_name)
-				} else {
-					None
-				}
-			})
 			.or_else(|| {
 				changes
 					.renamed_models
