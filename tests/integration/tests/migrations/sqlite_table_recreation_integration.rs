@@ -3184,3 +3184,180 @@ async fn enum_recreation_preserves_deferral_for_all_sqlite_foreign_key_forms() {
 		"inline initially immediate foreign key should reject a missing parent"
 	);
 }
+
+#[rstest]
+#[tokio::test]
+async fn recreation_resolves_omitted_composite_foreign_key_columns_in_primary_key_order() {
+	// Arrange
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("connect to in-memory SQLite");
+	connection
+		.execute(
+			"CREATE TABLE omitted_target_parents (physical_first INTEGER, physical_second INTEGER, PRIMARY KEY (physical_second, physical_first))",
+			vec![],
+		)
+		.await
+		.expect("create parent table with reordered composite primary key");
+	connection
+		.execute(
+			"CREATE TABLE omitted_target_children (id INTEGER PRIMARY KEY, source_first INTEGER, source_second INTEGER, obsolete TEXT, FOREIGN KEY (source_first, source_second) REFERENCES omitted_target_parents)",
+			vec![],
+		)
+		.await
+		.expect("create child table with omitted foreign key target columns");
+	let conn = Arc::new(connection.clone());
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+	let recreate = create_test_migration(
+		"testapp",
+		"0001_recreate_omitted_target_children",
+		vec![Operation::DropColumn {
+			table: "omitted_target_children".to_string(),
+			column: "obsolete".to_string(),
+			old_definition: None,
+		}],
+	);
+
+	// Act
+	executor
+		.apply_migrations(&[recreate])
+		.await
+		.expect("recreate table with omitted foreign key target columns");
+
+	// Assert
+	let rows = conn
+		.fetch_all("PRAGMA foreign_key_list(omitted_target_children)", vec![])
+		.await
+		.expect("read recreated foreign key metadata");
+	let mut referenced_columns: Vec<(i64, String)> = rows
+		.iter()
+		.map(|row| {
+			(
+				row.get("seq")
+					.expect("foreign key sequence should be integer"),
+				row.get("to")
+					.expect("referenced column should be resolved to text"),
+			)
+		})
+		.collect();
+	referenced_columns.sort_by_key(|(sequence, _)| *sequence);
+	assert_eq!(
+		referenced_columns,
+		vec![
+			(0, "physical_second".to_string()),
+			(1, "physical_first".to_string()),
+		]
+	);
+}
+
+#[rstest]
+#[tokio::test]
+async fn recreation_preserves_inline_named_foreign_key_with_escaped_identifiers() {
+	// Arrange
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("connect to in-memory SQLite");
+	connection
+		.execute(
+			"CREATE TABLE inline_escape_parent (id INTEGER PRIMARY KEY)",
+			vec![],
+		)
+		.await
+		.expect("create parent table");
+	connection
+		.execute(
+			"CREATE TABLE inline_escape_child (id INTEGER PRIMARY KEY, \"a\"\"b\" INTEGER CONSTRAINT \"inline\"\"fk\" REFERENCES inline_escape_parent(id) DEFERRABLE INITIALLY DEFERRED, obsolete TEXT)",
+			vec![],
+		)
+		.await
+		.expect("create child table with escaped inline foreign key identifiers");
+	let conn = Arc::new(connection.clone());
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+	let recreate = create_test_migration(
+		"testapp",
+		"0001_recreate_inline_escape_child",
+		vec![Operation::DropColumn {
+			table: "inline_escape_child".to_string(),
+			column: "obsolete".to_string(),
+			old_definition: None,
+		}],
+	);
+
+	// Act
+	executor
+		.apply_migrations(&[recreate])
+		.await
+		.expect("recreate table with escaped inline foreign key identifiers");
+
+	// Assert
+	let table_sql: String = conn
+		.fetch_one(
+			"SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'inline_escape_child'",
+			vec![],
+		)
+		.await
+		.expect("read recreated table SQL")
+		.get("sql")
+		.expect("table SQL should be text");
+	assert!(table_sql.contains("\"a\"\"b\""), "{table_sql}");
+	assert!(table_sql.contains("\"inline\"\"fk\""), "{table_sql}");
+	assert!(
+		table_sql.contains("DEFERRABLE INITIALLY DEFERRED"),
+		"{table_sql}"
+	);
+}
+
+#[rstest]
+#[tokio::test]
+async fn recreation_preserves_bare_deferrable_as_initially_immediate() {
+	// Arrange
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("connect to in-memory SQLite");
+	connection
+		.execute(
+			"CREATE TABLE bare_deferrable_parent (id INTEGER PRIMARY KEY)",
+			vec![],
+		)
+		.await
+		.expect("create parent table");
+	connection
+		.execute(
+			"CREATE TABLE bare_deferrable_child (id INTEGER PRIMARY KEY, parent_id INTEGER, obsolete TEXT, FOREIGN KEY (parent_id) REFERENCES bare_deferrable_parent(id) DEFERRABLE)",
+			vec![],
+		)
+		.await
+		.expect("create child table with bare deferrable foreign key");
+	let conn = Arc::new(connection.clone());
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+	let recreate = create_test_migration(
+		"testapp",
+		"0001_recreate_bare_deferrable_child",
+		vec![Operation::DropColumn {
+			table: "bare_deferrable_child".to_string(),
+			column: "obsolete".to_string(),
+			old_definition: None,
+		}],
+	);
+
+	// Act
+	executor
+		.apply_migrations(&[recreate])
+		.await
+		.expect("recreate table with bare deferrable foreign key");
+
+	// Assert
+	let table_sql: String = conn
+		.fetch_one(
+			"SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'bare_deferrable_child'",
+			vec![],
+		)
+		.await
+		.expect("read recreated table SQL")
+		.get("sql")
+		.expect("table SQL should be text");
+	assert!(
+		table_sql.contains("DEFERRABLE INITIALLY IMMEDIATE"),
+		"{table_sql}"
+	);
+}

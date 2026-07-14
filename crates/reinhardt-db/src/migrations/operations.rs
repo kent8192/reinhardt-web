@@ -4657,7 +4657,7 @@ impl SqliteTableRecreation {
 		let columns_list = self
 			.columns_to_copy
 			.iter()
-			.map(|c| format!("\"{}\"", c))
+			.map(|column| Operation::quote_dialect_identifier(column, &SqlDialect::Sqlite))
 			.collect::<Vec<_>>()
 			.join(", ");
 		let insert_sql = format!(

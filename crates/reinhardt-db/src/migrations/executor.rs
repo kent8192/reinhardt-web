@@ -1016,7 +1016,7 @@ impl DatabaseMigrationExecutor {
 			group.sort_by_key(|r| r.seq);
 			let referenced_table = group[0].table.clone();
 			let columns_from: Vec<String> = group.iter().map(|r| r.from.clone()).collect();
-			let columns_to: Vec<String> = group
+			let mut columns_to: Vec<String> = group
 				.iter()
 				.map(|r| r.to.clone())
 				.filter(|column| !column.is_empty())
@@ -1027,6 +1027,29 @@ impl DatabaseMigrationExecutor {
 				columns_to.clone(),
 			);
 			let metadata = fk_metadata.get(&signature);
+			if columns_to.is_empty() {
+				// SQLite leaves the target columns null when REFERENCES omits them.
+				// Resolve the target primary key in its declared ordinal order so the
+				// recreated table emits a valid explicit foreign key target list.
+				let target_columns_sql = format!(
+					"PRAGMA table_info({})",
+					super::sqlite_pragma::quote_pragma_identifier(&referenced_table)
+				);
+				let target_column_rows = editor.fetch_all(&target_columns_sql, vec![]).await?;
+				let mut target_primary_key: Vec<(i64, String)> = target_column_rows
+					.iter()
+					.filter_map(|row| {
+						let ordinal = row.get::<i64>("pk").ok()?;
+						let name = row.get::<String>("name").ok()?;
+						(ordinal > 0).then_some((ordinal, name))
+					})
+					.collect();
+				target_primary_key.sort_by_key(|(ordinal, _)| *ordinal);
+				columns_to = target_primary_key
+					.into_iter()
+					.map(|(_, column)| column)
+					.collect();
+			}
 			let name = metadata
 				.and_then(|metadata| metadata.name.clone())
 				.unwrap_or_else(|| format!("fk_{}_{}", table_name, fk_id));
@@ -1949,10 +1972,21 @@ fn parse_sqlite_fk_metadata(
 			};
 			(name, source_columns)
 		} else {
-			let Some(column) = sqlite_column_name(definition) else {
+			let Some(column) = tokens.first().and_then(sqlite_token_identifier) else {
 				continue;
 			};
-			(None, vec![column])
+			if sqlite_token_is_word(&tokens[0], "CONSTRAINT") {
+				continue;
+			}
+			let name = tokens[..references_index]
+				.windows(2)
+				.rev()
+				.find_map(|pair| {
+					sqlite_token_is_word(&pair[0], "CONSTRAINT")
+						.then(|| sqlite_token_identifier(&pair[1]))
+						.flatten()
+				});
+			(name, vec![column])
 		};
 		if source_columns.is_empty() {
 			continue;
@@ -2039,7 +2073,7 @@ fn sqlite_fk_deferrable(tokens: &[SqliteDdlToken]) -> Option<super::operations::
 	}) {
 		return None;
 	}
-	tokens.windows(3).find_map(|sequence| {
+	let explicit_mode = tokens.windows(3).find_map(|sequence| {
 		if !sqlite_token_is_word(&sequence[0], "DEFERRABLE")
 			|| !sqlite_token_is_word(&sequence[1], "INITIALLY")
 		{
@@ -2052,6 +2086,12 @@ fn sqlite_fk_deferrable(tokens: &[SqliteDdlToken]) -> Option<super::operations::
 		} else {
 			None
 		}
+	});
+	explicit_mode.or_else(|| {
+		tokens
+			.iter()
+			.any(|token| sqlite_token_is_word(token, "DEFERRABLE"))
+			.then_some(super::operations::DeferrableOption::Immediate)
 	})
 }
 
@@ -2190,6 +2230,55 @@ fn find_matching_sqlite_paren(sql: &str, open_index: usize) -> Option<usize> {
 #[cfg(all(test, feature = "sqlite"))]
 mod sqlite_generated_column_tests {
 	use super::*;
+	use rstest::rstest;
+
+	#[rstest]
+	fn parse_sqlite_fk_metadata_restores_escaped_inline_constraint() {
+		// Arrange
+		let create_sql = r#"CREATE TABLE child (
+			"a""b" INTEGER CONSTRAINT "inline""fk" REFERENCES parent(id) DEFERRABLE INITIALLY DEFERRED
+		)"#;
+
+		// Act
+		let metadata = parse_sqlite_fk_metadata(create_sql);
+		let parsed = metadata
+			.get(&(
+				vec![r#"a"b"#.to_string()],
+				"parent".to_string(),
+				vec!["id".to_string()],
+			))
+			.expect("escaped inline foreign key metadata should be parsed");
+
+		// Assert
+		assert_eq!(parsed.name.as_deref(), Some(r#"inline"fk"#));
+		assert_eq!(
+			parsed.deferrable,
+			Some(super::super::operations::DeferrableOption::Deferred)
+		);
+	}
+
+	#[rstest]
+	fn parse_sqlite_fk_metadata_maps_bare_deferrable_to_immediate() {
+		// Arrange
+		let create_sql = "CREATE TABLE child (parent_id INTEGER, FOREIGN KEY (parent_id) REFERENCES parent(id) DEFERRABLE)";
+
+		// Act
+		let metadata = parse_sqlite_fk_metadata(create_sql);
+		let parsed = metadata
+			.get(&(
+				vec!["parent_id".to_string()],
+				"parent".to_string(),
+				vec!["id".to_string()],
+			))
+			.expect("bare deferrable foreign key metadata should be parsed");
+
+		// Assert
+		assert_eq!(parsed.name, None);
+		assert_eq!(
+			parsed.deferrable,
+			Some(super::super::operations::DeferrableOption::Immediate)
+		);
+	}
 
 	#[test]
 	fn parse_sqlite_generated_column_restores_virtual_column() {
