@@ -204,13 +204,13 @@ pub enum TypedControlBindingKind {
 #[derive(Debug)]
 pub enum TypedControlBindingExpr {
 	/// A direct value signal expression.
-	Direct(Expr),
+	Direct(Box<Expr>),
 	/// A numeric value signal paired with a parse-error signal.
 	NumberWithError {
 		/// Numeric value signal expression.
-		value: Expr,
+		value: Box<Expr>,
 		/// Numeric parse-error signal expression.
-		error: Expr,
+		error: Box<Expr>,
 	},
 }
 
