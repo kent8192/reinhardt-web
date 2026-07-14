@@ -3439,6 +3439,109 @@ async fn typed_enum_constraint_recreation_ignores_expression_collation_for_uniqu
 
 #[rstest]
 #[tokio::test]
+async fn typed_enum_constraint_recreation_preserves_column_collation_for_unique_constraint() {
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("connect to in-memory SQLite");
+	connection
+		.execute(
+			"CREATE TABLE column_collation_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT COLLATE NOCASE NOT NULL, status TEXT NOT NULL, UNIQUE (code))",
+			vec![],
+		)
+		.await
+		.expect("create table with a column collation unique constraint");
+	let conn = Arc::new(connection.clone());
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+	let add_enum = create_test_migration(
+		"testapp",
+		"0001_add_column_collation_enum_domain",
+		vec![Operation::AddConstraintDefinition {
+			table: "column_collation_jobs".to_string(),
+			constraint: Constraint::EnumDomain {
+				name: "column_collation_jobs_status_model_enum_check".to_string(),
+				column: "status".to_string(),
+				domain: FieldDomain::Enum {
+					repr: ModelEnumRepr::String,
+					values: vec![ModelEnumValue::String("queued".to_string())],
+				},
+			},
+		}],
+	);
+	executor
+		.apply_migrations(&[add_enum])
+		.await
+		.expect("add typed enum domain through table recreation");
+
+	conn.execute(
+		"INSERT INTO column_collation_jobs (code, status) VALUES ('alpha', 'queued')",
+		vec![],
+	)
+	.await
+	.expect("insert the initial case-insensitive unique value");
+	let duplicate = conn
+		.execute(
+			"INSERT INTO column_collation_jobs (code, status) VALUES ('ALPHA', 'queued')",
+			vec![],
+		)
+		.await;
+	assert!(
+		duplicate.is_err(),
+		"NOCASE uniqueness should survive table recreation"
+	);
+}
+
+#[rstest]
+#[tokio::test]
+async fn typed_enum_constraint_recreation_preserves_inline_unique_conflict_mode() {
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("connect to in-memory SQLite");
+	connection
+		.execute(
+			"CREATE TABLE inline_conflict_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT UNIQUE ON CONFLICT IGNORE, status TEXT NOT NULL)",
+			vec![],
+		)
+		.await
+		.expect("create table with an inline unique conflict mode");
+	let conn = Arc::new(connection.clone());
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+	let add_enum = create_test_migration(
+		"testapp",
+		"0001_add_inline_conflict_enum_domain",
+		vec![Operation::AddConstraintDefinition {
+			table: "inline_conflict_jobs".to_string(),
+			constraint: Constraint::EnumDomain {
+				name: "inline_conflict_jobs_status_model_enum_check".to_string(),
+				column: "status".to_string(),
+				domain: FieldDomain::Enum {
+					repr: ModelEnumRepr::String,
+					values: vec![ModelEnumValue::String("queued".to_string())],
+				},
+			},
+		}],
+	);
+	executor
+		.apply_migrations(&[add_enum])
+		.await
+		.expect("add typed enum domain through table recreation");
+
+	conn.execute(
+		"INSERT INTO inline_conflict_jobs (code, status) VALUES ('same', 'queued'), ('same', 'queued')",
+		vec![],
+	)
+	.await
+	.expect("duplicate unique values should retain IGNORE conflict handling");
+	let count: i64 = conn
+		.fetch_one("SELECT COUNT(*) AS count FROM inline_conflict_jobs", vec![])
+		.await
+		.expect("count rows after ignored duplicate")
+		.get("count")
+		.unwrap_or_default();
+	assert_eq!(count, 1);
+}
+
+#[rstest]
+#[tokio::test]
 async fn typed_enum_constraint_recreation_preserves_strict_table_option() {
 	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
 		.await
