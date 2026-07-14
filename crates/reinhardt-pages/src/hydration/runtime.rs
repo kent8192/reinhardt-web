@@ -200,6 +200,7 @@ pub fn hydrate<C: Component>(component: &C, root: &Element) -> Result<(), Hydrat
 			reconcile(root, &view).map_err(|e| {
 				HydrationError::StateParseError(format!("Reconciliation failed: {}", e))
 			})?;
+			validate_hydrated_controls(root, &view)?;
 			web_sys::console::log_1(&"[Hydration] Reconciliation complete".into());
 
 			Ok((view, resource_counter_offset, id_counter_offset))
@@ -209,16 +210,11 @@ pub fn hydrate<C: Component>(component: &C, root: &Element) -> Result<(), Hydrat
 	crate::reactive::hooks::id::restore_id_counter(id_counter_offset);
 
 	// 5. Install hydration guards and reactive DOM owners in the same ownership pass.
-	let adoption_store = crate::dom::control_binding::new_hydration_adoption_store();
-	crate::dom::control_binding::with_hydration_adoption_store(&adoption_store, || {
-		crate::component::reactive_if::with_reactive_node_transaction(|| {
-			let mut root_registry = EventRegistry::new();
-			install_hydrated_reactive_nodes(root, &view, &mut root_registry)?;
-			crate::dom::control_binding::commit_hydration_adoptions(&adoption_store)
-				.map_err(|error| HydrationError::EventAttachmentFailed(error.to_string()))?;
-			store_reactive_node(root_registry);
-			Ok::<_, HydrationError>(())
-		})
+	crate::component::reactive_if::with_reactive_node_transaction(|| {
+		let mut root_registry = EventRegistry::new();
+		install_hydrated_reactive_nodes(root, &view, &mut root_registry)?;
+		store_reactive_node(root_registry);
+		Ok::<_, HydrationError>(())
 	})?;
 	web_sys::console::log_1(&"[Hydration] Events attached".into());
 	web_sys::console::log_1(&"[Hydration] Reactive nodes installed".into());
@@ -239,6 +235,118 @@ pub fn hydrate<C: Component>(component: &C, root: &Element) -> Result<(), Hydrat
 fn with_hydration_prepass_store<R>(f: impl FnOnce() -> R) -> R {
 	let store = new_reactive_node_store();
 	with_reactive_node_store(&store, f)
+}
+
+#[cfg(wasm)]
+fn validate_hydrated_controls(element: &Element, view: &Page) -> Result<(), HydrationError> {
+	match view {
+		Page::Element(element_view) => {
+			if let Some(binding) = element_view.bound_control() {
+				crate::dom::control_binding::validate_control(element, binding.kind())
+					.map_err(|error| HydrationError::EventAttachmentFailed(error.to_string()))?;
+			}
+			validate_hydrated_element_children(element, element_view.child_views())?;
+		}
+		Page::WithHead { view, .. } => validate_hydrated_controls(element, view)?,
+		Page::Fragment(children) => validate_hydrated_element_children(element, children)?,
+		Page::KeyedFragment(children) => {
+			let child_views = children
+				.iter()
+				.map(|(_, child)| child.clone())
+				.collect::<Vec<_>>();
+			validate_hydrated_element_children(element, &child_views)?;
+		}
+		Page::Outlet(outlet) => {
+			if let Some(child) = outlet.child() {
+				validate_hydrated_controls(element, child)?;
+			}
+		}
+		Page::Reactive(reactive) => validate_hydrated_controls(element, &reactive.render())?,
+		Page::ReactiveIf(reactive_if) => {
+			let branch = if reactive_if.condition() {
+				reactive_if.then_view()
+			} else {
+				reactive_if.else_view()
+			};
+			validate_hydrated_controls(element, &branch)?;
+		}
+		Page::Suspense(node) => validate_hydrated_controls(element, &node.render_branch())?,
+		Page::Deferred(node) => validate_hydrated_controls(element, &node.content())?,
+		Page::Text(_) | Page::Empty => {}
+	}
+	Ok(())
+}
+
+#[cfg(wasm)]
+fn validate_hydrated_element_children(
+	element: &Element,
+	children: &[Page],
+) -> Result<(), HydrationError> {
+	with_hydration_prepass_store(|| split_coalesced_text_children(element, children));
+	validate_hydrated_child_sequence(&relevant_child_nodes(element), children)
+}
+
+#[cfg(wasm)]
+fn validate_hydrated_child_controls(
+	nodes: &[web_sys::Node],
+	view: &Page,
+) -> Result<(), HydrationError> {
+	match view {
+		Page::Reactive(reactive) => {
+			validate_hydrated_child_controls(nodes, &reactive.render())?;
+		}
+		Page::ReactiveIf(reactive_if) => {
+			let branch = if reactive_if.condition() {
+				reactive_if.then_view()
+			} else {
+				reactive_if.else_view()
+			};
+			validate_hydrated_child_controls(nodes, &branch)?;
+		}
+		Page::Element(_) => {
+			if let Some(element) = nodes
+				.first()
+				.and_then(|node| wasm_bindgen::JsCast::dyn_ref::<web_sys::Element>(node))
+			{
+				validate_hydrated_controls(&Element::new(element.clone()), view)?;
+			}
+		}
+		Page::WithHead { view, .. } => validate_hydrated_child_controls(nodes, view)?,
+		Page::Fragment(children) => validate_hydrated_child_sequence(nodes, children)?,
+		Page::KeyedFragment(children) => {
+			let child_views = children
+				.iter()
+				.map(|(_, child)| child.clone())
+				.collect::<Vec<_>>();
+			validate_hydrated_child_sequence(nodes, &child_views)?;
+		}
+		Page::Outlet(outlet) => {
+			if let Some(child) = outlet.child() {
+				validate_hydrated_child_controls(nodes, child)?;
+			}
+		}
+		Page::Suspense(node) => {
+			validate_hydrated_child_controls(nodes, &node.render_branch())?;
+		}
+		Page::Deferred(node) => validate_hydrated_child_controls(nodes, &node.content())?,
+		Page::Text(_) | Page::Empty => {}
+	}
+	Ok(())
+}
+
+#[cfg(wasm)]
+fn validate_hydrated_child_sequence(
+	nodes: &[web_sys::Node],
+	children: &[Page],
+) -> Result<(), HydrationError> {
+	let mut index = 0;
+	for child in children {
+		let count = with_hydration_prepass_store(|| hydrated_node_count(child));
+		let end = (index + count).min(nodes.len());
+		validate_hydrated_child_controls(&nodes[index..end], child)?;
+		index = end;
+	}
+	Ok(())
 }
 
 #[cfg(wasm)]
@@ -820,12 +928,7 @@ pub fn attach_events_to_mounted_view(
 	web_sys::console::log_1(&"[CSR] Attaching events to mounted view...".into());
 
 	let mut registry = EventRegistry::new();
-	let adoption_store = crate::dom::control_binding::new_hydration_adoption_store();
-	crate::dom::control_binding::with_hydration_adoption_store(&adoption_store, || {
-		attach_events_recursive(element, view, &mut registry)
-	})?;
-	crate::dom::control_binding::commit_hydration_adoptions(&adoption_store)
-		.map_err(|error| HydrationError::EventAttachmentFailed(error.to_string()))?;
+	attach_events_recursive(element, view, &mut registry)?;
 	store_reactive_node(registry);
 
 	web_sys::console::log_1(&"[CSR] Events attached successfully!".into());
