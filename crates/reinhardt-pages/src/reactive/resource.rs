@@ -245,6 +245,8 @@ impl<T: Clone + 'static, E: Clone + 'static> reinhardt_core::reactive::deps::Tra
 ///   `fetcher` do not subscribe (they cross an `await` boundary), so list
 ///   everything that should drive a refetch — the same stale-deps rule as
 ///   `use_effect`.
+/// - Automatic dependencies are not supported because the future body executes
+///   after construction and may cross an `await` boundary. Use `deps![...]`.
 ///
 /// The initial fetch and every dependency-driven refetch are deferred one
 /// microtask (`defer_yield`) so they cannot hang when created during WASM

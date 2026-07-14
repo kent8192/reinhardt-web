@@ -15,6 +15,9 @@ use crate::reactive::{ExplicitDeps, Memo, ReactiveDeps};
 /// Reinhardt Pages uses an explicit `deps![...]` list or `deps_auto!()` instead
 /// of a React dependency array. Signal reads inside the calculation subscribe
 /// only in automatic mode; an explicit list determines when the memo re-runs.
+/// `deps![...]` subscribes only to the listed reactive values, `deps![]` runs
+/// the calculation once and retains its value until disposal, and
+/// `deps_auto!()` rebuilds subscriptions from tracked reads on every setup.
 ///
 /// # Type Parameters
 ///
@@ -24,7 +27,8 @@ use crate::reactive::{ExplicitDeps, Memo, ReactiveDeps};
 /// # Arguments
 ///
 /// * `f` - A function that performs the calculation
-/// * `deps` - Explicit dependency list; pass `deps![]` for mount-only memoization
+/// * `deps` - Explicit dependency list or `deps_auto!()`; pass `deps![]` for
+///   mount-only memoization
 ///
 /// # Returns
 ///
@@ -113,6 +117,8 @@ where
 /// Unlike React's dependency arrays, Reinhardt Pages uses an explicit
 /// `deps![...]` dependency list. Capture Signals (which are cheap to clone) rather
 /// than their values when the callback should observe the latest state.
+/// Automatic dependencies are not supported because the callback body executes
+/// after construction.
 #[cfg(wasm)]
 #[track_caller]
 pub fn use_callback<Args, F>(f: F, deps: ExplicitDeps) -> Callback<Args, ()>
@@ -126,6 +132,8 @@ where
 /// Memoizes a callback function to maintain a stable reference (server-side version).
 ///
 /// See the WASM version for full documentation.
+/// This hook requires explicit `deps![...]`; automatic dependencies are not
+/// supported because the callback body executes after construction.
 /// Requires `Send + Sync` bounds for thread-safe server-side usage.
 #[cfg(native)]
 #[track_caller]
@@ -156,6 +164,9 @@ where
 ///
 /// A `Callback<Args, Ret>`
 ///
+/// This hook requires explicit `deps![...]`; automatic dependencies are not
+/// supported because the callback body executes after construction.
+///
 /// # Example
 ///
 /// ```no_run
@@ -179,6 +190,8 @@ where
 /// Creates a memoized callback with custom argument and return types (server-side version).
 ///
 /// See the WASM version for full documentation.
+/// This hook requires explicit `deps![...]`; automatic dependencies are not
+/// supported because the callback body executes after construction.
 /// Requires `Send + Sync` bounds for thread-safe server-side usage.
 #[cfg(native)]
 #[track_caller]

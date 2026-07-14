@@ -7,6 +7,11 @@ This guide covers only the delta from the public 0.1.x line to the final
 0.2.0 line. It does not repeat migrations that were already required before
 0.1.0 stabilized.
 
+When upgrading beyond 0.3.x, also follow the
+[0.4.0 hook dependency mode migration guide](../docs/migration/0.4.0-hook-dependency-modes.md).
+The current API uses named dependency macros rather than the tuple and unit
+forms described in this historical 0.2 migration.
+
 0.2.0 is a major-version upgrade. The main work is:
 
 - remove APIs that were already deprecated in 0.1.x,
@@ -270,7 +275,7 @@ let rollback_sql: Vec<String> = operation.to_reverse_sql(&builder)?;
 These are 0.2 behavior changes, not the removed-deprecated list above:
 
 - closure-taking hooks such as `use_effect`, `use_layout_effect`, `use_memo`,
-  and `use_callback` take an explicit dependency tuple; pass `()` for
+  and `use_callback` take a named dependency list; use `deps![]` for
   mount-only behavior,
 - hook closures do not auto-subscribe from `Signal::get`; listed deps drive
   subscription,
@@ -280,7 +285,7 @@ These are 0.2 behavior changes, not the removed-deprecated list above:
 - bare identifier shorthand in element bodies is removed; write `{name}`,
 - `form!` fields can carry typed generic parameters for server function values,
 - `create_resource` / `create_resource_with_deps` call sites should move to
-  `use_resource(fetcher, deps)` before 0.3, where the deprecated constructors
+  `use_resource(fetcher, deps![...])` before 0.3, where the deprecated constructors
   are removed,
 - `use_form` now starts from a generated form definition and returns a runtime
   builder; do not build runtime state from `FormOptions::new(...)`.

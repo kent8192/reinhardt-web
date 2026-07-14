@@ -86,6 +86,9 @@ where
 /// - Automatic mode keeps an Observer active while `f` runs and subscribes to
 ///   signals read by the closure.
 /// - Use `deps![]` to opt out of re-runs (mount-only effect).
+/// - `deps![...]` subscribes only to the listed reactive values.
+/// - `deps![]` runs setup once and cleanup on disposal.
+/// - `deps_auto!()` rebuilds subscriptions from tracked reads on every setup.
 ///
 /// # Type Parameters
 ///
@@ -154,6 +157,10 @@ where
 /// root reactive store until [`cleanup_reactive_nodes`] is called by tests or
 /// host code.
 ///
+/// This lifecycle-owning helper requires explicit `deps![...]` in this release.
+/// Use `use_effect(..., deps_auto!())` when automatic dependency tracking is
+/// required and retain its returned RAII guard explicitly.
+///
 /// # Example
 ///
 /// ```ignore
@@ -208,6 +215,10 @@ where
 /// See [`use_effect`] for dependency-mode semantics; this hook adds Layout
 /// timing.
 ///
+/// `deps![...]` subscribes only to the listed reactive values. `deps![]` runs
+/// setup once and cleanup on disposal. `deps_auto!()` rebuilds subscriptions
+/// from tracked reads on every setup.
+///
 /// # Example
 ///
 /// ```ignore
@@ -253,6 +264,10 @@ where
 /// retained layout effects after each pass. Native calls outside SSR are held
 /// in the root reactive store until [`cleanup_reactive_nodes`] is called by
 /// tests or host code.
+///
+/// This lifecycle-owning helper requires explicit `deps![...]` in this release.
+/// Use `use_layout_effect(..., deps_auto!())` when automatic dependency tracking
+/// is required and retain its returned RAII guard explicitly.
 ///
 /// # Example
 ///

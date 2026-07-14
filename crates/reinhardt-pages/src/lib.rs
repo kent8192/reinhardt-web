@@ -17,7 +17,7 @@
 //! - **Django-like API**: Familiar patterns for Reinhardt developers
 //! - **Boundaries**: Suspense and error boundaries for async UI states
 //!
-//! ## React-aligned hook signatures (v0.2, Refs #4195)
+//! ## React-aligned hook signatures (v0.4, Refs #5511 and #5577)
 //!
 //! `use_effect`, `use_layout_effect`, and `use_memo` accept either an explicit
 //! `deps![...]` dependency list or `deps_auto!()`. Retained effects, callbacks,
@@ -47,6 +47,11 @@
 //! pass `deps_auto!()` as their second argument to subscribe to signals read by
 //! the closure. Retained effects, callbacks, and resources always use explicit
 //! dependency lists.
+//!
+//! This is a breaking migration from the tuple and unit forms. Replace `()`
+//! with `deps![]`, and replace `(signal.clone(), ...)` with `deps![signal, ...]`.
+//! See `docs/migration/0.4.0-hook-dependency-modes.md` for the complete
+//! migration guide and the relationship between #5511 and #5577.
 //!
 //! For a concept-by-concept mapping from React to Reinhardt Pages, see
 //! `docs/react_to_reinhardt.md` in this crate.

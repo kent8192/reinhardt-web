@@ -29,8 +29,8 @@
 //! - [`use_reducer`] - State with reducer logic
 //!
 //! ### Effect Hooks
-//! - [`use_effect`] - Side effects with automatic dependency tracking
-//! - [`use_layout_effect`] - Effects that run before paint
+//! - [`use_effect`] - Side effects with explicit or automatic dependency tracking
+//! - [`use_layout_effect`] - Effects that run before paint with explicit or automatic dependencies
 //! - [`use_retained_effect`] - Side effects retained by the mounted view scope
 //! - [`use_retained_layout_effect`] - Layout effects retained by the mounted view scope
 //!
@@ -57,6 +57,17 @@
 //! - [`use_websocket`] - WebSocket connections (WASM only)
 //! - [`use_optimistic`] - Optimistic UI updates
 //! - [`use_debug_value`] - DevTools labels
+//!
+//! ## Dependency modes
+//!
+//! Every dependency-aware hook requires a second argument. Use `deps![...]`
+//! for a named explicit dependency list, including `deps![]` for mount-only
+//! behavior. `use_effect`, `use_layout_effect`, and `use_memo` additionally
+//! accept `deps_auto!()` to infer subscriptions from tracked reads. Callbacks,
+//! resources, and retained-effect helpers accept only `deps![...]`.
+//!
+//! The mode-typed API is the breaking change tracked by issues #5511 and #5577;
+//! tuple and unit dependency arguments are no longer accepted.
 //!
 //! ## Example
 //!

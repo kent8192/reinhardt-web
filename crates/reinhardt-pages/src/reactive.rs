@@ -92,6 +92,20 @@
 //! - Logging and analytics
 //! - Any side effects that don't require synchronous execution
 //!
+//! ## Hook dependency modes
+//!
+//! Hook dependency arguments use the named `deps!` and `deps_auto!` macros.
+//! `deps![...]` subscribes only to the listed reactive values, while
+//! `deps![]` runs an effect or memo once until it is disposed. Effects, layout
+//! effects, and memos also accept `deps_auto!()`, which rebuilds subscriptions
+//! from tracked reads during each execution. Callback, resource, and retained
+//! effect hooks require `deps![...]` because their work is invoked or retained
+//! outside the dependency-collection phase.
+//!
+//! The mandatory mode is the breaking API introduced by issues #5511 and #5577.
+//! See `docs/migration/0.4.0-hook-dependency-modes.md` for examples from the
+//! removed tuple and unit forms.
+//!
 //! ## Memory Management
 //!
 //! All reactive nodes (Signals, Effects, Memos) automatically clean up their dependencies

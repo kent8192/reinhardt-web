@@ -9,6 +9,11 @@ line. It assumes the application already follows
 [`MIGRATION_0.2.md`](MIGRATION_0.2.md). It does not repeat changes that were
 already required to leave 0.1.x.
 
+Projects continuing from 0.3.x to 0.4.0 must also follow the
+[hook dependency mode migration guide](../docs/migration/0.4.0-hook-dependency-modes.md).
+The 0.4.0 guide supersedes the tuple and unit dependency forms shown in older
+0.3-era examples.
+
 0.3.0 is a major-version upgrade. The main work is:
 
 - remove 0.2 compatibility APIs that are gone in 0.3,
@@ -55,8 +60,8 @@ changes.
 | Crate | Removed API | Replacement |
 |---|---|---|
 | `reinhardt-auth` | `AuthUser<U>` | `CurrentUser<U>` |
-| `reinhardt-pages` | `create_resource(fetcher)` | `use_resource(fetcher, ())` |
-| `reinhardt-pages` | `create_resource_with_deps(fetcher, deps)` | `use_resource(fetcher, deps)` |
+| `reinhardt-pages` | `create_resource(fetcher)` | `use_resource(fetcher, deps![])` |
+| `reinhardt-pages` | `create_resource_with_deps(fetcher, deps)` | `use_resource(fetcher, deps![...])` |
 | `reinhardt-pages` | `use_effect_event(f)` | `use_callback(f, deps)` or `.get_untracked()` inside the effect |
 | `reinhardt-pages` | `use_effect_event_with(f, deps)` | `use_callback_with(f, deps)` or `.get_untracked()` inside the effect |
 | `reinhardt-urls` | `ServerRouter::function`, `ServerRouter::route`, `ServerRouter::handler_with_method`, and named variants | `#[get]` / `#[post]` / endpoint macros plus `.endpoint(factory)` |
@@ -216,21 +221,20 @@ method, and route name stay attached to the handler type.
 
 ## Resource hooks and effect callbacks
 
-Use `use_resource(fetcher, deps)` for both mount-only and dependency-driven
-resource loading.
+Use `use_resource(fetcher, deps![...])` for dependency-driven resource loading.
 
 ```rust
 // Before
 let questions = create_resource_with_deps(fetch_questions, (page,));
 
 // After
-let questions = use_resource(fetch_questions, (page,));
+let questions = use_resource(fetch_questions, deps![page]);
 ```
 
-For mount-only loading, pass `()`:
+For mount-only loading, pass `deps![]`:
 
 ```rust
-let user = use_resource(fetch_user, ());
+let user = use_resource(fetch_user, deps![]);
 ```
 
 Replace `use_effect_event` with a callback when the effect should call a
@@ -242,7 +246,7 @@ the value should not become a dependency of the effect.
 let submit = use_effect_event(move || save(form.get()));
 
 // After
-let submit = use_callback(move || save(form.get()), (form,));
+let submit = use_callback(move || save(form.get()), deps![form]);
 ```
 
 ## Pages and components
