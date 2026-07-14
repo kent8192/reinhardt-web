@@ -46,8 +46,9 @@ scan() {
 scan_cargo_manifests() {
 	local manifest
 	local manifests
-	local output
+	local metadata_output
 	local status
+	local workspace_output
 	local -a manifest_paths=()
 
 	set +e
@@ -67,50 +68,184 @@ scan_cargo_manifests() {
 		manifest_paths+=("$SCAN_ROOT/$manifest")
 	done < <(printf '%s\n' "$manifests")
 
+	if ! command -v python3 >/dev/null 2>&1; then
+		echo "anyhow-check: Python 3.11+ is required" >&2
+		exit 1
+	fi
+
 	set +e
-	output=$(awk -v root="$SCAN_ROOT/" '
-		function canonical_toml_string(value, simple_string) {
-			if (simple_string && (value == "package" || value == "anyhow")) {
-				return "\"" value "\""
-			}
-			return "\"\""
+	metadata_output=$(python3 - "$SCAN_ROOT" "${manifest_paths[@]}" <<'PY'
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+
+if sys.version_info < (3, 11):
+    print("anyhow-check: Python 3.11+ is required", file=sys.stderr)
+    raise SystemExit(2)
+
+
+def relative_path(path, root):
+    return os.path.relpath(path, root).replace(os.sep, "/")
+
+
+def dependency_context(dependency):
+    kind = dependency.get("kind")
+    if kind == "dev":
+        table_name = "dev-dependencies"
+    elif kind == "build":
+        table_name = "build-dependencies"
+    else:
+        table_name = "dependencies"
+
+    target = dependency.get("target")
+    if target:
+        return f"target.{target}.{table_name}"
+    return table_name
+
+
+def emit_package_diagnostics(package, root, manifest_path=None):
+    manifest_path = os.path.realpath(manifest_path or package["manifest_path"])
+    relative_manifest = relative_path(manifest_path, root)
+    for dependency in package.get("dependencies", []):
+        if dependency.get("name") != "anyhow":
+            continue
+        alias = dependency.get("rename")
+        detail = f'{alias} (package = "anyhow")' if alias else "anyhow"
+        context = dependency_context(dependency)
+        print(
+            f"{relative_manifest}:1:remove direct anyhow dependency "
+            f"from {context}: {detail}"
+        )
+
+
+def run_metadata(manifest_path, root):
+    command = [
+        "cargo",
+        "metadata",
+        "--no-deps",
+        "--format-version",
+        "1",
+        "--manifest-path",
+        manifest_path,
+    ]
+    result = subprocess.run(command, cwd=root, capture_output=True, text=True)
+    if result.returncode == 0:
+        return result, False
+
+    if "current package believes it's in a workspace when it's not" not in result.stderr:
+        return result, False
+
+    with tempfile.TemporaryDirectory(prefix="anyhow-check-") as temp_directory:
+        package_directory = os.path.join(temp_directory, "package")
+        shutil.copytree(os.path.dirname(manifest_path), package_directory)
+        isolated_manifest = os.path.join(package_directory, "Cargo.toml")
+        with open(isolated_manifest, "a", encoding="utf-8") as manifest_file:
+            manifest_file.write("\n[workspace]\n")
+        isolated_command = command[:-1] + [isolated_manifest]
+        isolated_result = subprocess.run(
+            isolated_command,
+            cwd=temp_directory,
+            capture_output=True,
+            text=True,
+        )
+        return isolated_result, True
+
+
+root = os.path.realpath(sys.argv[1])
+candidates = {os.path.realpath(path) for path in sys.argv[2:]}
+pending = set(candidates)
+diagnosed_packages = set()
+
+while pending:
+    requested_manifest = min(pending)
+    result, isolated = run_metadata(requested_manifest, root)
+    if result.returncode != 0:
+        relative_manifest = relative_path(requested_manifest, root)
+        message = result.stderr.strip() or result.stdout.strip()
+        print(
+            f"anyhow-check: cargo metadata failed for {relative_manifest}: {message}",
+            file=sys.stderr,
+        )
+        raise SystemExit(result.returncode)
+
+    try:
+        metadata = json.loads(result.stdout)
+    except json.JSONDecodeError as error:
+        relative_manifest = relative_path(requested_manifest, root)
+        print(
+            f"anyhow-check: invalid cargo metadata JSON for {relative_manifest}: {error}",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+
+    if isolated:
+        for package in metadata.get("packages", []):
+            emit_package_diagnostics(package, root, requested_manifest)
+        diagnosed_packages.add(requested_manifest)
+        pending.discard(requested_manifest)
+        continue
+
+    unit_manifests = {
+        os.path.realpath(os.path.join(metadata["workspace_root"], "Cargo.toml"))
+    }
+    for package in metadata.get("packages", []):
+        package_manifest = os.path.realpath(package["manifest_path"])
+        unit_manifests.add(package_manifest)
+        if package_manifest in candidates and package_manifest not in diagnosed_packages:
+            emit_package_diagnostics(package, root)
+            diagnosed_packages.add(package_manifest)
+
+    pending.difference_update(unit_manifests)
+    pending.discard(requested_manifest)
+PY
+)
+	status=$?
+	set -e
+
+	if [ "$status" -ne 0 ]; then
+		echo "anyhow-check: Cargo manifest semantic scan failed" >&2
+		exit "$status"
+	fi
+
+	set +e
+	workspace_output=$(awk -v root="$SCAN_ROOT/" '
+		function emit_dependency(dependency, detail) {
+			detail = dependency == "anyhow" ? "anyhow" : dependency " (package = \"anyhow\")"
+			print substr(FILENAME, length(root) + 1) ":1:remove direct anyhow dependency from workspace.dependencies: " detail
 		}
 
-		function decode_ascii_unicode_escape(value, position, width, digits, digit_index, digit, digit_value, codepoint) {
+		function decode_ascii_escape(value, position, width, digits, index_, digit, digit_value, codepoint) {
 			digits = substr(value, position + 2, width)
 			if (length(digits) != width) {
 				return ""
 			}
-
 			codepoint = 0
-			for (digit_index = 1; digit_index <= width; digit_index++) {
-				digit = tolower(substr(digits, digit_index, 1))
+			for (index_ = 1; index_ <= width; index_++) {
+				digit = tolower(substr(digits, index_, 1))
 				digit_value = index("0123456789abcdef", digit) - 1
 				if (digit_value < 0) {
 					return ""
 				}
 				codepoint = codepoint * 16 + digit_value
 			}
-
-			if (codepoint < 1 || codepoint > 127) {
-				return ""
-			}
-			return sprintf("%c", codepoint)
+			return codepoint > 0 && codepoint < 128 ? sprintf("%c", codepoint) : ""
 		}
 
-		function normalized_table(value, position, character, in_basic_string, in_literal_string, result, escape_type, decoded, width) {
-			in_basic_string = 0
-			in_literal_string = 0
+		function compact_toml_line(value, position, character, in_basic, in_literal, result, escape_type, width, decoded) {
+			in_basic = 0
+			in_literal = 0
 			result = ""
-
 			for (position = 1; position <= length(value); position++) {
 				character = substr(value, position, 1)
-				if (in_basic_string) {
+				if (in_basic) {
 					if (character == "\\") {
 						escape_type = substr(value, position + 1, 1)
 						width = escape_type == "u" ? 4 : escape_type == "U" ? 8 : 0
 						if (width > 0) {
-							decoded = decode_ascii_unicode_escape(value, position, width)
+							decoded = decode_ascii_escape(value, position, width)
 							result = result (decoded == "" ? "?" : decoded)
 							position += width + 1
 						} else {
@@ -118,287 +253,74 @@ scan_cargo_manifests() {
 							position++
 						}
 					} else if (character == "\"") {
-						in_basic_string = 0
+						in_basic = 0
 					} else {
 						result = result character
 					}
-				} else if (in_literal_string) {
+				} else if (in_literal) {
 					if (character == "\047") {
-						in_literal_string = 0
+						in_literal = 0
 					} else {
 						result = result character
 					}
 				} else if (character == "\"") {
-					in_basic_string = 1
+					in_basic = 1
 				} else if (character == "\047") {
-					in_literal_string = 1
+					in_literal = 1
+				} else if (character == "#") {
+					break
 				} else if (character !~ /[[:space:]]/) {
 					result = result character
 				}
 			}
-
 			return result
 		}
 
-		function scan_toml_line(value, position, character, escape_type, decoded) {
-			line_code = value
-			line_tokens = lexer_multiline ? lexer_pending_tokens : ""
-			line_brace_delta = 0
-			line_started_in_multiline = lexer_multiline
-
-			if (lexer_multiline && !lexer_skip_whitespace) {
-				if (lexer_initial_newline) {
-					lexer_initial_newline = 0
-				} else {
-					lexer_string_value = lexer_string_value "\n"
-				}
-			}
-
-			for (position = 1; position <= length(value); position++) {
-				character = substr(value, position, 1)
-
-				if (lexer_multiline && lexer_skip_whitespace) {
-					if (character ~ /[[:space:]]/) {
-						continue
-					}
-					lexer_skip_whitespace = 0
-				}
-
-				if (lexer_basic_string) {
-					if (lexer_escaped) {
-						lexer_string_value = lexer_string_value character
-						lexer_escaped = 0
-					} else if (character == "\\") {
-						escape_type = substr(value, position + 1, 1)
-						if (escape_type == "u") {
-							decoded = decode_ascii_unicode_escape(value, position, 4)
-						} else if (escape_type == "U") {
-							decoded = decode_ascii_unicode_escape(value, position, 8)
-						} else {
-							decoded = ""
-						}
-
-						if (decoded != "") {
-							lexer_string_value = lexer_string_value decoded
-							lexer_initial_newline = 0
-							position += escape_type == "u" ? 5 : 9
-						} else if (lexer_multiline && position == length(value)) {
-							lexer_initial_newline = 0
-							lexer_skip_whitespace = 1
-						} else {
-							lexer_simple_string = 0
-							lexer_initial_newline = 0
-							lexer_escaped = 1
-						}
-					} else if (lexer_multiline && substr(value, position, 3) == "\"\"\"") {
-						line_tokens = line_tokens canonical_toml_string(lexer_string_value, lexer_simple_string)
-						lexer_basic_string = 0
-						lexer_multiline = 0
-						lexer_initial_newline = 0
-						position += 2
-					} else if (!lexer_multiline && character == "\"") {
-						line_tokens = line_tokens canonical_toml_string(lexer_string_value, lexer_simple_string)
-						lexer_basic_string = 0
-					} else {
-						lexer_string_value = lexer_string_value character
-						lexer_initial_newline = 0
-					}
-				} else if (lexer_literal_string) {
-					if (lexer_multiline && substr(value, position, 3) == "\047\047\047") {
-						line_tokens = line_tokens canonical_toml_string(lexer_string_value, lexer_simple_string)
-						lexer_literal_string = 0
-						lexer_multiline = 0
-						lexer_initial_newline = 0
-						position += 2
-					} else if (!lexer_multiline && character == "\047") {
-						line_tokens = line_tokens canonical_toml_string(lexer_string_value, lexer_simple_string)
-						lexer_literal_string = 0
-					} else {
-						lexer_string_value = lexer_string_value character
-						lexer_initial_newline = 0
-					}
-				} else if (substr(value, position, 3) == "\"\"\"") {
-					lexer_string_value = ""
-					lexer_simple_string = 1
-					lexer_basic_string = 1
-					lexer_multiline = 1
-					lexer_initial_newline = 1
-					position += 2
-				} else if (substr(value, position, 3) == "\047\047\047") {
-					lexer_string_value = ""
-					lexer_simple_string = 1
-					lexer_literal_string = 1
-					lexer_multiline = 1
-					lexer_initial_newline = 1
-					position += 2
-				} else if (character == "\"") {
-					lexer_string_value = ""
-					lexer_simple_string = 1
-					lexer_basic_string = 1
-				} else if (character == "\047") {
-					lexer_string_value = ""
-					lexer_simple_string = 1
-					lexer_literal_string = 1
-				} else if (character == "#") {
-					line_code = substr(value, 1, position - 1)
-					break
-				} else {
-					if (character !~ /[[:space:]]/) {
-						line_tokens = line_tokens character
-					}
-					if (character == "{") {
-						line_brace_delta++
-					} else if (character == "}") {
-						line_brace_delta--
-					}
-				}
-			}
-
-			if (lexer_multiline) {
-				lexer_pending_tokens = line_tokens
-				line_tokens = ""
-			} else {
-				lexer_pending_tokens = ""
-			}
-		}
-
-		function is_dependency_table(value) {
-			return value ~ /^\[(dependencies|dev-dependencies|build-dependencies)\]$/ || value ~ /^\[workspace[.]dependencies\]$/ || value ~ /^\[target[.].*[.](dependencies|dev-dependencies|build-dependencies)\]$/
-		}
-
-		function is_dependency_subtable(value) {
-			return value ~ /^\[(dependencies|dev-dependencies|build-dependencies)[.][[:alnum:]_-]+\]$/ || value ~ /^\[workspace[.]dependencies[.][[:alnum:]_-]+\]$/ || value ~ /^\[target[.].*[.](dependencies|dev-dependencies|build-dependencies)[.][[:alnum:]_-]+\]$/
-		}
-
-		function is_prohibited_dependency_entry(value) {
-			return value ~ /^anyhow([.][[:alnum:]_-]+)?=/ || value ~ /^[[:alnum:]_-]+[.]package=anyhow$/
-		}
-
-		function is_prohibited_dependency_tokens(value) {
-			return value ~ /^(anyhow|"anyhow")([.][[:alnum:]_-]+)?=/ || value ~ /^[[:alnum:]_-]+[.](package|"package")="anyhow"$/
-		}
-
-		function is_prohibited_root_dependency_entry(value) {
-			if (value ~ /^(dependencies|dev-dependencies|build-dependencies)[.]/) {
-				sub(/^(dependencies|dev-dependencies|build-dependencies)[.]/, "", value)
-			} else if (value ~ /^workspace[.]dependencies[.]/) {
-				sub(/^workspace[.]dependencies[.]/, "", value)
-			} else if (value ~ /^target[.].*[.](dependencies|dev-dependencies|build-dependencies)[.]/) {
-				sub(/^target[.].*[.](dependencies|dev-dependencies|build-dependencies)[.]/, "", value)
-			} else {
-				return 0
-			}
-			return is_prohibited_dependency_entry(value)
-		}
-
-		function is_prohibited_root_dependency_tokens(value) {
-			if (value ~ /^(dependencies|dev-dependencies|build-dependencies)[.]/) {
-				sub(/^(dependencies|dev-dependencies|build-dependencies)[.]/, "", value)
-			} else if (value ~ /^workspace[.]dependencies[.]/) {
-				sub(/^workspace[.]dependencies[.]/, "", value)
-			} else if (value ~ /^target[.].*[.](dependencies|dev-dependencies|build-dependencies)[.]/) {
-				sub(/^target[.].*[.](dependencies|dev-dependencies|build-dependencies)[.]/, "", value)
-			} else {
-				return 0
-			}
-			return is_prohibited_dependency_tokens(value)
-		}
-
-		function is_root_dependency_inline_start(value) {
-			if (value ~ /^(dependencies|dev-dependencies|build-dependencies)[.]/) {
-				sub(/^(dependencies|dev-dependencies|build-dependencies)[.]/, "", value)
-			} else if (value ~ /^workspace[.]dependencies[.]/) {
-				sub(/^workspace[.]dependencies[.]/, "", value)
-			} else if (value ~ /^target[.].*[.](dependencies|dev-dependencies|build-dependencies)[.]/) {
-				sub(/^target[.].*[.](dependencies|dev-dependencies|build-dependencies)[.]/, "", value)
-			} else {
-				return 0
-			}
-			return value ~ /^[[:alnum:]_-]+=\{/
-		}
-
-		function has_anyhow_package_field(value) {
-			return value ~ /(^|[,{}])("package"|package)="anyhow"([,}]|$)/
-		}
-
-		function emit_match() {
-			print substr(FILENAME, length(root) + 1) ":" FNR ":" $0
-		}
-
 		FNR == 1 {
-			table = ""
-			dependency_table = 0
-			dependency_subtable = 0
-			feature_table = 0
-			inline_dependency_entry = 0
-			inline_dependency_depth = 0
-			lexer_basic_string = 0
-			lexer_literal_string = 0
-			lexer_multiline = 0
-			lexer_escaped = 0
-			lexer_initial_newline = 0
-			lexer_skip_whitespace = 0
-			lexer_pending_tokens = ""
-			lexer_string_value = ""
-			lexer_simple_string = 1
+			workspace_table = 0
+			workspace_subtable = ""
+			workspace_package_multiline = 0
+		}
+
+		/^[[:space:]]*\[/ {
+			header = compact_toml_line($0)
+			workspace_table = header == "[workspace.dependencies]"
+			workspace_subtable = ""
+			workspace_package_multiline = 0
+			if (header ~ /^\[workspace[.]dependencies[.][[:alnum:]_-]+\]$/) {
+				workspace_subtable = header
+				sub(/^\[workspace[.]dependencies[.]/, "", workspace_subtable)
+				sub(/\]$/, "", workspace_subtable)
+				if (workspace_subtable == "anyhow") {
+					emit_dependency("anyhow")
+				}
+			}
+			next
 		}
 
 		{
-			scan_toml_line($0)
-			code = line_code
-			tokens = line_tokens
+			entry = compact_toml_line($0)
 
-			if (!line_started_in_multiline && code ~ /^[[:space:]]*\[/) {
-				table = normalized_table(code)
-				dependency_table = is_dependency_table(table)
-				dependency_subtable = is_dependency_subtable(table)
-				feature_table = table == "[features]"
-				inline_dependency_entry = 0
-				inline_dependency_depth = 0
-				if (dependency_subtable && table ~ /[.]anyhow\]$/) {
-					emit_match()
-				}
-				next
-			}
-
-			compact = code
-			gsub(/[[:space:]"\047]/, "", compact)
-			if (line_started_in_multiline) {
-				compact = ""
-			}
-			matched = 0
-
-			if (!inline_dependency_entry && (dependency_table && compact ~ /^[[:alnum:]_-]+=\{/ || table == "" && is_root_dependency_inline_start(compact))) {
-				inline_dependency_entry = 1
-				inline_dependency_depth = 0
-			}
-
-			if (table == "" && (is_prohibited_root_dependency_entry(compact) || is_prohibited_root_dependency_tokens(tokens))) {
-				matched = 1
-			} else if (dependency_table && (is_prohibited_dependency_entry(compact) || is_prohibited_dependency_tokens(tokens))) {
-				matched = 1
-			} else if (dependency_subtable && (compact == "package=anyhow" || has_anyhow_package_field(tokens))) {
-				matched = 1
-			}
-
-			if (inline_dependency_entry && has_anyhow_package_field(tokens)) {
-				matched = 1
-			}
-
-			if ((table == "" && compact ~ /^features[.][[:alnum:]_-]+=/ || feature_table) && compact ~ /dep:anyhow/) {
-				matched = 1
-			}
-
-			if (matched) {
-				emit_match()
-			}
-
-			if (inline_dependency_entry) {
-				inline_dependency_depth += line_brace_delta
-				if (inline_dependency_depth <= 0) {
-					inline_dependency_entry = 0
-					inline_dependency_depth = 0
-				}
+			if (workspace_package_multiline && entry == "anyhow") {
+				emit_dependency(workspace_subtable)
+				workspace_package_multiline = 0
+			} else if (workspace_table && entry ~ /^anyhow([.][[:alnum:]_-]+)?=/) {
+				emit_dependency("anyhow")
+			} else if (workspace_subtable != "" && entry == "package=anyhow") {
+				emit_dependency(workspace_subtable)
+			} else if (workspace_subtable != "" && entry == "package=") {
+				workspace_package_multiline = 1
+			} else if (workspace_table && entry ~ /^[[:alnum:]_-]+=\{.*package=anyhow([,}]|$)/) {
+				dependency = entry
+				sub(/=.*/, "", dependency)
+				emit_dependency(dependency)
+			} else if (entry ~ /^workspace[.]dependencies[.]anyhow([.][[:alnum:]_-]+)?=/) {
+				emit_dependency("anyhow")
+			} else if (entry ~ /^workspace[.]dependencies[.][[:alnum:]_-]+[.]package=anyhow$/) {
+				dependency = entry
+				sub(/^workspace[.]dependencies[.]/, "", dependency)
+				sub(/[.]package=anyhow$/, "", dependency)
+				emit_dependency(dependency)
 			}
 		}
 	' "${manifest_paths[@]}")
@@ -406,11 +328,15 @@ scan_cargo_manifests() {
 	set -e
 
 	if [ "$status" -ne 0 ]; then
-		echo "anyhow-check: repository scan failed" >&2
+		echo "anyhow-check: workspace dependency scan failed" >&2
 		exit "$status"
 	fi
-	if [ -n "$output" ]; then
-		printf '%s\n' "$output"
+	if [ -n "$metadata_output" ]; then
+		printf '%s\n' "$metadata_output"
+		FOUND=1
+	fi
+	if [ -n "$workspace_output" ]; then
+		printf '%s\n' "$workspace_output"
 		FOUND=1
 	fi
 }

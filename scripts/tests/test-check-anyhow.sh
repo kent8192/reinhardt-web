@@ -85,6 +85,13 @@ expect_rejected() {
 	fi
 }
 
+expect_dependency_rejected() {
+	local name="$1"
+	local context="$2"
+	local dependency="$3"
+	expect_rejected "$name" "Cargo.toml:1:remove direct anyhow dependency from $context: $dependency"
+}
+
 reset_fixture
 expect_clean "clean manifest, source, and README"
 
@@ -92,27 +99,27 @@ reset_fixture
 cat >> "$FIXTURE/Cargo.toml" <<'EOF'
 anyhow = "1"
 EOF
-expect_rejected "dependency key" 'Cargo.toml:7:anyhow = "1"'
+expect_dependency_rejected "dependency key" "dependencies" "anyhow"
 
 reset_fixture
 cat >> "$FIXTURE/Cargo.toml" <<'EOF'
 "anyhow" = "1"
 EOF
-expect_rejected "quoted dependency key" 'Cargo.toml:7:"anyhow" = "1"'
+expect_dependency_rejected "quoted dependency key" "dependencies" "anyhow"
 
 reset_fixture
 cat >> "$FIXTURE/Cargo.toml" <<'EOF'
 "any\u0068ow" = "1"
 EOF
 assert_manifest_valid "unicode-escaped dependency key"
-expect_rejected "unicode-escaped dependency key" 'Cargo.toml:7:"any\u0068ow" = "1"'
+expect_dependency_rejected "unicode-escaped dependency key" "dependencies" "anyhow"
 
 reset_fixture
 cat >> "$FIXTURE/Cargo.toml" <<'EOF'
 "any\U00000068ow" = "1"
 EOF
 assert_manifest_valid "long-unicode-escaped dependency key"
-expect_rejected "long-unicode-escaped dependency key" 'Cargo.toml:7:"any\U00000068ow" = "1"'
+expect_dependency_rejected "long-unicode-escaped dependency key" "dependencies" "anyhow"
 
 reset_fixture
 cat >> "$FIXTURE/Cargo.toml" <<'EOF'
@@ -121,7 +128,7 @@ cat >> "$FIXTURE/Cargo.toml" <<'EOF'
 version = "1"
 EOF
 assert_manifest_valid "unicode-escaped dependency subtable"
-expect_rejected "unicode-escaped dependency subtable" 'Cargo.toml:8:[dependencies."any\u0068ow"]'
+expect_dependency_rejected "unicode-escaped dependency subtable" "dependencies" "anyhow"
 
 reset_fixture
 cat > "$FIXTURE/Cargo.toml" <<'EOF'
@@ -133,7 +140,7 @@ version = "0.1.0"
 anyhow = "1"
 EOF
 assert_manifest_valid "unicode-escaped dependency table key"
-expect_rejected "unicode-escaped dependency table key" 'Cargo.toml:6:anyhow = "1"'
+expect_dependency_rejected "unicode-escaped dependency table key" "dependencies" "anyhow"
 
 reset_fixture
 cat > "$FIXTURE/Cargo.toml" <<'EOF'
@@ -145,7 +152,7 @@ version = "0.1.0"
 anyhow = "1"
 EOF
 assert_manifest_valid "literal dependency table key"
-expect_rejected "literal dependency table key" 'Cargo.toml:6:anyhow = "1"'
+expect_dependency_rejected "literal dependency table key" "dependencies" "anyhow"
 
 reset_fixture
 cat >> "$FIXTURE/Cargo.toml" <<'EOF'
@@ -154,7 +161,30 @@ cat >> "$FIXTURE/Cargo.toml" <<'EOF'
 version = "1"
 EOF
 assert_manifest_valid "literal dependency subtable key"
-expect_rejected "literal dependency subtable key" "Cargo.toml:8:[dependencies.'anyhow']"
+expect_dependency_rejected "literal dependency subtable key" "dependencies" "anyhow"
+
+reset_fixture
+cat > "$FIXTURE/Cargo.toml" <<'EOF'
+[package]
+name = "scanner-fixture"
+version = "0.1.0"
+
+["dependencies.anyhow"]
+version = "1"
+EOF
+assert_manifest_valid "quoted table component containing dots"
+expect_clean "quoted table component containing dots"
+
+reset_fixture
+cat > "$FIXTURE/Cargo.toml" <<'EOF'
+"dependencies.anyhow" = "metadata"
+
+[package]
+name = "scanner-fixture"
+version = "0.1.0"
+EOF
+assert_manifest_valid "quoted root key containing dots"
+expect_clean "quoted root key containing dots"
 
 reset_fixture
 cat >> "$FIXTURE/Cargo.toml" <<'EOF'
@@ -162,7 +192,7 @@ cat >> "$FIXTURE/Cargo.toml" <<'EOF'
 [dependencies.anyhow]
 version = "1"
 EOF
-expect_rejected "dependency subtable" 'Cargo.toml:8:[dependencies.anyhow]'
+expect_dependency_rejected "dependency subtable" "dependencies" "anyhow"
 
 reset_fixture
 cat > "$FIXTURE/Cargo.toml" <<'EOF'
@@ -173,19 +203,19 @@ dependencies.anyhow.version = "1"
 name = "scanner-fixture"
 version = "0.1.0"
 EOF
-expect_rejected "dotted dependency key" 'Cargo.toml:2:dependencies.anyhow.version = "1"'
+expect_dependency_rejected "dotted dependency key" "dependencies" "anyhow"
 
 reset_fixture
 cat >> "$FIXTURE/Cargo.toml" <<'EOF'
 anyhow.version = "1"
 EOF
-expect_rejected "dependency-table local dotted key" 'Cargo.toml:7:anyhow.version = "1"'
+expect_dependency_rejected "dependency-table local dotted key" "dependencies" "anyhow"
 
 reset_fixture
 cat >> "$FIXTURE/Cargo.toml" <<'EOF'
 "anyhow".version = "1"
 EOF
-expect_rejected "quoted dependency-table local dotted key" 'Cargo.toml:7:"anyhow".version = "1"'
+expect_dependency_rejected "quoted dependency-table local dotted key" "dependencies" "anyhow"
 
 reset_fixture
 cat >> "$FIXTURE/Cargo.toml" <<'EOF'
@@ -193,7 +223,7 @@ cat >> "$FIXTURE/Cargo.toml" <<'EOF'
 [dev-dependencies]
 anyhow.version = "1"
 EOF
-expect_rejected "dev-dependency-table local dotted key" 'Cargo.toml:9:anyhow.version = "1"'
+expect_dependency_rejected "dev-dependency-table local dotted key" "dev-dependencies" "anyhow"
 
 reset_fixture
 cat >> "$FIXTURE/Cargo.toml" <<'EOF'
@@ -201,7 +231,7 @@ cat >> "$FIXTURE/Cargo.toml" <<'EOF'
 [build-dependencies]
 anyhow.version = "1"
 EOF
-expect_rejected "build-dependency-table local dotted key" 'Cargo.toml:9:anyhow.version = "1"'
+expect_dependency_rejected "build-dependency-table local dotted key" "build-dependencies" "anyhow"
 
 reset_fixture
 cat >> "$FIXTURE/Cargo.toml" <<'EOF'
@@ -209,7 +239,53 @@ cat >> "$FIXTURE/Cargo.toml" <<'EOF'
 [workspace.dependencies]
 anyhow.version = "1"
 EOF
-expect_rejected "workspace-dependency-table local dotted key" 'Cargo.toml:9:anyhow.version = "1"'
+expect_dependency_rejected "workspace-dependency-table local dotted key" "workspace.dependencies" "anyhow"
+
+reset_fixture
+cat > "$FIXTURE/Cargo.toml" <<'EOF'
+[workspace]
+members = []
+
+[workspace.dependencies]
+"any\u0068ow" = "1"
+EOF
+assert_manifest_valid "unicode-escaped workspace dependency key"
+expect_dependency_rejected "unicode-escaped workspace dependency key" "workspace.dependencies" "anyhow"
+
+reset_fixture
+cat > "$FIXTURE/Cargo.toml" <<'EOF'
+[workspace]
+members = []
+
+[workspace.dependencies]
+errors = { package = """anyhow""", version = "1" }
+EOF
+assert_manifest_valid "triple-basic workspace package alias"
+expect_dependency_rejected "triple-basic workspace package alias" "workspace.dependencies" 'errors (package = "anyhow")'
+
+reset_fixture
+cat > "$FIXTURE/Cargo.toml" <<'EOF'
+[workspace]
+members = []
+
+[workspace.dependencies]
+errors = { "pack\u0061ge" = "any\u0068ow", version = "1" }
+EOF
+assert_manifest_valid "unicode-escaped workspace package alias"
+expect_dependency_rejected "unicode-escaped workspace package alias" "workspace.dependencies" 'errors (package = "anyhow")'
+
+reset_fixture
+cat > "$FIXTURE/Cargo.toml" <<'EOF'
+[workspace]
+members = []
+
+[workspace.dependencies.errors]
+version = "1"
+package = """
+anyhow"""
+EOF
+assert_manifest_valid "spanning triple-basic workspace package alias"
+expect_dependency_rejected "spanning triple-basic workspace package alias" "workspace.dependencies" 'errors (package = "anyhow")'
 
 reset_fixture
 cat >> "$FIXTURE/Cargo.toml" <<'EOF'
@@ -217,7 +293,7 @@ cat >> "$FIXTURE/Cargo.toml" <<'EOF'
 [target.'cfg(unix)'.dependencies]
 anyhow.version = "1"
 EOF
-expect_rejected "target-dependency-table local dotted key" 'Cargo.toml:9:anyhow.version = "1"'
+expect_dependency_rejected "target-dependency-table local dotted key" "target.cfg(unix).dependencies" "anyhow"
 
 reset_fixture
 cat >> "$FIXTURE/Cargo.toml" <<'EOF'
@@ -255,47 +331,47 @@ reset_fixture
 cat >> "$FIXTURE/Cargo.toml" <<'EOF'
 errors = { package = "anyhow", version = "1" }
 EOF
-expect_rejected "package alias" 'Cargo.toml:7:errors = { package = "anyhow", version = "1" }'
+expect_dependency_rejected "package alias" "dependencies" 'errors (package = "anyhow")'
 
 reset_fixture
 cat >> "$FIXTURE/Cargo.toml" <<'EOF'
 errors = { package = "any\u0068ow", version = "1" }
 EOF
 assert_manifest_valid "unicode-escaped package alias"
-expect_rejected "unicode-escaped package alias" 'Cargo.toml:7:errors = { package = "any\u0068ow", version = "1" }'
+expect_dependency_rejected "unicode-escaped package alias" "dependencies" 'errors (package = "anyhow")'
 
 reset_fixture
 cat >> "$FIXTURE/Cargo.toml" <<'EOF'
 errors = { "pack\u0061ge" = "any\u0068ow", version = "1" }
 EOF
 assert_manifest_valid "unicode-escaped package alias key and value"
-expect_rejected "unicode-escaped package alias key and value" 'Cargo.toml:7:errors = { "pack\u0061ge" = "any\u0068ow", version = "1" }'
+expect_dependency_rejected "unicode-escaped package alias key and value" "dependencies" 'errors (package = "anyhow")'
 
 reset_fixture
 cat >> "$FIXTURE/Cargo.toml" <<'EOF'
 errors = { package = """anyhow""", version = "1" }
 EOF
 assert_manifest_valid "triple-basic package alias"
-expect_rejected "triple-basic package alias" 'Cargo.toml:7:errors = { package = """anyhow""", version = "1" }'
+expect_dependency_rejected "triple-basic package alias" "dependencies" 'errors (package = "anyhow")'
 
 reset_fixture
 cat >> "$FIXTURE/Cargo.toml" <<'EOF'
 errors = { package = '''anyhow''', version = "1" }
 EOF
 assert_manifest_valid "triple-literal package alias"
-expect_rejected "triple-literal package alias" "Cargo.toml:7:errors = { package = '''anyhow''', version = \"1\" }"
+expect_dependency_rejected "triple-literal package alias" "dependencies" 'errors (package = "anyhow")'
 
 reset_fixture
 cat >> "$FIXTURE/Cargo.toml" <<'EOF'
 errors = { git = "https://example.com/repository#main", package = "anyhow" }
 EOF
-expect_rejected "package alias after double-quoted URL fragment" 'Cargo.toml:7:errors = { git = "https://example.com/repository#main", package = "anyhow" }'
+expect_dependency_rejected "package alias after double-quoted URL fragment" "dependencies" 'errors (package = "anyhow")'
 
 reset_fixture
 cat >> "$FIXTURE/Cargo.toml" <<'EOF'
 errors = { git = 'https://example.com/repository#main', package = "anyhow" }
 EOF
-expect_rejected "package alias after single-quoted URL fragment" 'Cargo.toml:7:errors = { git = '\''https://example.com/repository#main'\'', package = "anyhow" }'
+expect_dependency_rejected "package alias after single-quoted URL fragment" "dependencies" 'errors (package = "anyhow")'
 
 reset_fixture
 cat >> "$FIXTURE/Cargo.toml" <<'EOF'
@@ -318,7 +394,7 @@ errors = {
   package = "anyhow",
 }
 EOF
-expect_rejected "multiline package alias in dependency table" 'Cargo.toml:9:  package = "anyhow",'
+expect_dependency_rejected "multiline package alias in dependency table" "dependencies" 'errors (package = "anyhow")'
 
 reset_fixture
 cat >> "$FIXTURE/Cargo.toml" <<'EOF'
@@ -328,7 +404,7 @@ errors = {
 }
 EOF
 assert_manifest_valid "multiline dependency with triple-basic package alias"
-expect_rejected "multiline dependency with triple-basic package alias" 'Cargo.toml:9:  package = """anyhow""",'
+expect_dependency_rejected "multiline dependency with triple-basic package alias" "dependencies" 'errors (package = "anyhow")'
 
 reset_fixture
 cat >> "$FIXTURE/Cargo.toml" <<'EOF'
@@ -339,7 +415,7 @@ anyhow""",
 }
 EOF
 assert_manifest_valid "physical-line-spanning triple-basic package alias"
-expect_rejected "physical-line-spanning triple-basic package alias" 'Cargo.toml:10:anyhow""",'
+expect_dependency_rejected "physical-line-spanning triple-basic package alias" "dependencies" 'errors (package = "anyhow")'
 
 reset_fixture
 cat >> "$FIXTURE/Cargo.toml" <<'EOF'
@@ -350,7 +426,7 @@ anyhow''',
 }
 EOF
 assert_manifest_valid "physical-line-spanning triple-literal package alias"
-expect_rejected "physical-line-spanning triple-literal package alias" "Cargo.toml:10:anyhow''',"
+expect_dependency_rejected "physical-line-spanning triple-literal package alias" "dependencies" 'errors (package = "anyhow")'
 
 reset_fixture
 cat >> "$FIXTURE/Cargo.toml" <<'EOF'
@@ -361,7 +437,42 @@ errors = {
 }
 EOF
 assert_manifest_valid "continued triple-basic package alias"
-expect_rejected "continued triple-basic package alias" 'Cargo.toml:10:    how""",'
+expect_dependency_rejected "continued triple-basic package alias" "dependencies" 'errors (package = "anyhow")'
+
+reset_fixture
+cat >> "$FIXTURE/Cargo.toml" <<'EOF'
+errors = {
+  version = "1",
+EOF
+printf '%s\n' '  package = """any\   ' >> "$FIXTURE/Cargo.toml"
+cat >> "$FIXTURE/Cargo.toml" <<'EOF'
+    how""",
+}
+EOF
+assert_manifest_valid "continued triple-basic package alias with trailing spaces"
+expect_dependency_rejected "continued triple-basic package alias with trailing spaces" "dependencies" 'errors (package = "anyhow")'
+
+reset_fixture
+cat >> "$FIXTURE/Cargo.toml" <<'EOF'
+errors = {
+  version = "1",
+  note = """text"""",
+  package = "anyhow",
+}
+EOF
+assert_manifest_valid "four-quote triple-basic ending before package alias"
+expect_dependency_rejected "four-quote triple-basic ending before package alias" "dependencies" 'errors (package = "anyhow")'
+
+reset_fixture
+cat >> "$FIXTURE/Cargo.toml" <<'EOF'
+errors = {
+  version = "1",
+  note = '''text'''',
+  package = "anyhow",
+}
+EOF
+assert_manifest_valid "four-quote triple-literal ending before package alias"
+expect_dependency_rejected "four-quote triple-literal ending before package alias" "dependencies" 'errors (package = "anyhow")'
 
 reset_fixture
 cat >> "$FIXTURE/Cargo.toml" <<'EOF'
@@ -369,7 +480,7 @@ errors = { version = "1",
   package = "anyhow",
 }
 EOF
-expect_rejected "multiline package alias after opening-line field" 'Cargo.toml:8:  package = "anyhow",'
+expect_dependency_rejected "multiline package alias after opening-line field" "dependencies" 'errors (package = "anyhow")'
 
 reset_fixture
 cat > "$FIXTURE/Cargo.toml" <<'EOF'
@@ -382,19 +493,19 @@ dependencies.errors = {
 name = "scanner-fixture"
 version = "0.1.0"
 EOF
-expect_rejected "multiline root dotted package alias" 'Cargo.toml:3:  package = "anyhow",'
+expect_dependency_rejected "multiline root dotted package alias" "dependencies" 'errors (package = "anyhow")'
 
 reset_fixture
 cat > "$FIXTURE/Cargo.toml" <<'EOF'
-workspace.dependencies.errors = {
-  version = "1",
-  package = "anyhow",
-}
-
 [workspace]
 members = []
+
+[workspace.dependencies.errors]
+version = "1"
+package = "anyhow"
 EOF
-expect_rejected "multiline workspace dotted package alias" 'Cargo.toml:3:  package = "anyhow",'
+assert_manifest_valid "multiline workspace dotted package alias"
+expect_dependency_rejected "multiline workspace dotted package alias" "workspace.dependencies" 'errors (package = "anyhow")'
 
 reset_fixture
 cat > "$FIXTURE/Cargo.toml" <<'EOF'
@@ -407,7 +518,7 @@ target.'cfg(unix)'.dependencies.errors = {
 name = "scanner-fixture"
 version = "0.1.0"
 EOF
-expect_rejected "multiline target dotted package alias" 'Cargo.toml:3:  package = "anyhow",'
+expect_dependency_rejected "multiline target dotted package alias" "target.cfg(unix).dependencies" 'errors (package = "anyhow")'
 
 reset_fixture
 cat >> "$FIXTURE/Cargo.toml" <<'EOF'
@@ -500,21 +611,25 @@ cat >> "$FIXTURE/Cargo.toml" <<'EOF'
 package = "anyhow"
 version = "1"
 EOF
-expect_rejected "package alias dependency subtable" 'Cargo.toml:9:package = "anyhow"'
+expect_dependency_rejected "package alias dependency subtable" "dependencies" 'errors (package = "anyhow")'
 
 reset_fixture
 cat >> "$FIXTURE/Cargo.toml" <<'EOF'
 errors.package = "anyhow"
+errors.version = "1"
 EOF
-expect_rejected "package alias dotted dependency entry" 'Cargo.toml:7:errors.package = "anyhow"'
+assert_manifest_valid "package alias dotted dependency entry"
+expect_dependency_rejected "package alias dotted dependency entry" "dependencies" 'errors (package = "anyhow")'
 
 reset_fixture
 cat >> "$FIXTURE/Cargo.toml" <<'EOF'
+anyhow = { version = "1", optional = true }
 
 [features]
 dynamic = ["dep:anyhow"]
 EOF
-expect_rejected "feature token" 'Cargo.toml:9:dynamic = ["dep:anyhow"]'
+assert_manifest_valid "feature token"
+expect_dependency_rejected "feature token" "dependencies" "anyhow"
 
 reset_fixture
 cat > "$FIXTURE/Cargo.toml" <<'EOF'
@@ -525,7 +640,8 @@ features.dynamic = ["dep:anyhow"]
 name = "scanner-fixture"
 version = "0.1.0"
 EOF
-expect_rejected "dotted feature token" 'Cargo.toml:2:features.dynamic = ["dep:anyhow"]'
+assert_manifest_valid "dotted feature token"
+expect_dependency_rejected "dotted feature token" "dependencies" "anyhow"
 
 reset_fixture
 cat > "$FIXTURE/src/lib.rs" <<'EOF'
