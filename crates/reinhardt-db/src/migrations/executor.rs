@@ -1313,27 +1313,28 @@ impl DatabaseMigrationExecutor {
 					Attempting to execute as-is, which may fail.",
 					std::mem::discriminant(operation)
 				);
-				// Re-enable FK checks and fall back to normal SQL execution
-				editor.enable_foreign_keys().await?;
+				// No scoped foreign-key state has been changed at this point.
 				let sql = operation.to_sql(&super::operations::SqlDialect::Sqlite);
 				editor.execute(&sql).await?;
 				return Ok(());
 			}
 		};
 
-		// Disable foreign key checks only after introspection and validation have
-		// produced a complete recreation plan. Validation errors must leave the
-		// connection and original table untouched.
-		editor.disable_foreign_keys().await?;
-
-		// Execute recreation steps
-		for stmt in recreation.to_sql_statements() {
-			tracing::debug!("Executing recreation SQL: {}", &stmt[..stmt.len().min(100)]);
-			editor.execute(&stmt).await?;
-		}
-
-		// Re-enable foreign key checks
-		editor.enable_foreign_keys().await?;
+		let statements = recreation.to_sql_statements();
+		editor
+			.with_foreign_keys_disabled(move |editor| {
+				Box::pin(async move {
+					for stmt in statements {
+						tracing::debug!(
+							"Executing recreation SQL: {}",
+							&stmt[..stmt.len().min(100)]
+						);
+						editor.execute(&stmt).await?;
+					}
+					Ok(())
+				})
+			})
+			.await?;
 
 		// Check for FK integrity violations (logs warning if any found)
 		let violations = editor.check_foreign_key_integrity().await?;

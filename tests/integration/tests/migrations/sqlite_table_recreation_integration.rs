@@ -3493,6 +3493,64 @@ async fn recreation_rejects_omitted_foreign_key_target_arity_mismatch() {
 
 #[rstest]
 #[tokio::test]
+async fn non_atomic_recreation_restores_foreign_keys_after_ddl_failure() {
+	// Arrange
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("connect to in-memory SQLite");
+	connection
+		.execute(
+			"CREATE TABLE cleanup_parent (id INTEGER PRIMARY KEY)",
+			vec![],
+		)
+		.await
+		.expect("create parent table");
+	connection
+		.execute(
+			"CREATE TABLE cleanup_child (id INTEGER PRIMARY KEY, parent_id INTEGER REFERENCES cleanup_parent(id), obsolete TEXT)",
+			vec![],
+		)
+		.await
+		.expect("create child table");
+	connection
+		.execute("PRAGMA foreign_keys = ON", vec![])
+		.await
+		.expect("enable foreign key enforcement");
+	let conn = Arc::new(connection.clone());
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+	let mut recreate = create_test_migration(
+		"testapp",
+		"0001_fail_non_atomic_recreation",
+		vec![Operation::AddConstraint {
+			table: "cleanup_child".to_string(),
+			constraint_sql: "CONSTRAINT".to_string(),
+		}],
+	);
+	recreate.atomic = false;
+
+	// Act
+	let result = executor.apply_migrations(&[recreate]).await;
+
+	// Assert
+	assert!(result.is_err(), "invalid recreation DDL must fail");
+	let foreign_keys: i64 = conn
+		.fetch_one("PRAGMA foreign_keys", vec![])
+		.await
+		.expect("read restored foreign key setting")
+		.get("foreign_keys")
+		.expect("foreign_keys should be an integer");
+	assert_eq!(foreign_keys, 1, "foreign key enforcement must be restored");
+	let invalid_write = conn
+		.execute("INSERT INTO cleanup_child (parent_id) VALUES (999)", vec![])
+		.await;
+	assert!(
+		invalid_write.is_err(),
+		"restored foreign key enforcement must reject an invalid child row"
+	);
+}
+
+#[rstest]
+#[tokio::test]
 async fn recreation_preserves_bare_deferrable_as_initially_immediate() {
 	// Arrange
 	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")

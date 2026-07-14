@@ -34,11 +34,22 @@
 //! editor.finish().await?;
 //! ```
 
+#[cfg(feature = "sqlite")]
+use std::{
+	future::Future,
+	panic::{AssertUnwindSafe, resume_unwind},
+	pin::Pin,
+};
+
+#[cfg(feature = "sqlite")]
+use super::MigrationError;
 use super::Result;
 use crate::backends::{
 	connection::DatabaseConnection,
 	types::{DatabaseType, QueryValue, Row, TransactionExecutor},
 };
+#[cfg(feature = "sqlite")]
+use futures::FutureExt;
 
 /// Schema editor for executing DDL statements with optional transaction support
 ///
@@ -370,6 +381,61 @@ impl SchemaEditor {
 		Ok(())
 	}
 
+	/// Runs an SQLite schema operation with foreign key enforcement disabled.
+	///
+	/// The previous enabled state is restored after the operation returns,
+	/// including when the operation returns an error. Callers can therefore use
+	/// `?` inside the scoped future without bypassing restoration.
+	#[cfg(feature = "sqlite")]
+	pub(crate) async fn with_foreign_keys_disabled<T: Send>(
+		&mut self,
+		operation: impl for<'a> FnOnce(
+			&'a mut Self,
+		) -> Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>,
+	) -> Result<T> {
+		let was_enabled = self.foreign_keys_enabled().await?;
+		if was_enabled {
+			self.disable_foreign_keys().await?;
+		}
+		let operation_result = AssertUnwindSafe(operation(self)).catch_unwind().await;
+		let restore_result = if was_enabled {
+			self.enable_foreign_keys().await
+		} else {
+			Ok(())
+		};
+		match operation_result {
+			Ok(operation_result) => {
+				merge_foreign_key_scope_results(operation_result, restore_result)
+			}
+			Err(payload) => {
+				if let Err(restore_error) = restore_result {
+					tracing::error!(
+						"failed to restore SQLite foreign key enforcement after schema operation panic: {restore_error}"
+					);
+				}
+				resume_unwind(payload)
+			}
+		}
+	}
+
+	#[cfg(feature = "sqlite")]
+	async fn foreign_keys_enabled(&mut self) -> Result<bool> {
+		if !matches!(self.db_type, DatabaseType::Sqlite) {
+			return Ok(false);
+		}
+
+		let row = if let Some(ref mut tx) = self.executor {
+			tx.fetch_optional("PRAGMA foreign_keys", vec![]).await?
+		} else {
+			self.connection
+				.fetch_optional("PRAGMA foreign_keys", vec![])
+				.await?
+		};
+		Ok(row
+			.and_then(|row| row.get::<i64>("foreign_keys").ok())
+			.is_some_and(|enabled| enabled != 0))
+	}
+
 	/// Check foreign key integrity (SQLite only)
 	///
 	/// This should be called after table recreation to verify that all
@@ -419,6 +485,23 @@ impl SchemaEditor {
 	}
 }
 
+#[cfg(feature = "sqlite")]
+fn merge_foreign_key_scope_results<T>(
+	operation_result: Result<T>,
+	restore_result: Result<()>,
+) -> Result<T> {
+	match (operation_result, restore_result) {
+		(Ok(value), Ok(())) => Ok(value),
+		(Err(operation_error), Ok(())) => Err(operation_error),
+		(Ok(_), Err(restore_error)) => Err(restore_error),
+		(Err(operation_error), Err(restore_error)) => {
+			Err(MigrationError::InvalidMigration(format!(
+				"SQLite schema operation failed: {operation_error}; additionally failed to restore foreign key enforcement: {restore_error}"
+			)))
+		}
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -428,5 +511,86 @@ mod tests {
 		assert!(DatabaseType::Postgres.supports_transactional_ddl());
 		assert!(DatabaseType::Sqlite.supports_transactional_ddl());
 		assert!(!DatabaseType::Mysql.supports_transactional_ddl());
+	}
+
+	#[cfg(feature = "sqlite")]
+	#[test]
+	fn foreign_key_scope_preserves_operation_error_when_restore_succeeds() {
+		let result = merge_foreign_key_scope_results::<()>(
+			Err(MigrationError::InvalidMigration(
+				"operation failed".to_string(),
+			)),
+			Ok(()),
+		);
+
+		assert!(matches!(
+			result,
+			Err(MigrationError::InvalidMigration(message)) if message == "operation failed"
+		));
+	}
+
+	#[cfg(feature = "sqlite")]
+	#[test]
+	fn foreign_key_scope_reports_operation_and_restore_errors() {
+		let result = merge_foreign_key_scope_results::<()>(
+			Err(MigrationError::InvalidMigration(
+				"operation failed".to_string(),
+			)),
+			Err(MigrationError::InvalidMigration(
+				"restore failed".to_string(),
+			)),
+		);
+
+		let Err(MigrationError::InvalidMigration(message)) = result else {
+			panic!("combined scope failure should be an invalid migration error");
+		};
+		assert!(message.contains("operation failed"), "{message}");
+		assert!(message.contains("restore failed"), "{message}");
+	}
+
+	#[cfg(feature = "sqlite")]
+	#[test]
+	fn foreign_key_scope_returns_restore_error_after_successful_operation() {
+		let result = merge_foreign_key_scope_results(
+			Ok(()),
+			Err(MigrationError::InvalidMigration(
+				"restore failed".to_string(),
+			)),
+		);
+
+		assert!(matches!(
+			result,
+			Err(MigrationError::InvalidMigration(message)) if message == "restore failed"
+		));
+	}
+
+	#[cfg(feature = "sqlite")]
+	#[tokio::test]
+	async fn foreign_key_scope_restores_state_before_resuming_panic() {
+		let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+			.await
+			.expect("connect to in-memory SQLite");
+		connection
+			.execute("PRAGMA foreign_keys = ON", vec![])
+			.await
+			.expect("enable foreign key enforcement");
+		let mut editor = SchemaEditor::new(connection, false, DatabaseType::Sqlite)
+			.await
+			.expect("create non-atomic schema editor");
+
+		let panic_result = AssertUnwindSafe(editor.with_foreign_keys_disabled::<()>(|_| {
+			Box::pin(async { panic!("schema operation panic") })
+		}))
+		.catch_unwind()
+		.await;
+
+		assert!(panic_result.is_err(), "operation panic must be resumed");
+		assert!(
+			editor
+				.foreign_keys_enabled()
+				.await
+				.expect("read restored foreign key state"),
+			"foreign key enforcement must be restored before resuming the panic"
+		);
 	}
 }
