@@ -949,16 +949,36 @@ fn fixture_writable_columns(
 	primary_key: &str,
 ) -> FixtureResult<Vec<String>> {
 	let mut columns = object.keys().cloned().collect::<Vec<_>>();
-	if columns.is_empty() {
-		return Err(FixtureError::Database(
-			"fixture record must contain at least one writable database column".to_string(),
-		));
-	}
 	columns.sort();
 	if let Some(primary_key_index) = columns.iter().position(|column| column == primary_key) {
 		columns.swap(0, primary_key_index);
 	}
 	Ok(columns)
+}
+
+fn fixture_default_values_insert_sql(
+	table_name: &str,
+	backend: DatabaseBackend,
+) -> (String, Vec<QueryValue>) {
+	let quoted_table = match backend {
+		DatabaseBackend::MySql => format!("`{table_name}`"),
+		DatabaseBackend::Postgres | DatabaseBackend::Sqlite => format!("\"{table_name}\""),
+	};
+	(
+		format!("INSERT INTO {quoted_table} DEFAULT VALUES"),
+		Vec::new(),
+	)
+}
+
+fn fixture_omitted_database_default_columns<M>(object: &Map<String, Value>) -> Vec<String>
+where
+	M: Model,
+{
+	M::field_metadata()
+		.into_iter()
+		.filter(|field| field.db_default.is_some() && !object.contains_key(field.db_column_name()))
+		.map(|field| field.db_column_name().to_string())
+		.collect()
 }
 
 fn fixture_writes_identity_always_column<M>(object: &Map<String, Value>) -> bool
@@ -1155,6 +1175,20 @@ where
 	let object = fixture_database_object::<M>(object)?;
 	let pk_field = fixture_primary_key_column::<M>();
 	let columns = fixture_writable_columns(&object, &pk_field)?;
+	if columns.is_empty() {
+		return Ok(fixture_default_values_insert_sql(M::table_name(), backend));
+	}
+	if object.contains_key(&pk_field) {
+		let omitted_defaults = fixture_omitted_database_default_columns::<M>(&object);
+		if !omitted_defaults.is_empty() {
+			return Err(FixtureError::Database(format!(
+				"fixture record for '{}.{}' with primary key must include database-default column(s): {}",
+				M::app_label(),
+				rust_model_name::<M>(),
+				omitted_defaults.join(", "),
+			)));
+		}
+	}
 
 	let mut stmt = Query::insert();
 	stmt.into_table(Alias::new(M::table_name()));
@@ -1726,6 +1760,12 @@ where
 			let target_table = target_metadata
 				.as_ref()
 				.map(|target| target.table_name.clone())
+				.or_else(|| {
+					fixture_related_model_handler(M::app_label(), &field.to_model)
+						.ok()
+						.flatten()
+						.map(|handler| handler.table_name().to_string())
+				})
 				.unwrap_or_else(|| default_target_table_name(&field.to_model));
 			let source_primary_key_binding = fixture_primary_key_binding_for_model::<M>();
 			let target_primary_key_binding = target_metadata
@@ -1756,7 +1796,46 @@ fn many_to_many_specs_for<M>() -> Vec<FixtureManyToManySpec>
 where
 	M: Model,
 {
-	Vec::new()
+	M::relationship_metadata()
+		.into_iter()
+		.filter(|relation| {
+			relation.relationship_type == crate::orm::relationship::RelationshipType::ManyToMany
+		})
+		.map(|relation| {
+			let field_name = relation.name;
+			let is_explicit_through = relation.through_table.is_some();
+			let target_handler =
+				fixture_related_model_handler(M::app_label(), &relation.related_model)
+					.ok()
+					.flatten();
+			let target_table = target_handler
+				.as_ref()
+				.map(|handler| handler.table_name().to_string())
+				.unwrap_or_else(|| default_target_table_name(&relation.related_model));
+			let (default_source_field, default_target_field) =
+				crate::m2m_naming::default_m2m_columns(M::table_name(), &target_table);
+			FixtureManyToManySpec {
+				field_name: field_name.clone(),
+				through_table: relation.through_table.unwrap_or_else(|| {
+					crate::m2m_naming::default_through_table(M::table_name(), &field_name)
+				}),
+				source_field: relation.source_field.unwrap_or(default_source_field),
+				target_field: relation.target_field.unwrap_or(default_target_field),
+				source_primary_key_binding: fixture_primary_key_binding_for_model::<M>(),
+				target_primary_key_binding: target_handler.map_or(
+					FixturePrimaryKeyBinding::Generic,
+					|handler| {
+						if handler.fixture_primary_key_is_text() {
+							FixturePrimaryKeyBinding::Text
+						} else {
+							FixturePrimaryKeyBinding::Generic
+						}
+					},
+				),
+				is_explicit_through,
+			}
+		})
+		.collect()
 }
 
 async fn reset_sequences_after_explicit_pks(
@@ -2033,7 +2112,6 @@ fn is_foreign_key_field(
 		.unwrap_or(false)
 }
 
-#[cfg(feature = "migrations")]
 fn default_target_table_name(to_model: &str) -> String {
 	if let Ok((app_label, model_name)) = parse_model_label(to_model) {
 		format!(
@@ -2046,7 +2124,6 @@ fn default_target_table_name(to_model: &str) -> String {
 	}
 }
 
-#[cfg(feature = "migrations")]
 fn to_snake_case(value: &str) -> String {
 	let mut output = String::new();
 	for (index, ch) in value.chars().enumerate() {
@@ -2530,6 +2607,78 @@ mod tests {
 
 	#[cfg(not(feature = "migrations"))]
 	#[derive(Clone, Serialize, Deserialize)]
+	struct FixtureOrmOnlyM2mTag {
+		id: Option<i64>,
+	}
+
+	#[cfg(not(feature = "migrations"))]
+	impl Model for FixtureOrmOnlyM2mTag {
+		type PrimaryKey = i64;
+		type Fields = FixtureOrmOnlyPostFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"fixture_orm_only_custom_tags"
+		}
+		fn new_fields() -> Self::Fields {
+			FixtureOrmOnlyPostFields
+		}
+		fn app_label() -> &'static str {
+			"fixture_orm_only"
+		}
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
+		}
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = Some(value);
+		}
+	}
+
+	#[cfg(not(feature = "migrations"))]
+	#[derive(Clone, Serialize, Deserialize)]
+	struct FixtureOrmOnlyM2mPost {
+		id: Option<i64>,
+	}
+
+	#[cfg(not(feature = "migrations"))]
+	impl Model for FixtureOrmOnlyM2mPost {
+		type PrimaryKey = i64;
+		type Fields = FixtureOrmOnlyPostFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"fixture_orm_only_m2m_post"
+		}
+		fn new_fields() -> Self::Fields {
+			FixtureOrmOnlyPostFields
+		}
+		fn app_label() -> &'static str {
+			"fixture_orm_only"
+		}
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
+		}
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = Some(value);
+		}
+
+		fn relationship_metadata() -> Vec<crate::orm::inspection::RelationInfo> {
+			vec![crate::orm::inspection::RelationInfo::new(
+				"tags",
+				crate::orm::relationship::RelationshipType::ManyToMany,
+				"FixtureOrmOnlyM2mTag",
+			)]
+		}
+	}
+
+	#[cfg(not(feature = "migrations"))]
+	#[derive(Clone, Serialize, Deserialize)]
 	struct FixtureOrmOnlyTextAuthor {
 		id: Option<String>,
 	}
@@ -2888,6 +3037,24 @@ mod tests {
 
 		assert_eq!(object.get("author"), Some(&Value::from(42)));
 		assert!(!object.contains_key("author_id"));
+	}
+
+	#[cfg(not(feature = "migrations"))]
+	#[test]
+	#[serial_test::serial(fixture_model_registry)]
+	fn orm_only_fixture_many_to_many_specs_use_relation_metadata() {
+		let _registry_reset = FixtureRegistryReset;
+		global_fixture_registry().clear();
+		global_fixture_registry().register_model::<FixtureOrmOnlyM2mTag>();
+
+		let spec = many_to_many_specs_for::<FixtureOrmOnlyM2mPost>()
+			.into_iter()
+			.next()
+			.expect("ORM-only many-to-many relations must produce fixture metadata");
+
+		assert_eq!(spec.through_table, "fixture_orm_only_m2m_post_tags");
+		assert_eq!(spec.source_field, "fixture_orm_only_m2m_post_id");
+		assert_eq!(spec.target_field, "fixture_orm_only_custom_tags_id");
 	}
 
 	#[cfg(not(feature = "migrations"))]
@@ -3512,6 +3679,49 @@ mod tests {
 		id: Option<i64>,
 		payload: Value,
 		optional_payload: Option<Value>,
+	}
+
+	#[cfg(feature = "migrations")]
+	#[derive(Clone, Serialize, Deserialize)]
+	struct FixtureDefaultedPost {
+		id: Option<i64>,
+		status: Option<String>,
+	}
+
+	#[cfg(feature = "migrations")]
+	impl Model for FixtureDefaultedPost {
+		type PrimaryKey = i64;
+		type Fields = FixturePostFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"fixture_defaulted_post"
+		}
+		fn new_fields() -> Self::Fields {
+			FixturePostFields
+		}
+		fn app_label() -> &'static str {
+			"fixture_defaulted"
+		}
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
+		}
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = Some(value);
+		}
+
+		fn field_metadata() -> Vec<crate::orm::inspection::FieldInfo> {
+			let mut id = fixture_field_info("id", "BigIntegerField", false);
+			id.primary_key = true;
+			let mut status = fixture_field_info("status", "CharField", false);
+			status.db_default = Some(crate::orm::fields::FieldKwarg::String(
+				"pending".to_string(),
+			));
+			vec![id, status]
+		}
 	}
 
 	#[cfg(feature = "migrations")]
@@ -4575,6 +4785,33 @@ mod tests {
 
 	#[cfg(feature = "migrations")]
 	#[test]
+	fn fixture_default_only_inserts_use_database_defaults() {
+		let (sql, values) = build_fixture_upsert_sql_values::<FixtureTextPost>(
+			DatabaseBackend::Postgres,
+			&Map::new(),
+		)
+		.expect("an empty fixture projection must be inserted with database defaults");
+
+		assert_eq!(sql, "INSERT INTO \"fixture_text_post\" DEFAULT VALUES");
+		assert!(values.is_empty());
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	fn fixture_upserts_require_omitted_database_defaults() {
+		let object = Map::from_iter([(String::from("id"), Value::from(1))]);
+
+		let error = build_fixture_upsert_sql_values::<FixtureDefaultedPost>(
+			DatabaseBackend::Postgres,
+			&object,
+		)
+		.expect_err("upserts must not leave existing database-default values unchanged");
+
+		assert!(error.to_string().contains("status"));
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
 	fn mysql_fixture_upserts_do_not_update_non_primary_key_conflicts() {
 		let mut object = Map::new();
 		object.insert("id".to_string(), Value::from(1));
@@ -4985,6 +5222,31 @@ mod tests {
 			spec.target_primary_key_binding,
 			FixturePrimaryKeyBinding::Text
 		);
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	#[serial_test::serial(fixture_model_registry)]
+	fn many_to_many_fixture_specs_use_registered_target_table_names() {
+		global_fixture_registry().clear();
+		global_fixture_registry().register_model::<FixtureDefaultedPost>();
+		let mut post = crate::migrations::ModelMetadata::new(
+			"fixture_m2m",
+			"FixtureM2mPost",
+			"fixture_m2m_post",
+		);
+		post.add_many_to_many(crate::migrations::ManyToManyMetadata::new(
+			"tags",
+			"fixture_defaulted.FixtureDefaultedPost",
+		));
+		crate::migrations::model_registry::global_registry().register_model(post);
+
+		let spec = many_to_many_specs_for::<FixtureM2mPost>()
+			.into_iter()
+			.next()
+			.expect("registered many-to-many targets must produce fixture metadata");
+
+		assert_eq!(spec.target_field, "fixture_defaulted_post_id");
 	}
 
 	#[cfg(feature = "migrations")]
