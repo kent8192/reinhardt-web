@@ -263,7 +263,7 @@ exposed by the browser's `HTMLInputElement.value`; it is cleared after a valid
 value and otherwise contains a `NumberParseError` with one of these stable
 meanings:
 
-- `Empty`: no text was entered.
+- `Empty`: the browser-exposed value is empty.
 - `Incomplete`: the text is a valid prefix such as `-`, `1.`, or `1e-`.
 - `Invalid`: the text is not a numeric lexeme.
 - `OutOfRange`: the number cannot be represented by the bound primitive.

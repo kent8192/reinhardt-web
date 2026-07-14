@@ -678,6 +678,7 @@ fn number_binding_commits_the_sanitized_value_after_composition() {
 	dispatch_input(&input, Some("."), "insertCompositionText");
 
 	assert_eq!(value.get(), 7);
+	assert_eq!(input.value(), "");
 	let parse_error = error
 		.get()
 		.expect("duplicate final input should retain the sanitized value");
