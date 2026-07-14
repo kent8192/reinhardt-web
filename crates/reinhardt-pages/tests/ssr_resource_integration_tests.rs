@@ -2,8 +2,11 @@
 
 use reinhardt_pages::component::{Component, IntoPage, Page, PageElement};
 use reinhardt_pages::deps;
-use reinhardt_pages::reactive::{ResourceState, use_id, use_resource, use_resource_with_key};
+use reinhardt_pages::reactive::{
+	QueryKey, ResourceState, use_id, use_query, use_resource, use_resource_with_key,
+};
 use reinhardt_pages::ssr::{SsrOptions, SsrRenderer};
+use rstest::rstest;
 use std::cell::Cell;
 use std::rc::Rc;
 use std::time::Duration;
@@ -292,6 +295,58 @@ async fn pending_ssr_resource_reuse_does_not_create_duplicate_fetcher() {
 	assert!(html.contains("first-shared"));
 	assert!(html.contains("second-shared"));
 	assert_eq!(fetcher_calls.get(), 1);
+	assert_eq!(renderer.state().resource_count(), 1);
+}
+
+#[rstest]
+#[tokio::test]
+async fn pending_ssr_query_reuse_does_not_create_duplicate_fetcher() {
+	let fetcher_calls = Rc::new(Cell::new(0));
+	let first_calls = Rc::clone(&fetcher_calls);
+	let second_calls = Rc::clone(&fetcher_calls);
+	let view = Page::reactive(move || {
+		let first_calls = Rc::clone(&first_calls);
+		let first = use_query(QueryKey::new("shared-query", move || {
+			first_calls.set(first_calls.get() + 1);
+			async { Ok::<_, String>("shared".to_string()) }
+		}));
+
+		let second_calls = Rc::clone(&second_calls);
+		let second = use_query(QueryKey::new("shared-query", move || {
+			second_calls.set(second_calls.get() + 1);
+			async { Ok::<_, String>("shared".to_string()) }
+		}));
+
+		Page::fragment([
+			match first.get() {
+				ResourceState::Success(value) => PageElement::new("p")
+					.child(format!("first-{value}"))
+					.into_page(),
+				ResourceState::Loading => PageElement::new("p").child("first-loading").into_page(),
+				ResourceState::Error(error) => PageElement::new("p").child(error).into_page(),
+			},
+			match second.get() {
+				ResourceState::Success(value) => PageElement::new("p")
+					.child(format!("second-{value}"))
+					.into_page(),
+				ResourceState::Loading => PageElement::new("p").child("second-loading").into_page(),
+				ResourceState::Error(error) => PageElement::new("p").child(error).into_page(),
+			},
+		])
+	});
+
+	let mut renderer = SsrRenderer::new();
+	let html = renderer.render_page_with_view_head_to_string(view).await;
+
+	assert!(html.contains("first-shared"));
+	assert!(html.contains("second-shared"));
+	assert_eq!(fetcher_calls.get(), 1);
+	assert!(
+		renderer
+			.state()
+			.get_resource_state("shared-query")
+			.is_some()
+	);
 	assert_eq!(renderer.state().resource_count(), 1);
 }
 

@@ -50,6 +50,7 @@
 //!
 //! ### Async Hooks
 //! - [`use_action`] / [`use_action_state`] - Async mutations with pending/success/error tracking
+//! - [`use_query`] / [`use_mutation`] - App-wide keyed async data cache over server functions
 //!
 //! ### Other Hooks
 //! - [`use_id`] - Generate unique IDs
@@ -120,6 +121,7 @@ pub mod websocket;
 // Re-export all hooks
 pub use reinhardt_core::reactive::batch;
 
+pub use super::query::{QueryHandle, QueryKey, QueryPhase, use_mutation, use_query};
 pub use action::{OptimisticState, use_optimistic};
 pub use async_action::{Action, ActionPhase, ActionStateBuilder, use_action, use_action_state};
 pub use context::use_context;

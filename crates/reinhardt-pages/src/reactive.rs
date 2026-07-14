@@ -122,11 +122,13 @@ pub use reinhardt_core::{deps, deps_auto};
 
 // WASM-specific modules (kept in reinhardt-pages)
 pub mod hooks;
+pub mod query;
 pub mod resource;
 pub mod resource_value;
 pub mod trackable;
 
 // Re-export resource types and the unified hook (available on all targets)
+pub use query::{QueryHandle, QueryKey, QueryPhase, use_mutation, use_query};
 pub use resource::{Resource, ResourceState, use_resource, use_resource_with_key};
 pub use resource_value::{
 	LatestResourceState, LatestResourceValue, LatestResourceValueBuilder, use_latest_resource_value,
