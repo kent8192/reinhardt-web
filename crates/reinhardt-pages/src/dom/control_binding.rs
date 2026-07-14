@@ -6,6 +6,87 @@ use wasm_bindgen::JsCast;
 use crate::component::{ControlBinding, ControlBindingError, ControlKind, ControlValue};
 use crate::dom::{Element, EventHandle};
 use crate::reactive::{Effect, EffectTiming, untracked};
+use reinhardt_core::types::page::ControlBindingSnapshot;
+
+type HydrationSnapshotStore = Rc<RefCell<Vec<ControlBindingSnapshot>>>;
+
+thread_local! {
+	static ACTIVE_HYDRATION_SNAPSHOT_STORE: RefCell<Option<HydrationSnapshotStore>> =
+		const { RefCell::new(None) };
+}
+
+struct ActiveHydrationSnapshotStoreGuard {
+	previous: Option<HydrationSnapshotStore>,
+}
+
+impl Drop for ActiveHydrationSnapshotStoreGuard {
+	fn drop(&mut self) {
+		ACTIVE_HYDRATION_SNAPSHOT_STORE.with(|active| {
+			active.replace(self.previous.take());
+		});
+	}
+}
+
+struct HydrationSnapshotTransaction {
+	store: HydrationSnapshotStore,
+	committed: bool,
+}
+
+impl HydrationSnapshotTransaction {
+	fn new() -> Self {
+		Self {
+			store: Rc::new(RefCell::new(Vec::new())),
+			committed: false,
+		}
+	}
+
+	fn commit(&mut self) {
+		for snapshot in self.store.borrow_mut().drain(..) {
+			snapshot.commit();
+		}
+		self.committed = true;
+	}
+}
+
+impl Drop for HydrationSnapshotTransaction {
+	fn drop(&mut self) {
+		if !self.committed {
+			let mut snapshots = self.store.borrow_mut();
+			while let Some(snapshot) = snapshots.pop() {
+				drop(snapshot);
+			}
+		}
+	}
+}
+
+pub(crate) fn with_hydration_snapshot_transaction<T, E>(
+	f: impl FnOnce() -> Result<T, E>,
+) -> Result<T, E> {
+	let mut transaction = HydrationSnapshotTransaction::new();
+	let previous = ACTIVE_HYDRATION_SNAPSHOT_STORE
+		.with(|active| active.replace(Some(transaction.store.clone())));
+	let guard = ActiveHydrationSnapshotStoreGuard { previous };
+	let result = f();
+	drop(guard);
+	if result.is_ok() {
+		transaction.commit();
+	}
+	result
+}
+
+fn commit_or_stage_hydration_snapshot(snapshot: ControlBindingSnapshot) {
+	let snapshot = ACTIVE_HYDRATION_SNAPSHOT_STORE.with(|active| {
+		if let Some(store) = active.borrow().as_ref() {
+			store.borrow_mut().push(snapshot);
+			None
+		} else {
+			Some(snapshot)
+		}
+	});
+	if let Some(snapshot) = snapshot {
+		snapshot.commit();
+	}
+}
 
 pub(crate) struct ControlBindingController {
 	_effect: Effect,
@@ -237,13 +318,19 @@ fn install_listeners(
 						return;
 					}
 
-					let has_pending_composition_dedupe =
-						input_state.borrow().skip_next_input.is_some();
+					let allow_editor_fallback = input_state
+						.borrow()
+						.skip_next_input
+						.as_ref()
+						.is_some_and(|completed| match &completed.value {
+							ControlValue::Text(raw) => !raw.is_empty(),
+							ControlValue::Checked(_) | ControlValue::SelectedValues(_) => true,
+						});
 					let Ok(value) = read_input_event_value(
 						&input_element,
 						input_binding.kind(),
 						&input_state,
-						has_pending_composition_dedupe,
+						allow_editor_fallback,
 					) else {
 						return;
 					};
