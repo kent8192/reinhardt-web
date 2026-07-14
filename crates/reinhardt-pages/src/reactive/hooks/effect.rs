@@ -1,16 +1,16 @@
 //! Effect hooks: use_effect and use_layout_effect
 //!
-//! React-aligned side effect hooks. Both take an explicit dependency list
-//! as the second argument; the closure runs with no active reactive Observer
-//! so only the listed deps subscribe (Option A semantics, Refs #4195).
+//! React-aligned side effect hooks. The second argument selects either an
+//! explicit dependency list or automatic tracking; explicit effects run with
+//! no active reactive Observer so only the listed deps subscribe (Option A
+//! semantics, Refs #4195).
 //! Effect closures can return either `()` for no cleanup or `Option<C>` when
 //! they need to register teardown.
 
-use reinhardt_core::reactive::deps::IntoDeps;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::reactive::{Effect, runtime::EffectTiming};
+use crate::reactive::{Effect, ExplicitDeps, ReactiveDeps, runtime::EffectTiming};
 
 /// Return value accepted from effect closures.
 ///
@@ -87,8 +87,7 @@ where
 ///
 /// * `F` - The effect function type.
 /// * `C` - The cleanup function type.
-/// * `D` - A `deps![...]` list of [`Trackable`]s that implements
-///   [`IntoDeps`].
+/// * `deps` - Either an explicit `deps![...]` list or `deps_auto!()`.
 ///
 /// # Arguments
 ///
@@ -127,15 +126,13 @@ where
 /// ```
 ///
 /// [`Trackable`]: reinhardt_core::reactive::deps::Trackable
-/// [`IntoDeps`]: reinhardt_core::reactive::deps::IntoDeps
-pub fn use_effect<F, C, D>(f: F, deps: D) -> Effect
+pub fn use_effect<F, C>(f: F, deps: impl Into<ReactiveDeps>) -> Effect
 where
 	F: EffectCallback<C> + 'static,
 	C: FnOnce() + 'static,
-	D: IntoDeps,
 {
 	let mut f = f;
-	Effect::new_with_deps(move || f.call_effect().into_cleanup(), deps.into_deps())
+	Effect::new_with_mode(move || f.call_effect().into_cleanup(), deps.into())
 }
 
 /// Registers a side effect in the current mounted view scope.
@@ -173,11 +170,10 @@ where
 /// ```
 ///
 /// [`cleanup_reactive_nodes`]: crate::component::cleanup_reactive_nodes
-pub fn use_retained_effect<F, C, D>(f: F, deps: D)
+pub fn use_retained_effect<F, C>(f: F, deps: ExplicitDeps)
 where
 	F: EffectCallback<C> + 'static,
 	C: FnOnce() + 'static,
-	D: IntoDeps,
 {
 	retain_effect(|| use_effect(f, deps));
 }
@@ -227,16 +223,15 @@ where
 ///     deps![element_ref],
 /// );
 /// ```
-pub fn use_layout_effect<F, C, D>(f: F, deps: D) -> Effect
+pub fn use_layout_effect<F, C>(f: F, deps: impl Into<ReactiveDeps>) -> Effect
 where
 	F: EffectCallback<C> + 'static,
 	C: FnOnce() + 'static,
-	D: IntoDeps,
 {
 	let mut f = f;
-	Effect::new_with_deps_and_timing(
+	Effect::new_with_mode_and_timing(
 		move || f.call_effect().into_cleanup(),
-		deps.into_deps(),
+		deps.into(),
 		EffectTiming::Layout,
 	)
 }
@@ -280,11 +275,10 @@ where
 /// ```
 ///
 /// [`cleanup_reactive_nodes`]: crate::component::cleanup_reactive_nodes
-pub fn use_retained_layout_effect<F, C, D>(f: F, deps: D)
+pub fn use_retained_layout_effect<F, C>(f: F, deps: ExplicitDeps)
 where
 	F: EffectCallback<C> + 'static,
 	C: FnOnce() + 'static,
-	D: IntoDeps,
 {
 	retain_effect(|| use_layout_effect(f, deps));
 }
@@ -317,8 +311,83 @@ mod tests {
 	use reinhardt_core::deps;
 	use rstest::rstest;
 	use serial_test::serial;
+	use std::cell::Cell;
 	use std::cell::RefCell;
 	use std::rc::Rc;
+
+	#[test]
+	#[serial]
+	fn use_effect_auto_tracks_signal_reads() {
+		let count = Signal::new(0_i32);
+		let runs = Rc::new(Cell::new(0_u8));
+
+		let _effect = use_effect(
+			{
+				let count = count.clone();
+				let runs = Rc::clone(&runs);
+				move || {
+					let _ = count.get();
+					runs.set(runs.get() + 1);
+				}
+			},
+			reinhardt_core::deps_auto!(),
+		);
+
+		count.set(1);
+		with_runtime(|runtime| runtime.flush_updates());
+		assert_eq!(runs.get(), 2);
+	}
+
+	#[test]
+	#[serial]
+	fn use_effect_empty_explicit_deps_is_mount_only() {
+		let count = Signal::new(0_i32);
+		let runs = Rc::new(Cell::new(0_u8));
+
+		let _effect = use_effect(
+			{
+				let count = count.clone();
+				let runs = Rc::clone(&runs);
+				move || {
+					let _ = count.get();
+					runs.set(runs.get() + 1);
+				}
+			},
+			deps![],
+		);
+
+		count.set(1);
+		assert_eq!(runs.get(), 1);
+	}
+
+	#[test]
+	#[serial]
+	fn explicit_and_auto_effects_match_for_unconditional_reads() {
+		let count = Signal::new(0_i32);
+		let explicit_values = Rc::new(RefCell::new(Vec::new()));
+		let auto_values = Rc::new(RefCell::new(Vec::new()));
+
+		let _explicit = use_effect(
+			{
+				let count = count.clone();
+				let values = Rc::clone(&explicit_values);
+				move || values.borrow_mut().push(count.get())
+			},
+			deps![count],
+		);
+		let _automatic = use_effect(
+			{
+				let count = count.clone();
+				let values = Rc::clone(&auto_values);
+				move || values.borrow_mut().push(count.get())
+			},
+			reinhardt_core::deps_auto!(),
+		);
+
+		count.set(1);
+		with_runtime(|runtime| runtime.flush_updates());
+		assert_eq!(*explicit_values.borrow(), *auto_values.borrow());
+	}
 
 	#[test]
 	#[serial]

@@ -4,9 +4,9 @@
 //! so the validator deliberately stays silent here. The hook is called via a
 //! qualified path so it is exempt from `page!` capture discipline.
 
-use reinhardt_pages::page;
 use reinhardt_pages::reactive::Signal;
 use reinhardt_pages::reactive::hooks;
+use reinhardt_pages::{deps, page};
 
 fn main() {
 	let _ = page!(|count: Signal<i32>| {
@@ -14,7 +14,7 @@ fn main() {
 			hooks::use_effect(move || {
 				// `count` is in the dependency list but never read here.
 				None::<fn() >
-			}, (count.clone(), ), );
+			}, deps![count], );
 			"x"
 		} }
 	});

@@ -1,22 +1,20 @@
 //! Memoization hooks: use_memo, use_callback, use_callback_with
 //!
 //! React-aligned hooks built on top of [`Memo::new_with_deps`] and the
-//! `callback_with_deps` Rc-swap helper. All three take an explicit
-//! dependency list as the second argument (Refs #4195).
-
-use reinhardt_core::reactive::deps::IntoDeps;
+//! `callback_with_deps` Rc-swap helper. Memo calculations accept explicit or
+//! automatic dependency modes; callbacks require an explicit list (Refs #4195).
 
 use crate::callback::{Callback, callback_with_deps};
-use crate::reactive::Memo;
+use crate::reactive::{ExplicitDeps, Memo, ReactiveDeps};
 
 /// Memoizes an expensive calculation.
 ///
 /// This is the React-like equivalent of `useMemo`. The calculation is re-run
 /// only when its reactive dependencies change.
 ///
-/// Reinhardt Pages uses an explicit `deps![...]` list instead of a React
-/// dependency array. Signal reads inside the calculation do not subscribe
-/// implicitly; the list passed as `deps` determines when the memo re-runs.
+/// Reinhardt Pages uses an explicit `deps![...]` list or `deps_auto!()` instead
+/// of a React dependency array. Signal reads inside the calculation subscribe
+/// only in automatic mode; an explicit list determines when the memo re-runs.
 ///
 /// # Type Parameters
 ///
@@ -59,13 +57,12 @@ use crate::reactive::Memo;
 /// // Reading the memoized value
 /// let result = filtered.get();
 /// ```
-pub fn use_memo<T, F, D>(f: F, deps: D) -> Memo<T>
+pub fn use_memo<T, F>(f: F, deps: impl Into<ReactiveDeps>) -> Memo<T>
 where
 	T: Clone + 'static,
 	F: FnMut() -> T + 'static,
-	D: IntoDeps,
 {
-	Memo::new_with_deps(f, deps.into_deps())
+	Memo::new_with_mode(f, deps.into())
 }
 
 /// Memoizes a callback function to maintain a stable reference.
@@ -118,11 +115,10 @@ where
 /// than their values when the callback should observe the latest state.
 #[cfg(wasm)]
 #[track_caller]
-pub fn use_callback<Args, F, D>(f: F, deps: D) -> Callback<Args, ()>
+pub fn use_callback<Args, F>(f: F, deps: ExplicitDeps) -> Callback<Args, ()>
 where
 	F: Fn(Args) + 'static,
 	Args: 'static,
-	D: IntoDeps,
 {
 	callback_with_deps::<Args, ()>(f, deps.into_deps())
 }
@@ -133,11 +129,10 @@ where
 /// Requires `Send + Sync` bounds for thread-safe server-side usage.
 #[cfg(native)]
 #[track_caller]
-pub fn use_callback<Args, F, D>(f: F, deps: D) -> Callback<Args, ()>
+pub fn use_callback<Args, F>(f: F, deps: ExplicitDeps) -> Callback<Args, ()>
 where
 	F: Fn(Args) + Send + Sync + 'static,
 	Args: 'static,
-	D: IntoDeps,
 {
 	callback_with_deps::<Args, ()>(f, deps.into_deps())
 }
@@ -172,12 +167,11 @@ where
 /// ```
 #[cfg(wasm)]
 #[track_caller]
-pub fn use_callback_with<Args, Ret, F, D>(f: F, deps: D) -> Callback<Args, Ret>
+pub fn use_callback_with<Args, Ret, F>(f: F, deps: ExplicitDeps) -> Callback<Args, Ret>
 where
 	F: Fn(Args) -> Ret + 'static,
 	Args: 'static,
 	Ret: 'static,
-	D: IntoDeps,
 {
 	callback_with_deps::<Args, Ret>(f, deps.into_deps())
 }
@@ -188,12 +182,11 @@ where
 /// Requires `Send + Sync` bounds for thread-safe server-side usage.
 #[cfg(native)]
 #[track_caller]
-pub fn use_callback_with<Args, Ret, F, D>(f: F, deps: D) -> Callback<Args, Ret>
+pub fn use_callback_with<Args, Ret, F>(f: F, deps: ExplicitDeps) -> Callback<Args, Ret>
 where
 	F: Fn(Args) -> Ret + Send + Sync + 'static,
 	Args: 'static,
 	Ret: 'static,
-	D: IntoDeps,
 {
 	callback_with_deps::<Args, Ret>(f, deps.into_deps())
 }

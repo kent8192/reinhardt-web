@@ -57,6 +57,7 @@
 //! `use_layout_effect`:
 //!
 //! ```ignore
+//! use reinhardt_pages::deps;
 //! use reinhardt_pages::reactive::{Signal, hooks::{use_ref, use_retained_layout_effect}};
 //!
 //! let element_ref = use_ref(None::<Element>);
@@ -74,7 +75,7 @@
 //!             None::<fn()>
 //!         }
 //!     },
-//!     (element_ref,),
+//!     deps![element_ref],
 //! );
 //! ```
 //!
@@ -99,9 +100,9 @@
 
 // Re-export core reactive primitives from reinhardt-reactive
 pub use reinhardt_core::reactive::{
-	Context, ContextGuard, Effect, EffectTiming, Memo, NodeId, NodeType, Observer, Runtime, Signal,
-	batch, context, create_context, effect, get_context, memo, provide_context, remove_context,
-	runtime, signal, with_runtime,
+	Context, ContextGuard, Effect, EffectTiming, ExplicitDeps, Memo, NodeId, NodeType, Observer,
+	ReactiveDeps, Runtime, Signal, Trackable, batch, context, create_context, effect, get_context,
+	memo, provide_context, remove_context, runtime, signal, with_runtime,
 };
 
 // WASM-specific modules (kept in reinhardt-pages)
@@ -109,8 +110,6 @@ pub mod hooks;
 pub mod resource;
 pub mod resource_value;
 pub mod trackable;
-
-pub use trackable::Trackable;
 
 // Re-export resource types and the unified hook (available on all targets)
 pub use resource::{Resource, ResourceState, use_resource, use_resource_with_key};

@@ -3,9 +3,9 @@
 //! (spec §4.5, #4721/#4746). The hook is called via a qualified path so it is
 //! exempt from `page!` capture discipline (spec §3.7).
 
-use reinhardt_pages::page;
 use reinhardt_pages::reactive::Signal;
 use reinhardt_pages::reactive::hooks;
+use reinhardt_pages::{deps, page};
 
 fn main() {
 	let _ = page!(|count: Signal<i32>| {
@@ -16,7 +16,7 @@ fn main() {
 					let _ = count.get();
 					None::<fn() >
 				}
-			}, (count.clone(), ), );
+			}, deps![count], );
 			"x"
 		} }
 	});

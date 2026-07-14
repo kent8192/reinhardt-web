@@ -7,9 +7,9 @@
 //! `page!` capture discipline (spec §3.7) forbids bare value identifiers that
 //! are not declared parameters; a multi-segment path is exempt.
 
-use reinhardt_pages::page;
 use reinhardt_pages::reactive::Signal;
 use reinhardt_pages::reactive::hooks;
+use reinhardt_pages::{deps, page};
 
 fn main() {
 	let _ = page!(|count: Signal<i32>| {
@@ -20,7 +20,7 @@ fn main() {
 					let _ = count.get();
 					None::<fn() >
 				}
-			}, (), );
+			}, deps![], );
 			"x"
 		} }
 	});

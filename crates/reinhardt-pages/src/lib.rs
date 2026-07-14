@@ -19,11 +19,10 @@
 //!
 //! ## React-aligned hook signatures (v0.2, Refs #4195)
 //!
-//! `use_effect`, `use_retained_effect`, `use_layout_effect`,
-//! `use_retained_layout_effect`, `use_memo`, `use_callback`, and
-//! `use_callback_with` take an explicit `deps![...]` dependency list as the second
-//! argument. Effect closures return `()` when no cleanup is needed, or
-//! `Option<C>` when they register cleanup:
+//! `use_effect`, `use_layout_effect`, and `use_memo` accept either an explicit
+//! `deps![...]` dependency list or `deps_auto!()`. Retained effects, callbacks,
+//! and resources require an explicit list. Effect closures return `()` when no
+//! cleanup is needed, or `Option<C>` when they register cleanup:
 //!
 //! ```ignore
 //! use reinhardt_pages::prelude::*;
@@ -43,6 +42,8 @@
 //! Closures run with no active reactive Observer ("Option A"), so
 //! `Signal::get` inside does NOT auto-subscribe — subscriptions derive
 //! exclusively from the dependency list. Pass `deps![]` for mount-only effects.
+//! Automatic tracking is available only for effects, layout effects, and memos;
+//! use `deps_auto!()` as their second argument when that mode is desired.
 //!
 //! For a concept-by-concept mapping from React to Reinhardt Pages, see
 //! `docs/react_to_reinhardt.md` in this crate.
@@ -475,7 +476,7 @@ pub use csrf::{CsrfManager, get_csrf_token};
 pub use dom::{CustomEventOptions, Document, Element, EventHandle, EventType, document};
 #[cfg(native)]
 pub use form::{FormBinding, FormComponent};
-pub use reinhardt_core::deps;
+pub use reinhardt_core::{deps, deps_auto};
 // Static form metadata types (always available, used by form! macro)
 pub use form_generated::{StaticFieldMetadata, StaticFormMetadata};
 pub use form_state::{
@@ -489,8 +490,9 @@ pub use form_state::{
 pub use hydration::{HydrationContext, HydrationError, hydrate};
 pub use portal::{Portal, PortalError, PortalHandle, PortalTarget, mount_portal};
 pub use reactive::{
-	Effect, LatestResourceState, LatestResourceValue, LatestResourceValueBuilder, Memo, Resource,
-	ResourceState, Signal, use_latest_resource_value, use_resource, use_resource_with_key,
+	Effect, ExplicitDeps, LatestResourceState, LatestResourceValue, LatestResourceValueBuilder,
+	Memo, ReactiveDeps, Resource, ResourceState, Signal, Trackable, use_latest_resource_value,
+	use_resource, use_resource_with_key,
 };
 // Re-export Context system
 pub use reactive::{
