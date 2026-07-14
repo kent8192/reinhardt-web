@@ -11,6 +11,7 @@ use reinhardt_db::migrations::FieldType;
 use reinhardt_db::migrations::model_registry::global_registry;
 use reinhardt_db::migrations::{GeneratedStorage, SchemaExpr, SchemaFunc};
 use reinhardt_db::orm::Model as ModelTrait;
+use reinhardt_db::orm::QuerySet;
 use reinhardt_db::orm::fields::FieldKwarg;
 use reinhardt_db::orm::relationship::RelationshipType;
 use reinhardt_macros::model;
@@ -212,13 +213,19 @@ fn test_relationship_metadata_uses_generated_fk_columns_and_targets() {
 }
 
 #[test]
-fn test_related_field_accessor_uses_physical_column() {
+fn test_related_field_accessor_uses_physical_column_in_filter() {
+	let sql = QuerySet::<TraversalPost>::new()
+		.filter(
+			TraversalPost::rel_author()
+				.into_typed()
+				.field_email()
+				.exact("person@example.com"),
+		)
+		.to_sql();
+
 	assert_eq!(
-		TraversalPost::rel_author()
-			.into_typed()
-			.field_email()
-			.name(),
-		"email_address"
+		sql,
+		r#"SELECT "traversal_posts".* FROM "traversal_posts" INNER JOIN "traversal_authors" AS "author" ON "traversal_posts"."author_slug" = "author"."author_slug" WHERE "author"."email_address" = 'person@example.com'"#
 	);
 }
 
