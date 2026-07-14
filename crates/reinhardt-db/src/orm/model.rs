@@ -624,3 +624,95 @@ impl Default for SoftDelete {
 		Self::new()
 	}
 }
+
+#[cfg(test)]
+mod tests {
+	use super::Model;
+	use crate::orm::DatabaseValue;
+	use reinhardt_core::macros::{ModelEnum, model};
+	use rstest::rstest;
+	use serde::{Deserialize, Serialize};
+
+	#[derive(ModelEnum, Clone, Debug, PartialEq, Serialize, Deserialize)]
+	#[model_enum(repr = "string")]
+	#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+	enum Status {
+		#[model_enum(value = "queued")]
+		Queued,
+		#[model_enum(value = "running")]
+		Running,
+	}
+
+	#[derive(ModelEnum, Clone, Debug, PartialEq, Serialize, Deserialize)]
+	#[model_enum(repr = "i32")]
+	enum Priority {
+		#[model_enum(value = 10)]
+		Low,
+		#[model_enum(value = 20)]
+		Normal,
+	}
+
+	#[model(app_label = "tests", table_name = "field_map_records")]
+	#[derive(Clone, Debug, Serialize, Deserialize)]
+	struct FieldMapRecord {
+		#[field(primary_key = true)]
+		id: Option<i64>,
+		#[field(max_length = 16)]
+		status: Status,
+		priority: Priority,
+	}
+
+	#[rstest]
+	fn string_enum_database_value_survives_field_map_round_trip() {
+		// Arrange
+		let record = FieldMapRecord {
+			id: None,
+			status: Status::Queued,
+			priority: Priority::Normal,
+		};
+
+		// Act
+		let fields = record
+			.encode_database_fields()
+			.expect("model fields should encode");
+		let database_value = fields
+			.get("status")
+			.cloned()
+			.expect("status should be encoded");
+		let decoded = FieldMapRecord::decode_database_field("status", database_value.clone())
+			.expect("status should decode");
+		let status: Status =
+			serde_json::from_value(decoded).expect("decoded status should deserialize");
+
+		// Assert
+		assert_eq!(database_value, DatabaseValue::String("queued".to_owned()));
+		assert_eq!(status, Status::Queued);
+	}
+
+	#[rstest]
+	fn i32_enum_database_value_survives_field_map_round_trip() {
+		// Arrange
+		let record = FieldMapRecord {
+			id: None,
+			status: Status::Queued,
+			priority: Priority::Normal,
+		};
+
+		// Act
+		let fields = record
+			.encode_database_fields()
+			.expect("model fields should encode");
+		let database_value = fields
+			.get("priority")
+			.cloned()
+			.expect("priority should be encoded");
+		let decoded = FieldMapRecord::decode_database_field("priority", database_value.clone())
+			.expect("priority should decode");
+		let priority: Priority =
+			serde_json::from_value(decoded).expect("decoded priority should deserialize");
+
+		// Assert
+		assert_eq!(database_value, DatabaseValue::I32(20));
+		assert_eq!(priority, Priority::Normal);
+	}
+}

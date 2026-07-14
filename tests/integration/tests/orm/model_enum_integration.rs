@@ -6,10 +6,15 @@ use reinhardt::db::orm::query_types::DbBackend;
 use reinhardt::db::orm::session::Session;
 use reinhardt::db::orm::{DatabaseField, FieldCodecContext, FieldCodecError, Model};
 use reinhardt::{ModelEnum, model};
+use reinhardt_db::field_domain::{ModelEnumRepr, ModelEnumValue};
+use reinhardt_db::migrations::{MigrationAutodetector, Operation, ProjectState, SqlDialect};
+use reinhardt_test::fixtures::{postgres_container, testcontainers::mysql_container};
+use rstest::rstest;
 use serde::{Deserialize, Serialize};
 use serial_test::serial;
-use sqlx::{AnyPool, Row};
+use sqlx::{AnyPool, MySqlPool, PgPool, Row};
 use std::sync::Arc;
+use testcontainers::{ContainerAsync, GenericImage};
 
 #[derive(ModelEnum, Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[model_enum(repr = "string")]
@@ -21,6 +26,30 @@ enum Status {
 	Running,
 	#[model_enum(value = "550e8400-e29b-41d4-a716-446655440000")]
 	UuidShaped,
+}
+
+#[derive(ModelEnum, Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[model_enum(repr = "i32")]
+enum Priority {
+	#[model_enum(value = 10)]
+	Low,
+	#[model_enum(value = 20)]
+	Normal,
+	#[model_enum(value = 30)]
+	High,
+}
+
+#[model(app_label = "jobs", table_name = "cross_backend_enum_jobs")]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct CrossBackendEnumJob {
+	#[field(primary_key = true)]
+	id: Option<i64>,
+	#[field(db_column = "job_status", max_length = 40)]
+	status: Status,
+	#[field(db_column = "job_priority")]
+	priority: Priority,
+	#[field(db_column = "fallback_status", max_length = 40, null = true)]
+	fallback: Option<Status>,
 }
 
 #[model(app_label = "jobs", table_name = "async_jobs")]
@@ -109,7 +138,7 @@ struct I32KeyRecord {
 
 fn sqlite_database_url() -> (tempfile::NamedTempFile, String) {
 	let database = tempfile::NamedTempFile::new().expect("temporary SQLite file should be created");
-	let url = format!("sqlite://{}", database.path().display());
+	let url = format!("sqlite:{}", database.path().display());
 	(database, url)
 }
 
@@ -120,6 +149,254 @@ async fn sqlite_session_pool(url: &str) -> Arc<AnyPool> {
 			.await
 			.expect("SQLite session pool should connect"),
 	)
+}
+
+fn cross_backend_enum_table_sql(dialect: &SqlDialect, with_constraints: bool) -> String {
+	let metadata = reinhardt_db::migrations::global_registry()
+		.get_model("jobs", "CrossBackendEnumJob")
+		.expect("cross-backend model enum metadata should be registered");
+	let mut target = ProjectState::new();
+	target.add_model(metadata.to_model_state());
+	let mut operation = MigrationAutodetector::new(ProjectState::new(), target)
+		.generate_operations()
+		.into_iter()
+		.find(|operation| matches!(operation, Operation::CreateTable { .. }))
+		.expect("model enum migration should create its table");
+	if !with_constraints {
+		let Operation::CreateTable { constraints, .. } = &mut operation else {
+			panic!("model schema should compile to CREATE TABLE");
+		};
+		constraints.clear();
+	}
+	operation.to_sql(dialect)
+}
+
+fn codec_error_in_chain<'a>(
+	error: &'a (dyn std::error::Error + 'static),
+) -> Option<&'a FieldCodecError> {
+	let mut current = Some(error);
+	while let Some(source) = current {
+		if let Some(codec) = source.downcast_ref::<FieldCodecError>() {
+			return Some(codec);
+		}
+		current = source.source();
+	}
+	None
+}
+
+async fn assert_cross_backend_model_enum_behavior(url: &str, dialect: SqlDialect) {
+	reinitialize_database(url)
+		.await
+		.expect("ORM connection should initialize");
+	let connection = get_connection()
+		.await
+		.expect("ORM connection should be available");
+	connection
+		.execute(&cross_backend_enum_table_sql(&dialect, true), vec![])
+		.await
+		.expect("model enum table should be created from model metadata");
+	if matches!(dialect, SqlDialect::Sqlite) {
+		let sqlite_master = connection
+			.query_one(
+				"SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'cross_backend_enum_jobs'",
+				vec![],
+			)
+			.await
+			.expect("created SQLite schema should be readable")
+			.get::<String>("sql")
+			.expect("SQLite schema SQL should be text");
+		assert!(
+			sqlite_master.contains(
+				"CHECK (\"job_status\" IN ('550e8400-e29b-41d4-a716-446655440000', 'queued', 'running'))"
+			),
+			"{sqlite_master}"
+		);
+		assert!(
+			sqlite_master.contains("CHECK (\"job_priority\" IN (10, 20, 30))"),
+			"{sqlite_master}"
+		);
+	}
+
+	let queued = CrossBackendEnumJob::objects()
+		.create(&CrossBackendEnumJob {
+			id: None,
+			status: Status::Queued,
+			priority: Priority::Low,
+			fallback: None,
+		})
+		.await
+		.expect("string and i32 enum values should be saved");
+	let running = CrossBackendEnumJob::objects()
+		.create(&CrossBackendEnumJob {
+			id: None,
+			status: Status::Running,
+			priority: Priority::High,
+			fallback: Some(Status::Running),
+		})
+		.await
+		.expect("nullable enum Some value should be saved");
+
+	let queued_hydrated = CrossBackendEnumJob::objects()
+		.get(queued.id.expect("queued job should have an id"))
+		.get()
+		.await
+		.expect("string and i32 enum values should hydrate");
+	assert_eq!(queued_hydrated.status, Status::Queued);
+	assert_eq!(queued_hydrated.priority, Priority::Low);
+	assert_eq!(queued_hydrated.fallback, None);
+	let running_hydrated = CrossBackendEnumJob::objects()
+		.get(running.id.expect("running job should have an id"))
+		.get()
+		.await
+		.expect("nullable enum Some value should hydrate");
+	assert_eq!(running_hydrated.status, Status::Running);
+	assert_eq!(running_hydrated.priority, Priority::High);
+	assert_eq!(running_hydrated.fallback, Some(Status::Running));
+
+	let string_eq = CrossBackendEnumJob::objects()
+		.filter(CrossBackendEnumJob::field_status().eq(Status::Queued))
+		.all()
+		.await
+		.expect("string enum equality filter should execute");
+	assert_eq!(string_eq.len(), 1);
+	assert_eq!(string_eq[0].id, queued.id);
+	let i32_eq = CrossBackendEnumJob::objects()
+		.filter(CrossBackendEnumJob::field_priority().eq(Priority::High))
+		.all()
+		.await
+		.expect("i32 enum equality filter should execute");
+	assert_eq!(i32_eq.len(), 1);
+	assert_eq!(i32_eq[0].id, running.id);
+	let string_members = CrossBackendEnumJob::objects()
+		.filter(CrossBackendEnumJob::field_status().is_in([Status::Queued, Status::Running]))
+		.all()
+		.await
+		.expect("string enum membership filter should execute");
+	assert_eq!(string_members.len(), 2);
+	let i32_members = CrossBackendEnumJob::objects()
+		.filter(CrossBackendEnumJob::field_priority().is_in([Priority::Low, Priority::Normal]))
+		.all()
+		.await
+		.expect("i32 enum membership filter should execute");
+	assert_eq!(i32_members.len(), 1);
+	assert_eq!(i32_members[0].id, queued.id);
+
+	let updated = CrossBackendEnumJob::objects()
+		.filter(CrossBackendEnumJob::field_id().eq(running.id))
+		.update_fields([
+			CrossBackendEnumJob::field_status().assign(Status::Queued),
+			CrossBackendEnumJob::field_priority().assign(Priority::Normal),
+			CrossBackendEnumJob::field_fallback().assign(Some(Status::Queued)),
+		])
+		.await
+		.expect("typed enum partial update should execute");
+	assert_eq!(updated, 1);
+	let updated_job = CrossBackendEnumJob::objects()
+		.get(running.id.expect("running job should retain its id"))
+		.get()
+		.await
+		.expect("updated enum values should hydrate");
+	assert_eq!(updated_job.status, Status::Queued);
+	assert_eq!(updated_job.priority, Priority::Normal);
+	assert_eq!(updated_job.fallback, Some(Status::Queued));
+
+	let invalid_string = connection
+		.execute(
+			"INSERT INTO cross_backend_enum_jobs (job_status, job_priority, fallback_status) VALUES ('unknown', 10, NULL)",
+			vec![],
+		)
+		.await;
+	assert!(
+		invalid_string.is_err(),
+		"generated string enum constraint should reject an invalid direct insert"
+	);
+	let invalid_i32 = connection
+		.execute(
+			"INSERT INTO cross_backend_enum_jobs (job_status, job_priority, fallback_status) VALUES ('queued', 999, NULL)",
+			vec![],
+		)
+		.await;
+	assert!(
+		invalid_i32.is_err(),
+		"generated i32 enum constraint should reject an invalid direct insert"
+	);
+
+	connection
+		.execute("DROP TABLE cross_backend_enum_jobs", vec![])
+		.await
+		.expect("constrained model enum table should be dropped");
+	connection
+		.execute(&cross_backend_enum_table_sql(&dialect, false), vec![])
+		.await
+		.expect("legacy model enum table should be created without checks");
+	connection
+		.execute(
+			"INSERT INTO cross_backend_enum_jobs (job_status, job_priority, fallback_status) VALUES ('unknown', 10, NULL)",
+			vec![],
+		)
+		.await
+		.expect("legacy invalid enum value should bypass database checks");
+
+	sqlx::any::install_default_drivers();
+	let session_pool = Arc::new(
+		AnyPool::connect(url)
+			.await
+			.expect("legacy model enum session pool should connect"),
+	);
+	let backend = match dialect {
+		SqlDialect::Postgres => DbBackend::Postgres,
+		SqlDialect::Mysql => DbBackend::Mysql,
+		SqlDialect::Sqlite => DbBackend::Sqlite,
+		other => panic!("unsupported model enum test dialect: {other:?}"),
+	};
+	let mut session = Session::new(session_pool, backend)
+		.await
+		.expect("legacy model enum session should initialize");
+	let hydration_error = session
+		.get::<CrossBackendEnumJob>(1)
+		.await
+		.expect_err("legacy invalid enum value should fail typed hydration");
+	let codec_error = codec_error_in_chain(&hydration_error)
+		.expect("hydration error should preserve its field codec source");
+	assert!(matches!(
+		codec_error,
+		FieldCodecError::InvalidEnumValue {
+			context,
+			repr: ModelEnumRepr::String,
+			value: ModelEnumValue::String(value),
+		} if context.model == "CrossBackendEnumJob"
+			&& context.field == "status"
+			&& context.column == "job_status"
+			&& value == "unknown"
+	));
+}
+
+#[rstest]
+#[tokio::test]
+#[serial(model_enum_database)]
+async fn sqlite_model_enum_cross_backend_contract() {
+	let (_database, url) = sqlite_database_url();
+	assert_cross_backend_model_enum_behavior(&url, SqlDialect::Sqlite).await;
+}
+
+#[rstest]
+#[tokio::test]
+#[serial(model_enum_database)]
+async fn postgres_model_enum_cross_backend_contract(
+	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
+) {
+	let (_container, _pool, _port, url) = postgres_container.await;
+	assert_cross_backend_model_enum_behavior(&url, SqlDialect::Postgres).await;
+}
+
+#[rstest]
+#[tokio::test]
+#[serial(model_enum_database)]
+async fn mysql_model_enum_cross_backend_contract(
+	#[future] mysql_container: (ContainerAsync<GenericImage>, Arc<MySqlPool>, u16, String),
+) {
+	let (_container, _pool, _port, url) = mysql_container.await;
+	assert_cross_backend_model_enum_behavior(&url, SqlDialect::Mysql).await;
 }
 
 #[tokio::test]

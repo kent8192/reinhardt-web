@@ -7,6 +7,7 @@ use reinhardt_db::migrations::{
 };
 use reinhardt_db::orm::DatabaseField;
 use reinhardt_macros::{ModelEnum, model};
+use rstest::rstest;
 use serde::{Deserialize, Serialize};
 
 #[derive(ModelEnum, Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -65,6 +66,33 @@ struct OptionalMigrationJob {
 	status: Option<MigrationStatus>,
 }
 
+#[derive(ModelEnum, Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[model_enum(repr = "i32")]
+enum MigrationPriority {
+	#[model_enum(value = 10)]
+	Low,
+	#[model_enum(value = 20)]
+	Normal,
+}
+
+#[model(
+	app_label = "model_enum_migrations",
+	table_name = "cross_backend_migration_jobs"
+)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+// Allow dead_code: the model is registered through inventory and inspected as migration metadata.
+#[allow(dead_code)]
+struct CrossBackendMigrationJob {
+	#[field(primary_key = true)]
+	id: Option<i64>,
+	#[field(db_column = "job_status", max_length = 32)]
+	status: MigrationStatus,
+	#[field(db_column = "job_priority")]
+	priority: MigrationPriority,
+	#[field(db_column = "fallback_status", max_length = 32, null = true)]
+	fallback: Option<MigrationStatus>,
+}
+
 fn string_domain(values: &[&str]) -> FieldDomain {
 	FieldDomain::Enum {
 		repr: ModelEnumRepr::String,
@@ -97,6 +125,104 @@ fn project_state_with_field(field_type: FieldType, domain: Option<FieldDomain>) 
 
 fn project_state_with_domain(values: &[&str]) -> ProjectState {
 	project_state_with_field(FieldType::VarChar(32), Some(string_domain(values)))
+}
+
+#[rstest]
+#[case::postgres(SqlDialect::Postgres, '"')]
+#[case::mysql(SqlDialect::Mysql, '`')]
+#[case::sqlite(SqlDialect::Sqlite, '"')]
+fn model_enum_create_table_renders_string_i32_and_nullable_checks_for_each_backend(
+	#[case] dialect: SqlDialect,
+	#[case] quote: char,
+) {
+	// Arrange
+	let metadata = reinhardt_db::migrations::global_registry()
+		.get_model("model_enum_migrations", "CrossBackendMigrationJob")
+		.expect("cross-backend model enum metadata should be registered");
+	let mut target = ProjectState::new();
+	target.add_model(metadata.to_model_state());
+	let operation = MigrationAutodetector::new(ProjectState::new(), target)
+		.generate_operations()
+		.into_iter()
+		.find(|operation| matches!(operation, Operation::CreateTable { .. }))
+		.expect("cross-backend model enum migration should create its table");
+	let Operation::CreateTable {
+		columns,
+		constraints,
+		..
+	} = &operation
+	else {
+		panic!("model schema should compile to CREATE TABLE");
+	};
+
+	// Act
+	let sql = operation.to_sql(&dialect);
+
+	// Assert
+	let column = |name: &str| {
+		columns
+			.iter()
+			.find(|column| column.name == name)
+			.unwrap_or_else(|| panic!("missing cross-backend column {name}: {columns:?}"))
+	};
+	let id = column("id");
+	assert_eq!(id.type_definition, FieldType::BigInteger);
+	assert!(id.not_null);
+	assert!(id.primary_key);
+	assert!(id.auto_increment);
+	let status = column("job_status");
+	assert_eq!(status.type_definition, FieldType::VarChar(32));
+	assert!(status.not_null);
+	let priority = column("job_priority");
+	assert_eq!(priority.type_definition, FieldType::Integer);
+	assert!(priority.not_null);
+	let fallback = column("fallback_status");
+	assert_eq!(fallback.type_definition, FieldType::VarChar(32));
+	assert!(!fallback.not_null);
+	assert_eq!(constraints.len(), 3);
+	for (name, column, domain) in [
+		(
+			"cross_backend_migration_jobs_job_status_model_enum_check",
+			"job_status",
+			string_domain(&["queued", "running"]),
+		),
+		(
+			"cross_backend_migration_jobs_job_priority_model_enum_check",
+			"job_priority",
+			i32_domain(&[10, 20]),
+		),
+		(
+			"cross_backend_migration_jobs_fallback_status_model_enum_check",
+			"fallback_status",
+			string_domain(&["queued", "running"]),
+		),
+	] {
+		assert!(
+			constraints.iter().any(|constraint| matches!(
+				constraint,
+				Constraint::EnumDomain {
+					name: actual_name,
+					column: actual_column,
+					domain: actual_domain,
+				} if actual_name == name && actual_column == column && actual_domain == &domain
+			)),
+			"missing {name} on {column} with {domain:?}: {constraints:?}"
+		);
+		assert!(
+			sql.contains(&format!("CONSTRAINT {quote}{name}{quote}")),
+			"missing dialect-quoted constraint {name}: {sql}"
+		);
+	}
+	for fragment in [
+		format!("CHECK ({quote}job_status{quote} IN ('queued', 'running'))"),
+		format!("CHECK ({quote}job_priority{quote} IN (10, 20))"),
+		format!("CHECK ({quote}fallback_status{quote} IN ('queued', 'running'))"),
+	] {
+		assert!(
+			sql.contains(&fragment),
+			"missing dialect-specific enum check {fragment}: {sql}"
+		);
+	}
 }
 
 #[test]
