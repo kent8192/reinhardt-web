@@ -708,7 +708,7 @@ impl DatabaseMigrationExecutor {
 		Ok(plan)
 	}
 
-	/// Read columns + constraints for a SQLite table using the SchemaEditor's
+	/// Read recreation metadata for a SQLite table using the SchemaEditor's
 	/// currently-open transaction (if any), falling back to the live pool when
 	/// the editor is non-atomic.
 	///
@@ -727,6 +727,8 @@ impl DatabaseMigrationExecutor {
 		Vec<super::ColumnDefinition>,
 		Vec<super::Constraint>,
 		Vec<super::operations::SqliteRecreatedIndex>,
+		Vec<String>,
+		bool,
 		bool,
 	)> {
 		// 1. PRAGMA table_xinfo(<table>) → columns. Identifier interpolation
@@ -780,11 +782,33 @@ impl DatabaseMigrationExecutor {
 			.as_ref()
 			.map(|sql| sql.to_uppercase().contains("AUTOINCREMENT"))
 			.unwrap_or(false);
-		let without_rowid = create_sql.as_deref().is_some_and(|sql| {
-			sql.trim_end()
-				.to_ascii_uppercase()
-				.ends_with("WITHOUT ROWID")
-		});
+		// SQLite exposes table options as structured metadata. Reading them via
+		// the editor keeps this lookup on the dedicated migration connection and
+		// avoids parsing CREATE SQL that may contain comments or unusual spacing.
+		// nosemgrep: rust.actix.sql.sqlx-taint.sqlx-taint
+		let table_list_sql = format!(
+			"PRAGMA table_list({})",
+			super::sqlite_pragma::quote_pragma_identifier(table_name)
+		);
+		let table_options = editor.fetch_optional(&table_list_sql, vec![]).await?;
+		let without_rowid = table_options
+			.as_ref()
+			.and_then(|row| row.get::<i64>("wr").ok())
+			.map(|value| value != 0)
+			.unwrap_or_else(|| {
+				// SQLite versions before table_list was introduced can still use
+				// WITHOUT ROWID, so retain the CREATE SQL fallback for that option.
+				create_sql.as_deref().is_some_and(|sql| {
+					sql.rsplit_once(')').is_some_and(|(_, options)| {
+						options.to_ascii_uppercase().contains("WITHOUT ROWID")
+					})
+				})
+			});
+		let strict = table_options
+			.as_ref()
+			.and_then(|row| row.get::<i64>("strict").ok())
+			.unwrap_or(0)
+			!= 0;
 
 		// 3. Build ColumnDefinition list, mirroring the introspector's
 		//    semantics (PK columns are implicitly NOT NULL; AUTOINCREMENT is
@@ -1045,7 +1069,30 @@ impl DatabaseMigrationExecutor {
 			}
 		}
 
-		Ok((columns, constraints, indexes, without_rowid))
+		// 7. Triggers must be recreated after the temporary table is renamed.
+		//    Dropping the original table removes them from sqlite_master. Preserve
+		//    sqlite_master row order so their creation order does not change.
+		let trigger_rows = editor
+			.fetch_all(
+				"SELECT sql FROM sqlite_master WHERE type='trigger' AND tbl_name=? AND sql IS NOT NULL ORDER BY rowid",
+				vec![table_name.into()],
+			)
+			.await?;
+		let mut triggers = Vec::with_capacity(trigger_rows.len());
+		for row in &trigger_rows {
+			triggers.push(row.get::<String>("sql").map_err(|error| {
+				MigrationError::IntrospectionError(format!("sqlite_master trigger SQL: {error}"))
+			})?);
+		}
+
+		Ok((
+			columns,
+			constraints,
+			indexes,
+			triggers,
+			without_rowid,
+			strict,
+		))
 	}
 
 	/// Handle SQLite table recreation for operations that require it
@@ -1081,11 +1128,13 @@ impl DatabaseMigrationExecutor {
 					table,
 					column.name
 				);
-				let (columns, constraints, indexes, without_rowid) =
+				let (columns, constraints, indexes, triggers, without_rowid, strict) =
 					Self::read_sqlite_table_via_editor(editor, table).await?;
 				SqliteTableRecreation::for_add_column(table, columns, column.clone(), constraints)
 					.with_indexes(indexes)
+					.with_triggers(triggers)
 					.with_without_rowid(without_rowid)
+					.with_strict(strict)
 			}
 			Operation::DropColumn { table, column, .. } => {
 				tracing::debug!(
@@ -1093,11 +1142,13 @@ impl DatabaseMigrationExecutor {
 					table,
 					column
 				);
-				let (columns, constraints, indexes, without_rowid) =
+				let (columns, constraints, indexes, triggers, without_rowid, strict) =
 					Self::read_sqlite_table_via_editor(editor, table).await?;
 				SqliteTableRecreation::for_drop_column(table, columns, column, constraints)
 					.with_indexes(indexes)
+					.with_triggers(triggers)
 					.with_without_rowid(without_rowid)
+					.with_strict(strict)
 					.without_indexes_referencing(column)
 			}
 			Operation::AlterColumn {
@@ -1111,7 +1162,7 @@ impl DatabaseMigrationExecutor {
 					table,
 					column
 				);
-				let (columns, constraints, indexes, without_rowid) =
+				let (columns, constraints, indexes, triggers, without_rowid, strict) =
 					Self::read_sqlite_table_via_editor(editor, table).await?;
 				SqliteTableRecreation::for_alter_column(
 					table,
@@ -1121,7 +1172,9 @@ impl DatabaseMigrationExecutor {
 					constraints,
 				)
 				.with_indexes(indexes)
+				.with_triggers(triggers)
 				.with_without_rowid(without_rowid)
+				.with_strict(strict)
 			}
 			Operation::AddConstraint {
 				table,
@@ -1135,7 +1188,7 @@ impl DatabaseMigrationExecutor {
 					"Handling SQLite table recreation for AddConstraint: table={}",
 					table
 				);
-				let (columns, constraints, indexes, without_rowid) =
+				let (columns, constraints, indexes, triggers, without_rowid, strict) =
 					Self::read_sqlite_table_via_editor(editor, table).await?;
 				SqliteTableRecreation::for_add_constraint(
 					table,
@@ -1144,14 +1197,16 @@ impl DatabaseMigrationExecutor {
 					constraint_sql.clone(),
 				)
 				.with_indexes(indexes)
+				.with_triggers(triggers)
 				.with_without_rowid(without_rowid)
+				.with_strict(strict)
 			}
 			Operation::AddConstraintDefinition { table, constraint } => {
 				tracing::debug!(
 					"Handling SQLite table recreation for typed constraint: table={}",
 					table
 				);
-				let (columns, constraints, indexes, without_rowid) =
+				let (columns, constraints, indexes, triggers, without_rowid, strict) =
 					Self::read_sqlite_table_via_editor(editor, table).await?;
 				SqliteTableRecreation::for_add_constraint_definition(
 					table,
@@ -1160,7 +1215,9 @@ impl DatabaseMigrationExecutor {
 					constraint.clone(),
 				)
 				.with_indexes(indexes)
+				.with_triggers(triggers)
 				.with_without_rowid(without_rowid)
+				.with_strict(strict)
 			}
 			Operation::DropConstraint {
 				table,
@@ -1172,7 +1229,7 @@ impl DatabaseMigrationExecutor {
 					table,
 					constraint_name
 				);
-				let (columns, constraints, indexes, without_rowid) =
+				let (columns, constraints, indexes, triggers, without_rowid, strict) =
 					Self::read_sqlite_table_via_editor(editor, table).await?;
 				SqliteTableRecreation::for_drop_constraint(
 					table,
@@ -1181,7 +1238,9 @@ impl DatabaseMigrationExecutor {
 					constraint_name,
 				)
 				.with_indexes(indexes)
+				.with_triggers(triggers)
 				.with_without_rowid(without_rowid)
+				.with_strict(strict)
 			}
 			Operation::DropConstraintDefinition { table, constraint } => {
 				tracing::debug!(
@@ -1189,7 +1248,7 @@ impl DatabaseMigrationExecutor {
 					table,
 					constraint.name()
 				);
-				let (columns, constraints, indexes, without_rowid) =
+				let (columns, constraints, indexes, triggers, without_rowid, strict) =
 					Self::read_sqlite_table_via_editor(editor, table).await?;
 				SqliteTableRecreation::for_drop_constraint(
 					table,
@@ -1198,7 +1257,9 @@ impl DatabaseMigrationExecutor {
 					constraint.name(),
 				)
 				.with_indexes(indexes)
+				.with_triggers(triggers)
 				.with_without_rowid(without_rowid)
+				.with_strict(strict)
 			}
 			_ => {
 				// This branch should not be reached if requires_sqlite_recreation() is correct

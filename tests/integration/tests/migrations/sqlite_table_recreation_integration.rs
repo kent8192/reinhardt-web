@@ -2940,6 +2940,261 @@ async fn typed_enum_constraint_recreation_preserves_without_rowid() {
 
 #[rstest]
 #[tokio::test]
+async fn typed_enum_constraint_recreation_preserves_strict_table_option() {
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("connect to in-memory SQLite");
+	connection
+		.execute(
+			"CREATE TABLE enum_strict_jobs (id INTEGER PRIMARY KEY, status TEXT NOT NULL) STRICT /* schema metadata comment */",
+			vec![],
+		)
+		.await
+		.expect("create STRICT table");
+	let conn = Arc::new(connection.clone());
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+	let add_enum = create_test_migration(
+		"testapp",
+		"0001_add_enum_to_strict_table",
+		vec![Operation::AddConstraintDefinition {
+			table: "enum_strict_jobs".to_string(),
+			constraint: Constraint::EnumDomain {
+				name: "enum_strict_jobs_status_model_enum_check".to_string(),
+				column: "status".to_string(),
+				domain: FieldDomain::Enum {
+					repr: ModelEnumRepr::String,
+					values: vec![ModelEnumValue::String("queued".to_string())],
+				},
+			},
+		}],
+	);
+
+	executor
+		.apply_migrations(&[add_enum])
+		.await
+		.expect("add enum constraint to STRICT table");
+
+	let table_sql: String = conn
+		.fetch_one(
+			"SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'enum_strict_jobs'",
+			vec![],
+		)
+		.await
+		.expect("read recreated table SQL")
+		.get("sql")
+		.expect("table SQL should be text");
+	assert!(table_sql.trim_end().ends_with("STRICT"), "{table_sql}");
+}
+
+#[rstest]
+#[tokio::test]
+async fn typed_enum_constraint_recreation_preserves_strict_without_rowid_options() {
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("connect to in-memory SQLite");
+	connection
+		.execute(
+			"CREATE TABLE enum_strict_keys (tenant_id INTEGER NOT NULL, job_id INTEGER NOT NULL, status TEXT NOT NULL, description TEXT NOT NULL, PRIMARY KEY (tenant_id, job_id)) STRICT, WITHOUT ROWID",
+			vec![],
+		)
+		.await
+		.expect("create STRICT WITHOUT ROWID table");
+	let conn = Arc::new(connection.clone());
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+	let add_enum = create_test_migration(
+		"testapp",
+		"0001_add_enum_to_strict_without_rowid_table",
+		vec![Operation::AddConstraintDefinition {
+			table: "enum_strict_keys".to_string(),
+			constraint: Constraint::EnumDomain {
+				name: "enum_strict_keys_status_model_enum_check".to_string(),
+				column: "status".to_string(),
+				domain: FieldDomain::Enum {
+					repr: ModelEnumRepr::String,
+					values: vec![ModelEnumValue::String("queued".to_string())],
+				},
+			},
+		}],
+	);
+
+	executor
+		.apply_migrations(&[add_enum])
+		.await
+		.expect("add enum constraint to STRICT WITHOUT ROWID table");
+
+	let table_sql: String = conn
+		.fetch_one(
+			"SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'enum_strict_keys'",
+			vec![],
+		)
+		.await
+		.expect("read recreated table SQL")
+		.get("sql")
+		.expect("table SQL should be text");
+	let normalized_sql = table_sql.to_ascii_uppercase();
+	assert!(normalized_sql.contains("WITHOUT ROWID"), "{table_sql}");
+	assert!(normalized_sql.contains("STRICT"), "{table_sql}");
+	let invalid_storage_class = conn
+		.execute(
+			"INSERT INTO enum_strict_keys (tenant_id, job_id, status, description) VALUES (1, 1, 'queued', X'00')",
+			vec![],
+		)
+		.await;
+	assert!(
+		invalid_storage_class.is_err(),
+		"STRICT should reject a BLOB value for a TEXT column"
+	);
+}
+
+#[rstest]
+#[tokio::test]
+async fn typed_enum_constraint_recreation_preserves_table_triggers() {
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("connect to in-memory SQLite");
+	connection
+		.execute(
+			"CREATE TABLE enum_trigger_jobs (id INTEGER PRIMARY KEY, status TEXT NOT NULL)",
+			vec![],
+		)
+		.await
+		.expect("create enum table");
+	connection
+		.execute(
+			"CREATE TABLE enum_trigger_audit (job_id INTEGER NOT NULL)",
+			vec![],
+		)
+		.await
+		.expect("create audit table");
+	connection
+		.execute(
+			"CREATE TRIGGER enum_trigger_jobs_z_audit AFTER INSERT ON enum_trigger_jobs BEGIN INSERT INTO enum_trigger_audit (job_id) VALUES (NEW.id); END",
+			vec![],
+		)
+		.await
+		.expect("create first audit trigger");
+	connection
+		.execute(
+			"CREATE TRIGGER enum_trigger_jobs_a_audit AFTER INSERT ON enum_trigger_jobs BEGIN INSERT INTO enum_trigger_audit (job_id) VALUES (NEW.id); END",
+			vec![],
+		)
+		.await
+		.expect("create second audit trigger");
+	let conn = Arc::new(connection.clone());
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+	let add_enum = create_test_migration(
+		"testapp",
+		"0001_add_enum_to_trigger_table",
+		vec![Operation::AddConstraintDefinition {
+			table: "enum_trigger_jobs".to_string(),
+			constraint: Constraint::EnumDomain {
+				name: "enum_trigger_jobs_status_model_enum_check".to_string(),
+				column: "status".to_string(),
+				domain: FieldDomain::Enum {
+					repr: ModelEnumRepr::String,
+					values: vec![ModelEnumValue::String("queued".to_string())],
+				},
+			},
+		}],
+	);
+
+	executor
+		.apply_migrations(&[add_enum])
+		.await
+		.expect("add enum constraint to table with trigger");
+	let trigger_rows = conn
+		.fetch_all(
+			"SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'enum_trigger_jobs' ORDER BY rowid",
+			vec![],
+		)
+		.await
+		.expect("read recreated trigger creation order");
+	let trigger_names: Vec<String> = trigger_rows
+		.iter()
+		.map(|row| row.get("name").expect("trigger name should be text"))
+		.collect();
+	assert_eq!(
+		trigger_names,
+		vec![
+			"enum_trigger_jobs_z_audit".to_string(),
+			"enum_trigger_jobs_a_audit".to_string(),
+		],
+		"trigger definitions should be recreated in their original creation order"
+	);
+	conn.execute(
+		"INSERT INTO enum_trigger_jobs (id, status) VALUES (1, 'queued')",
+		vec![],
+	)
+	.await
+	.expect("insert enum row after recreation");
+
+	let audit_count: i64 = conn
+		.fetch_one("SELECT COUNT(*) AS count FROM enum_trigger_audit", vec![])
+		.await
+		.expect("read trigger audit rows")
+		.get("count")
+		.expect("audit count should be an integer");
+	assert_eq!(
+		audit_count, 2,
+		"both recreated table triggers should still execute"
+	);
+}
+
+#[rstest]
+#[tokio::test]
+async fn recreation_reads_quoted_table_options_from_atomic_session() {
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("connect to in-memory SQLite");
+	let conn = Arc::new(connection.clone());
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+	let create_and_recreate = create_test_migration(
+		"testapp",
+		"0001_create_and_recreate_quoted_strict_table",
+		vec![
+			Operation::RunSQL {
+				sql: "CREATE TABLE \"enum \"\"quoted\"\" jobs\" (id INTEGER PRIMARY KEY, status TEXT NOT NULL) STRICT".to_string(),
+				reverse_sql: None,
+			},
+			Operation::AddConstraintDefinition {
+				table: "enum \"quoted\" jobs".to_string(),
+				constraint: Constraint::EnumDomain {
+					name: "enum_quoted_jobs_status_model_enum_check".to_string(),
+					column: "status".to_string(),
+					domain: FieldDomain::Enum {
+						repr: ModelEnumRepr::String,
+						values: vec![ModelEnumValue::String("queued".to_string())],
+					},
+				},
+			},
+		],
+	);
+
+	executor
+		.apply_migrations(&[create_and_recreate])
+		.await
+		.expect("recreate table from metadata visible only in the atomic session");
+	conn.execute(
+		"INSERT INTO \"enum \"\"quoted\"\" jobs\" (id, status) VALUES (1, 'queued')",
+		vec![],
+	)
+	.await
+	.expect("insert row through quoted table name");
+
+	let table_sql: String = conn
+		.fetch_one(
+			"SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'enum \"quoted\" jobs'",
+			vec![],
+		)
+		.await
+		.expect("read quoted recreated table SQL")
+		.get("sql")
+		.expect("table SQL should be text");
+	assert!(table_sql.trim_end().ends_with("STRICT"), "{table_sql}");
+}
+
+#[rstest]
+#[tokio::test]
 async fn recreation_preserves_composite_primary_key_ordinal_order() {
 	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
 		.await

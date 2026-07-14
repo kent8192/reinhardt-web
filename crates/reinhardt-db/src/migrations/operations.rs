@@ -4385,8 +4385,12 @@ pub struct SqliteTableRecreation {
 	pub raw_constraint_sqls: Vec<String>,
 	/// Indexes to recreate after the table rename
 	pub indexes: Vec<SqliteRecreatedIndex>,
+	/// Trigger definitions to recreate after the table rename
+	pub triggers: Vec<String>,
 	/// WITHOUT ROWID option
 	pub without_rowid: bool,
+	/// STRICT table option
+	pub strict: bool,
 }
 
 /// SQLite index metadata preserved across table recreation.
@@ -4459,7 +4463,9 @@ impl SqliteTableRecreation {
 			constraints: current_constraints,
 			raw_constraint_sqls: Vec::new(),
 			indexes: Vec::new(),
+			triggers: Vec::new(),
 			without_rowid: false,
+			strict: false,
 		}
 	}
 
@@ -4490,7 +4496,9 @@ impl SqliteTableRecreation {
 			constraints,
 			raw_constraint_sqls: Vec::new(),
 			indexes: Vec::new(),
+			triggers: Vec::new(),
 			without_rowid: false,
+			strict: false,
 		}
 	}
 
@@ -4522,7 +4530,9 @@ impl SqliteTableRecreation {
 			constraints: current_constraints,
 			raw_constraint_sqls: Vec::new(),
 			indexes: Vec::new(),
+			triggers: Vec::new(),
 			without_rowid: false,
+			strict: false,
 		}
 	}
 
@@ -4546,7 +4556,9 @@ impl SqliteTableRecreation {
 			constraints: current_constraints,
 			raw_constraint_sqls: vec![constraint_sql],
 			indexes: Vec::new(),
+			triggers: Vec::new(),
 			without_rowid: false,
+			strict: false,
 		}
 	}
 
@@ -4568,7 +4580,9 @@ impl SqliteTableRecreation {
 			constraints: current_constraints,
 			raw_constraint_sqls: Vec::new(),
 			indexes: Vec::new(),
+			triggers: Vec::new(),
 			without_rowid: false,
+			strict: false,
 		}
 	}
 
@@ -4598,7 +4612,9 @@ impl SqliteTableRecreation {
 			constraints,
 			raw_constraint_sqls: Vec::new(),
 			indexes: Vec::new(),
+			triggers: Vec::new(),
 			without_rowid: false,
+			strict: false,
 		}
 	}
 
@@ -4608,9 +4624,21 @@ impl SqliteTableRecreation {
 		self
 	}
 
+	/// Adds trigger definitions that should be recreated after the replacement table is renamed.
+	pub fn with_triggers(mut self, triggers: Vec<String>) -> Self {
+		self.triggers = triggers;
+		self
+	}
+
 	/// Preserves whether the recreated table uses SQLite's WITHOUT ROWID storage.
 	pub fn with_without_rowid(mut self, without_rowid: bool) -> Self {
 		self.without_rowid = without_rowid;
+		self
+	}
+
+	/// Preserves whether the recreated table uses SQLite's STRICT type enforcement.
+	pub fn with_strict(mut self, strict: bool) -> Self {
+		self.strict = strict;
 		self
 	}
 
@@ -4621,7 +4649,7 @@ impl SqliteTableRecreation {
 		self
 	}
 
-	/// Generate the 4-step SQL statements for table recreation
+	/// Generate the SQL statements for table recreation and dependent object restoration.
 	pub fn to_sql_statements(&self) -> Vec<String> {
 		let temp_table = format!("{}_new", self.table_name);
 		let quote =
@@ -4652,8 +4680,11 @@ impl SqliteTableRecreation {
 			quoted_temp_table,
 			create_parts.join(",\n  ")
 		);
-		if self.without_rowid {
-			create_sql.push_str(" WITHOUT ROWID");
+		match (self.without_rowid, self.strict) {
+			(true, true) => create_sql.push_str(" WITHOUT ROWID, STRICT"),
+			(true, false) => create_sql.push_str(" WITHOUT ROWID"),
+			(false, true) => create_sql.push_str(" STRICT"),
+			(false, false) => {}
 		}
 		create_sql.push(';');
 
@@ -4697,6 +4728,12 @@ impl SqliteTableRecreation {
 				quoted_table,
 				columns
 			));
+		}
+		for trigger in &self.triggers {
+			let trigger = trigger.trim().trim_end_matches(';');
+			if !trigger.is_empty() {
+				statements.push(format!("{trigger};"));
+			}
 		}
 		statements
 	}
