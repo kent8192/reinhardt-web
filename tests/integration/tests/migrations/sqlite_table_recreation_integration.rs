@@ -3378,7 +3378,7 @@ async fn typed_enum_constraint_recreation_ignores_expression_collation_for_uniqu
 		.expect("connect to in-memory SQLite");
 	connection
 		.execute(
-			"CREATE TABLE expression_collation_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT NOT NULL CHECK (code COLLATE NOCASE <> ''), status TEXT NOT NULL, UNIQUE (code))",
+			"CREATE TABLE expression_collation_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, source TEXT NOT NULL, code TEXT GENERATED ALWAYS AS (source COLLATE NOCASE) STORED, status TEXT NOT NULL, UNIQUE (code))",
 			vec![],
 		)
 		.await
@@ -3430,7 +3430,7 @@ async fn typed_enum_constraint_recreation_ignores_expression_collation_for_uniqu
 		.expect("drop unique constraint by autoindex name");
 
 	conn.execute(
-		"INSERT INTO expression_collation_jobs (code, status) VALUES ('same', 'queued'), ('same', 'queued')",
+		"INSERT INTO expression_collation_jobs (source, status) VALUES ('same', 'queued'), ('same', 'queued')",
 		vec![],
 	)
 	.await
