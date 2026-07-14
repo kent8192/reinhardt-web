@@ -602,10 +602,10 @@ macro_rules! impl_array_database_field {
 						.collect(),
 					DatabaseValue::Json(values) => serde_json::from_value(values)
 						.map_err(|error| FieldCodecError::Serialization(error.to_string())),
-					actual => Err(FieldCodecError::type_mismatch(
-						stringify!(Vec<$type>),
+					actual => Err(FieldCodecError::TypeMismatch {
+						expected: DatabaseStorageKind::Json,
 						actual,
-					)),
+					}),
 				}
 			}
 		}

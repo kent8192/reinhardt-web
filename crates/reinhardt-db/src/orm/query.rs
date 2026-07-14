@@ -3407,6 +3407,14 @@ where
 			DatabaseValue::String(value) => value.clone(),
 			DatabaseValue::Bytes(value) => String::from_utf8_lossy(value).into_owned(),
 			DatabaseValue::Json(value) => value.to_string(),
+			DatabaseValue::Array(values) => serde_json::Value::Array(
+				values
+					.iter()
+					.cloned()
+					.map(|value| value.into_json_value().unwrap_or(serde_json::Value::Null))
+					.collect(),
+			)
+			.to_string(),
 			DatabaseValue::Uuid(value) => value.to_string(),
 			DatabaseValue::Date(value) => value.to_string(),
 			DatabaseValue::Time(value) => value.to_string(),
