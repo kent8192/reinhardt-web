@@ -238,6 +238,14 @@ fn install_listeners(
 						let Some(editor) = &mut state.number_editor else {
 							return;
 						};
+						if keyboard.default_prevented()
+							|| keyboard.ctrl_key()
+							|| keyboard.alt_key() || keyboard.meta_key()
+						{
+							editor.selection = None;
+							editor.pending_edit = None;
+							return;
+						}
 						move_number_selection(editor, &keyboard.key(), keyboard.shift_key());
 					}),
 				);

@@ -103,8 +103,10 @@
 //! `Signal<bool>`, numeric inputs use a primitive implementing [`NumberValue`],
 //! and multiple selects use `Signal<Vec<String>>`. Numeric bindings may expose
 //! a [`NumberParseError`] signal that retains recoverable invalid editor text.
-//! When a pointer-positioned number edit is sanitized before its inaccessible
-//! selection can be recovered, the error reports the browser's empty value.
+//! Only unmodified Arrow/Home/End keyboard moves are predicted; modifier-key
+//! commands and already-canceled key events are treated as unknown. When a
+//! pointer-positioned number edit is sanitized before its inaccessible selection
+//! can be recovered, the error reports the browser's empty value.
 //! Radio `value` expressions are evaluated once per rendered element. A bound
 //! single select projects only its first matching option in tree order during
 //! SSR, including options resolved inside a pending boundary; a multiple

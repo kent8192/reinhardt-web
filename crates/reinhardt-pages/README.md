@@ -95,7 +95,9 @@ edits made before hydration. Later signal changes update the control. See the
 for event ordering, IME, numeric-error, and low-level escape-hatch details.
 For `input[type=number]`, the binding combines `beforeinput` metadata with the
 browser value so parse errors retain incomplete editor states when their edit
-position is known. Browsers do not expose number-input selection ranges; after
+position is known. Only unmodified Arrow/Home/End keyboard moves are predicted;
+modifier-key commands and already-canceled key events are treated as unknown. Browsers
+do not expose number-input selection ranges; after
 a pointer move followed immediately by sanitization, the error safely reports
 the browser's empty value instead of inventing raw text.
 

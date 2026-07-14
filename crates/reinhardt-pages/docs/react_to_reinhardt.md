@@ -269,8 +269,11 @@ one of these stable meanings:
 
 Browsers may sanitize an incomplete HTML number value to an empty string before
 the `input` handler runs. The binding tracks the editor's `beforeinput` changes
-and keyboard selection moves so recoverable incomplete states remain available
-through `NumberParseError::raw`. Number inputs do not expose selection ranges,
+and unmodified Arrow/Home/End keyboard selection moves so recoverable incomplete
+states remain available through `NumberParseError::raw`. Modifier-key commands,
+including Ctrl/Cmd+A, and already-canceled key events are treated as unknown
+positions.
+Number inputs do not expose selection ranges,
 and `beforeinput` target ranges are empty. If a pointer moves the caret and the
 very next edit is sanitized, the position is unknowable; the binding reports
 the browser's empty value rather than fabricating raw text. A subsequent valid

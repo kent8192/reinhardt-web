@@ -641,9 +641,23 @@ fn mounted_number_control(
 }
 
 fn dispatch_keydown(input: &web_sys::HtmlInputElement, key: &str, shift: bool) {
+	dispatch_keydown_with_modifiers(input, key, shift, false, false, false);
+}
+
+fn dispatch_keydown_with_modifiers(
+	input: &web_sys::HtmlInputElement,
+	key: &str,
+	shift: bool,
+	ctrl: bool,
+	alt: bool,
+	meta: bool,
+) {
 	let init = web_sys::KeyboardEventInit::new();
 	init.set_key(key);
 	init.set_shift_key(shift);
+	init.set_ctrl_key(ctrl);
+	init.set_alt_key(alt);
+	init.set_meta_key(meta);
 	input
 		.dispatch_event(
 			&web_sys::KeyboardEvent::new_with_keyboard_event_init_dict("keydown", &init)
@@ -748,6 +762,21 @@ fn number_binding_does_not_invent_raw_after_an_unknown_pointer_edit() {
 
 	assert_eq!(value.get(), 12);
 	let parse_error = error.get().expect("sanitized fallback");
+	assert_eq!(parse_error.raw(), "");
+	assert_eq!(parse_error.kind(), NumberParseErrorKind::Empty);
+	reinhardt_pages::cleanup_reactive_nodes();
+}
+
+#[wasm_bindgen_test]
+fn number_binding_does_not_predict_modifier_key_selection() {
+	let (_root, input, value, error) = mounted_number_control(12);
+	dispatch_keydown_with_modifiers(&input, "a", false, true, false, false);
+	dispatch_before_input(&input, Some("-"), "insertText");
+	input.set_value("");
+	dispatch_input(&input, Some("-"), "insertText");
+
+	assert_eq!(value.get(), 12);
+	let parse_error = error.get().expect("unknown modifier selection");
 	assert_eq!(parse_error.raw(), "");
 	assert_eq!(parse_error.kind(), NumberParseErrorKind::Empty);
 	reinhardt_pages::cleanup_reactive_nodes();
