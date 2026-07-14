@@ -4383,6 +4383,8 @@ pub struct SqliteTableRecreation {
 	pub constraints: Vec<Constraint>,
 	/// Raw constraint SQL strings (for AddConstraint operations)
 	pub raw_constraint_sqls: Vec<String>,
+	/// Existing raw table constraints preserved from SQLite CREATE TABLE SQL
+	pub raw_constraints: Vec<SqliteRecreatedConstraint>,
 	/// Indexes to recreate after the table rename
 	pub indexes: Vec<SqliteRecreatedIndex>,
 	/// Trigger definitions to recreate after the table rename
@@ -4404,6 +4406,25 @@ pub struct SqliteRecreatedIndex {
 	pub unique: bool,
 	/// Original CREATE INDEX SQL from sqlite_master.
 	pub sql: Option<String>,
+}
+
+/// SQLite table constraint metadata preserved verbatim across recreation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SqliteRecreatedConstraint {
+	/// Declared constraint name, when the original clause was named.
+	pub name: Option<String>,
+	/// Columns referenced by the constraint in declaration order.
+	pub columns: Vec<String>,
+	/// Original table-level constraint clause.
+	pub sql: String,
+}
+
+impl SqliteRecreatedConstraint {
+	fn references_column(&self, column_name: &str) -> bool {
+		self.columns
+			.iter()
+			.any(|column| column.eq_ignore_ascii_case(column_name))
+	}
 }
 
 impl SqliteRecreatedIndex {
@@ -4462,6 +4483,7 @@ impl SqliteTableRecreation {
 			columns_to_copy,
 			constraints: current_constraints,
 			raw_constraint_sqls: Vec::new(),
+			raw_constraints: Vec::new(),
 			indexes: Vec::new(),
 			triggers: Vec::new(),
 			without_rowid: false,
@@ -4495,6 +4517,7 @@ impl SqliteTableRecreation {
 			columns_to_copy,
 			constraints,
 			raw_constraint_sqls: Vec::new(),
+			raw_constraints: Vec::new(),
 			indexes: Vec::new(),
 			triggers: Vec::new(),
 			without_rowid: false,
@@ -4529,6 +4552,7 @@ impl SqliteTableRecreation {
 			columns_to_copy,
 			constraints: current_constraints,
 			raw_constraint_sqls: Vec::new(),
+			raw_constraints: Vec::new(),
 			indexes: Vec::new(),
 			triggers: Vec::new(),
 			without_rowid: false,
@@ -4555,6 +4579,7 @@ impl SqliteTableRecreation {
 			columns_to_copy,
 			constraints: current_constraints,
 			raw_constraint_sqls: vec![constraint_sql],
+			raw_constraints: Vec::new(),
 			indexes: Vec::new(),
 			triggers: Vec::new(),
 			without_rowid: false,
@@ -4579,6 +4604,7 @@ impl SqliteTableRecreation {
 			columns_to_copy,
 			constraints: current_constraints,
 			raw_constraint_sqls: Vec::new(),
+			raw_constraints: Vec::new(),
 			indexes: Vec::new(),
 			triggers: Vec::new(),
 			without_rowid: false,
@@ -4611,6 +4637,7 @@ impl SqliteTableRecreation {
 			columns_to_copy,
 			constraints,
 			raw_constraint_sqls: Vec::new(),
+			raw_constraints: Vec::new(),
 			indexes: Vec::new(),
 			triggers: Vec::new(),
 			without_rowid: false,
@@ -4621,6 +4648,12 @@ impl SqliteTableRecreation {
 	/// Adds indexes that should be recreated after the replacement table is renamed.
 	pub fn with_indexes(mut self, indexes: Vec<SqliteRecreatedIndex>) -> Self {
 		self.indexes = indexes;
+		self
+	}
+
+	/// Adds existing raw table constraints that must be preserved verbatim.
+	pub fn with_raw_constraints(mut self, raw_constraints: Vec<SqliteRecreatedConstraint>) -> Self {
+		self.raw_constraints = raw_constraints;
 		self
 	}
 
@@ -4649,6 +4682,24 @@ impl SqliteTableRecreation {
 		self
 	}
 
+	/// Removes preserved raw constraints that reference a dropped column.
+	pub fn without_raw_constraints_referencing(mut self, column_name: &str) -> Self {
+		self.raw_constraints
+			.retain(|constraint| !constraint.references_column(column_name));
+		self
+	}
+
+	/// Removes a preserved raw constraint by its declared name.
+	pub fn without_raw_constraint_named(mut self, constraint_name: &str) -> Self {
+		self.raw_constraints.retain(|constraint| {
+			constraint
+				.name
+				.as_deref()
+				.is_none_or(|name| !name.eq_ignore_ascii_case(constraint_name))
+		});
+		self
+	}
+
 	/// Generate the SQL statements for table recreation and dependent object restoration.
 	pub fn to_sql_statements(&self) -> Vec<String> {
 		let temp_table = format!("{}_new", self.table_name);
@@ -4672,7 +4723,12 @@ impl SqliteTableRecreation {
 
 		let mut create_parts = column_defs;
 		create_parts.extend(constraint_defs);
-		// Include raw constraint SQLs (from AddConstraint operations)
+		create_parts.extend(
+			self.raw_constraints
+				.iter()
+				.map(|constraint| constraint.sql.clone()),
+		);
+		// Include raw constraint SQLs from the current AddConstraint operation.
 		create_parts.extend(self.raw_constraint_sqls.clone());
 
 		let mut create_sql = format!(
@@ -9989,6 +10045,63 @@ mod tests {
 			sql.iter()
 				.all(|statement| !statement.contains("idx_users_title_partial"))
 		);
+	}
+
+	#[test]
+	fn test_sqlite_recreation_filters_raw_constraints_by_dropped_column() {
+		let id = ColumnDefinition::new("id", FieldType::Integer);
+		let title = ColumnDefinition::new("title", FieldType::VarChar(100));
+		let slug = ColumnDefinition::new("slug", FieldType::VarChar(100));
+		let recreation = SqliteTableRecreation::for_drop_column(
+			"articles",
+			vec![id, title, slug],
+			"slug",
+			vec![],
+		)
+		.with_raw_constraints(vec![
+			SqliteRecreatedConstraint {
+				name: Some("uq_articles_title".to_string()),
+				columns: vec!["title".to_string()],
+				sql: "CONSTRAINT uq_articles_title UNIQUE (title)".to_string(),
+			},
+			SqliteRecreatedConstraint {
+				name: Some("uq_articles_slug".to_string()),
+				columns: vec!["slug".to_string()],
+				sql: "CONSTRAINT uq_articles_slug UNIQUE (slug)".to_string(),
+			},
+		])
+		.without_raw_constraints_referencing("slug");
+
+		let create_sql = &recreation.to_sql_statements()[0];
+		assert!(create_sql.contains("uq_articles_title"), "{create_sql}");
+		assert!(!create_sql.contains("uq_articles_slug"), "{create_sql}");
+	}
+
+	#[test]
+	fn test_sqlite_recreation_filters_raw_constraints_by_name() {
+		let recreation = SqliteTableRecreation::for_drop_constraint(
+			"jobs",
+			vec![ColumnDefinition::new("code", FieldType::Text)],
+			vec![],
+			"uq_jobs_nocase",
+		)
+		.with_raw_constraints(vec![
+			SqliteRecreatedConstraint {
+				name: Some("uq_jobs_nocase".to_string()),
+				columns: vec!["code".to_string()],
+				sql: "CONSTRAINT uq_jobs_nocase UNIQUE (code COLLATE NOCASE)".to_string(),
+			},
+			SqliteRecreatedConstraint {
+				name: Some("uq_jobs_binary".to_string()),
+				columns: vec!["code".to_string()],
+				sql: "CONSTRAINT uq_jobs_binary UNIQUE (code COLLATE BINARY)".to_string(),
+			},
+		])
+		.without_raw_constraint_named("uq_jobs_nocase");
+
+		let create_sql = &recreation.to_sql_statements()[0];
+		assert!(!create_sql.contains("uq_jobs_nocase"), "{create_sql}");
+		assert!(create_sql.contains("uq_jobs_binary"), "{create_sql}");
 	}
 
 	#[test]

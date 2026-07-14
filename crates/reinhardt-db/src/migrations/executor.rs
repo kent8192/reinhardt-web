@@ -726,6 +726,7 @@ impl DatabaseMigrationExecutor {
 	) -> Result<(
 		Vec<super::ColumnDefinition>,
 		Vec<super::Constraint>,
+		Vec<super::operations::SqliteRecreatedConstraint>,
 		Vec<super::operations::SqliteRecreatedIndex>,
 		Vec<String>,
 		bool,
@@ -1019,6 +1020,19 @@ impl DatabaseMigrationExecutor {
 			.as_deref()
 			.map(parse_sqlite_unique_constraint_metadata)
 			.unwrap_or_default();
+		let raw_constraints = unique_constraint_metadata
+			.iter()
+			.filter_map(|metadata| {
+				metadata
+					.raw_sql
+					.as_ref()
+					.map(|sql| super::operations::SqliteRecreatedConstraint {
+						name: metadata.name.clone(),
+						columns: metadata.columns.clone(),
+						sql: sql.clone(),
+					})
+			})
+			.collect::<Vec<_>>();
 		let mut restored_unique_constraint_names = std::collections::HashSet::new();
 		let mut indexes = Vec::new();
 		for row in &idx_rows {
@@ -1046,17 +1060,26 @@ impl DatabaseMigrationExecutor {
 				.filter_map(|r| r.get::<String>("name").ok())
 				.collect();
 			if origin == "u" && unique == 1 {
+				let matches_columns = |metadata: &SqliteUniqueConstraintMetadata| {
+					metadata.columns.len() == cols.len()
+						&& metadata
+							.columns
+							.iter()
+							.zip(&cols)
+							.all(|(declared, actual)| declared.eq_ignore_ascii_case(actual))
+				};
+				if unique_constraint_metadata
+					.iter()
+					.filter(|metadata| metadata.raw_sql.is_some())
+					.any(&matches_columns)
+				{
+					continue;
+				}
 				let declared_names: Vec<_> = unique_constraint_metadata
 					.iter()
-					.filter(|metadata| {
-						metadata.columns.len() == cols.len()
-							&& metadata
-								.columns
-								.iter()
-								.zip(&cols)
-								.all(|(declared, actual)| declared.eq_ignore_ascii_case(actual))
-					})
-					.map(|metadata| metadata.name.clone())
+					.filter(|metadata| metadata.raw_sql.is_none())
+					.filter(|metadata| matches_columns(metadata))
+					.filter_map(|metadata| metadata.name.clone())
 					.collect();
 				if declared_names.is_empty() {
 					constraints.push(super::Constraint::Unique {
@@ -1116,6 +1139,7 @@ impl DatabaseMigrationExecutor {
 		Ok((
 			columns,
 			constraints,
+			raw_constraints,
 			indexes,
 			triggers,
 			without_rowid,
@@ -1156,9 +1180,17 @@ impl DatabaseMigrationExecutor {
 					table,
 					column.name
 				);
-				let (columns, constraints, indexes, triggers, without_rowid, strict) =
-					Self::read_sqlite_table_via_editor(editor, table).await?;
+				let (
+					columns,
+					constraints,
+					raw_constraints,
+					indexes,
+					triggers,
+					without_rowid,
+					strict,
+				) = Self::read_sqlite_table_via_editor(editor, table).await?;
 				SqliteTableRecreation::for_add_column(table, columns, column.clone(), constraints)
+					.with_raw_constraints(raw_constraints)
 					.with_indexes(indexes)
 					.with_triggers(triggers)
 					.with_without_rowid(without_rowid)
@@ -1170,13 +1202,22 @@ impl DatabaseMigrationExecutor {
 					table,
 					column
 				);
-				let (columns, constraints, indexes, triggers, without_rowid, strict) =
-					Self::read_sqlite_table_via_editor(editor, table).await?;
+				let (
+					columns,
+					constraints,
+					raw_constraints,
+					indexes,
+					triggers,
+					without_rowid,
+					strict,
+				) = Self::read_sqlite_table_via_editor(editor, table).await?;
 				SqliteTableRecreation::for_drop_column(table, columns, column, constraints)
+					.with_raw_constraints(raw_constraints)
 					.with_indexes(indexes)
 					.with_triggers(triggers)
 					.with_without_rowid(without_rowid)
 					.with_strict(strict)
+					.without_raw_constraints_referencing(column)
 					.without_indexes_referencing(column)
 			}
 			Operation::AlterColumn {
@@ -1190,8 +1231,15 @@ impl DatabaseMigrationExecutor {
 					table,
 					column
 				);
-				let (columns, constraints, indexes, triggers, without_rowid, strict) =
-					Self::read_sqlite_table_via_editor(editor, table).await?;
+				let (
+					columns,
+					constraints,
+					raw_constraints,
+					indexes,
+					triggers,
+					without_rowid,
+					strict,
+				) = Self::read_sqlite_table_via_editor(editor, table).await?;
 				SqliteTableRecreation::for_alter_column(
 					table,
 					columns,
@@ -1199,6 +1247,7 @@ impl DatabaseMigrationExecutor {
 					new_definition.clone(),
 					constraints,
 				)
+				.with_raw_constraints(raw_constraints)
 				.with_indexes(indexes)
 				.with_triggers(triggers)
 				.with_without_rowid(without_rowid)
@@ -1216,14 +1265,22 @@ impl DatabaseMigrationExecutor {
 					"Handling SQLite table recreation for AddConstraint: table={}",
 					table
 				);
-				let (columns, constraints, indexes, triggers, without_rowid, strict) =
-					Self::read_sqlite_table_via_editor(editor, table).await?;
+				let (
+					columns,
+					constraints,
+					raw_constraints,
+					indexes,
+					triggers,
+					without_rowid,
+					strict,
+				) = Self::read_sqlite_table_via_editor(editor, table).await?;
 				SqliteTableRecreation::for_add_constraint(
 					table,
 					columns,
 					constraints,
 					constraint_sql.clone(),
 				)
+				.with_raw_constraints(raw_constraints)
 				.with_indexes(indexes)
 				.with_triggers(triggers)
 				.with_without_rowid(without_rowid)
@@ -1234,14 +1291,22 @@ impl DatabaseMigrationExecutor {
 					"Handling SQLite table recreation for typed constraint: table={}",
 					table
 				);
-				let (columns, constraints, indexes, triggers, without_rowid, strict) =
-					Self::read_sqlite_table_via_editor(editor, table).await?;
+				let (
+					columns,
+					constraints,
+					raw_constraints,
+					indexes,
+					triggers,
+					without_rowid,
+					strict,
+				) = Self::read_sqlite_table_via_editor(editor, table).await?;
 				SqliteTableRecreation::for_add_constraint_definition(
 					table,
 					columns,
 					constraints,
 					constraint.clone(),
 				)
+				.with_raw_constraints(raw_constraints)
 				.with_indexes(indexes)
 				.with_triggers(triggers)
 				.with_without_rowid(without_rowid)
@@ -1257,14 +1322,23 @@ impl DatabaseMigrationExecutor {
 					table,
 					constraint_name
 				);
-				let (columns, constraints, indexes, triggers, without_rowid, strict) =
-					Self::read_sqlite_table_via_editor(editor, table).await?;
+				let (
+					columns,
+					constraints,
+					raw_constraints,
+					indexes,
+					triggers,
+					without_rowid,
+					strict,
+				) = Self::read_sqlite_table_via_editor(editor, table).await?;
 				SqliteTableRecreation::for_drop_constraint(
 					table,
 					columns,
 					constraints,
 					constraint_name,
 				)
+				.with_raw_constraints(raw_constraints)
+				.without_raw_constraint_named(constraint_name)
 				.with_indexes(indexes)
 				.with_triggers(triggers)
 				.with_without_rowid(without_rowid)
@@ -1276,14 +1350,23 @@ impl DatabaseMigrationExecutor {
 					table,
 					constraint.name()
 				);
-				let (columns, constraints, indexes, triggers, without_rowid, strict) =
-					Self::read_sqlite_table_via_editor(editor, table).await?;
+				let (
+					columns,
+					constraints,
+					raw_constraints,
+					indexes,
+					triggers,
+					without_rowid,
+					strict,
+				) = Self::read_sqlite_table_via_editor(editor, table).await?;
 				SqliteTableRecreation::for_drop_constraint(
 					table,
 					columns,
 					constraints,
 					constraint.name(),
 				)
+				.with_raw_constraints(raw_constraints)
+				.without_raw_constraint_named(constraint.name())
 				.with_indexes(indexes)
 				.with_triggers(triggers)
 				.with_without_rowid(without_rowid)
@@ -1919,8 +2002,9 @@ struct SqliteFkMetadata {
 #[cfg(feature = "sqlite")]
 #[derive(Debug, PartialEq, Eq)]
 struct SqliteUniqueConstraintMetadata {
-	name: String,
+	name: Option<String>,
 	columns: Vec<String>,
+	raw_sql: Option<String>,
 }
 
 #[cfg(feature = "sqlite")]
@@ -2023,24 +2107,35 @@ fn parse_sqlite_unique_constraint_metadata(
 	let mut metadata = Vec::new();
 	for definition in split_sqlite_top_level_list(body) {
 		let tokens = tokenize_sqlite_definition(definition);
-		if tokens.len() >= 4
+		let table_unique = if tokens.len() >= 4
 			&& sqlite_token_is_word(&tokens[0], "CONSTRAINT")
 			&& sqlite_token_is_word(&tokens[2], "UNIQUE")
 		{
-			let Some(name) = sqlite_token_identifier(&tokens[1]) else {
-				continue;
-			};
+			Some((sqlite_token_identifier(&tokens[1]), 3))
+		} else if tokens
+			.first()
+			.is_some_and(|token| sqlite_token_is_word(token, "UNIQUE"))
+		{
+			Some((None, 1))
+		} else {
+			None
+		};
+		if let Some((name, tokens_to_skip)) = table_unique {
 			let Some(open_index) = tokens
 				.iter()
-				.skip(3)
+				.skip(tokens_to_skip)
 				.position(|token| matches!(token, SqliteDdlToken::OpenParen))
-				.map(|index| index + 3)
+				.map(|index| index + tokens_to_skip)
 			else {
 				continue;
 			};
 			let columns = sqlite_indexed_columns(&tokens, open_index);
 			if !columns.is_empty() {
-				metadata.push(SqliteUniqueConstraintMetadata { name, columns });
+				metadata.push(SqliteUniqueConstraintMetadata {
+					name,
+					columns,
+					raw_sql: Some(definition.to_string()),
+				});
 			}
 			continue;
 		}
@@ -2057,8 +2152,9 @@ fn parse_sqlite_unique_constraint_metadata(
 			continue;
 		};
 		metadata.push(SqliteUniqueConstraintMetadata {
-			name,
+			name: Some(name),
 			columns: vec![column],
+			raw_sql: None,
 		});
 	}
 	metadata
@@ -2434,8 +2530,12 @@ mod sqlite_generated_column_tests {
 		assert_eq!(
 			metadata,
 			vec![SqliteUniqueConstraintMetadata {
-				name: "unique jobs code".to_string(),
+				name: Some("unique jobs code".to_string()),
 				columns: vec!["tenant id".to_string(), "code,value".to_string()],
+				raw_sql: Some(
+					"CONSTRAINT \"unique jobs code\" UNIQUE (\"tenant id\", \"code,value\")"
+						.to_string(),
+				),
 			}]
 		);
 	}
@@ -2453,8 +2553,9 @@ mod sqlite_generated_column_tests {
 		assert_eq!(
 			metadata,
 			vec![SqliteUniqueConstraintMetadata {
-				name: "unique jobs code".to_string(),
+				name: Some("unique jobs code".to_string()),
 				columns: vec!["code".to_string()],
+				raw_sql: None,
 			}]
 		);
 	}
@@ -2477,14 +2578,40 @@ mod sqlite_generated_column_tests {
 			metadata,
 			vec![
 				SqliteUniqueConstraintMetadata {
-					name: "uq_jobs_primary".to_string(),
+					name: Some("uq_jobs_primary".to_string()),
 					columns: vec!["tenant".to_string(), "code".to_string()],
+					raw_sql: Some("CONSTRAINT uq_jobs_primary UNIQUE (tenant, code)".to_string(),),
 				},
 				SqliteUniqueConstraintMetadata {
-					name: "uq_jobs_secondary".to_string(),
+					name: Some("uq_jobs_secondary".to_string()),
 					columns: vec!["tenant".to_string(), "code".to_string()],
+					raw_sql: Some("CONSTRAINT uq_jobs_secondary UNIQUE (tenant, code)".to_string(),),
 				},
 			]
+		);
+	}
+
+	#[rstest]
+	fn parse_sqlite_unique_metadata_preserves_collation_sql() {
+		// Arrange
+		let create_sql = r#"CREATE TABLE jobs (
+			code TEXT,
+			CONSTRAINT "uq_jobs_nocase" UNIQUE ("code" COLLATE NOCASE),
+			CONSTRAINT "uq_jobs_binary" UNIQUE ("code" COLLATE BINARY)
+		)"#;
+
+		// Act
+		let metadata = parse_sqlite_unique_constraint_metadata(create_sql);
+
+		// Assert
+		assert_eq!(metadata.len(), 2);
+		assert_eq!(
+			metadata[0].raw_sql.as_deref(),
+			Some(r#"CONSTRAINT "uq_jobs_nocase" UNIQUE ("code" COLLATE NOCASE)"#)
+		);
+		assert_eq!(
+			metadata[1].raw_sql.as_deref(),
+			Some(r#"CONSTRAINT "uq_jobs_binary" UNIQUE ("code" COLLATE BINARY)"#)
 		);
 	}
 }
