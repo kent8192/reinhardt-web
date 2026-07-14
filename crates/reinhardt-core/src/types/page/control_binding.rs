@@ -356,66 +356,89 @@ pub trait NumberValue: sealed::Sealed + Clone + fmt::Display + 'static {
 }
 
 fn lexical_error(raw: &str) -> Option<NumberParseError> {
-	if raw.is_empty() {
-		return Some(NumberParseError::new(raw, NumberParseErrorKind::Empty));
+	match classify_number_lexeme(raw) {
+		NumberLexemeState::Empty => Some(NumberParseError::new(raw, NumberParseErrorKind::Empty)),
+		NumberLexemeState::Incomplete => {
+			Some(NumberParseError::new(raw, NumberParseErrorKind::Incomplete))
+		}
+		NumberLexemeState::Invalid => {
+			Some(NumberParseError::new(raw, NumberParseErrorKind::Invalid))
+		}
+		NumberLexemeState::Complete => None,
 	}
-	if is_incomplete_number(raw) {
-		return Some(NumberParseError::new(raw, NumberParseErrorKind::Incomplete));
-	}
-	None
 }
 
-fn is_incomplete_number(raw: &str) -> bool {
-	if matches!(raw, "+" | "-") {
-		return true;
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum NumberLexemeState {
+	Empty,
+	Incomplete,
+	Complete,
+	Invalid,
+}
+
+fn classify_number_lexeme(raw: &str) -> NumberLexemeState {
+	if raw.is_empty() {
+		return NumberLexemeState::Empty;
 	}
 
-	let unsigned = raw.strip_prefix(['+', '-']).unwrap_or(raw);
-	if let Some(integer) = unsigned.strip_suffix('.')
-		&& !integer.is_empty()
-		&& integer.bytes().all(|byte| byte.is_ascii_digit())
-	{
-		return true;
+	let bytes = raw.as_bytes();
+	let mut index = usize::from(matches!(bytes.first(), Some(b'+' | b'-')));
+	if index == bytes.len() {
+		return NumberLexemeState::Incomplete;
 	}
 
-	let Some(exponent_index) = raw.rfind(['e', 'E']) else {
-		return false;
-	};
-	let (significand, exponent) = raw.split_at(exponent_index);
-	let exponent = &exponent[1..];
-	!significand.is_empty()
-		&& matches!(exponent, "" | "+" | "-")
-		&& significand.parse::<f64>().is_ok()
+	let integer_start = index;
+	while bytes.get(index).is_some_and(u8::is_ascii_digit) {
+		index += 1;
+	}
+	let integer_digits = index - integer_start;
+	let mut fraction_digits = 0;
+	if bytes.get(index) == Some(&b'.') {
+		index += 1;
+		let fraction_start = index;
+		while bytes.get(index).is_some_and(u8::is_ascii_digit) {
+			index += 1;
+		}
+		fraction_digits = index - fraction_start;
+		if fraction_digits == 0 {
+			return if index == bytes.len() {
+				NumberLexemeState::Incomplete
+			} else {
+				NumberLexemeState::Invalid
+			};
+		}
+	}
+	if integer_digits == 0 && fraction_digits == 0 {
+		return NumberLexemeState::Invalid;
+	}
+
+	if matches!(bytes.get(index), Some(b'e' | b'E')) {
+		index += 1;
+		if matches!(bytes.get(index), Some(b'+' | b'-')) {
+			index += 1;
+		}
+		let exponent_start = index;
+		while bytes.get(index).is_some_and(u8::is_ascii_digit) {
+			index += 1;
+		}
+		if exponent_start == index {
+			return if index == bytes.len() {
+				NumberLexemeState::Incomplete
+			} else {
+				NumberLexemeState::Invalid
+			};
+		}
+	}
+
+	if index == bytes.len() {
+		NumberLexemeState::Complete
+	} else {
+		NumberLexemeState::Invalid
+	}
 }
 
 fn is_valid_unsigned_number_lexeme(raw: &str) -> bool {
-	let (significand, exponent) = match raw.find(['e', 'E']) {
-		Some(index) => {
-			let (significand, exponent) = raw.split_at(index);
-			let exponent = &exponent[1..];
-			if exponent.contains(['e', 'E']) {
-				return false;
-			}
-			(significand, Some(exponent))
-		}
-		None => (raw, None),
-	};
-	let significand_is_valid = match significand.split_once('.') {
-		Some((integer, fraction)) => {
-			!fraction.is_empty()
-				&& (integer.is_empty() || integer.bytes().all(|byte| byte.is_ascii_digit()))
-				&& fraction.bytes().all(|byte| byte.is_ascii_digit())
-		}
-		None => !significand.is_empty() && significand.bytes().all(|byte| byte.is_ascii_digit()),
-	};
-	if !significand_is_valid {
-		return false;
-	}
-
-	exponent.is_none_or(|exponent| {
-		let digits = exponent.strip_prefix(['+', '-']).unwrap_or(exponent);
-		!digits.is_empty() && digits.bytes().all(|byte| byte.is_ascii_digit())
-	})
+	!raw.starts_with(['+', '-']) && classify_number_lexeme(raw) == NumberLexemeState::Complete
 }
 
 macro_rules! impl_signed_number_value {
@@ -483,10 +506,6 @@ macro_rules! impl_float_number_value {
 				fn parse_control_value(raw: &str) -> Result<Self, NumberParseError> {
 					if let Some(error) = lexical_error(raw) {
 						return Err(error);
-					}
-					let unsigned = raw.strip_prefix(['+', '-']).unwrap_or(raw);
-					if !is_valid_unsigned_number_lexeme(unsigned) {
-						return Err(NumberParseError::new(raw, NumberParseErrorKind::Invalid));
 					}
 					let value = raw
 						.parse::<Self>()
@@ -568,6 +587,8 @@ mod tests {
 
 	#[rstest]
 	#[case("-invalid", NumberParseErrorKind::Invalid)]
+	#[case("-1e2e", NumberParseErrorKind::Invalid)]
+	#[case("--1", NumberParseErrorKind::Invalid)]
 	#[case("-", NumberParseErrorKind::Incomplete)]
 	#[case("-1e-", NumberParseErrorKind::Incomplete)]
 	fn unsigned_number_bindings_preserve_invalid_and_incomplete_classification(
@@ -604,6 +625,53 @@ mod tests {
 		}
 
 		assert_special_lexeme_is_invalid!(f32, f64);
+	}
+
+	#[rstest]
+	#[case("", Some(NumberParseErrorKind::Empty))]
+	#[case("-", Some(NumberParseErrorKind::Incomplete))]
+	#[case("+", Some(NumberParseErrorKind::Incomplete))]
+	#[case(".", Some(NumberParseErrorKind::Incomplete))]
+	#[case("+.", Some(NumberParseErrorKind::Incomplete))]
+	#[case("1.", Some(NumberParseErrorKind::Incomplete))]
+	#[case("1e", Some(NumberParseErrorKind::Incomplete))]
+	#[case("1e+", Some(NumberParseErrorKind::Incomplete))]
+	#[case("1e-", Some(NumberParseErrorKind::Incomplete))]
+	#[case("0", None)]
+	#[case("+12", None)]
+	#[case(".5", None)]
+	#[case("12.5", None)]
+	#[case("12e3", None)]
+	#[case("12.5E-3", None)]
+	#[case("NaN", Some(NumberParseErrorKind::Invalid))]
+	#[case("NaNe", Some(NumberParseErrorKind::Invalid))]
+	#[case("inf", Some(NumberParseErrorKind::Invalid))]
+	#[case("infe", Some(NumberParseErrorKind::Invalid))]
+	#[case("1e2e", Some(NumberParseErrorKind::Invalid))]
+	#[case("1ee", Some(NumberParseErrorKind::Invalid))]
+	#[case("--1", Some(NumberParseErrorKind::Invalid))]
+	#[case("1..2", Some(NumberParseErrorKind::Invalid))]
+	#[case("1e+-2", Some(NumberParseErrorKind::Invalid))]
+	#[case(".e", Some(NumberParseErrorKind::Invalid))]
+	#[case(" 1", Some(NumberParseErrorKind::Invalid))]
+	#[case("1 ", Some(NumberParseErrorKind::Invalid))]
+	fn float_number_bindings_use_decimal_grammar_classifier(
+		#[case] raw: &str,
+		#[case] expected_error: Option<NumberParseErrorKind>,
+	) {
+		macro_rules! assert_classification {
+			($($type:ty),+ $(,)?) => {
+				$(
+					let result = <$type as NumberValue>::parse_control_value(raw);
+					match expected_error {
+						Some(expected) => assert_eq!(result.unwrap_err().kind(), expected),
+						None => assert!(result.is_ok(), "{raw} should be complete"),
+					}
+				)+
+			};
+		}
+
+		assert_classification!(f32, f64);
 	}
 
 	#[rstest]

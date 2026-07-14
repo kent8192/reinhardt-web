@@ -807,23 +807,60 @@ fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::No
 
 			let element_wrapper = crate::dom::Element::new(element.clone());
 			let mount_children_before_binding = tag == "select";
-			let mount_element = || {
-				let mut children = children.into_iter();
-				if mount_children_before_binding {
+			let (binding_controller, event_handles) = if mount_children_before_binding {
+				let mount_select = || {
+					let mut children = children.into_iter();
 					for child in children.by_ref() {
 						child.mount(&element_wrapper)?;
 					}
-				}
 
-				let binding_controller = control_binding
-					.map(|binding| {
-						crate::dom::control_binding::ControlBindingController::mount(
-							element_wrapper.clone(),
-							binding,
-						)
-					})
-					.transpose()?;
+					let binding_controller = control_binding
+						.map(|binding| {
+							crate::dom::control_binding::ControlBindingController::mount(
+								element_wrapper.clone(),
+								binding,
+							)
+						})
+						.transpose()?;
 
+					let mut event_handles = Vec::new();
+					for (event_type, handler) in event_handlers {
+						let handler_clone = handler.clone();
+						#[cfg(feature = "i18n")]
+						let i18n_context = crate::i18n::current_i18n_callback_context();
+						event_handles.push(element_wrapper.add_event_listener_with_event(
+							event_type.as_str(),
+							move |event| {
+								#[cfg(feature = "i18n")]
+								{
+									crate::i18n::with_optional_i18n_context(
+										i18n_context.as_ref(),
+										|| handler_clone(event),
+									);
+								}
+								#[cfg(not(feature = "i18n"))]
+								handler_clone(event);
+							},
+						));
+					}
+
+					for child in children {
+						child.mount(&element_wrapper)?;
+					}
+					Ok::<_, MountError>((binding_controller, event_handles))
+				};
+				let Ok(mounted) = with_reactive_node_transaction(mount_select) else {
+					return nodes;
+				};
+				mounted
+			} else {
+				let binding_controller = control_binding.and_then(|binding| {
+					crate::dom::control_binding::ControlBindingController::mount(
+						element_wrapper.clone(),
+						binding,
+					)
+					.ok()
+				});
 				let mut event_handles = Vec::new();
 				for (event_type, handler) in event_handlers {
 					let handler_clone = handler.clone();
@@ -844,19 +881,10 @@ fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::No
 						},
 					));
 				}
-
 				for child in children {
-					child.mount(&element_wrapper)?;
+					let _ = child.mount(&element_wrapper);
 				}
-				Ok::<_, MountError>((binding_controller, event_handles))
-			};
-			let mounted = if mount_children_before_binding {
-				with_reactive_node_transaction(mount_element)
-			} else {
-				mount_element()
-			};
-			let Ok((binding_controller, event_handles)) = mounted else {
-				return nodes;
+				(binding_controller, event_handles)
 			};
 
 			// Insert before marker

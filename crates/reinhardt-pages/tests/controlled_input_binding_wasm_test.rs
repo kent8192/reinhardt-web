@@ -330,6 +330,76 @@ fn reactive_failed_select_mount_rolls_back_child_reactive_resources() {
 }
 
 #[wasm_bindgen_test]
+fn reactive_nonselect_mount_keeps_parent_when_a_child_mount_fails() {
+	let document = web_sys::window()
+		.expect("window")
+		.document()
+		.expect("document");
+	let root = Element::new(document.create_element("div").expect("root"));
+	let trigger = Signal::new(0_u32);
+	let render_count = Rc::new(std::cell::Cell::new(0));
+	let listener_owner = Rc::new(RefCell::new(None));
+	let render_trigger = trigger.clone();
+	let render_count_for_child = Rc::clone(&render_count);
+	let listener_owner_for_child = Rc::clone(&listener_owner);
+	let page = Page::reactive(move || {
+		let render_trigger = render_trigger.clone();
+		let render_count_for_child = Rc::clone(&render_count_for_child);
+		let listener_owner_for_child = Rc::clone(&listener_owner_for_child);
+		Page::Element(
+			PageElement::new("div")
+				.attr("id", "retained-parent")
+				.child(Page::Element(
+					PageElement::new("select")
+						.control_binding(ControlBinding::checkbox(Signal::new(false)))
+						.child(Page::reactive(move || {
+							let _ = render_trigger.get();
+							render_count_for_child.set(render_count_for_child.get() + 1);
+							let owner = Rc::new(());
+							*listener_owner_for_child.borrow_mut() = Some(Rc::downgrade(&owner));
+							page!({
+								input {
+									a11y: off,
+									bind: Signal::new(String::new()),
+									@input: move |_| drop(Rc::clone(&owner)),
+								}
+							})
+						})),
+				))
+				.child(Page::Element(
+					PageElement::new("span")
+						.attr("id", "valid-sibling")
+						.child(Page::Text("ready".to_owned())),
+				)),
+		)
+	});
+
+	page.mount(&root).expect("reactive owner mount");
+
+	let parent = root
+		.as_web_sys()
+		.query_selector("#retained-parent")
+		.expect("query")
+		.expect("non-select parent should remain mounted");
+	assert_eq!(
+		parent.inner_html(),
+		r#"<span id="valid-sibling">ready</span>"#
+	);
+	assert_eq!(render_count.get(), 1);
+	assert!(
+		listener_owner
+			.borrow()
+			.as_ref()
+			.expect("owner observation")
+			.upgrade()
+			.is_none()
+	);
+	trigger.set(1);
+	assert_eq!(render_count.get(), 1);
+	reinhardt_pages::cleanup_reactive_nodes();
+}
+
+#[wasm_bindgen_test]
 fn duplicate_final_input_reprojects_a_reentrant_compositionend_signal_change() {
 	let document = web_sys::window()
 		.expect("window")
