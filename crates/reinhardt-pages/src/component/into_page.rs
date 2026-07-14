@@ -128,11 +128,7 @@ fn mount_inner(page: Page, parent: &Element) -> Result<(), MountError> {
 				store_reactive_node((binding_controller, event_handles));
 				Ok::<(), MountError>(())
 			};
-			if mount_children_before_binding {
-				with_reactive_node_transaction(mount_element)?;
-			} else {
-				mount_element()?;
-			}
+			with_reactive_node_transaction(mount_element)?;
 		}
 		Page::Text(text) => {
 			let window = web_sys::window().ok_or(MountError::NoWindow)?;
