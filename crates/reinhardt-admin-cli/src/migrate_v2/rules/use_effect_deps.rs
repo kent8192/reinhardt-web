@@ -309,17 +309,8 @@ impl HookVisitor {
 					.collect::<Option<Vec<_>>>();
 				return Some(HookResolution { spec, imports });
 			}
-			let spec = hook_spec(&called.to_string())?;
-			if call.args.len() == spec.explicit_arity {
-				return None;
-			}
-			return Some(HookResolution {
-				spec,
-				imports: Some(vec![GeneratedDepsImport {
-					facade: syn::parse_quote!(reinhardt_pages),
-					attrs: Vec::new(),
-				}]),
-			});
+			hook_spec(&called.to_string())?;
+			return None;
 		}
 		let mut candidates = Vec::new();
 		for (index, segment) in segments.iter().enumerate().take(segments.len() - 1) {
@@ -1437,6 +1428,21 @@ fn view(signal: Signal<i32>) {
 
 		assert!(output.contains("use_effect(||{},(signal.clone(),));"));
 		assert!(!output.contains("use reinhardt_pages::deps;"));
+	}
+
+	#[test]
+	fn unresolved_bare_hook_with_omitted_dependencies_is_not_rewritten() {
+		let output = compact(&rewrite(
+			r#"
+fn use_effect<F>(callback: F) {}
+fn view() {
+    use_effect(|| {});
+}
+"#,
+		));
+
+		assert!(output.contains("use_effect(||{});"));
+		assert!(!output.contains("reinhardt_pages::deps"));
 	}
 
 	#[test]
