@@ -399,7 +399,7 @@ impl<M: Model> Manager<M> {
 	/// Get a single record by primary key
 	/// Returns a QuerySet filtered by the primary key field
 	pub fn get(&self, pk: M::PrimaryKey) -> QuerySet<M> {
-		let pk_field = M::primary_key_field();
+		let pk_field = M::primary_key_column();
 		let pk_str = pk.to_string();
 
 		// Try to parse as i64 first (common for primary keys), fallback to string
@@ -1187,7 +1187,7 @@ impl<M: Model> Manager<M> {
 		};
 
 		stmt.from_table(Alias::new(M::table_name()))
-			.and_where(Expr::col(Alias::new(M::primary_key_field())).eq(pk_value));
+			.and_where(Expr::col(Alias::new(M::primary_key_column())).eq(pk_value));
 
 		let (sql, values) = build_delete_sql(&stmt, conn.backend());
 		let values: Vec<_> = values

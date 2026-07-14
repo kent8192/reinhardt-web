@@ -393,7 +393,7 @@ where
 			.from(Alias::new(T::table_name()))
 			.column(ColumnRef::Asterisk)
 			.and_where(
-				Expr::col(Alias::new(T::primary_key_field())).eq(Expr::val(pk.clone().into())),
+				Expr::col(Alias::new(T::primary_key_column())).eq(Expr::val(pk.clone().into())),
 			)
 			.limit(1)
 			.to_owned()

@@ -600,6 +600,8 @@ macro_rules! impl_array_database_field {
 						.into_iter()
 						.map(<$type as DatabaseScalar>::from_database_value)
 						.collect(),
+					DatabaseValue::Json(values) => serde_json::from_value(values)
+						.map_err(|error| FieldCodecError::Serialization(error.to_string())),
 					actual => Err(FieldCodecError::type_mismatch(
 						stringify!(Vec<$type>),
 						actual,
@@ -770,5 +772,15 @@ mod tests {
 			reinhardt_query::value::Value::Array(reinhardt_query::value::ArrayType::String, Some(values))
 				if values.len() == 2
 		));
+	}
+
+	#[test]
+	fn vector_scalars_decode_json_row_arrays() {
+		let decoded = <Vec<String> as DatabaseScalar>::from_database_value(DatabaseValue::Json(
+			serde_json::json!(["rust", "orm"]),
+		))
+		.expect("JSON row array should decode as Vec<String>");
+
+		assert_eq!(decoded, vec!["rust".to_string(), "orm".to_string()]);
 	}
 }

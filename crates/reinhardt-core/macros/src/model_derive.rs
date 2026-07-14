@@ -1670,10 +1670,11 @@ fn builtin_storage_kind(ty: &Type, orm_crate: &TokenStream) -> Option<TokenStrea
 		let Some(GenericArgument::Type(Type::Path(element))) = arguments.args.first() else {
 			return None;
 		};
-		return element
-			.path
-			.is_ident("u8")
-			.then(|| quote! { #orm_crate::DatabaseStorageKind::Bytes });
+		return Some(if element.path.is_ident("u8") {
+			quote! { #orm_crate::DatabaseStorageKind::Bytes }
+		} else {
+			quote! { #orm_crate::DatabaseStorageKind::Json }
+		});
 	}
 	let kind = match last_segment.ident.to_string().as_str() {
 		"bool" => quote! { #orm_crate::DatabaseStorageKind::Bool },
@@ -6115,7 +6116,7 @@ mod tests {
 	use super::*;
 
 	#[test]
-	fn builtin_storage_kind_recognizes_only_byte_vectors() {
+	fn builtin_storage_kind_distinguishes_byte_and_array_vectors() {
 		let orm_crate = quote! { orm };
 		let bytes: Type = parse_quote! { Vec<u8> };
 		let strings: Type = parse_quote! { Vec<String> };
@@ -6126,7 +6127,12 @@ mod tests {
 				.to_string(),
 			quote! { orm::DatabaseStorageKind::Bytes }.to_string()
 		);
-		assert!(builtin_storage_kind(&strings, &orm_crate).is_none());
+		assert_eq!(
+			builtin_storage_kind(&strings, &orm_crate)
+				.expect("Vec<String> should retain JSON row metadata")
+				.to_string(),
+			quote! { orm::DatabaseStorageKind::Json }.to_string()
+		);
 	}
 
 	#[test]
