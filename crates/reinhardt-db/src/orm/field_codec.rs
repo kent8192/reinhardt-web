@@ -11,13 +11,14 @@
 //! value to every variant. The Rust variant name is not used as the database
 //! value:
 //!
-//! ```ignore
-//! use reinhardt::ModelEnum;
-//! use reinhardt::core::serde::{Deserialize, Serialize};
+//! ```rust
+//! # mod orm { pub use reinhardt_db::orm::*; }
+//! use reinhardt_core::macros::ModelEnum;
+//! use serde::{Deserialize, Serialize};
 //!
 //! #[derive(ModelEnum, Clone, Debug, PartialEq, Serialize, Deserialize)]
 //! #[model_enum(repr = "string")]
-//! enum Status {
+//! enum JobStatus {
 //!     #[model_enum(value = "queued")]
 //!     Queued,
 //!     #[model_enum(value = "in_progress")]
@@ -26,31 +27,66 @@
 //!
 //! #[derive(ModelEnum, Clone, Debug, PartialEq, Serialize, Deserialize)]
 //! #[model_enum(repr = "i32")]
-//! enum Priority {
+//! enum FailureKind {
 //!     #[model_enum(value = 10)]
-//!     Low,
+//!     Transient,
 //!     #[model_enum(value = 20)]
-//!     High,
+//!     Permanent,
 //! }
+//! # fn main() {}
 //! ```
 //!
-//! The derived codec stores `Status::Running` as `"in_progress"` and
-//! `Priority::High` as `20`. Serde attributes remain independent: renaming a
-//! JSON value does not rename its database value, and renaming a Rust variant
-//! does not change either contract unless the corresponding attributes change.
+//! The derived codec stores `JobStatus::Running` as `"in_progress"` and
+//! `FailureKind::Permanent` as `20`. Serde attributes remain independent:
+//! renaming a JSON value does not rename its database value, and renaming a
+//! Rust variant does not change either contract unless the corresponding
+//! attributes change.
 //!
 //! Enum fields use the same typed field references as scalar fields. This
 //! includes nullable values and partial updates:
 //!
-//! ```ignore
+//! ```rust
+//! # #![allow(unexpected_cfgs)]
+//! # mod migrations { pub use reinhardt_db::migrations::*; }
+//! # mod orm { pub use reinhardt_db::orm::*; }
+//! # use reinhardt_core::macros::{ModelEnum, model};
+//! # use reinhardt_db::orm::Model;
+//! # use serde::{Deserialize, Serialize};
+//! # #[derive(ModelEnum, Clone, Debug, PartialEq, Serialize, Deserialize)]
+//! # #[model_enum(repr = "string")]
+//! # enum JobStatus {
+//! #     #[model_enum(value = "queued")]
+//! #     Queued,
+//! #     #[model_enum(value = "in_progress")]
+//! #     Running,
+//! # }
+//! # #[derive(ModelEnum, Clone, Debug, PartialEq, Serialize, Deserialize)]
+//! # #[model_enum(repr = "i32")]
+//! # enum FailureKind {
+//! #     #[model_enum(value = 10)]
+//! #     Transient,
+//! #     #[model_enum(value = 20)]
+//! #     Permanent,
+//! # }
+//! # #[model(app_label = "jobs", table_name = "jobs")]
+//! # #[derive(Clone, Debug, Serialize, Deserialize)]
+//! # struct Job {
+//! #     #[field(primary_key = true)]
+//! #     id: Option<i64>,
+//! #     #[field(max_length = 32)]
+//! #     status: JobStatus,
+//! #     failure_kind: Option<FailureKind>,
+//! # }
+//! # fn typed_query_examples() {
 //! Job::objects()
-//!     .filter(Job::field_status().eq(Status::Queued))
-//!     .filter(Job::field_priority().is_in([Priority::Low, Priority::High]))
+//!     .filter(Job::field_status().eq(JobStatus::Queued))
+//!     .filter(Job::field_status().is_in([JobStatus::Queued, JobStatus::Running]))
 //!     .update_fields([
-//!         Job::field_status().assign(Status::Running),
-//!         Job::field_fallback_status().assign(Some(Status::Queued)),
-//!     ])
-//!     .await?;
+//!         Job::field_status().assign(JobStatus::Running),
+//!         Job::field_failure_kind().assign(Some(FailureKind::Permanent)),
+//!     ]);
+//! # }
+//! # fn main() {}
 //! ```
 //!
 //! Passing a raw string to a model-enum field does not compile. This keeps
