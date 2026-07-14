@@ -589,7 +589,7 @@ fn dispatch_input(input: &web_sys::HtmlInputElement, data: Option<&str>, input_t
 }
 
 #[wasm_bindgen_test]
-fn number_binding_uses_the_browser_sanitized_value() {
+fn number_binding_recovers_incomplete_raw_from_sanitized_browser_input() {
 	let document = web_sys::window()
 		.expect("window")
 		.document()
@@ -612,34 +612,25 @@ fn number_binding_uses_the_browser_sanitized_value() {
 		.expect("input")
 		.unchecked_into();
 
-	dispatch_before_input(&input, Some("-"), "insertText");
-	input.set_value("-");
-	dispatch_input(&input, Some("-"), "insertText");
+	dispatch_before_input(&input, None, "deleteContentBackward");
+	input.set_value("");
+	dispatch_input(&input, None, "deleteContentBackward");
+	for (raw, fragment) in [("-", "-"), ("-1", "1"), ("-1.", ".")] {
+		dispatch_before_input(&input, Some(fragment), "insertText");
+		input.set_value(raw);
+		dispatch_input(&input, Some(fragment), "insertText");
+	}
 
 	assert_eq!(input.value(), "", "Chrome sanitizes an incomplete number");
-	assert_eq!(value.get(), 7);
-	let parse_error = error
-		.get()
-		.expect("sanitized empty value should be reported");
-	assert_eq!(parse_error.raw(), "");
-	assert_eq!(parse_error.kind(), NumberParseErrorKind::Empty);
-
-	input.set_value("12");
-	dispatch_input(&input, Some("12"), "insertFromPaste");
-	assert_eq!(value.get(), 12);
-	assert_eq!(error.get(), None);
-
-	input.set_value("2147483648");
-	dispatch_input(&input, Some("2147483648"), "insertReplacementText");
-	assert_eq!(value.get(), 12);
-	let parse_error = error.get().expect("out-of-range value should be reported");
-	assert_eq!(parse_error.raw(), "2147483648");
-	assert_eq!(parse_error.kind(), NumberParseErrorKind::OutOfRange);
+	assert_eq!(value.get(), -1);
+	let parse_error = error.get().expect("incomplete raw should be reported");
+	assert_eq!(parse_error.raw(), "-1.");
+	assert_eq!(parse_error.kind(), NumberParseErrorKind::Incomplete);
 	reinhardt_pages::cleanup_reactive_nodes();
 }
 
 #[wasm_bindgen_test]
-fn number_binding_commits_the_sanitized_value_after_composition() {
+fn number_binding_deduplicates_sanitized_final_input_after_composition() {
 	let document = web_sys::window()
 		.expect("window")
 		.document()
@@ -680,9 +671,9 @@ fn number_binding_commits_the_sanitized_value_after_composition() {
 	assert_eq!(value.get(), 7);
 	let parse_error = error
 		.get()
-		.expect("duplicate final input should retain the sanitized value");
-	assert_eq!(parse_error.raw(), "");
-	assert_eq!(parse_error.kind(), NumberParseErrorKind::Empty);
+		.expect("duplicate final input should retain the incomplete raw");
+	assert_eq!(parse_error.raw(), "-1.");
+	assert_eq!(parse_error.kind(), NumberParseErrorKind::Incomplete);
 	reinhardt_pages::cleanup_reactive_nodes();
 }
 
