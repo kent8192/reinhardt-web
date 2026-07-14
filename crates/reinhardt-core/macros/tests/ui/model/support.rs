@@ -349,6 +349,7 @@ pub mod db {
 			I64,
 			F32,
 			F64,
+			Decimal,
 			String,
 			Bytes,
 			Json,
@@ -420,6 +421,9 @@ pub mod db {
 				value: Self::Storage,
 				_context: &FieldCodecContext,
 			) -> Result<Self, FieldCodecError>;
+			fn domain() -> Option<FieldDomain> {
+				None
+			}
 		}
 
 		pub trait IntoFieldValue<T> {
@@ -700,6 +704,10 @@ pub mod db {
 				pub fn with_foreign_key(self, _foreign_key: ForeignKeyInfo) -> Self {
 					self
 				}
+
+				pub fn with_domain_opt(self, _domain: Option<crate::db::orm::FieldDomain>) -> Self {
+					self
+				}
 			}
 
 			#[derive(Debug, Clone, PartialEq)]
@@ -725,6 +733,13 @@ pub mod db {
 				pub fn add_many_to_many(&mut self, _metadata: ManyToManyMetadata) {}
 
 				pub fn add_constraint(&mut self, _constraint: ConstraintDefinition) {}
+
+				pub fn add_enum_domain_constraint(
+					&mut self,
+					_column: impl Into<String>,
+					_domain: crate::db::orm::FieldDomain,
+				) {
+				}
 			}
 
 			pub struct Registry;
