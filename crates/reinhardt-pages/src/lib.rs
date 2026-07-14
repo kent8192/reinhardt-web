@@ -102,11 +102,8 @@
 //! values. Text and radio groups use `Signal<String>`, checkboxes use
 //! `Signal<bool>`, numeric inputs use a primitive implementing [`NumberValue`],
 //! and multiple selects use `Signal<Vec<String>>`. Numeric bindings may expose
-//! a [`NumberParseError`] for the value that the browser exposes while keeping
-//! the last valid numeric signal unchanged. Browsers sanitize incomplete values
-//! in `input[type=number]` (such as `-`, `1.`, or `1e-`) to an empty string.
-//! Applications that need exact incomplete editor text should use a text input
-//! with `inputmode="decimal"`, a text binding, and custom parsing.
+//! a [`NumberParseError`] signal without discarding the user's invalid text,
+//! including incomplete number editor states sanitized by the browser.
 //! Radio `value` expressions are evaluated once per rendered element. A bound
 //! single select projects only its first matching option in tree order during
 //! SSR, including options resolved inside a pending boundary; a multiple
