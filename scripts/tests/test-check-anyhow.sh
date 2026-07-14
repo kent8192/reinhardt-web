@@ -331,6 +331,64 @@ assert_manifest_valid "quoted workspace root key containing dots"
 expect_clean "quoted workspace root key containing dots"
 
 reset_fixture
+cat > "$FIXTURE/Cargo.toml" <<'EOF'
+[workspace]
+members = []
+
+[workspace.dependencies]
+errors = {
+  version = "1",
+  package = """
+anyhow""",
+}
+EOF
+assert_manifest_valid "workspace inline alias with spanning package value"
+expect_dependency_rejected "workspace inline alias with spanning package value" "workspace.dependencies" 'errors (package = "anyhow")'
+
+reset_fixture
+cat > "$FIXTURE/Cargo.toml" <<'EOF'
+workspace.members = []
+workspace.dependencies.errors = {
+  version = "1",
+  package = """
+anyhow""",
+}
+EOF
+assert_manifest_valid "root dotted workspace alias with spanning package value"
+expect_dependency_rejected "root dotted workspace alias with spanning package value" "workspace.dependencies" 'errors (package = "anyhow")'
+
+reset_fixture
+cat > "$FIXTURE/Cargo.toml" <<'EOF'
+[workspace]
+members = []
+
+[workspace.dependencies]
+errors = {
+  version = "1",
+  note = """
+}
+""",
+  package = "anyhow",
+}
+EOF
+assert_manifest_valid "workspace alias after spanning string brace"
+expect_dependency_rejected "workspace alias after spanning string brace" "workspace.dependencies" 'errors (package = "anyhow")'
+
+reset_fixture
+cat > "$FIXTURE/Cargo.toml" <<'EOF'
+[workspace]
+members = []
+
+[workspace.dependencies]
+serde = {
+  version = "1",
+  note = ',package=anyhow,',
+}
+EOF
+assert_manifest_valid "package-like text in unrelated workspace string"
+expect_clean "package-like text in unrelated workspace string"
+
+reset_fixture
 cat >> "$FIXTURE/Cargo.toml" <<'EOF'
 
 [target.'cfg(unix)'.dependencies]
