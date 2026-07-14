@@ -1328,6 +1328,11 @@ const POSITION: ValueGrammar = ValueGrammar::Space {
 	max: Some(4),
 	item: &POSITION_ITEM,
 };
+const TRANSFORM_ORIGIN_POSITION: ValueGrammar = ValueGrammar::Space {
+	min: 1,
+	max: Some(2),
+	item: &POSITION_ITEM,
+};
 const LINE_WIDTH: ValueGrammar = ValueGrammar::Or(&[NL, KW_LINE_WIDTH]);
 const LINE_STYLE: ValueGrammar = KW_LINE_STYLE;
 const BORDER: ValueGrammar = ValueGrammar::Unordered {
@@ -1542,7 +1547,7 @@ const BACKGROUND_POSITION_SIZE: ValueGrammar = ValueGrammar::Slash {
 };
 const BACKGROUND_LAYER: ValueGrammar = ValueGrammar::Unordered {
 	members: &[
-		optional("image", &IMG),
+		optional("image", &BACKGROUND_IMAGE_LAYER),
 		optional("position", &POSITION),
 		optional("repeat", &BACKGROUND_REPEAT_LAYER),
 		optional("position-size", &BACKGROUND_POSITION_SIZE),
@@ -1553,7 +1558,7 @@ const BACKGROUND_LAYER: ValueGrammar = ValueGrammar::Unordered {
 const BACKGROUND_FINAL_LAYER: ValueGrammar = ValueGrammar::Unordered {
 	members: &[
 		optional("color", &C),
-		optional("image", &IMG),
+		optional("image", &BACKGROUND_IMAGE_LAYER),
 		optional("position", &POSITION),
 		optional("repeat", &BACKGROUND_REPEAT_LAYER),
 		optional("position-size", &BACKGROUND_POSITION_SIZE),
@@ -1634,8 +1639,10 @@ const TRANSFORM: ValueGrammar = ValueGrammar::Or(&[
 		item: &TF,
 	},
 ]);
-const TRANSFORM_ORIGIN: ValueGrammar =
-	ValueGrammar::Ordered(&[required("position", &POSITION), optional("z-offset", &L)]);
+const TRANSFORM_ORIGIN: ValueGrammar = ValueGrammar::Ordered(&[
+	required("position", &TRANSFORM_ORIGIN_POSITION),
+	optional("z-offset", &L),
+]);
 const TRANSITION_PROPERTY: ValueGrammar = ValueGrammar::Or(&[KW_TRANSITION_PROPERTY, IDENT]);
 const TRANSITION_PROPERTY_LIST: ValueGrammar = ValueGrammar::Comma {
 	min: 1,

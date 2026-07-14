@@ -916,7 +916,8 @@ fn matches_grammar(expression: &TypedValueExpr, grammar: &ValueGrammar) -> bool 
 			expression_matches_type(expression, *value_type)
 		}
 		ValueGrammar::NonNegative(grammar) => {
-			matches_grammar(expression, grammar) && !is_negative_literal(expression)
+			matches_grammar(expression, grammar)
+				&& numeric_literal_value(expression).is_none_or(|value| value >= 0.0)
 		}
 		ValueGrammar::NumericRange {
 			grammar,
@@ -979,6 +980,9 @@ fn matches_grammar(expression: &TypedValueExpr, grammar: &ValueGrammar) -> bool 
 			if items.len() < *min_members {
 				return false;
 			}
+			if !transition_time_order_is_valid(&items, members) {
+				return false;
+			}
 			let mut used = vec![false; members.len()];
 			matches_unordered(&items, members, *min_members, &mut used, 0)
 		}
@@ -1017,19 +1021,7 @@ fn is_css_wide_keyword(value: &str) -> bool {
 }
 
 fn is_negative_literal(expression: &TypedValueExpr) -> bool {
-	match &expression.kind {
-		TypedValueExprKind::Unary { operator, operand }
-			if matches!(operator.kind, StyleUnaryOperatorKind::Minus) =>
-		{
-			matches!(
-				operand.kind,
-				TypedValueExprKind::Literal(StyleValueLiteral::Integer(_))
-					| TypedValueExprKind::Literal(StyleValueLiteral::Number(_))
-			)
-		}
-		TypedValueExprKind::Group(operand) => is_negative_literal(operand),
-		_ => false,
-	}
+	numeric_literal_value(expression).is_some_and(|value| value < 0.0)
 }
 
 fn numeric_literal_value(expression: &TypedValueExpr) -> Option<f64> {
@@ -1043,9 +1035,43 @@ fn numeric_literal_value(expression: &TypedValueExpr) -> Option<f64> {
 				StyleUnaryOperatorKind::Plus => Some(value),
 			}
 		}
+		TypedValueExprKind::Binary {
+			left,
+			operator,
+			right,
+		} => {
+			let left = numeric_literal_value(left)?;
+			let right = numeric_literal_value(right)?;
+			match operator.kind {
+				StyleBinaryOperatorKind::Add => Some(left + right),
+				StyleBinaryOperatorKind::Subtract => Some(left - right),
+				StyleBinaryOperatorKind::Multiply => Some(left * right),
+				StyleBinaryOperatorKind::Divide => Some(left / right),
+			}
+		}
 		TypedValueExprKind::Group(operand) => numeric_literal_value(operand),
 		_ => None,
 	}
+}
+
+fn transition_time_order_is_valid(
+	items: &[&TypedValueExpr],
+	members: &[crate::GrammarMember],
+) -> bool {
+	let Some(duration) = members.iter().find(|member| member.role == "duration") else {
+		return true;
+	};
+	let Some(delay) = members.iter().find(|member| member.role == "delay") else {
+		return true;
+	};
+	let time_values: Vec<_> = items
+		.iter()
+		.copied()
+		.filter(|item| matches_grammar(item, delay.grammar))
+		.collect();
+	time_values
+		.first()
+		.is_none_or(|first| matches_grammar(first, duration.grammar))
 }
 
 fn sequence_items(expression: &TypedValueExpr) -> Vec<&TypedValueExpr> {
@@ -1989,6 +2015,7 @@ mod tests {
 			".card { outline: auto; }",
 			".card { outline-style: auto; }",
 			".card { background: [linear_gradient(Direction::Right, [stop(red, 0%), stop(blue, 100%)]), red]; }",
+			".card { background: none; }",
 		];
 
 		// Act and Assert
@@ -2001,6 +2028,30 @@ mod tests {
 				panic!("source should validate: {source}: {error}");
 			});
 		}
+	}
+
+	#[rstest]
+	#[case("transition", "(opacity, -1s)")]
+	#[case("transform-origin", "(10px, 20px, 30%)")]
+	#[case("transform-origin", "(1px, 2px, 3px, 4px)")]
+	#[case("padding", "0px - 1px")]
+	#[case("transition-duration", "0s - 1s")]
+	fn rejects_invalid_values_previously_accepted_by_broad_grammars(
+		#[case] property: &str,
+		#[case] value: &str,
+	) {
+		// Arrange
+		let source = format!(".card {{ {property}: {value}; }}");
+
+		// Act
+		let kind = diagnostic_kind_text(&source);
+
+		// Assert
+		assert!(matches!(
+			kind,
+			StyleDiagnosticKind::PropertyValueMismatch { property: actual, .. }
+				if actual == property
+		));
 	}
 
 	#[rstest]

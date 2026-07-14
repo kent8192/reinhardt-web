@@ -63,7 +63,7 @@ impl StyleFeatureSelection {
 		self.all_features
 	}
 
-	fn apply_to_metadata(&self, command: &mut MetadataCommand, _selected_package: &Package) {
+	fn apply_to_metadata(&self, command: &mut MetadataCommand, selected_package: &Package) {
 		if self.all_features {
 			command.features(CargoOpt::AllFeatures);
 			return;

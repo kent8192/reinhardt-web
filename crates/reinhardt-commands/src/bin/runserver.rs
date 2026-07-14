@@ -781,10 +781,10 @@ fn build_wasm_targets(
 	force_wasm_legacy: bool,
 	_feature_selection: &reinhardt_commands::StyleFeatureSelection,
 	package: Option<&str>,
-) {
+) -> bool {
 	if no_wasm {
 		println!("{}", "WASM builds skipped (--no-wasm)".dimmed());
-		return;
+		return true;
 	}
 
 	if force_wasm_legacy {
@@ -806,10 +806,23 @@ fn build_wasm_targets(
 	let force = !no_override_wasm;
 
 	#[cfg(feature = "admin")]
-	build_admin_wasm(force);
+	let admin_build_succeeded = build_admin_wasm(force);
+	#[cfg(not(feature = "admin"))]
+	let admin_build_succeeded = true;
 
 	#[cfg(feature = "pages")]
-	build_pages_wasm(force, _feature_selection, package);
+	let pages_build_succeeded = build_pages_wasm(force, _feature_selection, package);
+	#[cfg(not(feature = "pages"))]
+	let pages_build_succeeded = true;
+
+	admin_build_succeeded && pages_build_succeeded
+}
+
+fn should_abort_after_wasm_build(
+	component_styles_enabled: bool,
+	wasm_build_succeeded: bool,
+) -> bool {
+	component_styles_enabled && !wasm_build_succeeded
 }
 
 /// Run collectstatic to copy all static files into STATIC_ROOT.
@@ -945,13 +958,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	};
 
 	// Phase 1: Build WASM targets
-	build_wasm_targets(
+	let wasm_build_succeeded = build_wasm_targets(
 		args.no_wasm,
 		args.no_override_wasm,
 		args.force_wasm,
 		&style_feature_selection,
 		args.package.as_deref(),
 	);
+	if should_abort_after_wasm_build(component_style_state.is_some(), wasm_build_succeeded) {
+		return Err("Pages WASM build failed; refusing to serve generated component styles with a stale bundle".into());
+	}
 
 	// Load settings at startup
 	let mut loaded_settings = load_settings();
@@ -1118,5 +1134,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 				}
 			});
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::should_abort_after_wasm_build;
+
+	#[test]
+	fn component_styles_do_not_start_after_a_wasm_build_failure() {
+		assert!(should_abort_after_wasm_build(true, false));
+		assert!(!should_abort_after_wasm_build(true, true));
+		assert!(!should_abort_after_wasm_build(false, false));
 	}
 }

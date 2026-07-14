@@ -514,7 +514,10 @@ async fn run_rebuild_for_paths_for_package(
 	} else if targets.wasm {
 		let wasm_ok = wasm_fut.await;
 		#[cfg(feature = "pages")]
-		if wasm_ok && commit_pending_component_styles(config.component_styles.as_ref(), wasm_ok) {
+		let component_styles_committed =
+			wasm_ok && commit_pending_component_styles(config.component_styles.as_ref(), wasm_ok);
+		#[cfg(feature = "pages")]
+		if should_notify_wasm_reload(wasm_ok, css_only, component_styles_committed) {
 			notify_browser_reload(
 				config.hmr_tx.as_ref(),
 				"WASM rebuild completed successfully",
@@ -545,6 +548,15 @@ async fn run_rebuild_for_paths_for_package(
 	}
 	// Pipeline failures are recorded as log lines and never propagate as Err;
 	// the caller's loop continues unconditionally.
+}
+
+#[cfg(feature = "pages")]
+fn should_notify_wasm_reload(
+	wasm_ok: bool,
+	css_only: bool,
+	component_styles_committed: bool,
+) -> bool {
+	wasm_ok && (css_only || component_styles_committed)
 }
 
 #[cfg(feature = "pages")]
@@ -992,6 +1004,13 @@ mod tests {
 	fn notify_browser_reload_without_channel_is_noop() {
 		// Act & Assert
 		notify_browser_reload(None, "Server rebuild completed successfully");
+	}
+
+	#[cfg(feature = "pages")]
+	#[test]
+	fn wasm_rebuild_with_css_only_batch_requires_a_full_reload() {
+		assert!(should_notify_wasm_reload(true, true, false));
+		assert!(!should_notify_wasm_reload(false, true, false));
 	}
 
 	#[cfg(feature = "pages")]
