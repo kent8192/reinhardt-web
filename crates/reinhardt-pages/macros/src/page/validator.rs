@@ -870,7 +870,13 @@ fn classify_input_binding(
 		"number" => Ok((TypedControlBindingKind::Number, None)),
 		"checkbox" => Ok((TypedControlBindingKind::Checkbox, None)),
 		"radio" => {
-			let value = find_untyped_attr(attrs, "value").ok_or_else(|| {
+			let value = unique_untyped_attr(
+				attrs,
+				"value",
+				binding_attr,
+				"a bound radio input cannot specify duplicate `value` attributes",
+			)?
+			.ok_or_else(|| {
 				syn::Error::new_spanned(
 					&binding_attr.value,
 					"a bound radio input requires a `value` attribute",
@@ -911,10 +917,6 @@ fn classify_select_binding(
 			)),
 		},
 	}
-}
-
-fn find_untyped_attr<'a>(attrs: &'a [PageAttr], name: &str) -> Option<&'a PageAttr> {
-	attrs.iter().find(|attr| attr.html_name() == name)
 }
 
 fn unique_untyped_attr<'a>(
@@ -971,6 +973,11 @@ fn validate_control_binding_structure(
 			Some("a bound select cannot contain an option with a `selected` attribute")
 		}
 		TypedControlBindingKind::SelectOne | TypedControlBindingKind::SelectMany
+			if contains_option_with_duplicate_value(children) =>
+		{
+			Some("a bound select cannot contain an option with duplicate `value` attributes")
+		}
+		TypedControlBindingKind::SelectOne | TypedControlBindingKind::SelectMany
 			if contains_dynamic_option_without_value(children) =>
 		{
 			Some(
@@ -1013,6 +1020,47 @@ fn contains_selected_option(nodes: &[TypedPageNode]) -> bool {
 		}
 		TypedPageNode::Text(_) | TypedPageNode::Expression(_) => false,
 	})
+}
+
+fn contains_option_with_duplicate_value(nodes: &[TypedPageNode]) -> bool {
+	nodes.iter().any(|node| match node {
+		TypedPageNode::Element(element) => {
+			(element.tag == "option"
+				&& element
+					.attrs
+					.iter()
+					.filter(|attr| attr.html_name() == "value")
+					.nth(1)
+					.is_some()) || contains_option_with_duplicate_value(&element.children)
+		}
+		TypedPageNode::If(page_if) => page_if_contains_option_with_duplicate_value(page_if),
+		TypedPageNode::For(page_for) => contains_option_with_duplicate_value(&page_for.body),
+		TypedPageNode::Watch(watch) => {
+			contains_option_with_duplicate_value(std::slice::from_ref(watch.expr.as_ref()))
+		}
+		TypedPageNode::Component(component) => {
+			component
+				.children
+				.as_deref()
+				.is_some_and(contains_option_with_duplicate_value)
+				|| component
+					.named_slots
+					.iter()
+					.any(|slot| contains_option_with_duplicate_value(&slot.children))
+		}
+		TypedPageNode::Text(_) | TypedPageNode::Expression(_) => false,
+	})
+}
+
+fn page_if_contains_option_with_duplicate_value(page_if: &TypedPageIf) -> bool {
+	contains_option_with_duplicate_value(&page_if.then_branch)
+		|| page_if
+			.else_branch
+			.as_ref()
+			.is_some_and(|else_branch| match else_branch {
+				TypedPageElse::Block(nodes) => contains_option_with_duplicate_value(nodes),
+				TypedPageElse::If(page_if) => page_if_contains_option_with_duplicate_value(page_if),
+			})
 }
 
 fn contains_dynamic_option_without_value(nodes: &[TypedPageNode]) -> bool {
@@ -1707,6 +1755,22 @@ mod tests {
 			(
 				quote::quote!({ input { type: "radio", bind: value } }),
 				"a bound radio input requires a `value` attribute",
+			),
+			(
+				quote::quote!({ input { a11y: off, type: "radio", value: "one", value: "two", bind: value } }),
+				"a bound radio input cannot specify duplicate `value` attributes",
+			),
+			(
+				quote::quote!({
+					select {
+						a11y: off,
+						bind: value,
+						if condition {
+							optgroup { option { value: "one", value: "two", "Choice" } }
+						}
+					}
+				}),
+				"a bound select cannot contain an option with duplicate `value` attributes",
 			),
 			(
 				quote::quote!({

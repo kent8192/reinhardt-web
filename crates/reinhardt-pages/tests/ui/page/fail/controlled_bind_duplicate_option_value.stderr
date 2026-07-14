@@ -1,0 +1,5 @@
+error: a bound select cannot contain an option with duplicate `value` attributes
+  --> tests/ui/page/fail/controlled_bind_duplicate_option_value.rs:10:10
+   |
+10 |             bind: selected,
+   |                   ^^^^^^^^
