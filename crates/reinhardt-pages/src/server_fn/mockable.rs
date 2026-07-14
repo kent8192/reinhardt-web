@@ -26,5 +26,8 @@ pub trait MockableServerFn: ServerFnMetadata {
 	type Args: Serialize + DeserializeOwned + 'static;
 
 	/// Success response type (the `Ok` variant of the function's return type).
-	type Response: Serialize + DeserializeOwned + 'static;
+	///
+	/// MSW serializes responses into HTTP bodies but never deserializes them,
+	/// so mockable server functions only require serialization here.
+	type Response: Serialize + 'static;
 }
