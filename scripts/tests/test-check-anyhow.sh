@@ -288,6 +288,49 @@ assert_manifest_valid "spanning triple-basic workspace package alias"
 expect_dependency_rejected "spanning triple-basic workspace package alias" "workspace.dependencies" 'errors (package = "anyhow")'
 
 reset_fixture
+cat > "$FIXTURE/Cargo.toml" <<'EOF'
+[workspace]
+members = []
+
+[workspace.dependencies]
+errors = {
+  version = "1",
+  package = "anyhow",
+}
+EOF
+assert_manifest_valid "physical multiline workspace inline alias"
+expect_dependency_rejected "physical multiline workspace inline alias" "workspace.dependencies" 'errors (package = "anyhow")'
+
+reset_fixture
+cat > "$FIXTURE/Cargo.toml" <<'EOF'
+workspace.members = []
+workspace.dependencies.errors = { package = "anyhow", version = "1" }
+EOF
+assert_manifest_valid "root dotted workspace inline alias"
+expect_dependency_rejected "root dotted workspace inline alias" "workspace.dependencies" 'errors (package = "anyhow")'
+
+reset_fixture
+cat > "$FIXTURE/Cargo.toml" <<'EOF'
+[workspace]
+members = []
+
+['workspace.dependencies.anyhow']
+version = "1"
+EOF
+assert_manifest_valid "quoted workspace table component containing dots"
+expect_clean "quoted workspace table component containing dots"
+
+reset_fixture
+cat > "$FIXTURE/Cargo.toml" <<'EOF'
+"workspace.dependencies.anyhow" = "metadata"
+
+[workspace]
+members = []
+EOF
+assert_manifest_valid "quoted workspace root key containing dots"
+expect_clean "quoted workspace root key containing dots"
+
+reset_fixture
 cat >> "$FIXTURE/Cargo.toml" <<'EOF'
 
 [target.'cfg(unix)'.dependencies]

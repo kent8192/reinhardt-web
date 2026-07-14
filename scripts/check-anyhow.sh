@@ -276,17 +276,105 @@ PY
 			return result
 		}
 
+		function key_path_toml_line(value, position, character, in_basic, in_literal, result, escape_type, width, decoded) {
+			in_basic = 0
+			in_literal = 0
+			result = ""
+			for (position = 1; position <= length(value); position++) {
+				character = substr(value, position, 1)
+				if (in_basic) {
+					if (character == "\\") {
+						escape_type = substr(value, position + 1, 1)
+						width = escape_type == "u" ? 4 : escape_type == "U" ? 8 : 0
+						if (width > 0) {
+							decoded = decode_ascii_escape(value, position, width)
+							result = result (decoded == "" ? "?" : decoded)
+							position += width + 1
+						} else {
+							result = result "?"
+							position++
+						}
+					} else if (character == "\"") {
+						result = result "\""
+						in_basic = 0
+					} else {
+						result = result character
+					}
+				} else if (in_literal) {
+					if (character == "\047") {
+						result = result "\""
+						in_literal = 0
+					} else {
+						result = result character
+					}
+				} else if (character == "\"") {
+					result = result "\""
+					in_basic = 1
+				} else if (character == "\047") {
+					result = result "\""
+					in_literal = 1
+				} else if (character == "#") {
+					break
+				} else if (character !~ /[[:space:]]/) {
+					result = result character
+				}
+			}
+			gsub(/"workspace"/, "workspace", result)
+			gsub(/"dependencies"/, "dependencies", result)
+			gsub(/"anyhow"/, "anyhow", result)
+			gsub(/"package"/, "package", result)
+			return result
+		}
+
+		function brace_delta(value, position, character, in_basic, in_literal, escaped, delta) {
+			in_basic = 0
+			in_literal = 0
+			escaped = 0
+			delta = 0
+			for (position = 1; position <= length(value); position++) {
+				character = substr(value, position, 1)
+				if (in_basic) {
+					if (escaped) {
+						escaped = 0
+					} else if (character == "\\") {
+						escaped = 1
+					} else if (character == "\"") {
+						in_basic = 0
+					}
+				} else if (in_literal) {
+					if (character == "\047") {
+						in_literal = 0
+					}
+				} else if (character == "\"") {
+					in_basic = 1
+				} else if (character == "\047") {
+					in_literal = 1
+				} else if (character == "#") {
+					break
+				} else if (character == "{") {
+					delta++
+				} else if (character == "}") {
+					delta--
+				}
+			}
+			return delta
+		}
+
 		FNR == 1 {
 			workspace_table = 0
 			workspace_subtable = ""
 			workspace_package_multiline = 0
+			workspace_inline_alias = ""
+			workspace_inline_depth = 0
 		}
 
 		/^[[:space:]]*\[/ {
-			header = compact_toml_line($0)
+			header = key_path_toml_line($0)
 			workspace_table = header == "[workspace.dependencies]"
 			workspace_subtable = ""
 			workspace_package_multiline = 0
+			workspace_inline_alias = ""
+			workspace_inline_depth = 0
 			if (header ~ /^\[workspace[.]dependencies[.][[:alnum:]_-]+\]$/) {
 				workspace_subtable = header
 				sub(/^\[workspace[.]dependencies[.]/, "", workspace_subtable)
@@ -300,8 +388,45 @@ PY
 
 		{
 			entry = compact_toml_line($0)
+			path_entry = key_path_toml_line($0)
 
-			if (workspace_package_multiline && entry == "anyhow") {
+			if (workspace_inline_alias != "") {
+				if (entry ~ /(^|[,{}])package=anyhow([,}]|$)/) {
+					emit_dependency(workspace_inline_alias)
+				}
+				workspace_inline_depth += brace_delta($0)
+				if (workspace_inline_depth <= 0) {
+					workspace_inline_alias = ""
+					workspace_inline_depth = 0
+				}
+			} else if (workspace_table && entry ~ /^[[:alnum:]_-]+=\{/) {
+				workspace_inline_alias = entry
+				sub(/=.*/, "", workspace_inline_alias)
+				workspace_inline_depth = brace_delta($0)
+				if (workspace_inline_alias == "anyhow") {
+					emit_dependency("anyhow")
+				} else if (entry ~ /(^|[,{}])package=anyhow([,}]|$)/) {
+					emit_dependency(workspace_inline_alias)
+				}
+				if (workspace_inline_depth <= 0) {
+					workspace_inline_alias = ""
+					workspace_inline_depth = 0
+				}
+			} else if (path_entry ~ /^workspace[.]dependencies[.][[:alnum:]_-]+=\{/) {
+				workspace_inline_alias = path_entry
+				sub(/^workspace[.]dependencies[.]/, "", workspace_inline_alias)
+				sub(/=.*/, "", workspace_inline_alias)
+				workspace_inline_depth = brace_delta($0)
+				if (workspace_inline_alias == "anyhow") {
+					emit_dependency("anyhow")
+				} else if (entry ~ /(^|[,{}])package=anyhow([,}]|$)/) {
+					emit_dependency(workspace_inline_alias)
+				}
+				if (workspace_inline_depth <= 0) {
+					workspace_inline_alias = ""
+					workspace_inline_depth = 0
+				}
+			} else if (workspace_package_multiline && entry == "anyhow") {
 				emit_dependency(workspace_subtable)
 				workspace_package_multiline = 0
 			} else if (workspace_table && entry ~ /^anyhow([.][[:alnum:]_-]+)?=/) {
@@ -310,14 +435,10 @@ PY
 				emit_dependency(workspace_subtable)
 			} else if (workspace_subtable != "" && entry == "package=") {
 				workspace_package_multiline = 1
-			} else if (workspace_table && entry ~ /^[[:alnum:]_-]+=\{.*package=anyhow([,}]|$)/) {
-				dependency = entry
-				sub(/=.*/, "", dependency)
-				emit_dependency(dependency)
-			} else if (entry ~ /^workspace[.]dependencies[.]anyhow([.][[:alnum:]_-]+)?=/) {
+			} else if (path_entry ~ /^workspace[.]dependencies[.]anyhow([.][[:alnum:]_-]+)?=/) {
 				emit_dependency("anyhow")
-			} else if (entry ~ /^workspace[.]dependencies[.][[:alnum:]_-]+[.]package=anyhow$/) {
-				dependency = entry
+			} else if (path_entry ~ /^workspace[.]dependencies[.][[:alnum:]_-]+[.]package=anyhow$/) {
+				dependency = path_entry
 				sub(/^workspace[.]dependencies[.]/, "", dependency)
 				sub(/[.]package=anyhow$/, "", dependency)
 				emit_dependency(dependency)
