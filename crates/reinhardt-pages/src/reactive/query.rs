@@ -15,6 +15,7 @@ use std::future::Future;
 use std::marker::PhantomData;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::task::{Context, Poll};
 use std::time::Duration;
 #[cfg(not(wasm))]
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -26,6 +27,7 @@ use sha2::{Digest, Sha256};
 use super::Signal;
 use super::hooks::async_action::{Action, use_action};
 use super::resource::ResourceState;
+use reinhardt_core::reactive::{ReactiveScope, ScopeId, scope::enter_scope};
 
 type QueryFuture<T, E> = Pin<Box<dyn Future<Output = Result<T, E>> + 'static>>;
 type QueryFetcher<T, E> = dyn Fn() -> QueryFuture<T, E> + 'static;
@@ -140,6 +142,7 @@ impl<T, E> QueryKey<T, E> {
 }
 
 struct QueryEntry<T: Clone + 'static, E: Clone + 'static> {
+	_scope: Rc<ReactiveScope>,
 	id: String,
 	state: Signal<ResourceState<T, E>>,
 	is_fetching: Signal<bool>,
@@ -149,6 +152,28 @@ struct QueryEntry<T: Clone + 'static, E: Clone + 'static> {
 	last_fetched_ms: Cell<Option<u64>>,
 	stale_time: Cell<Duration>,
 	gc_time: Cell<Duration>,
+}
+
+/// Polls cached query work in the scope that owns the query entry.
+///
+/// Cache entries outlive the component that first requested them, so their
+/// fetchers cannot rely on that component's render scope remaining active.
+struct ScopedQueryFuture<Fut> {
+	scope: ScopeId,
+	future: Pin<Box<Fut>>,
+}
+
+impl<Fut> Future for ScopedQueryFuture<Fut>
+where
+	Fut: Future<Output = ()>,
+{
+	type Output = ();
+
+	fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+		let this = self.get_mut();
+		let poll = || this.future.as_mut().poll(cx);
+		enter_scope(this.scope, poll).unwrap_or(Poll::Ready(()))
+	}
 }
 
 fn initial_query_state<T, E>(
@@ -174,11 +199,14 @@ impl<T: Clone + 'static, E: Clone + 'static> QueryEntry<T, E> {
 	{
 		let (initial_state, last_fetched_ms) = initial_query_state(hydrated_query_state(&key.id));
 		let id = key.id;
+		let scope = Rc::new(ReactiveScope::new());
+		let (state, is_fetching) = scope.enter(|| (Signal::new(initial_state), Signal::new(false)));
 
 		Self {
+			_scope: scope,
 			id,
-			state: Signal::new(initial_state),
-			is_fetching: Signal::new(false),
+			state,
+			is_fetching,
 			fetcher: RefCell::new(key.fetcher),
 			in_flight: Cell::new(false),
 			refetch_after_in_flight: Cell::new(false),
@@ -236,33 +264,37 @@ impl<T: Clone + 'static, E: Clone + 'static> QueryEntry<T, E> {
 		}
 
 		let entry = Rc::clone(self);
-		spawn_query_task(async move {
-			loop {
-				let fetcher = entry.fetcher.borrow().clone();
-				let result = fetcher().await;
-				match result {
-					Ok(value) => {
-						entry.last_fetched_ms.set(Some(now_ms()));
-						entry.state.set(ResourceState::Success(value));
+		let scope = entry._scope.id();
+		spawn_query_task(ScopedQueryFuture {
+			scope,
+			future: Box::pin(async move {
+				loop {
+					let fetcher = entry.fetcher.borrow().clone();
+					let result = fetcher().await;
+					match result {
+						Ok(value) => {
+							entry.last_fetched_ms.set(Some(now_ms()));
+							entry.state.set(ResourceState::Success(value));
+						}
+						Err(error) => {
+							entry.last_fetched_ms.set(Some(now_ms()));
+							entry.state.set(ResourceState::Error(error));
+						}
 					}
-					Err(error) => {
-						entry.last_fetched_ms.set(Some(now_ms()));
-						entry.state.set(ResourceState::Error(error));
+					if entry.refetch_after_in_flight.replace(false) {
+						let has_success = entry
+							.state
+							.with_untracked(|state| matches!(state, ResourceState::Success(_)));
+						if !has_success {
+							entry.state.set(ResourceState::Loading);
+						}
+						continue;
 					}
+					entry.is_fetching.set(false);
+					entry.in_flight.set(false);
+					break;
 				}
-				if entry.refetch_after_in_flight.replace(false) {
-					let has_success = entry
-						.state
-						.with_untracked(|state| matches!(state, ResourceState::Success(_)));
-					if !has_success {
-						entry.state.set(ResourceState::Loading);
-					}
-					continue;
-				}
-				entry.is_fetching.set(false);
-				entry.in_flight.set(false);
-				break;
-			}
+			}),
 		});
 	}
 }
@@ -533,10 +565,11 @@ where
 		let entry = Rc::new(QueryEntry::new(key));
 		if ssr_prefetch {
 			let fetcher = entry.fetcher.borrow().clone();
-			context.borrow_mut().register_resource(
+			context.borrow_mut().register_resource_with_owner(
 				entry.id.clone(),
 				move || fetcher(),
 				entry.state,
+				Some(Rc::clone(&entry._scope)),
 			);
 			entry.mark_resolved_fetched();
 		}
@@ -704,6 +737,7 @@ pub(crate) fn clear_query_cache_for_test() {
 mod tests {
 	use std::cell::Cell;
 
+	use reinhardt_core::reactive::ReactiveScope;
 	use rstest::rstest;
 	use serde::Serializer;
 	use serde::ser::SerializeMap;
@@ -744,197 +778,213 @@ mod tests {
 	#[rstest]
 	#[serial(query_cache)]
 	fn use_query_deduplicates_shared_key() {
-		// Arrange
-		clear_query_cache_for_test();
-		let calls = Rc::new(Cell::new(0));
+		ReactiveScope::run(|| {
+			// Arrange
+			clear_query_cache_for_test();
+			let calls = Rc::new(Cell::new(0));
 
-		// Act
-		let first = use_query(QueryKey::new("shared", {
-			let calls = Rc::clone(&calls);
-			move || {
-				calls.set(calls.get() + 1);
-				async { Ok::<_, String>("value".to_string()) }
-			}
-		}));
-		let second = use_query(QueryKey::new("shared", {
-			let calls = Rc::clone(&calls);
-			move || {
-				calls.set(calls.get() + 1);
-				async { Ok::<_, String>("value".to_string()) }
-			}
-		}));
+			// Act
+			let first = use_query(QueryKey::new("shared", {
+				let calls = Rc::clone(&calls);
+				move || {
+					calls.set(calls.get() + 1);
+					async { Ok::<_, String>("value".to_string()) }
+				}
+			}));
+			let second = use_query(QueryKey::new("shared", {
+				let calls = Rc::clone(&calls);
+				move || {
+					calls.set(calls.get() + 1);
+					async { Ok::<_, String>("value".to_string()) }
+				}
+			}));
 
-		// Assert
-		assert_eq!(calls.get(), 1);
-		assert_eq!(first.data(), Some("value".to_string()));
-		assert_eq!(second.data(), Some("value".to_string()));
+			// Assert
+			assert_eq!(calls.get(), 1);
+			assert_eq!(first.data(), Some("value".to_string()));
+			assert_eq!(second.data(), Some("value".to_string()));
+		});
 	}
 
 	#[rstest]
 	#[serial(query_cache)]
 	fn refetch_runs_fetcher_again() {
-		// Arrange
-		clear_query_cache_for_test();
-		let calls = Rc::new(Cell::new(0));
-		let query = use_query(QueryKey::new("manual-refetch", {
-			let calls = Rc::clone(&calls);
-			move || {
-				let value = calls.get() + 1;
-				calls.set(value);
-				async move { Ok::<_, String>(value) }
-			}
-		}));
+		ReactiveScope::run(|| {
+			// Arrange
+			clear_query_cache_for_test();
+			let calls = Rc::new(Cell::new(0));
+			let query = use_query(QueryKey::new("manual-refetch", {
+				let calls = Rc::clone(&calls);
+				move || {
+					let value = calls.get() + 1;
+					calls.set(value);
+					async move { Ok::<_, String>(value) }
+				}
+			}));
 
-		// Act
-		query.refetch();
+			// Act
+			query.refetch();
 
-		// Assert
-		assert_eq!(calls.get(), 2);
-		assert_eq!(query.data(), Some(2));
+			// Assert
+			assert_eq!(calls.get(), 2);
+			assert_eq!(query.data(), Some(2));
+		});
 	}
 
 	#[rstest]
 	#[serial(query_cache)]
 	fn failed_query_respects_stale_time_before_retrying() {
-		// Arrange
-		clear_query_cache_for_test();
-		let calls = Rc::new(Cell::new(0));
-		let key = QueryKey::new("failed-query", {
-			let calls = Rc::clone(&calls);
-			move || {
-				calls.set(calls.get() + 1);
-				async { Err::<String, _>("not found".to_string()) }
-			}
-		})
-		.with_stale_time(Duration::from_secs(30));
+		ReactiveScope::run(|| {
+			// Arrange
+			clear_query_cache_for_test();
+			let calls = Rc::new(Cell::new(0));
+			let key = QueryKey::new("failed-query", {
+				let calls = Rc::clone(&calls);
+				move || {
+					calls.set(calls.get() + 1);
+					async { Err::<String, _>("not found".to_string()) }
+				}
+			})
+			.with_stale_time(Duration::from_secs(30));
 
-		// Act
-		let first = use_query(key.clone());
-		let second = use_query(key);
+			// Act
+			let first = use_query(key.clone());
+			let second = use_query(key);
 
-		// Assert
-		assert_eq!(calls.get(), 1);
-		assert_eq!(first.error(), Some("not found".to_string()));
-		assert_eq!(second.error(), Some("not found".to_string()));
+			// Assert
+			assert_eq!(calls.get(), 1);
+			assert_eq!(first.error(), Some("not found".to_string()));
+			assert_eq!(second.error(), Some("not found".to_string()));
+		});
 	}
 
 	#[rstest]
 	#[serial(query_cache)]
 	fn successful_query_is_not_pending_during_background_fetch() {
-		// Arrange
-		clear_query_cache_for_test();
-		let entry = Rc::new(QueryEntry::new(QueryKey::new(
-			"background-refetch",
-			|| async { Ok::<_, String>("fresh".to_string()) },
-		)));
-		entry
-			.state
-			.set(ResourceState::Success("cached".to_string()));
-		entry.is_fetching.set(true);
-		let query = QueryHandle {
-			entry,
-			guards: Rc::new(RefCell::new(Vec::new())),
-		};
+		ReactiveScope::run(|| {
+			// Arrange
+			clear_query_cache_for_test();
+			let entry = Rc::new(QueryEntry::new(QueryKey::new(
+				"background-refetch",
+				|| async { Ok::<_, String>("fresh".to_string()) },
+			)));
+			entry
+				.state
+				.set(ResourceState::Success("cached".to_string()));
+			entry.is_fetching.set(true);
+			let query = QueryHandle {
+				entry,
+				guards: Rc::new(RefCell::new(Vec::new())),
+			};
 
-		// Act
-		let data = query.data();
-		let is_fetching = query.is_fetching();
-		let is_pending = query.is_pending();
+			// Act
+			let data = query.data();
+			let is_fetching = query.is_fetching();
+			let is_pending = query.is_pending();
 
-		// Assert
-		assert_eq!(data, Some("cached".to_string()));
-		assert!(is_fetching);
-		assert!(!is_pending);
+			// Assert
+			assert_eq!(data, Some("cached".to_string()));
+			assert!(is_fetching);
+			assert!(!is_pending);
+		});
 	}
 
 	#[rstest]
 	#[serial(query_cache)]
 	fn mutation_success_invalidates_registered_query() {
-		// Arrange
-		clear_query_cache_for_test();
-		let calls = Rc::new(Cell::new(0));
-		let key = QueryKey::new("invalidated", {
-			let calls = Rc::clone(&calls);
-			move || {
-				let value = calls.get() + 1;
-				calls.set(value);
-				async move { Ok::<_, String>(value) }
-			}
+		ReactiveScope::run(|| {
+			// Arrange
+			clear_query_cache_for_test();
+			let calls = Rc::new(Cell::new(0));
+			let key = QueryKey::new("invalidated", {
+				let calls = Rc::clone(&calls);
+				move || {
+					let value = calls.get() + 1;
+					calls.set(value);
+					async move { Ok::<_, String>(value) }
+				}
+			});
+			let query = use_query(key.clone());
+			let mutation = use_mutation(|_: ()| async { Ok::<_, String>("done".to_string()) })
+				.invalidates(key);
+
+			// Act
+			mutation.force_success_for_test("done".to_string());
+
+			// Assert
+			assert_eq!(calls.get(), 2);
+			assert_eq!(query.data(), Some(2));
 		});
-		let query = use_query(key.clone());
-		let mutation =
-			use_mutation(|_: ()| async { Ok::<_, String>("done".to_string()) }).invalidates(key);
-
-		// Act
-		mutation.force_success_for_test("done".to_string());
-
-		// Assert
-		assert_eq!(calls.get(), 2);
-		assert_eq!(query.data(), Some(2));
 	}
 
 	#[rstest]
 	#[serial(query_cache)]
 	fn invalidation_during_in_flight_fetch_runs_after_completion() {
-		// Arrange
-		clear_query_cache_for_test();
-		let calls = Rc::new(Cell::new(0));
+		ReactiveScope::run(|| {
+			// Arrange
+			clear_query_cache_for_test();
+			let calls = Rc::new(Cell::new(0));
 
-		// Act
-		let query = use_query(QueryKey::new("queued-invalidation", {
-			let calls = Rc::clone(&calls);
-			move || {
+			// Act
+			let query = use_query(QueryKey::new("queued-invalidation", {
 				let calls = Rc::clone(&calls);
-				async move {
-					let value = calls.get() + 1;
-					calls.set(value);
-					if value == 1 {
-						invalidate_query_id("queued-invalidation");
+				move || {
+					let calls = Rc::clone(&calls);
+					async move {
+						let value = calls.get() + 1;
+						calls.set(value);
+						if value == 1 {
+							invalidate_query_id("queued-invalidation");
+						}
+						Ok::<_, String>(value)
 					}
-					Ok::<_, String>(value)
 				}
-			}
-		}));
+			}));
 
-		// Assert
-		assert_eq!(calls.get(), 2);
-		assert_eq!(query.data(), Some(2));
+			// Assert
+			assert_eq!(calls.get(), 2);
+			assert_eq!(query.data(), Some(2));
+		});
 	}
 
 	#[test]
 	#[serial(query_cache)]
 	fn manual_query_call_order_key_reserves_client_resource_counter() {
-		// Arrange
-		clear_query_cache_for_test();
-		super::super::resource::set_client_resource_counter(0);
+		ReactiveScope::run(|| {
+			// Arrange
+			clear_query_cache_for_test();
+			super::super::resource::set_client_resource_counter(0);
 
-		// Act
-		let _entry = query_entry(QueryKey::new("rh-res-0", || async {
-			Ok::<_, String>("query".to_string())
-		}));
+			// Act
+			let _entry = query_entry(QueryKey::new("rh-res-0", || async {
+				Ok::<_, String>("query".to_string())
+			}));
 
-		// Assert
-		assert_eq!(super::super::resource::current_client_resource_counter(), 1);
-		super::super::resource::set_client_resource_counter(0);
+			// Assert
+			assert_eq!(super::super::resource::current_client_resource_counter(), 1);
+			super::super::resource::set_client_resource_counter(0);
+		});
 	}
 
 	#[test]
 	#[serial(query_cache)]
 	fn hydrated_query_error_is_fresh_on_first_mount() {
-		// Arrange
-		let (hydrated_state, last_fetched_ms) =
-			initial_query_state(Some(ResourceState::Error("not found".to_string())));
-		let entry = QueryEntry::new(QueryKey::new("hydrated-query-error", || async {
-			Err::<String, _>("not found".to_string())
-		}));
-		entry.state.set(hydrated_state);
-		entry.last_fetched_ms.set(last_fetched_ms);
+		ReactiveScope::run(|| {
+			// Arrange
+			let (hydrated_state, last_fetched_ms) =
+				initial_query_state(Some(ResourceState::Error("not found".to_string())));
+			let entry = QueryEntry::new(QueryKey::new("hydrated-query-error", || async {
+				Err::<String, _>("not found".to_string())
+			}));
+			entry.state.set(hydrated_state);
+			entry.last_fetched_ms.set(last_fetched_ms);
 
-		// Assert
-		assert!(
-			!entry.should_fetch_on_mount(),
-			"a freshly hydrated error must remain visible for the initial mount"
-		);
+			// Assert
+			assert!(
+				!entry.should_fetch_on_mount(),
+				"a freshly hydrated error must remain visible for the initial mount"
+			);
+		});
 	}
 
 	#[tokio::test]
@@ -945,32 +995,44 @@ mod tests {
 			crate::ssr::resource_context::SsrResourceContext::new(Duration::from_secs(1)),
 		));
 
-		crate::ssr::resource_context::scope_context(Rc::clone(&context), async {
-			let query = try_create_ssr_query(QueryKey::new("ssr-replayed-query-error", || async {
-				Err::<String, _>("not found".to_string())
-			}))
-			.expect("active SSR context should create the query");
-			let _ = query.get();
-		})
-		.await;
+		let discovery_query =
+			crate::ssr::resource_context::scope_context(Rc::clone(&context), async {
+				ReactiveScope::run(|| {
+					let query =
+						try_create_ssr_query(QueryKey::new("ssr-replayed-query-error", || async {
+							Err::<String, _>("not found".to_string())
+						}))
+						.expect("active SSR context should create the query");
+					let _ = query.get();
+					query
+				})
+			})
+			.await;
 		assert!(crate::ssr::resource_context::resolve_external_resources(&context).await);
 
 		// Act
-		crate::ssr::resource_context::scope_context(Rc::clone(&context), async {
-			let query = try_create_ssr_query(QueryKey::new("ssr-replayed-query-error", || async {
-				Err::<String, _>("must not refetch during replay".to_string())
-			}))
-			.expect("active SSR context should replay the query");
-			let query = query.stale_time(Duration::from_secs(30));
+		let replayed_query =
+			crate::ssr::resource_context::scope_context(Rc::clone(&context), async {
+				ReactiveScope::run(|| {
+					let query =
+						try_create_ssr_query(QueryKey::new("ssr-replayed-query-error", || async {
+							Err::<String, _>("must not refetch during replay".to_string())
+						}))
+						.expect("active SSR context should replay the query");
+					let query = query.stale_time(Duration::from_secs(30));
 
-			// Assert
-			assert_eq!(query.get(), ResourceState::Error("not found".to_string()));
-			assert!(
-				!query.entry.is_stale(),
-				"a replayed error must remain fresh when stale_time is applied"
-			);
-		})
-		.await;
+					// Assert
+					assert_eq!(query.get(), ResourceState::Error("not found".to_string()));
+					assert!(
+						!query.entry.is_stale(),
+						"a replayed error must remain fresh when stale_time is applied"
+					);
+					query
+				})
+			})
+			.await;
+		drop(replayed_query);
+		drop(discovery_query);
 	}
 
 	#[rstest]

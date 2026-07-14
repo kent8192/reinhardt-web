@@ -21,6 +21,7 @@
 #![cfg(wasm)]
 
 use reinhardt_core::page::Outlet;
+use reinhardt_core::reactive::ReactiveScope;
 use reinhardt_pages::app::{ClientLauncher, with_spa_router};
 use reinhardt_pages::component::{IntoPage, Page, PageElement};
 use reinhardt_pages::reactive::hooks::use_retained_effect;
@@ -420,7 +421,8 @@ async fn client_launcher_preserves_layout_shell_between_sibling_routes() {
 async fn retained_route_effects_are_disposed_on_sibling_navigation() {
 	let root = install_app_root();
 	replace_history_path("/a");
-	let tick = reset_retained_route_state();
+	let scope = ReactiveScope::new();
+	let tick = scope.enter(reset_retained_route_state);
 
 	ClientLauncher::new("#app")
 		.router_client(|| {
@@ -473,7 +475,8 @@ async fn retained_route_effects_are_disposed_on_sibling_navigation() {
 #[wasm_bindgen_test]
 async fn retained_effects_in_reactive_body_are_replaced_on_rerender() {
 	let root = install_app_root();
-	let (render_tick, effect_tick) = reset_retained_reactive_state();
+	let scope = ReactiveScope::new();
+	let (render_tick, effect_tick) = scope.enter(reset_retained_reactive_state);
 
 	ClientLauncher::new("#app")
 		.router_client(|| {

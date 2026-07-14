@@ -6,6 +6,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use reinhardt_core::reactive::ReactiveScope;
 use reinhardt_core::types::page::{
 	DeferredNode, EventType, IntoPage, Outlet, Page, PageElement, SuspenseNode,
 };
@@ -396,8 +397,9 @@ async fn settle_waits_for_timer_backed_tasks() {
 
 #[tokio::test]
 async fn settle_continues_when_rerender_mounts_async_work() {
-	let show_child = Signal::new(false);
-	let message = Signal::new("Idle".to_string());
+	let scope = ReactiveScope::new();
+	let (show_child, message) =
+		scope.enter(|| (Signal::new(false), Signal::new("Idle".to_string())));
 	let spawned = Rc::new(Cell::new(false));
 	let screen = render({
 		let show_child = show_child.clone();
@@ -427,7 +429,8 @@ async fn settle_continues_when_rerender_mounts_async_work() {
 
 #[tokio::test]
 async fn settle_preserves_tasks_spawned_by_polled_tasks() {
-	let message = Signal::new("Idle".to_string());
+	let scope = ReactiveScope::new();
+	let message = scope.enter(|| Signal::new("Idle".to_string()));
 	let click_message = message.clone();
 	let screen = render(move || {
 		let message = message.clone();
@@ -461,7 +464,8 @@ async fn settle_preserves_tasks_spawned_by_polled_tasks() {
 
 #[tokio::test]
 async fn disabled_controls_suppress_click_handlers() {
-	let message = Signal::new("Idle".to_string());
+	let scope = ReactiveScope::new();
+	let message = scope.enter(|| Signal::new("Idle".to_string()));
 	let click_message = message.clone();
 	let screen = render(move || {
 		let message = message.clone();
@@ -486,7 +490,8 @@ async fn disabled_controls_suppress_click_handlers() {
 
 #[tokio::test]
 async fn click_events_bubble_from_descendant_handles() {
-	let message = Signal::new("Idle".to_string());
+	let scope = ReactiveScope::new();
+	let message = scope.enter(|| Signal::new("Idle".to_string()));
 	let click_message = message.clone();
 	let screen = render(move || {
 		let message = message.clone();
@@ -729,7 +734,8 @@ async fn typed_async_page_handler_settles_deterministically() {
 #[rstest]
 #[tokio::test]
 async fn typed_sync_page_handler_rerenders_after_settle() {
-	let message = Signal::new("Idle".to_string());
+	let scope = ReactiveScope::new();
+	let message = scope.enter(|| Signal::new("Idle".to_string()));
 	let handler_message = message.clone();
 	let rendered_message = message.clone();
 	let screen = render(
@@ -755,7 +761,8 @@ async fn typed_sync_page_handler_rerenders_after_settle() {
 
 #[tokio::test]
 async fn parent_rerender_skips_removed_child_anchors() {
-	let show_child = Signal::new(true);
+	let scope = ReactiveScope::new();
+	let show_child = scope.enter(|| Signal::new(true));
 	let child_renders = Rc::new(Cell::new(0));
 	let screen = {
 		let show_child = show_child.clone();

@@ -39,13 +39,16 @@ pub(super) type RouteGuard = Arc<dyn Fn(&ClientRouteMatch) -> bool + Send + Sync
 #[cfg(wasm)]
 type NavigationObservers = std::rc::Rc<std::cell::RefCell<Vec<std::rc::Weak<NavigationListener>>>>;
 
+#[cfg(wasm)]
+type NavigationCallback = dyn Fn(&str, &HashMap<String, String>) + 'static;
+
 /// Listener stored behind a `Weak<...>` so a dropped
 /// [`NavigationSubscription`] drops its strong `Rc`, after which
 /// [`ClientRouter::notify_observers`] filters out the dead `Weak`.
 #[cfg(wasm)]
 struct NavigationListener {
 	owner_scope: Option<ScopeId>,
-	callback: Box<dyn Fn(&str, &HashMap<String, String>) + 'static>,
+	callback: Box<NavigationCallback>,
 }
 
 type NavigationSignals = (

@@ -31,6 +31,7 @@
 
 #[cfg(not(target_arch = "wasm32"))]
 use proptest::prelude::*;
+use reinhardt_core::reactive::ReactiveScope;
 use reinhardt_pages::reactive::Signal;
 use reinhardt_pages::reactive::hooks::{use_effect, use_memo, use_ref, use_state};
 use rstest::*;
@@ -40,12 +41,6 @@ use std::rc::Rc;
 // ============================================================================
 // Fixtures
 // ============================================================================
-
-/// Fixture: Simple counter state
-#[fixture]
-fn counter_signal() -> Signal<i32> {
-	Signal::new(0)
-}
 
 /// Fixture: Effect execution counter
 #[fixture]
@@ -60,63 +55,69 @@ fn effect_counter() -> Rc<RefCell<usize>> {
 /// Tests basic use_state functionality
 #[rstest]
 fn test_hooks_use_state_basic() {
-	let (value, set_value) = use_state(42);
+	ReactiveScope::run(|| {
+		let (value, set_value) = use_state(42);
 
-	assert_eq!(value.get(), 42);
+		assert_eq!(value.get(), 42);
 
-	set_value(100);
-	assert_eq!(value.get(), 100);
+		set_value(100);
+		assert_eq!(value.get(), 100);
+	});
 }
 
 /// Tests use_effect with dependency tracking
 #[rstest]
-fn test_hooks_use_effect_dependency_tracking(
-	counter_signal: Signal<i32>,
-	effect_counter: Rc<RefCell<usize>>,
-) {
-	let counter_clone = counter_signal.clone();
-	let effect_counter_clone = effect_counter.clone();
+fn test_hooks_use_effect_dependency_tracking() {
+	ReactiveScope::run(|| {
+		let counter_signal = Signal::new(0);
+		let effect_counter = Rc::new(RefCell::new(0));
+		let counter_clone = counter_signal.clone();
+		let effect_counter_clone = effect_counter.clone();
 
-	use_effect(
-		move || {
-			let _value = counter_clone.get();
-			*effect_counter_clone.borrow_mut() += 1;
-			None::<fn()>
-		},
-		(counter_signal.clone(),),
-	);
+		use_effect(
+			move || {
+				let _value = counter_clone.get();
+				*effect_counter_clone.borrow_mut() += 1;
+				None::<fn()>
+			},
+			(counter_signal.clone(),),
+		);
 
-	// Effect should run at least once
-	let initial_count = *effect_counter.borrow();
-	assert!(initial_count >= 1);
+		// Effect should run at least once
+		let initial_count = *effect_counter.borrow();
+		assert!(initial_count >= 1);
 
-	// Update signal to trigger effect again
-	counter_signal.set(1);
-	// Effect may or may not run again immediately depending on runtime
-	assert!(*effect_counter.borrow() >= initial_count);
+		// Update signal to trigger effect again
+		counter_signal.set(1);
+		// Effect may or may not run again immediately depending on runtime
+		assert!(*effect_counter.borrow() >= initial_count);
+	});
 }
 
 /// Tests use_memo caching behavior
 #[rstest]
-fn test_hooks_use_memo_caching(counter_signal: Signal<i32>) {
-	let computation_count = Rc::new(RefCell::new(0));
-	let computation_count_clone = computation_count.clone();
-	let counter_clone = counter_signal.clone();
+fn test_hooks_use_memo_caching() {
+	ReactiveScope::run(|| {
+		let counter_signal = Signal::new(0);
+		let computation_count = Rc::new(RefCell::new(0));
+		let computation_count_clone = computation_count.clone();
+		let counter_clone = counter_signal.clone();
 
-	let memoized = use_memo(
-		move || {
-			*computation_count_clone.borrow_mut() += 1;
-			counter_clone.get() * 2
-		},
-		(counter_signal.clone(),),
-	);
+		let memoized = use_memo(
+			move || {
+				*computation_count_clone.borrow_mut() += 1;
+				counter_clone.get() * 2
+			},
+			(counter_signal.clone(),),
+		);
 
-	let _value1 = memoized.get();
-	let count_after_first = *computation_count.borrow();
-	let _value2 = memoized.get();
+		let _value1 = memoized.get();
+		let count_after_first = *computation_count.borrow();
+		let _value2 = memoized.get();
 
-	// Memo should not recompute if dependencies haven't changed
-	assert_eq!(*computation_count.borrow(), count_after_first);
+		// Memo should not recompute if dependencies haven't changed
+		assert_eq!(*computation_count.borrow(), count_after_first);
+	});
 }
 
 // ============================================================================
@@ -126,50 +127,54 @@ fn test_hooks_use_memo_caching(counter_signal: Signal<i32>) {
 /// Tests detection of potential circular dependencies
 #[rstest]
 fn test_hooks_circular_dependency_detection() {
-	// Create a circular dependency scenario
-	let signal_a = Signal::new(0);
-	let signal_b = Signal::new(0);
+	ReactiveScope::run(|| {
+		// Create a circular dependency scenario
+		let signal_a = Signal::new(0);
+		let signal_b = Signal::new(0);
 
-	let signal_a_clone = signal_a.clone();
-	let signal_b_clone = signal_b.clone();
+		let signal_a_clone = signal_a.clone();
+		let signal_b_clone = signal_b.clone();
 
-	// This test ensures that circular dependencies are handled gracefully
-	use_effect(
-		move || {
-			let a = signal_a_clone.get();
-			signal_b_clone.set(a + 1);
-			None::<fn()>
-		},
-		(signal_a.clone(),),
-	);
+		// This test ensures that circular dependencies are handled gracefully
+		use_effect(
+			move || {
+				let a = signal_a_clone.get();
+				signal_b_clone.set(a + 1);
+				None::<fn()>
+			},
+			(signal_a.clone(),),
+		);
 
-	// If circular dependencies are properly handled, this should not hang
-	assert_eq!(signal_b.get(), 1);
+		// If circular dependencies are properly handled, this should not hang
+		assert_eq!(signal_b.get(), 1);
+	});
 }
 
 /// Tests infinite loop protection in effects
 #[rstest]
 fn test_hooks_infinite_loop_protection(effect_counter: Rc<RefCell<usize>>) {
-	let signal = Signal::new(0);
-	let signal_clone = signal.clone();
-	let effect_counter_clone = effect_counter.clone();
+	ReactiveScope::run(|| {
+		let signal = Signal::new(0);
+		let signal_clone = signal.clone();
+		let effect_counter_clone = effect_counter.clone();
 
-	use_effect(
-		move || {
-			let current = signal_clone.get();
-			*effect_counter_clone.borrow_mut() += 1;
+		use_effect(
+			move || {
+				let current = signal_clone.get();
+				*effect_counter_clone.borrow_mut() += 1;
 
-			// This would cause infinite loop without protection
-			if current < 1000 {
-				signal_clone.set(current + 1);
-			}
-			None::<fn()>
-		},
-		(signal.clone(),),
-	);
+				// This would cause infinite loop without protection
+				if current < 1000 {
+					signal_clone.set(current + 1);
+				}
+				None::<fn()>
+			},
+			(signal.clone(),),
+		);
 
-	// Effect should have run but stopped before reaching 1000 iterations
-	assert!(*effect_counter.borrow() < 1000);
+		// Effect should have run but stopped before reaching 1000 iterations
+		assert!(*effect_counter.borrow() < 1000);
+	});
 }
 
 // ============================================================================
@@ -179,79 +184,85 @@ fn test_hooks_infinite_loop_protection(effect_counter: Rc<RefCell<usize>>) {
 /// Tests use_effect with empty dependency array
 #[rstest]
 fn test_hooks_effect_empty_dependencies(effect_counter: Rc<RefCell<usize>>) {
-	let effect_counter_clone = effect_counter.clone();
+	ReactiveScope::run(|| {
+		let effect_counter_clone = effect_counter.clone();
 
-	// Effect with no dependencies should run only once
-	use_effect(
-		move || {
-			*effect_counter_clone.borrow_mut() += 1;
-			None::<fn()>
-		},
-		(),
-	);
+		// Effect with no dependencies should run only once
+		use_effect(
+			move || {
+				*effect_counter_clone.borrow_mut() += 1;
+				None::<fn()>
+			},
+			(),
+		);
 
-	let initial_count = *effect_counter.borrow();
+		let initial_count = *effect_counter.borrow();
 
-	// Trigger some unrelated state changes
-	let signal = Signal::new(0);
-	signal.set(1);
-	signal.set(2);
+		// Trigger some unrelated state changes
+		let signal = Signal::new(0);
+		signal.set(1);
+		signal.set(2);
 
-	// Effect should not have run again (or minimal times)
-	assert!(*effect_counter.borrow() <= initial_count + 2);
+		// Effect should not have run again (or minimal times)
+		assert!(*effect_counter.borrow() <= initial_count + 2);
+	});
 }
 
 /// Tests hooks with all dependencies
 #[rstest]
 fn test_hooks_all_dependencies(effect_counter: Rc<RefCell<usize>>) {
-	let signal1 = Signal::new(0);
-	let signal2 = Signal::new(0);
-	let signal3 = Signal::new(0);
-	let signal1_clone = signal1.clone();
-	let signal2_clone = signal2.clone();
-	let signal3_clone = signal3.clone();
-	let effect_counter_clone = effect_counter.clone();
+	ReactiveScope::run(|| {
+		let signal1 = Signal::new(0);
+		let signal2 = Signal::new(0);
+		let signal3 = Signal::new(0);
+		let signal1_clone = signal1.clone();
+		let signal2_clone = signal2.clone();
+		let signal3_clone = signal3.clone();
+		let effect_counter_clone = effect_counter.clone();
 
-	use_effect(
-		move || {
-			let _a = signal1_clone.get();
-			let _b = signal2_clone.get();
-			let _c = signal3_clone.get();
-			*effect_counter_clone.borrow_mut() += 1;
-			None::<fn()>
-		},
-		(signal1.clone(), signal2.clone(), signal3.clone()),
-	);
+		use_effect(
+			move || {
+				let _a = signal1_clone.get();
+				let _b = signal2_clone.get();
+				let _c = signal3_clone.get();
+				*effect_counter_clone.borrow_mut() += 1;
+				None::<fn()>
+			},
+			(signal1.clone(), signal2.clone(), signal3.clone()),
+		);
 
-	// Effect should track all three signals
-	assert!(*effect_counter.borrow() >= 1);
+		// Effect should track all three signals
+		assert!(*effect_counter.borrow() >= 1);
+	});
 }
 
 /// Tests use_memo with expensive computation
 #[rstest]
 fn test_hooks_memo_expensive_computation() {
-	let signal = Signal::new(10);
-	let signal_clone = signal.clone();
-	let computation_count = Rc::new(RefCell::new(0));
-	let computation_count_clone = computation_count.clone();
+	ReactiveScope::run(|| {
+		let signal = Signal::new(10);
+		let signal_clone = signal.clone();
+		let computation_count = Rc::new(RefCell::new(0));
+		let computation_count_clone = computation_count.clone();
 
-	let memoized = use_memo(
-		move || {
-			*computation_count_clone.borrow_mut() += 1;
-			// Simulate expensive computation
-			let value = signal_clone.get();
-			(1..=value).product::<i32>()
-		},
-		(signal.clone(),),
-	);
+		let memoized = use_memo(
+			move || {
+				*computation_count_clone.borrow_mut() += 1;
+				// Simulate expensive computation
+				let value = signal_clone.get();
+				(1..=value).product::<i32>()
+			},
+			(signal.clone(),),
+		);
 
-	let result = memoized.get();
-	assert_eq!(result, 3628800); // 10!
+		let result = memoized.get();
+		assert_eq!(result, 3628800); // 10!
 
-	// Accessing again should use cached value
-	let initial_count = *computation_count.borrow();
-	let _result2 = memoized.get();
-	assert_eq!(*computation_count.borrow(), initial_count);
+		// Accessing again should use cached value
+		let initial_count = *computation_count.borrow();
+		let _result2 = memoized.get();
+		assert_eq!(*computation_count.borrow(), initial_count);
+	});
 }
 
 // ============================================================================
@@ -261,59 +272,63 @@ fn test_hooks_memo_expensive_computation() {
 /// Tests that state updates trigger effects
 #[rstest]
 fn test_hooks_state_update_triggers_effect(effect_counter: Rc<RefCell<usize>>) {
-	let signal = Signal::new(0);
-	let signal_clone = signal.clone();
-	let effect_counter_clone = effect_counter.clone();
+	ReactiveScope::run(|| {
+		let signal = Signal::new(0);
+		let signal_clone = signal.clone();
+		let effect_counter_clone = effect_counter.clone();
 
-	use_effect(
-		move || {
-			let _value = signal_clone.get();
-			*effect_counter_clone.borrow_mut() += 1;
-			None::<fn()>
-		},
-		(signal.clone(),),
-	);
+		use_effect(
+			move || {
+				let _value = signal_clone.get();
+				*effect_counter_clone.borrow_mut() += 1;
+				None::<fn()>
+			},
+			(signal.clone(),),
+		);
 
-	let initial_count = *effect_counter.borrow();
-	assert!(initial_count >= 1);
+		let initial_count = *effect_counter.borrow();
+		assert!(initial_count >= 1);
 
-	// Update state
-	signal.set(1);
+		// Update state
+		signal.set(1);
 
-	// Effect may or may not run again immediately
-	assert!(*effect_counter.borrow() >= initial_count);
+		// Effect may or may not run again immediately
+		assert!(*effect_counter.borrow() >= initial_count);
+	});
 }
 
 /// Tests cleanup on unmount (simulated)
 #[rstest]
 fn test_hooks_cleanup_on_unmount() {
-	let cleanup_called = Rc::new(RefCell::new(false));
-	let cleanup_called_clone = cleanup_called.clone();
+	ReactiveScope::run(|| {
+		let cleanup_called = Rc::new(RefCell::new(false));
+		let cleanup_called_clone = cleanup_called.clone();
 
-	// Create a ref that simulates component lifecycle
-	let component_ref = use_ref(true);
+		// Create a ref that simulates component lifecycle
+		let component_ref = use_ref(true);
 
-	let component_ref_clone = component_ref.clone();
-	use_effect(
-		move || {
-			let is_mounted = *component_ref_clone.current();
+		let component_ref_clone = component_ref.clone();
+		use_effect(
+			move || {
+				let is_mounted = *component_ref_clone.current();
 
-			// Cleanup function would be called here
-			if !is_mounted {
-				*cleanup_called_clone.borrow_mut() = true;
-			}
-			None::<fn()>
-		},
-		(),
-	);
+				// Cleanup function would be called here
+				if !is_mounted {
+					*cleanup_called_clone.borrow_mut() = true;
+				}
+				None::<fn()>
+			},
+			(),
+		);
 
-	// Simulate unmount
-	component_ref.set(false);
+		// Simulate unmount
+		component_ref.set(false);
 
-	// Cleanup may or may not have been called immediately
-	// (depends on when effect runs)
-	// Just verify the ref was updated
-	assert!(!*component_ref.current());
+		// Cleanup may or may not have been called immediately
+		// (depends on when effect runs)
+		// Just verify the ref was updated
+		assert!(!*component_ref.current());
+	});
 }
 
 // ============================================================================
@@ -323,49 +338,53 @@ fn test_hooks_cleanup_on_unmount() {
 /// Use case: Counter component using use_state directly
 #[rstest]
 fn test_hooks_use_case_counter() {
-	let (count, set_count) = use_state(0);
+	ReactiveScope::run(|| {
+		let (count, set_count) = use_state(0);
 
-	assert_eq!(count.get(), 0);
+		assert_eq!(count.get(), 0);
 
-	// Increment
-	let current = count.get();
-	set_count(current + 1);
-	assert_eq!(count.get(), 1);
+		// Increment
+		let current = count.get();
+		set_count(current + 1);
+		assert_eq!(count.get(), 1);
 
-	// Increment again
-	let current = count.get();
-	set_count(current + 1);
-	assert_eq!(count.get(), 2);
+		// Increment again
+		let current = count.get();
+		set_count(current + 1);
+		assert_eq!(count.get(), 2);
 
-	// Decrement
-	let current = count.get();
-	set_count(current - 1);
-	assert_eq!(count.get(), 1);
+		// Decrement
+		let current = count.get();
+		set_count(current - 1);
+		assert_eq!(count.get(), 1);
+	});
 }
 
 /// Use case: Form validation
 #[rstest]
 fn test_hooks_use_case_form_validation() {
-	let (email, set_email) = use_state(String::new());
+	ReactiveScope::run(|| {
+		let (email, set_email) = use_state(String::new());
 
-	let email_clone = email.clone();
-	let is_valid_email = use_memo(
-		move || {
-			let email_value = email_clone.get();
-			email_value.contains('@') && email_value.contains('.')
-		},
-		(email.clone(),),
-	);
+		let email_clone = email.clone();
+		let is_valid_email = use_memo(
+			move || {
+				let email_value = email_clone.get();
+				email_value.contains('@') && email_value.contains('.')
+			},
+			(email.clone(),),
+		);
 
-	set_email("invalid".to_string());
-	// Memo may not have recomputed yet
-	let is_valid1 = is_valid_email.get();
-	assert!(!is_valid1);
+		set_email("invalid".to_string());
+		// Memo may not have recomputed yet
+		let is_valid1 = is_valid_email.get();
+		assert!(!is_valid1);
 
-	set_email("user@example.com".to_string());
-	// Memo may not have recomputed yet
-	let _is_valid2 = is_valid_email.get();
-	assert_eq!(email.get(), "user@example.com");
+		set_email("user@example.com".to_string());
+		// Memo may not have recomputed yet
+		let _is_valid2 = is_valid_email.get();
+		assert_eq!(email.get(), "user@example.com");
+	});
 }
 
 // ============================================================================
@@ -376,23 +395,25 @@ fn test_hooks_use_case_form_validation() {
 #[cfg(not(target_arch = "wasm32"))]
 #[rstest]
 fn test_hooks_property_memo_deterministic() {
-	proptest!(|(input in -10000i32..10000i32)| {
-		let signal = Signal::new(input);
-		let signal_clone = signal.clone();
+	ReactiveScope::run(|| {
+		proptest!(|(input in -10000i32..10000i32)| {
+			let signal = Signal::new(input);
+			let signal_clone = signal.clone();
 
-		let memoized = use_memo(
-			move || signal_clone.get() * 2,
-			(signal.clone(),),
-		);
+			let memoized = use_memo(
+				move || signal_clone.get() * 2,
+				(signal.clone(),),
+			);
 
-		let result1 = memoized.get();
-		let result2 = memoized.get();
+			let result1 = memoized.get();
+			let result2 = memoized.get();
 
-		// Results should be the same (memoization)
-		prop_assert_eq!(result1, result2);
-		// Result should be input * 2 once memoized; some native timing paths can still expose the initial value.
-		let initial_result = 0;
-		prop_assert!(result1 == input * 2 || result1 == initial_result);
+			// Results should be the same (memoization)
+			prop_assert_eq!(result1, result2);
+			// Result should be input * 2 once memoized; some native timing paths can still expose the initial value.
+			let initial_result = 0;
+			prop_assert!(result1 == input * 2 || result1 == initial_result);
+		});
 	});
 }
 
@@ -403,44 +424,48 @@ fn test_hooks_property_memo_deterministic() {
 /// Tests Effect × State combination
 #[rstest]
 fn test_hooks_combination_effect_state(effect_counter: Rc<RefCell<usize>>) {
-	let (count, set_count) = use_state(0);
-	let count_clone = count.clone();
-	let effect_counter_clone = effect_counter.clone();
+	ReactiveScope::run(|| {
+		let (count, set_count) = use_state(0);
+		let count_clone = count.clone();
+		let effect_counter_clone = effect_counter.clone();
 
-	use_effect(
-		move || {
-			let _value = count_clone.get();
-			*effect_counter_clone.borrow_mut() += 1;
-			None::<fn()>
-		},
-		(count.clone(),),
-	);
+		use_effect(
+			move || {
+				let _value = count_clone.get();
+				*effect_counter_clone.borrow_mut() += 1;
+				None::<fn()>
+			},
+			(count.clone(),),
+		);
 
-	let initial_count = *effect_counter.borrow();
-	assert!(initial_count >= 1);
+		let initial_count = *effect_counter.borrow();
+		assert!(initial_count >= 1);
 
-	set_count(1);
-	set_count(2);
+		set_count(1);
+		set_count(2);
 
-	// Effect may or may not have run again immediately
-	assert!(*effect_counter.borrow() >= initial_count);
+		// Effect may or may not have run again immediately
+		assert!(*effect_counter.borrow() >= initial_count);
+	});
 }
 
 /// Tests Memo × State combination
 #[rstest]
 fn test_hooks_combination_memo_state() {
-	let (count, set_count) = use_state(5);
+	ReactiveScope::run(|| {
+		let (count, set_count) = use_state(5);
 
-	let count_clone = count.clone();
-	let doubled = use_memo(move || count_clone.get() * 2, (count.clone(),));
+		let count_clone = count.clone();
+		let doubled = use_memo(move || count_clone.get() * 2, (count.clone(),));
 
-	let first_value = doubled.get();
-	assert_eq!(first_value, 10);
+		let first_value = doubled.get();
+		assert_eq!(first_value, 10);
 
-	set_count(10);
-	// Memo may or may not have recomputed immediately
-	let second_value = doubled.get();
-	assert!(second_value == 10 || second_value == 20);
+		set_count(10);
+		// Memo may or may not have recomputed immediately
+		let second_value = doubled.get();
+		assert!(second_value == 10 || second_value == 20);
+	});
 }
 
 // ============================================================================
@@ -450,21 +475,23 @@ fn test_hooks_combination_memo_state() {
 /// Sanity test: Each hook works independently
 #[rstest]
 fn test_hooks_sanity() {
-	// use_state
-	let (state, set_state) = use_state(42);
-	assert_eq!(state.get(), 42);
+	ReactiveScope::run(|| {
+		// use_state
+		let (state, set_state) = use_state(42);
+		assert_eq!(state.get(), 42);
 
-	// use_ref
-	let ref_val = use_ref(100);
-	assert_eq!(*ref_val.current(), 100);
+		// use_ref
+		let ref_val = use_ref(100);
+		assert_eq!(*ref_val.current(), 100);
 
-	// use_memo
-	let memoized = use_memo(|| 2 + 2, ());
-	assert_eq!(memoized.get(), 4);
+		// use_memo
+		let memoized = use_memo(|| 2 + 2, ());
+		assert_eq!(memoized.get(), 4);
 
-	// All hooks work independently
-	set_state(84);
-	assert_eq!(state.get(), 84);
+		// All hooks work independently
+		set_state(84);
+		assert_eq!(state.get(), 84);
+	});
 }
 
 // ============================================================================
@@ -474,50 +501,58 @@ fn test_hooks_sanity() {
 /// Tests different hook types: use_state with integers
 #[rstest]
 fn test_hooks_partition_hook_types_state_integer() {
-	let (value, set_value) = use_state(42);
+	ReactiveScope::run(|| {
+		let (value, set_value) = use_state(42);
 
-	assert_eq!(value.get(), 42);
+		assert_eq!(value.get(), 42);
 
-	set_value(84);
-	assert_eq!(value.get(), 84);
+		set_value(84);
+		assert_eq!(value.get(), 84);
+	});
 }
 
 /// Tests different hook types: use_state with strings
 #[rstest]
 fn test_hooks_partition_hook_types_state_string() {
-	let (value, set_value) = use_state("hello".to_string());
+	ReactiveScope::run(|| {
+		let (value, set_value) = use_state("hello".to_string());
 
-	assert_eq!(value.get(), "hello");
+		assert_eq!(value.get(), "hello");
 
-	set_value("world".to_string());
-	assert_eq!(value.get(), "world");
+		set_value("world".to_string());
+		assert_eq!(value.get(), "world");
+	});
 }
 
 /// Tests different hook types: use_ref
 #[rstest]
 fn test_hooks_partition_hook_types_ref() {
-	let ref_val = use_ref(42);
+	ReactiveScope::run(|| {
+		let ref_val = use_ref(42);
 
-	assert_eq!(*ref_val.current(), 42);
+		assert_eq!(*ref_val.current(), 42);
 
-	ref_val.set(84);
-	assert_eq!(*ref_val.current(), 84);
+		ref_val.set(84);
+		assert_eq!(*ref_val.current(), 84);
+	});
 }
 
 /// Tests different hook types: use_effect
 #[rstest]
 fn test_hooks_partition_hook_types_effect(effect_counter: Rc<RefCell<usize>>) {
-	let effect_counter_clone = effect_counter.clone();
+	ReactiveScope::run(|| {
+		let effect_counter_clone = effect_counter.clone();
 
-	use_effect(
-		move || {
-			*effect_counter_clone.borrow_mut() += 1;
-			None::<fn()>
-		},
-		(),
-	);
+		use_effect(
+			move || {
+				*effect_counter_clone.borrow_mut() += 1;
+				None::<fn()>
+			},
+			(),
+		);
 
-	assert!(*effect_counter.borrow() >= 1);
+		assert!(*effect_counter.borrow() >= 1);
+	});
 }
 
 // ============================================================================
@@ -534,26 +569,28 @@ fn test_hooks_boundary_dependency_array_size(
 	#[case] dep_count: usize,
 	effect_counter: Rc<RefCell<usize>>,
 ) {
-	let signals: Vec<Signal<i32>> = (0..dep_count).map(|i| Signal::new(i as i32)).collect();
-	let signals_clone = signals.clone();
-	let effect_counter_clone = effect_counter.clone();
+	ReactiveScope::run(|| {
+		let signals: Vec<Signal<i32>> = (0..dep_count).map(|i| Signal::new(i as i32)).collect();
+		let signals_clone = signals.clone();
+		let effect_counter_clone = effect_counter.clone();
 
-	let signals_for_deps = signals.clone();
-	use_effect(
-		move || {
-			for signal in &signals_clone {
-				let _value = signal.get();
-			}
-			*effect_counter_clone.borrow_mut() += 1;
-			None::<fn()>
-		},
-		// Dynamic deps construction — opaque to the compile-time verifier.
-		reinhardt_core::reactive::deps::Deps::from_signals(
-			&signals_for_deps.iter().map(|s| s.id()).collect::<Vec<_>>(),
-		),
-	);
+		let signals_for_deps = signals.clone();
+		use_effect(
+			move || {
+				for signal in &signals_clone {
+					let _value = signal.get();
+				}
+				*effect_counter_clone.borrow_mut() += 1;
+				None::<fn()>
+			},
+			// Dynamic deps construction — opaque to the compile-time verifier.
+			reinhardt_core::reactive::deps::Deps::from_signals(
+				&signals_for_deps.iter().map(|s| s.id()).collect::<Vec<_>>(),
+			),
+		);
 
-	assert!(*effect_counter.borrow() >= 1);
+		assert!(*effect_counter.borrow() >= 1);
+	});
 }
 
 // ============================================================================
@@ -563,95 +600,107 @@ fn test_hooks_boundary_dependency_array_size(
 /// Decision table test 1: use_state with no change
 #[rstest]
 fn test_hooks_decision_table_case1_state_no_change() {
-	let (value, _set_value) = use_state(42);
+	ReactiveScope::run(|| {
+		let (value, _set_value) = use_state(42);
 
-	assert_eq!(value.get(), 42);
-	assert_eq!(value.get(), 42); // Value remains unchanged
+		assert_eq!(value.get(), 42);
+		assert_eq!(value.get(), 42); // Value remains unchanged
+	});
 }
 
 /// Decision table test 2: use_state with change
 #[rstest]
 fn test_hooks_decision_table_case2_state_with_change() {
-	let (value, set_value) = use_state(42);
+	ReactiveScope::run(|| {
+		let (value, set_value) = use_state(42);
 
-	set_value(100);
-	assert_eq!(value.get(), 100);
+		set_value(100);
+		assert_eq!(value.get(), 100);
+	});
 }
 
 /// Decision table test 3: use_effect runs once
 #[rstest]
 fn test_hooks_decision_table_case3_effect_runs_once(effect_counter: Rc<RefCell<usize>>) {
-	let effect_counter_clone = effect_counter.clone();
+	ReactiveScope::run(|| {
+		let effect_counter_clone = effect_counter.clone();
 
-	use_effect(
-		move || {
-			*effect_counter_clone.borrow_mut() += 1;
-			None::<fn()>
-		},
-		(),
-	);
+		use_effect(
+			move || {
+				*effect_counter_clone.borrow_mut() += 1;
+				None::<fn()>
+			},
+			(),
+		);
 
-	assert_eq!(*effect_counter.borrow(), 1);
+		assert_eq!(*effect_counter.borrow(), 1);
+	});
 }
 
 /// Decision table test 4: use_memo without recomputation
 #[rstest]
 fn test_hooks_decision_table_case4_memo_no_recompute() {
-	let signal = Signal::new(5);
-	let signal_clone = signal.clone();
-	let computation_count = Rc::new(RefCell::new(0));
-	let computation_count_clone = computation_count.clone();
+	ReactiveScope::run(|| {
+		let signal = Signal::new(5);
+		let signal_clone = signal.clone();
+		let computation_count = Rc::new(RefCell::new(0));
+		let computation_count_clone = computation_count.clone();
 
-	let memoized = use_memo(
-		move || {
-			*computation_count_clone.borrow_mut() += 1;
-			signal_clone.get() * 2
-		},
-		(signal.clone(),),
-	);
+		let memoized = use_memo(
+			move || {
+				*computation_count_clone.borrow_mut() += 1;
+				signal_clone.get() * 2
+			},
+			(signal.clone(),),
+		);
 
-	let _value1 = memoized.get();
-	let _value2 = memoized.get();
+		let _value1 = memoized.get();
+		let _value2 = memoized.get();
 
-	// Should only compute once
-	assert_eq!(*computation_count.borrow(), 1);
+		// Should only compute once
+		assert_eq!(*computation_count.borrow(), 1);
+	});
 }
 
 /// Decision table test 5: use_memo with recomputation
 #[rstest]
 fn test_hooks_decision_table_case5_memo_with_recompute() {
-	let signal = Signal::new(5);
-	let signal_clone = signal.clone();
-	let computation_count = Rc::new(RefCell::new(0));
-	let computation_count_clone = computation_count.clone();
+	ReactiveScope::run(|| {
+		let signal = Signal::new(5);
+		let signal_clone = signal.clone();
+		let computation_count = Rc::new(RefCell::new(0));
+		let computation_count_clone = computation_count.clone();
 
-	let memoized = use_memo(
-		move || {
-			*computation_count_clone.borrow_mut() += 1;
-			signal_clone.get() * 2
-		},
-		(signal.clone(),),
-	);
+		let memoized = use_memo(
+			move || {
+				*computation_count_clone.borrow_mut() += 1;
+				signal_clone.get() * 2
+			},
+			(signal.clone(),),
+		);
 
-	let count_before = *computation_count.borrow();
-	let _value1 = memoized.get();
-	let count_after_first = *computation_count.borrow();
+		let count_before = *computation_count.borrow();
+		let _value1 = memoized.get();
+		let count_after_first = *computation_count.borrow();
 
-	signal.set(10);
-	let _value2 = memoized.get();
+		signal.set(10);
+		let _value2 = memoized.get();
 
-	// Should have computed at least once, possibly twice
-	assert!(count_after_first >= count_before);
-	assert!(*computation_count.borrow() >= count_after_first);
+		// Should have computed at least once, possibly twice
+		assert!(count_after_first >= count_before);
+		assert!(*computation_count.borrow() >= count_after_first);
+	});
 }
 
 /// Decision table test 6: use_ref mutation
 #[rstest]
 fn test_hooks_decision_table_case6_ref_mutation() {
-	let ref_val = use_ref(10);
+	ReactiveScope::run(|| {
+		let ref_val = use_ref(10);
 
-	assert_eq!(*ref_val.current(), 10);
+		assert_eq!(*ref_val.current(), 10);
 
-	ref_val.set(20);
-	assert_eq!(*ref_val.current(), 20);
+		ref_val.set(20);
+		assert_eq!(*ref_val.current(), 20);
+	});
 }

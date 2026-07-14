@@ -2,6 +2,7 @@
 
 use crate::reactive::{ResourceState, Signal};
 use futures_util::future::join_all;
+use reinhardt_core::reactive::ReactiveScope;
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use std::cell::RefCell;
@@ -196,6 +197,22 @@ impl SsrResourceContext {
 		F: FnOnce() -> Fut,
 		Fut: Future<Output = Result<T, E>> + 'static,
 	{
+		self.register_resource_with_owner(key, fetcher, state, None);
+	}
+
+	/// Registers a resource and retains its reactive scope until notifications finish.
+	pub(crate) fn register_resource_with_owner<T, E, F, Fut>(
+		&mut self,
+		key: String,
+		fetcher: F,
+		state: Signal<ResourceState<T, E>>,
+		owner: Option<Rc<ReactiveScope>>,
+	) where
+		T: Clone + Serialize + DeserializeOwned + 'static,
+		E: Clone + Serialize + DeserializeOwned + 'static,
+		F: FnOnce() -> Fut,
+		Fut: Future<Output = Result<T, E>> + 'static,
+	{
 		let current_boundary_id = self.current_boundary_id();
 		let active_boundary = current_boundary_id.as_deref();
 		if let Some(value) = self.resolved_value_for_scope(&key) {
@@ -209,6 +226,8 @@ impl SsrResourceContext {
 		}
 
 		let subscriber = Box::new(move |value: Value| {
+			// Keep the owner alive while the copied signal key is updated.
+			let _owner = &owner;
 			if let Ok(resource_state) = serde_json::from_value(value) {
 				state.set(resource_state);
 			}
