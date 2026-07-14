@@ -1015,10 +1015,11 @@ impl DatabaseMigrationExecutor {
 			super::sqlite_pragma::quote_pragma_identifier(table_name)
 		);
 		let idx_rows = editor.fetch_all(&idx_list_sql, vec![]).await?;
-		let mut unique_constraint_metadata = create_sql
+		let unique_constraint_metadata = create_sql
 			.as_deref()
 			.map(parse_sqlite_unique_constraint_metadata)
 			.unwrap_or_default();
+		let mut restored_unique_constraint_names = std::collections::HashSet::new();
 		let mut indexes = Vec::new();
 		for row in &idx_rows {
 			let origin: String = row.get("origin").unwrap_or_default();
@@ -1045,9 +1046,9 @@ impl DatabaseMigrationExecutor {
 				.filter_map(|r| r.get::<String>("name").ok())
 				.collect();
 			if origin == "u" && unique == 1 {
-				let declared_name = unique_constraint_metadata
+				let declared_names: Vec<_> = unique_constraint_metadata
 					.iter()
-					.position(|metadata| {
+					.filter(|metadata| {
 						metadata.columns.len() == cols.len()
 							&& metadata
 								.columns
@@ -1055,11 +1056,23 @@ impl DatabaseMigrationExecutor {
 								.zip(&cols)
 								.all(|(declared, actual)| declared.eq_ignore_ascii_case(actual))
 					})
-					.map(|index| unique_constraint_metadata.remove(index).name);
-				constraints.push(super::Constraint::Unique {
-					name: declared_name.unwrap_or(idx_name),
-					columns: cols,
-				});
+					.map(|metadata| metadata.name.clone())
+					.collect();
+				if declared_names.is_empty() {
+					constraints.push(super::Constraint::Unique {
+						name: idx_name,
+						columns: cols,
+					});
+				} else {
+					for name in declared_names {
+						if restored_unique_constraint_names.insert(name.clone()) {
+							constraints.push(super::Constraint::Unique {
+								name,
+								columns: cols.clone(),
+							});
+						}
+					}
+				}
 			} else if origin == "c" && (!cols.is_empty() || idx_sql.is_some()) {
 				indexes.push(super::operations::SqliteRecreatedIndex {
 					name: idx_name,
@@ -2443,6 +2456,35 @@ mod sqlite_generated_column_tests {
 				name: "unique jobs code".to_string(),
 				columns: vec!["code".to_string()],
 			}]
+		);
+	}
+
+	#[rstest]
+	fn parse_sqlite_unique_metadata_preserves_duplicate_column_constraints() {
+		// Arrange
+		let create_sql = r#"CREATE TABLE jobs (
+			tenant TEXT,
+			code TEXT,
+			CONSTRAINT uq_jobs_primary UNIQUE (tenant, code),
+			CONSTRAINT uq_jobs_secondary UNIQUE (tenant, code)
+		)"#;
+
+		// Act
+		let metadata = parse_sqlite_unique_constraint_metadata(create_sql);
+
+		// Assert
+		assert_eq!(
+			metadata,
+			vec![
+				SqliteUniqueConstraintMetadata {
+					name: "uq_jobs_primary".to_string(),
+					columns: vec!["tenant".to_string(), "code".to_string()],
+				},
+				SqliteUniqueConstraintMetadata {
+					name: "uq_jobs_secondary".to_string(),
+					columns: vec!["tenant".to_string(), "code".to_string()],
+				},
+			]
 		);
 	}
 }
