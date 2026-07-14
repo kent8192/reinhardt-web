@@ -2814,7 +2814,9 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 }
 
 fn fixture_projection_serde_meta_is_deserialization_adapter(meta: &syn::Meta) -> bool {
-	meta.path().is_ident("with") || meta.path().is_ident("deserialize_with")
+	meta.path().is_ident("with")
+		|| meta.path().is_ident("deserialize_with")
+		|| meta.path().is_ident("bound")
 }
 
 fn fixture_projection_serde_attr(attr: &syn::Attribute) -> Option<syn::Attribute> {
@@ -6508,5 +6510,24 @@ mod tests {
 				.contains("__reinhardt_validate_defaulted_fixture_field"),
 			"fixture projections must allow fields with serialized SQL defaults to be omitted"
 		);
+	}
+
+	#[test]
+	fn test_fixture_projection_preserves_deserialize_bounds() {
+		let attr: syn::Attribute = parse_quote! {
+			#[serde(
+				bound(deserialize = "T: serde::Deserialize<'de>"),
+				skip_serializing_if = "Option::is_none"
+			)]
+		};
+
+		let projected = fixture_projection_serde_attr(&attr)
+			.expect("deserialize bounds must be retained")
+			.meta;
+		let projected = quote! { #projected }.to_string();
+
+		assert!(projected.contains("bound"));
+		assert!(projected.contains("deserialize"));
+		assert!(!projected.contains("skip_serializing_if"));
 	}
 }
