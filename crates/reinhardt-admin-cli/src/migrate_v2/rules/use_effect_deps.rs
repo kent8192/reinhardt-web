@@ -310,6 +310,9 @@ impl HookVisitor {
 				return Some(HookResolution { spec, imports });
 			}
 			let spec = hook_spec(&called.to_string())?;
+			if call.args.len() == spec.explicit_arity {
+				return None;
+			}
 			return Some(HookResolution {
 				spec,
 				imports: Some(vec![GeneratedDepsImport {
@@ -1419,6 +1422,21 @@ mod parent {
 		assert!(!output.contains("use super::deps;"));
 		assert!(!output.contains("(signal.clone(),)"));
 		assert!(output.contains("compile_error!"));
+	}
+
+	#[test]
+	fn unresolved_bare_hook_with_explicit_dependencies_is_not_rewritten() {
+		let output = compact(&rewrite(
+			r#"
+fn use_effect<F, D>(callback: F, dependencies: D) {}
+fn view(signal: Signal<i32>) {
+    use_effect(|| {}, (signal.clone(),));
+}
+"#,
+		));
+
+		assert!(output.contains("use_effect(||{},(signal.clone(),));"));
+		assert!(!output.contains("use reinhardt_pages::deps;"));
 	}
 
 	#[test]
