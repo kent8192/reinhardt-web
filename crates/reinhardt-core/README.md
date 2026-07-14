@@ -227,11 +227,11 @@ use reinhardt_core::signals::Signal;
 - **Django-style exception hierarchy** - Comprehensive `Error` enum with categorized error types
 - **HTTP status code exceptions** - `Http`, `Authentication` (401), `Authorization` (403), `NotFound` (404), `Internal` (500), etc.
 - **Validation error handling** - `Validation` variant with field-level error support
-- **Database exception types** - `Database` variant for DB-related errors
+- **Structured database exception types** - `DatabaseError` retains a portable `DatabaseErrorKind`, a diagnostic message, and an optional vendor code
 - **Custom error types** - `ImproperlyConfigured`, `BodyAlreadyConsumed`, `ParseError`, etc.
 - **Error serialization** - All errors implement `Display` and can be converted to HTTP responses via `status_code()` method
 - **thiserror integration** - Full integration with `thiserror` for derived error impl
-- **anyhow integration** - `Other` variant wraps any `anyhow::Error` for compatibility
+- **Portable database classification** - `database_kind()` exposes connection, constraint, transaction, serialization, and query categories without driver downcasts
 - **Error categorization** - `ErrorKind` enum for categorical classification
 - **Standard conversions** - `From` implementations for `serde_json::Error`, `std::io::Error`, `http::Error`, `String`, `&str`, `reinhardt_core::validators::ValidationErrors`
 - **Parameter validation context** - `ParamErrorContext` struct with detailed parameter extraction error information

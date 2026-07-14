@@ -64,7 +64,7 @@ struct UserServiceAdapter {
 impl GrpcServiceAdapter for UserServiceAdapter {
     type Input = String; // User ID
     type Output = User;  // GraphQL User type
-    type Error = anyhow::Error;
+    type Error = tonic::Status;
 
     async fn call(&self, user_id: Self::Input) -> Result<Self::Output, Self::Error> {
         let request = proto::GetUserRequest { id: user_id };
@@ -176,7 +176,7 @@ struct UserEventsAdapter;
 impl GrpcSubscriptionAdapter for UserEventsAdapter {
     type Proto = proto::UserEvent;
     type GraphQL = User;
-    type Error = anyhow::Error;
+    type Error = tonic::Status;
 
     fn map_event(&self, proto: Self::Proto) -> Option<Self::GraphQL> {
         // Filter by event type

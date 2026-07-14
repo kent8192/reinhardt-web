@@ -72,6 +72,56 @@ This crate provides the following modules:
   - Two-phase commit (2PC) for distributed transactions
   - Atomic transaction wrapper (Django-style transaction.atomic)
   - Database-level transaction execution methods
+  - Typed callback errors with automatic conversion from framework failures
+
+- **Structured Database Errors**
+  - `DatabaseErrorKind` provides portable connection, constraint, transaction, serialization, and query categories
+  - `Error::database_kind()` supports category matching without driver-specific downcasts
+  - `DatabaseError::code()` preserves an optional vendor code for diagnostics
+
+### Structured Error Handling
+
+Construct framework database failures with a portable category and inspect that
+category at application boundaries:
+
+```rust
+use reinhardt_core::exception::{DatabaseError, DatabaseErrorKind, Error};
+
+let error = Error::from(DatabaseError::new(
+    DatabaseErrorKind::UniqueViolation,
+    "email already exists",
+).with_code("23505"));
+
+assert_eq!(error.database_kind(), Some(DatabaseErrorKind::UniqueViolation));
+assert_eq!(error.database_error().and_then(DatabaseError::code), Some("23505"));
+```
+
+Transaction callbacks may return an application-owned error. The error must
+implement `From<reinhardt_core::exception::Error>` so begin, commit, and rollback
+failures retain the same typed channel as domain failures:
+
+```rust,no_run
+use reinhardt_core::exception::Error;
+use reinhardt_db::orm::connection::DatabaseConnection;
+use reinhardt_db::orm::transaction::transaction;
+
+#[derive(Debug, thiserror::Error)]
+enum ApplicationError {
+    #[error("operation rejected")]
+    Rejected,
+    #[error(transparent)]
+    Framework(#[from] Error),
+}
+
+# async fn example() -> Result<(), ApplicationError> {
+let connection = DatabaseConnection::connect("sqlite::memory:").await?;
+let result: Result<(), ApplicationError> = transaction(&connection, async |_transaction| {
+    Err(ApplicationError::Rejected)
+}).await;
+
+result
+# }
+```
 
 - **Database Replication and Routing**
   - Read/write splitting via DatabaseRouter

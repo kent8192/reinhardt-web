@@ -13,15 +13,12 @@ The poll index now links to detail pages, but the detail route does not do usefu
 
 The browser submits votes through `form!` and a `#[server_fn]`. The server keeps the database rules: it verifies that the selected choice belongs to the selected question, increments the vote in a transaction, and returns the generated `ChoiceInfo` DTO.
 
-## Add the Native Error Dependency
+## Keep Vote Errors Typed
 
-The voting service maps domain errors through `anyhow`. Add it to the existing
-native dependency table in `Cargo.toml`:
-
-```toml
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-anyhow = "1"
-```
+The voting service uses an application-owned `VoteRequestError` enum. It keeps
+domain failures distinct from `reinhardt::Error`, so the server can map known
+request failures precisely while retaining framework failures as error sources.
+No additional native error dependency is required.
 
 ## Add the Request Type
 
@@ -158,18 +155,24 @@ The `vote` server function keeps the DTO argument on its canonical path because 
 
 Place the shared implementation in the server-only service module `src/apps/polls/services/server.rs`. The `src/apps/polls/services.rs` module declaration gates the `server` child, so the service function itself does not need a local `#[cfg(server)]` gate:
 
+Define the error and its client-safe mapping in
+`src/apps/polls/services/server_error.rs`:
+
 ```rust
-use crate::apps::polls::models::{Choice, ChoiceInfo};
-use crate::shared::types::VoteRequest;
 use reinhardt::pages::server_fn::ServerFnError;
-use reinhardt::{DatabaseConnection, Model, atomic};
 use std::fmt;
-use std::result::Result;
 
 #[derive(Debug)]
-enum VoteRequestError {
+pub(super) enum VoteRequestError {
     ChoiceNotFound,
     ChoiceQuestionMismatch,
+    Framework(reinhardt::Error),
+}
+
+impl From<reinhardt::Error> for VoteRequestError {
+    fn from(error: reinhardt::Error) -> Self {
+        Self::Framework(error)
+    }
 }
 
 impl fmt::Display for VoteRequestError {
@@ -179,23 +182,56 @@ impl fmt::Display for VoteRequestError {
             Self::ChoiceQuestionMismatch => {
                 f.write_str("Choice does not belong to this question")
             }
+            Self::Framework(error) => write!(f, "{error}"),
         }
     }
 }
 
-impl std::error::Error for VoteRequestError {}
+impl std::error::Error for VoteRequestError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Framework(error) => Some(error),
+            Self::ChoiceNotFound | Self::ChoiceQuestionMismatch => None,
+        }
+    }
+}
 
-fn map_vote_error(error: anyhow::Error) -> ServerFnError {
-    match error.downcast_ref::<VoteRequestError>() {
-        Some(VoteRequestError::ChoiceNotFound) => {
+pub(super) fn map_vote_error(error: VoteRequestError) -> ServerFnError {
+    match error {
+        VoteRequestError::ChoiceNotFound => {
             ServerFnError::server(404, "Choice not found")
         }
-        Some(VoteRequestError::ChoiceQuestionMismatch) => {
+        VoteRequestError::ChoiceQuestionMismatch => {
             ServerFnError::server(400, "Choice does not belong to this question")
         }
-        None => ServerFnError::application(error.to_string()),
+        VoteRequestError::Framework(error) => {
+            let status = error.status_code();
+            tracing::error!(status, error = %error, "Vote request failed");
+
+            match status {
+                400 => ServerFnError::server(400, "Invalid request"),
+                401 => ServerFnError::server(401, "Authentication required"),
+                403 => ServerFnError::server(403, "Permission denied"),
+                404 => ServerFnError::server(404, "Resource not found"),
+                405 => ServerFnError::server(405, "Method not allowed"),
+                409 => ServerFnError::server(409, "Request conflict"),
+                503 => ServerFnError::server(503, "Service temporarily unavailable"),
+                _ => ServerFnError::server(500, "Internal server error"),
+            }
+        }
     }
 }
+```
+
+Then use the typed error from `src/apps/polls/services/server.rs`:
+
+```rust
+use super::server_error::{VoteRequestError, map_vote_error};
+use crate::apps::polls::models::{Choice, ChoiceInfo};
+use crate::shared::types::VoteRequest;
+use reinhardt::pages::server_fn::ServerFnError;
+use reinhardt::{DatabaseConnection, Model, atomic};
+use std::result::Result;
 
 pub async fn vote_internal(
     request: VoteRequest,
@@ -207,15 +243,14 @@ pub async fn vote_internal(
         let mut choice = choice_manager
             .get(request.choice_id)
             .first()
-            .await
-            .map_err(|e| anyhow::anyhow!(e.to_string()))?
-            .ok_or_else(|| anyhow::Error::new(VoteRequestError::ChoiceNotFound))?;
+            .await?
+            .ok_or(VoteRequestError::ChoiceNotFound)?;
 
-        if *choice.question_id() != request.question_id {
-            return Err(anyhow::Error::new(VoteRequestError::ChoiceQuestionMismatch));
+        if choice.question_id() != request.question_id {
+            return Err(VoteRequestError::ChoiceQuestionMismatch);
         }
 
-        choice.vote().await.map_err(|e| anyhow::anyhow!(e.to_string()))?;
+        choice.vote().await?;
         Ok(choice)
     })
     .await

@@ -14,6 +14,7 @@
 //! ### Basic Usage
 //!
 //! ```rust
+//! use reinhardt_core::exception::Error;
 //! use reinhardt_db::orm::connection::DatabaseConnection;
 //! use reinhardt_db::orm::transaction::transaction;
 //!
@@ -24,7 +25,7 @@
 //! let user_id = transaction(&conn, async |_tx| {
 //!     // Your database operations here
 //!     // let id = insert_user("Alice").await?;
-//!     Ok(42)
+//!     Ok::<_, Error>(42)
 //! }).await?;
 //!
 //! assert_eq!(user_id, 42);
@@ -35,6 +36,7 @@
 //! ### With Isolation Level
 //!
 //! ```rust
+//! use reinhardt_core::exception::Error;
 //! use reinhardt_db::orm::transaction::{transaction_with_isolation, IsolationLevel};
 //! # use reinhardt_db::orm::connection::DatabaseConnection;
 //!
@@ -42,7 +44,7 @@
 //! # let conn = DatabaseConnection::connect("sqlite::memory:").await?;
 //! transaction_with_isolation(&conn, IsolationLevel::Serializable, async |_tx| {
 //!     // Critical operations requiring serializable isolation
-//!     Ok(())
+//!     Ok::<(), Error>(())
 //! }).await?;
 //! # Ok(())
 //! # }

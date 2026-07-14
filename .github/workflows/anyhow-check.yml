@@ -1,0 +1,46 @@
+name: Anyhow Check
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        description: 'Runner label JSON'
+        type: string
+        default: '"ubuntu-latest"'
+      cargo-build-jobs:
+        description: "Parallel cargo build jobs"
+        type: string
+        default: "1"
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  CARGO_TARGET_DIR: /tmp/cargo_target
+  CARGO_INCREMENTAL: 0
+  CARGO_BUILD_JOBS: ${{ inputs.cargo-build-jobs || '1' }}
+  CARGO_NET_RETRY: 10
+  # Workaround for arduino/setup-protoc#112, cloudflare/wrangler-action#413,
+  # hashicorp/setup-packer#162 (tracked in reinhardt-web#4125). Remove this
+  # once all three upstreams ship node24 releases.
+  #
+  # Ideal implementation (without workaround):
+  #   (no env override; let runner default kick in)
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  anyhow-check:
+    name: Reject direct dynamic error dependencies
+    runs-on: ${{ fromJSON(inputs.runner || '"ubuntu-latest"') }}
+    timeout-minutes: 360
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install cargo-make
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-make
+
+      - name: Run direct dynamic error dependency check
+        run: cargo make anyhow-check

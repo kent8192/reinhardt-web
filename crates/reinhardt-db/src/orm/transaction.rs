@@ -12,6 +12,7 @@
 //! ### Example
 //!
 //! ```rust
+//! use reinhardt_core::exception::Error;
 //! use reinhardt_db::orm::transaction::transaction;
 //! use reinhardt_db::orm::connection::DatabaseConnection;
 //!
@@ -20,7 +21,7 @@
 //!
 //! let result = transaction(&conn, async |_tx| {
 //!     // Your operations here
-//!     Ok(42)
+//!     Ok::<_, Error>(42)
 //! }).await?;
 //!
 //! assert_eq!(result, 42);
@@ -62,19 +63,20 @@
 //! ### Migration from atomic() to transaction()
 //!
 //! ```rust
+//! # use reinhardt_core::exception::Error;
 //! # use reinhardt_db::orm::connection::DatabaseConnection;
 //! # async fn example() -> reinhardt_core::exception::Result<()> {
 //! # let conn = DatabaseConnection::connect("sqlite::memory:").await?;
 //! // Old API (atomic)
 //! use reinhardt_db::orm::transaction::atomic;
 //! let result = atomic(&conn, || async move {
-//!     Ok(42)
+//!     Ok::<_, Error>(42)
 //! }).await?;
 //!
 //! // New API (transaction) - preferred
 //! use reinhardt_db::orm::transaction::transaction;
 //! let result = transaction(&conn, async |_tx| {
-//!     Ok(42)
+//!     Ok::<_, Error>(42)
 //! }).await?;
 //! # Ok(())
 //! # }
@@ -1032,6 +1034,7 @@ impl TransactionScope {
 	/// # Examples
 	///
 	/// ```no_run
+	/// use reinhardt_core::exception::Error;
 	/// use reinhardt_db::orm::connection::DatabaseConnection;
 	/// use reinhardt_db::orm::transaction::TransactionScope;
 	///
@@ -1041,7 +1044,7 @@ impl TransactionScope {
 	///
 	/// let result = tx.run(async |tx| {
 	///     // Perform operations via tx.execute(), tx.query(), etc.
-	///     Ok(42)
+	///     Ok::<_, Error>(42)
 	/// }).await?;
 	///
 	/// assert_eq!(result, 42);
@@ -1263,6 +1266,7 @@ where
 /// ```rust,ignore
 /// # #[tokio::main]
 /// # async fn main() {
+/// use reinhardt_core::exception::Error;
 /// use reinhardt_db::orm::connection::DatabaseConnection;
 /// use reinhardt_db::orm::transaction::transaction;
 /// # async fn example() -> reinhardt_core::exception::Result<()> {
@@ -1272,13 +1276,13 @@ where
 /// // Simple transaction
 /// transaction(&conn, async |tx| {
 ///     tx.execute("INSERT INTO users (name) VALUES (?)", vec!["Alice".into()]).await?;
-///     Ok(())
+///     Ok::<(), Error>(())
 /// }).await?;
 ///
 /// // Transaction with return value
 /// let user_id: i64 = transaction(&conn, async |tx| {
 ///     tx.execute("INSERT INTO users (name) VALUES (?)", vec!["Bob".into()]).await?;
-///     Ok(42_i64) // Example return value
+///     Ok::<_, Error>(42_i64) // Example return value
 /// }).await?;
 ///
 /// assert_eq!(user_id, 42);
@@ -1355,6 +1359,7 @@ where
 /// # Examples
 ///
 /// ```no_run
+/// use reinhardt_core::exception::Error;
 /// use reinhardt_db::orm::connection::DatabaseConnection;
 /// use reinhardt_db::orm::transaction::{transaction_with_isolation, IsolationLevel};
 ///
@@ -1364,7 +1369,7 @@ where
 /// transaction_with_isolation(&conn, IsolationLevel::Serializable, async |_tx| {
 ///     // Critical operation requiring serializable isolation
 ///     // update_inventory().await?;
-///     Ok(())
+///     Ok::<(), Error>(())
 /// }).await?;
 /// # Ok(())
 /// # }

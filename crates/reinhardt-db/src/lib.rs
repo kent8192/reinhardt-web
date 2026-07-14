@@ -112,6 +112,49 @@
 //! # }
 //! ```
 //!
+//! ### Structured Error Handling
+//!
+//! Database failures retain a driver-independent category. Vendor-specific
+//! codes remain available as optional diagnostic metadata:
+//!
+//! ```rust
+//! use reinhardt_core::exception::{DatabaseError, DatabaseErrorKind, Error};
+//!
+//! let error = Error::from(DatabaseError::new(
+//!     DatabaseErrorKind::UniqueViolation,
+//!     "email already exists",
+//! ).with_code("23505"));
+//!
+//! assert_eq!(error.database_kind(), Some(DatabaseErrorKind::UniqueViolation));
+//! assert_eq!(error.database_error().and_then(DatabaseError::code), Some("23505"));
+//! ```
+//!
+//! Transaction callbacks may propagate an application-owned error when it can
+//! convert framework failures through `From<reinhardt_core::exception::Error>`:
+//!
+//! ```rust,no_run
+//! use reinhardt_core::exception::Error;
+//! use reinhardt_db::orm::connection::DatabaseConnection;
+//! use reinhardt_db::orm::transaction::transaction;
+//!
+//! #[derive(Debug, thiserror::Error)]
+//! enum ApplicationError {
+//!     #[error("operation rejected")]
+//!     Rejected,
+//!     #[error(transparent)]
+//!     Framework(#[from] Error),
+//! }
+//!
+//! # async fn example() -> Result<(), ApplicationError> {
+//! let connection = DatabaseConnection::connect("sqlite::memory:").await?;
+//! let result: Result<(), ApplicationError> = transaction(&connection, async |_transaction| {
+//!     Err(ApplicationError::Rejected)
+//! }).await;
+//!
+//! result
+//! # }
+//! ```
+//!
 //! ## Architecture
 //!
 //! Key modules in this crate:

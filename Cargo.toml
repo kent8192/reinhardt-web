@@ -630,7 +630,6 @@ async-trait = "0.1.89"
 
 # Error handling
 thiserror = "2.0.18"
-anyhow = "1.0.102"
 
 # Routing
 regex = "1.12.3"
