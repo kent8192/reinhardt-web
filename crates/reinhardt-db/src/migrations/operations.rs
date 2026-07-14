@@ -2208,7 +2208,7 @@ impl Operation {
 						parts.push(
 							format!(
 								"COLLATE {}",
-								super::sqlite_pragma::quote_sqlite_identifier(collation)
+								Self::quote_dialect_identifier(collation, &SqlDialect::Sqlite)
 							)
 							.into(),
 						);
@@ -2240,7 +2240,7 @@ impl Operation {
 				parts.push(
 					format!(
 						"COLLATE {}",
-						super::sqlite_pragma::quote_sqlite_identifier(collation)
+						Self::quote_dialect_identifier(collation, &SqlDialect::Sqlite)
 					)
 					.into(),
 				);
