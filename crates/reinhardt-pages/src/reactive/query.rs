@@ -808,6 +808,27 @@ mod tests {
 
 	#[rstest]
 	#[serial(query_cache)]
+	fn cached_query_survives_the_scope_that_created_it() {
+		// Arrange
+		clear_query_cache_for_test();
+		let key = QueryKey::new("retained-cache-entry", || async {
+			Ok::<_, String>("cached".to_string())
+		});
+		let scope = ReactiveScope::new();
+		let first = scope.enter(|| use_query(key.clone()));
+		assert_eq!(first.data(), Some("cached".to_string()));
+		drop(first);
+		drop(scope);
+
+		// Act
+		let cached = ReactiveScope::run(|| use_query(key));
+
+		// Assert
+		assert_eq!(cached.data(), Some("cached".to_string()));
+	}
+
+	#[rstest]
+	#[serial(query_cache)]
 	fn refetch_runs_fetcher_again() {
 		ReactiveScope::run(|| {
 			// Arrange
