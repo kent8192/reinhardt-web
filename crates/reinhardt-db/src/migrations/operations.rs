@@ -3476,20 +3476,13 @@ impl Operation {
 				// Cannot reconstruct without state
 				Ok(None)
 			}
-			Operation::DropConstraintDefinition { table, constraint } => {
-				Ok(Some(vec![match constraint {
-					Constraint::EnumDomain { .. } => Operation::AddConstraintDefinition {
-						table: table.clone(),
-						constraint: constraint.clone(),
-					}
-					.to_sql(dialect),
-					_ => format!(
-						"ALTER TABLE {} ADD {};",
-						quote_identifier(table),
-						constraint
-					),
-				}]))
-			}
+			Operation::DropConstraintDefinition { table, constraint } => Ok(Some(vec![
+				Operation::AddConstraintDefinition {
+					table: table.clone(),
+					constraint: constraint.clone(),
+				}
+				.to_sql(dialect),
+			])),
 			Operation::DropTable { name } => {
 				// Retrieve table definition from ProjectState and reconstruct CREATE TABLE
 				if let Some(model) = project_state.find_model_by_table(name) {
@@ -4953,15 +4946,9 @@ impl Operation {
 				Ok(None)
 			}
 			Operation::DropConstraintDefinition { table, constraint } => {
-				Ok(Some(match constraint {
-					Constraint::EnumDomain { .. } => Operation::AddConstraintDefinition {
-						table: table.clone(),
-						constraint: constraint.clone(),
-					},
-					_ => Operation::AddConstraint {
-						table: table.clone(),
-						constraint_sql: constraint.to_string(),
-					},
+				Ok(Some(Operation::AddConstraintDefinition {
+					table: table.clone(),
+					constraint: constraint.clone(),
 				}))
 			}
 			Operation::RenameTable { old_name, new_name } => Ok(Some(Operation::RenameTable {
@@ -9020,6 +9007,88 @@ mod tests {
 			sql.contains(&format!("CHECK (`{column}` IN ('queued'))")),
 			"{sql}"
 		);
+	}
+
+	fn typed_constraints_with_reserved_mysql_identifiers() -> Vec<Constraint> {
+		vec![
+			Constraint::PrimaryKey {
+				name: "primary-key".to_string(),
+				columns: vec!["select".to_string()],
+			},
+			Constraint::Unique {
+				name: "unique-key".to_string(),
+				columns: vec!["group".to_string()],
+			},
+			Constraint::ForeignKey {
+				name: "foreign-key".to_string(),
+				columns: vec!["order".to_string()],
+				referenced_table: "user-table".to_string(),
+				referenced_columns: vec!["primary".to_string()],
+				on_delete: ForeignKeyAction::Cascade,
+				on_update: ForeignKeyAction::NoAction,
+				deferrable: None,
+			},
+			Constraint::OneToOne {
+				name: "one-key".to_string(),
+				column: "match".to_string(),
+				referenced_table: "profile-table".to_string(),
+				referenced_column: "primary".to_string(),
+				on_delete: ForeignKeyAction::Cascade,
+				on_update: ForeignKeyAction::NoAction,
+				deferrable: None,
+			},
+		]
+	}
+
+	#[test]
+	fn drop_typed_constraints_reverse_to_typed_add_operations() {
+		for constraint in typed_constraints_with_reserved_mysql_identifiers() {
+			let operation = Operation::DropConstraintDefinition {
+				table: "order-items".to_string(),
+				constraint: constraint.clone(),
+			};
+
+			let reverse = operation
+				.to_reverse_operation(&ProjectState::default())
+				.expect("typed reverse operation should resolve")
+				.expect("typed constraint should be reversible");
+
+			assert_eq!(
+				reverse,
+				Operation::AddConstraintDefinition {
+					table: "order-items".to_string(),
+					constraint,
+				}
+			);
+		}
+	}
+
+	#[test]
+	fn drop_typed_constraints_reverse_sql_uses_mysql_identifier_quoting() {
+		let expected_fragments = [
+			"CONSTRAINT `primary-key` PRIMARY KEY (`select`)",
+			"CONSTRAINT `unique-key` UNIQUE (`group`)",
+			"CONSTRAINT `foreign-key` FOREIGN KEY (`order`) REFERENCES `user-table`(`primary`)",
+			"CONSTRAINT `one-key` FOREIGN KEY (`match`) REFERENCES `profile-table`(`primary`)",
+		];
+
+		for (constraint, expected) in typed_constraints_with_reserved_mysql_identifiers()
+			.into_iter()
+			.zip(expected_fragments)
+		{
+			let operation = Operation::DropConstraintDefinition {
+				table: "order-items".to_string(),
+				constraint,
+			};
+			let sql = operation
+				.to_reverse_sql(&SqlDialect::Mysql, &ProjectState::default())
+				.expect("typed reverse SQL should resolve")
+				.expect("typed constraint should be reversible")
+				.join("\n");
+
+			assert!(sql.starts_with("ALTER TABLE `order-items` ADD "), "{sql}");
+			assert!(sql.contains(expected), "missing {expected} in {sql}");
+		}
 	}
 
 	#[rstest]
