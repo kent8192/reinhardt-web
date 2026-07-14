@@ -725,6 +725,7 @@ impl DatabaseMigrationExecutor {
 		table_name: &str,
 	) -> Result<(
 		Vec<super::ColumnDefinition>,
+		Vec<(String, String)>,
 		Vec<super::Constraint>,
 		Vec<super::operations::SqliteRecreatedConstraint>,
 		Vec<super::operations::SqliteRecreatedIndex>,
@@ -779,6 +780,10 @@ impl DatabaseMigrationExecutor {
 			)
 			.await?;
 		let create_sql: Option<String> = create_sql_row.and_then(|r| r.get("sql").ok());
+		let column_collations = create_sql
+			.as_deref()
+			.map(parse_sqlite_column_collations)
+			.unwrap_or_default();
 		let has_autoincrement = create_sql
 			.as_ref()
 			.map(|sql| sql.to_uppercase().contains("AUTOINCREMENT"))
@@ -1175,6 +1180,7 @@ impl DatabaseMigrationExecutor {
 
 		Ok((
 			columns,
+			column_collations,
 			constraints,
 			raw_constraints,
 			indexes,
@@ -1219,6 +1225,7 @@ impl DatabaseMigrationExecutor {
 				);
 				let (
 					columns,
+					column_collations,
 					constraints,
 					raw_constraints,
 					indexes,
@@ -1227,6 +1234,7 @@ impl DatabaseMigrationExecutor {
 					strict,
 				) = Self::read_sqlite_table_via_editor(editor, table).await?;
 				SqliteTableRecreation::for_add_column(table, columns, column.clone(), constraints)
+					.with_column_collations(column_collations)
 					.with_raw_constraints(raw_constraints)
 					.with_indexes(indexes)
 					.with_triggers(triggers)
@@ -1241,6 +1249,7 @@ impl DatabaseMigrationExecutor {
 				);
 				let (
 					columns,
+					column_collations,
 					constraints,
 					raw_constraints,
 					indexes,
@@ -1249,6 +1258,7 @@ impl DatabaseMigrationExecutor {
 					strict,
 				) = Self::read_sqlite_table_via_editor(editor, table).await?;
 				SqliteTableRecreation::for_drop_column(table, columns, column, constraints)
+					.with_column_collations(column_collations)
 					.with_raw_constraints(raw_constraints)
 					.with_indexes(indexes)
 					.with_triggers(triggers)
@@ -1270,6 +1280,7 @@ impl DatabaseMigrationExecutor {
 				);
 				let (
 					columns,
+					column_collations,
 					constraints,
 					raw_constraints,
 					indexes,
@@ -1284,6 +1295,7 @@ impl DatabaseMigrationExecutor {
 					new_definition.clone(),
 					constraints,
 				)
+				.with_column_collations(column_collations)
 				.with_raw_constraints(raw_constraints)
 				.with_indexes(indexes)
 				.with_triggers(triggers)
@@ -1304,6 +1316,7 @@ impl DatabaseMigrationExecutor {
 				);
 				let (
 					columns,
+					column_collations,
 					constraints,
 					raw_constraints,
 					indexes,
@@ -1317,6 +1330,7 @@ impl DatabaseMigrationExecutor {
 					constraints,
 					constraint_sql.clone(),
 				)
+				.with_column_collations(column_collations)
 				.with_raw_constraints(raw_constraints)
 				.with_indexes(indexes)
 				.with_triggers(triggers)
@@ -1330,6 +1344,7 @@ impl DatabaseMigrationExecutor {
 				);
 				let (
 					columns,
+					column_collations,
 					constraints,
 					raw_constraints,
 					indexes,
@@ -1343,6 +1358,7 @@ impl DatabaseMigrationExecutor {
 					constraints,
 					constraint.clone(),
 				)
+				.with_column_collations(column_collations)
 				.with_raw_constraints(raw_constraints)
 				.with_indexes(indexes)
 				.with_triggers(triggers)
@@ -1361,6 +1377,7 @@ impl DatabaseMigrationExecutor {
 				);
 				let (
 					columns,
+					column_collations,
 					constraints,
 					raw_constraints,
 					indexes,
@@ -1374,6 +1391,7 @@ impl DatabaseMigrationExecutor {
 					constraints,
 					constraint_name,
 				)
+				.with_column_collations(column_collations)
 				.with_raw_constraints(raw_constraints)
 				.without_raw_constraint_named(constraint_name)
 				.with_indexes(indexes)
@@ -1389,6 +1407,7 @@ impl DatabaseMigrationExecutor {
 				);
 				let (
 					columns,
+					column_collations,
 					constraints,
 					raw_constraints,
 					indexes,
@@ -1402,6 +1421,7 @@ impl DatabaseMigrationExecutor {
 					constraints,
 					constraint.name(),
 				)
+				.with_column_collations(column_collations)
 				.with_raw_constraints(raw_constraints)
 				.without_raw_constraint_named(constraint.name())
 				.with_indexes(indexes)
@@ -2096,9 +2116,9 @@ fn sqlite_top_level_word_index(tokens: &[SqliteDdlToken], word: &str) -> Option<
 }
 
 #[cfg(feature = "sqlite")]
-fn sqlite_unique_conflict_mode(tokens: &[SqliteDdlToken]) -> Option<String> {
+fn sqlite_unique_conflict_mode(tokens: &[SqliteDdlToken], unique_index: usize) -> Option<String> {
 	let mut depth = 0usize;
-	for (index, token) in tokens.iter().enumerate() {
+	for (index, token) in tokens.iter().enumerate().skip(unique_index + 1) {
 		match token {
 			SqliteDdlToken::OpenParen => depth += 1,
 			SqliteDdlToken::CloseParen => depth = depth.saturating_sub(1),
@@ -2110,6 +2130,24 @@ fn sqlite_unique_conflict_mode(tokens: &[SqliteDdlToken]) -> Option<String> {
 						.is_some_and(|token| sqlite_token_is_word(token, "CONFLICT")) =>
 			{
 				return tokens.get(index + 2).and_then(sqlite_token_identifier);
+			}
+			token
+				if depth == 0
+					&& [
+						"CONSTRAINT",
+						"PRIMARY",
+						"NOT",
+						"CHECK",
+						"DEFAULT",
+						"COLLATE",
+						"REFERENCES",
+						"GENERATED",
+						"UNIQUE",
+					]
+					.iter()
+					.any(|keyword| sqlite_token_is_word(token, keyword)) =>
+			{
+				return None;
 			}
 			_ => {}
 		}
@@ -2123,20 +2161,7 @@ fn sqlite_canonical_unique_sql(
 	columns: &[SqliteIndexedColumnMetadata],
 	conflict_mode: Option<&str>,
 ) -> String {
-	let quote = |identifier: &str| {
-		let simple = identifier.chars().enumerate().all(|(index, ch)| {
-			if index == 0 {
-				ch == '_' || ch.is_ascii_alphabetic()
-			} else {
-				ch == '_' || ch.is_ascii_alphanumeric()
-			}
-		});
-		if simple {
-			identifier.to_string()
-		} else {
-			format!("\"{}\"", identifier.replace('"', "\"\""))
-		}
-	};
+	let quote = super::sqlite_pragma::quote_sqlite_identifier;
 	let columns = columns
 		.iter()
 		.map(|column| {
@@ -2256,22 +2281,29 @@ fn parse_sqlite_fk_metadata(
 }
 
 #[cfg(feature = "sqlite")]
+fn parse_sqlite_column_collations(create_sql: &str) -> Vec<(String, String)> {
+	let Some(body) = sqlite_create_table_body(create_sql) else {
+		return Vec::new();
+	};
+	split_sqlite_top_level_list(body)
+		.into_iter()
+		.filter_map(|definition| {
+			let column = sqlite_column_name(definition)?;
+			let tokens = tokenize_sqlite_definition(definition);
+			let collation = sqlite_top_level_collation(tokens.iter())?;
+			Some((column, collation))
+		})
+		.collect()
+}
+
+#[cfg(feature = "sqlite")]
 fn parse_sqlite_unique_constraint_metadata(
 	create_sql: &str,
 ) -> Vec<SqliteUniqueConstraintMetadata> {
 	let Some(body) = sqlite_create_table_body(create_sql) else {
 		return Vec::new();
 	};
-	let column_collations = split_sqlite_top_level_list(body)
-		.into_iter()
-		.filter_map(|definition| {
-			let column = sqlite_column_name(definition)?;
-			let tokens = tokenize_sqlite_definition(definition);
-			let collation =
-				sqlite_top_level_collation(tokens.iter()).unwrap_or_else(|| "BINARY".to_string());
-			Some((column, collation))
-		})
-		.collect::<Vec<_>>();
+	let column_collations = parse_sqlite_column_collations(create_sql);
 	let normalize_indexed_columns = |columns: &mut [SqliteIndexedColumnMetadata]| {
 		for column in columns {
 			if column.collation.is_none() {
@@ -2291,16 +2323,16 @@ fn parse_sqlite_unique_constraint_metadata(
 			&& sqlite_token_is_word(&tokens[0], "CONSTRAINT")
 			&& sqlite_token_is_word(&tokens[2], "UNIQUE")
 		{
-			Some((sqlite_token_identifier(&tokens[1]), 3))
+			Some((sqlite_token_identifier(&tokens[1]), 3, 2))
 		} else if tokens
 			.first()
 			.is_some_and(|token| sqlite_token_is_word(token, "UNIQUE"))
 		{
-			Some((None, 1))
+			Some((None, 1, 0))
 		} else {
 			None
 		};
-		if let Some((name, tokens_to_skip)) = table_unique {
+		if let Some((name, tokens_to_skip, unique_index)) = table_unique {
 			let Some(open_index) = tokens
 				.iter()
 				.skip(tokens_to_skip)
@@ -2312,7 +2344,7 @@ fn parse_sqlite_unique_constraint_metadata(
 			let mut indexed_columns = sqlite_indexed_column_metadata(&tokens, open_index);
 			normalize_indexed_columns(&mut indexed_columns);
 			if !indexed_columns.is_empty() {
-				let conflict_mode = sqlite_unique_conflict_mode(&tokens);
+				let conflict_mode = sqlite_unique_conflict_mode(&tokens, unique_index);
 				let raw_sql = sqlite_canonical_unique_sql(
 					name.as_deref(),
 					&indexed_columns,
@@ -2355,7 +2387,7 @@ fn parse_sqlite_unique_constraint_metadata(
 			descending: None,
 		}];
 		normalize_indexed_columns(&mut indexed_columns);
-		let conflict_mode = sqlite_unique_conflict_mode(&tokens);
+		let conflict_mode = sqlite_unique_conflict_mode(&tokens, unique_index);
 		let raw_sql = sqlite_canonical_unique_sql(
 			name.as_deref(),
 			&indexed_columns,
@@ -2868,7 +2900,7 @@ mod sqlite_generated_column_tests {
 					},
 				],
 				raw_sql: Some(
-					"CONSTRAINT \"unique jobs code\" UNIQUE (\"tenant id\" COLLATE BINARY ASC, \"code,value\" COLLATE BINARY ASC)"
+					"CONSTRAINT \"unique jobs code\" UNIQUE (\"tenant id\" COLLATE \"BINARY\" ASC, \"code,value\" COLLATE \"BINARY\" ASC)"
 						.to_string(),
 				),
 			}]
@@ -2896,7 +2928,8 @@ mod sqlite_generated_column_tests {
 					descending: Some(false),
 				}],
 				raw_sql: Some(
-					"CONSTRAINT \"unique jobs code\" UNIQUE (code COLLATE BINARY ASC)".to_string(),
+					"CONSTRAINT \"unique jobs code\" UNIQUE (\"code\" COLLATE \"BINARY\" ASC)"
+						.to_string(),
 				),
 			}]
 		);
@@ -2935,7 +2968,7 @@ mod sqlite_generated_column_tests {
 						},
 					],
 					raw_sql: Some(
-						"CONSTRAINT uq_jobs_primary UNIQUE (tenant COLLATE BINARY ASC, code COLLATE BINARY ASC)"
+						"CONSTRAINT \"uq_jobs_primary\" UNIQUE (\"tenant\" COLLATE \"BINARY\" ASC, \"code\" COLLATE \"BINARY\" ASC)"
 							.to_string(),
 					),
 				},
@@ -2955,7 +2988,7 @@ mod sqlite_generated_column_tests {
 						},
 					],
 					raw_sql: Some(
-						"CONSTRAINT uq_jobs_secondary UNIQUE (tenant COLLATE BINARY ASC, code COLLATE BINARY ASC)"
+						"CONSTRAINT \"uq_jobs_secondary\" UNIQUE (\"tenant\" COLLATE \"BINARY\" ASC, \"code\" COLLATE \"BINARY\" ASC)"
 							.to_string(),
 					),
 				},
@@ -2979,11 +3012,11 @@ mod sqlite_generated_column_tests {
 		assert_eq!(metadata.len(), 2);
 		assert_eq!(
 			metadata[0].raw_sql.as_deref(),
-			Some("CONSTRAINT uq_jobs_nocase UNIQUE (code COLLATE NOCASE ASC)")
+			Some("CONSTRAINT \"uq_jobs_nocase\" UNIQUE (\"code\" COLLATE \"NOCASE\" ASC)")
 		);
 		assert_eq!(
 			metadata[1].raw_sql.as_deref(),
-			Some("CONSTRAINT uq_jobs_binary UNIQUE (code COLLATE BINARY ASC)")
+			Some("CONSTRAINT \"uq_jobs_binary\" UNIQUE (\"code\" COLLATE \"BINARY\" ASC)")
 		);
 		assert_eq!(
 			metadata[0].indexed_columns[0].collation.as_deref(),
@@ -3117,6 +3150,19 @@ mod sqlite_generated_column_tests {
 		let metadata = parse_sqlite_unique_constraint_metadata(&create_sql);
 
 		assert_eq!(metadata[0].raw_sql.as_deref(), Some(expected_sql.as_str()));
+	}
+
+	#[rstest]
+	fn parse_sqlite_unique_metadata_does_not_use_later_constraint_conflict_mode() {
+		let create_sql =
+			"CREATE TABLE jobs (code TEXT UNIQUE NOT NULL ON CONFLICT IGNORE)";
+
+		let metadata = parse_sqlite_unique_constraint_metadata(create_sql);
+
+		assert_eq!(
+			metadata[0].raw_sql.as_deref(),
+			Some("UNIQUE (\"code\" COLLATE \"BINARY\" ASC)")
+		);
 	}
 
 	#[rstest]

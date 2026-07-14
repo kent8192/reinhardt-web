@@ -2999,7 +2999,8 @@ async fn typed_enum_constraint_recreation_preserves_named_unique_constraint() {
 		.get("sql")
 		.expect("table SQL should be text");
 	assert!(
-		table_sql.contains("CONSTRAINT unique_jobs_code UNIQUE (code COLLATE BINARY ASC)"),
+		table_sql
+			.contains("CONSTRAINT \"unique_jobs_code\" UNIQUE (\"code\" COLLATE \"BINARY\" ASC)"),
 		"{table_sql}"
 	);
 

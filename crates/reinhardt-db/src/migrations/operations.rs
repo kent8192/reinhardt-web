@@ -2137,6 +2137,14 @@ impl Operation {
 
 	/// Generate column SQL with all constraints
 	fn column_to_sql(col: &ColumnDefinition, dialect: &SqlDialect) -> String {
+		Self::column_to_sql_with_collation(col, dialect, None)
+	}
+
+	fn column_to_sql_with_collation(
+		col: &ColumnDefinition,
+		dialect: &SqlDialect,
+		collation: Option<&str>,
+	) -> String {
 		let mut parts = Vec::new();
 
 		// Column name
@@ -2196,6 +2204,15 @@ impl Operation {
 					} else {
 						parts.push(col.type_definition.to_sql_for_dialect(dialect).into());
 					}
+					if let Some(collation) = collation {
+						parts.push(
+							format!(
+								"COLLATE {}",
+								super::sqlite_pragma::quote_sqlite_identifier(collation)
+							)
+							.into(),
+						);
+					}
 					// SQLite: AUTOINCREMENT requires `INTEGER PRIMARY KEY AUTOINCREMENT`.
 					// Note that `INTEGER PRIMARY KEY` alone only enables rowid auto-assignment
 					// (alias for the rowid); the explicit AUTOINCREMENT keyword is required to
@@ -2219,6 +2236,15 @@ impl Operation {
 			}
 		} else {
 			parts.push(col.type_definition.to_sql_for_dialect(dialect).into());
+			if let Some(collation) = collation {
+				parts.push(
+					format!(
+						"COLLATE {}",
+						super::sqlite_pragma::quote_sqlite_identifier(collation)
+					)
+					.into(),
+				);
+			}
 		}
 
 		if let Some(generated) = &col.generated {
@@ -4385,6 +4411,8 @@ pub struct SqliteTableRecreation {
 	pub raw_constraint_sqls: Vec<String>,
 	/// Existing raw table constraints preserved from SQLite CREATE TABLE SQL
 	pub raw_constraints: Vec<SqliteRecreatedConstraint>,
+	/// Explicit column collations preserved from SQLite CREATE TABLE SQL
+	pub column_collations: Vec<(String, String)>,
 	/// Indexes to recreate after the table rename
 	pub indexes: Vec<SqliteRecreatedIndex>,
 	/// Trigger definitions to recreate after the table rename
@@ -4486,6 +4514,7 @@ impl SqliteTableRecreation {
 			constraints: current_constraints,
 			raw_constraint_sqls: Vec::new(),
 			raw_constraints: Vec::new(),
+			column_collations: Vec::new(),
 			indexes: Vec::new(),
 			triggers: Vec::new(),
 			without_rowid: false,
@@ -4520,6 +4549,7 @@ impl SqliteTableRecreation {
 			constraints,
 			raw_constraint_sqls: Vec::new(),
 			raw_constraints: Vec::new(),
+			column_collations: Vec::new(),
 			indexes: Vec::new(),
 			triggers: Vec::new(),
 			without_rowid: false,
@@ -4555,6 +4585,7 @@ impl SqliteTableRecreation {
 			constraints: current_constraints,
 			raw_constraint_sqls: Vec::new(),
 			raw_constraints: Vec::new(),
+			column_collations: Vec::new(),
 			indexes: Vec::new(),
 			triggers: Vec::new(),
 			without_rowid: false,
@@ -4582,6 +4613,7 @@ impl SqliteTableRecreation {
 			constraints: current_constraints,
 			raw_constraint_sqls: vec![constraint_sql],
 			raw_constraints: Vec::new(),
+			column_collations: Vec::new(),
 			indexes: Vec::new(),
 			triggers: Vec::new(),
 			without_rowid: false,
@@ -4607,6 +4639,7 @@ impl SqliteTableRecreation {
 			constraints: current_constraints,
 			raw_constraint_sqls: Vec::new(),
 			raw_constraints: Vec::new(),
+			column_collations: Vec::new(),
 			indexes: Vec::new(),
 			triggers: Vec::new(),
 			without_rowid: false,
@@ -4640,6 +4673,7 @@ impl SqliteTableRecreation {
 			constraints,
 			raw_constraint_sqls: Vec::new(),
 			raw_constraints: Vec::new(),
+			column_collations: Vec::new(),
 			indexes: Vec::new(),
 			triggers: Vec::new(),
 			without_rowid: false,
@@ -4656,6 +4690,12 @@ impl SqliteTableRecreation {
 	/// Adds existing raw table constraints that must be preserved verbatim.
 	pub fn with_raw_constraints(mut self, raw_constraints: Vec<SqliteRecreatedConstraint>) -> Self {
 		self.raw_constraints = raw_constraints;
+		self
+	}
+
+	/// Adds explicit column collations that must survive table recreation.
+	pub fn with_column_collations(mut self, column_collations: Vec<(String, String)>) -> Self {
+		self.column_collations = column_collations;
 		self
 	}
 
@@ -4719,7 +4759,14 @@ impl SqliteTableRecreation {
 		let column_defs: Vec<String> = self
 			.new_columns
 			.iter()
-			.map(|c| Operation::column_to_sql(c, &SqlDialect::Sqlite))
+			.map(|column| {
+				let collation = self
+					.column_collations
+					.iter()
+					.find(|(name, _)| name.eq_ignore_ascii_case(&column.name))
+					.map(|(_, collation)| collation.as_str());
+				Operation::column_to_sql_with_collation(column, &SqlDialect::Sqlite, collation)
+			})
 			.collect();
 
 		let constraint_defs: Vec<String> = self
@@ -9926,6 +9973,26 @@ mod tests {
 		assert_eq!(
 			sql[1],
 			"INSERT INTO \"users_new\" (\"id\", \"first_name\", \"last_name\") SELECT \"id\", \"first_name\", \"last_name\" FROM \"users\";"
+		);
+	}
+
+	#[test]
+	fn test_sqlite_recreation_places_column_collation_before_default() {
+		let mut code = ColumnDefinition::new("code", FieldType::Text);
+		code.default = Some("'alpha'".to_string());
+		let recreation = SqliteTableRecreation::for_add_constraint(
+			"jobs",
+			vec![code],
+			vec![],
+			"CHECK (1 = 1)".to_string(),
+		)
+		.with_column_collations(vec![("code".to_string(), "NOCASE".to_string())]);
+
+		let create_sql = &recreation.to_sql_statements()[0];
+
+		assert!(
+			create_sql.contains("\"code\" TEXT COLLATE \"NOCASE\" DEFAULT 'alpha'"),
+			"{create_sql}"
 		);
 	}
 
