@@ -32,6 +32,11 @@ registries. Proc macros and static extraction both call `compile_style`, so
 diagnostics, scoped names, and generated CSS cannot drift between consumers.
 Failures cross the public boundary as stable `StyleDiagnosticKind` values.
 
+Shorthand grammars preserve CSS ordering rules while accepting valid equivalent
+forms. For example, `flex` accepts a basis-only value, `box-shadow` accepts
+optional color and `inset` components in either order, and `background` permits
+a color only on its final comma-separated layer.
+
 Source formatting has a separate, non-semantic parser. Formatting never
 replaces compilation or validation.
 

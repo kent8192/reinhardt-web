@@ -335,6 +335,15 @@ pub enum ValueGrammar {
 		/// The grammar repeated for each item.
 		item: &'static ValueGrammar,
 	},
+	/// A comma-separated repetition whose final item has a distinct grammar.
+	CommaFinal {
+		/// The minimum item count.
+		min: usize,
+		/// The grammar repeated for every item before the final item.
+		item: &'static ValueGrammar,
+		/// The grammar used by the final item.
+		final_item: &'static ValueGrammar,
+	},
 	/// A slash-separated pair.
 	Slash {
 		/// The grammar before the slash.
@@ -387,6 +396,15 @@ impl ValueGrammar {
 				item.describe()
 			),
 			Self::Comma { min, item } => format!("COMMA({min},{})", item.describe()),
+			Self::CommaFinal {
+				min,
+				item,
+				final_item,
+			} => format!(
+				"COMMA_FINAL({min},{},{})",
+				item.describe(),
+				final_item.describe()
+			),
 			Self::Slash { left, right } => {
 				format!("SLASH({},{})", left.describe(), right.describe())
 			}
@@ -428,6 +446,15 @@ impl ValueGrammar {
 			Self::Comma { min, item } => {
 				format!("COMMA({min},{})", item.describe_with_keywords())
 			}
+			Self::CommaFinal {
+				min,
+				item,
+				final_item,
+			} => format!(
+				"COMMA_FINAL({min},{},{})",
+				item.describe_with_keywords(),
+				final_item.describe_with_keywords()
+			),
 			Self::Slash { left, right } => format!(
 				"SLASH({},{})",
 				left.describe_with_keywords(),
@@ -1070,6 +1097,15 @@ keyword_grammar!(
 	]
 );
 keyword_grammar!(
+	OUTLINE_STYLE_DOMAIN,
+	KW_OUTLINE_STYLE,
+	"outline-style",
+	[
+		"none", "hidden", "dotted", "dashed", "solid", "double", "groove", "ridge", "inset",
+		"outset", "auto",
+	]
+);
+keyword_grammar!(
 	BACKGROUND_REPEAT_DOMAIN,
 	KW_BACKGROUND_REPEAT,
 	"background-repeat",
@@ -1306,7 +1342,7 @@ const FLEX_ORDERED: ValueGrammar = ValueGrammar::Ordered(&[
 	optional("shrink", &N),
 	optional("basis", &SIZE),
 ]);
-const FLEX: ValueGrammar = ValueGrammar::Or(&[KW_FLEX, FLEX_ORDERED]);
+const FLEX: ValueGrammar = ValueGrammar::Or(&[KW_FLEX, SIZE, FLEX_ORDERED]);
 const FLEX_FLOW: ValueGrammar = ValueGrammar::Unordered {
 	members: &[
 		optional("direction", &KW_FLEX_DIRECTION),
@@ -1402,7 +1438,7 @@ const FONT: ValueGrammar = ValueGrammar::Or(&[
 const TEXT_OVERFLOW: ValueGrammar = ValueGrammar::Or(&[KW_TEXT_OVERFLOW, S]);
 const TEXT_DECORATION_BODY: ValueGrammar = ValueGrammar::Unordered {
 	members: &[
-		required("line", &KW_TEXT_DECORATION_LINE),
+		optional("line", &KW_TEXT_DECORATION_LINE),
 		optional("style", &LINE_STYLE),
 		optional("color", &C),
 		optional("width", &LINE_WIDTH),
@@ -1447,6 +1483,16 @@ const BACKGROUND_POSITION_SIZE: ValueGrammar = ValueGrammar::Slash {
 };
 const BACKGROUND_LAYER: ValueGrammar = ValueGrammar::Unordered {
 	members: &[
+		optional("image", &IMG),
+		optional("position", &POSITION),
+		optional("repeat", &BACKGROUND_REPEAT_LAYER),
+		optional("position-size", &BACKGROUND_POSITION_SIZE),
+	],
+	min_members: 1,
+	preserve_source_order: false,
+};
+const BACKGROUND_FINAL_LAYER: ValueGrammar = ValueGrammar::Unordered {
+	members: &[
 		optional("color", &C),
 		optional("image", &IMG),
 		optional("position", &POSITION),
@@ -1456,9 +1502,10 @@ const BACKGROUND_LAYER: ValueGrammar = ValueGrammar::Unordered {
 	min_members: 1,
 	preserve_source_order: false,
 };
-const BACKGROUND: ValueGrammar = ValueGrammar::Comma {
+const BACKGROUND: ValueGrammar = ValueGrammar::CommaFinal {
 	min: 1,
 	item: &BACKGROUND_LAYER,
+	final_item: &BACKGROUND_FINAL_LAYER,
 };
 const BORDER_WIDTH: ValueGrammar = ValueGrammar::Space {
 	min: 1,
@@ -1491,14 +1538,18 @@ const CORNER_RADIUS: ValueGrammar = ValueGrammar::Space {
 	item: &LP,
 };
 
-const SHADOW: ValueGrammar = ValueGrammar::Ordered(&[
-	optional("inset", &KW_INSET),
-	required("offset-x", &L),
-	required("offset-y", &L),
-	optional("blur", &L),
-	optional("spread", &L),
-	optional("color", &C),
-]);
+const SHADOW: ValueGrammar = ValueGrammar::Unordered {
+	members: &[
+		optional("inset", &KW_INSET),
+		required("offset-x", &L),
+		required("offset-y", &L),
+		optional("blur", &L),
+		optional("spread", &L),
+		optional("color", &C),
+	],
+	min_members: 2,
+	preserve_source_order: true,
+};
 const SHADOW_LIST: ValueGrammar = ValueGrammar::Comma {
 	min: 1,
 	item: &SHADOW,
@@ -1506,6 +1557,15 @@ const SHADOW_LIST: ValueGrammar = ValueGrammar::Comma {
 const BOX_SHADOW: ValueGrammar = ValueGrammar::Or(&[KW_NONE, SHADOW_LIST]);
 const OPACITY: ValueGrammar = ValueGrammar::Or(&[N, P]);
 const OUTLINE_COLOR: ValueGrammar = ValueGrammar::Or(&[C, KW_INVERT]);
+const OUTLINE: ValueGrammar = ValueGrammar::Unordered {
+	members: &[
+		optional("width", &LINE_WIDTH),
+		optional("style", &KW_OUTLINE_STYLE),
+		optional("color", &OUTLINE_COLOR),
+	],
+	min_members: 1,
+	preserve_source_order: false,
+};
 
 const TRANSFORM: ValueGrammar = ValueGrammar::Or(&[
 	KW_NONE,
@@ -1702,10 +1762,10 @@ static PROPERTY_SPECS: &[PropertySpec] = property_registry!(
 	PropertyFamily::Effects => {
 		"box-shadow" => BOX_SHADOW,
 		"opacity" => OPACITY,
-		"outline" => BORDER,
+		"outline" => OUTLINE,
 		"outline-color" => OUTLINE_COLOR,
 		"outline-offset" => L,
-		"outline-style" => LINE_STYLE,
+		"outline-style" => KW_OUTLINE_STYLE,
 		"outline-width" => LINE_WIDTH,
 		"filter" => KW_NONE,
 		"backdrop-filter" => KW_NONE,
@@ -2767,7 +2827,7 @@ mod tests {
 	)]
 	#[case(
 		"flex",
-		"OR(KW(flex),ORDERED(grow:NUMBER,shrink?:NUMBER,basis?:OR(LENGTH_PERCENTAGE,KW(size))))"
+		"OR(KW(flex),OR(LENGTH_PERCENTAGE,KW(size)),ORDERED(grow:NUMBER,shrink?:NUMBER,basis?:OR(LENGTH_PERCENTAGE,KW(size))))"
 	)]
 	#[case(
 		"flex-flow",
@@ -2998,6 +3058,12 @@ mod tests {
 			ValueGrammar::Space { item, .. }
 			| ValueGrammar::Comma { item, .. }
 			| ValueGrammar::SlashList { item, .. } => collect_keyword_domains(item, domains),
+			ValueGrammar::CommaFinal {
+				item, final_item, ..
+			} => {
+				collect_keyword_domains(item, domains);
+				collect_keyword_domains(final_item, domains);
+			}
 			ValueGrammar::Slash { left, right } => {
 				collect_keyword_domains(left, domains);
 				collect_keyword_domains(right, domains);

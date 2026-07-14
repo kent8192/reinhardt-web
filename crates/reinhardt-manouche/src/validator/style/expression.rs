@@ -916,6 +916,20 @@ fn matches_grammar(expression: &TypedValueExpr, grammar: &ValueGrammar) -> bool 
 			let items = comma_items(expression);
 			items.len() >= *min && items.iter().all(|value| matches_grammar(value, item))
 		}
+		ValueGrammar::CommaFinal {
+			min,
+			item,
+			final_item,
+		} => {
+			let items = comma_items(expression);
+			items.len() >= *min
+				&& items[..items.len().saturating_sub(1)]
+					.iter()
+					.all(|value| matches_grammar(value, item))
+				&& items
+					.last()
+					.is_some_and(|value| matches_grammar(value, final_item))
+		}
 		ValueGrammar::Slash { left, right } => slash_pair(expression)
 			.is_some_and(|(a, b)| matches_grammar(a, left) && matches_grammar(b, right)),
 		ValueGrammar::SlashList { min, max, item } => {
@@ -1106,6 +1120,7 @@ fn matching_prefix_lengths(items: &[&TypedValueExpr], grammar: &ValueGrammar) ->
 		| ValueGrammar::Identifier
 		| ValueGrammar::FunctionResult(_)
 		| ValueGrammar::Comma { .. }
+		| ValueGrammar::CommaFinal { .. }
 		| ValueGrammar::Slash { .. }
 		| ValueGrammar::SlashList { .. } => {}
 	}
@@ -1896,6 +1911,49 @@ mod tests {
 			let typed = validated_text(source);
 			assert_eq!(typed.items.len(), 1, "source should validate: {source}");
 		}
+	}
+
+	#[rstest]
+	fn reviewed_shorthand_grammars_accept_valid_css_orderings() {
+		// Arrange
+		let sources = [
+			".card { flex: 10rem; }",
+			".card { flex: 30%; }",
+			".card { flex: min-content; }",
+			".card { text-decoration: (solid, red, 2px); }",
+			".card { box-shadow: (red, 0, 0, 4px); }",
+			".card { box-shadow: (0, 0, 4px, inset); }",
+			".card { outline: auto; }",
+			".card { outline-style: auto; }",
+			".card { background: [linear_gradient(Direction::Right, [stop(red, 0%), stop(blue, 100%)]), red]; }",
+		];
+
+		// Act and Assert
+		for source in sources {
+			let tokens = source.parse().expect("test tokens should parse");
+			let ast = parse_style(tokens).unwrap_or_else(|error| {
+				panic!("source should parse: {source}: {error}");
+			});
+			validate_style(&ast).unwrap_or_else(|error| {
+				panic!("source should validate: {source}: {error}");
+			});
+		}
+	}
+
+	#[rstest]
+	fn background_color_is_restricted_to_the_final_layer() {
+		// Arrange
+		let source = ".card { background: [red, linear_gradient(Direction::Right, [stop(red, 0%), stop(blue, 100%)])]; }";
+
+		// Act
+		let kind = diagnostic_kind_text(source);
+
+		// Assert
+		assert!(matches!(
+			kind,
+			StyleDiagnosticKind::PropertyValueMismatch { property, .. }
+				if property == "background"
+		));
 	}
 
 	#[rstest]
