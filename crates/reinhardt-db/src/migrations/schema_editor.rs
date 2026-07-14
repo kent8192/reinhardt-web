@@ -55,7 +55,7 @@ use futures::FutureExt;
 #[cfg(feature = "sqlite")]
 use sqlx::{Row as SqlxRow, Sqlite, pool::PoolConnection};
 
-/// Owns the physical SQLite connection used by a non-atomic recreation.
+/// Owns the physical SQLite connection used by atomic and non-atomic recreation.
 ///
 /// Dropping a dirty session transfers its connection to an independent cleanup
 /// task. The task rolls back the open transaction and restores the previous
@@ -98,6 +98,22 @@ impl Drop for SqliteCleanupConnection {
 	fn drop(&mut self) {
 		if let Some(connection) = self.connection.as_mut() {
 			connection.close_on_drop();
+		}
+	}
+}
+
+#[cfg(feature = "sqlite")]
+fn sqlite_rollback_succeeded_or_inactive<T>(result: std::result::Result<T, sqlx::Error>) -> bool {
+	match result {
+		Ok(_) => true,
+		Err(sqlx::Error::Database(error))
+			if error.message() == "cannot rollback - no transaction is active" =>
+		{
+			true
+		}
+		Err(error) => {
+			tracing::error!("failed to roll back SQLite recreation session: {error}");
+			false
 		}
 	}
 }
@@ -158,10 +174,11 @@ impl Drop for SqliteRecreationSession {
 		runtime.spawn(async move {
 			let mut cleanup = SqliteCleanupConnection::new(connection);
 			let rollback_succeeded = if transaction_started {
-				sqlx::query("ROLLBACK")
-					.execute(&mut **cleanup.connection_mut())
-					.await
-					.is_ok()
+				sqlite_rollback_succeeded_or_inactive(
+					sqlx::query("ROLLBACK")
+						.execute(&mut **cleanup.connection_mut())
+						.await,
+				)
 			} else {
 				true
 			};
@@ -1045,6 +1062,59 @@ mod tests {
 				.await
 				.expect("read restored foreign key state"),
 			"foreign key enforcement must be restored before resuming the panic"
+		);
+	}
+
+	#[cfg(feature = "sqlite")]
+	#[tokio::test]
+	async fn recreation_cleanup_returns_connection_when_transaction_is_already_inactive() {
+		use sqlx::sqlite::SqlitePoolOptions;
+
+		// Arrange
+		let pool = SqlitePoolOptions::new()
+			.max_connections(1)
+			.connect("sqlite::memory:")
+			.await
+			.expect("connect to in-memory SQLite");
+		sqlx::query("PRAGMA foreign_keys = ON")
+			.execute(&pool)
+			.await
+			.expect("enable foreign key enforcement");
+		sqlx::query("CREATE TABLE cleanup_boundary_marker (id INTEGER PRIMARY KEY)")
+			.execute(&pool)
+			.await
+			.expect("create marker table");
+		let connection = pool.acquire().await.expect("acquire sole connection");
+		let mut session = SqliteRecreationSession::new(connection);
+		session.set_previous_foreign_keys(true);
+		sqlx::query("PRAGMA foreign_keys = OFF")
+			.execute(&mut **session.connection_mut())
+			.await
+			.expect("disable foreign key enforcement");
+		session.mark_transaction_started();
+
+		// Act
+		drop(session);
+		let mut returned_connection = pool
+			.acquire()
+			.await
+			.expect("cleanup should return the sole connection");
+
+		// Assert
+		let foreign_keys = sqlx::query_scalar::<_, i64>("PRAGMA foreign_keys")
+			.fetch_one(&mut *returned_connection)
+			.await
+			.expect("read restored foreign key state");
+		assert_eq!(foreign_keys, 1, "foreign key enforcement must be restored");
+		let marker_exists = sqlx::query_scalar::<_, i64>(
+			"SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'cleanup_boundary_marker'",
+		)
+		.fetch_one(&mut *returned_connection)
+		.await
+		.expect("check marker table");
+		assert_eq!(
+			marker_exists, 1,
+			"cleanup must preserve the original in-memory connection"
 		);
 	}
 
