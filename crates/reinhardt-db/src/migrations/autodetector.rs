@@ -786,6 +786,17 @@ impl ProjectState {
 			.get_mut(&(app_label.to_string(), model_name.to_string()))
 	}
 
+	/// Get a mutable model by its physical table name.
+	pub fn get_model_by_table_mut(
+		&mut self,
+		app_label: &str,
+		table_name: &str,
+	) -> Option<&mut ModelState> {
+		self.models.iter_mut().find_map(|((app, _), model)| {
+			(app == app_label && model.table_name == table_name).then_some(model)
+		})
+	}
+
 	/// Get primary key field type for a model
 	///
 	/// Returns the field type of the primary key, defaulting to Uuid if not found

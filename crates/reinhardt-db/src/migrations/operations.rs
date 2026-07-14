@@ -1385,7 +1385,7 @@ impl Operation {
 				state.remove_model(app_label, name);
 			}
 			Operation::AddColumn { table, column, .. } => {
-				if let Some(model) = state.get_model_mut(app_label, table) {
+				if let Some(model) = state.get_model_by_table_mut(app_label, table) {
 					let mut field = FieldState::new(
 						column.name.to_string(),
 						column.type_definition.clone(),
@@ -1396,7 +1396,7 @@ impl Operation {
 				}
 			}
 			Operation::DropColumn { table, column, .. } => {
-				if let Some(model) = state.get_model_mut(app_label, table) {
+				if let Some(model) = state.get_model_by_table_mut(app_label, table) {
 					model.remove_field(column);
 				}
 			}
@@ -1406,7 +1406,7 @@ impl Operation {
 				new_definition,
 				..
 			} => {
-				if let Some(model) = state.get_model_mut(app_label, table) {
+				if let Some(model) = state.get_model_by_table_mut(app_label, table) {
 					let mut field = FieldState::new(
 						column.to_string(),
 						new_definition.type_definition.clone(),
@@ -1424,7 +1424,7 @@ impl Operation {
 				old_name,
 				new_name,
 			} => {
-				if let Some(model) = state.get_model_mut(app_label, table) {
+				if let Some(model) = state.get_model_by_table_mut(app_label, table) {
 					model.rename_field(old_name, new_name.to_string());
 				}
 			}
@@ -6498,6 +6498,26 @@ mod tests {
 			state.get_model("myapp", "User").unwrap().table_name,
 			"accounts"
 		);
+	}
+
+	#[test]
+	fn state_forwards_uses_the_renamed_table_for_column_operations() {
+		let mut state = ProjectState::new();
+		let mut model = ModelState::new("myapp", "User");
+		model.table_name = "users".to_string();
+		state.add_model(model);
+		Operation::RenameTable {
+			old_name: "users".into(),
+			new_name: "user".into(),
+		}
+		.state_forwards("myapp", &mut state);
+		Operation::AddColumn {
+			table: "user".into(),
+			column: ColumnDefinition::new("email", FieldType::VarChar(255)),
+			if_not_exists: false,
+		}
+		.state_forwards("myapp", &mut state);
+		assert!(state.get_model("myapp", "User").unwrap().has_field("email"));
 	}
 
 	#[test]
