@@ -3,9 +3,7 @@ use std::rc::Rc;
 
 use wasm_bindgen::JsCast;
 
-use crate::component::{
-	ControlBinding, ControlBindingError, ControlKind, ControlValue, ControlWriteOutcome,
-};
+use crate::component::{ControlBinding, ControlBindingError, ControlKind, ControlValue};
 use crate::dom::{Element, EventHandle};
 use crate::reactive::{Effect, EffectTiming, untracked};
 
@@ -30,7 +28,7 @@ struct CompositionState {
 
 struct CompletedComposition {
 	value: ControlValue,
-	reproject_signal_change: bool,
+	signal_baseline: ControlValue,
 }
 
 impl ControlBindingController {
@@ -114,15 +112,10 @@ fn install_listeners(element: &Element, binding: &ControlBinding) -> Vec<EventHa
 					if let Some(completed) = completed
 						&& completed.value == value
 					{
-						if completed.reproject_signal_change {
-							let current_value = untracked(|| input_binding.read());
-							if current_value != value {
-								let _ = write_control(
-									&input_element,
-									input_binding.kind(),
-									&current_value,
-								);
-							}
+						let current_value = untracked(|| input_binding.read());
+						if current_value != completed.signal_baseline {
+							let _ =
+								write_control(&input_element, input_binding.kind(), &current_value);
 						}
 						return;
 					}
@@ -152,15 +145,13 @@ fn install_listeners(element: &Element, binding: &ControlBinding) -> Vec<EventHa
 					let Ok(value) = read_control(&end_element, end_binding.kind()) else {
 						return;
 					};
-					let Ok(outcome) = end_binding.write(value.clone()) else {
+					let Ok(_) = end_binding.write(value.clone()) else {
 						return;
 					};
+					let signal_baseline = untracked(|| end_binding.read());
 					end_state.borrow_mut().skip_next_input = Some(CompletedComposition {
 						value,
-						reproject_signal_change: !matches!(
-							outcome,
-							ControlWriteOutcome::Rejected(_)
-						),
+						signal_baseline,
 					});
 				}),
 			);
