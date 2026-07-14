@@ -618,12 +618,19 @@ fn transform_element(
 	}
 
 	// 2. Extract the binding before transforming ordinary attributes
-	let (ordinary_attrs, binding_attr) = split_binding_attr(&elem.attrs)?;
+	let (mut ordinary_attrs, binding_attr) = split_binding_attr(&elem.attrs)?;
 	let control_binding = binding_attr
 		.as_ref()
 		.map(|attr| classify_control_binding(&tag, &ordinary_attrs, attr))
 		.transpose()?
 		.map(Box::new);
+	if tag == "select"
+		&& control_binding
+			.as_deref()
+			.is_some_and(|binding| binding.kind == TypedControlBindingKind::SelectOne)
+	{
+		ordinary_attrs.retain(|attr| !is_false_multiple_attr(attr));
+	}
 	let transformed_attrs = transform_attrs(&ordinary_attrs, &tag)?;
 	let typed_attrs = transformed_attrs.attrs;
 
@@ -831,6 +838,15 @@ fn classify_select_binding(
 		},
 	}
 }
+
+fn is_false_multiple_attr(attr: &PageAttr) -> bool {
+	attr.html_name() == "multiple"
+		&& matches!(
+			&attr.value,
+			Expr::Lit(lit) if matches!(&lit.lit, syn::Lit::Bool(value) if !value.value())
+		)
+}
+
 fn unique_untyped_attr<'a>(
 	attrs: &'a [PageAttr],
 	name: &str,
@@ -2541,6 +2557,7 @@ mod tests {
 	)]
 	#[case(quote!({ textarea { a11y: off, bind: value } }), TypedControlBindingKind::Text, false)]
 	#[case(quote!({ select { a11y: off, bind: value } }), TypedControlBindingKind::SelectOne, false)]
+	#[case(quote!({ select { a11y: off, multiple: false, bind: value } }), TypedControlBindingKind::SelectOne, false)]
 	#[case(
 		quote!({ select { a11y: off, multiple: true, bind: value } }),
 		TypedControlBindingKind::SelectMany,

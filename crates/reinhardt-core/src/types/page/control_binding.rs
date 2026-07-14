@@ -3,7 +3,7 @@
 use std::fmt;
 use std::num::IntErrorKind;
 
-use crate::reactive::Signal;
+use crate::reactive::{Signal, runtime::NodeId};
 
 /// Identifies the form control represented by a binding.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -203,6 +203,7 @@ impl Drop for ControlBindingSnapshot {
 pub struct ControlBinding {
 	kind: ControlKind,
 	radio_value: Option<String>,
+	target: NodeId,
 	read: ReadValue,
 	write: WriteValue,
 	snapshot: SnapshotValue,
@@ -230,6 +231,7 @@ impl ControlBinding {
 		Self {
 			kind: ControlKind::Checkbox,
 			radio_value: None,
+			target: signal.id(),
 			read: Shared::new(move || ControlValue::Checked(read_signal.get())),
 			write: Shared::new(move |value| match value {
 				ControlValue::Checked(value) => {
@@ -251,6 +253,7 @@ impl ControlBinding {
 		Self {
 			kind: ControlKind::Radio,
 			radio_value: Some(value),
+			target: signal.id(),
 			read: Shared::new(move || ControlValue::Checked(read_signal.get() == read_value)),
 			write: Shared::new(move |value| match value {
 				ControlValue::Checked(true) => {
@@ -276,6 +279,7 @@ impl ControlBinding {
 		Self {
 			kind: ControlKind::SelectMany,
 			radio_value: None,
+			target: signal.id(),
 			read: Shared::new(move || ControlValue::SelectedValues(read_signal.get())),
 			write: Shared::new(move |value| match value {
 				ControlValue::SelectedValues(values) => {
@@ -311,6 +315,12 @@ impl ControlBinding {
 		self.radio_value.as_deref()
 	}
 
+	/// Returns the signal receiving values from this binding.
+	#[doc(hidden)]
+	pub fn target(&self) -> NodeId {
+		self.target
+	}
+
 	/// Reads the current signal value in its cross-target representation.
 	pub fn read(&self) -> ControlValue {
 		(self.read)()
@@ -333,6 +343,7 @@ impl ControlBinding {
 		Self {
 			kind,
 			radio_value: None,
+			target: signal.id(),
 			read: Shared::new(move || ControlValue::Text(read_signal.get())),
 			write: Shared::new(move |value| match value {
 				ControlValue::Text(value) => {
@@ -355,6 +366,7 @@ impl ControlBinding {
 		Self {
 			kind: ControlKind::Number,
 			radio_value: None,
+			target: signal.id(),
 			read: Shared::new(move || ControlValue::Text(read_signal.get().to_string())),
 			write: Shared::new(move |value| {
 				let ControlValue::Text(raw) = value else {

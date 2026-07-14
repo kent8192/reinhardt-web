@@ -1226,7 +1226,8 @@ impl SsrRenderer {
 					}
 
 					if has_pending {
-						if !inline_single_select_uses_fallback
+						if self.should_resolve_resources()
+							&& !inline_single_select_uses_fallback
 							&& let Some(parent) = selection.as_ref()
 						{
 							parent.reserve_pending_match();

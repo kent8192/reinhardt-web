@@ -9,23 +9,29 @@ use crate::component::{
 };
 use crate::dom::{Element, EventHandle};
 use crate::reactive::{Effect, EffectTiming, untracked};
-use reinhardt_core::types::page::ControlBindingSnapshot;
+use reinhardt_core::{reactive::runtime::NodeId, types::page::ControlBindingSnapshot};
 
 type HydrationSnapshotStore = Rc<RefCell<Vec<ControlBindingSnapshot>>>;
 
 thread_local! {
 	static ACTIVE_HYDRATION_SNAPSHOT_STORE: RefCell<Option<HydrationSnapshotStore>> =
 		const { RefCell::new(None) };
+	static ACTIVE_HYDRATION_ADOPTED_TARGETS: RefCell<Option<Rc<RefCell<Vec<NodeId>>>>> =
+		const { RefCell::new(None) };
 }
 
 struct ActiveHydrationSnapshotStoreGuard {
 	previous: Option<HydrationSnapshotStore>,
+	previous_adopted_targets: Option<Rc<RefCell<Vec<NodeId>>>>,
 }
 
 impl Drop for ActiveHydrationSnapshotStoreGuard {
 	fn drop(&mut self) {
 		ACTIVE_HYDRATION_SNAPSHOT_STORE.with(|active| {
 			active.replace(self.previous.take());
+		});
+		ACTIVE_HYDRATION_ADOPTED_TARGETS.with(|active| {
+			active.replace(self.previous_adopted_targets.take());
 		});
 	}
 }
@@ -68,7 +74,12 @@ pub(crate) fn with_hydration_snapshot_transaction<T, E>(
 	let mut transaction = HydrationSnapshotTransaction::new();
 	let previous = ACTIVE_HYDRATION_SNAPSHOT_STORE
 		.with(|active| active.replace(Some(transaction.store.clone())));
-	let guard = ActiveHydrationSnapshotStoreGuard { previous };
+	let previous_adopted_targets = ACTIVE_HYDRATION_ADOPTED_TARGETS
+		.with(|active| active.replace(Some(Rc::new(RefCell::new(Vec::new())))));
+	let guard = ActiveHydrationSnapshotStoreGuard {
+		previous,
+		previous_adopted_targets,
+	};
 	let result = f();
 	drop(guard);
 	if result.is_ok() {
@@ -89,6 +100,25 @@ fn commit_or_stage_hydration_snapshot(snapshot: ControlBindingSnapshot) {
 	if let Some(snapshot) = snapshot {
 		snapshot.commit();
 	}
+}
+
+fn hydration_target_was_adopted(binding: &ControlBinding) -> bool {
+	ACTIVE_HYDRATION_ADOPTED_TARGETS.with(|active| {
+		active
+			.borrow()
+			.as_ref()
+			.is_some_and(|targets| targets.borrow().contains(&binding.target()))
+	})
+}
+
+fn record_hydration_target_adoption(binding: &ControlBinding) {
+	ACTIVE_HYDRATION_ADOPTED_TARGETS.with(|active| {
+		if let Some(targets) = active.borrow().as_ref()
+			&& !targets.borrow().contains(&binding.target())
+		{
+			targets.borrow_mut().push(binding.target());
+		}
+	});
 }
 
 pub(crate) struct ControlBindingController {
@@ -168,8 +198,13 @@ impl ControlBindingController {
 		let (listeners, state) = install_listeners(&element, &binding);
 		let live_value = read_control(&element, binding.kind())?;
 		let expected_value = untracked(|| binding.read());
-		let adopted = if binding.kind() == ControlKind::SelectOne
-			&& !select_has_option_value(&element, &expected_value)
+		let adopted = if hydration_target_was_adopted(&binding) {
+			write_control(&element, binding.kind(), &expected_value)?;
+			false
+		} else if matches!(
+			binding.kind(),
+			ControlKind::SelectOne | ControlKind::SelectMany
+		) && !select_has_option_values(&element, &expected_value)
 		{
 			write_control(&element, binding.kind(), &expected_value)?;
 			false
@@ -177,7 +212,12 @@ impl ControlBindingController {
 			let snapshot = binding.snapshot();
 			let outcome = binding.write(live_value.clone())?;
 			commit_or_stage_hydration_snapshot(snapshot);
-			matches!(outcome, ControlWriteOutcome::Committed) && expected_value != live_value
+			let adopted =
+				matches!(outcome, ControlWriteOutcome::Committed) && expected_value != live_value;
+			if adopted {
+				record_hydration_target_adoption(&binding);
+			}
+			adopted
 		};
 		let option_observer = install_select_option_observer(&element, &binding);
 		let effect = install_effect(element, binding, true, state);
@@ -240,20 +280,26 @@ fn install_select_option_observer(
 	})
 }
 
-fn select_has_option_value(element: &Element, value: &ControlValue) -> bool {
-	let ControlValue::Text(value) = value else {
-		return true;
-	};
+fn select_has_option_values(element: &Element, value: &ControlValue) -> bool {
 	let Some(select) = element.as_web_sys().dyn_ref::<web_sys::HtmlSelectElement>() else {
 		return true;
 	};
 	let options = select.options();
-	(0..options.length()).any(|index| {
-		options
-			.item(index)
-			.and_then(|option| option.dyn_into::<web_sys::HtmlOptionElement>().ok())
-			.is_some_and(|option| option.value() == *value)
-	})
+	let available = (0..options.length())
+		.filter_map(|index| {
+			options
+				.item(index)
+				.and_then(|option| option.dyn_into::<web_sys::HtmlOptionElement>().ok())
+				.map(|option| option.value())
+		})
+		.collect::<Vec<_>>();
+	match value {
+		ControlValue::Text(value) => available.iter().any(|option| option == value),
+		ControlValue::SelectedValues(values) => values
+			.iter()
+			.all(|value| available.iter().any(|option| option == value)),
+		ControlValue::Checked(_) => true,
+	}
 }
 
 fn install_effect(

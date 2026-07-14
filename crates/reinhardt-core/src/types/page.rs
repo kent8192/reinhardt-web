@@ -1014,10 +1014,10 @@ impl Page {
 				output.push_str(el.tag_name());
 				let binding = el.bound_control();
 				let binding_value = binding.map(ControlBinding::read);
-				let projects_value = el.tag_name() == "input"
+				let projects_value = el.tag_name().eq_ignore_ascii_case("input")
 					&& matches!(binding_value, Some(ControlValue::Text(_)));
 				let projects_checked = matches!(binding_value, Some(ControlValue::Checked(true)));
-				let projects_selected = el.tag_name() == "option"
+				let projects_selected = el.tag_name().eq_ignore_ascii_case("option")
 					&& selection.is_some_and(|selection| selection.matches(el));
 
 				for (name, value) in el.attrs() {
@@ -1038,7 +1038,7 @@ impl Page {
 					output.push('"');
 				}
 				if let Some(ControlValue::Text(value)) = &binding_value
-					&& el.tag_name() == "input"
+					&& el.tag_name().eq_ignore_ascii_case("input")
 				{
 					output.push_str(" value=\"");
 					output.push_str(&html_escape(value));
@@ -1055,12 +1055,12 @@ impl Page {
 					output.push_str(" />");
 				} else {
 					output.push('>');
-					if el.tag_name() == "textarea"
+					if el.tag_name().eq_ignore_ascii_case("textarea")
 						&& let Some(ControlValue::Text(value)) = &binding_value
 					{
 						output.push_str(&html_escape(value));
 					} else {
-						let child_selection = if el.tag_name() == "select" {
+						let child_selection = if el.tag_name().eq_ignore_ascii_case("select") {
 							StringRenderSelection::from_binding(binding, binding_value.as_ref())
 						} else {
 							None
@@ -1129,7 +1129,10 @@ impl Page {
 
 #[derive(Clone)]
 enum StringRenderSelection {
-	One(String),
+	One {
+		value: String,
+		matched: std::cell::Cell<bool>,
+	},
 	Many(Vec<String>),
 }
 
@@ -1139,9 +1142,10 @@ impl StringRenderSelection {
 		value: Option<&ControlValue>,
 	) -> Option<Self> {
 		match (binding.map(ControlBinding::kind), value) {
-			(Some(ControlKind::SelectOne), Some(ControlValue::Text(value))) => {
-				Some(Self::One(value.clone()))
-			}
+			(Some(ControlKind::SelectOne), Some(ControlValue::Text(value))) => Some(Self::One {
+				value: value.clone(),
+				matched: std::cell::Cell::new(false),
+			}),
 			(Some(ControlKind::SelectMany), Some(ControlValue::SelectedValues(values))) => {
 				Some(Self::Many(values.clone()))
 			}
@@ -1155,46 +1159,59 @@ impl StringRenderSelection {
 			.iter()
 			.find(|(name, _)| name.as_ref() == "value")
 			.map(|(_, value)| value.as_ref().to_owned())
-			.unwrap_or_else(|| {
-				option
-					.child_views()
-					.iter()
-					.map(Self::text_content)
-					.collect()
-			});
+			.unwrap_or_else(|| Self::normalize_option_text(option));
 		match self {
-			Self::One(selected) => selected == &value,
+			Self::One {
+				value: selected,
+				matched,
+			} => selected == &value && !matched.replace(true),
 			Self::Many(selected) => selected.iter().any(|selected| selected == &value),
 		}
 	}
 
-	fn text_content(page: &Page) -> String {
+	fn normalize_option_text(option: &PageElement) -> String {
+		Self::text_content_without_script(&Page::Element(option.clone()))
+			.split_ascii_whitespace()
+			.collect::<Vec<_>>()
+			.join(" ")
+	}
+
+	fn text_content_without_script(page: &Page) -> String {
 		match page {
-			Page::Text(text) => text.to_string(),
+			Page::Element(element) if element.tag_name().eq_ignore_ascii_case("script") => {
+				String::new()
+			}
 			Page::Element(element) => element
 				.child_views()
 				.iter()
-				.map(Self::text_content)
+				.map(Self::text_content_without_script)
 				.collect(),
-			Page::Fragment(children) => children.iter().map(Self::text_content).collect(),
+			Page::Text(text) => text.to_string(),
+			Page::Fragment(children) => children
+				.iter()
+				.map(Self::text_content_without_script)
+				.collect(),
 			Page::KeyedFragment(children) => children
 				.iter()
-				.map(|(_, child)| Self::text_content(child))
+				.map(|(_, child)| Self::text_content_without_script(child))
 				.collect(),
-			Page::Outlet(outlet) => outlet.child().map(Self::text_content).unwrap_or_default(),
+			Page::Outlet(outlet) => outlet
+				.child()
+				.map(Self::text_content_without_script)
+				.unwrap_or_default(),
 			Page::Empty => String::new(),
-			Page::WithHead { view, .. } => Self::text_content(view),
+			Page::WithHead { view, .. } => Self::text_content_without_script(view),
 			Page::ReactiveIf(reactive_if) => {
 				let view = if (reactive_if.condition)() {
 					(reactive_if.then_view)()
 				} else {
 					(reactive_if.else_view)()
 				};
-				Self::text_content(&view)
+				Self::text_content_without_script(&view)
 			}
-			Page::Reactive(reactive) => Self::text_content(&reactive.render()),
-			Page::Suspense(node) => Self::text_content(&node.render_branch()),
-			Page::Deferred(node) => Self::text_content(&node.content()),
+			Page::Reactive(reactive) => Self::text_content_without_script(&reactive.render()),
+			Page::Suspense(node) => Self::text_content_without_script(&node.render_branch()),
+			Page::Deferred(node) => Self::text_content_without_script(&node.content()),
 		}
 	}
 }
@@ -1567,6 +1584,41 @@ mod tests {
 		assert_eq!(
 			multiple.render_to_string(),
 			"<select multiple=\"multiple\"><option value=\"rust\" selected=\"selected\">Rust</option><option>WebAssembly</option></select>"
+		);
+	}
+
+	#[test]
+	fn render_to_string_projects_bound_select_only_once() {
+		let select = PageElement::new("SELECT")
+			.control_binding(ControlBinding::select_one(Signal::new("Rust".to_owned())))
+			.child(
+				PageElement::new("OPTION")
+					.attr("value", "Rust")
+					.child("First"),
+			)
+			.child(
+				PageElement::new("option")
+					.attr("value", "Rust")
+					.child("Second"),
+			)
+			.into_page();
+
+		assert_eq!(
+			select.render_to_string(),
+			"<SELECT><OPTION value=\"Rust\" selected=\"selected\">First</OPTION><option value=\"Rust\">Second</option></SELECT>"
+		);
+	}
+
+	#[test]
+	fn render_to_string_normalizes_inferred_bound_option_value() {
+		let select = PageElement::new("select")
+			.control_binding(ControlBinding::select_one(Signal::new("Rust".to_owned())))
+			.child(PageElement::new("option").child(" \tRust\n"))
+			.into_page();
+
+		assert_eq!(
+			select.render_to_string(),
+			"<select><option selected=\"selected\"> \tRust\n</option></select>"
 		);
 	}
 
