@@ -94,7 +94,11 @@ pub fn use_transition() -> TransitionState {
 
 	let start_transition: StartTransitionFn = {
 		Rc::new(RefCell::new(Box::new(move |f: Box<dyn FnOnce()>| {
-			is_pending.set(true);
+			let Ok(Ok(())) = reinhardt_core::reactive::scope::enter_scope(owner_scope, || {
+				is_pending.try_set(true)
+			}) else {
+				return;
+			};
 
 			#[cfg(wasm)]
 			{
@@ -282,6 +286,17 @@ mod tests {
 		let scope_to_dispose = Rc::clone(&scope);
 
 		transition.start_transition(move || scope_to_dispose.dispose());
+	}
+
+	#[cfg(native)]
+	#[test]
+	#[serial]
+	fn transition_start_after_scope_disposal_does_not_panic() {
+		let scope = reinhardt_core::reactive::ReactiveScope::new();
+		let transition = scope.enter(use_transition);
+		scope.dispose();
+
+		transition.start_transition(|| panic!("disposed transition must not run"));
 	}
 
 	#[cfg(wasm)]

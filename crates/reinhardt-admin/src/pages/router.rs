@@ -75,6 +75,7 @@ pub enum AdminRoute {
 struct GlobalRouter {
 	scope: ReactiveScope,
 	router: ClientRouter,
+	render_scope: RefCell<Option<ReactiveScope>>,
 }
 
 thread_local! {
@@ -144,8 +145,13 @@ pub(crate) fn get_login_url() -> String {
 pub fn init_global_router() {
 	let scope = ReactiveScope::new();
 	let router = scope.enter(init_router);
-	let previous =
-		ROUTER.with(|stored| stored.borrow_mut().replace(GlobalRouter { scope, router }));
+	let previous = ROUTER.with(|stored| {
+		stored.borrow_mut().replace(GlobalRouter {
+			scope,
+			router,
+			render_scope: RefCell::new(None),
+		})
+	});
 	drop(previous);
 }
 
@@ -196,6 +202,24 @@ where
 	F: FnOnce(&ClientRouter) -> R,
 {
 	try_with_router(f).expect("Router not initialized. Call init_global_router() first.")
+}
+
+/// Renders the current route in a scope owned by the mounted admin page.
+///
+/// Router navigation signals remain in the router scope, while route-local
+/// signals, resources, and page arena nodes are disposed before the next mount.
+pub fn render_current_route() -> Page {
+	ROUTER.with(|stored| {
+		let stored = stored.borrow();
+		let stored = stored
+			.as_ref()
+			.expect("Router not initialized. Call init_global_router() first.");
+		let render_scope = ReactiveScope::new();
+		let page = render_scope.enter(|| stored.router.render_current());
+		let previous = stored.render_scope.borrow_mut().replace(render_scope);
+		drop(previous);
+		page
+	})
 }
 
 /// Dashboard view component for router

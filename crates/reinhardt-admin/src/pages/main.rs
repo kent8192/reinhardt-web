@@ -9,7 +9,7 @@ use web_sys::{Event, HtmlElement, window};
 
 fn render_current_route(app_element: &web_sys::Element) -> Result<(), JsValue> {
 	cleanup_reactive_nodes();
-	let view = router::with_router(|r| r.render_current());
+	let view = router::render_current_route();
 	app_element.set_inner_html("");
 	let wrapper = Element::new(app_element.clone());
 	view.mount(&wrapper)

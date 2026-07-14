@@ -106,7 +106,8 @@ impl NavigationSubscription {
 		F: Fn(&str, &HashMap<String, String>) + 'static,
 	{
 		let listener = std::rc::Rc::new(NavigationListener {
-			owner_scope: current_scope_id(),
+			owner_scope: current_scope_id()
+				.or_else(|| router._navigation_scope.as_ref().map(|scope| scope.id())),
 			callback: Box::new(listener),
 		});
 		router

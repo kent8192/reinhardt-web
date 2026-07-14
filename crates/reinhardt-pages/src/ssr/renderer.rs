@@ -784,18 +784,17 @@ impl SsrRenderer {
 		let render = scope_context(Rc::clone(&context), async move {
 			self.begin_render(true);
 			let render_start = self.deterministic_render_snapshot();
-			{
-				let discovery_scope = Rc::clone(&reactive_scope);
-				scope_reactive_node_store(async {
-					let discovery_view = discovery_scope.enter(&mut view_factory);
-					let _ = self
-						.render_async_page(&discovery_view, AsyncRenderMode::Discovery)
-						.await;
-				})
-				.await;
-			}
+			let discovery_scope = Rc::clone(&reactive_scope);
+			scope_reactive_node_store(async {
+				let discovery_view = discovery_scope.enter(&mut view_factory);
+				let _ = self
+					.render_async_page(&discovery_view, AsyncRenderMode::Discovery)
+					.await;
+			})
+			.await;
 
 			resolve_external_resources(&context).await;
+			drop(discovery_scope);
 			let (_, content, boundaries) = loop {
 				self.restore_deterministic_render_snapshot(render_start);
 				self.begin_buffered_render_pass();
@@ -1051,19 +1050,18 @@ impl SsrRenderer {
 				return (view, content, String::new());
 			}
 
-			{
-				let discovery_scope = Rc::clone(&reactive_scope);
-				scope_reactive_node_store(async {
-					let discovery_view = discovery_scope.enter(&mut view_factory);
-					let _ = self
-						.render_async_page(&discovery_view, AsyncRenderMode::Discovery)
-						.await;
-				})
-				.await;
-			}
+			let discovery_scope = Rc::clone(&reactive_scope);
+			scope_reactive_node_store(async {
+				let discovery_view = discovery_scope.enter(&mut view_factory);
+				let _ = self
+					.render_async_page(&discovery_view, AsyncRenderMode::Discovery)
+					.await;
+			})
+			.await;
 
 			resolve_external_resources(&context).await;
 			resolve_pending_resources(&context).await;
+			drop(discovery_scope);
 
 			loop {
 				self.restore_deterministic_render_snapshot(render_start);
