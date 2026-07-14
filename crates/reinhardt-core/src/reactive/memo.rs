@@ -388,6 +388,34 @@ mod tests {
 	}
 
 	#[test]
+	#[serial(reactive_runtime)]
+	fn memo_recomputation_disposes_nodes_created_by_the_previous_computation() {
+		crate::reactive::ReactiveScope::run(|| {
+			let source = Signal::new(0);
+			let nested_runs = Rc::new(RefCell::new(0));
+			let source_for_memo = source;
+			let nested_runs_for_memo = Rc::clone(&nested_runs);
+			let memo = Memo::new(move || {
+				let source_for_nested = source_for_memo;
+				let nested_runs = Rc::clone(&nested_runs_for_memo);
+				let _nested = super::super::effect::Effect::new(move || {
+					let _ = source_for_nested.get();
+					*nested_runs.borrow_mut() += 1;
+				});
+				0
+			});
+
+			assert_eq!(*nested_runs.borrow(), 1);
+			memo.mark_dirty();
+			assert_eq!(memo.get(), 0);
+			assert_eq!(*nested_runs.borrow(), 2);
+			source.set(1);
+			with_runtime(|rt| rt.flush_updates());
+			assert_eq!(*nested_runs.borrow(), 3);
+		});
+	}
+
+	#[test]
 	#[serial]
 	fn test_memo_creation() {
 		crate::reactive::ReactiveScope::run(|| {

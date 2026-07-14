@@ -482,6 +482,36 @@ mod tests {
 	}
 
 	#[test]
+	#[serial(reactive_runtime)]
+	fn effect_rerun_disposes_nodes_created_by_its_previous_run() {
+		crate::reactive::ReactiveScope::run(|| {
+			let trigger = Signal::new(0);
+			let source = Signal::new(0);
+			let nested_runs = Rc::new(Cell::new(0));
+			let trigger_for_effect = trigger;
+			let source_for_effect = source;
+			let nested_runs_for_effect = Rc::clone(&nested_runs);
+			let _effect = Effect::new(move || {
+				let _ = trigger_for_effect.get();
+				let source_for_nested = source_for_effect;
+				let nested_runs = Rc::clone(&nested_runs_for_effect);
+				let _nested = Effect::new(move || {
+					let _ = source_for_nested.get();
+					nested_runs.set(nested_runs.get() + 1);
+				});
+			});
+
+			assert_eq!(nested_runs.get(), 1);
+			trigger.set(1);
+			with_runtime(|rt| rt.flush_updates());
+			assert_eq!(nested_runs.get(), 2);
+			source.set(1);
+			with_runtime(|rt| rt.flush_updates());
+			assert_eq!(nested_runs.get(), 3);
+		});
+	}
+
+	#[test]
 	#[serial]
 	fn test_effect_with_multiple_signals() {
 		crate::reactive::ReactiveScope::run(|| {
