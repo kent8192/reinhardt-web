@@ -999,11 +999,15 @@ impl Page {
 	/// This is the core SSR method that converts the view tree to HTML.
 	pub fn render_to_string(&self) -> String {
 		let mut output = String::new();
-		self.render_to_string_inner(&mut output);
+		self.render_to_string_inner(&mut output, None);
 		output
 	}
 
-	fn render_to_string_inner(&self, output: &mut String) {
+	fn render_to_string_inner(
+		&self,
+		output: &mut String,
+		selection: Option<&StringRenderSelection>,
+	) {
 		match self {
 			Page::Element(el) => {
 				output.push('<');
@@ -1013,12 +1017,15 @@ impl Page {
 				let projects_value = el.tag_name() == "input"
 					&& matches!(binding_value, Some(ControlValue::Text(_)));
 				let projects_checked = matches!(binding_value, Some(ControlValue::Checked(true)));
+				let projects_selected = el.tag_name() == "option"
+					&& selection.is_some_and(|selection| selection.matches(el));
 
 				for (name, value) in el.attrs() {
 					// Skip boolean attributes with falsy values (empty, "false", "0")
 					let name_str: &str = name.as_ref();
 					if (name_str == "value" && projects_value)
 						|| (name_str == "checked" && binding.is_some())
+						|| (name_str == "selected" && selection.is_some())
 						|| (BOOLEAN_ATTRS.contains(&name_str) && !is_boolean_attr_truthy(value))
 					{
 						continue;
@@ -1040,6 +1047,9 @@ impl Page {
 				if projects_checked {
 					output.push_str(" checked=\"checked\"");
 				}
+				if projects_selected {
+					output.push_str(" selected=\"selected\"");
+				}
 
 				if el.is_void() {
 					output.push_str(" />");
@@ -1050,8 +1060,16 @@ impl Page {
 					{
 						output.push_str(&html_escape(value));
 					} else {
+						let child_selection = if el.tag_name() == "select" {
+							StringRenderSelection::from_binding(binding, binding_value.as_ref())
+						} else {
+							None
+						};
 						for child in el.child_views() {
-							child.render_to_string_inner(output);
+							child.render_to_string_inner(
+								output,
+								child_selection.as_ref().or(selection),
+							);
 						}
 					}
 					output.push_str("</");
@@ -1064,23 +1082,23 @@ impl Page {
 			}
 			Page::Fragment(children) => {
 				for child in children {
-					child.render_to_string_inner(output);
+					child.render_to_string_inner(output, selection);
 				}
 			}
 			Page::KeyedFragment(children) => {
 				for (_, child) in children {
-					child.render_to_string_inner(output);
+					child.render_to_string_inner(output, selection);
 				}
 			}
 			Page::Outlet(outlet) => {
 				if let Some(child) = outlet.child() {
-					child.render_to_string_inner(output);
+					child.render_to_string_inner(output, selection);
 				}
 			}
 			Page::Empty => {}
 			Page::WithHead { view, .. } => {
 				// The head is extracted separately during SSR; here we just render the content
-				view.render_to_string_inner(output);
+				view.render_to_string_inner(output, selection);
 			}
 			Page::ReactiveIf(reactive_if) => {
 				// For SSR, evaluate condition once and render the appropriate branch
@@ -1090,21 +1108,93 @@ impl Page {
 				} else {
 					(reactive_if.else_view)()
 				};
-				view.render_to_string_inner(output);
+				view.render_to_string_inner(output, selection);
 			}
 			Page::Reactive(reactive) => {
 				// For SSR, evaluate render once and render the result
 				let view = reactive.render();
-				view.render_to_string_inner(output);
+				view.render_to_string_inner(output, selection);
 			}
 			Page::Suspense(node) => {
 				let view = node.render_branch();
-				view.render_to_string_inner(output);
+				view.render_to_string_inner(output, selection);
 			}
 			Page::Deferred(node) => {
 				let view = node.content();
-				view.render_to_string_inner(output);
+				view.render_to_string_inner(output, selection);
 			}
+		}
+	}
+}
+
+#[derive(Clone)]
+enum StringRenderSelection {
+	One(String),
+	Many(Vec<String>),
+}
+
+impl StringRenderSelection {
+	fn from_binding(
+		binding: Option<&ControlBinding>,
+		value: Option<&ControlValue>,
+	) -> Option<Self> {
+		match (binding.map(ControlBinding::kind), value) {
+			(Some(ControlKind::SelectOne), Some(ControlValue::Text(value))) => {
+				Some(Self::One(value.clone()))
+			}
+			(Some(ControlKind::SelectMany), Some(ControlValue::SelectedValues(values))) => {
+				Some(Self::Many(values.clone()))
+			}
+			_ => None,
+		}
+	}
+
+	fn matches(&self, option: &PageElement) -> bool {
+		let value = option
+			.attrs()
+			.iter()
+			.find(|(name, _)| name.as_ref() == "value")
+			.map(|(_, value)| value.as_ref().to_owned())
+			.unwrap_or_else(|| {
+				option
+					.child_views()
+					.iter()
+					.map(Self::text_content)
+					.collect()
+			});
+		match self {
+			Self::One(selected) => selected == &value,
+			Self::Many(selected) => selected.iter().any(|selected| selected == &value),
+		}
+	}
+
+	fn text_content(page: &Page) -> String {
+		match page {
+			Page::Text(text) => text.to_string(),
+			Page::Element(element) => element
+				.child_views()
+				.iter()
+				.map(Self::text_content)
+				.collect(),
+			Page::Fragment(children) => children.iter().map(Self::text_content).collect(),
+			Page::KeyedFragment(children) => children
+				.iter()
+				.map(|(_, child)| Self::text_content(child))
+				.collect(),
+			Page::Outlet(outlet) => outlet.child().map(Self::text_content).unwrap_or_default(),
+			Page::Empty => String::new(),
+			Page::WithHead { view, .. } => Self::text_content(view),
+			Page::ReactiveIf(reactive_if) => {
+				let view = if (reactive_if.condition)() {
+					(reactive_if.then_view)()
+				} else {
+					(reactive_if.else_view)()
+				};
+				Self::text_content(&view)
+			}
+			Page::Reactive(reactive) => Self::text_content(&reactive.render()),
+			Page::Suspense(node) => Self::text_content(&node.render_branch()),
+			Page::Deferred(node) => Self::text_content(&node.content()),
 		}
 	}
 }
@@ -1438,6 +1528,46 @@ mod tests {
 			"<input type=\"text\" value=\"current\" />"
 		);
 		assert_eq!(textarea.render_to_string(), "<textarea>current</textarea>");
+	}
+
+	#[test]
+	fn render_to_string_projects_bound_select_option_state() {
+		let single = PageElement::new("select")
+			.control_binding(ControlBinding::select_one(Signal::new("wasm".to_owned())))
+			.child(
+				PageElement::new("option")
+					.attr("value", "rust")
+					.child("Rust"),
+			)
+			.child(
+				PageElement::new("option")
+					.attr("value", "wasm")
+					.attr("selected", "selected")
+					.child("WebAssembly"),
+			)
+			.into_page();
+		let multiple = PageElement::new("select")
+			.attr("multiple", "multiple")
+			.control_binding(ControlBinding::select_many(Signal::new(vec![
+				"rust".to_owned(),
+				"wasm".to_owned(),
+			])))
+			.child(
+				PageElement::new("option")
+					.attr("value", "rust")
+					.child("Rust"),
+			)
+			.child(PageElement::new("option").child("WebAssembly"))
+			.into_page();
+
+		assert_eq!(
+			single.render_to_string(),
+			"<select><option value=\"rust\">Rust</option><option value=\"wasm\" selected=\"selected\">WebAssembly</option></select>"
+		);
+		assert_eq!(
+			multiple.render_to_string(),
+			"<select multiple=\"multiple\"><option value=\"rust\" selected=\"selected\">Rust</option><option>WebAssembly</option></select>"
+		);
 	}
 
 	#[test]

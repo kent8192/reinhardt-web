@@ -821,6 +821,12 @@ fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::No
 					if BOOLEAN_ATTRS.contains(&name_str) && !is_boolean_attr_truthy(&value) {
 						continue;
 					}
+					if crate::component::into_page::controlled_attribute_is_overridden(
+						control_binding.as_ref(),
+						name_str,
+					) {
+						continue;
+					}
 					let _ = element.set_attribute(&name, &value);
 				}
 
