@@ -221,6 +221,82 @@ expect_clean "metadata string with escaped quotes and fragment"
 
 reset_fixture
 cat >> "$FIXTURE/Cargo.toml" <<'EOF'
+errors = {
+  git = "https://example.com/repository#main",
+  package = "anyhow",
+}
+EOF
+expect_rejected "multiline package alias in dependency table" 'Cargo.toml:9:  package = "anyhow",'
+
+reset_fixture
+cat >> "$FIXTURE/Cargo.toml" <<'EOF'
+errors = { version = "1",
+  package = "anyhow",
+}
+EOF
+expect_rejected "multiline package alias after opening-line field" 'Cargo.toml:8:  package = "anyhow",'
+
+reset_fixture
+cat > "$FIXTURE/Cargo.toml" <<'EOF'
+dependencies.errors = {
+  version = "1",
+  package = "anyhow",
+}
+
+[package]
+name = "scanner-fixture"
+version = "0.1.0"
+EOF
+expect_rejected "multiline root dotted package alias" 'Cargo.toml:3:  package = "anyhow",'
+
+reset_fixture
+cat > "$FIXTURE/Cargo.toml" <<'EOF'
+workspace.dependencies.errors = {
+  version = "1",
+  package = "anyhow",
+}
+
+[workspace]
+members = []
+EOF
+expect_rejected "multiline workspace dotted package alias" 'Cargo.toml:3:  package = "anyhow",'
+
+reset_fixture
+cat > "$FIXTURE/Cargo.toml" <<'EOF'
+target.'cfg(unix)'.dependencies.errors = {
+  version = "1",
+  package = "anyhow",
+}
+
+[package]
+name = "scanner-fixture"
+version = "0.1.0"
+EOF
+expect_rejected "multiline target dotted package alias" 'Cargo.toml:3:  package = "anyhow",'
+
+reset_fixture
+cat >> "$FIXTURE/Cargo.toml" <<'EOF'
+
+[package.metadata]
+errors = {
+  git = "https://example.com/repository#main",
+  package = "anyhow",
+}
+EOF
+expect_clean "multiline metadata package value"
+
+reset_fixture
+cat >> "$FIXTURE/Cargo.toml" <<'EOF'
+errors = {
+  git = "https://example.com/repository#main",
+  # package = "anyhow",
+  version = "1",
+}
+EOF
+expect_clean "multiline dependency package text in a real comment"
+
+reset_fixture
+cat >> "$FIXTURE/Cargo.toml" <<'EOF'
 
 [dependencies.errors]
 package = "anyhow"
