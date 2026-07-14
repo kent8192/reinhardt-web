@@ -558,6 +558,19 @@ pub enum Constraint {
 }
 
 impl Constraint {
+	pub(crate) fn name(&self) -> &str {
+		match self {
+			Constraint::PrimaryKey { name, .. }
+			| Constraint::ForeignKey { name, .. }
+			| Constraint::Unique { name, .. }
+			| Constraint::Check { name, .. }
+			| Constraint::EnumDomain { name, .. }
+			| Constraint::OneToOne { name, .. }
+			| Constraint::ManyToMany { name, .. }
+			| Constraint::Exclude { name, .. } => name,
+		}
+	}
+
 	fn to_sql_for_dialect(&self, dialect: &SqlDialect) -> String {
 		let Constraint::EnumDomain {
 			name,
@@ -928,6 +941,13 @@ pub enum Operation {
 		table: String,
 		/// The constraint sql.
 		constraint_sql: String,
+	},
+	/// Adds a typed constraint with dialect-aware SQL rendering.
+	AddConstraintDefinition {
+		/// The table.
+		table: String,
+		/// The typed constraint definition.
+		constraint: Constraint,
 	},
 	/// Generated-column dependency constraint repair applied only when migrating forward.
 	AddConstraintRepair {
@@ -1526,6 +1546,7 @@ impl Operation {
 				}
 			}
 			Operation::AddConstraint { .. }
+			| Operation::AddConstraintDefinition { .. }
 			| Operation::AddConstraintRepair { .. }
 			| Operation::RestoreConstraintOnRollback { .. }
 			| Operation::DropConstraint { .. }
@@ -1754,40 +1775,6 @@ impl Operation {
 			SqlDialect::Sqlite => SqliteQueryBuilder::new().escape_identifier(ident),
 			SqlDialect::Cockroachdb => CockroachDBQueryBuilder::new().escape_identifier(ident),
 		}
-	}
-
-	fn constraint_sql_for_dialect(constraint_sql: &str, dialect: &SqlDialect) -> String {
-		let Some(after_constraint) = constraint_sql.strip_prefix("CONSTRAINT ") else {
-			return constraint_sql.to_string();
-		};
-		let Some((name, check_body)) = after_constraint.split_once(" CHECK (") else {
-			return constraint_sql.to_string();
-		};
-		if !name.ends_with("_model_enum_check") {
-			return constraint_sql.to_string();
-		}
-		let Some(check_body) = check_body.strip_suffix(')') else {
-			return constraint_sql.to_string();
-		};
-		let Some((quoted_column, literals)) = check_body.split_once(" IN (") else {
-			return constraint_sql.to_string();
-		};
-		let Some(literals) = literals.strip_suffix(')') else {
-			return constraint_sql.to_string();
-		};
-		let Some(column) = quoted_column
-			.strip_prefix('"')
-			.and_then(|column| column.strip_suffix('"'))
-		else {
-			return constraint_sql.to_string();
-		};
-		let column = column.replace("\"\"", "\"");
-		format!(
-			"CONSTRAINT {} CHECK ({} IN ({}))",
-			name,
-			Self::quote_dialect_identifier(&column, dialect),
-			literals
-		)
 	}
 
 	fn query_column_type_to_sql(ty: &QueryColumnType, dialect: &SqlDialect) -> String {
@@ -2366,9 +2353,14 @@ impl Operation {
 				format!(
 					"ALTER TABLE {} ADD {};",
 					Self::quote_schema_identifier(table, dialect),
-					Self::constraint_sql_for_dialect(constraint_sql, dialect)
+					constraint_sql
 				)
 			}
+			Operation::AddConstraintDefinition { table, constraint } => format!(
+				"ALTER TABLE {} ADD {};",
+				Self::quote_schema_identifier(table, dialect),
+				constraint.to_sql_for_dialect(dialect)
+			),
 			Operation::RestoreConstraintOnRollback { .. } => {
 				"-- rollback-only generated-column constraint restore".to_string()
 			}
@@ -3175,6 +3167,11 @@ impl Operation {
 					quote_identifier(&constraint_name)
 				)]))
 			}
+			Operation::AddConstraintDefinition { table, constraint } => Ok(Some(vec![format!(
+				"ALTER TABLE {} DROP CONSTRAINT {};",
+				quote_identifier(table),
+				quote_identifier(constraint.name())
+			)])),
 			Operation::AddConstraintRepair { .. } => Ok(None),
 			Operation::RestoreConstraintOnRollback {
 				table,
@@ -3454,6 +3451,13 @@ impl Operation {
 					// Cannot reliably remove without constraint name extraction
 					// Constraints vector remains unchanged
 					let _ = model;
+				}
+			}
+			Operation::AddConstraintDefinition { table, constraint } => {
+				if let Some(model) = state.find_model_by_table_mut(table) {
+					model
+						.constraints
+						.retain(|definition| definition.name != constraint.name());
 				}
 			}
 			Operation::DropConstraint {
@@ -4524,6 +4528,7 @@ impl Operation {
 			Operation::DropColumn { .. }
 				| Operation::AlterColumn { .. }
 				| Operation::AddConstraint { .. }
+				| Operation::AddConstraintDefinition { .. }
 				| Operation::AddConstraintRepair { .. }
 				| Operation::DropConstraint { .. }
 		) || matches!(
@@ -4556,6 +4561,7 @@ impl Operation {
 					| Operation::AlterColumn { .. }
 					// AddConstraint → Reverse DropConstraint (requires recreation)
 					| Operation::AddConstraint { .. }
+					| Operation::AddConstraintDefinition { .. }
 					// DropConstraint → Reverse AddConstraint (requires recreation)
 					| Operation::DropConstraint { .. }
 					// RestoreConstraintOnRollback → Reverse AddConstraint (requires recreation)
@@ -4692,6 +4698,12 @@ impl Operation {
 					"Cannot extract constraint name from: {}",
 					constraint_sql
 				)))
+			}
+			Operation::AddConstraintDefinition { table, constraint } => {
+				Ok(Some(Operation::DropConstraint {
+					table: table.clone(),
+					constraint_name: constraint.name().to_string(),
+				}))
 			}
 			Operation::AddConstraintRepair { .. } => Ok(None),
 			Operation::RestoreConstraintOnRollback {
@@ -4918,6 +4930,13 @@ impl Operation {
 					"ALTER TABLE {} ADD {}",
 					quote_identifier(table),
 					constraint_sql
+				))
+			}
+			Operation::AddConstraintDefinition { table, constraint } => {
+				OperationStatement::RawSql(format!(
+					"ALTER TABLE {} ADD {}",
+					quote_identifier(table),
+					constraint.to_sql_for_dialect(&SqlDialect::Postgres)
 				))
 			}
 			Operation::RestoreConstraintOnRollback { .. } => OperationStatement::RawSql(
@@ -5592,6 +5611,7 @@ impl MigrationOperation for Operation {
 				new_name.to_lowercase()
 			)),
 			Operation::AddConstraint { table, .. }
+			| Operation::AddConstraintDefinition { table, .. }
 			| Operation::AddConstraintRepair { table, .. }
 			| Operation::RestoreConstraintOnRollback { table, .. } => {
 				Some(format!("add_constraint_{}", table.to_lowercase()))
@@ -5689,6 +5709,7 @@ impl MigrationOperation for Operation {
 				new_name,
 			} => format!("Rename column {} to {} on {}", old_name, new_name, table),
 			Operation::AddConstraint { table, .. }
+			| Operation::AddConstraintDefinition { table, .. }
 			| Operation::AddConstraintRepair { table, .. }
 			| Operation::RestoreConstraintOnRollback { table, .. } => {
 				format!("Add constraint on {}", table)
@@ -6267,14 +6288,42 @@ mod tests {
 				)],
 			},
 		};
-		let operation = Operation::AddConstraint {
+		let operation = Operation::AddConstraintDefinition {
 			table: "jobs".to_string(),
-			constraint_sql: constraint.to_string(),
+			constraint,
 		};
 
 		let sql = operation.to_sql(&SqlDialect::Mysql);
 
 		assert!(sql.contains("CHECK (`job_status` IN ('queued'))"), "{sql}");
+	}
+
+	#[test]
+	fn hashed_enum_domain_constraint_uses_mysql_identifier_quoting_when_added() {
+		let table = "model_enum_jobs_with_a_name_that_exceeds_postgres_identifier_limits";
+		let column = "job_status_with_a_name_that_exceeds_postgres_identifier_limits";
+		let name = truncate_identifier_with_hash(&format!("{table}_{column}_model_enum_check"));
+		let constraint = Constraint::EnumDomain {
+			name,
+			column: column.to_string(),
+			domain: crate::field_domain::FieldDomain::Enum {
+				repr: crate::field_domain::ModelEnumRepr::String,
+				values: vec![crate::field_domain::ModelEnumValue::String(
+					"queued".to_string(),
+				)],
+			},
+		};
+		let operation = Operation::AddConstraintDefinition {
+			table: table.to_string(),
+			constraint,
+		};
+
+		let sql = operation.to_sql(&SqlDialect::Mysql);
+
+		assert!(
+			sql.contains(&format!("CHECK (`{column}` IN ('queued'))")),
+			"{sql}"
+		);
 	}
 
 	#[test]

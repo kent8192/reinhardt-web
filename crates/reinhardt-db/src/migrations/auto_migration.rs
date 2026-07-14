@@ -246,6 +246,12 @@ impl AutoMigrationGenerator {
 
 				// Constraint operations
 				Operation::AddConstraint { .. } => None, // Cannot rollback without constraint name
+				Operation::AddConstraintDefinition { table, constraint } => {
+					Some(Operation::DropConstraint {
+						table: table.clone(),
+						constraint_name: constraint.name().to_string(),
+					})
+				}
 				Operation::AddConstraintRepair { .. } => None,
 				Operation::RestoreConstraintOnRollback {
 					table,

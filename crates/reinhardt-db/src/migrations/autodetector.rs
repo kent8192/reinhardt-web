@@ -1355,6 +1355,18 @@ impl ProjectState {
 						model.constraints.push(constraint);
 					}
 				}
+				Operation::AddConstraintDefinition { table, constraint } => {
+					if let Some(model) = self.find_model_by_table_mut(table) {
+						let constraint = Self::constraint_to_definition(constraint);
+						if !model
+							.constraints
+							.iter()
+							.any(|existing| existing.name == constraint.name)
+						{
+							model.constraints.push(constraint);
+						}
+					}
+				}
 				Operation::DropConstraint {
 					table,
 					constraint_name,
@@ -6059,6 +6071,7 @@ impl MigrationAutodetector {
 			| super::Operation::DropColumn { table, .. }
 			| super::Operation::RenameColumn { table, .. }
 			| super::Operation::AddConstraint { table, .. }
+			| super::Operation::AddConstraintDefinition { table, .. }
 			| super::Operation::AddConstraintRepair { table, .. }
 			| super::Operation::RestoreConstraintOnRollback { table, .. }
 			| super::Operation::DropConstraint { table, .. }
@@ -6144,6 +6157,9 @@ impl MigrationAutodetector {
 			| super::Operation::AddConstraintRepair { constraint_sql, .. }
 			| super::Operation::RestoreConstraintOnRollback { constraint_sql, .. } => {
 				Self::constraint_sql_references_table(constraint_sql, table_name)
+			}
+			super::Operation::AddConstraintDefinition { constraint, .. } => {
+				Self::constraint_references_table(constraint, table_name)
 			}
 			_ => false,
 		}
@@ -6651,14 +6667,18 @@ impl MigrationAutodetector {
 			let Some(to_model) = self.to_state.get_model(app_label, model_name) else {
 				continue;
 			};
-			let constraint_sql = constraint.to_constraint().to_string();
-			by_app
-				.entry(app_label.clone())
-				.or_default()
-				.push(super::Operation::AddConstraint {
+			let operation = if constraint.constraint_type == "enum_domain" {
+				super::Operation::AddConstraintDefinition {
 					table: to_model.table_name.clone(),
-					constraint_sql,
-				});
+					constraint: constraint.to_constraint(),
+				}
+			} else {
+				super::Operation::AddConstraint {
+					table: to_model.table_name.clone(),
+					constraint_sql: constraint.to_constraint().to_string(),
+				}
+			};
+			by_app.entry(app_label.clone()).or_default().push(operation);
 		}
 
 		// SetAutoIncrementValue for detected sequence resets.

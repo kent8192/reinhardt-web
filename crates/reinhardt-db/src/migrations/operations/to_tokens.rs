@@ -556,6 +556,14 @@ impl ToTokens for Operation {
 					}
 				});
 			}
+			Operation::AddConstraintDefinition { table, constraint } => {
+				tokens.extend(quote! {
+					Operation::AddConstraintDefinition {
+						table: #table.to_string(),
+						constraint: #constraint,
+					}
+				});
+			}
 			Operation::AddConstraintRepair {
 				table,
 				constraint_sql,
@@ -1409,6 +1417,21 @@ mod tests {
 		assert!(tokens.contains("domain : Some (FieldDomain :: Enum"));
 		assert!(tokens.contains("ModelEnumRepr :: String"));
 		assert!(tokens.contains("ModelEnumValue :: String (\"queued\" . to_string ())"));
+	}
+
+	#[test]
+	fn field_domain_tokens_preserve_i32_min() {
+		let domain = crate::field_domain::FieldDomain::Enum {
+			repr: crate::field_domain::ModelEnumRepr::I32,
+			values: vec![crate::field_domain::ModelEnumValue::I32(i32::MIN)],
+		};
+
+		let tokens = domain.to_token_stream().to_string();
+
+		assert!(
+			tokens.contains("ModelEnumValue :: I32 (- 2147483648i32)"),
+			"tokens must preserve i32::MIN: {tokens}"
+		);
 	}
 
 	#[test]

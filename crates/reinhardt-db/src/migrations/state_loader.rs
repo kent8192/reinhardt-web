@@ -2617,7 +2617,7 @@ pub fn migration() -> Migration {
 				default: None, generated: None,
 				domain: Some(FieldDomain::Enum {
 					repr: ModelEnumRepr::I32,
-					values: vec![ModelEnumValue::I32(-2), ModelEnumValue::I32(1)],
+					values: vec![ModelEnumValue::I32(-2147483648i32), ModelEnumValue::I32(1)],
 				}),
 			}],
 			constraints: vec![Constraint::EnumDomain {
@@ -2625,7 +2625,7 @@ pub fn migration() -> Migration {
 				column: "status".to_string(),
 				domain: FieldDomain::Enum {
 					repr: ModelEnumRepr::I32,
-					values: vec![ModelEnumValue::I32(-2), ModelEnumValue::I32(1)],
+					values: vec![ModelEnumValue::I32(-2147483648i32), ModelEnumValue::I32(1)],
 				},
 			}],
 			without_rowid: None, interleave_in_parent: None, partition: None,
@@ -2648,7 +2648,7 @@ pub fn migration() -> Migration {
 			Some(crate::field_domain::FieldDomain::Enum {
 				repr: crate::field_domain::ModelEnumRepr::I32,
 				values: vec![
-					crate::field_domain::ModelEnumValue::I32(-2),
+					crate::field_domain::ModelEnumValue::I32(i32::MIN),
 					crate::field_domain::ModelEnumValue::I32(1),
 				],
 			})

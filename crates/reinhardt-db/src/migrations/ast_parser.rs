@@ -302,6 +302,15 @@ fn parse_single_operation(expr: &Expr) -> Option<super::Operation> {
 					constraint_sql,
 				});
 			}
+			"AddConstraintDefinition" => {
+				let table = extract_string_field(&expr_struct.fields, "table")?;
+				let constraint = expr_struct.fields.iter().find_map(|field| {
+					matches!(&field.member, syn::Member::Named(ident) if ident == "constraint")
+						.then(|| parse_single_constraint(&field.expr))
+						.flatten()
+				})?;
+				return Some(super::Operation::AddConstraintDefinition { table, constraint });
+			}
 			"AddConstraintRepair" => {
 				let table = extract_string_field(&expr_struct.fields, "table")?;
 				let constraint_sql = extract_string_field(&expr_struct.fields, "constraint_sql")?;
@@ -966,13 +975,17 @@ fn parse_model_enum_value(expr: &Expr) -> Option<crate::field_domain::ModelEnumV
 }
 
 fn parse_i32_expr(expr: &Expr) -> Option<i32> {
+	i32::try_from(parse_signed_integer_expr(expr)?).ok()
+}
+
+fn parse_signed_integer_expr(expr: &Expr) -> Option<i128> {
 	match expr {
 		Expr::Lit(syn::ExprLit {
 			lit: syn::Lit::Int(value),
 			..
 		}) => value.base10_parse().ok(),
 		Expr::Unary(unary) if matches!(unary.op, syn::UnOp::Neg(_)) => {
-			parse_i32_expr(&unary.expr)?.checked_neg()
+			parse_signed_integer_expr(&unary.expr)?.checked_neg()
 		}
 		_ => None,
 	}
@@ -1642,7 +1655,7 @@ pub(super) fn migration() -> Migration {
 				column: "status".to_string(),
 				domain: FieldDomain::Enum {
 					repr: ModelEnumRepr::I32,
-					values: vec![ModelEnumValue::I32(-2), ModelEnumValue::I32(1)],
+					values: vec![ModelEnumValue::I32(-2147483648i32), ModelEnumValue::I32(1)],
 				},
 			}],
 			without_rowid: None, interleave_in_parent: None, partition: None,
@@ -1668,7 +1681,7 @@ pub(super) fn migration() -> Migration {
 				column: "status".to_string(),
 				domain: FieldDomain::Enum {
 					repr: ModelEnumRepr::I32,
-					values: vec![ModelEnumValue::I32(-2), ModelEnumValue::I32(1)],
+					values: vec![ModelEnumValue::I32(i32::MIN), ModelEnumValue::I32(1)],
 				},
 			}]
 		);

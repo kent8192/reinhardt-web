@@ -156,11 +156,17 @@ fn enum_domain_value_replacement_recreates_the_constraint() {
 	assert!(
 		matches!(
 			&operations[1],
-			Operation::AddConstraint {
+			Operation::AddConstraintDefinition {
 				table,
-				constraint_sql,
+				constraint: reinhardt_db::migrations::Constraint::EnumDomain {
+					name,
+					column,
+					domain,
+				},
 			} if table == "model_enum_state_jobs"
-				&& constraint_sql == "CONSTRAINT model_enum_state_jobs_job_status_model_enum_check CHECK (\"job_status\" IN ('executing', 'queued'))"
+				&& name == "model_enum_state_jobs_job_status_model_enum_check"
+				&& column == "job_status"
+				&& domain == &string_domain(&["executing", "queued"])
 		),
 		"operations = {operations:?}"
 	);
