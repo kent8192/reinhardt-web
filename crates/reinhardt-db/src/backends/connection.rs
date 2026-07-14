@@ -15,6 +15,17 @@ use super::dialect::PostgresBackend;
 #[cfg(feature = "postgres")]
 const SQLSTATE_INVALID_CATALOG_NAME: &str = "3D000";
 
+#[cfg(feature = "postgres")]
+fn map_postgres_initial_connect_error(error: sqlx::Error) -> DatabaseError {
+	match error {
+		sqlx::Error::PoolTimedOut => DatabaseError::new(
+			DatabaseErrorKind::Connection,
+			"Initial PostgreSQL connection timed out",
+		),
+		error => map_sqlx_error(error),
+	}
+}
+
 #[cfg(feature = "sqlite")]
 use super::dialect::SqliteBackend;
 
@@ -133,7 +144,7 @@ impl DatabaseConnection {
 	) -> Result<Self> {
 		let pool = Self::build_postgres_pool(url, pool_size)
 			.await
-			.map_err(map_sqlx_error)?;
+			.map_err(map_postgres_initial_connect_error)?;
 		let is_cockroachdb = Self::probe_cockroachdb(&pool).await;
 
 		Ok(Self {
@@ -251,7 +262,7 @@ impl DatabaseConnection {
 					sqlx::Error::Database(db_err) if db_err.code().as_deref() == Some(SQLSTATE_INVALID_CATALOG_NAME)
 				);
 				if !is_db_not_found {
-					return Err(map_sqlx_error(e).into());
+					return Err(map_postgres_initial_connect_error(e).into());
 				}
 				// Database doesn't exist, try to create it
 			}
@@ -269,7 +280,7 @@ impl DatabaseConnection {
 			.acquire_timeout(Duration::from_secs(10))
 			.connect(&admin_url)
 			.await
-			.map_err(map_sqlx_error)?;
+			.map_err(map_postgres_initial_connect_error)?;
 
 		// Create the database (escape double quotes to prevent SQL injection)
 		let create_sql = format!("CREATE DATABASE \"{}\"", db_name.replace('"', "\"\""));
