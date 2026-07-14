@@ -23,7 +23,6 @@ serde_json = { workspace = true }
 async-trait = { workspace = true }
 inventory = "0.3"
 thiserror = { workspace = true }
-anyhow = { workspace = true }
 serde_urlencoded = { workspace = true }
 http = { workspace = true }
 base64 = "0.22"
