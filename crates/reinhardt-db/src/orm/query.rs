@@ -1529,6 +1529,7 @@ where
 			target_alias: None,
 			on_condition: condition,
 		});
+		self.rebase_filter_relation_aliases();
 
 		self
 	}
@@ -1600,6 +1601,7 @@ where
 			target_alias: None,
 			on_condition: condition,
 		});
+		self.rebase_filter_relation_aliases();
 
 		self
 	}
@@ -1671,6 +1673,7 @@ where
 			target_alias: None,
 			on_condition: condition,
 		});
+		self.rebase_filter_relation_aliases();
 
 		self
 	}
@@ -1734,6 +1737,7 @@ where
 			target_alias: None,
 			on_condition: String::new(), // Empty condition for CROSS JOIN
 		});
+		self.rebase_filter_relation_aliases();
 
 		self
 	}
@@ -1862,6 +1866,7 @@ where
 			target_alias: None,
 			on_condition: condition.to_string(),
 		});
+		self.rebase_filter_relation_aliases();
 
 		self
 	}
@@ -1930,6 +1935,7 @@ where
 			target_alias: None,
 			on_condition: condition.to_string(),
 		});
+		self.rebase_filter_relation_aliases();
 
 		self
 	}
@@ -1998,6 +2004,7 @@ where
 			target_alias: None,
 			on_condition: condition.to_string(),
 		});
+		self.rebase_filter_relation_aliases();
 
 		self
 	}
@@ -9014,6 +9021,25 @@ mod tests {
 		for sql in [inner_sql, left_sql, right_sql] {
 			assert!(sql.ends_with(r#"WHERE "corpus_file__project__project"."name" = 'reinhardt'"#));
 		}
+	}
+
+	#[test]
+	fn test_aliasless_manual_joins_rebase_typed_filter_aliases() {
+		let make_filter =
+			|| {
+				crate::orm::relations::RelationPath::<TestProjects, TestProjects>::from_descriptor::<
+				TestProjectsChildren,
+			>()
+			.field(crate::orm::expressions::FieldRef::<TestProjects, i64>::new("id"))
+			.eq(1)
+			};
+
+		let sql = QuerySet::<TestProjects>::new()
+			.filter(make_filter())
+			.inner_join::<TestProjects>("id", "parent_id")
+			.to_sql();
+
+		assert!(sql.ends_with(r#"WHERE "projects__projects"."id" = 1"#));
 	}
 
 	#[test]
