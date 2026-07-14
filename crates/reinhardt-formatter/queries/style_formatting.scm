@@ -7,7 +7,7 @@
 (string) @leaf
 (raw_string) @leaf
 (line_comment) @leaf @append_hardline
-(block_comment) @leaf
+(block_comment) @leaf @append_hardline
 (operator) @leaf @prepend_space @append_space
 
 (definition_block
