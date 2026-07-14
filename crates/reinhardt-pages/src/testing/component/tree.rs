@@ -534,7 +534,9 @@ impl TestDom {
 	fn append_page(&mut self, parent: NodeId, page: Page) {
 		match page {
 			Page::Element(element) => {
-				let option_value = (element.tag_name() == "option")
+				let option_value = element
+					.tag_name()
+					.eq_ignore_ascii_case("option")
 					.then(|| crate::ssr::control_binding::option_value(&element));
 				let (tag, attrs, children, is_void, event_handlers, control_binding) =
 					element.into_parts();
@@ -778,7 +780,7 @@ impl TestDom {
 		let Some(select) = self.element(select_id) else {
 			return;
 		};
-		if select.tag != "select" {
+		if !select.tag.eq_ignore_ascii_case("select") {
 			return;
 		}
 		let requested_values = select.selected_values.clone();
@@ -808,10 +810,11 @@ impl TestDom {
 	) {
 		let children = self.children(node_id).to_vec();
 		let effective_value = self.element(node_id).and_then(|node| {
-			(node.tag == "option").then(|| node.option_value.clone().unwrap_or_default())
+			(node.tag.eq_ignore_ascii_case("option"))
+				.then(|| node.option_value.clone().unwrap_or_default())
 		});
 		if let Some(TestNode::Element(node)) = self.nodes.get_mut(node_id)
-			&& node.tag == "option"
+			&& node.tag.eq_ignore_ascii_case("option")
 		{
 			let selected = effective_value.as_ref().is_some_and(|value| {
 				requested_values.iter().any(|candidate| candidate == value)
@@ -842,14 +845,34 @@ impl ElementNode {
 	) -> Result<(), ControlBindingError> {
 		let supported = match binding.kind() {
 			ControlKind::Text => {
-				self.tag == "textarea"
-					|| (self.tag == "input" && has_effective_text_type(self.attr("type")))
+				self.tag.eq_ignore_ascii_case("textarea")
+					|| (self.tag.eq_ignore_ascii_case("input")
+						&& has_effective_text_type(self.attr("type")))
 			}
-			ControlKind::Number => self.tag == "input" && self.attr("type") == Some("number"),
-			ControlKind::Checkbox => self.tag == "input" && self.attr("type") == Some("checkbox"),
-			ControlKind::Radio => self.tag == "input" && self.attr("type") == Some("radio"),
-			ControlKind::SelectOne => self.tag == "select" && !self.has_attr("multiple"),
-			ControlKind::SelectMany => self.tag == "select" && self.has_attr("multiple"),
+			ControlKind::Number => {
+				self.tag.eq_ignore_ascii_case("input")
+					&& self
+						.attr("type")
+						.is_some_and(|kind| kind.eq_ignore_ascii_case("number"))
+			}
+			ControlKind::Checkbox => {
+				self.tag.eq_ignore_ascii_case("input")
+					&& self
+						.attr("type")
+						.is_some_and(|kind| kind.eq_ignore_ascii_case("checkbox"))
+			}
+			ControlKind::Radio => {
+				self.tag.eq_ignore_ascii_case("input")
+					&& self
+						.attr("type")
+						.is_some_and(|kind| kind.eq_ignore_ascii_case("radio"))
+			}
+			ControlKind::SelectOne => {
+				self.tag.eq_ignore_ascii_case("select") && !self.has_attr("multiple")
+			}
+			ControlKind::SelectMany => {
+				self.tag.eq_ignore_ascii_case("select") && self.has_attr("multiple")
+			}
 		};
 		if supported {
 			Ok(())
@@ -882,7 +905,7 @@ impl ElementNode {
 		match value {
 			ControlValue::Text(value) => {
 				self.value = Some(value.clone());
-				if self.tag == "select" {
+				if self.tag.eq_ignore_ascii_case("select") {
 					self.selected_values = vec![value];
 				}
 			}
@@ -915,16 +938,22 @@ impl ElementNode {
 
 	fn supports_value_with_content_editable(&self, content_editable: bool) -> bool {
 		content_editable
-			|| (matches!(self.tag.as_str(), "input" | "textarea" | "select")
-				&& !(self.tag == "input" && self.attr("type") == Some("hidden")))
+			|| (["input", "textarea", "select"]
+				.iter()
+				.any(|tag| self.tag.eq_ignore_ascii_case(tag))
+				&& !(self.tag.eq_ignore_ascii_case("input")
+					&& self
+						.attr("type")
+						.is_some_and(|kind| kind.eq_ignore_ascii_case("hidden"))))
 	}
 
 	pub(crate) fn is_disabled_form_control(&self) -> bool {
 		self.has_attr("disabled")
-			&& matches!(
-				self.tag.as_str(),
-				"button" | "fieldset" | "input" | "optgroup" | "option" | "select" | "textarea"
-			)
+			&& [
+				"button", "fieldset", "input", "optgroup", "option", "select", "textarea",
+			]
+			.iter()
+			.any(|tag| self.tag.eq_ignore_ascii_case(tag))
 	}
 }
 
@@ -958,6 +987,59 @@ fn has_effective_text_type(input_type: Option<&str>) -> bool {
 		]
 		.iter()
 		.any(|known| input_type.eq_ignore_ascii_case(known))
+}
+
+#[cfg(test)]
+mod case_normalization_tests {
+	use super::*;
+	use crate::reactive::Signal;
+
+	fn element(tag: &str, input_type: Option<&str>) -> ElementNode {
+		ElementNode {
+			tag: tag.to_owned(),
+			attrs: input_type
+				.map(|value| vec![("type".to_owned(), value.to_owned())])
+				.unwrap_or_default(),
+			children: Vec::new(),
+			parent: None,
+			is_void: false,
+			event_handlers: Vec::new(),
+			value: None,
+			checked: false,
+			selected_values: Vec::new(),
+			files: Vec::new(),
+			content_editable: false,
+			control_binding: None,
+			option_value: None,
+			is_composing: false,
+			pending_raw: None,
+			last_committed_raw: None,
+			last_observed_control_value: None,
+		}
+	}
+
+	#[test]
+	fn native_control_binding_validation_normalizes_ascii_case() {
+		assert!(
+			element("INPUT", Some("RADIO"))
+				.validate_control_binding(&ControlBinding::radio(
+					Signal::new(String::new()),
+					"choice".to_owned(),
+				))
+				.is_ok()
+		);
+		assert!(
+			element("SELECT", None)
+				.validate_control_binding(&ControlBinding::select_one(Signal::new(String::new())))
+				.is_ok()
+		);
+	}
+
+	#[test]
+	fn native_value_support_normalizes_ascii_case() {
+		assert!(element("TEXTAREA", None).supports_value());
+		assert!(!element("INPUT", Some("HIDDEN")).supports_value());
+	}
 }
 
 #[cfg(feature = "msw")]
