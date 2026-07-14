@@ -4,8 +4,8 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use reinhardt_pages::component::{
-	Component, ControlBinding, ControlBindingError, ControlKind, IntoPage, MountError, Page,
-	PageExt,
+	Component, ControlBinding, ControlBindingError, ControlKind, ControlValue, IntoPage,
+	MountError, NumberParseError, NumberParseErrorKind, Page, PageExt,
 };
 use reinhardt_pages::dom::Element;
 use reinhardt_pages::reactive::{Signal, with_runtime};
@@ -516,6 +516,168 @@ fn reactive_nonselect_mount_keeps_parent_when_a_child_mount_fails() {
 }
 
 #[wasm_bindgen_test]
+fn failed_plain_parent_mount_drops_detached_reactive_children() {
+	let document = web_sys::window()
+		.expect("window")
+		.document()
+		.expect("document");
+	let root = Element::new(document.create_element("div").expect("root"));
+	let trigger = Signal::new(0_u32);
+	let render_count = Rc::new(Cell::new(0));
+	let listener_owner = Rc::new(());
+	let weak_listener_owner = Rc::downgrade(&listener_owner);
+	let render_trigger = trigger.clone();
+	let render_count_for_child = Rc::clone(&render_count);
+	let listener_owner_for_child = Rc::clone(&listener_owner);
+	let page = PageElement::new("div")
+		.child(Page::reactive(move || {
+			let value = render_trigger.get();
+			render_count_for_child.set(render_count_for_child.get() + 1);
+			let listener_owner = Rc::clone(&listener_owner_for_child);
+			page!({
+				button {
+					id: "detached-reactive-child",
+					@input: move |_| drop(Rc::clone(&listener_owner)),
+					{ value.to_string() }
+				}
+			})
+		}))
+		.child(Page::Element(PageElement::new("input").control_binding(
+			ControlBinding::select_one(Signal::new(String::new())),
+		)))
+		.into_page();
+	drop(listener_owner);
+
+	let error = page.mount(&root).expect_err("later invalid child binding");
+	let renders_after_failure = render_count.get();
+	trigger.set(1);
+	with_runtime(|runtime| runtime.flush_updates());
+
+	assert_eq!(
+		error,
+		MountError::ControlBinding(ControlBindingError::UnsupportedElement {
+			control: ControlKind::SelectOne,
+			actual_tag: "input".to_owned(),
+		})
+	);
+	assert_eq!(root.as_web_sys().first_element_child(), None);
+	assert_eq!(render_count.get(), renders_after_failure);
+	assert!(weak_listener_owner.upgrade().is_none());
+}
+
+fn dispatch_before_input(input: &web_sys::HtmlInputElement, data: Option<&str>, input_type: &str) {
+	let init = web_sys::InputEventInit::new();
+	init.set_data(data);
+	init.set_input_type(input_type);
+	input
+		.dispatch_event(
+			&web_sys::InputEvent::new_with_event_init_dict("beforeinput", &init)
+				.expect("beforeinput"),
+		)
+		.expect("dispatch beforeinput");
+}
+
+fn dispatch_input(input: &web_sys::HtmlInputElement, data: Option<&str>, input_type: &str) {
+	let init = web_sys::InputEventInit::new();
+	init.set_data(data);
+	init.set_input_type(input_type);
+	input
+		.dispatch_event(
+			&web_sys::InputEvent::new_with_event_init_dict("input", &init).expect("input"),
+		)
+		.expect("dispatch input");
+}
+
+#[wasm_bindgen_test]
+fn number_binding_recovers_incomplete_raw_from_sanitized_browser_input() {
+	let document = web_sys::window()
+		.expect("window")
+		.document()
+		.expect("document");
+	let root = Element::new(document.create_element("div").expect("root"));
+	let value = Signal::new(7_i32);
+	let error = Signal::new(None::<NumberParseError>);
+	page!({
+		input {
+			a11y: off,
+			type: "number",
+			bind: number(value, error),
+		}
+	})
+	.mount(&root)
+	.expect("mount");
+	let input: web_sys::HtmlInputElement = root
+		.as_web_sys()
+		.first_element_child()
+		.expect("input")
+		.unchecked_into();
+
+	dispatch_before_input(&input, None, "deleteContentBackward");
+	input.set_value("");
+	dispatch_input(&input, None, "deleteContentBackward");
+	for (raw, fragment) in [("-", "-"), ("-1", "1"), ("-1.", ".")] {
+		dispatch_before_input(&input, Some(fragment), "insertText");
+		input.set_value(raw);
+		dispatch_input(&input, Some(fragment), "insertText");
+	}
+
+	assert_eq!(input.value(), "", "Chrome sanitizes an incomplete number");
+	assert_eq!(value.get(), -1);
+	let parse_error = error.get().expect("incomplete raw should be reported");
+	assert_eq!(parse_error.raw(), "-1.");
+	assert_eq!(parse_error.kind(), NumberParseErrorKind::Incomplete);
+	reinhardt_pages::cleanup_reactive_nodes();
+}
+
+#[wasm_bindgen_test]
+fn number_binding_deduplicates_sanitized_final_input_after_composition() {
+	let document = web_sys::window()
+		.expect("window")
+		.document()
+		.expect("document");
+	let root = Element::new(document.create_element("div").expect("root"));
+	let value = Signal::new(7_i32);
+	let error = Signal::new(None::<NumberParseError>);
+	page!({
+		input {
+			a11y: off,
+			type: "number",
+			bind: number(value, error),
+		}
+	})
+	.mount(&root)
+	.expect("mount");
+	let input: web_sys::HtmlInputElement = root
+		.as_web_sys()
+		.first_element_child()
+		.expect("input")
+		.unchecked_into();
+
+	input
+		.dispatch_event(
+			&web_sys::CompositionEvent::new("compositionstart").expect("compositionstart"),
+		)
+		.expect("dispatch compositionstart");
+	for (raw, fragment) in [("-", "-"), ("-1", "1"), ("-1.", ".")] {
+		dispatch_before_input(&input, Some(fragment), "insertCompositionText");
+		input.set_value(raw);
+		dispatch_input(&input, Some(fragment), "insertCompositionText");
+	}
+	input
+		.dispatch_event(&web_sys::CompositionEvent::new("compositionend").expect("compositionend"))
+		.expect("dispatch compositionend");
+	dispatch_input(&input, Some("."), "insertCompositionText");
+
+	assert_eq!(value.get(), 7);
+	let parse_error = error
+		.get()
+		.expect("duplicate final input should retain the incomplete raw");
+	assert_eq!(parse_error.raw(), "-1.");
+	assert_eq!(parse_error.kind(), NumberParseErrorKind::Incomplete);
+	reinhardt_pages::cleanup_reactive_nodes();
+}
+
+#[wasm_bindgen_test]
 fn duplicate_final_input_reprojects_a_reentrant_compositionend_signal_change() {
 	let document = web_sys::window()
 		.expect("window")
@@ -622,6 +784,86 @@ struct FailingHydrationRoot {
 	trigger: Signal<u32>,
 	render_count: Rc<Cell<u32>>,
 	listener_count: Rc<Cell<u32>>,
+}
+
+struct FailingHydrationAfterControls {
+	text: Signal<String>,
+	number: Signal<i32>,
+	number_error: Signal<Option<NumberParseError>>,
+}
+
+impl Component for FailingHydrationAfterControls {
+	fn name() -> &'static str {
+		"FailingHydrationAfterControls"
+	}
+
+	fn render(&self) -> Page {
+		PageElement::new("div")
+			.child(
+				PageElement::new("input").control_binding(ControlBinding::text(self.text.clone())),
+			)
+			.child(
+				PageElement::new("input")
+					.attr("type", "number")
+					.control_binding(ControlBinding::number_with_error(
+						self.number.clone(),
+						self.number_error.clone(),
+					)),
+			)
+			.child(Page::Element(
+				PageElement::new("select")
+					.control_binding(ControlBinding::checkbox(Signal::new(false))),
+			))
+			.into_page()
+	}
+}
+
+#[wasm_bindgen_test]
+fn failed_root_hydration_does_not_adopt_earlier_control_values() {
+	let document = web_sys::window()
+		.expect("window")
+		.document()
+		.expect("document");
+	let raw_root = document.create_element("div").expect("root");
+	let raw_text: web_sys::HtmlInputElement = document
+		.create_element("input")
+		.expect("text")
+		.unchecked_into();
+	raw_text.set_value("restored");
+	raw_root.append_child(&raw_text).expect("text input");
+	let raw_number: web_sys::HtmlInputElement = document
+		.create_element("input")
+		.expect("number")
+		.unchecked_into();
+	raw_number.set_type("number");
+	raw_number.set_value("2147483648");
+	raw_root.append_child(&raw_number).expect("number input");
+	raw_root
+		.append_child(&document.create_element("select").expect("select"))
+		.expect("invalid sibling");
+	let root = Element::new(raw_root);
+	let text = Signal::new("server".to_owned());
+	let number = Signal::new(7_i32);
+	let number_error = Signal::new(None::<NumberParseError>);
+	ControlBinding::number_with_error(number.clone(), number_error.clone())
+		.write(ControlValue::Text("pending".to_owned()))
+		.expect("seed number error");
+	let original_number_error = number_error.get();
+	let _state = SsrStateElement::install(&document);
+
+	reinhardt_pages::hydration::hydrate(
+		&FailingHydrationAfterControls {
+			text: text.clone(),
+			number: number.clone(),
+			number_error: number_error.clone(),
+		},
+		&root,
+	)
+	.expect_err("later invalid binding");
+
+	assert_eq!(text.get(), "server");
+	assert_eq!(number.get(), 7);
+	assert_eq!(number_error.get(), original_number_error);
 }
 
 impl Component for FailingHydrationRoot {
