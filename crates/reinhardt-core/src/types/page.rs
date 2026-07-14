@@ -717,11 +717,33 @@ impl PageElement {
 		self.event_handlers
 	}
 
-	/// Consumes the element view and returns all parts.
+	/// Consumes the element view and returns its original public parts.
+	///
+	/// Returns a tuple of (tag, attrs, children, is_void, event_handlers).
+	#[allow(clippy::type_complexity)] // Tuple decomposition is intentional for destructuring
+	pub fn into_parts(
+		self,
+	) -> (
+		Cow<'static, str>,
+		Vec<(Cow<'static, str>, Cow<'static, str>)>,
+		Vec<Page>,
+		bool,
+		Vec<(EventName, PageEventHandler)>,
+	) {
+		(
+			self.tag,
+			self.attrs,
+			self.children,
+			self.is_void,
+			self.event_handlers,
+		)
+	}
+
+	/// Consumes the element view and returns all parts, including its control binding.
 	///
 	/// Returns a tuple of (tag, attrs, children, is_void, event_handlers, control_binding).
 	#[allow(clippy::type_complexity)] // Tuple decomposition is intentional for destructuring
-	pub fn into_parts(
+	pub fn into_parts_with_control_binding(
 		self,
 	) -> (
 		Cow<'static, str>,

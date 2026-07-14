@@ -791,7 +791,7 @@ fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::No
 			let mount_element = || {
 				// Decompose the element to avoid ownership issues
 				let (tag, attrs, children, _is_void, event_handlers, control_binding) =
-					el.into_parts();
+					el.into_parts_with_control_binding();
 				let element = document
 					.create_element(&tag)
 					.expect("should create element");
