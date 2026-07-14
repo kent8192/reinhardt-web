@@ -111,7 +111,19 @@ struct CompositionState {
 #[derive(Default)]
 struct NumberEditorState {
 	raw: String,
-	pending_raw: Option<String>,
+	selection: Option<EditorSelection>,
+	pending_edit: Option<PendingNumberEdit>,
+}
+
+#[derive(Clone, Copy)]
+struct EditorSelection {
+	start: usize,
+	end: usize,
+}
+
+struct PendingNumberEdit {
+	raw: String,
+	selection: EditorSelection,
 }
 
 impl ControlBindingController {
@@ -173,7 +185,8 @@ fn install_effect(
 				&& let Some(editor) = &mut state.borrow_mut().number_editor
 			{
 				editor.raw.clone_from(raw);
-				editor.pending_raw = None;
+				editor.selection = Some(EditorSelection::collapsed(raw.len()));
+				editor.pending_edit = None;
 			}
 			let _ = write_control(&element, binding.kind(), &value);
 		},
@@ -190,8 +203,9 @@ fn install_listeners(
 			.ok()
 			.and_then(|value| match value {
 				ControlValue::Text(raw) => Some(NumberEditorState {
+					selection: Some(EditorSelection::collapsed(raw.len())),
 					raw,
-					pending_raw: None,
+					pending_edit: None,
 				}),
 				_ => None,
 			})
@@ -229,10 +243,14 @@ fn install_listeners(
 						if !live.is_empty() {
 							editor.raw = live;
 						}
-						editor.pending_raw = edit_number_raw(
+						let selection = input_selection(input)
+							.or(editor.selection)
+							.unwrap_or_else(|| EditorSelection::collapsed(editor.raw.len()));
+						editor.pending_edit = edit_number_raw(
 							&editor.raw,
+							selection,
 							&input_event.input_type(),
-							input_event.data().as_deref(),
+							input_event_text(input_event).as_deref(),
 						);
 					},
 				));
@@ -323,21 +341,117 @@ fn install_listeners(
 	(listeners, state)
 }
 
-fn edit_number_raw(raw: &str, input_type: &str, data: Option<&str>) -> Option<String> {
+impl EditorSelection {
+	fn collapsed(position: usize) -> Self {
+		Self {
+			start: position,
+			end: position,
+		}
+	}
+
+	fn clamped(self, len: usize) -> Self {
+		let start = self.start.min(len);
+		let end = self.end.min(len).max(start);
+		Self { start, end }
+	}
+}
+
+fn input_selection(input: &web_sys::HtmlInputElement) -> Option<EditorSelection> {
+	let start = input.selection_start().ok().flatten()? as usize;
+	let end = input.selection_end().ok().flatten()? as usize;
+	Some(EditorSelection { start, end })
+}
+
+fn input_event_text(event: &web_sys::InputEvent) -> Option<String> {
+	event.data().or_else(|| {
+		event
+			.data_transfer()
+			.and_then(|transfer| transfer.get_data("text/plain").ok())
+			.filter(|data| !data.is_empty())
+	})
+}
+
+fn edit_number_raw(
+	raw: &str,
+	selection: EditorSelection,
+	input_type: &str,
+	data: Option<&str>,
+) -> Option<PendingNumberEdit> {
+	let selection = selection.clamped(raw.len());
+	let mut edited = raw.to_owned();
+	let (start, end) = (selection.start, selection.end);
 	if input_type.starts_with("insert") {
 		let data = data?;
-		let mut edited = raw.to_owned();
-		edited.push_str(data);
-		Some(edited)
+		edited.replace_range(start..end, data);
+		Some(PendingNumberEdit {
+			raw: edited,
+			selection: EditorSelection::collapsed(start + data.len()),
+		})
 	} else if input_type == "deleteContentBackward" {
-		let mut edited = raw.to_owned();
-		edited.pop();
-		Some(edited)
-	} else if input_type.starts_with("delete") {
-		Some(String::new())
+		let delete_start = if start == end {
+			previous_char_boundary(raw, start)
+		} else {
+			start
+		};
+		edited.replace_range(delete_start..end, "");
+		Some(PendingNumberEdit {
+			raw: edited,
+			selection: EditorSelection::collapsed(delete_start),
+		})
+	} else if input_type == "deleteContentForward" {
+		let delete_end = if start == end {
+			next_char_boundary(raw, end)
+		} else {
+			end
+		};
+		edited.replace_range(start..delete_end, "");
+		Some(PendingNumberEdit {
+			raw: edited,
+			selection: EditorSelection::collapsed(start),
+		})
+	} else if matches!(
+		input_type,
+		"deleteWordBackward" | "deleteSoftLineBackward" | "deleteHardLineBackward"
+	) {
+		let delete_start = if start == end { 0 } else { start };
+		edited.replace_range(delete_start..end, "");
+		Some(PendingNumberEdit {
+			raw: edited,
+			selection: EditorSelection::collapsed(delete_start),
+		})
+	} else if matches!(
+		input_type,
+		"deleteWordForward" | "deleteSoftLineForward" | "deleteHardLineForward"
+	) {
+		let delete_end = if start == end { raw.len() } else { end };
+		edited.replace_range(start..delete_end, "");
+		Some(PendingNumberEdit {
+			raw: edited,
+			selection: EditorSelection::collapsed(start),
+		})
+	} else if input_type.starts_with("delete") && start != end {
+		edited.replace_range(start..end, "");
+		Some(PendingNumberEdit {
+			raw: edited,
+			selection: EditorSelection::collapsed(start),
+		})
 	} else {
 		None
 	}
+}
+
+fn previous_char_boundary(raw: &str, position: usize) -> usize {
+	raw[..position]
+		.char_indices()
+		.next_back()
+		.map_or(0, |(index, _)| index)
+}
+
+fn next_char_boundary(raw: &str, position: usize) -> usize {
+	raw[position..]
+		.char_indices()
+		.nth(1)
+		.map_or(raw.len(), |(index, _)| position + index)
 }
 
 fn capture_number_input_raw(
@@ -352,10 +466,14 @@ fn capture_number_input_raw(
 	let mut state = state.borrow_mut();
 	let editor = state.number_editor.as_mut()?;
 	let raw = if !live.is_empty() {
-		editor.pending_raw = None;
+		let pending = editor.pending_edit.take();
+		editor.selection = input_selection(input)
+			.or_else(|| pending.map(|edit| edit.selection))
+			.or_else(|| Some(EditorSelection::collapsed(live.len())));
 		live
-	} else if let Some(pending) = editor.pending_raw.take() {
-		pending
+	} else if let Some(pending) = editor.pending_edit.take() {
+		editor.selection = Some(pending.selection);
+		pending.raw
 	} else if allow_editor_fallback {
 		editor.raw.clone()
 	} else {
