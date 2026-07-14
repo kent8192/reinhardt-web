@@ -12,6 +12,10 @@ categories = ["web-programming", "web-programming::http-server"]
 readme = "README.md"
 documentation = "https://docs.rs/reinhardt-core"
 
+[[test]]
+name = "page_element_parts"
+required-features = ["page", "reactive"]
+
 [dependencies]
 # Re-export all internal crates
 reinhardt-macros = { workspace = true, optional = true }
