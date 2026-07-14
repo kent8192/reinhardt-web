@@ -1,6 +1,6 @@
 //! Common type definitions for database abstraction
 
-use super::error::DatabaseError;
+use super::error::{DatabaseError, DatabaseErrorKind};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -149,7 +149,7 @@ impl Row {
 		self.data
 			.get(key)
 			.cloned()
-			.ok_or_else(|| DatabaseError::ColumnNotFound(key.to_string()))
+			.ok_or_else(|| DatabaseError::new(DatabaseErrorKind::ColumnNotFound, key.to_string()))
 			.and_then(|v| v.try_into().map_err(Into::into))
 	}
 }
@@ -167,10 +167,10 @@ impl TryFrom<QueryValue> for i64 {
 	fn try_from(value: QueryValue) -> std::result::Result<Self, Self::Error> {
 		match value {
 			QueryValue::Int(i) => Ok(i),
-			_ => Err(DatabaseError::TypeError(format!(
-				"Cannot convert {:?} to i64",
-				value
-			))),
+			_ => Err(DatabaseError::new(
+				DatabaseErrorKind::Type,
+				format!("Cannot convert {:?} to i64", value),
+			)),
 		}
 	}
 }
@@ -180,12 +180,16 @@ impl TryFrom<QueryValue> for i32 {
 
 	fn try_from(value: QueryValue) -> std::result::Result<Self, Self::Error> {
 		match value {
-			QueryValue::Int(i) => i32::try_from(i)
-				.map_err(|_| DatabaseError::TypeError(format!("Value {} out of range for i32", i))),
-			_ => Err(DatabaseError::TypeError(format!(
-				"Cannot convert {:?} to i32",
-				value
-			))),
+			QueryValue::Int(i) => i32::try_from(i).map_err(|_| {
+				DatabaseError::new(
+					DatabaseErrorKind::Type,
+					format!("Value {} out of range for i32", i),
+				)
+			}),
+			_ => Err(DatabaseError::new(
+				DatabaseErrorKind::Type,
+				format!("Cannot convert {:?} to i32", value),
+			)),
 		}
 	}
 }
@@ -195,12 +199,16 @@ impl TryFrom<QueryValue> for u64 {
 
 	fn try_from(value: QueryValue) -> std::result::Result<Self, Self::Error> {
 		match value {
-			QueryValue::Int(i) => u64::try_from(i)
-				.map_err(|_| DatabaseError::TypeError(format!("Value {} out of range for u64", i))),
-			_ => Err(DatabaseError::TypeError(format!(
-				"Cannot convert {:?} to u64",
-				value
-			))),
+			QueryValue::Int(i) => u64::try_from(i).map_err(|_| {
+				DatabaseError::new(
+					DatabaseErrorKind::Type,
+					format!("Value {} out of range for u64", i),
+				)
+			}),
+			_ => Err(DatabaseError::new(
+				DatabaseErrorKind::Type,
+				format!("Cannot convert {:?} to u64", value),
+			)),
 		}
 	}
 }
@@ -210,12 +218,16 @@ impl TryFrom<QueryValue> for u32 {
 
 	fn try_from(value: QueryValue) -> std::result::Result<Self, Self::Error> {
 		match value {
-			QueryValue::Int(i) => u32::try_from(i)
-				.map_err(|_| DatabaseError::TypeError(format!("Value {} out of range for u32", i))),
-			_ => Err(DatabaseError::TypeError(format!(
-				"Cannot convert {:?} to u32",
-				value
-			))),
+			QueryValue::Int(i) => u32::try_from(i).map_err(|_| {
+				DatabaseError::new(
+					DatabaseErrorKind::Type,
+					format!("Value {} out of range for u32", i),
+				)
+			}),
+			_ => Err(DatabaseError::new(
+				DatabaseErrorKind::Type,
+				format!("Cannot convert {:?} to u32", value),
+			)),
 		}
 	}
 }
@@ -226,10 +238,10 @@ impl TryFrom<QueryValue> for String {
 	fn try_from(value: QueryValue) -> std::result::Result<Self, Self::Error> {
 		match value {
 			QueryValue::String(s) => Ok(s),
-			_ => Err(DatabaseError::TypeError(format!(
-				"Cannot convert {:?} to String",
-				value
-			))),
+			_ => Err(DatabaseError::new(
+				DatabaseErrorKind::Type,
+				format!("Cannot convert {:?} to String", value),
+			)),
 		}
 	}
 }
@@ -240,10 +252,10 @@ impl TryFrom<QueryValue> for bool {
 	fn try_from(value: QueryValue) -> std::result::Result<Self, Self::Error> {
 		match value {
 			QueryValue::Bool(b) => Ok(b),
-			_ => Err(DatabaseError::TypeError(format!(
-				"Cannot convert {:?} to bool",
-				value
-			))),
+			_ => Err(DatabaseError::new(
+				DatabaseErrorKind::Type,
+				format!("Cannot convert {:?} to bool", value),
+			)),
 		}
 	}
 }
@@ -254,10 +266,10 @@ impl TryFrom<QueryValue> for f64 {
 	fn try_from(value: QueryValue) -> std::result::Result<Self, Self::Error> {
 		match value {
 			QueryValue::Float(f) => Ok(f),
-			_ => Err(DatabaseError::TypeError(format!(
-				"Cannot convert {:?} to f64",
-				value
-			))),
+			_ => Err(DatabaseError::new(
+				DatabaseErrorKind::Type,
+				format!("Cannot convert {:?} to f64", value),
+			)),
 		}
 	}
 }
@@ -268,10 +280,10 @@ impl TryFrom<QueryValue> for chrono::DateTime<chrono::Utc> {
 	fn try_from(value: QueryValue) -> std::result::Result<Self, Self::Error> {
 		match value {
 			QueryValue::Timestamp(dt) => Ok(dt),
-			_ => Err(DatabaseError::TypeError(format!(
-				"Cannot convert {:?} to DateTime<Utc>",
-				value
-			))),
+			_ => Err(DatabaseError::new(
+				DatabaseErrorKind::Type,
+				format!("Cannot convert {:?} to DateTime<Utc>", value),
+			)),
 		}
 	}
 }
@@ -282,12 +294,16 @@ impl TryFrom<QueryValue> for Uuid {
 	fn try_from(value: QueryValue) -> std::result::Result<Self, Self::Error> {
 		match value {
 			QueryValue::Uuid(u) => Ok(u),
-			QueryValue::String(s) => Uuid::parse_str(&s)
-				.map_err(|_| DatabaseError::TypeError(format!("Invalid UUID string: {}", s))),
-			_ => Err(DatabaseError::TypeError(format!(
-				"Cannot convert {:?} to Uuid",
-				value
-			))),
+			QueryValue::String(s) => Uuid::parse_str(&s).map_err(|_| {
+				DatabaseError::new(
+					DatabaseErrorKind::Type,
+					format!("Invalid UUID string: {}", s),
+				)
+			}),
+			_ => Err(DatabaseError::new(
+				DatabaseErrorKind::Type,
+				format!("Cannot convert {:?} to Uuid", value),
+			)),
 		}
 	}
 }
@@ -521,9 +537,11 @@ pub trait TransactionExecutor: Send + Sync {
 	/// support savepoints should override this method.
 	async fn savepoint(&mut self, name: &str) -> super::error::Result<()> {
 		let _ = name;
-		Err(super::error::DatabaseError::NotSupported(
-			"Savepoints are not supported by this backend".to_string(),
-		))
+		Err(DatabaseError::new(
+			DatabaseErrorKind::Unsupported,
+			"Savepoints are not supported by this backend",
+		)
+		.into())
 	}
 
 	/// Release (commit) a savepoint
@@ -540,9 +558,11 @@ pub trait TransactionExecutor: Send + Sync {
 	/// Returns an error indicating savepoints are not supported.
 	async fn release_savepoint(&mut self, name: &str) -> super::error::Result<()> {
 		let _ = name;
-		Err(super::error::DatabaseError::NotSupported(
-			"Savepoints are not supported by this backend".to_string(),
-		))
+		Err(DatabaseError::new(
+			DatabaseErrorKind::Unsupported,
+			"Savepoints are not supported by this backend",
+		)
+		.into())
 	}
 
 	/// Rollback to a savepoint
@@ -559,9 +579,11 @@ pub trait TransactionExecutor: Send + Sync {
 	/// Returns an error indicating savepoints are not supported.
 	async fn rollback_to_savepoint(&mut self, name: &str) -> super::error::Result<()> {
 		let _ = name;
-		Err(super::error::DatabaseError::NotSupported(
-			"Savepoints are not supported by this backend".to_string(),
-		))
+		Err(DatabaseError::new(
+			DatabaseErrorKind::Unsupported,
+			"Savepoints are not supported by this backend",
+		)
+		.into())
 	}
 }
 

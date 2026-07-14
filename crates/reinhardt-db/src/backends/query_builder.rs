@@ -9,7 +9,7 @@ use reinhardt_query::prelude::{
 
 use super::{
 	backend::DatabaseBackend,
-	error::Result,
+	error::{DatabaseError, DatabaseErrorKind, Result},
 	types::{DatabaseType, QueryResult, QueryValue, Row},
 };
 
@@ -401,9 +401,10 @@ impl InsertBuilder {
 		if !self.values.is_empty() {
 			let sea_values: Vec<Value> = self.values.iter().map(query_value_to_sea_value).collect();
 			stmt.values(sea_values).map_err(|e| {
-				super::error::DatabaseError::QueryError(format!(
-					"failed to set insert values (column/value count mismatch): {e}"
-				))
+				DatabaseError::new(
+					DatabaseErrorKind::Query,
+					format!("failed to set insert values (column/value count mismatch): {e}"),
+				)
 			})?;
 		}
 
@@ -520,9 +521,11 @@ impl InsertBuilder {
 						// SQLite: ON CONFLICT DO UPDATE (SQLite 3.24.0+)
 						let conflict_str = if let Some(cols) = conflict_columns {
 							if cols.is_empty() {
-								return Err(super::error::DatabaseError::SyntaxError(
+								return Err(DatabaseError::new(
+									DatabaseErrorKind::Syntax,
 									"SQLite ON CONFLICT requires non-empty conflict_columns for DO UPDATE".to_string(),
-								));
+								)
+								.into());
 							}
 							let quoted = cols
 								.iter()
@@ -536,10 +539,12 @@ impl InsertBuilder {
 						};
 
 						if update_columns.is_empty() {
-							return Err(super::error::DatabaseError::SyntaxError(
+							return Err(DatabaseError::new(
+								DatabaseErrorKind::Syntax,
 								"update_columns cannot be empty for OnConflictAction::DoUpdate"
 									.to_string(),
-							));
+							)
+							.into());
 						}
 
 						let update_str = update_columns
@@ -663,9 +668,11 @@ impl InsertBuilder {
 						let conflict_str = match &clause.target {
 							Some(ConflictTarget::Columns(cols)) => {
 								if cols.is_empty() {
-									return Err(super::error::DatabaseError::SyntaxError(
+									return Err(DatabaseError::new(
+										DatabaseErrorKind::Syntax,
 										"SQLite ON CONFLICT requires non-empty conflict_columns for DO UPDATE".to_string(),
-									));
+									)
+									.into());
 								}
 								let quoted = cols
 									.iter()
@@ -676,10 +683,12 @@ impl InsertBuilder {
 							}
 							Some(ConflictTarget::Constraint(_)) => {
 								// SQLite doesn't support ON CONSTRAINT syntax
-								return Err(super::error::DatabaseError::NotSupported(
+								return Err(DatabaseError::new(
+									DatabaseErrorKind::Unsupported,
 									"SQLite does not support ON CONFLICT ON CONSTRAINT syntax"
 										.to_string(),
-								));
+								)
+								.into());
 							}
 							None => {
 								// SQLite requires conflict target for DO UPDATE
@@ -688,9 +697,11 @@ impl InsertBuilder {
 						};
 
 						if update_columns.is_empty() {
-							return Err(super::error::DatabaseError::SyntaxError(
+							return Err(DatabaseError::new(
+								DatabaseErrorKind::Syntax,
 								"update_columns cannot be empty for OnConflictClauseAction::DoUpdate".to_string(),
-							));
+							)
+							.into());
 						}
 
 						let update_str = update_columns
@@ -1454,7 +1465,7 @@ impl AnalyzeBuilder {
 mod tests {
 	use super::*;
 	use crate::backends::backend::DatabaseBackend;
-	use crate::backends::error::DatabaseError;
+	use crate::backends::error::DatabaseErrorKind;
 	use crate::backends::types::{DatabaseType, QueryResult, QueryValue, Row, TransactionExecutor};
 	use rstest::rstest;
 
@@ -2653,7 +2664,7 @@ mod tests {
 		// Assert: Should return error instead of panicking
 		assert!(result.is_err());
 		let err = result.unwrap_err();
-		assert!(matches!(err, DatabaseError::SyntaxError(_)));
+		assert_eq!(err.database_kind(), Some(DatabaseErrorKind::Syntax));
 	}
 
 	#[rstest]
@@ -2674,7 +2685,7 @@ mod tests {
 		// Assert: Should return error instead of panicking
 		assert!(result.is_err());
 		let err = result.unwrap_err();
-		assert!(matches!(err, DatabaseError::SyntaxError(_)));
+		assert_eq!(err.database_kind(), Some(DatabaseErrorKind::Syntax));
 	}
 
 	#[rstest]
@@ -2692,7 +2703,7 @@ mod tests {
 		// Assert: Should return NotSupported error instead of panicking
 		assert!(result.is_err());
 		let err = result.unwrap_err();
-		assert!(matches!(err, DatabaseError::NotSupported(_)));
+		assert_eq!(err.database_kind(), Some(DatabaseErrorKind::Unsupported));
 	}
 
 	#[rstest]
@@ -2711,7 +2722,7 @@ mod tests {
 		// Assert: Should return error instead of panicking
 		assert!(result.is_err());
 		let err = result.unwrap_err();
-		assert!(matches!(err, DatabaseError::SyntaxError(_)));
+		assert_eq!(err.database_kind(), Some(DatabaseErrorKind::Syntax));
 	}
 
 	#[rstest]
@@ -2730,7 +2741,7 @@ mod tests {
 		// Assert: Should return error instead of panicking
 		assert!(result.is_err());
 		let err = result.unwrap_err();
-		assert!(matches!(err, DatabaseError::SyntaxError(_)));
+		assert_eq!(err.database_kind(), Some(DatabaseErrorKind::Syntax));
 	}
 
 	#[rstest]
@@ -2783,9 +2794,7 @@ mod tests {
 		// Assert: should return an error, not panic
 		assert!(result.is_err());
 		let err = result.unwrap_err();
-		assert!(
-			matches!(err, DatabaseError::QueryError(ref msg) if msg.contains("column/value count mismatch"))
-		);
+		assert_eq!(err.database_kind(), Some(DatabaseErrorKind::Query));
 	}
 
 	// =========================================================================

@@ -6,11 +6,18 @@ use std::sync::Arc;
 
 use crate::backends::{
 	backend::DatabaseBackend,
-	error::Result,
+	error::{DatabaseError, DatabaseErrorKind, Result, map_sqlx_error},
 	types::{
 		DatabaseType, IsolationLevel, QueryResult, QueryValue, Row, Savepoint, TransactionExecutor,
 	},
 };
+
+fn transaction_consumed_error() -> DatabaseError {
+	DatabaseError::new(
+		DatabaseErrorKind::Transaction,
+		"Transaction already consumed",
+	)
+}
 
 /// MySQL database backend
 pub struct MySqlBackend {
@@ -65,7 +72,7 @@ impl MySqlBackend {
 						QueryValue::Json(Some(Box::new(value))),
 					),
 					Ok(None) => row.insert(column_name.to_string(), QueryValue::Null),
-					Err(error) => return Err(error.into()),
+					Err(error) => return Err(map_sqlx_error(error).into()),
 				};
 				continue;
 			}
@@ -130,7 +137,10 @@ impl DatabaseBackend for MySqlBackend {
 		for param in &params {
 			query = Self::bind_value(query, param);
 		}
-		let result = query.execute(self.pool.as_ref()).await?;
+		let result = query
+			.execute(self.pool.as_ref())
+			.await
+			.map_err(map_sqlx_error)?;
 		Ok(QueryResult {
 			rows_affected: result.rows_affected(),
 		})
@@ -141,7 +151,10 @@ impl DatabaseBackend for MySqlBackend {
 		for param in &params {
 			query = Self::bind_value(query, param);
 		}
-		let mysql_row = query.fetch_one(self.pool.as_ref()).await?;
+		let mysql_row = query
+			.fetch_one(self.pool.as_ref())
+			.await
+			.map_err(map_sqlx_error)?;
 		Self::convert_row(mysql_row)
 	}
 
@@ -150,7 +163,10 @@ impl DatabaseBackend for MySqlBackend {
 		for param in &params {
 			query = Self::bind_value(query, param);
 		}
-		let mysql_rows = query.fetch_all(self.pool.as_ref()).await?;
+		let mysql_rows = query
+			.fetch_all(self.pool.as_ref())
+			.await
+			.map_err(map_sqlx_error)?;
 		mysql_rows.into_iter().map(Self::convert_row).collect()
 	}
 
@@ -159,12 +175,15 @@ impl DatabaseBackend for MySqlBackend {
 		for param in &params {
 			query = Self::bind_value(query, param);
 		}
-		let mysql_row = query.fetch_optional(self.pool.as_ref()).await?;
+		let mysql_row = query
+			.fetch_optional(self.pool.as_ref())
+			.await
+			.map_err(map_sqlx_error)?;
 		mysql_row.map(Self::convert_row).transpose()
 	}
 
 	async fn begin(&self) -> Result<Box<dyn TransactionExecutor>> {
-		let tx = self.pool.begin().await?;
+		let tx = self.pool.begin().await.map_err(map_sqlx_error)?;
 		Ok(Box::new(MySqlTransactionExecutor::new(tx)))
 	}
 
@@ -179,14 +198,20 @@ impl DatabaseBackend for MySqlBackend {
 		// Strategy: acquire a connection, set isolation level, send BEGIN manually,
 		// then wrap the connection in a raw transaction executor that manages
 		// COMMIT/ROLLBACK explicitly.
-		let mut conn = self.pool.acquire().await?;
+		let mut conn = self.pool.acquire().await.map_err(map_sqlx_error)?;
 
 		let set_sql = format!(
 			"SET TRANSACTION ISOLATION LEVEL {}",
 			isolation_level.to_sql(DatabaseType::Mysql)
 		);
-		sqlx::query(&set_sql).execute(&mut *conn).await?;
-		sqlx::query("BEGIN").execute(&mut *conn).await?;
+		sqlx::query(&set_sql)
+			.execute(&mut *conn)
+			.await
+			.map_err(map_sqlx_error)?;
+		sqlx::query("BEGIN")
+			.execute(&mut *conn)
+			.await
+			.map_err(map_sqlx_error)?;
 
 		Ok(Box::new(MySqlRawTransactionExecutor::new(conn)))
 	}
@@ -234,120 +259,96 @@ impl MySqlTransactionExecutor {
 #[async_trait]
 impl TransactionExecutor for MySqlTransactionExecutor {
 	async fn execute(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<QueryResult> {
-		let tx = self.tx.as_mut().ok_or_else(|| {
-			crate::backends::error::DatabaseError::TransactionError(
-				"Transaction already consumed".to_string(),
-			)
-		})?;
+		let tx = self.tx.as_mut().ok_or_else(transaction_consumed_error)?;
 
 		let mut query = sqlx::query(sql);
 		for param in &params {
 			query = Self::bind_value(query, param);
 		}
-		let result = query.execute(&mut **tx).await?;
+		let result = query.execute(&mut **tx).await.map_err(map_sqlx_error)?;
 		Ok(QueryResult {
 			rows_affected: result.rows_affected(),
 		})
 	}
 
 	async fn fetch_one(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<Row> {
-		let tx = self.tx.as_mut().ok_or_else(|| {
-			crate::backends::error::DatabaseError::TransactionError(
-				"Transaction already consumed".to_string(),
-			)
-		})?;
+		let tx = self.tx.as_mut().ok_or_else(transaction_consumed_error)?;
 
 		let mut query = sqlx::query(sql);
 		for param in &params {
 			query = Self::bind_value(query, param);
 		}
-		let row = query.fetch_one(&mut **tx).await?;
+		let row = query.fetch_one(&mut **tx).await.map_err(map_sqlx_error)?;
 		Self::convert_row(row)
 	}
 
 	async fn fetch_all(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<Vec<Row>> {
-		let tx = self.tx.as_mut().ok_or_else(|| {
-			crate::backends::error::DatabaseError::TransactionError(
-				"Transaction already consumed".to_string(),
-			)
-		})?;
+		let tx = self.tx.as_mut().ok_or_else(transaction_consumed_error)?;
 
 		let mut query = sqlx::query(sql);
 		for param in &params {
 			query = Self::bind_value(query, param);
 		}
-		let rows = query.fetch_all(&mut **tx).await?;
+		let rows = query.fetch_all(&mut **tx).await.map_err(map_sqlx_error)?;
 		rows.into_iter().map(Self::convert_row).collect()
 	}
 
 	async fn fetch_optional(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<Option<Row>> {
-		let tx = self.tx.as_mut().ok_or_else(|| {
-			crate::backends::error::DatabaseError::TransactionError(
-				"Transaction already consumed".to_string(),
-			)
-		})?;
+		let tx = self.tx.as_mut().ok_or_else(transaction_consumed_error)?;
 
 		let mut query = sqlx::query(sql);
 		for param in &params {
 			query = Self::bind_value(query, param);
 		}
-		let row = query.fetch_optional(&mut **tx).await?;
+		let row = query
+			.fetch_optional(&mut **tx)
+			.await
+			.map_err(map_sqlx_error)?;
 		row.map(Self::convert_row).transpose()
 	}
 
 	async fn commit(mut self: Box<Self>) -> Result<()> {
-		let tx = self.tx.take().ok_or_else(|| {
-			crate::backends::error::DatabaseError::TransactionError(
-				"Transaction already consumed".to_string(),
-			)
-		})?;
-		tx.commit().await?;
+		let tx = self.tx.take().ok_or_else(transaction_consumed_error)?;
+		tx.commit().await.map_err(map_sqlx_error)?;
 		Ok(())
 	}
 
 	async fn rollback(mut self: Box<Self>) -> Result<()> {
-		let tx = self.tx.take().ok_or_else(|| {
-			crate::backends::error::DatabaseError::TransactionError(
-				"Transaction already consumed".to_string(),
-			)
-		})?;
-		tx.rollback().await?;
+		let tx = self.tx.take().ok_or_else(transaction_consumed_error)?;
+		tx.rollback().await.map_err(map_sqlx_error)?;
 		Ok(())
 	}
 
 	async fn savepoint(&mut self, name: &str) -> Result<()> {
-		let tx = self.tx.as_mut().ok_or_else(|| {
-			crate::backends::error::DatabaseError::TransactionError(
-				"Transaction already consumed".to_string(),
-			)
-		})?;
+		let tx = self.tx.as_mut().ok_or_else(transaction_consumed_error)?;
 
 		let sp = Savepoint::new(name);
-		sqlx::query(&sp.to_sql()).execute(&mut **tx).await?;
+		sqlx::query(&sp.to_sql())
+			.execute(&mut **tx)
+			.await
+			.map_err(map_sqlx_error)?;
 		Ok(())
 	}
 
 	async fn release_savepoint(&mut self, name: &str) -> Result<()> {
-		let tx = self.tx.as_mut().ok_or_else(|| {
-			crate::backends::error::DatabaseError::TransactionError(
-				"Transaction already consumed".to_string(),
-			)
-		})?;
+		let tx = self.tx.as_mut().ok_or_else(transaction_consumed_error)?;
 
 		let sp = Savepoint::new(name);
-		sqlx::query(&sp.release_sql()).execute(&mut **tx).await?;
+		sqlx::query(&sp.release_sql())
+			.execute(&mut **tx)
+			.await
+			.map_err(map_sqlx_error)?;
 		Ok(())
 	}
 
 	async fn rollback_to_savepoint(&mut self, name: &str) -> Result<()> {
-		let tx = self.tx.as_mut().ok_or_else(|| {
-			crate::backends::error::DatabaseError::TransactionError(
-				"Transaction already consumed".to_string(),
-			)
-		})?;
+		let tx = self.tx.as_mut().ok_or_else(transaction_consumed_error)?;
 
 		let sp = Savepoint::new(name);
-		sqlx::query(&sp.rollback_sql()).execute(&mut **tx).await?;
+		sqlx::query(&sp.rollback_sql())
+			.execute(&mut **tx)
+			.await
+			.map_err(map_sqlx_error)?;
 		Ok(())
 	}
 }
@@ -384,120 +385,102 @@ impl MySqlRawTransactionExecutor {
 #[async_trait]
 impl TransactionExecutor for MySqlRawTransactionExecutor {
 	async fn execute(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<QueryResult> {
-		let conn = self.conn.as_mut().ok_or_else(|| {
-			crate::backends::error::DatabaseError::TransactionError(
-				"Transaction already consumed".to_string(),
-			)
-		})?;
+		let conn = self.conn.as_mut().ok_or_else(transaction_consumed_error)?;
 
 		let mut query = sqlx::query(sql);
 		for param in &params {
 			query = Self::bind_value(query, param);
 		}
-		let result = query.execute(&mut **conn).await?;
+		let result = query.execute(&mut **conn).await.map_err(map_sqlx_error)?;
 		Ok(QueryResult {
 			rows_affected: result.rows_affected(),
 		})
 	}
 
 	async fn fetch_one(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<Row> {
-		let conn = self.conn.as_mut().ok_or_else(|| {
-			crate::backends::error::DatabaseError::TransactionError(
-				"Transaction already consumed".to_string(),
-			)
-		})?;
+		let conn = self.conn.as_mut().ok_or_else(transaction_consumed_error)?;
 
 		let mut query = sqlx::query(sql);
 		for param in &params {
 			query = Self::bind_value(query, param);
 		}
-		let row = query.fetch_one(&mut **conn).await?;
+		let row = query.fetch_one(&mut **conn).await.map_err(map_sqlx_error)?;
 		Self::convert_row(row)
 	}
 
 	async fn fetch_all(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<Vec<Row>> {
-		let conn = self.conn.as_mut().ok_or_else(|| {
-			crate::backends::error::DatabaseError::TransactionError(
-				"Transaction already consumed".to_string(),
-			)
-		})?;
+		let conn = self.conn.as_mut().ok_or_else(transaction_consumed_error)?;
 
 		let mut query = sqlx::query(sql);
 		for param in &params {
 			query = Self::bind_value(query, param);
 		}
-		let rows = query.fetch_all(&mut **conn).await?;
+		let rows = query.fetch_all(&mut **conn).await.map_err(map_sqlx_error)?;
 		rows.into_iter().map(Self::convert_row).collect()
 	}
 
 	async fn fetch_optional(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<Option<Row>> {
-		let conn = self.conn.as_mut().ok_or_else(|| {
-			crate::backends::error::DatabaseError::TransactionError(
-				"Transaction already consumed".to_string(),
-			)
-		})?;
+		let conn = self.conn.as_mut().ok_or_else(transaction_consumed_error)?;
 
 		let mut query = sqlx::query(sql);
 		for param in &params {
 			query = Self::bind_value(query, param);
 		}
-		let row = query.fetch_optional(&mut **conn).await?;
+		let row = query
+			.fetch_optional(&mut **conn)
+			.await
+			.map_err(map_sqlx_error)?;
 		row.map(Self::convert_row).transpose()
 	}
 
 	async fn commit(mut self: Box<Self>) -> Result<()> {
-		let mut conn = self.conn.take().ok_or_else(|| {
-			crate::backends::error::DatabaseError::TransactionError(
-				"Transaction already consumed".to_string(),
-			)
-		})?;
-		sqlx::query("COMMIT").execute(&mut *conn).await?;
+		let mut conn = self.conn.take().ok_or_else(transaction_consumed_error)?;
+		sqlx::query("COMMIT")
+			.execute(&mut *conn)
+			.await
+			.map_err(map_sqlx_error)?;
 		Ok(())
 	}
 
 	async fn rollback(mut self: Box<Self>) -> Result<()> {
-		let mut conn = self.conn.take().ok_or_else(|| {
-			crate::backends::error::DatabaseError::TransactionError(
-				"Transaction already consumed".to_string(),
-			)
-		})?;
-		sqlx::query("ROLLBACK").execute(&mut *conn).await?;
+		let mut conn = self.conn.take().ok_or_else(transaction_consumed_error)?;
+		sqlx::query("ROLLBACK")
+			.execute(&mut *conn)
+			.await
+			.map_err(map_sqlx_error)?;
 		Ok(())
 	}
 
 	async fn savepoint(&mut self, name: &str) -> Result<()> {
-		let conn = self.conn.as_mut().ok_or_else(|| {
-			crate::backends::error::DatabaseError::TransactionError(
-				"Transaction already consumed".to_string(),
-			)
-		})?;
+		let conn = self.conn.as_mut().ok_or_else(transaction_consumed_error)?;
 
 		let sp = Savepoint::new(name);
-		sqlx::query(&sp.to_sql()).execute(&mut **conn).await?;
+		sqlx::query(&sp.to_sql())
+			.execute(&mut **conn)
+			.await
+			.map_err(map_sqlx_error)?;
 		Ok(())
 	}
 
 	async fn release_savepoint(&mut self, name: &str) -> Result<()> {
-		let conn = self.conn.as_mut().ok_or_else(|| {
-			crate::backends::error::DatabaseError::TransactionError(
-				"Transaction already consumed".to_string(),
-			)
-		})?;
+		let conn = self.conn.as_mut().ok_or_else(transaction_consumed_error)?;
 
 		let sp = Savepoint::new(name);
-		sqlx::query(&sp.release_sql()).execute(&mut **conn).await?;
+		sqlx::query(&sp.release_sql())
+			.execute(&mut **conn)
+			.await
+			.map_err(map_sqlx_error)?;
 		Ok(())
 	}
 
 	async fn rollback_to_savepoint(&mut self, name: &str) -> Result<()> {
-		let conn = self.conn.as_mut().ok_or_else(|| {
-			crate::backends::error::DatabaseError::TransactionError(
-				"Transaction already consumed".to_string(),
-			)
-		})?;
+		let conn = self.conn.as_mut().ok_or_else(transaction_consumed_error)?;
 
 		let sp = Savepoint::new(name);
-		sqlx::query(&sp.rollback_sql()).execute(&mut **conn).await?;
+		sqlx::query(&sp.rollback_sql())
+			.execute(&mut **conn)
+			.await
+			.map_err(map_sqlx_error)?;
 		Ok(())
 	}
 }

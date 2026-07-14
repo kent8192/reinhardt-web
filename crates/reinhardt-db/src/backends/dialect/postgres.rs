@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use crate::backends::{
 	backend::DatabaseBackend,
-	error::{DatabaseError, Result},
+	error::{DatabaseError, DatabaseErrorKind, Result, map_sqlx_error},
 	types::{
 		DatabaseType, IsolationLevel, QueryResult, QueryValue, Row, Savepoint, TransactionExecutor,
 	},
@@ -81,7 +81,10 @@ impl DatabaseBackend for PostgresBackend {
 		for param in &params {
 			query = Self::bind_value(query, param);
 		}
-		let result = query.execute(self.pool.as_ref()).await?;
+		let result = query
+			.execute(self.pool.as_ref())
+			.await
+			.map_err(map_sqlx_error)?;
 		Ok(QueryResult {
 			rows_affected: result.rows_affected(),
 		})
@@ -92,7 +95,10 @@ impl DatabaseBackend for PostgresBackend {
 		for param in &params {
 			query = Self::bind_value(query, param);
 		}
-		let row = query.fetch_one(self.pool.as_ref()).await?;
+		let row = query
+			.fetch_one(self.pool.as_ref())
+			.await
+			.map_err(map_sqlx_error)?;
 		Self::convert_row(row)
 	}
 
@@ -101,7 +107,10 @@ impl DatabaseBackend for PostgresBackend {
 		for param in &params {
 			query = Self::bind_value(query, param);
 		}
-		let rows = query.fetch_all(self.pool.as_ref()).await?;
+		let rows = query
+			.fetch_all(self.pool.as_ref())
+			.await
+			.map_err(map_sqlx_error)?;
 		rows.into_iter().map(Self::convert_row).collect()
 	}
 
@@ -110,12 +119,15 @@ impl DatabaseBackend for PostgresBackend {
 		for param in &params {
 			query = Self::bind_value(query, param);
 		}
-		let row = query.fetch_optional(self.pool.as_ref()).await?;
+		let row = query
+			.fetch_optional(self.pool.as_ref())
+			.await
+			.map_err(map_sqlx_error)?;
 		row.map(Self::convert_row).transpose()
 	}
 
 	async fn begin(&self) -> Result<Box<dyn TransactionExecutor>> {
-		let tx = self.pool.begin().await?;
+		let tx = self.pool.begin().await.map_err(map_sqlx_error)?;
 		Ok(Box::new(PgTransactionExecutor::new(tx)))
 	}
 
@@ -124,14 +136,17 @@ impl DatabaseBackend for PostgresBackend {
 		isolation_level: IsolationLevel,
 	) -> Result<Box<dyn TransactionExecutor>> {
 		// PostgreSQL supports setting isolation level at transaction start
-		let mut tx = self.pool.begin().await?;
+		let mut tx = self.pool.begin().await.map_err(map_sqlx_error)?;
 
 		// Set the isolation level using PostgreSQL's SET TRANSACTION command
 		let sql = format!(
 			"SET TRANSACTION ISOLATION LEVEL {}",
 			isolation_level.to_sql(DatabaseType::Postgres)
 		);
-		sqlx::query(&sql).execute(&mut *tx).await?;
+		sqlx::query(&sql)
+			.execute(&mut *tx)
+			.await
+			.map_err(map_sqlx_error)?;
 
 		Ok(Box::new(PgTransactionExecutor::new(tx)))
 	}
@@ -195,7 +210,7 @@ impl PostgresBackend {
 						QueryValue::Json(Some(Box::new(value))),
 					),
 					Ok(None) => row.insert(column_name.to_string(), QueryValue::Null),
-					Err(error) => return Err(error.into()),
+					Err(error) => return Err(map_sqlx_error(error).into()),
 				};
 				continue;
 			}
@@ -213,7 +228,7 @@ impl PostgresBackend {
 				if let Some(f) = value.to_f64() {
 					row.insert(column_name.to_string(), QueryValue::Float(f));
 				} else {
-					return Err(Self::decimal_conversion_error(&value, column_name));
+					return Err(Self::decimal_conversion_error(&value, column_name).into());
 				}
 			} else if let Ok(value) = pg_row.try_get::<f64, _>(column_name) {
 				row.insert(column_name.to_string(), QueryValue::Float(value));
@@ -242,10 +257,13 @@ impl PostgresBackend {
 
 	/// Build a TypeError for failed Decimal-to-f64 conversion
 	fn decimal_conversion_error(value: &rust_decimal::Decimal, column_name: &str) -> DatabaseError {
-		DatabaseError::TypeError(format!(
-			"Failed to convert Decimal value '{}' to f64 for column '{}'",
-			value, column_name
-		))
+		DatabaseError::new(
+			DatabaseErrorKind::Type,
+			format!(
+				"Failed to convert Decimal value '{}' to f64 for column '{}'",
+				value, column_name
+			),
+		)
 	}
 }
 
@@ -253,8 +271,9 @@ impl PostgresBackend {
 impl TransactionExecutor for PgTransactionExecutor {
 	async fn execute(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<QueryResult> {
 		let tx = self.tx.as_mut().ok_or_else(|| {
-			crate::backends::error::DatabaseError::TransactionError(
-				"Transaction already consumed".to_string(),
+			DatabaseError::new(
+				DatabaseErrorKind::Transaction,
+				"Transaction already consumed",
 			)
 		})?;
 
@@ -262,7 +281,7 @@ impl TransactionExecutor for PgTransactionExecutor {
 		for param in &params {
 			query = Self::bind_value(query, param);
 		}
-		let result = query.execute(&mut **tx).await?;
+		let result = query.execute(&mut **tx).await.map_err(map_sqlx_error)?;
 		Ok(QueryResult {
 			rows_affected: result.rows_affected(),
 		})
@@ -270,8 +289,9 @@ impl TransactionExecutor for PgTransactionExecutor {
 
 	async fn fetch_one(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<Row> {
 		let tx = self.tx.as_mut().ok_or_else(|| {
-			crate::backends::error::DatabaseError::TransactionError(
-				"Transaction already consumed".to_string(),
+			DatabaseError::new(
+				DatabaseErrorKind::Transaction,
+				"Transaction already consumed",
 			)
 		})?;
 
@@ -279,14 +299,15 @@ impl TransactionExecutor for PgTransactionExecutor {
 		for param in &params {
 			query = Self::bind_value(query, param);
 		}
-		let row = query.fetch_one(&mut **tx).await?;
+		let row = query.fetch_one(&mut **tx).await.map_err(map_sqlx_error)?;
 		Self::convert_row(row)
 	}
 
 	async fn fetch_all(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<Vec<Row>> {
 		let tx = self.tx.as_mut().ok_or_else(|| {
-			crate::backends::error::DatabaseError::TransactionError(
-				"Transaction already consumed".to_string(),
+			DatabaseError::new(
+				DatabaseErrorKind::Transaction,
+				"Transaction already consumed",
 			)
 		})?;
 
@@ -294,14 +315,15 @@ impl TransactionExecutor for PgTransactionExecutor {
 		for param in &params {
 			query = Self::bind_value(query, param);
 		}
-		let rows = query.fetch_all(&mut **tx).await?;
+		let rows = query.fetch_all(&mut **tx).await.map_err(map_sqlx_error)?;
 		rows.into_iter().map(Self::convert_row).collect()
 	}
 
 	async fn fetch_optional(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<Option<Row>> {
 		let tx = self.tx.as_mut().ok_or_else(|| {
-			crate::backends::error::DatabaseError::TransactionError(
-				"Transaction already consumed".to_string(),
+			DatabaseError::new(
+				DatabaseErrorKind::Transaction,
+				"Transaction already consumed",
 			)
 		})?;
 
@@ -309,63 +331,80 @@ impl TransactionExecutor for PgTransactionExecutor {
 		for param in &params {
 			query = Self::bind_value(query, param);
 		}
-		let row = query.fetch_optional(&mut **tx).await?;
+		let row = query
+			.fetch_optional(&mut **tx)
+			.await
+			.map_err(map_sqlx_error)?;
 		row.map(Self::convert_row).transpose()
 	}
 
 	async fn commit(mut self: Box<Self>) -> Result<()> {
 		let tx = self.tx.take().ok_or_else(|| {
-			crate::backends::error::DatabaseError::TransactionError(
-				"Transaction already consumed".to_string(),
+			DatabaseError::new(
+				DatabaseErrorKind::Transaction,
+				"Transaction already consumed",
 			)
 		})?;
-		tx.commit().await?;
+		tx.commit().await.map_err(map_sqlx_error)?;
 		Ok(())
 	}
 
 	async fn rollback(mut self: Box<Self>) -> Result<()> {
 		let tx = self.tx.take().ok_or_else(|| {
-			crate::backends::error::DatabaseError::TransactionError(
-				"Transaction already consumed".to_string(),
+			DatabaseError::new(
+				DatabaseErrorKind::Transaction,
+				"Transaction already consumed",
 			)
 		})?;
-		tx.rollback().await?;
+		tx.rollback().await.map_err(map_sqlx_error)?;
 		Ok(())
 	}
 
 	async fn savepoint(&mut self, name: &str) -> Result<()> {
 		let tx = self.tx.as_mut().ok_or_else(|| {
-			crate::backends::error::DatabaseError::TransactionError(
-				"Transaction already consumed".to_string(),
+			DatabaseError::new(
+				DatabaseErrorKind::Transaction,
+				"Transaction already consumed",
 			)
 		})?;
 
 		let sp = Savepoint::new(name);
-		sqlx::query(&sp.to_sql()).execute(&mut **tx).await?;
+		sqlx::query(&sp.to_sql())
+			.execute(&mut **tx)
+			.await
+			.map_err(map_sqlx_error)?;
 		Ok(())
 	}
 
 	async fn release_savepoint(&mut self, name: &str) -> Result<()> {
 		let tx = self.tx.as_mut().ok_or_else(|| {
-			crate::backends::error::DatabaseError::TransactionError(
-				"Transaction already consumed".to_string(),
+			DatabaseError::new(
+				DatabaseErrorKind::Transaction,
+				"Transaction already consumed",
 			)
 		})?;
 
 		let sp = Savepoint::new(name);
-		sqlx::query(&sp.release_sql()).execute(&mut **tx).await?;
+		sqlx::query(&sp.release_sql())
+			.execute(&mut **tx)
+			.await
+			.map_err(map_sqlx_error)?;
 		Ok(())
 	}
 
 	async fn rollback_to_savepoint(&mut self, name: &str) -> Result<()> {
 		let tx = self.tx.as_mut().ok_or_else(|| {
-			crate::backends::error::DatabaseError::TransactionError(
-				"Transaction already consumed".to_string(),
+			DatabaseError::new(
+				DatabaseErrorKind::Transaction,
+				"Transaction already consumed",
 			)
 		})?;
 
 		let sp = Savepoint::new(name);
-		sqlx::query(&sp.rollback_sql()).execute(&mut **tx).await?;
+		sqlx::query(&sp.rollback_sql())
+			.execute(&mut **tx)
+			.await
+			.map_err(map_sqlx_error)?;
 		Ok(())
 	}
 }
@@ -415,7 +454,7 @@ mod tests {
 	/// Verify the TypeError is constructed correctly for conversion failures
 	#[rstest]
 	fn test_decimal_conversion_error_message_format() {
-		use crate::backends::error::DatabaseError;
+		use crate::backends::error::DatabaseErrorKind;
 
 		// Arrange
 		let value = rust_decimal::Decimal::new(12345, 2);
@@ -425,31 +464,24 @@ mod tests {
 		let error = super::PostgresBackend::decimal_conversion_error(&value, column_name);
 
 		// Assert
-		assert!(matches!(error, DatabaseError::TypeError(_)));
-		let error_msg = error.to_string();
-		assert!(
-			error_msg.contains("price_column"),
-			"Error message should contain the column name"
-		);
-		assert!(
-			error_msg.contains("123.45"),
-			"Error message should contain the decimal value"
+		assert_eq!(error.kind(), DatabaseErrorKind::Type);
+		assert_eq!(
+			error.to_string(),
+			"Failed to convert Decimal value '123.45' to f64 for column 'price_column'"
 		);
 	}
 
 	/// Verify TypeError is the correct variant for type conversion failures
 	#[rstest]
 	fn test_type_error_variant_distinction() {
-		use crate::backends::error::DatabaseError;
+		use crate::backends::error::{DatabaseError, DatabaseErrorKind};
 
 		// Arrange & Act
-		let type_error = DatabaseError::TypeError("conversion failed".to_string());
-		let query_error = DatabaseError::QueryError("query failed".to_string());
+		let type_error = DatabaseError::new(DatabaseErrorKind::Type, "conversion failed");
+		let query_error = DatabaseError::new(DatabaseErrorKind::Query, "query failed");
 
 		// Assert
-		assert!(matches!(type_error, DatabaseError::TypeError(_)));
-		assert!(!matches!(type_error, DatabaseError::QueryError(_)));
-		assert!(matches!(query_error, DatabaseError::QueryError(_)));
-		assert!(!matches!(query_error, DatabaseError::TypeError(_)));
+		assert_eq!(type_error.kind(), DatabaseErrorKind::Type);
+		assert_eq!(query_error.kind(), DatabaseErrorKind::Query);
 	}
 }

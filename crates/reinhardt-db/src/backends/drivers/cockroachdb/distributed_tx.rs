@@ -12,7 +12,8 @@ use sqlx::{PgPool, Postgres, Row, Transaction};
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::backends::error::{DatabaseError, Result};
+use crate::backends::error::{DatabaseErrorKind, Result, map_sqlx_error};
+use reinhardt_core::exception::Error;
 
 /// Maximum number of transaction retry attempts
 const MAX_RETRIES: u32 = 5;
@@ -162,11 +163,11 @@ impl CockroachDBTransactionManager {
 		let mut attempt = 0;
 
 		loop {
-			let mut tx = self.pool.begin().await.map_err(DatabaseError::from)?;
+			let mut tx = self.pool.begin().await.map_err(map_sqlx_error)?;
 
 			match f(&mut tx).await {
 				Ok(result) => {
-					tx.commit().await.map_err(DatabaseError::from)?;
+					tx.commit().await.map_err(map_sqlx_error)?;
 					return Ok(result);
 				}
 				Err(e) => {
@@ -242,31 +243,26 @@ impl CockroachDBTransactionManager {
 		>,
 		T: Send,
 	{
-		let mut tx = self.pool.begin().await.map_err(DatabaseError::from)?;
+		let mut tx = self.pool.begin().await.map_err(map_sqlx_error)?;
 
 		let sql = format!("SET TRANSACTION PRIORITY {}", priority);
 		sqlx::raw_sql(&sql)
 			.execute(&mut *tx)
 			.await
-			.map_err(DatabaseError::from)?;
+			.map_err(map_sqlx_error)?;
 
 		let result = f(&mut tx).await?;
-		tx.commit().await.map_err(DatabaseError::from)?;
+		tx.commit().await.map_err(map_sqlx_error)?;
 
 		Ok(result)
 	}
 
 	/// Check if error is a serialization/retry error
-	fn is_serialization_error(error: &DatabaseError) -> bool {
-		match error {
-			DatabaseError::QueryError(msg) => {
-				// CockroachDB serialization error (SQLSTATE 40001)
-				msg.contains("40001")
-					|| msg.contains("restart transaction")
-					|| msg.contains("serialization failure")
-			}
-			_ => false,
-		}
+	fn is_serialization_error(error: &Error) -> bool {
+		error.database_error().is_some_and(|database_error| {
+			database_error.kind() == DatabaseErrorKind::Serialization
+				|| database_error.code() == Some("40001")
+		})
 	}
 
 	/// Calculate exponential backoff with jitter
@@ -298,9 +294,9 @@ impl CockroachDBTransactionManager {
 		let row = sqlx::query("SHOW CLUSTER SETTING version")
 			.fetch_one(self.pool.as_ref())
 			.await
-			.map_err(DatabaseError::from)?;
+			.map_err(map_sqlx_error)?;
 
-		let version: String = row.try_get(0).map_err(DatabaseError::from)?;
+		let version: String = row.try_get(0).map_err(map_sqlx_error)?;
 
 		Ok(ClusterInfo { version })
 	}
@@ -350,6 +346,7 @@ mod rand {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::backends::error::DatabaseError;
 
 	#[test]
 	fn test_cluster_info_creation() {
@@ -362,18 +359,29 @@ mod tests {
 
 	#[test]
 	fn test_is_serialization_error() {
-		let err1 = DatabaseError::QueryError("SQLSTATE 40001: restart transaction".to_string());
+		let err1 = Error::from(
+			DatabaseError::new(DatabaseErrorKind::Query, "restart transaction").with_code("40001"),
+		);
 		assert!(CockroachDBTransactionManager::is_serialization_error(&err1));
 
-		let err2 = DatabaseError::QueryError("serialization failure".to_string());
+		let err2 = Error::from(DatabaseError::new(
+			DatabaseErrorKind::Serialization,
+			"serialization failure",
+		));
 		assert!(CockroachDBTransactionManager::is_serialization_error(&err2));
 
-		let err3 = DatabaseError::QueryError("some other error".to_string());
+		let err3 = Error::from(DatabaseError::new(
+			DatabaseErrorKind::Query,
+			"some other error",
+		));
 		assert!(!CockroachDBTransactionManager::is_serialization_error(
 			&err3
 		));
 
-		let err4 = DatabaseError::ConnectionError("connection failed".to_string());
+		let err4 = Error::from(DatabaseError::new(
+			DatabaseErrorKind::Connection,
+			"connection failed",
+		));
 		assert!(!CockroachDBTransactionManager::is_serialization_error(
 			&err4
 		));
