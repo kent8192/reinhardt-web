@@ -7165,9 +7165,7 @@ impl MigrationAutodetector {
 		let new_table = m2m.through.clone().unwrap_or_else(|| {
 			crate::m2m_naming::default_through_table(new_source_table, &m2m.field_name)
 		});
-		if self.from_state.find_model_by_table(&old_table).is_none() {
-			return None;
-		}
+		self.from_state.find_model_by_table(&old_table)?;
 
 		let (old_default_source_column, old_default_target_column) =
 			crate::m2m_naming::default_m2m_columns(old_source_table, &old_target_table);
