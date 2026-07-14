@@ -155,6 +155,7 @@ where
 /// # Example
 ///
 /// ```ignore
+/// use reinhardt_pages::deps;
 /// use reinhardt_pages::reactive::hooks::{use_retained_effect, use_state};
 ///
 /// let (count, _set_count) = use_state(0);
@@ -167,7 +168,7 @@ where
 ///             None::<fn()>
 ///         }
 ///     },
-///     (count.clone(),),
+///     deps![count],
 /// );
 /// ```
 ///
@@ -207,6 +208,7 @@ where
 /// # Example
 ///
 /// ```ignore
+/// use reinhardt_pages::deps;
 /// use reinhardt_pages::reactive::hooks::{use_layout_effect, use_ref, use_state};
 ///
 /// let element_ref = use_ref(None::<Element>);
@@ -222,7 +224,7 @@ where
 ///             }
 ///         }
 ///     },
-///     (element_ref,),
+///     deps![element_ref],
 /// );
 /// ```
 pub fn use_layout_effect<F, C, D>(f: F, deps: D) -> Effect
@@ -253,6 +255,7 @@ where
 /// # Example
 ///
 /// ```ignore
+/// use reinhardt_pages::deps;
 /// use reinhardt_pages::reactive::{
 ///     Signal,
 ///     hooks::{use_ref, use_retained_layout_effect},
@@ -272,7 +275,7 @@ where
 ///             None::<fn()>
 ///         }
 ///     },
-///     (element_ref.clone(),),
+///     deps![element_ref],
 /// );
 /// ```
 ///

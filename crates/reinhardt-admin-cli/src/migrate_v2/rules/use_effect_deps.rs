@@ -105,35 +105,46 @@ const HOOK_SPECS: &[HookSpec] = &[
 struct UseEntry {
 	original: Vec<syn::Ident>,
 	bound: syn::Ident,
+	attrs: Vec<syn::Attribute>,
+}
+
+#[derive(Clone)]
+struct GeneratedDepsImport {
+	facade: syn::Path,
+	attrs: Vec<syn::Attribute>,
 }
 
 struct HookVisitor {
-	generated_deps: bool,
+	generated_imports: Vec<GeneratedDepsImport>,
 	imports: Vec<UseEntry>,
-	facade: Option<syn::Path>,
 }
 
 fn rewrite_scope(items: &mut Vec<syn::Item>) {
 	let imports = collect_imports(items);
 	let mut visitor = HookVisitor {
-		generated_deps: false,
+		generated_imports: Vec::new(),
 		imports: imports.clone(),
-		facade: None,
 	};
 	for item in items.iter_mut() {
 		visitor.visit_item_mut(item);
 	}
-	if visitor.generated_deps && !imports_bare_deps(&imports) {
-		let facade = visitor
-			.facade
-			.unwrap_or_else(|| syn::parse_quote!(reinhardt_pages));
-		let import =
-			syn::parse2(quote!(use #facade::deps;)).expect("generated deps import must parse");
+	if !visitor.generated_imports.is_empty() {
 		let insertion = items
 			.iter()
 			.position(|item| matches!(item, syn::Item::Use(_)))
 			.unwrap_or(0);
-		items.insert(insertion, import);
+		let mut inserted = 0;
+		for generated in visitor.generated_imports {
+			if has_deps_import(&imports, &generated.facade, &generated.attrs) {
+				continue;
+			}
+			let attrs = generated.attrs;
+			let facade = generated.facade;
+			let import = syn::parse2(quote!(#(#attrs)* use #facade::deps;))
+				.expect("generated deps import must parse");
+			items.insert(insertion + inserted, import);
+			inserted += 1;
+		}
 	}
 	for item in items.iter_mut() {
 		if let syn::Item::Mod(module) = item
@@ -148,7 +159,7 @@ impl VisitMut for HookVisitor {
 	fn visit_item_mod_mut(&mut self, _module: &mut syn::ItemMod) {}
 
 	fn visit_expr_call_mut(&mut self, call: &mut syn::ExprCall) {
-		if let Some((spec, facade)) = self.resolve_hook(call) {
+		if let Some((spec, facade, attrs)) = self.resolve_hook(call) {
 			if call.args.len() == spec.omitted_arity {
 				let callback = call
 					.args
@@ -157,8 +168,7 @@ impl VisitMut for HookVisitor {
 					.expect("hook callback must exist");
 				let deps = dependency_list(callback);
 				if deps.is_some() {
-					self.generated_deps = true;
-					self.facade.get_or_insert(facade);
+					self.record_generated_import(facade.clone(), attrs.clone());
 				}
 				call.args
 					.insert(spec.deps_index, deps.unwrap_or_else(review_marker));
@@ -169,8 +179,7 @@ impl VisitMut for HookVisitor {
 						.nth(spec.deps_index)
 						.expect("hook dependencies must exist"),
 				) {
-				self.generated_deps = true;
-				self.facade.get_or_insert(facade);
+				self.record_generated_import(facade, attrs);
 				*call
 					.args
 					.iter_mut()
@@ -183,7 +192,22 @@ impl VisitMut for HookVisitor {
 }
 
 impl HookVisitor {
-	fn resolve_hook(&self, call: &syn::ExprCall) -> Option<(HookSpec, syn::Path)> {
+	fn record_generated_import(&mut self, facade: syn::Path, attrs: Vec<syn::Attribute>) {
+		let key = import_key(&facade, &attrs);
+		if self
+			.generated_imports
+			.iter()
+			.all(|generated| import_key(&generated.facade, &generated.attrs) != key)
+		{
+			self.generated_imports
+				.push(GeneratedDepsImport { facade, attrs });
+		}
+	}
+
+	fn resolve_hook(
+		&self,
+		call: &syn::ExprCall,
+	) -> Option<(HookSpec, syn::Path, Vec<syn::Attribute>)> {
 		let syn::Expr::Path(path) = &*call.func else {
 			return None;
 		};
@@ -194,19 +218,37 @@ impl HookVisitor {
 			.map(|segment| segment.ident.clone())
 			.collect();
 		let called = segments.last()?;
-		if segments.len() > 1 {
+		if segments.len() == 1 {
+			if let Some(entry) = self.imports.iter().find(|entry| entry.bound == *called) {
+				let original = entry.original.last()?;
+				let spec = hook_spec(&original.to_string())?;
+				let facade = facade_from_segments(&entry.original)
+					.unwrap_or_else(|| syn::parse_quote!(reinhardt_pages));
+				return Some((spec, facade, entry.attrs.clone()));
+			}
 			let spec = hook_spec(&called.to_string())?;
-			return Some((spec, facade_from_segments(&segments)));
+			return Some((spec, syn::parse_quote!(reinhardt_pages), Vec::new()));
 		}
-		if let Some(entry) = self.imports.iter().find(|entry| entry.bound == *called) {
-			let original = entry.original.last()?;
-			let spec = hook_spec(&original.to_string())?;
-			return Some((spec, facade_from_segments(&entry.original)));
+		for (index, segment) in segments.iter().enumerate().take(segments.len() - 1) {
+			let Some(entry) = self.imports.iter().find(|entry| entry.bound == *segment) else {
+				continue;
+			};
+			let mut resolved = entry.original.clone();
+			resolved.extend(segments.iter().skip(index + 1).cloned());
+			let Some(original) = resolved.last() else {
+				continue;
+			};
+			let Some(spec) = hook_spec(&original.to_string()) else {
+				continue;
+			};
+			let facade = facade_from_segments(&resolved)
+				.unwrap_or_else(|| syn::parse_quote!(reinhardt_pages));
+			return Some((spec, facade, entry.attrs.clone()));
 		}
-		Some((
-			hook_spec(&called.to_string())?,
-			syn::parse_quote!(reinhardt_pages),
-		))
+		let spec = hook_spec(&called.to_string())?;
+		let facade =
+			facade_from_segments(&segments).unwrap_or_else(|| syn::parse_quote!(reinhardt_pages));
+		Some((spec, facade, Vec::new()))
 	}
 }
 
@@ -214,13 +256,19 @@ fn hook_spec(name: &str) -> Option<HookSpec> {
 	HOOK_SPECS.iter().copied().find(|spec| spec.name == name)
 }
 
-fn facade_from_segments(segments: &[syn::Ident]) -> syn::Path {
+fn facade_from_segments(segments: &[syn::Ident]) -> Option<syn::Path> {
+	if segments.is_empty() {
+		return None;
+	}
 	let end = segments
 		.iter()
 		.position(|ident| ident == "reactive")
 		.unwrap_or(segments.len() - 1);
+	if end == 0 {
+		return None;
+	}
 	let facade = &segments[..end];
-	syn::parse2(quote!(#(#facade)::* )).expect("hook facade must parse")
+	syn::parse2(quote!(#(#facade)::* )).ok()
 }
 
 fn tuple_dependency_list(deps: &syn::Expr) -> Option<syn::Expr> {
@@ -266,7 +314,7 @@ fn dependency_list(callback: &syn::Expr) -> Option<syn::Expr> {
 	let mut dependencies = Vec::new();
 	let mut seen = HashSet::new();
 	for read in reads.reads {
-		let dependency = aliases.get(&read)?;
+		let dependency = resolve_alias(&read, &aliases)?;
 		let key = quote!(#dependency).to_string();
 		if seen.insert(key) {
 			dependencies.push(dependency);
@@ -367,11 +415,68 @@ fn clone_aliases(stmts: &[syn::Stmt]) -> HashMap<String, syn::Expr> {
 		let syn::Expr::MethodCall(call) = strip_parens(&init.expr) else {
 			continue;
 		};
-		if call.method == "clone" && call.args.is_empty() {
-			aliases.insert(alias.ident.to_string(), (*call.receiver).clone());
+		if call.method == "clone"
+			&& call.args.is_empty()
+			&& let Some(receiver) = safe_clone_place(&call.receiver)
+		{
+			aliases.insert(alias.ident.to_string(), receiver);
 		}
 	}
 	aliases
+}
+
+fn safe_clone_place(expr: &syn::Expr) -> Option<syn::Expr> {
+	match strip_parens(expr) {
+		syn::Expr::Path(path) if path.qself.is_none() && !path.path.segments.is_empty() => {
+			Some(syn::Expr::Path(path.clone()))
+		}
+		syn::Expr::Field(field) => {
+			let mut field = field.clone();
+			field.base = Box::new(safe_clone_place(&field.base)?);
+			Some(syn::Expr::Field(field))
+		}
+		_ => None,
+	}
+}
+
+fn resolve_alias(name: &str, aliases: &HashMap<String, syn::Expr>) -> Option<syn::Expr> {
+	let mut stack = vec![name.to_owned()];
+	let expr = aliases.get(name)?;
+	resolve_place(expr, aliases, &mut stack)
+}
+
+fn resolve_place(
+	expr: &syn::Expr,
+	aliases: &HashMap<String, syn::Expr>,
+	stack: &mut Vec<String>,
+) -> Option<syn::Expr> {
+	match strip_parens(expr) {
+		syn::Expr::Path(path) if path.qself.is_none() && path.path.segments.len() == 1 => {
+			let ident = path.path.segments.first()?.ident.to_string();
+			let Some(alias) = aliases.get(&ident) else {
+				return Some(syn::Expr::Path(path.clone()));
+			};
+			if stack.last().is_some_and(|current| current == &ident) {
+				return Some(syn::Expr::Path(path.clone()));
+			}
+			if stack.iter().any(|current| current == &ident) {
+				return None;
+			}
+			stack.push(ident);
+			let resolved = resolve_place(alias, aliases, stack);
+			stack.pop();
+			resolved
+		}
+		syn::Expr::Path(path) if path.qself.is_none() && !path.path.segments.is_empty() => {
+			Some(syn::Expr::Path(path.clone()))
+		}
+		syn::Expr::Field(field) => {
+			let mut field = field.clone();
+			field.base = Box::new(resolve_place(&field.base, aliases, stack)?);
+			Some(syn::Expr::Field(field))
+		}
+		_ => None,
+	}
 }
 
 fn base_ident_of(expr: &syn::Expr) -> Option<&syn::Ident> {
@@ -392,18 +497,23 @@ fn collect_imports(items: &[syn::Item]) -> Vec<UseEntry> {
 	let mut imports = Vec::new();
 	for item in items {
 		if let syn::Item::Use(item_use) = item {
-			flatten_use_tree(&item_use.tree, &[], &mut imports);
+			flatten_use_tree(&item_use.tree, &[], &item_use.attrs, &mut imports);
 		}
 	}
 	imports
 }
 
-fn flatten_use_tree(tree: &syn::UseTree, prefix: &[syn::Ident], imports: &mut Vec<UseEntry>) {
+fn flatten_use_tree(
+	tree: &syn::UseTree,
+	prefix: &[syn::Ident],
+	attrs: &[syn::Attribute],
+	imports: &mut Vec<UseEntry>,
+) {
 	match tree {
 		syn::UseTree::Path(path) => {
 			let mut next = prefix.to_vec();
 			next.push(path.ident.clone());
-			flatten_use_tree(&path.tree, &next, imports);
+			flatten_use_tree(&path.tree, &next, attrs, imports);
 		}
 		syn::UseTree::Name(name) => {
 			let mut original = prefix.to_vec();
@@ -411,6 +521,7 @@ fn flatten_use_tree(tree: &syn::UseTree, prefix: &[syn::Ident], imports: &mut Ve
 			imports.push(UseEntry {
 				original,
 				bound: name.ident.clone(),
+				attrs: attrs.to_vec(),
 			});
 		}
 		syn::UseTree::Rename(rename) => {
@@ -419,20 +530,29 @@ fn flatten_use_tree(tree: &syn::UseTree, prefix: &[syn::Ident], imports: &mut Ve
 			imports.push(UseEntry {
 				original,
 				bound: rename.rename.clone(),
+				attrs: attrs.to_vec(),
 			});
 		}
 		syn::UseTree::Group(group) => {
 			for tree in &group.items {
-				flatten_use_tree(tree, prefix, imports);
+				flatten_use_tree(tree, prefix, attrs, imports);
 			}
 		}
 		syn::UseTree::Glob(_) => {}
 	}
 }
 
-fn imports_bare_deps(imports: &[UseEntry]) -> bool {
+fn import_key(facade: &syn::Path, attrs: &[syn::Attribute]) -> String {
+	quote!(#facade #(#attrs)*).to_string()
+}
+
+fn has_deps_import(imports: &[UseEntry], facade: &syn::Path, attrs: &[syn::Attribute]) -> bool {
+	let key = import_key(facade, attrs);
 	imports.iter().any(|entry| {
-		entry.original.last().is_some_and(|ident| ident == "deps") && entry.bound == "deps"
+		entry.bound == "deps"
+			&& entry.original.last().is_some_and(|ident| ident == "deps")
+			&& facade_from_segments(&entry.original)
+				.is_some_and(|entry_facade| import_key(&entry_facade, &entry.attrs) == key)
 	})
 }
 
@@ -589,5 +709,144 @@ fn view() { let _ = use_effect(|| {}); }
 		);
 		assert!(output.contains("use reinhardt_pages::deps as hook_deps;"));
 		assert!(output.contains("use reinhardt_pages::deps;"));
+	}
+
+	#[test]
+	fn clone_alias_chain_resolves_to_the_outer_dependency() {
+		let output = compact(&rewrite(
+			r#"
+use reinhardt_pages::use_effect;
+fn view(count: Signal<i32>) {
+    let _ = use_effect({
+        let first = count.clone();
+        let second = first.clone();
+        move || { let _ = second.get(); }
+    });
+}
+"#,
+		));
+		assert!(output.contains("deps![count]"));
+		assert!(!output.contains("compile_error!"));
+	}
+
+	#[test]
+	fn clone_alias_chain_accepts_a_field_place() {
+		let output = compact(&rewrite(
+			r#"
+use reinhardt_pages::use_effect;
+fn view(state: State) {
+    let _ = use_effect({
+        let first = state.count.clone();
+        let second = first.clone();
+        move || { let _ = second.get(); }
+    });
+}
+"#,
+		));
+		assert!(output.contains("deps![state.count]"));
+		assert!(!output.contains("compile_error!"));
+	}
+
+	#[test]
+	fn side_effecting_or_indexed_clone_receivers_keep_review_markers() {
+		let output = compact(&rewrite(
+			r#"
+use reinhardt_pages::use_effect;
+fn view(signals: Vec<Signal<i32>>) {
+    let _ = use_effect({
+        let signal = make_signal().clone();
+        move || { let _ = signal.get(); }
+    });
+    let _ = use_effect({
+        let signal = signals[0].clone();
+        move || { let _ = signal.get(); }
+    });
+}
+"#,
+		));
+		assert_eq!(output.matches("compile_error!").count(), 2);
+	}
+
+	#[test]
+	fn cyclic_clone_aliases_keep_the_review_marker() {
+		let output = compact(&rewrite(
+			r#"
+use reinhardt_pages::use_effect;
+fn view() {
+    let _ = use_effect({
+        let first = second.clone();
+        let second = first.clone();
+        move || { let _ = second.get(); }
+    });
+}
+"#,
+		));
+		assert_eq!(output.matches("compile_error!").count(), 1);
+	}
+
+	#[test]
+	fn module_alias_hook_call_restores_the_full_facade() {
+		let output = compact(&rewrite(
+			r#"
+use reinhardt_pages::reactive::hooks as hooks;
+fn view() { let _ = hooks::use_effect(|| {}); }
+"#,
+		));
+		assert!(output.contains("usereinhardt_pages::deps;"));
+		assert!(output.contains("hooks::use_effect(||{},deps![]);"));
+	}
+
+	#[test]
+	fn module_name_and_self_qualified_hook_calls_restore_the_facade() {
+		let output = compact(&rewrite(
+			r#"
+use reinhardt_pages::reactive::hooks;
+fn one() { let _ = hooks::use_effect(|| {}); }
+fn two() { let _ = self::hooks::use_effect(|| {}); }
+"#,
+		));
+		assert_eq!(output.matches("usereinhardt_pages::deps;").count(), 1);
+		assert_eq!(output.matches("deps![]").count(), 2);
+	}
+
+	#[test]
+	fn generated_deps_import_inherits_hook_import_cfg() {
+		let output = rewrite(
+			r#"
+#[cfg(wasm)]
+use reinhardt_pages::reactive::hooks as hooks;
+fn view() { let _ = hooks::use_effect(|| {}); }
+"#,
+		);
+		assert!(output.contains("#[cfg(wasm)]\nuse reinhardt_pages::deps;"));
+	}
+
+	#[test]
+	fn generated_deps_imports_deduplicate_by_cfg_and_path() {
+		let output = rewrite(
+			r#"
+#[cfg(wasm)]
+use reinhardt_pages::reactive::hooks as wasm_hooks;
+#[cfg(native)]
+use reinhardt_pages::reactive::hooks as native_hooks;
+fn view() {
+    let _ = wasm_hooks::use_effect(|| {});
+    let _ = wasm_hooks::use_layout_effect(|| {});
+    let _ = native_hooks::use_effect(|| {});
+}
+"#,
+		);
+		assert_eq!(
+			output
+				.matches("#[cfg(wasm)]\nuse reinhardt_pages::deps;")
+				.count(),
+			1
+		);
+		assert_eq!(
+			output
+				.matches("#[cfg(native)]\nuse reinhardt_pages::deps;")
+				.count(),
+			1
+		);
 	}
 }
