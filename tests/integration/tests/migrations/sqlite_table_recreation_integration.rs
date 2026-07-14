@@ -3300,6 +3300,78 @@ async fn typed_enum_constraint_recreation_drops_unnamed_unique_by_autoindex_name
 
 #[rstest]
 #[tokio::test]
+async fn typed_enum_constraint_recreation_drops_collapsed_binary_unique_by_autoindex_name() {
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("connect to in-memory SQLite");
+	connection
+		.execute(
+			"CREATE TABLE collapsed_binary_unique_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT NOT NULL, status TEXT NOT NULL, UNIQUE (code), UNIQUE (code COLLATE BINARY))",
+			vec![],
+		)
+		.await
+		.expect("create semantically equivalent unnamed unique constraints");
+	let conn = Arc::new(connection.clone());
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+	let add_enum = create_test_migration(
+		"testapp",
+		"0001_add_collapsed_binary_enum_domain",
+		vec![Operation::AddConstraintDefinition {
+			table: "collapsed_binary_unique_jobs".to_string(),
+			constraint: Constraint::EnumDomain {
+				name: "collapsed_binary_unique_jobs_status_model_enum_check".to_string(),
+				column: "status".to_string(),
+				domain: FieldDomain::Enum {
+					repr: ModelEnumRepr::String,
+					values: vec![ModelEnumValue::String("queued".to_string())],
+				},
+			},
+		}],
+	);
+	executor
+		.apply_migrations(&[add_enum])
+		.await
+		.expect("add typed enum domain through table recreation");
+
+	let autoindexes = conn
+		.fetch_all("PRAGMA index_list('collapsed_binary_unique_jobs')", vec![])
+		.await
+		.expect("inspect collapsed unique autoindex")
+		.into_iter()
+		.filter(|row| row.get::<String>("origin").ok().as_deref() == Some("u"))
+		.filter_map(|row| row.get::<String>("name").ok())
+		.collect::<Vec<_>>();
+	assert_eq!(
+		autoindexes.len(),
+		1,
+		"SQLite should collapse equivalent BINARY unique constraints"
+	);
+	let drop_unique = create_test_migration(
+		"testapp",
+		"0002_drop_collapsed_binary_unique",
+		vec![Operation::DropConstraintDefinition {
+			table: "collapsed_binary_unique_jobs".to_string(),
+			constraint: Constraint::Unique {
+				name: autoindexes[0].clone(),
+				columns: vec!["code".to_string()],
+			},
+		}],
+	);
+	executor
+		.apply_migrations(&[drop_unique])
+		.await
+		.expect("drop collapsed unique constraints by autoindex name");
+
+	conn.execute(
+		"INSERT INTO collapsed_binary_unique_jobs (code, status) VALUES ('same', 'queued'), ('same', 'queued')",
+		vec![],
+	)
+	.await
+	.expect("duplicates should be allowed after dropping the collapsed unique index");
+}
+
+#[rstest]
+#[tokio::test]
 async fn typed_enum_constraint_recreation_preserves_strict_table_option() {
 	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
 		.await
