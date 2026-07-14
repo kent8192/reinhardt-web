@@ -69,62 +69,6 @@ scan_cargo_manifests() {
 
 	set +e
 	output=$(awk -v root="$SCAN_ROOT/" '
-		function strip_toml_comment(value, position, character, in_basic_string, in_literal_string, triple_string, escaped) {
-			in_basic_string = 0
-			in_literal_string = 0
-			triple_string = 0
-			escaped = 0
-
-			for (position = 1; position <= length(value); position++) {
-				character = substr(value, position, 1)
-
-				if (in_basic_string) {
-					if (escaped) {
-						escaped = 0
-					} else if (character == "\\") {
-						escaped = 1
-					} else if (triple_string && substr(value, position, 3) == "\"\"\"") {
-						in_basic_string = 0
-						triple_string = 0
-						position += 2
-					} else if (!triple_string && character == "\"") {
-						in_basic_string = 0
-					}
-				} else if (in_literal_string) {
-					if (triple_string && substr(value, position, 3) == "\047\047\047") {
-						in_literal_string = 0
-						triple_string = 0
-						position += 2
-					} else if (!triple_string && character == "\047") {
-						in_literal_string = 0
-					}
-				} else if (substr(value, position, 3) == "\"\"\"") {
-					in_basic_string = 1
-					triple_string = 1
-					position += 2
-				} else if (substr(value, position, 3) == "\047\047\047") {
-					in_literal_string = 1
-					triple_string = 1
-					position += 2
-				} else if (character == "\"") {
-					in_basic_string = 1
-				} else if (character == "\047") {
-					in_literal_string = 1
-				} else if (character == "#") {
-					return substr(value, 1, position - 1)
-				}
-			}
-
-			return value
-		}
-
-		function normalized_table(value) {
-			value = strip_toml_comment(value)
-			gsub(/[[:space:]]/, "", value)
-			gsub(/["\047]/, "", value)
-			return value
-		}
-
 		function canonical_toml_string(value, simple_string) {
 			if (simple_string && (value == "package" || value == "anyhow")) {
 				return "\"" value "\""
@@ -154,22 +98,76 @@ scan_cargo_manifests() {
 			return sprintf("%c", codepoint)
 		}
 
-		function toml_tokens(value, position, character, in_basic_string, in_literal_string, triple_string, escaped, result, string_value, simple_string, escape_type, decoded) {
+		function normalized_table(value, position, character, in_basic_string, in_literal_string, result, escape_type, decoded, width) {
 			in_basic_string = 0
 			in_literal_string = 0
-			triple_string = 0
-			escaped = 0
 			result = ""
-			string_value = ""
-			simple_string = 1
+
+			for (position = 1; position <= length(value); position++) {
+				character = substr(value, position, 1)
+				if (in_basic_string) {
+					if (character == "\\") {
+						escape_type = substr(value, position + 1, 1)
+						width = escape_type == "u" ? 4 : escape_type == "U" ? 8 : 0
+						if (width > 0) {
+							decoded = decode_ascii_unicode_escape(value, position, width)
+							result = result (decoded == "" ? "?" : decoded)
+							position += width + 1
+						} else {
+							result = result "?"
+							position++
+						}
+					} else if (character == "\"") {
+						in_basic_string = 0
+					} else {
+						result = result character
+					}
+				} else if (in_literal_string) {
+					if (character == "\047") {
+						in_literal_string = 0
+					} else {
+						result = result character
+					}
+				} else if (character == "\"") {
+					in_basic_string = 1
+				} else if (character == "\047") {
+					in_literal_string = 1
+				} else if (character !~ /[[:space:]]/) {
+					result = result character
+				}
+			}
+
+			return result
+		}
+
+		function scan_toml_line(value, position, character, escape_type, decoded) {
+			line_code = value
+			line_tokens = lexer_multiline ? lexer_pending_tokens : ""
+			line_brace_delta = 0
+			line_started_in_multiline = lexer_multiline
+
+			if (lexer_multiline && !lexer_skip_whitespace) {
+				if (lexer_initial_newline) {
+					lexer_initial_newline = 0
+				} else {
+					lexer_string_value = lexer_string_value "\n"
+				}
+			}
 
 			for (position = 1; position <= length(value); position++) {
 				character = substr(value, position, 1)
 
-				if (in_basic_string) {
-					if (escaped) {
-						string_value = string_value character
-						escaped = 0
+				if (lexer_multiline && lexer_skip_whitespace) {
+					if (character ~ /[[:space:]]/) {
+						continue
+					}
+					lexer_skip_whitespace = 0
+				}
+
+				if (lexer_basic_string) {
+					if (lexer_escaped) {
+						lexer_string_value = lexer_string_value character
+						lexer_escaped = 0
 					} else if (character == "\\") {
 						escape_type = substr(value, position + 1, 1)
 						if (escape_type == "u") {
@@ -181,113 +179,87 @@ scan_cargo_manifests() {
 						}
 
 						if (decoded != "") {
-							string_value = string_value decoded
+							lexer_string_value = lexer_string_value decoded
+							lexer_initial_newline = 0
 							position += escape_type == "u" ? 5 : 9
+						} else if (lexer_multiline && position == length(value)) {
+							lexer_initial_newline = 0
+							lexer_skip_whitespace = 1
 						} else {
-							simple_string = 0
-							escaped = 1
+							lexer_simple_string = 0
+							lexer_initial_newline = 0
+							lexer_escaped = 1
 						}
-					} else if (triple_string && substr(value, position, 3) == "\"\"\"") {
-						result = result canonical_toml_string(string_value, simple_string)
-						in_basic_string = 0
-						triple_string = 0
+					} else if (lexer_multiline && substr(value, position, 3) == "\"\"\"") {
+						line_tokens = line_tokens canonical_toml_string(lexer_string_value, lexer_simple_string)
+						lexer_basic_string = 0
+						lexer_multiline = 0
+						lexer_initial_newline = 0
 						position += 2
-					} else if (!triple_string && character == "\"") {
-						result = result canonical_toml_string(string_value, simple_string)
-						in_basic_string = 0
+					} else if (!lexer_multiline && character == "\"") {
+						line_tokens = line_tokens canonical_toml_string(lexer_string_value, lexer_simple_string)
+						lexer_basic_string = 0
 					} else {
-						string_value = string_value character
+						lexer_string_value = lexer_string_value character
+						lexer_initial_newline = 0
 					}
-				} else if (in_literal_string) {
-					if (triple_string && substr(value, position, 3) == "\047\047\047") {
-						result = result canonical_toml_string(string_value, simple_string)
-						in_literal_string = 0
-						triple_string = 0
+				} else if (lexer_literal_string) {
+					if (lexer_multiline && substr(value, position, 3) == "\047\047\047") {
+						line_tokens = line_tokens canonical_toml_string(lexer_string_value, lexer_simple_string)
+						lexer_literal_string = 0
+						lexer_multiline = 0
+						lexer_initial_newline = 0
 						position += 2
-					} else if (!triple_string && character == "\047") {
-						result = result canonical_toml_string(string_value, simple_string)
-						in_literal_string = 0
+					} else if (!lexer_multiline && character == "\047") {
+						line_tokens = line_tokens canonical_toml_string(lexer_string_value, lexer_simple_string)
+						lexer_literal_string = 0
 					} else {
-						string_value = string_value character
+						lexer_string_value = lexer_string_value character
+						lexer_initial_newline = 0
 					}
 				} else if (substr(value, position, 3) == "\"\"\"") {
-					string_value = ""
-					simple_string = 1
-					in_basic_string = 1
-					triple_string = 1
+					lexer_string_value = ""
+					lexer_simple_string = 1
+					lexer_basic_string = 1
+					lexer_multiline = 1
+					lexer_initial_newline = 1
 					position += 2
 				} else if (substr(value, position, 3) == "\047\047\047") {
-					string_value = ""
-					simple_string = 1
-					in_literal_string = 1
-					triple_string = 1
+					lexer_string_value = ""
+					lexer_simple_string = 1
+					lexer_literal_string = 1
+					lexer_multiline = 1
+					lexer_initial_newline = 1
 					position += 2
 				} else if (character == "\"") {
-					string_value = ""
-					simple_string = 1
-					in_basic_string = 1
+					lexer_string_value = ""
+					lexer_simple_string = 1
+					lexer_basic_string = 1
 				} else if (character == "\047") {
-					string_value = ""
-					simple_string = 1
-					in_literal_string = 1
-				} else if (character !~ /[[:space:]]/) {
-					result = result character
+					lexer_string_value = ""
+					lexer_simple_string = 1
+					lexer_literal_string = 1
+				} else if (character == "#") {
+					line_code = substr(value, 1, position - 1)
+					break
+				} else {
+					if (character !~ /[[:space:]]/) {
+						line_tokens = line_tokens character
+					}
+					if (character == "{") {
+						line_brace_delta++
+					} else if (character == "}") {
+						line_brace_delta--
+					}
 				}
 			}
 
-			return result
-		}
-
-		function toml_brace_delta(value, position, character, in_basic_string, in_literal_string, triple_string, escaped, delta) {
-			in_basic_string = 0
-			in_literal_string = 0
-			triple_string = 0
-			escaped = 0
-			delta = 0
-
-			for (position = 1; position <= length(value); position++) {
-				character = substr(value, position, 1)
-
-				if (in_basic_string) {
-					if (escaped) {
-						escaped = 0
-					} else if (character == "\\") {
-						escaped = 1
-					} else if (triple_string && substr(value, position, 3) == "\"\"\"") {
-						in_basic_string = 0
-						triple_string = 0
-						position += 2
-					} else if (!triple_string && character == "\"") {
-						in_basic_string = 0
-					}
-				} else if (in_literal_string) {
-					if (triple_string && substr(value, position, 3) == "\047\047\047") {
-						in_literal_string = 0
-						triple_string = 0
-						position += 2
-					} else if (!triple_string && character == "\047") {
-						in_literal_string = 0
-					}
-				} else if (substr(value, position, 3) == "\"\"\"") {
-					in_basic_string = 1
-					triple_string = 1
-					position += 2
-				} else if (substr(value, position, 3) == "\047\047\047") {
-					in_literal_string = 1
-					triple_string = 1
-					position += 2
-				} else if (character == "\"") {
-					in_basic_string = 1
-				} else if (character == "\047") {
-					in_literal_string = 1
-				} else if (character == "{") {
-					delta++
-				} else if (character == "}") {
-					delta--
-				}
+			if (lexer_multiline) {
+				lexer_pending_tokens = line_tokens
+				line_tokens = ""
+			} else {
+				lexer_pending_tokens = ""
 			}
-
-			return delta
 		}
 
 		function is_dependency_table(value) {
@@ -360,26 +332,40 @@ scan_cargo_manifests() {
 			feature_table = 0
 			inline_dependency_entry = 0
 			inline_dependency_depth = 0
-		}
-
-		/^[[:space:]]*\[/ {
-			table = normalized_table($0)
-			dependency_table = is_dependency_table(table)
-			dependency_subtable = is_dependency_subtable(table)
-			feature_table = table == "[features]"
-			inline_dependency_entry = 0
-			inline_dependency_depth = 0
-			if (dependency_subtable && table ~ /[.]anyhow\]$/) {
-				emit_match()
-			}
-			next
+			lexer_basic_string = 0
+			lexer_literal_string = 0
+			lexer_multiline = 0
+			lexer_escaped = 0
+			lexer_initial_newline = 0
+			lexer_skip_whitespace = 0
+			lexer_pending_tokens = ""
+			lexer_string_value = ""
+			lexer_simple_string = 1
 		}
 
 		{
-			code = strip_toml_comment($0)
-			tokens = toml_tokens(code)
+			scan_toml_line($0)
+			code = line_code
+			tokens = line_tokens
+
+			if (!line_started_in_multiline && code ~ /^[[:space:]]*\[/) {
+				table = normalized_table(code)
+				dependency_table = is_dependency_table(table)
+				dependency_subtable = is_dependency_subtable(table)
+				feature_table = table == "[features]"
+				inline_dependency_entry = 0
+				inline_dependency_depth = 0
+				if (dependency_subtable && table ~ /[.]anyhow\]$/) {
+					emit_match()
+				}
+				next
+			}
+
 			compact = code
 			gsub(/[[:space:]"\047]/, "", compact)
+			if (line_started_in_multiline) {
+				compact = ""
+			}
 			matched = 0
 
 			if (!inline_dependency_entry && (dependency_table && compact ~ /^[[:alnum:]_-]+=\{/ || table == "" && is_root_dependency_inline_start(compact))) {
@@ -408,7 +394,7 @@ scan_cargo_manifests() {
 			}
 
 			if (inline_dependency_entry) {
-				inline_dependency_depth += toml_brace_delta(code)
+				inline_dependency_depth += line_brace_delta
 				if (inline_dependency_depth <= 0) {
 					inline_dependency_entry = 0
 					inline_dependency_depth = 0

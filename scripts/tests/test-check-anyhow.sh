@@ -117,6 +117,48 @@ expect_rejected "long-unicode-escaped dependency key" 'Cargo.toml:7:"any\U000000
 reset_fixture
 cat >> "$FIXTURE/Cargo.toml" <<'EOF'
 
+[dependencies."any\u0068ow"]
+version = "1"
+EOF
+assert_manifest_valid "unicode-escaped dependency subtable"
+expect_rejected "unicode-escaped dependency subtable" 'Cargo.toml:8:[dependencies."any\u0068ow"]'
+
+reset_fixture
+cat > "$FIXTURE/Cargo.toml" <<'EOF'
+[package]
+name = "scanner-fixture"
+version = "0.1.0"
+
+["depend\u0065ncies"]
+anyhow = "1"
+EOF
+assert_manifest_valid "unicode-escaped dependency table key"
+expect_rejected "unicode-escaped dependency table key" 'Cargo.toml:6:anyhow = "1"'
+
+reset_fixture
+cat > "$FIXTURE/Cargo.toml" <<'EOF'
+[package]
+name = "scanner-fixture"
+version = "0.1.0"
+
+['dependencies']
+anyhow = "1"
+EOF
+assert_manifest_valid "literal dependency table key"
+expect_rejected "literal dependency table key" 'Cargo.toml:6:anyhow = "1"'
+
+reset_fixture
+cat >> "$FIXTURE/Cargo.toml" <<'EOF'
+
+[dependencies.'anyhow']
+version = "1"
+EOF
+assert_manifest_valid "literal dependency subtable key"
+expect_rejected "literal dependency subtable key" "Cargo.toml:8:[dependencies.'anyhow']"
+
+reset_fixture
+cat >> "$FIXTURE/Cargo.toml" <<'EOF'
+
 [dependencies.anyhow]
 version = "1"
 EOF
@@ -290,6 +332,39 @@ expect_rejected "multiline dependency with triple-basic package alias" 'Cargo.to
 
 reset_fixture
 cat >> "$FIXTURE/Cargo.toml" <<'EOF'
+errors = {
+  version = "1",
+  package = """
+anyhow""",
+}
+EOF
+assert_manifest_valid "physical-line-spanning triple-basic package alias"
+expect_rejected "physical-line-spanning triple-basic package alias" 'Cargo.toml:10:anyhow""",'
+
+reset_fixture
+cat >> "$FIXTURE/Cargo.toml" <<'EOF'
+errors = {
+  version = "1",
+  package = '''
+anyhow''',
+}
+EOF
+assert_manifest_valid "physical-line-spanning triple-literal package alias"
+expect_rejected "physical-line-spanning triple-literal package alias" "Cargo.toml:10:anyhow''',"
+
+reset_fixture
+cat >> "$FIXTURE/Cargo.toml" <<'EOF'
+errors = {
+  version = "1",
+  package = """any\
+    how""",
+}
+EOF
+assert_manifest_valid "continued triple-basic package alias"
+expect_rejected "continued triple-basic package alias" 'Cargo.toml:10:    how""",'
+
+reset_fixture
+cat >> "$FIXTURE/Cargo.toml" <<'EOF'
 errors = { version = "1",
   package = "anyhow",
 }
@@ -390,6 +465,33 @@ cat >> "$FIXTURE/Cargo.toml" <<'EOF'
 serde = { version = "1", note = """anyhow""" }
 EOF
 expect_clean "triple-basic dependency name in unrelated string"
+
+reset_fixture
+cat >> "$FIXTURE/Cargo.toml" <<'EOF'
+serde = {
+  version = "1",
+  note = """
+package = "anyhow"
+{ package = "anyhow" } # string content
+[dependencies."anyhow"]
+""",
+}
+EOF
+assert_manifest_valid "physical-line-spanning unrelated triple-basic string"
+expect_clean "physical-line-spanning unrelated triple-basic string"
+
+reset_fixture
+cat >> "$FIXTURE/Cargo.toml" <<'EOF'
+serde = {
+  version = "1",
+  note = '''
+package = "anyhow"
+{ package = "anyhow" } # string content
+''',
+}
+EOF
+assert_manifest_valid "physical-line-spanning unrelated triple-literal string"
+expect_clean "physical-line-spanning unrelated triple-literal string"
 
 reset_fixture
 cat >> "$FIXTURE/Cargo.toml" <<'EOF'
