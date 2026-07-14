@@ -4624,6 +4624,10 @@ impl SqliteTableRecreation {
 	/// Generate the 4-step SQL statements for table recreation
 	pub fn to_sql_statements(&self) -> Vec<String> {
 		let temp_table = format!("{}_new", self.table_name);
+		let quote =
+			|identifier: &str| Operation::quote_dialect_identifier(identifier, &SqlDialect::Sqlite);
+		let quoted_temp_table = quote(&temp_table);
+		let quoted_table = quote(&self.table_name);
 
 		// Step 1: CREATE TABLE with new schema
 		let column_defs: Vec<String> = self
@@ -4644,8 +4648,8 @@ impl SqliteTableRecreation {
 		create_parts.extend(self.raw_constraint_sqls.clone());
 
 		let mut create_sql = format!(
-			"CREATE TABLE \"{}\" (\n  {}\n)",
-			temp_table,
+			"CREATE TABLE {} (\n  {}\n)",
+			quoted_temp_table,
 			create_parts.join(",\n  ")
 		);
 		if self.without_rowid {
@@ -4661,17 +4665,17 @@ impl SqliteTableRecreation {
 			.collect::<Vec<_>>()
 			.join(", ");
 		let insert_sql = format!(
-			"INSERT INTO \"{}\" ({}) SELECT {} FROM \"{}\";",
-			temp_table, columns_list, columns_list, self.table_name
+			"INSERT INTO {} ({}) SELECT {} FROM {};",
+			quoted_temp_table, columns_list, columns_list, quoted_table
 		);
 
 		// Step 3: Drop old table
-		let drop_sql = format!("DROP TABLE \"{}\";", self.table_name);
+		let drop_sql = format!("DROP TABLE {quoted_table};");
 
 		// Step 4: Rename new table
 		let rename_sql = format!(
-			"ALTER TABLE \"{}\" RENAME TO \"{}\";",
-			temp_table, self.table_name
+			"ALTER TABLE {} RENAME TO {};",
+			quoted_temp_table, quoted_table
 		);
 
 		let mut statements = vec![create_sql, insert_sql, drop_sql, rename_sql];
@@ -4684,12 +4688,14 @@ impl SqliteTableRecreation {
 			let columns = index
 				.columns
 				.iter()
-				.map(|column| format!("\"{}\"", column))
+				.map(|column| quote(column))
 				.collect::<Vec<_>>()
 				.join(", ");
 			statements.push(format!(
-				"CREATE {unique}INDEX \"{}\" ON \"{}\" ({});",
-				index.name, self.table_name, columns
+				"CREATE {unique}INDEX {} ON {} ({});",
+				quote(&index.name),
+				quoted_table,
+				columns
 			));
 		}
 		statements
@@ -6157,6 +6163,46 @@ mod tests {
 	use FieldType;
 	use reinhardt_query::prelude::SchemaBinOper;
 	use rstest::rstest;
+
+	#[test]
+	fn sqlite_table_recreation_quotes_fallback_index_identifiers() {
+		let recreation = SqliteTableRecreation::for_drop_column(
+			"order\"items",
+			vec![
+				ColumnDefinition::new("id", FieldType::Integer),
+				ColumnDefinition::new("select\"value", FieldType::Text),
+				ColumnDefinition::new("obsolete", FieldType::Text),
+			],
+			"obsolete",
+			vec![],
+		)
+		.with_indexes(vec![SqliteRecreatedIndex {
+			name: "idx\"quoted".to_string(),
+			columns: vec!["select\"value".to_string()],
+			unique: false,
+			sql: None,
+		}]);
+
+		let statements = recreation.to_sql_statements();
+
+		assert_eq!(
+			statements[0],
+			"CREATE TABLE \"order\"\"items_new\" (\n  \"id\" INTEGER,\n  \"select\"\"value\" TEXT\n);"
+		);
+		assert_eq!(
+			statements[1],
+			"INSERT INTO \"order\"\"items_new\" (\"id\", \"select\"\"value\") SELECT \"id\", \"select\"\"value\" FROM \"order\"\"items\";"
+		);
+		assert_eq!(statements[2], "DROP TABLE \"order\"\"items\";");
+		assert_eq!(
+			statements[3],
+			"ALTER TABLE \"order\"\"items_new\" RENAME TO \"order\"\"items\";"
+		);
+		assert_eq!(
+			statements[4],
+			"CREATE INDEX \"idx\"\"quoted\" ON \"order\"\"items\" (\"select\"\"value\");"
+		);
+	}
 
 	#[test]
 	fn test_create_table_to_statement() {

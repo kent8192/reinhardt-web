@@ -1027,6 +1027,9 @@ impl DatabaseMigrationExecutor {
 				columns_to.clone(),
 			);
 			let metadata = fk_metadata.get(&signature);
+			let name = metadata
+				.and_then(|metadata| metadata.name.clone())
+				.unwrap_or_else(|| format!("fk_{}_{}", table_name, fk_id));
 			if columns_to.is_empty() {
 				// SQLite leaves the target columns null when REFERENCES omits them.
 				// Resolve the target primary key in its declared ordinal order so the
@@ -1049,10 +1052,29 @@ impl DatabaseMigrationExecutor {
 					.into_iter()
 					.map(|(_, column)| column)
 					.collect();
+				if columns_to.is_empty() {
+					return Err(MigrationError::InvalidMigration(format!(
+						"cannot recreate SQLite table '{table_name}': foreign key '{name}' omits referenced columns, but referenced table '{referenced_table}' has no primary key"
+					)));
+				}
 			}
-			let name = metadata
-				.and_then(|metadata| metadata.name.clone())
-				.unwrap_or_else(|| format!("fk_{}_{}", table_name, fk_id));
+			if columns_from.len() != columns_to.len() {
+				let source_label = if columns_from.len() == 1 {
+					"column"
+				} else {
+					"columns"
+				};
+				let referenced_label = if columns_to.len() == 1 {
+					"column"
+				} else {
+					"columns"
+				};
+				return Err(MigrationError::InvalidMigration(format!(
+					"cannot recreate SQLite table '{table_name}': foreign key '{name}' has {} source {source_label}, but referenced table '{referenced_table}' resolves to {} referenced {referenced_label}",
+					columns_from.len(),
+					columns_to.len()
+				)));
+			}
 			let deferrable = metadata.and_then(|metadata| metadata.deferrable);
 			constraints.push(super::Constraint::ForeignKey {
 				name,
@@ -1149,10 +1171,6 @@ impl DatabaseMigrationExecutor {
 		editor: &mut SchemaEditor,
 	) -> Result<()> {
 		use super::operations::SqliteTableRecreation;
-
-		// Disable foreign key checks before table recreation
-		// This prevents FK violations during the temporary DROP TABLE phase
-		editor.disable_foreign_keys().await?;
 
 		// Build the recreation plan based on operation type.
 		//
@@ -1302,6 +1320,11 @@ impl DatabaseMigrationExecutor {
 				return Ok(());
 			}
 		};
+
+		// Disable foreign key checks only after introspection and validation have
+		// produced a complete recreation plan. Validation errors must leave the
+		// connection and original table untouched.
+		editor.disable_foreign_keys().await?;
 
 		// Execute recreation steps
 		for stmt in recreation.to_sql_statements() {

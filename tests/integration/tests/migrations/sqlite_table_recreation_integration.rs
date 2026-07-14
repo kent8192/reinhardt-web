@@ -3309,6 +3309,190 @@ async fn recreation_preserves_inline_named_foreign_key_with_escaped_identifiers(
 
 #[rstest]
 #[tokio::test]
+async fn recreation_quotes_table_and_index_identifiers() {
+	// Arrange
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("connect to in-memory SQLite");
+	connection
+		.execute(
+			"CREATE TABLE \"order\"\"items\" (id INTEGER PRIMARY KEY, \"select\"\"value\" TEXT, obsolete TEXT)",
+			vec![],
+		)
+		.await
+		.expect("create table with escaped identifier");
+	connection
+		.execute(
+			"CREATE INDEX \"idx\"\"quoted\" ON \"order\"\"items\" (\"select\"\"value\")",
+			vec![],
+		)
+		.await
+		.expect("create index with escaped identifiers");
+	connection
+		.execute(
+			"INSERT INTO \"order\"\"items\" (\"select\"\"value\", obsolete) VALUES ('kept', 'removed')",
+			vec![],
+		)
+		.await
+		.expect("insert source row");
+	let conn = Arc::new(connection.clone());
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+	let recreate = create_test_migration(
+		"testapp",
+		"0001_recreate_escaped_table",
+		vec![Operation::DropColumn {
+			table: "order\"items".to_string(),
+			column: "obsolete".to_string(),
+			old_definition: None,
+		}],
+	);
+
+	// Act
+	executor
+		.apply_migrations(&[recreate])
+		.await
+		.expect("recreate table and index with escaped identifiers");
+
+	// Assert
+	let value: String = conn
+		.fetch_one("SELECT \"select\"\"value\" FROM \"order\"\"items\"", vec![])
+		.await
+		.expect("read recreated row")
+		.get("select\"value")
+		.expect("escaped column value should be text");
+	assert_eq!(value, "kept");
+	let index_sql: String = conn
+		.fetch_one(
+			"SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?",
+			vec!["idx\"quoted".into()],
+		)
+		.await
+		.expect("read recreated escaped index")
+		.get("sql")
+		.expect("escaped index SQL should be text");
+	assert!(index_sql.contains("\"idx\"\"quoted\""), "{index_sql}");
+	assert!(index_sql.contains("\"order\"\"items\""), "{index_sql}");
+	assert!(index_sql.contains("\"select\"\"value\""), "{index_sql}");
+}
+
+#[rstest]
+#[tokio::test]
+async fn recreation_rejects_omitted_foreign_key_target_without_primary_key() {
+	// Arrange
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("connect to in-memory SQLite");
+	connection
+		.execute("CREATE TABLE no_pk_parent (value INTEGER)", vec![])
+		.await
+		.expect("create parent without a primary key");
+	connection
+		.execute(
+			"CREATE TABLE no_pk_child (parent_value INTEGER, obsolete TEXT, FOREIGN KEY (parent_value) REFERENCES no_pk_parent)",
+			vec![],
+		)
+		.await
+		.expect("create child with omitted foreign key target");
+	let conn = Arc::new(connection.clone());
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+	let recreate = create_test_migration(
+		"testapp",
+		"0001_recreate_no_pk_child",
+		vec![Operation::DropColumn {
+			table: "no_pk_child".to_string(),
+			column: "obsolete".to_string(),
+			old_definition: None,
+		}],
+	);
+
+	// Act
+	let result = executor.apply_migrations(&[recreate]).await;
+
+	// Assert
+	assert!(
+		matches!(
+			&result,
+			Err(MigrationError::InvalidMigration(message))
+				if message.contains("no_pk_child")
+					&& message.contains("no_pk_parent")
+					&& message.contains("primary key")
+		),
+		"unexpected result: {result:?}"
+	);
+	let columns = conn
+		.fetch_all("PRAGMA table_info(\"no_pk_child\")", vec![])
+		.await
+		.expect("read unchanged child table");
+	assert!(
+		columns
+			.iter()
+			.any(|row| row.get::<String>("name").ok().as_deref() == Some("obsolete")),
+		"validation must stop before table recreation"
+	);
+}
+
+#[rstest]
+#[tokio::test]
+async fn recreation_rejects_omitted_foreign_key_target_arity_mismatch() {
+	// Arrange
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("connect to in-memory SQLite");
+	connection
+		.execute(
+			"CREATE TABLE composite_parent (first INTEGER, second INTEGER, PRIMARY KEY (first, second))",
+			vec![],
+		)
+		.await
+		.expect("create composite primary key parent");
+	connection
+		.execute(
+			"CREATE TABLE arity_child (parent_value INTEGER, obsolete TEXT, FOREIGN KEY (parent_value) REFERENCES composite_parent)",
+			vec![],
+		)
+		.await
+		.expect("create child with mismatched omitted target arity");
+	let conn = Arc::new(connection.clone());
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+	let recreate = create_test_migration(
+		"testapp",
+		"0001_recreate_arity_child",
+		vec![Operation::DropColumn {
+			table: "arity_child".to_string(),
+			column: "obsolete".to_string(),
+			old_definition: None,
+		}],
+	);
+
+	// Act
+	let result = executor.apply_migrations(&[recreate]).await;
+
+	// Assert
+	assert!(
+		matches!(
+			&result,
+			Err(MigrationError::InvalidMigration(message))
+				if message.contains("arity_child")
+					&& message.contains("composite_parent")
+					&& message.contains("1 source column")
+					&& message.contains("2 referenced columns")
+		),
+		"unexpected result: {result:?}"
+	);
+	let columns = conn
+		.fetch_all("PRAGMA table_info(\"arity_child\")", vec![])
+		.await
+		.expect("read unchanged child table");
+	assert!(
+		columns
+			.iter()
+			.any(|row| row.get::<String>("name").ok().as_deref() == Some("obsolete")),
+		"validation must stop before table recreation"
+	);
+}
+
+#[rstest]
+#[tokio::test]
 async fn recreation_preserves_bare_deferrable_as_initially_immediate() {
 	// Arrange
 	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
