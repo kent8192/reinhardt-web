@@ -6,6 +6,7 @@ use std::ops::Deref;
 use std::rc::Rc;
 
 use crate::reactive::Signal;
+use reinhardt_core::reactive::{current_scope_id, enter_scope};
 
 /// A handle that manages the subscription lifecycle.
 ///
@@ -188,6 +189,7 @@ where
 	S: FnOnce(Rc<dyn Fn()>) -> Box<dyn FnOnce()> + 'static,
 	G: Fn() -> T + 'static,
 {
+	let owner_scope = current_scope_id().expect("use_sync_external_store requires an active scope");
 	let state = Signal::new(get_snapshot());
 
 	// Set up the subscription
@@ -201,7 +203,9 @@ where
 			let Ok(current_value) = state.try_get_untracked() else {
 				return;
 			};
-			let new_value = get_snapshot_clone();
+			let Ok(new_value) = enter_scope(owner_scope, || get_snapshot_clone()) else {
+				return;
+			};
 			if current_value != new_value {
 				let _ = state.try_set(new_value);
 			}
@@ -332,6 +336,39 @@ mod tests {
 			}
 
 			assert_eq!(signal_with_sub.get(), 100);
+		});
+	}
+
+	#[test]
+	#[serial(reactive_runtime)]
+	fn external_store_notification_reenters_owner_scope_for_snapshot_allocations() {
+		type OnChangeSlot = Rc<RefCell<Option<Rc<dyn Fn()>>>>;
+		let on_change_slot: OnChangeSlot = Rc::new(RefCell::new(None));
+		let store_value = Rc::new(RefCell::new(0));
+
+		ReactiveScope::run(|| {
+			let signal = use_sync_external_store(
+				{
+					let on_change_slot = Rc::clone(&on_change_slot);
+					move |on_change| {
+						*on_change_slot.borrow_mut() = Some(on_change);
+						Box::new(|| {})
+					}
+				},
+				{
+					let store_value = Rc::clone(&store_value);
+					move || {
+						let _snapshot_node = Signal::new(());
+						*store_value.borrow()
+					}
+				},
+			);
+			*store_value.borrow_mut() = 1;
+			on_change_slot
+				.borrow()
+				.as_ref()
+				.expect("subscription must retain its callback")();
+			assert_eq!(signal.get(), 1);
 		});
 	}
 

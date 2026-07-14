@@ -52,6 +52,7 @@ struct MemoSlot<T: Clone + 'static> {
 	f: Option<MemoFn<T>>,
 	value: Option<T>,
 	deps_notifier: Option<super::effect::Effect>,
+	run_scope: Option<super::scope::ReactiveScope>,
 }
 
 pub(crate) fn mark_memo_dirty_by_id(memo_id: NodeId) {
@@ -165,6 +166,7 @@ impl<T: Clone + 'static> Memo<T> {
 				f: Some(f),
 				value: None,
 				deps_notifier: None,
+				run_scope: None,
 			},
 		);
 		let memo = Self {
@@ -220,7 +222,14 @@ impl<T: Clone + 'static> Memo<T> {
 			f: with_node_mut::<MemoSlot<T>, _>(key, |slot| slot.f.take())
 				.unwrap_or_else(|err| panic!("{err}")),
 		};
-		enter_scope(key.scope(), || {
+		let previous_run_scope = with_node_mut::<MemoSlot<T>, _>(key, |slot| slot.run_scope.take())
+			.unwrap_or_else(|err| panic!("{err}"));
+		drop(previous_run_scope);
+		let run_scope = super::scope::ReactiveScope::new();
+		let run_scope_id = run_scope.id();
+		with_node_mut::<MemoSlot<T>, _>(key, |slot| slot.run_scope = Some(run_scope))
+			.unwrap_or_else(|err| panic!("{err}"));
+		enter_scope(run_scope_id, || {
 			guard
 				.f
 				.as_mut()
@@ -273,14 +282,22 @@ impl<T: Clone + 'static> Memo<T> {
 
 	/// Dispose this memo and its explicit dependency notifier.
 	pub fn dispose(&self) {
-		let Ok((f, value, notifier)) = with_node_mut::<MemoSlot<T>, _>(self.key, |slot| {
-			(slot.f.take(), slot.value.take(), slot.deps_notifier.take())
-		}) else {
+		let Ok((f, value, notifier, run_scope)) =
+			with_node_mut::<MemoSlot<T>, _>(self.key, |slot| {
+				(
+					slot.f.take(),
+					slot.value.take(),
+					slot.deps_notifier.take(),
+					slot.run_scope.take(),
+				)
+			})
+		else {
 			return;
 		};
 		let _ = mark_node_disposed(self.key);
 		drop(f);
 		drop(value);
+		drop(run_scope);
 		if let Some(notifier) = notifier {
 			notifier.dispose();
 		}

@@ -55,6 +55,7 @@ struct EffectSlot {
 	timing: EffectTiming,
 	cleanup_slot: CleanupSlot,
 	scope: ScopeId,
+	run_scope: Option<super::scope::ReactiveScope>,
 }
 
 /// Get the timing for an effect by its ID.
@@ -147,6 +148,7 @@ impl Effect {
 				timing,
 				cleanup_slot: Rc::new(RefCell::new(None)),
 				scope,
+				run_scope: None,
 			},
 		);
 		let effect = Self {
@@ -181,6 +183,7 @@ impl Effect {
 				timing,
 				cleanup_slot: Rc::clone(&cleanup_slot),
 				scope,
+				run_scope: None,
 			},
 		);
 		let effect_id = key.node_id();
@@ -256,14 +259,24 @@ impl Effect {
 		impl Drop for EffectFnGuard {
 			fn drop(&mut self) {
 				if let Some(f) = self.f.take() {
-					let _ = with_node_mut::<EffectSlot, _>(self.key, |slot| {
-						if slot.f.is_none() {
-							slot.f = Some(f);
-						}
-					});
+					if find_node_key(self.key.node_id(), NodeKind::Effect).is_some() {
+						let _ = with_node_mut::<EffectSlot, _>(self.key, |slot| {
+							if slot.f.is_none() {
+								slot.f = Some(f);
+							}
+						});
+					}
 				}
 			}
 		}
+
+		let previous_run_scope = with_node_mut::<EffectSlot, _>(key, |slot| slot.run_scope.take())
+			.unwrap_or_else(|err| panic!("{err}"));
+		drop(previous_run_scope);
+		let run_scope = super::scope::ReactiveScope::new();
+		let run_scope_id = run_scope.id();
+		with_node_mut::<EffectSlot, _>(key, |slot| slot.run_scope = Some(run_scope))
+			.unwrap_or_else(|err| panic!("{err}"));
 
 		let mut guard = EffectFnGuard {
 			key,
@@ -271,7 +284,7 @@ impl Effect {
 				.unwrap_or_else(|err| panic!("{err}")),
 		};
 		if let Some(f) = guard.f.as_mut() {
-			enter_scope(key.scope(), f).unwrap_or_else(|err| panic!("{err}"));
+			enter_scope(run_scope_id, f).unwrap_or_else(|err| panic!("{err}"));
 		}
 	}
 
@@ -282,13 +295,18 @@ impl Effect {
 
 	/// Dispose this effect and run its latest cleanup.
 	pub fn dispose(&self) {
-		let Ok((f, cleanup)) = with_node_mut::<EffectSlot, _>(self.key, |slot| {
-			(slot.f.take(), slot.cleanup_slot.borrow_mut().take())
+		let Ok((f, cleanup, run_scope)) = with_node_mut::<EffectSlot, _>(self.key, |slot| {
+			(
+				slot.f.take(),
+				slot.cleanup_slot.borrow_mut().take(),
+				slot.run_scope.take(),
+			)
 		}) else {
 			return;
 		};
 		let _ = mark_node_disposed(self.key);
 		drop(f);
+		drop(run_scope);
 		if let Some(cleanup) = cleanup {
 			let _ = enter_scope(self.key.scope(), cleanup);
 		}
