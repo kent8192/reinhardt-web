@@ -93,6 +93,10 @@ Hydration first adopts the live DOM value, preserving browser restoration and
 edits made before hydration. Later signal changes update the control. See the
 [React migration guide](docs/react_to_reinhardt.md#controlled-and-uncontrolled-form-controls)
 for event ordering, IME, numeric-error, and low-level escape-hatch details.
+For `input[type=number]`, parse errors reflect the browser-sanitized `value`;
+incomplete editor states are usually exposed as an empty string. Use a text
+input with `inputmode="decimal"`, a text binding, and custom parsing when exact
+incomplete editor text must remain available.
 
 ### Simplified cfg Attributes with cfg_aliases
 

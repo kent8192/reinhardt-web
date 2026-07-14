@@ -258,14 +258,28 @@ not committed twice. Explicit composition and input handlers still run in
 normal dispatch order.
 
 For numeric controls, `bind: number(value, error)` preserves the last valid
-numeric signal and the user's raw text when parsing fails. The error signal is
-cleared after a valid value and otherwise contains a `NumberParseError` with
-one of these stable meanings:
+numeric signal when parsing fails. The error signal describes the exact value
+exposed by the browser's `HTMLInputElement.value`; it is cleared after a valid
+value and otherwise contains a `NumberParseError` with one of these stable
+meanings:
 
 - `Empty`: no text was entered.
 - `Incomplete`: the text is a valid prefix such as `-`, `1.`, or `1e-`.
 - `Invalid`: the text is not a numeric lexeme.
 - `OutOfRange`: the number cannot be represented by the bound primitive.
+
+The HTML number control sanitizes a value that is not a valid floating-point
+number to an empty string. Its selection offsets are also unavailable, so a
+binding cannot reconstruct arbitrary insertion, replacement, paste, or caret
+edits from `beforeinput` metadata. Consequently, incomplete editor states such
+as `-`, `1.`, and `1e-` normally reach a number binding as `Empty` with an empty
+raw value. The `Incomplete` classification remains useful for low-level and
+native writes that supply those strings directly.
+
+If an application must preserve exact incomplete editor text, use
+`type: "text"` with `inputmode: "decimal"`, bind it to `Signal<String>`, and
+parse that string explicitly. This keeps the browser-visible editor state and
+the application parser aligned without guessing unavailable selection state.
 
 Use an explicit typed handler when the binding is not the only response to an
 event. For browser-specific integrations that truly need the underlying DOM
