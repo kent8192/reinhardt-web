@@ -466,12 +466,11 @@ fn reactive_nonselect_mount_keeps_parent_when_a_child_mount_fails() {
 		.query_selector("#retained-parent")
 		.expect("query")
 		.expect("non-select parent should remain mounted");
-	assert_eq!(
+	assert!(
 		parent
 			.query_selector("#retained-child")
 			.expect("retained child query")
-			.is_some(),
-		true
+			.is_some()
 	);
 	assert_eq!(
 		parent
