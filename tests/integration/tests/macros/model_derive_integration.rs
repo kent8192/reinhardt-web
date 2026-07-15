@@ -252,7 +252,7 @@ fn test_relationship_metadata_uses_generated_fk_columns_and_targets() {
 		.expect("writer relationship should be present");
 	assert_eq!(writer.relationship_type, RelationshipType::ManyToOne);
 	assert_eq!(writer.foreign_key.as_deref(), Some("writer_pk"));
-	assert_eq!(writer.related_model, "MetadataTarget");
+	assert_eq!(writer.related_model, "metadata_test.MetadataTarget");
 
 	let profile = MetadataProfile::relationship_metadata()
 		.into_iter()
@@ -260,7 +260,7 @@ fn test_relationship_metadata_uses_generated_fk_columns_and_targets() {
 		.expect("profile relationship should be present");
 	assert_eq!(profile.relationship_type, RelationshipType::OneToOne);
 	assert_eq!(profile.foreign_key.as_deref(), Some("profile_id"));
-	assert_eq!(profile.related_model, "MetadataTarget");
+	assert_eq!(profile.related_model, "metadata_test.MetadataTarget");
 }
 
 #[test]
