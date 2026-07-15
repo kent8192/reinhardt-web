@@ -21,6 +21,7 @@ use crate::orm::inspection::FieldInfo;
 use crate::orm::model::Model;
 use crate::orm::query::OrmQuery;
 use crate::orm::query_types::DbBackend;
+use base64::Engine;
 use reinhardt_query::value::Value as RValue;
 use reinhardt_query::{
 	Alias, Expr, ExprTrait, MySqlQueryBuilder, PostgresQueryBuilder, Query as RQuery,
@@ -511,6 +512,20 @@ impl Session {
 							.map(serde_json::Value::from)
 							.unwrap_or(serde_json::Value::Null)
 					}
+				}
+				typ if typ.contains("BinaryField") => {
+					let bytes = if field.nullable {
+						row.try_get::<Option<Vec<u8>>, _>(column_name)
+							.ok()
+							.flatten()
+					} else {
+						row.try_get::<Vec<u8>, _>(column_name).ok()
+					};
+					bytes
+						.map(|bytes| {
+							Value::String(base64::engine::general_purpose::STANDARD.encode(bytes))
+						})
+						.unwrap_or(Value::Null)
 				}
 				// Add more type mappings as needed
 				_ => serde_json::Value::Null,

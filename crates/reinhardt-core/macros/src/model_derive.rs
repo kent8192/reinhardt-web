@@ -1592,6 +1592,9 @@ fn map_type_to_field_type(ty: &Type, config: &FieldConfig) -> Result<TokenStream
 				// PostgreSQL: Vec<T> -> Array type
 				#[cfg(feature = "db-postgres")]
 				"Vec" => {
+					if is_byte_vector(ty) {
+						return Ok(quote! { #migrations_crate::FieldType::Binary });
+					}
 					return map_vec_to_array_type(ty, last_segment, config, &migrations_crate);
 				}
 				// Json<T> and serde_json::Value -> JSONB on PostgreSQL, JSON/TEXT elsewhere.
@@ -1789,6 +1792,21 @@ fn map_explicit_field_type(
 		}
 	};
 	Ok(field_type)
+}
+
+#[cfg(feature = "db-postgres")]
+fn is_byte_vector(ty: &Type) -> bool {
+	let (_is_option, inner_ty) = extract_option_type(ty);
+	let Type::Path(type_path) = inner_ty else {
+		return false;
+	};
+	let Some(segment) = type_path.path.segments.last() else {
+		return false;
+	};
+	let PathArguments::AngleBracketed(arguments) = &segment.arguments else {
+		return false;
+	};
+	matches!(arguments.args.first(), Some(GenericArgument::Type(Type::Path(element))) if element.path.is_ident("u8"))
 }
 
 /// Map `Vec<T>` to PostgreSQL Array type
