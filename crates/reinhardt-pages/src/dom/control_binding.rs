@@ -12,17 +12,21 @@ use crate::reactive::{Effect, EffectTiming, untracked};
 use reinhardt_core::{reactive::runtime::NodeId, types::page::ControlBindingSnapshot};
 
 type HydrationSnapshotStore = Rc<RefCell<Vec<ControlBindingSnapshot>>>;
+type RejectedNumberHydrationSnapshotStore = Rc<RefCell<Vec<RejectedNumberHydrationSnapshot>>>;
 
 thread_local! {
 	static ACTIVE_HYDRATION_SNAPSHOT_STORE: RefCell<Option<HydrationSnapshotStore>> =
 		const { RefCell::new(None) };
 	static ACTIVE_HYDRATION_ADOPTED_TARGETS: RefCell<Option<Rc<RefCell<Vec<NodeId>>>>> =
 		const { RefCell::new(None) };
+	static ACTIVE_REJECTED_NUMBER_HYDRATION_SNAPSHOTS: RefCell<Option<RejectedNumberHydrationSnapshotStore>> =
+		const { RefCell::new(None) };
 }
 
 struct ActiveHydrationSnapshotStoreGuard {
 	previous: Option<HydrationSnapshotStore>,
 	previous_adopted_targets: Option<Rc<RefCell<Vec<NodeId>>>>,
+	previous_rejected_number_snapshots: Option<RejectedNumberHydrationSnapshotStore>,
 }
 
 impl Drop for ActiveHydrationSnapshotStoreGuard {
@@ -32,6 +36,9 @@ impl Drop for ActiveHydrationSnapshotStoreGuard {
 		});
 		ACTIVE_HYDRATION_ADOPTED_TARGETS.with(|active| {
 			active.replace(self.previous_adopted_targets.take());
+		});
+		ACTIVE_REJECTED_NUMBER_HYDRATION_SNAPSHOTS.with(|active| {
+			active.replace(self.previous_rejected_number_snapshots.take());
 		});
 	}
 }
@@ -76,9 +83,12 @@ pub(crate) fn with_hydration_snapshot_transaction<T, E>(
 		.with(|active| active.replace(Some(transaction.store.clone())));
 	let previous_adopted_targets = ACTIVE_HYDRATION_ADOPTED_TARGETS
 		.with(|active| active.replace(Some(Rc::new(RefCell::new(Vec::new())))));
+	let previous_rejected_number_snapshots = ACTIVE_REJECTED_NUMBER_HYDRATION_SNAPSHOTS
+		.with(|active| active.replace(Some(Rc::new(RefCell::new(Vec::new())))));
 	let guard = ActiveHydrationSnapshotStoreGuard {
 		previous,
 		previous_adopted_targets,
+		previous_rejected_number_snapshots,
 	};
 	let result = f();
 	drop(guard);
@@ -117,6 +127,54 @@ fn record_hydration_target_adoption(binding: &ControlBinding) {
 			&& !targets.borrow().contains(&binding.target())
 		{
 			targets.borrow_mut().push(binding.target());
+		}
+	});
+}
+
+fn stage_rejected_number_hydration_snapshot(element: &Element, binding: &ControlBinding) {
+	if binding.kind() != ControlKind::Number {
+		return;
+	}
+	let Some(input) = element.as_web_sys().dyn_ref::<web_sys::HtmlInputElement>() else {
+		return;
+	};
+	ACTIVE_REJECTED_NUMBER_HYDRATION_SNAPSHOTS.with(|active| {
+		if let Some(snapshots) = active.borrow().as_ref() {
+			snapshots
+				.borrow_mut()
+				.push(RejectedNumberHydrationSnapshot {
+					target: binding.target(),
+					raw: input.value(),
+					selection: input_selection(input),
+				});
+		}
+	});
+}
+
+fn restore_rejected_number_hydration_snapshot(element: &Element, binding: &ControlBinding) {
+	if binding.kind() != ControlKind::Number {
+		return;
+	}
+	let Some(input) = element.as_web_sys().dyn_ref::<web_sys::HtmlInputElement>() else {
+		return;
+	};
+	ACTIVE_REJECTED_NUMBER_HYDRATION_SNAPSHOTS.with(|active| {
+		let active = active.borrow();
+		let Some(snapshots) = active.as_ref() else {
+			return;
+		};
+		let mut snapshots = snapshots.borrow_mut();
+		let Some(index) = snapshots
+			.iter()
+			.position(|snapshot| snapshot.target == binding.target())
+		else {
+			return;
+		};
+		let snapshot = snapshots.remove(index);
+		input.set_value(&snapshot.raw);
+		if let Some(selection) = snapshot.selection {
+			let selection = selection.clamped(snapshot.raw.len());
+			let _ = input.set_selection_range(selection.start as u32, selection.end as u32);
 		}
 	});
 }
@@ -174,6 +232,12 @@ struct PendingNumberEdit {
 	selection: EditorSelection,
 }
 
+struct RejectedNumberHydrationSnapshot {
+	target: NodeId,
+	raw: String,
+	selection: Option<EditorSelection>,
+}
+
 struct CompletedComposition {
 	value: ControlValue,
 	signal_baseline: ControlValue,
@@ -187,7 +251,9 @@ impl ControlBindingController {
 		validate_control(&element, binding.kind())?;
 		let initial_value = untracked(|| binding.read());
 		write_control(&element, binding.kind(), &initial_value)?;
-		Self::install(element, binding, false)
+		let controller = Self::install(element.clone(), binding.clone(), false)?;
+		restore_rejected_number_hydration_snapshot(&element, &binding);
+		Ok(controller)
 	}
 
 	pub(crate) fn hydrate(
@@ -198,7 +264,7 @@ impl ControlBindingController {
 		let (listeners, state) = install_listeners(&element, &binding);
 		let live_value = read_control(&element, binding.kind())?;
 		let expected_value = untracked(|| binding.read());
-		let adopted = if hydration_target_was_adopted(&binding) {
+		let refresh_required = if hydration_target_was_adopted(&binding) {
 			write_control(&element, binding.kind(), &expected_value)?;
 			false
 		} else if matches!(
@@ -215,13 +281,17 @@ impl ControlBindingController {
 			let outcome = binding.write(live_value.clone())?;
 			commit_or_stage_hydration_snapshot(snapshot);
 			let adopted = matches!(outcome, ControlWriteOutcome::Committed);
+			let rejected = matches!(outcome, ControlWriteOutcome::Rejected(_));
 			if matches!(outcome, ControlWriteOutcome::Ignored) {
 				write_control(&element, binding.kind(), &expected_value)?;
+			}
+			if rejected {
+				stage_rejected_number_hydration_snapshot(&element, &binding);
 			}
 			if adopted {
 				record_hydration_target_adoption(&binding);
 			}
-			adopted
+			adopted || rejected
 		};
 		let option_observer = install_select_option_observer(&element, &binding);
 		let effect = install_effect(element, binding, true, state);
@@ -231,7 +301,7 @@ impl ControlBindingController {
 				_listeners: listeners,
 				_option_observer: option_observer,
 			},
-			adopted,
+			refresh_required,
 		))
 	}
 

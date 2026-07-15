@@ -446,9 +446,11 @@ fn install_hydrated_reactive_nodes(
 					"failed to install hydrated reactive owner".to_string(),
 				)
 			})?;
-			with_reactive_node_store(&hydrated_node.reactive_node_store(), || {
-				store_reactive_node(branch_registry);
-			});
+			if hydrated_node.hydrated_nodes_preserved() {
+				with_reactive_node_store(&hydrated_node.reactive_node_store(), || {
+					store_reactive_node(branch_registry);
+				});
+			}
 			hydrated_node.refresh_hydrated_current_nodes();
 			store_reactive_node(hydrated_node);
 			branch_transaction.commit();
@@ -596,9 +598,11 @@ fn install_hydrated_child_reactive_nodes(
 					"failed to install nested hydrated reactive owner".to_string(),
 				)
 			})?;
-			with_reactive_node_store(&hydrated_node.reactive_node_store(), || {
-				store_reactive_node(branch_registry);
-			});
+			if hydrated_node.hydrated_nodes_preserved() {
+				with_reactive_node_store(&hydrated_node.reactive_node_store(), || {
+					store_reactive_node(branch_registry);
+				});
+			}
 			hydrated_node.refresh_hydrated_current_nodes();
 			store_reactive_node(hydrated_node);
 			branch_transaction.commit();

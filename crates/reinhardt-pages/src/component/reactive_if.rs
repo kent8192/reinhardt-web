@@ -437,6 +437,8 @@ pub struct ReactiveNode {
 	current_nodes: Rc<RefCell<Vec<web_sys::Node>>>,
 	/// Nested reactive nodes owned by the current render.
 	reactive_nodes: ReactiveNodeStore,
+	/// Whether hydration retained the original server-rendered nodes.
+	hydrated_nodes_preserved: Rc<Cell<bool>>,
 	/// Effect handle (kept alive to maintain reactivity)
 	effect: Option<Effect>,
 }
@@ -476,6 +478,8 @@ impl ReactiveNode {
 		let effect_reactive_node_store = current_reactive_node_store();
 		let render_reactive_node_store = new_reactive_node_store();
 		let mount_reactive_node_store = reactive_nodes.clone();
+		let hydrated_nodes_preserved = Rc::new(Cell::new(true));
+		let hydrated_nodes_preserved_clone = hydrated_nodes_preserved.clone();
 		#[cfg(feature = "i18n")]
 		let i18n_context = crate::i18n::current_i18n_callback_context();
 
@@ -492,6 +496,7 @@ impl ReactiveNode {
 						if update_activity_boundary_attrs(&current_nodes_clone, &view) {
 							return;
 						}
+						hydrated_nodes_preserved_clone.set(false);
 
 						clear_reactive_node_store(&mount_reactive_node_store);
 
@@ -529,6 +534,7 @@ impl ReactiveNode {
 			start_marker: None,
 			current_nodes,
 			reactive_nodes,
+			hydrated_nodes_preserved,
 			effect: Some(effect),
 		}
 	}
@@ -560,6 +566,8 @@ impl ReactiveNode {
 		let mount_reactive_node_store = reactive_nodes.clone();
 		let first_run = Rc::new(Cell::new(true));
 		let first_run_clone = first_run.clone();
+		let hydrated_nodes_preserved = Rc::new(Cell::new(true));
+		let hydrated_nodes_preserved_clone = hydrated_nodes_preserved.clone();
 		#[cfg(feature = "i18n")]
 		let i18n_context = crate::i18n::current_i18n_callback_context();
 
@@ -590,6 +598,7 @@ impl ReactiveNode {
 						if update_activity_boundary_attrs(&current_nodes_clone, &view) {
 							return;
 						}
+						hydrated_nodes_preserved_clone.set(false);
 
 						clear_reactive_node_store(&mount_reactive_node_store);
 
@@ -628,12 +637,17 @@ impl ReactiveNode {
 			start_marker: Some(start_marker),
 			current_nodes,
 			reactive_nodes,
+			hydrated_nodes_preserved,
 			effect: Some(effect),
 		})
 	}
 
 	pub(crate) fn reactive_node_store(&self) -> ReactiveNodeStore {
 		self.reactive_nodes.clone()
+	}
+
+	pub(crate) fn hydrated_nodes_preserved(&self) -> bool {
+		self.hydrated_nodes_preserved.get()
 	}
 
 	pub(crate) fn refresh_hydrated_current_nodes(&self) {
