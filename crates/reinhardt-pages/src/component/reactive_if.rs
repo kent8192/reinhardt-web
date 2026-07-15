@@ -681,14 +681,24 @@ fn relocate_nested_reactive_range(
 			.dyn_ref::<web_sys::Comment>()
 			.is_some_and(|comment| comment.data() == "reactive-range-start");
 		if is_range_start {
+			let mut depth = 1usize;
 			let mut next = node.next_sibling();
 			while let Some(current) = next {
 				next = current.next_sibling();
+				let is_nested_range_start = current
+					.dyn_ref::<web_sys::Comment>()
+					.is_some_and(|comment| comment.data() == "reactive-range-start");
 				let is_range_end = current
 					.dyn_ref::<web_sys::Comment>()
 					.is_some_and(|comment| comment.data() == "reactive-range-end");
 				owned_nodes.push(current);
+				if is_nested_range_start {
+					depth += 1;
+				}
 				if is_range_end {
+					depth -= 1;
+				}
+				if depth == 0 {
 					break;
 				}
 			}
