@@ -929,7 +929,7 @@ impl ElementNode {
 	pub(crate) fn attr(&self, name: &str) -> Option<&str> {
 		self.attrs
 			.iter()
-			.find(|(candidate, _)| candidate == name)
+			.find(|(candidate, _)| candidate.eq_ignore_ascii_case(name))
 			.map(|(_, value)| value.as_str())
 	}
 

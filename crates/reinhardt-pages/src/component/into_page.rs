@@ -77,6 +77,34 @@ fn initialize_control_default(element: &Element, binding: &ControlBinding) {
 				input.set_default_checked(checked);
 			}
 		}
+		(ControlKind::SelectOne, ControlValue::Text(value)) => {
+			if let Some(select) = element.as_web_sys().dyn_ref::<web_sys::HtmlSelectElement>() {
+				let options = select.options();
+				for index in 0..options.length() {
+					if let Some(option) = options
+						.item(index)
+						.and_then(|option| option.dyn_into::<web_sys::HtmlOptionElement>().ok())
+					{
+						option.set_default_selected(option.value() == value);
+					}
+				}
+			}
+		}
+		(ControlKind::SelectMany, ControlValue::SelectedValues(values)) => {
+			if let Some(select) = element.as_web_sys().dyn_ref::<web_sys::HtmlSelectElement>() {
+				let options = select.options();
+				for index in 0..options.length() {
+					if let Some(option) = options
+						.item(index)
+						.and_then(|option| option.dyn_into::<web_sys::HtmlOptionElement>().ok())
+					{
+						option.set_default_selected(
+							values.iter().any(|value| value == &option.value()),
+						);
+					}
+				}
+			}
+		}
 		_ => {}
 	}
 }

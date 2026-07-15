@@ -845,7 +845,7 @@ fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::No
 				}
 
 				let element_wrapper = crate::dom::Element::new(element.clone());
-				let mount_children_before_binding = tag == "select";
+				let mount_children_before_binding = tag.eq_ignore_ascii_case("select");
 				let mut children = children.into_iter();
 				if mount_children_before_binding {
 					for child in children.by_ref() {

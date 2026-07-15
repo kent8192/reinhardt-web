@@ -114,7 +114,7 @@ pub(crate) fn option_value(element: &PageElement) -> String {
 	element
 		.attrs()
 		.iter()
-		.find_map(|(name, value)| (name.as_ref() == "value").then_some(value.as_ref()))
+		.find_map(|(name, value)| name.eq_ignore_ascii_case("value").then_some(value.as_ref()))
 		.map(str::to_owned)
 		.unwrap_or_else(|| normalize_option_text(&collect_option_text(element.child_views())))
 }
@@ -143,7 +143,7 @@ fn page_option_text(page: &Page) -> String {
 }
 
 fn is_script(tag: &str) -> bool {
-	tag == "script" || tag == "svg:script"
+	tag.eq_ignore_ascii_case("script") || tag.eq_ignore_ascii_case("svg:script")
 }
 
 fn normalize_option_text(text: &str) -> String {

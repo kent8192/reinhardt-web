@@ -1153,7 +1153,7 @@ impl StringRenderSelection {
 		let value = option
 			.attrs()
 			.iter()
-			.find(|(name, _)| name.as_ref() == "value")
+			.find(|(name, _)| name.eq_ignore_ascii_case("value"))
 			.map(|(_, value)| value.as_ref().to_owned())
 			.unwrap_or_else(|| Self::normalize_option_text(option));
 		match self {
