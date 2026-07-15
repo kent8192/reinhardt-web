@@ -50,8 +50,8 @@ pub(crate) fn controlled_attribute_is_overridden(
 	name: &str,
 ) -> bool {
 	binding.is_some_and(|binding| match binding.kind() {
-		ControlKind::Text | ControlKind::Number => name == "value",
-		ControlKind::Checkbox | ControlKind::Radio => name == "checked",
+		ControlKind::Text | ControlKind::Number => name.eq_ignore_ascii_case("value"),
+		ControlKind::Checkbox | ControlKind::Radio => name.eq_ignore_ascii_case("checked"),
 		ControlKind::SelectOne | ControlKind::SelectMany => false,
 	})
 }
