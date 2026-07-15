@@ -3129,8 +3129,7 @@ fn is_fixture_generated_field(field: &FieldInfo) -> bool {
 	// with PostgreSQL support, matching attribute parsing and model metadata generation.
 	#[cfg(feature = "db-postgres")]
 	{
-		return field.config.identity_always == Some(true)
-			|| field.config.identity_by_default == Some(true);
+		field.config.identity_always == Some(true) || field.config.identity_by_default == Some(true)
 	}
 
 	#[cfg(not(feature = "db-postgres"))]
