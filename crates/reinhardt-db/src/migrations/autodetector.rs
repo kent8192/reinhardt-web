@@ -6410,12 +6410,11 @@ impl MigrationAutodetector {
 			let mut after_rename = Vec::new();
 
 			for (candidate_index, operation) in std::mem::take(operations).into_iter().enumerate() {
-				if Self::table_rename_names(&operation).is_some() {
-					after_rename.push(operation);
-				} else if matches!(
-					&operation,
-					super::Operation::CreateTable { name, .. } if name == &old_name
-				) {
+				if Self::table_rename_names(&operation).is_some()
+					|| matches!(
+						&operation,
+						super::Operation::CreateTable { name, .. } if name == &old_name
+					) {
 					after_rename.push(operation);
 				} else if matches!(
 					&operation,
@@ -6552,13 +6551,12 @@ impl MigrationAutodetector {
 			if let (Some(old), Some(new)) = (
 				self.from_state.get_model(app_label, old_model),
 				self.to_state.get_model(app_label, new_model),
-			) {
-				if old.table_name != new.table_name {
-					pending_by_app
-						.entry(app_label.clone())
-						.or_default()
-						.push((old.table_name.clone(), new.table_name.clone()));
-				}
+			) && old.table_name != new.table_name
+			{
+				pending_by_app
+					.entry(app_label.clone())
+					.or_default()
+					.push((old.table_name.clone(), new.table_name.clone()));
 			}
 		}
 
