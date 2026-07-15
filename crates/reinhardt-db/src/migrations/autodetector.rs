@@ -983,7 +983,44 @@ impl ProjectState {
 			model.table_name = new_table_name.to_string();
 		}
 
-		self.update_foreign_key_table_references(old_table_name, new_table_name);
+		self.update_foreign_key_table_references_in_app(app_label, old_table_name, new_table_name);
+	}
+
+	fn update_foreign_key_table_references_in_app(
+		&mut self,
+		app_label: &str,
+		old_table_name: &str,
+		new_table_name: &str,
+	) {
+		for ((model_app_label, _), model) in &mut self.models {
+			let mut updated_fields = BTreeSet::new();
+			for (field_name, field) in &mut model.fields {
+				let targets_renamed_model = field
+					.params
+					.get("fk_target_app")
+					.map_or(model_app_label == app_label, |target_app| {
+						target_app == app_label
+					});
+				if targets_renamed_model
+					&& let Some(foreign_key) = &mut field.foreign_key
+					&& foreign_key.referenced_table == old_table_name
+				{
+					foreign_key.referenced_table = new_table_name.to_string();
+					updated_fields.insert(field_name.clone());
+				}
+			}
+			for constraint in &mut model.constraints {
+				if constraint
+					.fields
+					.iter()
+					.any(|field| updated_fields.contains(field))
+					&& let Some(foreign_key) = &mut constraint.foreign_key_info
+					&& foreign_key.referenced_table == old_table_name
+				{
+					foreign_key.referenced_table = new_table_name.to_string();
+				}
+			}
+		}
 	}
 
 	fn update_foreign_key_table_references(&mut self, old_table_name: &str, new_table_name: &str) {
