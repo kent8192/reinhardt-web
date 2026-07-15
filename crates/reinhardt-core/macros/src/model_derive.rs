@@ -1872,9 +1872,9 @@ fn generate_field_accessors(
 
 			quote! {
 				/// Unique-field accessor for type-safe single-row lookups.
-				pub const fn #method_name() -> #orm_crate::expressions::UniqueFieldRef<#struct_name, #lookup_type> {
+				pub const fn #method_name() -> #orm_crate::UniqueFieldRef<#struct_name, #lookup_type> {
 					// SAFETY: This accessor is generated only for fields proven unique by model metadata.
-					unsafe { #orm_crate::expressions::UniqueFieldRef::from_model_field(#field_name_str) }
+					unsafe { #orm_crate::UniqueFieldRef::from_model_field(#field_name_str) }
 				}
 			}
 		})
