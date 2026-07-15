@@ -1176,6 +1176,15 @@ where
 	let mut object = fixture_database_object::<M>(object)?;
 	let pk_field = fixture_primary_key_column::<M>();
 	if object.contains_key(&pk_field) {
+		let omitted_defaults = fixture_omitted_database_default_columns::<M>(&object);
+		if !omitted_defaults.is_empty() {
+			return Err(FixtureError::Database(format!(
+				"fixture record for '{}.{}' with primary key must include database-default column(s): {}",
+				M::app_label(),
+				rust_model_name::<M>(),
+				omitted_defaults.join(", "),
+			)));
+		}
 		for field in M::field_metadata()
 			.into_iter()
 			.filter(|field| field.nullable && !field.primary_key)
@@ -1187,17 +1196,6 @@ where
 	let columns = fixture_writable_columns(&object, &pk_field)?;
 	if columns.is_empty() {
 		return Ok(fixture_default_values_insert_sql(M::table_name(), backend));
-	}
-	if object.contains_key(&pk_field) {
-		let omitted_defaults = fixture_omitted_database_default_columns::<M>(&object);
-		if !omitted_defaults.is_empty() {
-			return Err(FixtureError::Database(format!(
-				"fixture record for '{}.{}' with primary key must include database-default column(s): {}",
-				M::app_label(),
-				rust_model_name::<M>(),
-				omitted_defaults.join(", "),
-			)));
-		}
 	}
 
 	let mut stmt = Query::insert();
@@ -1319,6 +1317,15 @@ where
 	ensure_single_column_primary_key::<M>()?;
 	let mut object = fixture_database_object::<M>(object)?;
 	let primary_key = fixture_primary_key_column::<M>();
+	let omitted_defaults = fixture_omitted_database_default_columns::<M>(&object);
+	if !omitted_defaults.is_empty() {
+		return Err(FixtureError::Database(format!(
+			"fixture record for '{}.{}' with primary key must include database-default column(s): {}",
+			M::app_label(),
+			rust_model_name::<M>(),
+			omitted_defaults.join(", "),
+		)));
+	}
 	for field in M::field_metadata()
 		.into_iter()
 		.filter(|field| field.nullable && !field.primary_key)
