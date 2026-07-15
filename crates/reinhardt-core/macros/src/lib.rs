@@ -768,9 +768,9 @@ pub fn user(args: TokenStream, input: TokenStream) -> TokenStream {
 /// # Model Attributes
 ///
 /// - `app_label`: Application label (required)
-/// - `table_name`: Database table name (optional; defaults to the struct name
-///   converted to snake_case without pluralization, such as `HTTPRoute` to
-///   `http_route`)
+/// - `table_name`: Database table name (optional; defaults to the app label and
+///   struct name converted to snake_case without pluralization, such as
+///   `network::HTTPRoute` to `network_http_route`)
 /// - `constraints`: List of unique constraints (e.g., `unique(fields = ["field1", "field2"], name = "name")`)
 ///
 /// # Field Attributes

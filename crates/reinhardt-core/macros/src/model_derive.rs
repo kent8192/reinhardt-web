@@ -471,10 +471,13 @@ impl ModelConfig {
 				"app_label attribute is required in #[model(...)]",
 			)
 		})?;
+		let table_name = table_name.unwrap_or_else(|| {
+			format!("{}_{}", app_label, to_snake_case(&struct_name.to_string()))
+		});
 
 		Ok(Self {
 			app_label,
-			table_name: table_name.unwrap_or_else(|| to_snake_case(&struct_name.to_string())),
+			table_name,
 			constraints,
 			manager,
 			info: info.unwrap_or(true),
@@ -6023,12 +6026,12 @@ mod tests {
 	}
 
 	#[test]
-	fn test_table_name_defaults_to_struct_name_in_snake_case() {
+	fn test_table_name_defaults_to_app_label_and_struct_name_in_snake_case() {
 		let cases = [
-			("User", "user"),
-			("BlogPost", "blog_post"),
-			("Person", "person"),
-			("HTTPRoute", "http_route"),
+			("User", "test_user"),
+			("BlogPost", "test_blog_post"),
+			("Person", "test_person"),
+			("HTTPRoute", "test_http_route"),
 		];
 
 		for (struct_name, expected_table_name) in cases {

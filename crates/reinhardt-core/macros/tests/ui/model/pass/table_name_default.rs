@@ -19,6 +19,6 @@ struct HTTPRoute {
 }
 
 fn main() {
-	assert_eq!(BlogPost::table_name(), "blog_post");
-	assert_eq!(HTTPRoute::table_name(), "http_route");
+	assert_eq!(BlogPost::table_name(), "test_blog_post");
+	assert_eq!(HTTPRoute::table_name(), "test_http_route");
 }

@@ -188,8 +188,8 @@ Provides compile-time code generation for common patterns.
   - Cleaner syntax without explicit `#[derive(Model)]`
   - Same attributes as `#[derive(Model)]`
   - Requires an explicit `app_label`
-  - Defaults `table_name` to the struct name in snake_case without pluralization
-  - Example: `#[model(app_label = "auth")]` (`HTTPRoute` uses `http_route`)
+  - Defaults `table_name` to the app label plus struct name in snake_case without pluralization
+  - Example: `#[model(app_label = "auth")]` (`HTTPRoute` uses `auth_http_route`)
 
 - **`#[derive(Model)]`** - Derive macro for automatic Model implementation
   - Implements `Model` trait
