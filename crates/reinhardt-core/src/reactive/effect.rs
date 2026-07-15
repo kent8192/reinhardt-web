@@ -234,6 +234,16 @@ impl Effect {
 		let Some(key) = find_node_key(effect_id, NodeKind::Effect) else {
 			return;
 		};
+		let (previous_run_scope, previous_cleanup) = with_node_mut::<EffectSlot, _>(key, |slot| {
+			(slot.run_scope.take(), slot.cleanup_slot.borrow_mut().take())
+		})
+		.unwrap_or_else(|err| panic!("{err}"));
+		if let Some(cleanup) = previous_cleanup {
+			super::runtime::run_without_observer(|| {
+				let _ = enter_scope(key.scope(), cleanup);
+			});
+		}
+		drop(previous_run_scope);
 		with_runtime(|rt| {
 			rt.clear_dependencies(effect_id);
 			rt.push_observer(Observer {
@@ -270,9 +280,6 @@ impl Effect {
 			}
 		}
 
-		let previous_run_scope = with_node_mut::<EffectSlot, _>(key, |slot| slot.run_scope.take())
-			.unwrap_or_else(|err| panic!("{err}"));
-		drop(previous_run_scope);
 		let run_scope = super::scope::ReactiveScope::new();
 		let run_scope_id = run_scope.id();
 		with_node_mut::<EffectSlot, _>(key, |slot| slot.run_scope = Some(run_scope))
@@ -306,10 +313,12 @@ impl Effect {
 		};
 		let _ = mark_node_disposed(self.key);
 		drop(f);
-		drop(run_scope);
 		if let Some(cleanup) = cleanup {
-			let _ = enter_scope(self.key.scope(), cleanup);
+			super::runtime::run_without_observer(|| {
+				let _ = enter_scope(self.key.scope(), cleanup);
+			});
 		}
+		drop(run_scope);
 		let _ = try_with_runtime(|rt| rt.remove_node(self.id()));
 	}
 }

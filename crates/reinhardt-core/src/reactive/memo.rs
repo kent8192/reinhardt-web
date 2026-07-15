@@ -183,6 +183,9 @@ impl<T: Clone + 'static> Memo<T> {
 
 	fn compute_value(key: NodeKey) -> T {
 		let memo_id = key.node_id();
+		let previous_run_scope = with_node_mut::<MemoSlot<T>, _>(key, |slot| slot.run_scope.take())
+			.unwrap_or_else(|err| panic!("{err}"));
+		drop(previous_run_scope);
 		with_runtime(|rt| {
 			rt.clear_dependencies(memo_id);
 			rt.push_observer(Observer {
@@ -222,9 +225,6 @@ impl<T: Clone + 'static> Memo<T> {
 			f: with_node_mut::<MemoSlot<T>, _>(key, |slot| slot.f.take())
 				.unwrap_or_else(|err| panic!("{err}")),
 		};
-		let previous_run_scope = with_node_mut::<MemoSlot<T>, _>(key, |slot| slot.run_scope.take())
-			.unwrap_or_else(|err| panic!("{err}"));
-		drop(previous_run_scope);
 		let run_scope = super::scope::ReactiveScope::new();
 		let run_scope_id = run_scope.id();
 		with_node_mut::<MemoSlot<T>, _>(key, |slot| slot.run_scope = Some(run_scope))
