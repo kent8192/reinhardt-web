@@ -907,8 +907,8 @@ fn is_unknown_subcommand(err: &clap::Error) -> bool {
 /// Try to resolve raw CLI arguments into a custom command from the registry.
 ///
 /// The convention is: `manage <subcommand> [args...]`.  Global flags that
-/// appear before the subcommand (e.g., `-v`) are skipped.  The function also
-/// extracts the verbosity level so it can be forwarded to the custom command.
+/// appear before the subcommand (e.g., `-v`) are skipped. Both count-style
+/// `--verbosity` and legacy value-style `--verbosity 2` are accepted.
 fn resolve_custom_command(
 	raw_args: &[String],
 	registry: &CommandRegistry,
@@ -926,8 +926,12 @@ fn resolve_custom_command(
 		if flag == "-v" || flag == "--verbose" {
 			verbosity = verbosity.saturating_add(1);
 		} else if flag == "--verbosity" {
-			let value = iter.next()?;
-			verbosity = value.parse().ok()?;
+			if let Some(value) = iter.peek().and_then(|value| value.parse::<u8>().ok()) {
+				verbosity = value;
+				iter.next();
+			} else {
+				verbosity = verbosity.saturating_add(1);
+			}
 		} else if let Some(value) = flag.strip_prefix("--verbosity=") {
 			verbosity = value.parse().ok()?;
 		}
