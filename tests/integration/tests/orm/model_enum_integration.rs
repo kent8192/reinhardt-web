@@ -97,6 +97,7 @@ struct CodecJob {
 struct ByteRecord {
 	#[field(primary_key = true)]
 	id: Option<i64>,
+	#[field(array_base_type = "u8")]
 	payload: Vec<u8>,
 }
 
