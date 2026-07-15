@@ -509,16 +509,12 @@ impl PageElement {
 	/// Creates a new element view.
 	pub fn new(tag: impl Into<Cow<'static, str>>) -> Self {
 		let tag = tag.into();
-		let is_void = matches!(
-			tag.as_ref(),
-			"area"
-				| "base" | "br"
-				| "col" | "embed"
-				| "hr" | "img"
-				| "input" | "link"
-				| "meta" | "source"
-				| "track" | "wbr"
-		);
+		let is_void = [
+			"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source",
+			"track", "wbr",
+		]
+		.iter()
+		.any(|void_tag| tag.eq_ignore_ascii_case(void_tag));
 		Self {
 			tag,
 			attrs: Vec::new(),
@@ -1023,9 +1019,9 @@ impl Page {
 				for (name, value) in el.attrs() {
 					// Skip boolean attributes with falsy values (empty, "false", "0")
 					let name_str: &str = name.as_ref();
-					if (name_str == "value" && projects_value)
-						|| (name_str == "checked" && binding.is_some())
-						|| (name_str == "selected" && selection.is_some())
+					if (name_str.eq_ignore_ascii_case("value") && projects_value)
+						|| (name_str.eq_ignore_ascii_case("checked") && binding.is_some())
+						|| (name_str.eq_ignore_ascii_case("selected") && selection.is_some())
 						|| (BOOLEAN_ATTRS.contains(&name_str) && !is_boolean_attr_truthy(value))
 					{
 						continue;
@@ -1486,6 +1482,7 @@ mod tests {
 		assert!(PageElement::new("br").is_void);
 		assert!(PageElement::new("img").is_void);
 		assert!(PageElement::new("input").is_void);
+		assert!(PageElement::new("INPUT").is_void);
 		assert!(!PageElement::new("div").is_void);
 		assert!(!PageElement::new("span").is_void);
 	}
@@ -1545,6 +1542,16 @@ mod tests {
 			"<input type=\"text\" value=\"current\" />"
 		);
 		assert_eq!(textarea.render_to_string(), "<textarea>current</textarea>");
+	}
+
+	#[test]
+	fn render_to_string_normalizes_controlled_attribute_names() {
+		let input = PageElement::new("INPUT")
+			.attr("VALUE", "stale")
+			.control_binding(ControlBinding::text(Signal::new("current".to_owned())))
+			.into_page();
+
+		assert_eq!(input.render_to_string(), "<INPUT value=\"current\" />");
 	}
 
 	#[test]

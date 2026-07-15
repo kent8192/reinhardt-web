@@ -24,6 +24,8 @@ use crate::component::reactive_if::{
 use crate::dom::control_binding::ControlBindingController;
 #[cfg(wasm)]
 use crate::dom::{Element, EventHandle};
+#[cfg(wasm)]
+use wasm_bindgen::JsCast;
 
 /// Extension trait for mounting Page to DOM (WASM only).
 ///
@@ -43,7 +45,7 @@ impl PageExt for Page {
 }
 
 #[cfg(wasm)]
-use reinhardt_core::types::page::{ControlBinding, ControlKind};
+use reinhardt_core::types::page::{ControlBinding, ControlKind, ControlValue};
 #[cfg(wasm)]
 pub(crate) fn controlled_attribute_is_overridden(
 	binding: Option<&ControlBinding>,
@@ -54,6 +56,29 @@ pub(crate) fn controlled_attribute_is_overridden(
 		ControlKind::Checkbox | ControlKind::Radio => name.eq_ignore_ascii_case("checked"),
 		ControlKind::SelectOne | ControlKind::SelectMany => false,
 	})
+}
+
+#[cfg(wasm)]
+fn initialize_control_default(element: &Element, binding: &ControlBinding) {
+	let value = binding.read();
+	match (binding.kind(), value) {
+		(ControlKind::Text | ControlKind::Number, ControlValue::Text(value)) => {
+			if let Some(input) = element.as_web_sys().dyn_ref::<web_sys::HtmlInputElement>() {
+				input.set_default_value(&value);
+			} else if let Some(textarea) = element
+				.as_web_sys()
+				.dyn_ref::<web_sys::HtmlTextAreaElement>()
+			{
+				let _ = textarea.set_default_value(&value);
+			}
+		}
+		(ControlKind::Checkbox | ControlKind::Radio, ControlValue::Checked(checked)) => {
+			if let Some(input) = element.as_web_sys().dyn_ref::<web_sys::HtmlInputElement>() {
+				input.set_default_checked(checked);
+			}
+		}
+		_ => {}
+	}
 }
 
 #[cfg(wasm)]
@@ -101,7 +126,9 @@ fn mount_inner(page: Page, parent: &Element) -> Result<(), MountError> {
 					})?;
 			}
 
-			let mount_children_before_binding = tag == "select";
+			let mount_children_before_binding = tag.eq_ignore_ascii_case("select");
+			let skip_bound_textarea_children =
+				control_binding.is_some() && tag.eq_ignore_ascii_case("textarea");
 			let mount_element = || {
 				let mut children = children.into_iter();
 				if mount_children_before_binding {
@@ -110,6 +137,9 @@ fn mount_inner(page: Page, parent: &Element) -> Result<(), MountError> {
 					}
 				}
 
+				if let Some(binding) = control_binding.as_ref() {
+					initialize_control_default(&element, binding);
+				}
 				let binding_controller = control_binding
 					.map(|binding| ControlBindingController::mount(element.clone(), binding))
 					.transpose()?;
@@ -135,8 +165,10 @@ fn mount_inner(page: Page, parent: &Element) -> Result<(), MountError> {
 					));
 				}
 
-				for child in children {
-					mount_inner(child, &element)?;
+				if !skip_bound_textarea_children {
+					for child in children {
+						mount_inner(child, &element)?;
+					}
 				}
 
 				parent

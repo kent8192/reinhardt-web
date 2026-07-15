@@ -1838,11 +1838,12 @@ fn render_element_opening(
 	html.push('<');
 	html.push_str(element.tag_name());
 
-	let projects_value = element.tag_name() == "input" && projection.value.is_some();
+	let projects_value =
+		element.tag_name().eq_ignore_ascii_case("input") && projection.value.is_some();
 	let projects_checked = element.bound_control().is_some_and(|binding| {
 		matches!(binding.kind(), ControlKind::Checkbox | ControlKind::Radio)
 	});
-	let projected_option_selection = if element.tag_name() == "option" {
+	let projected_option_selection = if element.tag_name().eq_ignore_ascii_case("option") {
 		selection.map(|selection| selection.option_selected(element))
 	} else {
 		None
@@ -1850,9 +1851,9 @@ fn render_element_opening(
 
 	for (name, value) in element.attrs() {
 		let name = name.as_ref();
-		if (name == "value" && projects_value)
-			|| (name == "checked" && projects_checked)
-			|| (name == "selected" && projected_option_selection.is_some())
+		if (name.eq_ignore_ascii_case("value") && projects_value)
+			|| (name.eq_ignore_ascii_case("checked") && projects_checked)
+			|| (name.eq_ignore_ascii_case("selected") && projected_option_selection.is_some())
 		{
 			continue;
 		}
@@ -2102,7 +2103,7 @@ fn test_ssr_options_default_strategy_static() {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::component::PageElement;
+	use crate::component::{ControlBinding, PageElement};
 	use crate::reactive::Signal;
 	use crate::reactive::hooks::use_retained_effect;
 	use crate::reactive::runtime::with_runtime;
@@ -2147,6 +2148,19 @@ mod tests {
 		assert_eq!(opts.lang, "en");
 		assert_eq!(opts.resource_timeout, Duration::from_secs(2));
 		assert!(opts.suspense_streaming);
+	}
+
+	#[test]
+	fn render_element_opening_normalizes_controlled_html_names() {
+		let element = PageElement::new("INPUT")
+			.attr("VALUE", "stale")
+			.control_binding(ControlBinding::text(Signal::new("current".to_owned())));
+		let projection = project(element.bound_control());
+
+		assert_eq!(
+			render_element_opening(&element, &projection, None),
+			"<INPUT value=\"current\""
+		);
 	}
 
 	#[tokio::test]

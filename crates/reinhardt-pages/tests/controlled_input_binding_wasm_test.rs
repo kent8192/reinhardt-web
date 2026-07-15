@@ -78,6 +78,60 @@ fn public_page_mount_installs_control_binding() {
 }
 
 #[wasm_bindgen_test]
+fn controlled_form_reset_uses_the_bound_initial_value() {
+	let document = web_sys::window()
+		.expect("window")
+		.document()
+		.expect("document");
+	let root = Element::new(document.create_element("div").expect("root"));
+	let value = Signal::new("signal".to_owned());
+	PageElement::new("form")
+		.child(PageElement::new("input").control_binding(ControlBinding::text(value)))
+		.into_page()
+		.mount(&root)
+		.expect("mount");
+	let form: web_sys::HtmlFormElement = root
+		.as_web_sys()
+		.first_element_child()
+		.expect("form")
+		.unchecked_into();
+	let input: web_sys::HtmlInputElement =
+		form.first_element_child().expect("input").unchecked_into();
+
+	input.set_value("edited");
+	form.reset();
+
+	assert_eq!(input.value(), "signal");
+	reinhardt_pages::cleanup_reactive_nodes();
+}
+
+#[wasm_bindgen_test]
+fn controlled_textarea_ignores_stale_child_content_on_mount() {
+	let document = web_sys::window()
+		.expect("window")
+		.document()
+		.expect("document");
+	let root = Element::new(document.create_element("div").expect("root"));
+	let value = Signal::new("signal".to_owned());
+	PageElement::new("textarea")
+		.control_binding(ControlBinding::text(value))
+		.child("stale child")
+		.into_page()
+		.mount(&root)
+		.expect("mount");
+	let textarea: web_sys::HtmlTextAreaElement = root
+		.as_web_sys()
+		.first_element_child()
+		.expect("textarea")
+		.unchecked_into();
+
+	assert_eq!(textarea.value(), "signal");
+	assert_eq!(textarea.default_value().expect("default value"), "signal");
+	assert_eq!(textarea.text_content(), Some("signal".to_owned()));
+	reinhardt_pages::cleanup_reactive_nodes();
+}
+
+#[wasm_bindgen_test]
 fn public_page_mount_evaluates_dynamic_radio_value_once() {
 	let document = web_sys::window()
 		.expect("window")

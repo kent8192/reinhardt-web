@@ -393,13 +393,13 @@ impl ControlBinding {
 			}),
 			snapshot: Shared::new(move || {
 				let value = snapshot_signal.get();
-				let parse_error = snapshot_error.as_ref().map(Signal::get);
+				let parse_error = snapshot_error.as_ref().and_then(|error| error.get());
 				let restore_signal = snapshot_signal.clone();
 				let restore_error = snapshot_error.clone();
 				ControlBindingSnapshot {
 					restore: Some(Box::new(move || {
 						restore_signal.set_without_notify(value);
-						if let (Some(error), Some(parse_error)) = (&restore_error, parse_error) {
+						if let Some(error) = &restore_error {
 							error.set_without_notify(parse_error);
 						}
 						restore_signal.notify_subscribers();
@@ -683,6 +683,25 @@ mod tests {
 		// Assert
 		assert_eq!(value.get(), 7);
 		assert_eq!(error.get(), Some(original_error));
+	}
+
+	#[rstest]
+	fn binding_snapshot_restores_an_empty_numeric_error_state() {
+		// Arrange
+		let value = Signal::new(7_i32);
+		let error = Signal::new(None);
+		let binding = ControlBinding::number_with_error(value.clone(), error.clone());
+		let snapshot = binding.snapshot();
+
+		// Act
+		binding
+			.write(ControlValue::Text("invalid".to_owned()))
+			.unwrap();
+		drop(snapshot);
+
+		// Assert
+		assert_eq!(value.get(), 7);
+		assert_eq!(error.get(), None);
 	}
 
 	#[rstest]
