@@ -45,6 +45,15 @@ impl MySqlBackend {
 			// MySQL stores UUIDs as BINARY(16) or CHAR(36); we bind as string
 			QueryValue::Uuid(u) => query.bind(u.to_string()),
 			QueryValue::Json(value) => query.bind(value.as_deref().cloned().map(sqlx::types::Json)),
+			QueryValue::StringArray(values) => {
+				query.bind(serde_json::to_string(values).expect("string arrays serialize"))
+			}
+			QueryValue::IntArray(values) => {
+				query.bind(serde_json::to_string(values).expect("integer arrays serialize"))
+			}
+			QueryValue::BigIntArray(values) => {
+				query.bind(serde_json::to_string(values).expect("big integer arrays serialize"))
+			}
 			QueryValue::Now => {
 				// MySQL uses NOW() function, which should be part of SQL string
 				// For binding, we use current UTC time
@@ -222,6 +231,15 @@ impl MySqlTransactionExecutor {
 			// MySQL stores UUIDs as BINARY(16) or CHAR(36); we bind as string
 			QueryValue::Uuid(u) => query.bind(u.to_string()),
 			QueryValue::Json(value) => query.bind(value.as_deref().cloned().map(sqlx::types::Json)),
+			QueryValue::StringArray(values) => {
+				query.bind(serde_json::to_string(values).expect("string arrays serialize"))
+			}
+			QueryValue::IntArray(values) => {
+				query.bind(serde_json::to_string(values).expect("integer arrays serialize"))
+			}
+			QueryValue::BigIntArray(values) => {
+				query.bind(serde_json::to_string(values).expect("big integer arrays serialize"))
+			}
 			QueryValue::Now => query.bind(chrono::Utc::now()),
 		}
 	}
