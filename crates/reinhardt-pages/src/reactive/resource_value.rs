@@ -319,6 +319,7 @@ where
 
 #[cfg(test)]
 mod tests {
+	use reinhardt_core::deps;
 	use serial_test::serial;
 
 	use super::*;
@@ -328,7 +329,10 @@ mod tests {
 	#[test]
 	#[serial(reactive_runtime)]
 	fn latest_after_prefers_later_action_success() {
-		let resource = use_resource(|| async { Ok::<String, String>("loaded".to_string()) }, ());
+		let resource = use_resource(
+			|| async { Ok::<String, String>("loaded".to_string()) },
+			deps![],
+		);
 		resource.set(ResourceState::Success("resource".to_string()));
 		let refresh = use_action(|_: ()| async { Ok::<String, String>("refresh".to_string()) });
 		let save = use_action(|_: ()| async { Ok::<String, String>("save".to_string()) });
@@ -355,7 +359,10 @@ mod tests {
 	#[test]
 	#[serial(reactive_runtime)]
 	fn action_error_does_not_replace_resource_error() {
-		let resource = use_resource(|| async { Ok::<String, String>("loaded".to_string()) }, ());
+		let resource = use_resource(
+			|| async { Ok::<String, String>("loaded".to_string()) },
+			deps![],
+		);
 		resource.set(ResourceState::Error("load failed".to_string()));
 		let action = use_action(|_: ()| async { Err::<String, String>("save failed".to_string()) });
 		let latest = resource.latest_after(&action);
@@ -372,7 +379,7 @@ mod tests {
 	#[test]
 	#[serial(reactive_runtime)]
 	fn state_with_empty_classifies_success_values() {
-		let resource = use_resource(|| async { Ok::<Vec<u32>, String>(Vec::new()) }, ());
+		let resource = use_resource(|| async { Ok::<Vec<u32>, String>(Vec::new()) }, deps![]);
 		resource.set(ResourceState::Success(Vec::new()));
 		let action = use_action(|_: ()| async { Ok::<Vec<u32>, String>(vec![1, 2]) });
 		let latest = resource.latest_after(&action);
@@ -393,7 +400,10 @@ mod tests {
 	#[test]
 	#[serial(reactive_runtime)]
 	fn refetch_on_success_refetches_resource_after_action_success() {
-		let resource = use_resource(|| async { Ok::<String, String>("loaded".to_string()) }, ());
+		let resource = use_resource(
+			|| async { Ok::<String, String>("loaded".to_string()) },
+			deps![],
+		);
 		resource.set(ResourceState::Success("resource".to_string()));
 		let action = use_action(|_: ()| async { Ok::<String, String>("mutated".to_string()) });
 		let latest = use_latest_resource_value(resource.clone())

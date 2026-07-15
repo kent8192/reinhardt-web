@@ -9,7 +9,7 @@
 //! `polls_results`, `question_edit`, `question_delete_confirm`) follows the
 //! same page! v2 shape:
 //!
-//! - Data is loaded with `use_resource(fetcher, ())` and flows into `page!`
+//! - Data is loaded with `use_resource(fetcher, deps![])` and flows into `page!`
 //!   as a `Resource<T, String>` parameter. The view branches on it inside a
 //!   single `{ match resource.get() { Loading => .., Error(e) => .., Success(v)
 //!   => .. } }` block. Reading the resource exactly once matters: `page!`
@@ -38,6 +38,7 @@ pub mod question_new;
 use crate::apps::polls::models::{ChoiceInfo, QuestionInfo};
 use crate::apps::users::models::UserInfo;
 use reinhardt::pages::component::Page;
+use reinhardt::pages::deps;
 use reinhardt::pages::form;
 use reinhardt::pages::page;
 use reinhardt::pages::reactive::hooks::use_retained_effect;
@@ -111,7 +112,7 @@ pub fn error_page(message: &str) -> Page {
 pub fn polls_index() -> Page {
 	let load_questions = use_resource(
 		|| async move { get_questions().await.map_err(|e| e.to_string()) },
-		(),
+		deps![],
 	);
 	let new_question_href = polls_routes::reverse("question_new", &[]);
 
@@ -196,7 +197,7 @@ pub fn polls_detail(question_id: i64) -> Page {
 	// Load the question detail once on mount.
 	let load_detail = use_resource(
 		move || async move { get_question_detail(qid).await.map_err(|e| e.to_string()) },
-		(),
+		deps![],
 	);
 
 	// Resolve the viewer so the render branch can hide owner-only controls
@@ -207,7 +208,7 @@ pub fn polls_detail(question_id: i64) -> Page {
 	// rejects unauthorized mutations as defense in depth.
 	let load_current_user = use_resource(
 		|| async move { current_user().await.map_err(|e| e.to_string()) },
-		(),
+		deps![],
 	);
 
 	// Voting form via the `form!` macro. Keep this instance stable for the
@@ -427,11 +428,11 @@ pub fn polls_results(question_id: i64) -> Page {
 				.await
 				.map_err(|e| e.to_string())
 		},
-		(),
+		deps![],
 	);
 	let load_current_user = use_resource(
 		|| async move { current_user().await.map_err(|e| e.to_string()) },
-		(),
+		deps![],
 	);
 
 	page!(|load_results: Resource<(QuestionInfo, Vec<ChoiceInfo>, i32), String>, load_current_user: Resource<Option<UserInfo>, String>, question_id: i64| {
@@ -583,7 +584,7 @@ pub fn polls_results(question_id: i64) -> Page {
 pub fn polls_index_with_logo() -> Page {
 	let load_questions = use_resource(
 		|| async move { get_questions().await.map_err(|e| e.to_string()) },
-		(),
+		deps![],
 	);
 
 	page!(|load_questions: Resource<Vec<QuestionInfo>, String>| {
@@ -757,7 +758,7 @@ pub fn question_edit(question_id: i64) -> Page {
 	let qid = question_id;
 	let load_detail = use_resource(
 		move || async move { get_question_detail(qid).await.map_err(|e| e.to_string()) },
-		(),
+		deps![],
 	);
 
 	let edit_form = form! {
@@ -782,7 +783,6 @@ pub fn question_edit(question_id: i64) -> Page {
 	// re-running whenever its state changes.
 	{
 		let load_detail_for_effect = load_detail.clone();
-		let load_detail_for_deps = load_detail.clone();
 		let edit_form_for_effect = edit_form.clone();
 		use_retained_effect(
 			move || {
@@ -792,7 +792,7 @@ pub fn question_edit(question_id: i64) -> Page {
 						.set(question.question_text.clone());
 				}
 			},
-			(load_detail_for_deps,),
+			deps![load_detail],
 		);
 	}
 
@@ -898,7 +898,7 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 	let qid = question_id;
 	let load_detail = use_resource(
 		move || async move { get_question_detail(qid).await.map_err(|e| e.to_string()) },
-		(),
+		deps![],
 	);
 
 	let delete_form = form! {
