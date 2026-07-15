@@ -923,8 +923,13 @@ fn resolve_custom_command(
 		}
 		let flag = iter.next().unwrap(); // safe: peeked above
 
-		if flag == "-v" || flag == "--verbose" || flag == "--verbosity" {
+		if flag == "-v" || flag == "--verbose" {
 			verbosity = verbosity.saturating_add(1);
+		} else if flag == "--verbosity" {
+			let value = iter.next()?;
+			verbosity = value.parse().ok()?;
+		} else if let Some(value) = flag.strip_prefix("--verbosity=") {
+			verbosity = value.parse().ok()?;
 		}
 	}
 
@@ -2240,6 +2245,25 @@ mod tests {
 			);
 
 			assert_eq!(resolved, Some((fixture_command.to_string(), Vec::new(), 1)));
+		}
+	}
+
+	#[cfg(feature = "reinhardt-db")]
+	#[rstest]
+	fn test_fixture_commands_resolve_after_value_style_verbosity() {
+		let registry = CommandRegistry::new();
+
+		for args in [
+			vec!["--verbosity".to_string(), "2".to_string()],
+			vec!["--verbosity=2".to_string()],
+		] {
+			let mut raw_args = vec!["manage".to_string()];
+			raw_args.extend(args);
+			raw_args.push("dumpdata".to_string());
+			assert_eq!(
+				resolve_custom_command(&raw_args, &registry),
+				Some(("dumpdata".to_string(), Vec::new(), 2))
+			);
 		}
 	}
 

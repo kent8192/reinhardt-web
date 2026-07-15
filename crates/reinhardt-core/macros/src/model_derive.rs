@@ -3525,11 +3525,18 @@ fn field_default_to_metadata(expr: &syn::Expr, orm_crate: &TokenStream) -> Optio
 	if let syn::Expr::Unary(unary) = expr
 		&& matches!(unary.op, syn::UnOp::Neg(_))
 		&& let syn::Expr::Lit(literal) = unary.expr.as_ref()
-		&& let syn::Lit::Int(value) = &literal.lit
-		&& let Ok(value) = value.base10_parse::<i64>()
 	{
-		let value = -value;
-		return Some(quote! { #field_kwarg::Int(#value) });
+		match &literal.lit {
+			syn::Lit::Int(value) => {
+				let value = -value.base10_parse::<i64>().ok()?;
+				return Some(quote! { #field_kwarg::Int(#value) });
+			}
+			syn::Lit::Float(value) => {
+				let value = -value.base10_parse::<f64>().ok()?;
+				return Some(quote! { #field_kwarg::Float(#value) });
+			}
+			_ => {}
+		}
 	}
 
 	let syn::Expr::Lit(literal) = expr else {
@@ -4459,7 +4466,8 @@ fn generate_relationship_metadata(
 				},
 				|field| {
 					let target = relation_target_model_name(&field.target_type);
-					quote! { #target }
+					let target_ty = &field.target_type;
+					quote! { format!("{}.{}", <#target_ty as #orm_crate::Model>::app_label(), #target) }
 				},
 			);
 

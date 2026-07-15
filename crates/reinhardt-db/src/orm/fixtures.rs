@@ -1185,10 +1185,11 @@ where
 				omitted_defaults.join(", "),
 			)));
 		}
-		for field in M::field_metadata()
-			.into_iter()
-			.filter(|field| field.nullable && !field.primary_key)
-		{
+		for field in M::field_metadata().into_iter().filter(|field| {
+			field.nullable
+				&& !field.primary_key
+				&& !M::generated_field_names().contains(&field.name.as_str())
+		}) {
 			let column = field.db_column_name().to_string();
 			object.entry(column).or_insert(Value::Null);
 		}
@@ -1326,10 +1327,11 @@ where
 			omitted_defaults.join(", "),
 		)));
 	}
-	for field in M::field_metadata()
-		.into_iter()
-		.filter(|field| field.nullable && !field.primary_key)
-	{
+	for field in M::field_metadata().into_iter().filter(|field| {
+		field.nullable
+			&& !field.primary_key
+			&& !M::generated_field_names().contains(&field.name.as_str())
+	}) {
 		object
 			.entry(field.db_column_name().to_string())
 			.or_insert(Value::Null);
@@ -1633,6 +1635,12 @@ where
 				spec.field_name
 			))
 		})?;
+		if values.iter().any(Value::is_null) {
+			return Err(FixtureError::Database(format!(
+				"many-to-many fixture field '{}' must not contain null identifiers",
+				spec.field_name
+			)));
+		}
 		assignments.push(FixtureManyToManyAssignment { spec, values });
 	}
 	Ok(assignments)
