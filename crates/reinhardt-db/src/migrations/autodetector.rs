@@ -6308,13 +6308,13 @@ impl MigrationAutodetector {
 				if Self::table_rename_names(&operation).is_some() {
 					after_rename.push(operation);
 				} else if matches!(
-					operation,
-					super::Operation::CreateTable { ref name, .. } if *name == old_name
+					&operation,
+					super::Operation::CreateTable { name, .. } if name == &old_name
 				) {
 					after_rename.push(operation);
 				} else if matches!(
-					operation,
-					super::Operation::DropTable { ref name } if *name == new_name
+					&operation,
+					super::Operation::DropTable { name } if name == &new_name
 				) || Self::operation_targets_table(&operation, &old_name)
 				{
 					before_rename.push(operation);
