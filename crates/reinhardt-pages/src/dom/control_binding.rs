@@ -13,6 +13,7 @@ use reinhardt_core::{reactive::runtime::NodeId, types::page::ControlBindingSnaps
 
 type HydrationSnapshotStore = Rc<RefCell<Vec<ControlBindingSnapshot>>>;
 type RejectedNumberHydrationSnapshotStore = Rc<RefCell<Vec<RejectedNumberHydrationSnapshot>>>;
+type BindingPositionStore = Rc<RefCell<Vec<(NodeId, usize)>>>;
 
 thread_local! {
 	static ACTIVE_HYDRATION_SNAPSHOT_STORE: RefCell<Option<HydrationSnapshotStore>> =
@@ -21,12 +22,18 @@ thread_local! {
 		const { RefCell::new(None) };
 	static ACTIVE_REJECTED_NUMBER_HYDRATION_SNAPSHOTS: RefCell<Option<RejectedNumberHydrationSnapshotStore>> =
 		const { RefCell::new(None) };
+	static ACTIVE_HYDRATION_NUMBER_POSITIONS: RefCell<Option<BindingPositionStore>> =
+		const { RefCell::new(None) };
+	static ACTIVE_MOUNT_NUMBER_POSITIONS: RefCell<Option<BindingPositionStore>> =
+		const { RefCell::new(None) };
 }
 
 struct ActiveHydrationSnapshotStoreGuard {
 	previous: Option<HydrationSnapshotStore>,
 	previous_adopted_targets: Option<Rc<RefCell<Vec<NodeId>>>>,
 	previous_rejected_number_snapshots: Option<RejectedNumberHydrationSnapshotStore>,
+	previous_hydration_number_positions: Option<BindingPositionStore>,
+	previous_mount_number_positions: Option<BindingPositionStore>,
 }
 
 impl Drop for ActiveHydrationSnapshotStoreGuard {
@@ -39,6 +46,12 @@ impl Drop for ActiveHydrationSnapshotStoreGuard {
 		});
 		ACTIVE_REJECTED_NUMBER_HYDRATION_SNAPSHOTS.with(|active| {
 			active.replace(self.previous_rejected_number_snapshots.take());
+		});
+		ACTIVE_HYDRATION_NUMBER_POSITIONS.with(|active| {
+			active.replace(self.previous_hydration_number_positions.take());
+		});
+		ACTIVE_MOUNT_NUMBER_POSITIONS.with(|active| {
+			active.replace(self.previous_mount_number_positions.take());
 		});
 	}
 }
@@ -85,10 +98,16 @@ pub(crate) fn with_hydration_snapshot_transaction<T, E>(
 		.with(|active| active.replace(Some(Rc::new(RefCell::new(Vec::new())))));
 	let previous_rejected_number_snapshots = ACTIVE_REJECTED_NUMBER_HYDRATION_SNAPSHOTS
 		.with(|active| active.replace(Some(Rc::new(RefCell::new(Vec::new())))));
+	let previous_hydration_number_positions = ACTIVE_HYDRATION_NUMBER_POSITIONS
+		.with(|active| active.replace(Some(Rc::new(RefCell::new(Vec::new())))));
+	let previous_mount_number_positions = ACTIVE_MOUNT_NUMBER_POSITIONS
+		.with(|active| active.replace(Some(Rc::new(RefCell::new(Vec::new())))));
 	let guard = ActiveHydrationSnapshotStoreGuard {
 		previous,
 		previous_adopted_targets,
 		previous_rejected_number_snapshots,
+		previous_hydration_number_positions,
+		previous_mount_number_positions,
 	};
 	let result = f();
 	drop(guard);
@@ -131,7 +150,36 @@ fn record_hydration_target_adoption(binding: &ControlBinding) {
 	});
 }
 
-fn stage_rejected_number_hydration_snapshot(element: &Element, binding: &ControlBinding) {
+fn next_binding_position(
+	store: &'static std::thread::LocalKey<RefCell<Option<BindingPositionStore>>>,
+	binding: &ControlBinding,
+) -> Option<usize> {
+	store.with(|active| {
+		let store = active.borrow();
+		let positions = store.as_ref()?;
+		let mut positions = positions.borrow_mut();
+		let position = positions
+			.iter_mut()
+			.find(|(target, _)| *target == binding.target());
+		match position {
+			Some((_, next)) => {
+				let current = *next;
+				*next += 1;
+				Some(current)
+			}
+			None => {
+				positions.push((binding.target(), 1));
+				Some(0)
+			}
+		}
+	})
+}
+
+fn stage_rejected_number_hydration_snapshot(
+	element: &Element,
+	binding: &ControlBinding,
+	position: Option<usize>,
+) {
 	if binding.kind() != ControlKind::Number {
 		return;
 	}
@@ -144,6 +192,7 @@ fn stage_rejected_number_hydration_snapshot(element: &Element, binding: &Control
 				.borrow_mut()
 				.push(RejectedNumberHydrationSnapshot {
 					target: binding.target(),
+					position,
 					raw: input.value(),
 					selection: input_selection(input),
 				});
@@ -164,10 +213,10 @@ fn restore_rejected_number_hydration_snapshot(element: &Element, binding: &Contr
 			return;
 		};
 		let mut snapshots = snapshots.borrow_mut();
-		let Some(index) = snapshots
-			.iter()
-			.position(|snapshot| snapshot.target == binding.target())
-		else {
+		let position = next_binding_position(&ACTIVE_MOUNT_NUMBER_POSITIONS, binding);
+		let Some(index) = snapshots.iter().position(|snapshot| {
+			snapshot.target == binding.target() && snapshot.position == position
+		}) else {
 			return;
 		};
 		let snapshot = snapshots.remove(index);
@@ -234,6 +283,7 @@ struct PendingNumberEdit {
 
 struct RejectedNumberHydrationSnapshot {
 	target: NodeId,
+	position: Option<usize>,
 	raw: String,
 	selection: Option<EditorSelection>,
 }
@@ -261,6 +311,7 @@ impl ControlBindingController {
 		binding: ControlBinding,
 	) -> Result<(Self, bool), ControlBindingError> {
 		validate_control(&element, binding.kind())?;
+		let number_position = next_binding_position(&ACTIVE_HYDRATION_NUMBER_POSITIONS, &binding);
 		let (listeners, state) = install_listeners(&element, &binding);
 		let live_value = read_control(&element, binding.kind())?;
 		let expected_value = untracked(|| binding.read());
@@ -284,7 +335,7 @@ impl ControlBindingController {
 				write_control(&element, binding.kind(), &expected_value)?;
 			}
 			if rejected {
-				stage_rejected_number_hydration_snapshot(&element, &binding);
+				stage_rejected_number_hydration_snapshot(&element, &binding, number_position);
 			}
 			if adopted {
 				record_hydration_target_adoption(&binding);
