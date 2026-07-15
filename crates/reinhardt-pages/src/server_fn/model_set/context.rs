@@ -188,7 +188,9 @@ mod tests {
 	use serial_test::serial;
 
 	use super::*;
-	use crate::server_fn::{AllowAllPolicy, PageRequest, ServerFnListQuery, ServerFnResource};
+	use crate::server_fn::{
+		AllowAllPolicy, PageRequest, ServerFnListQuery, ServerFnResource, ServerFnSetError,
+	};
 
 	struct RecordingExecutor {
 		operations: Arc<Mutex<Vec<&'static str>>>,
@@ -318,6 +320,7 @@ mod tests {
 		type ListQuery = WidgetListQuery;
 	}
 
+	#[async_trait]
 	impl ModelServerFnResource for WidgetResource {
 		type Model = Widget;
 		type Policy = AllowAllPolicy;
