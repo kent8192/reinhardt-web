@@ -6615,7 +6615,7 @@ mod tests {
 			struct FixtureModel {
 				#[field(primary_key = true)]
 				id: i64,
-				#[field(default = "draft")]
+				#[field(max_length = 255, default = "draft")]
 				#[serde(bound(deserialize = "String: serde::Deserialize<'de>"))]
 				title: String,
 			}
