@@ -308,6 +308,9 @@ pub struct LateralJoins {
 }
 
 impl LateralJoins {
+	pub(crate) fn aliases(&self) -> impl Iterator<Item = String> + '_ {
+		self.joins.iter().map(|join| join.alias.clone())
+	}
 	/// Create a new collection of LATERAL JOINs
 	///
 	/// # Examples

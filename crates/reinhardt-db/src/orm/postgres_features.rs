@@ -27,6 +27,22 @@
 use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
 
+fn mapped_ordering_sql<F>(ordering: &[String], mapper: F) -> String
+where
+	F: Fn(&str) -> String,
+{
+	let mut mapped_orderings = Vec::with_capacity(ordering.len());
+	for ordering in ordering {
+		let field_end = ordering
+			.char_indices()
+			.find_map(|(index, character)| character.is_whitespace().then_some(index))
+			.unwrap_or(ordering.len());
+		let (field, suffix) = ordering.split_at(field_end);
+		mapped_orderings.push(format!("{}{}", mapper(field), suffix));
+	}
+	mapped_orderings.join(", ")
+}
+
 /// PostgreSQL ARRAY_AGG aggregation function
 ///
 /// Aggregates values into a PostgreSQL array.
@@ -119,6 +135,27 @@ impl<T> ArrayAgg<T> {
 		sql.push(')');
 		sql
 	}
+
+	pub(crate) fn to_sql_with_field_mapper<F>(&self, map_field: F) -> String
+	where
+		F: Fn(&str) -> String,
+	{
+		let mut sql = String::from("ARRAY_AGG(");
+
+		if self.distinct {
+			sql.push_str("DISTINCT ");
+		}
+
+		sql.push_str(&map_field(&self.field));
+
+		if let Some(ordering) = &self.ordering {
+			sql.push_str(" ORDER BY ");
+			sql.push_str(&mapped_ordering_sql(ordering, &map_field));
+		}
+
+		sql.push(')');
+		sql
+	}
 }
 
 /// PostgreSQL JSONB_BUILD_OBJECT function
@@ -187,6 +224,18 @@ impl JsonbBuildObject {
 		sql.push_str(&parts.join(", "));
 		sql.push(')');
 		sql
+	}
+
+	pub(crate) fn to_sql_with_field_mapper<F>(&self, map_field: F) -> String
+	where
+		F: Fn(&str) -> String,
+	{
+		let parts: Vec<_> = self
+			.pairs
+			.iter()
+			.map(|(key, field)| format!("'{}', {}", key, map_field(field)))
+			.collect();
+		format!("jsonb_build_object({})", parts.join(", "))
 	}
 }
 
@@ -371,6 +420,30 @@ impl StringAgg {
 		sql.push(')');
 		sql
 	}
+
+	pub(crate) fn to_sql_with_field_mapper<F>(&self, map_field: F) -> String
+	where
+		F: Fn(&str) -> String,
+	{
+		let mut sql = String::from("STRING_AGG(");
+
+		if self.distinct {
+			sql.push_str("DISTINCT ");
+		}
+
+		sql.push_str(&map_field(&self.field));
+		sql.push_str(", '");
+		sql.push_str(&self.separator);
+		sql.push('\'');
+
+		if let Some(ordering) = &self.ordering {
+			sql.push_str(" ORDER BY ");
+			sql.push_str(&mapped_ordering_sql(ordering, &map_field));
+		}
+
+		sql.push(')');
+		sql
+	}
 }
 
 /// PostgreSQL JSONB_AGG aggregation function
@@ -458,6 +531,27 @@ impl JsonbAgg {
 		if let Some(ref ordering) = self.ordering {
 			sql.push_str(" ORDER BY ");
 			sql.push_str(&ordering.join(", "));
+		}
+
+		sql.push(')');
+		sql
+	}
+
+	pub(crate) fn to_sql_with_field_mapper<F>(&self, map_field: F) -> String
+	where
+		F: Fn(&str) -> String,
+	{
+		let mut sql = String::from("JSONB_AGG(");
+
+		if self.distinct {
+			sql.push_str("DISTINCT ");
+		}
+
+		sql.push_str(&map_field(&self.expression));
+
+		if let Some(ordering) = &self.ordering {
+			sql.push_str(" ORDER BY ");
+			sql.push_str(&mapped_ordering_sql(ordering, &map_field));
 		}
 
 		sql.push(')');
@@ -574,6 +668,19 @@ impl TsRank {
 		match self.normalization {
 			Some(norm) => format!("ts_rank({}, {}, {})", self.vector_field, tsquery, norm),
 			None => format!("ts_rank({}, {})", self.vector_field, tsquery),
+		}
+	}
+
+	pub(crate) fn to_sql_with_field_mapper<F>(&self, map_field: F) -> String
+	where
+		F: Fn(&str) -> String,
+	{
+		let tsquery = format!("to_tsquery('{}', '{}')", self.config, self.query);
+		let vector_field = map_field(&self.vector_field);
+
+		match self.normalization {
+			Some(norm) => format!("ts_rank({}, {}, {})", vector_field, tsquery, norm),
+			None => format!("ts_rank({}, {})", vector_field, tsquery),
 		}
 	}
 }
