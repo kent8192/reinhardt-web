@@ -268,14 +268,14 @@ impl Effect {
 		}
 		impl Drop for EffectFnGuard {
 			fn drop(&mut self) {
-				if let Some(f) = self.f.take() {
-					if find_node_key(self.key.node_id(), NodeKind::Effect).is_some() {
-						let _ = with_node_mut::<EffectSlot, _>(self.key, |slot| {
-							if slot.f.is_none() {
-								slot.f = Some(f);
-							}
-						});
-					}
+				if let Some(f) = self.f.take()
+					&& find_node_key(self.key.node_id(), NodeKind::Effect).is_some()
+				{
+					let _ = with_node_mut::<EffectSlot, _>(self.key, |slot| {
+						if slot.f.is_none() {
+							slot.f = Some(f);
+						}
+					});
 				}
 			}
 		}
