@@ -33,15 +33,17 @@ impl<T: Clone + 'static> OptimisticState<T> {
 
 	/// Confirms the value (called after successful async operation).
 	pub fn confirm(&self, value: T) {
-		self.confirmed.set(value.clone());
-		self.value.set(value);
-		self.is_optimistic.set(false);
+		let _ = self.confirmed.try_set(value.clone());
+		let _ = self.value.try_set(value);
+		let _ = self.is_optimistic.try_set(false);
 	}
 
 	/// Reverts to the confirmed value (called on error).
 	pub fn revert(&self) {
-		self.value.set(self.confirmed.get());
-		self.is_optimistic.set(false);
+		if let Ok(value) = self.confirmed.try_get_untracked() {
+			let _ = self.value.try_set(value);
+		}
+		let _ = self.is_optimistic.try_set(false);
 	}
 }
 

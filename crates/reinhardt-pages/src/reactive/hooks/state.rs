@@ -53,7 +53,7 @@ struct RegisteredSetState<T: 'static> {
 
 impl<T: 'static> RegisteredSetState<T> {
 	fn set(&self, value: T) {
-		self.signal.set(value);
+		let _ = self.signal.try_set(value);
 	}
 }
 
