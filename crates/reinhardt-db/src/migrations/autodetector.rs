@@ -964,7 +964,23 @@ impl ProjectState {
 		if let Some(model) = self.find_model_by_table_mut(old_table_name) {
 			model.table_name = new_table_name.to_string();
 		}
+		self.update_foreign_key_table_references(old_table_name, new_table_name);
+	}
 
+	fn rename_table_in_app(&mut self, app_label: &str, old_table_name: &str, new_table_name: &str) {
+		if let Some(model) = self
+			.models
+			.iter_mut()
+			.find(|((app, _), model)| app == app_label && model.table_name == old_table_name)
+			.map(|(_, model)| model)
+		{
+			model.table_name = new_table_name.to_string();
+		}
+
+		self.update_foreign_key_table_references(old_table_name, new_table_name);
+	}
+
+	fn update_foreign_key_table_references(&mut self, old_table_name: &str, new_table_name: &str) {
 		for model in self.models.values_mut() {
 			for field in model.fields.values_mut() {
 				if let Some(foreign_key) = &mut field.foreign_key
@@ -1315,10 +1331,7 @@ impl ProjectState {
 					}
 				}
 				Operation::RenameTable { old_name, new_name } => {
-					// Find the model with old table name and update it
-					if let Some(model) = self.find_model_by_table_mut(old_name) {
-						model.table_name = new_name.to_string();
-					}
+					self.rename_table_in_app(app_label, old_name, new_name);
 				}
 				Operation::RenameColumn {
 					table,
@@ -6356,6 +6369,28 @@ impl MigrationAutodetector {
 		// (issue #4040).
 		self.emit_shared_per_app_operations(changes, &mut by_app);
 		self.emit_table_rename_operations(changes, &mut by_app);
+		for (from_app, from_model, to_app, to_model, rename_table, old_table, new_table) in
+			&changes.moved_models
+		{
+			if *rename_table {
+				let old_name = old_table.clone().or_else(|| {
+					self.from_state
+						.get_model(from_app, from_model)
+						.map(|model| model.table_name.clone())
+				});
+				let new_name = new_table.clone().or_else(|| {
+					self.to_state
+						.get_model(to_app, to_model)
+						.map(|model| model.table_name.clone())
+				});
+				if let (Some(old_name), Some(new_name)) = (old_name, new_name) {
+					by_app
+						.entry(to_app.clone())
+						.or_default()
+						.push(super::Operation::RenameTable { old_name, new_name });
+				}
+			}
+		}
 		self.preserve_many_to_many_artifact_renames(changes, &mut by_app);
 
 		// `generate_operations()`-specific extra: walk ManyToMany fields on
@@ -7086,29 +7121,6 @@ impl MigrationAutodetector {
 					interleave_in_parent: None,
 					partition: None,
 				});
-		}
-
-		// Handle model renames (same app)
-		for (app_label, old_name, new_name) in &changes.renamed_models {
-			if let Some(model) = self.to_state.get_model(app_label, new_name) {
-				// Get the old table name from from_state
-				let old_table_name = self
-					.from_state
-					.get_model(app_label, old_name)
-					.map(|m| m.table_name.clone())
-					.unwrap_or_else(|| format!("{}_{}", app_label, old_name.to_lowercase()));
-
-				// Defense-in-depth: skip no-op renames where table name is unchanged
-				if old_table_name != model.table_name {
-					migrations_by_app
-						.entry(app_label.clone())
-						.or_default()
-						.push(super::Operation::RenameTable {
-							old_name: old_table_name,
-							new_name: model.table_name.clone(),
-						});
-				}
-			}
 		}
 
 		// Handle cross-app model moves
