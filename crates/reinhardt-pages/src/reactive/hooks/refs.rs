@@ -14,6 +14,7 @@ use std::rc::Rc;
 /// ## Example
 ///
 /// ```ignore
+/// use reinhardt_pages::deps;
 /// use reinhardt_pages::reactive::hooks::{use_effect, use_ref};
 ///
 /// let render_count = use_ref(0);
@@ -21,7 +22,7 @@ use std::rc::Rc;
 /// use_effect(move || {
 ///     // Increment without triggering reactivity
 ///     *render_count.current_mut() += 1;
-/// }, ());
+/// }, deps![]);
 /// ```
 pub struct Ref<T: 'static> {
 	inner: Rc<RefCell<T>>,

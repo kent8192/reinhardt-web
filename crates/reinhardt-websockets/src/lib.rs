@@ -119,6 +119,7 @@
 //! On the client side, use the `use_websocket` hook from reinhardt-pages:
 //!
 //! ```ignore
+//! use reinhardt_pages::deps;
 //! use reinhardt_pages::reactive::hooks::{
 //!     use_retained_effect, use_websocket, ConnectionState, UseWebSocketOptions,
 //! };
@@ -142,7 +143,7 @@
 //!             None::<fn()>
 //!         }
 //!     },
-//!     (connection_state.clone(),),
+//!     deps![connection_state],
 //! );
 //! ```
 //!

@@ -1,0 +1,14 @@
+error[E0308]: mismatched types
+  --> tests/ui/hooks/fail/auto_deps_use_callback.rs:14:3
+   |
+10 |     let _callback = use_callback(
+   |                     ------------ arguments to this function are incorrect
+...
+14 |         deps_auto!(),
+   |         ^^^^^^^^^^^^ expected `ExplicitDeps`, found `ReactiveDeps`
+   |
+note: function defined here
+  --> src/reactive/hooks/memo.rs
+   |
+   | pub fn use_callback<Args, F>(f: F, deps: ExplicitDeps) -> Callback<Args, ()>
+   |        ^^^^^^^^^^^^
