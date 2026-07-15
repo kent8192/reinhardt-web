@@ -1755,7 +1755,7 @@ where
 	M: Model,
 {
 	let Some(metadata) = metadata_for_model::<M>() else {
-		return Vec::new();
+		return many_to_many_specs_from_relationship_metadata::<M>();
 	};
 	metadata
 		.many_to_many_fields
@@ -1809,8 +1809,7 @@ where
 		.collect()
 }
 
-#[cfg(not(feature = "migrations"))]
-fn many_to_many_specs_for<M>() -> Vec<FixtureManyToManySpec>
+fn many_to_many_specs_from_relationship_metadata<M>() -> Vec<FixtureManyToManySpec>
 where
 	M: Model,
 {
@@ -1854,6 +1853,14 @@ where
 			}
 		})
 		.collect()
+}
+
+#[cfg(not(feature = "migrations"))]
+fn many_to_many_specs_for<M>() -> Vec<FixtureManyToManySpec>
+where
+	M: Model,
+{
+	many_to_many_specs_from_relationship_metadata::<M>()
 }
 
 async fn reset_sequences_after_explicit_pks(
@@ -2421,6 +2428,17 @@ fn fixture_foreign_key_target(
 					.map(|foreign_key| foreign_key.referenced_column.clone())
 			})
 			.unwrap_or_else(|| "id".to_string());
+		let referenced_column = if target_metadata.is_none() {
+			fixture_related_model_handler(target_app, target_model)
+				.ok()
+				.flatten()
+				.and_then(|handler| {
+					handler.fixture_field_name_for_database_column(&referenced_column)
+				})
+				.unwrap_or(referenced_column)
+		} else {
+			referenced_column
+		};
 		let target_key = target_metadata.as_ref().map_or_else(
 			|| {
 				fixture_related_model_handler(target_app, target_model)
