@@ -11,7 +11,7 @@ keywords = ["wasm", "web", "frontend", "reactive", "django"]
 categories = ["wasm", "web-programming"]
 
 [features]
-i18n = []
+i18n = ["dep:reinhardt-i18n"]
 default = []
 console_error_panic_hook = ["dep:console_error_panic_hook"]
 msgpack = ["dep:rmp-serde"]
@@ -123,6 +123,7 @@ reinhardt-pages-ast = { workspace = true }
 # Procedural macros
 reinhardt-pages-macros = { workspace = true }
 reinhardt-event-catalog = { workspace = true }
+reinhardt-i18n = { workspace = true, optional = true }
 sha2 = { workspace = true }
 bytes = { workspace = true }
 futures-util = "0.3"
@@ -329,12 +330,12 @@ harness = false
 [[test]]
 name = "csrf_wasm_test"
 path = "tests/wasm/csrf_wasm_test.rs"
-required-features = []
+required-features = ["testing"]
 
 [[test]]
 name = "server_fn_wasm_test"
 path = "tests/wasm/server_fn_wasm_test.rs"
-required-features = []
+required-features = ["testing"]
 
 [[test]]
 name = "suspense_boundary_wasm_test"

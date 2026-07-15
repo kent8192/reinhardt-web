@@ -184,7 +184,7 @@ viewset-routing = ["routing", "reinhardt-urls/viewsets"]
 dentdelion = ["reinhardt-dentdelion"]
 deeplink = ["reinhardt-deeplink"]
 dispatch = ["reinhardt-dispatch"]
-grpc = ["reinhardt-grpc", "reinhardt-grpc?/di"]
+grpc = ["di", "reinhardt-grpc", "reinhardt-grpc?/di"]
 
 # Meta features
 full = [
@@ -193,6 +193,7 @@ full = [
   "database",
   "auth",
   "argon2-hasher",
+  "bcrypt-hasher",
   "admin",
   "graphql",
   "websockets",

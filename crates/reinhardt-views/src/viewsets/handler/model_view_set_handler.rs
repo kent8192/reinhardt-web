@@ -1042,7 +1042,7 @@ mod tests {
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, Version};
 	use reinhardt_auth::{IsActiveUser, IsAuthenticated};
-	use reinhardt_http::Request;
+	use reinhardt_http::{IsActive, IsAuthenticated as AuthenticatedMarker, Request};
 	use rstest::rstest;
 
 	fn build_request(uri: &str) -> Request {
@@ -1114,6 +1114,8 @@ mod tests {
 		.add_permission(Arc::new(IsActiveUser));
 		let request = build_request("/items/");
 		request.extensions.insert("legacy-user".to_string());
+		request.extensions.insert(AuthenticatedMarker(true));
+		request.extensions.insert(IsActive(true));
 
 		// Act
 		let result = handler.list(&request).await;
