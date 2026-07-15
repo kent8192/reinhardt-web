@@ -1577,7 +1577,10 @@ fn should_skip_flush_column(
 ) -> bool {
 	field_info.map(|field| field.primary_key).unwrap_or(false)
 		|| field_info
-			.map(|field| field.attributes.contains_key("relation_managed"))
+			.map(|field| {
+				field.attributes.contains_key("relation_managed")
+					&& !field.attributes.contains_key("fk_id_field")
+			})
 			.unwrap_or(false)
 }
 
@@ -1915,6 +1918,22 @@ fn bind_reinhardt_query_value<'a>(
 			query.bind(j.to_string())
 		}
 		RValue::Json(None) => query.bind(None::<String>),
+		RValue::Array(_, Some(values)) => {
+			query.bind(super::execution::array_values_to_json(values).to_string())
+		}
+		RValue::Array(_, None) => query.bind(None::<String>),
+		RValue::ChronoDate(Some(value)) => query.bind(value.to_string()),
+		RValue::ChronoDate(None) => query.bind(None::<String>),
+		RValue::ChronoTime(Some(value)) => query.bind(value.to_string()),
+		RValue::ChronoTime(None) => query.bind(None::<String>),
+		RValue::ChronoDateTime(Some(value)) => query.bind(value.and_utc().to_rfc3339()),
+		RValue::ChronoDateTime(None) => query.bind(None::<String>),
+		RValue::ChronoDateTimeUtc(Some(value)) => query.bind(value.to_rfc3339()),
+		RValue::ChronoDateTimeUtc(None) => query.bind(None::<String>),
+		RValue::ChronoDateTimeLocal(Some(value)) => query.bind(value.to_rfc3339()),
+		RValue::ChronoDateTimeLocal(None) => query.bind(None::<String>),
+		RValue::ChronoDateTimeWithTimeZone(Some(value)) => query.bind(value.to_rfc3339()),
+		RValue::ChronoDateTimeWithTimeZone(None) => query.bind(None::<String>),
 		RValue::Bool(None) => query.bind(None::<bool>),
 		RValue::TinyInt(None) | RValue::SmallInt(None) | RValue::Int(None) => {
 			query.bind(None::<i32>)
@@ -2621,6 +2640,30 @@ mod tests {
 		);
 
 		assert!(super::should_skip_flush_column(
+			"author_id",
+			"author_id",
+			Some(&field)
+		));
+	}
+
+	#[test]
+	fn test_should_skip_flush_column_keeps_relation_id_storage_fields() {
+		let mut field = test_field_info(
+			"author_id",
+			"reinhardt.orm.models.IntegerField",
+			false,
+			false,
+		);
+		field.attributes.insert(
+			"relation_managed".to_string(),
+			crate::orm::fields::FieldKwarg::Bool(true),
+		);
+		field.attributes.insert(
+			"fk_id_field".to_string(),
+			crate::orm::fields::FieldKwarg::Bool(true),
+		);
+
+		assert!(!super::should_skip_flush_column(
 			"author_id",
 			"author_id",
 			Some(&field)

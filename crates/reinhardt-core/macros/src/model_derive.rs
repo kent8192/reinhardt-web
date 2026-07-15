@@ -3381,6 +3381,7 @@ fn generate_field_metadata(
 	// Generate _id field metadata for ForeignKeyField and OneToOneField
 	for fk_info in fk_field_infos {
 		let name = &fk_info.id_column_name;
+		let target_type = &fk_info.target_type;
 		let nullable = fk_info.rel_attr.null.unwrap_or(false);
 		let unique = fk_info.is_one_to_one; // OneToOne fields have UNIQUE constraint
 		let db_index = fk_info.rel_attr.db_index.unwrap_or(true); // FK fields are indexed by default
@@ -3402,11 +3403,17 @@ fn generate_field_metadata(
 					"relation_managed".to_string(),
 					#orm_crate::fields::FieldKwarg::Bool(true)
 				);
+				attributes.insert(
+					"fk_id_field".to_string(),
+					#orm_crate::fields::FieldKwarg::Bool(true)
+				);
 
 				#orm_crate::inspection::FieldInfo {
 					name: #name.to_string(),
 					field_type: #field_type_path.to_string(),
-					storage_kind: ::core::option::Option::None,
+					storage_kind: ::core::option::Option::Some(
+						<<<#target_type as #orm_crate::Model>::PrimaryKey as #orm_crate::DatabaseField>::Storage as #orm_crate::DatabaseScalar>::STORAGE_KIND
+					),
 					domain: ::core::option::Option::None,
 					nullable: #nullable,
 					primary_key: false,
@@ -6397,7 +6404,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_foreign_key_metadata_does_not_guess_storage_kind() {
+	fn test_foreign_key_metadata_uses_target_primary_key_storage_kind() {
 		let field_info = ForeignKeyFieldInfo {
 			field_name: parse_quote! { owner },
 			target_type: parse_quote! { User },
@@ -6414,7 +6421,9 @@ mod tests {
 			.expect("foreign key metadata item should exist")
 			.to_string();
 
-		assert!(metadata.contains("storage_kind : :: core :: option :: Option :: None"));
+		assert!(metadata.contains("storage_kind : :: core :: option :: Option :: Some"));
+		assert!(metadata.contains("User as"));
+		assert!(metadata.contains("fk_id_field"));
 		assert!(metadata.contains("domain : :: core :: option :: Option :: None"));
 	}
 

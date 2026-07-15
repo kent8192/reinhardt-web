@@ -1038,6 +1038,10 @@ impl<M: Model> Manager<M> {
 
 			// JSON types - serialize to string
 			reinhardt_query::value::Value::Json(json) => QueryValue::Json(json),
+			reinhardt_query::value::Value::Array(_, Some(values)) => QueryValue::Json(Some(
+				Box::new(super::execution::array_values_to_json(&values)),
+			)),
+			reinhardt_query::value::Value::Array(_, None) => QueryValue::Null,
 
 			// For complex types or unsupported types, convert to null
 			// This is a safe fallback that won't cause runtime errors
