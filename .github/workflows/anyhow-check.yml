@@ -37,6 +37,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
+      - name: Install ripgrep
+        run: sudo apt-get update && sudo apt-get install --yes ripgrep
+
       - name: Install cargo-make
         uses: taiki-e/install-action@v2
         with:

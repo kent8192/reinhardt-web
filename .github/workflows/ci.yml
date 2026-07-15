@@ -533,6 +533,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
+      - name: Install ripgrep
+        run: sudo apt-get update && sudo apt-get install --yes ripgrep
+
       - name: Run shell-script tests
         run: bash scripts/tests/run-all.sh
 
