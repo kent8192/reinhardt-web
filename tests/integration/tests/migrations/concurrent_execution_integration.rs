@@ -361,7 +361,7 @@ async fn test_deadlock_detection(
 
 		conn.execute("COMMIT", vec![]).await?;
 
-		Ok::<_, reinhardt_db::backends::DatabaseError>(result.is_ok())
+		Ok::<_, reinhardt_core::exception::Error>(result.is_ok())
 	});
 
 	// Task 2: Lock B then try to lock A
@@ -390,7 +390,7 @@ async fn test_deadlock_detection(
 
 		conn.execute("COMMIT", vec![]).await?;
 
-		Ok::<_, reinhardt_db::backends::DatabaseError>(result.is_ok())
+		Ok::<_, reinhardt_core::exception::Error>(result.is_ok())
 	});
 
 	// Wait for both tasks
