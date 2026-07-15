@@ -210,9 +210,7 @@ impl ReactiveIfNode {
 						nodes.drain(..).collect::<Vec<_>>()
 					};
 					for node in old_nodes {
-						if let Some(parent_node) = node.parent_node() {
-							let _ = parent_node.remove_child(&node);
-						}
+						remove_owned_node(node);
 					}
 
 					let new_nodes = with_reactive_node_store(&branch_reactive_node_store, || {
@@ -304,9 +302,7 @@ impl ReactiveIfNode {
 							nodes.drain(..).collect::<Vec<_>>()
 						};
 						for node in old_nodes {
-							if let Some(parent_node) = node.parent_node() {
-								let _ = parent_node.remove_child(&node);
-							}
+							remove_owned_node(node);
 						}
 
 						let new_nodes =
@@ -440,9 +436,7 @@ impl ReactiveNode {
 							nodes.drain(..).collect::<Vec<_>>()
 						};
 						for node in old_nodes {
-							if let Some(parent_node) = node.parent_node() {
-								let _ = parent_node.remove_child(&node);
-							}
+							remove_owned_node(node);
 						}
 
 						// Mount new nodes before the marker
@@ -535,9 +529,7 @@ impl ReactiveNode {
 							nodes.drain(..).collect::<Vec<_>>()
 						};
 						for node in old_nodes {
-							if let Some(parent_node) = node.parent_node() {
-								let _ = parent_node.remove_child(&node);
-							}
+							remove_owned_node(node);
 						}
 
 						let new_nodes =
@@ -669,19 +661,58 @@ fn update_activity_boundary_attrs(
 }
 
 #[cfg(wasm)]
-fn create_nested_reactive_parent(
+fn relocate_nested_reactive_range(
 	document: &web_sys::Document,
 	parent: &web_sys::Node,
-	marker: &web_sys::Comment,
-) -> web_sys::Element {
-	let nested_parent = document
-		.create_element("span")
-		.expect("should create nested reactive parent");
-	let _ = nested_parent.set_attribute("style", "display: contents");
+	outer_marker: &web_sys::Comment,
+	current_nodes: &Rc<RefCell<Vec<web_sys::Node>>>,
+	reactive_marker: web_sys::Node,
+) -> web_sys::Node {
+	let start = document.create_comment("reactive-range-start");
+	let end = document.create_comment("reactive-range-end");
 	parent
-		.insert_before(&nested_parent, Some(marker))
-		.expect("should insert nested reactive parent");
-	nested_parent
+		.insert_before(&start, Some(outer_marker))
+		.expect("should insert nested reactive range start");
+	for node in current_nodes.borrow().iter() {
+		parent
+			.insert_before(node, Some(outer_marker))
+			.expect("should relocate nested reactive node");
+	}
+	parent
+		.insert_before(&reactive_marker, Some(outer_marker))
+		.expect("should relocate nested reactive marker");
+	parent
+		.insert_before(&end, Some(outer_marker))
+		.expect("should insert nested reactive range end");
+	start.into()
+}
+
+#[cfg(wasm)]
+fn remove_owned_node(node: web_sys::Node) {
+	use wasm_bindgen::JsCast;
+
+	let is_range_start = node
+		.dyn_ref::<web_sys::Comment>()
+		.is_some_and(|comment| comment.data() == "reactive-range-start");
+	if !is_range_start {
+		if let Some(parent) = node.parent_node() {
+			let _ = parent.remove_child(&node);
+		}
+		return;
+	}
+	let mut next = Some(node);
+	while let Some(current) = next {
+		next = current.next_sibling();
+		let is_range_end = current
+			.dyn_ref::<web_sys::Comment>()
+			.is_some_and(|comment| comment.data() == "reactive-range-end");
+		if let Some(parent) = current.parent_node() {
+			let _ = parent.remove_child(&current);
+		}
+		if is_range_end {
+			break;
+		}
+	}
 }
 
 /// Mounts a Page before a marker node and returns the created DOM nodes.
@@ -793,25 +824,28 @@ fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::No
 			// Decompose the ReactiveIf to get the closures
 			let (condition, then_view, else_view) = reactive_if.into_parts();
 
-			let nested_parent = create_nested_reactive_parent(&document, &parent, marker);
-			let nested_parent_wrapper = crate::dom::Element::new(nested_parent.clone());
-			let nested_node =
-				ReactiveIfNode::new(&nested_parent_wrapper, condition, then_view, else_view);
-
-			// Track the wrapper so the outer reactive owner removes the complete
-			// nested DOM subtree, including the nested marker and rendered content.
-			nodes.push(nested_parent.unchecked_into());
+			let parent_wrapper = crate::dom::Element::new(parent.clone().unchecked_into());
+			let nested_node = ReactiveIfNode::new(&parent_wrapper, condition, then_view, else_view);
+			nodes.push(relocate_nested_reactive_range(
+				&document,
+				&parent,
+				marker,
+				&nested_node.current_nodes,
+				nested_node.marker_node(),
+			));
 			store_reactive_node(nested_node);
 		}
 		Page::Reactive(reactive) => {
-			let nested_parent = create_nested_reactive_parent(&document, &parent, marker);
-			let nested_parent_wrapper = crate::dom::Element::new(nested_parent.clone());
+			let parent_wrapper = crate::dom::Element::new(parent.clone().unchecked_into());
 			let render = reactive.into_render();
-			let nested_node = ReactiveNode::new(&nested_parent_wrapper, render);
-
-			// Track the wrapper so the outer reactive owner removes the complete
-			// nested DOM subtree, including the nested marker and rendered content.
-			nodes.push(nested_parent.unchecked_into());
+			let nested_node = ReactiveNode::new(&parent_wrapper, render);
+			nodes.push(relocate_nested_reactive_range(
+				&document,
+				&parent,
+				marker,
+				&nested_node.current_nodes,
+				nested_node.marker_node(),
+			));
 			store_reactive_node(nested_node);
 		}
 		Page::Suspense(node) => {

@@ -111,23 +111,22 @@ impl AuthState {
 	///
 	/// # Returns
 	///
-	/// Returns `Some(AuthState)` if an `AuthState` object is found or if both
-	/// a string or UUID user ID exists in the individual entries, `None` otherwise.
-	/// Legacy identity-only entries are treated as authenticated and active unless
-	/// an explicit status wrapper overrides either value.
+	/// Returns `Some(AuthState)` if an `AuthState` object is found or if an
+	/// explicit `IsAuthenticated(true)` marker and a string or UUID user ID exist
+	/// in the individual entries. Plain identity values are not authentication state.
 	pub fn from_extensions(extensions: &Extensions) -> Option<Self> {
 		// Primary: try to get AuthState object directly
 		if let Some(state) = extensions.get::<AuthState>() {
 			return Some(state);
 		}
 		// Fallback: reconstruct from individual extension entries (backward compatibility)
+		let is_authenticated = extensions.get::<IsAuthenticated>().map(|v| v.0)?;
+		if !is_authenticated {
+			return None;
+		}
 		let user_id = extensions
 			.get::<String>()
 			.or_else(|| extensions.get::<uuid::Uuid>().map(|id| id.to_string()))?;
-		let is_authenticated = extensions
-			.get::<IsAuthenticated>()
-			.map(|v| v.0)
-			.unwrap_or(true);
 		let is_admin = extensions.get::<IsAdmin>().map(|v| v.0).unwrap_or(false);
 		let is_active = extensions
 			.get::<IsActive>()
@@ -277,6 +276,14 @@ mod tests {
 
 		// Assert
 		assert_eq!(result, None);
+	}
+
+	#[rstest]
+	fn test_from_extensions_rejects_bare_string() {
+		let extensions = Extensions::new();
+		extensions.insert("rate-limit-key".to_string());
+
+		assert_eq!(AuthState::from_extensions(&extensions), None);
 	}
 
 	#[rstest]

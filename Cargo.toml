@@ -157,7 +157,7 @@ signals = ["reinhardt-core/signals"]
 # DI feature: Uses reinhardt-core/di which internally enables reinhardt-di/params
 # Also directly enables reinhardt-di/params for macro support (extern crate reinhardt_di)
 # reinhardt-db/di enables Injectable implementation for DatabaseConnection
-di = ["reinhardt-di", "reinhardt-di/params", "reinhardt-di/macros", "reinhardt-db?/di"]
+di = ["reinhardt-di", "reinhardt-di/params", "reinhardt-di/macros", "reinhardt-db?/di", "reinhardt-tasks?/di"]
 test = ["reinhardt-test", "reinhardt-pages?/testing"]
 testcontainers = ["test", "reinhardt-test/testcontainers"]
 server-fn-test = ["test", "reinhardt-test/server-fn-test"]
@@ -641,7 +641,7 @@ base64 = "0.22"
 
 # Template engine & syntax highlighting
 tera = { version = "1.20.1" }
-syntect = "5.3.0-rc.1-rc.1"
+syntect = "5.3.0"
 
 # Proc macro dependencies
 syn = { version = "2.0", features = ["full", "parsing", "extra-traits"] }
