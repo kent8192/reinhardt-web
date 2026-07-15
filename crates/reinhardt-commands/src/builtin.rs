@@ -1679,22 +1679,9 @@ fn add_reused_table_name_dependencies(
 				));
 			}
 		}
-		let rename_targets: Vec<&str> = migration
-			.operations
-			.iter()
-			.filter_map(|operation| match operation {
-				Operation::RenameTable { new_name, .. } => Some(new_name.as_str()),
-				Operation::MoveModel {
-					rename_table: true,
-					new_table_name: Some(new_name),
-					..
-				} => Some(new_name.as_str()),
-				_ => None,
-			})
-			.collect();
 		for (producer_app, producer_name, dropped_table) in &dropped_tables {
 			if producer_app != &migration.app_label
-				&& rename_targets.contains(&dropped_table.as_str())
+				&& reused_tables.contains(&dropped_table.as_str())
 			{
 				dependencies.push((
 					migration_index,
@@ -4531,6 +4518,33 @@ mod tests {
 		assert_eq!(
 			consumer.dependencies,
 			vec![("archive".to_string(), "0003_move".to_string())]
+		);
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	fn cross_app_created_table_depends_on_the_drop_that_frees_its_name() {
+		use reinhardt_db::migrations::{Migration, Operation};
+
+		let mut producer =
+			Migration::new("0004_remove_legacy", "accounts").add_operation(Operation::DropTable {
+				name: "legacy".to_string(),
+			});
+		let mut consumer =
+			Migration::new("0001_initial", "archive").add_operation(Operation::CreateTable {
+				name: "legacy".to_string(),
+				columns: Vec::new(),
+				constraints: Vec::new(),
+				without_rowid: None,
+				interleave_in_parent: None,
+				partition: None,
+			});
+
+		add_reused_table_name_dependencies(&mut [&mut producer, &mut consumer]).unwrap();
+
+		assert_eq!(
+			consumer.dependencies,
+			vec![("accounts".to_string(), "0004_remove_legacy".to_string())]
 		);
 	}
 

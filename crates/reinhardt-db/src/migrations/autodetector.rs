@@ -4232,7 +4232,7 @@ impl MigrationAutodetector {
 				.filter(|model| model.app_label == app_label && model.table_name == table_name)
 				.count();
 			if claims > 1 {
-				return Err(super::MigrationError::InvalidOperation(format!(
+				return Err(super::MigrationError::InvalidMigration(format!(
 					"cannot rename a table to `{table_name}` in app `{app_label}` because multiple target models claim that table name"
 				)));
 			}
@@ -4368,19 +4368,15 @@ impl MigrationAutodetector {
 			}) {
 			return self.from_state.get_model(app_label, to_model_name);
 		}
+		if let Some((_app, old_name, _new_name)) = changes
+			.renamed_models
+			.iter()
+			.find(|(app, _old_name, new_name)| app == app_label && new_name == to_model_name)
+		{
+			return self.from_state.get_model(app_label, old_name);
+		}
 		self.from_state
 			.get_model_by_table_name(app_label, &to_model.table_name)
-			.or_else(|| {
-				changes
-					.renamed_models
-					.iter()
-					.find(|(app, _old_name, new_name)| {
-						app == app_label && new_name == to_model_name
-					})
-					.and_then(|(_app, old_name, _new_name)| {
-						self.from_state.get_model(app_label, old_name)
-					})
-			})
 			.or_else(|| {
 				changes
 					.moved_models
@@ -10042,6 +10038,36 @@ mod tests {
 			super::super::Operation::RenameTable { old_name, new_name }
 				if old_name == "old_table" && new_name == "new_table"
 		));
+	}
+
+	#[rstest]
+	fn matching_from_model_prefers_renamed_model_before_target_table_owner() {
+		let old_user =
+			build_model_state_with_table_name("myapp", "OldUser", "users", sample_fields());
+		let archive =
+			build_model_state_with_table_name("myapp", "Archive", "user", sample_fields());
+		let user = build_model_state_with_table_name("myapp", "User", "user", sample_fields());
+		let from_state = build_project_state(vec![
+			(("myapp".to_string(), "OldUser".to_string()), old_user),
+			(("myapp".to_string(), "Archive".to_string()), archive),
+		]);
+		let to_state = build_project_state(vec![(("myapp".to_string(), "User".to_string()), user)]);
+		let detector = MigrationAutodetector::new(from_state, to_state);
+		let changes = DetectedChanges {
+			renamed_models: vec![(
+				"myapp".to_string(),
+				"OldUser".to_string(),
+				"User".to_string(),
+			)],
+			..DetectedChanges::default()
+		};
+		let target = detector.to_state.get_model("myapp", "User").unwrap();
+
+		let matched = detector
+			.matching_from_model_for_to_model("myapp", "User", target, &changes)
+			.expect("renamed model source should be selected");
+
+		assert_eq!(matched.name, "OldUser");
 	}
 
 	#[rstest]

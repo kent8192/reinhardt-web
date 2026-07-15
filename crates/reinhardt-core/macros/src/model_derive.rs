@@ -3375,14 +3375,20 @@ fn generate_registration_code(
 		let fk_registration = if let Some(fk_spec) = &config.foreign_key {
 			match fk_spec {
 				ForeignKeySpec::Type(ty) => {
-					// For direct type reference, extract type name and convert to snake_case
-					let type_name_str = quote! { #ty }.to_string();
+					// Preserve the registry identity using the final Rust path segment.
+					let type_name = if let Type::Path(type_path) = ty {
+						type_path
+							.path
+							.segments
+							.last()
+							.map(|segment| segment.ident.to_string())
+							.unwrap_or_else(|| quote! { #ty }.to_string())
+					} else {
+						quote! { #ty }.to_string()
+					};
 					quote! {
 						.with_foreign_key({
-							// Extract last segment of type path and convert to snake_case
-							let type_name = #type_name_str;
-							let last_segment = type_name.split("::").last().unwrap_or(&type_name);
-							let referenced_table = #migrations_crate::to_snake_case(last_segment);
+							let referenced_table = #migrations_crate::to_snake_case(#type_name);
 
 							#migrations_crate::ForeignKeyInfo {
 								referenced_table,
@@ -3391,11 +3397,10 @@ fn generate_registration_code(
 								on_update: #migrations_crate::ForeignKeyAction::Cascade,
 							}
 						})
-						// A direct type reference is necessarily same-app. Preserve that
-						// identity so registry materialization can replace the fallback
-						// snake_case table name with the target model's configured table.
-						.with_param("fk_target_app", #app_label)
-						.with_param("fk_target_model", #type_name_str)
+						// Obtain the app label from the target's Model implementation so
+						// qualified and imported types resolve to their registered app.
+						.with_param("fk_target_app", <#ty as #orm_crate::Model>::app_label())
+						.with_param("fk_target_model", #type_name)
 					}
 				}
 				ForeignKeySpec::AppModel {
@@ -6095,6 +6100,28 @@ mod tests {
 		assert!(output_str.contains("fk_target_app"));
 		assert!(output_str.contains("fk_target_model"));
 		assert!(output_str.contains("to_snake_case"));
+	}
+
+	#[test]
+	fn test_direct_qualified_foreign_key_registration_uses_target_identity() {
+		let input = quote! {
+			#[model(app_label = "comments")]
+			pub struct Comment {
+				#[field(primary_key = true)]
+				pub id: i64,
+				#[field(foreign_key = crate::models::User)]
+				pub user_id: i64,
+			}
+		};
+
+		let output = model_derive_impl(syn::parse2(input).unwrap())
+			.unwrap()
+			.to_string();
+
+		assert!(output.contains("fk_target_model"));
+		assert!(output.contains("User"));
+		assert!(output.contains("crate :: models :: User as"));
+		assert!(!output.contains("crate :: models :: User \""));
 	}
 
 	#[test]
