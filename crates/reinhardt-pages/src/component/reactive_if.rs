@@ -17,6 +17,8 @@ use std::cell::RefCell;
 #[cfg(native)]
 use std::future::Future;
 use std::rc::Rc;
+#[cfg(wasm)]
+use wasm_bindgen::JsCast;
 
 pub(crate) type ReactiveNodeStore = Rc<RefCell<Vec<Box<dyn std::any::Any>>>>;
 
@@ -674,9 +676,28 @@ fn relocate_nested_reactive_range(
 		.insert_before(&start, Some(outer_marker))
 		.expect("should insert nested reactive range start");
 	for node in current_nodes.borrow().iter() {
-		parent
-			.insert_before(node, Some(outer_marker))
-			.expect("should relocate nested reactive node");
+		let mut owned_nodes = vec![node.clone()];
+		let is_range_start = node
+			.dyn_ref::<web_sys::Comment>()
+			.is_some_and(|comment| comment.data() == "reactive-range-start");
+		if is_range_start {
+			let mut next = node.next_sibling();
+			while let Some(current) = next {
+				next = current.next_sibling();
+				let is_range_end = current
+					.dyn_ref::<web_sys::Comment>()
+					.is_some_and(|comment| comment.data() == "reactive-range-end");
+				owned_nodes.push(current);
+				if is_range_end {
+					break;
+				}
+			}
+		}
+		for owned_node in owned_nodes {
+			parent
+				.insert_before(&owned_node, Some(outer_marker))
+				.expect("should relocate nested reactive node");
+		}
 	}
 	parent
 		.insert_before(&reactive_marker, Some(outer_marker))
