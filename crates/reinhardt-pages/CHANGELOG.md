@@ -21,6 +21,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **BREAKING**: Route-backed component macros now require the route name as
   `name = "..."`, for example `#[component("/path", name = "name")]`.
 
+### Migration Notes
+
+- **BREAKING**: Dependency-aware hooks now require a named second argument.
+  Use `deps![...]` for explicit dependencies, including `deps![]` for
+  mount-only behavior. `deps_auto!()` is supported only by effects,
+  layout-effects, and memos; callbacks, resources, and retained effects still
+  require `deps![...]`. See the
+  [0.4.0 hook dependency migration guide](../../docs/migration/0.4.0-hook-dependency-modes.md).
+
 ## [0.3.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.3.1...reinhardt-pages@v0.3.2) - 2026-07-14
 
 ### Fixed

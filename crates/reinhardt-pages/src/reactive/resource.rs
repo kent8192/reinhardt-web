@@ -12,7 +12,9 @@ use std::fmt;
 use std::rc::Rc;
 
 use crate::platform::{defer_yield, spawn_task};
-use reinhardt_core::reactive::deps::IntoDeps;
+use crate::reactive::ExplicitDeps;
+#[cfg(native)]
+use reinhardt_core::deps;
 
 /// Type alias for the refetch callback function
 ///
@@ -123,13 +125,14 @@ impl<T: fmt::Display, E: fmt::Display> fmt::Display for ResourceState<T, E> {
 /// # Example
 ///
 /// ```ignore
+/// use reinhardt_pages::deps;
 /// use reinhardt_pages::reactive::{Resource, use_resource};
 ///
 /// async fn fetch_user(id: u32) -> Result<User, String> {
 ///     // Fetch from API...
 /// }
 ///
-/// let resource = use_resource(|| fetch_user(42), ());
+/// let resource = use_resource(|| fetch_user(42), deps![]);
 ///
 /// match resource.get() {
 ///     ResourceState::Loading => println!("Loading..."),
@@ -223,7 +226,7 @@ impl<T: Clone + 'static, E: Clone + 'static> reinhardt_core::reactive::deps::Tra
 	for Resource<T, E>
 {
 	/// Returns the underlying state `Signal`'s `NodeId`, allowing this
-	/// `Resource` to participate in hook deps tuples alongside `Signal`
+	/// `Resource` to participate in hook dependency lists alongside `Signal`
 	/// and `Memo` (Refs #4195).
 	fn node_id(&self) -> reinhardt_core::reactive::runtime::NodeId {
 		self.state.id()
@@ -234,22 +237,23 @@ impl<T: Clone + 'static, E: Clone + 'static> reinhardt_core::reactive::deps::Tra
 ///
 /// `use_resource(fetcher, deps)` runs `fetcher` and tracks its result as a
 /// [`Resource`] (`Loading → Success/Error`). The `deps` argument follows the
-/// same [`IntoDeps`] convention as [`use_effect`](super::hooks::use_effect):
+/// same explicit dependency-list convention as [`use_effect`](super::hooks::use_effect):
 ///
-/// - `()` → fetch once on mount (never automatically refetches).
-/// - `(signal,)` / `(a, b, ..)` → refetch whenever any listed dependency
+/// - `deps![]` → fetch once on mount (never automatically refetches).
+/// - `deps![signal]` / `deps![a, b]` → refetch whenever any listed dependency
 ///   changes. Dependencies are the explicitly listed [`Trackable`]s
 ///   (`Signal`/`Memo`/`Resource`); signals merely *read* inside the async
 ///   `fetcher` do not subscribe (they cross an `await` boundary), so list
 ///   everything that should drive a refetch — the same stale-deps rule as
 ///   `use_effect`.
+/// - Automatic dependencies are not supported because the future body executes
+///   after construction and may cross an `await` boundary. Use `deps![...]`.
 ///
 /// The initial fetch and every dependency-driven refetch are deferred one
 /// microtask (`defer_yield`) so they cannot hang when created during WASM
 /// initialization before the event loop is running (#3316).
 ///
 /// [`Trackable`]: reinhardt_core::reactive::deps::Trackable
-/// [`IntoDeps`]: reinhardt_core::reactive::deps::IntoDeps
 ///
 /// # Dual-target behavior
 ///
@@ -268,10 +272,11 @@ impl<T: Clone + 'static, E: Clone + 'static> reinhardt_core::reactive::deps::Tra
 /// # Example
 ///
 /// ```ignore
+/// use reinhardt_pages::deps;
 /// use reinhardt_pages::reactive::{Signal, use_resource};
 ///
 /// // Fetch once on mount:
-/// let user = use_resource(|| async { fetch_user_from_api(42).await }, ());
+/// let user = use_resource(|| async { fetch_user_from_api(42).await }, deps![]);
 ///
 /// // Refetch whenever `user_id` changes:
 /// let user_id = Signal::new(42u32);
@@ -283,17 +288,16 @@ impl<T: Clone + 'static, E: Clone + 'static> reinhardt_core::reactive::deps::Tra
 ///             async move { fetch_user_from_api(id).await }
 ///         }
 ///     },
-///     (user_id.clone(),),
+///     deps![user_id],
 /// );
 /// user_id.set(100); // triggers a refetch
 /// ```
-pub fn use_resource<T, E, F, Fut, D>(fetcher: F, deps: D) -> Resource<T, E>
+pub fn use_resource<T, E, F, Fut>(fetcher: F, deps: ExplicitDeps) -> Resource<T, E>
 where
 	T: Clone + Serialize + DeserializeOwned + 'static,
 	E: Clone + Serialize + DeserializeOwned + 'static,
 	F: Fn() -> Fut + 'static,
 	Fut: std::future::Future<Output = Result<T, E>> + 'static,
-	D: IntoDeps,
 {
 	use_resource_with_optional_key(None, fetcher, deps)
 }
@@ -302,29 +306,31 @@ where
 ///
 /// Prefer this when call-order keys would be unstable across server and client
 /// renders, such as conditionally rendered resource hooks.
-pub fn use_resource_with_key<K, T, E, F, Fut, D>(key: K, fetcher: F, deps: D) -> Resource<T, E>
+pub fn use_resource_with_key<K, T, E, F, Fut>(
+	key: K,
+	fetcher: F,
+	deps: ExplicitDeps,
+) -> Resource<T, E>
 where
 	K: Into<String>,
 	T: Clone + Serialize + DeserializeOwned + 'static,
 	E: Clone + Serialize + DeserializeOwned + 'static,
 	F: Fn() -> Fut + 'static,
 	Fut: std::future::Future<Output = Result<T, E>> + 'static,
-	D: IntoDeps,
 {
 	use_resource_with_optional_key(Some(key.into()), fetcher, deps)
 }
 
-fn use_resource_with_optional_key<T, E, F, Fut, D>(
+fn use_resource_with_optional_key<T, E, F, Fut>(
 	key: Option<String>,
 	fetcher: F,
-	deps: D,
+	deps: ExplicitDeps,
 ) -> Resource<T, E>
 where
 	T: Clone + Serialize + DeserializeOwned + 'static,
 	E: Clone + Serialize + DeserializeOwned + 'static,
 	F: Fn() -> Fut + 'static,
 	Fut: std::future::Future<Output = Result<T, E>> + 'static,
-	D: IntoDeps,
 {
 	let fetcher = Rc::new(fetcher);
 
@@ -336,17 +342,16 @@ where
 	create_client_resource(key, fetcher, deps)
 }
 
-fn create_client_resource<T, E, F, Fut, D>(
+fn create_client_resource<T, E, F, Fut>(
 	resource_key: Option<String>,
 	fetcher: Rc<F>,
-	deps: D,
+	deps: ExplicitDeps,
 ) -> Resource<T, E>
 where
 	T: Clone + Serialize + DeserializeOwned + 'static,
 	E: Clone + Serialize + DeserializeOwned + 'static,
 	F: Fn() -> Fut + 'static,
 	Fut: std::future::Future<Output = Result<T, E>> + 'static,
-	D: IntoDeps,
 {
 	let ssr_key = resource_key.clone();
 
@@ -398,17 +403,16 @@ where
 	build_resource_from_run(state, run, deps, run_initial_fetch, ssr_key)
 }
 
-fn build_resource_from_run<T, E, D>(
+fn build_resource_from_run<T, E>(
 	state: Signal<ResourceState<T, E>>,
 	run: Rc<dyn Fn()>,
-	deps: D,
+	deps: ExplicitDeps,
 	run_initial_fetch: bool,
 	ssr_key: Option<String>,
 ) -> Resource<T, E>
 where
 	T: Clone + 'static,
 	E: Clone + 'static,
-	D: IntoDeps,
 {
 	let first_run = Rc::new(Cell::new(true));
 	let effect = {
@@ -464,7 +468,7 @@ where
 				let state = state.clone();
 				move || state.set(ResourceState::Loading)
 			});
-			build_resource_from_run(state, run, (), false, Some(key))
+			build_resource_from_run(state, run, deps![], false, Some(key))
 		} else {
 			let state = Signal::new(ResourceState::Loading);
 			context.register_resource::<T, E, _, Fut>(
@@ -481,7 +485,7 @@ where
 				move || state.set(ResourceState::Loading)
 			});
 
-			build_resource_from_run(state, run, (), false, Some(key))
+			build_resource_from_run(state, run, deps![], false, Some(key))
 		}
 	})
 }

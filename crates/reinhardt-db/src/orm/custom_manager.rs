@@ -120,7 +120,7 @@ use super::connection::{DatabaseBackend, DatabaseConnection};
 use super::cte::CTE;
 use super::manager::Manager;
 use super::model::Model;
-use super::query::{FilterCondition, QuerySet};
+use super::query::{QueryFilterInput, QuerySet, RelationLoadInput};
 
 /// Trait that exposes the full surface area of an object manager and provides
 /// extension hooks for custom behavior.
@@ -164,10 +164,10 @@ pub trait CustomManager: Sized + Send + Sync {
 
 	/// Filter records by a typed filter expression.
 	///
-	/// Accepts any value convertible into [`FilterCondition`]. See
-	/// [`Manager::filter`] for the recommended fluent builder form
-	/// (`Model::field_x().eq(value)`) and composite conditions.
-	fn filter(&self, filter: impl Into<FilterCondition>) -> QuerySet<Self::Model> {
+	/// Accepts typed and untyped filter inputs. See [`Manager::filter`] for the
+	/// recommended fluent builder form (`Model::field_x().eq(value)`) and
+	/// composite conditions.
+	fn filter(&self, filter: impl QueryFilterInput<Self::Model>) -> QuerySet<Self::Model> {
 		Manager::<Self::Model>::new().filter(filter)
 	}
 
@@ -207,7 +207,10 @@ pub trait CustomManager: Sized + Send + Sync {
 	}
 
 	/// Eager-load related objects via SQL `JOIN`.
-	fn select_related(&self, fields: &[&str]) -> QuerySet<Self::Model> {
+	fn select_related<I>(&self, fields: I) -> QuerySet<Self::Model>
+	where
+		I: RelationLoadInput<Self::Model>,
+	{
 		Manager::<Self::Model>::new().select_related(fields)
 	}
 
@@ -222,7 +225,10 @@ pub trait CustomManager: Sized + Send + Sync {
 	}
 
 	/// Pre-fetch related objects in separate queries.
-	fn prefetch_related(&self, fields: &[&str]) -> QuerySet<Self::Model> {
+	fn prefetch_related<I>(&self, fields: I) -> QuerySet<Self::Model>
+	where
+		I: RelationLoadInput<Self::Model>,
+	{
 		Manager::<Self::Model>::new().prefetch_related(fields)
 	}
 
