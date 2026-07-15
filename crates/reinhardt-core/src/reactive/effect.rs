@@ -234,10 +234,34 @@ impl Effect {
 		let Some(key) = find_node_key(effect_id, NodeKind::Effect) else {
 			return;
 		};
-		let (previous_run_scope, previous_cleanup) = with_node_mut::<EffectSlot, _>(key, |slot| {
-			(slot.run_scope.take(), slot.cleanup_slot.borrow_mut().take())
-		})
-		.unwrap_or_else(|err| panic!("{err}"));
+		let (previous_run_scope, previous_cleanup, effect_fn) =
+			with_node_mut::<EffectSlot, _>(key, |slot| {
+				(
+					slot.run_scope.take(),
+					slot.cleanup_slot.borrow_mut().take(),
+					slot.f.take(),
+				)
+			})
+			.unwrap_or_else(|err| panic!("{err}"));
+
+		struct EffectFnGuard {
+			key: NodeKey,
+			f: Option<EffectFn>,
+		}
+		impl Drop for EffectFnGuard {
+			fn drop(&mut self) {
+				if let Some(f) = self.f.take()
+					&& find_node_key(self.key.node_id(), NodeKind::Effect).is_some()
+				{
+					let _ = with_node_mut::<EffectSlot, _>(self.key, |slot| {
+						if slot.f.is_none() {
+							slot.f = Some(f);
+						}
+					});
+				}
+			}
+		}
+		let mut guard = EffectFnGuard { key, f: effect_fn };
 		if let Some(cleanup) = previous_cleanup {
 			super::runtime::run_without_observer(|| {
 				let _ = enter_scope(key.scope(), cleanup);
@@ -262,34 +286,9 @@ impl Effect {
 		}
 		let _observer_guard = ObserverGuard;
 
-		struct EffectFnGuard {
-			key: NodeKey,
-			f: Option<EffectFn>,
-		}
-		impl Drop for EffectFnGuard {
-			fn drop(&mut self) {
-				if let Some(f) = self.f.take()
-					&& find_node_key(self.key.node_id(), NodeKind::Effect).is_some()
-				{
-					let _ = with_node_mut::<EffectSlot, _>(self.key, |slot| {
-						if slot.f.is_none() {
-							slot.f = Some(f);
-						}
-					});
-				}
-			}
-		}
-
-		let run_scope = super::scope::ReactiveScope::new();
-		let run_scope_id = run_scope.id();
-		with_node_mut::<EffectSlot, _>(key, |slot| slot.run_scope = Some(run_scope))
-			.unwrap_or_else(|err| panic!("{err}"));
-
-		let mut guard = EffectFnGuard {
-			key,
-			f: with_node_mut::<EffectSlot, _>(key, |slot| slot.f.take())
-				.unwrap_or_else(|err| panic!("{err}")),
-		};
+		let mut run_scope = Some(super::scope::ReactiveScope::new());
+		let run_scope_id = run_scope.as_ref().expect("run scope must exist").id();
+		let _ = with_node_mut::<EffectSlot, _>(key, |slot| slot.run_scope = run_scope.take());
 		if let Some(f) = guard.f.as_mut() {
 			enter_scope(run_scope_id, f).unwrap_or_else(|err| panic!("{err}"));
 		}
