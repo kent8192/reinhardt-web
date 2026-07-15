@@ -5731,6 +5731,7 @@ impl MigrationOperation for Operation {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::migrations::autodetector::{ForeignKeyAction, ForeignKeyInfo};
 	use FieldType;
 	use reinhardt_query::prelude::SchemaBinOper;
 	use rstest::rstest;
@@ -6540,7 +6541,7 @@ mod tests {
 		Operation::AddColumn {
 			table: "user".into(),
 			column: ColumnDefinition::new("email", FieldType::VarChar(255)),
-			if_not_exists: false,
+			mysql_options: None,
 		}
 		.state_forwards("myapp", &mut state);
 		assert!(state.get_model("myapp", "User").unwrap().has_field("email"));
