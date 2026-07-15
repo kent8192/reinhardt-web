@@ -8,6 +8,7 @@ SCAN_ROOT="$(cd "${1:-$DEFAULT_ROOT}" && pwd)"
 MANIFEST_CHECKER="$SCRIPT_DIR/check-anyhow-manifests/Cargo.toml"
 
 COMMON_OUTPUT_ARGS=(
+	--no-config
 	--line-number
 	--with-filename
 	--no-heading
@@ -52,7 +53,7 @@ scan_cargo_manifests() {
 	local -a manifest_paths=()
 
 	set +e
-	manifests=$(cd "$SCAN_ROOT" && rg --files --glob 'Cargo.toml' "${COMMON_EXCLUSIONS[@]}")
+	manifests=$(cd "$SCAN_ROOT" && rg --no-config --files --glob 'Cargo.toml' "${COMMON_EXCLUSIONS[@]}")
 	status=$?
 	set -e
 
