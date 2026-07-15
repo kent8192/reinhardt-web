@@ -945,6 +945,10 @@ where
 	}
 
 	fn apply_prefetch_related(self, queryset: &mut QuerySet<T>) {
+		assert!(
+			T::composite_primary_key().is_none_or(|key| key.field_count() == 1),
+			"typed prefetch_related does not support composite primary-key roots"
+		);
 		for field in self {
 			queryset
 				.validate_relation_path(field)
@@ -3345,11 +3349,14 @@ where
 	}
 
 	fn manual_join_aliases(&self) -> impl Iterator<Item = String> + '_ {
-		self.joins.iter().map(|join| {
-			join.target_alias
-				.clone()
-				.unwrap_or_else(|| join.target_table.clone())
-		})
+		self.joins
+			.iter()
+			.map(|join| {
+				join.target_alias
+					.clone()
+					.unwrap_or_else(|| join.target_table.clone())
+			})
+			.chain(self.lateral_joins.aliases())
 	}
 
 	fn root_alias(&self) -> &str {
