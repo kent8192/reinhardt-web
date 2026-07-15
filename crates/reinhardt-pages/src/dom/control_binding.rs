@@ -264,14 +264,12 @@ impl ControlBindingController {
 		let (listeners, state) = install_listeners(&element, &binding);
 		let live_value = read_control(&element, binding.kind())?;
 		let expected_value = untracked(|| binding.read());
-		let refresh_required = if hydration_target_was_adopted(&binding) {
-			write_control(&element, binding.kind(), &expected_value)?;
-			false
-		} else if matches!(
-			binding.kind(),
-			ControlKind::SelectOne | ControlKind::SelectMany
-		) && !select_has_option_values(&element, &expected_value)
-		{
+		let should_restore_expected = hydration_target_was_adopted(&binding)
+			|| (matches!(
+				binding.kind(),
+				ControlKind::SelectOne | ControlKind::SelectMany
+			) && !select_has_option_values(&element, &expected_value));
+		let refresh_required = if should_restore_expected {
 			write_control(&element, binding.kind(), &expected_value)?;
 			false
 		} else if expected_value == live_value {

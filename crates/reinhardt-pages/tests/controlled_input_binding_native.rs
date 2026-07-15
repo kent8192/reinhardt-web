@@ -757,6 +757,7 @@ async fn composition_defers_writes_and_deduplicates_the_final_input() {
 	input
 		.dispatch(EventFixture::input().value("かな"))
 		.expect("duplicate final input should dispatch");
+	screen.settle().await;
 
 	// Assert
 	assert_eq!(
