@@ -1691,14 +1691,6 @@ fn add_reused_table_name_dependencies(
 		}
 	}
 
-	for (consumer_index, producer) in &dependencies {
-		let Some(producer_index) = migrations.iter().position(|migration| {
-			migration.app_label == producer.0 && migration.name == producer.1
-		}) else {
-			continue;
-		};
-	}
-
 	let mut graph = vec![Vec::new(); migrations.len()];
 	for (consumer_index, producer) in &dependencies {
 		if let Some(producer_index) = migrations
