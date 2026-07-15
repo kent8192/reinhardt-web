@@ -2945,7 +2945,7 @@ mod capture_tests {
 	#[rstest]
 	fn accepts_numeric_binding_sentinel_without_a_bogus_parameter() {
 		let ast = parse(quote! {
-			|amount, parse_error| {
+			|amount: reinhardt_pages::reactive::Signal<i32>, parse_error: reinhardt_pages::reactive::Signal<Option<String>>| {
 				input { a11y: off, type: "number", bind: number(amount, parse_error) }
 			}
 		});
