@@ -208,12 +208,16 @@ impl ControlBindingController {
 		{
 			write_control(&element, binding.kind(), &expected_value)?;
 			false
+		} else if expected_value == live_value {
+			false
 		} else {
 			let snapshot = binding.snapshot();
 			let outcome = binding.write(live_value.clone())?;
 			commit_or_stage_hydration_snapshot(snapshot);
-			let adopted =
-				matches!(outcome, ControlWriteOutcome::Committed) && expected_value != live_value;
+			let adopted = matches!(outcome, ControlWriteOutcome::Committed);
+			if matches!(outcome, ControlWriteOutcome::Ignored) {
+				write_control(&element, binding.kind(), &expected_value)?;
+			}
 			if adopted {
 				record_hydration_target_adoption(&binding);
 			}
