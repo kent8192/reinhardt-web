@@ -57,6 +57,7 @@
 //! `use_layout_effect`:
 //!
 //! ```ignore
+//! use reinhardt_pages::deps;
 //! use reinhardt_pages::reactive::{Signal, hooks::{use_ref, use_retained_layout_effect}};
 //!
 //! let element_ref = use_ref(None::<Element>);
@@ -74,7 +75,7 @@
 //!             None::<fn()>
 //!         }
 //!     },
-//!     (element_ref,),
+//!     deps![element_ref],
 //! );
 //! ```
 //!
@@ -91,6 +92,20 @@
 //! - Logging and analytics
 //! - Any side effects that don't require synchronous execution
 //!
+//! ## Hook dependency modes
+//!
+//! Hook dependency arguments use the named `deps!` and `deps_auto!` macros.
+//! `deps![...]` subscribes only to the listed reactive values, while
+//! `deps![]` runs an effect or memo once until it is disposed. Effects, layout
+//! effects, and memos also accept `deps_auto!()`, which rebuilds subscriptions
+//! from tracked reads during each execution. Callback, resource, and retained
+//! effect hooks require `deps![...]` because their work is invoked or retained
+//! outside the dependency-collection phase.
+//!
+//! The mandatory mode is the breaking API introduced by issues #5511 and #5577.
+//! See `docs/migration/0.4.0-hook-dependency-modes.md` for examples from the
+//! removed tuple and unit forms.
+//!
 //! ## Memory Management
 //!
 //! All reactive nodes (Signals, Effects, Memos) automatically clean up their dependencies
@@ -99,10 +114,11 @@
 
 // Re-export core reactive primitives from reinhardt-reactive
 pub use reinhardt_core::reactive::{
-	Context, ContextGuard, Effect, EffectTiming, Memo, NodeId, NodeType, Observer, Runtime, Signal,
-	batch, context, create_context, effect, get_context, memo, provide_context, remove_context,
-	runtime, signal, with_runtime,
+	Context, ContextGuard, Effect, EffectTiming, ExplicitDeps, Memo, NodeId, NodeType, Observer,
+	ReactiveDeps, Runtime, Signal, Trackable, batch, context, create_context, effect, get_context,
+	memo, provide_context, remove_context, runtime, signal, with_runtime,
 };
+pub use reinhardt_core::{deps, deps_auto};
 
 // WASM-specific modules (kept in reinhardt-pages)
 pub mod hooks;
@@ -110,8 +126,6 @@ pub mod query;
 pub mod resource;
 pub mod resource_value;
 pub mod trackable;
-
-pub use trackable::Trackable;
 
 // Re-export resource types and the unified hook (available on all targets)
 pub use query::{QueryHandle, QueryKey, QueryPhase, use_mutation, use_query};

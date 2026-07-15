@@ -1,16 +1,17 @@
 //! Effect hooks: use_effect and use_layout_effect
 //!
-//! React-aligned side effect hooks. Both take an explicit dependency tuple
-//! as the second argument; the closure runs with no active reactive Observer
-//! so only the listed deps subscribe (Option A semantics, Refs #4195).
+//! React-aligned side effect hooks. The second argument selects either an
+//! explicit dependency list or automatic tracking. Explicit effects run with
+//! no active reactive Observer so only the listed deps subscribe (Option A
+//! semantics); automatic effects subscribe to signals read by the closure
+//! (Refs #4195).
 //! Effect closures can return either `()` for no cleanup or `Option<C>` when
 //! they need to register teardown.
 
-use reinhardt_core::reactive::deps::IntoDeps;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::reactive::{Effect, runtime::EffectTiming};
+use crate::reactive::{Effect, ExplicitDeps, ReactiveDeps, runtime::EffectTiming};
 
 /// Return value accepted from effect closures.
 ///
@@ -67,39 +68,46 @@ where
 	}
 }
 
-/// Runs a side effect when one of the listed `deps` changes.
+/// Runs a side effect according to the selected dependency mode.
 ///
-/// React-aligned equivalent of `useEffect(f, deps)`. The effect function
-/// runs immediately, and re-runs whenever any of the dependencies listed
-/// in `deps` changes. Signal reads inside `f` do **not** auto-subscribe.
+/// React-aligned equivalent of `useEffect(f, deps)`. The effect function runs
+/// immediately. With `deps![...]`, it re-runs whenever a listed dependency
+/// changes and signal reads inside `f` do **not** auto-subscribe. With
+/// `deps_auto!()`, it re-runs when a signal read by `f` changes.
 /// The returned [`Effect`] is an RAII guard and must be retained by the
 /// caller. Use [`use_retained_effect`] for registration-style hook calls
 /// whose guard is owned by the mounted view scope.
 ///
 /// # Reactivity Semantics
 ///
-/// - The closure runs with no active reactive Observer
-///   (`run_without_observer`); auto-tracking is disabled inside `f`.
-/// - Subscriptions are derived exclusively from `deps`.
-/// - Use `()` to opt out of re-runs (mount-only effect).
+/// - Explicit mode runs the closure with no active reactive Observer
+///   (`run_without_observer`); subscriptions are derived exclusively from
+///   `deps`.
+/// - Automatic mode keeps an Observer active while `f` runs and subscribes to
+///   signals read by the closure.
+/// - Use `deps![]` to opt out of re-runs (mount-only effect).
+/// - `deps![...]` subscribes only to the listed reactive values.
+/// - `deps![]` runs setup once and cleanup on disposal.
+/// - `deps_auto!()` rebuilds subscriptions from tracked reads on every setup.
 ///
 /// # Type Parameters
 ///
 /// * `F` - The effect function type.
 /// * `C` - The cleanup function type.
-/// * `D` - Any tuple of [`Trackable`]s (or `()`) that implements
-///   [`IntoDeps`].
+/// * `deps` - Either an explicit `deps![...]` list or `deps_auto!()`.
 ///
 /// # Arguments
 ///
 /// * `f` - A function that performs the side effect and optionally
 ///   returns a cleanup function. Cleanups run before the next re-run and
 ///   on dispose, matching React `useEffect`.
-/// * `deps` - The explicit dependency tuple. Pass `()` for no deps.
+/// * `deps` - Either an explicit dependency list (`deps![...]`, including
+///   `deps![]`) or `deps_auto!()` for automatic tracking.
 ///
 /// # Example
 ///
 /// ```ignore
+/// use reinhardt_pages::deps;
 /// use reinhardt_pages::reactive::hooks::{use_effect, use_state};
 ///
 /// let (count, _set_count) = use_state(0);
@@ -112,29 +120,27 @@ where
 ///             log!("Count is now: {}", count.get());
 ///         }
 ///     },
-///     (count.clone(),),
+///     deps![count],
 /// );
 ///
-/// // Effect with cleanup, mount-only deps `()`.
+/// // Effect with cleanup and a mount-only dependency list.
 /// let _interval_effect = use_effect(
 ///     move || {
 ///         let interval_id = set_interval(|| log!("tick"), 1000);
 ///         Some(move || clear_interval(interval_id))
 ///     },
-///     (),
+///     deps![],
 /// );
 /// ```
 ///
 /// [`Trackable`]: reinhardt_core::reactive::deps::Trackable
-/// [`IntoDeps`]: reinhardt_core::reactive::deps::IntoDeps
-pub fn use_effect<F, C, D>(f: F, deps: D) -> Effect
+pub fn use_effect<F, C>(f: F, deps: impl Into<ReactiveDeps>) -> Effect
 where
 	F: EffectCallback<C> + 'static,
 	C: FnOnce() + 'static,
-	D: IntoDeps,
 {
 	let mut f = f;
-	Effect::new_with_deps(move || f.call_effect().into_cleanup(), deps.into_deps())
+	Effect::new_with_mode(move || f.call_effect().into_cleanup(), deps.into())
 }
 
 /// Registers a side effect in the current mounted view scope.
@@ -151,9 +157,14 @@ where
 /// root reactive store until [`cleanup_reactive_nodes`] is called by tests or
 /// host code.
 ///
+/// This lifecycle-owning helper requires explicit `deps![...]` in this release.
+/// Use `use_effect(..., deps_auto!())` when automatic dependency tracking is
+/// required and retain its returned RAII guard explicitly.
+///
 /// # Example
 ///
 /// ```ignore
+/// use reinhardt_pages::deps;
 /// use reinhardt_pages::reactive::hooks::{use_retained_effect, use_state};
 ///
 /// let (count, _set_count) = use_state(0);
@@ -166,25 +177,25 @@ where
 ///             None::<fn()>
 ///         }
 ///     },
-///     (count.clone(),),
+///     deps![count],
 /// );
 /// ```
 ///
 /// [`cleanup_reactive_nodes`]: crate::component::cleanup_reactive_nodes
-pub fn use_retained_effect<F, C, D>(f: F, deps: D)
+pub fn use_retained_effect<F, C>(f: F, deps: ExplicitDeps)
 where
 	F: EffectCallback<C> + 'static,
 	C: FnOnce() + 'static,
-	D: IntoDeps,
 {
 	retain_effect(|| use_effect(f, deps));
 }
 
-/// Runs a side effect synchronously before browser paint when any listed
-/// `dep` changes.
+/// Runs a side effect synchronously before browser paint according to the
+/// selected dependency mode.
 ///
-/// React-aligned equivalent of `useLayoutEffect(f, deps)`. Same Option A
-/// semantics as [`use_effect`] but with [`EffectTiming::Layout`] so
+/// React-aligned equivalent of `useLayoutEffect(f, deps)`. Explicit mode has
+/// the same Option A semantics as [`use_effect`], while `deps_auto!()` tracks
+/// signals read by the closure. Both modes use [`EffectTiming::Layout`] so
 /// re-runs propagate synchronously rather than via the passive scheduler.
 ///
 /// # When to Use
@@ -201,11 +212,17 @@ where
 ///
 /// # Reactivity Semantics
 ///
-/// See [`use_effect`] — identical, plus Layout timing.
+/// See [`use_effect`] for dependency-mode semantics; this hook adds Layout
+/// timing.
+///
+/// `deps![...]` subscribes only to the listed reactive values. `deps![]` runs
+/// setup once and cleanup on disposal. `deps_auto!()` rebuilds subscriptions
+/// from tracked reads on every setup.
 ///
 /// # Example
 ///
 /// ```ignore
+/// use reinhardt_pages::deps;
 /// use reinhardt_pages::reactive::hooks::{use_layout_effect, use_ref, use_state};
 ///
 /// let element_ref = use_ref(None::<Element>);
@@ -221,19 +238,18 @@ where
 ///             }
 ///         }
 ///     },
-///     (element_ref,),
+///     deps![element_ref],
 /// );
 /// ```
-pub fn use_layout_effect<F, C, D>(f: F, deps: D) -> Effect
+pub fn use_layout_effect<F, C>(f: F, deps: impl Into<ReactiveDeps>) -> Effect
 where
 	F: EffectCallback<C> + 'static,
 	C: FnOnce() + 'static,
-	D: IntoDeps,
 {
 	let mut f = f;
-	Effect::new_with_deps_and_timing(
+	Effect::new_with_mode_and_timing(
 		move || f.call_effect().into_cleanup(),
-		deps.into_deps(),
+		deps.into(),
 		EffectTiming::Layout,
 	)
 }
@@ -249,9 +265,14 @@ where
 /// in the root reactive store until [`cleanup_reactive_nodes`] is called by
 /// tests or host code.
 ///
+/// This lifecycle-owning helper requires explicit `deps![...]` in this release.
+/// Use `use_layout_effect(..., deps_auto!())` when automatic dependency tracking
+/// is required and retain its returned RAII guard explicitly.
+///
 /// # Example
 ///
 /// ```ignore
+/// use reinhardt_pages::deps;
 /// use reinhardt_pages::reactive::{
 ///     Signal,
 ///     hooks::{use_ref, use_retained_layout_effect},
@@ -271,16 +292,15 @@ where
 ///             None::<fn()>
 ///         }
 ///     },
-///     (element_ref.clone(),),
+///     deps![element_ref],
 /// );
 /// ```
 ///
 /// [`cleanup_reactive_nodes`]: crate::component::cleanup_reactive_nodes
-pub fn use_retained_layout_effect<F, C, D>(f: F, deps: D)
+pub fn use_retained_layout_effect<F, C>(f: F, deps: ExplicitDeps)
 where
 	F: EffectCallback<C> + 'static,
 	C: FnOnce() + 'static,
-	D: IntoDeps,
 {
 	retain_effect(|| use_layout_effect(f, deps));
 }
@@ -310,10 +330,86 @@ mod tests {
 	use crate::component::reactive_if::cleanup_reactive_nodes;
 	use crate::reactive::Signal;
 	use crate::reactive::runtime::with_runtime;
+	use reinhardt_core::deps;
 	use rstest::rstest;
 	use serial_test::serial;
+	use std::cell::Cell;
 	use std::cell::RefCell;
 	use std::rc::Rc;
+
+	#[test]
+	#[serial]
+	fn use_effect_auto_tracks_signal_reads() {
+		let count = Signal::new(0_i32);
+		let runs = Rc::new(Cell::new(0_u8));
+
+		let _effect = use_effect(
+			{
+				let count = count.clone();
+				let runs = Rc::clone(&runs);
+				move || {
+					let _ = count.get();
+					runs.set(runs.get() + 1);
+				}
+			},
+			reinhardt_core::deps_auto!(),
+		);
+
+		count.set(1);
+		with_runtime(|runtime| runtime.flush_updates());
+		assert_eq!(runs.get(), 2);
+	}
+
+	#[test]
+	#[serial]
+	fn use_effect_empty_explicit_deps_is_mount_only() {
+		let count = Signal::new(0_i32);
+		let runs = Rc::new(Cell::new(0_u8));
+
+		let _effect = use_effect(
+			{
+				let count = count.clone();
+				let runs = Rc::clone(&runs);
+				move || {
+					let _ = count.get();
+					runs.set(runs.get() + 1);
+				}
+			},
+			deps![],
+		);
+
+		count.set(1);
+		assert_eq!(runs.get(), 1);
+	}
+
+	#[test]
+	#[serial]
+	fn explicit_and_auto_effects_match_for_unconditional_reads() {
+		let count = Signal::new(0_i32);
+		let explicit_values = Rc::new(RefCell::new(Vec::new()));
+		let auto_values = Rc::new(RefCell::new(Vec::new()));
+
+		let _explicit = use_effect(
+			{
+				let count = count.clone();
+				let values = Rc::clone(&explicit_values);
+				move || values.borrow_mut().push(count.get())
+			},
+			deps![count],
+		);
+		let _automatic = use_effect(
+			{
+				let count = count.clone();
+				let values = Rc::clone(&auto_values);
+				move || values.borrow_mut().push(count.get())
+			},
+			reinhardt_core::deps_auto!(),
+		);
+
+		count.set(1);
+		with_runtime(|runtime| runtime.flush_updates());
+		assert_eq!(*explicit_values.borrow(), *auto_values.borrow());
+	}
 
 	#[test]
 	#[serial]
@@ -328,7 +424,7 @@ mod tests {
 					None::<fn()>
 				}
 			},
-			(),
+			deps![],
 		);
 
 		assert!(*called.borrow());
@@ -350,7 +446,7 @@ mod tests {
 					None::<fn()>
 				}
 			},
-			(count.clone(),),
+			deps![count],
 		);
 
 		// Initial run
@@ -369,7 +465,7 @@ mod tests {
 					*called.borrow_mut() = true;
 				}
 			},
-			(),
+			deps![],
 		);
 
 		assert!(*called.borrow());
@@ -388,7 +484,7 @@ mod tests {
 					None::<fn()>
 				}
 			},
-			(),
+			deps![],
 		);
 
 		assert!(*called.borrow());
@@ -410,7 +506,7 @@ mod tests {
 					None::<fn()>
 				}
 			},
-			(signal.clone(),),
+			deps![signal],
 		);
 
 		// Initial execution
@@ -438,7 +534,7 @@ mod tests {
 					execution_order.borrow_mut().push(signal.get());
 				}
 			},
-			(signal.clone(),),
+			deps![signal],
 		);
 
 		assert_eq!(*execution_order.borrow(), vec![0]);
@@ -466,7 +562,7 @@ mod tests {
 					None::<fn()>
 				}
 			},
-			(signal.clone(),),
+			deps![signal],
 		);
 
 		let _passive_effect = use_effect(
@@ -479,7 +575,7 @@ mod tests {
 					None::<fn()>
 				}
 			},
-			(signal.clone(),),
+			deps![signal],
 		);
 
 		// Both should have run initially
@@ -509,7 +605,7 @@ mod tests {
 					None::<fn()>
 				}
 			},
-			(signal.clone(),),
+			deps![signal],
 		);
 
 		let _passive_effect = use_effect(
@@ -522,7 +618,7 @@ mod tests {
 					None::<fn()>
 				}
 			},
-			(signal.clone(),),
+			deps![signal],
 		);
 
 		// Both execute initially
@@ -549,7 +645,7 @@ mod tests {
 					None::<fn()>
 				}
 			},
-			(signal.clone(),),
+			deps![signal],
 		);
 
 		assert_eq!(*run_count.borrow(), 1);
@@ -587,7 +683,7 @@ mod tests {
 					Some(move || log_for_cleanup.borrow_mut().push("cleanup"))
 				}
 			},
-			(),
+			deps![],
 		);
 
 		assert_eq!(*log.borrow(), vec!["run"]);
@@ -613,7 +709,7 @@ mod tests {
 					*called.borrow_mut() = true;
 				}
 			},
-			(),
+			deps![],
 		);
 
 		assert!(*called.borrow());
@@ -637,7 +733,7 @@ mod tests {
 					})
 				}
 			},
-			(),
+			deps![],
 		);
 
 		cleanup_reactive_nodes();
@@ -660,7 +756,7 @@ mod tests {
 					Some(move || log_for_cleanup.borrow_mut().push("cleanup"))
 				}
 			},
-			(),
+			deps![],
 		);
 
 		assert_eq!(
@@ -686,7 +782,7 @@ mod tests {
 					None::<fn()>
 				}
 			},
-			(signal.clone(),),
+			deps![signal],
 		);
 
 		assert_eq!(*execution_order.borrow(), vec![0]);
@@ -715,7 +811,7 @@ mod tests {
 					*called.borrow_mut() = true;
 				}
 			},
-			(),
+			deps![],
 		);
 
 		assert!(*called.borrow());

@@ -63,6 +63,7 @@
 //! On the client side (WASM), use the `use_websocket` hook from reinhardt-pages:
 //!
 //! ```ignore
+//! use reinhardt_pages::deps;
 //! use reinhardt_pages::reactive::hooks::{
 //!     use_retained_effect, use_websocket, WebSocketMessage, UseWebSocketOptions,
 //! };
@@ -84,7 +85,7 @@
 //!                 None::<fn()>
 //!             }
 //!         },
-//!         (latest_message.clone(),),
+//!         deps![latest_message],
 //!     );
 //!
 //!     page!(|| {

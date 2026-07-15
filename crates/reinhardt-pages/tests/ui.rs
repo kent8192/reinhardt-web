@@ -148,19 +148,19 @@ fn test_wasm_server_api_macro_ui_fail() {
 	t.compile_fail("tests/ui/wasm_server_api/fail/*.rs");
 }
 
-// PR5 / Issue #4195: React-parity hooks require an explicit deps tuple
-// (spec §4.2). These UI tests pin the public signature:
-// - `pass/explicit_deps_use_effect.rs`: canonical (closure, (s,))
-// - `pass/mount_only_unit_deps.rs`: mount-only `()`
-// - `fail/missing_deps_use_effect.rs`: omitting deps is a hard compile error
+// Issues #5511 / #5577: React-parity hooks require a dependency mode as their
+// second argument. These UI tests pin the public signatures and diagnostics:
+// - `deps![...]` is explicit and statically checked inside `page!` bodies.
+// - `deps_auto!()` is accepted only by effects, layout effects, and memos.
+// - Legacy unit and tuple arguments are rejected by the type checker.
 #[test]
-fn test_hooks_explicit_deps_ui_pass() {
+fn test_hooks_dependency_modes_ui_pass() {
 	let t = trybuild::TestCases::new();
 	t.pass("tests/ui/hooks/pass/*.rs");
 }
 
 #[test]
-fn test_hooks_explicit_deps_ui_fail() {
+fn test_hooks_dependency_modes_ui_fail() {
 	let t = trybuild::TestCases::new();
 	t.compile_fail("tests/ui/hooks/fail/*.rs");
 }
