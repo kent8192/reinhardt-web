@@ -1633,6 +1633,7 @@ fn add_reused_table_name_dependencies(migrations: &mut [&mut reinhardt_db::migra
 			.iter()
 			.filter_map(|operation| match operation {
 				Operation::CreateTable { name, .. } => Some(name.as_str()),
+				Operation::RenameTable { new_name, .. } => Some(new_name.as_str()),
 				_ => None,
 			})
 			.collect();
@@ -4360,6 +4361,30 @@ mod tests {
 				without_rowid: None,
 				interleave_in_parent: None,
 				partition: None,
+			});
+
+		add_reused_table_name_dependencies(&mut [&mut producer, &mut consumer]);
+
+		assert_eq!(
+			consumer.dependencies,
+			vec![("accounts".to_string(), "0007_rename_user".to_string())]
+		);
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	fn cross_app_rename_into_a_reused_table_depends_on_the_producer() {
+		use reinhardt_db::migrations::{Migration, Operation};
+
+		let mut producer =
+			Migration::new("0007_rename_user", "accounts").add_operation(Operation::RenameTable {
+				old_name: "users".to_string(),
+				new_name: "user".to_string(),
+			});
+		let mut consumer =
+			Migration::new("0004_archive", "archive").add_operation(Operation::RenameTable {
+				old_name: "archive_users".to_string(),
+				new_name: "users".to_string(),
 			});
 
 		add_reused_table_name_dependencies(&mut [&mut producer, &mut consumer]);

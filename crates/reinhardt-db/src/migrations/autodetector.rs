@@ -6303,6 +6303,19 @@ impl MigrationAutodetector {
 	}
 
 	fn order_renamed_table_operations(operations: &mut Vec<super::Operation>) {
+		let rename_sources: BTreeSet<_> = operations
+			.iter()
+			.filter_map(|operation| {
+				Self::table_rename_names(operation).map(|(old_name, _)| old_name)
+			})
+			.collect();
+		let swap_destinations: BTreeSet<_> = operations
+			.iter()
+			.filter_map(|operation| {
+				Self::table_rename_names(operation).map(|(_, new_name)| new_name)
+			})
+			.filter(|new_name| rename_sources.contains(new_name))
+			.collect();
 		let mut index = 0;
 		while index < operations.len() {
 			let (old_name, new_name) = match Self::table_rename_names(&operations[index]) {
@@ -6331,7 +6344,10 @@ impl MigrationAutodetector {
 				) || Self::operation_targets_table(&operation, &old_name)
 				{
 					before_rename.push(operation);
-				} else if Self::operation_needs_table_after_rename(&operation, &new_name) {
+				} else if swap_destinations.iter().any(|destination| {
+					Self::operation_needs_table_after_rename(&operation, destination)
+				}) || Self::operation_needs_table_after_rename(&operation, &new_name)
+				{
 					after_rename.push(operation);
 				} else if candidate_index < index {
 					before_rename.push(operation);
@@ -6474,6 +6490,12 @@ impl MigrationAutodetector {
 				.collect();
 			reserved_names.extend(
 				self.from_state
+					.models
+					.values()
+					.map(|model| model.table_name.clone()),
+			);
+			reserved_names.extend(
+				self.to_state
 					.models
 					.values()
 					.map(|model| model.table_name.clone()),
@@ -7224,6 +7246,12 @@ impl MigrationAutodetector {
 							new_name: through_rename.new_source_column.clone(),
 						});
 					}
+					Self::defer_many_to_many_constraint_replacements(
+						operations,
+						&through_rename,
+						&through_rename.old_source_column,
+						&through_rename.new_source_column,
+					);
 				}
 				if through_rename.old_target_column != through_rename.new_target_column {
 					Self::remove_many_to_many_column_replacement_operations(
@@ -7252,6 +7280,12 @@ impl MigrationAutodetector {
 							new_name: through_rename.new_target_column.clone(),
 						});
 					}
+					Self::defer_many_to_many_constraint_replacements(
+						operations,
+						&through_rename,
+						&through_rename.old_target_column,
+						&through_rename.new_target_column,
+					);
 				}
 			}
 		}
@@ -7298,32 +7332,51 @@ impl MigrationAutodetector {
 			super::Operation::DropColumn { table, column, .. } => {
 				!([&rename.old_table, &rename.new_table].contains(&table) && column == old_column)
 			}
-			super::Operation::AddConstraint {
-				table,
-				constraint_sql,
-			} => {
-				!([&rename.old_table, &rename.new_table].contains(&table)
-					&& Self::is_generated_many_to_many_constraint(
-						constraint_sql,
-						rename,
-						old_column,
-						new_column,
-					))
-			}
-			super::Operation::DropConstraint {
-				table,
-				constraint_name,
-			} => {
-				!([&rename.old_table, &rename.new_table].contains(&table)
-					&& Self::is_generated_many_to_many_constraint(
-						constraint_name,
-						rename,
-						old_column,
-						new_column,
-					))
-			}
 			_ => true,
 		});
+	}
+
+	fn defer_many_to_many_constraint_replacements(
+		operations: &mut Vec<super::Operation>,
+		rename: &ManyToManyArtifactRename,
+		old_column: &str,
+		new_column: &str,
+	) {
+		let mut deferred = Vec::new();
+		operations.retain(|operation| {
+			let generated = match operation {
+				super::Operation::AddConstraint {
+					table,
+					constraint_sql,
+				} => {
+					[&rename.old_table, &rename.new_table].contains(&table)
+						&& Self::is_generated_many_to_many_constraint(
+							constraint_sql,
+							rename,
+							old_column,
+							new_column,
+						)
+				}
+				super::Operation::DropConstraint {
+					table,
+					constraint_name,
+				} => {
+					[&rename.old_table, &rename.new_table].contains(&table)
+						&& Self::is_generated_many_to_many_constraint(
+							constraint_name,
+							rename,
+							old_column,
+							new_column,
+						)
+				}
+				_ => false,
+			};
+			if generated {
+				deferred.push(operation.clone());
+			}
+			!generated
+		});
+		operations.extend(deferred);
 	}
 
 	fn is_generated_many_to_many_constraint(
@@ -7495,6 +7548,12 @@ impl MigrationAutodetector {
 							new_name: new_column.clone(),
 						});
 					}
+					Self::defer_many_to_many_constraint_replacements(
+						operations,
+						&through_rename,
+						old_column,
+						new_column,
+					);
 				}
 			}
 		}
@@ -9561,7 +9620,7 @@ mod tests {
 	}
 
 	#[test]
-	fn removes_m2m_constraint_replacements_for_renamed_columns() {
+	fn defers_m2m_constraint_replacements_until_after_renamed_columns() {
 		let rename = ManyToManyArtifactRename {
 			old_table: "users_groups".to_string(),
 			old_source_column: "users_id".to_string(),
@@ -9594,11 +9653,28 @@ mod tests {
 			"user_id",
 		);
 
-		assert_eq!(operations.len(), 1, "unexpected operations: {operations:?}");
+		assert_eq!(operations.len(), 3, "unexpected operations: {operations:?}");
+		operations.push(super::super::Operation::RenameColumn {
+			table: "user_groups".to_string(),
+			old_name: "users_id".to_string(),
+			new_name: "user_id".to_string(),
+		});
+		MigrationAutodetector::defer_many_to_many_constraint_replacements(
+			&mut operations,
+			&rename,
+			"users_id",
+			"user_id",
+		);
+
 		assert!(matches!(
 			&operations[0],
 			super::super::Operation::AddConstraint { constraint_sql, .. }
 				if constraint_sql == "CONSTRAINT user_groups_check CHECK (rank > 0)"
+		));
+		assert!(matches!(
+			&operations[1],
+			super::super::Operation::RenameColumn { old_name, new_name, .. }
+				if old_name == "users_id" && new_name == "user_id"
 		));
 	}
 
