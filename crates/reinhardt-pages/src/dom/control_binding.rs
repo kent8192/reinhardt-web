@@ -336,6 +336,10 @@ fn install_select_option_observer(
 		Box::new(move |_: js_sys::Array, _: web_sys::MutationObserver| {
 			let value = untracked(|| observed_binding.read());
 			let _ = write_control(&observed_element, observed_binding.kind(), &value);
+			crate::component::into_page::initialize_control_default(
+				&observed_element,
+				&observed_binding,
+			);
 		}) as Box<dyn FnMut(js_sys::Array, web_sys::MutationObserver)>,
 	);
 	let observer = web_sys::MutationObserver::new(callback.as_ref().unchecked_ref()).ok()?;

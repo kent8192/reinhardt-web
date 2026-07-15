@@ -427,6 +427,12 @@ fn reconcile_attrs_at_path(
 ) -> Result<(), ReconcileError> {
 	for (name, value) in el_view.attrs() {
 		let name_str = name.as_ref();
+		if crate::component::into_page::controlled_attribute_is_overridden(
+			el_view.bound_control(),
+			name_str,
+		) {
+			continue;
+		}
 		let expected = expected_dom_attr_value(name_str, value.as_ref());
 		let actual = element.get_attribute(name_str);
 

@@ -1236,10 +1236,12 @@ impl SsrRenderer {
 						let fallback_page = node.render_fallback();
 						let fallback_selection = if inline_single_select_uses_fallback {
 							selection.clone()
-						} else {
+						} else if self.should_resolve_resources() {
 							boundary_selection
 								.as_ref()
 								.map(SsrSelectionState::fork_after_pending_match)
+						} else {
+							boundary_selection.as_ref().map(SsrSelectionState::fork)
 						};
 						let fallback = self
 							.render_stream_shell_page_with_selection(
