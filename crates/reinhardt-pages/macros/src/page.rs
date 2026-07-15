@@ -149,7 +149,7 @@ pub(crate) fn page_impl(input: TokenStream) -> TokenStream {
 	// 1a. Hook deps verification (pre-codegen pass, Refs #4195 / #4721 / #4746).
 	// Emits a `compile_error!` for every Signal read inside a hook closure
 	// (written directly in this `page!` body) that is missing from the hook's
-	// deps tuple. Empty when no such mistake is found.
+	// dependency list. Empty when no such mistake is found.
 	let hook_deps_diagnostics = hook_deps_validator::verify_hook_deps(&untyped_ast);
 
 	// 2. Validate + Transform: Untyped AST → Typed AST

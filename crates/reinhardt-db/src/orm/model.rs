@@ -74,7 +74,10 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 		"id"
 	}
 
-	/// Get the database column name for the primary key
+	/// Get the physical database column that stores the primary key.
+	///
+	/// Manual model implementations default to the Rust field name. The model
+	/// macro overrides this when `db_column` renames the primary-key column.
 	fn primary_key_column() -> &'static str {
 		Self::primary_key_field()
 	}

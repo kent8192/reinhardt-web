@@ -7,7 +7,7 @@ error[E0061]: this function takes 2 arguments but 1 argument was supplied
 note: function defined here
  --> src/reactive/hooks/effect.rs
   |
-  | pub fn use_effect<F, C, D>(f: F, deps: D) -> Effect
+  | pub fn use_effect<F, C>(f: F, deps: impl Into<ReactiveDeps>) -> Effect
   |        ^^^^^^^^^^
 help: provide the argument
   |

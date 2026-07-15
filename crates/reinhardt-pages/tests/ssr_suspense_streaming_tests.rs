@@ -4,6 +4,7 @@ use futures_util::StreamExt;
 use reinhardt_core::types::page::{DeferredNode, Head, SuspenseNode};
 use reinhardt_pages::component::suspense::SuspenseBoundary;
 use reinhardt_pages::component::{Component, IntoPage, Page, PageElement};
+use reinhardt_pages::deps;
 use reinhardt_pages::reactive::{ResourceState, use_id, use_resource, use_resource_with_key};
 use reinhardt_pages::ssr::{SsrChunk, SsrOptions, SsrRenderer, SsrStream};
 use std::cell::Cell;
@@ -17,7 +18,7 @@ fn suspense_resource_view() -> Page {
 				tokio::time::sleep(Duration::from_millis(5)).await;
 				Ok::<_, String>("resolved".to_string())
 			},
-			(),
+			deps![],
 		);
 		let content_resource = resource.clone();
 
@@ -44,7 +45,7 @@ fn delayed_suspense_resource_view(delay: Duration, value: &'static str) -> Page 
 				tokio::time::sleep(delay).await;
 				Ok::<_, String>(value.to_string())
 			},
-			(),
+			deps![],
 		);
 		let content_resource = resource.clone();
 
@@ -105,7 +106,7 @@ impl Component for KeyedResourceComponent {
 					let value = fetch_value.clone();
 					async move { Ok::<_, String>(value) }
 				},
-				(),
+				deps![],
 			);
 			resource_to_page(resource.get(), "em", "loading", |value| {
 				PageElement::new("strong").child(value).into_page()
@@ -132,7 +133,7 @@ impl Component for ImplicitResourceComponent {
 					let value = fetch_value.clone();
 					async move { Ok::<_, String>(value) }
 				},
-				(),
+				deps![],
 			);
 			let key = resource
 				.ssr_key()
@@ -314,7 +315,10 @@ async fn buffered_suspense_emits_resolved_content_directly() {
 #[tokio::test]
 async fn buffered_suspense_rechecks_custom_pending_after_resource_resolution() {
 	let view = Page::reactive(|| {
-		let resource = use_resource(|| async { Ok::<_, String>("resolved".to_string()) }, ());
+		let resource = use_resource(
+			|| async { Ok::<_, String>("resolved".to_string()) },
+			deps![],
+		);
 		let tracked_key = resource.ssr_key().unwrap().to_string();
 		let content_resource = resource.clone();
 
@@ -378,11 +382,13 @@ async fn buffered_suspense_caches_head_after_replay_resources_settle() {
 		|| false,
 		|| PageElement::new("span").child("outer-fallback").into_page(),
 		|| {
-			let outer = use_resource(|| async { Ok::<_, String>("outer".to_string()) }, ());
+			let outer = use_resource(|| async { Ok::<_, String>("outer".to_string()) }, deps![]);
 			match outer.get() {
 				ResourceState::Success(_) => {
-					let inner =
-						use_resource(|| async { Ok::<_, String>("inner-ready".to_string()) }, ());
+					let inner = use_resource(
+						|| async { Ok::<_, String>("inner-ready".to_string()) },
+						deps![],
+					);
 
 					match inner.get() {
 						ResourceState::Success(value) => PageElement::new("main")
@@ -429,10 +435,11 @@ async fn buffered_suspense_replays_resolved_content_inside_boundary() {
 						Ok::<_, String>("outer".to_string())
 					}
 				},
-				(),
+				deps![],
 			);
 			resource_to_page(outer.get(), "em", "outer-loading", |_| {
-				let inner = use_resource(|| async { Ok::<_, String>("inner".to_string()) }, ());
+				let inner =
+					use_resource(|| async { Ok::<_, String>("inner".to_string()) }, deps![]);
 				resource_to_page(inner.get(), "em", "inner-loading", |value| {
 					PageElement::new("strong").child(value).into_page()
 				})
@@ -450,7 +457,7 @@ async fn buffered_suspense_replays_resolved_content_inside_boundary() {
 #[tokio::test]
 async fn buffered_resolved_suspense_replay_restores_deterministic_counters() {
 	let view = Page::reactive(|| {
-		let gate = use_resource(|| async { Ok::<_, String>("gate".to_string()) }, ());
+		let gate = use_resource(|| async { Ok::<_, String>("gate".to_string()) }, deps![]);
 
 		resource_to_page(gate.get(), "em", "gate-loading", |_| {
 			Page::Suspense(SuspenseNode::new(
@@ -468,8 +475,10 @@ async fn buffered_resolved_suspense_replay_restores_deterministic_counters() {
 				},
 				|| {
 					Page::reactive(|| {
-						let content =
-							use_resource(|| async { Ok::<_, String>("content".to_string()) }, ());
+						let content = use_resource(
+							|| async { Ok::<_, String>("content".to_string()) },
+							deps![],
+						);
 						let id = use_id();
 						resource_to_page(content.get(), "em", "content-loading", |value| {
 							Page::fragment([
@@ -499,11 +508,12 @@ async fn buffered_resolved_suspense_replay_restores_deterministic_counters() {
 #[tokio::test]
 async fn buffered_suspense_replays_external_resource_tracked_by_boundary() {
 	let view = Page::reactive(|| {
-		let gate = use_resource(|| async { Ok::<_, String>("gate".to_string()) }, ());
+		let gate = use_resource(|| async { Ok::<_, String>("gate".to_string()) }, deps![]);
 
 		resource_to_page(gate.get(), "p", "gate-loading", |_| {
 			Page::reactive(|| {
-				let shared = use_resource(|| async { Ok::<_, String>("shared".to_string()) }, ());
+				let shared =
+					use_resource(|| async { Ok::<_, String>("shared".to_string()) }, deps![]);
 				let tracked_key = shared.ssr_key().unwrap().to_string();
 				let outside_resource = shared.clone();
 				let boundary_pending = shared.clone();
@@ -560,9 +570,10 @@ async fn buffered_deferred_head_updates_after_replay_settles() {
 		"deferred-head",
 		|| PageElement::new("span").child("fallback").into_page(),
 		|| {
-			let first = use_resource(|| async { Ok::<_, String>("first".to_string()) }, ());
+			let first = use_resource(|| async { Ok::<_, String>("first".to_string()) }, deps![]);
 			resource_to_page(first.get(), "em", "first-loading", |_| {
-				let second = use_resource(|| async { Ok::<_, String>("second".to_string()) }, ());
+				let second =
+					use_resource(|| async { Ok::<_, String>("second".to_string()) }, deps![]);
 				match second.get() {
 					ResourceState::Success(_) => PageElement::new("strong")
 						.child("deferred-ready")
@@ -643,13 +654,18 @@ async fn suspense_stream_emits_shell_replacement_and_closing_chunks() {
 #[tokio::test]
 async fn streaming_shell_drains_external_resources_discovered_during_replay() {
 	let view = Page::reactive(|| {
-		let first = use_resource(|| async { Ok::<_, String>("first-ready".to_string()) }, ());
+		let first = use_resource(
+			|| async { Ok::<_, String>("first-ready".to_string()) },
+			deps![],
+		);
 		let first_state = first.clone();
 
 		resource_to_page(first_state.get(), "em", "first-loading", |_| {
 			Page::reactive(|| {
-				let second =
-					use_resource(|| async { Ok::<_, String>("second-ready".to_string()) }, ());
+				let second = use_resource(
+					|| async { Ok::<_, String>("second-ready".to_string()) },
+					deps![],
+				);
 				match second.get() {
 					ResourceState::Success(value) => PageElement::new("strong")
 						.child(value)
@@ -681,7 +697,10 @@ async fn streaming_shell_drains_external_resources_discovered_during_replay() {
 #[tokio::test]
 async fn streaming_shell_resolves_resource_used_outside_and_tracked_boundary() {
 	let view = Page::reactive(|| {
-		let resource = use_resource(|| async { Ok::<_, String>("shared-ready".to_string()) }, ());
+		let resource = use_resource(
+			|| async { Ok::<_, String>("shared-ready".to_string()) },
+			deps![],
+		);
 		let tracked_key = resource.ssr_key().unwrap().to_string();
 		let outside_resource = resource.clone();
 		let boundary_pending = resource.clone();
@@ -777,7 +796,10 @@ async fn suspense_replacement_uses_script_nonce() {
 async fn suspense_replacement_escapes_boundary_id_for_script() {
 	let boundary_id = "x</script><script>alert(1)</script>";
 	let view = Page::reactive(move || {
-		let resource = use_resource(|| async { Ok::<_, String>("safe-content".to_string()) }, ());
+		let resource = use_resource(
+			|| async { Ok::<_, String>("safe-content".to_string()) },
+			deps![],
+		);
 		let tracked_key = resource.ssr_key().unwrap().to_string();
 		let pending_resource = resource.clone();
 		let content_resource = resource.clone();
@@ -818,7 +840,7 @@ async fn streaming_shared_resource_replaces_every_tracking_boundary() {
 				tokio::time::sleep(Duration::from_millis(5)).await;
 				Ok::<_, String>("shared".to_string())
 			},
-			(),
+			deps![],
 		);
 		let tracked_key = resource.ssr_key().unwrap().to_string();
 		let first_pending = resource.clone();
@@ -878,13 +900,13 @@ async fn streaming_shared_resource_replaces_every_tracking_boundary() {
 #[tokio::test]
 async fn streaming_shared_group_preserves_resolved_boundary_when_peer_times_out() {
 	let view = Page::reactive(|| {
-		let shared = use_resource(|| async { Ok::<_, String>("shared".to_string()) }, ());
+		let shared = use_resource(|| async { Ok::<_, String>("shared".to_string()) }, deps![]);
 		let slow = use_resource(
 			|| async {
 				tokio::time::sleep(Duration::from_secs(60)).await;
 				Ok::<_, String>("slow".to_string())
 			},
-			(),
+			deps![],
 		);
 		let shared_key = shared.ssr_key().unwrap().to_string();
 		let slow_key = slow.ssr_key().unwrap().to_string();
@@ -952,7 +974,7 @@ async fn streaming_shared_timeout_keeps_all_tracking_boundaries_pending() {
 				tokio::time::sleep(Duration::from_secs(60)).await;
 				Ok::<_, String>("shared".to_string())
 			},
-			(),
+			deps![],
 		);
 		let tracked_key = shared.ssr_key().unwrap().to_string();
 		let first_pending = shared.clone();
@@ -1035,7 +1057,7 @@ async fn streamed_replacement_preserves_nested_suspense_markers() {
 				tokio::time::sleep(Duration::from_millis(5)).await;
 				Ok::<_, String>("outer".to_string())
 			},
-			(),
+			deps![],
 		);
 		let outer_content = outer.clone();
 
@@ -1049,7 +1071,7 @@ async fn streamed_replacement_preserves_nested_suspense_markers() {
 							tokio::time::sleep(Duration::from_millis(20)).await;
 							Ok::<_, String>("inner-resolved".to_string())
 						},
-						(),
+						deps![],
 					);
 					let inner_content = inner.clone();
 
@@ -1096,7 +1118,7 @@ async fn streamed_replacement_waits_for_nested_resource_read_by_outer_content() 
 				tokio::time::sleep(Duration::from_millis(5)).await;
 				Ok::<_, String>("outer".to_string())
 			},
-			(),
+			deps![],
 		);
 		let outer_content = outer.clone();
 
@@ -1110,7 +1132,7 @@ async fn streamed_replacement_waits_for_nested_resource_read_by_outer_content() 
 							tokio::time::sleep(Duration::from_millis(5)).await;
 							Ok::<_, String>("shared".to_string())
 						},
-						(),
+						deps![],
 					);
 					let outer_status = if shared.is_loading() {
 						"outer-loading"
@@ -1168,7 +1190,7 @@ async fn streaming_suspense_restores_deterministic_counters_after_hidden_content
 				tokio::time::sleep(Duration::from_millis(5)).await;
 				Ok::<_, String>("ready".to_string())
 			},
-			(),
+			deps![],
 		);
 		let content_resource = resource.clone();
 
@@ -1231,7 +1253,7 @@ async fn streaming_suspense_restores_resource_keys_before_fallback() {
 			Page::reactive(|| {
 				let resource = use_resource(
 					|| async { Ok::<_, String>("fallback-ready".to_string()) },
-					(),
+					deps![],
 				);
 				let key = resource.ssr_key().unwrap().to_string();
 				match resource.get() {
@@ -1254,7 +1276,7 @@ async fn streaming_suspense_restores_resource_keys_before_fallback() {
 						tokio::time::sleep(Duration::from_millis(5)).await;
 						Ok::<_, String>("content-ready".to_string())
 					},
-					(),
+					deps![],
 				);
 				let key = resource.ssr_key().unwrap().to_string();
 				match resource.get() {
@@ -1302,7 +1324,7 @@ async fn streaming_discovery_restores_resource_keys_after_pending_suspense_conte
 								tokio::time::sleep(Duration::from_millis(5)).await;
 								Ok::<_, String>("boundary-ready".to_string())
 							},
-							(),
+							deps![],
 						);
 						match resource.get() {
 							ResourceState::Success(value) => {
@@ -1325,7 +1347,7 @@ async fn streaming_discovery_restores_resource_keys_after_pending_suspense_conte
 						calls.set(calls.get() + 1);
 						async { Ok::<_, String>("sibling-ready".to_string()) }
 					},
-					(),
+					deps![],
 				);
 				match resource.get() {
 					ResourceState::Success(value) => PageElement::new("p").child(value).into_page(),
@@ -1350,7 +1372,7 @@ async fn streaming_discovery_restores_resource_keys_after_pending_suspense_conte
 #[tokio::test]
 async fn streaming_resource_state_helpers_mark_external_reads() {
 	let view = Page::reactive(|| {
-		let resource = use_resource(|| async { Ok::<_, String>("ready".to_string()) }, ());
+		let resource = use_resource(|| async { Ok::<_, String>("ready".to_string()) }, deps![]);
 		if resource.is_loading() {
 			PageElement::new("p").child("loading").into_page()
 		} else if resource.is_success() {
@@ -1404,7 +1426,7 @@ async fn streaming_shell_uses_pending_suspense_content_head_from_shell_render() 
 						tokio::time::sleep(Duration::from_millis(5)).await;
 						Ok::<_, String>("ready".to_string())
 					},
-					(),
+					deps![],
 				);
 				match resource.get() {
 					ResourceState::Success(value) => {

@@ -1821,6 +1821,7 @@ mod tests {
 	use crate::reactive::Signal;
 	use crate::reactive::hooks::use_retained_effect;
 	use crate::reactive::runtime::with_runtime;
+	use reinhardt_core::deps;
 	use reinhardt_core::types::page::DeferredNode;
 	use rstest::rstest;
 	use serial_test::serial;
@@ -1897,7 +1898,7 @@ mod tests {
 							Some(move || *cleanup_count.borrow_mut() += 1)
 						}
 					},
-					(self.signal.clone(),),
+					deps![self.signal],
 				);
 				PageElement::new("div").child("retained").into_page()
 			}
@@ -1951,7 +1952,7 @@ mod tests {
 								*effect_run_count.borrow_mut() += 1;
 							}
 						},
-						(signal.clone(),),
+						deps![signal],
 					);
 					PageElement::new("div").child("retained").into_page()
 				}

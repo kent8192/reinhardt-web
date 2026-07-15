@@ -104,6 +104,22 @@ pub mod model_info {
 }
 
 pub mod db {
+	pub mod m2m_naming {
+		pub fn default_through_table(source_table: &str, field_name: &str) -> String {
+			format!("{}_{}", source_table.to_lowercase(), field_name.to_lowercase())
+		}
+
+		pub fn default_m2m_columns(source_table: &str, target_table: &str) -> (String, String) {
+			let source = source_table.to_lowercase();
+			let target = target_table.to_lowercase();
+			if source == target {
+				(format!("from_{}_id", source), format!("to_{}_id", target))
+			} else {
+				(format!("{}_id", source), format!("{}_id", target))
+			}
+		}
+	}
+
 	use serde::{Deserialize, Deserializer, Serialize, Serializer};
 	use std::ops::{Deref, DerefMut};
 
@@ -171,6 +187,18 @@ pub mod db {
 			}
 		}
 
+		impl<T> Default for OneToOneField<T> {
+			fn default() -> Self {
+				Self(core::marker::PhantomData)
+			}
+		}
+
+		impl<Source, Target> Default for ManyToManyField<Source, Target> {
+			fn default() -> Self {
+				Self(core::marker::PhantomData)
+			}
+		}
+
 		impl<T> PartialEq for ForeignKeyField<T> {
 			fn eq(&self, _other: &Self) -> bool {
 				true
@@ -178,6 +206,22 @@ pub mod db {
 		}
 
 		impl<T> Eq for ForeignKeyField<T> {}
+
+		impl<T> PartialEq for OneToOneField<T> {
+			fn eq(&self, _other: &Self) -> bool {
+				true
+			}
+		}
+
+		impl<T> Eq for OneToOneField<T> {}
+
+		impl<Source, Target> PartialEq for ManyToManyField<Source, Target> {
+			fn eq(&self, _other: &Self) -> bool {
+				true
+			}
+		}
+
+		impl<Source, Target> Eq for ManyToManyField<Source, Target> {}
 	}
 
 	pub mod orm {
@@ -277,6 +321,22 @@ pub mod db {
 			}
 		}
 
+		pub struct ManyToManyAccessor<Source, Target> {
+			_marker: core::marker::PhantomData<(Source, Target)>,
+		}
+
+		impl<Source, Target> ManyToManyAccessor<Source, Target> {
+			pub const fn new(
+				_source: &Source,
+				_field_name: &'static str,
+				_db: connection::DatabaseConnection,
+			) -> Self {
+				Self {
+					_marker: core::marker::PhantomData,
+				}
+			}
+		}
+
 		pub mod relationship {
 			#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 			pub enum RelationshipType {
@@ -302,9 +362,199 @@ pub mod db {
 					}
 				}
 
-				pub fn eq(self, _value: Type) -> bool {
+				pub const fn name(&self) -> &'static str {
+					self.name
+				}
+
+				pub fn eq(self, _value: impl Into<Type>) -> bool {
 					true
 				}
+			}
+		}
+
+		pub mod relations {
+			use std::borrow::Cow;
+
+			use super::Model;
+
+			#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+			pub enum RelationJoinKind {
+				Inner,
+				Left,
+			}
+
+			#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+			pub enum RelationMultiplicity {
+				Single,
+				Multiple,
+			}
+
+			#[derive(Debug, Clone, PartialEq, Eq)]
+			pub struct RelationStep {
+				pub name: Cow<'static, str>,
+				pub source_table: Cow<'static, str>,
+				pub target_table: Cow<'static, str>,
+				pub source_column: Cow<'static, str>,
+				pub target_column: Cow<'static, str>,
+				pub default_join_kind: RelationJoinKind,
+				pub multiplicity: RelationMultiplicity,
+			}
+
+			pub trait RelationDescriptor {
+				type Source: Model;
+				type Target: Model;
+
+				fn steps() -> Vec<RelationStep>;
+			}
+
+			pub trait RelationPathLike {
+				type Root: Model;
+				type Target: Model;
+
+				fn steps(&self) -> &[RelationStep];
+				fn join_kind(&self) -> RelationJoinKind;
+				fn join_kind_override(&self) -> Option<RelationJoinKind> {
+					None
+				}
+				fn leaf_alias(&self) -> &str;
+				fn is_multi_valued(&self) -> bool {
+					self.steps()
+						.iter()
+						.any(|step| step.multiplicity == RelationMultiplicity::Multiple)
+				}
+			}
+
+			pub struct RelationPath<Root: Model, Target: Model> {
+				steps: Vec<RelationStep>,
+				step_aliases: Vec<String>,
+				join_kind_override: Option<RelationJoinKind>,
+				_marker: core::marker::PhantomData<(Root, Target)>,
+			}
+
+			impl<Root: Model, Target: Model> RelationPath<Root, Target> {
+				pub fn from_descriptor<D>() -> Self
+				where
+					D: RelationDescriptor<Source = Root, Target = Target>,
+				{
+					let steps = D::steps();
+					let step_aliases = step_aliases(&steps);
+					Self {
+						steps,
+						step_aliases,
+						join_kind_override: None,
+						_marker: core::marker::PhantomData,
+					}
+				}
+
+				pub fn optional(mut self) -> Self {
+					self.join_kind_override = Some(RelationJoinKind::Left);
+					self
+				}
+
+				pub fn into_typed(self) -> <Target as RelationTarget>::Path<Root>
+				where
+					Target: RelationTarget,
+				{
+					Target::wrap_relation_path(self)
+				}
+
+				pub fn then<D, Next>(self) -> RelationPath<Root, Next>
+				where
+					D: RelationDescriptor<Source = Target, Target = Next>,
+					Next: Model,
+				{
+					let mut steps = self.steps;
+					steps.extend(D::steps());
+					let step_aliases = step_aliases(&steps);
+					RelationPath {
+						steps,
+						step_aliases,
+						join_kind_override: self.join_kind_override,
+						_marker: core::marker::PhantomData,
+					}
+				}
+
+				pub fn field<Value>(
+					self,
+					field: super::expressions::FieldRef<Target, Value>,
+				) -> RelatedFieldRef<Root, Target, Value> {
+					RelatedFieldRef {
+						field: field.name(),
+						_path: self,
+						_marker: core::marker::PhantomData,
+					}
+				}
+			}
+
+			impl<Root: Model, Target: Model> RelationPathLike for RelationPath<Root, Target> {
+				type Root = Root;
+				type Target = Target;
+
+				fn steps(&self) -> &[RelationStep] {
+					&self.steps
+				}
+
+				fn join_kind(&self) -> RelationJoinKind {
+					self.join_kind_override.unwrap_or(RelationJoinKind::Inner)
+				}
+
+				fn join_kind_override(&self) -> Option<RelationJoinKind> {
+					self.join_kind_override
+				}
+
+				fn leaf_alias(&self) -> &str {
+					self.step_aliases
+						.last()
+						.map(String::as_str)
+						.unwrap_or_else(|| Target::table_name())
+				}
+			}
+
+			fn step_aliases(steps: &[RelationStep]) -> Vec<String> {
+				let mut aliases = Vec::new();
+				let mut source_alias = String::new();
+				for (index, step) in steps.iter().enumerate() {
+					let alias = if index == 0 {
+						step.name.to_string()
+					} else {
+						format!("{}__{}", source_alias, step.name)
+					};
+					source_alias = alias.clone();
+					aliases.push(alias);
+				}
+				aliases
+			}
+
+			pub struct RelatedFieldRef<Root: Model, Target: Model, Value> {
+				field: &'static str,
+				_path: RelationPath<Root, Target>,
+				_marker: core::marker::PhantomData<Value>,
+			}
+
+			impl<Root: Model, Target: Model, Value> RelatedFieldRef<Root, Target, Value> {
+				pub fn name(&self) -> &'static str {
+					self.field
+				}
+
+				pub fn eq(self, _value: impl Into<String>) -> bool {
+					true
+				}
+
+				pub fn icontains(self, _value: impl Into<String>) -> bool {
+					true
+				}
+
+				pub fn is_null(self) -> bool {
+					true
+				}
+			}
+
+			pub trait RelationTarget: Model {
+				type Path<Root: Model>: RelationPathLike<Root = Root, Target = Self>;
+
+				fn wrap_relation_path<Root: Model>(path: RelationPath<Root, Self>) -> Self::Path<Root>
+				where
+					Self: Sized;
 			}
 		}
 

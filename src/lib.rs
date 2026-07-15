@@ -466,6 +466,11 @@ pub mod db {
 	pub use reinhardt_db::DatabaseError as Error;
 	pub use reinhardt_db::Json;
 
+	/// Canonical many-to-many default naming helpers used by generated models.
+	pub mod m2m_naming {
+		pub use reinhardt_db::m2m_naming::*;
+	}
+
 	/// Database migration types and utilities.
 	pub mod migrations {
 		pub use reinhardt_db::migrations::*;
@@ -484,6 +489,17 @@ pub mod db {
 	/// Convenience re-exports for database operations.
 	pub mod prelude {
 		pub use reinhardt_db::prelude::*;
+	}
+
+	#[cfg(test)]
+	mod tests {
+		#[test]
+		fn m2m_naming_helpers_are_available_through_facade() {
+			assert_eq!(
+				super::m2m_naming::default_through_table("posts", "tags"),
+				"posts_tags"
+			);
+		}
 	}
 }
 

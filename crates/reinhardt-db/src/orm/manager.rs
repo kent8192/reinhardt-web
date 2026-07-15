@@ -1,6 +1,7 @@
 use super::connection::{DatabaseBackend, DatabaseConnection};
 use super::field_codec::database_value_to_query_value;
 use super::inspection::FieldInfo;
+use super::query::RelationLoadInput;
 use super::{DatabaseValue, FieldCodecError, Model, QuerySet};
 use reinhardt_query::prelude::{
 	Alias, ColumnRef, DeleteStatement, Expr, ExprTrait, Func, InsertStatement, MySqlQueryBuilder,
@@ -371,7 +372,8 @@ impl<M: Model> Manager<M> {
 
 	/// Filter records by a typed filter expression.
 	///
-	/// Accepts any value convertible into a [`FilterCondition`](super::query::FilterCondition).
+	/// Accepts typed and untyped inputs through
+	/// [`QueryFilterInput`](super::query::QueryFilterInput).
 	/// The intended call style is the fluent builder produced by the
 	/// `#[model]`-generated field accessors (`FieldRef::eq()` / `.gt()` / ...)
 	/// or a composite condition built with `.and()`, `.or()`, and `.not()`.
@@ -392,7 +394,7 @@ impl<M: Model> Manager<M> {
 	///     .all()
 	///     .await?;
 	/// ```
-	pub fn filter(&self, filter: impl Into<super::query::FilterCondition>) -> QuerySet<M> {
+	pub fn filter(&self, filter: impl super::query::QueryFilterInput<M>) -> QuerySet<M> {
 		QuerySet::new().filter(filter)
 	}
 
@@ -526,7 +528,10 @@ impl<M: Model> Manager<M> {
 	/// ```ignore
 	/// let posts = Post::objects().select_related(&["author", "category"]).all().await?;
 	/// ```
-	pub fn select_related(&self, fields: &[&str]) -> QuerySet<M> {
+	pub fn select_related<I>(&self, fields: I) -> QuerySet<M>
+	where
+		I: RelationLoadInput<M>,
+	{
 		QuerySet::new().select_related(fields)
 	}
 
@@ -568,7 +573,10 @@ impl<M: Model> Manager<M> {
 	/// ```ignore
 	/// let posts = Post::objects().prefetch_related(&["comments", "tags"]).all().await?;
 	/// ```
-	pub fn prefetch_related(&self, fields: &[&str]) -> QuerySet<M> {
+	pub fn prefetch_related<I>(&self, fields: I) -> QuerySet<M>
+	where
+		I: RelationLoadInput<M>,
+	{
 		QuerySet::new().prefetch_related(fields)
 	}
 
