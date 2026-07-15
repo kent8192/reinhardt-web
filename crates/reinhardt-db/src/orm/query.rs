@@ -4115,21 +4115,15 @@ where
 					if let Some(field) = aggregate.field.as_deref() =>
 				{
 					let distinct = if aggregate.distinct { "DISTINCT " } else { "" };
-					let field_sql = if matches!(
-						aggregate.func,
-						super::aggregation::AggregateFunc::Count
-					) && field == "*"
-					{
-						"*".to_string()
-					} else {
-						quote_identifier(&format!("{}.{}", self.root_alias(), field))
-					};
-					return format!(
-						"{}({}{})",
-						aggregate.func,
-						distinct,
-						field_sql
-					);
+					let field_sql =
+						if matches!(aggregate.func, super::aggregation::AggregateFunc::Count)
+							&& field == "*"
+						{
+							"*".to_string()
+						} else {
+							quote_identifier(&format!("{}.{}", self.root_alias(), field))
+						};
+					return format!("{}({}{})", aggregate.func, distinct, field_sql);
 				}
 				super::annotation::AnnotationValue::Field(field) => {
 					return self.annotation_field_to_select_sql(field);
