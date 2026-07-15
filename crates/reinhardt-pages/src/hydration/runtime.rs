@@ -866,7 +866,17 @@ pub(super) fn find_hydration_markers(_root: &str) -> Vec<(String, String)> {
 }
 
 // Global hydration state management
+#[cfg(wasm)]
+struct HydrationListener {
+	callback: Box<dyn Fn(bool) + 'static>,
+	scope: Option<reinhardt_core::reactive::ScopeId>,
+}
+
+#[cfg(wasm)]
+type HydrationListeners = Vec<HydrationListener>;
+#[cfg(native)]
 type HydrationListener = Box<dyn Fn(bool) + 'static>;
+#[cfg(native)]
 type HydrationListeners = Vec<HydrationListener>;
 
 thread_local! {
@@ -892,6 +902,12 @@ where
 	F: Fn(bool) + 'static,
 {
 	HYDRATION_LISTENERS.with(|listeners| {
+		#[cfg(wasm)]
+		listeners.borrow_mut().push(HydrationListener {
+			callback: Box::new(callback),
+			scope: reinhardt_core::reactive::current_scope_id(),
+		});
+		#[cfg(native)]
 		listeners.borrow_mut().push(Box::new(callback));
 	});
 }
@@ -906,7 +922,13 @@ fn mark_hydration_complete_internal() {
 	// Notify all listeners
 	HYDRATION_LISTENERS.with(|listeners| {
 		for listener in listeners.borrow().iter() {
-			listener(true);
+			if let Some(scope) = listener.scope {
+				let _ = reinhardt_core::reactive::scope::enter_scope(scope, || {
+					(listener.callback)(true);
+				});
+			} else {
+				(listener.callback)(true);
+			}
 		}
 	});
 }
@@ -990,6 +1012,27 @@ mod tests {
 		// Non-WASM version should return empty context
 		let ctx = HydrationContext::from_window().unwrap();
 		assert!(!ctx.is_hydrated());
+	}
+
+	#[cfg(wasm)]
+	#[wasm_bindgen_test]
+	fn hydration_completion_listener_reenters_its_registration_scope() {
+		HYDRATION_LISTENERS.with(|listeners| listeners.borrow_mut().clear());
+		init_hydration_state();
+		let scope = ReactiveScope::new();
+		let invoked = Rc::new(std::cell::Cell::new(false));
+		let callback_invoked = Rc::clone(&invoked);
+		scope.enter(|| {
+			on_hydration_complete(move |_| {
+				let _signal = Signal::new(1_i32);
+				callback_invoked.set(true);
+			});
+		});
+
+		mark_hydration_complete_internal();
+
+		assert!(invoked.get());
+		HYDRATION_LISTENERS.with(|listeners| listeners.borrow_mut().clear());
 	}
 
 	#[cfg(wasm)]

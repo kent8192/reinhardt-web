@@ -2,7 +2,7 @@
 
 use crate::reactive::{ResourceState, Signal};
 use futures_util::future::join_all;
-use reinhardt_core::reactive::ReactiveScope;
+use reinhardt_core::reactive::{ReactiveScope, ScopeId, scope::enter_scope};
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use std::cell::RefCell;
@@ -10,6 +10,7 @@ use std::collections::BTreeMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::task::{Context, Poll};
 use std::time::Duration;
 use tokio::time::timeout;
 
@@ -19,6 +20,22 @@ tokio::task_local! {
 
 type PendingResourceFuture = Pin<Box<dyn Future<Output = (String, Value)> + 'static>>;
 type PendingResourceSubscriber = Box<dyn Fn(Value) + 'static>;
+
+/// Polls an SSR resource future with the scope that owns its reactive state active.
+struct ScopedPendingResourceFuture {
+	scope: ScopeId,
+	future: PendingResourceFuture,
+}
+
+impl Future for ScopedPendingResourceFuture {
+	type Output = (String, Value);
+
+	fn poll(self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<Self::Output> {
+		let this = self.get_mut();
+		enter_scope(this.scope, || this.future.as_mut().poll(context))
+			.unwrap_or_else(|error| panic!("{error}"))
+	}
+}
 
 struct PendingResource {
 	id: String,
@@ -225,9 +242,10 @@ impl SsrResourceContext {
 			return;
 		}
 
+		let subscriber_owner = owner.clone();
 		let subscriber = Box::new(move |value: Value| {
 			// Keep the owner alive while the copied signal key is updated.
-			let _owner = &owner;
+			let _owner = &subscriber_owner;
 			if let Ok(resource_state) = serde_json::from_value(value) {
 				state.set(resource_state);
 			}
@@ -253,7 +271,7 @@ impl SsrResourceContext {
 
 		let id = key.clone();
 		let future = fetcher();
-		let future = Box::pin(async move {
+		let future: PendingResourceFuture = Box::pin(async move {
 			let resource_state = match future.await {
 				Ok(value) => ResourceState::Success(value),
 				Err(error) => ResourceState::Error(error),
@@ -261,6 +279,14 @@ impl SsrResourceContext {
 			let value = serde_json::to_value(resource_state).unwrap_or(Value::Null);
 			(id, value)
 		});
+		let future: PendingResourceFuture = if let Some(owner) = owner {
+			Box::pin(ScopedPendingResourceFuture {
+				scope: owner.id(),
+				future,
+			})
+		} else {
+			future
+		};
 
 		self.pending.push(PendingResource {
 			id: key,
@@ -806,6 +832,29 @@ mod tests {
 				ResourceState::Success("outside".to_string())
 			);
 		}
+	}
+
+	#[tokio::test]
+	async fn pending_resource_polls_with_its_owner_scope_active() {
+		let scope = Rc::new(reinhardt_core::reactive::ReactiveScope::new());
+		let context = Rc::new(RefCell::new(SsrResourceContext::new(Duration::from_secs(
+			1,
+		))));
+		let state = resource_signal(&scope);
+
+		context.borrow_mut().register_resource_with_owner(
+			"scoped".to_string(),
+			|| async {
+				let _scoped_signal = Signal::new(1_i32);
+				Ok::<_, String>("resolved".to_string())
+			},
+			state.clone(),
+			Some(Rc::clone(&scope)),
+		);
+		context.borrow_mut().mark_resource_read("scoped");
+
+		assert!(resolve_external_resources(&context).await);
+		assert_eq!(state.get(), ResourceState::Success("resolved".to_string()));
 	}
 
 	#[tokio::test]
