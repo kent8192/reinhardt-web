@@ -1746,6 +1746,7 @@ fn generate_database_field_validations(field_infos: &[FieldInfo]) -> Vec<TokenSt
 			};
 
 			quote! {
+				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 				const _: () = {
 					#max_length_validation
 				};

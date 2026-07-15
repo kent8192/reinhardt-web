@@ -54,6 +54,7 @@ pub(crate) fn model_enum_derive_impl(input: DeriveInput) -> Result<TokenStream> 
 	};
 
 	Ok(quote! {
+		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 		impl #impl_generics #orm::DatabaseField for #enum_ident #type_generics #where_clause {
 			type Storage = #storage;
 			const MAX_STRING_VALUE_CHARS: ::core::option::Option<usize> = #max_chars;
@@ -81,6 +82,7 @@ pub(crate) fn model_enum_derive_impl(input: DeriveInput) -> Result<TokenStream> 
 			}
 		}
 
+		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 		impl #impl_generics #orm::ModelEnum for #enum_ident #type_generics #where_clause {
 			const REPR: #orm::ModelEnumRepr = #repr_token;
 			const VALUES: &'static [#orm::ModelEnumValueRef] = &[#(#values),*];
@@ -418,6 +420,11 @@ mod tests {
 		};
 
 		let tokens = model_enum_derive_impl(input).unwrap().to_string();
+		assert!(
+			tokens.contains(
+				"# [cfg (not (all (target_family = \"wasm\" , target_os = \"unknown\")))]"
+			)
+		);
 
 		assert!(tokens.contains("type Storage = :: std :: string :: String"));
 		assert!(tokens.contains(

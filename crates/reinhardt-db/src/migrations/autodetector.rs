@@ -6536,6 +6536,7 @@ impl MigrationAutodetector {
 
 		// Enum-domain checks must be removed before a storage-type alteration.
 		// The replacement constraint is emitted after column changes below.
+		let mut retained_enum_constraints = Vec::new();
 		for (app_label, model_name, constraint_name) in &changes.removed_constraints {
 			let Some(from_model) = self.from_state.get_model(app_label, model_name) else {
 				continue;
@@ -6554,6 +6555,34 @@ impl MigrationAutodetector {
 						constraint: constraint.to_constraint(),
 					},
 				);
+			}
+		}
+		for (app_label, model_name, field_name) in &changes.altered_fields {
+			let Some(from_model) = self.from_state.get_model(app_label, model_name) else {
+				continue;
+			};
+			let Some(to_model) = self.to_state.get_model(app_label, model_name) else {
+				continue;
+			};
+			for constraint in from_model.constraints.iter().filter(|constraint| {
+				constraint.constraint_type == "enum_domain"
+					&& constraint.fields.as_slice() == std::slice::from_ref(field_name)
+					&& to_model
+						.constraints
+						.iter()
+						.any(|to_constraint| to_constraint == *constraint)
+			}) {
+				by_app.entry(app_label.clone()).or_default().push(
+					super::Operation::DropConstraintDefinition {
+						table: from_model.table_name.clone(),
+						constraint: constraint.to_constraint(),
+					},
+				);
+				retained_enum_constraints.push((
+					app_label.clone(),
+					model_name.clone(),
+					constraint.clone(),
+				));
 			}
 		}
 
@@ -6881,6 +6910,19 @@ impl MigrationAutodetector {
 				}
 			};
 			by_app.entry(app_label.clone()).or_default().push(operation);
+		}
+
+		for (app_label, model_name, constraint) in retained_enum_constraints {
+			let Some(to_model) = self.to_state.get_model(&app_label, &model_name) else {
+				continue;
+			};
+			by_app
+				.entry(app_label)
+				.or_default()
+				.push(super::Operation::AddConstraintDefinition {
+					table: to_model.table_name.clone(),
+					constraint: constraint.to_constraint(),
+				});
 		}
 
 		// SetAutoIncrementValue for detected sequence resets.
@@ -7676,6 +7718,69 @@ mod tests {
 			constraints,
 			many_to_many_fields: Vec::new(),
 		}
+	}
+
+	#[rstest]
+	fn altered_enum_column_recreates_unchanged_domain_constraint() {
+		// Arrange
+		let from_field = FieldState::new("status", super::super::FieldType::VarChar(16), false);
+		let to_field = FieldState::new("status", super::super::FieldType::VarChar(32), false);
+		let domain = crate::field_domain::FieldDomain::Enum {
+			repr: crate::field_domain::ModelEnumRepr::String,
+			values: vec![
+				crate::field_domain::ModelEnumValue::String("queued".to_string()),
+				crate::field_domain::ModelEnumValue::String("completed".to_string()),
+			],
+		};
+		let constraint =
+			ConstraintDefinition::enum_domain("ck_accounts_user_status_enum", "status", domain);
+		let from_model = build_model_state(
+			"accounts",
+			"User",
+			vec![from_field],
+			Vec::new(),
+			vec![constraint.clone()],
+		);
+		let to_model = build_model_state(
+			"accounts",
+			"User",
+			vec![to_field],
+			Vec::new(),
+			vec![constraint],
+		);
+		let detector = MigrationAutodetector::new(
+			build_project_state(vec![(
+				("accounts".to_string(), "User".to_string()),
+				from_model,
+			)]),
+			build_project_state(vec![(
+				("accounts".to_string(), "User".to_string()),
+				to_model,
+			)]),
+		);
+
+		// Act
+		let operations = detector.generate_operations();
+
+		// Assert
+		assert_eq!(operations.len(), 3, "unexpected operations: {operations:?}");
+		assert!(matches!(
+			&operations[0],
+			super::super::Operation::DropConstraintDefinition { table, constraint }
+				if table == "accounts_user"
+					&& constraint.name() == "ck_accounts_user_status_enum"
+		));
+		assert!(matches!(
+			&operations[1],
+			super::super::Operation::AlterColumn { table, column, .. }
+				if table == "accounts_user" && column == "status"
+		));
+		assert!(matches!(
+			&operations[2],
+			super::super::Operation::AddConstraintDefinition { table, constraint }
+				if table == "accounts_user"
+					&& constraint.name() == "ck_accounts_user_status_enum"
+		));
 	}
 
 	#[rstest]
