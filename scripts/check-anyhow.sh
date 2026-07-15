@@ -31,7 +31,7 @@ scan() {
 	local status
 
 	set +e
-	output=$(cd "$SCAN_ROOT" && rg "$@" "${COMMON_OUTPUT_ARGS[@]}" "${COMMON_EXCLUSIONS[@]}")
+	output=$(cd "$SCAN_ROOT" && rg "$@" "${COMMON_OUTPUT_ARGS[@]}" "${COMMON_EXCLUSIONS[@]}" .)
 	status=$?
 	set -e
 
@@ -40,6 +40,7 @@ scan() {
 		exit "$status"
 	fi
 	if [ "$status" -eq 0 ]; then
+		output=$(printf '%s\n' "$output" | sed 's#^\./##')
 		printf '%s\n' "$output"
 		FOUND=1
 	fi
