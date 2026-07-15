@@ -61,7 +61,13 @@ fn parse_prefix_expression(input: ParseStream) -> syn::Result<StyleValueExpressi
 	if input.peek(Token![-]) {
 		let fork = input.fork();
 		fork.parse::<Token![-]>()?;
-		if fork.peek(Ident::peek_any) {
+		let is_qualified_reference = if fork.peek(Ident::peek_any) {
+			let namespace = fork.call(Ident::parse_any)?;
+			matches!(namespace.to_string().as_str(), "globals" | "vars") && fork.peek(Token![.])
+		} else {
+			false
+		};
+		if fork.peek(Ident::peek_any) && !is_qualified_reference {
 			let hyphen: Token![-] = input.parse()?;
 			let mut name = parse_value_name(input)?;
 			name.value.insert(0, '-');
