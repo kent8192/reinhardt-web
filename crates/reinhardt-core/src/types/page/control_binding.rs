@@ -375,12 +375,12 @@ impl ControlBinding {
 
 				match T::parse_control_value(&raw) {
 					Ok(value) => {
-						crate::reactive::batch(|| {
-							signal.set(value);
-							if let Some(error) = &error {
-								error.set(None);
-							}
-						});
+						signal.set_without_notify(value);
+						if let Some(error) = &error {
+							error.set_without_notify(None);
+							error.notify_subscribers();
+						}
+						signal.notify_subscribers();
 						Ok(ControlWriteOutcome::Committed)
 					}
 					Err(parse_error) => {
