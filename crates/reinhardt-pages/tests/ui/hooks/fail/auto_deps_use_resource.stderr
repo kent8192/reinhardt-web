@@ -1,0 +1,14 @@
+error[E0308]: mismatched types
+  --> tests/ui/hooks/fail/auto_deps_use_resource.rs:10:3
+   |
+ 8 |     let _resource = use_resource(
+   |                     ------------ arguments to this function are incorrect
+ 9 |         move || async move { Ok::<i32, String>(1) },
+10 |         deps_auto!(),
+   |         ^^^^^^^^^^^^ expected `ExplicitDeps`, found `ReactiveDeps`
+   |
+note: function defined here
+  --> src/reactive/resource.rs
+   |
+   | pub fn use_resource<T, E, F, Fut>(fetcher: F, deps: ExplicitDeps) -> Resource<T, E>
+   |        ^^^^^^^^^^^^

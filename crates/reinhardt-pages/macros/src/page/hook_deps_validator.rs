@@ -1,6 +1,6 @@
-//! Pre-codegen pass that verifies hook deps tuples cover all Signal reads
-//! inside hook closures (Refs #4195 / #4721 / #4746, Manouche v2 Layer ②
-//! React alignment).
+//! Pre-codegen pass that verifies explicit hook dependency lists cover all
+//! Signal reads inside hook closures (Refs #4195 / #4721 / #4746 / #5511 /
+//! #5577, Manouche v2 Layer ② React alignment).
 //!
 //! # What this checks
 //!
@@ -10,9 +10,10 @@
 //! pass walks the hook's closure (positional arg 0) and collects the Signal
 //! reads — `signal.get()`, `signal.with(...)`, `signal.into_value()`. Reads
 //! through the explicit escape hatches `get_untracked` / `with_untracked` are
-//! ignored. It then compares those reads against the deps tuple (positional
-//! arg 1) and emits a `compile_error!` for every read whose base identifier is
-//! missing from the deps tuple. This promotes the React `exhaustive-deps`
+//! ignored. It then compares those reads against the explicit `deps![...]`
+//! list (positional arg 1) and emits a `compile_error!` for every read whose
+//! base identifier is missing from that list. Automatic `deps_auto!()` lists
+//! intentionally bypass this static check. This promotes the React `exhaustive-deps`
 //! lint to a hard compile error (DP #4: fail early).
 //!
 //! # Scope and limitations
@@ -21,12 +22,12 @@
 //! invocation. Hooks called in a surrounding component `fn` body or in a
 //! custom hook function — the common case in real code — are invisible to the
 //! `page!` macro and therefore not checked here. The guarantee that a deps
-//! tuple is present *at all* is enforced separately at the type level by the
+//! argument is present *at all* is enforced separately at the type level by the
 //! `*::new_with_deps` constructor arity (a missing deps argument is `E0061`).
 //!
 //! The analysis is intentionally conservative: when a hook call, its closure,
-//! or its deps tuple cannot be matched with confidence (for example, the deps
-//! argument is a runtime expression rather than a tuple literal), the pass
+//! or its dependency list cannot be matched with confidence (for example, the
+//! second argument is a runtime expression or an unknown macro), the pass
 //! emits nothing rather than risk a false positive. The mirror case from
 //! #4721 — a dependency listed but never read — is deliberately *not* a
 //! compile error: stable proc-macros have no warning channel, an unused dep is
@@ -38,6 +39,8 @@ use std::collections::HashSet;
 use proc_macro2::{Span, TokenStream};
 use quote::quote_spanned;
 use syn::Expr;
+use syn::Token;
+use syn::punctuated::Punctuated;
 use syn::visit::{self, Visit};
 
 use reinhardt_manouche::core::{PageElse, PageIf, PageMacro, PageNode};
@@ -64,7 +67,7 @@ pub(crate) const ESCAPE_METHODS: &[&str] = &["get_untracked", "with_untracked"];
 /// Runs the hook-deps verification pass over a parsed `PageMacro`.
 ///
 /// Returns one `compile_error!` invocation per Signal read that is missing
-/// from its enclosing hook's deps tuple, or an empty `TokenStream` when no
+/// from its enclosing hook's dependency list, or an empty `TokenStream` when no
 /// such mistake is found.
 pub(crate) fn verify_hook_deps(input: &PageMacro) -> TokenStream {
 	let mut diagnostics: Vec<TokenStream> = Vec::new();
@@ -183,14 +186,13 @@ fn is_verified_hook_call(call: &syn::ExprCall) -> bool {
 	false
 }
 
-// --- Layer 3: compare closure reads against the deps tuple ---
+// --- Layer 3: compare closure reads against an explicit dependency list ---
 
 /// Analyzes a single hook call: emits a `compile_error!` for each Signal read
-/// in the closure whose base identifier is missing from the deps tuple.
+/// in the closure whose base identifier is missing from an explicit `deps!`
+/// dependency list.
 fn analyze_hook(closure_arg: &Expr, deps_arg: &Expr, out: &mut Vec<TokenStream>) {
-	// Fail open when the deps argument is not a tuple literal: we cannot prove
-	// any read is missing without seeing the deps contents.
-	let Some(deps) = collect_dep_bases(deps_arg) else {
+	let DependencyArgument::Explicit(deps) = collect_dependency_argument(deps_arg) else {
 		return;
 	};
 
@@ -213,22 +215,58 @@ fn analyze_hook(closure_arg: &Expr, deps_arg: &Expr, out: &mut Vec<TokenStream>)
 	}
 }
 
-/// Collects the base identifiers of every element in a deps tuple literal.
+/// Describes how a hook call obtains its dependency list.
+enum DependencyArgument {
+	/// A statically visible `deps![...]` list and the base identifiers it names.
+	Explicit(HashSet<String>),
+	/// Runtime dependency tracking selected by `deps_auto!()`.
+	Auto,
+	/// An expression that is not one of the dependency-list macros.
+	Unknown,
+}
+
+/// Parses the dependency-list expression without expanding the macro.
 ///
-/// Returns `None` (fail open) when the deps argument is not a tuple literal —
-/// `()` yields an empty set (mount-only).
-fn collect_dep_bases(deps: &Expr) -> Option<HashSet<String>> {
-	if let Expr::Tuple(tuple) = unwrap_paren(deps) {
-		let mut set = HashSet::new();
-		for elem in &tuple.elems {
-			if let Some(base) = base_ident_of(elem) {
-				set.insert(base.to_string());
-			}
-		}
-		Some(set)
-	} else {
-		None
+/// The validator only performs static read checking for `deps![...]`. Automatic
+/// tracking and unknown expressions are left to the hook API and runtime so
+/// that this proc-macro pass never rejects a dependency expression it cannot
+/// inspect soundly.
+fn collect_dependency_argument(deps: &Expr) -> DependencyArgument {
+	let Expr::Macro(expr_macro) = unwrap_paren(deps) else {
+		return DependencyArgument::Unknown;
+	};
+	let Some(name) = expr_macro
+		.mac
+		.path
+		.segments
+		.last()
+		.map(|segment| segment.ident.to_string())
+	else {
+		return DependencyArgument::Unknown;
+	};
+	match name.as_str() {
+		"deps" => parse_dep_macro_elements(&expr_macro.mac.tokens),
+		"deps_auto" => DependencyArgument::Auto,
+		_ => DependencyArgument::Unknown,
 	}
+}
+
+/// Parses the expressions inside a `deps![...]` invocation and records their
+/// base identifiers for comparison with Signal reads.
+fn parse_dep_macro_elements(tokens: &TokenStream) -> DependencyArgument {
+	use syn::parse::Parser;
+
+	let parser = Punctuated::<Expr, Token![,]>::parse_terminated;
+	let Ok(elements) = parser.parse2(tokens.clone()) else {
+		return DependencyArgument::Unknown;
+	};
+	let mut dependencies = HashSet::new();
+	for element in elements {
+		if let Some(base) = base_ident_of(&element) {
+			dependencies.insert(base.to_string());
+		}
+	}
+	DependencyArgument::Explicit(dependencies)
 }
 
 /// Walks a hook closure collecting Signal reads, tracking lexical scopes so
@@ -259,7 +297,7 @@ impl<'ast> Visit<'ast> for SignalReadVisitor {
 
 		if is_read && let Some(ident) = base_ident_of(&mc.receiver) {
 			let name = ident.to_string();
-			// `self.signal.get()` cannot be named in a deps tuple; skip.
+			// `self.signal.get()` cannot be named in a `deps!` list; skip.
 			if name != "self" && !self.is_shadowed(&name) {
 				self.reads.push((name, ident.span()));
 			}
@@ -352,7 +390,7 @@ impl<'ast> Visit<'ast> for SignalReadVisitor {
 						// The idiomatic clone prelude `let count = count.clone();`
 						// rebinds the SAME signal to the same name. Treat such a
 						// self-rebind as an alias (do not shadow) so reads of the
-						// rebound name are still checked against the deps tuple.
+						// rebound name are still checked against the `deps!` list.
 						// Any other initializer is a genuine shadow.
 						if is_self_rebind(&local.pat, &init.expr) {
 							continue;
@@ -414,8 +452,8 @@ fn unwrap_paren(e: &Expr) -> &Expr {
 /// Builds the missing-dep diagnostic, spanned at the read site.
 fn missing_dep_error(base: &str, span: Span) -> TokenStream {
 	let msg = format!(
-		"`{base}` is read inside this hook closure but is not listed in its deps tuple.\n\n\
-		 help: add `{base}.clone()` to the deps tuple, e.g. `({base}.clone(),)`\n\
+		"`{base}` is read inside this hook closure but is not listed in its dependency list.\n\n\
+		 help: add `{base}.clone()` to the dependency list, e.g. `deps![{base}.clone()]`\n\
 		 note: if this read is intentional and should NOT trigger re-runs, use \
 		 `{base}.get_untracked()` (or `with_untracked`) to opt out of dependency tracking."
 	);
@@ -447,7 +485,7 @@ mod tests {
 							let count = count.clone();
 							move || { let _ = count.get(); None::<fn()> }
 						},
-						(),
+						deps![],
 					);
 					"x"
 				} }
@@ -479,7 +517,7 @@ mod tests {
 							let count = count.clone();
 							move || { let _ = count.get(); None::<fn()> }
 						},
-						(),
+						deps![],
 					);
 					"x"
 				} }
@@ -511,7 +549,7 @@ mod tests {
 							let count = count.clone();
 							move || { let _ = count.get(); None::<fn()> }
 						},
-						(count.clone(),),
+						deps![count.clone()],
 					);
 					"x"
 				} }
@@ -536,7 +574,7 @@ mod tests {
 							let count = count.clone();
 							move || { let _ = count.get_untracked(); None::<fn()> }
 						},
-						(),
+						deps![],
 					);
 					"x"
 				} }
@@ -551,8 +589,8 @@ mod tests {
 	}
 
 	#[rstest]
-	fn non_tuple_deps_fails_open() {
-		// Arrange — deps is a runtime expression, not a tuple literal.
+	fn unknown_dependency_expression_fails_open() {
+		// Arrange — deps is a runtime expression, not a dependency-list macro.
 		let input = quote! {
 			|count: Signal<i32>, my_deps: Deps| {
 				p { {
@@ -572,7 +610,55 @@ mod tests {
 		let out = diagnostics(input);
 
 		// Assert
-		assert_eq!(out, "", "non-tuple deps must fail open (no diagnostics)");
+		assert_eq!(
+			out, "",
+			"unknown dependency expressions must fail open (no diagnostics)"
+		);
+	}
+
+	#[rstest]
+	fn explicit_deps_macro_reports_missing_read() {
+		// Arrange
+		let input = quote! {
+			|count: Signal<i32>| {
+				p { {
+					use_effect(move || { let _ = count.get(); None::<fn()> }, deps![]);
+					"x"
+				} }
+			}
+		};
+
+		// Act
+		let out = diagnostics(input);
+
+		// Assert
+		assert_eq!(
+			out.matches("compile_error").count(),
+			1,
+			"an explicit deps macro must report a missing read, got: {out}"
+		);
+	}
+
+	#[rstest]
+	fn auto_deps_macro_skips_static_missing_dep_check() {
+		// Arrange
+		let input = quote! {
+			|count: Signal<i32>| {
+				p { {
+					use_effect(move || { let _ = count.get(); None::<fn()> }, deps_auto!());
+					"x"
+				} }
+			}
+		};
+
+		// Act
+		let out = diagnostics(input);
+
+		// Assert
+		assert_eq!(
+			out, "",
+			"automatic deps must skip static missing-dep checks"
+		);
 	}
 
 	#[rstest]
@@ -581,7 +667,7 @@ mod tests {
 		let input = quote! {
 			|count: Signal<i32>| {
 				p { {
-					use_effect(move || { None::<fn()> }, (count.clone(),));
+					use_effect(move || { None::<fn()> }, deps![count.clone()]);
 					"x"
 				} }
 			}
@@ -606,7 +692,7 @@ mod tests {
 							let _ = value.get();
 							None::<fn()>
 						},
-						(),
+						deps![],
 					);
 					"x"
 				} }
@@ -636,13 +722,13 @@ mod tests {
 										let other = other.clone();
 										move || other.get()
 									},
-									(),
+										deps![],
 								);
 								let _ = count.get();
 								None::<fn()>
 							}
 						},
-						(count.clone(),),
+						deps![count.clone()],
 					);
 					"x"
 				} }

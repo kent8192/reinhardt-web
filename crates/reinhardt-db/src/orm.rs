@@ -2,6 +2,11 @@
 //!
 //! Object-Relational Mapping for Reinhardt framework.
 //!
+//! Typed relation traversal lets `QuerySet` filters and relation loading cross
+//! model relations with generated `rel_<name>()` accessors. The typed path
+//! records the SQL joins required by the filter, so application code does not
+//! need raw join builders for common FK, reverse, or M2M lookups.
+//!
 //! ## Documentation
 //!
 //! - [README.md](../README.md) - Feature list and API reference
@@ -291,7 +296,11 @@ pub use query_options::{
 	QueryOptions, QueryOptionsBuilder,
 };
 pub use registry::{ColumnInfo, Mapper, MapperRegistry, TableInfo, registry};
-pub use relations::{GenericRelationConfig, GenericRelationSet};
+pub use relations::{
+	GenericRelationConfig, GenericRelationSet, PlannedRelationJoin, RelatedFieldRef,
+	RelationDescriptor, RelationJoinGraph, RelationJoinKind, RelationMultiplicity, RelationPath,
+	RelationPathLike, RelationStep, RelationTarget,
+};
 pub use relationship::{CascadeOption, Relationship, RelationshipDirection, RelationshipType};
 pub use session::{Session, SessionError};
 pub use sqlalchemy_query::{Column as SqlColumn, JoinType, SelectQuery, column, select};
