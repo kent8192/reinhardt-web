@@ -792,6 +792,22 @@ impl Session {
 								.unwrap_or(serde_json::Value::Null)
 						}
 					}
+					typ if typ.contains("BinaryField") => {
+						let bytes = if field.nullable {
+							row.try_get::<Option<Vec<u8>>, _>(column_name)
+								.ok()
+								.flatten()
+						} else {
+							row.try_get::<Vec<u8>, _>(column_name).ok()
+						};
+						bytes
+							.map(|bytes| {
+								Value::String(
+									base64::engine::general_purpose::STANDARD.encode(bytes),
+								)
+							})
+							.unwrap_or(Value::Null)
+					}
 					// DateTimeField / DateField: already cast to string in SQL query
 					typ if typ.contains("DateTimeField") || typ.contains("DateField") => {
 						// These fields are cast to ISO8601 strings in the SQL query
