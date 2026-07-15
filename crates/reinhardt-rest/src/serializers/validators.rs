@@ -166,7 +166,7 @@ impl From<DatabaseValidatorError> for reinhardt_core::exception::Error {
 				DatabaseError::new(DatabaseErrorKind::Query, message).into()
 			}
 			DatabaseValidatorError::InvalidModelShape { message } => {
-				reinhardt_core::exception::Error::Validation(message)
+				DatabaseError::new(DatabaseErrorKind::Query, message).into()
 			}
 			DatabaseValidatorError::UniqueConstraintViolation {
 				field,
@@ -694,7 +694,7 @@ mod tests {
 	}
 
 	#[rstest]
-	fn invalid_model_shape_converts_to_framework_validation_error() {
+	fn invalid_model_shape_converts_to_framework_database_error() {
 		let error = DatabaseValidatorError::InvalidModelShape {
 			message: "model must serialize to an object".to_string(),
 		};
@@ -702,8 +702,9 @@ mod tests {
 		let framework_error: reinhardt_core::exception::Error = error.into();
 
 		match framework_error {
-			reinhardt_core::exception::Error::Validation(message) => {
-				assert_eq!(message, "model must serialize to an object");
+			reinhardt_core::exception::Error::Database(error) => {
+				assert_eq!(error.kind(), DatabaseErrorKind::Query);
+				assert_eq!(error.message(), "model must serialize to an object");
 			}
 			other => panic!("unexpected framework error variant: {other:?}"),
 		}
