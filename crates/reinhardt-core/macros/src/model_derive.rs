@@ -1842,6 +1842,23 @@ fn generate_relation_traversal_accessors(
 ) -> TokenStream {
 	use crate::rel::RelationType;
 
+	let has_composite_primary_key = field_infos
+		.iter()
+		.filter(|field| field.config.primary_key)
+		.take(2)
+		.count()
+		> 1;
+	if has_composite_primary_key
+		&& field_infos.iter().any(|field| {
+			field.rel.as_ref().is_some_and(|relation| {
+				relation.rel_type == RelationType::OneToMany && relation.to_field.is_none()
+			})
+		}) {
+		return quote! {
+			compile_error!("typed reverse one_to_many relations on composite primary-key models require #[rel(to_field = \"...\")]");
+		};
+	}
+
 	let db_crate = get_reinhardt_db_crate();
 	let orm_crate = get_reinhardt_orm_crate();
 	let native_cfg = quote! {
