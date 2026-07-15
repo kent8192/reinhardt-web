@@ -24,6 +24,7 @@ use reinhardt_core::page::Outlet;
 use reinhardt_core::reactive::ReactiveScope;
 use reinhardt_pages::app::{ClientLauncher, with_spa_router};
 use reinhardt_pages::component::{IntoPage, Page, PageElement};
+use reinhardt_pages::deps;
 use reinhardt_pages::reactive::hooks::use_retained_effect;
 use reinhardt_pages::reactive::{Signal, with_runtime};
 use reinhardt_urls::routers::ClientRouter;
@@ -132,7 +133,7 @@ fn retained_route_page(label: &'static str) -> Page {
 				})
 			}
 		},
-		(tick.clone(),),
+		deps![tick],
 	);
 
 	PageElement::new("div")
@@ -197,7 +198,7 @@ fn page_with_retained_effect_in_reactive_body() -> Page {
 					})
 				}
 			},
-			(effect_tick.clone(),),
+			deps![effect_tick],
 		);
 
 		PageElement::new("div")

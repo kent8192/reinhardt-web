@@ -476,7 +476,7 @@ The prelude includes:
 - `use_ref`, `use_reducer`, `use_transition`, `use_deferred_value`
 - `use_id`, `use_layout_effect`, `use_debug_value`
 - `use_optimistic`, `use_action`, `Action::with_optimistic`, `use_shared_state`, `use_sync_external_store`
-- `use_resource` (async data fetching; `use_resource(fetcher, deps)` with `()` fetches once on WASM, while SSR registers the fetcher in the request context, awaits it up to `SsrOptions::resource_timeout`, and serializes resolved state for hydration)
+- `use_resource` (async data fetching; `use_resource(fetcher, deps![...])` uses an explicit dependency list, while SSR registers the fetcher in the request context, awaits it up to `SsrOptions::resource_timeout`, and serializes resolved state for hydration)
 - `use_query`, `use_mutation`, `QueryKey` (app-wide keyed async data cache over `#[server_fn]` reads, with manual refetch, polling, stale-time policy, and mutation invalidation)
 
 `Resource::latest_after(&action)` and `use_latest_resource_value(resource)` compose loaded resource state with one or more `Action` success values. Later actions have higher priority, and `refetch_on_success()` can automatically refresh the resource after a mutation succeeds.

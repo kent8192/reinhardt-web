@@ -9,6 +9,11 @@ line. It assumes the application already follows
 [`MIGRATION_0.2.md`](MIGRATION_0.2.md). It does not repeat changes that were
 already required to leave 0.1.x.
 
+Projects continuing from 0.3.x to 0.4.0 must also follow the
+[hook dependency mode migration guide](../docs/migration/0.4.0-hook-dependency-modes.md).
+The 0.4.0 guide supersedes the tuple and unit dependency forms shown in older
+0.3-era examples.
+
 0.3.0 is a major-version upgrade. The main work is:
 
 - remove 0.2 compatibility APIs that are gone in 0.3,

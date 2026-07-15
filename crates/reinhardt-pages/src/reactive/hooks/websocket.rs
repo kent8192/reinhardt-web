@@ -192,6 +192,7 @@ use {
 /// # Example
 ///
 /// ```ignore
+/// use reinhardt_pages::deps;
 /// use reinhardt_pages::reactive::hooks::{use_effect, use_websocket, UseWebSocketOptions};
 /// use reinhardt_pages::reactive::hooks::ConnectionState;
 ///
@@ -208,7 +209,7 @@ use {
 ///             _ => {}
 ///         }
 ///     }
-/// }, (connection_state,));
+/// }, deps![connection_state]);
 ///
 /// // Send a message
 /// ws.send_text("Hello, server!".to_string()).ok();
@@ -226,7 +227,7 @@ use {
 ///             None::<fn()>
 ///         }
 ///     }
-/// }, (latest_message,));
+/// }, deps![latest_message]);
 /// ```
 ///
 /// # Reactivity semantics
