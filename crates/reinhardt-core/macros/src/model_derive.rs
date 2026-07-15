@@ -2920,6 +2920,7 @@ fn generate_fixture_validation(
 	let mut projection_field_names = Vec::new();
 	let mut has_defaulted_fixture_field = false;
 	let mut defaulted_fixture_field_validators = Vec::new();
+	let mut has_required_fixture_foreign_key = false;
 
 	for field in field_infos {
 		if field.config.skip
@@ -2941,6 +2942,12 @@ fn generate_fixture_validation(
 			.is_some();
 		if has_sql_default {
 			let serde_bounds = fixture_projection_serde_bounds(field);
+			let (is_option, inner_type) = extract_option_type(field_type);
+			let fixture_validation_type = if is_option && field.config.null == Some(false) {
+				inner_type
+			} else {
+				field_type
+			};
 			let validator = if let Some(deserializer) = fixture_projection_serde_deserializer(field)
 			{
 				let validator_name = Ident::new(
@@ -2950,12 +2957,12 @@ fn generate_fixture_validation(
 				defaulted_fixture_field_validators.push(quote! {
 					fn #validator_name<'de, D>(
 						deserializer: D,
-					) -> ::std::result::Result<::std::marker::PhantomData<#field_type>, D::Error>
+					) -> ::std::result::Result<::std::marker::PhantomData<#fixture_validation_type>, D::Error>
 					where
 						D: #orm_crate::serde::Deserializer<'de>,
 					{
-						let _: #field_type = #deserializer(deserializer)?;
-						Ok(::std::marker::PhantomData)
+						let _: #fixture_validation_type = #deserializer(deserializer)?;
+						Ok(::std::marker::PhantomData::<#fixture_validation_type>)
 					}
 				});
 				LitStr::new(&validator_name.to_string(), field_name.span())
@@ -2969,7 +2976,7 @@ fn generate_fixture_validation(
 			projection_fields.push(quote! {
 				#(#serde_bounds)*
 				#[serde(default, deserialize_with = #validator)]
-				#field_name: ::std::marker::PhantomData<#field_type>
+				#field_name: ::std::marker::PhantomData<#fixture_validation_type>
 			});
 		} else {
 			let serde_attrs = fixture_projection_serde_attrs(field);
@@ -2993,13 +3000,21 @@ fn generate_fixture_validation(
 			foreign_key.field_name.span(),
 		);
 		let column_name = LitStr::new(&foreign_key.id_column_name, foreign_key.field_name.span());
-		let field_type = if foreign_key.rel_attr.null.unwrap_or(false) {
+		let is_nullable = foreign_key.rel_attr.null.unwrap_or(false);
+		let field_type = if is_nullable {
 			quote! { ::std::option::Option<#orm_crate::FixtureValue> }
 		} else {
+			has_required_fixture_foreign_key = true;
 			quote! { #orm_crate::FixtureValue }
+		};
+		let deserialize_with = if is_nullable {
+			quote! {}
+		} else {
+			quote! { #[serde(deserialize_with = "__reinhardt_validate_required_fixture_foreign_key")] }
 		};
 		projection_fields.push(quote! {
 			#[serde(rename = #column_name)]
+			#deserialize_with
 			#field_name: #field_type
 		});
 		projection_field_names.push(field_name);
@@ -3037,6 +3052,26 @@ fn generate_fixture_validation(
 	} else {
 		quote! {}
 	};
+	let required_fixture_foreign_key_validator = if has_required_fixture_foreign_key {
+		quote! {
+			fn __reinhardt_validate_required_fixture_foreign_key<'de, D>(
+				deserializer: D,
+			) -> ::std::result::Result<#orm_crate::FixtureValue, D::Error>
+			where
+				D: #orm_crate::serde::Deserializer<'de>,
+			{
+				let value = <#orm_crate::FixtureValue as #orm_crate::serde::Deserialize>::deserialize(deserializer)?;
+				if value.is_null() {
+					return Err(<D::Error as #orm_crate::serde::de::Error>::custom(
+						"required foreign key fixture fields cannot be null",
+					));
+				}
+				Ok(value)
+			}
+		}
+	} else {
+		quote! {}
+	};
 
 	quote! {
 	fn validate_fixture_fields(
@@ -3044,6 +3079,7 @@ fn generate_fixture_validation(
 		) -> ::std::result::Result<(), ::std::string::String> {
 			#(#defaulted_fixture_field_validators)*
 			#defaulted_fixture_field_validator
+			#required_fixture_foreign_key_validator
 
 			// This projection is deserialized only to validate fixture input.
 			#[allow(dead_code)]
@@ -3067,6 +3103,19 @@ fn generate_fixture_validation(
 /// Determine whether a field can be omitted from fixture validation because the database generates it.
 fn is_fixture_generated_field(field: &FieldInfo) -> bool {
 	if field.config.generated.is_some() || field.config.generated_sql.is_some() {
+		return true;
+	}
+
+	if field.config.auto_increment == Some(true)
+		|| (field.config.primary_key
+			&& is_integer_primary_key_type(&field.ty)
+			&& field.config.auto_increment.unwrap_or(true))
+	{
+		return true;
+	}
+
+	#[cfg(feature = "db-sqlite")]
+	if field.config.autoincrement == Some(true) {
 		return true;
 	}
 
@@ -3391,6 +3440,7 @@ fn generate_field_metadata(
 			.as_ref()
 			.and_then(|value| field_default_to_metadata(value, &orm_crate))
 			.map_or_else(|| quote! { None }, |value| quote! { Some(#value) });
+		let db_default = default.clone();
 
 		let item = quote! {
 			{
@@ -3406,7 +3456,7 @@ fn generate_field_metadata(
 					blank: #blank,
 					editable: #editable,
 					default: #default,
-					db_default: None,
+					db_default: #db_default,
 					db_column: #db_column_value,
 					choices: None,
 					attributes,
@@ -6556,6 +6606,101 @@ mod tests {
 				.to_string()
 				.contains("__reinhardt_validate_defaulted_fixture_field"),
 			"fixture projections must allow fields with serialized SQL defaults to be omitted"
+		);
+	}
+
+	#[test]
+	fn test_fixture_sql_defaults_are_reflected_in_database_default_metadata() {
+		let input = quote! {
+			#[model(app_label = "fixture_tests", table_name = "fixture_models")]
+			struct FixtureModel {
+				#[field(primary_key = true)]
+				id: i64,
+				#[field(max_length = 255, default = "draft")]
+				status: String,
+			}
+		};
+
+		let output = model_derive_impl(syn::parse2(input).unwrap())
+			.expect("fixture model must generate")
+			.to_string();
+
+		assert!(
+			output.contains("db_default : Some"),
+			"serialized SQL defaults must be exposed as database defaults"
+		);
+	}
+
+	#[test]
+	fn test_fixture_projection_rejects_null_for_non_null_defaulted_option() {
+		let input = quote! {
+			#[model(app_label = "fixture_tests", table_name = "fixture_models")]
+			struct FixtureModel {
+				#[field(primary_key = true)]
+				id: i64,
+				#[field(max_length = 255, null = false, default = "draft")]
+				status: Option<String>,
+			}
+		};
+
+		let output = model_derive_impl(syn::parse2(input).unwrap())
+			.expect("fixture model must generate")
+			.to_string();
+
+		assert!(
+			output.contains("PhantomData < String >"),
+			"non-null defaulted Option fields must deserialize their inner type"
+		);
+	}
+
+	#[test]
+	fn test_fixture_projection_rejects_null_for_required_foreign_keys() {
+		let input = quote! {
+			#[model(app_label = "fixture_tests", table_name = "fixture_models")]
+			struct FixtureModel {
+				#[field(primary_key = true)]
+				id: i64,
+				#[rel(foreign_key)]
+				author: ForeignKeyField<Author>,
+			}
+		};
+
+		let output = model_derive_impl(syn::parse2(input).unwrap())
+			.expect("fixture model must generate")
+			.to_string();
+
+		assert!(
+			output.contains("validate_required_fixture_foreign_key"),
+			"required foreign keys must use a null-rejecting fixture deserializer"
+		);
+	}
+
+	#[test]
+	fn test_fixture_projection_allows_omitted_implicit_auto_increment_primary_keys() {
+		let input = quote! {
+			#[model(app_label = "fixture_tests", table_name = "fixture_models")]
+			struct FixtureModel {
+				#[field(primary_key = true)]
+				id: i64,
+				#[field(max_length = 255)]
+				name: String,
+			}
+		};
+
+		let output = model_derive_impl(syn::parse2(input).unwrap())
+			.expect("fixture model must generate")
+			.to_string();
+		let fixture_projection = output
+			.split("struct __ReinhardtFixtureProjection")
+			.nth(1)
+			.expect("fixture validation must generate a projection")
+			.split('}')
+			.next()
+			.expect("fixture projection must have a body");
+
+		assert!(
+			!fixture_projection.contains("id : i64"),
+			"implicit integer primary keys must be omitted from fixture projections"
 		);
 	}
 

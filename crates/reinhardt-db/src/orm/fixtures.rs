@@ -1317,8 +1317,16 @@ where
 	M: Model,
 {
 	ensure_single_column_primary_key::<M>()?;
-	let object = fixture_database_object::<M>(object)?;
+	let mut object = fixture_database_object::<M>(object)?;
 	let primary_key = fixture_primary_key_column::<M>();
+	for field in M::field_metadata()
+		.into_iter()
+		.filter(|field| field.nullable && !field.primary_key)
+	{
+		object
+			.entry(field.db_column_name().to_string())
+			.or_insert(Value::Null);
+	}
 	let primary_key_value = object.get(&primary_key).ok_or_else(|| {
 		FixtureError::Database(format!(
 			"fixture record for '{}.{}' must include primary key '{}'",
@@ -4947,6 +4955,22 @@ mod tests {
 		assert!(update_sql.contains("WHERE"));
 		assert!(!update_sql.contains("ON DUPLICATE KEY UPDATE"));
 		assert_eq!(update_values.len(), 2);
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	fn mysql_fixture_updates_clear_omitted_nullable_columns() {
+		let object = Map::from_iter([(String::from("id"), Value::from(1))]);
+
+		let (sql, values) = build_fixture_update_sql_values::<FixtureSerdeMappedPost>(
+			DatabaseBackend::MySql,
+			&object,
+		)
+		.unwrap()
+		.expect("an omitted nullable column must produce an update");
+
+		assert!(sql.contains("`fixture_note` = NULL"));
+		assert_eq!(values, vec![QueryValue::Int(1)]);
 	}
 
 	#[cfg(feature = "migrations")]
