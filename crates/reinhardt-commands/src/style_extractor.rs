@@ -1139,6 +1139,35 @@ mod tests {
 	}
 
 	#[test]
+	fn style_extractor_ignores_unannotated_bare_style_macros() {
+		// Arrange
+		let directory = tempfile::tempdir().expect("create temporary package");
+		let package = directory.path();
+		fs::create_dir_all(package.join("src")).expect("create source directory");
+		fs::write(
+			package.join("Cargo.toml"),
+			"[package]\nname = \"foreign-style-app\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+		)
+		.expect("write package manifest");
+		fs::write(
+			package.join("src/lib.rs"),
+			"static FOREIGN: ForeignStyles = style! { foreign_tokens };\n",
+		)
+		.expect("write source");
+
+		// Act
+		let context = StylePackageContext::resolve(package.join("Cargo.toml"), None)
+			.expect("resolve package");
+		let bundle = StyleExtractor::new(context)
+			.extract()
+			.expect("foreign bare style macros must not be interpreted as component styles");
+
+		// Assert
+		assert!(bundle.definitions.is_empty());
+		assert!(bundle.css.is_empty());
+	}
+
+	#[test]
 	fn selected_package_features_do_not_enable_matching_dependency_features() {
 		// Arrange
 		let directory = tempfile::tempdir().expect("create temporary workspace");
@@ -1384,7 +1413,7 @@ impl<'ast> Visit<'ast> for DefinitionScanner<'_> {
 			}
 			_ => None,
 		};
-		if style_attributes.is_empty() && style_macro.is_none() {
+		if style_attributes.is_empty() {
 			syn::visit::visit_item_static(self, item);
 			return;
 		}
@@ -1426,8 +1455,7 @@ impl<'ast> Visit<'ast> for DefinitionScanner<'_> {
 			return;
 		}
 		let has_style_attribute = !self.cfg.active_style_def_attributes(&item.attrs).is_empty();
-		let has_style_macro = matches!(item.expr.as_ref(), Expr::Macro(expression) if expression.mac.path.is_ident("style"));
-		if has_style_attribute || has_style_macro {
+		if has_style_attribute {
 			self.reject(
 				item.const_token.span,
 				"component styles must use an immutable static item",

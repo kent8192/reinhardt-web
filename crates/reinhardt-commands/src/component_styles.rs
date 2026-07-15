@@ -87,6 +87,7 @@ pub struct ComponentStyleState {
 	extractor: StyleExtractor,
 	fingerprints: StyleFingerprints,
 	assets: GeneratedStyleAssets,
+	has_component_styles: bool,
 	#[cfg(feature = "pages")]
 	pending: Option<PendingStyleBundle>,
 }
@@ -155,6 +156,7 @@ impl ComponentStyleState {
 		)?;
 		let extractor = StyleExtractor::new(context.clone());
 		let bundle = extractor.extract()?;
+		let has_component_styles = !bundle.css.is_empty();
 		let assets = GeneratedStyleAssets::new(&bundle.css)?;
 		let fingerprints = bundle.fingerprints;
 		Ok(Self {
@@ -165,6 +167,7 @@ impl ComponentStyleState {
 			extractor,
 			fingerprints,
 			assets,
+			has_component_styles,
 			#[cfg(feature = "pages")]
 			pending: None,
 		})
@@ -188,6 +191,11 @@ impl ComponentStyleState {
 	/// Stable public stylesheet URL for the supplied static prefix.
 	pub fn stylesheet_url(&self, static_url: &str) -> String {
 		join_static_url(static_url, COMPONENT_STYLES_PATH)
+	}
+
+	/// Return whether the selected package emitted component stylesheet content.
+	pub fn has_component_styles(&self) -> bool {
+		self.has_component_styles
 	}
 
 	/// Return whether `path` is part of the source graph used for component styles.
@@ -256,6 +264,7 @@ impl ComponentStyleState {
 			self.context = candidate_context;
 			self.extractor = candidate_extractor;
 			self.fingerprints = new;
+			self.has_component_styles = !candidate.css.is_empty();
 			#[cfg(feature = "pages")]
 			{
 				self.pending = None;
@@ -296,6 +305,7 @@ impl ComponentStyleState {
 		self.context = candidate.context;
 		self.extractor = candidate.extractor;
 		self.fingerprints = candidate.fingerprints;
+		self.has_component_styles = !candidate.css.is_empty();
 		Ok(true)
 	}
 }
@@ -358,6 +368,24 @@ mod tests {
 		.expect("skip component styles without a selected package");
 
 		assert!(state.is_none());
+	}
+
+	#[rstest]
+	fn initialization_marks_a_server_only_package_as_style_free() {
+		let directory = tempfile::tempdir().expect("create server package");
+		std::fs::create_dir(directory.path().join("src")).expect("create source directory");
+		std::fs::write(
+			directory.path().join("Cargo.toml"),
+			"[package]\nname = \"server-only\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+		)
+		.expect("write package manifest");
+		std::fs::write(directory.path().join("src/lib.rs"), "pub fn server() {}\n")
+			.expect("write source");
+
+		let state = ComponentStyleState::initialize(directory.path().join("Cargo.toml"), None)
+			.expect("initialize empty component style state");
+
+		assert!(!state.has_component_styles());
 	}
 
 	#[rstest]

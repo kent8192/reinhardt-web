@@ -965,7 +965,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 		&style_feature_selection,
 		args.package.as_deref(),
 	);
-	if should_abort_after_wasm_build(component_style_state.is_some(), wasm_build_succeeded) {
+	if should_abort_after_wasm_build(
+		component_style_state
+			.as_ref()
+			.is_some_and(reinhardt_commands::ComponentStyleState::has_component_styles),
+		wasm_build_succeeded,
+	) {
 		return Err("Pages WASM build failed; refusing to serve generated component styles with a stale bundle".into());
 	}
 
@@ -1145,6 +1150,11 @@ mod tests {
 	fn component_styles_do_not_start_after_a_wasm_build_failure() {
 		assert!(should_abort_after_wasm_build(true, false));
 		assert!(!should_abort_after_wasm_build(true, true));
+		assert!(!should_abort_after_wasm_build(false, false));
+	}
+
+	#[test]
+	fn empty_component_styles_do_not_require_a_pages_wasm_build() {
 		assert!(!should_abort_after_wasm_build(false, false));
 	}
 }

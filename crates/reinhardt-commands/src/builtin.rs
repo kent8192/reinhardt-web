@@ -2577,7 +2577,7 @@ impl RunServerCommand {
 				server = server.with_middleware(StaticFilesMiddleware::new(generated_config));
 			}
 
-			// Auto-mount <project-root>/static/ at /static/ unless opted out.
+			// Auto-mount <project-root>/static/ at the configured static URL unless opted out.
 			// This is registered BEFORE the dist/ middleware so that, when
 			// MiddlewareChain::handle reverses registration order at request
 			// time, the project-static middleware sits outermost and runs
@@ -2586,12 +2586,15 @@ impl RunServerCommand {
 			if !no_project_static && let Some(project_root) = PathResolver::find_project_root() {
 				let project_static_dir = project_root.join("static");
 				if project_static_dir.is_dir() {
+					let project_static_url = generated_style_url.clone();
+					let project_static_admin_url =
+						format!("{}/admin/", project_static_url.trim_end_matches('/'));
 					let mut project_static_config =
 						StaticFilesConfig::new(project_static_dir.clone())
-							.url_prefix("/static/")
+							.url_prefix(project_static_url.clone())
 							.spa_mode(false)
 							.auto_inject_wasm(false)
-							.passthrough_prefixes(vec!["/static/admin/".to_string()]);
+							.passthrough_prefixes(vec![project_static_admin_url]);
 					// Disable long-lived caching in dev (mirrors #4383 for the
 					// dist/ bundle so hot-reload picks up CSS/JS edits).
 					#[cfg(debug_assertions)]
@@ -2602,8 +2605,9 @@ impl RunServerCommand {
 					server =
 						server.with_middleware(StaticFilesMiddleware::new(project_static_config));
 					ctx.verbose(&format!(
-						"Project static files middleware enabled: {} (mounted at /static/)",
-						project_static_dir.display()
+						"Project static files middleware enabled: {} (mounted at {})",
+						project_static_dir.display(),
+						project_static_url
 					));
 				}
 			}

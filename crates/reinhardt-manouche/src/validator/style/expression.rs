@@ -233,11 +233,8 @@ fn type_check_declaration(
 		));
 	};
 	let value = infer_expression(&declaration.value, globals, variables)?;
-	let grammar_matches = if spec.name == "box-shadow" {
-		matches_box_shadow_grammar(&value)
-	} else {
-		matches_property_grammar(&value, spec.grammar, spec.css_wide_keywords)
-	};
+	let grammar_matches = matches_property_grammar(&value, spec.grammar, spec.css_wide_keywords)
+		&& (spec.name != "box-shadow" || box_shadow_blur_is_not_negative(&value));
 	if !is_whole_unchecked(&value) && !grammar_matches {
 		return Err(StyleDiagnostic::new(
 			StyleDiagnosticKind::PropertyValueMismatch {
@@ -258,15 +255,14 @@ fn type_check_declaration(
 	})
 }
 
-fn matches_box_shadow_grammar(value: &TypedValueExpr) -> bool {
-	let items = sequence_items(value);
-	let lengths = items
-		.iter()
-		.filter(|item| item.value_type == SemanticType::Length || item.is_contextual_zero())
-		.collect::<Vec<_>>();
-	lengths.len() >= 2
-		&& lengths.len() <= 4
-		&& !lengths.get(2).is_some_and(|blur| is_negative_literal(blur))
+fn box_shadow_blur_is_not_negative(value: &TypedValueExpr) -> bool {
+	comma_items(value).into_iter().all(|shadow| {
+		let lengths = sequence_items(shadow)
+			.into_iter()
+			.filter(|item| item.value_type == SemanticType::Length || item.is_contextual_zero())
+			.collect::<Vec<_>>();
+		!lengths.get(2).is_some_and(|blur| is_negative_literal(blur))
+	})
 }
 
 fn infer_expression(
@@ -2012,6 +2008,8 @@ mod tests {
 			".card { text-decoration: (solid, red, 2px); }",
 			".card { box-shadow: (red, 0, 0, 4px); }",
 			".card { box-shadow: (0, 0, 4px, inset); }",
+			".card { box-shadow: none; }",
+			".card { box-shadow: [(0, 0, 4px, red), (1px, 1px, blue)]; }",
 			".card { outline: auto; }",
 			".card { outline-style: auto; }",
 			".card { background: [linear_gradient(Direction::Right, [stop(red, 0%), stop(blue, 100%)]), red]; }",
