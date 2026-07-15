@@ -1,6 +1,7 @@
 #![cfg(not(target_arch = "wasm32"))]
 
 use reinhardt_pages::component::{Component, IntoPage, Page, PageElement};
+use reinhardt_pages::deps;
 use reinhardt_pages::reactive::{
 	QueryKey, ResourceState, use_id, use_query, use_resource, use_resource_with_key,
 };
@@ -12,7 +13,10 @@ use std::time::Duration;
 
 fn resource_view() -> Page {
 	Page::reactive(|| {
-		let resource = use_resource(|| async { Ok::<_, String>("server-value".to_string()) }, ());
+		let resource = use_resource(
+			|| async { Ok::<_, String>("server-value".to_string()) },
+			deps![],
+		);
 
 		match resource.get() {
 			ResourceState::Success(value) => PageElement::new("div").child(value).into_page(),
@@ -28,7 +32,7 @@ impl Component for ResourceComponent {
 	fn render(&self) -> Page {
 		let resource = use_resource(
 			|| async { Ok::<_, String>("component-server-value".to_string()) },
-			(),
+			deps![],
 		);
 
 		match resource.get() {
@@ -68,11 +72,12 @@ async fn ssr_replays_component_render_for_top_level_resource() {
 #[tokio::test]
 async fn buffered_ssr_resolves_resources_discovered_during_replay() {
 	let view = Page::reactive(|| {
-		let outer = use_resource(|| async { Ok::<_, String>("outer".to_string()) }, ());
+		let outer = use_resource(|| async { Ok::<_, String>("outer".to_string()) }, deps![]);
 
 		match outer.get() {
 			ResourceState::Success(_) => Page::reactive(|| {
-				let inner = use_resource(|| async { Ok::<_, String>("inner".to_string()) }, ());
+				let inner =
+					use_resource(|| async { Ok::<_, String>("inner".to_string()) }, deps![]);
 
 				match inner.get() {
 					ResourceState::Success(value) => {
@@ -102,7 +107,7 @@ async fn buffered_ssr_resolves_resources_discovered_during_replay() {
 async fn buffered_ssr_resets_use_id_between_discovery_and_replay() {
 	let view = Page::reactive(|| {
 		let input_id = use_id();
-		let resource = use_resource(|| async { Ok::<_, String>("ready".to_string()) }, ());
+		let resource = use_resource(|| async { Ok::<_, String>("ready".to_string()) }, deps![]);
 
 		match resource.get() {
 			ResourceState::Success(value) => Page::fragment([
@@ -132,7 +137,7 @@ async fn ssr_resource_error_serializes_state() {
 	let view = Page::reactive(|| {
 		let resource = use_resource(
 			|| async { Err::<String, _>("server-error".to_string()) },
-			(),
+			deps![],
 		);
 
 		match resource.get() {
@@ -157,7 +162,7 @@ async fn ssr_resource_timeout_leaves_loading_unserialized() {
 				tokio::time::sleep(Duration::from_secs(60)).await;
 				Ok::<_, String>("delayed".to_string())
 			},
-			(),
+			deps![],
 		);
 
 		match resource.get() {
@@ -182,7 +187,7 @@ async fn explicit_resource_key_is_serialized() {
 		let resource = use_resource_with_key(
 			"polls.detail.42",
 			|| async { Ok::<_, String>("question".to_string()) },
-			(),
+			deps![],
 		);
 
 		match resource.get() {
@@ -205,9 +210,12 @@ async fn explicit_internal_resource_key_advances_implicit_allocator() {
 		let explicit = use_resource_with_key(
 			"rh-res-0",
 			|| async { Ok::<_, String>("explicit".to_string()) },
-			(),
+			deps![],
 		);
-		let implicit = use_resource(|| async { Ok::<_, String>("implicit".to_string()) }, ());
+		let implicit = use_resource(
+			|| async { Ok::<_, String>("implicit".to_string()) },
+			deps![],
+		);
 
 		Page::fragment([
 			match explicit.get() {
@@ -250,7 +258,7 @@ async fn pending_ssr_resource_reuse_does_not_create_duplicate_fetcher() {
 				first_calls.set(first_calls.get() + 1);
 				async { Ok::<_, String>("shared".to_string()) }
 			},
-			(),
+			deps![],
 		);
 
 		let second_calls = Rc::clone(&second_calls);
@@ -260,7 +268,7 @@ async fn pending_ssr_resource_reuse_does_not_create_duplicate_fetcher() {
 				second_calls.set(second_calls.get() + 1);
 				async { Ok::<_, String>("shared".to_string()) }
 			},
-			(),
+			deps![],
 		);
 
 		Page::fragment([

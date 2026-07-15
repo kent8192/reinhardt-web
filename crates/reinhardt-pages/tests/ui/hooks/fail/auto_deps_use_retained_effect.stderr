@@ -1,0 +1,14 @@
+error[E0308]: mismatched types
+  --> tests/ui/hooks/fail/auto_deps_use_retained_effect.rs:14:3
+   |
+10 |     use_retained_effect(
+   |     ------------------- arguments to this function are incorrect
+...
+14 |         deps_auto!(),
+   |         ^^^^^^^^^^^^ expected `ExplicitDeps`, found `ReactiveDeps`
+   |
+note: function defined here
+  --> src/reactive/hooks/effect.rs
+   |
+   | pub fn use_retained_effect<F, C>(f: F, deps: ExplicitDeps)
+   |        ^^^^^^^^^^^^^^^^^^^
