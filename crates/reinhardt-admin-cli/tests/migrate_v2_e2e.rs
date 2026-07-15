@@ -113,6 +113,8 @@ fn rewrites_multiple_files_and_reports_changed_count() {
 	write(
 		&page_file,
 		r#"
+use reinhardt_pages::reactive::hooks::use_effect;
+
 fn view(name: String, count: usize) {
     page! {
         div {
