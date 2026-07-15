@@ -3307,7 +3307,7 @@ impl Operation {
 				// For proper rollback, use to_reverse_sql with pre-operation ProjectState.
 			}
 			Operation::RenameTable { old_name, new_name } => {
-				state.rename_table(new_name, old_name);
+				state.rename_table_in_app(app_label, new_name, old_name);
 			}
 			Operation::AddColumn { table, column, .. } => {
 				// Reverse: Remove the column from the model

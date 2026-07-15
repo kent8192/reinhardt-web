@@ -3391,6 +3391,11 @@ fn generate_registration_code(
 								on_update: #migrations_crate::ForeignKeyAction::Cascade,
 							}
 						})
+						// A direct type reference is necessarily same-app. Preserve that
+						// identity so registry materialization can replace the fallback
+						// snake_case table name with the target model's configured table.
+						.with_param("fk_target_app", #app_label)
+						.with_param("fk_target_model", #type_name_str)
 					}
 				}
 				ForeignKeySpec::AppModel {

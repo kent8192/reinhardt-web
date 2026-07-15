@@ -4121,6 +4121,9 @@ impl MigrationAutodetector {
 		self.detect_renamed_models(&mut changes);
 		self.detect_renamed_tables(&mut changes);
 		self.detect_deleted_rename_target_owners(&mut changes);
+		if strict_rename_ambiguity {
+			self.validate_rename_destinations(&changes)?;
+		}
 
 		// Detect field-level changes (only for models that exist in both states)
 		self.detect_added_fields(&mut changes);
@@ -4172,6 +4175,32 @@ impl MigrationAutodetector {
 			.sort_by(|a, b| (&a.0, &a.1, &a.2).cmp(&(&b.0, &b.1, &b.2)));
 
 		Ok(changes)
+	}
+
+	fn validate_rename_destinations(&self, changes: &DetectedChanges) -> super::Result<()> {
+		let mut renamed_destinations = BTreeSet::new();
+		for (app_label, _model_name, _old_name, new_name) in &changes.renamed_tables {
+			renamed_destinations.insert((app_label.as_str(), new_name.as_str()));
+		}
+		for (app_label, _old_model_name, new_model_name) in &changes.renamed_models {
+			if let Some(model) = self.to_state.get_model(app_label, new_model_name) {
+				renamed_destinations.insert((app_label.as_str(), model.table_name.as_str()));
+			}
+		}
+		for (app_label, table_name) in renamed_destinations {
+			let claims = self
+				.to_state
+				.models
+				.values()
+				.filter(|model| model.app_label == app_label && model.table_name == table_name)
+				.count();
+			if claims > 1 {
+				return Err(super::MigrationError::InvalidOperation(format!(
+					"cannot rename a table to `{table_name}` in app `{app_label}` because multiple target models claim that table name"
+				)));
+			}
+		}
+		Ok(())
 	}
 
 	/// Detect newly created models
@@ -5035,11 +5064,29 @@ impl MigrationAutodetector {
 	/// when its table exists in the target state. A same-app table rename can
 	/// otherwise mask a distinct deleted model that owns the rename target.
 	fn detect_deleted_rename_target_owners(&self, changes: &mut DetectedChanges) {
-		for (app_label, renamed_model_name, _old_name, new_name) in &changes.renamed_tables {
+		let mut renamed_table_targets: Vec<(String, String, String)> = changes
+			.renamed_tables
+			.iter()
+			.map(|(app_label, model_name, _old_name, new_name)| {
+				(app_label.clone(), model_name.clone(), new_name.clone())
+			})
+			.collect();
+		for (app_label, old_model_name, new_model_name) in &changes.renamed_models {
+			let Some(new_table_name) = self
+				.to_state
+				.get_model(app_label, new_model_name)
+				.map(|model| model.table_name.clone())
+			else {
+				continue;
+			};
+			renamed_table_targets.push((app_label.clone(), old_model_name.clone(), new_table_name));
+		}
+
+		for (app_label, renamed_model_name, new_name) in renamed_table_targets {
 			for ((owner_app_label, owner_model_name), owner_model) in &self.from_state.models {
-				if owner_app_label != app_label
-					|| owner_model_name == renamed_model_name
-					|| owner_model.table_name != *new_name
+				if owner_app_label != &app_label
+					|| owner_model_name == &renamed_model_name
+					|| owner_model.table_name != new_name
 					|| self
 						.to_state
 						.get_model(owner_app_label, owner_model_name)
@@ -6154,6 +6201,11 @@ impl MigrationAutodetector {
 			.iter()
 			.filter_map(|operation| match operation {
 				super::Operation::RenameTable { old_name, .. } => Some(old_name.clone()),
+				super::Operation::MoveModel {
+					rename_table: true,
+					old_table_name: Some(old_name),
+					..
+				} => Some(old_name.clone()),
 				_ => None,
 			})
 			.collect();

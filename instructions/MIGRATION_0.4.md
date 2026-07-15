@@ -11,15 +11,16 @@ application label has been removed because it could silently group unrelated
 models in migrations, application discovery, the model registry, and admin
 configuration.
 
-`table_name` is now optional. When omitted, Reinhardt converts the Rust struct
-name to snake_case without pluralization or English inflection:
+`table_name` is now optional. When omitted, Reinhardt prefixes the application
+label and converts the Rust struct name to snake_case without pluralization or
+English inflection:
 
 | Struct | Default table name |
 |---|---|
-| `User` | `user` |
-| `BlogPost` | `blog_post` |
-| `HTTPRoute` | `http_route` |
-| `Person` | `person` |
+| `User` in `accounts` | `accounts_user` |
+| `BlogPost` in `blog` | `blog_blog_post` |
+| `HTTPRoute` in `routing` | `routing_http_route` |
+| `Person` in `people` | `people_person` |
 
 To preserve an existing schema, add the application label and keep the current
 table name explicit:
@@ -43,13 +44,13 @@ New models may adopt the convention by omitting only `table_name`:
 ```rust,ignore
 #[model(app_label = "routing")]
 pub struct HTTPRoute {
-    // Uses the `http_route` table.
+    // Uses the `routing_http_route` table.
 }
 ```
 
 Omitting an explicit `table_name` from an existing model is a schema decision,
-not a source-only cleanup. For example, changing `User` from `users` to the
-derived `user` name requires a table rename migration. `makemigrations`
+not a source-only cleanup. For example, changing `User` in the `accounts` app
+from `users` to the derived `accounts_user` name requires a table rename migration. `makemigrations`
 recognizes this same-model table-name change and emits `RenameTable` instead of
 destructive drop/create operations. Audit model attributes before upgrading:
 

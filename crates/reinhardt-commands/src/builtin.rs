@@ -1638,6 +1638,22 @@ fn add_reused_table_name_dependencies(
 				})
 		})
 		.collect();
+	let dropped_tables: Vec<(String, String, String)> = migrations
+		.iter()
+		.flat_map(|migration| {
+			migration
+				.operations
+				.iter()
+				.filter_map(|operation| match operation {
+					Operation::DropTable { name } => Some((
+						migration.app_label.clone(),
+						migration.name.clone(),
+						name.clone(),
+					)),
+					_ => None,
+				})
+		})
+		.collect();
 
 	let mut dependencies = Vec::new();
 	for (migration_index, migration) in migrations.iter().enumerate() {
@@ -1663,6 +1679,29 @@ fn add_reused_table_name_dependencies(
 				));
 			}
 		}
+		let rename_targets: Vec<&str> = migration
+			.operations
+			.iter()
+			.filter_map(|operation| match operation {
+				Operation::RenameTable { new_name, .. } => Some(new_name.as_str()),
+				Operation::MoveModel {
+					rename_table: true,
+					new_table_name: Some(new_name),
+					..
+				} => Some(new_name.as_str()),
+				_ => None,
+			})
+			.collect();
+		for (producer_app, producer_name, dropped_table) in &dropped_tables {
+			if producer_app != &migration.app_label
+				&& rename_targets.contains(&dropped_table.as_str())
+			{
+				dependencies.push((
+					migration_index,
+					(producer_app.clone(), producer_name.clone()),
+				));
+			}
+		}
 	}
 
 	for (consumer_index, producer) in &dependencies {
@@ -1671,21 +1710,41 @@ fn add_reused_table_name_dependencies(
 		}) else {
 			continue;
 		};
-		if dependencies
+	}
+
+	let mut graph = vec![Vec::new(); migrations.len()];
+	for (consumer_index, producer) in &dependencies {
+		if let Some(producer_index) = migrations
 			.iter()
-			.any(|(other_consumer_index, other_producer)| {
-				*other_consumer_index == producer_index
-					&& other_producer
-						== &(
-							migrations[*consumer_index].app_label.clone(),
-							migrations[*consumer_index].name.clone(),
-						)
-			}) {
-			return Err(format!(
-				"cannot generate cross-app table-name swap between {} and {}; split the rename through an explicit temporary table migration",
-				migrations[*consumer_index].app_label, producer.0
-			));
+			.position(|migration| migration.app_label == producer.0 && migration.name == producer.1)
+		{
+			graph[*consumer_index].push(producer_index);
 		}
+	}
+	fn has_cycle(
+		node: usize,
+		graph: &[Vec<usize>],
+		visiting: &mut [bool],
+		visited: &mut [bool],
+	) -> bool {
+		if visiting[node] {
+			return true;
+		}
+		if visited[node] {
+			return false;
+		}
+		visiting[node] = true;
+		let cyclic = graph[node]
+			.iter()
+			.any(|&next| has_cycle(next, graph, visiting, visited));
+		visiting[node] = false;
+		visited[node] = true;
+		cyclic
+	}
+	let mut visiting = vec![false; migrations.len()];
+	let mut visited = vec![false; migrations.len()];
+	if (0..migrations.len()).any(|node| has_cycle(node, &graph, &mut visiting, &mut visited)) {
+		return Err("cannot generate a cyclic cross-app table-name dependency; split the rename through an explicit temporary table migration".to_string());
 	}
 
 	for (consumer_index, producer) in dependencies {
