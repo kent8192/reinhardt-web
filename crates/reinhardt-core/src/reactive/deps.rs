@@ -210,6 +210,21 @@ mod tests {
 
 	#[rstest]
 	#[serial(reactive_runtime)]
+	fn explicit_deps_macro_collects_signal_node_ids() {
+		crate::reactive::ReactiveScope::run(|| {
+			// Arrange
+			let signal = Signal::new(42_i32);
+
+			// Act
+			let deps = crate::deps![signal].into_deps();
+
+			// Assert
+			assert_eq!(deps.as_slice(), &[signal.id()]);
+		});
+	}
+
+	#[rstest]
+	#[serial(reactive_runtime)]
 	fn into_deps_arity_12_compiles_and_collects() {
 		crate::reactive::ReactiveScope::run(|| {
 			// Arrange
