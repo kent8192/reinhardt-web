@@ -303,6 +303,7 @@ impl ReactiveIfNode {
 		then_view: std::sync::Arc<dyn Fn() -> Page + 'static>,
 		else_view: std::sync::Arc<dyn Fn() -> Page + 'static>,
 		reactive_nodes: ReactiveNodeStore,
+		refresh_after_control_adoption: bool,
 	) -> Option<Self> {
 		let document = web_sys::window()
 			.expect("window should be available")
@@ -338,7 +339,9 @@ impl ReactiveIfNode {
 
 						if first_run_clone.replace(false) {
 							hydration_mismatch_clone.set(new_condition != hydrated_condition);
-							return;
+							if !refresh_after_control_adoption {
+								return;
+							}
 						}
 
 						let mut last = last_condition_clone.borrow_mut();
@@ -856,7 +859,10 @@ fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::No
 				}
 
 				if let Some(binding) = control_binding.as_ref() {
-					crate::component::into_page::initialize_control_default(&element_wrapper, binding);
+					crate::component::into_page::initialize_control_default(
+						&element_wrapper,
+						binding,
+					);
 				}
 				let binding_controller = control_binding
 					.map(|binding| {

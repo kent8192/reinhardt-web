@@ -131,6 +131,12 @@ impl EventRegistry {
 		self.control_binding_adopted
 	}
 
+	/// Propagates an adopted control value from a nested hydration branch.
+	#[cfg(wasm)]
+	pub(crate) fn mark_control_binding_adopted(&mut self) {
+		self.control_binding_adopted = true;
+	}
+
 	/// Registers an event handle (non-WASM placeholder).
 	#[cfg(native)]
 	pub fn register(&mut self, element_id: impl Into<String>, handle: String) {

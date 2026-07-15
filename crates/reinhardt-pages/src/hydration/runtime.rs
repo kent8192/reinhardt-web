@@ -481,6 +481,7 @@ fn install_hydrated_reactive_nodes(
 					&mut branch_registry,
 				)
 			})?;
+			let control_binding_adopted = branch_registry.control_binding_adopted();
 			let (condition, then_view, else_view) = reactive_if.clone().into_parts();
 			let hydrated_node = crate::component::ReactiveIfNode::hydrate_at(
 				element.as_web_sys().clone().into(),
@@ -491,6 +492,7 @@ fn install_hydrated_reactive_nodes(
 				then_view,
 				else_view,
 				branch_store,
+				control_binding_adopted,
 			)
 			.ok_or_else(|| {
 				HydrationError::EventAttachmentFailed(
@@ -583,7 +585,11 @@ fn install_hydrated_child_reactive_nodes(
 					&mut branch_registry,
 				)
 			})?;
-			let control_binding_adopted = branch_registry.control_binding_adopted();
+			let control_binding_adopted =
+				registry.control_binding_adopted() || branch_registry.control_binding_adopted();
+			if branch_registry.control_binding_adopted() {
+				registry.mark_control_binding_adopted();
+			}
 			let hydrated_node = crate::component::ReactiveNode::hydrate_at(
 				parent.clone(),
 				next_sibling.clone(),
@@ -629,6 +635,11 @@ fn install_hydrated_child_reactive_nodes(
 					&mut branch_registry,
 				)
 			})?;
+			let control_binding_adopted =
+				registry.control_binding_adopted() || branch_registry.control_binding_adopted();
+			if branch_registry.control_binding_adopted() {
+				registry.mark_control_binding_adopted();
+			}
 			let (condition, then_view, else_view) = reactive_if.clone().into_parts();
 			let hydrated_node = crate::component::ReactiveIfNode::hydrate_at(
 				parent.clone(),
@@ -639,6 +650,7 @@ fn install_hydrated_child_reactive_nodes(
 				then_view,
 				else_view,
 				branch_store,
+				control_binding_adopted,
 			)
 			.ok_or_else(|| {
 				HydrationError::EventAttachmentFailed(
