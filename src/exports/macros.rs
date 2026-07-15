@@ -8,6 +8,7 @@ pub use reinhardt_macros::{AppConfig, app_config, installed_apps};
 #[cfg(all(feature = "conf", native))]
 pub use reinhardt_macros::settings;
 
+#[cfg(all(feature = "core", native))]
 pub use reinhardt_macros::HttpError;
 pub use reinhardt_macros::{Model, model};
 

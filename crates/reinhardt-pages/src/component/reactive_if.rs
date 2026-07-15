@@ -721,16 +721,26 @@ fn remove_owned_node(node: web_sys::Node) {
 		}
 		return;
 	}
+	let mut depth = 0usize;
 	let mut next = Some(node);
 	while let Some(current) = next {
 		next = current.next_sibling();
+		let is_range_start = current
+			.dyn_ref::<web_sys::Comment>()
+			.is_some_and(|comment| comment.data() == "reactive-range-start");
 		let is_range_end = current
 			.dyn_ref::<web_sys::Comment>()
 			.is_some_and(|comment| comment.data() == "reactive-range-end");
+		if is_range_start {
+			depth += 1;
+		}
 		if let Some(parent) = current.parent_node() {
 			let _ = parent.remove_child(&current);
 		}
 		if is_range_end {
+			depth -= 1;
+		}
+		if depth == 0 {
 			break;
 		}
 	}
