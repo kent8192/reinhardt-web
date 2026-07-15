@@ -151,7 +151,7 @@ pub trait FixtureModelHandler: Send + Sync {
 		Vec::new()
 	}
 
-	/// Return identity-always columns explicitly written by a fixture record.
+	/// Return identity columns explicitly written by a fixture record.
 	fn fixture_written_identity_always_columns(
 		&self,
 		_record: &FixtureRecord,
@@ -332,10 +332,13 @@ where
 			.into_iter()
 			.filter(|field| {
 				database_object.contains_key(field.db_column_name())
-					&& matches!(
+					&& (matches!(
 						field.attributes.get("identity_always"),
 						Some(crate::orm::fields::FieldKwarg::Bool(true))
-					)
+					) || matches!(
+						field.attributes.get("identity_by_default"),
+						Some(crate::orm::fields::FieldKwarg::Bool(true))
+					))
 			})
 			.map(|field| field.db_column_name().to_string())
 			.collect())
@@ -1622,12 +1625,15 @@ where
 	M: Model,
 {
 	let mut assignments = Vec::new();
-	for spec in many_to_many_specs_for::<M>() {
+	for spec in many_to_many_specs_for::<M>()? {
 		let Some(raw_value) = object.remove(&spec.field_name) else {
 			continue;
 		};
 		if spec.is_explicit_through {
-			continue;
+			return Err(FixtureError::Database(format!(
+				"many-to-many fixture field '{}' uses an explicit through model; load through-model records instead",
+				spec.field_name
+			)));
 		}
 		let values = raw_value.as_array().cloned().ok_or_else(|| {
 			FixtureError::Database(format!(
@@ -1730,7 +1736,7 @@ where
 	let Some(pk) = pk else {
 		return Ok(());
 	};
-	for spec in many_to_many_specs_for::<M>() {
+	for spec in many_to_many_specs_for::<M>()? {
 		if spec.is_explicit_through {
 			continue;
 		}
@@ -1758,7 +1764,7 @@ where
 }
 
 #[cfg(feature = "migrations")]
-fn many_to_many_specs_for<M>() -> Vec<FixtureManyToManySpec>
+fn many_to_many_specs_for<M>() -> FixtureResult<Vec<FixtureManyToManySpec>>
 where
 	M: Model,
 {
@@ -1778,9 +1784,8 @@ where
 				.as_ref()
 				.map(|target| target.table_name.clone())
 				.or_else(|| {
-					fixture_related_model_handler(M::app_label(), &field.to_model)
-						.ok()
-						.flatten()
+					target_handler
+						.as_ref()
 						.map(|handler| handler.table_name().to_string())
 				})
 				.unwrap_or_else(|| default_target_table_name(&field.to_model));
@@ -1804,7 +1809,7 @@ where
 			});
 			let (default_source_field, default_target_field) =
 				crate::m2m_naming::default_m2m_columns(M::table_name(), &target_table);
-			FixtureManyToManySpec {
+			Ok(FixtureManyToManySpec {
 				field_name: field.field_name.clone(),
 				through_table,
 				source_field: field.source_field.clone().unwrap_or(default_source_field),
@@ -1812,12 +1817,12 @@ where
 				source_primary_key_binding,
 				target_primary_key_binding,
 				is_explicit_through,
-			}
+			})
 		})
 		.collect()
 }
 
-fn many_to_many_specs_from_relationship_metadata<M>() -> Vec<FixtureManyToManySpec>
+fn many_to_many_specs_from_relationship_metadata<M>() -> FixtureResult<Vec<FixtureManyToManySpec>>
 where
 	M: Model,
 {
@@ -1830,16 +1835,14 @@ where
 			let field_name = relation.name;
 			let is_explicit_through = relation.through_table.is_some();
 			let target_handler =
-				fixture_related_model_handler(M::app_label(), &relation.related_model)
-					.ok()
-					.flatten();
+				fixture_related_model_handler(M::app_label(), &relation.related_model)?;
 			let target_table = target_handler
 				.as_ref()
 				.map(|handler| handler.table_name().to_string())
 				.unwrap_or_else(|| default_target_table_name(&relation.related_model));
 			let (default_source_field, default_target_field) =
 				crate::m2m_naming::default_m2m_columns(M::table_name(), &target_table);
-			FixtureManyToManySpec {
+			Ok(FixtureManyToManySpec {
 				field_name: field_name.clone(),
 				through_table: relation.through_table.unwrap_or_else(|| {
 					crate::m2m_naming::default_through_table(M::table_name(), &field_name)
@@ -1858,13 +1861,13 @@ where
 					},
 				),
 				is_explicit_through,
-			}
+			})
 		})
 		.collect()
 }
 
 #[cfg(not(feature = "migrations"))]
-fn many_to_many_specs_for<M>() -> Vec<FixtureManyToManySpec>
+fn many_to_many_specs_for<M>() -> FixtureResult<Vec<FixtureManyToManySpec>>
 where
 	M: Model,
 {
@@ -3104,6 +3107,7 @@ mod tests {
 		global_fixture_registry().register_model::<FixtureOrmOnlyM2mTag>();
 
 		let spec = many_to_many_specs_for::<FixtureOrmOnlyM2mPost>()
+			.expect("ORM-only many-to-many relations must resolve targets")
 			.into_iter()
 			.next()
 			.expect("ORM-only many-to-many relations must produce fixture metadata");
@@ -3722,7 +3726,7 @@ mod tests {
 			let mut sequence_number =
 				fixture_field_info("sequence_number", "BigIntegerField", false);
 			sequence_number.attributes.insert(
-				"identity_always".to_string(),
+				"identity_by_default".to_string(),
 				crate::orm::fields::FieldKwarg::Bool(true),
 			);
 			vec![
@@ -5026,7 +5030,7 @@ mod tests {
 
 	#[cfg(feature = "migrations")]
 	#[test]
-	fn postgres_fixture_upserts_override_non_primary_identity_always_columns() {
+	fn postgres_fixture_upserts_do_not_override_non_primary_identity_by_default_columns() {
 		let mut object = Map::new();
 		object.insert("id".to_string(), Value::from(1));
 		object.insert("sequence_number".to_string(), Value::from(99));
@@ -5038,14 +5042,14 @@ mod tests {
 		)
 		.unwrap();
 
-		assert!(sql.contains("OVERRIDING SYSTEM VALUE"));
+		assert!(!sql.contains("OVERRIDING SYSTEM VALUE"));
 		assert!(sql.contains("ON CONFLICT"));
 		assert_eq!(values.len(), 3);
 	}
 
 	#[cfg(feature = "migrations")]
 	#[test]
-	fn fixture_sequence_reset_targets_include_written_non_primary_identity_columns() {
+	fn fixture_sequence_reset_targets_include_written_non_primary_identity_by_default_columns() {
 		let registry = FixtureRegistry::new();
 		registry.register_model::<FixtureNonPrimaryIdentityAlwaysPost>();
 		let mut fields = Map::new();
@@ -5058,7 +5062,7 @@ mod tests {
 		)];
 
 		let targets = fixture_identity_sequence_reset_targets(&registry, &records)
-			.expect("written identity-always columns must select sequence reset targets");
+			.expect("written identity-by-default columns must select sequence reset targets");
 		let targets = targets
 			.into_iter()
 			.map(|(handler, column)| (handler.label(), column))
@@ -5303,6 +5307,7 @@ mod tests {
 		crate::migrations::model_registry::global_registry().register_model(tag);
 
 		let spec = many_to_many_specs_for::<FixtureTextM2mPost>()
+			.expect("many-to-many fixture metadata must resolve targets")
 			.into_iter()
 			.next()
 			.expect("registered many-to-many relation should produce fixture metadata");
@@ -5374,6 +5379,7 @@ mod tests {
 		crate::migrations::model_registry::global_registry().register_model(external_tag);
 
 		let spec = many_to_many_specs_for::<FixtureTextM2mPost>()
+			.expect("many-to-many fixture metadata must resolve targets")
 			.into_iter()
 			.next()
 			.expect("qualified many-to-many target should resolve metadata");
@@ -5402,6 +5408,7 @@ mod tests {
 		global_fixture_registry().register_model::<FixtureRegisteredTextTarget>();
 
 		let spec = many_to_many_specs_for::<FixtureRegisteredM2mSource>()
+			.expect("registered many-to-many target must resolve")
 			.into_iter()
 			.next()
 			.expect("registered many-to-many target should produce fixture metadata");
@@ -5414,7 +5421,7 @@ mod tests {
 
 	#[cfg(feature = "migrations")]
 	#[test]
-	fn explicit_through_many_to_many_fixture_fields_are_not_replayed() {
+	fn explicit_through_many_to_many_fixture_fields_are_rejected() {
 		let mut post = crate::migrations::ModelMetadata::new(
 			"fixture_m2m",
 			"FixtureM2mPost",
@@ -5434,9 +5441,10 @@ mod tests {
 			Value::Array(vec![Value::from(1), Value::from(2)]),
 		);
 
-		let assignments = extract_many_to_many_assignments::<FixtureM2mPost>(&mut object).unwrap();
+		let error = extract_many_to_many_assignments::<FixtureM2mPost>(&mut object)
+			.expect_err("explicit-through many-to-many fixture fields must be rejected");
 
-		assert!(assignments.is_empty());
+		assert!(error.to_string().contains("explicit through"));
 		assert_eq!(object.get("title"), Some(&Value::from("Fixture")));
 		assert!(object.get("tags").is_none());
 	}

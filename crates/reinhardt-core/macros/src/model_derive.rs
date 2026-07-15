@@ -2927,13 +2927,14 @@ fn generate_fixture_validation(
 			|| field.is_fk_id_field
 			|| is_relationship_field_type(&field.ty)
 			|| is_many_to_many_field_type(&field.ty)
-			|| is_fixture_generated_field(field)
+			|| is_fixture_computed_field(field)
 		{
 			continue;
 		}
 
 		let field_name = &field.name;
 		let field_type = &field.ty;
+		let is_database_generated = is_fixture_generated_field(field);
 		let has_sql_default = field
 			.config
 			.default
@@ -2981,10 +2982,15 @@ fn generate_fixture_validation(
 		} else {
 			let serde_attrs = fixture_projection_serde_attrs(field);
 			let (is_option, inner_type) = extract_option_type(field_type);
-			let field_type = if is_option && field.config.null == Some(false) {
-				inner_type
+			let field_type = if is_database_generated {
+				quote! { ::std::option::Option<#field_type> }
+			} else if is_option
+				&& (field.config.null == Some(false)
+					|| (field.config.primary_key && !is_fixture_generated_field(field)))
+			{
+				quote! { #inner_type }
 			} else {
-				field_type
+				quote! { #field_type }
 			};
 			projection_fields.push(quote! {
 				#(#serde_attrs)*
@@ -3129,6 +3135,11 @@ fn is_fixture_generated_field(field: &FieldInfo) -> bool {
 
 	#[cfg(not(feature = "db-postgres"))]
 	false
+}
+
+/// Determine whether a database-computed field cannot be supplied by a fixture.
+fn is_fixture_computed_field(field: &FieldInfo) -> bool {
+	field.config.generated.is_some() || field.config.generated_sql.is_some()
 }
 
 /// Generate FieldInfo construction for field_metadata()
@@ -6709,6 +6720,64 @@ mod tests {
 		assert!(
 			!fixture_projection.contains("id : i64"),
 			"implicit integer primary keys must be omitted from fixture projections"
+		);
+	}
+
+	#[test]
+	fn test_fixture_projection_validates_supplied_implicit_auto_increment_primary_keys() {
+		let input = quote! {
+			#[model(app_label = "fixture_tests", table_name = "fixture_models")]
+			struct FixtureModel {
+				#[field(primary_key = true)]
+				id: i64,
+				#[field(max_length = 255)]
+				name: String,
+			}
+		};
+
+		let output = model_derive_impl(syn::parse2(input).unwrap())
+			.expect("fixture model must generate")
+			.to_string();
+		let fixture_projection = output
+			.split("struct __ReinhardtFixtureProjection")
+			.nth(1)
+			.expect("fixture validation must generate a projection")
+			.split('}')
+			.next()
+			.expect("fixture projection must have a body");
+
+		assert!(
+			fixture_projection.contains("id : :: std :: option :: Option < i64 >"),
+			"generated primary keys must remain optional while validating supplied values"
+		);
+	}
+
+	#[test]
+	fn test_fixture_projection_requires_non_generated_option_primary_keys() {
+		let input = quote! {
+			#[model(app_label = "fixture_tests", table_name = "fixture_models")]
+			struct FixtureModel {
+				#[field(primary_key = true, auto_increment = false)]
+				id: Option<i64>,
+				#[field(max_length = 255)]
+				name: String,
+			}
+		};
+
+		let output = model_derive_impl(syn::parse2(input).unwrap())
+			.expect("fixture model must generate")
+			.to_string();
+		let fixture_projection = output
+			.split("struct __ReinhardtFixtureProjection")
+			.nth(1)
+			.expect("fixture validation must generate a projection")
+			.split('}')
+			.next()
+			.expect("fixture projection must have a body");
+
+		assert!(
+			fixture_projection.contains("id : i64"),
+			"non-generated primary keys must reject omitted and null fixture values"
 		);
 	}
 
