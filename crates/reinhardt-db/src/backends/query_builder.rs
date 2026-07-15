@@ -41,6 +41,36 @@ fn query_value_to_sea_value(qv: &QueryValue) -> Value {
 		QueryValue::Timestamp(dt) => Value::ChronoDateTimeUtc(Some(Box::new(*dt))),
 		QueryValue::Uuid(u) => Value::Uuid(Some(Box::new(*u))),
 		QueryValue::Json(value) => Value::Json(value.clone()),
+		QueryValue::StringArray(values) => Value::Array(
+			reinhardt_query::value::ArrayType::String,
+			Some(Box::new(
+				values
+					.iter()
+					.cloned()
+					.map(|value| Value::String(Some(Box::new(value))))
+					.collect(),
+			)),
+		),
+		QueryValue::IntArray(values) => Value::Array(
+			reinhardt_query::value::ArrayType::Int,
+			Some(Box::new(
+				values
+					.iter()
+					.copied()
+					.map(|value| Value::Int(Some(value)))
+					.collect(),
+			)),
+		),
+		QueryValue::BigIntArray(values) => Value::Array(
+			reinhardt_query::value::ArrayType::BigInt,
+			Some(Box::new(
+				values
+					.iter()
+					.copied()
+					.map(|value| Value::BigInt(Some(value)))
+					.collect(),
+			)),
+		),
 		// NOW() is handled specially in build() methods, should not reach here
 		QueryValue::Now => {
 			panic!("QueryValue::Now should be handled in build() method, not converted to Value")

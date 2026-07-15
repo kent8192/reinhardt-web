@@ -45,6 +45,9 @@ impl PostgresBackend {
 			QueryValue::Timestamp(dt) => query.bind(dt),
 			QueryValue::Uuid(u) => query.bind(u),
 			QueryValue::Json(value) => query.bind(value.as_deref().cloned().map(sqlx::types::Json)),
+			QueryValue::StringArray(values) => query.bind(values),
+			QueryValue::IntArray(values) => query.bind(values),
+			QueryValue::BigIntArray(values) => query.bind(values),
 			QueryValue::Now => {
 				// PostgreSQL uses NOW() function, which should be part of SQL string
 				// For binding, we use current UTC time
@@ -169,6 +172,9 @@ impl PgTransactionExecutor {
 			QueryValue::Timestamp(dt) => query.bind(dt),
 			QueryValue::Uuid(u) => query.bind(u),
 			QueryValue::Json(value) => query.bind(value.as_deref().cloned().map(sqlx::types::Json)),
+			QueryValue::StringArray(values) => query.bind(values),
+			QueryValue::IntArray(values) => query.bind(values),
+			QueryValue::BigIntArray(values) => query.bind(values),
 			QueryValue::Now => query.bind(chrono::Utc::now()),
 		}
 	}

@@ -62,6 +62,12 @@ pub enum QueryValue {
 	Uuid(Uuid),
 	/// JSON value, preserving the distinction between JSON null and SQL NULL.
 	Json(Option<Box<serde_json::Value>>),
+	/// PostgreSQL-compatible string array parameter.
+	StringArray(Vec<String>),
+	/// PostgreSQL-compatible 32-bit integer array parameter.
+	IntArray(Vec<i32>),
+	/// PostgreSQL-compatible 64-bit integer array parameter.
+	BigIntArray(Vec<i64>),
 	/// Represents SQL NOW() function
 	Now,
 }

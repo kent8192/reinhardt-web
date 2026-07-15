@@ -145,11 +145,36 @@ fn convert_value_to_query_value(value: reinhardt_query::value::Value) -> QueryVa
 		// UUID
 		SV::Uuid(Some(u)) => QueryValue::Uuid(*u),
 
-		// Vector model fields are stored as JSON. Retain the structured values
-		// rather than falling back to an opaque debug string or SQL NULL.
-		SV::Array(_, Some(values)) => {
-			QueryValue::Json(Some(Box::new(array_values_to_json(&values))))
-		}
+		SV::Array(array_type, Some(values)) => match array_type {
+			reinhardt_query::value::ArrayType::String => QueryValue::StringArray(
+				values
+					.iter()
+					.filter_map(|value| match value {
+						SV::String(Some(value)) => Some((**value).clone()),
+						_ => None,
+					})
+					.collect(),
+			),
+			reinhardt_query::value::ArrayType::Int => QueryValue::IntArray(
+				values
+					.iter()
+					.filter_map(|value| match value {
+						SV::Int(Some(value)) => Some(*value),
+						_ => None,
+					})
+					.collect(),
+			),
+			reinhardt_query::value::ArrayType::BigInt => QueryValue::BigIntArray(
+				values
+					.iter()
+					.filter_map(|value| match value {
+						SV::BigInt(Some(value)) => Some(*value),
+						_ => None,
+					})
+					.collect(),
+			),
+			_ => QueryValue::Json(Some(Box::new(array_values_to_json(&values)))),
+		},
 		SV::Array(_, None) => QueryValue::Null,
 	}
 }
@@ -1044,7 +1069,19 @@ mod tests {
 				reinhardt_query::value::ArrayType::String,
 				Some(Box::new(values)),
 			)),
-			QueryValue::Json(Some(Box::new(serde_json::json!(["red", "blue"]))))
+			QueryValue::StringArray(vec!["red".to_owned(), "blue".to_owned()])
+		);
+
+		let values = vec![
+			reinhardt_query::value::Value::Int(Some(1)),
+			reinhardt_query::value::Value::Int(Some(2)),
+		];
+		assert_eq!(
+			convert_value_to_query_value(reinhardt_query::value::Value::Array(
+				reinhardt_query::value::ArrayType::Int,
+				Some(Box::new(values)),
+			)),
+			QueryValue::IntArray(vec![1, 2])
 		);
 	}
 }

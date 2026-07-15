@@ -79,6 +79,15 @@ impl QueryRow {
 					native_json_fields.insert(key.clone());
 					serde_json::Value::Null
 				}
+				QueryValue::StringArray(values) => serde_json::Value::Array(
+					values.into_iter().map(serde_json::Value::String).collect(),
+				),
+				QueryValue::IntArray(values) => serde_json::Value::Array(
+					values.into_iter().map(serde_json::Value::from).collect(),
+				),
+				QueryValue::BigIntArray(values) => serde_json::Value::Array(
+					values.into_iter().map(serde_json::Value::from).collect(),
+				),
 				// NOW() should never appear in Row data (it's resolved to actual timestamp in database)
 				QueryValue::Now => panic!("QueryValue::Now should not appear in Row data"),
 			};
