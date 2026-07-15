@@ -1526,6 +1526,16 @@ impl BaseCommand for MakeMigrationsCommand {
 				}
 			}
 
+			// A table-name rename frees its old physical name only after the
+			// producing migration has run. When another app creates a table with
+			// that name in the same invocation, record the cross-app edge using
+			// the final generated migration names.
+			let mut generated_migrations = results
+				.iter_mut()
+				.map(|result| &mut result.migration)
+				.collect::<Vec<_>>();
+			add_reused_table_name_dependencies(&mut generated_migrations);
+
 			// 4. Write all migrations
 			if !results.is_empty() {
 				for result in results {
@@ -1592,6 +1602,52 @@ impl BaseCommand for MakeMigrationsCommand {
 			ctx.warning("Migrations feature not enabled");
 			ctx.info("To use makemigrations, enable the 'migrations' feature");
 			Ok(())
+		}
+	}
+}
+
+#[cfg(feature = "migrations")]
+fn add_reused_table_name_dependencies(migrations: &mut [&mut reinhardt_db::migrations::Migration]) {
+	use reinhardt_db::migrations::Operation;
+
+	let renamed_tables: Vec<(String, String, String)> = migrations
+		.iter()
+		.flat_map(|migration| {
+			migration
+				.operations
+				.iter()
+				.filter_map(|operation| match operation {
+					Operation::RenameTable { old_name, .. } => Some((
+						migration.app_label.clone(),
+						migration.name.clone(),
+						old_name.clone(),
+					)),
+					_ => None,
+				})
+		})
+		.collect();
+
+	for migration in migrations {
+		let reused_tables: Vec<&str> = migration
+			.operations
+			.iter()
+			.filter_map(|operation| match operation {
+				Operation::CreateTable { name, .. } => Some(name.as_str()),
+				_ => None,
+			})
+			.collect();
+		for (producer_app, producer_name, old_table) in &renamed_tables {
+			if producer_app != &migration.app_label
+				&& reused_tables.contains(&old_table.as_str())
+				&& !migration
+					.dependencies
+					.iter()
+					.any(|dependency| dependency == &(producer_app.clone(), producer_name.clone()))
+			{
+				migration
+					.dependencies
+					.push((producer_app.clone(), producer_name.clone()));
+			}
 		}
 	}
 }
@@ -4285,6 +4341,34 @@ fn detect_database_type(url: &str) -> Result<DatabaseType, crate::CommandError> 
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	fn reused_table_name_depends_on_the_cross_app_rename() {
+		use reinhardt_db::migrations::{Migration, Operation};
+
+		let mut producer =
+			Migration::new("0007_rename_user", "accounts").add_operation(Operation::RenameTable {
+				old_name: "user".to_string(),
+				new_name: "account".to_string(),
+			});
+		let mut consumer =
+			Migration::new("0001_initial", "profiles").add_operation(Operation::CreateTable {
+				name: "user".to_string(),
+				columns: Vec::new(),
+				constraints: Vec::new(),
+				without_rowid: None,
+				interleave_in_parent: None,
+				partition: None,
+			});
+
+		add_reused_table_name_dependencies(&mut [&mut producer, &mut consumer]);
+
+		assert_eq!(
+			consumer.dependencies,
+			vec![("accounts".to_string(), "0007_rename_user".to_string())]
+		);
+	}
 
 	#[cfg(feature = "reinhardt-db")]
 	struct EnvVarGuard {
