@@ -1322,6 +1322,12 @@ const TF: ValueGrammar = ValueGrammar::FunctionResult(SemanticType::TransformFun
 const IDENT: ValueGrammar = ValueGrammar::Identifier;
 
 const SIZE: ValueGrammar = ValueGrammar::Or(&[NLP, KW_SIZE]);
+const POSITIVE_INTEGER: ValueGrammar = ValueGrammar::NumericRange {
+	grammar: &I,
+	minimum: 1,
+	maximum: i16::MAX,
+};
+const MAX_SIZE: ValueGrammar = ValueGrammar::Or(&[NLP, KW_NONE]);
 const POSITION_ITEM: ValueGrammar = ValueGrammar::Or(&[LP, KW_POSITION_VALUE]);
 const POSITION: ValueGrammar = ValueGrammar::Space {
 	min: 1,
@@ -1344,7 +1350,7 @@ const BORDER: ValueGrammar = ValueGrammar::Unordered {
 	min_members: 1,
 	preserve_source_order: false,
 };
-const INTEGER_OR_IDENT: ValueGrammar = ValueGrammar::Or(&[I, IDENT]);
+const INTEGER_OR_IDENT: ValueGrammar = ValueGrammar::Or(&[POSITIVE_INTEGER, IDENT]);
 const SPAN_GRID_LINE: ValueGrammar = ValueGrammar::Ordered(&[
 	required("span", &KW_SPAN),
 	required("line", &INTEGER_OR_IDENT),
@@ -1608,7 +1614,7 @@ const SHADOW: ValueGrammar = ValueGrammar::Unordered {
 		required("offset-x", &L),
 		required("offset-y", &L),
 		optional("blur", &NL),
-		optional("spread", &NL),
+		optional("spread", &L),
 		optional("color", &C),
 	],
 	min_members: 2,
@@ -1727,10 +1733,10 @@ static PROPERTY_SPECS: &[PropertySpec] = property_registry!(
 		"box-sizing" => KW_BOX_SIZING,
 		"width" => SIZE,
 		"min-width" => SIZE,
-		"max-width" => SIZE,
+		"max-width" => MAX_SIZE,
 		"height" => SIZE,
 		"min-height" => SIZE,
-		"max-height" => SIZE,
+		"max-height" => MAX_SIZE,
 		"margin" => MARGIN,
 		"margin-top" => INSET_VALUE,
 		"margin-right" => INSET_VALUE,
