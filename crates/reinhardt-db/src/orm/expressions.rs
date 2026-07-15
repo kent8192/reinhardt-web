@@ -17,6 +17,11 @@ pub struct F {
 impl F {
 	/// Create a field reference for database operations
 	///
+	/// `F::new("relation__field")` remains accepted for compatibility, but relation
+	/// traversal strings are deprecated. Prefer typed relation paths such as
+	/// `Post::rel_author().into_typed().field_email()` so relation and field names are checked at
+	/// compile time.
+	///
 	/// # Examples
 	///
 	/// ```
@@ -1406,6 +1411,14 @@ mod tests {
 		let f = F::new("price");
 		assert_eq!(f.to_sql(), "\"price\"");
 		assert_eq!(format!("{}", f), "price");
+	}
+
+	#[test]
+	fn test_f_expression_creation() {
+		let f = F::new("field");
+
+		assert_eq!(f.to_sql(), "\"field\"");
+		assert_eq!(format!("{}", f), "field");
 	}
 
 	#[test]
