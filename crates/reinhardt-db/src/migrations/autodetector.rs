@@ -967,7 +967,13 @@ impl ProjectState {
 		self.update_foreign_key_table_references(old_table_name, new_table_name);
 	}
 
-	fn rename_table_in_app(&mut self, app_label: &str, old_table_name: &str, new_table_name: &str) {
+	/// Rename a database table within an application while preserving model identities.
+	pub fn rename_table_in_app(
+		&mut self,
+		app_label: &str,
+		old_table_name: &str,
+		new_table_name: &str,
+	) {
 		if let Some(model) = self
 			.models
 			.iter_mut()
@@ -4329,22 +4335,16 @@ impl MigrationAutodetector {
 		from_model: &ModelState,
 		changes: &DetectedChanges,
 	) -> Option<&'a ModelState> {
+		if changes
+			.renamed_tables
+			.iter()
+			.any(|(app, model, old_table, _new_table)| {
+				app == app_label && model == from_model_name && old_table == &from_model.table_name
+			}) {
+			return self.to_state.get_model(app_label, from_model_name);
+		}
 		self.to_state
 			.get_model_by_table_name(app_label, &from_model.table_name)
-			.or_else(|| {
-				if changes
-					.renamed_tables
-					.iter()
-					.any(|(app, model, old_table, _new_table)| {
-						app == app_label
-							&& model == from_model_name
-							&& old_table == &from_model.table_name
-					}) {
-					self.to_state.get_model(app_label, from_model_name)
-				} else {
-					None
-				}
-			})
 			.or_else(|| {
 				changes
 					.renamed_models

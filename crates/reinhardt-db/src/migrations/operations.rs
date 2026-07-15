@@ -1417,7 +1417,7 @@ impl Operation {
 				}
 			}
 			Operation::RenameTable { old_name, new_name } => {
-				state.rename_table(old_name, new_name);
+				state.rename_table_in_app(app_label, old_name, new_name);
 			}
 			Operation::RenameColumn {
 				table,
@@ -6497,6 +6497,32 @@ mod tests {
 		assert_eq!(
 			state.get_model("myapp", "User").unwrap().table_name,
 			"accounts"
+		);
+	}
+
+	#[test]
+	fn state_forwards_rename_table_scopes_the_lookup_to_the_app() {
+		let mut state = ProjectState::new();
+		let mut accounts_model = ModelState::new("accounts", "User");
+		accounts_model.table_name = "users".to_string();
+		state.add_model(accounts_model);
+		let mut audit_model = ModelState::new("audit", "User");
+		audit_model.table_name = "users".to_string();
+		state.add_model(audit_model);
+
+		Operation::RenameTable {
+			old_name: "users".to_string(),
+			new_name: "accounts_user".to_string(),
+		}
+		.state_forwards("accounts", &mut state);
+
+		assert_eq!(
+			state.get_model("accounts", "User").unwrap().table_name,
+			"accounts_user"
+		);
+		assert_eq!(
+			state.get_model("audit", "User").unwrap().table_name,
+			"users"
 		);
 	}
 
