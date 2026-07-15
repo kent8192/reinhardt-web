@@ -339,6 +339,7 @@ impl ControlBindingController {
 			}
 			if adopted {
 				record_hydration_target_adoption(&binding);
+				crate::component::into_page::initialize_control_default(&element, &binding);
 			}
 			adopted || rejected
 		};
@@ -1166,6 +1167,90 @@ mod tests {
 
 		assert_eq!(signal.get(), "restored");
 		assert_eq!(input.selection_start().expect("selection"), Some(3));
+	}
+
+	#[wasm_bindgen_test]
+	fn hydration_adoption_updates_text_default_for_form_reset() {
+		let form = element("form");
+		let input = element("input");
+		let raw_input: web_sys::HtmlInputElement = input.as_web_sys().clone().unchecked_into();
+		raw_input.set_default_value("server");
+		raw_input.set_value("restored");
+		form.as_web_sys()
+			.append_child(input.as_web_sys())
+			.expect("append");
+		let signal = Signal::new("server".to_owned());
+
+		let _controller =
+			ControlBindingController::hydrate(input, ControlBinding::text(signal.clone()))
+				.expect("binding");
+		form.as_web_sys()
+			.clone()
+			.unchecked_into::<web_sys::HtmlFormElement>()
+			.reset();
+
+		assert_eq!(signal.get(), "restored");
+		assert_eq!(raw_input.value(), "restored");
+	}
+
+	#[wasm_bindgen_test]
+	fn hydration_adoption_updates_checked_default_for_form_reset() {
+		let form = element("form");
+		let input = element("input");
+		let raw_input: web_sys::HtmlInputElement = input.as_web_sys().clone().unchecked_into();
+		raw_input.set_type("checkbox");
+		raw_input.set_default_checked(false);
+		raw_input.set_checked(true);
+		form.as_web_sys()
+			.append_child(input.as_web_sys())
+			.expect("append");
+		let signal = Signal::new(false);
+
+		let _controller =
+			ControlBindingController::hydrate(input, ControlBinding::checkbox(signal.clone()))
+				.expect("binding");
+		form.as_web_sys()
+			.clone()
+			.unchecked_into::<web_sys::HtmlFormElement>()
+			.reset();
+
+		assert!(signal.get());
+		assert!(raw_input.checked());
+	}
+
+	#[wasm_bindgen_test]
+	fn hydration_adoption_updates_option_defaults_for_form_reset() {
+		let form = element("form");
+		let select = element("select");
+		let raw_select: web_sys::HtmlSelectElement = select.as_web_sys().clone().unchecked_into();
+		for (value, selected) in [("server", true), ("restored", false)] {
+			let option: web_sys::HtmlOptionElement = web_sys::window()
+				.expect("window")
+				.document()
+				.expect("document")
+				.create_element("option")
+				.expect("option")
+				.unchecked_into();
+			option.set_value(value);
+			option.set_default_selected(selected);
+			raw_select.append_child(&option).expect("append option");
+		}
+		raw_select.set_value("restored");
+		form.as_web_sys()
+			.append_child(select.as_web_sys())
+			.expect("append");
+		let signal = Signal::new("server".to_owned());
+
+		let _controller =
+			ControlBindingController::hydrate(select, ControlBinding::select_one(signal.clone()))
+				.expect("binding");
+		form.as_web_sys()
+			.clone()
+			.unchecked_into::<web_sys::HtmlFormElement>()
+			.reset();
+
+		assert_eq!(signal.get(), "restored");
+		assert_eq!(raw_select.value(), "restored");
 	}
 
 	#[wasm_bindgen_test]

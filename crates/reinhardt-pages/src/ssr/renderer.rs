@@ -1063,12 +1063,12 @@ impl SsrRenderer {
 						html.push_str(" />");
 					} else {
 						html.push('>');
-						if el.tag_name() == "textarea"
+						if el.tag_name().eq_ignore_ascii_case("textarea")
 							&& let Some(text) = projection.textarea_text.as_deref()
 						{
 							html.push_str(&html_escape(text));
 						} else {
-							let child_selection = if el.tag_name() == "select" {
+							let child_selection = if el.tag_name().eq_ignore_ascii_case("select") {
 								el.bound_control().map(|binding| {
 									SsrSelectionState::new(
 										binding,
@@ -1323,12 +1323,12 @@ impl SsrRenderer {
 						html.push_str(" />");
 					} else {
 						html.push('>');
-						if el.tag_name() == "textarea"
+						if el.tag_name().eq_ignore_ascii_case("textarea")
 							&& let Some(text) = projection.textarea_text.as_deref()
 						{
 							html.push_str(&html_escape(text));
 						} else {
-							let child_selection = if el.tag_name() == "select" {
+							let child_selection = if el.tag_name().eq_ignore_ascii_case("select") {
 								el.bound_control().map(|binding| {
 									SsrSelectionState::new(
 										binding,
@@ -2163,6 +2163,47 @@ mod tests {
 			render_element_opening(&element, &projection, None),
 			"<INPUT value=\"current\""
 		);
+	}
+
+	#[tokio::test]
+	async fn controlled_uppercase_textarea_and_select_render_in_buffered_and_streaming_paths() {
+		let textarea = PageElement::new("TEXTAREA")
+			.control_binding(ControlBinding::text(Signal::new("current".to_owned())))
+			.child("stale child")
+			.into_page();
+		let select = PageElement::new("SELECT")
+			.control_binding(ControlBinding::select_one(Signal::new(
+				"current".to_owned(),
+			)))
+			.child(
+				PageElement::new("OPTION")
+					.attr("value", "current")
+					.child("Current"),
+			)
+			.child(
+				PageElement::new("OPTION")
+					.attr("value", "stale")
+					.child("Stale"),
+			)
+			.into_page();
+		let view = Page::Fragment(vec![textarea, select]);
+		let mut buffered_renderer = SsrRenderer::new();
+		let mut streaming_renderer = SsrRenderer::new();
+
+		let buffered = buffered_renderer.render_view(&view).await;
+		let streaming = streaming_renderer
+			.render_page_with_view_head(view)
+			.await
+			.collect_string()
+			.await;
+
+		for html in [&buffered, &streaming] {
+			assert!(html.contains("<TEXTAREA>current</TEXTAREA>"), "{html}");
+			assert!(
+				html.contains("<OPTION value=\"current\" selected=\"selected\">Current</OPTION>"),
+				"{html}"
+			);
+		}
 	}
 
 	#[tokio::test]

@@ -31,7 +31,7 @@
 
 pub mod activity;
 pub mod error_boundary;
-mod into_page;
+pub(crate) mod into_page;
 mod props;
 pub(crate) mod reactive_if;
 pub mod suspense;
