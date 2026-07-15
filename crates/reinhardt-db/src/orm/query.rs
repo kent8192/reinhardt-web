@@ -1016,6 +1016,10 @@ where
 	}
 
 	fn apply_prefetch_related(self, queryset: &mut QuerySet<T>) {
+		assert!(
+			T::composite_primary_key().is_none_or(|key| key.field_count() == 1),
+			"typed prefetch_related does not support composite primary-key roots"
+		);
 		for field in self {
 			queryset
 				.validate_relation_path(field.as_ref())
@@ -3328,6 +3332,7 @@ where
 	/// ```
 	pub fn with_lateral_join(mut self, join: super::lateral_join::LateralJoin) -> Self {
 		self.lateral_joins.add(join);
+		self.rebase_filter_relation_aliases();
 		self
 	}
 
@@ -8857,6 +8862,16 @@ mod tests {
 	}
 
 	#[test]
+	#[should_panic(
+		expected = "typed prefetch_related does not support composite primary-key roots"
+	)]
+	fn test_vec_prefetch_related_rejects_composite_primary_key_root() {
+		let fields = vec!["projects"];
+
+		let _ = QuerySet::<TestMembership>::new().prefetch_related(&fields);
+	}
+
+	#[test]
 	fn test_relation_filter_adds_inner_join() {
 		let filter =
 			crate::orm::relations::RelationPath::<TestUser, TestCorpusFile>::from_descriptor::<
@@ -8871,6 +8886,26 @@ mod tests {
 			sql,
 			r#"SELECT "test_users".* FROM "test_users" INNER JOIN "test_corpus_files" AS "corpus_file" ON "test_users"."corpus_file_id" = "corpus_file"."id" WHERE "corpus_file"."normalized_path" = '/docs/index.md'"#
 		);
+	}
+
+	#[test]
+	fn test_lateral_join_rebases_typed_relation_filter_aliases() {
+		let filter =
+			crate::orm::relations::RelationPath::<TestUser, TestCorpusFile>::from_descriptor::<
+				TestUserCorpusFile,
+			>()
+			.field(TestCorpusFile::field_normalized_path())
+			.eq("/docs/index.md");
+		let sql = QuerySet::<TestUser>::new()
+			.filter(filter)
+			.with_lateral_join(crate::orm::lateral_join::LateralJoin::new(
+				"corpus_file",
+				"SELECT 1",
+			))
+			.to_sql();
+
+		assert!(sql.contains(r#"AS "corpus_file__corpus_file""#));
+		assert!(sql.contains(r#"WHERE "corpus_file__corpus_file"."normalized_path""#));
 	}
 
 	#[test]

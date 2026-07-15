@@ -1858,6 +1858,17 @@ fn generate_relation_traversal_accessors(
 			compile_error!("typed reverse one_to_many relations on composite primary-key models require #[rel(to_field = \"...\")]");
 		};
 	}
+	if has_composite_primary_key
+		&& field_infos.iter().any(|field| {
+			field
+				.rel
+				.as_ref()
+				.is_some_and(|relation| relation.rel_type == RelationType::ManyToMany)
+		}) {
+		return quote! {
+			compile_error!("typed relation traversal does not support many_to_many relations on composite primary-key models");
+		};
+	}
 
 	let db_crate = get_reinhardt_db_crate();
 	let orm_crate = get_reinhardt_orm_crate();
@@ -6528,6 +6539,27 @@ mod tests {
 
 		assert!(output_str.contains("field_info . name == \"slug\""));
 		assert!(output_str.contains("source_column"));
+	}
+
+	#[test]
+	fn test_composite_primary_key_rejects_many_to_many_traversal() {
+		let input = quote! {
+			#[model(app_label = "test", table_name = "memberships")]
+			pub struct Membership {
+				#[field(primary_key = true)]
+				pub user_id: i64,
+				#[field(primary_key = true)]
+				pub role_id: i64,
+				#[rel(many_to_many)]
+				pub tags: ManyToManyField<Membership, Tag>,
+			}
+		};
+
+		let output = model_derive_impl(syn::parse2(input).unwrap()).unwrap();
+
+		assert!(output.to_string().contains(
+			"typed relation traversal does not support many_to_many relations on composite primary-key models"
+		));
 	}
 
 	#[test]
