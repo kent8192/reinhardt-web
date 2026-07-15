@@ -326,6 +326,15 @@ mod tests {
 			// SAFETY: The handwritten test model declares `id` as its unique primary key.
 			unsafe { reinhardt_db::orm::UniqueFieldRef::from_model_field("id") }
 		}
+
+		async fn to_read(
+			model: &Self::Model,
+			_executor: Option<&mut dyn TransactionExecutor>,
+		) -> Result<Self::Read, ServerFnSetError> {
+			model.id.ok_or_else(|| ServerFnSetError::NotFound {
+				resource: "widget".to_string(),
+			})
+		}
 	}
 
 	struct RecordingMapperEvents {
