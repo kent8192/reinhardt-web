@@ -4567,7 +4567,7 @@ mod tests {
 		let error = add_reused_table_name_dependencies(&mut [&mut accounts, &mut archive])
 			.expect_err("cross-app table-name swaps require an explicit temporary migration");
 
-		assert!(error.contains("cross-app table-name swap"));
+		assert!(error.contains("cyclic cross-app table-name dependency"));
 		assert!(accounts.dependencies.is_empty());
 		assert!(archive.dependencies.is_empty());
 	}

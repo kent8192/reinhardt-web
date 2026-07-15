@@ -1498,6 +1498,11 @@ impl Operation {
 				new_table_name,
 			} => {
 				// Move the model from one app to another in the project state
+				if *rename_table
+					&& let (Some(old_name), Some(new_name)) = (old_table_name, new_table_name)
+				{
+					state.rename_table_in_app(from_app, old_name, new_name);
+				}
 				// First get the model, then remove it from the old location
 				if let Some(model) = state.get_model(from_app, model_name).cloned() {
 					state.remove_model(from_app, model_name);
@@ -1505,13 +1510,6 @@ impl Operation {
 					// Create a new model with updated app label
 					let mut new_model = model;
 					new_model.app_label = to_app.to_string();
-
-					// Update table name if rename_table is true
-					if *rename_table
-						&& let (Some(_old_name), Some(new_name)) = (old_table_name, new_table_name)
-					{
-						new_model.table_name = new_name.to_string();
-					}
 
 					state.add_model(new_model);
 				}
@@ -6593,6 +6591,66 @@ mod tests {
 				.unwrap()
 				.referenced_table,
 			"user"
+		);
+	}
+
+	#[test]
+	fn state_forwards_move_model_renames_foreign_key_references() {
+		let mut state = ProjectState::new();
+		let mut user = ModelState::new("accounts", "User");
+		user.table_name = "users".to_string();
+		state.add_model(user);
+		let mut post = ModelState::new("blog", "Post");
+		post.table_name = "posts".to_string();
+		post.add_field(FieldState::with_foreign_key(
+			"user_id",
+			FieldType::Integer,
+			false,
+			ForeignKeyInfo {
+				referenced_table: "users".to_string(),
+				referenced_column: "id".to_string(),
+				on_delete: ForeignKeyAction::Cascade,
+				on_update: ForeignKeyAction::Cascade,
+			},
+		));
+		post.fields
+			.get_mut("user_id")
+			.unwrap()
+			.params
+			.insert("fk_target_app".to_string(), "accounts".to_string());
+		post.add_foreign_key_constraint_from_field("user_id");
+		state.add_model(post);
+
+		Operation::MoveModel {
+			model_name: "User".to_string(),
+			from_app: "accounts".to_string(),
+			to_app: "auth".to_string(),
+			rename_table: true,
+			old_table_name: Some("users".to_string()),
+			new_table_name: Some("auth_user".to_string()),
+		}
+		.state_forwards("auth", &mut state);
+
+		assert_eq!(
+			state.get_model("auth", "User").unwrap().table_name,
+			"auth_user"
+		);
+		let post = state.get_model("blog", "Post").unwrap();
+		assert_eq!(
+			post.fields["user_id"]
+				.foreign_key
+				.as_ref()
+				.unwrap()
+				.referenced_table,
+			"auth_user"
+		);
+		assert_eq!(
+			post.constraints[0]
+				.foreign_key_info
+				.as_ref()
+				.unwrap()
+				.referenced_table,
+			"auth_user"
 		);
 	}
 

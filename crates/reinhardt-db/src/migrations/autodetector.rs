@@ -369,16 +369,16 @@ impl ModelState {
 	/// let model = ModelState::new("myapp", "User");
 	/// assert_eq!(model.app_label, "myapp");
 	/// assert_eq!(model.name, "User");
-	/// assert_eq!(model.table_name, "user");
+	/// assert_eq!(model.table_name, "myapp_user");
 	/// assert_eq!(model.fields.len(), 0);
 	/// ```
 	pub fn new(app_label: impl Into<String>, name: impl Into<String>) -> Self {
+		let app_label = app_label.into();
 		let name_str = name.into();
-		// Convert model name to table name (e.g., "User" -> "user", "BlogPost" -> "blog_post")
-		let table_name = to_snake_case(&name_str);
+		let table_name = format!("{}_{}", app_label, to_snake_case(&name_str));
 
 		Self {
-			app_label: app_label.into(),
+			app_label,
 			name: name_str,
 			table_name,
 			fields: std::collections::BTreeMap::new(),
@@ -993,8 +993,7 @@ impl ProjectState {
 		new_table_name: &str,
 	) {
 		for ((model_app_label, _), model) in &mut self.models {
-			let mut updated_fields = BTreeSet::new();
-			for (field_name, field) in &mut model.fields {
+			for field in model.fields.values_mut() {
 				let targets_renamed_model = field
 					.params
 					.get("fk_target_app")
@@ -1006,15 +1005,10 @@ impl ProjectState {
 					&& foreign_key.referenced_table == old_table_name
 				{
 					foreign_key.referenced_table = new_table_name.to_string();
-					updated_fields.insert(field_name.clone());
 				}
 			}
 			for constraint in &mut model.constraints {
-				if constraint
-					.fields
-					.iter()
-					.any(|field| updated_fields.contains(field))
-					&& let Some(foreign_key) = &mut constraint.foreign_key_info
+				if let Some(foreign_key) = &mut constraint.foreign_key_info
 					&& foreign_key.referenced_table == old_table_name
 				{
 					foreign_key.referenced_table = new_table_name.to_string();
@@ -13669,6 +13663,48 @@ mod tests {
 			matches!(remaining[0], super::super::Operation::AddColumn { .. }),
 			"expected the surviving op to be AddColumn, got: {:?}",
 			remaining[0]
+		);
+	}
+
+	#[test]
+	fn model_state_new_uses_the_app_prefixed_table_name_convention() {
+		assert_eq!(
+			ModelState::new("accounts", "User").table_name,
+			"accounts_user"
+		);
+	}
+
+	#[test]
+	fn rename_table_in_app_updates_replayed_foreign_key_constraints_without_field_metadata() {
+		let mut state = ProjectState::new();
+		let mut user = ModelState::new("accounts", "User");
+		user.table_name = "users".to_string();
+		state.add_model(user);
+		let mut post = ModelState::new("blog", "Post");
+		post.table_name = "posts".to_string();
+		post.constraints.push(ConstraintDefinition {
+			name: "posts_user_id_fk".to_string(),
+			constraint_type: "foreign_key".to_string(),
+			fields: vec!["user_id".to_string()],
+			expression: None,
+			foreign_key_info: Some(ForeignKeyConstraintInfo {
+				referenced_table: "users".to_string(),
+				referenced_columns: vec!["id".to_string()],
+				on_delete: ForeignKeyAction::Cascade,
+				on_update: ForeignKeyAction::Cascade,
+			}),
+		});
+		state.add_model(post);
+
+		state.rename_table_in_app("accounts", "users", "accounts_user");
+
+		assert_eq!(
+			state.get_model("blog", "Post").unwrap().constraints[0]
+				.foreign_key_info
+				.as_ref()
+				.unwrap()
+				.referenced_table,
+			"accounts_user"
 		);
 	}
 }
