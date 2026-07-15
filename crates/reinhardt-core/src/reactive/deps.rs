@@ -36,6 +36,20 @@ pub trait Trackable {
 #[derive(Debug)]
 pub struct Deps(SmallVec<[NodeId; 8]>);
 
+/// An explicit collection of reactive dependencies.
+#[derive(Debug)]
+pub struct ExplicitDeps(Deps);
+
+impl ExplicitDeps {
+	/// Builds an explicit dependency collection from reactive node IDs.
+	#[doc(hidden)]
+	pub fn from_node_ids(ids: impl IntoIterator<Item = NodeId>) -> Self {
+		let mut nodes = SmallVec::new();
+		nodes.extend(ids);
+		Self(Deps(nodes))
+	}
+}
+
 impl Deps {
 	/// Returns the internal `NodeId` slice for subscription routing.
 	pub fn as_slice(&self) -> &[NodeId] {
@@ -85,6 +99,12 @@ impl IntoDeps for Deps {
 	}
 }
 
+impl IntoDeps for ExplicitDeps {
+	fn into_deps(self) -> Deps {
+		self.0
+	}
+}
+
 impl<T: 'static> Trackable for Signal<T> {
 	fn node_id(&self) -> NodeId {
 		self.id()
@@ -123,6 +143,16 @@ impl_into_deps_for_tuple!(T1, T2, T3, T4, T5, T6, T7, T8, T9);
 impl_into_deps_for_tuple!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10);
 impl_into_deps_for_tuple!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11);
 impl_into_deps_for_tuple!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12);
+
+/// Creates an explicit dependency collection from trackable expressions.
+#[macro_export]
+macro_rules! deps {
+	($($dependency:expr),* $(,)?) => {{
+		$crate::reactive::ExplicitDeps::from_node_ids([
+			$($crate::reactive::Trackable::node_id(&$dependency),)*
+		])
+	}};
+}
 
 #[cfg(test)]
 mod tests {
