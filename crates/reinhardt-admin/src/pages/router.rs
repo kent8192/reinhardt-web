@@ -27,7 +27,7 @@ use reinhardt_pages::component::{Component, Page};
 use reinhardt_pages::page;
 use reinhardt_pages::router::Link;
 #[cfg(client)]
-use reinhardt_pages::{ResourceState, use_resource};
+use reinhardt_pages::{ResourceState, deps, use_resource};
 use reinhardt_urls::routers::ClientRouter;
 use reinhardt_urls::routers::client_router::Path;
 use std::cell::RefCell;
@@ -190,7 +190,7 @@ where
 fn dashboard_view() -> Page {
 	let dashboard_resource = use_resource(
 		|| async { get_dashboard().await.map_err(|e| e.to_string()) },
-		(),
+		deps![],
 	);
 
 	let reactive_content = Page::reactive({
@@ -251,7 +251,7 @@ fn list_view_component(model_name: String) -> Page {
 					.map_err(|e| e.to_string())
 			}
 		},
-		(),
+		deps![],
 	);
 
 	// Create signals outside the reactive closure so they persist across re-renders
@@ -266,7 +266,6 @@ fn list_view_component(model_name: String) -> Page {
 	{
 		let resource = list_resource.clone();
 		let page_signal = page_signal.clone();
-		let resource_for_deps = list_resource.clone();
 		use_retained_effect(
 			move || {
 				if let ResourceState::Success(ref response) = resource.get() {
@@ -274,7 +273,7 @@ fn list_view_component(model_name: String) -> Page {
 				}
 				None::<fn()>
 			},
-			(resource_for_deps,),
+			deps![list_resource],
 		);
 	}
 
@@ -381,7 +380,7 @@ fn detail_view_component(model_name: String, record_id: String) -> Page {
 					.map_err(|e| e.to_string())
 			}
 		},
-		(),
+		deps![],
 	);
 
 	let reactive_content = Page::reactive({
@@ -434,7 +433,7 @@ fn create_view_component(model_name: String) -> Page {
 					.map_err(|e| e.to_string())
 			}
 		},
-		(),
+		deps![],
 	);
 
 	let reactive_content = Page::reactive({
@@ -511,7 +510,7 @@ fn edit_view_component(model_name: String, record_id: String) -> Page {
 					.map_err(|e| e.to_string())
 			}
 		},
-		(),
+		deps![],
 	);
 
 	let reactive_content = Page::reactive({

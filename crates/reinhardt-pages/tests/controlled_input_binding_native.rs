@@ -12,7 +12,7 @@ use reinhardt_pages::prelude::spawn_task;
 use reinhardt_pages::reactive::Signal;
 use reinhardt_pages::reactive::hooks::use_layout_effect;
 use reinhardt_pages::testing::component::{EventError, EventFixture, render};
-use reinhardt_pages::{IntoPage, Page, PageElement, page};
+use reinhardt_pages::{IntoPage, Page, PageElement, deps, page};
 use rstest::rstest;
 use serial_test::serial;
 
@@ -67,7 +67,7 @@ fn binding_write_layout_effect_can_read_the_same_screen() {
 				.push((effect_value.get(), effect_input.value()));
 			None::<fn()>
 		},
-		(value.clone(),),
+		deps![value.clone()],
 	);
 
 	// Act
@@ -109,7 +109,7 @@ async fn binding_write_layout_effect_spawns_on_the_screen_scheduler() {
 			}
 			None::<fn()>
 		},
-		(value.clone(),),
+		deps![value.clone()],
 	);
 
 	// Act

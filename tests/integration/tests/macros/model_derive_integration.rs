@@ -11,6 +11,7 @@ use reinhardt_db::migrations::FieldType;
 use reinhardt_db::migrations::model_registry::global_registry;
 use reinhardt_db::migrations::{GeneratedStorage, SchemaExpr, SchemaFunc};
 use reinhardt_db::orm::Model as ModelTrait;
+use reinhardt_db::orm::QuerySet;
 use reinhardt_db::orm::fields::FieldKwarg;
 use reinhardt_db::orm::relationship::RelationshipType;
 use reinhardt_macros::model;
@@ -61,6 +62,29 @@ struct MetadataProfile {
 
 	#[rel(one_to_one)]
 	profile: OneToOneField<MetadataTarget>,
+}
+
+#[model(app_label = "traversal_test", table_name = "traversal_authors")]
+#[derive(Serialize, Deserialize)]
+struct TraversalAuthor {
+	#[field(primary_key = true)]
+	id: Option<i64>,
+
+	#[field(max_length = 255, db_column = "email_address")]
+	email: String,
+
+	#[field(max_length = 255, db_column = "author_slug")]
+	slug: String,
+}
+
+#[model(app_label = "traversal_test", table_name = "traversal_posts")]
+#[derive(Serialize, Deserialize)]
+struct TraversalPost {
+	#[field(primary_key = true)]
+	id: Option<i64>,
+
+	#[rel(foreign_key, db_column = "author_slug", to_field = "slug")]
+	author: ForeignKeyField<TraversalAuthor>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -186,6 +210,33 @@ fn test_relationship_metadata_uses_generated_fk_columns_and_targets() {
 	assert_eq!(profile.relationship_type, RelationshipType::OneToOne);
 	assert_eq!(profile.foreign_key.as_deref(), Some("profile_id"));
 	assert_eq!(profile.related_model, "MetadataTarget");
+}
+
+#[test]
+fn test_related_field_accessor_uses_physical_column_in_filter() {
+	let sql = QuerySet::<TraversalPost>::new()
+		.filter(
+			TraversalPost::rel_author()
+				.into_typed()
+				.field_email()
+				.exact("person@example.com"),
+		)
+		.to_sql();
+
+	assert_eq!(
+		sql,
+		r#"SELECT "traversal_posts".* FROM "traversal_posts" INNER JOIN "traversal_authors" AS "author" ON "traversal_posts"."author_slug" = "author"."author_slug" WHERE "author"."email_address" = 'person@example.com'"#
+	);
+}
+
+#[test]
+fn test_relation_descriptor_resolves_to_field_physical_column() {
+	use reinhardt_db::orm::relations::RelationPathLike;
+
+	assert_eq!(
+		TraversalPost::rel_author().steps()[0].target_column,
+		"author_slug"
+	);
 }
 
 #[test]

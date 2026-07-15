@@ -13,10 +13,10 @@ application.
 | Function component | Rust function returning `Page` | Props are normal typed Rust arguments or structs. |
 | Fragment | Multiple top-level `page!` nodes or `Page::fragment` | The output is a `Page::Fragment`, not a virtual DOM fragment. |
 | `useState` | `use_state` returning `(Signal<T>, SetState<T>)` | Reads use `signal.get()`, writes use `set(value)` or `set.update(...)`. |
-| `useEffect` | `use_effect(f, deps)` | Return `()` for no cleanup or `Option<C>` for cleanup; dependencies are explicit Rust tuples, for example `(count.clone(),)`. |
-| `useLayoutEffect` | `use_layout_effect(f, deps)` | Same dependency model, layout timing. |
+| `useEffect` | `use_effect(f, deps)` | Return `()` for no cleanup or `Option<C>` for cleanup; use `deps![...]` or `deps_auto!()`. |
+| `useLayoutEffect` | `use_layout_effect(f, deps)` | Same dependency modes, with layout timing. |
 | `useMemo` | `use_memo(f, deps)` | Returns `Memo<T>`; read it with `.get()`. |
-| `useCallback` | `use_callback(f, deps)` / `use_callback_with(f, deps)` | Returns a typed `Callback`, usually for event handlers. |
+| `useCallback` | `use_callback(f, deps)` / `use_callback_with(f, deps)` | Returns a typed `Callback`; these hooks require `deps![...]`. |
 | `useReducer` | `use_reducer(reducer, initial)` | The reducer is a pure Rust function from `(&State, Action)` to `State`. |
 | `useRef` | `use_ref(initial)` | Mutating a `Ref<T>` does not notify the reactive graph. |
 | `useContext` | `Context<T>` + `provide_context` + `use_context` | Missing context returns `Option<T>`. |
@@ -345,11 +345,13 @@ page!({
 `Signal::clone()` is cheap. Prefer cloning the signal handle instead of
 extracting a value early when the UI must remain reactive.
 
-## Effects and dependency tuples
+## Effects and dependency modes
 
-React uses dependency arrays. Reinhardt Pages uses explicit dependency tuples.
-The tuple is part of the Rust call, not inferred from signal reads inside the
-effect body.
+React uses dependency arrays. Reinhardt Pages uses the named `deps![...]` and
+`deps_auto!()` macros. `deps![...]` is part of the Rust call and subscribes only
+to the listed signals; `deps_auto!()` tracks signal reads performed by effects,
+layout effects, and memos. Callbacks, resources, and retained effects require
+the explicit form because their work executes outside dependency collection.
 
 ```rust,ignore
 use reinhardt::pages::prelude::*;
@@ -363,17 +365,20 @@ use_effect(
             log::info!("count = {}", count.get());
         }
     },
-    (count.clone(),),
+    deps![count],
 );
 ```
 
 Important differences from React:
 
-- Pass `()` for mount-only effects.
-- Pass `(signal.clone(),)` for one dependency. The trailing comma matters.
+- Pass `deps![]` for mount-only effects.
+- Pass `deps![signal]` for one explicit dependency; list additional values in
+  the same macro invocation.
+- Pass `deps_auto!()` when the effect should rebuild subscriptions from reads.
 - Reading a signal inside `use_effect`, `use_layout_effect`,
-  `use_memo`, or `use_callback` does not create hidden subscriptions.
-  Subscriptions come from the dependency tuple.
+  `use_memo`, or `use_callback` does not create hidden subscriptions in
+  explicit mode. Subscriptions come from the dependency list; automatic mode
+  tracks reads for effects, layout effects, and memos.
 - Cleanup is returned as `Option<C>` from the closure, matching React's
   cleanup behavior in a Rust type.
 
@@ -400,7 +405,7 @@ let visible = use_memo(
                 .collect::<Vec<_>>()
         }
     },
-    (items.clone(), threshold.clone()),
+    deps![items, threshold],
 );
 
 let visible_for_click = visible.clone();
@@ -408,7 +413,7 @@ let on_click = use_callback(
     move |_event| {
         log::info!("visible item count = {}", visible_for_click.get().len());
     },
-    (visible.clone(),),
+    deps![visible],
 );
 ```
 
@@ -804,8 +809,9 @@ intentional:
   so there is no hook-call-order rule for preserving slot identity. Still,
   create long-lived state at component construction time instead of inside
   frequently re-run reactive page branches unless new state is intended.
-- Effect, memo, and callback dependencies are explicit tuples, not arrays and
-  not implicit captures.
+- Effect, layout-effect, and memo dependencies use either an explicit
+  `deps![...]` list or `deps_auto!()`; callback, resource, and retained-effect
+  dependencies require `deps![...]`.
 - Updates are fine-grained through signals instead of virtual DOM diffing.
 - Event and DOM APIs are typed Rust APIs over `web-sys` on WASM and owned event
   snapshots on native; native component tests can execute the same handlers.
@@ -822,7 +828,8 @@ When porting a React component:
 1. Convert JSX markup to `page!`.
 2. Convert props to typed Rust arguments or a `Props` struct.
 3. Replace `useState` values with `Signal<T>` reads and `SetState<T>` writes.
-4. Replace dependency arrays with dependency tuples.
+4. Replace dependency arrays with `deps![...]`; use `deps_auto!()` only for
+   effects, layout effects, and memos when read-based tracking is desired.
 5. Move async mutations behind `#[server_fn]` and trigger them with
    `use_action`.
 6. Replace React Router route elements with `ClientRouter` route handlers.

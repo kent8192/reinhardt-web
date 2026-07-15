@@ -89,9 +89,11 @@
 // ============================================================================
 
 pub use crate::reactive::{
-	Effect, LatestResourceState, LatestResourceValue, LatestResourceValueBuilder, Memo,
-	QueryHandle, QueryKey, QueryPhase, Resource, ResourceState, Signal, use_latest_resource_value,
+	Effect, ExplicitDeps, LatestResourceState, LatestResourceValue, LatestResourceValueBuilder,
+	Memo, QueryHandle, QueryKey, QueryPhase, ReactiveDeps, Resource, ResourceState, Signal,
+	Trackable, use_latest_resource_value,
 };
+pub use crate::{deps, deps_auto};
 
 // Context system
 pub use crate::reactive::{
