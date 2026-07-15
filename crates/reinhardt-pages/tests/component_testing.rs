@@ -11,6 +11,7 @@ use reinhardt_core::types::page::{
 };
 use reinhardt_pages::callback::async_handler;
 use reinhardt_pages::component::suspense::SuspenseBoundary;
+use reinhardt_pages::deps;
 use reinhardt_pages::event::{ClickEvent, EventPayload, FocusEvent, typed_event_handler};
 use reinhardt_pages::prelude::spawn_task;
 use reinhardt_pages::reactive::hooks::use_action;
@@ -55,18 +56,24 @@ fn string_resource_page(state: ResourceState<String, String>) -> Page {
 fn index_job_component() -> Page {
 	let resource = use_resource(
 		|| async { Ok::<String, String>("Index job".to_string()) },
-		(),
+		deps![],
 	);
 	Page::reactive(move || string_resource_page(resource.get()))
 }
 
 fn ready_component() -> Page {
-	let resource = use_resource(|| async { Ok::<String, String>("Ready".to_string()) }, ());
+	let resource = use_resource(
+		|| async { Ok::<String, String>("Ready".to_string()) },
+		deps![],
+	);
 	Page::reactive(move || string_resource_page(resource.get()))
 }
 
 fn suspense_resource_component() -> Page {
-	let resource = use_resource(|| async { Ok::<String, String>("Ready".to_string()) }, ());
+	let resource = use_resource(
+		|| async { Ok::<String, String>("Ready".to_string()) },
+		deps![],
+	);
 	let content_resource = resource.clone();
 	SuspenseBoundary::new()
 		.fallback(|| text_page("Loading"))
@@ -76,8 +83,11 @@ fn suspense_resource_component() -> Page {
 }
 
 fn mixed_resource_component() -> Page {
-	let pending = use_resource(std::future::pending::<Result<String, String>>, ());
-	let ready = use_resource(|| async { Ok::<String, String>("Ready".to_string()) }, ());
+	let pending = use_resource(std::future::pending::<Result<String, String>>, deps![]);
+	let ready = use_resource(
+		|| async { Ok::<String, String>("Ready".to_string()) },
+		deps![],
+	);
 	Page::reactive(move || {
 		let _ = pending.get();
 		string_resource_page(ready.get())
@@ -862,7 +872,7 @@ fn jobs_resource_page(state: ResourceState<Vec<String>, ServerFnError>) -> Page 
 
 #[cfg(feature = "msw")]
 fn jobs_component() -> Page {
-	let jobs = use_resource(|| async { load_jobs().await }, ());
+	let jobs = use_resource(|| async { load_jobs().await }, deps![]);
 	Page::reactive(move || jobs_resource_page(jobs.get()))
 }
 
