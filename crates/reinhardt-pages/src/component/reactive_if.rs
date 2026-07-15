@@ -846,6 +846,8 @@ fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::No
 
 				let element_wrapper = crate::dom::Element::new(element.clone());
 				let mount_children_before_binding = tag.eq_ignore_ascii_case("select");
+				let skip_bound_textarea_children =
+					control_binding.is_some() && tag.eq_ignore_ascii_case("textarea");
 				let mut children = children.into_iter();
 				if mount_children_before_binding {
 					for child in children.by_ref() {
@@ -853,6 +855,9 @@ fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::No
 					}
 				}
 
+				if let Some(binding) = control_binding.as_ref() {
+					crate::component::into_page::initialize_control_default(&element_wrapper, binding);
+				}
 				let binding_controller = control_binding
 					.map(|binding| {
 						crate::dom::control_binding::ControlBindingController::mount(
@@ -882,7 +887,7 @@ fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::No
 					));
 				}
 
-				if !mount_children_before_binding {
+				if !mount_children_before_binding && !skip_bound_textarea_children {
 					let child_marker = document.create_comment("reactive-element-children");
 					element
 						.append_child(&child_marker)

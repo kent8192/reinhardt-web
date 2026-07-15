@@ -59,7 +59,7 @@ pub(crate) fn controlled_attribute_is_overridden(
 }
 
 #[cfg(wasm)]
-fn initialize_control_default(element: &Element, binding: &ControlBinding) {
+pub(crate) fn initialize_control_default(element: &Element, binding: &ControlBinding) {
 	let value = binding.read();
 	match (binding.kind(), value) {
 		(ControlKind::Text | ControlKind::Number, ControlValue::Text(value)) => {
