@@ -528,6 +528,11 @@ pub use reinhardt_forms::{
 	wasm_compat::{FieldMetadata, FormMetadata},
 };
 pub use router::Link;
+pub use router::RouteLoaderId;
+pub use router::loader::{
+	Loader, LoaderInputError, LoaderInputKind, LoaderInputSpec, LoaderStore, LoaderStoreError,
+	RouteLoader, RouteLoaderError, canonical_loader_inputs, loader_cache_id,
+};
 // Imperative SPA navigation API (Issue #4610). `navigate` is the free
 // function; `use_router` returns a `RouterHandle` for use inside hooks /
 // components. `NavigateError` is the public error returned by both paths.

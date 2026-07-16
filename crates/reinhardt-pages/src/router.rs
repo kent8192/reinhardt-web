@@ -102,6 +102,10 @@ mod components;
 mod history;
 mod navigate;
 
+pub mod loader;
+pub mod loader_registry;
+pub mod loader_store;
+
 /// Manouche DSL v2 spec §4.3 `FromRequest`-based page handlers.
 ///
 /// Re-exports the building blocks for
@@ -144,7 +148,7 @@ pub use components::{Link, Redirect, RouterOutlet, guard, guard_or};
 pub use history::{HistoryState, NavigationType};
 pub use navigate::navigate;
 pub use reinhardt_urls::routers::ClientRouter;
-pub use reinhardt_urls::routers::client_router::Path;
+pub use reinhardt_urls::routers::client_router::{Path, RouteLoaderId};
 // `setup_popstate_listener` is wasm-only — see `history` module docs.
 #[cfg(wasm)]
 pub use history::setup_popstate_listener;

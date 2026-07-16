@@ -155,6 +155,11 @@ pub use crate::dom::{CustomEventOptions, Document, Element, EventHandle, EventTy
 
 // Non-deprecated rendering primitives.
 pub use crate::router::Link;
+pub use crate::router::RouteLoaderId;
+pub use crate::router::loader::{
+	Loader, LoaderInputError, LoaderInputKind, LoaderInputSpec, LoaderStore, LoaderStoreError,
+	RouteLoader, RouteLoaderError, canonical_loader_inputs, loader_cache_id,
+};
 
 // ============================================================================
 // API and Server Functions
