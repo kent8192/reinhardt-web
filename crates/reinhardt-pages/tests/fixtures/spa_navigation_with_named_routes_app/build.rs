@@ -15,5 +15,5 @@ fn main() {
 		client: { target_arch = "wasm32" },
 		// Use `#[cfg(server)]` instead of `#[cfg(not(target_arch = "wasm32"))]`
 		server: { not(target_arch = "wasm32") },
-	};
+	}
 }

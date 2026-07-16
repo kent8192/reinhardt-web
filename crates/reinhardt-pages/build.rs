@@ -24,5 +24,5 @@ fn main() {
 		ssr: { all(not(all(target_family = "wasm", target_os = "unknown")), feature = "ssr") },
 		csr: { all(all(target_family = "wasm", target_os = "unknown"), not(feature = "hydrate")) },
 		hydrate: { all(all(target_family = "wasm", target_os = "unknown"), feature = "hydrate") },
-	};
+	}
 }

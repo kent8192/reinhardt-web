@@ -9,5 +9,5 @@ fn main() {
 		// Platform aliases for simpler conditional compilation
 		client: { all(target_family = "wasm", target_os = "unknown") },
 		server: { not(all(target_family = "wasm", target_os = "unknown")) },
-	};
+	}
 }

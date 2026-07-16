@@ -2635,7 +2635,10 @@ mod migrations_extended_tests {
 		};
 		rename_op.state_forwards("app", &mut state);
 
-		assert!(state.get_model("app", "customers").is_some());
+		let model = state
+			.get_model("app", "users")
+			.expect("table rename should preserve the model identity");
+		assert_eq!(model.table_name, "customers");
 	}
 
 	#[test]
@@ -2876,7 +2879,10 @@ mod migrations_extended_tests {
 		};
 		rename_op.state_forwards("app", &mut state);
 
-		assert!(state.get_model("app", "app_default").is_some());
+		let model = state
+			.get_model("app", "old_custom")
+			.expect("table rename should preserve the model identity");
+		assert_eq!(model.table_name, "app_default");
 	}
 
 	#[test]
