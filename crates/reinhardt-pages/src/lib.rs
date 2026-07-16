@@ -367,6 +367,12 @@ pub mod callback;
 #[allow(dead_code)]
 mod cancellation;
 pub use cancellation::{CancellationHandle, CancellationToken, Cancelled};
+// Internal query lease symbols are re-exported for the loader runtime added
+// in subsequent implementation tasks.
+#[allow(unused_imports)]
+pub(crate) use reactive::{
+	QueryAcquireOptions, QueryConsumer, QueryErrorPolicy, QueryLease, acquire_query,
+};
 pub mod dom;
 pub mod event;
 #[cfg(feature = "i18n")]
