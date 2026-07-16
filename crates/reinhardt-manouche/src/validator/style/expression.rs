@@ -1099,7 +1099,10 @@ fn keyword_matches(expression: &TypedValueExpr, domain: &crate::KeywordDomain) -
 	let TypedValueExprKind::Literal(StyleValueLiteral::Keyword(keyword)) = &expression.kind else {
 		return false;
 	};
-	domain.keywords.contains(&keyword.as_str())
+	domain
+		.keywords
+		.iter()
+		.any(|candidate| keyword.as_str().eq_ignore_ascii_case(candidate))
 }
 
 fn custom_identifier_matches(expression: &TypedValueExpr) -> bool {
@@ -2302,6 +2305,21 @@ mod tests {
 	}
 
 	#[rstest]
+	fn property_grammar_keywords_match_ascii_case_insensitively() {
+		// Arrange
+		let source = ".card { display: Flex; position: Sticky; color: Inherit; }";
+
+		// Act
+		let typed = validated_text(source);
+
+		// Assert
+		let TypedStyleItem::Rule(rule) = &typed.items[0] else {
+			panic!("expected a style rule");
+		};
+		assert_eq!(rule.items.len(), 3);
+	}
+
+	#[rstest]
 	fn unordered_grammars_accept_optional_shorthand_members() {
 		// Arrange
 		let sources = [
@@ -2643,8 +2661,8 @@ mod tests {
 	#[case("background-size", "min-content")]
 	#[case("font-weight", "0")]
 	#[case("font-weight", "2000")]
-	#[case("font-weight", "2_000")]
-	#[case("padding", "-1_0px")]
+	#[case("font-weight", "2001")]
+	#[case("padding", "-11px")]
 	#[case("transition-duration", "-1s")]
 	fn rejects_invalid_css_value_constraints(#[case] property: &str, #[case] value: &str) {
 		// Arrange

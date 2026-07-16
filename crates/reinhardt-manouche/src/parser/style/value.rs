@@ -337,8 +337,13 @@ fn parse_numeric_literal(
 		.strip_suffix(&suffix)
 		.unwrap_or(&rendered)
 		.to_owned();
-	let decimal_source = source.replace('_', "");
-	if !is_css_decimal_number(&decimal_source) {
+	if source.contains('_') {
+		return Err(syn::Error::new(
+			literal_span,
+			"style numbers must use plain CSS decimal syntax",
+		));
+	}
+	if !is_css_decimal_number(&source) {
 		return Err(syn::Error::new(
 			literal_span,
 			"style numbers must use plain CSS decimal syntax",
@@ -1169,14 +1174,6 @@ mod tests {
 
 	#[rstest]
 	#[case("42", integer("42", None))]
-	#[case(
-		"1_000.50",
-		ExprShape::Number {
-			source: "1_000.50".to_owned(),
-			unit: None,
-			contextual_zero: false,
-		}
-	)]
 	#[case("0", integer("0", None))]
 	#[case(
 		"0.0",
@@ -1444,7 +1441,10 @@ mod tests {
 	#[case("0xff")]
 	#[case("0b10")]
 	#[case("0o10")]
-	fn rejects_rust_base_prefixed_integer_literals(#[case] source: &str) {
+	#[case("1_000.50")]
+	#[case("1_000px")]
+	#[case("1_000ms")]
+	fn rejects_non_css_numeric_literals(#[case] source: &str) {
 		// Arrange
 		// Source is provided by the parameterized case.
 

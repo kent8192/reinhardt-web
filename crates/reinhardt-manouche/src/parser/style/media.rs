@@ -9,6 +9,7 @@ use crate::core::{
 	StyleMediaNumberKind, StyleMediaOperator, StyleMediaOperatorKind, StyleMediaPunctuation,
 	StyleMediaPunctuationKind, StyleMediaToken,
 };
+use crate::{UnitCategory, unit_specs};
 
 pub(super) fn parse_media_condition(
 	tokens: Vec<TokenTree>,
@@ -615,11 +616,11 @@ fn valid_colon_feature_value(tokens: &[StyleMediaToken]) -> bool {
 
 fn valid_numeric_feature_value(tokens: &[StyleMediaToken]) -> bool {
 	match tokens {
-		[StyleMediaToken::Number(_)] => true,
+		[StyleMediaToken::Number(number)] => valid_media_numeric_unit(number),
 		[
 			StyleMediaToken::Punctuation(sign),
-			StyleMediaToken::Number(_),
-		] => is_numeric_sign(sign.kind),
+			StyleMediaToken::Number(number),
+		] => is_numeric_sign(sign.kind) && valid_media_numeric_unit(number),
 		[
 			StyleMediaToken::Number(number),
 			StyleMediaToken::Punctuation(percent),
@@ -641,9 +642,35 @@ fn valid_numeric_feature_value(tokens: &[StyleMediaToken]) -> bool {
 			numerator.unit.is_none()
 				&& denominator.unit.is_none()
 				&& slash.kind == StyleMediaPunctuationKind::Slash
+				&& !is_zero_decimal(&denominator.value)
 		}
 		_ => false,
 	}
+}
+
+fn valid_media_numeric_unit(number: &StyleMediaNumber) -> bool {
+	number.unit.as_deref().is_none_or(|unit| {
+		unit_specs().iter().any(|spec| {
+			spec.name == unit
+				&& matches!(
+					spec.category,
+					UnitCategory::AbsoluteLength
+						| UnitCategory::FontRelativeLength
+						| UnitCategory::ViewportLength
+						| UnitCategory::ContainerLength
+				)
+		}) || matches!(unit, "dpi" | "dpcm" | "dppx")
+	})
+}
+
+fn is_zero_decimal(value: &str) -> bool {
+	let mantissa = value
+		.split_once(['e', 'E'])
+		.map_or(value, |(mantissa, _)| mantissa);
+	mantissa
+		.bytes()
+		.filter(u8::is_ascii_digit)
+		.all(|digit| digit == b'0')
 }
 
 fn is_feature_identifier(tokens: &[StyleMediaToken]) -> bool {
@@ -1277,6 +1304,35 @@ mod tests {
 
 		// Assert
 		assert_eq!(error.to_string(), expected);
+	}
+
+	#[rstest]
+	#[case(quote! { @media (aspect-ratio: 16/0) {} })]
+	#[case(quote! { @media (aspect-ratio: 16/0.0) {} })]
+	fn rejects_media_ratios_with_zero_denominators(#[case] input: proc_macro2::TokenStream) {
+		// Arrange
+		// Input is provided by the parameterized case.
+
+		// Act
+		let error = parse_style(input).unwrap_err();
+
+		// Assert
+		assert_eq!(error.to_string(), "invalid media feature expression");
+	}
+
+	#[rstest]
+	#[case(quote! { @media (width: 10foo) {} })]
+	#[case(quote! { @media (width: 1fr) {} })]
+	#[case(quote! { @media (width: 10deg) {} })]
+	fn rejects_non_media_numeric_units(#[case] input: proc_macro2::TokenStream) {
+		// Arrange
+		// Input is provided by the parameterized case.
+
+		// Act
+		let error = parse_style(input).unwrap_err();
+
+		// Assert
+		assert_eq!(error.to_string(), "invalid media feature expression");
 	}
 
 	#[rstest]
