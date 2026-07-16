@@ -12,7 +12,7 @@ use alloc::collections::BTreeMap;
 use alloc::rc::Rc;
 use alloc::vec::Vec;
 
-use super::runtime::{NodeId, try_with_runtime};
+use super::runtime::{NodeId, run_without_observer, try_with_runtime};
 
 /// Identifier for a live reactive scope.
 ///
@@ -643,7 +643,7 @@ pub(crate) fn dispose_scope(scope: ScopeId) {
 			break;
 		}
 		for cleanup in cleanup.into_iter().rev() {
-			let _ = enter_scope(scope, cleanup);
+			let _ = enter_scope(scope, || run_without_observer(cleanup));
 		}
 	}
 
@@ -663,7 +663,7 @@ pub(crate) fn dispose_scope(scope: ScopeId) {
 			break;
 		}
 		for cleanup in cleanup.into_iter().rev() {
-			let _ = enter_scope(scope, cleanup);
+			let _ = enter_scope(scope, || run_without_observer(cleanup));
 		}
 	}
 
@@ -859,7 +859,7 @@ mod tests {
 						*cleanup_nodes.borrow_mut() = Some((signal.id(), effect.id()));
 					})
 				},
-				Deps::empty(),
+				Deps::from_signals(&[]),
 			);
 		});
 
@@ -884,6 +884,39 @@ mod tests {
 				effect_not_pending,
 				"scope disposal must clear cleanup-created pending updates"
 			);
+		});
+	}
+
+	#[test]
+	#[serial(reactive_runtime)]
+	fn scope_cleanup_callbacks_do_not_track_the_current_observer() {
+		ReactiveScope::run(|| {
+			let cleanup_signal = Signal::new(0_i32);
+			let child_scope = Rc::new(ReactiveScope::new());
+			child_scope.enter(|| {
+				let scope_id = current_scope_id().expect("child scope must be active");
+				on_scope_dispose(scope_id, move || {
+					let _ = cleanup_signal.get();
+				})
+				.expect("active scope should accept cleanup callback");
+				on_scope_dispose_after_nodes(scope_id, move || {
+					let _ = cleanup_signal.get();
+				})
+				.expect("active scope should accept post-node cleanup callback");
+			});
+
+			let runs = Rc::new(Cell::new(0_i32));
+			let runs_for_effect = Rc::clone(&runs);
+			let child_scope_for_effect = Rc::clone(&child_scope);
+			let _effect = Effect::new(move || {
+				runs_for_effect.set(runs_for_effect.get() + 1);
+				child_scope_for_effect.dispose();
+			});
+
+			cleanup_signal.set(1);
+			super::super::runtime::with_runtime(|runtime| runtime.flush_updates());
+
+			assert_eq!(runs.get(), 1);
 		});
 	}
 
