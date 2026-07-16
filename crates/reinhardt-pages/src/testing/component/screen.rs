@@ -3,6 +3,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use reinhardt_core::reactive::ReactiveScope;
 use reinhardt_core::types::page::{IntoPage, Page, PageElement};
 
 use super::error::QueryError;
@@ -59,21 +60,25 @@ impl Screen {
 	/// Renders a Page into a native component test screen.
 	pub fn render(view: impl TestRender) -> Self {
 		let scheduler = Rc::new(SchedulerScope::new());
+		let reactive_scope = ReactiveScope::new();
 		#[cfg(feature = "msw")]
 		{
 			let mocks = SharedServerFnMocks::default();
 			let dom = scheduler.with_current(|| {
-				server_fn_mock::with_active(mocks.clone(), || TestDom::render(view.render_page()))
+				server_fn_mock::with_active(mocks.clone(), || {
+					reactive_scope.enter(|| TestDom::render(view.render_page()))
+				})
 			});
 			Self {
-				inner: shared_screen_inner(dom, scheduler, mocks),
+				inner: shared_screen_inner(dom, reactive_scope, scheduler, mocks),
 			}
 		}
 		#[cfg(not(feature = "msw"))]
 		{
-			let dom = scheduler.with_current(|| TestDom::render(view.render_page()));
+			let dom = scheduler
+				.with_current(|| reactive_scope.enter(|| TestDom::render(view.render_page())));
 			Self {
-				inner: shared_screen_inner(dom, scheduler),
+				inner: shared_screen_inner(dom, reactive_scope, scheduler),
 			}
 		}
 	}
@@ -236,13 +241,13 @@ impl Screen {
 			#[cfg(feature = "msw")]
 			server_fn_mock::with_active(mocks.clone(), || {
 				scheduler.with_current(|| {
-					self.inner.borrow_mut().dom.rerender_reactive_anchors();
+					self.inner.borrow_mut().rerender_reactive_anchors();
 				});
 			});
 			#[cfg(not(feature = "msw"))]
 			{
 				scheduler.with_current(|| {
-					self.inner.borrow_mut().dom.rerender_reactive_anchors();
+					self.inner.borrow_mut().rerender_reactive_anchors();
 				});
 			}
 			match result {

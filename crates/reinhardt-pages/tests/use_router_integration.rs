@@ -13,6 +13,7 @@
 //! The `RouterHandle` API dispatches through the `SpaRouter` trait — see
 //! `crates/reinhardt-pages/src/app/spa_router.rs` for the trait impls.
 
+use reinhardt_core::reactive::ReactiveScope;
 use reinhardt_pages::app::{
 	__clear_spa_router_for_test, __current_path_for_test, __install_client_router_for_test,
 };
@@ -54,59 +55,63 @@ impl Drop for SpaRouterGuard {
 #[rstest]
 #[serial(router)]
 fn use_router_push_updates_current_path() {
-	// Arrange
-	let _guard = SpaRouterGuard::install(build_test_router());
+	ReactiveScope::run(|| {
+		// Arrange
+		let _guard = SpaRouterGuard::install(build_test_router());
 
-	// Act
-	let handle = use_router();
-	let result = handle.push("/welcome");
+		// Act
+		let handle = use_router();
+		let result = handle.push("/welcome");
 
-	// Assert — the call returned Ok AND the installed router's
-	// `current_path` signal moved. Observing the signal directly (rather
-	// than only checking the return value) guards against a regression
-	// where `push` returns Ok while silently no-op'ing.
-	assert!(
-		result.is_ok(),
-		"push to a registered route must succeed: {:?}",
-		result
-	);
-	assert_eq!(
-		__current_path_for_test().as_deref(),
-		Some("/welcome"),
-		"first push must move `current_path` to /welcome"
-	);
+		// Assert — the call returned Ok AND the installed router's
+		// `current_path` signal moved. Observing the signal directly (rather
+		// than only checking the return value) guards against a regression
+		// where `push` returns Ok while silently no-op'ing.
+		assert!(
+			result.is_ok(),
+			"push to a registered route must succeed: {:?}",
+			result
+		);
+		assert_eq!(
+			__current_path_for_test().as_deref(),
+			Some("/welcome"),
+			"first push must move `current_path` to /welcome"
+		);
 
-	let result2 = handle.push("/");
-	assert!(result2.is_ok(), "second push must succeed: {:?}", result2);
-	assert_eq!(
-		__current_path_for_test().as_deref(),
-		Some("/"),
-		"second push must move `current_path` back to /"
-	);
+		let result2 = handle.push("/");
+		assert!(result2.is_ok(), "second push must succeed: {:?}", result2);
+		assert_eq!(
+			__current_path_for_test().as_deref(),
+			Some("/"),
+			"second push must move `current_path` back to /"
+		);
+	});
 }
 
 #[rstest]
 #[serial(router)]
 fn use_router_replace_updates_current_path() {
-	// Arrange
-	let _guard = SpaRouterGuard::install(build_test_router());
+	ReactiveScope::run(|| {
+		// Arrange
+		let _guard = SpaRouterGuard::install(build_test_router());
 
-	// Act
-	let result = use_router().replace("/welcome");
+		// Act
+		let result = use_router().replace("/welcome");
 
-	// Assert — Result is Ok AND the path signal moved. Without the
-	// signal observation the test would still pass if `replace` silently
-	// no-op'd while returning Ok.
-	assert!(
-		result.is_ok(),
-		"replace to a registered route must succeed: {:?}",
-		result
-	);
-	assert_eq!(
-		__current_path_for_test().as_deref(),
-		Some("/welcome"),
-		"replace must move `current_path` to /welcome"
-	);
+		// Assert — Result is Ok AND the path signal moved. Without the
+		// signal observation the test would still pass if `replace` silently
+		// no-op'd while returning Ok.
+		assert!(
+			result.is_ok(),
+			"replace to a registered route must succeed: {:?}",
+			result
+		);
+		assert_eq!(
+			__current_path_for_test().as_deref(),
+			Some("/welcome"),
+			"replace must move `current_path` to /welcome"
+		);
+	});
 }
 
 #[rstest]
@@ -114,25 +119,27 @@ fn use_router_replace_updates_current_path() {
 fn use_router_navigate_dispatches_push() {
 	use reinhardt_pages::router::NavigationType;
 
-	// Arrange
-	let _guard = SpaRouterGuard::install(build_test_router());
+	ReactiveScope::run(|| {
+		// Arrange
+		let _guard = SpaRouterGuard::install(build_test_router());
 
-	// Act
-	let result = use_router().navigate("/welcome", NavigationType::Push);
+		// Act
+		let result = use_router().navigate("/welcome", NavigationType::Push);
 
-	// Assert — Result is Ok AND the path signal moved, confirming
-	// `navigate(Push)` truly dispatched through to `push` rather than
-	// returning Ok without effect.
-	assert!(
-		result.is_ok(),
-		"navigate(Push) must dispatch to push: {:?}",
-		result
-	);
-	assert_eq!(
-		__current_path_for_test().as_deref(),
-		Some("/welcome"),
-		"navigate(Push) must move `current_path` to /welcome"
-	);
+		// Assert — Result is Ok AND the path signal moved, confirming
+		// `navigate(Push)` truly dispatched through to `push` rather than
+		// returning Ok without effect.
+		assert!(
+			result.is_ok(),
+			"navigate(Push) must dispatch to push: {:?}",
+			result
+		);
+		assert_eq!(
+			__current_path_for_test().as_deref(),
+			Some("/welcome"),
+			"navigate(Push) must move `current_path` to /welcome"
+		);
+	});
 }
 
 #[rstest]
@@ -140,34 +147,36 @@ fn use_router_navigate_dispatches_push() {
 fn use_router_navigate_pop_is_noop() {
 	use reinhardt_pages::router::NavigationType;
 
-	// Arrange
-	let _guard = SpaRouterGuard::install(build_test_router());
-	let initial_path = __current_path_for_test();
+	ReactiveScope::run(|| {
+		// Arrange
+		let _guard = SpaRouterGuard::install(build_test_router());
+		let initial_path = __current_path_for_test();
 
-	// Act — Pop and Initial are browser-originated; the imperative API
-	// must accept them as no-ops so callers can pass values straight from
-	// navigation observers without filtering.
-	let pop_result = use_router().navigate("/welcome", NavigationType::Pop);
-	let initial_result = use_router().navigate("/welcome", NavigationType::Initial);
+		// Act — Pop and Initial are browser-originated; the imperative API
+		// must accept them as no-ops so callers can pass values straight from
+		// navigation observers without filtering.
+		let pop_result = use_router().navigate("/welcome", NavigationType::Pop);
+		let initial_result = use_router().navigate("/welcome", NavigationType::Initial);
 
-	// Assert — both succeed AND the `current_path` signal stays put,
-	// confirming the Pop / Initial arms truly no-op rather than silently
-	// pushing a history entry.
-	assert!(
-		pop_result.is_ok(),
-		"navigate(Pop) must succeed as a no-op: {:?}",
-		pop_result
-	);
-	assert!(
-		initial_result.is_ok(),
-		"navigate(Initial) must succeed as a no-op: {:?}",
-		initial_result
-	);
-	assert_eq!(
-		__current_path_for_test(),
-		initial_path,
-		"Pop/Initial navigation must not move `current_path`"
-	);
+		// Assert — both succeed AND the `current_path` signal stays put,
+		// confirming the Pop / Initial arms truly no-op rather than silently
+		// pushing a history entry.
+		assert!(
+			pop_result.is_ok(),
+			"navigate(Pop) must succeed as a no-op: {:?}",
+			pop_result
+		);
+		assert!(
+			initial_result.is_ok(),
+			"navigate(Initial) must succeed as a no-op: {:?}",
+			initial_result
+		);
+		assert_eq!(
+			__current_path_for_test(),
+			initial_path,
+			"Pop/Initial navigation must not move `current_path`"
+		);
+	});
 }
 
 #[rstest]

@@ -58,7 +58,7 @@ pub trait ResourceTracker {
 	fn is_loading(&self) -> bool;
 
 	/// Returns the tracked resource's SSR hydration key, if available.
-	fn ssr_resource_key(&self) -> Option<&str> {
+	fn ssr_resource_key(&self) -> Option<String> {
 		None
 	}
 }
@@ -68,7 +68,7 @@ impl<T: Clone + 'static, E: Clone + 'static> ResourceTracker for Resource<T, E> 
 		self.is_loading()
 	}
 
-	fn ssr_resource_key(&self) -> Option<&str> {
+	fn ssr_resource_key(&self) -> Option<String> {
 		self.ssr_key()
 	}
 }
@@ -78,8 +78,8 @@ impl<T: Clone + 'static, E: Clone + 'static> ResourceTracker for QueryHandle<T, 
 		self.is_pending()
 	}
 
-	fn ssr_resource_key(&self) -> Option<&str> {
-		Some(self.ssr_key())
+	fn ssr_resource_key(&self) -> Option<String> {
+		Some(self.ssr_key().to_owned())
 	}
 }
 
@@ -250,7 +250,7 @@ impl IntoPage for SuspenseBoundary {
 		} = self;
 		let tracked_resource_ids = trackers
 			.iter()
-			.filter_map(|tracker| tracker.ssr_resource_key().map(str::to_owned))
+			.filter_map(|tracker| tracker.ssr_resource_key())
 			.collect();
 
 		Page::Suspense(SuspenseNode::new_with_tracked_resources(
@@ -306,39 +306,43 @@ mod tests {
 
 	#[rstest]
 	fn suspense_boundary_renders_content_when_resource_ready() {
-		// Arrange
-		let mock = MockResource::new(ResourceState::Success("loaded".to_string()));
-		let boundary = SuspenseBoundary::new()
-			.fallback(|| Page::text("Loading..."))
-			.track_custom(mock)
-			.content(|| PageElement::new("p").child("Hello").into_page());
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			// Arrange
+			let mock = MockResource::new(ResourceState::Success("loaded".to_string()));
+			let boundary = SuspenseBoundary::new()
+				.fallback(|| Page::text("Loading..."))
+				.track_custom(mock)
+				.content(|| PageElement::new("p").child("Hello").into_page());
 
-		// Act
-		let page = boundary.render();
-		let html = page.render_to_string();
+			// Act
+			let page = boundary.render();
+			let html = page.render_to_string();
 
-		// Assert
-		assert!(html.contains("<p>Hello</p>"));
-		assert!(html.contains("data-rh-suspense=\"resolved\""));
-		assert!(!html.contains("Loading..."));
+			// Assert
+			assert!(html.contains("<p>Hello</p>"));
+			assert!(html.contains("data-rh-suspense=\"resolved\""));
+			assert!(!html.contains("Loading..."));
+		});
 	}
 
 	#[rstest]
 	fn suspense_boundary_renders_content_when_resource_error() {
-		// Arrange
-		let mock = MockResource::new(ResourceState::Error("failed".to_string()));
-		let boundary = SuspenseBoundary::new()
-			.fallback(|| Page::text("Loading..."))
-			.track_custom(mock)
-			.content(|| PageElement::new("p").child("Error view").into_page());
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			// Arrange
+			let mock = MockResource::new(ResourceState::Error("failed".to_string()));
+			let boundary = SuspenseBoundary::new()
+				.fallback(|| Page::text("Loading..."))
+				.track_custom(mock)
+				.content(|| PageElement::new("p").child("Error view").into_page());
 
-		// Act
-		let page = boundary.render();
-		let html = page.render_to_string();
+			// Act
+			let page = boundary.render();
+			let html = page.render_to_string();
 
-		// Assert
-		assert!(html.contains("<p>Error view</p>"));
-		assert!(html.contains("data-rh-suspense=\"resolved\""));
+			// Assert
+			assert!(html.contains("<p>Error view</p>"));
+			assert!(html.contains("data-rh-suspense=\"resolved\""));
+		});
 	}
 
 	#[rstest]
@@ -352,112 +356,124 @@ mod tests {
 
 	#[rstest]
 	fn suspense_boundary_any_loading_with_mixed_states() {
-		// Arrange
-		let ready = MockResource::new(ResourceState::Success("ok".to_string()));
-		let loading = MockResource::new(ResourceState::Loading);
-		let boundary = SuspenseBoundary::new()
-			.track_custom(ready)
-			.track_custom(loading);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			// Arrange
+			let ready = MockResource::new(ResourceState::Success("ok".to_string()));
+			let loading = MockResource::new(ResourceState::Loading);
+			let boundary = SuspenseBoundary::new()
+				.track_custom(ready)
+				.track_custom(loading);
 
-		// Act & Assert
-		assert!(boundary.any_loading());
+			// Act & Assert
+			assert!(boundary.any_loading());
+		});
 	}
 
 	#[rstest]
 	fn suspense_boundary_any_loading_all_resolved() {
-		// Arrange
-		let r1 = MockResource::new(ResourceState::Success("a".to_string()));
-		let r2 = MockResource::new(ResourceState::Error("b".to_string()));
-		let boundary = SuspenseBoundary::new().track_custom(r1).track_custom(r2);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			// Arrange
+			let r1 = MockResource::new(ResourceState::Success("a".to_string()));
+			let r2 = MockResource::new(ResourceState::Error("b".to_string()));
+			let boundary = SuspenseBoundary::new().track_custom(r1).track_custom(r2);
 
-		// Act & Assert
-		assert!(!boundary.any_loading());
+			// Act & Assert
+			assert!(!boundary.any_loading());
+		});
 	}
 
 	#[rstest]
 	fn nested_suspense_boundaries_render_independently() {
-		// Arrange
-		let inner_mock = MockResource::new(ResourceState::Success("inner data".to_string()));
-		let inner_boundary = SuspenseBoundary::new()
-			.fallback(|| Page::text("Inner loading..."))
-			.track_custom(inner_mock)
-			.content(|| PageElement::new("span").child("Inner content").into_page());
-		let inner_html = inner_boundary.render().render_to_string();
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			// Arrange
+			let inner_mock = MockResource::new(ResourceState::Success("inner data".to_string()));
+			let inner_boundary = SuspenseBoundary::new()
+				.fallback(|| Page::text("Inner loading..."))
+				.track_custom(inner_mock)
+				.content(|| PageElement::new("span").child("Inner content").into_page());
+			let inner_html = inner_boundary.render().render_to_string();
 
-		let outer_mock = MockResource::new(ResourceState::Success("outer data".to_string()));
-		let outer_boundary = SuspenseBoundary::new()
-			.fallback(|| Page::text("Outer loading..."))
-			.track_custom(outer_mock)
-			.content(move || Page::text(inner_html.clone()));
+			let outer_mock = MockResource::new(ResourceState::Success("outer data".to_string()));
+			let outer_boundary = SuspenseBoundary::new()
+				.fallback(|| Page::text("Outer loading..."))
+				.track_custom(outer_mock)
+				.content(move || Page::text(inner_html.clone()));
 
-		// Act
-		let page = outer_boundary.render();
-		let html = page.render_to_string();
+			// Act
+			let page = outer_boundary.render();
+			let html = page.render_to_string();
 
-		// Assert
-		assert!(html.contains("Inner content"));
-		assert!(!html.contains("Outer loading..."));
-		assert!(!html.contains("Inner loading..."));
+			// Assert
+			assert!(html.contains("Inner content"));
+			assert!(!html.contains("Outer loading..."));
+			assert!(!html.contains("Inner loading..."));
+		});
 	}
 
 	#[rstest]
 	fn ssr_renders_content_not_fallback() {
-		// Arrange
-		// On non-WASM (where tests run), SSR mode always renders content.
-		// Even if resources report loading, SSR should skip the fallback.
-		let mock = MockResource::new(ResourceState::Loading);
-		let boundary = SuspenseBoundary::new()
-			.fallback(|| Page::text("Should not appear in SSR"))
-			.track_custom(mock)
-			.content(|| PageElement::new("div").child("SSR content").into_page());
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			// Arrange
+			// On non-WASM (where tests run), SSR mode always renders content.
+			// Even if resources report loading, SSR should skip the fallback.
+			let mock = MockResource::new(ResourceState::Loading);
+			let boundary = SuspenseBoundary::new()
+				.fallback(|| Page::text("Should not appear in SSR"))
+				.track_custom(mock)
+				.content(|| PageElement::new("div").child("SSR content").into_page());
 
-		// Act
-		let page = boundary.render();
-		let html = page.render_to_string();
+			// Act
+			let page = boundary.render();
+			let html = page.render_to_string();
 
-		// Assert
-		assert!(html.contains("SSR content"));
-		assert!(html.contains("data-rh-suspense=\"resolved\""));
-		assert!(!html.contains("Should not appear in SSR"));
+			// Assert
+			assert!(html.contains("SSR content"));
+			assert!(html.contains("data-rh-suspense=\"resolved\""));
+			assert!(!html.contains("Should not appear in SSR"));
+		});
 	}
 
 	#[rstest]
 	fn suspense_boundary_into_page() {
-		// Arrange
-		let mock = MockResource::new(ResourceState::Success("data".to_string()));
-		let boundary = SuspenseBoundary::new()
-			.fallback(|| Page::text("Loading..."))
-			.track_custom(mock)
-			.content(|| PageElement::new("p").child("Done").into_page());
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			// Arrange
+			let mock = MockResource::new(ResourceState::Success("data".to_string()));
+			let boundary = SuspenseBoundary::new()
+				.fallback(|| Page::text("Loading..."))
+				.track_custom(mock)
+				.content(|| PageElement::new("p").child("Done").into_page());
 
-		// Act
-		let page: Page = boundary.into_page();
-		let html = page.render_to_string();
+			// Act
+			let page: Page = boundary.into_page();
+			let html = page.render_to_string();
 
-		// Assert
-		assert!(html.contains("<p>Done</p>"));
+			// Assert
+			assert!(html.contains("<p>Done</p>"));
+		});
 	}
 
 	#[rstest]
 	fn suspense_boundary_with_custom_fallback_element() {
-		// Arrange
-		let mock = MockResource::new(ResourceState::Success("ok".to_string()));
-		let boundary = SuspenseBoundary::new()
-			.fallback(|| {
-				PageElement::new("div")
-					.attr("class", "spinner")
-					.child("Loading...")
-					.into_page()
-			})
-			.track_custom(mock)
-			.content(|| PageElement::new("main").child("Loaded").into_page());
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			// Arrange
+			let mock = MockResource::new(ResourceState::Success("ok".to_string()));
+			let boundary = SuspenseBoundary::new()
+				.fallback(|| {
+					PageElement::new("div")
+						.attr("class", "spinner")
+						.child("Loading...")
+						.into_page()
+				})
+				.track_custom(mock)
+				.content(|| PageElement::new("main").child("Loaded").into_page());
 
-		// Act
-		let page = boundary.render();
-		let html = page.render_to_string();
+			// Act
+			let page = boundary.render();
+			let html = page.render_to_string();
 
-		// Assert
-		assert!(html.contains("<main>Loaded</main>"));
+			// Assert
+			assert!(html.contains("<main>Loaded</main>"));
+		});
 	}
 
 	#[rstest]
@@ -474,17 +490,19 @@ mod tests {
 
 	#[rstest]
 	fn suspense_boundary_multiple_resources_all_loading() {
-		// Arrange
-		let r1 = MockResource::new(ResourceState::Loading);
-		let r2 = MockResource::new(ResourceState::Loading);
-		let r3 = MockResource::new(ResourceState::Loading);
-		let boundary = SuspenseBoundary::new()
-			.track_custom(r1)
-			.track_custom(r2)
-			.track_custom(r3);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			// Arrange
+			let r1 = MockResource::new(ResourceState::Loading);
+			let r2 = MockResource::new(ResourceState::Loading);
+			let r3 = MockResource::new(ResourceState::Loading);
+			let boundary = SuspenseBoundary::new()
+				.track_custom(r1)
+				.track_custom(r2)
+				.track_custom(r3);
 
-		// Act & Assert
-		assert!(boundary.any_loading());
+			// Act & Assert
+			assert!(boundary.any_loading());
+		});
 	}
 
 	#[rstest]

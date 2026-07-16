@@ -21,6 +21,7 @@
 #![cfg(wasm)]
 
 use reinhardt_core::page::Outlet;
+use reinhardt_core::reactive::ReactiveScope;
 use reinhardt_pages::app::{ClientLauncher, with_spa_router};
 use reinhardt_pages::component::{IntoPage, Page, PageElement};
 use reinhardt_pages::deps;
@@ -76,6 +77,16 @@ fn page_b() -> Page {
 		.attr("id", "route-b")
 		.child("ROUTE-B-CONTENT")
 		.into_page()
+}
+
+fn reactive_page_b() -> Page {
+	let content = Signal::new("ROUTE-B-CONTENT");
+	Page::reactive(move || {
+		PageElement::new("div")
+			.attr("id", "route-b")
+			.child(content.get())
+			.into_page()
+	})
 }
 
 fn layout_shell(outlet: Outlet) -> Page {
@@ -199,11 +210,11 @@ fn page_with_retained_effect_in_reactive_body() -> Page {
 
 fn page_with_reentrant_nested_reactive() -> Page {
 	let trigger = Signal::new(0_i32);
-	let trigger_for_outer = trigger.clone();
+	let trigger_for_outer = trigger;
 
 	Page::reactive(move || {
 		let _ = trigger_for_outer.get();
-		let trigger_for_inner = trigger_for_outer.clone();
+		let trigger_for_inner = trigger_for_outer;
 
 		Page::reactive(move || {
 			if trigger_for_inner.get_untracked() == 0 {
@@ -359,7 +370,9 @@ async fn client_launcher_preserves_layout_shell_between_sibling_routes() {
 		.router_client(|| {
 			ClientRouter::new().routes(|routes| {
 				routes.layout_route("shell", "/", layout_shell, |children| {
-					children.route("a", "a", page_a).route("b", "b", page_b)
+					children
+						.route("a", "a", page_a)
+						.route("b", "b", reactive_page_b)
 				})
 			})
 		})
@@ -409,7 +422,8 @@ async fn client_launcher_preserves_layout_shell_between_sibling_routes() {
 async fn retained_route_effects_are_disposed_on_sibling_navigation() {
 	let root = install_app_root();
 	replace_history_path("/a");
-	let tick = reset_retained_route_state();
+	let scope = ReactiveScope::new();
+	let tick = scope.enter(reset_retained_route_state);
 
 	ClientLauncher::new("#app")
 		.router_client(|| {
@@ -462,7 +476,8 @@ async fn retained_route_effects_are_disposed_on_sibling_navigation() {
 #[wasm_bindgen_test]
 async fn retained_effects_in_reactive_body_are_replaced_on_rerender() {
 	let root = install_app_root();
-	let (render_tick, effect_tick) = reset_retained_reactive_state();
+	let scope = ReactiveScope::new();
+	let (render_tick, effect_tick) = scope.enter(reset_retained_reactive_state);
 
 	ClientLauncher::new("#app")
 		.router_client(|| {
