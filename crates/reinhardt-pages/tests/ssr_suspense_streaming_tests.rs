@@ -772,6 +772,26 @@ async fn streaming_page_without_state_script_skips_resource_replacements() {
 	assert!(!html.contains("ssr-state"));
 }
 
+#[tokio::test]
+async fn streaming_single_select_without_state_script_commits_fallback_selection() {
+	// Arrange
+	let mut options = SsrOptions::new();
+	options.include_state_script = false;
+	let view = controlled_single_select_timed_out_suspense_view(true);
+	let mut renderer = SsrRenderer::with_options(options);
+
+	// Act
+	let html = renderer
+		.render_page_with_view_head(view)
+		.await
+		.collect_string()
+		.await;
+
+	// Assert
+	assert_eq!(html.matches("selected=\"selected\"").count(), 1, "{html}");
+	assert!(html.contains("selected=\"selected\">Fallback</option>"));
+}
+
 #[rstest]
 #[tokio::test]
 async fn streaming_controlled_select_replacement_preserves_selected_values() {

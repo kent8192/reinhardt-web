@@ -322,6 +322,7 @@ impl ControlBindingController {
 			) && !select_has_option_values(&element, &expected_value));
 		let refresh_required = if should_restore_expected {
 			write_control(&element, binding.kind(), &expected_value)?;
+			crate::component::into_page::initialize_control_default(&element, &binding);
 			false
 		} else if expected_value == live_value {
 			false
@@ -331,11 +332,14 @@ impl ControlBindingController {
 			commit_or_stage_hydration_snapshot(snapshot);
 			let adopted = matches!(outcome, ControlWriteOutcome::Committed);
 			let rejected = matches!(outcome, ControlWriteOutcome::Rejected(_));
-			if matches!(outcome, ControlWriteOutcome::Ignored) {
+			if matches!(outcome, ControlWriteOutcome::Ignored)
+				&& binding.kind() != ControlKind::Radio
+			{
 				write_control(&element, binding.kind(), &expected_value)?;
 			}
 			if rejected {
 				stage_rejected_number_hydration_snapshot(&element, &binding, number_position);
+				record_hydration_target_adoption(&binding);
 			}
 			if adopted {
 				record_hydration_target_adoption(&binding);
@@ -455,6 +459,7 @@ fn install_effect(
 				}
 			}
 			let _ = write_control(&element, binding.kind(), &value);
+			crate::component::into_page::initialize_control_default(&element, &binding);
 		},
 		EffectTiming::Layout,
 	)

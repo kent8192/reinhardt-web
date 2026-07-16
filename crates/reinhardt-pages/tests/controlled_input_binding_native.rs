@@ -44,6 +44,52 @@ async fn bound_input_updates_before_explicit_handler() {
 }
 
 #[rstest]
+fn native_bound_textarea_omits_suppressed_children() {
+	// Arrange
+	let value = Signal::new("current".to_owned());
+
+	// Act
+	let screen = render(
+		PageElement::new("textarea")
+			.attr("aria-label", "Description")
+			.control_binding(ControlBinding::text(value))
+			.child("stale child"),
+	);
+
+	// Assert
+	assert_eq!(
+		screen.get_by_label("Description").value().as_deref(),
+		Some("current")
+	);
+	assert!(screen.try_get_by_text("stale child").is_none());
+}
+
+#[rstest]
+fn native_select_treats_falsy_multiple_as_single_select() {
+	// Arrange
+	let selected = Signal::new("rust".to_owned());
+
+	// Act
+	let screen = render(
+		PageElement::new("select")
+			.attr("aria-label", "Language")
+			.attr("multiple", "false")
+			.control_binding(ControlBinding::select_one(selected))
+			.child(
+				PageElement::new("option")
+					.attr("value", "rust")
+					.child("Rust"),
+			),
+	);
+
+	// Assert
+	assert_eq!(
+		screen.get_by_label("Language").value().as_deref(),
+		Some("rust")
+	);
+}
+
+#[rstest]
 #[serial(controlled_binding_effect)]
 fn binding_write_layout_effect_can_read_the_same_screen() {
 	// Arrange
@@ -287,6 +333,29 @@ async fn invalid_number_raw_survives_settle_until_the_value_signal_changes() {
 	let parse_error = error.get().expect("invalid number should set an error");
 	assert_eq!(parse_error.raw(), "-");
 	assert_eq!(parse_error.kind(), NumberParseErrorKind::Incomplete);
+}
+
+#[rstest]
+#[tokio::test]
+async fn invalid_number_raw_is_cleared_by_an_explicit_same_value_write() {
+	// Arrange
+	let value = Signal::new(7_i32);
+	let screen = render(page!({
+		input {
+			aria_label: "Quantity",
+			type: "number",
+			bind: value,
+		}
+	}));
+	let input = screen.get_by_label("Quantity");
+
+	// Act
+	input.input("-");
+	value.set(7);
+	screen.settle().await;
+
+	// Assert
+	assert_eq!(input.value().as_deref(), Some("7"));
 }
 
 #[rstest]

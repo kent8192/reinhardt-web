@@ -1247,9 +1247,15 @@ impl SsrRenderer {
 							.render_stream_shell_page_with_selection(
 								&fallback_page,
 								boundaries,
-								fallback_selection,
+								fallback_selection.clone(),
 							)
 							.await;
+						if !self.should_resolve_resources()
+							&& let (Some(parent), Some(rendered)) =
+								(selection.as_ref(), fallback_selection.as_ref())
+						{
+							parent.commit_from(rendered);
+						}
 						let pending_selection = if inline_single_select_uses_fallback {
 							selection.as_ref().map(SsrSelectionState::fork)
 						} else {

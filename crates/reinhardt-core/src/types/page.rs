@@ -1197,17 +1197,9 @@ impl StringRenderSelection {
 				.unwrap_or_default(),
 			Page::Empty => String::new(),
 			Page::WithHead { view, .. } => Self::text_content_without_script(view),
-			Page::ReactiveIf(reactive_if) => {
-				let view = if (reactive_if.condition)() {
-					(reactive_if.then_view)()
-				} else {
-					(reactive_if.else_view)()
-				};
-				Self::text_content_without_script(&view)
+			Page::ReactiveIf(_) | Page::Reactive(_) | Page::Suspense(_) | Page::Deferred(_) => {
+				String::new()
 			}
-			Page::Reactive(reactive) => Self::text_content_without_script(&reactive.render()),
-			Page::Suspense(node) => Self::text_content_without_script(&node.render_branch()),
-			Page::Deferred(node) => Self::text_content_without_script(&node.content()),
 		}
 	}
 }
@@ -1627,6 +1619,31 @@ mod tests {
 			select.render_to_string(),
 			"<select><option selected=\"selected\"> \tRust\n</option></select>"
 		);
+	}
+
+	#[test]
+	fn render_to_string_does_not_evaluate_dynamic_option_content_to_infer_value() {
+		// Arrange
+		let renders = std::rc::Rc::new(std::cell::Cell::new(0));
+		let render_count = std::rc::Rc::clone(&renders);
+		let select = PageElement::new("select")
+			.control_binding(ControlBinding::select_one(Signal::new("Static".to_owned())))
+			.child(
+				PageElement::new("option")
+					.child("Static")
+					.child(Page::reactive(move || {
+						render_count.set(render_count.get() + 1);
+						Page::text(" Dynamic")
+					})),
+			)
+			.into_page();
+
+		// Act
+		let html = select.render_to_string();
+
+		// Assert
+		assert_eq!(renders.get(), 1);
+		assert_eq!(html, "<select><option>Static Dynamic</option></select>");
 	}
 
 	#[test]

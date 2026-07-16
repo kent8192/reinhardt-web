@@ -31,6 +31,9 @@ pub(crate) fn project(binding: Option<&ControlBinding>) -> SsrControlProjection 
 		}
 		(ControlKind::Checkbox | ControlKind::Radio, ControlValue::Checked(checked)) => {
 			projection.checked = checked;
+			if binding.kind() == ControlKind::Radio {
+				projection.value = binding.radio_value().map(str::to_owned);
+			}
 		}
 		(ControlKind::SelectOne, ControlValue::Text(value)) => {
 			projection.selected_values.push(value);

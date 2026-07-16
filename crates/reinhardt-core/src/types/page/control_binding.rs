@@ -545,7 +545,7 @@ macro_rules! impl_signed_number_value {
 					if let Some(error) = lexical_error(raw) {
 						return Err(error);
 					}
-					raw.parse::<Self>().map_err(|error| {
+					let parse_error = |error: &std::num::ParseIntError| {
 						let kind = match error.kind() {
 							IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => {
 								NumberParseErrorKind::OutOfRange
@@ -553,7 +553,16 @@ macro_rules! impl_signed_number_value {
 							_ => NumberParseErrorKind::Invalid,
 						};
 						NumberParseError::new(raw, kind)
-					})
+					};
+					match raw.parse::<Self>() {
+						Ok(value) => Ok(value),
+						Err(direct_error) => match raw.parse::<f64>() {
+							Ok(value) if value.is_finite() && value.fract() == 0.0 => format!("{value:.0}")
+								.parse::<Self>()
+								.map_err(|error| parse_error(&error)),
+							_ => Err(parse_error(&direct_error)),
+						},
+					}
 				}
 			}
 		)+
@@ -576,7 +585,7 @@ macro_rules! impl_unsigned_number_value {
 					{
 						return Err(NumberParseError::new(raw, NumberParseErrorKind::OutOfRange));
 					}
-					raw.parse::<Self>().map_err(|error| {
+					let parse_error = |error: &std::num::ParseIntError| {
 						let kind = match error.kind() {
 							IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => {
 								NumberParseErrorKind::OutOfRange
@@ -584,7 +593,16 @@ macro_rules! impl_unsigned_number_value {
 							_ => NumberParseErrorKind::Invalid,
 						};
 						NumberParseError::new(raw, kind)
-					})
+					};
+					match raw.parse::<Self>() {
+						Ok(value) => Ok(value),
+						Err(direct_error) => match raw.parse::<f64>() {
+							Ok(value) if value.is_finite() && value.fract() == 0.0 => format!("{value:.0}")
+								.parse::<Self>()
+								.map_err(|error| parse_error(&error)),
+							_ => Err(parse_error(&direct_error)),
+						},
+					}
 				}
 			}
 		)+
@@ -665,6 +683,20 @@ mod tests {
 		// Assert
 		assert_eq!(binding.read(), ControlValue::Text("new".to_owned()));
 		assert_eq!(signal.get(), "new");
+	}
+
+	#[rstest]
+	fn integer_number_binding_accepts_complete_exponent_lexemes() {
+		// Arrange
+		let value = Signal::new(7_i32);
+		let binding = ControlBinding::number(value.clone());
+
+		// Act
+		let outcome = binding.write(ControlValue::Text("1e2".to_owned())).unwrap();
+
+		// Assert
+		assert_eq!(outcome, ControlWriteOutcome::Committed);
+		assert_eq!(value.get(), 100);
 	}
 
 	#[rstest]

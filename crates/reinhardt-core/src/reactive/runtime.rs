@@ -193,6 +193,8 @@ pub struct Runtime {
 	notification_layout_effects: RefCell<Vec<NodeId>>,
 	/// Passive consumers collected after propagation completes.
 	notification_passive: RefCell<Vec<NodeId>>,
+	/// Number of notifications emitted by each signal.
+	signal_revisions: RefCell<BTreeMap<NodeId, usize>>,
 }
 
 impl Runtime {
@@ -212,6 +214,7 @@ impl Runtime {
 			notification_consumers_seen: RefCell::new(BTreeSet::new()),
 			notification_layout_effects: RefCell::new(Vec::new()),
 			notification_passive: RefCell::new(Vec::new()),
+			signal_revisions: RefCell::new(BTreeMap::new()),
 		}
 	}
 
@@ -273,6 +276,10 @@ impl Runtime {
 	///
 	/// * `signal_id` - ID of the Signal that changed
 	pub fn notify_signal_change(&self, signal_id: NodeId) {
+		let mut revisions = self.signal_revisions.borrow_mut();
+		let revision = revisions.entry(signal_id).or_default();
+		*revision = revision.saturating_add(1);
+		drop(revisions);
 		match self.notification_phase.get() {
 			NotificationPhase::Idle => {
 				let recovery =
@@ -291,6 +298,16 @@ impl Runtime {
 				self.notification_next_sources.borrow_mut().push(signal_id);
 			}
 		}
+	}
+
+	/// Returns how many times a signal has notified the runtime.
+	#[must_use]
+	pub fn signal_revision(&self, signal_id: NodeId) -> usize {
+		self.signal_revisions
+			.borrow()
+			.get(&signal_id)
+			.copied()
+			.unwrap_or_default()
 	}
 
 	fn process_notification_epochs(&self) {
@@ -498,6 +515,7 @@ impl Runtime {
 	pub fn remove_node(&self, node_id: NodeId) {
 		self.clear_dependencies(node_id);
 		self.dependency_graph.borrow_mut().remove(&node_id);
+		self.signal_revisions.borrow_mut().remove(&node_id);
 		// Remove from pending updates to prevent re-execution of disposed effects
 		self.pending_updates
 			.borrow_mut()

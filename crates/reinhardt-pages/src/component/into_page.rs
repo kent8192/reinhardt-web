@@ -60,7 +60,7 @@ pub(crate) fn controlled_attribute_is_overridden(
 
 #[cfg(wasm)]
 pub(crate) fn initialize_control_default(element: &Element, binding: &ControlBinding) {
-	let value = binding.read();
+	let value = crate::reactive::untracked(|| binding.read());
 	match (binding.kind(), value) {
 		(ControlKind::Text | ControlKind::Number, ControlValue::Text(value)) => {
 			if let Some(input) = element.as_web_sys().dyn_ref::<web_sys::HtmlInputElement>() {

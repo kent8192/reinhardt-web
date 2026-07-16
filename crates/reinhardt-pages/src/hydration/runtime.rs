@@ -396,7 +396,14 @@ fn install_hydrated_reactive_nodes(
 	match view {
 		Page::Element(element_view) => {
 			attach_hydrated_element_events(element, element_view, registry)?;
-			install_hydrated_element_children(element, element_view.child_views(), registry)?;
+			let suppress_bound_textarea_children =
+				element_view.bound_control().is_some_and(|binding| {
+					element_view.tag_name().eq_ignore_ascii_case("textarea")
+						&& binding.kind() == crate::component::ControlKind::Text
+				});
+			if !suppress_bound_textarea_children {
+				install_hydrated_element_children(element, element_view.child_views(), registry)?;
+			}
 		}
 		Page::WithHead { view, .. } => install_hydrated_reactive_nodes(element, view, registry)?,
 		Page::Fragment(children) => install_hydrated_element_children(element, children, registry)?,

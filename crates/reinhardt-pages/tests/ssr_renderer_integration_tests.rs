@@ -732,6 +732,25 @@ async fn bound_radio_value_expression_is_evaluated_once_for_attribute_and_bindin
 
 #[rstest]
 #[tokio::test]
+async fn manual_bound_radio_projects_its_binding_value() {
+	// Arrange
+	let selected = Signal::new("draft".to_owned());
+	let component = PageElement::new("input")
+		.attr("type", "radio")
+		.attr("value", "stale")
+		.control_binding(ControlBinding::radio(selected, "draft".to_owned()))
+		.into_page();
+	let mut renderer = SsrRenderer::new();
+
+	// Act
+	let html = renderer.render_page_into_page_to_string(component).await;
+
+	// Assert
+	assert!(html.contains("type=\"radio\" value=\"draft\" checked=\"checked\""));
+}
+
+#[rstest]
+#[tokio::test]
 async fn controlled_single_select_marks_only_the_first_duplicate_in_tree_order() {
 	// Arrange
 	let selected = Signal::new("duplicate".to_owned());

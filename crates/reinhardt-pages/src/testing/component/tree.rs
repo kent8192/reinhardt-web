@@ -5,7 +5,7 @@ use std::rc::Rc;
 
 use reinhardt_core::types::page::{
 	ControlBinding, ControlBindingError, ControlKind, ControlValue, ControlWriteOutcome, EventName,
-	NativeEventFile, NativeEventTarget, Page, PageEventHandler,
+	NativeEventFile, NativeEventTarget, Page, PageEventHandler, is_boolean_attr_truthy,
 };
 
 use super::fixture::{EventFixtureError, TargetStatePatch};
@@ -51,6 +51,7 @@ pub(crate) struct ElementNode {
 	pending_raw: Option<String>,
 	last_committed_raw: Option<String>,
 	last_observed_control_value: Option<ControlValue>,
+	last_observed_signal_revision: Option<usize>,
 }
 
 enum TestNode {
@@ -491,14 +492,19 @@ impl TestDom {
 				continue;
 			};
 			let value = binding.read();
+			let signal_revision = reinhardt_core::reactive::with_runtime(|runtime| {
+				runtime.signal_revision(binding.target())
+			});
 			let retain_invalid_raw = binding.kind() == ControlKind::Number
 				&& element.pending_raw.is_some()
-				&& element.last_observed_control_value.as_ref() == Some(&value);
+				&& element.last_observed_control_value.as_ref() == Some(&value)
+				&& element.last_observed_signal_revision == Some(signal_revision);
 			if !retain_invalid_raw {
 				element.pending_raw = None;
 				element.apply_control_value(value.clone());
 			}
 			element.last_observed_control_value = Some(value);
+			element.last_observed_signal_revision = Some(signal_revision);
 			if matches!(
 				binding.kind(),
 				ControlKind::SelectOne | ControlKind::SelectMany
@@ -565,6 +571,11 @@ impl TestDom {
 					.is_some_and(|(_, value)| value != "false");
 				let last_observed_control_value =
 					control_binding.as_ref().map(ControlBinding::read);
+				let last_observed_signal_revision = control_binding.as_ref().map(|binding| {
+					reinhardt_core::reactive::with_runtime(|runtime| {
+						runtime.signal_revision(binding.target())
+					})
+				});
 				let refresh_controlled_select = control_binding.as_ref().is_some_and(|binding| {
 					matches!(
 						binding.kind(),
@@ -589,6 +600,7 @@ impl TestDom {
 					pending_raw: None,
 					last_committed_raw: None,
 					last_observed_control_value: last_observed_control_value.clone(),
+					last_observed_signal_revision,
 				};
 				let binding_supported = element_node
 					.control_binding
@@ -598,8 +610,17 @@ impl TestDom {
 					element_node.apply_control_value(value);
 				}
 				let node_id = self.push_node(parent, TestNode::Element(Box::new(element_node)));
-				for child in children {
-					self.append_page(node_id, child);
+				let suppress_bound_textarea_children = self.element(node_id).is_some_and(|node| {
+					node.tag.eq_ignore_ascii_case("textarea")
+						&& node
+							.control_binding
+							.as_ref()
+							.is_some_and(|binding| binding.kind() == ControlKind::Text)
+				});
+				if !suppress_bound_textarea_children {
+					for child in children {
+						self.append_page(node_id, child);
+					}
 				}
 				if refresh_controlled_select {
 					self.refresh_selected_options(node_id);
@@ -652,6 +673,7 @@ impl TestDom {
 							pending_raw: None,
 							last_committed_raw: None,
 							last_observed_control_value: None,
+							last_observed_signal_revision: None,
 						})),
 					);
 				}
@@ -877,10 +899,12 @@ impl ElementNode {
 						.is_some_and(|kind| kind.eq_ignore_ascii_case("radio"))
 			}
 			ControlKind::SelectOne => {
-				self.tag.eq_ignore_ascii_case("select") && !self.has_attr("multiple")
+				self.tag.eq_ignore_ascii_case("select")
+					&& !self.attr("multiple").is_some_and(is_boolean_attr_truthy)
 			}
 			ControlKind::SelectMany => {
-				self.tag.eq_ignore_ascii_case("select") && self.has_attr("multiple")
+				self.tag.eq_ignore_ascii_case("select")
+					&& self.attr("multiple").is_some_and(is_boolean_attr_truthy)
 			}
 		};
 		if supported {
@@ -1024,6 +1048,7 @@ mod case_normalization_tests {
 			pending_raw: None,
 			last_committed_raw: None,
 			last_observed_control_value: None,
+			last_observed_signal_revision: None,
 		}
 	}
 
