@@ -103,6 +103,15 @@ impl NavigationCoordinator {
 		self.committed_index.get()
 	}
 
+	/// Seeds the coordinator with the index of the entry rendered at launch.
+	///
+	/// The browser may preserve a framework-owned index across a reload. The
+	/// launcher normalizes legacy entries before calling this method so future
+	/// push and pop preparations use the same monotonic sequence.
+	pub(crate) fn initialize_committed_index(&self, index: i64) {
+		self.committed_index.set(index);
+	}
+
 	/// Consumes the one-shot pop generated while restoring a failed navigation.
 	pub(crate) fn consume_restoration_pop(&self) -> bool {
 		self.restoring_pop.replace(false)
@@ -354,5 +363,270 @@ mod tests {
 				.expect("replace commits");
 			assert_eq!(coordinator.committed_index(), 2);
 		});
+	}
+
+	#[cfg(native)]
+	mod native_async_tests {
+		use super::*;
+		use crate::router::loader::with_loader_store;
+		use crate::{Loader, Page, component, layout, loader};
+		use reinhardt_core::page::{IntoPage, Outlet};
+		use std::cell::{Cell, RefCell};
+		use std::collections::VecDeque;
+		use std::future::{Future, poll_fn};
+		use std::pin::Pin;
+		use std::rc::Rc;
+		use std::task::{Context, Poll, Waker};
+
+		thread_local! {
+			static GATE_OPEN: Cell<bool> = const { Cell::new(false) };
+			static SLOW_LOADER_STARTS: Cell<usize> = const { Cell::new(0) };
+			static LAYOUT_LOADER_STARTS: Cell<usize> = const { Cell::new(0) };
+			static LEAF_LOADER_STARTS: Cell<usize> = const { Cell::new(0) };
+		}
+
+		async fn gated_value(value: &'static str) -> Result<String, String> {
+			poll_fn(|_| {
+				GATE_OPEN.with(|gate| {
+					if gate.get() {
+						Poll::Ready(Ok(value.to_owned()))
+					} else {
+						Poll::Pending
+					}
+				})
+			})
+			.await
+		}
+
+		#[loader]
+		async fn coordinator_slow_loader() -> Result<String, String> {
+			SLOW_LOADER_STARTS.with(|starts| starts.set(starts.get() + 1));
+			gated_value("prepared slow route").await
+		}
+
+		#[component(
+			"/loaded/",
+			name = "coordinator-loaded",
+			loader = coordinator_slow_loader,
+		)]
+		fn coordinator_loaded(Loader(value): Loader<String>) -> Page {
+			Page::text(value)
+		}
+
+		#[loader]
+		async fn coordinator_layout_loader() -> Result<String, String> {
+			LAYOUT_LOADER_STARTS.with(|starts| starts.set(starts.get() + 1));
+			gated_value("prepared layout").await
+		}
+
+		#[loader]
+		async fn coordinator_leaf_loader() -> Result<String, String> {
+			LEAF_LOADER_STARTS.with(|starts| starts.set(starts.get() + 1));
+			gated_value("prepared leaf").await
+		}
+
+		#[layout(
+			"/parallel/",
+			name = "coordinator-layout",
+			loader = coordinator_layout_loader,
+		)]
+		fn coordinator_layout(Loader(value): Loader<String>, outlet: Outlet) -> Page {
+			Page::fragment([Page::text(value), outlet.into_page()])
+		}
+
+		#[component(
+			"child/",
+			name = "coordinator-leaf",
+			loader = coordinator_leaf_loader,
+		)]
+		fn coordinator_leaf(Loader(value): Loader<String>) -> Page {
+			Page::text(value)
+		}
+
+		#[loader]
+		async fn coordinator_error_loader() -> Result<String, String> {
+			Err("safe route-loader failure".to_owned())
+		}
+
+		#[component(
+			"/error/",
+			name = "coordinator-error",
+			loader = coordinator_error_loader,
+		)]
+		fn coordinator_error(Loader(_value): Loader<String>) -> Page {
+			Page::text("unreachable")
+		}
+
+		type Task = Pin<Box<dyn Future<Output = ()> + 'static>>;
+
+		fn poll_rounds(tasks: &Rc<RefCell<VecDeque<Task>>>, rounds: usize) {
+			for _ in 0..rounds {
+				let count = tasks.borrow().len();
+				if count == 0 {
+					return;
+				}
+				for _ in 0..count {
+					let Some(mut task) = tasks.borrow_mut().pop_front() else {
+						break;
+					};
+					let mut context = Context::from_waker(Waker::noop());
+					if task.as_mut().poll(&mut context).is_pending() {
+						tasks.borrow_mut().push_back(task);
+					}
+				}
+			}
+		}
+
+		fn reset_test_state() {
+			GATE_OPEN.with(|gate| gate.set(false));
+			SLOW_LOADER_STARTS.with(|starts| starts.set(0));
+			LAYOUT_LOADER_STARTS.with(|starts| starts.set(0));
+			LEAF_LOADER_STARTS.with(|starts| starts.set(0));
+		}
+
+		fn router_with_loaded_routes() -> ClientRouter {
+			ClientRouter::new()
+				.route("root", "/", || Page::text("old route"))
+				.component(coordinator_loaded)
+				.component(coordinator_error)
+				.routes(|routes| {
+					routes.layout(coordinator_layout, |children| {
+						children.component(coordinator_leaf)
+					})
+				})
+		}
+
+		#[test]
+		fn navigation_keeps_old_route_until_loader_commit() {
+			ReactiveScope::run(|| {
+				reset_test_state();
+				let tasks = Rc::new(RefCell::new(VecDeque::new()));
+				let tasks_for_sink = Rc::clone(&tasks);
+				let _sink = crate::platform::install_task_sink(move |task| {
+					tasks_for_sink.borrow_mut().push_back(task);
+				});
+				let router = Rc::new(router_with_loaded_routes());
+				let coordinator = NavigationCoordinator::new(Rc::clone(&router))
+					.expect("the test loader registry should be valid");
+
+				coordinator
+					.navigate("/".to_owned(), NavigationIntent::Initial)
+					.expect("initial route commits synchronously");
+				coordinator
+					.navigate("/loaded/".to_owned(), NavigationIntent::Push)
+					.expect("loader navigation is accepted synchronously");
+				poll_rounds(&tasks, 4);
+
+				assert_eq!(router.current_path().get(), "/");
+				assert!(coordinator.pending().get());
+				assert_eq!(SLOW_LOADER_STARTS.with(Cell::get), 1);
+
+				GATE_OPEN.with(|gate| gate.set(true));
+				poll_rounds(&tasks, 8);
+
+				assert_eq!(router.current_path().get(), "/loaded/");
+				assert!(!coordinator.pending().get());
+				let store = coordinator
+					.mounted_store()
+					.expect("successful navigation retains its loader store");
+				let html = with_loader_store(&store, || router.render_current().render_to_string());
+				assert_eq!(html, "prepared slow route");
+			});
+		}
+
+		#[test]
+		fn nested_layout_and_leaf_loaders_start_in_parallel() {
+			ReactiveScope::run(|| {
+				reset_test_state();
+				let tasks = Rc::new(RefCell::new(VecDeque::new()));
+				let tasks_for_sink = Rc::clone(&tasks);
+				let _sink = crate::platform::install_task_sink(move |task| {
+					tasks_for_sink.borrow_mut().push_back(task);
+				});
+				let router = Rc::new(router_with_loaded_routes());
+				let coordinator = NavigationCoordinator::new(Rc::clone(&router))
+					.expect("the test loader registry should be valid");
+				coordinator
+					.navigate("/parallel/child/".to_owned(), NavigationIntent::Push)
+					.expect("nested navigation is accepted synchronously");
+				poll_rounds(&tasks, 4);
+
+				assert_eq!(router.current_path().get(), "/");
+				assert_eq!(LAYOUT_LOADER_STARTS.with(Cell::get), 1);
+				assert_eq!(LEAF_LOADER_STARTS.with(Cell::get), 1);
+				assert!(coordinator.pending().get());
+
+				GATE_OPEN.with(|gate| gate.set(true));
+				poll_rounds(&tasks, 8);
+
+				assert_eq!(router.current_path().get(), "/parallel/child/");
+				let store = coordinator
+					.mounted_store()
+					.expect("successful nested navigation retains its loader store");
+				let html = with_loader_store(&store, || router.render_current().render_to_string());
+				assert_eq!(html, "prepared layoutprepared leaf");
+			});
+		}
+
+		#[test]
+		fn superseded_generation_cannot_commit_obsolete_loader_result() {
+			ReactiveScope::run(|| {
+				reset_test_state();
+				let tasks = Rc::new(RefCell::new(VecDeque::new()));
+				let tasks_for_sink = Rc::clone(&tasks);
+				let _sink = crate::platform::install_task_sink(move |task| {
+					tasks_for_sink.borrow_mut().push_back(task);
+				});
+				let router = Rc::new(router_with_loaded_routes());
+				let coordinator = NavigationCoordinator::new(Rc::clone(&router))
+					.expect("the test loader registry should be valid");
+				coordinator
+					.navigate("/loaded/".to_owned(), NavigationIntent::Push)
+					.expect("first navigation is accepted");
+				poll_rounds(&tasks, 4);
+
+				coordinator
+					.navigate("/".to_owned(), NavigationIntent::Push)
+					.expect("new navigation supersedes the old one");
+				assert_eq!(router.current_path().get(), "/");
+				GATE_OPEN.with(|gate| gate.set(true));
+				poll_rounds(&tasks, 8);
+
+				assert_eq!(router.current_path().get(), "/");
+				assert!(!coordinator.pending().get());
+			});
+		}
+
+		#[test]
+		fn failed_loader_retains_route_and_publishes_safe_error() {
+			ReactiveScope::run(|| {
+				reset_test_state();
+				let tasks = Rc::new(RefCell::new(VecDeque::new()));
+				let tasks_for_sink = Rc::clone(&tasks);
+				let _sink = crate::platform::install_task_sink(move |task| {
+					tasks_for_sink.borrow_mut().push_back(task);
+				});
+				let router = Rc::new(router_with_loaded_routes());
+				let coordinator = NavigationCoordinator::new(Rc::clone(&router))
+					.expect("the test loader registry should be valid");
+				coordinator
+					.navigate("/".to_owned(), NavigationIntent::Initial)
+					.expect("initial route commits");
+				coordinator
+					.navigate("/error/".to_owned(), NavigationIntent::Push)
+					.expect("failed navigation is accepted before preparation");
+				poll_rounds(&tasks, 8);
+
+				assert_eq!(router.current_path().get(), "/");
+				assert!(!coordinator.pending().get());
+				assert_eq!(
+					coordinator
+						.error()
+						.get()
+						.map(|error| error.public_message().to_owned()),
+					Some("safe route-loader failure".to_owned())
+				);
+			});
+		}
 	}
 }

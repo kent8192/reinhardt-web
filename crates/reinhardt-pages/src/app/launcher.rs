@@ -24,8 +24,10 @@ use crate::router::loader::{LoaderStore, active_loader_store, with_loader_store}
 #[cfg(wasm)]
 use reinhardt_core::page::Outlet;
 #[cfg(wasm)]
+use reinhardt_urls::routers::client_router::history::normalize_initial_state;
+#[cfg(wasm)]
 use reinhardt_urls::routers::client_router::{
-	ClientRouteTreeMatch, ClientRouter, LayoutKey, listen_pop_requests,
+	ClientRouteTreeMatch, ClientRouter, HistoryState, LayoutKey, listen_pop_requests,
 };
 
 #[cfg(wasm)]
@@ -859,15 +861,33 @@ impl ClientLauncher {
 		if let Some(router) =
 			with_spa_router(|router| router.as_any().downcast_ref::<ClientRouter>().cloned())
 		{
-			let coordinator = super::navigation::NavigationCoordinator::new(std::rc::Rc::new(
-				router,
-			))
-			.map_err(|error| {
-				wasm_bindgen::JsValue::from_str(&format!(
-					"route-loader coordinator initialization failed: {error}"
-				))
-			})?;
+			let coordinator =
+				super::navigation::NavigationCoordinator::new(std::rc::Rc::new(router.clone()))
+					.map_err(|error| {
+						wasm_bindgen::JsValue::from_str(&format!(
+							"route-loader coordinator initialization failed: {error}"
+						))
+					})?;
 			let initial_path = with_spa_router(|router| router.current_path().get());
+			let proposed_initial_state = router
+				.match_tree(&initial_path)
+				.map(|matched| {
+					let leaf = matched.leaf_match();
+					let mut state =
+						HistoryState::new(initial_path.clone()).with_params(leaf.params.clone());
+					if let Some(name) = leaf.route.name() {
+						state = state.with_route_name(name);
+					}
+					state
+				})
+				.unwrap_or_else(|| HistoryState::new(initial_path.clone()));
+			let initial_state =
+				normalize_initial_state(proposed_initial_state).map_err(|error| {
+					wasm_bindgen::JsValue::from_str(&format!(
+						"initial history state normalization failed: {error}"
+					))
+				})?;
+			coordinator.initialize_committed_index(initial_state.entry_index().unwrap_or(0));
 			coordinator
 				.hydrate_initial_store(&initial_path)
 				.map_err(|error| {

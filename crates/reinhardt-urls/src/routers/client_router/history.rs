@@ -233,6 +233,35 @@ fn state_from_js_value(value: wasm_bindgen::JsValue) -> Option<HistoryState> {
 	})
 }
 
+/// Normalizes the current browser history entry for the first router launch.
+///
+/// The loader coordinator needs a framework-owned index to restore a failed
+/// popstate navigation. Entries created by older versions (or by the host
+/// application) may not have one, so the first launch upgrades the existing
+/// state in place with index `0`. A state that already carries an index is
+/// preserved verbatim so reloads do not change the browser's traversal
+/// position.
+#[cfg(wasm)]
+pub fn normalize_initial_state(proposed: HistoryState) -> Result<HistoryState, String> {
+	let window = web_sys::window().ok_or("Window not available")?;
+	let history = window.history().map_err(|_| "History not available")?;
+	let browser_state = history
+		.state()
+		.map_err(|_| "Failed to read current history state".to_string())?;
+	if let Some(existing) = state_from_js_value(browser_state) {
+		if existing.entry_index().is_some() {
+			return Ok(existing);
+		}
+		let normalized = existing.with_entry_index(0);
+		replace_state(&normalized)?;
+		return Ok(normalized);
+	}
+
+	let normalized = proposed.with_entry_index(0);
+	replace_state(&normalized)?;
+	Ok(normalized)
+}
+
 /// Navigates back in the browser history.
 #[cfg(wasm)]
 pub fn go_back() -> Result<(), String> {

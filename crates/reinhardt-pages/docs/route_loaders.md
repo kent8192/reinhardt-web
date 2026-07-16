@@ -56,6 +56,9 @@ RouterOutlet::new(router).navigation_error_fallback(|error| {
 Loader errors expose only their safe public message and optional status. The
 internal diagnostic cause never enters the browser state payload. Failed pop
 navigations restore the committed history entry after preparation fails.
+On first launch, legacy or host-created history state without a framework entry
+index is upgraded in place to index `0`; an existing framework index is retained
+across reloads so back/forward restoration remains monotonic.
 
 ## Prefetch and query sharing
 
