@@ -351,7 +351,11 @@ pub trait CustomManager: Sized + Send + Sync {
 		&'a self,
 		model: &'a Self::Model,
 	) -> impl Future<Output = reinhardt_core::exception::Result<Self::Model>> + Send + 'a {
-		async move { Manager::<Self::Model>::new().create(model).await }
+		async move {
+			let mut model = model.clone();
+			self.before_save(&mut model)?;
+			Manager::<Self::Model>::new().create(&model).await
+		}
 	}
 
 	/// Insert a new record using an explicit connection (for transactions).
@@ -361,8 +365,10 @@ pub trait CustomManager: Sized + Send + Sync {
 		model: &'a Self::Model,
 	) -> impl Future<Output = reinhardt_core::exception::Result<Self::Model>> + Send + 'a {
 		async move {
+			let mut model = model.clone();
+			self.before_save(&mut model)?;
 			Manager::<Self::Model>::new()
-				.create_with_conn(conn, model)
+				.create_with_conn(conn, &model)
 				.await
 		}
 	}
@@ -372,7 +378,11 @@ pub trait CustomManager: Sized + Send + Sync {
 		&'a self,
 		model: &'a Self::Model,
 	) -> impl Future<Output = reinhardt_core::exception::Result<Self::Model>> + Send + 'a {
-		async move { Manager::<Self::Model>::new().update(model).await }
+		async move {
+			let mut model = model.clone();
+			self.before_save(&mut model)?;
+			Manager::<Self::Model>::new().update(&model).await
+		}
 	}
 
 	/// Update an existing record using an explicit connection.
@@ -382,8 +392,10 @@ pub trait CustomManager: Sized + Send + Sync {
 		model: &'a Self::Model,
 	) -> impl Future<Output = reinhardt_core::exception::Result<Self::Model>> + Send + 'a {
 		async move {
+			let mut model = model.clone();
+			self.before_save(&mut model)?;
 			Manager::<Self::Model>::new()
-				.update_with_conn(conn, model)
+				.update_with_conn(conn, &model)
 				.await
 		}
 	}
@@ -393,7 +405,10 @@ pub trait CustomManager: Sized + Send + Sync {
 		&'a self,
 		pk: <Self::Model as Model>::PrimaryKey,
 	) -> impl Future<Output = reinhardt_core::exception::Result<()>> + Send + 'a {
-		async move { Manager::<Self::Model>::new().delete(pk).await }
+		async move {
+			let conn = super::manager::get_connection().await?;
+			self.delete_with_conn(&conn, pk).await
+		}
 	}
 
 	/// Delete a record by primary key using an explicit connection.
@@ -403,9 +418,11 @@ pub trait CustomManager: Sized + Send + Sync {
 		pk: <Self::Model as Model>::PrimaryKey,
 	) -> impl Future<Output = reinhardt_core::exception::Result<()>> + Send + 'a {
 		async move {
-			Manager::<Self::Model>::new()
-				.delete_with_conn(conn, pk)
-				.await
+			let manager = Manager::<Self::Model>::new();
+			if let Some(model) = manager.get(pk.clone()).first_with_db(conn).await? {
+				self.before_delete(&model)?;
+			}
+			manager.delete_with_conn(conn, pk).await
 		}
 	}
 
@@ -466,6 +483,12 @@ pub trait CustomManager: Sized + Send + Sync {
 		Self::Model: 'a,
 	{
 		async move {
+			if models.is_empty() || fields.is_empty() {
+				return Ok(0);
+			}
+
+			let mut models = models;
+			self.before_bulk_update(&mut models)?;
 			Manager::<Self::Model>::new()
 				.bulk_update(models, fields, batch_size)
 				.await

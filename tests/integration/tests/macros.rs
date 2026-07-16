@@ -7,6 +7,12 @@ mod composite_pk_integration;
 #[path = "macros/constraint_integration.rs"]
 mod constraint_integration;
 
+#[path = "macros/http_error_integration.rs"]
+mod http_error_integration;
+
+#[path = "macros/http_error_ui.rs"]
+mod http_error_ui;
+
 #[path = "macros/model_derive_integration.rs"]
 mod model_derive_integration;
 
