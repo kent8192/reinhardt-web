@@ -23,27 +23,21 @@
 //! ## Example
 //!
 //! ```rust
-//! use reinhardt_core::reactive::{Signal, Effect, Memo};
+//! use reinhardt_core::reactive::{Signal, Effect, Memo, ReactiveScope};
 //!
-//! // Create signals
-//! let count = Signal::new(0);
-//! let name = Signal::new("Alice".to_string());
+//! ReactiveScope::run(|| {
+//!     // Low-level node creation requires an active scope.
+//!     let count = Signal::new(0);
+//!     let name = Signal::new("Alice".to_string());
+//!     let doubled = Memo::new(move || count.get() * 2);
 //!
-//! // Create a memo (derived value)
-//! let count_for_memo = count.clone();
-//! let doubled = Memo::new(move || count_for_memo.get() * 2);
+//!     Effect::new(move || {
+//!         println!("{}: count = {}, doubled = {}",
+//!             name.get(), count.get(), doubled.get());
+//!     });
 //!
-//! // Create an effect (side effect)
-//! let count_for_effect = count.clone();
-//! let name_for_effect = name.clone();
-//! let doubled_for_effect = doubled.clone();
-//! Effect::new(move || {
-//!     println!("{}: count = {}, doubled = {}",
-//!         name_for_effect.get(), count_for_effect.get(), doubled_for_effect.get());
+//!     count.set(5);
 //! });
-//!
-//! // Update signals - effect automatically reruns
-//! count.set(5);
 //! ```
 //!
 //! ## no_std Compatibility
@@ -58,14 +52,19 @@ pub mod deps;
 pub mod effect;
 pub mod memo;
 pub mod runtime;
+pub mod scope;
 pub mod signal;
 
 // Re-export main types
 pub use context::{
 	Context, ContextGuard, create_context, get_context, provide_context, remove_context,
 };
-pub use deps::{Deps, IntoDeps, Trackable};
+pub use deps::{Deps, ExplicitDeps, ReactiveDeps, Trackable};
 pub use effect::Effect;
 pub use memo::Memo;
 pub use runtime::{EffectTiming, NodeId, NodeType, Observer, Runtime, batch, with_runtime};
+pub use scope::{
+	NodeKey, ReactiveScope, ReactiveScopeError, ScopeId, current_scope_id, enter_scope,
+	on_scope_dispose, on_scope_dispose_after_nodes,
+};
 pub use signal::Signal;

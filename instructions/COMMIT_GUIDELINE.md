@@ -404,21 +404,21 @@ or
 | `Fixes` | Fixes related issues | `Fixes #789` |
 | `Reviewed-by` | Reviewer credit | `Reviewed-by: Name <email>` |
 
-**Required Footer for Claude Code:**
+**Required Footer for AI-Assisted Commits:**
 
 ```
 
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
+🤖 Generated with [<Agent Name>](<Agent URL>)
 
-Co-Authored-By: Claude <noreply@anthropic.com>
+Co-Authored-By: <Model Name> <noreply@model-provider.example>
 ```
 
 **Requirements:**
 
 - **EXACTLY one blank line** between body and footer section
 - Footer tokens MUST use `-` in place of whitespace (except `BREAKING CHANGE`)
-- Footer **MUST** include the Claude Code attribution when AI-assisted
-- Footer **MUST** include Co-Authored-By line when AI-assisted
+- Footer **MUST** include attribution for the agent that created the commit when AI-assisted
+- Footer **MUST** include a Co-Authored-By line identifying the model that created the commit; do not use a fixed model name
 
 ---
 

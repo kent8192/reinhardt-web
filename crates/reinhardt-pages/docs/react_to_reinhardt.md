@@ -13,7 +13,7 @@ application.
 | Function component | Rust function returning `Page` | Props are normal typed Rust arguments or structs. |
 | Fragment | Multiple top-level `page!` nodes or `Page::fragment` | The output is a `Page::Fragment`, not a virtual DOM fragment. |
 | `useState` | `use_state` returning `(Signal<T>, SetState<T>)` | Reads use `signal.get()`, writes use `set(value)` or `set.update(...)`. |
-| `useEffect` | `use_effect(f, deps)` | Return `()` for no cleanup or `Option<C>` for cleanup; dependencies are explicit Rust tuples, for example `(count.clone(),)`. |
+| `useEffect` | `use_effect(f, deps)` | Return `()` for no cleanup or `Option<C>` for cleanup; dependencies are explicit Rust tuples, for example `(count,)`. |
 | `useLayoutEffect` | `use_layout_effect(f, deps)` | Same dependency model, layout timing. |
 | `useMemo` | `use_memo(f, deps)` | Returns `Memo<T>`; read it with `.get()`. |
 | `useCallback` | `use_callback(f, deps)` / `use_callback_with(f, deps)` | Returns a typed `Callback`, usually for event handlers. |
@@ -239,8 +239,11 @@ page!({
 })
 ```
 
-`Signal::clone()` is cheap. Prefer cloning the signal handle instead of
-extracting a value early when the UI must remain reactive.
+Reactive handles such as `Signal<T>`, `Memo<T>`, `Action<T, E>`,
+`Resource<T, E>`, and `Callback<A, R>` are `Copy`. Pass them directly into
+closures and dependency tuples. Non-reactive handles such as setter functions
+may still need ordinary Rust cloning when they are reference-counted function
+values.
 
 ## Effects and dependency tuples
 
@@ -254,20 +257,17 @@ use reinhardt::pages::prelude::*;
 let (count, _set_count) = use_state(0);
 
 use_effect(
-    {
-        let count = count.clone();
-        move || {
-            log::info!("count = {}", count.get());
-        }
+    move || {
+        log::info!("count = {}", count.get());
     },
-    (count.clone(),),
+    (count,),
 );
 ```
 
 Important differences from React:
 
 - Pass `()` for mount-only effects.
-- Pass `(signal.clone(),)` for one dependency. The trailing comma matters.
+- Pass `(signal,)` for one dependency. The trailing comma matters.
 - Reading a signal inside `use_effect`, `use_layout_effect`,
   `use_memo`, or `use_callback` does not create hidden subscriptions.
   Subscriptions come from the dependency tuple.
@@ -286,26 +286,30 @@ let (items, _set_items) = use_state(vec![1, 2, 3, 4]);
 let (threshold, _set_threshold) = use_state(2);
 
 let visible = use_memo(
-    {
-        let items = items.clone();
-        let threshold = threshold.clone();
-        move || {
-            items
-                .get()
-                .into_iter()
-                .filter(|item| *item > threshold.get())
-                .collect::<Vec<_>>()
-        }
+    move || {
+        items
+            .get()
+            .into_iter()
+            .filter(|item| *item > threshold.get())
+            .collect::<Vec<_>>()
     },
-    (items.clone(), threshold.clone()),
+    (items, threshold),
 );
 
-let visible_for_click = visible.clone();
 let on_click = use_callback(
     move |_event| {
-        log::info!("visible item count = {}", visible_for_click.get().len());
+        log::info!("visible item count = {}", visible.get().len());
     },
-    (visible.clone(),),
+    (visible,),
+);
+
+let upload_click = use_callback(
+    move |_| {
+        index_action.reset();
+        search_action.reset();
+        upload_action.dispatch(route_project_id.get());
+    },
+    (route_project_id,),
 );
 ```
 
@@ -525,6 +529,73 @@ fn todo_form() -> Page {
     })
 }
 ```
+
+## Keyed queries and invalidating mutations
+
+React Query and SWR patterns map to `use_query` and `use_mutation` when the
+read operation is a `#[server_fn]`. The server-function macro emits a typed key
+helper whose cache ID is derived from the generated marker metadata and a
+SHA-256 digest of canonical JSON arguments. The fetcher and key therefore
+cannot drift into unrelated strings, raw arguments do not appear in hydration
+keys, and logically equivalent object arguments share the same cache entry.
+
+```rust,ignore
+use std::time::Duration;
+
+use reinhardt::pages::prelude::*;
+use reinhardt::pages::server_fn::{ServerFnError, server_fn};
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+struct JobSnapshot {
+    id: i64,
+    status: String,
+}
+
+#[server_fn]
+pub async fn list_project_jobs(project_id: i64) -> Result<Vec<JobSnapshot>, ServerFnError> {
+    Ok(Vec::new())
+}
+
+#[server_fn]
+pub async fn retry_job(project_id: i64, job_id: i64) -> Result<(), ServerFnError> {
+    Ok(())
+}
+
+fn jobs_panel(project_id: i64, failed_job_id: i64) -> Page {
+    let jobs = use_query(list_project_jobs::key(project_id)).poll(Duration::from_secs(5));
+    let retry = use_mutation(move |job_id: i64| async move {
+        retry_job(project_id, job_id).await
+    })
+    .invalidates(list_project_jobs::key(project_id));
+
+    page!({
+        button {
+            disabled: retry.is_pending(),
+            @click: retry.dispatching(failed_job_id),
+            "Retry"
+        }
+        if let Some(items) = jobs.data() {
+            p { { format!("{} jobs", items.len()) } }
+        }
+        if jobs.is_pending() {
+            p { role: "status", "Loading" }
+        }
+        if jobs.is_fetching() && !jobs.is_pending() {
+            p { role: "status", "Refreshing" }
+        }
+    })
+}
+```
+
+Use `server_fn_module::key(args...)` to build generated query keys. Keeping the
+helper in the marker module binds every key to exactly one server function,
+including when multiple functions have identical signatures.
+
+`QueryHandle` implements the same Suspense tracking interface as `Resource`, so
+`SuspenseBoundary::track(jobs.clone())` can associate a keyed query with the
+boundary for SSR streaming and native component tests. Queries keep prior
+successful data visible during background refetches; use `is_fetching()` when a
+UI needs to distinguish refresh work from the initial pending state.
 
 For generated forms, read submit state from the runtime returned by `use_form`:
 

@@ -15,20 +15,22 @@
 //! ## Example
 //!
 //! ```rust
-//! use reinhardt_core::reactive::{Signal, Effect, Runtime};
+//! use reinhardt_core::reactive::{Effect, ReactiveScope, Signal};
 //!
-//! // Create a signal
-//! let count = Signal::new(0);
+//! ReactiveScope::run(|| {
+//!     // Create a signal
+//!     let count = Signal::new(0);
 //!
-//! // Create an effect that automatically tracks dependencies
-//! let count_for_effect = count.clone();
-//! Effect::new(move || {
-//!     // This get() call automatically registers the dependency
-//!     println!("Count is: {}", count_for_effect.get());
+//!     // Create an effect that automatically tracks dependencies
+//!     let count_for_effect = count;
+//!     Effect::new(move || {
+//!         // This get() call automatically registers the dependency
+//!         println!("Count is: {}", count_for_effect.get());
+//!     });
+//!
+//!     // Update the signal - the effect will automatically re-run
+//!     count.set(42);
 //! });
-//!
-//! // Update the signal - the effect will automatically re-run
-//! count.set(42);
 //! ```
 
 use core::cell::RefCell;
@@ -243,6 +245,7 @@ impl Runtime {
 			// Collect layout effects and passive effects separately
 			let mut layout_effects = Vec::new();
 			let mut passive_effects = Vec::new();
+			let mut memos = Vec::new();
 
 			for &subscriber_id in &node.subscribers {
 				// Check if this is an effect and get its timing
@@ -251,9 +254,8 @@ impl Runtime {
 						EffectTiming::Layout => layout_effects.push(subscriber_id),
 						EffectTiming::Passive => passive_effects.push(subscriber_id),
 					}
-				} else {
-					// Non-effect subscribers (like Memos) are treated as passive
-					passive_effects.push(subscriber_id);
+				} else if super::memo::is_memo(subscriber_id) {
+					memos.push(subscriber_id);
 				}
 			}
 
@@ -263,6 +265,12 @@ impl Runtime {
 			// Execute layout effects synchronously
 			for effect_id in layout_effects {
 				super::effect::Effect::execute_effect(effect_id);
+			}
+
+			// Memos are lazily recomputed on their next read. Marking them dirty
+			// also propagates invalidation to downstream subscribers immediately.
+			for memo_id in memos {
+				super::memo::mark_memo_dirty_by_id(memo_id);
 			}
 
 			// Schedule passive effects asynchronously
@@ -795,33 +803,33 @@ mod tests {
 	#[test]
 	#[serial]
 	fn run_without_observer_isolates_inner_signal_reads() {
-		// Arrange
-		let outer = crate::reactive::signal::Signal::new(0_i32);
-		let inner = crate::reactive::signal::Signal::new(0_i32);
-		let counter = std::rc::Rc::new(std::cell::Cell::new(0));
-		let counter_for_effect = counter.clone();
-		let outer_for_effect = outer.clone();
-		let inner_for_effect = inner.clone();
+		crate::reactive::ReactiveScope::run(|| {
+			// Arrange
+			let outer = crate::reactive::signal::Signal::new(0_i32);
+			let inner = crate::reactive::signal::Signal::new(0_i32);
+			let counter = std::rc::Rc::new(std::cell::Cell::new(0));
+			let counter_for_effect = counter.clone();
 
-		// Act
-		let _eff = crate::reactive::effect::Effect::new(move || {
-			let _ = outer_for_effect.get();
-			super::run_without_observer(|| {
-				let _ = inner_for_effect.get();
+			// Act
+			let _eff = crate::reactive::effect::Effect::new(move || {
+				let _ = outer.get();
+				super::run_without_observer(|| {
+					let _ = inner.get();
+				});
+				counter_for_effect.set(counter_for_effect.get() + 1);
 			});
-			counter_for_effect.set(counter_for_effect.get() + 1);
+
+			let initial = counter.get();
+			inner.set(99);
+			super::with_runtime(|rt| rt.flush_updates());
+
+			// Assert
+			assert_eq!(
+				counter.get(),
+				initial,
+				"run_without_observer must isolate Signal reads from outer Observer"
+			);
 		});
-
-		let initial = counter.get();
-		inner.set(99);
-		super::with_runtime(|rt| rt.flush_updates());
-
-		// Assert
-		assert_eq!(
-			counter.get(),
-			initial,
-			"run_without_observer must isolate Signal reads from outer Observer"
-		);
 	}
 
 	#[test]

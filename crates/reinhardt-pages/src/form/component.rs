@@ -56,12 +56,13 @@ use crate::dom::{Document, Element};
 use crate::platform::spawn_task;
 #[cfg(wasm)]
 use crate::reactive::Effect;
-use crate::reactive::Signal;
+use crate::reactive::{ReactiveScope, Signal};
 #[cfg(wasm)]
 use js_sys::Function;
 #[cfg(wasm)]
 use reinhardt_forms::wasm_compat::ValidationRule;
 use std::collections::HashMap;
+use std::rc::Rc;
 #[cfg(wasm)]
 use wasm_bindgen::JsValue;
 
@@ -79,6 +80,8 @@ use wasm_bindgen::JsValue;
 /// - `method`: HTTP method (default: "POST")
 #[derive(Clone)]
 pub struct FormComponent {
+	/// Retains the scope for components constructed outside a page render.
+	_scope: Option<Rc<ReactiveScope>>,
 	/// Form metadata from server
 	metadata: reinhardt_forms::wasm_compat::FormMetadata,
 
@@ -412,6 +415,20 @@ impl FormComponent {
 		metadata: reinhardt_forms::wasm_compat::FormMetadata,
 		action: impl Into<String>,
 	) -> Self {
+		let action = action.into();
+		if reinhardt_core::reactive::scope::current_scope_id().is_some() {
+			return Self::from_metadata(metadata, action, None);
+		}
+
+		let scope = Rc::new(ReactiveScope::new());
+		scope.enter(|| Self::from_metadata(metadata, action, Some(Rc::clone(&scope))))
+	}
+
+	fn from_metadata(
+		metadata: reinhardt_forms::wasm_compat::FormMetadata,
+		action: String,
+		scope: Option<Rc<ReactiveScope>>,
+	) -> Self {
 		// Initialize field values from initial data
 		let values: HashMap<String, Signal<String>> = metadata
 			.fields
@@ -434,11 +451,19 @@ impl FormComponent {
 		let initial_errors = metadata.errors.clone();
 
 		Self {
+			_scope: scope,
 			metadata,
 			values,
 			errors: Signal::new(initial_errors),
-			action: action.into(),
+			action,
 			method: "POST".to_string(),
+		}
+	}
+
+	pub(crate) fn with_reactive_scope<R>(&self, f: impl FnOnce() -> R) -> R {
+		match &self._scope {
+			Some(scope) => scope.enter(f),
+			None => f(),
 		}
 	}
 
@@ -459,6 +484,11 @@ impl FormComponent {
 	/// ```
 	#[cfg(wasm)]
 	pub fn render(&self) -> web_sys::Element {
+		self.with_reactive_scope(|| self.render_in_scope())
+	}
+
+	#[cfg(wasm)]
+	fn render_in_scope(&self) -> web_sys::Element {
 		use crate::builder::html;
 
 		// Create form element
@@ -1221,36 +1251,38 @@ mod tests {
 
 	#[rstest]
 	fn test_form_component_creation() {
-		// Arrange
-		let metadata = FormMetadata {
-			fields: vec![FieldMetadata {
-				name: "username".to_string(),
-				label: Some("Username".to_string()),
-				required: true,
-				help_text: None,
-				widget: Widget::TextInput,
-				initial: None,
-			}],
-			initial: HashMap::new(),
-			prefix: String::new(),
-			is_bound: false,
-			errors: HashMap::new(),
-			validation_rules: Vec::new(),
-			non_field_errors: Vec::new(),
-		};
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			// Arrange
+			let metadata = FormMetadata {
+				fields: vec![FieldMetadata {
+					name: "username".to_string(),
+					label: Some("Username".to_string()),
+					required: true,
+					help_text: None,
+					widget: Widget::TextInput,
+					initial: None,
+				}],
+				initial: HashMap::new(),
+				prefix: String::new(),
+				is_bound: false,
+				errors: HashMap::new(),
+				validation_rules: Vec::new(),
+				non_field_errors: Vec::new(),
+			};
 
-		// Act
-		let component = FormComponent::new(metadata, "/api/submit");
+			// Act
+			let component = FormComponent::new(metadata, "/api/submit");
 
-		// Assert
-		assert_eq!(component.action, "/api/submit");
-		assert_eq!(component.method, "POST");
-		assert_eq!(component.values.len(), 1);
-		assert!(component.values.contains_key("username"));
+			// Assert
+			assert_eq!(component.action, "/api/submit");
+			assert_eq!(component.method, "POST");
+			assert_eq!(component.values.len(), 1);
+			assert!(component.values.contains_key("username"));
+		});
 	}
 
 	#[rstest]
-	fn test_form_component_validation_required_field() {
+	fn standalone_form_reenters_its_retained_scope() {
 		let metadata = FormMetadata {
 			fields: vec![FieldMetadata {
 				name: "email".to_string(),
@@ -1267,75 +1299,112 @@ mod tests {
 			validation_rules: Vec::new(),
 			non_field_errors: Vec::new(),
 		};
-
 		let component = FormComponent::new(metadata, "/api/submit");
+		let effect_ran = Rc::new(std::cell::Cell::new(false));
 
-		// Empty value should fail validation
-		assert!(!component.validate());
+		component.with_reactive_scope({
+			let effect_ran = Rc::clone(&effect_ran);
+			move || {
+				let _effect = crate::reactive::Effect::new(move || effect_ran.set(true));
+			}
+		});
 
-		let errors = component.errors();
-		assert!(errors.contains_key("email"));
-		assert_eq!(errors.get("email").unwrap()[0], "This field is required.");
+		assert!(effect_ran.get());
+	}
 
-		// Set value and validate again
-		component.set_value("email", "test@example.com");
-		assert!(component.validate());
+	#[rstest]
+	fn test_form_component_validation_required_field() {
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let metadata = FormMetadata {
+				fields: vec![FieldMetadata {
+					name: "email".to_string(),
+					label: Some("Email".to_string()),
+					required: true,
+					help_text: None,
+					widget: Widget::EmailInput,
+					initial: None,
+				}],
+				initial: HashMap::new(),
+				prefix: String::new(),
+				is_bound: false,
+				errors: HashMap::new(),
+				validation_rules: Vec::new(),
+				non_field_errors: Vec::new(),
+			};
 
-		let errors = component.errors();
-		assert!(errors.is_empty());
+			let component = FormComponent::new(metadata, "/api/submit");
+
+			// Empty value should fail validation
+			assert!(!component.validate());
+
+			let errors = component.errors();
+			assert!(errors.contains_key("email"));
+			assert_eq!(errors.get("email").unwrap()[0], "This field is required.");
+
+			// Set value and validate again
+			component.set_value("email", "test@example.com");
+			assert!(component.validate());
+
+			let errors = component.errors();
+			assert!(errors.is_empty());
+		});
 	}
 
 	#[rstest]
 	fn test_form_component_get_set_value() {
-		let metadata = FormMetadata {
-			fields: vec![FieldMetadata {
-				name: "name".to_string(),
-				label: Some("Name".to_string()),
-				required: false,
-				help_text: None,
-				widget: Widget::TextInput,
-				initial: None,
-			}],
-			initial: HashMap::new(),
-			prefix: String::new(),
-			is_bound: false,
-			errors: HashMap::new(),
-			validation_rules: Vec::new(),
-			non_field_errors: Vec::new(),
-		};
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let metadata = FormMetadata {
+				fields: vec![FieldMetadata {
+					name: "name".to_string(),
+					label: Some("Name".to_string()),
+					required: false,
+					help_text: None,
+					widget: Widget::TextInput,
+					initial: None,
+				}],
+				initial: HashMap::new(),
+				prefix: String::new(),
+				is_bound: false,
+				errors: HashMap::new(),
+				validation_rules: Vec::new(),
+				non_field_errors: Vec::new(),
+			};
 
-		let component = FormComponent::new(metadata, "/api/submit");
+			let component = FormComponent::new(metadata, "/api/submit");
 
-		assert_eq!(component.get_value("name"), "");
+			assert_eq!(component.get_value("name"), "");
 
-		component.set_value("name", "John Doe");
-		assert_eq!(component.get_value("name"), "John Doe");
+			component.set_value("name", "John Doe");
+			assert_eq!(component.get_value("name"), "John Doe");
+		});
 	}
 
 	#[rstest]
 	fn test_form_component_with_initial_values() {
-		let mut initial = HashMap::new();
-		initial.insert("username".to_string(), serde_json::json!("john_doe"));
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let mut initial = HashMap::new();
+			initial.insert("username".to_string(), serde_json::json!("john_doe"));
 
-		let metadata = FormMetadata {
-			fields: vec![FieldMetadata {
-				name: "username".to_string(),
-				label: Some("Username".to_string()),
-				required: false,
-				help_text: None,
-				widget: Widget::TextInput,
-				initial: None,
-			}],
-			initial,
-			prefix: String::new(),
-			is_bound: false,
-			errors: HashMap::new(),
-			validation_rules: Vec::new(),
-			non_field_errors: Vec::new(),
-		};
+			let metadata = FormMetadata {
+				fields: vec![FieldMetadata {
+					name: "username".to_string(),
+					label: Some("Username".to_string()),
+					required: false,
+					help_text: None,
+					widget: Widget::TextInput,
+					initial: None,
+				}],
+				initial,
+				prefix: String::new(),
+				is_bound: false,
+				errors: HashMap::new(),
+				validation_rules: Vec::new(),
+				non_field_errors: Vec::new(),
+			};
 
-		let component = FormComponent::new(metadata, "/api/submit");
+			let component = FormComponent::new(metadata, "/api/submit");
 
-		assert_eq!(component.get_value("username"), "john_doe");
+			assert_eq!(component.get_value("username"), "john_doe");
+		});
 	}
 }

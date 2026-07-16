@@ -14,6 +14,8 @@ impl Validate for SettingsRequest {
 }
 
 fn main() {
-	let _form = SettingsForm::new();
-	let _field = SettingsFormField::Name;
+	reinhardt_core::reactive::ReactiveScope::run(|| {
+		let _form = SettingsForm::new();
+		let _field = SettingsFormField::Name;
+	});
 }

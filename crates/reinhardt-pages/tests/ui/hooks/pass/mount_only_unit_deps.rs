@@ -4,11 +4,13 @@
 use reinhardt_pages::reactive::hooks::use_effect;
 
 fn main() {
-	let _e = use_effect(
-		|| {
-			// one-time mount work
-			None::<fn()>
-		},
-		(),
-	);
+	reinhardt_core::reactive::ReactiveScope::run(|| {
+		let _e = use_effect(
+			|| {
+				// one-time mount work
+				None::<fn()>
+			},
+			(),
+		);
+	});
 }

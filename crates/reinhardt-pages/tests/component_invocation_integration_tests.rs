@@ -8,6 +8,7 @@
 //!
 //! Refs #4668 (P7) #4524.
 
+use reinhardt_core::reactive::ReactiveScope;
 use reinhardt_pages::component::Page;
 use reinhardt_pages::page;
 use rstest::rstest;
@@ -143,10 +144,12 @@ fn component_macro_props_render_like_page_brace_invocation() {
 		})(id)
 	}
 
-	let direct = user_page(UserPageProps::builder().id(7).build());
-	let router = ClientRouter::new().component(user_page);
-	router.current_path().set("/users/7/".to_string());
-	let routed = router.render_current();
+	ReactiveScope::run(|| {
+		let direct = user_page(UserPageProps::builder().id(7).build());
+		let router = ClientRouter::new().component(user_page);
+		router.current_path().set("/users/7/".to_string());
+		let routed = router.render_current();
 
-	assert_eq!(direct.render_to_string(), routed.render_to_string());
+		assert_eq!(direct.render_to_string(), routed.render_to_string());
+	});
 }

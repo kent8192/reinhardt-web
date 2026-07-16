@@ -35,11 +35,22 @@ fn test_form_macro_fail() {
 #[test]
 fn test_server_fn_macro_ui() {
 	let t = trybuild::TestCases::new();
+	// Guard query-key code generation against breaking existing server functions.
+	t.pass("tests/ui/server_fn/query_key_custom_result_alias.rs");
+	// MSW mock arguments intentionally require serializable, cloneable request types.
+	// This fixture isolates the non-MSW native compatibility guarantee.
+	#[cfg(not(feature = "msw"))]
+	t.pass("tests/ui/server_fn/query_key_non_query_args.rs");
+	t.pass("tests/ui/server_fn/query_key_private_interfaces.rs");
+	t.pass("tests/ui/server_fn/query_key_injected_no_msw.rs");
 	// Codec tests
 	t.pass("tests/ui/server_fn/codec_json.rs");
 	t.pass("tests/ui/server_fn/codec_url.rs");
 	// Fixes #3666: verify server_fn compiles without msw feature (no check-cfg errors)
 	t.pass("tests/ui/server_fn/no_msw_feature.rs");
+	// Verify injected server_fn params do not leave regular args unused in generated helpers.
+	t.pass("tests/ui/server_fn/inject_query_key_no_unused.rs");
+	t.pass("tests/ui/server_fn/result_alias_query_key.rs");
 	t.pass("tests/ui/server_fn/response_metadata.rs");
 	t.pass("tests/ui/server_fn/result_alias.rs");
 	// Issue #3858: verify FromRequest extractor params work in #[server_fn]
@@ -88,19 +99,19 @@ fn test_wasm_server_api_macro_ui_fail() {
 	t.compile_fail("tests/ui/wasm_server_api/fail/*.rs");
 }
 
-// PR5 / Issue #4195: React-parity hooks require an explicit deps tuple
-// (spec §4.2). These UI tests pin the public signature:
-// - `pass/explicit_deps_use_effect.rs`: canonical (closure, (s,))
-// - `pass/mount_only_unit_deps.rs`: mount-only `()`
-// - `fail/missing_deps_use_effect.rs`: omitting deps is a hard compile error
+// Issues #5511 / #5577: React-parity hooks require a dependency mode as their
+// second argument. These UI tests pin the public signatures and diagnostics:
+// - `deps![...]` is explicit and statically checked inside `page!` bodies.
+// - `deps_auto!()` is accepted only by effects, layout effects, and memos.
+// - Legacy unit and tuple arguments are rejected by the type checker.
 #[test]
-fn test_hooks_explicit_deps_ui_pass() {
+fn test_hooks_dependency_modes_ui_pass() {
 	let t = trybuild::TestCases::new();
 	t.pass("tests/ui/hooks/pass/*.rs");
 }
 
 #[test]
-fn test_hooks_explicit_deps_ui_fail() {
+fn test_hooks_dependency_modes_ui_fail() {
 	let t = trybuild::TestCases::new();
 	t.compile_fail("tests/ui/hooks/fail/*.rs");
 }

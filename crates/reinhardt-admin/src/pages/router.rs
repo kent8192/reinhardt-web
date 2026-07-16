@@ -23,9 +23,14 @@ use crate::types::ListQueryParams;
 #[cfg(server)]
 use crate::types::ModelInfo;
 use reinhardt_pages::Signal;
+#[cfg(client)]
+use reinhardt_pages::component::PageExt;
 use reinhardt_pages::component::{Component, Page};
 use reinhardt_pages::page;
+use reinhardt_pages::reactive::ReactiveScope;
 use reinhardt_pages::router::Link;
+#[cfg(client)]
+use reinhardt_pages::{Element, MountError, deps};
 #[cfg(client)]
 use reinhardt_pages::{ResourceState, use_resource};
 use reinhardt_urls::routers::ClientRouter;
@@ -71,8 +76,14 @@ pub enum AdminRoute {
 
 // Global Router instance
 // Initialized by init_global_router() and accessed via with_router()
+struct GlobalRouter {
+	scope: ReactiveScope,
+	router: ClientRouter,
+	render_scope: RefCell<Option<ReactiveScope>>,
+}
+
 thread_local! {
-	static ROUTER: RefCell<Option<ClientRouter>> = const { RefCell::new(None) };
+	static ROUTER: RefCell<Option<GlobalRouter>> = const { RefCell::new(None) };
 }
 
 #[cfg(any(client, test))]
@@ -136,9 +147,16 @@ pub(crate) fn get_login_url() -> String {
 /// init_global_router();
 /// ```
 pub fn init_global_router() {
-	ROUTER.with(|r| {
-		*r.borrow_mut() = Some(init_router());
+	let scope = ReactiveScope::new();
+	let router = scope.enter(init_router);
+	let previous = ROUTER.with(|stored| {
+		stored.borrow_mut().replace(GlobalRouter {
+			scope,
+			router,
+			render_scope: RefCell::new(None),
+		})
 	});
+	drop(previous);
 }
 
 /// Provides access to the global router instance
@@ -158,7 +176,12 @@ pub fn try_with_router<F, R>(f: F) -> Option<R>
 where
 	F: FnOnce(&ClientRouter) -> R,
 {
-	ROUTER.with(|r| r.borrow().as_ref().map(f))
+	ROUTER.with(|stored| {
+		let stored = stored.borrow();
+		stored
+			.as_ref()
+			.map(|stored| stored.scope.enter(|| f(&stored.router)))
+	})
 }
 
 /// Provides access to the global router instance
@@ -185,12 +208,51 @@ where
 	try_with_router(f).expect("Router not initialized. Call init_global_router() first.")
 }
 
+/// Renders the current route in a scope owned by the mounted admin page.
+///
+/// Router navigation signals remain in the router scope, while route-local
+/// signals, resources, and page arena nodes are disposed before the next mount.
+pub fn render_current_route() -> Page {
+	ROUTER.with(|stored| {
+		let stored = stored.borrow();
+		let stored = stored
+			.as_ref()
+			.expect("Router not initialized. Call init_global_router() first.");
+		let render_scope = ReactiveScope::new();
+		let page = render_scope.enter(|| stored.router.render_current());
+		let previous = stored.render_scope.borrow_mut().replace(render_scope);
+		drop(previous);
+		page
+	})
+}
+
+/// Renders and mounts the current route while its route scope is active.
+///
+/// Reactive pages create effects during mounting, so building the page under
+/// the route scope alone is insufficient for client-side mounts.
+#[cfg(client)]
+pub fn mount_current_route(parent: &Element) -> Result<(), MountError> {
+	ROUTER.with(|stored| {
+		let stored = stored.borrow();
+		let stored = stored
+			.as_ref()
+			.expect("Router not initialized. Call init_global_router() first.");
+		let render_scope = ReactiveScope::new();
+		let result = render_scope.enter(|| stored.router.render_current().mount(parent));
+		if result.is_ok() {
+			let previous = stored.render_scope.borrow_mut().replace(render_scope);
+			drop(previous);
+		}
+		result
+	})
+}
+
 /// Dashboard view component for router
 #[cfg(client)]
 fn dashboard_view() -> Page {
 	let dashboard_resource = use_resource(
 		|| async { get_dashboard().await.map_err(|e| e.to_string()) },
-		(),
+		deps![],
 	);
 
 	let reactive_content = Page::reactive({
@@ -251,7 +313,7 @@ fn list_view_component(model_name: String) -> Page {
 					.map_err(|e| e.to_string())
 			}
 		},
-		(),
+		deps![],
 	);
 
 	// Create signals outside the reactive closure so they persist across re-renders
@@ -265,7 +327,6 @@ fn list_view_component(model_name: String) -> Page {
 	// separate from the render path.
 	{
 		let resource = list_resource.clone();
-		let page_signal = page_signal.clone();
 		let resource_for_deps = list_resource.clone();
 		use_retained_effect(
 			move || {
@@ -274,14 +335,12 @@ fn list_view_component(model_name: String) -> Page {
 				}
 				None::<fn()>
 			},
-			(resource_for_deps,),
+			deps![resource_for_deps],
 		);
 	}
 
 	let reactive_content = Page::reactive({
 		let resource = list_resource.clone();
-		let page_signal = page_signal.clone();
-		let filters_signal = filters_signal.clone();
 		move || match resource.get() {
 			ResourceState::Loading => loading_view(),
 			ResourceState::Success(response) => {
@@ -320,7 +379,7 @@ fn list_view_component(model_name: String) -> Page {
 					total_count: response.count,
 					filters: response.available_filters.unwrap_or_default(),
 				};
-				list_view(&data, page_signal.clone(), filters_signal.clone())
+				list_view(&data, page_signal, filters_signal)
 			}
 			ResourceState::Error(err) => error_view(&err),
 		}
@@ -381,7 +440,7 @@ fn detail_view_component(model_name: String, record_id: String) -> Page {
 					.map_err(|e| e.to_string())
 			}
 		},
-		(),
+		deps![],
 	);
 
 	let reactive_content = Page::reactive({
@@ -434,7 +493,7 @@ fn create_view_component(model_name: String) -> Page {
 					.map_err(|e| e.to_string())
 			}
 		},
-		(),
+		deps![],
 	);
 
 	let reactive_content = Page::reactive({
@@ -511,7 +570,7 @@ fn edit_view_component(model_name: String, record_id: String) -> Page {
 					.map_err(|e| e.to_string())
 			}
 		},
-		(),
+		deps![],
 	);
 
 	let reactive_content = Page::reactive({
@@ -745,6 +804,29 @@ pub fn init_router() -> ClientRouter {
 #[cfg(all(test, server))]
 mod tests {
 	use super::*;
+	use reinhardt_core::reactive::ReactiveScope;
+	use rstest::{fixture, rstest};
+	use serial_test::serial;
+
+	fn clear_global_router() {
+		let previous = ROUTER.with(|router| router.borrow_mut().take());
+		drop(previous);
+	}
+
+	struct InitializedGlobalRouter;
+
+	impl Drop for InitializedGlobalRouter {
+		fn drop(&mut self) {
+			clear_global_router();
+		}
+	}
+
+	#[fixture]
+	fn initialized_global_router() -> InitializedGlobalRouter {
+		clear_global_router();
+		ReactiveScope::run(init_global_router);
+		InitializedGlobalRouter
+	}
 
 	#[test]
 	fn test_admin_route_enum() {
@@ -759,127 +841,148 @@ mod tests {
 
 	#[test]
 	fn test_init_router_creates_routes() {
-		let router = init_router();
-		assert_eq!(router.route_count(), 6); // login + dashboard + list + detail + create + edit
-		assert!(router.has_route("login"));
-		assert!(router.has_route("dashboard"));
-		assert!(router.has_route("list"));
-		assert!(router.has_route("detail"));
-		assert!(router.has_route("create"));
-		assert!(router.has_route("edit"));
+		ReactiveScope::run(|| {
+			let router = init_router();
+			assert_eq!(router.route_count(), 6); // login + dashboard + list + detail + create + edit
+			assert!(router.has_route("login"));
+			assert!(router.has_route("dashboard"));
+			assert!(router.has_route("list"));
+			assert!(router.has_route("detail"));
+			assert!(router.has_route("create"));
+			assert!(router.has_route("edit"));
+		});
 	}
 
 	#[test]
 	fn test_dashboard_route_match() {
-		let router = init_router();
-		let route_match = router.match_path("/admin/");
-		assert!(route_match.is_some());
+		ReactiveScope::run(|| {
+			let router = init_router();
+			let route_match = router.match_path("/admin/");
+			assert!(route_match.is_some());
 
-		let route_match = route_match.unwrap();
-		assert_eq!(route_match.route.name(), Some("dashboard"));
+			let route_match = route_match.unwrap();
+			assert_eq!(route_match.route.name(), Some("dashboard"));
+		});
 	}
 
 	#[test]
 	fn test_list_route_match() {
-		let router = init_router();
-		let route_match = router.match_path("/admin/users/");
-		assert!(route_match.is_some());
+		ReactiveScope::run(|| {
+			let router = init_router();
+			let route_match = router.match_path("/admin/users/");
+			assert!(route_match.is_some());
 
-		let route_match = route_match.unwrap();
-		assert_eq!(route_match.route.name(), Some("list"));
-		assert_eq!(
-			route_match.params.get("model").map(String::as_str),
-			Some("users")
-		);
+			let route_match = route_match.unwrap();
+			assert_eq!(route_match.route.name(), Some("list"));
+			assert_eq!(
+				route_match.params.get("model").map(String::as_str),
+				Some("users")
+			);
+		});
 	}
 
 	#[test]
 	fn test_detail_route_match() {
-		let router = init_router();
-		let route_match = router.match_path("/admin/users/42/");
-		assert!(route_match.is_some());
+		ReactiveScope::run(|| {
+			let router = init_router();
+			let route_match = router.match_path("/admin/users/42/");
+			assert!(route_match.is_some());
 
-		let route_match = route_match.unwrap();
-		assert_eq!(route_match.route.name(), Some("detail"));
-		assert_eq!(
-			route_match.params.get("model").map(String::as_str),
-			Some("users")
-		);
-		assert_eq!(route_match.params.get("id").map(String::as_str), Some("42"));
+			let route_match = route_match.unwrap();
+			assert_eq!(route_match.route.name(), Some("detail"));
+			assert_eq!(
+				route_match.params.get("model").map(String::as_str),
+				Some("users")
+			);
+			assert_eq!(route_match.params.get("id").map(String::as_str), Some("42"));
+		});
 	}
 
 	#[test]
 	fn test_create_route_match() {
-		let router = init_router();
-		let route_match = router.match_path("/admin/users/add/");
-		assert!(route_match.is_some());
+		ReactiveScope::run(|| {
+			let router = init_router();
+			let route_match = router.match_path("/admin/users/add/");
+			assert!(route_match.is_some());
 
-		let route_match = route_match.unwrap();
-		assert_eq!(route_match.route.name(), Some("create"));
-		assert_eq!(
-			route_match.params.get("model").map(String::as_str),
-			Some("users")
-		);
+			let route_match = route_match.unwrap();
+			assert_eq!(route_match.route.name(), Some("create"));
+			assert_eq!(
+				route_match.params.get("model").map(String::as_str),
+				Some("users")
+			);
+		});
 	}
 
 	#[test]
 	fn test_edit_route_match() {
-		let router = init_router();
-		let route_match = router.match_path("/admin/users/42/change/");
-		assert!(route_match.is_some());
+		ReactiveScope::run(|| {
+			let router = init_router();
+			let route_match = router.match_path("/admin/users/42/change/");
+			assert!(route_match.is_some());
 
-		let route_match = route_match.unwrap();
-		assert_eq!(route_match.route.name(), Some("edit"));
-		assert_eq!(
-			route_match.params.get("model").map(String::as_str),
-			Some("users")
-		);
-		assert_eq!(route_match.params.get("id").map(String::as_str), Some("42"));
+			let route_match = route_match.unwrap();
+			assert_eq!(route_match.route.name(), Some("edit"));
+			assert_eq!(
+				route_match.params.get("model").map(String::as_str),
+				Some("users")
+			);
+			assert_eq!(route_match.params.get("id").map(String::as_str), Some("42"));
+		});
 	}
 
 	#[test]
 	fn test_reverse_url_dashboard() {
-		let router = init_router();
-		let url = router.reverse("dashboard", &[]).unwrap();
-		assert_eq!(url, "/admin/");
+		ReactiveScope::run(|| {
+			let router = init_router();
+			let url = router.reverse("dashboard", &[]).unwrap();
+			assert_eq!(url, "/admin/");
+		});
 	}
 
 	#[test]
 	fn test_reverse_url_list() {
-		let router = init_router();
-		let url = router.reverse("list", &[("model", "users")]).unwrap();
-		assert_eq!(url, "/admin/users/");
+		ReactiveScope::run(|| {
+			let router = init_router();
+			let url = router.reverse("list", &[("model", "users")]).unwrap();
+			assert_eq!(url, "/admin/users/");
+		});
 	}
 
 	#[test]
 	fn test_reverse_url_detail() {
-		let router = init_router();
-		let url = router
-			.reverse("detail", &[("model", "users"), ("id", "42")])
-			.unwrap();
-		assert_eq!(url, "/admin/users/42/");
+		ReactiveScope::run(|| {
+			let router = init_router();
+			let url = router
+				.reverse("detail", &[("model", "users"), ("id", "42")])
+				.unwrap();
+			assert_eq!(url, "/admin/users/42/");
+		});
 	}
 
 	#[test]
 	fn test_reverse_url_create() {
-		let router = init_router();
-		let url = router.reverse("create", &[("model", "users")]).unwrap();
-		assert_eq!(url, "/admin/users/add/");
+		ReactiveScope::run(|| {
+			let router = init_router();
+			let url = router.reverse("create", &[("model", "users")]).unwrap();
+			assert_eq!(url, "/admin/users/add/");
+		});
 	}
 
 	#[test]
 	fn test_reverse_url_edit() {
-		let router = init_router();
-		let url = router
-			.reverse("edit", &[("model", "users"), ("id", "42")])
-			.unwrap();
-		assert_eq!(url, "/admin/users/42/change/");
+		ReactiveScope::run(|| {
+			let router = init_router();
+			let url = router
+				.reverse("edit", &[("model", "users"), ("id", "42")])
+				.unwrap();
+			assert_eq!(url, "/admin/users/42/change/");
+		});
 	}
 
-	#[test]
-	fn test_init_global_router() {
-		init_global_router();
-
+	#[rstest]
+	#[serial(global_router)]
+	fn test_init_global_router(_initialized_global_router: InitializedGlobalRouter) {
 		with_router(|router| {
 			assert_eq!(router.route_count(), 6);
 			assert!(router.has_route("login"));
@@ -891,10 +994,19 @@ mod tests {
 		});
 	}
 
-	#[test]
-	fn test_with_router_access() {
-		init_global_router();
+	#[rstest]
+	#[serial(global_router)]
+	fn global_router_scope_outlives_initializer_scope(
+		_initialized_global_router: InitializedGlobalRouter,
+	) {
+		with_router(|router| {
+			assert_eq!(router.current_path().get(), "/");
+		});
+	}
 
+	#[rstest]
+	#[serial(global_router)]
+	fn test_with_router_access(_initialized_global_router: InitializedGlobalRouter) {
 		let route_count = with_router(|router| router.route_count());
 		assert_eq!(route_count, 6);
 
@@ -905,16 +1017,14 @@ mod tests {
 	#[test]
 	#[should_panic(expected = "Router not initialized")]
 	fn test_with_router_panics_when_not_initialized() {
-		// Clear ROUTER (this operation is actually dangerous, but for test purposes)
-		ROUTER.with(|r| *r.borrow_mut() = None);
+		clear_global_router();
 
 		with_router(|_| {});
 	}
 
 	#[test]
 	fn test_try_with_router_returns_none_when_not_initialized() {
-		// Clear ROUTER to simulate uninitialized state
-		ROUTER.with(|r| *r.borrow_mut() = None);
+		clear_global_router();
 
 		let result = try_with_router(|router| router.route_count());
 		assert!(result.is_none());
@@ -922,26 +1032,31 @@ mod tests {
 
 	#[test]
 	fn test_try_with_router_returns_some_when_initialized() {
-		init_global_router();
+		ReactiveScope::run(|| {
+			init_global_router();
 
-		let result = try_with_router(|router| router.route_count());
-		assert_eq!(result, Some(6));
+			let result = try_with_router(|router| router.route_count());
+			assert_eq!(result, Some(6));
+		});
 	}
 
 	#[test]
 	fn test_list_view_with_model_name() {
-		let view = list_view_component("users".to_string());
-		// Verify basic rendering succeeds
-		let html = view.render_to_string();
+		let html = ReactiveScope::run(|| {
+			let view = list_view_component("users".to_string());
+			view.render_to_string()
+		});
 		assert!(html.contains("users") || html.contains("List"));
 	}
 
 	#[test]
 	fn test_direct_list_route_extracts_model_name() {
-		let router = init_router();
+		let html = ReactiveScope::run(|| {
+			let router = init_router();
 
-		router.push("/admin/question/").unwrap();
-		let html = router.render_current().render_to_string();
+			router.push("/admin/question/").unwrap();
+			router.render_current().render_to_string()
+		});
 
 		assert!(
 			html.contains("question"),
@@ -965,9 +1080,10 @@ mod tests {
 
 	#[test]
 	fn test_detail_view_with_params() {
-		let view = detail_view_component("users".to_string(), "42".to_string());
-		// Verify basic rendering succeeds
-		let html = view.render_to_string();
+		let html = ReactiveScope::run(|| {
+			let view = detail_view_component("users".to_string(), "42".to_string());
+			view.render_to_string()
+		});
 		assert!(!html.is_empty());
 	}
 
@@ -978,12 +1094,12 @@ mod tests {
 	/// when the user is unauthenticated (#3114).
 	#[test]
 	fn test_admin_router_has_login_route() {
-		// Arrange & Act
-		let router = init_router();
+		// Act
+		let has_login_route = ReactiveScope::run(|| init_router().has_route("login"));
 
-		// Assert - a login route must exist for the auth flow
+		// Assert
 		assert!(
-			router.has_route("login"),
+			has_login_route,
 			"Admin router must have a 'login' route for authentication flow. \
 			 The SPA needs a login form to obtain JWT tokens (#3114)."
 		);
@@ -992,18 +1108,19 @@ mod tests {
 	/// Verify the /admin/login/ path matches the login route (#3114).
 	#[test]
 	fn test_login_route_match() {
-		// Arrange
-		let router = init_router();
-
 		// Act
-		let route_match = router.match_path("/admin/login/");
+		let route_name = ReactiveScope::run(|| {
+			let router = init_router();
+			router
+				.match_path("/admin/login/")
+				.and_then(|route_match| route_match.route.name().map(str::to_owned))
+		});
 
 		// Assert
 		assert!(
-			route_match.is_some(),
+			route_name.is_some(),
 			"Path /admin/login/ should match the login route (#3114)"
 		);
-		let route_match = route_match.unwrap();
-		assert_eq!(route_match.route.name(), Some("login"));
+		assert_eq!(route_name.as_deref(), Some("login"));
 	}
 }

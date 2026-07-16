@@ -1,0 +1,5 @@
+error: #[derive(HttpError)] can only be used on enums
+ --> tests/macros/ui/http_error/fail/non_enum.rs:4:8
+  |
+4 | struct ApiError;
+  |        ^^^^^^^^

@@ -4,6 +4,8 @@
 use reinhardt_pages::reactive::hooks::{use_effect, use_layout_effect};
 
 fn main() {
-	let _effect = use_effect::<_, fn(), _>(|| None, ());
-	let _layout_effect = use_layout_effect::<_, fn(), _>(|| None, ());
+	reinhardt_core::reactive::ReactiveScope::run(|| {
+		let _effect = use_effect::<_, fn(), _>(|| None, ());
+		let _layout_effect = use_layout_effect::<_, fn(), _>(|| None, ());
+	});
 }

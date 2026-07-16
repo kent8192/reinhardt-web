@@ -12,7 +12,8 @@ use crate::dom::{Element, document};
 
 #[cfg(wasm)]
 use crate::component::{
-	Page, new_reactive_node_store, store_reactive_node, with_reactive_node_store,
+	Page, new_reactive_node_store, render_view_in_reactive_node_store, store_reactive_node,
+	with_reactive_node_store,
 };
 
 #[cfg(wasm)]
@@ -179,22 +180,23 @@ pub fn hydrate<C: Component>(component: &C, root: &Element) -> Result<(), Hydrat
 
 	// 1. Restore SSR state
 	let mut context = HydrationContext::from_window()?;
-	#[cfg(feature = "i18n")]
-	let i18n_guard = crate::i18n::provide_i18n_from_hydration_context(&context).map_err(|e| {
-		HydrationError::StateParseError(format!("Failed to hydrate i18n state: {}", e))
-	})?;
+	let scope = reinhardt_core::reactive::ReactiveScope::new();
+	scope.enter(|| {
+		#[cfg(feature = "i18n")]
+		let i18n_guard = crate::i18n::provide_i18n_from_hydration_context(&context).map_err(|e| {
+			HydrationError::StateParseError(format!("Failed to hydrate i18n state: {}", e))
+		})?;
 
-	let view = {
 		let prepass_store = new_reactive_node_store();
-		with_reactive_node_store(&prepass_store, || -> Result<_, HydrationError> {
-			// Reconciliation and event attachment only inspect lazy views. Keep retained
-			// hook effects from these prepasses out of the mounted root store.
+		let view = with_reactive_node_store(&prepass_store, || -> Result<_, HydrationError> {
+			// 2. Render the component to get expected structure
 			let view = component.render();
 			let resource_counter_offset =
 				crate::reactive::resource::current_client_resource_counter();
 			let id_counter_offset = crate::reactive::hooks::id::id_counter_snapshot();
 			web_sys::console::log_1(&"[Hydration] View rendered".into());
 
+			// 3. Reconcile DOM structure
 			crate::reactive::resource::set_client_resource_counter(resource_counter_offset);
 			crate::reactive::hooks::id::restore_id_counter(id_counter_offset);
 			reconcile(root, &view).map_err(|e| {
@@ -202,6 +204,7 @@ pub fn hydrate<C: Component>(component: &C, root: &Element) -> Result<(), Hydrat
 			})?;
 			web_sys::console::log_1(&"[Hydration] Reconciliation complete".into());
 
+			// 4. Attach event handlers
 			crate::reactive::resource::set_client_resource_counter(resource_counter_offset);
 			crate::reactive::hooks::id::restore_id_counter(id_counter_offset);
 			let mut registry = EventRegistry::new();
@@ -209,20 +212,23 @@ pub fn hydrate<C: Component>(component: &C, root: &Element) -> Result<(), Hydrat
 			crate::reactive::resource::set_client_resource_counter(resource_counter_offset);
 			crate::reactive::hooks::id::restore_id_counter(id_counter_offset);
 			web_sys::console::log_1(&"[Hydration] Events attached".into());
-
 			Ok(view)
-		})?
-	};
+		})?;
 
-	// 5. Install reactive DOM owners for hydrated reactive views
-	install_hydrated_reactive_nodes(root, &view);
-	web_sys::console::log_1(&"[Hydration] Reactive nodes installed".into());
+		// 5. Install reactive DOM owners for hydrated reactive views
+		install_hydrated_reactive_nodes(root, &view);
+		web_sys::console::log_1(&"[Hydration] Reactive nodes installed".into());
+
+		#[cfg(feature = "i18n")]
+		if let Some(i18n_guard) = i18n_guard {
+			crate::i18n::retain_hydrated_i18n_context(i18n_guard);
+		}
+
+		Ok(())
+	})?;
+	crate::component::store_reactive_scope(scope);
 
 	// 6. Mark hydration complete
-	#[cfg(feature = "i18n")]
-	if let Some(i18n_guard) = i18n_guard {
-		crate::i18n::retain_hydrated_i18n_context(i18n_guard);
-	}
 	context.mark_hydrated();
 	mark_hydration_complete_internal();
 	web_sys::console::log_1(&"[Hydration] Complete!".into());
@@ -233,7 +239,11 @@ pub fn hydrate<C: Component>(component: &C, root: &Element) -> Result<(), Hydrat
 #[cfg(wasm)]
 fn with_hydration_prepass_store<R>(f: impl FnOnce() -> R) -> R {
 	let store = new_reactive_node_store();
-	with_reactive_node_store(&store, f)
+	with_reactive_node_store(&store, || {
+		// Prepass allocations only establish DOM shape and must not outlive the pass.
+		let scope = reinhardt_core::reactive::ReactiveScope::new();
+		scope.enter(f)
+	})
 }
 
 #[cfg(wasm)]
@@ -258,7 +268,7 @@ fn install_hydrated_reactive_nodes(element: &Element, view: &Page) {
 		}
 		Page::Reactive(reactive) => {
 			let render_store = new_reactive_node_store();
-			let rendered = with_reactive_node_store(&render_store, || reactive.render());
+			let rendered = render_view_in_reactive_node_store(&render_store, || reactive.render());
 			with_hydration_prepass_store(|| {
 				split_coalesced_text_children(element, std::slice::from_ref(&rendered));
 			});
@@ -295,7 +305,7 @@ fn install_hydrated_reactive_nodes(element: &Element, view: &Page) {
 		}
 		Page::ReactiveIf(reactive_if) => {
 			let branch_store = new_reactive_node_store();
-			let branch_view = with_reactive_node_store(&branch_store, || {
+			let branch_view = render_view_in_reactive_node_store(&branch_store, || {
 				if reactive_if.condition() {
 					reactive_if.then_view()
 				} else {
@@ -387,7 +397,7 @@ fn install_hydrated_child_reactive_nodes(
 	match view {
 		Page::Reactive(reactive) => {
 			let render_store = new_reactive_node_store();
-			let rendered = with_reactive_node_store(&render_store, || reactive.render());
+			let rendered = render_view_in_reactive_node_store(&render_store, || reactive.render());
 			let mut boundary_sibling = next_sibling.clone();
 			let hydrated_node = crate::component::ReactiveNode::hydrate_at(
 				parent.clone(),
@@ -418,7 +428,7 @@ fn install_hydrated_child_reactive_nodes(
 		}
 		Page::ReactiveIf(reactive_if) => {
 			let branch_store = new_reactive_node_store();
-			let branch_view = with_reactive_node_store(&branch_store, || {
+			let branch_view = render_view_in_reactive_node_store(&branch_store, || {
 				if reactive_if.condition() {
 					reactive_if.then_view()
 				} else {
@@ -856,7 +866,17 @@ pub(super) fn find_hydration_markers(_root: &str) -> Vec<(String, String)> {
 }
 
 // Global hydration state management
+#[cfg(wasm)]
+struct HydrationListener {
+	callback: Box<dyn Fn(bool) + 'static>,
+	scope: Option<reinhardt_core::reactive::ScopeId>,
+}
+
+#[cfg(wasm)]
+type HydrationListeners = Vec<HydrationListener>;
+#[cfg(native)]
 type HydrationListener = Box<dyn Fn(bool) + 'static>;
+#[cfg(native)]
 type HydrationListeners = Vec<HydrationListener>;
 
 thread_local! {
@@ -882,6 +902,12 @@ where
 	F: Fn(bool) + 'static,
 {
 	HYDRATION_LISTENERS.with(|listeners| {
+		#[cfg(wasm)]
+		listeners.borrow_mut().push(HydrationListener {
+			callback: Box::new(callback),
+			scope: reinhardt_core::reactive::current_scope_id(),
+		});
+		#[cfg(native)]
 		listeners.borrow_mut().push(Box::new(callback));
 	});
 }
@@ -896,7 +922,13 @@ fn mark_hydration_complete_internal() {
 	// Notify all listeners
 	HYDRATION_LISTENERS.with(|listeners| {
 		for listener in listeners.borrow().iter() {
-			listener(true);
+			if let Some(scope) = listener.scope {
+				let _ = reinhardt_core::reactive::scope::enter_scope(scope, || {
+					(listener.callback)(true);
+				});
+			} else {
+				(listener.callback)(true);
+			}
 		}
 	});
 }
@@ -918,7 +950,7 @@ mod tests {
 	#[cfg(wasm)]
 	use crate::reactive::hooks::use_retained_effect;
 	#[cfg(wasm)]
-	use crate::reactive::{Signal, with_runtime};
+	use crate::reactive::{ReactiveScope, Signal, with_runtime};
 	#[cfg(wasm)]
 	use std::cell::RefCell;
 	#[cfg(wasm)]
@@ -984,6 +1016,27 @@ mod tests {
 
 	#[cfg(wasm)]
 	#[wasm_bindgen_test]
+	fn hydration_completion_listener_reenters_its_registration_scope() {
+		HYDRATION_LISTENERS.with(|listeners| listeners.borrow_mut().clear());
+		init_hydration_state();
+		let scope = ReactiveScope::new();
+		let invoked = Rc::new(std::cell::Cell::new(false));
+		let callback_invoked = Rc::clone(&invoked);
+		scope.enter(|| {
+			on_hydration_complete(move |_| {
+				let _signal = Signal::new(1_i32);
+				callback_invoked.set(true);
+			});
+		});
+
+		mark_hydration_complete_internal();
+
+		assert!(invoked.get());
+		HYDRATION_LISTENERS.with(|listeners| listeners.borrow_mut().clear());
+	}
+
+	#[cfg(wasm)]
+	#[wasm_bindgen_test]
 	fn hydration_preview_replaces_retained_effect_in_same_render_store() {
 		cleanup_reactive_nodes();
 		let document = web_sys::window().unwrap().document().unwrap();
@@ -991,65 +1044,17 @@ mod tests {
 		root.set_inner_html("<span>value:0</span>");
 		document.body().unwrap().append_child(&root).unwrap();
 
-		let render_signal = Signal::new(0_i32);
-		let effect_signal = Signal::new(0_i32);
-		let effect_log = Rc::new(RefCell::new(Vec::new()));
-		let view = Page::reactive({
-			let render_signal = render_signal.clone();
-			let effect_signal = effect_signal.clone();
-			let effect_log = Rc::clone(&effect_log);
-			move || {
-				let render_value = render_signal.get();
-				use_retained_effect(
-					{
-						let effect_signal = effect_signal.clone();
-						let effect_log = Rc::clone(&effect_log);
-						move || {
-							let value = effect_signal.get();
-							effect_log.borrow_mut().push(format!("run:{value}"));
-							let effect_log = Rc::clone(&effect_log);
-							Some(move || effect_log.borrow_mut().push("cleanup".to_string()))
-						}
-					},
-					(effect_signal.clone(),),
-				);
-				PageElement::new("span")
-					.child(format!("value:{render_value}"))
-					.into_page()
-			}
-		});
-
-		install_hydrated_reactive_nodes(&Element::new(root.clone()), &view);
-		effect_signal.set(1);
-		with_runtime(|runtime| runtime.flush_updates());
-
-		let log = effect_log.borrow();
-		assert_eq!(
-			log.iter().filter(|entry| entry.as_str() == "run:1").count(),
-			1,
-			"only the tracked hydration render should retain an effect: {log:?}"
-		);
-		drop(log);
-		cleanup_reactive_nodes();
-		root.remove();
-	}
-
-	#[cfg(wasm)]
-	#[wasm_bindgen_test]
-	fn hydration_element_child_prepasses_do_not_retain_effects() {
-		cleanup_reactive_nodes();
-		let document = web_sys::window().unwrap().document().unwrap();
-		let root = document.create_element("div").unwrap();
-		root.set_inner_html("<span>value:0</span>");
-		document.body().unwrap().append_child(&root).unwrap();
-
-		let effect_signal = Signal::new(0_i32);
-		let effect_log = Rc::new(RefCell::new(Vec::new()));
-		let view = PageElement::new("div")
-			.child(Page::reactive({
+		let scope = ReactiveScope::new();
+		scope.enter(|| {
+			let render_signal = Signal::new(0_i32);
+			let effect_signal = Signal::new(0_i32);
+			let effect_log = Rc::new(RefCell::new(Vec::new()));
+			let view = Page::reactive({
+				let render_signal = render_signal.clone();
 				let effect_signal = effect_signal.clone();
 				let effect_log = Rc::clone(&effect_log);
 				move || {
+					let render_value = render_signal.get();
 					use_retained_effect(
 						{
 							let effect_signal = effect_signal.clone();
@@ -1063,23 +1068,79 @@ mod tests {
 						},
 						(effect_signal.clone(),),
 					);
-					PageElement::new("span").child("value:0").into_page()
+					PageElement::new("span")
+						.child(format!("value:{render_value}"))
+						.into_page()
 				}
-			}))
-			.into_page();
+			});
 
-		install_hydrated_reactive_nodes(&Element::new(root.clone()), &view);
-		effect_signal.set(1);
-		with_runtime(|runtime| runtime.flush_updates());
+			install_hydrated_reactive_nodes(&Element::new(root.clone()), &view);
+			effect_signal.set(1);
+			with_runtime(|runtime| runtime.flush_updates());
 
-		let log = effect_log.borrow();
-		assert_eq!(
-			log.iter().filter(|entry| entry.as_str() == "run:1").count(),
-			1,
-			"hydration prepasses must not retain duplicate effects: {log:?}"
-		);
-		drop(log);
+			let log = effect_log.borrow();
+			assert_eq!(
+				log.iter().filter(|entry| entry.as_str() == "run:1").count(),
+				1,
+				"only the tracked hydration render should retain an effect: {log:?}"
+			);
+			drop(log);
+			cleanup_reactive_nodes();
+		});
+		root.remove();
+	}
+
+	#[cfg(wasm)]
+	#[wasm_bindgen_test]
+	fn hydration_element_child_prepasses_do_not_retain_effects() {
 		cleanup_reactive_nodes();
+		let document = web_sys::window().unwrap().document().unwrap();
+		let root = document.create_element("div").unwrap();
+		root.set_inner_html("<span>value:0</span>");
+		document.body().unwrap().append_child(&root).unwrap();
+
+		let scope = ReactiveScope::new();
+		scope.enter(|| {
+			let effect_signal = Signal::new(0_i32);
+			let effect_log = Rc::new(RefCell::new(Vec::new()));
+			let view = PageElement::new("div")
+				.child(Page::reactive({
+					let effect_signal = effect_signal.clone();
+					let effect_log = Rc::clone(&effect_log);
+					move || {
+						use_retained_effect(
+							{
+								let effect_signal = effect_signal.clone();
+								let effect_log = Rc::clone(&effect_log);
+								move || {
+									let value = effect_signal.get();
+									effect_log.borrow_mut().push(format!("run:{value}"));
+									let effect_log = Rc::clone(&effect_log);
+									Some(move || {
+										effect_log.borrow_mut().push("cleanup".to_string())
+									})
+								}
+							},
+							(effect_signal.clone(),),
+						);
+						PageElement::new("span").child("value:0").into_page()
+					}
+				}))
+				.into_page();
+
+			install_hydrated_reactive_nodes(&Element::new(root.clone()), &view);
+			effect_signal.set(1);
+			with_runtime(|runtime| runtime.flush_updates());
+
+			let log = effect_log.borrow();
+			assert_eq!(
+				log.iter().filter(|entry| entry.as_str() == "run:1").count(),
+				1,
+				"hydration prepasses must not retain duplicate effects: {log:?}"
+			);
+			drop(log);
+			cleanup_reactive_nodes();
+		});
 		root.remove();
 	}
 }

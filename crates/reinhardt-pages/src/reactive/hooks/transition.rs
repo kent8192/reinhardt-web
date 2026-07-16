@@ -83,33 +83,37 @@ impl TransitionState {
 ///
 /// # Reactivity semantics
 ///
-/// On WASM, the closure runs in `spawn_task` (a new micro-task), so no
-/// reactive Observer is active when it executes. On native, the closure
-/// runs synchronously in the current turn; callers that require Observer
-/// isolation on native should wrap sensitive reads in `untracked`.
-/// (Option A, Refs #4195).
+/// On WASM, the closure runs in `spawn_task` (a new micro-task) and re-enters
+/// the scope that created this hook. On native, the closure runs synchronously
+/// in that same retained scope. In both cases no reactive Observer is active,
+/// so callers that require Observer isolation should wrap sensitive reads in
+/// `untracked`. (Option A, Refs #4195).
 pub fn use_transition() -> TransitionState {
+	let owner_scope = reinhardt_core::reactive::scope::require_active_scope("use_transition");
 	let is_pending = Signal::new(false);
 
 	let start_transition: StartTransitionFn = {
-		let is_pending = is_pending.clone();
 		Rc::new(RefCell::new(Box::new(move |f: Box<dyn FnOnce()>| {
-			is_pending.set(true);
+			let Ok(Ok(())) = reinhardt_core::reactive::scope::enter_scope(owner_scope, || {
+				is_pending.try_set(true)
+			}) else {
+				return;
+			};
 
 			#[cfg(wasm)]
 			{
 				use crate::platform::spawn_task;
-				let is_pending = is_pending.clone();
+				let is_pending = is_pending;
 				spawn_task(async move {
-					f();
-					is_pending.set(false);
+					let _ = reinhardt_core::reactive::scope::enter_scope(owner_scope, f);
+					let _ = is_pending.try_set(false);
 				});
 			}
 
 			#[cfg(native)]
 			{
-				f();
-				is_pending.set(false);
+				let _ = reinhardt_core::reactive::scope::enter_scope(owner_scope, f);
+				let _ = is_pending.try_set(false);
 			}
 		})))
 	};
@@ -165,7 +169,7 @@ pub fn use_transition() -> TransitionState {
 pub fn use_deferred_value<T: Clone + 'static>(value: Signal<T>) -> Signal<T> {
 	let deferred = Signal::new(value.get());
 
-	let deferred_clone = deferred.clone();
+	let deferred_clone = deferred;
 	crate::reactive::Effect::new({
 		move || {
 			let new_value = value.get();
@@ -173,9 +177,9 @@ pub fn use_deferred_value<T: Clone + 'static>(value: Signal<T>) -> Signal<T> {
 			#[cfg(wasm)]
 			{
 				use crate::platform::spawn_task;
-				let deferred_clone = deferred_clone.clone();
+				let deferred_clone = deferred_clone;
 				spawn_task(async move {
-					deferred_clone.set(new_value);
+					let _ = deferred_clone.try_set(new_value);
 				});
 			}
 
@@ -193,37 +197,117 @@ pub fn use_deferred_value<T: Clone + 'static>(value: Signal<T>) -> Signal<T> {
 mod tests {
 	use super::*;
 	use serial_test::serial;
-	use std::cell::RefCell;
+	use std::cell::{Cell, RefCell};
 	use std::rc::Rc;
+	#[cfg(wasm)]
+	use wasm_bindgen_test::wasm_bindgen_test;
 
 	#[test]
 	#[serial]
 	fn test_use_transition_pending_state() {
-		let transition = use_transition();
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let transition = use_transition();
 
-		assert!(!transition.is_pending.get());
+			assert!(!transition.is_pending.get());
 
-		// Note: On native (non-WASM), transitions execute synchronously,
-		// so pending state changes instantly. This is intentional behavior.
-		// On WASM, transitions use spawn_local for true async execution.
-		let ran = Rc::new(RefCell::new(false));
+			// Note: On native (non-WASM), transitions execute synchronously,
+			// so pending state changes instantly. This is intentional behavior.
+			// On WASM, transitions use spawn_local for true async execution.
+			let ran = Rc::new(RefCell::new(false));
+			transition.start_transition({
+				let ran = Rc::clone(&ran);
+				move || {
+					*ran.borrow_mut() = true;
+				}
+			});
+
+			assert!(*ran.borrow());
+			assert!(!transition.is_pending.get()); // Back to false after sync execution
+		});
+	}
+
+	#[cfg(native)]
+	#[test]
+	#[serial]
+	fn transition_callback_reenters_its_owner_scope() {
+		let scope = reinhardt_core::reactive::ReactiveScope::new();
+		let transition = scope.enter(use_transition);
+		let ran = Rc::new(Cell::new(false));
+
 		transition.start_transition({
 			let ran = Rc::clone(&ran);
 			move || {
-				*ran.borrow_mut() = true;
+				let signal = Signal::new(42_i32);
+				assert_eq!(signal.get(), 42);
+				ran.set(true);
 			}
 		});
 
-		assert!(*ran.borrow());
-		assert!(!transition.is_pending.get()); // Back to false after sync execution
+		assert!(ran.get());
+	}
+
+	#[cfg(wasm)]
+	#[wasm_bindgen_test]
+	async fn transition_callback_reenters_its_owner_scope() {
+		let scope = reinhardt_core::reactive::ReactiveScope::new();
+		let transition = scope.enter(use_transition);
+		let ran = Rc::new(Cell::new(false));
+
+		transition.start_transition({
+			let ran = Rc::clone(&ran);
+			move || {
+				let signal = Signal::new(42_i32);
+				assert_eq!(signal.get(), 42);
+				ran.set(true);
+			}
+		});
+
+		gloo_timers::future::TimeoutFuture::new(0).await;
+		assert!(ran.get());
 	}
 
 	#[test]
 	#[serial]
 	fn test_use_deferred_value() {
-		let value = Signal::new(42);
-		let deferred = use_deferred_value(value.clone());
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let value = Signal::new(42);
+			let deferred = use_deferred_value(value.clone());
 
-		assert_eq!(deferred.get(), 42);
+			assert_eq!(deferred.get(), 42);
+		});
+	}
+
+	#[cfg(native)]
+	#[test]
+	#[serial]
+	fn transition_completion_after_scope_disposal_does_not_panic() {
+		let scope = Rc::new(reinhardt_core::reactive::ReactiveScope::new());
+		let transition = scope.enter(use_transition);
+		let scope_to_dispose = Rc::clone(&scope);
+
+		transition.start_transition(move || scope_to_dispose.dispose());
+	}
+
+	#[cfg(native)]
+	#[test]
+	#[serial]
+	fn transition_start_after_scope_disposal_does_not_panic() {
+		let scope = reinhardt_core::reactive::ReactiveScope::new();
+		let transition = scope.enter(use_transition);
+		scope.dispose();
+
+		transition.start_transition(|| panic!("disposed transition must not run"));
+	}
+
+	#[cfg(wasm)]
+	#[wasm_bindgen_test]
+	async fn transition_completion_after_scope_disposal_does_not_panic() {
+		let scope = reinhardt_core::reactive::ReactiveScope::new();
+		let transition = scope.enter(use_transition);
+
+		transition.start_transition(|| {});
+		scope.dispose();
+
+		gloo_timers::future::TimeoutFuture::new(0).await;
 	}
 }

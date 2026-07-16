@@ -29,8 +29,8 @@
 //! - [`use_reducer`] - State with reducer logic
 //!
 //! ### Effect Hooks
-//! - [`use_effect`] - Side effects with automatic dependency tracking
-//! - [`use_layout_effect`] - Effects that run before paint
+//! - [`use_effect`] - Side effects with explicit or automatic dependency tracking
+//! - [`use_layout_effect`] - Effects that run before paint with explicit or automatic dependencies
 //! - [`use_retained_effect`] - Side effects retained by the mounted view scope
 //! - [`use_retained_layout_effect`] - Layout effects retained by the mounted view scope
 //!
@@ -50,6 +50,7 @@
 //!
 //! ### Async Hooks
 //! - [`use_action`] / [`use_action_state`] - Async mutations with pending/success/error tracking
+//! - [`use_query`] / [`use_mutation`] - App-wide keyed async data cache over server functions
 //!
 //! ### Other Hooks
 //! - [`use_id`] - Generate unique IDs
@@ -58,9 +59,21 @@
 //! - [`use_optimistic`] - Optimistic UI updates
 //! - [`use_debug_value`] - DevTools labels
 //!
+//! ## Dependency modes
+//!
+//! Every dependency-aware hook requires a second argument. Use `deps![...]`
+//! for a named explicit dependency list, including `deps![]` for mount-only
+//! behavior. `use_effect`, `use_layout_effect`, and `use_memo` additionally
+//! accept `deps_auto!()` to infer subscriptions from tracked reads. Callbacks,
+//! resources, and retained-effect helpers accept only `deps![...]`.
+//!
+//! The mode-typed API is the breaking change tracked by issues #5511 and #5577;
+//! tuple and unit dependency arguments are no longer accepted.
+//!
 //! ## Example
 //!
 //! ```ignore
+//! use reinhardt_pages::deps;
 //! use reinhardt_pages::reactive::hooks::*;
 //!
 //! fn counter() -> Page {
@@ -69,14 +82,14 @@
 //!     let increment = use_callback({
 //!         let set_count = set_count.clone();
 //!         move |_| set_count.update(|current| current + 1)
-//!     }, ());
+//!     }, deps![]);
 //!
 //!     use_effect({
 //!         let count = count.clone();
 //!         move || {
 //!             log!("Count changed to: {}", count.get());
 //!         }
-//!     }, (count.clone(),));
+//!     }, deps![count]);
 //!
 //!     page!(|| {
 //!         div {
@@ -108,6 +121,7 @@ pub mod websocket;
 // Re-export all hooks
 pub use reinhardt_core::reactive::batch;
 
+pub use super::query::{QueryHandle, QueryKey, QueryPhase, use_mutation, use_query};
 pub use action::{OptimisticState, use_optimistic};
 pub use async_action::{Action, ActionPhase, ActionStateBuilder, use_action, use_action_state};
 pub use context::use_context;

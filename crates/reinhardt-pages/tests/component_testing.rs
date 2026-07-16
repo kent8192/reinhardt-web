@@ -6,14 +6,18 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use reinhardt_core::reactive::ReactiveScope;
 use reinhardt_core::types::page::{
 	DeferredNode, EventType, IntoPage, Outlet, Page, PageElement, SuspenseNode,
 };
 use reinhardt_pages::callback::async_handler;
 use reinhardt_pages::component::suspense::SuspenseBoundary;
+use reinhardt_pages::deps;
 use reinhardt_pages::event::{ClickEvent, EventPayload, FocusEvent, typed_event_handler};
 use reinhardt_pages::prelude::spawn_task;
 use reinhardt_pages::reactive::hooks::use_action;
+#[cfg(feature = "msw")]
+use reinhardt_pages::reactive::use_query;
 use reinhardt_pages::reactive::{ResourceState, Signal, use_resource};
 #[cfg(feature = "msw")]
 use reinhardt_pages::server_fn::{ServerFnError, server_fn};
@@ -53,18 +57,24 @@ fn string_resource_page(state: ResourceState<String, String>) -> Page {
 fn index_job_component() -> Page {
 	let resource = use_resource(
 		|| async { Ok::<String, String>("Index job".to_string()) },
-		(),
+		deps![],
 	);
 	Page::reactive(move || string_resource_page(resource.get()))
 }
 
 fn ready_component() -> Page {
-	let resource = use_resource(|| async { Ok::<String, String>("Ready".to_string()) }, ());
+	let resource = use_resource(
+		|| async { Ok::<String, String>("Ready".to_string()) },
+		deps![],
+	);
 	Page::reactive(move || string_resource_page(resource.get()))
 }
 
 fn suspense_resource_component() -> Page {
-	let resource = use_resource(|| async { Ok::<String, String>("Ready".to_string()) }, ());
+	let resource = use_resource(
+		|| async { Ok::<String, String>("Ready".to_string()) },
+		deps![],
+	);
 	let content_resource = resource.clone();
 	SuspenseBoundary::new()
 		.fallback(|| text_page("Loading"))
@@ -74,8 +84,11 @@ fn suspense_resource_component() -> Page {
 }
 
 fn mixed_resource_component() -> Page {
-	let pending = use_resource(std::future::pending::<Result<String, String>>, ());
-	let ready = use_resource(|| async { Ok::<String, String>("Ready".to_string()) }, ());
+	let pending = use_resource(std::future::pending::<Result<String, String>>, deps![]);
+	let ready = use_resource(
+		|| async { Ok::<String, String>("Ready".to_string()) },
+		deps![],
+	);
 	Page::reactive(move || {
 		let _ = pending.get();
 		string_resource_page(ready.get())
@@ -394,8 +407,9 @@ async fn settle_waits_for_timer_backed_tasks() {
 
 #[tokio::test]
 async fn settle_continues_when_rerender_mounts_async_work() {
-	let show_child = Signal::new(false);
-	let message = Signal::new("Idle".to_string());
+	let scope = ReactiveScope::new();
+	let (show_child, message) =
+		scope.enter(|| (Signal::new(false), Signal::new("Idle".to_string())));
 	let spawned = Rc::new(Cell::new(false));
 	let screen = render({
 		let show_child = show_child.clone();
@@ -425,7 +439,8 @@ async fn settle_continues_when_rerender_mounts_async_work() {
 
 #[tokio::test]
 async fn settle_preserves_tasks_spawned_by_polled_tasks() {
-	let message = Signal::new("Idle".to_string());
+	let scope = ReactiveScope::new();
+	let message = scope.enter(|| Signal::new("Idle".to_string()));
 	let click_message = message.clone();
 	let screen = render(move || {
 		let message = message.clone();
@@ -459,7 +474,8 @@ async fn settle_preserves_tasks_spawned_by_polled_tasks() {
 
 #[tokio::test]
 async fn disabled_controls_suppress_click_handlers() {
-	let message = Signal::new("Idle".to_string());
+	let scope = ReactiveScope::new();
+	let message = scope.enter(|| Signal::new("Idle".to_string()));
 	let click_message = message.clone();
 	let screen = render(move || {
 		let message = message.clone();
@@ -484,7 +500,8 @@ async fn disabled_controls_suppress_click_handlers() {
 
 #[tokio::test]
 async fn click_events_bubble_from_descendant_handles() {
-	let message = Signal::new("Idle".to_string());
+	let scope = ReactiveScope::new();
+	let message = scope.enter(|| Signal::new("Idle".to_string()));
 	let click_message = message.clone();
 	let screen = render(move || {
 		let message = message.clone();
@@ -727,7 +744,8 @@ async fn typed_async_page_handler_settles_deterministically() {
 #[rstest]
 #[tokio::test]
 async fn typed_sync_page_handler_rerenders_after_settle() {
-	let message = Signal::new("Idle".to_string());
+	let scope = ReactiveScope::new();
+	let message = scope.enter(|| Signal::new("Idle".to_string()));
 	let handler_message = message.clone();
 	let rendered_message = message.clone();
 	let screen = render(
@@ -753,7 +771,8 @@ async fn typed_sync_page_handler_rerenders_after_settle() {
 
 #[tokio::test]
 async fn parent_rerender_skips_removed_child_anchors() {
-	let show_child = Signal::new(true);
+	let scope = ReactiveScope::new();
+	let show_child = scope.enter(|| Signal::new(true));
 	let child_renders = Rc::new(Cell::new(0));
 	let screen = {
 		let show_child = show_child.clone();
@@ -821,6 +840,35 @@ async fn load_jobs() -> Result<Vec<String>, ServerFnError> {
 }
 
 #[cfg(feature = "msw")]
+#[derive(Clone)]
+struct JobsDatabase;
+
+#[cfg(feature = "msw")]
+struct JobsDatabaseKey;
+
+#[cfg(feature = "msw")]
+impl reinhardt_di::InjectableKey for JobsDatabaseKey {}
+
+#[cfg(feature = "msw")]
+#[server_fn]
+async fn load_injected_jobs(
+	#[inject] _database: reinhardt_di::KeyedDepends<JobsDatabaseKey, JobsDatabase>,
+) -> Result<Vec<String>, ServerFnError> {
+	Ok(vec!["real injected job".to_string()])
+}
+
+#[cfg(feature = "msw")]
+type JobsResult<T> = Result<T, ServerFnError>;
+
+#[cfg(feature = "msw")]
+#[server_fn]
+async fn load_injected_alias_jobs(
+	#[inject] _database: reinhardt_di::KeyedDepends<JobsDatabaseKey, JobsDatabase>,
+) -> JobsResult<Vec<String>> {
+	Ok(vec!["real injected alias job".to_string()])
+}
+
+#[cfg(feature = "msw")]
 fn jobs_resource_page(state: ResourceState<Vec<String>, ServerFnError>) -> Page {
 	match state {
 		ResourceState::Loading => text_page("Loading"),
@@ -831,7 +879,33 @@ fn jobs_resource_page(state: ResourceState<Vec<String>, ServerFnError>) -> Page 
 
 #[cfg(feature = "msw")]
 fn jobs_component() -> Page {
-	let jobs = use_resource(|| async { load_jobs().await }, ());
+	let jobs = use_resource(|| async { load_jobs().await }, deps![]);
+	Page::reactive(move || jobs_resource_page(jobs.get()))
+}
+
+#[cfg(feature = "msw")]
+fn jobs_query_component() -> Page {
+	let jobs = use_query(load_jobs::key());
+	let refetch_jobs = jobs.clone();
+	PageElement::new("div")
+		.child(
+			PageElement::new("button")
+				.listener("click", move |_| refetch_jobs.refetch())
+				.child("Refresh"),
+		)
+		.child(Page::reactive(move || jobs_resource_page(jobs.get())))
+		.into_page()
+}
+
+#[cfg(feature = "msw")]
+fn injected_jobs_query_component() -> Page {
+	let jobs = use_query(load_injected_jobs::key());
+	Page::reactive(move || jobs_resource_page(jobs.get()))
+}
+
+#[cfg(feature = "msw")]
+fn injected_alias_jobs_query_component() -> Page {
+	let jobs = use_query(load_injected_alias_jobs::key());
 	Page::reactive(move || jobs_resource_page(jobs.get()))
 }
 
@@ -862,6 +936,123 @@ async fn server_fn_mocks_are_scoped_per_screen() {
 	assert!(first.query_by_text("Second job").is_none());
 	assert!(second.query_by_text("Second job").is_some());
 	assert!(second.query_by_text("First job").is_none());
+}
+
+#[cfg(feature = "msw")]
+#[tokio::test]
+async fn server_fn_query_cache_is_scoped_per_screen() {
+	let first = render(jobs_query_component);
+	first.mock_server_fn::<load_jobs::marker>(|_args| Ok(vec!["First job".to_string()]));
+	let second = render(jobs_query_component);
+	second.mock_server_fn::<load_jobs::marker>(|_args| Ok(vec!["Second job".to_string()]));
+
+	first.get_by_role(Role::Button, "Refresh").click();
+	second.get_by_role(Role::Button, "Refresh").click();
+	first.settle().await;
+	second.settle().await;
+
+	assert!(first.query_by_text("First job").is_some());
+	assert!(first.query_by_text("Second job").is_none());
+	assert!(second.query_by_text("Second job").is_some());
+	assert!(second.query_by_text("First job").is_none());
+}
+
+#[cfg(feature = "msw")]
+#[tokio::test]
+async fn server_fn_query_cache_does_not_leak_after_screen_drop() {
+	{
+		let first = render(jobs_query_component);
+		first.mock_server_fn::<load_jobs::marker>(|_args| Ok(vec!["First job".to_string()]));
+
+		first.get_by_role(Role::Button, "Refresh").click();
+		first.settle().await;
+
+		assert!(first.query_by_text("First job").is_some());
+		assert_eq!(first.calls_to_server_fn::<load_jobs::marker>().len(), 2);
+	}
+
+	let second = render(jobs_query_component);
+	second.mock_server_fn::<load_jobs::marker>(|_args| Ok(vec!["Second job".to_string()]));
+
+	second.get_by_role(Role::Button, "Refresh").click();
+	second.settle().await;
+
+	assert!(second.query_by_text("Second job").is_some());
+	assert!(second.query_by_text("First job").is_none());
+	assert_eq!(second.calls_to_server_fn::<load_jobs::marker>().len(), 2);
+}
+
+#[cfg(feature = "msw")]
+#[rstest]
+#[tokio::test]
+async fn injected_server_fn_query_mock_errors_render_query_errors() {
+	// Arrange
+	let screen = render(injected_jobs_query_component);
+	screen.mock_server_fn::<load_injected_jobs::marker>(|_args| {
+		Err(ServerFnError::application("injected query failed"))
+	});
+
+	// Act
+	screen.settle().await;
+
+	// Assert
+	assert!(
+		screen
+			.query_by_text("Application error: injected query failed")
+			.is_some()
+	);
+	assert_eq!(
+		screen
+			.calls_to_server_fn::<load_injected_jobs::marker>()
+			.len(),
+		1
+	);
+}
+
+#[cfg(feature = "msw")]
+#[tokio::test]
+async fn injected_alias_server_fn_query_uses_native_mock() {
+	// Arrange
+	let screen = render(injected_alias_jobs_query_component);
+	screen.mock_server_fn::<load_injected_alias_jobs::marker>(|_args| {
+		Ok(vec!["Injected alias job".to_string()])
+	});
+
+	// Act
+	screen.settle().await;
+
+	// Assert
+	assert!(screen.query_by_text("Injected alias job").is_some());
+	assert_eq!(
+		screen
+			.calls_to_server_fn::<load_injected_alias_jobs::marker>()
+			.len(),
+		1
+	);
+}
+
+#[cfg(feature = "msw")]
+#[rstest]
+#[tokio::test]
+async fn injected_server_fn_query_without_mock_renders_query_error() {
+	// Arrange
+	let screen = render(injected_jobs_query_component);
+
+	// Act
+	screen.settle().await;
+
+	// Assert
+	assert!(
+		screen
+			.query_by_text("Application error: no mock registered for active server function")
+			.is_some()
+	);
+	assert_eq!(
+		screen
+			.calls_to_server_fn::<load_injected_jobs::marker>()
+			.len(),
+		1
+	);
 }
 
 #[cfg(feature = "msw")]

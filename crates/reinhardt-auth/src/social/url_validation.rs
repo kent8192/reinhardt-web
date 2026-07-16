@@ -10,7 +10,7 @@ use super::core::SocialAuthError;
 /// Returns a sanitized representation of a URL containing only
 /// scheme, host, and port. Avoids leaking sensitive components
 /// such as userinfo, path, or query parameters in error messages.
-fn sanitize_url(parsed: &Url) -> String {
+pub(crate) fn sanitize_url(parsed: &Url) -> String {
 	let scheme = parsed.scheme();
 	let host = parsed.host_str().unwrap_or("unknown");
 	match parsed.port_or_known_default() {

@@ -79,7 +79,7 @@ impl<T: Clone + 'static, E: Clone + 'static> LatestResourceValueBuilder<T, E> {
 	where
 		A: Borrow<Action<T, E>>,
 	{
-		self.actions.push(action.borrow().clone());
+		self.actions.push(*action.borrow());
 		self
 	}
 
@@ -117,13 +117,23 @@ pub struct LatestResourceValue<T: Clone + 'static, E: Clone + 'static> {
 	resource: Resource<T, E>,
 	actions: Vec<Action<T, E>>,
 	refetch_on_success: bool,
-	_refetch_effect: Option<Rc<Effect>>,
+	_refetch_effect: Option<Rc<RefetchEffect>>,
+}
+
+struct RefetchEffect {
+	effect: Effect,
+}
+
+impl Drop for RefetchEffect {
+	fn drop(&mut self) {
+		self.effect.dispose();
+	}
 }
 
 impl<T: Clone + 'static, E: Clone + 'static> Clone for LatestResourceValue<T, E> {
 	fn clone(&self) -> Self {
 		Self {
-			resource: self.resource.clone(),
+			resource: self.resource,
 			actions: self.actions.clone(),
 			refetch_on_success: self.refetch_on_success,
 			_refetch_effect: self._refetch_effect.clone(),
@@ -152,7 +162,7 @@ impl<T: Clone + 'static, E: Clone + 'static> LatestResourceValue<T, E> {
 	where
 		A: Borrow<Action<T, E>>,
 	{
-		self.actions.push(action.borrow().clone());
+		self.actions.push(*action.borrow());
 		self.rebuild_refetch_effect();
 		self
 	}
@@ -257,16 +267,14 @@ impl<T: Clone + 'static, E: Clone + 'static> Resource<T, E> {
 	where
 		A: Borrow<Action<T, E>>,
 	{
-		use_latest_resource_value(self.clone())
-			.with_action(action)
-			.build()
+		use_latest_resource_value(*self).with_action(action).build()
 	}
 }
 
 fn build_refetch_effect<T, E>(
 	resource: &Resource<T, E>,
 	actions: &[Action<T, E>],
-) -> Option<Rc<Effect>>
+) -> Option<Rc<RefetchEffect>>
 where
 	T: Clone + 'static,
 	E: Clone + 'static,
@@ -281,29 +289,31 @@ where
 	};
 	let previous_success = Rc::new(RefCell::new(action_successes(actions)));
 	let actions = actions.to_vec();
-	let resource = resource.clone();
+	let resource = *resource;
 
-	Some(Rc::new(Effect::new_with_deps(
-		move || {
-			let current_success = action_successes(&actions);
-			let should_refetch = {
-				let mut previous_success = previous_success.borrow_mut();
-				let should_refetch = current_success
-					.iter()
-					.zip(previous_success.iter())
-					.any(|(current, previous)| *current && !*previous);
-				*previous_success = current_success;
-				should_refetch
-			};
+	Some(Rc::new(RefetchEffect {
+		effect: Effect::new_with_deps(
+			move || {
+				let current_success = action_successes(&actions);
+				let should_refetch = {
+					let mut previous_success = previous_success.borrow_mut();
+					let should_refetch = current_success
+						.iter()
+						.zip(previous_success.iter())
+						.any(|(current, previous)| *current && !*previous);
+					*previous_success = current_success;
+					should_refetch
+				};
 
-			if should_refetch {
-				resource.refetch();
-			}
+				if should_refetch {
+					resource.refetch();
+				}
 
-			None::<fn()>
-		},
-		deps,
-	)))
+				None::<fn()>
+			},
+			deps,
+		),
+	}))
 }
 
 fn action_successes<T, E>(actions: &[Action<T, E>]) -> Vec<bool>
@@ -324,88 +334,182 @@ mod tests {
 	use super::*;
 	use crate::reactive::hooks::use_action;
 	use crate::reactive::resource::use_resource;
+	use crate::reactive::with_runtime;
 
 	#[test]
 	#[serial(reactive_runtime)]
 	fn latest_after_prefers_later_action_success() {
-		let resource = use_resource(|| async { Ok::<String, String>("loaded".to_string()) }, ());
-		resource.set(ResourceState::Success("resource".to_string()));
-		let refresh = use_action(|_: ()| async { Ok::<String, String>("refresh".to_string()) });
-		let save = use_action(|_: ()| async { Ok::<String, String>("save".to_string()) });
-		let latest = resource.latest_after(&refresh).latest_after(&save);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let resource = use_resource(
+				|| async { Ok::<String, String>("loaded".to_string()) },
+				crate::deps![],
+			);
+			resource.set(ResourceState::Success("resource".to_string()));
+			let refresh = use_action(|_: ()| async { Ok::<String, String>("refresh".to_string()) });
+			let save = use_action(|_: ()| async { Ok::<String, String>("save".to_string()) });
+			let latest = resource.latest_after(&refresh).latest_after(&save);
 
-		assert_eq!(latest.get(), ResourceState::Success("resource".to_string()));
+			assert_eq!(latest.get(), ResourceState::Success("resource".to_string()));
 
-		refresh.force_success_for_test("refreshed".to_string());
-		assert_eq!(
-			latest.get(),
-			ResourceState::Success("refreshed".to_string())
-		);
+			refresh.force_success_for_test("refreshed".to_string());
+			assert_eq!(
+				latest.get(),
+				ResourceState::Success("refreshed".to_string())
+			);
+			save.force_success_for_test("saved".to_string());
+			assert_eq!(latest.get(), ResourceState::Success("saved".to_string()));
 
-		save.force_success_for_test("saved".to_string());
-		assert_eq!(latest.get(), ResourceState::Success("saved".to_string()));
-
-		save.reset();
-		assert_eq!(
-			latest.get(),
-			ResourceState::Success("refreshed".to_string())
-		);
+			save.reset();
+			assert_eq!(
+				latest.get(),
+				ResourceState::Success("refreshed".to_string())
+			);
+		});
 	}
 
 	#[test]
 	#[serial(reactive_runtime)]
 	fn action_error_does_not_replace_resource_error() {
-		let resource = use_resource(|| async { Ok::<String, String>("loaded".to_string()) }, ());
-		resource.set(ResourceState::Error("load failed".to_string()));
-		let action = use_action(|_: ()| async { Err::<String, String>("save failed".to_string()) });
-		let latest = resource.latest_after(&action);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let resource = use_resource(
+				|| async { Ok::<String, String>("loaded".to_string()) },
+				crate::deps![],
+			);
+			resource.set(ResourceState::Error("load failed".to_string()));
+			let action =
+				use_action(|_: ()| async { Err::<String, String>("save failed".to_string()) });
+			let latest = resource.latest_after(&action);
 
-		action.force_error_for_test("save failed".to_string());
+			action.force_error_for_test("save failed".to_string());
 
-		assert_eq!(
-			latest.get(),
-			ResourceState::Error("load failed".to_string())
-		);
-		assert_eq!(latest.error(), Some("load failed".to_string()));
+			assert_eq!(
+				latest.get(),
+				ResourceState::Error("load failed".to_string())
+			);
+			assert_eq!(latest.error(), Some("load failed".to_string()));
+		});
 	}
 
 	#[test]
 	#[serial(reactive_runtime)]
 	fn state_with_empty_classifies_success_values() {
-		let resource = use_resource(|| async { Ok::<Vec<u32>, String>(Vec::new()) }, ());
-		resource.set(ResourceState::Success(Vec::new()));
-		let action = use_action(|_: ()| async { Ok::<Vec<u32>, String>(vec![1, 2]) });
-		let latest = resource.latest_after(&action);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let resource = use_resource(
+				|| async { Ok::<Vec<u32>, String>(Vec::new()) },
+				crate::deps![],
+			);
+			resource.set(ResourceState::Success(Vec::new()));
+			let action = use_action(|_: ()| async { Ok::<Vec<u32>, String>(vec![1, 2]) });
+			let latest = resource.latest_after(&action);
 
-		assert_eq!(
-			latest.state_with_empty(Vec::is_empty),
-			LatestResourceState::Empty
-		);
-		assert!(latest.is_empty_by(Vec::is_empty));
+			assert_eq!(
+				latest.state_with_empty(Vec::is_empty),
+				LatestResourceState::Empty
+			);
+			assert!(latest.is_empty_by(Vec::is_empty));
 
-		action.force_success_for_test(vec![1, 2]);
-		assert_eq!(
-			latest.state_with_empty(Vec::is_empty),
-			LatestResourceState::Success(vec![1, 2])
-		);
+			action.force_success_for_test(vec![1, 2]);
+			assert_eq!(
+				latest.state_with_empty(Vec::is_empty),
+				LatestResourceState::Success(vec![1, 2])
+			);
+		});
 	}
 
 	#[test]
 	#[serial(reactive_runtime)]
 	fn refetch_on_success_refetches_resource_after_action_success() {
-		let resource = use_resource(|| async { Ok::<String, String>("loaded".to_string()) }, ());
-		resource.set(ResourceState::Success("resource".to_string()));
-		let action = use_action(|_: ()| async { Ok::<String, String>("mutated".to_string()) });
-		let latest = use_latest_resource_value(resource.clone())
-			.with_action(&action)
-			.refetch_on_success()
-			.build();
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let resource = use_resource(
+				|| async { Ok::<String, String>("loaded".to_string()) },
+				crate::deps![],
+			);
+			resource.set(ResourceState::Success("resource".to_string()));
+			let action = use_action(|_: ()| async { Ok::<String, String>("mutated".to_string()) });
+			let latest = use_latest_resource_value(resource)
+				.with_action(&action)
+				.refetch_on_success()
+				.build();
 
-		assert_eq!(latest.get(), ResourceState::Success("resource".to_string()));
+			assert_eq!(latest.get(), ResourceState::Success("resource".to_string()));
 
-		action.force_success_for_test("mutated".to_string());
+			action.force_success_for_test("mutated".to_string());
 
-		assert_eq!(resource.get(), ResourceState::Loading);
-		assert_eq!(latest.get(), ResourceState::Success("mutated".to_string()));
+			assert_eq!(resource.get(), ResourceState::Loading);
+			assert_eq!(latest.get(), ResourceState::Success("mutated".to_string()));
+		});
+	}
+
+	#[test]
+	#[serial(reactive_runtime)]
+	fn dropping_latest_resource_value_disposes_its_refetch_effect() {
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let resource = use_resource(
+				|| async { Ok::<String, String>("loaded".to_string()) },
+				crate::deps![],
+			);
+			let action = use_action(|_: ()| async { Ok::<String, String>("saved".to_string()) });
+			let latest = use_latest_resource_value(resource)
+				.with_action(&action)
+				.refetch_on_success()
+				.build();
+			let effect_id = latest
+				._refetch_effect
+				.as_ref()
+				.expect("refetch-on-success should retain an effect")
+				.effect
+				.id();
+
+			drop(latest);
+
+			with_runtime(|runtime| {
+				assert!(
+					!runtime.has_node(effect_id),
+					"dropping the latest-value handle must dispose its refetch effect"
+				);
+			});
+		});
+	}
+
+	#[test]
+	#[serial(reactive_runtime)]
+	fn rebuilding_latest_resource_value_disposes_replaced_refetch_effect() {
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let resource = use_resource(
+				|| async { Ok::<String, String>("loaded".to_string()) },
+				crate::deps![],
+			);
+			let action = use_action(|_: ()| async { Ok::<String, String>("saved".to_string()) });
+			let next_action =
+				use_action(|_: ()| async { Ok::<String, String>("next".to_string()) });
+			let latest = use_latest_resource_value(resource)
+				.with_action(&action)
+				.refetch_on_success()
+				.build();
+			let replaced_effect_id = latest
+				._refetch_effect
+				.as_ref()
+				.expect("refetch-on-success should retain an effect")
+				.effect
+				.id();
+
+			let latest = latest.latest_after(&next_action);
+
+			with_runtime(|runtime| {
+				assert!(
+					!runtime.has_node(replaced_effect_id),
+					"rebuilding the latest-value handle must dispose its replaced refetch effect"
+				);
+			});
+			assert_ne!(
+				latest
+					._refetch_effect
+					.as_ref()
+					.expect("rebuilt latest value should retain an effect")
+					.effect
+					.id(),
+				replaced_effect_id
+			);
+		});
 	}
 }

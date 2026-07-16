@@ -5,16 +5,18 @@ use reinhardt_pages::reactive::Signal;
 use reinhardt_pages::reactive::hooks::use_effect;
 
 fn main() {
-	let count = Signal::new(0_i32);
-	let _e = use_effect(
-		{
-			let count = count.clone();
-			move || {
-				let _ = count.get();
-				None::<fn()>
-			}
-		},
-		(count.clone(),),
-	);
-	let _ = count;
+	reinhardt_core::reactive::ReactiveScope::run(|| {
+		let count = Signal::new(0_i32);
+		let _e = use_effect(
+			{
+				let count = count;
+				move || {
+					let _ = count.get();
+					None::<fn()>
+				}
+			},
+			(count,),
+		);
+		let _ = count;
+	});
 }

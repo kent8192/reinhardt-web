@@ -9,6 +9,11 @@
 //! optimistic UI state. [`Resource::latest_after`] and
 //! [`use_latest_resource_value`] compose loaded resource state with action
 //! success values so screens can render the latest loaded or mutated data.
+//! [`use_query`] and [`use_mutation`] add a keyed, app-wide cache layer for
+//! server-function reads and invalidating mutations. Generated query keys
+//! canonicalize JSON object arguments, hydrated success and error states remain
+//! visible through the first client mount, and query handles distinguish initial
+//! pending state from background fetching.
 //!
 //! ## Features
 //!
@@ -469,10 +474,11 @@ pub use component::{
 	ScriptTag, StyleTag, SuspenseBoundary, ViewTransitionBoundary, ViewTransitionHandle,
 	ViewTransitionStatus, start_view_transition,
 };
-pub use csrf::{CsrfManager, get_csrf_token};
+pub use csrf::{CsrfManager, CsrfTokenSignal, get_csrf_token};
 pub use dom::{CustomEventOptions, Document, Element, EventHandle, EventType, document};
 #[cfg(native)]
 pub use form::{FormBinding, FormComponent};
+pub use reinhardt_core::{deps, deps_auto};
 // Static form metadata types (always available, used by form! macro)
 pub use form_generated::{StaticFieldMetadata, StaticFormMetadata};
 pub use form_state::{
@@ -486,8 +492,9 @@ pub use form_state::{
 pub use hydration::{HydrationContext, HydrationError, hydrate};
 pub use portal::{Portal, PortalError, PortalHandle, PortalTarget, mount_portal};
 pub use reactive::{
-	Effect, LatestResourceState, LatestResourceValue, LatestResourceValueBuilder, Memo, Resource,
-	ResourceState, Signal, use_latest_resource_value, use_resource, use_resource_with_key,
+	Effect, ExplicitDeps, LatestResourceState, LatestResourceValue, LatestResourceValueBuilder,
+	Memo, QueryHandle, QueryKey, QueryPhase, ReactiveDeps, Resource, ResourceState, Signal,
+	use_latest_resource_value, use_resource, use_resource_with_key,
 };
 // Re-export Context system
 pub use reactive::{
@@ -503,6 +510,7 @@ pub use reactive::{
 	use_retained_effect, use_retained_layout_effect, use_shared_state, use_state,
 	use_sync_external_store, use_transition,
 };
+pub use reactive::{use_mutation, use_query};
 #[cfg(native)]
 pub use reinhardt_forms::{
 	Widget,

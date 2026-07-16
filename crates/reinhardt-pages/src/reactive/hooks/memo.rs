@@ -4,10 +4,8 @@
 //! `callback_with_deps` Rc-swap helper. All three take an explicit
 //! dependency tuple as the second argument (Refs #4195).
 
-use reinhardt_core::reactive::deps::IntoDeps;
-
 use crate::callback::{Callback, callback_with_deps};
-use crate::reactive::Memo;
+use crate::reactive::{ExplicitDeps, Memo, ReactiveDeps};
 
 /// Memoizes an expensive calculation.
 ///
@@ -37,34 +35,29 @@ use crate::reactive::Memo;
 /// ```no_run
 /// use reinhardt_pages::reactive::hooks::{use_state, use_memo};
 ///
-/// let (items, set_items) = use_state(vec![1, 2, 3, 4, 5]);
-/// let (filter, set_filter) = use_state(2);
+/// let (items, _set_items) = use_state(vec![1, 2, 3, 4, 5]);
+/// let (filter, _set_filter) = use_state(2);
 ///
 /// // Expensive filtering operation - only re-runs when items or filter change
 /// let filtered = use_memo(
-///     {
-///         let items = items.clone();
-///         let filter = filter.clone();
-///         move || {
-///             items.get()
-///                 .into_iter()
-///                 .filter(|&x| x > filter.get())
-///                 .collect::<Vec<_>>()
-///         }
+///     move || {
+///         items.get()
+///             .into_iter()
+///             .filter(|&x| x > filter.get())
+///             .collect::<Vec<_>>()
 ///     },
-///     (items.clone(), filter.clone()),
+///     (items, filter),
 /// );
 ///
 /// // Reading the memoized value
 /// let result = filtered.get();
 /// ```
-pub fn use_memo<T, F, D>(f: F, deps: D) -> Memo<T>
+pub fn use_memo<T, F>(f: F, deps: impl Into<ReactiveDeps>) -> Memo<T>
 where
 	T: Clone + 'static,
 	F: FnMut() -> T + 'static,
-	D: IntoDeps,
 {
-	Memo::new_with_deps(f, deps.into_deps())
+	Memo::new_with_mode(f, deps.into())
 }
 
 /// Memoizes a callback function to maintain a stable reference.
@@ -94,12 +87,15 @@ where
 /// let (count, set_count) = use_state(0);
 ///
 /// // Memoized callback - reference won't change between renders
-/// let increment = use_callback({
-///     let set_count = set_count.clone();
-///     move |_event| {
-///         set_count.update(|current| current + 1);
-///     }
-/// }, ());
+/// let increment = use_callback(
+///     {
+///         let set_count = set_count.clone();
+///         move |_event| {
+///             set_count.update(|current| current + 1);
+///         }
+///     },
+///     (),
+/// );
 ///
 /// page!(|| {
 ///     button {
@@ -111,16 +107,16 @@ where
 ///
 /// # Note
 ///
-/// Unlike React's dependency arrays, Reinhardt Pages uses an explicit
-/// dependency tuple. Capture Signals (which are cheap to clone) rather
-/// than their values when the callback should observe the latest state.
+/// Reinhardt uses an explicit dependency tuple rather than a JavaScript array.
+/// To use the latest values, capture reactive handles directly because they are
+/// `Copy`, rather than capturing value snapshots. Reference-counted setters may
+/// still need cloning.
 #[cfg(wasm)]
 #[track_caller]
-pub fn use_callback<Args, F, D>(f: F, deps: D) -> Callback<Args, ()>
+pub fn use_callback<Args, F>(f: F, deps: ExplicitDeps) -> Callback<Args, ()>
 where
 	F: Fn(Args) + 'static,
 	Args: 'static,
-	D: IntoDeps,
 {
 	callback_with_deps::<Args, ()>(f, deps.into_deps())
 }
@@ -128,14 +124,13 @@ where
 /// Memoizes a callback function to maintain a stable reference (server-side version).
 ///
 /// See the WASM version for full documentation.
-/// Requires `Send + Sync` bounds for thread-safe server-side usage.
+/// Native callbacks share the thread-affine reactive scope contract.
 #[cfg(native)]
 #[track_caller]
-pub fn use_callback<Args, F, D>(f: F, deps: D) -> Callback<Args, ()>
+pub fn use_callback<Args, F>(f: F, deps: ExplicitDeps) -> Callback<Args, ()>
 where
-	F: Fn(Args) + Send + Sync + 'static,
+	F: Fn(Args) + 'static,
 	Args: 'static,
-	D: IntoDeps,
 {
 	callback_with_deps::<Args, ()>(f, deps.into_deps())
 }
@@ -162,19 +157,18 @@ where
 /// # Example
 ///
 /// ```no_run
-/// use reinhardt_pages::reactive::hooks::use_callback_with;
+/// use reinhardt_pages::{deps, reactive::hooks::use_callback_with};
 ///
-/// let add = use_callback_with(|x: i32| x + 1, ());
+/// let add = use_callback_with(|x: i32| x + 1, deps![]);
 /// assert_eq!(add.call(5), 6);
 /// ```
 #[cfg(wasm)]
 #[track_caller]
-pub fn use_callback_with<Args, Ret, F, D>(f: F, deps: D) -> Callback<Args, Ret>
+pub fn use_callback_with<Args, Ret, F>(f: F, deps: ExplicitDeps) -> Callback<Args, Ret>
 where
 	F: Fn(Args) -> Ret + 'static,
 	Args: 'static,
 	Ret: 'static,
-	D: IntoDeps,
 {
 	callback_with_deps::<Args, Ret>(f, deps.into_deps())
 }
@@ -182,15 +176,14 @@ where
 /// Creates a memoized callback with custom argument and return types (server-side version).
 ///
 /// See the WASM version for full documentation.
-/// Requires `Send + Sync` bounds for thread-safe server-side usage.
+/// Native callbacks share the thread-affine reactive scope contract.
 #[cfg(native)]
 #[track_caller]
-pub fn use_callback_with<Args, Ret, F, D>(f: F, deps: D) -> Callback<Args, Ret>
+pub fn use_callback_with<Args, Ret, F>(f: F, deps: ExplicitDeps) -> Callback<Args, Ret>
 where
-	F: Fn(Args) -> Ret + Send + Sync + 'static,
+	F: Fn(Args) -> Ret + 'static,
 	Args: 'static,
 	Ret: 'static,
-	D: IntoDeps,
 {
 	callback_with_deps::<Args, Ret>(f, deps.into_deps())
 }
@@ -204,40 +197,46 @@ mod tests {
 	#[test]
 	#[serial]
 	fn test_use_memo_basic() {
-		let memo = use_memo(|| 42, ());
-		assert_eq!(memo.get(), 42);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let memo = use_memo(|| 42, crate::deps![]);
+			assert_eq!(memo.get(), 42);
+		});
 	}
 
 	#[test]
 	#[serial]
 	fn test_use_memo_with_signal() {
-		let count = Signal::new(5);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let count = Signal::new(5);
 
-		let doubled = use_memo(
-			{
-				let count = count.clone();
-				move || count.get() * 2
-			},
-			(count.clone(),),
-		);
+			let doubled = use_memo(
+				{
+					let count = count.clone();
+					move || count.get() * 2
+				},
+				crate::deps![count.clone()],
+			);
 
-		assert_eq!(doubled.get(), 10);
+			assert_eq!(doubled.get(), 10);
+		});
 	}
 
 	#[test]
 	#[serial]
 	fn test_use_memo_complex() {
-		let items = Signal::new(vec![1, 2, 3, 4, 5]);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let items = Signal::new(vec![1, 2, 3, 4, 5]);
 
-		let sum = use_memo(
-			{
-				let items = items.clone();
-				move || items.get().iter().sum::<i32>()
-			},
-			(items.clone(),),
-		);
+			let sum = use_memo(
+				{
+					let items = items.clone();
+					move || items.get().iter().sum::<i32>()
+				},
+				crate::deps![items.clone()],
+			);
 
-		assert_eq!(sum.get(), 15);
+			assert_eq!(sum.get(), 15);
+		});
 	}
 
 	#[cfg(native)]
@@ -247,27 +246,33 @@ mod tests {
 		use crate::event::{ClickEvent, EventPayload};
 		use reinhardt_core::types::page::{EventType, NativeEventPayload, PointerEventData};
 
-		let callback: Callback<ClickEvent, ()> = use_callback(
-			|event: ClickEvent| {
-				assert_eq!(event.event_type(), "click");
-			},
-			(),
-		);
-		let raw = NativeEvent::for_known(
-			EventType::Click,
-			NativeEventPayload::Pointer(PointerEventData::default()),
-		);
-		callback.call(ClickEvent::try_from_raw(raw).expect("click payload must convert"));
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let callback: Callback<ClickEvent, ()> = use_callback(
+				|event: ClickEvent| {
+					assert_eq!(event.event_type(), "click");
+				},
+				crate::deps![],
+			);
+			let raw = NativeEvent::for_known(
+				EventType::Click,
+				NativeEventPayload::Pointer(PointerEventData::default()),
+			);
+			callback.call(ClickEvent::try_from_raw(raw).expect("click payload must convert"));
+		});
 	}
 
 	#[cfg(native)]
 	#[test]
 	fn test_use_callback_with() {
-		let add_one = use_callback_with::<i32, i32, _, _>(|x: i32| x + 1, ());
-		assert_eq!(add_one.call(5), 6);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let add_one = use_callback_with::<i32, i32, _>(|x: i32| x + 1, crate::deps![]);
+			assert_eq!(add_one.call(5), 6);
 
-		let concat =
-			use_callback_with::<String, String, _, _>(|s: String| format!("Hello, {}", s), ());
-		assert_eq!(concat.call("World".to_string()), "Hello, World");
+			let concat = use_callback_with::<String, String, _>(
+				|s: String| format!("Hello, {}", s),
+				crate::deps![],
+			);
+			assert_eq!(concat.call("World".to_string()), "Hello, World");
+		});
 	}
 }

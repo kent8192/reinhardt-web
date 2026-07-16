@@ -1,20 +1,83 @@
 use std::borrow::Cow;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use reinhardt_core::page::IntoPage;
-use reinhardt_core::reactive::Signal;
+use reinhardt_core::reactive::{ReactiveScope, Signal};
 use reinhardt_core::types::page::{DeferredNode, EventName, Page, PageElement, SuspenseNode};
 use reinhardt_event_catalog::{EVENT_SPECS, EventInterface};
 use rstest::rstest;
 
 use super::{EventError, EventFixture, EventFixtureError, QueryError, Role, render};
+use crate::Callback;
 use crate::event::{
 	ChangeEvent, ClickEvent, EventPayload, InputEvent, KeyDownEvent, Modifiers, Point, PointerKind,
 	PointerMoveEvent, typed_event_handler,
 };
+use crate::reactive::hooks::use_effect;
+use serial_test::serial;
+
+use crate::reactive::{QueryKey, ResourceState, use_query};
+
+fn scheduled_query_component() -> Page {
+	let query = use_query(QueryKey::new("scheduled-query", || async {
+		Ok::<_, String>("Scheduled query result".to_string())
+	}));
+	Page::reactive(move || match query.get() {
+		ResourceState::Loading => Page::text("Loading"),
+		ResourceState::Success(value) => Page::text(value),
+		ResourceState::Error(error) => Page::text(error.to_string()),
+	})
+}
+
+#[cfg(not(feature = "msw"))]
+fn screen_scoped_query_component(value: &'static str) -> Page {
+	let query = use_query(QueryKey::new("screen-scoped-query", move || async move {
+		Ok::<_, String>(value.to_string())
+	}));
+	Page::reactive(move || match query.get() {
+		ResourceState::Loading => Page::text("Loading"),
+		ResourceState::Success(value) => Page::text(value),
+		ResourceState::Error(error) => Page::text(error),
+	})
+}
+
+#[tokio::test]
+async fn query_fetches_are_scheduled_until_screen_settles() {
+	// Arrange
+	let screen = render(scheduled_query_component);
+
+	// Assert
+	assert_eq!(screen.pretty(), "Loading\n");
+
+	// Act
+	screen.settle().await;
+
+	// Assert
+	assert_eq!(screen.pretty(), "Scheduled query result\n");
+}
+
+#[cfg(not(feature = "msw"))]
+#[tokio::test]
+#[serial_test::serial(query_cache)]
+async fn query_cache_is_scoped_per_screen_without_msw() {
+	// Arrange
+	crate::reactive::query::clear_query_cache_for_test();
+	let first = render(|| screen_scoped_query_component("first"));
+	first.settle().await;
+
+	// Act
+	let second = render(|| screen_scoped_query_component("second"));
+	second.settle().await;
+	let second_output = second.pretty();
+	crate::reactive::query::clear_query_cache_for_test();
+
+	// Assert
+	assert_eq!(first.pretty(), "first\n");
+	assert_eq!(second_output, "second\n");
+}
 
 #[test]
 fn renders_page_tree_and_pretty_output() {
@@ -32,7 +95,45 @@ fn renders_page_tree_and_pretty_output() {
 }
 
 #[test]
-fn suspense_nodes_without_ids_render_the_active_branch() {
+#[serial(reactive_runtime)]
+fn render_creates_a_scope_for_hook_using_views() {
+	let screen = render(|| {
+		let count = Signal::new(42_i32);
+		PageElement::new("p").child(count.get().to_string())
+	});
+
+	assert_eq!(screen.get_by_text("42").tag_name(), "p");
+}
+
+#[test]
+#[serial(reactive_runtime)]
+fn effect_cleanup_can_use_page_handles_until_scope_disposal_finishes() {
+	let calls = Arc::new(AtomicUsize::new(0));
+	let scope = ReactiveScope::new();
+
+	scope.enter(|| {
+		let callback = Callback::new({
+			let calls = Arc::clone(&calls);
+			move |_: ()| {
+				calls.fetch_add(1, Ordering::Relaxed);
+			}
+		});
+		use_effect(
+			move || {
+				let callback = callback;
+				Some(move || callback.call(()))
+			},
+			(),
+		);
+	});
+
+	scope.dispose();
+
+	assert_eq!(calls.load(Ordering::Relaxed), 1);
+}
+
+#[test]
+fn suspense_nodes_render_active_branch_without_boundary_id() {
 	let pending_screen = render(Page::Suspense(SuspenseNode::new(
 		None,
 		|| true,
@@ -55,7 +156,7 @@ fn suspense_nodes_without_ids_render_the_active_branch() {
 }
 
 #[test]
-fn deferred_nodes_with_block_factories_render_content_branch() {
+fn deferred_nodes_render_content_branch_with_custom_key() {
 	let screen = render(Page::Deferred(DeferredNode::new(
 		"deferred-test",
 		|| {
@@ -200,7 +301,7 @@ fn hidden_elements_are_excluded_from_queries() {
 }
 
 #[test]
-fn suspense_nodes_with_ids_render_the_active_branch() {
+fn suspense_nodes_render_active_branch_with_boundary_id() {
 	let pending_screen = render(Page::Suspense(SuspenseNode::new(
 		Some("pending-boundary".to_string()),
 		|| true,
@@ -221,7 +322,7 @@ fn suspense_nodes_with_ids_render_the_active_branch() {
 }
 
 #[test]
-fn deferred_nodes_with_inline_factories_render_content_branch() {
+fn deferred_nodes_render_content_branch_with_standard_key() {
 	let screen = render(Page::Deferred(DeferredNode::new(
 		"deferred-content",
 		|| PageElement::new("p").child("Deferred fallback").into_page(),
@@ -281,18 +382,22 @@ fn input_updates_internal_value_before_dispatch() {
 
 #[tokio::test]
 async fn detached_element_reads_return_error() {
-	let show = Signal::new(true);
-	let show_for_render = show.clone();
-	let screen = render(Page::reactive(move || {
-		if show_for_render.get() {
-			PageElement::new("button").child("Save").into_page()
-		} else {
-			Page::Empty
-		}
-	}));
-	let button = screen.get_by_role(Role::Button, "Save");
+	let scope = ReactiveScope::new();
+	let (show, screen, button) = scope.enter(|| {
+		let show = Signal::new(true);
+		let show_for_render = show;
+		let screen = render(Page::reactive(move || {
+			if show_for_render.get() {
+				PageElement::new("button").child("Save").into_page()
+			} else {
+				Page::Empty
+			}
+		}));
+		let button = screen.get_by_role(Role::Button, "Save");
+		(show, screen, button)
+	});
 
-	show.set(false);
+	scope.enter(|| show.set(false));
 	screen.settle().await;
 
 	assert_eq!(button.try_text(), Err(EventError::DetachedElement));

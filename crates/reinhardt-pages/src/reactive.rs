@@ -7,6 +7,11 @@
 //! - [`Effect`]: A side effect that automatically reruns when dependencies change
 //! - [`Memo<T>`]: A cached computation that automatically updates when dependencies change
 //!
+//! Normal Pages entrypoints, including SSR rendering, hydration, and
+//! [`ClientLauncher`](crate::app::ClientLauncher), install and own reactive scopes
+//! automatically. Low-level code that creates nodes directly must use
+//! [`ReactiveScope::run`](reinhardt_core::reactive::ReactiveScope::run).
+//!
 //! ## Architecture
 //!
 //! The reactivity system is built on a pull-based model:
@@ -93,19 +98,20 @@
 //!
 //! ## Memory Management
 //!
-//! All reactive nodes (Signals, Effects, Memos) automatically clean up their dependencies
-//! when dropped, preventing memory leaks. However, Effects that capture references to
-//! Signals will keep those Signals alive - be mindful of circular dependencies.
+//! Reactive nodes are owned by the active scope and clean up together when that scope is
+//! dropped. Reactive handles are copied keys and do not extend the scope lifetime.
 
 // Re-export core reactive primitives from reinhardt-reactive
 pub use reinhardt_core::reactive::{
-	Context, ContextGuard, Effect, EffectTiming, Memo, NodeId, NodeType, Observer, Runtime, Signal,
-	batch, context, create_context, effect, get_context, memo, provide_context, remove_context,
-	runtime, signal, with_runtime,
+	Context, ContextGuard, Effect, EffectTiming, ExplicitDeps, Memo, NodeId, NodeType, Observer,
+	ReactiveDeps, ReactiveScope, Runtime, Signal, batch, context, create_context, current_scope_id,
+	effect, get_context, memo, provide_context, remove_context, runtime, signal, with_runtime,
 };
 
 // WASM-specific modules (kept in reinhardt-pages)
 pub mod hooks;
+pub(crate) mod pages_arena;
+pub mod query;
 pub mod resource;
 pub mod resource_value;
 pub mod trackable;
@@ -113,6 +119,7 @@ pub mod trackable;
 pub use trackable::Trackable;
 
 // Re-export resource types and the unified hook (available on all targets)
+pub use query::{QueryHandle, QueryKey, QueryPhase, use_mutation, use_query};
 pub use resource::{Resource, ResourceState, use_resource, use_resource_with_key};
 pub use resource_value::{
 	LatestResourceState, LatestResourceValue, LatestResourceValueBuilder, use_latest_resource_value,

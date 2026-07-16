@@ -1,0 +1,1207 @@
+//! Keyed async query cache hooks.
+//!
+//! `use_query` adds an app-wide cache layer for async reads while preserving
+//! the existing `ResourceState` loading/success/error model. Query keys are
+//! typed by their result and error payloads, and `#[server_fn]` generates
+//! key helpers that include the server function identity plus an opaque digest
+//! of canonical JSON arguments.
+
+mod canonical_json;
+
+use std::any::Any;
+use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
+use std::future::Future;
+use std::marker::PhantomData;
+use std::pin::Pin;
+use std::rc::Rc;
+use std::task::{Context, Poll};
+use std::time::Duration;
+#[cfg(not(wasm))]
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use serde::Serialize;
+use serde::de::DeserializeOwned;
+use sha2::{Digest, Sha256};
+
+use super::Signal;
+use super::hooks::async_action::{Action, use_action};
+use super::resource::ResourceState;
+use reinhardt_core::reactive::{ReactiveScope, ScopeId, scope::enter_scope};
+
+type QueryFuture<T, E> = Pin<Box<dyn Future<Output = Result<T, E>> + 'static>>;
+type QueryFetcher<T, E> = dyn Fn() -> QueryFuture<T, E> + 'static;
+
+const DEFAULT_STALE_TIME: Duration = Duration::from_secs(30);
+const DEFAULT_GC_TIME: Duration = Duration::from_secs(5 * 60);
+
+thread_local! {
+	static QUERY_CACHE: RefCell<HashMap<String, CachedQueryEntry>> = RefCell::new(HashMap::new());
+}
+
+#[derive(Clone)]
+struct CachedQueryEntry {
+	typed: Rc<dyn Any>,
+	refetch: Rc<dyn Fn()>,
+}
+
+/// Typed cache key and fetcher for a query.
+///
+/// Values are normally produced by the `#[server_fn]` generated `key(...)`
+/// helper. Manual keys are also supported for non-server-function fetchers.
+pub struct QueryKey<T, E> {
+	id: String,
+	fetcher: Rc<QueryFetcher<T, E>>,
+	stale_time: Duration,
+	gc_time: Duration,
+	ssr_prefetch: bool,
+	_type: PhantomData<fn() -> Result<T, E>>,
+}
+
+impl<T, E> Clone for QueryKey<T, E> {
+	fn clone(&self) -> Self {
+		Self {
+			id: self.id.clone(),
+			fetcher: Rc::clone(&self.fetcher),
+			stale_time: self.stale_time,
+			gc_time: self.gc_time,
+			ssr_prefetch: self.ssr_prefetch,
+			_type: PhantomData,
+		}
+	}
+}
+
+impl<T, E> QueryKey<T, E> {
+	/// Creates a typed query key from an explicit cache ID and fetcher.
+	pub fn new<Id, F, Fut>(id: Id, fetcher: F) -> Self
+	where
+		Id: Into<String>,
+		F: Fn() -> Fut + 'static,
+		Fut: Future<Output = Result<T, E>> + 'static,
+	{
+		Self {
+			id: id.into(),
+			fetcher: Rc::new(move || Box::pin(fetcher())),
+			stale_time: DEFAULT_STALE_TIME,
+			gc_time: DEFAULT_GC_TIME,
+			ssr_prefetch: true,
+			_type: PhantomData,
+		}
+	}
+
+	/// Creates a typed key for a generated `#[server_fn]` marker.
+	///
+	/// JSON object keys are sorted recursively so logically equivalent argument
+	/// maps produce the same cache and hydration ID. The canonical argument
+	/// payload is SHA-256 hashed before it becomes part of the ID.
+	pub fn from_server_fn<M, Args, F, Fut>(args: Args, fetcher: F) -> Self
+	where
+		M: crate::server_fn::ServerFnMetadata,
+		Args: Serialize,
+		F: Fn() -> Fut + 'static,
+		Fut: Future<Output = Result<T, E>> + 'static,
+	{
+		let encoded_args = canonical_json::encode(&args)
+			.expect("server function query arguments must serialize into a cache key");
+		let args_digest = Sha256::digest(encoded_args.as_bytes());
+		Self::new(
+			format!("server_fn:{}:{}:sha256:{args_digest:x}", M::PATH, M::CODEC),
+			fetcher,
+		)
+	}
+
+	/// Returns the stable cache ID for this key.
+	pub fn id(&self) -> &str {
+		&self.id
+	}
+
+	/// Configures how long a resolved value is considered fresh.
+	///
+	/// SSR-replayed success and error states are both treated as freshly fetched
+	/// so the initial replay preserves the server-rendered state before a retry.
+	pub fn with_stale_time(mut self, stale_time: Duration) -> Self {
+		self.stale_time = stale_time;
+		self
+	}
+
+	/// Configures the requested cache retention window after the last observer.
+	///
+	/// The current implementation stores this value for cache policy parity and
+	/// future eviction; entries are retained for the app lifetime unless the
+	/// cache is explicitly cleared.
+	pub fn with_gc_time(mut self, gc_time: Duration) -> Self {
+		self.gc_time = gc_time;
+		self
+	}
+
+	/// Configures whether SSR may prefetch this query in the native resource context.
+	pub fn with_ssr_prefetch(mut self, enabled: bool) -> Self {
+		self.ssr_prefetch = enabled;
+		self
+	}
+}
+
+struct QueryEntry<T: Clone + 'static, E: Clone + 'static> {
+	_scope: Rc<ReactiveScope>,
+	id: String,
+	state: Signal<ResourceState<T, E>>,
+	is_fetching: Signal<bool>,
+	fetcher: RefCell<Rc<QueryFetcher<T, E>>>,
+	in_flight: Cell<bool>,
+	refetch_after_in_flight: Cell<bool>,
+	last_fetched_ms: Cell<Option<u64>>,
+	stale_time: Cell<Duration>,
+	gc_time: Cell<Duration>,
+}
+
+/// Polls cached query work in the scope that owns the query entry.
+///
+/// Cache entries outlive the component that first requested them, so their
+/// fetchers cannot rely on that component's render scope remaining active.
+struct ScopedQueryFuture<Fut> {
+	scope: ScopeId,
+	future: Pin<Box<Fut>>,
+}
+
+impl<Fut> Future for ScopedQueryFuture<Fut>
+where
+	Fut: Future<Output = ()>,
+{
+	type Output = ();
+
+	fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+		let this = self.get_mut();
+		let poll = || this.future.as_mut().poll(cx);
+		enter_scope(this.scope, poll).unwrap_or(Poll::Ready(()))
+	}
+}
+
+fn initial_query_state<T, E>(
+	hydrated_state: Option<ResourceState<T, E>>,
+) -> (ResourceState<T, E>, Option<u64>) {
+	let initial_state = hydrated_state.unwrap_or(ResourceState::Loading);
+	let last_fetched_ms = if matches!(
+		&initial_state,
+		ResourceState::Success(_) | ResourceState::Error(_)
+	) {
+		Some(now_ms())
+	} else {
+		None
+	};
+	(initial_state, last_fetched_ms)
+}
+
+impl<T: Clone + 'static, E: Clone + 'static> QueryEntry<T, E> {
+	fn new(key: QueryKey<T, E>) -> Self
+	where
+		T: Serialize + DeserializeOwned,
+		E: Serialize + DeserializeOwned,
+	{
+		let (initial_state, last_fetched_ms) = initial_query_state(hydrated_query_state(&key.id));
+		let id = key.id;
+		let scope = Rc::new(ReactiveScope::new());
+		let (state, is_fetching) = scope.enter(|| (Signal::new(initial_state), Signal::new(false)));
+
+		Self {
+			_scope: scope,
+			id,
+			state,
+			is_fetching,
+			fetcher: RefCell::new(key.fetcher),
+			in_flight: Cell::new(false),
+			refetch_after_in_flight: Cell::new(false),
+			last_fetched_ms: Cell::new(last_fetched_ms),
+			stale_time: Cell::new(key.stale_time),
+			gc_time: Cell::new(key.gc_time),
+		}
+	}
+
+	fn update_policy(&self, key: QueryKey<T, E>) {
+		*self.fetcher.borrow_mut() = key.fetcher;
+		self.stale_time.set(key.stale_time);
+		self.gc_time.set(key.gc_time);
+	}
+
+	fn is_stale(&self) -> bool {
+		let Some(last_fetched_ms) = self.last_fetched_ms.get() else {
+			return true;
+		};
+		now_ms().saturating_sub(last_fetched_ms) >= duration_ms(self.stale_time.get())
+	}
+
+	fn should_fetch_on_mount(&self) -> bool {
+		self.state
+			.with_untracked(|state| matches!(state, ResourceState::Loading) || self.is_stale())
+	}
+
+	#[cfg(native)]
+	fn mark_resolved_fetched(&self) {
+		if self.state.with_untracked(|state| {
+			matches!(state, ResourceState::Success(_) | ResourceState::Error(_))
+		}) {
+			self.last_fetched_ms.set(Some(now_ms()));
+		}
+	}
+
+	fn start_fetch(self: &Rc<Self>, force: bool) {
+		if self.in_flight.replace(true) {
+			if force {
+				self.refetch_after_in_flight.set(true);
+			}
+			return;
+		}
+
+		let had_success = self
+			.state
+			.with_untracked(|state| matches!(state, ResourceState::Success(_)));
+		if !force && had_success && !self.is_stale() {
+			self.in_flight.set(false);
+			return;
+		}
+		self.is_fetching.set(true);
+		if !had_success {
+			self.state.set(ResourceState::Loading);
+		}
+
+		let entry = Rc::clone(self);
+		let scope = entry._scope.id();
+		spawn_query_task(ScopedQueryFuture {
+			scope,
+			future: Box::pin(async move {
+				loop {
+					let fetcher = entry.fetcher.borrow().clone();
+					let result = fetcher().await;
+					match result {
+						Ok(value) => {
+							entry.last_fetched_ms.set(Some(now_ms()));
+							entry.state.set(ResourceState::Success(value));
+						}
+						Err(error) => {
+							entry.last_fetched_ms.set(Some(now_ms()));
+							entry.state.set(ResourceState::Error(error));
+						}
+					}
+					if entry.refetch_after_in_flight.replace(false) {
+						let has_success = entry
+							.state
+							.with_untracked(|state| matches!(state, ResourceState::Success(_)));
+						if !has_success {
+							entry.state.set(ResourceState::Loading);
+						}
+						continue;
+					}
+					entry.is_fetching.set(false);
+					entry.in_flight.set(false);
+					break;
+				}
+			}),
+		});
+	}
+}
+
+/// Current phase of a query.
+#[derive(Clone, Debug, PartialEq)]
+pub enum QueryPhase<T, E> {
+	/// The query has no successful value or error yet.
+	Pending,
+	/// The query has loaded successfully.
+	Success(T),
+	/// The latest fetch failed.
+	Error(E),
+}
+
+impl<T, E> QueryPhase<T, E> {
+	/// Returns `true` if the query is pending.
+	pub fn is_pending(&self) -> bool {
+		matches!(self, Self::Pending)
+	}
+
+	/// Returns `true` if the query is successful.
+	pub fn is_success(&self) -> bool {
+		matches!(self, Self::Success(_))
+	}
+
+	/// Returns `true` if the query is in an error state.
+	pub fn is_error(&self) -> bool {
+		matches!(self, Self::Error(_))
+	}
+
+	/// Returns the success value if available.
+	pub fn result(&self) -> Option<&T> {
+		match self {
+			Self::Success(value) => Some(value),
+			_ => None,
+		}
+	}
+
+	/// Returns the error value if available.
+	pub fn error(&self) -> Option<&E> {
+		match self {
+			Self::Error(error) => Some(error),
+			_ => None,
+		}
+	}
+}
+
+/// Reactive handle returned by [`use_query`].
+pub struct QueryHandle<T: Clone + 'static, E: Clone + 'static> {
+	entry: Rc<QueryEntry<T, E>>,
+	guards: Rc<RefCell<Vec<QueryGuard>>>,
+}
+
+impl<T: Clone + 'static, E: Clone + 'static> Clone for QueryHandle<T, E> {
+	fn clone(&self) -> Self {
+		Self {
+			entry: Rc::clone(&self.entry),
+			guards: Rc::clone(&self.guards),
+		}
+	}
+}
+
+impl<T: Clone + 'static, E: Clone + 'static> QueryHandle<T, E> {
+	fn mark_ssr_read(&self) {
+		#[cfg(native)]
+		crate::ssr::resource_context::mark_resource_read(&self.entry.id);
+	}
+
+	/// Returns this query's deterministic SSR hydration key.
+	pub fn ssr_key(&self) -> &str {
+		&self.entry.id
+	}
+
+	/// Returns the underlying resource-style state.
+	pub fn get(&self) -> ResourceState<T, E> {
+		self.mark_ssr_read();
+		self.entry.state.get()
+	}
+
+	/// Returns the current query phase.
+	pub fn phase(&self) -> QueryPhase<T, E> {
+		self.mark_ssr_read();
+		match self.entry.state.get() {
+			ResourceState::Loading => QueryPhase::Pending,
+			ResourceState::Success(value) => QueryPhase::Success(value),
+			ResourceState::Error(error) => QueryPhase::Error(error),
+		}
+	}
+
+	/// Returns `true` while a fetch is in progress.
+	pub fn is_fetching(&self) -> bool {
+		self.mark_ssr_read();
+		self.entry.is_fetching.get()
+	}
+
+	/// Returns `true` until the query has a successful value or error.
+	pub fn is_pending(&self) -> bool {
+		self.phase().is_pending()
+	}
+
+	/// Returns `true` if the query has a successful value.
+	pub fn is_success(&self) -> bool {
+		self.phase().is_success()
+	}
+
+	/// Returns `true` if the query is in an error state.
+	pub fn is_error(&self) -> bool {
+		self.phase().is_error()
+	}
+
+	/// Returns the current successful value, if present.
+	pub fn data(&self) -> Option<T> {
+		self.mark_ssr_read();
+		match self.entry.state.get() {
+			ResourceState::Success(value) => Some(value),
+			_ => None,
+		}
+	}
+
+	/// Returns the current error value, if present.
+	pub fn error(&self) -> Option<E> {
+		self.mark_ssr_read();
+		match self.entry.state.get() {
+			ResourceState::Error(error) => Some(error),
+			_ => None,
+		}
+	}
+
+	/// Manually refetches this query.
+	pub fn refetch(&self) {
+		self.entry.start_fetch(true);
+	}
+
+	/// Refetches this query at a fixed interval while the handle is alive.
+	pub fn poll(self, interval: Duration) -> Self {
+		if !interval.is_zero() {
+			self.guards
+				.borrow_mut()
+				.push(QueryGuard::poll(interval, Rc::clone(&self.entry)));
+		}
+		self
+	}
+
+	/// Updates the stale-time policy for this mounted query.
+	pub fn stale_time(self, stale_time: Duration) -> Self {
+		self.entry.stale_time.set(stale_time);
+		if self.entry.is_stale() {
+			self.entry.start_fetch(false);
+		}
+		self
+	}
+
+	/// Updates the cache retention policy for this mounted query.
+	pub fn gc_time(self, gc_time: Duration) -> Self {
+		self.entry.gc_time.set(gc_time);
+		self
+	}
+
+	/// Returns the current stale-time policy.
+	pub fn stale_time_policy(&self) -> Duration {
+		self.entry.stale_time.get()
+	}
+
+	/// Returns the current cache retention policy.
+	pub fn gc_time_policy(&self) -> Duration {
+		self.entry.gc_time.get()
+	}
+}
+
+/// Creates or subscribes to an app-wide keyed query.
+pub fn use_query<T, E>(key: QueryKey<T, E>) -> QueryHandle<T, E>
+where
+	T: Clone + Serialize + DeserializeOwned + 'static,
+	E: Clone + Serialize + DeserializeOwned + 'static,
+{
+	#[cfg(native)]
+	if let Some(query) = try_create_ssr_query(key.clone()) {
+		return query;
+	}
+
+	let entry = query_entry(key);
+	if entry.should_fetch_on_mount() {
+		entry.start_fetch(false);
+	}
+
+	QueryHandle {
+		entry,
+		guards: Rc::new(RefCell::new(Vec::new())),
+	}
+}
+
+/// Creates a mutation action that can invalidate queries on success.
+pub fn use_mutation<P, T, E, F, Fut>(mutation_fn: F) -> Action<T, E>
+where
+	P: 'static,
+	T: Clone + 'static,
+	E: Clone + 'static,
+	F: Fn(P) -> Fut + 'static,
+	Fut: Future<Output = Result<T, E>> + 'static,
+{
+	use_action(mutation_fn)
+}
+
+impl<T, E> Action<T, E>
+where
+	T: Clone + 'static,
+	E: Clone + 'static,
+{
+	/// Refetches `key` after this mutation succeeds.
+	pub fn invalidates<QT, QE>(self, key: QueryKey<QT, QE>) -> Self
+	where
+		QT: Clone + 'static,
+		QE: Clone + 'static,
+	{
+		let id = key.id().to_string();
+		self.on_success(move |_| {
+			invalidate_query_id(&id);
+		})
+	}
+}
+
+fn query_entry<T, E>(key: QueryKey<T, E>) -> Rc<QueryEntry<T, E>>
+where
+	T: Clone + Serialize + DeserializeOwned + 'static,
+	E: Clone + Serialize + DeserializeOwned + 'static,
+{
+	let id = key.id.clone();
+	#[cfg(any(wasm, test))]
+	super::resource::reserve_client_resource_key(&id);
+	let cache_id = scoped_query_cache_id(&id);
+	QUERY_CACHE.with(|cache| {
+		let mut cache = cache.borrow_mut();
+		if let Some(cached) = cache.get(&cache_id) {
+			let entry = Rc::clone(&cached.typed)
+				.downcast::<QueryEntry<T, E>>()
+				.unwrap_or_else(|_| {
+					panic!("query cache key `{id}` was reused with incompatible types")
+				});
+			entry.update_policy(key);
+			return entry;
+		}
+
+		let entry = Rc::new(QueryEntry::new(key));
+		cache.insert(
+			cache_id,
+			CachedQueryEntry {
+				typed: entry.clone(),
+				refetch: Rc::new({
+					let entry = Rc::clone(&entry);
+					move || entry.start_fetch(true)
+				}),
+			},
+		);
+		entry
+	})
+}
+
+#[cfg(native)]
+fn try_create_ssr_query<T, E>(key: QueryKey<T, E>) -> Option<QueryHandle<T, E>>
+where
+	T: Clone + Serialize + DeserializeOwned + 'static,
+	E: Clone + Serialize + DeserializeOwned + 'static,
+{
+	crate::ssr::resource_context::with_active_context(|context| {
+		context.borrow_mut().reserve_call_order_key(key.id());
+		let ssr_prefetch = key.ssr_prefetch;
+		let entry = Rc::new(QueryEntry::new(key));
+		if ssr_prefetch {
+			let fetcher = entry.fetcher.borrow().clone();
+			context.borrow_mut().register_resource_with_owner(
+				entry.id.clone(),
+				move || fetcher(),
+				entry.state,
+				Some(Rc::clone(&entry._scope)),
+			);
+			entry.mark_resolved_fetched();
+		}
+		QueryHandle {
+			entry,
+			guards: Rc::new(RefCell::new(Vec::new())),
+		}
+	})
+}
+
+fn invalidate_query_id(id: &str) {
+	let cache_id = scoped_query_cache_id(id);
+	QUERY_CACHE.with(|cache| {
+		if let Some(cached) = cache.borrow().get(&cache_id) {
+			(cached.refetch)();
+		}
+	});
+}
+
+fn scoped_query_cache_id(id: &str) -> String {
+	#[cfg(all(native, feature = "testing"))]
+	if let Some(scope_id) = crate::testing::component::active_query_scope_id() {
+		return format!("test-screen:{scope_id}:{id}");
+	}
+
+	id.to_string()
+}
+
+#[cfg(wasm)]
+fn hydrated_query_state<T, E>(key: &str) -> Option<ResourceState<T, E>>
+where
+	T: Clone + Serialize + DeserializeOwned + 'static,
+	E: Clone + Serialize + DeserializeOwned + 'static,
+{
+	let context = crate::hydration::HydrationContext::from_window().ok()?;
+	let value = context.get_resource_state(key)?;
+	serde_json::from_value(value.clone()).ok()
+}
+
+#[cfg(not(wasm))]
+fn hydrated_query_state<T, E>(_key: &str) -> Option<ResourceState<T, E>>
+where
+	T: Clone + Serialize + DeserializeOwned + 'static,
+	E: Clone + Serialize + DeserializeOwned + 'static,
+{
+	None
+}
+
+#[cfg(all(test, not(wasm)))]
+fn spawn_query_task<F>(fut: F)
+where
+	F: Future<Output = ()> + 'static,
+{
+	if crate::platform::has_task_sink() {
+		schedule_query_task(fut);
+	} else {
+		tokio_test::block_on(fut);
+	}
+}
+
+#[cfg(any(not(test), wasm))]
+fn spawn_query_task<F>(fut: F)
+where
+	F: Future<Output = ()> + 'static,
+{
+	schedule_query_task(fut);
+}
+
+fn schedule_query_task<F>(fut: F)
+where
+	F: Future<Output = ()> + 'static,
+{
+	crate::platform::spawn_task(async move {
+		crate::platform::defer_yield().await;
+		fut.await;
+	});
+}
+
+#[cfg(wasm)]
+struct QueryGuard {
+	interval_id: i32,
+	_closure: wasm_bindgen::closure::Closure<dyn FnMut()>,
+}
+
+#[cfg(wasm)]
+impl QueryGuard {
+	fn poll<T, E>(interval: Duration, entry: Rc<QueryEntry<T, E>>) -> Self
+	where
+		T: Clone + 'static,
+		E: Clone + 'static,
+	{
+		use wasm_bindgen::JsCast;
+
+		let closure = wasm_bindgen::closure::Closure::wrap(Box::new(move || {
+			entry.start_fetch(true);
+		}) as Box<dyn FnMut()>);
+
+		let interval_ms = duration_ms(interval).min(i32::MAX as u64) as i32;
+		let interval_id = web_sys::window()
+			.and_then(|window| {
+				window
+					.set_interval_with_callback_and_timeout_and_arguments_0(
+						closure.as_ref().unchecked_ref(),
+						interval_ms,
+					)
+					.ok()
+			})
+			.unwrap_or(-1);
+
+		Self {
+			interval_id,
+			_closure: closure,
+		}
+	}
+}
+
+#[cfg(wasm)]
+impl Drop for QueryGuard {
+	fn drop(&mut self) {
+		if self.interval_id >= 0
+			&& let Some(window) = web_sys::window()
+		{
+			window.clear_interval_with_handle(self.interval_id);
+		}
+	}
+}
+
+#[cfg(not(wasm))]
+struct QueryGuard;
+
+#[cfg(not(wasm))]
+impl QueryGuard {
+	fn poll<T, E>(_interval: Duration, _entry: Rc<QueryEntry<T, E>>) -> Self
+	where
+		T: Clone + 'static,
+		E: Clone + 'static,
+	{
+		Self
+	}
+}
+
+fn duration_ms(duration: Duration) -> u64 {
+	duration.as_millis().min(u128::from(u64::MAX)) as u64
+}
+
+#[cfg(not(wasm))]
+fn now_ms() -> u64 {
+	SystemTime::now()
+		.duration_since(UNIX_EPOCH)
+		.map(duration_ms)
+		.unwrap_or_default()
+}
+
+#[cfg(wasm)]
+fn now_ms() -> u64 {
+	js_sys::Date::now() as u64
+}
+
+#[cfg(all(test, not(wasm)))]
+pub(crate) fn clear_query_cache_for_test() {
+	QUERY_CACHE.with(|cache| cache.borrow_mut().clear());
+}
+
+#[cfg(all(test, not(wasm)))]
+mod tests {
+	use std::cell::Cell;
+
+	use reinhardt_core::reactive::ReactiveScope;
+	use rstest::rstest;
+	use serde::Serializer;
+	use serde::ser::SerializeMap;
+	use serial_test::serial;
+
+	use super::*;
+
+	struct OrderedMapArgs(&'static [(&'static str, i64)]);
+
+	impl Serialize for OrderedMapArgs {
+		fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+		where
+			S: Serializer,
+		{
+			let mut map = serializer.serialize_map(Some(self.0.len()))?;
+			for (key, value) in self.0 {
+				map.serialize_entry(key, value)?;
+			}
+			map.end()
+		}
+	}
+
+	struct OrderedLargeMapArgs(&'static [(&'static str, u128)]);
+
+	impl Serialize for OrderedLargeMapArgs {
+		fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+		where
+			S: Serializer,
+		{
+			let mut map = serializer.serialize_map(Some(self.0.len()))?;
+			for (key, value) in self.0 {
+				map.serialize_entry(key, value)?;
+			}
+			map.end()
+		}
+	}
+
+	#[rstest]
+	#[serial(query_cache)]
+	fn use_query_deduplicates_shared_key() {
+		ReactiveScope::run(|| {
+			// Arrange
+			clear_query_cache_for_test();
+			let calls = Rc::new(Cell::new(0));
+
+			// Act
+			let first = use_query(QueryKey::new("shared", {
+				let calls = Rc::clone(&calls);
+				move || {
+					calls.set(calls.get() + 1);
+					async { Ok::<_, String>("value".to_string()) }
+				}
+			}));
+			let second = use_query(QueryKey::new("shared", {
+				let calls = Rc::clone(&calls);
+				move || {
+					calls.set(calls.get() + 1);
+					async { Ok::<_, String>("value".to_string()) }
+				}
+			}));
+
+			// Assert
+			assert_eq!(calls.get(), 1);
+			assert_eq!(first.data(), Some("value".to_string()));
+			assert_eq!(second.data(), Some("value".to_string()));
+		});
+	}
+
+	#[rstest]
+	#[serial(query_cache)]
+	fn cached_query_survives_the_scope_that_created_it() {
+		// Arrange
+		clear_query_cache_for_test();
+		let key = QueryKey::new("retained-cache-entry", || async {
+			Ok::<_, String>("cached".to_string())
+		});
+		let scope = ReactiveScope::new();
+		let first = scope.enter(|| use_query(key.clone()));
+		assert_eq!(first.data(), Some("cached".to_string()));
+		drop(first);
+		drop(scope);
+
+		// Act
+		let cached = ReactiveScope::run(|| use_query(key));
+
+		// Assert
+		assert_eq!(cached.data(), Some("cached".to_string()));
+	}
+
+	#[rstest]
+	#[serial(query_cache)]
+	fn refetch_runs_fetcher_again() {
+		ReactiveScope::run(|| {
+			// Arrange
+			clear_query_cache_for_test();
+			let calls = Rc::new(Cell::new(0));
+			let query = use_query(QueryKey::new("manual-refetch", {
+				let calls = Rc::clone(&calls);
+				move || {
+					let value = calls.get() + 1;
+					calls.set(value);
+					async move { Ok::<_, String>(value) }
+				}
+			}));
+
+			// Act
+			query.refetch();
+
+			// Assert
+			assert_eq!(calls.get(), 2);
+			assert_eq!(query.data(), Some(2));
+		});
+	}
+
+	#[rstest]
+	#[serial(query_cache)]
+	fn failed_query_respects_stale_time_before_retrying() {
+		ReactiveScope::run(|| {
+			// Arrange
+			clear_query_cache_for_test();
+			let calls = Rc::new(Cell::new(0));
+			let key = QueryKey::new("failed-query", {
+				let calls = Rc::clone(&calls);
+				move || {
+					calls.set(calls.get() + 1);
+					async { Err::<String, _>("not found".to_string()) }
+				}
+			})
+			.with_stale_time(Duration::from_secs(30));
+
+			// Act
+			let first = use_query(key.clone());
+			let second = use_query(key);
+
+			// Assert
+			assert_eq!(calls.get(), 1);
+			assert_eq!(first.error(), Some("not found".to_string()));
+			assert_eq!(second.error(), Some("not found".to_string()));
+		});
+	}
+
+	#[rstest]
+	#[serial(query_cache)]
+	fn successful_query_is_not_pending_during_background_fetch() {
+		ReactiveScope::run(|| {
+			// Arrange
+			clear_query_cache_for_test();
+			let entry = Rc::new(QueryEntry::new(QueryKey::new(
+				"background-refetch",
+				|| async { Ok::<_, String>("fresh".to_string()) },
+			)));
+			entry
+				.state
+				.set(ResourceState::Success("cached".to_string()));
+			entry.is_fetching.set(true);
+			let query = QueryHandle {
+				entry,
+				guards: Rc::new(RefCell::new(Vec::new())),
+			};
+
+			// Act
+			let data = query.data();
+			let is_fetching = query.is_fetching();
+			let is_pending = query.is_pending();
+
+			// Assert
+			assert_eq!(data, Some("cached".to_string()));
+			assert!(is_fetching);
+			assert!(!is_pending);
+		});
+	}
+
+	#[rstest]
+	#[serial(query_cache)]
+	fn mutation_success_invalidates_registered_query() {
+		ReactiveScope::run(|| {
+			// Arrange
+			clear_query_cache_for_test();
+			let calls = Rc::new(Cell::new(0));
+			let key = QueryKey::new("invalidated", {
+				let calls = Rc::clone(&calls);
+				move || {
+					let value = calls.get() + 1;
+					calls.set(value);
+					async move { Ok::<_, String>(value) }
+				}
+			});
+			let query = use_query(key.clone());
+			let mutation = use_mutation(|_: ()| async { Ok::<_, String>("done".to_string()) })
+				.invalidates(key);
+
+			// Act
+			mutation.force_success_for_test("done".to_string());
+
+			// Assert
+			assert_eq!(calls.get(), 2);
+			assert_eq!(query.data(), Some(2));
+		});
+	}
+
+	#[rstest]
+	#[serial(query_cache)]
+	fn invalidation_during_in_flight_fetch_runs_after_completion() {
+		ReactiveScope::run(|| {
+			// Arrange
+			clear_query_cache_for_test();
+			let calls = Rc::new(Cell::new(0));
+
+			// Act
+			let query = use_query(QueryKey::new("queued-invalidation", {
+				let calls = Rc::clone(&calls);
+				move || {
+					let calls = Rc::clone(&calls);
+					async move {
+						let value = calls.get() + 1;
+						calls.set(value);
+						if value == 1 {
+							invalidate_query_id("queued-invalidation");
+						}
+						Ok::<_, String>(value)
+					}
+				}
+			}));
+
+			// Assert
+			assert_eq!(calls.get(), 2);
+			assert_eq!(query.data(), Some(2));
+		});
+	}
+
+	#[test]
+	#[serial(query_cache)]
+	fn manual_query_call_order_key_reserves_client_resource_counter() {
+		ReactiveScope::run(|| {
+			// Arrange
+			clear_query_cache_for_test();
+			super::super::resource::set_client_resource_counter(0);
+
+			// Act
+			let _entry = query_entry(QueryKey::new("rh-res-0", || async {
+				Ok::<_, String>("query".to_string())
+			}));
+
+			// Assert
+			assert_eq!(super::super::resource::current_client_resource_counter(), 1);
+			super::super::resource::set_client_resource_counter(0);
+		});
+	}
+
+	#[test]
+	#[serial(query_cache)]
+	fn hydrated_query_error_is_fresh_on_first_mount() {
+		ReactiveScope::run(|| {
+			// Arrange
+			let (hydrated_state, last_fetched_ms) =
+				initial_query_state(Some(ResourceState::Error("not found".to_string())));
+			let entry = QueryEntry::new(QueryKey::new("hydrated-query-error", || async {
+				Err::<String, _>("not found".to_string())
+			}));
+			entry.state.set(hydrated_state);
+			entry.last_fetched_ms.set(last_fetched_ms);
+
+			// Assert
+			assert!(
+				!entry.should_fetch_on_mount(),
+				"a freshly hydrated error must remain visible for the initial mount"
+			);
+		});
+	}
+
+	#[tokio::test]
+	#[serial(query_cache)]
+	async fn ssr_replayed_query_error_is_fresh_for_stale_time() {
+		// Arrange
+		let context = Rc::new(RefCell::new(
+			crate::ssr::resource_context::SsrResourceContext::new(Duration::from_secs(1)),
+		));
+
+		let discovery_query =
+			crate::ssr::resource_context::scope_context(Rc::clone(&context), async {
+				ReactiveScope::run(|| {
+					let query =
+						try_create_ssr_query(QueryKey::new("ssr-replayed-query-error", || async {
+							Err::<String, _>("not found".to_string())
+						}))
+						.expect("active SSR context should create the query");
+					let _ = query.get();
+					query
+				})
+			})
+			.await;
+		assert!(crate::ssr::resource_context::resolve_external_resources(&context).await);
+
+		// Act
+		let replayed_query =
+			crate::ssr::resource_context::scope_context(Rc::clone(&context), async {
+				ReactiveScope::run(|| {
+					let query =
+						try_create_ssr_query(QueryKey::new("ssr-replayed-query-error", || async {
+							Err::<String, _>("must not refetch during replay".to_string())
+						}))
+						.expect("active SSR context should replay the query");
+					let query = query.stale_time(Duration::from_secs(30));
+
+					// Assert
+					assert_eq!(query.get(), ResourceState::Error("not found".to_string()));
+					assert!(
+						!query.entry.is_stale(),
+						"a replayed error must remain fresh when stale_time is applied"
+					);
+					query
+				})
+			})
+			.await;
+		drop(replayed_query);
+		drop(discovery_query);
+	}
+
+	#[rstest]
+	#[serial(query_cache)]
+	fn server_fn_key_hashes_arguments_without_exposing_them() {
+		// Arrange
+		clear_query_cache_for_test();
+
+		struct Marker;
+
+		impl crate::server_fn::ServerFnMetadata for Marker {
+			const PATH: &'static str = "/api/server_fn/list_jobs";
+			const NAME: &'static str = "list_jobs";
+			const CODEC: &'static str = "json";
+			const IS_JSON_CODEC: bool = true;
+		}
+
+		// Act
+		let key: QueryKey<Vec<i64>, crate::server_fn::ServerFnError> =
+			QueryKey::from_server_fn::<Marker, _, _, _>((42_i64,), || async { Ok(vec![42]) });
+
+		// Assert
+		assert_eq!(
+			key.id(),
+			"server_fn:/api/server_fn/list_jobs:json:sha256:b86b1ea11b28136fe5224b9d1e3017b7efb68d4fae0b90c4940e0c0f89b3907a"
+		);
+		assert!(!key.id().contains("[42]"));
+	}
+
+	#[rstest]
+	#[serial(query_cache)]
+	fn server_fn_key_preserves_large_integer_arguments() {
+		// Arrange
+		clear_query_cache_for_test();
+
+		struct Marker;
+
+		impl crate::server_fn::ServerFnMetadata for Marker {
+			const PATH: &'static str = "/api/server_fn/load_job";
+			const NAME: &'static str = "load_job";
+			const CODEC: &'static str = "json";
+			const IS_JSON_CODEC: bool = true;
+		}
+
+		// Act
+		let key: QueryKey<(), crate::server_fn::ServerFnError> =
+			QueryKey::from_server_fn::<Marker, _, _, _>((u128::MAX,), || async { Ok(()) });
+
+		// Assert
+		assert_eq!(
+			key.id(),
+			"server_fn:/api/server_fn/load_job:json:sha256:d80bcc323657a82faa939889d29892c9b53c3bb4f98ff3738140a27a3ac7b9df"
+		);
+		assert!(!key.id().contains(&u128::MAX.to_string()));
+	}
+
+	#[rstest]
+	#[serial(query_cache)]
+	fn server_fn_key_canonicalizes_object_arguments() {
+		// Arrange
+		clear_query_cache_for_test();
+
+		struct Marker;
+
+		impl crate::server_fn::ServerFnMetadata for Marker {
+			const PATH: &'static str = "/api/server_fn/filter_jobs";
+			const NAME: &'static str = "filter_jobs";
+			const CODEC: &'static str = "json";
+			const IS_JSON_CODEC: bool = true;
+		}
+
+		// Act
+		let first: QueryKey<(), crate::server_fn::ServerFnError> =
+			QueryKey::from_server_fn::<Marker, _, _, _>(
+				(OrderedMapArgs(&[("status", 1), ("owner", 2)]),),
+				|| async { Ok(()) },
+			);
+		let second: QueryKey<(), crate::server_fn::ServerFnError> =
+			QueryKey::from_server_fn::<Marker, _, _, _>(
+				(OrderedMapArgs(&[("owner", 2), ("status", 1)]),),
+				|| async { Ok(()) },
+			);
+
+		// Assert
+		assert_eq!(first.id(), second.id());
+		assert_eq!(
+			first.id(),
+			"server_fn:/api/server_fn/filter_jobs:json:sha256:b2b2c11c6c2d2aacfabe8dba6102508d46a7690b66d0662adc332e4802f078d2"
+		);
+	}
+
+	#[rstest]
+	#[serial(query_cache)]
+	fn server_fn_key_canonicalizes_large_integer_object_arguments() {
+		// Arrange
+		clear_query_cache_for_test();
+
+		struct Marker;
+
+		impl crate::server_fn::ServerFnMetadata for Marker {
+			const PATH: &'static str = "/api/server_fn/filter_large_jobs";
+			const NAME: &'static str = "filter_large_jobs";
+			const CODEC: &'static str = "json";
+			const IS_JSON_CODEC: bool = true;
+		}
+
+		// Act
+		let first: QueryKey<(), crate::server_fn::ServerFnError> =
+			QueryKey::from_server_fn::<Marker, _, _, _>(
+				(OrderedLargeMapArgs(&[("status", u128::MAX), ("owner", 2)]),),
+				|| async { Ok(()) },
+			);
+		let second: QueryKey<(), crate::server_fn::ServerFnError> =
+			QueryKey::from_server_fn::<Marker, _, _, _>(
+				(OrderedLargeMapArgs(&[("owner", 2), ("status", u128::MAX)]),),
+				|| async { Ok(()) },
+			);
+
+		// Assert
+		assert_eq!(first.id(), second.id());
+	}
+
+	#[rstest]
+	#[serial(query_cache)]
+	fn server_fn_key_does_not_expose_sensitive_arguments() {
+		// Arrange
+		clear_query_cache_for_test();
+
+		struct Marker;
+
+		impl crate::server_fn::ServerFnMetadata for Marker {
+			const PATH: &'static str = "/api/server_fn/load_user";
+			const NAME: &'static str = "load_user";
+			const CODEC: &'static str = "json";
+			const IS_JSON_CODEC: bool = true;
+		}
+
+		let email = "sensitive@example.com";
+
+		// Act
+		let key: QueryKey<(), crate::server_fn::ServerFnError> =
+			QueryKey::from_server_fn::<Marker, _, _, _>((email,), || async { Ok(()) });
+
+		// Assert
+		assert_eq!(
+			key.id(),
+			"server_fn:/api/server_fn/load_user:json:sha256:5cb828e12cdd77b9af33cfac3c965b44acc673692df8ffb22bc6794506ea59bc"
+		);
+		assert!(!key.id().contains(email));
+	}
+}

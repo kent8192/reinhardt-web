@@ -1,15 +1,22 @@
 #![cfg(not(target_arch = "wasm32"))]
 
 use reinhardt_pages::component::{Component, IntoPage, Page, PageElement};
-use reinhardt_pages::reactive::{ResourceState, use_id, use_resource, use_resource_with_key};
+use reinhardt_pages::deps;
+use reinhardt_pages::reactive::{
+	QueryKey, ResourceState, Signal, use_id, use_query, use_resource, use_resource_with_key,
+};
 use reinhardt_pages::ssr::{SsrOptions, SsrRenderer};
+use rstest::rstest;
 use std::cell::Cell;
 use std::rc::Rc;
 use std::time::Duration;
 
 fn resource_view() -> Page {
 	Page::reactive(|| {
-		let resource = use_resource(|| async { Ok::<_, String>("server-value".to_string()) }, ());
+		let resource = use_resource(
+			|| async { Ok::<_, String>("server-value".to_string()) },
+			deps![],
+		);
 
 		match resource.get() {
 			ResourceState::Success(value) => PageElement::new("div").child(value).into_page(),
@@ -25,7 +32,7 @@ impl Component for ResourceComponent {
 	fn render(&self) -> Page {
 		let resource = use_resource(
 			|| async { Ok::<_, String>("component-server-value".to_string()) },
-			(),
+			deps![],
 		);
 
 		match resource.get() {
@@ -53,6 +60,31 @@ async fn ssr_resolved_resource_serializes_state() {
 }
 
 #[tokio::test]
+async fn ssr_resource_fetcher_can_allocate_reactive_state_after_render() {
+	let view = Page::reactive(|| {
+		let resource = use_resource(
+			|| async {
+				let scoped_signal = Signal::new(1_i32);
+				Ok::<_, String>(scoped_signal.get().to_string())
+			},
+			deps![],
+		);
+
+		match resource.get() {
+			ResourceState::Success(value) => PageElement::new("div").child(value).into_page(),
+			ResourceState::Loading => PageElement::new("div").child("loading").into_page(),
+			ResourceState::Error(error) => PageElement::new("div").child(error).into_page(),
+		}
+	});
+
+	let mut renderer = SsrRenderer::new();
+	let html = renderer.render_page_with_view_head_to_string(view).await;
+
+	assert!(html.contains(">1<"));
+	assert!(!html.contains(">loading<"));
+}
+
+#[tokio::test]
 async fn ssr_replays_component_render_for_top_level_resource() {
 	let component = ResourceComponent;
 	let mut renderer = SsrRenderer::new();
@@ -65,11 +97,12 @@ async fn ssr_replays_component_render_for_top_level_resource() {
 #[tokio::test]
 async fn buffered_ssr_resolves_resources_discovered_during_replay() {
 	let view = Page::reactive(|| {
-		let outer = use_resource(|| async { Ok::<_, String>("outer".to_string()) }, ());
+		let outer = use_resource(|| async { Ok::<_, String>("outer".to_string()) }, deps![]);
 
 		match outer.get() {
 			ResourceState::Success(_) => Page::reactive(|| {
-				let inner = use_resource(|| async { Ok::<_, String>("inner".to_string()) }, ());
+				let inner =
+					use_resource(|| async { Ok::<_, String>("inner".to_string()) }, deps![]);
 
 				match inner.get() {
 					ResourceState::Success(value) => {
@@ -99,7 +132,7 @@ async fn buffered_ssr_resolves_resources_discovered_during_replay() {
 async fn buffered_ssr_resets_use_id_between_discovery_and_replay() {
 	let view = Page::reactive(|| {
 		let input_id = use_id();
-		let resource = use_resource(|| async { Ok::<_, String>("ready".to_string()) }, ());
+		let resource = use_resource(|| async { Ok::<_, String>("ready".to_string()) }, deps![]);
 
 		match resource.get() {
 			ResourceState::Success(value) => Page::fragment([
@@ -129,7 +162,7 @@ async fn ssr_resource_error_serializes_state() {
 	let view = Page::reactive(|| {
 		let resource = use_resource(
 			|| async { Err::<String, _>("server-error".to_string()) },
-			(),
+			deps![],
 		);
 
 		match resource.get() {
@@ -154,7 +187,7 @@ async fn ssr_resource_timeout_leaves_loading_unserialized() {
 				tokio::time::sleep(Duration::from_secs(60)).await;
 				Ok::<_, String>("delayed".to_string())
 			},
-			(),
+			deps![],
 		);
 
 		match resource.get() {
@@ -179,7 +212,7 @@ async fn explicit_resource_key_is_serialized() {
 		let resource = use_resource_with_key(
 			"polls.detail.42",
 			|| async { Ok::<_, String>("question".to_string()) },
-			(),
+			deps![],
 		);
 
 		match resource.get() {
@@ -202,9 +235,12 @@ async fn explicit_internal_resource_key_advances_implicit_allocator() {
 		let explicit = use_resource_with_key(
 			"rh-res-0",
 			|| async { Ok::<_, String>("explicit".to_string()) },
-			(),
+			deps![],
 		);
-		let implicit = use_resource(|| async { Ok::<_, String>("implicit".to_string()) }, ());
+		let implicit = use_resource(
+			|| async { Ok::<_, String>("implicit".to_string()) },
+			deps![],
+		);
 
 		Page::fragment([
 			match explicit.get() {
@@ -247,7 +283,7 @@ async fn pending_ssr_resource_reuse_does_not_create_duplicate_fetcher() {
 				first_calls.set(first_calls.get() + 1);
 				async { Ok::<_, String>("shared".to_string()) }
 			},
-			(),
+			deps![],
 		);
 
 		let second_calls = Rc::clone(&second_calls);
@@ -257,7 +293,7 @@ async fn pending_ssr_resource_reuse_does_not_create_duplicate_fetcher() {
 				second_calls.set(second_calls.get() + 1);
 				async { Ok::<_, String>("shared".to_string()) }
 			},
-			(),
+			deps![],
 		);
 
 		Page::fragment([
@@ -284,6 +320,58 @@ async fn pending_ssr_resource_reuse_does_not_create_duplicate_fetcher() {
 	assert!(html.contains("first-shared"));
 	assert!(html.contains("second-shared"));
 	assert_eq!(fetcher_calls.get(), 1);
+	assert_eq!(renderer.state().resource_count(), 1);
+}
+
+#[rstest]
+#[tokio::test]
+async fn pending_ssr_query_reuse_does_not_create_duplicate_fetcher() {
+	let fetcher_calls = Rc::new(Cell::new(0));
+	let first_calls = Rc::clone(&fetcher_calls);
+	let second_calls = Rc::clone(&fetcher_calls);
+	let view = Page::reactive(move || {
+		let first_calls = Rc::clone(&first_calls);
+		let first = use_query(QueryKey::new("shared-query", move || {
+			first_calls.set(first_calls.get() + 1);
+			async { Ok::<_, String>("shared".to_string()) }
+		}));
+
+		let second_calls = Rc::clone(&second_calls);
+		let second = use_query(QueryKey::new("shared-query", move || {
+			second_calls.set(second_calls.get() + 1);
+			async { Ok::<_, String>("shared".to_string()) }
+		}));
+
+		Page::fragment([
+			match first.get() {
+				ResourceState::Success(value) => PageElement::new("p")
+					.child(format!("first-{value}"))
+					.into_page(),
+				ResourceState::Loading => PageElement::new("p").child("first-loading").into_page(),
+				ResourceState::Error(error) => PageElement::new("p").child(error).into_page(),
+			},
+			match second.get() {
+				ResourceState::Success(value) => PageElement::new("p")
+					.child(format!("second-{value}"))
+					.into_page(),
+				ResourceState::Loading => PageElement::new("p").child("second-loading").into_page(),
+				ResourceState::Error(error) => PageElement::new("p").child(error).into_page(),
+			},
+		])
+	});
+
+	let mut renderer = SsrRenderer::new();
+	let html = renderer.render_page_with_view_head_to_string(view).await;
+
+	assert!(html.contains("first-shared"));
+	assert!(html.contains("second-shared"));
+	assert_eq!(fetcher_calls.get(), 1);
+	assert!(
+		renderer
+			.state()
+			.get_resource_state("shared-query")
+			.is_some()
+	);
 	assert_eq!(renderer.state().resource_count(), 1);
 }
 

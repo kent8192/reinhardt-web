@@ -111,21 +111,27 @@ impl AuthState {
 	///
 	/// # Returns
 	///
-	/// Returns `Some(AuthState)` if an `AuthState` object is found or if both
-	/// user_id and `IsAuthenticated` individual entries exist, `None` otherwise.
+	/// Returns `Some(AuthState)` if an `AuthState` object is found or if an
+	/// explicit `IsAuthenticated(true)` marker and a string or UUID user ID exist
+	/// in the individual entries. Plain identity values are not authentication state.
 	pub fn from_extensions(extensions: &Extensions) -> Option<Self> {
 		// Primary: try to get AuthState object directly
 		if let Some(state) = extensions.get::<AuthState>() {
 			return Some(state);
 		}
 		// Fallback: reconstruct from individual extension entries (backward compatibility)
-		let user_id = extensions.get::<String>()?;
-		let is_authenticated = extensions
-			.get::<IsAuthenticated>()
-			.map(|v| v.0)
-			.unwrap_or(false);
+		let is_authenticated = extensions.get::<IsAuthenticated>().map(|v| v.0)?;
+		if !is_authenticated {
+			return None;
+		}
+		let user_id = extensions
+			.get::<String>()
+			.or_else(|| extensions.get::<uuid::Uuid>().map(|id| id.to_string()))?;
 		let is_admin = extensions.get::<IsAdmin>().map(|v| v.0).unwrap_or(false);
-		let is_active = extensions.get::<IsActive>().map(|v| v.0).unwrap_or(false);
+		let is_active = extensions
+			.get::<IsActive>()
+			.map(|v| v.0)
+			.unwrap_or(is_authenticated);
 		Some(Self {
 			user_id,
 			is_authenticated,
@@ -206,7 +212,7 @@ mod tests {
 	}
 
 	#[rstest]
-	fn test_from_extensions_with_individual_values() {
+	fn test_from_extensions_with_legacy_identity_defaults_to_authenticated_active() {
 		// Arrange
 		let extensions = Extensions::new();
 		extensions.insert("user-789".to_string());
@@ -221,7 +227,43 @@ mod tests {
 		assert_eq!(retrieved.user_id(), "user-789");
 		assert!(retrieved.is_authenticated());
 		assert!(!retrieved.is_admin());
+		assert!(retrieved.is_active());
+	}
+
+	#[rstest]
+	fn test_from_extensions_preserves_explicit_inactive_status() {
+		// Arrange
+		let extensions = Extensions::new();
+		extensions.insert("user-789".to_string());
+		extensions.insert(IsAuthenticated(true));
+		extensions.insert(IsActive(false));
+
+		// Act
+		let result = AuthState::from_extensions(&extensions);
+
+		// Assert
+		let retrieved = result.expect("legacy identity should produce an auth state");
+		assert!(retrieved.is_authenticated());
 		assert!(!retrieved.is_active());
+	}
+
+	#[rstest]
+	fn test_from_extensions_with_uuid_user_id() {
+		// Arrange
+		let extensions = Extensions::new();
+		let user_id = uuid::Uuid::now_v7();
+		extensions.insert(user_id);
+		extensions.insert(IsAuthenticated(true));
+		extensions.insert(IsActive(true));
+
+		// Act
+		let result = AuthState::from_extensions(&extensions);
+
+		// Assert
+		let retrieved = result.expect("UUID identity should produce an auth state");
+		assert_eq!(retrieved.user_id(), user_id.to_string());
+		assert!(retrieved.is_authenticated());
+		assert!(retrieved.is_active());
 	}
 
 	#[rstest]
@@ -234,6 +276,14 @@ mod tests {
 
 		// Assert
 		assert_eq!(result, None);
+	}
+
+	#[rstest]
+	fn test_from_extensions_rejects_bare_string() {
+		let extensions = Extensions::new();
+		extensions.insert("rate-limit-key".to_string());
+
+		assert_eq!(AuthState::from_extensions(&extensions), None);
 	}
 
 	#[rstest]

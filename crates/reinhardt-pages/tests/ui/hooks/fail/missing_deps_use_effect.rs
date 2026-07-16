@@ -1,4 +1,4 @@
-//! Compile-fail: `use_effect` requires a deps tuple as the second
+//! Compile-fail: `use_effect` requires a dependency list as the second
 //! positional argument (spec §4.2). Omitting it must be a hard compile
 //! error so the missing-deps mistake is caught at build time, not at
 //! runtime.
