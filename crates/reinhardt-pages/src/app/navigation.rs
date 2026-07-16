@@ -1,0 +1,272 @@
+//! Pages-owned navigation preparation and commit coordination.
+
+use crate::cancellation::{AbortableTaskGuard, CancellationSource};
+use crate::reactive::Signal;
+use crate::reactive::hooks::router::NavigateError;
+use crate::router::NavigationType;
+use crate::router::loader::{LoaderStore, RouteLoaderError, route_context};
+use crate::router::loader_registry::{LoaderConsumer, LoaderRegistry, execute_loader};
+use futures_util::future::join_all;
+use reinhardt_urls::routers::client_router::{ClientRouteTreeMatch, ClientRouter};
+use std::cell::{Cell, RefCell};
+use std::rc::Rc;
+
+// Pop and initial intents are supplied by the browser launcher; native unit
+// tests exercise the synchronous push path only.
+#[allow(dead_code)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum NavigationIntent {
+	Initial,
+	Push,
+	Replace,
+	Pop { target_index: i64 },
+}
+
+impl NavigationIntent {
+	fn navigation_type(self) -> NavigationType {
+		match self {
+			Self::Initial => NavigationType::Initial,
+			Self::Push => NavigationType::Push,
+			Self::Replace => NavigationType::Replace,
+			Self::Pop { .. } => NavigationType::Pop,
+		}
+	}
+
+	fn entry_index(self) -> i64 {
+		match self {
+			Self::Pop { target_index } => target_index,
+			Self::Initial | Self::Push | Self::Replace => 0,
+		}
+	}
+}
+
+// Fields mirror the navigation attempt contract and are retained until the
+// current generation commits or is cancelled. Some fields are diagnostic
+// ownership anchors rather than read by the commit path itself.
+#[allow(dead_code)]
+struct NavigationAttempt {
+	generation: u64,
+	intent: NavigationIntent,
+	path: String,
+	matched: ClientRouteTreeMatch,
+	cancellation: CancellationSource,
+	_task: AbortableTaskGuard,
+}
+
+/// Coordinates asynchronous route-loader preparation with synchronous URL
+/// matching and commit operations.
+pub(crate) struct NavigationCoordinator {
+	router: Rc<ClientRouter>,
+	registry: LoaderRegistry,
+	next_generation: Cell<u64>,
+	pending: Signal<bool>,
+	error: Signal<Option<RouteLoaderError>>,
+	active_attempt: RefCell<Option<NavigationAttempt>>,
+	mounted_store: RefCell<Option<LoaderStore>>,
+	// Prefetch work is retained for the coordinator lifetime and consumed by
+	// the link-interceptor path when it is installed in a browser.
+	#[allow(dead_code)]
+	prefetch_tasks: RefCell<Vec<(CancellationSource, AbortableTaskGuard)>>,
+}
+
+// Accessors are used by the launcher, transition hooks, and prefetch path on
+// WASM; native builds keep them available for deterministic integration tests.
+#[allow(dead_code)]
+impl NavigationCoordinator {
+	pub(crate) fn new(router: Rc<ClientRouter>) -> Result<Rc<Self>, RouteLoaderError> {
+		let registry = LoaderRegistry::global()
+			.map_err(|error| RouteLoaderError::with_status(error.to_string(), 500))?;
+		Ok(Rc::new(Self {
+			router,
+			registry,
+			next_generation: Cell::new(0),
+			pending: Signal::new(false),
+			error: Signal::new(None),
+			active_attempt: RefCell::new(None),
+			mounted_store: RefCell::new(None),
+			prefetch_tasks: RefCell::new(Vec::new()),
+		}))
+	}
+
+	pub(crate) fn pending(&self) -> Signal<bool> {
+		self.pending
+	}
+
+	pub(crate) fn error(&self) -> Signal<Option<RouteLoaderError>> {
+		self.error
+	}
+
+	pub(crate) fn mounted_store(&self) -> Option<LoaderStore> {
+		self.mounted_store.borrow().clone()
+	}
+
+	pub(crate) fn navigate(
+		self: &Rc<Self>,
+		path: String,
+		intent: NavigationIntent,
+	) -> Result<(), NavigateError> {
+		let Some(matched) = self.router.match_tree(&path) else {
+			return Err(NavigateError::RouterRejected(format!(
+				"no route matches `{path}`"
+			)));
+		};
+
+		self.cancel_active_attempt();
+		let generation = self.next_generation.get().wrapping_add(1);
+		self.next_generation.set(generation);
+		self.error.set(None);
+
+		if matched.loader_ids().is_empty() {
+			self.pending.set(false);
+			self.commit_success(generation, path, intent, matched, LoaderStore::new());
+			return Ok(());
+		}
+
+		self.pending.set(true);
+		let cancellation = CancellationSource::new();
+		let cancellation_handle = cancellation.handle();
+		let ids = matched.loader_ids().to_vec();
+		let context = route_context(&matched);
+		let coordinator = Rc::clone(self);
+		let path_for_task = path.clone();
+		let matched_for_task = matched.clone();
+		let task_cancellation = cancellation_handle.clone();
+		let task = crate::cancellation::spawn_abortable_task(async move {
+			let futures = ids.into_iter().map(|id| {
+				execute_loader(
+					&coordinator.registry,
+					id,
+					&context,
+					task_cancellation.clone(),
+					LoaderConsumer::Navigation(generation),
+				)
+			});
+			let results = join_all(futures).await;
+			if task_cancellation.is_cancelled() {
+				return;
+			}
+			let store = LoaderStore::new();
+			for result in results {
+				match result {
+					Ok(prepared) => store.insert_prepared(prepared),
+					Err(error) => {
+						coordinator.finish_error(generation, error);
+						return;
+					}
+				}
+			}
+			coordinator.commit_success(generation, path_for_task, intent, matched_for_task, store);
+		});
+
+		*self.active_attempt.borrow_mut() = Some(NavigationAttempt {
+			generation,
+			intent,
+			path,
+			matched,
+			cancellation,
+			_task: task,
+		});
+		Ok(())
+	}
+
+	pub(crate) fn prefetch(self: &Rc<Self>, path: String) -> Result<(), NavigateError> {
+		let Some(matched) = self.router.match_tree(&path) else {
+			return Ok(());
+		};
+		let ids = matched.loader_ids().to_vec();
+		if ids.is_empty() {
+			return Ok(());
+		}
+		let context = route_context(&matched);
+		let cancellation = CancellationSource::new();
+		let handle = cancellation.handle();
+		let coordinator = Rc::clone(self);
+		let task = crate::cancellation::spawn_abortable_task(async move {
+			let futures = ids.into_iter().map(|id| {
+				execute_loader(
+					&coordinator.registry,
+					id,
+					&context,
+					handle.clone(),
+					LoaderConsumer::Prefetch,
+				)
+			});
+			let _ = join_all(futures).await;
+		});
+		self.prefetch_tasks.borrow_mut().push((cancellation, task));
+		Ok(())
+	}
+
+	fn cancel_active_attempt(&self) {
+		if let Some(attempt) = self.active_attempt.borrow_mut().take() {
+			attempt.cancellation.cancel();
+			// Dropping the attempt's task guard aborts any obsolete future.
+		}
+	}
+
+	fn is_current_generation(&self, generation: u64) -> bool {
+		self.next_generation.get() == generation
+	}
+
+	fn finish_error(&self, generation: u64, error: RouteLoaderError) {
+		if !self.is_current_generation(generation) {
+			return;
+		}
+		self.pending.set(false);
+		self.error.set(Some(error));
+		self.active_attempt.borrow_mut().take();
+	}
+
+	fn commit_success(
+		&self,
+		generation: u64,
+		path: String,
+		intent: NavigationIntent,
+		matched: ClientRouteTreeMatch,
+		store: LoaderStore,
+	) {
+		if !self.is_current_generation(generation) {
+			return;
+		}
+		let result = crate::router::loader::with_loader_store(&store, || {
+			self.router.commit_match(
+				&path,
+				&matched,
+				intent.navigation_type(),
+				intent.entry_index(),
+			)
+		});
+		if let Err(error) = result {
+			self.finish_error(
+				generation,
+				RouteLoaderError::with_status(error.to_string(), 500),
+			);
+			return;
+		}
+		self.mounted_store.borrow_mut().replace(store);
+		self.pending.set(false);
+		self.error.set(None);
+		self.active_attempt.borrow_mut().take();
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use reinhardt_core::reactive::ReactiveScope;
+
+	#[test]
+	fn no_loader_navigation_commits_synchronously() {
+		ReactiveScope::run(|| {
+			let router = Rc::new(
+				ClientRouter::new().route("home", "/", || reinhardt_core::page::Page::empty()),
+			);
+			let coordinator = NavigationCoordinator::new(router.clone()).expect("registry builds");
+			coordinator
+				.navigate("/".to_string(), NavigationIntent::Push)
+				.expect("known route commits");
+			assert_eq!(router.current_path().get(), "/");
+			assert!(!coordinator.pending().get());
+		});
+	}
+}

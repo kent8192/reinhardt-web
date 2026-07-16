@@ -2,11 +2,13 @@
 
 mod launcher;
 mod link_interceptor;
+mod navigation;
 mod spa_router;
+
+pub(crate) use navigation::NavigationIntent;
 
 use spa_router::SpaRouter;
 use std::cell::RefCell;
-#[cfg(wasm)]
 use std::rc::Rc;
 
 #[cfg(wasm)]
@@ -20,6 +22,8 @@ thread_local! {
 	/// `Box<dyn SpaRouter>` backed by a [`reinhardt_urls::routers::ClientRouter`].
 	/// (Refs #4234)
 	static APP_ROUTER: RefCell<Option<Box<dyn SpaRouter>>> = const { RefCell::new(None) };
+	static APP_NAVIGATION_COORDINATOR: RefCell<Option<Rc<navigation::NavigationCoordinator>>> =
+		const { RefCell::new(None) };
 	#[cfg(wasm)]
 	static APP_REACTIVE_SCOPE: RefCell<Option<Rc<ReactiveScope>>> = const { RefCell::new(None) };
 }
@@ -84,6 +88,24 @@ fn store_spa_router(router: Box<dyn SpaRouter>, scope: Rc<ReactiveScope>) {
 	});
 }
 
+#[cfg_attr(not(wasm), allow(dead_code))]
+fn store_navigation_coordinator(coordinator: Rc<navigation::NavigationCoordinator>) {
+	APP_NAVIGATION_COORDINATOR.with(|slot| {
+		*slot.borrow_mut() = Some(coordinator);
+	});
+}
+
+#[doc(hidden)]
+pub(crate) fn try_with_navigation_coordinator<F, R>(f: F) -> Option<R>
+where
+	F: FnOnce(&Rc<navigation::NavigationCoordinator>) -> R,
+{
+	APP_NAVIGATION_COORDINATOR.with(|slot| {
+		let borrow = slot.borrow();
+		borrow.as_ref().map(f)
+	})
+}
+
 /// Hidden API for installing a
 /// [`reinhardt_urls::routers::ClientRouter`] in the per-thread
 /// `APP_ROUTER` slot from integration tests on native targets.
@@ -92,8 +114,12 @@ fn store_spa_router(router: Box<dyn SpaRouter>, scope: Rc<ReactiveScope>) {
 /// `router_client` path. Refs #4610.
 #[doc(hidden)]
 pub fn __install_client_router_for_test(router: reinhardt_urls::routers::ClientRouter) {
+	let coordinator = navigation::NavigationCoordinator::new(Rc::new(router.clone())).ok();
 	APP_ROUTER.with(|slot| {
 		*slot.borrow_mut() = Some(Box::new(router));
+	});
+	APP_NAVIGATION_COORDINATOR.with(|slot| {
+		*slot.borrow_mut() = coordinator;
 	});
 }
 
@@ -102,6 +128,9 @@ pub fn __install_client_router_for_test(router: reinhardt_urls::routers::ClientR
 #[doc(hidden)]
 pub fn __clear_spa_router_for_test() {
 	APP_ROUTER.with(|slot| {
+		*slot.borrow_mut() = None;
+	});
+	APP_NAVIGATION_COORDINATOR.with(|slot| {
 		*slot.borrow_mut() = None;
 	});
 }

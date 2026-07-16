@@ -7,7 +7,7 @@ use std::collections::HashMap;
 #[cfg(wasm)]
 use super::link_interceptor::install_link_interceptor;
 #[cfg(wasm)]
-use super::{store_spa_router, with_spa_router};
+use super::{store_navigation_coordinator, store_spa_router, with_spa_router};
 #[cfg(wasm)]
 use crate::component::MountError;
 #[cfg(wasm)]
@@ -835,6 +835,15 @@ impl ClientLauncher {
 				}
 			};
 		store_spa_router(spa_router, std::rc::Rc::clone(&scope));
+		if let Some(router) =
+			with_spa_router(|router| router.as_any().downcast_ref::<ClientRouter>().cloned())
+		{
+			if let Ok(coordinator) =
+				super::navigation::NavigationCoordinator::new(std::rc::Rc::new(router))
+			{
+				store_navigation_coordinator(coordinator);
+			}
+		}
 
 		crate::nav_diag!(
 			"site=store_router router_id={} route_count={}",
