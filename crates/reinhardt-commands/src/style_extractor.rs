@@ -68,6 +68,7 @@ impl StyleFeatureSelection {
 			command.features(CargoOpt::AllFeatures);
 			return;
 		}
+		let selected_package_name = selected_package.name.to_string();
 		let features: Vec<String> = {
 			self.features
 				.iter()
@@ -75,7 +76,7 @@ impl StyleFeatureSelection {
 					if feature.contains('/') {
 						feature.clone()
 					} else {
-						format!("{}/{feature}", selected_package.name)
+						format!("{selected_package_name}/{feature}")
 					}
 				})
 				.collect()
@@ -438,7 +439,14 @@ impl StyleExtractor {
 				if !source_root.cfg.items_are_enabled(&file.attrs) {
 					continue;
 				}
-				let mut scanner = DefinitionScanner::new(&source_path, &source_root.cfg);
+				let relative = source_path
+					.strip_prefix(&source_root.package_root)
+					.unwrap_or(&source_path);
+				let mut scanner = DefinitionScanner::new(
+					&source_path,
+					relative.to_string_lossy().replace('\\', "/"),
+					&source_root.cfg,
+				);
 				scanner.visit_file(&file);
 				if let Some(error) = scanner.error {
 					return Err(error);
@@ -447,7 +455,7 @@ impl StyleExtractor {
 					let compile_context = StyleCompileContext {
 						package_name: &source_root.package_name,
 						package_version: &source_root.package_version,
-						style_type_name: &authored.style_type_name,
+						style_type_name: &authored.definition_path,
 					};
 					let compiled =
 						compile_style(authored.tokens, &compile_context).map_err(|error| {
@@ -1030,6 +1038,18 @@ impl CfgTarget {
 mod tests {
 	use super::*;
 	use std::fs;
+	use std::path::PathBuf;
+
+	fn write_test_package(root: &Path, source: &str) -> PathBuf {
+		fs::create_dir_all(root.join("src")).expect("create source directory");
+		fs::write(
+			root.join("Cargo.toml"),
+			"[package]\nname = \"style-test-app\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+		)
+		.expect("write package manifest");
+		fs::write(root.join("src/lib.rs"), source).expect("write package source");
+		root.join("Cargo.toml")
+	}
 
 	#[test]
 	fn wasm_release_cfgs_enable_not_debug_assertions_items() {
@@ -1165,6 +1185,76 @@ mod tests {
 		// Assert
 		assert!(bundle.definitions.is_empty());
 		assert!(bundle.css.is_empty());
+	}
+
+	#[test]
+	fn unannotated_style_macro_bodies_contribute_to_the_rust_fingerprint() {
+		// Arrange
+		let directory = tempfile::tempdir().expect("create temporary package");
+		let manifest = write_test_package(
+			directory.path(),
+			concat!(
+				"#[style_def]\nstatic STYLES: CardStyles = style! { .card { color: red; } };\n",
+				"static FOREIGN: ForeignStyles = style! { foreign_tokens };\n",
+			),
+		);
+		let context = StylePackageContext::resolve(&manifest, None).expect("select package");
+		let first = StyleExtractor::new(context.clone())
+			.extract()
+			.expect("extract initial styles");
+
+		// Act
+		fs::write(
+			directory.path().join("src/lib.rs"),
+			concat!(
+				"#[style_def]\nstatic STYLES: CardStyles = style! { .card { color: red; } };\n",
+				"static FOREIGN: ForeignStyles = style! { changed_foreign_tokens };\n",
+			),
+		)
+		.expect("change foreign style macro body");
+		let changed = StyleExtractor::new(context)
+			.extract()
+			.expect("extract changed styles");
+
+		// Assert
+		assert_ne!(
+			first.fingerprints.non_style_rust,
+			changed.fingerprints.non_style_rust
+		);
+		assert_eq!(first.fingerprints.css, changed.fingerprints.css);
+	}
+
+	#[test]
+	fn module_local_style_types_receive_distinct_scope_identities() {
+		// Arrange
+		let directory = tempfile::tempdir().expect("create temporary package");
+		let manifest = write_test_package(
+			directory.path(),
+			r#"
+mod card {
+    #[style_def]
+    static STYLES: Styles = style! { .card { color: red; } };
+}
+
+mod modal {
+    #[style_def]
+    static STYLES: Styles = style! { .modal { color: blue; } };
+}
+"#,
+		);
+
+		// Act
+		let context = StylePackageContext::resolve(&manifest, None).expect("select package");
+		let bundle = StyleExtractor::new(context)
+			.extract()
+			.expect("extract module-local component styles");
+
+		// Assert
+		assert_eq!(bundle.definitions.len(), 2);
+		assert_ne!(
+			bundle.definitions[0].compiled.scope.identity,
+			bundle.definitions[1].compiled.scope.identity
+		);
 	}
 
 	#[test]
@@ -1325,6 +1415,7 @@ mod tests {
 #[derive(Debug)]
 struct AuthoredDefinition {
 	style_type_name: String,
+	definition_path: String,
 	tokens: proc_macro2::TokenStream,
 	line: usize,
 	column: usize,
@@ -1332,19 +1423,31 @@ struct AuthoredDefinition {
 
 struct DefinitionScanner<'a> {
 	source_path: &'a Path,
+	source_relative_path: String,
 	cfg: &'a CfgEvaluator,
+	module_path: Vec<String>,
 	definitions: Vec<AuthoredDefinition>,
 	error: Option<String>,
 }
 
 impl<'a> DefinitionScanner<'a> {
-	fn new(source_path: &'a Path, cfg: &'a CfgEvaluator) -> Self {
+	fn new(source_path: &'a Path, source_relative_path: String, cfg: &'a CfgEvaluator) -> Self {
 		Self {
 			source_path,
+			source_relative_path,
 			cfg,
+			module_path: Vec::new(),
 			definitions: Vec::new(),
 			error: None,
 		}
+	}
+
+	fn definition_path(&self, static_name: &syn::Ident, style_type_name: &str) -> String {
+		let mut segments = vec![self.source_relative_path.clone()];
+		segments.extend(self.module_path.iter().cloned());
+		segments.push(static_name.to_string());
+		segments.push(style_type_name.to_string());
+		segments.join("::")
 	}
 
 	fn reject(&mut self, span: proc_macro2::Span, reason: &str) {
@@ -1399,7 +1502,9 @@ impl<'ast> Visit<'ast> for DefinitionScanner<'_> {
 			);
 			return;
 		}
+		self.module_path.push(item.ident.to_string());
 		syn::visit::visit_item_mod(self, item);
+		self.module_path.pop();
 	}
 
 	fn visit_item_static(&mut self, item: &'ast ItemStatic) {
@@ -1439,6 +1544,12 @@ impl<'ast> Visit<'ast> for DefinitionScanner<'_> {
 
 		let location = item.static_token.span.start();
 		self.definitions.push(AuthoredDefinition {
+			definition_path: self.definition_path(
+				&item.ident,
+				style_type
+					.as_deref()
+					.expect("validated one-segment style type"),
+			),
 			style_type_name: style_type.expect("validated one-segment style type"),
 			tokens: bare_style
 				.expect("validated bare style macro")
@@ -1469,12 +1580,20 @@ impl<'ast> Visit<'ast> for DefinitionScanner<'_> {
 struct StyleBodyMarker;
 
 impl VisitMut for StyleBodyMarker {
-	fn visit_expr_macro_mut(&mut self, expression: &mut syn::ExprMacro) {
-		if expression.mac.path.segments.len() == 1 && expression.mac.path.is_ident("style") {
+	fn visit_item_static_mut(&mut self, item: &mut ItemStatic) {
+		let style_attributes = item
+			.attrs
+			.iter()
+			.filter(|attribute| is_style_def_attribute(&attribute.meta))
+			.count();
+		if style_attributes == 1
+			&& let Expr::Macro(expression) = item.expr.as_mut()
+			&& expression.mac.path.segments.len() == 1
+			&& expression.mac.path.is_ident("style")
+		{
 			expression.mac.tokens = quote! { __reinhardt_style_body_marker };
-			return;
 		}
-		syn::visit_mut::visit_expr_macro_mut(self, expression);
+		syn::visit_mut::visit_item_static_mut(self, item);
 	}
 }
 

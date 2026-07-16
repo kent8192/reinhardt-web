@@ -1760,6 +1760,35 @@ fn configured_static_url(base_dir: &std::path::Path) -> Result<String, String> {
 	crate::StaticAssetSettings::from_project_dir(base_dir).map(|settings| settings.static_url)
 }
 
+#[cfg(feature = "server")]
+fn spa_excluded_prefixes(generated_style_url: &str) -> Vec<String> {
+	let configured_admin_prefix = format!("{}/admin/", generated_style_url.trim_end_matches('/'));
+	vec![
+		"/api/".to_string(),
+		"/admin/".to_string(),
+		"/static/admin/".to_string(),
+		configured_admin_prefix,
+	]
+}
+
+#[cfg(feature = "pages")]
+fn require_pages_wasm_target(
+	package_manifest_path: &std::path::Path,
+	package_name: &str,
+	has_component_styles: bool,
+) -> Result<(), crate::wasm_builder::WasmBuildError> {
+	if has_component_styles
+		&& !crate::wasm_builder::detect_cdylib_in_cargo_toml(package_manifest_path)
+	{
+		return Err(
+			crate::wasm_builder::WasmBuildError::PackageResolutionFailed(format!(
+				"selected package `{package_name}` has component styles but no Pages cdylib target"
+			)),
+		);
+	}
+	Ok(())
+}
+
 #[cfg(feature = "pages")]
 fn should_prepare_component_styles(
 	with_pages: bool,
@@ -2067,23 +2096,34 @@ impl BaseCommand for RunServerCommand {
 			std::sync::Arc<std::sync::Mutex<crate::ComponentStyleState>>,
 		> = None;
 		#[cfg(feature = "pages")]
-		let generated_style_root = if let Some(root) = inherited_style_root {
-			Some(root)
+		let (generated_style_root, component_styles_present) = if let Some(root) = inherited_style_root {
+			(Some(root), false)
 		} else if let Some(state) = &component_style_state {
-			Some(
-				state
-					.lock()
-					.map_err(|_| {
-						crate::CommandError::ExecutionError(
-							"component style state lock was poisoned".to_string(),
-						)
-					})?
-					.generated_root()
-					.to_path_buf(),
+			let state = state.lock().map_err(|_| {
+				crate::CommandError::ExecutionError(
+					"component style state lock was poisoned".to_string(),
+				)
+			})?;
+			(
+				Some(state.generated_root().to_path_buf()),
+				state.has_component_styles(),
 			)
 		} else {
-			None
+			(None, false)
 		};
+		if component_styles_present && let Some(state) = &component_style_state {
+			let state = state.lock().map_err(|_| {
+				crate::CommandError::ExecutionError(
+					"component style state lock was poisoned".to_string(),
+				)
+			})?;
+			require_pages_wasm_target(
+				&state.package_context().package_manifest_path,
+				&state.package_context().package_name,
+				true,
+			)
+			.map_err(|error| crate::CommandError::ExecutionError(error.to_string()))?;
+		}
 		#[cfg(not(feature = "pages"))]
 		#[cfg_attr(not(feature = "server"), allow(unused_variables))]
 		let generated_style_root: Option<PathBuf> = None;
@@ -2618,15 +2658,11 @@ impl RunServerCommand {
 			let mut static_config = StaticFilesConfig::new(resolved_static_dir.clone())
 				.url_prefix("/")
 				.spa_mode(!no_spa)
-				.template_static_config(TemplateStaticConfig::new(generated_style_url))
+				.template_static_config(TemplateStaticConfig::new(generated_style_url.clone()))
 				// Exclude framework-managed route prefixes from SPA fallback
 				// so that API endpoints and admin panel are handled by the
 				// application router instead of receiving index.html.
-				.excluded_prefixes(vec![
-					"/api/".to_string(),
-					"/admin/".to_string(),
-					"/static/admin/".to_string(),
-				]);
+				.excluded_prefixes(spa_excluded_prefixes(&generated_style_url));
 
 			// Issue #4383: In debug builds (dev runserver), disable the
 			// long-lived `public, immutable, max-age=31536000` Cache-Control
@@ -4555,6 +4591,29 @@ mod tests {
 			.expect("resolve the generated stylesheet URL prefix");
 
 		assert_eq!(static_url, "/assets/");
+	}
+
+	#[cfg(feature = "server")]
+	#[test]
+	fn spa_fallback_excludes_the_configured_admin_static_prefix() {
+		assert!(spa_excluded_prefixes("/assets/").contains(&"/assets/admin/".to_string()));
+	}
+
+	#[cfg(feature = "pages")]
+	#[test]
+	fn styled_packages_without_a_pages_target_are_rejected() {
+		let directory = tempfile::tempdir().expect("create package directory");
+		let manifest_path = directory.path().join("Cargo.toml");
+		std::fs::write(
+			&manifest_path,
+			"[package]\nname = \"server-only\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+		)
+		.expect("write package manifest");
+
+		let error = require_pages_wasm_target(&manifest_path, "server-only", true)
+			.expect_err("component styles require a Pages cdylib target");
+
+		assert!(error.to_string().contains("Pages cdylib target"));
 	}
 
 	#[cfg(feature = "pages")]
