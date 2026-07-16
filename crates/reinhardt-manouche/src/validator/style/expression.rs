@@ -2179,7 +2179,10 @@ mod tests {
 		// Arrange
 		let sources = [
 			".card { grid-template-columns: 1fr; }",
+			".card { grid-column: (span, card-start); }",
+			".card { grid-row: (span, 2); }",
 			".card { background-position: (left, 10px, top, 20%); }",
+			".card { font-style: (oblique, 90deg); }",
 			".card { touch-action: (pan-left, pan-up, pinch-zoom); }",
 			".card { color: red.mix(blue, 100%); }",
 			".card { transition-property: none; }",
@@ -2200,7 +2203,11 @@ mod tests {
 		// Arrange
 		let sources = [
 			".card { grid-template-columns: -1fr; }",
+			".card { grid-column: (span, auto); }",
+			".card { grid-row: (span, span); }",
 			".card { background-position: (left, right); }",
+			".card { font-style: (oblique, 91deg); }",
+			".card { font-style: (oblique, -91deg); }",
 			".card { background-position: (1px, 2px, 3px); }",
 			".card { touch-action: (pan-left, pan-right); }",
 			".card { color: red.mix(blue, 150%); }",

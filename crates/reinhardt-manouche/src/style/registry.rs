@@ -1440,10 +1440,12 @@ const BORDER: ValueGrammar = ValueGrammar::Unordered {
 	min_members: 1,
 	preserve_source_order: false,
 };
-const INTEGER_OR_IDENT: ValueGrammar = ValueGrammar::Or(&[POSITIVE_INTEGER, IDENT]);
+const GRID_LINE_NAME: ValueGrammar = ValueGrammar::IdentifierExcept(&["auto", "span"]);
+const INTEGER_OR_GRID_LINE_NAME: ValueGrammar =
+	ValueGrammar::Or(&[POSITIVE_INTEGER, GRID_LINE_NAME]);
 const SPAN_GRID_LINE: ValueGrammar = ValueGrammar::Ordered(&[
 	required("span", &KW_SPAN),
-	required("line", &INTEGER_OR_IDENT),
+	required("line", &INTEGER_OR_GRID_LINE_NAME),
 ]);
 const GRID_LINE: ValueGrammar = ValueGrammar::Or(&[KW_AUTO, I, IDENT, SPAN_GRID_LINE]);
 const TRACK: ValueGrammar = ValueGrammar::Or(&[NLP, NFR, KW_TRACK]);
@@ -1555,8 +1557,15 @@ const GRID_TRACK_PAIR: ValueGrammar = ValueGrammar::Slash {
 const GRID_TEMPLATE: ValueGrammar = ValueGrammar::Or(&[KW_NONE, GRID_TRACK_PAIR]);
 
 const FONT_SIZE: ValueGrammar = ValueGrammar::Or(&[NLP, KW_FONT_SIZE]);
-const FONT_STYLE_OBLIQUE: ValueGrammar =
-	ValueGrammar::Ordered(&[required("oblique", &KW_OBLIQUE), optional("angle", &A)]);
+const OBLIQUE_ANGLE: ValueGrammar = ValueGrammar::NumericRange {
+	grammar: &A,
+	minimum: -90,
+	maximum: 90,
+};
+const FONT_STYLE_OBLIQUE: ValueGrammar = ValueGrammar::Ordered(&[
+	required("oblique", &KW_OBLIQUE),
+	optional("angle", &OBLIQUE_ANGLE),
+]);
 const FONT_STYLE: ValueGrammar = ValueGrammar::Or(&[KW_FONT_STYLE, FONT_STYLE_OBLIQUE]);
 const FONT_WEIGHT: ValueGrammar = ValueGrammar::Or(&[FONT_WEIGHT_NUMBER, KW_FONT_WEIGHT]);
 const LINE_HEIGHT: ValueGrammar = ValueGrammar::Or(&[KW_NORMAL, NN, NLP]);
