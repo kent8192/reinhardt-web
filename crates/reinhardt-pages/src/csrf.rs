@@ -73,6 +73,26 @@ pub struct CsrfManager {
 	token: Signal<Option<String>>,
 }
 
+/// A CSRF token signal that keeps its manager's reactive scope alive.
+#[derive(Clone)]
+pub struct CsrfTokenSignal {
+	manager: CsrfManager,
+}
+
+impl std::ops::Deref for CsrfTokenSignal {
+	type Target = Signal<Option<String>>;
+
+	fn deref(&self) -> &Self::Target {
+		&self.manager.token
+	}
+}
+
+impl reinhardt_core::reactive::Trackable for CsrfTokenSignal {
+	fn node_id(&self) -> reinhardt_core::reactive::NodeId {
+		self.manager.token.id()
+	}
+}
+
 impl std::fmt::Debug for CsrfManager {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.debug_struct("CsrfManager")
@@ -173,8 +193,10 @@ impl CsrfManager {
 	/// Returns a Signal that tracks the current token.
 	///
 	/// This can be used for reactive UI updates when the token changes.
-	pub fn token_signal(&self) -> Signal<Option<String>> {
-		self.token
+	pub fn token_signal(&self) -> CsrfTokenSignal {
+		CsrfTokenSignal {
+			manager: self.clone(),
+		}
 	}
 }
 
@@ -500,6 +522,14 @@ mod tests {
 		manager.set_token("retained-token");
 
 		assert_eq!(manager.cached_token(), Some("retained-token".to_string()));
+	}
+
+	#[test]
+	#[serial_test::serial(reactive_runtime)]
+	fn token_signal_retains_a_manager_created_outside_a_scope() {
+		let token = CsrfManager::new().token_signal();
+
+		assert_eq!(token.get(), None);
 	}
 
 	#[test]

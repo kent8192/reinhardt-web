@@ -317,27 +317,32 @@ where
 		Box::leak(s.into_boxed_str())
 	};
 
-	CALLBACK_REGISTRY.with(|reg| {
+	let scope = reinhardt_core::reactive::scope::current_scope_id().unwrap_or_else(|| {
+		panic!(
+			"{}",
+			reinhardt_core::reactive::ReactiveScopeError::NoActiveScope {
+				operation: "use_callback"
+			}
+		);
+	});
+	let mut inserted = false;
+	let callback = CALLBACK_REGISTRY.with(|reg| {
 		let mut reg = reg.borrow_mut();
-		let scope = reinhardt_core::reactive::scope::current_scope_id().unwrap_or_else(|| {
-			panic!(
-				"{}",
-				reinhardt_core::reactive::ReactiveScopeError::NoActiveScope {
-					operation: "use_callback"
-				}
-			);
-		});
 		let new_ids: smallvec::SmallVec<[reinhardt_core::reactive::runtime::NodeId; 8]> =
 			deps.as_slice().iter().copied().collect();
 
-		let slot = reg
-			.entry((key, scope))
-			.or_insert_with(|| CallbackSlotEntry {
-				deps: smallvec::SmallVec::new(),
-				scope,
-				callback_type: std::any::TypeId::of::<()>(),
-				key_any: Rc::new(()) as Rc<dyn std::any::Any>,
-			});
+		let slot = match reg.entry((key, scope)) {
+			std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
+			std::collections::hash_map::Entry::Vacant(entry) => {
+				inserted = true;
+				entry.insert(CallbackSlotEntry {
+					deps: smallvec::SmallVec::new(),
+					scope,
+					callback_type: std::any::TypeId::of::<()>(),
+					key_any: Rc::new(()) as Rc<dyn std::any::Any>,
+				})
+			}
+		};
 
 		let needs_replace = slot.deps.as_slice() != new_ids.as_slice()
 			|| slot.callback_type != std::any::TypeId::of::<(Args, Ret)>()
@@ -363,7 +368,15 @@ where
 			key: *saved_key,
 			_marker: PhantomData,
 		}
-	})
+	});
+	if inserted {
+		let _ = reinhardt_core::reactive::scope::on_scope_dispose_after_nodes(scope, move || {
+			CALLBACK_REGISTRY.with(|registry| {
+				registry.borrow_mut().remove(&(key, scope));
+			});
+		});
+	}
+	callback
 }
 
 /// Internal helper used by `use_callback` / `use_callback_with` (native).
@@ -388,27 +401,32 @@ where
 		Box::leak(s.into_boxed_str())
 	};
 
-	CALLBACK_REGISTRY.with(|reg| {
+	let scope = reinhardt_core::reactive::scope::current_scope_id().unwrap_or_else(|| {
+		panic!(
+			"{}",
+			reinhardt_core::reactive::ReactiveScopeError::NoActiveScope {
+				operation: "use_callback"
+			}
+		);
+	});
+	let mut inserted = false;
+	let callback = CALLBACK_REGISTRY.with(|reg| {
 		let mut reg = reg.borrow_mut();
-		let scope = reinhardt_core::reactive::scope::current_scope_id().unwrap_or_else(|| {
-			panic!(
-				"{}",
-				reinhardt_core::reactive::ReactiveScopeError::NoActiveScope {
-					operation: "use_callback"
-				}
-			);
-		});
 		let new_ids: smallvec::SmallVec<[reinhardt_core::reactive::runtime::NodeId; 8]> =
 			deps.as_slice().iter().copied().collect();
 
-		let slot = reg
-			.entry((key, scope))
-			.or_insert_with(|| CallbackSlotEntry {
-				deps: smallvec::SmallVec::new(),
-				scope,
-				callback_type: std::any::TypeId::of::<()>(),
-				key_any: Rc::new(()) as Rc<dyn std::any::Any>,
-			});
+		let slot = match reg.entry((key, scope)) {
+			std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
+			std::collections::hash_map::Entry::Vacant(entry) => {
+				inserted = true;
+				entry.insert(CallbackSlotEntry {
+					deps: smallvec::SmallVec::new(),
+					scope,
+					callback_type: std::any::TypeId::of::<()>(),
+					key_any: Rc::new(()) as Rc<dyn std::any::Any>,
+				})
+			}
+		};
 
 		let needs_replace = slot.deps.as_slice() != new_ids.as_slice()
 			|| slot.callback_type != std::any::TypeId::of::<(Args, Ret)>()
@@ -434,7 +452,15 @@ where
 			key: *saved_key,
 			_marker: PhantomData,
 		}
-	})
+	});
+	if inserted {
+		let _ = reinhardt_core::reactive::scope::on_scope_dispose_after_nodes(scope, move || {
+			CALLBACK_REGISTRY.with(|registry| {
+				registry.borrow_mut().remove(&(key, scope));
+			});
+		});
+	}
+	callback
 }
 
 #[cfg(test)]
@@ -1110,5 +1136,34 @@ mod tests_with_deps {
 
 		assert_eq!(first.call(1), 0);
 		assert_eq!(second.call(2), 0);
+	}
+
+	#[cfg(native)]
+	#[test]
+	#[serial]
+	fn callback_registry_removes_entries_when_their_scope_is_disposed() {
+		let scope = reinhardt_core::reactive::ReactiveScope::new();
+		let scope_id = scope.id();
+		scope.enter(|| {
+			let _ = callback_from_shared_call_site::<i32, i32>();
+		});
+
+		let has_entry = CALLBACK_REGISTRY.with(|registry| {
+			registry
+				.borrow()
+				.keys()
+				.any(|(_, entry_scope)| *entry_scope == scope_id)
+		});
+		assert!(has_entry);
+
+		drop(scope);
+
+		let has_entry = CALLBACK_REGISTRY.with(|registry| {
+			registry
+				.borrow()
+				.keys()
+				.any(|(_, entry_scope)| *entry_scope == scope_id)
+		});
+		assert!(!has_entry);
 	}
 }

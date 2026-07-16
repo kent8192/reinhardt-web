@@ -121,7 +121,9 @@ impl Copy for Effect {}
 impl Drop for EffectSlot {
 	fn drop(&mut self) {
 		if let Some(cleanup) = self.cleanup_slot.borrow_mut().take() {
-			let _ = enter_scope(self.scope, cleanup);
+			super::runtime::run_without_observer(|| {
+				let _ = enter_scope(self.scope, cleanup);
+			});
 		}
 	}
 }
@@ -234,15 +236,15 @@ impl Effect {
 		let Some(key) = find_node_key(effect_id, NodeKind::Effect) else {
 			return;
 		};
-		let (previous_run_scope, previous_cleanup, effect_fn) =
-			with_node_mut::<EffectSlot, _>(key, |slot| {
-				(
-					slot.run_scope.take(),
-					slot.cleanup_slot.borrow_mut().take(),
-					slot.f.take(),
-				)
-			})
+		let effect_fn = with_node_mut::<EffectSlot, _>(key, |slot| slot.f.take())
 			.unwrap_or_else(|err| panic!("{err}"));
+		let Some(effect_fn) = effect_fn else {
+			return;
+		};
+		let (previous_run_scope, previous_cleanup) = with_node_mut::<EffectSlot, _>(key, |slot| {
+			(slot.run_scope.take(), slot.cleanup_slot.borrow_mut().take())
+		})
+		.unwrap_or_else(|err| panic!("{err}"));
 
 		struct EffectFnGuard {
 			key: NodeKey,
@@ -261,7 +263,10 @@ impl Effect {
 				}
 			}
 		}
-		let mut guard = EffectFnGuard { key, f: effect_fn };
+		let mut guard = EffectFnGuard {
+			key,
+			f: Some(effect_fn),
+		};
 		if let Some(cleanup) = previous_cleanup {
 			super::runtime::run_without_observer(|| {
 				let _ = enter_scope(key.scope(), cleanup);
@@ -286,12 +291,12 @@ impl Effect {
 		}
 		let _observer_guard = ObserverGuard;
 
-		let mut run_scope = Some(super::scope::ReactiveScope::new());
-		let run_scope_id = run_scope.as_ref().expect("run scope must exist").id();
-		let _ = with_node_mut::<EffectSlot, _>(key, |slot| slot.run_scope = run_scope.take());
+		let run_scope = super::scope::ReactiveScope::new();
+		let run_scope_id = run_scope.id();
 		if let Some(f) = guard.f.as_mut() {
 			enter_scope(run_scope_id, f).unwrap_or_else(|err| panic!("{err}"));
 		}
+		let _ = with_node_mut::<EffectSlot, _>(key, |slot| slot.run_scope = Some(run_scope));
 	}
 
 	/// Return the runtime node identifier for this effect.
@@ -695,6 +700,62 @@ mod tests {
 
 			// Assert - still 2, effect did not run again
 			assert_eq!(*run_count.borrow(), 2);
+		});
+	}
+
+	#[rstest::rstest]
+	#[serial]
+	fn self_disposing_effect_keeps_its_current_run_scope_alive() {
+		crate::reactive::ReactiveScope::run(|| {
+			let source = Signal::new(0_i32);
+			let holder: Rc<RefCell<Option<Effect>>> = Rc::new(RefCell::new(None));
+			let source_for_effect = source;
+			let holder_for_effect = Rc::clone(&holder);
+			let effect = Effect::new(move || {
+				let _ = source_for_effect.get();
+				if let Some(effect) = *holder_for_effect.borrow() {
+					effect.dispose();
+					let nested = Signal::new(1_i32);
+					assert_eq!(nested.get(), 1);
+				}
+			});
+			*holder.borrow_mut() = Some(effect);
+
+			source.set(1);
+			with_runtime(|rt| rt.flush_updates());
+		});
+	}
+
+	#[rstest::rstest]
+	#[serial]
+	fn scope_disposal_cleanup_does_not_track_the_current_observer() {
+		crate::reactive::ReactiveScope::run(|| {
+			let cleanup_signal = Signal::new(0_i32);
+			let child_scope = Rc::new(crate::reactive::ReactiveScope::new());
+			child_scope.enter(|| {
+				let cleanup_signal = cleanup_signal;
+				let _ = Effect::new_with_deps(
+					move || {
+						Some(move || {
+							let _ = cleanup_signal.get();
+						})
+					},
+					super::deps::Deps::empty(),
+				);
+			});
+
+			let runs = Rc::new(RefCell::new(0_i32));
+			let runs_for_effect = Rc::clone(&runs);
+			let child_scope_for_effect = Rc::clone(&child_scope);
+			let _effect = Effect::new(move || {
+				*runs_for_effect.borrow_mut() += 1;
+				child_scope_for_effect.dispose();
+			});
+
+			cleanup_signal.set(1);
+			with_runtime(|rt| rt.flush_updates());
+
+			assert_eq!(*runs.borrow(), 1);
 		});
 	}
 

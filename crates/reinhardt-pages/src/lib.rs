@@ -474,7 +474,7 @@ pub use component::{
 	ScriptTag, StyleTag, SuspenseBoundary, ViewTransitionBoundary, ViewTransitionHandle,
 	ViewTransitionStatus, start_view_transition,
 };
-pub use csrf::{CsrfManager, get_csrf_token};
+pub use csrf::{CsrfManager, CsrfTokenSignal, get_csrf_token};
 pub use dom::{CustomEventOptions, Document, Element, EventHandle, EventType, document};
 #[cfg(native)]
 pub use form::{FormBinding, FormComponent};

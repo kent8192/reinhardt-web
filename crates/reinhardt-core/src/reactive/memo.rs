@@ -227,15 +227,15 @@ impl<T: Clone + 'static> Memo<T> {
 		};
 		let run_scope = super::scope::ReactiveScope::new();
 		let run_scope_id = run_scope.id();
-		with_node_mut::<MemoSlot<T>, _>(key, |slot| slot.run_scope = Some(run_scope))
-			.unwrap_or_else(|err| panic!("{err}"));
-		enter_scope(run_scope_id, || {
+		let value = enter_scope(run_scope_id, || {
 			guard
 				.f
 				.as_mut()
 				.expect("Memo function must exist while the memo is active")()
 		})
-		.unwrap_or_else(|err| panic!("{err}"))
+		.unwrap_or_else(|err| panic!("{err}"));
+		let _ = with_node_mut::<MemoSlot<T>, _>(key, |slot| slot.run_scope = Some(run_scope));
+		value
 	}
 
 	/// Return the cached value, recomputing when dependencies marked it dirty.
@@ -252,11 +252,15 @@ impl<T: Clone + 'static> Memo<T> {
 	fn read_value(&self) -> T {
 		if node_is_dirty(self.key).unwrap_or_else(|err| panic!("{err}")) {
 			let new_value = Self::compute_value(self.key);
-			with_node_mut::<MemoSlot<T>, _>(self.key, |slot| {
+			match with_node_mut::<MemoSlot<T>, _>(self.key, |slot| {
 				slot.value = Some(new_value.clone());
-			})
-			.unwrap_or_else(|err| panic!("{err}"));
-			set_node_dirty(self.key, false).unwrap_or_else(|err| panic!("{err}"));
+			}) {
+				Ok(()) => {
+					set_node_dirty(self.key, false).unwrap_or_else(|err| panic!("{err}"));
+				}
+				Err(super::scope::ReactiveScopeError::DisposedNode { .. }) => {}
+				Err(err) => panic!("{err}"),
+			}
 			new_value
 		} else {
 			with_node::<MemoSlot<T>, _>(self.key, |slot| {
@@ -385,6 +389,32 @@ mod tests {
 		memo.mark_dirty();
 
 		assert_eq!(memo.get(), 2);
+	}
+
+	#[test]
+	#[serial(reactive_runtime)]
+	fn memo_self_dispose_keeps_its_current_run_scope_alive() {
+		crate::reactive::ReactiveScope::run(|| {
+			let source = Signal::new(0_i32);
+			let holder: Rc<RefCell<Option<Memo<i32>>>> = Rc::new(RefCell::new(None));
+			let source_for_memo = source;
+			let holder_for_memo = Rc::clone(&holder);
+			let memo = Memo::new(move || {
+				let _ = source_for_memo.get();
+				if let Some(memo) = *holder_for_memo.borrow() {
+					memo.dispose();
+					let nested = Signal::new(1_i32);
+					assert_eq!(nested.get(), 1);
+				}
+				42
+			});
+			*holder.borrow_mut() = Some(memo);
+
+			source.set(1);
+			memo.mark_dirty();
+
+			assert_eq!(memo.get(), 42);
+		});
 	}
 
 	#[test]
