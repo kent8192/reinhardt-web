@@ -439,14 +439,7 @@ impl StyleExtractor {
 				if !source_root.cfg.items_are_enabled(&file.attrs) {
 					continue;
 				}
-				let relative = source_path
-					.strip_prefix(&source_root.package_root)
-					.unwrap_or(&source_path);
-				let mut scanner = DefinitionScanner::new(
-					&source_path,
-					relative.to_string_lossy().replace('\\', "/"),
-					&source_root.cfg,
-				);
+				let mut scanner = DefinitionScanner::new(&source_path, &source_root.cfg);
 				scanner.visit_file(&file);
 				if let Some(error) = scanner.error {
 					return Err(error);
@@ -455,7 +448,7 @@ impl StyleExtractor {
 					let compile_context = StyleCompileContext {
 						package_name: &source_root.package_name,
 						package_version: &source_root.package_version,
-						style_type_name: &authored.definition_path,
+						style_type_name: &authored.style_type_name,
 					};
 					let compiled =
 						compile_style(authored.tokens, &compile_context).map_err(|error| {
@@ -1225,7 +1218,29 @@ mod tests {
 	}
 
 	#[test]
-	fn module_local_style_types_receive_distinct_scope_identities() {
+	fn extracted_scope_matches_the_macro_generated_style_type_identity() {
+		// Arrange
+		let directory = tempfile::tempdir().expect("create temporary package");
+		let manifest = write_test_package(
+			directory.path(),
+			"#[style_def]\nstatic STYLES: CardStyles = style! { .card { color: red; } };\n",
+		);
+
+		// Act
+		let context = StylePackageContext::resolve(&manifest, None).expect("select package");
+		let bundle = StyleExtractor::new(context)
+			.extract()
+			.expect("extract component styles");
+
+		// Assert
+		assert_eq!(
+			bundle.definitions[0].compiled.scope.identity,
+			"rstyle-v2\0style-test-app\00.1.0\0CardStyles"
+		);
+	}
+
+	#[test]
+	fn duplicate_module_local_style_types_are_rejected() {
 		// Arrange
 		let directory = tempfile::tempdir().expect("create temporary package");
 		let manifest = write_test_package(
@@ -1245,16 +1260,12 @@ mod modal {
 
 		// Act
 		let context = StylePackageContext::resolve(&manifest, None).expect("select package");
-		let bundle = StyleExtractor::new(context)
+		let error = StyleExtractor::new(context)
 			.extract()
-			.expect("extract module-local component styles");
+			.expect_err("duplicate generated style types must not share one scope");
 
 		// Assert
-		assert_eq!(bundle.definitions.len(), 2);
-		assert_ne!(
-			bundle.definitions[0].compiled.scope.identity,
-			bundle.definitions[1].compiled.scope.identity
-		);
+		assert!(error.contains("duplicate component style scope identity"));
 	}
 
 	#[test]
@@ -1415,7 +1426,6 @@ mod modal {
 #[derive(Debug)]
 struct AuthoredDefinition {
 	style_type_name: String,
-	definition_path: String,
 	tokens: proc_macro2::TokenStream,
 	line: usize,
 	column: usize,
@@ -1423,31 +1433,19 @@ struct AuthoredDefinition {
 
 struct DefinitionScanner<'a> {
 	source_path: &'a Path,
-	source_relative_path: String,
 	cfg: &'a CfgEvaluator,
-	module_path: Vec<String>,
 	definitions: Vec<AuthoredDefinition>,
 	error: Option<String>,
 }
 
 impl<'a> DefinitionScanner<'a> {
-	fn new(source_path: &'a Path, source_relative_path: String, cfg: &'a CfgEvaluator) -> Self {
+	fn new(source_path: &'a Path, cfg: &'a CfgEvaluator) -> Self {
 		Self {
 			source_path,
-			source_relative_path,
 			cfg,
-			module_path: Vec::new(),
 			definitions: Vec::new(),
 			error: None,
 		}
-	}
-
-	fn definition_path(&self, static_name: &syn::Ident, style_type_name: &str) -> String {
-		let mut segments = vec![self.source_relative_path.clone()];
-		segments.extend(self.module_path.iter().cloned());
-		segments.push(static_name.to_string());
-		segments.push(style_type_name.to_string());
-		segments.join("::")
 	}
 
 	fn reject(&mut self, span: proc_macro2::Span, reason: &str) {
@@ -1502,9 +1500,7 @@ impl<'ast> Visit<'ast> for DefinitionScanner<'_> {
 			);
 			return;
 		}
-		self.module_path.push(item.ident.to_string());
 		syn::visit::visit_item_mod(self, item);
-		self.module_path.pop();
 	}
 
 	fn visit_item_static(&mut self, item: &'ast ItemStatic) {
@@ -1544,12 +1540,6 @@ impl<'ast> Visit<'ast> for DefinitionScanner<'_> {
 
 		let location = item.static_token.span.start();
 		self.definitions.push(AuthoredDefinition {
-			definition_path: self.definition_path(
-				&item.ident,
-				style_type
-					.as_deref()
-					.expect("validated one-segment style type"),
-			),
 			style_type_name: style_type.expect("validated one-segment style type"),
 			tokens: bare_style
 				.expect("validated bare style macro")

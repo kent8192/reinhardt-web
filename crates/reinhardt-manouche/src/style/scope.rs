@@ -14,7 +14,7 @@ pub struct StyleCompileContext<'a> {
 	pub package_name: &'a str,
 	/// Selected Cargo package version.
 	pub package_version: &'a str,
-	/// Fully qualified authored definition path, ending with the generated style type name.
+	/// Authored generated style type name shared by macro expansion and CSS extraction.
 	pub style_type_name: &'a str,
 }
 
@@ -110,12 +110,12 @@ mod tests {
 	}
 
 	#[rstest]
-	fn scope_identity_uses_the_versioned_definition_path_contract() {
+	fn scope_identity_uses_the_generated_style_type_contract() {
 		// Arrange
 		let context = StyleCompileContext {
 			package_name: "poll-app",
 			package_version: "0.4.0",
-			style_type_name: "src/lib.rs::card::STYLES::CardStyles",
+			style_type_name: "CardStyles",
 		};
 
 		// Act
