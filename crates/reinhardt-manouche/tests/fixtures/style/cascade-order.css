@@ -1,21 +1,21 @@
-.card--rs-c6b395a1e8e9 {
+.card--rs-f69b9cbc74c9 {
   color: red;
 }
 
-.card--rs-c6b395a1e8e9:hover {
+.card--rs-f69b9cbc74c9:hover {
   color: blue;
 }
 
-.card--rs-c6b395a1e8e9 {
+.card--rs-f69b9cbc74c9 {
   background-color: white;
 }
 
 @media (max-width: 640px) {
-  .card--rs-c6b395a1e8e9 {
+  .card--rs-f69b9cbc74c9 {
     width: 100%;
   }
 }
 
-.card--rs-c6b395a1e8e9 {
+.card--rs-f69b9cbc74c9 {
   opacity: 1;
 }

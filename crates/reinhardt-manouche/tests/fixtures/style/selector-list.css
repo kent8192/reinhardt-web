@@ -1,23 +1,23 @@
-.card--rs-c6b395a1e8e9:hover,
-.card--rs-c6b395a1e8e9.featured--rs-c6b395a1e8e9,
-.panel--rs-c6b395a1e8e9:hover,
-.panel--rs-c6b395a1e8e9.featured--rs-c6b395a1e8e9 {
+.card--rs-f69b9cbc74c9:hover,
+.card--rs-f69b9cbc74c9.featured--rs-f69b9cbc74c9,
+.panel--rs-f69b9cbc74c9:hover,
+.panel--rs-f69b9cbc74c9.featured--rs-f69b9cbc74c9 {
   color: red;
 }
 
-.card--rs-c6b395a1e8e9 .label--rs-c6b395a1e8e9,
-.card--rs-c6b395a1e8e9 > button,
-.panel--rs-c6b395a1e8e9 .label--rs-c6b395a1e8e9,
-.panel--rs-c6b395a1e8e9 > button {
+.card--rs-f69b9cbc74c9 .label--rs-f69b9cbc74c9,
+.card--rs-f69b9cbc74c9 > button,
+.panel--rs-f69b9cbc74c9 .label--rs-f69b9cbc74c9,
+.panel--rs-f69b9cbc74c9 > button {
   color: blue;
 }
 
-.card--rs-c6b395a1e8e9:is(.active--rs-c6b395a1e8e9, [aria-current="page" i]),
-.panel--rs-c6b395a1e8e9:is(.active--rs-c6b395a1e8e9, [aria-current="page" i]) {
+.card--rs-f69b9cbc74c9:is(.active--rs-f69b9cbc74c9, [aria-current="page" i]),
+.panel--rs-f69b9cbc74c9:is(.active--rs-f69b9cbc74c9, [aria-current="page" i]) {
   color: green;
 }
 
-.card--rs-c6b395a1e8e9:nth-child(2n+1 of .row--rs-c6b395a1e8e9),
-.panel--rs-c6b395a1e8e9:nth-child(2n+1 of .row--rs-c6b395a1e8e9) {
+.card--rs-f69b9cbc74c9:nth-child(2n+1 of .row--rs-f69b9cbc74c9),
+.panel--rs-f69b9cbc74c9:nth-child(2n+1 of .row--rs-f69b9cbc74c9) {
   color: black;
 }

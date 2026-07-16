@@ -14,7 +14,7 @@ pub struct StyleCompileContext<'a> {
 	pub package_name: &'a str,
 	/// Selected Cargo package version.
 	pub package_version: &'a str,
-	/// Authored generated style type name.
+	/// Fully qualified authored definition path, ending with the generated style type name.
 	pub style_type_name: &'a str,
 }
 
@@ -61,7 +61,7 @@ impl StyleScope {
 	/// Computes the versioned scope identity from its complete normative input tuple.
 	pub fn new(context: &StyleCompileContext<'_>) -> Self {
 		let identity = format!(
-			"rstyle-v1\0{}\0{}\0{}",
+			"rstyle-v2\0{}\0{}\0{}",
 			context.package_name, context.package_version, context.style_type_name
 		);
 		let digest = Sha256::digest(identity.as_bytes());
@@ -104,9 +104,25 @@ mod tests {
 		// Assert
 		assert_eq!(
 			scope.identity,
-			concat!("rstyle-v1\0poll-app\0", "0.4.0\0PollCardStyles")
+			concat!("rstyle-v2\0poll-app\0", "0.4.0\0PollCardStyles")
 		);
-		assert_eq!(scope.suffix, "c6b395a1e8e9");
+		assert_eq!(scope.suffix, "f69b9cbc74c9");
+	}
+
+	#[rstest]
+	fn scope_identity_uses_the_versioned_definition_path_contract() {
+		// Arrange
+		let context = StyleCompileContext {
+			package_name: "poll-app",
+			package_version: "0.4.0",
+			style_type_name: "src/lib.rs::card::STYLES::CardStyles",
+		};
+
+		// Act
+		let scope = StyleScope::new(&context);
+
+		// Assert
+		assert!(scope.identity.starts_with("rstyle-v2\0"));
 	}
 
 	#[rstest]
@@ -124,8 +140,8 @@ mod tests {
 		let variable_name = scope.variable_name("surface-secondary");
 
 		// Assert
-		assert_eq!(class_name, "poll-card--rs-c6b395a1e8e9");
-		assert_eq!(variable_name, "--rs-c6b395a1e8e9-surface-secondary");
+		assert_eq!(class_name, "poll-card--rs-f69b9cbc74c9");
+		assert_eq!(variable_name, "--rs-f69b9cbc74c9-surface-secondary");
 	}
 
 	#[rstest]

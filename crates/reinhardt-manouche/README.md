@@ -63,13 +63,13 @@ let compiled = compile_style(
 )
 .expect("style definition should compile");
 
-assert_eq!(compiled.scope.suffix, "c6b395a1e8e9");
-assert_eq!(compiled.classes[0].css_name, "card--rs-c6b395a1e8e9");
+assert_eq!(compiled.scope.suffix, "f69b9cbc74c9");
+assert_eq!(compiled.classes[0].css_name, "card--rs-f69b9cbc74c9");
 assert_eq!(
     serialize_css(&compiled.css),
     concat!(
-        ".card--rs-c6b395a1e8e9 {\n",
-        "  color: var(--rs-c6b395a1e8e9-accent, red);\n",
+        ".card--rs-f69b9cbc74c9 {\n",
+        "  color: var(--rs-f69b9cbc74c9-accent, red);\n",
         "}\n",
     )
 );
