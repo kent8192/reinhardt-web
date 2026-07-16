@@ -1,0 +1,5 @@
+error: #[loader] functions must return Result<Data, Error>
+ --> tests/ui/loader/fail/non_result.rs:4:26
+  |
+4 | async fn not_result() -> u8 {
+  |                          ^^

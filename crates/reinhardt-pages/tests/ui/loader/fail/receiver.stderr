@@ -1,0 +1,5 @@
+error: #[loader] functions do not support receiver arguments
+ --> tests/ui/loader/fail/receiver.rs:4:19
+  |
+4 | async fn receiver(self) -> Result<(), String> {
+  |                   ^^^^

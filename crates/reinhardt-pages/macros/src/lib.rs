@@ -83,6 +83,7 @@ mod crate_paths;
 mod form;
 mod from_request;
 mod head;
+mod loader;
 mod page;
 mod page_props;
 mod server_fn;
@@ -161,6 +162,12 @@ pub fn component(args: TokenStream, input: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn layout(args: TokenStream, input: TokenStream) -> TokenStream {
 	component::layout_impl(args, input)
+}
+
+/// Declares an async route-level data loader.
+#[proc_macro_attribute]
+pub fn loader(args: TokenStream, input: TokenStream) -> TokenStream {
+	loader::loader_impl(args, input)
 }
 
 /// Declares public APIs with matching WASM and server-side surfaces.

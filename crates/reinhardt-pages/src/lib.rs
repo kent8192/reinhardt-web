@@ -555,6 +555,7 @@ pub use i18n::{
 pub use reinhardt_pages_macros::form;
 pub use reinhardt_pages_macros::head;
 pub use reinhardt_pages_macros::layout;
+pub use reinhardt_pages_macros::loader;
 pub use reinhardt_pages_macros::page;
 pub use reinhardt_pages_macros::wasm_server_api;
 pub use reinhardt_pages_macros::{

@@ -1,9 +1,8 @@
 //! Route-level loader contracts and deterministic cache-key helpers.
 
+use super::loader_registry::LoaderConsumer;
 use crate::cancellation::CancellationHandle;
-use crate::reactive::{
-	QueryAcquireOptions, QueryConsumer, QueryErrorPolicy, QueryKey, QueryLease, acquire_query,
-};
+use crate::reactive::{QueryAcquireOptions, QueryErrorPolicy, QueryKey, QueryLease, acquire_query};
 use reinhardt_urls::routers::client_router::{ClientRouteTreeMatch, RouteContext, RouteLoaderId};
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::DeserializeOwned};
 use sha2::{Digest, Sha256};
@@ -587,33 +586,36 @@ pub fn active_loader_store() -> Option<LoaderStore> {
 // phase; keeping the implementation here makes that executor use the same
 // query cache as `use_query`.
 #[allow(dead_code)]
-pub(crate) async fn acquire_loader_query<T, E>(
+pub async fn acquire_loader_query<T>(
 	id: RouteLoaderId,
 	context: &RouteContext,
 	specs: &'static [LoaderInputSpec],
 	cancellation: CancellationHandle,
-	consumer: QueryConsumer,
-	fetcher: impl Fn() -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<T, E>> + 'static>>
-	+ 'static,
+	consumer: LoaderConsumer,
+	fetcher: impl Fn() -> std::pin::Pin<
+		Box<dyn std::future::Future<Output = Result<T, RouteLoaderError>> + 'static>,
+	> + 'static,
 ) -> Result<PreparedLoader, RouteLoaderError>
 where
 	T: Clone + Serialize + DeserializeOwned + 'static,
-	E: Into<RouteLoaderError> + 'static,
 {
 	let cache_id = loader_cache_id(id, context, specs)
 		.map_err(|error| RouteLoaderError::with_status(error.to_string(), 400))?;
-	let key = QueryKey::<T, RouteLoaderError>::new(cache_id, move || {
-		let future = fetcher();
-		async move { future.await.map_err(Into::into) }
-	});
+	let key = QueryKey::<T, RouteLoaderError>::new(cache_id, move || fetcher());
 	let lease = acquire_query(
 		key,
 		QueryAcquireOptions {
-			consumer,
+			consumer: consumer.into(),
 			error_policy: QueryErrorPolicy::Discard,
 		},
 	);
-	let value = lease.result().await?;
+	let cancellation_check = cancellation.clone();
+	let value = crate::cancellation::scope_cancellation(cancellation, lease.result()).await?;
+	if cancellation_check.is_cancelled() {
+		return Err(RouteLoaderError::new(
+			"route loader navigation was cancelled",
+		));
+	}
 	let serialized = serde_json::to_value(&value).map_err(|error| {
 		RouteLoaderError::from_diagnostic("loader value serialization failed", Some(500), error)
 	})?;
