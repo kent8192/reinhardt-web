@@ -24,9 +24,10 @@ through field-level attributes. Currently, **49 attributes** are supported (20
 existing + 22 newly implemented + 7 additional implemented attributes).
 
 Every model requires an explicit `app_label`. The model-level `table_name` is
-optional and defaults to the struct name in snake_case without pluralization;
-for example, `HTTPRoute` maps to `http_route`. Keep an explicit `table_name`
-when the model targets an existing table.
+optional and defaults to the app label plus the struct name in snake_case
+without pluralization; for example, `#[model(app_label = "routing")] struct
+HTTPRoute` maps to `routing_http_route`. Keep an explicit `table_name` when the
+model targets an existing table.
 
 **Note:** When using `#[model(...)]`, you don't need to explicitly add
 `#[derive(Model)]`.

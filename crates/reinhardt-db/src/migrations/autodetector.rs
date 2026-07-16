@@ -4218,16 +4218,16 @@ impl MigrationAutodetector {
 				renamed_destinations.insert((app_label.as_str(), model.table_name.as_str()));
 			}
 		}
-		for (app_label, table_name) in renamed_destinations {
+		for (_app_label, table_name) in renamed_destinations {
 			let claims = self
 				.to_state
 				.models
 				.values()
-				.filter(|model| model.app_label == app_label && model.table_name == table_name)
+				.filter(|model| model.table_name == table_name)
 				.count();
 			if claims > 1 {
 				return Err(super::MigrationError::InvalidMigration(format!(
-					"cannot rename a table to `{table_name}` in app `{app_label}` because multiple target models claim that table name"
+					"cannot rename a table to `{table_name}` because multiple target models claim that table name"
 				)));
 			}
 		}
@@ -7501,7 +7501,7 @@ impl MigrationAutodetector {
 					.get_model(&target_app, &target_model)
 					.map(|model| model.table_name)
 			})
-			.unwrap_or_else(|| to_snake_case(&target_model));
+			.unwrap_or_else(|| format!("{}_{}", target_app, to_snake_case(&target_model)));
 		let old_target_table = new_target_model
 			.and_then(|target| {
 				self.matching_from_model_for_to_model(&target_app, &target_model, target, changes)
@@ -13704,5 +13704,76 @@ mod tests {
 				.referenced_table,
 			"accounts_user"
 		);
+	}
+
+	#[test]
+	fn many_to_many_artifact_fallback_keeps_the_target_app_prefix() {
+		let mut from_state = ProjectState::new();
+		let mut old_group = ModelState::new("groups", "Group");
+		old_group.table_name = "groups_group".to_string();
+		from_state.add_model(old_group);
+
+		let mut old_through = ModelState::new("groups", "GroupPermissions");
+		old_through.table_name = "groups_group_permissions".to_string();
+		old_through.add_field(FieldState::new(
+			"groups_group_id".to_string(),
+			super::super::FieldType::Integer,
+			false,
+		));
+		old_through.add_field(FieldState::new(
+			"auth_user_id".to_string(),
+			super::super::FieldType::Integer,
+			false,
+		));
+		from_state.add_model(old_through);
+
+		let mut to_state = ProjectState::new();
+		let mut new_group = ModelState::new("groups", "Group");
+		new_group.table_name = "groups_group_v2".to_string();
+		new_group
+			.many_to_many_fields
+			.push(super::super::model_registry::ManyToManyMetadata::new(
+				"permissions",
+				"auth.User",
+			));
+		to_state.add_model(new_group);
+
+		let detector = MigrationAutodetector::new(from_state, to_state);
+		let rename = detector
+			.find_many_to_many_artifact_rename(
+				&DetectedChanges::default(),
+				"groups",
+				"Group",
+				&super::super::model_registry::ManyToManyMetadata::new("permissions", "auth.User"),
+			)
+			.expect("the absent target model should use its app-prefixed fallback table");
+
+		assert_eq!(rename.old_target_column, "auth_user_id");
+		assert_eq!(rename.new_target_column, "auth_user_id");
+	}
+
+	#[test]
+	fn try_detect_changes_rejects_cross_app_rename_destination_collisions() {
+		let mut from_state = ProjectState::new();
+		let mut old_profile = ModelState::new("accounts", "Profile");
+		old_profile.table_name = "accounts_profile".to_string();
+		from_state.add_model(old_profile);
+		let mut audit_user = ModelState::new("audit", "User");
+		audit_user.table_name = "users".to_string();
+		from_state.add_model(audit_user);
+
+		let mut to_state = ProjectState::new();
+		let mut renamed_profile = ModelState::new("accounts", "Profile");
+		renamed_profile.table_name = "users".to_string();
+		to_state.add_model(renamed_profile);
+		let mut retained_audit_user = ModelState::new("audit", "User");
+		retained_audit_user.table_name = "users".to_string();
+		to_state.add_model(retained_audit_user);
+
+		let error = MigrationAutodetector::new(from_state, to_state)
+			.try_detect_changes()
+			.expect_err("renames must not claim a table that another app still owns");
+
+		assert!(error.to_string().contains("multiple target models claim"));
 	}
 }

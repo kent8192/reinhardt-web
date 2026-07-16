@@ -170,7 +170,7 @@ impl ModelMetadata {
 				fk_info.referenced_table = registry
 					.get_model(target_app, target_model)
 					.map(|metadata| metadata.table_name)
-					.unwrap_or_else(|| to_snake_case(target_model));
+					.unwrap_or_else(|| format!("{}_{}", target_app, to_snake_case(target_model)));
 			}
 			field_state.foreign_key = foreign_key;
 			model_state.add_field(field_state);
@@ -881,6 +881,34 @@ mod tests {
 				.expect("FK constraint metadata should be present")
 				.referenced_table,
 			"articles"
+		);
+	}
+
+	#[test]
+	fn test_to_model_state_uses_app_prefixed_fallback_for_unregistered_qualified_fk() {
+		let registry = ModelRegistry::new();
+		let mut metadata = ModelMetadata::new("comments", "Comment", "comments_comment");
+		let foreign_key = crate::migrations::autodetector::ForeignKeyInfo {
+			referenced_table: "user".to_string(),
+			referenced_column: "id".to_string(),
+			on_delete: crate::migrations::autodetector::ForeignKeyAction::Cascade,
+			on_update: crate::migrations::autodetector::ForeignKeyAction::Cascade,
+		};
+		let field = FieldMetadata::new(FieldType::Uuid)
+			.with_param("fk_target_app", "auth")
+			.with_param("fk_target_model", "User")
+			.with_foreign_key(foreign_key);
+		metadata.add_field("user".to_string(), field);
+
+		let model_state = metadata.to_model_state_with_registry(&registry);
+
+		assert_eq!(
+			model_state.fields["user"]
+				.foreign_key
+				.as_ref()
+				.expect("foreign key metadata should be preserved")
+				.referenced_table,
+			"auth_user"
 		);
 	}
 

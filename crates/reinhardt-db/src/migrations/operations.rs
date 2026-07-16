@@ -1370,6 +1370,7 @@ impl Operation {
 		match self {
 			Operation::CreateTable { name, columns, .. } => {
 				let mut model = ModelState::new(app_label, name.clone());
+				model.table_name = name.clone();
 				for column in columns {
 					let mut field = FieldState::new(
 						column.name.to_string(),
@@ -1435,6 +1436,7 @@ impl Operation {
 				join_column,
 			} => {
 				let mut model = ModelState::new(app_label, name.clone());
+				model.table_name = name.clone();
 				model.base_model = Some(base_table.to_string());
 				model.inheritance_type = Some("joined_table".to_string());
 
@@ -1512,6 +1514,18 @@ impl Operation {
 					new_model.app_label = to_app.to_string();
 
 					state.add_model(new_model);
+				}
+				for model in state.models.values_mut() {
+					for field in model.fields.values_mut() {
+						if field.params.get("fk_target_app").map(String::as_str) == Some(from_app)
+							&& field.params.get("fk_target_model").map(String::as_str)
+								== Some(model_name)
+						{
+							field
+								.params
+								.insert("fk_target_app".to_string(), to_app.to_string());
+						}
+					}
 				}
 			}
 			// Schema operations don't affect ProjectState (models/fields only)
@@ -6373,6 +6387,7 @@ mod tests {
 		let model = state.get_model("myapp", "users");
 		assert!(model.is_some(), "Model 'users' should exist in state");
 		let model = model.unwrap();
+		assert_eq!(model.table_name, "users");
 		assert_eq!(
 			model.fields.len(),
 			2,
@@ -6618,6 +6633,11 @@ mod tests {
 			.unwrap()
 			.params
 			.insert("fk_target_app".to_string(), "accounts".to_string());
+		post.fields
+			.get_mut("user_id")
+			.unwrap()
+			.params
+			.insert("fk_target_model".to_string(), "User".to_string());
 		post.add_foreign_key_constraint_from_field("user_id");
 		state.add_model(post);
 
@@ -6651,6 +6671,14 @@ mod tests {
 				.unwrap()
 				.referenced_table,
 			"auth_user"
+		);
+		assert_eq!(
+			post.fields["user_id"].params.get("fk_target_app"),
+			Some(&"auth".to_string())
+		);
+		assert_eq!(
+			post.fields["user_id"].params.get("fk_target_model"),
+			Some(&"User".to_string())
 		);
 	}
 

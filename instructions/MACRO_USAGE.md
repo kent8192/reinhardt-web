@@ -14,15 +14,16 @@ Every model MUST set `app_label` explicitly. The label determines how model
 metadata is grouped for migrations, application discovery, and registry
 lookups, so there is no implicit `"default"` application.
 
-`table_name` is optional. When omitted, it is derived from the Rust struct name
-using snake_case without pluralization or language-specific inflection:
+`table_name` is optional. When omitted, it is derived from the application
+label plus the Rust struct name using snake_case without pluralization or
+language-specific inflection:
 
-| Struct | Derived table name |
+| Struct | Derived table name (`app_label = "app"`) |
 |---|---|
-| `User` | `user` |
-| `BlogPost` | `blog_post` |
-| `HTTPRoute` | `http_route` |
-| `Person` | `person` |
+| `User` | `app_user` |
+| `BlogPost` | `app_blog_post` |
+| `HTTPRoute` | `app_http_route` |
+| `Person` | `app_person` |
 
 Set `table_name` explicitly when mapping a model to an existing table or when
 the database contract requires a different name.

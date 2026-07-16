@@ -684,6 +684,8 @@ impl ModelConfig {
 enum ForeignKeySpec {
 	/// Type directly: `#[field(foreign_key = User)]`
 	Type(syn::Type),
+	/// Bare model name: `#[field(foreign_key = "User")]`
+	ModelName(String),
 	/// app_label.model_name format: `#[field(foreign_key = "users.User")]`
 	AppModel {
 		app_label: String,
@@ -935,13 +937,8 @@ impl FieldConfig {
 								));
 							}
 						} else {
-							// Type name only (for backward compatibility)
-							if let Ok(ty) = syn::parse_str::<syn::Type>(&spec_str) {
-								config.foreign_key = Some(ForeignKeySpec::Type(ty));
-								return Ok(());
-							} else {
-								return Err(meta.error("Invalid foreign_key specification"));
-							}
+							config.foreign_key = Some(ForeignKeySpec::ModelName(spec_str));
+							return Ok(());
 						}
 					}
 
@@ -3797,6 +3794,17 @@ fn generate_registration_code(
 						.with_param("fk_target_model", #type_name)
 					}
 				}
+				ForeignKeySpec::ModelName(model_name) => {
+					quote! {
+						.with_param("fk_target_model", #model_name)
+						.with_foreign_key(#migrations_crate::ForeignKeyInfo {
+							referenced_table: #migrations_crate::to_snake_case(#model_name),
+							referenced_column: "id".to_string(),
+							on_delete: #migrations_crate::ForeignKeyAction::Cascade,
+							on_update: #migrations_crate::ForeignKeyAction::Cascade,
+						})
+					}
+				}
 				ForeignKeySpec::AppModel {
 					app_label,
 					model_name,
@@ -6494,6 +6502,27 @@ mod tests {
 		assert!(output_str.contains("fk_target_app"));
 		assert!(output_str.contains("fk_target_model"));
 		assert!(output_str.contains("to_snake_case"));
+	}
+
+	#[test]
+	fn test_bare_string_foreign_key_registration_does_not_require_a_rust_type() {
+		let input = quote! {
+			#[model(app_label = "comments")]
+			pub struct Comment {
+				#[field(primary_key = true)]
+				pub id: i64,
+				#[field(foreign_key = "User")]
+				pub user_id: i64,
+			}
+		};
+
+		let output = model_derive_impl(syn::parse2(input).unwrap())
+			.unwrap()
+			.to_string();
+
+		assert!(output.contains("fk_target_model"));
+		assert!(output.contains("User"));
+		assert!(!output.contains("< User as"));
 	}
 
 	#[test]

@@ -223,8 +223,9 @@ ORM layer for database abstraction with Reinhardt's own query builder (reinhardt
 
 Models must declare `app_label` explicitly so migrations and registry lookups
 have unambiguous application ownership. `table_name` is optional and defaults
-to the struct name converted to snake_case without pluralization (`HTTPRoute`
-becomes `http_route`). Specify it when mapping to an existing or custom table.
+to the app label plus the struct name converted to snake_case without
+pluralization (`HTTPRoute` with `app_label = "routing"` becomes
+`routing_http_route`). Specify it when mapping to an existing or custom table.
 
 **Example (Current API):**
 

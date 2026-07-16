@@ -1423,35 +1423,32 @@ impl BaseCommand for MakeMigrationsCommand {
 			};
 
 			// Check for migration conflicts before proceeding
-			{
-				let all_migrations = service.load_all().await.map_err(|e| {
-					CommandError::ExecutionError(format!(
-						"Failed to load migrations for conflict check: {}",
-						e
-					))
-				})?;
-				if !all_migrations.is_empty() {
-					let graph = build_migration_graph(&all_migrations);
+			let existing_migrations = service.load_all().await.map_err(|e| {
+				CommandError::ExecutionError(format!(
+					"Failed to load migrations for conflict check: {}",
+					e
+				))
+			})?;
+			if !existing_migrations.is_empty() {
+				let graph = build_migration_graph(&existing_migrations);
 
-					let conflicts = graph.detect_conflicts();
-					if !conflicts.is_empty() {
-						let mut conflict_apps: Vec<&String> = conflicts.keys().collect();
-						conflict_apps.sort();
-						for app in &conflict_apps {
-							let leaves = &conflicts[*app];
-							let leaf_names: Vec<&str> =
-								leaves.iter().map(|k| k.name.as_str()).collect();
-							ctx.error(&format!(
-								"Conflicting migrations detected for '{}': {}",
-								app,
-								leaf_names.join(", ")
-							));
-						}
-						return Err(CommandError::ExecutionError(
-							"Run 'makemigrations --merge' to resolve migration conflicts."
-								.to_string(),
+				let conflicts = graph.detect_conflicts();
+				if !conflicts.is_empty() {
+					let mut conflict_apps: Vec<&String> = conflicts.keys().collect();
+					conflict_apps.sort();
+					for app in &conflict_apps {
+						let leaves = &conflicts[*app];
+						let leaf_names: Vec<&str> =
+							leaves.iter().map(|k| k.name.as_str()).collect();
+						ctx.error(&format!(
+							"Conflicting migrations detected for '{}': {}",
+							app,
+							leaf_names.join(", ")
 						));
 					}
+					return Err(CommandError::ExecutionError(
+						"Run 'makemigrations --merge' to resolve migration conflicts.".to_string(),
+					));
 				}
 			}
 
@@ -1581,8 +1578,11 @@ impl BaseCommand for MakeMigrationsCommand {
 				.iter_mut()
 				.map(|result| &mut result.migration)
 				.collect::<Vec<_>>();
-			add_reused_table_name_dependencies(&mut generated_migrations)
-				.map_err(crate::CommandError::ExecutionError)?;
+			add_reused_table_name_dependencies_with_history(
+				&mut generated_migrations,
+				&existing_migrations,
+			)
+			.map_err(crate::CommandError::ExecutionError)?;
 
 			// 4. Write all migrations
 			if !results.is_empty() {
@@ -1655,12 +1655,18 @@ impl BaseCommand for MakeMigrationsCommand {
 }
 
 #[cfg(feature = "migrations")]
-fn add_reused_table_name_dependencies(
+fn add_reused_table_name_dependencies_with_history(
 	migrations: &mut [&mut reinhardt_db::migrations::Migration],
+	historical_migrations: &[reinhardt_db::migrations::Migration],
 ) -> Result<(), String> {
 	use reinhardt_db::migrations::Operation;
 
-	let renamed_tables: Vec<(String, String, String)> = migrations
+	let all_migrations = historical_migrations
+		.iter()
+		.chain(migrations.iter().map(|migration| &**migration))
+		.collect::<Vec<_>>();
+
+	let renamed_tables: Vec<(String, String, String)> = all_migrations
 		.iter()
 		.flat_map(|migration| {
 			migration
@@ -1685,7 +1691,7 @@ fn add_reused_table_name_dependencies(
 				})
 		})
 		.collect();
-	let dropped_tables: Vec<(String, String, String)> = migrations
+	let dropped_tables: Vec<(String, String, String)> = all_migrations
 		.iter()
 		.flat_map(|migration| {
 			migration
@@ -4496,7 +4502,8 @@ mod tests {
 				partition: None,
 			});
 
-		add_reused_table_name_dependencies(&mut [&mut producer, &mut consumer]).unwrap();
+		add_reused_table_name_dependencies_with_history(&mut [&mut producer, &mut consumer], &[])
+			.unwrap();
 
 		assert_eq!(
 			consumer.dependencies,
@@ -4520,7 +4527,8 @@ mod tests {
 				new_name: "users".to_string(),
 			});
 
-		add_reused_table_name_dependencies(&mut [&mut producer, &mut consumer]).unwrap();
+		add_reused_table_name_dependencies_with_history(&mut [&mut producer, &mut consumer], &[])
+			.unwrap();
 
 		assert_eq!(
 			consumer.dependencies,
@@ -4552,7 +4560,8 @@ mod tests {
 				partition: None,
 			});
 
-		add_reused_table_name_dependencies(&mut [&mut producer, &mut consumer]).unwrap();
+		add_reused_table_name_dependencies_with_history(&mut [&mut producer, &mut consumer], &[])
+			.unwrap();
 
 		assert_eq!(
 			consumer.dependencies,
@@ -4579,11 +4588,41 @@ mod tests {
 				partition: None,
 			});
 
-		add_reused_table_name_dependencies(&mut [&mut producer, &mut consumer]).unwrap();
+		add_reused_table_name_dependencies_with_history(&mut [&mut producer, &mut consumer], &[])
+			.unwrap();
 
 		assert_eq!(
 			consumer.dependencies,
 			vec![("accounts".to_string(), "0004_remove_legacy".to_string())]
+		);
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	fn reused_table_name_depends_on_a_historical_cross_app_rename() {
+		use reinhardt_db::migrations::{Migration, Operation};
+
+		let historical =
+			Migration::new("0002_rename_user", "accounts").add_operation(Operation::RenameTable {
+				old_name: "users".to_string(),
+				new_name: "accounts_user".to_string(),
+			});
+		let mut consumer =
+			Migration::new("0001_initial", "profiles").add_operation(Operation::CreateTable {
+				name: "users".to_string(),
+				columns: Vec::new(),
+				constraints: Vec::new(),
+				without_rowid: None,
+				interleave_in_parent: None,
+				partition: None,
+			});
+
+		add_reused_table_name_dependencies_with_history(&mut [&mut consumer], &[historical])
+			.unwrap();
+
+		assert_eq!(
+			consumer.dependencies,
+			vec![("accounts".to_string(), "0002_rename_user".to_string())]
 		);
 	}
 
@@ -4603,8 +4642,11 @@ mod tests {
 				new_name: "users".to_string(),
 			});
 
-		let error = add_reused_table_name_dependencies(&mut [&mut accounts, &mut archive])
-			.expect_err("cross-app table-name swaps require an explicit temporary migration");
+		let error = add_reused_table_name_dependencies_with_history(
+			&mut [&mut accounts, &mut archive],
+			&[],
+		)
+		.expect_err("cross-app table-name swaps require an explicit temporary migration");
 
 		assert!(error.contains("cyclic cross-app table-name dependency"));
 		assert!(accounts.dependencies.is_empty());
