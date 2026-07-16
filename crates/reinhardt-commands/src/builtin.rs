@@ -3371,9 +3371,13 @@ impl RunServerCommand {
 		}
 		let package_name = package_context.package_name.clone();
 		let target_name = package_context.wasm_target_name().to_owned();
+		let static_dir = ctx
+			.option("static-dir")
+			.map(String::as_str)
+			.unwrap_or("dist");
 
 		let js_name = target_name.replace('-', "_");
-		let artifact = cwd.join("dist").join(format!("{}_bg.wasm", js_name));
+		let artifact = cwd.join(static_dir).join(format!("{}_bg.wasm", js_name));
 		if !force
 			&& !crate::wasm_builder::is_wasm_stale_for_roots(
 				package_context.source_package_roots(),
@@ -3394,7 +3398,7 @@ impl RunServerCommand {
 			"Building pages WASM for {} ({})...",
 			package_name, reason
 		));
-		let config = Self::pages_wasm_build_config(&package_name, &target_name);
+		let config = Self::pages_wasm_build_config(&package_name, &target_name, static_dir);
 		let builder = crate::wasm_builder::WasmBuilder::new(config)
 			.features(feature_selection.features().iter().cloned())
 			.all_features(feature_selection.all_features_enabled());
@@ -3412,9 +3416,10 @@ impl RunServerCommand {
 	fn pages_wasm_build_config(
 		package_name: &str,
 		target_name: &str,
+		static_dir: &str,
 	) -> crate::wasm_builder::WasmBuildConfig {
 		crate::wasm_builder::WasmBuildConfig::new(".")
-			.output_dir("dist")
+			.output_dir(static_dir)
 			.release(!cfg!(debug_assertions))
 			.target_name(target_name)
 			.package(package_name)
@@ -4990,14 +4995,16 @@ name = "db.sqlite3"
 
 	#[test]
 	#[cfg(feature = "pages")]
-	fn pages_wasm_build_profile_matches_style_extraction_cfg() {
+	fn pages_wasm_build_config_uses_the_served_static_directory() {
 		// Act
-		let config = RunServerCommand::pages_wasm_build_config("style-app", "client_app");
+		let config =
+			RunServerCommand::pages_wasm_build_config("style-app", "client_app", "static/app");
 
 		// Assert
 		assert_eq!(config.release, !cfg!(debug_assertions));
 		assert_eq!(config.package.as_deref(), Some("style-app"));
 		assert_eq!(config.target_name.as_deref(), Some("client_app"));
+		assert_eq!(config.output_dir, std::path::PathBuf::from("static/app"));
 	}
 
 	#[test]
