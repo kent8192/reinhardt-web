@@ -210,8 +210,10 @@
 
 For comprehensive guidelines, see:
 - **Module System**: instructions/MODULE_SYSTEM.md
+- **Crate Structure**: instructions/CRATE_STRUCTURE.md (workspace layout and crate organization)
 - **Testing**: instructions/TESTING_STANDARDS.md
 - **Anti-Patterns**: instructions/ANTI_PATTERNS.md
+- **Build Performance**: instructions/BUILD_PERFORMANCE.md (measurement-first build optimization)
 - **Macro Usage**: instructions/MACRO_USAGE.md (includes `#[model(...)]` rules)
 - **Documentation**: instructions/DOCUMENTATION_STANDARDS.md
 - **Git Commits**: instructions/COMMIT_GUIDELINE.md (includes CHANGELOG generation guidelines and excluded artifacts)
@@ -225,7 +227,8 @@ For comprehensive guidelines, see:
 - **Upstream Issue Reporting**: instructions/UPSTREAM_ISSUE_REPORTING.md
 - **GitHub Interactions**: instructions/GITHUB_INTERACTION.md
 - **Copilot Review Handling**: instructions/GITHUB_INTERACTION.md (CR-1 ~ CR-5)
-- **Obsidian Wiki Maintenance**: instructions/OBSIDIAN_WIKI.md (OW-1 ~ OW-6)
+- **Obsidian Wiki Maintenance**: instructions/OBSIDIAN_WIKI.md (OW-1 ~ OW-7)
+- **Migration Guides**: instructions/MIGRATION_0.2.md (0.1.x → 0.2.0), instructions/MIGRATION_0.3.md (0.2.x → 0.3.0), instructions/PAGES_CFG_MIGRATION.md (reinhardt-pages cfg simplification)
 - **GitHub Discussions**: https://github.com/kent8192/reinhardt-web/discussions
 - **Security Policy**: SECURITY.md
 - **Code of Conduct**: CODE_OF_CONDUCT.md

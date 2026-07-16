@@ -314,6 +314,20 @@ pub enum Error {
 /// ```
 pub type Result<T> = std::result::Result<T, Error>;
 
+pub use http::StatusCode;
+
+/// Application-defined error contract for HTTP response mapping.
+///
+/// Implementations must return client-safe messages. Server-side diagnostic
+/// details should remain in logs or the original error display output.
+pub trait HttpError {
+	/// Returns the HTTP status associated with this error.
+	fn status_code(&self) -> StatusCode;
+
+	/// Returns the client-facing message associated with this error.
+	fn client_message(&self) -> std::borrow::Cow<'static, str>;
+}
+
 /// Categorical classification of `Error` variants.
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
