@@ -570,12 +570,12 @@ pub fn model_form(model_name: &str, fields: &[FormField], record_id: Option<&str
 
 #[cfg(client)]
 fn submit_model_form(
-	event: web_sys::Event,
+	event: reinhardt_pages::event::SubmitEvent,
 	model_name: String,
 	record_id: Option<String>,
 	return_url: String,
 ) {
-	let request = collect_mutation_request(&event);
+	let request = collect_mutation_request(event.raw());
 	reinhardt_pages::platform::spawn_task(async move {
 		let result = if let Some(id) = record_id {
 			update_record(model_name, id, request).await
@@ -1104,7 +1104,7 @@ pub fn filters(
 		.iter()
 		.map(|info| {
 			let current_value = current_filters.get(&info.field).map(|s| s.as_str());
-			create_filter_control(info, current_value, filters_signal.clone())
+			create_filter_control(info, current_value, filters_signal)
 		})
 		.collect();
 

@@ -22,41 +22,30 @@
 //! - **Django-like API**: Familiar patterns for Reinhardt developers
 //! - **Boundaries**: Suspense and error boundaries for async UI states
 //!
-//! ## React-aligned hook signatures (v0.4, Refs #5511 and #5577)
+//! ## React-aligned hook signatures (v0.2, Refs #4195)
 //!
-//! `use_effect`, `use_layout_effect`, and `use_memo` accept either an explicit
-//! `deps![...]` dependency list or `deps_auto!()`. Retained effects, callbacks,
-//! and resources require an explicit list. Effect closures return `()` when no
-//! cleanup is needed, or `Option<C>` when they register cleanup:
+//! `use_effect`, `use_retained_effect`, `use_layout_effect`,
+//! `use_retained_layout_effect`, `use_memo`, `use_callback`, and
+//! `use_callback_with` take an explicit dependency tuple as the second
+//! argument. Effect closures return `()` when no cleanup is needed, or
+//! `Option<C>` when they register cleanup:
 //!
 //! ```ignore
 //! use reinhardt_pages::prelude::*;
 //!
 //! let count = Signal::new(0_i32);
+//! let count_for_effect = count.clone();
 //! use_retained_effect(
-//!     {
-//!         let count = count.clone();
-//!         move || {
-//!             println!("count = {}", count.get());
-//!         }
+//!     move || {
+//!         println!("count = {}", count_for_effect.get());
 //!     },
-//!     deps![count],
+//!     (count.clone(),),
 //! );
 //! ```
 //!
-//! In explicit dependency mode (`deps![...]`), effect, layout-effect, and memo
-//! closures run with no active reactive Observer ("Option A"); `Signal::get`
-//! inside does not auto-subscribe, and subscriptions derive exclusively from
-//! the dependency list. Pass `deps![]` for a mount-only effect or memo.
-//! Automatic tracking is available only for effects, layout effects, and memos;
-//! pass `deps_auto!()` as their second argument to subscribe to signals read by
-//! the closure. Retained effects, callbacks, and resources always use explicit
-//! dependency lists.
-//!
-//! This is a breaking migration from the tuple and unit forms. Replace `()`
-//! with `deps![]`, and replace `(signal.clone(), ...)` with `deps![signal, ...]`.
-//! See `docs/migration/0.4.0-hook-dependency-modes.md` for the complete
-//! migration guide and the relationship between #5511 and #5577.
+//! Closures run with no active reactive Observer ("Option A"), so
+//! `Signal::get` inside does NOT auto-subscribe — subscriptions derive
+//! exclusively from the deps tuple. Pass `()` for mount-only effects.
 //!
 //! For a concept-by-concept mapping from React to Reinhardt Pages, see
 //! `docs/react_to_reinhardt.md` in this crate.
@@ -490,7 +479,7 @@ pub use component::{
 	ScriptTag, StyleTag, SuspenseBoundary, ViewTransitionBoundary, ViewTransitionHandle,
 	ViewTransitionStatus, start_view_transition,
 };
-pub use csrf::{CsrfManager, get_csrf_token};
+pub use csrf::{CsrfManager, CsrfTokenSignal, get_csrf_token};
 pub use dom::{CustomEventOptions, Document, Element, EventHandle, EventType, document};
 #[cfg(native)]
 pub use form::{FormBinding, FormComponent};
@@ -510,7 +499,7 @@ pub use portal::{Portal, PortalError, PortalHandle, PortalTarget, mount_portal};
 pub use reactive::{
 	Effect, ExplicitDeps, LatestResourceState, LatestResourceValue, LatestResourceValueBuilder,
 	Memo, QueryHandle, QueryKey, QueryPhase, ReactiveDeps, Resource, ResourceState, Signal,
-	Trackable, use_latest_resource_value, use_resource, use_resource_with_key,
+	use_latest_resource_value, use_resource, use_resource_with_key,
 };
 // Re-export Context system
 pub use reactive::{

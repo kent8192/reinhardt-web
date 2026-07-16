@@ -24,6 +24,7 @@
 //! Total: 30 tests
 
 use proptest::prelude::*;
+use reinhardt_core::reactive::ReactiveScope;
 use reinhardt_pages::reactive::{
 	Signal,
 	context::{Context, provide_context},
@@ -239,19 +240,21 @@ fn test_context_property_value_consistency() {
 /// Tests Context with Signal
 #[rstest]
 fn test_context_combination_signal() {
-	let signal_ctx: Context<Signal<i32>> = Context::new();
-	let signal = Signal::new(42);
+	ReactiveScope::run(|| {
+		let signal_ctx: Context<Signal<i32>> = Context::new();
+		let signal = Signal::new(42);
 
-	provide_context(&signal_ctx, signal.clone());
+		provide_context(&signal_ctx, signal.clone());
 
-	if let Some(retrieved_signal) = use_context(&signal_ctx) {
-		assert_eq!(retrieved_signal.get(), 42);
+		if let Some(retrieved_signal) = use_context(&signal_ctx) {
+			assert_eq!(retrieved_signal.get(), 42);
 
-		retrieved_signal.set(100);
-		assert_eq!(signal.get(), 100);
-	} else {
-		panic!("Expected context value");
-	}
+			retrieved_signal.set(100);
+			assert_eq!(signal.get(), 100);
+		} else {
+			panic!("Expected context value");
+		}
+	});
 }
 
 /// Tests multiple context layers
@@ -483,15 +486,17 @@ fn test_context_decision_case7_rc_wrapped() {
 #[rstest]
 #[case::signal_in_context()]
 fn test_context_decision_case8_signal_reactivity() {
-	let ctx: Context<Signal<i32>> = Context::new();
-	let signal = Signal::new(0);
+	ReactiveScope::run(|| {
+		let ctx: Context<Signal<i32>> = Context::new();
+		let signal = Signal::new(0);
 
-	provide_context(&ctx, signal.clone());
+		provide_context(&ctx, signal.clone());
 
-	if let Some(retrieved) = use_context(&ctx) {
-		retrieved.set(42);
-		assert_eq!(signal.get(), 42);
-	} else {
-		panic!("Expected context value");
-	}
+		if let Some(retrieved) = use_context(&ctx) {
+			retrieved.set(42);
+			assert_eq!(signal.get(), 42);
+		} else {
+			panic!("Expected context value");
+		}
+	});
 }

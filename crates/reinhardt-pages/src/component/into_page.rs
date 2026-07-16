@@ -86,17 +86,22 @@ fn mount_inner(page: Page, parent: &Element) -> Result<(), MountError> {
 			// Attach event handlers before mounting children
 			for (event_type, handler) in event_handlers {
 				let handler_clone = handler.clone();
+				let scope = reinhardt_core::reactive::scope::current_scope_id();
 				#[cfg(feature = "i18n")]
 				let i18n_context = crate::i18n::current_i18n_callback_context();
 				let closure = Closure::wrap(Box::new(move |event: web_sys::Event| {
 					#[cfg(feature = "i18n")]
 					{
 						crate::i18n::with_optional_i18n_context(i18n_context.as_ref(), || {
-							handler_clone(event);
+							crate::callback::run_event_handler_in_scope(
+								scope,
+								&handler_clone,
+								event,
+							);
 						});
 					}
 					#[cfg(not(feature = "i18n"))]
-					handler_clone(event);
+					crate::callback::run_event_handler_in_scope(scope, &handler_clone, event);
 				}) as Box<dyn FnMut(web_sys::Event)>);
 
 				element

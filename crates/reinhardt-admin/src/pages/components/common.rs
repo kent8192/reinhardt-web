@@ -177,7 +177,7 @@ pub fn pagination(current_page: Signal<u64>, total_pages: u64) -> Page {
 		"Previous",
 		prev_disabled,
 		false,
-		current_page.clone(),
+		current_page,
 		move |page: Signal<u64>| {
 			let current = page.get();
 			if current > 1 {
@@ -197,7 +197,7 @@ pub fn pagination(current_page: Signal<u64>, total_pages: u64) -> Page {
 			&page_num_str,
 			false,
 			is_current,
-			current_page.clone(),
+			current_page,
 			move |page: Signal<u64>| {
 				page.set(page_num);
 			},
@@ -264,7 +264,7 @@ where
 				class: "admin-page-link",
 				href: "#",
 				@click: move |_| {
-					_handler(_signal.clone());
+					_handler(_signal);
 				},
 				{ text }
 			}

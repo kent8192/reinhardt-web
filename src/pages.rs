@@ -50,8 +50,3 @@
 
 // Re-export all reinhardt-pages functionality
 pub use reinhardt_pages::*;
-
-// Keep the dependency-mode API explicit on the facade surface as well as the
-// underlying pages crate. This makes the supported hook modes discoverable
-// through `reinhardt::pages` without exposing the internal `Deps` container.
-pub use reinhardt_pages::{ExplicitDeps, ReactiveDeps, Trackable, deps, deps_auto};

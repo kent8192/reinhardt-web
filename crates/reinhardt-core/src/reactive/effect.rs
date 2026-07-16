@@ -9,80 +9,62 @@
 //! - **Automatic Dependency Tracking**: Signal::get() calls inside the effect are automatically tracked
 //! - **Automatic Re-execution**: When a dependent Signal changes, the effect is scheduled for re-run
 //! - **Cleanup Support**: Optional cleanup function that runs before re-execution
-//! - **Memory Safe**: Automatically removes itself from the dependency graph when dropped
+//! - **Scope-owned**: Automatically removes itself from the dependency graph when its scope is disposed
 //!
 //! ## Example
 //!
 //! ```rust
-//! use reinhardt_core::reactive::{Signal, Effect};
+//! use reinhardt_core::reactive::{Effect, ReactiveScope, Signal};
 //!
-//! let count = Signal::new(0);
+//! ReactiveScope::run(|| {
+//!     let count = Signal::new(0);
 //!
-//! // Create an effect that logs the count
-//! let count_for_effect = count.clone();
-//! let _effect = Effect::new(move || {
-//!     // This get() call automatically creates a dependency
-//!     println!("Count is: {}", count_for_effect.get());
+//!     // Create an effect that logs the count
+//!     let count_for_effect = count;
+//!     let _effect = Effect::new(move || {
+//!         // This get() call automatically creates a dependency
+//!         println!("Count is: {}", count_for_effect.get());
+//!     });
+//!
+//!     // This will trigger the effect to re-run
+//!     count.set(42); // Prints: "Count is: 42"
 //! });
-//!
-//! // This will trigger the effect to re-run
-//! count.set(42); // Prints: "Count is: 42"
 //! ```
 
 use core::cell::RefCell;
+use core::marker::PhantomData;
 
 extern crate alloc;
 use alloc::boxed::Box;
-use alloc::collections::BTreeMap;
 use alloc::rc::Rc;
 
-use super::deps::{ExplicitDeps, ReactiveDeps};
+use super::deps::ReactiveDeps;
 use super::runtime::{EffectTiming, NodeId, NodeType, Observer, try_with_runtime, with_runtime};
+use super::scope::{
+	NodeKey, NodeKind, ScopeId, allocate_node, enter_scope, find_node_key, mark_node_disposed,
+	require_active_scope, with_node, with_node_mut,
+};
 
 /// Type alias for effect functions
 type EffectFn = Box<dyn FnMut() + 'static>;
 
-/// Type alias for stored effect slots.
-type EffectSlot = Option<EffectFn>;
-
 /// Type alias for the cleanup slot shared between Effect instances and closures
 type CleanupSlot = Rc<RefCell<Option<Box<dyn FnOnce()>>>>;
 
-// Global storage for Effect functions
-//
-// This stores the closures for all Effects so they can be re-executed when dependencies change.
-thread_local! {
-	static EFFECT_FUNCTIONS: RefCell<BTreeMap<NodeId, EffectSlot>> = RefCell::new(BTreeMap::new());
-}
-
-// Global storage for Effect timing information
-//
-// This stores the execution timing (Layout vs Passive) for each Effect.
-thread_local! {
-	static EFFECT_TIMING: RefCell<BTreeMap<NodeId, EffectTiming>> = const { RefCell::new(BTreeMap::new()) };
+struct EffectSlot {
+	f: Option<EffectFn>,
+	timing: EffectTiming,
+	cleanup_slot: CleanupSlot,
+	scope: ScopeId,
+	run_scope: Option<super::scope::ReactiveScope>,
 }
 
 /// Get the timing for an effect by its ID.
 ///
 /// Returns `None` if the effect doesn't exist or is not an Effect node.
 pub(crate) fn get_effect_timing(effect_id: NodeId) -> Option<EffectTiming> {
-	EFFECT_TIMING.with(|storage| storage.borrow().get(&effect_id).copied())
-}
-
-fn remove_effect_registration(effect_id: NodeId) {
-	let _ = try_with_runtime(|runtime| runtime.remove_node(effect_id));
-
-	let mut effect_fn = None;
-	let _ = EFFECT_FUNCTIONS.try_with(|storage| {
-		let mut functions = storage.borrow_mut();
-		effect_fn = functions.get_mut(&effect_id).and_then(Option::take);
-		functions.remove(&effect_id);
-	});
-	drop(effect_fn);
-
-	let _ = EFFECT_TIMING.try_with(|storage| {
-		storage.borrow_mut().remove(&effect_id);
-	});
+	let key = find_node_key(effect_id, NodeKind::Effect)?;
+	with_node::<EffectSlot, _>(key, |slot| slot.timing).ok()
 }
 
 /// A reactive effect that automatically re-runs when its dependencies change
@@ -92,62 +74,63 @@ fn remove_effect_registration(effect_id: NodeId) {
 ///
 /// ## Cleanup
 ///
-/// Effects can optionally provide a cleanup function that runs before the effect is re-executed or dropped.
+/// Effects can optionally provide a cleanup function that runs before the effect is re-executed or its owning scope is disposed.
 /// This is useful for cleaning up event listeners, timers, etc.
 ///
 /// ## Example
 ///
 /// ```no_run
-/// use reinhardt_core::reactive::{Signal, Effect};
+/// use reinhardt_core::reactive::{Effect, ReactiveScope, Signal};
 ///
-/// let count = Signal::new(0);
-/// let doubled = Signal::new(0);
+/// ReactiveScope::run(|| {
+///     let count = Signal::new(0);
+///     let doubled = Signal::new(0);
 ///
-/// // Effect that keeps doubled in sync with count
-/// let count_clone = count.clone();
-/// let doubled_clone = doubled.clone();
-/// Effect::new(move || {
-///     doubled_clone.set(count_clone.get() * 2);
+///     // Effect that keeps doubled in sync with count
+///     let count_for_effect = count;
+///     let doubled_for_effect = doubled;
+///     Effect::new(move || {
+///         doubled_for_effect.set(count_for_effect.get() * 2);
+///     });
+///
+///     // After async update, doubled would be 10
+///     count.set(5);
 /// });
+/// ```
 ///
-/// // After async update, doubled would be 10
-/// count.set(5);
+/// Effect handles are bound to the thread that owns their reactive scope.
+///
+/// ```compile_fail
+/// use reinhardt_core::reactive::{Effect, ReactiveScope};
+///
+/// let effect = ReactiveScope::run(|| Effect::new(|| {}));
+/// std::thread::spawn(move || effect.dispose());
 /// ```
 pub struct Effect {
-	/// Unique identifier for this effect
-	id: NodeId,
-	/// Whether this effect has been disposed
-	disposed: Rc<RefCell<bool>>,
-	/// Pending cleanup function from the most recent cleanup-aware run.
-	///
-	/// Populated by mode constructors when the user's closure returns `Some(c)`;
-	/// flushed before each re-run and on dispose. Infallible constructors leave
-	/// this slot empty.
-	cleanup_slot: CleanupSlot,
+	key: NodeKey,
+	_thread_bound: PhantomData<Rc<()>>,
+}
+
+impl Clone for Effect {
+	fn clone(&self) -> Self {
+		*self
+	}
+}
+
+impl Copy for Effect {}
+
+impl Drop for EffectSlot {
+	fn drop(&mut self) {
+		if let Some(cleanup) = self.cleanup_slot.borrow_mut().take() {
+			super::runtime::run_without_observer(|| {
+				let _ = enter_scope(self.scope, cleanup);
+			});
+		}
+	}
 }
 
 impl Effect {
-	/// Create a new Effect that runs the given function
-	///
-	/// The function runs immediately, and will automatically re-run whenever any
-	/// Signal it accesses changes.
-	///
-	/// # Arguments
-	///
-	/// * `f` - The effect function. Must be `FnMut() + 'static`.
-	///
-	/// # Example
-	///
-	/// ```rust
-	/// use reinhardt_core::reactive::{Signal, Effect};
-	///
-	/// let count = Signal::new(0);
-	///
-	/// let count_clone = count.clone();
-	/// Effect::new(move || {
-	///     println!("Count: {}", count_clone.get());
-	/// });
-	/// ```
+	/// Create an effect in the active reactive scope.
 	pub fn new<F>(f: F) -> Self
 	where
 		F: FnMut() + 'static,
@@ -155,63 +138,38 @@ impl Effect {
 		Self::new_with_timing(f, EffectTiming::Passive)
 	}
 
-	/// Create a new Effect with specified execution timing
-	///
-	/// This is the low-level constructor that allows specifying whether the effect
-	/// should run synchronously (Layout) or asynchronously (Passive).
-	///
-	/// # Arguments
-	///
-	/// * `f` - The effect function. Must be `FnMut() + 'static`.
-	/// * `timing` - The execution timing (Layout or Passive).
-	///
-	/// # Example
-	///
-	/// ```rust
-	/// use reinhardt_core::reactive::{Signal, Effect, EffectTiming};
-	///
-	/// let count = Signal::new(0);
-	///
-	/// let count_clone = count.clone();
-	/// Effect::new_with_timing(move || {
-	///     println!("Count: {}", count_clone.get());
-	/// }, EffectTiming::Layout);
-	/// ```
-	pub fn new_with_timing<F>(mut f: F, timing: EffectTiming) -> Self
+	/// Create an effect with explicit execution timing.
+	pub fn new_with_timing<F>(f: F, timing: EffectTiming) -> Self
 	where
 		F: FnMut() + 'static,
 	{
-		Self::new_with_mode_and_timing(
-			move || {
-				f();
-				None::<fn()>
+		let scope = require_active_scope("Effect::new");
+		let key = allocate_node(
+			NodeKind::Effect,
+			EffectSlot {
+				f: Some(Box::new(f)),
+				timing,
+				cleanup_slot: Rc::new(RefCell::new(None)),
+				scope,
+				run_scope: None,
 			},
-			ReactiveDeps::Auto,
-			timing,
-		)
+		);
+		let effect = Self {
+			key,
+			_thread_bound: PhantomData,
+		};
+		Self::execute_effect(effect.id());
+		effect
 	}
 
-	/// Create a new Effect that subscribes only to the listed `deps` (Option A).
-	///
-	/// Unlike `Effect::new`, the closure runs with **no active reactive
-	/// Observer**, so `Signal::get` calls inside the closure do not auto-
-	/// subscribe. Only the `NodeId`s carried by `deps` register as
-	/// dependencies; changes to other Signals do not trigger re-execution.
-	///
-	/// The closure may return `Some(cleanup)` to register a one-shot
-	/// cleanup function that is invoked before the next re-run and on
-	/// `dispose`, matching React's `useEffect(() => () => cleanup())`.
-	///
-	/// This is the lower-layer primitive used by `use_effect(f, deps)` in
-	/// `reinhardt-pages`. See the design spec at
-	/// `docs/superpowers/specs/2026-05-22-issue-4195-hooks-deps-array-design.md`.
+	/// Create an effect subscribed only to the listed dependencies.
 	#[allow(dead_code)]
 	pub fn new_with_deps<F, C>(f: F, deps: super::deps::Deps) -> Self
 	where
 		F: FnMut() -> Option<C> + 'static,
 		C: FnOnce() + 'static,
 	{
-		Self::new_with_mode(f, ReactiveDeps::Explicit(ExplicitDeps::from_deps(deps)))
+		Self::new_with_deps_internal(f, Some(deps), EffectTiming::Passive)
 	}
 
 	#[doc(hidden)]
@@ -224,91 +182,76 @@ impl Effect {
 	}
 
 	#[doc(hidden)]
-	pub fn new_with_mode_and_timing<F, C>(
+	pub fn new_with_mode_and_timing<F, C>(f: F, deps: ReactiveDeps, timing: EffectTiming) -> Self
+	where
+		F: FnMut() -> Option<C> + 'static,
+		C: FnOnce() + 'static,
+	{
+		let deps = match deps {
+			ReactiveDeps::Explicit(deps) => Some(deps.into_deps()),
+			ReactiveDeps::Auto => None,
+		};
+		Self::new_with_deps_internal(f, deps, timing)
+	}
+
+	fn new_with_deps_internal<F, C>(
 		mut f: F,
-		deps: ReactiveDeps,
+		deps: Option<super::deps::Deps>,
 		timing: EffectTiming,
 	) -> Self
 	where
 		F: FnMut() -> Option<C> + 'static,
 		C: FnOnce() + 'static,
 	{
-		let explicit = match deps {
-			ReactiveDeps::Explicit(deps) => Some(deps.into_deps().into_inner()),
-			ReactiveDeps::Auto => None,
-		};
-		let id = NodeId::new();
-		let disposed = Rc::new(RefCell::new(false));
+		let scope = require_active_scope("Effect::new");
 		let cleanup_slot: CleanupSlot = Rc::new(RefCell::new(None));
+		let key = allocate_node(
+			NodeKind::Effect,
+			EffectSlot {
+				f: None,
+				timing,
+				cleanup_slot: Rc::clone(&cleanup_slot),
+				scope,
+				run_scope: None,
+			},
+		);
+		let effect_id = key.node_id();
+		let deps = deps.map(super::deps::Deps::into_inner);
 		let cleanup_for_closure = Rc::clone(&cleanup_slot);
-		let disposed_for_closure = Rc::clone(&disposed);
-
 		let wrapped = move || {
-			if *disposed_for_closure.borrow() {
-				return;
+			let previous_cleanup = { cleanup_for_closure.borrow_mut().take() };
+			if let Some(cleanup) = previous_cleanup {
+				cleanup();
 			}
-
-			let previous_cleanup = cleanup_for_closure.borrow_mut().take();
-			if let Some(previous_cleanup) = previous_cleanup {
-				super::runtime::run_without_observer(previous_cleanup);
-			}
-
-			let next_cleanup = if explicit.is_some() {
+			let next = if deps.is_some() {
 				super::runtime::run_without_observer(&mut f)
 			} else {
 				f()
 			};
-			if let Some(cleanup) = next_cleanup {
+			if let Some(cleanup) = next {
 				*cleanup_for_closure.borrow_mut() = Some(Box::new(cleanup));
 			}
-
-			if let Some(explicit) = &explicit {
-				for &dependency in explicit {
-					super::runtime::subscribe_node_to_observer(dependency, id);
+			if find_node_key(effect_id, NodeKind::Effect).is_some() {
+				if let Some(deps) = &deps {
+					for &dep in deps {
+						super::runtime::subscribe_node_to_observer(dep, effect_id);
+					}
 				}
 			}
 		};
-
-		EFFECT_FUNCTIONS.with(|storage| {
-			storage.borrow_mut().insert(id, Some(Box::new(wrapped)));
-		});
-
-		struct InitialRegistrationGuard {
-			effect_id: NodeId,
-			active: bool,
-		}
-
-		impl Drop for InitialRegistrationGuard {
-			fn drop(&mut self) {
-				if self.active {
-					remove_effect_registration(self.effect_id);
-				}
-			}
-		}
-
-		let mut registration_guard = InitialRegistrationGuard {
-			effect_id: id,
-			active: true,
+		with_node_mut::<EffectSlot, _>(key, |slot| {
+			slot.f = Some(Box::new(wrapped));
+		})
+		.unwrap_or_else(|err| panic!("{err}"));
+		let effect = Self {
+			key,
+			_thread_bound: PhantomData,
 		};
-
-		EFFECT_TIMING.with(|storage| {
-			storage.borrow_mut().insert(id, timing);
-		});
-		Self::execute_effect(id);
-		registration_guard.active = false;
-
-		Self {
-			id,
-			disposed,
-			cleanup_slot,
-		}
+		Self::execute_effect(effect_id);
+		effect
 	}
 
-	/// Create a new Effect with deps and an explicit `EffectTiming`.
-	///
-	/// Combines the deps-driven semantics of [`Self::new_with_deps`] with
-	/// the synchronous-vs-asynchronous control of [`Self::new_with_timing`].
-	/// Used by `use_layout_effect(f, deps)`.
+	/// Create an explicitly-timed effect subscribed to listed dependencies.
 	#[allow(dead_code)]
 	pub fn new_with_deps_and_timing<F, C>(
 		f: F,
@@ -319,122 +262,101 @@ impl Effect {
 		F: FnMut() -> Option<C> + 'static,
 		C: FnOnce() + 'static,
 	{
-		Self::new_with_mode_and_timing(
-			f,
-			ReactiveDeps::Explicit(ExplicitDeps::from_deps(deps)),
-			timing,
-		)
+		Self::new_with_deps_internal(f, Some(deps), timing)
 	}
 
-	/// Execute an effect by its ID
-	///
-	/// This is called internally by the runtime when an effect needs to re-run.
 	pub(crate) fn execute_effect(effect_id: NodeId) {
-		// Get the timing for this effect (default to Passive if not found)
-		let timing = EFFECT_TIMING.with(|storage| {
-			storage
-				.borrow()
-				.get(&effect_id)
-				.copied()
-				.unwrap_or(EffectTiming::Passive)
-		});
+		let Some(key) = find_node_key(effect_id, NodeKind::Effect) else {
+			return;
+		};
+		let effect_fn = with_node_mut::<EffectSlot, _>(key, |slot| slot.f.take())
+			.unwrap_or_else(|err| panic!("{err}"));
+		let Some(effect_fn) = effect_fn else {
+			return;
+		};
+		let (previous_run_scope, previous_cleanup) = with_node_mut::<EffectSlot, _>(key, |slot| {
+			(slot.run_scope.take(), slot.cleanup_slot.borrow_mut().take())
+		})
+		.unwrap_or_else(|err| panic!("{err}"));
 
+		struct EffectFnGuard {
+			key: NodeKey,
+			f: Option<EffectFn>,
+		}
+		impl Drop for EffectFnGuard {
+			fn drop(&mut self) {
+				if let Some(f) = self.f.take()
+					&& find_node_key(self.key.node_id(), NodeKind::Effect).is_some()
+				{
+					let _ = with_node_mut::<EffectSlot, _>(self.key, |slot| {
+						if slot.f.is_none() {
+							slot.f = Some(f);
+						}
+					});
+				}
+			}
+		}
+		let mut guard = EffectFnGuard {
+			key,
+			f: Some(effect_fn),
+		};
+		if let Some(cleanup) = previous_cleanup {
+			super::runtime::run_without_observer(|| {
+				let _ = enter_scope(key.scope(), cleanup);
+			});
+		}
+		drop(previous_run_scope);
 		with_runtime(|rt| {
-			// Clear old dependencies before re-running
 			rt.clear_dependencies(effect_id);
-
-			// Push observer onto stack with timing information
 			rt.push_observer(Observer {
 				id: effect_id,
 				node_type: NodeType::Effect,
-				timing,
+				timing: get_effect_timing(effect_id).unwrap_or_default(),
 				cleanup: None,
 			});
 		});
 
 		struct ObserverGuard;
-
 		impl Drop for ObserverGuard {
 			fn drop(&mut self) {
-				let _ = try_with_runtime(|runtime| {
-					runtime.pop_observer();
-				});
+				let _ = try_with_runtime(|rt| rt.pop_observer());
 			}
 		}
-
 		let _observer_guard = ObserverGuard;
 
-		// Execute the effect function using Remove-Execute-Reinsert pattern
-		// to avoid RefCell reentrant borrow panics when the closure creates nested effects.
-		// An RAII guard ensures the closure is reinserted even if the user closure panics,
-		// and skips reinsertion if the effect was disposed during execution.
-		struct EffectFnGuard {
-			effect_id: NodeId,
-			effect_fn: Option<EffectFn>,
+		let run_scope = super::scope::ReactiveScope::new();
+		let run_scope_id = run_scope.id();
+		if let Some(f) = guard.f.as_mut() {
+			enter_scope(run_scope_id, f).unwrap_or_else(|err| panic!("{err}"));
 		}
-
-		impl Drop for EffectFnGuard {
-			fn drop(&mut self) {
-				// Only reinsert if the effect is still registered (not disposed during execution)
-				let still_alive =
-					EFFECT_TIMING.with(|storage| storage.borrow().contains_key(&self.effect_id));
-				if still_alive && let Some(f) = self.effect_fn.take() {
-					EFFECT_FUNCTIONS.with(|storage| {
-						storage.borrow_mut().insert(self.effect_id, Some(f));
-					});
-				}
-			}
-		}
-
-		let mut guard = EffectFnGuard {
-			effect_id,
-			effect_fn: EFFECT_FUNCTIONS.with(|storage| {
-				storage
-					.borrow_mut()
-					.get_mut(&effect_id)
-					.and_then(Option::take)
-			}),
-		};
-		if let Some(ref mut f) = guard.effect_fn {
-			f();
-		}
+		let _ = with_node_mut::<EffectSlot, _>(key, |slot| slot.run_scope = Some(run_scope));
 	}
 
-	/// Get the NodeId of this effect (for testing)
+	/// Return the runtime node identifier for this effect.
 	pub fn id(&self) -> NodeId {
-		self.id
+		self.key.node_id()
 	}
 
-	/// Dispose this effect
-	///
-	/// After calling this, the effect will no longer run and its resources will be cleaned up.
+	/// Dispose this effect and run its latest cleanup.
 	pub fn dispose(&self) {
-		*self.disposed.borrow_mut() = true;
-
-		struct TeardownGuard {
-			effect_id: NodeId,
+		let Ok((f, cleanup, run_scope)) = with_node_mut::<EffectSlot, _>(self.key, |slot| {
+			(
+				slot.f.take(),
+				slot.cleanup_slot.borrow_mut().take(),
+				slot.run_scope.take(),
+			)
+		}) else {
+			return;
+		};
+		let _ = mark_node_disposed(self.key);
+		drop(f);
+		if let Some(cleanup) = cleanup {
+			super::runtime::run_without_observer(|| {
+				let _ = enter_scope(self.key.scope(), cleanup);
+			});
 		}
-
-		impl Drop for TeardownGuard {
-			fn drop(&mut self) {
-				remove_effect_registration(self.effect_id);
-			}
-		}
-
-		let _teardown_guard = TeardownGuard { effect_id: self.id };
-
-		// Flush any pending cleanup before tearing down
-		// runtime state, matching React's "cleanup runs on unmount" semantics.
-		let cleanup = { self.cleanup_slot.borrow_mut().take() };
-		if let Some(c) = cleanup {
-			super::runtime::run_without_observer(c);
-		}
-	}
-}
-
-impl Drop for Effect {
-	fn drop(&mut self) {
-		self.dispose();
+		drop(run_scope);
+		let _ = try_with_runtime(|rt| rt.remove_node(self.id()));
 	}
 }
 
@@ -461,9 +383,7 @@ impl super::runtime::Runtime {
 
 		// Execute each pending effect (skip disposed ones)
 		for node_id in pending {
-			let still_registered =
-				EFFECT_TIMING.with(|storage| storage.borrow().contains_key(&node_id));
-			if still_registered {
+			if get_effect_timing(node_id).is_some() {
 				self.execute_scheduled_effect(node_id);
 			}
 		}
@@ -472,522 +392,404 @@ impl super::runtime::Runtime {
 
 #[cfg(test)]
 mod tests {
-	use core::cell::Cell;
-	use std::panic::{AssertUnwindSafe, catch_unwind};
-
 	use super::*;
-	use crate::reactive::{ReactiveDeps, Signal};
+	use crate::reactive::Signal;
+	use rstest::rstest;
 	use serial_test::serial;
+	use std::cell::Cell;
 
-	#[rstest::rstest]
+	#[rstest]
 	#[serial(reactive_runtime)]
-	fn auto_mode_replaces_conditional_dependencies() {
-		let enabled = Signal::new(true);
-		let left = Signal::new(0_i32);
-		let right = Signal::new(0_i32);
-		let runs = Rc::new(Cell::new(0_u8));
+	fn effect_is_copy() {
+		fn assert_copy<T: Copy>() {}
 
-		let _effect = Effect::new_with_mode::<_, fn()>(
-			{
-				let enabled = enabled.clone();
-				let left = left.clone();
-				let right = right.clone();
-				let runs = Rc::clone(&runs);
-				move || {
-					runs.set(runs.get() + 1);
-					if enabled.get() {
-						let _ = left.get();
-					} else {
-						let _ = right.get();
-					}
-					None
-				}
-			},
-			ReactiveDeps::Auto,
-		);
-
-		enabled.set(false);
-		with_runtime(|runtime| runtime.flush_updates());
-		left.set(1);
-		with_runtime(|runtime| runtime.flush_updates());
-		right.set(1);
-		with_runtime(|runtime| runtime.flush_updates());
-		assert_eq!(runs.get(), 3);
+		assert_copy::<Effect>();
 	}
 
-	#[rstest::rstest]
+	#[rstest]
 	#[serial(reactive_runtime)]
-	fn auto_mode_does_not_track_cleanup_reads() {
-		let setup_dep = Signal::new(0_i32);
-		let cleanup_only = Signal::new(0_i32);
-		let setups = Rc::new(Cell::new(0_u8));
-		let cleanups = Rc::new(Cell::new(0_u8));
+	#[should_panic(expected = "Effect::new requires an active ReactiveScope")]
+	fn effect_new_requires_scope() {
+		let _ = Effect::new(|| {});
+	}
 
-		let effect = Effect::new_with_mode(
-			{
-				let setup_dep = setup_dep.clone();
-				let cleanup_only = cleanup_only.clone();
-				let setups = Rc::clone(&setups);
-				let cleanups = Rc::clone(&cleanups);
+	#[rstest]
+	#[serial(reactive_runtime)]
+	fn scope_drop_runs_effect_cleanup() {
+		let cleaned = Rc::new(RefCell::new(false));
+		let cleaned_for_effect = Rc::clone(&cleaned);
+
+		crate::reactive::ReactiveScope::run(|| {
+			let _effect = Effect::new_with_deps(
 				move || {
-					let _ = setup_dep.get();
-					setups.set(setups.get() + 1);
-					let cleanup_only = cleanup_only.clone();
-					let cleanups = Rc::clone(&cleanups);
+					let cleaned_for_cleanup = Rc::clone(&cleaned_for_effect);
 					Some(move || {
-						let _ = cleanup_only.get();
-						cleanups.set(cleanups.get() + 1);
+						*cleaned_for_cleanup.borrow_mut() = true;
 					})
-				}
-			},
-			ReactiveDeps::Auto,
-		);
-
-		setup_dep.set(1);
-		with_runtime(|runtime| runtime.flush_updates());
-		cleanup_only.set(1);
-		with_runtime(|runtime| runtime.flush_updates());
-		assert_eq!((setups.get(), cleanups.get()), (2, 1));
-		drop(effect);
-		assert_eq!(cleanups.get(), 2);
-	}
-
-	#[rstest::rstest]
-	#[serial(reactive_runtime)]
-	fn auto_mode_ignores_untracked_reads() {
-		let signal = Signal::new(0_i32);
-		let runs = Rc::new(Cell::new(0_u8));
-		let _effect = Effect::new_with_mode::<_, fn()>(
-			{
-				let signal = signal.clone();
-				let runs = Rc::clone(&runs);
-				move || {
-					let _ = signal.get_untracked();
-					let _ = signal.with_untracked(|value| *value);
-					runs.set(runs.get() + 1);
-					None
-				}
-			},
-			ReactiveDeps::Auto,
-		);
-
-		signal.set(1);
-		with_runtime(|runtime| runtime.flush_updates());
-		assert_eq!(runs.get(), 1);
-	}
-
-	#[rstest::rstest]
-	#[serial(reactive_runtime)]
-	fn auto_mode_preserves_layout_timing() {
-		let effect = Effect::new_with_mode_and_timing::<_, fn()>(
-			|| None,
-			ReactiveDeps::Auto,
-			EffectTiming::Layout,
-		);
-
-		let timing = EFFECT_TIMING.with(|storage| storage.borrow().get(&effect.id()).copied());
-		assert_eq!(timing, Some(EffectTiming::Layout));
-	}
-
-	#[rstest::rstest]
-	#[serial(reactive_runtime)]
-	fn dispose_cleanup_reads_do_not_subscribe_outer_effect() {
-		let cleanup_only = Signal::new(0_i32);
-		let cleanups = Rc::new(Cell::new(0_u8));
-		let outer_runs = Rc::new(Cell::new(0_u8));
-		let inner = Effect::new_with_mode(
-			{
-				let cleanup_only = cleanup_only.clone();
-				let cleanups = Rc::clone(&cleanups);
-				move || {
-					let cleanup_only = cleanup_only.clone();
-					let cleanups = Rc::clone(&cleanups);
-					Some(move || {
-						let _ = cleanup_only.get();
-						cleanups.set(cleanups.get() + 1);
-					})
-				}
-			},
-			ReactiveDeps::Auto,
-		);
-		let inner = Rc::new(RefCell::new(Some(inner)));
-
-		let _outer = Effect::new({
-			let inner = Rc::clone(&inner);
-			let outer_runs = Rc::clone(&outer_runs);
-			move || {
-				outer_runs.set(outer_runs.get() + 1);
-				drop(inner.borrow_mut().take());
-			}
-		});
-
-		assert_eq!((outer_runs.get(), cleanups.get()), (1, 1));
-		cleanup_only.set(1);
-		with_runtime(|runtime| runtime.flush_updates());
-		assert_eq!(outer_runs.get(), 1);
-	}
-
-	#[rstest::rstest]
-	#[serial(reactive_runtime)]
-	fn panicking_effect_rerun_restores_observer_stack() {
-		let dependency = Signal::new(0_i32);
-		let panic_next = Rc::new(Cell::new(false));
-		let effect = Effect::new({
-			let dependency = dependency.clone();
-			let panic_next = Rc::clone(&panic_next);
-			move || {
-				let _ = dependency.get();
-				assert!(!panic_next.replace(false), "effect setup panic");
-			}
-		});
-		let outer_id = NodeId::new();
-		with_runtime(|runtime| {
-			runtime.push_observer(Observer {
-				id: outer_id,
-				node_type: NodeType::Effect,
-				timing: EffectTiming::Passive,
-				cleanup: None,
-			});
-		});
-
-		panic_next.set(true);
-		dependency.set(1);
-		let result = catch_unwind(AssertUnwindSafe(|| {
-			with_runtime(|runtime| runtime.flush_updates());
-		}));
-
-		assert!(result.is_err());
-		assert_eq!(
-			with_runtime(|runtime| runtime.debug_observer_stack()),
-			alloc::vec![outer_id]
-		);
-		with_runtime(|runtime| {
-			assert_eq!(
-				runtime.pop_observer().map(|observer| observer.id),
-				Some(outer_id)
+				},
+				crate::reactive::Deps::from_signals(&[]),
 			);
 		});
-		drop(effect);
+
+		assert!(*cleaned.borrow(), "scope disposal must run effect cleanup");
 	}
 
-	#[rstest::rstest]
+	#[rstest]
 	#[serial(reactive_runtime)]
-	fn panicking_initial_run_rolls_back_effect_registration() {
-		let dependency = Signal::new(0_i32);
-		let functions_before = EFFECT_FUNCTIONS.with(|storage| storage.borrow().len());
-		let timings_before = EFFECT_TIMING.with(|storage| storage.borrow().len());
+	fn scope_drop_runs_effect_cleanup_inside_the_owner_scope() {
+		let scope = crate::reactive::ReactiveScope::new();
+		let cleaned = Rc::new(Cell::new(false));
+		let cleaned_for_effect = Rc::clone(&cleaned);
 
-		let result = catch_unwind(AssertUnwindSafe({
-			let dependency = dependency.clone();
-			move || {
-				let _effect = Effect::new(move || {
-					let _ = dependency.get();
-					panic!("initial effect setup panic");
-				});
-			}
-		}));
-
-		assert!(result.is_err());
-		assert_eq!(
-			EFFECT_FUNCTIONS.with(|storage| storage.borrow().len()),
-			functions_before
-		);
-		assert_eq!(
-			EFFECT_TIMING.with(|storage| storage.borrow().len()),
-			timings_before
-		);
-		assert_eq!(
-			with_runtime(|runtime| runtime.subscriber_count(dependency.id())),
-			0
-		);
-		assert_eq!(
-			with_runtime(|runtime| runtime.debug_observer_stack()),
-			alloc::vec![]
-		);
-	}
-
-	#[rstest::rstest]
-	#[serial(reactive_runtime)]
-	fn panicking_drop_cleanup_removes_effect_registration() {
-		let dependency = Signal::new(0_i32);
-		let cleanups = Rc::new(Cell::new(0_u8));
-		let effect = Effect::new_with_mode(
-			{
-				let dependency = dependency.clone();
-				let cleanups = Rc::clone(&cleanups);
+		scope.enter(|| {
+			let _effect = Effect::new_with_deps(
 				move || {
-					let _ = dependency.get();
-					let cleanups = Rc::clone(&cleanups);
+					let cleaned_for_cleanup = Rc::clone(&cleaned_for_effect);
 					Some(move || {
-						cleanups.set(cleanups.get() + 1);
-						panic!("effect cleanup panic");
+						let signal = Signal::new(42_i32);
+						assert_eq!(signal.get(), 42);
+						cleaned_for_cleanup.set(true);
 					})
-				}
-			},
-			ReactiveDeps::Auto,
-		);
-		let effect_id = effect.id();
-		let outer_id = NodeId::new();
-		with_runtime(|runtime| {
-			runtime.push_observer(Observer {
-				id: outer_id,
-				node_type: NodeType::Effect,
-				timing: EffectTiming::Passive,
-				cleanup: None,
-			});
-		});
-
-		let result = catch_unwind(AssertUnwindSafe(|| drop(effect)));
-
-		assert!(result.is_err());
-		assert_eq!(cleanups.get(), 1);
-		assert_eq!(
-			with_runtime(|runtime| runtime.debug_observer_stack()),
-			alloc::vec![outer_id]
-		);
-		assert!(!EFFECT_FUNCTIONS.with(|storage| storage.borrow().contains_key(&effect_id)));
-		assert!(!EFFECT_TIMING.with(|storage| storage.borrow().contains_key(&effect_id)));
-		with_runtime(|runtime| {
-			assert!(!runtime.has_node(effect_id));
-			assert_eq!(runtime.subscriber_count(dependency.id()), 0);
-			assert_eq!(
-				runtime.pop_observer().map(|observer| observer.id),
-				Some(outer_id)
+				},
+				crate::reactive::Deps::from_signals(&[]),
 			);
 		});
+
+		scope.dispose();
+
+		assert!(cleaned.get(), "cleanup must run inside its owner scope");
 	}
 
 	#[test]
 	#[serial]
 	fn test_effect_runs_immediately() {
-		let run_count = Rc::new(RefCell::new(0));
-		let run_count_clone = run_count.clone();
+		crate::reactive::ReactiveScope::run(|| {
+			let run_count = Rc::new(RefCell::new(0));
+			let run_count_clone = run_count.clone();
 
-		let _effect = Effect::new(move || {
-			*run_count_clone.borrow_mut() += 1;
+			let _effect = Effect::new(move || {
+				*run_count_clone.borrow_mut() += 1;
+			});
+
+			assert_eq!(*run_count.borrow(), 1);
 		});
-
-		assert_eq!(*run_count.borrow(), 1);
 	}
 
 	#[test]
 	#[serial]
 	fn test_effect_tracks_dependency() {
-		let signal = Signal::new(0);
-		let run_count = Rc::new(RefCell::new(0));
-		let run_count_clone = run_count.clone();
+		crate::reactive::ReactiveScope::run(|| {
+			let signal = Signal::new(0);
+			let run_count = Rc::new(RefCell::new(0));
+			let run_count_clone = run_count.clone();
 
-		let signal_clone = signal.clone();
-		let _effect = Effect::new(move || {
-			let _ = signal_clone.get(); // Track dependency
-			*run_count_clone.borrow_mut() += 1;
-		});
+			let signal_for_effect = signal;
+			let _effect = Effect::new(move || {
+				let _ = signal_for_effect.get();
+				*run_count_clone.borrow_mut() += 1;
+			});
 
-		// Effect should have run once
-		assert_eq!(*run_count.borrow(), 1);
+			assert_eq!(*run_count.borrow(), 1);
 
-		// Verify dependency was tracked
-		with_runtime(|rt| {
-			let graph = rt.dependency_graph.borrow();
-			let signal_node = graph.get(&signal.id()).unwrap();
-			assert_eq!(signal_node.subscribers.len(), 1);
+			with_runtime(|rt| {
+				let graph = rt.dependency_graph.borrow();
+				let signal_node = graph.get(&signal.id()).unwrap();
+				assert_eq!(signal_node.subscribers.len(), 1);
+			});
 		});
 	}
 
 	#[test]
 	#[serial]
 	fn test_effect_reruns_on_signal_change() {
-		let signal = Signal::new(0);
-		let values = Rc::new(RefCell::new(alloc::vec::Vec::new()));
-		let values_clone = values.clone();
+		crate::reactive::ReactiveScope::run(|| {
+			let signal = Signal::new(0);
+			let values = Rc::new(RefCell::new(alloc::vec::Vec::new()));
+			let values_clone = values.clone();
 
-		let signal_clone = signal.clone();
-		let _effect = Effect::new(move || {
-			values_clone.borrow_mut().push(signal_clone.get());
+			let signal_clone = signal.clone();
+			let _effect = Effect::new(move || {
+				values_clone.borrow_mut().push(signal_clone.get());
+			});
+
+			// Initial run
+			assert_eq!(*values.borrow(), alloc::vec![0]);
+
+			// Change signal and flush updates
+			signal.set(10);
+			with_runtime(|rt| rt.flush_updates());
+			assert_eq!(*values.borrow(), alloc::vec![0, 10]);
+
+			// Change again
+			signal.set(20);
+			with_runtime(|rt| rt.flush_updates());
+			assert_eq!(*values.borrow(), alloc::vec![0, 10, 20]);
 		});
+	}
 
-		// Initial run
-		assert_eq!(*values.borrow(), alloc::vec![0]);
+	#[test]
+	#[serial(reactive_runtime)]
+	fn effect_rerun_disposes_nodes_created_by_its_previous_run() {
+		crate::reactive::ReactiveScope::run(|| {
+			let trigger = Signal::new(0);
+			let source = Signal::new(0);
+			let nested_runs = Rc::new(Cell::new(0));
+			let trigger_for_effect = trigger;
+			let source_for_effect = source;
+			let nested_runs_for_effect = Rc::clone(&nested_runs);
+			let _effect = Effect::new(move || {
+				let _ = trigger_for_effect.get();
+				let source_for_nested = source_for_effect;
+				let nested_runs = Rc::clone(&nested_runs_for_effect);
+				let _nested = Effect::new(move || {
+					let _ = source_for_nested.get();
+					nested_runs.set(nested_runs.get() + 1);
+				});
+			});
 
-		// Change signal and flush updates
-		signal.set(10);
-		with_runtime(|rt| rt.flush_updates());
-		assert_eq!(*values.borrow(), alloc::vec![0, 10]);
-
-		// Change again
-		signal.set(20);
-		with_runtime(|rt| rt.flush_updates());
-		assert_eq!(*values.borrow(), alloc::vec![0, 10, 20]);
+			assert_eq!(nested_runs.get(), 1);
+			trigger.set(1);
+			with_runtime(|rt| rt.flush_updates());
+			assert_eq!(nested_runs.get(), 2);
+			source.set(1);
+			with_runtime(|rt| rt.flush_updates());
+			assert_eq!(nested_runs.get(), 3);
+		});
 	}
 
 	#[test]
 	#[serial]
 	fn test_effect_with_multiple_signals() {
-		let signal1 = Signal::new(1);
-		let signal2 = Signal::new(2);
-		let sum = Rc::new(RefCell::new(0));
-		let sum_clone = sum.clone();
+		crate::reactive::ReactiveScope::run(|| {
+			let signal1 = Signal::new(1);
+			let signal2 = Signal::new(2);
+			let sum = Rc::new(RefCell::new(0));
+			let sum_clone = sum.clone();
 
-		let s1 = signal1.clone();
-		let s2 = signal2.clone();
-		let _effect = Effect::new(move || {
-			*sum_clone.borrow_mut() = s1.get() + s2.get();
+			let s1 = signal1.clone();
+			let s2 = signal2.clone();
+			let _effect = Effect::new(move || {
+				*sum_clone.borrow_mut() = s1.get() + s2.get();
+			});
+
+			// Initial run
+			assert_eq!(*sum.borrow(), 3);
+
+			// Change first signal
+			signal1.set(10);
+			with_runtime(|rt| rt.flush_updates());
+			assert_eq!(*sum.borrow(), 12);
+
+			// Change second signal
+			signal2.set(20);
+			with_runtime(|rt| rt.flush_updates());
+			assert_eq!(*sum.borrow(), 30);
 		});
-
-		// Initial run
-		assert_eq!(*sum.borrow(), 3);
-
-		// Change first signal
-		signal1.set(10);
-		with_runtime(|rt| rt.flush_updates());
-		assert_eq!(*sum.borrow(), 12);
-
-		// Change second signal
-		signal2.set(20);
-		with_runtime(|rt| rt.flush_updates());
-		assert_eq!(*sum.borrow(), 30);
 	}
 
 	#[test]
 	#[serial]
 	fn test_effect_dispose() {
-		let signal = Signal::new(0);
-		let run_count = Rc::new(RefCell::new(0));
-		let run_count_clone = run_count.clone();
+		crate::reactive::ReactiveScope::run(|| {
+			let signal = Signal::new(0);
+			let run_count = Rc::new(RefCell::new(0));
+			let run_count_clone = run_count.clone();
 
-		let signal_clone = signal.clone();
-		let effect = Effect::new(move || {
-			let _ = signal_clone.get();
-			*run_count_clone.borrow_mut() += 1;
-		});
-
-		assert_eq!(*run_count.borrow(), 1);
-
-		// Dispose the effect
-		effect.dispose();
-
-		// Signal change should not trigger the effect
-		signal.set(10);
-		with_runtime(|rt| rt.flush_updates());
-		assert_eq!(*run_count.borrow(), 1); // Still 1, not 2
-	}
-
-	#[test]
-	#[serial]
-	fn test_effect_drop_cleans_up() {
-		let signal = Signal::new(0);
-		let run_count = Rc::new(RefCell::new(0));
-		let run_count_clone = run_count.clone();
-
-		{
 			let signal_clone = signal.clone();
-			let _effect = Effect::new(move || {
+			let effect = Effect::new(move || {
 				let _ = signal_clone.get();
 				*run_count_clone.borrow_mut() += 1;
 			});
 
 			assert_eq!(*run_count.borrow(), 1);
-		} // Effect dropped here
 
-		// Signal change should not trigger the dropped effect
-		signal.set(10);
-		with_runtime(|rt| rt.flush_updates());
-		assert_eq!(*run_count.borrow(), 1); // Still 1
+			// Dispose the effect
+			effect.dispose();
+
+			// Signal change should not trigger the effect
+			signal.set(10);
+			with_runtime(|rt| rt.flush_updates());
+			assert_eq!(*run_count.borrow(), 1);
+		});
 	}
 
-	// Nested effect creation is supported via the Remove-Execute-Reinsert pattern in
-	// execute_effect(). The closure is temporarily removed from EFFECT_FUNCTIONS storage
-	// before execution, preventing RefCell reentrant borrow panics when nested Effects
-	// are created inside the closure.
+	#[test]
+	#[serial]
+	fn copied_effect_handle_drop_does_not_dispose_scope_owned_effect() {
+		crate::reactive::ReactiveScope::run(|| {
+			let signal = Signal::new(0);
+			let run_count = Rc::new(RefCell::new(0));
+			let run_count_clone = run_count.clone();
+
+			{
+				let signal_clone = signal.clone();
+				let _effect = Effect::new(move || {
+					let _ = signal_clone.get();
+					*run_count_clone.borrow_mut() += 1;
+				});
+
+				assert_eq!(*run_count.borrow(), 1);
+			}
+
+			signal.set(10);
+			with_runtime(|rt| rt.flush_updates());
+			assert_eq!(*run_count.borrow(), 2);
+		});
+	}
+
+	// Nested effect creation is supported by temporarily taking the closure from
+	// its scope slot before execution and reinserting it through an RAII guard.
 
 	#[rstest::rstest]
 	#[serial]
 	fn test_nested_effect_creation() {
-		// Arrange
-		let outer_ran = Rc::new(RefCell::new(false));
-		let inner_ran = Rc::new(RefCell::new(false));
-		let outer_ran_clone = outer_ran.clone();
-		let inner_ran_clone = inner_ran.clone();
+		crate::reactive::ReactiveScope::run(|| {
+			// Arrange
+			let outer_ran = Rc::new(RefCell::new(false));
+			let inner_ran = Rc::new(RefCell::new(false));
+			let outer_ran_clone = outer_ran.clone();
+			let inner_ran_clone = inner_ran.clone();
 
-		// Act - create an effect whose closure creates another effect
-		let _outer = Effect::new(move || {
-			*outer_ran_clone.borrow_mut() = true;
-			let inner_ran_inner = inner_ran_clone.clone();
-			let _inner = Effect::new(move || {
-				*inner_ran_inner.borrow_mut() = true;
+			// Act - create an effect whose closure creates another effect
+			let _outer = Effect::new(move || {
+				*outer_ran_clone.borrow_mut() = true;
+				let inner_ran_inner = inner_ran_clone.clone();
+				let _inner = Effect::new(move || {
+					*inner_ran_inner.borrow_mut() = true;
+				});
 			});
-		});
 
-		// Assert - both effects should have executed without panic
-		assert!(*outer_ran.borrow());
-		assert!(*inner_ran.borrow());
+			// Assert - both effects should have executed without panic
+			assert!(*outer_ran.borrow());
+			assert!(*inner_ran.borrow());
+		});
 	}
 
 	#[rstest::rstest]
 	#[serial]
 	fn test_effect_creates_signal_and_effect() {
-		// Arrange
-		let outer_ran = Rc::new(RefCell::new(false));
-		let inner_value = Rc::new(RefCell::new(0));
-		let outer_ran_clone = outer_ran.clone();
-		let inner_value_clone = inner_value.clone();
+		crate::reactive::ReactiveScope::run(|| {
+			// Arrange
+			let outer_ran = Rc::new(RefCell::new(false));
+			let inner_value = Rc::new(RefCell::new(0));
+			let outer_ran_clone = outer_ran.clone();
+			let inner_value_clone = inner_value.clone();
 
-		// Act - create an effect whose closure creates a signal and another effect
-		let _outer = Effect::new(move || {
-			*outer_ran_clone.borrow_mut() = true;
-			let new_signal = Signal::new(42);
-			let signal_for_inner = new_signal.clone();
-			let value_capture = inner_value_clone.clone();
-			let _inner = Effect::new(move || {
-				*value_capture.borrow_mut() = signal_for_inner.get();
+			// Act - create an effect whose closure creates a signal and another effect
+			let _outer = Effect::new(move || {
+				*outer_ran_clone.borrow_mut() = true;
+				let new_signal = Signal::new(42);
+				let signal_for_inner = new_signal.clone();
+				let value_capture = inner_value_clone.clone();
+				let _inner = Effect::new(move || {
+					*value_capture.borrow_mut() = signal_for_inner.get();
+				});
 			});
-		});
 
-		// Assert - outer ran and inner captured the signal value
-		assert!(*outer_ran.borrow());
-		assert_eq!(*inner_value.borrow(), 42);
+			// Assert - outer ran and inner captured the signal value
+			assert!(*outer_ran.borrow());
+			assert_eq!(*inner_value.borrow(), 42);
+		});
 	}
 
 	#[rstest::rstest]
 	#[serial]
 	fn test_effect_dispose_during_execution() {
-		// Arrange
-		let signal = Signal::new(0);
-		let run_count = Rc::new(RefCell::new(0));
-		let run_count_clone = run_count.clone();
-		let effect_holder: Rc<RefCell<Option<Effect>>> = Rc::new(RefCell::new(None));
-		let holder_clone = effect_holder.clone();
-		let signal_clone = signal.clone();
+		crate::reactive::ReactiveScope::run(|| {
+			// Arrange
+			let signal = Signal::new(0);
+			let run_count = Rc::new(RefCell::new(0));
+			let run_count_clone = run_count.clone();
+			let effect_holder: Rc<RefCell<Option<Effect>>> = Rc::new(RefCell::new(None));
+			let holder_clone = effect_holder.clone();
+			let signal_clone = signal.clone();
 
-		// Act - create an effect that reads a signal and disposes itself on re-execution
-		let effect = Effect::new(move || {
-			let _val = signal_clone.get(); // Track signal dependency
-			*run_count_clone.borrow_mut() += 1;
-			// On re-execution, the holder has the effect so dispose is called
-			if let Some(e) = holder_clone.borrow().as_ref() {
-				e.dispose();
-			}
+			// Act - create an effect that reads a signal and disposes itself on re-execution
+			let effect = Effect::new(move || {
+				let _val = signal_clone.get(); // Track signal dependency
+				*run_count_clone.borrow_mut() += 1;
+				// On re-execution, the holder has the effect so dispose is called
+				if let Some(e) = holder_clone.borrow().as_ref() {
+					e.dispose();
+				}
+			});
+
+			// Store the effect so it can be disposed during next execution
+			*effect_holder.borrow_mut() = Some(effect);
+
+			// Assert - effect ran once during creation
+			assert_eq!(*run_count.borrow(), 1);
+
+			// Act - trigger re-execution via signal change; effect disposes itself
+			signal.set(1);
+			with_runtime(|rt| rt.flush_updates());
+
+			// Assert - effect ran a second time (during which it disposed itself)
+			assert_eq!(*run_count.borrow(), 2);
+
+			// Act - trigger another change; disposed effect should NOT run
+			signal.set(2);
+			with_runtime(|rt| rt.flush_updates());
+
+			// Assert - still 2, effect did not run again
+			assert_eq!(*run_count.borrow(), 2);
 		});
+	}
 
-		// Store the effect so it can be disposed during next execution
-		*effect_holder.borrow_mut() = Some(effect);
+	#[rstest::rstest]
+	#[serial]
+	fn self_disposing_effect_keeps_its_current_run_scope_alive() {
+		crate::reactive::ReactiveScope::run(|| {
+			let source = Signal::new(0_i32);
+			let holder: Rc<RefCell<Option<Effect>>> = Rc::new(RefCell::new(None));
+			let source_for_effect = source;
+			let holder_for_effect = Rc::clone(&holder);
+			let effect = Effect::new(move || {
+				let _ = source_for_effect.get();
+				if let Some(effect) = *holder_for_effect.borrow() {
+					effect.dispose();
+					let nested = Signal::new(1_i32);
+					assert_eq!(nested.get(), 1);
+				}
+			});
+			*holder.borrow_mut() = Some(effect);
 
-		// Assert - effect ran once during creation
-		assert_eq!(*run_count.borrow(), 1);
+			source.set(1);
+			with_runtime(|rt| rt.flush_updates());
+		});
+	}
 
-		// Act - trigger re-execution via signal change; effect disposes itself
-		signal.set(1);
-		with_runtime(|rt| rt.flush_updates());
+	#[rstest::rstest]
+	#[serial]
+	fn scope_disposal_cleanup_does_not_track_the_current_observer() {
+		crate::reactive::ReactiveScope::run(|| {
+			let cleanup_signal = Signal::new(0_i32);
+			let child_scope = Rc::new(crate::reactive::ReactiveScope::new());
+			child_scope.enter(|| {
+				let cleanup_signal = cleanup_signal;
+				let _ = Effect::new_with_deps(
+					move || {
+						Some(move || {
+							let _ = cleanup_signal.get();
+						})
+					},
+					crate::reactive::Deps::from_signals(&[]),
+				);
+			});
 
-		// Assert - effect ran a second time (during which it disposed itself)
-		assert_eq!(*run_count.borrow(), 2);
+			let runs = Rc::new(RefCell::new(0_i32));
+			let runs_for_effect = Rc::clone(&runs);
+			let child_scope_for_effect = Rc::clone(&child_scope);
+			let _effect = Effect::new(move || {
+				*runs_for_effect.borrow_mut() += 1;
+				child_scope_for_effect.dispose();
+			});
 
-		// Act - trigger another change; disposed effect should NOT run
-		signal.set(2);
-		with_runtime(|rt| rt.flush_updates());
+			cleanup_signal.set(1);
+			with_runtime(|rt| rt.flush_updates());
 
-		// Assert - still 2, effect did not run again
-		assert_eq!(*run_count.borrow(), 2);
+			assert_eq!(*runs.borrow(), 1);
+		});
 	}
 
 	/// Verify that `flush_updates()` actually executes pending passive effects.
@@ -997,247 +799,278 @@ mod tests {
 	#[test]
 	#[serial]
 	fn test_flush_updates_executes_pending_effects() {
-		use crate::reactive::runtime::set_scheduler;
-		use std::sync::{Arc, Mutex};
+		crate::reactive::ReactiveScope::run(|| {
+			use crate::reactive::runtime::set_scheduler;
+			use std::sync::{Arc, Mutex};
 
-		// Collect tasks scheduled via set_scheduler
-		type ScheduledTasks = Arc<Mutex<Vec<Box<dyn FnOnce() + Send>>>>;
-		let scheduled_tasks: ScheduledTasks = Arc::new(Mutex::new(Vec::new()));
-		let tasks_clone = scheduled_tasks.clone();
+			// Collect tasks scheduled via set_scheduler
+			type ScheduledTasks = Arc<Mutex<Vec<Box<dyn FnOnce() + Send>>>>;
+			let scheduled_tasks: ScheduledTasks = Arc::new(Mutex::new(Vec::new()));
+			let tasks_clone = scheduled_tasks.clone();
 
-		// Install a scheduler that captures tasks instead of executing them
-		// Note: OnceLock means this only works once per process, but serial
-		// test ordering ensures no conflict
-		set_scheduler(move |task| {
-			tasks_clone.lock().unwrap().push(task);
+			// Install a scheduler that captures tasks instead of executing them
+			// Note: OnceLock means this only works once per process, but serial
+			// test ordering ensures no conflict
+			set_scheduler(move |task| {
+				tasks_clone.lock().unwrap().push(task);
+			});
+
+			let signal = Signal::new(0);
+			let values = Rc::new(RefCell::new(alloc::vec::Vec::new()));
+			let values_clone = values.clone();
+
+			let signal_clone = signal.clone();
+			// Default timing is Passive, so signal changes go through scheduler
+			let _effect = Effect::new(move || {
+				values_clone.borrow_mut().push(signal_clone.get());
+			});
+
+			// Effect ran once immediately during creation
+			assert_eq!(*values.borrow(), alloc::vec![0]);
+
+			// Change signal — passive effect should be scheduled, not executed immediately
+			signal.set(42);
+
+			// The scheduler captured the flush task
+			let tasks = std::mem::take(&mut *scheduled_tasks.lock().unwrap());
+			assert!(!tasks.is_empty(), "scheduler should have captured a task");
+
+			// Execute the captured tasks (simulating what spawn_local would do)
+			for task in tasks {
+				task();
+			}
+
+			// Effect should have re-executed with the new value
+			assert_eq!(*values.borrow(), alloc::vec![0, 42]);
+		});
+	}
+
+	#[test]
+	#[serial(reactive_runtime)]
+	fn scheduled_effect_reenters_its_owning_scope() {
+		let scope = crate::reactive::ReactiveScope::new();
+		let trigger = scope.enter(|| Signal::new(false));
+		let nested_value = Rc::new(Cell::new(0_i32));
+		let nested_value_for_effect = Rc::clone(&nested_value);
+		let trigger_for_effect = trigger;
+
+		let _effect = scope.enter(|| {
+			Effect::new(move || {
+				if trigger_for_effect.get() {
+					let nested = Signal::new(42_i32);
+					nested_value_for_effect.set(nested.get());
+				}
+			})
 		});
 
-		let signal = Signal::new(0);
-		let values = Rc::new(RefCell::new(alloc::vec::Vec::new()));
-		let values_clone = values.clone();
+		trigger.set(true);
+		with_runtime(|runtime| runtime.flush_updates());
 
-		let signal_clone = signal.clone();
-		// Default timing is Passive, so signal changes go through scheduler
-		let _effect = Effect::new(move || {
-			values_clone.borrow_mut().push(signal_clone.get());
-		});
-
-		// Effect ran once immediately during creation
-		assert_eq!(*values.borrow(), alloc::vec![0]);
-
-		// Change signal — passive effect should be scheduled, not executed immediately
-		signal.set(42);
-
-		// The scheduler captured the flush task
-		let tasks = std::mem::take(&mut *scheduled_tasks.lock().unwrap());
-		assert!(!tasks.is_empty(), "scheduler should have captured a task");
-
-		// Execute the captured tasks (simulating what spawn_local would do)
-		for task in tasks {
-			task();
-		}
-
-		// Effect should have re-executed with the new value
-		assert_eq!(*values.borrow(), alloc::vec![0, 42]);
+		assert_eq!(nested_value.get(), 42);
 	}
 
 	#[test]
 	#[serial]
 	fn new_with_deps_listed_dep_triggers_rerun() {
-		// Arrange
-		let s = Signal::new(0_i32);
-		let runs = Rc::new(RefCell::new(0_i32));
-		let runs_for_effect = runs.clone();
-		let s_for_effect = s.clone();
-		let deps = crate::reactive::deps::Deps::from_signals(&[s.id()]);
+		crate::reactive::ReactiveScope::run(|| {
+			// Arrange
+			let s = Signal::new(0_i32);
+			let runs = Rc::new(RefCell::new(0_i32));
+			let runs_for_effect = runs.clone();
+			let s_for_effect = s.clone();
+			let deps = crate::reactive::deps::Deps::from_signals(&[s.id()]);
 
-		// Act — explicit cleanup type since closure returns None.
-		let _eff = Effect::new_with_deps::<_, fn()>(
-			move || {
-				let _ = s_for_effect.get();
-				*runs_for_effect.borrow_mut() += 1;
-				None
-			},
-			deps,
-		);
-		let initial = *runs.borrow();
-		s.set(1);
-		with_runtime(|rt| rt.flush_updates());
+			// Act — explicit cleanup type since closure returns None.
+			let _eff = Effect::new_with_deps::<_, fn()>(
+				move || {
+					let _ = s_for_effect.get();
+					*runs_for_effect.borrow_mut() += 1;
+					None
+				},
+				deps,
+			);
+			let initial = *runs.borrow();
+			s.set(1);
+			with_runtime(|rt| rt.flush_updates());
 
-		// Assert
-		assert_eq!(
-			*runs.borrow(),
-			initial + 1,
-			"listed dep change must trigger re-run"
-		);
+			// Assert
+			assert_eq!(
+				*runs.borrow(),
+				initial + 1,
+				"listed dep change must trigger re-run"
+			);
+		});
 	}
 
 	#[test]
 	#[serial]
 	fn new_with_deps_unlisted_signal_no_rerun() {
-		// Arrange
-		let listed = Signal::new(0_i32);
-		let unlisted = Signal::new(0_i32);
-		let runs = Rc::new(RefCell::new(0_i32));
-		let runs_for_effect = runs.clone();
-		let unlisted_for_effect = unlisted.clone();
-		let deps = crate::reactive::deps::Deps::from_signals(&[listed.id()]);
+		crate::reactive::ReactiveScope::run(|| {
+			// Arrange
+			let listed = Signal::new(0_i32);
+			let unlisted = Signal::new(0_i32);
+			let runs = Rc::new(RefCell::new(0_i32));
+			let runs_for_effect = runs.clone();
+			let unlisted_for_effect = unlisted.clone();
+			let deps = crate::reactive::deps::Deps::from_signals(&[listed.id()]);
 
-		// Act — reading `unlisted` MUST NOT subscribe under Option A.
-		let _eff = Effect::new_with_deps::<_, fn()>(
-			move || {
-				let _ = unlisted_for_effect.get();
-				*runs_for_effect.borrow_mut() += 1;
-				None
-			},
-			deps,
-		);
-		let initial = *runs.borrow();
-		unlisted.set(99);
-		with_runtime(|rt| rt.flush_updates());
+			// Act — reading `unlisted` MUST NOT subscribe under Option A.
+			let _eff = Effect::new_with_deps::<_, fn()>(
+				move || {
+					let _ = unlisted_for_effect.get();
+					*runs_for_effect.borrow_mut() += 1;
+					None
+				},
+				deps,
+			);
+			let initial = *runs.borrow();
+			unlisted.set(99);
+			with_runtime(|rt| rt.flush_updates());
 
-		// Assert
-		assert_eq!(
-			*runs.borrow(),
-			initial,
-			"unlisted Signal read must not subscribe (Option A core)"
-		);
+			// Assert
+			assert_eq!(
+				*runs.borrow(),
+				initial,
+				"unlisted Signal read must not subscribe (Option A core)"
+			);
+		});
 	}
 
 	#[test]
 	#[serial]
 	fn new_with_deps_cleanup_runs_before_rerun() {
-		// Arrange
-		let s = Signal::new(0_i32);
-		let log: Rc<RefCell<alloc::vec::Vec<&'static str>>> =
-			Rc::new(RefCell::new(alloc::vec::Vec::new()));
-		let log_for_effect = log.clone();
-		let s_for_effect = s.clone();
-		let deps = crate::reactive::deps::Deps::from_signals(&[s.id()]);
+		crate::reactive::ReactiveScope::run(|| {
+			// Arrange
+			let s = Signal::new(0_i32);
+			let log: Rc<RefCell<alloc::vec::Vec<&'static str>>> =
+				Rc::new(RefCell::new(alloc::vec::Vec::new()));
+			let log_for_effect = log.clone();
+			let s_for_effect = s.clone();
+			let deps = crate::reactive::deps::Deps::from_signals(&[s.id()]);
 
-		// Act
-		let _eff = Effect::new_with_deps(
-			move || {
-				let _ = s_for_effect.get();
-				log_for_effect.borrow_mut().push("run");
-				let log_inner = log_for_effect.clone();
-				Some(move || log_inner.borrow_mut().push("cleanup"))
-			},
-			deps,
-		);
-		s.set(1);
-		with_runtime(|rt| rt.flush_updates());
+			// Act
+			let _eff = Effect::new_with_deps(
+				move || {
+					let _ = s_for_effect.get();
+					log_for_effect.borrow_mut().push("run");
+					let log_inner = log_for_effect.clone();
+					Some(move || log_inner.borrow_mut().push("cleanup"))
+				},
+				deps,
+			);
+			s.set(1);
+			with_runtime(|rt| rt.flush_updates());
 
-		// Assert — sequence should be: run, cleanup, run.
-		let recorded = log.borrow().clone();
-		assert_eq!(recorded, alloc::vec!["run", "cleanup", "run"]);
+			// Assert — sequence should be: run, cleanup, run.
+			let recorded = log.borrow().clone();
+			assert_eq!(recorded, alloc::vec!["run", "cleanup", "run"]);
+		});
 	}
 
 	#[test]
 	#[serial(reactive_runtime)]
 	fn new_with_deps_cleanup_can_dispose_same_effect_without_reentrant_borrow() {
-		let s = Signal::new(0_i32);
-		let runs = Rc::new(RefCell::new(0_i32));
-		let effect_holder: Rc<RefCell<Option<Effect>>> = Rc::new(RefCell::new(None));
-		let runs_for_effect = runs.clone();
-		let holder_for_effect = effect_holder.clone();
-		let s_for_effect = s.clone();
-		let deps = crate::reactive::deps::Deps::from_signals(&[s.id()]);
+		crate::reactive::ReactiveScope::run(|| {
+			let s = Signal::new(0_i32);
+			let runs = Rc::new(RefCell::new(0_i32));
+			let effect_holder: Rc<RefCell<Option<Effect>>> = Rc::new(RefCell::new(None));
+			let runs_for_effect = runs.clone();
+			let holder_for_effect = effect_holder.clone();
+			let s_for_effect = s.clone();
+			let deps = crate::reactive::deps::Deps::from_signals(&[s.id()]);
 
-		let effect = Effect::new_with_deps(
-			move || {
-				let _ = s_for_effect.get();
-				*runs_for_effect.borrow_mut() += 1;
-				let holder_for_cleanup = holder_for_effect.clone();
-				Some(move || {
-					if let Some(effect) = holder_for_cleanup.borrow().as_ref() {
-						effect.dispose();
-					}
-				})
-			},
-			deps,
-		);
-		*effect_holder.borrow_mut() = Some(effect);
+			let effect = Effect::new_with_deps(
+				move || {
+					let _ = s_for_effect.get();
+					*runs_for_effect.borrow_mut() += 1;
+					let holder_for_cleanup = holder_for_effect.clone();
+					Some(move || {
+						if let Some(effect) = holder_for_cleanup.borrow().as_ref() {
+							effect.dispose();
+						}
+					})
+				},
+				deps,
+			);
+			*effect_holder.borrow_mut() = Some(effect);
 
-		s.set(1);
-		with_runtime(|rt| rt.flush_updates());
-		assert_eq!(
-			*runs.borrow(),
-			2,
-			"Refs #5104: cleanup-triggered self-dispose must not panic before the rerun body"
-		);
+			s.set(1);
+			with_runtime(|rt| rt.flush_updates());
+			assert_eq!(
+				*runs.borrow(),
+				2,
+				"Refs #5104: cleanup-triggered self-dispose must not panic before the rerun body"
+			);
 
-		s.set(2);
-		with_runtime(|rt| rt.flush_updates());
-		assert_eq!(
-			*runs.borrow(),
-			2,
-			"effect disposed during cleanup must not be reinserted"
-		);
+			s.set(2);
+			with_runtime(|rt| rt.flush_updates());
+			assert_eq!(
+				*runs.borrow(),
+				2,
+				"effect disposed during cleanup must not be reinserted"
+			);
 
-		let effect_to_drop = { effect_holder.borrow_mut().take() };
-		drop(effect_to_drop);
+			let _effect_to_release = effect_holder.borrow_mut().take();
+		});
 	}
 
 	#[test]
 	#[serial(reactive_runtime)]
 	fn dispose_can_drop_nested_effect_function_without_reentrant_storage_borrow() {
-		let inner = Effect::new(|| {});
-		let outer = Effect::new(move || {
-			let _ = inner.id();
-		});
+		crate::reactive::ReactiveScope::run(|| {
+			let inner = Effect::new(|| {});
+			let outer = Effect::new(move || {
+				let _ = inner.id();
+			});
 
-		outer.dispose();
+			outer.dispose();
+		});
 	}
 
 	#[test]
 	#[serial(reactive_runtime)]
-	fn new_with_deps_effect_in_rc_survives_until_rc_dropped() {
-		// Regression for the resource dependency-tracking lifetime invariant.
-		// `use_resource` stores its `new_with_deps` Effect inside an `Rc<Effect>`
-		// (`Resource::effect_guard`) so dependency-change refetch keeps firing for
-		// the Resource's lifetime. An Effect disposes on drop, so a handle that is
-		// created and immediately dropped would stop tracking right after its
-		// first run.
-		let s = Signal::new(0_i32);
-		let runs = Rc::new(RefCell::new(0_i32));
-		let runs_for_effect = runs.clone();
-		let s_for_effect = s.clone();
-		let deps = crate::reactive::deps::Deps::from_signals(&[s.id()]);
+	fn copied_effect_remains_live_until_scope_disposal() {
+		crate::reactive::ReactiveScope::run(|| {
+			// Regression for the resource dependency-tracking lifetime invariant.
+			// `use_resource` stores its `new_with_deps` Effect inside an `Rc<Effect>`
+			// (`Resource::effect_guard`) so dependency-change refetch keeps firing for
+			// the Resource's lifetime. An Effect disposes on drop, so a handle that is
+			// created and immediately dropped would stop tracking right after its
+			// first run.
+			let s = Signal::new(0_i32);
+			let runs = Rc::new(RefCell::new(0_i32));
+			let runs_for_effect = runs.clone();
+			let s_for_effect = s.clone();
+			let deps = crate::reactive::deps::Deps::from_signals(&[s.id()]);
 
-		let effect = Effect::new_with_deps::<_, fn()>(
-			move || {
-				let _ = s_for_effect.get();
-				*runs_for_effect.borrow_mut() += 1;
-				None
-			},
-			deps,
-		);
-		// Mirror `Resource::effect_guard`: move the Effect into an Rc keep-alive anchor.
-		let guard = Rc::new(effect);
-		assert_eq!(*runs.borrow(), 1, "effect runs once on creation");
+			let effect = Effect::new_with_deps::<_, fn()>(
+				move || {
+					let _ = s_for_effect.get();
+					*runs_for_effect.borrow_mut() += 1;
+					None
+				},
+				deps,
+			);
+			let guard = Rc::new(effect);
+			assert_eq!(*runs.borrow(), 1, "effect runs once on creation");
 
-		// While the Rc is held, listed-dep changes keep re-running the effect.
-		s.set(1);
-		with_runtime(|rt| rt.flush_updates());
-		assert_eq!(
-			*runs.borrow(),
-			2,
-			"effect held via Rc must re-run on dependency change"
-		);
+			// While the Rc is held, listed-dep changes keep re-running the effect.
+			s.set(1);
+			with_runtime(|rt| rt.flush_updates());
+			assert_eq!(
+				*runs.borrow(),
+				2,
+				"effect held via Rc must re-run on dependency change"
+			);
 
-		s.set(2);
-		with_runtime(|rt| rt.flush_updates());
-		assert_eq!(*runs.borrow(), 3, "effect held via Rc must keep re-running");
+			s.set(2);
+			with_runtime(|rt| rt.flush_updates());
+			assert_eq!(*runs.borrow(), 3, "effect held via Rc must keep re-running");
 
-		// Dropping the only Rc disposes the Effect; further dep changes do nothing.
-		drop(guard);
-		s.set(3);
-		with_runtime(|rt| rt.flush_updates());
-		assert_eq!(
-			*runs.borrow(),
-			3,
-			"disposed effect must not re-run after its Rc anchor is dropped"
-		);
+			drop(guard);
+			s.set(3);
+			with_runtime(|rt| rt.flush_updates());
+			assert_eq!(*runs.borrow(), 4, "scope ownership keeps the effect live");
+		});
 	}
 }

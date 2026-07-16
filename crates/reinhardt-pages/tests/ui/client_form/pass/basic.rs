@@ -25,26 +25,28 @@ struct ProfileRequest {
 }
 
 fn main() {
-	let form = ProfileRequestClientForm::new();
-	let runtime = use_form(&form).build();
-	runtime.set_value(ProfileRequestClientFormField::Title, "  ".to_string());
-	let request = ProfileRequestClientForm::to_request(&runtime);
-	assert_eq!(request.title, None);
-	assert_eq!(
-		form.provider_mode_choices().len(),
-		ProviderMode::client_form_choices().len()
-	);
-	assert_eq!(
-		FormRuntimeSource::runtime_fields(&form),
-		&[
-			ProfileRequestClientFormField::Name,
-			ProfileRequestClientFormField::Title,
-			ProfileRequestClientFormField::Count,
-			ProfileRequestClientFormField::OptionalCount,
-			ProfileRequestClientFormField::Active,
-			ProfileRequestClientFormField::OptionalActive,
-			ProfileRequestClientFormField::ProviderMode,
-			ProfileRequestClientFormField::OptionalMode,
-		]
-	);
+	reinhardt_core::reactive::ReactiveScope::run(|| {
+		let form = ProfileRequestClientForm::new();
+		let runtime = use_form(&form).build();
+		runtime.set_value(ProfileRequestClientFormField::Title, "  ".to_string());
+		let request = ProfileRequestClientForm::to_request(&runtime);
+		assert_eq!(request.title, None);
+		assert_eq!(
+			form.provider_mode_choices().len(),
+			ProviderMode::client_form_choices().len()
+		);
+		assert_eq!(
+			FormRuntimeSource::runtime_fields(&form),
+			&[
+				ProfileRequestClientFormField::Name,
+				ProfileRequestClientFormField::Title,
+				ProfileRequestClientFormField::Count,
+				ProfileRequestClientFormField::OptionalCount,
+				ProfileRequestClientFormField::Active,
+				ProfileRequestClientFormField::OptionalActive,
+				ProfileRequestClientFormField::ProviderMode,
+				ProfileRequestClientFormField::OptionalMode,
+			]
+		);
+	});
 }
