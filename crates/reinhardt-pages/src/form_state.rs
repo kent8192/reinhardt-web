@@ -7,9 +7,48 @@ use std::collections::HashMap;
 use std::fmt::{Debug, Display};
 use std::future::Future;
 use std::hash::Hash;
+use std::pin::Pin;
 use std::rc::{Rc, Weak};
+use std::task::{Context, Poll};
 
-use crate::reactive::{Action, ActionPhase, Effect, EffectTiming, Signal, use_action};
+use crate::reactive::{
+	Action, ActionPhase, Effect, EffectTiming, ReactiveScope, Signal, use_action,
+};
+use reinhardt_core::reactive::{ScopeId, current_scope_id, scope::enter_scope};
+
+/// Polls form submission work inside the scope that owns the form state.
+///
+/// A disposed form scope cancels the submit future before it can access
+/// disposed reactive handles.
+struct ScopedFormFuture<Fut> {
+	scope: ScopeId,
+	future: Option<Pin<Box<Fut>>>,
+}
+
+impl<Fut> Future for ScopedFormFuture<Fut>
+where
+	Fut: Future,
+{
+	type Output = Option<Fut::Output>;
+
+	fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+		let this = self.get_mut();
+		let Some(future) = this.future.as_mut() else {
+			return Poll::Ready(None);
+		};
+		match enter_scope(this.scope, || future.as_mut().poll(cx)) {
+			Ok(Poll::Pending) => Poll::Pending,
+			Ok(Poll::Ready(output)) => {
+				this.future.take();
+				Poll::Ready(Some(output))
+			}
+			Err(_) => {
+				this.future.take();
+				Poll::Ready(None)
+			}
+		}
+	}
+}
 
 /// Default reset behavior when runtime dependencies change.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -499,6 +538,11 @@ pub trait FormRuntimeSource: Clone + 'static {
 	/// Generated field token enum for this form.
 	type Field: Copy + Eq + Hash + Debug + 'static;
 
+	/// Returns the retained scope for a form constructed outside a page render.
+	fn runtime_reactive_scope(&self) -> Option<Rc<ReactiveScope>> {
+		None
+	}
+
 	/// Returns current defaults captured by the form definition.
 	fn runtime_initial_values(&self) -> Self::Values;
 
@@ -703,6 +747,21 @@ type SubmitCallback<Form, Deps> = Rc<dyn Fn(&UseFormReturn<Form, Deps>)>;
 type Subscriber<Form> = Rc<dyn Fn(FormEvent<Form>)>;
 type SubscriberSlots<Form> = Rc<RefCell<Vec<Option<Subscriber<Form>>>>>;
 
+/// Owns the form synchronization effect until the final runtime handle drops.
+///
+/// Forms created outside an active render retain their own reactive scope. The
+/// synchronization effect captures a form clone, so disposing it during handle
+/// teardown is necessary to break that retention path.
+struct SignalSyncEffectGuard {
+	effect: Effect,
+}
+
+impl Drop for SignalSyncEffectGuard {
+	fn drop(&mut self) {
+		self.effect.dispose();
+	}
+}
+
 fn form_values_are_dirty<Form>(form: &Form, current: &Form::Values, defaults: &Form::Values) -> bool
 where
 	Form: FormRuntimeSource,
@@ -729,11 +788,11 @@ fn build_signal_sync_effect<Form>(
 	custom_widget_error_fields: Rc<RefCell<HashMap<Form::Field, FieldError>>>,
 	signal_sync_suppressed: Rc<Cell<bool>>,
 	revalidate_on: RevalidateOn,
-) -> Rc<Effect>
+) -> Rc<SignalSyncEffectGuard>
 where
 	Form: FormRuntimeSource,
 {
-	Rc::new(Effect::new_with_timing(
+	let effect = Effect::new_with_timing(
 		move || {
 			let current = form.runtime_current_values();
 			let previous = observed_values.borrow().clone();
@@ -820,7 +879,8 @@ where
 			}
 		},
 		EffectTiming::Layout,
-	))
+	);
+	Rc::new(SignalSyncEffectGuard { effect })
 }
 
 fn collect_custom_widget_errors<Form>(form: &Form) -> HashMap<Form::Field, FieldError>
@@ -888,6 +948,7 @@ where
 	Rc::new(move |handle| {
 		let no_deps_handle = UseFormReturn {
 			form: handle.form.clone(),
+			scope: handle.scope,
 			default_values: Rc::clone(&handle.default_values),
 			deps: Rc::new(RefCell::new(NoDeps)),
 			reset_on_deps: handle.reset_on_deps,
@@ -897,10 +958,10 @@ where
 			touched_fields: Rc::clone(&handle.touched_fields),
 			touched_collections: Rc::clone(&handle.touched_collections),
 			touched_paths: Rc::clone(&handle.touched_paths),
-			collection_errors: handle.collection_errors.clone(),
-			path_errors: handle.path_errors.clone(),
+			collection_errors: handle.collection_errors,
+			path_errors: handle.path_errors,
 			path_default_values: Rc::clone(&handle.path_default_values),
-			values_signal: handle.values_signal.clone(),
+			values_signal: handle.values_signal,
 			subscribers: Rc::clone(&handle.subscribers),
 			observed_values: Rc::clone(&handle.observed_values),
 			custom_widget_error_fields: Rc::clone(&handle.custom_widget_error_fields),
@@ -1056,6 +1117,15 @@ where
 
 	/// Builds the runtime form handle.
 	pub fn build(self) -> UseFormReturn<Form, Deps> {
+		if let Some(scope) = self.form.runtime_reactive_scope() {
+			scope.enter(|| self.build_in_active_scope())
+		} else {
+			self.build_in_active_scope()
+		}
+	}
+
+	fn build_in_active_scope(self) -> UseFormReturn<Form, Deps> {
+		let scope = current_scope_id().expect("use_form requires an active ReactiveScope");
 		let default_values = self.form.runtime_initial_values();
 		let current_values = self.form.runtime_current_values();
 		let is_dirty = form_values_are_dirty(&self.form, &current_values, &default_values);
@@ -1093,9 +1163,9 @@ where
 			Rc::clone(&touched_fields),
 			Rc::clone(&touched_collections),
 			Rc::clone(&touched_paths),
-			collection_errors.clone(),
-			path_errors.clone(),
-			values_signal.clone(),
+			collection_errors,
+			path_errors,
+			values_signal,
 			Rc::clone(&subscribers),
 			Rc::clone(&observed_values),
 			Rc::clone(&custom_widget_error_fields),
@@ -1104,6 +1174,7 @@ where
 		);
 		UseFormReturn {
 			form,
+			scope,
 			default_values,
 			deps,
 			reset_on_deps: self.reset_on_deps,
@@ -1137,6 +1208,7 @@ where
 	Deps: Clone + PartialEq + 'static,
 {
 	form: Form,
+	scope: ScopeId,
 	default_values: Rc<RefCell<Form::Values>>,
 	deps: Rc<RefCell<Deps>>,
 	reset_on_deps: ResetOnDeps,
@@ -1155,7 +1227,7 @@ where
 	custom_widget_error_fields: Rc<RefCell<HashMap<Form::Field, FieldError>>>,
 	next_collection_item_key: Rc<Cell<u64>>,
 	signal_sync_suppressed: Rc<Cell<bool>>,
-	_signal_sync_effect: Rc<Effect>,
+	_signal_sync_effect: Rc<SignalSyncEffectGuard>,
 	on_submit_start: Option<SubmitCallback<Form, Deps>>,
 	on_submit_success: Option<SubmitCallback<Form, Deps>>,
 	on_submit_error: Option<SubmitCallback<Form, Deps>>,
@@ -1169,6 +1241,7 @@ where
 	fn clone(&self) -> Self {
 		Self {
 			form: self.form.clone(),
+			scope: self.scope,
 			default_values: Rc::clone(&self.default_values),
 			deps: Rc::clone(&self.deps),
 			reset_on_deps: self.reset_on_deps,
@@ -1178,10 +1251,10 @@ where
 			touched_fields: Rc::clone(&self.touched_fields),
 			touched_collections: Rc::clone(&self.touched_collections),
 			touched_paths: Rc::clone(&self.touched_paths),
-			collection_errors: self.collection_errors.clone(),
-			path_errors: self.path_errors.clone(),
+			collection_errors: self.collection_errors,
+			path_errors: self.path_errors,
 			path_default_values: Rc::clone(&self.path_default_values),
-			values_signal: self.values_signal.clone(),
+			values_signal: self.values_signal,
 			subscribers: Rc::clone(&self.subscribers),
 			observed_values: Rc::clone(&self.observed_values),
 			custom_widget_error_fields: Rc::clone(&self.custom_widget_error_fields),
@@ -1202,7 +1275,7 @@ where
 {
 	/// Returns a signal containing the current value struct.
 	pub fn watch(&self) -> Signal<Form::Values> {
-		self.values_signal.clone()
+		self.values_signal
 	}
 
 	/// Returns a typed field signal.
@@ -1426,17 +1499,22 @@ where
 		self.state.is_submitting.set(true);
 		self.state.is_submit_successful.set(false);
 		self.state.submit_error.set(None);
-		self.notify(FormEvent::SubmitStarted);
-		if let Some(callback) = &self.on_submit_start {
-			callback(self);
-		}
-
-		if self.trigger().is_err() {
-			self.state.is_submitting.set(false);
-			if let Some(callback) = &self.on_submit_error {
+		let _ = self.in_owner_scope(|| {
+			self.notify(FormEvent::SubmitStarted);
+			if let Some(callback) = &self.on_submit_start {
 				callback(self);
 			}
-			self.notify(FormEvent::SubmitFailed);
+		});
+
+		let validation_failed = enter_scope(self.scope, || self.trigger().is_err()).unwrap_or(true);
+		if validation_failed {
+			self.state.is_submitting.set(false);
+			let _ = self.in_owner_scope(|| {
+				if let Some(callback) = &self.on_submit_error {
+					callback(self);
+				}
+				self.notify(FormEvent::SubmitFailed);
+			});
 			return UseFormSubmitOutcome::ValidationFailed;
 		}
 
@@ -1444,25 +1522,33 @@ where
 	}
 
 	fn complete_submit_success(&self) {
-		self.state.is_submitting.set(false);
-		self.state.is_submit_successful.set(true);
-		self.state.submit_error.set(None);
-		self.sync_first_error();
-		if let Some(callback) = &self.on_submit_success {
-			callback(self);
-		}
-		self.notify(FormEvent::Submitted);
+		let _ = self.in_owner_scope(|| {
+			self.state.is_submitting.set(false);
+			self.state.is_submit_successful.set(true);
+			self.state.submit_error.set(None);
+			self.sync_first_error();
+			if let Some(callback) = &self.on_submit_success {
+				callback(self);
+			}
+			self.notify(FormEvent::Submitted);
+		});
 	}
 
 	fn complete_submit_error(&self, error: impl Into<String>) {
-		self.state.is_submitting.set(false);
-		self.state.is_submit_successful.set(false);
-		self.state.submit_error.set(Some(error.into()));
-		self.sync_first_error();
-		if let Some(callback) = &self.on_submit_error {
-			callback(self);
-		}
-		self.notify(FormEvent::SubmitFailed);
+		let _ = self.in_owner_scope(|| {
+			self.state.is_submitting.set(false);
+			self.state.is_submit_successful.set(false);
+			self.state.submit_error.set(Some(error.into()));
+			self.sync_first_error();
+			if let Some(callback) = &self.on_submit_error {
+				callback(self);
+			}
+			self.notify(FormEvent::SubmitFailed);
+		});
+	}
+
+	fn in_owner_scope(&self, callback: impl FnOnce()) -> bool {
+		enter_scope(self.scope, callback).is_ok()
 	}
 
 	#[cfg(native)]
@@ -1480,51 +1566,92 @@ where
 		Fut: Future<Output = Result<Output, Error>>,
 		Error: Display,
 	{
-		if self.state.is_submitting.get() {
+		let Ok(is_submitting) = self.state.is_submitting.try_get_untracked() else {
+			return Ok(UseFormAsyncSubmitOutcome::AlreadyPending);
+		};
+		if is_submitting {
 			return Ok(UseFormAsyncSubmitOutcome::AlreadyPending);
 		}
 
-		self.state.is_submitting.set(true);
-		let mut pending_guard = SubmitPendingGuard::new(self.state.is_submitting.clone());
-		self.state.is_submit_successful.set(false);
-		self.state.submit_error.set(None);
-		self.sync_first_error();
-		self.notify(FormEvent::SubmitStarted);
-		if let Some(callback) = &self.on_submit_start {
-			callback(self);
+		if self.state.is_submitting.try_set(true).is_err() {
+			return Ok(UseFormAsyncSubmitOutcome::AlreadyPending);
 		}
-
-		if self.trigger().is_err() {
-			self.state.is_submitting.set(false);
-			pending_guard.disarm();
-			if let Some(callback) = &self.on_submit_error {
+		let mut pending_guard = SubmitPendingGuard::new(self.state.is_submitting);
+		if self.state.is_submit_successful.try_set(false).is_err() {
+			return Ok(UseFormAsyncSubmitOutcome::AlreadyPending);
+		}
+		if self.state.submit_error.try_set(None).is_err() {
+			return Ok(UseFormAsyncSubmitOutcome::AlreadyPending);
+		}
+		self.sync_first_error();
+		let _ = self.in_owner_scope(|| {
+			self.notify(FormEvent::SubmitStarted);
+			if let Some(callback) = &self.on_submit_start {
 				callback(self);
 			}
-			self.notify(FormEvent::SubmitFailed);
-			return Ok(UseFormAsyncSubmitOutcome::ValidationFailed);
-		}
+		});
 
-		match submit().await {
-			Ok(output) => {
-				self.state.is_submitting.set(false);
-				pending_guard.disarm();
-				self.state.is_submit_successful.set(true);
-				if let Some(callback) = &self.on_submit_success {
-					callback(self);
-				}
-				self.notify(FormEvent::Submitted);
-				Ok(UseFormAsyncSubmitOutcome::Submitted(output))
+		let validation_failed = enter_scope(self.scope, || self.trigger().is_err()).unwrap_or(true);
+		if validation_failed {
+			let is_live = self.state.is_submitting.try_set(false).is_ok();
+			pending_guard.disarm();
+			if !is_live {
+				return Ok(UseFormAsyncSubmitOutcome::ValidationFailed);
 			}
-			Err(error) => {
-				self.state.is_submitting.set(false);
-				pending_guard.disarm();
-				self.state.is_submit_successful.set(false);
-				self.state.submit_error.set(Some(error.to_string()));
-				self.sync_first_error();
+			let _ = self.in_owner_scope(|| {
 				if let Some(callback) = &self.on_submit_error {
 					callback(self);
 				}
 				self.notify(FormEvent::SubmitFailed);
+			});
+			return Ok(UseFormAsyncSubmitOutcome::ValidationFailed);
+		}
+
+		let Ok(future) = enter_scope(self.scope, submit) else {
+			pending_guard.disarm();
+			return Ok(UseFormAsyncSubmitOutcome::AlreadyPending);
+		};
+		let Some(result) = (ScopedFormFuture {
+			scope: self.scope,
+			future: Some(Box::pin(future)),
+		})
+		.await
+		else {
+			pending_guard.disarm();
+			return Ok(UseFormAsyncSubmitOutcome::AlreadyPending);
+		};
+
+		match result {
+			Ok(output) => {
+				let is_live = self.state.is_submitting.try_set(false).is_ok();
+				pending_guard.disarm();
+				if !is_live {
+					return Ok(UseFormAsyncSubmitOutcome::Submitted(output));
+				}
+				let _ = self.in_owner_scope(|| {
+					self.state.is_submit_successful.set(true);
+					if let Some(callback) = &self.on_submit_success {
+						callback(self);
+					}
+					self.notify(FormEvent::Submitted);
+				});
+				Ok(UseFormAsyncSubmitOutcome::Submitted(output))
+			}
+			Err(error) => {
+				let is_live = self.state.is_submitting.try_set(false).is_ok();
+				pending_guard.disarm();
+				if !is_live {
+					return Err(error);
+				}
+				let _ = self.in_owner_scope(|| {
+					self.state.is_submit_successful.set(false);
+					self.state.submit_error.set(Some(error.to_string()));
+					self.sync_first_error();
+					if let Some(callback) = &self.on_submit_error {
+						callback(self);
+					}
+					self.notify(FormEvent::SubmitFailed);
+				});
 				Err(error)
 			}
 		}
@@ -1704,7 +1831,7 @@ where
 	fn clone(&self) -> Self {
 		Self {
 			form: self.form.clone(),
-			action: self.action.clone(),
+			action: self.action,
 		}
 	}
 }
@@ -2044,7 +2171,7 @@ impl SubmitPendingGuard {
 impl Drop for SubmitPendingGuard {
 	fn drop(&mut self) {
 		if self.active {
-			self.is_submitting.set(false);
+			let _ = self.is_submitting.try_set(false);
 		}
 	}
 }
@@ -2124,7 +2251,133 @@ where
 
 #[cfg(test)]
 mod tests {
-	use super::{CollectionItem, CollectionItemKey, CollectionState, FieldError, FieldPathState};
+	use super::{
+		CollectionItem, CollectionItemKey, CollectionState, FieldError, FieldPathState,
+		FormRuntimeSource, SubmitPendingGuard, use_form,
+	};
+	use crate::reactive::Signal;
+	use reinhardt_core::reactive::ReactiveScope;
+	use serial_test::serial;
+	use std::any::Any;
+	use std::rc::Rc;
+	use std::task::{Context, Poll, Waker};
+
+	#[derive(Clone)]
+	struct RetainedScopeForm {
+		scope: Rc<ReactiveScope>,
+		value: Signal<String>,
+	}
+
+	impl FormRuntimeSource for RetainedScopeForm {
+		type Values = String;
+		type Field = ();
+
+		fn runtime_reactive_scope(&self) -> Option<Rc<ReactiveScope>> {
+			Some(Rc::clone(&self.scope))
+		}
+
+		fn runtime_initial_values(&self) -> Self::Values {
+			self.value.get_untracked()
+		}
+
+		fn runtime_current_values(&self) -> Self::Values {
+			self.value.get_untracked()
+		}
+
+		fn runtime_apply_values(&self, values: &Self::Values) {
+			self.value.set(values.clone());
+		}
+
+		fn runtime_set_field_value<T>(&self, _field: Self::Field, value: T)
+		where
+			T: Any + 'static,
+		{
+			let value = (&value as &dyn Any)
+				.downcast_ref::<String>()
+				.expect("test form only accepts String values");
+			self.value.set(value.clone());
+		}
+
+		fn runtime_apply_field_value(&self, _field: Self::Field, values: &Self::Values) {
+			self.value.set(values.clone());
+		}
+
+		fn runtime_field_is_dirty(
+			&self,
+			_field: Self::Field,
+			current: &Self::Values,
+			defaults: &Self::Values,
+		) -> bool {
+			current != defaults
+		}
+
+		fn runtime_watch_field<T>(&self, _field: Self::Field) -> Option<Signal<T>>
+		where
+			T: Clone + 'static,
+		{
+			None
+		}
+
+		fn runtime_fields(&self) -> &'static [Self::Field] {
+			&[()]
+		}
+	}
+
+	#[test]
+	#[serial(reactive_runtime)]
+	fn dropping_the_last_form_runtime_releases_its_retained_scope() {
+		let scope = Rc::new(ReactiveScope::new());
+		let form = scope.enter(|| RetainedScopeForm {
+			scope: Rc::clone(&scope),
+			value: Signal::new("initial".to_string()),
+		});
+		let weak_scope = Rc::downgrade(&scope);
+		let runtime = use_form(&form).build();
+
+		drop(form);
+		drop(scope);
+		assert!(
+			weak_scope.upgrade().is_some(),
+			"the live form runtime owns the retained scope"
+		);
+
+		drop(runtime);
+
+		assert!(
+			weak_scope.upgrade().is_none(),
+			"dropping the final form runtime must dispose its sync effect and release the scope"
+		);
+	}
+
+	#[test]
+	#[serial(reactive_runtime)]
+	fn submit_pending_guard_ignores_a_disposed_scope() {
+		let scope = ReactiveScope::new();
+		let pending_guard = scope.enter(|| SubmitPendingGuard::new(Signal::new(true)));
+
+		scope.dispose();
+		drop(pending_guard);
+	}
+
+	#[test]
+	#[serial(reactive_runtime)]
+	fn stale_form_submit_is_rejected_without_reading_disposed_state() {
+		let scope = Rc::new(ReactiveScope::new());
+		let form = scope.enter(|| RetainedScopeForm {
+			scope: Rc::clone(&scope),
+			value: Signal::new("initial".to_string()),
+		});
+		let runtime = use_form(&form).build();
+
+		scope.dispose();
+
+		let mut submit = Box::pin(runtime.submit_async(|| async { Ok::<_, String>(()) }));
+		let mut context = Context::from_waker(Waker::noop());
+		assert_eq!(
+			submit.as_mut().poll(&mut context),
+			Poll::Ready(Ok(super::UseFormAsyncSubmitOutcome::AlreadyPending))
+		);
+	}
 
 	#[test]
 	fn collection_item_key_is_opaque_and_stable() {

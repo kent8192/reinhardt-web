@@ -641,6 +641,7 @@ fn generate_auth_identity_impl(struct_name: &Ident, mapping: &FieldMapping) -> T
 	let auth_crate = get_reinhardt_auth_crate();
 	let pk_field = mapping.pk_field.as_ref().expect("PK validated");
 	let is_superuser_field = mapping.get(FieldRole::IsSuperuser).expect("validated");
+	let is_active_field = mapping.get(FieldRole::IsActive).expect("validated");
 
 	quote! {
 		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
@@ -655,6 +656,10 @@ fn generate_auth_identity_impl(struct_name: &Ident, mapping: &FieldMapping) -> T
 
 			fn is_admin(&self) -> bool {
 				self.#is_superuser_field
+			}
+
+			fn is_account_active(&self) -> bool {
+				self.#is_active_field
 			}
 		}
 	}

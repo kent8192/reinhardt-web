@@ -1,4 +1,7 @@
-#![cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+#![cfg(all(
+	feature = "model-server-fnset",
+	not(all(target_family = "wasm", target_os = "unknown"))
+))]
 
 use std::sync::{Mutex, OnceLock};
 

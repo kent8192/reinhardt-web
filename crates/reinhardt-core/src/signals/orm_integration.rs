@@ -256,17 +256,41 @@ mod tests {
 		name: String,
 	}
 
+	struct OrmSignalFixture;
+
+	impl OrmSignalFixture {
+		fn new() -> Self {
+			Self::disconnect_all();
+			Self
+		}
+
+		fn disconnect_all() {
+			pre_save::<TestModel>().disconnect_all();
+			post_save::<TestModel>().disconnect_all();
+			pre_delete::<TestModel>().disconnect_all();
+			post_delete::<TestModel>().disconnect_all();
+		}
+	}
+
+	impl Drop for OrmSignalFixture {
+		fn drop(&mut self) {
+			Self::disconnect_all();
+		}
+	}
+
 	#[tokio::test]
+	#[serial_test::serial]
 	async fn test_orm_signal_adapter_creation() {
-		let _adapter = OrmSignalAdapter::<TestModel>::new();
-		// Adapter creation test - verifies compilation and instantiation
+		let fixture = OrmSignalFixture::new();
+		let adapter = OrmSignalAdapter::<TestModel>::new();
+		assert_eq!(adapter.signal_count(), 0);
+		drop(fixture);
 	}
 
 	#[tokio::test]
 	#[serial_test::serial]
 	async fn test_dispatch_pre_save() {
-		// Clean up before test
-		pre_save::<TestModel>().disconnect_all();
+		let _fixture = OrmSignalFixture::new();
 
 		let counter = Arc::new(AtomicUsize::new(0));
 		let counter_clone = Arc::clone(&counter);
@@ -286,13 +310,13 @@ mod tests {
 
 		dispatch_pre_save(model).await.unwrap();
 		assert_eq!(counter.load(Ordering::SeqCst), 1);
-
-		// Clean up after test
-		pre_save::<TestModel>().disconnect_all();
 	}
 
 	#[tokio::test]
+	#[serial_test::serial]
 	async fn test_dispatch_post_save() {
+		let _fixture = OrmSignalFixture::new();
+
 		let counter = Arc::new(AtomicUsize::new(0));
 		let counter_clone = Arc::clone(&counter);
 
@@ -316,8 +340,7 @@ mod tests {
 	#[tokio::test]
 	#[serial_test::serial]
 	async fn test_dispatch_pre_delete() {
-		// Clean up before test
-		pre_delete::<TestModel>().disconnect_all();
+		let _fixture = OrmSignalFixture::new();
 
 		let counter = Arc::new(AtomicUsize::new(0));
 		let counter_clone = Arc::clone(&counter);
@@ -337,13 +360,12 @@ mod tests {
 
 		dispatch_pre_delete(model).await.unwrap();
 		assert_eq!(counter.load(Ordering::SeqCst), 1);
-
-		// Clean up after test
-		pre_delete::<TestModel>().disconnect_all();
 	}
 
 	#[tokio::test]
+	#[serial_test::serial]
 	async fn test_dispatch_post_delete() {
+		let _fixture = OrmSignalFixture::new();
 		let counter = Arc::new(AtomicUsize::new(0));
 		let counter_clone = Arc::clone(&counter);
 
@@ -365,7 +387,9 @@ mod tests {
 	}
 
 	#[tokio::test]
+	#[serial_test::serial]
 	async fn test_connect_orm_signals() {
+		let _fixture = OrmSignalFixture::new();
 		connect_orm_signals::<TestModel>().await;
 
 		let adapter = OrmSignalAdapter::<TestModel>::new();
@@ -378,7 +402,9 @@ mod tests {
 	}
 
 	#[tokio::test]
+	#[serial_test::serial]
 	async fn test_get_orm_signals() {
+		let _fixture = OrmSignalFixture::new();
 		let signals = get_orm_signals::<TestModel>();
 		assert_eq!(signals.len(), 4);
 
@@ -390,11 +416,7 @@ mod tests {
 	#[tokio::test]
 	#[serial_test::serial]
 	async fn test_orm_signal_flow() {
-		// Clean up before test
-		pre_save::<TestModel>().disconnect_all();
-		post_save::<TestModel>().disconnect_all();
-		pre_delete::<TestModel>().disconnect_all();
-		post_delete::<TestModel>().disconnect_all();
+		let _fixture = OrmSignalFixture::new();
 
 		let events = Arc::new(Mutex::new(Vec::new()));
 
@@ -454,11 +476,5 @@ mod tests {
 		assert_eq!(event_log[1], "post_save");
 		assert_eq!(event_log[2], "pre_delete");
 		assert_eq!(event_log[3], "post_delete");
-
-		// Clean up after test
-		pre_save::<TestModel>().disconnect_all();
-		post_save::<TestModel>().disconnect_all();
-		pre_delete::<TestModel>().disconnect_all();
-		post_delete::<TestModel>().disconnect_all();
 	}
 }

@@ -1,4 +1,4 @@
-#![cfg(not(target_arch = "wasm32"))]
+#![cfg(all(feature = "model-server-fnset", not(target_arch = "wasm32")))]
 
 use std::future::Future;
 use std::pin::Pin;

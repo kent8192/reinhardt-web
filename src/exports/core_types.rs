@@ -3,7 +3,7 @@
 #[cfg(all(feature = "core", native))]
 pub use reinhardt_core::{
 	endpoint::EndpointMetadata,
-	exception::{Error, Result},
+	exception::{Error, HttpError, Result},
 };
 
 #[cfg(all(feature = "core", native))]
