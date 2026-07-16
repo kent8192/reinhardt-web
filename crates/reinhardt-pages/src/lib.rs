@@ -362,6 +362,11 @@ pub use reinhardt_pages_ast as ast;
 // Core modules
 pub mod builder;
 pub mod callback;
+// The cancellation substrate is introduced before its query/navigation
+// consumers; this temporary allow keeps the foundational task warning-free.
+#[allow(dead_code)]
+mod cancellation;
+pub use cancellation::{CancellationHandle, CancellationToken, Cancelled};
 pub mod dom;
 pub mod event;
 #[cfg(feature = "i18n")]

@@ -4,6 +4,7 @@ use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
+use reinhardt_core::deps;
 use reinhardt_core::page::IntoPage;
 use reinhardt_core::reactive::{ReactiveScope, Signal};
 use reinhardt_core::types::page::{DeferredNode, EventName, Page, PageElement, SuspenseNode};
@@ -123,7 +124,7 @@ fn effect_cleanup_can_use_page_handles_until_scope_disposal_finishes() {
 				let callback = callback;
 				Some(move || callback.call(()))
 			},
-			(),
+			deps![],
 		);
 	});
 

@@ -136,6 +136,7 @@ pub use crate::event::{
 };
 
 // Platform-agnostic Event type
+pub use crate::cancellation::{CancellationHandle, CancellationToken, Cancelled};
 pub use crate::platform::Event;
 
 // Platform-agnostic task spawning (cross-target)
