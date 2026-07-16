@@ -61,7 +61,7 @@ fn native_bound_textarea_omits_suppressed_children() {
 		screen.get_by_label("Description").value().as_deref(),
 		Some("current")
 	);
-	assert!(screen.try_get_by_text("stale child").is_none());
+	assert!(screen.try_get_by_text("stale child").is_err());
 }
 
 #[rstest]

@@ -12,6 +12,7 @@ use rstest::rstest;
 
 use super::{EventError, EventFixture, EventFixtureError, QueryError, Role, render};
 use crate::Callback;
+use crate::deps;
 use crate::event::{
 	ChangeEvent, ClickEvent, EventPayload, InputEvent, KeyDownEvent, Modifiers, Point, PointerKind,
 	PointerMoveEvent, typed_event_handler,
@@ -123,7 +124,7 @@ fn effect_cleanup_can_use_page_handles_until_scope_disposal_finishes() {
 				let callback = callback;
 				Some(move || callback.call(()))
 			},
-			(),
+			deps![],
 		);
 	});
 
