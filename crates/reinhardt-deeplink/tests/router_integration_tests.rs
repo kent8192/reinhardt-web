@@ -175,6 +175,25 @@ fn test_unified_router_with_deeplinks_both() {
 }
 
 #[rstest]
+fn test_client_enabled_unified_router_with_deeplinks() {
+	ReactiveScope::run(|| {
+		let config = DeeplinkConfig::builder()
+			.ios(
+				IosConfig::builder()
+					.app_id(VALID_APP_ID)
+					.paths(&["/products/*"])
+					.build(),
+			)
+			.build();
+
+		let router = UnifiedRouter::new()
+			.client(|client| client)
+			.with_deeplinks(config);
+		assert!(router.is_ok());
+	});
+}
+
+#[rstest]
 fn test_server_router_with_deeplinks() {
 	let config = DeeplinkConfig::builder()
 		.ios(
