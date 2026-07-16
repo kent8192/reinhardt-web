@@ -38,6 +38,7 @@ extern crate alloc;
 use alloc::boxed::Box;
 use alloc::rc::Rc;
 
+use super::deps::ReactiveDeps;
 use super::runtime::{EffectTiming, NodeId, NodeType, Observer, try_with_runtime, with_runtime};
 use super::scope::{
 	NodeKey, NodeKind, ScopeId, allocate_node, enter_scope, find_node_key, mark_node_disposed,
@@ -168,10 +169,36 @@ impl Effect {
 		F: FnMut() -> Option<C> + 'static,
 		C: FnOnce() + 'static,
 	{
-		Self::new_with_deps_internal(f, deps, EffectTiming::Passive)
+		Self::new_with_deps_internal(f, Some(deps), EffectTiming::Passive)
 	}
 
-	fn new_with_deps_internal<F, C>(mut f: F, deps: super::deps::Deps, timing: EffectTiming) -> Self
+	#[doc(hidden)]
+	pub fn new_with_mode<F, C>(f: F, deps: ReactiveDeps) -> Self
+	where
+		F: FnMut() -> Option<C> + 'static,
+		C: FnOnce() + 'static,
+	{
+		Self::new_with_mode_and_timing(f, deps, EffectTiming::Passive)
+	}
+
+	#[doc(hidden)]
+	pub fn new_with_mode_and_timing<F, C>(f: F, deps: ReactiveDeps, timing: EffectTiming) -> Self
+	where
+		F: FnMut() -> Option<C> + 'static,
+		C: FnOnce() + 'static,
+	{
+		let deps = match deps {
+			ReactiveDeps::Explicit(deps) => Some(deps.into_deps()),
+			ReactiveDeps::Auto => None,
+		};
+		Self::new_with_deps_internal(f, deps, timing)
+	}
+
+	fn new_with_deps_internal<F, C>(
+		mut f: F,
+		deps: Option<super::deps::Deps>,
+		timing: EffectTiming,
+	) -> Self
 	where
 		F: FnMut() -> Option<C> + 'static,
 		C: FnOnce() + 'static,
@@ -189,20 +216,26 @@ impl Effect {
 			},
 		);
 		let effect_id = key.node_id();
-		let deps = deps.into_inner();
+		let deps = deps.map(super::deps::Deps::into_inner);
 		let cleanup_for_closure = Rc::clone(&cleanup_slot);
 		let wrapped = move || {
 			let previous_cleanup = { cleanup_for_closure.borrow_mut().take() };
 			if let Some(cleanup) = previous_cleanup {
 				cleanup();
 			}
-			let next = super::runtime::run_without_observer(&mut f);
+			let next = if deps.is_some() {
+				super::runtime::run_without_observer(&mut f)
+			} else {
+				f()
+			};
 			if let Some(cleanup) = next {
 				*cleanup_for_closure.borrow_mut() = Some(Box::new(cleanup));
 			}
 			if find_node_key(effect_id, NodeKind::Effect).is_some() {
-				for &dep in &deps {
-					super::runtime::subscribe_node_to_observer(dep, effect_id);
+				if let Some(deps) = &deps {
+					for &dep in deps {
+						super::runtime::subscribe_node_to_observer(dep, effect_id);
+					}
 				}
 			}
 		};
@@ -229,7 +262,7 @@ impl Effect {
 		F: FnMut() -> Option<C> + 'static,
 		C: FnOnce() + 'static,
 	{
-		Self::new_with_deps_internal(f, deps, timing)
+		Self::new_with_deps_internal(f, Some(deps), timing)
 	}
 
 	pub(crate) fn execute_effect(effect_id: NodeId) {
@@ -394,7 +427,7 @@ mod tests {
 						*cleaned_for_cleanup.borrow_mut() = true;
 					})
 				},
-				crate::reactive::Deps::empty(),
+				crate::reactive::Deps::from_signals(&[]),
 			);
 		});
 
@@ -418,7 +451,7 @@ mod tests {
 						cleaned_for_cleanup.set(true);
 					})
 				},
-				crate::reactive::Deps::empty(),
+				crate::reactive::Deps::from_signals(&[]),
 			);
 		});
 
@@ -740,7 +773,7 @@ mod tests {
 							let _ = cleanup_signal.get();
 						})
 					},
-					super::deps::Deps::empty(),
+					crate::reactive::Deps::from_signals(&[]),
 				);
 			});
 

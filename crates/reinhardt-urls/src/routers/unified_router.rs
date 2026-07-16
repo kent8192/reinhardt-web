@@ -81,9 +81,9 @@ use std::sync::Arc;
 ///
 /// [`Page`]: reinhardt_core::page::Page
 #[cfg(all(feature = "client-router", native))]
-pub struct UnifiedRouter {
+pub struct UnifiedRouter<Client = ()> {
 	server: ServerRouter,
-	client: Option<ClientRouter>,
+	client: Client,
 	client_namespace: Option<String>,
 	/// WebSocket router for `urls.ws().<app>().<handler>()` URL resolution.
 	pub websocket: reinhardt_core::ws::WebSocketRouter,
@@ -93,28 +93,16 @@ pub struct UnifiedRouter {
 }
 
 #[cfg(all(feature = "client-router", native))]
-impl UnifiedRouter {
-	/// Creates a new `UnifiedRouter` with default server and client routers.
-	pub fn new() -> Self {
-		Self {
-			server: ServerRouter::new(),
-			client: None,
-			client_namespace: None,
-			websocket: reinhardt_core::ws::WebSocketRouter::new(),
-			di_registrations: reinhardt_di::DiRegistrationList::new(),
+impl<Client> UnifiedRouter<Client> {
+	fn with_client<NewClient>(self, client: NewClient) -> UnifiedRouter<NewClient> {
+		UnifiedRouter {
+			server: self.server,
+			client,
+			client_namespace: self.client_namespace,
+			websocket: self.websocket,
+			di_registrations: self.di_registrations,
 			#[cfg(feature = "streaming")]
-			streaming_handlers: Vec::new(),
-		}
-	}
-
-	fn take_client_or_new(&mut self) -> ClientRouter {
-		self.client.take().unwrap_or_default()
-	}
-
-	fn apply_pending_client_namespace(&mut self, client: ClientRouter) -> ClientRouter {
-		match self.client_namespace.take() {
-			Some(namespace) => client.with_namespace(&namespace),
-			None => client,
+			streaming_handlers: self.streaming_handlers,
 		}
 	}
 
@@ -144,27 +132,6 @@ impl UnifiedRouter {
 		self
 	}
 
-	/// Configure client-side routing with a closure.
-	///
-	/// The closure receives a [`ClientRouter`] and should return a configured router.
-	///
-	/// # Example
-	///
-	/// ```rust,ignore
-	/// let router = UnifiedRouter::new()
-	///     .client(|c| c
-	///         .route("home", "/", || home_page())
-	///         .route_path("user_detail", "/users/{id}", |Path(id): Path<i64>| user_page(id)));
-	/// ```
-	pub fn client<F>(mut self, f: F) -> Self
-	where
-		F: FnOnce(ClientRouter) -> ClientRouter,
-	{
-		let client = f(self.take_client_or_new());
-		self.client = Some(self.apply_pending_client_namespace(client));
-		self
-	}
-
 	/// Returns a reference to the server router.
 	pub fn server_ref(&self) -> &ServerRouter {
 		&self.server
@@ -173,30 +140,6 @@ impl UnifiedRouter {
 	/// Returns a mutable reference to the server router.
 	pub fn server_mut(&mut self) -> &mut ServerRouter {
 		&mut self.server
-	}
-
-	/// Returns a reference to the initialized client router.
-	///
-	/// # Panics
-	///
-	/// Panics when no client routes have been configured. Call [`Self::client`]
-	/// before accessing the client router.
-	pub fn client_ref(&self) -> &ClientRouter {
-		self.client
-			.as_ref()
-			.expect("Client router not initialized. Call UnifiedRouter::client() first.")
-	}
-
-	/// Returns a mutable reference to the initialized client router.
-	///
-	/// # Panics
-	///
-	/// Panics when no client routes have been configured. Call [`Self::client`]
-	/// before accessing the client router.
-	pub fn client_mut(&mut self) -> &mut ClientRouter {
-		self.client
-			.as_mut()
-			.expect("Client router not initialized. Call UnifiedRouter::client() first.")
 	}
 
 	/// Configure WebSocket routing with a closure.
@@ -259,48 +202,6 @@ impl UnifiedRouter {
 		self.server
 	}
 
-	/// Consumes the router and returns the client router.
-	pub fn into_client(mut self) -> ClientRouter {
-		self.flush_di_registrations();
-		let client = self.take_client_or_new();
-		self.apply_pending_client_namespace(client)
-	}
-
-	/// Consumes the router and returns both parts.
-	pub fn into_parts(mut self) -> (ServerRouter, ClientRouter) {
-		self.flush_di_registrations();
-		let client = self.take_client_or_new();
-		let client = self.apply_pending_client_namespace(client);
-		let errors = self.server.register_all_routes();
-		for error in &errors {
-			tracing::warn!("{}", error);
-		}
-		(self.server, client)
-	}
-
-	/// Registers server router globally and returns client router.
-	///
-	/// This is a convenience method for full-stack applications that need to:
-	/// 1. Register the server router globally for HTTP request handling
-	/// 2. Keep the client router for SPA navigation
-	///
-	/// # Example
-	///
-	/// ```rust,ignore
-	/// let client = UnifiedRouter::new()
-	///     .server(|s| s.endpoint(api_data))
-	///     .client(|c| c.route("home", "/", || home_page()))
-	///     .register_globally();
-	///
-	/// // Server router is now globally registered
-	/// // Client router is returned for SPA use
-	/// ```
-	pub fn register_globally(self) -> ClientRouter {
-		let (server, client) = self.into_parts();
-		crate::routers::register_router(server);
-		client
-	}
-
 	/// Attach deferred DI registrations to this router.
 	///
 	/// When the router is consumed, these registrations are applied directly
@@ -321,23 +222,6 @@ impl UnifiedRouter {
 	/// This is a convenience method that delegates to [`ServerRouter::with_prefix`].
 	pub fn with_prefix(mut self, prefix: impl Into<String>) -> Self {
 		self.server = self.server.with_prefix(prefix);
-		self
-	}
-
-	/// Set namespace for both server and client routers.
-	///
-	/// Delegates to [`ServerRouter::with_namespace`] and
-	/// [`ClientRouter::with_namespace`] so that server-side URL resolvers
-	/// and client-side named route keys are both prefixed consistently
-	/// with `"<namespace>:"`. Fixes #3726.
-	pub fn with_namespace(mut self, namespace: impl Into<String>) -> Self {
-		let ns: String = namespace.into();
-		if let Some(client) = self.client.take() {
-			self.client = Some(client.with_namespace(&ns));
-		} else {
-			self.client_namespace = Some(ns.clone());
-		}
-		self.server = self.server.with_namespace(ns);
 		self
 	}
 
@@ -382,24 +266,6 @@ impl UnifiedRouter {
 		self
 	}
 
-	/// Mount a child UnifiedRouter on this router.
-	///
-	/// Mounts the child's server router under `prefix` and merges its client
-	/// routes into the parent. Client named routes are preserved with index
-	/// offset adjustment so that `url_for("app:route")` resolves on the
-	/// project-level unified `UrlReverser`.
-	///
-	/// The `prefix` argument is applied to server routes only; client routes
-	/// keep their patterns as-declared, mirroring the WASM behavior.
-	pub fn mount_unified(mut self, prefix: &str, child: UnifiedRouter) -> Self {
-		if let Some(child_client) = child.client {
-			let client = self.take_client_or_new();
-			let client = self.apply_pending_client_namespace(client);
-			self.client = Some(client.merge(child_client));
-		}
-		self.mount(prefix, child.server)
-	}
-
 	/// Mount streaming handlers (producers and consumers) on this router.
 	///
 	/// Registrations are stored on the router for Phase 3 worker startup.
@@ -424,11 +290,156 @@ impl UnifiedRouter {
 }
 
 #[cfg(all(feature = "client-router", native))]
-impl std::fmt::Debug for UnifiedRouter {
+impl UnifiedRouter<()> {
+	/// Creates a server-only `UnifiedRouter`.
+	///
+	/// This state contains no client router and therefore remains `Send + Sync`.
+	/// Calling [`Self::client`] transitions it into a client-enabled router.
+	pub fn new() -> Self {
+		Self {
+			server: ServerRouter::new(),
+			client: (),
+			client_namespace: None,
+			websocket: reinhardt_core::ws::WebSocketRouter::new(),
+			di_registrations: reinhardt_di::DiRegistrationList::new(),
+			#[cfg(feature = "streaming")]
+			streaming_handlers: Vec::new(),
+		}
+	}
+
+	/// Configure client-side routing with a closure.
+	///
+	/// The returned router owns a [`ClientRouter`] and has that router's
+	/// thread-safety constraints.
+	pub fn client<F>(self, f: F) -> UnifiedRouter<ClientRouter>
+	where
+		F: FnOnce(ClientRouter) -> ClientRouter,
+	{
+		let client = f(ClientRouter::new());
+		let client = match self.client_namespace.as_deref() {
+			Some(namespace) => client.with_namespace(namespace),
+			None => client,
+		};
+		self.with_client(client)
+	}
+
+	/// Set namespace for the server router and defer the client namespace until
+	/// client routing is configured.
+	pub fn with_namespace(mut self, namespace: impl Into<String>) -> Self {
+		let namespace = namespace.into();
+		self.client_namespace = Some(namespace.clone());
+		self.server = self.server.with_namespace(namespace);
+		self
+	}
+
+	/// Consumes the router and returns a default client router.
+	pub fn into_client(mut self) -> ClientRouter {
+		self.flush_di_registrations();
+		match self.client_namespace.as_deref() {
+			Some(namespace) => ClientRouter::default().with_namespace(namespace),
+			None => ClientRouter::default(),
+		}
+	}
+
+	/// Consumes the router and returns the server router and a default client router.
+	pub fn into_parts(mut self) -> (ServerRouter, ClientRouter) {
+		self.flush_di_registrations();
+		let client = match self.client_namespace.as_deref() {
+			Some(namespace) => ClientRouter::default().with_namespace(namespace),
+			None => ClientRouter::default(),
+		};
+		let errors = self.server.register_all_routes();
+		for error in &errors {
+			tracing::warn!("{}", error);
+		}
+		(self.server, client)
+	}
+
+	/// Registers the server router globally and returns a default client router.
+	pub fn register_globally(self) -> ClientRouter {
+		let (server, client) = self.into_parts();
+		crate::routers::register_router(server);
+		client
+	}
+
+	/// Mount a client-enabled child unified router.
+	pub fn mount_unified(
+		self,
+		prefix: &str,
+		child: UnifiedRouter<ClientRouter>,
+	) -> UnifiedRouter<ClientRouter> {
+		let client = match self.client_namespace.as_deref() {
+			Some(namespace) => child.client.with_namespace(namespace),
+			None => child.client,
+		};
+		self.with_client(client).mount(prefix, child.server)
+	}
+}
+
+#[cfg(all(feature = "client-router", native))]
+impl UnifiedRouter<ClientRouter> {
+	/// Configure client-side routing with a closure.
+	pub fn client<F>(mut self, f: F) -> Self
+	where
+		F: FnOnce(ClientRouter) -> ClientRouter,
+	{
+		self.client = f(self.client);
+		self
+	}
+
+	/// Returns a reference to the configured client router.
+	pub fn client_ref(&self) -> &ClientRouter {
+		&self.client
+	}
+
+	/// Returns a mutable reference to the configured client router.
+	pub fn client_mut(&mut self) -> &mut ClientRouter {
+		&mut self.client
+	}
+
+	/// Set namespace for both server and client routers.
+	pub fn with_namespace(mut self, namespace: impl Into<String>) -> Self {
+		let namespace = namespace.into();
+		self.client = self.client.with_namespace(&namespace);
+		self.server = self.server.with_namespace(namespace);
+		self
+	}
+
+	/// Consumes the router and returns the configured client router.
+	pub fn into_client(mut self) -> ClientRouter {
+		self.flush_di_registrations();
+		self.client
+	}
+
+	/// Consumes the router and returns both configured router parts.
+	pub fn into_parts(mut self) -> (ServerRouter, ClientRouter) {
+		self.flush_di_registrations();
+		let errors = self.server.register_all_routes();
+		for error in &errors {
+			tracing::warn!("{}", error);
+		}
+		(self.server, self.client)
+	}
+
+	/// Registers the server router globally and returns the configured client router.
+	pub fn register_globally(self) -> ClientRouter {
+		let (server, client) = self.into_parts();
+		crate::routers::register_router(server);
+		client
+	}
+
+	/// Mount a child unified router and merge its client routes.
+	pub fn mount_unified(mut self, prefix: &str, child: UnifiedRouter<ClientRouter>) -> Self {
+		self.client = self.client.merge(child.client);
+		self.mount(prefix, child.server)
+	}
+}
+
+#[cfg(all(feature = "client-router", native))]
+impl<Client> std::fmt::Debug for UnifiedRouter<Client> {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.debug_struct("UnifiedRouter")
 			.field("server", &self.server)
-			.field("client", &self.client)
 			.field("client_namespace", &self.client_namespace)
 			.field("di_registrations", &self.di_registrations)
 			.finish()
@@ -986,6 +997,14 @@ mod tests {
 			.into_server();
 
 		assert_eq!(router.prefix(), "/api");
+	}
+
+	#[cfg(all(feature = "client-router", native))]
+	#[test]
+	fn server_only_router_remains_send_and_sync() {
+		fn assert_send_and_sync<T: Send + Sync>() {}
+
+		assert_send_and_sync::<UnifiedRouter>();
 	}
 
 	#[test]

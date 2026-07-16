@@ -59,7 +59,7 @@ pub mod signal;
 pub use context::{
 	Context, ContextGuard, create_context, get_context, provide_context, remove_context,
 };
-pub use deps::{Deps, ExplicitDeps, IntoDeps, Trackable};
+pub use deps::{Deps, ExplicitDeps, ReactiveDeps, Trackable};
 pub use effect::Effect;
 pub use memo::Memo;
 pub use runtime::{EffectTiming, NodeId, NodeType, Observer, Runtime, batch, with_runtime};

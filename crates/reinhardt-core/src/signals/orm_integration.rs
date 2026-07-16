@@ -279,6 +279,7 @@ mod tests {
 	}
 
 	#[tokio::test]
+	#[serial_test::serial]
 	async fn test_orm_signal_adapter_creation() {
 		let fixture = OrmSignalFixture::new();
 		let adapter = OrmSignalAdapter::<TestModel>::new();
@@ -362,6 +363,7 @@ mod tests {
 	}
 
 	#[tokio::test]
+	#[serial_test::serial]
 	async fn test_dispatch_post_delete() {
 		let _fixture = OrmSignalFixture::new();
 		let counter = Arc::new(AtomicUsize::new(0));
@@ -385,6 +387,7 @@ mod tests {
 	}
 
 	#[tokio::test]
+	#[serial_test::serial]
 	async fn test_connect_orm_signals() {
 		let _fixture = OrmSignalFixture::new();
 		connect_orm_signals::<TestModel>().await;
@@ -399,6 +402,7 @@ mod tests {
 	}
 
 	#[tokio::test]
+	#[serial_test::serial]
 	async fn test_get_orm_signals() {
 		let _fixture = OrmSignalFixture::new();
 		let signals = get_orm_signals::<TestModel>();

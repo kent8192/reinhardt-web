@@ -39,6 +39,7 @@
 extern crate alloc;
 use alloc::boxed::Box;
 
+use super::deps::ReactiveDeps;
 use super::runtime::{EffectTiming, NodeId, NodeType, Observer, try_with_runtime, with_runtime};
 use super::scope::{
 	NodeKey, NodeKind, allocate_node, enter_scope, find_node_key, mark_node_disposed,
@@ -62,6 +63,10 @@ pub(crate) fn mark_memo_dirty_by_id(memo_id: NodeId) {
 	if set_node_dirty(key, true).is_ok() {
 		with_runtime(|rt| rt.notify_signal_change(memo_id));
 	}
+}
+
+pub(crate) fn is_memo(node_id: NodeId) -> bool {
+	find_node_key(node_id, NodeKind::Memo).is_some()
 }
 
 /// A memoized reactive computation that caches its result
@@ -156,6 +161,17 @@ impl<T: Clone + 'static> Memo<T> {
 		.unwrap_or_else(|err| panic!("{err}"));
 		set_node_dirty(memo.key, false).unwrap_or_else(|err| panic!("{err}"));
 		memo
+	}
+
+	#[doc(hidden)]
+	pub fn new_with_mode<F>(f: F, deps: ReactiveDeps) -> Self
+	where
+		F: FnMut() -> T + 'static,
+	{
+		match deps {
+			ReactiveDeps::Explicit(deps) => Self::new_with_deps(f, deps.into_deps()),
+			ReactiveDeps::Auto => Self::new(f),
+		}
 	}
 
 	fn allocate(f: MemoFn<T>) -> Self {
@@ -488,11 +504,10 @@ mod tests {
 			// Initial value
 			assert_eq!(memo.get(), 10);
 
-			// Change signal and mark memo dirty manually (in real system, runtime does this)
+			// Change the source signal.
 			signal.set(10);
-			memo.mark_dirty();
 
-			// Memo should recompute
+			// The runtime must mark the memo dirty before its next read.
 			assert_eq!(memo.get(), 20);
 		});
 	}

@@ -17,7 +17,10 @@ use std::task::{Context, Poll};
 
 use crate::platform::{defer_yield, spawn_task};
 use crate::reactive::pages_arena::{PageNodeKey, PageNodeKind, allocate_page_node, with_page_node};
-use reinhardt_core::reactive::{ScopeId, current_scope_id, deps::IntoDeps, scope::enter_scope};
+use reinhardt_core::deps;
+use reinhardt_core::reactive::{ScopeId, current_scope_id, scope::enter_scope};
+
+use crate::reactive::ExplicitDeps;
 
 type RefetchCallback = Rc<dyn Fn()>;
 
@@ -277,10 +280,10 @@ impl<T: Clone + 'static, E: Clone + 'static> reinhardt_core::reactive::deps::Tra
 ///
 /// `use_resource(fetcher, deps)` runs `fetcher` and tracks its result as a
 /// [`Resource`] (`Loading → Success/Error`). The `deps` argument follows the
-/// same [`IntoDeps`] convention as [`use_effect`](super::hooks::use_effect):
+/// same explicit dependency-list convention as [`use_effect`](super::hooks::use_effect):
 ///
-/// - `()` → fetch once on mount (never automatically refetches).
-/// - `(signal,)` / `(a, b, ..)` → refetch whenever any listed dependency
+/// - `deps![]` → fetch once on mount (never automatically refetches).
+/// - `deps![signal]` / `deps![a, b]` → refetch whenever any listed dependency
 ///   changes. Dependencies are the explicitly listed [`Trackable`]s
 ///   (`Signal`/`Memo`/`Resource`); signals merely *read* inside the async
 ///   `fetcher` do not subscribe (they cross an `await` boundary), so list
@@ -294,7 +297,6 @@ impl<T: Clone + 'static, E: Clone + 'static> reinhardt_core::reactive::deps::Tra
 /// allocate scoped primitives after an `await` without outliving their owner.
 ///
 /// [`Trackable`]: reinhardt_core::reactive::deps::Trackable
-/// [`IntoDeps`]: reinhardt_core::reactive::deps::IntoDeps
 ///
 /// # Dual-target behavior
 ///
@@ -313,10 +315,10 @@ impl<T: Clone + 'static, E: Clone + 'static> reinhardt_core::reactive::deps::Tra
 /// # Example
 ///
 /// ```ignore
-/// use reinhardt_pages::reactive::{Signal, use_resource};
+/// use reinhardt_pages::{deps, reactive::{Signal, use_resource}};
 ///
 /// // Fetch once on mount:
-/// let user = use_resource(|| async { fetch_user_from_api(42).await }, ());
+/// let user = use_resource(|| async { fetch_user_from_api(42).await }, deps![]);
 ///
 /// // Refetch whenever `user_id` changes:
 /// let user_id = Signal::new(42u32);
@@ -328,17 +330,16 @@ impl<T: Clone + 'static, E: Clone + 'static> reinhardt_core::reactive::deps::Tra
 ///             async move { fetch_user_from_api(id).await }
 ///         }
 ///     },
-///     (user_id.clone(),),
+///     deps![user_id],
 /// );
 /// user_id.set(100); // triggers a refetch
 /// ```
-pub fn use_resource<T, E, F, Fut, D>(fetcher: F, deps: D) -> Resource<T, E>
+pub fn use_resource<T, E, F, Fut>(fetcher: F, deps: ExplicitDeps) -> Resource<T, E>
 where
 	T: Clone + Serialize + DeserializeOwned + 'static,
 	E: Clone + Serialize + DeserializeOwned + 'static,
 	F: Fn() -> Fut + 'static,
 	Fut: std::future::Future<Output = Result<T, E>> + 'static,
-	D: IntoDeps,
 {
 	use_resource_with_optional_key(None, fetcher, deps)
 }
@@ -347,29 +348,31 @@ where
 ///
 /// Prefer this when call-order keys would be unstable across server and client
 /// renders, such as conditionally rendered resource hooks.
-pub fn use_resource_with_key<K, T, E, F, Fut, D>(key: K, fetcher: F, deps: D) -> Resource<T, E>
+pub fn use_resource_with_key<K, T, E, F, Fut>(
+	key: K,
+	fetcher: F,
+	deps: ExplicitDeps,
+) -> Resource<T, E>
 where
 	K: Into<String>,
 	T: Clone + Serialize + DeserializeOwned + 'static,
 	E: Clone + Serialize + DeserializeOwned + 'static,
 	F: Fn() -> Fut + 'static,
 	Fut: std::future::Future<Output = Result<T, E>> + 'static,
-	D: IntoDeps,
 {
 	use_resource_with_optional_key(Some(key.into()), fetcher, deps)
 }
 
-fn use_resource_with_optional_key<T, E, F, Fut, D>(
+fn use_resource_with_optional_key<T, E, F, Fut>(
 	key: Option<String>,
 	fetcher: F,
-	deps: D,
+	deps: ExplicitDeps,
 ) -> Resource<T, E>
 where
 	T: Clone + Serialize + DeserializeOwned + 'static,
 	E: Clone + Serialize + DeserializeOwned + 'static,
 	F: Fn() -> Fut + 'static,
 	Fut: std::future::Future<Output = Result<T, E>> + 'static,
-	D: IntoDeps,
 {
 	let fetcher = Rc::new(fetcher);
 
@@ -381,17 +384,16 @@ where
 	create_client_resource(key, fetcher, deps)
 }
 
-fn create_client_resource<T, E, F, Fut, D>(
+fn create_client_resource<T, E, F, Fut>(
 	resource_key: Option<String>,
 	fetcher: Rc<F>,
-	deps: D,
+	deps: ExplicitDeps,
 ) -> Resource<T, E>
 where
 	T: Clone + Serialize + DeserializeOwned + 'static,
 	E: Clone + Serialize + DeserializeOwned + 'static,
 	F: Fn() -> Fut + 'static,
 	Fut: std::future::Future<Output = Result<T, E>> + 'static,
-	D: IntoDeps,
 {
 	let ssr_key = resource_key.clone();
 
@@ -446,17 +448,16 @@ where
 	build_resource_from_run(state, run, deps, run_initial_fetch, ssr_key)
 }
 
-fn build_resource_from_run<T, E, D>(
+fn build_resource_from_run<T, E>(
 	state: Signal<ResourceState<T, E>>,
 	run: Rc<dyn Fn()>,
-	deps: D,
+	deps: ExplicitDeps,
 	run_initial_fetch: bool,
 	ssr_key: Option<String>,
 ) -> Resource<T, E>
 where
 	T: Clone + 'static,
 	E: Clone + 'static,
-	D: IntoDeps,
 {
 	let first_run = Rc::new(Cell::new(true));
 	let effect = {
@@ -517,7 +518,7 @@ where
 		if let Some(resolved_state) = context.resolved_resource_state::<T, E>(&key) {
 			let state = Signal::new(resolved_state);
 			let run: Rc<dyn Fn()> = Rc::new(move || state.set(ResourceState::Loading));
-			build_resource_from_run(state, run, (), false, Some(key))
+			build_resource_from_run(state, run, deps![], false, Some(key))
 		} else {
 			let state = Signal::new(ResourceState::Loading);
 			context.register_resource_with_owner::<T, E, _, Fut>(
@@ -532,7 +533,7 @@ where
 
 			let run: Rc<dyn Fn()> = Rc::new(move || state.set(ResourceState::Loading));
 
-			build_resource_from_run(state, run, (), false, Some(key))
+			build_resource_from_run(state, run, deps![], false, Some(key))
 		}
 	})
 }

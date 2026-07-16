@@ -245,6 +245,7 @@ impl Runtime {
 			// Collect layout effects and passive effects separately
 			let mut layout_effects = Vec::new();
 			let mut passive_effects = Vec::new();
+			let mut memos = Vec::new();
 
 			for &subscriber_id in &node.subscribers {
 				// Check if this is an effect and get its timing
@@ -253,9 +254,8 @@ impl Runtime {
 						EffectTiming::Layout => layout_effects.push(subscriber_id),
 						EffectTiming::Passive => passive_effects.push(subscriber_id),
 					}
-				} else {
-					// Non-effect subscribers (like Memos) are treated as passive
-					passive_effects.push(subscriber_id);
+				} else if super::memo::is_memo(subscriber_id) {
+					memos.push(subscriber_id);
 				}
 			}
 
@@ -265,6 +265,12 @@ impl Runtime {
 			// Execute layout effects synchronously
 			for effect_id in layout_effects {
 				super::effect::Effect::execute_effect(effect_id);
+			}
+
+			// Memos are lazily recomputed on their next read. Marking them dirty
+			// also propagates invalidation to downstream subscribers immediately.
+			for memo_id in memos {
+				super::memo::mark_memo_dirty_by_id(memo_id);
 			}
 
 			// Schedule passive effects asynchronously

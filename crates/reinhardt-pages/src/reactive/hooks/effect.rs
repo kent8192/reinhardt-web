@@ -6,11 +6,10 @@
 //! Effect closures can return either `()` for no cleanup or `Option<C>` when
 //! they need to register teardown.
 
-use reinhardt_core::reactive::deps::IntoDeps;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::reactive::{Effect, runtime::EffectTiming};
+use crate::reactive::{Effect, ExplicitDeps, ReactiveDeps, runtime::EffectTiming};
 
 /// Return value accepted from effect closures.
 ///
@@ -78,24 +77,22 @@ where
 ///
 /// # Reactivity Semantics
 ///
-/// - The closure runs with no active reactive Observer
-///   (`run_without_observer`); auto-tracking is disabled inside `f`.
-/// - Subscriptions are derived exclusively from `deps`.
-/// - Use `()` to opt out of re-runs (mount-only effect).
+/// - Explicit lists run with no active reactive Observer; automatic mode
+///   records the reactive reads performed by `f`.
+/// - Use `deps![]` to opt out of re-runs (mount-only effect).
 ///
 /// # Type Parameters
 ///
 /// * `F` - The effect function type.
 /// * `C` - The cleanup function type.
-/// * `D` - Any tuple of [`Trackable`]s (or `()`) that implements
-///   [`IntoDeps`].
+/// * `deps` - Either an explicit `deps![...]` list or `deps_auto!()`.
 ///
 /// # Arguments
 ///
 /// * `f` - A function that performs the side effect and optionally
 ///   returns a cleanup function. Cleanups run before the next re-run and
 ///   on dispose, matching React `useEffect`.
-/// * `deps` - The explicit dependency tuple. Pass `()` for no deps.
+/// * `deps` - The dependency mode. Pass `deps![]` for mount-only behavior.
 ///
 /// # Example
 ///
@@ -109,29 +106,27 @@ where
 ///     move || {
 ///         log!("Count is now: {}", count.get());
 ///     },
-///     (count,),
+///     deps![count],
 /// );
 ///
-/// // Effect with cleanup, mount-only deps `()`.
+/// // Effect with cleanup, mount-only deps `deps![]`.
 /// let _interval_effect = use_effect(
 ///     move || {
 ///         let interval_id = set_interval(|| log!("tick"), 1000);
 ///         Some(move || clear_interval(interval_id))
 ///     },
-///     (),
+///     deps![],
 /// );
 /// ```
 ///
 /// [`Trackable`]: reinhardt_core::reactive::deps::Trackable
-/// [`IntoDeps`]: reinhardt_core::reactive::deps::IntoDeps
-pub fn use_effect<F, C, D>(f: F, deps: D) -> Effect
+pub fn use_effect<F, C>(f: F, deps: impl Into<ReactiveDeps>) -> Effect
 where
 	F: EffectCallback<C> + 'static,
 	C: FnOnce() + 'static,
-	D: IntoDeps,
 {
 	let mut f = f;
-	Effect::new_with_deps(move || f.call_effect().into_cleanup(), deps.into_deps())
+	Effect::new_with_mode(move || f.call_effect().into_cleanup(), deps.into())
 }
 
 /// Registers a side effect in the current mounted view scope.
@@ -168,11 +163,10 @@ where
 /// ```
 ///
 /// [`cleanup_reactive_nodes`]: crate::component::cleanup_reactive_nodes
-pub fn use_retained_effect<F, C, D>(f: F, deps: D)
+pub fn use_retained_effect<F, C>(f: F, deps: ExplicitDeps)
 where
 	F: EffectCallback<C> + 'static,
 	C: FnOnce() + 'static,
-	D: IntoDeps,
 {
 	retain_effect(|| use_effect(f, deps));
 }
@@ -221,16 +215,15 @@ where
 ///     (element_ref,),
 /// );
 /// ```
-pub fn use_layout_effect<F, C, D>(f: F, deps: D) -> Effect
+pub fn use_layout_effect<F, C>(f: F, deps: impl Into<ReactiveDeps>) -> Effect
 where
 	F: EffectCallback<C> + 'static,
 	C: FnOnce() + 'static,
-	D: IntoDeps,
 {
 	let mut f = f;
-	Effect::new_with_deps_and_timing(
+	Effect::new_with_mode_and_timing(
 		move || f.call_effect().into_cleanup(),
-		deps.into_deps(),
+		deps.into(),
 		EffectTiming::Layout,
 	)
 }
@@ -273,11 +266,10 @@ where
 /// ```
 ///
 /// [`cleanup_reactive_nodes`]: crate::component::cleanup_reactive_nodes
-pub fn use_retained_layout_effect<F, C, D>(f: F, deps: D)
+pub fn use_retained_layout_effect<F, C>(f: F, deps: ExplicitDeps)
 where
 	F: EffectCallback<C> + 'static,
 	C: FnOnce() + 'static,
-	D: IntoDeps,
 {
 	retain_effect(|| use_layout_effect(f, deps));
 }

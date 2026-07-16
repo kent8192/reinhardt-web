@@ -1101,7 +1101,7 @@ mod wasm_tests {
 #[cfg(test)]
 mod tests_with_deps {
 	use super::*;
-	use reinhardt_core::reactive::deps::IntoDeps;
+	use reinhardt_core::deps;
 	use reinhardt_core::reactive::signal::Signal;
 	use serial_test::serial;
 
@@ -1111,7 +1111,7 @@ mod tests_with_deps {
 		Args: 'static,
 		Ret: Default + 'static,
 	{
-		callback_with_deps(|_: Args| Ret::default(), ().into_deps())
+		callback_with_deps(|_: Args| Ret::default(), deps![].into_deps())
 	}
 
 	// `callback_with_deps` keys its registry slot by the caller's
@@ -1137,7 +1137,7 @@ mod tests_with_deps {
 							let _ = (x, s.get());
 						}
 					},
-					(s.clone(),).into_deps(),
+					deps![s],
 				);
 				let rc = cb.inner_rc_ptr();
 
@@ -1165,7 +1165,7 @@ mod tests_with_deps {
 			// Act — same call site (loop body) re-entered with different
 			// deps each iteration.
 			for s in &signals {
-				let cb = callback_with_deps::<i32, ()>(|_: i32| {}, (s.clone(),).into_deps());
+				let cb = callback_with_deps::<i32, ()>(|_: i32| {}, deps![s]);
 				let rc = cb.inner_rc_ptr();
 
 				// Assert

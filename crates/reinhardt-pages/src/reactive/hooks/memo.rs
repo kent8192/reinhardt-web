@@ -4,10 +4,8 @@
 //! `callback_with_deps` Rc-swap helper. All three take an explicit
 //! dependency tuple as the second argument (Refs #4195).
 
-use reinhardt_core::reactive::deps::IntoDeps;
-
 use crate::callback::{Callback, callback_with_deps};
-use crate::reactive::Memo;
+use crate::reactive::{ExplicitDeps, Memo, ReactiveDeps};
 
 /// Memoizes an expensive calculation.
 ///
@@ -54,13 +52,12 @@ use crate::reactive::Memo;
 /// // Reading the memoized value
 /// let result = filtered.get();
 /// ```
-pub fn use_memo<T, F, D>(f: F, deps: D) -> Memo<T>
+pub fn use_memo<T, F>(f: F, deps: impl Into<ReactiveDeps>) -> Memo<T>
 where
 	T: Clone + 'static,
 	F: FnMut() -> T + 'static,
-	D: IntoDeps,
 {
-	Memo::new_with_deps(f, deps.into_deps())
+	Memo::new_with_mode(f, deps.into())
 }
 
 /// Memoizes a callback function to maintain a stable reference.
@@ -116,11 +113,10 @@ where
 /// still need cloning.
 #[cfg(wasm)]
 #[track_caller]
-pub fn use_callback<Args, F, D>(f: F, deps: D) -> Callback<Args, ()>
+pub fn use_callback<Args, F>(f: F, deps: ExplicitDeps) -> Callback<Args, ()>
 where
 	F: Fn(Args) + 'static,
 	Args: 'static,
-	D: IntoDeps,
 {
 	callback_with_deps::<Args, ()>(f, deps.into_deps())
 }
@@ -131,11 +127,10 @@ where
 /// Native callbacks share the thread-affine reactive scope contract.
 #[cfg(native)]
 #[track_caller]
-pub fn use_callback<Args, F, D>(f: F, deps: D) -> Callback<Args, ()>
+pub fn use_callback<Args, F>(f: F, deps: ExplicitDeps) -> Callback<Args, ()>
 where
 	F: Fn(Args) + 'static,
 	Args: 'static,
-	D: IntoDeps,
 {
 	callback_with_deps::<Args, ()>(f, deps.into_deps())
 }
@@ -169,12 +164,11 @@ where
 /// ```
 #[cfg(wasm)]
 #[track_caller]
-pub fn use_callback_with<Args, Ret, F, D>(f: F, deps: D) -> Callback<Args, Ret>
+pub fn use_callback_with<Args, Ret, F>(f: F, deps: ExplicitDeps) -> Callback<Args, Ret>
 where
 	F: Fn(Args) -> Ret + 'static,
 	Args: 'static,
 	Ret: 'static,
-	D: IntoDeps,
 {
 	callback_with_deps::<Args, Ret>(f, deps.into_deps())
 }
@@ -185,12 +179,11 @@ where
 /// Native callbacks share the thread-affine reactive scope contract.
 #[cfg(native)]
 #[track_caller]
-pub fn use_callback_with<Args, Ret, F, D>(f: F, deps: D) -> Callback<Args, Ret>
+pub fn use_callback_with<Args, Ret, F>(f: F, deps: ExplicitDeps) -> Callback<Args, Ret>
 where
 	F: Fn(Args) -> Ret + 'static,
 	Args: 'static,
 	Ret: 'static,
-	D: IntoDeps,
 {
 	callback_with_deps::<Args, Ret>(f, deps.into_deps())
 }
