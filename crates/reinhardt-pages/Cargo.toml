@@ -96,6 +96,8 @@ web-sys-full = [
 	"web-sys/RequestCredentials",
 	"web-sys/RequestInit",
 	"web-sys/RequestMode",
+	"web-sys/AbortController",
+	"web-sys/AbortSignal",
 	"web-sys/Response",
 	"web-sys/WebSocket",
 	"web-sys/MessageEvent",
@@ -229,6 +231,8 @@ web-sys = { version = "0.3.83", features = [
 	"RequestCredentials",
 	"RequestInit",
 	"RequestMode",
+	"AbortController",
+	"AbortSignal",
 	"Response",
 	# Storage API (for JWT token management)
 	"Storage",

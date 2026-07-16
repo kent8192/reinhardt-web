@@ -952,6 +952,8 @@ mod tests {
 	#[cfg(wasm)]
 	use crate::reactive::{ReactiveScope, Signal, with_runtime};
 	#[cfg(wasm)]
+	use reinhardt_core::deps;
+	#[cfg(wasm)]
 	use std::cell::RefCell;
 	#[cfg(wasm)]
 	use std::rc::Rc;
@@ -1066,7 +1068,7 @@ mod tests {
 								Some(move || effect_log.borrow_mut().push("cleanup".to_string()))
 							}
 						},
-						(effect_signal.clone(),),
+						deps![effect_signal.clone()],
 					);
 					PageElement::new("span")
 						.child(format!("value:{render_value}"))
@@ -1121,7 +1123,7 @@ mod tests {
 									})
 								}
 							},
-							(effect_signal.clone(),),
+							deps![effect_signal.clone()],
 						);
 						PageElement::new("span").child("value:0").into_page()
 					}

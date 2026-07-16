@@ -7,6 +7,8 @@
 
 #![cfg(wasm)]
 
+use js_sys::{Function, Object, Reflect};
+use wasm_bindgen::JsValue;
 use wasm_bindgen_test::*;
 
 wasm_bindgen_test_configure!(run_in_browser);
@@ -36,6 +38,95 @@ impl From<reinhardt_pages::server_fn::ServerFnError> for CustomClientError {
 #[server_fn]
 async fn custom_error_server_fn(value: u32) -> Result<u32, CustomClientError> {
 	Ok(value)
+}
+
+#[server_fn]
+async fn server_fn_cancellation_probe(
+	value: u32,
+) -> Result<u32, reinhardt_pages::server_fn::ServerFnError> {
+	Ok(value)
+}
+
+struct FetchStubGuard {
+	window: web_sys::Window,
+	previous_fetch: JsValue,
+	probe: Object,
+}
+
+impl FetchStubGuard {
+	fn install() -> Self {
+		let window = web_sys::window().expect("browser window");
+		let previous_fetch = Reflect::get(window.as_ref(), &JsValue::from_str("fetch"))
+			.expect("window.fetch must be readable");
+		let probe = Object::new();
+		Reflect::set(&probe, &JsValue::from_str("signalSeen"), &JsValue::FALSE)
+			.expect("probe signalSeen property");
+		Reflect::set(&probe, &JsValue::from_str("aborted"), &JsValue::FALSE)
+			.expect("probe aborted property");
+		Reflect::set(
+			js_sys::global().as_ref(),
+			&JsValue::from_str("__reinhardtServerFnFetchProbe"),
+			&probe,
+		)
+		.expect("install server function fetch probe");
+		let stub = Function::new_with_args(
+			"request",
+			r#"
+			const probe = globalThis.__reinhardtServerFnFetchProbe;
+			probe.signalSeen = !!request.signal;
+			probe.aborted = request.signal ? request.signal.aborted : false;
+			return Promise.resolve(new Response('42', { status: 200 }));
+			"#,
+		);
+		Reflect::set(window.as_ref(), &JsValue::from_str("fetch"), stub.as_ref())
+			.expect("install server function fetch stub");
+
+		Self {
+			window,
+			previous_fetch,
+			probe,
+		}
+	}
+
+	fn flag(&self, name: &str) -> bool {
+		Reflect::get(&self.probe, &JsValue::from_str(name))
+			.expect("probe flag must be readable")
+			.as_bool()
+			.unwrap_or(false)
+	}
+}
+
+impl Drop for FetchStubGuard {
+	fn drop(&mut self) {
+		let _ = Reflect::set(
+			self.window.as_ref(),
+			&JsValue::from_str("fetch"),
+			&self.previous_fetch,
+		);
+		let _ = Reflect::delete_property(
+			js_sys::global().as_ref(),
+			&JsValue::from_str("__reinhardtServerFnFetchProbe"),
+		);
+	}
+}
+
+#[wasm_bindgen_test]
+async fn server_fn_call_inherits_active_cancellation_scope() {
+	// Arrange
+	let fetch_stub = FetchStubGuard::install();
+
+	// Act
+	let result = server_fn_cancellation_probe(7)
+		.await
+		.expect("the stubbed server function request should resolve");
+
+	// Assert
+	assert_eq!(result, 42);
+	assert!(
+		!fetch_stub.flag("signalSeen"),
+		"a normal server function call must not gain an abort signal"
+	);
+	assert!(!fetch_stub.flag("aborted"));
 }
 
 #[wasm_bindgen_test]

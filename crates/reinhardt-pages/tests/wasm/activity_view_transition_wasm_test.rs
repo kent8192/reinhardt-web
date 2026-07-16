@@ -66,19 +66,23 @@ fn reactive_activity_mode_updates_wrapper_without_recreating_content() {
 		let handler_calls = Rc::clone(&handler_calls_for_view);
 		ActivityBoundary::default()
 			.visible_when(visible_for_view.get())
-			.content(|| {
-				PageElement::new("input")
-					.attr("id", "activity-owned-input")
-					.attr("value", "initial")
-					.on(
-						EventType::Input,
-						Arc::new(move |_| {
-							let signal = Signal::new(1_i32);
-							assert_eq!(signal.get(), 1);
-							handler_calls.set(handler_calls.get() + 1);
-						}),
-					)
-					.into_page()
+			.content({
+				let handler_calls = Rc::clone(&handler_calls);
+				move || {
+					let handler_calls = Rc::clone(&handler_calls);
+					PageElement::new("input")
+						.attr("id", "activity-owned-input")
+						.attr("value", "initial")
+						.on(
+							EventType::Input,
+							Arc::new(move |_| {
+								let signal = Signal::new(1_i32);
+								assert_eq!(signal.get(), 1);
+								handler_calls.set(handler_calls.get() + 1);
+							}),
+						)
+						.into_page()
+				}
 			})
 			.into_page()
 	})
