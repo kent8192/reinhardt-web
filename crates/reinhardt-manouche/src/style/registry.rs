@@ -1428,11 +1428,7 @@ const POSITION_FOUR: ValueGrammar = ValueGrammar::Or(&[
 ]);
 const POSITION: ValueGrammar =
 	ValueGrammar::Or(&[POSITION_ITEM, POSITION_TWO, POSITION_THREE, POSITION_FOUR]);
-const TRANSFORM_ORIGIN_POSITION: ValueGrammar = ValueGrammar::Space {
-	min: 1,
-	max: Some(2),
-	item: &POSITION_ITEM,
-};
+const TRANSFORM_ORIGIN_POSITION: ValueGrammar = ValueGrammar::Or(&[POSITION_ITEM, POSITION_TWO]);
 const LINE_WIDTH: ValueGrammar = ValueGrammar::Or(&[NL, KW_LINE_WIDTH]);
 const LINE_STYLE: ValueGrammar = KW_LINE_STYLE;
 const BORDER: ValueGrammar = ValueGrammar::Unordered {

@@ -933,14 +933,77 @@ fn component_variable_fallback_matches_grammar(
 	grammar: &ValueGrammar,
 	variable_defaults: &HashMap<usize, &TypedValueExpr>,
 ) -> bool {
-	let TypedValueExprKind::VariableReference(reference) = &expression.kind else {
-		return true;
+	resolve_component_variable_defaults(expression, variable_defaults)
+		.is_some_and(|resolved| matches_grammar(&resolved, grammar))
+}
+
+fn resolve_component_variable_defaults(
+	expression: &TypedValueExpr,
+	variable_defaults: &HashMap<usize, &TypedValueExpr>,
+) -> Option<TypedValueExpr> {
+	let mut resolved = expression.clone();
+	resolved.kind = match &expression.kind {
+		TypedValueExprKind::VariableReference(reference) => {
+			return resolve_component_variable_defaults(
+				variable_defaults.get(&reference.source_index)?,
+				variable_defaults,
+			);
+		}
+		TypedValueExprKind::Unary { operator, operand } => TypedValueExprKind::Unary {
+			operator: operator.clone(),
+			operand: Box::new(resolve_component_variable_defaults(
+				operand,
+				variable_defaults,
+			)?),
+		},
+		TypedValueExprKind::Binary {
+			left,
+			operator,
+			right,
+		} => TypedValueExprKind::Binary {
+			left: Box::new(resolve_component_variable_defaults(
+				left,
+				variable_defaults,
+			)?),
+			operator: operator.clone(),
+			right: Box::new(resolve_component_variable_defaults(
+				right,
+				variable_defaults,
+			)?),
+		},
+		TypedValueExprKind::Function(call) => TypedValueExprKind::Function(TypedFunctionCall {
+			spec: call.spec.clone(),
+			receiver: match call.receiver.as_deref() {
+				Some(receiver) => Some(Box::new(resolve_component_variable_defaults(
+					receiver,
+					variable_defaults,
+				)?)),
+				None => None,
+			},
+			arguments: call
+				.arguments
+				.iter()
+				.map(|argument| resolve_component_variable_defaults(argument, variable_defaults))
+				.collect::<Option<Vec<_>>>()?,
+		}),
+		TypedValueExprKind::Group(operand) => TypedValueExprKind::Group(Box::new(
+			resolve_component_variable_defaults(operand, variable_defaults)?,
+		)),
+		TypedValueExprKind::SpaceSequence(items) => TypedValueExprKind::SpaceSequence(
+			items
+				.iter()
+				.map(|item| resolve_component_variable_defaults(item, variable_defaults))
+				.collect::<Option<Vec<_>>>()?,
+		),
+		TypedValueExprKind::CommaList(items) => TypedValueExprKind::CommaList(
+			items
+				.iter()
+				.map(|item| resolve_component_variable_defaults(item, variable_defaults))
+				.collect::<Option<Vec<_>>>()?,
+		),
+		_ => expression.kind.clone(),
 	};
-	let Some(default) = variable_defaults.get(&reference.source_index) else {
-		return false;
-	};
-	matches_grammar(default, grammar)
-		&& component_variable_fallback_matches_grammar(default, grammar, variable_defaults)
+	Some(resolved)
 }
 
 fn matches_grammar(expression: &TypedValueExpr, grammar: &ValueGrammar) -> bool {
@@ -1937,6 +2000,20 @@ mod tests {
 	}
 
 	#[rstest]
+	fn rejects_a_component_variable_with_a_negative_fallback_inside_a_sequence() {
+		// Arrange and Act
+		let kind = diagnostic_kind_text(
+			"vars { gap: Length = -1px; } .card { padding: (vars.gap, 1px); }",
+		);
+
+		// Assert
+		assert!(matches!(
+			kind,
+			StyleDiagnosticKind::PropertyValueMismatch { property, .. } if property == "padding"
+		));
+	}
+
+	#[rstest]
 	fn whole_unchecked_values_use_the_surrounding_contract() {
 		// Arrange
 		let source = "
@@ -2149,6 +2226,7 @@ mod tests {
 	#[case("transition", "(opacity, -1s)")]
 	#[case("transform-origin", "(10px, 20px, 30%)")]
 	#[case("transform-origin", "(1px, 2px, 3px, 4px)")]
+	#[case("transform-origin", "(left, right)")]
 	#[case("padding", "0px - 1px")]
 	#[case("transition-duration", "0s - 1s")]
 	fn rejects_invalid_values_previously_accepted_by_broad_grammars(
