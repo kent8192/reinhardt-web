@@ -1,0 +1,5 @@
+error: unknown #[http_error(...)] enum option
+ --> tests/macros/ui/http_error/fail/unknown_enum_option.rs:4:24
+  |
+4 | #[http_error(response, format = "json")]
+  |                        ^^^^^^

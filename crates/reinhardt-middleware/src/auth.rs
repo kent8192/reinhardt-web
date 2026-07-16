@@ -46,6 +46,7 @@ use reinhardt_auth::{AuthBackend, AuthIdentity};
 /// #     fn id(&self) -> String { self.id.to_string() }
 /// #     fn is_authenticated(&self) -> bool { true }
 /// #     fn is_admin(&self) -> bool { self.is_admin }
+/// #     fn is_account_active(&self) -> bool { true }
 /// # }
 /// #
 /// # struct MyHandler;
@@ -138,6 +139,7 @@ impl<S: SessionStore, A: AuthBackend> AuthenticationMiddleware<S, A> {
 	/// #     fn id(&self) -> String { self.id.to_string() }
 	/// #     fn is_authenticated(&self) -> bool { true }
 	/// #     fn is_admin(&self) -> bool { self.is_admin }
+	/// #     fn is_account_active(&self) -> bool { true }
 	/// # }
 	/// #
 	/// # // Simple test authentication backend
@@ -225,9 +227,12 @@ impl<S: SessionStore + 'static, A: AuthBackend + 'static> Middleware
 			};
 
 		let (user_id, is_authenticated, is_admin, is_active) = if let Some(ref user) = user {
-			// `AuthIdentity` does not expose `is_active`; authenticated users
-			// retrieved from the session are assumed active.
-			(user.id(), user.is_authenticated(), user.is_admin(), true)
+			(
+				user.id(),
+				user.is_authenticated(),
+				user.is_admin(),
+				user.is_account_active(),
+			)
 		} else {
 			(String::new(), false, false, false)
 		};
@@ -269,6 +274,7 @@ mod tests {
 	struct TestUser {
 		id: Uuid,
 		is_admin: bool,
+		is_active: bool,
 	}
 
 	impl AuthIdentity for TestUser {
@@ -283,6 +289,10 @@ mod tests {
 		fn is_admin(&self) -> bool {
 			self.is_admin
 		}
+
+		fn is_account_active(&self) -> bool {
+			self.is_active
+		}
 	}
 
 	struct TestHandler;
@@ -296,10 +306,16 @@ mod tests {
 				.get::<IsAuthenticated>()
 				.map(|v| v.0)
 				.unwrap_or(false);
+			let is_active = request
+				.extensions
+				.get::<IsActive>()
+				.map(|v| v.0)
+				.unwrap_or(false);
 
 			Ok(Response::ok().with_json(&serde_json::json!({
 				"user_id": user_id.unwrap_or_default(),
-				"is_authenticated": is_authenticated
+				"is_authenticated": is_authenticated,
+				"is_active": is_active
 			}))?)
 		}
 	}
@@ -337,6 +353,7 @@ mod tests {
 		let user = TestUser {
 			id: Uuid::now_v7(),
 			is_admin: false,
+			is_active: true,
 		};
 		let auth_backend = Arc::new(TestAuthBackend { user: Some(user) });
 
@@ -365,6 +382,43 @@ mod tests {
 
 		let response = middleware.process(request, handler).await.unwrap();
 		assert_eq!(response.status, reinhardt_http::Response::ok().status);
+	}
+
+	#[tokio::test]
+	async fn test_auth_middleware_preserves_inactive_session_user() {
+		let session_store = Arc::new(InMemorySessionStore::new());
+		let user = TestUser {
+			id: Uuid::now_v7(),
+			is_admin: false,
+			is_active: false,
+		};
+		let auth_backend = Arc::new(TestAuthBackend { user: Some(user) });
+
+		let session_id = session_store.create_session_id();
+		let mut session = Session::new();
+		session.set(SESSION_KEY_USER_ID, serde_json::json!("user123"));
+		session_store.save(&session_id, &session).await;
+
+		let middleware = AuthenticationMiddleware::new(session_store, auth_backend);
+		let handler = Arc::new(TestHandler);
+		let mut headers = HeaderMap::new();
+		headers.insert(
+			"cookie",
+			format!("sessionid={}", session_id).parse().unwrap(),
+		);
+		let request = Request::builder()
+			.method(Method::GET)
+			.uri("/test")
+			.version(Version::HTTP_11)
+			.headers(headers)
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+
+		let response = middleware.process(request, handler).await.unwrap();
+		let body: serde_json::Value = serde_json::from_slice(response.body.as_ref()).unwrap();
+		assert_eq!(body["is_authenticated"], true);
+		assert_eq!(body["is_active"], false);
 	}
 
 	#[tokio::test]
