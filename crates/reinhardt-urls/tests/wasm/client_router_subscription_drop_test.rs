@@ -22,6 +22,15 @@ fn page_a() -> Page {
 }
 
 #[wasm_bindgen_test]
+fn direct_client_router_construction_retains_navigation_scope() {
+	let router = ClientRouter::new();
+
+	router.current_path().set("/scope-check".to_string());
+
+	assert_eq!(router.current_path().get(), "/scope-check");
+}
+
+#[wasm_bindgen_test]
 fn drop_subscription_deregisters_listener_inv2_inv6() {
 	// Arrange
 	let router = ClientRouter::new().route("a", "/a", page_a);

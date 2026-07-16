@@ -19,13 +19,15 @@ fn workspace_jobs(Path(workspace_id): Path<i64>) -> Page {
 }
 
 fn main() {
-	let _ = WorkspaceShellProps::builder()
-		.workspace_id(7)
-		.outlet(Outlet::inline(Page::empty()))
-		.build();
-	let _ = ClientRouter::new().routes(|routes| {
-		routes.layout(workspace_shell, |children| {
-			children.component(workspace_jobs)
-		})
+	reinhardt_core::reactive::ReactiveScope::run(|| {
+		let _ = WorkspaceShellProps::builder()
+			.workspace_id(7)
+			.outlet(Outlet::inline(Page::empty()))
+			.build();
+		let _ = ClientRouter::new().routes(|routes| {
+			routes.layout(workspace_shell, |children| {
+				children.component(workspace_jobs)
+			})
+		});
 	});
 }

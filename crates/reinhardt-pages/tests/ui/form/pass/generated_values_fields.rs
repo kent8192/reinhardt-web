@@ -3,16 +3,18 @@
 use reinhardt_pages::form;
 
 fn main() {
-	let _form = form! {
-		name: GeneratedValuesFieldsForm,
-		action: "/vote",
-		fields: {
-			question_id: HiddenField<i64> {
-				initial: 1_i64,
+	reinhardt_core::reactive::ReactiveScope::run(|| {
+		let _form = form! {
+			name: GeneratedValuesFieldsForm,
+			action: "/vote",
+			fields: {
+				question_id: HiddenField<i64> {
+					initial: 1_i64,
+				}
+				choice_id: IntegerField {
+					required,
+				}
 			}
-			choice_id: IntegerField {
-				required,
-			}
-		}
-	};
+		};
+	});
 }

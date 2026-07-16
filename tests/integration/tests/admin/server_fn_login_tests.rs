@@ -8,6 +8,7 @@ use reinhardt_admin::core::{AdminSite, admin_routes_with_di};
 use reinhardt_admin::server::AdminDefaultUser;
 use reinhardt_admin::server::security::{CSRF_COOKIE_NAME, generate_csrf_token};
 use reinhardt_auth::BaseUser;
+use reinhardt_core::reactive::ReactiveScope;
 use reinhardt_db::backends::connection::DatabaseConnection as BackendsConnection;
 use reinhardt_db::backends::dialect::PostgresBackend;
 use reinhardt_db::orm::connection::{DatabaseBackend, DatabaseConnection};
@@ -252,11 +253,13 @@ async fn build_login_router(pool: sqlx::PgPool, with_jwt_secret: bool) -> Server
 	singleton.set_arc(db_conn);
 	let di_ctx = Arc::new(InjectionContext::builder(singleton).build());
 
-	reinhardt_urls::routers::UnifiedRouter::new()
-		.with_di_context(di_ctx)
-		.mount("/admin/", admin_router)
-		.with_di_registrations(admin_di)
-		.into_server()
+	ReactiveScope::run(|| {
+		reinhardt_urls::routers::UnifiedRouter::new()
+			.with_di_context(di_ctx)
+			.mount("/admin/", admin_router)
+			.with_di_registrations(admin_di)
+			.into_server()
+	})
 }
 
 /// Builds an HTTP POST request for the login endpoint.
@@ -468,11 +471,13 @@ async fn test_admin_login_authenticator_returns_error(
 	singleton.set_arc(db_conn);
 	let di_ctx = Arc::new(InjectionContext::builder(singleton).build());
 
-	let router = reinhardt_urls::routers::UnifiedRouter::new()
-		.with_di_context(di_ctx)
-		.mount("/admin/", admin_router)
-		.with_di_registrations(admin_di)
-		.into_server();
+	let router = ReactiveScope::run(|| {
+		reinhardt_urls::routers::UnifiedRouter::new()
+			.with_di_context(di_ctx)
+			.mount("/admin/", admin_router)
+			.with_di_registrations(admin_di)
+			.into_server()
+	});
 
 	let csrf_token = generate_csrf_token();
 	let request = make_login_request(

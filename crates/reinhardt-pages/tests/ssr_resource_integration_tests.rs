@@ -3,7 +3,7 @@
 use reinhardt_pages::component::{Component, IntoPage, Page, PageElement};
 use reinhardt_pages::deps;
 use reinhardt_pages::reactive::{
-	QueryKey, ResourceState, use_id, use_query, use_resource, use_resource_with_key,
+	QueryKey, ResourceState, Signal, use_id, use_query, use_resource, use_resource_with_key,
 };
 use reinhardt_pages::ssr::{SsrOptions, SsrRenderer};
 use rstest::rstest;
@@ -56,6 +56,31 @@ async fn ssr_resolved_resource_serializes_state() {
 
 	assert!(html.contains(r#""resources""#));
 	assert!(html.contains("server-value"));
+	assert!(!html.contains(">loading<"));
+}
+
+#[tokio::test]
+async fn ssr_resource_fetcher_can_allocate_reactive_state_after_render() {
+	let view = Page::reactive(|| {
+		let resource = use_resource(
+			|| async {
+				let scoped_signal = Signal::new(1_i32);
+				Ok::<_, String>(scoped_signal.get().to_string())
+			},
+			deps![],
+		);
+
+		match resource.get() {
+			ResourceState::Success(value) => PageElement::new("div").child(value).into_page(),
+			ResourceState::Loading => PageElement::new("div").child("loading").into_page(),
+			ResourceState::Error(error) => PageElement::new("div").child(error).into_page(),
+		}
+	});
+
+	let mut renderer = SsrRenderer::new();
+	let html = renderer.render_page_with_view_head_to_string(view).await;
+
+	assert!(html.contains(">1<"));
 	assert!(!html.contains(">loading<"));
 }
 

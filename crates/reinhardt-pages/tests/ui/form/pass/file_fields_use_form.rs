@@ -3,19 +3,21 @@
 use reinhardt_pages::{form, use_form};
 
 fn main() {
-	let upload = form! {
-		name: FileFieldsUseForm,
-		action: "/upload",
-		fields: {
-			document: FileField {
-				required,
+	reinhardt_core::reactive::ReactiveScope::run(|| {
+		let upload = form! {
+			name: FileFieldsUseForm,
+			action: "/upload",
+			fields: {
+				document: FileField {
+					required,
+				}
+				avatar: ImageField {}
 			}
-			avatar: ImageField {}
-		}
-	};
+		};
 
-	let runtime = use_form(&upload).build();
-	let values = runtime.get_values();
-	let _document = values.document;
-	let _avatar = values.avatar;
+		let runtime = use_form(&upload).build();
+		let values = runtime.get_values();
+		let _document = values.document;
+		let _avatar = values.avatar;
+	});
 }

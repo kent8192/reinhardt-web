@@ -1,6 +1,6 @@
 use reinhardt_core::validators::{Validate, ValidationErrors};
-use reinhardt_pages::server_fn::server_fn;
 use reinhardt_pages::server_fn::ServerFnError;
+use reinhardt_pages::server_fn::server_fn;
 use reinhardt_pages::{ClientForm, UseFormAsyncSubmitOutcome, use_form};
 use serde::{Deserialize, Serialize};
 
@@ -59,14 +59,16 @@ fn assert_submit_output(
 }
 
 fn main() {
-	let form = SettingsRequestClientForm::new();
-	let injected_form = InjectedSettingsRequestClientForm::new();
-	let runtime = use_form(&form).build();
-	let injected_runtime = use_form(&injected_form).build();
-	#[cfg(all(target_family = "wasm", target_os = "unknown"))]
-	let _submit_future = async { assert_submit_output(form.submit(&runtime).await) };
-	#[cfg(all(target_family = "wasm", target_os = "unknown"))]
-	let _injected_submit_future =
-		async { assert_submit_output(injected_form.submit(&injected_runtime).await) };
-	let _ = (form, runtime, injected_form, injected_runtime);
+	reinhardt_core::reactive::ReactiveScope::run(|| {
+		let form = SettingsRequestClientForm::new();
+		let injected_form = InjectedSettingsRequestClientForm::new();
+		let runtime = use_form(&form).build();
+		let injected_runtime = use_form(&injected_form).build();
+		#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+		let _submit_future = async { assert_submit_output(form.submit(&runtime).await) };
+		#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+		let _injected_submit_future =
+			async { assert_submit_output(injected_form.submit(&injected_runtime).await) };
+		let _ = (form, runtime, injected_form, injected_runtime);
+	});
 }

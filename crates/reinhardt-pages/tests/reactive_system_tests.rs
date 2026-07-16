@@ -6,6 +6,7 @@
 //! 2. Memo values are cached and recalculated only when dependent Signals change
 //! 3. No memory leaks
 
+use reinhardt_core::reactive::ReactiveScope;
 use reinhardt_pages::reactive::{Effect, Memo, Signal, with_runtime};
 use serial_test::serial;
 use std::cell::RefCell;
@@ -15,6 +16,10 @@ use std::rc::Rc;
 #[test]
 #[serial]
 fn test_effect_auto_execution_on_signal_change() {
+	ReactiveScope::run(test_effect_auto_execution_on_signal_change_in_scope);
+}
+
+fn test_effect_auto_execution_on_signal_change_in_scope() {
 	let count = Signal::new(0);
 	let execution_log = Rc::new(RefCell::new(Vec::new()));
 	let log_clone = execution_log.clone();
@@ -47,6 +52,10 @@ fn test_effect_auto_execution_on_signal_change() {
 #[test]
 #[serial]
 fn test_effect_with_multiple_signals() {
+	ReactiveScope::run(test_effect_with_multiple_signals_in_scope);
+}
+
+fn test_effect_with_multiple_signals_in_scope() {
 	let signal1 = Signal::new(1);
 	let signal2 = Signal::new(2);
 	let sum = Rc::new(RefCell::new(0));
@@ -82,6 +91,10 @@ fn test_effect_with_multiple_signals() {
 #[test]
 #[serial]
 fn test_memo_caching() {
+	ReactiveScope::run(test_memo_caching_in_scope);
+}
+
+fn test_memo_caching_in_scope() {
 	let count = Signal::new(5);
 	let compute_count = Rc::new(RefCell::new(0));
 	let compute_count_clone = compute_count.clone();
@@ -126,6 +139,10 @@ fn test_memo_caching() {
 #[test]
 #[serial]
 fn test_effect_with_memo_dependency() {
+	ReactiveScope::run(test_effect_with_memo_dependency_in_scope);
+}
+
+fn test_effect_with_memo_dependency_in_scope() {
 	let count = Signal::new(3);
 	let count_clone = count.clone();
 
@@ -155,6 +172,10 @@ fn test_effect_with_memo_dependency() {
 #[test]
 #[serial]
 fn test_signal_cleanup_on_drop() {
+	ReactiveScope::run(test_signal_cleanup_on_drop_in_scope);
+}
+
+fn test_signal_cleanup_on_drop_in_scope() {
 	let signal_id = {
 		let signal = Signal::new(42);
 		signal.id()
@@ -166,73 +187,69 @@ fn test_signal_cleanup_on_drop() {
 	});
 }
 
-/// Success Criterion 3: No memory leaks - Effect drop
+/// Success Criterion 3: Scope-owned effects are cleaned up with their scope
 #[test]
 #[serial]
-fn test_effect_cleanup_on_drop() {
-	let signal = Signal::new(0);
-	let run_count = Rc::new(RefCell::new(0));
-	let run_count_clone = run_count.clone();
-
-	let effect_id = {
-		let signal_clone = signal.clone();
+fn test_effect_cleanup_on_scope_dispose() {
+	let scope = ReactiveScope::new();
+	let (signal, effect_id, run_count) = scope.enter(|| {
+		let signal = Signal::new(0);
+		let run_count = Rc::new(RefCell::new(0));
+		let run_count_for_effect = Rc::clone(&run_count);
+		let signal_for_effect = signal;
 		let effect = Effect::new(move || {
-			let _ = signal_clone.get();
-			*run_count_clone.borrow_mut() += 1;
+			let _ = signal_for_effect.get();
+			*run_count_for_effect.borrow_mut() += 1;
 		});
-		effect.id()
-	}; // Effect dropped here
 
-	// Effect should have run once
-	assert_eq!(*run_count.borrow(), 1);
+		(signal, effect.id(), run_count)
+	});
 
-	// Change signal - effect should NOT run (it's dropped)
 	signal.set(10);
 	with_runtime(|rt| rt.flush_updates());
-	assert_eq!(*run_count.borrow(), 1); // Still 1
+	assert_eq!(*run_count.borrow(), 2);
+	with_runtime(|rt| assert!(rt.has_node(effect_id)));
 
-	// Verify effect was removed from runtime
-	with_runtime(|rt| {
-		assert!(!rt.has_node(effect_id));
-	});
+	scope.dispose();
+	with_runtime(|rt| assert!(!rt.has_node(effect_id)));
 }
 
-/// Success Criterion 3: No memory leaks - Memo drop
+/// Success Criterion 3: Scope-owned memos are cleaned up with their scope
 #[test]
 #[serial]
-fn test_memo_cleanup_on_drop() {
-	let signal = Signal::new(5);
-	let compute_count = Rc::new(RefCell::new(0));
-	let compute_count_clone = compute_count.clone();
-
-	let memo_id = {
-		let signal_clone = signal.clone();
+fn test_memo_cleanup_on_scope_dispose() {
+	let scope = ReactiveScope::new();
+	let (signal, memo_id, compute_count) = scope.enter(|| {
+		let signal = Signal::new(5);
+		let compute_count = Rc::new(RefCell::new(0));
+		let compute_count_for_memo = Rc::clone(&compute_count);
+		let signal_for_memo = signal;
 		let memo = Memo::new(move || {
-			*compute_count_clone.borrow_mut() += 1;
-			signal_clone.get() * 2
+			*compute_count_for_memo.borrow_mut() += 1;
+			signal_for_memo.get() * 2
 		});
 
-		// Access once
 		assert_eq!(memo.get(), 10);
 		assert_eq!(*compute_count.borrow(), 1);
-
-		memo.id()
-	}; // Memo dropped here
-
-	// Change signal - memo should not recompute (it's dropped)
-	signal.set(10);
-	assert_eq!(*compute_count.borrow(), 1); // Still 1
-
-	// Verify memo was removed from runtime
-	with_runtime(|rt| {
-		assert!(!rt.has_node(memo_id));
+		(signal, memo.id(), compute_count)
 	});
+
+	signal.set(10);
+	assert_eq!(*compute_count.borrow(), 1);
+	with_runtime(|rt| assert!(rt.has_node(memo_id)));
+
+	scope.dispose();
+	with_runtime(|rt| assert!(!rt.has_node(memo_id)));
 }
 
 /// Complex scenario: Multiple Signals, Memos, and Effects
 #[test]
 #[serial]
 fn test_complex_reactive_graph() {
+	ReactiveScope::run(test_complex_reactive_graph_in_scope);
+}
+
+fn test_complex_reactive_graph_in_scope() {
 	// Create signals
 	let first_name = Signal::new("John".to_string());
 	let last_name = Signal::new("Doe".to_string());
@@ -296,6 +313,10 @@ fn test_complex_reactive_graph() {
 #[test]
 #[serial]
 fn test_get_untracked_no_dependency() {
+	ReactiveScope::run(test_get_untracked_no_dependency_in_scope);
+}
+
+fn test_get_untracked_no_dependency_in_scope() {
 	let signal = Signal::new(42);
 	let run_count = Rc::new(RefCell::new(0));
 	let run_count_clone = run_count.clone();
@@ -316,87 +337,57 @@ fn test_get_untracked_no_dependency() {
 	assert_eq!(*run_count.borrow(), 1); // Still 1
 }
 
-/// Test Signal clone partial drop - some clones drop while others remain alive
-///
-/// This test verifies the fix for the FormBinding Signal lifetime bug.
-/// Previously, when ANY Signal clone was dropped, the value was removed from
-/// thread-local storage, causing other clones to panic with "Signal value not found".
-///
-/// With the `Rc<RefCell<T>>` refactoring, values are automatically managed via
-/// reference counting, and dropping some clones doesn't affect others.
+/// Test copied Signal handles share their scope-owned node.
 #[test]
 #[serial]
-fn test_signal_clone_partial_drop() {
-	let signal1 = Signal::new(42);
-	let signal2 = signal1.clone();
-	let signal3 = signal1.clone();
+fn test_signal_copy_handles_share_scope_node() {
+	ReactiveScope::run(test_signal_copy_handles_share_scope_node_in_scope);
+}
 
-	// Verify all clones can read the value
+fn test_signal_copy_handles_share_scope_node_in_scope() {
+	let signal1 = Signal::new(42);
+	let signal2 = signal1;
+	let signal3 = signal1;
+
+	// Verify all handles can read the value.
 	assert_eq!(signal1.get(), 42);
 	assert_eq!(signal2.get(), 42);
 	assert_eq!(signal3.get(), 42);
 
-	// Drop first two clones
-	drop(signal1);
-	drop(signal2);
-
-	// signal3 should still work without panicking
-	assert_eq!(signal3.get(), 42);
-	signal3.set(100);
+	// Updates through one handle are visible through every other handle.
+	signal1.set(100);
+	assert_eq!(signal2.get(), 100);
 	assert_eq!(signal3.get(), 100);
 
-	// Can create new clones from remaining signal
-	let signal4 = signal3.clone();
+	let signal4 = signal3;
 	assert_eq!(signal4.get(), 100);
 }
 
-/// Test Signal cleanup after all clones are dropped
+/// Test Signal cleanup after its owner scope is disposed.
 ///
-/// Verifies that the Runtime is only cleaned up when the LAST Signal clone
-/// is dropped, not when intermediate clones are dropped.
-///
-/// Note: Signals are registered in Runtime only when they participate in
-/// dependency tracking (via get() inside Effect/Memo). This test creates
-/// an Effect to establish that relationship.
+/// Signal handles are Copy, so their scope retains the node until the whole
+/// scope is disposed.
 #[test]
 #[serial]
-fn test_signal_cleanup_after_all_clones_dropped() {
-	let signal_id = {
-		let signal1 = Signal::new(42);
-		let signal2 = signal1.clone();
-
-		let id = signal1.id();
-
-		// Create an Effect to register the Signal in Runtime
-		let signal_for_effect = signal1.clone();
+fn test_signal_cleanup_on_scope_dispose() {
+	let scope = ReactiveScope::new();
+	let (signal, signal_id) = scope.enter(|| {
+		let signal = Signal::new(42);
+		let signal_for_effect = signal;
 		let _effect = Effect::new(move || {
 			let _ = signal_for_effect.get();
 		});
 
-		// Now should exist in Runtime (dependency tracked)
-		with_runtime(|rt| {
-			assert!(rt.has_node(id));
-		});
-
-		drop(signal1);
-
-		// Still exists (signal2 is alive)
-		with_runtime(|rt| {
-			assert!(rt.has_node(id));
-		});
-
-		// Verify signal2 still works
-		assert_eq!(signal2.get(), 42);
-		signal2.set(100);
-		assert_eq!(signal2.get(), 100);
-
-		id
-	}; // signal2 drops here
-
-	// Should be cleaned up from Runtime after ALL clones dropped
-	with_runtime(|rt| {
-		assert!(!rt.has_node(signal_id));
+		(signal, signal.id())
 	});
+
+	assert_eq!(signal.get(), 42);
+	signal.set(100);
+	assert_eq!(signal.get(), 100);
+	with_runtime(|rt| assert!(rt.has_node(signal_id)));
+
+	scope.dispose();
+	with_runtime(|rt| assert!(!rt.has_node(signal_id)));
 }
 
 /// Test Signal clone lifetime in Effect closures
@@ -409,12 +400,16 @@ fn test_signal_cleanup_after_all_clones_dropped() {
 #[test]
 #[serial]
 fn test_signal_clone_in_effect_closure() {
+	ReactiveScope::run(test_signal_clone_in_effect_closure_in_scope);
+}
+
+fn test_signal_clone_in_effect_closure_in_scope() {
 	let run_count = Rc::new(RefCell::new(0));
 	let run_count_clone = run_count.clone();
 
-	let effect = {
+	let _effect = {
 		let signal = Signal::new("initial".to_string());
-		let signal_for_effect = signal.clone();
+		let signal_for_effect = signal;
 
 		let effect = Effect::new(move || {
 			let value = signal_for_effect.get();
@@ -424,14 +419,12 @@ fn test_signal_clone_in_effect_closure() {
 			assert!(!value.is_empty());
 		});
 
-		// signal (the original) drops here when exiting this scope
+		// The scope owns the signal after this block ends.
 		effect
 	};
 
 	// Effect should have run once initially
 	assert_eq!(*run_count.borrow(), 1);
 
-	// Effect's Signal clone should still be alive and functional
-	// This would have panicked with "Signal value not found" before the fix
-	drop(effect);
+	// The effect remains owned by the active scope until scope teardown.
 }

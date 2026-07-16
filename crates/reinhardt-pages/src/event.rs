@@ -369,28 +369,30 @@ mod tests {
 
 	#[test]
 	fn typed_handler_accepts_callback_payload() {
-		let calls = Arc::new(AtomicUsize::new(0));
-		let callback = Callback::<ClickEvent, ()>::new({
-			let calls = Arc::clone(&calls);
-			move |payload| {
-				assert_eq!(payload.event_type(), "click");
-				calls.fetch_add(1, Ordering::SeqCst);
-			}
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let calls = Arc::new(AtomicUsize::new(0));
+			let callback = Callback::<ClickEvent, ()>::new({
+				let calls = Arc::clone(&calls);
+				move |payload| {
+					assert_eq!(payload.event_type(), "click");
+					calls.fetch_add(1, Ordering::SeqCst);
+				}
+			});
+			let handler = typed_event_handler::<ClickEvent, _>(callback);
+
+			handler(raw_event(
+				reinhardt_core::types::page::EventType::Click,
+				NativeEventPayload::Pointer(PointerEventData {
+					mouse: MouseEventData {
+						modifiers: ModifierState::default(),
+						..MouseEventData::default()
+					},
+					..PointerEventData::default()
+				}),
+			));
+
+			assert_eq!(calls.load(Ordering::SeqCst), 1);
 		});
-		let handler = typed_event_handler::<ClickEvent, _>(callback);
-
-		handler(raw_event(
-			reinhardt_core::types::page::EventType::Click,
-			NativeEventPayload::Pointer(PointerEventData {
-				mouse: MouseEventData {
-					modifiers: ModifierState::default(),
-					..MouseEventData::default()
-				},
-				..PointerEventData::default()
-			}),
-		));
-
-		assert_eq!(calls.load(Ordering::SeqCst), 1);
 	}
 
 	#[test]

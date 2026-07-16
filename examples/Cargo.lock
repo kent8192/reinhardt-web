@@ -197,20 +197,6 @@ dependencies = [
 
 [[package]]
 name = "aquamarine"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "21cc1548309245035eb18aa7f0967da6bc65587005170c56e6ef2788a4cf3f4e"
-dependencies = [
- "include_dir",
- "itertools 0.10.5",
- "proc-macro-error",
- "proc-macro2",
- "quote",
- "syn 2.0.118",
-]
-
-[[package]]
-name = "aquamarine"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0f50776554130342de4836ba542aa85a4ddb361690d7e8df13774d7284c3d5c2"
@@ -3410,12 +3396,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "multimap"
-version = "0.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d87ecb2933e8aeadb3e3a02b828fed80a7528047e68b4f424523a0981a3a084"
-
-[[package]]
 name = "native-tls"
 version = "0.2.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4261,30 +4241,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "proc-macro-error"
-version = "1.0.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "da25490ff9892aab3fcf7c36f08cfb902dd3e71ca0f9f9517bea02a73a5ce38c"
-dependencies = [
- "proc-macro-error-attr",
- "proc-macro2",
- "quote",
- "syn 1.0.109",
- "version_check",
-]
-
-[[package]]
-name = "proc-macro-error-attr"
-version = "1.0.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a1be40180e52ecc98ad80b184934baf3d0d29f979574e439af5a55274b35f869"
-dependencies = [
- "proc-macro2",
- "quote",
- "version_check",
-]
-
-[[package]]
 name = "proc-macro-error-attr2"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4323,27 +4279,6 @@ checksum = "528ac67416ff8646872a3c02cad9cc4ee5dc9f9540c9b10771855c95cb2e5ae1"
 dependencies = [
  "bytes",
  "prost-derive",
-]
-
-[[package]]
-name = "prost-build"
-version = "0.14.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "03da047801ff44bb6a4d407d4860c05fd70bb81714e6b2f3812603d5b145b042"
-dependencies = [
- "heck",
- "itertools 0.14.0",
- "log",
- "multimap",
- "petgraph",
- "prettyplease",
- "prost",
- "prost-types",
- "pulldown-cmark",
- "pulldown-cmark-to-cmark",
- "regex",
- "syn 2.0.118",
- "tempfile",
 ]
 
 [[package]]
@@ -4402,26 +4337,6 @@ checksum = "6f42ea446cab60335f76979ec15e12619a2165b5ae2c12166bef27d283a9fadf"
 dependencies = [
  "idna",
  "psl-types",
-]
-
-[[package]]
-name = "pulldown-cmark"
-version = "0.13.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e9f068eba8e7071c5f9511831b44f32c740d5adf574e990f946ddb53db2f314e"
-dependencies = [
- "bitflags 2.13.0",
- "memchr",
- "unicase",
-]
-
-[[package]]
-name = "pulldown-cmark-to-cmark"
-version = "22.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "50793def1b900256624a709439404384204a5dc3a6ec580281bfaac35e882e90"
-dependencies = [
- "pulldown-cmark",
 ]
 
 [[package]]
@@ -4819,7 +4734,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "reinhardt-admin"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4869,7 +4784,7 @@ dependencies = [
 
 [[package]]
 name = "reinhardt-apps"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4898,7 +4813,7 @@ dependencies = [
 
 [[package]]
 name = "reinhardt-auth"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "argon2",
  "async-trait",
@@ -4943,7 +4858,7 @@ dependencies = [
 
 [[package]]
 name = "reinhardt-auth-macros"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4953,7 +4868,7 @@ dependencies = [
 
 [[package]]
 name = "reinhardt-commands"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "async-trait",
  "bollard",
@@ -5012,7 +4927,7 @@ dependencies = [
 
 [[package]]
 name = "reinhardt-conf"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "base64",
  "chrono",
@@ -5039,7 +4954,7 @@ dependencies = [
 
 [[package]]
 name = "reinhardt-core"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5063,6 +4978,7 @@ dependencies = [
  "prost",
  "rand 0.9.4",
  "regex",
+ "reinhardt-event-catalog",
  "reinhardt-macros",
  "rmp-serde",
  "serde",
@@ -5083,12 +4999,12 @@ dependencies = [
 
 [[package]]
 name = "reinhardt-db"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "aes-gcm",
  "aho-corasick",
  "anyhow",
- "aquamarine 0.6.0",
+ "aquamarine",
  "async-trait",
  "base64",
  "chrono",
@@ -5134,7 +5050,7 @@ dependencies = [
 
 [[package]]
 name = "reinhardt-di"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "async-trait",
  "bytes",
@@ -5157,7 +5073,7 @@ dependencies = [
 
 [[package]]
 name = "reinhardt-di-macros"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -5166,11 +5082,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "reinhardt-event-catalog"
+version = "0.3.2"
+
+[[package]]
 name = "reinhardt-forms"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anyhow",
- "aquamarine 0.5.0",
+ "aquamarine",
  "chrono",
  "regex",
  "reinhardt-core",
@@ -5182,40 +5102,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "reinhardt-grpc"
-version = "0.3.1"
-dependencies = [
- "anyhow",
- "async-trait",
- "prost",
- "reinhardt-conf",
- "reinhardt-core",
- "reinhardt-di",
- "reinhardt-grpc-macros",
- "serde",
- "thiserror 2.0.18",
- "tokio",
- "tokio-stream",
- "tonic",
- "tonic-prost",
- "tonic-prost-build",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "reinhardt-grpc-macros"
-version = "0.3.1"
-dependencies = [
- "proc-macro-crate",
- "proc-macro2",
- "quote",
- "syn 2.0.118",
-]
-
-[[package]]
 name = "reinhardt-http"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "async-trait",
  "bytes",
@@ -5236,7 +5124,7 @@ dependencies = [
 
 [[package]]
 name = "reinhardt-macros"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "ctor 0.8.0",
  "inventory",
@@ -5249,7 +5137,7 @@ dependencies = [
 
 [[package]]
 name = "reinhardt-mail"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "async-trait",
  "chrono",
@@ -5269,18 +5157,19 @@ dependencies = [
 
 [[package]]
 name = "reinhardt-manouche"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "convert_case",
  "darling 0.20.11",
  "proc-macro2",
  "quote",
+ "reinhardt-event-catalog",
  "syn 2.0.118",
 ]
 
 [[package]]
 name = "reinhardt-middleware"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "async-trait",
  "base64",
@@ -5311,7 +5200,7 @@ dependencies = [
 
 [[package]]
 name = "reinhardt-pages"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "async-trait",
  "bon",
@@ -5326,6 +5215,7 @@ dependencies = [
  "regex",
  "reinhardt-core",
  "reinhardt-di",
+ "reinhardt-event-catalog",
  "reinhardt-forms",
  "reinhardt-http",
  "reinhardt-middleware",
@@ -5338,11 +5228,12 @@ dependencies = [
  "serde-wasm-bindgen",
  "serde_json",
  "serde_urlencoded",
+ "sha2 0.10.9",
  "smallvec",
  "subtle",
  "thiserror 2.0.18",
  "tokio",
- "tokio-tungstenite 0.26.2",
+ "tokio-tungstenite",
  "tracing",
  "urlencoding",
  "uuid",
@@ -5353,7 +5244,7 @@ dependencies = [
 
 [[package]]
 name = "reinhardt-pages-ast"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "convert_case",
  "darling 0.20.11",
@@ -5365,20 +5256,21 @@ dependencies = [
 
 [[package]]
 name = "reinhardt-pages-macros"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "convert_case",
  "darling 0.20.11",
  "proc-macro-crate",
  "proc-macro2",
  "quote",
+ "reinhardt-event-catalog",
  "reinhardt-manouche",
  "syn 2.0.118",
 ]
 
 [[package]]
 name = "reinhardt-query"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "bigdecimal",
  "chrono",
@@ -5391,7 +5283,7 @@ dependencies = [
 
 [[package]]
 name = "reinhardt-query-macros"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "heck",
  "proc-macro2",
@@ -5401,7 +5293,7 @@ dependencies = [
 
 [[package]]
 name = "reinhardt-rest"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5447,11 +5339,11 @@ dependencies = [
 
 [[package]]
 name = "reinhardt-router"
-version = "0.3.1"
+version = "0.3.2"
 
 [[package]]
 name = "reinhardt-routers-macros"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -5460,7 +5352,7 @@ dependencies = [
 
 [[package]]
 name = "reinhardt-server"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "async-trait",
  "bytes",
@@ -5480,7 +5372,7 @@ dependencies = [
 
 [[package]]
 name = "reinhardt-shortcuts"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "bytes",
  "hyper",
@@ -5497,9 +5389,9 @@ dependencies = [
 
 [[package]]
 name = "reinhardt-tasks"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
- "aquamarine 0.6.0",
+ "aquamarine",
  "async-trait",
  "chrono",
  "cron",
@@ -5520,7 +5412,7 @@ dependencies = [
 
 [[package]]
 name = "reinhardt-test"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "bytes",
  "cfg_aliases",
@@ -5550,7 +5442,7 @@ dependencies = [
 
 [[package]]
 name = "reinhardt-testkit"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "astral-tokio-tar",
  "async-dropper",
@@ -5595,7 +5487,7 @@ dependencies = [
  "testcontainers-modules",
  "thiserror 2.0.18",
  "tokio",
- "tokio-tungstenite 0.28.0",
+ "tokio-tungstenite",
  "tokio-util",
  "totp-lite",
  "tracing",
@@ -5606,7 +5498,7 @@ dependencies = [
 
 [[package]]
 name = "reinhardt-testkit-macros"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -5615,7 +5507,7 @@ dependencies = [
 
 [[package]]
 name = "reinhardt-throttling"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "async-trait",
  "parking_lot",
@@ -5625,7 +5517,7 @@ dependencies = [
 
 [[package]]
 name = "reinhardt-urls"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "aho-corasick",
  "async-trait",
@@ -5658,7 +5550,7 @@ dependencies = [
 
 [[package]]
 name = "reinhardt-utils"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5693,7 +5585,7 @@ dependencies = [
 
 [[package]]
 name = "reinhardt-views"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "async-trait",
  "bytes",
@@ -5726,7 +5618,7 @@ dependencies = [
 
 [[package]]
 name = "reinhardt-web"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "async-trait",
  "bytes",
@@ -5745,7 +5637,6 @@ dependencies = [
  "reinhardt-db",
  "reinhardt-di",
  "reinhardt-forms",
- "reinhardt-grpc",
  "reinhardt-http",
  "reinhardt-macros",
  "reinhardt-middleware",
@@ -7277,19 +7168,6 @@ dependencies = [
  "futures-core",
  "pin-project-lite",
  "tokio",
- "tokio-util",
-]
-
-[[package]]
-name = "tokio-tungstenite"
-version = "0.26.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7a9daff607c6d2bf6c16fd681ccb7eecc83e4e2cdc1ca067ffaadfca5de7f084"
-dependencies = [
- "futures-util",
- "log",
- "tokio",
- "tungstenite 0.26.2",
 ]
 
 [[package]]
@@ -7301,7 +7179,7 @@ dependencies = [
  "futures-util",
  "log",
  "tokio",
- "tungstenite 0.28.0",
+ "tungstenite",
 ]
 
 [[package]]
@@ -7400,18 +7278,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tonic-build"
-version = "0.14.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c68f61875ac5293cf72e6c8cf0158086428c82c37229e98c840878f1706b0322"
-dependencies = [
- "prettyplease",
- "proc-macro2",
- "quote",
- "syn 2.0.118",
-]
-
-[[package]]
 name = "tonic-prost"
 version = "0.14.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7420,22 +7286,6 @@ dependencies = [
  "bytes",
  "prost",
  "tonic",
-]
-
-[[package]]
-name = "tonic-prost-build"
-version = "0.14.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "654e5643eff75d7f8c99197ce1440ed19a3474eada74c12bbac488b2cafdae27"
-dependencies = [
- "prettyplease",
- "proc-macro2",
- "prost-build",
- "prost-types",
- "quote",
- "syn 2.0.118",
- "tempfile",
- "tonic-build",
 ]
 
 [[package]]
@@ -7536,23 +7386,6 @@ name = "try-lock"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
-
-[[package]]
-name = "tungstenite"
-version = "0.26.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4793cb5e56680ecbb1d843515b23b6de9a75eb04b66643e256a396d43be33c13"
-dependencies = [
- "bytes",
- "data-encoding",
- "http",
- "httparse",
- "log",
- "rand 0.9.4",
- "sha1",
- "thiserror 2.0.18",
- "utf-8",
-]
 
 [[package]]
 name = "tungstenite"

@@ -19,13 +19,15 @@ impl ::core::fmt::Display for Metadata {
 }
 
 fn main() {
-	let _ = form! {
-		name: MetadataForm,
-		action: "/api/metadata",
-		fields: {
-			data: JsonField<Metadata> {
-				initial: Metadata::default(),
+	reinhardt_core::reactive::ReactiveScope::run(|| {
+		let _ = form! {
+			name: MetadataForm,
+			action: "/api/metadata",
+			fields: {
+				data: JsonField<Metadata> {
+					initial: Metadata::default(),
+				}
 			}
-		}
-	};
+		};
+	});
 }
