@@ -53,7 +53,9 @@ struct RegisteredSetState<T: 'static> {
 
 impl<T: 'static> RegisteredSetState<T> {
 	fn set(&self, value: T) {
-		let _ = self.signal.try_set(value);
+		if self.signal.try_set(value).is_err() {
+			return;
+		}
 	}
 }
 
@@ -94,8 +96,12 @@ impl<T: Clone + 'static> SetStateExt<T> for SetState<T> {
 		let signal = registered_set_state_signal(self).unwrap_or_else(|| {
 			panic!("SetStateExt::update is only available on setters returned by use_state")
 		});
-		let current = signal.get_untracked();
-		signal.set(f(&current));
+		let Ok(current) = signal.try_get_untracked() else {
+			return;
+		};
+		if signal.try_set(f(&current)).is_err() {
+			return;
+		}
 	}
 }
 
@@ -240,9 +246,13 @@ where
 	let dispatch: Dispatch<A> = {
 		let reducer = Rc::new(reducer);
 		Rc::new(move |action: A| {
-			let current = state.get();
+			let Ok(current) = state.try_get_untracked() else {
+				return;
+			};
 			let new_state = reducer(&current, action);
-			state.set(new_state);
+			if state.try_set(new_state).is_err() {
+				return;
+			}
 		})
 	};
 	(state, dispatch)
@@ -567,6 +577,20 @@ mod tests {
 	}
 
 	#[test]
+	#[serial_test::serial(reactive_runtime)]
+	fn stale_set_state_update_is_a_no_op() {
+		let scope = reinhardt_core::reactive::ReactiveScope::new();
+		let setter = scope.enter(|| {
+			let (_, setter) = use_state(1_i32);
+			setter
+		});
+
+		scope.dispose();
+
+		setter.update(|value| value + 1);
+	}
+
+	#[test]
 	fn test_use_reducer_basic() {
 		reinhardt_core::reactive::ReactiveScope::run(|| {
 			#[derive(Clone, Debug, PartialEq)]
@@ -602,6 +626,20 @@ mod tests {
 			dispatch(Action::Decrement);
 			assert_eq!(state.get().count, 1);
 		});
+	}
+
+	#[test]
+	#[serial_test::serial(reactive_runtime)]
+	fn stale_reducer_dispatch_is_a_no_op() {
+		let scope = reinhardt_core::reactive::ReactiveScope::new();
+		let dispatch = scope.enter(|| {
+			let (_, dispatch) = use_reducer(|value: &i32, action: i32| value + action, 1_i32);
+			dispatch
+		});
+
+		scope.dispose();
+
+		dispatch(1);
 	}
 
 	#[test]

@@ -2,20 +2,37 @@
 
 use crate::reactive::{ResourceState, Signal};
 use futures_util::future::join_all;
-use reinhardt_core::reactive::{ReactiveScope, ScopeId, scope::enter_scope};
+use reinhardt_core::reactive::{ReactiveScope, ScopeId, current_scope_id, scope::enter_scope};
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::future::Future;
 use std::pin::Pin;
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 use std::task::{Context, Poll};
 use std::time::Duration;
 use tokio::time::timeout;
 
 tokio::task_local! {
 	static ACTIVE_CONTEXT: Rc<RefCell<SsrResourceContext>>;
+}
+
+thread_local! {
+	static RENDER_OWNERS: RefCell<BTreeMap<ScopeId, Weak<ReactiveScope>>> = const { RefCell::new(BTreeMap::new()) };
+}
+
+/// Removes a render owner registration when the render operation completes.
+pub(crate) struct RenderOwnerRegistration {
+	scope: ScopeId,
+}
+
+impl Drop for RenderOwnerRegistration {
+	fn drop(&mut self) {
+		let _ = RENDER_OWNERS.try_with(|owners| {
+			owners.borrow_mut().remove(&self.scope);
+		});
+	}
 }
 
 type PendingResourceFuture = Pin<Box<dyn Future<Output = (String, Value)> + 'static>>;
@@ -203,6 +220,7 @@ impl SsrResourceContext {
 	}
 
 	/// Registers a resource future unless the key is already known.
+	#[cfg(test)]
 	pub(crate) fn register_resource<T, E, F, Fut>(
 		&mut self,
 		key: String,
@@ -569,6 +587,20 @@ pub(crate) async fn scope_context<R>(
 	future: impl Future<Output = R>,
 ) -> R {
 	ACTIVE_CONTEXT.scope(context, future).await
+}
+
+/// Makes a render scope available to resources registered during that render.
+pub(crate) fn register_render_owner(owner: &Rc<ReactiveScope>) -> RenderOwnerRegistration {
+	RENDER_OWNERS.with(|owners| {
+		owners.borrow_mut().insert(owner.id(), Rc::downgrade(owner));
+	});
+	RenderOwnerRegistration { scope: owner.id() }
+}
+
+/// Returns the owner of the currently active SSR render scope, if registered.
+pub(crate) fn current_render_owner() -> Option<Rc<ReactiveScope>> {
+	let scope = current_scope_id()?;
+	RENDER_OWNERS.with(|owners| owners.borrow().get(&scope)?.upgrade())
 }
 
 /// Pushes an active Suspense boundary and restores it on drop.

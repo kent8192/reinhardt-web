@@ -8,8 +8,9 @@ use std::time::Duration;
 
 use super::markers::{HydrationMarker, HydrationStrategy};
 use super::resource_context::{
-	SsrResourceContext, enter_boundary, resolve_boundary_resources, resolve_external_resources,
-	resolve_pending_resources, scope_context,
+	RenderOwnerRegistration, SsrResourceContext, enter_boundary, register_render_owner,
+	resolve_boundary_resources, resolve_external_resources, resolve_pending_resources,
+	scope_context,
 };
 use super::state::SsrState;
 use super::stream::{SsrChunk, SsrStream};
@@ -281,6 +282,7 @@ type SuspenseBoundaryFuture = LocalBoxFuture<'static, Vec<SuspenseBoundaryResult
 struct SuspenseStreamRuntime {
 	renderer: SsrRenderer,
 	reactive_scope: Rc<ReactiveScope>,
+	_render_owner: RenderOwnerRegistration,
 	context: Rc<RefCell<SsrResourceContext>>,
 	id_counter: Rc<Cell<usize>>,
 	boundaries: FuturesUnordered<SuspenseBoundaryFuture>,
@@ -732,6 +734,7 @@ impl SsrRenderer {
 	{
 		if !self.should_resolve_resources() {
 			let reactive_scope = Rc::new(ReactiveScope::new());
+			let _render_owner = register_render_owner(&reactive_scope);
 			let active_scope = Rc::clone(&self.active_reactive_scope);
 			let previous_scope = active_scope
 				.borrow_mut()
@@ -770,6 +773,7 @@ impl SsrRenderer {
 		}
 
 		let reactive_scope = Rc::new(ReactiveScope::new());
+		let render_owner = register_render_owner(&reactive_scope);
 		let active_scope = Rc::clone(&self.active_reactive_scope);
 		let previous_scope = active_scope
 			.borrow_mut()
@@ -832,6 +836,7 @@ impl SsrRenderer {
 			let runtime = SuspenseStreamRuntime {
 				renderer: self.clone(),
 				reactive_scope,
+				_render_owner: render_owner,
 				context,
 				id_counter,
 				boundaries: boundary_futures,
@@ -1016,6 +1021,7 @@ impl SsrRenderer {
 		F: FnMut() -> Page,
 	{
 		let reactive_scope = Rc::new(ReactiveScope::new());
+		let _render_owner = register_render_owner(&reactive_scope);
 		let active_scope = Rc::clone(&self.active_reactive_scope);
 		let previous_scope = active_scope
 			.borrow_mut()

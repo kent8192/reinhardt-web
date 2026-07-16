@@ -720,7 +720,11 @@ impl<T: Clone + 'static, E: Clone + 'static> Action<T, E> {
 	/// This sets the phase to `Pending` and begins executing the async action.
 	/// On WASM, the future runs asynchronously. On non-WASM, the phase resets to `Idle`.
 	pub fn dispatch<P: 'static>(&self, payload: P) {
-		let dispatch = self.with_slot(|slot| Rc::clone(&slot.dispatch_fn));
+		let Ok(dispatch) =
+			with_page_node::<ActionSlot<T, E>, _>(self.key, |slot| Rc::clone(&slot.dispatch_fn))
+		else {
+			return;
+		};
 		dispatch(Box::new(payload));
 	}
 }
@@ -819,6 +823,17 @@ mod tests {
 			// On non-WASM, dispatch sets Pending then immediately resets to Idle
 			assert!(action.is_idle());
 		});
+	}
+
+	#[rstest]
+	#[serial_test::serial(reactive_runtime)]
+	fn stale_action_dispatch_is_a_no_op() {
+		let scope = reinhardt_core::reactive::ReactiveScope::new();
+		let action = scope.enter(|| use_action(|_: ()| async { Ok::<i32, String>(42) }));
+
+		scope.dispose();
+
+		action.dispatch(());
 	}
 
 	#[cfg(all(native, feature = "testing"))]

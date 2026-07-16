@@ -33,17 +33,28 @@ impl<T: Clone + 'static> OptimisticState<T> {
 
 	/// Confirms the value (called after successful async operation).
 	pub fn confirm(&self, value: T) {
-		let _ = self.confirmed.try_set(value.clone());
-		let _ = self.value.try_set(value);
-		let _ = self.is_optimistic.try_set(false);
+		if self.confirmed.try_set(value.clone()).is_err() {
+			return;
+		}
+		if self.value.try_set(value).is_err() {
+			return;
+		}
+		if self.is_optimistic.try_set(false).is_err() {
+			return;
+		}
 	}
 
 	/// Reverts to the confirmed value (called on error).
 	pub fn revert(&self) {
-		if let Ok(value) = self.confirmed.try_get_untracked() {
-			let _ = self.value.try_set(value);
+		let Ok(value) = self.confirmed.try_get_untracked() else {
+			return;
+		};
+		if self.value.try_set(value).is_err() {
+			return;
 		}
-		let _ = self.is_optimistic.try_set(false);
+		if self.is_optimistic.try_set(false).is_err() {
+			return;
+		}
 	}
 }
 
@@ -169,5 +180,17 @@ mod tests {
 			state1.update_optimistic(100);
 			assert_eq!(state2.get(), 100);
 		});
+	}
+
+	#[test]
+	#[serial_test::serial(reactive_runtime)]
+	fn stale_optimistic_completion_is_a_no_op() {
+		let scope = reinhardt_core::reactive::ReactiveScope::new();
+		let state = scope.enter(|| use_optimistic(1_i32));
+
+		scope.dispose();
+
+		state.confirm(2);
+		state.revert();
 	}
 }

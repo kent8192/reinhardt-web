@@ -1566,14 +1566,23 @@ where
 		Fut: Future<Output = Result<Output, Error>>,
 		Error: Display,
 	{
-		if self.state.is_submitting.get() {
+		let Ok(is_submitting) = self.state.is_submitting.try_get_untracked() else {
+			return Ok(UseFormAsyncSubmitOutcome::AlreadyPending);
+		};
+		if is_submitting {
 			return Ok(UseFormAsyncSubmitOutcome::AlreadyPending);
 		}
 
-		self.state.is_submitting.set(true);
+		if self.state.is_submitting.try_set(true).is_err() {
+			return Ok(UseFormAsyncSubmitOutcome::AlreadyPending);
+		}
 		let mut pending_guard = SubmitPendingGuard::new(self.state.is_submitting);
-		self.state.is_submit_successful.set(false);
-		self.state.submit_error.set(None);
+		if self.state.is_submit_successful.try_set(false).is_err() {
+			return Ok(UseFormAsyncSubmitOutcome::AlreadyPending);
+		}
+		if self.state.submit_error.try_set(None).is_err() {
+			return Ok(UseFormAsyncSubmitOutcome::AlreadyPending);
+		}
 		self.sync_first_error();
 		let _ = self.in_owner_scope(|| {
 			self.notify(FormEvent::SubmitStarted);
@@ -2251,6 +2260,7 @@ mod tests {
 	use serial_test::serial;
 	use std::any::Any;
 	use std::rc::Rc;
+	use std::task::{Context, Poll, Waker};
 
 	#[derive(Clone)]
 	struct RetainedScopeForm {
@@ -2347,6 +2357,26 @@ mod tests {
 
 		scope.dispose();
 		drop(pending_guard);
+	}
+
+	#[test]
+	#[serial(reactive_runtime)]
+	fn stale_form_submit_is_rejected_without_reading_disposed_state() {
+		let scope = Rc::new(ReactiveScope::new());
+		let form = scope.enter(|| RetainedScopeForm {
+			scope: Rc::clone(&scope),
+			value: Signal::new("initial".to_string()),
+		});
+		let runtime = use_form(&form).build();
+
+		scope.dispose();
+
+		let mut submit = Box::pin(runtime.submit_async(|| async { Ok::<_, String>(()) }));
+		let mut context = Context::from_waker(Waker::noop());
+		assert_eq!(
+			submit.as_mut().poll(&mut context),
+			Poll::Ready(Ok(super::UseFormAsyncSubmitOutcome::AlreadyPending))
+		);
 	}
 
 	#[test]

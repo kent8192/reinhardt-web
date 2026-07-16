@@ -108,6 +108,18 @@ impl WebSocketHandle {
 		&self.latest_message
 	}
 
+	/// Returns the current connection state, or `Closed` after owner disposal.
+	pub fn current_connection_state(&self) -> ConnectionState {
+		self.connection_state
+			.try_get_untracked()
+			.unwrap_or(ConnectionState::Closed)
+	}
+
+	/// Returns the latest message, or `None` after owner disposal.
+	pub fn current_message(&self) -> Option<WebSocketMessage> {
+		self.latest_message.try_get_untracked().unwrap_or(None)
+	}
+
 	/// Send a WebSocket message
 	pub fn send(&self, message: WebSocketMessage) -> Result<(), String> {
 		(self.send_fn)(message)
@@ -145,7 +157,7 @@ impl WebSocketHandle {
 
 	/// Check if the connection is currently open
 	pub fn is_open(&self) -> bool {
-		matches!(self.connection_state.get(), ConnectionState::Open)
+		matches!(self.current_connection_state(), ConnectionState::Open)
 	}
 }
 
@@ -278,7 +290,12 @@ pub fn use_websocket(url: &str, options: UseWebSocketOptions) -> WebSocketHandle
 			let connection_state_open = connection_state;
 			let on_open_cb = on_open.clone();
 			let onopen = Closure::wrap(Box::new(move |_: JsValue| {
-				let _ = connection_state_open.try_set(ConnectionState::Open);
+				if connection_state_open
+					.try_set(ConnectionState::Open)
+					.is_err()
+				{
+					return;
+				}
 				if let Some(cb) = &on_open_cb {
 					invoke_in_owner_scope(owner_scope, || cb());
 				}
@@ -291,13 +308,23 @@ pub fn use_websocket(url: &str, options: UseWebSocketOptions) -> WebSocketHandle
 				// Try text message first
 				if let Ok(txt) = e.data().dyn_into::<js_sys::JsString>() {
 					let text = txt.as_string().unwrap_or_default();
-					let _ = latest_message_recv.try_set(Some(WebSocketMessage::Text(text)));
+					if latest_message_recv
+						.try_set(Some(WebSocketMessage::Text(text)))
+						.is_err()
+					{
+						return;
+					}
 				}
 				// Try binary message (ArrayBuffer)
 				else if let Ok(array_buffer) = e.data().dyn_into::<js_sys::ArrayBuffer>() {
 					let array = js_sys::Uint8Array::new(&array_buffer);
 					let vec = array.to_vec();
-					let _ = latest_message_recv.try_set(Some(WebSocketMessage::Binary(vec)));
+					if latest_message_recv
+						.try_set(Some(WebSocketMessage::Binary(vec)))
+						.is_err()
+					{
+						return;
+					}
 				}
 			}) as Box<dyn FnMut(MessageEvent)>);
 			ws.set_onmessage(Some(onmessage.as_ref().unchecked_ref()));
@@ -306,7 +333,12 @@ pub fn use_websocket(url: &str, options: UseWebSocketOptions) -> WebSocketHandle
 			let connection_state_close = connection_state;
 			let on_close_cb = on_close.clone();
 			let onclose = Closure::wrap(Box::new(move |_: CloseEvent| {
-				let _ = connection_state_close.try_set(ConnectionState::Closed);
+				if connection_state_close
+					.try_set(ConnectionState::Closed)
+					.is_err()
+				{
+					return;
+				}
 				if let Some(cb) = &on_close_cb {
 					invoke_in_owner_scope(owner_scope, || cb());
 				}
@@ -318,7 +350,12 @@ pub fn use_websocket(url: &str, options: UseWebSocketOptions) -> WebSocketHandle
 			let on_error_cb = on_error.clone();
 			let onerror = Closure::wrap(Box::new(move |_: ErrorEvent| {
 				let error_msg = "WebSocket error occurred".to_string();
-				let _ = connection_state_error.try_set(ConnectionState::Error(error_msg.clone()));
+				if connection_state_error
+					.try_set(ConnectionState::Error(error_msg.clone()))
+					.is_err()
+				{
+					return;
+				}
 				if let Some(cb) = &on_error_cb {
 					invoke_in_owner_scope(owner_scope, || cb(error_msg));
 				}
@@ -449,6 +486,20 @@ mod tests {
 			assert!(ws.send_text("test".to_string()).is_err());
 			assert!(!ws.is_open());
 		});
+	}
+
+	#[test]
+	#[cfg(native)]
+	#[serial_test::serial(reactive_runtime)]
+	fn stale_websocket_handle_is_closed() {
+		let scope = reinhardt_core::reactive::ReactiveScope::new();
+		let handle = scope.enter(|| use_websocket("ignored", UseWebSocketOptions::default()));
+
+		scope.dispose();
+
+		assert!(!handle.is_open());
+		assert_eq!(handle.current_connection_state(), ConnectionState::Closed);
+		assert_eq!(handle.current_message(), None);
 	}
 
 	#[test]

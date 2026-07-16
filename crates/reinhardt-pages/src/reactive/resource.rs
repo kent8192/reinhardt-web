@@ -230,7 +230,11 @@ impl<T: Clone + 'static, E: Clone + 'static> Resource<T, E> {
 	///
 	/// This sets the state to Loading and re-executes the fetcher function.
 	pub fn refetch(&self) {
-		let refetch = self.with_slot(|slot| Rc::clone(&slot.refetch_fn));
+		let Ok(refetch) =
+			with_page_node::<ResourceSlot<T, E>, _>(self.key, |slot| Rc::clone(&slot.refetch_fn))
+		else {
+			return;
+		};
 		refetch();
 	}
 
@@ -503,6 +507,7 @@ where
 {
 	crate::ssr::resource_context::with_active_context(|context| {
 		let mut context = context.borrow_mut();
+		let owner = crate::ssr::resource_context::current_render_owner();
 		let key = if let Some(key) = explicit_key {
 			context.reserve_call_order_key(&key);
 			key
@@ -515,13 +520,14 @@ where
 			build_resource_from_run(state, run, (), false, Some(key))
 		} else {
 			let state = Signal::new(ResourceState::Loading);
-			context.register_resource::<T, E, _, Fut>(
+			context.register_resource_with_owner::<T, E, _, Fut>(
 				key.clone(),
 				{
 					let fetcher = Rc::clone(&fetcher);
 					move || fetcher()
 				},
 				state,
+				owner,
 			);
 
 			let run: Rc<dyn Fn()> = Rc::new(move || state.set(ResourceState::Loading));
@@ -575,6 +581,17 @@ mod tests {
 			assert!(resource.is_loading());
 			assert!(copied.is_loading());
 		});
+	}
+
+	#[test]
+	#[serial_test::serial(reactive_runtime)]
+	fn stale_resource_refetch_is_a_no_op() {
+		let scope = reinhardt_core::reactive::ReactiveScope::new();
+		let resource: Resource<i32, String> = scope.enter(|| use_resource(|| async { Ok(1) }, ()));
+
+		scope.dispose();
+
+		resource.refetch();
 	}
 
 	#[test]
