@@ -3,6 +3,9 @@
 #[cfg(wasm)]
 use super::with_spa_router;
 
+#[cfg(wasm)]
+use crate::router::PrefetchMode;
+
 /// Anchor attributes relevant to the link interceptor decision.
 ///
 /// Extracted into a plain struct so the decision logic in
@@ -53,22 +56,99 @@ pub(super) fn should_intercept<'a>(attrs: &AnchorAttrs<'a>) -> Option<&'a str> {
 	Some(href)
 }
 
-/// Install a document-level click listener that converts clicks on internal
+/// Owns all document-level link listeners installed by the launcher.
+#[cfg(wasm)]
+pub(super) struct LinkInterceptorGuard {
+	document: web_sys::Document,
+	click: wasm_bindgen::closure::Closure<dyn FnMut(web_sys::MouseEvent)>,
+	pointerover: wasm_bindgen::closure::Closure<dyn FnMut(web_sys::PointerEvent)>,
+	focusin: wasm_bindgen::closure::Closure<dyn FnMut(web_sys::FocusEvent)>,
+	observer: web_sys::IntersectionObserver,
+	// Retained so the observer callback remains alive until the observer drops.
+	#[allow(dead_code)]
+	observer_callback:
+		wasm_bindgen::closure::Closure<dyn FnMut(js_sys::Array, web_sys::IntersectionObserver)>,
+}
+
+#[cfg(wasm)]
+impl Drop for LinkInterceptorGuard {
+	fn drop(&mut self) {
+		use wasm_bindgen::JsCast;
+		let _ = self
+			.document
+			.remove_event_listener_with_callback("click", self.click.as_ref().unchecked_ref());
+		let _ = self.document.remove_event_listener_with_callback(
+			"pointerover",
+			self.pointerover.as_ref().unchecked_ref(),
+		);
+		let _ = self
+			.document
+			.remove_event_listener_with_callback("focusin", self.focusin.as_ref().unchecked_ref());
+		self.observer.disconnect();
+	}
+}
+
+#[cfg(wasm)]
+fn anchor_from_target(target: Option<web_sys::EventTarget>) -> Option<web_sys::Element> {
+	use wasm_bindgen::JsCast;
+	let target = target?;
+	let mut element = target.dyn_ref::<web_sys::Element>().cloned();
+	if element.is_none()
+		&& let Some(node) = target.dyn_ref::<web_sys::Node>()
+	{
+		let mut current = node.parent_node();
+		while let Some(node) = current {
+			if let Some(candidate) = node.dyn_ref::<web_sys::Element>() {
+				element = Some(candidate.clone());
+				break;
+			}
+			current = node.parent_node();
+		}
+	}
+	while let Some(ref candidate) = element {
+		if candidate.tag_name().eq_ignore_ascii_case("A") {
+			return element;
+		}
+		element = candidate.parent_element();
+	}
+	None
+}
+
+#[cfg(wasm)]
+fn prefetch_from_target(target: Option<web_sys::EventTarget>) {
+	let Some(anchor) = anchor_from_target(target) else {
+		return;
+	};
+	let Some(href) = anchor.get_attribute("href") else {
+		return;
+	};
+	let mode = match anchor.get_attribute("data-prefetch").as_deref() {
+		Some("hover") => PrefetchMode::Hover,
+		Some("viewport") => PrefetchMode::Viewport,
+		_ => PrefetchMode::None,
+	};
+	if mode == PrefetchMode::None || !href.starts_with('/') || href.starts_with("//") {
+		return;
+	}
+	let _ = crate::app::try_with_navigation_coordinator(|coordinator| {
+		let _ = coordinator.prefetch(href);
+	});
+}
+
+/// Install document-level click and prefetch listeners.
 /// `<a href="/...">` anchors into `Router::push` navigations.
 ///
 /// Skips external links, `target="_blank"`, `download`, `rel="external"`,
 /// and modifier-key clicks (so the user can still open in a new tab).
 ///
-/// The closure is leaked via `closure.forget()` so the listener lives for
-/// the entire WASM module lifetime — same posture as `setup_popstate_listener`.
 #[cfg(wasm)]
 pub(super) fn install_link_interceptor(
 	document: &web_sys::Document,
-) -> Result<(), wasm_bindgen::JsValue> {
+) -> Result<LinkInterceptorGuard, wasm_bindgen::JsValue> {
 	use wasm_bindgen::JsCast;
 	use wasm_bindgen::closure::Closure;
 
-	let closure = Closure::wrap(Box::new(move |event: web_sys::MouseEvent| {
+	let click = Closure::wrap(Box::new(move |event: web_sys::MouseEvent| {
 		// Walk up the DOM looking for the closest <a> ancestor.
 		//
 		// `event.target()` may be a `Node` that is not itself an `Element`
@@ -160,7 +240,7 @@ pub(super) fn install_link_interceptor(
 		// requiring a tracing subscriber. The `tracing` crate is not
 		// pulled in on the wasm32 target (see Cargo.toml), so we use
 		// `web_sys::console::warn_1` directly here (Refs #4331).
-		with_spa_router(|r| match r.push(href) {
+		match crate::reactive::hooks::RouterHandle.push(href) {
 			Ok(()) => {}
 			Err(err) => {
 				crate::nav_diag!(
@@ -176,12 +256,48 @@ pub(super) fn install_link_interceptor(
 					.into(),
 				);
 			}
-		});
+		}
 	}) as Box<dyn FnMut(_)>);
 
-	document.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref())?;
-	closure.forget();
-	Ok(())
+	document.add_event_listener_with_callback("click", click.as_ref().unchecked_ref())?;
+	let pointerover = Closure::wrap(Box::new(move |event: web_sys::PointerEvent| {
+		prefetch_from_target(event.target());
+	}) as Box<dyn FnMut(_)>);
+	document
+		.add_event_listener_with_callback("pointerover", pointerover.as_ref().unchecked_ref())?;
+	let focusin = Closure::wrap(Box::new(move |event: web_sys::FocusEvent| {
+		prefetch_from_target(event.target());
+	}) as Box<dyn FnMut(_)>);
+	document.add_event_listener_with_callback("focusin", focusin.as_ref().unchecked_ref())?;
+	let observer_callback = Closure::wrap(Box::new(
+		move |entries: js_sys::Array, _observer: web_sys::IntersectionObserver| {
+			use wasm_bindgen::JsCast;
+			for entry in entries.iter() {
+				if let Ok(entry) = entry.dyn_into::<web_sys::IntersectionObserverEntry>()
+					&& entry.is_intersecting()
+				{
+					prefetch_from_target(Some(entry.target().into()));
+				}
+			}
+		},
+	) as Box<dyn FnMut(_, _)>);
+	let observer = web_sys::IntersectionObserver::new(observer_callback.as_ref().unchecked_ref())?;
+	let viewport_links = document.query_selector_all("[data-prefetch=\"viewport\"]")?;
+	for index in 0..viewport_links.length() {
+		if let Some(node) = viewport_links.item(index)
+			&& let Ok(element) = node.dyn_into::<web_sys::Element>()
+		{
+			observer.observe(&element);
+		}
+	}
+	Ok(LinkInterceptorGuard {
+		document: document.clone(),
+		click,
+		pointerover,
+		focusin,
+		observer,
+		observer_callback,
+	})
 }
 
 #[cfg(test)]

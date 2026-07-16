@@ -7,7 +7,9 @@ use std::collections::HashMap;
 #[cfg(wasm)]
 use super::link_interceptor::install_link_interceptor;
 #[cfg(wasm)]
-use super::{store_navigation_coordinator, store_spa_router, with_spa_router};
+use super::{
+	store_link_interceptor_guard, store_navigation_coordinator, store_spa_router, with_spa_router,
+};
 #[cfg(wasm)]
 use crate::component::MountError;
 #[cfg(wasm)]
@@ -861,7 +863,8 @@ impl ClientLauncher {
 			.ok_or_else(|| wasm_bindgen::JsValue::from_str("no document on window"))?;
 
 		if self.intercept_links {
-			install_link_interceptor(&document)?;
+			let guard = install_link_interceptor(&document)?;
+			store_link_interceptor_guard(guard);
 		}
 
 		let root_el = document

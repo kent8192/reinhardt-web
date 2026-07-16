@@ -25,6 +25,9 @@ thread_local! {
 	static APP_NAVIGATION_COORDINATOR: RefCell<Option<Rc<navigation::NavigationCoordinator>>> =
 		const { RefCell::new(None) };
 	#[cfg(wasm)]
+	static APP_LINK_INTERCEPTOR: RefCell<Option<link_interceptor::LinkInterceptorGuard>> =
+		const { RefCell::new(None) };
+	#[cfg(wasm)]
 	static APP_REACTIVE_SCOPE: RefCell<Option<Rc<ReactiveScope>>> = const { RefCell::new(None) };
 }
 
@@ -95,6 +98,13 @@ fn store_navigation_coordinator(coordinator: Rc<navigation::NavigationCoordinato
 	});
 }
 
+#[cfg(wasm)]
+fn store_link_interceptor_guard(guard: link_interceptor::LinkInterceptorGuard) {
+	APP_LINK_INTERCEPTOR.with(|slot| {
+		*slot.borrow_mut() = Some(guard);
+	});
+}
+
 #[doc(hidden)]
 pub(crate) fn try_with_navigation_coordinator<F, R>(f: F) -> Option<R>
 where
@@ -131,6 +141,10 @@ pub fn __clear_spa_router_for_test() {
 		*slot.borrow_mut() = None;
 	});
 	APP_NAVIGATION_COORDINATOR.with(|slot| {
+		*slot.borrow_mut() = None;
+	});
+	#[cfg(wasm)]
+	APP_LINK_INTERCEPTOR.with(|slot| {
 		*slot.borrow_mut() = None;
 	});
 }

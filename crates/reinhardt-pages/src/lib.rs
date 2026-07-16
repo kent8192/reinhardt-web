@@ -528,6 +528,7 @@ pub use reinhardt_forms::{
 	wasm_compat::{FieldMetadata, FormMetadata},
 };
 pub use router::Link;
+pub use router::PrefetchMode;
 pub use router::RouteLoaderId;
 pub use router::loader::{
 	Loader, LoaderInputError, LoaderInputKind, LoaderInputSpec, LoaderStore, LoaderStoreError,

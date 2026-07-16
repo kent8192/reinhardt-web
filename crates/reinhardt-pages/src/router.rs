@@ -144,7 +144,7 @@ pub mod request {
 	};
 }
 
-pub use components::{Link, Redirect, RouterOutlet, guard, guard_or};
+pub use components::{Link, PrefetchMode, Redirect, RouterOutlet, guard, guard_or};
 pub use history::{HistoryState, NavigationType};
 pub use navigate::navigate;
 pub use reinhardt_urls::routers::ClientRouter;

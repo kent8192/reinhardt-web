@@ -8,6 +8,18 @@ use crate::router::loader::RouteLoaderError;
 use reinhardt_urls::routers::ClientRouter;
 use std::rc::Rc;
 
+/// Controls when a link prepares matched route loaders in the background.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum PrefetchMode {
+	/// Do not prefetch route data.
+	#[default]
+	None,
+	/// Prefetch on pointer intent or keyboard focus.
+	Hover,
+	/// Prefetch when the link enters the viewport.
+	Viewport,
+}
+
 /// A link component that navigates without full page reload.
 ///
 /// Similar to HTML `<a>` but intercepts clicks to use the History API.
@@ -31,6 +43,8 @@ pub struct Link {
 	replace: bool,
 	/// Whether to open in a new tab (disables SPA navigation).
 	external: bool,
+	/// Background route-loader preparation policy.
+	prefetch: PrefetchMode,
 	/// Custom attributes.
 	attrs: Vec<(String, String)>,
 }
@@ -44,6 +58,7 @@ impl Link {
 			class: None,
 			replace: false,
 			external: false,
+			prefetch: PrefetchMode::None,
 			attrs: Vec::new(),
 		}
 	}
@@ -63,6 +78,12 @@ impl Link {
 	/// Sets whether this is an external link.
 	pub fn external(mut self, external: bool) -> Self {
 		self.external = external;
+		self
+	}
+
+	/// Sets the route-loader prefetch policy for this link.
+	pub fn prefetch(mut self, mode: PrefetchMode) -> Self {
+		self.prefetch = mode;
 		self
 	}
 
@@ -91,6 +112,11 @@ impl Link {
 	pub fn is_external(&self) -> bool {
 		self.external
 	}
+
+	/// Returns the configured prefetch mode.
+	pub fn prefetch_mode(&self) -> PrefetchMode {
+		self.prefetch
+	}
 }
 
 impl Component for Link {
@@ -106,6 +132,11 @@ impl Component for Link {
 			el = el.attr("data-link", "true");
 			if self.replace {
 				el = el.attr("data-replace", "true");
+			}
+			match self.prefetch {
+				PrefetchMode::None => {}
+				PrefetchMode::Hover => el = el.attr("data-prefetch", "hover"),
+				PrefetchMode::Viewport => el = el.attr("data-prefetch", "viewport"),
 			}
 		} else {
 			el = el.attr("target", "_blank");
@@ -409,6 +440,15 @@ mod tests {
 	#[test]
 	fn test_link_component_name() {
 		assert_eq!(Link::name(), "Link");
+	}
+
+	#[test]
+	fn test_link_prefetch_attribute() {
+		let html = Link::new("/jobs/", "Jobs")
+			.prefetch(PrefetchMode::Hover)
+			.render()
+			.render_to_string();
+		assert!(html.contains("data-prefetch=\"hover\""));
 	}
 
 	#[test]
