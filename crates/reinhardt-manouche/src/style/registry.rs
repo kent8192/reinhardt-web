@@ -326,6 +326,8 @@ pub enum ValueGrammar {
 	Keyword(&'static KeywordDomain),
 	/// A validated CSS custom identifier.
 	Identifier,
+	/// A validated CSS custom identifier excluding reserved values.
+	IdentifierExcept(&'static [&'static str]),
 	/// A value produced by an approved typed function.
 	FunctionResult(SemanticType),
 	/// A choice among complete alternative grammars.
@@ -399,6 +401,7 @@ impl ValueGrammar {
 			} => format!("RANGE({minimum},{maximum},{})", grammar.describe()),
 			Self::Keyword(domain) => format!("KW({})", domain.name),
 			Self::Identifier => "IDENT".to_owned(),
+			Self::IdentifierExcept(excluded) => format!("IDENT_EXCEPT({})", excluded.join("|")),
 			Self::Or(alternatives) => format!(
 				"OR({})",
 				alternatives
@@ -458,6 +461,7 @@ impl ValueGrammar {
 			),
 			Self::Keyword(domain) => format!("KW({}:[{}])", domain.name, domain.keywords.join("|")),
 			Self::Identifier => "IDENT".to_owned(),
+			Self::IdentifierExcept(excluded) => format!("IDENT_EXCEPT({})", excluded.join("|")),
 			Self::Or(alternatives) => format!(
 				"OR({})",
 				alternatives
@@ -1066,6 +1070,18 @@ keyword_grammar!(
 	["underline", "overline", "line-through",]
 );
 keyword_grammar!(
+	TEXT_DECORATION_STYLE_DOMAIN,
+	KW_TEXT_DECORATION_STYLE,
+	"text-decoration-style",
+	["solid", "double", "dotted", "dashed", "wavy",]
+);
+keyword_grammar!(
+	TEXT_DECORATION_THICKNESS_DOMAIN,
+	KW_TEXT_DECORATION_THICKNESS,
+	"text-decoration-thickness",
+	["auto", "from-font",]
+);
+keyword_grammar!(
 	TEXT_TRANSFORM_DOMAIN,
 	KW_TEXT_TRANSFORM,
 	"text-transform",
@@ -1110,6 +1126,30 @@ keyword_grammar!(
 	["left", "center", "right", "top", "bottom",]
 );
 keyword_grammar!(
+	HORIZONTAL_POSITION_DOMAIN,
+	KW_HORIZONTAL_POSITION,
+	"horizontal-position",
+	["left", "center", "right",]
+);
+keyword_grammar!(
+	VERTICAL_POSITION_DOMAIN,
+	KW_VERTICAL_POSITION,
+	"vertical-position",
+	["top", "center", "bottom",]
+);
+keyword_grammar!(
+	HORIZONTAL_POSITION_EDGE_DOMAIN,
+	KW_HORIZONTAL_POSITION_EDGE,
+	"horizontal-position-edge",
+	["left", "right",]
+);
+keyword_grammar!(
+	VERTICAL_POSITION_EDGE_DOMAIN,
+	KW_VERTICAL_POSITION_EDGE,
+	"vertical-position-edge",
+	["top", "bottom",]
+);
+keyword_grammar!(
 	LINE_WIDTH_DOMAIN,
 	KW_LINE_WIDTH,
 	"line-width",
@@ -1129,8 +1169,8 @@ keyword_grammar!(
 	KW_OUTLINE_STYLE,
 	"outline-style",
 	[
-		"none", "hidden", "dotted", "dashed", "solid", "double", "groove", "ridge", "inset",
-		"outset", "auto",
+		"none", "dotted", "dashed", "solid", "double", "groove", "ridge", "inset", "outset",
+		"auto",
 	]
 );
 keyword_grammar!(
@@ -1165,6 +1205,12 @@ keyword_grammar!(
 	KW_TRANSITION_PROPERTY,
 	"transition-property",
 	["all", "none",]
+);
+keyword_grammar!(
+	TRANSITION_PROPERTY_LIST_DOMAIN,
+	KW_TRANSITION_PROPERTY_LIST,
+	"transition-property-list",
+	["all",]
 );
 keyword_grammar!(
 	TIMING_DOMAIN,
@@ -1254,18 +1300,22 @@ keyword_grammar!(
 	["auto", "none", "manipulation",]
 );
 keyword_grammar!(
-	TOUCH_GESTURE_DOMAIN,
-	KW_TOUCH_GESTURE,
-	"touch-gesture",
-	[
-		"pan-x",
-		"pan-left",
-		"pan-right",
-		"pan-y",
-		"pan-up",
-		"pan-down",
-		"pinch-zoom",
-	]
+	TOUCH_X_GESTURE_DOMAIN,
+	KW_TOUCH_X_GESTURE,
+	"touch-x-gesture",
+	["pan-x", "pan-left", "pan-right",]
+);
+keyword_grammar!(
+	TOUCH_Y_GESTURE_DOMAIN,
+	KW_TOUCH_Y_GESTURE,
+	"touch-y-gesture",
+	["pan-y", "pan-up", "pan-down",]
+);
+keyword_grammar!(
+	TOUCH_PINCH_ZOOM_DOMAIN,
+	KW_TOUCH_PINCH_ZOOM,
+	"touch-pinch-zoom",
+	["pinch-zoom",]
 );
 keyword_grammar!(
 	USER_SELECT_DOMAIN,
@@ -1317,6 +1367,7 @@ const NT: ValueGrammar = ValueGrammar::NonNegative(&T);
 const C: ValueGrammar = ValueGrammar::Primitive(SemanticType::Color);
 const S: ValueGrammar = ValueGrammar::Primitive(SemanticType::QuotedString);
 const FR: ValueGrammar = ValueGrammar::Primitive(SemanticType::GridFraction);
+const NFR: ValueGrammar = ValueGrammar::NonNegative(&FR);
 const IMG: ValueGrammar = ValueGrammar::FunctionResult(SemanticType::Image);
 const TF: ValueGrammar = ValueGrammar::FunctionResult(SemanticType::TransformFunction);
 const IDENT: ValueGrammar = ValueGrammar::Identifier;
@@ -1329,11 +1380,54 @@ const POSITIVE_INTEGER: ValueGrammar = ValueGrammar::NumericRange {
 };
 const MAX_SIZE: ValueGrammar = ValueGrammar::Or(&[NLP, KW_NONE]);
 const POSITION_ITEM: ValueGrammar = ValueGrammar::Or(&[LP, KW_POSITION_VALUE]);
-const POSITION: ValueGrammar = ValueGrammar::Space {
-	min: 1,
-	max: Some(4),
-	item: &POSITION_ITEM,
+const HORIZONTAL_POSITION: ValueGrammar = ValueGrammar::Or(&[LP, KW_HORIZONTAL_POSITION]);
+const VERTICAL_POSITION: ValueGrammar = ValueGrammar::Or(&[LP, KW_VERTICAL_POSITION]);
+const POSITION_TWO: ValueGrammar = ValueGrammar::Unordered {
+	members: &[
+		required("horizontal", &HORIZONTAL_POSITION),
+		required("vertical", &VERTICAL_POSITION),
+	],
+	min_members: 2,
+	preserve_source_order: true,
 };
+const POSITION_THREE: ValueGrammar = ValueGrammar::Or(&[
+	ValueGrammar::Ordered(&[
+		required("horizontal-edge", &KW_HORIZONTAL_POSITION_EDGE),
+		required("horizontal-offset", &LP),
+		required("vertical", &VERTICAL_POSITION),
+	]),
+	ValueGrammar::Ordered(&[
+		required("vertical-edge", &KW_VERTICAL_POSITION_EDGE),
+		required("vertical-offset", &LP),
+		required("horizontal", &HORIZONTAL_POSITION),
+	]),
+	ValueGrammar::Ordered(&[
+		required("horizontal", &HORIZONTAL_POSITION),
+		required("vertical-edge", &KW_VERTICAL_POSITION_EDGE),
+		required("vertical-offset", &LP),
+	]),
+	ValueGrammar::Ordered(&[
+		required("vertical", &VERTICAL_POSITION),
+		required("horizontal-edge", &KW_HORIZONTAL_POSITION_EDGE),
+		required("horizontal-offset", &LP),
+	]),
+]);
+const POSITION_FOUR: ValueGrammar = ValueGrammar::Or(&[
+	ValueGrammar::Ordered(&[
+		required("horizontal-edge", &KW_HORIZONTAL_POSITION_EDGE),
+		required("horizontal-offset", &LP),
+		required("vertical-edge", &KW_VERTICAL_POSITION_EDGE),
+		required("vertical-offset", &LP),
+	]),
+	ValueGrammar::Ordered(&[
+		required("vertical-edge", &KW_VERTICAL_POSITION_EDGE),
+		required("vertical-offset", &LP),
+		required("horizontal-edge", &KW_HORIZONTAL_POSITION_EDGE),
+		required("horizontal-offset", &LP),
+	]),
+]);
+const POSITION: ValueGrammar =
+	ValueGrammar::Or(&[POSITION_ITEM, POSITION_TWO, POSITION_THREE, POSITION_FOUR]);
 const TRANSFORM_ORIGIN_POSITION: ValueGrammar = ValueGrammar::Space {
 	min: 1,
 	max: Some(2),
@@ -1356,7 +1450,7 @@ const SPAN_GRID_LINE: ValueGrammar = ValueGrammar::Ordered(&[
 	required("line", &INTEGER_OR_IDENT),
 ]);
 const GRID_LINE: ValueGrammar = ValueGrammar::Or(&[KW_AUTO, I, IDENT, SPAN_GRID_LINE]);
-const TRACK: ValueGrammar = ValueGrammar::Or(&[NLP, FR, KW_TRACK]);
+const TRACK: ValueGrammar = ValueGrammar::Or(&[NLP, NFR, KW_TRACK]);
 const TRACK_LIST: ValueGrammar = ValueGrammar::Space {
 	min: 1,
 	max: None,
@@ -1499,13 +1593,25 @@ const FONT: ValueGrammar = ValueGrammar::Or(&[
 	FONT_WITHOUT_LINE_HEIGHT,
 	FONT_WITH_LINE_HEIGHT,
 ]);
-const TEXT_OVERFLOW: ValueGrammar = ValueGrammar::Or(&[KW_TEXT_OVERFLOW, S]);
+const TEXT_OVERFLOW_ITEM: ValueGrammar = ValueGrammar::Or(&[KW_TEXT_OVERFLOW, S]);
+const TEXT_OVERFLOW: ValueGrammar = ValueGrammar::Space {
+	min: 1,
+	max: Some(2),
+	item: &TEXT_OVERFLOW_ITEM,
+};
+const TEXT_DECORATION_LINES: ValueGrammar = ValueGrammar::Space {
+	min: 1,
+	max: Some(3),
+	item: &KW_TEXT_DECORATION_LINE,
+};
+const TEXT_DECORATION_THICKNESS: ValueGrammar =
+	ValueGrammar::Or(&[KW_TEXT_DECORATION_THICKNESS, NLP]);
 const TEXT_DECORATION_BODY: ValueGrammar = ValueGrammar::Unordered {
 	members: &[
-		optional("line", &KW_TEXT_DECORATION_LINE),
-		optional("style", &LINE_STYLE),
+		optional("line", &TEXT_DECORATION_LINES),
+		optional("style", &KW_TEXT_DECORATION_STYLE),
 		optional("color", &C),
-		optional("width", &LINE_WIDTH),
+		optional("thickness", &TEXT_DECORATION_THICKNESS),
 	],
 	min_members: 1,
 	preserve_source_order: false,
@@ -1650,10 +1756,18 @@ const TRANSFORM_ORIGIN: ValueGrammar = ValueGrammar::Ordered(&[
 	optional("z-offset", &L),
 ]);
 const TRANSITION_PROPERTY: ValueGrammar = ValueGrammar::Or(&[KW_TRANSITION_PROPERTY, IDENT]);
-const TRANSITION_PROPERTY_LIST: ValueGrammar = ValueGrammar::Comma {
-	min: 1,
-	item: &TRANSITION_PROPERTY,
-};
+const TRANSITION_PROPERTY_LIST_IDENTIFIER: ValueGrammar = ValueGrammar::IdentifierExcept(&["none"]);
+const TRANSITION_PROPERTY_LIST_ITEM: ValueGrammar = ValueGrammar::Or(&[
+	KW_TRANSITION_PROPERTY_LIST,
+	TRANSITION_PROPERTY_LIST_IDENTIFIER,
+]);
+const TRANSITION_PROPERTY_LIST: ValueGrammar = ValueGrammar::Or(&[
+	KW_NONE,
+	ValueGrammar::Comma {
+		min: 1,
+		item: &TRANSITION_PROPERTY_LIST_ITEM,
+	},
+]);
 const TIME_LIST: ValueGrammar = ValueGrammar::Comma { min: 1, item: &T };
 const DURATION_LIST: ValueGrammar = ValueGrammar::Comma { min: 1, item: &NT };
 const TIMING_LIST: ValueGrammar = ValueGrammar::Comma {
@@ -1675,10 +1789,14 @@ const TRANSITION: ValueGrammar = ValueGrammar::Comma {
 	item: &TRANSITION_LAYER,
 };
 
-const TOUCH_GESTURES: ValueGrammar = ValueGrammar::Space {
-	min: 1,
-	max: Some(3),
-	item: &KW_TOUCH_GESTURE,
+const TOUCH_GESTURES: ValueGrammar = ValueGrammar::Unordered {
+	members: &[
+		optional("x", &KW_TOUCH_X_GESTURE),
+		optional("y", &KW_TOUCH_Y_GESTURE),
+		optional("pinch-zoom", &KW_TOUCH_PINCH_ZOOM),
+	],
+	min_members: 1,
+	preserve_source_order: true,
 };
 const TOUCH_ACTION: ValueGrammar = ValueGrammar::Or(&[KW_TOUCH_ACTION, TOUCH_GESTURES]);
 const CONTENT: ValueGrammar = ValueGrammar::Or(&[KW_CONTENT, S]);
@@ -2062,6 +2180,9 @@ fn describe_constraint(constraint: TypeConstraint) -> String {
 		TypeConstraint::Numeric(NumericConstraint::NumberOrPercentage) => {
 			"NUMERIC(NUMBER_OR_PERCENTAGE)".to_owned()
 		}
+		TypeConstraint::Numeric(NumericConstraint::PercentageRange { minimum, maximum }) => {
+			format!("NUMERIC(PERCENTAGE_RANGE({minimum},{maximum}))")
+		}
 		TypeConstraint::Numeric(NumericConstraint::Joined) => "NUMERIC(JOINED)".to_owned(),
 		TypeConstraint::CommaList { element, min } => {
 			format!("COMMA_LIST(min={min},{})", semantic_type_name(element))
@@ -2073,6 +2194,11 @@ fn describe_constraint(constraint: TypeConstraint) -> String {
 const JOINED: TypeConstraint = TypeConstraint::Numeric(NumericConstraint::Joined);
 const NUMBER_OR_PERCENTAGE: TypeConstraint =
 	TypeConstraint::Numeric(NumericConstraint::NumberOrPercentage);
+const MIX_PERCENTAGE: TypeConstraint =
+	TypeConstraint::Numeric(NumericConstraint::PercentageRange {
+		minimum: 0,
+		maximum: 100,
+	});
 
 const fn function(
 	dsl_path: &'static str,
@@ -2167,7 +2293,7 @@ static FUNCTION_SPECS: &[FunctionSpec] = &[
 		ArityPolicy::Exact(2),
 		ArgumentConstraints::Positional(&[
 			TypeConstraint::Exact(SemanticType::Color),
-			TypeConstraint::Exact(SemanticType::Percentage),
+			MIX_PERCENTAGE,
 		]),
 		Some(TypeConstraint::Exact(SemanticType::Color)),
 		FunctionResult::Exact(SemanticType::Color),
@@ -2912,7 +3038,7 @@ mod tests {
 	)]
 	#[case(
 		"grid",
-		"OR(KW(none),SLASH(SPACE(1,*,OR(NON_NEGATIVE(LENGTH_PERCENTAGE),GRID_FRACTION,KW(track))),SPACE(1,*,OR(NON_NEGATIVE(LENGTH_PERCENTAGE),GRID_FRACTION,KW(track)))))"
+		"OR(KW(none),SLASH(SPACE(1,*,OR(NON_NEGATIVE(LENGTH_PERCENTAGE),NON_NEGATIVE(GRID_FRACTION),KW(track))),SPACE(1,*,OR(NON_NEGATIVE(LENGTH_PERCENTAGE),NON_NEGATIVE(GRID_FRACTION),KW(track)))))"
 	)]
 	#[case(
 		"border-radius",
@@ -2943,7 +3069,7 @@ mod tests {
 			"Color::rgb|css=rgb|arity=exact:3|args=positional:[NUMERIC(NUMBER_OR_PERCENTAGE),NUMERIC(NUMBER_OR_PERCENTAGE),NUMERIC(NUMBER_OR_PERCENTAGE)]|receiver=none|result=COLOR|lowering=space-function",
 			"Color::hsl|css=hsl|arity=exact:3|args=positional:[ANGLE,PERCENTAGE,PERCENTAGE]|receiver=none|result=COLOR|lowering=space-function",
 			"Color::oklch|css=oklch|arity=exact:3|args=positional:[NUMERIC(NUMBER_OR_PERCENTAGE),NUMBER,ANGLE]|receiver=none|result=COLOR|lowering=space-function",
-			".mix|css=color-mix|arity=exact:2|args=positional:[COLOR,PERCENTAGE]|receiver=COLOR|result=COLOR|lowering=color-mix-srgb",
+			".mix|css=color-mix|arity=exact:2|args=positional:[COLOR,NUMERIC(PERCENTAGE_RANGE(0,100))]|receiver=COLOR|result=COLOR|lowering=color-mix-srgb",
 			"stop|css=<color> <position>|arity=exact:2|args=positional:[COLOR,LENGTH_PERCENTAGE]|receiver=none|result=GRADIENT_STOP|lowering=space-pair",
 			"linear_gradient|css=linear-gradient|arity=exact:2|args=positional:[DIRECTION,COMMA_LIST(min=2,GRADIENT_STOP)]|receiver=none|result=IMAGE|lowering=comma-function",
 			"translate|css=translate|arity=exact:2|args=positional:[LENGTH_PERCENTAGE,LENGTH_PERCENTAGE]|receiver=none|result=TRANSFORM_FUNCTION|lowering=comma-function",
@@ -3151,6 +3277,7 @@ mod tests {
 			}
 			ValueGrammar::Primitive(_)
 			| ValueGrammar::Identifier
+			| ValueGrammar::IdentifierExcept(_)
 			| ValueGrammar::FunctionResult(_) => {}
 		}
 	}

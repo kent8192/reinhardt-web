@@ -425,6 +425,13 @@ pub struct KeywordDomain {
 pub enum NumericConstraint {
 	/// A channel accepts either a number or a percentage.
 	NumberOrPercentage,
+	/// A percentage must fall within an inclusive range when its value is known.
+	PercentageRange {
+		/// The inclusive lower bound.
+		minimum: i16,
+		/// The inclusive upper bound.
+		maximum: i16,
+	},
 	/// All participating numeric values must join through the numeric type lattice.
 	Joined,
 }

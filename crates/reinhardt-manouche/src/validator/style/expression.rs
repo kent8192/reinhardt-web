@@ -131,10 +131,14 @@ pub(super) fn validate_expressions(
 		});
 	}
 
+	let variable_defaults = variables
+		.iter()
+		.map(|variable| (variable.source_index, &variable.default))
+		.collect::<HashMap<_, _>>();
 	let items = ast
 		.items
 		.iter()
-		.map(|item| type_check_item(item, &global_symbols, &variable_symbols))
+		.map(|item| type_check_item(item, &global_symbols, &variable_symbols, &variable_defaults))
 		.collect::<Result<Vec<_>, _>>()?;
 
 	Ok(TypedStyleMacro {
@@ -162,14 +166,14 @@ fn type_check_item(
 	item: &StyleItem,
 	globals: &HashMap<String, ResolvedSymbol>,
 	variables: &HashMap<String, ResolvedSymbol>,
+	variable_defaults: &HashMap<usize, &TypedValueExpr>,
 ) -> Result<TypedStyleItem, StyleDiagnostic> {
 	match item {
 		StyleItem::Rule(rule) => {
-			type_check_rule(rule, globals, variables).map(TypedStyleItem::Rule)
+			type_check_rule(rule, globals, variables, variable_defaults).map(TypedStyleItem::Rule)
 		}
-		StyleItem::Media(media) => {
-			type_check_media(media, globals, variables).map(TypedStyleItem::Media)
-		}
+		StyleItem::Media(media) => type_check_media(media, globals, variables, variable_defaults)
+			.map(TypedStyleItem::Media),
 	}
 }
 
@@ -177,10 +181,11 @@ fn type_check_rule(
 	rule: &StyleRule,
 	globals: &HashMap<String, ResolvedSymbol>,
 	variables: &HashMap<String, ResolvedSymbol>,
+	variable_defaults: &HashMap<usize, &TypedValueExpr>,
 ) -> Result<TypedStyleRule, StyleDiagnostic> {
 	Ok(TypedStyleRule {
 		selectors: rule.selectors.clone(),
-		items: type_check_rule_items(&rule.items, globals, variables)?,
+		items: type_check_rule_items(&rule.items, globals, variables, variable_defaults)?,
 		span: rule.span,
 	})
 }
@@ -189,10 +194,11 @@ fn type_check_media(
 	media: &StyleMediaRule,
 	globals: &HashMap<String, ResolvedSymbol>,
 	variables: &HashMap<String, ResolvedSymbol>,
+	variable_defaults: &HashMap<usize, &TypedValueExpr>,
 ) -> Result<TypedStyleMediaRule, StyleDiagnostic> {
 	Ok(TypedStyleMediaRule {
 		condition: media.condition.clone(),
-		items: type_check_rule_items(&media.items, globals, variables)?,
+		items: type_check_rule_items(&media.items, globals, variables, variable_defaults)?,
 		span: media.span,
 	})
 }
@@ -201,19 +207,22 @@ fn type_check_rule_items(
 	items: &[StyleRuleItem],
 	globals: &HashMap<String, ResolvedSymbol>,
 	variables: &HashMap<String, ResolvedSymbol>,
+	variable_defaults: &HashMap<usize, &TypedValueExpr>,
 ) -> Result<Vec<TypedStyleRuleItem>, StyleDiagnostic> {
 	items
 		.iter()
 		.map(|item| match item {
 			StyleRuleItem::Declaration(declaration) => {
-				type_check_declaration(declaration, globals, variables)
+				type_check_declaration(declaration, globals, variables, variable_defaults)
 					.map(TypedStyleRuleItem::Declaration)
 			}
 			StyleRuleItem::Rule(rule) => {
-				type_check_rule(rule, globals, variables).map(TypedStyleRuleItem::Rule)
+				type_check_rule(rule, globals, variables, variable_defaults)
+					.map(TypedStyleRuleItem::Rule)
 			}
 			StyleRuleItem::Media(media) => {
-				type_check_media(media, globals, variables).map(TypedStyleRuleItem::Media)
+				type_check_media(media, globals, variables, variable_defaults)
+					.map(TypedStyleRuleItem::Media)
 			}
 		})
 		.collect()
@@ -223,6 +232,7 @@ fn type_check_declaration(
 	declaration: &StyleDeclaration,
 	globals: &HashMap<String, ResolvedSymbol>,
 	variables: &HashMap<String, ResolvedSymbol>,
+	variable_defaults: &HashMap<usize, &TypedValueExpr>,
 ) -> Result<TypedStyleDeclaration, StyleDiagnostic> {
 	let Some(spec) = property_spec(declaration.name.as_str()) else {
 		return Err(StyleDiagnostic::new(
@@ -233,8 +243,13 @@ fn type_check_declaration(
 		));
 	};
 	let value = infer_expression(&declaration.value, globals, variables)?;
-	let grammar_matches = matches_property_grammar(&value, spec.grammar, spec.css_wide_keywords)
-		&& (spec.name != "box-shadow" || box_shadow_blur_is_not_negative(&value));
+	let grammar_matches = matches_property_grammar(
+		&value,
+		spec.grammar,
+		spec.css_wide_keywords,
+		variable_defaults,
+	) && (spec.name != "box-shadow"
+		|| box_shadow_blur_is_not_negative(&value));
 	if !is_whole_unchecked(&value) && !grammar_matches {
 		return Err(StyleDiagnostic::new(
 			StyleDiagnosticKind::PropertyValueMismatch {
@@ -772,6 +787,11 @@ fn matches_constraint(expression: &TypedValueExpr, constraint: TypeConstraint) -
 				SemanticType::Integer | SemanticType::Number | SemanticType::Percentage
 			) || expression.is_contextual_zero()
 		}
+		TypeConstraint::Numeric(NumericConstraint::PercentageRange { minimum, maximum }) => {
+			expression_matches_type(expression, SemanticType::Percentage)
+				&& numeric_literal_value(expression)
+					.is_none_or(|value| value >= f64::from(minimum) && value <= f64::from(maximum))
+		}
 		TypeConstraint::Numeric(NumericConstraint::Joined) => {
 			expression.value_type.numeric_dimension().is_some()
 		}
@@ -899,11 +919,28 @@ fn matches_property_grammar(
 	expression: &TypedValueExpr,
 	grammar: &ValueGrammar,
 	css_wide_keywords: &crate::KeywordDomain,
+	variable_defaults: &HashMap<usize, &TypedValueExpr>,
 ) -> bool {
 	if keyword_matches(expression, css_wide_keywords) {
 		return true;
 	}
 	matches_grammar(expression, grammar)
+		&& component_variable_fallback_matches_grammar(expression, grammar, variable_defaults)
+}
+
+fn component_variable_fallback_matches_grammar(
+	expression: &TypedValueExpr,
+	grammar: &ValueGrammar,
+	variable_defaults: &HashMap<usize, &TypedValueExpr>,
+) -> bool {
+	let TypedValueExprKind::VariableReference(reference) = &expression.kind else {
+		return true;
+	};
+	let Some(default) = variable_defaults.get(&reference.source_index) else {
+		return false;
+	};
+	matches_grammar(default, grammar)
+		&& component_variable_fallback_matches_grammar(default, grammar, variable_defaults)
 }
 
 fn matches_grammar(expression: &TypedValueExpr, grammar: &ValueGrammar) -> bool {
@@ -927,6 +964,12 @@ fn matches_grammar(expression: &TypedValueExpr, grammar: &ValueGrammar) -> bool 
 		}
 		ValueGrammar::Keyword(domain) => keyword_matches(expression, domain),
 		ValueGrammar::Identifier => custom_identifier_matches(expression),
+		ValueGrammar::IdentifierExcept(excluded) => {
+			custom_identifier_matches(expression)
+				&& !excluded
+					.iter()
+					.any(|value| custom_identifier_equals(expression, value))
+		}
 		ValueGrammar::Or(alternatives) => alternatives
 			.iter()
 			.any(|alternative| matches_grammar(expression, alternative)),
@@ -1010,6 +1053,13 @@ fn custom_identifier_matches(expression: &TypedValueExpr) -> bool {
 		.all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
 }
 
+fn custom_identifier_equals(expression: &TypedValueExpr, expected: &str) -> bool {
+	let TypedValueExprKind::Literal(StyleValueLiteral::Keyword(keyword)) = &expression.kind else {
+		return false;
+	};
+	keyword.as_str().eq_ignore_ascii_case(expected)
+}
+
 fn is_css_wide_keyword(value: &str) -> bool {
 	["inherit", "initial", "unset", "revert", "revert-layer"]
 		.iter()
@@ -1023,7 +1073,9 @@ fn is_negative_literal(expression: &TypedValueExpr) -> bool {
 fn numeric_literal_value(expression: &TypedValueExpr) -> Option<f64> {
 	match &expression.kind {
 		TypedValueExprKind::Literal(StyleValueLiteral::Integer(number))
-		| TypedValueExprKind::Literal(StyleValueLiteral::Number(number)) => number.source.parse().ok(),
+		| TypedValueExprKind::Literal(StyleValueLiteral::Number(number)) => {
+			number.source.replace('_', "").parse().ok()
+		}
 		TypedValueExprKind::Unary { operator, operand } => {
 			let value = numeric_literal_value(operand)?;
 			match operator.kind {
@@ -1203,6 +1255,7 @@ fn matching_prefix_lengths(items: &[&TypedValueExpr], grammar: &ValueGrammar) ->
 		| ValueGrammar::NumericRange { .. }
 		| ValueGrammar::Keyword(_)
 		| ValueGrammar::Identifier
+		| ValueGrammar::IdentifierExcept(_)
 		| ValueGrammar::FunctionResult(_)
 		| ValueGrammar::Comma { .. }
 		| ValueGrammar::CommaFinal { .. }
@@ -1255,6 +1308,9 @@ fn constraint_description(constraint: TypeConstraint) -> String {
 		TypeConstraint::Exact(value_type) => semantic_type_label(value_type).into(),
 		TypeConstraint::Numeric(NumericConstraint::NumberOrPercentage) => {
 			"Number or Percentage".into()
+		}
+		TypeConstraint::Numeric(NumericConstraint::PercentageRange { minimum, maximum }) => {
+			format!("Percentage between {minimum} and {maximum}")
 		}
 		TypeConstraint::Numeric(NumericConstraint::Joined) => "a joinable numeric value".into(),
 		TypeConstraint::CommaList { element, min } => format!(
@@ -1868,6 +1924,19 @@ mod tests {
 	}
 
 	#[rstest]
+	fn rejects_a_component_variable_with_a_negative_fallback_in_a_nonnegative_slot() {
+		// Arrange and Act
+		let kind =
+			diagnostic_kind_text("vars { gap: Length = -1px; } .card { padding: vars.gap; }");
+
+		// Assert
+		assert!(matches!(
+			kind,
+			StyleDiagnosticKind::PropertyValueMismatch { property, .. } if property == "padding"
+		));
+	}
+
+	#[rstest]
 	fn whole_unchecked_values_use_the_surrounding_contract() {
 		// Arrange
 		let source = "
@@ -2025,6 +2094,54 @@ mod tests {
 			validate_style(&ast).unwrap_or_else(|error| {
 				panic!("source should validate: {source}: {error}");
 			});
+		}
+	}
+
+	#[rstest]
+	fn reviewed_registry_grammars_accept_supported_css_values() {
+		// Arrange
+		let sources = [
+			".card { grid-template-columns: 1fr; }",
+			".card { background-position: (left, 10px, top, 20%); }",
+			".card { touch-action: (pan-left, pan-up, pinch-zoom); }",
+			".card { color: red.mix(blue, 100%); }",
+			".card { transition-property: none; }",
+			".card { text-decoration: (underline, overline, wavy, auto); }",
+			".card { text-decoration: (underline, from-font); }",
+			".card { text-overflow: (clip, ellipsis); }",
+		];
+
+		// Act and Assert
+		for source in sources {
+			let typed = validated_text(source);
+			assert_eq!(typed.items.len(), 1, "source should validate: {source}");
+		}
+	}
+
+	#[rstest]
+	fn reviewed_registry_grammars_reject_invalid_css_values() {
+		// Arrange
+		let sources = [
+			".card { grid-template-columns: -1fr; }",
+			".card { background-position: (left, right); }",
+			".card { background-position: (1px, 2px, 3px); }",
+			".card { touch-action: (pan-left, pan-right); }",
+			".card { color: red.mix(blue, 150%); }",
+			".card { transition-property: [none, opacity]; }",
+			".card { text-decoration: hidden; }",
+			".card { text-decoration: (underline, thin); }",
+			".card { outline: hidden; }",
+			".card { outline-style: hidden; }",
+		];
+
+		// Act and Assert
+		for source in sources {
+			let kind = diagnostic_kind_text(source);
+			assert!(
+				matches!(kind, StyleDiagnosticKind::PropertyValueMismatch { .. })
+					|| matches!(kind, StyleDiagnosticKind::InvalidFunctionArgument { .. }),
+				"source should be rejected: {source}: {kind:?}"
+			);
 		}
 	}
 
@@ -2247,6 +2364,8 @@ mod tests {
 	#[case("background-size", "min-content")]
 	#[case("font-weight", "0")]
 	#[case("font-weight", "2000")]
+	#[case("font-weight", "2_000")]
+	#[case("padding", "-1_0px")]
 	#[case("transition-duration", "-1s")]
 	fn rejects_invalid_css_value_constraints(#[case] property: &str, #[case] value: &str) {
 		// Arrange
