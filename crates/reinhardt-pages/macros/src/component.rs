@@ -232,6 +232,7 @@ fn expand_component(args: ComponentArgs, input: ItemFn) -> syn::Result<proc_macr
 				function_name: #fn_name_literal,
 				props_type_name: #props_type_literal,
 				module_path: ::core::module_path!(),
+				loader_id: ::core::option::Option::None,
 			}
 		}
 
@@ -375,6 +376,7 @@ fn expand_layout(args: LayoutArgs, input: ItemFn) -> syn::Result<proc_macro2::To
 				function_name: #fn_name_literal,
 				props_type_name: #props_type_literal,
 				module_path: ::core::module_path!(),
+				loader_id: ::core::option::Option::None,
 			}
 		}
 

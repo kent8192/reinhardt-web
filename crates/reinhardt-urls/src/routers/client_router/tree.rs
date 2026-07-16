@@ -1,6 +1,7 @@
 //! Route tree model for nested client layout routes.
 
 use super::core::{ClientRoute, ClientRouteMatch, RouteGuard, RouteMetadata};
+use super::loader::RouteLoaderId;
 use std::collections::HashMap;
 
 /// The structural kind of a route tree node.
@@ -26,6 +27,7 @@ pub struct ResolvedRouteMetadata {
 	component_name: Option<String>,
 	function_name: Option<String>,
 	props_type_name: Option<String>,
+	loader_id: Option<RouteLoaderId>,
 	route_metadata: RouteMetadata,
 }
 
@@ -38,6 +40,7 @@ impl ResolvedRouteMetadata {
 		component_name: Option<String>,
 		function_name: Option<String>,
 		props_type_name: Option<String>,
+		loader_id: Option<RouteLoaderId>,
 		route_metadata: RouteMetadata,
 	) -> Self {
 		Self {
@@ -47,6 +50,7 @@ impl ResolvedRouteMetadata {
 			component_name,
 			function_name,
 			props_type_name,
+			loader_id,
 			route_metadata,
 		}
 	}
@@ -79,6 +83,11 @@ impl ResolvedRouteMetadata {
 	/// Returns the props type name.
 	pub fn props_type_name(&self) -> Option<&str> {
 		self.props_type_name.as_deref()
+	}
+
+	/// Returns the optional stable loader identifier.
+	pub fn loader_id(&self) -> Option<RouteLoaderId> {
+		self.loader_id
 	}
 
 	/// Returns route-level metadata.
@@ -372,6 +381,7 @@ pub struct ClientRouteTreeMatch {
 	leaf: ClientRouteMatch,
 	layouts: Vec<MatchedLayout>,
 	metadata: Vec<ResolvedRouteMetadata>,
+	loader_ids: Vec<RouteLoaderId>,
 }
 
 impl ClientRouteTreeMatch {
@@ -385,10 +395,15 @@ impl ClientRouteTreeMatch {
 			.map(|layout| layout.metadata.clone())
 			.collect::<Vec<_>>();
 		metadata.push(leaf_metadata);
+		let loader_ids = metadata
+			.iter()
+			.filter_map(ResolvedRouteMetadata::loader_id)
+			.collect();
 		Self {
 			leaf,
 			layouts,
 			metadata,
+			loader_ids,
 		}
 	}
 
@@ -430,5 +445,10 @@ impl ClientRouteTreeMatch {
 	/// Returns the resolved metadata chain.
 	pub fn metadata_chain(&self) -> &[ResolvedRouteMetadata] {
 		&self.metadata
+	}
+
+	/// Returns matched loader identifiers in root-layout-to-leaf order.
+	pub fn loader_ids(&self) -> &[RouteLoaderId] {
+		&self.loader_ids
 	}
 }

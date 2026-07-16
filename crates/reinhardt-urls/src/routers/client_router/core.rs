@@ -1038,6 +1038,7 @@ impl ClientRouter {
 				None,
 				None,
 				None,
+				None,
 				leaf.route.metadata().clone(),
 			);
 			ClientRouteTreeMatch::new(leaf, Vec::new(), leaf_metadata)

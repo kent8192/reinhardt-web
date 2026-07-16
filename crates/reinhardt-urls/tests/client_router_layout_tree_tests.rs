@@ -3,7 +3,7 @@
 use reinhardt_core::page::{IntoPage, Outlet, Page};
 use reinhardt_urls::routers::client_router::{
 	ClientRouter, FromRequest, LayoutInfo, PathParam, RouteContext, RouteMetadata,
-	RouteRegistrationError,
+	RouteLoaderId, RouteRegistrationError,
 };
 
 #[derive(Debug)]
@@ -25,6 +25,10 @@ impl reinhardt_urls::routers::client_router::FromLayoutRequest for ShellProps {
 }
 
 impl LayoutInfo for ShellProps {
+	fn loader_id() -> Option<RouteLoaderId> {
+		Some(RouteLoaderId::new("writing.workspace"))
+	}
+
 	fn path() -> &'static str {
 		"/writing/projects/{project_id}/"
 	}
@@ -62,6 +66,10 @@ impl FromRequest for JobsProps {
 }
 
 impl reinhardt_urls::routers::client_router::ComponentInfo for JobsProps {
+	fn loader_id() -> Option<RouteLoaderId> {
+		Some(RouteLoaderId::new("writing.jobs"))
+	}
+
 	fn path() -> &'static str {
 		"jobs/"
 	}
@@ -195,6 +203,25 @@ fn layout_and_leaf_metadata_compose_in_match_order() {
 	assert!(metadata[0].route_metadata().requires_auth());
 	assert_eq!(metadata[1].name(), Some("writing-jobs"));
 	assert_eq!(metadata[1].route_metadata().breadcrumb(), Some("Jobs"));
+}
+
+#[test]
+fn matched_loader_ids_follow_layout_to_leaf_order() {
+	let router = ClientRouter::new()
+		.try_routes(|routes| routes.layout(workspace_shell, |children| children.component(jobs)))
+		.expect("route tree should register");
+
+	let matched = router
+		.match_tree("/writing/projects/7/jobs/")
+		.expect("route should match");
+
+	assert_eq!(
+		matched.loader_ids(),
+		&[
+			RouteLoaderId::new("writing.workspace"),
+			RouteLoaderId::new("writing.jobs"),
+		]
+	);
 }
 
 #[test]
