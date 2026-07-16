@@ -8,6 +8,7 @@
 //! because hooks must be invoked from a reactive context, which the
 //! generated `async fn submit(&self)` is not.
 
+use reinhardt_core::reactive::ReactiveScope;
 use reinhardt_pages::app::{__clear_spa_router_for_test, __install_client_router_for_test};
 use reinhardt_pages::component::Page;
 use reinhardt_pages::router::{NavigationType, navigate};
@@ -47,51 +48,57 @@ impl Drop for SpaRouterGuard {
 #[rstest]
 #[serial(router)]
 fn navigate_push_succeeds() {
-	// Arrange
-	let _guard = SpaRouterGuard::install(build_test_router());
+	ReactiveScope::run(|| {
+		// Arrange
+		let _guard = SpaRouterGuard::install(build_test_router());
 
-	// Act
-	let result = navigate("/profile", NavigationType::Push);
+		// Act
+		let result = navigate("/profile", NavigationType::Push);
 
-	// Assert
-	assert!(
-		result.is_ok(),
-		"navigate(Push) to a registered route must succeed: {:?}",
-		result
-	);
+		// Assert
+		assert!(
+			result.is_ok(),
+			"navigate(Push) to a registered route must succeed: {:?}",
+			result
+		);
+	});
 }
 
 #[rstest]
 #[serial(router)]
 fn navigate_replace_succeeds() {
-	// Arrange
-	let _guard = SpaRouterGuard::install(build_test_router());
+	ReactiveScope::run(|| {
+		// Arrange
+		let _guard = SpaRouterGuard::install(build_test_router());
 
-	// Act
-	let result = navigate("/profile", NavigationType::Replace);
+		// Act
+		let result = navigate("/profile", NavigationType::Replace);
 
-	// Assert
-	assert!(
-		result.is_ok(),
-		"navigate(Replace) to a registered route must succeed: {:?}",
-		result
-	);
+		// Assert
+		assert!(
+			result.is_ok(),
+			"navigate(Replace) to a registered route must succeed: {:?}",
+			result
+		);
+	});
 }
 
 #[rstest]
 #[serial(router)]
 fn navigate_accepts_owned_string() {
-	// Arrange — `impl Into<String>` must accept `&str` (above) and `String`.
-	let _guard = SpaRouterGuard::install(build_test_router());
+	ReactiveScope::run(|| {
+		// Arrange — `impl Into<String>` must accept `&str` (above) and `String`.
+		let _guard = SpaRouterGuard::install(build_test_router());
 
-	// Act
-	let path: String = "/profile".to_string();
-	let result = navigate(path, NavigationType::Push);
+		// Act
+		let path: String = "/profile".to_string();
+		let result = navigate(path, NavigationType::Push);
 
-	// Assert
-	assert!(
-		result.is_ok(),
-		"navigate must accept owned String: {:?}",
-		result
-	);
+		// Assert
+		assert!(
+			result.is_ok(),
+			"navigate must accept owned String: {:?}",
+			result
+		);
+	});
 }

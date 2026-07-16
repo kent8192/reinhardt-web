@@ -15,10 +15,12 @@ struct SettingsRequest {
 }
 
 fn main() {
-	let form = SettingsRequestClientForm::new().with_defaults(SettingsRequest {
-		name: "demo".to_string(),
-		tenant: TenantId("custom-tenant"),
+	reinhardt_core::reactive::ReactiveScope::run(|| {
+		let form = SettingsRequestClientForm::new().with_defaults(SettingsRequest {
+			name: "demo".to_string(),
+			tenant: TenantId("custom-tenant"),
+		});
+		let runtime = use_form(&form).build();
+		let _request = SettingsRequestClientForm::to_request(&runtime);
 	});
-	let runtime = use_form(&form).build();
-	let _request = SettingsRequestClientForm::to_request(&runtime);
 }

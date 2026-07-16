@@ -2,13 +2,15 @@
 
 use crate::reactive::{ResourceState, Signal};
 use futures_util::future::join_all;
+use reinhardt_core::reactive::{ReactiveScope, ScopeId, current_scope_id, scope::enter_scope};
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::future::Future;
 use std::pin::Pin;
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
+use std::task::{Context, Poll};
 use std::time::Duration;
 use tokio::time::timeout;
 
@@ -16,8 +18,41 @@ tokio::task_local! {
 	static ACTIVE_CONTEXT: Rc<RefCell<SsrResourceContext>>;
 }
 
+thread_local! {
+	static RENDER_OWNERS: RefCell<BTreeMap<ScopeId, Weak<ReactiveScope>>> = const { RefCell::new(BTreeMap::new()) };
+}
+
+/// Removes a render owner registration when the render operation completes.
+pub(crate) struct RenderOwnerRegistration {
+	scope: ScopeId,
+}
+
+impl Drop for RenderOwnerRegistration {
+	fn drop(&mut self) {
+		let _ = RENDER_OWNERS.try_with(|owners| {
+			owners.borrow_mut().remove(&self.scope);
+		});
+	}
+}
+
 type PendingResourceFuture = Pin<Box<dyn Future<Output = (String, Value)> + 'static>>;
 type PendingResourceSubscriber = Box<dyn Fn(Value) + 'static>;
+
+/// Polls an SSR resource future with the scope that owns its reactive state active.
+struct ScopedPendingResourceFuture {
+	scope: ScopeId,
+	future: PendingResourceFuture,
+}
+
+impl Future for ScopedPendingResourceFuture {
+	type Output = (String, Value);
+
+	fn poll(self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<Self::Output> {
+		let this = self.get_mut();
+		enter_scope(this.scope, || this.future.as_mut().poll(context))
+			.unwrap_or_else(|error| panic!("{error}"))
+	}
+}
 
 struct PendingResource {
 	id: String,
@@ -185,11 +220,28 @@ impl SsrResourceContext {
 	}
 
 	/// Registers a resource future unless the key is already known.
+	#[cfg(test)]
 	pub(crate) fn register_resource<T, E, F, Fut>(
 		&mut self,
 		key: String,
 		fetcher: F,
 		state: Signal<ResourceState<T, E>>,
+	) where
+		T: Clone + Serialize + DeserializeOwned + 'static,
+		E: Clone + Serialize + DeserializeOwned + 'static,
+		F: FnOnce() -> Fut,
+		Fut: Future<Output = Result<T, E>> + 'static,
+	{
+		self.register_resource_with_owner(key, fetcher, state, None);
+	}
+
+	/// Registers a resource and retains its reactive scope until notifications finish.
+	pub(crate) fn register_resource_with_owner<T, E, F, Fut>(
+		&mut self,
+		key: String,
+		fetcher: F,
+		state: Signal<ResourceState<T, E>>,
+		owner: Option<Rc<ReactiveScope>>,
 	) where
 		T: Clone + Serialize + DeserializeOwned + 'static,
 		E: Clone + Serialize + DeserializeOwned + 'static,
@@ -208,7 +260,10 @@ impl SsrResourceContext {
 			return;
 		}
 
+		let subscriber_owner = owner.clone();
 		let subscriber = Box::new(move |value: Value| {
+			// Keep the owner alive while the copied signal key is updated.
+			let _owner = &subscriber_owner;
 			if let Ok(resource_state) = serde_json::from_value(value) {
 				state.set(resource_state);
 			}
@@ -234,7 +289,7 @@ impl SsrResourceContext {
 
 		let id = key.clone();
 		let future = fetcher();
-		let future = Box::pin(async move {
+		let future: PendingResourceFuture = Box::pin(async move {
 			let resource_state = match future.await {
 				Ok(value) => ResourceState::Success(value),
 				Err(error) => ResourceState::Error(error),
@@ -242,6 +297,14 @@ impl SsrResourceContext {
 			let value = serde_json::to_value(resource_state).unwrap_or(Value::Null);
 			(id, value)
 		});
+		let future: PendingResourceFuture = if let Some(owner) = owner {
+			Box::pin(ScopedPendingResourceFuture {
+				scope: owner.id(),
+				future,
+			})
+		} else {
+			future
+		};
 
 		self.pending.push(PendingResource {
 			id: key,
@@ -526,6 +589,20 @@ pub(crate) async fn scope_context<R>(
 	ACTIVE_CONTEXT.scope(context, future).await
 }
 
+/// Makes a render scope available to resources registered during that render.
+pub(crate) fn register_render_owner(owner: &Rc<ReactiveScope>) -> RenderOwnerRegistration {
+	RENDER_OWNERS.with(|owners| {
+		owners.borrow_mut().insert(owner.id(), Rc::downgrade(owner));
+	});
+	RenderOwnerRegistration { scope: owner.id() }
+}
+
+/// Returns the owner of the currently active SSR render scope, if registered.
+pub(crate) fn current_render_owner() -> Option<Rc<ReactiveScope>> {
+	let scope = current_scope_id()?;
+	RENDER_OWNERS.with(|owners| owners.borrow().get(&scope)?.upgrade())
+}
+
 /// Pushes an active Suspense boundary and restores it on drop.
 pub(crate) fn enter_boundary(
 	context: &Rc<RefCell<SsrResourceContext>>,
@@ -706,8 +783,10 @@ fn resolved_resource_for_hydration(resources: Vec<&ResolvedResource>) -> Option<
 mod tests {
 	use super::*;
 
-	fn resource_signal() -> Signal<ResourceState<String, String>> {
-		Signal::new(ResourceState::Loading)
+	fn resource_signal(
+		scope: &reinhardt_core::reactive::ReactiveScope,
+	) -> Signal<ResourceState<String, String>> {
+		scope.enter(|| Signal::new(ResourceState::Loading))
 	}
 
 	fn resource_value(value: &Value) -> ResourceState<String, String> {
@@ -716,11 +795,12 @@ mod tests {
 
 	#[tokio::test]
 	async fn internal_call_order_resources_keep_boundary_scopes_separate() {
+		let scope = reinhardt_core::reactive::ReactiveScope::new();
 		let context = Rc::new(RefCell::new(SsrResourceContext::new(Duration::from_secs(
 			1,
 		))));
-		let boundary_state = resource_signal();
-		let outside_state = resource_signal();
+		let boundary_state = resource_signal(&scope);
+		let outside_state = resource_signal(&scope);
 
 		{
 			let _guard = enter_boundary(&context, "boundary".to_string());
@@ -787,11 +867,35 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn top_level_replay_reuses_single_resolved_tracked_resource() {
+	async fn pending_resource_polls_with_its_owner_scope_active() {
+		let scope = Rc::new(reinhardt_core::reactive::ReactiveScope::new());
 		let context = Rc::new(RefCell::new(SsrResourceContext::new(Duration::from_secs(
 			1,
 		))));
-		let discovery_state = resource_signal();
+		let state = resource_signal(&scope);
+
+		context.borrow_mut().register_resource_with_owner(
+			"scoped".to_string(),
+			|| async {
+				let _scoped_signal = Signal::new(1_i32);
+				Ok::<_, String>("resolved".to_string())
+			},
+			state.clone(),
+			Some(Rc::clone(&scope)),
+		);
+		context.borrow_mut().mark_resource_read("scoped");
+
+		assert!(resolve_external_resources(&context).await);
+		assert_eq!(state.get(), ResourceState::Success("resolved".to_string()));
+	}
+
+	#[tokio::test]
+	async fn top_level_replay_reuses_single_resolved_tracked_resource() {
+		let scope = reinhardt_core::reactive::ReactiveScope::new();
+		let context = Rc::new(RefCell::new(SsrResourceContext::new(Duration::from_secs(
+			1,
+		))));
+		let discovery_state = resource_signal(&scope);
 
 		context.borrow_mut().register_resource(
 			"rh-res-0".to_string(),
@@ -804,7 +908,7 @@ mod tests {
 		assert!(resolve_boundary_resources(&context, "boundary").await);
 
 		context.borrow_mut().reset_call_order_keys();
-		let replay_state = resource_signal();
+		let replay_state = resource_signal(&scope);
 		context.borrow_mut().register_resource(
 			"rh-res-0".to_string(),
 			|| async {
@@ -822,10 +926,11 @@ mod tests {
 
 	#[tokio::test]
 	async fn top_level_replay_does_not_reuse_boundary_local_resolved_resource() {
+		let scope = reinhardt_core::reactive::ReactiveScope::new();
 		let context = Rc::new(RefCell::new(SsrResourceContext::new(Duration::from_secs(
 			1,
 		))));
-		let boundary_state = resource_signal();
+		let boundary_state = resource_signal(&scope);
 
 		{
 			let _guard = enter_boundary(&context, "boundary".to_string());
@@ -845,7 +950,7 @@ mod tests {
 		context.borrow_mut().reset_call_order_keys();
 		let fetch_count = Rc::new(std::cell::Cell::new(0));
 		let replay_fetch_count = Rc::clone(&fetch_count);
-		let replay_state = resource_signal();
+		let replay_state = resource_signal(&scope);
 		context.borrow_mut().register_resource(
 			"rh-res-0".to_string(),
 			move || {
@@ -867,12 +972,13 @@ mod tests {
 
 	#[tokio::test]
 	async fn top_level_replay_reuses_pending_tracked_resource() {
+		let scope = reinhardt_core::reactive::ReactiveScope::new();
 		let context = Rc::new(RefCell::new(SsrResourceContext::new(Duration::from_secs(
 			1,
 		))));
 		let fetch_count = Rc::new(std::cell::Cell::new(0));
 		let discovery_fetch_count = Rc::clone(&fetch_count);
-		let discovery_state = resource_signal();
+		let discovery_state = resource_signal(&scope);
 
 		context.borrow_mut().register_resource(
 			"rh-res-0".to_string(),
@@ -887,7 +993,7 @@ mod tests {
 			.assign_resources_to_boundary(&["rh-res-0".to_string()], "boundary");
 
 		context.borrow_mut().reset_call_order_keys();
-		let replay_state = resource_signal();
+		let replay_state = resource_signal(&scope);
 		context.borrow_mut().register_resource(
 			"rh-res-0".to_string(),
 			|| async {
@@ -915,12 +1021,13 @@ mod tests {
 
 	#[tokio::test]
 	async fn top_level_replay_remembers_timed_out_tracked_resource() {
+		let scope = reinhardt_core::reactive::ReactiveScope::new();
 		let context = Rc::new(RefCell::new(SsrResourceContext::new(
 			Duration::from_millis(1),
 		)));
 		let fetch_count = Rc::new(std::cell::Cell::new(0));
 		let discovery_fetch_count = Rc::clone(&fetch_count);
-		let discovery_state = resource_signal();
+		let discovery_state = resource_signal(&scope);
 
 		context.borrow_mut().register_resource(
 			"rh-res-0".to_string(),
@@ -945,7 +1052,7 @@ mod tests {
 		assert_eq!(replay_key, "rh-res-0");
 
 		let replay_fetch_count = Rc::clone(&fetch_count);
-		let replay_state = resource_signal();
+		let replay_state = resource_signal(&scope);
 		context.borrow_mut().register_resource(
 			replay_key,
 			move || {
@@ -962,6 +1069,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn nested_assignment_keeps_outer_boundary_scope_after_read() {
+		let scope = reinhardt_core::reactive::ReactiveScope::new();
 		let context = Rc::new(RefCell::new(SsrResourceContext::new(Duration::from_secs(
 			1,
 		))));
@@ -969,7 +1077,7 @@ mod tests {
 		context.borrow_mut().register_resource(
 			"rh-res-0".to_string(),
 			|| async { Ok::<_, String>("shared".to_string()) },
-			resource_signal(),
+			resource_signal(&scope),
 		);
 		context.borrow_mut().mark_resource_read("rh-res-0");
 

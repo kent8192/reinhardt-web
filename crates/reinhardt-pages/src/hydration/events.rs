@@ -194,15 +194,18 @@ pub fn attach_event(
 	handler: EventHandler,
 	registry: &mut EventRegistry,
 ) -> Result<(), EventAttachError> {
+	let scope = reinhardt_core::reactive::scope::current_scope_id();
 	#[cfg(feature = "i18n")]
 	let i18n_context = crate::i18n::current_i18n_callback_context();
 	let handle = element.add_event_listener_with_event(event_type.as_str(), move |event| {
 		#[cfg(feature = "i18n")]
 		{
-			crate::i18n::with_optional_i18n_context(i18n_context.as_ref(), || handler(event));
+			crate::i18n::with_optional_i18n_context(i18n_context.as_ref(), || {
+				crate::callback::run_event_handler_in_scope(scope, &handler, event);
+			});
 		}
 		#[cfg(not(feature = "i18n"))]
-		handler(event);
+		crate::callback::run_event_handler_in_scope(scope, &handler, event);
 	});
 
 	// Get element ID for registry

@@ -6,6 +6,11 @@ mod spa_router;
 
 use spa_router::SpaRouter;
 use std::cell::RefCell;
+#[cfg(wasm)]
+use std::rc::Rc;
+
+#[cfg(wasm)]
+use reinhardt_core::reactive::ReactiveScope;
 
 pub use launcher::{ClientLauncher, LaunchCtx, PathCtx, PathParams};
 
@@ -15,6 +20,8 @@ thread_local! {
 	/// `Box<dyn SpaRouter>` backed by a [`reinhardt_urls::routers::ClientRouter`].
 	/// (Refs #4234)
 	static APP_ROUTER: RefCell<Option<Box<dyn SpaRouter>>> = const { RefCell::new(None) };
+	#[cfg(wasm)]
+	static APP_REACTIVE_SCOPE: RefCell<Option<Rc<ReactiveScope>>> = const { RefCell::new(None) };
 }
 
 /// Internal helper: access the globally registered SPA router as a
@@ -68,9 +75,12 @@ where
 }
 
 #[cfg(wasm)]
-fn store_spa_router(router: Box<dyn SpaRouter>) {
+fn store_spa_router(router: Box<dyn SpaRouter>, scope: Rc<ReactiveScope>) {
 	APP_ROUTER.with(|r| {
 		*r.borrow_mut() = Some(router);
+	});
+	APP_REACTIVE_SCOPE.with(|current| {
+		*current.borrow_mut() = Some(scope);
 	});
 }
 
