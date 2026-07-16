@@ -125,7 +125,8 @@ pub(crate) fn deserialize_model_row<M: Model>(
 			continue;
 		};
 
-		let is_json = is_json_field_type(&field.field_type);
+		let is_json =
+			is_json_field_type(&field.field_type) || field.field_type.contains("ArrayField");
 		let was_native_json_null = is_json && json_null_fields.remove(&source_name);
 		let was_native_json = is_json && native_json_fields.remove(&source_name);
 		let was_json_text = is_json && stored_value.is_string() && !was_native_json;
@@ -161,11 +162,9 @@ pub(crate) fn database_value_from_json(
 	value: serde_json::Value,
 	storage_kind: Option<DatabaseStorageKind>,
 ) -> Result<DatabaseValue, FieldCodecError> {
-	if value.is_null() {
-		return Ok(DatabaseValue::Null);
-	}
-
 	match storage_kind {
+		Some(DatabaseStorageKind::Json) => Ok(DatabaseValue::Json(value)),
+		_ if value.is_null() => Ok(DatabaseValue::Null),
 		Some(DatabaseStorageKind::Bool) => serde_json::from_value(value)
 			.map(DatabaseValue::Bool)
 			.map_err(|error| FieldCodecError::Serialization(error.to_string())),
@@ -189,15 +188,19 @@ pub(crate) fn database_value_from_json(
 		Some(DatabaseStorageKind::String) => serde_json::from_value(value)
 			.map(DatabaseValue::String)
 			.map_err(|error| FieldCodecError::Serialization(error.to_string())),
-		Some(DatabaseStorageKind::Bytes) => serde_json::from_value::<String>(value)
-			.map_err(|error| FieldCodecError::Serialization(error.to_string()))
-			.and_then(|value| {
-				base64::engine::general_purpose::STANDARD
-					.decode(value)
-					.map(DatabaseValue::Bytes)
-					.map_err(|error| FieldCodecError::Serialization(error.to_string()))
-			}),
-		Some(DatabaseStorageKind::Json) => Ok(DatabaseValue::Json(value)),
+		Some(DatabaseStorageKind::Bytes) => match value {
+			serde_json::Value::Array(_) => serde_json::from_value::<Vec<u8>>(value)
+				.map(DatabaseValue::Bytes)
+				.map_err(|error| FieldCodecError::Serialization(error.to_string())),
+			value => serde_json::from_value::<String>(value)
+				.map_err(|error| FieldCodecError::Serialization(error.to_string()))
+				.and_then(|value| {
+					base64::engine::general_purpose::STANDARD
+						.decode(value)
+						.map(DatabaseValue::Bytes)
+						.map_err(|error| FieldCodecError::Serialization(error.to_string()))
+				}),
+		},
 		Some(DatabaseStorageKind::Uuid) => serde_json::from_value::<String>(value)
 			.map_err(|error| FieldCodecError::Serialization(error.to_string()))
 			.and_then(|value| {
@@ -300,7 +303,8 @@ impl<'de> Deserializer<'de> for ModelFieldValue {
 
 #[cfg(test)]
 mod tests {
-	use super::Json;
+	use super::{Json, database_value_from_json};
+	use crate::orm::{DatabaseStorageKind, DatabaseValue};
 	use serde::{Deserialize, Serialize};
 	use serde_json::json;
 
@@ -346,5 +350,22 @@ mod tests {
 
 		assert_eq!(metadata["language"], "ja");
 		assert_eq!(metadata.to_json_value().unwrap()["tags"][0], "draft");
+	}
+
+	#[test]
+	fn byte_storage_accepts_serde_byte_arrays() {
+		let value =
+			database_value_from_json(json!([0, 1, 127, 255]), Some(DatabaseStorageKind::Bytes))
+				.expect("byte arrays should decode");
+
+		assert_eq!(value, DatabaseValue::Bytes(vec![0, 1, 127, 255]));
+	}
+
+	#[test]
+	fn json_storage_preserves_json_null() {
+		let value = database_value_from_json(json!(null), Some(DatabaseStorageKind::Json))
+			.expect("JSON null should decode");
+
+		assert_eq!(value, DatabaseValue::Json(json!(null)));
 	}
 }

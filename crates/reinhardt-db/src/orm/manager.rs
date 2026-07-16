@@ -1046,9 +1046,42 @@ impl<M: Model> Manager<M> {
 
 			// JSON types - serialize to string
 			reinhardt_query::value::Value::Json(json) => QueryValue::Json(json),
-			reinhardt_query::value::Value::Array(_, Some(values)) => QueryValue::Json(Some(
-				Box::new(super::execution::array_values_to_json(&values)),
-			)),
+			reinhardt_query::value::Value::Array(array_type, Some(values)) => {
+				use reinhardt_query::value::Value as SeaValue;
+
+				match array_type {
+					reinhardt_query::value::ArrayType::String => QueryValue::StringArray(
+						values
+							.iter()
+							.filter_map(|value| match value {
+								SeaValue::String(Some(value)) => Some((**value).clone()),
+								_ => None,
+							})
+							.collect(),
+					),
+					reinhardt_query::value::ArrayType::Int => QueryValue::IntArray(
+						values
+							.iter()
+							.filter_map(|value| match value {
+								SeaValue::Int(Some(value)) => Some(*value),
+								_ => None,
+							})
+							.collect(),
+					),
+					reinhardt_query::value::ArrayType::BigInt => QueryValue::BigIntArray(
+						values
+							.iter()
+							.filter_map(|value| match value {
+								SeaValue::BigInt(Some(value)) => Some(*value),
+								_ => None,
+							})
+							.collect(),
+					),
+					_ => QueryValue::Json(Some(Box::new(super::execution::array_values_to_json(
+						&values,
+					)))),
+				}
+			}
 			reinhardt_query::value::Value::Array(_, None) => QueryValue::Null,
 
 			// For complex types or unsupported types, convert to null
@@ -1941,6 +1974,17 @@ mod tests {
 		fn new_fields() -> Self::Fields {
 			TestUserFields
 		}
+	}
+
+	#[test]
+	fn manager_binds_integer_arrays_natively() {
+		let value =
+			Manager::<TestUser>::sea_value_to_query_value(reinhardt_query::value::Value::Array(
+				reinhardt_query::value::ArrayType::Int,
+				Some(Box::new(vec![reinhardt_query::value::Value::Int(Some(7))])),
+			));
+
+		assert_eq!(value, crate::orm::connection::QueryValue::IntArray(vec![7]));
 	}
 
 	#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

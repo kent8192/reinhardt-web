@@ -223,6 +223,16 @@ impl PostgresBackend {
 				}
 			} else if let Ok(value) = pg_row.try_get::<f64, _>(column_name) {
 				row.insert(column_name.to_string(), QueryValue::Float(value));
+			} else if let Ok(value) = pg_row.try_get::<chrono::NaiveDate, _>(column_name) {
+				row.insert(
+					column_name.to_string(),
+					QueryValue::String(value.to_string()),
+				);
+			} else if let Ok(value) = pg_row.try_get::<chrono::NaiveTime, _>(column_name) {
+				row.insert(
+					column_name.to_string(),
+					QueryValue::String(value.to_string()),
+				);
 			} else if let Ok(value) = pg_row.try_get::<String, _>(column_name) {
 				row.insert(column_name.to_string(), QueryValue::String(value));
 			} else if let Ok(value) = pg_row.try_get::<Vec<u8>, _>(column_name) {

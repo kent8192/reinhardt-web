@@ -99,6 +99,25 @@ use std::fmt;
 
 pub use crate::field_domain::{DatabaseStorageKind, FieldDomain, ModelEnumRepr, ModelEnumValue};
 
+/// Element type retained for a native SQL array, including empty arrays.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum DatabaseArrayType {
+	/// UTF-8 string elements.
+	String,
+	/// 32-bit signed integer elements.
+	I32,
+	/// 64-bit signed integer elements.
+	I64,
+	/// 32-bit floating-point elements.
+	F32,
+	/// 64-bit floating-point elements.
+	F64,
+	/// Boolean elements.
+	Bool,
+	/// UUID elements.
+	Uuid,
+}
+
 /// Canonical owned scalar value at the ORM database boundary.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
@@ -123,8 +142,13 @@ pub enum DatabaseValue {
 	Bytes(Vec<u8>),
 	/// Native JSON value.
 	Json(serde_json::Value),
-	/// Native SQL array values.
-	Array(Vec<DatabaseValue>),
+	/// Native SQL array values with their element type.
+	Array {
+		/// The type of every array element.
+		element_type: DatabaseArrayType,
+		/// The array values.
+		values: Vec<DatabaseValue>,
+	},
 	/// UUID value.
 	Uuid(uuid::Uuid),
 	/// Calendar date value.
@@ -173,7 +197,7 @@ impl DatabaseValue {
 			Self::Bytes(value) => serde_json::to_value(value)
 				.map_err(|error| FieldCodecError::Serialization(error.to_string())),
 			Self::Json(value) => Ok(value),
-			Self::Array(values) => values
+			Self::Array { values, .. } => values
 				.into_iter()
 				.map(DatabaseValue::into_json_value)
 				.collect::<Result<Vec<_>, _>>()
@@ -201,19 +225,19 @@ pub fn database_value_to_query_value(value: DatabaseValue) -> reinhardt_query::v
 		DatabaseValue::String(value) => Value::String(Some(Box::new(value))),
 		DatabaseValue::Bytes(value) => Value::Bytes(Some(Box::new(value))),
 		DatabaseValue::Json(value) => Value::Json(Some(Box::new(value))),
-		DatabaseValue::Array(values) => {
+		DatabaseValue::Array {
+			element_type,
+			values,
+		} => {
 			use reinhardt_query::value::ArrayType;
-			let array_type = match values.first() {
-				Some(DatabaseValue::Bool(_)) => ArrayType::Bool,
-				Some(DatabaseValue::I32(_)) => ArrayType::Int,
-				Some(DatabaseValue::I64(_)) => ArrayType::BigInt,
-				Some(DatabaseValue::F32(_)) => ArrayType::Float,
-				Some(DatabaseValue::F64(_)) => ArrayType::Double,
-				Some(DatabaseValue::Uuid(_)) => ArrayType::Uuid,
-				Some(DatabaseValue::Date(_)) => ArrayType::ChronoDate,
-				Some(DatabaseValue::Time(_)) => ArrayType::ChronoTime,
-				Some(DatabaseValue::DateTime(_)) => ArrayType::ChronoDateTimeUtc,
-				_ => ArrayType::String,
+			let array_type = match element_type {
+				DatabaseArrayType::String => ArrayType::String,
+				DatabaseArrayType::I32 => ArrayType::Int,
+				DatabaseArrayType::I64 => ArrayType::BigInt,
+				DatabaseArrayType::F32 => ArrayType::Float,
+				DatabaseArrayType::F64 => ArrayType::Double,
+				DatabaseArrayType::Bool => ArrayType::Bool,
+				DatabaseArrayType::Uuid => ArrayType::Uuid,
 			};
 			Value::Array(
 				array_type,
@@ -580,23 +604,25 @@ macro_rules! impl_json_database_field {
 }
 
 macro_rules! impl_array_database_field {
-	($type:ty) => {
+	($type:ty, $array_type:expr) => {
 		impl private::Sealed for Vec<$type> {}
 
 		impl DatabaseScalar for Vec<$type> {
 			const STORAGE_KIND: DatabaseStorageKind = DatabaseStorageKind::Json;
 
 			fn into_database_value(self) -> DatabaseValue {
-				DatabaseValue::Array(
-					self.into_iter()
+				DatabaseValue::Array {
+					element_type: $array_type,
+					values: self
+						.into_iter()
 						.map(DatabaseScalar::into_database_value)
 						.collect(),
-				)
+				}
 			}
 
 			fn from_database_value(value: DatabaseValue) -> Result<Self, FieldCodecError> {
 				match value {
-					DatabaseValue::Array(values) => values
+					DatabaseValue::Array { values, .. } => values
 						.into_iter()
 						.map(<$type as DatabaseScalar>::from_database_value)
 						.collect(),
@@ -627,13 +653,13 @@ macro_rules! impl_array_database_field {
 	};
 }
 
-impl_array_database_field!(String);
-impl_array_database_field!(i32);
-impl_array_database_field!(i64);
-impl_array_database_field!(f32);
-impl_array_database_field!(f64);
-impl_array_database_field!(bool);
-impl_array_database_field!(uuid::Uuid);
+impl_array_database_field!(String, DatabaseArrayType::String);
+impl_array_database_field!(i32, DatabaseArrayType::I32);
+impl_array_database_field!(i64, DatabaseArrayType::I64);
+impl_array_database_field!(f32, DatabaseArrayType::F32);
+impl_array_database_field!(f64, DatabaseArrayType::F64);
+impl_array_database_field!(bool, DatabaseArrayType::Bool);
+impl_array_database_field!(uuid::Uuid, DatabaseArrayType::Uuid);
 impl_json_database_field!(std::collections::HashMap<String, String>);
 
 mod private {
@@ -771,6 +797,21 @@ mod tests {
 			query_value,
 			reinhardt_query::value::Value::Array(reinhardt_query::value::ArrayType::String, Some(values))
 				if values.len() == 2
+		));
+	}
+
+	#[test]
+	fn empty_integer_vectors_retain_their_element_type() {
+		let value = Vec::<i32>::new()
+			.encode_database()
+			.expect("array fields should encode")
+			.into_database_value();
+		let query_value = super::database_value_to_query_value(value);
+
+		assert!(matches!(
+			query_value,
+			reinhardt_query::value::Value::Array(reinhardt_query::value::ArrayType::Int, Some(values))
+				if values.is_empty()
 		));
 	}
 

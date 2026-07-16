@@ -362,6 +362,10 @@ fn escape_like_pattern(input: &str) -> String {
 /// Build a SimpleExpr from a single Filter
 #[doc(hidden)]
 pub fn build_single_filter_expr(filter: &Filter) -> AdminResult<Option<SimpleExpr>> {
+	if let FilterValue::Typed(Err(error)) = &filter.value {
+		return Err(AdminError::FieldCodec(error.clone()));
+	}
+
 	if let FilterValue::Typed(Ok(value)) = &filter.value {
 		let raw_value = match value {
 			reinhardt_db::orm::DatabaseValue::String(value) => {
@@ -1525,6 +1529,24 @@ mod tests {
 				.downcast_ref::<reinhardt_db::orm::FieldCodecError>()
 				.is_some()
 		);
+	}
+
+	#[rstest]
+	#[case(FilterOperator::Contains)]
+	#[case(FilterOperator::StartsWith)]
+	#[case(FilterOperator::Regex)]
+	fn typed_filter_codec_error_stops_string_operator_compilation(
+		#[case] operator: FilterOperator,
+	) {
+		let filter = Filter::new(
+			"status",
+			operator,
+			FilterValue::Typed(Err(reinhardt_db::orm::FieldCodecError::Serialization(
+				"rejected admin filter".to_owned(),
+			))),
+		);
+
+		assert!(build_single_filter_expr(&filter).is_err());
 	}
 
 	fn render_admin_filter(filter: &Filter) -> String {

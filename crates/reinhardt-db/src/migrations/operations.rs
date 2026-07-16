@@ -1524,7 +1524,12 @@ impl Operation {
 	/// Apply this operation to the project state (forward)
 	pub fn state_forwards(&self, app_label: &str, state: &mut ProjectState) {
 		match self {
-			Operation::CreateTable { name, columns, .. } => {
+			Operation::CreateTable {
+				name,
+				columns,
+				constraints,
+				..
+			} => {
 				let mut model = ModelState::new(app_label, name.clone());
 				for column in columns {
 					let mut field = FieldState::new(
@@ -1536,6 +1541,10 @@ impl Operation {
 					field.domain = column.domain.clone();
 					model.add_field(field);
 				}
+				model.constraints = constraints
+					.iter()
+					.map(Self::constraint_to_definition)
+					.collect();
 				state.add_model(model);
 			}
 			Operation::DropTable { name } => {
@@ -3526,7 +3535,7 @@ impl Operation {
 					// Add constraints
 					for constraint_def in &model.constraints {
 						let constraint = constraint_def.to_constraint();
-						parts.push(format!("  {}", constraint));
+						parts.push(format!("  {}", constraint.to_sql_for_dialect(dialect)));
 					}
 
 					return Ok(Some(vec![format!(
@@ -6720,6 +6729,71 @@ mod tests {
 		};
 
 		let sql = operation.to_sql(&SqlDialect::Mysql);
+
+		assert!(sql.contains("CHECK (`job_status` IN ('queued'))"), "{sql}");
+	}
+
+	#[test]
+	fn create_table_state_restores_enum_domain_constraints() {
+		let operation = Operation::CreateTable {
+			name: "jobs".to_string(),
+			columns: vec![ColumnDefinition::new("job_status", FieldType::VarChar(32))],
+			constraints: vec![Constraint::EnumDomain {
+				name: "jobs_status_model_enum_check".to_string(),
+				column: "job_status".to_string(),
+				domain: crate::field_domain::FieldDomain::Enum {
+					repr: crate::field_domain::ModelEnumRepr::String,
+					values: vec![crate::field_domain::ModelEnumValue::String(
+						"queued".to_string(),
+					)],
+				},
+			}],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
+		};
+		let mut state = ProjectState::new();
+
+		operation.state_forwards("tasks", &mut state);
+
+		let model = state.find_model_by_table("jobs").expect("jobs model");
+		assert_eq!(model.constraints.len(), 1);
+		assert_eq!(
+			model.constraints[0].to_constraint().name(),
+			"jobs_status_model_enum_check"
+		);
+	}
+
+	#[test]
+	fn drop_table_reverse_sql_uses_mysql_enum_identifier_quoting() {
+		let operation = Operation::DropTable {
+			name: "jobs".to_string(),
+		};
+		let mut state = ProjectState::new();
+		let create_table = Operation::CreateTable {
+			name: "jobs".to_string(),
+			columns: vec![ColumnDefinition::new("job_status", FieldType::VarChar(32))],
+			constraints: vec![Constraint::EnumDomain {
+				name: "jobs_status_model_enum_check".to_string(),
+				column: "job_status".to_string(),
+				domain: crate::field_domain::FieldDomain::Enum {
+					repr: crate::field_domain::ModelEnumRepr::String,
+					values: vec![crate::field_domain::ModelEnumValue::String(
+						"queued".to_string(),
+					)],
+				},
+			}],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
+		};
+		create_table.state_forwards("tasks", &mut state);
+
+		let sql = operation
+			.to_reverse_sql(&SqlDialect::Mysql, &state)
+			.expect("reverse SQL should be generated")
+			.expect("drop table should be reversible")
+			.join("\n");
 
 		assert!(sql.contains("CHECK (`job_status` IN ('queued'))"), "{sql}");
 	}
