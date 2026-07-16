@@ -59,6 +59,7 @@ pub(crate) struct NavigationCoordinator {
 	router: Rc<ClientRouter>,
 	registry: LoaderRegistry,
 	next_generation: Cell<u64>,
+	committed_index: Cell<i64>,
 	pending: Signal<bool>,
 	error: Signal<Option<RouteLoaderError>>,
 	active_attempt: RefCell<Option<NavigationAttempt>>,
@@ -80,6 +81,7 @@ impl NavigationCoordinator {
 			router,
 			registry,
 			next_generation: Cell::new(0),
+			committed_index: Cell::new(0),
 			pending: Signal::new(false),
 			error: Signal::new(None),
 			active_attempt: RefCell::new(None),
@@ -214,6 +216,16 @@ impl NavigationCoordinator {
 		}
 		self.pending.set(false);
 		self.error.set(Some(error));
+		if let Some(attempt) = self.active_attempt.borrow().as_ref()
+			&& let NavigationIntent::Pop { target_index } = attempt.intent
+		{
+			let delta = self.committed_index.get().saturating_sub(target_index);
+			if delta != 0 {
+				let _ = reinhardt_urls::routers::client_router::history::go(
+					delta.clamp(i32::MIN as i64, i32::MAX as i64) as i32,
+				);
+			}
+		}
 		self.active_attempt.borrow_mut().take();
 	}
 
@@ -244,6 +256,11 @@ impl NavigationCoordinator {
 			return;
 		}
 		self.mounted_store.borrow_mut().replace(store);
+		self.committed_index.set(match intent {
+			NavigationIntent::Push => self.committed_index.get().saturating_add(1),
+			NavigationIntent::Replace | NavigationIntent::Initial => self.committed_index.get(),
+			NavigationIntent::Pop { target_index } => target_index,
+		});
 		self.pending.set(false);
 		self.error.set(None);
 		self.active_attempt.borrow_mut().take();

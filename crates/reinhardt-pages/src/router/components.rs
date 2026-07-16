@@ -4,7 +4,9 @@
 //! declarative navigation in component trees.
 
 use crate::component::{Component, IntoPage, Page, PageElement};
+use crate::router::loader::RouteLoaderError;
 use reinhardt_urls::routers::ClientRouter;
+use std::rc::Rc;
 
 /// A link component that navigates without full page reload.
 ///
@@ -127,16 +129,46 @@ impl Component for Link {
 ///
 /// `RouterOutlet` is a component-level adapter for embedding the canonical
 /// `reinhardt-urls` client router in a pages component tree.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct RouterOutlet {
 	/// Router used to resolve and render the current client-side route.
 	router: ClientRouter,
+	/// Optional sibling fallback for a failed route-loader navigation.
+	navigation_error_fallback: Option<Rc<dyn Fn(&RouteLoaderError) -> Page>>,
+}
+
+impl std::fmt::Debug for RouterOutlet {
+	fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		formatter
+			.debug_struct("RouterOutlet")
+			.field("router", &self.router)
+			.field(
+				"has_navigation_error_fallback",
+				&self.navigation_error_fallback.is_some(),
+			)
+			.finish()
+	}
 }
 
 impl RouterOutlet {
 	/// Creates a new router outlet backed by `router`.
 	pub fn new(router: ClientRouter) -> Self {
-		Self { router }
+		Self {
+			router,
+			navigation_error_fallback: None,
+		}
+	}
+
+	/// Adds a sibling boundary for errors raised while preparing a route.
+	///
+	/// The current route remains mounted; the fallback is rendered alongside it
+	/// until a subsequent navigation clears the coordinator error.
+	pub fn navigation_error_fallback<F>(mut self, fallback: F) -> Self
+	where
+		F: Fn(&RouteLoaderError) -> Page + 'static,
+	{
+		self.navigation_error_fallback = Some(Rc::new(fallback));
+		self
 	}
 
 	/// Returns the router backing this outlet.
@@ -147,6 +179,12 @@ impl RouterOutlet {
 
 impl Component for RouterOutlet {
 	fn render(&self) -> Page {
+		if let Some(fallback) = &self.navigation_error_fallback
+			&& let Some(Some(error)) =
+				crate::app::try_with_navigation_coordinator(|coordinator| coordinator.error().get())
+		{
+			return fallback(&error);
+		}
 		self.router.render_current()
 	}
 
