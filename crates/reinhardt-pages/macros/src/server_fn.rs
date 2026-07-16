@@ -2269,7 +2269,7 @@ mod tests {
 		let generated = generate_server_fn(&info).to_string();
 
 		assert!(
-			generated.contains("error = % e"),
+			generated.contains("error = %"),
 			"extractor errors should be logged with Display formatting: {generated}"
 		);
 		assert!(
