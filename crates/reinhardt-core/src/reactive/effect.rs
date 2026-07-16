@@ -231,11 +231,11 @@ impl Effect {
 			if let Some(cleanup) = next {
 				*cleanup_for_closure.borrow_mut() = Some(Box::new(cleanup));
 			}
-			if find_node_key(effect_id, NodeKind::Effect).is_some() {
-				if let Some(deps) = &deps {
-					for &dep in deps {
-						super::runtime::subscribe_node_to_observer(dep, effect_id);
-					}
+			if find_node_key(effect_id, NodeKind::Effect).is_some()
+				&& let Some(deps) = &deps
+			{
+				for &dep in deps {
+					super::runtime::subscribe_node_to_observer(dep, effect_id);
 				}
 			}
 		};

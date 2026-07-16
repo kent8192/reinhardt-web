@@ -3766,9 +3766,7 @@ where
 				(FilterOperator::In, FilterValue::List(values)) => col.is_in(
 					values
 						.iter()
-						.map(|value| {
-							self.filter_value_to_sea_value_for_field(&filter.field, value)
-						})
+						.map(|value| self.filter_value_to_sea_value_for_field(&filter.field, value))
 						.collect::<Vec<_>>(),
 				),
 				(FilterOperator::NotIn, FilterValue::String(s)) => {
@@ -3781,9 +3779,7 @@ where
 				(FilterOperator::NotIn, FilterValue::List(values)) => col.is_not_in(
 					values
 						.iter()
-						.map(|value| {
-							self.filter_value_to_sea_value_for_field(&filter.field, value)
-						})
+						.map(|value| self.filter_value_to_sea_value_for_field(&filter.field, value))
 						.collect::<Vec<_>>(),
 				),
 				(FilterOperator::Contains, FilterValue::String(s)) => {
@@ -4617,10 +4613,10 @@ where
 			Some("BooleanField") => value
 				.parse::<bool>()
 				.map_or_else(|_| value.clone().into(), Into::into),
-			Some("UuidField") => Uuid::parse_str(value)
-				.map_or_else(|_| value.clone().into(), |uuid| {
-					reinhardt_query::value::Value::Uuid(Some(Box::new(uuid)))
-				}),
+			Some("UuidField") => Uuid::parse_str(value).map_or_else(
+				|_| value.clone().into(),
+				|uuid| reinhardt_query::value::Value::Uuid(Some(Box::new(uuid))),
+			),
 			_ => value.clone().into(),
 		}
 	}
@@ -7953,6 +7949,7 @@ fn escape_like_pattern(value: &str) -> String {
 	escaped
 }
 
+#[cfg(test)]
 fn render_select_statement(
 	statement: &SelectStatement,
 	backend: super::connection::DatabaseBackend,
