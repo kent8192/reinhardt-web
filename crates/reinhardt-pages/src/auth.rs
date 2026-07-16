@@ -683,7 +683,7 @@ mod tests {
 		assert_eq!(server_state.username(), Some("serveruser".to_string()));
 	}
 
-	#[rstest]
+	#[rstest::rstest]
 	#[serial_test::serial(reactive_runtime)]
 	fn exported_auth_signal_retains_its_owner() {
 		let is_authenticated = AuthState::new().is_authenticated_signal();

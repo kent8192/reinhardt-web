@@ -1951,7 +1951,7 @@ mod tests {
 						tokio::time::sleep(Duration::from_millis(5)).await;
 						Ok::<_, String>(())
 					},
-					(),
+					crate::deps![],
 				);
 				let content_value = value.clone();
 
@@ -2104,7 +2104,7 @@ mod tests {
 							Some(move || *cleanup_count.borrow_mut() += 1)
 						}
 					},
-					(self.signal.clone(),),
+					crate::deps![self.signal.clone()],
 				);
 				PageElement::new("div").child("retained").into_page()
 			}
@@ -2160,7 +2160,7 @@ mod tests {
 								*effect_run_count.borrow_mut() += 1;
 							}
 						},
-						(signal.clone(),),
+						crate::deps![signal.clone()],
 					);
 					PageElement::new("div").child("retained").into_page()
 				}

@@ -340,8 +340,10 @@ mod tests {
 	#[serial(reactive_runtime)]
 	fn latest_after_prefers_later_action_success() {
 		reinhardt_core::reactive::ReactiveScope::run(|| {
-			let resource =
-				use_resource(|| async { Ok::<String, String>("loaded".to_string()) }, ());
+			let resource = use_resource(
+				|| async { Ok::<String, String>("loaded".to_string()) },
+				crate::deps![],
+			);
 			resource.set(ResourceState::Success("resource".to_string()));
 			let refresh = use_action(|_: ()| async { Ok::<String, String>("refresh".to_string()) });
 			let save = use_action(|_: ()| async { Ok::<String, String>("save".to_string()) });
@@ -369,8 +371,10 @@ mod tests {
 	#[serial(reactive_runtime)]
 	fn action_error_does_not_replace_resource_error() {
 		reinhardt_core::reactive::ReactiveScope::run(|| {
-			let resource =
-				use_resource(|| async { Ok::<String, String>("loaded".to_string()) }, ());
+			let resource = use_resource(
+				|| async { Ok::<String, String>("loaded".to_string()) },
+				crate::deps![],
+			);
 			resource.set(ResourceState::Error("load failed".to_string()));
 			let action =
 				use_action(|_: ()| async { Err::<String, String>("save failed".to_string()) });
@@ -390,7 +394,10 @@ mod tests {
 	#[serial(reactive_runtime)]
 	fn state_with_empty_classifies_success_values() {
 		reinhardt_core::reactive::ReactiveScope::run(|| {
-			let resource = use_resource(|| async { Ok::<Vec<u32>, String>(Vec::new()) }, ());
+			let resource = use_resource(
+				|| async { Ok::<Vec<u32>, String>(Vec::new()) },
+				crate::deps![],
+			);
 			resource.set(ResourceState::Success(Vec::new()));
 			let action = use_action(|_: ()| async { Ok::<Vec<u32>, String>(vec![1, 2]) });
 			let latest = resource.latest_after(&action);
@@ -413,8 +420,10 @@ mod tests {
 	#[serial(reactive_runtime)]
 	fn refetch_on_success_refetches_resource_after_action_success() {
 		reinhardt_core::reactive::ReactiveScope::run(|| {
-			let resource =
-				use_resource(|| async { Ok::<String, String>("loaded".to_string()) }, ());
+			let resource = use_resource(
+				|| async { Ok::<String, String>("loaded".to_string()) },
+				crate::deps![],
+			);
 			resource.set(ResourceState::Success("resource".to_string()));
 			let action = use_action(|_: ()| async { Ok::<String, String>("mutated".to_string()) });
 			let latest = use_latest_resource_value(resource)
@@ -435,8 +444,10 @@ mod tests {
 	#[serial(reactive_runtime)]
 	fn dropping_latest_resource_value_disposes_its_refetch_effect() {
 		reinhardt_core::reactive::ReactiveScope::run(|| {
-			let resource =
-				use_resource(|| async { Ok::<String, String>("loaded".to_string()) }, ());
+			let resource = use_resource(
+				|| async { Ok::<String, String>("loaded".to_string()) },
+				crate::deps![],
+			);
 			let action = use_action(|_: ()| async { Ok::<String, String>("saved".to_string()) });
 			let latest = use_latest_resource_value(resource)
 				.with_action(&action)
@@ -464,8 +475,10 @@ mod tests {
 	#[serial(reactive_runtime)]
 	fn rebuilding_latest_resource_value_disposes_replaced_refetch_effect() {
 		reinhardt_core::reactive::ReactiveScope::run(|| {
-			let resource =
-				use_resource(|| async { Ok::<String, String>("loaded".to_string()) }, ());
+			let resource = use_resource(
+				|| async { Ok::<String, String>("loaded".to_string()) },
+				crate::deps![],
+			);
 			let action = use_action(|_: ()| async { Ok::<String, String>("saved".to_string()) });
 			let next_action =
 				use_action(|_: ()| async { Ok::<String, String>("next".to_string()) });

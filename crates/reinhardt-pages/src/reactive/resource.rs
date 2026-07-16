@@ -168,13 +168,13 @@ impl<T: fmt::Display, E: fmt::Display> fmt::Display for ResourceState<T, E> {
 /// # Example
 ///
 /// ```ignore
-/// use reinhardt_pages::reactive::{Resource, use_resource};
+/// use reinhardt_pages::{deps, reactive::{Resource, use_resource}};
 ///
 /// async fn fetch_user(id: u32) -> Result<User, String> {
 ///     // Fetch from API...
 /// }
 ///
-/// let resource = use_resource(|| fetch_user(42), ());
+/// let resource = use_resource(|| fetch_user(42), deps![]);
 ///
 /// match resource.get() {
 ///     ResourceState::Loading => println!("Loading..."),
@@ -577,7 +577,7 @@ mod tests {
 	#[rstest]
 	fn resource_state_reads_without_clone_handle() {
 		reinhardt_core::reactive::ReactiveScope::run(|| {
-			let resource: Resource<i32, String> = use_resource(|| async { Ok(1) }, ());
+			let resource: Resource<i32, String> = use_resource(|| async { Ok(1) }, crate::deps![]);
 			let copied = resource;
 			assert!(resource.is_loading());
 			assert!(copied.is_loading());
@@ -588,7 +588,8 @@ mod tests {
 	#[serial_test::serial(reactive_runtime)]
 	fn stale_resource_refetch_is_a_no_op() {
 		let scope = reinhardt_core::reactive::ReactiveScope::new();
-		let resource: Resource<i32, String> = scope.enter(|| use_resource(|| async { Ok(1) }, ()));
+		let resource: Resource<i32, String> =
+			scope.enter(|| use_resource(|| async { Ok(1) }, crate::deps![]));
 
 		scope.dispose();
 
@@ -659,7 +660,7 @@ mod tests {
 						Ok(42)
 					}
 				},
-				(),
+				crate::deps![],
 			);
 		});
 

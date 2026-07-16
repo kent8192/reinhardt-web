@@ -264,13 +264,11 @@ impl<Args: 'static, Ret: 'static> Callback<Args, Ret> {
 	///
 	/// This is intended for callbacks retained by timers, promises, or external
 	/// event sources which may fire after their mounted view has unmounted.
-	pub fn try_call(
-		&self,
-		args: Args,
-	) -> Result<Ret, reinhardt_core::reactive::ReactiveScopeError> {
+	pub fn try_call(&self, args: Args) -> Result<Ret, String> {
 		let inner =
 			with_page_node::<CallbackSlot<Args, Ret>, _>(self.key, |slot| Arc::clone(&slot.inner))?;
 		reinhardt_core::reactive::scope::enter_scope(self.key.scope(), || inner(args))
+			.map_err(|err| err.to_string())
 	}
 }
 
@@ -1137,7 +1135,7 @@ mod tests_with_deps {
 							let _ = (x, s.get());
 						}
 					},
-					deps![s],
+					deps![s].into_deps(),
 				);
 				let rc = cb.inner_rc_ptr();
 
@@ -1165,7 +1163,7 @@ mod tests_with_deps {
 			// Act — same call site (loop body) re-entered with different
 			// deps each iteration.
 			for s in &signals {
-				let cb = callback_with_deps::<i32, ()>(|_: i32| {}, deps![s]);
+				let cb = callback_with_deps::<i32, ()>(|_: i32| {}, deps![s].into_deps());
 				let rc = cb.inner_rc_ptr();
 
 				// Assert

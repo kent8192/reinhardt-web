@@ -456,7 +456,7 @@ mod tests {
 		});
 	}
 
-	#[rstest]
+	#[rstest::rstest]
 	#[serial_test::serial(reactive_runtime)]
 	fn standalone_form_binding_allocates_its_effect_in_the_form_scope() {
 		let form = create_test_form();

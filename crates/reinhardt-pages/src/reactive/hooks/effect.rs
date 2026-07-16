@@ -325,7 +325,7 @@ mod tests {
 						None::<fn()>
 					}
 				},
-				(),
+				crate::deps![],
 			);
 
 			assert!(*called.borrow());
@@ -349,7 +349,7 @@ mod tests {
 						None::<fn()>
 					}
 				},
-				(count.clone(),),
+				crate::deps![count.clone()],
 			);
 
 			// Initial run
@@ -370,7 +370,7 @@ mod tests {
 						*called.borrow_mut() = true;
 					}
 				},
-				(),
+				crate::deps![],
 			);
 
 			assert!(*called.borrow());
@@ -391,7 +391,7 @@ mod tests {
 						None::<fn()>
 					}
 				},
-				(),
+				crate::deps![],
 			);
 
 			assert!(*called.borrow());
@@ -415,7 +415,7 @@ mod tests {
 						None::<fn()>
 					}
 				},
-				(signal.clone(),),
+				crate::deps![signal.clone()],
 			);
 
 			// Initial execution
@@ -444,7 +444,7 @@ mod tests {
 						execution_order.borrow_mut().push(signal.get());
 					}
 				},
-				(signal,),
+				crate::deps![signal],
 			);
 
 			assert_eq!(*execution_order.borrow(), vec![0]);
@@ -473,7 +473,7 @@ mod tests {
 						None::<fn()>
 					}
 				},
-				(signal.clone(),),
+				crate::deps![signal.clone()],
 			);
 
 			let _passive_effect = use_effect(
@@ -486,7 +486,7 @@ mod tests {
 						None::<fn()>
 					}
 				},
-				(signal.clone(),),
+				crate::deps![signal.clone()],
 			);
 
 			// Both should have run initially
@@ -518,7 +518,7 @@ mod tests {
 						None::<fn()>
 					}
 				},
-				(signal.clone(),),
+				crate::deps![signal.clone()],
 			);
 
 			let _passive_effect = use_effect(
@@ -531,7 +531,7 @@ mod tests {
 						None::<fn()>
 					}
 				},
-				(signal.clone(),),
+				crate::deps![signal.clone()],
 			);
 
 			// Both execute initially
@@ -560,7 +560,7 @@ mod tests {
 						None::<fn()>
 					}
 				},
-				(signal.clone(),),
+				crate::deps![signal.clone()],
 			);
 
 			assert_eq!(*run_count.borrow(), 1);
@@ -600,7 +600,7 @@ mod tests {
 						Some(move || log_for_cleanup.borrow_mut().push("cleanup"))
 					}
 				},
-				(),
+				crate::deps![],
 			);
 
 			assert_eq!(*log.borrow(), vec!["run"]);
@@ -628,7 +628,7 @@ mod tests {
 						*called.borrow_mut() = true;
 					}
 				},
-				(),
+				crate::deps![],
 			);
 
 			assert!(*called.borrow());
@@ -654,7 +654,7 @@ mod tests {
 						})
 					}
 				},
-				(),
+				crate::deps![],
 			);
 
 			cleanup_reactive_nodes();
@@ -679,7 +679,7 @@ mod tests {
 						Some(move || log_for_cleanup.borrow_mut().push("cleanup"))
 					}
 				},
-				(),
+				crate::deps![],
 			);
 
 			assert_eq!(
@@ -707,7 +707,7 @@ mod tests {
 						None::<fn()>
 					}
 				},
-				(signal.clone(),),
+				crate::deps![signal.clone()],
 			);
 
 			assert_eq!(*execution_order.borrow(), vec![0]);
@@ -738,7 +738,7 @@ mod tests {
 						*called.borrow_mut() = true;
 					}
 				},
-				(),
+				crate::deps![],
 			);
 
 			assert!(*called.borrow());

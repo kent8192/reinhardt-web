@@ -112,6 +112,12 @@ impl<T: Clone + 'static> Trackable for Memo<T> {
 	}
 }
 
+impl<T: Trackable + ?Sized> Trackable for &T {
+	fn node_id(&self) -> NodeId {
+		(*self).node_id()
+	}
+}
+
 /// Creates an explicit dependency collection from trackable expressions.
 #[macro_export]
 macro_rules! deps {

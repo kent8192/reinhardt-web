@@ -157,9 +157,9 @@ where
 /// # Example
 ///
 /// ```no_run
-/// use reinhardt_pages::reactive::hooks::use_callback_with;
+/// use reinhardt_pages::{deps, reactive::hooks::use_callback_with};
 ///
-/// let add = use_callback_with(|x: i32| x + 1, ());
+/// let add = use_callback_with(|x: i32| x + 1, deps![]);
 /// assert_eq!(add.call(5), 6);
 /// ```
 #[cfg(wasm)]
@@ -198,7 +198,7 @@ mod tests {
 	#[serial]
 	fn test_use_memo_basic() {
 		reinhardt_core::reactive::ReactiveScope::run(|| {
-			let memo = use_memo(|| 42, ());
+			let memo = use_memo(|| 42, crate::deps![]);
 			assert_eq!(memo.get(), 42);
 		});
 	}
@@ -214,7 +214,7 @@ mod tests {
 					let count = count.clone();
 					move || count.get() * 2
 				},
-				(count.clone(),),
+				crate::deps![count.clone()],
 			);
 
 			assert_eq!(doubled.get(), 10);
@@ -232,7 +232,7 @@ mod tests {
 					let items = items.clone();
 					move || items.get().iter().sum::<i32>()
 				},
-				(items.clone(),),
+				crate::deps![items.clone()],
 			);
 
 			assert_eq!(sum.get(), 15);
@@ -251,7 +251,7 @@ mod tests {
 				|event: ClickEvent| {
 					assert_eq!(event.event_type(), "click");
 				},
-				(),
+				crate::deps![],
 			);
 			let raw = NativeEvent::for_known(
 				EventType::Click,
@@ -265,11 +265,13 @@ mod tests {
 	#[test]
 	fn test_use_callback_with() {
 		reinhardt_core::reactive::ReactiveScope::run(|| {
-			let add_one = use_callback_with::<i32, i32, _, _>(|x: i32| x + 1, ());
+			let add_one = use_callback_with::<i32, i32, _>(|x: i32| x + 1, crate::deps![]);
 			assert_eq!(add_one.call(5), 6);
 
-			let concat =
-				use_callback_with::<String, String, _, _>(|s: String| format!("Hello, {}", s), ());
+			let concat = use_callback_with::<String, String, _>(
+				|s: String| format!("Hello, {}", s),
+				crate::deps![],
+			);
 			assert_eq!(concat.call("World".to_string()), "Hello, World");
 		});
 	}
