@@ -478,9 +478,9 @@ Features:
 - Feature 1
 - Feature 2
 
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
+🤖 Generated with [<Agent Name>](<Agent URL>)
 
-Co-Authored-By: Claude <noreply@anthropic.com>
+Co-Authored-By: <Model Name> <noreply@model-provider.example>
 ```
 
 **Type Values**:
@@ -500,7 +500,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 
 - Subject line: Be specific, not vague
 - Body: Organize by module/component, list file changes with line counts
-- Footer: Include Claude Code attribution and Co-Authored-By line
+- Footer: Include attribution for the creating agent and a Co-Authored-By line for the creating model
 - Exactly one blank line between body and footer
 
 **Style Reference**:

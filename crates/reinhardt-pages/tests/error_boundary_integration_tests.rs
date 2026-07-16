@@ -35,7 +35,25 @@ fn test_error_boundary_renders_content_without_error() {
 }
 
 #[test]
-fn test_error_boundary_renders_resource_error() {
+fn test_error_boundary_default_fallback_redacts_resource_error() {
+	let tracker = StaticErrorTracker {
+		error: Some(BoundaryError::new(
+			"database failed: user=admin password=s3cr3t host=10.0.0.5",
+		)),
+	};
+
+	let boundary = ErrorBoundary::new()
+		.track_custom(tracker)
+		.content(|| PageElement::new("main").child("Loaded").into_page());
+
+	assert_eq!(
+		boundary.into_page().render_to_string(),
+		r#"<div data-rh-error-boundary="error"><p>An unexpected error occurred.</p></div>"#
+	);
+}
+
+#[test]
+fn test_error_boundary_custom_fallback_renders_safe_resource_error() {
 	let tracker = StaticErrorTracker {
 		error: Some(BoundaryError::new("load failed")),
 	};

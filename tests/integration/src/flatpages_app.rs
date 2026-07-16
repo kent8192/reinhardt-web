@@ -288,6 +288,10 @@ impl AuthIdentity for FlatpagesTestUser {
 	fn is_admin(&self) -> bool {
 		self.is_admin
 	}
+
+	fn is_account_active(&self) -> bool {
+		true
+	}
 }
 
 /// Authentication backend for integration tests

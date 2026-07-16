@@ -344,6 +344,48 @@ async fn jwks_is_cached_for_repeated_validations(#[future] env: MockEnv) {
 	assert_eq!(jwks_calls, 1, "JWKS should be cached after first hit");
 }
 
+#[rstest]
+#[tokio::test]
+async fn jwks_redirect_to_another_origin_is_rejected(#[future] env: MockEnv) {
+	// Arrange
+	let env = env.await;
+	let attacker = MockServer::start().await;
+	let audience = "client-jwks-redirect";
+	mount_discovery(&env.server, env.discovery_doc(), 1).await;
+	Mock::given(method("GET"))
+		.and(path("/jwks.json"))
+		.respond_with(
+			ResponseTemplate::new(302)
+				.insert_header("Location", format!("{}/attacker-jwks.json", attacker.uri())),
+		)
+		.mount(&env.server)
+		.await;
+	Mock::given(method("GET"))
+		.and(path("/attacker-jwks.json"))
+		.respond_with(ResponseTemplate::new(200).set_body_json(env.jwks_doc()))
+		.mount(&attacker)
+		.await;
+	let provider = GenericOidcProvider::new(build_provider_config(&env, audience))
+		.await
+		.expect("provider");
+	let jwt = env.sign_id_token(&id_token_for(&env, audience));
+
+	// Act
+	let result = provider.validate_id_token(&jwt, None).await;
+
+	// Assert
+	let err = result.expect_err("redirected JWKS fetch must be rejected");
+	assert!(matches!(err, SocialAuthError::Jwks(_)));
+	assert!(
+		attacker
+			.received_requests()
+			.await
+			.expect("attacker request log")
+			.is_empty(),
+		"the strict provider must not follow the cross-origin redirect"
+	);
+}
+
 // ---------------------------------------------------------------------------
 // ID token validation
 // ---------------------------------------------------------------------------

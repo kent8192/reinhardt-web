@@ -285,6 +285,30 @@ impl From<AppError> for Response {
 }
 ```
 
+For enum-shaped application errors, derive `HttpError` instead of writing the
+conversion by hand:
+
+```rust
+use reinhardt::{HttpError, Response};
+
+#[derive(Debug, HttpError)]
+#[http_error(response, body = "error")]
+enum AppError {
+    #[http_error(status = NOT_FOUND, message = "Not found")]
+    NotFound,
+    #[http_error(status = INTERNAL_SERVER_ERROR, message = "Internal error")]
+    InternalError,
+}
+
+fn into_response(error: AppError) -> Response {
+    Response::from(error)
+}
+```
+
+`body = "error"` writes the client message directly into the response `error`
+field. Use it only when all messages are safe for clients. The default body mode
+omits 5xx details and is safer for internal errors.
+
 ---
 
 ## Middleware Creation

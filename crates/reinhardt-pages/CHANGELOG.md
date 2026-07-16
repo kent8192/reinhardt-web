@@ -32,6 +32,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   require `deps![...]`. See the
   [0.4.0 hook dependency migration guide](../../docs/migration/0.4.0-hook-dependency-modes.md).
 
+## [0.3.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.3.1...reinhardt-pages@v0.3.2) - 2026-07-14
+
+### Fixed
+
+- *(pages)* contain nested reactive DOM ownership
+- *(pages)* gate nested reactive helper for wasm
+- *(test)* render nested reactive wasm content
+- *(ci)* allow intentional dependency-version duplicates
+- *(tests)* use fallback service for SPA fixtures
+
+### Other
+
+- resolve main conflicts in nested reactive ownership
+
 ## [0.3.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.3.0...reinhardt-pages@v0.3.1) - 2026-07-04
 
 ### Fixed
@@ -51,7 +65,7 @@ stable release section.
 ### Added
 
 - *(pages)* add explicit asset loading helpers
-- Added route-backed component macro support via `#[component("/path", name = "name")]`,
+- Added route-backed component macro support via `#[component("/path", "name")]`,
   generated plain props builders, and `Path(...)` / `Query(...)` extractor-style
   component function arguments.
 
@@ -156,8 +170,6 @@ stable release section.
 
 ### Added
 
-- *(pages)* add `use_action_state`, `Action::dispatching*`, and
-  `last_result` / `last_error` / `render_*` helpers for async mutations
 - *(pages)* unify resource hooks into use_resource(fetcher, deps)
 - *(forms)* add typed use_form ergonomics
 - feat!(forms): route use_form through form definitions
