@@ -2542,7 +2542,10 @@ mod migrations_extended_tests {
 		};
 		rename_op.state_forwards("testapp", &mut state);
 
-		assert!(state.get_model("testapp", "custom_users").is_some());
+		let model = state
+			.get_model("testapp", "myapp_user")
+			.expect("table rename should preserve the model identity");
+		assert_eq!(model.table_name, "custom_users");
 	}
 
 	#[test]
@@ -2572,7 +2575,10 @@ mod migrations_extended_tests {
 		};
 		rename_op.state_forwards("app", &mut state);
 
-		assert!(state.get_model("app", "products_table").is_some());
+		let model = state
+			.get_model("app", "app_product")
+			.expect("table rename should preserve the model identity");
+		assert_eq!(model.table_name, "products_table");
 	}
 
 	#[test]
@@ -2604,8 +2610,11 @@ mod migrations_extended_tests {
 		};
 		rename_op.state_forwards("testapp", &mut state);
 
-		assert!(state.get_model("testapp", "old_table").is_none());
-		assert!(state.get_model("testapp", "new_table").is_some());
+		let model = state
+			.get_model("testapp", "old_table")
+			.expect("table rename should preserve the model identity");
+		assert_eq!(model.table_name, "new_table");
+		assert!(state.get_model("testapp", "new_table").is_none());
 	}
 
 	#[test]
@@ -2849,7 +2858,10 @@ mod migrations_extended_tests {
 		};
 		rename_op.state_forwards("testapp", &mut state);
 
-		assert!(state.get_model("testapp", "myapp_model").is_some());
+		let model = state
+			.get_model("testapp", "custom_table")
+			.expect("table rename should preserve the model identity");
+		assert_eq!(model.table_name, "myapp_model");
 	}
 
 	#[test]
@@ -2920,8 +2932,11 @@ mod migrations_extended_tests {
 		};
 		add_field.state_forwards("testapp", &mut state);
 
-		let model = state.get_model("testapp", "custom_users").unwrap();
+		let model = state
+			.get_model("testapp", "users")
+			.expect("table rename should preserve the model identity");
 		assert!(model.fields.contains_key("email"));
+		assert_eq!(model.table_name, "custom_users");
 	}
 
 	#[test]
@@ -2951,7 +2966,10 @@ mod migrations_extended_tests {
 		};
 		rename_op.state_forwards("app", &mut state);
 
-		assert!(state.get_model("app", "products").is_some());
+		let model = state
+			.get_model("app", "items")
+			.expect("table rename should preserve the model identity");
+		assert_eq!(model.table_name, "products");
 	}
 
 	#[test]
