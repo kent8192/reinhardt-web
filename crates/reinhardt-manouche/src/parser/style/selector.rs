@@ -209,6 +209,10 @@ fn parse_pseudo_selector(
 ) -> syn::Result<StyleSimpleSelector> {
 	let colon_span = tokens[*index].span();
 	*index += 1;
+	let pseudo_element = punct_at(tokens, *index, ':');
+	if pseudo_element {
+		*index += 1;
+	}
 	if *index == tokens.len() {
 		return Err(syn::Error::new(
 			colon_span,
@@ -267,6 +271,7 @@ fn parse_pseudo_selector(
 
 	Ok(StyleSimpleSelector::Pseudo(StylePseudoSelector {
 		name,
+		is_element: pseudo_element,
 		arguments,
 		span: joined_span(colon_span, last_span),
 	}))
@@ -498,7 +503,14 @@ fn parse_attribute_selector(group: &proc_macro2::Group) -> syn::Result<StyleAttr
 	let matcher = parse_attribute_matcher(&tokens, &mut index)?;
 	let value = parse_attribute_value(&tokens, &mut index)?;
 	let modifier = if index < tokens.len() {
-		Some(parse_selector_name(&tokens, &mut index)?)
+		let modifier = parse_selector_name(&tokens, &mut index)?;
+		if !matches!(modifier.as_str(), "i" | "s") {
+			return Err(syn::Error::new(
+				modifier.span,
+				"attribute selector modifiers must be `i` or `s`",
+			));
+		}
+		Some(modifier)
 	} else {
 		None
 	};
@@ -1336,6 +1348,42 @@ mod tests {
 			error.to_string(),
 			"attribute selector matcher operators cannot contain whitespace"
 		);
+	}
+
+	#[rstest]
+	#[case(".card { &[data-state=active foo] {} }")]
+	#[case(".card { &[lang|=en insensitive] {} }")]
+	fn rejects_unsupported_attribute_selector_modifiers(#[case] source: &str) {
+		// Arrange
+		let input = source.parse().unwrap();
+
+		// Act
+		let error = parse_style(input).unwrap_err();
+
+		// Assert
+		assert_eq!(
+			error.to_string(),
+			"attribute selector modifiers must be `i` or `s`"
+		);
+	}
+
+	#[rstest]
+	fn parses_pseudo_elements_with_a_double_colon_marker() {
+		// Arrange
+		let input = quote! { .card { &::before { content: ""; } } };
+
+		// Act
+		let rule = first_rule(input);
+
+		// Assert
+		let selector = &nested_rule(&rule, 0).selectors.selectors[0];
+		let StyleSelectorKind::SameElement(StyleSimpleSelector::Pseudo(pseudo)) = &selector.kind
+		else {
+			panic!("expected a same-element pseudo-element selector");
+		};
+		assert_eq!(pseudo.name.as_str(), "before");
+		assert!(pseudo.is_element);
+		assert!(pseudo.arguments.is_none());
 	}
 
 	#[rstest]

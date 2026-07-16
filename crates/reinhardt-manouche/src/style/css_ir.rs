@@ -95,7 +95,7 @@ pub(crate) enum CssSimpleSelector {
 	Universal,
 	/// A structured attribute selector.
 	Attribute(CssAttributeSelector),
-	/// A structured pseudo-class or pseudo-function.
+	/// A structured pseudo-class, pseudo-element, or pseudo-function.
 	Pseudo(CssPseudoSelector),
 }
 
@@ -126,6 +126,8 @@ pub(crate) enum CssAttributeValue {
 pub(crate) struct CssPseudoSelector {
 	/// Pseudo selector name without the leading colon.
 	pub(crate) name: String,
+	/// Whether the selector uses the pseudo-element `::` prefix.
+	pub(crate) is_element: bool,
 	/// Optional structured arguments.
 	pub(crate) arguments: Option<CssPseudoArguments>,
 }
@@ -538,6 +540,7 @@ fn lower_pseudo_selector(pseudo: &StylePseudoSelector, scope: &StyleScope) -> Cs
 	});
 	CssPseudoSelector {
 		name: pseudo.name.value.clone(),
+		is_element: pseudo.is_element,
 		arguments,
 	}
 }
@@ -782,10 +785,10 @@ mod tests {
 		assert_eq!(
 			roots,
 			[
-				"card--rs-c6b395a1e8e9",
-				"card--rs-c6b395a1e8e9",
-				"panel--rs-c6b395a1e8e9",
-				"panel--rs-c6b395a1e8e9",
+				"card--rs-f69b9cbc74c9",
+				"card--rs-f69b9cbc74c9",
+				"panel--rs-f69b9cbc74c9",
+				"panel--rs-f69b9cbc74c9",
 			]
 		);
 		assert!(matches!(
@@ -794,7 +797,7 @@ mod tests {
 		));
 		assert!(matches!(
 			rule.selectors[1].segments[0].simple_selectors[1],
-			CssSimpleSelector::Class(ref name) if name == "featured--rs-c6b395a1e8e9"
+			CssSimpleSelector::Class(ref name) if name == "featured--rs-f69b9cbc74c9"
 		));
 		assert_eq!(
 			lowered
@@ -837,7 +840,7 @@ mod tests {
 		);
 		assert!(matches!(
 			rule.selectors[0].segments[1].simple_selectors[0],
-			CssSimpleSelector::Class(ref name) if name == "label--rs-c6b395a1e8e9"
+			CssSimpleSelector::Class(ref name) if name == "label--rs-f69b9cbc74c9"
 		));
 	}
 
@@ -882,11 +885,11 @@ mod tests {
 		};
 		assert!(matches!(
 			not_branches[0].segments[0].simple_selectors[0],
-			CssSimpleSelector::Class(ref name) if name == "deep--rs-c6b395a1e8e9"
+			CssSimpleSelector::Class(ref name) if name == "deep--rs-f69b9cbc74c9"
 		));
 		assert!(matches!(
 			is_branches[1].segments[0].simple_selectors[0],
-			CssSimpleSelector::Class(ref name) if name == "item--rs-c6b395a1e8e9"
+			CssSimpleSelector::Class(ref name) if name == "item--rs-f69b9cbc74c9"
 		));
 
 		let Some(CssPseudoArguments::SelectorList(has_branches)) = &pseudo(1).arguments else {
@@ -898,7 +901,7 @@ mod tests {
 		);
 		assert!(matches!(
 			has_branches[0].segments[0].simple_selectors[0],
-			CssSimpleSelector::Class(ref name) if name == "child--rs-c6b395a1e8e9"
+			CssSimpleSelector::Class(ref name) if name == "child--rs-f69b9cbc74c9"
 		));
 
 		let Some(CssPseudoArguments::Nth {
@@ -911,7 +914,7 @@ mod tests {
 		assert_eq!(formula_tokens.len(), 3);
 		assert!(matches!(
 			nth_branches[0].segments[0].simple_selectors[0],
-			CssSimpleSelector::Class(ref name) if name == "row--rs-c6b395a1e8e9"
+			CssSimpleSelector::Class(ref name) if name == "row--rs-f69b9cbc74c9"
 		));
 
 		let Some(CssPseudoArguments::RawTokens(tokens)) = &pseudo(3).arguments else {
@@ -959,7 +962,7 @@ mod tests {
 		assert_eq!(media_rule.declarations[0].property, "width");
 		assert!(matches!(
 			media_rule.selectors[0].segments[0].simple_selectors[0],
-			CssSimpleSelector::Class(ref name) if name == "card--rs-c6b395a1e8e9"
+			CssSimpleSelector::Class(ref name) if name == "card--rs-f69b9cbc74c9"
 		));
 	}
 
@@ -983,7 +986,7 @@ mod tests {
 		let lowered = lower(source);
 
 		// Assert
-		assert_eq!(lowered.scope.suffix, "c6b395a1e8e9");
+		assert_eq!(lowered.scope.suffix, "f69b9cbc74c9");
 		assert_eq!(lowered.globals.len(), 1);
 		assert_eq!(lowered.globals[0].css_name, "border");
 		assert_eq!(lowered.variables.len(), 3);
@@ -994,9 +997,9 @@ mod tests {
 				.map(|variable| variable.custom_property_name.as_str())
 				.collect::<Vec<_>>(),
 			[
-				"--rs-c6b395a1e8e9-base",
-				"--rs-c6b395a1e8e9-doubled",
-				"--rs-c6b395a1e8e9-accent",
+				"--rs-f69b9cbc74c9-base",
+				"--rs-f69b9cbc74c9-doubled",
+				"--rs-f69b9cbc74c9-accent",
 			]
 		);
 		let CssRule::Style(rule) = &lowered.css.rules[0] else {
@@ -1009,7 +1012,7 @@ mod tests {
 		else {
 			panic!("expected a scoped component variable");
 		};
-		assert_eq!(custom_property, "--rs-c6b395a1e8e9-doubled");
+		assert_eq!(custom_property, "--rs-f69b9cbc74c9-doubled");
 		assert_eq!(*fallback_index, 1);
 		assert_eq!(lowered.css.variable_defaults.len(), 3);
 		let CssValueKind::Calc(calculation) = &lowered.css.variable_defaults[1].kind else {
@@ -1023,7 +1026,7 @@ mod tests {
 			CssValueKind::ComponentVariable {
 				ref custom_property,
 				fallback_index: 0,
-			} if custom_property == "--rs-c6b395a1e8e9-base"
+			} if custom_property == "--rs-f69b9cbc74c9-base"
 		));
 		assert!(matches!(
 			rule.declarations[1].value.kind,

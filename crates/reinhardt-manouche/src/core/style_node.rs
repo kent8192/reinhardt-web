@@ -213,7 +213,7 @@ pub enum StyleSimpleSelector {
 	},
 	/// An attribute selector.
 	Attribute(StyleAttributeSelector),
-	/// A pseudo-class or pseudo-function selector.
+	/// A pseudo-class, pseudo-element, or pseudo-function selector.
 	Pseudo(StylePseudoSelector),
 }
 
@@ -291,11 +291,13 @@ pub enum StyleAttributeValue {
 	},
 }
 
-/// One pseudo-class or pseudo-function selector.
+/// One pseudo-class, pseudo-element, or pseudo-function selector.
 #[derive(Debug, Clone)]
 pub struct StylePseudoSelector {
 	/// Pseudo selector name without the leading colon.
 	pub name: StyleSelectorName,
+	/// Whether the selector uses the pseudo-element `::` prefix.
+	pub is_element: bool,
 	/// Optional parenthesized token tree for a pseudo-function.
 	pub arguments: Option<StyleSelectorArguments>,
 	/// Span of the complete pseudo selector.

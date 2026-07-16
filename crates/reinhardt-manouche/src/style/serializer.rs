@@ -141,6 +141,9 @@ fn write_selector(output: &mut String, selector: &CssSelector) {
 				}
 				CssSimpleSelector::Pseudo(pseudo) => {
 					output.push(':');
+					if pseudo.is_element {
+						output.push(':');
+					}
 					write_identifier(output, &pseudo.name);
 					let Some(arguments) = &pseudo.arguments else {
 						continue;
@@ -890,6 +893,18 @@ mod tests {
 	}
 
 	#[rstest]
+	fn pseudo_elements_serialize_with_a_double_colon() {
+		// Arrange
+		let stylesheet = compile(r#".card { &::before { content: ""; } }"#);
+
+		// Act
+		let css = serialize_css(&stylesheet);
+
+		// Assert
+		assert!(css.contains("::before"));
+	}
+
+	#[rstest]
 	fn checked_values_serialize_with_canonical_functions_and_one_calc_boundary() {
 		// Arrange
 		let stylesheet = compile(
@@ -914,12 +929,12 @@ mod tests {
 		assert_eq!(
 			css,
 			concat!(
-				".card--rs-c6b395a1e8e9 {\n",
+				".card--rs-f69b9cbc74c9 {\n",
 				"  color: rgb(10 20% 30);\n",
 				"  background-color: hsl(180deg 50% 25%);\n",
 				"  border-color: oklch(50% 0.2 30deg);\n",
 				"  outline-color: color-mix(in srgb, red calc(100% - 20%), blue 20%);\n",
-				"  width: calc(100% - var(--rs-c6b395a1e8e9-gutter, 1rem) * 2);\n",
+				"  width: calc(100% - var(--rs-f69b9cbc74c9-gutter, 1rem) * 2);\n",
 				"  transform: translateX(1rem) rotate(45deg);\n",
 				"  border-radius: 1rem / 2rem;\n",
 				"}\n",
@@ -948,7 +963,7 @@ mod tests {
 		assert_eq!(
 			css,
 			concat!(
-				".card--rs-c6b395a1e8e9 {\n",
+				".card--rs-f69b9cbc74c9 {\n",
 				"  background: paint(namespace::worklet, [red, blue], {tone:\"dark\"});\n",
 				"}\n",
 			)
@@ -978,7 +993,7 @@ mod tests {
 		assert_eq!(
 			css,
 			concat!(
-				".card--rs-c6b395a1e8e9 {\n",
+				".card--rs-f69b9cbc74c9 {\n",
 				"  background: paint(calc(100% - 1px), calc(50% + 2px), custom-ident, -1px);\n",
 				"}\n",
 			)
@@ -1004,7 +1019,7 @@ mod tests {
 			css,
 			concat!(
 				"@media screen and (400px < width <= 1200px), print and (width: +1px) {\n",
-				"  .card--rs-c6b395a1e8e9 {\n",
+				"  .card--rs-f69b9cbc74c9 {\n",
 				"    color: red;\n",
 				"  }\n",
 				"}\n",
@@ -1137,6 +1152,7 @@ mod tests {
 						combinator: None,
 						simple_selectors: vec![CssSimpleSelector::Pseudo(CssPseudoSelector {
 							name: "is".into(),
+							is_element: false,
 							arguments: Some(CssPseudoArguments::SelectorList(vec![selector])),
 						})],
 					}],
@@ -1182,6 +1198,7 @@ mod tests {
 							combinator: None,
 							simple_selectors: vec![CssSimpleSelector::Pseudo(CssPseudoSelector {
 								name: "lang".into(),
+								is_element: false,
 								arguments: Some(CssPseudoArguments::RawTokens(vec![token])),
 							})],
 						}],
