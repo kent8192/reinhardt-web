@@ -1543,7 +1543,7 @@ impl Operation {
 				}
 				model.constraints = constraints
 					.iter()
-					.map(Self::constraint_to_definition)
+					.map(ProjectState::constraint_to_definition)
 					.collect();
 				state.add_model(model);
 			}
