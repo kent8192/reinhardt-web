@@ -46,7 +46,7 @@ pub(crate) fn loader_impl(args: TokenStream, input: TokenStream) -> TokenStream 
 fn expand_loader(input: ItemFn) -> syn::Result<proc_macro2::TokenStream> {
 	if input.sig.asyncness.is_none() {
 		return Err(syn::Error::new_spanned(
-			&input.sig.fn_token,
+			input.sig.fn_token,
 			"#[loader] functions must be async",
 		));
 	}
@@ -67,7 +67,7 @@ fn expand_loader(input: ItemFn) -> syn::Result<proc_macro2::TokenStream> {
 	let executor_name = format_ident!("__execute", span = function_name.span());
 	let hydrator_name = format_ident!("__hydrate", span = function_name.span());
 	let input_specs = signature.args.iter().filter_map(|arg| {
-		let Some(kind) = arg.kind else { return None };
+		let kind = arg.kind?;
 		let name = arg
 			.name
 			.as_ref()
