@@ -2,6 +2,7 @@
 
 use std::cell::Cell;
 
+use reinhardt_core::reactive::ReactiveScope;
 use reinhardt_core::validators::{Validate, ValidationError, ValidationErrors};
 use reinhardt_pages::server_fn::ServerFnError;
 use reinhardt_pages::server_fn::server_fn;
@@ -70,60 +71,64 @@ impl Validate for ProjectRequest {
 
 #[test]
 fn client_form_defaults_and_request_conversion() {
-	let form = ProjectRequestClientForm::new().with_defaults(ProjectRequest {
-		name: "demo".to_string(),
-		title: Some("Seed".to_string()),
-		retry_count: 2,
-		optional_retry_count: Some(5),
-		active: true,
-		optional_active: Some(false),
-		provider_mode: ProviderMode::LiveApi,
-		optional_mode: Some(ProviderMode::Fake),
-		tenant_id: Some("tenant-a".to_string()),
-		revision: 7,
-		server_token: "token-a".to_string(),
+	ReactiveScope::run(|| {
+		let form = ProjectRequestClientForm::new().with_defaults(ProjectRequest {
+			name: "demo".to_string(),
+			title: Some("Seed".to_string()),
+			retry_count: 2,
+			optional_retry_count: Some(5),
+			active: true,
+			optional_active: Some(false),
+			provider_mode: ProviderMode::LiveApi,
+			optional_mode: Some(ProviderMode::Fake),
+			tenant_id: Some("tenant-a".to_string()),
+			revision: 7,
+			server_token: "token-a".to_string(),
+		});
+		let runtime = use_form(&form).build();
+
+		assert_eq!(
+			runtime.watch_field::<String>(form.name_field()).get(),
+			"demo"
+		);
+		assert_eq!(
+			runtime
+				.watch_field::<ProviderMode>(form.provider_mode_field())
+				.get(),
+			ProviderMode::LiveApi
+		);
+
+		runtime.set_value(ProjectRequestClientFormField::Title, "   ".to_string());
+		let request = ProjectRequestClientForm::to_request(&runtime);
+
+		assert_eq!(request.title, None);
+		assert_eq!(request.retry_count, 2);
+		assert_eq!(request.optional_retry_count, Some(5));
+		assert!(request.active);
+		assert_eq!(request.optional_active, Some(false));
+		assert_eq!(request.optional_mode, Some(ProviderMode::Fake));
+		assert_eq!(request.tenant_id.as_deref(), Some("tenant-a"));
+		assert_eq!(request.revision, 7);
+		assert_eq!(request.server_token, "token-a");
 	});
-	let runtime = use_form(&form).build();
-
-	assert_eq!(
-		runtime.watch_field::<String>(form.name_field()).get(),
-		"demo"
-	);
-	assert_eq!(
-		runtime
-			.watch_field::<ProviderMode>(form.provider_mode_field())
-			.get(),
-		ProviderMode::LiveApi
-	);
-
-	runtime.set_value(ProjectRequestClientFormField::Title, "   ".to_string());
-	let request = ProjectRequestClientForm::to_request(&runtime);
-
-	assert_eq!(request.title, None);
-	assert_eq!(request.retry_count, 2);
-	assert_eq!(request.optional_retry_count, Some(5));
-	assert!(request.active);
-	assert_eq!(request.optional_active, Some(false));
-	assert_eq!(request.optional_mode, Some(ProviderMode::Fake));
-	assert_eq!(request.tenant_id.as_deref(), Some("tenant-a"));
-	assert_eq!(request.revision, 7);
-	assert_eq!(request.server_token, "token-a");
 }
 
 #[test]
 fn client_form_enum_choice_metadata_uses_serialized_values() {
-	let form = ProjectRequestClientForm::new();
-	let choices = form.provider_mode_choices();
+	ReactiveScope::run(|| {
+		let form = ProjectRequestClientForm::new();
+		let choices = form.provider_mode_choices();
 
-	assert_eq!(choices.len(), 3);
-	assert_eq!(choices[0].serialized_value, "fake");
-	assert_eq!(choices[0].label, "fake");
-	assert_eq!(choices[1].serialized_value, "live_api");
-	assert_eq!(choices[1].label, "live_api");
-	assert_eq!(choices[2].serialized_value, "h_t_t_p_status");
-	assert_eq!(choices[2].label, "h_t_t_p_status");
-	assert_eq!(ProviderMode::client_form_default(), ProviderMode::Fake);
-	assert!(matches!(ProviderMode::Archived, ProviderMode::Archived));
+		assert_eq!(choices.len(), 3);
+		assert_eq!(choices[0].serialized_value, "fake");
+		assert_eq!(choices[0].label, "fake");
+		assert_eq!(choices[1].serialized_value, "live_api");
+		assert_eq!(choices[1].label, "live_api");
+		assert_eq!(choices[2].serialized_value, "h_t_t_p_status");
+		assert_eq!(choices[2].label, "h_t_t_p_status");
+		assert_eq!(ProviderMode::client_form_default(), ProviderMode::Fake);
+		assert!(matches!(ProviderMode::Archived, ProviderMode::Archived));
+	});
 }
 
 #[test]
@@ -137,46 +142,48 @@ fn client_form_choices_ignore_non_serialization_container_options() {
 
 #[test]
 fn client_form_reconcile_refreshes_skipped_defaults() {
-	let form = ProjectRequestClientForm::new().with_defaults(ProjectRequest {
-		name: "demo".to_string(),
-		title: Some("Seed".to_string()),
-		retry_count: 2,
-		optional_retry_count: Some(5),
-		active: true,
-		optional_active: Some(false),
-		provider_mode: ProviderMode::LiveApi,
-		optional_mode: Some(ProviderMode::Fake),
-		tenant_id: Some("tenant-a".to_string()),
-		revision: 7,
-		server_token: "token-a".to_string(),
-	});
-	let runtime = use_form(&form)
-		.deps(0_u8)
-		.reset_on_deps(ResetOnDeps::KeepDirtyValues)
-		.build();
-	runtime.set_value(ProjectRequestClientFormField::Name, "edited".to_string());
+	ReactiveScope::run(|| {
+		let form = ProjectRequestClientForm::new().with_defaults(ProjectRequest {
+			name: "demo".to_string(),
+			title: Some("Seed".to_string()),
+			retry_count: 2,
+			optional_retry_count: Some(5),
+			active: true,
+			optional_active: Some(false),
+			provider_mode: ProviderMode::LiveApi,
+			optional_mode: Some(ProviderMode::Fake),
+			tenant_id: Some("tenant-a".to_string()),
+			revision: 7,
+			server_token: "token-a".to_string(),
+		});
+		let runtime = use_form(&form)
+			.deps(0_u8)
+			.reset_on_deps(ResetOnDeps::KeepDirtyValues)
+			.build();
+		runtime.set_value(ProjectRequestClientFormField::Name, "edited".to_string());
 
-	let refreshed = ProjectRequestClientForm::new().with_defaults(ProjectRequest {
-		name: "server".to_string(),
-		title: Some("Server".to_string()),
-		retry_count: 3,
-		optional_retry_count: Some(8),
-		active: false,
-		optional_active: Some(true),
-		provider_mode: ProviderMode::Fake,
-		optional_mode: None,
-		tenant_id: Some("tenant-b".to_string()),
-		revision: 8,
-		server_token: "token-b".to_string(),
-	});
-	runtime.reconcile_from(&refreshed, 1_u8);
-	let request = ProjectRequestClientForm::to_request(&runtime);
+		let refreshed = ProjectRequestClientForm::new().with_defaults(ProjectRequest {
+			name: "server".to_string(),
+			title: Some("Server".to_string()),
+			retry_count: 3,
+			optional_retry_count: Some(8),
+			active: false,
+			optional_active: Some(true),
+			provider_mode: ProviderMode::Fake,
+			optional_mode: None,
+			tenant_id: Some("tenant-b".to_string()),
+			revision: 8,
+			server_token: "token-b".to_string(),
+		});
+		runtime.reconcile_from(&refreshed, 1_u8);
+		let request = ProjectRequestClientForm::to_request(&runtime);
 
-	assert_eq!(request.name, "edited");
-	assert_eq!(request.title.as_deref(), Some("Server"));
-	assert_eq!(request.tenant_id.as_deref(), Some("tenant-b"));
-	assert_eq!(request.revision, 8);
-	assert_eq!(request.server_token, "token-b");
+		assert_eq!(request.name, "edited");
+		assert_eq!(request.title.as_deref(), Some("Server"));
+		assert_eq!(request.tenant_id.as_deref(), Some("tenant-b"));
+		assert_eq!(request.revision, 8);
+		assert_eq!(request.server_token, "token-b");
+	});
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -195,15 +202,17 @@ struct CustomTenantDefaultRequest {
 
 #[test]
 fn client_form_preserves_custom_hidden_default_values_from_defaults() {
-	let form =
-		CustomTenantDefaultRequestClientForm::new().with_defaults(CustomTenantDefaultRequest {
-			name: "demo".to_string(),
-			tenant: TenantId("custom-tenant"),
-		});
-	let runtime = use_form(&form).build();
-	let request = CustomTenantDefaultRequestClientForm::to_request(&runtime);
+	ReactiveScope::run(|| {
+		let form =
+			CustomTenantDefaultRequestClientForm::new().with_defaults(CustomTenantDefaultRequest {
+				name: "demo".to_string(),
+				tenant: TenantId("custom-tenant"),
+			});
+		let runtime = use_form(&form).build();
+		let request = CustomTenantDefaultRequestClientForm::to_request(&runtime);
 
-	assert_eq!(request.tenant.0, "custom-tenant");
+		assert_eq!(request.tenant.0, "custom-tenant");
+	});
 }
 
 #[derive(Clone, Debug, PartialEq, ClientForm)]
@@ -221,29 +230,33 @@ impl SelfTenantDefaultRequest {
 
 #[test]
 fn client_form_resolves_self_hidden_default_against_dto() {
-	let form = SelfTenantDefaultRequestClientForm::new();
-	let runtime = use_form(&form).build();
-	let request = SelfTenantDefaultRequestClientForm::to_request(&runtime);
+	ReactiveScope::run(|| {
+		let form = SelfTenantDefaultRequestClientForm::new();
+		let runtime = use_form(&form).build();
+		let request = SelfTenantDefaultRequestClientForm::to_request(&runtime);
 
-	assert_eq!(request.tenant.0, "default-tenant");
+		assert_eq!(request.tenant.0, "default-tenant");
+	});
 }
 
 #[test]
 fn client_form_validation_maps_dto_field_errors() {
-	let form = ProjectRequestClientForm::new();
-	let runtime = use_form(&form).build();
+	ReactiveScope::run(|| {
+		let form = ProjectRequestClientForm::new();
+		let runtime = use_form(&form).build();
 
-	let result = runtime.trigger();
+		let result = runtime.trigger();
 
-	assert!(result.is_err());
-	assert_eq!(
-		runtime
-			.get_field_state(ProjectRequestClientFormField::Name)
-			.error
-			.as_ref()
-			.map(FieldError::message),
-		Some("Length too short: 0 (minimum: 1)")
-	);
+		assert!(result.is_err());
+		assert_eq!(
+			runtime
+				.get_field_state(ProjectRequestClientFormField::Name)
+				.error
+				.as_ref()
+				.map(FieldError::message),
+			Some("Length too short: 0 (minimum: 1)")
+		);
+	});
 }
 
 #[derive(Clone, Default, Debug, PartialEq, ClientForm)]
@@ -265,20 +278,22 @@ impl Validate for RawValidationRequest {
 
 #[test]
 fn client_form_validation_maps_raw_dto_field_errors() {
-	let form = RawValidationRequestClientForm::new();
-	let runtime = use_form(&form).build();
+	ReactiveScope::run(|| {
+		let form = RawValidationRequestClientForm::new();
+		let runtime = use_form(&form).build();
 
-	let result = runtime.trigger();
+		let result = runtime.trigger();
 
-	assert!(result.is_err());
-	assert_eq!(
-		runtime
-			.get_field_state(RawValidationRequestClientFormField::Type)
-			.error
-			.as_ref()
-			.map(FieldError::message),
-		Some("Pattern mismatch: expected raw field value")
-	);
+		assert!(result.is_err());
+		assert_eq!(
+			runtime
+				.get_field_state(RawValidationRequestClientFormField::Type)
+				.error
+				.as_ref()
+				.map(FieldError::message),
+			Some("Pattern mismatch: expected raw field value")
+		);
+	});
 }
 
 thread_local! {
@@ -321,8 +336,11 @@ async fn submit_project(
 #[tokio::test]
 async fn client_form_server_submit_blocks_validation_failure() {
 	SUBMIT_CALL_COUNT.with(|count| count.set(0));
-	let form = SubmitProjectRequestClientForm::new();
-	let runtime = use_form(&form).build();
+	let scope = ReactiveScope::new();
+	let runtime = scope.enter(|| {
+		let form = SubmitProjectRequestClientForm::new();
+		use_form(&form).build()
+	});
 
 	let outcome = runtime
 		.submit_async(|| {
@@ -339,10 +357,13 @@ async fn client_form_server_submit_blocks_validation_failure() {
 #[tokio::test]
 async fn client_form_server_submit_calls_server_function_on_success() {
 	SUBMIT_CALL_COUNT.with(|count| count.set(0));
-	let form = SubmitProjectRequestClientForm::new().with_defaults(SubmitProjectRequest {
-		name: "demo".to_string(),
+	let scope = ReactiveScope::new();
+	let runtime = scope.enter(|| {
+		let form = SubmitProjectRequestClientForm::new().with_defaults(SubmitProjectRequest {
+			name: "demo".to_string(),
+		});
+		use_form(&form).build()
 	});
-	let runtime = use_form(&form).build();
 
 	let outcome = runtime
 		.submit_async(|| {

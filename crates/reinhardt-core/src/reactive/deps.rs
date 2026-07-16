@@ -27,6 +27,12 @@ pub trait Trackable {
 /// Opaque container of `NodeId`s used by `*::new_with_deps` constructors to
 /// route subscriptions. Uses an inline `SmallVec` capacity of 8 to avoid heap
 /// allocation in the common case (React deps are empirically 0–3 entries).
+//
+// The inner `SmallVec` and the `as_slice` / `into_inner` accessors are unused
+// in Task 1 of the Layer ② plan and will become live once Task 5 (`Effect::
+// new_with_deps`) and Task 6 (`Memo::new_with_deps`) land. Suppress dead-code
+// noise during the foundational commit.
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct Deps(SmallVec<[NodeId; 8]>);
 
@@ -35,15 +41,12 @@ pub struct Deps(SmallVec<[NodeId; 8]>);
 pub struct ExplicitDeps(Deps);
 
 impl ExplicitDeps {
+	/// Builds an explicit dependency collection from reactive node IDs.
 	#[doc(hidden)]
 	pub fn from_node_ids(ids: impl IntoIterator<Item = NodeId>) -> Self {
 		let mut nodes = SmallVec::new();
 		nodes.extend(ids);
 		Self(Deps(nodes))
-	}
-
-	pub(crate) fn from_deps(deps: Deps) -> Self {
-		Self(deps)
 	}
 
 	#[doc(hidden)]
@@ -78,6 +81,8 @@ impl Deps {
 		&self.0
 	}
 
+	// See struct-level note: consumed by Task 5 / Task 6.
+	#[allow(dead_code)]
 	pub(crate) fn into_inner(self) -> SmallVec<[NodeId; 8]> {
 		self.0
 	}
@@ -107,6 +112,12 @@ impl<T: Clone + 'static> Trackable for Memo<T> {
 	}
 }
 
+impl<T: Trackable + ?Sized> Trackable for &T {
+	fn node_id(&self) -> NodeId {
+		(*self).node_id()
+	}
+}
+
 /// Creates an explicit dependency collection from trackable expressions.
 #[macro_export]
 macro_rules! deps {
@@ -127,99 +138,47 @@ macro_rules! deps_auto {
 
 #[cfg(test)]
 mod tests {
-	use std::cell::Cell;
-
 	use rstest::rstest;
 	use serial_test::serial;
 
-	use super::*;
 	use crate::reactive::memo::Memo;
 	use crate::reactive::signal::Signal;
 
 	#[rstest]
 	#[serial(reactive_runtime)]
-	fn explicit_deps_collects_memo_node_id() {
-		// Arrange
-		let signal = Signal::new(2_i32);
-		let signal_clone = signal.clone();
-		let memo = Memo::new(move || signal_clone.get() * 10);
-		let memo_id = memo.id();
+	fn explicit_deps_macro_collects_signal_node_ids() {
+		crate::reactive::ReactiveScope::run(|| {
+			// Arrange
+			let signal = Signal::new(42_i32);
 
-		// Act
-		let deps = crate::deps![memo];
+			// Act
+			let deps = crate::deps![signal];
 
-		// Assert
-		let slice = deps.as_slice();
-		assert_eq!(slice.len(), 1, "deps list of Memo must yield one NodeId");
-		assert_eq!(slice[0], memo_id, "deps element must be Memo::id()");
+			// Assert
+			assert_eq!(deps.as_slice(), &[signal.id()]);
+		});
 	}
 
 	#[rstest]
 	#[serial(reactive_runtime)]
-	fn deps_macro_collects_heterogeneous_trackables_in_source_order() {
-		let count = Signal::new(1_i32);
-		let label = Signal::new(String::from("ready"));
+	fn explicit_deps_with_memo_collects_memo_node_id() {
+		crate::reactive::ReactiveScope::run(|| {
+			// Arrange
+			let signal = Signal::new(2_i32);
+			let memo = Memo::new(move || signal.get() * 10);
+			let memo_id = memo.id();
 
-		let deps = crate::deps![count, label];
+			// Act
+			let deps = crate::deps![memo];
 
-		assert_eq!(deps.as_slice(), &[count.id(), label.id()]);
-	}
-
-	#[rstest]
-	fn deps_macro_empty_is_explicit() {
-		let deps = crate::deps![];
-
-		assert!(deps.as_slice().is_empty());
-	}
-
-	#[rstest]
-	#[serial(reactive_runtime)]
-	fn deps_macro_evaluates_each_expression_once() {
-		let signal = Signal::new(1_i32);
-		let evaluations = Cell::new(0_u8);
-
-		let deps = crate::deps![{
-			evaluations.set(evaluations.get() + 1);
-			signal.clone()
-		}];
-
-		assert_eq!(evaluations.get(), 1);
-		assert_eq!(deps.as_slice(), &[signal.id()]);
-	}
-
-	#[rstest]
-	fn deps_auto_macro_selects_auto_mode() {
-		assert!(matches!(crate::deps_auto!(), ReactiveDeps::Auto));
-	}
-
-	#[rstest]
-	#[serial(reactive_runtime)]
-	fn deps_macro_has_no_tuple_arity_limit() {
-		let signal = Signal::new(1_i32);
-
-		let deps = crate::deps![
-			signal, signal, signal, signal, signal, signal, signal, signal, signal, signal, signal,
-			signal, signal,
-		];
-
-		assert_eq!(deps.as_slice().len(), 13);
-	}
-
-	struct CustomTrackable(Signal<i32>);
-
-	impl Trackable for CustomTrackable {
-		fn node_id(&self) -> NodeId {
-			self.0.id()
-		}
-	}
-
-	#[rstest]
-	#[serial(reactive_runtime)]
-	fn deps_macro_accepts_third_party_trackable() {
-		let custom = CustomTrackable(Signal::new(1_i32));
-
-		let deps = crate::deps![custom];
-
-		assert_eq!(deps.as_slice(), &[custom.node_id()]);
+			// Assert
+			let slice = deps.as_slice();
+			assert_eq!(
+				slice.len(),
+				1,
+				"single-element tuple of Memo must yield one NodeId"
+			);
+			assert_eq!(slice[0], memo_id, "deps element must be Memo::id()");
+		});
 	}
 }

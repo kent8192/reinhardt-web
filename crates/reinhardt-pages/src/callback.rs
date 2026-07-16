@@ -11,28 +11,83 @@
 //! ## Example
 //!
 //! ```ignore
+//! use reinhardt_core::reactive::ReactiveScope;
 //! use reinhardt_pages::{Callback, page};
 //!
-//! // Define handler outside macro
-//! let handle_click = Callback::new(|_event| {
-//!     log!("Button clicked!");
-//! });
+//! ReactiveScope::run(|| {
+//!     // Define handler outside macro
+//!     let handle_click = Callback::new(|_event| {
+//!         log!("Button clicked!");
+//!     });
 //!
-//! // Use in page! macro
-//! page!(|| {
-//!     button {
-//!         @click: handle_click,
-//!         "Click me"
-//!     }
-//! })
+//!     // Use in page! macro
+//!     page!(|| {
+//!         button {
+//!             @click: handle_click,
+//!             "Click me"
+//!         }
+//!     })
+//! });
 //! ```
 
+use core::marker::PhantomData;
 use std::future::Future;
+use std::rc::Rc;
 use std::sync::Arc;
+
+#[cfg(wasm)]
+use std::pin::Pin;
+#[cfg(wasm)]
+use std::task::{Context, Poll};
 
 use crate::component::PageEventHandler;
 use crate::event::EventPayload;
 use crate::platform::spawn_task;
+use crate::reactive::pages_arena::{
+	PageNodeKey, PageNodeKind, allocate_page_node, dispose_page_node, with_page_node,
+};
+use reinhardt_core::reactive::ReactiveScope;
+#[cfg(wasm)]
+use reinhardt_core::reactive::current_scope_id;
+
+#[cfg(wasm)]
+struct ScopedAsyncEventFuture<Fut> {
+	scope: Option<reinhardt_core::reactive::ScopeId>,
+	future: Pin<Box<Fut>>,
+}
+
+#[cfg(wasm)]
+impl<Fut> Future for ScopedAsyncEventFuture<Fut>
+where
+	Fut: Future<Output = ()>,
+{
+	type Output = ();
+
+	fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+		let this = self.get_mut();
+		let mut poll = || this.future.as_mut().poll(cx);
+		match this.scope {
+			Some(scope) => {
+				reinhardt_core::reactive::scope::enter_scope(scope, poll).unwrap_or(Poll::Ready(()))
+			}
+			None => poll(),
+		}
+	}
+}
+
+#[cfg(wasm)]
+fn scope_async_event_future<Fut>(
+	scope: Option<reinhardt_core::reactive::ScopeId>,
+	future: Fut,
+) -> ScopedAsyncEventFuture<Fut>
+where
+	Fut: Future<Output = ()> + 'static,
+{
+	ScopedAsyncEventFuture {
+		scope,
+		future: Box::pin(future),
+	}
+}
 
 #[cfg(wasm)]
 type EventArg = web_sys::Event;
@@ -50,14 +105,25 @@ type EventArg = crate::component::NativeEvent;
 /// - `Args`: The argument type the callback receives (defaults to Event)
 /// - `Ret`: The return type of the callback (defaults to `()`)
 ///
+/// Callbacks are bound to the thread that owns their page arena storage.
+///
+/// ```compile_fail
+/// use reinhardt_pages::Callback;
+///
+/// let callback = Callback::<(), ()>::new(|_| {});
+/// std::thread::spawn(move || callback.call(()));
+/// ```
+///
 /// ## Example
 ///
 /// ```ignore
 /// use reinhardt_pages::Callback;
 ///
 /// // Simple click handler
-/// let on_click = Callback::new(|_event| {
-///     log!("Clicked!");
+/// ReactiveScope::run(|| {
+///     let on_click = Callback::new(|_event| {
+///         log!("Clicked!");
+///     });
 /// });
 ///
 /// // Handler with state capture
@@ -69,7 +135,7 @@ type EventArg = crate::component::NativeEvent;
 /// ```
 // Callback struct for WASM targets.
 #[cfg(wasm)]
-pub struct Callback<Args = EventArg, Ret = ()> {
+struct CallbackSlot<Args, Ret> {
 	inner: Arc<dyn Fn(Args) -> Ret + 'static>,
 }
 
@@ -80,14 +146,33 @@ pub struct Callback<Args = EventArg, Ret = ()> {
 /// Native page handlers share the single-threaded event contract of
 /// [`PageEventHandler`], so callbacks may capture reactive state.
 #[cfg(native)]
-pub struct Callback<Args = EventArg, Ret = ()> {
+struct CallbackSlot<Args, Ret> {
 	inner: Arc<dyn Fn(Args) -> Ret + 'static>,
+}
+
+fn allocate_callback<Args: 'static, Ret: 'static>(
+	f: impl Fn(Args) -> Ret + 'static,
+) -> PageNodeKey {
+	allocate_page_node(
+		"Callback::new",
+		PageNodeKind::Callback,
+		CallbackSlot { inner: Arc::new(f) },
+	)
+}
+
+/// A copied key to a callback stored in the current reactive scope.
+pub struct Callback<Args = EventArg, Ret = ()> {
+	key: PageNodeKey,
+	_marker: PhantomData<fn(Args) -> Ret>,
 }
 
 // WASM implementation without Send + Sync bounds
 #[cfg(wasm)]
-impl<Args, Ret> Callback<Args, Ret> {
+impl<Args: 'static, Ret: 'static> Callback<Args, Ret> {
 	/// Creates a new Callback from a function or closure.
+	///
+	/// The callback is stored in the active [`ReactiveScope`]. For callbacks assembled outside
+	/// a render, use [`Callback::new_in_scope`] with an owner that outlives the callback.
 	///
 	/// # Arguments
 	///
@@ -104,23 +189,20 @@ impl<Args, Ret> Callback<Args, Ret> {
 	where
 		F: Fn(Args) -> Ret + 'static,
 	{
-		Self { inner: Arc::new(f) }
-	}
-
-	/// Calls the callback with the given arguments.
-	///
-	/// # Arguments
-	///
-	/// * `args` - The arguments to pass to the callback
-	pub fn call(&self, args: Args) -> Ret {
-		(self.inner)(args)
+		Self {
+			key: allocate_callback(f),
+			_marker: PhantomData,
+		}
 	}
 }
 
 // Non-WASM implementation
 #[cfg(native)]
-impl<Args, Ret> Callback<Args, Ret> {
+impl<Args: 'static, Ret: 'static> Callback<Args, Ret> {
 	/// Creates a new Callback from a function or closure.
+	///
+	/// The callback is stored in the active [`ReactiveScope`]. For callbacks assembled outside
+	/// a render, use [`Callback::new_in_scope`] with an owner that outlives the callback.
 	///
 	/// # Arguments
 	///
@@ -137,24 +219,83 @@ impl<Args, Ret> Callback<Args, Ret> {
 	where
 		F: Fn(Args) -> Ret + 'static,
 	{
-		Self { inner: Arc::new(f) }
-	}
-
-	/// Calls the callback with the given arguments.
-	///
-	/// # Arguments
-	///
-	/// * `args` - The arguments to pass to the callback
-	pub fn call(&self, args: Args) -> Ret {
-		(self.inner)(args)
+		Self {
+			key: allocate_callback(f),
+			_marker: PhantomData,
+		}
 	}
 }
 
 impl<Args, Ret> Clone for Callback<Args, Ret> {
 	fn clone(&self) -> Self {
-		Self {
-			inner: Arc::clone(&self.inner),
+		*self
+	}
+}
+
+impl<Args, Ret> Copy for Callback<Args, Ret> {}
+
+impl<Args: 'static, Ret: 'static> Callback<Args, Ret> {
+	/// Creates a callback in an explicitly owned reactive scope.
+	///
+	/// This is the lifecycle-safe entry point for callbacks created outside a render. The
+	/// callback remains [`Copy`], while the supplied [`ReactiveScope`] owns its storage and
+	/// disposes it when the scope is dropped or explicitly disposed.
+	pub fn new_in_scope<F>(scope: &ReactiveScope, f: F) -> Self
+	where
+		F: Fn(Args) -> Ret + 'static,
+	{
+		scope.enter(|| Self::new(f))
+	}
+
+	pub(crate) fn new_in_scope_id<F>(scope: reinhardt_core::reactive::ScopeId, f: F) -> Self
+	where
+		F: Fn(Args) -> Ret + 'static,
+	{
+		reinhardt_core::reactive::scope::enter_scope(scope, || Self::new(f))
+			.unwrap_or_else(|err| panic!("{err}"))
+	}
+
+	/// Call this callback with the supplied arguments.
+	pub fn call(&self, args: Args) -> Ret {
+		self.try_call(args).unwrap_or_else(|err| panic!("{err}"))
+	}
+
+	/// Calls this callback while reporting a disposed owner instead of panicking.
+	///
+	/// This is intended for callbacks retained by timers, promises, or external
+	/// event sources which may fire after their mounted view has unmounted.
+	pub fn try_call(&self, args: Args) -> Result<Ret, String> {
+		let inner =
+			with_page_node::<CallbackSlot<Args, Ret>, _>(self.key, |slot| Arc::clone(&slot.inner))?;
+		reinhardt_core::reactive::scope::enter_scope(self.key.scope(), || inner(args))
+			.map_err(|err| err.to_string())
+	}
+}
+
+fn scoped_event_handler<F>(handler: F) -> PageEventHandler
+where
+	F: Fn(EventArg) + 'static,
+{
+	let scope = reinhardt_core::reactive::scope::current_scope_id();
+	Arc::new(move |event| match scope {
+		Some(scope) => {
+			let _ = reinhardt_core::reactive::scope::enter_scope(scope, || handler(event));
 		}
+		None => handler(event),
+	})
+}
+
+#[cfg(wasm)]
+pub(crate) fn run_event_handler_in_scope(
+	scope: Option<reinhardt_core::reactive::ScopeId>,
+	handler: &PageEventHandler,
+	event: web_sys::Event,
+) {
+	match scope {
+		Some(scope) => {
+			let _ = reinhardt_core::reactive::scope::enter_scope(scope, || handler(event));
+		}
+		None => handler(event),
 	}
 }
 
@@ -170,18 +311,20 @@ impl<Args, Ret> Clone for Callback<Args, Ret> {
 /// Per-call-site state for [`callback_with_deps`].
 ///
 /// Keyed by leaked `&'static str` of the caller's `Location` and stores the
-/// most recent dependency list together with a type-erased `Arc<dyn Fn>`. The
-/// inner Arc is downcast and cloned into the returned `Callback`.
+/// most recent deps tuple together with a type-erased `Rc`. The inner value is
+/// downcast and copied into the returned `Callback`.
 #[allow(dead_code)]
-struct CallbackSlot {
+struct CallbackSlotEntry {
 	deps: smallvec::SmallVec<[reinhardt_core::reactive::runtime::NodeId; 8]>,
-	f_any: Arc<dyn std::any::Any>,
+	scope: reinhardt_core::reactive::ScopeId,
+	callback_type: std::any::TypeId,
+	key_any: Rc<dyn std::any::Any>,
 }
 
 thread_local! {
 	#[allow(clippy::type_complexity)]
 	static CALLBACK_REGISTRY: std::cell::RefCell<
-		std::collections::HashMap<&'static str, CallbackSlot>,
+		std::collections::HashMap<(&'static str, reinhardt_core::reactive::ScopeId), CallbackSlotEntry>,
 	> = std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
@@ -205,42 +348,72 @@ where
 	Args: 'static,
 	Ret: 'static,
 {
-	type InnerArc<A, R> = Arc<dyn Fn(A) -> R + 'static>;
-
 	let loc = std::panic::Location::caller();
 	let key: &'static str = {
 		let s = format!("{}:{}:{}", loc.file(), loc.line(), loc.column());
 		Box::leak(s.into_boxed_str())
 	};
 
-	CALLBACK_REGISTRY.with(|reg| {
+	let scope = reinhardt_core::reactive::scope::current_scope_id().unwrap_or_else(|| {
+		panic!(
+			"{}",
+			reinhardt_core::reactive::ReactiveScopeError::NoActiveScope {
+				operation: "use_callback"
+			}
+		);
+	});
+	let mut inserted = false;
+	let callback = CALLBACK_REGISTRY.with(|reg| {
 		let mut reg = reg.borrow_mut();
 		let new_ids: smallvec::SmallVec<[reinhardt_core::reactive::runtime::NodeId; 8]> =
 			deps.as_slice().iter().copied().collect();
 
-		let slot = reg.entry(key).or_insert_with(|| CallbackSlot {
-			deps: smallvec::SmallVec::new(),
-			f_any: Arc::new(()) as Arc<dyn std::any::Any>,
-		});
+		let slot = match reg.entry((key, scope)) {
+			std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
+			std::collections::hash_map::Entry::Vacant(entry) => {
+				inserted = true;
+				entry.insert(CallbackSlotEntry {
+					deps: smallvec::SmallVec::new(),
+					scope,
+					callback_type: std::any::TypeId::of::<()>(),
+					key_any: Rc::new(()) as Rc<dyn std::any::Any>,
+				})
+			}
+		};
 
-		let needs_replace =
-			slot.deps.as_slice() != new_ids.as_slice() || !slot.f_any.is::<InnerArc<Args, Ret>>();
+		let needs_replace = slot.deps.as_slice() != new_ids.as_slice()
+			|| slot.callback_type != std::any::TypeId::of::<(Args, Ret)>()
+			|| !slot.key_any.is::<PageNodeKey>();
 
 		if needs_replace {
-			let new_fn: InnerArc<Args, Ret> = Arc::new(f);
+			if let Some(key) = slot.key_any.downcast_ref::<PageNodeKey>() {
+				dispose_page_node(*key);
+			}
+			let callback = Callback::new(f);
 			slot.deps = new_ids;
-			slot.f_any = Arc::new(new_fn) as Arc<dyn std::any::Any>;
+			slot.scope = scope;
+			slot.callback_type = std::any::TypeId::of::<(Args, Ret)>();
+			slot.key_any = Rc::new(callback.key) as Rc<dyn std::any::Any>;
 		}
 
-		let typed: &InnerArc<Args, Ret> = slot
-			.f_any
-			.downcast_ref::<InnerArc<Args, Ret>>()
+		let saved_key = slot
+			.key_any
+			.downcast_ref::<PageNodeKey>()
 			.expect("CallbackSlot type mismatch — call site changed signature");
 
 		Callback {
-			inner: typed.clone(),
+			key: *saved_key,
+			_marker: PhantomData,
 		}
-	})
+	});
+	if inserted {
+		let _ = reinhardt_core::reactive::scope::on_scope_dispose_after_nodes(scope, move || {
+			CALLBACK_REGISTRY.with(|registry| {
+				registry.borrow_mut().remove(&(key, scope));
+			});
+		});
+	}
+	callback
 }
 
 /// Internal helper used by `use_callback` / `use_callback_with` (native).
@@ -265,57 +438,86 @@ where
 		Box::leak(s.into_boxed_str())
 	};
 
-	CALLBACK_REGISTRY.with(|reg| {
+	let scope = reinhardt_core::reactive::scope::current_scope_id().unwrap_or_else(|| {
+		panic!(
+			"{}",
+			reinhardt_core::reactive::ReactiveScopeError::NoActiveScope {
+				operation: "use_callback"
+			}
+		);
+	});
+	let mut inserted = false;
+	let callback = CALLBACK_REGISTRY.with(|reg| {
 		let mut reg = reg.borrow_mut();
 		let new_ids: smallvec::SmallVec<[reinhardt_core::reactive::runtime::NodeId; 8]> =
 			deps.as_slice().iter().copied().collect();
 
-		let slot = reg.entry(key).or_insert_with(|| CallbackSlot {
-			deps: smallvec::SmallVec::new(),
-			f_any: Arc::new(()) as Arc<dyn std::any::Any>,
-		});
+		let slot = match reg.entry((key, scope)) {
+			std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
+			std::collections::hash_map::Entry::Vacant(entry) => {
+				inserted = true;
+				entry.insert(CallbackSlotEntry {
+					deps: smallvec::SmallVec::new(),
+					scope,
+					callback_type: std::any::TypeId::of::<()>(),
+					key_any: Rc::new(()) as Rc<dyn std::any::Any>,
+				})
+			}
+		};
 
-		let needs_replace =
-			slot.deps.as_slice() != new_ids.as_slice() || !slot.f_any.is::<InnerArc<Args, Ret>>();
+		let needs_replace = slot.deps.as_slice() != new_ids.as_slice()
+			|| slot.callback_type != std::any::TypeId::of::<(Args, Ret)>()
+			|| !slot.key_any.is::<PageNodeKey>();
 
 		if needs_replace {
-			let new_fn: InnerArc<Args, Ret> = Arc::new(f);
+			if let Some(key) = slot.key_any.downcast_ref::<PageNodeKey>() {
+				dispose_page_node(*key);
+			}
+			let callback = Callback::new(f);
 			slot.deps = new_ids;
-			slot.f_any = Arc::new(new_fn) as Arc<dyn std::any::Any>;
+			slot.scope = scope;
+			slot.callback_type = std::any::TypeId::of::<(Args, Ret)>();
+			slot.key_any = Rc::new(callback.key) as Rc<dyn std::any::Any>;
 		}
 
-		let typed: &InnerArc<Args, Ret> = slot
-			.f_any
-			.downcast_ref::<InnerArc<Args, Ret>>()
+		let saved_key = slot
+			.key_any
+			.downcast_ref::<PageNodeKey>()
 			.expect("CallbackSlot type mismatch — call site changed signature");
 
 		Callback {
-			inner: typed.clone(),
+			key: *saved_key,
+			_marker: PhantomData,
 		}
-	})
+	});
+	if inserted {
+		let _ = reinhardt_core::reactive::scope::on_scope_dispose_after_nodes(scope, move || {
+			CALLBACK_REGISTRY.with(|registry| {
+				registry.borrow_mut().remove(&(key, scope));
+			});
+		});
+	}
+	callback
 }
 
 #[cfg(test)]
-impl<Args, Ret> Callback<Args, Ret> {
+impl<Args: 'static, Ret: 'static> Callback<Args, Ret> {
 	/// Test-only accessor for raw inner-Arc pointer identity.
 	///
 	/// Used by `callback_with_deps` tests to assert `Arc::ptr_eq` semantics.
 	/// Named `_rc_ptr` for historical alignment with the plan template
 	/// despite the inner being `Arc` not `Rc`.
 	pub(crate) fn inner_rc_ptr(&self) -> *const () {
-		// Take the address of the trait-object data pointer; using
-		// `Arc::as_ptr` yields a fat pointer (`*const dyn Fn(...)`) which
-		// is not directly comparable. We cast to a thin `*const u8` via
-		// `*const ()` for the equality assertion in tests.
-		Arc::as_ptr(&self.inner) as *const u8 as *const ()
+		with_page_node::<CallbackSlot<Args, Ret>, _>(self.key, |slot| {
+			Arc::as_ptr(&slot.inner) as *const u8 as *const ()
+		})
+		.unwrap_or_else(|err| panic!("{err}"))
 	}
 }
 
 impl<Args, Ret> std::fmt::Debug for Callback<Args, Ret> {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.debug_struct("Callback")
-			.field("inner", &"<function>")
-			.finish()
+		f.debug_struct("Callback").field("key", &self.key).finish()
 	}
 }
 
@@ -360,7 +562,7 @@ where
 	F: Fn(web_sys::Event) + 'static,
 {
 	fn into_event_handler(self) -> PageEventHandler {
-		Arc::new(self)
+		scoped_event_handler(self)
 	}
 }
 
@@ -370,14 +572,20 @@ where
 	F: Fn(crate::component::NativeEvent) + 'static,
 {
 	fn into_event_handler(self) -> PageEventHandler {
-		Arc::new(self)
+		scoped_event_handler(self)
 	}
 }
 
 /// Implementation for Callback type.
 impl IntoEventHandler for Callback<EventArg, ()> {
+	#[allow(
+		clippy::arc_with_non_send_sync,
+		reason = "PageEventHandler is Arc-backed for cloneable Page elements while Callback intentionally retains thread-affine reactive state."
+	)]
 	fn into_event_handler(self) -> PageEventHandler {
-		self.inner
+		scoped_event_handler(move |event| {
+			let _ = self.try_call(event);
+		})
 	}
 }
 
@@ -457,14 +665,18 @@ impl<P> typed_sealed::Sealed<P> for Callback<P, ()> {}
 #[cfg(wasm)]
 impl<P: 'static> IntoTypedEventHandler<P> for Callback<P, ()> {
 	fn into_typed_event_handler(self) -> Arc<dyn Fn(P) + 'static> {
-		self.inner
+		Arc::new(move |payload| {
+			let _ = self.try_call(payload);
+		})
 	}
 }
 
 #[cfg(native)]
 impl<P: 'static> IntoTypedEventHandler<P> for Callback<P, ()> {
 	fn into_typed_event_handler(self) -> Arc<dyn Fn(P) + 'static> {
-		self.inner
+		Arc::new(move |payload| {
+			let _ = self.try_call(payload);
+		})
 	}
 }
 
@@ -475,7 +687,7 @@ where
 	H: IntoTypedEventHandler<P>,
 {
 	let handler = handler.into_typed_event_handler();
-	Arc::new(move |event| {
+	scoped_event_handler(move |event| {
 		let _actual_type = crate::platform::event_type(&event);
 		let _listener_target = crate::platform::current_target(&event)
 			.map(|target| target.tag_name().to_owned())
@@ -500,6 +712,7 @@ where
 	H: Fn(P) -> Fut + 'static,
 	Fut: Future<Output = ()> + 'static,
 {
+	let scope = current_scope_id();
 	Arc::new(move |event| {
 		let _actual_type = crate::platform::event_type(&event);
 		let _listener_target = crate::platform::current_target(&event)
@@ -512,7 +725,7 @@ where
 				let future = handler(payload);
 				#[cfg(feature = "i18n")]
 				let future = crate::i18n::with_optional_i18n_context_async(i18n_context, future);
-				spawn_task(future);
+				spawn_task(scope_async_event_future(scope, future));
 			}
 			Err(_error) => crate::error_log!(
 				"typed async event conversion failed for actual event type `{}` on listener target `{}`: {}",
@@ -555,7 +768,7 @@ pub fn raw_event_handler<H>(handler: H) -> PageEventHandler
 where
 	H: Fn(crate::platform::Event) + 'static,
 {
-	Arc::new(handler)
+	scoped_event_handler(handler)
 }
 
 /// Stores a synchronous raw cross-target event handler.
@@ -564,7 +777,7 @@ pub fn raw_event_handler<H>(handler: H) -> PageEventHandler
 where
 	H: Fn(crate::platform::Event) + 'static,
 {
-	Arc::new(handler)
+	scoped_event_handler(handler)
 }
 
 /// Stores an asynchronous raw cross-target event handler.
@@ -574,13 +787,14 @@ where
 	H: Fn(crate::platform::Event) -> Fut + 'static,
 	Fut: Future<Output = ()> + 'static,
 {
+	let scope = current_scope_id();
 	Arc::new(move |event| {
 		#[cfg(feature = "i18n")]
 		let i18n_context = crate::i18n::current_i18n_callback_context();
 		let future = handler(event);
 		#[cfg(feature = "i18n")]
 		let future = crate::i18n::with_optional_i18n_context_async(i18n_context, future);
-		spawn_task(future);
+		spawn_task(scope_async_event_future(scope, future));
 	})
 }
 
@@ -610,7 +824,7 @@ where
 /// ```
 #[cfg(wasm)]
 pub fn event_handler(f: impl Fn(web_sys::Event) + 'static) -> PageEventHandler {
-	Arc::new(f)
+	scoped_event_handler(f)
 }
 
 /// Event handler helper with concrete type for better type inference (server-side version).
@@ -618,7 +832,7 @@ pub fn event_handler(f: impl Fn(web_sys::Event) + 'static) -> PageEventHandler {
 /// See WASM version for documentation.
 #[cfg(native)]
 pub fn event_handler(f: impl Fn(crate::component::NativeEvent) + 'static) -> PageEventHandler {
-	Arc::new(f)
+	scoped_event_handler(f)
 }
 
 /// Creates an async event handler that automatically spawns the future.
@@ -648,13 +862,14 @@ where
 	F: Fn(web_sys::Event) -> Fut + 'static,
 	Fut: Future<Output = ()> + 'static,
 {
+	let scope = current_scope_id();
 	Arc::new(move |event| {
 		#[cfg(feature = "i18n")]
 		let i18n_context = crate::i18n::current_i18n_callback_context();
 		let fut = f(event);
 		#[cfg(feature = "i18n")]
 		let fut = crate::i18n::with_optional_i18n_context_async(i18n_context, fut);
-		spawn_task(fut);
+		spawn_task(scope_async_event_future(scope, fut));
 	})
 }
 
@@ -662,8 +877,8 @@ where
 #[cfg(native)]
 pub fn async_handler<F, Fut>(f: F) -> PageEventHandler
 where
-	F: Fn(crate::component::NativeEvent) -> Fut + Send + Sync + 'static,
-	Fut: Future<Output = ()> + Send + 'static,
+	F: Fn(crate::component::NativeEvent) -> Fut + 'static,
+	Fut: Future<Output = ()> + 'static,
 {
 	Arc::new(move |event| {
 		spawn_task(f(event));
@@ -673,47 +888,114 @@ where
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
+	use serial_test::serial;
+
+	#[rstest]
+	fn callback_is_copy() {
+		fn assert_copy<T: Copy>() {}
+
+		assert_copy::<Callback<i32, i32>>();
+	}
+
+	#[rstest]
+	#[serial(reactive_runtime)]
+	fn callback_new_requires_an_active_scope() {
+		let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+			let _callback = Callback::<i32, i32>::new(|value| value + 1);
+		}));
+		assert!(
+			result.is_err(),
+			"callbacks without an active owner must use Callback::new_in_scope"
+		);
+	}
+
+	#[rstest]
+	#[serial(reactive_runtime)]
+	fn callback_new_in_scope_uses_a_disposable_owner() {
+		let scope = ReactiveScope::new();
+		let callback = Callback::new_in_scope(&scope, |value: i32| value + 1);
+
+		assert_eq!(callback.call(1), 2);
+		scope.dispose();
+
+		assert!(
+			callback.try_call(1).is_err(),
+			"disposed callback owners must report their invalid slot without panicking"
+		);
+	}
+
+	#[rstest]
+	fn callback_call_works_inside_scope() {
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let callback = Callback::new(|value: i32| value + 1);
+			let copied = callback;
+			assert_eq!(callback.call(1), 2);
+			assert_eq!(copied.call(2), 3);
+		});
+	}
+
+	#[rstest]
+	#[serial(reactive_runtime)]
+	fn callback_call_reenters_its_owning_scope() {
+		let scope = reinhardt_core::reactive::ReactiveScope::new();
+		let callback = scope.enter(|| {
+			Callback::new(|_: ()| {
+				let signal = reinhardt_core::reactive::Signal::new(42_i32);
+				assert_eq!(signal.get(), 42);
+			})
+		});
+
+		callback.call(());
+	}
 
 	#[test]
 	fn test_callback_creation() {
-		let callback = Callback::new(|_: i32| 42);
-		assert_eq!(callback.call(0), 42);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let callback = Callback::new(|_: i32| 42);
+			assert_eq!(callback.call(0), 42);
+		});
 	}
 
 	#[test]
 	fn test_callback_clone() {
-		let callback1 = Callback::new(|x: i32| x * 2);
-		let callback2 = callback1.clone();
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let callback1 = Callback::new(|x: i32| x * 2);
+			let callback2 = callback1;
 
-		assert_eq!(callback1.call(5), 10);
-		assert_eq!(callback2.call(5), 10);
+			assert_eq!(callback1.call(5), 10);
+			assert_eq!(callback2.call(5), 10);
+		});
 	}
 
 	#[test]
 	fn test_callback_with_captured_state() {
 		use std::sync::{Arc, Mutex};
 
-		// Use Arc<Mutex<T>> for thread-safe state (required for Send + Sync on non-WASM)
-		let counter = Arc::new(Mutex::new(0));
-		let callback = Callback::new({
-			let counter = Arc::clone(&counter);
-			move |increment: i32| {
-				*counter.lock().unwrap() += increment;
-			}
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let counter = Arc::new(Mutex::new(0));
+			let callback = Callback::new({
+				let counter = Arc::clone(&counter);
+				move |increment: i32| {
+					*counter.lock().unwrap() += increment;
+				}
+			});
+
+			callback.call(1);
+			callback.call(2);
+			callback.call(3);
+
+			assert_eq!(*counter.lock().unwrap(), 6);
 		});
-
-		callback.call(1);
-		callback.call(2);
-		callback.call(3);
-
-		assert_eq!(*counter.lock().unwrap(), 6);
 	}
 
 	#[test]
 	fn test_callback_debug() {
-		let callback = Callback::new(|_: ()| {});
-		let debug_str = format!("{:?}", callback);
-		assert!(debug_str.contains("Callback"));
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let callback = Callback::new(|_: ()| {});
+			let debug_str = format!("{:?}", callback);
+			assert!(debug_str.contains("Callback"));
+		});
 	}
 
 	#[cfg(native)]
@@ -728,8 +1010,10 @@ mod tests {
 	#[cfg(native)]
 	#[test]
 	fn test_into_event_handler_callback() {
-		let callback = Callback::new(|_: crate::component::NativeEvent| {});
-		let _handler: PageEventHandler = callback.into_event_handler();
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let callback = Callback::new(|_: crate::component::NativeEvent| {});
+			let _handler: PageEventHandler = callback.into_event_handler();
+		});
 	}
 
 	#[cfg(native)]
@@ -745,6 +1029,71 @@ mod tests {
 			NativeEventPayload::Pointer(PointerEventData::default()),
 		));
 	}
+
+	#[cfg(native)]
+	#[test]
+	fn synchronous_event_handler_reenters_its_registration_scope() {
+		use crate::component::NativeEvent;
+		use reinhardt_core::reactive::Signal;
+		use reinhardt_core::types::page::{EventType, NativeEventPayload};
+
+		let scope = ReactiveScope::new();
+		let handler = scope.enter(|| {
+			event_handler(|_: NativeEvent| {
+				let signal = Signal::new(1_i32);
+				assert_eq!(signal.get(), 1);
+			})
+		});
+
+		handler(NativeEvent::for_known(
+			EventType::Click,
+			NativeEventPayload::default(),
+		));
+	}
+}
+
+#[cfg(all(test, wasm))]
+mod wasm_tests {
+	use super::*;
+	use reinhardt_core::reactive::{ReactiveScope, Signal};
+	use reinhardt_core::types::page::{EventType, PageElement};
+	use std::cell::Cell;
+	use std::rc::Rc;
+	use wasm_bindgen_test::*;
+
+	wasm_bindgen_test_configure!(run_in_browser);
+
+	#[wasm_bindgen_test(async)]
+	async fn async_handler_reenters_its_owner_scope_after_an_await() {
+		let scope = ReactiveScope::new();
+		let callback_ran = Rc::new(Cell::new(false));
+		let handler = scope.enter(|| {
+			let callback_ran = Rc::clone(&callback_ran);
+			PageElement::new("button")
+				.on(
+					EventType::Click,
+					async_handler(move |_| {
+						let callback_ran = Rc::clone(&callback_ran);
+						async move {
+							crate::platform::defer_yield().await;
+							let signal = Signal::new(1_i32);
+							assert_eq!(signal.get(), 1);
+							callback_ran.set(true);
+						}
+					}),
+				)
+				.into_event_handlers()
+				.pop()
+				.expect("button should retain its click handler")
+				.1
+		});
+
+		handler(web_sys::Event::new("click").expect("click event should construct"));
+		crate::platform::defer_yield().await;
+		crate::platform::defer_yield().await;
+
+		assert!(callback_ran.get());
+	}
 }
 
 #[cfg(test)]
@@ -753,6 +1102,15 @@ mod tests_with_deps {
 	use reinhardt_core::deps;
 	use reinhardt_core::reactive::signal::Signal;
 	use serial_test::serial;
+
+	#[cfg(native)]
+	fn callback_from_shared_call_site<Args, Ret>() -> Callback<Args, Ret>
+	where
+		Args: 'static,
+		Ret: Default + 'static,
+	{
+		callback_with_deps(|_: Args| Ret::default(), deps![].into_deps())
+	}
 
 	// `callback_with_deps` keys its registry slot by the caller's
 	// `(file, line, column)` via `#[track_caller]`. To exercise the slot
@@ -763,56 +1121,115 @@ mod tests_with_deps {
 	#[test]
 	#[serial]
 	fn callback_stable_when_deps_unchanged() {
-		// Arrange
-		let s = Signal::new(0_i32);
-		let mut prev: Option<*const ()> = None;
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			// Arrange
+			let s = Signal::new(0_i32);
+			let mut prev: Option<*const ()> = None;
 
-		// Act — same call site (loop body) re-entered with same deps.
-		for _ in 0..3 {
-			let cb = callback_with_deps::<i32, ()>(
-				{
-					let s = s.clone();
-					move |x: i32| {
-						let _ = (x, s.get());
-					}
-				},
-				deps![s].into_deps(),
-			);
-			let rc = cb.inner_rc_ptr();
-
-			// Assert
-			if let Some(prev_rc) = prev {
-				assert_eq!(
-					rc, prev_rc,
-					"Arc<Fn> identity must be stable when deps unchanged"
+			// Act — same call site (loop body) re-entered with same deps.
+			for _ in 0..3 {
+				let cb = callback_with_deps::<i32, ()>(
+					{
+						let s = s.clone();
+						move |x: i32| {
+							let _ = (x, s.get());
+						}
+					},
+					deps![s].into_deps(),
 				);
+				let rc = cb.inner_rc_ptr();
+
+				// Assert
+				if let Some(prev_rc) = prev {
+					assert_eq!(
+						rc, prev_rc,
+						"Arc<Fn> identity must be stable when deps unchanged"
+					);
+				}
+				prev = Some(rc);
 			}
-			prev = Some(rc);
-		}
+		});
 	}
 
 	#[cfg(native)]
 	#[test]
 	#[serial]
 	fn callback_swaps_on_deps_change() {
-		// Arrange
-		let signals: Vec<Signal<i32>> = (0..3).map(Signal::new).collect();
-		let mut prev: Option<*const ()> = None;
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			// Arrange
+			let signals: Vec<Signal<i32>> = (0..3).map(Signal::new).collect();
+			let mut prev: Option<*const ()> = None;
 
-		// Act — same call site (loop body) re-entered with different
-		// deps each iteration.
-		for s in &signals {
-			let cb = callback_with_deps::<i32, ()>(|_: i32| {}, deps![s.clone()].into_deps());
-			let rc = cb.inner_rc_ptr();
+			// Act — same call site (loop body) re-entered with different
+			// deps each iteration.
+			for s in &signals {
+				let cb = callback_with_deps::<i32, ()>(|_: i32| {}, deps![s].into_deps());
+				let rc = cb.inner_rc_ptr();
 
-			// Assert
-			if let Some(prev_rc) = prev {
-				assert_ne!(
-					rc, prev_rc,
-					"Arc<Fn> identity must change when deps NodeIds differ"
-				);
+				// Assert
+				if let Some(prev_rc) = prev {
+					assert_ne!(
+						rc, prev_rc,
+						"Arc<Fn> identity must change when deps NodeIds differ"
+					);
+				}
+				prev = Some(rc);
 			}
-			prev = Some(rc);
-		}
+		});
+	}
+
+	#[cfg(native)]
+	#[test]
+	#[serial]
+	fn callback_replaces_slot_when_call_site_signature_changes() {
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let integer_callback = callback_from_shared_call_site::<i32, i32>();
+			assert_eq!(integer_callback.call(1), 0);
+
+			let string_callback = callback_from_shared_call_site::<String, String>();
+			assert_eq!(string_callback.call(String::from("input")), "");
+		});
+	}
+
+	#[cfg(native)]
+	#[test]
+	#[serial]
+	fn callback_slots_are_isolated_between_live_scopes() {
+		let first_scope = reinhardt_core::reactive::ReactiveScope::new();
+		let first = first_scope.enter(callback_from_shared_call_site::<i32, i32>);
+		let second_scope = reinhardt_core::reactive::ReactiveScope::new();
+		let second = second_scope.enter(callback_from_shared_call_site::<i32, i32>);
+
+		assert_eq!(first.call(1), 0);
+		assert_eq!(second.call(2), 0);
+	}
+
+	#[cfg(native)]
+	#[test]
+	#[serial]
+	fn callback_registry_removes_entries_when_their_scope_is_disposed() {
+		let scope = reinhardt_core::reactive::ReactiveScope::new();
+		let scope_id = scope.id();
+		scope.enter(|| {
+			let _ = callback_from_shared_call_site::<i32, i32>();
+		});
+
+		let has_entry = CALLBACK_REGISTRY.with(|registry| {
+			registry
+				.borrow()
+				.keys()
+				.any(|(_, entry_scope)| *entry_scope == scope_id)
+		});
+		assert!(has_entry);
+
+		drop(scope);
+
+		let has_entry = CALLBACK_REGISTRY.with(|registry| {
+			registry
+				.borrow()
+				.keys()
+				.any(|(_, entry_scope)| *entry_scope == scope_id)
+		});
+		assert!(!has_entry);
 	}
 }

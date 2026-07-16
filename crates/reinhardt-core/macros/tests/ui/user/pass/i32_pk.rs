@@ -22,9 +22,10 @@ fn main() {
 		email: "test@example.com".to_string(),
 		password_hash: None,
 		last_login: None,
-		is_active: true,
+		is_active: false,
 		is_superuser: false,
 	};
 
 	assert_eq!(user.id(), "999");
+	assert!(!AuthIdentity::is_account_active(&user));
 }

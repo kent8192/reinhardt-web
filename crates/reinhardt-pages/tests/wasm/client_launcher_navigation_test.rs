@@ -21,6 +21,7 @@
 #![cfg(wasm)]
 
 use reinhardt_core::page::Outlet;
+use reinhardt_core::reactive::ReactiveScope;
 use reinhardt_pages::app::{ClientLauncher, with_spa_router};
 use reinhardt_pages::component::{IntoPage, Page, PageElement};
 use reinhardt_pages::deps;
@@ -76,6 +77,16 @@ fn page_b() -> Page {
 		.attr("id", "route-b")
 		.child("ROUTE-B-CONTENT")
 		.into_page()
+}
+
+fn reactive_page_b() -> Page {
+	let content = Signal::new("ROUTE-B-CONTENT");
+	Page::reactive(move || {
+		PageElement::new("div")
+			.attr("id", "route-b")
+			.child(content.get())
+			.into_page()
+	})
 }
 
 fn layout_shell(outlet: Outlet) -> Page {
@@ -199,11 +210,11 @@ fn page_with_retained_effect_in_reactive_body() -> Page {
 
 fn page_with_reentrant_nested_reactive() -> Page {
 	let trigger = Signal::new(0_i32);
-	let trigger_for_outer = trigger.clone();
+	let trigger_for_outer = trigger;
 
 	Page::reactive(move || {
 		let _ = trigger_for_outer.get();
-		let trigger_for_inner = trigger_for_outer.clone();
+		let trigger_for_inner = trigger_for_outer;
 
 		Page::reactive(move || {
 			if trigger_for_inner.get_untracked() == 0 {
@@ -359,7 +370,9 @@ async fn client_launcher_preserves_layout_shell_between_sibling_routes() {
 		.router_client(|| {
 			ClientRouter::new().routes(|routes| {
 				routes.layout_route("shell", "/", layout_shell, |children| {
-					children.route("a", "a", page_a).route("b", "b", page_b)
+					children
+						.route("a", "a", page_a)
+						.route("b", "b", reactive_page_b)
 				})
 			})
 		})
@@ -409,7 +422,8 @@ async fn client_launcher_preserves_layout_shell_between_sibling_routes() {
 async fn retained_route_effects_are_disposed_on_sibling_navigation() {
 	let root = install_app_root();
 	replace_history_path("/a");
-	let tick = reset_retained_route_state();
+	let scope = ReactiveScope::new();
+	let tick = scope.enter(reset_retained_route_state);
 
 	ClientLauncher::new("#app")
 		.router_client(|| {
@@ -462,7 +476,8 @@ async fn retained_route_effects_are_disposed_on_sibling_navigation() {
 #[wasm_bindgen_test]
 async fn retained_effects_in_reactive_body_are_replaced_on_rerender() {
 	let root = install_app_root();
-	let (render_tick, effect_tick) = reset_retained_reactive_state();
+	let scope = ReactiveScope::new();
+	let (render_tick, effect_tick) = scope.enter(reset_retained_reactive_state);
 
 	ClientLauncher::new("#app")
 		.router_client(|| {
@@ -739,6 +754,62 @@ async fn client_launcher_handles_back_to_back_navigations() {
 			root.inner_html()
 		);
 	}
+}
+
+#[wasm_bindgen_test]
+async fn nested_reactive_content_is_removed_with_outer_owner() {
+	use reinhardt_pages::component::PageExt;
+	use reinhardt_pages::dom::Element;
+
+	let root = install_app_root();
+	let authorized = Signal::new(true);
+	let secret = Signal::new("SECRET-42".to_owned());
+	let authorized_for_outer = authorized.clone();
+	let secret_for_inner = secret.clone();
+
+	Page::reactive(move || {
+		if authorized_for_outer.get() {
+			let secret_for_render = secret_for_inner.clone();
+			Page::reactive(move || Page::text(secret_for_render.get()))
+		} else {
+			Page::Empty
+		}
+	})
+	.mount(&Element::new(root.clone()))
+	.expect("mount nested reactive page");
+
+	yield_to_microtasks().await;
+	assert!(
+		root.text_content()
+			.unwrap_or_default()
+			.contains("SECRET-42"),
+		"expected secret to render before authorization is revoked, got: {}",
+		root.inner_html()
+	);
+
+	authorized.set(false);
+	with_runtime(|rt| rt.flush_updates());
+	yield_to_microtasks().await;
+	assert!(
+		!root
+			.text_content()
+			.unwrap_or_default()
+			.contains("SECRET-42"),
+		"secret should be removed when the outer reactive owner rerenders, got: {}",
+		root.inner_html()
+	);
+
+	secret.set("SECRET-99".to_owned());
+	with_runtime(|rt| rt.flush_updates());
+	yield_to_microtasks().await;
+	assert!(
+		!root
+			.text_content()
+			.unwrap_or_default()
+			.contains("SECRET-99"),
+		"detached nested reactive effect should not reinsert secret content, got: {}",
+		root.inner_html()
+	);
 }
 
 #[wasm_bindgen_test]

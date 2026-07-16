@@ -33,10 +33,11 @@ component testing, `trybuild`, `rstest`, Cargo Make.
   `FIXME`, `todo!()`, `unimplemented!()`, or undocumented `#[allow]`.
 - Use Rust 2024 `module.rs` plus `module/` layouts; never add `mod.rs`.
 - Every task ends with spec review, code-quality review, focused verification,
-  and a small conventional commit. Commit messages must end with:
+  and a small conventional commit. Commit messages must include a model-specific
+  Co-Authored-By footer:
 
   ```text
-  Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+  Co-Authored-By: <Model Name> <noreply@model-provider.example>
   ```
 
 ## Task 1: Add the authoritative event catalog

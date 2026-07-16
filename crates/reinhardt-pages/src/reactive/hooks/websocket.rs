@@ -7,6 +7,11 @@
 use crate::reactive::Signal;
 use std::rc::Rc;
 
+#[cfg(any(wasm, test))]
+fn invoke_in_owner_scope(owner_scope: reinhardt_core::reactive::ScopeId, callback: impl FnOnce()) {
+	let _ = reinhardt_core::reactive::scope::enter_scope(owner_scope, callback);
+}
+
 /// WebSocket connection state
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConnectionState {
@@ -103,6 +108,18 @@ impl WebSocketHandle {
 		&self.latest_message
 	}
 
+	/// Returns the current connection state, or `Closed` after owner disposal.
+	pub fn current_connection_state(&self) -> ConnectionState {
+		self.connection_state
+			.try_get_untracked()
+			.unwrap_or(ConnectionState::Closed)
+	}
+
+	/// Returns the latest message, or `None` after owner disposal.
+	pub fn current_message(&self) -> Option<WebSocketMessage> {
+		self.latest_message.try_get_untracked().unwrap_or(None)
+	}
+
 	/// Send a WebSocket message
 	pub fn send(&self, message: WebSocketMessage) -> Result<(), String> {
 		(self.send_fn)(message)
@@ -140,15 +157,15 @@ impl WebSocketHandle {
 
 	/// Check if the connection is currently open
 	pub fn is_open(&self) -> bool {
-		matches!(self.connection_state.get(), ConnectionState::Open)
+		matches!(self.current_connection_state(), ConnectionState::Open)
 	}
 }
 
 impl Clone for WebSocketHandle {
 	fn clone(&self) -> Self {
 		Self {
-			connection_state: self.connection_state.clone(),
-			latest_message: self.latest_message.clone(),
+			connection_state: self.connection_state,
+			latest_message: self.latest_message,
 			send_fn: Rc::clone(&self.send_fn),
 			close_fn: Rc::clone(&self.close_fn),
 			#[cfg(wasm)]
@@ -228,12 +245,13 @@ use {
 /// # Reactivity semantics
 ///
 /// Event-callback closures inside `UseWebSocketOptions` (`on_open`,
-/// `on_close`, `on_error`) run outside any active reactive
-/// Observer. Reading `Signal::get()`, `Memo::get()`, or `Resource::get()`
-/// inside returns the latest value WITHOUT subscribing for future changes
-/// (Option A, Refs #4195).
+/// `on_close`, `on_error`) re-enter the scope that created this hook, but run
+/// outside any active reactive Observer. Reading `Signal::get()`, `Memo::get()`,
+/// or `Resource::get()` inside returns the latest value WITHOUT subscribing for
+/// future changes (Option A, Refs #4195).
 #[cfg(wasm)]
 pub fn use_websocket(url: &str, options: UseWebSocketOptions) -> WebSocketHandle {
+	let owner_scope = reinhardt_core::reactive::scope::require_active_scope("use_websocket");
 	// WebSocket instance holder
 	let ws_ref: Rc<RefCell<Option<WebSocket>>> = Rc::new(RefCell::new(None));
 	let closures_ref: Rc<RefCell<Option<WsClosures>>> = Rc::new(RefCell::new(None));
@@ -247,8 +265,6 @@ pub fn use_websocket(url: &str, options: UseWebSocketOptions) -> WebSocketHandle
 	let connect = {
 		let ws_ref = Rc::clone(&ws_ref);
 		let closures_ref = Rc::clone(&closures_ref);
-		let connection_state = connection_state.clone();
-		let latest_message = latest_message.clone();
 		let url = url.clone();
 		let on_open = options.on_open.clone();
 		let on_close = options.on_close.clone();
@@ -271,52 +287,77 @@ pub fn use_websocket(url: &str, options: UseWebSocketOptions) -> WebSocketHandle
 			ws.set_binary_type(web_sys::BinaryType::Arraybuffer);
 
 			// onopen handler
-			let connection_state_open = connection_state.clone();
+			let connection_state_open = connection_state;
 			let on_open_cb = on_open.clone();
 			let onopen = Closure::wrap(Box::new(move |_: JsValue| {
-				connection_state_open.set(ConnectionState::Open);
+				if connection_state_open
+					.try_set(ConnectionState::Open)
+					.is_err()
+				{
+					return;
+				}
 				if let Some(cb) = &on_open_cb {
-					cb();
+					invoke_in_owner_scope(owner_scope, || cb());
 				}
 			}) as Box<dyn FnMut(JsValue)>);
 			ws.set_onopen(Some(onopen.as_ref().unchecked_ref()));
 
 			// onmessage handler
-			let latest_message_recv = latest_message.clone();
+			let latest_message_recv = latest_message;
 			let onmessage = Closure::wrap(Box::new(move |e: MessageEvent| {
 				// Try text message first
 				if let Ok(txt) = e.data().dyn_into::<js_sys::JsString>() {
 					let text = txt.as_string().unwrap_or_default();
-					latest_message_recv.set(Some(WebSocketMessage::Text(text)));
+					if latest_message_recv
+						.try_set(Some(WebSocketMessage::Text(text)))
+						.is_err()
+					{
+						return;
+					}
 				}
 				// Try binary message (ArrayBuffer)
 				else if let Ok(array_buffer) = e.data().dyn_into::<js_sys::ArrayBuffer>() {
 					let array = js_sys::Uint8Array::new(&array_buffer);
 					let vec = array.to_vec();
-					latest_message_recv.set(Some(WebSocketMessage::Binary(vec)));
+					if latest_message_recv
+						.try_set(Some(WebSocketMessage::Binary(vec)))
+						.is_err()
+					{
+						return;
+					}
 				}
 			}) as Box<dyn FnMut(MessageEvent)>);
 			ws.set_onmessage(Some(onmessage.as_ref().unchecked_ref()));
 
 			// onclose handler
-			let connection_state_close = connection_state.clone();
+			let connection_state_close = connection_state;
 			let on_close_cb = on_close.clone();
 			let onclose = Closure::wrap(Box::new(move |_: CloseEvent| {
-				connection_state_close.set(ConnectionState::Closed);
+				if connection_state_close
+					.try_set(ConnectionState::Closed)
+					.is_err()
+				{
+					return;
+				}
 				if let Some(cb) = &on_close_cb {
-					cb();
+					invoke_in_owner_scope(owner_scope, || cb());
 				}
 			}) as Box<dyn FnMut(CloseEvent)>);
 			ws.set_onclose(Some(onclose.as_ref().unchecked_ref()));
 
 			// onerror handler
-			let connection_state_error = connection_state.clone();
+			let connection_state_error = connection_state;
 			let on_error_cb = on_error.clone();
 			let onerror = Closure::wrap(Box::new(move |_: ErrorEvent| {
 				let error_msg = "WebSocket error occurred".to_string();
-				connection_state_error.set(ConnectionState::Error(error_msg.clone()));
+				if connection_state_error
+					.try_set(ConnectionState::Error(error_msg.clone()))
+					.is_err()
+				{
+					return;
+				}
 				if let Some(cb) = &on_error_cb {
-					cb(error_msg);
+					invoke_in_owner_scope(owner_scope, || cb(error_msg));
 				}
 			}) as Box<dyn FnMut(ErrorEvent)>);
 			ws.set_onerror(Some(onerror.as_ref().unchecked_ref()));
@@ -404,24 +445,61 @@ pub fn use_websocket(_url: &str, _options: UseWebSocketOptions) -> WebSocketHand
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[cfg(native)]
+	use std::cell::Cell;
+	#[cfg(native)]
+	use std::rc::Rc;
+
+	#[cfg(native)]
+	#[test]
+	#[serial_test::serial(reactive_runtime)]
+	fn websocket_callback_reenters_its_owner_scope() {
+		let scope = reinhardt_core::reactive::ReactiveScope::new();
+		let callback_ran = Rc::new(Cell::new(false));
+		let callback_ran_for_callback = Rc::clone(&callback_ran);
+
+		invoke_in_owner_scope(scope.id(), move || {
+			let signal = Signal::new(42_i32);
+			assert_eq!(signal.get(), 42);
+			callback_ran_for_callback.set(true);
+		});
+
+		assert!(callback_ran.get());
+	}
 
 	#[test]
 	#[cfg(native)]
 	fn test_use_websocket_ssr_no_op() {
-		// Test sentinel URL — native build never opens this connection
-		// (SSR no-op). Suppress Semgrep's awesome-secure-defaults
-		// substring rule via concatenation so the literal scheme token
-		// is never present in source.
-		// nosemgrep: awesome-secure-defaults.insecure-websocket
-		let scheme = "ws";
-		let test_url = format!("{}://test", scheme);
-		let ws = use_websocket(&test_url, UseWebSocketOptions::default());
-		assert!(matches!(
-			ws.connection_state().get(),
-			ConnectionState::Closed
-		));
-		assert!(ws.send_text("test".to_string()).is_err());
-		assert!(!ws.is_open());
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			// Test sentinel URL — native build never opens this connection
+			// (SSR no-op). Suppress Semgrep's awesome-secure-defaults
+			// substring rule via concatenation so the literal scheme token
+			// is never present in source.
+			// nosemgrep: awesome-secure-defaults.insecure-websocket
+			let scheme = "ws";
+			let test_url = format!("{}://test", scheme);
+			let ws = use_websocket(&test_url, UseWebSocketOptions::default());
+			assert!(matches!(
+				ws.connection_state().get(),
+				ConnectionState::Closed
+			));
+			assert!(ws.send_text("test".to_string()).is_err());
+			assert!(!ws.is_open());
+		});
+	}
+
+	#[test]
+	#[cfg(native)]
+	#[serial_test::serial(reactive_runtime)]
+	fn stale_websocket_handle_is_closed() {
+		let scope = reinhardt_core::reactive::ReactiveScope::new();
+		let handle = scope.enter(|| use_websocket("ignored", UseWebSocketOptions::default()));
+
+		scope.dispose();
+
+		assert!(!handle.is_open());
+		assert_eq!(handle.current_connection_state(), ConnectionState::Closed);
+		assert_eq!(handle.current_message(), None);
 	}
 
 	#[test]

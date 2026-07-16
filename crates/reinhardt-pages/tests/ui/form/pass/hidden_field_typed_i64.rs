@@ -3,13 +3,15 @@
 use reinhardt_pages::form;
 
 fn main() {
-	let _ = form! {
-		name: NumericForm,
-		action: "/api/numeric",
-		fields: {
-			question_id: HiddenField<i64> {
-				initial: 42i64,
+	reinhardt_core::reactive::ReactiveScope::run(|| {
+		let _ = form! {
+			name: NumericForm,
+			action: "/api/numeric",
+			fields: {
+				question_id: HiddenField<i64> {
+					initial: 42i64,
+				}
 			}
-		}
-	};
+		};
+	});
 }
