@@ -33,6 +33,9 @@ pub struct ResolvedRouteMetadata {
 
 impl ResolvedRouteMetadata {
 	/// Creates route metadata from static component or layout information.
+	// Keep the generated route fields positional so component and layout
+	// registration share one construction path without an intermediate builder.
+	#[allow(clippy::too_many_arguments)]
 	pub(crate) fn new(
 		name: Option<String>,
 		own_pattern: impl Into<String>,
