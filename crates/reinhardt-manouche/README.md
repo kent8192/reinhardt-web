@@ -37,6 +37,11 @@ forms. For example, `flex` accepts a basis-only value, `box-shadow` accepts
 optional color and `inset` components in either order, and `background` permits
 a color only on its final comma-separated layer.
 
+The registry also keeps property-specific CSS constraints intact: flex basis
+accepts `content`, maximum sizes accept intrinsic sizing keywords, grid line
+names exclude reserved keywords, and `grid-template-areas` requires rectangular
+named areas with consistent row widths.
+
 Source formatting has a separate, non-semantic parser. Formatting never
 replaces compilation or validation.
 

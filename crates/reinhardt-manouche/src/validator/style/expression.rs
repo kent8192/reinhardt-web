@@ -900,7 +900,10 @@ fn is_whole_unchecked(expression: &TypedValueExpr) -> bool {
 }
 
 fn expression_matches_type(expression: &TypedValueExpr, expected: SemanticType) -> bool {
-	if expression.is_contextual_zero() && expected.numeric_dimension().is_some() {
+	if expression.is_contextual_zero()
+		&& expected.numeric_dimension().is_some()
+		&& expected != SemanticType::Time
+	{
 		return true;
 	}
 	match expected {
@@ -1170,6 +1173,7 @@ fn property_specific_constraints_match(property: &str, value: &TypedValueExpr) -
 	match property {
 		"font-style" => font_style_oblique_angle_is_valid(value),
 		"grid-column" | "grid-row" | "grid-area" => grid_line_numbers_are_nonzero(value),
+		"grid-template-areas" => grid_template_areas_are_rectangular(value),
 		"background" => background_position_and_size_are_not_split(value),
 		"text-decoration" => text_decoration_lines_are_unique(value),
 		"box-shadow" => box_shadow_lengths_are_contiguous(value),
@@ -1228,6 +1232,54 @@ fn grid_line_numbers_are_nonzero(expression: &TypedValueExpr) -> bool {
 		}
 		_ => true,
 	}
+}
+
+fn grid_template_areas_are_rectangular(value: &TypedValueExpr) -> bool {
+	let rows = sequence_items(value)
+		.into_iter()
+		.map(grid_template_area_cells)
+		.collect::<Option<Vec<_>>>();
+	let Some(rows) = rows else {
+		return true;
+	};
+	let Some(width) = rows.first().map(Vec::len) else {
+		return true;
+	};
+	if width == 0 || rows.iter().any(|row| row.len() != width) {
+		return false;
+	}
+
+	let mut bounds: HashMap<&str, (usize, usize, usize, usize, usize)> = HashMap::new();
+	for (row_index, row) in rows.iter().enumerate() {
+		for (column_index, cell) in row.iter().enumerate() {
+			if cell.bytes().all(|byte| byte == b'.') {
+				continue;
+			}
+			bounds
+				.entry(*cell)
+				.and_modify(|(min_row, max_row, min_column, max_column, count)| {
+					*min_row = (*min_row).min(row_index);
+					*max_row = (*max_row).max(row_index);
+					*min_column = (*min_column).min(column_index);
+					*max_column = (*max_column).max(column_index);
+					*count += 1;
+				})
+				.or_insert((row_index, row_index, column_index, column_index, 1_usize));
+		}
+	}
+
+	bounds
+		.into_values()
+		.all(|(min_row, max_row, min_column, max_column, count)| {
+			(max_row - min_row + 1) * (max_column - min_column + 1) == count
+		})
+}
+
+fn grid_template_area_cells(expression: &TypedValueExpr) -> Option<Vec<&str>> {
+	let TypedValueExprKind::Literal(StyleValueLiteral::String(string)) = &expression.kind else {
+		return None;
+	};
+	Some(string.value.split_ascii_whitespace().collect())
 }
 
 fn background_position_and_size_are_not_split(value: &TypedValueExpr) -> bool {
@@ -1879,11 +1931,10 @@ mod tests {
 	#[case(SemanticType::LengthPercentage)]
 	#[case(SemanticType::Percentage)]
 	#[case(SemanticType::Angle)]
-	#[case(SemanticType::Time)]
 	#[case(SemanticType::Number)]
 	#[case(SemanticType::Integer)]
 	#[case(SemanticType::GridFraction)]
-	fn unitless_zero_is_contextually_accepted_for_every_numeric_dimension(
+	fn unitless_zero_is_contextually_accepted_for_non_time_numeric_dimensions(
 		#[case] expected: SemanticType,
 	) {
 		// Arrange
@@ -1917,7 +1968,7 @@ mod tests {
 				length_percentage: LengthPercentage = 0;
 				percentage: Percentage = 0;
 				angle: Angle = 0;
-				time: Time = 0;
+				time: Time = 0s;
 				number: Number = 0;
 				integer: Integer = 0;
 			}
@@ -1927,7 +1978,7 @@ mod tests {
 				opacity: 0;
 				z-index: 0;
 				transform: rotate(0);
-				transition-duration: 0;
+				transition-duration: 0s;
 				grid-template-columns: 0;
 			}
 		";
@@ -2303,11 +2354,17 @@ mod tests {
 			".card { grid-template-columns: 1fr; }",
 			".card { grid-column: (span, card-start); }",
 			".card { grid-row: (span, 2); }",
+			".card { flex-basis: content; }",
+			".card { flex: content; }",
+			".card { max-width: max-content; }",
+			".card { max-height: min-content; }",
+			".card { grid-template-areas: (\"a a\", \"a a\"); }",
 			".card { background-position: (left, 10px, top, 20%); }",
 			".card { font-style: (oblique, 90deg); }",
 			".card { font-style: (oblique, 100grad); }",
 			".card { touch-action: (pan-left, pan-up, pinch-zoom); }",
 			".card { color: red.mix(blue, 100%); }",
+			".card { color: Color::oklch(60%, 40%, 30deg); }",
 			".card { color: currentColor; }",
 			".card { transition-property: none; }",
 			".card { text-decoration: (underline, overline, wavy, auto); }",
@@ -2327,8 +2384,14 @@ mod tests {
 		// Arrange
 		let sources = [
 			".card { grid-template-columns: -1fr; }",
+			".card { grid-column: span; }",
+			".card { grid-column: slash(1, span); }",
 			".card { grid-column: (span, auto); }",
 			".card { grid-row: (span, span); }",
+			".card { grid-template-areas: (\"a a\", \"a .\"); }",
+			".card { grid-template-areas: (\"a\", \"a a\"); }",
+			".card { transition-duration: 0; }",
+			".card { transition: (opacity, 0, ease); }",
 			".card { background-position: (left, right); }",
 			".card { font-style: (oblique, 91deg); }",
 			".card { font-style: (oblique, -91deg); }",

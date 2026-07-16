@@ -861,6 +861,13 @@ keyword_grammar!(
 		"stretch",
 	]
 );
+keyword_grammar!(
+	MAX_SIZE_DOMAIN,
+	KW_MAX_SIZE,
+	"max-size",
+	["min-content", "max-content", "fit-content", "stretch"]
+);
+keyword_grammar!(FLEX_BASIS_DOMAIN, KW_FLEX_BASIS, "flex-basis", ["content"]);
 keyword_grammar!(FLEX_DOMAIN, KW_FLEX, "flex", ["none", "auto", "initial"]);
 keyword_grammar!(
 	FLEX_DIRECTION_DOMAIN,
@@ -1379,7 +1386,7 @@ const POSITIVE_INTEGER: ValueGrammar = ValueGrammar::NumericRange {
 	minimum: 1,
 	maximum: i16::MAX,
 };
-const MAX_SIZE: ValueGrammar = ValueGrammar::Or(&[NLP, KW_NONE]);
+const MAX_SIZE: ValueGrammar = ValueGrammar::Or(&[NLP, KW_MAX_SIZE, KW_NONE]);
 const POSITION_ITEM: ValueGrammar = ValueGrammar::Or(&[LP, KW_POSITION_VALUE]);
 const HORIZONTAL_POSITION: ValueGrammar = ValueGrammar::Or(&[LP, KW_HORIZONTAL_POSITION]);
 const VERTICAL_POSITION: ValueGrammar = ValueGrammar::Or(&[LP, KW_VERTICAL_POSITION]);
@@ -1448,7 +1455,7 @@ const SPAN_GRID_LINE: ValueGrammar = ValueGrammar::Ordered(&[
 	required("span", &KW_SPAN),
 	required("line", &INTEGER_OR_GRID_LINE_NAME),
 ]);
-const GRID_LINE: ValueGrammar = ValueGrammar::Or(&[KW_AUTO, I, IDENT, SPAN_GRID_LINE]);
+const GRID_LINE: ValueGrammar = ValueGrammar::Or(&[KW_AUTO, I, GRID_LINE_NAME, SPAN_GRID_LINE]);
 const TRACK: ValueGrammar = ValueGrammar::Or(&[NLP, NFR, KW_TRACK]);
 const TRACK_LIST: ValueGrammar = ValueGrammar::Space {
 	min: 1,
@@ -1492,9 +1499,10 @@ const PADDING: ValueGrammar = ValueGrammar::Space {
 const FLEX_ORDERED: ValueGrammar = ValueGrammar::Ordered(&[
 	required("grow", &NN),
 	optional("shrink", &NN),
-	optional("basis", &SIZE),
+	optional("basis", &FLEX_BASIS),
 ]);
-const FLEX: ValueGrammar = ValueGrammar::Or(&[KW_FLEX, SIZE, FLEX_ORDERED]);
+const FLEX_BASIS: ValueGrammar = ValueGrammar::Or(&[SIZE, KW_FLEX_BASIS]);
+const FLEX: ValueGrammar = ValueGrammar::Or(&[KW_FLEX, FLEX_BASIS, FLEX_ORDERED]);
 const FLEX_FLOW: ValueGrammar = ValueGrammar::Unordered {
 	members: &[
 		optional("direction", &KW_FLEX_DIRECTION),
@@ -1870,7 +1878,7 @@ static PROPERTY_SPECS: &[PropertySpec] = property_registry!(
 	},
 	PropertyFamily::FlexAndGrid => {
 		"flex" => FLEX,
-		"flex-basis" => SIZE,
+		"flex-basis" => FLEX_BASIS,
 		"flex-grow" => NN,
 		"flex-shrink" => NN,
 		"order" => I,
@@ -2282,7 +2290,7 @@ static FUNCTION_SPECS: &[FunctionSpec] = &[
 		ArityPolicy::Exact(3),
 		ArgumentConstraints::Positional(&[
 			NUMBER_OR_PERCENTAGE,
-			TypeConstraint::Exact(SemanticType::Number),
+			NUMBER_OR_PERCENTAGE,
 			TypeConstraint::Exact(SemanticType::Angle),
 		]),
 		None,
@@ -3070,7 +3078,7 @@ mod tests {
 			"clamp|css=clamp|arity=exact:3|args=positional:[NUMERIC(JOINED),NUMERIC(JOINED),NUMERIC(JOINED)]|receiver=none|result=JOINED_NUMERIC|lowering=comma-function",
 			"Color::rgb|css=rgb|arity=exact:3|args=positional:[NUMERIC(NUMBER_OR_PERCENTAGE),NUMERIC(NUMBER_OR_PERCENTAGE),NUMERIC(NUMBER_OR_PERCENTAGE)]|receiver=none|result=COLOR|lowering=space-function",
 			"Color::hsl|css=hsl|arity=exact:3|args=positional:[ANGLE,PERCENTAGE,PERCENTAGE]|receiver=none|result=COLOR|lowering=space-function",
-			"Color::oklch|css=oklch|arity=exact:3|args=positional:[NUMERIC(NUMBER_OR_PERCENTAGE),NUMBER,ANGLE]|receiver=none|result=COLOR|lowering=space-function",
+			"Color::oklch|css=oklch|arity=exact:3|args=positional:[NUMERIC(NUMBER_OR_PERCENTAGE),NUMERIC(NUMBER_OR_PERCENTAGE),ANGLE]|receiver=none|result=COLOR|lowering=space-function",
 			".mix|css=color-mix|arity=exact:2|args=positional:[COLOR,NUMERIC(PERCENTAGE_RANGE(0,100))]|receiver=COLOR|result=COLOR|lowering=color-mix-srgb",
 			"stop|css=<color> <position>|arity=exact:2|args=positional:[COLOR,LENGTH_PERCENTAGE]|receiver=none|result=GRADIENT_STOP|lowering=space-pair",
 			"linear_gradient|css=linear-gradient|arity=exact:2|args=positional:[DIRECTION,COMMA_LIST(min=2,GRADIENT_STOP)]|receiver=none|result=IMAGE|lowering=comma-function",
