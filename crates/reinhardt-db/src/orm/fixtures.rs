@@ -919,7 +919,7 @@ where
 	match value {
 		Value::String(encoded) => {
 			use base64::Engine;
-			let bytes = base64::engine::general_purpose::STANDARD
+			base64::engine::general_purpose::STANDARD
 				.decode(&encoded)
 				.map_err(|error| {
 					FixtureError::Database(format!(
@@ -929,7 +929,7 @@ where
 						database_column
 					))
 				})?;
-			Ok(Value::Array(bytes.into_iter().map(Value::from).collect()))
+			Ok(Value::String(encoded))
 		}
 		value => Ok(value),
 	}
@@ -1075,28 +1075,58 @@ fn fixture_binary_value_to_sea_value(
 	if field_is_none {
 		return Ok(reinhardt_query::value::Value::Bytes(None));
 	}
-	let values = value.as_array().ok_or_else(|| {
-		FixtureError::Database("binary fixture fields must be JSON byte arrays".to_string())
-	})?;
-	let bytes = values
-		.iter()
-		.enumerate()
-		.map(|(index, value)| {
-			value
-				.as_u64()
-				.filter(|value| *value <= u8::MAX as u64)
-				.map_or_else(
-					|| {
-						Err(FixtureError::Database(format!(
-							"binary fixture byte at index {index} must be an integer between 0 and {}",
-							u8::MAX
-						)))
-					},
-					|value| Ok(value as u8),
-				)
-		})
-		.collect::<FixtureResult<Vec<_>>>()?;
+	let bytes = match value {
+		Value::String(encoded) => {
+			use base64::Engine;
+			base64::engine::general_purpose::STANDARD
+				.decode(encoded)
+				.map_err(|error| {
+					FixtureError::Database(format!(
+						"binary fixture fields must be valid base64 strings: {error}"
+					))
+				})?
+		}
+		Value::Array(values) => values
+			.iter()
+			.enumerate()
+			.map(|(index, value)| {
+				value
+					.as_u64()
+					.filter(|value| *value <= u8::MAX as u64)
+					.map_or_else(
+						|| {
+							Err(FixtureError::Database(format!(
+								"binary fixture byte at index {index} must be an integer between 0 and {}",
+								u8::MAX
+							)))
+						},
+						|value| Ok(value as u8),
+					)
+			})
+			.collect::<FixtureResult<Vec<_>>>()?,
+		_ => {
+			return Err(FixtureError::Database(
+				"binary fixture fields must be base64 strings or JSON byte arrays".to_string(),
+			));
+		}
+	};
 	Ok(reinhardt_query::value::Value::Bytes(Some(Box::new(bytes))))
+}
+
+fn fixture_field_is_identity_or_auto_increment(field: &crate::orm::inspection::FieldInfo) -> bool {
+	[
+		"identity_always",
+		"identity_by_default",
+		"auto_increment",
+		"autoincrement",
+	]
+	.iter()
+	.any(|name| {
+		matches!(
+			field.attributes.get(*name),
+			Some(crate::orm::fields::FieldKwarg::Bool(true))
+		)
+	})
 }
 
 fn fixture_many_to_many_key_value<M>(
@@ -1192,6 +1222,7 @@ where
 			field.nullable
 				&& !field.primary_key
 				&& !M::generated_field_names().contains(&field.name.as_str())
+				&& !fixture_field_is_identity_or_auto_increment(field)
 		}) {
 			let column = field.db_column_name().to_string();
 			object.entry(column).or_insert(Value::Null);
@@ -1334,6 +1365,7 @@ where
 		field.nullable
 			&& !field.primary_key
 			&& !M::generated_field_names().contains(&field.name.as_str())
+			&& !fixture_field_is_identity_or_auto_increment(field)
 	}) {
 		object
 			.entry(field.db_column_name().to_string())
@@ -1764,6 +1796,47 @@ where
 }
 
 #[cfg(feature = "migrations")]
+fn fixture_m2m_has_explicit_through_model(
+	through_table: &str,
+	source_field: &str,
+	target_field: &str,
+) -> bool {
+	let Some(metadata) = crate::migrations::model_registry::global_registry()
+		.get_models()
+		.into_iter()
+		.find(|metadata| metadata.table_name.eq_ignore_ascii_case(through_table))
+	else {
+		return false;
+	};
+
+	metadata.fields.iter().any(|(field_name, field)| {
+		let matches_column = |column: &str| {
+			field_name.eq_ignore_ascii_case(column)
+				|| field
+					.params
+					.get("db_column")
+					.is_some_and(|db_column| db_column.eq_ignore_ascii_case(column))
+		};
+		let is_through_key = matches_column(source_field) || matches_column(target_field);
+		let is_implicit_primary_key = field_name.eq_ignore_ascii_case("id")
+			|| field
+				.params
+				.get("primary_key")
+				.is_some_and(|primary_key| primary_key == "true");
+		!is_through_key && !is_implicit_primary_key
+	})
+}
+
+#[cfg(not(feature = "migrations"))]
+fn fixture_m2m_has_explicit_through_model(
+	_through_table: &str,
+	_source_field: &str,
+	_target_field: &str,
+) -> bool {
+	false
+}
+
+#[cfg(feature = "migrations")]
 fn many_to_many_specs_for<M>() -> FixtureResult<Vec<FixtureManyToManySpec>>
 where
 	M: Model,
@@ -1803,17 +1876,24 @@ where
 					})
 				})
 				.unwrap_or(FixturePrimaryKeyBinding::Generic);
-			let is_explicit_through = field.through.is_some();
 			let through_table = field.through.clone().unwrap_or_else(|| {
 				crate::m2m_naming::default_through_table(M::table_name(), &field.field_name)
 			});
 			let (default_source_field, default_target_field) =
 				crate::m2m_naming::default_m2m_columns(M::table_name(), &target_table);
+			let source_field = field.source_field.clone().unwrap_or(default_source_field);
+			let target_field = field.target_field.clone().unwrap_or(default_target_field);
+			let is_explicit_through = field.through.is_some()
+				&& fixture_m2m_has_explicit_through_model(
+					&through_table,
+					&source_field,
+					&target_field,
+				);
 			Ok(FixtureManyToManySpec {
 				field_name: field.field_name.clone(),
 				through_table,
-				source_field: field.source_field.clone().unwrap_or(default_source_field),
-				target_field: field.target_field.clone().unwrap_or(default_target_field),
+				source_field,
+				target_field,
 				source_primary_key_binding,
 				target_primary_key_binding,
 				is_explicit_through,
@@ -1833,7 +1913,7 @@ where
 		})
 		.map(|relation| {
 			let field_name = relation.name;
-			let is_explicit_through = relation.through_table.is_some();
+			let custom_through_table = relation.through_table;
 			let target_handler =
 				fixture_related_model_handler(M::app_label(), &relation.related_model)?;
 			let target_table = target_handler
@@ -1842,13 +1922,22 @@ where
 				.unwrap_or_else(|| default_target_table_name(&relation.related_model));
 			let (default_source_field, default_target_field) =
 				crate::m2m_naming::default_m2m_columns(M::table_name(), &target_table);
+			let through_table = custom_through_table.clone().unwrap_or_else(|| {
+				crate::m2m_naming::default_through_table(M::table_name(), &field_name)
+			});
+			let source_field = relation.source_field.unwrap_or(default_source_field);
+			let target_field = relation.target_field.unwrap_or(default_target_field);
+			let is_explicit_through = custom_through_table.is_some()
+				&& fixture_m2m_has_explicit_through_model(
+					&through_table,
+					&source_field,
+					&target_field,
+				);
 			Ok(FixtureManyToManySpec {
 				field_name: field_name.clone(),
-				through_table: relation.through_table.unwrap_or_else(|| {
-					crate::m2m_naming::default_through_table(M::table_name(), &field_name)
-				}),
-				source_field: relation.source_field.unwrap_or(default_source_field),
-				target_field: relation.target_field.unwrap_or(default_target_field),
+				through_table,
+				source_field,
+				target_field,
 				source_primary_key_binding: fixture_primary_key_binding_for_model::<M>(),
 				target_primary_key_binding: target_handler.map_or(
 					FixturePrimaryKeyBinding::Generic,
@@ -3686,7 +3775,7 @@ mod tests {
 	#[derive(Clone, Serialize, Deserialize)]
 	struct FixtureNonPrimaryIdentityAlwaysPost {
 		id: Option<i64>,
-		sequence_number: i64,
+		sequence_number: Option<i64>,
 		payload: String,
 	}
 
@@ -3724,7 +3813,7 @@ mod tests {
 			let mut id = fixture_field_info("id", "BigIntegerField", false);
 			id.primary_key = true;
 			let mut sequence_number =
-				fixture_field_info("sequence_number", "BigIntegerField", false);
+				fixture_field_info("sequence_number", "BigIntegerField", true);
 			sequence_number.attributes.insert(
 				"identity_by_default".to_string(),
 				crate::orm::fields::FieldKwarg::Bool(true),
@@ -5262,10 +5351,7 @@ mod tests {
 
 		let fields = fixture_fields_from_database_row::<FixtureBinaryPost>(&row)
 			.expect("binary query values should be representable in fixture JSON");
-		assert_eq!(
-			fields.get("payload"),
-			Some(&serde_json::json!([0, 1, 2, 3, 255]))
-		);
+		assert_eq!(fields.get("payload"), Some(&Value::from("AAECA/8=")));
 
 		let (_, values) = build_fixture_upsert_sql_values::<FixtureBinaryPost>(
 			DatabaseBackend::Postgres,
@@ -5273,6 +5359,29 @@ mod tests {
 		)
 		.expect("binary fixture values should bind as bytes");
 		assert!(values.contains(&QueryValue::Bytes(vec![0, 1, 2, 3, 255])));
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	fn fixture_null_fill_skips_nullable_identity_columns() {
+		let mut object = Map::new();
+		object.insert("id".to_string(), Value::from(1));
+		object.insert("payload".to_string(), Value::from("fixture payload"));
+
+		let (insert_sql, insert_values) = build_fixture_upsert_sql_values::<
+			FixtureNonPrimaryIdentityAlwaysPost,
+		>(DatabaseBackend::Postgres, &object)
+		.expect("fixture inserts should omit absent identity columns");
+		assert!(!insert_sql.contains("sequence_number"));
+		assert_eq!(insert_values.len(), 2);
+
+		let (update_sql, update_values) = build_fixture_update_sql_values::<
+			FixtureNonPrimaryIdentityAlwaysPost,
+		>(DatabaseBackend::MySql, &object)
+		.expect("fixture updates should omit absent identity columns")
+		.expect("fixture updates should contain the payload column");
+		assert!(!update_sql.contains("sequence_number"));
+		assert_eq!(update_values.len(), 2);
 	}
 
 	#[cfg(feature = "migrations")]
@@ -5421,6 +5530,38 @@ mod tests {
 
 	#[cfg(feature = "migrations")]
 	#[test]
+	#[serial_test::serial(fixture_model_registry)]
+	fn custom_through_many_to_many_fixture_fields_are_supported() {
+		let mut post = crate::migrations::ModelMetadata::new(
+			"fixture_m2m",
+			"FixtureM2mPost",
+			"fixture_m2m_post",
+		);
+		post.add_many_to_many(
+			crate::migrations::ManyToManyMetadata::new("tags", "Tag")
+				.with_through("fixture_custom_m2m_post_tags")
+				.with_source_field("post_id")
+				.with_target_field("tag_id"),
+		);
+		crate::migrations::model_registry::global_registry().register_model(post);
+		let mut object = Map::new();
+		object.insert("title".to_string(), Value::from("Fixture"));
+		object.insert(
+			"tags".to_string(),
+			Value::Array(vec![Value::from(1), Value::from(2)]),
+		);
+
+		let assignments = extract_many_to_many_assignments::<FixtureM2mPost>(&mut object)
+			.expect("custom through table names must not imply an explicit through model");
+
+		assert_eq!(assignments.len(), 1);
+		assert_eq!(object.get("title"), Some(&Value::from("Fixture")));
+		assert!(object.get("tags").is_none());
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	#[serial_test::serial(fixture_model_registry)]
 	fn explicit_through_many_to_many_fixture_fields_are_rejected() {
 		let mut post = crate::migrations::ModelMetadata::new(
 			"fixture_m2m",
@@ -5429,11 +5570,36 @@ mod tests {
 		);
 		post.add_many_to_many(
 			crate::migrations::ManyToManyMetadata::new("tags", "Tag")
-				.with_through("fixture_m2m_post_tags")
+				.with_through("fixture_explicit_m2m_post_tags")
 				.with_source_field("post_id")
 				.with_target_field("tag_id"),
 		);
-		crate::migrations::model_registry::global_registry().register_model(post);
+		let mut through = crate::migrations::ModelMetadata::new(
+			"fixture_explicit_m2m",
+			"PostTag",
+			"fixture_explicit_m2m_post_tags",
+		);
+		through.add_field(
+			"id".to_string(),
+			crate::migrations::FieldMetadata::new(crate::migrations::FieldType::BigInteger)
+				.with_param("primary_key", "true"),
+		);
+		through.add_field(
+			"post_id".to_string(),
+			crate::migrations::FieldMetadata::new(crate::migrations::FieldType::BigInteger),
+		);
+		through.add_field(
+			"tag_id".to_string(),
+			crate::migrations::FieldMetadata::new(crate::migrations::FieldType::BigInteger),
+		);
+		through.add_field(
+			"position".to_string(),
+			crate::migrations::FieldMetadata::new(crate::migrations::FieldType::Integer),
+		);
+		let registry = crate::migrations::model_registry::global_registry();
+		registry.register_model(post);
+		registry.register_model(through);
+
 		let mut object = Map::new();
 		object.insert("title".to_string(), Value::from("Fixture"));
 		object.insert(

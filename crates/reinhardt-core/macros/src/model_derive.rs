@@ -3338,17 +3338,37 @@ fn generate_fixture_validation(
 		if has_sql_default {
 			let serde_bounds = fixture_projection_serde_bounds(field);
 			let (is_option, inner_type) = extract_option_type(field_type);
-			let fixture_validation_type = if is_option && field.config.null == Some(false) {
-				inner_type
+			let custom_deserializer = fixture_projection_serde_deserializer(field);
+			let fixture_validation_type = if custom_deserializer.is_some() {
+				quote! { #field_type }
+			} else if is_option && field.config.null == Some(false) {
+				quote! { #inner_type }
 			} else {
-				field_type
+				quote! { #field_type }
 			};
-			let validator = if let Some(deserializer) = fixture_projection_serde_deserializer(field)
-			{
+			let validator = if let Some(deserializer) = custom_deserializer {
 				let validator_name = Ident::new(
 					&format!("__reinhardt_validate_defaulted_fixture_field_{field_name}"),
 					field_name.span(),
 				);
+				let null_error_message = LitStr::new(
+					&format!("fixture field '{field_name}' cannot be null"),
+					field_name.span(),
+				);
+				let validation = if is_option && field.config.null == Some(false) {
+					quote! {
+						let value: #field_type = #deserializer(deserializer)?;
+						if value.is_none() {
+							return Err(<D::Error as #orm_crate::serde::de::Error>::custom(
+								#null_error_message,
+							));
+						}
+					}
+				} else {
+					quote! {
+						let _: #field_type = #deserializer(deserializer)?;
+					}
+				};
 				defaulted_fixture_field_validators.push(quote! {
 					fn #validator_name<'de, D>(
 						deserializer: D,
@@ -3356,7 +3376,7 @@ fn generate_fixture_validation(
 					where
 						D: #orm_crate::serde::Deserializer<'de>,
 					{
-						let _: #fixture_validation_type = #deserializer(deserializer)?;
+						#validation
 						Ok(::std::marker::PhantomData::<#fixture_validation_type>)
 					}
 				});

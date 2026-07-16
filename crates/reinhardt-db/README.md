@@ -298,7 +298,9 @@ pub full_name: String,
 - Global model registry registration
 - Model fixture handler registration for `dumpdata` and `loaddata`
 - Django-compatible fixture upserts with explicit null, foreign key, many-to-many,
-  and PostgreSQL sequence handling
+  binary base64, and PostgreSQL sequence handling
+- Custom many-to-many through table and column names round-trip as fixture arrays;
+  registered through models with additional fields remain explicit-through records
 - Nullable JSON fixture values preserve SQL `NULL` versus JSON `null` using the
   stable `_reinhardt_json_null_fields` sidecar emitted by `dumpdata`
 - Fixture field names derived from model metadata, independent of API-facing serde renames
