@@ -469,7 +469,10 @@ impl StyleExtractor {
 				}
 
 				let mut normalized_file = file;
-				StyleBodyMarker.visit_file_mut(&mut normalized_file);
+				StyleBodyMarker {
+					cfg: &source_root.cfg,
+				}
+				.visit_file_mut(&mut normalized_file);
 				let relative = source_path
 					.strip_prefix(&source_root.package_root)
 					.unwrap_or(&source_path);
@@ -1218,6 +1221,51 @@ mod tests {
 	}
 
 	#[test]
+	fn active_cfg_attr_style_bodies_do_not_change_the_rust_fingerprint() {
+		// Arrange
+		let directory = tempfile::tempdir().expect("create temporary package");
+		fs::create_dir_all(directory.path().join("src")).expect("create source directory");
+		fs::write(
+			directory.path().join("Cargo.toml"),
+			"[package]\nname = \"cfg-attr-style-app\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[features]\ntheme = []\n",
+		)
+		.expect("write package manifest");
+		let source_path = directory.path().join("src/lib.rs");
+		fs::write(
+			&source_path,
+			"#[cfg_attr(feature = \"theme\", style_def)]\nstatic STYLES: CardStyles = style! { .card { color: red; } };\n",
+		)
+		.expect("write initial source");
+		let manifest = directory.path().join("Cargo.toml");
+		let context = StylePackageContext::resolve_with_features(
+			&manifest,
+			None,
+			StyleFeatureSelection::with_features(["theme"]),
+		)
+		.expect("select package with the theme feature");
+		let first = StyleExtractor::new(context.clone())
+			.extract()
+			.expect("extract initial styles");
+
+		// Act
+		fs::write(
+			&source_path,
+			"#[cfg_attr(feature = \"theme\", style_def)]\nstatic STYLES: CardStyles = style! { .card { color: blue; } };\n",
+		)
+		.expect("change style body");
+		let changed = StyleExtractor::new(context)
+			.extract()
+			.expect("extract changed styles");
+
+		// Assert
+		assert_eq!(
+			first.fingerprints.non_style_rust,
+			changed.fingerprints.non_style_rust
+		);
+		assert_ne!(first.fingerprints.css, changed.fingerprints.css);
+	}
+
+	#[test]
 	fn extracted_scope_matches_the_macro_generated_style_type_identity() {
 		// Arrange
 		let directory = tempfile::tempdir().expect("create temporary package");
@@ -1567,16 +1615,15 @@ impl<'ast> Visit<'ast> for DefinitionScanner<'_> {
 	}
 }
 
-struct StyleBodyMarker;
+struct StyleBodyMarker<'a> {
+	cfg: &'a CfgEvaluator,
+}
 
-impl VisitMut for StyleBodyMarker {
+impl VisitMut for StyleBodyMarker<'_> {
 	fn visit_item_static_mut(&mut self, item: &mut ItemStatic) {
-		let style_attributes = item
-			.attrs
-			.iter()
-			.filter(|attribute| is_style_def_attribute(&attribute.meta))
-			.count();
-		if style_attributes == 1
+		let style_attributes = self.cfg.active_style_def_attributes(&item.attrs);
+		if style_attributes.len() == 1
+			&& matches!(&style_attributes[0], Meta::Path(path) if is_style_def_path(path))
 			&& let Expr::Macro(expression) = item.expr.as_mut()
 			&& expression.mac.path.segments.len() == 1
 			&& expression.mac.path.is_ident("style")

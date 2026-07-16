@@ -1790,12 +1790,8 @@ fn require_pages_wasm_target(
 }
 
 #[cfg(feature = "pages")]
-fn should_prepare_component_styles(
-	with_pages: bool,
-	no_wasm: bool,
-	has_inherited_style_root: bool,
-) -> bool {
-	with_pages && !no_wasm && !has_inherited_style_root
+fn should_prepare_component_styles(with_pages: bool, has_inherited_style_root: bool) -> bool {
+	with_pages && !has_inherited_style_root
 }
 
 impl RunServerCommand {
@@ -2075,8 +2071,7 @@ impl BaseCommand for RunServerCommand {
 			.flatten();
 		#[cfg(feature = "pages")]
 		let component_style_state =
-			if should_prepare_component_styles(with_pages, no_wasm, inherited_style_root.is_some())
-			{
+			if should_prepare_component_styles(with_pages, inherited_style_root.is_some()) {
 				let manifest = std::env::current_dir()
 					.map_err(crate::CommandError::IoError)?
 					.join("Cargo.toml");
@@ -4623,11 +4618,10 @@ mod tests {
 
 	#[cfg(feature = "pages")]
 	#[test]
-	fn no_wasm_preserves_existing_component_style_artifacts() {
-		assert!(!should_prepare_component_styles(true, true, false));
-		assert!(!should_prepare_component_styles(true, true, true));
-		assert!(!should_prepare_component_styles(true, false, true));
-		assert!(should_prepare_component_styles(true, false, false));
+	fn component_styles_are_initialized_when_wasm_builds_are_disabled() {
+		assert!(should_prepare_component_styles(true, false));
+		assert!(!should_prepare_component_styles(true, true));
+		assert!(!should_prepare_component_styles(false, false));
 	}
 
 	#[test]
