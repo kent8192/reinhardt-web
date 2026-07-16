@@ -12,6 +12,7 @@
 //! If Task 1 fails, the bug is in `reinhardt-core/reactive` and this fix
 //! must be aborted (see spec §"Approach" Stage 3).
 
+use reinhardt_core::reactive::ReactiveScope;
 use reinhardt_pages::component::Page;
 use reinhardt_pages::reactive::{Effect, with_runtime};
 use reinhardt_urls::routers::ClientRouter;
@@ -32,37 +33,39 @@ fn page_b() -> Page {
 #[test]
 #[serial]
 fn test_effect_refires_on_direct_signal_access() {
-	// Arrange: build a Router with two routes, then move the current path to
-	// "/a" via the public `push` API (Router has no test-only setter and the
-	// native fallback for `current_path()` is "/", so we push + flush before
-	// creating the Effect to establish the initial state).
-	let router = ClientRouter::new()
-		.route("a", "/a", page_a)
-		.route("b", "/b", page_b);
-	router.push("/a").expect("push /a");
-	with_runtime(|rt| rt.flush_updates());
+	ReactiveScope::run(|| {
+		// Arrange: build a Router with two routes, then move the current path to
+		// "/a" via the public `push` API (Router has no test-only setter and the
+		// native fallback for `current_path()` is "/", so we push + flush before
+		// creating the Effect to establish the initial state).
+		let router = ClientRouter::new()
+			.route("a", "/a", page_a)
+			.route("b", "/b", page_b);
+		router.push("/a").expect("push /a");
+		with_runtime(|rt| rt.flush_updates());
 
-	let log: Rc<RefCell<Vec<String>>> = Rc::new(RefCell::new(Vec::new()));
+		let log: Rc<RefCell<Vec<String>>> = Rc::new(RefCell::new(Vec::new()));
 
-	let log_clone = log.clone();
-	let path_signal = router.current_path().clone();
-	let _effect = Effect::new(move || {
-		log_clone.borrow_mut().push(path_signal.get());
+		let log_clone = log.clone();
+		let path_signal = *router.current_path();
+		let _effect = Effect::new(move || {
+			log_clone.borrow_mut().push(path_signal.get());
+		});
+
+		// Initial run records "/a".
+		assert_eq!(*log.borrow(), vec!["/a".to_string()]);
+
+		// Act: push("/b") — updates the Signal.
+		router.push("/b").expect("push /b");
+		with_runtime(|rt| rt.flush_updates());
+
+		// Assert: Effect re-fired and logged "/b".
+		assert_eq!(
+			*log.borrow(),
+			vec!["/a".to_string(), "/b".to_string()],
+			"Variant 1 (direct Signal access) — if this fails, the runtime is broken; abort fix and file core issue"
+		);
 	});
-
-	// Initial run records "/a".
-	assert_eq!(*log.borrow(), vec!["/a".to_string()]);
-
-	// Act: push("/b") — updates the Signal.
-	router.push("/b").expect("push /b");
-	with_runtime(|rt| rt.flush_updates());
-
-	// Assert: Effect re-fired and logged "/b".
-	assert_eq!(
-		*log.borrow(),
-		vec!["/a".to_string(), "/b".to_string()],
-		"Variant 1 (direct Signal access) — if this fails, the runtime is broken; abort fix and file core issue"
-	);
 }
 
 /// Variant 2 (repro): the Effect closure reads the path Signal *through*
@@ -85,39 +88,41 @@ fn test_effect_refires_through_thread_local_borrow() {
 		TEST_ROUTER.with(|r| f(r.borrow().as_ref().expect("Test router not initialized")))
 	}
 
-	// Arrange: build the router with two routes, seed the current path
-	// to "/a" via the public push API (mirroring the Task 1 fallback).
-	let router = ClientRouter::new()
-		.route("a", "/a", page_a)
-		.route("b", "/b", page_b);
-	router.push("/a").expect("seed /a");
-	with_runtime(|rt| rt.flush_updates());
+	ReactiveScope::run(|| {
+		// Arrange: build the router with two routes, seed the current path
+		// to "/a" via the public push API (mirroring the Task 1 fallback).
+		let router = ClientRouter::new()
+			.route("a", "/a", page_a)
+			.route("b", "/b", page_b);
+		router.push("/a").expect("seed /a");
+		with_runtime(|rt| rt.flush_updates());
 
-	TEST_ROUTER.with(|r| *r.borrow_mut() = Some(router));
+		TEST_ROUTER.with(|r| *r.borrow_mut() = Some(router));
 
-	let log: Rc<RefCell<Vec<String>>> = Rc::new(RefCell::new(Vec::new()));
-	let log_clone = log.clone();
+		let log: Rc<RefCell<Vec<String>>> = Rc::new(RefCell::new(Vec::new()));
+		let log_clone = log.clone();
 
-	let _effect = Effect::new(move || {
-		// Mirror the launcher closure: read the path Signal *through*
-		// the thread-local borrow.
-		let path = with_test_router(|r| r.current_path().get());
-		log_clone.borrow_mut().push(path);
+		let _effect = Effect::new(move || {
+			// Mirror the launcher closure: read the path Signal *through*
+			// the thread-local borrow.
+			let path = with_test_router(|r| r.current_path().get());
+			log_clone.borrow_mut().push(path);
+		});
+
+		assert_eq!(*log.borrow(), vec!["/a".to_string()], "initial run");
+
+		// Act.
+		with_test_router(|r| r.push("/b").expect("push /b"));
+		with_runtime(|rt| rt.flush_updates());
+
+		// Assert.
+		assert_eq!(
+			*log.borrow(),
+			vec!["/a".to_string(), "/b".to_string()],
+			"Variant 2 (thread-local borrow) — if this fails, H1 is confirmed (track_dependency lost during RefCell::borrow)"
+		);
+
+		// Cleanup the test thread-local so other tests don't see stale state.
+		TEST_ROUTER.with(|r| *r.borrow_mut() = None);
 	});
-
-	assert_eq!(*log.borrow(), vec!["/a".to_string()], "initial run");
-
-	// Act.
-	with_test_router(|r| r.push("/b").expect("push /b"));
-	with_runtime(|rt| rt.flush_updates());
-
-	// Assert.
-	assert_eq!(
-		*log.borrow(),
-		vec!["/a".to_string(), "/b".to_string()],
-		"Variant 2 (thread-local borrow) — if this fails, H1 is confirmed (track_dependency lost during RefCell::borrow)"
-	);
-
-	// Cleanup the test thread-local so other tests don't see stale state.
-	TEST_ROUTER.with(|r| *r.borrow_mut() = None);
 }

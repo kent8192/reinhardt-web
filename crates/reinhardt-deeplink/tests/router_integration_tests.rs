@@ -6,6 +6,7 @@
 //! - Edge cases: Empty config, single platform configs
 //! - Sanity: Debug format, output types
 
+use reinhardt_core::reactive::ReactiveScope;
 use reinhardt_deeplink::{
 	AndroidConfig, DeeplinkConfig, DeeplinkRouter, DeeplinkRouterExt, IosConfig,
 };
@@ -116,55 +117,80 @@ fn test_router_config_accessor(#[from(deeplink_router)] router: DeeplinkRouter) 
 
 #[rstest]
 fn test_unified_router_with_deeplinks_ios() {
-	let config = DeeplinkConfig::builder()
-		.ios(
-			IosConfig::builder()
-				.app_id(VALID_APP_ID)
-				.paths(&["/products/*"])
-				.build(),
-		)
-		.build();
+	ReactiveScope::run(|| {
+		let config = DeeplinkConfig::builder()
+			.ios(
+				IosConfig::builder()
+					.app_id(VALID_APP_ID)
+					.paths(&["/products/*"])
+					.build(),
+			)
+			.build();
 
-	let router = UnifiedRouter::new().with_deeplinks(config);
-	assert!(router.is_ok());
+		let router = UnifiedRouter::new().with_deeplinks(config);
+		assert!(router.is_ok());
+	});
 }
 
 #[rstest]
 fn test_unified_router_with_deeplinks_android() {
-	let config = DeeplinkConfig::builder()
-		.android(
-			AndroidConfig::builder()
-				.package_name("com.example.app")
-				.sha256_fingerprint(VALID_FINGERPRINT)
-				.build()
-				.unwrap(),
-		)
-		.build();
+	ReactiveScope::run(|| {
+		let config = DeeplinkConfig::builder()
+			.android(
+				AndroidConfig::builder()
+					.package_name("com.example.app")
+					.sha256_fingerprint(VALID_FINGERPRINT)
+					.build()
+					.unwrap(),
+			)
+			.build();
 
-	let router = UnifiedRouter::new().with_deeplinks(config);
-	assert!(router.is_ok());
+		let router = UnifiedRouter::new().with_deeplinks(config);
+		assert!(router.is_ok());
+	});
 }
 
 #[rstest]
 fn test_unified_router_with_deeplinks_both() {
-	let config = DeeplinkConfig::builder()
-		.ios(
-			IosConfig::builder()
-				.app_id(VALID_APP_ID)
-				.paths(&["/products/*"])
-				.build(),
-		)
-		.android(
-			AndroidConfig::builder()
-				.package_name("com.example.app")
-				.sha256_fingerprint(VALID_FINGERPRINT)
-				.build()
-				.unwrap(),
-		)
-		.build();
+	ReactiveScope::run(|| {
+		let config = DeeplinkConfig::builder()
+			.ios(
+				IosConfig::builder()
+					.app_id(VALID_APP_ID)
+					.paths(&["/products/*"])
+					.build(),
+			)
+			.android(
+				AndroidConfig::builder()
+					.package_name("com.example.app")
+					.sha256_fingerprint(VALID_FINGERPRINT)
+					.build()
+					.unwrap(),
+			)
+			.build();
 
-	let router = UnifiedRouter::new().with_deeplinks(config);
-	assert!(router.is_ok());
+		let router = UnifiedRouter::new().with_deeplinks(config);
+		assert!(router.is_ok());
+	});
+}
+
+#[rstest]
+fn test_client_enabled_unified_router_with_deeplinks() {
+	ReactiveScope::run(|| {
+		let config = DeeplinkConfig::builder()
+			.ios(
+				IosConfig::builder()
+					.app_id(VALID_APP_ID)
+					.paths(&["/products/*"])
+					.build(),
+			)
+			.build();
+
+		let router = UnifiedRouter::new()
+			.client(|client| client)
+			.with_deeplinks(config);
+		assert!(router.is_ok());
+	});
 }
 
 #[rstest]
@@ -255,36 +281,38 @@ fn test_router_debug_format() {
 
 #[rstest]
 fn test_ext_output_type() {
-	// Verify that the extension trait returns the correct type
-	let unified_router: UnifiedRouter = UnifiedRouter::new()
-		.with_deeplinks(
-			DeeplinkConfig::builder()
-				.ios(
-					IosConfig::builder()
-						.app_id(VALID_APP_ID)
-						.paths(&["/products/*"])
-						.build(),
-				)
-				.build(),
-		)
-		.unwrap();
+	ReactiveScope::run(|| {
+		// Verify that the extension trait returns the correct type
+		let unified_router: UnifiedRouter = UnifiedRouter::new()
+			.with_deeplinks(
+				DeeplinkConfig::builder()
+					.ios(
+						IosConfig::builder()
+							.app_id(VALID_APP_ID)
+							.paths(&["/products/*"])
+							.build(),
+					)
+					.build(),
+			)
+			.unwrap();
 
-	let server_router: ServerRouter = ServerRouter::new()
-		.with_deeplinks(
-			DeeplinkConfig::builder()
-				.ios(
-					IosConfig::builder()
-						.app_id(VALID_APP_ID)
-						.paths(&["/products/*"])
-						.build(),
-				)
-				.build(),
-		)
-		.unwrap();
+		let server_router: ServerRouter = ServerRouter::new()
+			.with_deeplinks(
+				DeeplinkConfig::builder()
+					.ios(
+						IosConfig::builder()
+							.app_id(VALID_APP_ID)
+							.paths(&["/products/*"])
+							.build(),
+					)
+					.build(),
+			)
+			.unwrap();
 
-	// Just verify the types are correct (compilation test)
-	let _ = unified_router;
-	let _ = server_router;
+		// Just verify the types are correct (compilation test)
+		let _ = unified_router;
+		let _ = server_router;
+	});
 }
 
 #[rstest]

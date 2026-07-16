@@ -17,7 +17,9 @@ impl SettingsRequest {
 }
 
 fn main() {
-	let form = SettingsRequestClientForm::new();
-	let runtime = use_form(&form).build();
-	let _request = SettingsRequestClientForm::to_request(&runtime);
+	reinhardt_core::reactive::ReactiveScope::run(|| {
+		let form = SettingsRequestClientForm::new();
+		let runtime = use_form(&form).build();
+		let _request = SettingsRequestClientForm::to_request(&runtime);
+	});
 }

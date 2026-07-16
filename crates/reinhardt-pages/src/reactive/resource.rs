@@ -7,19 +7,62 @@
 use super::{Effect, Signal};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use std::cell::{Cell, RefCell};
+use std::cell::Cell;
 use std::fmt;
+use std::future::Future;
+use std::marker::PhantomData;
+use std::pin::Pin;
 use std::rc::Rc;
+use std::task::{Context, Poll};
 
 use crate::platform::{defer_yield, spawn_task};
-use crate::reactive::ExplicitDeps;
-#[cfg(native)]
+use crate::reactive::pages_arena::{PageNodeKey, PageNodeKind, allocate_page_node, with_page_node};
 use reinhardt_core::deps;
+use reinhardt_core::reactive::{ScopeId, current_scope_id, scope::enter_scope};
 
-/// Type alias for the refetch callback function
+use crate::reactive::ExplicitDeps;
+
+type RefetchCallback = Rc<dyn Fn()>;
+
+/// Polls a resource fetch future with the scope that owns its state active.
 ///
-/// This reduces type complexity for the `Resource` struct's `refetch_fn` field.
-type RefetchCallback = Rc<RefCell<Option<Box<dyn Fn()>>>>;
+/// Browser task executors poll futures after their creator's render turn has
+/// completed. Re-entering the owner scope keeps fetchers free to allocate
+/// reactive primitives while still treating a disposed scope as cancellation.
+struct ScopedResourceFuture<Fut> {
+	scope: ScopeId,
+	future: Pin<Box<Fut>>,
+}
+
+impl<Fut> Future for ScopedResourceFuture<Fut>
+where
+	Fut: Future<Output = ()>,
+{
+	type Output = ();
+
+	fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+		let this = self.get_mut();
+		let poll = || this.future.as_mut().poll(cx);
+		enter_scope(this.scope, poll).unwrap_or(Poll::Ready(()))
+	}
+}
+
+fn scope_resource_future<Fut>(scope: ScopeId, future: Fut) -> ScopedResourceFuture<Fut>
+where
+	Fut: Future<Output = ()> + 'static,
+{
+	ScopedResourceFuture {
+		scope,
+		future: Box::pin(future),
+	}
+}
+
+struct ResourceSlot<T: Clone + 'static, E: Clone + 'static> {
+	state: Signal<ResourceState<T, E>>,
+	refetch_fn: RefetchCallback,
+	ssr_key: Option<String>,
+	_effect_guard: Effect,
+}
 
 #[cfg(any(wasm, test))]
 thread_local! {
@@ -125,8 +168,7 @@ impl<T: fmt::Display, E: fmt::Display> fmt::Display for ResourceState<T, E> {
 /// # Example
 ///
 /// ```ignore
-/// use reinhardt_pages::deps;
-/// use reinhardt_pages::reactive::{Resource, use_resource};
+/// use reinhardt_pages::{deps, reactive::{Resource, use_resource}};
 ///
 /// async fn fetch_user(id: u32) -> Result<User, String> {
 ///     // Fetch from API...
@@ -141,33 +183,31 @@ impl<T: fmt::Display, E: fmt::Display> fmt::Display for ResourceState<T, E> {
 /// }
 /// ```
 pub struct Resource<T: Clone + 'static, E: Clone + 'static = String> {
-	state: Signal<ResourceState<T, E>>,
-	refetch_fn: RefetchCallback,
-	ssr_key: Option<String>,
-	/// RAII anchor that keeps the dependency-tracking `Effect` alive for the
-	/// lifetime of the `Resource`. An `Effect` disposes itself on drop (removing
-	/// its node from the runtime graph), so without holding the handle here the
-	/// effect would be torn down immediately after creation and dependency-change
-	/// refetch would never fire.
-	effect_guard: Rc<Effect>,
+	key: PageNodeKey,
+	_marker: PhantomData<fn() -> (T, E)>,
 }
 
 impl<T: Clone + 'static, E: Clone + 'static> Clone for Resource<T, E> {
 	fn clone(&self) -> Self {
-		Resource {
-			state: self.state.clone(),
-			refetch_fn: Rc::clone(&self.refetch_fn),
-			ssr_key: self.ssr_key.clone(),
-			effect_guard: Rc::clone(&self.effect_guard),
-		}
+		*self
 	}
 }
 
+impl<T: Clone + 'static, E: Clone + 'static> Copy for Resource<T, E> {}
+
 impl<T: Clone + 'static, E: Clone + 'static> Resource<T, E> {
+	fn with_slot<R>(&self, f: impl FnOnce(&ResourceSlot<T, E>) -> R) -> R {
+		with_page_node::<ResourceSlot<T, E>, _>(self.key, f).unwrap_or_else(|err| panic!("{err}"))
+	}
+
+	fn state(&self) -> Signal<ResourceState<T, E>> {
+		self.with_slot(|slot| slot.state)
+	}
+
 	fn mark_ssr_read(&self) {
 		#[cfg(native)]
-		if let Some(key) = &self.ssr_key {
-			crate::ssr::resource_context::mark_resource_read(key);
+		if let Some(key) = self.ssr_key() {
+			crate::ssr::resource_context::mark_resource_read(&key);
 		}
 	}
 
@@ -179,46 +219,49 @@ impl<T: Clone + 'static, E: Clone + 'static> Resource<T, E> {
 	/// the resource in the external resolution set for the shell render.
 	pub fn get(&self) -> ResourceState<T, E> {
 		self.mark_ssr_read();
-		self.state.get()
+		self.state().get()
 	}
 
 	/// Update the resource state
 	///
 	/// This is typically used internally by the fetcher function.
 	pub fn set(&self, new_state: ResourceState<T, E>) {
-		self.state.set(new_state);
+		self.state().set(new_state);
 	}
 
 	/// Trigger a refetch of the resource
 	///
 	/// This sets the state to Loading and re-executes the fetcher function.
 	pub fn refetch(&self) {
-		if let Some(ref refetch) = *self.refetch_fn.borrow() {
-			refetch();
-		}
+		let Ok(refetch) =
+			with_page_node::<ResourceSlot<T, E>, _>(self.key, |slot| Rc::clone(&slot.refetch_fn))
+		else {
+			return;
+		};
+		refetch();
 	}
 
 	/// Returns `true` if the resource is currently loading
 	pub fn is_loading(&self) -> bool {
 		self.mark_ssr_read();
-		self.state.with_untracked(|s| s.is_loading())
+		self.state().with_untracked(|s| s.is_loading())
 	}
 
 	/// Returns `true` if the resource has successfully loaded
 	pub fn is_success(&self) -> bool {
 		self.mark_ssr_read();
-		self.state.with_untracked(|s| s.is_success())
+		self.state().with_untracked(|s| s.is_success())
 	}
 
 	/// Returns `true` if the resource failed to load
 	pub fn is_error(&self) -> bool {
 		self.mark_ssr_read();
-		self.state.with_untracked(|s| s.is_error())
+		self.state().with_untracked(|s| s.is_error())
 	}
 
 	/// Returns this resource's deterministic SSR hydration key, if known.
-	pub fn ssr_key(&self) -> Option<&str> {
-		self.ssr_key.as_deref()
+	pub fn ssr_key(&self) -> Option<String> {
+		self.with_slot(|slot| slot.ssr_key.clone())
 	}
 }
 
@@ -226,10 +269,10 @@ impl<T: Clone + 'static, E: Clone + 'static> reinhardt_core::reactive::deps::Tra
 	for Resource<T, E>
 {
 	/// Returns the underlying state `Signal`'s `NodeId`, allowing this
-	/// `Resource` to participate in hook dependency lists alongside `Signal`
+	/// `Resource` to participate in hook deps tuples alongside `Signal`
 	/// and `Memo` (Refs #4195).
 	fn node_id(&self) -> reinhardt_core::reactive::runtime::NodeId {
-		self.state.id()
+		self.state().id()
 	}
 }
 
@@ -246,12 +289,12 @@ impl<T: Clone + 'static, E: Clone + 'static> reinhardt_core::reactive::deps::Tra
 ///   `fetcher` do not subscribe (they cross an `await` boundary), so list
 ///   everything that should drive a refetch — the same stale-deps rule as
 ///   `use_effect`.
-/// - Automatic dependencies are not supported because the future body executes
-///   after construction and may cross an `await` boundary. Use `deps![...]`.
 ///
 /// The initial fetch and every dependency-driven refetch are deferred one
 /// microtask (`defer_yield`) so they cannot hang when created during WASM
 /// initialization before the event loop is running (#3316).
+/// Each poll re-enters the resource's owning reactive scope, so fetchers may
+/// allocate scoped primitives after an `await` without outliving their owner.
 ///
 /// [`Trackable`]: reinhardt_core::reactive::deps::Trackable
 ///
@@ -272,8 +315,7 @@ impl<T: Clone + 'static, E: Clone + 'static> reinhardt_core::reactive::deps::Tra
 /// # Example
 ///
 /// ```ignore
-/// use reinhardt_pages::deps;
-/// use reinhardt_pages::reactive::{Signal, use_resource};
+/// use reinhardt_pages::{deps, reactive::{Signal, use_resource}};
 ///
 /// // Fetch once on mount:
 /// let user = use_resource(|| async { fetch_user_from_api(42).await }, deps![]);
@@ -374,25 +416,28 @@ where
 
 	let run_initial_fetch = initial_state.is_none();
 	let state = Signal::new(initial_state.unwrap_or(ResourceState::Loading));
+	let owner_scope = current_scope_id().expect("resource state requires an active scope");
 
 	// Single fetch routine shared by the dependency-driven Effect and manual
 	// refetch. `defer_yield` runs on every path (initial, dependency change, and
 	// manual refetch) so the fetch cannot hang when spawned during WASM
 	// initialization before the event loop ticks (#3316).
 	let run: Rc<dyn Fn()> = {
-		let state = state.clone();
 		let fetcher = Rc::clone(&fetcher);
 		Rc::new(move || {
 			state.set(ResourceState::Loading);
-			let state = state.clone();
 			let fetcher = Rc::clone(&fetcher);
-			spawn_task(async move {
+			spawn_task(scope_resource_future(owner_scope, async move {
 				defer_yield().await;
 				match fetcher().await {
-					Ok(data) => state.set(ResourceState::Success(data)),
-					Err(err) => state.set(ResourceState::Error(err)),
+					Ok(data) => {
+						let _ = state.try_set(ResourceState::Success(data));
+					}
+					Err(err) => {
+						let _ = state.try_set(ResourceState::Error(err));
+					}
 				}
-			});
+			}));
 		})
 	};
 
@@ -430,16 +475,23 @@ where
 		)
 	};
 
-	let refetch_fn: RefetchCallback = Rc::new(RefCell::new(Some(Box::new({
+	let refetch_fn: RefetchCallback = Rc::new({
 		let run = Rc::clone(&run);
 		move || run()
-	}))));
+	});
 
 	Resource {
-		state,
-		refetch_fn,
-		ssr_key,
-		effect_guard: Rc::new(effect),
+		key: allocate_page_node(
+			"use_resource",
+			PageNodeKind::Resource,
+			ResourceSlot {
+				state,
+				refetch_fn,
+				ssr_key,
+				_effect_guard: effect,
+			},
+		),
+		_marker: PhantomData,
 	}
 }
 
@@ -456,6 +508,7 @@ where
 {
 	crate::ssr::resource_context::with_active_context(|context| {
 		let mut context = context.borrow_mut();
+		let owner = crate::ssr::resource_context::current_render_owner();
 		let key = if let Some(key) = explicit_key {
 			context.reserve_call_order_key(&key);
 			key
@@ -464,26 +517,21 @@ where
 		};
 		if let Some(resolved_state) = context.resolved_resource_state::<T, E>(&key) {
 			let state = Signal::new(resolved_state);
-			let run: Rc<dyn Fn()> = Rc::new({
-				let state = state.clone();
-				move || state.set(ResourceState::Loading)
-			});
+			let run: Rc<dyn Fn()> = Rc::new(move || state.set(ResourceState::Loading));
 			build_resource_from_run(state, run, deps![], false, Some(key))
 		} else {
 			let state = Signal::new(ResourceState::Loading);
-			context.register_resource::<T, E, _, Fut>(
+			context.register_resource_with_owner::<T, E, _, Fut>(
 				key.clone(),
 				{
 					let fetcher = Rc::clone(&fetcher);
 					move || fetcher()
 				},
-				state.clone(),
+				state,
+				owner,
 			);
 
-			let run: Rc<dyn Fn()> = Rc::new({
-				let state = state.clone();
-				move || state.set(ResourceState::Loading)
-			});
+			let run: Rc<dyn Fn()> = Rc::new(move || state.set(ResourceState::Loading));
 
 			build_resource_from_run(state, run, deps![], false, Some(key))
 		}
@@ -513,6 +561,40 @@ where
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use rstest::rstest;
+	#[cfg(all(native, feature = "testing"))]
+	use std::cell::RefCell;
+	#[cfg(all(native, feature = "testing"))]
+	use std::task::Waker;
+
+	#[rstest]
+	fn resource_is_copy() {
+		fn assert_copy<T: Copy>() {}
+
+		assert_copy::<Resource<i32, String>>();
+	}
+
+	#[rstest]
+	fn resource_state_reads_without_clone_handle() {
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let resource: Resource<i32, String> = use_resource(|| async { Ok(1) }, crate::deps![]);
+			let copied = resource;
+			assert!(resource.is_loading());
+			assert!(copied.is_loading());
+		});
+	}
+
+	#[test]
+	#[serial_test::serial(reactive_runtime)]
+	fn stale_resource_refetch_is_a_no_op() {
+		let scope = reinhardt_core::reactive::ReactiveScope::new();
+		let resource: Resource<i32, String> =
+			scope.enter(|| use_resource(|| async { Ok(1) }, crate::deps![]));
+
+		scope.dispose();
+
+		resource.refetch();
+	}
 
 	#[test]
 	fn test_resource_state_constructors() {
@@ -552,5 +634,43 @@ mod tests {
 		let value = serde_json::json!({"Success": "server"});
 		let state: ResourceState<String, String> = deserialize_resource_state(&value).unwrap();
 		assert_eq!(state, ResourceState::Success("server".to_string()));
+	}
+
+	#[cfg(all(native, feature = "testing"))]
+	#[test]
+	#[serial_test::serial(reactive_runtime)]
+	fn resource_fetcher_is_polled_in_its_owner_scope() {
+		let queued = Rc::new(RefCell::new(None));
+		let queued_for_sink = Rc::clone(&queued);
+		let _task_sink = crate::platform::install_task_sink(move |task| {
+			*queued_for_sink.borrow_mut() = Some(task);
+		});
+		let scope = reinhardt_core::reactive::ReactiveScope::new();
+		let fetcher_ran = Rc::new(Cell::new(false));
+
+		scope.enter(|| {
+			let fetcher_ran = Rc::clone(&fetcher_ran);
+			let _resource: Resource<i32, String> = use_resource(
+				move || {
+					let fetcher_ran = Rc::clone(&fetcher_ran);
+					async move {
+						let scoped_signal = Signal::new(1_i32);
+						assert_eq!(scoped_signal.get(), 1);
+						fetcher_ran.set(true);
+						Ok(42)
+					}
+				},
+				crate::deps![],
+			);
+		});
+
+		let mut task = queued
+			.borrow_mut()
+			.take()
+			.expect("resource creation should queue a native task");
+		let mut context = Context::from_waker(Waker::noop());
+
+		assert_eq!(task.as_mut().poll(&mut context), Poll::Ready(()));
+		assert!(fetcher_ran.get());
 	}
 }

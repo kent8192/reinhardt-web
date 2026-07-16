@@ -5,6 +5,8 @@ use std::future::Future;
 use std::rc::Rc;
 use std::task::{Context, Poll, Waker};
 
+use reinhardt_core::reactive::ReactiveScope;
+use reinhardt_pages::reactive::Signal;
 use reinhardt_pages::{
 	CollectionItem, CollectionItemKey, CustomWidgetContext, CustomWidgetRawValue, FieldError,
 	FormEvent, FormWidgetAdapter, FormWidgetError, FormWidgetValueKind, Page, ResetOnDeps,
@@ -1000,138 +1002,142 @@ fn field_array_min_and_max_items_set_collection_errors() {
 
 #[test]
 fn use_form_watches_and_sets_collection_field_paths() {
-	let invoice = form! {
-		name: InvoiceForm,
-		action: "/invoices",
-		fields: {
-			line_items: FieldArray {
-				fields: {
-					description: CharField {
-						required,
-					}
-					quantity: IntegerField {
-						required,
+	ReactiveScope::run(|| {
+		let invoice = form! {
+			name: InvoiceForm,
+			action: "/invoices",
+			fields: {
+				line_items: FieldArray {
+					fields: {
+						description: CharField {
+							required,
+						}
+						quantity: IntegerField {
+							required,
+						}
 					}
 				}
 			}
-		}
-	};
-	let runtime = use_form(&invoice).build();
-	let collection = invoice.line_items_collection();
-	let mut item = invoice.new_line_items_item();
-	item.description = "Keyboard".to_string();
-	item.quantity = 2;
+		};
+		let runtime = use_form(&invoice).build();
+		let collection = invoice.line_items_collection();
+		let mut item = invoice.new_line_items_item();
+		item.description = "Keyboard".to_string();
+		item.quantity = 2;
 
-	let key = runtime.push_item(collection, item);
-	let quantity_path = invoice.line_items_quantity_path(key);
-	let description_path = invoice.line_items_description_path(key);
-	let quantity = runtime.watch_path::<i64>(quantity_path.clone());
-	let description = runtime.watch_path::<String>(description_path.clone());
+		let key = runtime.push_item(collection, item);
+		let quantity_path = invoice.line_items_quantity_path(key);
+		let description_path = invoice.line_items_description_path(key);
+		let quantity = runtime.watch_path::<i64>(quantity_path.clone());
+		let description = runtime.watch_path::<String>(description_path.clone());
 
-	assert_eq!(quantity.get(), 2);
-	assert_eq!(description.get(), "Keyboard".to_string());
-	assert!(runtime.get_path_state(quantity_path.clone()).is_dirty);
-	assert!(!runtime.get_path_state(quantity_path.clone()).is_touched);
+		assert_eq!(quantity.get(), 2);
+		assert_eq!(description.get(), "Keyboard".to_string());
+		assert!(runtime.get_path_state(quantity_path.clone()).is_dirty);
+		assert!(!runtime.get_path_state(quantity_path.clone()).is_touched);
 
-	runtime.reset_default_values();
+		runtime.reset_default_values();
 
-	assert!(!runtime.get_path_state(quantity_path.clone()).is_dirty);
+		assert!(!runtime.get_path_state(quantity_path.clone()).is_dirty);
 
-	runtime.set_path_value(quantity_path.clone(), 3_i64);
+		runtime.set_path_value(quantity_path.clone(), 3_i64);
 
-	assert_eq!(quantity.get(), 3);
-	assert_eq!(runtime.get_values().line_items[0].quantity, 3);
-	assert_eq!(runtime.watch().get().line_items[0].quantity, 3);
-	assert!(runtime.get_path_state(quantity_path.clone()).is_touched);
-	assert!(runtime.get_path_state(quantity_path.clone()).is_dirty);
+		assert_eq!(quantity.get(), 3);
+		assert_eq!(runtime.get_values().line_items[0].quantity, 3);
+		assert_eq!(runtime.watch().get().line_items[0].quantity, 3);
+		assert!(runtime.get_path_state(quantity_path.clone()).is_touched);
+		assert!(runtime.get_path_state(quantity_path.clone()).is_dirty);
 
-	let updated_item = invoice
-		.line_items()
-		.get()
-		.into_iter()
-		.next()
-		.map(|item| {
-			let mut value = item.into_value();
-			value.quantity = 5;
-			CollectionItem::new(key, 0, value)
-		})
-		.expect("line item exists");
-	invoice.line_items().set(vec![updated_item]);
+		let updated_item = invoice
+			.line_items()
+			.get()
+			.into_iter()
+			.next()
+			.map(|item| {
+				let mut value = item.into_value();
+				value.quantity = 5;
+				CollectionItem::new(key, 0, value)
+			})
+			.expect("line item exists");
+		invoice.line_items().set(vec![updated_item]);
 
-	let quantity_after_direct_set = runtime.watch_path::<i64>(quantity_path.clone());
-	assert_eq!(quantity_after_direct_set.get(), 5);
-	assert_eq!(quantity.get(), 5);
+		let quantity_after_direct_set = runtime.watch_path::<i64>(quantity_path.clone());
+		assert_eq!(quantity_after_direct_set.get(), 5);
+		assert_eq!(quantity.get(), 5);
 
-	runtime.set_path_value(description_path.clone(), "Mechanical keyboard".to_string());
+		runtime.set_path_value(description_path.clone(), "Mechanical keyboard".to_string());
 
-	assert_eq!(description.get(), "Mechanical keyboard".to_string());
-	assert_eq!(
-		runtime.get_values().line_items[0].description,
-		"Mechanical keyboard".to_string()
-	);
-	assert!(runtime.get_path_state(description_path.clone()).is_touched);
+		assert_eq!(description.get(), "Mechanical keyboard".to_string());
+		assert_eq!(
+			runtime.get_values().line_items[0].description,
+			"Mechanical keyboard".to_string()
+		);
+		assert!(runtime.get_path_state(description_path.clone()).is_touched);
 
-	assert!(runtime.remove_item(collection, key));
-	assert!(
-		::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
-			runtime.watch_path::<String>(description_path.clone());
-		}))
-		.is_err()
-	);
-	assert!(
-		::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
-			runtime.set_path_value(quantity_path.clone(), 4_i64);
-		}))
-		.is_err()
-	);
+		assert!(runtime.remove_item(collection, key));
+		assert!(
+			::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+				runtime.watch_path::<String>(description_path.clone());
+			}))
+			.is_err()
+		);
+		assert!(
+			::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+				runtime.set_path_value(quantity_path.clone(), 4_i64);
+			}))
+			.is_err()
+		);
+	});
 }
 
 #[test]
 fn direct_collection_signal_set_syncs_path_watchers_and_state() {
-	let invoice = form! {
-		name: InvoiceForm,
-		action: "/invoices",
-		fields: {
-			line_items: FieldArray {
-				fields: {
-					description: CharField {}
-					quantity: IntegerField {}
+	ReactiveScope::run(|| {
+		let invoice = form! {
+			name: InvoiceForm,
+			action: "/invoices",
+			fields: {
+				line_items: FieldArray {
+					fields: {
+						description: CharField {}
+						quantity: IntegerField {}
+					}
 				}
 			}
-		}
-	};
-	let runtime = use_form(&invoice).build();
-	let collection = invoice.line_items_collection();
-	let key = CollectionItemKey::from_runtime_index(0);
-	let mut item = invoice.new_line_items_item();
-	item.description = "Keyboard".to_string();
-	item.quantity = 2;
+		};
+		let runtime = use_form(&invoice).build();
+		let collection = invoice.line_items_collection();
+		let key = CollectionItemKey::from_runtime_index(0);
+		let mut item = invoice.new_line_items_item();
+		item.description = "Keyboard".to_string();
+		item.quantity = 2;
 
-	invoice
-		.line_items()
-		.set(vec![CollectionItem::new(key, 0, item)]);
+		invoice
+			.line_items()
+			.set(vec![CollectionItem::new(key, 0, item)]);
 
-	let quantity_path = invoice.line_items_quantity_path(key);
-	let quantity = runtime.watch_path::<i64>(quantity_path.clone());
-	assert_eq!(quantity.get(), 2);
-	assert!(runtime.get_collection_state(collection).is_touched);
-	assert!(runtime.get_path_state(quantity_path.clone()).is_touched);
+		let quantity_path = invoice.line_items_quantity_path(key);
+		let quantity = runtime.watch_path::<i64>(quantity_path.clone());
+		assert_eq!(quantity.get(), 2);
+		assert!(runtime.get_collection_state(collection).is_touched);
+		assert!(runtime.get_path_state(quantity_path.clone()).is_touched);
 
-	let mut updated_item = invoice
-		.line_items()
-		.get()
-		.into_iter()
-		.next()
-		.expect("line item exists")
-		.into_value();
-	updated_item.quantity = 5;
-	invoice
-		.line_items()
-		.set(vec![CollectionItem::new(key, 0, updated_item)]);
+		let mut updated_item = invoice
+			.line_items()
+			.get()
+			.into_iter()
+			.next()
+			.expect("line item exists")
+			.into_value();
+		updated_item.quantity = 5;
+		invoice
+			.line_items()
+			.set(vec![CollectionItem::new(key, 0, updated_item)]);
 
-	assert_eq!(quantity.get(), 5);
-	assert_eq!(runtime.get_values().line_items[0].quantity, 5);
-	assert!(runtime.get_path_state(quantity_path).is_touched);
+		assert_eq!(quantity.get(), 5);
+		assert_eq!(runtime.get_values().line_items[0].quantity, 5);
+		assert!(runtime.get_path_state(quantity_path).is_touched);
+	});
 }
 
 #[test]
@@ -1664,6 +1670,8 @@ async fn submit_async_success_updates_state_and_runs_callbacks() {
 		.on_submit_success(move |handle| {
 			assert!(!handle.form_state().is_submitting.get());
 			assert!(handle.form_state().is_submit_successful.get());
+			let callback_signal = Signal::new(1_i32);
+			assert_eq!(callback_signal.get(), 1);
 			assert_eq!(success_order.get(), 1);
 			success_order.set(2);
 		})
@@ -1932,63 +1940,67 @@ fn submit_callbacks_survive_deps_configured_after_callback_registration() {
 
 #[test]
 fn use_form_action_validates_before_dispatching() {
-	let signup = form! {
-		name: SignupForm,
-		action: "/signup",
-		fields: {
-			email: CharField {
-				initial: "",
-				required,
+	ReactiveScope::run(|| {
+		let signup = form! {
+			name: SignupForm,
+			action: "/signup",
+			fields: {
+				email: CharField {
+					initial: "",
+					required,
+				}
 			}
-		}
-	};
-	let runtime = use_form(&signup).build();
-	let dispatch_count = Rc::new(Cell::new(0));
-	let dispatch_count_for_action = Rc::clone(&dispatch_count);
-	let save = use_form_action(&runtime, move |_values| {
-		dispatch_count_for_action.set(dispatch_count_for_action.get() + 1);
-		async { Ok::<(), String>(()) }
-	});
+		};
+		let runtime = use_form(&signup).build();
+		let dispatch_count = Rc::new(Cell::new(0));
+		let dispatch_count_for_action = Rc::clone(&dispatch_count);
+		let save = use_form_action(&runtime, move |_values| {
+			dispatch_count_for_action.set(dispatch_count_for_action.get() + 1);
+			async { Ok::<(), String>(()) }
+		});
 
-	assert_eq!(save.submit(), UseFormSubmitOutcome::ValidationFailed);
-	assert_eq!(dispatch_count.get(), 0);
-	assert!(!save.is_pending());
-	assert!(!runtime.form_state().is_submit_successful.get());
-	assert_eq!(save.error_message().as_deref(), Some("email is required"));
-	assert_eq!(
-		runtime
-			.get_field_state(signup.email_field())
-			.error
-			.as_ref()
-			.map(FieldError::message),
-		Some("email is required")
-	);
+		assert_eq!(save.submit(), UseFormSubmitOutcome::ValidationFailed);
+		assert_eq!(dispatch_count.get(), 0);
+		assert!(!save.is_pending());
+		assert!(!runtime.form_state().is_submit_successful.get());
+		assert_eq!(save.error_message().as_deref(), Some("email is required"));
+		assert_eq!(
+			runtime
+				.get_field_state(signup.email_field())
+				.error
+				.as_ref()
+				.map(FieldError::message),
+			Some("email is required")
+		);
+	});
 }
 
 #[test]
 fn use_form_action_dispatches_current_values_after_validation() {
-	let profile = form! {
-		name: ProfileForm,
-		action: "/profile",
-		fields: {
-			display_name: CharField {
-				initial: "Ada",
-				required,
+	ReactiveScope::run(|| {
+		let profile = form! {
+			name: ProfileForm,
+			action: "/profile",
+			fields: {
+				display_name: CharField {
+					initial: "Ada",
+					required,
+				}
 			}
-		}
-	};
-	let runtime = use_form(&profile).build();
-	runtime.set_value(profile.display_name_field(), "Grace".to_string());
+		};
+		let runtime = use_form(&profile).build();
+		runtime.set_value(profile.display_name_field(), "Grace".to_string());
 
-	let captured_name = Rc::new(RefCell::new(None));
-	let captured_name_for_action = Rc::clone(&captured_name);
-	let save = use_form_action(&runtime, move |values| {
-		*captured_name_for_action.borrow_mut() = Some(values.display_name);
-		async { Ok::<(), String>(()) }
+		let captured_name = Rc::new(RefCell::new(None));
+		let captured_name_for_action = Rc::clone(&captured_name);
+		let save = use_form_action(&runtime, move |values| {
+			*captured_name_for_action.borrow_mut() = Some(values.display_name);
+			async { Ok::<(), String>(()) }
+		});
+
+		assert_eq!(save.submit(), UseFormSubmitOutcome::Submitted);
+		assert_eq!(captured_name.borrow().as_deref(), Some("Grace"));
+		assert!(!save.is_pending());
+		assert!(save.error_message().is_none());
 	});
-
-	assert_eq!(save.submit(), UseFormSubmitOutcome::Submitted);
-	assert_eq!(captured_name.borrow().as_deref(), Some("Grace"));
-	assert!(!save.is_pending());
-	assert!(save.error_message().is_none());
 }

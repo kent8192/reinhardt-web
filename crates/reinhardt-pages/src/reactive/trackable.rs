@@ -1,57 +1,57 @@
-//! Trackable reactive values used by dependency-list macros.
+//! Trackable: trait for values that can act as reactive dependencies.
 
-/// Re-export the canonical core dependency trait.
-pub use reinhardt_core::reactive::deps::Trackable;
+use crate::reactive::{Memo, Signal};
+
+/// A value whose identity can be tracked across reactivity cycles.
+///
+/// Implemented by `Signal<T>`, `Memo<T>`, and `Resource<T>`. Used by
+/// `page!` codegen (auto-wrap visitor) and by hook deps tuples (#4195).
+pub trait Trackable {
+	/// Returns an opaque identifier stable across clones of the same source.
+	fn signal_id(&self) -> u64;
+}
+
+impl<T: 'static> Trackable for Signal<T> {
+	fn signal_id(&self) -> u64 {
+		Signal::id(self).as_u64()
+	}
+}
+
+impl<T: Clone + 'static> Trackable for Memo<T> {
+	fn signal_id(&self) -> u64 {
+		Memo::id(self).as_u64()
+	}
+}
 
 #[cfg(test)]
 mod tests {
-	use super::Trackable;
-	use crate::reactive::{Memo, NodeId, Signal};
+	use super::*;
 	use rstest::rstest;
 	use serial_test::serial;
 
 	fn assert_trackable<T: Trackable>(_: &T) {}
 
-	#[derive(Clone, Copy)]
-	struct CustomTrackable(NodeId);
-
-	impl Trackable for CustomTrackable {
-		fn node_id(&self) -> NodeId {
-			self.0
-		}
-	}
-
 	#[rstest]
 	#[serial]
 	fn signal_implements_trackable() {
-		// Arrange
-		let signal = Signal::new(0_i32);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			// Arrange
+			let s = Signal::new(0_i32);
 
-		// Act + Assert (compile-time check via fn bound)
-		assert_trackable(&signal);
+			// Act + Assert (compile-time check via fn bound)
+			assert_trackable(&s);
+		});
 	}
 
 	#[rstest]
 	#[serial]
 	fn memo_implements_trackable() {
-		// Arrange
-		let memo = Memo::new(|| 0_i32);
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			// Arrange
+			let m = Memo::new(|| 0_i32);
 
-		// Act + Assert
-		assert_trackable(&memo);
-	}
-
-	#[rstest]
-	#[serial]
-	fn custom_core_trackable_is_accepted_by_deps_macro() {
-		// Arrange
-		let signal = Signal::new(0_i32);
-		let custom = CustomTrackable(signal.id());
-
-		// Act
-		let deps = crate::deps![custom];
-
-		// Assert
-		assert_eq!(deps.as_slice(), &[signal.id()]);
+			// Act + Assert
+			assert_trackable(&m);
+		});
 	}
 }
