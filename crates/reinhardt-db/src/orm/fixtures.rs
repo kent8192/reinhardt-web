@@ -4287,6 +4287,7 @@ mod tests {
 
 	#[cfg(feature = "migrations")]
 	#[test]
+	#[serial_test::serial(fixture_model_registry)]
 	fn dependency_order_places_fk_targets_first() {
 		let mut author = crate::migrations::ModelMetadata::new("blog", "Author", "blog_author");
 		author.add_field(
