@@ -28,6 +28,7 @@ mod crate_paths;
 mod dto;
 mod flatten_imports;
 mod hook;
+mod http_error_derive;
 mod identifier_case;
 mod injectable_common;
 mod injectable_fn;
@@ -65,6 +66,7 @@ use api_view::api_view_impl;
 use app_config_attribute::app_config_attribute_impl;
 use apply_update_attribute::apply_update_attribute_impl;
 use apply_update_derive::apply_update_derive_impl;
+use http_error_derive::derive_http_error_impl;
 use injectable_fn::injectable_fn_impl;
 use injectable_struct::injectable_struct_impl;
 use installed_apps::installed_apps_impl;
@@ -602,6 +604,16 @@ pub fn derive_schema(input: TokenStream) -> TokenStream {
 	let input = parse_macro_input!(input as syn::DeriveInput);
 
 	derive_schema_impl(input)
+		.unwrap_or_else(|e| e.to_compile_error())
+		.into()
+}
+
+/// Implements HTTP status and client-message mapping for application error enums.
+#[proc_macro_derive(HttpError, attributes(http_error))]
+pub fn derive_http_error(input: TokenStream) -> TokenStream {
+	let input = parse_macro_input!(input as syn::DeriveInput);
+
+	derive_http_error_impl(input)
 		.unwrap_or_else(|e| e.to_compile_error())
 		.into()
 }

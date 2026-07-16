@@ -128,9 +128,7 @@ impl<A: AuthBackend> RemoteUserMiddleware<A> {
 	fn insert_user_extensions(request: &Request, user: &dyn AuthIdentity) {
 		let is_authenticated = user.is_authenticated();
 		let is_admin = user.is_admin();
-		// `AuthIdentity` does not expose `is_active`; authenticated users
-		// resolved from the remote user header are assumed active.
-		let is_active = is_authenticated;
+		let is_active = user.is_account_active();
 		let user_id = user.id();
 
 		// Insert individual values for backward compatibility
@@ -273,6 +271,7 @@ mod tests {
 	struct TestUser {
 		id: Uuid,
 		is_admin: bool,
+		is_active: bool,
 	}
 
 	impl AuthIdentity for TestUser {
@@ -287,6 +286,10 @@ mod tests {
 		fn is_admin(&self) -> bool {
 			self.is_admin
 		}
+
+		fn is_account_active(&self) -> bool {
+			self.is_active
+		}
 	}
 
 	struct TestHandler;
@@ -297,6 +300,7 @@ mod tests {
 			let auth_state = request.extensions.get::<AuthState>();
 			Ok(Response::ok().with_json(&serde_json::json!({
 				"is_authenticated": auth_state.as_ref().map(|s| s.is_authenticated()).unwrap_or(false),
+				"is_active": auth_state.as_ref().map(|s| s.is_active()).unwrap_or(false),
 				"user_id": auth_state.as_ref().map(|s| s.user_id().to_string()).unwrap_or_default(),
 			}))?)
 		}
@@ -333,6 +337,7 @@ mod tests {
 		TestUser {
 			id: Uuid::now_v7(),
 			is_admin: false,
+			is_active: true,
 		}
 	}
 
@@ -379,6 +384,30 @@ mod tests {
 		let body: serde_json::Value = serde_json::from_str(&body_str).unwrap();
 		assert_eq!(body["is_authenticated"], true);
 		assert_eq!(body["user_id"], expected_id);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_remote_user_preserves_inactive_user() {
+		// Arrange
+		let user = TestUser {
+			id: Uuid::now_v7(),
+			is_admin: false,
+			is_active: false,
+		};
+		let auth_backend = Arc::new(TestAuthBackend { user: Some(user) });
+		let middleware = RemoteUserMiddleware::new(auth_backend);
+		let handler = Arc::new(TestHandler);
+		let request = create_request_with_header("REMOTE_USER", "proxy-user");
+
+		// Act
+		let response = middleware.process(request, handler).await.unwrap();
+
+		// Assert
+		let body_str = String::from_utf8(response.body.to_vec()).unwrap();
+		let body: serde_json::Value = serde_json::from_str(&body_str).unwrap();
+		assert_eq!(body["is_authenticated"], true);
+		assert_eq!(body["is_active"], false);
 	}
 
 	#[rstest]

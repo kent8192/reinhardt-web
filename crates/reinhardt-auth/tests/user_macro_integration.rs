@@ -250,6 +250,16 @@ mod tests {
 		assert!(user.is_admin());
 	}
 
+	#[rstest]
+	fn test_auth_identity_account_active_reflects_user_state() {
+		// Arrange
+		let mut user = make_test_user();
+		user.is_active = false;
+
+		// Act / Assert
+		assert!(!AuthIdentity::is_account_active(&user));
+	}
+
 	// --- BaseUser edge case tests ---
 
 	#[rstest]

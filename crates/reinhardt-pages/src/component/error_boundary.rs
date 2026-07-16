@@ -6,6 +6,8 @@
 use crate::component::{IntoPage, Page, PageElement};
 use crate::reactive::{Resource, ResourceState};
 
+const DEFAULT_ERROR_BOUNDARY_MESSAGE: &str = "An unexpected error occurred.";
+
 /// Error value rendered by an [`ErrorBoundary`] fallback.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BoundaryError {
@@ -56,12 +58,16 @@ pub struct ErrorBoundary {
 }
 
 impl ErrorBoundary {
-	/// Creates a boundary with empty content and a paragraph fallback.
+	/// Creates a boundary with empty content and a generic paragraph fallback.
+	///
+	/// The default fallback intentionally does not render the tracked error
+	/// message because resource errors can contain internal diagnostics. Use
+	/// [`fallback`](Self::fallback) to opt in to rendering a custom safe message.
 	pub fn new() -> Self {
 		Self {
-			fallback_fn: Box::new(|error| {
+			fallback_fn: Box::new(|_| {
 				PageElement::new("p")
-					.child(error.message().to_string())
+					.child(DEFAULT_ERROR_BOUNDARY_MESSAGE)
 					.into_page()
 			}),
 			trackers: Vec::new(),
@@ -71,6 +77,10 @@ impl ErrorBoundary {
 	}
 
 	/// Sets the fallback renderer used when a tracked error is present.
+	///
+	/// Custom fallbacks receive the underlying [`BoundaryError`]. Avoid rendering
+	/// raw internal error details in public pages unless the message is known to
+	/// be safe for clients.
 	pub fn fallback(mut self, f: impl Fn(BoundaryError) -> Page + 'static) -> Self {
 		self.fallback_fn = Box::new(f);
 		self
@@ -170,7 +180,19 @@ mod tests {
 	}
 
 	#[test]
-	fn render_uses_fallback_with_error() {
+	fn render_uses_default_fallback_with_error() {
+		let boundary = ErrorBoundary::new().track_custom(StaticErrorTracker(Some(
+			BoundaryError::new("db password=secret"),
+		)));
+
+		assert_eq!(
+			boundary.render().render_to_string(),
+			r#"<div data-rh-error-boundary="error"><p>An unexpected error occurred.</p></div>"#
+		);
+	}
+
+	#[test]
+	fn custom_fallback_can_render_safe_error_message() {
 		let boundary = ErrorBoundary::new()
 			.track_custom(StaticErrorTracker(Some(BoundaryError::new("failed"))))
 			.fallback(|error| {

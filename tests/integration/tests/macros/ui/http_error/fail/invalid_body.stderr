@@ -1,0 +1,5 @@
+error: body must be "safe" or "error"
+ --> tests/macros/ui/http_error/fail/invalid_body.rs:4:24
+  |
+4 | #[http_error(response, body = "full")]
+  |                        ^^^^^^^^^^^^^
