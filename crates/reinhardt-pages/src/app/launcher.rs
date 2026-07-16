@@ -859,30 +859,34 @@ impl ClientLauncher {
 		if let Some(router) =
 			with_spa_router(|router| router.as_any().downcast_ref::<ClientRouter>().cloned())
 		{
-			if let Ok(coordinator) =
-				super::navigation::NavigationCoordinator::new(std::rc::Rc::new(router))
-			{
-				let initial_path = with_spa_router(|router| router.current_path().get());
-				coordinator
-					.hydrate_initial_store(&initial_path)
-					.map_err(|error| {
-						wasm_bindgen::JsValue::from_str(&format!(
-							"initial route-loader hydration failed: {error}"
-						))
-					})?;
-				let pop_coordinator = std::rc::Rc::clone(&coordinator);
-				let pop_subscription = listen_pop_requests(move |request| {
-					if pop_coordinator.consume_restoration_pop() {
-						return;
-					}
-					let target_index = request.state.entry_index().unwrap_or(0);
-					let _ = pop_coordinator
-						.navigate(request.path, super::NavigationIntent::Pop { target_index });
+			let coordinator = super::navigation::NavigationCoordinator::new(std::rc::Rc::new(
+				router,
+			))
+			.map_err(|error| {
+				wasm_bindgen::JsValue::from_str(&format!(
+					"route-loader coordinator initialization failed: {error}"
+				))
+			})?;
+			let initial_path = with_spa_router(|router| router.current_path().get());
+			coordinator
+				.hydrate_initial_store(&initial_path)
+				.map_err(|error| {
+					wasm_bindgen::JsValue::from_str(&format!(
+						"initial route-loader hydration failed: {error}"
+					))
 				})?;
-				store_navigation_coordinator(coordinator);
-				store_popstate_subscription(pop_subscription);
-				coordinator_installed = true;
-			}
+			let pop_coordinator = std::rc::Rc::clone(&coordinator);
+			let pop_subscription = listen_pop_requests(move |request| {
+				if pop_coordinator.consume_restoration_pop() {
+					return;
+				}
+				let target_index = request.state.entry_index().unwrap_or(0);
+				let _ = pop_coordinator
+					.navigate(request.path, super::NavigationIntent::Pop { target_index });
+			})?;
+			store_navigation_coordinator(coordinator);
+			store_popstate_subscription(pop_subscription);
+			coordinator_installed = true;
 		}
 
 		crate::nav_diag!(
