@@ -356,6 +356,11 @@
 
 #![warn(missing_docs)]
 
+// Attribute macros also run inside this crate's native unit-test target. Keep
+// the package-name alias available there so generated paths remain identical
+// to the paths emitted for downstream applications.
+extern crate self as reinhardt_pages;
+
 // Re-export AST definitions from reinhardt-pages-ast
 // This is deprecated but kept for backward compatibility
 #[allow(deprecated)] // Intentional: maintaining backward compatibility with existing code
