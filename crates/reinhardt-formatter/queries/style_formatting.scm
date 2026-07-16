@@ -10,6 +10,15 @@
 (block_comment) @leaf @append_hardline
 (operator) @leaf @prepend_space @append_space
 
+; CSS custom-property names begin with two adjacent hyphens. Keep the token pair
+; intact so raw values such as `unchecked_fn!(var(--accent))` remain valid CSS.
+(paren_group
+  (operator) @first @append_antispace
+  .
+  (operator) @second @prepend_antispace
+  (#eq? @first "-")
+  (#eq? @second "-"))
+
 (definition_block
   "{" @prepend_space @append_hardline @append_indent_start
   "}" @prepend_indent_end @prepend_hardline @append_hardline)
