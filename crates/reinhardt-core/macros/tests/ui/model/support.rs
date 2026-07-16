@@ -341,22 +341,6 @@ pub mod db {
 			}
 		}
 
-		pub struct ManyToManyAccessor<Source, Target> {
-			_marker: core::marker::PhantomData<(Source, Target)>,
-		}
-
-		impl<Source, Target> ManyToManyAccessor<Source, Target> {
-			pub const fn new(
-				_source: &Source,
-				_field_name: &'static str,
-				_db: connection::DatabaseConnection,
-			) -> Self {
-				Self {
-					_marker: core::marker::PhantomData,
-				}
-			}
-		}
-
 		pub mod relationship {
 			#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 			pub enum RelationshipType {
