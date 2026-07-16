@@ -658,7 +658,7 @@ where
 	}
 	let cache_id = loader_cache_id(id, context, specs)
 		.map_err(|error| RouteLoaderError::with_status(error.to_string(), 400))?;
-	let key = QueryKey::<T, RouteLoaderError>::new(cache_id, move || fetcher());
+	let key = QueryKey::<T, RouteLoaderError>::new(cache_id, fetcher);
 	let lease = acquire_query(
 		key,
 		QueryAcquireOptions {

@@ -5,7 +5,7 @@
 //! consumed by an Effect) under Option A semantics:
 //!
 //! - Closure runs with no active reactive Observer.
-//! - Subscriptions are derived exclusively from the deps tuple.
+//! - Subscriptions are derived exclusively from the explicit deps collection.
 //! - Cleanup functions run before re-execution and on dispose.
 
 #![cfg(not(target_arch = "wasm32"))]
@@ -14,6 +14,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use reinhardt_core::reactive::{ReactiveScope, Signal};
+use reinhardt_pages::deps;
 use reinhardt_pages::reactive::hooks::{use_action, use_callback, use_effect, use_memo};
 use serial_test::serial;
 
@@ -35,7 +36,7 @@ fn callback_accepts_copy_handles_without_clone_ceremony() {
 				search_action.reset();
 				upload_action.dispatch(route_project_id.get());
 			},
-			(route_project_id,),
+			deps![route_project_id],
 		);
 
 		upload_click.call(());
@@ -44,7 +45,7 @@ fn callback_accepts_copy_handles_without_clone_ceremony() {
 	});
 }
 
-/// Verifies that a Memo wired into an Effect's deps tuple re-runs the
+/// Verifies that a Memo wired into an Effect's deps collection re-runs the
 /// Effect when the Memo's listed deps change.
 #[test]
 #[serial(hooks_deps_integration)]
@@ -54,11 +55,11 @@ fn memo_feeding_effect_propagates_listed_dep_changes() {
 		let count = Signal::new(1_i32);
 		let runs = Rc::new(RefCell::new(0_i32));
 
-		// Memo doubles the count; listed deps = (count,).
+		// Memo doubles the count; listed deps = deps![count].
 		let count_for_memo = count.clone();
-		let doubled = use_memo(move || count_for_memo.get() * 2, (count.clone(),));
+		let doubled = use_memo(move || count_for_memo.get() * 2, deps![count]);
 
-		// Effect re-runs when the memo changes; listed deps = (doubled,).
+		// Effect re-runs when the memo changes; listed deps = deps![doubled].
 		let runs_for_effect = runs.clone();
 		let doubled_for_effect = doubled.clone();
 		let _eff = use_effect(
@@ -67,7 +68,7 @@ fn memo_feeding_effect_propagates_listed_dep_changes() {
 				*runs_for_effect.borrow_mut() += 1;
 				None::<fn()>
 			},
-			(doubled.clone(),),
+			deps![doubled],
 		);
 
 		// Act — change the upstream Signal; both Memo and Effect must
@@ -116,7 +117,7 @@ fn effect_does_not_subscribe_to_unlisted_signal_read() {
 				*runs_for_effect.borrow_mut() += 1;
 				None::<fn()>
 			},
-			(listed.clone(),),
+			deps![listed],
 		);
 
 		let runs_after_mount = *runs.borrow();
@@ -153,7 +154,7 @@ fn effect_cleanup_runs_before_rerun() {
 				let log_inner = log_for_effect.clone();
 				Some(move || log_inner.borrow_mut().push("cleanup"))
 			},
-			(s.clone(),),
+			deps![s],
 		);
 
 		// Act — trigger one re-run.
@@ -166,7 +167,7 @@ fn effect_cleanup_runs_before_rerun() {
 	});
 }
 
-/// Verifies that an empty deps tuple `()` makes the effect mount-only —
+/// Verifies that an empty dependency collection makes the effect mount-only —
 /// no re-run regardless of which signals change in the environment.
 #[test]
 #[serial(hooks_deps_integration)]
@@ -180,12 +181,12 @@ fn effect_with_empty_deps_is_mount_only() {
 
 		let _eff = use_effect(
 			move || {
-				// Even though we read s.get(), `()` deps means no subscriptions.
+				// Even though we read s.get(), `deps![]` means no subscriptions.
 				let _ = s_for_effect.get();
 				*runs_for_effect.borrow_mut() += 1;
 				None::<fn()>
 			},
-			(),
+			deps![],
 		);
 
 		assert_eq!(*runs.borrow(), 1, "effect must run once at mount");
@@ -198,7 +199,7 @@ fn effect_with_empty_deps_is_mount_only() {
 		assert_eq!(
 			*runs.borrow(),
 			1,
-			"empty deps `()` must make the effect mount-only"
+			"empty deps must make the effect mount-only"
 		);
 	});
 }

@@ -156,6 +156,8 @@ impl Component for Link {
 	}
 }
 
+type NavigationErrorFallback = Rc<dyn Fn(&RouteLoaderError) -> Page>;
+
 /// Renders the current route from a [`ClientRouter`].
 ///
 /// `RouterOutlet` is a component-level adapter for embedding the canonical
@@ -165,7 +167,7 @@ pub struct RouterOutlet {
 	/// Router used to resolve and render the current client-side route.
 	router: ClientRouter,
 	/// Optional sibling fallback for a failed route-loader navigation.
-	navigation_error_fallback: Option<Rc<dyn Fn(&RouteLoaderError) -> Page>>,
+	navigation_error_fallback: Option<NavigationErrorFallback>,
 }
 
 impl std::fmt::Debug for RouterOutlet {
