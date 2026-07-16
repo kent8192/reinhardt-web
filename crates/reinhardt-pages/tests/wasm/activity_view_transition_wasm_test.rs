@@ -4,9 +4,11 @@
 
 #![cfg(wasm)]
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+use std::sync::Arc;
 
+use reinhardt_core::types::page::EventType;
 use reinhardt_pages::component::{
 	ActivityBoundary, IntoPage, Page, PageElement, PageExt, ViewTransitionBoundary,
 	cleanup_reactive_nodes, start_view_transition,
@@ -58,13 +60,24 @@ fn reactive_activity_mode_updates_wrapper_without_recreating_content() {
 
 	let visible = Signal::new(true);
 	let visible_for_view = visible.clone();
+	let handler_calls = Rc::new(Cell::new(0));
+	let handler_calls_for_view = Rc::clone(&handler_calls);
 	Page::reactive(move || {
+		let handler_calls = Rc::clone(&handler_calls_for_view);
 		ActivityBoundary::default()
 			.visible_when(visible_for_view.get())
 			.content(|| {
 				PageElement::new("input")
 					.attr("id", "activity-owned-input")
 					.attr("value", "initial")
+					.on(
+						EventType::Input,
+						Arc::new(move |_| {
+							let signal = Signal::new(1_i32);
+							assert_eq!(signal.get(), 1);
+							handler_calls.set(handler_calls.get() + 1);
+						}),
+					)
 					.into_page()
 			})
 			.into_page()
@@ -89,6 +102,10 @@ fn reactive_activity_mode_updates_wrapper_without_recreating_content() {
 		Some("hidden")
 	);
 	assert_eq!(wrapper.get_attribute("hidden").as_deref(), Some("hidden"));
+	input
+		.dispatch_event(&web_sys::Event::new("input").unwrap())
+		.unwrap();
+	assert_eq!(handler_calls.get(), 1);
 	assert_eq!(
 		document
 			.get_element_by_id("activity-owned-input")

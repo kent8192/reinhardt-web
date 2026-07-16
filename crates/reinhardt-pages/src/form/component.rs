@@ -460,8 +460,7 @@ impl FormComponent {
 		}
 	}
 
-	#[cfg(any(wasm, test))]
-	fn with_reactive_scope<R>(&self, f: impl FnOnce() -> R) -> R {
+	pub(crate) fn with_reactive_scope<R>(&self, f: impl FnOnce() -> R) -> R {
 		match &self._scope {
 			Some(scope) => scope.enter(f),
 			None => f(),

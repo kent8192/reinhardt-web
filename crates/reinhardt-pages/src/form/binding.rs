@@ -137,9 +137,11 @@ impl FormBinding {
 		let field_name_clone = field_name.clone();
 		let signal_for_effect = signal;
 
-		let effect = Effect::new(move || {
-			let value = signal_for_effect.get();
-			form_component.set_value(&field_name_clone, value);
+		let effect = self.form_component.with_reactive_scope(|| {
+			Effect::new(move || {
+				let value = signal_for_effect.get();
+				form_component.set_value(&field_name_clone, value);
+			})
 		});
 
 		// Keep the effect alive until this field is unbound or the binding drops.
@@ -452,6 +454,17 @@ mod tests {
 			assert_eq!(binding.bindings.len(), 1);
 			assert_eq!(binding.effects.len(), 1);
 		});
+	}
+
+	#[rstest]
+	#[serial_test::serial(reactive_runtime)]
+	fn standalone_form_binding_allocates_its_effect_in_the_form_scope() {
+		let form = create_test_form();
+		let signal = form.with_reactive_scope(|| Signal::new(String::new()));
+		let mut binding = FormBinding::new(form);
+
+		binding.bind_field("username", signal);
+		assert_eq!(binding.get_field_value("username"), "");
 	}
 
 	#[test]

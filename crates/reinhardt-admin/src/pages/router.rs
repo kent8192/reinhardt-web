@@ -23,10 +23,14 @@ use crate::types::ListQueryParams;
 #[cfg(server)]
 use crate::types::ModelInfo;
 use reinhardt_pages::Signal;
+#[cfg(client)]
+use reinhardt_pages::component::PageExt;
 use reinhardt_pages::component::{Component, Page};
 use reinhardt_pages::page;
 use reinhardt_pages::reactive::ReactiveScope;
 use reinhardt_pages::router::Link;
+#[cfg(client)]
+use reinhardt_pages::{Element, MountError, deps};
 #[cfg(client)]
 use reinhardt_pages::{ResourceState, use_resource};
 use reinhardt_urls::routers::ClientRouter;
@@ -222,12 +226,33 @@ pub fn render_current_route() -> Page {
 	})
 }
 
+/// Renders and mounts the current route while its route scope is active.
+///
+/// Reactive pages create effects during mounting, so building the page under
+/// the route scope alone is insufficient for client-side mounts.
+#[cfg(client)]
+pub fn mount_current_route(parent: &Element) -> Result<(), MountError> {
+	ROUTER.with(|stored| {
+		let stored = stored.borrow();
+		let stored = stored
+			.as_ref()
+			.expect("Router not initialized. Call init_global_router() first.");
+		let render_scope = ReactiveScope::new();
+		let result = render_scope.enter(|| stored.router.render_current().mount(parent));
+		if result.is_ok() {
+			let previous = stored.render_scope.borrow_mut().replace(render_scope);
+			drop(previous);
+		}
+		result
+	})
+}
+
 /// Dashboard view component for router
 #[cfg(client)]
 fn dashboard_view() -> Page {
 	let dashboard_resource = use_resource(
 		|| async { get_dashboard().await.map_err(|e| e.to_string()) },
-		(),
+		deps![],
 	);
 
 	let reactive_content = Page::reactive({
@@ -288,7 +313,7 @@ fn list_view_component(model_name: String) -> Page {
 					.map_err(|e| e.to_string())
 			}
 		},
-		(),
+		deps![],
 	);
 
 	// Create signals outside the reactive closure so they persist across re-renders
@@ -310,7 +335,7 @@ fn list_view_component(model_name: String) -> Page {
 				}
 				None::<fn()>
 			},
-			(resource_for_deps,),
+			deps![resource_for_deps],
 		);
 	}
 
@@ -415,7 +440,7 @@ fn detail_view_component(model_name: String, record_id: String) -> Page {
 					.map_err(|e| e.to_string())
 			}
 		},
-		(),
+		deps![],
 	);
 
 	let reactive_content = Page::reactive({
@@ -468,7 +493,7 @@ fn create_view_component(model_name: String) -> Page {
 					.map_err(|e| e.to_string())
 			}
 		},
-		(),
+		deps![],
 	);
 
 	let reactive_content = Page::reactive({
@@ -545,7 +570,7 @@ fn edit_view_component(model_name: String, record_id: String) -> Page {
 					.map_err(|e| e.to_string())
 			}
 		},
-		(),
+		deps![],
 	);
 
 	let reactive_content = Page::reactive({
@@ -780,10 +805,27 @@ pub fn init_router() -> ClientRouter {
 mod tests {
 	use super::*;
 	use reinhardt_core::reactive::ReactiveScope;
+	use rstest::{fixture, rstest};
+	use serial_test::serial;
 
 	fn clear_global_router() {
 		let previous = ROUTER.with(|router| router.borrow_mut().take());
 		drop(previous);
+	}
+
+	struct InitializedGlobalRouter;
+
+	impl Drop for InitializedGlobalRouter {
+		fn drop(&mut self) {
+			clear_global_router();
+		}
+	}
+
+	#[fixture]
+	fn initialized_global_router() -> InitializedGlobalRouter {
+		clear_global_router();
+		ReactiveScope::run(init_global_router);
+		InitializedGlobalRouter
 	}
 
 	#[test]
@@ -938,47 +980,38 @@ mod tests {
 		});
 	}
 
-	#[test]
-	fn test_init_global_router() {
-		ReactiveScope::run(|| {
-			init_global_router();
-
-			with_router(|router| {
-				assert_eq!(router.route_count(), 6);
-				assert!(router.has_route("login"));
-				assert!(router.has_route("dashboard"));
-				assert!(router.has_route("list"));
-				assert!(router.has_route("detail"));
-				assert!(router.has_route("create"));
-				assert!(router.has_route("edit"));
-			});
+	#[rstest]
+	#[serial(global_router)]
+	fn test_init_global_router(_initialized_global_router: InitializedGlobalRouter) {
+		with_router(|router| {
+			assert_eq!(router.route_count(), 6);
+			assert!(router.has_route("login"));
+			assert!(router.has_route("dashboard"));
+			assert!(router.has_route("list"));
+			assert!(router.has_route("detail"));
+			assert!(router.has_route("create"));
+			assert!(router.has_route("edit"));
 		});
 	}
 
-	#[test]
-	fn global_router_scope_outlives_initializer_scope() {
-		clear_global_router();
-
-		ReactiveScope::run(init_global_router);
-
+	#[rstest]
+	#[serial(global_router)]
+	fn global_router_scope_outlives_initializer_scope(
+		_initialized_global_router: InitializedGlobalRouter,
+	) {
 		with_router(|router| {
 			assert_eq!(router.current_path().get(), "/");
 		});
-
-		clear_global_router();
 	}
 
-	#[test]
-	fn test_with_router_access() {
-		ReactiveScope::run(|| {
-			init_global_router();
+	#[rstest]
+	#[serial(global_router)]
+	fn test_with_router_access(_initialized_global_router: InitializedGlobalRouter) {
+		let route_count = with_router(|router| router.route_count());
+		assert_eq!(route_count, 6);
 
-			let route_count = with_router(|router| router.route_count());
-			assert_eq!(route_count, 6);
-
-			let has_dashboard = with_router(|router| router.has_route("dashboard"));
-			assert!(has_dashboard);
-		});
+		let has_dashboard = with_router(|router| router.has_route("dashboard"));
+		assert!(has_dashboard);
 	}
 
 	#[test]

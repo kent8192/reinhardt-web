@@ -115,6 +115,27 @@ pub struct AuthState {
 	permissions: Signal<HashSet<String>>,
 }
 
+/// A signal exported from [`AuthState`] that retains the state's owner scope.
+#[derive(Clone)]
+pub struct AuthSignal<T: 'static> {
+	_state: AuthState,
+	signal: Signal<T>,
+}
+
+impl<T: 'static> std::ops::Deref for AuthSignal<T> {
+	type Target = Signal<T>;
+
+	fn deref(&self) -> &Self::Target {
+		&self.signal
+	}
+}
+
+impl<T: 'static> reinhardt_core::reactive::Trackable for AuthSignal<T> {
+	fn node_id(&self) -> reinhardt_core::reactive::NodeId {
+		self.signal.id()
+	}
+}
+
 impl std::fmt::Debug for AuthState {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.debug_struct("AuthState").finish_non_exhaustive()
@@ -188,33 +209,33 @@ impl AuthState {
 	/// Returns the Signal for authentication status.
 	///
 	/// Use this for reactive UI updates.
-	pub fn is_authenticated_signal(&self) -> Signal<bool> {
-		self.is_authenticated
+	pub fn is_authenticated_signal(&self) -> AuthSignal<bool> {
+		self.signal(self.is_authenticated)
 	}
 
 	/// Returns the Signal for user ID.
-	pub fn user_id_signal(&self) -> Signal<Option<String>> {
-		self.user_id
+	pub fn user_id_signal(&self) -> AuthSignal<Option<String>> {
+		self.signal(self.user_id)
 	}
 
 	/// Returns the Signal for username.
-	pub fn username_signal(&self) -> Signal<Option<String>> {
-		self.username
+	pub fn username_signal(&self) -> AuthSignal<Option<String>> {
+		self.signal(self.username)
 	}
 
 	/// Returns the Signal for email.
-	pub fn email_signal(&self) -> Signal<Option<String>> {
-		self.email
+	pub fn email_signal(&self) -> AuthSignal<Option<String>> {
+		self.signal(self.email)
 	}
 
 	/// Returns the Signal for staff status.
-	pub fn is_staff_signal(&self) -> Signal<bool> {
-		self.is_staff
+	pub fn is_staff_signal(&self) -> AuthSignal<bool> {
+		self.signal(self.is_staff)
 	}
 
 	/// Returns the Signal for superuser status.
-	pub fn is_superuser_signal(&self) -> Signal<bool> {
-		self.is_superuser
+	pub fn is_superuser_signal(&self) -> AuthSignal<bool> {
+		self.signal(self.is_superuser)
 	}
 
 	/// Updates the authentication state with new data.
@@ -317,8 +338,15 @@ impl AuthState {
 	}
 
 	/// Returns the Signal for permissions (for reactive updates).
-	pub fn permissions_signal(&self) -> Signal<HashSet<String>> {
-		self.permissions
+	pub fn permissions_signal(&self) -> AuthSignal<HashSet<String>> {
+		self.signal(self.permissions)
+	}
+
+	fn signal<T: 'static>(&self, signal: Signal<T>) -> AuthSignal<T> {
+		AuthSignal {
+			_state: self.clone(),
+			signal,
+		}
 	}
 
 	/// Fetches permissions from the server and updates the cache.
@@ -653,6 +681,14 @@ mod tests {
 		let server_state = AuthState::from_server_data(AuthData::authenticated("7", "serveruser"));
 		assert!(server_state.is_authenticated());
 		assert_eq!(server_state.username(), Some("serveruser".to_string()));
+	}
+
+	#[rstest]
+	#[serial_test::serial(reactive_runtime)]
+	fn exported_auth_signal_retains_its_owner() {
+		let is_authenticated = AuthState::new().is_authenticated_signal();
+
+		assert!(!is_authenticated.get());
 	}
 
 	#[test]

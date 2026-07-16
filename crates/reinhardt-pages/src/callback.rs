@@ -76,12 +76,15 @@ where
 }
 
 #[cfg(wasm)]
-fn scope_async_event_future<Fut>(future: Fut) -> ScopedAsyncEventFuture<Fut>
+fn scope_async_event_future<Fut>(
+	scope: Option<reinhardt_core::reactive::ScopeId>,
+	future: Fut,
+) -> ScopedAsyncEventFuture<Fut>
 where
 	Fut: Future<Output = ()> + 'static,
 {
 	ScopedAsyncEventFuture {
-		scope: current_scope_id(),
+		scope,
 		future: Box::pin(future),
 	}
 }
@@ -254,11 +257,47 @@ impl<Args: 'static, Ret: 'static> Callback<Args, Ret> {
 
 	/// Call this callback with the supplied arguments.
 	pub fn call(&self, args: Args) -> Ret {
+		self.try_call(args).unwrap_or_else(|err| panic!("{err}"))
+	}
+
+	/// Calls this callback while reporting a disposed owner instead of panicking.
+	///
+	/// This is intended for callbacks retained by timers, promises, or external
+	/// event sources which may fire after their mounted view has unmounted.
+	pub fn try_call(
+		&self,
+		args: Args,
+	) -> Result<Ret, reinhardt_core::reactive::ReactiveScopeError> {
 		let inner =
-			with_page_node::<CallbackSlot<Args, Ret>, _>(self.key, |slot| Arc::clone(&slot.inner))
-				.unwrap_or_else(|err| panic!("{err}"));
+			with_page_node::<CallbackSlot<Args, Ret>, _>(self.key, |slot| Arc::clone(&slot.inner))?;
 		reinhardt_core::reactive::scope::enter_scope(self.key.scope(), || inner(args))
-			.unwrap_or_else(|err| panic!("{err}"))
+	}
+}
+
+fn scoped_event_handler<F>(handler: F) -> PageEventHandler
+where
+	F: Fn(EventArg) + 'static,
+{
+	let scope = reinhardt_core::reactive::scope::current_scope_id();
+	Arc::new(move |event| match scope {
+		Some(scope) => {
+			let _ = reinhardt_core::reactive::scope::enter_scope(scope, || handler(event));
+		}
+		None => handler(event),
+	})
+}
+
+#[cfg(wasm)]
+pub(crate) fn run_event_handler_in_scope(
+	scope: Option<reinhardt_core::reactive::ScopeId>,
+	handler: &PageEventHandler,
+	event: web_sys::Event,
+) {
+	match scope {
+		Some(scope) => {
+			let _ = reinhardt_core::reactive::scope::enter_scope(scope, || handler(event));
+		}
+		None => handler(event),
 	}
 }
 
@@ -525,7 +564,7 @@ where
 	F: Fn(web_sys::Event) + 'static,
 {
 	fn into_event_handler(self) -> PageEventHandler {
-		Arc::new(self)
+		scoped_event_handler(self)
 	}
 }
 
@@ -535,7 +574,7 @@ where
 	F: Fn(crate::component::NativeEvent) + 'static,
 {
 	fn into_event_handler(self) -> PageEventHandler {
-		Arc::new(self)
+		scoped_event_handler(self)
 	}
 }
 
@@ -546,7 +585,9 @@ impl IntoEventHandler for Callback<EventArg, ()> {
 		reason = "PageEventHandler is Arc-backed for cloneable Page elements while Callback intentionally retains thread-affine reactive state."
 	)]
 	fn into_event_handler(self) -> PageEventHandler {
-		Arc::new(move |event| self.call(event))
+		scoped_event_handler(move |event| {
+			let _ = self.try_call(event);
+		})
 	}
 }
 
@@ -626,14 +667,18 @@ impl<P> typed_sealed::Sealed<P> for Callback<P, ()> {}
 #[cfg(wasm)]
 impl<P: 'static> IntoTypedEventHandler<P> for Callback<P, ()> {
 	fn into_typed_event_handler(self) -> Arc<dyn Fn(P) + 'static> {
-		Arc::new(move |payload| self.call(payload))
+		Arc::new(move |payload| {
+			let _ = self.try_call(payload);
+		})
 	}
 }
 
 #[cfg(native)]
 impl<P: 'static> IntoTypedEventHandler<P> for Callback<P, ()> {
 	fn into_typed_event_handler(self) -> Arc<dyn Fn(P) + 'static> {
-		Arc::new(move |payload| self.call(payload))
+		Arc::new(move |payload| {
+			let _ = self.try_call(payload);
+		})
 	}
 }
 
@@ -644,7 +689,7 @@ where
 	H: IntoTypedEventHandler<P>,
 {
 	let handler = handler.into_typed_event_handler();
-	Arc::new(move |event| {
+	scoped_event_handler(move |event| {
 		let _actual_type = crate::platform::event_type(&event);
 		let _listener_target = crate::platform::current_target(&event)
 			.map(|target| target.tag_name().to_owned())
@@ -669,6 +714,7 @@ where
 	H: Fn(P) -> Fut + 'static,
 	Fut: Future<Output = ()> + 'static,
 {
+	let scope = current_scope_id();
 	Arc::new(move |event| {
 		let _actual_type = crate::platform::event_type(&event);
 		let _listener_target = crate::platform::current_target(&event)
@@ -681,7 +727,7 @@ where
 				let future = handler(payload);
 				#[cfg(feature = "i18n")]
 				let future = crate::i18n::with_optional_i18n_context_async(i18n_context, future);
-				spawn_task(scope_async_event_future(future));
+				spawn_task(scope_async_event_future(scope, future));
 			}
 			Err(_error) => crate::error_log!(
 				"typed async event conversion failed for actual event type `{}` on listener target `{}`: {}",
@@ -724,7 +770,7 @@ pub fn raw_event_handler<H>(handler: H) -> PageEventHandler
 where
 	H: Fn(crate::platform::Event) + 'static,
 {
-	Arc::new(handler)
+	scoped_event_handler(handler)
 }
 
 /// Stores a synchronous raw cross-target event handler.
@@ -733,7 +779,7 @@ pub fn raw_event_handler<H>(handler: H) -> PageEventHandler
 where
 	H: Fn(crate::platform::Event) + 'static,
 {
-	Arc::new(handler)
+	scoped_event_handler(handler)
 }
 
 /// Stores an asynchronous raw cross-target event handler.
@@ -743,13 +789,14 @@ where
 	H: Fn(crate::platform::Event) -> Fut + 'static,
 	Fut: Future<Output = ()> + 'static,
 {
+	let scope = current_scope_id();
 	Arc::new(move |event| {
 		#[cfg(feature = "i18n")]
 		let i18n_context = crate::i18n::current_i18n_callback_context();
 		let future = handler(event);
 		#[cfg(feature = "i18n")]
 		let future = crate::i18n::with_optional_i18n_context_async(i18n_context, future);
-		spawn_task(scope_async_event_future(future));
+		spawn_task(scope_async_event_future(scope, future));
 	})
 }
 
@@ -779,7 +826,7 @@ where
 /// ```
 #[cfg(wasm)]
 pub fn event_handler(f: impl Fn(web_sys::Event) + 'static) -> PageEventHandler {
-	Arc::new(f)
+	scoped_event_handler(f)
 }
 
 /// Event handler helper with concrete type for better type inference (server-side version).
@@ -787,7 +834,7 @@ pub fn event_handler(f: impl Fn(web_sys::Event) + 'static) -> PageEventHandler {
 /// See WASM version for documentation.
 #[cfg(native)]
 pub fn event_handler(f: impl Fn(crate::component::NativeEvent) + 'static) -> PageEventHandler {
-	Arc::new(f)
+	scoped_event_handler(f)
 }
 
 /// Creates an async event handler that automatically spawns the future.
@@ -817,13 +864,14 @@ where
 	F: Fn(web_sys::Event) -> Fut + 'static,
 	Fut: Future<Output = ()> + 'static,
 {
+	let scope = current_scope_id();
 	Arc::new(move |event| {
 		#[cfg(feature = "i18n")]
 		let i18n_context = crate::i18n::current_i18n_callback_context();
 		let fut = f(event);
 		#[cfg(feature = "i18n")]
 		let fut = crate::i18n::with_optional_i18n_context_async(i18n_context, fut);
-		spawn_task(scope_async_event_future(fut));
+		spawn_task(scope_async_event_future(scope, fut));
 	})
 }
 
@@ -873,10 +921,9 @@ mod tests {
 		assert_eq!(callback.call(1), 2);
 		scope.dispose();
 
-		let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| callback.call(1)));
 		assert!(
-			result.is_err(),
-			"disposed callback owners must invalidate their slots"
+			callback.try_call(1).is_err(),
+			"disposed callback owners must report their invalid slot without panicking"
 		);
 	}
 
@@ -982,6 +1029,27 @@ mod tests {
 		handler(NativeEvent::for_known(
 			EventType::Click,
 			NativeEventPayload::Pointer(PointerEventData::default()),
+		));
+	}
+
+	#[cfg(native)]
+	#[test]
+	fn synchronous_event_handler_reenters_its_registration_scope() {
+		use crate::component::NativeEvent;
+		use reinhardt_core::reactive::Signal;
+		use reinhardt_core::types::page::{EventType, NativeEventPayload};
+
+		let scope = ReactiveScope::new();
+		let handler = scope.enter(|| {
+			event_handler(|_: NativeEvent| {
+				let signal = Signal::new(1_i32);
+				assert_eq!(signal.get(), 1);
+			})
+		});
+
+		handler(NativeEvent::for_known(
+			EventType::Click,
+			NativeEventPayload::default(),
 		));
 	}
 }

@@ -419,7 +419,7 @@ impl ReactiveNode {
 		let marker_clone = marker.clone();
 		let reactive_nodes = new_reactive_node_store();
 		let effect_reactive_node_store = current_reactive_node_store();
-		let render_reactive_node_store = new_reactive_node_store();
+		let render_reactive_node_store = Rc::new(RefCell::new(new_reactive_node_store()));
 		let mount_reactive_node_store = reactive_nodes.clone();
 		#[cfg(feature = "i18n")]
 		let i18n_context = crate::i18n::current_i18n_callback_context();
@@ -429,17 +429,21 @@ impl ReactiveNode {
 			move || {
 				let update = || {
 					with_reactive_node_store(&effect_reactive_node_store, || {
-						clear_reactive_node_store(&render_reactive_node_store);
-						// Render the view in a child scope owned by this reactive node.
-						let view =
-							render_view_in_reactive_node_store(&render_reactive_node_store, || {
-								render()
-							});
+						let next_render_reactive_node_store = new_reactive_node_store();
+						// Render a candidate view separately so preserved activity DOM keeps
+						// the scope that owns its existing event handlers.
+						let view = render_view_in_reactive_node_store(
+							&next_render_reactive_node_store,
+							|| render(),
+						);
 
 						if update_activity_boundary_attrs(&current_nodes_clone, &view) {
-							clear_reactive_node_store(&render_reactive_node_store);
+							clear_reactive_node_store(&next_render_reactive_node_store);
 							return;
 						}
+						let previous_render_reactive_node_store =
+							render_reactive_node_store.replace(next_render_reactive_node_store);
+						clear_reactive_node_store(&previous_render_reactive_node_store);
 
 						clear_reactive_node_store(&mount_reactive_node_store);
 
@@ -504,6 +508,7 @@ impl ReactiveNode {
 		let marker_clone = marker.clone();
 		let reactive_nodes = new_reactive_node_store();
 		let effect_reactive_node_store = current_reactive_node_store();
+		let render_reactive_node_store = Rc::new(RefCell::new(render_reactive_node_store));
 		let mount_reactive_node_store = reactive_nodes.clone();
 		let first_run = Rc::new(Cell::new(true));
 		let first_run_clone = first_run.clone();
@@ -514,17 +519,20 @@ impl ReactiveNode {
 			move || {
 				let update = || {
 					with_reactive_node_store(&effect_reactive_node_store, || {
-						clear_reactive_node_store(&render_reactive_node_store);
+						let next_render_reactive_node_store = new_reactive_node_store();
 						let first_run_resource_counter =
 							crate::reactive::resource::current_client_resource_counter();
 						let first_run_id_counter =
 							crate::reactive::hooks::id::id_counter_snapshot();
-						let view =
-							render_view_in_reactive_node_store(&render_reactive_node_store, || {
-								render()
-							});
+						let view = render_view_in_reactive_node_store(
+							&next_render_reactive_node_store,
+							|| render(),
+						);
+						let previous_render_reactive_node_store =
+							render_reactive_node_store.replace(next_render_reactive_node_store);
 
 						if first_run_clone.replace(false) {
+							clear_reactive_node_store(&previous_render_reactive_node_store);
 							crate::reactive::resource::set_client_resource_counter(
 								first_run_resource_counter,
 							);
@@ -533,9 +541,12 @@ impl ReactiveNode {
 						}
 
 						if update_activity_boundary_attrs(&current_nodes_clone, &view) {
-							clear_reactive_node_store(&render_reactive_node_store);
+							let rejected_render_reactive_node_store = render_reactive_node_store
+								.replace(previous_render_reactive_node_store);
+							clear_reactive_node_store(&rejected_render_reactive_node_store);
 							return;
 						}
+						clear_reactive_node_store(&previous_render_reactive_node_store);
 
 						clear_reactive_node_store(&mount_reactive_node_store);
 
@@ -758,17 +769,22 @@ fn mount_before_marker_inner(marker: &web_sys::Comment, view: Page) -> Vec<web_s
 				use wasm_bindgen::closure::Closure;
 
 				let handler_clone = handler.clone();
+				let scope = reinhardt_core::reactive::scope::current_scope_id();
 				#[cfg(feature = "i18n")]
 				let i18n_context = crate::i18n::current_i18n_callback_context();
 				let closure = Closure::wrap(Box::new(move |event: web_sys::Event| {
 					#[cfg(feature = "i18n")]
 					{
 						crate::i18n::with_optional_i18n_context(i18n_context.as_ref(), || {
-							handler_clone(event);
+							crate::callback::run_event_handler_in_scope(
+								scope,
+								&handler_clone,
+								event,
+							);
 						});
 					}
 					#[cfg(not(feature = "i18n"))]
-					handler_clone(event);
+					crate::callback::run_event_handler_in_scope(scope, &handler_clone, event);
 				}) as Box<dyn FnMut(web_sys::Event)>);
 
 				let _ = element.add_event_listener_with_callback(
