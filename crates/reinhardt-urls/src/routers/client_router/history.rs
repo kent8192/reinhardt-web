@@ -379,7 +379,10 @@ where
 		}) as Box<dyn FnMut(_)>);
 
 	window.add_event_listener_with_callback("popstate", closure.as_ref().unchecked_ref())?;
-	Ok(PopStateSubscription { window, callback })
+	Ok(PopStateSubscription {
+		window,
+		callback: closure,
+	})
 }
 
 /// Sets up a popstate event listener that triggers when browser back/forward is used.
