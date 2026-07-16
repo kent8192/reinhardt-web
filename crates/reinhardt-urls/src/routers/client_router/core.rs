@@ -1107,8 +1107,47 @@ impl ClientRouter {
 		self.navigate(path, NavigationType::Replace)
 	}
 
+	/// Commits an already matched route after any asynchronous preparation.
+	///
+	/// Matching and guard evaluation are deliberately separate from this
+	/// operation. `Push` and `Replace` update browser history first; `Pop` and
+	/// the signal-only `Initial` path do not create a new entry. Signals and
+	/// observers are updated exactly once after the history operation succeeds.
+	pub fn commit_match(
+		&self,
+		path: &str,
+		matched: &ClientRouteTreeMatch,
+		navigation: NavigationType,
+		entry_index: i64,
+	) -> Result<(), RouterError> {
+		let leaf = matched.leaf_match();
+		let mut state = HistoryState::new(path)
+			.with_params(leaf.params.clone())
+			.with_entry_index(entry_index);
+		if let Some(name) = leaf.route.name() {
+			state = state.with_route_name(name);
+		}
+
+		match navigation {
+			NavigationType::Push => push_state(&state),
+			NavigationType::Replace | NavigationType::Initial => replace_state(&state),
+			NavigationType::Pop => Ok(()),
+		}
+		.map_err(RouterError::NavigationFailed)?;
+
+		self.current_path.set(path.to_string());
+		self.current_params.set(leaf.params.clone());
+		self.current_route_name
+			.set(leaf.route.name().map(str::to_string));
+		self.notify_observers(path, &leaf.params);
+		Ok(())
+	}
+
 	/// Internal navigation implementation.
 	fn navigate(&self, path: &str, nav_type: NavigationType) -> Result<(), RouterError> {
+		if let Some(matched) = self.match_tree(path) {
+			return self.commit_match(path, &matched, nav_type, 0);
+		}
 		let route_match = self.match_path(path);
 
 		let state = HistoryState::new(path)
@@ -1123,7 +1162,8 @@ impl ClientRouter {
 					.as_ref()
 					.and_then(|m| m.route.name())
 					.unwrap_or(""),
-			);
+			)
+			.with_entry_index(0);
 
 		let result = match nav_type {
 			NavigationType::Push => push_state(&state),

@@ -106,6 +106,8 @@ pub use loader::RouteLoaderId;
 // instead. The functions remain `pub` at `history::*` so reinhardt-pages
 // can re-export them across the crate boundary.
 pub use history::{HistoryState, NavigationType};
+#[cfg(wasm)]
+pub use history::{PopNavigationRequest, PopStateSubscription, listen_pop_requests};
 pub use params::{FromPath, ParamContext, Path, SingleFromPath};
 pub use pattern::ClientPathPattern;
 pub use scope::{RouteScope, ScopeKind};
