@@ -1,0 +1,6 @@
+error: missing #[http_error(status = ...)]
+ --> tests/macros/ui/http_error/fail/missing_status.rs:5:2
+  |
+5 | /     #[http_error(message = "Invalid request")]
+6 | |     Invalid,
+  | |___________^

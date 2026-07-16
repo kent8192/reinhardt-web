@@ -507,6 +507,9 @@ or native component-test mocks. Query handles can also be tracked by
 ### Component System
 - `Component`, `ElementView`, `IntoView`, `View`, `Props`, `ViewEventHandler`
 - `SuspenseBoundary`, `ErrorBoundary`, `BoundaryError`, `ErrorTracker`
+  - `ErrorBoundary::new()` uses a generic default error message so tracked resource
+    errors do not expose internal diagnostics. Provide a custom fallback only for
+    messages that are safe to show to clients.
 
 ### Events and Callbacks
 - `EventPayload`, catalog-generated payloads such as `ClickEvent` and `InputEvent`
