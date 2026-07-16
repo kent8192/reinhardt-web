@@ -1,6 +1,6 @@
 //! Type checking for style values, functions, and property grammars.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use proc_macro2::Span;
 
@@ -249,7 +249,8 @@ fn type_check_declaration(
 		spec.css_wide_keywords,
 		variable_defaults,
 	) && (spec.name != "box-shadow"
-		|| box_shadow_blur_is_not_negative(&value));
+		|| box_shadow_blur_is_not_negative(&value))
+		&& property_specific_constraints_match(spec.name, &value);
 	if !is_whole_unchecked(&value) && !grammar_matches {
 		return Err(StyleDiagnostic::new(
 			StyleDiagnosticKind::PropertyValueMismatch {
@@ -1163,6 +1164,127 @@ fn numeric_literal_value(expression: &TypedValueExpr) -> Option<f64> {
 		TypedValueExprKind::Group(operand) => numeric_literal_value(operand),
 		_ => None,
 	}
+}
+
+fn property_specific_constraints_match(property: &str, value: &TypedValueExpr) -> bool {
+	match property {
+		"font-style" => font_style_oblique_angle_is_valid(value),
+		"grid-column" | "grid-row" | "grid-area" => grid_line_numbers_are_nonzero(value),
+		"background" => background_position_and_size_are_not_split(value),
+		"text-decoration" => text_decoration_lines_are_unique(value),
+		"box-shadow" => box_shadow_lengths_are_contiguous(value),
+		_ => true,
+	}
+}
+
+fn font_style_oblique_angle_is_valid(value: &TypedValueExpr) -> bool {
+	let items = sequence_items(value);
+	if items.len() != 2 || !keyword_equals(items[0], "oblique") {
+		return true;
+	}
+	numeric_angle_degrees(items[1]).is_none_or(|degrees| (-90.0..=90.0).contains(&degrees))
+}
+
+fn numeric_angle_degrees(expression: &TypedValueExpr) -> Option<f64> {
+	match &expression.kind {
+		TypedValueExprKind::Literal(StyleValueLiteral::Integer(number))
+		| TypedValueExprKind::Literal(StyleValueLiteral::Number(number)) => {
+			let value = number.source.replace('_', "").parse::<f64>().ok()?;
+			let StyleNumericUnit::Named(unit) = number.unit.as_ref()? else {
+				return None;
+			};
+			match unit.as_str().to_ascii_lowercase().as_str() {
+				"deg" => Some(value),
+				"grad" => Some(value * 0.9),
+				"rad" => Some(value * 180.0 / std::f64::consts::PI),
+				"turn" => Some(value * 360.0),
+				_ => None,
+			}
+		}
+		TypedValueExprKind::Unary { operator, operand } => {
+			numeric_angle_degrees(operand).map(|value| match operator.kind {
+				StyleUnaryOperatorKind::Minus => -value,
+				StyleUnaryOperatorKind::Plus => value,
+			})
+		}
+		TypedValueExprKind::Group(inner) => numeric_angle_degrees(inner),
+		_ => None,
+	}
+}
+
+fn grid_line_numbers_are_nonzero(expression: &TypedValueExpr) -> bool {
+	match &expression.kind {
+		TypedValueExprKind::Literal(StyleValueLiteral::Integer(_)) => {
+			numeric_literal_value(expression).is_none_or(|value| value != 0.0)
+		}
+		TypedValueExprKind::Unary { operand, .. } | TypedValueExprKind::Group(operand) => {
+			grid_line_numbers_are_nonzero(operand)
+		}
+		TypedValueExprKind::SpaceSequence(items) | TypedValueExprKind::CommaList(items) => {
+			items.iter().all(grid_line_numbers_are_nonzero)
+		}
+		TypedValueExprKind::Function(call) if call.spec.dsl_path == "slash" => {
+			call.arguments.iter().all(grid_line_numbers_are_nonzero)
+		}
+		_ => true,
+	}
+}
+
+fn background_position_and_size_are_not_split(value: &TypedValueExpr) -> bool {
+	comma_items(value).into_iter().all(|layer| {
+		let items = sequence_items(layer);
+		let has_position_size = items.iter().any(|item| {
+			slash_pair(item).is_some_and(|(left, _)| is_background_position_component(left))
+		});
+		!has_position_size
+			|| !items
+				.iter()
+				.filter(|item| slash_pair(item).is_none())
+				.any(|item| is_background_position_component(item))
+	})
+}
+
+fn is_background_position_component(expression: &TypedValueExpr) -> bool {
+	keyword_equals(expression, "left")
+		|| keyword_equals(expression, "right")
+		|| keyword_equals(expression, "top")
+		|| keyword_equals(expression, "bottom")
+		|| keyword_equals(expression, "center")
+		|| matches!(
+			expression.value_type,
+			SemanticType::Length | SemanticType::LengthPercentage | SemanticType::Percentage
+		)
+}
+
+fn text_decoration_lines_are_unique(value: &TypedValueExpr) -> bool {
+	let mut lines = HashSet::new();
+	sequence_items(value)
+		.into_iter()
+		.filter_map(keyword_value)
+		.filter(|keyword| matches!(*keyword, "underline" | "overline" | "line-through"))
+		.all(|keyword| lines.insert(keyword))
+}
+
+fn box_shadow_lengths_are_contiguous(value: &TypedValueExpr) -> bool {
+	comma_items(value).into_iter().all(|shadow| {
+		let indices = sequence_items(shadow)
+			.iter()
+			.enumerate()
+			.filter_map(|(index, item)| (item.value_type == SemanticType::Length).then_some(index))
+			.collect::<Vec<_>>();
+		indices.windows(2).all(|pair| pair[1] == pair[0] + 1)
+	})
+}
+
+fn keyword_equals(expression: &TypedValueExpr, expected: &str) -> bool {
+	keyword_value(expression).is_some_and(|value| value.eq_ignore_ascii_case(expected))
+}
+
+fn keyword_value(expression: &TypedValueExpr) -> Option<&str> {
+	let TypedValueExprKind::Literal(StyleValueLiteral::Keyword(keyword)) = &expression.kind else {
+		return None;
+	};
+	Some(keyword.as_str())
 }
 
 fn transition_time_order_is_valid(
@@ -2183,8 +2305,10 @@ mod tests {
 			".card { grid-row: (span, 2); }",
 			".card { background-position: (left, 10px, top, 20%); }",
 			".card { font-style: (oblique, 90deg); }",
+			".card { font-style: (oblique, 100grad); }",
 			".card { touch-action: (pan-left, pan-up, pinch-zoom); }",
 			".card { color: red.mix(blue, 100%); }",
+			".card { color: currentColor; }",
 			".card { transition-property: none; }",
 			".card { text-decoration: (underline, overline, wavy, auto); }",
 			".card { text-decoration: (underline, from-font); }",
@@ -2208,12 +2332,19 @@ mod tests {
 			".card { background-position: (left, right); }",
 			".card { font-style: (oblique, 91deg); }",
 			".card { font-style: (oblique, -91deg); }",
+			".card { font-style: (oblique, 0.5turn); }",
+			".card { grid-column: 0; }",
+			".card { grid-row: 0; }",
+			".card { grid-area: 0; }",
 			".card { background-position: (1px, 2px, 3px); }",
+			".card { background: (left, slash(right, cover)); }",
 			".card { touch-action: (pan-left, pan-right); }",
 			".card { color: red.mix(blue, 150%); }",
 			".card { transition-property: [none, opacity]; }",
 			".card { text-decoration: hidden; }",
 			".card { text-decoration: (underline, thin); }",
+			".card { text-decoration: (underline, underline); }",
+			".card { box-shadow: (1px, red, 2px); }",
 			".card { outline: hidden; }",
 			".card { outline-style: hidden; }",
 		];

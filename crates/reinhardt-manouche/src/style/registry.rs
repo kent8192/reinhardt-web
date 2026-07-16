@@ -777,7 +777,8 @@ pub(crate) fn infer_named_keyword_type(keyword: &str) -> Option<SemanticType> {
 	let domain = named_color_domain();
 	domain
 		.keywords
-		.contains(&keyword)
+		.iter()
+		.any(|candidate| candidate.eq_ignore_ascii_case(keyword))
 		.then_some(domain.produced_type)
 }
 
@@ -1557,11 +1558,7 @@ const GRID_TRACK_PAIR: ValueGrammar = ValueGrammar::Slash {
 const GRID_TEMPLATE: ValueGrammar = ValueGrammar::Or(&[KW_NONE, GRID_TRACK_PAIR]);
 
 const FONT_SIZE: ValueGrammar = ValueGrammar::Or(&[NLP, KW_FONT_SIZE]);
-const OBLIQUE_ANGLE: ValueGrammar = ValueGrammar::NumericRange {
-	grammar: &A,
-	minimum: -90,
-	maximum: 90,
-};
+const OBLIQUE_ANGLE: ValueGrammar = A;
 const FONT_STYLE_OBLIQUE: ValueGrammar = ValueGrammar::Ordered(&[
 	required("oblique", &KW_OBLIQUE),
 	optional("angle", &OBLIQUE_ANGLE),
