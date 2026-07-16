@@ -17,6 +17,8 @@ use crate::component::reactive_if::{
 	ReactiveNodeStore, clear_reactive_node_store, new_reactive_node_store, with_reactive_node_store,
 };
 #[cfg(wasm)]
+use crate::router::loader::{LoaderStore, active_loader_store, with_loader_store};
+#[cfg(wasm)]
 use reinhardt_core::page::Outlet;
 #[cfg(wasm)]
 use reinhardt_urls::routers::client_router::{ClientRouteTreeMatch, ClientRouter, LayoutKey};
@@ -35,7 +37,9 @@ thread_local! {
 struct PersistentLayoutRenderer {
 	layout_keys: Vec<LayoutKey>,
 	layout_stores: Vec<ReactiveNodeStore>,
+	layout_loader_stores: Vec<LoaderStore>,
 	leaf_store: Option<ReactiveNodeStore>,
+	leaf_loader_store: Option<LoaderStore>,
 }
 
 #[cfg(wasm)]
@@ -44,7 +48,9 @@ impl PersistentLayoutRenderer {
 		Self {
 			layout_keys: Vec::new(),
 			layout_stores: Vec::new(),
+			layout_loader_stores: Vec::new(),
 			leaf_store: None,
+			leaf_loader_store: None,
 		}
 	}
 
@@ -55,6 +61,8 @@ impl PersistentLayoutRenderer {
 		if let Some(store) = self.leaf_store.take() {
 			clear_reactive_node_store(&store);
 		}
+		self.layout_loader_stores.clear();
+		self.leaf_loader_store = None;
 		self.layout_keys.clear();
 	}
 
@@ -65,6 +73,8 @@ impl PersistentLayoutRenderer {
 		if let Some(store) = self.leaf_store.take() {
 			clear_reactive_node_store(&store);
 		}
+		self.layout_loader_stores.truncate(depth);
+		self.leaf_loader_store = None;
 		self.layout_keys.truncate(depth);
 	}
 
@@ -120,42 +130,55 @@ impl PersistentLayoutRenderer {
 		} else {
 			Self::find_outlet(root_el, start_depth - 1)?
 		};
+		let loader_store = active_loader_store().unwrap_or_default();
 
 		for depth in start_depth..route_match.layouts().len() {
 			let outlet_id = Self::outlet_id(depth);
 			let store = new_reactive_node_store();
 			let scope = reinhardt_core::reactive::ReactiveScope::new();
 			let parent_wrapper = crate::dom::Element::new(parent.clone());
-			scope.enter(|| {
-				with_reactive_node_store(&store, || {
-					let page = router
-						.__render_tree_layout(route_match, depth, Outlet::placeholder(outlet_id))
-						.ok_or(MountError::CreateElementFailed)?;
-					page.mount(&parent_wrapper)
+			let mounted = with_loader_store(&loader_store, || {
+				scope.enter(|| {
+					with_reactive_node_store(&store, || {
+						let page = router
+							.__render_tree_layout(
+								route_match,
+								depth,
+								Outlet::placeholder(outlet_id),
+							)
+							.ok_or(MountError::CreateElementFailed)?;
+						page.mount(&parent_wrapper)
+					})
 				})
-			})?;
+			});
+			mounted?;
 			with_reactive_node_store(&store, || {
 				crate::component::store_reactive_scope(scope);
 			});
 			self.layout_stores.push(store);
+			self.layout_loader_stores.push(loader_store.clone());
 			parent = Self::find_outlet(root_el, depth)?;
 		}
 
 		let leaf_store = new_reactive_node_store();
 		let leaf_scope = reinhardt_core::reactive::ReactiveScope::new();
 		let parent_wrapper = crate::dom::Element::new(parent);
-		leaf_scope.enter(|| {
-			with_reactive_node_store(&leaf_store, || {
-				let leaf = router
-					.__render_tree_leaf(route_match)
-					.ok_or(MountError::CreateElementFailed)?;
-				leaf.mount(&parent_wrapper)
+		let mounted = with_loader_store(&loader_store, || {
+			leaf_scope.enter(|| {
+				with_reactive_node_store(&leaf_store, || {
+					let leaf = router
+						.__render_tree_leaf(route_match)
+						.ok_or(MountError::CreateElementFailed)?;
+					leaf.mount(&parent_wrapper)
+				})
 			})
-		})?;
+		});
+		mounted?;
 		with_reactive_node_store(&leaf_store, || {
 			crate::component::store_reactive_scope(leaf_scope);
 		});
 		self.leaf_store = Some(leaf_store);
+		self.leaf_loader_store = Some(loader_store);
 		Ok(())
 	}
 
