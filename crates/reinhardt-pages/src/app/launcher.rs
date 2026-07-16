@@ -8,7 +8,8 @@ use std::collections::HashMap;
 use super::link_interceptor::install_link_interceptor;
 #[cfg(wasm)]
 use super::{
-	store_link_interceptor_guard, store_navigation_coordinator, store_spa_router, with_spa_router,
+	store_link_interceptor_guard, store_navigation_coordinator, store_popstate_subscription,
+	store_spa_router, with_spa_router,
 };
 #[cfg(wasm)]
 use crate::component::MountError;
@@ -23,7 +24,9 @@ use crate::router::loader::{LoaderStore, active_loader_store, with_loader_store}
 #[cfg(wasm)]
 use reinhardt_core::page::Outlet;
 #[cfg(wasm)]
-use reinhardt_urls::routers::client_router::{ClientRouteTreeMatch, ClientRouter, LayoutKey};
+use reinhardt_urls::routers::client_router::{
+	ClientRouteTreeMatch, ClientRouter, LayoutKey, listen_pop_requests,
+};
 
 #[cfg(wasm)]
 thread_local! {
@@ -673,12 +676,11 @@ impl ClientLauncher {
 	/// Refs #4101.
 	fn render_and_mount(root_el: &web_sys::Element) -> Result<(), crate::component::MountError> {
 		RENDER_COUNT.with(|c| c.set(c.get() + 1));
+		let mounted_loader_store =
+			crate::app::try_with_navigation_coordinator(|coordinator| coordinator.mounted_store())
+				.flatten();
 		let client_router = with_spa_router(|r| r.as_any().downcast_ref::<ClientRouter>().cloned());
 		if let Some(router) = client_router {
-			let mounted_loader_store = crate::app::try_with_navigation_coordinator(|coordinator| {
-				coordinator.mounted_store()
-			})
-			.flatten();
 			let render_layouts = || {
 				PERSISTENT_LAYOUT_RENDERER
 					.with(|renderer| renderer.borrow_mut().render(root_el, &router))
@@ -853,6 +855,7 @@ impl ClientLauncher {
 				}
 			};
 		store_spa_router(spa_router, std::rc::Rc::clone(&scope));
+		let mut coordinator_installed = false;
 		if let Some(router) =
 			with_spa_router(|router| router.as_any().downcast_ref::<ClientRouter>().cloned())
 		{
@@ -867,7 +870,18 @@ impl ClientLauncher {
 							"initial route-loader hydration failed: {error}"
 						))
 					})?;
+				let pop_coordinator = std::rc::Rc::clone(&coordinator);
+				let pop_subscription = listen_pop_requests(move |request| {
+					if pop_coordinator.consume_restoration_pop() {
+						return;
+					}
+					let target_index = request.state.entry_index().unwrap_or(0);
+					let _ = pop_coordinator
+						.navigate(request.path, super::NavigationIntent::Pop { target_index });
+				})?;
 				store_navigation_coordinator(coordinator);
+				store_popstate_subscription(pop_subscription);
+				coordinator_installed = true;
 			}
 		}
 
@@ -878,7 +892,9 @@ impl ClientLauncher {
 		);
 		crate::nav_diag_dom!("store_router");
 
-		with_spa_router(|r| r.setup_history_listener());
+		if !coordinator_installed {
+			with_spa_router(|r| r.setup_history_listener());
+		}
 
 		let window = web_sys::window()
 			.ok_or_else(|| wasm_bindgen::JsValue::from_str("no global `window`"))?;

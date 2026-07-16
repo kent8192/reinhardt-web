@@ -28,6 +28,10 @@ thread_local! {
 	static APP_LINK_INTERCEPTOR: RefCell<Option<link_interceptor::LinkInterceptorGuard>> =
 		const { RefCell::new(None) };
 	#[cfg(wasm)]
+	static APP_POPSTATE_SUBSCRIPTION:
+		RefCell<Option<reinhardt_urls::routers::client_router::PopStateSubscription>> =
+		const { RefCell::new(None) };
+	#[cfg(wasm)]
 	static APP_REACTIVE_SCOPE: RefCell<Option<Rc<ReactiveScope>>> = const { RefCell::new(None) };
 }
 
@@ -105,6 +109,15 @@ fn store_link_interceptor_guard(guard: link_interceptor::LinkInterceptorGuard) {
 	});
 }
 
+#[cfg(wasm)]
+fn store_popstate_subscription(
+	subscription: reinhardt_urls::routers::client_router::PopStateSubscription,
+) {
+	APP_POPSTATE_SUBSCRIPTION.with(|slot| {
+		*slot.borrow_mut() = Some(subscription);
+	});
+}
+
 #[doc(hidden)]
 pub(crate) fn try_with_navigation_coordinator<F, R>(f: F) -> Option<R>
 where
@@ -145,6 +158,10 @@ pub fn __clear_spa_router_for_test() {
 	});
 	#[cfg(wasm)]
 	APP_LINK_INTERCEPTOR.with(|slot| {
+		*slot.borrow_mut() = None;
+	});
+	#[cfg(wasm)]
+	APP_POPSTATE_SUBSCRIPTION.with(|slot| {
 		*slot.borrow_mut() = None;
 	});
 }

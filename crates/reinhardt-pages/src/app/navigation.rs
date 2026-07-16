@@ -64,6 +64,7 @@ pub(crate) struct NavigationCoordinator {
 	error: Signal<Option<RouteLoaderError>>,
 	active_attempt: RefCell<Option<NavigationAttempt>>,
 	mounted_store: RefCell<Option<LoaderStore>>,
+	restoring_pop: Cell<bool>,
 	// Prefetch work is retained for the coordinator lifetime and consumed by
 	// the link-interceptor path when it is installed in a browser.
 	#[allow(dead_code)]
@@ -86,6 +87,7 @@ impl NavigationCoordinator {
 			error: Signal::new(None),
 			active_attempt: RefCell::new(None),
 			mounted_store: RefCell::new(None),
+			restoring_pop: Cell::new(false),
 			prefetch_tasks: RefCell::new(Vec::new()),
 		}))
 	}
@@ -100,6 +102,17 @@ impl NavigationCoordinator {
 
 	pub(crate) fn mounted_store(&self) -> Option<LoaderStore> {
 		self.mounted_store.borrow().clone()
+	}
+
+	/// Returns the currently committed history index used for legacy popstate
+	/// entries that do not carry framework metadata.
+	pub(crate) fn committed_index(&self) -> i64 {
+		self.committed_index.get()
+	}
+
+	/// Consumes the one-shot pop generated while restoring a failed navigation.
+	pub(crate) fn consume_restoration_pop(&self) -> bool {
+		self.restoring_pop.replace(false)
 	}
 
 	/// Restores the initial route's prepared loader values from the SSR state.
@@ -255,9 +268,14 @@ impl NavigationCoordinator {
 		{
 			let delta = self.committed_index.get().saturating_sub(target_index);
 			if delta != 0 {
-				let _ = reinhardt_urls::routers::client_router::history::go(
+				self.restoring_pop.set(true);
+				if reinhardt_urls::routers::client_router::history::go(
 					delta.clamp(i32::MIN as i64, i32::MAX as i64) as i32,
-				);
+				)
+				.is_err()
+				{
+					self.restoring_pop.set(false);
+				}
 			}
 		}
 		self.active_attempt.borrow_mut().take();
