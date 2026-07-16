@@ -16,7 +16,10 @@ fn shell(
 	outlet: Outlet,
 ) -> Page {
 	page!(|workspace_id: i64, data: String, outlet: Outlet| {
-		section { { format!("{workspace_id}:{data}") } { outlet } }
+		section {
+			{ format!("{workspace_id}:{data}") }
+			{ outlet }
+		}
 	})(workspace_id, data, outlet)
 }
 

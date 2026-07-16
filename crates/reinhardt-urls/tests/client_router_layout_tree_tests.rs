@@ -2,8 +2,8 @@
 
 use reinhardt_core::page::{IntoPage, Outlet, Page};
 use reinhardt_urls::routers::client_router::{
-	ClientRouter, FromRequest, LayoutInfo, PathParam, RouteContext, RouteMetadata,
-	RouteLoaderId, RouteRegistrationError,
+	ClientRouter, FromRequest, LayoutInfo, PathParam, RouteContext, RouteLoaderId, RouteMetadata,
+	RouteRegistrationError,
 };
 
 #[derive(Debug)]

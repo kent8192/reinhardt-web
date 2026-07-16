@@ -5,6 +5,10 @@
 //! typed by their result and error payloads, and `#[server_fn]` generates
 //! key helpers that include the server function identity plus an opaque digest
 //! of canonical JSON arguments.
+//!
+//! Route loaders acquire these same keyed entries through an imperative RAII
+//! lease. Prefetch, navigation, mounted-route state, and `use_query` therefore
+//! share in-flight work without introducing a second route-data cache.
 
 mod canonical_json;
 

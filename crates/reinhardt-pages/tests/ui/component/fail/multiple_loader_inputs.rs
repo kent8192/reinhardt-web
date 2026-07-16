@@ -11,7 +11,9 @@ fn project(
 	Loader(first): Loader<String>,
 	Loader(second): Loader<String>,
 ) -> Page {
-	page!(|| { p { { format!("{id}:{first}:{second}") } } })()
+	page!(|| {
+		p { { format!("{id}:{first}:{second}") } }
+	})()
 }
 
 fn main() {}

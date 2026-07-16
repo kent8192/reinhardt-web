@@ -10,6 +10,7 @@
 //! - `#[server_fn]` - Server Functions (RPC) macro
 //! - `#[client_page]` - Client page function macro with native route-table stubs
 //! - `#[layout]` - Route-backed layout component macro for `ClientRouter`
+//! - `#[loader]` - Async route-level data loader with hydration registration
 //! - `#[wasm_server_api]` - API parity guard for matching WASM/server surfaces
 //!
 //! ## Form Design
@@ -165,6 +166,10 @@ pub fn layout(args: TokenStream, input: TokenStream) -> TokenStream {
 }
 
 /// Declares an async route-level data loader.
+///
+/// The original function remains directly callable. The generated marker is
+/// used by `#[component(loader = ...)]`/`#[layout(loader = ...)]`, the shared
+/// query-cache executor, and SSR hydration deserialization.
 #[proc_macro_attribute]
 pub fn loader(args: TokenStream, input: TokenStream) -> TokenStream {
 	loader::loader_impl(args, input)

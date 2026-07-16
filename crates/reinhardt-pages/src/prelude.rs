@@ -56,7 +56,7 @@
 //!   [`EventType`], [`document`](fn@document)
 //!
 //! ## Routing
-//! - [`Link`], `Router`, `Route`, `RouterOutlet`, `PathPattern`
+//! - [`Link`], [`PrefetchMode`], [`Loader`], `RouterOutlet`, `RouteLoaderError`
 //!
 //! ## Macros
 //! - [`page`] - Component DSL for defining views
@@ -189,7 +189,7 @@ pub use crate::hydration::{
 pub use crate::hydration::mark_hydration_complete;
 pub use crate::ssr::SsrState;
 #[cfg(native)]
-pub use crate::ssr::{SsrChunk, SsrOptions, SsrRenderer, SsrStream};
+pub use crate::ssr::{SsrChunk, SsrOptions, SsrRenderer, SsrRouteOutput, SsrStream};
 
 // ============================================================================
 // I18n

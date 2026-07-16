@@ -15,6 +15,9 @@ WASM-based reactive frontend framework for Reinhardt with Django-like API.
 For a React concept mapping, see
 [Reinhardt Pages for React developers](docs/react_to_reinhardt.md).
 
+For route-level loaders, prepare/commit navigation, prefetch, cancellation, and
+SSR hydration, see [Route-level data loaders](docs/route_loaders.md).
+
 ## Quick Start
 
 ### Using the Prelude (Recommended)

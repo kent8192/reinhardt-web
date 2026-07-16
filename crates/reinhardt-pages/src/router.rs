@@ -10,6 +10,7 @@
 //! - **Named Routes**: Reverse URL lookup by route name
 //! - **Reactive Navigation**: Signal-based current route tracking
 //! - **Route Guards**: Optional authentication/authorization checks
+//! - **Route Loaders**: Entry-blocking layout and leaf data with prefetch
 //!
 //! ## Usage
 //!
@@ -97,6 +98,10 @@
 //!
 //! On browser WASM, navigating between sibling children with the same layout
 //! key preserves the layout shell and remounts only the outlet subtree.
+//!
+//! Route loaders are bound with `loader = ...` on `#[component]` and
+//! `#[layout]`; see [`crate::router::loader`] and
+//! `docs/route_loaders.md` for the prepare/commit and hydration contract.
 
 mod components;
 mod history;

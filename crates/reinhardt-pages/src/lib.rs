@@ -548,7 +548,7 @@ pub use router::{Path, Query};
 pub use server_fn::{ServerFn, ServerFnError, parse_server_error_message};
 pub use ssr::SsrState;
 #[cfg(native)]
-pub use ssr::{SsrChunk, SsrOptions, SsrRenderer, SsrStream};
+pub use ssr::{SsrChunk, SsrOptions, SsrRenderer, SsrRouteOutput, SsrStream};
 pub use static_resolver::{init_static_resolver, is_initialized, resolve_static};
 
 #[cfg(feature = "i18n")]

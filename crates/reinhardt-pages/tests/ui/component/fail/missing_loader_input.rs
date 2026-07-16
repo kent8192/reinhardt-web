@@ -7,7 +7,9 @@ async fn project_loader(Path(_id): Path<i64>) -> Result<String, String> {
 
 #[component("/projects/{id}/", name = "project", loader = project_loader)]
 fn project(Path(id): Path<i64>) -> Page {
-	page!(|id: i64| { p { { id.to_string() } } })(id)
+	page!(|id: i64| {
+		p { { id.to_string() } }
+	})(id)
 }
 
 fn main() {}

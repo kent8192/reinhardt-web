@@ -7,7 +7,9 @@ async fn shell_loader() -> Result<String, String> {
 
 #[layout("/projects/", name = "shell", loader = shell_loader)]
 fn shell(outlet: Outlet) -> Page {
-	page!(|outlet: Outlet| { div { { outlet } } })(outlet)
+	page!(|outlet: Outlet| {
+		div { { outlet } }
+	})(outlet)
 }
 
 fn main() {}

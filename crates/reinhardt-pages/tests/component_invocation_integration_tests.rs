@@ -24,7 +24,9 @@ async fn integration_greeting_loader() -> Result<String, String> {
 	loader = integration_greeting_loader
 )]
 fn integration_greeting(Loader(message): Loader<String>) -> Page {
-	page!(|message: String| { p { { message } } })(message)
+	page!(|message: String| {
+		p { { message } }
+	})(message)
 }
 
 #[derive(bon::Builder)]

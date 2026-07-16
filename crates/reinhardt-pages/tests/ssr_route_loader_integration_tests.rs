@@ -17,7 +17,9 @@ async fn ssr_greeting_loader() -> Result<String, String> {
 	loader = ssr_greeting_loader
 )]
 fn ssr_greeting(Loader(message): Loader<String>) -> Page {
-	page!(|message: String| { p { { message } } })(message)
+	page!(|message: String| {
+		p { { message } }
+	})(message)
 }
 
 #[loader]
@@ -28,7 +30,9 @@ async fn ssr_timeout_loader() -> Result<String, String> {
 
 #[component("/timeout/", name = "ssr-timeout", loader = ssr_timeout_loader)]
 fn ssr_timeout(Loader(message): Loader<String>) -> Page {
-	page!(|message: String| { p { { message } } })(message)
+	page!(|message: String| {
+		p { { message } }
+	})(message)
 }
 
 #[test]
