@@ -8,6 +8,7 @@
 use reinhardt_admin::core::{AdminDatabase, AdminSite, admin_routes_with_di};
 use reinhardt_admin::server::security::ADMIN_AUTH_COOKIE_NAME;
 use reinhardt_auth::JwtAuth;
+use reinhardt_core::reactive::ReactiveScope;
 use reinhardt_db::backends::connection::DatabaseConnection as BackendsConnection;
 use reinhardt_db::backends::dialect::PostgresBackend;
 use reinhardt_db::orm::connection::{DatabaseBackend, DatabaseConnection};
@@ -298,11 +299,13 @@ pub async fn middleware_e2e_context(
 	singleton.set_arc(db_conn);
 	let di_ctx = Arc::new(InjectionContext::builder(singleton).build());
 
-	let router = reinhardt_urls::routers::UnifiedRouter::new()
-		.with_di_context(di_ctx)
-		.mount("/admin/", admin_router)
-		.with_di_registrations(admin_di)
-		.into_server();
+	let router = ReactiveScope::run(|| {
+		reinhardt_urls::routers::UnifiedRouter::new()
+			.with_di_context(di_ctx)
+			.mount("/admin/", admin_router)
+			.with_di_registrations(admin_di)
+			.into_server()
+	});
 
 	let server = HttpServer::new(router).with_middleware(LoggingMiddleware::new());
 

@@ -15,38 +15,31 @@
 //! ## Example
 //!
 //! ```rust
-//! use reinhardt_core::reactive::{Signal, Effect, Runtime};
+//! use reinhardt_core::reactive::{Effect, ReactiveScope, Signal};
 //!
-//! // Create a signal
-//! let count = Signal::new(0);
+//! ReactiveScope::run(|| {
+//!     // Create a signal
+//!     let count = Signal::new(0);
 //!
-//! // Create an effect that automatically tracks dependencies
-//! let count_for_effect = count.clone();
-//! Effect::new(move || {
-//!     // This get() call automatically registers the dependency
-//!     println!("Count is: {}", count_for_effect.get());
+//!     // Create an effect that automatically tracks dependencies
+//!     let count_for_effect = count;
+//!     Effect::new(move || {
+//!         // This get() call automatically registers the dependency
+//!         println!("Count is: {}", count_for_effect.get());
+//!     });
+//!
+//!     // Update the signal - the effect will automatically re-run
+//!     count.set(42);
 //! });
-//!
-//! // Update the signal - the effect will automatically re-run
-//! count.set(42);
 //! ```
 
-use core::cell::{Cell, RefCell};
+use core::cell::RefCell;
 use core::sync::atomic::{AtomicUsize, Ordering};
 
 extern crate alloc;
 use alloc::boxed::Box;
-use alloc::collections::{BTreeMap, BTreeSet};
+use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum NotificationPhase {
-	Idle,
-	Propagating,
-	Consuming,
-}
-
-const MAX_NOTIFICATION_EPOCHS: usize = 32;
 
 /// Unique identifier for reactive nodes (Signals, Effects, Memos)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -177,22 +170,6 @@ pub struct Runtime {
 	pub(crate) update_scheduled: RefCell<bool>,
 	/// Active explicit batch nesting depth.
 	pub(crate) batch_depth: RefCell<usize>,
-	/// Current notification processing phase.
-	notification_phase: Cell<NotificationPhase>,
-	/// Reactive nodes whose subscribers still need propagation.
-	notification_sources: RefCell<Vec<NodeId>>,
-	/// Source notifications raised while consumers execute.
-	notification_next_sources: RefCell<Vec<NodeId>>,
-	/// Consumer-raised sources retained after a consumer panic.
-	notification_recovery_sources: RefCell<Vec<NodeId>>,
-	/// Memos already propagated in the current epoch.
-	notification_memos_seen: RefCell<BTreeSet<NodeId>>,
-	/// Consumers already collected in the current epoch.
-	notification_consumers_seen: RefCell<BTreeSet<NodeId>>,
-	/// Layout effects collected after propagation completes.
-	notification_layout_effects: RefCell<Vec<NodeId>>,
-	/// Passive consumers collected after propagation completes.
-	notification_passive: RefCell<Vec<NodeId>>,
 }
 
 impl Runtime {
@@ -204,14 +181,6 @@ impl Runtime {
 			pending_updates: RefCell::new(Vec::new()),
 			update_scheduled: RefCell::new(false),
 			batch_depth: RefCell::new(0),
-			notification_phase: Cell::new(NotificationPhase::Idle),
-			notification_sources: RefCell::new(Vec::new()),
-			notification_next_sources: RefCell::new(Vec::new()),
-			notification_recovery_sources: RefCell::new(Vec::new()),
-			notification_memos_seen: RefCell::new(BTreeSet::new()),
-			notification_consumers_seen: RefCell::new(BTreeSet::new()),
-			notification_layout_effects: RefCell::new(Vec::new()),
-			notification_passive: RefCell::new(Vec::new()),
 		}
 	}
 
@@ -264,163 +233,49 @@ impl Runtime {
 
 	/// Notify that a Signal has changed
 	///
-	/// Each notification epoch first propagates dirty state through every Memo,
-	/// then executes Layout effects and schedules passive consumers. Writes
-	/// raised by a consumer are processed in a new epoch after the current
-	/// consumers finish.
+	/// This schedules all subscribers (Effects/Memos that depend on this Signal) for re-execution.
+	/// Layout effects are executed synchronously, while passive effects are scheduled asynchronously.
 	///
 	/// # Arguments
 	///
 	/// * `signal_id` - ID of the Signal that changed
 	pub fn notify_signal_change(&self, signal_id: NodeId) {
-		match self.notification_phase.get() {
-			NotificationPhase::Idle => {
-				let recovery =
-					core::mem::take(&mut *self.notification_recovery_sources.borrow_mut());
-				let mut sources = self.notification_sources.borrow_mut();
-				sources.extend(recovery);
-				sources.push(signal_id);
-				drop(sources);
-				self.notification_phase.set(NotificationPhase::Propagating);
-				self.process_notification_epochs();
-			}
-			NotificationPhase::Propagating => {
-				self.notification_sources.borrow_mut().push(signal_id);
-			}
-			NotificationPhase::Consuming => {
-				self.notification_next_sources.borrow_mut().push(signal_id);
-			}
-		}
-	}
+		let graph = self.dependency_graph.borrow();
+		if let Some(node) = graph.get(&signal_id) {
+			// Collect layout effects and passive effects separately
+			let mut layout_effects = Vec::new();
+			let mut passive_effects = Vec::new();
+			let mut memos = Vec::new();
 
-	fn process_notification_epochs(&self) {
-		struct NotificationWaveGuard<'a> {
-			runtime: &'a Runtime,
-			completed: bool,
-			discard_pending: bool,
-		}
-
-		impl Drop for NotificationWaveGuard<'_> {
-			fn drop(&mut self) {
-				self.runtime.notification_sources.borrow_mut().clear();
-				if self.discard_pending {
-					self.runtime.notification_next_sources.borrow_mut().clear();
-					self.runtime
-						.notification_recovery_sources
-						.borrow_mut()
-						.clear();
-				} else if self.completed {
-					self.runtime.notification_next_sources.borrow_mut().clear();
-				} else {
-					let pending =
-						core::mem::take(&mut *self.runtime.notification_next_sources.borrow_mut());
-					self.runtime
-						.notification_recovery_sources
-						.borrow_mut()
-						.extend(pending);
+			for &subscriber_id in &node.subscribers {
+				// Check if this is an effect and get its timing
+				if let Some(timing) = super::effect::get_effect_timing(subscriber_id) {
+					match timing {
+						EffectTiming::Layout => layout_effects.push(subscriber_id),
+						EffectTiming::Passive => passive_effects.push(subscriber_id),
+					}
+				} else if super::memo::is_memo(subscriber_id) {
+					memos.push(subscriber_id);
 				}
-				self.runtime.notification_memos_seen.borrow_mut().clear();
-				self.runtime
-					.notification_consumers_seen
-					.borrow_mut()
-					.clear();
-				self.runtime
-					.notification_layout_effects
-					.borrow_mut()
-					.clear();
-				self.runtime.notification_passive.borrow_mut().clear();
-				self.runtime.notification_phase.set(NotificationPhase::Idle);
-			}
-		}
-
-		let mut wave_guard = NotificationWaveGuard {
-			runtime: self,
-			completed: false,
-			discard_pending: false,
-		};
-		let mut epoch_count = 0_usize;
-		loop {
-			epoch_count += 1;
-			if epoch_count > MAX_NOTIFICATION_EPOCHS {
-				wave_guard.discard_pending = true;
-				panic!(
-					"reactive notification exceeded {MAX_NOTIFICATION_EPOCHS} epochs; possible non-converging layout update loop"
-				);
-			}
-			self.notification_phase.set(NotificationPhase::Propagating);
-			self.notification_memos_seen.borrow_mut().clear();
-			self.notification_consumers_seen.borrow_mut().clear();
-			self.notification_layout_effects.borrow_mut().clear();
-			self.notification_passive.borrow_mut().clear();
-
-			loop {
-				let source_id = { self.notification_sources.borrow_mut().pop() };
-				let Some(source_id) = source_id else {
-					break;
-				};
-				self.propagate_notification_source(source_id);
 			}
 
-			self.notification_phase.set(NotificationPhase::Consuming);
-			let layout_effects =
-				core::mem::take(&mut *self.notification_layout_effects.borrow_mut());
+			// Drop the borrow before executing effects
+			drop(graph);
+
+			// Execute layout effects synchronously
 			for effect_id in layout_effects {
 				super::effect::Effect::execute_effect(effect_id);
 			}
-			let passive = core::mem::take(&mut *self.notification_passive.borrow_mut());
-			for node_id in passive {
-				self.schedule_update(node_id);
+
+			// Memos are lazily recomputed on their next read. Marking them dirty
+			// also propagates invalidation to downstream subscribers immediately.
+			for memo_id in memos {
+				super::memo::mark_memo_dirty_by_id(memo_id);
 			}
 
-			let next_sources = core::mem::take(&mut *self.notification_next_sources.borrow_mut());
-			if next_sources.is_empty() {
-				break;
-			}
-			self.notification_sources.borrow_mut().extend(next_sources);
-		}
-		wave_guard.completed = true;
-	}
-
-	fn propagate_notification_source(&self, node_id: NodeId) {
-		let graph = self.dependency_graph.borrow();
-		let Some(node) = graph.get(&node_id) else {
-			return;
-		};
-		let subscribers = node.subscribers.clone();
-		drop(graph);
-
-		for subscriber_id in subscribers {
-			if let Some(timing) = super::effect::get_effect_timing(subscriber_id) {
-				if self
-					.notification_consumers_seen
-					.borrow_mut()
-					.insert(subscriber_id)
-				{
-					match timing {
-						EffectTiming::Layout => self
-							.notification_layout_effects
-							.borrow_mut()
-							.push(subscriber_id),
-						EffectTiming::Passive => {
-							self.notification_passive.borrow_mut().push(subscriber_id)
-						}
-					}
-				}
-			} else if super::memo::is_memo_registered(subscriber_id) {
-				if self
-					.notification_memos_seen
-					.borrow_mut()
-					.insert(subscriber_id)
-					&& super::memo::is_memo_registered(subscriber_id)
-				{
-					super::memo::mark_memo_dirty_by_id(subscriber_id);
-				}
-			} else if self
-				.notification_consumers_seen
-				.borrow_mut()
-				.insert(subscriber_id)
-			{
-				self.notification_passive.borrow_mut().push(subscriber_id);
+			// Schedule passive effects asynchronously
+			for effect_id in passive_effects {
+				self.schedule_update(effect_id);
 			}
 		}
 	}
@@ -667,10 +522,7 @@ pub(crate) fn run_without_observer<R>(f: impl FnOnce() -> R) -> R {
 		}
 	}
 
-	let Some(saved) = try_with_runtime(|rt| core::mem::take(&mut *rt.observer_stack.borrow_mut()))
-	else {
-		return f();
-	};
+	let saved = with_runtime(|rt| core::mem::take(&mut *rt.observer_stack.borrow_mut()));
 	let mut guard = Restore {
 		saved,
 		active: true,
@@ -716,7 +568,6 @@ pub(crate) fn subscribe_node_to_observer(node: NodeId, observer: NodeId) {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::reactive::{Effect, Memo, Signal};
 	use serial_test::serial;
 
 	#[test]
@@ -952,33 +803,33 @@ mod tests {
 	#[test]
 	#[serial]
 	fn run_without_observer_isolates_inner_signal_reads() {
-		// Arrange
-		let outer = crate::reactive::signal::Signal::new(0_i32);
-		let inner = crate::reactive::signal::Signal::new(0_i32);
-		let counter = std::rc::Rc::new(std::cell::Cell::new(0));
-		let counter_for_effect = counter.clone();
-		let outer_for_effect = outer.clone();
-		let inner_for_effect = inner.clone();
+		crate::reactive::ReactiveScope::run(|| {
+			// Arrange
+			let outer = crate::reactive::signal::Signal::new(0_i32);
+			let inner = crate::reactive::signal::Signal::new(0_i32);
+			let counter = std::rc::Rc::new(std::cell::Cell::new(0));
+			let counter_for_effect = counter.clone();
 
-		// Act
-		let _eff = crate::reactive::effect::Effect::new(move || {
-			let _ = outer_for_effect.get();
-			super::run_without_observer(|| {
-				let _ = inner_for_effect.get();
+			// Act
+			let _eff = crate::reactive::effect::Effect::new(move || {
+				let _ = outer.get();
+				super::run_without_observer(|| {
+					let _ = inner.get();
+				});
+				counter_for_effect.set(counter_for_effect.get() + 1);
 			});
-			counter_for_effect.set(counter_for_effect.get() + 1);
+
+			let initial = counter.get();
+			inner.set(99);
+			super::with_runtime(|rt| rt.flush_updates());
+
+			// Assert
+			assert_eq!(
+				counter.get(),
+				initial,
+				"run_without_observer must isolate Signal reads from outer Observer"
+			);
 		});
-
-		let initial = counter.get();
-		inner.set(99);
-		super::with_runtime(|rt| rt.flush_updates());
-
-		// Assert
-		assert_eq!(
-			counter.get(),
-			initial,
-			"run_without_observer must isolate Signal reads from outer Observer"
-		);
 	}
 
 	#[test]
@@ -1006,175 +857,5 @@ mod tests {
 		super::subscribe_node_to_observer(node, observer);
 		let subs2 = super::with_runtime(|rt| rt.debug_subscribers(node));
 		assert_eq!(subs2.len(), 1, "subscribe must be idempotent");
-	}
-
-	#[rstest::rstest]
-	#[serial(reactive_runtime)]
-	fn layout_effect_write_runs_in_next_notification_epoch() {
-		let source = Signal::new(0_i32);
-		let runs = std::rc::Rc::new(std::cell::Cell::new(0_u8));
-		let observed = std::rc::Rc::new(std::cell::Cell::new(-1_i32));
-		let _effect = Effect::new_with_timing(
-			{
-				let source = source.clone();
-				let runs = std::rc::Rc::clone(&runs);
-				let observed = std::rc::Rc::clone(&observed);
-				move || {
-					let value = source.get();
-					observed.set(value);
-					runs.set(runs.get() + 1);
-					if value == 1 {
-						source.set(2);
-					}
-				}
-			},
-			EffectTiming::Layout,
-		);
-
-		source.set(1);
-
-		assert_eq!(source.get(), 2);
-		assert_eq!(observed.get(), 2);
-		assert_eq!(runs.get(), 3);
-	}
-
-	#[rstest::rstest]
-	#[serial(reactive_runtime)]
-	fn notification_panic_recovers_pending_consumer_on_next_change() {
-		use std::panic::{AssertUnwindSafe, catch_unwind};
-
-		let source = Signal::new(0_i32);
-		let memo = Memo::new({
-			let source = source.clone();
-			move || source.get() * 2
-		});
-		let panic_next = std::rc::Rc::new(std::cell::Cell::new(false));
-		let _panicking = Effect::new_with_timing(
-			{
-				let memo = memo.clone();
-				let panic_next = std::rc::Rc::clone(&panic_next);
-				move || {
-					assert!(!panic_next.replace(false), "notification consumer panic");
-					let _ = memo.get();
-				}
-			},
-			EffectTiming::Layout,
-		);
-		let observed = std::rc::Rc::new(std::cell::Cell::new(0_i32));
-		let _observer = Effect::new_with_timing(
-			{
-				let memo = memo.clone();
-				let observed = std::rc::Rc::clone(&observed);
-				move || observed.set(memo.get())
-			},
-			EffectTiming::Layout,
-		);
-		panic_next.set(true);
-
-		let result = catch_unwind(AssertUnwindSafe(|| source.set(1)));
-		assert!(result.is_err());
-		assert_eq!(observed.get(), 0);
-
-		source.set(2);
-
-		assert_eq!(observed.get(), 4);
-	}
-
-	#[rstest::rstest]
-	#[serial(reactive_runtime)]
-	fn consumer_write_before_panic_recovers_on_unrelated_notification() {
-		use std::panic::{AssertUnwindSafe, catch_unwind};
-
-		let secondary = Signal::new(0_i32);
-		let observed = std::rc::Rc::new(std::cell::Cell::new(0_i32));
-		let _secondary_effect = Effect::new_with_timing(
-			{
-				let secondary = secondary.clone();
-				let observed = std::rc::Rc::clone(&observed);
-				move || observed.set(secondary.get())
-			},
-			EffectTiming::Layout,
-		);
-		let root = Signal::new(0_i32);
-		let _panicking = Effect::new_with_timing(
-			{
-				let root = root.clone();
-				let secondary = secondary.clone();
-				move || {
-					if root.get() == 1 {
-						secondary.set(1);
-						panic!("consumer panic after write");
-					}
-				}
-			},
-			EffectTiming::Layout,
-		);
-		let unrelated = Signal::new(0_i32);
-
-		let result = catch_unwind(AssertUnwindSafe(|| root.set(1)));
-		assert!(result.is_err());
-		assert_eq!(secondary.get(), 1);
-		assert_eq!(observed.get(), 0);
-
-		unrelated.set(1);
-
-		assert_eq!(observed.get(), 1);
-	}
-
-	#[rstest::rstest]
-	#[serial(reactive_runtime)]
-	fn non_converging_layout_updates_panic_and_runtime_remains_reusable() {
-		use std::panic::{AssertUnwindSafe, catch_unwind};
-		const EXPECTED_MAX_NOTIFICATION_EPOCHS: usize = 32;
-
-		let looping = Signal::new(0_u32);
-		let loop_enabled = std::rc::Rc::new(std::cell::Cell::new(false));
-		let runs = std::rc::Rc::new(std::cell::Cell::new(0_usize));
-		let _looping_effect = Effect::new_with_timing(
-			{
-				let looping = looping.clone();
-				let loop_enabled = std::rc::Rc::clone(&loop_enabled);
-				let runs = std::rc::Rc::clone(&runs);
-				move || {
-					let value = looping.get();
-					runs.set(runs.get() + 1);
-					if loop_enabled.get() {
-						looping.set(value + 1);
-					}
-				}
-			},
-			EffectTiming::Layout,
-		);
-		let unrelated = Signal::new(0_i32);
-		let observed = std::rc::Rc::new(std::cell::Cell::new(0_i32));
-		let _unrelated_effect = Effect::new_with_timing(
-			{
-				let unrelated = unrelated.clone();
-				let observed = std::rc::Rc::clone(&observed);
-				move || observed.set(unrelated.get())
-			},
-			EffectTiming::Layout,
-		);
-		loop_enabled.set(true);
-
-		let result = catch_unwind(AssertUnwindSafe(|| looping.set(1)));
-		let panic = result.expect_err("non-converging notification must panic");
-		let message = panic
-			.downcast_ref::<String>()
-			.map(String::as_str)
-			.or_else(|| panic.downcast_ref::<&str>().copied())
-			.expect("notification limit panic must have a string message");
-		assert_eq!(
-			message,
-			format!(
-				"reactive notification exceeded {EXPECTED_MAX_NOTIFICATION_EPOCHS} epochs; possible non-converging layout update loop"
-			)
-		);
-		assert_eq!(runs.get(), EXPECTED_MAX_NOTIFICATION_EPOCHS + 1);
-		loop_enabled.set(false);
-
-		unrelated.set(1);
-
-		assert_eq!(observed.get(), 1);
 	}
 }

@@ -1574,6 +1574,12 @@ fn generate_form_runtime_contract(
 			type Values = #values_ident;
 			type Field = #field_ident;
 
+			fn runtime_reactive_scope(
+				&self,
+			) -> ::core::option::Option<::std::rc::Rc<#pages_crate::reactive::ReactiveScope>> {
+				self.__reinhardt_reactive_scope.clone()
+			}
+
 			fn runtime_initial_values(&self) -> Self::Values {
 				self.__initial_values.borrow().clone()
 			}
@@ -2080,6 +2086,9 @@ pub(super) fn generate(
 			struct #struct_name
 			#where_clause
 				{
+					__reinhardt_reactive_scope: ::core::option::Option<
+						::std::rc::Rc<#pages_crate::reactive::ReactiveScope>,
+					>,
 					#field_decls
 					#runtime_initial_values_field_decl
 					#state_decls
@@ -2092,8 +2101,13 @@ pub(super) fn generate(
 			impl #struct_name
 			#where_clause
 			{
-				fn new() -> Self {
+				fn new(
+					__reinhardt_reactive_scope: ::core::option::Option<
+						::std::rc::Rc<#pages_crate::reactive::ReactiveScope>,
+					>,
+				) -> Self {
 						Self {
+							__reinhardt_reactive_scope,
 							#field_inits
 							#runtime_initial_values_field_default_init
 							#state_inits
@@ -2128,13 +2142,37 @@ pub(super) fn generate(
 			// (issue #4605 / #4612), what makes `on_success:` capture outer
 			// locals when the user closure is annotated (issue #4624), and
 			// what makes `on_success_ref:` capture outer locals (issue #4624).
-				let mut __reinhardt_form = #struct_name::new();
-				#initial_outer_setup
-				#runtime_initial_values_outer_refresh
-				#watch_outer_setup
-			#success_url_outer_setup
-			#on_success_outer_setup
-			#on_success_ref_outer_setup
+				let __reinhardt_reactive_scope = if #pages_crate::reactive::current_scope_id().is_some() {
+					::core::option::Option::None
+				} else {
+					::core::option::Option::Some(::std::rc::Rc::new(
+						#pages_crate::reactive::ReactiveScope::new(),
+					))
+				};
+				let mut __reinhardt_form = match __reinhardt_reactive_scope.as_ref() {
+					::core::option::Option::Some(scope) => scope.enter(|| {
+						#struct_name::new(::core::option::Option::Some(::std::rc::Rc::clone(scope)))
+					}),
+					::core::option::Option::None => #struct_name::new(::core::option::Option::None),
+				};
+				if let ::core::option::Option::Some(scope) = __reinhardt_reactive_scope.as_ref() {
+					scope.enter(|| {
+						#initial_outer_setup
+						#runtime_initial_values_outer_refresh
+						#watch_outer_setup
+						#success_url_outer_setup
+						#on_success_outer_setup
+						#on_success_ref_outer_setup
+					});
+				} else {
+					#initial_outer_setup
+					#runtime_initial_values_outer_refresh
+					#watch_outer_setup
+					#success_url_outer_setup
+					#on_success_outer_setup
+					#on_success_ref_outer_setup
+				}
+				let _ = &__reinhardt_form.__reinhardt_reactive_scope;
 			__reinhardt_form
 		}
 	}

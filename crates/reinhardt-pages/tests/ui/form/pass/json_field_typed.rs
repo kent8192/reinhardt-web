@@ -29,13 +29,15 @@ impl ::core::str::FromStr for UserPrefs {
 }
 
 fn main() {
-	let _ = form! {
-		name: PrefsForm,
-		action: "/api/prefs",
-		fields: {
-			prefs: JsonField<UserPrefs> {
-				initial: UserPrefs::default(),
+	reinhardt_core::reactive::ReactiveScope::run(|| {
+		let _ = form! {
+			name: PrefsForm,
+			action: "/api/prefs",
+			fields: {
+				prefs: JsonField<UserPrefs> {
+					initial: UserPrefs::default(),
+				}
 			}
-		}
-	};
+		};
+	});
 }

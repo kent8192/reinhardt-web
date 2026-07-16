@@ -6,11 +6,13 @@ pub struct RawFieldRequest {
 }
 
 fn main() {
-	let form = RawFieldRequestClientForm::new();
-	let _field = form.type_field();
-	let _variant = RawFieldRequestClientFormField::Type;
-	assert_eq!(
-		RawFieldRequestClientForm::field_from_name("type"),
-		Some(RawFieldRequestClientFormField::Type)
-	);
+	reinhardt_core::reactive::ReactiveScope::run(|| {
+		let form = RawFieldRequestClientForm::new();
+		let _field = form.type_field();
+		let _variant = RawFieldRequestClientFormField::Type;
+		assert_eq!(
+			RawFieldRequestClientForm::field_from_name("type"),
+			Some(RawFieldRequestClientFormField::Type)
+		);
+	});
 }

@@ -2,6 +2,7 @@
 //! `FromRequest` impl, and a page-fn registered via
 //! `ClientRouter::page`. Refs #4668 / P7 part 2.
 
+use reinhardt_core::reactive::ReactiveScope;
 use reinhardt_core::types::page::Page;
 use reinhardt_urls::routers::ClientRouter;
 use reinhardt_urls::routers::client_router::from_request::{
@@ -25,5 +26,7 @@ fn user_page(props: UserPageProps) -> Page {
 }
 
 fn main() {
-	let _ = ClientRouter::new().page("user", "/users/{id}/", user_page);
+	ReactiveScope::run(|| {
+		let _ = ClientRouter::new().page("user", "/users/{id}/", user_page);
+	});
 }

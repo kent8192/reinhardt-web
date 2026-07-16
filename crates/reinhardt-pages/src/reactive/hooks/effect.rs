@@ -1,10 +1,8 @@
 //! Effect hooks: use_effect and use_layout_effect
 //!
-//! React-aligned side effect hooks. The second argument selects either an
-//! explicit dependency list or automatic tracking. Explicit effects run with
-//! no active reactive Observer so only the listed deps subscribe (Option A
-//! semantics); automatic effects subscribe to signals read by the closure
-//! (Refs #4195).
+//! React-aligned side effect hooks. Both take an explicit dependency tuple
+//! as the second argument; the closure runs with no active reactive Observer
+//! so only the listed deps subscribe (Option A semantics, Refs #4195).
 //! Effect closures can return either `()` for no cleanup or `Option<C>` when
 //! they need to register teardown.
 
@@ -68,27 +66,20 @@ where
 	}
 }
 
-/// Runs a side effect according to the selected dependency mode.
+/// Runs a side effect when one of the listed `deps` changes.
 ///
-/// React-aligned equivalent of `useEffect(f, deps)`. The effect function runs
-/// immediately. With `deps![...]`, it re-runs whenever a listed dependency
-/// changes and signal reads inside `f` do **not** auto-subscribe. With
-/// `deps_auto!()`, it re-runs when a signal read by `f` changes.
+/// React-aligned equivalent of `useEffect(f, deps)`. The effect function
+/// runs immediately, and re-runs whenever any of the dependencies listed
+/// in `deps` changes. Signal reads inside `f` do **not** auto-subscribe.
 /// The returned [`Effect`] is an RAII guard and must be retained by the
 /// caller. Use [`use_retained_effect`] for registration-style hook calls
 /// whose guard is owned by the mounted view scope.
 ///
 /// # Reactivity Semantics
 ///
-/// - Explicit mode runs the closure with no active reactive Observer
-///   (`run_without_observer`); subscriptions are derived exclusively from
-///   `deps`.
-/// - Automatic mode keeps an Observer active while `f` runs and subscribes to
-///   signals read by the closure.
+/// - Explicit lists run with no active reactive Observer; automatic mode
+///   records the reactive reads performed by `f`.
 /// - Use `deps![]` to opt out of re-runs (mount-only effect).
-/// - `deps![...]` subscribes only to the listed reactive values.
-/// - `deps![]` runs setup once and cleanup on disposal.
-/// - `deps_auto!()` rebuilds subscriptions from tracked reads on every setup.
 ///
 /// # Type Parameters
 ///
@@ -101,29 +92,24 @@ where
 /// * `f` - A function that performs the side effect and optionally
 ///   returns a cleanup function. Cleanups run before the next re-run and
 ///   on dispose, matching React `useEffect`.
-/// * `deps` - Either an explicit dependency list (`deps![...]`, including
-///   `deps![]`) or `deps_auto!()` for automatic tracking.
+/// * `deps` - The dependency mode. Pass `deps![]` for mount-only behavior.
 ///
 /// # Example
 ///
 /// ```ignore
-/// use reinhardt_pages::deps;
 /// use reinhardt_pages::reactive::hooks::{use_effect, use_state};
 ///
 /// let (count, _set_count) = use_state(0);
 ///
 /// // Effect without cleanup; re-runs only when `count` changes.
 /// let _effect = use_effect(
-///     {
-///         let count = count.clone();
-///         move || {
-///             log!("Count is now: {}", count.get());
-///         }
+///     move || {
+///         log!("Count is now: {}", count.get());
 ///     },
 ///     deps![count],
 /// );
 ///
-/// // Effect with cleanup and a mount-only dependency list.
+/// // Effect with cleanup, mount-only deps `deps![]`.
 /// let _interval_effect = use_effect(
 ///     move || {
 ///         let interval_id = set_interval(|| log!("tick"), 1000);
@@ -157,14 +143,9 @@ where
 /// root reactive store until [`cleanup_reactive_nodes`] is called by tests or
 /// host code.
 ///
-/// This lifecycle-owning helper requires explicit `deps![...]` in this release.
-/// Use `use_effect(..., deps_auto!())` when automatic dependency tracking is
-/// required and retain its returned RAII guard explicitly.
-///
 /// # Example
 ///
 /// ```ignore
-/// use reinhardt_pages::deps;
 /// use reinhardt_pages::reactive::hooks::{use_retained_effect, use_state};
 ///
 /// let (count, _set_count) = use_state(0);
@@ -177,7 +158,7 @@ where
 ///             None::<fn()>
 ///         }
 ///     },
-///     deps![count],
+///     (count.clone(),),
 /// );
 /// ```
 ///
@@ -190,12 +171,11 @@ where
 	retain_effect(|| use_effect(f, deps));
 }
 
-/// Runs a side effect synchronously before browser paint according to the
-/// selected dependency mode.
+/// Runs a side effect synchronously before browser paint when any listed
+/// `dep` changes.
 ///
-/// React-aligned equivalent of `useLayoutEffect(f, deps)`. Explicit mode has
-/// the same Option A semantics as [`use_effect`], while `deps_auto!()` tracks
-/// signals read by the closure. Both modes use [`EffectTiming::Layout`] so
+/// React-aligned equivalent of `useLayoutEffect(f, deps)`. Same Option A
+/// semantics as [`use_effect`] but with [`EffectTiming::Layout`] so
 /// re-runs propagate synchronously rather than via the passive scheduler.
 ///
 /// # When to Use
@@ -212,17 +192,11 @@ where
 ///
 /// # Reactivity Semantics
 ///
-/// See [`use_effect`] for dependency-mode semantics; this hook adds Layout
-/// timing.
-///
-/// `deps![...]` subscribes only to the listed reactive values. `deps![]` runs
-/// setup once and cleanup on disposal. `deps_auto!()` rebuilds subscriptions
-/// from tracked reads on every setup.
+/// See [`use_effect`] — identical, plus Layout timing.
 ///
 /// # Example
 ///
 /// ```ignore
-/// use reinhardt_pages::deps;
 /// use reinhardt_pages::reactive::hooks::{use_layout_effect, use_ref, use_state};
 ///
 /// let element_ref = use_ref(None::<Element>);
@@ -238,7 +212,7 @@ where
 ///             }
 ///         }
 ///     },
-///     deps![element_ref],
+///     (element_ref,),
 /// );
 /// ```
 pub fn use_layout_effect<F, C>(f: F, deps: impl Into<ReactiveDeps>) -> Effect
@@ -265,14 +239,9 @@ where
 /// in the root reactive store until [`cleanup_reactive_nodes`] is called by
 /// tests or host code.
 ///
-/// This lifecycle-owning helper requires explicit `deps![...]` in this release.
-/// Use `use_layout_effect(..., deps_auto!())` when automatic dependency tracking
-/// is required and retain its returned RAII guard explicitly.
-///
 /// # Example
 ///
 /// ```ignore
-/// use reinhardt_pages::deps;
 /// use reinhardt_pages::reactive::{
 ///     Signal,
 ///     hooks::{use_ref, use_retained_layout_effect},
@@ -292,7 +261,7 @@ where
 ///             None::<fn()>
 ///         }
 ///     },
-///     deps![element_ref],
+///     (element_ref.clone(),),
 /// );
 /// ```
 ///
@@ -306,22 +275,29 @@ where
 }
 
 struct RetainedEffect {
-	effect: Rc<RefCell<Option<Effect>>>,
+	_state: Rc<RefCell<RetainedEffectState>>,
 }
 
-impl Drop for RetainedEffect {
+struct RetainedEffectState {
+	effect: Option<Effect>,
+}
+
+impl Drop for RetainedEffectState {
 	fn drop(&mut self) {
-		self.effect.borrow_mut().take();
+		let effect = self.effect.take();
+		if let Some(effect) = effect {
+			effect.dispose();
+		}
 	}
 }
 
 fn retain_effect(create_effect: impl FnOnce() -> Effect) {
-	let effect = Rc::new(RefCell::new(None));
+	let state = Rc::new(RefCell::new(RetainedEffectState { effect: None }));
 	crate::component::reactive_if::store_reactive_node(RetainedEffect {
-		effect: Rc::clone(&effect),
+		_state: Rc::clone(&state),
 	});
 	let created = create_effect();
-	*effect.borrow_mut() = Some(created);
+	state.borrow_mut().effect = Some(created);
 }
 
 #[cfg(test)]
@@ -330,491 +306,443 @@ mod tests {
 	use crate::component::reactive_if::cleanup_reactive_nodes;
 	use crate::reactive::Signal;
 	use crate::reactive::runtime::with_runtime;
-	use reinhardt_core::deps;
 	use rstest::rstest;
 	use serial_test::serial;
-	use std::cell::Cell;
 	use std::cell::RefCell;
 	use std::rc::Rc;
 
 	#[test]
 	#[serial]
-	fn use_effect_auto_tracks_signal_reads() {
-		let count = Signal::new(0_i32);
-		let runs = Rc::new(Cell::new(0_u8));
-
-		let _effect = use_effect(
-			{
-				let count = count.clone();
-				let runs = Rc::clone(&runs);
-				move || {
-					let _ = count.get();
-					runs.set(runs.get() + 1);
-				}
-			},
-			reinhardt_core::deps_auto!(),
-		);
-
-		count.set(1);
-		with_runtime(|runtime| runtime.flush_updates());
-		assert_eq!(runs.get(), 2);
-	}
-
-	#[test]
-	#[serial]
-	fn use_effect_empty_explicit_deps_is_mount_only() {
-		let count = Signal::new(0_i32);
-		let runs = Rc::new(Cell::new(0_u8));
-
-		let _effect = use_effect(
-			{
-				let count = count.clone();
-				let runs = Rc::clone(&runs);
-				move || {
-					let _ = count.get();
-					runs.set(runs.get() + 1);
-				}
-			},
-			deps![],
-		);
-
-		count.set(1);
-		assert_eq!(runs.get(), 1);
-	}
-
-	#[test]
-	#[serial]
-	fn explicit_and_auto_effects_match_for_unconditional_reads() {
-		let count = Signal::new(0_i32);
-		let explicit_values = Rc::new(RefCell::new(Vec::new()));
-		let auto_values = Rc::new(RefCell::new(Vec::new()));
-
-		let _explicit = use_effect(
-			{
-				let count = count.clone();
-				let values = Rc::clone(&explicit_values);
-				move || values.borrow_mut().push(count.get())
-			},
-			deps![count],
-		);
-		let _automatic = use_effect(
-			{
-				let count = count.clone();
-				let values = Rc::clone(&auto_values);
-				move || values.borrow_mut().push(count.get())
-			},
-			reinhardt_core::deps_auto!(),
-		);
-
-		count.set(1);
-		with_runtime(|runtime| runtime.flush_updates());
-		assert_eq!(*explicit_values.borrow(), *auto_values.borrow());
-	}
-
-	#[test]
-	#[serial]
 	fn test_use_effect_runs_immediately() {
-		let called = Rc::new(RefCell::new(false));
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let called = Rc::new(RefCell::new(false));
 
-		let _effect = use_effect(
-			{
-				let called = Rc::clone(&called);
-				move || {
-					*called.borrow_mut() = true;
-					None::<fn()>
-				}
-			},
-			deps![],
-		);
+			let _effect = use_effect(
+				{
+					let called = Rc::clone(&called);
+					move || {
+						*called.borrow_mut() = true;
+						None::<fn()>
+					}
+				},
+				crate::deps![],
+			);
 
-		assert!(*called.borrow());
+			assert!(*called.borrow());
+		});
 	}
 
 	#[test]
 	#[serial]
 	fn test_use_effect_tracks_dependencies() {
-		let count = Signal::new(0);
-		let effect_count = Rc::new(RefCell::new(0));
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let count = Signal::new(0);
+			let effect_count = Rc::new(RefCell::new(0));
 
-		let _effect = use_effect(
-			{
-				let count = count.clone();
-				let effect_count = Rc::clone(&effect_count);
-				move || {
-					let _ = count.get();
-					*effect_count.borrow_mut() += 1;
-					None::<fn()>
-				}
-			},
-			deps![count],
-		);
+			let _effect = use_effect(
+				{
+					let count = count.clone();
+					let effect_count = Rc::clone(&effect_count);
+					move || {
+						let _ = count.get();
+						*effect_count.borrow_mut() += 1;
+						None::<fn()>
+					}
+				},
+				crate::deps![count.clone()],
+			);
 
-		// Initial run
-		assert_eq!(*effect_count.borrow(), 1);
+			// Initial run
+			assert_eq!(*effect_count.borrow(), 1);
+		});
 	}
 
 	#[rstest]
 	#[serial(hooks_effect)]
 	fn test_use_effect_accepts_unit_return() {
-		let called = Rc::new(RefCell::new(false));
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let called = Rc::new(RefCell::new(false));
 
-		let _effect = use_effect(
-			{
-				let called = Rc::clone(&called);
-				move || {
-					*called.borrow_mut() = true;
-				}
-			},
-			deps![],
-		);
+			let _effect = use_effect(
+				{
+					let called = Rc::clone(&called);
+					move || {
+						*called.borrow_mut() = true;
+					}
+				},
+				crate::deps![],
+			);
 
-		assert!(*called.borrow());
+			assert!(*called.borrow());
+		});
 	}
 
 	#[test]
 	#[serial]
 	fn test_use_layout_effect() {
-		let called = Rc::new(RefCell::new(false));
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let called = Rc::new(RefCell::new(false));
 
-		let _effect = use_layout_effect(
-			{
-				let called = Rc::clone(&called);
-				move || {
-					*called.borrow_mut() = true;
-					None::<fn()>
-				}
-			},
-			deps![],
-		);
+			let _effect = use_layout_effect(
+				{
+					let called = Rc::clone(&called);
+					move || {
+						*called.borrow_mut() = true;
+						None::<fn()>
+					}
+				},
+				crate::deps![],
+			);
 
-		assert!(*called.borrow());
+			assert!(*called.borrow());
+		});
 	}
 
 	#[test]
 	#[serial]
 	fn test_layout_effect_synchronous_execution() {
-		let signal = Signal::new(0);
-		let execution_order = Rc::new(RefCell::new(Vec::new()));
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let signal = Signal::new(0);
+			let execution_order = Rc::new(RefCell::new(Vec::new()));
 
-		let _effect = use_layout_effect(
-			{
-				let signal = signal.clone();
-				let execution_order = Rc::clone(&execution_order);
-				move || {
-					let value = signal.get();
-					execution_order.borrow_mut().push(value);
-					None::<fn()>
-				}
-			},
-			deps![signal],
-		);
+			let _effect = use_layout_effect(
+				{
+					let signal = signal.clone();
+					let execution_order = Rc::clone(&execution_order);
+					move || {
+						let value = signal.get();
+						execution_order.borrow_mut().push(value);
+						None::<fn()>
+					}
+				},
+				crate::deps![signal.clone()],
+			);
 
-		// Initial execution
-		assert_eq!(*execution_order.borrow(), vec![0]);
+			// Initial execution
+			assert_eq!(*execution_order.borrow(), vec![0]);
 
-		// Change signal - layout effect should execute synchronously
-		signal.set(1);
-		execution_order.borrow_mut().push(100);
+			// Change signal - layout effect should execute synchronously
+			signal.set(1);
+			execution_order.borrow_mut().push(100);
 
-		// Layout effect ran synchronously before the push(100)
-		assert_eq!(*execution_order.borrow(), vec![0, 1, 100]);
+			// Layout effect ran synchronously before the push(100)
+			assert_eq!(*execution_order.borrow(), vec![0, 1, 100]);
+		});
 	}
 
 	#[rstest]
 	#[serial(hooks_effect)]
 	fn test_use_layout_effect_accepts_unit_return_and_tracks_synchronously() {
-		let signal = Signal::new(0);
-		let execution_order = Rc::new(RefCell::new(Vec::new()));
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let signal = Signal::new(0);
+			let execution_order = Rc::new(RefCell::new(Vec::new()));
 
-		let _effect = use_layout_effect(
-			{
-				let signal = signal.clone();
-				let execution_order = Rc::clone(&execution_order);
-				move || {
-					execution_order.borrow_mut().push(signal.get());
-				}
-			},
-			deps![signal],
-		);
+			let _effect = use_layout_effect(
+				{
+					let execution_order = Rc::clone(&execution_order);
+					move || {
+						execution_order.borrow_mut().push(signal.get());
+					}
+				},
+				crate::deps![signal],
+			);
 
-		assert_eq!(*execution_order.borrow(), vec![0]);
+			assert_eq!(*execution_order.borrow(), vec![0]);
 
-		signal.set(1);
-		execution_order.borrow_mut().push(100);
-
-		assert_eq!(*execution_order.borrow(), vec![0, 1, 100]);
+			signal.set(1);
+			execution_order.borrow_mut().push(100);
+			assert_eq!(*execution_order.borrow(), vec![0, 1, 100]);
+		});
 	}
 
 	#[test]
 	#[serial]
 	fn test_layout_vs_passive_timing() {
-		let signal = Signal::new(0);
-		let layout_count = Rc::new(RefCell::new(0));
-		let passive_count = Rc::new(RefCell::new(0));
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let signal = Signal::new(0);
+			let layout_count = Rc::new(RefCell::new(0));
+			let passive_count = Rc::new(RefCell::new(0));
 
-		let _layout_effect = use_layout_effect(
-			{
-				let signal = signal.clone();
-				let layout_count = Rc::clone(&layout_count);
-				move || {
-					let _ = signal.get();
-					*layout_count.borrow_mut() += 1;
-					None::<fn()>
-				}
-			},
-			deps![signal],
-		);
+			let _layout_effect = use_layout_effect(
+				{
+					let signal = signal.clone();
+					let layout_count = Rc::clone(&layout_count);
+					move || {
+						let _ = signal.get();
+						*layout_count.borrow_mut() += 1;
+						None::<fn()>
+					}
+				},
+				crate::deps![signal.clone()],
+			);
 
-		let _passive_effect = use_effect(
-			{
-				let signal = signal.clone();
-				let passive_count = Rc::clone(&passive_count);
-				move || {
-					let _ = signal.get();
-					*passive_count.borrow_mut() += 1;
-					None::<fn()>
-				}
-			},
-			deps![signal],
-		);
+			let _passive_effect = use_effect(
+				{
+					let signal = signal.clone();
+					let passive_count = Rc::clone(&passive_count);
+					move || {
+						let _ = signal.get();
+						*passive_count.borrow_mut() += 1;
+						None::<fn()>
+					}
+				},
+				crate::deps![signal.clone()],
+			);
 
-		// Both should have run initially
-		assert_eq!(*layout_count.borrow(), 1);
-		assert_eq!(*passive_count.borrow(), 1);
+			// Both should have run initially
+			assert_eq!(*layout_count.borrow(), 1);
+			assert_eq!(*passive_count.borrow(), 1);
 
-		// Change signal
-		signal.set(1);
+			// Change signal
+			signal.set(1);
 
-		// Layout effect executes synchronously
-		assert_eq!(*layout_count.borrow(), 2);
+			// Layout effect executes synchronously
+			assert_eq!(*layout_count.borrow(), 2);
+		});
 	}
 
 	#[test]
 	#[serial]
 	fn test_mixed_layout_and_passive_effects() {
-		let signal = Signal::new(0);
-		let execution_order = Rc::new(RefCell::new(Vec::new()));
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let signal = Signal::new(0);
+			let execution_order = Rc::new(RefCell::new(Vec::new()));
 
-		let _layout_effect = use_layout_effect(
-			{
-				let signal = signal.clone();
-				let execution_order = Rc::clone(&execution_order);
-				move || {
-					let value = signal.get();
-					execution_order.borrow_mut().push(("layout", value));
-					None::<fn()>
-				}
-			},
-			deps![signal],
-		);
+			let _layout_effect = use_layout_effect(
+				{
+					let signal = signal.clone();
+					let execution_order = Rc::clone(&execution_order);
+					move || {
+						let value = signal.get();
+						execution_order.borrow_mut().push(("layout", value));
+						None::<fn()>
+					}
+				},
+				crate::deps![signal.clone()],
+			);
 
-		let _passive_effect = use_effect(
-			{
-				let signal = signal.clone();
-				let execution_order = Rc::clone(&execution_order);
-				move || {
-					let value = signal.get();
-					execution_order.borrow_mut().push(("passive", value));
-					None::<fn()>
-				}
-			},
-			deps![signal],
-		);
+			let _passive_effect = use_effect(
+				{
+					let signal = signal.clone();
+					let execution_order = Rc::clone(&execution_order);
+					move || {
+						let value = signal.get();
+						execution_order.borrow_mut().push(("passive", value));
+						None::<fn()>
+					}
+				},
+				crate::deps![signal.clone()],
+			);
 
-		// Both execute initially
-		let order = execution_order.borrow();
-		assert_eq!(order.len(), 2);
-		assert_eq!(order[0], ("layout", 0));
-		assert_eq!(order[1], ("passive", 0));
+			// Both execute initially
+			let order = execution_order.borrow();
+			assert_eq!(order.len(), 2);
+			assert_eq!(order[0], ("layout", 0));
+			assert_eq!(order[1], ("passive", 0));
+		});
 	}
 
 	#[rstest::rstest]
 	#[serial]
 	fn test_use_retained_effect_survives_ignored_guard() {
 		cleanup_reactive_nodes();
-		let signal = Signal::new(0);
-		let run_count = Rc::new(RefCell::new(0));
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let signal = Signal::new(0);
+			let run_count = Rc::new(RefCell::new(0));
 
-		use_retained_effect(
-			{
-				let signal = signal.clone();
-				let run_count = Rc::clone(&run_count);
-				move || {
-					let _ = signal.get();
-					*run_count.borrow_mut() += 1;
-					None::<fn()>
-				}
-			},
-			deps![signal],
-		);
+			use_retained_effect(
+				{
+					let signal = signal.clone();
+					let run_count = Rc::clone(&run_count);
+					move || {
+						let _ = signal.get();
+						*run_count.borrow_mut() += 1;
+						None::<fn()>
+					}
+				},
+				crate::deps![signal.clone()],
+			);
 
-		assert_eq!(*run_count.borrow(), 1);
+			assert_eq!(*run_count.borrow(), 1);
 
-		signal.set(1);
-		with_runtime(|rt| rt.flush_updates());
-		assert_eq!(
-			*run_count.borrow(),
-			2,
-			"retained effect must rerun even when the call result is ignored"
-		);
+			signal.set(1);
+			with_runtime(|rt| rt.flush_updates());
+			assert_eq!(
+				*run_count.borrow(),
+				2,
+				"retained effect must rerun even when the call result is ignored"
+			);
 
-		cleanup_reactive_nodes();
-		signal.set(2);
-		with_runtime(|rt| rt.flush_updates());
-		assert_eq!(
-			*run_count.borrow(),
-			2,
-			"clearing the retained scope must dispose the effect"
-		);
+			cleanup_reactive_nodes();
+			signal.set(2);
+			with_runtime(|rt| rt.flush_updates());
+			assert_eq!(
+				*run_count.borrow(),
+				2,
+				"clearing the retained scope must dispose the effect"
+			);
+		});
 	}
 
 	#[rstest::rstest]
 	#[serial]
 	fn test_use_retained_effect_runs_cleanup_on_scope_clear() {
 		cleanup_reactive_nodes();
-		let log = Rc::new(RefCell::new(Vec::new()));
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let log = Rc::new(RefCell::new(Vec::new()));
 
-		use_retained_effect(
-			{
-				let log = Rc::clone(&log);
-				move || {
-					log.borrow_mut().push("run");
-					let log_for_cleanup = Rc::clone(&log);
-					Some(move || log_for_cleanup.borrow_mut().push("cleanup"))
-				}
-			},
-			deps![],
-		);
+			use_retained_effect(
+				{
+					let log = Rc::clone(&log);
+					move || {
+						log.borrow_mut().push("run");
+						let log_for_cleanup = Rc::clone(&log);
+						Some(move || log_for_cleanup.borrow_mut().push("cleanup"))
+					}
+				},
+				crate::deps![],
+			);
 
-		assert_eq!(*log.borrow(), vec!["run"]);
+			assert_eq!(*log.borrow(), vec!["run"]);
 
-		cleanup_reactive_nodes();
-		assert_eq!(
-			*log.borrow(),
-			vec!["run", "cleanup"],
-			"scope clear must drop the stored Effect guard and run cleanup"
-		);
+			cleanup_reactive_nodes();
+			assert_eq!(
+				*log.borrow(),
+				vec!["run", "cleanup"],
+				"scope clear must drop the stored Effect guard and run cleanup"
+			);
+		});
 	}
 
 	#[rstest::rstest]
 	#[serial]
 	fn test_use_retained_effect_accepts_unit_return() {
 		cleanup_reactive_nodes();
-		let called = Rc::new(RefCell::new(false));
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let called = Rc::new(RefCell::new(false));
 
-		use_retained_effect(
-			{
-				let called = Rc::clone(&called);
-				move || {
-					*called.borrow_mut() = true;
-				}
-			},
-			deps![],
-		);
+			use_retained_effect(
+				{
+					let called = Rc::clone(&called);
+					move || {
+						*called.borrow_mut() = true;
+					}
+				},
+				crate::deps![],
+			);
 
-		assert!(*called.borrow());
-		cleanup_reactive_nodes();
+			assert!(*called.borrow());
+			cleanup_reactive_nodes();
+		});
 	}
 
 	#[rstest::rstest]
 	#[serial]
 	fn test_retained_cleanup_can_clear_own_scope_reentrantly() {
 		cleanup_reactive_nodes();
-		let cleanup_count = Rc::new(RefCell::new(0));
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let cleanup_count = Rc::new(RefCell::new(0));
 
-		use_retained_effect(
-			{
-				let cleanup_count = Rc::clone(&cleanup_count);
-				move || {
+			use_retained_effect(
+				{
 					let cleanup_count = Rc::clone(&cleanup_count);
-					Some(move || {
-						*cleanup_count.borrow_mut() += 1;
-						cleanup_reactive_nodes();
-					})
-				}
-			},
-			deps![],
-		);
+					move || {
+						let cleanup_count = Rc::clone(&cleanup_count);
+						Some(move || {
+							*cleanup_count.borrow_mut() += 1;
+							cleanup_reactive_nodes();
+						})
+					}
+				},
+				crate::deps![],
+			);
 
-		cleanup_reactive_nodes();
-		assert_eq!(*cleanup_count.borrow(), 1);
+			cleanup_reactive_nodes();
+			assert_eq!(*cleanup_count.borrow(), 1);
+		});
 	}
 
 	#[rstest::rstest]
 	#[serial]
 	fn test_use_retained_effect_runs_cleanup_when_scope_clears_during_initial_run() {
 		cleanup_reactive_nodes();
-		let log = Rc::new(RefCell::new(Vec::new()));
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let log = Rc::new(RefCell::new(Vec::new()));
 
-		use_retained_effect(
-			{
-				let log = Rc::clone(&log);
-				move || {
-					log.borrow_mut().push("run");
-					cleanup_reactive_nodes();
-					let log_for_cleanup = Rc::clone(&log);
-					Some(move || log_for_cleanup.borrow_mut().push("cleanup"))
-				}
-			},
-			deps![],
-		);
+			use_retained_effect(
+				{
+					let log = Rc::clone(&log);
+					move || {
+						log.borrow_mut().push("run");
+						cleanup_reactive_nodes();
+						let log_for_cleanup = Rc::clone(&log);
+						Some(move || log_for_cleanup.borrow_mut().push("cleanup"))
+					}
+				},
+				crate::deps![],
+			);
 
-		assert_eq!(
-			*log.borrow(),
-			vec!["run", "cleanup"],
-			"retained effect cleanup must run when the owning scope clears during initial execution"
-		);
+			assert_eq!(
+				*log.borrow(),
+				vec!["run", "cleanup"],
+				"retained effect cleanup must run when the owning scope clears during initial execution"
+			);
+		});
 	}
 
 	#[rstest::rstest]
 	#[serial]
 	fn test_use_retained_layout_effect_runs_synchronously() {
 		cleanup_reactive_nodes();
-		let signal = Signal::new(0);
-		let execution_order = Rc::new(RefCell::new(Vec::new()));
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let signal = Signal::new(0);
+			let execution_order = Rc::new(RefCell::new(Vec::new()));
 
-		use_retained_layout_effect(
-			{
-				let signal = signal.clone();
-				let execution_order = Rc::clone(&execution_order);
-				move || {
-					execution_order.borrow_mut().push(signal.get());
-					None::<fn()>
-				}
-			},
-			deps![signal],
-		);
+			use_retained_layout_effect(
+				{
+					let signal = signal.clone();
+					let execution_order = Rc::clone(&execution_order);
+					move || {
+						execution_order.borrow_mut().push(signal.get());
+						None::<fn()>
+					}
+				},
+				crate::deps![signal.clone()],
+			);
 
-		assert_eq!(*execution_order.borrow(), vec![0]);
+			assert_eq!(*execution_order.borrow(), vec![0]);
 
-		signal.set(1);
-		execution_order.borrow_mut().push(100);
-		assert_eq!(
-			*execution_order.borrow(),
-			vec![0, 1, 100],
-			"retained layout effect must run before subsequent synchronous work"
-		);
+			signal.set(1);
+			execution_order.borrow_mut().push(100);
+			assert_eq!(
+				*execution_order.borrow(),
+				vec![0, 1, 100],
+				"retained layout effect must run before subsequent synchronous work"
+			);
 
-		cleanup_reactive_nodes();
+			cleanup_reactive_nodes();
+		});
 	}
 
 	#[rstest::rstest]
 	#[serial]
 	fn test_use_retained_layout_effect_accepts_unit_return() {
 		cleanup_reactive_nodes();
-		let called = Rc::new(RefCell::new(false));
+		reinhardt_core::reactive::ReactiveScope::run(|| {
+			let called = Rc::new(RefCell::new(false));
 
-		use_retained_layout_effect(
-			{
-				let called = Rc::clone(&called);
-				move || {
-					*called.borrow_mut() = true;
-				}
-			},
-			deps![],
-		);
+			use_retained_layout_effect(
+				{
+					let called = Rc::clone(&called);
+					move || {
+						*called.borrow_mut() = true;
+					}
+				},
+				crate::deps![],
+			);
 
-		assert!(*called.borrow());
-		cleanup_reactive_nodes();
+			assert!(*called.borrow());
+			cleanup_reactive_nodes();
+		});
 	}
 }
