@@ -1,4 +1,4 @@
-#![cfg(not(target_arch = "wasm32"))]
+#![cfg(all(native, feature = "testing"))]
 //! Component System integration tests
 //!
 //! Success Criteria:
