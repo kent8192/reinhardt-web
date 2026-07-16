@@ -210,13 +210,14 @@ impl RouterOutlet {
 
 impl Component for RouterOutlet {
 	fn render(&self) -> Page {
+		let current = self.router.render_current();
 		if let Some(fallback) = &self.navigation_error_fallback
 			&& let Some(Some(error)) =
 				crate::app::try_with_navigation_coordinator(|coordinator| coordinator.error().get())
 		{
-			return fallback(&error);
+			return Page::Fragment(vec![current, fallback(&error)]);
 		}
-		self.router.render_current()
+		current
 	}
 
 	fn name() -> &'static str {

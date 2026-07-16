@@ -187,6 +187,9 @@ pub(super) fn install_link_interceptor(
 		};
 
 		let href = anchor.get_attribute("href");
+		let replace = anchor
+			.get_attribute("data-replace")
+			.is_some_and(|value| value.eq_ignore_ascii_case("true"));
 		let target_attr = anchor.get_attribute("target");
 		let rel_attr = anchor.get_attribute("rel");
 		let attrs = AnchorAttrs {
@@ -240,7 +243,12 @@ pub(super) fn install_link_interceptor(
 		// requiring a tracing subscriber. The `tracing` crate is not
 		// pulled in on the wasm32 target (see Cargo.toml), so we use
 		// `web_sys::console::warn_1` directly here (Refs #4331).
-		match crate::reactive::hooks::RouterHandle.push(href) {
+		let result = if replace {
+			crate::reactive::hooks::RouterHandle.replace(href)
+		} else {
+			crate::reactive::hooks::RouterHandle.push(href)
+		};
+		match result {
 			Ok(()) => {}
 			Err(err) => {
 				crate::nav_diag!(
