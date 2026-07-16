@@ -31,13 +31,6 @@ impl NavigationIntent {
 			Self::Pop { .. } => NavigationType::Pop,
 		}
 	}
-
-	fn entry_index(self) -> i64 {
-		match self {
-			Self::Pop { target_index } => target_index,
-			Self::Initial | Self::Push | Self::Replace => 0,
-		}
-	}
 }
 
 // Fields mirror the navigation attempt contract and are retained until the
@@ -292,13 +285,14 @@ impl NavigationCoordinator {
 		if !self.is_current_generation(generation) {
 			return;
 		}
+		let entry_index = match intent {
+			NavigationIntent::Push => self.committed_index.get().saturating_add(1),
+			NavigationIntent::Replace | NavigationIntent::Initial => self.committed_index.get(),
+			NavigationIntent::Pop { target_index } => target_index,
+		};
 		let result = crate::router::loader::with_loader_store(&store, || {
-			self.router.commit_match(
-				&path,
-				&matched,
-				intent.navigation_type(),
-				intent.entry_index(),
-			)
+			self.router
+				.commit_match(&path, &matched, intent.navigation_type(), entry_index)
 		});
 		if let Err(error) = result {
 			self.finish_error(
@@ -308,11 +302,7 @@ impl NavigationCoordinator {
 			return;
 		}
 		self.mounted_store.borrow_mut().replace(store);
-		self.committed_index.set(match intent {
-			NavigationIntent::Push => self.committed_index.get().saturating_add(1),
-			NavigationIntent::Replace | NavigationIntent::Initial => self.committed_index.get(),
-			NavigationIntent::Pop { target_index } => target_index,
-		});
+		self.committed_index.set(entry_index);
 		self.pending.set(false);
 		self.error.set(None);
 		self.active_attempt.borrow_mut().take();
@@ -336,6 +326,33 @@ mod tests {
 				.expect("known route commits");
 			assert_eq!(router.current_path().get(), "/");
 			assert!(!coordinator.pending().get());
+		});
+	}
+
+	#[test]
+	fn push_navigation_assigns_monotonic_history_indices() {
+		ReactiveScope::run(|| {
+			let router = Rc::new(
+				ClientRouter::new()
+					.route("home", "/", || reinhardt_core::page::Page::empty())
+					.route("next", "/next/", || reinhardt_core::page::Page::empty()),
+			);
+			let coordinator = NavigationCoordinator::new(router).expect("registry builds");
+
+			coordinator
+				.navigate("/".to_string(), NavigationIntent::Push)
+				.expect("initial push commits");
+			assert_eq!(coordinator.committed_index(), 1);
+
+			coordinator
+				.navigate("/next/".to_string(), NavigationIntent::Push)
+				.expect("second push commits");
+			assert_eq!(coordinator.committed_index(), 2);
+
+			coordinator
+				.navigate("/".to_string(), NavigationIntent::Replace)
+				.expect("replace commits");
+			assert_eq!(coordinator.committed_index(), 2);
 		});
 	}
 }
