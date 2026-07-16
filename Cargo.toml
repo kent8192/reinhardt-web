@@ -381,6 +381,9 @@ toml = { workspace = true }
 [build-dependencies]
 cfg_aliases = "0.2"
 
+[dev-dependencies]
+rstest = { workspace = true }
+
 [workspace]
 resolver = "3"
 members = [

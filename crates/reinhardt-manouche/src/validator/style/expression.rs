@@ -976,7 +976,7 @@ fn resolve_component_variable_defaults(
 			)?),
 		},
 		TypedValueExprKind::Function(call) => TypedValueExprKind::Function(TypedFunctionCall {
-			spec: call.spec.clone(),
+			spec: call.spec,
 			receiver: match call.receiver.as_deref() {
 				Some(receiver) => Some(Box::new(resolve_component_variable_defaults(
 					receiver,
