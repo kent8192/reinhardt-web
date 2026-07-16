@@ -3734,14 +3734,28 @@ where
 				(FilterOperator::IExact, FilterValue::String(s)) => {
 					self.like_expr(filter, s, LikePattern::Exact, true)
 				}
-				(FilterOperator::IExact, v) => col.eq(Self::filter_value_to_sea_value(v)),
+				(FilterOperator::IExact, v) => {
+					col.eq(self.filter_value_to_sea_value_for_field(&filter.field, v))
+				}
 				// Generic value comparisons (catch-all for other FilterValue types)
-				(FilterOperator::Eq, v) => col.eq(Self::filter_value_to_sea_value(v)),
-				(FilterOperator::Ne, v) => col.ne(Self::filter_value_to_sea_value(v)),
-				(FilterOperator::Gt, v) => col.gt(Self::filter_value_to_sea_value(v)),
-				(FilterOperator::Gte, v) => col.gte(Self::filter_value_to_sea_value(v)),
-				(FilterOperator::Lt, v) => col.lt(Self::filter_value_to_sea_value(v)),
-				(FilterOperator::Lte, v) => col.lte(Self::filter_value_to_sea_value(v)),
+				(FilterOperator::Eq, v) => {
+					col.eq(self.filter_value_to_sea_value_for_field(&filter.field, v))
+				}
+				(FilterOperator::Ne, v) => {
+					col.ne(self.filter_value_to_sea_value_for_field(&filter.field, v))
+				}
+				(FilterOperator::Gt, v) => {
+					col.gt(self.filter_value_to_sea_value_for_field(&filter.field, v))
+				}
+				(FilterOperator::Gte, v) => {
+					col.gte(self.filter_value_to_sea_value_for_field(&filter.field, v))
+				}
+				(FilterOperator::Lt, v) => {
+					col.lt(self.filter_value_to_sea_value_for_field(&filter.field, v))
+				}
+				(FilterOperator::Lte, v) => {
+					col.lte(self.filter_value_to_sea_value_for_field(&filter.field, v))
+				}
 				(FilterOperator::In, FilterValue::String(s)) => {
 					let values = Self::parse_array_string(s);
 					col.is_in(values)
@@ -3752,7 +3766,9 @@ where
 				(FilterOperator::In, FilterValue::List(values)) => col.is_in(
 					values
 						.iter()
-						.map(Self::filter_value_to_sea_value)
+						.map(|value| {
+							self.filter_value_to_sea_value_for_field(&filter.field, value)
+						})
 						.collect::<Vec<_>>(),
 				),
 				(FilterOperator::NotIn, FilterValue::String(s)) => {
@@ -3765,7 +3781,9 @@ where
 				(FilterOperator::NotIn, FilterValue::List(values)) => col.is_not_in(
 					values
 						.iter()
-						.map(Self::filter_value_to_sea_value)
+						.map(|value| {
+							self.filter_value_to_sea_value_for_field(&filter.field, value)
+						})
 						.collect::<Vec<_>>(),
 				),
 				(FilterOperator::Contains, FilterValue::String(s)) => {
@@ -3811,8 +3829,8 @@ where
 				(FilterOperator::Range, FilterValue::Range(start, end)) => Expr::cust_with_values(
 					format!("{} BETWEEN ? AND ?", self.filter_lhs_sql(filter)),
 					[
-						Self::filter_value_to_sea_value(start),
-						Self::filter_value_to_sea_value(end),
+						self.filter_value_to_sea_value_for_field(&filter.field, start),
+						self.filter_value_to_sea_value_for_field(&filter.field, end),
 					],
 				)
 				.into_simple_expr(),
@@ -4010,7 +4028,7 @@ where
 					// field @> ? - parameterized
 					Expr::cust_with_values(
 						format!("{} @> ?", self.filter_lhs_sql(filter)),
-						[Self::filter_value_to_sea_value(v)],
+						[self.filter_value_to_sea_value_for_field(&filter.field, v)],
 					)
 					.into_simple_expr()
 				}
@@ -4033,7 +4051,7 @@ where
 				// Fallback for unsupported combinations
 				_ => {
 					// Default to equality for unhandled cases
-					col.eq(Self::filter_value_to_sea_value(&filter.value))
+					col.eq(self.filter_value_to_sea_value_for_field(&filter.field, &filter.value))
 				}
 			};
 
@@ -4544,14 +4562,7 @@ where
 
 	fn filter_value_to_sea_value(v: &FilterValue) -> reinhardt_query::value::Value {
 		match v {
-			FilterValue::String(s) => {
-				// Try to parse as UUID first for proper PostgreSQL uuid column handling
-				if let Ok(uuid) = Uuid::parse_str(s) {
-					reinhardt_query::value::Value::Uuid(Some(Box::new(uuid)))
-				} else {
-					s.clone().into()
-				}
-			}
+			FilterValue::String(s) => s.clone().into(),
 			FilterValue::Integer(i) | FilterValue::Int(i) => (*i).into(),
 			FilterValue::Float(f) => (*f).into(),
 			FilterValue::Boolean(b) | FilterValue::Bool(b) => (*b).into(),
@@ -4574,6 +4585,43 @@ where
 			FilterValue::FieldRef(f) => f.field.clone().into(),
 			FilterValue::Expression(expr) => expr.to_sql().into(),
 			FilterValue::OuterRef(outer_ref) => outer_ref.field.clone().into(),
+		}
+	}
+
+	fn filter_value_to_sea_value_for_field(
+		&self,
+		field: &str,
+		value: &FilterValue,
+	) -> reinhardt_query::value::Value {
+		let field_name = field.rsplit("__").next().unwrap_or(field);
+		let Some(metadata) = T::field_metadata().into_iter().find(|metadata| {
+			metadata.name == field_name || metadata.db_column_name() == field_name
+		}) else {
+			return Self::filter_value_to_sea_value(value);
+		};
+
+		let FilterValue::String(value) = value else {
+			return Self::filter_value_to_sea_value(value);
+		};
+
+		match metadata.field_type.rsplit('.').next() {
+			Some("IntegerField") => value
+				.parse::<i32>()
+				.map_or_else(|_| value.clone().into(), Into::into),
+			Some("BigIntegerField") => value
+				.parse::<i64>()
+				.map_or_else(|_| value.clone().into(), Into::into),
+			Some("FloatField") => value
+				.parse::<f64>()
+				.map_or_else(|_| value.clone().into(), Into::into),
+			Some("BooleanField") => value
+				.parse::<bool>()
+				.map_or_else(|_| value.clone().into(), Into::into),
+			Some("UuidField") => Uuid::parse_str(value)
+				.map_or_else(|_| value.clone().into(), |uuid| {
+					reinhardt_query::value::Value::Uuid(Some(Box::new(uuid)))
+				}),
+			_ => value.clone().into(),
 		}
 	}
 
@@ -9419,7 +9467,7 @@ mod tests {
 			.expect("count select query")
 			.to_string(PostgresQueryBuilder);
 
-		assert_eq!(sql, r#"SELECT COUNT(*) FROM "test_users""#);
+		assert_eq!(sql, r#"SELECT COUNT(*) AS "count" FROM "test_users""#);
 	}
 
 	#[test]
