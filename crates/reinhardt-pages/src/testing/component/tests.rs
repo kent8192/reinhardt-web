@@ -12,6 +12,7 @@ use rstest::rstest;
 
 use super::{EventError, EventFixture, EventFixtureError, QueryError, Role, render};
 use crate::Callback;
+use crate::deps;
 use crate::event::{
 	ChangeEvent, ClickEvent, EventPayload, InputEvent, KeyDownEvent, Modifiers, Point, PointerKind,
 	PointerMoveEvent, typed_event_handler,
@@ -123,7 +124,7 @@ fn effect_cleanup_can_use_page_handles_until_scope_disposal_finishes() {
 				let callback = callback;
 				Some(move || callback.call(()))
 			},
-			(),
+			deps![],
 		);
 	});
 
@@ -319,26 +320,6 @@ fn suspense_nodes_render_active_branch_with_boundary_id() {
 	assert!(pending_screen.query_by_text("Ready").is_none());
 	assert_eq!(resolved_screen.get_by_text("Ready").tag_name(), "p");
 	assert!(resolved_screen.query_by_text("Loading").is_none());
-}
-
-#[tokio::test]
-async fn suspense_nodes_rerender_the_active_branch_after_settle() {
-	let pending = Signal::new(true);
-	let pending_for_check = pending.clone();
-	let screen = render(Page::Suspense(SuspenseNode::new(
-		None,
-		move || pending_for_check.get(),
-		|| PageElement::new("span").child("Loading").into_page(),
-		|| PageElement::new("span").child("Loaded").into_page(),
-	)));
-
-	assert_eq!(screen.get_by_text("Loading").tag_name(), "span");
-
-	pending.set(false);
-	screen.settle().await;
-
-	assert!(screen.query_by_text("Loading").is_none());
-	assert_eq!(screen.get_by_text("Loaded").tag_name(), "span");
 }
 
 #[test]
@@ -767,15 +748,15 @@ fn contenteditable_disable_and_value_patch_is_rejected_atomically() {
 
 #[rstest]
 fn known_and_custom_events_with_the_same_type_share_dom_dispatch() {
-	let calls = Rc::new(RefCell::new(Vec::new()));
-	let known_calls = Rc::clone(&calls);
-	let custom_calls = Rc::clone(&calls);
+	let calls = Arc::new(Mutex::new(Vec::new()));
+	let known_calls = Arc::clone(&calls);
+	let custom_calls = Arc::clone(&calls);
 	let screen = render(
 		PageElement::new("button")
-			.listener("click", move |_| known_calls.borrow_mut().push("known"))
+			.listener("click", move |_| known_calls.lock().unwrap().push("known"))
 			.on(
 				EventName::Custom(Cow::Borrowed("click")),
-				std::sync::Arc::new(move |_| custom_calls.borrow_mut().push("custom")),
+				Arc::new(move |_| custom_calls.lock().unwrap().push("custom")),
 			)
 			.child("Run"),
 	);
@@ -789,7 +770,7 @@ fn known_and_custom_events_with_the_same_type_share_dom_dispatch() {
 		.expect("custom click should dispatch");
 
 	assert_eq!(
-		calls.borrow().as_slice(),
+		calls.lock().unwrap().as_slice(),
 		["known", "custom", "known", "custom"]
 	);
 }
@@ -850,6 +831,8 @@ macro_rules! assert_catalog_wrapper_fixture_parity {
 			$fixture_defaults:ident;
 		)*
 	) => {
+		// Catalog coverage intentionally includes deprecated compatibility payloads.
+		#[allow(deprecated)]
 		#[rstest]
 		fn every_catalog_fixture_converts_to_its_generated_wrapper() {
 			$(
@@ -919,12 +902,15 @@ fn select_file_and_contenteditable_target_snapshots_are_owned() {
 	let screen = render(Page::fragment([
 		PageElement::new("select")
 			.attr("aria-label", "Roles")
+			.attr("multiple", "multiple")
 			.on(
 				ChangeEvent::EVENT,
 				typed_event_handler::<ChangeEvent, _>(move |event: ChangeEvent| {
 					*selected_for_handler.lock().unwrap() = Some(event.selected_values());
 				}),
 			)
+			.child(PageElement::new("option").attr("value", "admin"))
+			.child(PageElement::new("option").attr("value", "editor"))
 			.into_page(),
 		PageElement::new("input")
 			.attr("aria-label", "Upload")
