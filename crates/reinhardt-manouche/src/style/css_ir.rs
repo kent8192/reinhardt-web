@@ -603,12 +603,15 @@ fn lower_value_kind(
 		TypedValueExprKind::Function(call) => {
 			lower_function(call, expression.span, variable_count, scope)
 		}
-		TypedValueExprKind::Group(inner) => Ok(CssValueKind::Group(Box::new(lower_value(
-			inner,
-			variable_count,
-			scope,
-			false,
-		)?))),
+		TypedValueExprKind::Group(inner) => {
+			let contains_arithmetic = inner.contains_arithmetic;
+			let inner = lower_value(inner, variable_count, scope, false)?;
+			if contains_arithmetic {
+				Ok(CssValueKind::Group(Box::new(inner)))
+			} else {
+				Ok(inner.kind)
+			}
+		}
 		TypedValueExprKind::SpaceSequence(items) => Ok(CssValueKind::SpaceSequence(lower_values(
 			items,
 			variable_count,
@@ -738,7 +741,9 @@ mod tests {
 		LoweredStyle, lower_style,
 	};
 	use crate::{
-		StyleSelectorCombinator, parser::parse_style, style::StyleCompileContext,
+		StyleSelectorCombinator,
+		parser::parse_style,
+		style::{StyleCompileContext, serialize_css},
 		validator::validate_style,
 	};
 
@@ -964,6 +969,22 @@ mod tests {
 			media_rule.selectors[0].segments[0].simple_selectors[0],
 			CssSimpleSelector::Class(ref name) if name == "card--rs-f69b9cbc74c9"
 		));
+	}
+
+	#[rstest]
+	fn serializes_non_arithmetic_groups_without_bare_parentheses() {
+		// Arrange
+		let source = ".card { width: (1px); color: (red); margin: (1px + 2px); }";
+
+		// Act
+		let lowered = lower(source);
+		let css = serialize_css(&lowered.css);
+
+		// Assert
+		assert_eq!(
+			css,
+			".card--rs-f69b9cbc74c9 {\n  width: 1px;\n  color: red;\n  margin: calc((1px + 2px));\n}\n"
+		);
 	}
 
 	#[rstest]

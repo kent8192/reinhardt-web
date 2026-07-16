@@ -947,15 +947,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	} else {
 		reinhardt_commands::StyleFeatureSelection::with_features(args.features.clone())
 	};
-	let component_style_state = if args.no_wasm {
-		None
-	} else {
+	let component_style_state =
 		reinhardt_commands::ComponentStyleState::initialize_optional_with_features(
 			manifest,
 			args.package.clone(),
 			style_feature_selection.clone(),
-		)?
-	};
+		)?;
 
 	// Phase 1: Build WASM targets
 	let wasm_build_succeeded = build_wasm_targets(

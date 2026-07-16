@@ -666,6 +666,10 @@ fn parse_selector_name_with_numeric_start(
 	while punct_at(tokens, *index, '-') {
 		let hyphen_span = tokens[*index].span();
 		*index += 1;
+		if punct_at(tokens, *index, '-') {
+			value.push('-');
+			continue;
+		}
 		let Some(segment) = tokens.get(*index) else {
 			return Err(syn::Error::new(
 				hyphen_span,
@@ -1518,6 +1522,22 @@ mod tests {
 			panic!("expected an attribute selector");
 		};
 		assert_eq!(attribute.name.as_str(), "data-123");
+	}
+
+	#[rstest]
+	fn accepts_double_hyphen_class_name_segments() {
+		// Arrange
+		let input = quote! { .card--active {} };
+
+		// Act
+		let rule = first_rule(input);
+
+		// Assert
+		let selector = &rule.selectors.selectors[0];
+		let StyleSelectorKind::Root(StyleSimpleSelector::Class(name)) = &selector.kind else {
+			panic!("expected a class selector");
+		};
+		assert_eq!(name.as_str(), "card--active");
 	}
 
 	#[rstest]

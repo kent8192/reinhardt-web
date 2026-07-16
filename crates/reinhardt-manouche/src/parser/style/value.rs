@@ -61,6 +61,22 @@ fn parse_prefix_expression(input: ParseStream) -> syn::Result<StyleValueExpressi
 	if input.peek(Token![-]) {
 		let fork = input.fork();
 		fork.parse::<Token![-]>()?;
+		if fork.peek(Token![-]) {
+			fork.parse::<Token![-]>()?;
+			if fork.peek(Ident::peek_any) {
+				let first_hyphen: Token![-] = input.parse()?;
+				input.parse::<Token![-]>()?;
+				let mut name = parse_value_name(input)?;
+				name.value.insert_str(0, "--");
+				name.span = joined_span(first_hyphen.span(), name.span);
+				let name = parse_kebab_keyword_name(input, name)?;
+				let span = name.span;
+				return Ok(StyleValueExpression {
+					kind: StyleValueExpr::Literal(StyleValueLiteral::Keyword(name)),
+					span,
+				});
+			}
+		}
 		let has_identifier = fork.peek(Ident::peek_any);
 		let is_qualified_reference = if has_identifier {
 			let namespace = fork.call(Ident::parse_any)?;
@@ -427,12 +443,12 @@ fn parse_kebab_keyword_name(
 	while input.peek(Token![-]) {
 		let fork = input.fork();
 		fork.parse::<Token![-]>()?;
-		if !fork.peek(Ident::peek_any) {
+		if !fork.peek(Ident::peek_any) && !fork.peek(LitInt) {
 			break;
 		}
 
 		input.parse::<Token![-]>()?;
-		let segment = parse_value_name(input)?;
+		let segment = parse_css_identifier_segment(input)?;
 		name.value.push('-');
 		name.value.push_str(segment.as_str());
 		name.span = joined_span(name.span, segment.span);
@@ -538,7 +554,7 @@ fn parse_macro_expression(
 			"`unchecked_fn!` requires exactly one function call",
 		));
 	}
-	let function_name = parse_value_name(&content).map_err(|_| {
+	let function_name = parse_css_identifier(&content).map_err(|_| {
 		syn::Error::new(
 			content.span(),
 			"`unchecked_fn!` requires one plain function name and argument group",
@@ -587,6 +603,31 @@ fn parse_value_name(input: ParseStream) -> syn::Result<StyleValueName> {
 		value: unraw_ident(&ident),
 		span: ident.span(),
 	})
+}
+
+fn parse_css_identifier_segment(input: ParseStream) -> syn::Result<StyleValueName> {
+	if input.peek(Ident::peek_any) {
+		return parse_value_name(input);
+	}
+	let literal: LitInt = input.parse()?;
+	Ok(StyleValueName {
+		value: literal.to_string(),
+		span: literal.span(),
+	})
+}
+
+fn parse_css_identifier(input: ParseStream) -> syn::Result<StyleValueName> {
+	let mut leading_hyphens = Vec::new();
+	while input.peek(Token![-]) {
+		let hyphen: Token![-] = input.parse()?;
+		leading_hyphens.push(hyphen.span());
+	}
+	let mut name = parse_value_name(input)?;
+	if let Some(first_hyphen) = leading_hyphens.first() {
+		name.value.insert_str(0, &"-".repeat(leading_hyphens.len()));
+		name.span = joined_span(*first_hyphen, name.span);
+	}
+	parse_kebab_keyword_name(input, name)
 }
 
 fn peek_binary_operator(input: ParseStream) -> Option<(u8, u8, StyleBinaryOperatorKind)> {
@@ -948,6 +989,46 @@ mod tests {
 
 		// Assert
 		assert_eq!(expression_shape(&expression), expected);
+	}
+
+	#[rstest]
+	#[case("col-1", "col-1")]
+	#[case("--line", "--line")]
+	fn parses_numeric_and_dashed_custom_identifiers(#[case] source: &str, #[case] expected: &str) {
+		// Arrange
+		// Source and expected CSS identifier are provided by the parameterized case.
+
+		// Act
+		let expression = parse_value(source);
+
+		// Assert
+		assert_eq!(expression_shape(&expression), keyword(expected));
+	}
+
+	#[rstest]
+	#[case("unchecked_fn!(image-set())", "image-set")]
+	#[case("unchecked_fn!(-webkit-image-set())", "-webkit-image-set")]
+	fn parses_css_identifier_unchecked_function_names(
+		#[case] source: &str,
+		#[case] expected_name: &str,
+	) {
+		// Arrange
+		// Source and expected function name are provided by the parameterized case.
+
+		// Act
+		let expression = parse_value(source);
+
+		// Assert
+		assert_eq!(
+			expression_shape(&expression),
+			ExprShape::UncheckedFunction {
+				name: expected_name.to_owned(),
+				arguments: RawGroupShape {
+					delimiter: Delimiter::Parenthesis,
+					tokens: Vec::new(),
+				},
+			}
+		);
 	}
 
 	#[rstest]

@@ -2113,9 +2113,7 @@ impl BaseCommand for RunServerCommand {
 		#[cfg_attr(not(feature = "server"), allow(unused_variables))]
 		let requested_package: Option<String> = None;
 		#[cfg(feature = "pages")]
-		let inherited_style_root = (!no_wasm)
-			.then(|| std::env::var_os(GENERATED_STYLE_ROOT_ENV).map(PathBuf::from))
-			.flatten();
+		let inherited_style_root = std::env::var_os(GENERATED_STYLE_ROOT_ENV).map(PathBuf::from);
 		#[cfg(feature = "pages")]
 		let component_style_state =
 			if should_prepare_component_styles(with_pages, inherited_style_root.is_some()) {
