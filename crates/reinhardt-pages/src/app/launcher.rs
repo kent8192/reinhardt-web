@@ -675,8 +675,19 @@ impl ClientLauncher {
 		RENDER_COUNT.with(|c| c.set(c.get() + 1));
 		let client_router = with_spa_router(|r| r.as_any().downcast_ref::<ClientRouter>().cloned());
 		if let Some(router) = client_router {
-			let handled_by_layout_renderer = PERSISTENT_LAYOUT_RENDERER
-				.with(|renderer| renderer.borrow_mut().render(root_el, &router))?;
+			let mounted_loader_store = crate::app::try_with_navigation_coordinator(|coordinator| {
+				coordinator.mounted_store()
+			})
+			.flatten();
+			let render_layouts = || {
+				PERSISTENT_LAYOUT_RENDERER
+					.with(|renderer| renderer.borrow_mut().render(root_el, &router))
+			};
+			let handled_by_layout_renderer = if let Some(store) = mounted_loader_store.as_ref() {
+				with_loader_store(store, render_layouts)
+			} else {
+				render_layouts()
+			}?;
 			if handled_by_layout_renderer {
 				return Ok(());
 			}
@@ -689,12 +700,17 @@ impl ClientLauncher {
 		// re-enter the runtime and abort the navigation before DOM remount.
 		crate::component::cleanup_reactive_nodes();
 		let scope = reinhardt_core::reactive::ReactiveScope::new();
-		let result = scope.enter(|| {
+		let render_current = || {
 			let view = with_spa_router(|r| r.render_current());
 			root_el.set_inner_html("");
 			let wrapper = crate::dom::Element::new(root_el.clone());
 			view.mount(&wrapper)
-		});
+		};
+		let result = if let Some(store) = mounted_loader_store.as_ref() {
+			with_loader_store(store, || scope.enter(render_current))
+		} else {
+			scope.enter(render_current)
+		};
 		if result.is_ok() {
 			crate::component::store_reactive_scope(scope);
 		}
@@ -843,6 +859,14 @@ impl ClientLauncher {
 			if let Ok(coordinator) =
 				super::navigation::NavigationCoordinator::new(std::rc::Rc::new(router))
 			{
+				let initial_path = with_spa_router(|router| router.current_path().get());
+				coordinator
+					.hydrate_initial_store(&initial_path)
+					.map_err(|error| {
+						wasm_bindgen::JsValue::from_str(&format!(
+							"initial route-loader hydration failed: {error}"
+						))
+					})?;
 				store_navigation_coordinator(coordinator);
 			}
 		}

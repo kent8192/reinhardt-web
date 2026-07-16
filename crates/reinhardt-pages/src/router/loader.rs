@@ -363,6 +363,49 @@ pub struct PreparedLoader {
 // handoff contract for the registry and coordinator.
 #[allow(dead_code)]
 impl PreparedLoader {
+	/// Reconstructs a prepared value from a successful SSR payload.
+	#[doc(hidden)]
+	pub fn from_serialized<T>(
+		id: RouteLoaderId,
+		serialized: &serde_json::Value,
+	) -> Result<Self, RouteLoaderError>
+	where
+		T: Clone + Serialize + DeserializeOwned + 'static,
+	{
+		let value: T = serde_json::from_value(serialized.clone()).map_err(|error| {
+			RouteLoaderError::from_diagnostic(
+				"route loader hydration value is invalid",
+				Some(500),
+				error,
+			)
+		})?;
+		Ok(Self {
+			id,
+			type_id: TypeId::of::<T>(),
+			value: Rc::new(value),
+			serialized: serialized.clone(),
+			lease: ErasedQueryLease(Rc::new(())),
+		})
+	}
+
+	#[cfg(native)]
+	pub(crate) fn without_lease<T>(
+		id: RouteLoaderId,
+		value: T,
+		serialized: serde_json::Value,
+	) -> Self
+	where
+		T: Clone + Serialize + DeserializeOwned + 'static,
+	{
+		Self {
+			id,
+			type_id: TypeId::of::<T>(),
+			value: Rc::new(value),
+			serialized,
+			lease: ErasedQueryLease(Rc::new(())),
+		}
+	}
+
 	pub(crate) fn new<T>(
 		id: RouteLoaderId,
 		value: T,
@@ -599,6 +642,20 @@ pub async fn acquire_loader_query<T>(
 where
 	T: Clone + Serialize + DeserializeOwned + 'static,
 {
+	#[cfg(native)]
+	if !crate::platform::has_native_task_sink() {
+		// Native SSR has no browser event-loop task sink. Run the request in the
+		// current SSR future while retaining the same query-backed path whenever
+		// a mounted task sink exists.
+		//
+		// Ideal implementation (without this fallback):
+		//   acquire_query(key, options).result().await
+		let value = crate::cancellation::scope_cancellation(cancellation, fetcher()).await?;
+		let serialized = serde_json::to_value(&value).map_err(|error| {
+			RouteLoaderError::from_diagnostic("loader value serialization failed", Some(500), error)
+		})?;
+		return Ok(PreparedLoader::without_lease(id, value, serialized));
+	}
 	let cache_id = loader_cache_id(id, context, specs)
 		.map_err(|error| RouteLoaderError::with_status(error.to_string(), 400))?;
 	let key = QueryKey::<T, RouteLoaderError>::new(cache_id, move || fetcher());

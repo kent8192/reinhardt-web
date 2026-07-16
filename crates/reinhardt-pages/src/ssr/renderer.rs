@@ -448,6 +448,11 @@ impl SsrRenderer {
 		&mut self.state
 	}
 
+	/// Returns the configured timeout used by entry-blocking route loaders.
+	pub(crate) fn route_loader_timeout(&self) -> Duration {
+		self.options.resource_timeout
+	}
+
 	/// Renders a component to an HTML string.
 	pub async fn render<C: Component>(&mut self, component: &C) -> String {
 		self.render_view_factory(|| component.render()).await

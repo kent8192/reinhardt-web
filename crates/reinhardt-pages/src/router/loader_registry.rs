@@ -47,6 +47,10 @@ impl From<LoaderConsumer> for QueryConsumer {
 /// Erased loader executor submitted by the `#[loader]` macro.
 pub type LoaderExecutor = fn(&RouteContext, CancellationHandle, LoaderConsumer) -> LoaderFuture;
 
+/// Erased deserializer used to restore a successful loader value during
+/// client hydration.
+pub type LoaderHydrator = fn(&serde_json::Value) -> Result<PreparedLoader, RouteLoaderError>;
+
 /// Static registration record for one route loader.
 pub struct LoaderRegistration {
 	/// Stable loader identifier.
@@ -73,6 +77,23 @@ impl LoaderRegistration {
 }
 
 inventory::collect!(LoaderRegistration);
+
+/// Static hydration registration generated alongside a `#[loader]` marker.
+pub struct LoaderHydrationRegistration {
+	/// Stable loader identifier.
+	pub id: RouteLoaderId,
+	/// Deserializes one successful wire value into a typed prepared value.
+	pub hydrate: LoaderHydrator,
+}
+
+impl LoaderHydrationRegistration {
+	/// Creates a hydration registration.
+	pub const fn new(id: RouteLoaderId, hydrate: LoaderHydrator) -> Self {
+		Self { id, hydrate }
+	}
+}
+
+inventory::collect!(LoaderHydrationRegistration);
 
 /// Duplicate or lookup errors in the loader registry.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -101,6 +122,7 @@ impl std::error::Error for LoaderRegistryError {}
 /// Read-only lookup table for erased loader registrations.
 pub struct LoaderRegistry {
 	entries: HashMap<RouteLoaderId, &'static LoaderRegistration>,
+	hydrators: HashMap<RouteLoaderId, LoaderHydrator>,
 }
 
 impl LoaderRegistry {
@@ -115,12 +137,21 @@ impl LoaderRegistry {
 				return Err(LoaderRegistryError::Duplicate(entry.id));
 			}
 		}
-		Ok(Self { entries: indexed })
+		Ok(Self {
+			entries: indexed,
+			hydrators: HashMap::new(),
+		})
 	}
 
 	/// Collects all inventory registrations for the current application.
 	pub fn global() -> Result<Self, LoaderRegistryError> {
-		Self::from_entries(inventory::iter::<LoaderRegistration>)
+		let mut registry = Self::from_entries(inventory::iter::<LoaderRegistration>)?;
+		for registration in inventory::iter::<LoaderHydrationRegistration> {
+			registry
+				.hydrators
+				.insert(registration.id, registration.hydrate);
+		}
+		Ok(registry)
 	}
 
 	/// Looks up a registration by stable ID.
@@ -142,6 +173,25 @@ impl LoaderRegistry {
 	/// Returns whether no loaders are registered.
 	pub fn is_empty(&self) -> bool {
 		self.entries.is_empty()
+	}
+
+	/// Restores one successful loader value from the SSR hydration payload.
+	#[doc(hidden)]
+	pub fn hydrate(
+		&self,
+		id: RouteLoaderId,
+		value: &serde_json::Value,
+	) -> Result<PreparedLoader, RouteLoaderError> {
+		let hydrate = self.hydrators.get(&id).ok_or_else(|| {
+			RouteLoaderError::with_status(
+				format!(
+					"route loader `{}` has no hydration deserializer",
+					id.as_str()
+				),
+				500,
+			)
+		})?;
+		hydrate(value)
 	}
 }
 

@@ -102,6 +102,40 @@ impl NavigationCoordinator {
 		self.mounted_store.borrow().clone()
 	}
 
+	/// Restores the initial route's prepared loader values from the SSR state.
+	///
+	/// Hydration is intentionally strict for matched loader routes: rendering a
+	/// destination without its entry-blocking values would violate the loader
+	/// contract and would cause the generated component binding to panic.
+	#[cfg(wasm)]
+	pub(crate) fn hydrate_initial_store(&self, path: &str) -> Result<(), RouteLoaderError> {
+		let Some(matched) = self.router.match_tree(path) else {
+			return Ok(());
+		};
+		if matched.loader_ids().is_empty() {
+			return Ok(());
+		}
+		let context = crate::hydration::HydrationContext::from_window().map_err(|error| {
+			RouteLoaderError::with_status(
+				format!("route loader hydration state is unavailable: {error}"),
+				500,
+			)
+		})?;
+		let store = LoaderStore::new();
+		for id in matched.loader_ids() {
+			let value = context.get_route_loader_state(id.as_str()).ok_or_else(|| {
+				RouteLoaderError::with_status(
+					format!("route loader `{}` is missing from SSR state", id.as_str()),
+					500,
+				)
+			})?;
+			let prepared = self.registry.hydrate(*id, value)?;
+			store.insert_prepared(prepared);
+		}
+		self.mounted_store.borrow_mut().replace(store);
+		Ok(())
+	}
+
 	pub(crate) fn navigate(
 		self: &Rc<Self>,
 		path: String,

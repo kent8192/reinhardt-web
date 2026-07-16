@@ -201,6 +201,10 @@ where
 	})
 }
 
+pub(crate) fn has_native_task_sink() -> bool {
+	TASK_SINK.with(|slot| slot.borrow().is_some())
+}
+
 #[cfg(test)]
 pub(crate) fn has_task_sink() -> bool {
 	TASK_SINK.with(|slot| slot.borrow().is_some())

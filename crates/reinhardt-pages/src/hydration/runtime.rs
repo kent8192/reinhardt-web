@@ -159,6 +159,11 @@ impl HydrationContext {
 		self.state.get_resource_state(id)
 	}
 
+	/// Gets a successful route-loader value by its stable loader ID.
+	pub fn get_route_loader_state(&self, id: impl AsRef<str>) -> Option<&serde_json::Value> {
+		self.state.get_route_loader_state(id)
+	}
+
 	/// Marks hydration as complete.
 	pub fn mark_hydrated(&mut self) {
 		self.hydrated = true;
@@ -993,6 +998,17 @@ mod tests {
 		assert_eq!(
 			ctx.get_resource_state("rh-res-0"),
 			Some(&serde_json::json!({"Success": {"name": "Ada"}}))
+		);
+	}
+
+	#[test]
+	fn test_hydration_context_get_route_loader_state() {
+		let mut state = SsrState::new();
+		state.add_route_loader_state("app::loader", serde_json::json!({"name": "Ada"}));
+		let ctx = HydrationContext::from_state(state);
+		assert_eq!(
+			ctx.get_route_loader_state("app::loader"),
+			Some(&serde_json::json!({"name": "Ada"}))
 		);
 	}
 

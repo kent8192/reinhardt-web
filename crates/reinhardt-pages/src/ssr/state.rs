@@ -67,6 +67,27 @@ impl SsrState {
 		}
 	}
 
+	/// Adds a successful route-loader value to the hydration payload.
+	///
+	/// Route-loader values use a separate namespace so they cannot collide with
+	/// call-order resource IDs. The value is kept unwrapped for the initial
+	/// typed [`crate::router::loader::LoaderStore`] reconstruction.
+	pub fn add_route_loader_state(&mut self, id: impl AsRef<str>, value: impl Serialize) {
+		self.add_resource_state(format!("route-loader:{}", id.as_ref()), value);
+	}
+
+	/// Adds a successful route-loader query state to the hydration payload.
+	///
+	/// The keyed query cache restores `ResourceState` values by their opaque
+	/// cache key. This helper preserves that existing wire format while keeping
+	/// route-loader identity in the separate namespace above.
+	pub fn add_route_loader_query_state(&mut self, key: impl Into<String>, value: impl Serialize) {
+		self.add_resource_state(
+			key,
+			serde_json::json!({ "Success": serde_json::to_value(value).unwrap_or(serde_json::Value::Null) }),
+		);
+	}
+
 	/// Clears resource states from the hydration payload.
 	pub fn clear_resource_states(&mut self) {
 		self.resources.clear();
@@ -90,6 +111,11 @@ impl SsrState {
 	/// Gets a resource state by ID.
 	pub fn get_resource_state(&self, id: &str) -> Option<&serde_json::Value> {
 		self.resources.get(id)
+	}
+
+	/// Gets a successful route-loader value by stable loader ID.
+	pub fn get_route_loader_state(&self, id: impl AsRef<str>) -> Option<&serde_json::Value> {
+		self.get_resource_state(&format!("route-loader:{}", id.as_ref()))
 	}
 
 	/// Returns the number of signals.
@@ -242,6 +268,22 @@ mod tests {
 		assert_eq!(
 			state.get_resource_state("rh-res-0"),
 			Some(&serde_json::json!({"Success": "value"}))
+		);
+	}
+
+	#[test]
+	fn test_ssr_state_route_loader_state_uses_stable_namespace() {
+		let mut state = SsrState::new();
+		state.add_route_loader_state("app::loader", serde_json::json!({"name": "Ada"}));
+		state.add_route_loader_query_state("route_loader:app::loader:sha256:key", "Ada");
+
+		assert_eq!(
+			state.get_route_loader_state("app::loader"),
+			Some(&serde_json::json!({"name": "Ada"}))
+		);
+		assert_eq!(
+			state.get_resource_state("route_loader:app::loader:sha256:key"),
+			Some(&serde_json::json!({"Success": "Ada"}))
 		);
 	}
 

@@ -14,6 +14,8 @@
 //! canonicalize JSON object arguments, hydrated success and error states remain
 //! visible through the first client mount, and query handles distinguish initial
 //! pending state from background fetching.
+//! Route-level loaders use the same keyed cache while keeping navigation in a
+//! prepare-then-commit flow; see `docs/route_loaders.md` for the full contract.
 //!
 //! ## Features
 //!
@@ -589,6 +591,7 @@ pub mod __private {
 	pub use inventory;
 	pub use reinhardt_urls;
 	pub use serde;
+	pub use serde_json;
 
 	// `tracing` is enabled for all targets *except* browser wasm (wasm32-unknown-unknown).
 	// Browser wasm uses a different logging mechanism, so tracing is intentionally excluded there.

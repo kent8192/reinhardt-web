@@ -13,6 +13,7 @@ use super::handler::{
 #[cfg(wasm)]
 use super::history::setup_popstate_listener;
 use super::history::{HistoryState, NavigationType, current_path, push_state, replace_state};
+use super::loader::RouteLoaderId;
 use super::params::{FromPath, ParamContext, Path};
 use super::pattern::ClientPathPattern;
 use super::scope::{RegisteredRouteScope, RouteScope};
@@ -211,6 +212,8 @@ pub struct ClientRoute {
 	name: Option<String>,
 	/// Route-level metadata.
 	metadata: RouteMetadata,
+	/// Optional loader metadata for a flat component registration.
+	loader_id: Option<RouteLoaderId>,
 	/// The route handler.
 	handler: ClientRouteHandler,
 	/// Optional guard function.
@@ -237,6 +240,7 @@ impl Clone for ClientRoute {
 			pattern: self.pattern.clone(),
 			name: self.name.clone(),
 			metadata: self.metadata.clone(),
+			loader_id: self.loader_id,
 			handler: self.handler.clone(),
 			guard: self.guard.clone(),
 		}
@@ -300,6 +304,7 @@ impl ClientRoute {
 			pattern,
 			name,
 			metadata: RouteMetadata::default(),
+			loader_id: None,
 			handler: ClientRouteHandler::Leaf(handler),
 			guard: None,
 		}
@@ -314,6 +319,7 @@ impl ClientRoute {
 			pattern,
 			name,
 			metadata: RouteMetadata::default(),
+			loader_id: None,
 			handler: ClientRouteHandler::Layout(handler),
 			guard: None,
 		}
@@ -336,6 +342,14 @@ impl ClientRoute {
 
 	pub(crate) fn set_metadata(&mut self, metadata: RouteMetadata) {
 		self.metadata = metadata;
+	}
+
+	pub(crate) fn set_loader_id(&mut self, loader_id: Option<RouteLoaderId>) {
+		self.loader_id = loader_id;
+	}
+
+	pub(crate) fn loader_id(&self) -> Option<RouteLoaderId> {
+		self.loader_id
 	}
 
 	pub(crate) fn set_guard(&mut self, guard: RouteGuard) {
@@ -871,7 +885,11 @@ impl ClientRouter {
 		F: Fn(P) -> Page + Send + Sync + 'static,
 		P: FromRequest + ComponentInfo + Send + Sync + 'static,
 	{
-		self.page(P::name(), P::path(), handler)
+		let mut router = self.page(P::name(), P::path(), handler);
+		if let Some(index) = router.named_routes.get(P::name()).copied() {
+			router.routes[index].set_loader_id(P::loader_id());
+		}
+		router
 	}
 
 	/// Adds a route with a guard.
@@ -1038,7 +1056,7 @@ impl ClientRouter {
 				None,
 				None,
 				None,
-				None,
+				leaf.route.loader_id(),
 				leaf.route.metadata().clone(),
 			);
 			ClientRouteTreeMatch::new(leaf, Vec::new(), leaf_metadata)

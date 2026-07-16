@@ -12,6 +12,7 @@
 //! - **Hydration Markers**: Automatically embed markers for client-side hydration
 //! - **State Serialization**: Serialize reactive state for client restoration
 //! - **Layout Support**: Wrap rendered content in HTML layouts
+//! - **Route Preparation**: Resolve matched route loaders before rendering
 //!
 //! ## Usage
 //!
@@ -34,12 +35,18 @@
 //! // Full page buffered string
 //! let html = renderer.render_page_to_string(&my_component).await;
 //! ```
+//!
+//! For a matched `ClientRouter`, [`SsrRenderer::render_route_to_string`] adds
+//! entry-blocking route-loader preparation and emits the successful values in
+//! the normal [`SsrState`] hydration payload.
 
 mod markers;
 #[cfg(native)]
 mod renderer;
 #[cfg(native)]
 pub(crate) mod resource_context;
+#[cfg(native)]
+mod route;
 mod state;
 #[cfg(native)]
 mod stream;
@@ -50,6 +57,8 @@ pub use markers::{
 };
 #[cfg(native)]
 pub use renderer::{IntoSsrRendererConfig, SsrOptions, SsrRenderConfig, SsrRenderer};
+#[cfg(native)]
+pub use route::SsrRouteOutput;
 pub use state::{SsrState, StateEntry};
 #[cfg(native)]
 pub use stream::{SsrChunk, SsrStream};

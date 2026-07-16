@@ -65,6 +65,7 @@ fn expand_loader(input: ItemFn) -> syn::Result<proc_macro2::TokenStream> {
 	let block = input.block.clone();
 	let module_name = function_name.clone();
 	let executor_name = format_ident!("__execute", span = function_name.span());
+	let hydrator_name = format_ident!("__hydrate", span = function_name.span());
 	let input_specs = signature.args.iter().filter_map(|arg| {
 		let Some(kind) = arg.kind else { return None };
 		let name = arg
@@ -172,12 +173,31 @@ fn expand_loader(input: ItemFn) -> syn::Result<proc_macro2::TokenStream> {
 				})
 			}
 
+			fn #hydrator_name(
+				__value: &#pages_crate::__private::serde_json::Value,
+			) -> ::core::result::Result<
+				#pages_crate::router::loader::PreparedLoader,
+				#pages_crate::RouteLoaderError,
+			> {
+				#pages_crate::router::loader::PreparedLoader::from_serialized::<#data>(
+					<marker as #pages_crate::RouteLoader>::ID,
+					__value,
+				)
+			}
+
 			#pages_crate::__private::inventory::submit! {
 				#pages_crate::router::loader_registry::LoaderRegistration {
 					id: <marker as #pages_crate::RouteLoader>::ID,
 					inputs: INPUTS,
 					execute: #executor_name,
 				}
+			}
+
+			#pages_crate::__private::inventory::submit! {
+				#pages_crate::router::loader_registry::LoaderHydrationRegistration::new(
+					<marker as #pages_crate::RouteLoader>::ID,
+					#hydrator_name,
+				)
 			}
 		}
 	})
