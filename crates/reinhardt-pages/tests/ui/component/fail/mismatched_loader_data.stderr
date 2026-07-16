@@ -1,0 +1,19 @@
+error[E0271]: type mismatch resolving `<marker as RouteLoader>::Data == String`
+ --> tests/ui/component/fail/mismatched_loader_data.rs:8:1
+  |
+8 | #[component("/projects/{id}/", name = "project", loader = project_loader)]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type mismatch resolving `<marker as RouteLoader>::Data == String`
+  |
+note: expected this to be `std::string::String`
+ --> tests/ui/component/fail/mismatched_loader_data.rs:4:57
+  |
+4 | async fn project_loader(Path(_id): Path<i64>) -> Result<u64, String> {
+  |                                                         ^^^
+note: required by a bound in `__project_assert_loader_data`
+ --> tests/ui/component/fail/mismatched_loader_data.rs:8:1
+  |
+8 | #[component("/projects/{id}/", name = "project", loader = project_loader)]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `__project_assert_loader_data`
+9 | fn project(Path(id): Path<i64>, Loader(data): Loader<String>) -> Page {
+  |    ------- required by a bound in this function
+  = note: this error originates in the attribute macro `component` (in Nightly builds, run with -Z macro-backtrace for more info)

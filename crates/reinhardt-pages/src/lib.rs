@@ -533,6 +533,9 @@ pub use router::loader::{
 	Loader, LoaderInputError, LoaderInputKind, LoaderInputSpec, LoaderStore, LoaderStoreError,
 	RouteLoader, RouteLoaderError, canonical_loader_inputs, loader_cache_id,
 };
+pub use router::loader_store::{
+	LoaderStoreScope, active_loader_store, enter_loader_store, with_loader_store,
+};
 // Imperative SPA navigation API (Issue #4610). `navigate` is the free
 // function; `use_router` returns a `RouterHandle` for use inside hooks /
 // components. `NavigateError` is the public error returned by both paths.
@@ -584,6 +587,7 @@ pub mod __private {
 	pub use hyper;
 	pub use inventory;
 	pub use reinhardt_urls;
+	pub use serde;
 
 	// `tracing` is enabled for all targets *except* browser wasm (wasm32-unknown-unknown).
 	// Browser wasm uses a different logging mechanism, so tracing is intentionally excluded there.
