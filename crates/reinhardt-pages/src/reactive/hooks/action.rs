@@ -39,9 +39,7 @@ impl<T: Clone + 'static> OptimisticState<T> {
 		if self.value.try_set(value).is_err() {
 			return;
 		}
-		if self.is_optimistic.try_set(false).is_err() {
-			return;
-		}
+		let _ = self.is_optimistic.try_set(false);
 	}
 
 	/// Reverts to the confirmed value (called on error).
@@ -52,9 +50,7 @@ impl<T: Clone + 'static> OptimisticState<T> {
 		if self.value.try_set(value).is_err() {
 			return;
 		}
-		if self.is_optimistic.try_set(false).is_err() {
-			return;
-		}
+		let _ = self.is_optimistic.try_set(false);
 	}
 }
 
