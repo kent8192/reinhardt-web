@@ -38,10 +38,15 @@ struct RecordingExecutor {
 	model_id: i64,
 	model_name: String,
 	generated_id: Option<QueryValue>,
+	returned_row: Option<Row>,
 }
 
 impl RecordingExecutor {
 	fn model_row(&self) -> Row {
+		if let Some(row) = &self.returned_row {
+			return row.clone();
+		}
+
 		let mut row = Row::new();
 		row.insert("id".to_string(), QueryValue::Int(self.model_id));
 		row.insert(
@@ -163,6 +168,7 @@ fn recording_executor(backend: DatabaseType, lookup_rows: usize) -> RecordingSta
 			model_id: 1,
 			model_name: "updated".to_string(),
 			generated_id: Some(QueryValue::Int(42)),
+			returned_row: None,
 		},
 		operations,
 		queries,
@@ -304,6 +310,43 @@ impl Model for RenamedPrimaryKeyWidget {
 		vec![
 			renamed_column_field("id", "widget_id", true),
 			renamed_column_field("name", "display_name", false),
+		]
+	}
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+struct SwappedColumnWidget {
+	id: Option<i64>,
+	left: String,
+	right: String,
+}
+
+impl Model for SwappedColumnWidget {
+	type Fields = WidgetFields;
+	type Objects = Manager<Self>;
+	type PrimaryKey = i64;
+
+	fn table_name() -> &'static str {
+		"swapped_column_widgets"
+	}
+
+	fn new_fields() -> Self::Fields {
+		WidgetFields
+	}
+
+	fn primary_key(&self) -> Option<Self::PrimaryKey> {
+		self.id
+	}
+
+	fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+		self.id = Some(value);
+	}
+
+	fn field_metadata() -> Vec<FieldInfo> {
+		vec![
+			renamed_column_field("id", "id", true),
+			renamed_column_field("left", "right", false),
+			renamed_column_field("right", "left", false),
 		]
 	}
 }
@@ -739,7 +782,7 @@ async fn executor_writes_use_the_physical_primary_key_column() {
 		[
 			RecordedQuery {
 				operation: "save",
-				sql: r#"UPDATE "renamed_primary_key_widgets" SET "display_name" = $1 WHERE "widget_id" = $2 RETURNING "widget_id", "display_name""#.to_string(),
+					sql: r#"UPDATE "renamed_primary_key_widgets" SET "display_name" = $1 WHERE "widget_id" = $2 RETURNING "widget_id" AS "id", "display_name" AS "name""#.to_string(),
 				params: vec![QueryValue::String("updated".to_string()), QueryValue::Int(7)],
 			},
 			RecordedQuery {
@@ -782,7 +825,7 @@ async fn mysql_executor_reloads_through_the_physical_primary_key_column() {
 			},
 			RecordedQuery {
 				operation: "reload",
-				sql: "SELECT * FROM `renamed_primary_key_widgets` WHERE `widget_id` = ?"
+					sql: "SELECT `widget_id` AS `id`, `display_name` AS `name` FROM `renamed_primary_key_widgets` WHERE `widget_id` = ?"
 					.to_string(),
 				params: vec![QueryValue::Int(7)],
 			},
@@ -791,8 +834,10 @@ async fn mysql_executor_reloads_through_the_physical_primary_key_column() {
 }
 
 #[tokio::test]
-async fn insert_with_executor_maps_renamed_fields_to_database_columns() {
+async fn insert_with_executor_aliases_renamed_returned_columns_to_rust_fields() {
 	let (mut executor, _operations, queries) = recording_executor(DatabaseType::Postgres, 1);
+	executor.model_id = 7;
+	executor.model_name = "created".to_string();
 	let mut widget = RenamedPrimaryKeyWidget {
 		id: Some(7),
 		name: "created".to_string(),
@@ -801,7 +846,15 @@ async fn insert_with_executor_maps_renamed_fields_to_database_columns() {
 	widget
 		.insert_with_executor(&mut executor)
 		.await
-		.expect("assigned primary keys should not turn resource creation into an update");
+		.expect("RETURNING aliases should deserialize into Rust fields");
+
+	assert_eq!(
+		widget,
+		RenamedPrimaryKeyWidget {
+			id: Some(7),
+			name: "created".to_string(),
+		}
+	);
 
 	assert_eq!(
 		queries
@@ -810,9 +863,111 @@ async fn insert_with_executor_maps_renamed_fields_to_database_columns() {
 			.as_slice(),
 		[RecordedQuery {
 			operation: "save",
-			sql: r#"INSERT INTO "renamed_primary_key_widgets" ("widget_id", "display_name") VALUES ($1, $2) RETURNING "widget_id", "display_name""#.to_string(),
+			sql: r#"INSERT INTO "renamed_primary_key_widgets" ("widget_id", "display_name") VALUES ($1, $2) RETURNING "widget_id" AS "id", "display_name" AS "name""#.to_string(),
 			params: vec![QueryValue::Int(7), QueryValue::String("created".to_string())],
 		}]
+	);
+}
+
+#[tokio::test]
+async fn insert_with_executor_aliases_crossed_database_columns_to_rust_fields() {
+	let (mut executor, _operations, queries) = recording_executor(DatabaseType::Postgres, 1);
+	let mut returned_row = Row::new();
+	returned_row.insert("id".to_string(), QueryValue::Int(7));
+	returned_row.insert(
+		"left".to_string(),
+		QueryValue::String("left value".to_string()),
+	);
+	returned_row.insert(
+		"right".to_string(),
+		QueryValue::String("right value".to_string()),
+	);
+	executor.returned_row = Some(returned_row);
+	let mut widget = SwappedColumnWidget {
+		id: Some(7),
+		left: "left value".to_string(),
+		right: "right value".to_string(),
+	};
+
+	widget
+		.insert_with_executor(&mut executor)
+		.await
+		.expect("RETURNING aliases should preserve crossed database column values");
+
+	assert_eq!(
+		widget,
+		SwappedColumnWidget {
+			id: Some(7),
+			left: "left value".to_string(),
+			right: "right value".to_string(),
+		}
+	);
+	assert_eq!(
+		queries
+			.lock()
+			.expect("queries mutex should not be poisoned")
+			.as_slice(),
+		[RecordedQuery {
+			operation: "save",
+			sql: r#"INSERT INTO "swapped_column_widgets" ("id", "right", "left") VALUES ($1, $2, $3) RETURNING "id", "right" AS "left", "left" AS "right""#.to_string(),
+			params: vec![
+				QueryValue::Int(7),
+				QueryValue::String("left value".to_string()),
+				QueryValue::String("right value".to_string()),
+			],
+		}]
+	);
+}
+
+#[tokio::test]
+async fn mysql_executor_insert_with_zero_auto_id_uses_generated_key() {
+	let (mut executor, _operations, queries) = recording_executor(DatabaseType::Mysql, 1);
+	executor.model_id = 42;
+	executor.model_name = "created".to_string();
+	let mut widget = Widget {
+		id: Some(0),
+		name: "created".to_string(),
+	};
+
+	widget
+		.insert_with_executor(&mut executor)
+		.await
+		.expect("a zero auto-increment key should use MySQL's generated ID");
+
+	assert_eq!(
+		widget,
+		Widget {
+			id: Some(42),
+			name: "created".to_string(),
+		}
+	);
+	assert_eq!(
+		queries
+			.lock()
+			.expect("queries mutex should not be poisoned")
+			.as_slice(),
+		[
+			RecordedQuery {
+				operation: "reset_generated_id",
+				sql: "SELECT LAST_INSERT_ID(0) AS generated_id".to_string(),
+				params: vec![],
+			},
+			RecordedQuery {
+				operation: "save",
+				sql: "INSERT INTO `widgets` (`name`) VALUES (?)".to_string(),
+				params: vec![QueryValue::String("created".to_string())],
+			},
+			RecordedQuery {
+				operation: "generated_id",
+				sql: "SELECT CAST(LAST_INSERT_ID() AS SIGNED) AS generated_id".to_string(),
+				params: vec![],
+			},
+			RecordedQuery {
+				operation: "reload",
+				sql: "SELECT * FROM `widgets` WHERE `id` = ?".to_string(),
+				params: vec![QueryValue::Int(42)],
+			},
+		]
 	);
 }
 
@@ -846,7 +1001,7 @@ async fn mysql_executor_insert_with_explicit_primary_key_reloads_the_known_key()
 			},
 			RecordedQuery {
 				operation: "reload",
-				sql: "SELECT * FROM `renamed_primary_key_widgets` WHERE `widget_id` = ?"
+				sql: "SELECT `widget_id` AS `id`, `display_name` AS `name` FROM `renamed_primary_key_widgets` WHERE `widget_id` = ?"
 					.to_string(),
 				params: vec![QueryValue::Int(7)],
 			},

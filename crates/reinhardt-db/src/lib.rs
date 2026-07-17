@@ -35,6 +35,8 @@
 //! - **QuerySet API**: Chainable query builder with conditional partial updates
 //! - **Field Types**: Rich set of field types with validation
 //! - **Relationships**: ForeignKey, ManyToMany, OneToOne
+//! - **Column Name Hydration**: Aliases physical `db_column` names to Rust fields
+//!   in ORM write-return projections
 //! - **Typed Relation Traversal**: Compile-time checked relation paths for SELECT filters and eager loading
 //! - **Scoped N+1 Detection**: Opt-in query shape detection for focused diagnostics and tests
 //!

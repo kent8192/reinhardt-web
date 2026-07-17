@@ -4,7 +4,7 @@ use super::query::RelationLoadInput;
 use super::{Model, QuerySet};
 use reinhardt_query::prelude::{
 	Alias, ColumnRef, DeleteStatement, Expr, ExprTrait, Func, InsertStatement, MySqlQueryBuilder,
-	PostgresQueryBuilder, Query, QueryBuilder, SelectStatement, SqliteQueryBuilder,
+	PostgresQueryBuilder, Query, QueryBuilder, SelectStatement, SimpleExpr, SqliteQueryBuilder,
 	UpdateStatement, Values,
 };
 use std::collections::HashMap;
@@ -258,9 +258,14 @@ impl<M: Model> Manager<M> {
 		)
 	}
 
+	fn has_explicit_primary_key(obj: &serde_json::Map<String, serde_json::Value>) -> bool {
+		obj.get(M::primary_key_field())
+			.is_some_and(|value| !value.is_null() && value.as_i64() != Some(0))
+	}
+
 	fn returning_columns_from_object(
 		obj: &serde_json::Map<String, serde_json::Value>,
-	) -> Vec<Alias> {
+	) -> Vec<SimpleExpr> {
 		let primary_key = M::primary_key_field();
 		let field_metadata = M::field_metadata();
 		let mut columns: Vec<&str> = obj.keys().map(String::as_str).collect();
@@ -271,8 +276,23 @@ impl<M: Model> Manager<M> {
 		}
 		columns
 			.into_iter()
-			.map(|column| Alias::new(Self::database_column_name(&field_metadata, column)))
+			.map(|field_name| {
+				let column_name = Self::database_column_name(&field_metadata, field_name);
+				let column = Expr::col(Alias::new(&column_name));
+				if column_name == field_name {
+					column.into()
+				} else {
+					column.expr_as(Alias::new(field_name))
+				}
+			})
 			.collect()
+	}
+
+	fn has_renamed_returning_columns(obj: &serde_json::Map<String, serde_json::Value>) -> bool {
+		let field_metadata = M::field_metadata();
+		obj.keys().any(|field_name| {
+			Self::database_column_name(&field_metadata, field_name) != *field_name
+		})
 	}
 
 	fn build_update_statement_without_returning(
@@ -331,7 +351,7 @@ impl<M: Model> Manager<M> {
 		field_is_none: impl Fn(&str) -> bool,
 	) -> reinhardt_query::prelude::UpdateStatement {
 		let mut stmt = Self::build_update_statement_without_returning(pk, obj, field_is_none);
-		stmt.returning(Self::returning_columns_from_object(obj));
+		stmt.returning_exprs(Self::returning_columns_from_object(obj));
 		stmt
 	}
 
@@ -884,7 +904,7 @@ impl<M: Model> Manager<M> {
 				})?;
 		let backend = Self::executor_backend(executor);
 		if backend != DatabaseBackend::MySql {
-			stmt.returning(Self::returning_columns_from_object(obj));
+			stmt.returning_exprs(Self::returning_columns_from_object(obj));
 		}
 		let (sql, values) = build_insert_sql(&stmt, backend);
 		let params = values
@@ -893,7 +913,9 @@ impl<M: Model> Manager<M> {
 			.map(Self::sea_value_to_query_value)
 			.collect();
 		if backend == DatabaseBackend::MySql {
-			let explicit_primary_key = model.primary_key();
+			let explicit_primary_key = model
+				.primary_key()
+				.filter(|_| Self::has_explicit_primary_key(obj));
 			if explicit_primary_key.is_none() {
 				executor
 					.fetch_one("SELECT LAST_INSERT_ID(0) AS generated_id", Vec::new())
@@ -928,10 +950,15 @@ impl<M: Model> Manager<M> {
 			};
 
 			let mut select = Query::select();
-			select
-				.from(Alias::new(M::table_name()))
-				.column(ColumnRef::Asterisk)
-				.and_where(Expr::col(Alias::new(M::primary_key_column())).eq(primary_key_value));
+			select.from(Alias::new(M::table_name()));
+			if Self::has_renamed_returning_columns(obj) {
+				for column in Self::returning_columns_from_object(obj) {
+					select.expr(column);
+				}
+			} else {
+				select.column(ColumnRef::Asterisk);
+			}
+			select.and_where(Expr::col(Alias::new(M::primary_key_column())).eq(primary_key_value));
 			let (select_sql, select_values) = build_select_sql(&select, backend);
 			let select_params = select_values
 				.0
@@ -1013,9 +1040,8 @@ impl<M: Model> Manager<M> {
 		let mut stmt =
 			Self::build_insert_statement_from_object(obj, |field| model.field_is_none(field))?;
 
-		// Add RETURNING clause with explicit column names from JSON object
-		// Note: Using Asterisk in columns() may not work correctly with reinhardt-query
-		stmt.returning(Self::returning_columns_from_object(obj));
+		// Alias returned database columns to Rust model field names.
+		stmt.returning_exprs(Self::returning_columns_from_object(obj));
 
 		let (sql, values) = build_insert_sql(&stmt, conn.backend());
 		let values: Vec<_> = values
@@ -1249,10 +1275,15 @@ impl<M: Model> Manager<M> {
 			} else {
 				reinhardt_query::value::Value::String(Some(Box::new(pk_string)))
 			};
-			select
-				.from(Alias::new(M::table_name()))
-				.column(ColumnRef::Asterisk)
-				.and_where(Expr::col(Alias::new(M::primary_key_column())).eq(pk_value));
+			select.from(Alias::new(M::table_name()));
+			if Self::has_renamed_returning_columns(obj) {
+				for column in Self::returning_columns_from_object(obj) {
+					select.expr(column);
+				}
+			} else {
+				select.column(ColumnRef::Asterisk);
+			}
+			select.and_where(Expr::col(Alias::new(M::primary_key_column())).eq(pk_value));
 			let (select_sql, select_values) = build_select_sql(&select, backend);
 			let select_params = select_values
 				.0

@@ -3,7 +3,7 @@
 //! This module provides the `DeleteStatement` type for building SQL DELETE queries.
 
 use crate::{
-	expr::{Condition, ConditionHolder, IntoCondition},
+	expr::{Condition, ConditionHolder, IntoCondition, SimpleExpr},
 	types::{IntoTableRef, TableRef},
 	value::Values,
 };
@@ -31,6 +31,7 @@ pub struct DeleteStatement {
 	pub(crate) table: Option<TableRef>,
 	pub(crate) r#where: ConditionHolder,
 	pub(crate) returning: Option<ReturningClause>,
+	pub(crate) returning_exprs: Option<Vec<SimpleExpr>>,
 }
 
 impl DeleteStatement {
@@ -40,6 +41,7 @@ impl DeleteStatement {
 			table: None,
 			r#where: ConditionHolder::new(),
 			returning: None,
+			returning_exprs: None,
 		}
 	}
 
@@ -49,6 +51,7 @@ impl DeleteStatement {
 			table: self.table.take(),
 			r#where: std::mem::replace(&mut self.r#where, ConditionHolder::new()),
 			returning: self.returning.take(),
+			returning_exprs: self.returning_exprs.take(),
 		}
 	}
 
@@ -116,6 +119,20 @@ impl DeleteStatement {
 		C: crate::types::IntoColumnRef,
 	{
 		self.returning = Some(ReturningClause::columns(cols));
+		self.returning_exprs = None;
+		self
+	}
+
+	/// Add a RETURNING clause with expressions.
+	///
+	/// Expressions can alias physical database columns to caller-visible names.
+	pub fn returning_exprs<I, E>(&mut self, expressions: I) -> &mut Self
+	where
+		I: IntoIterator<Item = E>,
+		E: Into<SimpleExpr>,
+	{
+		self.returning = None;
+		self.returning_exprs = Some(expressions.into_iter().map(Into::into).collect());
 		self
 	}
 
@@ -133,6 +150,7 @@ impl DeleteStatement {
 	/// ```
 	pub fn returning_all(&mut self) -> &mut Self {
 		self.returning = Some(ReturningClause::all());
+		self.returning_exprs = None;
 		self
 	}
 }

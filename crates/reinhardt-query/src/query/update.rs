@@ -33,6 +33,7 @@ pub struct UpdateStatement {
 	pub(crate) values: Vec<(DynIden, SimpleExpr)>,
 	pub(crate) r#where: ConditionHolder,
 	pub(crate) returning: Option<ReturningClause>,
+	pub(crate) returning_exprs: Option<Vec<SimpleExpr>>,
 }
 
 impl UpdateStatement {
@@ -43,6 +44,7 @@ impl UpdateStatement {
 			values: Vec::new(),
 			r#where: ConditionHolder::new(),
 			returning: None,
+			returning_exprs: None,
 		}
 	}
 
@@ -53,6 +55,7 @@ impl UpdateStatement {
 			values: std::mem::take(&mut self.values),
 			r#where: std::mem::replace(&mut self.r#where, ConditionHolder::new()),
 			returning: self.returning.take(),
+			returning_exprs: self.returning_exprs.take(),
 		}
 	}
 
@@ -193,6 +196,20 @@ impl UpdateStatement {
 		C: crate::types::IntoColumnRef,
 	{
 		self.returning = Some(ReturningClause::columns(cols));
+		self.returning_exprs = None;
+		self
+	}
+
+	/// Add a RETURNING clause with expressions.
+	///
+	/// Expressions can alias physical database columns to caller-visible names.
+	pub fn returning_exprs<I, E>(&mut self, expressions: I) -> &mut Self
+	where
+		I: IntoIterator<Item = E>,
+		E: Into<SimpleExpr>,
+	{
+		self.returning = None;
+		self.returning_exprs = Some(expressions.into_iter().map(Into::into).collect());
 		self
 	}
 
@@ -211,6 +228,7 @@ impl UpdateStatement {
 	/// ```
 	pub fn returning_all(&mut self) -> &mut Self {
 		self.returning = Some(ReturningClause::all());
+		self.returning_exprs = None;
 		self
 	}
 }
