@@ -10,8 +10,8 @@ note: found an item that was configured out
   | #[cfg(all(native, feature = "model-server-fnset"))]
   |                   ------------------------------ the item is gated behind the `model-server-fnset` feature
 ...
-  |     DetailActionContext, ModelServerFnResource, PatchModelInput, ServerFnSetAction,
-  |                          ^^^^^^^^^^^^^^^^^^^^^
+  |     ModelServerFnResource, ModelServerFnSet, PatchModelInput, PolicyPrincipal, ServerFnSetAction,
+  |     ^^^^^^^^^^^^^^^^^^^^^
 help: a similar name exists in the module
   |
 1 - use reinhardt_pages::server_fn::ModelServerFnResource;

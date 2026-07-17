@@ -33,6 +33,7 @@ use crate::reactive::{ExplicitDeps, Memo, ReactiveDeps};
 /// # Example
 ///
 /// ```no_run
+/// use reinhardt_pages::deps;
 /// use reinhardt_pages::reactive::hooks::{use_state, use_memo};
 ///
 /// let (items, _set_items) = use_state(vec![1, 2, 3, 4, 5]);
@@ -46,7 +47,7 @@ use crate::reactive::{ExplicitDeps, Memo, ReactiveDeps};
 ///             .filter(|&x| x > filter.get())
 ///             .collect::<Vec<_>>()
 ///     },
-///     (items, filter),
+///     deps![items, filter],
 /// );
 ///
 /// // Reading the memoized value
