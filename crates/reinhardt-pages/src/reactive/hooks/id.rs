@@ -166,8 +166,6 @@ mod tests {
 
 	#[test]
 	fn test_use_id_unique() {
-		reset_id_counter();
-
 		let id1 = use_id();
 		let id2 = use_id();
 		let id3 = use_id();
@@ -179,28 +177,26 @@ mod tests {
 
 	#[test]
 	fn test_use_id_format() {
-		reset_id_counter();
-
 		let id = use_id();
 		assert!(id.starts_with("reinhardt-id-"));
 	}
 
 	#[test]
 	fn test_use_id_with_prefix() {
-		reset_id_counter();
-
 		let id = use_id_with_prefix("custom");
 		assert!(id.starts_with("custom-"));
 	}
 
 	#[test]
 	fn test_use_id_sequential() {
-		reset_id_counter();
-
 		let id1 = use_id();
 		let id2 = use_id();
+		let first_id = id1
+			.strip_prefix("reinhardt-id-")
+			.expect("use_id returns the default prefix")
+			.parse::<usize>()
+			.expect("use_id returns a numeric suffix");
 
-		assert_eq!(id1, "reinhardt-id-0");
-		assert_eq!(id2, "reinhardt-id-1");
+		assert_eq!(id2, format!("reinhardt-id-{}", first_id + 1));
 	}
 }

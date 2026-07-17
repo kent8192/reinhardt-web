@@ -1039,7 +1039,7 @@ fn has_effective_text_type(input_type: Option<&str>) -> bool {
 #[cfg(test)]
 mod case_normalization_tests {
 	use super::*;
-	use crate::reactive::Signal;
+	use crate::reactive::{ReactiveScope, Signal};
 
 	fn element(tag: &str, input_type: Option<&str>) -> ElementNode {
 		ElementNode {
@@ -1068,19 +1068,23 @@ mod case_normalization_tests {
 
 	#[test]
 	fn native_control_binding_validation_normalizes_ascii_case() {
-		assert!(
-			element("INPUT", Some("RADIO"))
-				.validate_control_binding(&ControlBinding::radio(
-					Signal::new(String::new()),
-					"choice".to_owned(),
-				))
-				.is_ok()
-		);
-		assert!(
-			element("SELECT", None)
-				.validate_control_binding(&ControlBinding::select_one(Signal::new(String::new())))
-				.is_ok()
-		);
+		ReactiveScope::run(|| {
+			assert!(
+				element("INPUT", Some("RADIO"))
+					.validate_control_binding(&ControlBinding::radio(
+						Signal::new(String::new()),
+						"choice".to_owned(),
+					))
+					.is_ok()
+			);
+			assert!(
+				element("SELECT", None)
+					.validate_control_binding(&ControlBinding::select_one(Signal::new(
+						String::new()
+					)))
+					.is_ok()
+			);
+		});
 	}
 
 	#[test]

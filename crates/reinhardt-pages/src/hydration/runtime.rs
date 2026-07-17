@@ -1191,7 +1191,7 @@ mod tests {
 	#[cfg(wasm)]
 	use crate::reactive::hooks::use_retained_effect;
 	#[cfg(wasm)]
-	use crate::reactive::{Signal, with_runtime};
+	use crate::reactive::{ReactiveScope, Signal, with_runtime};
 	#[cfg(wasm)]
 	use reinhardt_core::deps;
 	#[cfg(wasm)]
@@ -1260,74 +1260,23 @@ mod tests {
 	#[cfg(wasm)]
 	#[wasm_bindgen_test]
 	fn hydration_preview_replaces_retained_effect_in_same_render_store() {
-		cleanup_reactive_nodes();
-		let document = web_sys::window().unwrap().document().unwrap();
-		let root = document.create_element("div").unwrap();
-		root.set_inner_html("<span>value:0</span>");
-		document.body().unwrap().append_child(&root).unwrap();
+		let scope = ReactiveScope::new();
+		scope.enter(|| {
+			cleanup_reactive_nodes();
+			let document = web_sys::window().unwrap().document().unwrap();
+			let root = document.create_element("div").unwrap();
+			root.set_inner_html("<span>value:0</span>");
+			document.body().unwrap().append_child(&root).unwrap();
 
-		let render_signal = Signal::new(0_i32);
-		let effect_signal = Signal::new(0_i32);
-		let effect_log = Rc::new(RefCell::new(Vec::new()));
-		let view = Page::reactive({
-			let render_signal = render_signal.clone();
-			let effect_signal = effect_signal.clone();
-			let effect_log = Rc::clone(&effect_log);
-			move || {
-				let render_value = render_signal.get();
-				use_retained_effect(
-					{
-						let effect_signal = effect_signal.clone();
-						let effect_log = Rc::clone(&effect_log);
-						move || {
-							let value = effect_signal.get();
-							effect_log.borrow_mut().push(format!("run:{value}"));
-							let effect_log = Rc::clone(&effect_log);
-							Some(move || effect_log.borrow_mut().push("cleanup".to_string()))
-						}
-					},
-					deps![effect_signal],
-				);
-				PageElement::new("span")
-					.child(format!("value:{render_value}"))
-					.into_page()
-			}
-		});
-
-		let mut registry = crate::hydration::events::EventRegistry::new();
-		install_hydrated_reactive_nodes(&Element::new(root.clone()), &view, &mut registry)
-			.expect("hydration node installation should succeed");
-		store_reactive_node(registry);
-		effect_signal.set(1);
-		with_runtime(|runtime| runtime.flush_updates());
-
-		let log = effect_log.borrow();
-		assert_eq!(
-			log.iter().filter(|entry| entry.as_str() == "run:1").count(),
-			1,
-			"only the tracked hydration render should retain an effect: {log:?}"
-		);
-		drop(log);
-		cleanup_reactive_nodes();
-		root.remove();
-	}
-
-	#[cfg(wasm)]
-	#[wasm_bindgen_test]
-	fn hydration_element_child_prepasses_do_not_retain_effects() {
-		cleanup_reactive_nodes();
-		let document = web_sys::window().unwrap().document().unwrap();
-		let root = document.create_element("div").unwrap();
-		root.set_inner_html("<span>value:0</span>");
-		document.body().unwrap().append_child(&root).unwrap();
-
-		let effect_signal = Signal::new(0_i32);
-		let effect_log = Rc::new(RefCell::new(Vec::new()));
-		let view = PageElement::new("div")
-			.child(Page::reactive({
+			let render_signal = Signal::new(0_i32);
+			let effect_signal = Signal::new(0_i32);
+			let effect_log = Rc::new(RefCell::new(Vec::new()));
+			let view = Page::reactive({
+				let render_signal = render_signal.clone();
 				let effect_signal = effect_signal.clone();
 				let effect_log = Rc::clone(&effect_log);
 				move || {
+					let render_value = render_signal.get();
 					use_retained_effect(
 						{
 							let effect_signal = effect_signal.clone();
@@ -1341,27 +1290,86 @@ mod tests {
 						},
 						deps![effect_signal],
 					);
-					PageElement::new("span").child("value:0").into_page()
+					PageElement::new("span")
+						.child(format!("value:{render_value}"))
+						.into_page()
 				}
-			}))
-			.into_page();
+			});
 
-		let mut registry = crate::hydration::events::EventRegistry::new();
-		install_hydrated_reactive_nodes(&Element::new(root.clone()), &view, &mut registry)
-			.expect("hydration node installation should succeed");
-		store_reactive_node(registry);
-		effect_signal.set(1);
-		with_runtime(|runtime| runtime.flush_updates());
+			let mut registry = crate::hydration::events::EventRegistry::new();
+			install_hydrated_reactive_nodes(&Element::new(root.clone()), &view, &mut registry)
+				.expect("hydration node installation should succeed");
+			store_reactive_node(registry);
+			effect_signal.set(1);
+			with_runtime(|runtime| runtime.flush_updates());
 
-		let log = effect_log.borrow();
-		assert_eq!(
-			log.iter().filter(|entry| entry.as_str() == "run:1").count(),
-			1,
-			"hydration prepasses must not retain duplicate effects: {log:?}"
-		);
-		drop(log);
-		cleanup_reactive_nodes();
-		root.remove();
+			let log = effect_log.borrow();
+			assert_eq!(
+				log.iter().filter(|entry| entry.as_str() == "run:1").count(),
+				1,
+				"only the tracked hydration render should retain an effect: {log:?}"
+			);
+			drop(log);
+			cleanup_reactive_nodes();
+			root.remove();
+		});
+	}
+
+	#[cfg(wasm)]
+	#[wasm_bindgen_test]
+	fn hydration_element_child_prepasses_do_not_retain_effects() {
+		let scope = ReactiveScope::new();
+		scope.enter(|| {
+			cleanup_reactive_nodes();
+			let document = web_sys::window().unwrap().document().unwrap();
+			let root = document.create_element("div").unwrap();
+			root.set_inner_html("<span>value:0</span>");
+			document.body().unwrap().append_child(&root).unwrap();
+
+			let effect_signal = Signal::new(0_i32);
+			let effect_log = Rc::new(RefCell::new(Vec::new()));
+			let view = PageElement::new("div")
+				.child(Page::reactive({
+					let effect_signal = effect_signal.clone();
+					let effect_log = Rc::clone(&effect_log);
+					move || {
+						use_retained_effect(
+							{
+								let effect_signal = effect_signal.clone();
+								let effect_log = Rc::clone(&effect_log);
+								move || {
+									let value = effect_signal.get();
+									effect_log.borrow_mut().push(format!("run:{value}"));
+									let effect_log = Rc::clone(&effect_log);
+									Some(move || {
+										effect_log.borrow_mut().push("cleanup".to_string())
+									})
+								}
+							},
+							deps![effect_signal],
+						);
+						PageElement::new("span").child("value:0").into_page()
+					}
+				}))
+				.into_page();
+
+			let mut registry = crate::hydration::events::EventRegistry::new();
+			install_hydrated_reactive_nodes(&Element::new(root.clone()), &view, &mut registry)
+				.expect("hydration node installation should succeed");
+			store_reactive_node(registry);
+			effect_signal.set(1);
+			with_runtime(|runtime| runtime.flush_updates());
+
+			let log = effect_log.borrow();
+			assert_eq!(
+				log.iter().filter(|entry| entry.as_str() == "run:1").count(),
+				1,
+				"hydration prepasses must not retain duplicate effects: {log:?}"
+			);
+			drop(log);
+			cleanup_reactive_nodes();
+			root.remove();
+		});
 	}
 
 	#[cfg(wasm)]
@@ -1403,186 +1411,198 @@ mod tests {
 	#[cfg(wasm)]
 	#[wasm_bindgen_test]
 	fn reactive_drop_disposes_parent_before_child_cleanup_updates_dependency() {
-		cleanup_reactive_nodes();
-		let document = web_sys::window().unwrap().document().unwrap();
-		let root = document.create_element("div").unwrap();
-		document.body().unwrap().append_child(&root).unwrap();
-		let parent_dependency = Signal::new(0_i32);
-		let effect_dependency = Signal::new(0_i32);
-		let render_count = Rc::new(Cell::new(0_usize));
-		let cleanup_count = Rc::new(Cell::new(0_usize));
-		let view = Page::reactive({
-			let parent_dependency = parent_dependency.clone();
-			let effect_dependency = effect_dependency.clone();
-			let render_count = Rc::clone(&render_count);
-			let cleanup_count = Rc::clone(&cleanup_count);
-			move || {
-				let _ = parent_dependency.get();
-				render_count.set(render_count.get() + 1);
-				retained_cleanup_child(
-					parent_dependency.clone(),
-					effect_dependency.clone(),
-					Rc::clone(&cleanup_count),
-				)
-			}
-		});
-		view.mount(&Element::new(root.clone())).unwrap();
-		with_runtime(|runtime| runtime.flush_updates());
-
-		assert_eq!(render_count.get(), 1);
-		cleanup_reactive_nodes();
-		parent_dependency.set(2);
-		with_runtime(|runtime| runtime.flush_updates());
-
-		assert_eq!(cleanup_count.get(), 1);
-		assert_eq!(render_count.get(), 1, "drop must not re-render the parent");
-		assert_eq!(root.text_content().as_deref(), Some("initial"));
-		assert_eq!(direct_comment_count(&root), 1, "{}", root.inner_html());
-		assert_eq!(
-			root.inner_html(),
-			"<!--reactive-nested--><span>initial</span>"
-		);
-		root.remove();
-	}
-
-	#[cfg(wasm)]
-	#[wasm_bindgen_test]
-	fn reactive_if_drop_disposes_parent_before_child_cleanup_updates_condition() {
-		cleanup_reactive_nodes();
-		let document = web_sys::window().unwrap().document().unwrap();
-		let root = document.create_element("div").unwrap();
-		document.body().unwrap().append_child(&root).unwrap();
-		let parent_dependency = Signal::new(0_i32);
-		let effect_dependency = Signal::new(0_i32);
-		let render_count = Rc::new(Cell::new(0_usize));
-		let cleanup_count = Rc::new(Cell::new(0_usize));
-		let view = Page::reactive_if(
-			{
-				let parent_dependency = parent_dependency.clone();
-				let render_count = Rc::clone(&render_count);
-				move || {
-					render_count.set(render_count.get() + 1);
-					parent_dependency.get() == 0
-				}
-			},
-			{
+		let scope = ReactiveScope::new();
+		scope.enter(|| {
+			cleanup_reactive_nodes();
+			let document = web_sys::window().unwrap().document().unwrap();
+			let root = document.create_element("div").unwrap();
+			document.body().unwrap().append_child(&root).unwrap();
+			let parent_dependency = Signal::new(0_i32);
+			let effect_dependency = Signal::new(0_i32);
+			let render_count = Rc::new(Cell::new(0_usize));
+			let cleanup_count = Rc::new(Cell::new(0_usize));
+			let view = Page::reactive({
 				let parent_dependency = parent_dependency.clone();
 				let effect_dependency = effect_dependency.clone();
+				let render_count = Rc::clone(&render_count);
 				let cleanup_count = Rc::clone(&cleanup_count);
 				move || {
+					let _ = parent_dependency.get();
+					render_count.set(render_count.get() + 1);
 					retained_cleanup_child(
 						parent_dependency.clone(),
 						effect_dependency.clone(),
 						Rc::clone(&cleanup_count),
 					)
 				}
-			},
-			|| PageElement::new("span").child("replacement").into_page(),
-		);
-		view.mount(&Element::new(root.clone())).unwrap();
-		with_runtime(|runtime| runtime.flush_updates());
+			});
+			view.mount(&Element::new(root.clone())).unwrap();
+			with_runtime(|runtime| runtime.flush_updates());
 
-		assert_eq!(render_count.get(), 1);
-		cleanup_reactive_nodes();
-		parent_dependency.set(2);
-		with_runtime(|runtime| runtime.flush_updates());
+			assert_eq!(render_count.get(), 1);
+			cleanup_reactive_nodes();
+			parent_dependency.set(2);
+			with_runtime(|runtime| runtime.flush_updates());
 
-		assert_eq!(cleanup_count.get(), 1);
-		assert_eq!(
-			render_count.get(),
-			1,
-			"drop must not re-evaluate the condition"
-		);
-		assert_eq!(root.text_content().as_deref(), Some("initial"));
-		assert_eq!(direct_comment_count(&root), 1, "{}", root.inner_html());
-		assert_eq!(
-			root.inner_html(),
-			"<!--reactive-nested--><span>initial</span>"
-		);
-		root.remove();
+			assert_eq!(cleanup_count.get(), 1);
+			assert_eq!(render_count.get(), 1, "drop must not re-render the parent");
+			assert_eq!(root.text_content().as_deref(), Some("initial"));
+			assert_eq!(direct_comment_count(&root), 1, "{}", root.inner_html());
+			assert_eq!(
+				root.inner_html(),
+				"<!--reactive-nested--><span>initial</span>"
+			);
+			root.remove();
+		});
+	}
+
+	#[cfg(wasm)]
+	#[wasm_bindgen_test]
+	fn reactive_if_drop_disposes_parent_before_child_cleanup_updates_condition() {
+		let scope = ReactiveScope::new();
+		scope.enter(|| {
+			cleanup_reactive_nodes();
+			let document = web_sys::window().unwrap().document().unwrap();
+			let root = document.create_element("div").unwrap();
+			document.body().unwrap().append_child(&root).unwrap();
+			let parent_dependency = Signal::new(0_i32);
+			let effect_dependency = Signal::new(0_i32);
+			let render_count = Rc::new(Cell::new(0_usize));
+			let cleanup_count = Rc::new(Cell::new(0_usize));
+			let view = Page::reactive_if(
+				{
+					let parent_dependency = parent_dependency.clone();
+					let render_count = Rc::clone(&render_count);
+					move || {
+						render_count.set(render_count.get() + 1);
+						parent_dependency.get() == 0
+					}
+				},
+				{
+					let parent_dependency = parent_dependency.clone();
+					let effect_dependency = effect_dependency.clone();
+					let cleanup_count = Rc::clone(&cleanup_count);
+					move || {
+						retained_cleanup_child(
+							parent_dependency.clone(),
+							effect_dependency.clone(),
+							Rc::clone(&cleanup_count),
+						)
+					}
+				},
+				|| PageElement::new("span").child("replacement").into_page(),
+			);
+			view.mount(&Element::new(root.clone())).unwrap();
+			with_runtime(|runtime| runtime.flush_updates());
+
+			assert_eq!(render_count.get(), 1);
+			cleanup_reactive_nodes();
+			parent_dependency.set(2);
+			with_runtime(|runtime| runtime.flush_updates());
+
+			assert_eq!(cleanup_count.get(), 1);
+			assert_eq!(
+				render_count.get(),
+				1,
+				"drop must not re-evaluate the condition"
+			);
+			assert_eq!(root.text_content().as_deref(), Some("initial"));
+			assert_eq!(direct_comment_count(&root), 1, "{}", root.inner_html());
+			assert_eq!(
+				root.inner_html(),
+				"<!--reactive-nested--><span>initial</span>"
+			);
+			root.remove();
+		});
 	}
 
 	#[cfg(wasm)]
 	#[wasm_bindgen_test]
 	fn hydrated_reactive_owner_refreshes_after_control_adoption() {
-		cleanup_reactive_nodes();
-		let document = web_sys::window().unwrap().document().unwrap();
-		let root = document.create_element("div").unwrap();
-		root.set_inner_html("<span>server</span><input value=\"live\">");
-		let value = Signal::new("server".to_owned());
-		let view = Page::reactive({
-			let value = value.clone();
-			move || {
-				Page::Fragment(vec![
-					PageElement::new("span").child(value.get()).into_page(),
-					PageElement::new("input")
-						.control_binding(ControlBinding::text(value.clone()))
-						.into_page(),
-				])
-			}
+		let scope = ReactiveScope::new();
+		scope.enter(|| {
+			cleanup_reactive_nodes();
+			let document = web_sys::window().unwrap().document().unwrap();
+			let root = document.create_element("div").unwrap();
+			root.set_inner_html("<span>server</span><input value=\"live\">");
+			let value = Signal::new("server".to_owned());
+			let view = Page::reactive({
+				let value = value.clone();
+				move || {
+					Page::Fragment(vec![
+						PageElement::new("span").child(value.get()).into_page(),
+						PageElement::new("input")
+							.control_binding(ControlBinding::text(value.clone()))
+							.into_page(),
+					])
+				}
+			});
+			let mut registry = crate::hydration::events::EventRegistry::new();
+
+			install_hydrated_reactive_nodes(&Element::new(root.clone()), &view, &mut registry)
+				.expect("hydrate");
+
+			assert_eq!(value.get(), "live");
+			assert_eq!(root.text_content().as_deref(), Some("live"));
+			cleanup_reactive_nodes();
+			root.remove();
 		});
-		let mut registry = crate::hydration::events::EventRegistry::new();
-
-		install_hydrated_reactive_nodes(&Element::new(root.clone()), &view, &mut registry)
-			.expect("hydrate");
-
-		assert_eq!(value.get(), "live");
-		assert_eq!(root.text_content().as_deref(), Some("live"));
-		cleanup_reactive_nodes();
-		root.remove();
 	}
 
 	#[cfg(wasm)]
 	#[wasm_bindgen_test]
 	fn failed_branch_hydration_drops_nested_owners_and_markers() {
-		cleanup_reactive_nodes();
-		let document = web_sys::window().unwrap().document().unwrap();
-		let root = document.create_element("div").unwrap();
-		root.set_inner_html("<span>nested:0</span><div></div>");
-		let nested_value = Signal::new(0_i32);
-		let binding_value = Signal::new("server".to_owned());
-		let view = PageElement::new("div")
-			.child(Page::reactive({
-				let nested_value = nested_value.clone();
-				let binding_value = binding_value.clone();
-				move || {
+		let scope = ReactiveScope::new();
+		scope.enter(|| {
+			cleanup_reactive_nodes();
+			let document = web_sys::window().unwrap().document().unwrap();
+			let root = document.create_element("div").unwrap();
+			root.set_inner_html("<span>nested:0</span><div></div>");
+			let nested_value = Signal::new(0_i32);
+			let binding_value = Signal::new("server".to_owned());
+			let view = PageElement::new("div")
+				.child(Page::reactive({
 					let nested_value = nested_value.clone();
-					Page::Fragment(vec![
-						Page::reactive(move || {
-							PageElement::new("span")
-								.child(format!("nested:{}", nested_value.get()))
-								.into_page()
-						}),
-						PageElement::new("input")
-							.control_binding(ControlBinding::text(binding_value.clone()))
-							.into_page(),
-					])
-				}
-			}))
-			.into_page();
-		let mut registry = crate::hydration::events::EventRegistry::new();
+					let binding_value = binding_value.clone();
+					move || {
+						let nested_value = nested_value.clone();
+						Page::Fragment(vec![
+							Page::reactive(move || {
+								PageElement::new("span")
+									.child(format!("nested:{}", nested_value.get()))
+									.into_page()
+							}),
+							PageElement::new("input")
+								.control_binding(ControlBinding::text(binding_value.clone()))
+								.into_page(),
+						])
+					}
+				}))
+				.into_page();
+			let mut registry = crate::hydration::events::EventRegistry::new();
 
-		let error =
-			install_hydrated_reactive_nodes(&Element::new(root.clone()), &view, &mut registry)
-				.expect_err("the later input binding should reject the actual div");
-		assert_eq!(
-			error,
-			HydrationError::EventAttachmentFailed(
-				"text control does not support a <div> element".to_owned(),
-			),
-		);
-		nested_value.set(1);
-		with_runtime(|runtime| runtime.flush_updates());
-		let marker_count = (0..root.child_nodes().length())
-			.filter_map(|index| root.child_nodes().item(index))
-			.filter(|node| node.node_type() == web_sys::Node::COMMENT_NODE)
-			.count();
-		assert_eq!(
-			(root.text_content().as_deref(), marker_count),
-			(Some("nested:0"), 0),
-			"failed hydration must leave the initial DOM inert and marker-free",
-		);
-		cleanup_reactive_nodes();
-		root.remove();
+			let error =
+				install_hydrated_reactive_nodes(&Element::new(root.clone()), &view, &mut registry)
+					.expect_err("the later input binding should reject the actual div");
+			assert_eq!(
+				error,
+				HydrationError::EventAttachmentFailed(
+					"text control does not support a <div> element".to_owned(),
+				),
+			);
+			nested_value.set(1);
+			with_runtime(|runtime| runtime.flush_updates());
+			let marker_count = (0..root.child_nodes().length())
+				.filter_map(|index| root.child_nodes().item(index))
+				.filter(|node| node.node_type() == web_sys::Node::COMMENT_NODE)
+				.count();
+			assert_eq!(
+				(root.text_content().as_deref(), marker_count),
+				(Some("nested:0"), 0),
+				"failed hydration must leave the initial DOM inert and marker-free",
+			);
+			cleanup_reactive_nodes();
+			root.remove();
+		});
 	}
 }

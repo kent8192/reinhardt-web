@@ -6,7 +6,7 @@ use reinhardt_pages::component::suspense::SuspenseBoundary;
 use reinhardt_pages::component::{Component, ControlBinding, IntoPage, Page, PageElement};
 use reinhardt_pages::deps;
 use reinhardt_pages::reactive::{
-	ResourceState, Signal, use_id, use_resource, use_resource_with_key,
+	ReactiveScope, ResourceState, Signal, use_id, use_resource, use_resource_with_key,
 };
 use reinhardt_pages::ssr::{SsrChunk, SsrOptions, SsrRenderer, SsrStream};
 use rstest::rstest;
@@ -64,8 +64,8 @@ fn delayed_suspense_resource_view(delay: Duration, value: &'static str) -> Page 
 	})
 }
 
-fn controlled_select_suspense_option_view() -> Page {
-	let selected = Signal::new(vec!["rust".to_owned()]);
+fn controlled_select_suspense_option_view(scope: &ReactiveScope) -> Page {
+	let selected = scope.enter(|| Signal::new(vec!["rust".to_owned()]));
 
 	PageElement::new("select")
 		.attr("multiple", "multiple")
@@ -102,10 +102,11 @@ fn controlled_select_suspense_option_view() -> Page {
 }
 
 fn controlled_single_select_suspense_duplicate_view(
+	scope: &ReactiveScope,
 	before_matches: bool,
 	inside_matches: bool,
 ) -> Page {
-	let selected = Signal::new("duplicate".to_owned());
+	let selected = scope.enter(|| Signal::new("duplicate".to_owned()));
 	let before_value = if before_matches { "duplicate" } else { "other" };
 	let resolved_value = if inside_matches { "duplicate" } else { "other" };
 
@@ -154,8 +155,11 @@ fn controlled_single_select_suspense_duplicate_view(
 		.into_page()
 }
 
-fn controlled_single_select_timed_out_suspense_view(fallback_matches: bool) -> Page {
-	let selected = Signal::new("duplicate".to_owned());
+fn controlled_single_select_timed_out_suspense_view(
+	scope: &ReactiveScope,
+	fallback_matches: bool,
+) -> Page {
+	let selected = scope.enter(|| Signal::new("duplicate".to_owned()));
 	let fallback_value = if fallback_matches {
 		"duplicate"
 	} else {
@@ -777,7 +781,8 @@ async fn streaming_single_select_without_state_script_commits_fallback_selection
 	// Arrange
 	let mut options = SsrOptions::new();
 	options.include_state_script = false;
-	let view = controlled_single_select_timed_out_suspense_view(true);
+	let reactive_scope = ReactiveScope::new();
+	let view = controlled_single_select_timed_out_suspense_view(&reactive_scope, true);
 	let mut renderer = SsrRenderer::with_options(options);
 
 	// Act
@@ -796,7 +801,8 @@ async fn streaming_single_select_without_state_script_commits_fallback_selection
 #[tokio::test]
 async fn streaming_controlled_select_replacement_preserves_selected_values() {
 	// Arrange
-	let view = controlled_select_suspense_option_view();
+	let reactive_scope = ReactiveScope::new();
+	let view = controlled_select_suspense_option_view(&reactive_scope);
 	let mut buffered_renderer = SsrRenderer::new();
 	let mut streaming_renderer = SsrRenderer::new();
 
@@ -836,7 +842,12 @@ async fn streaming_controlled_single_select_preserves_first_duplicate_in_tree_or
 	#[case] selected_label: &str,
 ) {
 	// Arrange
-	let view = controlled_single_select_suspense_duplicate_view(before_matches, inside_matches);
+	let reactive_scope = ReactiveScope::new();
+	let view = controlled_single_select_suspense_duplicate_view(
+		&reactive_scope,
+		before_matches,
+		inside_matches,
+	);
 	let mut buffered_renderer = SsrRenderer::new();
 	let mut streaming_renderer = SsrRenderer::new();
 
@@ -874,7 +885,8 @@ async fn streaming_timed_out_single_select_uses_emitted_fallback_tree_order(
 	#[case] selected_label: &str,
 ) {
 	// Arrange
-	let view = controlled_single_select_timed_out_suspense_view(fallback_matches);
+	let reactive_scope = ReactiveScope::new();
+	let view = controlled_single_select_timed_out_suspense_view(&reactive_scope, fallback_matches);
 	let mut renderer =
 		SsrRenderer::with_options(SsrOptions::new().resource_timeout(Duration::from_millis(1)));
 

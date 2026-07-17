@@ -236,6 +236,32 @@ pub struct SsrRenderer {
 	suspense_boundary_counter: u64,
 	marker_resource_context: Rc<RefCell<SsrResourceContext>>,
 	marker_id_counter: Rc<Cell<usize>>,
+	active_reactive_scope: Rc<RefCell<Option<Rc<ReactiveScope>>>>,
+}
+
+/// Restores the previous reactive scope when an SSR render entrypoint exits.
+struct ActiveReactiveScopeGuard {
+	active_scope: Rc<RefCell<Option<Rc<ReactiveScope>>>>,
+	previous_scope: Option<Rc<ReactiveScope>>,
+}
+
+impl ActiveReactiveScopeGuard {
+	fn install(
+		active_scope: Rc<RefCell<Option<Rc<ReactiveScope>>>>,
+		reactive_scope: Rc<ReactiveScope>,
+	) -> Self {
+		let previous_scope = active_scope.borrow_mut().replace(reactive_scope);
+		Self {
+			active_scope,
+			previous_scope,
+		}
+	}
+}
+
+impl Drop for ActiveReactiveScopeGuard {
+	fn drop(&mut self) {
+		drop(self.active_scope.replace(self.previous_scope.take()));
+	}
 }
 
 impl Clone for SsrRenderer {
@@ -252,6 +278,9 @@ impl Clone for SsrRenderer {
 				self.options.resource_timeout,
 			))),
 			marker_id_counter: Rc::new(Cell::new(0)),
+			active_reactive_scope: Rc::new(RefCell::new(
+				self.active_reactive_scope.borrow().clone(),
+			)),
 		}
 	}
 }
@@ -410,6 +439,7 @@ impl SsrRenderer {
 				SsrOptions::default().resource_timeout,
 			))),
 			marker_id_counter: Rc::new(Cell::new(0)),
+			active_reactive_scope: Rc::new(RefCell::new(None)),
 		}
 	}
 
@@ -429,6 +459,7 @@ impl SsrRenderer {
 				resource_timeout,
 			))),
 			marker_id_counter: Rc::new(Cell::new(0)),
+			active_reactive_scope: Rc::new(RefCell::new(None)),
 		}
 	}
 
@@ -562,6 +593,15 @@ impl SsrRenderer {
 		self.options.include_state_script
 	}
 
+	fn with_active_reactive_scope<R>(&self, f: impl FnOnce() -> R) -> R {
+		let scope = self.active_reactive_scope.borrow().clone();
+		if let Some(scope) = scope {
+			scope.enter(f)
+		} else {
+			f()
+		}
+	}
+
 	fn begin_buffered_render_pass(&mut self) {
 		self.rendered_head = None;
 	}
@@ -574,7 +614,7 @@ impl SsrRenderer {
 
 	fn record_buffered_view_head(&mut self, view: &Page) {
 		if self.rendered_head.is_none() {
-			self.rendered_head = view.find_topmost_head_owned();
+			self.rendered_head = self.with_active_reactive_scope(|| view.find_topmost_head_owned());
 		}
 	}
 
@@ -697,6 +737,10 @@ impl SsrRenderer {
 		if !self.should_resolve_resources() {
 			let reactive_scope = Rc::new(ReactiveScope::new());
 			let _render_owner = register_render_owner(&reactive_scope);
+			let _active_scope_guard = ActiveReactiveScopeGuard::install(
+				Rc::clone(&self.active_reactive_scope),
+				Rc::clone(&reactive_scope),
+			);
 			let context = Rc::new(RefCell::new(SsrResourceContext::new(
 				self.options.resource_timeout,
 			)));
@@ -730,6 +774,10 @@ impl SsrRenderer {
 
 		let reactive_scope = Rc::new(ReactiveScope::new());
 		let render_owner = register_render_owner(&reactive_scope);
+		let _active_scope_guard = ActiveReactiveScopeGuard::install(
+			Rc::clone(&self.active_reactive_scope),
+			Rc::clone(&reactive_scope),
+		);
 		let context = Rc::new(RefCell::new(SsrResourceContext::new(
 			self.options.resource_timeout,
 		)));
@@ -825,7 +873,10 @@ impl SsrRenderer {
 								let replacement = scope_id_counter_with(
 									Rc::clone(&runtime.id_counter),
 									scope_context(Rc::clone(&runtime.context), async {
-										if boundary.node.is_pending() {
+										if runtime
+											.reactive_scope
+											.enter(|| boundary.node.is_pending())
+										{
 											return None;
 										}
 										let (replacement, nested_boundaries) = loop {
@@ -973,6 +1024,10 @@ impl SsrRenderer {
 	{
 		let reactive_scope = Rc::new(ReactiveScope::new());
 		let _render_owner = register_render_owner(&reactive_scope);
+		let _active_scope_guard = ActiveReactiveScopeGuard::install(
+			Rc::clone(&self.active_reactive_scope),
+			Rc::clone(&reactive_scope),
+		);
 		let context = if clear_resource_states {
 			Rc::new(RefCell::new(SsrResourceContext::new(
 				self.options.resource_timeout,
@@ -1152,16 +1207,18 @@ impl SsrRenderer {
 						.await
 				}
 				Page::ReactiveIf(reactive_if) => {
-					let branch = if reactive_if.condition() {
-						reactive_if.then_view()
-					} else {
-						reactive_if.else_view()
-					};
+					let branch = self.with_active_reactive_scope(|| {
+						if reactive_if.condition() {
+							reactive_if.then_view()
+						} else {
+							reactive_if.else_view()
+						}
+					});
 					self.render_stream_shell_page_with_selection(&branch, boundaries, selection)
 						.await
 				}
 				Page::Reactive(reactive) => {
-					let rendered = reactive.render();
+					let rendered = self.with_active_reactive_scope(|| reactive.render());
 					self.render_stream_shell_page_with_selection(&rendered, boundaries, selection)
 						.await
 				}
@@ -1183,7 +1240,7 @@ impl SsrRenderer {
 					let boundary_guard = super::resource_context::with_active_context(|context| {
 						enter_boundary(context, boundary_id.clone())
 					});
-					let content_page = node.render_content();
+					let content_page = self.with_active_reactive_scope(|| node.render_content());
 					let content = self
 						.render_stream_shell_page_with_selection(
 							&content_page,
@@ -1216,12 +1273,15 @@ impl SsrRenderer {
 							resolve_boundary_resources(&context, &boundary_id).await;
 						self.restore_deterministic_render_snapshot(boundary_start);
 						boundaries.truncate(nested_boundary_start);
-						if boundary_resolved && !node.is_pending() {
+						if boundary_resolved
+							&& !self.with_active_reactive_scope(|| node.is_pending())
+						{
 							let boundary_guard =
 								super::resource_context::with_active_context(|context| {
 									enter_boundary(context, boundary_id.clone())
 								});
-							let resolved_page = node.render_content();
+							let resolved_page =
+								self.with_active_reactive_scope(|| node.render_content());
 							let resolved_selection =
 								boundary_selection.as_ref().map(SsrSelectionState::fork);
 							let resolved = self
@@ -1250,7 +1310,8 @@ impl SsrRenderer {
 							parent.reserve_pending_match();
 						}
 						self.restore_deterministic_render_snapshot(boundary_start);
-						let fallback_page = node.render_fallback();
+						let fallback_page =
+							self.with_active_reactive_scope(|| node.render_fallback());
 						let fallback_selection = if inline_single_select_uses_fallback {
 							selection.clone()
 						} else if self.should_resolve_resources() {
@@ -1285,9 +1346,10 @@ impl SsrRenderer {
 							selection: pending_selection,
 						});
 						self.render_suspense_fallback(&boundary_id, fallback)
-					} else if node.is_pending() {
+					} else if self.with_active_reactive_scope(|| node.is_pending()) {
 						self.restore_deterministic_render_snapshot(boundary_start);
-						let fallback_page = node.render_fallback();
+						let fallback_page =
+							self.with_active_reactive_scope(|| node.render_fallback());
 						let fallback = self
 							.render_stream_shell_page_with_selection(
 								&fallback_page,
@@ -1306,7 +1368,7 @@ impl SsrRenderer {
 					}
 				}
 				Page::Deferred(node) => {
-					let content = node.render_content();
+					let content = self.with_active_reactive_scope(|| node.render_content());
 					self.render_stream_shell_page_with_selection(&content, boundaries, selection)
 						.await
 				}
@@ -1412,16 +1474,18 @@ impl SsrRenderer {
 						.await
 				}
 				Page::ReactiveIf(reactive_if) => {
-					let branch = if reactive_if.condition() {
-						reactive_if.then_view()
-					} else {
-						reactive_if.else_view()
-					};
+					let branch = self.with_active_reactive_scope(|| {
+						if reactive_if.condition() {
+							reactive_if.then_view()
+						} else {
+							reactive_if.else_view()
+						}
+					});
 					self.render_async_page_with_selection(&branch, mode, selection)
 						.await
 				}
 				Page::Reactive(reactive) => {
-					let rendered = reactive.render();
+					let rendered = self.with_active_reactive_scope(|| reactive.render());
 					self.render_async_page_with_selection(&rendered, mode, selection)
 						.await
 				}
@@ -1442,7 +1506,7 @@ impl SsrRenderer {
 					let boundary_guard = super::resource_context::with_active_context(|context| {
 						enter_boundary(context, boundary_id.clone())
 					});
-					let content_page = node.render_content();
+					let content_page = self.with_active_reactive_scope(|| node.render_content());
 					let content = self
 						.render_async_page_with_selection(
 							&content_page,
@@ -1468,15 +1532,16 @@ impl SsrRenderer {
 						{
 							parent.commit_from(rendered);
 						}
-						if has_pending || node.is_pending() {
+						if has_pending || self.with_active_reactive_scope(|| node.is_pending()) {
 							self.restore_deterministic_render_snapshot(boundary_start);
 						}
 						return content;
 					}
 
-					if has_pending || node.is_pending() {
+					if has_pending || self.with_active_reactive_scope(|| node.is_pending()) {
 						self.restore_deterministic_render_snapshot(boundary_start);
-						let fallback_page = node.render_fallback();
+						let fallback_page =
+							self.with_active_reactive_scope(|| node.render_fallback());
 						let fallback_selection =
 							boundary_selection.as_ref().map(SsrSelectionState::fork);
 						let fallback = self
@@ -1518,7 +1583,7 @@ impl SsrRenderer {
 								return self.render_suspense_fallback(&boundary_id, fallback);
 							}
 							self.restore_deterministic_render_snapshot(boundary_start);
-							if node.is_pending() {
+							if self.with_active_reactive_scope(|| node.is_pending()) {
 								if let (Some(parent), Some(rendered)) =
 									(selection.as_ref(), fallback_selection.as_ref())
 								{
@@ -1539,7 +1604,8 @@ impl SsrRenderer {
 							super::resource_context::with_active_context(|context| {
 								enter_boundary(context, boundary_id.clone())
 							});
-						let replacement_page = node.render_content();
+						let replacement_page =
+							self.with_active_reactive_scope(|| node.render_content());
 						let replacement_selection =
 							boundary_selection.as_ref().map(SsrSelectionState::fork);
 						let replacement = self
@@ -1573,7 +1639,7 @@ impl SsrRenderer {
 					}
 				}
 				Page::Deferred(node) => {
-					let content = node.render_content();
+					let content = self.with_active_reactive_scope(|| node.render_content());
 					self.render_async_page_with_selection(&content, mode, selection)
 						.await
 				}
@@ -2178,38 +2244,44 @@ mod tests {
 
 	#[test]
 	fn render_element_opening_normalizes_controlled_html_names() {
-		let element = PageElement::new("INPUT")
-			.attr("VALUE", "stale")
-			.control_binding(ControlBinding::text(Signal::new("current".to_owned())));
-		let projection = project(element.bound_control());
+		ReactiveScope::run(|| {
+			let element = PageElement::new("INPUT")
+				.attr("VALUE", "stale")
+				.control_binding(ControlBinding::text(Signal::new("current".to_owned())));
+			let projection = project(element.bound_control());
 
-		assert_eq!(
-			render_element_opening(&element, &projection, None),
-			"<INPUT value=\"current\""
-		);
+			assert_eq!(
+				render_element_opening(&element, &projection, None),
+				"<INPUT value=\"current\""
+			);
+		});
 	}
 
 	#[tokio::test]
 	async fn controlled_uppercase_textarea_and_select_render_in_buffered_and_streaming_paths() {
-		let textarea = PageElement::new("TEXTAREA")
-			.control_binding(ControlBinding::text(Signal::new("current".to_owned())))
-			.child("stale child")
-			.into_page();
-		let select = PageElement::new("SELECT")
-			.control_binding(ControlBinding::select_one(Signal::new(
-				"current".to_owned(),
-			)))
-			.child(
-				PageElement::new("OPTION")
-					.attr("value", "current")
-					.child("Current"),
-			)
-			.child(
-				PageElement::new("OPTION")
-					.attr("value", "stale")
-					.child("Stale"),
-			)
-			.into_page();
+		let reactive_scope = ReactiveScope::new();
+		let (textarea, select) = reactive_scope.enter(|| {
+			let textarea = PageElement::new("TEXTAREA")
+				.control_binding(ControlBinding::text(Signal::new("current".to_owned())))
+				.child("stale child")
+				.into_page();
+			let select = PageElement::new("SELECT")
+				.control_binding(ControlBinding::select_one(Signal::new(
+					"current".to_owned(),
+				)))
+				.child(
+					PageElement::new("OPTION")
+						.attr("value", "current")
+						.child("Current"),
+				)
+				.child(
+					PageElement::new("OPTION")
+						.attr("value", "stale")
+						.child("Stale"),
+				)
+				.into_page();
+			(textarea, select)
+		});
 		let view = Page::Fragment(vec![textarea, select]);
 		let mut buffered_renderer = SsrRenderer::new();
 		let mut streaming_renderer = SsrRenderer::new();
@@ -2238,6 +2310,36 @@ mod tests {
 		let mut renderer = SsrRenderer::new();
 		let html = renderer.render(&component).await;
 		assert_eq!(html, "<div class=\"test\">Hello</div>");
+	}
+
+	#[tokio::test]
+	async fn ssr_reactive_traversal_reenters_the_render_scope() {
+		let mut renderer = SsrRenderer::new();
+		let html = renderer
+			.render_view_factory(|| {
+				Page::reactive(|| {
+					let value = Signal::new("scoped traversal");
+					Page::text(value.get())
+				})
+			})
+			.await;
+
+		assert_eq!(html, "scoped traversal");
+	}
+
+	#[tokio::test]
+	async fn streaming_ssr_reactive_traversal_reenters_the_render_scope() {
+		let mut renderer = SsrRenderer::new();
+		let html = renderer
+			.render_page_with_view_head(Page::reactive(|| {
+				let value = Signal::new("streamed scoped traversal");
+				Page::text(value.get())
+			}))
+			.await
+			.collect_string()
+			.await;
+
+		assert!(html.contains("streamed scoped traversal"));
 	}
 
 	#[tokio::test]
@@ -2273,7 +2375,8 @@ mod tests {
 			}
 		}
 
-		let signal = Signal::new(0);
+		let reactive_scope = ReactiveScope::new();
+		let signal = reactive_scope.enter(|| Signal::new(0));
 		let render_count = Rc::new(RefCell::new(0));
 		let effect_run_count = Rc::new(RefCell::new(0));
 		let cleanup_count = Rc::new(RefCell::new(0));
@@ -2299,7 +2402,8 @@ mod tests {
 	#[tokio::test]
 	#[serial]
 	async fn test_ssr_head_lookup_does_not_retain_deferred_content_effects() {
-		let signal = Signal::new(0_i32);
+		let reactive_scope = ReactiveScope::new();
+		let signal = reactive_scope.enter(|| Signal::new(0_i32));
 		let effect_run_count = Rc::new(RefCell::new(0_usize));
 		let view = Page::Deferred(DeferredNode::new(
 			"retained-effect-head-lookup",

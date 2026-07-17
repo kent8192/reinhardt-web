@@ -248,17 +248,13 @@ fn take_rejected_number_snapshot(binding: &ControlBinding) -> Option<RejectedNum
 	}
 	ACTIVE_REJECTED_NUMBER_SNAPSHOTS.with(|active| {
 		let active = active.borrow();
-		let Some(snapshots) = active.as_ref() else {
-			return None;
-		};
+		let snapshots = active.as_ref()?;
 		let mut snapshots = snapshots.borrow_mut();
 		let position = next_binding_position(&ACTIVE_MOUNT_NUMBER_POSITIONS, binding);
-		let Some(index) = snapshots.iter().position(|snapshot| {
+		let index = snapshots.iter().position(|snapshot| {
 			snapshot.target == binding.target()
 				&& (snapshot.position.is_none() || snapshot.position == position)
-		}) else {
-			return None;
-		};
+		})?;
 		Some(snapshots.remove(index))
 	})
 }
@@ -1213,7 +1209,7 @@ mod tests {
 	use super::*;
 	use crate::component::{ControlBinding, ControlBindingError, ControlKind};
 	use crate::dom::Element;
-	use crate::reactive::Signal;
+	use crate::reactive::{ReactiveScope, Signal};
 	use wasm_bindgen::JsCast;
 	use wasm_bindgen_test::*;
 
@@ -1231,389 +1227,443 @@ mod tests {
 
 	#[wasm_bindgen_test]
 	fn mounted_text_control_synchronizes_both_directions() {
-		let element = element("input");
-		let input: web_sys::HtmlInputElement = element.as_web_sys().clone().unchecked_into();
-		let signal = Signal::new("signal".to_owned());
-		let _controller =
-			ControlBindingController::mount(element, ControlBinding::text(signal.clone()))
-				.expect("binding");
+		let scope = ReactiveScope::new();
+		scope.enter(|| {
+			let element = element("input");
+			let input: web_sys::HtmlInputElement = element.as_web_sys().clone().unchecked_into();
+			let signal = Signal::new("signal".to_owned());
+			let _controller =
+				ControlBindingController::mount(element, ControlBinding::text(signal.clone()))
+					.expect("binding");
 
-		assert_eq!(input.value(), "signal");
-		input.set_value("dom");
-		input
-			.dispatch_event(&web_sys::InputEvent::new("input").expect("input event"))
-			.expect("dispatch");
-		assert_eq!(signal.get(), "dom");
-		signal.set("updated".to_owned());
-		assert_eq!(input.value(), "updated");
+			assert_eq!(input.value(), "signal");
+			input.set_value("dom");
+			input
+				.dispatch_event(&web_sys::InputEvent::new("input").expect("input event"))
+				.expect("dispatch");
+			assert_eq!(signal.get(), "dom");
+			signal.set("updated".to_owned());
+			assert_eq!(input.value(), "updated");
+		});
 	}
 
 	#[wasm_bindgen_test]
 	fn hydration_adopts_live_dom_without_initial_write() {
-		let element = element("input");
-		let input: web_sys::HtmlInputElement = element.as_web_sys().clone().unchecked_into();
-		input.set_value("restored");
-		input.set_selection_range(3, 3).expect("selection");
-		let signal = Signal::new("server".to_owned());
+		let scope = ReactiveScope::new();
+		scope.enter(|| {
+			let element = element("input");
+			let input: web_sys::HtmlInputElement = element.as_web_sys().clone().unchecked_into();
+			input.set_value("restored");
+			input.set_selection_range(3, 3).expect("selection");
+			let signal = Signal::new("server".to_owned());
 
-		let _controller =
-			ControlBindingController::hydrate(element, ControlBinding::text(signal.clone()))
-				.expect("binding");
+			let _controller =
+				ControlBindingController::hydrate(element, ControlBinding::text(signal.clone()))
+					.expect("binding");
 
-		assert_eq!(signal.get(), "restored");
-		assert_eq!(input.selection_start().expect("selection"), Some(3));
+			assert_eq!(signal.get(), "restored");
+			assert_eq!(input.selection_start().expect("selection"), Some(3));
+		});
 	}
 
 	#[wasm_bindgen_test]
 	fn hydration_adoption_updates_text_default_for_form_reset() {
-		let form = element("form");
-		let input = element("input");
-		let raw_input: web_sys::HtmlInputElement = input.as_web_sys().clone().unchecked_into();
-		raw_input.set_default_value("server");
-		raw_input.set_value("restored");
-		form.as_web_sys()
-			.append_child(input.as_web_sys())
-			.expect("append");
-		let signal = Signal::new("server".to_owned());
+		let scope = ReactiveScope::new();
+		scope.enter(|| {
+			let form = element("form");
+			let input = element("input");
+			let raw_input: web_sys::HtmlInputElement = input.as_web_sys().clone().unchecked_into();
+			raw_input.set_default_value("server");
+			raw_input.set_value("restored");
+			form.as_web_sys()
+				.append_child(input.as_web_sys())
+				.expect("append");
+			let signal = Signal::new("server".to_owned());
 
-		let _controller =
-			ControlBindingController::hydrate(input, ControlBinding::text(signal.clone()))
-				.expect("binding");
-		form.as_web_sys()
-			.clone()
-			.unchecked_into::<web_sys::HtmlFormElement>()
-			.reset();
+			let _controller =
+				ControlBindingController::hydrate(input, ControlBinding::text(signal.clone()))
+					.expect("binding");
+			form.as_web_sys()
+				.clone()
+				.unchecked_into::<web_sys::HtmlFormElement>()
+				.reset();
 
-		assert_eq!(signal.get(), "restored");
-		assert_eq!(raw_input.value(), "restored");
+			assert_eq!(signal.get(), "restored");
+			assert_eq!(raw_input.value(), "restored");
+		});
 	}
 
 	#[wasm_bindgen_test]
 	fn hydration_adoption_updates_checked_default_for_form_reset() {
-		let form = element("form");
-		let input = element("input");
-		let raw_input: web_sys::HtmlInputElement = input.as_web_sys().clone().unchecked_into();
-		raw_input.set_type("checkbox");
-		raw_input.set_default_checked(false);
-		raw_input.set_checked(true);
-		form.as_web_sys()
-			.append_child(input.as_web_sys())
-			.expect("append");
-		let signal = Signal::new(false);
+		let scope = ReactiveScope::new();
+		scope.enter(|| {
+			let form = element("form");
+			let input = element("input");
+			let raw_input: web_sys::HtmlInputElement = input.as_web_sys().clone().unchecked_into();
+			raw_input.set_type("checkbox");
+			raw_input.set_default_checked(false);
+			raw_input.set_checked(true);
+			form.as_web_sys()
+				.append_child(input.as_web_sys())
+				.expect("append");
+			let signal = Signal::new(false);
 
-		let _controller =
-			ControlBindingController::hydrate(input, ControlBinding::checkbox(signal.clone()))
-				.expect("binding");
-		form.as_web_sys()
-			.clone()
-			.unchecked_into::<web_sys::HtmlFormElement>()
-			.reset();
+			let _controller =
+				ControlBindingController::hydrate(input, ControlBinding::checkbox(signal.clone()))
+					.expect("binding");
+			form.as_web_sys()
+				.clone()
+				.unchecked_into::<web_sys::HtmlFormElement>()
+				.reset();
 
-		assert!(signal.get());
-		assert!(raw_input.checked());
+			assert!(signal.get());
+			assert!(raw_input.checked());
+		});
 	}
 
 	#[wasm_bindgen_test]
 	fn hydration_adoption_updates_option_defaults_for_form_reset() {
-		let form = element("form");
-		let select = element("select");
-		let raw_select: web_sys::HtmlSelectElement = select.as_web_sys().clone().unchecked_into();
-		for (value, selected) in [("server", true), ("restored", false)] {
-			let option: web_sys::HtmlOptionElement = web_sys::window()
-				.expect("window")
-				.document()
-				.expect("document")
-				.create_element("option")
-				.expect("option")
-				.unchecked_into();
-			option.set_value(value);
-			option.set_default_selected(selected);
-			raw_select.append_child(&option).expect("append option");
-		}
-		raw_select.set_value("restored");
-		form.as_web_sys()
-			.append_child(select.as_web_sys())
-			.expect("append");
-		let signal = Signal::new("server".to_owned());
+		let scope = ReactiveScope::new();
+		scope.enter(|| {
+			let form = element("form");
+			let select = element("select");
+			let raw_select: web_sys::HtmlSelectElement =
+				select.as_web_sys().clone().unchecked_into();
+			for (value, selected) in [("server", true), ("restored", false)] {
+				let option: web_sys::HtmlOptionElement = web_sys::window()
+					.expect("window")
+					.document()
+					.expect("document")
+					.create_element("option")
+					.expect("option")
+					.unchecked_into();
+				option.set_value(value);
+				option.set_default_selected(selected);
+				raw_select.append_child(&option).expect("append option");
+			}
+			raw_select.set_value("restored");
+			form.as_web_sys()
+				.append_child(select.as_web_sys())
+				.expect("append");
+			let signal = Signal::new("server".to_owned());
 
-		let _controller =
-			ControlBindingController::hydrate(select, ControlBinding::select_one(signal.clone()))
-				.expect("binding");
-		form.as_web_sys()
-			.clone()
-			.unchecked_into::<web_sys::HtmlFormElement>()
-			.reset();
+			let _controller = ControlBindingController::hydrate(
+				select,
+				ControlBinding::select_one(signal.clone()),
+			)
+			.expect("binding");
+			form.as_web_sys()
+				.clone()
+				.unchecked_into::<web_sys::HtmlFormElement>()
+				.reset();
 
-		assert_eq!(signal.get(), "restored");
-		assert_eq!(raw_select.value(), "restored");
+			assert_eq!(signal.get(), "restored");
+			assert_eq!(raw_select.value(), "restored");
+		});
 	}
 
 	#[wasm_bindgen_test]
 	fn same_value_signal_write_preserves_caret() {
-		let element = element("input");
-		let input: web_sys::HtmlInputElement = element.as_web_sys().clone().unchecked_into();
-		let signal = Signal::new("hello".to_owned());
-		let _controller =
-			ControlBindingController::mount(element, ControlBinding::text(signal.clone()))
-				.expect("binding");
-		input.set_selection_range(2, 2).expect("selection");
+		let scope = ReactiveScope::new();
+		scope.enter(|| {
+			let element = element("input");
+			let input: web_sys::HtmlInputElement = element.as_web_sys().clone().unchecked_into();
+			let signal = Signal::new("hello".to_owned());
+			let _controller =
+				ControlBindingController::mount(element, ControlBinding::text(signal.clone()))
+					.expect("binding");
+			input.set_selection_range(2, 2).expect("selection");
 
-		signal.set("hello".to_owned());
+			signal.set("hello".to_owned());
 
-		assert_eq!(input.selection_start().expect("selection"), Some(2));
+			assert_eq!(input.selection_start().expect("selection"), Some(2));
+		});
 	}
 
 	#[wasm_bindgen_test]
 	fn invalid_numeric_raw_is_preserved_until_signal_changes() {
-		let element = element("input");
-		let input: web_sys::HtmlInputElement = element.as_web_sys().clone().unchecked_into();
-		input.set_type("number");
-		let signal = Signal::new(12_i32);
-		let _controller =
-			ControlBindingController::mount(element, ControlBinding::number(signal.clone()))
-				.expect("binding");
-		input.set_value("2147483648");
+		let scope = ReactiveScope::new();
+		scope.enter(|| {
+			let element = element("input");
+			let input: web_sys::HtmlInputElement = element.as_web_sys().clone().unchecked_into();
+			input.set_type("number");
+			let signal = Signal::new(12_i32);
+			let _controller =
+				ControlBindingController::mount(element, ControlBinding::number(signal.clone()))
+					.expect("binding");
+			input.set_value("2147483648");
 
-		input
-			.dispatch_event(&web_sys::InputEvent::new("input").expect("input event"))
-			.expect("dispatch");
+			input
+				.dispatch_event(&web_sys::InputEvent::new("input").expect("input event"))
+				.expect("dispatch");
 
-		assert_eq!(signal.get(), 12);
-		assert_eq!(input.value(), "2147483648");
-		signal.set(13);
-		assert_eq!(input.value(), "13");
+			assert_eq!(signal.get(), 12);
+			assert_eq!(input.value(), "2147483648");
+			signal.set(13);
+			assert_eq!(input.value(), "13");
+		});
 	}
 
 	#[wasm_bindgen_test]
 	fn checkbox_radio_and_select_kinds_synchronize() {
-		let checkbox = element("input");
-		let checkbox_input: web_sys::HtmlInputElement =
-			checkbox.as_web_sys().clone().unchecked_into();
-		checkbox_input.set_type("checkbox");
-		let checked = Signal::new(false);
-		let _checkbox_controller =
-			ControlBindingController::mount(checkbox, ControlBinding::checkbox(checked.clone()))
-				.expect("checkbox");
-		checkbox_input.set_checked(true);
-		checkbox_input
-			.dispatch_event(&web_sys::Event::new("change").expect("change"))
-			.expect("dispatch");
-		assert!(checked.get());
+		let scope = ReactiveScope::new();
+		scope.enter(|| {
+			let checkbox = element("input");
+			let checkbox_input: web_sys::HtmlInputElement =
+				checkbox.as_web_sys().clone().unchecked_into();
+			checkbox_input.set_type("checkbox");
+			let checked = Signal::new(false);
+			let _checkbox_controller = ControlBindingController::mount(
+				checkbox,
+				ControlBinding::checkbox(checked.clone()),
+			)
+			.expect("checkbox");
+			checkbox_input.set_checked(true);
+			checkbox_input
+				.dispatch_event(&web_sys::Event::new("change").expect("change"))
+				.expect("dispatch");
+			assert!(checked.get());
 
-		let radio = element("input");
-		let radio_input: web_sys::HtmlInputElement = radio.as_web_sys().clone().unchecked_into();
-		radio_input.set_type("radio");
-		let selected = Signal::new("other".to_owned());
-		let _radio_controller = ControlBindingController::mount(
-			radio,
-			ControlBinding::radio(selected.clone(), "choice".to_owned()),
-		)
-		.expect("radio");
-		radio_input.set_checked(true);
-		radio_input
-			.dispatch_event(&web_sys::Event::new("change").expect("change"))
-			.expect("dispatch");
-		assert_eq!(selected.get(), "choice");
+			let radio = element("input");
+			let radio_input: web_sys::HtmlInputElement =
+				radio.as_web_sys().clone().unchecked_into();
+			radio_input.set_type("radio");
+			let selected = Signal::new("other".to_owned());
+			let _radio_controller = ControlBindingController::mount(
+				radio,
+				ControlBinding::radio(selected.clone(), "choice".to_owned()),
+			)
+			.expect("radio");
+			radio_input.set_checked(true);
+			radio_input
+				.dispatch_event(&web_sys::Event::new("change").expect("change"))
+				.expect("dispatch");
+			assert_eq!(selected.get(), "choice");
 
-		let select = element("select");
-		let select_input: web_sys::HtmlSelectElement = select.as_web_sys().clone().unchecked_into();
-		select_input.set_multiple(true);
-		for value in ["a", "b", "c"] {
-			let option = web_sys::window()
-				.expect("window")
-				.document()
-				.expect("document")
-				.create_element("option")
-				.expect("option");
-			let option: web_sys::HtmlOptionElement = option.unchecked_into();
-			option.set_value(value);
-			select_input.append_child(&option).expect("append option");
-		}
-		let selected_many = Signal::new(vec!["b".to_owned()]);
-		let _select_controller = ControlBindingController::mount(
-			select,
-			ControlBinding::select_many(selected_many.clone()),
-		)
-		.expect("select");
-		assert!(
-			select_input
-				.options()
-				.item(1)
-				.expect("option")
-				.unchecked_into::<web_sys::HtmlOptionElement>()
-				.selected()
-		);
+			let select = element("select");
+			let select_input: web_sys::HtmlSelectElement =
+				select.as_web_sys().clone().unchecked_into();
+			select_input.set_multiple(true);
+			for value in ["a", "b", "c"] {
+				let option = web_sys::window()
+					.expect("window")
+					.document()
+					.expect("document")
+					.create_element("option")
+					.expect("option");
+				let option: web_sys::HtmlOptionElement = option.unchecked_into();
+				option.set_value(value);
+				select_input.append_child(&option).expect("append option");
+			}
+			let selected_many = Signal::new(vec!["b".to_owned()]);
+			let _select_controller = ControlBindingController::mount(
+				select,
+				ControlBinding::select_many(selected_many.clone()),
+			)
+			.expect("select");
+			assert!(
+				select_input
+					.options()
+					.item(1)
+					.expect("option")
+					.unchecked_into::<web_sys::HtmlOptionElement>()
+					.selected()
+			);
 
-		let select_one = element("select");
-		let select_one_input: web_sys::HtmlSelectElement =
-			select_one.as_web_sys().clone().unchecked_into();
-		for value in ["first", "second"] {
-			let option = web_sys::window()
-				.expect("window")
-				.document()
-				.expect("document")
-				.create_element("option")
-				.expect("option");
-			let option: web_sys::HtmlOptionElement = option.unchecked_into();
-			option.set_value(value);
-			select_one_input
-				.append_child(&option)
-				.expect("append option");
-		}
-		let selected_one = Signal::new("second".to_owned());
-		let _select_one_controller = ControlBindingController::mount(
-			select_one,
-			ControlBinding::select_one(selected_one.clone()),
-		)
-		.expect("select one");
-		assert_eq!(select_one_input.value(), "second");
+			let select_one = element("select");
+			let select_one_input: web_sys::HtmlSelectElement =
+				select_one.as_web_sys().clone().unchecked_into();
+			for value in ["first", "second"] {
+				let option = web_sys::window()
+					.expect("window")
+					.document()
+					.expect("document")
+					.create_element("option")
+					.expect("option");
+				let option: web_sys::HtmlOptionElement = option.unchecked_into();
+				option.set_value(value);
+				select_one_input
+					.append_child(&option)
+					.expect("append option");
+			}
+			let selected_one = Signal::new("second".to_owned());
+			let _select_one_controller = ControlBindingController::mount(
+				select_one,
+				ControlBinding::select_one(selected_one.clone()),
+			)
+			.expect("select one");
+			assert_eq!(select_one_input.value(), "second");
+		});
 	}
 
 	#[wasm_bindgen_test]
 	fn dropping_controller_detaches_listeners_and_effect() {
-		let element = element("input");
-		let input: web_sys::HtmlInputElement = element.as_web_sys().clone().unchecked_into();
-		let signal = Signal::new("initial".to_owned());
-		let controller =
-			ControlBindingController::mount(element, ControlBinding::text(signal.clone()))
-				.expect("binding");
-		drop(controller);
+		let scope = ReactiveScope::new();
+		scope.enter(|| {
+			let element = element("input");
+			let input: web_sys::HtmlInputElement = element.as_web_sys().clone().unchecked_into();
+			let signal = Signal::new("initial".to_owned());
+			let controller =
+				ControlBindingController::mount(element, ControlBinding::text(signal.clone()))
+					.expect("binding");
+			drop(controller);
 
-		input.set_value("dom");
-		input
-			.dispatch_event(&web_sys::InputEvent::new("input").expect("input"))
-			.expect("dispatch");
-		assert_eq!(signal.get(), "initial");
-		signal.set("signal".to_owned());
-		assert_eq!(input.value(), "dom");
+			input.set_value("dom");
+			input
+				.dispatch_event(&web_sys::InputEvent::new("input").expect("input"))
+				.expect("dispatch");
+			assert_eq!(signal.get(), "initial");
+			signal.set("signal".to_owned());
+			assert_eq!(input.value(), "dom");
+		});
 	}
 
 	#[wasm_bindgen_test]
 	fn composition_commits_once_and_deduplicates_final_input() {
-		let element = element("input");
-		let input: web_sys::HtmlInputElement = element.as_web_sys().clone().unchecked_into();
-		let signal = Signal::new(String::new());
-		let commits = Rc::new(std::cell::Cell::new(0));
-		let effect_signal = signal.clone();
-		let effect_commits = Rc::clone(&commits);
-		let _commit_observer = Effect::new_with_timing(
-			move || {
-				let _ = effect_signal.get();
-				effect_commits.set(effect_commits.get() + 1);
-			},
-			EffectTiming::Layout,
-		);
-		let _controller =
-			ControlBindingController::mount(element, ControlBinding::text(signal.clone()))
-				.expect("binding");
-		input
-			.dispatch_event(&web_sys::CompositionEvent::new("compositionstart").expect("start"))
-			.expect("dispatch");
-		input.set_value("あ");
-		input
-			.dispatch_event(&web_sys::InputEvent::new("input").expect("input"))
-			.expect("dispatch");
-		assert_eq!(signal.get(), "");
-		input
-			.dispatch_event(&web_sys::CompositionEvent::new("compositionend").expect("end"))
-			.expect("dispatch");
-		assert_eq!(signal.get(), "あ");
-		input.set_selection_range(0, 0).expect("selection");
-		input
-			.dispatch_event(&web_sys::InputEvent::new("input").expect("input"))
-			.expect("dispatch");
-		assert_eq!(signal.get(), "あ");
-		assert_eq!(commits.get(), 2);
-		assert_eq!(input.selection_start().expect("selection"), Some(0));
+		let scope = ReactiveScope::new();
+		scope.enter(|| {
+			let element = element("input");
+			let input: web_sys::HtmlInputElement = element.as_web_sys().clone().unchecked_into();
+			let signal = Signal::new(String::new());
+			let commits = Rc::new(std::cell::Cell::new(0));
+			let effect_signal = signal.clone();
+			let effect_commits = Rc::clone(&commits);
+			let _commit_observer = Effect::new_with_timing(
+				move || {
+					let _ = effect_signal.get();
+					effect_commits.set(effect_commits.get() + 1);
+				},
+				EffectTiming::Layout,
+			);
+			let _controller =
+				ControlBindingController::mount(element, ControlBinding::text(signal.clone()))
+					.expect("binding");
+			input
+				.dispatch_event(&web_sys::CompositionEvent::new("compositionstart").expect("start"))
+				.expect("dispatch");
+			input.set_value("あ");
+			input
+				.dispatch_event(&web_sys::InputEvent::new("input").expect("input"))
+				.expect("dispatch");
+			assert_eq!(signal.get(), "");
+			input
+				.dispatch_event(&web_sys::CompositionEvent::new("compositionend").expect("end"))
+				.expect("dispatch");
+			assert_eq!(signal.get(), "あ");
+			input.set_selection_range(0, 0).expect("selection");
+			input
+				.dispatch_event(&web_sys::InputEvent::new("input").expect("input"))
+				.expect("dispatch");
+			assert_eq!(signal.get(), "あ");
+			assert_eq!(commits.get(), 2);
+			assert_eq!(input.selection_start().expect("selection"), Some(0));
+		});
 	}
 
 	#[wasm_bindgen_test]
 	fn isolated_composing_input_invalidates_stale_composition_dedupe() {
-		let element = element("input");
-		let input: web_sys::HtmlInputElement = element.as_web_sys().clone().unchecked_into();
-		let signal = Signal::new(String::new());
-		let commits = Rc::new(std::cell::Cell::new(0));
-		let effect_signal = signal.clone();
-		let effect_commits = Rc::clone(&commits);
-		let _commit_observer = Effect::new_with_timing(
-			move || {
-				let _ = effect_signal.get();
-				effect_commits.set(effect_commits.get() + 1);
-			},
-			EffectTiming::Layout,
-		);
-		let _controller =
-			ControlBindingController::mount(element, ControlBinding::text(signal.clone()))
-				.expect("binding");
-		input.set_value("same");
-		input
-			.dispatch_event(&web_sys::CompositionEvent::new("compositionend").expect("end"))
-			.expect("dispatch");
-		input
-			.dispatch_event(&{
-				let init = web_sys::InputEventInit::new();
-				init.set_is_composing(true);
-				web_sys::InputEvent::new_with_event_init_dict("input", &init)
-					.expect("composing input")
-					.into()
-			})
-			.expect("dispatch");
-		input
-			.dispatch_event(&web_sys::InputEvent::new("input").expect("input"))
-			.expect("dispatch");
-		assert_eq!(signal.get(), "same");
-		assert_eq!(commits.get(), 3);
+		let scope = ReactiveScope::new();
+		scope.enter(|| {
+			let element = element("input");
+			let input: web_sys::HtmlInputElement = element.as_web_sys().clone().unchecked_into();
+			let signal = Signal::new(String::new());
+			let commits = Rc::new(std::cell::Cell::new(0));
+			let effect_signal = signal.clone();
+			let effect_commits = Rc::clone(&commits);
+			let _commit_observer = Effect::new_with_timing(
+				move || {
+					let _ = effect_signal.get();
+					effect_commits.set(effect_commits.get() + 1);
+				},
+				EffectTiming::Layout,
+			);
+			let _controller =
+				ControlBindingController::mount(element, ControlBinding::text(signal.clone()))
+					.expect("binding");
+			input.set_value("same");
+			input
+				.dispatch_event(&web_sys::CompositionEvent::new("compositionend").expect("end"))
+				.expect("dispatch");
+			input
+				.dispatch_event(&{
+					let init = web_sys::InputEventInit::new();
+					init.set_is_composing(true);
+					web_sys::InputEvent::new_with_event_init_dict("input", &init)
+						.expect("composing input")
+						.into()
+				})
+				.expect("dispatch");
+			input
+				.dispatch_event(&web_sys::InputEvent::new("input").expect("input"))
+				.expect("dispatch");
+			assert_eq!(signal.get(), "same");
+			assert_eq!(commits.get(), 3);
+		});
 	}
 
 	#[wasm_bindgen_test]
 	fn actual_tag_mismatch_is_structured() {
-		let signal = Signal::new(false);
-		let error =
-			ControlBindingController::mount(element("select"), ControlBinding::checkbox(signal))
-				.expect_err("mismatch");
-		assert_eq!(
-			error,
-			ControlBindingError::UnsupportedElement {
-				control: ControlKind::Checkbox,
-				actual_tag: "select".to_owned(),
-			}
-		);
+		let scope = ReactiveScope::new();
+		scope.enter(|| {
+			let signal = Signal::new(false);
+			let error = ControlBindingController::mount(
+				element("select"),
+				ControlBinding::checkbox(signal),
+			)
+			.expect_err("mismatch");
+			assert_eq!(
+				error,
+				ControlBindingError::UnsupportedElement {
+					control: ControlKind::Checkbox,
+					actual_tag: "select".to_owned(),
+				}
+			);
+		});
 	}
 
 	#[wasm_bindgen_test]
 	fn text_binding_rejects_non_text_input_types_without_writing_file_value() {
-		for input_type in ["search", "email", "file", "range", "password", "url"] {
-			let element = element("input");
-			let input: web_sys::HtmlInputElement = element.as_web_sys().clone().unchecked_into();
-			input.set_type(input_type);
-			let error = ControlBindingController::mount(
-				element,
-				ControlBinding::text(Signal::new("non-empty".to_owned())),
-			)
-			.expect_err("non-text input type should fail");
+		let scope = ReactiveScope::new();
+		scope.enter(|| {
+			for input_type in ["search", "email", "file", "range", "password", "url"] {
+				let element = element("input");
+				let input: web_sys::HtmlInputElement =
+					element.as_web_sys().clone().unchecked_into();
+				input.set_type(input_type);
+				let error = ControlBindingController::mount(
+					element,
+					ControlBinding::text(Signal::new("non-empty".to_owned())),
+				)
+				.expect_err("non-text input type should fail");
 
-			assert_eq!(
-				error,
-				ControlBindingError::UnsupportedElement {
-					control: ControlKind::Text,
-					actual_tag: "input".to_owned(),
+				assert_eq!(
+					error,
+					ControlBindingError::UnsupportedElement {
+						control: ControlKind::Text,
+						actual_tag: "input".to_owned(),
+					}
+				);
+				if input_type == "file" {
+					assert_eq!(input.value(), "");
 				}
-			);
-			if input_type == "file" {
-				assert_eq!(input.value(), "");
 			}
-		}
+		});
 	}
 
 	#[wasm_bindgen_test]
 	fn text_binding_accepts_textarea() {
-		let element = element("textarea");
-		let textarea: web_sys::HtmlTextAreaElement = element.as_web_sys().clone().unchecked_into();
-		let signal = Signal::new("bound".to_owned());
+		let scope = ReactiveScope::new();
+		scope.enter(|| {
+			let element = element("textarea");
+			let textarea: web_sys::HtmlTextAreaElement =
+				element.as_web_sys().clone().unchecked_into();
+			let signal = Signal::new("bound".to_owned());
 
-		let _controller = ControlBindingController::mount(element, ControlBinding::text(signal))
-			.expect("textarea binding");
+			let _controller =
+				ControlBindingController::mount(element, ControlBinding::text(signal))
+					.expect("textarea binding");
 
-		assert_eq!(textarea.value(), "bound");
+			assert_eq!(textarea.value(), "bound");
+		});
 	}
 }
