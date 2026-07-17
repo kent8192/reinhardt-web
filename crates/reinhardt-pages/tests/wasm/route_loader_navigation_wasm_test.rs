@@ -20,6 +20,8 @@ wasm_bindgen_test_configure!(run_in_browser);
 
 thread_local! {
 	static LOADED_CALLS: Cell<u32> = const { Cell::new(0) };
+	static INITIAL_LOADER_AFTER_LAUNCH_SAW_MOUNT: Cell<bool> = const { Cell::new(false) };
+	static INITIAL_LOADER_PATH_SUBSCRIPTION_CALLS: Cell<u32> = const { Cell::new(0) };
 }
 
 fn home_page() -> Page {
@@ -283,6 +285,33 @@ async fn client_only_initial_loader_prepares_query_values_without_ssr_state() {
 	yield_to_tasks().await;
 	assert_eq!(current_location(), "/query-loaded?tab=initial");
 	assert!(root.inner_html().contains("TAB: initial"));
+}
+
+#[wasm_bindgen_test]
+async fn client_only_initial_loader_activates_post_mount_lifecycle_after_commit() {
+	let root = install_app_root_at("/query-loaded?tab=initial");
+	INITIAL_LOADER_AFTER_LAUNCH_SAW_MOUNT.with(|value| value.set(false));
+	INITIAL_LOADER_PATH_SUBSCRIPTION_CALLS.with(|value| value.set(0));
+
+	ClientLauncher::new("#app")
+		.router_client(build_router)
+		.after_launch(|ctx| {
+			INITIAL_LOADER_AFTER_LAUNCH_SAW_MOUNT.with(|value| {
+				value.set(ctx.root_element().inner_html().contains("TAB: initial"));
+			});
+		})
+		.on_path("/query-loaded", |_ctx| {
+			INITIAL_LOADER_PATH_SUBSCRIPTION_CALLS.with(|value| value.set(value.get() + 1));
+		})
+		.launch()
+		.expect("client-only loader launch succeeds");
+
+	yield_to_tasks().await;
+	yield_to_tasks().await;
+
+	assert!(root.inner_html().contains("TAB: initial"));
+	assert!(INITIAL_LOADER_AFTER_LAUNCH_SAW_MOUNT.with(Cell::get));
+	assert_eq!(INITIAL_LOADER_PATH_SUBSCRIPTION_CALLS.with(Cell::get), 1);
 }
 
 #[wasm_bindgen_test]

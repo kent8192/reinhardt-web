@@ -66,6 +66,10 @@ across reloads so back/forward restoration remains monotonic. A loader route
 opened directly without an SSR state script prepares its initial values on the
 client before the first route mount. Browser history preparation preserves the
 search query for both initial loads and back/forward navigations.
+DOM-dependent lifecycle callbacks (`after_launch`, `on_path`, and
+`on_path_pattern`) wait for that prepared route to commit and mount. Path
+subscriptions match the pathname, while their `PathCtx::path()` value retains
+the full route location including its query string.
 
 ## Prefetch and query sharing
 
@@ -84,7 +88,10 @@ needs it; browsers without that API can still launch and use other prefetch
 modes. Prefetch does not change history, route signals, or navigation pending
 state, and a settled prefetch error is silent. Navigation, prefetch, mounted
 routes, and `use_query` all use the single keyed query cache; an in-flight
-request is shared while at least one RAII lease remains.
+request is shared while at least one RAII lease remains. When a refetch is
+queued behind an in-flight request, existing leases can still observe the
+settled generation they acquired; dropping the final lease cancels both the
+active request and its queued follow-up.
 
 ## SSR and hydration
 
@@ -99,6 +106,9 @@ let output = renderer
     .await;
 assert_eq!(output.status, 200);
 ```
+
+The first loader error cancels the shared preparation source and returns its
+safe error response without waiting for slower sibling loaders.
 
 Successful values are registered in `SsrState` before the page is serialized,
 so the emitted HTML contains both a stable `route-loader:<id>` entry and the
