@@ -125,8 +125,8 @@ pub(crate) fn deserialize_model_row<M: Model>(
 			continue;
 		};
 
-		let is_json =
-			is_json_field_type(&field.field_type) || field.field_type.contains("ArrayField");
+		let is_json = field.storage_kind != Some(DatabaseStorageKind::Bytes)
+			&& (is_json_field_type(&field.field_type) || field.field_type.contains("ArrayField"));
 		let was_native_json_null = is_json && json_null_fields.remove(&source_name);
 		let was_native_json = is_json && native_json_fields.remove(&source_name);
 		let was_json_text = is_json && stored_value.is_string() && !was_native_json;
@@ -145,9 +145,14 @@ pub(crate) fn deserialize_model_row<M: Model>(
 			value => value,
 		};
 
-		let database_value = database_value_from_json(parsed_value, field.storage_kind)?;
+		let preserves_json_null = was_native_json_null || was_json_text;
+		let database_value = if parsed_value.is_null() && !preserves_json_null {
+			DatabaseValue::Null
+		} else {
+			database_value_from_json(parsed_value, field.storage_kind)?
+		};
 		let decoded_value = M::decode_database_field(&field.name, database_value)?;
-		if field.nullable && decoded_value.is_null() && (was_native_json_null || was_json_text) {
+		if field.nullable && decoded_value.is_null() && preserves_json_null {
 			json_null_fields.insert(field.name.clone());
 		}
 
@@ -303,15 +308,39 @@ impl<'de> Deserializer<'de> for ModelFieldValue {
 
 #[cfg(test)]
 mod tests {
-	use super::{Json, database_value_from_json};
+	use super::{Json, database_value_from_json, deserialize_model_row};
 	use crate::orm::{DatabaseStorageKind, DatabaseValue};
+	use reinhardt_core::macros::model;
 	use serde::{Deserialize, Serialize};
 	use serde_json::json;
+	use std::collections::HashSet;
 
 	#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 	struct StyleSettings {
 		indent_width: u8,
 		theme: String,
+	}
+
+	#[model(app_label = "tests", table_name = "byte_row_models")]
+	#[derive(Debug, Clone, Serialize, Deserialize)]
+	struct ByteRowModel {
+		#[field(primary_key = true)]
+		id: i64,
+		payload: Vec<u8>,
+	}
+
+	#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+	struct NullablePayload {
+		enabled: bool,
+	}
+
+	#[model(app_label = "tests", table_name = "nullable_json_row_models")]
+	#[derive(Debug, Clone, Serialize, Deserialize)]
+	struct NullableJsonRowModel {
+		#[field(primary_key = true)]
+		id: i64,
+		#[field(null = true)]
+		payload: Option<Json<NullablePayload>>,
 	}
 
 	#[test]
@@ -367,5 +396,35 @@ mod tests {
 			.expect("JSON null should decode");
 
 		assert_eq!(value, DatabaseValue::Json(json!(null)));
+	}
+
+	#[test]
+	fn model_rows_decode_byte_vectors_from_base64_without_json_parsing() {
+		// Arrange
+		let row = json!({ "id": 1, "payload": "AQID" });
+
+		// Act
+		let model = deserialize_model_row::<ByteRowModel>(row, HashSet::new(), HashSet::new())
+			.expect("base64 byte data should hydrate");
+
+		// Assert
+		assert_eq!(model.id, 1);
+		assert_eq!(model.payload, vec![1, 2, 3]);
+	}
+
+	#[test]
+	fn model_rows_keep_sql_null_as_none_for_typed_json_fields() {
+		// Arrange
+		let row = json!({ "id": 1, "payload": null });
+		let native_json_fields = HashSet::from([String::from("payload")]);
+
+		// Act
+		let model =
+			deserialize_model_row::<NullableJsonRowModel>(row, HashSet::new(), native_json_fields)
+				.expect("SQL NULL should hydrate as None");
+
+		// Assert
+		assert_eq!(model.id, 1);
+		assert_eq!(model.payload, None);
 	}
 }
