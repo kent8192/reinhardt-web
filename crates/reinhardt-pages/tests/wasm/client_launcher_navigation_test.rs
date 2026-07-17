@@ -762,21 +762,26 @@ async fn nested_reactive_content_is_removed_with_outer_owner() {
 	use reinhardt_pages::dom::Element;
 
 	let root = install_app_root();
-	let authorized = Signal::new(true);
-	let secret = Signal::new("SECRET-42".to_owned());
-	let authorized_for_outer = authorized.clone();
-	let secret_for_inner = secret.clone();
+	let scope = ReactiveScope::new();
+	let (authorized, secret) = scope.enter(|| {
+		let authorized = Signal::new(true);
+		let secret = Signal::new("SECRET-42".to_owned());
+		let authorized_for_outer = authorized;
+		let secret_for_inner = secret;
 
-	Page::reactive(move || {
-		if authorized_for_outer.get() {
-			let secret_for_render = secret_for_inner.clone();
-			Page::reactive(move || Page::text(secret_for_render.get()))
-		} else {
-			Page::Empty
-		}
-	})
-	.mount(&Element::new(root.clone()))
-	.expect("mount nested reactive page");
+		Page::reactive(move || {
+			if authorized_for_outer.get() {
+				let secret_for_render = secret_for_inner;
+				Page::reactive(move || Page::text(secret_for_render.get()))
+			} else {
+				Page::Empty
+			}
+		})
+		.mount(&Element::new(root.clone()))
+		.expect("mount nested reactive page");
+
+		(authorized, secret)
+	});
 
 	yield_to_microtasks().await;
 	assert!(

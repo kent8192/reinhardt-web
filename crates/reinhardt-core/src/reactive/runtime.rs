@@ -651,25 +651,28 @@ mod tests {
 	fn test_notify_signal_change() {
 		let runtime = Runtime::new();
 
-		let signal_id = NodeId::new();
-		let effect_id = NodeId::new();
+		crate::reactive::ReactiveScope::run(|| {
+			let signal_id = NodeId::new();
+			let effect = crate::reactive::Effect::new(|| {});
+			let effect_id = effect.id();
 
-		// Manually add dependency
-		{
-			let mut graph = runtime.dependency_graph.borrow_mut();
-			graph
-				.entry(signal_id)
-				.or_default()
-				.subscribers
-				.push(effect_id);
-		}
+			// Manually add dependency
+			{
+				let mut graph = runtime.dependency_graph.borrow_mut();
+				graph
+					.entry(signal_id)
+					.or_default()
+					.subscribers
+					.push(effect_id);
+			}
 
-		// Notify change
-		runtime.notify_signal_change(signal_id);
+			// Notify change
+			runtime.notify_signal_change(signal_id);
 
-		// Verify update was scheduled
-		let pending = runtime.pending_updates.borrow();
-		assert!(pending.contains(&effect_id));
+			// Verify update was scheduled
+			let pending = runtime.pending_updates.borrow();
+			assert!(pending.contains(&effect_id));
+		});
 	}
 
 	#[test]
