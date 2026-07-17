@@ -1434,7 +1434,7 @@ fn field_type_to_metadata_string(ty: &Type, _config: &FieldConfig) -> Result<Tok
 				"Vec" => "ArrayField",
 				"Json" => "JsonField",
 				"Value" => "JsonField",
-				"HashMap" => "HStoreField",
+				"HashMap" => "JsonField",
 				_ => {
 					return Ok(quote! {
 						#orm_crate::inspection::database_field_type_path(
@@ -1604,10 +1604,9 @@ fn map_type_to_field_type(ty: &Type, config: &FieldConfig) -> Result<TokenStream
 				"Value" => {
 					quote! { #migrations_crate::FieldType::JsonBinary }
 				}
-				// PostgreSQL: HashMap<String, String> -> HStore
-				#[cfg(feature = "db-postgres")]
+				// Hash maps use the JSON field codec on every database backend.
 				"HashMap" => {
-					quote! { #migrations_crate::FieldType::HStore }
+					quote! { #migrations_crate::FieldType::JsonBinary }
 				}
 				_ => {
 					let max_length = config
@@ -1687,7 +1686,7 @@ fn builtin_storage_kind(ty: &Type, orm_crate: &TokenStream) -> Option<TokenStrea
 		"f64" => quote! { #orm_crate::DatabaseStorageKind::F64 },
 		"Decimal" => quote! { #orm_crate::DatabaseStorageKind::Decimal },
 		"String" => quote! { #orm_crate::DatabaseStorageKind::String },
-		"Json" | "Value" => quote! { #orm_crate::DatabaseStorageKind::Json },
+		"Json" | "Value" | "HashMap" => quote! { #orm_crate::DatabaseStorageKind::Json },
 		"Uuid" => quote! { #orm_crate::DatabaseStorageKind::Uuid },
 		"Date" => quote! { #orm_crate::DatabaseStorageKind::Date },
 		"Time" => quote! { #orm_crate::DatabaseStorageKind::Time },
@@ -6560,6 +6559,34 @@ mod tests {
 	}
 
 	#[test]
+	fn hash_map_fields_use_json_storage_consistently() {
+		let orm_crate = quote! { orm };
+		let migrations_crate = get_reinhardt_migrations_crate();
+		let hash_map: Type = parse_quote! { std::collections::HashMap<String, String> };
+		let config = FieldConfig::default();
+
+		assert_eq!(
+			field_type_to_metadata_string(&hash_map, &config)
+				.expect("HashMap metadata should generate")
+				.to_string(),
+			quote! { "reinhardt.orm.models.JsonField" }.to_string()
+		);
+		assert_eq!(
+			map_type_to_field_type(&hash_map, &config)
+				.expect("HashMap migration type should generate")
+				.to_string(),
+			quote! { #migrations_crate::FieldType::JsonBinary }.to_string()
+		);
+
+		assert_eq!(
+			builtin_storage_kind(&hash_map, &orm_crate)
+				.expect("HashMap should retain JSON row metadata")
+				.to_string(),
+			quote! { orm::DatabaseStorageKind::Json }.to_string()
+		);
+	}
+
+	#[test]
 	fn test_generated_schema_expr_validation_accepts_reconstructable_expr() {
 		let expr: syn::Expr = parse_quote! {
 			SchemaExpr::concat([SchemaExpr::col("first_name"), SchemaExpr::val(" "), SchemaExpr::col("last_name")])
@@ -6769,7 +6796,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_database_field_validation_is_available_on_all_targets() {
+	fn test_database_field_validation_is_native_gated() {
 		let input = quote! {
 			#[model(app_label = "test", table_name = "test")]
 			pub struct TestModel {
@@ -6801,9 +6828,28 @@ mod tests {
 				)
 			});
 
-		assert!(
-			validation.attrs.is_empty(),
-			"database field schema validation must not be target-gated"
+		assert_eq!(
+			validation.attrs.len(),
+			1,
+			"database field schema validation must have one native cfg gate"
+		);
+		let cfg_attribute = validation
+			.attrs
+			.first()
+			.expect("database field schema validation must have a cfg attribute");
+		assert!(cfg_attribute.path().is_ident("cfg"));
+		let syn::Meta::List(cfg) = &cfg_attribute.meta else {
+			panic!("database field schema validation cfg must contain a condition");
+		};
+		let condition: String = cfg
+			.tokens
+			.to_string()
+			.chars()
+			.filter(|character| !character.is_whitespace())
+			.collect();
+		assert_eq!(
+			condition,
+			"not(all(target_family=\"wasm\",target_os=\"unknown\"))"
 		);
 	}
 

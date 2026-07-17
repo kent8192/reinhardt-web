@@ -348,7 +348,7 @@ fn generate_i32_parts(orm: &TokenStream, variants: &[VariantValue]) -> Generated
 			let EnumValue::I32(value, span) = variant.value else {
 				unreachable!("representation validated during parsing")
 			};
-			let value = LitInt::new(&format!("{value}i32"), span);
+			let value = i32_literal_tokens(value, span);
 			quote!(Self::#ident => ::core::result::Result::Ok(#value))
 		})
 		.collect();
@@ -357,7 +357,7 @@ fn generate_i32_parts(orm: &TokenStream, variants: &[VariantValue]) -> Generated
 		let EnumValue::I32(value, span) = variant.value else {
 			unreachable!("representation validated during parsing")
 		};
-		let value = LitInt::new(&format!("{value}i32"), span);
+		let value = i32_literal_tokens(value, span);
 		quote!(#value => ::core::result::Result::Ok(Self::#ident))
 	});
 	let values = variants
@@ -366,7 +366,7 @@ fn generate_i32_parts(orm: &TokenStream, variants: &[VariantValue]) -> Generated
 			let EnumValue::I32(value, span) = variant.value else {
 				unreachable!("representation validated during parsing")
 			};
-			let value = LitInt::new(&format!("{value}i32"), span);
+			let value = i32_literal_tokens(value, span);
 			quote!(#orm::ModelEnumValueRef::I32(#value))
 		})
 		.collect();
@@ -376,7 +376,7 @@ fn generate_i32_parts(orm: &TokenStream, variants: &[VariantValue]) -> Generated
 			let EnumValue::I32(value, span) = variant.value else {
 				unreachable!("representation validated during parsing")
 			};
-			let value = LitInt::new(&format!("{value}i32"), span);
+			let value = i32_literal_tokens(value, span);
 			quote!(#orm::ModelEnumValue::I32(#value))
 		})
 		.collect();
@@ -398,6 +398,15 @@ fn generate_i32_parts(orm: &TokenStream, variants: &[VariantValue]) -> Generated
 		},
 		values,
 		domain_values,
+	}
+}
+
+fn i32_literal_tokens(value: i32, span: Span) -> TokenStream {
+	let magnitude = LitInt::new(&format!("{}i32", value.unsigned_abs()), span);
+	if value.is_negative() {
+		quote!(-#magnitude)
+	} else {
+		quote!(#magnitude)
 	}
 }
 
@@ -452,11 +461,13 @@ mod tests {
 	fn generates_i32_database_codec_tokens() {
 		let input: DeriveInput = parse_quote! {
 			#[model_enum(repr = "i32")]
-			enum Priority {
-				#[model_enum(value = -1)]
-				Low,
-				#[model_enum(value = 2)]
-				High,
+				enum Priority {
+					#[model_enum(value = -1)]
+					Low,
+					#[model_enum(value = -2147483648)]
+					Critical,
+					#[model_enum(value = 2)]
+					High,
 			}
 		};
 
@@ -467,7 +478,13 @@ mod tests {
 			"MAX_STRING_VALUE_CHARS : :: core :: option :: Option < usize > = :: core :: option :: Option :: None"
 		));
 		assert!(tokens.contains("Self :: Low => :: core :: result :: Result :: Ok (- 1i32)"));
+		assert!(
+			tokens.contains(
+				"Self :: Critical => :: core :: result :: Result :: Ok (- 2147483648i32)"
+			)
+		);
 		assert!(tokens.contains("2i32 => :: core :: result :: Result :: Ok (Self :: High)"));
 		assert!(tokens.contains("ModelEnumValueRef :: I32 (- 1i32)"));
+		assert!(tokens.contains("ModelEnumValueRef :: I32 (- 2147483648i32)"));
 	}
 }

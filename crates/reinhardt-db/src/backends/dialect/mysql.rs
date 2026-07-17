@@ -90,6 +90,19 @@ impl MySqlBackend {
 				};
 				continue;
 			}
+			if matches!(type_name.as_str(), "DECIMAL" | "NEWDECIMAL") {
+				match mysql_row.try_get::<Option<rust_decimal::Decimal>, _>(column_name) {
+					Ok(Some(value)) => {
+						row.insert(
+							column_name.to_string(),
+							QueryValue::String(value.to_string()),
+						);
+					}
+					Ok(None) => row.insert(column_name.to_string(), QueryValue::Null),
+					Err(error) => return Err(error.into()),
+				};
+				continue;
+			}
 			if let Ok(value) = mysql_row.try_get::<bool, _>(column_name) {
 				row.insert(column_name.to_string(), QueryValue::Bool(value));
 			} else if let Ok(value) = mysql_row.try_get::<i64, _>(column_name) {

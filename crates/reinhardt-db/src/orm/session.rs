@@ -267,9 +267,7 @@ impl Session {
 		let sql_null_json_fields = field_metadata
 			.iter()
 			.filter(|field| {
-				field.nullable
-					&& is_json_field_type(&field.field_type)
-					&& obj.field_is_none(&field.name)
+				field.nullable && is_json_or_array_field(field) && obj.field_is_none(&field.name)
 			})
 			.map(|field| field.name.clone())
 			.collect();
@@ -389,9 +387,13 @@ impl Session {
 		// Add all fields to SELECT
 		for field in &field_metadata {
 			let column_name = field.db_column.as_deref().unwrap_or(&field.name);
-			if is_json_field_type(&field.field_type) {
+			if is_json_or_array_field(field) {
 				select_query.expr_as(
-					Expr::cust(json_select_column_sql(self.db_backend, column_name)),
+					Expr::cust(json_or_array_select_column_sql(
+						self.db_backend,
+						field,
+						column_name,
+					)),
 					Alias::new(column_name),
 				);
 			} else if is_temporal_field_type(&field.field_type) {
@@ -438,7 +440,7 @@ impl Session {
 
 			// Extract value from row based on field type
 			let value: serde_json::Value = match field.field_type.as_str() {
-				typ if typ.contains("JsonField") => match decode_json_field_value(
+				_ if is_json_or_array_field(field) => match decode_json_field_value(
 					&row,
 					T::table_name(),
 					&key,
@@ -552,7 +554,7 @@ impl Session {
 			json_null_fields_for_data(&data, &field_metadata, &sql_null_json_fields);
 		let native_json_fields = field_metadata
 			.iter()
-			.filter(|field| is_json_field_type(&field.field_type))
+			.filter(|field| is_json_or_array_field(field))
 			.map(|field| field.name.clone())
 			.collect();
 		let obj: T = super::json::deserialize_model_row(
@@ -646,10 +648,10 @@ impl Session {
 		let mut column_exprs: Vec<String> = Vec::new();
 		for field in &field_metadata {
 			let column_name = field.db_column.as_deref().unwrap_or(&field.name);
-			let is_json = is_json_field_type(&field.field_type);
+			let is_json = is_json_or_array_field(field);
 
 			let expr = if is_json {
-				json_select_column_alias_sql(self.db_backend, column_name)
+				json_or_array_select_column_alias_sql(self.db_backend, field, column_name)
 			} else if is_temporal_field_type(&field.field_type) {
 				temporal_select_column_alias_sql(self.db_backend, column_name, &field.field_type)
 			} else {
@@ -696,7 +698,7 @@ impl Session {
 
 				// Extract value from row based on field type
 				let value: serde_json::Value = match field.field_type.as_str() {
-					typ if typ.contains("JsonField") => match decode_json_field_value(
+					_ if is_json_or_array_field(field) => match decode_json_field_value(
 						&row,
 						table_name,
 						&row_context,
@@ -818,7 +820,7 @@ impl Session {
 				json_null_fields_for_data(&data, &field_metadata, &sql_null_json_fields);
 			let native_json_fields = field_metadata
 				.iter()
-				.filter(|field| is_json_field_type(&field.field_type))
+				.filter(|field| is_json_or_array_field(field))
 				.map(|field| field.name.clone())
 				.collect();
 			let obj: T =
@@ -1612,6 +1614,11 @@ fn is_json_field_type(field_type: &str) -> bool {
 	super::json::is_json_field_type(field_type)
 }
 
+fn is_json_or_array_field(field: &FieldInfo) -> bool {
+	field.storage_kind != Some(crate::orm::DatabaseStorageKind::Bytes)
+		&& (is_json_field_type(&field.field_type) || field.field_type.contains("ArrayField"))
+}
+
 fn is_temporal_field_type(field_type: &str) -> bool {
 	field_type.contains("DateTimeField")
 		|| field_type.contains("DateField")
@@ -1677,7 +1684,7 @@ fn json_null_fields_for_data(
 		.iter()
 		.filter(|field| {
 			field.nullable
-				&& is_json_field_type(&field.field_type)
+				&& is_json_or_array_field(field)
 				&& values.get(&field.name).map(Value::is_null).unwrap_or(false)
 				&& !sql_null_json_fields.contains(&field.name)
 		})
@@ -1693,22 +1700,29 @@ fn json_select_column_sql(db_backend: DbBackend, column_name: &str) -> String {
 	}
 }
 
-fn json_select_column_alias_sql(db_backend: DbBackend, column_name: &str) -> String {
+fn json_or_array_select_column_sql(
+	db_backend: DbBackend,
+	field: &FieldInfo,
+	column_name: &str,
+) -> String {
+	if field.field_type.contains("ArrayField") && matches!(db_backend, DbBackend::Postgres) {
+		format!("array_to_json(\"{}\")::text", column_name)
+	} else {
+		json_select_column_sql(db_backend, column_name)
+	}
+}
+
+fn json_or_array_select_column_alias_sql(
+	db_backend: DbBackend,
+	field: &FieldInfo,
+	column_name: &str,
+) -> String {
+	let expression = json_or_array_select_column_sql(db_backend, field, column_name);
 	match db_backend {
 		DbBackend::Postgres | DbBackend::Sqlite => {
-			format!(
-				"{} AS \"{}\"",
-				json_select_column_sql(db_backend, column_name),
-				column_name
-			)
+			format!("{} AS \"{}\"", expression, column_name)
 		}
-		DbBackend::Mysql => {
-			format!(
-				"{} AS `{}`",
-				json_select_column_sql(db_backend, column_name),
-				column_name
-			)
-		}
+		DbBackend::Mysql => format!("{} AS `{}`", expression, column_name),
 	}
 }
 
@@ -1822,10 +1836,7 @@ fn json_to_reinhardt_query_value_for_field(
 	field_info: Option<&FieldInfo>,
 	field_is_none: bool,
 ) -> RValue {
-	if field_info
-		.map(|field| is_json_field_type(&field.field_type))
-		.unwrap_or(false)
-	{
+	if field_info.is_some_and(is_json_or_array_field) {
 		if field_is_none {
 			RValue::Json(None)
 		} else {
@@ -2210,6 +2221,58 @@ mod tests {
 	}
 
 	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+	struct ArraySessionModel {
+		id: Option<i64>,
+		tags: Vec<String>,
+	}
+
+	#[derive(Debug, Clone)]
+	struct ArraySessionModelFields;
+
+	impl crate::orm::model::FieldSelector for ArraySessionModelFields {
+		fn with_alias(self, _alias: &str) -> Self {
+			self
+		}
+	}
+
+	impl Model for ArraySessionModel {
+		type PrimaryKey = i64;
+		type Fields = ArraySessionModelFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"array_session_models"
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = Some(value);
+		}
+
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+
+		fn new_fields() -> Self::Fields {
+			ArraySessionModelFields
+		}
+
+		fn field_metadata() -> Vec<FieldInfo> {
+			vec![
+				test_field_info("id", "reinhardt.orm.models.BigIntegerField", false, true),
+				typed_test_field_info(
+					"tags",
+					"reinhardt.orm.models.ArrayField",
+					crate::orm::DatabaseStorageKind::Json,
+				),
+			]
+		}
+	}
+
+	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 	struct TemporalSessionModel {
 		id: Option<i64>,
 		published_on: chrono::NaiveDate,
@@ -2413,6 +2476,36 @@ mod tests {
 			.execute(&pool)
 			.await
 			.expect("Failed to clear json_scalar_models table");
+
+		Arc::new(pool)
+	}
+
+	async fn create_array_session_test_pool() -> Arc<AnyPool> {
+		use sqlx::pool::PoolOptions;
+
+		sqlx::any::install_default_drivers();
+
+		let pool = PoolOptions::<Any>::new()
+			.min_connections(1)
+			.max_connections(5)
+			.connect("sqlite:file:test_session_array_db?mode=memory&cache=shared")
+			.await
+			.expect("Failed to create array session test pool");
+
+		sqlx::query(
+			"CREATE TABLE IF NOT EXISTS array_session_models (
+				id INTEGER PRIMARY KEY,
+				tags TEXT NOT NULL
+			)",
+		)
+		.execute(&pool)
+		.await
+		.expect("Failed to create array_session_models table");
+
+		sqlx::query("DELETE FROM array_session_models")
+			.execute(&pool)
+			.await
+			.expect("Failed to clear array_session_models table");
 
 		Arc::new(pool)
 	}
@@ -3367,6 +3460,58 @@ mod tests {
 			&serde_json::json!({ "stage": "draft" })
 		);
 		assert_eq!(loaded.publish_date.as_deref(), Some("2026-07-01"));
+	}
+
+	#[rstest]
+	#[serial(sqlx_drivers)]
+	#[tokio::test]
+	async fn test_session_hydrates_array_fields(_init_drivers: ()) {
+		let pool = create_array_session_test_pool().await;
+		sqlx::query(
+			"INSERT INTO array_session_models (id, tags) VALUES (1, '[\"alpha\",\"beta\"]')",
+		)
+		.execute(&*pool)
+		.await
+		.expect("array row should insert");
+
+		let mut session = Session::new(pool, DbBackend::Sqlite)
+			.await
+			.expect("session should initialize");
+		let expected = ArraySessionModel {
+			id: Some(1),
+			tags: vec!["alpha".to_string(), "beta".to_string()],
+		};
+
+		let loaded = session
+			.get::<ArraySessionModel>(1)
+			.await
+			.expect("session get should succeed")
+			.expect("array row should exist");
+		assert_eq!(loaded, expected);
+
+		let all = session
+			.list_all::<ArraySessionModel>()
+			.await
+			.expect("session list_all should succeed");
+		assert_eq!(all, vec![expected]);
+	}
+
+	#[test]
+	fn postgres_array_selects_are_json_text() {
+		let field = typed_test_field_info(
+			"tags",
+			"reinhardt.orm.models.ArrayField",
+			crate::orm::DatabaseStorageKind::Json,
+		);
+
+		assert_eq!(
+			json_or_array_select_column_sql(DbBackend::Postgres, &field, "tags"),
+			"array_to_json(\"tags\")::text"
+		);
+		assert_eq!(
+			json_or_array_select_column_sql(DbBackend::Sqlite, &field, "tags"),
+			"\"tags\""
+		);
 	}
 
 	#[rstest]
