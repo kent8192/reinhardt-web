@@ -1265,6 +1265,40 @@ mod tests {
 	}
 
 	#[test]
+	fn variable_constraints_contribute_to_the_generated_api_fingerprint() {
+		// Arrange
+		let directory = tempfile::tempdir().expect("create temporary package");
+		let manifest = write_test_package(
+			directory.path(),
+			"#[style_def]\nstatic STYLES: CardStyles = style! { vars { gap: Length = 0; } .card { margin: vars.gap; } };\n",
+		);
+		let context = StylePackageContext::resolve(&manifest, None).expect("select package");
+		let first = StyleExtractor::new(context.clone())
+			.extract()
+			.expect("extract unconstrained variable API");
+
+		// Act
+		fs::write(
+			directory.path().join("src/lib.rs"),
+			"#[style_def]\nstatic STYLES: CardStyles = style! { vars { gap: Length = 0; } .card { padding: vars.gap; } };\n",
+		)
+		.expect("change variable constraint");
+		let changed = StyleExtractor::new(context)
+			.extract()
+			.expect("extract constrained variable API");
+
+		// Assert
+		assert_eq!(
+			first.fingerprints.non_style_rust,
+			changed.fingerprints.non_style_rust
+		);
+		assert_ne!(
+			first.fingerprints.generated_api,
+			changed.fingerprints.generated_api
+		);
+	}
+
+	#[test]
 	fn extracted_scope_matches_the_macro_generated_style_type_identity() {
 		// Arrange
 		let directory = tempfile::tempdir().expect("create temporary package");
@@ -1723,7 +1757,11 @@ fn generated_api_fingerprint(definitions: &[ExtractedStyleDefinition]) -> [u8; 3
 			hasher.update(variable.custom_property_name.as_bytes());
 			hasher.update([0]);
 			hasher.update(
-				format!("{:?}:{}", variable.runtime_type, variable.source_index).as_bytes(),
+				format!(
+					"{:?}:{:?}:{}",
+					variable.runtime_type, variable.runtime_constraint, variable.source_index
+				)
+				.as_bytes(),
 			);
 			hasher.update([0]);
 		}
