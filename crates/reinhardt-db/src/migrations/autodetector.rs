@@ -545,7 +545,7 @@ impl ProjectState {
 	pub fn to_database_schema(&self) -> super::schema_diff::DatabaseSchema {
 		let mut tables = BTreeMap::new();
 
-		for ((app_label, model_name), model_state) in &self.models {
+		for model_state in self.models.values() {
 			let mut columns = BTreeMap::new();
 			for (field_name, field_state) in &model_state.fields {
 				// FieldType enum already contains all type information including length
@@ -599,9 +599,7 @@ impl ProjectState {
 				})
 				.collect();
 
-			// Use app_label + model_name as table key to prevent collisions
-			// across apps (Django convention: app_label_modelname)
-			let table_key = format!("{}_{}", app_label, model_name.to_lowercase());
+			let table_key = model_state.table_name.clone();
 			tables.insert(
 				table_key,
 				super::schema_diff::TableSchema {
@@ -636,7 +634,7 @@ impl ProjectState {
 	) -> super::schema_diff::DatabaseSchema {
 		let mut tables = BTreeMap::new();
 
-		for ((this_app_label, model_name), model_state) in &self.models {
+		for ((this_app_label, _), model_state) in &self.models {
 			// Filter by app_label
 			if this_app_label == app_label {
 				let mut columns = BTreeMap::new();
@@ -690,9 +688,7 @@ impl ProjectState {
 					})
 					.collect();
 
-				// Use app_label + model_name as table key to prevent collisions
-				// across apps (Django convention: app_label_modelname)
-				let table_key = format!("{}_{}", this_app_label, model_name.to_lowercase());
+				let table_key = model_state.table_name.clone();
 				tables.insert(
 					table_key,
 					super::schema_diff::TableSchema {
@@ -9083,20 +9079,22 @@ mod tests {
 	}
 
 	#[rstest]
-	fn to_database_schema_uses_app_prefixed_table_key() {
+	fn to_database_schema_uses_physical_table_name_as_table_key() {
 		// Arrange
-		let model = build_model_state(
-			"blog",
-			"Post",
+		let model = build_model_state_with_table_name(
+			"routing",
+			"HttpRoute",
+			"routing_http_route",
 			vec![FieldState::new(
 				"id",
 				super::super::FieldType::Integer,
 				false,
 			)],
-			Vec::new(),
-			Vec::new(),
 		);
-		let state = build_project_state(vec![(("blog".to_string(), "Post".to_string()), model)]);
+		let state = build_project_state(vec![(
+			("routing".to_string(), "HttpRoute".to_string()),
+			model,
+		)]);
 
 		// Act
 		let schema = state.to_database_schema();
@@ -9104,11 +9102,11 @@ mod tests {
 		// Assert
 		assert_eq!(schema.tables.len(), 1);
 		assert!(
-			schema.tables.contains_key("blog_post"),
-			"table key should be app_label + '_' + lowercase model name"
+			schema.tables.contains_key("routing_http_route"),
+			"schema diff keys must match physical table names"
 		);
-		let table = &schema.tables["blog_post"];
-		assert_eq!(table.name, "blog_post");
+		let table = &schema.tables["routing_http_route"];
+		assert_eq!(table.name, "routing_http_route");
 	}
 
 	#[rstest]
@@ -9402,10 +9400,8 @@ mod tests {
 		let schema = state.to_database_schema();
 
 		// Assert
-		// The HashMap key should still be the auto-generated key
-		assert!(schema.tables.contains_key("blog_post"));
-		// But the TableSchema.name should use the custom table name
-		let table = &schema.tables["blog_post"];
+		assert!(schema.tables.contains_key("custom_posts_table"));
+		let table = &schema.tables["custom_posts_table"];
 		assert_eq!(table.name, "custom_posts_table");
 	}
 
@@ -9428,8 +9424,8 @@ mod tests {
 		let schema = state.to_database_schema_for_app("blog");
 
 		// Assert
-		assert!(schema.tables.contains_key("blog_post"));
-		let table = &schema.tables["blog_post"];
+		assert!(schema.tables.contains_key("custom_posts_table"));
+		let table = &schema.tables["custom_posts_table"];
 		assert_eq!(table.name, "custom_posts_table");
 	}
 

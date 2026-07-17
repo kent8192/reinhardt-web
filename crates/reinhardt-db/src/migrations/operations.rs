@@ -1518,8 +1518,11 @@ impl Operation {
 				for model in state.models.values_mut() {
 					for field in model.fields.values_mut() {
 						if field.params.get("fk_target_app").map(String::as_str) == Some(from_app)
-							&& field.params.get("fk_target_model").map(String::as_str)
-								== Some(model_name)
+							&& field
+								.params
+								.get("fk_target_model")
+								.or_else(|| field.params.get("fk_target"))
+								.map(String::as_str) == Some(model_name)
 						{
 							field
 								.params
@@ -6702,6 +6705,40 @@ mod tests {
 		assert_eq!(
 			post.fields["user_id"].params.get("fk_target_model"),
 			Some(&"User".to_string())
+		);
+	}
+
+	#[test]
+	fn state_forwards_move_model_updates_foreign_key_field_target_app() {
+		let mut state = ProjectState::new();
+		state.add_model(ModelState::new("accounts", "User"));
+
+		let mut post = ModelState::new("blog", "Post");
+		let mut field = FieldState::new("user_id", FieldType::Uuid, false);
+		field
+			.params
+			.insert("fk_target_app".to_string(), "accounts".to_string());
+		field
+			.params
+			.insert("fk_target".to_string(), "User".to_string());
+		post.add_field(field);
+		state.add_model(post);
+
+		Operation::MoveModel {
+			model_name: "User".to_string(),
+			from_app: "accounts".to_string(),
+			to_app: "auth".to_string(),
+			rename_table: false,
+			old_table_name: None,
+			new_table_name: None,
+		}
+		.state_forwards("auth", &mut state);
+
+		assert_eq!(
+			state.get_model("blog", "Post").unwrap().fields["user_id"]
+				.params
+				.get("fk_target_app"),
+			Some(&"auth".to_string())
 		);
 	}
 
