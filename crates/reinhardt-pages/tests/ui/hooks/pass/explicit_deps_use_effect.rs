@@ -1,6 +1,7 @@
-//! Compile-pass: `use_effect` with an explicit single-element deps tuple
+//! Compile-pass: `use_effect` with an explicit single-element dependency list
 //! is the canonical React-parity shape (spec §4.2).
 
+use reinhardt_pages::deps;
 use reinhardt_pages::reactive::Signal;
 use reinhardt_pages::reactive::hooks::use_effect;
 
@@ -9,13 +10,13 @@ fn main() {
 		let count = Signal::new(0_i32);
 		let _e = use_effect(
 			{
-				let count = count;
+				let count = count.clone();
 				move || {
 					let _ = count.get();
 					None::<fn()>
 				}
 			},
-			(count,),
+			deps![count],
 		);
 		let _ = count;
 	});

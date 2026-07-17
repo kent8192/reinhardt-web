@@ -2,7 +2,7 @@
 //!
 //! React-aligned hooks built on top of [`Memo::new_with_deps`] and the
 //! `callback_with_deps` Rc-swap helper. All three take an explicit
-//! dependency tuple as the second argument (Refs #4195).
+//! dependency list as the second argument (Refs #4195).
 
 use crate::callback::{Callback, callback_with_deps};
 use crate::reactive::{ExplicitDeps, Memo, ReactiveDeps};
@@ -12,9 +12,9 @@ use crate::reactive::{ExplicitDeps, Memo, ReactiveDeps};
 /// This is the React-like equivalent of `useMemo`. The calculation is re-run
 /// only when its reactive dependencies change.
 ///
-/// Reinhardt Pages uses an explicit dependency tuple instead of a React
+/// Reinhardt Pages uses an explicit dependency list instead of a React
 /// dependency array. Signal reads inside the calculation do not subscribe
-/// implicitly; the tuple passed as `deps` determines when the memo re-runs.
+/// implicitly; the list passed as `deps` determines when the memo re-runs.
 ///
 /// # Type Parameters
 ///
@@ -24,7 +24,7 @@ use crate::reactive::{ExplicitDeps, Memo, ReactiveDeps};
 /// # Arguments
 ///
 /// * `f` - A function that performs the calculation
-/// * `deps` - Explicit dependency tuple; pass `()` for mount-only memoization
+/// * `deps` - Explicit dependency list; pass `deps![]` for mount-only memoization
 ///
 /// # Returns
 ///
@@ -81,8 +81,7 @@ where
 /// # Example
 ///
 /// ```ignore
-/// use reinhardt_pages::reactive::hooks::{SetStateExt, use_callback, use_state};
-/// use reinhardt_pages::page;
+/// use reinhardt_pages::{deps, page, reactive::hooks::{SetStateExt, use_callback, use_state}};
 ///
 /// let (count, set_count) = use_state(0);
 ///
@@ -94,7 +93,7 @@ where
 ///             set_count.update(|current| current + 1);
 ///         }
 ///     },
-///     (),
+///     deps![],
 /// );
 ///
 /// page!(|| {
@@ -107,7 +106,7 @@ where
 ///
 /// # Note
 ///
-/// Reinhardt uses an explicit dependency tuple rather than a JavaScript array.
+/// Reinhardt uses an explicit dependency list rather than a JavaScript array.
 /// To use the latest values, capture reactive handles directly because they are
 /// `Copy`, rather than capturing value snapshots. Reference-counted setters may
 /// still need cloning.
