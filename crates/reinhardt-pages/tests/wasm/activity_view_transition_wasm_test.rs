@@ -67,6 +67,7 @@ fn reactive_activity_mode_updates_wrapper_without_recreating_content() {
 		ActivityBoundary::default()
 			.visible_when(visible_for_view.get())
 			.content(|| {
+				let handler_calls = Rc::clone(&handler_calls);
 				PageElement::new("input")
 					.attr("id", "activity-owned-input")
 					.attr("value", "initial")
