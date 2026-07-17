@@ -1383,7 +1383,7 @@ impl Operation {
 				state.add_model(model);
 			}
 			Operation::DropTable { name } => {
-				state.remove_model(app_label, name);
+				state.remove_model_by_table_name(app_label, name);
 			}
 			Operation::AddColumn { table, column, .. } => {
 				if let Some(model) = state.get_model_by_table_mut(app_label, table) {
@@ -1462,7 +1462,7 @@ impl Operation {
 				column_name,
 				default_value,
 			} => {
-				if let Some(model) = state.get_model_mut(app_label, table) {
+				if let Some(model) = state.get_model_by_table_mut(app_label, table) {
 					model.discriminator_column = Some(column_name.to_string());
 					model.inheritance_type = Some("single_table".to_string());
 					let field = FieldState::new(
@@ -6412,7 +6412,7 @@ mod tests {
 		state.add_model(model);
 
 		let op = Operation::DropTable {
-			name: "users".to_string(),
+			name: "myapp_users".to_string(),
 		};
 
 		op.state_forwards("myapp", &mut state);
@@ -6423,6 +6423,29 @@ mod tests {
 	}
 
 	#[test]
+	fn state_forwards_drops_a_table_after_it_was_renamed() {
+		// Arrange
+		let mut state = ProjectState::new();
+		let mut model = ModelState::new("auth", "User");
+		model.table_name = "users".to_string();
+		state.add_model(model);
+
+		// Act
+		Operation::RenameTable {
+			old_name: "users".to_string(),
+			new_name: "auth_user".to_string(),
+		}
+		.state_forwards("auth", &mut state);
+		Operation::DropTable {
+			name: "auth_user".to_string(),
+		}
+		.state_forwards("auth", &mut state);
+
+		// Assert
+		assert!(state.get_model("auth", "User").is_none());
+	}
+
+	#[test]
 	fn test_state_forwards_add_column() {
 		let mut state = ProjectState::new();
 		let mut model = ModelState::new("myapp", "users");
@@ -6430,7 +6453,7 @@ mod tests {
 		state.add_model(model);
 
 		let op = Operation::AddColumn {
-			table: "users".to_string(),
+			table: "myapp_users".to_string(),
 			column: ColumnDefinition {
 				name: "email".to_string(),
 				type_definition: FieldType::VarChar(255),
@@ -6471,7 +6494,7 @@ mod tests {
 		state.add_model(model);
 
 		let op = Operation::DropColumn {
-			table: "users".to_string(),
+			table: "myapp_users".to_string(),
 			column: "email".to_string(),
 			old_definition: None,
 		};
@@ -6694,7 +6717,7 @@ mod tests {
 		state.add_model(model);
 
 		let op = Operation::RenameColumn {
-			table: "users".to_string(),
+			table: "myapp_users".to_string(),
 			old_name: "name".to_string(),
 			new_name: "full_name".to_string(),
 		};
@@ -7246,7 +7269,7 @@ mod tests {
 		let mut state = ProjectState::new();
 		state.add_model(model);
 		let op = Operation::DropTable {
-			name: "metric".to_string(),
+			name: "metrics_metric".to_string(),
 		};
 
 		// Act
@@ -7284,7 +7307,7 @@ mod tests {
 		let mut state = ProjectState::new();
 		state.add_model(model);
 		let op = Operation::DropTable {
-			name: "metric".to_string(),
+			name: "metrics_metric".to_string(),
 		};
 
 		let _ = op.to_reverse_operation(&state);
@@ -7903,7 +7926,7 @@ mod tests {
 		state.add_model(model);
 
 		let op = Operation::AlterColumn {
-			table: "users".to_string(),
+			table: "myapp_users".to_string(),
 			column: "age".to_string(),
 			old_definition: None,
 			new_definition: ColumnDefinition {
@@ -7976,7 +7999,7 @@ mod tests {
 		state.add_model(model);
 
 		let op = Operation::AddDiscriminatorColumn {
-			table: "users".to_string(),
+			table: "myapp_users".to_string(),
 			column_name: "user_type".to_string(),
 			default_value: "regular".to_string(),
 		};
@@ -7993,6 +8016,35 @@ mod tests {
 			Some("single_table".to_string()),
 			"inheritance_type should be 'single_table'"
 		);
+	}
+
+	#[test]
+	fn state_forwards_adds_a_discriminator_after_a_table_rename() {
+		// Arrange
+		let mut state = ProjectState::new();
+		let mut model = ModelState::new("auth", "User");
+		model.table_name = "users".to_string();
+		state.add_model(model);
+
+		// Act
+		Operation::RenameTable {
+			old_name: "users".to_string(),
+			new_name: "auth_user".to_string(),
+		}
+		.state_forwards("auth", &mut state);
+		Operation::AddDiscriminatorColumn {
+			table: "auth_user".to_string(),
+			column_name: "kind".to_string(),
+			default_value: "user".to_string(),
+		}
+		.state_forwards("auth", &mut state);
+
+		// Assert
+		let model = state
+			.get_model("auth", "User")
+			.expect("renamed model should remain in state");
+		assert_eq!(model.discriminator_column.as_deref(), Some("kind"));
+		assert!(model.has_field("kind"));
 	}
 
 	#[rstest]
