@@ -7,7 +7,7 @@ use crate::router::loader::{
 	LoaderStore, RouteLoaderError, loader_cache_id, route_context, with_loader_store,
 };
 use crate::router::loader_registry::{LoaderConsumer, LoaderRegistry, execute_loader};
-use futures_util::future::join_all;
+use futures_util::future::try_join_all;
 use reinhardt_urls::routers::client_router::ClientRouter;
 
 /// Buffered output from a route render, including its HTTP-like status.
@@ -120,7 +120,7 @@ async fn prepare_route_loaders(
 	let source = CancellationSource::new();
 	let handle = source.handle();
 	let context = route_context(matched);
-	let results = join_all(matched.loader_ids().iter().copied().map(|id| {
+	let results = match try_join_all(matched.loader_ids().iter().copied().map(|id| {
 		execute_loader(
 			&registry,
 			id,
@@ -129,10 +129,17 @@ async fn prepare_route_loaders(
 			LoaderConsumer::Maintenance,
 		)
 	}))
-	.await;
+	.await
+	{
+		Ok(results) => results,
+		Err(error) => {
+			source.cancel();
+			return Err(error);
+		}
+	};
 	let mut serialized_loaders = Vec::with_capacity(results.len());
 	for result in results {
-		let prepared = result?;
+		let prepared = result;
 		let id = prepared.id();
 		let registration = registry
 			.get(id)

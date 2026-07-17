@@ -38,6 +38,37 @@ fn ssr_timeout(Loader(message): Loader<String>) -> Page {
 }
 
 #[loader]
+async fn ssr_slow_sibling_loader() -> Result<String, String> {
+	tokio::time::sleep(Duration::from_millis(20)).await;
+	Ok("slow sibling".to_owned())
+}
+
+#[loader]
+async fn ssr_fast_failure_loader() -> Result<String, String> {
+	Err("fast loader failure".to_owned())
+}
+
+#[layout(
+	"/ssr-fail-fast/",
+	name = "ssr-fail-fast-shell",
+	loader = ssr_slow_sibling_loader,
+)]
+fn ssr_fail_fast_shell(Loader(_value): Loader<String>, outlet: Outlet) -> Page {
+	page!(|outlet: Outlet| { { outlet } })(outlet)
+}
+
+#[component(
+	"child/",
+	name = "ssr-fail-fast-child",
+	loader = ssr_fast_failure_loader
+)]
+fn ssr_fail_fast_child(Loader(_value): Loader<String>) -> Page {
+	page!(|| {
+		p { "unreachable" }
+	})()
+}
+
+#[loader]
 async fn ssr_shell_loader(Path(workspace_id): Path<i64>) -> Result<String, String> {
 	Ok(format!("shell-{workspace_id}"))
 }
@@ -129,6 +160,30 @@ fn route_loader_timeout_returns_safe_status() {
 
 		assert_eq!(output.status, 504);
 		assert!(output.html.contains("route loader timed out"));
+		assert_eq!(renderer.state().resource_count(), 0);
+	});
+}
+
+#[test]
+fn route_loader_failure_returns_before_a_slow_sibling_times_out() {
+	tokio_test::block_on(async {
+		let router = ClientRouter::new().routes(|routes| {
+			routes.layout(ssr_fail_fast_shell, |children| {
+				children.component(ssr_fail_fast_child)
+			})
+		});
+		let mut renderer = SsrRenderer::with_options(
+			reinhardt_pages::SsrOptions::new().resource_timeout(Duration::from_millis(1)),
+		);
+
+		let path = "/ssr-fail-fast/child/";
+		let matched = router.match_tree(path).expect("route matches");
+		assert_eq!(matched.loader_ids().len(), 2);
+		let output = renderer.render_route_to_string(&router, path).await;
+
+		assert_eq!(output.status, 500);
+		assert!(output.html.contains("fast loader failure"));
+		assert!(!output.html.contains("route loader timed out"));
 		assert_eq!(renderer.state().resource_count(), 0);
 	});
 }
