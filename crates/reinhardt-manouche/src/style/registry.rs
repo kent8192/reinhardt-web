@@ -271,7 +271,9 @@ pub fn unit_specs() -> &'static [UnitSpec] {
 // This crate-private lookup is the validation boundary for parsed numeric literals.
 #[allow(dead_code)]
 pub(crate) fn unit_spec(name: &str) -> Option<&'static UnitSpec> {
-	UNIT_SPECS.iter().find(|spec| spec.name == name)
+	UNIT_SPECS
+		.iter()
+		.find(|spec| spec.name.eq_ignore_ascii_case(name))
 }
 
 /// One of the eight closed MVP property families.
@@ -3203,11 +3205,14 @@ mod tests {
 
 	#[rstest]
 	#[case("px", Some(("px", NumericDimension::Length)))]
+	#[case("PX", Some(("px", NumericDimension::Length)))]
+	#[case("DEG", Some(("deg", NumericDimension::Angle)))]
+	#[case("MS", Some(("ms", NumericDimension::Time)))]
 	#[case("fr", Some(("fr", NumericDimension::GridFraction)))]
 	#[case("number", None)]
 	#[case("integer", None)]
 	#[case("", None)]
-	fn unit_lookup_is_exact_and_keeps_scalars_unitless(
+	fn unit_lookup_is_case_insensitive_and_keeps_scalars_unitless(
 		#[case] name: &str,
 		#[case] expected: Option<(&str, NumericDimension)>,
 	) {

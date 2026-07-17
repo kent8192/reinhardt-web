@@ -572,8 +572,17 @@ fn validate_media_range(
 					"media range expressions must contain a feature identifier",
 				));
 			}
-			let value = if left_is_feature { right } else { left };
-			if !valid_numeric_feature_value(value) {
+			let (feature, value) = if let Some(feature) = media_feature_identifier(left) {
+				(feature, right)
+			} else if let Some(feature) = media_feature_identifier(right) {
+				(feature, left)
+			} else {
+				return Err(syn::Error::new(
+					tokens[comparison_index].span(),
+					"media range expressions must contain a feature identifier",
+				));
+			};
+			if !valid_numeric_feature_value(feature, value) {
 				return Err(syn::Error::new(
 					value
 						.first()
@@ -587,13 +596,15 @@ fn validate_media_range(
 			let left = &tokens[..first_index];
 			let feature = &tokens[first_index + 1..second_index];
 			let right = &tokens[second_index + 1..];
-			if !is_feature_identifier(feature) {
+			let Some(feature) = media_feature_identifier(feature) else {
 				return Err(syn::Error::new(
 					tokens[first_index].span(),
 					"media range expressions must contain a feature identifier",
 				));
-			}
-			if !valid_numeric_feature_value(left) || !valid_numeric_feature_value(right) {
+			};
+			if !valid_numeric_feature_value(feature, left)
+				|| !valid_numeric_feature_value(feature, right)
+			{
 				return Err(syn::Error::new(
 					tokens[first_index].span(),
 					"invalid media range value",
@@ -619,7 +630,7 @@ fn validate_media_range(
 }
 
 fn valid_colon_feature_value(feature: &str, tokens: &[StyleMediaToken]) -> bool {
-	valid_numeric_feature_value(tokens)
+	valid_numeric_feature_value(feature, tokens)
 		|| (matches!(tokens, [StyleMediaToken::Identifier(_)])
 			&& is_discrete_media_feature(feature))
 }
@@ -657,13 +668,13 @@ fn is_discrete_media_feature(feature: &str) -> bool {
 		.any(|candidate| feature.eq_ignore_ascii_case(candidate))
 }
 
-fn valid_numeric_feature_value(tokens: &[StyleMediaToken]) -> bool {
+fn valid_numeric_feature_value(feature: &str, tokens: &[StyleMediaToken]) -> bool {
 	match tokens {
-		[StyleMediaToken::Number(number)] => valid_media_numeric_unit(number),
+		[StyleMediaToken::Number(number)] => valid_media_numeric_unit(feature, number),
 		[
 			StyleMediaToken::Punctuation(sign),
 			StyleMediaToken::Number(number),
-		] => is_numeric_sign(sign.kind) && valid_media_numeric_unit(number),
+		] => is_numeric_sign(sign.kind) && valid_media_numeric_unit(feature, number),
 		[
 			StyleMediaToken::Number(number),
 			StyleMediaToken::Punctuation(percent),
@@ -691,19 +702,58 @@ fn valid_numeric_feature_value(tokens: &[StyleMediaToken]) -> bool {
 	}
 }
 
-fn valid_media_numeric_unit(number: &StyleMediaNumber) -> bool {
-	number.unit.as_deref().is_none_or(|unit| {
-		unit_specs().iter().any(|spec| {
-			spec.name == unit
-				&& matches!(
-					spec.category,
-					UnitCategory::AbsoluteLength
-						| UnitCategory::FontRelativeLength
-						| UnitCategory::ViewportLength
-						| UnitCategory::ContainerLength
-				)
-		}) || matches!(unit, "dpi" | "dpcm" | "dppx")
+fn valid_media_numeric_unit(feature: &str, number: &StyleMediaNumber) -> bool {
+	let Some(unit) = number.unit.as_deref() else {
+		return !requires_dimension_unit(feature) || is_zero_decimal(&number.value);
+	};
+
+	match normalized_dimension_feature(feature) {
+		Some("width" | "height" | "device-width" | "device-height") => is_length_unit(unit),
+		Some("resolution") => is_resolution_unit(unit),
+		_ => is_length_unit(unit) || is_resolution_unit(unit),
+	}
+}
+
+fn requires_dimension_unit(feature: &str) -> bool {
+	matches!(
+		normalized_dimension_feature(feature),
+		Some("width" | "height" | "device-width" | "device-height" | "resolution")
+	)
+}
+
+fn normalized_dimension_feature(feature: &str) -> Option<&'static str> {
+	let feature = feature.to_ascii_lowercase();
+	let feature = feature
+		.strip_prefix("min-")
+		.or_else(|| feature.strip_prefix("max-"))
+		.unwrap_or(&feature);
+	match feature {
+		"width" => Some("width"),
+		"height" => Some("height"),
+		"device-width" => Some("device-width"),
+		"device-height" => Some("device-height"),
+		"resolution" => Some("resolution"),
+		_ => None,
+	}
+}
+
+fn is_length_unit(unit: &str) -> bool {
+	unit_specs().iter().any(|spec| {
+		spec.name.eq_ignore_ascii_case(unit)
+			&& matches!(
+				spec.category,
+				UnitCategory::AbsoluteLength
+					| UnitCategory::FontRelativeLength
+					| UnitCategory::ViewportLength
+					| UnitCategory::ContainerLength
+			)
 	})
+}
+
+fn is_resolution_unit(unit: &str) -> bool {
+	["dpi", "dpcm", "dppx"]
+		.iter()
+		.any(|candidate| unit.eq_ignore_ascii_case(candidate))
 }
 
 fn is_zero_decimal(value: &str) -> bool {
@@ -717,7 +767,14 @@ fn is_zero_decimal(value: &str) -> bool {
 }
 
 fn is_feature_identifier(tokens: &[StyleMediaToken]) -> bool {
-	matches!(tokens, [StyleMediaToken::Identifier(_)])
+	media_feature_identifier(tokens).is_some()
+}
+
+fn media_feature_identifier(tokens: &[StyleMediaToken]) -> Option<&str> {
+	match tokens {
+		[StyleMediaToken::Identifier(feature)] => Some(feature.as_str()),
+		_ => None,
+	}
 }
 
 fn is_numeric_sign(kind: StyleMediaPunctuationKind) -> bool {
@@ -1416,6 +1473,37 @@ mod tests {
 
 		// Assert
 		assert_eq!(error.to_string(), "invalid media feature expression");
+	}
+
+	#[rstest]
+	#[case(quote! { @media (width: 640) {} })]
+	#[case(quote! { @media (resolution: 2) {} })]
+	#[case(quote! { @media (width: -640) {} })]
+	#[case(quote! { @media (resolution: -2) {} })]
+	fn rejects_unitless_nonzero_values_for_dimensioned_media_features(
+		#[case] input: proc_macro2::TokenStream,
+	) {
+		// Arrange
+		// Input is provided by the parameterized case.
+
+		// Act
+		let error = parse_style(input).expect_err("dimensioned media features require units");
+
+		// Assert
+		assert_eq!(error.to_string(), "invalid media feature expression");
+	}
+
+	#[rstest]
+	#[case(quote! { @media (WIDTH: 640PX) {} })]
+	#[case(quote! { @media (RESOLUTION: 2DPI) {} })]
+	fn accepts_case_insensitive_dimensioned_media_features(
+		#[case] input: proc_macro2::TokenStream,
+	) {
+		// Act
+		let parsed = parse_style(input);
+
+		// Assert
+		assert!(parsed.is_ok());
 	}
 
 	#[rstest]
