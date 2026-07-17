@@ -64,7 +64,7 @@ async function runAutoFixTargetPolicy({ github, context, core, noticePrefix }) {
 		let rules = [];
 
 		if (branch.protected) {
-			const rulesResponse = await github.request(
+			rules = await github.paginate(
 				'GET /repos/{owner}/{repo}/rules/branches/{branch}',
 				{
 					owner: context.repo.owner,
@@ -72,7 +72,6 @@ async function runAutoFixTargetPolicy({ github, context, core, noticePrefix }) {
 					branch: headRef,
 				},
 			);
-			rules = rulesResponse.data;
 		}
 
 		const result = classifyBranchProtection(branch, rules);
