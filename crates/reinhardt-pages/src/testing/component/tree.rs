@@ -3,7 +3,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use reinhardt_core::reactive::ReactiveScope;
+use reinhardt_core::reactive::{ReactiveScope, runtime::NodeId as ReactiveNodeId};
 use reinhardt_core::types::page::{
 	ControlBinding, ControlBindingError, ControlKind, ControlValue, ControlWriteOutcome, EventName,
 	NativeEventFile, NativeEventTarget, Page, PageEventHandler, is_boolean_attr_truthy,
@@ -99,6 +99,77 @@ pub(crate) struct CompletedControlBindingWrite {
 	outcome: ControlWriteOutcome,
 	raw: Option<String>,
 	dedupe_next_input: bool,
+}
+
+#[derive(Default)]
+struct RejectedNumberSnapshotContext {
+	snapshots: Vec<RejectedNumberSnapshot>,
+	positions: Vec<(ReactiveNodeId, usize)>,
+}
+
+struct RejectedNumberSnapshot {
+	target: ReactiveNodeId,
+	position: usize,
+	raw: String,
+}
+
+impl RejectedNumberSnapshotContext {
+	fn from_subtree(dom: &TestDom, parent: NodeId) -> Self {
+		let mut context = Self::default();
+		for child in dom.children(parent) {
+			context.collect_from_subtree(dom, *child);
+		}
+		context.positions.clear();
+		context
+	}
+
+	fn collect_from_subtree(&mut self, dom: &TestDom, node_id: NodeId) {
+		if let Some(element) = dom.element(node_id)
+			&& let Some(binding) = element.control_binding.as_ref()
+			&& binding.kind() == ControlKind::Number
+		{
+			let position = self.next_position(binding);
+			if let Some(raw) = element.pending_raw.as_ref() {
+				self.snapshots.push(RejectedNumberSnapshot {
+					target: binding.target(),
+					position,
+					raw: raw.clone(),
+				});
+			}
+		}
+		for child in dom.children(node_id) {
+			self.collect_from_subtree(dom, *child);
+		}
+	}
+
+	fn take(&mut self, binding: &ControlBinding) -> Option<String> {
+		if binding.kind() != ControlKind::Number {
+			return None;
+		}
+		let position = self.next_position(binding);
+		let index = self.snapshots.iter().position(|snapshot| {
+			snapshot.target == binding.target() && snapshot.position == position
+		})?;
+		Some(self.snapshots.remove(index).raw)
+	}
+
+	fn next_position(&mut self, binding: &ControlBinding) -> usize {
+		let position = self
+			.positions
+			.iter_mut()
+			.find(|(target, _)| *target == binding.target());
+		match position {
+			Some((_, next)) => {
+				let current = *next;
+				*next += 1;
+				current
+			}
+			None => {
+				self.positions.push((binding.target(), 1));
+				0
+			}
+		}
+	}
 }
 
 impl PendingControlBindingWrite {
@@ -515,7 +586,7 @@ impl TestDom {
 				&& element.last_observed_signal_revision == Some(signal_revision);
 			if !retain_invalid_raw {
 				element.pending_raw = None;
-				element.apply_control_value(value.clone());
+				element.apply_control_value(&binding, value.clone());
 			}
 			element.last_observed_control_value = Some(value);
 			element.last_observed_signal_revision = Some(signal_revision);
@@ -561,6 +632,20 @@ impl TestDom {
 	}
 
 	fn append_page(&mut self, parent: NodeId, page: Page) {
+		let mut rejected_number_snapshots = RejectedNumberSnapshotContext::default();
+		self.append_page_with_rejected_number_snapshots(
+			parent,
+			page,
+			&mut rejected_number_snapshots,
+		);
+	}
+
+	fn append_page_with_rejected_number_snapshots(
+		&mut self,
+		parent: NodeId,
+		page: Page,
+		rejected_number_snapshots: &mut RejectedNumberSnapshotContext,
+	) {
 		match page {
 			Page::Element(element) => {
 				let option_value = element
@@ -596,6 +681,9 @@ impl TestDom {
 						ControlKind::SelectOne | ControlKind::SelectMany
 					)
 				});
+				let rejected_number_raw = control_binding
+					.as_ref()
+					.and_then(|binding| rejected_number_snapshots.take(binding));
 				let mut element_node = ElementNode {
 					tag: tag.into_owned(),
 					attrs,
@@ -611,7 +699,7 @@ impl TestDom {
 					control_binding,
 					option_value,
 					is_composing: false,
-					pending_raw: None,
+					pending_raw: rejected_number_raw.clone(),
 					last_committed_raw: None,
 					last_observed_control_value: last_observed_control_value.clone(),
 					last_observed_signal_revision,
@@ -620,8 +708,15 @@ impl TestDom {
 					.control_binding
 					.as_ref()
 					.is_none_or(|binding| element_node.validate_control_binding(binding).is_ok());
-				if binding_supported && let Some(value) = last_observed_control_value {
-					element_node.apply_control_value(value);
+				if binding_supported
+					&& let (Some(binding), Some(value)) = (
+						element_node.control_binding.clone(),
+						last_observed_control_value,
+					) {
+					element_node.apply_control_value(&binding, value);
+				}
+				if let Some(raw) = rejected_number_raw {
+					element_node.value = Some(raw);
 				}
 				let node_id = self.push_node(parent, TestNode::Element(Box::new(element_node)));
 				let suppress_bound_textarea_children = self.element(node_id).is_some_and(|node| {
@@ -633,7 +728,11 @@ impl TestDom {
 				});
 				if !suppress_bound_textarea_children {
 					for child in children {
-						self.append_page(node_id, child);
+						self.append_page_with_rejected_number_snapshots(
+							node_id,
+							child,
+							rejected_number_snapshots,
+						);
 					}
 				}
 				if refresh_controlled_select {
@@ -651,18 +750,30 @@ impl TestDom {
 			}
 			Page::Fragment(children) => {
 				for child in children {
-					self.append_page(parent, child);
+					self.append_page_with_rejected_number_snapshots(
+						parent,
+						child,
+						rejected_number_snapshots,
+					);
 				}
 			}
 			Page::KeyedFragment(children) => {
 				for (_, child) in children {
-					self.append_page(parent, child);
+					self.append_page_with_rejected_number_snapshots(
+						parent,
+						child,
+						rejected_number_snapshots,
+					);
 				}
 			}
 			Page::Outlet(outlet) => {
 				let id = outlet.id().map(str::to_string);
 				if let Some(child) = outlet.into_child() {
-					self.append_page(parent, child);
+					self.append_page_with_rejected_number_snapshots(
+						parent,
+						child,
+						rejected_number_snapshots,
+					);
 				} else if let Some(id) = id {
 					self.push_node(
 						parent,
@@ -693,7 +804,11 @@ impl TestDom {
 				}
 			}
 			Page::Empty => {}
-			Page::WithHead { view, .. } => self.append_page(parent, *view),
+			Page::WithHead { view, .. } => self.append_page_with_rejected_number_snapshots(
+				parent,
+				*view,
+				rejected_number_snapshots,
+			),
 			Page::ReactiveIf(reactive_if) => {
 				let (condition, then_view, else_view) = reactive_if.into_parts();
 				let render: Rc<dyn Fn() -> Page + 'static> = Rc::new(move || {
@@ -703,25 +818,34 @@ impl TestDom {
 						else_view()
 					}
 				});
-				self.append_reactive_anchor(parent, render);
+				self.append_reactive_anchor(parent, render, rejected_number_snapshots);
 			}
 			Page::Reactive(reactive) => {
 				let render_arc = reactive.into_render();
 				let render: Rc<dyn Fn() -> Page + 'static> = Rc::new(move || render_arc());
-				self.append_reactive_anchor(parent, render);
+				self.append_reactive_anchor(parent, render, rejected_number_snapshots);
 			}
 			Page::Suspense(node) => {
 				let render: Rc<dyn Fn() -> Page + 'static> = Rc::new(move || node.render_branch());
-				self.append_reactive_anchor(parent, render);
+				self.append_reactive_anchor(parent, render, rejected_number_snapshots);
 			}
 			Page::Deferred(node) => {
 				let content = node.render_content();
-				self.append_page(parent, content);
+				self.append_page_with_rejected_number_snapshots(
+					parent,
+					content,
+					rejected_number_snapshots,
+				);
 			}
 		}
 	}
 
-	fn append_reactive_anchor(&mut self, parent: NodeId, render: Rc<dyn Fn() -> Page + 'static>) {
+	fn append_reactive_anchor(
+		&mut self,
+		parent: NodeId,
+		render: Rc<dyn Fn() -> Page + 'static>,
+		rejected_number_snapshots: &mut RejectedNumberSnapshotContext,
+	) {
 		let anchor = self.push_node(
 			parent,
 			TestNode::ReactiveAnchor {
@@ -730,7 +854,11 @@ impl TestDom {
 				render: Rc::clone(&render),
 			},
 		);
-		self.append_page(anchor, render());
+		self.append_page_with_rejected_number_snapshots(
+			anchor,
+			render(),
+			rejected_number_snapshots,
+		);
 	}
 
 	fn push_node(&mut self, parent: NodeId, node: TestNode) -> NodeId {
@@ -794,8 +922,14 @@ impl TestDom {
 			if !self.contains(anchor) {
 				continue;
 			}
+			let mut rejected_number_snapshots =
+				RejectedNumberSnapshotContext::from_subtree(self, anchor);
 			self.clear_children(anchor);
-			self.append_page(anchor, render());
+			self.append_page_with_rejected_number_snapshots(
+				anchor,
+				render(),
+				&mut rejected_number_snapshots,
+			);
 		}
 	}
 
@@ -948,7 +1082,7 @@ impl ElementNode {
 		}
 	}
 
-	fn apply_control_value(&mut self, value: ControlValue) {
+	fn apply_control_value(&mut self, binding: &ControlBinding, value: ControlValue) {
 		match value {
 			ControlValue::Text(value) => {
 				self.value = Some(value.clone());
@@ -956,7 +1090,12 @@ impl ElementNode {
 					self.selected_values = vec![value];
 				}
 			}
-			ControlValue::Checked(checked) => self.checked = checked,
+			ControlValue::Checked(checked) => {
+				self.checked = checked;
+				if binding.kind() == ControlKind::Radio {
+					self.value = binding.radio_value().map(str::to_owned);
+				}
+			}
 			ControlValue::SelectedValues(values) => {
 				self.value = Some(values.first().cloned().unwrap_or_default());
 				self.selected_values = values;

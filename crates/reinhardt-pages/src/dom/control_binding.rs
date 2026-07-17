@@ -13,7 +13,6 @@ use reinhardt_core::{reactive::runtime::NodeId, types::page::ControlBindingSnaps
 
 type HydrationSnapshotStore = Rc<RefCell<Vec<ControlBindingSnapshot>>>;
 type RejectedNumberSnapshotStore = Rc<RefCell<Vec<RejectedNumberSnapshot>>>;
-type BindingPositionStore = Rc<RefCell<Vec<(NodeId, usize)>>>;
 
 thread_local! {
 	static ACTIVE_HYDRATION_SNAPSHOT_STORE: RefCell<Option<HydrationSnapshotStore>> =
@@ -22,18 +21,13 @@ thread_local! {
 		const { RefCell::new(None) };
 	static ACTIVE_REJECTED_NUMBER_SNAPSHOTS: RefCell<Option<RejectedNumberSnapshotStore>> =
 		const { RefCell::new(None) };
-	static ACTIVE_HYDRATION_NUMBER_POSITIONS: RefCell<Option<BindingPositionStore>> =
-		const { RefCell::new(None) };
-	static ACTIVE_MOUNT_NUMBER_POSITIONS: RefCell<Option<BindingPositionStore>> =
-		const { RefCell::new(None) };
+	static ACTIVE_NUMBER_BINDINGS: RefCell<Vec<MountedNumberBinding>> = const { RefCell::new(Vec::new()) };
 }
 
 struct ActiveHydrationSnapshotStoreGuard {
 	previous: Option<HydrationSnapshotStore>,
 	previous_adopted_targets: Option<Rc<RefCell<Vec<NodeId>>>>,
 	previous_rejected_number_snapshots: Option<RejectedNumberSnapshotStore>,
-	previous_hydration_number_positions: Option<BindingPositionStore>,
-	previous_mount_number_positions: Option<BindingPositionStore>,
 }
 
 impl Drop for ActiveHydrationSnapshotStoreGuard {
@@ -46,12 +40,6 @@ impl Drop for ActiveHydrationSnapshotStoreGuard {
 		});
 		ACTIVE_REJECTED_NUMBER_SNAPSHOTS.with(|active| {
 			active.replace(self.previous_rejected_number_snapshots.take());
-		});
-		ACTIVE_HYDRATION_NUMBER_POSITIONS.with(|active| {
-			active.replace(self.previous_hydration_number_positions.take());
-		});
-		ACTIVE_MOUNT_NUMBER_POSITIONS.with(|active| {
-			active.replace(self.previous_mount_number_positions.take());
 		});
 	}
 }
@@ -98,16 +86,10 @@ pub(crate) fn with_hydration_snapshot_transaction<T, E>(
 		.with(|active| active.replace(Some(Rc::new(RefCell::new(Vec::new())))));
 	let previous_rejected_number_snapshots = ACTIVE_REJECTED_NUMBER_SNAPSHOTS
 		.with(|active| active.replace(Some(Rc::new(RefCell::new(Vec::new())))));
-	let previous_hydration_number_positions = ACTIVE_HYDRATION_NUMBER_POSITIONS
-		.with(|active| active.replace(Some(Rc::new(RefCell::new(Vec::new())))));
-	let previous_mount_number_positions = ACTIVE_MOUNT_NUMBER_POSITIONS
-		.with(|active| active.replace(Some(Rc::new(RefCell::new(Vec::new())))));
 	let guard = ActiveHydrationSnapshotStoreGuard {
 		previous,
 		previous_adopted_targets,
 		previous_rejected_number_snapshots,
-		previous_hydration_number_positions,
-		previous_mount_number_positions,
 	};
 	let result = f();
 	drop(guard);
@@ -119,16 +101,12 @@ pub(crate) fn with_hydration_snapshot_transaction<T, E>(
 
 struct ActiveRejectedNumberSnapshotStoreGuard {
 	previous_rejected_number_snapshots: Option<RejectedNumberSnapshotStore>,
-	previous_mount_number_positions: Option<BindingPositionStore>,
 }
 
 impl Drop for ActiveRejectedNumberSnapshotStoreGuard {
 	fn drop(&mut self) {
 		ACTIVE_REJECTED_NUMBER_SNAPSHOTS.with(|active| {
 			active.replace(self.previous_rejected_number_snapshots.take());
-		});
-		ACTIVE_MOUNT_NUMBER_POSITIONS.with(|active| {
-			active.replace(self.previous_mount_number_positions.take());
 		});
 	}
 }
@@ -143,11 +121,8 @@ fn with_rejected_number_snapshot_transaction<T, E>(
 
 	let previous_rejected_number_snapshots = ACTIVE_REJECTED_NUMBER_SNAPSHOTS
 		.with(|active| active.replace(Some(Rc::new(RefCell::new(Vec::new())))));
-	let previous_mount_number_positions = ACTIVE_MOUNT_NUMBER_POSITIONS
-		.with(|active| active.replace(Some(Rc::new(RefCell::new(Vec::new())))));
 	let _guard = ActiveRejectedNumberSnapshotStoreGuard {
 		previous_rejected_number_snapshots,
-		previous_mount_number_positions,
 	};
 	f()
 }
@@ -185,31 +160,6 @@ fn record_hydration_target_adoption(binding: &ControlBinding) {
 	});
 }
 
-fn next_binding_position(
-	store: &'static std::thread::LocalKey<RefCell<Option<BindingPositionStore>>>,
-	binding: &ControlBinding,
-) -> Option<usize> {
-	store.with(|active| {
-		let store = active.borrow();
-		let positions = store.as_ref()?;
-		let mut positions = positions.borrow_mut();
-		let position = positions
-			.iter_mut()
-			.find(|(target, _)| *target == binding.target());
-		match position {
-			Some((_, next)) => {
-				let current = *next;
-				*next += 1;
-				Some(current)
-			}
-			None => {
-				positions.push((binding.target(), 1));
-				Some(0)
-			}
-		}
-	})
-}
-
 fn stage_rejected_number_snapshot(
 	binding: &ControlBinding,
 	position: Option<usize>,
@@ -242,7 +192,10 @@ fn stage_rejected_number_hydration_snapshot(
 	stage_rejected_number_snapshot(binding, position, input.value(), input_selection(input));
 }
 
-fn take_rejected_number_snapshot(binding: &ControlBinding) -> Option<RejectedNumberSnapshot> {
+fn take_rejected_number_snapshot(
+	binding: &ControlBinding,
+	position: Option<usize>,
+) -> Option<RejectedNumberSnapshot> {
 	if binding.kind() != ControlKind::Number {
 		return None;
 	}
@@ -250,10 +203,8 @@ fn take_rejected_number_snapshot(binding: &ControlBinding) -> Option<RejectedNum
 		let active = active.borrow();
 		let snapshots = active.as_ref()?;
 		let mut snapshots = snapshots.borrow_mut();
-		let position = next_binding_position(&ACTIVE_MOUNT_NUMBER_POSITIONS, binding);
 		let index = snapshots.iter().position(|snapshot| {
-			snapshot.target == binding.target()
-				&& (snapshot.position.is_none() || snapshot.position == position)
+			snapshot.target == binding.target() && snapshot.position == position
 		})?;
 		Some(snapshots.remove(index))
 	})
@@ -274,6 +225,58 @@ pub(crate) struct ControlBindingController {
 	_effect: Effect,
 	_listeners: Vec<EventHandle>,
 	_option_observer: Option<SelectOptionObserver>,
+	_number_binding_registration: Option<NumberBindingRegistration>,
+}
+
+struct MountedNumberBinding {
+	target: NodeId,
+	element: web_sys::Element,
+}
+
+struct NumberBindingRegistration {
+	target: NodeId,
+	element: web_sys::Element,
+	position: usize,
+}
+
+impl NumberBindingRegistration {
+	fn register(element: &Element, binding: &ControlBinding) -> Option<Self> {
+		if binding.kind() != ControlKind::Number {
+			return None;
+		}
+		ACTIVE_NUMBER_BINDINGS.with(|registered| {
+			let mut registered = registered.borrow_mut();
+			let position = registered
+				.iter()
+				.filter(|candidate| candidate.target == binding.target())
+				.count();
+			registered.push(MountedNumberBinding {
+				target: binding.target(),
+				element: element.as_web_sys().clone(),
+			});
+			Some(Self {
+				target: binding.target(),
+				element: element.as_web_sys().clone(),
+				position,
+			})
+		})
+	}
+}
+
+impl Drop for NumberBindingRegistration {
+	fn drop(&mut self) {
+		let registration_node: web_sys::Node = self.element.clone().unchecked_into();
+		ACTIVE_NUMBER_BINDINGS.with(|registered| {
+			registered.borrow_mut().retain(|candidate| {
+				candidate.target != self.target
+					|| !candidate
+						.element
+						.clone()
+						.unchecked_into::<web_sys::Node>()
+						.is_same_node(Some(&registration_node))
+			});
+		});
+	}
 }
 
 struct SelectOptionObserver {
@@ -301,6 +304,7 @@ struct CompositionState {
 	applying_input: bool,
 	skip_next_input: Option<CompletedComposition>,
 	number_editor: Option<NumberEditorState>,
+	number_position: Option<usize>,
 }
 
 #[derive(Default)]
@@ -342,7 +346,11 @@ impl ControlBindingController {
 	) -> Result<Self, ControlBindingError> {
 		validate_control(&element, binding.kind())?;
 		write_radio_value(&element, &binding)?;
-		let rejected_number_snapshot = take_rejected_number_snapshot(&binding);
+		let number_binding_registration = NumberBindingRegistration::register(&element, &binding);
+		let number_position = number_binding_registration
+			.as_ref()
+			.map(|registration| registration.position);
+		let rejected_number_snapshot = take_rejected_number_snapshot(&binding, number_position);
 		let initial_value = untracked(|| binding.read());
 		write_control(&element, binding.kind(), &initial_value)?;
 		if let Some(snapshot) = rejected_number_snapshot.as_ref() {
@@ -353,6 +361,8 @@ impl ControlBindingController {
 			binding,
 			rejected_number_snapshot.is_some(),
 			rejected_number_snapshot.as_ref(),
+			number_position,
+			number_binding_registration,
 		)?;
 		Ok(controller)
 	}
@@ -363,8 +373,11 @@ impl ControlBindingController {
 	) -> Result<(Self, bool), ControlBindingError> {
 		validate_control(&element, binding.kind())?;
 		write_radio_value(&element, &binding)?;
-		let number_position = next_binding_position(&ACTIVE_HYDRATION_NUMBER_POSITIONS, &binding);
-		let (listeners, state) = install_listeners(&element, &binding, None);
+		let number_binding_registration = NumberBindingRegistration::register(&element, &binding);
+		let number_position = number_binding_registration
+			.as_ref()
+			.map(|registration| registration.position);
+		let (listeners, state) = install_listeners(&element, &binding, None, number_position);
 		let live_value = read_control(&element, binding.kind())?;
 		let expected_value = untracked(|| binding.read());
 		let should_restore_expected = hydration_target_was_adopted(&binding)
@@ -406,6 +419,7 @@ impl ControlBindingController {
 				_effect: effect,
 				_listeners: listeners,
 				_option_observer: option_observer,
+				_number_binding_registration: number_binding_registration,
 			},
 			refresh_required,
 		))
@@ -416,14 +430,22 @@ impl ControlBindingController {
 		binding: ControlBinding,
 		skip_first_write: bool,
 		rejected_number_snapshot: Option<&RejectedNumberSnapshot>,
+		number_position: Option<usize>,
+		number_binding_registration: Option<NumberBindingRegistration>,
 	) -> Result<Self, ControlBindingError> {
-		let (listeners, state) = install_listeners(&element, &binding, rejected_number_snapshot);
+		let (listeners, state) = install_listeners(
+			&element,
+			&binding,
+			rejected_number_snapshot,
+			number_position,
+		);
 		let option_observer = install_select_option_observer(&element, &binding);
 		let effect = install_effect(element, binding, skip_first_write, state);
 		Ok(Self {
 			_effect: effect,
 			_listeners: listeners,
 			_option_observer: option_observer,
+			_number_binding_registration: number_binding_registration,
 		})
 	}
 }
@@ -541,6 +563,7 @@ fn install_listeners(
 	element: &Element,
 	binding: &ControlBinding,
 	rejected_number_snapshot: Option<&RejectedNumberSnapshot>,
+	number_position: Option<usize>,
 ) -> (Vec<EventHandle>, Rc<RefCell<CompositionState>>) {
 	let number_editor = if binding.kind() == ControlKind::Number {
 		rejected_number_snapshot
@@ -566,6 +589,7 @@ fn install_listeners(
 	};
 	let state = Rc::new(RefCell::new(CompositionState {
 		number_editor,
+		number_position,
 		..CompositionState::default()
 	}));
 	let mut listeners = Vec::new();
@@ -768,8 +792,15 @@ fn write_binding_from_input(
 	value: ControlValue,
 ) -> Result<crate::component::ControlWriteOutcome, ControlBindingError> {
 	with_rejected_number_snapshot_transaction(|| {
-		if let Some(editor) = state.borrow().number_editor.as_ref() {
-			stage_rejected_number_snapshot(binding, None, editor.raw.clone(), editor.selection);
+		let snapshot = {
+			let state = state.borrow();
+			state
+				.number_editor
+				.as_ref()
+				.map(|editor| (state.number_position, editor.raw.clone(), editor.selection))
+		};
+		if let Some((position, raw, selection)) = snapshot {
+			stage_rejected_number_snapshot(binding, position, raw, selection);
 		}
 		let _guard = ApplyingInputGuard::new(state);
 		binding.write(value)
@@ -1401,6 +1432,65 @@ mod tests {
 			assert_eq!(input.value(), "2147483648");
 			signal.set(13);
 			assert_eq!(input.value(), "13");
+		});
+	}
+
+	#[wasm_bindgen_test]
+	fn rejected_numeric_raw_restores_to_its_original_control_position() {
+		let scope = ReactiveScope::new();
+		scope.enter(|| {
+			// Arrange
+			let value = Signal::new(12_i32);
+			let first = element("input");
+			let first_input: web_sys::HtmlInputElement =
+				first.as_web_sys().clone().unchecked_into();
+			first_input.set_type("number");
+			let second = element("input");
+			let second_input: web_sys::HtmlInputElement =
+				second.as_web_sys().clone().unchecked_into();
+			second_input.set_type("number");
+			let first_controller =
+				ControlBindingController::mount(first, ControlBinding::number(value))
+					.expect("first binding");
+			let second_controller =
+				ControlBindingController::mount(second, ControlBinding::number(value))
+					.expect("second binding");
+
+			// Act
+			with_rejected_number_snapshot_transaction(|| {
+				second_input.set_value("2147483648");
+				second_input
+					.dispatch_event(&web_sys::InputEvent::new("input").expect("input event"))
+					.expect("dispatch");
+				drop(first_controller);
+				drop(second_controller);
+
+				let replacement_first = element("input");
+				let replacement_first_input: web_sys::HtmlInputElement =
+					replacement_first.as_web_sys().clone().unchecked_into();
+				replacement_first_input.set_type("number");
+				let _replacement_first_controller = ControlBindingController::mount(
+					replacement_first,
+					ControlBinding::number(value),
+				)
+				.expect("replacement first binding");
+
+				let replacement_second = element("input");
+				let replacement_second_input: web_sys::HtmlInputElement =
+					replacement_second.as_web_sys().clone().unchecked_into();
+				replacement_second_input.set_type("number");
+				let _replacement_second_controller = ControlBindingController::mount(
+					replacement_second,
+					ControlBinding::number(value),
+				)
+				.expect("replacement second binding");
+
+				// Assert
+				assert_eq!(replacement_first_input.value(), "12");
+				assert_eq!(replacement_second_input.value(), "2147483648");
+				Ok::<_, ControlBindingError>(())
+			})
+			.expect("rejected snapshot transaction");
 		});
 	}
 

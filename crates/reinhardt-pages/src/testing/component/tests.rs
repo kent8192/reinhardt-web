@@ -6,7 +6,9 @@ use std::sync::{Arc, Mutex};
 
 use reinhardt_core::page::IntoPage;
 use reinhardt_core::reactive::{ReactiveScope, Signal};
-use reinhardt_core::types::page::{DeferredNode, EventName, Page, PageElement, SuspenseNode};
+use reinhardt_core::types::page::{
+	ControlBinding, DeferredNode, EventName, Page, PageElement, SuspenseNode,
+};
 use reinhardt_event_catalog::{EVENT_SPECS, EventInterface};
 use rstest::rstest;
 
@@ -379,6 +381,59 @@ fn input_updates_internal_value_before_dispatch() {
 
 	assert!(called.get());
 	assert_eq!(input.value().as_deref(), Some("new"));
+}
+
+#[test]
+fn native_radio_binding_projects_its_bound_value() {
+	// Arrange
+	let scope = ReactiveScope::new();
+	let screen = scope.enter(|| {
+		let selected = Signal::new("other".to_owned());
+		render(
+			PageElement::new("input")
+				.attr("type", "radio")
+				.attr("aria-label", "Choice")
+				.attr("value", "stale")
+				.control_binding(ControlBinding::radio(selected, "choice".to_owned())),
+		)
+	});
+
+	// Act
+	let radio = screen.get_by_label("Choice");
+
+	// Assert
+	assert_eq!(radio.value().as_deref(), Some("choice"));
+}
+
+#[tokio::test]
+#[serial(reactive_runtime)]
+async fn native_reactive_number_binding_preserves_rejected_raw_after_remount() {
+	// Arrange
+	let scope = ReactiveScope::new();
+	let (value, screen) = scope.enter(|| {
+		let value = Signal::new(12_i32);
+		let error = Signal::new(None);
+		let screen = render(Page::reactive(move || {
+			PageElement::new("input")
+				.attr("type", "number")
+				.attr("aria-label", "Quantity")
+				.control_binding(ControlBinding::number_with_error(value, error))
+				.into_page()
+		}));
+		(value, screen)
+	});
+	let input = screen.get_by_label("Quantity");
+
+	// Act
+	input.input("2147483648");
+	screen.settle().await;
+
+	// Assert
+	assert_eq!(value.get(), 12);
+	assert_eq!(
+		screen.get_by_label("Quantity").value().as_deref(),
+		Some("2147483648")
+	);
 }
 
 #[tokio::test]

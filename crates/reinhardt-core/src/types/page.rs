@@ -1216,9 +1216,14 @@ impl StringRenderSelection {
 			.any(Self::page_has_dynamic_content)
 	}
 
+	fn is_script_element(element: &PageElement) -> bool {
+		let tag = element.tag_name();
+		tag.eq_ignore_ascii_case("script") || tag.eq_ignore_ascii_case("svg:script")
+	}
+
 	fn page_has_dynamic_content(page: &Page) -> bool {
 		match page {
-			Page::Element(element) if element.tag_name().eq_ignore_ascii_case("script") => false,
+			Page::Element(element) if Self::is_script_element(element) => false,
 			Page::Element(element) => element
 				.child_views()
 				.iter()
@@ -1236,9 +1241,7 @@ impl StringRenderSelection {
 
 	fn text_content_without_script(page: &Page) -> String {
 		match page {
-			Page::Element(element) if element.tag_name().eq_ignore_ascii_case("script") => {
-				String::new()
-			}
+			Page::Element(element) if Self::is_script_element(element) => String::new(),
 			Page::Element(element) => element
 				.child_views()
 				.iter()
@@ -1747,6 +1750,30 @@ mod tests {
 			assert_eq!(
 				select.render_to_string(),
 				"<select><option selected=\"selected\"> \tRust\n</option></select>"
+			);
+		});
+	}
+
+	#[test]
+	fn render_to_string_ignores_svg_script_when_inferring_bound_option_value() {
+		ReactiveScope::run(|| {
+			// Arrange
+			let select = PageElement::new("select")
+				.control_binding(ControlBinding::select_one(Signal::new("Rust".to_owned())))
+				.child(
+					PageElement::new("option")
+						.child("Rust")
+						.child(PageElement::new("svg:script").child("ignored")),
+				)
+				.into_page();
+
+			// Act
+			let html = select.render_to_string();
+
+			// Assert
+			assert_eq!(
+				html,
+				"<select><option selected=\"selected\">Rust<svg:script>ignored</svg:script></option></select>"
 			);
 		});
 	}
