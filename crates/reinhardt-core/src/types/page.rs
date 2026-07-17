@@ -1186,7 +1186,13 @@ impl StringRenderSelection {
 			.iter()
 			.find(|(name, _)| name.eq_ignore_ascii_case("value"))
 			.map(|(_, value)| value.as_ref().to_owned())
-			.unwrap_or_else(|| Self::normalize_option_text(option));
+			.or_else(|| {
+				(!Self::has_dynamic_option_content(option))
+					.then(|| Self::normalize_option_text(option))
+			});
+		let Some(value) = value else {
+			return false;
+		};
 		match self {
 			Self::One {
 				value: selected,
@@ -1201,6 +1207,31 @@ impl StringRenderSelection {
 			.split_ascii_whitespace()
 			.collect::<Vec<_>>()
 			.join(" ")
+	}
+
+	fn has_dynamic_option_content(option: &PageElement) -> bool {
+		option
+			.child_views()
+			.iter()
+			.any(Self::page_has_dynamic_content)
+	}
+
+	fn page_has_dynamic_content(page: &Page) -> bool {
+		match page {
+			Page::Element(element) if element.tag_name().eq_ignore_ascii_case("script") => false,
+			Page::Element(element) => element
+				.child_views()
+				.iter()
+				.any(Self::page_has_dynamic_content),
+			Page::Text(_) | Page::Empty => false,
+			Page::Fragment(children) => children.iter().any(Self::page_has_dynamic_content),
+			Page::KeyedFragment(children) => children
+				.iter()
+				.any(|(_, child)| Self::page_has_dynamic_content(child)),
+			Page::Outlet(outlet) => outlet.child().is_some_and(Self::page_has_dynamic_content),
+			Page::WithHead { view, .. } => Self::page_has_dynamic_content(view),
+			Page::ReactiveIf(_) | Page::Reactive(_) | Page::Suspense(_) | Page::Deferred(_) => true,
+		}
 	}
 
 	fn text_content_without_script(page: &Page) -> String {
@@ -1590,20 +1621,22 @@ mod tests {
 
 	#[test]
 	fn render_to_string_projects_bound_input_and_textarea_values() {
-		let input = PageElement::new("input")
-			.attr("type", "text")
-			.attr("value", "stale")
-			.control_binding(ControlBinding::text(Signal::new("current".to_owned())))
-			.into_page();
-		let textarea = PageElement::new("textarea")
-			.control_binding(ControlBinding::text(Signal::new("current".to_owned())))
-			.into_page();
+		ReactiveScope::run(|| {
+			let input = PageElement::new("input")
+				.attr("type", "text")
+				.attr("value", "stale")
+				.control_binding(ControlBinding::text(Signal::new("current".to_owned())))
+				.into_page();
+			let textarea = PageElement::new("textarea")
+				.control_binding(ControlBinding::text(Signal::new("current".to_owned())))
+				.into_page();
 
-		assert_eq!(
-			input.render_to_string(),
-			"<input type=\"text\" value=\"current\" />"
-		);
-		assert_eq!(textarea.render_to_string(), "<textarea>current</textarea>");
+			assert_eq!(
+				input.render_to_string(),
+				"<input type=\"text\" value=\"current\" />"
+			);
+			assert_eq!(textarea.render_to_string(), "<textarea>current</textarea>");
+		});
 	}
 
 	#[test]
@@ -1627,112 +1660,122 @@ mod tests {
 
 	#[test]
 	fn render_to_string_normalizes_controlled_attribute_names() {
-		let input = PageElement::new("INPUT")
-			.attr("VALUE", "stale")
-			.control_binding(ControlBinding::text(Signal::new("current".to_owned())))
-			.into_page();
+		ReactiveScope::run(|| {
+			let input = PageElement::new("INPUT")
+				.attr("VALUE", "stale")
+				.control_binding(ControlBinding::text(Signal::new("current".to_owned())))
+				.into_page();
 
-		assert_eq!(input.render_to_string(), "<INPUT value=\"current\" />");
+			assert_eq!(input.render_to_string(), "<INPUT value=\"current\" />");
+		});
 	}
 
 	#[test]
 	fn render_to_string_projects_bound_select_option_state() {
-		let single = PageElement::new("select")
-			.control_binding(ControlBinding::select_one(Signal::new("wasm".to_owned())))
-			.child(
-				PageElement::new("option")
-					.attr("value", "rust")
-					.child("Rust"),
-			)
-			.child(
-				PageElement::new("option")
-					.attr("value", "wasm")
-					.attr("selected", "selected")
-					.child("WebAssembly"),
-			)
-			.into_page();
-		let multiple = PageElement::new("select")
-			.attr("multiple", "multiple")
-			.control_binding(ControlBinding::select_many(Signal::new(vec![
-				"rust".to_owned(),
-				"wasm".to_owned(),
-			])))
-			.child(
-				PageElement::new("option")
-					.attr("value", "rust")
-					.child("Rust"),
-			)
-			.child(PageElement::new("option").child("WebAssembly"))
-			.into_page();
+		ReactiveScope::run(|| {
+			let single = PageElement::new("select")
+				.control_binding(ControlBinding::select_one(Signal::new("wasm".to_owned())))
+				.child(
+					PageElement::new("option")
+						.attr("value", "rust")
+						.child("Rust"),
+				)
+				.child(
+					PageElement::new("option")
+						.attr("value", "wasm")
+						.attr("selected", "selected")
+						.child("WebAssembly"),
+				)
+				.into_page();
+			let multiple = PageElement::new("select")
+				.attr("multiple", "multiple")
+				.control_binding(ControlBinding::select_many(Signal::new(vec![
+					"rust".to_owned(),
+					"wasm".to_owned(),
+				])))
+				.child(
+					PageElement::new("option")
+						.attr("value", "rust")
+						.child("Rust"),
+				)
+				.child(PageElement::new("option").child("WebAssembly"))
+				.into_page();
 
-		assert_eq!(
-			single.render_to_string(),
-			"<select><option value=\"rust\">Rust</option><option value=\"wasm\" selected=\"selected\">WebAssembly</option></select>"
-		);
-		assert_eq!(
-			multiple.render_to_string(),
-			"<select multiple=\"multiple\"><option value=\"rust\" selected=\"selected\">Rust</option><option>WebAssembly</option></select>"
-		);
+			assert_eq!(
+				single.render_to_string(),
+				"<select><option value=\"rust\">Rust</option><option value=\"wasm\" selected=\"selected\">WebAssembly</option></select>"
+			);
+			assert_eq!(
+				multiple.render_to_string(),
+				"<select multiple=\"multiple\"><option value=\"rust\" selected=\"selected\">Rust</option><option>WebAssembly</option></select>"
+			);
+		});
 	}
 
 	#[test]
 	fn render_to_string_projects_bound_select_only_once() {
-		let select = PageElement::new("SELECT")
-			.control_binding(ControlBinding::select_one(Signal::new("Rust".to_owned())))
-			.child(
-				PageElement::new("OPTION")
-					.attr("value", "Rust")
-					.child("First"),
-			)
-			.child(
-				PageElement::new("option")
-					.attr("value", "Rust")
-					.child("Second"),
-			)
-			.into_page();
+		ReactiveScope::run(|| {
+			let select = PageElement::new("SELECT")
+				.control_binding(ControlBinding::select_one(Signal::new("Rust".to_owned())))
+				.child(
+					PageElement::new("OPTION")
+						.attr("value", "Rust")
+						.child("First"),
+				)
+				.child(
+					PageElement::new("option")
+						.attr("value", "Rust")
+						.child("Second"),
+				)
+				.into_page();
 
-		assert_eq!(
-			select.render_to_string(),
-			"<SELECT><OPTION value=\"Rust\" selected=\"selected\">First</OPTION><option value=\"Rust\">Second</option></SELECT>"
-		);
+			assert_eq!(
+				select.render_to_string(),
+				"<SELECT><OPTION value=\"Rust\" selected=\"selected\">First</OPTION><option value=\"Rust\">Second</option></SELECT>"
+			);
+		});
 	}
 
 	#[test]
 	fn render_to_string_normalizes_inferred_bound_option_value() {
-		let select = PageElement::new("select")
-			.control_binding(ControlBinding::select_one(Signal::new("Rust".to_owned())))
-			.child(PageElement::new("option").child(" \tRust\n"))
-			.into_page();
+		ReactiveScope::run(|| {
+			let select = PageElement::new("select")
+				.control_binding(ControlBinding::select_one(Signal::new("Rust".to_owned())))
+				.child(PageElement::new("option").child(" \tRust\n"))
+				.into_page();
 
-		assert_eq!(
-			select.render_to_string(),
-			"<select><option selected=\"selected\"> \tRust\n</option></select>"
-		);
+			assert_eq!(
+				select.render_to_string(),
+				"<select><option selected=\"selected\"> \tRust\n</option></select>"
+			);
+		});
 	}
 
 	#[test]
 	fn render_to_string_does_not_evaluate_dynamic_option_content_to_infer_value() {
-		// Arrange
-		let renders = std::rc::Rc::new(std::cell::Cell::new(0));
-		let render_count = std::rc::Rc::clone(&renders);
-		let select = PageElement::new("select")
-			.control_binding(ControlBinding::select_one(Signal::new("Static".to_owned())))
-			.child(
-				PageElement::new("option")
-					.child("Static")
-					.child(Page::reactive(move || {
-						render_count.set(render_count.get() + 1);
-						Page::text(" Dynamic")
-					})),
-			)
-			.into_page();
+		ReactiveScope::run(|| {
+			// Arrange
+			let renders = std::rc::Rc::new(std::cell::Cell::new(0));
+			let render_count = std::rc::Rc::clone(&renders);
+			let select = PageElement::new("select")
+				.control_binding(ControlBinding::select_one(Signal::new("Static".to_owned())))
+				.child(
+					PageElement::new("option")
+						.child("Static")
+						.child(Page::reactive(move || {
+							render_count.set(render_count.get() + 1);
+							Page::text(" Dynamic")
+						})),
+				)
+				.into_page();
 
-		// Act
-		let html = select.render_to_string();
+			// Act
+			let html = select.render_to_string();
 
-		// Assert
-		assert_eq!(renders.get(), 1);
-		assert_eq!(html, "<select><option>Static Dynamic</option></select>");
+			// Assert
+			assert_eq!(renders.get(), 1);
+			assert_eq!(html, "<select><option>Static Dynamic</option></select>");
+		});
 	}
 
 	#[test]

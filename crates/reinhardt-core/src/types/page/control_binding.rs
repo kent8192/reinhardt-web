@@ -708,6 +708,7 @@ macro_rules! impl_unsigned_number_value {
 					if raw
 						.strip_prefix('-')
 						.is_some_and(is_valid_unsigned_number_lexeme)
+						&& significand_has_nonzero_digit(raw)
 					{
 						return Err(NumberParseError::new(raw, NumberParseErrorKind::OutOfRange));
 					}
@@ -856,6 +857,25 @@ mod tests {
 			// Assert
 			assert_eq!(signed.get(), 9_007_199_254_740_993_i64);
 			assert_eq!(unsigned.get(), 9_007_199_254_740_993_u64);
+		});
+	}
+
+	#[rstest]
+	#[case("-0")]
+	#[case("-0.0")]
+	#[case("-0e2")]
+	fn unsigned_number_binding_accepts_negative_zero(#[case] raw: &str) {
+		ReactiveScope::run(|| {
+			// Arrange
+			let value = Signal::new(7_u32);
+			let binding = ControlBinding::number(value.clone());
+
+			// Act
+			let outcome = binding.write(ControlValue::Text(raw.to_owned())).unwrap();
+
+			// Assert
+			assert_eq!(outcome, ControlWriteOutcome::Committed);
+			assert_eq!(value.get(), 0);
 		});
 	}
 

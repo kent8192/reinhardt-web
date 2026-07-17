@@ -16,7 +16,7 @@ use reinhardt_pages::component::{
 	Component, ControlBinding, Head, IntoPage, LinkTag, MetaTag, Page, PageElement, ScriptTag,
 };
 use reinhardt_pages::page;
-use reinhardt_pages::reactive::Signal;
+use reinhardt_pages::reactive::{ReactiveScope, Signal};
 use reinhardt_pages::ssr::{HydrationStrategy, SsrOptions, SsrRenderer};
 use rstest::rstest;
 use std::cell::Cell;
@@ -614,12 +614,15 @@ async fn test_ssr_options_struct_literal_remains_exhaustive() {
 	assert!(html.contains("Count: 3"));
 }
 
-fn controlled_bindings_page() -> Page {
-	let text = Signal::new("A&B".to_owned());
-	let checked = Signal::new(true);
-	let selected = Signal::new(vec!["rust".to_owned(), "wasm".to_owned()]);
+// `page!` clones shared bindings while constructing each control, including Copy signal handles.
+#[allow(clippy::clone_on_copy)]
+fn controlled_bindings_page(scope: &ReactiveScope) -> Page {
+	scope.enter(|| {
+		let text = Signal::new("A&B".to_owned());
+		let checked = Signal::new(true);
+		let selected = Signal::new(vec!["rust".to_owned(), "wasm".to_owned()]);
 
-	page!({
+		page!({
 		input {
 			a11y: off,
 			bind: text
@@ -648,6 +651,7 @@ fn controlled_bindings_page() -> Page {
 				}
 			}
 		}
+		})
 	})
 }
 
@@ -655,7 +659,8 @@ fn controlled_bindings_page() -> Page {
 #[tokio::test]
 async fn controlled_bindings_render_html_initial_state() {
 	// Arrange
-	let component = controlled_bindings_page();
+	let scope = ReactiveScope::new();
+	let component = controlled_bindings_page(&scope);
 	let mut renderer = SsrRenderer::new();
 
 	// Act
@@ -689,12 +694,16 @@ async fn controlled_bindings_render_html_initial_state() {
 
 #[rstest]
 #[tokio::test]
+// `page!` owns the binding passed to the generated radio control.
+#[allow(clippy::clone_on_copy)]
 async fn bound_radio_value_expression_is_evaluated_once_for_attribute_and_binding() {
 	// Arrange
-	let selected = Signal::new("first".to_owned());
+	let scope = ReactiveScope::new();
 	let evaluations = Rc::new(Cell::new(0));
 	let value_evaluations = Rc::clone(&evaluations);
-	let component = page!({
+	let component = scope.enter(|| {
+		let selected = Signal::new("first".to_owned());
+		page!({
 		input {
 			a11y: off,
 			type: "radio",
@@ -705,6 +714,7 @@ async fn bound_radio_value_expression_is_evaluated_once_for_attribute_and_bindin
 			},
 			bind: selected
 		}
+		})
 	});
 	let mut renderer = SsrRenderer::new();
 
@@ -734,12 +744,15 @@ async fn bound_radio_value_expression_is_evaluated_once_for_attribute_and_bindin
 #[tokio::test]
 async fn manual_bound_radio_projects_its_binding_value() {
 	// Arrange
-	let selected = Signal::new("draft".to_owned());
-	let component = PageElement::new("input")
-		.attr("type", "radio")
-		.attr("value", "stale")
-		.control_binding(ControlBinding::radio(selected, "draft".to_owned()))
-		.into_page();
+	let scope = ReactiveScope::new();
+	let component = scope.enter(|| {
+		let selected = Signal::new("draft".to_owned());
+		PageElement::new("input")
+			.attr("type", "radio")
+			.attr("value", "stale")
+			.control_binding(ControlBinding::radio(selected, "draft".to_owned()))
+			.into_page()
+	});
 	let mut renderer = SsrRenderer::new();
 
 	// Act
@@ -753,33 +766,36 @@ async fn manual_bound_radio_projects_its_binding_value() {
 #[tokio::test]
 async fn controlled_single_select_marks_only_the_first_duplicate_in_tree_order() {
 	// Arrange
-	let selected = Signal::new("duplicate".to_owned());
-	let component = PageElement::new("select")
-		.control_binding(ControlBinding::select_one(selected))
-		.child(
-			PageElement::new("option")
-				.attr("value", "duplicate")
-				.child("Before"),
-		)
-		.child(
-			PageElement::new("optgroup")
-				.child(
-					PageElement::new("option")
-						.attr("value", "duplicate")
-						.child("Inside"),
-				)
-				.child(
-					PageElement::new("option")
-						.attr("value", "duplicate")
-						.child("Inside after"),
-				),
-		)
-		.child(
-			PageElement::new("option")
-				.attr("value", "duplicate")
-				.child("After"),
-		)
-		.into_page();
+	let scope = ReactiveScope::new();
+	let component = scope.enter(|| {
+		let selected = Signal::new("duplicate".to_owned());
+		PageElement::new("select")
+			.control_binding(ControlBinding::select_one(selected))
+			.child(
+				PageElement::new("option")
+					.attr("value", "duplicate")
+					.child("Before"),
+			)
+			.child(
+				PageElement::new("optgroup")
+					.child(
+						PageElement::new("option")
+							.attr("value", "duplicate")
+							.child("Inside"),
+					)
+					.child(
+						PageElement::new("option")
+							.attr("value", "duplicate")
+							.child("Inside after"),
+					),
+			)
+			.child(
+				PageElement::new("option")
+					.attr("value", "duplicate")
+					.child("After"),
+			)
+			.into_page()
+	});
 	let mut buffered_renderer = SsrRenderer::new();
 	let mut streaming_renderer = SsrRenderer::new();
 
@@ -803,23 +819,26 @@ async fn controlled_single_select_marks_only_the_first_duplicate_in_tree_order()
 #[tokio::test]
 async fn controlled_multiple_select_marks_every_duplicate() {
 	// Arrange
-	let selected = Signal::new(vec!["duplicate".to_owned()]);
-	let component = PageElement::new("select")
-		.bool_attr("multiple", true)
-		.control_binding(ControlBinding::select_many(selected))
-		.child(
-			PageElement::new("option")
-				.attr("value", "duplicate")
-				.child("First"),
-		)
-		.child(
-			PageElement::new("optgroup").child(
+	let scope = ReactiveScope::new();
+	let component = scope.enter(|| {
+		let selected = Signal::new(vec!["duplicate".to_owned()]);
+		PageElement::new("select")
+			.bool_attr("multiple", true)
+			.control_binding(ControlBinding::select_many(selected))
+			.child(
 				PageElement::new("option")
 					.attr("value", "duplicate")
-					.child("Second"),
-			),
-		)
-		.into_page();
+					.child("First"),
+			)
+			.child(
+				PageElement::new("optgroup").child(
+					PageElement::new("option")
+						.attr("value", "duplicate")
+						.child("Second"),
+				),
+			)
+			.into_page()
+	});
 	let mut renderer = SsrRenderer::new();
 
 	// Act
@@ -833,29 +852,32 @@ async fn controlled_multiple_select_marks_every_duplicate() {
 #[tokio::test]
 async fn controlled_select_uses_flattened_option_text_when_value_is_omitted() {
 	// Arrange
-	let selected = Signal::new(vec![
-		"Rust & WebAssembly".to_owned(),
-		"Nested\u{a0}<Choice>".to_owned(),
-	]);
-	let component = PageElement::new("select")
-		.bool_attr("multiple", true)
-		.control_binding(ControlBinding::select_many(selected))
-		.child(
-			PageElement::new("optgroup")
-				.child(
-					PageElement::new("option")
-						.child(" \tRust\n")
-						.child(PageElement::new("script").child("ignored"))
-						.child("  &\r\nWebAssembly\x0c "),
-				)
-				.child(PageElement::new("option").child(Page::Fragment(vec![
-					Page::text(" Nested\u{a0}"),
-					PageElement::new("span").child("<Choice>").into_page(),
-					PageElement::new("script").child("ignored").into_page(),
-					Page::text(" "),
-				]))),
-		)
-		.into_page();
+	let scope = ReactiveScope::new();
+	let component = scope.enter(|| {
+		let selected = Signal::new(vec![
+			"Rust & WebAssembly".to_owned(),
+			"Nested\u{a0}<Choice>".to_owned(),
+		]);
+		PageElement::new("select")
+			.bool_attr("multiple", true)
+			.control_binding(ControlBinding::select_many(selected))
+			.child(
+				PageElement::new("optgroup")
+					.child(
+						PageElement::new("option")
+							.child(" \tRust\n")
+							.child(PageElement::new("script").child("ignored"))
+							.child("  &\r\nWebAssembly\x0c "),
+					)
+					.child(PageElement::new("option").child(Page::Fragment(vec![
+						Page::text(" Nested\u{a0}"),
+						PageElement::new("span").child("<Choice>").into_page(),
+						PageElement::new("script").child("ignored").into_page(),
+						Page::text(" "),
+					]))),
+			)
+			.into_page()
+	});
 	let mut buffered_renderer =
 		SsrRenderer::with_options(SsrOptions::new().suspense_streaming(false));
 	let mut streaming_renderer = SsrRenderer::new();
@@ -898,7 +920,8 @@ async fn controlled_select_uses_flattened_option_text_when_value_is_omitted() {
 #[tokio::test]
 async fn controlled_bindings_have_buffered_streaming_byte_parity() {
 	// Arrange
-	let component = controlled_bindings_page();
+	let scope = ReactiveScope::new();
+	let component = controlled_bindings_page(&scope);
 	let mut buffered_renderer = SsrRenderer::new();
 	let mut streaming_renderer = SsrRenderer::new();
 
