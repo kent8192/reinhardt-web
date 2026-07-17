@@ -14,8 +14,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use reinhardt_core::reactive::{ReactiveScope, Signal};
-use reinhardt_pages::reactive::hooks::{use_action, use_callback, use_effect, use_memo};
 use reinhardt_pages::deps;
+use reinhardt_pages::reactive::hooks::{use_action, use_callback, use_effect, use_memo};
 use serial_test::serial;
 
 #[test]

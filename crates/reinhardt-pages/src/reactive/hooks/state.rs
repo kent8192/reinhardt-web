@@ -53,9 +53,7 @@ struct RegisteredSetState<T: 'static> {
 
 impl<T: 'static> RegisteredSetState<T> {
 	fn set(&self, value: T) {
-		if self.signal.try_set(value).is_err() {
-			return;
-		}
+		let _ = self.signal.try_set(value);
 	}
 }
 
@@ -99,9 +97,7 @@ impl<T: Clone + 'static> SetStateExt<T> for SetState<T> {
 		let Ok(current) = signal.try_get_untracked() else {
 			return;
 		};
-		if signal.try_set(f(&current)).is_err() {
-			return;
-		}
+		let _ = signal.try_set(f(&current));
 	}
 }
 
@@ -250,9 +246,7 @@ where
 				return;
 			};
 			let new_state = reducer(&current, action);
-			if state.try_set(new_state).is_err() {
-				return;
-			}
+			let _ = state.try_set(new_state);
 		})
 	};
 	(state, dispatch)
