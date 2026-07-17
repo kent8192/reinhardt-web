@@ -37,6 +37,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
+      - name: Setup Rust
+        uses: ./.github/actions/setup-rust
+        with:
+          cache-key: anyhow-check
+
       - name: Install ripgrep
         run: sudo apt-get update && sudo apt-get install --yes ripgrep
 
