@@ -9829,11 +9829,16 @@ mod tests {
 			"user_id",
 		);
 
-		assert_eq!(operations.len(), 1, "unexpected operations: {operations:?}");
+		assert_eq!(operations.len(), 2, "unexpected operations: {operations:?}");
 		assert!(matches!(
 			&operations[0],
 			super::super::Operation::AddConstraint { constraint_sql, .. }
 				if constraint_sql == "CONSTRAINT user_groups_rank_unique UNIQUE (user_id, rank)"
+		));
+		assert!(matches!(
+			&operations[1],
+			super::super::Operation::AddConstraint { constraint_sql, .. }
+				if constraint_sql == "CONSTRAINT fk_user_groups_user_id FOREIGN KEY (user_id) REFERENCES user(id)"
 		));
 	}
 
