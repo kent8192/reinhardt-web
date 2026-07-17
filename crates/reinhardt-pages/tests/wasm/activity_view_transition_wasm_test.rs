@@ -13,8 +13,9 @@ use reinhardt_pages::component::{
 	ActivityBoundary, IntoPage, Page, PageElement, PageExt, ViewTransitionBoundary,
 	cleanup_reactive_nodes, start_view_transition,
 };
+use reinhardt_pages::deps;
 use reinhardt_pages::dom::Element;
-use reinhardt_pages::reactive::{ReactiveScope, Signal};
+use reinhardt_pages::reactive::{ReactiveScope, Signal, hooks::use_retained_layout_effect};
 use wasm_bindgen::JsCast;
 use wasm_bindgen_test::*;
 
@@ -47,10 +48,8 @@ fn view_transition_boundary_marks_named_subtree() {
 
 #[wasm_bindgen_test]
 fn reactive_activity_mode_updates_wrapper_without_recreating_content() {
-	let scope = ReactiveScope::new();
-	scope.enter(|| {
-		cleanup_reactive_nodes();
-
+	cleanup_reactive_nodes();
+	ReactiveScope::run(|| {
 		let document = web_sys::window().unwrap().document().unwrap();
 		if let Some(prev) = document.get_element_by_id("activity-root") {
 			prev.remove();
@@ -138,6 +137,93 @@ fn reactive_activity_mode_updates_wrapper_without_recreating_content() {
 				.value(),
 			"user typed"
 		);
+
+		cleanup_reactive_nodes();
+		target.remove();
+	});
+}
+
+#[wasm_bindgen_test]
+fn reactive_activity_mode_retains_the_original_render_store() {
+	cleanup_reactive_nodes();
+	ReactiveScope::run(|| {
+		let document = web_sys::window().unwrap().document().unwrap();
+		let target = document.create_element("div").unwrap();
+		document.body().unwrap().append_child(&target).unwrap();
+		let visible = Signal::new(true);
+		let visible_for_view = visible.clone();
+		let renders = Rc::new(Cell::new(0));
+		let renders_for_view = Rc::clone(&renders);
+		let initial_owner = Rc::new(RefCell::new(None::<std::rc::Weak<()>>));
+		let initial_owner_for_view = Rc::clone(&initial_owner);
+
+		Page::reactive(move || {
+			let render_index = renders_for_view.get();
+			renders_for_view.set(render_index + 1);
+			let initial_owner = Rc::clone(&initial_owner_for_view);
+			ActivityBoundary::default()
+				.visible_when(visible_for_view.get())
+				.content(move || {
+					let owner = Rc::new(());
+					if render_index == 0 {
+						*initial_owner.borrow_mut() = Some(Rc::downgrade(&owner));
+					}
+					let retained_owner = Rc::clone(&owner);
+					use_retained_layout_effect(
+						move || {
+							let _owner = Rc::clone(&retained_owner);
+							None::<fn()>
+						},
+						deps![],
+					);
+					PageElement::new("input").into_page()
+				})
+				.into_page()
+		})
+		.mount(&Element::new(target.clone()))
+		.expect("activity mounts");
+		let owner = initial_owner
+			.borrow()
+			.clone()
+			.expect("initial render owner");
+
+		assert!(owner.upgrade().is_some());
+		visible.set(false);
+		assert!(owner.upgrade().is_some());
+
+		cleanup_reactive_nodes();
+		target.remove();
+	});
+}
+
+#[wasm_bindgen_test]
+fn reactive_activity_mode_keeps_nested_reactive_content_live() {
+	cleanup_reactive_nodes();
+	ReactiveScope::run(|| {
+		let document = web_sys::window().unwrap().document().unwrap();
+		let target = document.create_element("div").unwrap();
+		document.body().unwrap().append_child(&target).unwrap();
+		let visible = Signal::new(true);
+		let message = Signal::new("initial".to_owned());
+		let visible_for_view = visible.clone();
+		let message_for_view = message.clone();
+
+		Page::reactive(move || {
+			let message_for_content = message_for_view.clone();
+			ActivityBoundary::default()
+				.visible_when(visible_for_view.get())
+				.content(move || {
+					let message_for_reactive = message_for_content.clone();
+					Page::reactive(move || Page::text(message_for_reactive.get()))
+				})
+				.into_page()
+		})
+		.mount(&Element::new(target.clone()))
+		.expect("activity mounts");
+
+		visible.set(false);
+		message.set("updated".to_owned());
+		assert_eq!(target.text_content().as_deref(), Some("updated"));
 
 		cleanup_reactive_nodes();
 		target.remove();

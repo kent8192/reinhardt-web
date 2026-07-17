@@ -364,7 +364,7 @@ impl ControlBinding {
 			kind: ControlKind::Number,
 			radio_value: None,
 			target: signal.id(),
-			read: Shared::new(move || ControlValue::Text(read_signal.get().to_string())),
+			read: Shared::new(move || ControlValue::Text(read_signal.get().format_control_value())),
 			write: Shared::new(move |value| {
 				let ControlValue::Text(raw) = value else {
 					return Err(value_kind_mismatch(ControlKind::Number, &value));
@@ -433,6 +433,11 @@ mod sealed {
 
 /// Primitive numeric type supported by controlled numeric inputs.
 pub trait NumberValue: sealed::Sealed + Clone + fmt::Display + 'static {
+	/// Formats the primitive for a numeric control.
+	fn format_control_value(&self) -> String {
+		self.to_string()
+	}
+
 	/// Parses a complete control value into this primitive.
 	fn parse_control_value(raw: &str) -> Result<Self, NumberParseError>;
 }
@@ -532,6 +537,133 @@ fn significand_has_nonzero_digit(raw: &str) -> bool {
 		.any(|digit| digit.is_ascii_digit() && digit != b'0')
 }
 
+const MAX_INTEGER_CONTROL_DIGITS: usize = 39;
+
+fn normalize_integer_control_value(raw: &str) -> Result<String, NumberParseErrorKind> {
+	let bytes = raw.as_bytes();
+	let (negative, significand_start) = match bytes.first() {
+		Some(b'-') => (true, 1),
+		Some(b'+') => (false, 1),
+		_ => (false, 0),
+	};
+	let exponent_start = bytes.iter().position(|byte| matches!(byte, b'e' | b'E'));
+	let significand_end = exponent_start.unwrap_or(bytes.len());
+	let mut digits = Vec::with_capacity(significand_end - significand_start);
+	let mut fraction_digits = 0_usize;
+	let mut after_decimal = false;
+	for byte in &bytes[significand_start..significand_end] {
+		if *byte == b'.' {
+			after_decimal = true;
+			continue;
+		}
+		if after_decimal {
+			fraction_digits += 1;
+		}
+		digits.push(*byte);
+	}
+
+	let Some(first_nonzero) = digits.iter().position(|digit| *digit != b'0') else {
+		return Ok("0".to_owned());
+	};
+	let exponent = parse_integer_control_exponent(bytes, exponent_start)?;
+	let fraction_digits = i64::try_from(fraction_digits).map_err(|_| {
+		if exponent.is_negative() {
+			NumberParseErrorKind::Invalid
+		} else {
+			NumberParseErrorKind::OutOfRange
+		}
+	})?;
+	let scale = exponent.checked_sub(fraction_digits).ok_or_else(|| {
+		if exponent.is_negative() {
+			NumberParseErrorKind::Invalid
+		} else {
+			NumberParseErrorKind::OutOfRange
+		}
+	})?;
+
+	if scale.is_negative() {
+		let removed_digits =
+			usize::try_from(scale.unsigned_abs()).map_err(|_| NumberParseErrorKind::Invalid)?;
+		let end = digits
+			.len()
+			.checked_sub(removed_digits)
+			.ok_or(NumberParseErrorKind::Invalid)?;
+		if digits[end..].iter().any(|digit| *digit != b'0') {
+			return Err(NumberParseErrorKind::Invalid);
+		}
+		let Some(output_start) = digits[..end].iter().position(|digit| *digit != b'0') else {
+			return Ok("0".to_owned());
+		};
+		return normalized_integer_digits(negative, &digits[output_start..end], 0);
+	}
+
+	let appended_zeros = usize::try_from(scale).map_err(|_| NumberParseErrorKind::OutOfRange)?;
+	normalized_integer_digits(negative, &digits[first_nonzero..], appended_zeros)
+}
+
+fn parse_integer_control_exponent(
+	bytes: &[u8],
+	exponent_start: Option<usize>,
+) -> Result<i64, NumberParseErrorKind> {
+	let Some(exponent_start) = exponent_start else {
+		return Ok(0);
+	};
+	let mut index = exponent_start + 1;
+	let negative = bytes.get(index) == Some(&b'-');
+	if matches!(bytes.get(index), Some(b'+' | b'-')) {
+		index += 1;
+	}
+	let mut magnitude = 0_u64;
+	for digit in &bytes[index..] {
+		magnitude = magnitude
+			.checked_mul(10)
+			.and_then(|value| value.checked_add(u64::from(*digit - b'0')))
+			.ok_or(if negative {
+				NumberParseErrorKind::Invalid
+			} else {
+				NumberParseErrorKind::OutOfRange
+			})?;
+	}
+	if negative {
+		let minimum_magnitude = i64::MAX as u64 + 1;
+		if magnitude > minimum_magnitude {
+			return Err(NumberParseErrorKind::Invalid);
+		}
+		if magnitude == minimum_magnitude {
+			Ok(i64::MIN)
+		} else {
+			Ok(-(magnitude as i64))
+		}
+	} else if magnitude > i64::MAX as u64 {
+		Err(NumberParseErrorKind::OutOfRange)
+	} else {
+		Ok(magnitude as i64)
+	}
+}
+
+fn normalized_integer_digits(
+	negative: bool,
+	digits: &[u8],
+	appended_zeros: usize,
+) -> Result<String, NumberParseErrorKind> {
+	let output_len = digits
+		.len()
+		.checked_add(appended_zeros)
+		.filter(|length| *length <= MAX_INTEGER_CONTROL_DIGITS)
+		.ok_or(NumberParseErrorKind::OutOfRange)?;
+	let mut normalized = String::with_capacity(output_len + usize::from(negative));
+	if negative {
+		normalized.push('-');
+	}
+	for digit in digits {
+		normalized.push(char::from(*digit));
+	}
+	for _ in 0..appended_zeros {
+		normalized.push('0');
+	}
+	Ok(normalized)
+}
+
 macro_rules! impl_signed_number_value {
 	($($type:ty),+ $(,)?) => {
 		$(
@@ -551,15 +683,12 @@ macro_rules! impl_signed_number_value {
 						};
 						NumberParseError::new(raw, kind)
 					};
-					match raw.parse::<Self>() {
-						Ok(value) => Ok(value),
-						Err(direct_error) => match raw.parse::<f64>() {
-							Ok(value) if value.is_finite() && value.fract() == 0.0 => format!("{value:.0}")
-								.parse::<Self>()
-								.map_err(|error| parse_error(&error)),
-							_ => Err(parse_error(&direct_error)),
-						},
-					}
+					raw.parse::<Self>().or_else(|_| {
+						normalize_integer_control_value(raw)
+							.map_err(|kind| NumberParseError::new(raw, kind))?
+							.parse::<Self>()
+							.map_err(|error| parse_error(&error))
+					})
 				}
 			}
 		)+
@@ -591,15 +720,12 @@ macro_rules! impl_unsigned_number_value {
 						};
 						NumberParseError::new(raw, kind)
 					};
-					match raw.parse::<Self>() {
-						Ok(value) => Ok(value),
-						Err(direct_error) => match raw.parse::<f64>() {
-							Ok(value) if value.is_finite() && value.fract() == 0.0 => format!("{value:.0}")
-								.parse::<Self>()
-								.map_err(|error| parse_error(&error)),
-							_ => Err(parse_error(&direct_error)),
-						},
-					}
+					raw.parse::<Self>().or_else(|_| {
+						normalize_integer_control_value(raw)
+							.map_err(|kind| NumberParseError::new(raw, kind))?
+							.parse::<Self>()
+							.map_err(|error| parse_error(&error))
+					})
 				}
 			}
 		)+
@@ -612,6 +738,14 @@ macro_rules! impl_float_number_value {
 			impl sealed::Sealed for $type {}
 
 			impl NumberValue for $type {
+				fn format_control_value(&self) -> String {
+					if self.is_finite() {
+						self.to_string()
+					} else {
+						String::new()
+					}
+				}
+
 				fn parse_control_value(raw: &str) -> Result<Self, NumberParseError> {
 					if let Some(error) = lexical_error(raw) {
 						return Err(error);
@@ -652,7 +786,7 @@ mod tests {
 	#[case("abc", NumberParseErrorKind::Invalid)]
 	fn number_binding_preserves_last_value_on_invalid_input(
 		#[case] raw: &str,
-		#[case] kind: NumberParseErrorKind,
+		#[case] expected_kind: NumberParseErrorKind,
 	) {
 		ReactiveScope::run(|| {
 			// Arrange
@@ -666,7 +800,7 @@ mod tests {
 			// Assert
 			assert_eq!(value.get(), 7.5);
 			assert_eq!(outcome, ControlWriteOutcome::Rejected(error.get().unwrap()));
-			assert_eq!(error.get().unwrap().kind(), kind);
+			assert_eq!(error.get().unwrap().kind(), expected_kind);
 		});
 	}
 
@@ -699,6 +833,46 @@ mod tests {
 			// Assert
 			assert_eq!(outcome, ControlWriteOutcome::Committed);
 			assert_eq!(value.get(), 100);
+		});
+	}
+
+	#[rstest]
+	fn integer_number_binding_preserves_large_exponent_values_exactly() {
+		ReactiveScope::run(|| {
+			// Arrange
+			let signed = Signal::new(0_i64);
+			let unsigned = Signal::new(0_u64);
+			let signed_binding = ControlBinding::number(signed.clone());
+			let unsigned_binding = ControlBinding::number(unsigned.clone());
+
+			// Act
+			signed_binding
+				.write(ControlValue::Text("9007199254740993e0".to_owned()))
+				.unwrap();
+			unsigned_binding
+				.write(ControlValue::Text("9007199254740993e0".to_owned()))
+				.unwrap();
+
+			// Assert
+			assert_eq!(signed.get(), 9_007_199_254_740_993_i64);
+			assert_eq!(unsigned.get(), 9_007_199_254_740_993_u64);
+		});
+	}
+
+	#[rstest]
+	fn float_number_binding_reads_nonfinite_signal_values_as_empty_controls() {
+		ReactiveScope::run(|| {
+			// Arrange
+			let nan = ControlBinding::number(Signal::new(f32::NAN));
+			let infinity = ControlBinding::number(Signal::new(f64::INFINITY));
+
+			// Act
+			let nan_value = nan.read();
+			let infinity_value = infinity.read();
+
+			// Assert
+			assert_eq!(nan_value, ControlValue::Text(String::new()));
+			assert_eq!(infinity_value, ControlValue::Text(String::new()));
 		});
 	}
 

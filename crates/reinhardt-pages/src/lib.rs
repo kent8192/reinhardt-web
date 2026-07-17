@@ -129,7 +129,8 @@
 //! select projects every match.
 //!
 //! ```rust
-//! use reinhardt_pages::{prelude::*, reactive::ReactiveScope};
+//! use reinhardt_pages::prelude::*;
+//! use reinhardt_pages::reactive::ReactiveScope;
 //!
 //! ReactiveScope::run(|| {
 //!     let query = Signal::new(String::new());

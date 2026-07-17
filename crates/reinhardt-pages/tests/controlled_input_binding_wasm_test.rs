@@ -176,6 +176,34 @@ fn public_page_mount_evaluates_dynamic_radio_value_once() {
 }
 
 #[wasm_bindgen_test]
+fn public_page_mount_projects_a_radio_binding_value_over_a_stale_attribute() {
+	ReactiveScope::run(|| {
+		let document = web_sys::window()
+			.expect("window")
+			.document()
+			.expect("document");
+		let root = Element::new(document.create_element("div").expect("root"));
+		let selected = Signal::new("draft".to_owned());
+		PageElement::new("input")
+			.attr("type", "radio")
+			.attr("value", "stale")
+			.control_binding(ControlBinding::radio(selected, "draft".to_owned()))
+			.into_page()
+			.mount(&root)
+			.expect("mount");
+		let input: web_sys::HtmlInputElement = root
+			.as_web_sys()
+			.first_element_child()
+			.expect("input")
+			.unchecked_into();
+
+		assert_eq!(input.value(), "draft");
+		assert!(input.checked());
+		reinhardt_pages::cleanup_reactive_nodes();
+	});
+}
+
+#[wasm_bindgen_test]
 fn public_page_mount_applies_initial_select_one_after_mounting_options() {
 	ReactiveScope::run(|| {
 		let document = web_sys::window()
@@ -207,6 +235,52 @@ fn public_page_mount_applies_initial_select_one_after_mounting_options() {
 			.unchecked_into();
 
 		assert_eq!(select.value(), "wasm");
+		reinhardt_pages::cleanup_reactive_nodes();
+	});
+}
+
+#[wasm_bindgen_test]
+fn public_page_mount_marks_only_the_first_duplicate_select_one_default() {
+	ReactiveScope::run(|| {
+		let document = web_sys::window()
+			.expect("window")
+			.document()
+			.expect("document");
+		let root = Element::new(document.create_element("div").expect("root"));
+		let selected = Signal::new("rust".to_owned());
+		PageElement::new("select")
+			.control_binding(ControlBinding::select_one(selected))
+			.child(
+				PageElement::new("option")
+					.attr("value", "rust")
+					.child("First"),
+			)
+			.child(
+				PageElement::new("option")
+					.attr("value", "rust")
+					.child("Second"),
+			)
+			.into_page()
+			.mount(&root)
+			.expect("mount");
+		let select: web_sys::HtmlSelectElement = root
+			.as_web_sys()
+			.first_element_child()
+			.expect("select")
+			.unchecked_into();
+		let first: web_sys::HtmlOptionElement = select
+			.options()
+			.item(0)
+			.expect("first option")
+			.unchecked_into();
+		let second: web_sys::HtmlOptionElement = select
+			.options()
+			.item(1)
+			.expect("second option")
+			.unchecked_into();
+
+		assert!(first.default_selected());
+		assert!(!second.default_selected());
 		reinhardt_pages::cleanup_reactive_nodes();
 	});
 }
@@ -968,6 +1042,75 @@ fn number_binding_recovers_incomplete_raw_from_sanitized_browser_input() {
 }
 
 #[wasm_bindgen_test]
+fn rejected_number_raw_survives_an_error_driven_reactive_remount() {
+	ReactiveScope::run(|| {
+		let document = web_sys::window()
+			.expect("window")
+			.document()
+			.expect("document");
+		let root = Element::new(document.create_element("div").expect("root"));
+		let value = Signal::new(7_i32);
+		let error = Signal::new(None::<NumberParseError>);
+		let render_value = value.clone();
+		let render_error = error.clone();
+		Page::reactive(move || {
+			let input = PageElement::new("input")
+				.attr("type", "number")
+				.control_binding(ControlBinding::number_with_error(
+					render_value.clone(),
+					render_error.clone(),
+				))
+				.into_page();
+			let validation = if render_error.get().is_some() {
+				PageElement::new("p")
+					.attr("id", "number-validation")
+					.child("Invalid")
+					.into_page()
+			} else {
+				Page::Empty
+			};
+			Page::Fragment(vec![input, validation])
+		})
+		.mount(&root)
+		.expect("mount");
+		let input: web_sys::HtmlInputElement = root
+			.as_web_sys()
+			.query_selector("input")
+			.expect("query")
+			.expect("input")
+			.unchecked_into();
+
+		dispatch_keydown(&input, "Home", false);
+		dispatch_keydown(&input, "End", true);
+		dispatch_before_input(&input, Some("1e-"), "insertText");
+		input.set_value("");
+		dispatch_input(&input, Some("1e-"), "insertText");
+
+		assert_eq!(value.get(), 7);
+		assert_eq!(error.get().expect("rejected number").raw(), "1e-");
+		assert!(
+			root.as_web_sys()
+				.query_selector("#number-validation")
+				.expect("query")
+				.is_some()
+		);
+		let replacement: web_sys::HtmlInputElement = root
+			.as_web_sys()
+			.query_selector("input")
+			.expect("query")
+			.expect("replacement")
+			.unchecked_into();
+		dispatch_before_input(&replacement, Some("0"), "insertText");
+		replacement.set_value("");
+		dispatch_input(&replacement, Some("0"), "insertText");
+
+		assert_eq!(value.get(), 1);
+		assert_eq!(error.get(), None);
+		reinhardt_pages::cleanup_reactive_nodes();
+	});
+}
+
+#[wasm_bindgen_test]
 fn number_binding_deduplicates_sanitized_final_input_after_composition() {
 	ReactiveScope::run(|| {
 		let document = web_sys::window()
@@ -1364,6 +1507,101 @@ impl Component for HydratedInput {
 			}
 		})
 	}
+}
+
+struct ScopeAllocatingHydratedInput;
+
+impl Component for ScopeAllocatingHydratedInput {
+	fn name() -> &'static str {
+		"ScopeAllocatingHydratedInput"
+	}
+
+	fn render(&self) -> Page {
+		PageElement::new("input")
+			.control_binding(ControlBinding::text(Signal::new("server".to_owned())))
+			.into_page()
+	}
+}
+
+#[wasm_bindgen_test]
+fn hydration_retains_a_scope_for_component_created_signals() {
+	let document = web_sys::window()
+		.expect("window")
+		.document()
+		.expect("document");
+	let raw = document.create_element("input").expect("input");
+	let input: web_sys::HtmlInputElement = raw.clone().unchecked_into();
+	input.set_value("server");
+	let root = Element::new(raw);
+	let _state = SsrStateElement::install(&document);
+
+	reinhardt_pages::hydration::hydrate(&ScopeAllocatingHydratedInput, &root)
+		.expect("hydrate component-created signal");
+
+	reinhardt_pages::cleanup_reactive_nodes();
+}
+
+struct HydratedControlledSelect {
+	selected: Signal<String>,
+}
+
+impl Component for HydratedControlledSelect {
+	fn name() -> &'static str {
+		"HydratedControlledSelect"
+	}
+
+	fn render(&self) -> Page {
+		PageElement::new("select")
+			.control_binding(ControlBinding::select_one(self.selected.clone()))
+			.child(
+				PageElement::new("option")
+					.attr("value", "rust")
+					.attr("selected", "selected")
+					.child("Rust"),
+			)
+			.child(
+				PageElement::new("option")
+					.attr("value", "wasm")
+					.child("WebAssembly"),
+			)
+			.into_page()
+	}
+}
+
+#[wasm_bindgen_test]
+fn hydration_ignores_raw_selected_attributes_inside_a_controlled_select() {
+	ReactiveScope::run(|| {
+		let document = web_sys::window()
+			.expect("window")
+			.document()
+			.expect("document");
+		let raw_select = document.create_element("select").expect("select");
+		let raw_rust = document.create_element("option").expect("rust option");
+		raw_rust.set_attribute("value", "rust").expect("rust value");
+		raw_rust.set_text_content(Some("Rust"));
+		let raw_wasm = document.create_element("option").expect("wasm option");
+		raw_wasm.set_attribute("value", "wasm").expect("wasm value");
+		raw_wasm
+			.set_attribute("selected", "selected")
+			.expect("wasm selection");
+		raw_wasm.set_text_content(Some("WebAssembly"));
+		raw_select.append_child(&raw_rust).expect("rust append");
+		raw_select.append_child(&raw_wasm).expect("wasm append");
+		let root = Element::new(raw_select);
+		let selected = Signal::new("wasm".to_owned());
+		let _state = SsrStateElement::install(&document);
+
+		reinhardt_pages::hydration::hydrate(
+			&HydratedControlledSelect {
+				selected: selected.clone(),
+			},
+			&root,
+		)
+		.expect("hydrate controlled select");
+
+		assert_eq!(selected.get(), "wasm");
+		reinhardt_pages::cleanup_reactive_nodes();
+	});
 }
 
 #[wasm_bindgen_test]

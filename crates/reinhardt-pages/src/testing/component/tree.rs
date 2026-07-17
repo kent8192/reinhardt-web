@@ -829,7 +829,7 @@ impl TestDom {
 			return;
 		}
 		let requested_values = select.selected_values.clone();
-		let multiple = select.has_attr("multiple");
+		let multiple = select.attr("multiple").is_some_and(is_boolean_attr_truthy);
 		let children = select.children.clone();
 		let mut selected_values = Vec::new();
 		for child in children {

@@ -1032,8 +1032,17 @@ impl Page {
 				output.push_str(el.tag_name());
 				let binding = el.bound_control();
 				let binding_value = binding.map(ControlBinding::read);
-				let projects_value = el.tag_name().eq_ignore_ascii_case("input")
-					&& matches!(binding_value, Some(ControlValue::Text(_)));
+				let projected_input_value =
+					binding.and_then(|binding| match (binding.kind(), binding_value.as_ref()) {
+						(
+							ControlKind::Text | ControlKind::Number,
+							Some(ControlValue::Text(value)),
+						) => Some(value.as_str()),
+						(ControlKind::Radio, _) => binding.radio_value(),
+						_ => None,
+					});
+				let projects_value =
+					el.tag_name().eq_ignore_ascii_case("input") && projected_input_value.is_some();
 				let projects_checked = matches!(binding_value, Some(ControlValue::Checked(true)));
 				let projects_selected = el.tag_name().eq_ignore_ascii_case("option")
 					&& selection.is_some_and(|selection| selection.matches(el));
@@ -1055,7 +1064,7 @@ impl Page {
 					output.push_str(&html_escape(value));
 					output.push('"');
 				}
-				if let Some(ControlValue::Text(value)) = &binding_value
+				if let Some(value) = projected_input_value
 					&& el.tag_name().eq_ignore_ascii_case("input")
 				{
 					output.push_str(" value=\"");
@@ -1596,6 +1605,25 @@ mod tests {
 				"<input type=\"text\" value=\"current\" />"
 			);
 			assert_eq!(textarea.render_to_string(), "<textarea>current</textarea>");
+		});
+	}
+
+	#[test]
+	fn render_to_string_projects_bound_radio_values() {
+		ReactiveScope::run(|| {
+			let input = PageElement::new("input")
+				.attr("type", "radio")
+				.attr("value", "stale")
+				.control_binding(ControlBinding::radio(
+					Signal::new("draft".to_owned()),
+					"draft".to_owned(),
+				))
+				.into_page();
+
+			assert_eq!(
+				input.render_to_string(),
+				"<input type=\"radio\" value=\"draft\" checked=\"checked\" />"
+			);
 		});
 	}
 
