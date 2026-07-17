@@ -1867,7 +1867,11 @@ fn generate_field_accessors(
 		.map(|field| {
 			let field_name = &field.name;
 			let (_, lookup_type) = extract_option_type(&field.ty);
-			let field_name_str = field_name.to_string();
+			let field_name_str = field
+				.config
+				.db_column
+				.clone()
+				.unwrap_or_else(|| field_name.to_string());
 			let method_name = syn::Ident::new(&format!("unique_{}", field_name), field_name.span());
 
 			quote! {
@@ -6640,6 +6644,28 @@ mod tests {
 
 		assert!(slug_accessor.contains("FieldRef :: new (\"slug\")"));
 		assert!(!slug_accessor.contains("FieldRef :: new (\"email\")"));
+	}
+
+	#[test]
+	fn test_unique_accessors_use_the_physical_database_column() {
+		let input = quote! {
+			#[model(app_label = "test", table_name = "users")]
+			pub struct User {
+				#[field(primary_key = true)]
+				pub id: i64,
+				#[field(unique = true, max_length = 120, db_column = "email_addr")]
+				pub email: String,
+			}
+		};
+
+		let output = model_derive_impl(syn::parse2(input).unwrap()).unwrap();
+		let output_str = output.to_string();
+		let unique_accessor = output_str
+			.split("pub const fn unique_email")
+			.nth(1)
+			.expect("generated unique email accessor");
+
+		assert!(unique_accessor.contains("UniqueFieldRef :: from_model_field (\"email_addr\")"));
 	}
 
 	#[test]

@@ -296,7 +296,7 @@ impl<M: Model> Manager<M> {
 		}
 
 		if !has_values {
-			let primary_key = M::primary_key_field();
+			let primary_key = M::primary_key_column();
 			stmt.value_expr(Alias::new(primary_key), Expr::col(Alias::new(primary_key)));
 		}
 
@@ -308,7 +308,7 @@ impl<M: Model> Manager<M> {
 		} else {
 			reinhardt_query::value::Value::String(Some(Box::new(pk_str)))
 		};
-		stmt.and_where(Expr::col(Alias::new(M::primary_key_field())).eq(pk_value));
+		stmt.and_where(Expr::col(Alias::new(M::primary_key_column())).eq(pk_value));
 
 		stmt
 	}
@@ -902,7 +902,7 @@ impl<M: Model> Manager<M> {
 				.from(Alias::new(M::table_name()))
 				.column(ColumnRef::Asterisk)
 				.and_where(
-					Expr::col(Alias::new(M::primary_key_field()))
+					Expr::col(Alias::new(M::primary_key_column()))
 						.eq(reinhardt_query::value::Value::BigInt(Some(generated_id))),
 				);
 			let (select_sql, select_values) = build_select_sql(&select, backend);
@@ -917,6 +917,16 @@ impl<M: Model> Manager<M> {
 
 		let row = executor.fetch_one(&sql, params).await?;
 		Self::decode_executor_row(row)
+	}
+
+	/// Insert a model through a caller-owned transaction executor, regardless of
+	/// whether its primary key is already populated.
+	pub async fn insert_with_executor(
+		&self,
+		executor: &mut dyn super::connection::TransactionExecutor,
+		model: &M,
+	) -> Result<M, crate::backends::error::DatabaseError> {
+		self.create_with_executor(executor, model).await
 	}
 
 	/// Save a model through a caller-owned transaction executor.
@@ -1215,7 +1225,7 @@ impl<M: Model> Manager<M> {
 			select
 				.from(Alias::new(M::table_name()))
 				.column(ColumnRef::Asterisk)
-				.and_where(Expr::col(Alias::new(M::primary_key_field())).eq(pk_value));
+				.and_where(Expr::col(Alias::new(M::primary_key_column())).eq(pk_value));
 			let (select_sql, select_values) = build_select_sql(&select, backend);
 			let select_params = select_values
 				.0
@@ -1311,7 +1321,7 @@ impl<M: Model> Manager<M> {
 			reinhardt_query::value::Value::String(Some(Box::new(pk_string)))
 		};
 		stmt.from_table(Alias::new(M::table_name()))
-			.and_where(Expr::col(Alias::new(M::primary_key_field())).eq(pk_value));
+			.and_where(Expr::col(Alias::new(M::primary_key_column())).eq(pk_value));
 		let (sql, values) = build_delete_sql(&stmt, Self::executor_backend(executor));
 		let params = values
 			.0

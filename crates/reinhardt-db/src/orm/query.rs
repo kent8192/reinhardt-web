@@ -4590,18 +4590,16 @@ where
 		value: &FilterValue,
 	) -> reinhardt_query::value::Value {
 		let field_name = field.rsplit("__").next().unwrap_or(field);
-		// Manually implemented models may expose a UUID primary key without field metadata.
-		if field_name == T::primary_key_field()
-			&& std::any::type_name::<T::PrimaryKey>() == std::any::type_name::<Uuid>()
-			&& let FilterValue::String(value) = value
-			&& let Ok(uuid) = Uuid::parse_str(value)
-		{
-			return reinhardt_query::value::Value::Uuid(Some(Box::new(uuid)));
-		}
-
 		let Some(metadata) = T::field_metadata().into_iter().find(|metadata| {
 			metadata.name == field_name || metadata.db_column_name() == field_name
 		}) else {
+			// Related and manually implemented models may not expose metadata for the
+			// filtered column, so retain UUID binding unless metadata proves another type.
+			if let FilterValue::String(value) = value
+				&& let Ok(uuid) = Uuid::parse_str(value)
+			{
+				return reinhardt_query::value::Value::Uuid(Some(Box::new(uuid)));
+			}
 			return Self::filter_value_to_sea_value(value);
 		};
 
@@ -11082,6 +11080,62 @@ mod tests {
 		// Act
 		let value = queryset
 			.filter_value_to_sea_value_for_field("id", &FilterValue::String(uuid.to_string()));
+
+		// Assert
+		assert_eq!(
+			value,
+			reinhardt_query::value::Value::Uuid(Some(Box::new(uuid)))
+		);
+	}
+
+	#[rstest]
+	fn test_metadata_free_uuid_related_filter_uses_uuid_value() {
+		// Arrange
+		#[derive(Debug, Clone, Serialize, Deserialize)]
+		struct ManualModel {
+			id: i64,
+		}
+
+		#[derive(Debug, Clone)]
+		struct ManualModelFields;
+
+		impl crate::orm::model::FieldSelector for ManualModelFields {
+			fn with_alias(self, _alias: &str) -> Self {
+				self
+			}
+		}
+
+		impl Model for ManualModel {
+			type PrimaryKey = i64;
+			type Fields = ManualModelFields;
+			type Objects = Manager<Self>;
+
+			fn table_name() -> &'static str {
+				"manual_models"
+			}
+
+			fn new_fields() -> Self::Fields {
+				ManualModelFields
+			}
+
+			fn primary_key(&self) -> Option<Self::PrimaryKey> {
+				Some(self.id)
+			}
+
+			fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+				self.id = value;
+			}
+		}
+
+		let queryset = QuerySet::<ManualModel>::new();
+		let uuid =
+			Uuid::parse_str("00000000-0000-0000-0000-000000000002").expect("valid test UUID");
+
+		// Act
+		let value = queryset.filter_value_to_sea_value_for_field(
+			"owner__id",
+			&FilterValue::String(uuid.to_string()),
+		);
 
 		// Assert
 		assert_eq!(

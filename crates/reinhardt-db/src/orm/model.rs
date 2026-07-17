@@ -416,6 +416,56 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 		}
 	}
 
+	/// Insert this model through a caller-owned transaction executor.
+	///
+	/// Unlike [`Self::save_with_executor`], this always performs an INSERT. This
+	/// is required for resources whose natural or UUID primary key is assigned
+	/// before creation.
+	fn insert_with_executor(
+		&mut self,
+		executor: &mut dyn super::connection::TransactionExecutor,
+	) -> impl std::future::Future<Output = Result<(), crate::backends::error::DatabaseError>> + Send
+	where
+		Self: Sized,
+	{
+		async move {
+			use super::events::{EventResult, get_active_registry};
+
+			let registry = get_active_registry();
+			let manager = super::Manager::<Self>::new();
+			let json = serde_json::to_value(&*self)?;
+			let instance_id = format!("{}-new-{}", Self::table_name(), uuid::Uuid::now_v7());
+
+			if let Some(ref registry) = registry {
+				let result = registry
+					.dispatch_before_insert(Self::table_name(), &instance_id, &json)
+					.await;
+				if result == EventResult::Veto {
+					return Err(crate::backends::error::DatabaseError::QueryError(
+						"Insert operation vetoed by event listener".to_string(),
+					));
+				}
+			}
+
+			*self = manager.insert_with_executor(executor, self).await?;
+
+			if let Some(ref registry) = registry {
+				let final_id = format!(
+					"{}-{}",
+					Self::table_name(),
+					self.primary_key()
+						.map(|pk| pk.to_string())
+						.unwrap_or_default()
+				);
+				registry
+					.dispatch_after_insert(Self::table_name(), &final_id)
+					.await;
+			}
+
+			Ok(())
+		}
+	}
+
 	/// Delete the model instance from the database with event dispatching
 	///
 	/// Dispatches before_delete/after_delete events. Event listeners can veto

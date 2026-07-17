@@ -250,6 +250,38 @@ impl Model for Widget {
 	}
 }
 
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+struct RenamedPrimaryKeyWidget {
+	id: Option<i64>,
+	name: String,
+}
+
+impl Model for RenamedPrimaryKeyWidget {
+	type Fields = WidgetFields;
+	type Objects = Manager<Self>;
+	type PrimaryKey = i64;
+
+	fn table_name() -> &'static str {
+		"renamed_primary_key_widgets"
+	}
+
+	fn new_fields() -> Self::Fields {
+		WidgetFields
+	}
+
+	fn primary_key(&self) -> Option<Self::PrimaryKey> {
+		self.id
+	}
+
+	fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+		self.id = Some(value);
+	}
+
+	fn primary_key_column() -> &'static str {
+		"widget_id"
+	}
+}
+
 #[cfg(feature = "sqlite")]
 #[tokio::test]
 async fn connection_queryset_count_ignores_slice_and_one_caps_at_two() {
@@ -653,6 +685,108 @@ async fn mysql_save_with_an_existing_primary_key_remains_an_update() {
 				params: vec![QueryValue::Int(7)],
 			},
 		]
+	);
+}
+
+#[tokio::test]
+async fn executor_writes_use_the_physical_primary_key_column() {
+	let (mut executor, _operations, queries) = recording_executor(DatabaseType::Postgres, 1);
+	let mut widget = RenamedPrimaryKeyWidget {
+		id: Some(7),
+		name: "updated".to_string(),
+	};
+
+	widget
+		.save_with_executor(&mut executor)
+		.await
+		.expect("update should use the physical primary key column");
+	widget
+		.delete_with_executor(&mut executor)
+		.await
+		.expect("delete should use the physical primary key column");
+
+	assert_eq!(
+		queries
+			.lock()
+			.expect("queries mutex should not be poisoned")
+			.as_slice(),
+		[
+			RecordedQuery {
+				operation: "save",
+				sql: r#"UPDATE "renamed_primary_key_widgets" SET "name" = $1 WHERE "widget_id" = $2 RETURNING "id", "name""#.to_string(),
+				params: vec![QueryValue::String("updated".to_string()), QueryValue::Int(7)],
+			},
+			RecordedQuery {
+				operation: "delete",
+				sql: r#"DELETE FROM "renamed_primary_key_widgets" WHERE "widget_id" = $1"#.to_string(),
+				params: vec![QueryValue::Int(1)],
+			},
+		]
+	);
+}
+
+#[tokio::test]
+async fn mysql_executor_reloads_through_the_physical_primary_key_column() {
+	let (mut executor, _operations, queries) = recording_executor(DatabaseType::Mysql, 1);
+	executor.model_id = 7;
+	let mut widget = RenamedPrimaryKeyWidget {
+		id: Some(7),
+		name: "updated".to_string(),
+	};
+
+	widget
+		.save_with_executor(&mut executor)
+		.await
+		.expect("MySQL update should reload through the physical primary key column");
+
+	assert_eq!(
+		queries
+			.lock()
+			.expect("queries mutex should not be poisoned")
+			.as_slice(),
+		[
+			RecordedQuery {
+				operation: "save",
+				sql: "UPDATE `renamed_primary_key_widgets` SET `name` = ? WHERE `widget_id` = ?"
+					.to_string(),
+				params: vec![
+					QueryValue::String("updated".to_string()),
+					QueryValue::Int(7)
+				],
+			},
+			RecordedQuery {
+				operation: "reload",
+				sql: "SELECT * FROM `renamed_primary_key_widgets` WHERE `widget_id` = ?"
+					.to_string(),
+				params: vec![QueryValue::Int(7)],
+			},
+		]
+	);
+}
+
+#[tokio::test]
+async fn insert_with_executor_inserts_models_with_assigned_primary_keys() {
+	let (mut executor, _operations, queries) = recording_executor(DatabaseType::Postgres, 1);
+	let mut widget = RenamedPrimaryKeyWidget {
+		id: Some(7),
+		name: "created".to_string(),
+	};
+
+	widget
+		.insert_with_executor(&mut executor)
+		.await
+		.expect("assigned primary keys should not turn resource creation into an update");
+
+	assert_eq!(
+		queries
+			.lock()
+			.expect("queries mutex should not be poisoned")
+			.as_slice(),
+		[RecordedQuery {
+			operation: "save",
+			sql: r#"INSERT INTO "renamed_primary_key_widgets" ("id", "name") VALUES ($1, $2) RETURNING "id", "name""#.to_string(),
+			params: vec![QueryValue::Int(7), QueryValue::String("created".to_string())],
+		}]
 	);
 }
 
