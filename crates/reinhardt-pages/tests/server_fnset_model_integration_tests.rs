@@ -524,7 +524,12 @@ async fn retrieve_maps_cardinality_and_authorization_deterministically() {
 			.lock()
 			.expect("recording mutex should not be poisoned")
 			.events,
-		["authorize_action", "authorize_object", "to_read"]
+		[
+			"authorize_action",
+			"base_queryset",
+			"authorize_object",
+			"to_read"
+		]
 	);
 
 	let missing =
@@ -619,6 +624,7 @@ async fn mutations_share_one_executor_and_rollback_post_persistence_failures() {
 	assert_one_executor();
 	assert_events(&[
 		"authorize_action",
+		"base_queryset",
 		"authorize_object",
 		"validate_update",
 		"perform_update",
@@ -651,6 +657,7 @@ async fn mutations_share_one_executor_and_rollback_post_persistence_failures() {
 	assert_one_executor();
 	assert_events(&[
 		"authorize_action",
+		"base_queryset",
 		"authorize_object",
 		"validate_patch",
 		"perform_patch",
@@ -668,7 +675,12 @@ async fn mutations_share_one_executor_and_rollback_post_persistence_failures() {
 	assert!(matches!(destroy, Err(ServerFnSetError::Application { .. })));
 	assert_eq!(count(&connection).await, 1);
 	assert_one_executor();
-	assert_events(&["authorize_action", "authorize_object", "perform_destroy"]);
+	assert_events(&[
+		"authorize_action",
+		"base_queryset",
+		"authorize_object",
+		"perform_destroy",
+	]);
 
 	reset_state();
 	let created = ModelServerFnSet::<WidgetResource>::create(

@@ -117,10 +117,13 @@ pub trait ModelServerFnResource: ServerFnResource + Send + Sync + Sized {
 		Self::Create: CreateModelInput<Self::Model> + Send,
 	{
 		let mut object = input.build()?;
-		object.save_with_executor(executor).await.map_err(|error| {
-			tracing::error!(%error, "model server function create failed");
-			ServerFnSetError::Internal
-		})?;
+		object
+			.insert_with_executor(executor)
+			.await
+			.map_err(|error| {
+				tracing::error!(%error, "model server function create failed");
+				ServerFnSetError::Internal
+			})?;
 		Ok(object)
 	}
 

@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 use std::pin::Pin;
 
 use reinhardt_db::orm::{
-	DatabaseConnection, FilterValue, Model, QuerySet, TransactionExecutor, TransactionScope,
+	DatabaseConnection, FilterValue, Model, TransactionExecutor, TransactionScope,
 };
 
 use super::{
@@ -154,7 +154,7 @@ where
 			None,
 		)
 		.await?;
-		let rows = QuerySet::<R::Model>::new()
+		let rows = R::base_queryset()
 			.filter(R::lookup_field().eq(lookup))
 			.one_with_db(connection)
 			.await
@@ -286,7 +286,7 @@ where
 		transaction: &mut MutationTransaction,
 		lookup: R::Lookup,
 	) -> Result<R::Model, ServerFnSetError> {
-		let rows = QuerySet::<R::Model>::new()
+		let rows = R::base_queryset()
 			.filter(R::lookup_field().eq(lookup))
 			.one_with_executor(transaction.executor_mut()?)
 			.await
@@ -412,7 +412,7 @@ where
 			-> Pin<Box<dyn Future<Output = Result<T, ServerFnSetError>> + Send + 'a>>,
 	{
 		<R::Policy as ServerFnSetPolicy<R>>::authorize_action(principal, action, None).await?;
-		let rows = QuerySet::<R::Model>::new()
+		let rows = R::base_queryset()
 			.filter(R::lookup_field().eq(lookup))
 			.one_with_db(connection)
 			.await

@@ -130,6 +130,8 @@ fn expand_linked_model(
 	);
 	let link_macro_ident =
 		quote::format_ident!("__reinhardt_server_fnset_link_{}", input.function.sig.ident);
+	let link_vis = input.function.vis.clone();
+	let macro_vis: syn::Visibility = parse_quote!(pub(crate));
 	let callback_matcher: TokenStream = "($callback:ident)"
 		.parse()
 		.expect("static callback matcher should parse");
@@ -148,14 +150,15 @@ fn expand_linked_model(
 	quote! {
 		#function
 		#[doc(hidden)]
-		pub struct #link_ident;
+		#link_vis struct #link_ident;
 		impl #pages::server_fn::ModelServerFnSetLink for #link_ident {
 			type Resource = #resource;
 			const NAME: &'static str = #name;
 		}
 		macro_rules! #link_macro_ident {
-			#callback_matcher => { #callback_invocation!(#name); };
+			#callback_matcher => { #callback_invocation!(#name, (#link_vis), #resource); };
 		}
+		#macro_vis use #link_macro_ident;
 	}
 }
 
@@ -181,21 +184,34 @@ fn expand_impl(mut input: ValidatedImplSet) -> TokenStream {
 		.expect("link should have a segment")
 		.ident
 		.clone();
-	let link_ident = quote::format_ident!(
-		"__ReinhardtServerFnSetLink{}",
-		pascal(&link_fn_ident.to_string())
-	);
 	let link_macro_ident = quote::format_ident!("__reinhardt_server_fnset_link_{}", link_fn_ident);
 	let generator_macro_ident =
 		quote::format_ident!("__reinhardt_generate_server_fnset_{}", actions_ident);
-	let set_name_matcher: TokenStream = "($set_name:literal)"
+	let set_name_matcher: TokenStream = "($set_name:literal, ($($set_vis:tt)*), $set_resource:ty)"
 		.parse()
 		.expect("static set name matcher should parse");
 	let set_name_metavariable: TokenStream = "$set_name"
 		.parse()
 		.expect("static set name metavariable should parse");
-	let resource: Type =
-		parse_quote!(<#link_ident as #pages::server_fn::ModelServerFnSetLink>::Resource);
+	let set_vis_metavariable: TokenStream = "$($set_vis)*"
+		.parse()
+		.expect("static set visibility metavariable should parse");
+	let set_resource_metavariable: TokenStream = "$set_resource"
+		.parse()
+		.expect("static set resource metavariable should parse");
+	let link_path = input.link.clone();
+	let mut link_macro_path = link_path.clone();
+	link_macro_path
+		.segments
+		.last_mut()
+		.expect("validated link path should have a segment")
+		.ident = link_macro_ident.clone();
+	let resource_alias_ident = quote::format_ident!(
+		"__ReinhardtServerFnSetResource{}{}",
+		pascal(&link_fn_ident.to_string()),
+		pascal(&actions_ident.to_string()),
+	);
+	let resource: Type = parse_quote!(#resource_alias_ident);
 
 	let mut methods = Vec::new();
 	let mut normalized = HashSet::new();
@@ -249,7 +265,12 @@ fn expand_impl(mut input: ValidatedImplSet) -> TokenStream {
 				transactional: spec.transactional,
 				..method.clone()
 			};
-			match override_wrapper(&resource, &actions_ident, &effective, Some(&spec.function)) {
+			match override_wrapper(
+				&resource,
+				actions_type.as_ref(),
+				&effective,
+				Some(&spec.function),
+			) {
 				Ok(function) => function,
 				Err(error) => return error.into_compile_error(),
 			}
@@ -277,7 +298,7 @@ fn expand_impl(mut input: ValidatedImplSet) -> TokenStream {
 			)
 			.into_compile_error();
 		}
-		let function = match override_wrapper(&resource, &actions_ident, method, None) {
+		let function = match override_wrapper(&resource, actions_type.as_ref(), method, None) {
 			Ok(function) => function,
 			Err(error) => return error.into_compile_error(),
 		};
@@ -306,17 +327,19 @@ fn expand_impl(mut input: ValidatedImplSet) -> TokenStream {
 	);
 	let implementation = input.implementation;
 	quote! {
+		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 		#implementation
 		macro_rules! #generator_macro_ident {
 			#set_name_matcher => {
+				type #resource_alias_ident = #set_resource_metavariable;
 				// Generated action signatures and bodies conditionally use caller-local imports.
 				#[allow(unused_imports)]
-				pub mod #link_fn_ident {
+				#set_vis_metavariable mod #link_fn_ident {
 					use super::*;
 					use #pages::server_fn::*;
 					#(#generated)*
 				}
-				impl #pages::server_fn::ServerFnSetActions<#resource> for #actions_ident {
+				impl #pages::server_fn::ServerFnSetActions<#resource> for #actions_type {
 					type Registration = #registration_type;
 					fn registration() -> Self::Registration {
 						#registration
@@ -324,7 +347,7 @@ fn expand_impl(mut input: ValidatedImplSet) -> TokenStream {
 				}
 			}
 		}
-		#link_macro_ident!(#generator_macro_ident);
+		#link_macro_path!(#generator_macro_ident);
 	}
 }
 
@@ -434,7 +457,7 @@ fn ensure_context_lifetime(ty: &mut Type) {
 
 fn override_wrapper(
 	resource: &Type,
-	actions: &syn::Ident,
+	actions: &syn::Type,
 	info: &MethodInfo,
 	canonical: Option<&syn::ItemFn>,
 ) -> syn::Result<syn::ItemFn> {
@@ -556,35 +579,67 @@ fn override_wrapper(
 			quote!(ServerFnSetAction::Custom(#name))
 		}
 	};
+	let mut generated_parameter_names = client_inputs
+		.iter()
+		.chain(injected_inputs.iter())
+		.chain(extractor_inputs.iter())
+		.filter_map(|parameter| match parameter.pat.as_ref() {
+			Pat::Ident(pattern) => Some(pattern.ident.to_string()),
+			_ => None,
+		})
+		.collect::<HashSet<_>>();
+	let connection = unique_generated_parameter_ident(
+		"__reinhardt_server_fnset_connection",
+		&mut generated_parameter_names,
+	);
+	let principal = unique_generated_parameter_ident(
+		"__reinhardt_server_fnset_principal",
+		&mut generated_parameter_names,
+	);
 	let call = quote!(#actions::#ident(#(#call_args),*));
 	let body = if canonical.is_some() && info.ident == "create" {
-		quote!(ModelServerFnSet::<#resource>::transactional_create_action(&principal.0, &connection, |context| Box::pin(#call)).await)
+		quote!(ModelServerFnSet::<#resource>::transactional_create_action(&#principal.0, &#connection, |context| Box::pin(#call)).await)
 	} else if info.transactional {
 		if info.detail {
 			let Pat::Ident(lookup) = client_inputs[0].pat.as_ref() else {
 				unreachable!()
 			};
-			quote!(ModelServerFnSet::<#resource>::transactional_detail_action(&principal.0, &connection, #lookup.clone(), #action, |context| Box::pin(#call)).await)
+			quote!(ModelServerFnSet::<#resource>::transactional_detail_action(&#principal.0, &#connection, #lookup.clone(), #action, |context| Box::pin(#call)).await)
 		} else {
-			quote!(ModelServerFnSet::<#resource>::transactional_collection_action(&principal.0, &connection, #action, |context| Box::pin(#call)).await)
+			quote!(ModelServerFnSet::<#resource>::transactional_collection_action(&#principal.0, &#connection, #action, |context| Box::pin(#call)).await)
 		}
 	} else if info.detail {
 		let Pat::Ident(lookup) = client_inputs[0].pat.as_ref() else {
 			unreachable!()
 		};
-		quote!(ModelServerFnSet::<#resource>::read_detail_action(&principal.0, &connection, #lookup.clone(), #action, |context| Box::pin(#call)).await)
+		quote!(ModelServerFnSet::<#resource>::read_detail_action(&#principal.0, &#connection, #lookup.clone(), #action, |context| Box::pin(#call)).await)
 	} else {
-		quote!(ModelServerFnSet::<#resource>::read_collection_action(&principal.0, &connection, #action, |context| Box::pin(#call)).await)
+		quote!(ModelServerFnSet::<#resource>::read_collection_action(&#principal.0, &#connection, #action, |context| Box::pin(#call)).await)
 	};
 	Ok(parse_quote! {
 		pub async fn #ident(
 			#(#client_inputs,)*
 			#(#injected_inputs,)*
-			#[inject] connection: reinhardt_db::orm::DatabaseConnection,
+			#[inject] #connection: reinhardt_db::orm::DatabaseConnection,
 			#(#extractor_inputs,)*
-			principal: PolicyPrincipal<#resource>,
+			#principal: PolicyPrincipal<#resource>,
 		) #output { #body }
 	})
+}
+
+fn unique_generated_parameter_ident(base: &str, used: &mut HashSet<String>) -> syn::Ident {
+	let mut suffix = 0;
+	loop {
+		let name = if suffix == 0 {
+			base.to_string()
+		} else {
+			format!("{base}_{suffix}")
+		};
+		if used.insert(name.clone()) {
+			return syn::Ident::new(&name, proc_macro2::Span::call_site());
+		}
+		suffix += 1;
+	}
 }
 
 fn client_parameters(function: &syn::ItemFn) -> Vec<syn::PatType> {

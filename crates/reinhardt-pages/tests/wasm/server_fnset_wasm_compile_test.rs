@@ -58,6 +58,9 @@ pub struct AuditDependency;
 pub struct Header<T>(PhantomData<T>);
 pub struct ArticleActions;
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+pub struct NativeOnlyDependency;
+
 #[server_fnset(name = "article-api", actions = ArticleActions)]
 pub fn article_fns() -> ModelServerFnSet<ArticleResource> {
 	ModelServerFnSet::new()
@@ -72,6 +75,7 @@ impl ArticleActions {
 		#[inject] audit: AuditDependency,
 		#[inject] context: DetailActionContext<ArticleResource>,
 	) -> Result<ArticleDto, ServerFnSetError> {
+		let _ = PhantomData::<NativeOnlyDependency>;
 		let _ = (lookup, input, authorization, audit, context);
 		Ok(ArticleDto)
 	}
