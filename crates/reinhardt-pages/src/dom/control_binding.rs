@@ -8,7 +8,7 @@ use crate::component::{
 	ControlBinding, ControlBindingError, ControlKind, ControlValue, ControlWriteOutcome,
 };
 use crate::dom::{Element, EventHandle};
-use crate::reactive::{Effect, EffectTiming, untracked};
+use crate::reactive::{Effect, EffectTiming, batch, untracked};
 use reinhardt_core::{reactive::runtime::NodeId, types::page::ControlBindingSnapshot};
 
 type HydrationSnapshotStore = Rc<RefCell<Vec<ControlBindingSnapshot>>>;
@@ -799,11 +799,16 @@ fn write_binding_from_input(
 				.as_ref()
 				.map(|editor| (state.number_position, editor.raw.clone(), editor.selection))
 		};
-		if let Some((position, raw, selection)) = snapshot {
-			stage_rejected_number_snapshot(binding, position, raw, selection);
-		}
 		let _guard = ApplyingInputGuard::new(state);
-		binding.write(value)
+		batch(|| {
+			let outcome = binding.write(value)?;
+			if matches!(outcome, ControlWriteOutcome::Rejected(_))
+				&& let Some((position, raw, selection)) = snapshot
+			{
+				stage_rejected_number_snapshot(binding, position, raw, selection);
+			}
+			Ok(outcome)
+		})
 	})
 }
 
@@ -1488,6 +1493,43 @@ mod tests {
 				// Assert
 				assert_eq!(replacement_first_input.value(), "12");
 				assert_eq!(replacement_second_input.value(), "2147483648");
+				Ok::<_, ControlBindingError>(())
+			})
+			.expect("rejected snapshot transaction");
+		});
+	}
+
+	#[wasm_bindgen_test]
+	fn committed_numeric_raw_does_not_restore_on_remount() {
+		let scope = ReactiveScope::new();
+		scope.enter(|| {
+			let value = Signal::new(1_i32);
+			let input = element("input");
+			let raw_input: web_sys::HtmlInputElement = input.as_web_sys().clone().unchecked_into();
+			raw_input.set_type("number");
+			let controller =
+				ControlBindingController::mount(input, ControlBinding::number(value.clone()))
+					.expect("binding");
+
+			with_rejected_number_snapshot_transaction(|| {
+				raw_input.set_value("001");
+				raw_input
+					.dispatch_event(&web_sys::InputEvent::new("input").expect("input event"))
+					.expect("dispatch");
+				drop(controller);
+
+				let replacement = element("input");
+				let replacement_input: web_sys::HtmlInputElement =
+					replacement.as_web_sys().clone().unchecked_into();
+				replacement_input.set_type("number");
+				let _replacement_controller = ControlBindingController::mount(
+					replacement,
+					ControlBinding::number(value.clone()),
+				)
+				.expect("replacement binding");
+
+				assert_eq!(value.get(), 1);
+				assert_eq!(replacement_input.value(), "1");
 				Ok::<_, ControlBindingError>(())
 			})
 			.expect("rejected snapshot transaction");

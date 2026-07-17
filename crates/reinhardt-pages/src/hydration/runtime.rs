@@ -12,7 +12,8 @@ use crate::dom::{Element, document};
 
 #[cfg(wasm)]
 use crate::component::{
-	Page, new_reactive_node_store, store_reactive_node, with_reactive_node_store,
+	Page, new_reactive_node_store, store_reactive_node, store_reactive_scope,
+	with_reactive_node_store,
 };
 
 #[cfg(wasm)]
@@ -395,6 +396,19 @@ impl Drop for HydrationBranchTransaction {
 }
 
 #[cfg(wasm)]
+fn render_hydrated_view_in_reactive_node_store<R>(
+	store: &crate::component::reactive_if::ReactiveNodeStore,
+	render: impl FnOnce() -> R,
+) -> R {
+	with_reactive_node_store(store, || {
+		let scope = reinhardt_core::reactive::ReactiveScope::new();
+		let view = scope.enter(render);
+		store_reactive_scope(scope);
+		view
+	})
+}
+
+#[cfg(wasm)]
 fn install_hydrated_reactive_nodes(
 	element: &Element,
 	view: &Page,
@@ -430,7 +444,8 @@ fn install_hydrated_reactive_nodes(
 			let render_store = new_reactive_node_store();
 			let mut branch_transaction = HydrationBranchTransaction::new();
 			let branch_store = branch_transaction.store();
-			let rendered = with_reactive_node_store(&render_store, || reactive.render());
+			let rendered =
+				render_hydrated_view_in_reactive_node_store(&render_store, || reactive.render());
 			with_hydration_prepass_store(|| {
 				split_coalesced_text_children(element, std::slice::from_ref(&rendered));
 			});
@@ -472,15 +487,16 @@ fn install_hydrated_reactive_nodes(
 		Page::ReactiveIf(reactive_if) => {
 			let mut branch_transaction = HydrationBranchTransaction::new();
 			let branch_store = branch_transaction.store();
-			let (hydrated_condition, branch_view) = with_reactive_node_store(&branch_store, || {
-				let hydrated_condition = reactive_if.condition();
-				let branch_view = if hydrated_condition {
-					reactive_if.then_view()
-				} else {
-					reactive_if.else_view()
-				};
-				(hydrated_condition, branch_view)
-			});
+			let (hydrated_condition, branch_view) =
+				render_hydrated_view_in_reactive_node_store(&branch_store, || {
+					let hydrated_condition = reactive_if.condition();
+					let branch_view = if hydrated_condition {
+						reactive_if.then_view()
+					} else {
+						reactive_if.else_view()
+					};
+					(hydrated_condition, branch_view)
+				});
 			with_hydration_prepass_store(|| {
 				split_coalesced_text_children(element, std::slice::from_ref(&branch_view));
 			});
@@ -590,7 +606,8 @@ fn install_hydrated_child_reactive_nodes(
 			let render_store = new_reactive_node_store();
 			let mut branch_transaction = HydrationBranchTransaction::new();
 			let branch_store = branch_transaction.store();
-			let rendered = with_reactive_node_store(&render_store, || reactive.render());
+			let rendered =
+				render_hydrated_view_in_reactive_node_store(&render_store, || reactive.render());
 			let mut branch_registry = super::events::EventRegistry::new();
 			with_reactive_node_store(&branch_store, || {
 				install_hydrated_child_reactive_nodes(
@@ -601,8 +618,7 @@ fn install_hydrated_child_reactive_nodes(
 					&mut branch_registry,
 				)
 			})?;
-			let control_binding_adopted =
-				registry.control_binding_adopted() || branch_registry.control_binding_adopted();
+			let control_binding_adopted = branch_registry.control_binding_adopted();
 			if branch_registry.control_binding_adopted() {
 				registry.mark_control_binding_adopted();
 			}
@@ -632,15 +648,16 @@ fn install_hydrated_child_reactive_nodes(
 		Page::ReactiveIf(reactive_if) => {
 			let mut branch_transaction = HydrationBranchTransaction::new();
 			let branch_store = branch_transaction.store();
-			let (hydrated_condition, branch_view) = with_reactive_node_store(&branch_store, || {
-				let hydrated_condition = reactive_if.condition();
-				let branch_view = if hydrated_condition {
-					reactive_if.then_view()
-				} else {
-					reactive_if.else_view()
-				};
-				(hydrated_condition, branch_view)
-			});
+			let (hydrated_condition, branch_view) =
+				render_hydrated_view_in_reactive_node_store(&branch_store, || {
+					let hydrated_condition = reactive_if.condition();
+					let branch_view = if hydrated_condition {
+						reactive_if.then_view()
+					} else {
+						reactive_if.else_view()
+					};
+					(hydrated_condition, branch_view)
+				});
 			let mut branch_registry = super::events::EventRegistry::new();
 			with_reactive_node_store(&branch_store, || {
 				install_hydrated_child_reactive_nodes(
@@ -651,8 +668,7 @@ fn install_hydrated_child_reactive_nodes(
 					&mut branch_registry,
 				)
 			})?;
-			let control_binding_adopted =
-				registry.control_binding_adopted() || branch_registry.control_binding_adopted();
+			let control_binding_adopted = branch_registry.control_binding_adopted();
 			if branch_registry.control_binding_adopted() {
 				registry.mark_control_binding_adopted();
 			}
@@ -1306,6 +1322,10 @@ mod tests {
 			install_hydrated_reactive_nodes(&Element::new(root.clone()), &view, &mut registry)
 				.expect("hydration node installation should succeed");
 			store_reactive_node(registry);
+			render_signal.set(1);
+			with_runtime(|runtime| runtime.flush_updates());
+			assert_eq!(root.text_content().as_deref(), Some("value:1"));
+			effect_log.borrow_mut().clear();
 			effect_signal.set(1);
 			with_runtime(|runtime| runtime.flush_updates());
 
@@ -1314,6 +1334,72 @@ mod tests {
 				log.iter().filter(|entry| entry.as_str() == "run:1").count(),
 				1,
 				"only the tracked hydration render should retain an effect: {log:?}"
+			);
+			drop(log);
+			cleanup_reactive_nodes();
+			root.remove();
+		});
+	}
+
+	#[cfg(wasm)]
+	#[wasm_bindgen_test]
+	fn hydration_reactive_if_replacement_drops_initial_render_scope() {
+		let scope = ReactiveScope::new();
+		scope.enter(|| {
+			cleanup_reactive_nodes();
+			let document = web_sys::window().unwrap().document().unwrap();
+			let root = document.create_element("div").unwrap();
+			root.set_inner_html("<span>initial</span>");
+			document.body().unwrap().append_child(&root).unwrap();
+
+			let condition = Signal::new(true);
+			let effect_signal = Signal::new(0_i32);
+			let effect_log = Rc::new(RefCell::new(Vec::new()));
+			let view = Page::reactive_if(
+				{
+					let condition = condition.clone();
+					move || condition.get()
+				},
+				{
+					let effect_signal = effect_signal.clone();
+					let effect_log = Rc::clone(&effect_log);
+					move || {
+						use_retained_effect(
+							{
+								let effect_signal = effect_signal.clone();
+								let effect_log = Rc::clone(&effect_log);
+								move || {
+									let value = effect_signal.get();
+									effect_log.borrow_mut().push(format!("run:{value}"));
+									let effect_log = Rc::clone(&effect_log);
+									Some(move || {
+										effect_log.borrow_mut().push("cleanup".to_string())
+									})
+								}
+							},
+							deps![effect_signal],
+						);
+						PageElement::new("span").child("initial").into_page()
+					}
+				},
+				|| PageElement::new("span").child("replacement").into_page(),
+			);
+
+			let mut registry = crate::hydration::events::EventRegistry::new();
+			install_hydrated_reactive_nodes(&Element::new(root.clone()), &view, &mut registry)
+				.expect("hydration node installation should succeed");
+			store_reactive_node(registry);
+			condition.set(false);
+			with_runtime(|runtime| runtime.flush_updates());
+			assert_eq!(root.text_content().as_deref(), Some("replacement"));
+			effect_log.borrow_mut().clear();
+			effect_signal.set(1);
+			with_runtime(|runtime| runtime.flush_updates());
+
+			let log = effect_log.borrow();
+			assert!(
+				log.is_empty(),
+				"replaced hydrated branch retained an initial render effect: {log:?}"
 			);
 			drop(log);
 			cleanup_reactive_nodes();
@@ -1720,6 +1806,50 @@ mod tests {
 					.get_attribute("data-server-state"),
 				None
 			);
+			cleanup_reactive_nodes();
+			root.remove();
+		});
+	}
+
+	#[cfg(wasm)]
+	#[wasm_bindgen_test]
+	fn hydrated_sibling_adoption_does_not_remount_later_reactive_branch() {
+		let scope = ReactiveScope::new();
+		scope.enter(|| {
+			cleanup_reactive_nodes();
+			let document = web_sys::window().unwrap().document().unwrap();
+			let root = document.create_element("div").unwrap();
+			root.set_inner_html(
+				"<input value=\"server\"><input value=\"server\"><span>server</span>",
+			);
+			let inputs = root.query_selector_all("input").expect("inputs");
+			let adopted_input: web_sys::HtmlInputElement =
+				inputs.item(0).expect("adopted input").unchecked_into();
+			adopted_input.set_value("live");
+			let restored_input: web_sys::HtmlInputElement =
+				inputs.item(1).expect("restored input").unchecked_into();
+			restored_input.set_value("restored");
+			let value = Signal::new("server".to_owned());
+			let view = Page::Fragment(vec![
+				PageElement::new("input")
+					.control_binding(ControlBinding::text(value.clone()))
+					.into_page(),
+				Page::reactive(|| {
+					Page::Fragment(vec![
+						PageElement::new("input")
+							.attr("value", "server")
+							.into_page(),
+						PageElement::new("span").child("server").into_page(),
+					])
+				}),
+			]);
+			let mut registry = crate::hydration::events::EventRegistry::new();
+
+			install_hydrated_reactive_nodes(&Element::new(root.clone()), &view, &mut registry)
+				.expect("hydrate");
+
+			assert_eq!(value.get(), "live");
+			assert_eq!(restored_input.value(), "restored");
 			cleanup_reactive_nodes();
 			root.remove();
 		});
