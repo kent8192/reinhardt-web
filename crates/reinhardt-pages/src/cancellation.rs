@@ -175,7 +175,7 @@ fn register_callback(
 		callback();
 		return CancellationRegistration {
 			state: Weak::new(),
-			id: 0,
+			id: None,
 		};
 	}
 
@@ -183,7 +183,7 @@ fn register_callback(
 	inner.callbacks.borrow_mut().insert(id, Rc::new(callback));
 	CancellationRegistration {
 		state: Rc::downgrade(inner),
-		id,
+		id: Some(id),
 	}
 }
 
@@ -196,15 +196,15 @@ impl Drop for CancellationSource {
 /// RAII registration for a cancellation callback.
 pub(crate) struct CancellationRegistration {
 	state: Weak<CancellationState>,
-	id: u64,
+	id: Option<u64>,
 }
 
 impl Drop for CancellationRegistration {
 	fn drop(&mut self) {
-		if self.id != 0
+		if let Some(id) = self.id.take()
 			&& let Some(state) = self.state.upgrade()
 		{
-			state.callbacks.borrow_mut().remove(&self.id);
+			state.callbacks.borrow_mut().remove(&id);
 		}
 	}
 }
@@ -345,6 +345,21 @@ mod tests {
 		assert!(handle.is_cancelled());
 		assert_eq!(handle.check(), Err(Cancelled));
 		assert_eq!(callbacks.get(), 1);
+	}
+
+	#[test]
+	fn dropping_the_first_registration_removes_its_callback() {
+		let source = CancellationSource::new();
+		let callbacks = Rc::new(Cell::new(0));
+		let callbacks_for_registration = Rc::clone(&callbacks);
+		let registration = source.register(move || {
+			callbacks_for_registration.set(callbacks_for_registration.get() + 1);
+		});
+
+		drop(registration);
+		source.cancel();
+
+		assert_eq!(callbacks.get(), 0);
 	}
 
 	#[test]

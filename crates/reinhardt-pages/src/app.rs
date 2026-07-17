@@ -110,6 +110,15 @@ fn store_link_interceptor_guard(guard: link_interceptor::LinkInterceptorGuard) {
 }
 
 #[cfg(wasm)]
+fn observe_viewport_prefetch_links() {
+	APP_LINK_INTERCEPTOR.with(|slot| {
+		if let Some(guard) = slot.borrow().as_ref() {
+			guard.observe_viewport_prefetch_links();
+		}
+	});
+}
+
+#[cfg(wasm)]
 fn store_popstate_subscription(
 	subscription: reinhardt_urls::routers::client_router::PopStateSubscription,
 ) {

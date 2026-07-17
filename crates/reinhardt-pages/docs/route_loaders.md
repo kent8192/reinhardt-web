@@ -28,10 +28,13 @@ fn project_detail(Loader(project): Loader<Project>) -> Page {
 ```
 
 The `Loader<T>` type must match the loader's `Result<T, E>` data type. A loader
-may also accept `Query<T>` and one `CancellationToken` extractor. Path and
-query inputs are decoded before they are included in the shared query-cache
-key. Layouts use the same `loader = ...` option and receive their value before
-the leaf route is rendered.
+may also accept `Query<T>` and one `CancellationToken` extractor. Cache keys
+preserve the raw route-matcher value for `Path<T>` inputs, while `Query<T>`
+inputs use their decoded query value. This keeps cache identity aligned with
+the extractor contract, including percent-encoded path segments. Layouts use
+the same `loader = ...` option and receive their value before the leaf route is
+rendered. A persistent layout is remounted when one of its declared loader
+inputs changes, even if its route path parameters are unchanged.
 
 ## Navigation and cancellation
 
@@ -43,9 +46,10 @@ Reinhardt-managed browser requests also receive an abort signal. Work started
 by application code outside the loader future is intentionally not cancelled.
 
 `use_transition().is_pending` includes coordinator navigation pending state in
-addition to local transition work. A failed loader leaves the current route and
-reactive scopes mounted. Configure a sibling fallback on `RouterOutlet` when a
-route-specific error view is needed:
+addition to local transition work and becomes `true` synchronously when a
+transition starts. A failed loader leaves the current route and reactive scopes
+mounted. Configure a sibling fallback on `RouterOutlet` when a route-specific
+error view is needed:
 
 ```rust,ignore
 RouterOutlet::new(router).navigation_error_fallback(|error| {
@@ -58,7 +62,10 @@ internal diagnostic cause never enters the browser state payload. Failed pop
 navigations restore the committed history entry after preparation fails.
 On first launch, legacy or host-created history state without a framework entry
 index is upgraded in place to index `0`; an existing framework index is retained
-across reloads so back/forward restoration remains monotonic.
+across reloads so back/forward restoration remains monotonic. A loader route
+opened directly without an SSR state script prepares its initial values on the
+client before the first route mount. Browser history preparation preserves the
+search query for both initial loads and back/forward navigations.
 
 ## Prefetch and query sharing
 
@@ -72,10 +79,12 @@ Link::new("/projects/42/", "Project 42")
 ```
 
 `Hover` covers pointer intent and keyboard focus. `Viewport` uses an
-`IntersectionObserver`. Prefetch does not change history, route signals, or
-navigation pending state, and a settled prefetch error is silent. Navigation,
-prefetch, mounted routes, and `use_query` all use the single keyed query cache;
-an in-flight request is shared while at least one RAII lease remains.
+`IntersectionObserver`, which is created only after a mounted viewport link
+needs it; browsers without that API can still launch and use other prefetch
+modes. Prefetch does not change history, route signals, or navigation pending
+state, and a settled prefetch error is silent. Navigation, prefetch, mounted
+routes, and `use_query` all use the single keyed query cache; an in-flight
+request is shared while at least one RAII lease remains.
 
 ## SSR and hydration
 
@@ -91,8 +100,8 @@ let output = renderer
 assert_eq!(output.status, 200);
 ```
 
-Successful values are emitted through the existing HTML-safe `SsrState`
-serialization path under both a stable `route-loader:<id>` entry and the
+Successful values are registered in `SsrState` before the page is serialized,
+so the emitted HTML contains both a stable `route-loader:<id>` entry and the
 opaque query-cache key. Hydration reconstructs the initial typed loader store
 from the stable entry and restores the query success state by key, so the
 first client render does not issue a duplicate request. Cancellations, partial

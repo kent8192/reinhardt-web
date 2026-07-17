@@ -6,7 +6,7 @@ use crate::reactive::hooks::router::NavigateError;
 use crate::router::NavigationType;
 use crate::router::loader::{LoaderStore, RouteLoaderError, route_context};
 use crate::router::loader_registry::{LoaderConsumer, LoaderRegistry, execute_loader};
-use futures_util::future::join_all;
+use futures_util::future::{join_all, try_join_all};
 use reinhardt_urls::routers::client_router::{ClientRouteTreeMatch, ClientRouter};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -52,16 +52,15 @@ pub(crate) struct NavigationCoordinator {
 	router: Rc<ClientRouter>,
 	registry: LoaderRegistry,
 	next_generation: Cell<u64>,
+	next_prefetch_id: Cell<u64>,
 	committed_index: Cell<i64>,
 	pending: Signal<bool>,
 	error: Signal<Option<RouteLoaderError>>,
 	active_attempt: RefCell<Option<NavigationAttempt>>,
 	mounted_store: RefCell<Option<LoaderStore>>,
 	restoring_pop: Cell<bool>,
-	// Prefetch work is retained for the coordinator lifetime and consumed by
-	// the link-interceptor path when it is installed in a browser.
-	#[allow(dead_code)]
-	prefetch_tasks: RefCell<Vec<(CancellationSource, AbortableTaskGuard)>>,
+	// Prefetch work stays owned until its future settles or the coordinator drops.
+	prefetch_tasks: RefCell<Vec<(u64, CancellationSource, AbortableTaskGuard)>>,
 }
 
 // Accessors are used by the launcher, transition hooks, and prefetch path on
@@ -75,6 +74,7 @@ impl NavigationCoordinator {
 			router,
 			registry,
 			next_generation: Cell::new(0),
+			next_prefetch_id: Cell::new(0),
 			committed_index: Cell::new(0),
 			pending: Signal::new(false),
 			error: Signal::new(None),
@@ -119,16 +119,25 @@ impl NavigationCoordinator {
 
 	/// Restores the initial route's prepared loader values from the SSR state.
 	///
-	/// Hydration is intentionally strict for matched loader routes: rendering a
-	/// destination without its entry-blocking values would violate the loader
-	/// contract and would cause the generated component binding to panic.
+	/// When an SSR state script is present, hydration is intentionally strict for
+	/// matched loader routes: rendering a destination without its entry-blocking
+	/// values would violate the loader contract and cause the generated component
+	/// binding to panic. Without an SSR state script, the caller prepares the
+	/// initial route on the client before mounting it.
 	#[cfg(wasm)]
-	pub(crate) fn hydrate_initial_store(&self, path: &str) -> Result<(), RouteLoaderError> {
+	pub(crate) fn hydrate_initial_store(&self, path: &str) -> Result<bool, RouteLoaderError> {
 		let Some(matched) = self.router.match_tree(path) else {
-			return Ok(());
+			return Ok(true);
 		};
 		if matched.loader_ids().is_empty() {
-			return Ok(());
+			return Ok(true);
+		}
+		let has_ssr_state = web_sys::window()
+			.and_then(|window| window.document())
+			.and_then(|document| document.get_element_by_id("ssr-state"))
+			.is_some();
+		if !has_ssr_state {
+			return Ok(false);
 		}
 		let context = crate::hydration::HydrationContext::from_window().map_err(|error| {
 			RouteLoaderError::with_status(
@@ -148,7 +157,7 @@ impl NavigationCoordinator {
 			store.insert_prepared(prepared);
 		}
 		self.mounted_store.borrow_mut().replace(store);
-		Ok(())
+		Ok(true)
 	}
 
 	pub(crate) fn navigate(
@@ -156,16 +165,18 @@ impl NavigationCoordinator {
 		path: String,
 		intent: NavigationIntent,
 	) -> Result<(), NavigateError> {
-		let Some(matched) = self.router.match_tree(&path) else {
-			return Err(NavigateError::RouterRejected(format!(
-				"no route matches `{path}`"
-			)));
-		};
+		let matched = self.router.match_tree(&path);
 
 		self.cancel_active_attempt();
 		let generation = self.next_generation.get().wrapping_add(1);
 		self.next_generation.set(generation);
 		self.error.set(None);
+		if matched.is_none() {
+			self.pending.set(false);
+			self.commit_unmatched(generation, path, intent);
+			return Ok(());
+		}
+		let matched = matched.expect("matched routes are handled above");
 
 		if matched.loader_ids().is_empty() {
 			self.pending.set(false);
@@ -192,19 +203,21 @@ impl NavigationCoordinator {
 					LoaderConsumer::Navigation(generation),
 				)
 			});
-			let results = join_all(futures).await;
+			let results = match try_join_all(futures).await {
+				Ok(results) => results,
+				Err(error) => {
+					if !task_cancellation.is_cancelled() {
+						coordinator.finish_error(generation, error);
+					}
+					return;
+				}
+			};
 			if task_cancellation.is_cancelled() {
 				return;
 			}
 			let store = LoaderStore::new();
-			for result in results {
-				match result {
-					Ok(prepared) => store.insert_prepared(prepared),
-					Err(error) => {
-						coordinator.finish_error(generation, error);
-						return;
-					}
-				}
+			for prepared in results {
+				store.insert_prepared(prepared);
 			}
 			coordinator.commit_success(generation, path_for_task, intent, matched_for_task, store);
 		});
@@ -231,6 +244,8 @@ impl NavigationCoordinator {
 		let context = route_context(&matched);
 		let cancellation = CancellationSource::new();
 		let handle = cancellation.handle();
+		let prefetch_id = self.next_prefetch_id.get().wrapping_add(1);
+		self.next_prefetch_id.set(prefetch_id);
 		let coordinator = Rc::clone(self);
 		let task = crate::cancellation::spawn_abortable_task(async move {
 			let futures = ids.into_iter().map(|id| {
@@ -243,9 +258,18 @@ impl NavigationCoordinator {
 				)
 			});
 			let _ = join_all(futures).await;
+			coordinator.finish_prefetch(prefetch_id);
 		});
-		self.prefetch_tasks.borrow_mut().push((cancellation, task));
+		self.prefetch_tasks
+			.borrow_mut()
+			.push((prefetch_id, cancellation, task));
 		Ok(())
+	}
+
+	fn finish_prefetch(&self, prefetch_id: u64) {
+		self.prefetch_tasks
+			.borrow_mut()
+			.retain(|(id, _, _)| *id != prefetch_id);
 	}
 
 	fn cancel_active_attempt(&self) {
@@ -299,22 +323,49 @@ impl NavigationCoordinator {
 			NavigationIntent::Replace | NavigationIntent::Initial => self.committed_index.get(),
 			NavigationIntent::Pop { target_index } => target_index,
 		};
+		let previous_store = self.mounted_store.borrow_mut().replace(store.clone());
 		let result = crate::router::loader::with_loader_store(&store, || {
 			self.router
 				.commit_match(&path, &matched, intent.navigation_type(), entry_index)
 		});
 		if let Err(error) = result {
+			*self.mounted_store.borrow_mut() = previous_store;
 			self.finish_error(
 				generation,
 				RouteLoaderError::with_status(error.to_string(), 500),
 			);
 			return;
 		}
-		self.mounted_store.borrow_mut().replace(store);
 		self.committed_index.set(entry_index);
 		self.pending.set(false);
 		self.error.set(None);
 		self.active_attempt.borrow_mut().take();
+	}
+
+	fn commit_unmatched(&self, generation: u64, path: String, intent: NavigationIntent) {
+		if !self.is_current_generation(generation) {
+			return;
+		}
+		let entry_index = match intent {
+			NavigationIntent::Push => self.committed_index.get().saturating_add(1),
+			NavigationIntent::Replace | NavigationIntent::Initial => self.committed_index.get(),
+			NavigationIntent::Pop { target_index } => target_index,
+		};
+		let previous_store = self.mounted_store.borrow_mut().replace(LoaderStore::new());
+		if let Err(error) =
+			self.router
+				.commit_unmatched(&path, intent.navigation_type(), entry_index)
+		{
+			*self.mounted_store.borrow_mut() = previous_store;
+			self.finish_error(
+				generation,
+				RouteLoaderError::with_status(error.to_string(), 500),
+			);
+			return;
+		}
+		self.committed_index.set(entry_index);
+		self.pending.set(false);
+		self.error.set(None);
 	}
 }
 
@@ -448,12 +499,40 @@ mod tests {
 			Err("safe route-loader failure".to_owned())
 		}
 
+		#[loader]
+		async fn coordinator_fail_fast_layout_loader() -> Result<String, String> {
+			Err("fail fast route-loader failure".to_owned())
+		}
+
+		#[loader]
+		async fn coordinator_fail_fast_leaf_loader() -> Result<String, String> {
+			gated_value("unreachable slow loader").await
+		}
+
 		#[component(
 			"/error/",
 			name = "coordinator-error",
 			loader = coordinator_error_loader,
 		)]
 		fn coordinator_error(Loader(_value): Loader<String>) -> Page {
+			Page::text("unreachable")
+		}
+
+		#[layout(
+			"/fail-fast/",
+			name = "coordinator-fail-fast-layout",
+			loader = coordinator_fail_fast_layout_loader,
+		)]
+		fn coordinator_fail_fast_layout(Loader(_value): Loader<String>, outlet: Outlet) -> Page {
+			outlet.into_page()
+		}
+
+		#[component(
+			"child/",
+			name = "coordinator-fail-fast-leaf",
+			loader = coordinator_fail_fast_leaf_loader,
+		)]
+		fn coordinator_fail_fast_leaf(Loader(_value): Loader<String>) -> Page {
 			Page::text("unreachable")
 		}
 
@@ -490,9 +569,13 @@ mod tests {
 				.component(coordinator_loaded)
 				.component(coordinator_error)
 				.routes(|routes| {
-					routes.layout(coordinator_layout, |children| {
-						children.component(coordinator_leaf)
-					})
+					routes
+						.layout(coordinator_layout, |children| {
+							children.component(coordinator_leaf)
+						})
+						.layout(coordinator_fail_fast_layout, |children| {
+							children.component(coordinator_fail_fast_leaf)
+						})
 				})
 		}
 
@@ -626,6 +709,80 @@ mod tests {
 						.map(|error| error.public_message().to_owned()),
 					Some("safe route-loader failure".to_owned())
 				);
+			});
+		}
+
+		#[test]
+		fn failed_loader_does_not_wait_for_a_slow_sibling() {
+			ReactiveScope::run(|| {
+				reset_test_state();
+				let tasks = Rc::new(RefCell::new(VecDeque::new()));
+				let tasks_for_sink = Rc::clone(&tasks);
+				let _sink = crate::platform::install_task_sink(move |task| {
+					tasks_for_sink.borrow_mut().push_back(task);
+				});
+				let router = Rc::new(router_with_loaded_routes());
+				let coordinator = NavigationCoordinator::new(router).expect("registry builds");
+
+				coordinator
+					.navigate("/fail-fast/child/".to_owned(), NavigationIntent::Push)
+					.expect("navigation starts before loader preparation");
+				poll_rounds(&tasks, 4);
+
+				assert!(!coordinator.pending().get());
+				assert_eq!(
+					coordinator
+						.error()
+						.get()
+						.map(|error| error.public_message().to_owned()),
+					Some("fail fast route-loader failure".to_owned())
+				);
+			});
+		}
+
+		#[test]
+		fn completed_prefetch_releases_its_task_guard() {
+			ReactiveScope::run(|| {
+				reset_test_state();
+				let tasks = Rc::new(RefCell::new(VecDeque::new()));
+				let tasks_for_sink = Rc::clone(&tasks);
+				let _sink = crate::platform::install_task_sink(move |task| {
+					tasks_for_sink.borrow_mut().push_back(task);
+				});
+				let router = Rc::new(router_with_loaded_routes());
+				let coordinator = NavigationCoordinator::new(router).expect("registry builds");
+
+				coordinator
+					.prefetch("/error/".to_owned())
+					.expect("prefetch starts for a matched loader route");
+				assert_eq!(coordinator.prefetch_tasks.borrow().len(), 1);
+				poll_rounds(&tasks, 4);
+				assert_eq!(coordinator.prefetch_tasks.borrow().len(), 0);
+			});
+		}
+
+		#[test]
+		fn failed_forward_pop_requests_history_restoration() {
+			ReactiveScope::run(|| {
+				reset_test_state();
+				let tasks = Rc::new(RefCell::new(VecDeque::new()));
+				let tasks_for_sink = Rc::clone(&tasks);
+				let _sink = crate::platform::install_task_sink(move |task| {
+					tasks_for_sink.borrow_mut().push_back(task);
+				});
+				let router = Rc::new(router_with_loaded_routes());
+				let coordinator = NavigationCoordinator::new(router).expect("registry builds");
+				coordinator.initialize_committed_index(1);
+
+				coordinator
+					.navigate(
+						"/error/".to_owned(),
+						NavigationIntent::Pop { target_index: 2 },
+					)
+					.expect("pop preparation starts");
+				poll_rounds(&tasks, 4);
+
+				assert!(coordinator.consume_restoration_pop());
 			});
 		}
 	}

@@ -44,6 +44,18 @@ fn home_page() -> Page {
 		.into_page()
 }
 
+fn viewport_home_page() -> Page {
+	PageElement::new("div")
+		.attr("id", "route-viewport-home")
+		.child(
+			Link::new("/prefetched", "Viewport prefetch destination")
+				.attr("id", "viewport-prefetch-link")
+				.prefetch(PrefetchMode::Viewport)
+				.render(),
+		)
+		.into_page()
+}
+
 fn install_app_root() -> web_sys::Element {
 	let document = web_sys::window()
 		.expect("window")
@@ -72,6 +84,12 @@ fn install_app_root() -> web_sys::Element {
 fn build_router() -> ClientRouter {
 	ClientRouter::new()
 		.route("home", "/", home_page)
+		.component(prefetched_page)
+}
+
+fn build_viewport_router() -> ClientRouter {
+	ClientRouter::new()
+		.route("home", "/", viewport_home_page)
 		.component(prefetched_page)
 }
 
@@ -153,4 +171,35 @@ async fn hover_prefetch_is_side_effect_free_and_shared_by_navigation() {
 	// the destination is already cached and must not create a second request.
 	let focusin = web_sys::FocusEvent::new("focusin").expect("focusin event");
 	anchor.dispatch_event(&focusin).expect("dispatch focusin");
+}
+
+#[wasm_bindgen_test]
+async fn viewport_prefetch_is_observed_after_the_link_mounts() {
+	let root = install_app_root();
+	PREFETCH_CALLS.with(|calls| calls.set(0));
+	ClientLauncher::new("#app")
+		.router_client(build_viewport_router)
+		.launch()
+		.expect("launch");
+
+	assert!(root.inner_html().contains("viewport-prefetch-link"));
+	for _ in 0..6 {
+		yield_to_tasks().await;
+	}
+	assert_eq!(PREFETCH_CALLS.with(Cell::get), 1);
+}
+
+#[wasm_bindgen_test]
+fn launch_without_intersection_observer_when_no_viewport_link_exists() {
+	let _root = install_app_root();
+	let window = web_sys::window().expect("window");
+	let key = JsValue::from_str("IntersectionObserver");
+	let original = js_sys::Reflect::get(window.as_ref(), &key).expect("observer value");
+	js_sys::Reflect::set(window.as_ref(), &key, &JsValue::UNDEFINED).expect("clear observer");
+
+	let result = ClientLauncher::new("#app")
+		.router_client(build_router)
+		.launch();
+	js_sys::Reflect::set(window.as_ref(), &key, &original).expect("restore observer");
+	result.expect("launch does not require viewport observation");
 }

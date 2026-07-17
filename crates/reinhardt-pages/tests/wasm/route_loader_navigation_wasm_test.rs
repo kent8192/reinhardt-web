@@ -10,7 +10,7 @@
 use reinhardt_pages::app::ClientLauncher;
 use reinhardt_pages::component::{IntoPage, Page, PageElement};
 use reinhardt_pages::reactive::hooks::RouterHandle;
-use reinhardt_pages::{Loader, component, loader};
+use reinhardt_pages::{Loader, Outlet, Query, component, layout, loader};
 use reinhardt_urls::routers::ClientRouter;
 use std::cell::Cell;
 use wasm_bindgen::JsValue;
@@ -44,6 +44,49 @@ fn loaded_page(Loader(data): Loader<String>) -> Page {
 }
 
 #[loader]
+async fn query_loaded_loader(Query(tab): Query<String>) -> Result<String, String> {
+	Ok(format!("TAB: {tab}"))
+}
+
+#[component(
+	"/query-loaded",
+	name = "loader-navigation-query-loaded",
+	loader = query_loaded_loader
+)]
+fn query_loaded_page(Loader(data): Loader<String>) -> Page {
+	PageElement::new("div")
+		.attr("id", "route-query-loaded")
+		.child(data)
+		.into_page()
+}
+
+#[loader]
+async fn persistent_layout_loader(Query(tab): Query<String>) -> Result<String, String> {
+	Ok(format!("LAYOUT: {tab}"))
+}
+
+#[layout(
+	"/persistent/",
+	name = "loader-navigation-persistent-layout",
+	loader = persistent_layout_loader
+)]
+fn persistent_layout(Loader(data): Loader<String>, outlet: Outlet) -> Page {
+	PageElement::new("section")
+		.attr("id", "persistent-layout")
+		.child(data)
+		.child(outlet.into_page())
+		.into_page()
+}
+
+#[component("view/", name = "loader-navigation-persistent-leaf")]
+fn persistent_leaf() -> Page {
+	PageElement::new("div")
+		.attr("id", "persistent-leaf")
+		.child("LEAF")
+		.into_page()
+}
+
+#[loader]
 async fn slow_loader() -> Result<String, String> {
 	gloo_timers::future::TimeoutFuture::new(30).await;
 	Ok("SLOW DATA".to_string())
@@ -70,7 +113,7 @@ fn failed_page(Loader(data): Loader<String>) -> Page {
 		.into_page()
 }
 
-fn install_app_root() -> web_sys::Element {
+fn install_app_root_at(path: &str) -> web_sys::Element {
 	let document = web_sys::window()
 		.expect("window")
 		.document()
@@ -80,7 +123,7 @@ fn install_app_root() -> web_sys::Element {
 		.history()
 		.expect("history");
 	history
-		.replace_state_with_url(&JsValue::NULL, "", Some("/"))
+		.replace_state_with_url(&JsValue::NULL, "", Some(path))
 		.expect("reset history path");
 	if let Some(previous) = document.get_element_by_id("app") {
 		previous.remove();
@@ -95,12 +138,25 @@ fn install_app_root() -> web_sys::Element {
 	root
 }
 
+fn install_app_root() -> web_sys::Element {
+	install_app_root_at("/")
+}
+
 fn build_router() -> ClientRouter {
 	ClientRouter::new()
 		.route("home", "/", home_page)
 		.component(loaded_page)
+		.component(query_loaded_page)
 		.component(slow_page)
 		.component(failed_page)
+}
+
+fn build_persistent_layout_router() -> ClientRouter {
+	ClientRouter::new().routes(|routes| {
+		routes.layout(persistent_layout, |children| {
+			children.component(persistent_leaf)
+		})
+	})
 }
 
 async fn yield_to_tasks() {
@@ -113,6 +169,16 @@ fn current_path() -> String {
 		.location()
 		.pathname()
 		.expect("pathname")
+}
+
+fn current_location() -> String {
+	let window = web_sys::window().expect("window");
+	let location = window.location();
+	format!(
+		"{}{}",
+		location.pathname().expect("pathname"),
+		location.search().expect("search")
+	)
 }
 
 #[wasm_bindgen_test]
@@ -203,4 +269,72 @@ async fn route_loader_navigation_failure_retains_old_route() {
 	assert_eq!(current_path(), "/");
 	assert!(root.inner_html().contains("HOME"));
 	assert!(!root.inner_html().contains("route-failed"));
+}
+
+#[wasm_bindgen_test]
+async fn client_only_initial_loader_prepares_query_values_without_ssr_state() {
+	let root = install_app_root_at("/query-loaded?tab=initial");
+	ClientLauncher::new("#app")
+		.router_client(build_router)
+		.launch()
+		.expect("client-only loader launch succeeds");
+
+	yield_to_tasks().await;
+	yield_to_tasks().await;
+	assert_eq!(current_location(), "/query-loaded?tab=initial");
+	assert!(root.inner_html().contains("TAB: initial"));
+}
+
+#[wasm_bindgen_test]
+async fn pop_navigation_preserves_the_destination_query_for_loader_preparation() {
+	let root = install_app_root();
+	ClientLauncher::new("#app")
+		.router_client(build_router)
+		.launch()
+		.expect("launch");
+
+	RouterHandle
+		.push("/query-loaded?tab=first")
+		.expect("first query navigation starts");
+	yield_to_tasks().await;
+	yield_to_tasks().await;
+	assert!(root.inner_html().contains("TAB: first"));
+
+	RouterHandle
+		.push("/query-loaded?tab=second")
+		.expect("second query navigation starts");
+	yield_to_tasks().await;
+	yield_to_tasks().await;
+	assert!(root.inner_html().contains("TAB: second"));
+
+	web_sys::window()
+		.expect("window")
+		.history()
+		.expect("history")
+		.back()
+		.expect("history back");
+	yield_to_tasks().await;
+	yield_to_tasks().await;
+	yield_to_tasks().await;
+	assert_eq!(current_location(), "/query-loaded?tab=first");
+	assert!(root.inner_html().contains("TAB: first"));
+}
+
+#[wasm_bindgen_test]
+async fn persistent_layout_remounts_when_its_loader_query_input_changes() {
+	let root = install_app_root_at("/persistent/view/?tab=one");
+	ClientLauncher::new("#app")
+		.router_client(build_persistent_layout_router)
+		.launch()
+		.expect("launch");
+	yield_to_tasks().await;
+	yield_to_tasks().await;
+	assert!(root.inner_html().contains("LAYOUT: one"));
+
+	RouterHandle
+		.replace("/persistent/view/?tab=two")
+		.expect("query navigation starts");
+	yield_to_tasks().await;
+	yield_to_tasks().await;
+	assert!(root.inner_html().contains("LAYOUT: two"));
 }

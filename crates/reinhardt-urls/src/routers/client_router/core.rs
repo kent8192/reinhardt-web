@@ -11,8 +11,12 @@ use super::handler::{
 	result_handler, with_params_handler,
 };
 #[cfg(wasm)]
+use super::history::current_location_path;
+#[cfg(native)]
+use super::history::current_path;
+#[cfg(wasm)]
 use super::history::setup_popstate_listener;
-use super::history::{HistoryState, NavigationType, current_path, push_state, replace_state};
+use super::history::{HistoryState, NavigationType, push_state, replace_state};
 use super::loader::RouteLoaderId;
 use super::params::{FromPath, ParamContext, Path};
 use super::pattern::ClientPathPattern;
@@ -503,6 +507,9 @@ impl Default for ClientRouter {
 impl ClientRouter {
 	/// Creates a new router.
 	pub fn new() -> Self {
+		#[cfg(wasm)]
+		let initial_path = current_location_path().unwrap_or_else(|_| "/".to_string());
+		#[cfg(native)]
 		let initial_path = current_path().unwrap_or_else(|_| "/".to_string());
 		let (current_path, current_params, current_route_name, navigation_scope) =
 			create_navigation_signals(initial_path);
@@ -1161,61 +1168,36 @@ impl ClientRouter {
 		Ok(())
 	}
 
+	/// Commits a path that has no matching route so the configured not-found
+	/// renderer observes the navigation just like a direct [`Self::push`].
+	pub fn commit_unmatched(
+		&self,
+		path: &str,
+		navigation: NavigationType,
+		entry_index: i64,
+	) -> Result<(), RouterError> {
+		let state = HistoryState::new(path).with_entry_index(entry_index);
+		match navigation {
+			NavigationType::Push => push_state(&state),
+			NavigationType::Replace | NavigationType::Initial => replace_state(&state),
+			NavigationType::Pop => Ok(()),
+		}
+		.map_err(RouterError::NavigationFailed)?;
+
+		self.current_path.set(path.to_string());
+		let params = HashMap::new();
+		self.current_params.set(params.clone());
+		self.current_route_name.set(None);
+		self.notify_observers(path, &params);
+		Ok(())
+	}
+
 	/// Internal navigation implementation.
 	fn navigate(&self, path: &str, nav_type: NavigationType) -> Result<(), RouterError> {
 		if let Some(matched) = self.match_tree(path) {
 			return self.commit_match(path, &matched, nav_type, 0);
 		}
-		let route_match = self.match_path(path);
-
-		let state = HistoryState::new(path)
-			.with_params(
-				route_match
-					.as_ref()
-					.map(|m| m.params.clone())
-					.unwrap_or_default(),
-			)
-			.with_route_name(
-				route_match
-					.as_ref()
-					.and_then(|m| m.route.name())
-					.unwrap_or(""),
-			)
-			.with_entry_index(0);
-
-		let result = match nav_type {
-			NavigationType::Push => push_state(&state),
-			NavigationType::Replace => replace_state(&state),
-			_ => Ok(()),
-		};
-
-		result.map_err(RouterError::NavigationFailed)?;
-
-		// Update reactive signals
-		self.current_path.set(path.to_string());
-		self.current_params.set(
-			route_match
-				.as_ref()
-				.map(|m| m.params.clone())
-				.unwrap_or_default(),
-		);
-		self.current_route_name.set(
-			route_match
-				.as_ref()
-				.and_then(|m| m.route.name().map(|s| s.to_string())),
-		);
-
-		// (Refs #4234, Inv-1, Inv-5) Invoke registered navigation observers
-		// AFTER the history mutation succeeds and AFTER signal updates so
-		// listeners reading `Signal::get` from inside their closure see the
-		// new state. Mirrors `pages::Router::navigate`.
-		let params_for_observers = route_match
-			.as_ref()
-			.map(|m| m.params.clone())
-			.unwrap_or_default();
-		self.notify_observers(path, &params_for_observers);
-
-		Ok(())
+		self.commit_unmatched(path, nav_type, 0)
 	}
 
 	/// Register a listener for navigation events.

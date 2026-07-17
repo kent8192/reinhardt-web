@@ -212,14 +212,19 @@ impl RouterOutlet {
 
 impl Component for RouterOutlet {
 	fn render(&self) -> Page {
-		let current = self.router.render_current();
-		if let Some(fallback) = &self.navigation_error_fallback
-			&& let Some(Some(error)) =
-				crate::app::try_with_navigation_coordinator(|coordinator| coordinator.error().get())
-		{
-			return Page::Fragment(vec![current, fallback(&error)]);
-		}
-		current
+		let router = self.router.clone();
+		let fallback = self.navigation_error_fallback.clone();
+		Page::reactive(move || {
+			let current = router.render_current();
+			if let Some(fallback) = &fallback
+				&& let Some(Some(error)) =
+					crate::app::try_with_navigation_coordinator(|coordinator| {
+						coordinator.error().get()
+					}) {
+				return Page::Fragment(vec![current, fallback(&error)]);
+			}
+			current
+		})
 	}
 
 	fn name() -> &'static str {
@@ -351,6 +356,33 @@ where
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use reinhardt_core::reactive::ReactiveScope;
+	use reinhardt_urls::routers::ClientRouter;
+	use serial_test::serial;
+
+	#[test]
+	#[serial]
+	fn router_outlet_reacts_to_loader_errors_after_its_initial_render() {
+		ReactiveScope::run(|| {
+			let router = ClientRouter::new().route("home", "/", || Page::text("HOME"));
+			crate::app::__install_client_router_for_test(router.clone());
+			let outlet = RouterOutlet::new(router).navigation_error_fallback(|error| {
+				Page::text(format!("FAILED: {}", error.public_message()))
+			});
+			let page = outlet.render();
+
+			assert_eq!(page.render_to_string(), "HOME");
+			crate::app::try_with_navigation_coordinator(|coordinator| {
+				coordinator
+					.error()
+					.set(Some(RouteLoaderError::new("loader failed")));
+			})
+			.expect("test router installs a navigation coordinator");
+			assert_eq!(page.render_to_string(), "HOMEFAILED: loader failed");
+
+			crate::app::__clear_spa_router_for_test();
+		});
+	}
 
 	#[test]
 	fn test_link_new() {

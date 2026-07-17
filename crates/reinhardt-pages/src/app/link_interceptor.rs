@@ -63,10 +63,14 @@ pub(super) struct LinkInterceptorGuard {
 	click: wasm_bindgen::closure::Closure<dyn FnMut(web_sys::MouseEvent)>,
 	pointerover: wasm_bindgen::closure::Closure<dyn FnMut(web_sys::PointerEvent)>,
 	focusin: wasm_bindgen::closure::Closure<dyn FnMut(web_sys::FocusEvent)>,
+	viewport_observer: std::cell::RefCell<Option<ViewportPrefetchObserver>>,
+}
+
+#[cfg(wasm)]
+struct ViewportPrefetchObserver {
 	observer: web_sys::IntersectionObserver,
 	// Retained so the observer callback remains alive until the observer drops.
-	#[allow(dead_code)]
-	observer_callback:
+	_callback:
 		wasm_bindgen::closure::Closure<dyn FnMut(js_sys::Array, web_sys::IntersectionObserver)>,
 }
 
@@ -84,7 +88,64 @@ impl Drop for LinkInterceptorGuard {
 		let _ = self
 			.document
 			.remove_event_listener_with_callback("focusin", self.focusin.as_ref().unchecked_ref());
-		self.observer.disconnect();
+		if let Some(observer) = self.viewport_observer.get_mut().take() {
+			observer.observer.disconnect();
+		}
+	}
+}
+
+#[cfg(wasm)]
+impl LinkInterceptorGuard {
+	/// Starts viewport observation only after mounted links request it.
+	pub(super) fn observe_viewport_prefetch_links(&self) {
+		use wasm_bindgen::JsCast;
+		use wasm_bindgen::closure::Closure;
+
+		let Ok(viewport_links) = self
+			.document
+			.query_selector_all("[data-prefetch=\"viewport\"]")
+		else {
+			return;
+		};
+		if viewport_links.length() == 0 {
+			return;
+		}
+
+		let mut slot = self.viewport_observer.borrow_mut();
+		if slot.is_none() {
+			let callback = Closure::wrap(Box::new(
+				move |entries: js_sys::Array, _observer: web_sys::IntersectionObserver| {
+					for entry in entries.iter() {
+						if let Ok(entry) = entry.dyn_into::<web_sys::IntersectionObserverEntry>()
+							&& entry.is_intersecting()
+						{
+							prefetch_from_target(Some(entry.target().into()));
+						}
+					}
+				},
+			) as Box<dyn FnMut(_, _)>);
+			let Ok(observer) =
+				web_sys::IntersectionObserver::new(callback.as_ref().unchecked_ref())
+			else {
+				return;
+			};
+			*slot = Some(ViewportPrefetchObserver {
+				observer,
+				_callback: callback,
+			});
+		}
+
+		let observer = &slot
+			.as_ref()
+			.expect("viewport observer is installed when viewport links exist")
+			.observer;
+		for index in 0..viewport_links.length() {
+			if let Some(node) = viewport_links.item(index)
+				&& let Ok(element) = node.dyn_into::<web_sys::Element>()
+			{
+				observer.observe(&element);
+			}
+		}
 	}
 }
 
@@ -277,34 +338,12 @@ pub(super) fn install_link_interceptor(
 		prefetch_from_target(event.target());
 	}) as Box<dyn FnMut(_)>);
 	document.add_event_listener_with_callback("focusin", focusin.as_ref().unchecked_ref())?;
-	let observer_callback = Closure::wrap(Box::new(
-		move |entries: js_sys::Array, _observer: web_sys::IntersectionObserver| {
-			use wasm_bindgen::JsCast;
-			for entry in entries.iter() {
-				if let Ok(entry) = entry.dyn_into::<web_sys::IntersectionObserverEntry>()
-					&& entry.is_intersecting()
-				{
-					prefetch_from_target(Some(entry.target().into()));
-				}
-			}
-		},
-	) as Box<dyn FnMut(_, _)>);
-	let observer = web_sys::IntersectionObserver::new(observer_callback.as_ref().unchecked_ref())?;
-	let viewport_links = document.query_selector_all("[data-prefetch=\"viewport\"]")?;
-	for index in 0..viewport_links.length() {
-		if let Some(node) = viewport_links.item(index)
-			&& let Ok(element) = node.dyn_into::<web_sys::Element>()
-		{
-			observer.observe(&element);
-		}
-	}
 	Ok(LinkInterceptorGuard {
 		document: document.clone(),
 		click,
 		pointerover,
 		focusin,
-		observer,
-		observer_callback,
+		viewport_observer: std::cell::RefCell::new(None),
 	})
 }
 

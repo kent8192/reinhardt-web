@@ -30,6 +30,7 @@ impl SsrRenderer {
 		router: &ClientRouter,
 		path: &str,
 	) -> SsrRouteOutput {
+		self.begin_route_loader_render();
 		let Some(matched) = router.match_tree(path) else {
 			return SsrRouteOutput {
 				html: PageElement::new("div")
@@ -84,13 +85,15 @@ impl SsrRenderer {
 			};
 		};
 
-		let html = self.render_page_into_page_to_string(page).await;
 		for (id, cache_key, value) in serialized_loaders {
 			self.state_mut()
 				.add_route_loader_state(id.as_str(), value.clone());
 			self.state_mut()
 				.add_route_loader_query_state(cache_key, value);
 		}
+		let html = self
+			.render_page_into_page_to_string_preserving_resource_state(page)
+			.await;
 		SsrRouteOutput { html, status: 200 }
 	}
 }

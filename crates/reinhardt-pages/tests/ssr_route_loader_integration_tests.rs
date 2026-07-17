@@ -87,6 +87,12 @@ fn route_loader_is_prepared_before_ssr_render() {
 		assert_eq!(output.status, 200);
 		assert!(output.html.contains("prepared on server"));
 		let loader_id = <ssr_greeting_loader::marker as RouteLoader>::ID;
+		assert!(
+			output
+				.html
+				.contains(&format!("route-loader:{}", loader_id.as_str()))
+		);
+		assert!(output.html.contains("prepared on server"));
 		assert_eq!(
 			renderer.state().get_route_loader_state(loader_id.as_str()),
 			Some(&serde_json::json!("prepared on server"))
@@ -123,6 +129,22 @@ fn route_loader_timeout_returns_safe_status() {
 
 		assert_eq!(output.status, 504);
 		assert!(output.html.contains("route loader timed out"));
+		assert_eq!(renderer.state().resource_count(), 0);
+	});
+}
+
+#[test]
+fn route_render_clears_previous_loader_resource_state() {
+	tokio_test::block_on(async {
+		let router = ClientRouter::new().component(ssr_greeting);
+		let mut renderer = SsrRenderer::new();
+
+		let loaded = renderer.render_route_to_string(&router, "/greeting/").await;
+		assert_eq!(loaded.status, 200);
+		assert!(renderer.state().resource_count() > 0);
+
+		let missing = renderer.render_route_to_string(&router, "/missing/").await;
+		assert_eq!(missing.status, 404);
 		assert_eq!(renderer.state().resource_count(), 0);
 	});
 }

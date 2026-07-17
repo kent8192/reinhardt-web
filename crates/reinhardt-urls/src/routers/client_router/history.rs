@@ -342,6 +342,18 @@ pub fn current_search() -> Result<String, String> {
 		.map_err(|_| "Failed to get search".to_string())
 }
 
+/// Combines a pathname and a browser search string into a router path.
+#[cfg(any(wasm, test))]
+fn path_with_search(path: String, search: String) -> String {
+	format!("{path}{search}")
+}
+
+/// Gets the current pathname together with its search query.
+#[cfg(wasm)]
+pub fn current_location_path() -> Result<String, String> {
+	Ok(path_with_search(current_path()?, current_search()?))
+}
+
 /// Gets the current hash from the browser.
 ///
 /// Wasm-only by design (see [`current_search`] for the rationale).
@@ -399,9 +411,7 @@ where
 	let mut callback = callback;
 	let closure =
 		wasm_bindgen::closure::Closure::wrap(Box::new(move |event: web_sys::PopStateEvent| {
-			let path = web_sys::window()
-				.and_then(|window| window.location().pathname().ok())
-				.unwrap_or_else(|| "/".to_string());
+			let path = current_location_path().unwrap_or_else(|_| "/".to_string());
 			let state = state_from_js_value(event.state())
 				.unwrap_or_else(|| HistoryState::new(path.clone()));
 			callback(PopNavigationRequest { path, state });
@@ -563,5 +573,13 @@ mod tests {
 		// stubs were removed to avoid a public-API footgun where callers
 		// would silently receive empty strings on non-wasm targets).
 		assert_eq!(current_path().unwrap(), "/");
+	}
+
+	#[test]
+	fn path_with_search_keeps_the_query_for_router_matching() {
+		assert_eq!(
+			path_with_search("/projects/".to_string(), "?page=2".to_string()),
+			"/projects/?page=2"
+		);
 	}
 }

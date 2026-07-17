@@ -14,6 +14,7 @@ fn router() -> ClientRouter {
 	ClientRouter::new()
 		.route("home", "/", || Page::text("home"))
 		.route("settings", "/settings/", || Page::text("settings"))
+		.not_found(|| Page::text("not found"))
 }
 
 #[test]
@@ -32,16 +33,21 @@ fn router_handle_uses_coordinator_for_synchronous_routes() {
 }
 
 #[test]
-fn router_handle_preserves_path_when_matching_rejects() {
+fn router_handle_commits_unmatched_path_for_not_found_rendering() {
 	ReactiveScope::run(|| {
 		__install_client_router_for_test(router());
 
-		let error = RouterHandle
+		RouterHandle
 			.push("/missing/")
-			.expect_err("an unknown route must be rejected before commit");
+			.expect("an unmatched path must commit so the router can render not_found");
 
-		assert!(error.to_string().contains("no route matches"));
-		assert_eq!(__current_path_for_test().as_deref(), Some("/"));
+		assert_eq!(__current_path_for_test().as_deref(), Some("/missing/"));
+		assert_eq!(
+			reinhardt_pages::app::try_with_spa_router(|router| router
+				.render_current()
+				.render_to_string()),
+			Some("not found".to_owned())
+		);
 		__clear_spa_router_for_test();
 	});
 }

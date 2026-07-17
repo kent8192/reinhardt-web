@@ -20,7 +20,11 @@ use crate::component::reactive_if::{
 	ReactiveNodeStore, clear_reactive_node_store, new_reactive_node_store, with_reactive_node_store,
 };
 #[cfg(wasm)]
-use crate::router::loader::{LoaderStore, active_loader_store, with_loader_store};
+use crate::router::loader::{
+	LoaderStore, active_loader_store, loader_cache_id, route_context, with_loader_store,
+};
+#[cfg(wasm)]
+use crate::router::loader_registry::LoaderRegistry;
 #[cfg(wasm)]
 use reinhardt_core::page::Outlet;
 #[cfg(wasm)]
@@ -43,6 +47,7 @@ thread_local! {
 #[cfg(wasm)]
 struct PersistentLayoutRenderer {
 	layout_keys: Vec<LayoutKey>,
+	layout_loader_keys: Vec<Option<String>>,
 	layout_stores: Vec<ReactiveNodeStore>,
 	layout_loader_stores: Vec<LoaderStore>,
 	leaf_store: Option<ReactiveNodeStore>,
@@ -54,6 +59,7 @@ impl PersistentLayoutRenderer {
 	fn new() -> Self {
 		Self {
 			layout_keys: Vec::new(),
+			layout_loader_keys: Vec::new(),
 			layout_stores: Vec::new(),
 			layout_loader_stores: Vec::new(),
 			leaf_store: None,
@@ -71,6 +77,7 @@ impl PersistentLayoutRenderer {
 		self.layout_loader_stores.clear();
 		self.leaf_loader_store = None;
 		self.layout_keys.clear();
+		self.layout_loader_keys.clear();
 	}
 
 	fn clear_from_layout_depth(&mut self, depth: usize) {
@@ -83,6 +90,7 @@ impl PersistentLayoutRenderer {
 		self.layout_loader_stores.truncate(depth);
 		self.leaf_loader_store = None;
 		self.layout_keys.truncate(depth);
+		self.layout_loader_keys.truncate(depth);
 	}
 
 	fn render(
@@ -105,7 +113,34 @@ impl PersistentLayoutRenderer {
 			.iter()
 			.map(|layout| layout.key().clone())
 			.collect::<Vec<_>>();
+		let loader_context = route_context(&route_match);
+		let registry = LoaderRegistry::global().ok();
+		let next_loader_keys = route_match
+			.layouts()
+			.iter()
+			.map(|layout| {
+				let id = layout.metadata().loader_id()?;
+				let cache_key = registry
+					.as_ref()
+					.and_then(|registry| registry.get(id).ok())
+					.and_then(|registration| {
+						loader_cache_id(id, &loader_context, registration.inputs).ok()
+					});
+				Some(cache_key.unwrap_or_else(|| {
+					format!(
+						"route-loader:{}:{}?{}",
+						id.as_str(),
+						route_match.path(),
+						route_match.query().unwrap_or_default()
+					)
+				}))
+			})
+			.collect::<Vec<_>>();
 		let mut preserved = common_layout_prefix_len(&self.layout_keys, &next_keys);
+		preserved = preserved.min(common_loader_prefix_len(
+			&self.layout_loader_keys,
+			&next_loader_keys,
+		));
 		if preserved > 0 && Self::find_outlet(root_el, preserved - 1).is_err() {
 			preserved = 0;
 		}
@@ -122,6 +157,7 @@ impl PersistentLayoutRenderer {
 
 		self.mount_suffix(root_el, router, &route_match, preserved)?;
 		self.layout_keys = next_keys;
+		self.layout_loader_keys = next_loader_keys;
 		Ok(true)
 	}
 
@@ -207,6 +243,15 @@ impl PersistentLayoutRenderer {
 
 #[cfg(wasm)]
 fn common_layout_prefix_len(previous: &[LayoutKey], next: &[LayoutKey]) -> usize {
+	previous
+		.iter()
+		.zip(next)
+		.take_while(|(previous, next)| previous == next)
+		.count()
+}
+
+#[cfg(wasm)]
+fn common_loader_prefix_len(previous: &[Option<String>], next: &[Option<String>]) -> usize {
 	previous
 		.iter()
 		.zip(next)
@@ -693,6 +738,7 @@ impl ClientLauncher {
 				render_layouts()
 			}?;
 			if handled_by_layout_renderer {
+				crate::app::observe_viewport_prefetch_links();
 				return Ok(());
 			}
 		}
@@ -717,6 +763,7 @@ impl ClientLauncher {
 		};
 		if result.is_ok() {
 			crate::component::store_reactive_scope(scope);
+			crate::app::observe_viewport_prefetch_links();
 		}
 		result
 	}
@@ -858,6 +905,7 @@ impl ClientLauncher {
 			};
 		store_spa_router(spa_router, std::rc::Rc::clone(&scope));
 		let mut coordinator_installed = false;
+		let mut initial_preparation_path = None;
 		if let Some(router) =
 			with_spa_router(|router| router.as_any().downcast_ref::<ClientRouter>().cloned())
 		{
@@ -888,13 +936,17 @@ impl ClientLauncher {
 					))
 				})?;
 			coordinator.initialize_committed_index(initial_state.entry_index().unwrap_or(0));
-			coordinator
-				.hydrate_initial_store(&initial_path)
-				.map_err(|error| {
-					wasm_bindgen::JsValue::from_str(&format!(
-						"initial route-loader hydration failed: {error}"
-					))
-				})?;
+			let initial_store_hydrated =
+				coordinator
+					.hydrate_initial_store(&initial_path)
+					.map_err(|error| {
+						wasm_bindgen::JsValue::from_str(&format!(
+							"initial route-loader hydration failed: {error}"
+						))
+					})?;
+			if !initial_store_hydrated {
+				initial_preparation_path = Some(initial_path.clone());
+			}
 			let pop_coordinator = std::rc::Rc::clone(&coordinator);
 			let pop_subscription = listen_pop_requests(move |request| {
 				if pop_coordinator.consume_restoration_pop() {
@@ -944,8 +996,11 @@ impl ClientLauncher {
 		// Phase B: initial mount runs inline (no Effect). Errors
 		// propagate directly because no Effect/Signal indirection
 		// captures them. Refs #4101.
-		Self::render_and_mount(&root_el)
-			.map_err(|e| wasm_bindgen::JsValue::from_str(&format!("initial mount failed: {e}")))?;
+		if initial_preparation_path.is_none() {
+			Self::render_and_mount(&root_el).map_err(|e| {
+				wasm_bindgen::JsValue::from_str(&format!("initial mount failed: {e}"))
+			})?;
+		}
 
 		// Phase C (part 1): register the launcher's render listener
 		// via Router::on_navigate. Registered BEFORE the after_launch
@@ -968,6 +1023,17 @@ impl ClientLauncher {
 			}))
 		});
 		std::mem::forget(render_subscription);
+
+		if let Some(path) = initial_preparation_path {
+			let result = crate::app::try_with_navigation_coordinator(|coordinator| {
+				coordinator.navigate(path, super::NavigationIntent::Initial)
+			});
+			if let Some(Err(error)) = result {
+				return Err(wasm_bindgen::JsValue::from_str(&format!(
+					"initial route-loader preparation failed to start: {error}"
+				)));
+			}
+		}
 
 		crate::nav_diag!(
 			"site=register_render_listener router_id={} observer_count_after={}",

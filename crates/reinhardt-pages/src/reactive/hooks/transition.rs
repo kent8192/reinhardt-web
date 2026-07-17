@@ -104,9 +104,13 @@ pub fn use_transition() -> TransitionState {
 	});
 
 	let start_transition: StartTransitionFn = {
+		let immediate_pending = is_pending;
+		let completion_pending = is_pending;
+		let completion_navigation_pending = navigation_pending;
 		Rc::new(RefCell::new(Box::new(move |f: Box<dyn FnOnce()>| {
 			let Ok(Ok(())) = reinhardt_core::reactive::scope::enter_scope(owner_scope, || {
-				local_pending.try_set(true)
+				local_pending.try_set(true)?;
+				immediate_pending.try_set(true)
 			}) else {
 				return;
 			};
@@ -117,6 +121,9 @@ pub fn use_transition() -> TransitionState {
 				spawn_task(async move {
 					let _ = reinhardt_core::reactive::scope::enter_scope(owner_scope, f);
 					let _ = local_pending.try_set(false);
+					let navigation_is_pending =
+						completion_navigation_pending.is_some_and(|signal| signal.get());
+					let _ = completion_pending.try_set(navigation_is_pending);
 				});
 			}
 
@@ -124,6 +131,9 @@ pub fn use_transition() -> TransitionState {
 			{
 				let _ = reinhardt_core::reactive::scope::enter_scope(owner_scope, f);
 				let _ = local_pending.try_set(false);
+				let navigation_is_pending =
+					completion_navigation_pending.is_some_and(|signal| signal.get());
+				let _ = completion_pending.try_set(navigation_is_pending);
 			}
 		})))
 	};
@@ -272,8 +282,10 @@ mod tests {
 			}
 		});
 
+		assert!(transition.is_pending.get());
 		gloo_timers::future::TimeoutFuture::new(0).await;
 		assert!(ran.get());
+		assert!(!transition.is_pending.get());
 	}
 
 	#[test]

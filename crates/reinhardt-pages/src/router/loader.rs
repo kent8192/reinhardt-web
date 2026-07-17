@@ -241,9 +241,7 @@ pub fn canonical_loader_inputs(
 	let mut query_values = Vec::new();
 	for spec in specs {
 		let value = match spec.kind {
-			LoaderInputKind::Path => context
-				.path_param(spec.name)
-				.map(|value| percent_decode(&value, false)),
+			LoaderInputKind::Path => context.path_param(spec.name),
 			LoaderInputKind::Query => query_value(context.query(), spec.name),
 		}
 		.ok_or_else(|| LoaderInputError::Missing {
@@ -714,21 +712,20 @@ mod tests {
 	}
 
 	#[test]
-	fn canonical_key_percent_decodes_values_and_excludes_unrelated_query() {
+	fn canonical_key_keeps_path_values_aligned_with_path_extractors() {
 		let first = context(&[("project_id", "a%2Fb")], "tab=hello%20world&other=one");
-		let second = context(&[("project_id", "a%2Fb")], "other=changed&tab=hello+world");
+		let second = context(&[("project_id", "a/b")], "other=changed&tab=hello+world");
 		let specs = [
 			LoaderInputSpec::path("project_id"),
 			LoaderInputSpec::query("tab"),
 		];
-		assert_eq!(
+		assert_ne!(
 			canonical_loader_inputs(&first, &specs).unwrap(),
 			canonical_loader_inputs(&second, &specs).unwrap()
 		);
-		let different = context(&[("project_id", "different")], "tab=hello+world");
 		assert_ne!(
 			loader_cache_id(RouteLoaderId::new("jobs"), &first, &specs).unwrap(),
-			loader_cache_id(RouteLoaderId::new("jobs"), &different, &specs).unwrap()
+			loader_cache_id(RouteLoaderId::new("jobs"), &second, &specs).unwrap()
 		);
 	}
 
