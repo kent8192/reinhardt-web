@@ -454,4 +454,17 @@ impl ClientRouteTreeMatch {
 	pub fn loader_ids(&self) -> &[RouteLoaderId] {
 		&self.loader_ids
 	}
+
+	/// Re-evaluates every matched route guard against the current application state.
+	///
+	/// Navigation preparation can outlive state changes such as session expiry.
+	/// Callers that commit an asynchronously prepared match should use this
+	/// method immediately before committing it.
+	pub fn guards_allow(&self) -> bool {
+		self.leaf().check_guard(self.leaf_match())
+			&& self
+				.layouts()
+				.iter()
+				.all(|layout| layout.route().check_guard(self.leaf_match()))
+	}
 }

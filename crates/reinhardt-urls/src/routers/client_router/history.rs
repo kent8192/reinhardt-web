@@ -233,6 +233,19 @@ fn state_from_js_value(value: wasm_bindgen::JsValue) -> Option<HistoryState> {
 	})
 }
 
+#[cfg(any(wasm, test))]
+fn normalize_legacy_initial_state(proposed: HistoryState, existing: HistoryState) -> HistoryState {
+	HistoryState {
+		path: proposed.path,
+		params: proposed.params,
+		route_name: proposed.route_name,
+		data: existing.data,
+		scroll_position: existing.scroll_position,
+		entry_index: Some(0),
+	}
+}
+
+#[cfg(wasm)]
 /// Normalizes the current browser history entry for the first router launch.
 ///
 /// The loader coordinator needs a framework-owned index to restore a failed
@@ -241,7 +254,6 @@ fn state_from_js_value(value: wasm_bindgen::JsValue) -> Option<HistoryState> {
 /// state in place with index `0`. A state that already carries an index is
 /// preserved verbatim so reloads do not change the browser's traversal
 /// position.
-#[cfg(wasm)]
 pub fn normalize_initial_state(proposed: HistoryState) -> Result<HistoryState, String> {
 	let window = web_sys::window().ok_or("Window not available")?;
 	let history = window.history().map_err(|_| "History not available")?;
@@ -252,7 +264,7 @@ pub fn normalize_initial_state(proposed: HistoryState) -> Result<HistoryState, S
 		if existing.entry_index().is_some() {
 			return Ok(existing);
 		}
-		let normalized = existing.with_entry_index(0);
+		let normalized = normalize_legacy_initial_state(proposed, existing);
 		replace_state(&normalized)?;
 		return Ok(normalized);
 	}
@@ -546,6 +558,30 @@ mod tests {
 
 		let legacy = r#"{"path":"/legacy/","params":{},"route_name":null,"data":{},"scroll_x":null,"scroll_y":null}"#;
 		assert_eq!(HistoryState::from_json(legacy).unwrap().entry_index(), None);
+	}
+
+	#[test]
+	fn legacy_initial_state_keeps_the_proposed_current_url() {
+		let mut params = HashMap::new();
+		params.insert("tab".to_owned(), "open".to_owned());
+		let proposed = HistoryState::new("/search?tab=open")
+			.with_params(params.clone())
+			.with_route_name("search");
+		let existing = HistoryState::new("/search")
+			.with_data("host", "legacy")
+			.with_scroll(12, 34);
+
+		let normalized = normalize_legacy_initial_state(proposed, existing);
+
+		assert_eq!(normalized.path, "/search?tab=open");
+		assert_eq!(normalized.params, params);
+		assert_eq!(normalized.route_name.as_deref(), Some("search"));
+		assert_eq!(
+			normalized.data.get("host").map(String::as_str),
+			Some("legacy")
+		);
+		assert_eq!(normalized.scroll_position, Some((12, 34)));
+		assert_eq!(normalized.entry_index(), Some(0));
 	}
 
 	#[test]
