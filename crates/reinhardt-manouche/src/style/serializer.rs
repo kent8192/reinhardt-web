@@ -915,7 +915,7 @@ mod tests {
 				background-color: Color::hsl(180deg, 50%, 25%);
 				border-color: Color::oklch(50%, 0.2, 30deg);
 				outline-color: red.mix(blue, 20%);
-				width: 100% - vars.gutter * 2;
+				margin-left: 100% - vars.gutter * 2;
 				transform: (translate_x(1rem), rotate(45deg));
 				border-radius: slash(1rem, 2rem);
 			}
@@ -934,7 +934,7 @@ mod tests {
 				"  background-color: hsl(180deg 50% 25%);\n",
 				"  border-color: oklch(50% 0.2 30deg);\n",
 				"  outline-color: color-mix(in srgb, red calc(100% - 20%), blue 20%);\n",
-				"  width: calc(100% - var(--rs-f69b9cbc74c9-gutter, 1rem) * 2);\n",
+				"  margin-left: calc(100% - var(--rs-f69b9cbc74c9-gutter, 1rem) * 2);\n",
 				"  transform: translateX(1rem) rotate(45deg);\n",
 				"  border-radius: 1rem / 2rem;\n",
 				"}\n",

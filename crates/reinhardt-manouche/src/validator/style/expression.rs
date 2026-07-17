@@ -212,10 +212,22 @@ fn collect_value_constraints(
 	grammar: &ValueGrammar,
 	constraints: &mut HashMap<usize, Option<StyleVariableConstraint>>,
 ) {
-	if let Some(constraint) = variable_constraint_for_grammar(expression, grammar) {
+	let mut constrained_expressions = Vec::new();
+	collect_constrained_value_expressions(expression, grammar, &mut constrained_expressions);
+	for (expression, constraint) in constrained_expressions {
 		for source_index in component_variable_references(expression) {
 			record_component_variable_constraint(constraints, source_index, constraint);
 		}
+	}
+}
+
+fn collect_constrained_value_expressions<'a>(
+	expression: &'a TypedValueExpr,
+	grammar: &ValueGrammar,
+	constrained_expressions: &mut Vec<(&'a TypedValueExpr, StyleVariableConstraint)>,
+) {
+	if let Some(constraint) = variable_constraint_for_grammar(expression, grammar) {
+		constrained_expressions.push((expression, constraint));
 		return;
 	}
 
@@ -226,7 +238,11 @@ fn collect_value_constraints(
 				.filter(|alternative| matches_grammar(expression, alternative))
 				.collect::<Vec<_>>();
 			if let [alternative] = matching.as_slice() {
-				collect_value_constraints(expression, alternative, constraints);
+				collect_constrained_value_expressions(
+					expression,
+					alternative,
+					constrained_expressions,
+				);
 			}
 		}
 		ValueGrammar::Space {
@@ -234,7 +250,11 @@ fn collect_value_constraints(
 			..
 		} if matches_grammar(expression, grammar) => {
 			for value in sequence_items(expression) {
-				collect_value_constraints(value, value_grammar, constraints);
+				collect_constrained_value_expressions(
+					value,
+					value_grammar,
+					constrained_expressions,
+				);
 			}
 		}
 		ValueGrammar::Comma {
@@ -242,7 +262,11 @@ fn collect_value_constraints(
 			..
 		} if matches_grammar(expression, grammar) => {
 			for value in comma_items(expression) {
-				collect_value_constraints(value, value_grammar, constraints);
+				collect_constrained_value_expressions(
+					value,
+					value_grammar,
+					constrained_expressions,
+				);
 			}
 		}
 		ValueGrammar::CommaFinal {
@@ -255,22 +279,26 @@ fn collect_value_constraints(
 				return;
 			};
 			for value in leading {
-				collect_value_constraints(value, leading_grammar, constraints);
+				collect_constrained_value_expressions(
+					value,
+					leading_grammar,
+					constrained_expressions,
+				);
 			}
-			collect_value_constraints(last, final_item, constraints);
+			collect_constrained_value_expressions(last, final_item, constrained_expressions);
 		}
 		ValueGrammar::Slash { left, right }
 			if matches_grammar(expression, grammar)
 				&& let Some((left_value, right_value)) = slash_pair(expression) =>
 		{
-			collect_value_constraints(left_value, left, constraints);
-			collect_value_constraints(right_value, right, constraints);
+			collect_constrained_value_expressions(left_value, left, constrained_expressions);
+			collect_constrained_value_expressions(right_value, right, constrained_expressions);
 		}
 		ValueGrammar::SlashList { item, .. } if matches_grammar(expression, grammar) => {
 			let mut items = Vec::new();
 			flatten_slash(expression, &mut items);
 			for item_value in items {
-				collect_value_constraints(item_value, item, constraints);
+				collect_constrained_value_expressions(item_value, item, constrained_expressions);
 			}
 		}
 		ValueGrammar::Ordered(members) if matches_grammar(expression, grammar) => {
@@ -280,7 +308,11 @@ fn collect_value_constraints(
 					.filter(|member| matches_grammar(item, member.grammar))
 					.collect::<Vec<_>>();
 				if let [member] = matching.as_slice() {
-					collect_value_constraints(item, member.grammar, constraints);
+					collect_constrained_value_expressions(
+						item,
+						member.grammar,
+						constrained_expressions,
+					);
 				}
 			}
 		}
@@ -293,10 +325,10 @@ fn collect_value_constraints(
 			if let Some(assignments) = unordered_member_assignments(&items, members, *min_members) {
 				for assignment in assignments {
 					if assignment.item_count == 1 {
-						collect_value_constraints(
+						collect_constrained_value_expressions(
 							items[assignment.item_index],
 							members[assignment.member_index].grammar,
-							constraints,
+							constrained_expressions,
 						);
 					}
 				}
@@ -304,6 +336,17 @@ fn collect_value_constraints(
 		}
 		_ => {}
 	}
+}
+
+fn component_variable_arithmetic_matches_grammar_constraints(
+	expression: &TypedValueExpr,
+	grammar: &ValueGrammar,
+) -> bool {
+	let mut constrained_expressions = Vec::new();
+	collect_constrained_value_expressions(expression, grammar, &mut constrained_expressions);
+	constrained_expressions.into_iter().all(|(expression, _)| {
+		!expression.contains_arithmetic || component_variable_references(expression).is_empty()
+	})
 }
 
 fn record_component_variable_constraint(
@@ -605,6 +648,8 @@ fn type_check_declaration(
 	) && (spec.name != "box-shadow"
 		|| box_shadow_blur_is_not_negative(&value))
 		&& property_specific_constraints_match(spec.name, &value)
+		&& component_variables_match_property_specific_constraints(spec.name, &value)
+		&& component_variable_arithmetic_matches_grammar_constraints(&value, spec.grammar)
 		&& component_variable_fallback_matches_declaration_constraints(
 			spec.name,
 			&value,
@@ -1575,6 +1620,17 @@ fn property_specific_constraints_match(property: &str, value: &TypedValueExpr) -
 		"box-shadow" => box_shadow_lengths_are_contiguous(value),
 		_ => true,
 	}
+}
+
+fn component_variables_match_property_specific_constraints(
+	property: &str,
+	value: &TypedValueExpr,
+) -> bool {
+	component_variable_references(value).is_empty()
+		|| !matches!(
+			property,
+			"font-style" | "grid-column" | "grid-row" | "grid-area"
+		)
 }
 
 fn font_style_oblique_angle_is_valid(value: &TypedValueExpr) -> bool {
@@ -2713,6 +2769,43 @@ mod tests {
 			kind,
 			StyleDiagnosticKind::PropertyValueMismatch { property: actual, .. }
 				if actual == property
+		));
+	}
+
+	#[rstest]
+	#[case(
+		"vars { line: Integer = 1; } .card { grid-column: vars.line; }",
+		"grid-column"
+	)]
+	#[case(
+		"vars { slant: Angle = 0deg; } .card { font-style: (oblique, vars.slant); }",
+		"font-style"
+	)]
+	fn rejects_component_variables_in_property_specific_slots(
+		#[case] source: &str,
+		#[case] property: &str,
+	) {
+		// Arrange and Act
+		let kind = diagnostic_kind_text(source);
+
+		// Assert
+		assert!(matches!(
+			kind,
+			StyleDiagnosticKind::PropertyValueMismatch { property: actual, .. } if actual == property
+		));
+	}
+
+	#[rstest]
+	fn rejects_component_variable_arithmetic_in_nonnegative_property_slots() {
+		// Arrange and Act
+		let kind = diagnostic_kind_text(
+			"vars { gap: Length = 20px; } .card { padding: vars.gap - 10px; }",
+		);
+
+		// Assert
+		assert!(matches!(
+			kind,
+			StyleDiagnosticKind::PropertyValueMismatch { property, .. } if property == "padding"
 		));
 	}
 

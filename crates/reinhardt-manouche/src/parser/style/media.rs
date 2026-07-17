@@ -725,7 +725,11 @@ fn valid_numeric_media_value(
 		[
 			StyleMediaToken::Number(number),
 			StyleMediaToken::Punctuation(percent),
-		] => number.unit.is_none() && percent.kind == StyleMediaPunctuationKind::Percent,
+		] => {
+			number.unit.is_none()
+				&& percent.kind == StyleMediaPunctuationKind::Percent
+				&& media_feature_accepts_percentage(feature)
+		}
 		[
 			StyleMediaToken::Punctuation(sign),
 			StyleMediaToken::Number(number),
@@ -734,6 +738,7 @@ fn valid_numeric_media_value(
 			is_numeric_sign(sign.kind)
 				&& number.unit.is_none()
 				&& percent.kind == StyleMediaPunctuationKind::Percent
+				&& media_feature_accepts_percentage(feature)
 		}
 		[
 			StyleMediaToken::Number(numerator),
@@ -747,6 +752,11 @@ fn valid_numeric_media_value(
 		}
 		_ => false,
 	}
+}
+
+fn media_feature_accepts_percentage(_feature: &str) -> bool {
+	// CSS Media Queries does not define a percentage-valued feature.
+	false
 }
 
 fn valid_media_numeric_unit(feature: &str, number: &StyleMediaNumber) -> bool {
@@ -1529,6 +1539,21 @@ mod tests {
 
 		// Act
 		let error = parse_style(input).unwrap_err();
+
+		// Assert
+		assert_eq!(error.to_string(), "invalid media feature expression");
+	}
+
+	#[rstest]
+	#[case(quote! { @media (width: 50%) {} })]
+	#[case(quote! { @media (width: -50%) {} })]
+	#[case(quote! { @media (resolution: 100%) {} })]
+	#[case(quote! { @media (resolution: -100%) {} })]
+	fn rejects_percentage_values_for_media_features_without_percentage_grammar(
+		#[case] input: proc_macro2::TokenStream,
+	) {
+		// Act
+		let error = parse_style(input).expect_err("dimensioned media features reject percentages");
 
 		// Assert
 		assert_eq!(error.to_string(), "invalid media feature expression");
