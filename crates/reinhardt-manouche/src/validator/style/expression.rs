@@ -201,24 +201,142 @@ fn collect_declaration_constraint(
 	declaration: &TypedStyleDeclaration,
 	constraints: &mut HashMap<usize, Option<StyleVariableConstraint>>,
 ) {
-	let Some(source_index) = direct_component_variable_reference(&declaration.value) else {
-		return;
-	};
 	let Some(spec) = property_spec(declaration.name.as_str()) else {
 		return;
 	};
-	let Some(constraint) = variable_constraint_for_grammar(&declaration.value, spec.grammar) else {
+	collect_value_constraints(&declaration.value, spec.grammar, constraints);
+}
+
+fn collect_value_constraints(
+	expression: &TypedValueExpr,
+	grammar: &ValueGrammar,
+	constraints: &mut HashMap<usize, Option<StyleVariableConstraint>>,
+) {
+	if let Some(constraint) = variable_constraint_for_grammar(expression, grammar) {
+		for source_index in component_variable_references(expression) {
+			record_component_variable_constraint(constraints, source_index, constraint);
+		}
 		return;
-	};
+	}
+
+	match grammar {
+		ValueGrammar::Or(alternatives) => {
+			let matching = alternatives
+				.iter()
+				.filter(|alternative| matches_grammar(expression, alternative))
+				.collect::<Vec<_>>();
+			if let [alternative] = matching.as_slice() {
+				collect_value_constraints(expression, alternative, constraints);
+			}
+		}
+		ValueGrammar::Space {
+			item: value_grammar,
+			..
+		} if matches_grammar(expression, grammar) => {
+			for value in sequence_items(expression) {
+				collect_value_constraints(value, value_grammar, constraints);
+			}
+		}
+		ValueGrammar::Comma {
+			item: value_grammar,
+			..
+		} if matches_grammar(expression, grammar) => {
+			for value in comma_items(expression) {
+				collect_value_constraints(value, value_grammar, constraints);
+			}
+		}
+		ValueGrammar::CommaFinal {
+			item: leading_grammar,
+			final_item,
+			..
+		} if matches_grammar(expression, grammar) => {
+			let items = comma_items(expression);
+			let Some((last, leading)) = items.split_last() else {
+				return;
+			};
+			for value in leading {
+				collect_value_constraints(value, leading_grammar, constraints);
+			}
+			collect_value_constraints(last, final_item, constraints);
+		}
+		ValueGrammar::Slash { left, right }
+			if matches_grammar(expression, grammar)
+				&& let Some((left_value, right_value)) = slash_pair(expression) =>
+		{
+			collect_value_constraints(left_value, left, constraints);
+			collect_value_constraints(right_value, right, constraints);
+		}
+		ValueGrammar::SlashList { item, .. } if matches_grammar(expression, grammar) => {
+			let mut items = Vec::new();
+			flatten_slash(expression, &mut items);
+			for item_value in items {
+				collect_value_constraints(item_value, item, constraints);
+			}
+		}
+		ValueGrammar::Ordered(members) | ValueGrammar::Unordered { members, .. }
+			if matches_grammar(expression, grammar) =>
+		{
+			for item in sequence_items(expression) {
+				let matching = members
+					.iter()
+					.filter(|member| matches_grammar(item, member.grammar))
+					.collect::<Vec<_>>();
+				if let [member] = matching.as_slice() {
+					collect_value_constraints(item, member.grammar, constraints);
+				}
+			}
+		}
+		_ => {}
+	}
+}
+
+fn record_component_variable_constraint(
+	constraints: &mut HashMap<usize, Option<StyleVariableConstraint>>,
+	source_index: usize,
+	constraint: StyleVariableConstraint,
+) {
 	let entry = constraints.entry(source_index).or_insert(Some(constraint));
 	*entry = (*entry).and_then(|existing| intersect_variable_constraints(existing, constraint));
 }
 
-fn direct_component_variable_reference(expression: &TypedValueExpr) -> Option<usize> {
+fn component_variable_references(expression: &TypedValueExpr) -> HashSet<usize> {
+	let mut references = HashSet::new();
+	collect_component_variable_references(expression, &mut references);
+	references
+}
+
+fn collect_component_variable_references(
+	expression: &TypedValueExpr,
+	references: &mut HashSet<usize>,
+) {
 	match &expression.kind {
-		TypedValueExprKind::VariableReference(reference) => Some(reference.source_index),
-		TypedValueExprKind::Group(inner) => direct_component_variable_reference(inner),
-		_ => None,
+		TypedValueExprKind::VariableReference(reference) => {
+			references.insert(reference.source_index);
+		}
+		TypedValueExprKind::Unary { operand, .. } | TypedValueExprKind::Group(operand) => {
+			collect_component_variable_references(operand, references);
+		}
+		TypedValueExprKind::Binary { left, right, .. } => {
+			collect_component_variable_references(left, references);
+			collect_component_variable_references(right, references);
+		}
+		TypedValueExprKind::Function(call) => {
+			if let Some(receiver) = call.receiver.as_deref() {
+				collect_component_variable_references(receiver, references);
+			}
+			for argument in &call.arguments {
+				collect_component_variable_references(argument, references);
+			}
+		}
+		TypedValueExprKind::SpaceSequence(items) | TypedValueExprKind::CommaList(items) => {
+			for item in items {
+				collect_component_variable_references(item, references);
+			}
+		}
+		TypedValueExprKind::Literal(_)
+		| TypedValueExprKind::GlobalReference(_)
+		| TypedValueExprKind::Direction(_)
+		| TypedValueExprKind::UncheckedFunction(_) => {}
 	}
 }
 
@@ -470,7 +588,12 @@ fn type_check_declaration(
 		variable_defaults,
 	) && (spec.name != "box-shadow"
 		|| box_shadow_blur_is_not_negative(&value))
-		&& property_specific_constraints_match(spec.name, &value);
+		&& property_specific_constraints_match(spec.name, &value)
+		&& component_variable_fallback_matches_property_specific_constraints(
+			spec.name,
+			&value,
+			variable_defaults,
+		);
 	if !is_whole_unchecked(&value) && !grammar_matches {
 		return Err(StyleDiagnostic::new(
 			StyleDiagnosticKind::PropertyValueMismatch {
@@ -805,12 +928,6 @@ fn infer_binary_type(
 }
 
 fn join_numeric(left: &TypedValueExpr, right: &TypedValueExpr) -> Option<SemanticType> {
-	if left.is_contextual_zero() && right.value_type.numeric_dimension().is_some() {
-		return Some(right.value_type);
-	}
-	if right.is_contextual_zero() && left.value_type.numeric_dimension().is_some() {
-		return Some(left.value_type);
-	}
 	join_numeric_types(left.value_type, right.value_type)
 }
 
@@ -1159,6 +1276,15 @@ fn component_variable_fallback_matches_grammar(
 ) -> bool {
 	resolve_component_variable_defaults(expression, variable_defaults)
 		.is_some_and(|resolved| matches_grammar(&resolved, grammar))
+}
+
+fn component_variable_fallback_matches_property_specific_constraints(
+	property: &str,
+	expression: &TypedValueExpr,
+	variable_defaults: &HashMap<usize, &TypedValueExpr>,
+) -> bool {
+	resolve_component_variable_defaults(expression, variable_defaults)
+		.is_some_and(|resolved| property_specific_constraints_match(property, &resolved))
 }
 
 fn resolve_component_variable_defaults(
@@ -2091,8 +2217,6 @@ mod tests {
 	#[case("Number", "2 * 1.5", SemanticType::Number)]
 	#[case("Length", "1px + 2px", SemanticType::Length)]
 	#[case("Length", "3rem - 1rem", SemanticType::Length)]
-	#[case("Length", "0 + 2px", SemanticType::Length)]
-	#[case("Length", "2px - 0", SemanticType::Length)]
 	#[case("Percentage", "10% + 20%", SemanticType::Percentage)]
 	#[case("Angle", "1deg + 2deg", SemanticType::Angle)]
 	#[case("Time", "1s - 200ms", SemanticType::Time)]
@@ -2456,6 +2580,63 @@ mod tests {
 		assert!(matches!(
 			kind,
 			StyleDiagnosticKind::PropertyValueMismatch { property, .. } if property == "padding"
+		));
+	}
+
+	#[rstest]
+	#[case("(vars.gap, 1px)")]
+	#[case("min(vars.gap, 1px)")]
+	fn nested_component_variable_references_inherit_nonnegative_constraints(#[case] value: &str) {
+		// Arrange
+		let source = format!("vars {{ gap: Length = 1px; }} .card {{ padding: {value}; }}");
+
+		// Act
+		let typed = validated_text(&source);
+
+		// Assert
+		assert_eq!(
+			typed.variables[0].runtime_constraint,
+			Some(crate::StyleVariableConstraint::NonNegative)
+		);
+	}
+
+	#[rstest]
+	#[case(
+		"vars { line: Integer = 0; } .card { grid-column: vars.line; }",
+		"grid-column"
+	)]
+	#[case(
+		"vars { slant: Angle = 91deg; } .card { font-style: (oblique, vars.slant); }",
+		"font-style"
+	)]
+	fn rejects_component_variable_fallbacks_that_violate_property_specific_constraints(
+		#[case] source: &str,
+		#[case] property: &str,
+	) {
+		// Arrange and Act
+		let kind = diagnostic_kind_text(source);
+
+		// Assert
+		assert!(matches!(
+			kind,
+			StyleDiagnosticKind::PropertyValueMismatch { property: actual, .. }
+				if actual == property
+		));
+	}
+
+	#[rstest]
+	#[case(".card { width: 1px + 0; }")]
+	#[case(".card { width: 0 + 1px; }")]
+	#[case(".card { width: 1px - 0; }")]
+	#[case(".card { transform: rotate(0deg + 0); }")]
+	fn rejects_contextual_zero_as_a_math_operand(#[case] source: &str) {
+		// Arrange and Act
+		let kind = diagnostic_kind_text(source);
+
+		// Assert
+		assert!(matches!(
+			kind,
+			StyleDiagnosticKind::InvalidArithmeticDimensions { .. }
 		));
 	}
 

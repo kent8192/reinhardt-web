@@ -630,42 +630,70 @@ fn validate_media_range(
 }
 
 fn valid_colon_feature_value(feature: &str, tokens: &[StyleMediaToken]) -> bool {
-	valid_numeric_feature_value(feature, tokens)
-		|| (matches!(tokens, [StyleMediaToken::Identifier(_)])
-			&& is_discrete_media_feature(feature))
+	match tokens {
+		[StyleMediaToken::Identifier(value)] => {
+			valid_discrete_media_feature_value(feature, value.as_str())
+		}
+		_ => !is_discrete_media_feature(feature) && valid_numeric_feature_value(feature, tokens),
+	}
 }
 
 fn is_discrete_media_feature(feature: &str) -> bool {
-	const DISCRETE_MEDIA_FEATURES: &[&str] = &[
-		"any-hover",
-		"any-pointer",
-		"color-gamut",
-		"device-posture",
-		"display-mode",
-		"dynamic-range",
-		"forced-colors",
-		"hover",
-		"inverted-colors",
-		"light-level",
-		"nav-controls",
-		"overflow-block",
-		"overflow-inline",
-		"orientation",
-		"pointer",
-		"prefers-color-scheme",
-		"prefers-contrast",
-		"prefers-reduced-data",
-		"prefers-reduced-motion",
-		"prefers-reduced-transparency",
-		"scan",
-		"scripting",
-		"update",
-		"video-color-gamut",
-		"video-dynamic-range",
+	discrete_media_feature_values(feature).is_some()
+}
+
+fn valid_discrete_media_feature_value(feature: &str, value: &str) -> bool {
+	discrete_media_feature_values(feature).is_some_and(|values| {
+		values
+			.iter()
+			.any(|candidate| value.eq_ignore_ascii_case(candidate))
+	})
+}
+
+fn discrete_media_feature_values(feature: &str) -> Option<&'static [&'static str]> {
+	const DISCRETE_MEDIA_FEATURE_VALUES: &[(&str, &[&str])] = &[
+		("any-hover", &["none", "hover"]),
+		("any-pointer", &["none", "coarse", "fine"]),
+		("color-gamut", &["srgb", "p3", "rec2020"]),
+		("device-posture", &["continuous", "folded"]),
+		(
+			"display-mode",
+			&[
+				"fullscreen",
+				"standalone",
+				"minimal-ui",
+				"browser",
+				"picture-in-picture",
+				"window-controls-overlay",
+			],
+		),
+		("dynamic-range", &["standard", "high"]),
+		("forced-colors", &["none", "active"]),
+		("hover", &["none", "hover"]),
+		("inverted-colors", &["none", "inverted"]),
+		("light-level", &["dim", "normal", "washed"]),
+		("nav-controls", &["none", "back"]),
+		("overflow-block", &["none", "scroll", "paged"]),
+		("overflow-inline", &["none", "scroll"]),
+		("orientation", &["portrait", "landscape"]),
+		("pointer", &["none", "coarse", "fine"]),
+		("prefers-color-scheme", &["light", "dark"]),
+		(
+			"prefers-contrast",
+			&["no-preference", "less", "more", "custom"],
+		),
+		("prefers-reduced-data", &["no-preference", "reduce"]),
+		("prefers-reduced-motion", &["no-preference", "reduce"]),
+		("prefers-reduced-transparency", &["no-preference", "reduce"]),
+		("scan", &["interlace", "progressive"]),
+		("scripting", &["none", "initial-only", "enabled"]),
+		("update", &["none", "slow", "fast"]),
+		("video-color-gamut", &["srgb", "p3", "rec2020"]),
+		("video-dynamic-range", &["standard", "high"]),
 	];
-	DISCRETE_MEDIA_FEATURES
+	DISCRETE_MEDIA_FEATURE_VALUES
 		.iter()
-		.any(|candidate| feature.eq_ignore_ascii_case(candidate))
+		.find_map(|(candidate, values)| feature.eq_ignore_ascii_case(candidate).then_some(*values))
 }
 
 fn valid_numeric_feature_value(feature: &str, tokens: &[StyleMediaToken]) -> bool {
@@ -1324,6 +1352,18 @@ mod tests {
 
 		// Assert
 		assert_eq!(media.condition.tokens.len(), 1);
+	}
+
+	#[rstest]
+	#[case(quote! { @media (orientation: sideways) {} })]
+	#[case(quote! { @media (hover: banana) {} })]
+	#[case(quote! { @media (orientation: 1px) {} })]
+	fn rejects_invalid_values_for_discrete_media_features(#[case] input: proc_macro2::TokenStream) {
+		// Act
+		let error = parse_style(input).expect_err("discrete media features require defined values");
+
+		// Assert
+		assert_eq!(error.to_string(), "invalid media feature expression");
 	}
 
 	#[rstest]
