@@ -693,7 +693,9 @@ jobs:
   ci-success:
     name: CI Success
     timeout-minutes: 360
-    if: always()
+    # Aggregate ordinary failures, but do not keep a cancelled run queued and
+    # block the newest run in this workflow's concurrency group.
+    if: always() && !cancelled()
     runs-on: ubuntu-latest
     needs:
       - check-branch-status
