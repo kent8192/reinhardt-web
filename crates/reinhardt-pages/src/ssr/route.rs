@@ -33,11 +33,7 @@ impl SsrRenderer {
 		self.begin_route_loader_render();
 		let Some(matched) = router.match_tree(path) else {
 			return SsrRouteOutput {
-				html: PageElement::new("div")
-					.attr("data-route-error", "not-found")
-					.child("route not found")
-					.into_page()
-					.render_to_string(),
+				html: router.render_path(path).render_to_string(),
 				status: 404,
 			};
 		};

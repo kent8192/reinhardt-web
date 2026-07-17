@@ -191,7 +191,9 @@ fn route_loader_failure_returns_before_a_slow_sibling_times_out() {
 #[test]
 fn route_render_clears_previous_loader_resource_state() {
 	tokio_test::block_on(async {
-		let router = ClientRouter::new().component(ssr_greeting);
+		let router = ClientRouter::new()
+			.component(ssr_greeting)
+			.not_found(|| Page::text("custom SSR not found"));
 		let mut renderer = SsrRenderer::new();
 
 		let loaded = renderer.render_route_to_string(&router, "/greeting/").await;
@@ -200,6 +202,7 @@ fn route_render_clears_previous_loader_resource_state() {
 
 		let missing = renderer.render_route_to_string(&router, "/missing/").await;
 		assert_eq!(missing.status, 404);
+		assert_eq!(missing.html, "custom SSR not found");
 		assert_eq!(renderer.state().resource_count(), 0);
 	});
 }
