@@ -3796,6 +3796,7 @@ fn generate_registration_code(
 				}
 				ForeignKeySpec::ModelName(model_name) => {
 					quote! {
+						.with_param("fk_target_app", #app_label)
 						.with_param("fk_target_model", #model_name)
 						.with_foreign_key(#migrations_crate::ForeignKeyInfo {
 							referenced_table: #migrations_crate::to_snake_case(#model_name),
@@ -6505,7 +6506,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_bare_string_foreign_key_registration_does_not_require_a_rust_type() {
+	fn test_bare_string_foreign_key_registration_uses_the_source_app() {
 		let input = quote! {
 			#[model(app_label = "comments")]
 			pub struct Comment {
@@ -6521,6 +6522,10 @@ mod tests {
 			.to_string();
 
 		assert!(output.contains("fk_target_model"));
+		assert!(
+			output.contains("with_param (\"fk_target_app\" , \"comments\")"),
+			"bare string foreign keys must carry their source app for table resolution: {output}"
+		);
 		assert!(output.contains("User"));
 		assert!(!output.contains("< User as"));
 	}
