@@ -4590,6 +4590,15 @@ where
 		value: &FilterValue,
 	) -> reinhardt_query::value::Value {
 		let field_name = field.rsplit("__").next().unwrap_or(field);
+		// Manually implemented models may expose a UUID primary key without field metadata.
+		if field_name == T::primary_key_field()
+			&& std::any::type_name::<T::PrimaryKey>() == std::any::type_name::<Uuid>()
+			&& let FilterValue::String(value) = value
+			&& let Ok(uuid) = Uuid::parse_str(value)
+		{
+			return reinhardt_query::value::Value::Uuid(Some(Box::new(uuid)));
+		}
+
 		let Some(metadata) = T::field_metadata().into_iter().find(|metadata| {
 			metadata.name == field_name || metadata.db_column_name() == field_name
 		}) else {
@@ -7977,6 +7986,7 @@ mod tests {
 	use rstest::rstest;
 	use serde::{Deserialize, Serialize};
 	use std::collections::HashMap;
+	use uuid::Uuid;
 
 	#[test]
 	fn render_select_statement_uses_mysql_identifier_quoting() {
@@ -11023,6 +11033,60 @@ mod tests {
 		assert_eq!(
 			sql,
 			r#"SELECT DISTINCT * FROM "test_users" WHERE ("email" ILIKE '%example.com%' ESCAPE '\' AND "username" IS NOT NULL AND EXTRACT(YEAR FROM "created_at") BETWEEN 2024 AND 2026) ORDER BY "created_at" DESC, "username" ASC LIMIT 25 OFFSET 50"#
+		);
+	}
+
+	#[rstest]
+	fn test_manual_uuid_primary_key_filter_uses_uuid_value_without_metadata() {
+		// Arrange
+		#[derive(Debug, Clone, Serialize, Deserialize)]
+		struct ManualUuidModel {
+			id: Uuid,
+		}
+
+		#[derive(Debug, Clone)]
+		struct ManualUuidModelFields;
+
+		impl crate::orm::model::FieldSelector for ManualUuidModelFields {
+			fn with_alias(self, _alias: &str) -> Self {
+				self
+			}
+		}
+
+		impl Model for ManualUuidModel {
+			type PrimaryKey = Uuid;
+			type Fields = ManualUuidModelFields;
+			type Objects = Manager<Self>;
+
+			fn table_name() -> &'static str {
+				"manual_uuid_models"
+			}
+
+			fn new_fields() -> Self::Fields {
+				ManualUuidModelFields
+			}
+
+			fn primary_key(&self) -> Option<Self::PrimaryKey> {
+				Some(self.id)
+			}
+
+			fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+				self.id = value;
+			}
+		}
+
+		let queryset = QuerySet::<ManualUuidModel>::new();
+		let uuid =
+			Uuid::parse_str("00000000-0000-0000-0000-000000000001").expect("valid test UUID");
+
+		// Act
+		let value = queryset
+			.filter_value_to_sea_value_for_field("id", &FilterValue::String(uuid.to_string()));
+
+		// Assert
+		assert_eq!(
+			value,
+			reinhardt_query::value::Value::Uuid(Some(Box::new(uuid)))
 		);
 	}
 
