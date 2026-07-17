@@ -133,19 +133,11 @@ impl CustomManager for DenyAllArticleManager {
 	}
 
 	fn before_save(&self, _model: &mut Article) -> reinhardt_core::exception::Result<()> {
-		Err(DatabaseError::new(
-			DatabaseErrorKind::Query,
-			"save vetoed by custom manager",
-		)
-		.into())
+		Err(DatabaseError::new(DatabaseErrorKind::Query, "save vetoed by custom manager").into())
 	}
 
 	fn before_delete(&self, _model: &Article) -> reinhardt_core::exception::Result<()> {
-		Err(DatabaseError::new(
-			DatabaseErrorKind::Query,
-			"delete vetoed by custom manager",
-		)
-		.into())
+		Err(DatabaseError::new(DatabaseErrorKind::Query, "delete vetoed by custom manager").into())
 	}
 
 	fn before_bulk_update(&self, _models: &mut [Article]) -> reinhardt_core::exception::Result<()> {
