@@ -6,12 +6,14 @@ use reinhardt_db::backends::types::{
 #[cfg(feature = "sqlite")]
 use reinhardt_db::orm::DatabaseConnection;
 use reinhardt_db::orm::events::{EventRegistry, EventResult, MapperEvents, set_active_registry};
+use reinhardt_db::orm::inspection::FieldInfo;
 use reinhardt_db::orm::model::FieldSelector;
 use reinhardt_db::orm::{Filter, FilterOperator, FilterValue, Manager, Model, QuerySet};
 use rstest::rstest;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use serial_test::serial;
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -222,6 +224,23 @@ impl FieldSelector for WidgetFields {
 	}
 }
 
+fn renamed_column_field(name: &str, db_column: &str, primary_key: bool) -> FieldInfo {
+	FieldInfo {
+		name: name.to_owned(),
+		field_type: "reinhardt.orm.models.CharField".to_owned(),
+		nullable: false,
+		primary_key,
+		unique: primary_key,
+		blank: false,
+		editable: true,
+		default: None,
+		db_default: None,
+		db_column: Some(db_column.to_owned()),
+		choices: None,
+		attributes: HashMap::new(),
+	}
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 struct Widget {
 	id: Option<i64>,
@@ -279,6 +298,13 @@ impl Model for RenamedPrimaryKeyWidget {
 
 	fn primary_key_column() -> &'static str {
 		"widget_id"
+	}
+
+	fn field_metadata() -> Vec<FieldInfo> {
+		vec![
+			renamed_column_field("id", "widget_id", true),
+			renamed_column_field("name", "display_name", false),
+		]
 	}
 }
 
@@ -713,7 +739,7 @@ async fn executor_writes_use_the_physical_primary_key_column() {
 		[
 			RecordedQuery {
 				operation: "save",
-				sql: r#"UPDATE "renamed_primary_key_widgets" SET "name" = $1 WHERE "widget_id" = $2 RETURNING "id", "name""#.to_string(),
+				sql: r#"UPDATE "renamed_primary_key_widgets" SET "display_name" = $1 WHERE "widget_id" = $2 RETURNING "widget_id", "display_name""#.to_string(),
 				params: vec![QueryValue::String("updated".to_string()), QueryValue::Int(7)],
 			},
 			RecordedQuery {
@@ -747,7 +773,7 @@ async fn mysql_executor_reloads_through_the_physical_primary_key_column() {
 		[
 			RecordedQuery {
 				operation: "save",
-				sql: "UPDATE `renamed_primary_key_widgets` SET `name` = ? WHERE `widget_id` = ?"
+				sql: "UPDATE `renamed_primary_key_widgets` SET `display_name` = ? WHERE `widget_id` = ?"
 					.to_string(),
 				params: vec![
 					QueryValue::String("updated".to_string()),
@@ -765,7 +791,7 @@ async fn mysql_executor_reloads_through_the_physical_primary_key_column() {
 }
 
 #[tokio::test]
-async fn insert_with_executor_inserts_models_with_assigned_primary_keys() {
+async fn insert_with_executor_maps_renamed_fields_to_database_columns() {
 	let (mut executor, _operations, queries) = recording_executor(DatabaseType::Postgres, 1);
 	let mut widget = RenamedPrimaryKeyWidget {
 		id: Some(7),
@@ -784,9 +810,47 @@ async fn insert_with_executor_inserts_models_with_assigned_primary_keys() {
 			.as_slice(),
 		[RecordedQuery {
 			operation: "save",
-			sql: r#"INSERT INTO "renamed_primary_key_widgets" ("id", "name") VALUES ($1, $2) RETURNING "id", "name""#.to_string(),
+			sql: r#"INSERT INTO "renamed_primary_key_widgets" ("widget_id", "display_name") VALUES ($1, $2) RETURNING "widget_id", "display_name""#.to_string(),
 			params: vec![QueryValue::Int(7), QueryValue::String("created".to_string())],
 		}]
+	);
+}
+
+#[tokio::test]
+async fn mysql_executor_insert_with_explicit_primary_key_reloads_the_known_key() {
+	let (mut executor, _operations, queries) = recording_executor(DatabaseType::Mysql, 1);
+	executor.model_id = 7;
+	executor.model_name = "created".to_string();
+	executor.generated_id = Some(QueryValue::Int(0));
+	let mut widget = RenamedPrimaryKeyWidget {
+		id: Some(7),
+		name: "created".to_string(),
+	};
+
+	widget
+		.insert_with_executor(&mut executor)
+		.await
+		.expect("an explicit primary key should not require LAST_INSERT_ID");
+
+	assert_eq!(
+		queries
+			.lock()
+			.expect("queries mutex should not be poisoned")
+			.as_slice(),
+		[
+			RecordedQuery {
+				operation: "save",
+				sql: "INSERT INTO `renamed_primary_key_widgets` (`widget_id`, `display_name`) VALUES (?, ?)"
+					.to_string(),
+				params: vec![QueryValue::Int(7), QueryValue::String("created".to_string())],
+			},
+			RecordedQuery {
+				operation: "reload",
+				sql: "SELECT * FROM `renamed_primary_key_widgets` WHERE `widget_id` = ?"
+					.to_string(),
+				params: vec![QueryValue::Int(7)],
+			},
+		]
 	);
 }
 

@@ -251,17 +251,28 @@ impl<M: Model> Manager<M> {
 		M::generated_field_names().contains(&field)
 	}
 
+	fn database_column_name(field_metadata: &[FieldInfo], field_name: &str) -> String {
+		find_field_info(field_metadata, field_name).map_or_else(
+			|| field_name.to_owned(),
+			|field| field.db_column_name().to_owned(),
+		)
+	}
+
 	fn returning_columns_from_object(
 		obj: &serde_json::Map<String, serde_json::Value>,
 	) -> Vec<Alias> {
 		let primary_key = M::primary_key_field();
+		let field_metadata = M::field_metadata();
 		let mut columns: Vec<&str> = obj.keys().map(String::as_str).collect();
 		columns.sort_unstable();
 		if let Some(index) = columns.iter().position(|column| *column == primary_key) {
 			let pk = columns.remove(index);
 			columns.insert(0, pk);
 		}
-		columns.into_iter().map(Alias::new).collect()
+		columns
+			.into_iter()
+			.map(|column| Alias::new(Self::database_column_name(&field_metadata, column)))
+			.collect()
 	}
 
 	fn build_update_statement_without_returning(
@@ -279,18 +290,19 @@ impl<M: Model> Manager<M> {
 			key != M::primary_key_field() && !Self::is_generated_field(key)
 		}) {
 			let field_info = find_field_info(&field_metadata, k);
+			let column = Self::database_column_name(&field_metadata, k);
 			if field_info
 				.map(|field| super::json::is_json_field_type(&field.field_type))
 				.unwrap_or(false)
 			{
 				stmt.value(
-					Alias::new(k.as_str()),
+					Alias::new(column),
 					Self::json_to_sea_value_for_field(v, field_info, field_is_none(k)),
 				);
 			} else if v.is_null() {
-				stmt.value_expr(Alias::new(k.as_str()), Expr::cust("NULL"));
+				stmt.value_expr(Alias::new(column), Expr::cust("NULL"));
 			} else {
-				stmt.value(Alias::new(k.as_str()), Self::json_to_sea_value(v));
+				stmt.value(Alias::new(column), Self::json_to_sea_value(v));
 			}
 			has_values = true;
 		}
@@ -361,7 +373,10 @@ impl<M: Model> Manager<M> {
 			.map(|(k, v)| {
 				let field_info = find_field_info(&field_metadata, k);
 				let value = Self::json_to_sea_value_for_field(v, field_info, field_is_none(k));
-				(Alias::new(k.as_str()), value)
+				(
+					Alias::new(Self::database_column_name(&field_metadata, k)),
+					value,
+				)
 			})
 			.unzip();
 
@@ -878,33 +893,45 @@ impl<M: Model> Manager<M> {
 			.map(Self::sea_value_to_query_value)
 			.collect();
 		if backend == DatabaseBackend::MySql {
-			executor
-				.fetch_one("SELECT LAST_INSERT_ID(0) AS generated_id", Vec::new())
-				.await?;
+			let explicit_primary_key = model.primary_key();
+			if explicit_primary_key.is_none() {
+				executor
+					.fetch_one("SELECT LAST_INSERT_ID(0) AS generated_id", Vec::new())
+					.await?;
+			}
 			executor.execute(&sql, params).await?;
 
-			let row = executor
-				.fetch_one(
-					"SELECT CAST(LAST_INSERT_ID() AS SIGNED) AS generated_id",
-					Vec::new(),
-				)
-				.await?;
-			let generated_id = row.get::<i64>("generated_id")?;
-			if generated_id <= 0 {
-				return Err(crate::backends::error::DatabaseError::NotSupported(
-					"MySQL executor inserts without an explicit primary key require an auto-increment integer primary key"
-						.to_string(),
-				));
-			}
+			let primary_key_value = if let Some(primary_key) = explicit_primary_key {
+				let primary_key = primary_key.to_string();
+				if let Ok(value) = primary_key.parse::<i64>() {
+					reinhardt_query::value::Value::BigInt(Some(value))
+				} else if let Ok(value) = Uuid::parse_str(&primary_key) {
+					reinhardt_query::value::Value::Uuid(Some(Box::new(value)))
+				} else {
+					reinhardt_query::value::Value::String(Some(Box::new(primary_key)))
+				}
+			} else {
+				let row = executor
+					.fetch_one(
+						"SELECT CAST(LAST_INSERT_ID() AS SIGNED) AS generated_id",
+						Vec::new(),
+					)
+					.await?;
+				let generated_id = row.get::<i64>("generated_id")?;
+				if generated_id <= 0 {
+					return Err(crate::backends::error::DatabaseError::NotSupported(
+						"MySQL executor inserts without an explicit primary key require an auto-increment integer primary key"
+							.to_string(),
+					));
+				}
+				reinhardt_query::value::Value::BigInt(Some(generated_id))
+			};
 
 			let mut select = Query::select();
 			select
 				.from(Alias::new(M::table_name()))
 				.column(ColumnRef::Asterisk)
-				.and_where(
-					Expr::col(Alias::new(M::primary_key_column()))
-						.eq(reinhardt_query::value::Value::BigInt(Some(generated_id))),
-				);
+				.and_where(Expr::col(Alias::new(M::primary_key_column())).eq(primary_key_value));
 			let (select_sql, select_values) = build_select_sql(&select, backend);
 			let select_params = select_values
 				.0
