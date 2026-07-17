@@ -1073,8 +1073,7 @@ mod tests {
 	#[rstest::rstest]
 	#[serial(reactive_runtime)]
 	fn notification_panic_recovers_pending_consumer_on_next_change() {
-		ReactiveScope::run(|| {
-			use std::panic::{AssertUnwindSafe, catch_unwind};
+		use std::panic::{AssertUnwindSafe, catch_unwind};
 
 		ReactiveScope::run(|| {
 			let source = Signal::new(0_i32);
@@ -1118,8 +1117,7 @@ mod tests {
 	#[rstest::rstest]
 	#[serial(reactive_runtime)]
 	fn consumer_write_before_panic_recovers_on_unrelated_notification() {
-		ReactiveScope::run(|| {
-			use std::panic::{AssertUnwindSafe, catch_unwind};
+		use std::panic::{AssertUnwindSafe, catch_unwind};
 
 		ReactiveScope::run(|| {
 			let secondary = Signal::new(0_i32);
@@ -1162,9 +1160,8 @@ mod tests {
 	#[rstest::rstest]
 	#[serial(reactive_runtime)]
 	fn non_converging_layout_updates_panic_and_runtime_remains_reusable() {
-		ReactiveScope::run(|| {
-			use std::panic::{AssertUnwindSafe, catch_unwind};
-			const EXPECTED_MAX_NOTIFICATION_EPOCHS: usize = 32;
+		use std::panic::{AssertUnwindSafe, catch_unwind};
+		const EXPECTED_MAX_NOTIFICATION_EPOCHS: usize = 32;
 
 		ReactiveScope::run(|| {
 			let looping = Signal::new(0_u32);
