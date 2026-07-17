@@ -12,7 +12,7 @@ use sqlx::{PgPool, Postgres, Row, Transaction};
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::backends::error::{DatabaseErrorKind, Result, map_sqlx_error};
+use crate::backends::error::{Result, map_sqlx_error};
 use reinhardt_core::exception::Error;
 
 /// Maximum number of transaction retry attempts
@@ -352,7 +352,7 @@ mod rand {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::backends::error::DatabaseError;
+	use crate::backends::error::{DatabaseError, DatabaseErrorKind};
 
 	#[test]
 	fn test_cluster_info_creation() {
