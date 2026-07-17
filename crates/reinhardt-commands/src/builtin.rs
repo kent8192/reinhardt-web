@@ -909,6 +909,16 @@ async fn build_from_state_from_files(
 pub struct MakeMigrationsCommand;
 
 #[cfg(feature = "migrations")]
+fn validate_global_migration_changes(
+	from_state: &reinhardt_db::migrations::ProjectState,
+	target_state: &reinhardt_db::migrations::ProjectState,
+) -> reinhardt_db::migrations::Result<()> {
+	reinhardt_db::migrations::MigrationAutodetector::new(from_state.clone(), target_state.clone())
+		.try_detect_changes()
+		.map(|_| ())
+}
+
+#[cfg(feature = "migrations")]
 #[async_trait]
 impl BaseCommand for MakeMigrationsCommand {
 	fn name(&self) -> &str {
@@ -1451,6 +1461,14 @@ impl BaseCommand for MakeMigrationsCommand {
 					));
 				}
 			}
+
+			// Validate the complete state before per-app filtering so another app's
+			// physical table ownership cannot be hidden from collision detection.
+			validate_global_migration_changes(&from_state, &target_project_state).map_err(
+				|error| {
+					CommandError::ExecutionError(format!("Failed to validate migrations: {error}"))
+				},
+			)?;
 
 			for app_name in &app_names {
 				// Filter target state for this app only
@@ -4483,6 +4501,33 @@ fn detect_database_type(url: &str) -> Result<DatabaseType, crate::CommandError> 
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	fn global_migration_validation_rejects_cross_app_table_rename_collisions() {
+		use reinhardt_db::migrations::{ModelState, ProjectState};
+
+		let mut from_state = ProjectState::new();
+		let mut old_profile = ModelState::new("accounts", "Profile");
+		old_profile.table_name = "accounts_profile".to_string();
+		from_state.add_model(old_profile);
+		let mut audit_user = ModelState::new("audit", "User");
+		audit_user.table_name = "users".to_string();
+		from_state.add_model(audit_user);
+
+		let mut target_state = ProjectState::new();
+		let mut renamed_profile = ModelState::new("accounts", "Profile");
+		renamed_profile.table_name = "users".to_string();
+		target_state.add_model(renamed_profile);
+		let mut retained_audit_user = ModelState::new("audit", "User");
+		retained_audit_user.table_name = "users".to_string();
+		target_state.add_model(retained_audit_user);
+
+		let error = validate_global_migration_changes(&from_state, &target_state)
+			.expect_err("cross-app table rename collisions must be rejected before app filtering");
+
+		assert!(error.to_string().contains("multiple target models claim"));
+	}
 
 	#[cfg(feature = "migrations")]
 	#[test]
