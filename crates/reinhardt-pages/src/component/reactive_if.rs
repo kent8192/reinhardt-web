@@ -196,6 +196,8 @@ pub struct ReactiveIfNode {
 	last_condition: Rc<RefCell<Option<bool>>>,
 	/// Nested reactive nodes owned by the current branch.
 	reactive_nodes: ReactiveNodeStore,
+	/// Whether hydration retained the original server-rendered nodes.
+	hydrated_nodes_preserved: Rc<Cell<bool>>,
 	/// Effect handle (kept alive to maintain reactivity)
 	effect: Option<Effect>,
 }
@@ -326,6 +328,7 @@ impl ReactiveIfNode {
 			current_nodes,
 			last_condition,
 			reactive_nodes,
+			hydrated_nodes_preserved: Rc::new(Cell::new(false)),
 			effect: Some(effect),
 		}
 	}
@@ -367,6 +370,8 @@ impl ReactiveIfNode {
 		let first_run_clone = first_run.clone();
 		let hydration_mismatch = Rc::new(Cell::new(false));
 		let hydration_mismatch_clone = hydration_mismatch.clone();
+		let hydrated_nodes_preserved = Rc::new(Cell::new(true));
+		let hydrated_nodes_preserved_clone = hydrated_nodes_preserved.clone();
 		#[cfg(feature = "i18n")]
 		let i18n_context = crate::i18n::current_i18n_callback_context();
 
@@ -376,7 +381,8 @@ impl ReactiveIfNode {
 					with_reactive_node_store(&effect_reactive_node_store, || {
 						let new_condition = condition();
 
-						if first_run_clone.replace(false) {
+						let first_run = first_run_clone.replace(false);
+						if first_run {
 							hydration_mismatch_clone.set(new_condition != hydrated_condition);
 							if !refresh_after_control_adoption {
 								return;
@@ -384,12 +390,13 @@ impl ReactiveIfNode {
 						}
 
 						let mut last = last_condition_clone.borrow_mut();
-						if *last == Some(new_condition) {
+						if *last == Some(new_condition) && !first_run {
 							return;
 						}
 						*last = Some(new_condition);
 						drop(last);
 
+						hydrated_nodes_preserved_clone.set(false);
 						clear_reactive_node_store(&branch_reactive_node_store);
 
 						refresh_current_nodes_before_marker(
@@ -436,12 +443,17 @@ impl ReactiveIfNode {
 			current_nodes,
 			last_condition,
 			reactive_nodes,
+			hydrated_nodes_preserved,
 			effect: Some(effect),
 		})
 	}
 
 	pub(crate) fn reactive_node_store(&self) -> ReactiveNodeStore {
 		self.reactive_nodes.clone()
+	}
+
+	pub(crate) fn hydrated_nodes_preserved(&self) -> bool {
+		self.hydrated_nodes_preserved.get()
 	}
 
 	pub(crate) fn refresh_hydrated_current_nodes(&self) {
@@ -662,8 +674,8 @@ impl ReactiveNode {
 						let ScopedRender { view, scope } =
 							render_in_reactive_scope(&candidate_render_store, || render());
 
-						let preserve_adopted_control =
-							refresh_after_control_adoption && is_single_control_view(&view);
+						let preserve_adopted_control = refresh_after_control_adoption
+							&& single_control_attrs_match(&current_nodes_clone, &view);
 						if first_run_clone.replace(false)
 							&& (!refresh_after_control_adoption || preserve_adopted_control)
 						{
@@ -765,13 +777,63 @@ fn render_in_reactive_scope(
 }
 
 #[cfg(wasm)]
-fn is_single_control_view(view: &Page) -> bool {
+fn single_control_attrs_match(
+	current_nodes: &Rc<RefCell<Vec<web_sys::Node>>>,
+	view: &Page,
+) -> bool {
+	use wasm_bindgen::JsCast;
+
 	match view {
-		Page::Element(element) => {
-			element.bound_control().is_some() && element.child_views().is_empty()
+		Page::Element(element)
+			if element.bound_control().is_some() && element.child_views().is_empty() =>
+		{
+			let existing_element = current_nodes
+				.borrow()
+				.iter()
+				.find_map(|node| node.dyn_ref::<web_sys::Element>())
+				.cloned();
+			let Some(existing_element) = existing_element else {
+				return false;
+			};
+			let expected_attrs_match = element.attrs().iter().all(|(name, value)| {
+				let name = name.as_ref();
+				if crate::component::into_page::controlled_attribute_is_overridden(
+					element.bound_control(),
+					name,
+				) {
+					return true;
+				}
+				let expected = if BOOLEAN_ATTRS.contains(&name) && !is_boolean_attr_truthy(value) {
+					None
+				} else {
+					Some(value.as_ref())
+				};
+				existing_element.get_attribute(name).as_deref() == expected
+			});
+			let actual_attrs = existing_element.attributes();
+			let actual_attrs_match = (0..actual_attrs.length()).all(|index| {
+				let Some(attribute) = actual_attrs.item(index) else {
+					return true;
+				};
+				let name = attribute.name();
+				if crate::component::into_page::controlled_attribute_is_overridden(
+					element.bound_control(),
+					&name,
+				) {
+					return true;
+				}
+				element
+					.attrs()
+					.iter()
+					.any(|(expected_name, _)| expected_name.as_ref().eq_ignore_ascii_case(&name))
+			});
+			expected_attrs_match && actual_attrs_match
 		}
 		Page::Fragment(children) => {
-			children.len() == 1 && children.first().is_some_and(is_single_control_view)
+			children.len() == 1
+				&& children
+					.first()
+					.is_some_and(|child| single_control_attrs_match(current_nodes, child))
 		}
 		_ => false,
 	}

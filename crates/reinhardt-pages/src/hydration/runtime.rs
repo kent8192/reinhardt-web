@@ -513,9 +513,11 @@ fn install_hydrated_reactive_nodes(
 					"failed to install hydrated reactive-if owner".to_string(),
 				)
 			})?;
-			with_reactive_node_store(&hydrated_node.reactive_node_store(), || {
-				store_reactive_node(branch_registry);
-			});
+			if hydrated_node.hydrated_nodes_preserved() {
+				with_reactive_node_store(&hydrated_node.reactive_node_store(), || {
+					store_reactive_node(branch_registry);
+				});
+			}
 			hydrated_node.refresh_hydrated_current_nodes();
 			store_reactive_node(hydrated_node);
 			branch_transaction.commit();
@@ -671,9 +673,11 @@ fn install_hydrated_child_reactive_nodes(
 					"failed to install nested hydrated reactive-if owner".to_string(),
 				)
 			})?;
-			with_reactive_node_store(&hydrated_node.reactive_node_store(), || {
-				store_reactive_node(branch_registry);
-			});
+			if hydrated_node.hydrated_nodes_preserved() {
+				with_reactive_node_store(&hydrated_node.reactive_node_store(), || {
+					store_reactive_node(branch_registry);
+				});
+			}
 			hydrated_node.refresh_hydrated_current_nodes();
 			store_reactive_node(hydrated_node);
 			branch_transaction.commit();
@@ -1199,6 +1203,8 @@ mod tests {
 	#[cfg(wasm)]
 	use std::rc::Rc;
 	#[cfg(wasm)]
+	use wasm_bindgen::JsCast;
+	#[cfg(wasm)]
 	use wasm_bindgen_test::*;
 
 	#[cfg(wasm)]
@@ -1544,6 +1550,176 @@ mod tests {
 
 			assert_eq!(value.get(), "live");
 			assert_eq!(root.text_content().as_deref(), Some("live"));
+			cleanup_reactive_nodes();
+			root.remove();
+		});
+	}
+
+	#[cfg(wasm)]
+	#[wasm_bindgen_test]
+	fn hydrated_reactive_if_refreshes_same_condition_after_control_adoption() {
+		let scope = ReactiveScope::new();
+		scope.enter(|| {
+			cleanup_reactive_nodes();
+			let document = web_sys::window().unwrap().document().unwrap();
+			let root = document.create_element("div").unwrap();
+			root.set_inner_html("<span>server</span><input value=\"live\">");
+			let value = Signal::new("server".to_owned());
+			let view = Page::reactive_if(
+				{
+					let value = value.clone();
+					move || !value.get().is_empty()
+				},
+				{
+					let value = value.clone();
+					move || {
+						Page::Fragment(vec![
+							PageElement::new("span").child(value.get()).into_page(),
+							PageElement::new("input")
+								.control_binding(ControlBinding::text(value.clone()))
+								.into_page(),
+						])
+					}
+				},
+				|| Page::Empty,
+			);
+			let mut registry = crate::hydration::events::EventRegistry::new();
+
+			install_hydrated_reactive_nodes(&Element::new(root.clone()), &view, &mut registry)
+				.expect("hydrate");
+
+			assert_eq!(value.get(), "live");
+			assert_eq!(
+				root.query_selector("span")
+					.unwrap()
+					.expect("span")
+					.text_content()
+					.as_deref(),
+				Some("live")
+			);
+			cleanup_reactive_nodes();
+			root.remove();
+		});
+	}
+
+	#[cfg(wasm)]
+	#[wasm_bindgen_test]
+	fn hydrated_reactive_if_drops_replaced_binding_registry() {
+		let scope = ReactiveScope::new();
+		scope.enter(|| {
+			cleanup_reactive_nodes();
+			let document = web_sys::window().unwrap().document().unwrap();
+			let root = document.create_element("div").unwrap();
+			root.set_inner_html("<input value=\"live\">");
+			let detached_input: web_sys::HtmlInputElement = root
+				.query_selector("input")
+				.unwrap()
+				.expect("input")
+				.unchecked_into();
+			let value = Signal::new("server".to_owned());
+			let view = Page::reactive_if(
+				{
+					let value = value.clone();
+					move || value.get() == "server"
+				},
+				{
+					let value = value.clone();
+					move || {
+						PageElement::new("input")
+							.control_binding(ControlBinding::text(value.clone()))
+							.into_page()
+					}
+				},
+				|| PageElement::new("span").child("replacement").into_page(),
+			);
+			let mut registry = crate::hydration::events::EventRegistry::new();
+
+			install_hydrated_reactive_nodes(&Element::new(root.clone()), &view, &mut registry)
+				.expect("hydrate");
+
+			assert_eq!(value.get(), "live");
+			assert_eq!(root.text_content().as_deref(), Some("replacement"));
+			value.set("next".to_owned());
+			with_runtime(|runtime| runtime.flush_updates());
+			assert_eq!(detached_input.value(), "live");
+			cleanup_reactive_nodes();
+			root.remove();
+		});
+	}
+
+	#[cfg(wasm)]
+	#[wasm_bindgen_test]
+	fn hydrated_single_control_refreshes_attrs_after_control_adoption() {
+		let scope = ReactiveScope::new();
+		scope.enter(|| {
+			cleanup_reactive_nodes();
+			let document = web_sys::window().unwrap().document().unwrap();
+			let root = document.create_element("div").unwrap();
+			root.set_inner_html("<input class=\"server\" value=\"live\">");
+			let value = Signal::new("server".to_owned());
+			let view = Page::reactive({
+				let value = value.clone();
+				move || {
+					PageElement::new("input")
+						.attr("class", value.get())
+						.control_binding(ControlBinding::text(value.clone()))
+						.into_page()
+				}
+			});
+			let mut registry = crate::hydration::events::EventRegistry::new();
+
+			install_hydrated_reactive_nodes(&Element::new(root.clone()), &view, &mut registry)
+				.expect("hydrate");
+
+			assert_eq!(value.get(), "live");
+			assert_eq!(
+				root.query_selector("input")
+					.unwrap()
+					.expect("input")
+					.get_attribute("class")
+					.as_deref(),
+				Some("live")
+			);
+			cleanup_reactive_nodes();
+			root.remove();
+		});
+	}
+
+	#[cfg(wasm)]
+	#[wasm_bindgen_test]
+	fn hydrated_single_control_removes_stale_attrs_after_control_adoption() {
+		let scope = ReactiveScope::new();
+		scope.enter(|| {
+			cleanup_reactive_nodes();
+			let document = web_sys::window().unwrap().document().unwrap();
+			let root = document.create_element("div").unwrap();
+			root.set_inner_html("<input data-server-state=\"true\" value=\"live\">");
+			let value = Signal::new("server".to_owned());
+			let view = Page::reactive({
+				let value = value.clone();
+				move || {
+					let input = PageElement::new("input")
+						.control_binding(ControlBinding::text(value.clone()));
+					if value.get() == "server" {
+						input.attr("data-server-state", "true").into_page()
+					} else {
+						input.into_page()
+					}
+				}
+			});
+			let mut registry = crate::hydration::events::EventRegistry::new();
+
+			install_hydrated_reactive_nodes(&Element::new(root.clone()), &view, &mut registry)
+				.expect("hydrate");
+
+			assert_eq!(value.get(), "live");
+			assert_eq!(
+				root.query_selector("input")
+					.unwrap()
+					.expect("input")
+					.get_attribute("data-server-state"),
+				None
+			);
 			cleanup_reactive_nodes();
 			root.remove();
 		});
