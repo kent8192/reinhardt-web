@@ -29,7 +29,7 @@ const SQLSTATE_INVALID_CATALOG_NAME: &str = "3D000";
 fn map_postgres_initial_connect_error(error: sqlx::Error) -> DatabaseError {
 	match error {
 		sqlx::Error::PoolTimedOut => DatabaseError::new(
-			DatabaseErrorKind::Connection,
+			DatabaseErrorKind::Timeout,
 			"Initial PostgreSQL connection timed out",
 		),
 		error => map_sqlx_error(error),
@@ -726,6 +726,14 @@ impl DatabaseConnection {
 #[cfg(test)]
 mod tests {
 	use rstest::rstest;
+
+	#[cfg(feature = "postgres")]
+	#[test]
+	fn postgres_initial_pool_timeout_is_classified_as_timeout() {
+		let error = super::map_postgres_initial_connect_error(sqlx::Error::PoolTimedOut);
+
+		assert_eq!(error.kind(), super::DatabaseErrorKind::Timeout);
+	}
 
 	/// Helper to build a CREATE DATABASE SQL statement with proper identifier escaping.
 	/// Mirrors the escaping logic used in `connect_postgres_or_create_with_pool_size`.
