@@ -228,7 +228,38 @@ impl ReactiveIfNode {
 			.inner()
 			.append_child(&marker)
 			.expect("should append marker");
+		Self::new_with_markers(marker, None, condition, then_view, else_view)
+	}
 
+	fn new_before_marker(
+		anchor: &web_sys::Comment,
+		condition: std::sync::Arc<dyn Fn() -> bool + 'static>,
+		then_view: std::sync::Arc<dyn Fn() -> Page + 'static>,
+		else_view: std::sync::Arc<dyn Fn() -> Page + 'static>,
+	) -> Self {
+		let document = web_sys::window()
+			.expect("window should be available")
+			.document()
+			.expect("document should be available");
+		let start_marker = document.create_comment("reactive-if-start");
+		let marker = document.create_comment("reactive-if");
+		let parent = anchor.parent_node().expect("marker should have a parent");
+		parent
+			.insert_before(&start_marker, Some(anchor))
+			.expect("should insert start marker");
+		parent
+			.insert_before(&marker, Some(anchor))
+			.expect("should insert marker");
+		Self::new_with_markers(marker, Some(start_marker), condition, then_view, else_view)
+	}
+
+	fn new_with_markers(
+		marker: web_sys::Comment,
+		start_marker: Option<web_sys::Comment>,
+		condition: std::sync::Arc<dyn Fn() -> bool + 'static>,
+		then_view: std::sync::Arc<dyn Fn() -> Page + 'static>,
+		else_view: std::sync::Arc<dyn Fn() -> Page + 'static>,
+	) -> Self {
 		// Shared state for the Effect
 		let current_nodes: Rc<RefCell<Vec<web_sys::Node>>> = Rc::new(RefCell::new(Vec::new()));
 		let last_condition: Rc<RefCell<Option<bool>>> = Rc::new(RefCell::new(None));
@@ -291,7 +322,7 @@ impl ReactiveIfNode {
 
 		Self {
 			marker,
-			start_marker: None,
+			start_marker,
 			current_nodes,
 			last_condition,
 			reactive_nodes,
@@ -478,7 +509,34 @@ impl ReactiveNode {
 			.inner()
 			.append_child(&marker)
 			.expect("should append marker");
+		Self::new_with_markers(marker, None, render)
+	}
 
+	fn new_before_marker(
+		anchor: &web_sys::Comment,
+		render: std::sync::Arc<dyn Fn() -> Page + 'static>,
+	) -> Self {
+		let document = web_sys::window()
+			.expect("window should be available")
+			.document()
+			.expect("document should be available");
+		let start_marker = document.create_comment("reactive-start");
+		let marker = document.create_comment("reactive");
+		let parent = anchor.parent_node().expect("marker should have a parent");
+		parent
+			.insert_before(&start_marker, Some(anchor))
+			.expect("should insert start marker");
+		parent
+			.insert_before(&marker, Some(anchor))
+			.expect("should insert marker");
+		Self::new_with_markers(marker, Some(start_marker), render)
+	}
+
+	fn new_with_markers(
+		marker: web_sys::Comment,
+		start_marker: Option<web_sys::Comment>,
+		render: std::sync::Arc<dyn Fn() -> Page + 'static>,
+	) -> Self {
 		// Shared state for the Effect
 		let current_nodes: Rc<RefCell<Vec<web_sys::Node>>> = Rc::new(RefCell::new(Vec::new()));
 
@@ -499,14 +557,20 @@ impl ReactiveNode {
 			move || {
 				let update = || {
 					with_reactive_node_store(&effect_reactive_node_store, || {
-						clear_reactive_node_store(&render_reactive_node_store);
-						// Render the view (this tracks Signal dependencies)
-						let view =
-							with_reactive_node_store(&render_reactive_node_store, || render());
+						let candidate_render_store = new_reactive_node_store();
+						// Render into a candidate store so an Activity attribute-only update
+						// retains the owners for the already-mounted content.
+						let ScopedRender { view, scope } =
+							render_in_reactive_scope(&candidate_render_store, || render());
 
 						if update_activity_boundary_attrs(&current_nodes_clone, &view) {
+							clear_reactive_node_store(&candidate_render_store);
 							return;
 						}
+						clear_reactive_node_store(&render_reactive_node_store);
+						render_reactive_node_store
+							.borrow_mut()
+							.append(&mut candidate_render_store.borrow_mut());
 						hydrated_nodes_preserved_clone.set(false);
 
 						clear_reactive_node_store(&mount_reactive_node_store);
@@ -525,10 +589,14 @@ impl ReactiveNode {
 						}
 
 						// Mount new nodes before the marker
-						let new_nodes =
+						let new_nodes = scope.enter(|| {
 							with_reactive_node_store(&mount_reactive_node_store, || {
 								mount_before_marker(&marker_clone, view)
-							});
+							})
+						});
+						with_reactive_node_store(&mount_reactive_node_store, || {
+							store_reactive_scope(scope)
+						});
 						*current_nodes_clone.borrow_mut() = new_nodes;
 					});
 				};
@@ -542,7 +610,7 @@ impl ReactiveNode {
 
 		Self {
 			marker,
-			start_marker: None,
+			start_marker,
 			current_nodes,
 			reactive_nodes,
 			hydrated_nodes_preserved,
@@ -586,13 +654,13 @@ impl ReactiveNode {
 			move || {
 				let update = || {
 					with_reactive_node_store(&effect_reactive_node_store, || {
-						clear_reactive_node_store(&render_reactive_node_store);
+						let candidate_render_store = new_reactive_node_store();
 						let first_run_resource_counter =
 							crate::reactive::resource::current_client_resource_counter();
 						let first_run_id_counter =
 							crate::reactive::hooks::id::id_counter_snapshot();
-						let view =
-							with_reactive_node_store(&render_reactive_node_store, || render());
+						let ScopedRender { view, scope } =
+							render_in_reactive_scope(&candidate_render_store, || render());
 
 						let preserve_adopted_control =
 							refresh_after_control_adoption && is_single_control_view(&view);
@@ -603,12 +671,18 @@ impl ReactiveNode {
 								first_run_resource_counter,
 							);
 							crate::reactive::hooks::id::restore_id_counter(first_run_id_counter);
+							clear_reactive_node_store(&candidate_render_store);
 							return;
 						}
 
 						if update_activity_boundary_attrs(&current_nodes_clone, &view) {
+							clear_reactive_node_store(&candidate_render_store);
 							return;
 						}
+						clear_reactive_node_store(&render_reactive_node_store);
+						render_reactive_node_store
+							.borrow_mut()
+							.append(&mut candidate_render_store.borrow_mut());
 						hydrated_nodes_preserved_clone.set(false);
 
 						clear_reactive_node_store(&mount_reactive_node_store);
@@ -628,10 +702,14 @@ impl ReactiveNode {
 							}
 						}
 
-						let new_nodes =
+						let new_nodes = scope.enter(|| {
 							with_reactive_node_store(&mount_reactive_node_store, || {
 								mount_before_marker(&marker_clone, view)
-							});
+							})
+						});
+						with_reactive_node_store(&mount_reactive_node_store, || {
+							store_reactive_scope(scope)
+						});
 						*current_nodes_clone.borrow_mut() = new_nodes;
 					});
 				};
@@ -668,6 +746,22 @@ impl ReactiveNode {
 			&self.current_nodes,
 		);
 	}
+}
+
+#[cfg(wasm)]
+struct ScopedRender {
+	view: Page,
+	scope: ReactiveScope,
+}
+
+#[cfg(wasm)]
+fn render_in_reactive_scope(
+	store: &ReactiveNodeStore,
+	render: impl FnOnce() -> Page,
+) -> ScopedRender {
+	let scope = ReactiveScope::new();
+	let view = scope.enter(|| with_reactive_node_store(store, render));
+	ScopedRender { view, scope }
 }
 
 #[cfg(wasm)]
@@ -711,9 +805,48 @@ impl MarkerRemovalGuard {
 #[cfg(wasm)]
 impl Drop for MarkerRemovalGuard {
 	fn drop(&mut self) {
+		if let Some(start_marker) = self.start_marker.as_ref()
+			&& remove_marker_range_from_dom(start_marker, &self.marker)
+		{
+			return;
+		}
 		remove_marker_from_dom(self.start_marker.as_ref());
 		remove_marker_from_dom(Some(&self.marker));
 	}
+}
+
+#[cfg(wasm)]
+fn remove_marker_range_from_dom(
+	start_marker: &web_sys::Comment,
+	marker: &web_sys::Comment,
+) -> bool {
+	let start_node: web_sys::Node = start_marker.clone().into();
+	let marker_node: web_sys::Node = marker.clone().into();
+	let Some(parent) = start_node.parent_node() else {
+		return false;
+	};
+	if !marker_node
+		.parent_node()
+		.is_some_and(|marker_parent| marker_parent.is_same_node(Some(&parent)))
+	{
+		return false;
+	}
+
+	let mut nodes = Vec::new();
+	let mut current = Some(start_node);
+	while let Some(node) = current {
+		let is_marker = node.is_same_node(Some(&marker_node));
+		current = node.next_sibling();
+		nodes.push(node);
+		if is_marker {
+			for node in nodes {
+				let _ = parent.remove_child(&node);
+			}
+			return true;
+		}
+	}
+
+	false
 }
 
 #[cfg(wasm)]
@@ -781,22 +914,16 @@ fn update_activity_boundary_attrs(
 	}
 
 	let nodes = current_nodes.borrow();
-	if nodes.len() != 1 {
-		return false;
-	}
-
-	let Some(existing_element) = nodes[0].dyn_ref::<web_sys::Element>() else {
+	let Some(existing_element) = nodes
+		.iter()
+		.filter_map(|node| node.dyn_ref::<web_sys::Element>())
+		.find(|element| {
+			element.get_attribute("data-rh-state-preserved").as_deref() == Some("true")
+				&& element.get_attribute("data-rh-activity").is_some()
+		})
+	else {
 		return false;
 	};
-
-	if existing_element
-		.get_attribute("data-rh-state-preserved")
-		.as_deref()
-		!= Some("true")
-		|| existing_element.get_attribute("data-rh-activity").is_none()
-	{
-		return false;
-	}
 
 	let _ = existing_element.set_attribute("data-rh-activity", activity_mode);
 	let _ = existing_element.set_attribute("data-rh-state-preserved", "true");
@@ -958,43 +1085,14 @@ fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::No
 			nodes.extend(mount_before_marker(marker, *view));
 		}
 		Page::ReactiveIf(reactive_if) => {
-			// Decompose the ReactiveIf to get the closures
 			let (condition, then_view, else_view) = reactive_if.into_parts();
-
-			// Create a nested ReactiveIfNode
-			// First, create a new marker for this nested reactive if
-			let nested_marker = document.create_comment("reactive-if-nested");
-			let _ = parent.insert_before(&nested_marker, Some(marker));
-			nodes.push(nested_marker.clone().unchecked_into());
-
-			// Create a temporary parent wrapper to use ReactiveIfNode
-			let temp_parent =
-				crate::dom::Element::new(parent.clone().unchecked_into::<web_sys::Element>());
-
-			// Use the nested marker as the anchor point
-			let nested_node = ReactiveIfNode::new(&temp_parent, condition, then_view, else_view);
-
-			// Store the nested node to keep it alive
+			let nested_node =
+				ReactiveIfNode::new_before_marker(marker, condition, then_view, else_view);
 			store_reactive_node(nested_node);
 		}
 		Page::Reactive(reactive) => {
-			// Create a nested ReactiveNode
-			// First, create a new marker for this nested reactive
-			let nested_marker = document.create_comment("reactive-nested");
-			let _ = parent.insert_before(&nested_marker, Some(marker));
-			nodes.push(nested_marker.clone().unchecked_into());
-
-			// Create a temporary parent wrapper to use ReactiveNode
-			let temp_parent =
-				crate::dom::Element::new(parent.clone().unchecked_into::<web_sys::Element>());
-
-			// Get the render closure
 			let render = reactive.into_render();
-
-			// Create the nested ReactiveNode
-			let nested_node = ReactiveNode::new(&temp_parent, render);
-
-			// Store the nested node to keep it alive
+			let nested_node = ReactiveNode::new_before_marker(marker, render);
 			store_reactive_node(nested_node);
 		}
 		Page::Suspense(node) => {

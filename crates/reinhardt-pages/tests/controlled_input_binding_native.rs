@@ -99,6 +99,44 @@ fn native_select_treats_falsy_multiple_as_single_select(reactive_scope: Reactive
 }
 
 #[rstest]
+#[case("false")]
+#[case("0")]
+fn native_select_with_falsy_multiple_projects_only_the_first_duplicate(
+	reactive_scope: ReactiveScope,
+	#[case] multiple: &str,
+) {
+	// Arrange
+	let selected = signal_in_scope(&reactive_scope, "rust".to_owned());
+
+	// Act
+	let screen = render(
+		PageElement::new("select")
+			.attr("aria-label", "Language")
+			.attr("multiple", multiple.to_owned())
+			.control_binding(ControlBinding::select_one(selected))
+			.child(
+				PageElement::new("option")
+					.attr("value", "rust")
+					.child("First"),
+			)
+			.child(
+				PageElement::new("option")
+					.attr("value", "rust")
+					.child("Second"),
+			),
+	);
+
+	// Assert
+	assert_eq!(
+		screen
+			.pretty()
+			.match_indices("selected=\"selected\"")
+			.count(),
+		1
+	);
+}
+
+#[rstest]
 #[serial(controlled_binding_effect)]
 fn binding_write_layout_effect_can_read_the_same_screen(reactive_scope: ReactiveScope) {
 	// Arrange

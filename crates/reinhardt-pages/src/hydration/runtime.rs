@@ -175,62 +175,69 @@ pub fn hydrate<C: Component>(component: &C, root: &Element) -> Result<(), Hydrat
 	use super::events::EventRegistry;
 	use super::reconcile::reconcile;
 
-	web_sys::console::log_1(&"[Hydration] Starting...".into());
+	let scope = reinhardt_core::reactive::ReactiveScope::new();
+	let result = scope.enter(|| {
+		web_sys::console::log_1(&"[Hydration] Starting...".into());
 
-	// 1. Restore SSR state
-	let mut context = HydrationContext::from_window()?;
-	#[cfg(feature = "i18n")]
-	let i18n_guard = crate::i18n::provide_i18n_from_hydration_context(&context).map_err(|e| {
-		HydrationError::StateParseError(format!("Failed to hydrate i18n state: {}", e))
-	})?;
+		// 1. Restore SSR state
+		let mut context = HydrationContext::from_window()?;
+		#[cfg(feature = "i18n")]
+		let i18n_guard = crate::i18n::provide_i18n_from_hydration_context(&context).map_err(|e| {
+			HydrationError::StateParseError(format!("Failed to hydrate i18n state: {}", e))
+		})?;
 
-	let (view, resource_counter_offset, id_counter_offset) = {
-		let prepass_store = new_reactive_node_store();
-		with_reactive_node_store(&prepass_store, || -> Result<_, HydrationError> {
-			// Reconciliation only inspects lazy views. Keep retained hook effects from
-			// this prepass out of the mounted root store.
-			let view = component.render();
-			let resource_counter_offset =
-				crate::reactive::resource::current_client_resource_counter();
-			let id_counter_offset = crate::reactive::hooks::id::id_counter_snapshot();
-			web_sys::console::log_1(&"[Hydration] View rendered".into());
+		let (view, resource_counter_offset, id_counter_offset) = {
+			let prepass_store = new_reactive_node_store();
+			with_reactive_node_store(&prepass_store, || -> Result<_, HydrationError> {
+				// Reconciliation only inspects lazy views. Keep retained hook effects from
+				// this prepass out of the mounted root store.
+				let view = component.render();
+				let resource_counter_offset =
+					crate::reactive::resource::current_client_resource_counter();
+				let id_counter_offset = crate::reactive::hooks::id::id_counter_snapshot();
+				web_sys::console::log_1(&"[Hydration] View rendered".into());
 
-			crate::reactive::resource::set_client_resource_counter(resource_counter_offset);
-			crate::reactive::hooks::id::restore_id_counter(id_counter_offset);
-			reconcile(root, &view).map_err(|e| {
-				HydrationError::StateParseError(format!("Reconciliation failed: {}", e))
-			})?;
-			validate_hydrated_controls(root, &view)?;
-			web_sys::console::log_1(&"[Hydration] Reconciliation complete".into());
+				crate::reactive::resource::set_client_resource_counter(resource_counter_offset);
+				crate::reactive::hooks::id::restore_id_counter(id_counter_offset);
+				reconcile(root, &view).map_err(|e| {
+					HydrationError::StateParseError(format!("Reconciliation failed: {}", e))
+				})?;
+				validate_hydrated_controls(root, &view)?;
+				web_sys::console::log_1(&"[Hydration] Reconciliation complete".into());
 
-			Ok((view, resource_counter_offset, id_counter_offset))
-		})?
-	};
-	crate::reactive::resource::set_client_resource_counter(resource_counter_offset);
-	crate::reactive::hooks::id::restore_id_counter(id_counter_offset);
+				Ok((view, resource_counter_offset, id_counter_offset))
+			})?
+		};
+		crate::reactive::resource::set_client_resource_counter(resource_counter_offset);
+		crate::reactive::hooks::id::restore_id_counter(id_counter_offset);
 
-	// 5. Install hydration guards and reactive DOM owners in the same ownership pass.
-	crate::dom::control_binding::with_hydration_snapshot_transaction(|| {
-		crate::component::reactive_if::with_reactive_node_transaction(|| {
-			let mut root_registry = EventRegistry::new();
-			install_hydrated_reactive_nodes(root, &view, &mut root_registry)?;
-			store_reactive_node(root_registry);
-			Ok::<_, HydrationError>(())
-		})
-	})?;
-	web_sys::console::log_1(&"[Hydration] Events attached".into());
-	web_sys::console::log_1(&"[Hydration] Reactive nodes installed".into());
+		// 5. Install hydration guards and reactive DOM owners in the same ownership pass.
+		crate::dom::control_binding::with_hydration_snapshot_transaction(|| {
+			crate::component::reactive_if::with_reactive_node_transaction(|| {
+				let mut root_registry = EventRegistry::new();
+				install_hydrated_reactive_nodes(root, &view, &mut root_registry)?;
+				store_reactive_node(root_registry);
+				Ok::<_, HydrationError>(())
+			})
+		})?;
+		web_sys::console::log_1(&"[Hydration] Events attached".into());
+		web_sys::console::log_1(&"[Hydration] Reactive nodes installed".into());
 
-	// 6. Mark hydration complete
-	#[cfg(feature = "i18n")]
-	if let Some(i18n_guard) = i18n_guard {
-		crate::i18n::retain_hydrated_i18n_context(i18n_guard);
+		// 6. Mark hydration complete
+		#[cfg(feature = "i18n")]
+		if let Some(i18n_guard) = i18n_guard {
+			crate::i18n::retain_hydrated_i18n_context(i18n_guard);
+		}
+		context.mark_hydrated();
+		mark_hydration_complete_internal();
+		web_sys::console::log_1(&"[Hydration] Complete!".into());
+
+		Ok(())
+	});
+	if result.is_ok() {
+		crate::component::store_reactive_scope(scope);
 	}
-	context.mark_hydrated();
-	mark_hydration_complete_internal();
-	web_sys::console::log_1(&"[Hydration] Complete!".into());
-
-	Ok(())
+	result
 }
 
 #[cfg(wasm)]
@@ -1379,7 +1386,7 @@ mod tests {
 						})
 					}
 				},
-				(effect_dependency.clone(),),
+				deps![effect_dependency],
 			);
 			PageElement::new("span").child("initial").into_page()
 		})
