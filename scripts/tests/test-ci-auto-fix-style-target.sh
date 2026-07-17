@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT_DIR="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)"
 POLICY_FILE="$ROOT_DIR/.github/scripts/auto-fix-style-target.cjs"
 WORKFLOW_FILE="$ROOT_DIR/.github/workflows/ci.yml"
 
@@ -16,7 +17,9 @@ const fs = require('node:fs');
 
 const policyFile = process.argv[2];
 const workflowFile = process.argv[3];
-const { classifyBranchProtection } = require(policyFile);
+const { classifyBranchProtection, runAutoFixTargetPolicy } = require(policyFile);
+
+async function main() {
 
 assert.deepEqual(
   classifyBranchProtection({ protected: false }, []),
@@ -80,6 +83,63 @@ assert.equal(
   2,
   'both target checks must execute the trusted base policy copy',
 );
+
+const outputs = new Map();
+const paginateCalls = [];
+await runAutoFixTargetPolicy({
+  github: {
+    rest: {
+      repos: {
+        getBranch: async () => ({
+          data: { protected: true, protection: { enabled: false } },
+        }),
+      },
+    },
+    paginate: async (route, parameters) => {
+      paginateCalls.push({ route, parameters });
+      return [
+        { type: 'non_fast_forward' },
+        { type: 'required_pull_request' },
+      ];
+    },
+  },
+  context: {
+    payload: {
+      pull_request: {
+        head: {
+          ref: 'feature/test',
+          repo: { full_name: 'kent8192/reinhardt-web' },
+        },
+      },
+    },
+    repo: { owner: 'kent8192', repo: 'reinhardt-web' },
+  },
+  core: {
+    notice: () => {},
+    setOutput: (name, value) => outputs.set(name, value),
+    warning: () => {},
+  },
+  noticePrefix: 'test',
+});
+
+assert.deepEqual(paginateCalls, [
+  {
+    route: 'GET /repos/{owner}/{repo}/rules/branches/{branch}',
+    parameters: {
+      owner: 'kent8192',
+      repo: 'reinhardt-web',
+      branch: 'feature/test',
+    },
+  },
+]);
+assert.equal(outputs.get('eligible'), 'false');
+assert.equal(outputs.get('reason'), 'protected-branch');
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
 NODE
 
 echo "PASS: CI style auto-fix target policy"
