@@ -12,6 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add the shared component-style compiler boundary with deterministic scoping,
   stable diagnostics, structured CSS IR, and CSS serialization.
 
+### Fixed
+
+- *(style)* validate angle units, grid area and line syntax, zero-valued
+  shorthand components, and media-query token semantics consistently with CSS.
+
 ## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-manouche@v0.2.0...reinhardt-manouche@v0.3.0) - 2026-06-28
 
 Stable release of `reinhardt-manouche` for the Reinhardt 0.3.0 line. This

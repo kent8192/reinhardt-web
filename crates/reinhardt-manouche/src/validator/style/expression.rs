@@ -902,7 +902,7 @@ fn is_whole_unchecked(expression: &TypedValueExpr) -> bool {
 fn expression_matches_type(expression: &TypedValueExpr, expected: SemanticType) -> bool {
 	if expression.is_contextual_zero()
 		&& expected.numeric_dimension().is_some()
-		&& expected != SemanticType::Time
+		&& !matches!(expected, SemanticType::Angle | SemanticType::Time)
 	{
 		return true;
 	}
@@ -1255,6 +1255,9 @@ fn grid_template_areas_are_rectangular(value: &TypedValueExpr) -> bool {
 	let mut bounds: HashMap<&str, (usize, usize, usize, usize, usize)> = HashMap::new();
 	for (row_index, row) in rows.iter().enumerate() {
 		for (column_index, cell) in row.iter().enumerate() {
+			if !grid_template_area_cell_is_valid(cell) {
+				return false;
+			}
 			if cell.bytes().all(|byte| byte == b'.') {
 				continue;
 			}
@@ -1285,6 +1288,21 @@ fn grid_template_area_cells(expression: &TypedValueExpr) -> Option<Vec<&str>> {
 	Some(string.value.split_ascii_whitespace().collect())
 }
 
+fn grid_template_area_cell_is_valid(cell: &str) -> bool {
+	!cell.is_empty()
+		&& (cell.bytes().all(|byte| byte == b'.')
+			|| (!is_css_wide_keyword(cell)
+				&& cell.bytes().next().is_some_and(|byte| {
+					byte.is_ascii_alphabetic()
+						|| byte == b'_' || (byte == b'-'
+						&& cell.as_bytes().get(1).copied().is_some_and(|next| {
+							next.is_ascii_alphabetic() || next == b'_' || next == b'-'
+						}))
+				}) && cell
+				.bytes()
+				.all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))))
+}
+
 fn background_position_and_size_are_not_split(value: &TypedValueExpr) -> bool {
 	comma_items(value).into_iter().all(|layer| {
 		let items = sequence_items(layer);
@@ -1308,7 +1326,7 @@ fn is_background_position_component(expression: &TypedValueExpr) -> bool {
 		|| matches!(
 			expression.value_type,
 			SemanticType::Length | SemanticType::LengthPercentage | SemanticType::Percentage
-		)
+		) || expression.is_contextual_zero()
 }
 
 fn text_decoration_lines_are_unique(value: &TypedValueExpr) -> bool {
@@ -1325,7 +1343,10 @@ fn box_shadow_lengths_are_contiguous(value: &TypedValueExpr) -> bool {
 		let indices = sequence_items(shadow)
 			.iter()
 			.enumerate()
-			.filter_map(|(index, item)| (item.value_type == SemanticType::Length).then_some(index))
+			.filter_map(|(index, item)| {
+				(item.value_type == SemanticType::Length || item.is_contextual_zero())
+					.then_some(index)
+			})
 			.collect::<Vec<_>>();
 		indices.windows(2).all(|pair| pair[1] == pair[0] + 1)
 	})
@@ -1933,11 +1954,10 @@ mod tests {
 	#[case(SemanticType::Length)]
 	#[case(SemanticType::LengthPercentage)]
 	#[case(SemanticType::Percentage)]
-	#[case(SemanticType::Angle)]
 	#[case(SemanticType::Number)]
 	#[case(SemanticType::Integer)]
 	#[case(SemanticType::GridFraction)]
-	fn unitless_zero_is_contextually_accepted_for_non_time_numeric_dimensions(
+	fn unitless_zero_is_contextually_accepted_for_non_angle_non_time_numeric_dimensions(
 		#[case] expected: SemanticType,
 	) {
 		// Arrange
@@ -1970,7 +1990,6 @@ mod tests {
 				length: Length = 0;
 				length_percentage: LengthPercentage = 0;
 				percentage: Percentage = 0;
-				angle: Angle = 0;
 				time: Time = 0s;
 				number: Number = 0;
 				integer: Integer = 0;
@@ -1980,7 +1999,6 @@ mod tests {
 				width: 0;
 				opacity: 0;
 				z-index: 0;
-				transform: rotate(0);
 				transition-duration: 0s;
 				grid-template-columns: 0;
 			}
@@ -1990,8 +2008,40 @@ mod tests {
 		let typed = validated_text(source);
 
 		// Assert
-		assert_eq!(typed.variables.len(), 8);
+		assert_eq!(typed.variables.len(), 7);
 		assert_eq!(typed.items.len(), 1);
+	}
+
+	#[rstest]
+	#[case("vars { angle: Angle = 0; } .card {}", "vars.angle")]
+	#[case(".card { font-style: (oblique, 0); }", "font-style")]
+	fn rejects_unitless_zero_in_angle_property_slots(#[case] source: &str, #[case] property: &str) {
+		// Arrange and Act
+		let kind = diagnostic_kind_text(source);
+
+		// Assert
+		assert!(matches!(
+			kind,
+			StyleDiagnosticKind::PropertyValueMismatch { property: actual, .. }
+				if actual == property
+		));
+	}
+
+	#[rstest]
+	fn rejects_unitless_zero_in_rotate() {
+		// Arrange and Act
+		let kind = diagnostic_kind_text(".card { transform: rotate(0); }");
+
+		// Assert
+		assert_eq!(
+			kind,
+			StyleDiagnosticKind::InvalidFunctionArgument {
+				function: "rotate".into(),
+				index: 1,
+				expected: "Angle".into(),
+				found: "Integer".into(),
+			}
+		);
 	}
 
 	#[rstest]
@@ -2344,6 +2394,7 @@ mod tests {
 			".card { flex: min-content; }",
 			".card { text-decoration: (solid, red, 2px); }",
 			".card { box-shadow: (red, 0, 0, 4px); }",
+			".card { box-shadow: (1px, 0, 2px, red); }",
 			".card { box-shadow: (0, 0, 4px, inset); }",
 			".card { box-shadow: none; }",
 			".card { box-shadow: [(0, 0, 4px, red), (1px, 1px, blue)]; }",
@@ -2372,6 +2423,8 @@ mod tests {
 			".card { grid-template-columns: 1fr; }",
 			".card { grid-column: (span, card-start); }",
 			".card { grid-row: (span, 2); }",
+			".card { grid-column: (2, sidebar); }",
+			".card { grid-column: (span, 2, sidebar); }",
 			".card { flex-basis: content; }",
 			".card { flex: content; }",
 			".card { max-width: max-content; }",
@@ -2408,6 +2461,7 @@ mod tests {
 			".card { grid-row: (span, span); }",
 			".card { grid-template-areas: (\"a a\", \"a .\"); }",
 			".card { grid-template-areas: (\"a\", \"a a\"); }",
+			".card { grid-template-areas: (\"nav.main nav\", \"nav.main nav\"); }",
 			".card { transition-duration: 0; }",
 			".card { transition: (opacity, 0, ease); }",
 			".card { background-position: (left, right); }",
@@ -2419,6 +2473,7 @@ mod tests {
 			".card { grid-area: 0; }",
 			".card { background-position: (1px, 2px, 3px); }",
 			".card { background: (left, slash(right, cover)); }",
+			".card { background: (0, slash(right, cover)); }",
 			".card { touch-action: (pan-left, pan-right); }",
 			".card { color: red.mix(blue, 150%); }",
 			".card { transition-property: [none, opacity]; }",

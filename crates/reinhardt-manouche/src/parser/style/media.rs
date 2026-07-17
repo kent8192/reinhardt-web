@@ -330,7 +330,7 @@ fn next_is_boolean_operand(tokens: &[StyleMediaToken], index: usize) -> bool {
 		(
 			Some(StyleMediaToken::Identifier(identifier)),
 			Some(StyleMediaToken::Parenthesized(_))
-		) if identifier.as_str() == "not"
+		) if identifier.as_str().eq_ignore_ascii_case("not")
 	)
 }
 
@@ -534,11 +534,19 @@ fn validate_media_feature(tokens: &[StyleMediaToken]) -> syn::Result<()> {
 		.collect();
 	match colon_indexes.as_slice() {
 		[] if matches!(tokens, [StyleMediaToken::Identifier(_)]) => Ok(()),
-		[1] if matches!(tokens.first(), Some(StyleMediaToken::Identifier(_)))
-			&& valid_colon_feature_value(&tokens[2..]) =>
-		{
-			Ok(())
-		}
+		[1] => match tokens.first() {
+			Some(StyleMediaToken::Identifier(feature))
+				if valid_colon_feature_value(feature.as_str(), &tokens[2..]) =>
+			{
+				Ok(())
+			}
+			_ => Err(syn::Error::new(
+				tokens
+					.first()
+					.map_or_else(Span::call_site, StyleMediaToken::span),
+				"invalid media feature expression",
+			)),
+		},
 		_ => Err(syn::Error::new(
 			tokens
 				.first()
@@ -610,8 +618,43 @@ fn validate_media_range(
 	}
 }
 
-fn valid_colon_feature_value(tokens: &[StyleMediaToken]) -> bool {
-	matches!(tokens, [StyleMediaToken::Identifier(_)]) || valid_numeric_feature_value(tokens)
+fn valid_colon_feature_value(feature: &str, tokens: &[StyleMediaToken]) -> bool {
+	valid_numeric_feature_value(tokens)
+		|| (matches!(tokens, [StyleMediaToken::Identifier(_)])
+			&& is_discrete_media_feature(feature))
+}
+
+fn is_discrete_media_feature(feature: &str) -> bool {
+	const DISCRETE_MEDIA_FEATURES: &[&str] = &[
+		"any-hover",
+		"any-pointer",
+		"color-gamut",
+		"device-posture",
+		"display-mode",
+		"dynamic-range",
+		"forced-colors",
+		"hover",
+		"inverted-colors",
+		"light-level",
+		"nav-controls",
+		"overflow-block",
+		"overflow-inline",
+		"orientation",
+		"pointer",
+		"prefers-color-scheme",
+		"prefers-contrast",
+		"prefers-reduced-data",
+		"prefers-reduced-motion",
+		"prefers-reduced-transparency",
+		"scan",
+		"scripting",
+		"update",
+		"video-color-gamut",
+		"video-dynamic-range",
+	];
+	DISCRETE_MEDIA_FEATURES
+		.iter()
+		.any(|candidate| feature.eq_ignore_ascii_case(candidate))
 }
 
 fn valid_numeric_feature_value(tokens: &[StyleMediaToken]) -> bool {
@@ -755,12 +798,16 @@ fn is_rust_control_flow_keyword(value: &str) -> bool {
 }
 
 fn media_operator(value: &str) -> Option<StyleMediaOperatorKind> {
-	match value {
-		"and" => Some(StyleMediaOperatorKind::And),
-		"or" => Some(StyleMediaOperatorKind::Or),
-		"not" => Some(StyleMediaOperatorKind::Not),
-		"only" => Some(StyleMediaOperatorKind::Only),
-		_ => None,
+	if value.eq_ignore_ascii_case("and") {
+		Some(StyleMediaOperatorKind::And)
+	} else if value.eq_ignore_ascii_case("or") {
+		Some(StyleMediaOperatorKind::Or)
+	} else if value.eq_ignore_ascii_case("not") {
+		Some(StyleMediaOperatorKind::Not)
+	} else if value.eq_ignore_ascii_case("only") {
+		Some(StyleMediaOperatorKind::Only)
+	} else {
+		None
 	}
 }
 
@@ -1035,6 +1082,29 @@ mod tests {
 	}
 
 	#[rstest]
+	fn parses_ascii_case_insensitive_media_operators() {
+		// Arrange
+		let input = quote! {
+			@media NOT screen AND NOT (color) {}
+		};
+
+		// Act
+		let media = first_media(input);
+		let mut operators = Vec::new();
+		collect_media_operators(&media.condition.tokens, &mut operators);
+
+		// Assert
+		assert_eq!(
+			operators,
+			vec![
+				StyleMediaOperatorKind::Not,
+				StyleMediaOperatorKind::And,
+				StyleMediaOperatorKind::Not,
+			]
+		);
+	}
+
+	#[rstest]
 	fn rejects_same_level_mixed_boolean_connectives() {
 		// Arrange
 		let input = quote! {
@@ -1187,6 +1257,19 @@ mod tests {
 	}
 
 	#[rstest]
+	#[case(quote! { @media (orientation: landscape) {} })]
+	#[case(quote! { @media (prefers-color-scheme: dark) {} })]
+	fn accepts_identifier_values_for_discrete_media_features(
+		#[case] input: proc_macro2::TokenStream,
+	) {
+		// Act
+		let media = first_media(input);
+
+		// Assert
+		assert_eq!(media.condition.tokens.len(), 1);
+	}
+
+	#[rstest]
 	#[case(
 		quote! { @media (width: +1px) {} },
 		2,
@@ -1330,6 +1413,19 @@ mod tests {
 
 		// Act
 		let error = parse_style(input).unwrap_err();
+
+		// Assert
+		assert_eq!(error.to_string(), "invalid media feature expression");
+	}
+
+	#[rstest]
+	#[case(quote! { @media (width: auto) {} })]
+	#[case(quote! { @media (resolution: screen) {} })]
+	fn rejects_identifier_values_for_numeric_media_features(
+		#[case] input: proc_macro2::TokenStream,
+	) {
+		// Act
+		let error = parse_style(input).expect_err("numeric media features must reject identifiers");
 
 		// Assert
 		assert_eq!(error.to_string(), "invalid media feature expression");

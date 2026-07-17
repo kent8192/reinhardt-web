@@ -1449,13 +1449,35 @@ const BORDER: ValueGrammar = ValueGrammar::Unordered {
 	preserve_source_order: false,
 };
 const GRID_LINE_NAME: ValueGrammar = ValueGrammar::IdentifierExcept(&["auto", "span"]);
-const INTEGER_OR_GRID_LINE_NAME: ValueGrammar =
-	ValueGrammar::Or(&[POSITIVE_INTEGER, GRID_LINE_NAME]);
+const GRID_LINE_NUMBER_AND_NAME: ValueGrammar = ValueGrammar::Unordered {
+	members: &[required("number", &I), required("name", &GRID_LINE_NAME)],
+	min_members: 2,
+	preserve_source_order: true,
+};
+const POSITIVE_GRID_LINE_NUMBER_AND_NAME: ValueGrammar = ValueGrammar::Unordered {
+	members: &[
+		required("number", &POSITIVE_INTEGER),
+		required("name", &GRID_LINE_NAME),
+	],
+	min_members: 2,
+	preserve_source_order: true,
+};
+const SPAN_GRID_LINE_VALUE: ValueGrammar = ValueGrammar::Or(&[
+	POSITIVE_INTEGER,
+	GRID_LINE_NAME,
+	POSITIVE_GRID_LINE_NUMBER_AND_NAME,
+]);
 const SPAN_GRID_LINE: ValueGrammar = ValueGrammar::Ordered(&[
 	required("span", &KW_SPAN),
-	required("line", &INTEGER_OR_GRID_LINE_NAME),
+	required("line", &SPAN_GRID_LINE_VALUE),
 ]);
-const GRID_LINE: ValueGrammar = ValueGrammar::Or(&[KW_AUTO, I, GRID_LINE_NAME, SPAN_GRID_LINE]);
+const GRID_LINE: ValueGrammar = ValueGrammar::Or(&[
+	KW_AUTO,
+	I,
+	GRID_LINE_NAME,
+	GRID_LINE_NUMBER_AND_NAME,
+	SPAN_GRID_LINE,
+]);
 const TRACK: ValueGrammar = ValueGrammar::Or(&[NLP, NFR, KW_TRACK]);
 const TRACK_LIST: ValueGrammar = ValueGrammar::Space {
 	min: 1,
