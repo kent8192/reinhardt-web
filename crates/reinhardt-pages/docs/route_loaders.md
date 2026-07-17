@@ -44,6 +44,9 @@ loaders concurrently. Only the latest navigation generation can commit. A
 superseded attempt drops its loader futures and releases its query leases;
 Reinhardt-managed browser requests also receive an abort signal. Work started
 by application code outside the loader future is intentionally not cancelled.
+The matched leaf and layout guards are evaluated again immediately before an
+asynchronously prepared route commits, so a session or authorization change
+during loading cannot commit a route that is no longer allowed.
 
 `use_transition().is_pending` includes coordinator navigation pending state in
 addition to local transition work and becomes `true` synchronously when a
@@ -57,15 +60,23 @@ RouterOutlet::new(router).navigation_error_fallback(|error| {
 })
 ```
 
+When that fallback reacts after a failed later navigation, `RouterOutlet`
+re-enters the currently mounted loader store before rebuilding the retained
+route, so loader bindings remain available while the fallback is displayed.
+
 Loader errors expose only their safe public message and optional status. The
 internal diagnostic cause never enters the browser state payload. Failed pop
 navigations restore the committed history entry after preparation fails.
 On first launch, legacy or host-created history state without a framework entry
-index is upgraded in place to index `0`; an existing framework index is retained
-across reloads so back/forward restoration remains monotonic. A loader route
-opened directly without an SSR state script prepares its initial values on the
-client before the first route mount. Browser history preparation preserves the
-search query for both initial loads and back/forward navigations.
+index is upgraded in place to index `0`, retaining compatible custom state and
+scroll metadata while taking the current URL, route parameters, and query from
+the browser; an existing framework index is retained across reloads so
+back/forward restoration remains monotonic. A loader route opened directly
+without an SSR state script prepares its initial values on the client before
+the first route mount. If that initial preparation fails, the root renders a
+safe loader-error surface instead of remaining empty. Browser history
+preparation preserves the search query for both initial loads and back/forward
+navigations.
 DOM-dependent lifecycle callbacks (`after_launch`, `on_path`, and
 `on_path_pattern`) wait for that prepared route to commit and mount. Path
 subscriptions match the pathname, while their `PathCtx::path()` value retains
@@ -109,6 +120,8 @@ assert_eq!(output.status, 200);
 
 The first loader error cancels the shared preparation source and returns its
 safe error response without waiting for slower sibling loaders.
+An unmatched request uses the router's configured `not_found` page while still
+returning status `404`, matching client-side navigation behavior.
 
 Successful values are registered in `SsrState` before the page is serialized,
 so the emitted HTML contains both a stable `route-loader:<id>` entry and the

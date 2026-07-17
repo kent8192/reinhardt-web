@@ -288,6 +288,22 @@ async fn client_only_initial_loader_prepares_query_values_without_ssr_state() {
 }
 
 #[wasm_bindgen_test]
+async fn client_only_initial_loader_failure_renders_a_safe_error_surface() {
+	let root = install_app_root_at("/failed");
+	ClientLauncher::new("#app")
+		.router_client(build_router)
+		.launch()
+		.expect("client-only loader launch succeeds before asynchronous failure");
+
+	yield_to_tasks().await;
+	yield_to_tasks().await;
+
+	assert_eq!(current_path(), "/failed");
+	assert!(root.inner_html().contains("data-route-error"));
+	assert!(root.inner_html().contains("safe loader failure"));
+}
+
+#[wasm_bindgen_test]
 async fn client_only_initial_loader_activates_post_mount_lifecycle_after_commit() {
 	let root = install_app_root_at("/query-loaded?tab=initial");
 	INITIAL_LOADER_AFTER_LAUNCH_SAW_MOUNT.with(|value| value.set(false));

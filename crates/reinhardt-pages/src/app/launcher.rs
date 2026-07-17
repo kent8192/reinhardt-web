@@ -12,13 +12,15 @@ use super::{
 	store_spa_router, with_spa_router,
 };
 #[cfg(wasm)]
-use crate::component::MountError;
-#[cfg(wasm)]
-use crate::component::PageExt as _;
-#[cfg(wasm)]
 use crate::component::reactive_if::{
 	ReactiveNodeStore, clear_reactive_node_store, new_reactive_node_store, with_reactive_node_store,
 };
+#[cfg(any(wasm, test))]
+use crate::component::{IntoPage as _, Page, PageElement};
+#[cfg(wasm)]
+use crate::component::{MountError, PageExt as _};
+#[cfg(any(wasm, test))]
+use crate::router::loader::RouteLoaderError;
 #[cfg(wasm)]
 use crate::router::loader::{
 	LoaderStore, active_loader_store, loader_cache_id, route_context, with_loader_store,
@@ -728,8 +730,40 @@ impl ClientLauncher {
 	}
 }
 
+#[cfg(any(wasm, test))]
+fn initial_loader_error_page(error: Option<RouteLoaderError>) -> Page {
+	let Some(error) = error else {
+		return Page::Empty;
+	};
+	PageElement::new("div")
+		.attr("data-route-error", "loader")
+		.child(error.public_message().to_owned())
+		.into_page()
+}
+
 #[cfg(wasm)]
 impl ClientLauncher {
+	fn mount_initial_loader_error_surface(
+		root_el: &web_sys::Element,
+	) -> Result<(), crate::component::MountError> {
+		crate::component::cleanup_reactive_nodes();
+		let scope = reinhardt_core::reactive::ReactiveScope::new();
+		let page = Page::reactive(move || {
+			let error = crate::app::try_with_navigation_coordinator(|coordinator| {
+				coordinator.error().get()
+			})
+			.flatten();
+			initial_loader_error_page(error)
+		});
+		root_el.set_inner_html("");
+		let root = crate::dom::Element::new(root_el.clone());
+		let result = scope.enter(|| page.mount(&root));
+		if result.is_ok() {
+			crate::component::store_reactive_scope(scope);
+		}
+		result
+	}
+
 	/// Render the current route into the given root element.
 	///
 	/// Performs `cleanup_reactive_nodes` -> `Router::render_current` ->
@@ -1139,6 +1173,11 @@ impl ClientLauncher {
 		std::mem::forget(render_subscription);
 
 		if let Some(path) = initial_preparation_path {
+			Self::mount_initial_loader_error_surface(&root_el).map_err(|error| {
+				wasm_bindgen::JsValue::from_str(&format!(
+					"initial loader error surface failed to mount: {error}"
+				))
+			})?;
 			let result = crate::app::try_with_navigation_coordinator(|coordinator| {
 				coordinator.navigate(path, super::NavigationIntent::Initial)
 			});
@@ -1173,6 +1212,16 @@ impl ClientLauncher {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn initial_loader_error_page_renders_a_safe_failure_surface() {
+		assert_eq!(initial_loader_error_page(None).render_to_string(), "");
+		let page = initial_loader_error_page(Some(RouteLoaderError::new("initial loader failed")));
+		assert_eq!(
+			page.render_to_string(),
+			"<div data-route-error=\"loader\">initial loader failed</div>"
+		);
+	}
 	use rstest::*;
 
 	#[rstest]

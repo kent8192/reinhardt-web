@@ -97,6 +97,11 @@ impl NavigationCoordinator {
 		self.mounted_store.borrow().clone()
 	}
 
+	#[cfg(test)]
+	pub(crate) fn set_mounted_store_for_test(&self, store: LoaderStore) {
+		self.mounted_store.borrow_mut().replace(store);
+	}
+
 	/// Returns the currently committed history index used for legacy popstate
 	/// entries that do not carry framework metadata.
 	pub(crate) fn committed_index(&self) -> i64 {
@@ -318,6 +323,10 @@ impl NavigationCoordinator {
 		if !self.is_current_generation(generation) {
 			return;
 		}
+		if !matched.guards_allow() {
+			self.commit_unmatched(generation, path, intent);
+			return;
+		}
 		let entry_index = match intent {
 			NavigationIntent::Push => self.committed_index.get().saturating_add(1),
 			NavigationIntent::Replace | NavigationIntent::Initial => self.committed_index.get(),
@@ -366,6 +375,7 @@ impl NavigationCoordinator {
 		self.committed_index.set(entry_index);
 		self.pending.set(false);
 		self.error.set(None);
+		self.active_attempt.borrow_mut().take();
 	}
 }
 
@@ -431,6 +441,7 @@ mod tests {
 
 		thread_local! {
 			static GATE_OPEN: Cell<bool> = const { Cell::new(false) };
+			static GUARD_ALLOWS: Cell<bool> = const { Cell::new(true) };
 			static SLOW_LOADER_STARTS: Cell<usize> = const { Cell::new(0) };
 			static LAYOUT_LOADER_STARTS: Cell<usize> = const { Cell::new(0) };
 			static LEAF_LOADER_STARTS: Cell<usize> = const { Cell::new(0) };
@@ -558,6 +569,7 @@ mod tests {
 
 		fn reset_test_state() {
 			GATE_OPEN.with(|gate| gate.set(false));
+			GUARD_ALLOWS.with(|allows| allows.set(true));
 			SLOW_LOADER_STARTS.with(|starts| starts.set(0));
 			LAYOUT_LOADER_STARTS.with(|starts| starts.set(0));
 			LEAF_LOADER_STARTS.with(|starts| starts.set(0));
@@ -614,6 +626,40 @@ mod tests {
 					.expect("successful navigation retains its loader store");
 				let html = with_loader_store(&store, || router.render_current().render_to_string());
 				assert_eq!(html, "prepared slow route");
+			});
+		}
+
+		#[test]
+		fn loader_navigation_rechecks_guards_before_commit() {
+			ReactiveScope::run(|| {
+				reset_test_state();
+				let tasks = Rc::new(RefCell::new(VecDeque::new()));
+				let tasks_for_sink = Rc::clone(&tasks);
+				let _sink = crate::platform::install_task_sink(move |task| {
+					tasks_for_sink.borrow_mut().push_back(task);
+				});
+				let router = Rc::new(
+					router_with_loaded_routes()
+						.not_found(|| Page::text("guard denied"))
+						.with_route_guard("coordinator-loaded", |_| GUARD_ALLOWS.with(Cell::get)),
+				);
+				let coordinator = NavigationCoordinator::new(Rc::clone(&router))
+					.expect("the test loader registry should be valid");
+
+				coordinator
+					.navigate("/loaded/".to_owned(), NavigationIntent::Push)
+					.expect("loader navigation is accepted synchronously");
+				poll_rounds(&tasks, 4);
+				assert!(coordinator.pending().get());
+
+				GUARD_ALLOWS.with(|allows| allows.set(false));
+				GATE_OPEN.with(|gate| gate.set(true));
+				poll_rounds(&tasks, 8);
+
+				assert_eq!(router.current_path().get(), "/loaded/");
+				assert_eq!(router.current_route_name().get(), None);
+				assert_eq!(router.render_current().render_to_string(), "guard denied");
+				assert!(!coordinator.pending().get());
 			});
 		}
 

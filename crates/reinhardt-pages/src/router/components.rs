@@ -4,7 +4,7 @@
 //! declarative navigation in component trees.
 
 use crate::component::{Component, IntoPage, Page, PageElement};
-use crate::router::loader::RouteLoaderError;
+use crate::router::loader::{LoaderStore, RouteLoaderError, with_loader_store};
 use reinhardt_urls::routers::ClientRouter;
 use std::rc::Rc;
 
@@ -215,7 +215,11 @@ impl Component for RouterOutlet {
 		let router = self.router.clone();
 		let fallback = self.navigation_error_fallback.clone();
 		Page::reactive(move || {
-			let current = router.render_current();
+			let mounted_store = crate::app::try_with_navigation_coordinator(|coordinator| {
+				coordinator.mounted_store()
+			})
+			.flatten();
+			let current = render_current_with_mounted_loader_store(&router, mounted_store);
 			if let Some(fallback) = &fallback
 				&& let Some(Some(error)) =
 					crate::app::try_with_navigation_coordinator(|coordinator| {
@@ -230,6 +234,16 @@ impl Component for RouterOutlet {
 	fn name() -> &'static str {
 		"RouterOutlet"
 	}
+}
+
+fn render_current_with_mounted_loader_store(
+	router: &ClientRouter,
+	mounted_store: Option<LoaderStore>,
+) -> Page {
+	if let Some(store) = mounted_store {
+		return with_loader_store(&store, || router.render_current());
+	}
+	router.render_current()
 }
 
 impl IntoPage for RouterOutlet {
@@ -356,6 +370,7 @@ where
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::router::loader::active_loader_store;
 	use reinhardt_core::reactive::ReactiveScope;
 	use reinhardt_urls::routers::ClientRouter;
 	use serial_test::serial;
@@ -364,8 +379,18 @@ mod tests {
 	#[serial]
 	fn router_outlet_reacts_to_loader_errors_after_its_initial_render() {
 		ReactiveScope::run(|| {
-			let router = ClientRouter::new().route("home", "/", || Page::text("HOME"));
+			let router = ClientRouter::new().route("home", "/", || {
+				assert!(
+					active_loader_store().is_some(),
+					"loader-backed rerenders must retain their mounted store"
+				);
+				Page::text("HOME")
+			});
 			crate::app::__install_client_router_for_test(router.clone());
+			crate::app::try_with_navigation_coordinator(|coordinator| {
+				coordinator.set_mounted_store_for_test(LoaderStore::new());
+			})
+			.expect("test router installs a navigation coordinator");
 			let outlet = RouterOutlet::new(router).navigation_error_fallback(|error| {
 				Page::text(format!("FAILED: {}", error.public_message()))
 			});
