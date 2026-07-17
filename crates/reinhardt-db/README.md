@@ -309,6 +309,8 @@ pub full_name: String,
   `pk` member or the corresponding field entry; matching values are required when both are set
 - Writable fixture validation that omits database-generated columns while preserving
   required-field and Rust-type checks
+- Nullable foreign-key fixture fields may be omitted; supplied values remain limited to
+  scalar identifiers or `null`
 - Support for composite primary keys
 
 ### Query with QuerySet

@@ -3486,7 +3486,7 @@ fn generate_fixture_validation(
 		};
 		let deserialize_with = if is_nullable {
 			has_nullable_fixture_foreign_key = true;
-			quote! { #[serde(deserialize_with = "__reinhardt_validate_nullable_fixture_foreign_key")] }
+			quote! { #[serde(default, deserialize_with = "__reinhardt_validate_nullable_fixture_foreign_key")] }
 		} else {
 			quote! { #[serde(deserialize_with = "__reinhardt_validate_required_fixture_foreign_key")] }
 		};
@@ -7252,6 +7252,30 @@ mod tests {
 		assert!(
 			output.contains("validate_required_fixture_foreign_key"),
 			"required foreign keys must use a null-rejecting fixture deserializer"
+		);
+	}
+
+	#[test]
+	fn test_fixture_projection_allows_omitted_nullable_foreign_keys() {
+		let input = quote! {
+			#[model(app_label = "fixture_tests", table_name = "fixture_models")]
+			struct FixtureModel {
+				#[field(primary_key = true)]
+				id: i64,
+				#[rel(foreign_key, null = true)]
+				author: ForeignKeyField<Author>,
+			}
+		};
+
+		let output = model_derive_impl(syn::parse2(input).unwrap())
+			.expect("fixture model must generate")
+			.to_string();
+
+		assert!(
+			output.contains(
+				"default , deserialize_with = \"__reinhardt_validate_nullable_fixture_foreign_key\""
+			),
+			"nullable foreign keys must permit omitted fixture relation values"
 		);
 	}
 
