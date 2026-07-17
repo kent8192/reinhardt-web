@@ -647,29 +647,21 @@ mod tests {
 	}
 
 	#[test]
-	#[serial]
+	#[serial(reactive_runtime)]
 	fn test_notify_signal_change() {
-		let runtime = Runtime::new();
+		crate::reactive::ReactiveScope::run(|| {
+			let signal = crate::reactive::Signal::new(0_i32);
+			let signal_for_effect = signal;
+			let effect = crate::reactive::Effect::new(move || {
+				let _ = signal_for_effect.get();
+			});
 
-		let signal_id = NodeId::new();
-		let effect_id = NodeId::new();
-
-		// Manually add dependency
-		{
-			let mut graph = runtime.dependency_graph.borrow_mut();
-			graph
-				.entry(signal_id)
-				.or_default()
-				.subscribers
-				.push(effect_id);
-		}
-
-		// Notify change
-		runtime.notify_signal_change(signal_id);
-
-		// Verify update was scheduled
-		let pending = runtime.pending_updates.borrow();
-		assert!(pending.contains(&effect_id));
+			with_runtime(|runtime| {
+				runtime.notify_signal_change(signal.id());
+				assert!(runtime.pending_updates.borrow().contains(&effect.id()));
+				runtime.flush_updates();
+			});
+		});
 	}
 
 	#[test]
