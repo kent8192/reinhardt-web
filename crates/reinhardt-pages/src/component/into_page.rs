@@ -53,7 +53,10 @@ pub(crate) fn controlled_attribute_is_overridden(
 ) -> bool {
 	binding.is_some_and(|binding| match binding.kind() {
 		ControlKind::Text | ControlKind::Number => name.eq_ignore_ascii_case("value"),
-		ControlKind::Checkbox | ControlKind::Radio => name.eq_ignore_ascii_case("checked"),
+		ControlKind::Checkbox => name.eq_ignore_ascii_case("checked"),
+		ControlKind::Radio => {
+			name.eq_ignore_ascii_case("checked") || name.eq_ignore_ascii_case("value")
+		}
 		ControlKind::SelectOne | ControlKind::SelectMany => false,
 	})
 }
@@ -80,12 +83,15 @@ pub(crate) fn initialize_control_default(element: &Element, binding: &ControlBin
 		(ControlKind::SelectOne, ControlValue::Text(value)) => {
 			if let Some(select) = element.as_web_sys().dyn_ref::<web_sys::HtmlSelectElement>() {
 				let options = select.options();
+				let mut selected = false;
 				for index in 0..options.length() {
 					if let Some(option) = options
 						.item(index)
 						.and_then(|option| option.dyn_into::<web_sys::HtmlOptionElement>().ok())
 					{
-						option.set_default_selected(option.value() == value);
+						let matches = !selected && option.value() == value;
+						option.set_default_selected(matches);
+						selected |= matches;
 					}
 				}
 			}
