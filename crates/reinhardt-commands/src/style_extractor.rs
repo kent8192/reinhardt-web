@@ -103,6 +103,8 @@ pub struct StylePackageContext {
 	pub src_root: PathBuf,
 	/// Cargo library target name used for the selected Pages WASM bundle.
 	wasm_target_name: String,
+	/// Whether the selected package exports a cdylib target for Pages WASM.
+	has_cdylib_target: bool,
 	/// Cargo library targets compiled into the selected Pages WASM bundle.
 	source_roots: Vec<StyleSourceRoot>,
 }
@@ -133,6 +135,11 @@ impl StylePackageContext {
 		&self.wasm_target_name
 	}
 
+	/// Return whether Cargo metadata exposes a cdylib target for the selected package.
+	pub fn has_cdylib_target(&self) -> bool {
+		self.has_cdylib_target
+	}
+
 	/// Select a package from already loaded Cargo metadata.
 	pub fn from_metadata(
 		metadata: &Metadata,
@@ -146,6 +153,12 @@ impl StylePackageContext {
 			.ok_or_else(|| "selected package manifest has no parent directory".to_string())?
 			.join("src");
 		let source_roots = style_source_roots(metadata, package)?;
+		let has_cdylib_target = package.targets.iter().any(|target| {
+			target
+				.crate_types
+				.iter()
+				.any(|kind| matches!(kind, cargo_metadata::CrateType::CDyLib))
+		});
 		let wasm_target_name = package
 			.targets
 			.iter()
@@ -171,6 +184,7 @@ impl StylePackageContext {
 				.into_std_path_buf(),
 			src_root,
 			wasm_target_name,
+			has_cdylib_target,
 			source_roots,
 		})
 	}

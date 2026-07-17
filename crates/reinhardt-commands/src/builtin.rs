@@ -1820,16 +1820,14 @@ fn spa_excluded_prefixes(generated_style_url: &str) -> Vec<String> {
 
 #[cfg(feature = "pages")]
 fn require_pages_wasm_target(
-	package_manifest_path: &std::path::Path,
-	package_name: &str,
+	package_context: &crate::StylePackageContext,
 	has_component_styles: bool,
 ) -> Result<(), crate::wasm_builder::WasmBuildError> {
-	if has_component_styles
-		&& !crate::wasm_builder::detect_cdylib_in_cargo_toml(package_manifest_path)
-	{
+	if has_component_styles && !package_context.has_cdylib_target() {
 		return Err(
 			crate::wasm_builder::WasmBuildError::PackageResolutionFailed(format!(
-				"selected package `{package_name}` has component styles but no Pages cdylib target"
+				"selected package `{}` has component styles but no Pages cdylib target",
+				package_context.package_name
 			)),
 		);
 	}
@@ -2158,12 +2156,8 @@ impl BaseCommand for RunServerCommand {
 					"component style state lock was poisoned".to_string(),
 				)
 			})?;
-			require_pages_wasm_target(
-				&state.package_context().package_manifest_path,
-				&state.package_context().package_name,
-				true,
-			)
-			.map_err(|error| crate::CommandError::ExecutionError(error.to_string()))?;
+			require_pages_wasm_target(state.package_context(), true)
+				.map_err(|error| crate::CommandError::ExecutionError(error.to_string()))?;
 		}
 		#[cfg(not(feature = "pages"))]
 		#[cfg_attr(not(feature = "server"), allow(unused_variables))]
@@ -3401,9 +3395,8 @@ impl RunServerCommand {
 			feature_selection.clone(),
 		)
 		.map_err(crate::wasm_builder::WasmBuildError::PackageResolutionFailed)?;
-		let package_manifest_path = &package_context.package_manifest_path;
 		// Only build if this project exports cdylib
-		if !crate::wasm_builder::detect_cdylib_in_cargo_toml(package_manifest_path) {
+		if !package_context.has_cdylib_target() {
 			return Ok(());
 		}
 		let package_name = package_context.package_name.clone();
@@ -4672,16 +4665,49 @@ mod tests {
 	fn styled_packages_without_a_pages_target_are_rejected() {
 		let directory = tempfile::tempdir().expect("create package directory");
 		let manifest_path = directory.path().join("Cargo.toml");
+		std::fs::create_dir(directory.path().join("src")).expect("create package source directory");
+		std::fs::write(directory.path().join("src/lib.rs"), "").expect("write package source");
 		std::fs::write(
 			&manifest_path,
 			"[package]\nname = \"server-only\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
 		)
 		.expect("write package manifest");
 
-		let error = require_pages_wasm_target(&manifest_path, "server-only", true)
+		let package_context = crate::StylePackageContext::resolve(&manifest_path, None)
+			.expect("resolve package metadata");
+		let error = require_pages_wasm_target(&package_context, true)
 			.expect_err("component styles require a Pages cdylib target");
 
 		assert!(error.to_string().contains("Pages cdylib target"));
+	}
+
+	#[cfg(feature = "pages")]
+	#[test]
+	fn styled_packages_with_multiline_cdylib_targets_are_accepted() {
+		let directory = tempfile::tempdir().expect("create package directory");
+		let manifest_path = directory.path().join("Cargo.toml");
+		std::fs::create_dir(directory.path().join("src")).expect("create package source directory");
+		std::fs::write(directory.path().join("src/lib.rs"), "").expect("write package source");
+		std::fs::write(
+			&manifest_path,
+			concat!(
+				"[package]\n",
+				"name = \"multiline-cdylib\"\n",
+				"version = \"0.1.0\"\n",
+				"edition = \"2024\"\n\n",
+				"[lib]\n",
+				"crate-type = [\n",
+				"  \"cdylib\",\n",
+				"  \"rlib\",\n",
+				"]\n",
+			),
+		)
+		.expect("write package manifest");
+
+		let package_context = crate::StylePackageContext::resolve(&manifest_path, None)
+			.expect("resolve package metadata");
+		require_pages_wasm_target(&package_context, true)
+			.expect("Cargo metadata should recognize a multiline cdylib target");
 	}
 
 	#[cfg(feature = "pages")]
