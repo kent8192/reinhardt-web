@@ -64,23 +64,22 @@ impl StyleFeatureSelection {
 	}
 
 	fn apply_to_metadata(&self, command: &mut MetadataCommand, selected_package: &Package) {
-		if self.all_features {
-			command.features(CargoOpt::AllFeatures);
-			return;
-		}
 		let selected_package_name = selected_package.name.to_string();
-		let features: Vec<String> = {
-			self.features
-				.iter()
-				.map(|feature| {
-					if feature.contains('/') {
-						feature.clone()
-					} else {
-						format!("{selected_package_name}/{feature}")
-					}
-				})
-				.collect()
+		let selected_features: Vec<String> = if self.all_features {
+			selected_package.features.keys().cloned().collect()
+		} else {
+			self.features.clone()
 		};
+		let features: Vec<String> = selected_features
+			.iter()
+			.map(|feature| {
+				if feature.contains('/') {
+					feature.clone()
+				} else {
+					format!("{selected_package_name}/{feature}")
+				}
+			})
+			.collect();
 		if !features.is_empty() {
 			command.features(CargoOpt::SomeFeatures(features));
 		}
@@ -1355,6 +1354,56 @@ mod modal {
 			app.join("Cargo.toml"),
 			None,
 			StyleFeatureSelection::with_features(["theme"]),
+		)
+		.expect("resolve selected app features");
+		let bundle = StyleExtractor::new(context)
+			.extract()
+			.expect("extract selected package styles");
+
+		// Assert
+		assert_eq!(bundle.definitions.len(), 1);
+		assert_eq!(bundle.definitions[0].style_type_name, "AppStyles");
+	}
+
+	#[test]
+	fn selected_package_all_features_do_not_enable_matching_dependency_features() {
+		// Arrange
+		let directory = tempfile::tempdir().expect("create temporary workspace");
+		let app = directory.path().join("app");
+		let shared = directory.path().join("shared");
+		fs::create_dir_all(app.join("src")).expect("create app source root");
+		fs::create_dir_all(shared.join("src")).expect("create shared source root");
+		fs::write(
+			directory.path().join("Cargo.toml"),
+			"[workspace]\nresolver = \"3\"\nmembers = [\"app\", \"shared\"]\n",
+		)
+		.expect("write workspace manifest");
+		fs::write(
+			app.join("Cargo.toml"),
+			"[package]\nname = \"all-features-app\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[features]\ntheme = []\n\n[dependencies]\nall-features-shared = { path = \"../shared\" }\n",
+		)
+		.expect("write app manifest");
+		fs::write(
+			app.join("src/lib.rs"),
+			"#[cfg(feature = \"theme\")]\n#[style_def]\nstatic APP: AppStyles = style! { .app { color: blue; } };\n",
+		)
+		.expect("write app source");
+		fs::write(
+			shared.join("Cargo.toml"),
+			"[package]\nname = \"all-features-shared\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[features]\ntheme = []\n",
+		)
+		.expect("write shared manifest");
+		fs::write(
+			shared.join("src/lib.rs"),
+			"#[cfg(feature = \"theme\")]\n#[style_def]\nstatic SHARED: SharedStyles = style! { .shared { color: red; } };\n",
+		)
+		.expect("write shared source");
+
+		// Act
+		let context = StylePackageContext::resolve_with_features(
+			app.join("Cargo.toml"),
+			None,
+			StyleFeatureSelection::all_features(),
 		)
 		.expect("resolve selected app features");
 		let bundle = StyleExtractor::new(context)

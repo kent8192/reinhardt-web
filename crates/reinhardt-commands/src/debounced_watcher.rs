@@ -141,7 +141,7 @@ pub struct WatcherConfig {
 	pub component_styles: Option<std::sync::Arc<std::sync::Mutex<crate::ComponentStyleState>>>,
 }
 
-/// Cargo selection that native hot-reload rebuilds must preserve.
+/// Cargo configuration used by native hot-reload rebuilds.
 #[derive(Clone, Copy)]
 pub(crate) struct ServerRebuildContext<'a> {
 	package: Option<&'a str>,
@@ -160,6 +160,10 @@ impl<'a> ServerRebuildContext<'a> {
 			features,
 			all_features,
 		}
+	}
+
+	pub(crate) fn for_native_server() -> Self {
+		Self::default()
 	}
 }
 
@@ -706,6 +710,17 @@ mod tests {
 	use rstest::rstest;
 	use std::path::PathBuf;
 	use tokio::sync::mpsc;
+
+	#[test]
+	fn native_server_rebuild_ignores_pages_package_selection() {
+		// Arrange and Act
+		let context = ServerRebuildContext::for_native_server();
+
+		// Assert
+		assert_eq!(context.package, None);
+		assert!(context.features.is_empty());
+		assert!(!context.all_features);
+	}
 
 	fn ev(kind: EventKind, path: &str) -> Event {
 		Event {

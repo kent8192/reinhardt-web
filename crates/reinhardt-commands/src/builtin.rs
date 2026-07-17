@@ -2914,14 +2914,15 @@ impl RunServerCommand {
 		})?;
 		let cwd_manifest = cwd.join("Cargo.toml");
 
-		let watch_manifest = match package {
-			Some(package) => {
+		let mut roots = crate::source_roots::SourceRoots::from_metadata(&metadata, &cwd_manifest);
+		if let Some(package) = package {
+			let pages_manifest =
 				crate::source_roots::SourceRoots::selected_package_manifest(&metadata, package)
-					.map_err(crate::CommandError::ExecutionError)?
-			}
-			None => cwd_manifest,
-		};
-		let roots = crate::source_roots::SourceRoots::from_metadata(&metadata, &watch_manifest);
+					.map_err(crate::CommandError::ExecutionError)?;
+			let pages_roots =
+				crate::source_roots::SourceRoots::from_metadata(&metadata, &pages_manifest);
+			roots.merge(pages_roots);
+		}
 
 		// Derive the bin name from the current executable file stem. The
 		// child server is always re-spawned by re-execing the same binary,
@@ -2991,7 +2992,6 @@ impl RunServerCommand {
 		let static_dir_owned = static_dir.to_string();
 		let index_owned = index.map(|s| s.to_string());
 		let package_owned = package.map(str::to_string);
-		let rebuild_package = package_owned.clone();
 		let style_feature_selection = Self::style_feature_selection_from_context(ctx);
 		let style_features = style_feature_selection.features().to_vec();
 		let all_style_features = style_feature_selection.all_features_enabled();
@@ -3053,11 +3053,7 @@ impl RunServerCommand {
 		crate::debounced_watcher::run_watcher_for_package(
 			ctx,
 			&cfg,
-			crate::debounced_watcher::ServerRebuildContext::new(
-				rebuild_package.as_deref(),
-				&style_features,
-				all_style_features,
-			),
+			crate::debounced_watcher::ServerRebuildContext::for_native_server(),
 			shutdown_rx,
 			child,
 			respawn,

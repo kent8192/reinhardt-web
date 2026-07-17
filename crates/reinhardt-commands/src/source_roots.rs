@@ -120,6 +120,17 @@ impl SourceRoots {
 			lockfile: Some(PathBuf::from(metadata.workspace_root.as_str()).join("Cargo.lock")),
 		}
 	}
+
+	/// Add another package graph's watch targets while keeping a deterministic set.
+	pub fn merge(&mut self, other: Self) {
+		self.src_dirs.extend(other.src_dirs);
+		self.src_dirs.sort_unstable();
+		self.src_dirs.dedup();
+		self.manifest_files.extend(other.manifest_files);
+		self.manifest_files.sort_unstable();
+		self.manifest_files.dedup();
+		self.lockfile = self.lockfile.take().or(other.lockfile);
+	}
 }
 
 #[cfg(test)]
@@ -256,5 +267,43 @@ mod tests {
 		assert!(roots.src_dirs.is_empty());
 		assert!(roots.manifest_files.is_empty());
 		assert_eq!(roots.lockfile, None);
+	}
+
+	#[rstest]
+	fn merging_roots_keeps_server_and_pages_packages() {
+		// Arrange
+		let mut roots = SourceRoots {
+			src_dirs: vec![PathBuf::from("/fixtures/ws/server/src")],
+			manifest_files: vec![PathBuf::from("/fixtures/ws/server/Cargo.toml")],
+			lockfile: Some(PathBuf::from("/fixtures/ws/Cargo.lock")),
+		};
+		let pages_roots = SourceRoots {
+			src_dirs: vec![PathBuf::from("/fixtures/ws/frontend/src")],
+			manifest_files: vec![PathBuf::from("/fixtures/ws/frontend/Cargo.toml")],
+			lockfile: Some(PathBuf::from("/fixtures/ws/Cargo.lock")),
+		};
+
+		// Act
+		roots.merge(pages_roots);
+
+		// Assert
+		assert_eq!(
+			roots.src_dirs,
+			vec![
+				PathBuf::from("/fixtures/ws/frontend/src"),
+				PathBuf::from("/fixtures/ws/server/src"),
+			]
+		);
+		assert_eq!(
+			roots.manifest_files,
+			vec![
+				PathBuf::from("/fixtures/ws/frontend/Cargo.toml"),
+				PathBuf::from("/fixtures/ws/server/Cargo.toml"),
+			]
+		);
+		assert_eq!(
+			roots.lockfile,
+			Some(PathBuf::from("/fixtures/ws/Cargo.lock"))
+		);
 	}
 }
