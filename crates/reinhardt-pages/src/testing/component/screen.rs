@@ -75,8 +75,8 @@ impl Screen {
 		}
 		#[cfg(not(feature = "msw"))]
 		{
-			let dom =
-				scheduler.with_current(|| reactive_scope.enter(|| TestDom::render(view.render_page())));
+			let dom = scheduler
+				.with_current(|| reactive_scope.enter(|| TestDom::render(view.render_page())));
 			Self {
 				inner: shared_screen_inner(dom, reactive_scope, scheduler),
 			}
@@ -242,7 +242,7 @@ impl Screen {
 			server_fn_mock::with_active(mocks.clone(), || {
 				scheduler.with_current(|| {
 					let mut inner = self.inner.borrow_mut();
-					inner.dom.rerender_reactive_anchors();
+					inner.rerender_reactive_anchors();
 					inner.dom.refresh_control_bindings();
 				});
 			});
@@ -250,7 +250,7 @@ impl Screen {
 			{
 				scheduler.with_current(|| {
 					let mut inner = self.inner.borrow_mut();
-					inner.dom.rerender_reactive_anchors();
+					inner.rerender_reactive_anchors();
 					inner.dom.refresh_control_bindings();
 				});
 			}

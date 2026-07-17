@@ -9,18 +9,27 @@ use reinhardt_pages::event::{
 	ChangeEvent, CompositionEndEvent, CompositionStartEvent, EventPayload, typed_event_handler,
 };
 use reinhardt_pages::prelude::spawn_task;
-use reinhardt_pages::reactive::Signal;
 use reinhardt_pages::reactive::hooks::use_layout_effect;
+use reinhardt_pages::reactive::{ReactiveScope, Signal};
 use reinhardt_pages::testing::component::{EventError, EventFixture, render};
 use reinhardt_pages::{IntoPage, Page, PageElement, deps, page};
-use rstest::rstest;
+use rstest::{fixture, rstest};
 use serial_test::serial;
+
+#[fixture]
+fn reactive_scope() -> ReactiveScope {
+	ReactiveScope::new()
+}
+
+fn signal_in_scope<T: 'static>(scope: &ReactiveScope, value: T) -> Signal<T> {
+	scope.enter(|| Signal::new(value))
+}
 
 #[rstest]
 #[tokio::test]
-async fn bound_input_updates_before_explicit_handler() {
+async fn bound_input_updates_before_explicit_handler(reactive_scope: ReactiveScope) {
 	// Arrange
-	let value = Signal::new("old".to_owned());
+	let value = signal_in_scope(&reactive_scope, "old".to_owned());
 	let observed = Arc::new(Mutex::new(String::new()));
 	let observed_handler = Arc::clone(&observed);
 	let value_handler = value.clone();
@@ -44,9 +53,9 @@ async fn bound_input_updates_before_explicit_handler() {
 }
 
 #[rstest]
-fn native_bound_textarea_omits_suppressed_children() {
+fn native_bound_textarea_omits_suppressed_children(reactive_scope: ReactiveScope) {
 	// Arrange
-	let value = Signal::new("current".to_owned());
+	let value = signal_in_scope(&reactive_scope, "current".to_owned());
 
 	// Act
 	let screen = render(
@@ -65,9 +74,9 @@ fn native_bound_textarea_omits_suppressed_children() {
 }
 
 #[rstest]
-fn native_select_treats_falsy_multiple_as_single_select() {
+fn native_select_treats_falsy_multiple_as_single_select(reactive_scope: ReactiveScope) {
 	// Arrange
-	let selected = Signal::new("rust".to_owned());
+	let selected = signal_in_scope(&reactive_scope, "rust".to_owned());
 
 	// Act
 	let screen = render(
@@ -91,9 +100,9 @@ fn native_select_treats_falsy_multiple_as_single_select() {
 
 #[rstest]
 #[serial(controlled_binding_effect)]
-fn binding_write_layout_effect_can_read_the_same_screen() {
+fn binding_write_layout_effect_can_read_the_same_screen(reactive_scope: ReactiveScope) {
 	// Arrange
-	let value = Signal::new("old".to_owned());
+	let value = signal_in_scope(&reactive_scope, "old".to_owned());
 	let screen = render(page!({
 		input {
 			aria_label: "Name",
@@ -105,16 +114,18 @@ fn binding_write_layout_effect_can_read_the_same_screen() {
 	let effect_input = input.clone();
 	let effect_value = value.clone();
 	let effect_observed = Arc::clone(&observed);
-	let _effect = use_layout_effect(
-		move || {
-			effect_observed
-				.lock()
-				.unwrap()
-				.push((effect_value.get(), effect_input.value()));
-			None::<fn()>
-		},
-		deps![value.clone()],
-	);
+	let _effect = reactive_scope.enter(|| {
+		use_layout_effect(
+			move || {
+				effect_observed
+					.lock()
+					.unwrap()
+					.push((effect_value.get(), effect_input.value()));
+				None::<fn()>
+			},
+			deps![value.clone()],
+		)
+	});
 
 	// Act
 	input.input("new");
@@ -132,9 +143,9 @@ fn binding_write_layout_effect_can_read_the_same_screen() {
 #[rstest]
 #[serial(controlled_binding_effect)]
 #[tokio::test]
-async fn binding_write_layout_effect_spawns_on_the_screen_scheduler() {
+async fn binding_write_layout_effect_spawns_on_the_screen_scheduler(reactive_scope: ReactiveScope) {
 	// Arrange
-	let value = Signal::new("old".to_owned());
+	let value = signal_in_scope(&reactive_scope, "old".to_owned());
 	let screen = render(page!({
 		input {
 			aria_label: "Name",
@@ -145,18 +156,20 @@ async fn binding_write_layout_effect_spawns_on_the_screen_scheduler() {
 	let completed = Arc::new(AtomicBool::new(false));
 	let effect_value = value.clone();
 	let effect_completed = Arc::clone(&completed);
-	let _effect = use_layout_effect(
-		move || {
-			if effect_value.get() == "new" {
-				let completed = Arc::clone(&effect_completed);
-				spawn_task(async move {
-					completed.store(true, Ordering::SeqCst);
-				});
-			}
-			None::<fn()>
-		},
-		deps![value.clone()],
-	);
+	let _effect = reactive_scope.enter(|| {
+		use_layout_effect(
+			move || {
+				if effect_value.get() == "new" {
+					let completed = Arc::clone(&effect_completed);
+					spawn_task(async move {
+						completed.store(true, Ordering::SeqCst);
+					});
+				}
+				None::<fn()>
+			},
+			deps![value.clone()],
+		)
+	});
 
 	// Act
 	input.input("new");
@@ -168,9 +181,9 @@ async fn binding_write_layout_effect_spawns_on_the_screen_scheduler() {
 
 #[rstest]
 #[tokio::test]
-async fn checkbox_binding_tracks_fixture_and_external_signal_state() {
+async fn checkbox_binding_tracks_fixture_and_external_signal_state(reactive_scope: ReactiveScope) {
 	// Arrange
-	let checked = Signal::new(false);
+	let checked = signal_in_scope(&reactive_scope, false);
 	let observed = Arc::new(Mutex::new(None));
 	let observed_handler = Arc::clone(&observed);
 	let screen = render(page!({
@@ -203,9 +216,11 @@ async fn checkbox_binding_tracks_fixture_and_external_signal_state() {
 
 #[rstest]
 #[tokio::test]
-async fn radio_binding_writes_only_the_checked_choice_and_refreshes_comparison() {
+async fn radio_binding_writes_only_the_checked_choice_and_refreshes_comparison(
+	reactive_scope: ReactiveScope,
+) {
 	// Arrange
-	let selected = Signal::new("draft".to_owned());
+	let selected = signal_in_scope(&reactive_scope, "draft".to_owned());
 	let screen = render(page!({
 		input {
 			aria_label: "Draft",
@@ -237,9 +252,9 @@ async fn radio_binding_writes_only_the_checked_choice_and_refreshes_comparison()
 }
 
 #[rstest]
-fn uppercase_radio_updates_binding_and_projects_checked_event_state() {
+fn uppercase_radio_updates_binding_and_projects_checked_event_state(reactive_scope: ReactiveScope) {
 	// Arrange
-	let selected = Signal::new("draft".to_owned());
+	let selected = signal_in_scope(&reactive_scope, "draft".to_owned());
 	let observed = Arc::new(Mutex::new(None));
 	let observed_handler = Arc::clone(&observed);
 	let screen = render(
@@ -275,9 +290,9 @@ fn uppercase_radio_updates_binding_and_projects_checked_event_state() {
 
 #[rstest]
 #[test]
-fn radio_binding_evaluates_dynamic_value_once() {
+fn radio_binding_evaluates_dynamic_value_once(reactive_scope: ReactiveScope) {
 	// Arrange
-	let selected = Signal::new("first".to_owned());
+	let selected = signal_in_scope(&reactive_scope, "first".to_owned());
 	let evaluations = Rc::new(Cell::new(0));
 	let value_evaluations = Rc::clone(&evaluations);
 
@@ -306,10 +321,12 @@ fn radio_binding_evaluates_dynamic_value_once() {
 
 #[rstest]
 #[tokio::test]
-async fn invalid_number_raw_survives_settle_until_the_value_signal_changes() {
+async fn invalid_number_raw_survives_settle_until_the_value_signal_changes(
+	reactive_scope: ReactiveScope,
+) {
 	// Arrange
-	let value = Signal::new(7_i32);
-	let error = Signal::new(None);
+	let value = signal_in_scope(&reactive_scope, 7_i32);
+	let error = signal_in_scope(&reactive_scope, None);
 	let screen = render(page!({
 		input {
 			aria_label: "Quantity",
@@ -337,9 +354,11 @@ async fn invalid_number_raw_survives_settle_until_the_value_signal_changes() {
 
 #[rstest]
 #[tokio::test]
-async fn invalid_number_raw_is_cleared_by_an_explicit_same_value_write() {
+async fn invalid_number_raw_is_cleared_by_an_explicit_same_value_write(
+	reactive_scope: ReactiveScope,
+) {
 	// Arrange
-	let value = Signal::new(7_i32);
+	let value = signal_in_scope(&reactive_scope, 7_i32);
 	let screen = render(page!({
 		input {
 			aria_label: "Quantity",
@@ -360,9 +379,11 @@ async fn invalid_number_raw_is_cleared_by_an_explicit_same_value_write() {
 
 #[rstest]
 #[tokio::test]
-async fn select_one_binding_tracks_selected_value_in_both_directions() {
+async fn select_one_binding_tracks_selected_value_in_both_directions(
+	reactive_scope: ReactiveScope,
+) {
 	// Arrange
-	let selected = Signal::new("rust".to_owned());
+	let selected = signal_in_scope(&reactive_scope, "rust".to_owned());
 	let observed = Arc::new(Mutex::new(None));
 	let observed_handler = Arc::clone(&observed);
 	let screen = render(page!({
@@ -432,9 +453,11 @@ async fn select_one_binding_tracks_selected_value_in_both_directions() {
 
 #[rstest]
 #[tokio::test]
-async fn uppercase_select_updates_binding_event_state_and_option_projection() {
+async fn uppercase_select_updates_binding_event_state_and_option_projection(
+	reactive_scope: ReactiveScope,
+) {
 	// Arrange
-	let selected = Signal::new("rust".to_owned());
+	let selected = signal_in_scope(&reactive_scope, "rust".to_owned());
 	let observed = Arc::new(Mutex::new(Vec::new()));
 	let observed_handler = Arc::clone(&observed);
 	let screen = render(
@@ -514,9 +537,11 @@ async fn uppercase_select_updates_binding_event_state_and_option_projection() {
 
 #[rstest]
 #[tokio::test]
-async fn select_one_projection_uses_first_matching_option_and_ignores_absent_values() {
+async fn select_one_projection_uses_first_matching_option_and_ignores_absent_values(
+	reactive_scope: ReactiveScope,
+) {
 	// Arrange
-	let selected = Signal::new("duplicate".to_owned());
+	let selected = signal_in_scope(&reactive_scope, "duplicate".to_owned());
 	let screen = render(page!({
 		select {
 			aria_label: "Duplicate",
@@ -557,13 +582,18 @@ async fn select_one_projection_uses_first_matching_option_and_ignores_absent_val
 }
 
 #[rstest]
-fn select_many_projection_uses_option_dom_order_and_preserves_duplicates() {
+fn select_many_projection_uses_option_dom_order_and_preserves_duplicates(
+	reactive_scope: ReactiveScope,
+) {
 	// Arrange
-	let selected = Signal::new(vec![
-		"missing".to_owned(),
-		"second".to_owned(),
-		"first".to_owned(),
-	]);
+	let selected = signal_in_scope(
+		&reactive_scope,
+		vec![
+			"missing".to_owned(),
+			"second".to_owned(),
+			"first".to_owned(),
+		],
+	);
 	let screen = render(page!({
 		select {
 			aria_label: "Ordered",
@@ -600,9 +630,9 @@ fn select_many_projection_uses_option_dom_order_and_preserves_duplicates() {
 }
 
 #[rstest]
-fn select_one_empty_selection_commits_the_browser_empty_value() {
+fn select_one_empty_selection_commits_the_browser_empty_value(reactive_scope: ReactiveScope) {
 	// Arrange
-	let selected = Signal::new("rust".to_owned());
+	let selected = signal_in_scope(&reactive_scope, "rust".to_owned());
 	let screen = render(page!({
 		select {
 			aria_label: "Language",
@@ -627,9 +657,11 @@ fn select_one_empty_selection_commits_the_browser_empty_value() {
 
 #[rstest]
 #[tokio::test]
-async fn select_many_binding_tracks_all_selected_values_in_both_directions() {
+async fn select_many_binding_tracks_all_selected_values_in_both_directions(
+	reactive_scope: ReactiveScope,
+) {
 	// Arrange
-	let selected = Signal::new(vec!["rust".to_owned()]);
+	let selected = signal_in_scope(&reactive_scope, vec!["rust".to_owned()]);
 	let observed = Arc::new(Mutex::new(None));
 	let observed_handler = Arc::clone(&observed);
 	let screen = render(page!({
@@ -699,12 +731,15 @@ async fn select_many_binding_tracks_all_selected_values_in_both_directions() {
 }
 
 #[rstest]
-fn select_binding_uses_flattened_option_text_when_value_is_omitted() {
+fn select_binding_uses_flattened_option_text_when_value_is_omitted(reactive_scope: ReactiveScope) {
 	// Arrange
-	let selected = Signal::new(vec![
-		"Rust & WebAssembly".to_owned(),
-		"Nested\u{a0}<Choice>".to_owned(),
-	]);
+	let selected = signal_in_scope(
+		&reactive_scope,
+		vec![
+			"Rust & WebAssembly".to_owned(),
+			"Nested\u{a0}<Choice>".to_owned(),
+		],
+	);
 	let screen = render(
 		PageElement::new("select")
 			.attr("aria-label", "Targets")
@@ -761,11 +796,11 @@ fn select_binding_uses_flattened_option_text_when_value_is_omitted() {
 }
 
 #[rstest]
-fn inferred_option_value_uses_one_reactive_render() {
+fn inferred_option_value_uses_one_reactive_render(reactive_scope: ReactiveScope) {
 	// Arrange
 	let renders = Rc::new(Cell::new(0));
 	let render_count = Rc::clone(&renders);
-	let selected = Signal::new("Static".to_owned());
+	let selected = signal_in_scope(&reactive_scope, "Static".to_owned());
 
 	// Act
 	let screen = render(
@@ -789,9 +824,9 @@ fn inferred_option_value_uses_one_reactive_render() {
 
 #[rstest]
 #[tokio::test]
-async fn composition_defers_writes_and_deduplicates_the_final_input() {
+async fn composition_defers_writes_and_deduplicates_the_final_input(reactive_scope: ReactiveScope) {
 	// Arrange
-	let value = Signal::new("old".to_owned());
+	let value = signal_in_scope(&reactive_scope, "old".to_owned());
 	let observed = Arc::new(Mutex::new(Vec::new()));
 	let observed_input = Arc::clone(&observed);
 	let input_value = value.clone();
@@ -843,9 +878,9 @@ async fn composition_defers_writes_and_deduplicates_the_final_input() {
 }
 
 #[rstest]
-fn isolated_composing_input_skips_only_that_event() {
+fn isolated_composing_input_skips_only_that_event(reactive_scope: ReactiveScope) {
 	// Arrange
-	let value = Signal::new("old".to_owned());
+	let value = signal_in_scope(&reactive_scope, "old".to_owned());
 	let observed = Arc::new(Mutex::new(Vec::new()));
 	let observed_input = Arc::clone(&observed);
 	let input_value = value.clone();
@@ -879,9 +914,9 @@ fn isolated_composing_input_skips_only_that_event() {
 }
 
 #[rstest]
-fn isolated_composing_input_invalidates_stale_composition_dedupe() {
+fn isolated_composing_input_invalidates_stale_composition_dedupe(reactive_scope: ReactiveScope) {
 	// Arrange
-	let value = Signal::new("old".to_owned());
+	let value = signal_in_scope(&reactive_scope, "old".to_owned());
 	let observed = Arc::new(Mutex::new(Vec::new()));
 	let observed_input = Arc::clone(&observed);
 	let input_value = value.clone();
@@ -919,9 +954,9 @@ fn isolated_composing_input_invalidates_stale_composition_dedupe() {
 }
 
 #[rstest]
-fn binding_failures_are_structured_event_errors() {
+fn binding_failures_are_structured_event_errors(reactive_scope: ReactiveScope) {
 	// Arrange
-	let selected = Signal::new(Vec::<String>::new());
+	let selected = signal_in_scope(&reactive_scope, Vec::<String>::new());
 	let screen = render(
 		PageElement::new("input")
 			.attr("aria-label", "Invalid")
@@ -951,9 +986,12 @@ fn binding_failures_are_structured_event_errors() {
 #[case("range")]
 #[case("password")]
 #[case("url")]
-fn text_binding_rejects_non_text_input_types(#[case] input_type: &str) {
+fn text_binding_rejects_non_text_input_types(
+	#[case] input_type: &str,
+	reactive_scope: ReactiveScope,
+) {
 	// Arrange
-	let value = Signal::new("bound".to_owned());
+	let value = signal_in_scope(&reactive_scope, "bound".to_owned());
 	let screen = render(
 		PageElement::new("input")
 			.attr("aria-label", "Invalid text target")
@@ -986,9 +1024,12 @@ fn text_binding_rejects_non_text_input_types(#[case] input_type: &str) {
 #[case(PageElement::new("input"))]
 #[case(PageElement::new("input").attr("type", "text"))]
 #[case(PageElement::new("textarea"))]
-fn text_binding_accepts_exact_text_controls(#[case] element: PageElement) {
+fn text_binding_accepts_exact_text_controls(
+	#[case] element: PageElement,
+	reactive_scope: ReactiveScope,
+) {
 	// Arrange
-	let value = Signal::new("bound".to_owned());
+	let value = signal_in_scope(&reactive_scope, "bound".to_owned());
 	let screen = render(
 		element
 			.attr("aria-label", "Text target")
@@ -1005,9 +1046,9 @@ fn text_binding_accepts_exact_text_controls(#[case] element: PageElement) {
 }
 
 #[rstest]
-fn text_binding_accepts_an_input_type_with_text_fallback_semantics() {
+fn text_binding_accepts_an_input_type_with_text_fallback_semantics(reactive_scope: ReactiveScope) {
 	// Arrange
-	let value = Signal::new("old".to_owned());
+	let value = signal_in_scope(&reactive_scope, "old".to_owned());
 	let screen = render(
 		PageElement::new("input")
 			.attr("aria-label", "Fallback text target")

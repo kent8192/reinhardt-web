@@ -9,8 +9,9 @@ use std::time::Duration;
 use super::control_binding::{SsrControlProjection, SsrSelectionState, project};
 use super::markers::{HydrationMarker, HydrationStrategy};
 use super::resource_context::{
-	SsrResourceContext, enter_boundary, resolve_boundary_resources, resolve_external_resources,
-	resolve_pending_resources, scope_context,
+	RenderOwnerRegistration, SsrResourceContext, enter_boundary, register_render_owner,
+	resolve_boundary_resources, resolve_external_resources, resolve_pending_resources,
+	scope_context,
 };
 use super::state::SsrState;
 use super::stream::{SsrChunk, SsrStream};
@@ -25,6 +26,7 @@ use crate::reactive::hooks::id::{
 use futures_util::StreamExt;
 use futures_util::future::{FutureExt, LocalBoxFuture};
 use futures_util::stream::{self, FuturesUnordered};
+use reinhardt_core::reactive::ReactiveScope;
 use reinhardt_core::types::page::{BOOLEAN_ATTRS, SuspenseNode, is_boolean_attr_truthy};
 
 /// Options for SSR rendering.
@@ -279,6 +281,8 @@ type SuspenseBoundaryFuture = LocalBoxFuture<'static, Vec<SuspenseBoundaryResult
 
 struct SuspenseStreamRuntime {
 	renderer: SsrRenderer,
+	reactive_scope: Rc<ReactiveScope>,
+	_render_owner: RenderOwnerRegistration,
 	context: Rc<RefCell<SsrResourceContext>>,
 	id_counter: Rc<Cell<usize>>,
 	boundaries: FuturesUnordered<SuspenseBoundaryFuture>,
@@ -691,6 +695,8 @@ impl SsrRenderer {
 		F: FnMut() -> Page,
 	{
 		if !self.should_resolve_resources() {
+			let reactive_scope = Rc::new(ReactiveScope::new());
+			let _render_owner = register_render_owner(&reactive_scope);
 			let context = Rc::new(RefCell::new(SsrResourceContext::new(
 				self.options.resource_timeout,
 			)));
@@ -700,7 +706,7 @@ impl SsrRenderer {
 				self.begin_render(true);
 				let render_start = self.deterministic_render_snapshot();
 				let (_, content) = scope_reactive_node_store(async {
-					let view = view_factory();
+					let view = reactive_scope.enter(&mut view_factory);
 					let mut boundaries = Vec::new();
 					self.restore_deterministic_render_snapshot(render_start);
 					self.begin_buffered_render_pass();
@@ -722,6 +728,8 @@ impl SsrRenderer {
 			return scope_id_counter(render).await;
 		}
 
+		let reactive_scope = Rc::new(ReactiveScope::new());
+		let render_owner = register_render_owner(&reactive_scope);
 		let context = Rc::new(RefCell::new(SsrResourceContext::new(
 			self.options.resource_timeout,
 		)));
@@ -732,8 +740,9 @@ impl SsrRenderer {
 		let render = scope_context(Rc::clone(&context), async move {
 			self.begin_render(true);
 			let render_start = self.deterministic_render_snapshot();
+			let discovery_scope = Rc::clone(&reactive_scope);
 			scope_reactive_node_store(async {
-				let discovery_view = view_factory();
+				let discovery_view = discovery_scope.enter(&mut view_factory);
 				let _ = self
 					.render_async_page(&discovery_view, AsyncRenderMode::Discovery)
 					.await;
@@ -741,13 +750,14 @@ impl SsrRenderer {
 			.await;
 
 			resolve_external_resources(&context).await;
+			drop(discovery_scope);
 			let (_, content, boundaries) = loop {
 				self.restore_deterministic_render_snapshot(render_start);
 				self.begin_buffered_render_pass();
 
 				let (view, content, boundaries, has_pending_external) =
 					scope_reactive_node_store(async {
-						let view = view_factory();
+						let view = reactive_scope.enter(&mut view_factory);
 						let mut boundaries = Vec::new();
 						let content = self.render_stream_shell_page(&view, &mut boundaries).await;
 						let has_pending_external = context.borrow().has_pending_external();
@@ -777,6 +787,8 @@ impl SsrRenderer {
 
 			let runtime = SuspenseStreamRuntime {
 				renderer: self.clone(),
+				reactive_scope,
+				_render_owner: render_owner,
 				context,
 				id_counter,
 				boundaries: boundary_futures,
@@ -832,8 +844,9 @@ impl SsrRenderer {
 													&runtime.context,
 													boundary.boundary_id.clone(),
 												);
-												let replacement_page =
-													boundary.node.render_content();
+												let replacement_page = runtime
+													.reactive_scope
+													.enter(|| boundary.node.render_content());
 												let mut nested_boundaries = Vec::new();
 												let replacement = runtime
 													.renderer
@@ -958,6 +971,8 @@ impl SsrRenderer {
 	where
 		F: FnMut() -> Page,
 	{
+		let reactive_scope = Rc::new(ReactiveScope::new());
+		let _render_owner = register_render_owner(&reactive_scope);
 		let context = if clear_resource_states {
 			Rc::new(RefCell::new(SsrResourceContext::new(
 				self.options.resource_timeout,
@@ -975,7 +990,7 @@ impl SsrRenderer {
 			if !self.should_resolve_resources() {
 				let (view, content) = scope_reactive_node_store(async {
 					self.restore_deterministic_render_snapshot(render_start);
-					let view = view_factory();
+					let view = reactive_scope.enter(&mut view_factory);
 					self.begin_buffered_render_pass();
 					let content = self
 						.render_async_page(&view, AsyncRenderMode::Buffered)
@@ -988,8 +1003,9 @@ impl SsrRenderer {
 				return (view, content, String::new());
 			}
 
+			let discovery_scope = Rc::clone(&reactive_scope);
 			scope_reactive_node_store(async {
-				let discovery_view = view_factory();
+				let discovery_view = discovery_scope.enter(&mut view_factory);
 				let _ = self
 					.render_async_page(&discovery_view, AsyncRenderMode::Discovery)
 					.await;
@@ -998,13 +1014,14 @@ impl SsrRenderer {
 
 			resolve_external_resources(&context).await;
 			resolve_pending_resources(&context).await;
+			drop(discovery_scope);
 
 			loop {
 				self.restore_deterministic_render_snapshot(render_start);
 				self.begin_buffered_render_pass();
 
 				let (view, content, has_pending) = scope_reactive_node_store(async {
-					let view = view_factory();
+					let view = reactive_scope.enter(&mut view_factory);
 					let content = self
 						.render_async_page(&view, AsyncRenderMode::Buffered)
 						.await;

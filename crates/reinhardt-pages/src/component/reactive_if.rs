@@ -10,6 +10,8 @@ use crate::reactive::effect::Effect;
 #[cfg(wasm)]
 use crate::reactive::runtime::{EffectTiming, with_runtime};
 #[cfg(wasm)]
+use reinhardt_core::reactive::ReactiveScope;
+#[cfg(wasm)]
 use reinhardt_core::types::page::{BOOLEAN_ATTRS, MountError, Page, is_boolean_attr_truthy};
 #[cfg(wasm)]
 use std::cell::Cell;
@@ -150,6 +152,12 @@ pub fn store_reactive_node<T: 'static>(node: T) {
 	current_reactive_node_store()
 		.borrow_mut()
 		.push(Box::new(node));
+}
+
+/// Stores a reactive scope to keep its arena alive for the mounted view.
+#[cfg(wasm)]
+pub(crate) fn store_reactive_scope(scope: ReactiveScope) {
+	store_reactive_node(scope);
 }
 
 /// Stores a reactive node to keep it alive.
@@ -418,7 +426,7 @@ impl ReactiveIfNode {
 impl Drop for ReactiveIfNode {
 	fn drop(&mut self) {
 		let _marker_removal = MarkerRemovalGuard::new(self.start_marker.as_ref(), &self.marker);
-		drop(self.effect.take());
+		let _ = self.effect.take();
 		clear_reactive_node_store(&self.reactive_nodes);
 	}
 }
@@ -679,7 +687,7 @@ fn is_single_control_view(view: &Page) -> bool {
 impl Drop for ReactiveNode {
 	fn drop(&mut self) {
 		let _marker_removal = MarkerRemovalGuard::new(self.start_marker.as_ref(), &self.marker);
-		drop(self.effect.take());
+		let _ = self.effect.take();
 		clear_reactive_node_store(&self.reactive_nodes);
 	}
 }

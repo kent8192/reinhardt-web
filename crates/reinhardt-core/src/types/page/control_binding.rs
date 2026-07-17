@@ -167,10 +167,7 @@ impl fmt::Display for ControlBindingError {
 
 impl std::error::Error for ControlBindingError {}
 
-#[cfg(target_arch = "wasm32")]
 type Shared<T> = std::rc::Rc<T>;
-#[cfg(not(target_arch = "wasm32"))]
-type Shared<T> = std::sync::Arc<T>;
 
 type ReadValue = Shared<dyn Fn() -> ControlValue + 'static>;
 type WriteValue =
@@ -226,8 +223,8 @@ impl ControlBinding {
 
 	/// Creates a binding for a checkbox signal.
 	pub fn checkbox(signal: Signal<bool>) -> Self {
-		let read_signal = signal.clone();
-		let snapshot = signal_snapshot(signal.clone());
+		let read_signal = signal;
+		let snapshot = signal_snapshot(signal);
 		Self {
 			kind: ControlKind::Checkbox,
 			radio_value: None,
@@ -246,8 +243,8 @@ impl ControlBinding {
 
 	/// Creates a binding for one radio choice within a string-valued group.
 	pub fn radio(signal: Signal<String>, value: String) -> Self {
-		let read_signal = signal.clone();
-		let snapshot = signal_snapshot(signal.clone());
+		let read_signal = signal;
+		let snapshot = signal_snapshot(signal);
 		let read_value = value.clone();
 		let write_value = value.clone();
 		Self {
@@ -274,8 +271,8 @@ impl ControlBinding {
 
 	/// Creates a binding for a multiple-selection signal.
 	pub fn select_many(signal: Signal<Vec<String>>) -> Self {
-		let read_signal = signal.clone();
-		let snapshot = signal_snapshot(signal.clone());
+		let read_signal = signal;
+		let snapshot = signal_snapshot(signal);
 		Self {
 			kind: ControlKind::SelectMany,
 			radio_value: None,
@@ -338,8 +335,8 @@ impl ControlBinding {
 	}
 
 	fn string_value(kind: ControlKind, signal: Signal<String>) -> Self {
-		let read_signal = signal.clone();
-		let snapshot = signal_snapshot(signal.clone());
+		let read_signal = signal;
+		let snapshot = signal_snapshot(signal);
 		Self {
 			kind,
 			radio_value: None,
@@ -360,9 +357,9 @@ impl ControlBinding {
 		signal: Signal<T>,
 		error: Option<Signal<Option<NumberParseError>>>,
 	) -> Self {
-		let read_signal = signal.clone();
-		let snapshot_signal = signal.clone();
-		let snapshot_error = error.clone();
+		let read_signal = signal;
+		let snapshot_signal = signal;
+		let snapshot_error = error;
 		Self {
 			kind: ControlKind::Number,
 			radio_value: None,
@@ -394,8 +391,8 @@ impl ControlBinding {
 			snapshot: Shared::new(move || {
 				let value = snapshot_signal.get();
 				let parse_error = snapshot_error.as_ref().and_then(|error| error.get());
-				let restore_signal = snapshot_signal.clone();
-				let restore_error = snapshot_error.clone();
+				let restore_signal = snapshot_signal;
+				let restore_error = snapshot_error;
 				ControlBindingSnapshot {
 					restore: Some(Box::new(move || {
 						restore_signal.set_without_notify(value);
@@ -416,7 +413,7 @@ impl ControlBinding {
 fn signal_snapshot<T: Clone + 'static>(signal: Signal<T>) -> SnapshotValue {
 	Shared::new(move || {
 		let value = signal.get();
-		let restore_signal = signal.clone();
+		let restore_signal = signal;
 		ControlBindingSnapshot {
 			restore: Some(Box::new(move || restore_signal.set(value))),
 		}
@@ -642,7 +639,7 @@ impl_float_number_value!(f32, f64);
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::reactive::{Effect, EffectTiming, Signal};
+	use crate::reactive::{Effect, EffectTiming, ReactiveScope, Signal};
 	use rstest::rstest;
 	use std::cell::RefCell;
 	use std::rc::Rc;
@@ -657,137 +654,151 @@ mod tests {
 		#[case] raw: &str,
 		#[case] kind: NumberParseErrorKind,
 	) {
-		// Arrange
-		let value = Signal::new(7.5_f64);
-		let error = Signal::new(None);
-		let binding = ControlBinding::number_with_error(value.clone(), error.clone());
+		ReactiveScope::run(|| {
+			// Arrange
+			let value = Signal::new(7.5_f64);
+			let error = Signal::new(None);
+			let binding = ControlBinding::number_with_error(value.clone(), error.clone());
 
-		// Act
-		let outcome = binding.write(ControlValue::Text(raw.to_owned())).unwrap();
+			// Act
+			let outcome = binding.write(ControlValue::Text(raw.to_owned())).unwrap();
 
-		// Assert
-		assert_eq!(value.get(), 7.5);
-		assert_eq!(outcome, ControlWriteOutcome::Rejected(error.get().unwrap()));
-		assert_eq!(error.get().unwrap().kind(), kind);
+			// Assert
+			assert_eq!(value.get(), 7.5);
+			assert_eq!(outcome, ControlWriteOutcome::Rejected(error.get().unwrap()));
+			assert_eq!(error.get().unwrap().kind(), kind);
+		});
 	}
 
 	#[rstest]
 	fn text_binding_reads_and_writes_the_signal() {
-		// Arrange
-		let signal = Signal::new("old".to_owned());
-		let binding = ControlBinding::text(signal.clone());
+		ReactiveScope::run(|| {
+			// Arrange
+			let signal = Signal::new("old".to_owned());
+			let binding = ControlBinding::text(signal.clone());
 
-		// Act
-		binding.write(ControlValue::Text("new".to_owned())).unwrap();
+			// Act
+			binding.write(ControlValue::Text("new".to_owned())).unwrap();
 
-		// Assert
-		assert_eq!(binding.read(), ControlValue::Text("new".to_owned()));
-		assert_eq!(signal.get(), "new");
+			// Assert
+			assert_eq!(binding.read(), ControlValue::Text("new".to_owned()));
+			assert_eq!(signal.get(), "new");
+		});
 	}
 
 	#[rstest]
 	fn integer_number_binding_accepts_complete_exponent_lexemes() {
-		// Arrange
-		let value = Signal::new(7_i32);
-		let binding = ControlBinding::number(value.clone());
+		ReactiveScope::run(|| {
+			// Arrange
+			let value = Signal::new(7_i32);
+			let binding = ControlBinding::number(value.clone());
 
-		// Act
-		let outcome = binding.write(ControlValue::Text("1e2".to_owned())).unwrap();
+			// Act
+			let outcome = binding.write(ControlValue::Text("1e2".to_owned())).unwrap();
 
-		// Assert
-		assert_eq!(outcome, ControlWriteOutcome::Committed);
-		assert_eq!(value.get(), 100);
+			// Assert
+			assert_eq!(outcome, ControlWriteOutcome::Committed);
+			assert_eq!(value.get(), 100);
+		});
 	}
 
 	#[rstest]
 	fn binding_snapshot_restores_numeric_value_and_error_state() {
-		// Arrange
-		let value = Signal::new(7_i32);
-		let original_error = NumberParseError::new("pending", NumberParseErrorKind::Invalid);
-		let error = Signal::new(Some(original_error.clone()));
-		let binding = ControlBinding::number_with_error(value.clone(), error.clone());
-		let snapshot = binding.snapshot();
+		ReactiveScope::run(|| {
+			// Arrange
+			let value = Signal::new(7_i32);
+			let original_error = NumberParseError::new("pending", NumberParseErrorKind::Invalid);
+			let error = Signal::new(Some(original_error.clone()));
+			let binding = ControlBinding::number_with_error(value.clone(), error.clone());
+			let snapshot = binding.snapshot();
 
-		// Act
-		binding.write(ControlValue::Text("12".to_owned())).unwrap();
-		drop(snapshot);
+			// Act
+			binding.write(ControlValue::Text("12".to_owned())).unwrap();
+			drop(snapshot);
 
-		// Assert
-		assert_eq!(value.get(), 7);
-		assert_eq!(error.get(), Some(original_error));
+			// Assert
+			assert_eq!(value.get(), 7);
+			assert_eq!(error.get(), Some(original_error));
+		});
 	}
 
 	#[rstest]
 	fn binding_snapshot_restores_an_empty_numeric_error_state() {
-		// Arrange
-		let value = Signal::new(7_i32);
-		let error = Signal::new(None);
-		let binding = ControlBinding::number_with_error(value.clone(), error.clone());
-		let snapshot = binding.snapshot();
+		ReactiveScope::run(|| {
+			// Arrange
+			let value = Signal::new(7_i32);
+			let error = Signal::new(None);
+			let binding = ControlBinding::number_with_error(value.clone(), error.clone());
+			let snapshot = binding.snapshot();
 
-		// Act
-		binding
-			.write(ControlValue::Text("invalid".to_owned()))
-			.unwrap();
-		drop(snapshot);
+			// Act
+			binding
+				.write(ControlValue::Text("invalid".to_owned()))
+				.unwrap();
+			drop(snapshot);
 
-		// Assert
-		assert_eq!(value.get(), 7);
-		assert_eq!(error.get(), None);
+			// Assert
+			assert_eq!(value.get(), 7);
+			assert_eq!(error.get(), None);
+		});
 	}
 
 	#[rstest]
 	fn committed_binding_snapshot_keeps_the_new_state() {
-		// Arrange
-		let signal = Signal::new("server".to_owned());
-		let binding = ControlBinding::text(signal.clone());
-		let snapshot = binding.snapshot();
+		ReactiveScope::run(|| {
+			// Arrange
+			let signal = Signal::new("server".to_owned());
+			let binding = ControlBinding::text(signal.clone());
+			let snapshot = binding.snapshot();
 
-		// Act
-		binding
-			.write(ControlValue::Text("browser".to_owned()))
-			.unwrap();
-		snapshot.commit();
+			// Act
+			binding
+				.write(ControlValue::Text("browser".to_owned()))
+				.unwrap();
+			snapshot.commit();
 
-		// Assert
-		assert_eq!(signal.get(), "browser");
+			// Assert
+			assert_eq!(signal.get(), "browser");
+		});
 	}
 
 	#[rstest]
 	fn numeric_snapshot_rollback_never_notifies_a_mixed_state() {
-		// Arrange
-		let value = Signal::new(7_i32);
-		let original_error = NumberParseError::new("pending", NumberParseErrorKind::Invalid);
-		let error = Signal::new(Some(original_error.clone()));
-		let binding = ControlBinding::number_with_error(value.clone(), error.clone());
-		let snapshot = binding.snapshot();
-		value.set(12);
-		error.set(None);
-		let observations = Rc::new(RefCell::new(Vec::new()));
-		let effect_value = value.clone();
-		let effect_error = error.clone();
-		let effect_observations = Rc::clone(&observations);
-		let _effect = Effect::new_with_timing(
-			move || {
-				effect_observations
-					.borrow_mut()
-					.push((effect_value.get(), effect_error.get()));
-			},
-			EffectTiming::Layout,
-		);
-		observations.borrow_mut().clear();
+		ReactiveScope::run(|| {
+			// Arrange
+			let value = Signal::new(7_i32);
+			let original_error = NumberParseError::new("pending", NumberParseErrorKind::Invalid);
+			let error = Signal::new(Some(original_error.clone()));
+			let binding = ControlBinding::number_with_error(value.clone(), error.clone());
+			let snapshot = binding.snapshot();
+			value.set(12);
+			error.set(None);
+			let observations = Rc::new(RefCell::new(Vec::new()));
+			let effect_value = value.clone();
+			let effect_error = error.clone();
+			let effect_observations = Rc::clone(&observations);
+			let _effect = Effect::new_with_timing(
+				move || {
+					effect_observations
+						.borrow_mut()
+						.push((effect_value.get(), effect_error.get()));
+				},
+				EffectTiming::Layout,
+			);
+			observations.borrow_mut().clear();
 
-		// Act
-		drop(snapshot);
+			// Act
+			drop(snapshot);
 
-		// Assert
-		assert!(!observations.borrow().is_empty());
-		assert!(
-			observations
-				.borrow()
-				.iter()
-				.all(|pair| pair == &(7, Some(original_error.clone())))
-		);
+			// Assert
+			assert!(!observations.borrow().is_empty());
+			assert!(
+				observations
+					.borrow()
+					.iter()
+					.all(|pair| pair == &(7, Some(original_error.clone())))
+			);
+		});
 	}
 
 	#[rstest]
