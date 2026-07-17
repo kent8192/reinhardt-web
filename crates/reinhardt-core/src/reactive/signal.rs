@@ -336,8 +336,11 @@ impl<T: fmt::Debug + Clone + 'static> fmt::Debug for Signal<T> {
 mod tests {
 	use super::*;
 	use crate::reactive::runtime::NodeType;
+	use crate::reactive::{Effect, batch};
 	use rstest::rstest;
 	use serial_test::serial;
+	use std::cell::Cell;
+	use std::rc::Rc;
 
 	#[rstest]
 	#[serial(reactive_runtime)]
@@ -521,27 +524,18 @@ mod tests {
 	fn test_signal_change_notification() {
 		crate::reactive::ReactiveScope::run(|| {
 			let signal = Signal::new(0);
-
-			with_runtime(|rt| {
-				let effect_id = NodeId::new();
-
-				// Manually set up dependency
-				{
-					let mut graph = rt.dependency_graph.borrow_mut();
-					graph
-						.entry(signal.id())
-						.or_default()
-						.subscribers
-						.push(effect_id);
-				}
-
-				// Change the signal
-				signal.set(42);
-
-				// Verify the effect was scheduled for update
-				let pending = rt.pending_updates.borrow();
-				assert!(pending.contains(&effect_id));
+			let runs = Rc::new(Cell::new(0));
+			let runs_for_effect = Rc::clone(&runs);
+			let _effect = Effect::new(move || {
+				let _ = signal.get();
+				runs_for_effect.set(runs_for_effect.get() + 1);
 			});
+
+			assert_eq!(runs.get(), 1);
+
+			batch(|| signal.set(42));
+
+			assert_eq!(runs.get(), 2);
 		});
 	}
 }

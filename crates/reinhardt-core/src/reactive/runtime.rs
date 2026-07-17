@@ -648,28 +648,27 @@ mod tests {
 
 	#[test]
 	#[serial]
-	fn test_notify_signal_change() {
+	fn test_notify_signal_change_ignores_stale_subscribers() {
 		let runtime = Runtime::new();
-
 		let signal_id = NodeId::new();
-		let effect_id = NodeId::new();
+		let stale_effect_id = NodeId::new();
 
-		// Manually add dependency
+		// Manually add a dependency whose effect node no longer exists.
 		{
 			let mut graph = runtime.dependency_graph.borrow_mut();
 			graph
 				.entry(signal_id)
 				.or_default()
 				.subscribers
-				.push(effect_id);
+				.push(stale_effect_id);
 		}
 
-		// Notify change
+		// Notify change.
 		runtime.notify_signal_change(signal_id);
 
-		// Verify update was scheduled
+		// Stale scope-owned effects must not be scheduled.
 		let pending = runtime.pending_updates.borrow();
-		assert!(pending.contains(&effect_id));
+		assert!(!pending.contains(&stale_effect_id));
 	}
 
 	#[test]
