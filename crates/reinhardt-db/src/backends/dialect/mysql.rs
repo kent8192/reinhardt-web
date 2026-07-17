@@ -54,6 +54,18 @@ impl MySqlBackend {
 			QueryValue::BigIntArray(values) => {
 				query.bind(serde_json::to_string(values).expect("big integer arrays serialize"))
 			}
+			QueryValue::BoolArray(values) => {
+				query.bind(serde_json::to_string(values).expect("boolean arrays serialize"))
+			}
+			QueryValue::FloatArray(values) => {
+				query.bind(serde_json::to_string(values).expect("float arrays serialize"))
+			}
+			QueryValue::DoubleArray(values) => {
+				query.bind(serde_json::to_string(values).expect("double arrays serialize"))
+			}
+			QueryValue::UuidArray(values) => {
+				query.bind(serde_json::to_string(values).expect("UUID arrays serialize"))
+			}
 			QueryValue::Now => {
 				// MySQL uses NOW() function, which should be part of SQL string
 				// For binding, we use current UTC time
@@ -239,6 +251,18 @@ impl MySqlTransactionExecutor {
 			}
 			QueryValue::BigIntArray(values) => {
 				query.bind(serde_json::to_string(values).expect("big integer arrays serialize"))
+			}
+			QueryValue::BoolArray(values) => {
+				query.bind(serde_json::to_string(values).expect("boolean arrays serialize"))
+			}
+			QueryValue::FloatArray(values) => {
+				query.bind(serde_json::to_string(values).expect("float arrays serialize"))
+			}
+			QueryValue::DoubleArray(values) => {
+				query.bind(serde_json::to_string(values).expect("double arrays serialize"))
+			}
+			QueryValue::UuidArray(values) => {
+				query.bind(serde_json::to_string(values).expect("UUID arrays serialize"))
 			}
 			QueryValue::Now => query.bind(chrono::Utc::now()),
 		}

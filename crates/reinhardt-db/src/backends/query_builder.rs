@@ -71,6 +71,46 @@ fn query_value_to_sea_value(qv: &QueryValue) -> Value {
 					.collect(),
 			)),
 		),
+		QueryValue::BoolArray(values) => Value::Array(
+			reinhardt_query::value::ArrayType::Bool,
+			Some(Box::new(
+				values
+					.iter()
+					.copied()
+					.map(|value| Value::Bool(Some(value)))
+					.collect(),
+			)),
+		),
+		QueryValue::FloatArray(values) => Value::Array(
+			reinhardt_query::value::ArrayType::Float,
+			Some(Box::new(
+				values
+					.iter()
+					.copied()
+					.map(|value| Value::Float(Some(value)))
+					.collect(),
+			)),
+		),
+		QueryValue::DoubleArray(values) => Value::Array(
+			reinhardt_query::value::ArrayType::Double,
+			Some(Box::new(
+				values
+					.iter()
+					.copied()
+					.map(|value| Value::Double(Some(value)))
+					.collect(),
+			)),
+		),
+		QueryValue::UuidArray(values) => Value::Array(
+			reinhardt_query::value::ArrayType::Uuid,
+			Some(Box::new(
+				values
+					.iter()
+					.copied()
+					.map(|value| Value::Uuid(Some(Box::new(value))))
+					.collect(),
+			)),
+		),
 		// NOW() is handled specially in build() methods, should not reach here
 		QueryValue::Now => {
 			panic!("QueryValue::Now should be handled in build() method, not converted to Value")

@@ -3790,9 +3790,11 @@ fn generate_field_metadata(
 		let unique = fk_info.is_one_to_one; // OneToOne fields have UNIQUE constraint
 		let db_index = fk_info.rel_attr.db_index.unwrap_or(true); // FK fields are indexed by default
 
-		// Generate the field type based on target model's primary key
-		// We use IntegerField as a safe default; runtime will resolve the actual type
-		let field_type_path = "IntegerField";
+		// Derive both the field type and storage kind from the target primary key.
+		let storage_kind = quote! {
+			<<<#target_type as #orm_crate::Model>::PrimaryKey as #orm_crate::DatabaseField>::Storage as #orm_crate::DatabaseScalar>::STORAGE_KIND
+		};
+		let field_type_storage_kind = storage_kind.clone();
 
 		let item = quote! {
 			{
@@ -3814,10 +3816,8 @@ fn generate_field_metadata(
 
 				#orm_crate::inspection::FieldInfo {
 					name: #name.to_string(),
-					field_type: #field_type_path.to_string(),
-					storage_kind: ::core::option::Option::Some(
-						<<<#target_type as #orm_crate::Model>::PrimaryKey as #orm_crate::DatabaseField>::Storage as #orm_crate::DatabaseScalar>::STORAGE_KIND
-					),
+					field_type: #orm_crate::inspection::database_field_type_path(#field_type_storage_kind).to_string(),
+					storage_kind: ::core::option::Option::Some(#storage_kind),
 					domain: ::core::option::Option::None,
 					nullable: #nullable,
 					primary_key: false,
@@ -6829,6 +6829,7 @@ mod tests {
 		assert!(metadata.contains("User as"));
 		assert!(metadata.contains("fk_id_field"));
 		assert!(metadata.contains("domain : :: core :: option :: Option :: None"));
+		assert!(metadata.contains("database_field_type_path"));
 	}
 
 	#[test]

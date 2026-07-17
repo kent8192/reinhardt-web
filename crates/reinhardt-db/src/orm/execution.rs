@@ -173,6 +173,42 @@ fn convert_value_to_query_value(value: reinhardt_query::value::Value) -> QueryVa
 					})
 					.collect(),
 			),
+			reinhardt_query::value::ArrayType::Bool => QueryValue::BoolArray(
+				values
+					.iter()
+					.filter_map(|value| match value {
+						SV::Bool(Some(value)) => Some(*value),
+						_ => None,
+					})
+					.collect(),
+			),
+			reinhardt_query::value::ArrayType::Float => QueryValue::FloatArray(
+				values
+					.iter()
+					.filter_map(|value| match value {
+						SV::Float(Some(value)) => Some(*value),
+						_ => None,
+					})
+					.collect(),
+			),
+			reinhardt_query::value::ArrayType::Double => QueryValue::DoubleArray(
+				values
+					.iter()
+					.filter_map(|value| match value {
+						SV::Double(Some(value)) => Some(*value),
+						_ => None,
+					})
+					.collect(),
+			),
+			reinhardt_query::value::ArrayType::Uuid => QueryValue::UuidArray(
+				values
+					.iter()
+					.filter_map(|value| match value {
+						SV::Uuid(Some(value)) => Some(**value),
+						_ => None,
+					})
+					.collect(),
+			),
 			_ => QueryValue::Json(Some(Box::new(array_values_to_json(&values)))),
 		},
 		SV::Array(_, None) => QueryValue::Null,
@@ -1083,5 +1119,35 @@ mod tests {
 			)),
 			QueryValue::IntArray(vec![1, 2])
 		);
+	}
+
+	#[test]
+	fn native_array_types_do_not_fall_back_to_json() {
+		let bool_values = vec![
+			reinhardt_query::value::Value::Bool(Some(true)),
+			reinhardt_query::value::Value::Bool(Some(false)),
+		];
+		let float_values = vec![reinhardt_query::value::Value::Float(Some(1.5))];
+		let double_values = vec![reinhardt_query::value::Value::Double(Some(2.5))];
+		let uuid_values = vec![reinhardt_query::value::Value::Uuid(Some(Box::new(
+			uuid::Uuid::nil(),
+		)))];
+
+		for (array_type, values) in [
+			(reinhardt_query::value::ArrayType::Bool, bool_values),
+			(reinhardt_query::value::ArrayType::Float, float_values),
+			(reinhardt_query::value::ArrayType::Double, double_values),
+			(reinhardt_query::value::ArrayType::Uuid, uuid_values),
+		] {
+			let array_type_name = format!("{array_type:?}");
+			let converted = convert_value_to_query_value(reinhardt_query::value::Value::Array(
+				array_type,
+				Some(Box::new(values)),
+			));
+			assert!(
+				!matches!(converted, QueryValue::Json(_)),
+				"{array_type_name} arrays must preserve native binding"
+			);
+		}
 	}
 }

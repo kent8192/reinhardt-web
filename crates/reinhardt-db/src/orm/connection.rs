@@ -88,6 +88,21 @@ impl QueryRow {
 				QueryValue::BigIntArray(values) => serde_json::Value::Array(
 					values.into_iter().map(serde_json::Value::from).collect(),
 				),
+				QueryValue::BoolArray(values) => serde_json::Value::Array(
+					values.into_iter().map(serde_json::Value::from).collect(),
+				),
+				QueryValue::FloatArray(values) => serde_json::Value::Array(
+					values.into_iter().map(serde_json::Value::from).collect(),
+				),
+				QueryValue::DoubleArray(values) => serde_json::Value::Array(
+					values.into_iter().map(serde_json::Value::from).collect(),
+				),
+				QueryValue::UuidArray(values) => serde_json::Value::Array(
+					values
+						.into_iter()
+						.map(|value| serde_json::Value::String(value.to_string()))
+						.collect(),
+				),
 				// NOW() should never appear in Row data (it's resolved to actual timestamp in database)
 				QueryValue::Now => panic!("QueryValue::Now should not appear in Row data"),
 			};

@@ -64,6 +64,18 @@ fn build_delete_sql(stmt: &DeleteStatement, backend: DatabaseBackend) -> (String
 	}
 }
 
+fn database_value_sql_literal(
+	value: DatabaseValue,
+	backend: DatabaseBackend,
+) -> Result<String, FieldCodecError> {
+	if backend == DatabaseBackend::Postgres || !matches!(&value, DatabaseValue::Array { .. }) {
+		return Ok(database_value_to_query_value(value).to_sql_literal());
+	}
+
+	let json = value.into_json_value()?;
+	Ok(format!("'{}'", json.to_string().replace('\'', "''")))
+}
+
 /// Global database connection state
 static DB: once_cell::sync::OnceCell<Arc<RwLock<Option<DatabaseConnection>>>> =
 	once_cell::sync::OnceCell::new();
@@ -1077,6 +1089,42 @@ impl<M: Model> Manager<M> {
 							})
 							.collect(),
 					),
+					reinhardt_query::value::ArrayType::Bool => QueryValue::BoolArray(
+						values
+							.iter()
+							.filter_map(|value| match value {
+								SeaValue::Bool(Some(value)) => Some(*value),
+								_ => None,
+							})
+							.collect(),
+					),
+					reinhardt_query::value::ArrayType::Float => QueryValue::FloatArray(
+						values
+							.iter()
+							.filter_map(|value| match value {
+								SeaValue::Float(Some(value)) => Some(*value),
+								_ => None,
+							})
+							.collect(),
+					),
+					reinhardt_query::value::ArrayType::Double => QueryValue::DoubleArray(
+						values
+							.iter()
+							.filter_map(|value| match value {
+								SeaValue::Double(Some(value)) => Some(*value),
+								_ => None,
+							})
+							.collect(),
+					),
+					reinhardt_query::value::ArrayType::Uuid => QueryValue::UuidArray(
+						values
+							.iter()
+							.filter_map(|value| match value {
+								SeaValue::Uuid(Some(value)) => Some(**value),
+								_ => None,
+							})
+							.collect(),
+					),
 					_ => QueryValue::Json(Some(Box::new(super::execution::array_values_to_json(
 						&values,
 					)))),
@@ -1605,11 +1653,11 @@ impl<M: Model> Manager<M> {
 				.collect::<reinhardt_core::exception::Result<_>>()?;
 
 			if !updates.is_empty() {
-				let sql = self.bulk_update_database_values_sql_detailed(
-					&updates,
-					&fields,
-					conn.backend(),
-				);
+				let sql = self
+					.bulk_update_database_values_sql_detailed(&updates, &fields, conn.backend())
+					.map_err(|error| {
+						reinhardt_core::exception::Error::Other(anyhow::Error::new(error))
+					})?;
 				if sql.is_empty() {
 					continue;
 				}
@@ -1756,10 +1804,10 @@ impl<M: Model> Manager<M> {
 		&self,
 		updates: &[(DatabaseValue, HashMap<String, DatabaseValue>)],
 		fields: &[String],
-		_backend: DatabaseBackend,
-	) -> String {
+		backend: DatabaseBackend,
+	) -> Result<String, FieldCodecError> {
 		if updates.is_empty() || fields.is_empty() {
-			return String::new();
+			return Ok(String::new());
 		}
 
 		let table_name = M::table_name();
@@ -1777,8 +1825,8 @@ impl<M: Model> Manager<M> {
 					when_clauses.push(format!(
 						"WHEN \"{}\" = {} THEN {}",
 						primary_key_column,
-						database_value_to_query_value(pk.clone()).to_sql_literal(),
-						database_value_to_query_value(value.clone()).to_sql_literal()
+						database_value_sql_literal(pk.clone(), backend)?,
+						database_value_sql_literal(value.clone(), backend)?
 					));
 				}
 			}
@@ -1793,20 +1841,20 @@ impl<M: Model> Manager<M> {
 		}
 
 		if set_clauses.is_empty() {
-			return String::new();
+			return Ok(String::new());
 		}
 		let ids = updates
 			.iter()
-			.map(|(pk, _)| database_value_to_query_value(pk.clone()).to_sql_literal())
-			.collect::<Vec<_>>()
+			.map(|(pk, _)| database_value_sql_literal(pk.clone(), backend))
+			.collect::<Result<Vec<_>, _>>()?
 			.join(", ");
-		format!(
+		Ok(format!(
 			"UPDATE \"{}\" SET {} WHERE \"{}\" IN ({})",
 			table_name,
 			set_clauses.join(", "),
 			primary_key_column,
 			ids
-		)
+		))
 	}
 
 	/// Generates bulk-update SQL from legacy JSON input values.
@@ -2391,6 +2439,37 @@ mod tests {
 		assert!(sql.contains("Alice Updated"));
 		assert!(sql.contains("Bob Updated"));
 		assert!(sql.contains("WHERE"));
+	}
+
+	#[test]
+	fn test_bulk_update_database_values_serializes_arrays_per_backend() {
+		use crate::orm::{DatabaseArrayType, DatabaseValue};
+
+		let manager = TestUser::objects();
+		let mut field_values = HashMap::new();
+		field_values.insert(
+			"name".to_string(),
+			DatabaseValue::Array {
+				element_type: DatabaseArrayType::String,
+				values: vec![
+					DatabaseValue::String("alpha".to_string()),
+					DatabaseValue::String("beta".to_string()),
+				],
+			},
+		);
+		let updates = vec![(DatabaseValue::I64(1), field_values)];
+		let fields = vec!["name".to_string()];
+
+		let sqlite_sql = manager
+			.bulk_update_database_values_sql_detailed(&updates, &fields, DatabaseBackend::Sqlite)
+			.expect("SQLite array SQL should render");
+		assert!(sqlite_sql.contains("'[\"alpha\",\"beta\"]'"));
+		assert!(!sqlite_sql.contains("ARRAY["));
+
+		let postgres_sql = manager
+			.bulk_update_database_values_sql_detailed(&updates, &fields, DatabaseBackend::Postgres)
+			.expect("PostgreSQL array SQL should render");
+		assert!(postgres_sql.contains("ARRAY["));
 	}
 
 	#[test]

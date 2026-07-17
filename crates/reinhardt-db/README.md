@@ -313,6 +313,12 @@ relationship accessor, and session operations preserve the typed value during
 writes and hydration. For nullable fields, `None` maps to SQL `NULL`, while
 `Some(Json::new(serde_json::Value::Null))` maps to a present JSON `null` value.
 
+Vector model fields use native PostgreSQL arrays for `String`, `i32`, `i64`,
+`bool`, `f32`, `f64`, and `Uuid` elements. The manager, session, and bulk-update
+paths preserve those array types on PostgreSQL; MySQL and SQLite serialize the
+same vectors as JSON text. Session hydration also converts date, time, and
+timestamp columns to their typed chrono values on every supported backend.
+
 ```rust
 use reinhardt_db::Json;
 use serde::{Deserialize, Serialize};

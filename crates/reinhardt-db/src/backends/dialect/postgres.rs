@@ -48,6 +48,10 @@ impl PostgresBackend {
 			QueryValue::StringArray(values) => query.bind(values),
 			QueryValue::IntArray(values) => query.bind(values),
 			QueryValue::BigIntArray(values) => query.bind(values),
+			QueryValue::BoolArray(values) => query.bind(values),
+			QueryValue::FloatArray(values) => query.bind(values),
+			QueryValue::DoubleArray(values) => query.bind(values),
+			QueryValue::UuidArray(values) => query.bind(values),
 			QueryValue::Now => {
 				// PostgreSQL uses NOW() function, which should be part of SQL string
 				// For binding, we use current UTC time
@@ -175,6 +179,10 @@ impl PgTransactionExecutor {
 			QueryValue::StringArray(values) => query.bind(values),
 			QueryValue::IntArray(values) => query.bind(values),
 			QueryValue::BigIntArray(values) => query.bind(values),
+			QueryValue::BoolArray(values) => query.bind(values),
+			QueryValue::FloatArray(values) => query.bind(values),
+			QueryValue::DoubleArray(values) => query.bind(values),
+			QueryValue::UuidArray(values) => query.bind(values),
 			QueryValue::Now => query.bind(chrono::Utc::now()),
 		}
 	}
@@ -204,6 +212,73 @@ impl PostgresBackend {
 					Err(error) => return Err(error.into()),
 				};
 				continue;
+			}
+
+			match type_name.as_str() {
+				"TEXT[]" | "VARCHAR[]" | "BPCHAR[]" => {
+					match pg_row.try_get::<Option<Vec<String>>, _>(column_name)? {
+						Some(values) => {
+							row.insert(column_name.to_string(), QueryValue::StringArray(values))
+						}
+						None => row.insert(column_name.to_string(), QueryValue::Null),
+					};
+					continue;
+				}
+				"INT4[]" => {
+					match pg_row.try_get::<Option<Vec<i32>>, _>(column_name)? {
+						Some(values) => {
+							row.insert(column_name.to_string(), QueryValue::IntArray(values))
+						}
+						None => row.insert(column_name.to_string(), QueryValue::Null),
+					};
+					continue;
+				}
+				"INT8[]" => {
+					match pg_row.try_get::<Option<Vec<i64>>, _>(column_name)? {
+						Some(values) => {
+							row.insert(column_name.to_string(), QueryValue::BigIntArray(values))
+						}
+						None => row.insert(column_name.to_string(), QueryValue::Null),
+					};
+					continue;
+				}
+				"BOOL[]" => {
+					match pg_row.try_get::<Option<Vec<bool>>, _>(column_name)? {
+						Some(values) => {
+							row.insert(column_name.to_string(), QueryValue::BoolArray(values))
+						}
+						None => row.insert(column_name.to_string(), QueryValue::Null),
+					};
+					continue;
+				}
+				"FLOAT4[]" => {
+					match pg_row.try_get::<Option<Vec<f32>>, _>(column_name)? {
+						Some(values) => {
+							row.insert(column_name.to_string(), QueryValue::FloatArray(values))
+						}
+						None => row.insert(column_name.to_string(), QueryValue::Null),
+					};
+					continue;
+				}
+				"FLOAT8[]" => {
+					match pg_row.try_get::<Option<Vec<f64>>, _>(column_name)? {
+						Some(values) => {
+							row.insert(column_name.to_string(), QueryValue::DoubleArray(values))
+						}
+						None => row.insert(column_name.to_string(), QueryValue::Null),
+					};
+					continue;
+				}
+				"UUID[]" => {
+					match pg_row.try_get::<Option<Vec<Uuid>>, _>(column_name)? {
+						Some(values) => {
+							row.insert(column_name.to_string(), QueryValue::UuidArray(values))
+						}
+						None => row.insert(column_name.to_string(), QueryValue::Null),
+					};
+					continue;
+				}
+				_ => {}
 			}
 
 			if let Ok(value) = pg_row.try_get::<Uuid, _>(column_name) {
@@ -390,6 +465,78 @@ impl TransactionExecutor for PgTransactionExecutor {
 mod tests {
 	use rstest::rstest;
 	use rust_decimal::prelude::ToPrimitive;
+
+	#[tokio::test]
+	async fn convert_row_preserves_postgres_arrays() {
+		use sqlx::postgres::PgPoolOptions;
+		use testcontainers::{GenericImage, ImageExt, core::WaitFor, runners::AsyncRunner};
+
+		let container = GenericImage::new("postgres", "17-alpine")
+			.with_wait_for(WaitFor::message_on_stderr(
+				"database system is ready to accept connections",
+			))
+			.with_env_var("POSTGRES_HOST_AUTH_METHOD", "trust")
+			.start()
+			.await
+			.expect("PostgreSQL test container should start");
+		let port = container
+			.get_host_port_ipv4(5432)
+			.await
+			.expect("PostgreSQL test container should expose port 5432");
+		let pool = PgPoolOptions::new()
+			.max_connections(1)
+			.connect(format!("postgres://postgres@localhost:{port}/postgres").as_str())
+			.await
+			.expect("test pool should connect to PostgreSQL");
+
+		let row = sqlx::query(
+			"SELECT \
+				ARRAY['alpha', 'beta']::text[] AS string_values, \
+				ARRAY[1, 2]::integer[] AS int_values, \
+				ARRAY[3, 4]::bigint[] AS bigint_values, \
+				ARRAY[TRUE, FALSE]::boolean[] AS bool_values, \
+				ARRAY[1.5, 2.5]::real[] AS float_values, \
+				ARRAY[3.5, 4.5]::double precision[] AS double_values, \
+				ARRAY['00000000-0000-0000-0000-000000000000']::uuid[] AS uuid_values",
+		)
+		.fetch_one(&pool)
+		.await
+		.expect("PostgreSQL should return native arrays");
+		let converted = super::PostgresBackend::convert_row_internal(row)
+			.expect("backend row conversion should preserve arrays");
+
+		assert_eq!(
+			converted.data.get("string_values"),
+			Some(&super::QueryValue::StringArray(vec![
+				"alpha".to_string(),
+				"beta".to_string(),
+			]))
+		);
+		assert_eq!(
+			converted.data.get("int_values"),
+			Some(&super::QueryValue::IntArray(vec![1, 2]))
+		);
+		assert_eq!(
+			converted.data.get("bigint_values"),
+			Some(&super::QueryValue::BigIntArray(vec![3, 4]))
+		);
+		assert_eq!(
+			converted.data.get("bool_values"),
+			Some(&super::QueryValue::BoolArray(vec![true, false]))
+		);
+		assert_eq!(
+			converted.data.get("float_values"),
+			Some(&super::QueryValue::FloatArray(vec![1.5, 2.5]))
+		);
+		assert_eq!(
+			converted.data.get("double_values"),
+			Some(&super::QueryValue::DoubleArray(vec![3.5, 4.5]))
+		);
+		assert_eq!(
+			converted.data.get("uuid_values"),
+			Some(&super::QueryValue::UuidArray(vec![uuid::Uuid::nil()]))
+		);
+	}
 
 	/// Verify that normal Decimal values succeed to_f64() conversion
 	#[rstest]

@@ -394,6 +394,15 @@ impl Session {
 					Expr::cust(json_select_column_sql(self.db_backend, column_name)),
 					Alias::new(column_name),
 				);
+			} else if is_temporal_field_type(&field.field_type) {
+				select_query.expr_as(
+					Expr::cust(temporal_select_column_sql(
+						self.db_backend,
+						column_name,
+						&field.field_type,
+					)),
+					Alias::new(column_name),
+				);
 			} else {
 				select_query.column(Alias::new(column_name));
 			}
@@ -527,6 +536,9 @@ impl Session {
 						})
 						.unwrap_or(Value::Null)
 				}
+				typ if is_temporal_field_type(typ) => {
+					temporal_row_value(&row, column_name, field.nullable)
+				}
 				// Add more type mappings as needed
 				_ => serde_json::Value::Null,
 			};
@@ -630,40 +642,16 @@ impl Session {
 			return Ok(Vec::new());
 		}
 
-		// Build column expressions for SELECT
-		// DateTime fields are cast to text format for AnyPool compatibility
-		// (SQLx AnyPool doesn't support PostgreSQL's TIMESTAMP type)
+		// Build column expressions for SELECT.
 		let mut column_exprs: Vec<String> = Vec::new();
 		for field in &field_metadata {
 			let column_name = field.db_column.as_deref().unwrap_or(&field.name);
 			let is_json = is_json_field_type(&field.field_type);
-			let is_datetime = field.field_type.contains("DateTimeField")
-				|| field.field_type.contains("DateField");
 
 			let expr = if is_json {
 				json_select_column_alias_sql(self.db_backend, column_name)
-			} else if is_datetime {
-				// Cast datetime fields to ISO8601 text format
-				match self.db_backend {
-					DbBackend::Postgres => {
-						format!(
-							"TO_CHAR(\"{}\", 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS \"{}\"",
-							column_name, column_name
-						)
-					}
-					DbBackend::Mysql => {
-						format!(
-							"DATE_FORMAT(`{}`, '%Y-%m-%dT%H:%i:%sZ') AS `{}`",
-							column_name, column_name
-						)
-					}
-					DbBackend::Sqlite => {
-						format!(
-							"strftime('%Y-%m-%dT%H:%M:%SZ', \"{}\") AS \"{}\"",
-							column_name, column_name
-						)
-					}
-				}
+			} else if is_temporal_field_type(&field.field_type) {
+				temporal_select_column_alias_sql(self.db_backend, column_name, &field.field_type)
 			} else {
 				// Regular column
 				match self.db_backend {
@@ -808,16 +796,8 @@ impl Session {
 							})
 							.unwrap_or(Value::Null)
 					}
-					// DateTimeField / DateField: already cast to string in SQL query
-					typ if typ.contains("DateTimeField") || typ.contains("DateField") => {
-						// These fields are cast to ISO8601 strings in the SQL query
-						// The value will be parsed by serde when deserializing to chrono::DateTime
-						row.try_get::<Option<String>, _>(column_name)
-							.map(|v| {
-								v.map(serde_json::Value::from)
-									.unwrap_or(serde_json::Value::Null)
-							})
-							.unwrap_or(serde_json::Value::Null)
+					typ if is_temporal_field_type(typ) => {
+						temporal_row_value(&row, column_name, field.nullable)
 					}
 					// Default: try as string
 					_ => row
@@ -1204,12 +1184,12 @@ impl Session {
 		sql: &str,
 		values: &reinhardt_query::value::Values,
 	) -> Result<(), SessionError> {
-		let sql = sql_with_json_parameter_casts(self.get_backend(), sql, values);
+		let sql = sql_with_postgres_parameter_casts(self.get_backend(), sql, values);
 		let mut query = sqlx::query(sql.as_ref());
 
 		// Bind all values from reinhardt_query::value::Values
 		for value in &values.0 {
-			query = bind_reinhardt_query_value(query, value);
+			query = bind_reinhardt_query_value(query, value, self.get_backend());
 		}
 
 		query
@@ -1226,12 +1206,12 @@ impl Session {
 		sql: &str,
 		values: &reinhardt_query::value::Values,
 	) -> Result<sqlx::any::AnyRow, SessionError> {
-		let sql = sql_with_json_parameter_casts(self.get_backend(), sql, values);
+		let sql = sql_with_postgres_parameter_casts(self.get_backend(), sql, values);
 		let mut query = sqlx::query(sql.as_ref());
 
 		// Bind all values from reinhardt_query::value::Values
 		for value in &values.0 {
-			query = bind_reinhardt_query_value(query, value);
+			query = bind_reinhardt_query_value(query, value, self.get_backend());
 		}
 
 		query
@@ -1632,6 +1612,59 @@ fn is_json_field_type(field_type: &str) -> bool {
 	super::json::is_json_field_type(field_type)
 }
 
+fn is_temporal_field_type(field_type: &str) -> bool {
+	field_type.contains("DateTimeField")
+		|| field_type.contains("DateField")
+		|| field_type.contains("TimeField")
+}
+
+fn temporal_select_column_sql(backend: DbBackend, column_name: &str, field_type: &str) -> String {
+	match backend {
+		DbBackend::Postgres if field_type.contains("DateTimeField") => format!(
+			"TO_CHAR(\"{}\", 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"')",
+			column_name
+		),
+		DbBackend::Postgres if field_type.contains("DateField") => {
+			format!("TO_CHAR(\"{}\", 'YYYY-MM-DD')", column_name)
+		}
+		DbBackend::Postgres => format!("TO_CHAR(\"{}\", 'HH24:MI:SS.US')", column_name),
+		DbBackend::Mysql if field_type.contains("DateTimeField") => {
+			format!("DATE_FORMAT(`{}`, '%Y-%m-%dT%H:%i:%s.%fZ')", column_name)
+		}
+		DbBackend::Mysql if field_type.contains("DateField") => {
+			format!("DATE_FORMAT(`{}`, '%Y-%m-%d')", column_name)
+		}
+		DbBackend::Mysql => format!("TIME_FORMAT(`{}`, '%H:%i:%s.%f')", column_name),
+		DbBackend::Sqlite => format!("\"{}\"", column_name),
+	}
+}
+
+fn temporal_select_column_alias_sql(
+	backend: DbBackend,
+	column_name: &str,
+	field_type: &str,
+) -> String {
+	let expression = temporal_select_column_sql(backend, column_name, field_type);
+	match backend {
+		DbBackend::Postgres | DbBackend::Sqlite => {
+			format!("{} AS \"{}\"", expression, column_name)
+		}
+		DbBackend::Mysql => format!("{} AS `{}`", expression, column_name),
+	}
+}
+
+fn temporal_row_value(row: &sqlx::any::AnyRow, column_name: &str, nullable: bool) -> Value {
+	if nullable {
+		row.try_get::<Option<String>, _>(column_name)
+			.map(|value| value.map(Value::from).unwrap_or(Value::Null))
+			.unwrap_or(Value::Null)
+	} else {
+		row.try_get::<String, _>(column_name)
+			.map(Value::from)
+			.unwrap_or(Value::Null)
+	}
+}
+
 fn json_null_fields_for_data(
 	data: &Value,
 	field_metadata: &[FieldInfo],
@@ -1827,7 +1860,7 @@ fn null_reinhardt_query_value_for_field(field_info: Option<&FieldInfo>) -> RValu
 	}
 }
 
-fn sql_with_json_parameter_casts<'a>(
+fn sql_with_postgres_parameter_casts<'a>(
 	backend: DbBackend,
 	sql: &'a str,
 	values: &reinhardt_query::value::Values,
@@ -1836,24 +1869,18 @@ fn sql_with_json_parameter_casts<'a>(
 		return Cow::Borrowed(sql);
 	}
 
-	let json_parameter_numbers: Vec<usize> = values
+	let parameter_casts: Vec<(usize, &'static str)> = values
 		.0
 		.iter()
 		.enumerate()
-		.filter_map(|(index, value)| {
-			if matches!(value, RValue::Json(_)) {
-				Some(index + 1)
-			} else {
-				None
-			}
-		})
+		.filter_map(|(index, value)| postgres_parameter_cast(value).map(|cast| (index + 1, cast)))
 		.collect();
 
-	if json_parameter_numbers.is_empty() {
+	if parameter_casts.is_empty() {
 		return Cow::Borrowed(sql);
 	}
 
-	let mut rendered = String::with_capacity(sql.len() + (json_parameter_numbers.len() * 7));
+	let mut rendered = String::with_capacity(sql.len() + (parameter_casts.len() * 10));
 	let mut chars = sql.char_indices().peekable();
 	let mut in_single_quote = false;
 	let mut in_double_quote = false;
@@ -1899,10 +1926,13 @@ fn sql_with_json_parameter_casts<'a>(
 
 				rendered.push_str(&sql[start..end]);
 				if saw_digit
-					&& json_parameter_numbers.contains(&parameter_number)
-					&& !sql[end..].starts_with("::json")
+					&& let Some((_, cast)) = parameter_casts
+						.iter()
+						.find(|(number, _)| *number == parameter_number)
+					&& !sql[end..].starts_with("::")
 				{
-					rendered.push_str("::jsonb");
+					rendered.push_str("::");
+					rendered.push_str(cast);
 				}
 			}
 			_ => rendered.push(ch),
@@ -1912,10 +1942,70 @@ fn sql_with_json_parameter_casts<'a>(
 	Cow::Owned(rendered)
 }
 
+fn postgres_parameter_cast(value: &RValue) -> Option<&'static str> {
+	match value {
+		RValue::Json(_) => Some("jsonb"),
+		RValue::Array(array_type, None) => postgres_array_type_cast(array_type),
+		RValue::Array(array_type, Some(values)) if postgres_array_literal(values).is_some() => {
+			postgres_array_type_cast(array_type)
+		}
+		RValue::Array(_, Some(_)) => None,
+		_ => None,
+	}
+}
+
+fn postgres_array_type_cast(
+	array_type: &reinhardt_query::value::ArrayType,
+) -> Option<&'static str> {
+	match array_type {
+		reinhardt_query::value::ArrayType::String => Some("text[]"),
+		reinhardt_query::value::ArrayType::Int => Some("integer[]"),
+		reinhardt_query::value::ArrayType::BigInt => Some("bigint[]"),
+		reinhardt_query::value::ArrayType::Bool => Some("boolean[]"),
+		reinhardt_query::value::ArrayType::Float => Some("real[]"),
+		reinhardt_query::value::ArrayType::Double => Some("double precision[]"),
+		reinhardt_query::value::ArrayType::Uuid => Some("uuid[]"),
+		_ => None,
+	}
+}
+
+fn postgres_array_literal(values: &[RValue]) -> Option<String> {
+	let elements = values
+		.iter()
+		.map(postgres_array_element)
+		.collect::<Option<Vec<_>>>()?;
+	Some(format!("{{{}}}", elements.join(",")))
+}
+
+fn postgres_array_element(value: &RValue) -> Option<String> {
+	match value {
+		RValue::String(Some(value)) => Some(postgres_array_quote(value)),
+		RValue::Int(Some(value)) => Some(value.to_string()),
+		RValue::BigInt(Some(value)) => Some(value.to_string()),
+		RValue::Bool(Some(value)) => Some(value.to_string()),
+		RValue::Float(Some(value)) => Some(value.to_string()),
+		RValue::Double(Some(value)) => Some(value.to_string()),
+		RValue::Uuid(Some(value)) => Some(value.to_string()),
+		RValue::String(None)
+		| RValue::Int(None)
+		| RValue::BigInt(None)
+		| RValue::Bool(None)
+		| RValue::Float(None)
+		| RValue::Double(None)
+		| RValue::Uuid(None) => Some("NULL".to_string()),
+		_ => None,
+	}
+}
+
+fn postgres_array_quote(value: &str) -> String {
+	format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
 /// Bind reinhardt_query Value to sqlx Query
 fn bind_reinhardt_query_value<'a>(
 	query: sqlx::query::Query<'a, sqlx::Any, sqlx::any::AnyArguments<'a>>,
 	value: &RValue,
+	backend: DbBackend,
 ) -> sqlx::query::Query<'a, sqlx::Any, sqlx::any::AnyArguments<'a>> {
 	match value {
 		RValue::Bool(Some(b)) => query.bind(*b),
@@ -1949,6 +2039,13 @@ fn bind_reinhardt_query_value<'a>(
 			query.bind(j.to_string())
 		}
 		RValue::Json(None) => query.bind(None::<String>),
+		RValue::Array(_, Some(values)) if backend == DbBackend::Postgres => {
+			if let Some(value) = postgres_array_literal(values) {
+				query.bind(value)
+			} else {
+				query.bind(super::execution::array_values_to_json(values).to_string())
+			}
+		}
 		RValue::Array(_, Some(values)) => {
 			query.bind(super::execution::array_values_to_json(values).to_string())
 		}
@@ -2112,6 +2209,70 @@ mod tests {
 		}
 	}
 
+	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+	struct TemporalSessionModel {
+		id: Option<i64>,
+		published_on: chrono::NaiveDate,
+		starts_at: chrono::NaiveTime,
+		published_at: chrono::DateTime<chrono::Utc>,
+	}
+
+	#[derive(Debug, Clone)]
+	struct TemporalSessionModelFields;
+
+	impl crate::orm::model::FieldSelector for TemporalSessionModelFields {
+		fn with_alias(self, _alias: &str) -> Self {
+			self
+		}
+	}
+
+	impl Model for TemporalSessionModel {
+		type PrimaryKey = i64;
+		type Fields = TemporalSessionModelFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"temporal_session_models"
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = Some(value);
+		}
+
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+
+		fn new_fields() -> Self::Fields {
+			TemporalSessionModelFields
+		}
+
+		fn field_metadata() -> Vec<FieldInfo> {
+			vec![
+				test_field_info("id", "reinhardt.orm.models.BigIntegerField", false, true),
+				typed_test_field_info(
+					"published_on",
+					"reinhardt.orm.models.DateField",
+					crate::orm::DatabaseStorageKind::Date,
+				),
+				typed_test_field_info(
+					"starts_at",
+					"reinhardt.orm.models.TimeField",
+					crate::orm::DatabaseStorageKind::Time,
+				),
+				typed_test_field_info(
+					"published_at",
+					"reinhardt.orm.models.DateTimeField",
+					crate::orm::DatabaseStorageKind::DateTime,
+				),
+			]
+		}
+	}
+
 	fn test_field_info(
 		name: &str,
 		field_type: &str,
@@ -2134,6 +2295,16 @@ mod tests {
 			choices: None,
 			attributes: HashMap::new(),
 		}
+	}
+
+	fn typed_test_field_info(
+		name: &str,
+		field_type: &str,
+		storage_kind: crate::orm::DatabaseStorageKind,
+	) -> FieldInfo {
+		let mut field = test_field_info(name, field_type, false, false);
+		field.storage_kind = Some(storage_kind);
+		field
 	}
 
 	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -2242,6 +2413,38 @@ mod tests {
 			.execute(&pool)
 			.await
 			.expect("Failed to clear json_scalar_models table");
+
+		Arc::new(pool)
+	}
+
+	async fn create_temporal_test_pool() -> Arc<AnyPool> {
+		use sqlx::pool::PoolOptions;
+
+		sqlx::any::install_default_drivers();
+
+		let pool = PoolOptions::<Any>::new()
+			.min_connections(1)
+			.max_connections(5)
+			.connect("sqlite:file:test_session_temporal_db?mode=memory&cache=shared")
+			.await
+			.expect("Failed to create temporal test pool");
+
+		sqlx::query(
+			"CREATE TABLE IF NOT EXISTS temporal_session_models (
+				id INTEGER PRIMARY KEY,
+				published_on TEXT NOT NULL,
+				starts_at TEXT NOT NULL,
+				published_at TEXT NOT NULL
+			)",
+		)
+		.execute(&pool)
+		.await
+		.expect("Failed to create temporal_session_models table");
+
+		sqlx::query("DELETE FROM temporal_session_models")
+			.execute(&pool)
+			.await
+			.expect("Failed to clear temporal_session_models table");
 
 		Arc::new(pool)
 	}
@@ -2886,7 +3089,7 @@ mod tests {
 		]);
 
 		let sql = "UPDATE items SET payload = $1, flag = $10 WHERE id = $2";
-		let cast_sql = super::sql_with_json_parameter_casts(DbBackend::Postgres, sql, &values);
+		let cast_sql = super::sql_with_postgres_parameter_casts(DbBackend::Postgres, sql, &values);
 
 		assert_eq!(
 			cast_sql.as_ref(),
@@ -2900,12 +3103,91 @@ mod tests {
 
 		let values = Values(vec![RValue::Json(None)]);
 		let sql = "UPDATE items SET payload = $1 WHERE id = 1";
-		let cast_sql = super::sql_with_json_parameter_casts(DbBackend::Postgres, sql, &values);
+		let cast_sql = super::sql_with_postgres_parameter_casts(DbBackend::Postgres, sql, &values);
 
 		assert_eq!(
 			cast_sql.as_ref(),
 			"UPDATE items SET payload = $1::jsonb WHERE id = 1"
 		);
+	}
+
+	#[test]
+	fn test_postgres_array_parameter_placeholders_are_cast() {
+		use reinhardt_query::value::{ArrayType, Values};
+
+		let values = Values(vec![
+			RValue::Array(
+				ArrayType::String,
+				Some(Box::new(vec![RValue::String(Some(Box::new(
+					"alpha".to_string(),
+				)))])),
+			),
+			RValue::Array(ArrayType::Int, Some(Box::new(vec![RValue::Int(Some(7))]))),
+			RValue::Array(
+				ArrayType::Uuid,
+				Some(Box::new(vec![RValue::Uuid(Some(Box::new(Uuid::nil())))])),
+			),
+		]);
+
+		let sql = "UPDATE items SET labels = $1, ranks = $2, owner_ids = $3";
+		let cast_sql = super::sql_with_postgres_parameter_casts(DbBackend::Postgres, sql, &values);
+
+		assert_eq!(
+			cast_sql.as_ref(),
+			"UPDATE items SET labels = $1::text[], ranks = $2::integer[], owner_ids = $3::uuid[]"
+		);
+	}
+
+	#[serial(sqlx_drivers)]
+	#[tokio::test]
+	async fn test_session_binds_postgres_arrays_as_native_arrays() {
+		use reinhardt_query::value::{ArrayType, Values};
+		use testcontainers::{GenericImage, ImageExt, core::WaitFor, runners::AsyncRunner};
+
+		let container = GenericImage::new("postgres", "17-alpine")
+			.with_wait_for(WaitFor::message_on_stderr(
+				"database system is ready to accept connections",
+			))
+			.with_env_var("POSTGRES_HOST_AUTH_METHOD", "trust")
+			.start()
+			.await
+			.expect("PostgreSQL test container should start");
+		let port = container
+			.get_host_port_ipv4(5432)
+			.await
+			.expect("PostgreSQL test container should expose port 5432");
+
+		sqlx::any::install_default_drivers();
+		let pool = sqlx::pool::PoolOptions::<Any>::new()
+			.max_connections(1)
+			.connect(format!("postgres://postgres@localhost:{port}/postgres").as_str())
+			.await
+			.expect("AnyPool should connect to PostgreSQL");
+		let values = Values(vec![RValue::Array(
+			ArrayType::String,
+			Some(Box::new(vec![
+				RValue::String(Some(Box::new("alpha".to_string()))),
+				RValue::String(Some(Box::new("beta".to_string()))),
+			])),
+		)]);
+		let sql = super::sql_with_postgres_parameter_casts(
+			DbBackend::Postgres,
+			"SELECT array_to_string($1, ',') AS joined",
+			&values,
+		);
+		let mut query = sqlx::query(sql.as_ref());
+		for value in &values.0 {
+			query = super::bind_reinhardt_query_value(query, value, DbBackend::Postgres);
+		}
+
+		let row = query
+			.fetch_one(&pool)
+			.await
+			.expect("PostgreSQL should accept the bound native array");
+		let joined: String = row
+			.try_get("joined")
+			.expect("joined array text should decode");
+		assert_eq!(joined, "alpha,beta");
 	}
 
 	#[test]
@@ -3085,6 +3367,49 @@ mod tests {
 			&serde_json::json!({ "stage": "draft" })
 		);
 		assert_eq!(loaded.publish_date.as_deref(), Some("2026-07-01"));
+	}
+
+	#[rstest]
+	#[serial(sqlx_drivers)]
+	#[tokio::test]
+	async fn test_session_hydrates_temporal_fields(_init_drivers: ()) {
+		let pool = create_temporal_test_pool().await;
+		sqlx::query(
+			"INSERT INTO temporal_session_models \
+			 (id, published_on, starts_at, published_at) \
+			 VALUES (1, '2026-07-18', '08:09:10.123456', '2026-07-18T08:09:10Z')",
+		)
+		.execute(&*pool)
+		.await
+		.expect("temporal row should insert");
+
+		let mut session = Session::new(pool, DbBackend::Sqlite)
+			.await
+			.expect("session should initialize");
+
+		let expected = TemporalSessionModel {
+			id: Some(1),
+			published_on: chrono::NaiveDate::from_ymd_opt(2026, 7, 18)
+				.expect("date should be valid"),
+			starts_at: chrono::NaiveTime::from_hms_micro_opt(8, 9, 10, 123_456)
+				.expect("time should be valid"),
+			published_at: chrono::DateTime::parse_from_rfc3339("2026-07-18T08:09:10Z")
+				.expect("timestamp should be valid")
+				.with_timezone(&chrono::Utc),
+		};
+
+		let loaded = session
+			.get::<TemporalSessionModel>(1)
+			.await
+			.expect("session get should succeed")
+			.expect("temporal row should exist");
+		assert_eq!(loaded, expected);
+
+		let all = session
+			.list_all::<TemporalSessionModel>()
+			.await
+			.expect("session list_all should succeed");
+		assert_eq!(all, vec![expected]);
 	}
 
 	#[rstest]

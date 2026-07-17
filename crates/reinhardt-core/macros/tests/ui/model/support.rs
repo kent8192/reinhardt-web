@@ -814,6 +814,25 @@ pub mod db {
 			use super::{DatabaseStorageKind, FieldDomain};
 			use std::collections::HashMap;
 
+			pub fn database_field_type_path(storage_kind: DatabaseStorageKind) -> &'static str {
+				match storage_kind {
+					DatabaseStorageKind::Bool => "reinhardt.orm.models.BooleanField",
+					DatabaseStorageKind::I32 => "reinhardt.orm.models.IntegerField",
+					DatabaseStorageKind::I64 => "reinhardt.orm.models.BigIntegerField",
+					DatabaseStorageKind::F32 | DatabaseStorageKind::F64 => {
+						"reinhardt.orm.models.FloatField"
+					}
+					DatabaseStorageKind::Decimal => "reinhardt.orm.models.DecimalField",
+					DatabaseStorageKind::String => "reinhardt.orm.models.CharField",
+					DatabaseStorageKind::Bytes => "reinhardt.orm.models.BinaryField",
+					DatabaseStorageKind::Json => "reinhardt.orm.models.JsonField",
+					DatabaseStorageKind::Uuid => "reinhardt.orm.models.UuidField",
+					DatabaseStorageKind::Date => "reinhardt.orm.models.DateField",
+					DatabaseStorageKind::Time => "reinhardt.orm.models.TimeField",
+					DatabaseStorageKind::DateTime => "reinhardt.orm.models.DateTimeField",
+				}
+			}
+
 			#[derive(Debug, Clone, PartialEq)]
 			pub struct FieldInfo {
 				pub name: String,
