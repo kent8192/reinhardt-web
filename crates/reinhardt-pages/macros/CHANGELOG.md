@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Generate distinct conditional Pages-crate aliases for multiple `#[style_def]` declarations in one module.
+- Generate component-variable setters that enforce direct property numeric
+  constraints.
 
 ### Changed
 

@@ -50,6 +50,8 @@ pub struct TypedStyleVariable {
 	pub value_type: SemanticType,
 	/// Type-checked default expression.
 	pub default: TypedValueExpr,
+	/// Numeric constraint generated runtime setters must preserve for direct property uses.
+	pub runtime_constraint: Option<StyleVariableConstraint>,
 	/// Deterministic CSS custom-property suffix with underscores converted to hyphens.
 	pub css_name: String,
 	/// Zero-based position in the authored `vars` block.
@@ -58,6 +60,20 @@ pub struct TypedStyleVariable {
 	pub dependency_indices: Vec<usize>,
 	/// Zero-based position in dependency-first evaluation order.
 	pub evaluation_index: usize,
+}
+
+/// A numeric property constraint enforced by a generated component-variable setter.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum StyleVariableConstraint {
+	/// The generated setter accepts only values greater than or equal to zero.
+	NonNegative,
+	/// The generated setter accepts only values within an inclusive numeric range.
+	NumericRange {
+		/// The inclusive lower bound.
+		minimum: i16,
+		/// The inclusive upper bound.
+		maximum: i16,
+	},
 }
 
 /// Closed mapping from style DSL variable types to generated runtime wrappers.

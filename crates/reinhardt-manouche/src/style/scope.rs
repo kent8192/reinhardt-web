@@ -5,7 +5,7 @@ use std::fmt::Write as _;
 use proc_macro2::Span;
 use sha2::{Digest, Sha256};
 
-use crate::{StyleRuntimeType, TypedValueExpr};
+use crate::{StyleRuntimeType, StyleVariableConstraint, TypedValueExpr};
 
 /// Cargo and generated-type inputs that uniquely identify one component style definition.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,6 +49,8 @@ pub struct ScopedVariable {
 	pub custom_property_name: String,
 	/// Closed runtime wrapper category for generated setters.
 	pub runtime_type: StyleRuntimeType,
+	/// Numeric constraint generated setters must enforce, when one is required.
+	pub runtime_constraint: Option<StyleVariableConstraint>,
 	/// Zero-based source position in the authored `vars` block.
 	pub source_index: usize,
 	/// Type-checked authored default expression.

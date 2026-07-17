@@ -47,14 +47,31 @@ pub(super) fn generate_style_items(
 	});
 
 	let setters = compiled.variables.iter().map(|variable| {
+		use reinhardt_manouche::StyleVariableConstraint;
+
 		let setter = format_ident!("{}", variable.authored_name, span = variable.span);
 		let custom_property = &variable.custom_property_name;
 		let source_index = variable.source_index;
 		let runtime_type = runtime_type_path(variable.runtime_type, &pages);
+		let set_value = match variable.runtime_constraint {
+			None => quote!(self.inner.set(#source_index, #custom_property, value);),
+			Some(StyleVariableConstraint::NonNegative) => {
+				quote!(self.inner.set_non_negative(#source_index, #custom_property, value);)
+			}
+			Some(StyleVariableConstraint::NumericRange { minimum, maximum }) => {
+				quote!(self.inner.set_inclusive_range(
+					#source_index,
+					#custom_property,
+					#minimum,
+					#maximum,
+					value,
+				);)
+			}
+		};
 		quote_spanned! {variable.span=>
 			/// Sets this generated component variable override.
 			pub fn #setter(mut self, value: #runtime_type) -> Self {
-				self.inner.set(#source_index, #custom_property, value);
+				#set_value
 				self
 			}
 		}

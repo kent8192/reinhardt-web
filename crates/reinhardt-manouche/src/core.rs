@@ -25,10 +25,10 @@ pub use reactive::*;
 pub use style_node::*;
 pub use style_typed::{
 	Direction, KeywordDomain, NumericConstraint, NumericDimension, SemanticType, StyleRuntimeType,
-	TypeConstraint, TypedFunctionCall, TypedGlobalReference, TypedStyleClass,
-	TypedStyleDeclaration, TypedStyleGlobal, TypedStyleItem, TypedStyleMacro, TypedStyleMediaRule,
-	TypedStyleRule, TypedStyleRuleItem, TypedStyleVariable, TypedValueExpr, TypedValueExprKind,
-	TypedVariableReference,
+	StyleVariableConstraint, TypeConstraint, TypedFunctionCall, TypedGlobalReference,
+	TypedStyleClass, TypedStyleDeclaration, TypedStyleGlobal, TypedStyleItem, TypedStyleMacro,
+	TypedStyleMediaRule, TypedStyleRule, TypedStyleRuleItem, TypedStyleVariable, TypedValueExpr,
+	TypedValueExprKind, TypedVariableReference,
 };
 pub use typed_node::*;
 pub use types::*;

@@ -31,6 +31,8 @@ mod private {
 pub trait StyleValue: private::Sealed {
 	/// Writes exactly one validated CSS value.
 	fn write_css_value(&self, output: &mut String);
+	/// Returns the numeric value when this CSS value supports numeric constraints.
+	fn numeric_value(&self) -> Option<f64>;
 }
 
 macro_rules! numeric_value {
@@ -52,6 +54,10 @@ macro_rules! numeric_value {
 			fn write_css_value(&self, output: &mut String) {
 				write_decimal(self.0, output);
 				output.push_str($suffix);
+			}
+
+			fn numeric_value(&self) -> Option<f64> {
+				Some(self.0)
 			}
 		}
 
@@ -147,6 +153,10 @@ impl StyleValue for CssLength {
 		write_decimal(self.value, output);
 		output.push_str(self.unit);
 	}
+
+	fn numeric_value(&self) -> Option<f64> {
+		Some(self.value)
+	}
 }
 
 impl fmt::Display for CssLength {
@@ -185,6 +195,13 @@ impl StyleValue for CssLengthPercentage {
 		match self {
 			Self::Length(value) => value.write_css_value(output),
 			Self::Percentage(value) => value.write_css_value(output),
+		}
+	}
+
+	fn numeric_value(&self) -> Option<f64> {
+		match self {
+			Self::Length(value) => value.numeric_value(),
+			Self::Percentage(value) => value.numeric_value(),
 		}
 	}
 }
@@ -240,6 +257,10 @@ impl StyleValue for CssAngle {
 		write_decimal(self.value, output);
 		output.push_str(self.unit);
 	}
+
+	fn numeric_value(&self) -> Option<f64> {
+		Some(self.value)
+	}
 }
 
 impl fmt::Display for CssAngle {
@@ -283,6 +304,10 @@ impl StyleValue for CssTime {
 		write_decimal(self.value, output);
 		output.push_str(self.unit);
 	}
+
+	fn numeric_value(&self) -> Option<f64> {
+		Some(self.value)
+	}
 }
 
 impl fmt::Display for CssTime {
@@ -309,6 +334,10 @@ impl private::Sealed for CssInteger {}
 impl StyleValue for CssInteger {
 	fn write_css_value(&self, output: &mut String) {
 		output.push_str(&self.0.to_string());
+	}
+
+	fn numeric_value(&self) -> Option<f64> {
+		Some(self.0 as f64)
 	}
 }
 
@@ -340,6 +369,10 @@ impl private::Sealed for CssColor {}
 impl StyleValue for CssColor {
 	fn write_css_value(&self, output: &mut String) {
 		output.push_str(&self.0);
+	}
+
+	fn numeric_value(&self) -> Option<f64> {
+		None
 	}
 }
 
@@ -631,6 +664,35 @@ impl StyleVars {
 			name,
 			value: serialized,
 		});
+	}
+
+	/// Replaces one generated variable slot after enforcing a nonnegative numeric value.
+	#[doc(hidden)]
+	pub fn set_non_negative<V: StyleValue>(&mut self, index: usize, name: &'static str, value: V) {
+		assert!(
+			value.numeric_value().is_some_and(|number| number >= 0.0),
+			"generated style variable requires a nonnegative numeric value"
+		);
+		self.set(index, name, value);
+	}
+
+	/// Replaces one generated variable slot after enforcing an inclusive numeric range.
+	#[doc(hidden)]
+	pub fn set_inclusive_range<V: StyleValue>(
+		&mut self,
+		index: usize,
+		name: &'static str,
+		minimum: i16,
+		maximum: i16,
+		value: V,
+	) {
+		assert!(
+			value.numeric_value().is_some_and(|number| {
+				number >= f64::from(minimum) && number <= f64::from(maximum)
+			}),
+			"generated style variable requires a value in the inclusive range {minimum}..={maximum}"
+		);
+		self.set(index, name, value);
 	}
 }
 

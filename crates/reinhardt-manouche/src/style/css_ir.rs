@@ -290,6 +290,7 @@ pub(crate) fn lower_style(
 			authored_name: variable.declaration.name.value.clone(),
 			custom_property_name: scope.variable_name(&variable.css_name),
 			runtime_type: variable.runtime_type,
+			runtime_constraint: variable.runtime_constraint,
 			source_index: variable.source_index,
 			default: variable.default.clone(),
 			span: variable.declaration.span,

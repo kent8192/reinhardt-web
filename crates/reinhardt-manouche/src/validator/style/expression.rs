@@ -14,9 +14,9 @@ use crate::{
 	StyleDeclaration, StyleDiagnostic, StyleDiagnosticKind, StyleItem, StyleMacro, StyleMediaRule,
 	StyleNumericUnit, StyleReferenceNamespace, StyleRule, StyleRuleItem, StyleRuntimeType,
 	StyleUnaryOperatorKind, StyleValueExpr, StyleValueExpression, StyleValueLiteral,
-	TypeConstraint, TypedFunctionCall, TypedGlobalReference, TypedStyleDeclaration,
-	TypedStyleGlobal, TypedStyleItem, TypedStyleMacro, TypedStyleMediaRule, TypedStyleRule,
-	TypedStyleRuleItem, TypedStyleVariable, TypedValueExpr, TypedValueExprKind,
+	StyleVariableConstraint, TypeConstraint, TypedFunctionCall, TypedGlobalReference,
+	TypedStyleDeclaration, TypedStyleGlobal, TypedStyleItem, TypedStyleMacro, TypedStyleMediaRule,
+	TypedStyleRule, TypedStyleRuleItem, TypedStyleVariable, TypedValueExpr, TypedValueExprKind,
 	TypedVariableReference, ValueGrammar,
 };
 
@@ -124,6 +124,7 @@ pub(super) fn validate_expressions(
 			runtime_type,
 			value_type: declared_type,
 			default: typed_default,
+			runtime_constraint: None,
 			css_name: variable.css_name,
 			source_index: variable.source_index,
 			dependency_indices: variable.dependency_indices,
@@ -140,6 +141,10 @@ pub(super) fn validate_expressions(
 		.iter()
 		.map(|item| type_check_item(item, &global_symbols, &variable_symbols, &variable_defaults))
 		.collect::<Result<Vec<_>, _>>()?;
+	let variable_constraints = collect_component_variable_constraints(&items);
+	for variable in &mut variables {
+		variable.runtime_constraint = variable_constraints.get(&variable.source_index).copied();
+	}
 
 	Ok(TypedStyleMacro {
 		globals,
@@ -149,6 +154,221 @@ pub(super) fn validate_expressions(
 		variable_evaluation_order: bindings.evaluation_order,
 		span: ast.span,
 	})
+}
+
+fn collect_component_variable_constraints(
+	items: &[TypedStyleItem],
+) -> HashMap<usize, StyleVariableConstraint> {
+	let mut constraints = HashMap::new();
+	for item in items {
+		match item {
+			TypedStyleItem::Rule(rule) => {
+				collect_rule_item_constraints(&rule.items, &mut constraints);
+			}
+			TypedStyleItem::Media(media) => {
+				collect_rule_item_constraints(&media.items, &mut constraints);
+			}
+		}
+	}
+	constraints
+		.into_iter()
+		.filter_map(|(source_index, constraint)| {
+			constraint.map(|constraint| (source_index, constraint))
+		})
+		.collect()
+}
+
+fn collect_rule_item_constraints(
+	items: &[TypedStyleRuleItem],
+	constraints: &mut HashMap<usize, Option<StyleVariableConstraint>>,
+) {
+	for item in items {
+		match item {
+			TypedStyleRuleItem::Declaration(declaration) => {
+				collect_declaration_constraint(declaration, constraints);
+			}
+			TypedStyleRuleItem::Rule(rule) => {
+				collect_rule_item_constraints(&rule.items, constraints);
+			}
+			TypedStyleRuleItem::Media(media) => {
+				collect_rule_item_constraints(&media.items, constraints);
+			}
+		}
+	}
+}
+
+fn collect_declaration_constraint(
+	declaration: &TypedStyleDeclaration,
+	constraints: &mut HashMap<usize, Option<StyleVariableConstraint>>,
+) {
+	let Some(source_index) = direct_component_variable_reference(&declaration.value) else {
+		return;
+	};
+	let Some(spec) = property_spec(declaration.name.as_str()) else {
+		return;
+	};
+	let Some(constraint) = variable_constraint_for_grammar(&declaration.value, spec.grammar) else {
+		return;
+	};
+	let entry = constraints.entry(source_index).or_insert(Some(constraint));
+	*entry = (*entry).and_then(|existing| intersect_variable_constraints(existing, constraint));
+}
+
+fn direct_component_variable_reference(expression: &TypedValueExpr) -> Option<usize> {
+	match &expression.kind {
+		TypedValueExprKind::VariableReference(reference) => Some(reference.source_index),
+		TypedValueExprKind::Group(inner) => direct_component_variable_reference(inner),
+		_ => None,
+	}
+}
+
+fn variable_constraint_for_grammar(
+	expression: &TypedValueExpr,
+	grammar: &ValueGrammar,
+) -> Option<StyleVariableConstraint> {
+	match grammar {
+		ValueGrammar::NonNegative(inner) if matches_grammar(expression, inner) => {
+			let inner_constraint = variable_constraint_for_grammar(expression, inner);
+			match inner_constraint {
+				Some(constraint) => {
+					intersect_variable_constraints(StyleVariableConstraint::NonNegative, constraint)
+				}
+				None => Some(StyleVariableConstraint::NonNegative),
+			}
+		}
+		ValueGrammar::NumericRange {
+			grammar,
+			minimum,
+			maximum,
+		} if matches_grammar(expression, grammar) => {
+			let constraint = StyleVariableConstraint::NumericRange {
+				minimum: *minimum,
+				maximum: *maximum,
+			};
+			match variable_constraint_for_grammar(expression, grammar) {
+				Some(inner_constraint) => {
+					intersect_variable_constraints(constraint, inner_constraint)
+				}
+				None => Some(constraint),
+			}
+		}
+		ValueGrammar::Or(alternatives) => common_variable_constraint(
+			alternatives
+				.iter()
+				.filter(|alternative| matches_grammar(expression, alternative))
+				.map(|alternative| variable_constraint_for_grammar(expression, alternative)),
+		),
+		ValueGrammar::Space { item, .. }
+		| ValueGrammar::Comma { item, .. }
+		| ValueGrammar::SlashList { item, .. }
+			if matches_grammar(expression, grammar) =>
+		{
+			variable_constraint_for_grammar(expression, item)
+		}
+		ValueGrammar::CommaFinal { final_item, .. } if matches_grammar(expression, grammar) => {
+			variable_constraint_for_grammar(expression, final_item)
+		}
+		ValueGrammar::Primitive(_)
+		| ValueGrammar::NonNegative(_)
+		| ValueGrammar::NumericRange { .. }
+		| ValueGrammar::Keyword(_)
+		| ValueGrammar::Identifier
+		| ValueGrammar::IdentifierExcept(_)
+		| ValueGrammar::FunctionResult(_)
+		| ValueGrammar::Slash { .. }
+		| ValueGrammar::Ordered(_)
+		| ValueGrammar::Unordered { .. }
+		| ValueGrammar::Space { .. }
+		| ValueGrammar::Comma { .. }
+		| ValueGrammar::CommaFinal { .. }
+		| ValueGrammar::SlashList { .. } => None,
+	}
+}
+
+fn common_variable_constraint(
+	constraints: impl Iterator<Item = Option<StyleVariableConstraint>>,
+) -> Option<StyleVariableConstraint> {
+	let mut constraints = constraints;
+	let mut combined = constraints.next()??;
+	for constraint in constraints {
+		combined = union_variable_constraints(combined, constraint?)?;
+	}
+	Some(combined)
+}
+
+fn intersect_variable_constraints(
+	left: StyleVariableConstraint,
+	right: StyleVariableConstraint,
+) -> Option<StyleVariableConstraint> {
+	match (left, right) {
+		(StyleVariableConstraint::NonNegative, StyleVariableConstraint::NonNegative) => {
+			Some(StyleVariableConstraint::NonNegative)
+		}
+		(
+			StyleVariableConstraint::NonNegative,
+			StyleVariableConstraint::NumericRange { minimum, maximum },
+		)
+		| (
+			StyleVariableConstraint::NumericRange { minimum, maximum },
+			StyleVariableConstraint::NonNegative,
+		) => {
+			let minimum = minimum.max(0);
+			(minimum <= maximum)
+				.then_some(StyleVariableConstraint::NumericRange { minimum, maximum })
+		}
+		(
+			StyleVariableConstraint::NumericRange {
+				minimum: left_minimum,
+				maximum: left_maximum,
+			},
+			StyleVariableConstraint::NumericRange {
+				minimum: right_minimum,
+				maximum: right_maximum,
+			},
+		) => {
+			let minimum = left_minimum.max(right_minimum);
+			let maximum = left_maximum.min(right_maximum);
+			(minimum <= maximum)
+				.then_some(StyleVariableConstraint::NumericRange { minimum, maximum })
+		}
+	}
+}
+
+fn union_variable_constraints(
+	left: StyleVariableConstraint,
+	right: StyleVariableConstraint,
+) -> Option<StyleVariableConstraint> {
+	match (left, right) {
+		(StyleVariableConstraint::NonNegative, StyleVariableConstraint::NonNegative) => {
+			Some(StyleVariableConstraint::NonNegative)
+		}
+		(
+			StyleVariableConstraint::NonNegative,
+			StyleVariableConstraint::NumericRange { minimum, .. },
+		)
+		| (
+			StyleVariableConstraint::NumericRange { minimum, .. },
+			StyleVariableConstraint::NonNegative,
+		) if minimum >= 0 => Some(StyleVariableConstraint::NonNegative),
+		(
+			StyleVariableConstraint::NumericRange {
+				minimum: left_minimum,
+				maximum: left_maximum,
+			},
+			StyleVariableConstraint::NumericRange {
+				minimum: right_minimum,
+				maximum: right_maximum,
+			},
+		) if i32::from(left_maximum) + 1 >= i32::from(right_minimum)
+			&& i32::from(right_maximum) + 1 >= i32::from(left_minimum) =>
+		{
+			Some(StyleVariableConstraint::NumericRange {
+				minimum: left_minimum.min(right_minimum),
+				maximum: left_maximum.max(right_maximum),
+			})
+		}
+		_ => None,
+	}
 }
 
 fn resolve_runtime_type(name: &str, span: Span) -> Result<StyleRuntimeType, StyleDiagnostic> {
@@ -2367,6 +2587,18 @@ mod tests {
 			panic!("expected a style rule");
 		};
 		assert_eq!(rule.items.len(), 3);
+	}
+
+	#[rstest]
+	#[case(".card { width: 1PX; }")]
+	#[case(".card { transform: rotate(90DEG); }")]
+	#[case(".card { transition-duration: 1MS; }")]
+	fn numeric_css_units_match_ascii_case_insensitively(#[case] source: &str) {
+		// Act
+		let typed = validated_text(source);
+
+		// Assert
+		assert_eq!(typed.items.len(), 1);
 	}
 
 	#[rstest]

@@ -23,6 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **BREAKING**: Route-backed component macros now require the route name as
   `name = "..."`, for example `#[component("/path", name = "name")]`.
 
+### Fixed
+
+- *(style)* preserve direct property numeric constraints in generated component
+  variable setters.
+
 ### Migration Notes
 
 - **BREAKING**: Dependency-aware hooks now require a named second argument.
