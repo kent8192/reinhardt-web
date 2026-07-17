@@ -196,10 +196,11 @@ cargo run --bin manage runserver
 `app_label.ModelName` form registered by `#[model(...)]`.
 `dumpdata` keeps stdout as machine-readable JSON. `loaddata` loads fixtures
 inside one transaction, upserts rows by explicit primary key, preserves
-explicit `null` values, accepts Django-style foreign key field names, includes
-many-to-many fixture arrays, preserves binary fields as Django-compatible
-base64 strings, and resets PostgreSQL sequences after explicit integer primary
-keys.
+explicit `null` values, accepts Django-style foreign key field names, and
+validates foreign-key values as scalar identifiers (or `null` for nullable
+relationships). It also includes many-to-many fixture arrays, preserves binary
+fields as Django-compatible base64 strings, and resets PostgreSQL sequences
+after explicit integer primary keys.
 
 ```bash
 # Export all registered fixture models.

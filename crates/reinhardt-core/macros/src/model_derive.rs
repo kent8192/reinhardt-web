@@ -3315,6 +3315,7 @@ fn generate_fixture_validation(
 	let mut has_defaulted_fixture_field = false;
 	let mut defaulted_fixture_field_validators = Vec::new();
 	let mut has_required_fixture_foreign_key = false;
+	let mut has_nullable_fixture_foreign_key = false;
 
 	for field in field_infos {
 		if field.config.skip
@@ -3484,7 +3485,8 @@ fn generate_fixture_validation(
 			quote! { #orm_crate::FixtureValue }
 		};
 		let deserialize_with = if is_nullable {
-			quote! {}
+			has_nullable_fixture_foreign_key = true;
+			quote! { #[serde(deserialize_with = "__reinhardt_validate_nullable_fixture_foreign_key")] }
 		} else {
 			quote! { #[serde(deserialize_with = "__reinhardt_validate_required_fixture_foreign_key")] }
 		};
@@ -3548,6 +3550,26 @@ fn generate_fixture_validation(
 	} else {
 		quote! {}
 	};
+	let nullable_fixture_foreign_key_validator = if has_nullable_fixture_foreign_key {
+		quote! {
+			fn __reinhardt_validate_nullable_fixture_foreign_key<'de, D>(
+				deserializer: D,
+			) -> ::std::result::Result<::std::option::Option<#orm_crate::FixtureValue>, D::Error>
+			where
+				D: #orm_crate::serde::Deserializer<'de>,
+			{
+				let value = <::std::option::Option<#orm_crate::FixtureValue> as #orm_crate::serde::Deserialize>::deserialize(deserializer)?;
+				if value.as_ref().is_some_and(|value| value.is_object() || value.is_array()) {
+					return Err(<D::Error as #orm_crate::serde::de::Error>::custom(
+						"nullable foreign key fixture fields must be scalar identifiers or null",
+					));
+				}
+				Ok(value)
+			}
+		}
+	} else {
+		quote! {}
+	};
 
 	quote! {
 	fn validate_fixture_fields(
@@ -3556,6 +3578,7 @@ fn generate_fixture_validation(
 			#(#defaulted_fixture_field_validators)*
 			#defaulted_fixture_field_validator
 			#required_fixture_foreign_key_validator
+			#nullable_fixture_foreign_key_validator
 
 			// This projection is deserialized only to validate fixture input.
 			#[allow(dead_code)]

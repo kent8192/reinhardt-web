@@ -402,6 +402,17 @@ fn test_fixture_projection_uses_custom_foreign_key_columns() {
 	for invalid_identifier in [serde_json::json!({ "id": 7 }), serde_json::json!([7])] {
 		let mut invalid_fields = serde_json::Map::new();
 		invalid_fields.insert("id".to_string(), serde_json::json!(1));
+		invalid_fields.insert("nullable_writer_pk".to_string(), invalid_identifier);
+
+		assert!(
+			NullableMetadataWriter::validate_fixture_fields(&invalid_fields).is_err(),
+			"nullable foreign-key fixture values must reject non-null structured identifiers"
+		);
+	}
+
+	for invalid_identifier in [serde_json::json!({ "id": 7 }), serde_json::json!([7])] {
+		let mut invalid_fields = serde_json::Map::new();
+		invalid_fields.insert("id".to_string(), serde_json::json!(1));
 		invalid_fields.insert("writer_pk".to_string(), invalid_identifier);
 
 		assert!(
