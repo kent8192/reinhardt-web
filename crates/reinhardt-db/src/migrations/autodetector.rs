@@ -6254,10 +6254,11 @@ impl MigrationAutodetector {
 	/// ```rust,ignore
 	/// Sort operations by their dependencies to ensure correct execution order.
 	///
-	/// CreateTable operations must run before table modifications, but the
-	/// remaining emission order carries dependency information. In
-	/// particular, generated-column repair and rollback marker operations
-	/// must stay around the drop/add replacement pair that they protect.
+	/// CreateTable operations must run before table modifications unless they
+	/// depend on a table produced by a rename. The remaining emission order
+	/// carries dependency information. In particular, generated-column repair
+	/// and rollback marker operations must stay around the drop/add replacement
+	/// pair that they protect.
 	fn sort_operations_by_dependency(
 		&self,
 		mut operations: Vec<super::Operation>,
@@ -6277,6 +6278,18 @@ impl MigrationAutodetector {
 				_ => None,
 			})
 			.collect();
+		let renamed_table_destinations: BTreeSet<_> = operations
+			.iter()
+			.filter_map(|operation| match operation {
+				super::Operation::RenameTable { new_name, .. } => Some(new_name.clone()),
+				super::Operation::MoveModel {
+					rename_table: true,
+					new_table_name: Some(new_name),
+					..
+				} => Some(new_name.clone()),
+				_ => None,
+			})
+			.collect();
 		let create_tables: Vec<_> = operations
 			.iter()
 			.filter(|operation| {
@@ -6284,7 +6297,9 @@ impl MigrationAutodetector {
 					operation,
 					super::Operation::CreateTable { name, .. }
 						if !renamed_table_sources.contains(name)
-				)
+				) && !renamed_table_destinations
+					.iter()
+					.any(|table_name| Self::operation_references_table(operation, table_name))
 			})
 			.cloned()
 			.collect();
@@ -6293,7 +6308,9 @@ impl MigrationAutodetector {
 			operation,
 			super::Operation::CreateTable { name, .. }
 				if !renamed_table_sources.contains(name)
-			)
+			) || renamed_table_destinations
+				.iter()
+				.any(|table_name| Self::operation_references_table(operation, table_name))
 		});
 
 		// Assemble in correct order
@@ -10269,6 +10286,71 @@ mod tests {
 					if old_name == "users" && new_name == "user" && table == "user" && column.name == "email"
 			),
 			"rename must precede edits to its new table: {operations:?}"
+		);
+	}
+
+	#[rstest]
+	fn generate_operations_orders_rename_before_fk_dependent_create_table() {
+		let from_user =
+			build_model_state_with_table_name("users", "User", "users", sample_fields());
+		let to_user = build_model_state_with_table_name("users", "User", "user", sample_fields());
+		let mut profile_fields = sample_fields();
+		profile_fields.push(FieldState::new(
+			"user_id",
+			super::super::FieldType::Integer,
+			false,
+		));
+		let mut to_profile =
+			build_model_state_with_table_name("users", "Profile", "profiles", profile_fields);
+		to_profile.constraints.push(ConstraintDefinition {
+			name: "profiles_user_id_fk".to_string(),
+			constraint_type: "foreign_key".to_string(),
+			fields: vec!["user_id".to_string()],
+			expression: None,
+			foreign_key_info: Some(ForeignKeyConstraintInfo {
+				referenced_table: "user".to_string(),
+				referenced_columns: vec!["id".to_string()],
+				on_delete: ForeignKeyAction::Cascade,
+				on_update: ForeignKeyAction::Cascade,
+			}),
+		});
+		let detector = MigrationAutodetector::new(
+			build_project_state(vec![(("users".to_string(), "User".to_string()), from_user)]),
+			build_project_state(vec![
+				(("users".to_string(), "User".to_string()), to_user),
+				(("users".to_string(), "Profile".to_string()), to_profile),
+			]),
+		);
+
+		let operations = detector.generate_operations();
+		let rename_index = operations
+			.iter()
+			.position(|operation| {
+				matches!(
+					operation,
+					super::super::Operation::RenameTable { old_name, new_name }
+						if old_name == "users" && new_name == "user"
+				)
+			})
+			.expect("table rename is missing: {operations:?}");
+		let profile_index = operations
+			.iter()
+			.position(|operation| {
+				matches!(
+					operation,
+					super::super::Operation::CreateTable { name, constraints, .. }
+						if name == "profiles" && constraints.iter().any(|constraint| matches!(
+							constraint,
+							super::super::operations::Constraint::ForeignKey { referenced_table, .. }
+								if referenced_table == "user"
+						))
+				)
+			})
+			.expect("foreign-key-dependent table creation is missing: {operations:?}");
+
+		assert!(
+			rename_index < profile_index,
+			"the renamed target must exist before its foreign-key-dependent table is created: {operations:?}"
 		);
 	}
 
