@@ -2402,28 +2402,29 @@ mod tests {
 	#[tokio::test]
 	#[serial]
 	async fn test_ssr_head_lookup_does_not_retain_deferred_content_effects() {
-		let reactive_scope = ReactiveScope::new();
-		let signal = reactive_scope.enter(|| Signal::new(0_i32));
+		let scope = Rc::new(ReactiveScope::new());
+		let signal = scope.enter(|| Signal::new(0_i32));
 		let effect_run_count = Rc::new(RefCell::new(0_usize));
 		let view = Page::Deferred(DeferredNode::new(
 			"retained-effect-head-lookup",
 			|| Page::Empty,
 			{
-				let signal = signal.clone();
+				let scope = Rc::clone(&scope);
 				let effect_run_count = Rc::clone(&effect_run_count);
 				move || {
-					use_retained_effect(
-						{
-							let signal = signal.clone();
-							let effect_run_count = Rc::clone(&effect_run_count);
-							move || {
-								signal.get();
-								*effect_run_count.borrow_mut() += 1;
-							}
-						},
-						deps![signal],
-					);
-					PageElement::new("div").child("retained").into_page()
+					scope.enter(|| {
+						use_retained_effect(
+							{
+								let effect_run_count = Rc::clone(&effect_run_count);
+								move || {
+									signal.get();
+									*effect_run_count.borrow_mut() += 1;
+								}
+							},
+							deps![signal],
+						);
+						PageElement::new("div").child("retained").into_page()
+					})
 				}
 			},
 		));

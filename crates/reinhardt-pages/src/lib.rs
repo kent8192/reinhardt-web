@@ -31,17 +31,20 @@
 //!
 //! ```ignore
 //! use reinhardt_pages::prelude::*;
+//! use reinhardt_pages::reactive::ReactiveScope;
 //!
-//! let count = Signal::new(0_i32);
-//! use_retained_effect(
-//!     {
-//!         let count = count.clone();
-//!         move || {
-//!             println!("count = {}", count.get());
-//!         }
-//!     },
-//!     deps![count],
-//! );
+//! ReactiveScope::run(|| {
+//!     let count = Signal::new(0_i32);
+//!     use_retained_effect(
+//!         {
+//!             let count = count.clone();
+//!             move || {
+//!                 println!("count = {}", count.get());
+//!             }
+//!         },
+//!         deps![count],
+//!     );
+//! });
 //! ```
 //!
 //! In explicit dependency mode (`deps![...]`), effect, layout-effect, and memo
@@ -321,16 +324,19 @@
 //! ### Basic Component
 //!
 //! ```no_run
-//! use reinhardt_pages::{Signal, Page, page};
+//! use reinhardt_pages::{Page, Signal, page};
+//! use reinhardt_pages::reactive::ReactiveScope;
 //!
-//! fn counter() -> Page {
-//!     let count = Signal::new(0);
+//! fn counter(scope: &ReactiveScope) -> Page {
+//!     scope.enter(|| {
+//!         let count = Signal::new(0);
 //!
-//!     page!(|count: Signal<i32>| {
-//!         div {
-//!             p { { format!("Count: {}", count.get()) } }
-//!         }
-//!     })(count)
+//!         page!(|count: Signal<i32>| {
+//!             div {
+//!                 p { { format!("Count: {}", count.get()) } }
+//!             }
+//!         })(count)
+//!     })
 //! }
 //! ```
 //!

@@ -15,7 +15,7 @@
 //! ## Example
 //!
 //! ```rust
-//! use reinhardt_core::reactive::{Effect, ReactiveScope, Runtime, Signal};
+//! use reinhardt_core::reactive::{Effect, ReactiveScope, Signal};
 //!
 //! ReactiveScope::run(|| {
 //!     // Create a signal

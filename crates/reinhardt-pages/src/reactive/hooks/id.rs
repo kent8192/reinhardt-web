@@ -160,43 +160,51 @@ fn next_id() -> usize {
 	ID_COUNTER.fetch_add(1, Ordering::Relaxed)
 }
 
-#[cfg(test)]
+#[cfg(all(test, native))]
 mod tests {
 	use super::*;
 
-	#[test]
-	fn test_use_id_unique() {
-		let id1 = use_id();
-		let id2 = use_id();
-		let id3 = use_id();
+	#[tokio::test]
+	async fn test_use_id_unique() {
+		scope_id_counter(async {
+			let id1 = use_id();
+			let id2 = use_id();
+			let id3 = use_id();
 
-		assert_ne!(id1, id2);
-		assert_ne!(id2, id3);
-		assert_ne!(id1, id3);
+			assert_ne!(id1, id2);
+			assert_ne!(id2, id3);
+			assert_ne!(id1, id3);
+		})
+		.await;
 	}
 
-	#[test]
-	fn test_use_id_format() {
-		let id = use_id();
-		assert!(id.starts_with("reinhardt-id-"));
+	#[tokio::test]
+	async fn test_use_id_format() {
+		scope_id_counter(async {
+			let id = use_id();
+			assert!(id.starts_with("reinhardt-id-"));
+		})
+		.await;
 	}
 
-	#[test]
-	fn test_use_id_with_prefix() {
-		let id = use_id_with_prefix("custom");
-		assert!(id.starts_with("custom-"));
+	#[tokio::test]
+	async fn test_use_id_with_prefix() {
+		scope_id_counter(async {
+			let id = use_id_with_prefix("custom");
+			assert!(id.starts_with("custom-"));
+		})
+		.await;
 	}
 
-	#[test]
-	fn test_use_id_sequential() {
-		let id1 = use_id();
-		let id2 = use_id();
-		let first_id = id1
-			.strip_prefix("reinhardt-id-")
-			.expect("use_id returns the default prefix")
-			.parse::<usize>()
-			.expect("use_id returns a numeric suffix");
+	#[tokio::test]
+	async fn test_use_id_sequential() {
+		scope_id_counter(async {
+			let id1 = use_id();
+			let id2 = use_id();
 
-		assert_eq!(id2, format!("reinhardt-id-{}", first_id + 1));
+			assert_eq!(id1, "reinhardt-id-0");
+			assert_eq!(id2, "reinhardt-id-1");
+		})
+		.await;
 	}
 }
