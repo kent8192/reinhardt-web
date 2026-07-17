@@ -1186,7 +1186,13 @@ impl StringRenderSelection {
 			.iter()
 			.find(|(name, _)| name.eq_ignore_ascii_case("value"))
 			.map(|(_, value)| value.as_ref().to_owned())
-			.unwrap_or_else(|| Self::normalize_option_text(option));
+			.or_else(|| {
+				(!Self::has_dynamic_option_content(option))
+					.then(|| Self::normalize_option_text(option))
+			});
+		let Some(value) = value else {
+			return false;
+		};
 		match self {
 			Self::One {
 				value: selected,
@@ -1201,6 +1207,31 @@ impl StringRenderSelection {
 			.split_ascii_whitespace()
 			.collect::<Vec<_>>()
 			.join(" ")
+	}
+
+	fn has_dynamic_option_content(option: &PageElement) -> bool {
+		option
+			.child_views()
+			.iter()
+			.any(Self::page_has_dynamic_content)
+	}
+
+	fn page_has_dynamic_content(page: &Page) -> bool {
+		match page {
+			Page::Element(element) if element.tag_name().eq_ignore_ascii_case("script") => false,
+			Page::Element(element) => element
+				.child_views()
+				.iter()
+				.any(Self::page_has_dynamic_content),
+			Page::Text(_) | Page::Empty => false,
+			Page::Fragment(children) => children.iter().any(Self::page_has_dynamic_content),
+			Page::KeyedFragment(children) => children
+				.iter()
+				.any(|(_, child)| Self::page_has_dynamic_content(child)),
+			Page::Outlet(outlet) => outlet.child().is_some_and(Self::page_has_dynamic_content),
+			Page::WithHead { view, .. } => Self::page_has_dynamic_content(view),
+			Page::ReactiveIf(_) | Page::Reactive(_) | Page::Suspense(_) | Page::Deferred(_) => true,
+		}
 	}
 
 	fn text_content_without_script(page: &Page) -> String {

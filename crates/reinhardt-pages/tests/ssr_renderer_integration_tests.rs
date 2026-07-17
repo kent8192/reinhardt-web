@@ -623,7 +623,7 @@ fn controlled_bindings_page(scope: &ReactiveScope) -> Page {
 	let checked = signal_in_scope(scope, true);
 	let selected = signal_in_scope(scope, vec!["rust".to_owned(), "wasm".to_owned()]);
 
-	page!({
+		page!({
 		input {
 			a11y: off,
 			bind: text
@@ -652,6 +652,7 @@ fn controlled_bindings_page(scope: &ReactiveScope) -> Page {
 				}
 			}
 		}
+		})
 	})
 }
 
@@ -694,13 +695,17 @@ async fn controlled_bindings_render_html_initial_state() {
 
 #[rstest]
 #[tokio::test]
+// `page!` owns the binding passed to the generated radio control.
+#[allow(clippy::clone_on_copy)]
 async fn bound_radio_value_expression_is_evaluated_once_for_attribute_and_binding() {
 	// Arrange
 	let reactive_scope = ReactiveScope::new();
 	let selected = signal_in_scope(&reactive_scope, "first".to_owned());
 	let evaluations = Rc::new(Cell::new(0));
 	let value_evaluations = Rc::clone(&evaluations);
-	let component = page!({
+	let component = scope.enter(|| {
+		let selected = Signal::new("first".to_owned());
+		page!({
 		input {
 			a11y: off,
 			type: "radio",
@@ -711,6 +716,7 @@ async fn bound_radio_value_expression_is_evaluated_once_for_attribute_and_bindin
 			},
 			bind: selected
 		}
+		})
 	});
 	let mut renderer = SsrRenderer::new();
 
@@ -825,10 +831,17 @@ async fn controlled_multiple_select_marks_every_duplicate() {
 			PageElement::new("optgroup").child(
 				PageElement::new("option")
 					.attr("value", "duplicate")
-					.child("Second"),
-			),
-		)
-		.into_page();
+					.child("First"),
+			)
+			.child(
+				PageElement::new("optgroup").child(
+					PageElement::new("option")
+						.attr("value", "duplicate")
+						.child("Second"),
+				),
+			)
+			.into_page()
+	});
 	let mut renderer = SsrRenderer::new();
 
 	// Act
