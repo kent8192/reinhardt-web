@@ -15,7 +15,7 @@ fn main() {
 					let _: ClickEvent = event;
 				},
 				"Click"
-			},
+			}
 		});
 		let _explicit = page!(|| {
 			input {
@@ -23,7 +23,7 @@ fn main() {
 				@input: |event: InputEvent| {
 					let _ = event.value();
 				},
-			},
+			}
 		});
 		let _async = page!(|| {
 			input {
@@ -31,7 +31,7 @@ fn main() {
 				@keydown: async |event| {
 					let _: KeyDownEvent = event;
 				},
-			},
+			}
 		});
 		let _external = page!(|| {
 			form {
