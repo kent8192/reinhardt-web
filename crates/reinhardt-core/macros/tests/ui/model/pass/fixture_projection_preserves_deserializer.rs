@@ -80,6 +80,12 @@ struct FixtureProjectionModel {
 	#[field(default = "fixture", null = false)]
 	#[serde(with = "optional_uuid_serde")]
 	optional_persisted_payload: Option<Uuid>,
+	#[field(null = false)]
+	#[serde(deserialize_with = "deserialize_optional_uuid")]
+	required_optional_payload: Option<Uuid>,
+	#[field(null = false)]
+	#[serde(with = "optional_uuid_serde")]
+	required_optional_persisted_payload: Option<Uuid>,
 }
 
 fn main() {}

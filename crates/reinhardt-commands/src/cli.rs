@@ -582,7 +582,9 @@ async fn execute_with_registry_and_optional_settings(
 ) -> Result<(), Box<dyn std::error::Error>> {
 	// Attempt normal clap parsing first. If it fails (e.g., unknown subcommand),
 	// fall back to checking the registry for a matching custom command.
-	let (command, verbosity) = match Cli::try_parse() {
+	let raw_args: Vec<String> = env::args().collect();
+	let normalized_args = normalize_count_style_verbosity_args(&raw_args);
+	let (command, verbosity) = match Cli::try_parse_from(&normalized_args) {
 		Ok(cli) => (cli.command, cli.verbosity),
 		Err(clap_err) => {
 			// Only intercept "unknown subcommand" errors; re-raise others (--help, --version, etc.)
@@ -590,8 +592,8 @@ async fn execute_with_registry_and_optional_settings(
 				clap_err.exit();
 			}
 
-			// Extract the raw arguments and try to find a matching custom command.
-			let raw_args: Vec<String> = env::args().collect();
+			// Resolve custom commands from the original arguments to preserve the
+			// legacy value-style verbosity convention for their command contexts.
 			match resolve_custom_command(&raw_args, &registry) {
 				Some((name, args, verbosity)) => {
 					#[cfg(feature = "reinhardt-db")]
@@ -893,6 +895,27 @@ async fn run_command_core(
 			execute_custom_command(&name, &args, verbosity, &registry).await
 		}
 	}
+}
+
+/// Rewrite `--verbosity=N` into clap's count-style verbosity flags.
+///
+/// This lets the standard parser reach its `InvalidSubcommand` path for a
+/// custom command, while [`resolve_custom_command`] still reads the original
+/// arguments and passes the requested numeric verbosity to that command.
+fn normalize_count_style_verbosity_args(raw_args: &[String]) -> Vec<String> {
+	let mut normalized = Vec::with_capacity(raw_args.len());
+	for argument in raw_args {
+		let Some(value) = argument.strip_prefix("--verbosity=") else {
+			normalized.push(argument.clone());
+			continue;
+		};
+		let Ok(count) = value.parse::<u8>() else {
+			normalized.push(argument.clone());
+			continue;
+		};
+		normalized.extend(std::iter::repeat_n("--verbosity".to_string(), count.into()));
+	}
+	normalized
 }
 
 /// Returns `true` when the clap error represents an unrecognised subcommand.
@@ -2269,6 +2292,27 @@ mod tests {
 				Some(("dumpdata".to_string(), Vec::new(), 2))
 			);
 		}
+	}
+
+	#[cfg(feature = "reinhardt-db")]
+	#[rstest]
+	fn test_value_style_verbosity_reaches_the_custom_command_fallback() {
+		let registry = CommandRegistry::new();
+		let raw_args = vec![
+			"manage".to_string(),
+			"--verbosity=2".to_string(),
+			"seed".to_string(),
+		];
+
+		let normalized_args = normalize_count_style_verbosity_args(&raw_args);
+		let clap_error = Cli::try_parse_from(&normalized_args)
+			.expect_err("fixture subcommands must remain eligible for custom resolution");
+
+		assert!(is_unknown_subcommand(&clap_error));
+		assert_eq!(
+			resolve_custom_command(&raw_args, &registry),
+			Some(("seed".to_string(), Vec::new(), 2))
+		);
 	}
 
 	#[cfg(feature = "reinhardt-db")]

@@ -3395,8 +3395,10 @@ fn generate_fixture_validation(
 			});
 		} else {
 			let serde_attrs = fixture_projection_serde_attrs(field);
+			let serde_bounds = fixture_projection_serde_bounds(field);
+			let custom_deserializer = fixture_projection_serde_deserializer(field);
 			let (is_option, inner_type) = extract_option_type(field_type);
-			let field_type = if is_database_generated {
+			let fixture_validation_type = if is_database_generated {
 				quote! { ::std::option::Option<#field_type> }
 			} else if is_option
 				&& (field.config.null == Some(false)
@@ -3406,10 +3408,64 @@ fn generate_fixture_validation(
 			} else {
 				quote! { #field_type }
 			};
-			projection_fields.push(quote! {
-				#(#serde_attrs)*
-				#field_name: #field_type
-			});
+			let type_is_rewritten = is_database_generated
+				|| (is_option
+					&& (field.config.null == Some(false)
+						|| (field.config.primary_key && !is_fixture_generated_field(field))));
+			if let Some(deserializer) = custom_deserializer.filter(|_| type_is_rewritten) {
+				let validator_name = Ident::new(
+					&format!("__reinhardt_validate_fixture_field_{field_name}"),
+					field_name.span(),
+				);
+				let validator = LitStr::new(&validator_name.to_string(), field_name.span());
+				let null_error_message = LitStr::new(
+					&format!("fixture field '{field_name}' cannot be null"),
+					field_name.span(),
+				);
+				let rejects_null = is_option
+					&& (field.config.null == Some(false)
+						|| (field.config.primary_key && !is_fixture_generated_field(field)));
+				let validation = if rejects_null {
+					quote! {
+						let value: #field_type = #deserializer(deserializer)?;
+						if value.is_none() {
+							return Err(<D::Error as #orm_crate::serde::de::Error>::custom(
+								#null_error_message,
+							));
+						}
+					}
+				} else {
+					quote! {
+						let _: #field_type = #deserializer(deserializer)?;
+					}
+				};
+				defaulted_fixture_field_validators.push(quote! {
+					fn #validator_name<'de, D>(
+						deserializer: D,
+					) -> ::std::result::Result<::std::marker::PhantomData<#fixture_validation_type>, D::Error>
+					where
+						D: #orm_crate::serde::Deserializer<'de>,
+					{
+						#validation
+						Ok(::std::marker::PhantomData::<#fixture_validation_type>)
+					}
+				});
+				let serde_default = if is_database_generated {
+					quote! { #[serde(default, deserialize_with = #validator)] }
+				} else {
+					quote! { #[serde(deserialize_with = #validator)] }
+				};
+				projection_fields.push(quote! {
+					#(#serde_bounds)*
+					#serde_default
+					#field_name: ::std::marker::PhantomData<#fixture_validation_type>
+				});
+			} else {
+				projection_fields.push(quote! {
+					#(#serde_attrs)*
+					#field_name: #fixture_validation_type
+				});
+			}
 		}
 		projection_field_names.push(field_name.clone());
 	}
@@ -3481,9 +3537,9 @@ fn generate_fixture_validation(
 				D: #orm_crate::serde::Deserializer<'de>,
 			{
 				let value = <#orm_crate::FixtureValue as #orm_crate::serde::Deserialize>::deserialize(deserializer)?;
-				if value.is_null() {
+				if value.is_null() || value.is_object() || value.is_array() {
 					return Err(<D::Error as #orm_crate::serde::de::Error>::custom(
-						"required foreign key fixture fields cannot be null",
+						"required foreign key fixture fields must be scalar identifiers",
 					));
 				}
 				Ok(value)

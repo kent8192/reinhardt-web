@@ -398,6 +398,17 @@ fn test_fixture_projection_uses_custom_foreign_key_columns() {
 		NullableMetadataWriter::validate_fixture_fields(&nullable_fields).is_ok(),
 		"nullable custom foreign-key fixtures must accept explicit null"
 	);
+
+	for invalid_identifier in [serde_json::json!({ "id": 7 }), serde_json::json!([7])] {
+		let mut invalid_fields = serde_json::Map::new();
+		invalid_fields.insert("id".to_string(), serde_json::json!(1));
+		invalid_fields.insert("writer_pk".to_string(), invalid_identifier);
+
+		assert!(
+			MetadataWriter::validate_fixture_fields(&invalid_fields).is_err(),
+			"required foreign-key fixture values must be scalar identifiers"
+		);
+	}
 }
 
 #[test]
