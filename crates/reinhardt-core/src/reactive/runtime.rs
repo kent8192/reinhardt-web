@@ -15,20 +15,22 @@
 //! ## Example
 //!
 //! ```rust
-//! use reinhardt_core::reactive::{Signal, Effect, Runtime};
+//! use reinhardt_core::reactive::{Effect, ReactiveScope, Runtime, Signal};
 //!
-//! // Create a signal
-//! let count = Signal::new(0);
+//! ReactiveScope::run(|| {
+//!     // Create a signal
+//!     let count = Signal::new(0);
 //!
-//! // Create an effect that automatically tracks dependencies
-//! let count_for_effect = count.clone();
-//! Effect::new(move || {
-//!     // This get() call automatically registers the dependency
-//!     println!("Count is: {}", count_for_effect.get());
+//!     // Create an effect that automatically tracks dependencies
+//!     let count_for_effect = count.clone();
+//!     Effect::new(move || {
+//!         // This get() call automatically registers the dependency
+//!         println!("Count is: {}", count_for_effect.get());
+//!     });
+//!
+//!     // Update the signal - the effect will automatically re-run
+//!     count.set(42);
 //! });
-//!
-//! // Update the signal - the effect will automatically re-run
-//! count.set(42);
 //! ```
 
 use core::cell::{Cell, RefCell};
@@ -742,7 +744,7 @@ pub(crate) fn subscribe_node_to_observer(node: NodeId, observer: NodeId) {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::reactive::{Effect, Memo, Signal};
+	use crate::reactive::{Effect, Memo, ReactiveScope, Signal};
 	use serial_test::serial;
 
 	#[test]
@@ -978,33 +980,35 @@ mod tests {
 	#[test]
 	#[serial]
 	fn run_without_observer_isolates_inner_signal_reads() {
-		// Arrange
-		let outer = crate::reactive::signal::Signal::new(0_i32);
-		let inner = crate::reactive::signal::Signal::new(0_i32);
-		let counter = std::rc::Rc::new(std::cell::Cell::new(0));
-		let counter_for_effect = counter.clone();
-		let outer_for_effect = outer.clone();
-		let inner_for_effect = inner.clone();
+		ReactiveScope::run(|| {
+			// Arrange
+			let outer = crate::reactive::signal::Signal::new(0_i32);
+			let inner = crate::reactive::signal::Signal::new(0_i32);
+			let counter = std::rc::Rc::new(std::cell::Cell::new(0));
+			let counter_for_effect = counter.clone();
+			let outer_for_effect = outer.clone();
+			let inner_for_effect = inner.clone();
 
-		// Act
-		let _eff = crate::reactive::effect::Effect::new(move || {
-			let _ = outer_for_effect.get();
-			super::run_without_observer(|| {
-				let _ = inner_for_effect.get();
+			// Act
+			let _eff = crate::reactive::effect::Effect::new(move || {
+				let _ = outer_for_effect.get();
+				super::run_without_observer(|| {
+					let _ = inner_for_effect.get();
+				});
+				counter_for_effect.set(counter_for_effect.get() + 1);
 			});
-			counter_for_effect.set(counter_for_effect.get() + 1);
+
+			let initial = counter.get();
+			inner.set(99);
+			super::with_runtime(|rt| rt.flush_updates());
+
+			// Assert
+			assert_eq!(
+				counter.get(),
+				initial,
+				"run_without_observer must isolate Signal reads from outer Observer"
+			);
 		});
-
-		let initial = counter.get();
-		inner.set(99);
-		super::with_runtime(|rt| rt.flush_updates());
-
-		// Assert
-		assert_eq!(
-			counter.get(),
-			initial,
-			"run_without_observer must isolate Signal reads from outer Observer"
-		);
 	}
 
 	#[test]
@@ -1037,31 +1041,33 @@ mod tests {
 	#[rstest::rstest]
 	#[serial(reactive_runtime)]
 	fn layout_effect_write_runs_in_next_notification_epoch() {
-		let source = Signal::new(0_i32);
-		let runs = std::rc::Rc::new(std::cell::Cell::new(0_u8));
-		let observed = std::rc::Rc::new(std::cell::Cell::new(-1_i32));
-		let _effect = Effect::new_with_timing(
-			{
-				let source = source.clone();
-				let runs = std::rc::Rc::clone(&runs);
-				let observed = std::rc::Rc::clone(&observed);
-				move || {
-					let value = source.get();
-					observed.set(value);
-					runs.set(runs.get() + 1);
-					if value == 1 {
-						source.set(2);
+		ReactiveScope::run(|| {
+			let source = Signal::new(0_i32);
+			let runs = std::rc::Rc::new(std::cell::Cell::new(0_u8));
+			let observed = std::rc::Rc::new(std::cell::Cell::new(-1_i32));
+			let _effect = Effect::new_with_timing(
+				{
+					let source = source.clone();
+					let runs = std::rc::Rc::clone(&runs);
+					let observed = std::rc::Rc::clone(&observed);
+					move || {
+						let value = source.get();
+						observed.set(value);
+						runs.set(runs.get() + 1);
+						if value == 1 {
+							source.set(2);
+						}
 					}
-				}
-			},
-			EffectTiming::Layout,
-		);
+				},
+				EffectTiming::Layout,
+			);
 
-		source.set(1);
+			source.set(1);
 
-		assert_eq!(source.get(), 2);
-		assert_eq!(observed.get(), 2);
-		assert_eq!(runs.get(), 3);
+			assert_eq!(source.get(), 2);
+			assert_eq!(observed.get(), 2);
+			assert_eq!(runs.get(), 3);
+		});
 	}
 
 	#[rstest::rstest]
@@ -1069,41 +1075,43 @@ mod tests {
 	fn notification_panic_recovers_pending_consumer_on_next_change() {
 		use std::panic::{AssertUnwindSafe, catch_unwind};
 
-		let source = Signal::new(0_i32);
-		let memo = Memo::new({
-			let source = source.clone();
-			move || source.get() * 2
+		ReactiveScope::run(|| {
+			let source = Signal::new(0_i32);
+			let memo = Memo::new({
+				let source = source.clone();
+				move || source.get() * 2
+			});
+			let panic_next = std::rc::Rc::new(std::cell::Cell::new(false));
+			let _panicking = Effect::new_with_timing(
+				{
+					let memo = memo.clone();
+					let panic_next = std::rc::Rc::clone(&panic_next);
+					move || {
+						assert!(!panic_next.replace(false), "notification consumer panic");
+						let _ = memo.get();
+					}
+				},
+				EffectTiming::Layout,
+			);
+			let observed = std::rc::Rc::new(std::cell::Cell::new(0_i32));
+			let _observer = Effect::new_with_timing(
+				{
+					let memo = memo.clone();
+					let observed = std::rc::Rc::clone(&observed);
+					move || observed.set(memo.get())
+				},
+				EffectTiming::Layout,
+			);
+			panic_next.set(true);
+
+			let result = catch_unwind(AssertUnwindSafe(|| source.set(1)));
+			assert!(result.is_err());
+			assert_eq!(observed.get(), 0);
+
+			source.set(2);
+
+			assert_eq!(observed.get(), 4);
 		});
-		let panic_next = std::rc::Rc::new(std::cell::Cell::new(false));
-		let _panicking = Effect::new_with_timing(
-			{
-				let memo = memo.clone();
-				let panic_next = std::rc::Rc::clone(&panic_next);
-				move || {
-					assert!(!panic_next.replace(false), "notification consumer panic");
-					let _ = memo.get();
-				}
-			},
-			EffectTiming::Layout,
-		);
-		let observed = std::rc::Rc::new(std::cell::Cell::new(0_i32));
-		let _observer = Effect::new_with_timing(
-			{
-				let memo = memo.clone();
-				let observed = std::rc::Rc::clone(&observed);
-				move || observed.set(memo.get())
-			},
-			EffectTiming::Layout,
-		);
-		panic_next.set(true);
-
-		let result = catch_unwind(AssertUnwindSafe(|| source.set(1)));
-		assert!(result.is_err());
-		assert_eq!(observed.get(), 0);
-
-		source.set(2);
-
-		assert_eq!(observed.get(), 4);
 	}
 
 	#[rstest::rstest]
@@ -1111,40 +1119,42 @@ mod tests {
 	fn consumer_write_before_panic_recovers_on_unrelated_notification() {
 		use std::panic::{AssertUnwindSafe, catch_unwind};
 
-		let secondary = Signal::new(0_i32);
-		let observed = std::rc::Rc::new(std::cell::Cell::new(0_i32));
-		let _secondary_effect = Effect::new_with_timing(
-			{
-				let secondary = secondary.clone();
-				let observed = std::rc::Rc::clone(&observed);
-				move || observed.set(secondary.get())
-			},
-			EffectTiming::Layout,
-		);
-		let root = Signal::new(0_i32);
-		let _panicking = Effect::new_with_timing(
-			{
-				let root = root.clone();
-				let secondary = secondary.clone();
-				move || {
-					if root.get() == 1 {
-						secondary.set(1);
-						panic!("consumer panic after write");
+		ReactiveScope::run(|| {
+			let secondary = Signal::new(0_i32);
+			let observed = std::rc::Rc::new(std::cell::Cell::new(0_i32));
+			let _secondary_effect = Effect::new_with_timing(
+				{
+					let secondary = secondary.clone();
+					let observed = std::rc::Rc::clone(&observed);
+					move || observed.set(secondary.get())
+				},
+				EffectTiming::Layout,
+			);
+			let root = Signal::new(0_i32);
+			let _panicking = Effect::new_with_timing(
+				{
+					let root = root.clone();
+					let secondary = secondary.clone();
+					move || {
+						if root.get() == 1 {
+							secondary.set(1);
+							panic!("consumer panic after write");
+						}
 					}
-				}
-			},
-			EffectTiming::Layout,
-		);
-		let unrelated = Signal::new(0_i32);
+				},
+				EffectTiming::Layout,
+			);
+			let unrelated = Signal::new(0_i32);
 
-		let result = catch_unwind(AssertUnwindSafe(|| root.set(1)));
-		assert!(result.is_err());
-		assert_eq!(secondary.get(), 1);
-		assert_eq!(observed.get(), 0);
+			let result = catch_unwind(AssertUnwindSafe(|| root.set(1)));
+			assert!(result.is_err());
+			assert_eq!(secondary.get(), 1);
+			assert_eq!(observed.get(), 0);
 
-		unrelated.set(1);
+			unrelated.set(1);
 
-		assert_eq!(observed.get(), 1);
+			assert_eq!(observed.get(), 1);
+		});
 	}
 
 	#[rstest::rstest]
@@ -1153,54 +1163,56 @@ mod tests {
 		use std::panic::{AssertUnwindSafe, catch_unwind};
 		const EXPECTED_MAX_NOTIFICATION_EPOCHS: usize = 32;
 
-		let looping = Signal::new(0_u32);
-		let loop_enabled = std::rc::Rc::new(std::cell::Cell::new(false));
-		let runs = std::rc::Rc::new(std::cell::Cell::new(0_usize));
-		let _looping_effect = Effect::new_with_timing(
-			{
-				let looping = looping.clone();
-				let loop_enabled = std::rc::Rc::clone(&loop_enabled);
-				let runs = std::rc::Rc::clone(&runs);
-				move || {
-					let value = looping.get();
-					runs.set(runs.get() + 1);
-					if loop_enabled.get() {
-						looping.set(value + 1);
+		ReactiveScope::run(|| {
+			let looping = Signal::new(0_u32);
+			let loop_enabled = std::rc::Rc::new(std::cell::Cell::new(false));
+			let runs = std::rc::Rc::new(std::cell::Cell::new(0_usize));
+			let _looping_effect = Effect::new_with_timing(
+				{
+					let looping = looping.clone();
+					let loop_enabled = std::rc::Rc::clone(&loop_enabled);
+					let runs = std::rc::Rc::clone(&runs);
+					move || {
+						let value = looping.get();
+						runs.set(runs.get() + 1);
+						if loop_enabled.get() {
+							looping.set(value + 1);
+						}
 					}
-				}
-			},
-			EffectTiming::Layout,
-		);
-		let unrelated = Signal::new(0_i32);
-		let observed = std::rc::Rc::new(std::cell::Cell::new(0_i32));
-		let _unrelated_effect = Effect::new_with_timing(
-			{
-				let unrelated = unrelated.clone();
-				let observed = std::rc::Rc::clone(&observed);
-				move || observed.set(unrelated.get())
-			},
-			EffectTiming::Layout,
-		);
-		loop_enabled.set(true);
+				},
+				EffectTiming::Layout,
+			);
+			let unrelated = Signal::new(0_i32);
+			let observed = std::rc::Rc::new(std::cell::Cell::new(0_i32));
+			let _unrelated_effect = Effect::new_with_timing(
+				{
+					let unrelated = unrelated.clone();
+					let observed = std::rc::Rc::clone(&observed);
+					move || observed.set(unrelated.get())
+				},
+				EffectTiming::Layout,
+			);
+			loop_enabled.set(true);
 
-		let result = catch_unwind(AssertUnwindSafe(|| looping.set(1)));
-		let panic = result.expect_err("non-converging notification must panic");
-		let message = panic
-			.downcast_ref::<String>()
-			.map(String::as_str)
-			.or_else(|| panic.downcast_ref::<&str>().copied())
-			.expect("notification limit panic must have a string message");
-		assert_eq!(
-			message,
-			format!(
-				"reactive notification exceeded {EXPECTED_MAX_NOTIFICATION_EPOCHS} epochs; possible non-converging layout update loop"
-			)
-		);
-		assert_eq!(runs.get(), EXPECTED_MAX_NOTIFICATION_EPOCHS + 1);
-		loop_enabled.set(false);
+			let result = catch_unwind(AssertUnwindSafe(|| looping.set(1)));
+			let panic = result.expect_err("non-converging notification must panic");
+			let message = panic
+				.downcast_ref::<String>()
+				.map(String::as_str)
+				.or_else(|| panic.downcast_ref::<&str>().copied())
+				.expect("notification limit panic must have a string message");
+			assert_eq!(
+				message,
+				format!(
+					"reactive notification exceeded {EXPECTED_MAX_NOTIFICATION_EPOCHS} epochs; possible non-converging layout update loop"
+				)
+			);
+			assert_eq!(runs.get(), EXPECTED_MAX_NOTIFICATION_EPOCHS + 1);
+			loop_enabled.set(false);
 
-		unrelated.set(1);
+			unrelated.set(1);
 
-		assert_eq!(observed.get(), 1);
+			assert_eq!(observed.get(), 1);
+		});
 	}
 }

@@ -1,6 +1,6 @@
 //! Public API compatibility tests for [`PageElement`] decomposition.
 
-use reinhardt_core::reactive::Signal;
+use reinhardt_core::reactive::{ReactiveScope, Signal};
 use reinhardt_core::types::page::{ControlBinding, ControlKind, PageElement};
 
 #[test]
@@ -18,11 +18,13 @@ fn into_parts_preserves_the_public_five_tuple() {
 
 #[test]
 fn into_parts_with_control_binding_returns_the_binding() {
-	let binding = ControlBinding::text(Signal::new("draft".to_owned()));
-	let element = PageElement::new("input").control_binding(binding);
+	ReactiveScope::run(|| {
+		let binding = ControlBinding::text(Signal::new("draft".to_owned()));
+		let element = PageElement::new("input").control_binding(binding);
 
-	let (_tag, _attrs, _children, _is_void, _event_handlers, binding) =
-		element.into_parts_with_control_binding();
+		let (_tag, _attrs, _children, _is_void, _event_handlers, binding) =
+			element.into_parts_with_control_binding();
 
-	assert_eq!(binding.unwrap().kind(), ControlKind::Text);
+		assert_eq!(binding.unwrap().kind(), ControlKind::Text);
+	});
 }

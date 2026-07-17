@@ -164,43 +164,47 @@ fn next_id() -> usize {
 mod tests {
 	use super::*;
 
-	#[test]
-	fn test_use_id_unique() {
-		reset_id_counter();
+	#[tokio::test]
+	async fn test_use_id_unique() {
+		scope_id_counter(async {
+			let id1 = use_id();
+			let id2 = use_id();
+			let id3 = use_id();
 
-		let id1 = use_id();
-		let id2 = use_id();
-		let id3 = use_id();
-
-		assert_ne!(id1, id2);
-		assert_ne!(id2, id3);
-		assert_ne!(id1, id3);
+			assert_ne!(id1, id2);
+			assert_ne!(id2, id3);
+			assert_ne!(id1, id3);
+		})
+		.await;
 	}
 
-	#[test]
-	fn test_use_id_format() {
-		reset_id_counter();
-
-		let id = use_id();
-		assert!(id.starts_with("reinhardt-id-"));
+	#[tokio::test]
+	async fn test_use_id_format() {
+		scope_id_counter(async {
+			let id = use_id();
+			assert!(id.starts_with("reinhardt-id-"));
+		})
+		.await;
 	}
 
-	#[test]
-	fn test_use_id_with_prefix() {
-		reset_id_counter();
-
-		let id = use_id_with_prefix("custom");
-		assert!(id.starts_with("custom-"));
+	#[tokio::test]
+	async fn test_use_id_with_prefix() {
+		scope_id_counter(async {
+			let id = use_id_with_prefix("custom");
+			assert!(id.starts_with("custom-"));
+		})
+		.await;
 	}
 
-	#[test]
-	fn test_use_id_sequential() {
-		reset_id_counter();
+	#[tokio::test]
+	async fn test_use_id_sequential() {
+		scope_id_counter(async {
+			let id1 = use_id();
+			let id2 = use_id();
 
-		let id1 = use_id();
-		let id2 = use_id();
-
-		assert_eq!(id1, "reinhardt-id-0");
-		assert_eq!(id2, "reinhardt-id-1");
+			assert_eq!(id1, "reinhardt-id-0");
+			assert_eq!(id2, "reinhardt-id-1");
+		})
+		.await;
 	}
 }

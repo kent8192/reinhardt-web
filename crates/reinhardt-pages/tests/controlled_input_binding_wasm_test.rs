@@ -8,7 +8,7 @@ use reinhardt_pages::component::{
 	MountError, NumberParseError, NumberParseErrorKind, Page, PageExt,
 };
 use reinhardt_pages::dom::Element;
-use reinhardt_pages::reactive::{Signal, with_runtime};
+use reinhardt_pages::reactive::{ReactiveScope, Signal, with_runtime};
 use reinhardt_pages::{PageElement, page};
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
@@ -43,229 +43,248 @@ impl Drop for SsrStateElement {
 
 #[wasm_bindgen_test]
 fn public_page_mount_installs_control_binding() {
-	let document = web_sys::window()
-		.expect("window")
-		.document()
-		.expect("document");
-	let root = Element::new(document.create_element("div").expect("root"));
-	let value = Signal::new("signal".to_owned());
-	let observed = Rc::new(RefCell::new(String::new()));
-	let handler_value = value.clone();
-	let handler_observed = Rc::clone(&observed);
-	page!({
-		input {
-			a11y: off,
-			bind: value,
-			@input: move |_| *handler_observed.borrow_mut() = handler_value.get(),
-		}
-	})
-	.mount(&root)
-	.expect("mount");
-	let input: web_sys::HtmlInputElement = root
-		.as_web_sys()
-		.first_element_child()
-		.expect("input")
-		.unchecked_into();
+	ReactiveScope::run(|| {
+		let document = web_sys::window()
+			.expect("window")
+			.document()
+			.expect("document");
+		let root = Element::new(document.create_element("div").expect("root"));
+		let value = Signal::new("signal".to_owned());
+		let observed = Rc::new(RefCell::new(String::new()));
+		let handler_value = value.clone();
+		let handler_observed = Rc::clone(&observed);
+		page!({
+			input {
+				a11y: off,
+				bind: value,
+				@input: move |_| *handler_observed.borrow_mut() = handler_value.get(),
+			}
+		})
+		.mount(&root)
+		.expect("mount");
+		let input: web_sys::HtmlInputElement = root
+			.as_web_sys()
+			.first_element_child()
+			.expect("input")
+			.unchecked_into();
 
-	assert_eq!(input.value(), "signal");
-	input.set_value("dom");
-	input
-		.dispatch_event(&web_sys::InputEvent::new("input").expect("event"))
-		.expect("dispatch");
-	assert_eq!(value.get(), "dom");
-	assert_eq!(&*observed.borrow(), "dom");
-	reinhardt_pages::cleanup_reactive_nodes();
+		assert_eq!(input.value(), "signal");
+		input.set_value("dom");
+		input
+			.dispatch_event(&web_sys::InputEvent::new("input").expect("event"))
+			.expect("dispatch");
+		assert_eq!(value.get(), "dom");
+		assert_eq!(&*observed.borrow(), "dom");
+		reinhardt_pages::cleanup_reactive_nodes();
+	});
 }
 
 #[wasm_bindgen_test]
 fn controlled_form_reset_uses_the_bound_initial_value() {
-	let document = web_sys::window()
-		.expect("window")
-		.document()
-		.expect("document");
-	let root = Element::new(document.create_element("div").expect("root"));
-	let value = Signal::new("signal".to_owned());
-	PageElement::new("form")
-		.child(PageElement::new("input").control_binding(ControlBinding::text(value)))
-		.into_page()
-		.mount(&root)
-		.expect("mount");
-	let form: web_sys::HtmlFormElement = root
-		.as_web_sys()
-		.first_element_child()
-		.expect("form")
-		.unchecked_into();
-	let input: web_sys::HtmlInputElement =
-		form.first_element_child().expect("input").unchecked_into();
+	ReactiveScope::run(|| {
+		let document = web_sys::window()
+			.expect("window")
+			.document()
+			.expect("document");
+		let root = Element::new(document.create_element("div").expect("root"));
+		let value = Signal::new("signal".to_owned());
+		PageElement::new("form")
+			.child(PageElement::new("input").control_binding(ControlBinding::text(value)))
+			.into_page()
+			.mount(&root)
+			.expect("mount");
+		let form: web_sys::HtmlFormElement = root
+			.as_web_sys()
+			.first_element_child()
+			.expect("form")
+			.unchecked_into();
+		let input: web_sys::HtmlInputElement =
+			form.first_element_child().expect("input").unchecked_into();
 
-	input.set_value("edited");
-	form.reset();
+		input.set_value("edited");
+		form.reset();
 
-	assert_eq!(input.value(), "signal");
-	reinhardt_pages::cleanup_reactive_nodes();
+		assert_eq!(input.value(), "signal");
+		reinhardt_pages::cleanup_reactive_nodes();
+	});
 }
 
 #[wasm_bindgen_test]
 fn controlled_textarea_ignores_stale_child_content_on_mount() {
-	let document = web_sys::window()
-		.expect("window")
-		.document()
-		.expect("document");
-	let root = Element::new(document.create_element("div").expect("root"));
-	let value = Signal::new("signal".to_owned());
-	PageElement::new("textarea")
-		.control_binding(ControlBinding::text(value))
-		.child("stale child")
-		.into_page()
-		.mount(&root)
-		.expect("mount");
-	let textarea: web_sys::HtmlTextAreaElement = root
-		.as_web_sys()
-		.first_element_child()
-		.expect("textarea")
-		.unchecked_into();
+	ReactiveScope::run(|| {
+		let document = web_sys::window()
+			.expect("window")
+			.document()
+			.expect("document");
+		let root = Element::new(document.create_element("div").expect("root"));
+		let value = Signal::new("signal".to_owned());
+		PageElement::new("textarea")
+			.control_binding(ControlBinding::text(value))
+			.child("stale child")
+			.into_page()
+			.mount(&root)
+			.expect("mount");
+		let textarea: web_sys::HtmlTextAreaElement = root
+			.as_web_sys()
+			.first_element_child()
+			.expect("textarea")
+			.unchecked_into();
 
-	assert_eq!(textarea.value(), "signal");
-	assert_eq!(textarea.default_value().expect("default value"), "signal");
-	assert_eq!(textarea.text_content(), Some("signal".to_owned()));
-	reinhardt_pages::cleanup_reactive_nodes();
+		assert_eq!(textarea.value(), "signal");
+		assert_eq!(textarea.default_value().expect("default value"), "signal");
+		assert_eq!(textarea.text_content(), Some("signal".to_owned()));
+		reinhardt_pages::cleanup_reactive_nodes();
+	});
 }
 
 #[wasm_bindgen_test]
 fn public_page_mount_evaluates_dynamic_radio_value_once() {
-	let document = web_sys::window()
-		.expect("window")
-		.document()
-		.expect("document");
-	let root = Element::new(document.create_element("div").expect("root"));
-	let selected = Signal::new("first".to_owned());
-	let evaluations = Rc::new(Cell::new(0));
-	let value_evaluations = Rc::clone(&evaluations);
-	page!({
-		input {
-			a11y: off,
-			type: "radio",
-			value: {
-				let count = value_evaluations.get() + 1;
-				value_evaluations.set(count);
-				if count == 1 { "first" } else { "second" }
-			},
-			bind: selected,
-		}
-	})
-	.mount(&root)
-	.expect("mount");
-	let input: web_sys::HtmlInputElement = root
-		.as_web_sys()
-		.first_element_child()
-		.expect("input")
-		.unchecked_into();
+	ReactiveScope::run(|| {
+		let document = web_sys::window()
+			.expect("window")
+			.document()
+			.expect("document");
+		let root = Element::new(document.create_element("div").expect("root"));
+		let selected = Signal::new("first".to_owned());
+		let evaluations = Rc::new(Cell::new(0));
+		let value_evaluations = Rc::clone(&evaluations);
+		page!({
+			input {
+				a11y: off,
+				type: "radio",
+				value: {
+					let count = value_evaluations.get() + 1;
+					value_evaluations.set(count);
+					if count == 1 { "first" } else { "second" }
+				},
+				bind: selected,
+			}
+		})
+		.mount(&root)
+		.expect("mount");
+		let input: web_sys::HtmlInputElement = root
+			.as_web_sys()
+			.first_element_child()
+			.expect("input")
+			.unchecked_into();
 
-	assert_eq!(evaluations.get(), 1);
-	assert_eq!(input.value(), "first");
-	assert!(input.checked());
-	reinhardt_pages::cleanup_reactive_nodes();
+		assert_eq!(evaluations.get(), 1);
+		assert_eq!(input.value(), "first");
+		assert!(input.checked());
+		reinhardt_pages::cleanup_reactive_nodes();
+	});
 }
 
 #[wasm_bindgen_test]
 fn public_page_mount_applies_initial_select_one_after_mounting_options() {
-	let document = web_sys::window()
-		.expect("window")
-		.document()
-		.expect("document");
-	let root = Element::new(document.create_element("div").expect("root"));
-	let selected = Signal::new("wasm".to_owned());
-	page!({
-		select {
-			a11y: off,
-			bind: selected,
-			option {
-				value: "rust",
-				"Rust"
+	ReactiveScope::run(|| {
+		let document = web_sys::window()
+			.expect("window")
+			.document()
+			.expect("document");
+		let root = Element::new(document.create_element("div").expect("root"));
+		let selected = Signal::new("wasm".to_owned());
+		page!({
+			select {
+				a11y: off,
+				bind: selected,
+				option {
+					value: "rust",
+					"Rust"
+				}
+				option {
+					value: "wasm",
+					"WebAssembly"
+				}
 			}
-			option {
-				value: "wasm",
-				"WebAssembly"
-			}
-		}
-	})
-	.mount(&root)
-	.expect("mount");
-	let select: web_sys::HtmlSelectElement = root
-		.as_web_sys()
-		.first_element_child()
-		.expect("select")
-		.unchecked_into();
+		})
+		.mount(&root)
+		.expect("mount");
+		let select: web_sys::HtmlSelectElement = root
+			.as_web_sys()
+			.first_element_child()
+			.expect("select")
+			.unchecked_into();
 
-	assert_eq!(select.value(), "wasm");
-	reinhardt_pages::cleanup_reactive_nodes();
+		assert_eq!(select.value(), "wasm");
+		reinhardt_pages::cleanup_reactive_nodes();
+	});
 }
 
 #[wasm_bindgen_test]
 fn public_page_mount_applies_initial_select_many_after_mounting_options() {
-	let document = web_sys::window()
-		.expect("window")
-		.document()
-		.expect("document");
-	let root = Element::new(document.create_element("div").expect("root"));
-	let selected = Signal::new(vec!["rust".to_owned(), "wasm".to_owned()]);
-	page!({
-		select {
-			a11y: off,
-			multiple: true,
-			bind: selected,
-			option {
-				value: "rust",
-				"Rust"
+	ReactiveScope::run(|| {
+		let document = web_sys::window()
+			.expect("window")
+			.document()
+			.expect("document");
+		let root = Element::new(document.create_element("div").expect("root"));
+		let selected = Signal::new(vec!["rust".to_owned(), "wasm".to_owned()]);
+		page!({
+			select {
+				a11y: off,
+				multiple: true,
+				bind: selected,
+				option {
+					value: "rust",
+					"Rust"
+				}
+				option {
+					value: "wasm",
+					"WebAssembly"
+				}
 			}
-			option {
-				value: "wasm",
-				"WebAssembly"
-			}
-		}
-	})
-	.mount(&root)
-	.expect("mount");
-	let select: web_sys::HtmlSelectElement = root
-		.as_web_sys()
-		.first_element_child()
-		.expect("select")
-		.unchecked_into();
+		})
+		.mount(&root)
+		.expect("mount");
+		let select: web_sys::HtmlSelectElement = root
+			.as_web_sys()
+			.first_element_child()
+			.expect("select")
+			.unchecked_into();
 
-	let rust: web_sys::HtmlOptionElement = select.item(0).expect("rust option").unchecked_into();
-	let wasm: web_sys::HtmlOptionElement = select.item(1).expect("wasm option").unchecked_into();
-	assert_eq!(select.selected_options().length(), 2);
-	assert!(rust.selected());
-	assert!(wasm.selected());
-	reinhardt_pages::cleanup_reactive_nodes();
+		let rust: web_sys::HtmlOptionElement =
+			select.item(0).expect("rust option").unchecked_into();
+		let wasm: web_sys::HtmlOptionElement =
+			select.item(1).expect("wasm option").unchecked_into();
+		assert_eq!(select.selected_options().length(), 2);
+		assert!(rust.selected());
+		assert!(wasm.selected());
+		reinhardt_pages::cleanup_reactive_nodes();
+	});
 }
 
 #[wasm_bindgen_test(async)]
 async fn reactive_select_options_refresh_the_bound_value_without_a_signal_write() {
-	let document = web_sys::window()
-		.expect("window")
-		.document()
-		.expect("document");
-	let root = Element::new(document.create_element("div").expect("root"));
-	let show_options = Signal::new(false);
-	let selected = Signal::new(vec!["wasm".to_owned()]);
-	let render_show_options = show_options.clone();
-	PageElement::new("select")
-		.attr("multiple", "multiple")
-		.control_binding(ControlBinding::select_many(selected))
-		.child(Page::reactive(move || {
-			if render_show_options.get() {
-				PageElement::new("option")
-					.attr("value", "wasm")
-					.child("WebAssembly")
-					.into_page()
-			} else {
-				Page::Empty
-			}
-		}))
-		.into_page()
-		.mount(&root)
-		.expect("mount");
+	let scope = ReactiveScope::new();
+	let (root, show_options) = scope.enter(|| {
+		let document = web_sys::window()
+			.expect("window")
+			.document()
+			.expect("document");
+		let root = Element::new(document.create_element("div").expect("root"));
+		let show_options = Signal::new(false);
+		let selected = Signal::new(vec!["wasm".to_owned()]);
+		let render_show_options = show_options.clone();
+		PageElement::new("select")
+			.attr("multiple", "multiple")
+			.control_binding(ControlBinding::select_many(selected))
+			.child(Page::reactive(move || {
+				if render_show_options.get() {
+					PageElement::new("option")
+						.attr("value", "wasm")
+						.child("WebAssembly")
+						.into_page()
+				} else {
+					Page::Empty
+				}
+			}))
+			.into_page()
+			.mount(&root)
+			.expect("mount");
+
+		(root, show_options)
+	});
 
 	show_options.set(true);
 	JsFuture::from(js_sys::Promise::resolve(&JsValue::UNDEFINED))
@@ -284,382 +303,396 @@ async fn reactive_select_options_refresh_the_bound_value_without_a_signal_write(
 
 #[wasm_bindgen_test]
 fn reactive_select_remount_applies_binding_after_mounting_replacement_options() {
-	let document = web_sys::window()
-		.expect("window")
-		.document()
-		.expect("document");
-	let root = Element::new(document.create_element("div").expect("root"));
-	let alternate = Signal::new(false);
-	let selected = Signal::new("wasm".to_owned());
-	let render_alternate = alternate.clone();
-	let render_selected = selected.clone();
-	Page::reactive(move || {
-		let bound = render_selected.clone();
-		let id = if render_alternate.get() {
-			"replacement"
-		} else {
-			"original"
-		};
-		page!({
-			select {
-				a11y: off,
-				id: id,
-				bind: bound,
-				option {
-					value: "rust",
-					"Rust"
+	ReactiveScope::run(|| {
+		let document = web_sys::window()
+			.expect("window")
+			.document()
+			.expect("document");
+		let root = Element::new(document.create_element("div").expect("root"));
+		let alternate = Signal::new(false);
+		let selected = Signal::new("wasm".to_owned());
+		let render_alternate = alternate.clone();
+		let render_selected = selected.clone();
+		Page::reactive(move || {
+			let bound = render_selected.clone();
+			let id = if render_alternate.get() {
+				"replacement"
+			} else {
+				"original"
+			};
+			page!({
+				select {
+					a11y: off,
+					id: id,
+					bind: bound,
+					option {
+						value: "rust",
+						"Rust"
+					}
+					option {
+						value: "wasm",
+						"WebAssembly"
+					}
 				}
-				option {
-					value: "wasm",
-					"WebAssembly"
-				}
-			}
+			})
 		})
-	})
-	.mount(&root)
-	.expect("mount");
+		.mount(&root)
+		.expect("mount");
 
-	alternate.set(true);
-	let replacement: web_sys::HtmlSelectElement = root
-		.as_web_sys()
-		.first_element_child()
-		.expect("replacement")
-		.unchecked_into();
-	assert_eq!(replacement.id(), "replacement");
-	assert_eq!(replacement.value(), "wasm");
-	reinhardt_pages::cleanup_reactive_nodes();
+		alternate.set(true);
+		let replacement: web_sys::HtmlSelectElement = root
+			.as_web_sys()
+			.first_element_child()
+			.expect("replacement")
+			.unchecked_into();
+		assert_eq!(replacement.id(), "replacement");
+		assert_eq!(replacement.value(), "wasm");
+		reinhardt_pages::cleanup_reactive_nodes();
+	});
 }
 
 #[wasm_bindgen_test]
 fn public_page_mount_preserves_a_structured_binding_error() {
-	let document = web_sys::window()
-		.expect("window")
-		.document()
-		.expect("document");
-	let root = Element::new(document.create_element("div").expect("root"));
-	let checked = Signal::new(false);
-	let page = Page::Element(
-		PageElement::new("select").control_binding(ControlBinding::checkbox(checked)),
-	);
+	ReactiveScope::run(|| {
+		let document = web_sys::window()
+			.expect("window")
+			.document()
+			.expect("document");
+		let root = Element::new(document.create_element("div").expect("root"));
+		let checked = Signal::new(false);
+		let page = Page::Element(
+			PageElement::new("select").control_binding(ControlBinding::checkbox(checked)),
+		);
 
-	let error = page.mount(&root).expect_err("mismatch");
+		let error = page.mount(&root).expect_err("mismatch");
 
-	assert_eq!(
-		error,
-		MountError::ControlBinding(ControlBindingError::UnsupportedElement {
-			control: ControlKind::Checkbox,
-			actual_tag: "select".to_owned(),
-		})
-	);
+		assert_eq!(
+			error,
+			MountError::ControlBinding(ControlBindingError::UnsupportedElement {
+				control: ControlKind::Checkbox,
+				actual_tag: "select".to_owned(),
+			})
+		);
+	});
 }
 
 #[wasm_bindgen_test]
 fn failed_select_mount_rolls_back_child_reactive_resources() {
-	let document = web_sys::window()
-		.expect("window")
-		.document()
-		.expect("document");
-	let root = Element::new(document.create_element("div").expect("root"));
-	let parent_checked = Signal::new(false);
-	let child_value = Signal::new("initial".to_owned());
-	let render_count = Rc::new(std::cell::Cell::new(0));
-	let listener_owner = Rc::new(());
-	let weak_listener_owner = Rc::downgrade(&listener_owner);
-	let render_value = child_value.clone();
-	let render_count_for_child = Rc::clone(&render_count);
-	let listener_owner_for_child = Rc::clone(&listener_owner);
-	let page = Page::Element(
-		PageElement::new("select")
-			.control_binding(ControlBinding::checkbox(parent_checked))
-			.child(Page::reactive(move || {
-				render_count_for_child.set(render_count_for_child.get() + 1);
-				let _ = render_value.get();
-				let bound = render_value.clone();
-				let listener_owner = Rc::clone(&listener_owner_for_child);
-				page!({
-					input {
-						a11y: off,
-						bind: bound,
-						@input: move |_| drop(Rc::clone(&listener_owner)),
-					}
-				})
-			})),
-	);
-	drop(listener_owner);
+	ReactiveScope::run(|| {
+		let document = web_sys::window()
+			.expect("window")
+			.document()
+			.expect("document");
+		let root = Element::new(document.create_element("div").expect("root"));
+		let parent_checked = Signal::new(false);
+		let child_value = Signal::new("initial".to_owned());
+		let render_count = Rc::new(std::cell::Cell::new(0));
+		let listener_owner = Rc::new(());
+		let weak_listener_owner = Rc::downgrade(&listener_owner);
+		let render_value = child_value.clone();
+		let render_count_for_child = Rc::clone(&render_count);
+		let listener_owner_for_child = Rc::clone(&listener_owner);
+		let page = Page::Element(
+			PageElement::new("select")
+				.control_binding(ControlBinding::checkbox(parent_checked))
+				.child(Page::reactive(move || {
+					render_count_for_child.set(render_count_for_child.get() + 1);
+					let _ = render_value.get();
+					let bound = render_value.clone();
+					let listener_owner = Rc::clone(&listener_owner_for_child);
+					page!({
+						input {
+							a11y: off,
+							bind: bound,
+							@input: move |_| drop(Rc::clone(&listener_owner)),
+						}
+					})
+				})),
+		);
+		drop(listener_owner);
 
-	let error = page.mount(&root).expect_err("parent binding mismatch");
+		let error = page.mount(&root).expect_err("parent binding mismatch");
 
-	assert_eq!(
-		error,
-		MountError::ControlBinding(ControlBindingError::UnsupportedElement {
-			control: ControlKind::Checkbox,
-			actual_tag: "select".to_owned(),
-		})
-	);
-	assert_eq!(render_count.get(), 1);
-	assert!(weak_listener_owner.upgrade().is_none());
-	assert_eq!(root.as_web_sys().first_element_child(), None);
-	child_value.set("after failure".to_owned());
-	assert_eq!(render_count.get(), 1);
+		assert_eq!(
+			error,
+			MountError::ControlBinding(ControlBindingError::UnsupportedElement {
+				control: ControlKind::Checkbox,
+				actual_tag: "select".to_owned(),
+			})
+		);
+		assert_eq!(render_count.get(), 1);
+		assert!(weak_listener_owner.upgrade().is_none());
+		assert_eq!(root.as_web_sys().first_element_child(), None);
+		child_value.set("after failure".to_owned());
+		assert_eq!(render_count.get(), 1);
+	});
 }
 
 #[wasm_bindgen_test]
 fn reactive_failed_select_mount_rolls_back_child_reactive_resources() {
-	let document = web_sys::window()
-		.expect("window")
-		.document()
-		.expect("document");
-	let root = Element::new(document.create_element("div").expect("root"));
-	let trigger = Signal::new(0_u32);
-	let render_count = Rc::new(std::cell::Cell::new(0));
-	let last_listener_owner = Rc::new(RefCell::new(None));
-	let render_trigger = trigger.clone();
-	let render_count_for_page = Rc::clone(&render_count);
-	let last_listener_owner_for_page = Rc::clone(&last_listener_owner);
-	let page = Page::reactive(move || {
-		let _ = render_trigger.get();
-		render_count_for_page.set(render_count_for_page.get() + 1);
-		let listener_owner = Rc::new(());
-		*last_listener_owner_for_page.borrow_mut() = Some(Rc::downgrade(&listener_owner));
-		Page::Element(
-			PageElement::new("select")
-				.control_binding(ControlBinding::checkbox(Signal::new(false)))
-				.child(page!({
-					input {
-						a11y: off,
-						bind: Signal::new(String::new()),
-						@input: move |_| drop(Rc::clone(&listener_owner)),
-					}
-				})),
-		)
+	ReactiveScope::run(|| {
+		let document = web_sys::window()
+			.expect("window")
+			.document()
+			.expect("document");
+		let root = Element::new(document.create_element("div").expect("root"));
+		let trigger = Signal::new(0_u32);
+		let render_count = Rc::new(std::cell::Cell::new(0));
+		let last_listener_owner = Rc::new(RefCell::new(None));
+		let render_trigger = trigger.clone();
+		let render_count_for_page = Rc::clone(&render_count);
+		let last_listener_owner_for_page = Rc::clone(&last_listener_owner);
+		let page = Page::reactive(move || {
+			let _ = render_trigger.get();
+			render_count_for_page.set(render_count_for_page.get() + 1);
+			let listener_owner = Rc::new(());
+			*last_listener_owner_for_page.borrow_mut() = Some(Rc::downgrade(&listener_owner));
+			Page::Element(
+				PageElement::new("select")
+					.control_binding(ControlBinding::checkbox(Signal::new(false)))
+					.child(page!({
+						input {
+							a11y: off,
+							bind: Signal::new(String::new()),
+							@input: move |_| drop(Rc::clone(&listener_owner)),
+						}
+					})),
+			)
+		});
+
+		page.mount(&root).expect("reactive owner mount");
+
+		assert_eq!(
+			root.as_web_sys().query_selector("select").expect("query"),
+			None
+		);
+		assert_eq!(render_count.get(), 1);
+		assert!(
+			last_listener_owner
+				.borrow()
+				.as_ref()
+				.expect("owner observation")
+				.upgrade()
+				.is_none()
+		);
+		trigger.set(1);
+		assert_eq!(render_count.get(), 2);
+		assert!(
+			last_listener_owner
+				.borrow()
+				.as_ref()
+				.expect("rerendered owner observation")
+				.upgrade()
+				.is_none()
+		);
+		reinhardt_pages::cleanup_reactive_nodes();
 	});
-
-	page.mount(&root).expect("reactive owner mount");
-
-	assert_eq!(
-		root.as_web_sys().query_selector("select").expect("query"),
-		None
-	);
-	assert_eq!(render_count.get(), 1);
-	assert!(
-		last_listener_owner
-			.borrow()
-			.as_ref()
-			.expect("owner observation")
-			.upgrade()
-			.is_none()
-	);
-	trigger.set(1);
-	assert_eq!(render_count.get(), 2);
-	assert!(
-		last_listener_owner
-			.borrow()
-			.as_ref()
-			.expect("rerendered owner observation")
-			.upgrade()
-			.is_none()
-	);
-	reinhardt_pages::cleanup_reactive_nodes();
 }
 
 #[wasm_bindgen_test]
 fn reactive_invalid_nonselect_binding_is_omitted() {
-	let document = web_sys::window()
-		.expect("window")
-		.document()
-		.expect("document");
-	let root = Element::new(document.create_element("div").expect("root"));
-	let page = Page::reactive(|| {
-		PageElement::new("input")
-			.attr("id", "invalid-nonselect")
-			.control_binding(ControlBinding::select_one(Signal::new(String::new())))
-			.into_page()
+	ReactiveScope::run(|| {
+		let document = web_sys::window()
+			.expect("window")
+			.document()
+			.expect("document");
+		let root = Element::new(document.create_element("div").expect("root"));
+		let page = Page::reactive(|| {
+			PageElement::new("input")
+				.attr("id", "invalid-nonselect")
+				.control_binding(ControlBinding::select_one(Signal::new(String::new())))
+				.into_page()
+		});
+
+		page.mount(&root).expect("reactive owner mount");
+
+		assert_eq!(
+			root.as_web_sys()
+				.query_selector("#invalid-nonselect")
+				.expect("query"),
+			None
+		);
+		reinhardt_pages::cleanup_reactive_nodes();
 	});
-
-	page.mount(&root).expect("reactive owner mount");
-
-	assert_eq!(
-		root.as_web_sys()
-			.query_selector("#invalid-nonselect")
-			.expect("query"),
-		None
-	);
-	reinhardt_pages::cleanup_reactive_nodes();
 }
 
 #[wasm_bindgen_test]
 fn reactive_nonselect_mount_keeps_parent_when_a_child_mount_fails() {
-	let document = web_sys::window()
-		.expect("window")
-		.document()
-		.expect("document");
-	let root = Element::new(document.create_element("div").expect("root"));
-	let retained_trigger = Signal::new(0_u32);
-	let retained_render_count = Rc::new(Cell::new(0));
-	let failed_trigger = Signal::new(0_u32);
-	let failed_render_count = Rc::new(Cell::new(0));
-	let listener_owner = Rc::new(RefCell::new(None));
-	let retained_trigger_for_child = retained_trigger.clone();
-	let retained_render_count_for_child = Rc::clone(&retained_render_count);
-	let failed_trigger_for_child = failed_trigger.clone();
-	let failed_render_count_for_child = Rc::clone(&failed_render_count);
-	let listener_owner_for_child = Rc::clone(&listener_owner);
-	let page = Page::reactive(move || {
-		let retained_trigger = retained_trigger_for_child.clone();
-		let retained_render_count = Rc::clone(&retained_render_count_for_child);
-		let failed_trigger = failed_trigger_for_child.clone();
-		let failed_render_count = Rc::clone(&failed_render_count_for_child);
-		let listener_owner_for_child = Rc::clone(&listener_owner_for_child);
-		Page::Element(
-			PageElement::new("div")
-				.attr("id", "retained-parent")
-				.child(Page::Element(
-					PageElement::new("section")
-						.attr("id", "retained-child")
-						.child(Page::reactive(move || {
-							let value = retained_trigger.get();
-							retained_render_count.set(retained_render_count.get() + 1);
-							PageElement::new("span")
-								.attr("id", "retained-reactive")
-								.child(value.to_string())
-								.into_page()
-						}))
-						.child(Page::Element(
-							PageElement::new("select")
-								.control_binding(ControlBinding::checkbox(Signal::new(false)))
-								.child(Page::reactive(move || {
-									let _ = failed_trigger.get();
-									failed_render_count.set(failed_render_count.get() + 1);
-									let owner = Rc::new(());
-									*listener_owner_for_child.borrow_mut() =
-										Some(Rc::downgrade(&owner));
-									page!({
-										input {
-											a11y: off,
-											bind: Signal::new(String::new()),
-											@input: move |_| drop(Rc::clone(&owner)),
-										}
-									})
-								})),
-						))
-						.child(
-							PageElement::new("span")
-								.attr("id", "nested-valid-sibling")
-								.child("nested ready"),
-						),
-				))
-				.child(Page::Element(
-					PageElement::new("span")
-						.attr("id", "valid-sibling")
-						.child(Page::Text("ready".into())),
-				)),
-		)
+	ReactiveScope::run(|| {
+		let document = web_sys::window()
+			.expect("window")
+			.document()
+			.expect("document");
+		let root = Element::new(document.create_element("div").expect("root"));
+		let retained_trigger = Signal::new(0_u32);
+		let retained_render_count = Rc::new(Cell::new(0));
+		let failed_trigger = Signal::new(0_u32);
+		let failed_render_count = Rc::new(Cell::new(0));
+		let listener_owner = Rc::new(RefCell::new(None));
+		let retained_trigger_for_child = retained_trigger.clone();
+		let retained_render_count_for_child = Rc::clone(&retained_render_count);
+		let failed_trigger_for_child = failed_trigger.clone();
+		let failed_render_count_for_child = Rc::clone(&failed_render_count);
+		let listener_owner_for_child = Rc::clone(&listener_owner);
+		let page = Page::reactive(move || {
+			let retained_trigger = retained_trigger_for_child.clone();
+			let retained_render_count = Rc::clone(&retained_render_count_for_child);
+			let failed_trigger = failed_trigger_for_child.clone();
+			let failed_render_count = Rc::clone(&failed_render_count_for_child);
+			let listener_owner_for_child = Rc::clone(&listener_owner_for_child);
+			Page::Element(
+				PageElement::new("div")
+					.attr("id", "retained-parent")
+					.child(Page::Element(
+						PageElement::new("section")
+							.attr("id", "retained-child")
+							.child(Page::reactive(move || {
+								let value = retained_trigger.get();
+								retained_render_count.set(retained_render_count.get() + 1);
+								PageElement::new("span")
+									.attr("id", "retained-reactive")
+									.child(value.to_string())
+									.into_page()
+							}))
+							.child(Page::Element(
+								PageElement::new("select")
+									.control_binding(ControlBinding::checkbox(Signal::new(false)))
+									.child(Page::reactive(move || {
+										let _ = failed_trigger.get();
+										failed_render_count.set(failed_render_count.get() + 1);
+										let owner = Rc::new(());
+										*listener_owner_for_child.borrow_mut() =
+											Some(Rc::downgrade(&owner));
+										page!({
+											input {
+												a11y: off,
+												bind: Signal::new(String::new()),
+												@input: move |_| drop(Rc::clone(&owner)),
+											}
+										})
+									})),
+							))
+							.child(
+								PageElement::new("span")
+									.attr("id", "nested-valid-sibling")
+									.child("nested ready"),
+							),
+					))
+					.child(Page::Element(
+						PageElement::new("span")
+							.attr("id", "valid-sibling")
+							.child(Page::Text("ready".into())),
+					)),
+			)
+		});
+
+		page.mount(&root).expect("reactive owner mount");
+
+		let parent = root
+			.as_web_sys()
+			.query_selector("#retained-parent")
+			.expect("query")
+			.expect("non-select parent should remain mounted");
+		assert!(
+			parent
+				.query_selector("#retained-child")
+				.expect("retained child query")
+				.is_some()
+		);
+		assert_eq!(
+			parent
+				.query_selector("#nested-valid-sibling")
+				.expect("nested sibling query")
+				.expect("nested sibling")
+				.text_content(),
+			Some("nested ready".to_owned())
+		);
+		assert_eq!(
+			parent
+				.query_selector("#valid-sibling")
+				.expect("sibling query")
+				.expect("sibling")
+				.text_content(),
+			Some("ready".to_owned())
+		);
+		assert_eq!(
+			(retained_render_count.get(), failed_render_count.get()),
+			(1, 1)
+		);
+		assert!(
+			listener_owner
+				.borrow()
+				.as_ref()
+				.expect("owner observation")
+				.upgrade()
+				.is_none()
+		);
+		retained_trigger.set(1);
+		failed_trigger.set(1);
+		assert_eq!(retained_render_count.get(), 2);
+		assert_eq!(failed_render_count.get(), 1);
+		assert_eq!(
+			parent
+				.query_selector("#retained-reactive")
+				.expect("reactive query")
+				.expect("retained reactive")
+				.text_content(),
+			Some("1".to_owned())
+		);
+		reinhardt_pages::cleanup_reactive_nodes();
 	});
-
-	page.mount(&root).expect("reactive owner mount");
-
-	let parent = root
-		.as_web_sys()
-		.query_selector("#retained-parent")
-		.expect("query")
-		.expect("non-select parent should remain mounted");
-	assert!(
-		parent
-			.query_selector("#retained-child")
-			.expect("retained child query")
-			.is_some()
-	);
-	assert_eq!(
-		parent
-			.query_selector("#nested-valid-sibling")
-			.expect("nested sibling query")
-			.expect("nested sibling")
-			.text_content(),
-		Some("nested ready".to_owned())
-	);
-	assert_eq!(
-		parent
-			.query_selector("#valid-sibling")
-			.expect("sibling query")
-			.expect("sibling")
-			.text_content(),
-		Some("ready".to_owned())
-	);
-	assert_eq!(
-		(retained_render_count.get(), failed_render_count.get()),
-		(1, 1)
-	);
-	assert!(
-		listener_owner
-			.borrow()
-			.as_ref()
-			.expect("owner observation")
-			.upgrade()
-			.is_none()
-	);
-	retained_trigger.set(1);
-	failed_trigger.set(1);
-	assert_eq!(retained_render_count.get(), 2);
-	assert_eq!(failed_render_count.get(), 1);
-	assert_eq!(
-		parent
-			.query_selector("#retained-reactive")
-			.expect("reactive query")
-			.expect("retained reactive")
-			.text_content(),
-		Some("1".to_owned())
-	);
-	reinhardt_pages::cleanup_reactive_nodes();
 }
 
 #[wasm_bindgen_test]
 fn failed_plain_parent_mount_drops_detached_reactive_children() {
-	let document = web_sys::window()
-		.expect("window")
-		.document()
-		.expect("document");
-	let root = Element::new(document.create_element("div").expect("root"));
-	let trigger = Signal::new(0_u32);
-	let render_count = Rc::new(Cell::new(0));
-	let listener_owner = Rc::new(());
-	let weak_listener_owner = Rc::downgrade(&listener_owner);
-	let render_trigger = trigger.clone();
-	let render_count_for_child = Rc::clone(&render_count);
-	let listener_owner_for_child = Rc::clone(&listener_owner);
-	let page = PageElement::new("div")
-		.child(Page::reactive(move || {
-			let value = render_trigger.get();
-			render_count_for_child.set(render_count_for_child.get() + 1);
-			let listener_owner = Rc::clone(&listener_owner_for_child);
-			page!({
-				button {
-					id: "detached-reactive-child",
-					@input: move |_| drop(Rc::clone(&listener_owner)),
-					{ value.to_string() }
-				}
+	ReactiveScope::run(|| {
+		let document = web_sys::window()
+			.expect("window")
+			.document()
+			.expect("document");
+		let root = Element::new(document.create_element("div").expect("root"));
+		let trigger = Signal::new(0_u32);
+		let render_count = Rc::new(Cell::new(0));
+		let listener_owner = Rc::new(());
+		let weak_listener_owner = Rc::downgrade(&listener_owner);
+		let render_trigger = trigger.clone();
+		let render_count_for_child = Rc::clone(&render_count);
+		let listener_owner_for_child = Rc::clone(&listener_owner);
+		let page = PageElement::new("div")
+			.child(Page::reactive(move || {
+				let value = render_trigger.get();
+				render_count_for_child.set(render_count_for_child.get() + 1);
+				let listener_owner = Rc::clone(&listener_owner_for_child);
+				page!({
+					button {
+						id: "detached-reactive-child",
+						@input: move |_| drop(Rc::clone(&listener_owner)),
+						{ value.to_string() }
+					}
+				})
+			}))
+			.child(Page::Element(PageElement::new("input").control_binding(
+				ControlBinding::select_one(Signal::new(String::new())),
+			)))
+			.into_page();
+		drop(listener_owner);
+
+		let error = page.mount(&root).expect_err("later invalid child binding");
+		let renders_after_failure = render_count.get();
+		trigger.set(1);
+		with_runtime(|runtime| runtime.flush_updates());
+
+		assert_eq!(
+			error,
+			MountError::ControlBinding(ControlBindingError::UnsupportedElement {
+				control: ControlKind::SelectOne,
+				actual_tag: "input".to_owned(),
 			})
-		}))
-		.child(Page::Element(PageElement::new("input").control_binding(
-			ControlBinding::select_one(Signal::new(String::new())),
-		)))
-		.into_page();
-	drop(listener_owner);
-
-	let error = page.mount(&root).expect_err("later invalid child binding");
-	let renders_after_failure = render_count.get();
-	trigger.set(1);
-	with_runtime(|runtime| runtime.flush_updates());
-
-	assert_eq!(
-		error,
-		MountError::ControlBinding(ControlBindingError::UnsupportedElement {
-			control: ControlKind::SelectOne,
-			actual_tag: "input".to_owned(),
-		})
-	);
-	assert_eq!(root.as_web_sys().first_element_child(), None);
-	assert_eq!(render_count.get(), renders_after_failure);
-	assert!(weak_listener_owner.upgrade().is_none());
+		);
+		assert_eq!(root.as_web_sys().first_element_child(), None);
+		assert_eq!(render_count.get(), renders_after_failure);
+		assert!(weak_listener_owner.upgrade().is_none());
+	});
 }
 
 fn dispatch_before_input(input: &web_sys::HtmlInputElement, data: Option<&str>, input_type: &str) {
@@ -765,351 +798,377 @@ fn dispatch_keydown_with_modifiers(
 
 #[wasm_bindgen_test]
 fn number_binding_tracks_keyboard_caret_for_sanitized_input() {
-	let (_root, input, value, error) = mounted_number_control(12);
-	dispatch_keydown(&input, "ArrowLeft", false);
-	dispatch_before_input(&input, Some("-"), "insertText");
-	input.set_value("");
-	dispatch_input(&input, Some("-"), "insertText");
+	ReactiveScope::run(|| {
+		let (_root, input, value, error) = mounted_number_control(12);
+		dispatch_keydown(&input, "ArrowLeft", false);
+		dispatch_before_input(&input, Some("-"), "insertText");
+		input.set_value("");
+		dispatch_input(&input, Some("-"), "insertText");
 
-	assert_eq!(value.get(), 12);
-	let parse_error = error.get().expect("invalid middle insertion");
-	assert_eq!(parse_error.raw(), "1-2");
-	assert_eq!(parse_error.kind(), NumberParseErrorKind::Invalid);
-	reinhardt_pages::cleanup_reactive_nodes();
+		assert_eq!(value.get(), 12);
+		let parse_error = error.get().expect("invalid middle insertion");
+		assert_eq!(parse_error.raw(), "1-2");
+		assert_eq!(parse_error.kind(), NumberParseErrorKind::Invalid);
+		reinhardt_pages::cleanup_reactive_nodes();
+	});
 }
 
 #[wasm_bindgen_test]
 fn number_binding_tracks_shift_selection_for_sanitized_replacement() {
-	let (_root, input, value, error) = mounted_number_control(123);
-	dispatch_keydown(&input, "ArrowLeft", false);
-	dispatch_keydown(&input, "ArrowLeft", true);
-	dispatch_before_input(&input, Some("-"), "insertReplacementText");
-	input.set_value("");
-	dispatch_input(&input, Some("-"), "insertReplacementText");
+	ReactiveScope::run(|| {
+		let (_root, input, value, error) = mounted_number_control(123);
+		dispatch_keydown(&input, "ArrowLeft", false);
+		dispatch_keydown(&input, "ArrowLeft", true);
+		dispatch_before_input(&input, Some("-"), "insertReplacementText");
+		input.set_value("");
+		dispatch_input(&input, Some("-"), "insertReplacementText");
 
-	assert_eq!(value.get(), 123);
-	let parse_error = error.get().expect("invalid selection replacement");
-	assert_eq!(parse_error.raw(), "1-3");
-	assert_eq!(parse_error.kind(), NumberParseErrorKind::Invalid);
-	reinhardt_pages::cleanup_reactive_nodes();
+		assert_eq!(value.get(), 123);
+		let parse_error = error.get().expect("invalid selection replacement");
+		assert_eq!(parse_error.raw(), "1-3");
+		assert_eq!(parse_error.kind(), NumberParseErrorKind::Invalid);
+		reinhardt_pages::cleanup_reactive_nodes();
+	});
 }
 
 #[wasm_bindgen_test]
 fn number_binding_resynchronizes_after_an_unknown_valid_pointer_edit() {
-	let (_root, input, value, error) = mounted_number_control(12);
-	input
-		.dispatch_event(&web_sys::MouseEvent::new("mousedown").expect("mousedown"))
-		.expect("dispatch mousedown");
-	dispatch_before_input(&input, Some("3"), "insertText");
-	input.set_value("132");
-	dispatch_input(&input, Some("3"), "insertText");
-	assert_eq!(value.get(), 132);
+	ReactiveScope::run(|| {
+		let (_root, input, value, error) = mounted_number_control(12);
+		input
+			.dispatch_event(&web_sys::MouseEvent::new("mousedown").expect("mousedown"))
+			.expect("dispatch mousedown");
+		dispatch_before_input(&input, Some("3"), "insertText");
+		input.set_value("132");
+		dispatch_input(&input, Some("3"), "insertText");
+		assert_eq!(value.get(), 132);
 
-	dispatch_before_input(&input, Some("-"), "insertText");
-	input.set_value("");
-	dispatch_input(&input, Some("-"), "insertText");
+		dispatch_before_input(&input, Some("-"), "insertText");
+		input.set_value("");
+		dispatch_input(&input, Some("-"), "insertText");
 
-	assert_eq!(value.get(), 132);
-	let parse_error = error.get().expect("invalid edit after resync");
-	assert_eq!(parse_error.raw(), "13-2");
-	reinhardt_pages::cleanup_reactive_nodes();
+		assert_eq!(value.get(), 132);
+		let parse_error = error.get().expect("invalid edit after resync");
+		assert_eq!(parse_error.raw(), "13-2");
+		reinhardt_pages::cleanup_reactive_nodes();
+	});
 }
 
 #[wasm_bindgen_test]
 fn number_binding_tracks_word_and_line_deletes() {
-	let (_root, input, value, error) = mounted_number_control(1234);
-	dispatch_keydown(&input, "ArrowLeft", false);
-	dispatch_keydown(&input, "ArrowLeft", false);
-	dispatch_before_input(&input, None, "deleteWordBackward");
-	input.set_value("34");
-	dispatch_input(&input, None, "deleteWordBackward");
-	assert_eq!(value.get(), 34);
+	ReactiveScope::run(|| {
+		let (_root, input, value, error) = mounted_number_control(1234);
+		dispatch_keydown(&input, "ArrowLeft", false);
+		dispatch_keydown(&input, "ArrowLeft", false);
+		dispatch_before_input(&input, None, "deleteWordBackward");
+		input.set_value("34");
+		dispatch_input(&input, None, "deleteWordBackward");
+		assert_eq!(value.get(), 34);
 
-	dispatch_before_input(&input, None, "deleteSoftLineForward");
-	input.set_value("");
-	dispatch_input(&input, None, "deleteSoftLineForward");
-	assert_eq!(value.get(), 34);
-	assert_eq!(error.get().expect("empty line delete").raw(), "");
-	reinhardt_pages::cleanup_reactive_nodes();
+		dispatch_before_input(&input, None, "deleteSoftLineForward");
+		input.set_value("");
+		dispatch_input(&input, None, "deleteSoftLineForward");
+		assert_eq!(value.get(), 34);
+		assert_eq!(error.get().expect("empty line delete").raw(), "");
+		reinhardt_pages::cleanup_reactive_nodes();
+	});
 }
 
 #[wasm_bindgen_test]
 fn number_binding_uses_transfer_data_for_sanitized_paste() {
-	let (_root, input, value, error) = mounted_number_control(12);
-	dispatch_before_input_with_transfer(&input, "-", "insertFromPaste");
-	input.set_value("");
-	dispatch_input(&input, None, "insertFromPaste");
+	ReactiveScope::run(|| {
+		let (_root, input, value, error) = mounted_number_control(12);
+		dispatch_before_input_with_transfer(&input, "-", "insertFromPaste");
+		input.set_value("");
+		dispatch_input(&input, None, "insertFromPaste");
 
-	assert_eq!(value.get(), 12);
-	let parse_error = error.get().expect("invalid pasted raw");
-	assert_eq!(parse_error.raw(), "12-");
-	assert_eq!(parse_error.kind(), NumberParseErrorKind::Invalid);
-	reinhardt_pages::cleanup_reactive_nodes();
+		assert_eq!(value.get(), 12);
+		let parse_error = error.get().expect("invalid pasted raw");
+		assert_eq!(parse_error.raw(), "12-");
+		assert_eq!(parse_error.kind(), NumberParseErrorKind::Invalid);
+		reinhardt_pages::cleanup_reactive_nodes();
+	});
 }
 
 #[wasm_bindgen_test]
 fn number_binding_does_not_invent_raw_after_an_unknown_pointer_edit() {
-	let (_root, input, value, error) = mounted_number_control(12);
-	input
-		.dispatch_event(&web_sys::MouseEvent::new("mousedown").expect("mousedown"))
-		.expect("dispatch mousedown");
-	dispatch_before_input(&input, Some("-"), "insertText");
-	input.set_value("");
-	dispatch_input(&input, Some("-"), "insertText");
+	ReactiveScope::run(|| {
+		let (_root, input, value, error) = mounted_number_control(12);
+		input
+			.dispatch_event(&web_sys::MouseEvent::new("mousedown").expect("mousedown"))
+			.expect("dispatch mousedown");
+		dispatch_before_input(&input, Some("-"), "insertText");
+		input.set_value("");
+		dispatch_input(&input, Some("-"), "insertText");
 
-	assert_eq!(value.get(), 12);
-	let parse_error = error.get().expect("sanitized fallback");
-	assert_eq!(parse_error.raw(), "");
-	assert_eq!(parse_error.kind(), NumberParseErrorKind::Empty);
-	reinhardt_pages::cleanup_reactive_nodes();
+		assert_eq!(value.get(), 12);
+		let parse_error = error.get().expect("sanitized fallback");
+		assert_eq!(parse_error.raw(), "");
+		assert_eq!(parse_error.kind(), NumberParseErrorKind::Empty);
+		reinhardt_pages::cleanup_reactive_nodes();
+	});
 }
 
 #[wasm_bindgen_test]
 fn number_binding_does_not_predict_modifier_key_selection() {
-	let (_root, input, value, error) = mounted_number_control(12);
-	dispatch_keydown_with_modifiers(&input, "a", false, true, false, false);
-	dispatch_before_input(&input, Some("-"), "insertText");
-	input.set_value("");
-	dispatch_input(&input, Some("-"), "insertText");
+	ReactiveScope::run(|| {
+		let (_root, input, value, error) = mounted_number_control(12);
+		dispatch_keydown_with_modifiers(&input, "a", false, true, false, false);
+		dispatch_before_input(&input, Some("-"), "insertText");
+		input.set_value("");
+		dispatch_input(&input, Some("-"), "insertText");
 
-	assert_eq!(value.get(), 12);
-	let parse_error = error.get().expect("unknown modifier selection");
-	assert_eq!(parse_error.raw(), "");
-	assert_eq!(parse_error.kind(), NumberParseErrorKind::Empty);
-	reinhardt_pages::cleanup_reactive_nodes();
+		assert_eq!(value.get(), 12);
+		let parse_error = error.get().expect("unknown modifier selection");
+		assert_eq!(parse_error.raw(), "");
+		assert_eq!(parse_error.kind(), NumberParseErrorKind::Empty);
+		reinhardt_pages::cleanup_reactive_nodes();
+	});
 }
 
 #[wasm_bindgen_test]
 fn number_binding_recovers_incomplete_raw_from_sanitized_browser_input() {
-	let document = web_sys::window()
-		.expect("window")
-		.document()
-		.expect("document");
-	let root = Element::new(document.create_element("div").expect("root"));
-	let value = Signal::new(7_i32);
-	let error = Signal::new(None::<NumberParseError>);
-	page!({
-		input {
-			a11y: off,
-			type: "number",
-			bind: number(value, error),
-		}
-	})
-	.mount(&root)
-	.expect("mount");
-	let input: web_sys::HtmlInputElement = root
-		.as_web_sys()
-		.first_element_child()
-		.expect("input")
-		.unchecked_into();
+	ReactiveScope::run(|| {
+		let document = web_sys::window()
+			.expect("window")
+			.document()
+			.expect("document");
+		let root = Element::new(document.create_element("div").expect("root"));
+		let value = Signal::new(7_i32);
+		let error = Signal::new(None::<NumberParseError>);
+		page!({
+			input {
+				a11y: off,
+				type: "number",
+				bind: number(value, error),
+			}
+		})
+		.mount(&root)
+		.expect("mount");
+		let input: web_sys::HtmlInputElement = root
+			.as_web_sys()
+			.first_element_child()
+			.expect("input")
+			.unchecked_into();
 
-	dispatch_before_input(&input, None, "deleteContentBackward");
-	input.set_value("");
-	dispatch_input(&input, None, "deleteContentBackward");
-	dispatch_before_input(&input, Some("-"), "insertText");
-	input.set_value("-");
-	dispatch_input(&input, Some("-"), "insertText");
+		dispatch_before_input(&input, None, "deleteContentBackward");
+		input.set_value("");
+		dispatch_input(&input, None, "deleteContentBackward");
+		dispatch_before_input(&input, Some("-"), "insertText");
+		input.set_value("-");
+		dispatch_input(&input, Some("-"), "insertText");
 
-	assert_eq!(input.value(), "", "Chrome sanitizes an incomplete number");
-	assert_eq!(value.get(), 7);
-	let parse_error = error.get().expect("incomplete raw should be reported");
-	assert_eq!(parse_error.raw(), "-");
-	assert_eq!(parse_error.kind(), NumberParseErrorKind::Incomplete);
-	reinhardt_pages::cleanup_reactive_nodes();
+		assert_eq!(input.value(), "", "Chrome sanitizes an incomplete number");
+		assert_eq!(value.get(), 7);
+		let parse_error = error.get().expect("incomplete raw should be reported");
+		assert_eq!(parse_error.raw(), "-");
+		assert_eq!(parse_error.kind(), NumberParseErrorKind::Incomplete);
+		reinhardt_pages::cleanup_reactive_nodes();
+	});
 }
 
 #[wasm_bindgen_test]
 fn number_binding_deduplicates_sanitized_final_input_after_composition() {
-	let document = web_sys::window()
-		.expect("window")
-		.document()
-		.expect("document");
-	let root = Element::new(document.create_element("div").expect("root"));
-	let value = Signal::new(7_i32);
-	let error = Signal::new(None::<NumberParseError>);
-	page!({
-		input {
-			a11y: off,
-			type: "number",
-			bind: number(value, error),
-		}
-	})
-	.mount(&root)
-	.expect("mount");
-	let input: web_sys::HtmlInputElement = root
-		.as_web_sys()
-		.first_element_child()
-		.expect("input")
-		.unchecked_into();
+	ReactiveScope::run(|| {
+		let document = web_sys::window()
+			.expect("window")
+			.document()
+			.expect("document");
+		let root = Element::new(document.create_element("div").expect("root"));
+		let value = Signal::new(7_i32);
+		let error = Signal::new(None::<NumberParseError>);
+		page!({
+			input {
+				a11y: off,
+				type: "number",
+				bind: number(value, error),
+			}
+		})
+		.mount(&root)
+		.expect("mount");
+		let input: web_sys::HtmlInputElement = root
+			.as_web_sys()
+			.first_element_child()
+			.expect("input")
+			.unchecked_into();
 
-	dispatch_keydown(&input, "Home", false);
-	dispatch_keydown(&input, "End", true);
-	input
-		.dispatch_event(
-			&web_sys::CompositionEvent::new("compositionstart").expect("compositionstart"),
-		)
-		.expect("dispatch compositionstart");
-	dispatch_before_input(&input, Some("-"), "insertCompositionText");
-	input.set_value("-");
-	dispatch_input(&input, Some("-"), "insertCompositionText");
-	input
-		.dispatch_event(&web_sys::CompositionEvent::new("compositionend").expect("compositionend"))
-		.expect("dispatch compositionend");
-	dispatch_input(&input, Some("-"), "insertCompositionText");
+		dispatch_keydown(&input, "Home", false);
+		dispatch_keydown(&input, "End", true);
+		input
+			.dispatch_event(
+				&web_sys::CompositionEvent::new("compositionstart").expect("compositionstart"),
+			)
+			.expect("dispatch compositionstart");
+		dispatch_before_input(&input, Some("-"), "insertCompositionText");
+		input.set_value("-");
+		dispatch_input(&input, Some("-"), "insertCompositionText");
+		input
+			.dispatch_event(
+				&web_sys::CompositionEvent::new("compositionend").expect("compositionend"),
+			)
+			.expect("dispatch compositionend");
+		dispatch_input(&input, Some("-"), "insertCompositionText");
 
-	assert_eq!(value.get(), 7);
-	assert_eq!(input.value(), "");
-	let parse_error = error
-		.get()
-		.expect("duplicate final input should retain the incomplete raw");
-	assert_eq!(parse_error.raw(), "-");
-	assert_eq!(parse_error.kind(), NumberParseErrorKind::Incomplete);
-	reinhardt_pages::cleanup_reactive_nodes();
+		assert_eq!(value.get(), 7);
+		assert_eq!(input.value(), "");
+		let parse_error = error
+			.get()
+			.expect("duplicate final input should retain the incomplete raw");
+		assert_eq!(parse_error.raw(), "-");
+		assert_eq!(parse_error.kind(), NumberParseErrorKind::Incomplete);
+		reinhardt_pages::cleanup_reactive_nodes();
+	});
 }
 
 #[wasm_bindgen_test]
 fn rejected_number_composition_reprojects_a_reentrant_signal_change() {
-	let document = web_sys::window()
-		.expect("window")
-		.document()
-		.expect("document");
-	let root = Element::new(document.create_element("div").expect("root"));
-	let value = Signal::new(7_i32);
-	let end_value = value.clone();
-	let error = Signal::new(None::<NumberParseError>);
-	page!({
-		input {
-			a11y: off,
-			type: "number",
-			bind: number(value, error),
-			@compositionend: move |_| end_value.set(42),
-		}
-	})
-	.mount(&root)
-	.expect("mount");
-	let input: web_sys::HtmlInputElement = root
-		.as_web_sys()
-		.first_element_child()
-		.expect("input")
-		.unchecked_into();
+	ReactiveScope::run(|| {
+		let document = web_sys::window()
+			.expect("window")
+			.document()
+			.expect("document");
+		let root = Element::new(document.create_element("div").expect("root"));
+		let value = Signal::new(7_i32);
+		let end_value = value.clone();
+		let error = Signal::new(None::<NumberParseError>);
+		page!({
+			input {
+				a11y: off,
+				type: "number",
+				bind: number(value, error),
+				@compositionend: move |_| end_value.set(42),
+			}
+		})
+		.mount(&root)
+		.expect("mount");
+		let input: web_sys::HtmlInputElement = root
+			.as_web_sys()
+			.first_element_child()
+			.expect("input")
+			.unchecked_into();
 
-	input
-		.dispatch_event(&web_sys::CompositionEvent::new("compositionstart").expect("start"))
-		.expect("dispatch");
-	input.set_value("-");
-	dispatch_input(&input, Some("-"), "insertCompositionText");
-	input
-		.dispatch_event(&web_sys::CompositionEvent::new("compositionend").expect("end"))
-		.expect("dispatch");
-	assert_eq!(value.get(), 42);
-	input.set_value("-");
+		input
+			.dispatch_event(&web_sys::CompositionEvent::new("compositionstart").expect("start"))
+			.expect("dispatch");
+		input.set_value("-");
+		dispatch_input(&input, Some("-"), "insertCompositionText");
+		input
+			.dispatch_event(&web_sys::CompositionEvent::new("compositionend").expect("end"))
+			.expect("dispatch");
+		assert_eq!(value.get(), 42);
+		input.set_value("-");
 
-	dispatch_input(&input, Some("-"), "insertCompositionText");
+		dispatch_input(&input, Some("-"), "insertCompositionText");
 
-	assert_eq!(value.get(), 42);
-	assert_eq!(input.value(), "42");
-	let parse_error = error.get().expect("sanitized value should be rejected");
-	assert_eq!(parse_error.raw(), "");
-	assert_eq!(parse_error.kind(), NumberParseErrorKind::Empty);
-	reinhardt_pages::cleanup_reactive_nodes();
+		assert_eq!(value.get(), 42);
+		assert_eq!(input.value(), "42");
+		let parse_error = error.get().expect("sanitized value should be rejected");
+		assert_eq!(parse_error.raw(), "");
+		assert_eq!(parse_error.kind(), NumberParseErrorKind::Empty);
+		reinhardt_pages::cleanup_reactive_nodes();
+	});
 }
 
 #[wasm_bindgen_test]
 fn duplicate_final_input_reprojects_a_reentrant_compositionend_signal_change() {
-	let document = web_sys::window()
-		.expect("window")
-		.document()
-		.expect("document");
-	let root = Element::new(document.create_element("div").expect("root"));
-	let value = Signal::new("old".to_owned());
-	let end_value = value.clone();
-	page!({
-		input {
-			a11y: off,
-			bind: value,
-			@compositionend: move |_| end_value.set("after-end".to_owned()),
-		}
-	})
-	.mount(&root)
-	.expect("mount");
-	let input: web_sys::HtmlInputElement = root
-		.as_web_sys()
-		.first_element_child()
-		.expect("input")
-		.unchecked_into();
-	input
-		.dispatch_event(&web_sys::CompositionEvent::new("compositionstart").expect("start"))
-		.expect("dispatch");
-	input.set_value("かな");
-	input
-		.dispatch_event(&web_sys::CompositionEvent::new("compositionend").expect("end"))
-		.expect("dispatch");
-	assert_eq!(value.get(), "after-end");
-	input.set_value("かな");
+	ReactiveScope::run(|| {
+		let document = web_sys::window()
+			.expect("window")
+			.document()
+			.expect("document");
+		let root = Element::new(document.create_element("div").expect("root"));
+		let value = Signal::new("old".to_owned());
+		let end_value = value.clone();
+		page!({
+			input {
+				a11y: off,
+				bind: value,
+				@compositionend: move |_| end_value.set("after-end".to_owned()),
+			}
+		})
+		.mount(&root)
+		.expect("mount");
+		let input: web_sys::HtmlInputElement = root
+			.as_web_sys()
+			.first_element_child()
+			.expect("input")
+			.unchecked_into();
+		input
+			.dispatch_event(&web_sys::CompositionEvent::new("compositionstart").expect("start"))
+			.expect("dispatch");
+		input.set_value("かな");
+		input
+			.dispatch_event(&web_sys::CompositionEvent::new("compositionend").expect("end"))
+			.expect("dispatch");
+		assert_eq!(value.get(), "after-end");
+		input.set_value("かな");
 
-	input
-		.dispatch_event(&web_sys::InputEvent::new("input").expect("input"))
-		.expect("dispatch");
+		input
+			.dispatch_event(&web_sys::InputEvent::new("input").expect("input"))
+			.expect("dispatch");
 
-	assert_eq!(value.get(), "after-end");
-	assert_eq!(input.value(), "after-end");
-	reinhardt_pages::cleanup_reactive_nodes();
+		assert_eq!(value.get(), "after-end");
+		assert_eq!(input.value(), "after-end");
+		reinhardt_pages::cleanup_reactive_nodes();
+	});
 }
 
 #[wasm_bindgen_test]
 fn reactive_remount_drops_the_replaced_control_owner() {
-	let document = web_sys::window()
-		.expect("window")
-		.document()
-		.expect("document");
-	let root = Element::new(document.create_element("div").expect("root"));
-	let alternate = Signal::new(false);
-	let value = Signal::new("initial".to_owned());
-	let render_alternate = alternate.clone();
-	let render_value = value.clone();
-	Page::reactive(move || {
-		let bound = render_value.clone();
-		if render_alternate.get() {
-			page!({
-				input {
-					a11y: off,
-					id: "replacement",
-					bind: bound,
-				}
-			})
-		} else {
-			page!({
-				input {
-					a11y: off,
-					id: "original",
-					bind: bound,
-				}
-			})
-		}
-	})
-	.mount(&root)
-	.expect("mount");
-	let original: web_sys::HtmlInputElement = root
-		.as_web_sys()
-		.first_element_child()
-		.expect("original")
-		.unchecked_into();
+	ReactiveScope::run(|| {
+		let document = web_sys::window()
+			.expect("window")
+			.document()
+			.expect("document");
+		let root = Element::new(document.create_element("div").expect("root"));
+		let alternate = Signal::new(false);
+		let value = Signal::new("initial".to_owned());
+		let render_alternate = alternate.clone();
+		let render_value = value.clone();
+		Page::reactive(move || {
+			let bound = render_value.clone();
+			if render_alternate.get() {
+				page!({
+					input {
+						a11y: off,
+						id: "replacement",
+						bind: bound,
+					}
+				})
+			} else {
+				page!({
+					input {
+						a11y: off,
+						id: "original",
+						bind: bound,
+					}
+				})
+			}
+		})
+		.mount(&root)
+		.expect("mount");
+		let original: web_sys::HtmlInputElement = root
+			.as_web_sys()
+			.first_element_child()
+			.expect("original")
+			.unchecked_into();
 
-	alternate.set(true);
-	let replacement: web_sys::HtmlInputElement = root
-		.as_web_sys()
-		.first_element_child()
-		.expect("replacement")
-		.unchecked_into();
-	assert_eq!(replacement.id(), "replacement");
-	original.set_value("stale");
-	original
-		.dispatch_event(&web_sys::InputEvent::new("input").expect("event"))
-		.expect("dispatch");
-	assert_eq!(value.get(), "initial");
-	value.set("current".to_owned());
-	assert_eq!(replacement.value(), "current");
-	reinhardt_pages::cleanup_reactive_nodes();
+		alternate.set(true);
+		let replacement: web_sys::HtmlInputElement = root
+			.as_web_sys()
+			.first_element_child()
+			.expect("replacement")
+			.unchecked_into();
+		assert_eq!(replacement.id(), "replacement");
+		original.set_value("stale");
+		original
+			.dispatch_event(&web_sys::InputEvent::new("input").expect("event"))
+			.expect("dispatch");
+		assert_eq!(value.get(), "initial");
+		value.set("current".to_owned());
+		assert_eq!(replacement.value(), "current");
+		reinhardt_pages::cleanup_reactive_nodes();
+	});
 }
 
 struct HydratedInput {
@@ -1157,50 +1216,52 @@ impl Component for FailingHydrationAfterControls {
 
 #[wasm_bindgen_test]
 fn failed_root_hydration_does_not_adopt_earlier_control_values() {
-	let document = web_sys::window()
-		.expect("window")
-		.document()
-		.expect("document");
-	let raw_root = document.create_element("div").expect("root");
-	let raw_text: web_sys::HtmlInputElement = document
-		.create_element("input")
-		.expect("text")
-		.unchecked_into();
-	raw_text.set_value("restored");
-	raw_root.append_child(&raw_text).expect("text input");
-	let raw_number: web_sys::HtmlInputElement = document
-		.create_element("input")
-		.expect("number")
-		.unchecked_into();
-	raw_number.set_type("number");
-	raw_number.set_value("2147483648");
-	raw_root.append_child(&raw_number).expect("number input");
-	raw_root
-		.append_child(&document.create_element("select").expect("select"))
-		.expect("invalid sibling");
-	let root = Element::new(raw_root);
-	let text = Signal::new("server".to_owned());
-	let number = Signal::new(7_i32);
-	let number_error = Signal::new(None::<NumberParseError>);
-	ControlBinding::number_with_error(number.clone(), number_error.clone())
-		.write(ControlValue::Text("pending".to_owned()))
-		.expect("seed number error");
-	let original_number_error = number_error.get();
-	let _state = SsrStateElement::install(&document);
+	ReactiveScope::run(|| {
+		let document = web_sys::window()
+			.expect("window")
+			.document()
+			.expect("document");
+		let raw_root = document.create_element("div").expect("root");
+		let raw_text: web_sys::HtmlInputElement = document
+			.create_element("input")
+			.expect("text")
+			.unchecked_into();
+		raw_text.set_value("restored");
+		raw_root.append_child(&raw_text).expect("text input");
+		let raw_number: web_sys::HtmlInputElement = document
+			.create_element("input")
+			.expect("number")
+			.unchecked_into();
+		raw_number.set_type("number");
+		raw_number.set_value("2147483648");
+		raw_root.append_child(&raw_number).expect("number input");
+		raw_root
+			.append_child(&document.create_element("select").expect("select"))
+			.expect("invalid sibling");
+		let root = Element::new(raw_root);
+		let text = Signal::new("server".to_owned());
+		let number = Signal::new(7_i32);
+		let number_error = Signal::new(None::<NumberParseError>);
+		ControlBinding::number_with_error(number.clone(), number_error.clone())
+			.write(ControlValue::Text("pending".to_owned()))
+			.expect("seed number error");
+		let original_number_error = number_error.get();
+		let _state = SsrStateElement::install(&document);
 
-	reinhardt_pages::hydration::hydrate(
-		&FailingHydrationAfterControls {
-			text: text.clone(),
-			number: number.clone(),
-			number_error: number_error.clone(),
-		},
-		&root,
-	)
-	.expect_err("later invalid binding");
+		reinhardt_pages::hydration::hydrate(
+			&FailingHydrationAfterControls {
+				text: text.clone(),
+				number: number.clone(),
+				number_error: number_error.clone(),
+			},
+			&root,
+		)
+		.expect_err("later invalid binding");
 
-	assert_eq!(text.get(), "server");
-	assert_eq!(number.get(), 7);
-	assert_eq!(number_error.get(), original_number_error);
+		assert_eq!(text.get(), "server");
+		assert_eq!(number.get(), 7);
+		assert_eq!(number_error.get(), original_number_error);
+	});
 }
 
 impl Component for FailingHydrationRoot {
@@ -1235,53 +1296,55 @@ impl Component for FailingHydrationRoot {
 
 #[wasm_bindgen_test]
 fn failed_root_hydration_rolls_back_earlier_reactive_siblings() {
-	let document = web_sys::window()
-		.expect("window")
-		.document()
-		.expect("document");
-	let raw_root = document.create_element("div").expect("root");
-	let raw_button = document.create_element("button").expect("button");
-	raw_button.set_id("reactive-sibling");
-	raw_button.set_text_content(Some("ready"));
-	raw_root
-		.append_child(&raw_button)
-		.expect("reactive sibling");
-	let raw_select = document.create_element("select").expect("select");
-	raw_root.append_child(&raw_select).expect("invalid sibling");
-	let root = Element::new(raw_root.clone());
-	let trigger = Signal::new(0_u32);
-	let render_count = Rc::new(Cell::new(0));
-	let listener_count = Rc::new(Cell::new(0));
-	let _state = SsrStateElement::install(&document);
+	ReactiveScope::run(|| {
+		let document = web_sys::window()
+			.expect("window")
+			.document()
+			.expect("document");
+		let raw_root = document.create_element("div").expect("root");
+		let raw_button = document.create_element("button").expect("button");
+		raw_button.set_id("reactive-sibling");
+		raw_button.set_text_content(Some("ready"));
+		raw_root
+			.append_child(&raw_button)
+			.expect("reactive sibling");
+		let raw_select = document.create_element("select").expect("select");
+		raw_root.append_child(&raw_select).expect("invalid sibling");
+		let root = Element::new(raw_root.clone());
+		let trigger = Signal::new(0_u32);
+		let render_count = Rc::new(Cell::new(0));
+		let listener_count = Rc::new(Cell::new(0));
+		let _state = SsrStateElement::install(&document);
 
-	let error = reinhardt_pages::hydration::hydrate(
-		&FailingHydrationRoot {
-			trigger: trigger.clone(),
-			render_count: Rc::clone(&render_count),
-			listener_count: Rc::clone(&listener_count),
-		},
-		&root,
-	)
-	.expect_err("later invalid binding");
-	let renders_after_failure = render_count.get();
-	raw_button
-		.dispatch_event(&web_sys::InputEvent::new("input").expect("event"))
-		.expect("dispatch");
-	trigger.set(1);
-	with_runtime(|runtime| runtime.flush_updates());
-	let marker_count = (0..raw_root.child_nodes().length())
-		.filter_map(|index| raw_root.child_nodes().item(index))
-		.filter(|node| node.node_type() == web_sys::Node::COMMENT_NODE)
-		.count();
+		let error = reinhardt_pages::hydration::hydrate(
+			&FailingHydrationRoot {
+				trigger: trigger.clone(),
+				render_count: Rc::clone(&render_count),
+				listener_count: Rc::clone(&listener_count),
+			},
+			&root,
+		)
+		.expect_err("later invalid binding");
+		let renders_after_failure = render_count.get();
+		raw_button
+			.dispatch_event(&web_sys::InputEvent::new("input").expect("event"))
+			.expect("dispatch");
+		trigger.set(1);
+		with_runtime(|runtime| runtime.flush_updates());
+		let marker_count = (0..raw_root.child_nodes().length())
+			.filter_map(|index| raw_root.child_nodes().item(index))
+			.filter(|node| node.node_type() == web_sys::Node::COMMENT_NODE)
+			.count();
 
-	assert_eq!(
-		error.to_string(),
-		"Event attachment failed: checkbox control does not support a <select> element"
-	);
-	assert_eq!(
-		(render_count.get(), listener_count.get(), marker_count),
-		(renders_after_failure, 0, 0)
-	);
+		assert_eq!(
+			error.to_string(),
+			"Event attachment failed: checkbox control does not support a <select> element"
+		);
+		assert_eq!(
+			(render_count.get(), listener_count.get(), marker_count),
+			(renders_after_failure, 0, 0)
+		);
+	});
 }
 
 impl Component for HydratedInput {
@@ -1305,35 +1368,37 @@ impl Component for HydratedInput {
 
 #[wasm_bindgen_test]
 fn public_hydration_adopts_the_live_dom_property() {
-	let document = web_sys::window()
-		.expect("window")
-		.document()
-		.expect("document");
-	let raw = document.create_element("input").expect("input");
-	let input: web_sys::HtmlInputElement = raw.clone().unchecked_into();
-	input.set_value("restored");
-	let root = Element::new(raw);
-	let value = Signal::new("server".to_owned());
-	let observed = Rc::new(RefCell::new(String::new()));
-	let _state = SsrStateElement::install(&document);
+	ReactiveScope::run(|| {
+		let document = web_sys::window()
+			.expect("window")
+			.document()
+			.expect("document");
+		let raw = document.create_element("input").expect("input");
+		let input: web_sys::HtmlInputElement = raw.clone().unchecked_into();
+		input.set_value("restored");
+		let root = Element::new(raw);
+		let value = Signal::new("server".to_owned());
+		let observed = Rc::new(RefCell::new(String::new()));
+		let _state = SsrStateElement::install(&document);
 
-	reinhardt_pages::hydration::hydrate(
-		&HydratedInput {
-			value: value.clone(),
-			observed: Rc::clone(&observed),
-		},
-		&root,
-	)
-	.expect("hydrate");
+		reinhardt_pages::hydration::hydrate(
+			&HydratedInput {
+				value: value.clone(),
+				observed: Rc::clone(&observed),
+			},
+			&root,
+		)
+		.expect("hydrate");
 
-	assert_eq!(value.get(), "restored");
-	input.set_value("edited");
-	input
-		.dispatch_event(&web_sys::InputEvent::new("input").expect("event"))
-		.expect("dispatch");
-	assert_eq!(value.get(), "edited");
-	assert_eq!(&*observed.borrow(), "edited");
-	reinhardt_pages::cleanup_reactive_nodes();
+		assert_eq!(value.get(), "restored");
+		input.set_value("edited");
+		input
+			.dispatch_event(&web_sys::InputEvent::new("input").expect("event"))
+			.expect("dispatch");
+		assert_eq!(value.get(), "edited");
+		assert_eq!(&*observed.borrow(), "edited");
+		reinhardt_pages::cleanup_reactive_nodes();
+	});
 }
 
 struct HydratedReactiveInput {
@@ -1379,75 +1444,77 @@ impl Component for HydratedReactiveInput {
 
 #[wasm_bindgen_test]
 fn hydrated_reactive_switch_drops_the_initial_branch_guards() {
-	let document = web_sys::window()
-		.expect("window")
-		.document()
-		.expect("document");
-	let raw_root = document.create_element("div").expect("root");
-	let raw_input = document.create_element("input").expect("input");
-	raw_input.set_id("original");
-	let original: web_sys::HtmlInputElement = raw_input.clone().unchecked_into();
-	original.set_value("restored");
-	raw_root.append_child(&raw_input).expect("SSR child");
-	let root = Element::new(raw_root);
-	let alternate = Signal::new(false);
-	let value = Signal::new("server".to_owned());
-	let observed = Rc::new(RefCell::new(String::new()));
-	let _state = SsrStateElement::install(&document);
-	reinhardt_pages::hydration::hydrate(
-		&HydratedReactiveInput {
-			alternate: alternate.clone(),
-			value: value.clone(),
-			observed: Rc::clone(&observed),
-		},
-		&root,
-	)
-	.expect("hydrate");
-	assert_eq!(value.get(), "restored");
-	assert!(raw_input.is_same_node(root.as_web_sys().first_element_child().as_deref(),));
+	ReactiveScope::run(|| {
+		let document = web_sys::window()
+			.expect("window")
+			.document()
+			.expect("document");
+		let raw_root = document.create_element("div").expect("root");
+		let raw_input = document.create_element("input").expect("input");
+		raw_input.set_id("original");
+		let original: web_sys::HtmlInputElement = raw_input.clone().unchecked_into();
+		original.set_value("restored");
+		raw_root.append_child(&raw_input).expect("SSR child");
+		let root = Element::new(raw_root);
+		let alternate = Signal::new(false);
+		let value = Signal::new("server".to_owned());
+		let observed = Rc::new(RefCell::new(String::new()));
+		let _state = SsrStateElement::install(&document);
+		reinhardt_pages::hydration::hydrate(
+			&HydratedReactiveInput {
+				alternate: alternate.clone(),
+				value: value.clone(),
+				observed: Rc::clone(&observed),
+			},
+			&root,
+		)
+		.expect("hydrate");
+		assert_eq!(value.get(), "restored");
+		assert!(raw_input.is_same_node(root.as_web_sys().first_element_child().as_deref(),));
 
-	alternate.set(true);
-	let replacement: web_sys::HtmlInputElement = root
-		.as_web_sys()
-		.first_element_child()
-		.expect("replacement")
-		.unchecked_into();
-	assert_eq!(replacement.id(), "replacement");
-	original.set_value("stale");
-	original
-		.dispatch_event(&web_sys::InputEvent::new("input").expect("event"))
-		.expect("dispatch");
-	original
-		.dispatch_event(&web_sys::Event::new("change").expect("event"))
-		.expect("dispatch");
-	assert_eq!(value.get(), "restored");
-	assert_eq!(&*observed.borrow(), "");
+		alternate.set(true);
+		let replacement: web_sys::HtmlInputElement = root
+			.as_web_sys()
+			.first_element_child()
+			.expect("replacement")
+			.unchecked_into();
+		assert_eq!(replacement.id(), "replacement");
+		original.set_value("stale");
+		original
+			.dispatch_event(&web_sys::InputEvent::new("input").expect("event"))
+			.expect("dispatch");
+		original
+			.dispatch_event(&web_sys::Event::new("change").expect("event"))
+			.expect("dispatch");
+		assert_eq!(value.get(), "restored");
+		assert_eq!(&*observed.borrow(), "");
 
-	value.set("fresh".to_owned());
-	assert_eq!(original.value(), "stale");
-	let fresh_control: web_sys::HtmlInputElement = root
-		.as_web_sys()
-		.first_element_child()
-		.expect("fresh control")
-		.unchecked_into();
-	assert_eq!(fresh_control.value(), "fresh");
-	fresh_control
-		.dispatch_event(&web_sys::Event::new("change").expect("event"))
-		.expect("dispatch");
-	assert_eq!(&*observed.borrow(), "fresh");
-	fresh_control.set_value("new branch");
-	fresh_control
-		.dispatch_event(&web_sys::InputEvent::new("input").expect("event"))
-		.expect("dispatch");
-	assert_eq!(value.get(), "new branch");
-	assert_eq!(&*observed.borrow(), "fresh");
-	let live_control: web_sys::HtmlInputElement = root
-		.as_web_sys()
-		.first_element_child()
-		.expect("live control")
-		.unchecked_into();
-	assert_eq!(live_control.value(), "new branch");
-	reinhardt_pages::cleanup_reactive_nodes();
+		value.set("fresh".to_owned());
+		assert_eq!(original.value(), "stale");
+		let fresh_control: web_sys::HtmlInputElement = root
+			.as_web_sys()
+			.first_element_child()
+			.expect("fresh control")
+			.unchecked_into();
+		assert_eq!(fresh_control.value(), "fresh");
+		fresh_control
+			.dispatch_event(&web_sys::Event::new("change").expect("event"))
+			.expect("dispatch");
+		assert_eq!(&*observed.borrow(), "fresh");
+		fresh_control.set_value("new branch");
+		fresh_control
+			.dispatch_event(&web_sys::InputEvent::new("input").expect("event"))
+			.expect("dispatch");
+		assert_eq!(value.get(), "new branch");
+		assert_eq!(&*observed.borrow(), "fresh");
+		let live_control: web_sys::HtmlInputElement = root
+			.as_web_sys()
+			.first_element_child()
+			.expect("live control")
+			.unchecked_into();
+		assert_eq!(live_control.value(), "new branch");
+		reinhardt_pages::cleanup_reactive_nodes();
+	});
 }
 
 struct HydratedReactiveIfInput {
@@ -1508,70 +1575,72 @@ impl Component for HydratedReactiveIfInput {
 
 #[wasm_bindgen_test]
 fn hydrated_reactive_if_adopts_before_subscribing_and_transfers_guards() {
-	let document = web_sys::window()
-		.expect("window")
-		.document()
-		.expect("document");
-	let raw_root = document.create_element("div").expect("root");
-	let raw_input = document.create_element("input").expect("input");
-	raw_input.set_id("primary");
-	let primary: web_sys::HtmlInputElement = raw_input.clone().unchecked_into();
-	primary.set_value("restored");
-	raw_root.append_child(&raw_input).expect("SSR child");
-	let root = Element::new(raw_root);
-	let alternate = Signal::new(false);
-	let value = Signal::new("server".to_owned());
-	let observed = Rc::new(RefCell::new(String::new()));
-	let _state = SsrStateElement::install(&document);
+	ReactiveScope::run(|| {
+		let document = web_sys::window()
+			.expect("window")
+			.document()
+			.expect("document");
+		let raw_root = document.create_element("div").expect("root");
+		let raw_input = document.create_element("input").expect("input");
+		raw_input.set_id("primary");
+		let primary: web_sys::HtmlInputElement = raw_input.clone().unchecked_into();
+		primary.set_value("restored");
+		raw_root.append_child(&raw_input).expect("SSR child");
+		let root = Element::new(raw_root);
+		let alternate = Signal::new(false);
+		let value = Signal::new("server".to_owned());
+		let observed = Rc::new(RefCell::new(String::new()));
+		let _state = SsrStateElement::install(&document);
 
-	reinhardt_pages::hydration::hydrate(
-		&HydratedReactiveIfInput {
-			alternate: alternate.clone(),
-			value: value.clone(),
-			observed: Rc::clone(&observed),
-		},
-		&root,
-	)
-	.expect("hydrate");
-	assert_eq!(value.get(), "restored");
-	assert!(raw_input.is_same_node(root.as_web_sys().first_element_child().as_deref(),));
-	with_runtime(|runtime| runtime.flush_updates());
-	let converged: web_sys::HtmlInputElement = root
-		.as_web_sys()
-		.first_element_child()
-		.expect("converged false branch")
-		.unchecked_into();
-	assert_eq!(converged.id(), "replacement");
-	assert!(!raw_input.is_same_node(Some(&converged)));
-	primary.set_value("stale after convergence");
-	primary
-		.dispatch_event(&web_sys::InputEvent::new("input").expect("event"))
-		.expect("dispatch");
-	assert_eq!(value.get(), "restored");
-	assert_eq!(&*observed.borrow(), "");
+		reinhardt_pages::hydration::hydrate(
+			&HydratedReactiveIfInput {
+				alternate: alternate.clone(),
+				value: value.clone(),
+				observed: Rc::clone(&observed),
+			},
+			&root,
+		)
+		.expect("hydrate");
+		assert_eq!(value.get(), "restored");
+		assert!(raw_input.is_same_node(root.as_web_sys().first_element_child().as_deref(),));
+		with_runtime(|runtime| runtime.flush_updates());
+		let converged: web_sys::HtmlInputElement = root
+			.as_web_sys()
+			.first_element_child()
+			.expect("converged false branch")
+			.unchecked_into();
+		assert_eq!(converged.id(), "replacement");
+		assert!(!raw_input.is_same_node(Some(&converged)));
+		primary.set_value("stale after convergence");
+		primary
+			.dispatch_event(&web_sys::InputEvent::new("input").expect("event"))
+			.expect("dispatch");
+		assert_eq!(value.get(), "restored");
+		assert_eq!(&*observed.borrow(), "");
 
-	alternate.set(true);
-	let switched: web_sys::HtmlInputElement = root
-		.as_web_sys()
-		.first_element_child()
-		.expect("switched branch")
-		.unchecked_into();
-	assert_eq!(switched.id(), "primary");
-	converged.set_value("stale");
-	converged
-		.dispatch_event(&web_sys::InputEvent::new("input").expect("event"))
-		.expect("dispatch");
-	assert_eq!(value.get(), "restored");
-	assert_eq!(&*observed.borrow(), "");
+		alternate.set(true);
+		let switched: web_sys::HtmlInputElement = root
+			.as_web_sys()
+			.first_element_child()
+			.expect("switched branch")
+			.unchecked_into();
+		assert_eq!(switched.id(), "primary");
+		converged.set_value("stale");
+		converged
+			.dispatch_event(&web_sys::InputEvent::new("input").expect("event"))
+			.expect("dispatch");
+		assert_eq!(value.get(), "restored");
+		assert_eq!(&*observed.borrow(), "");
 
-	value.set("fresh".to_owned());
-	assert_eq!(primary.value(), "stale after convergence");
-	assert_eq!(switched.value(), "fresh");
-	switched.set_value("new branch");
-	switched
-		.dispatch_event(&web_sys::InputEvent::new("input").expect("event"))
-		.expect("dispatch");
-	assert_eq!(value.get(), "new branch");
-	assert_eq!(&*observed.borrow(), "new branch");
-	reinhardt_pages::cleanup_reactive_nodes();
+		value.set("fresh".to_owned());
+		assert_eq!(primary.value(), "stale after convergence");
+		assert_eq!(switched.value(), "fresh");
+		switched.set_value("new branch");
+		switched
+			.dispatch_event(&web_sys::InputEvent::new("input").expect("event"))
+			.expect("dispatch");
+		assert_eq!(value.get(), "new branch");
+		assert_eq!(&*observed.borrow(), "new branch");
+		reinhardt_pages::cleanup_reactive_nodes();
+	});
 }

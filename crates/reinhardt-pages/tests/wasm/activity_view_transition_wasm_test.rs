@@ -14,7 +14,7 @@ use reinhardt_pages::component::{
 	cleanup_reactive_nodes, start_view_transition,
 };
 use reinhardt_pages::dom::Element;
-use reinhardt_pages::reactive::Signal;
+use reinhardt_pages::reactive::{ReactiveScope, Signal};
 use wasm_bindgen::JsCast;
 use wasm_bindgen_test::*;
 
@@ -47,94 +47,101 @@ fn view_transition_boundary_marks_named_subtree() {
 
 #[wasm_bindgen_test]
 fn reactive_activity_mode_updates_wrapper_without_recreating_content() {
-	cleanup_reactive_nodes();
+	let scope = ReactiveScope::new();
+	scope.enter(|| {
+		cleanup_reactive_nodes();
 
-	let document = web_sys::window().unwrap().document().unwrap();
-	if let Some(prev) = document.get_element_by_id("activity-root") {
-		prev.remove();
-	}
+		let document = web_sys::window().unwrap().document().unwrap();
+		if let Some(prev) = document.get_element_by_id("activity-root") {
+			prev.remove();
+		}
 
-	let target = document.create_element("div").unwrap();
-	target.set_id("activity-root");
-	document.body().unwrap().append_child(&target).unwrap();
+		let target = document.create_element("div").unwrap();
+		target.set_id("activity-root");
+		document.body().unwrap().append_child(&target).unwrap();
 
-	let visible = Signal::new(true);
-	let visible_for_view = visible.clone();
-	let handler_calls = Rc::new(Cell::new(0));
-	let handler_calls_for_view = Rc::clone(&handler_calls);
-	Page::reactive(move || {
-		let handler_calls = Rc::clone(&handler_calls_for_view);
-		ActivityBoundary::default()
-			.visible_when(visible_for_view.get())
-			.content(|| {
-				PageElement::new("input")
-					.attr("id", "activity-owned-input")
-					.attr("value", "initial")
-					.on(
-						EventType::Input,
-						Arc::new(move |_| {
-							let signal = Signal::new(1_i32);
-							assert_eq!(signal.get(), 1);
-							handler_calls.set(handler_calls.get() + 1);
-						}),
-					)
-					.into_page()
-			})
-			.into_page()
-	})
-	.mount(&Element::new(target.clone()))
-	.expect("activity mounts");
+		let visible = Signal::new(true);
+		let visible_for_view = visible.clone();
+		let handler_calls = Rc::new(Cell::new(0));
+		let handler_calls_for_view = Rc::clone(&handler_calls);
+		Page::reactive(move || {
+			let handler_calls = Rc::clone(&handler_calls_for_view);
+			ActivityBoundary::default()
+				.visible_when(visible_for_view.get())
+				.content({
+					let handler_calls = Rc::clone(&handler_calls);
+					move || {
+						let handler_calls = Rc::clone(&handler_calls);
+						PageElement::new("input")
+							.attr("id", "activity-owned-input")
+							.attr("value", "initial")
+							.on(
+								EventType::Input,
+								Arc::new(move |_| {
+									let signal = Signal::new(1_i32);
+									assert_eq!(signal.get(), 1);
+									handler_calls.set(handler_calls.get() + 1);
+								}),
+							)
+							.into_page()
+					}
+				})
+				.into_page()
+		})
+		.mount(&Element::new(target.clone()))
+		.expect("activity mounts");
 
-	let wrapper = target
-		.query_selector("[data-rh-activity]")
-		.unwrap()
-		.expect("activity wrapper");
-	let input = document
-		.get_element_by_id("activity-owned-input")
-		.unwrap()
-		.dyn_into::<web_sys::HtmlInputElement>()
-		.unwrap();
-	input.set_value("user typed");
-
-	visible.set(false);
-	assert_eq!(
-		wrapper.get_attribute("data-rh-activity").as_deref(),
-		Some("hidden")
-	);
-	assert_eq!(wrapper.get_attribute("hidden").as_deref(), Some("hidden"));
-	input
-		.dispatch_event(&web_sys::Event::new("input").unwrap())
-		.unwrap();
-	assert_eq!(handler_calls.get(), 1);
-	assert_eq!(
-		document
+		let wrapper = target
+			.query_selector("[data-rh-activity]")
+			.unwrap()
+			.expect("activity wrapper");
+		let input = document
 			.get_element_by_id("activity-owned-input")
 			.unwrap()
 			.dyn_into::<web_sys::HtmlInputElement>()
-			.unwrap()
-			.value(),
-		"user typed"
-	);
+			.unwrap();
+		input.set_value("user typed");
 
-	visible.set(true);
-	assert_eq!(
-		wrapper.get_attribute("data-rh-activity").as_deref(),
-		Some("visible")
-	);
-	assert_eq!(wrapper.get_attribute("hidden"), None);
-	assert_eq!(wrapper.get_attribute("aria-hidden"), None);
-	assert_eq!(
-		document
-			.get_element_by_id("activity-owned-input")
-			.unwrap()
-			.dyn_into::<web_sys::HtmlInputElement>()
-			.unwrap()
-			.value(),
-		"user typed"
-	);
+		visible.set(false);
+		assert_eq!(
+			wrapper.get_attribute("data-rh-activity").as_deref(),
+			Some("hidden")
+		);
+		assert_eq!(wrapper.get_attribute("hidden").as_deref(), Some("hidden"));
+		input
+			.dispatch_event(&web_sys::Event::new("input").unwrap())
+			.unwrap();
+		assert_eq!(handler_calls.get(), 1);
+		assert_eq!(
+			document
+				.get_element_by_id("activity-owned-input")
+				.unwrap()
+				.dyn_into::<web_sys::HtmlInputElement>()
+				.unwrap()
+				.value(),
+			"user typed"
+		);
 
-	cleanup_reactive_nodes();
-	target.remove();
+		visible.set(true);
+		assert_eq!(
+			wrapper.get_attribute("data-rh-activity").as_deref(),
+			Some("visible")
+		);
+		assert_eq!(wrapper.get_attribute("hidden"), None);
+		assert_eq!(wrapper.get_attribute("aria-hidden"), None);
+		assert_eq!(
+			document
+				.get_element_by_id("activity-owned-input")
+				.unwrap()
+				.dyn_into::<web_sys::HtmlInputElement>()
+				.unwrap()
+				.value(),
+			"user typed"
+		);
+
+		cleanup_reactive_nodes();
+		target.remove();
+	});
 }
 
 #[wasm_bindgen_test]

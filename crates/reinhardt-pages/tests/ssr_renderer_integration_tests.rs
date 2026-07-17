@@ -16,11 +16,15 @@ use reinhardt_pages::component::{
 	Component, ControlBinding, Head, IntoPage, LinkTag, MetaTag, Page, PageElement, ScriptTag,
 };
 use reinhardt_pages::page;
-use reinhardt_pages::reactive::Signal;
+use reinhardt_pages::reactive::{ReactiveScope, Signal};
 use reinhardt_pages::ssr::{HydrationStrategy, SsrOptions, SsrRenderer};
 use rstest::rstest;
 use std::cell::Cell;
 use std::rc::Rc;
+
+fn signal_in_scope<T: 'static>(scope: &ReactiveScope, value: T) -> Signal<T> {
+	scope.enter(|| Signal::new(value))
+}
 
 // ============================================================================
 // Test Components
@@ -614,10 +618,10 @@ async fn test_ssr_options_struct_literal_remains_exhaustive() {
 	assert!(html.contains("Count: 3"));
 }
 
-fn controlled_bindings_page() -> Page {
-	let text = Signal::new("A&B".to_owned());
-	let checked = Signal::new(true);
-	let selected = Signal::new(vec!["rust".to_owned(), "wasm".to_owned()]);
+fn controlled_bindings_page(scope: &ReactiveScope) -> Page {
+	let text = signal_in_scope(scope, "A&B".to_owned());
+	let checked = signal_in_scope(scope, true);
+	let selected = signal_in_scope(scope, vec!["rust".to_owned(), "wasm".to_owned()]);
 
 	page!({
 		input {
@@ -655,7 +659,8 @@ fn controlled_bindings_page() -> Page {
 #[tokio::test]
 async fn controlled_bindings_render_html_initial_state() {
 	// Arrange
-	let component = controlled_bindings_page();
+	let reactive_scope = ReactiveScope::new();
+	let component = controlled_bindings_page(&reactive_scope);
 	let mut renderer = SsrRenderer::new();
 
 	// Act
@@ -691,7 +696,8 @@ async fn controlled_bindings_render_html_initial_state() {
 #[tokio::test]
 async fn bound_radio_value_expression_is_evaluated_once_for_attribute_and_binding() {
 	// Arrange
-	let selected = Signal::new("first".to_owned());
+	let reactive_scope = ReactiveScope::new();
+	let selected = signal_in_scope(&reactive_scope, "first".to_owned());
 	let evaluations = Rc::new(Cell::new(0));
 	let value_evaluations = Rc::clone(&evaluations);
 	let component = page!({
@@ -734,7 +740,8 @@ async fn bound_radio_value_expression_is_evaluated_once_for_attribute_and_bindin
 #[tokio::test]
 async fn manual_bound_radio_projects_its_binding_value() {
 	// Arrange
-	let selected = Signal::new("draft".to_owned());
+	let reactive_scope = ReactiveScope::new();
+	let selected = signal_in_scope(&reactive_scope, "draft".to_owned());
 	let component = PageElement::new("input")
 		.attr("type", "radio")
 		.attr("value", "stale")
@@ -753,7 +760,8 @@ async fn manual_bound_radio_projects_its_binding_value() {
 #[tokio::test]
 async fn controlled_single_select_marks_only_the_first_duplicate_in_tree_order() {
 	// Arrange
-	let selected = Signal::new("duplicate".to_owned());
+	let reactive_scope = ReactiveScope::new();
+	let selected = signal_in_scope(&reactive_scope, "duplicate".to_owned());
 	let component = PageElement::new("select")
 		.control_binding(ControlBinding::select_one(selected))
 		.child(
@@ -803,7 +811,8 @@ async fn controlled_single_select_marks_only_the_first_duplicate_in_tree_order()
 #[tokio::test]
 async fn controlled_multiple_select_marks_every_duplicate() {
 	// Arrange
-	let selected = Signal::new(vec!["duplicate".to_owned()]);
+	let reactive_scope = ReactiveScope::new();
+	let selected = signal_in_scope(&reactive_scope, vec!["duplicate".to_owned()]);
 	let component = PageElement::new("select")
 		.bool_attr("multiple", true)
 		.control_binding(ControlBinding::select_many(selected))
@@ -833,10 +842,14 @@ async fn controlled_multiple_select_marks_every_duplicate() {
 #[tokio::test]
 async fn controlled_select_uses_flattened_option_text_when_value_is_omitted() {
 	// Arrange
-	let selected = Signal::new(vec![
-		"Rust & WebAssembly".to_owned(),
-		"Nested\u{a0}<Choice>".to_owned(),
-	]);
+	let reactive_scope = ReactiveScope::new();
+	let selected = signal_in_scope(
+		&reactive_scope,
+		vec![
+			"Rust & WebAssembly".to_owned(),
+			"Nested\u{a0}<Choice>".to_owned(),
+		],
+	);
 	let component = PageElement::new("select")
 		.bool_attr("multiple", true)
 		.control_binding(ControlBinding::select_many(selected))
@@ -898,7 +911,8 @@ async fn controlled_select_uses_flattened_option_text_when_value_is_omitted() {
 #[tokio::test]
 async fn controlled_bindings_have_buffered_streaming_byte_parity() {
 	// Arrange
-	let component = controlled_bindings_page();
+	let reactive_scope = ReactiveScope::new();
+	let component = controlled_bindings_page(&reactive_scope);
 	let mut buffered_renderer = SsrRenderer::new();
 	let mut streaming_renderer = SsrRenderer::new();
 

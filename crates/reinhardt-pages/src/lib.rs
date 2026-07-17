@@ -129,36 +129,38 @@
 //! select projects every match.
 //!
 //! ```rust
-//! use reinhardt_pages::prelude::*;
+//! use reinhardt_pages::{prelude::*, reactive::ReactiveScope};
 //!
-//! let query = Signal::new(String::new());
-//! let enabled = Signal::new(false);
-//! let mode = Signal::new("draft".to_owned());
-//! let amount = Signal::new(0_f64);
-//! let amount_error = Signal::new(None::<NumberParseError>);
-//! let targets = Signal::new(Vec::<String>::new());
+//! ReactiveScope::run(|| {
+//!     let query = Signal::new(String::new());
+//!     let enabled = Signal::new(false);
+//!     let mode = Signal::new("draft".to_owned());
+//!     let amount = Signal::new(0_f64);
+//!     let amount_error = Signal::new(None::<NumberParseError>);
+//!     let targets = Signal::new(Vec::<String>::new());
 //!
-//! let _form = page!({
-//!     input { aria_label: "Search", bind: query }
-//!     input { aria_label: "Enabled", type: "checkbox", bind: enabled }
-//!     input {
-//!         aria_label: "Draft",
-//!         type: "radio",
-//!         value: "draft",
-//!         bind: mode,
-//!     }
-//!     input {
-//!         aria_label: "Amount",
-//!         type: "number",
-//!         bind: number(amount, amount_error),
-//!     }
-//!     select {
-//!         aria_label: "Targets",
-//!         multiple: true,
-//!         bind: targets,
-//!         option { value: "native", "Native" }
-//!         option { value: "wasm", "WebAssembly" }
-//!     }
+//!     let _form = page!({
+//!         input { aria_label: "Search", bind: query }
+//!         input { aria_label: "Enabled", type: "checkbox", bind: enabled }
+//!         input {
+//!             aria_label: "Draft",
+//!             type: "radio",
+//!             value: "draft",
+//!             bind: mode,
+//!         }
+//!         input {
+//!             aria_label: "Amount",
+//!             type: "number",
+//!             bind: number(amount, amount_error),
+//!         }
+//!         select {
+//!             aria_label: "Targets",
+//!             multiple: true,
+//!             bind: targets,
+//!             option { value: "native", "Native" }
+//!             option { value: "wasm", "WebAssembly" }
+//!         }
+//!     });
 //! });
 //! ```
 //!
