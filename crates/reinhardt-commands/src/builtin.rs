@@ -1490,7 +1490,9 @@ impl BaseCommand for MakeMigrationsCommand {
 					app_from_state,
 					app_target_state,
 				);
-				let generated_migrations = detector.generate_migrations();
+				let generated_migrations = detector.try_generate_migrations().map_err(|error| {
+					CommandError::ExecutionError(format!("Failed to generate migrations: {error}"))
+				})?;
 
 				// Process generated migrations for this app
 				for migration in generated_migrations {
