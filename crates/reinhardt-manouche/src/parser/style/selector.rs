@@ -504,7 +504,10 @@ fn parse_attribute_selector(group: &proc_macro2::Group) -> syn::Result<StyleAttr
 	let value = parse_attribute_value(&tokens, &mut index)?;
 	let modifier = if index < tokens.len() {
 		let modifier = parse_selector_name(&tokens, &mut index)?;
-		if !matches!(modifier.as_str(), "i" | "s") {
+		if !["i", "s"]
+			.iter()
+			.any(|candidate| modifier.as_str().eq_ignore_ascii_case(candidate))
+		{
 			return Err(syn::Error::new(
 				modifier.span,
 				"attribute selector modifiers must be `i` or `s`",
@@ -1368,6 +1371,31 @@ mod tests {
 		assert_eq!(
 			error.to_string(),
 			"attribute selector modifiers must be `i` or `s`"
+		);
+	}
+
+	#[rstest]
+	#[case("I")]
+	#[case("S")]
+	fn accepts_case_insensitive_attribute_selector_modifiers(#[case] modifier: &str) {
+		// Arrange
+		let input = format!(".card {{ &[data-state=open {modifier}] {{}} }}")
+			.parse()
+			.expect("test tokens should parse");
+
+		// Act
+		let rule = first_rule(input);
+
+		// Assert
+		let selector = &nested_rule(&rule, 0).selectors.selectors[0];
+		let StyleSelectorKind::SameElement(StyleSimpleSelector::Attribute(attribute)) =
+			&selector.kind
+		else {
+			panic!("expected a same-element attribute selector");
+		};
+		assert_eq!(
+			attribute.modifier.as_ref().map(|value| value.as_str()),
+			Some(modifier)
 		);
 	}
 

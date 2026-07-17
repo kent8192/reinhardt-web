@@ -273,9 +273,7 @@ fn collect_value_constraints(
 				collect_value_constraints(item_value, item, constraints);
 			}
 		}
-		ValueGrammar::Ordered(members) | ValueGrammar::Unordered { members, .. }
-			if matches_grammar(expression, grammar) =>
-		{
+		ValueGrammar::Ordered(members) if matches_grammar(expression, grammar) => {
 			for item in sequence_items(expression) {
 				let matching = members
 					.iter()
@@ -283,6 +281,24 @@ fn collect_value_constraints(
 					.collect::<Vec<_>>();
 				if let [member] = matching.as_slice() {
 					collect_value_constraints(item, member.grammar, constraints);
+				}
+			}
+		}
+		ValueGrammar::Unordered {
+			members,
+			min_members,
+			..
+		} if matches_grammar(expression, grammar) => {
+			let items = sequence_items(expression);
+			if let Some(assignments) = unordered_member_assignments(&items, members, *min_members) {
+				for assignment in assignments {
+					if assignment.item_count == 1 {
+						collect_value_constraints(
+							items[assignment.item_index],
+							members[assignment.member_index].grammar,
+							constraints,
+						);
+					}
 				}
 			}
 		}
@@ -589,7 +605,7 @@ fn type_check_declaration(
 	) && (spec.name != "box-shadow"
 		|| box_shadow_blur_is_not_negative(&value))
 		&& property_specific_constraints_match(spec.name, &value)
-		&& component_variable_fallback_matches_property_specific_constraints(
+		&& component_variable_fallback_matches_declaration_constraints(
 			spec.name,
 			&value,
 			variable_defaults,
@@ -1278,27 +1294,59 @@ fn component_variable_fallback_matches_grammar(
 		.is_some_and(|resolved| matches_grammar(&resolved, grammar))
 }
 
-fn component_variable_fallback_matches_property_specific_constraints(
+fn component_variable_fallback_matches_declaration_constraints(
 	property: &str,
 	expression: &TypedValueExpr,
 	variable_defaults: &HashMap<usize, &TypedValueExpr>,
 ) -> bool {
-	resolve_component_variable_defaults(expression, variable_defaults)
-		.is_some_and(|resolved| property_specific_constraints_match(property, &resolved))
+	resolve_component_variable_defaults(expression, variable_defaults).is_some_and(|resolved| {
+		(property != "box-shadow" || box_shadow_blur_is_not_negative(&resolved))
+			&& property_specific_constraints_match(property, &resolved)
+			&& function_constraints_match(&resolved)
+	})
+}
+
+fn function_constraints_match(expression: &TypedValueExpr) -> bool {
+	match &expression.kind {
+		TypedValueExprKind::Unary { operand, .. } | TypedValueExprKind::Group(operand) => {
+			function_constraints_match(operand)
+		}
+		TypedValueExprKind::Binary { left, right, .. } => {
+			function_constraints_match(left) && function_constraints_match(right)
+		}
+		TypedValueExprKind::Function(call) => {
+			call.receiver
+				.as_deref()
+				.is_none_or(function_constraints_match)
+				&& call.arguments.iter().all(function_constraints_match)
+				&& validate_function_arguments(&call.spec, &call.arguments, expression.span).is_ok()
+		}
+		TypedValueExprKind::SpaceSequence(items) | TypedValueExprKind::CommaList(items) => {
+			items.iter().all(function_constraints_match)
+		}
+		TypedValueExprKind::Literal(_)
+		| TypedValueExprKind::VariableReference(_)
+		| TypedValueExprKind::GlobalReference(_)
+		| TypedValueExprKind::Direction(_)
+		| TypedValueExprKind::UncheckedFunction(_) => true,
+	}
 }
 
 fn resolve_component_variable_defaults(
 	expression: &TypedValueExpr,
 	variable_defaults: &HashMap<usize, &TypedValueExpr>,
 ) -> Option<TypedValueExpr> {
+	let mut expression = expression;
+	let mut resolved_variables = HashSet::new();
+	while let TypedValueExprKind::VariableReference(reference) = &expression.kind {
+		if !resolved_variables.insert(reference.source_index) {
+			return None;
+		}
+		expression = variable_defaults.get(&reference.source_index)?;
+	}
 	let mut resolved = expression.clone();
 	resolved.kind = match &expression.kind {
-		TypedValueExprKind::VariableReference(reference) => {
-			return resolve_component_variable_defaults(
-				variable_defaults.get(&reference.source_index)?,
-				variable_defaults,
-			);
-		}
+		TypedValueExprKind::VariableReference(_) => return None,
 		TypedValueExprKind::Unary { operator, operand } => TypedValueExprKind::Unary {
 			operator: operator.clone(),
 			operand: Box::new(resolve_component_variable_defaults(
@@ -1435,8 +1483,7 @@ fn matches_grammar(expression: &TypedValueExpr, grammar: &ValueGrammar) -> bool 
 			if !transition_time_order_is_valid(&items, members) {
 				return false;
 			}
-			let mut used = vec![false; members.len()];
-			matches_unordered(&items, members, *min_members, &mut used, 0)
+			unordered_member_assignments(&items, members, *min_members).is_some()
 		}
 	}
 }
@@ -1783,12 +1830,31 @@ fn matches_ordered(
 		.any(|consumed| matches_ordered(items, members, item_index + consumed, member_index + 1))
 }
 
-fn matches_unordered(
+#[derive(Clone, Copy)]
+struct UnorderedMemberAssignment {
+	item_index: usize,
+	member_index: usize,
+	item_count: usize,
+}
+
+fn unordered_member_assignments(
+	items: &[&TypedValueExpr],
+	members: &[GrammarMember],
+	min_members: usize,
+) -> Option<Vec<UnorderedMemberAssignment>> {
+	let mut used = vec![false; members.len()];
+	let mut assignments = Vec::new();
+	find_unordered_member_assignments(items, members, min_members, &mut used, 0, &mut assignments)
+		.then_some(assignments)
+}
+
+fn find_unordered_member_assignments(
 	items: &[&TypedValueExpr],
 	members: &[GrammarMember],
 	min_members: usize,
 	used: &mut [bool],
 	item_index: usize,
+	assignments: &mut Vec<UnorderedMemberAssignment>,
 ) -> bool {
 	if item_index == items.len() {
 		return used.iter().filter(|is_used| **is_used).count() >= min_members
@@ -1804,9 +1870,22 @@ fn matches_unordered(
 		for consumed in matching_prefix_lengths(&items[item_index..], members[member_index].grammar)
 		{
 			used[member_index] = true;
-			if matches_unordered(items, members, min_members, used, item_index + consumed) {
+			assignments.push(UnorderedMemberAssignment {
+				item_index,
+				member_index,
+				item_count: consumed,
+			});
+			if find_unordered_member_assignments(
+				items,
+				members,
+				min_members,
+				used,
+				item_index + consumed,
+				assignments,
+			) {
 				return true;
 			}
+			assignments.pop();
 			used[member_index] = false;
 		}
 	}
@@ -1851,8 +1930,7 @@ fn matching_prefix_lengths(items: &[&TypedValueExpr], grammar: &ValueGrammar) ->
 			..
 		} => {
 			for count in *min_members..=items.len() {
-				let mut used = vec![false; members.len()];
-				if matches_unordered(&items[..count], members, *min_members, &mut used, 0) {
+				if unordered_member_assignments(&items[..count], members, *min_members).is_some() {
 					lengths.push(count);
 				}
 			}
@@ -2521,6 +2599,20 @@ mod tests {
 	}
 
 	#[rstest]
+	fn rejects_component_variable_fallbacks_outside_function_numeric_ranges() {
+		// Arrange and Act
+		let kind = diagnostic_kind_text(
+			"vars { mix: Percentage = 200%; } .card { color: red.mix(blue, vars.mix); }",
+		);
+
+		// Assert
+		assert!(matches!(
+			kind,
+			StyleDiagnosticKind::PropertyValueMismatch { property, .. } if property == "color"
+		));
+	}
+
+	#[rstest]
 	fn rejects_a_gradient_with_fewer_than_two_stops() {
 		// Arrange and Act
 		let kind = diagnostic_kind_text(
@@ -2789,6 +2881,21 @@ mod tests {
 			".card { flex-flow: row; }",
 			".card { flex-flow: wrap; }",
 			".card { grid-auto-flow: dense; }",
+		];
+
+		// Act and Assert
+		for source in sources {
+			let typed = validated_text(source);
+			assert_eq!(typed.items.len(), 1, "source should validate: {source}");
+		}
+	}
+
+	#[rstest]
+	fn accepts_basis_first_flex_shorthands() {
+		// Arrange
+		let sources = [
+			".card { flex: (10px, 1); }",
+			".card { flex: (content, 1, 0); }",
 		];
 
 		// Act and Assert
@@ -3079,6 +3186,21 @@ mod tests {
 	}
 
 	#[rstest]
+	fn accepts_font_shorthands_without_optional_prefixes() {
+		// Arrange
+		let sources = [
+			".card { font: (16px, Arial); }",
+			".card { font: (slash(16px, 1.5), Arial); }",
+		];
+
+		// Act and Assert
+		for source in sources {
+			let typed = validated_text(source);
+			assert_eq!(typed.items.len(), 1, "source should validate: {source}");
+		}
+	}
+
+	#[rstest]
 	fn rejects_font_family_before_the_size() {
 		let kind = diagnostic_kind_text(".card { font: (Arial, 16px); }");
 
@@ -3103,6 +3225,33 @@ mod tests {
 			kind,
 			StyleDiagnosticKind::PropertyValueMismatch { property, .. } if property == "box-shadow"
 		));
+	}
+
+	#[rstest]
+	fn rejects_negative_box_shadow_blur_variable_fallbacks() {
+		// Arrange and Act
+		let kind = diagnostic_kind_text(
+			"vars { blur: Length = -4px; } .card { box-shadow: (0, 0, vars.blur); }",
+		);
+
+		// Assert
+		assert!(matches!(
+			kind,
+			StyleDiagnosticKind::PropertyValueMismatch { property, .. } if property == "box-shadow"
+		));
+	}
+
+	#[rstest]
+	fn box_shadow_blur_variables_inherit_nonnegative_constraints() {
+		// Arrange and Act
+		let typed =
+			validated_text("vars { blur: Length = 4px; } .card { box-shadow: (0, 0, vars.blur); }");
+
+		// Assert
+		assert_eq!(
+			typed.variables[0].runtime_constraint,
+			Some(crate::StyleVariableConstraint::NonNegative)
+		);
 	}
 
 	#[rstest]

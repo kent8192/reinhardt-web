@@ -1520,13 +1520,17 @@ const PADDING: ValueGrammar = ValueGrammar::Space {
 	max: Some(4),
 	item: &NLP,
 };
-const FLEX_ORDERED: ValueGrammar = ValueGrammar::Ordered(&[
-	required("grow", &NN),
-	optional("shrink", &NN),
-	optional("basis", &FLEX_BASIS),
-]);
+const FLEX_SHORTHAND: ValueGrammar = ValueGrammar::Unordered {
+	members: &[
+		required("grow", &NN),
+		optional("shrink", &NN),
+		optional("basis", &FLEX_BASIS),
+	],
+	min_members: 1,
+	preserve_source_order: true,
+};
 const FLEX_BASIS: ValueGrammar = ValueGrammar::Or(&[SIZE, KW_FLEX_BASIS]);
-const FLEX: ValueGrammar = ValueGrammar::Or(&[KW_FLEX, FLEX_BASIS, FLEX_ORDERED]);
+const FLEX: ValueGrammar = ValueGrammar::Or(&[KW_FLEX, FLEX_BASIS, FLEX_SHORTHAND]);
 const FLEX_FLOW: ValueGrammar = ValueGrammar::Unordered {
 	members: &[
 		optional("direction", &KW_FLEX_DIRECTION),
@@ -3060,7 +3064,7 @@ mod tests {
 	)]
 	#[case(
 		"flex",
-		"OR(KW(flex),OR(NON_NEGATIVE(LENGTH_PERCENTAGE),KW(size)),ORDERED(grow:NON_NEGATIVE(NUMBER),shrink?:NON_NEGATIVE(NUMBER),basis?:OR(NON_NEGATIVE(LENGTH_PERCENTAGE),KW(size))))"
+		"OR(KW(flex),OR(OR(NON_NEGATIVE(LENGTH_PERCENTAGE),KW(size)),KW(flex-basis)),UNORDERED(min=1,source-order=true,grow:NON_NEGATIVE(NUMBER),shrink?:NON_NEGATIVE(NUMBER),basis?:OR(OR(NON_NEGATIVE(LENGTH_PERCENTAGE),KW(size)),KW(flex-basis))))"
 	)]
 	#[case(
 		"flex-flow",

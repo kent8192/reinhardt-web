@@ -582,7 +582,7 @@ fn validate_media_range(
 					"media range expressions must contain a feature identifier",
 				));
 			};
-			if !valid_numeric_feature_value(feature, value) {
+			if !valid_numeric_range_value(feature, value) {
 				return Err(syn::Error::new(
 					value
 						.first()
@@ -602,8 +602,8 @@ fn validate_media_range(
 					"media range expressions must contain a feature identifier",
 				));
 			};
-			if !valid_numeric_feature_value(feature, left)
-				|| !valid_numeric_feature_value(feature, right)
+			if !valid_numeric_range_value(feature, left)
+				|| !valid_numeric_range_value(feature, right)
 			{
 				return Err(syn::Error::new(
 					tokens[first_index].span(),
@@ -697,12 +697,31 @@ fn discrete_media_feature_values(feature: &str) -> Option<&'static [&'static str
 }
 
 fn valid_numeric_feature_value(feature: &str, tokens: &[StyleMediaToken]) -> bool {
+	valid_numeric_media_value(feature, tokens, false)
+}
+
+fn valid_numeric_range_value(feature: &str, tokens: &[StyleMediaToken]) -> bool {
+	valid_numeric_media_value(feature, tokens, true)
+}
+
+fn valid_numeric_media_value(
+	feature: &str,
+	tokens: &[StyleMediaToken],
+	allow_negative_dimension_values: bool,
+) -> bool {
 	match tokens {
 		[StyleMediaToken::Number(number)] => valid_media_numeric_unit(feature, number),
 		[
 			StyleMediaToken::Punctuation(sign),
 			StyleMediaToken::Number(number),
-		] => is_numeric_sign(sign.kind) && valid_media_numeric_unit(feature, number),
+		] => {
+			is_numeric_sign(sign.kind)
+				&& valid_media_numeric_unit(feature, number)
+				&& (allow_negative_dimension_values
+					|| sign.kind != StyleMediaPunctuationKind::Minus
+					|| !requires_dimension_unit(feature)
+					|| is_zero_decimal(&number.value))
+		}
 		[
 			StyleMediaToken::Number(number),
 			StyleMediaToken::Punctuation(percent),
@@ -1528,6 +1547,20 @@ mod tests {
 
 		// Act
 		let error = parse_style(input).expect_err("dimensioned media features require units");
+
+		// Assert
+		assert_eq!(error.to_string(), "invalid media feature expression");
+	}
+
+	#[rstest]
+	#[case(quote! { @media (width: -1px) {} })]
+	#[case(quote! { @media (resolution: -2dppx) {} })]
+	#[case(quote! { @media (min-height: -1rem) {} })]
+	fn rejects_negative_values_for_nonnegative_dimensioned_media_features(
+		#[case] input: proc_macro2::TokenStream,
+	) {
+		// Act
+		let error = parse_style(input).expect_err("dimensioned media features cannot be negative");
 
 		// Assert
 		assert_eq!(error.to_string(), "invalid media feature expression");
