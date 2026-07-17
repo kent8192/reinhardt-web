@@ -31,5 +31,4 @@ impl actions::ArticleActions {
 fn main() {
 	let metadata = api::article_fns().metadata();
 	assert_eq!(metadata.name, "qualified-article-api");
-	let _ = article_fns::collision;
 }

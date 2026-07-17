@@ -477,11 +477,18 @@ fn main() {
 
 Every model set emits exactly six standard POST RPCs: `list`, `retrieve`,
 `create`, `update`, `partial_update`, and `destroy`. The generated namespace is
-the fn-form name. For example, `article_fns::partial_update` posts to
+the fn-form name for an unqualified `for` link. For example,
+`article_fns::partial_update` posts to
 `/api/server_fn/article-api/partial-update`. Rust underscores normalize to
 hyphens for action path and metadata segments. Standard overrides are checked
 against their generated input, output, and error contracts; custom actions use
 `#[action(detail = ..., transactional = ...)]`.
+
+Qualified `for` links use a private, path-derived internal action module so
+separate links such as `admin::article_fns` and `public::article_fns` cannot
+collide. The generated module does not replay a linked declaration's relative
+visibility at a different expansion site. Applications should register the
+linked fn-form rather than depend on that internal module name.
 
 `ServerFnResource::Lookup` must implement `Clone` because detail overrides keep
 the decoded lookup while the framework performs the authorized object lookup.
@@ -496,7 +503,9 @@ collection custom actions instead receive a policy-scoped
 List pagination defaults to 25 items, accepts limits in `1..=100`, and reports
 the policy-scoped total before applying offset and limit. Collection and detail
 policies run before data becomes visible. Mutations and transactional custom
-actions use one transaction-bound executor and roll back on error.
+actions use one transaction-bound executor and roll back on error. Full and
+partial updates authorize the mutated object again before read mapping and
+commit.
 
 Model action failures map deterministically: validation and application errors
 to 400, unauthenticated to 401, forbidden to 403, missing objects to 404,

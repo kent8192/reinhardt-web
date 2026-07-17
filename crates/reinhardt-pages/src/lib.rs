@@ -89,7 +89,8 @@
 //! return a typed unique lookup. Pagination defaults to 25, accepts `1..=100`,
 //! and reports the policy-scoped total before slicing. Checked standard
 //! overrides and custom transactional actions share the same policy and
-//! transaction runtime.
+//! transaction runtime. Full and partial updates authorize the resulting object
+//! again before read mapping and transaction commit.
 //!
 //! Wire contracts, structured errors, metadata, generated markers, and client
 //! stubs are cross-target. ORM resources, policies, action contexts, database

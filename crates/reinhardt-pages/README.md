@@ -446,6 +446,10 @@ the policy-scoped total before slicing. Structured model errors map to stable
 the wire. Each generated action has its own marker for component and MSW mocks;
 `reinhardt-test` model-action mocks use `model-server-fnset-msw`.
 
+Full and partial model updates authorize the loaded object before mutation and
+authorize the resulting object again before its read mapping and transaction
+commit, so ownership or tenant changes cannot bypass object policy.
+
 WASM builds retain wire contracts, metadata, markers, and client stubs. ORM
 resources, policies, action contexts, database executors, native handlers, and
 the `ModelServerFnSet` constructor remain native-only. Model sets do not provide

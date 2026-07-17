@@ -227,6 +227,13 @@ where
 			.await?;
 			R::validate_update(&input, &object, transaction.executor_mut()?).await?;
 			R::perform_update(input, &mut object, transaction.executor_mut()?).await?;
+			<R::Policy as ServerFnSetPolicy<R>>::authorize_object(
+				principal,
+				ServerFnSetAction::Update,
+				&object,
+				Some(transaction.executor_mut()?),
+			)
+			.await?;
 			R::to_read(&object, Some(transaction.executor_mut()?)).await
 		}
 		.await;
@@ -258,6 +265,13 @@ where
 			.await?;
 			R::validate_patch(&input, &object, transaction.executor_mut()?).await?;
 			R::perform_patch(input, &mut object, transaction.executor_mut()?).await?;
+			<R::Policy as ServerFnSetPolicy<R>>::authorize_object(
+				principal,
+				ServerFnSetAction::PartialUpdate,
+				&object,
+				Some(transaction.executor_mut()?),
+			)
+			.await?;
 			R::to_read(&object, Some(transaction.executor_mut()?)).await
 		}
 		.await;

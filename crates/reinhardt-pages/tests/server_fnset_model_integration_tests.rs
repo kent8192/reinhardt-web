@@ -36,6 +36,7 @@ struct RecordingState {
 	access_failure: AccessFailure,
 	fail_validation: bool,
 	deny_created_object: bool,
+	deny_mutated_object: bool,
 	fail_to_read: bool,
 	fail_destroy: bool,
 }
@@ -188,15 +189,21 @@ impl ServerFnSetPolicy<WidgetResource> for RecordingPolicy {
 	async fn authorize_object(
 		_principal: &Self::Principal,
 		action: ServerFnSetAction,
-		_object: &Widget,
+		object: &Widget,
 		executor: Option<&mut dyn TransactionExecutor>,
 	) -> Result<(), ServerFnSetError> {
 		record("authorize_object", executor);
-		if action == ServerFnSetAction::Create
-			&& state()
-				.lock()
-				.expect("recording mutex should not be poisoned")
-				.deny_created_object
+		let state = state()
+			.lock()
+			.expect("recording mutex should not be poisoned");
+		if action == ServerFnSetAction::Create && state.deny_created_object {
+			return Err(ServerFnSetError::Forbidden);
+		}
+		if matches!(
+			action,
+			ServerFnSetAction::Update | ServerFnSetAction::PartialUpdate
+		) && state.deny_mutated_object
+			&& object.name == "forbidden"
 		{
 			return Err(ServerFnSetError::Forbidden);
 		}
@@ -550,11 +557,10 @@ async fn retrieve_maps_cardinality_and_authorization_deterministically() {
 			resource: "widget".to_owned(),
 		})
 	);
-	assert_eq!(
-		serde_json::to_string(&missing)
+	assert!(
+		!serde_json::to_string(&missing)
 			.expect("not-found error should serialize")
-			.contains("tenant_42_widgets"),
-		false
+			.contains("tenant_42_widgets")
 	);
 
 	insert(&connection, 2, "duplicate").await;
@@ -638,6 +644,7 @@ async fn mutations_share_one_executor_and_rollback_post_persistence_failures() {
 		"authorize_object",
 		"validate_update",
 		"perform_update",
+		"authorize_object",
 		"to_read",
 	]);
 	let original = QuerySet::<Widget>::new()
@@ -671,6 +678,7 @@ async fn mutations_share_one_executor_and_rollback_post_persistence_failures() {
 		"authorize_object",
 		"validate_patch",
 		"perform_patch",
+		"authorize_object",
 		"to_read",
 	]);
 
@@ -822,6 +830,79 @@ async fn create_authorizes_the_created_object_before_committing() {
 		"authorize_action",
 		"validate_create",
 		"perform_create",
+		"authorize_object",
+	]);
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[serial(model_server_fnset_runtime)]
+async fn update_and_patch_reauthorize_mutated_objects_before_committing() {
+	let (_directory, connection) = database().await;
+	insert(&connection, 1, "original").await;
+
+	reset_state();
+	state()
+		.lock()
+		.expect("recording mutex should not be poisoned")
+		.deny_mutated_object = true;
+	let update = ModelServerFnSet::<WidgetResource>::update(
+		&Principal,
+		&connection,
+		"original".to_owned(),
+		UpdateInput("forbidden".to_owned()),
+	)
+	.await;
+	assert!(matches!(update, Err(ServerFnSetError::Forbidden)));
+	let original = QuerySet::<Widget>::new()
+		.filter(Filter::new(
+			"id",
+			reinhardt_db::orm::FilterOperator::Eq,
+			FilterValue::Integer(1_i64),
+		))
+		.one_with_db(&connection)
+		.await
+		.expect("rejected update should roll back");
+	assert_eq!(original[0].name, "original");
+	assert_one_executor();
+	assert_events(&[
+		"authorize_action",
+		"base_queryset",
+		"authorize_object",
+		"validate_update",
+		"perform_update",
+		"authorize_object",
+	]);
+
+	reset_state();
+	state()
+		.lock()
+		.expect("recording mutex should not be poisoned")
+		.deny_mutated_object = true;
+	let patch = ModelServerFnSet::<WidgetResource>::partial_update(
+		&Principal,
+		&connection,
+		"original".to_owned(),
+		PatchInput("forbidden".to_owned()),
+	)
+	.await;
+	assert!(matches!(patch, Err(ServerFnSetError::Forbidden)));
+	let original = QuerySet::<Widget>::new()
+		.filter(Filter::new(
+			"id",
+			reinhardt_db::orm::FilterOperator::Eq,
+			FilterValue::Integer(1_i64),
+		))
+		.one_with_db(&connection)
+		.await
+		.expect("rejected patch should roll back");
+	assert_eq!(original[0].name, "original");
+	assert_one_executor();
+	assert_events(&[
+		"authorize_action",
+		"base_queryset",
+		"authorize_object",
+		"validate_patch",
+		"perform_patch",
 		"authorize_object",
 	]);
 }
