@@ -171,6 +171,9 @@ where
 	}
 
 	/// Execute the transactional create pipeline.
+	///
+	/// The created object is authorized before it is converted and committed so
+	/// policies can enforce permissions that depend on submitted object fields.
 	pub async fn create(
 		principal: &Principal<R>,
 		connection: &DatabaseConnection,
@@ -186,6 +189,13 @@ where
 			.await?;
 			R::validate_create(&input, transaction.executor_mut()?).await?;
 			let object = R::perform_create(input, transaction.executor_mut()?).await?;
+			<R::Policy as ServerFnSetPolicy<R>>::authorize_object(
+				principal,
+				ServerFnSetAction::Create,
+				&object,
+				Some(transaction.executor_mut()?),
+			)
+			.await?;
 			R::to_read(&object, Some(transaction.executor_mut()?)).await
 		}
 		.await;

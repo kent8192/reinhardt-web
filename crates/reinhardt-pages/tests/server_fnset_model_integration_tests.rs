@@ -35,6 +35,7 @@ struct RecordingState {
 	executor_ids: Vec<usize>,
 	access_failure: AccessFailure,
 	fail_validation: bool,
+	deny_created_object: bool,
 	fail_to_read: bool,
 	fail_destroy: bool,
 }
@@ -186,11 +187,19 @@ impl ServerFnSetPolicy<WidgetResource> for RecordingPolicy {
 
 	async fn authorize_object(
 		_principal: &Self::Principal,
-		_action: ServerFnSetAction,
+		action: ServerFnSetAction,
 		_object: &Widget,
 		executor: Option<&mut dyn TransactionExecutor>,
 	) -> Result<(), ServerFnSetError> {
 		record("authorize_object", executor);
+		if action == ServerFnSetAction::Create
+			&& state()
+				.lock()
+				.expect("recording mutex should not be poisoned")
+				.deny_created_object
+		{
+			return Err(ServerFnSetError::Forbidden);
+		}
 		Ok(())
 	}
 }
@@ -605,6 +614,7 @@ async fn mutations_share_one_executor_and_rollback_post_persistence_failures() {
 		"authorize_action",
 		"validate_create",
 		"perform_create",
+		"authorize_object",
 		"to_read",
 	]);
 
@@ -782,7 +792,37 @@ async fn mutation_errors_rollback_explicitly_on_current_thread_runtimes() {
 		"authorize_action",
 		"validate_create",
 		"perform_create",
+		"authorize_object",
 		"to_read",
+	]);
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[serial(model_server_fnset_runtime)]
+async fn create_authorizes_the_created_object_before_committing() {
+	let (_directory, connection) = database().await;
+	insert(&connection, 1, "original").await;
+	reset_state();
+	state()
+		.lock()
+		.expect("recording mutex should not be poisoned")
+		.deny_created_object = true;
+
+	let result = ModelServerFnSet::<WidgetResource>::create(
+		&Principal,
+		&connection,
+		CreateInput("forbidden".to_owned()),
+	)
+	.await;
+
+	assert!(matches!(result, Err(ServerFnSetError::Forbidden)));
+	assert_eq!(count(&connection).await, 1);
+	assert_one_executor();
+	assert_events(&[
+		"authorize_action",
+		"validate_create",
+		"perform_create",
+		"authorize_object",
 	]);
 }
 
