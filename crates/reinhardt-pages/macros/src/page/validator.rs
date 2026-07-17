@@ -739,6 +739,17 @@ fn transform_element(
 				&& matches!(&attr.value, Expr::Lit(lit) if matches!(&lit.lit, syn::Lit::Bool(value) if !value.value())))
 		});
 	}
+	if control_binding.as_deref().is_some_and(|binding| {
+		matches!(
+			binding.kind,
+			TypedControlBindingKind::Checkbox | TypedControlBindingKind::Radio
+		)
+	}) {
+		ordinary_attrs.retain(|attr| {
+			!(attr.html_name() == "checked"
+				&& matches!(&attr.value, Expr::Lit(lit) if matches!(&lit.lit, syn::Lit::Bool(value) if !value.value())))
+		});
+	}
 	let transformed_attrs = transform_attrs(&ordinary_attrs, &tag)?;
 	let typed_attrs = transformed_attrs.attrs;
 
@@ -2141,6 +2152,31 @@ mod tests {
 		);
 	}
 
+	#[test]
+	fn bound_option_rejects_non_phrasing_control_flow_content() {
+		// Arrange
+		let ast: PageMacro = syn::parse2(quote::quote!({
+			select {
+				a11y: off,
+				bind: value,
+				option {
+					value: "choice",
+					if condition { div { "Block" } }
+				}
+			}
+		}))
+		.unwrap();
+
+		// Act
+		let error = validate(&ast).unwrap_err();
+
+		// Assert
+		assert_eq!(
+			error.to_string(),
+			"Element <option> in a bound select only supports non-interactive phrasing content"
+		);
+	}
+
 	#[rstest]
 	#[case(quote::quote!({ input { a11y: off, bind: value } }), TypedControlBindingKind::Text, false)]
 	#[case(
@@ -2149,7 +2185,17 @@ mod tests {
 		false
 	)]
 	#[case(
+		quote::quote!({ input { a11y: off, type: "checkbox", checked: false, bind: value } }),
+		TypedControlBindingKind::Checkbox,
+		false
+	)]
+	#[case(
 		quote::quote!({ input { a11y: off, type: "radio", value: choice, bind: value } }),
+		TypedControlBindingKind::Radio,
+		false
+	)]
+	#[case(
+		quote::quote!({ input { a11y: off, type: "radio", value: choice, checked: false, bind: value } }),
 		TypedControlBindingKind::Radio,
 		false
 	)]
