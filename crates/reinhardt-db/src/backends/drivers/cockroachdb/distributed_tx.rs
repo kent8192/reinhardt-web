@@ -266,10 +266,8 @@ impl CockroachDBTransactionManager {
 	/// Check if error is a serialization/retry error
 	fn is_serialization_error(error: &Error) -> bool {
 		error.database_error().is_some_and(|database_error| {
-			database_error.kind() == DatabaseErrorKind::Serialization
-				|| database_error.code() == Some("40001")
+			database_error.code() == Some("40001")
 				|| database_error.message().contains("restart transaction")
-				|| database_error.message().contains("serialization failure")
 		})
 	}
 
@@ -376,7 +374,9 @@ mod tests {
 			DatabaseErrorKind::Serialization,
 			"serialization failure",
 		));
-		assert!(CockroachDBTransactionManager::is_serialization_error(&err2));
+		assert!(!CockroachDBTransactionManager::is_serialization_error(
+			&err2
+		));
 
 		let message_only = Error::from(DatabaseError::new(
 			DatabaseErrorKind::Query,

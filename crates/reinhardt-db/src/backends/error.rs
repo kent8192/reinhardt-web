@@ -17,17 +17,22 @@ pub(crate) fn map_sqlx_error(error: sqlx::Error) -> DatabaseError {
 
 	match error {
 		sqlx::Error::Database(error) => {
-			let kind = match error.kind() {
-				ErrorKind::UniqueViolation => DatabaseErrorKind::UniqueViolation,
-				ErrorKind::ForeignKeyViolation => DatabaseErrorKind::ForeignKeyViolation,
-				ErrorKind::NotNullViolation => DatabaseErrorKind::NotNullViolation,
-				ErrorKind::CheckViolation => DatabaseErrorKind::CheckViolation,
-				ErrorKind::Other => DatabaseErrorKind::Query,
-				_ => DatabaseErrorKind::Query,
+			let code = error.code().map(|code| code.into_owned());
+			let kind = if code.as_deref() == Some("40001") {
+				DatabaseErrorKind::Serialization
+			} else {
+				match error.kind() {
+					ErrorKind::UniqueViolation => DatabaseErrorKind::UniqueViolation,
+					ErrorKind::ForeignKeyViolation => DatabaseErrorKind::ForeignKeyViolation,
+					ErrorKind::NotNullViolation => DatabaseErrorKind::NotNullViolation,
+					ErrorKind::CheckViolation => DatabaseErrorKind::CheckViolation,
+					ErrorKind::Other => DatabaseErrorKind::Query,
+					_ => DatabaseErrorKind::Query,
+				}
 			};
 			let database_error = DatabaseError::new(kind, error.message());
-			match error.code() {
-				Some(code) => database_error.with_code(code.into_owned()),
+			match code {
+				Some(code) => database_error.with_code(code),
 				None => database_error,
 			}
 		}
@@ -103,6 +108,7 @@ mod tests {
 	#[derive(Debug)]
 	struct TestSqlxDatabaseError {
 		kind: fn() -> ErrorKind,
+		code: &'static str,
 	}
 
 	fn unique_violation() -> ErrorKind {
@@ -139,7 +145,7 @@ mod tests {
 		}
 
 		fn code(&self) -> Option<Cow<'_, str>> {
-			Some(Cow::Borrowed(DATABASE_CODE))
+			Some(Cow::Borrowed(self.code))
 		}
 
 		fn as_error(&self) -> &(dyn std::error::Error + Send + Sync + 'static) {
@@ -178,7 +184,10 @@ mod tests {
 		#[case] expected_kind: DatabaseErrorKind,
 	) {
 		// Arrange
-		let error = sqlx::Error::Database(Box::new(TestSqlxDatabaseError { kind: sqlx_kind }));
+		let error = sqlx::Error::Database(Box::new(TestSqlxDatabaseError {
+			kind: sqlx_kind,
+			code: DATABASE_CODE,
+		}));
 
 		// Act
 		let error = map_sqlx_error(error);
@@ -191,6 +200,22 @@ mod tests {
 		assert_eq!(error.message(), DATABASE_MESSAGE);
 		assert_eq!(error.code(), Some(DATABASE_CODE));
 		assert_eq!(error.to_string(), DATABASE_MESSAGE);
+	}
+
+	#[test]
+	fn map_sqlx_error_classifies_serialization_sqlstate() {
+		// Arrange
+		let error = sqlx::Error::Database(Box::new(TestSqlxDatabaseError {
+			kind: other_database_error,
+			code: "40001",
+		}));
+
+		// Act
+		let error = map_sqlx_error(error);
+
+		// Assert
+		assert_eq!(error.kind(), DatabaseErrorKind::Serialization);
+		assert_eq!(error.code(), Some("40001"));
 	}
 
 	#[rstest]

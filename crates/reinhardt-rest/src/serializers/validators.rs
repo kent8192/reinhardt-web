@@ -119,6 +119,8 @@ pub enum DatabaseValidatorError {
 	DatabaseError {
 		/// The error message from the database
 		message: String,
+		/// The structured database error classification.
+		kind: DatabaseErrorKind,
 		/// The SQL query that failed (optional, for debugging)
 		query: Option<String>,
 	},
@@ -153,6 +155,20 @@ impl From<DatabaseValidatorError> for SerializerError {
 impl From<ValidatorError> for DatabaseValidatorError {
 	fn from(source: ValidatorError) -> Self {
 		Self::ValidationError { source }
+	}
+}
+
+impl From<reinhardt_core::exception::Error> for DatabaseValidatorError {
+	fn from(error: reinhardt_core::exception::Error) -> Self {
+		let kind = error
+			.database_error()
+			.map(DatabaseError::kind)
+			.unwrap_or(DatabaseErrorKind::Query);
+		Self::DatabaseError {
+			message: error.to_string(),
+			kind,
+			query: None,
+		}
 	}
 }
 
@@ -202,8 +218,8 @@ impl From<DatabaseValidatorError> for reinhardt_core::exception::Error {
 					field
 				))
 			}
-			DatabaseValidatorError::DatabaseError { message, .. } => {
-				DatabaseError::new(DatabaseErrorKind::Query, message).into()
+			DatabaseValidatorError::DatabaseError { message, kind, .. } => {
+				DatabaseError::new(kind, message).into()
 			}
 		}
 	}
@@ -378,13 +394,7 @@ impl<M: Model> UniqueValidator<M> {
 		}
 
 		// Execute count query
-		let count = qs
-			.count()
-			.await
-			.map_err(|e| DatabaseValidatorError::DatabaseError {
-				message: e.to_string(),
-				query: None,
-			})?;
+		let count = qs.count().await.map_err(DatabaseValidatorError::from)?;
 
 		if count > 0 {
 			Err(DatabaseValidatorError::UniqueConstraintViolation {
@@ -581,13 +591,7 @@ impl<M: Model> UniqueTogetherValidator<M> {
 		}
 
 		// Execute count query
-		let count = qs
-			.count()
-			.await
-			.map_err(|e| DatabaseValidatorError::DatabaseError {
-				message: e.to_string(),
-				query: None,
-			})?;
+		let count = qs.count().await.map_err(DatabaseValidatorError::from)?;
 
 		if count > 0 {
 			Err(DatabaseValidatorError::UniqueTogetherViolation {
@@ -714,6 +718,7 @@ mod tests {
 	fn database_failure_converts_to_structured_query_error() {
 		let error = DatabaseValidatorError::DatabaseError {
 			message: "count query failed".to_string(),
+			kind: DatabaseErrorKind::Query,
 			query: Some("SELECT COUNT(*) FROM test_users".to_string()),
 		};
 
@@ -723,6 +728,29 @@ mod tests {
 			reinhardt_core::exception::Error::Database(error) => {
 				assert_eq!(error.kind(), DatabaseErrorKind::Query);
 				assert_eq!(error.message(), "count query failed");
+			}
+			other => panic!("unexpected framework error variant: {other:?}"),
+		}
+	}
+
+	#[rstest]
+	fn framework_database_failure_preserves_its_kind() {
+		// Arrange
+		let framework_error: reinhardt_core::exception::Error =
+			DatabaseError::new(DatabaseErrorKind::Timeout, "validation query timed out").into();
+
+		// Act
+		let validator_error = DatabaseValidatorError::from(framework_error);
+		let framework_error: reinhardt_core::exception::Error = validator_error.into();
+
+		// Assert
+		match framework_error {
+			reinhardt_core::exception::Error::Database(error) => {
+				assert_eq!(error.kind(), DatabaseErrorKind::Timeout);
+				assert_eq!(
+					error.message(),
+					"Database error: validation query timed out"
+				);
 			}
 			other => panic!("unexpected framework error variant: {other:?}"),
 		}
