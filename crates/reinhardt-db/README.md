@@ -305,6 +305,8 @@ pub full_name: String,
   stable `_reinhardt_json_null_fields` sidecar emitted by `dumpdata`
 - Fixture field names derived from model metadata, independent of API-facing serde renames
   and omission rules
+- Single-column fixture primary keys may be supplied through either the top-level
+  `pk` member or the corresponding field entry; matching values are required when both are set
 - Writable fixture validation that omits database-generated columns while preserving
   required-field and Rust-type checks
 - Support for composite primary keys

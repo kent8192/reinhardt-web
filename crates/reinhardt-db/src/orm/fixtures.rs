@@ -80,7 +80,11 @@ pub struct FixtureRecord {
 	/// Primary key value.
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub pk: Option<Value>,
-	/// Non-primary-key field values.
+	/// Fixture field values.
+	///
+	/// A single-column primary key may be supplied either through [`Self::pk`] or
+	/// through the model's primary-key field in this map. When both are present,
+	/// their values must match.
 	pub fields: Map<String, Value>,
 	/// Nullable JSON fields whose `null` values represent JSON null rather than SQL NULL.
 	///
@@ -390,9 +394,10 @@ where
 		conn: &DatabaseConnection,
 		tx: &mut TransactionScope,
 	) -> FixtureResult<()> {
+		let source_pk = fixture_record_primary_key_value::<M>(record)?;
 		let mut object = record.fields.clone();
 		let assignments = extract_many_to_many_assignments::<M>(&mut object)?;
-		load_many_to_many_assignments::<M>(tx, conn, record.pk.as_ref(), &assignments).await?;
+		load_many_to_many_assignments::<M>(tx, conn, source_pk.as_ref(), &assignments).await?;
 		Ok(())
 	}
 
@@ -966,6 +971,16 @@ where
 	}
 	object.insert(primary_key_field.to_string(), primary_key.clone());
 	Ok(())
+}
+
+fn fixture_record_primary_key_value<M>(record: &FixtureRecord) -> FixtureResult<Option<Value>>
+where
+	M: Model,
+{
+	let mut object = record.fields.clone();
+	normalize_foreign_key_fixture_fields::<M>(&mut object)?;
+	merge_fixture_record_primary_key::<M>(&mut object, record)?;
+	Ok(object.remove(M::primary_key_field()))
 }
 
 fn fixture_writable_columns(
@@ -2420,9 +2435,18 @@ fn fixture_record_dependencies(
 			.and_then(|(app_label, model_name)| find_model_metadata(&app_label, &model_name))
 			.map(|metadata| fixture_primary_key_field_name(&metadata))
 			.unwrap_or_else(|| "id".to_string());
+		let relationship_names = global_fixture_registry()
+			.get(&record.model)
+			.map(|handler| {
+				handler
+					.fixture_foreign_key_fields()
+					.into_iter()
+					.collect::<HashMap<_, _>>()
+			})
+			.unwrap_or_default();
 		if let Some(pk_key) = record.pk.as_ref().and_then(json_dependency_key) {
 			record_indices
-				.entry((model_key.clone(), primary_key_column, pk_key))
+				.entry((model_key.clone(), primary_key_column.clone(), pk_key))
 				.or_insert(index);
 		}
 		for (field_name, value) in &record.fields {
@@ -2431,6 +2455,19 @@ fn fixture_record_dependencies(
 			};
 			record_indices
 				.entry((model_key.clone(), field_name.clone(), value_key))
+				.or_insert(index);
+		}
+		if let Some(primary_key_value) = fixture_field_value(
+			record,
+			&primary_key_column,
+			relationship_names
+				.get(&primary_key_column)
+				.map(String::as_str),
+			true,
+		) && let Some(primary_key_value) = json_dependency_key(primary_key_value)
+		{
+			record_indices
+				.entry((model_key.clone(), primary_key_column, primary_key_value))
 				.or_insert(index);
 		}
 	}
@@ -2496,13 +2533,22 @@ fn fixture_record_dependencies_from_relationship_metadata(
 	let mut record_indices = HashMap::new();
 	for (index, record) in records.iter().enumerate() {
 		let model_key = canonical_record_label(&record.model)?;
-		let primary_key_field = global_fixture_registry()
+		let (primary_key_field, relationship_names) = global_fixture_registry()
 			.get(&record.model)
-			.map(|handler| handler.primary_key_field().to_string())
-			.unwrap_or_else(|| "id".to_string());
+			.map(|handler| {
+				(
+					handler.primary_key_field().to_string(),
+					handler
+						.fixture_foreign_key_relations()
+						.into_iter()
+						.map(|relation| (relation.database_column, relation.fixture_field))
+						.collect::<HashMap<_, _>>(),
+				)
+			})
+			.unwrap_or_else(|| ("id".to_string(), HashMap::new()));
 		if let Some(pk_key) = record.pk.as_ref().and_then(json_dependency_key) {
 			record_indices
-				.entry((model_key.clone(), primary_key_field, pk_key))
+				.entry((model_key.clone(), primary_key_field.clone(), pk_key))
 				.or_insert(index);
 		}
 		for (field_name, value) in &record.fields {
@@ -2511,6 +2557,19 @@ fn fixture_record_dependencies_from_relationship_metadata(
 			};
 			record_indices
 				.entry((model_key.clone(), field_name.clone(), value_key))
+				.or_insert(index);
+		}
+		if let Some(primary_key_value) = fixture_field_value(
+			record,
+			&primary_key_field,
+			relationship_names
+				.get(&primary_key_field)
+				.map(String::as_str),
+			true,
+		) && let Some(primary_key_value) = json_dependency_key(primary_key_value)
+		{
+			record_indices
+				.entry((model_key.clone(), primary_key_field, primary_key_value))
 				.or_insert(index);
 		}
 	}
@@ -3079,6 +3138,60 @@ mod tests {
 	}
 
 	#[cfg(not(feature = "migrations"))]
+	#[derive(Clone, Serialize, Deserialize)]
+	struct FixtureOrmOnlyPrimaryKeyForeignKeyDependent {
+		id: Option<i64>,
+	}
+
+	#[cfg(not(feature = "migrations"))]
+	impl Model for FixtureOrmOnlyPrimaryKeyForeignKeyDependent {
+		type PrimaryKey = i64;
+		type Fields = FixtureOrmOnlyPostFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"fixture_orm_only_primary_key_foreign_key_dependent"
+		}
+
+		fn new_fields() -> Self::Fields {
+			FixtureOrmOnlyPostFields
+		}
+
+		fn app_label() -> &'static str {
+			"fixture_orm_only_primary_key_foreign_key"
+		}
+
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = Some(value);
+		}
+
+		fn field_metadata() -> Vec<crate::orm::inspection::FieldInfo> {
+			let mut id = fixture_field_info("id", "BigIntegerField", false);
+			id.primary_key = true;
+			vec![id, fixture_field_info("child_id", "IntegerField", false)]
+		}
+
+		fn relationship_metadata() -> Vec<crate::orm::inspection::RelationInfo> {
+			vec![
+				crate::orm::inspection::RelationInfo::new(
+					"child",
+					crate::orm::relationship::RelationshipType::ManyToOne,
+					"FixtureOrmOnlyPrimaryKeyForeignKeyChild",
+				)
+				.with_foreign_key("child_id"),
+			]
+		}
+	}
+
+	#[cfg(not(feature = "migrations"))]
 	mod fixture_orm_only_ambiguous_auth {
 		use super::*;
 
@@ -3383,6 +3496,50 @@ mod tests {
 	#[cfg(not(feature = "migrations"))]
 	#[test]
 	#[serial_test::serial(fixture_model_registry)]
+	fn orm_only_dependency_order_indexes_relation_aliases_for_field_primary_keys() {
+		let _registry_reset = FixtureRegistryReset;
+		global_fixture_registry().clear();
+		global_fixture_registry().register_model::<FixtureOrmOnlyPrimaryKeyForeignKeyParent>();
+		global_fixture_registry().register_model::<FixtureOrmOnlyPrimaryKeyForeignKeyChild>();
+		global_fixture_registry().register_model::<FixtureOrmOnlyPrimaryKeyForeignKeyDependent>();
+		let records = vec![
+			FixtureRecord::new(
+				"fixture_orm_only_primary_key_foreign_key.FixtureOrmOnlyPrimaryKeyForeignKeyDependent",
+				Some(Value::from(3)),
+				Map::from_iter([("child".to_string(), Value::from(1))]),
+			),
+			FixtureRecord::new(
+				"fixture_orm_only_primary_key_foreign_key.FixtureOrmOnlyPrimaryKeyForeignKeyChild",
+				None,
+				Map::from_iter([("parent".to_string(), Value::from(1))]),
+			),
+			FixtureRecord::new(
+				"fixture_orm_only_primary_key_foreign_key.FixtureOrmOnlyPrimaryKeyForeignKeyParent",
+				Some(Value::from(1)),
+				Map::new(),
+			),
+		];
+
+		let ordered = order_records_by_dependencies(&records)
+			.expect("ORM-only field-level FK primary keys must be indexed through aliases");
+
+		assert_eq!(
+			ordered[0].model,
+			"fixture_orm_only_primary_key_foreign_key.FixtureOrmOnlyPrimaryKeyForeignKeyParent"
+		);
+		assert_eq!(
+			ordered[1].model,
+			"fixture_orm_only_primary_key_foreign_key.FixtureOrmOnlyPrimaryKeyForeignKeyChild"
+		);
+		assert_eq!(
+			ordered[2].model,
+			"fixture_orm_only_primary_key_foreign_key.FixtureOrmOnlyPrimaryKeyForeignKeyDependent"
+		);
+	}
+
+	#[cfg(not(feature = "migrations"))]
+	#[test]
+	#[serial_test::serial(fixture_model_registry)]
 	fn orm_only_fixture_order_rejects_ambiguous_related_model_names() {
 		let _registry_reset = FixtureRegistryReset;
 		global_fixture_registry().clear();
@@ -3477,6 +3634,43 @@ mod tests {
 
 		fn app_label() -> &'static str {
 			"fixture_m2m"
+		}
+
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = Some(value);
+		}
+	}
+
+	#[cfg(feature = "migrations")]
+	#[derive(Clone, Serialize, Deserialize)]
+	struct FixtureFieldPrimaryKeyM2mPost {
+		id: Option<i64>,
+	}
+
+	#[cfg(feature = "migrations")]
+	impl Model for FixtureFieldPrimaryKeyM2mPost {
+		type PrimaryKey = i64;
+		type Fields = FixturePostFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"fixture_field_primary_key_m2m_post"
+		}
+
+		fn new_fields() -> Self::Fields {
+			FixturePostFields
+		}
+
+		fn app_label() -> &'static str {
+			"fixture_field_primary_key_m2m"
 		}
 
 		fn primary_key_field() -> &'static str {
@@ -5936,6 +6130,95 @@ mod tests {
 	}
 
 	#[cfg(feature = "migrations")]
+	#[serial_test::serial(fixture_model_registry)]
+	#[tokio::test]
+	async fn field_primary_keys_drive_deferred_many_to_many_assignments() {
+		let mut source = crate::migrations::ModelMetadata::new(
+			"fixture_field_primary_key_m2m",
+			"FixtureFieldPrimaryKeyM2mPost",
+			"fixture_field_primary_key_m2m_post",
+		);
+		source.add_field(
+			"id".to_string(),
+			crate::migrations::FieldMetadata::new(crate::migrations::FieldType::BigInteger)
+				.with_param("primary_key", "true"),
+		);
+		source.add_many_to_many(crate::migrations::ManyToManyMetadata::new(
+			"tags",
+			"FixtureFieldPrimaryKeyM2mTag",
+		));
+		let mut target = crate::migrations::ModelMetadata::new(
+			"fixture_field_primary_key_m2m",
+			"FixtureFieldPrimaryKeyM2mTag",
+			"fixture_field_primary_key_m2m_tag",
+		);
+		target.add_field(
+			"id".to_string(),
+			crate::migrations::FieldMetadata::new(crate::migrations::FieldType::BigInteger)
+				.with_param("primary_key", "true"),
+		);
+		crate::migrations::model_registry::global_registry().register_model(source);
+		crate::migrations::model_registry::global_registry().register_model(target);
+
+		let spec = many_to_many_specs_for::<FixtureFieldPrimaryKeyM2mPost>()
+			.expect("field-primary-key model must expose a many-to-many fixture spec")
+			.into_iter()
+			.next()
+			.expect("model must expose its tags fixture field");
+		let conn = DatabaseConnection::connect("sqlite::memory:")
+			.await
+			.expect("SQLite fixture database must connect");
+		conn.execute(
+			&format!(
+				"CREATE TABLE {} ({} INTEGER NOT NULL, {} INTEGER NOT NULL, UNIQUE ({}, {}))",
+				quote_identifier_path(&spec.through_table),
+				quote_identifier(&spec.source_field),
+				quote_identifier(&spec.target_field),
+				quote_identifier(&spec.source_field),
+				quote_identifier(&spec.target_field),
+			),
+			vec![],
+		)
+		.await
+		.expect("many-to-many through table must be created");
+
+		let record = FixtureRecord::new(
+			"fixture_field_primary_key_m2m.FixtureFieldPrimaryKeyM2mPost",
+			None,
+			Map::from_iter([
+				("id".to_string(), Value::from(1)),
+				("tags".to_string(), Value::Array(vec![Value::from(2)])),
+			]),
+		);
+		let handler = TypedFixtureModel::<FixtureFieldPrimaryKeyM2mPost>::new();
+		let mut tx = TransactionScope::begin(&conn)
+			.await
+			.expect("fixture transaction must begin");
+
+		handler
+			.load_many_to_many_assignments(&record, &conn, &mut tx)
+			.await
+			.expect("field-supplied primary key must drive deferred many-to-many writes");
+		tx.commit().await.expect("fixture transaction must commit");
+
+		let rows = conn
+			.query(
+				&format!(
+					"SELECT {} AS source_id, {} AS target_id FROM {}",
+					quote_identifier(&spec.source_field),
+					quote_identifier(&spec.target_field),
+					quote_identifier_path(&spec.through_table),
+				),
+				vec![],
+			)
+			.await
+			.expect("many-to-many assignment must be queryable");
+		assert_eq!(rows.len(), 1);
+		assert_eq!(rows[0].data.get("source_id"), Some(&Value::from(1)));
+		assert_eq!(rows[0].data.get("target_id"), Some(&Value::from(2)));
+	}
+
+	#[cfg(feature = "migrations")]
 	#[test]
 	#[serial_test::serial(fixture_model_registry)]
 	fn many_to_many_fixture_fields_reject_structured_identifiers() {
@@ -6093,6 +6376,84 @@ mod tests {
 
 		assert_eq!(ordered[0].model, "fixture_primary_fk.Parent");
 		assert_eq!(ordered[1].model, "fixture_primary_fk.Child");
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	fn dependency_order_indexes_relation_aliases_for_field_primary_keys() {
+		let mut parent = crate::migrations::ModelMetadata::new(
+			"fixture_field_primary_key_alias",
+			"Parent",
+			"fixture_field_primary_key_alias_parent",
+		);
+		parent.add_field(
+			"id".to_string(),
+			crate::migrations::FieldMetadata::new(crate::migrations::FieldType::BigInteger)
+				.with_param("primary_key", "true"),
+		);
+
+		let mut child = crate::migrations::ModelMetadata::new(
+			"fixture_field_primary_key_alias",
+			"Child",
+			"fixture_field_primary_key_alias_child",
+		);
+		child.add_field(
+			"parent_id".to_string(),
+			crate::migrations::FieldMetadata::new(crate::migrations::FieldType::BigInteger)
+				.with_param("primary_key", "true")
+				.with_param("fk_target", "Parent")
+				.with_param("fk_target_app", "fixture_field_primary_key_alias"),
+		);
+
+		let mut dependent = crate::migrations::ModelMetadata::new(
+			"fixture_field_primary_key_alias",
+			"Dependent",
+			"fixture_field_primary_key_alias_dependent",
+		);
+		dependent.add_field(
+			"id".to_string(),
+			crate::migrations::FieldMetadata::new(crate::migrations::FieldType::BigInteger)
+				.with_param("primary_key", "true"),
+		);
+		dependent.add_field(
+			"child_id".to_string(),
+			crate::migrations::FieldMetadata::new(crate::migrations::FieldType::BigInteger)
+				.with_param("fk_target", "Child")
+				.with_param("fk_target_app", "fixture_field_primary_key_alias"),
+		);
+
+		let registry = crate::migrations::model_registry::global_registry();
+		registry.register_model(parent);
+		registry.register_model(child);
+		registry.register_model(dependent);
+
+		let records = vec![
+			FixtureRecord::new(
+				"fixture_field_primary_key_alias.Dependent",
+				Some(Value::from(3)),
+				Map::from_iter([("child".to_string(), Value::from(1))]),
+			),
+			FixtureRecord::new(
+				"fixture_field_primary_key_alias.Child",
+				None,
+				Map::from_iter([("parent".to_string(), Value::from(1))]),
+			),
+			FixtureRecord::new(
+				"fixture_field_primary_key_alias.Parent",
+				Some(Value::from(1)),
+				Map::new(),
+			),
+		];
+
+		let ordered = order_records_by_dependencies(&records)
+			.expect("field-level FK primary keys must be indexed through relation aliases");
+
+		assert_eq!(ordered[0].model, "fixture_field_primary_key_alias.Parent");
+		assert_eq!(ordered[1].model, "fixture_field_primary_key_alias.Child");
+		assert_eq!(
+			ordered[2].model,
+			"fixture_field_primary_key_alias.Dependent"
+		);
 	}
 
 	#[cfg(feature = "migrations")]
