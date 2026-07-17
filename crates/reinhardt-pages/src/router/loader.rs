@@ -297,7 +297,7 @@ fn query_value(query: &str, name: &str) -> Option<String> {
 		.filter(|pair| !pair.is_empty())
 		.find_map(|pair| {
 			let (key, value) = pair.split_once('=').unwrap_or((pair, ""));
-			if percent_decode(key, true) == name {
+			if key == name {
 				Some(percent_decode(value, true))
 			} else {
 				None
@@ -726,6 +726,22 @@ mod tests {
 		assert_ne!(
 			loader_cache_id(RouteLoaderId::new("jobs"), &first, &specs).unwrap(),
 			loader_cache_id(RouteLoaderId::new("jobs"), &second, &specs).unwrap()
+		);
+	}
+
+	#[test]
+	fn canonical_key_matches_query_names_without_decoding_them() {
+		let encoded_name = context(&[], "ta%62=stale&tab=current");
+		let canonical_name = context(&[], "tab=current");
+		let specs = [LoaderInputSpec::query("tab")];
+
+		assert_eq!(
+			canonical_loader_inputs(&encoded_name, &specs).unwrap(),
+			canonical_loader_inputs(&canonical_name, &specs).unwrap()
+		);
+		assert_eq!(
+			loader_cache_id(RouteLoaderId::new("jobs"), &encoded_name, &specs).unwrap(),
+			loader_cache_id(RouteLoaderId::new("jobs"), &canonical_name, &specs).unwrap()
 		);
 	}
 

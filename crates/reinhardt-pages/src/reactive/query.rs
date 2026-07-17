@@ -334,6 +334,7 @@ impl<T: Clone + 'static, E: Clone + 'static> QueryEntry<T, E> {
 	fn cancel_request(&self) {
 		if let Some(request) = self.request.borrow_mut().take() {
 			request.source.cancel();
+			self.refetch_after_in_flight.set(false);
 			self.is_fetching.set(false);
 			self.wake_waiters();
 		}
@@ -449,7 +450,6 @@ impl<T: Clone + 'static, E: Clone + 'static> QueryEntry<T, E> {
 			_guard: guard,
 			_marker: PhantomData,
 		});
-		self.completed.borrow_mut().take();
 		self.is_fetching.set(true);
 		if !had_success {
 			self.state.set(ResourceState::Loading);
@@ -1321,6 +1321,119 @@ mod tests {
 			assert_eq!(dropped.get(), 1, "the aborted fetch future must be dropped");
 			drop(registration);
 			let _ = ready;
+		});
+	}
+
+	#[test]
+	#[serial(query_cache)]
+	fn queued_refetch_keeps_completed_generation_for_existing_lease() {
+		ReactiveScope::run(|| {
+			// Arrange
+			clear_query_cache_for_test();
+			let tasks = Rc::new(RefCell::new(VecDeque::new()));
+			let tasks_for_sink = Rc::clone(&tasks);
+			let _sink = crate::platform::install_task_sink(move |task| {
+				tasks_for_sink.borrow_mut().push_back(task);
+			});
+			let ready = Rc::new(Cell::new(false));
+			let dropped = Rc::new(Cell::new(0));
+			let key: QueryKey<String, String> = QueryKey::new("queued-generation", {
+				let ready = Rc::clone(&ready);
+				let dropped = Rc::clone(&dropped);
+				move || TestGate {
+					ready: Rc::clone(&ready),
+					dropped: Rc::clone(&dropped),
+					result: Some(Ok("first".to_string())),
+				}
+			});
+			let entry = query_entry(key.clone());
+			let lease = acquire_query(
+				key,
+				QueryAcquireOptions {
+					consumer: QueryConsumer::Navigation(11),
+					error_policy: QueryErrorPolicy::Discard,
+				},
+			);
+			assert_eq!(poll_one_task(&tasks), Poll::Pending);
+			let _ = entry.start_fetch(true);
+
+			// Act
+			ready.set(true);
+			assert_eq!(poll_one_task(&tasks), Poll::Ready(()));
+			let mut result = Box::pin(lease.result());
+			let mut context = Context::from_waker(Waker::noop());
+
+			// Assert
+			assert!(
+				entry.has_request(),
+				"the queued refetch must start after completion"
+			);
+			assert_eq!(
+				result.as_mut().poll(&mut context),
+				Poll::Ready(Ok("first".to_string()))
+			);
+			drop(result);
+			drop(lease);
+		});
+	}
+
+	#[test]
+	#[serial(query_cache)]
+	fn cancelling_request_discards_queued_refetch() {
+		ReactiveScope::run(|| {
+			// Arrange
+			clear_query_cache_for_test();
+			let tasks = Rc::new(RefCell::new(VecDeque::new()));
+			let tasks_for_sink = Rc::clone(&tasks);
+			let _sink = crate::platform::install_task_sink(move |task| {
+				tasks_for_sink.borrow_mut().push_back(task);
+			});
+			let ready = Rc::new(Cell::new(false));
+			let dropped = Rc::new(Cell::new(0));
+			let key: QueryKey<String, String> = QueryKey::new("cancel-queued-refetch", {
+				let ready = Rc::clone(&ready);
+				let dropped = Rc::clone(&dropped);
+				move || TestGate {
+					ready: Rc::clone(&ready),
+					dropped: Rc::clone(&dropped),
+					result: Some(Ok("replacement".to_string())),
+				}
+			});
+			let entry = query_entry(key.clone());
+			let lease = acquire_query(
+				key.clone(),
+				QueryAcquireOptions {
+					consumer: QueryConsumer::Navigation(12),
+					error_policy: QueryErrorPolicy::Discard,
+				},
+			);
+			assert_eq!(poll_one_task(&tasks), Poll::Pending);
+			let _ = entry.start_fetch(true);
+			assert!(entry.refetch_after_in_flight.get());
+
+			// Act
+			drop(lease);
+
+			// Assert
+			assert!(!entry.refetch_after_in_flight.get());
+			assert_eq!(poll_one_task(&tasks), Poll::Ready(()));
+			ready.set(true);
+			let replacement = acquire_query(
+				key,
+				QueryAcquireOptions {
+					consumer: QueryConsumer::Navigation(13),
+					error_policy: QueryErrorPolicy::Discard,
+				},
+			);
+			assert_eq!(poll_one_task(&tasks), Poll::Ready(()));
+			assert!(
+				!entry.has_request(),
+				"a cancelled request must not schedule a stale follow-up fetch"
+			);
+			assert_eq!(
+				tokio_test::block_on(replacement.result()),
+				Ok("replacement".to_string())
+			);
 		});
 	}
 
