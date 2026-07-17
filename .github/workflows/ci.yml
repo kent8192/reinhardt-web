@@ -131,54 +131,28 @@ jobs:
       eligible: ${{ steps.target.outputs.eligible }}
       reason: ${{ steps.target.outputs.reason }}
     steps:
+      - name: Checkout trusted auto-fix policy
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+          sparse-checkout: .github/scripts/auto-fix-style-target.cjs
+          sparse-checkout-cone-mode: false
+          path: .auto-fix-policy
+
       - name: Check auto-fix target branch
         id: target
         uses: actions/github-script@v8
         with:
           script: |
-            const pr = context.payload.pull_request;
-            const headRef = pr.head.ref;
-            const repository = `${context.repo.owner}/${context.repo.repo}`;
-
-            function finish(eligible, reason) {
-              core.setOutput('eligible', eligible ? 'true' : 'false');
-              core.setOutput('reason', reason);
-              core.notice(`Auto-fix style target: ${reason}`);
-            }
-
-            if (pr.head.repo.full_name !== repository) {
-              finish(false, 'fork-pull-request');
-              return;
-            }
-
-            const projectReadOnlyBranch =
-              headRef === 'main' ||
-              headRef === 'master' ||
-              headRef.startsWith('develop/') ||
-              headRef.startsWith('release/') ||
-              headRef.startsWith('release-plz-') ||
-              headRef.startsWith('develop-release-plz-');
-
-            if (projectReadOnlyBranch) {
-              finish(false, 'project-read-only-branch');
-              return;
-            }
-
-            let branch;
-            try {
-              const response = await github.rest.repos.getBranch({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                branch: headRef,
-              });
-              branch = response.data;
-            } catch (error) {
-              core.warning(`Failed to read branch protection for ${headRef}: ${error.message}`);
-              finish(false, 'branch-protection-check-failed');
-              return;
-            }
-
-            finish(!branch.protected, branch.protected ? 'protected-branch' : 'eligible');
+            const { runAutoFixTargetPolicy } = require('./.auto-fix-policy/.github/scripts/auto-fix-style-target.cjs');
+            await runAutoFixTargetPolicy({
+              github,
+              context,
+              core,
+              noticePrefix: 'Auto-fix style target',
+            });
 
   auto-fix-style:
     name: Auto-Fix Style
@@ -298,6 +272,16 @@ jobs:
           repository: ${{ github.repository }}
           persist-credentials: false
 
+      - name: Checkout trusted auto-fix policy
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+          sparse-checkout: .github/scripts/auto-fix-style-target.cjs
+          sparse-checkout-cone-mode: false
+          path: .auto-fix-policy
+
       - name: Download auto-fix patch
         uses: actions/download-artifact@v4
         with:
@@ -321,49 +305,13 @@ jobs:
         uses: actions/github-script@v8
         with:
           script: |
-            const pr = context.payload.pull_request;
-            const headRef = pr.head.ref;
-            const repository = `${context.repo.owner}/${context.repo.repo}`;
-
-            function finish(eligible, reason) {
-              core.setOutput('eligible', eligible ? 'true' : 'false');
-              core.setOutput('reason', reason);
-              core.notice(`Auto-fix style write target: ${reason}`);
-            }
-
-            if (pr.head.repo.full_name !== repository) {
-              finish(false, 'fork-pull-request');
-              return;
-            }
-
-            const projectReadOnlyBranch =
-              headRef === 'main' ||
-              headRef === 'master' ||
-              headRef.startsWith('develop/') ||
-              headRef.startsWith('release/') ||
-              headRef.startsWith('release-plz-') ||
-              headRef.startsWith('develop-release-plz-');
-
-            if (projectReadOnlyBranch) {
-              finish(false, 'project-read-only-branch');
-              return;
-            }
-
-            let branch;
-            try {
-              const response = await github.rest.repos.getBranch({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                branch: headRef,
-              });
-              branch = response.data;
-            } catch (error) {
-              core.warning(`Failed to read branch protection for ${headRef}: ${error.message}`);
-              finish(false, 'branch-protection-check-failed');
-              return;
-            }
-
-            finish(!branch.protected, branch.protected ? 'protected-branch' : 'eligible');
+            const { runAutoFixTargetPolicy } = require('./.auto-fix-policy/.github/scripts/auto-fix-style-target.cjs');
+            await runAutoFixTargetPolicy({
+              github,
+              context,
+              core,
+              noticePrefix: 'Auto-fix style write target',
+            });
 
       - name: Generate GitHub token
         if: steps.recheck-target.outputs.eligible == 'true'
