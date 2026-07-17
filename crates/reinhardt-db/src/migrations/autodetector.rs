@@ -4153,6 +4153,23 @@ impl MigrationAutodetector {
 		self.detect_changes_internal(true)
 	}
 
+	/// Validate physical table-name collisions caused by model or table renames.
+	///
+	/// This performs only the model-level detection needed to find rename
+	/// destinations. It intentionally does not inspect field changes, allowing
+	/// callers that operate on one app to validate cross-app table ownership
+	/// without applying field-rename ambiguity checks to unrelated apps.
+	pub fn validate_table_rename_destinations(&self) -> super::Result<()> {
+		let mut changes = DetectedChanges::default();
+
+		self.detect_created_models(&mut changes);
+		self.detect_deleted_models(&mut changes);
+		self.detect_renamed_models(&mut changes);
+		self.detect_renamed_tables(&mut changes);
+		self.detect_deleted_rename_target_owners(&mut changes);
+		self.validate_rename_destinations(&changes)
+	}
+
 	fn detect_changes_internal(
 		&self,
 		strict_rename_ambiguity: bool,

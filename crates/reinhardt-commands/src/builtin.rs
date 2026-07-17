@@ -914,8 +914,7 @@ fn validate_global_migration_changes(
 	target_state: &reinhardt_db::migrations::ProjectState,
 ) -> reinhardt_db::migrations::Result<()> {
 	reinhardt_db::migrations::MigrationAutodetector::new(from_state.clone(), target_state.clone())
-		.try_detect_changes()
-		.map(|_| ())
+		.validate_table_rename_destinations()
 }
 
 #[cfg(feature = "migrations")]
@@ -4527,6 +4526,37 @@ mod tests {
 			.expect_err("cross-app table rename collisions must be rejected before app filtering");
 
 		assert!(error.to_string().contains("multiple target models claim"));
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	fn global_migration_validation_ignores_unrelated_field_rename_ambiguity() {
+		use reinhardt_db::migrations::{FieldState, FieldType, ModelState, ProjectState};
+
+		let mut from_state = ProjectState::new();
+		from_state.add_model(ModelState::new("blog", "Post"));
+		let mut old_audit_entry = ModelState::new("audit", "Entry");
+		old_audit_entry.fields.insert(
+			"legacy_code".to_string(),
+			FieldState::new("legacy_code", FieldType::VarChar(255), false),
+		);
+		old_audit_entry.fields.insert(
+			"old_code".to_string(),
+			FieldState::new("old_code", FieldType::VarChar(255), false),
+		);
+		from_state.add_model(old_audit_entry);
+
+		let mut target_state = ProjectState::new();
+		target_state.add_model(ModelState::new("blog", "Post"));
+		let mut new_audit_entry = ModelState::new("audit", "Entry");
+		new_audit_entry.fields.insert(
+			"code".to_string(),
+			FieldState::new("code", FieldType::VarChar(255), false),
+		);
+		target_state.add_model(new_audit_entry);
+
+		validate_global_migration_changes(&from_state, &target_state)
+			.expect("global validation should not inspect unrelated field rename ambiguity");
 	}
 
 	#[cfg(feature = "migrations")]
