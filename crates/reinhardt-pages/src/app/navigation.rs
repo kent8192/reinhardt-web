@@ -144,20 +144,25 @@ impl NavigationCoordinator {
 		if !has_ssr_state {
 			return Ok(false);
 		}
-		let context = crate::hydration::HydrationContext::from_window().map_err(|error| {
+		let hydration = crate::hydration::HydrationContext::from_window().map_err(|error| {
 			RouteLoaderError::with_status(
 				format!("route loader hydration state is unavailable: {error}"),
 				500,
 			)
 		})?;
+		let loader_context = route_context(&matched);
 		let store = LoaderStore::new();
 		for id in matched.loader_ids() {
-			let value = context.get_route_loader_state(id.as_str()).ok_or_else(|| {
-				RouteLoaderError::with_status(
-					format!("route loader `{}` is missing from SSR state", id.as_str()),
-					500,
-				)
-			})?;
+			let value = hydration
+				.get_route_loader_state(id.as_str())
+				.ok_or_else(|| {
+					RouteLoaderError::with_status(
+						format!("route loader `{}` is missing from SSR state", id.as_str()),
+						500,
+					)
+				})?;
+			self.registry
+				.seed_hydrated_query(*id, &loader_context, &hydration)?;
 			let prepared = self.registry.hydrate(*id, value)?;
 			store.insert_prepared(prepared);
 		}

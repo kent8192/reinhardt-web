@@ -33,11 +33,13 @@ use sha2::{Digest, Sha256};
 use super::Signal;
 use super::hooks::async_action::{Action, use_action};
 use super::resource::ResourceState;
-use crate::cancellation::{AbortableTaskGuard, CancellationSource, scope_cancellation};
+use crate::cancellation::{
+	AbortableTaskGuard, CancellationHandle, CancellationSource, scope_cancellation,
+};
 use reinhardt_core::reactive::{ReactiveScope, ScopeId, scope::enter_scope};
 
 type QueryFuture<T, E> = Pin<Box<dyn Future<Output = Result<T, E>> + 'static>>;
-type QueryFetcher<T, E> = dyn Fn() -> QueryFuture<T, E> + 'static;
+type QueryFetcher<T, E> = dyn Fn(CancellationHandle) -> QueryFuture<T, E> + 'static;
 
 const DEFAULT_STALE_TIME: Duration = Duration::from_secs(30);
 const DEFAULT_GC_TIME: Duration = Duration::from_secs(5 * 60);
@@ -86,9 +88,18 @@ impl<T, E> QueryKey<T, E> {
 		F: Fn() -> Fut + 'static,
 		Fut: Future<Output = Result<T, E>> + 'static,
 	{
+		Self::new_with_cancellation(id, move |_| fetcher())
+	}
+
+	pub(crate) fn new_with_cancellation<Id, F, Fut>(id: Id, fetcher: F) -> Self
+	where
+		Id: Into<String>,
+		F: Fn(CancellationHandle) -> Fut + 'static,
+		Fut: Future<Output = Result<T, E>> + 'static,
+	{
 		Self {
 			id: id.into(),
-			fetcher: Rc::new(move || Box::pin(fetcher())),
+			fetcher: Rc::new(move |cancellation| Box::pin(fetcher(cancellation))),
 			stale_time: DEFAULT_STALE_TIME,
 			gc_time: DEFAULT_GC_TIME,
 			ssr_prefetch: true,
@@ -279,7 +290,15 @@ impl<T: Clone + 'static, E: Clone + 'static> QueryEntry<T, E> {
 		T: Serialize + DeserializeOwned,
 		E: Serialize + DeserializeOwned,
 	{
-		let (initial_state, last_fetched_ms) = initial_query_state(hydrated_query_state(&key.id));
+		let hydrated_state = hydrated_query_state(&key.id);
+		Self::new_with_hydrated_state(key, hydrated_state)
+	}
+
+	fn new_with_hydrated_state(
+		key: QueryKey<T, E>,
+		hydrated_state: Option<ResourceState<T, E>>,
+	) -> Self {
+		let (initial_state, last_fetched_ms) = initial_query_state(hydrated_state);
 		let id = key.id;
 		let scope = Rc::new(ReactiveScope::new());
 		let (state, is_fetching) = scope.enter(|| (Signal::new(initial_state), Signal::new(false)));
@@ -458,12 +477,13 @@ impl<T: Clone + 'static, E: Clone + 'static> QueryEntry<T, E> {
 		let entry = Rc::clone(self);
 		let fetch_entry = Rc::clone(&entry);
 		let scope = entry._scope.id();
+		let fetch_cancellation = token.clone();
 		let scoped = ScopedQueryFuture {
 			scope,
 			future: Box::pin(async move {
 				let result = scope_cancellation(token, async move {
 					let fetcher = fetch_entry.fetcher.borrow().clone();
-					fetcher().await
+					fetcher(fetch_cancellation).await
 				})
 				.await;
 				entry.complete_fetch(generation, result);
@@ -574,6 +594,50 @@ where
 	E: Clone + Serialize + DeserializeOwned + 'static,
 {
 	query_entry(key).acquire(options)
+}
+
+pub(crate) fn seed_query_from_serialized<T, E>(
+	key: QueryKey<T, E>,
+	serialized: &serde_json::Value,
+) -> Result<(), serde_json::Error>
+where
+	T: Clone + Serialize + DeserializeOwned + 'static,
+	E: Clone + Serialize + DeserializeOwned + 'static,
+{
+	let hydrated_state = serde_json::from_value(serialized.clone())?;
+	let id = key.id.clone();
+	#[cfg(any(wasm, test))]
+	super::resource::reserve_client_resource_key(&id);
+	let cache_id = scoped_query_cache_id(&id);
+	QUERY_CACHE.with(|cache| {
+		let mut cache = cache.borrow_mut();
+		if let Some(cached) = cache.get(&cache_id) {
+			let _entry = Rc::clone(&cached.typed)
+				.downcast::<QueryEntry<T, E>>()
+				.unwrap_or_else(|_| {
+					panic!("query cache key `{id}` was reused with incompatible types")
+				});
+			return;
+		}
+
+		let entry = Rc::new(QueryEntry::new_with_hydrated_state(
+			key,
+			Some(hydrated_state),
+		));
+		cache.insert(
+			cache_id,
+			CachedQueryEntry {
+				typed: entry.clone(),
+				refetch: Rc::new({
+					let entry = Rc::clone(&entry);
+					move || {
+						entry.start_fetch(true);
+					}
+				}),
+			},
+		);
+	});
+	Ok(())
 }
 
 /// Current phase of a query.
@@ -853,7 +917,14 @@ where
 			let fetcher = entry.fetcher.borrow().clone();
 			context.borrow_mut().register_resource_with_owner(
 				entry.id.clone(),
-				move || fetcher(),
+				move || {
+					let source = CancellationSource::new();
+					let cancellation = source.handle();
+					async move {
+						let _source = source;
+						fetcher(cancellation).await
+					}
+				},
 				entry.state,
 				Some(Rc::clone(&entry._scope)),
 			);
@@ -1068,7 +1139,7 @@ pub(crate) fn clear_query_cache_for_test() {
 
 #[cfg(all(test, not(wasm)))]
 mod tests {
-	use std::cell::Cell;
+	use std::cell::{Cell, RefCell};
 	use std::collections::VecDeque;
 	use std::future::Future;
 	use std::pin::Pin;
@@ -1260,6 +1331,73 @@ mod tests {
 				entry.state.with_untracked(|state| state.clone()),
 				ResourceState::Success("shared".to_string())
 			);
+			assert_eq!(
+				tokio_test::block_on(second.result()),
+				Ok("shared".to_string())
+			);
+			assert_eq!(dropped.get(), 1);
+		});
+	}
+
+	#[test]
+	#[serial(query_cache)]
+	fn shared_fetch_receives_the_query_request_cancellation_handle() {
+		ReactiveScope::run(|| {
+			// Arrange
+			clear_query_cache_for_test();
+			let tasks = Rc::new(RefCell::new(VecDeque::new()));
+			let tasks_for_sink = Rc::clone(&tasks);
+			let _sink = crate::platform::install_task_sink(move |task| {
+				tasks_for_sink.borrow_mut().push_back(task);
+			});
+			let ready = Rc::new(Cell::new(false));
+			let dropped = Rc::new(Cell::new(0));
+			let observed_cancellation = Rc::new(RefCell::new(None));
+			let key: QueryKey<String, String> =
+				QueryKey::new_with_cancellation("shared-request-cancellation", {
+					let ready = Rc::clone(&ready);
+					let dropped = Rc::clone(&dropped);
+					let observed_cancellation = Rc::clone(&observed_cancellation);
+					move |cancellation| {
+						observed_cancellation.borrow_mut().replace(cancellation);
+						TestGate {
+							ready: Rc::clone(&ready),
+							dropped: Rc::clone(&dropped),
+							result: Some(Ok("shared".to_string())),
+						}
+					}
+				});
+			let first = acquire_query(
+				key.clone(),
+				QueryAcquireOptions {
+					consumer: QueryConsumer::Prefetch,
+					error_policy: QueryErrorPolicy::Discard,
+				},
+			);
+			let second = acquire_query(
+				key,
+				QueryAcquireOptions {
+					consumer: QueryConsumer::Navigation(2),
+					error_policy: QueryErrorPolicy::Discard,
+				},
+			);
+			assert_eq!(poll_one_task(&tasks), Poll::Pending);
+
+			// Act
+			drop(first);
+			let cancellation = observed_cancellation
+				.borrow()
+				.as_ref()
+				.expect("the shared fetch receives a cancellation handle")
+				.clone();
+
+			// Assert
+			assert!(
+				!cancellation.is_cancelled(),
+				"the remaining lease keeps the shared request cancellation alive"
+			);
+			ready.set(true);
+			assert_eq!(poll_one_task(&tasks), Poll::Ready(()));
 			assert_eq!(
 				tokio_test::block_on(second.result()),
 				Ok("shared".to_string())

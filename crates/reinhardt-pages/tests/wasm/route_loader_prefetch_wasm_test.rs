@@ -32,6 +32,24 @@ fn prefetched_page(Loader(data): Loader<String>) -> Page {
 		.into_page()
 }
 
+#[loader]
+async fn viewport_prefetched_loader() -> Result<String, String> {
+	PREFETCH_CALLS.with(|calls| calls.set(calls.get() + 1));
+	Ok("VIEWPORT PREFETCHED DATA".to_string())
+}
+
+#[component(
+	"/viewport-prefetched",
+	name = "viewport-prefetched-page",
+	loader = viewport_prefetched_loader
+)]
+fn viewport_prefetched_page(Loader(data): Loader<String>) -> Page {
+	PageElement::new("div")
+		.attr("id", "route-viewport-prefetched")
+		.child(data)
+		.into_page()
+}
+
 fn home_page() -> Page {
 	PageElement::new("div")
 		.attr("id", "route-home")
@@ -48,7 +66,7 @@ fn viewport_home_page() -> Page {
 	PageElement::new("div")
 		.attr("id", "route-viewport-home")
 		.child(
-			Link::new("/prefetched", "Viewport prefetch destination")
+			Link::new("/viewport-prefetched", "Viewport prefetch destination")
 				.attr("id", "viewport-prefetch-link")
 				.prefetch(PrefetchMode::Viewport)
 				.render(),
@@ -90,7 +108,41 @@ fn build_router() -> ClientRouter {
 fn build_viewport_router() -> ClientRouter {
 	ClientRouter::new()
 		.route("home", "/", viewport_home_page)
-		.component(prefetched_page)
+		.component(viewport_prefetched_page)
+}
+
+fn viewport_navigation_home_page() -> Page {
+	PageElement::new("div")
+		.attr("id", "viewport-navigation-home")
+		.child(
+			Link::new("/viewport-next", "Viewport next")
+				.attr("id", "viewport-navigation-link")
+				.prefetch(PrefetchMode::Viewport)
+				.render(),
+		)
+		.into_page()
+}
+
+fn viewport_navigation_next_page() -> Page {
+	PageElement::new("div")
+		.attr("id", "viewport-navigation-next")
+		.child(
+			Link::new("/", "Viewport home")
+				.attr("id", "viewport-navigation-return-link")
+				.prefetch(PrefetchMode::Viewport)
+				.render(),
+		)
+		.into_page()
+}
+
+fn build_viewport_navigation_router() -> ClientRouter {
+	ClientRouter::new()
+		.route("home", "/", viewport_navigation_home_page)
+		.route(
+			"viewport-next",
+			"/viewport-next",
+			viewport_navigation_next_page,
+		)
 }
 
 async fn yield_to_tasks() {
@@ -187,6 +239,96 @@ async fn viewport_prefetch_is_observed_after_the_link_mounts() {
 		yield_to_tasks().await;
 	}
 	assert_eq!(PREFETCH_CALLS.with(Cell::get), 1);
+}
+
+#[wasm_bindgen_test]
+async fn viewport_observer_disconnects_stale_targets_before_a_navigation_rescan() {
+	let root = install_app_root();
+	let window = web_sys::window().expect("window");
+	let key = JsValue::from_str("IntersectionObserver");
+	let original = js_sys::Reflect::get(window.as_ref(), &key).expect("observer value");
+	let observer_constructor = js_sys::Function::new_no_args(
+		r#"
+			return class {
+				constructor() {
+					window.__reinhardtViewportObserverEvents = window.__reinhardtViewportObserverEvents || [];
+					window.__reinhardtViewportObserverEvents.push("construct");
+				}
+				observe(target) {
+					window.__reinhardtViewportObserverEvents.push(`observe:${target.id}`);
+				}
+				disconnect() {
+					window.__reinhardtViewportObserverEvents.push("disconnect");
+				}
+			}
+		"#,
+	)
+	.call0(&JsValue::NULL)
+	.expect("create observer constructor");
+	js_sys::Reflect::set(window.as_ref(), &key, &observer_constructor)
+		.expect("install observer constructor");
+	js_sys::Reflect::set(
+		window.as_ref(),
+		&JsValue::from_str("__reinhardtViewportObserverEvents"),
+		&js_sys::Array::new(),
+	)
+	.expect("reset observer events");
+
+	ClientLauncher::new("#app")
+		.router_client(build_viewport_navigation_router)
+		.launch()
+		.expect("launch");
+	assert!(root.inner_html().contains("viewport-navigation-link"));
+
+	let document = window.document().expect("document");
+	let anchor: web_sys::HtmlElement = document
+		.get_element_by_id("viewport-navigation-link")
+		.expect("viewport navigation link")
+		.dyn_into()
+		.expect("link is HtmlElement");
+	anchor.click();
+	yield_to_tasks().await;
+	yield_to_tasks().await;
+
+	let events: js_sys::Array = js_sys::Reflect::get(
+		window.as_ref(),
+		&JsValue::from_str("__reinhardtViewportObserverEvents"),
+	)
+	.expect("observer events")
+	.dyn_into()
+	.expect("observer events are an array");
+	let values = events
+		.iter()
+		.filter_map(|event| event.as_string())
+		.collect::<Vec<_>>();
+	assert_eq!(
+		values
+			.iter()
+			.filter(|event| event.as_str() == "construct")
+			.count(),
+		2,
+		"each scan owns an observer for its current route DOM: {values:?}"
+	);
+	assert_eq!(
+		values
+			.iter()
+			.filter(|event| event.as_str() == "disconnect")
+			.count(),
+		1,
+		"the first observer must release detached route anchors before the rescan: {values:?}"
+	);
+	assert!(
+		values
+			.iter()
+			.any(|event| event == "observe:viewport-navigation-link")
+	);
+	assert!(
+		values
+			.iter()
+			.any(|event| event == "observe:viewport-navigation-return-link")
+	);
+
+	js_sys::Reflect::set(window.as_ref(), &key, &original).expect("restore observer constructor");
 }
 
 #[wasm_bindgen_test]

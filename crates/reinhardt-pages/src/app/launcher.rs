@@ -121,21 +121,28 @@ impl PersistentLayoutRenderer {
 			.layouts()
 			.iter()
 			.map(|layout| {
-				let id = layout.metadata().loader_id()?;
-				let cache_key = registry
-					.as_ref()
-					.and_then(|registry| registry.get(id).ok())
-					.and_then(|registration| {
-						loader_cache_id(id, &loader_context, registration.inputs).ok()
-					});
-				Some(cache_key.unwrap_or_else(|| {
-					format!(
-						"route-loader:{}:{}?{}",
-						id.as_str(),
-						route_match.path(),
+				if let Some(id) = layout.metadata().loader_id() {
+					let cache_key = registry
+						.as_ref()
+						.and_then(|registry| registry.get(id).ok())
+						.and_then(|registration| {
+							loader_cache_id(id, &loader_context, registration.inputs).ok()
+						});
+					Some(cache_key.unwrap_or_else(|| {
+						format!(
+							"route-loader:{}:{}?{}",
+							id.as_str(),
+							route_match.path(),
+							route_match.query().unwrap_or_default()
+						)
+					}))
+				} else {
+					Some(format!(
+						"route-query:{}?{}",
+						layout.key().full_pattern(),
 						route_match.query().unwrap_or_default()
-					)
-				}))
+					))
+				}
 			})
 			.collect::<Vec<_>>();
 		let mut preserved = common_layout_prefix_len(&self.layout_keys, &next_keys);

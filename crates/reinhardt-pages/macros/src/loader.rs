@@ -65,7 +65,9 @@ fn expand_loader(input: ItemFn) -> syn::Result<proc_macro2::TokenStream> {
 	let block = input.block.clone();
 	let module_name = function_name.clone();
 	let executor_name = format_ident!("__execute", span = function_name.span());
+	let fetcher_name = format_ident!("__fetch", span = function_name.span());
 	let hydrator_name = format_ident!("__hydrate", span = function_name.span());
+	let query_seeder_name = format_ident!("__seed_query", span = function_name.span());
 	let input_specs = signature.args.iter().filter_map(|arg| {
 		let kind = arg.kind?;
 		let name = arg
@@ -141,24 +143,27 @@ fn expand_loader(input: ItemFn) -> syn::Result<proc_macro2::TokenStream> {
 				const ID: #pages_crate::router::RouteLoaderId = #route_loader_id;
 			}
 
+			fn #fetcher_name(
+				__context: #pages_crate::router::request::RouteContext,
+				__cancellation: #pages_crate::CancellationHandle,
+			) -> ::std::pin::Pin<Box<dyn ::std::future::Future<Output = ::std::result::Result<#data, #pages_crate::RouteLoaderError>> + 'static>> {
+				Box::pin(async move {
+					#(#extraction)*
+					super::#function_name(#(#call_args),*).await.map_err(Into::into)
+				})
+			}
+
 			fn #executor_name(
 				__context: &#pages_crate::router::request::RouteContext,
 				__cancellation: #pages_crate::CancellationHandle,
 				__consumer: #pages_crate::router::loader_registry::LoaderConsumer,
 			) -> #pages_crate::router::loader_registry::LoaderFuture {
 				let __context = __context.clone();
-				let __cancellation = __cancellation.clone();
 				Box::pin(async move {
 					let __fetcher = {
-						let __context = __context.clone();
-						let __cancellation = __cancellation.clone();
-						move || {
-							let __context = __context.clone();
-							let __cancellation = __cancellation.clone();
-							Box::pin(async move {
-								#(#extraction)*
-							super::#function_name(#(#call_args),*).await.map_err(Into::into)
-						}) as ::std::pin::Pin<Box<dyn ::std::future::Future<Output = ::std::result::Result<#data, #pages_crate::RouteLoaderError>> + 'static>>
+						let __fetch_context = __context.clone();
+						move |__query_cancellation: #pages_crate::CancellationHandle| {
+							#fetcher_name(__fetch_context.clone(), __query_cancellation)
 						}
 					};
 					#pages_crate::router::loader::acquire_loader_query::<#data>(
@@ -185,6 +190,26 @@ fn expand_loader(input: ItemFn) -> syn::Result<proc_macro2::TokenStream> {
 				)
 			}
 
+			fn #query_seeder_name(
+				__context: &#pages_crate::router::request::RouteContext,
+				__hydration: &#pages_crate::HydrationContext,
+			) -> ::core::result::Result<(), #pages_crate::RouteLoaderError> {
+				let __context = __context.clone();
+				let __fetcher = {
+					let __fetch_context = __context.clone();
+					move |__query_cancellation: #pages_crate::CancellationHandle| {
+						#fetcher_name(__fetch_context.clone(), __query_cancellation)
+					}
+				};
+				#pages_crate::router::loader::seed_loader_query::<#data>(
+					<marker as #pages_crate::RouteLoader>::ID,
+					&__context,
+					INPUTS,
+					__hydration,
+					__fetcher,
+				)
+			}
+
 			#pages_crate::__private::inventory::submit! {
 				#pages_crate::router::loader_registry::LoaderRegistration {
 					id: <marker as #pages_crate::RouteLoader>::ID,
@@ -197,6 +222,13 @@ fn expand_loader(input: ItemFn) -> syn::Result<proc_macro2::TokenStream> {
 				#pages_crate::router::loader_registry::LoaderHydrationRegistration::new(
 					<marker as #pages_crate::RouteLoader>::ID,
 					#hydrator_name,
+				)
+			}
+
+			#pages_crate::__private::inventory::submit! {
+				#pages_crate::router::loader_registry::LoaderQueryHydrationRegistration::new(
+					<marker as #pages_crate::RouteLoader>::ID,
+					#query_seeder_name,
 				)
 			}
 		}

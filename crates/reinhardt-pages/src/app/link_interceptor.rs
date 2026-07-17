@@ -107,33 +107,33 @@ impl LinkInterceptorGuard {
 		else {
 			return;
 		};
+		let mut slot = self.viewport_observer.borrow_mut();
+		if let Some(observer) = slot.take() {
+			observer.observer.disconnect();
+		}
 		if viewport_links.length() == 0 {
 			return;
 		}
 
-		let mut slot = self.viewport_observer.borrow_mut();
-		if slot.is_none() {
-			let callback = Closure::wrap(Box::new(
-				move |entries: js_sys::Array, _observer: web_sys::IntersectionObserver| {
-					for entry in entries.iter() {
-						if let Ok(entry) = entry.dyn_into::<web_sys::IntersectionObserverEntry>()
-							&& entry.is_intersecting()
-						{
-							prefetch_from_target(Some(entry.target().into()));
-						}
+		let callback = Closure::wrap(Box::new(
+			move |entries: js_sys::Array, _observer: web_sys::IntersectionObserver| {
+				for entry in entries.iter() {
+					if let Ok(entry) = entry.dyn_into::<web_sys::IntersectionObserverEntry>()
+						&& entry.is_intersecting()
+					{
+						prefetch_from_target(Some(entry.target().into()));
 					}
-				},
-			) as Box<dyn FnMut(_, _)>);
-			let Ok(observer) =
-				web_sys::IntersectionObserver::new(callback.as_ref().unchecked_ref())
-			else {
-				return;
-			};
-			*slot = Some(ViewportPrefetchObserver {
-				observer,
-				_callback: callback,
-			});
-		}
+				}
+			},
+		) as Box<dyn FnMut(_, _)>);
+		let Ok(observer) = web_sys::IntersectionObserver::new(callback.as_ref().unchecked_ref())
+		else {
+			return;
+		};
+		*slot = Some(ViewportPrefetchObserver {
+			observer,
+			_callback: callback,
+		});
 
 		let observer = &slot
 			.as_ref()

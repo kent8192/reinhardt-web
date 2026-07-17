@@ -2,7 +2,11 @@
 
 use super::loader_registry::LoaderConsumer;
 use crate::cancellation::CancellationHandle;
-use crate::reactive::{QueryAcquireOptions, QueryErrorPolicy, QueryKey, QueryLease, acquire_query};
+use crate::hydration::HydrationContext;
+use crate::reactive::{
+	QueryAcquireOptions, QueryErrorPolicy, QueryKey, QueryLease, acquire_query,
+	seed_query_from_serialized,
+};
 use reinhardt_urls::routers::client_router::{ClientRouteTreeMatch, RouteContext, RouteLoaderId};
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::DeserializeOwned};
 use sha2::{Digest, Sha256};
@@ -622,6 +626,43 @@ pub fn active_loader_store() -> Option<LoaderStore> {
 	ACTIVE_LOADER_STORES.with(|stores| stores.borrow().last().cloned())
 }
 
+/// Seeds the typed query cache entry that backs a hydrated route loader.
+#[doc(hidden)]
+pub fn seed_loader_query<T>(
+	id: RouteLoaderId,
+	context: &RouteContext,
+	specs: &[LoaderInputSpec],
+	hydration: &HydrationContext,
+	fetcher: impl Fn(
+		CancellationHandle,
+	) -> std::pin::Pin<
+		Box<dyn std::future::Future<Output = Result<T, RouteLoaderError>> + 'static>,
+	> + 'static,
+) -> Result<(), RouteLoaderError>
+where
+	T: Clone + Serialize + DeserializeOwned + 'static,
+{
+	let cache_id = loader_cache_id(id, context, specs)
+		.map_err(|error| RouteLoaderError::with_status(error.to_string(), 400))?;
+	let serialized = hydration.get_resource_state(&cache_id).ok_or_else(|| {
+		RouteLoaderError::with_status(
+			format!(
+				"route loader `{}` query state is missing from SSR state",
+				id.as_str()
+			),
+			500,
+		)
+	})?;
+	let key = QueryKey::<T, RouteLoaderError>::new_with_cancellation(cache_id, fetcher);
+	seed_query_from_serialized(key, serialized).map_err(|error| {
+		RouteLoaderError::from_diagnostic(
+			"route loader query hydration state is invalid",
+			Some(500),
+			error,
+		)
+	})
+}
+
 /// Acquires a registered loader using the shared query cache.
 // This is consumed by the generated `#[loader]` executor in the next macro
 // phase; keeping the implementation here makes that executor use the same
@@ -633,7 +674,9 @@ pub async fn acquire_loader_query<T>(
 	specs: &'static [LoaderInputSpec],
 	cancellation: CancellationHandle,
 	consumer: LoaderConsumer,
-	fetcher: impl Fn() -> std::pin::Pin<
+	fetcher: impl Fn(
+		CancellationHandle,
+	) -> std::pin::Pin<
 		Box<dyn std::future::Future<Output = Result<T, RouteLoaderError>> + 'static>,
 	> + 'static,
 ) -> Result<PreparedLoader, RouteLoaderError>
@@ -648,7 +691,10 @@ where
 		//
 		// Ideal implementation (without this fallback):
 		//   acquire_query(key, options).result().await
-		let value = crate::cancellation::scope_cancellation(cancellation, fetcher()).await?;
+		let fetch_cancellation = cancellation.clone();
+		let value =
+			crate::cancellation::scope_cancellation(cancellation, fetcher(fetch_cancellation))
+				.await?;
 		let serialized = serde_json::to_value(&value).map_err(|error| {
 			RouteLoaderError::from_diagnostic("loader value serialization failed", Some(500), error)
 		})?;
@@ -656,7 +702,7 @@ where
 	}
 	let cache_id = loader_cache_id(id, context, specs)
 		.map_err(|error| RouteLoaderError::with_status(error.to_string(), 400))?;
-	let key = QueryKey::<T, RouteLoaderError>::new(cache_id, fetcher);
+	let key = QueryKey::<T, RouteLoaderError>::new_with_cancellation(cache_id, fetcher);
 	let lease = acquire_query(
 		key,
 		QueryAcquireOptions {
@@ -674,14 +720,27 @@ where
 	let serialized = serde_json::to_value(&value).map_err(|error| {
 		RouteLoaderError::from_diagnostic("loader value serialization failed", Some(500), error)
 	})?;
-	let _ = cancellation;
 	Ok(PreparedLoader::new(id, value, serialized, lease))
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[cfg(native)]
+	use crate::reactive::query::clear_query_cache_for_test;
+	#[cfg(native)]
+	use crate::reactive::{QueryConsumer, ResourceState};
+	#[cfg(native)]
+	use crate::{HydrationContext, SsrState};
+	#[cfg(native)]
+	use reinhardt_core::reactive::ReactiveScope;
+	#[cfg(native)]
+	use serial_test::serial;
+	#[cfg(native)]
+	use std::cell::Cell;
 	use std::collections::HashMap;
+	#[cfg(native)]
+	use std::rc::Rc;
 
 	fn context(path_params: &[(&str, &str)], query: &str) -> RouteContext {
 		RouteContext::new(
@@ -789,5 +848,63 @@ mod tests {
 			assert!(active_loader_store().is_some());
 		});
 		assert!(active_loader_store().is_none());
+	}
+
+	#[cfg(native)]
+	#[test]
+	#[serial(query_cache)]
+	fn hydration_seed_keeps_route_loader_query_fresh_without_refetching() {
+		ReactiveScope::run(|| {
+			// Arrange
+			clear_query_cache_for_test();
+			let route_context = context(&[("project_id", "42")], "tab=open");
+			let loader_id = RouteLoaderId::new("tests::hydrated_loader");
+			let inputs = [
+				LoaderInputSpec::path("project_id"),
+				LoaderInputSpec::query("tab"),
+			];
+			let cache_id = loader_cache_id(loader_id, &route_context, &inputs).expect("cache key");
+			let mut state = SsrState::new();
+			state.add_route_loader_query_state(&cache_id, "SSR loader value");
+			let hydration = HydrationContext::from_state(state);
+			let fetches = Rc::new(Cell::new(0));
+
+			seed_loader_query::<String>(loader_id, &route_context, &inputs, &hydration, {
+				let fetches = Rc::clone(&fetches);
+				move |_cancellation| {
+					let fetches = Rc::clone(&fetches);
+					Box::pin(async move {
+						fetches.set(fetches.get() + 1);
+						Ok::<_, RouteLoaderError>("client refetch".to_string())
+					})
+				}
+			})
+			.expect("seeded SSR query");
+
+			// Act
+			let lease = acquire_query(
+				QueryKey::new_with_cancellation(cache_id, {
+					let fetches = Rc::clone(&fetches);
+					move |_cancellation| {
+						let fetches = Rc::clone(&fetches);
+						async move {
+							fetches.set(fetches.get() + 1);
+							Ok::<_, RouteLoaderError>("client refetch".to_string())
+						}
+					}
+				}),
+				QueryAcquireOptions {
+					consumer: QueryConsumer::Navigation(1),
+					error_policy: QueryErrorPolicy::Discard,
+				},
+			);
+
+			// Assert
+			let ResourceState::Success(value) = lease.state() else {
+				panic!("the seeded query must expose its SSR success state");
+			};
+			assert_eq!(value, "SSR loader value");
+			assert_eq!(fetches.get(), 0, "the hydrated query must remain fresh");
+		});
 	}
 }

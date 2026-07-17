@@ -1,6 +1,7 @@
 //! Inventory-backed route-loader registration and erased execution.
 
 use super::loader::{LoaderInputSpec, PreparedLoader, RouteLoaderError};
+use crate::HydrationContext;
 use crate::cancellation::CancellationHandle;
 use crate::reactive::QueryConsumer;
 use reinhardt_urls::routers::client_router::{RouteContext, RouteLoaderId};
@@ -51,6 +52,9 @@ pub type LoaderExecutor = fn(&RouteContext, CancellationHandle, LoaderConsumer) 
 /// client hydration.
 pub type LoaderHydrator = fn(&serde_json::Value) -> Result<PreparedLoader, RouteLoaderError>;
 
+/// Erased query-cache seeder used during route-loader hydration.
+pub type LoaderQuerySeeder = fn(&RouteContext, &HydrationContext) -> Result<(), RouteLoaderError>;
+
 /// Static registration record for one route loader.
 pub struct LoaderRegistration {
 	/// Stable loader identifier.
@@ -95,6 +99,24 @@ impl LoaderHydrationRegistration {
 
 inventory::collect!(LoaderHydrationRegistration);
 
+/// Static query-cache seeding registration generated alongside a `#[loader]`
+/// marker.
+pub struct LoaderQueryHydrationRegistration {
+	/// Stable loader identifier.
+	pub id: RouteLoaderId,
+	/// Seeds the matching typed query-cache entry from SSR state.
+	pub seed_query: LoaderQuerySeeder,
+}
+
+impl LoaderQueryHydrationRegistration {
+	/// Creates a query-cache seeding registration.
+	pub const fn new(id: RouteLoaderId, seed_query: LoaderQuerySeeder) -> Self {
+		Self { id, seed_query }
+	}
+}
+
+inventory::collect!(LoaderQueryHydrationRegistration);
+
 /// Duplicate or lookup errors in the loader registry.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum LoaderRegistryError {
@@ -123,6 +145,7 @@ impl std::error::Error for LoaderRegistryError {}
 pub struct LoaderRegistry {
 	entries: HashMap<RouteLoaderId, &'static LoaderRegistration>,
 	hydrators: HashMap<RouteLoaderId, LoaderHydrator>,
+	query_seeders: HashMap<RouteLoaderId, LoaderQuerySeeder>,
 }
 
 impl LoaderRegistry {
@@ -140,6 +163,7 @@ impl LoaderRegistry {
 		Ok(Self {
 			entries: indexed,
 			hydrators: HashMap::new(),
+			query_seeders: HashMap::new(),
 		})
 	}
 
@@ -150,6 +174,11 @@ impl LoaderRegistry {
 			registry
 				.hydrators
 				.insert(registration.id, registration.hydrate);
+		}
+		for registration in inventory::iter::<LoaderQueryHydrationRegistration> {
+			registry
+				.query_seeders
+				.insert(registration.id, registration.seed_query);
 		}
 		Ok(registry)
 	}
@@ -192,6 +221,26 @@ impl LoaderRegistry {
 			)
 		})?;
 		hydrate(value)
+	}
+
+	/// Seeds the typed query cache for one hydrated route loader.
+	#[doc(hidden)]
+	pub fn seed_hydrated_query(
+		&self,
+		id: RouteLoaderId,
+		context: &RouteContext,
+		hydration: &HydrationContext,
+	) -> Result<(), RouteLoaderError> {
+		let seed_query = self.query_seeders.get(&id).ok_or_else(|| {
+			RouteLoaderError::with_status(
+				format!(
+					"route loader `{}` has no hydration query seeder",
+					id.as_str()
+				),
+				500,
+			)
+		})?;
+		seed_query(context, hydration)
 	}
 }
 

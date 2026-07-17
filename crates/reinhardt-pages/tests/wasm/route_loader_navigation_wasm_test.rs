@@ -88,6 +88,26 @@ fn persistent_leaf() -> Page {
 		.into_page()
 }
 
+#[layout(
+	"/query-persistent/",
+	name = "loader-navigation-query-persistent-layout"
+)]
+fn query_persistent_layout(Query(tab): Query<String>, outlet: Outlet) -> Page {
+	PageElement::new("section")
+		.attr("id", "query-persistent-layout")
+		.child(format!("QUERY LAYOUT: {tab}"))
+		.child(outlet.into_page())
+		.into_page()
+}
+
+#[component("view/", name = "loader-navigation-query-persistent-leaf")]
+fn query_persistent_leaf() -> Page {
+	PageElement::new("div")
+		.attr("id", "query-persistent-leaf")
+		.child("QUERY LEAF")
+		.into_page()
+}
+
 #[loader]
 async fn slow_loader() -> Result<String, String> {
 	gloo_timers::future::TimeoutFuture::new(30).await;
@@ -157,6 +177,14 @@ fn build_persistent_layout_router() -> ClientRouter {
 	ClientRouter::new().routes(|routes| {
 		routes.layout(persistent_layout, |children| {
 			children.component(persistent_leaf)
+		})
+	})
+}
+
+fn build_query_persistent_layout_router() -> ClientRouter {
+	ClientRouter::new().routes(|routes| {
+		routes.layout(query_persistent_layout, |children| {
+			children.component(query_persistent_leaf)
 		})
 	})
 }
@@ -382,4 +410,22 @@ async fn persistent_layout_remounts_when_its_loader_query_input_changes() {
 	yield_to_tasks().await;
 	yield_to_tasks().await;
 	assert!(root.inner_html().contains("LAYOUT: two"));
+}
+
+#[wasm_bindgen_test]
+async fn persistent_layout_remounts_when_its_query_prop_changes_without_a_loader() {
+	let root = install_app_root_at("/query-persistent/view/?tab=one");
+	ClientLauncher::new("#app")
+		.router_client(build_query_persistent_layout_router)
+		.launch()
+		.expect("launch");
+	assert!(root.inner_html().contains("QUERY LAYOUT: one"));
+
+	RouterHandle
+		.replace("/query-persistent/view/?tab=two")
+		.expect("query navigation starts");
+	yield_to_tasks().await;
+	yield_to_tasks().await;
+
+	assert!(root.inner_html().contains("QUERY LAYOUT: two"));
 }
