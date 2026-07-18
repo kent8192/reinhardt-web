@@ -87,6 +87,10 @@ mod migration_overwrite_prevention_test;
 #[path = "migrations/macro_unique_together_integration.rs"]
 mod macro_unique_together_integration;
 
+// Native model-enum migration metadata (issue #5593)
+#[path = "migrations/model_enum_migration_integration.rs"]
+mod model_enum_migration_integration;
+
 // SQLite AddColumn atomic-history regression tests (reinhardt-web#4447)
 #[path = "migrations/sqlite_add_column_atomic.rs"]
 mod sqlite_add_column_atomic;

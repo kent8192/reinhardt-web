@@ -70,7 +70,7 @@ fn reactive_activity_mode_updates_wrapper_without_recreating_content() {
 				.content({
 					let handler_calls = Rc::clone(&handler_calls);
 					move || {
-						let handler_calls = Rc::clone(&handler_calls);
+						let handler_calls_for_event = Rc::clone(&handler_calls);
 						PageElement::new("input")
 							.attr("id", "activity-owned-input")
 							.attr("value", "initial")
@@ -79,7 +79,7 @@ fn reactive_activity_mode_updates_wrapper_without_recreating_content() {
 								Arc::new(move |_| {
 									let signal = Signal::new(1_i32);
 									assert_eq!(signal.get(), 1);
-									handler_calls.set(handler_calls.get() + 1);
+									handler_calls_for_event.set(handler_calls_for_event.get() + 1);
 								}),
 							)
 							.into_page()

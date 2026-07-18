@@ -15,10 +15,13 @@
 //! object tracking, identity mapping, and transaction management.
 
 use super::transaction::Transaction;
+use crate::orm::FieldCodecError;
+use crate::orm::field_codec::database_value_to_query_value;
 use crate::orm::inspection::FieldInfo;
 use crate::orm::model::Model;
 use crate::orm::query::OrmQuery;
 use crate::orm::query_types::DbBackend;
+use base64::Engine;
 use reinhardt_query::value::Value as RValue;
 use reinhardt_query::{
 	Alias, Expr, ExprTrait, MySqlQueryBuilder, PostgresQueryBuilder, Query as RQuery,
@@ -28,13 +31,14 @@ use serde_json::Value;
 use sqlx::{AnyPool, Row};
 use std::any::TypeId;
 use std::borrow::Cow;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
+#[cfg(test)]
 use uuid::Uuid;
 
 /// Session error types
 #[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum SessionError {
 	/// Database error occurred
 	DatabaseError(String),
@@ -44,6 +48,8 @@ pub enum SessionError {
 	TransactionError(String),
 	/// Serialization/deserialization error
 	SerializationError(String),
+	/// Model database field codec error
+	FieldCodec(FieldCodecError),
 	/// Invalid state
 	InvalidState(String),
 	/// Flush operation error
@@ -57,22 +63,42 @@ impl std::fmt::Display for SessionError {
 			Self::ObjectNotFound(msg) => write!(f, "Object not found: {}", msg),
 			Self::TransactionError(msg) => write!(f, "Transaction error: {}", msg),
 			Self::SerializationError(msg) => write!(f, "Serialization error: {}", msg),
+			Self::FieldCodec(error) => write!(f, "Field codec error: {}", error),
 			Self::InvalidState(msg) => write!(f, "Invalid state: {}", msg),
 			Self::FlushError(msg) => write!(f, "Flush error: {}", msg),
 		}
 	}
 }
 
-impl std::error::Error for SessionError {}
+impl std::error::Error for SessionError {
+	fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+		match self {
+			Self::FieldCodec(error) => Some(error),
+			_ => None,
+		}
+	}
+}
+
+impl From<FieldCodecError> for SessionError {
+	fn from(error: FieldCodecError) -> Self {
+		Self::FieldCodec(error)
+	}
+}
 
 /// Identity map entry storing tracked objects
 struct IdentityEntry {
 	/// The serialized object data
 	data: Value,
+	/// Canonical database field data used by type-erased flush processing.
+	database_data: BTreeMap<String, crate::orm::DatabaseValue>,
 	/// Type ID for runtime type checking
 	type_id: TypeId,
 	/// Model field metadata used by type-erased flush processing
 	field_metadata: Vec<FieldInfo>,
+	/// Rust model field name for the primary key.
+	primary_key_field: String,
+	/// Resolved database column name for the primary key.
+	primary_key_column: String,
 	/// Nullable JSON fields whose model value is `None` and must be written as SQL NULL.
 	sql_null_json_fields: HashSet<String>,
 	/// Database-generated columns that must be omitted from INSERT/UPDATE writes.
@@ -81,6 +107,13 @@ struct IdentityEntry {
 	// Allow dead_code: dirty tracking flag set internally, read by future flush/commit logic
 	#[allow(dead_code)]
 	is_dirty: bool,
+}
+
+#[derive(Clone)]
+struct PendingDelete {
+	table_name: &'static str,
+	primary_key_column: String,
+	primary_key_value: crate::orm::DatabaseValue,
 }
 
 /// SQLAlchemy-style ORM session with identity map and unit of work
@@ -114,8 +147,8 @@ pub struct Session {
 	identity_map: HashMap<String, IdentityEntry>,
 	/// Set of object keys that have been modified
 	dirty_objects: HashSet<String>,
-	/// Set of object keys marked for deletion
-	deleted_objects: HashSet<String>,
+	/// Objects marked for deletion with canonical primary-key carriers.
+	deleted_objects: HashMap<String, PendingDelete>,
 	/// Whether session is closed
 	is_closed: bool,
 	/// Counter for generating temporary keys for new objects
@@ -148,7 +181,7 @@ impl Session {
 			transaction: None,
 			identity_map: HashMap::new(),
 			dirty_objects: HashSet::new(),
-			deleted_objects: HashSet::new(),
+			deleted_objects: HashMap::new(),
 			is_closed: false,
 			new_object_counter: 0,
 			last_generated_ids: Vec::new(),
@@ -225,13 +258,16 @@ impl Session {
 
 		let data = serde_json::to_value(&obj)
 			.map_err(|e| SessionError::SerializationError(e.to_string()))?;
+		let database_data = encode_model_database_data(&obj)?;
 		let field_metadata = T::field_metadata();
+		let primary_key_field = T::primary_key_field().to_string();
+		let primary_key_column = primary_key_field_info(&field_metadata, T::primary_key_field())
+			.and_then(|field| field.db_column.clone())
+			.unwrap_or_else(|| primary_key_field.clone());
 		let sql_null_json_fields = field_metadata
 			.iter()
 			.filter(|field| {
-				field.nullable
-					&& is_json_field_type(&field.field_type)
-					&& obj.field_is_none(&field.name)
+				field.nullable && is_json_or_array_field(field) && obj.field_is_none(&field.name)
 			})
 			.map(|field| field.name.clone())
 			.collect();
@@ -240,8 +276,11 @@ impl Session {
 			key.clone(),
 			IdentityEntry {
 				data,
+				database_data,
 				type_id: TypeId::of::<T>(),
 				field_metadata,
+				primary_key_field,
+				primary_key_column,
 				sql_null_json_fields,
 				generated_fields: T::generated_field_names()
 					.iter()
@@ -336,16 +375,39 @@ impl Session {
 		}
 
 		// Build SELECT query using reinhardt_query
-		let pk_field = T::primary_key_field();
+		let pk_field = primary_key_field_info(&field_metadata, T::primary_key_field());
+		let pk_column = pk_field
+			.and_then(|field| field.db_column.as_deref())
+			.unwrap_or_else(|| {
+				pk_field.map_or(T::primary_key_field(), |field| field.name.as_str())
+			});
 		let mut select_query = RQuery::select();
 		select_query.from(Alias::new(T::table_name()));
 
 		// Add all fields to SELECT
 		for field in &field_metadata {
 			let column_name = field.db_column.as_deref().unwrap_or(&field.name);
-			if is_json_field_type(&field.field_type) {
+			if is_json_or_array_field(field) {
 				select_query.expr_as(
-					Expr::cust(json_select_column_sql(self.db_backend, column_name)),
+					Expr::cust(json_or_array_select_column_sql(
+						self.db_backend,
+						field,
+						column_name,
+					)),
+					Alias::new(column_name),
+				);
+			} else if is_temporal_field_type(&field.field_type) {
+				select_query.expr_as(
+					Expr::cust(temporal_select_column_sql(
+						self.db_backend,
+						column_name,
+						&field.field_type,
+					)),
+					Alias::new(column_name),
+				);
+			} else if field.field_type.contains("DecimalField") {
+				select_query.expr_as(
+					Expr::cust(decimal_select_column_sql(self.db_backend, column_name)),
 					Alias::new(column_name),
 				);
 			} else {
@@ -354,7 +416,7 @@ impl Session {
 		}
 
 		// Add WHERE clause for primary key
-		select_query.and_where(Expr::col(Alias::new(pk_field)).eq(id.to_string()));
+		select_query.and_where(Expr::col(Alias::new(pk_column)).eq(id.to_string()));
 
 		// Build SQL query based on backend
 		let sql = match self.db_backend {
@@ -383,7 +445,7 @@ impl Session {
 
 			// Extract value from row based on field type
 			let value: serde_json::Value = match field.field_type.as_str() {
-				typ if typ.contains("JsonField") => match decode_json_field_value(
+				_ if is_json_or_array_field(field) => match decode_json_field_value(
 					&row,
 					T::table_name(),
 					&key,
@@ -467,6 +529,26 @@ impl Session {
 							.unwrap_or(serde_json::Value::Null)
 					}
 				}
+				typ if typ.contains("DecimalField") => {
+					decimal_row_value(&row, column_name, field.nullable)
+				}
+				typ if typ.contains("BinaryField") => {
+					let bytes = if field.nullable {
+						row.try_get::<Option<Vec<u8>>, _>(column_name)
+							.ok()
+							.flatten()
+					} else {
+						row.try_get::<Vec<u8>, _>(column_name).ok()
+					};
+					bytes
+						.map(|bytes| {
+							Value::String(base64::engine::general_purpose::STANDARD.encode(bytes))
+						})
+						.unwrap_or(Value::Null)
+				}
+				typ if is_temporal_field_type(typ) => {
+					temporal_row_value(&row, column_name, field.nullable)
+				}
 				// Add more type mappings as needed
 				_ => serde_json::Value::Null,
 			};
@@ -478,24 +560,34 @@ impl Session {
 		let data = serde_json::Value::Object(json_map);
 		let json_null_fields =
 			json_null_fields_for_data(&data, &field_metadata, &sql_null_json_fields);
-		let obj: T =
-			super::json::deserialize_model_value(data, &json_null_fields).map_err(|e| {
-				SessionError::SerializationError(format!(
-					"Failed to deserialize query result: {}",
-					e
-				))
-			})?;
+		let native_json_fields = field_metadata
+			.iter()
+			.filter(|field| is_json_or_array_field(field))
+			.map(|field| field.name.clone())
+			.collect();
+		let obj: T = super::json::deserialize_model_row(
+			data.clone(),
+			json_null_fields.clone(),
+			native_json_fields,
+		)
+		.map_err(SessionError::FieldCodec)?;
 
 		// Add to identity map
 		let obj_data = serde_json::to_value(&obj)
 			.map_err(|e| SessionError::SerializationError(e.to_string()))?;
+		let database_data = encode_model_database_data(&obj)?;
 
 		self.identity_map.insert(
 			key.clone(),
 			IdentityEntry {
 				data: obj_data,
+				database_data,
 				type_id: TypeId::of::<T>(),
 				field_metadata: field_metadata.clone(),
+				primary_key_field: T::primary_key_field().to_string(),
+				primary_key_column: primary_key_field_info(&field_metadata, T::primary_key_field())
+					.and_then(|field| field.db_column.clone())
+					.unwrap_or_else(|| T::primary_key_field().to_string()),
 				sql_null_json_fields,
 				generated_fields: T::generated_field_names()
 					.iter()
@@ -560,40 +652,18 @@ impl Session {
 			return Ok(Vec::new());
 		}
 
-		// Build column expressions for SELECT
-		// DateTime fields are cast to text format for AnyPool compatibility
-		// (SQLx AnyPool doesn't support PostgreSQL's TIMESTAMP type)
+		// Build column expressions for SELECT.
 		let mut column_exprs: Vec<String> = Vec::new();
 		for field in &field_metadata {
 			let column_name = field.db_column.as_deref().unwrap_or(&field.name);
-			let is_json = is_json_field_type(&field.field_type);
-			let is_datetime = field.field_type.contains("DateTimeField")
-				|| field.field_type.contains("DateField");
+			let is_json = is_json_or_array_field(field);
 
 			let expr = if is_json {
-				json_select_column_alias_sql(self.db_backend, column_name)
-			} else if is_datetime {
-				// Cast datetime fields to ISO8601 text format
-				match self.db_backend {
-					DbBackend::Postgres => {
-						format!(
-							"TO_CHAR(\"{}\", 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS \"{}\"",
-							column_name, column_name
-						)
-					}
-					DbBackend::Mysql => {
-						format!(
-							"DATE_FORMAT(`{}`, '%Y-%m-%dT%H:%i:%sZ') AS `{}`",
-							column_name, column_name
-						)
-					}
-					DbBackend::Sqlite => {
-						format!(
-							"strftime('%Y-%m-%dT%H:%M:%SZ', \"{}\") AS \"{}\"",
-							column_name, column_name
-						)
-					}
-				}
+				json_or_array_select_column_alias_sql(self.db_backend, field, column_name)
+			} else if is_temporal_field_type(&field.field_type) {
+				temporal_select_column_alias_sql(self.db_backend, column_name, &field.field_type)
+			} else if field.field_type.contains("DecimalField") {
+				decimal_select_column_alias_sql(self.db_backend, column_name)
 			} else {
 				// Regular column
 				match self.db_backend {
@@ -624,8 +694,11 @@ impl Session {
 
 		let mut results = Vec::with_capacity(rows.len());
 
+		let primary_key_column = primary_key_field_info(&field_metadata, T::primary_key_field())
+			.and_then(|field| field.db_column.as_deref())
+			.unwrap_or(T::primary_key_field());
 		for row in rows {
-			let row_context = describe_row_context(&row, table_name, T::primary_key_field());
+			let row_context = describe_row_context(&row, table_name, primary_key_column);
 
 			// Build JSON object from row data
 			let mut json_map = serde_json::Map::new();
@@ -635,7 +708,7 @@ impl Session {
 
 				// Extract value from row based on field type
 				let value: serde_json::Value = match field.field_type.as_str() {
-					typ if typ.contains("JsonField") => match decode_json_field_value(
+					_ if is_json_or_array_field(field) => match decode_json_field_value(
 						&row,
 						table_name,
 						&row_context,
@@ -719,16 +792,27 @@ impl Session {
 								.unwrap_or(serde_json::Value::Null)
 						}
 					}
-					// DateTimeField / DateField: already cast to string in SQL query
-					typ if typ.contains("DateTimeField") || typ.contains("DateField") => {
-						// These fields are cast to ISO8601 strings in the SQL query
-						// The value will be parsed by serde when deserializing to chrono::DateTime
-						row.try_get::<Option<String>, _>(column_name)
-							.map(|v| {
-								v.map(serde_json::Value::from)
-									.unwrap_or(serde_json::Value::Null)
+					typ if typ.contains("DecimalField") => {
+						decimal_row_value(&row, column_name, field.nullable)
+					}
+					typ if typ.contains("BinaryField") => {
+						let bytes = if field.nullable {
+							row.try_get::<Option<Vec<u8>>, _>(column_name)
+								.ok()
+								.flatten()
+						} else {
+							row.try_get::<Vec<u8>, _>(column_name).ok()
+						};
+						bytes
+							.map(|bytes| {
+								Value::String(
+									base64::engine::general_purpose::STANDARD.encode(bytes),
+								)
 							})
-							.unwrap_or(serde_json::Value::Null)
+							.unwrap_or(Value::Null)
+					}
+					typ if is_temporal_field_type(typ) => {
+						temporal_row_value(&row, column_name, field.nullable)
 					}
 					// Default: try as string
 					_ => row
@@ -747,13 +831,14 @@ impl Session {
 			let data = serde_json::Value::Object(json_map);
 			let json_null_fields =
 				json_null_fields_for_data(&data, &field_metadata, &sql_null_json_fields);
+			let native_json_fields = field_metadata
+				.iter()
+				.filter(|field| is_json_or_array_field(field))
+				.map(|field| field.name.clone())
+				.collect();
 			let obj: T =
-				super::json::deserialize_model_value(data, &json_null_fields).map_err(|e| {
-					SessionError::SerializationError(format!(
-						"Failed to deserialize query result: {}",
-						e
-					))
-				})?;
+				super::json::deserialize_model_row(data, json_null_fields, native_json_fields)
+					.map_err(SessionError::FieldCodec)?;
 
 			results.push(obj);
 		}
@@ -844,12 +929,16 @@ impl Session {
 					continue;
 				}
 				let table_name = parts[0];
+				let primary_key_field = entry.primary_key_field.clone();
+				let primary_key_column = entry.primary_key_column.clone();
 
-				// Extract data from JSON
-				if let Some(obj) = entry.data.as_object() {
+				{
+					let obj = &entry.database_data;
 					// Check if this is an INSERT (no primary key) or UPDATE (has primary key)
-					// The "id" field must exist AND not be null for UPDATE
-					let has_pk = obj.get("id").map(|v| !v.is_null()).unwrap_or(false);
+					let has_pk = obj
+						.get(&primary_key_field)
+						.map(|value| !matches!(value, crate::orm::DatabaseValue::Null))
+						.unwrap_or(false);
 
 					if has_pk {
 						// UPDATE existing record
@@ -859,6 +948,9 @@ impl Session {
 
 						// Set all columns except primary key and auto-managed datetime fields
 						for (col_name, col_value) in obj {
+							if col_name == &primary_key_field {
+								continue;
+							}
 							let field_info = find_field_info(&entry.field_metadata, col_name);
 							let column_name = flush_column_name(col_name, field_info);
 							if should_skip_flush_column(col_name, column_name, field_info) {
@@ -868,18 +960,14 @@ impl Session {
 								continue;
 							}
 							// Skip null auto-managed datetime fields to let database defaults remain.
-							if col_value.is_null()
+							if matches!(col_value, crate::orm::DatabaseValue::Null)
 								&& is_auto_managed_datetime_column(col_name, column_name)
 							{
 								continue;
 							}
 							update_stmt.value(
 								Alias::new(column_name),
-								json_to_reinhardt_query_value_for_field(
-									col_value,
-									field_info,
-									entry.sql_null_json_fields.contains(col_name),
-								),
+								database_value_to_query_value(col_value.clone()),
 							);
 							has_update_values = true;
 						}
@@ -889,11 +977,11 @@ impl Session {
 						}
 
 						// Add WHERE clause for primary key
-						if let Some(pk_value) = obj.get("id") {
-							update_stmt.and_where(
-								Expr::col(Alias::new("id"))
-									.eq(Expr::val(json_to_reinhardt_query_value(pk_value))),
-							);
+						if let Some(pk_value) = obj.get(&primary_key_field) {
+							update_stmt
+								.and_where(Expr::col(Alias::new(&primary_key_column)).eq(
+									Expr::val(database_value_to_query_value(pk_value.clone())),
+								));
 						}
 
 						// Build and execute SQL
@@ -914,9 +1002,12 @@ impl Session {
 						let mut values_vec: Vec<RValue> = Vec::new();
 
 						for (col_name, col_value) in obj {
+							if col_name == &primary_key_field {
+								continue;
+							}
 							let field_info = find_field_info(&entry.field_metadata, col_name);
 							let column_name = flush_column_name(col_name, field_info);
-							// Skip id/primary key column - auto-generated
+							// Skip the primary key column.
 							if should_skip_flush_column(col_name, column_name, field_info) {
 								continue;
 							}
@@ -925,17 +1016,13 @@ impl Session {
 							}
 							// Skip null datetime fields to let database DEFAULT apply
 							// (e.g., created_at, updated_at with DEFAULT CURRENT_TIMESTAMP)
-							if col_value.is_null()
+							if matches!(col_value, crate::orm::DatabaseValue::Null)
 								&& is_auto_managed_datetime_column(col_name, column_name)
 							{
 								continue;
 							}
 							columns.push(Alias::new(column_name));
-							values_vec.push(json_to_reinhardt_query_value_for_field(
-								col_value,
-								field_info,
-								entry.sql_null_json_fields.contains(col_name),
-							));
+							values_vec.push(database_value_to_query_value(col_value.clone()));
 						}
 
 						if columns.is_empty() {
@@ -954,7 +1041,7 @@ impl Session {
 
 						// Add RETURNING clause for PostgreSQL to get generated ID
 						if backend == DbBackend::Postgres {
-							insert_stmt.returning_col(Alias::new("id"));
+							insert_stmt.returning_col(Alias::new(&primary_key_column));
 						}
 
 						// Build and execute SQL
@@ -968,9 +1055,13 @@ impl Session {
 						if backend == DbBackend::Postgres {
 							if let Ok(row) = self.execute_returning(&sql, &values).await {
 								// Extract the generated ID
-								let generated_id: i64 = row.try_get("id").map_err(|e| {
-									SessionError::FlushError(format!("Failed to extract ID: {}", e))
-								})?;
+								let generated_id: i64 =
+									row.try_get(primary_key_column.as_str()).map_err(|e| {
+										SessionError::FlushError(format!(
+											"Failed to extract ID: {}",
+											e
+										))
+									})?;
 
 								// Track the generated ID for retrieval after flush
 								self.last_generated_ids
@@ -980,6 +1071,7 @@ impl Session {
 								self.update_identity_map_with_generated_id(
 									key,
 									table_name,
+									&primary_key_field,
 									generated_id,
 								)?;
 							}
@@ -994,27 +1086,15 @@ impl Session {
 		self.dirty_objects.clear();
 
 		// Process deleted objects (DELETE)
-		for key in &self.deleted_objects.clone() {
-			// Parse the identity key to get table name and primary key
-			let parts: Vec<&str> = key.split(':').collect();
-			if parts.len() != 2 {
-				continue;
-			}
-			let table_name = parts[0];
-			let pk_value_str = parts[1];
-
+		for (key, pending) in self.deleted_objects.clone() {
 			// Build DELETE statement
 			let mut delete_stmt = RQuery::delete()
-				.from_table(Alias::new(table_name))
+				.from_table(Alias::new(pending.table_name))
 				.to_owned();
 
-			// Parse primary key as integer for BIGINT comparison
-			// Fall back to string comparison if parsing fails
-			if let Ok(pk_int) = pk_value_str.parse::<i64>() {
-				delete_stmt.and_where(Expr::col(Alias::new("id")).eq(Expr::val(pk_int)));
-			} else {
-				delete_stmt.and_where(Expr::col(Alias::new("id")).eq(Expr::val(pk_value_str)));
-			}
+			delete_stmt.and_where(Expr::col(Alias::new(&pending.primary_key_column)).eq(
+				Expr::val(database_value_to_query_value(pending.primary_key_value)),
+			));
 
 			// Build and execute SQL
 			let (sql, values) = match backend {
@@ -1026,7 +1106,7 @@ impl Session {
 			self.execute_with_values(&sql, &values).await?;
 
 			// Remove from identity map
-			self.identity_map.remove(key);
+			self.identity_map.remove(&key);
 		}
 
 		self.deleted_objects.clear();
@@ -1048,13 +1128,21 @@ impl Session {
 		&mut self,
 		old_key: &str,
 		table_name: &str,
+		primary_key_field: &str,
 		generated_id: i64,
 	) -> Result<(), SessionError> {
 		if let Some(mut entry) = self.identity_map.remove(old_key) {
 			// JSON update
 			if let Some(obj) = entry.data.as_object_mut() {
-				obj.insert("id".to_string(), serde_json::Value::from(generated_id));
+				obj.insert(
+					primary_key_field.to_string(),
+					serde_json::Value::from(generated_id),
+				);
 			}
+			entry.database_data.insert(
+				primary_key_field.to_string(),
+				crate::orm::DatabaseValue::I64(generated_id),
+			);
 
 			entry.is_dirty = false;
 			let new_key = format!("{}:{}", table_name, generated_id);
@@ -1111,12 +1199,12 @@ impl Session {
 		sql: &str,
 		values: &reinhardt_query::value::Values,
 	) -> Result<(), SessionError> {
-		let sql = sql_with_json_parameter_casts(self.get_backend(), sql, values);
+		let sql = sql_with_postgres_parameter_casts(self.get_backend(), sql, values);
 		let mut query = sqlx::query(sql.as_ref());
 
 		// Bind all values from reinhardt_query::value::Values
 		for value in &values.0 {
-			query = bind_reinhardt_query_value(query, value);
+			query = bind_reinhardt_query_value(query, value, self.get_backend());
 		}
 
 		query
@@ -1133,12 +1221,12 @@ impl Session {
 		sql: &str,
 		values: &reinhardt_query::value::Values,
 	) -> Result<sqlx::any::AnyRow, SessionError> {
-		let sql = sql_with_json_parameter_casts(self.get_backend(), sql, values);
+		let sql = sql_with_postgres_parameter_casts(self.get_backend(), sql, values);
 		let mut query = sqlx::query(sql.as_ref());
 
 		// Bind all values from reinhardt_query::value::Values
 		for value in &values.0 {
-			query = bind_reinhardt_query_value(query, value);
+			query = bind_reinhardt_query_value(query, value, self.get_backend());
 		}
 
 		query
@@ -1332,9 +1420,31 @@ impl Session {
 			.ok_or_else(|| SessionError::InvalidState("Object has no primary key".to_string()))?;
 
 		let key = format!("{}:{}", T::table_name(), pk);
+		let field_metadata = T::field_metadata();
+		let primary_key_column = primary_key_field_info(&field_metadata, T::primary_key_field())
+			.and_then(|field| field.db_column.clone())
+			.unwrap_or_else(|| T::primary_key_field().to_string());
+		let primary_key_value = obj
+			.encode_database_fields()?
+			.remove(T::primary_key_field())
+			.filter(|value| !matches!(value, crate::orm::DatabaseValue::Null))
+			.ok_or_else(|| {
+				SessionError::FieldCodec(FieldCodecError::Serialization(format!(
+					"encoded {} fields must contain a non-null primary key '{}'",
+					T::table_name(),
+					T::primary_key_field()
+				)))
+			})?;
 
 		// Mark for deletion
-		self.deleted_objects.insert(key.clone());
+		self.deleted_objects.insert(
+			key.clone(),
+			PendingDelete {
+				table_name: T::table_name(),
+				primary_key_column,
+				primary_key_value,
+			},
+		);
 
 		// Remove from dirty set if present
 		self.dirty_objects.remove(&key);
@@ -1462,6 +1572,24 @@ fn find_field_info<'a>(field_metadata: &'a [FieldInfo], field_name: &str) -> Opt
 	field_metadata.iter().find(|field| field.name == field_name)
 }
 
+fn primary_key_field_info<'a>(
+	field_metadata: &'a [FieldInfo],
+	model_primary_key_field: &str,
+) -> Option<&'a FieldInfo> {
+	field_metadata
+		.iter()
+		.find(|field| field.primary_key)
+		.or_else(|| find_field_info(field_metadata, model_primary_key_field))
+}
+
+fn encode_model_database_data<T: Model>(
+	model: &T,
+) -> Result<BTreeMap<String, crate::orm::DatabaseValue>, SessionError> {
+	model
+		.encode_database_fields()
+		.map_err(SessionError::FieldCodec)
+}
+
 fn flush_column_name<'a>(field_name: &'a str, field_info: Option<&'a FieldInfo>) -> &'a str {
 	field_info
 		.and_then(|field| field.db_column.as_deref())
@@ -1469,15 +1597,16 @@ fn flush_column_name<'a>(field_name: &'a str, field_info: Option<&'a FieldInfo>)
 }
 
 fn should_skip_flush_column(
-	field_name: &str,
-	column_name: &str,
+	_field_name: &str,
+	_column_name: &str,
 	field_info: Option<&FieldInfo>,
 ) -> bool {
 	field_info.map(|field| field.primary_key).unwrap_or(false)
-		|| field_name == "id"
-		|| column_name == "id"
 		|| field_info
-			.map(|field| field.attributes.contains_key("relation_managed"))
+			.map(|field| {
+				field.attributes.contains_key("relation_managed")
+					&& !field.attributes.contains_key("fk_id_field")
+			})
 			.unwrap_or(false)
 }
 
@@ -1498,6 +1627,92 @@ fn is_json_field_type(field_type: &str) -> bool {
 	super::json::is_json_field_type(field_type)
 }
 
+fn is_json_or_array_field(field: &FieldInfo) -> bool {
+	field.storage_kind != Some(crate::orm::DatabaseStorageKind::Bytes)
+		&& (is_json_field_type(&field.field_type) || field.field_type.contains("ArrayField"))
+}
+
+fn is_temporal_field_type(field_type: &str) -> bool {
+	field_type.contains("DateTimeField")
+		|| field_type.contains("DateField")
+		|| field_type.contains("TimeField")
+}
+
+fn temporal_select_column_sql(backend: DbBackend, column_name: &str, field_type: &str) -> String {
+	match backend {
+		DbBackend::Postgres if field_type.contains("DateTimeField") => format!(
+			"TO_CHAR(\"{}\", 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"')",
+			column_name
+		),
+		DbBackend::Postgres if field_type.contains("DateField") => {
+			format!("TO_CHAR(\"{}\", 'YYYY-MM-DD')", column_name)
+		}
+		DbBackend::Postgres => format!("TO_CHAR(\"{}\", 'HH24:MI:SS.US')", column_name),
+		DbBackend::Mysql if field_type.contains("DateTimeField") => {
+			format!("DATE_FORMAT(`{}`, '%Y-%m-%dT%H:%i:%s.%fZ')", column_name)
+		}
+		DbBackend::Mysql if field_type.contains("DateField") => {
+			format!("DATE_FORMAT(`{}`, '%Y-%m-%d')", column_name)
+		}
+		DbBackend::Mysql => format!("TIME_FORMAT(`{}`, '%H:%i:%s.%f')", column_name),
+		DbBackend::Sqlite => format!("\"{}\"", column_name),
+	}
+}
+
+fn temporal_select_column_alias_sql(
+	backend: DbBackend,
+	column_name: &str,
+	field_type: &str,
+) -> String {
+	let expression = temporal_select_column_sql(backend, column_name, field_type);
+	match backend {
+		DbBackend::Postgres | DbBackend::Sqlite => {
+			format!("{} AS \"{}\"", expression, column_name)
+		}
+		DbBackend::Mysql => format!("{} AS `{}`", expression, column_name),
+	}
+}
+
+fn decimal_select_column_sql(backend: DbBackend, column_name: &str) -> String {
+	match backend {
+		DbBackend::Postgres => format!("CAST(\"{}\" AS TEXT)", column_name),
+		DbBackend::Mysql => format!("CAST(`{}` AS CHAR)", column_name),
+		DbBackend::Sqlite => format!("\"{}\"", column_name),
+	}
+}
+
+fn decimal_select_column_alias_sql(backend: DbBackend, column_name: &str) -> String {
+	let expression = decimal_select_column_sql(backend, column_name);
+	match backend {
+		DbBackend::Postgres | DbBackend::Sqlite => format!("{} AS \"{}\"", expression, column_name),
+		DbBackend::Mysql => format!("{} AS `{}`", expression, column_name),
+	}
+}
+
+fn temporal_row_value(row: &sqlx::any::AnyRow, column_name: &str, nullable: bool) -> Value {
+	if nullable {
+		row.try_get::<Option<String>, _>(column_name)
+			.map(|value| value.map(Value::from).unwrap_or(Value::Null))
+			.unwrap_or(Value::Null)
+	} else {
+		row.try_get::<String, _>(column_name)
+			.map(Value::from)
+			.unwrap_or(Value::Null)
+	}
+}
+
+fn decimal_row_value(row: &sqlx::any::AnyRow, column_name: &str, nullable: bool) -> Value {
+	if nullable {
+		row.try_get::<Option<String>, _>(column_name)
+			.map(|value| value.map(Value::from).unwrap_or(Value::Null))
+			.unwrap_or(Value::Null)
+	} else {
+		row.try_get::<String, _>(column_name)
+			.map(Value::from)
+			.unwrap_or(Value::Null)
+	}
+}
+
 fn json_null_fields_for_data(
 	data: &Value,
 	field_metadata: &[FieldInfo],
@@ -1510,7 +1725,7 @@ fn json_null_fields_for_data(
 		.iter()
 		.filter(|field| {
 			field.nullable
-				&& is_json_field_type(&field.field_type)
+				&& is_json_or_array_field(field)
 				&& values.get(&field.name).map(Value::is_null).unwrap_or(false)
 				&& !sql_null_json_fields.contains(&field.name)
 		})
@@ -1526,22 +1741,29 @@ fn json_select_column_sql(db_backend: DbBackend, column_name: &str) -> String {
 	}
 }
 
-fn json_select_column_alias_sql(db_backend: DbBackend, column_name: &str) -> String {
+fn json_or_array_select_column_sql(
+	db_backend: DbBackend,
+	field: &FieldInfo,
+	column_name: &str,
+) -> String {
+	if field.field_type.contains("ArrayField") && matches!(db_backend, DbBackend::Postgres) {
+		format!("array_to_json(\"{}\")::text", column_name)
+	} else {
+		json_select_column_sql(db_backend, column_name)
+	}
+}
+
+fn json_or_array_select_column_alias_sql(
+	db_backend: DbBackend,
+	field: &FieldInfo,
+	column_name: &str,
+) -> String {
+	let expression = json_or_array_select_column_sql(db_backend, field, column_name);
 	match db_backend {
 		DbBackend::Postgres | DbBackend::Sqlite => {
-			format!(
-				"{} AS \"{}\"",
-				json_select_column_sql(db_backend, column_name),
-				column_name
-			)
+			format!("{} AS \"{}\"", expression, column_name)
 		}
-		DbBackend::Mysql => {
-			format!(
-				"{} AS `{}`",
-				json_select_column_sql(db_backend, column_name),
-				column_name
-			)
-		}
+		DbBackend::Mysql => format!("{} AS `{}`", expression, column_name),
 	}
 }
 
@@ -1624,6 +1846,7 @@ fn parse_json_field_bytes(
 }
 
 /// Convert JSON value to reinhardt_query Value
+#[cfg(test)]
 fn json_to_reinhardt_query_value(value: &Value) -> RValue {
 	match value {
 		Value::Null => RValue::Int(None),
@@ -1648,15 +1871,13 @@ fn json_to_reinhardt_query_value(value: &Value) -> RValue {
 	}
 }
 
+#[cfg(test)]
 fn json_to_reinhardt_query_value_for_field(
 	value: &Value,
 	field_info: Option<&FieldInfo>,
 	field_is_none: bool,
 ) -> RValue {
-	if field_info
-		.map(|field| is_json_field_type(&field.field_type))
-		.unwrap_or(false)
-	{
+	if field_info.is_some_and(is_json_or_array_field) {
 		if field_is_none {
 			RValue::Json(None)
 		} else {
@@ -1669,6 +1890,7 @@ fn json_to_reinhardt_query_value_for_field(
 	}
 }
 
+#[cfg(test)]
 fn null_reinhardt_query_value_for_field(field_info: Option<&FieldInfo>) -> RValue {
 	let Some(field_type) = field_info.map(|field| field.field_type.as_str()) else {
 		return RValue::Int(None);
@@ -1690,7 +1912,7 @@ fn null_reinhardt_query_value_for_field(field_info: Option<&FieldInfo>) -> RValu
 	}
 }
 
-fn sql_with_json_parameter_casts<'a>(
+fn sql_with_postgres_parameter_casts<'a>(
 	backend: DbBackend,
 	sql: &'a str,
 	values: &reinhardt_query::value::Values,
@@ -1699,24 +1921,18 @@ fn sql_with_json_parameter_casts<'a>(
 		return Cow::Borrowed(sql);
 	}
 
-	let json_parameter_numbers: Vec<usize> = values
+	let parameter_casts: Vec<(usize, &'static str)> = values
 		.0
 		.iter()
 		.enumerate()
-		.filter_map(|(index, value)| {
-			if matches!(value, RValue::Json(_)) {
-				Some(index + 1)
-			} else {
-				None
-			}
-		})
+		.filter_map(|(index, value)| postgres_parameter_cast(value).map(|cast| (index + 1, cast)))
 		.collect();
 
-	if json_parameter_numbers.is_empty() {
+	if parameter_casts.is_empty() {
 		return Cow::Borrowed(sql);
 	}
 
-	let mut rendered = String::with_capacity(sql.len() + (json_parameter_numbers.len() * 7));
+	let mut rendered = String::with_capacity(sql.len() + (parameter_casts.len() * 10));
 	let mut chars = sql.char_indices().peekable();
 	let mut in_single_quote = false;
 	let mut in_double_quote = false;
@@ -1762,10 +1978,13 @@ fn sql_with_json_parameter_casts<'a>(
 
 				rendered.push_str(&sql[start..end]);
 				if saw_digit
-					&& json_parameter_numbers.contains(&parameter_number)
-					&& !sql[end..].starts_with("::json")
+					&& let Some((_, cast)) = parameter_casts
+						.iter()
+						.find(|(number, _)| *number == parameter_number)
+					&& !sql[end..].starts_with("::")
 				{
-					rendered.push_str("::jsonb");
+					rendered.push_str("::");
+					rendered.push_str(cast);
 				}
 			}
 			_ => rendered.push(ch),
@@ -1775,10 +1994,70 @@ fn sql_with_json_parameter_casts<'a>(
 	Cow::Owned(rendered)
 }
 
+fn postgres_parameter_cast(value: &RValue) -> Option<&'static str> {
+	match value {
+		RValue::Json(_) => Some("jsonb"),
+		RValue::Array(array_type, None) => postgres_array_type_cast(array_type),
+		RValue::Array(array_type, Some(values)) if postgres_array_literal(values).is_some() => {
+			postgres_array_type_cast(array_type)
+		}
+		RValue::Array(_, Some(_)) => None,
+		_ => None,
+	}
+}
+
+fn postgres_array_type_cast(
+	array_type: &reinhardt_query::value::ArrayType,
+) -> Option<&'static str> {
+	match array_type {
+		reinhardt_query::value::ArrayType::String => Some("text[]"),
+		reinhardt_query::value::ArrayType::Int => Some("integer[]"),
+		reinhardt_query::value::ArrayType::BigInt => Some("bigint[]"),
+		reinhardt_query::value::ArrayType::Bool => Some("boolean[]"),
+		reinhardt_query::value::ArrayType::Float => Some("real[]"),
+		reinhardt_query::value::ArrayType::Double => Some("double precision[]"),
+		reinhardt_query::value::ArrayType::Uuid => Some("uuid[]"),
+		_ => None,
+	}
+}
+
+fn postgres_array_literal(values: &[RValue]) -> Option<String> {
+	let elements = values
+		.iter()
+		.map(postgres_array_element)
+		.collect::<Option<Vec<_>>>()?;
+	Some(format!("{{{}}}", elements.join(",")))
+}
+
+fn postgres_array_element(value: &RValue) -> Option<String> {
+	match value {
+		RValue::String(Some(value)) => Some(postgres_array_quote(value)),
+		RValue::Int(Some(value)) => Some(value.to_string()),
+		RValue::BigInt(Some(value)) => Some(value.to_string()),
+		RValue::Bool(Some(value)) => Some(value.to_string()),
+		RValue::Float(Some(value)) => Some(value.to_string()),
+		RValue::Double(Some(value)) => Some(value.to_string()),
+		RValue::Uuid(Some(value)) => Some(value.to_string()),
+		RValue::String(None)
+		| RValue::Int(None)
+		| RValue::BigInt(None)
+		| RValue::Bool(None)
+		| RValue::Float(None)
+		| RValue::Double(None)
+		| RValue::Uuid(None) => Some("NULL".to_string()),
+		_ => None,
+	}
+}
+
+fn postgres_array_quote(value: &str) -> String {
+	format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
 /// Bind reinhardt_query Value to sqlx Query
 fn bind_reinhardt_query_value<'a>(
 	query: sqlx::query::Query<'a, sqlx::Any, sqlx::any::AnyArguments<'a>>,
 	value: &RValue,
+	backend: DbBackend,
 ) -> sqlx::query::Query<'a, sqlx::Any, sqlx::any::AnyArguments<'a>> {
 	match value {
 		RValue::Bool(Some(b)) => query.bind(*b),
@@ -1799,6 +2078,9 @@ fn bind_reinhardt_query_value<'a>(
 		})),
 		RValue::Float(Some(f)) => query.bind(*f),
 		RValue::Double(Some(f)) => query.bind(*f),
+		// Bind decimals as text for sqlx::Any. This preserves precision while
+		// allowing each backend to coerce the parameter to its numeric column.
+		RValue::Decimal(Some(value)) => query.bind(value.to_string()),
 		RValue::String(Some(s)) => query.bind(s.as_ref().clone()),
 		RValue::Bytes(Some(b)) => query.bind(b.as_ref().clone()),
 		// UUID: sqlx::Any doesn't natively support UUID, bind as string
@@ -1809,6 +2091,29 @@ fn bind_reinhardt_query_value<'a>(
 			query.bind(j.to_string())
 		}
 		RValue::Json(None) => query.bind(None::<String>),
+		RValue::Array(_, Some(values)) if backend == DbBackend::Postgres => {
+			if let Some(value) = postgres_array_literal(values) {
+				query.bind(value)
+			} else {
+				query.bind(super::execution::array_values_to_json(values).to_string())
+			}
+		}
+		RValue::Array(_, Some(values)) => {
+			query.bind(super::execution::array_values_to_json(values).to_string())
+		}
+		RValue::Array(_, None) => query.bind(None::<String>),
+		RValue::ChronoDate(Some(value)) => query.bind(value.to_string()),
+		RValue::ChronoDate(None) => query.bind(None::<String>),
+		RValue::ChronoTime(Some(value)) => query.bind(value.to_string()),
+		RValue::ChronoTime(None) => query.bind(None::<String>),
+		RValue::ChronoDateTime(Some(value)) => query.bind(value.and_utc().to_rfc3339()),
+		RValue::ChronoDateTime(None) => query.bind(None::<String>),
+		RValue::ChronoDateTimeUtc(Some(value)) => query.bind(value.to_rfc3339()),
+		RValue::ChronoDateTimeUtc(None) => query.bind(None::<String>),
+		RValue::ChronoDateTimeLocal(Some(value)) => query.bind(value.to_rfc3339()),
+		RValue::ChronoDateTimeLocal(None) => query.bind(None::<String>),
+		RValue::ChronoDateTimeWithTimeZone(Some(value)) => query.bind(value.to_rfc3339()),
+		RValue::ChronoDateTimeWithTimeZone(None) => query.bind(None::<String>),
 		RValue::Bool(None) => query.bind(None::<bool>),
 		RValue::TinyInt(None) | RValue::SmallInt(None) | RValue::Int(None) => {
 			query.bind(None::<i32>)
@@ -1816,6 +2121,7 @@ fn bind_reinhardt_query_value<'a>(
 		RValue::BigInt(None) => query.bind(None::<i64>),
 		RValue::Float(None) => query.bind(None::<f32>),
 		RValue::Double(None) => query.bind(None::<f64>),
+		RValue::Decimal(None) => query.bind(None::<String>),
 		RValue::String(None) | RValue::Uuid(None) => query.bind(None::<String>),
 		RValue::Bytes(None) => query.bind(None::<Vec<u8>>),
 		_ => query.bind(None::<i32>),
@@ -1955,6 +2261,174 @@ mod tests {
 		}
 	}
 
+	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+	struct ArraySessionModel {
+		id: Option<i64>,
+		tags: Vec<String>,
+	}
+
+	#[derive(Debug, Clone)]
+	struct ArraySessionModelFields;
+
+	impl crate::orm::model::FieldSelector for ArraySessionModelFields {
+		fn with_alias(self, _alias: &str) -> Self {
+			self
+		}
+	}
+
+	impl Model for ArraySessionModel {
+		type PrimaryKey = i64;
+		type Fields = ArraySessionModelFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"array_session_models"
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = Some(value);
+		}
+
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+
+		fn new_fields() -> Self::Fields {
+			ArraySessionModelFields
+		}
+
+		fn field_metadata() -> Vec<FieldInfo> {
+			vec![
+				test_field_info("id", "reinhardt.orm.models.BigIntegerField", false, true),
+				typed_test_field_info(
+					"tags",
+					"reinhardt.orm.models.ArrayField",
+					crate::orm::DatabaseStorageKind::Json,
+				),
+			]
+		}
+	}
+
+	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+	struct TemporalSessionModel {
+		id: Option<i64>,
+		published_on: chrono::NaiveDate,
+		starts_at: chrono::NaiveTime,
+		published_at: chrono::DateTime<chrono::Utc>,
+	}
+
+	#[derive(Debug, Clone)]
+	struct TemporalSessionModelFields;
+
+	impl crate::orm::model::FieldSelector for TemporalSessionModelFields {
+		fn with_alias(self, _alias: &str) -> Self {
+			self
+		}
+	}
+
+	impl Model for TemporalSessionModel {
+		type PrimaryKey = i64;
+		type Fields = TemporalSessionModelFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"temporal_session_models"
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = Some(value);
+		}
+
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+
+		fn new_fields() -> Self::Fields {
+			TemporalSessionModelFields
+		}
+
+		fn field_metadata() -> Vec<FieldInfo> {
+			vec![
+				test_field_info("id", "reinhardt.orm.models.BigIntegerField", false, true),
+				typed_test_field_info(
+					"published_on",
+					"reinhardt.orm.models.DateField",
+					crate::orm::DatabaseStorageKind::Date,
+				),
+				typed_test_field_info(
+					"starts_at",
+					"reinhardt.orm.models.TimeField",
+					crate::orm::DatabaseStorageKind::Time,
+				),
+				typed_test_field_info(
+					"published_at",
+					"reinhardt.orm.models.DateTimeField",
+					crate::orm::DatabaseStorageKind::DateTime,
+				),
+			]
+		}
+	}
+
+	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+	struct DecimalSessionModel {
+		id: Option<i64>,
+		amount: rust_decimal::Decimal,
+	}
+
+	#[derive(Debug, Clone)]
+	struct DecimalSessionModelFields;
+
+	impl crate::orm::model::FieldSelector for DecimalSessionModelFields {
+		fn with_alias(self, _alias: &str) -> Self {
+			self
+		}
+	}
+
+	impl Model for DecimalSessionModel {
+		type PrimaryKey = i64;
+		type Fields = DecimalSessionModelFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"decimal_session_models"
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = Some(value);
+		}
+
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+
+		fn new_fields() -> Self::Fields {
+			DecimalSessionModelFields
+		}
+
+		fn field_metadata() -> Vec<FieldInfo> {
+			vec![
+				test_field_info("id", "reinhardt.orm.models.BigIntegerField", false, true),
+				typed_test_field_info(
+					"amount",
+					"reinhardt.orm.models.DecimalField",
+					crate::orm::DatabaseStorageKind::Decimal,
+				),
+			]
+		}
+	}
+
 	fn test_field_info(
 		name: &str,
 		field_type: &str,
@@ -1964,6 +2438,8 @@ mod tests {
 		FieldInfo {
 			name: name.to_string(),
 			field_type: field_type.to_string(),
+			storage_kind: None,
+			domain: None,
 			nullable,
 			primary_key,
 			unique: false,
@@ -1975,6 +2451,16 @@ mod tests {
 			choices: None,
 			attributes: HashMap::new(),
 		}
+	}
+
+	fn typed_test_field_info(
+		name: &str,
+		field_type: &str,
+		storage_kind: crate::orm::DatabaseStorageKind,
+	) -> FieldInfo {
+		let mut field = test_field_info(name, field_type, false, false);
+		field.storage_kind = Some(storage_kind);
+		field
 	}
 
 	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -2083,6 +2569,98 @@ mod tests {
 			.execute(&pool)
 			.await
 			.expect("Failed to clear json_scalar_models table");
+
+		Arc::new(pool)
+	}
+
+	async fn create_array_session_test_pool() -> Arc<AnyPool> {
+		use sqlx::pool::PoolOptions;
+
+		sqlx::any::install_default_drivers();
+
+		let pool = PoolOptions::<Any>::new()
+			.min_connections(1)
+			.max_connections(5)
+			.connect("sqlite:file:test_session_array_db?mode=memory&cache=shared")
+			.await
+			.expect("Failed to create array session test pool");
+
+		sqlx::query(
+			"CREATE TABLE IF NOT EXISTS array_session_models (
+				id INTEGER PRIMARY KEY,
+				tags TEXT NOT NULL
+			)",
+		)
+		.execute(&pool)
+		.await
+		.expect("Failed to create array_session_models table");
+
+		sqlx::query("DELETE FROM array_session_models")
+			.execute(&pool)
+			.await
+			.expect("Failed to clear array_session_models table");
+
+		Arc::new(pool)
+	}
+
+	async fn create_temporal_test_pool() -> Arc<AnyPool> {
+		use sqlx::pool::PoolOptions;
+
+		sqlx::any::install_default_drivers();
+
+		let pool = PoolOptions::<Any>::new()
+			.min_connections(1)
+			.max_connections(5)
+			.connect("sqlite:file:test_session_temporal_db?mode=memory&cache=shared")
+			.await
+			.expect("Failed to create temporal test pool");
+
+		sqlx::query(
+			"CREATE TABLE IF NOT EXISTS temporal_session_models (
+				id INTEGER PRIMARY KEY,
+				published_on TEXT NOT NULL,
+				starts_at TEXT NOT NULL,
+				published_at TEXT NOT NULL
+			)",
+		)
+		.execute(&pool)
+		.await
+		.expect("Failed to create temporal_session_models table");
+
+		sqlx::query("DELETE FROM temporal_session_models")
+			.execute(&pool)
+			.await
+			.expect("Failed to clear temporal_session_models table");
+
+		Arc::new(pool)
+	}
+
+	async fn create_decimal_session_test_pool() -> Arc<AnyPool> {
+		use sqlx::pool::PoolOptions;
+
+		sqlx::any::install_default_drivers();
+
+		let pool = PoolOptions::<Any>::new()
+			.min_connections(1)
+			.max_connections(5)
+			.connect("sqlite:file:test_session_decimal_db?mode=memory&cache=shared")
+			.await
+			.expect("Failed to create decimal session test pool");
+
+		sqlx::query(
+			"CREATE TABLE IF NOT EXISTS decimal_session_models (
+				id INTEGER PRIMARY KEY,
+				amount TEXT NOT NULL
+			)",
+		)
+		.execute(&pool)
+		.await
+		.expect("Failed to create decimal_session_models table");
+
+		sqlx::query("DELETE FROM decimal_session_models")
+			.execute(&pool)
+			.await
+			.expect("Failed to clear decimal_session_models table");
 
 		Arc::new(pool)
 	}
@@ -2518,6 +3096,30 @@ mod tests {
 		));
 	}
 
+	#[test]
+	fn test_should_skip_flush_column_keeps_relation_id_storage_fields() {
+		let mut field = test_field_info(
+			"author_id",
+			"reinhardt.orm.models.IntegerField",
+			false,
+			false,
+		);
+		field.attributes.insert(
+			"relation_managed".to_string(),
+			crate::orm::fields::FieldKwarg::Bool(true),
+		);
+		field.attributes.insert(
+			"fk_id_field".to_string(),
+			crate::orm::fields::FieldKwarg::Bool(true),
+		);
+
+		assert!(!super::should_skip_flush_column(
+			"author_id",
+			"author_id",
+			Some(&field)
+		));
+	}
+
 	// ──────────────────────────────────────────────────────────────
 	// json_to_reinhardt_query_value tests
 	// ──────────────────────────────────────────────────────────────
@@ -2703,7 +3305,7 @@ mod tests {
 		]);
 
 		let sql = "UPDATE items SET payload = $1, flag = $10 WHERE id = $2";
-		let cast_sql = super::sql_with_json_parameter_casts(DbBackend::Postgres, sql, &values);
+		let cast_sql = super::sql_with_postgres_parameter_casts(DbBackend::Postgres, sql, &values);
 
 		assert_eq!(
 			cast_sql.as_ref(),
@@ -2717,12 +3319,91 @@ mod tests {
 
 		let values = Values(vec![RValue::Json(None)]);
 		let sql = "UPDATE items SET payload = $1 WHERE id = 1";
-		let cast_sql = super::sql_with_json_parameter_casts(DbBackend::Postgres, sql, &values);
+		let cast_sql = super::sql_with_postgres_parameter_casts(DbBackend::Postgres, sql, &values);
 
 		assert_eq!(
 			cast_sql.as_ref(),
 			"UPDATE items SET payload = $1::jsonb WHERE id = 1"
 		);
+	}
+
+	#[test]
+	fn test_postgres_array_parameter_placeholders_are_cast() {
+		use reinhardt_query::value::{ArrayType, Values};
+
+		let values = Values(vec![
+			RValue::Array(
+				ArrayType::String,
+				Some(Box::new(vec![RValue::String(Some(Box::new(
+					"alpha".to_string(),
+				)))])),
+			),
+			RValue::Array(ArrayType::Int, Some(Box::new(vec![RValue::Int(Some(7))]))),
+			RValue::Array(
+				ArrayType::Uuid,
+				Some(Box::new(vec![RValue::Uuid(Some(Box::new(Uuid::nil())))])),
+			),
+		]);
+
+		let sql = "UPDATE items SET labels = $1, ranks = $2, owner_ids = $3";
+		let cast_sql = super::sql_with_postgres_parameter_casts(DbBackend::Postgres, sql, &values);
+
+		assert_eq!(
+			cast_sql.as_ref(),
+			"UPDATE items SET labels = $1::text[], ranks = $2::integer[], owner_ids = $3::uuid[]"
+		);
+	}
+
+	#[serial(sqlx_drivers)]
+	#[tokio::test]
+	async fn test_session_binds_postgres_arrays_as_native_arrays() {
+		use reinhardt_query::value::{ArrayType, Values};
+		use testcontainers::{GenericImage, ImageExt, core::WaitFor, runners::AsyncRunner};
+
+		let container = GenericImage::new("postgres", "17-alpine")
+			.with_wait_for(WaitFor::message_on_stderr(
+				"database system is ready to accept connections",
+			))
+			.with_env_var("POSTGRES_HOST_AUTH_METHOD", "trust")
+			.start()
+			.await
+			.expect("PostgreSQL test container should start");
+		let port = container
+			.get_host_port_ipv4(5432)
+			.await
+			.expect("PostgreSQL test container should expose port 5432");
+
+		sqlx::any::install_default_drivers();
+		let pool = sqlx::pool::PoolOptions::<Any>::new()
+			.max_connections(1)
+			.connect(format!("postgres://postgres@localhost:{port}/postgres").as_str())
+			.await
+			.expect("AnyPool should connect to PostgreSQL");
+		let values = Values(vec![RValue::Array(
+			ArrayType::String,
+			Some(Box::new(vec![
+				RValue::String(Some(Box::new("alpha".to_string()))),
+				RValue::String(Some(Box::new("beta".to_string()))),
+			])),
+		)]);
+		let sql = super::sql_with_postgres_parameter_casts(
+			DbBackend::Postgres,
+			"SELECT array_to_string($1, ',') AS joined",
+			&values,
+		);
+		let mut query = sqlx::query(sql.as_ref());
+		for value in &values.0 {
+			query = super::bind_reinhardt_query_value(query, value, DbBackend::Postgres);
+		}
+
+		let row = query
+			.fetch_one(&pool)
+			.await
+			.expect("PostgreSQL should accept the bound native array");
+		let joined: String = row
+			.try_get("joined")
+			.expect("joined array text should decode");
+		assert_eq!(joined, "alpha,beta");
 	}
 
 	#[test]
@@ -2902,6 +3583,137 @@ mod tests {
 			&serde_json::json!({ "stage": "draft" })
 		);
 		assert_eq!(loaded.publish_date.as_deref(), Some("2026-07-01"));
+	}
+
+	#[rstest]
+	#[serial(sqlx_drivers)]
+	#[tokio::test]
+	async fn test_session_hydrates_array_fields(_init_drivers: ()) {
+		let pool = create_array_session_test_pool().await;
+		sqlx::query(
+			"INSERT INTO array_session_models (id, tags) VALUES (1, '[\"alpha\",\"beta\"]')",
+		)
+		.execute(&*pool)
+		.await
+		.expect("array row should insert");
+
+		let mut session = Session::new(pool, DbBackend::Sqlite)
+			.await
+			.expect("session should initialize");
+		let expected = ArraySessionModel {
+			id: Some(1),
+			tags: vec!["alpha".to_string(), "beta".to_string()],
+		};
+
+		let loaded = session
+			.get::<ArraySessionModel>(1)
+			.await
+			.expect("session get should succeed")
+			.expect("array row should exist");
+		assert_eq!(loaded, expected);
+
+		let all = session
+			.list_all::<ArraySessionModel>()
+			.await
+			.expect("session list_all should succeed");
+		assert_eq!(all, vec![expected]);
+	}
+
+	#[rstest]
+	#[serial(sqlx_drivers)]
+	#[tokio::test]
+	async fn test_session_hydrates_decimal_fields(_init_drivers: ()) {
+		// Arrange
+		let pool = create_decimal_session_test_pool().await;
+		sqlx::query(
+			"INSERT INTO decimal_session_models (id, amount) VALUES (1, '9007199254740993.01')",
+		)
+		.execute(&*pool)
+		.await
+		.expect("decimal row should insert");
+		let mut session = Session::new(pool, DbBackend::Sqlite)
+			.await
+			.expect("session should initialize");
+		let expected = DecimalSessionModel {
+			id: Some(1),
+			amount: rust_decimal::Decimal::new(900_719_925_474_099_301, 2),
+		};
+
+		// Act
+		let loaded = session
+			.get::<DecimalSessionModel>(1)
+			.await
+			.expect("session get should succeed")
+			.expect("decimal row should exist");
+		let all = session
+			.list_all::<DecimalSessionModel>()
+			.await
+			.expect("session list_all should succeed");
+
+		// Assert
+		assert_eq!(loaded, expected);
+		assert_eq!(all, vec![expected]);
+	}
+
+	#[test]
+	fn postgres_array_selects_are_json_text() {
+		let field = typed_test_field_info(
+			"tags",
+			"reinhardt.orm.models.ArrayField",
+			crate::orm::DatabaseStorageKind::Json,
+		);
+
+		assert_eq!(
+			json_or_array_select_column_sql(DbBackend::Postgres, &field, "tags"),
+			"array_to_json(\"tags\")::text"
+		);
+		assert_eq!(
+			json_or_array_select_column_sql(DbBackend::Sqlite, &field, "tags"),
+			"\"tags\""
+		);
+	}
+
+	#[rstest]
+	#[serial(sqlx_drivers)]
+	#[tokio::test]
+	async fn test_session_hydrates_temporal_fields(_init_drivers: ()) {
+		let pool = create_temporal_test_pool().await;
+		sqlx::query(
+			"INSERT INTO temporal_session_models \
+			 (id, published_on, starts_at, published_at) \
+			 VALUES (1, '2026-07-18', '08:09:10.123456', '2026-07-18T08:09:10Z')",
+		)
+		.execute(&*pool)
+		.await
+		.expect("temporal row should insert");
+
+		let mut session = Session::new(pool, DbBackend::Sqlite)
+			.await
+			.expect("session should initialize");
+
+		let expected = TemporalSessionModel {
+			id: Some(1),
+			published_on: chrono::NaiveDate::from_ymd_opt(2026, 7, 18)
+				.expect("date should be valid"),
+			starts_at: chrono::NaiveTime::from_hms_micro_opt(8, 9, 10, 123_456)
+				.expect("time should be valid"),
+			published_at: chrono::DateTime::parse_from_rfc3339("2026-07-18T08:09:10Z")
+				.expect("timestamp should be valid")
+				.with_timezone(&chrono::Utc),
+		};
+
+		let loaded = session
+			.get::<TemporalSessionModel>(1)
+			.await
+			.expect("session get should succeed")
+			.expect("temporal row should exist");
+		assert_eq!(loaded, expected);
+
+		let all = session
+			.list_all::<TemporalSessionModel>()
+			.await
+			.expect("session list_all should succeed");
+		assert_eq!(all, vec![expected]);
 	}
 
 	#[rstest]

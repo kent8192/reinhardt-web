@@ -1,0 +1,5 @@
+error: duplicate model enum value on variants `First` and `Second`
+ --> tests/ui/model_enum/fail/duplicate_value.rs:9:2
+  |
+9 |     Second,
+  |     ^^^^^^

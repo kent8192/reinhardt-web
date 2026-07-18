@@ -20,6 +20,7 @@
 //! - postgres_container: For cross-database comparison
 
 use reinhardt_db::backends::connection::DatabaseConnection;
+use reinhardt_db::field_domain::{FieldDomain, ModelEnumRepr, ModelEnumValue};
 use reinhardt_db::migrations::{
 	ColumnDefinition, FieldType, ForeignKeyAction, Migration, MigrationError,
 	executor::DatabaseMigrationExecutor,
@@ -67,6 +68,7 @@ fn create_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 		auto_increment: false,
 		default: None,
 		generated: None,
+		domain: None,
 	}
 }
 
@@ -81,6 +83,7 @@ fn create_pk_column(name: &str) -> ColumnDefinition {
 		auto_increment: true,
 		default: None,
 		generated: None,
+		domain: None,
 	}
 }
 
@@ -95,6 +98,7 @@ fn create_required_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 		auto_increment: false,
 		default: None,
 		generated: None,
+		domain: None,
 	}
 }
 
@@ -109,6 +113,7 @@ fn create_unique_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 		auto_increment: false,
 		default: None,
 		generated: None,
+		domain: None,
 	}
 }
 
@@ -2849,4 +2854,1946 @@ async fn test_decision_c5_pk_drop_error() {
 		.expect("Should have data");
 	let data: String = row.get("data").unwrap_or_default();
 	assert_eq!(data, "test", "Data should be preserved");
+}
+
+#[rstest]
+#[tokio::test]
+async fn typed_enum_constraint_recreation_preserves_without_rowid() {
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("connect to in-memory SQLite");
+	let conn = Arc::new(connection.clone());
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+	let mut id = create_column("id", FieldType::Integer);
+	id.not_null = true;
+	id.primary_key = true;
+	let constraint_name = "enum_without_rowid_status_model_enum_check";
+	let old_constraint = Constraint::EnumDomain {
+		name: constraint_name.to_string(),
+		column: "status".to_string(),
+		domain: FieldDomain::Enum {
+			repr: ModelEnumRepr::String,
+			values: vec![ModelEnumValue::String("queued".to_string())],
+		},
+	};
+
+	let create = create_test_migration(
+		"testapp",
+		"0001_create_without_rowid",
+		vec![Operation::CreateTable {
+			name: "enum_without_rowid".to_string(),
+			columns: vec![id, create_column("status", FieldType::VarChar(32))],
+			constraints: vec![old_constraint.clone()],
+			without_rowid: Some(true),
+			interleave_in_parent: None,
+			partition: None,
+		}],
+	);
+	let replace_domain = create_test_migration(
+		"testapp",
+		"0002_replace_enum_domain",
+		vec![
+			Operation::DropConstraintDefinition {
+				table: "enum_without_rowid".to_string(),
+				constraint: old_constraint,
+			},
+			Operation::AddConstraintDefinition {
+				table: "enum_without_rowid".to_string(),
+				constraint: Constraint::EnumDomain {
+					name: constraint_name.to_string(),
+					column: "status".to_string(),
+					domain: FieldDomain::Enum {
+						repr: ModelEnumRepr::String,
+						values: vec![
+							ModelEnumValue::String("queued".to_string()),
+							ModelEnumValue::String("running".to_string()),
+						],
+					},
+				},
+			},
+		],
+	);
+
+	executor
+		.apply_migrations(&[create, replace_domain])
+		.await
+		.expect("replace typed enum domain through table recreation");
+
+	let table_sql: String = conn
+		.fetch_one(
+			"SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'enum_without_rowid'",
+			vec![],
+		)
+		.await
+		.expect("read recreated table SQL")
+		.get("sql")
+		.expect("table SQL should be text");
+	assert!(
+		table_sql.contains("IN ('queued', 'running')"),
+		"{table_sql}"
+	);
+	assert!(
+		table_sql.trim_end().ends_with("WITHOUT ROWID"),
+		"{table_sql}"
+	);
+}
+
+#[rstest]
+#[tokio::test]
+async fn typed_enum_constraint_recreation_preserves_named_unique_constraint() {
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("connect to in-memory SQLite");
+	let conn = Arc::new(connection.clone());
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+	let unique_constraint = Constraint::Unique {
+		name: "unique_jobs_code".to_string(),
+		columns: vec!["code".to_string()],
+	};
+	let enum_constraint = Constraint::EnumDomain {
+		name: "jobs_status_model_enum_check".to_string(),
+		column: "status".to_string(),
+		domain: FieldDomain::Enum {
+			repr: ModelEnumRepr::String,
+			values: vec![ModelEnumValue::String("queued".to_string())],
+		},
+	};
+
+	let create = create_test_migration(
+		"testapp",
+		"0001_create_jobs",
+		vec![Operation::CreateTable {
+			name: "jobs".to_string(),
+			columns: vec![
+				create_pk_column("id"),
+				create_required_column("code", FieldType::VarChar(32)),
+				create_required_column("status", FieldType::VarChar(32)),
+			],
+			constraints: vec![unique_constraint.clone()],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
+		}],
+	);
+	let add_enum = create_test_migration(
+		"testapp",
+		"0002_add_enum_domain",
+		vec![Operation::AddConstraintDefinition {
+			table: "jobs".to_string(),
+			constraint: enum_constraint,
+		}],
+	);
+
+	executor
+		.apply_migrations(&[create, add_enum])
+		.await
+		.expect("add typed enum domain through table recreation");
+
+	let table_sql: String = conn
+		.fetch_one(
+			"SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'jobs'",
+			vec![],
+		)
+		.await
+		.expect("read recreated table SQL")
+		.get("sql")
+		.expect("table SQL should be text");
+	assert!(
+		table_sql
+			.contains("CONSTRAINT \"unique_jobs_code\" UNIQUE (\"code\" COLLATE \"BINARY\" ASC)"),
+		"{table_sql}"
+	);
+
+	let drop_unique = create_test_migration(
+		"testapp",
+		"0003_drop_named_unique",
+		vec![Operation::DropConstraintDefinition {
+			table: "jobs".to_string(),
+			constraint: unique_constraint,
+		}],
+	);
+	executor
+		.apply_migrations(&[drop_unique])
+		.await
+		.expect("drop named unique constraint after enum recreation");
+
+	conn.execute(
+		"INSERT INTO jobs (code, status) VALUES ('same', 'queued'), ('same', 'queued')",
+		vec![],
+	)
+	.await
+	.expect("duplicate codes should be allowed after dropping the named unique constraint");
+}
+
+#[rstest]
+#[tokio::test]
+async fn typed_enum_constraint_recreation_preserves_duplicate_named_unique_constraints() {
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("connect to in-memory SQLite");
+	let conn = Arc::new(connection.clone());
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+	let first_unique = Constraint::Unique {
+		name: "unique_jobs_tenant_code_primary".to_string(),
+		columns: vec!["tenant".to_string(), "code".to_string()],
+	};
+	let second_unique = Constraint::Unique {
+		name: "unique_jobs_tenant_code_secondary".to_string(),
+		columns: vec!["tenant".to_string(), "code".to_string()],
+	};
+
+	let create = create_test_migration(
+		"testapp",
+		"0001_create_duplicate_unique_jobs",
+		vec![Operation::CreateTable {
+			name: "duplicate_unique_jobs".to_string(),
+			columns: vec![
+				create_pk_column("id"),
+				create_required_column("tenant", FieldType::VarChar(32)),
+				create_required_column("code", FieldType::VarChar(32)),
+				create_required_column("status", FieldType::VarChar(32)),
+			],
+			constraints: vec![first_unique.clone(), second_unique.clone()],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
+		}],
+	);
+	let add_enum = create_test_migration(
+		"testapp",
+		"0002_add_duplicate_unique_enum_domain",
+		vec![Operation::AddConstraintDefinition {
+			table: "duplicate_unique_jobs".to_string(),
+			constraint: Constraint::EnumDomain {
+				name: "duplicate_unique_jobs_status_model_enum_check".to_string(),
+				column: "status".to_string(),
+				domain: FieldDomain::Enum {
+					repr: ModelEnumRepr::String,
+					values: vec![ModelEnumValue::String("queued".to_string())],
+				},
+			},
+		}],
+	);
+	executor
+		.apply_migrations(&[create, add_enum])
+		.await
+		.expect("add typed enum domain through table recreation");
+
+	let drop_first = create_test_migration(
+		"testapp",
+		"0003_drop_first_duplicate_unique",
+		vec![Operation::DropConstraintDefinition {
+			table: "duplicate_unique_jobs".to_string(),
+			constraint: first_unique,
+		}],
+	);
+	executor
+		.apply_migrations(&[drop_first])
+		.await
+		.expect("drop the first named unique constraint");
+
+	let duplicate_while_second_remains = conn
+		.execute(
+			"INSERT INTO duplicate_unique_jobs (tenant, code, status) VALUES ('acme', 'same', 'queued'), ('acme', 'same', 'queued')",
+			vec![],
+		)
+		.await;
+	assert!(
+		duplicate_while_second_remains.is_err(),
+		"the second named unique constraint should still reject duplicates"
+	);
+
+	let drop_second = create_test_migration(
+		"testapp",
+		"0004_drop_second_duplicate_unique",
+		vec![Operation::DropConstraintDefinition {
+			table: "duplicate_unique_jobs".to_string(),
+			constraint: second_unique,
+		}],
+	);
+	executor
+		.apply_migrations(&[drop_second])
+		.await
+		.expect("drop the second named unique constraint");
+
+	conn.execute(
+		"INSERT INTO duplicate_unique_jobs (tenant, code, status) VALUES ('acme', 'same', 'queued'), ('acme', 'same', 'queued')",
+		vec![],
+	)
+	.await
+	.expect("duplicates should be allowed after dropping both named unique constraints");
+}
+
+#[rstest]
+#[tokio::test]
+async fn typed_enum_constraint_recreation_preserves_collated_named_unique_constraints() {
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("connect to in-memory SQLite");
+	connection
+		.execute(
+			r#"CREATE TABLE collated_unique_jobs (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				code TEXT NOT NULL,
+				status TEXT NOT NULL,
+				CONSTRAINT "uq_jobs_code_nocase" UNIQUE ("code" COLLATE NOCASE),
+				CONSTRAINT "uq_jobs_code_binary" UNIQUE ("code" COLLATE BINARY)
+			)"#,
+			vec![],
+		)
+		.await
+		.expect("create table with distinct collated unique constraints");
+	let conn = Arc::new(connection.clone());
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+	let add_enum = create_test_migration(
+		"testapp",
+		"0001_add_collated_unique_enum_domain",
+		vec![Operation::AddConstraintDefinition {
+			table: "collated_unique_jobs".to_string(),
+			constraint: Constraint::EnumDomain {
+				name: "collated_unique_jobs_status_model_enum_check".to_string(),
+				column: "status".to_string(),
+				domain: FieldDomain::Enum {
+					repr: ModelEnumRepr::String,
+					values: vec![ModelEnumValue::String("queued".to_string())],
+				},
+			},
+		}],
+	);
+	executor
+		.apply_migrations(&[add_enum])
+		.await
+		.expect("add typed enum domain through table recreation");
+
+	let case_variant_duplicate = conn
+		.execute(
+			"INSERT INTO collated_unique_jobs (code, status) VALUES ('alpha', 'queued'), ('ALPHA', 'queued')",
+			vec![],
+		)
+		.await;
+	assert!(
+		case_variant_duplicate.is_err(),
+		"the NOCASE unique constraint should reject case variants"
+	);
+
+	let drop_nocase = create_test_migration(
+		"testapp",
+		"0002_drop_nocase_unique",
+		vec![Operation::DropConstraintDefinition {
+			table: "collated_unique_jobs".to_string(),
+			constraint: Constraint::Unique {
+				name: "uq_jobs_code_nocase".to_string(),
+				columns: vec!["code".to_string()],
+			},
+		}],
+	);
+	executor
+		.apply_migrations(&[drop_nocase])
+		.await
+		.expect("drop the NOCASE named unique constraint");
+
+	conn.execute(
+		"INSERT INTO collated_unique_jobs (code, status) VALUES ('alpha', 'queued'), ('ALPHA', 'queued')",
+		vec![],
+	)
+	.await
+	.expect("the BINARY unique constraint should allow case variants");
+	let exact_duplicate = conn
+		.execute(
+			"INSERT INTO collated_unique_jobs (code, status) VALUES ('alpha', 'queued')",
+			vec![],
+		)
+		.await;
+	assert!(
+		exact_duplicate.is_err(),
+		"the BINARY unique constraint should reject exact duplicates"
+	);
+
+	let drop_binary = create_test_migration(
+		"testapp",
+		"0003_drop_binary_unique",
+		vec![Operation::DropConstraintDefinition {
+			table: "collated_unique_jobs".to_string(),
+			constraint: Constraint::Unique {
+				name: "uq_jobs_code_binary".to_string(),
+				columns: vec!["code".to_string()],
+			},
+		}],
+	);
+	executor
+		.apply_migrations(&[drop_binary])
+		.await
+		.expect("drop the BINARY named unique constraint");
+	conn.execute(
+		"INSERT INTO collated_unique_jobs (code, status) VALUES ('alpha', 'queued')",
+		vec![],
+	)
+	.await
+	.expect("exact duplicates should be allowed after dropping both constraints");
+}
+
+#[rstest]
+#[tokio::test]
+async fn typed_enum_constraint_recreation_drops_unnamed_unique_by_autoindex_name() {
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("connect to in-memory SQLite");
+	connection
+		.execute(
+			"CREATE TABLE unnamed_unique_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, tenant TEXT NOT NULL, code TEXT NOT NULL, status TEXT NOT NULL, UNIQUE (tenant, code))",
+			vec![],
+		)
+		.await
+		.expect("create table with unnamed composite unique constraint");
+	let conn = Arc::new(connection.clone());
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+	let add_enum = create_test_migration(
+		"testapp",
+		"0001_add_unnamed_unique_enum_domain",
+		vec![Operation::AddConstraintDefinition {
+			table: "unnamed_unique_jobs".to_string(),
+			constraint: Constraint::EnumDomain {
+				name: "unnamed_unique_jobs_status_model_enum_check".to_string(),
+				column: "status".to_string(),
+				domain: FieldDomain::Enum {
+					repr: ModelEnumRepr::String,
+					values: vec![ModelEnumValue::String("queued".to_string())],
+				},
+			},
+		}],
+	);
+	executor
+		.apply_migrations(&[add_enum])
+		.await
+		.expect("add typed enum domain through table recreation");
+
+	let autoindex_name = conn
+		.fetch_all("PRAGMA index_list('unnamed_unique_jobs')", vec![])
+		.await
+		.expect("inspect unnamed unique autoindex")
+		.into_iter()
+		.find(|row| row.get::<String>("origin").ok().as_deref() == Some("u"))
+		.and_then(|row| row.get::<String>("name").ok())
+		.expect("unnamed unique constraint should have an autoindex name");
+	let drop_unique = create_test_migration(
+		"testapp",
+		"0002_drop_unnamed_unique",
+		vec![Operation::DropConstraintDefinition {
+			table: "unnamed_unique_jobs".to_string(),
+			constraint: Constraint::Unique {
+				name: autoindex_name,
+				columns: vec!["tenant".to_string(), "code".to_string()],
+			},
+		}],
+	);
+	executor
+		.apply_migrations(&[drop_unique])
+		.await
+		.expect("drop unnamed unique constraint by autoindex name");
+
+	conn.execute(
+		"INSERT INTO unnamed_unique_jobs (tenant, code, status) VALUES ('acme', 'same', 'queued'), ('acme', 'same', 'queued')",
+		vec![],
+	)
+	.await
+	.expect("duplicates should be allowed after dropping the unnamed unique constraint");
+}
+
+#[rstest]
+#[tokio::test]
+async fn typed_enum_constraint_recreation_drops_collapsed_binary_unique_by_autoindex_name() {
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("connect to in-memory SQLite");
+	connection
+		.execute(
+			"CREATE TABLE collapsed_binary_unique_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT NOT NULL, status TEXT NOT NULL, UNIQUE (code), UNIQUE (code COLLATE BINARY))",
+			vec![],
+		)
+		.await
+		.expect("create semantically equivalent unnamed unique constraints");
+	let conn = Arc::new(connection.clone());
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+	let add_enum = create_test_migration(
+		"testapp",
+		"0001_add_collapsed_binary_enum_domain",
+		vec![Operation::AddConstraintDefinition {
+			table: "collapsed_binary_unique_jobs".to_string(),
+			constraint: Constraint::EnumDomain {
+				name: "collapsed_binary_unique_jobs_status_model_enum_check".to_string(),
+				column: "status".to_string(),
+				domain: FieldDomain::Enum {
+					repr: ModelEnumRepr::String,
+					values: vec![ModelEnumValue::String("queued".to_string())],
+				},
+			},
+		}],
+	);
+	executor
+		.apply_migrations(&[add_enum])
+		.await
+		.expect("add typed enum domain through table recreation");
+
+	let autoindexes = conn
+		.fetch_all("PRAGMA index_list('collapsed_binary_unique_jobs')", vec![])
+		.await
+		.expect("inspect collapsed unique autoindex")
+		.into_iter()
+		.filter(|row| row.get::<String>("origin").ok().as_deref() == Some("u"))
+		.filter_map(|row| row.get::<String>("name").ok())
+		.collect::<Vec<_>>();
+	assert_eq!(
+		autoindexes.len(),
+		1,
+		"SQLite should collapse equivalent BINARY unique constraints"
+	);
+	let drop_unique = create_test_migration(
+		"testapp",
+		"0002_drop_collapsed_binary_unique",
+		vec![Operation::DropConstraintDefinition {
+			table: "collapsed_binary_unique_jobs".to_string(),
+			constraint: Constraint::Unique {
+				name: autoindexes[0].clone(),
+				columns: vec!["code".to_string()],
+			},
+		}],
+	);
+	executor
+		.apply_migrations(&[drop_unique])
+		.await
+		.expect("drop collapsed unique constraints by autoindex name");
+
+	conn.execute(
+		"INSERT INTO collapsed_binary_unique_jobs (code, status) VALUES ('same', 'queued'), ('same', 'queued')",
+		vec![],
+	)
+	.await
+	.expect("duplicates should be allowed after dropping the collapsed unique index");
+}
+
+#[rstest]
+#[tokio::test]
+async fn typed_enum_constraint_recreation_ignores_expression_collation_for_unique_alias() {
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("connect to in-memory SQLite");
+	connection
+		.execute(
+			"CREATE TABLE expression_collation_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, source TEXT NOT NULL, code TEXT GENERATED ALWAYS AS (source COLLATE NOCASE) STORED, status TEXT NOT NULL, UNIQUE (code))",
+			vec![],
+		)
+		.await
+		.expect("create table with expression-only collation");
+	let conn = Arc::new(connection.clone());
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+	let add_enum = create_test_migration(
+		"testapp",
+		"0001_add_expression_collation_enum_domain",
+		vec![Operation::AddConstraintDefinition {
+			table: "expression_collation_jobs".to_string(),
+			constraint: Constraint::EnumDomain {
+				name: "expression_collation_jobs_status_model_enum_check".to_string(),
+				column: "status".to_string(),
+				domain: FieldDomain::Enum {
+					repr: ModelEnumRepr::String,
+					values: vec![ModelEnumValue::String("queued".to_string())],
+				},
+			},
+		}],
+	);
+	executor
+		.apply_migrations(&[add_enum])
+		.await
+		.expect("add typed enum domain through table recreation");
+
+	let autoindex_name = conn
+		.fetch_all("PRAGMA index_list('expression_collation_jobs')", vec![])
+		.await
+		.expect("inspect expression collation autoindex")
+		.into_iter()
+		.find(|row| row.get::<String>("origin").ok().as_deref() == Some("u"))
+		.and_then(|row| row.get::<String>("name").ok())
+		.expect("unnamed unique constraint should have an autoindex name");
+	let drop_unique = create_test_migration(
+		"testapp",
+		"0002_drop_expression_collation_unique",
+		vec![Operation::DropConstraintDefinition {
+			table: "expression_collation_jobs".to_string(),
+			constraint: Constraint::Unique {
+				name: autoindex_name,
+				columns: vec!["code".to_string()],
+			},
+		}],
+	);
+	executor
+		.apply_migrations(&[drop_unique])
+		.await
+		.expect("drop unique constraint by autoindex name");
+
+	conn.execute(
+		"INSERT INTO expression_collation_jobs (source, status) VALUES ('same', 'queued'), ('same', 'queued')",
+		vec![],
+	)
+	.await
+	.expect("duplicates should be allowed after dropping the unique constraint");
+}
+
+#[rstest]
+#[tokio::test]
+async fn typed_enum_constraint_recreation_preserves_column_collation_for_unique_constraint() {
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("connect to in-memory SQLite");
+	connection
+		.execute(
+			"CREATE TABLE column_collation_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT COLLATE NOCASE NOT NULL, status TEXT NOT NULL, UNIQUE (code))",
+			vec![],
+		)
+		.await
+		.expect("create table with a column collation unique constraint");
+	let conn = Arc::new(connection.clone());
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+	let add_enum = create_test_migration(
+		"testapp",
+		"0001_add_column_collation_enum_domain",
+		vec![Operation::AddConstraintDefinition {
+			table: "column_collation_jobs".to_string(),
+			constraint: Constraint::EnumDomain {
+				name: "column_collation_jobs_status_model_enum_check".to_string(),
+				column: "status".to_string(),
+				domain: FieldDomain::Enum {
+					repr: ModelEnumRepr::String,
+					values: vec![ModelEnumValue::String("queued".to_string())],
+				},
+			},
+		}],
+	);
+	executor
+		.apply_migrations(&[add_enum])
+		.await
+		.expect("add typed enum domain through table recreation");
+
+	conn.execute(
+		"INSERT INTO column_collation_jobs (code, status) VALUES ('alpha', 'queued')",
+		vec![],
+	)
+	.await
+	.expect("insert the initial case-insensitive unique value");
+	let matching_rows: i64 = conn
+		.fetch_one(
+			"SELECT COUNT(*) AS count FROM column_collation_jobs WHERE code = 'ALPHA'",
+			vec![],
+		)
+		.await
+		.expect("query with the declared column collation")
+		.get("count")
+		.unwrap_or_default();
+	assert_eq!(
+		matching_rows, 1,
+		"NOCASE comparison semantics should survive table recreation"
+	);
+	let duplicate = conn
+		.execute(
+			"INSERT INTO column_collation_jobs (code, status) VALUES ('ALPHA', 'queued')",
+			vec![],
+		)
+		.await;
+	assert!(
+		duplicate.is_err(),
+		"NOCASE uniqueness should survive table recreation"
+	);
+}
+
+#[rstest]
+#[tokio::test]
+async fn typed_enum_constraint_recreation_preserves_inline_unique_conflict_mode() {
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("connect to in-memory SQLite");
+	connection
+		.execute(
+			"CREATE TABLE inline_conflict_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT NOT NULL ON CONFLICT IGNORE UNIQUE ON CONFLICT REPLACE, status TEXT NOT NULL)",
+			vec![],
+		)
+		.await
+		.expect("create table with an inline unique conflict mode");
+	let conn = Arc::new(connection.clone());
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+	let add_enum = create_test_migration(
+		"testapp",
+		"0001_add_inline_conflict_enum_domain",
+		vec![Operation::AddConstraintDefinition {
+			table: "inline_conflict_jobs".to_string(),
+			constraint: Constraint::EnumDomain {
+				name: "inline_conflict_jobs_status_model_enum_check".to_string(),
+				column: "status".to_string(),
+				domain: FieldDomain::Enum {
+					repr: ModelEnumRepr::String,
+					values: vec![
+						ModelEnumValue::String("queued".to_string()),
+						ModelEnumValue::String("running".to_string()),
+					],
+				},
+			},
+		}],
+	);
+	executor
+		.apply_migrations(&[add_enum])
+		.await
+		.expect("add typed enum domain through table recreation");
+
+	conn.execute(
+		"INSERT INTO inline_conflict_jobs (code, status) VALUES ('same', 'queued')",
+		vec![],
+	)
+	.await
+	.expect("insert the initial unique value");
+	conn.execute(
+		"INSERT INTO inline_conflict_jobs (code, status) VALUES ('same', 'running')",
+		vec![],
+	)
+	.await
+	.expect("duplicate unique values should retain REPLACE conflict handling");
+	let status: String = conn
+		.fetch_one(
+			"SELECT status FROM inline_conflict_jobs WHERE code = 'same'",
+			vec![],
+		)
+		.await
+		.expect("read the replacement row")
+		.get("status")
+		.expect("replacement status should be text");
+	assert_eq!(status, "running");
+}
+
+#[rstest]
+#[tokio::test]
+async fn typed_enum_constraint_recreation_quotes_keyword_unique_identifiers() {
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("connect to in-memory SQLite");
+	connection
+		.execute(
+			"CREATE TABLE keyword_unique_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, \"select\" TEXT NOT NULL, status TEXT NOT NULL, CONSTRAINT \"unique\" UNIQUE (\"select\"))",
+			vec![],
+		)
+		.await
+		.expect("create table with keyword unique identifiers");
+	let conn = Arc::new(connection.clone());
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+	let add_enum = create_test_migration(
+		"testapp",
+		"0001_add_keyword_unique_enum_domain",
+		vec![Operation::AddConstraintDefinition {
+			table: "keyword_unique_jobs".to_string(),
+			constraint: Constraint::EnumDomain {
+				name: "keyword_unique_jobs_status_model_enum_check".to_string(),
+				column: "status".to_string(),
+				domain: FieldDomain::Enum {
+					repr: ModelEnumRepr::String,
+					values: vec![ModelEnumValue::String("queued".to_string())],
+				},
+			},
+		}],
+	);
+	executor
+		.apply_migrations(&[add_enum])
+		.await
+		.expect("recreate a table with keyword unique identifiers");
+
+	conn.execute(
+		"INSERT INTO keyword_unique_jobs (\"select\", status) VALUES ('same', 'queued')",
+		vec![],
+	)
+	.await
+	.expect("insert the initial keyword column value");
+	let duplicate = conn
+		.execute(
+			"INSERT INTO keyword_unique_jobs (\"select\", status) VALUES ('same', 'queued')",
+			vec![],
+		)
+		.await;
+	assert!(
+		duplicate.is_err(),
+		"keyword-named unique constraint should survive recreation"
+	);
+}
+
+#[rstest]
+#[tokio::test]
+async fn typed_enum_constraint_recreation_preserves_strict_table_option() {
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("connect to in-memory SQLite");
+	connection
+		.execute(
+			"CREATE TABLE enum_strict_jobs (id INTEGER PRIMARY KEY, status TEXT NOT NULL) STRICT /* schema metadata comment */",
+			vec![],
+		)
+		.await
+		.expect("create STRICT table");
+	let conn = Arc::new(connection.clone());
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+	let add_enum = create_test_migration(
+		"testapp",
+		"0001_add_enum_to_strict_table",
+		vec![Operation::AddConstraintDefinition {
+			table: "enum_strict_jobs".to_string(),
+			constraint: Constraint::EnumDomain {
+				name: "enum_strict_jobs_status_model_enum_check".to_string(),
+				column: "status".to_string(),
+				domain: FieldDomain::Enum {
+					repr: ModelEnumRepr::String,
+					values: vec![ModelEnumValue::String("queued".to_string())],
+				},
+			},
+		}],
+	);
+
+	executor
+		.apply_migrations(&[add_enum])
+		.await
+		.expect("add enum constraint to STRICT table");
+
+	let table_sql: String = conn
+		.fetch_one(
+			"SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'enum_strict_jobs'",
+			vec![],
+		)
+		.await
+		.expect("read recreated table SQL")
+		.get("sql")
+		.expect("table SQL should be text");
+	assert!(table_sql.trim_end().ends_with("STRICT"), "{table_sql}");
+}
+
+#[rstest]
+#[tokio::test]
+async fn typed_enum_constraint_recreation_preserves_strict_without_rowid_options() {
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("connect to in-memory SQLite");
+	connection
+		.execute(
+			"CREATE TABLE enum_strict_keys (tenant_id INTEGER NOT NULL, job_id INTEGER NOT NULL, status TEXT NOT NULL, description TEXT NOT NULL, PRIMARY KEY (tenant_id, job_id)) STRICT, WITHOUT ROWID",
+			vec![],
+		)
+		.await
+		.expect("create STRICT WITHOUT ROWID table");
+	let conn = Arc::new(connection.clone());
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+	let add_enum = create_test_migration(
+		"testapp",
+		"0001_add_enum_to_strict_without_rowid_table",
+		vec![Operation::AddConstraintDefinition {
+			table: "enum_strict_keys".to_string(),
+			constraint: Constraint::EnumDomain {
+				name: "enum_strict_keys_status_model_enum_check".to_string(),
+				column: "status".to_string(),
+				domain: FieldDomain::Enum {
+					repr: ModelEnumRepr::String,
+					values: vec![ModelEnumValue::String("queued".to_string())],
+				},
+			},
+		}],
+	);
+
+	executor
+		.apply_migrations(&[add_enum])
+		.await
+		.expect("add enum constraint to STRICT WITHOUT ROWID table");
+
+	let table_sql: String = conn
+		.fetch_one(
+			"SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'enum_strict_keys'",
+			vec![],
+		)
+		.await
+		.expect("read recreated table SQL")
+		.get("sql")
+		.expect("table SQL should be text");
+	let normalized_sql = table_sql.to_ascii_uppercase();
+	assert!(normalized_sql.contains("WITHOUT ROWID"), "{table_sql}");
+	assert!(normalized_sql.contains("STRICT"), "{table_sql}");
+	let invalid_storage_class = conn
+		.execute(
+			"INSERT INTO enum_strict_keys (tenant_id, job_id, status, description) VALUES (1, 1, 'queued', X'00')",
+			vec![],
+		)
+		.await;
+	assert!(
+		invalid_storage_class.is_err(),
+		"STRICT should reject a BLOB value for a TEXT column"
+	);
+}
+
+#[rstest]
+#[tokio::test]
+async fn typed_enum_constraint_recreation_preserves_table_triggers() {
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("connect to in-memory SQLite");
+	connection
+		.execute(
+			"CREATE TABLE enum_trigger_jobs (id INTEGER PRIMARY KEY, status TEXT NOT NULL)",
+			vec![],
+		)
+		.await
+		.expect("create enum table");
+	connection
+		.execute(
+			"CREATE TABLE enum_trigger_audit (job_id INTEGER NOT NULL)",
+			vec![],
+		)
+		.await
+		.expect("create audit table");
+	connection
+		.execute(
+			"CREATE TRIGGER enum_trigger_jobs_z_audit AFTER INSERT ON enum_trigger_jobs BEGIN INSERT INTO enum_trigger_audit (job_id) VALUES (NEW.id); END",
+			vec![],
+		)
+		.await
+		.expect("create first audit trigger");
+	connection
+		.execute(
+			"CREATE TRIGGER enum_trigger_jobs_a_audit AFTER INSERT ON enum_trigger_jobs BEGIN INSERT INTO enum_trigger_audit (job_id) VALUES (NEW.id); END",
+			vec![],
+		)
+		.await
+		.expect("create second audit trigger");
+	let conn = Arc::new(connection.clone());
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+	let add_enum = create_test_migration(
+		"testapp",
+		"0001_add_enum_to_trigger_table",
+		vec![Operation::AddConstraintDefinition {
+			table: "enum_trigger_jobs".to_string(),
+			constraint: Constraint::EnumDomain {
+				name: "enum_trigger_jobs_status_model_enum_check".to_string(),
+				column: "status".to_string(),
+				domain: FieldDomain::Enum {
+					repr: ModelEnumRepr::String,
+					values: vec![ModelEnumValue::String("queued".to_string())],
+				},
+			},
+		}],
+	);
+
+	executor
+		.apply_migrations(&[add_enum])
+		.await
+		.expect("add enum constraint to table with trigger");
+	let trigger_rows = conn
+		.fetch_all(
+			"SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'enum_trigger_jobs' ORDER BY rowid",
+			vec![],
+		)
+		.await
+		.expect("read recreated trigger creation order");
+	let trigger_names: Vec<String> = trigger_rows
+		.iter()
+		.map(|row| row.get("name").expect("trigger name should be text"))
+		.collect();
+	assert_eq!(
+		trigger_names,
+		vec![
+			"enum_trigger_jobs_z_audit".to_string(),
+			"enum_trigger_jobs_a_audit".to_string(),
+		],
+		"trigger definitions should be recreated in their original creation order"
+	);
+	conn.execute(
+		"INSERT INTO enum_trigger_jobs (id, status) VALUES (1, 'queued')",
+		vec![],
+	)
+	.await
+	.expect("insert enum row after recreation");
+
+	let audit_count: i64 = conn
+		.fetch_one("SELECT COUNT(*) AS count FROM enum_trigger_audit", vec![])
+		.await
+		.expect("read trigger audit rows")
+		.get("count")
+		.expect("audit count should be an integer");
+	assert_eq!(
+		audit_count, 2,
+		"both recreated table triggers should still execute"
+	);
+}
+
+#[rstest]
+#[tokio::test]
+async fn recreation_reads_quoted_table_options_from_atomic_session() {
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("connect to in-memory SQLite");
+	let conn = Arc::new(connection.clone());
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+	let create_and_recreate = create_test_migration(
+		"testapp",
+		"0001_create_and_recreate_quoted_strict_table",
+		vec![
+			Operation::RunSQL {
+				sql: "CREATE TABLE \"enum \"\"quoted\"\" jobs\" (id INTEGER PRIMARY KEY, status TEXT NOT NULL) STRICT".to_string(),
+				reverse_sql: None,
+			},
+			Operation::AddConstraintDefinition {
+				table: "enum \"quoted\" jobs".to_string(),
+				constraint: Constraint::EnumDomain {
+					name: "enum_quoted_jobs_status_model_enum_check".to_string(),
+					column: "status".to_string(),
+					domain: FieldDomain::Enum {
+						repr: ModelEnumRepr::String,
+						values: vec![ModelEnumValue::String("queued".to_string())],
+					},
+				},
+			},
+		],
+	);
+
+	executor
+		.apply_migrations(&[create_and_recreate])
+		.await
+		.expect("recreate table from metadata visible only in the atomic session");
+	conn.execute(
+		"INSERT INTO \"enum \"\"quoted\"\" jobs\" (id, status) VALUES (1, 'queued')",
+		vec![],
+	)
+	.await
+	.expect("insert row through quoted table name");
+
+	let table_sql: String = conn
+		.fetch_one(
+			"SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'enum \"quoted\" jobs'",
+			vec![],
+		)
+		.await
+		.expect("read quoted recreated table SQL")
+		.get("sql")
+		.expect("table SQL should be text");
+	assert!(table_sql.trim_end().ends_with("STRICT"), "{table_sql}");
+}
+
+#[rstest]
+#[tokio::test]
+async fn recreation_preserves_composite_primary_key_ordinal_order() {
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("connect to in-memory SQLite");
+	connection
+		.execute(
+			"CREATE TABLE composite_jobs (tenant_id INTEGER NOT NULL, job_id INTEGER NOT NULL, obsolete TEXT, PRIMARY KEY (tenant_id, job_id)) WITHOUT ROWID",
+			vec![],
+		)
+		.await
+		.expect("create composite primary key table");
+	let conn = Arc::new(connection.clone());
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+	let recreate = create_test_migration(
+		"testapp",
+		"0002_drop_obsolete",
+		vec![Operation::DropColumn {
+			table: "composite_jobs".to_string(),
+			column: "obsolete".to_string(),
+			old_definition: None,
+		}],
+	);
+
+	executor
+		.apply_migrations(&[recreate])
+		.await
+		.expect("recreate composite primary key table");
+
+	let rows = conn
+		.fetch_all("PRAGMA table_info(composite_jobs)", vec![])
+		.await
+		.expect("read composite primary key metadata");
+	let mut primary_key_columns: Vec<(i64, String)> = rows
+		.iter()
+		.filter_map(|row| {
+			let ordinal = row.get::<i64>("pk").ok()?;
+			(ordinal > 0).then(|| {
+				(
+					ordinal,
+					row.get::<String>("name")
+						.expect("column name should be text"),
+				)
+			})
+		})
+		.collect();
+	primary_key_columns.sort_by_key(|(ordinal, _)| *ordinal);
+	assert_eq!(
+		primary_key_columns,
+		vec![(1, "tenant_id".to_string()), (2, "job_id".to_string())]
+	);
+
+	let table_sql: String = conn
+		.fetch_one(
+			"SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'composite_jobs'",
+			vec![],
+		)
+		.await
+		.expect("read recreated table SQL")
+		.get("sql")
+		.expect("table SQL should be text");
+	assert_eq!(table_sql.matches("PRIMARY KEY").count(), 1, "{table_sql}");
+	assert!(
+		table_sql
+			.contains("CONSTRAINT \"composite_jobs_pkey\" PRIMARY KEY (\"tenant_id\", \"job_id\")"),
+		"{table_sql}"
+	);
+}
+
+#[rstest]
+#[tokio::test]
+async fn recreation_preserves_foreign_key_deferral_modes() {
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("connect to in-memory SQLite");
+	connection
+		.execute(
+			"CREATE TABLE deferred_parents (id INTEGER PRIMARY KEY)",
+			vec![],
+		)
+		.await
+		.expect("create deferred parent table");
+	connection
+		.execute(
+			"CREATE TABLE immediate_parents (id INTEGER PRIMARY KEY)",
+			vec![],
+		)
+		.await
+		.expect("create immediate parent table");
+	connection
+		.execute(
+			"CREATE TABLE deferred_children (id INTEGER PRIMARY KEY, deferred_parent_id INTEGER, immediate_parent_id INTEGER, obsolete TEXT, CONSTRAINT \"deferred_parent_fk\" FOREIGN KEY (deferred_parent_id) REFERENCES deferred_parents(id) DEFERRABLE INITIALLY DEFERRED, CONSTRAINT `immediate_parent_fk` FOREIGN KEY (immediate_parent_id) REFERENCES immediate_parents(id) DEFERRABLE INITIALLY IMMEDIATE)",
+			vec![],
+		)
+		.await
+		.expect("create child table with deferrable foreign keys");
+	let conn = Arc::new(connection.clone());
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+	let recreate = create_test_migration(
+		"testapp",
+		"0002_drop_obsolete",
+		vec![Operation::DropColumn {
+			table: "deferred_children".to_string(),
+			column: "obsolete".to_string(),
+			old_definition: None,
+		}],
+	);
+
+	executor
+		.apply_migrations(&[recreate])
+		.await
+		.expect("recreate table with deferrable foreign keys");
+	let verify_deferred = create_test_migration(
+		"testapp",
+		"0003_verify_deferred",
+		vec![Operation::RunSQL {
+			sql: "INSERT INTO deferred_children (id, deferred_parent_id) VALUES (1, 42); INSERT INTO deferred_parents (id) VALUES (42)".to_string(),
+			reverse_sql: None,
+		}],
+	);
+	executor
+		.apply_migrations(&[verify_deferred])
+		.await
+		.expect("deferred foreign key should permit child-before-parent insertion");
+	let immediate_violation = conn
+		.execute(
+			"INSERT INTO deferred_children (id, immediate_parent_id) VALUES (2, 77)",
+			vec![],
+		)
+		.await;
+	assert!(
+		immediate_violation.is_err(),
+		"initially immediate foreign key should reject a missing parent"
+	);
+
+	let table_sql: String = conn
+		.fetch_one(
+			"SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'deferred_children'",
+			vec![],
+		)
+		.await
+		.expect("read recreated table SQL")
+		.get("sql")
+		.expect("table SQL should be text");
+	assert!(
+		table_sql.contains("deferred_parent_fk")
+			&& table_sql.contains("DEFERRABLE INITIALLY DEFERRED"),
+		"{table_sql}"
+	);
+	assert!(
+		table_sql.contains("immediate_parent_fk")
+			&& table_sql.contains("DEFERRABLE INITIALLY IMMEDIATE"),
+		"{table_sql}"
+	);
+}
+
+#[rstest]
+#[tokio::test]
+async fn enum_recreation_preserves_deferral_for_all_sqlite_foreign_key_forms() {
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("connect to in-memory SQLite");
+	for table in ["anonymous_parents", "inline_parents", "quoted_parents"] {
+		connection
+			.execute(
+				&format!("CREATE TABLE {table} (id INTEGER PRIMARY KEY)"),
+				vec![],
+			)
+			.await
+			.expect("create parent table");
+	}
+	connection
+		.execute(
+			"CREATE TABLE fk_form_children (id INTEGER PRIMARY KEY, anonymous_parent_id INTEGER, inline_parent_id INTEGER REFERENCES inline_parents(id) DEFERRABLE INITIALLY IMMEDIATE, \"quoted parent id\" INTEGER, status TEXT, FOREIGN KEY (anonymous_parent_id) REFERENCES anonymous_parents(id) DEFERRABLE INITIALLY DEFERRED, CONSTRAINT \"quoted fk-name\" FOREIGN KEY (\"quoted parent id\") REFERENCES quoted_parents(id) DEFERRABLE INITIALLY DEFERRED)",
+			vec![],
+		)
+		.await
+		.expect("create child table with all SQLite foreign key forms");
+	let conn = Arc::new(connection.clone());
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+	let add_enum = create_test_migration(
+		"testapp",
+		"0001_add_enum",
+		vec![Operation::AddConstraintDefinition {
+			table: "fk_form_children".to_string(),
+			constraint: Constraint::EnumDomain {
+				name: "fk_form_children_status_model_enum_check".to_string(),
+				column: "status".to_string(),
+				domain: FieldDomain::Enum {
+					repr: ModelEnumRepr::String,
+					values: vec![ModelEnumValue::String("queued".to_string())],
+				},
+			},
+		}],
+	);
+
+	executor
+		.apply_migrations(&[add_enum])
+		.await
+		.expect("recreate table while adding enum constraint");
+
+	let table_sql: String = conn
+		.fetch_one(
+			"SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'fk_form_children'",
+			vec![],
+		)
+		.await
+		.expect("read recreated table SQL")
+		.get("sql")
+		.expect("table SQL should be text");
+	assert_eq!(
+		table_sql.matches("DEFERRABLE INITIALLY DEFERRED").count(),
+		2,
+		"{table_sql}"
+	);
+	assert_eq!(
+		table_sql.matches("DEFERRABLE INITIALLY IMMEDIATE").count(),
+		1,
+		"{table_sql}"
+	);
+	assert!(table_sql.contains("quoted fk-name"), "{table_sql}");
+
+	let verify_deferred = create_test_migration(
+		"testapp",
+		"0002_verify_deferred_forms",
+		vec![Operation::RunSQL {
+			sql: "INSERT INTO fk_form_children (id, anonymous_parent_id, \"quoted parent id\", status) VALUES (1, 10, 20, 'queued'); INSERT INTO anonymous_parents (id) VALUES (10); INSERT INTO quoted_parents (id) VALUES (20)".to_string(),
+			reverse_sql: None,
+		}],
+	);
+	executor
+		.apply_migrations(&[verify_deferred])
+		.await
+		.expect("anonymous and quoted deferred foreign keys should remain deferred");
+	let immediate_violation = conn
+		.execute(
+			"INSERT INTO fk_form_children (id, inline_parent_id, status) VALUES (2, 30, 'queued')",
+			vec![],
+		)
+		.await;
+	assert!(
+		immediate_violation.is_err(),
+		"inline initially immediate foreign key should reject a missing parent"
+	);
+}
+
+#[rstest]
+#[tokio::test]
+async fn recreation_resolves_omitted_composite_foreign_key_columns_in_primary_key_order() {
+	// Arrange
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("connect to in-memory SQLite");
+	connection
+		.execute(
+			"CREATE TABLE omitted_target_parents (physical_first INTEGER, physical_second INTEGER, PRIMARY KEY (physical_second, physical_first))",
+			vec![],
+		)
+		.await
+		.expect("create parent table with reordered composite primary key");
+	connection
+		.execute(
+			"CREATE TABLE omitted_target_children (id INTEGER PRIMARY KEY, source_first INTEGER, source_second INTEGER, obsolete TEXT, FOREIGN KEY (source_first, source_second) REFERENCES omitted_target_parents)",
+			vec![],
+		)
+		.await
+		.expect("create child table with omitted foreign key target columns");
+	let conn = Arc::new(connection.clone());
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+	let recreate = create_test_migration(
+		"testapp",
+		"0001_recreate_omitted_target_children",
+		vec![Operation::DropColumn {
+			table: "omitted_target_children".to_string(),
+			column: "obsolete".to_string(),
+			old_definition: None,
+		}],
+	);
+
+	// Act
+	executor
+		.apply_migrations(&[recreate])
+		.await
+		.expect("recreate table with omitted foreign key target columns");
+
+	// Assert
+	let rows = conn
+		.fetch_all("PRAGMA foreign_key_list(omitted_target_children)", vec![])
+		.await
+		.expect("read recreated foreign key metadata");
+	let mut referenced_columns: Vec<(i64, String)> = rows
+		.iter()
+		.map(|row| {
+			(
+				row.get("seq")
+					.expect("foreign key sequence should be integer"),
+				row.get("to")
+					.expect("referenced column should be resolved to text"),
+			)
+		})
+		.collect();
+	referenced_columns.sort_by_key(|(sequence, _)| *sequence);
+	assert_eq!(
+		referenced_columns,
+		vec![
+			(0, "physical_second".to_string()),
+			(1, "physical_first".to_string()),
+		]
+	);
+}
+
+#[rstest]
+#[tokio::test]
+async fn recreation_preserves_inline_named_foreign_key_with_escaped_identifiers() {
+	// Arrange
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("connect to in-memory SQLite");
+	connection
+		.execute(
+			"CREATE TABLE inline_escape_parent (id INTEGER PRIMARY KEY)",
+			vec![],
+		)
+		.await
+		.expect("create parent table");
+	connection
+		.execute(
+			"CREATE TABLE inline_escape_child (id INTEGER PRIMARY KEY, \"a\"\"b\" INTEGER CONSTRAINT \"inline\"\"fk\" REFERENCES inline_escape_parent(id) DEFERRABLE INITIALLY DEFERRED, obsolete TEXT)",
+			vec![],
+		)
+		.await
+		.expect("create child table with escaped inline foreign key identifiers");
+	let conn = Arc::new(connection.clone());
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+	let recreate = create_test_migration(
+		"testapp",
+		"0001_recreate_inline_escape_child",
+		vec![Operation::DropColumn {
+			table: "inline_escape_child".to_string(),
+			column: "obsolete".to_string(),
+			old_definition: None,
+		}],
+	);
+
+	// Act
+	executor
+		.apply_migrations(&[recreate])
+		.await
+		.expect("recreate table with escaped inline foreign key identifiers");
+
+	// Assert
+	let table_sql: String = conn
+		.fetch_one(
+			"SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'inline_escape_child'",
+			vec![],
+		)
+		.await
+		.expect("read recreated table SQL")
+		.get("sql")
+		.expect("table SQL should be text");
+	assert!(table_sql.contains("\"a\"\"b\""), "{table_sql}");
+	assert!(table_sql.contains("\"inline\"\"fk\""), "{table_sql}");
+	assert!(
+		table_sql.contains("DEFERRABLE INITIALLY DEFERRED"),
+		"{table_sql}"
+	);
+}
+
+#[rstest]
+#[tokio::test]
+async fn recreation_quotes_table_and_index_identifiers() {
+	// Arrange
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("connect to in-memory SQLite");
+	connection
+		.execute(
+			"CREATE TABLE \"order\"\"items\" (id INTEGER PRIMARY KEY, \"select\"\"value\" TEXT, obsolete TEXT)",
+			vec![],
+		)
+		.await
+		.expect("create table with escaped identifier");
+	connection
+		.execute(
+			"CREATE INDEX \"idx\"\"quoted\" ON \"order\"\"items\" (\"select\"\"value\")",
+			vec![],
+		)
+		.await
+		.expect("create index with escaped identifiers");
+	connection
+		.execute(
+			"INSERT INTO \"order\"\"items\" (\"select\"\"value\", obsolete) VALUES ('kept', 'removed')",
+			vec![],
+		)
+		.await
+		.expect("insert source row");
+	let conn = Arc::new(connection.clone());
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+	let recreate = create_test_migration(
+		"testapp",
+		"0001_recreate_escaped_table",
+		vec![Operation::DropColumn {
+			table: "order\"items".to_string(),
+			column: "obsolete".to_string(),
+			old_definition: None,
+		}],
+	);
+
+	// Act
+	executor
+		.apply_migrations(&[recreate])
+		.await
+		.expect("recreate table and index with escaped identifiers");
+
+	// Assert
+	let value: String = conn
+		.fetch_one("SELECT \"select\"\"value\" FROM \"order\"\"items\"", vec![])
+		.await
+		.expect("read recreated row")
+		.get("select\"value")
+		.expect("escaped column value should be text");
+	assert_eq!(value, "kept");
+	let index_sql: String = conn
+		.fetch_one(
+			"SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?",
+			vec!["idx\"quoted".into()],
+		)
+		.await
+		.expect("read recreated escaped index")
+		.get("sql")
+		.expect("escaped index SQL should be text");
+	assert!(index_sql.contains("\"idx\"\"quoted\""), "{index_sql}");
+	assert!(index_sql.contains("\"order\"\"items\""), "{index_sql}");
+	assert!(index_sql.contains("\"select\"\"value\""), "{index_sql}");
+}
+
+#[rstest]
+#[tokio::test]
+async fn recreation_rejects_omitted_foreign_key_target_without_primary_key() {
+	// Arrange
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("connect to in-memory SQLite");
+	connection
+		.execute("CREATE TABLE no_pk_parent (value INTEGER)", vec![])
+		.await
+		.expect("create parent without a primary key");
+	connection
+		.execute(
+			"CREATE TABLE no_pk_child (parent_value INTEGER, obsolete TEXT, FOREIGN KEY (parent_value) REFERENCES no_pk_parent)",
+			vec![],
+		)
+		.await
+		.expect("create child with omitted foreign key target");
+	let conn = Arc::new(connection.clone());
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+	let recreate = create_test_migration(
+		"testapp",
+		"0001_recreate_no_pk_child",
+		vec![Operation::DropColumn {
+			table: "no_pk_child".to_string(),
+			column: "obsolete".to_string(),
+			old_definition: None,
+		}],
+	);
+
+	// Act
+	let result = executor.apply_migrations(&[recreate]).await;
+
+	// Assert
+	assert!(
+		matches!(
+			&result,
+			Err(MigrationError::InvalidMigration(message))
+				if message.contains("no_pk_child")
+					&& message.contains("no_pk_parent")
+					&& message.contains("primary key")
+		),
+		"unexpected result: {result:?}"
+	);
+	let columns = conn
+		.fetch_all("PRAGMA table_info(\"no_pk_child\")", vec![])
+		.await
+		.expect("read unchanged child table");
+	assert!(
+		columns
+			.iter()
+			.any(|row| row.get::<String>("name").ok().as_deref() == Some("obsolete")),
+		"validation must stop before table recreation"
+	);
+}
+
+#[rstest]
+#[tokio::test]
+async fn recreation_rejects_omitted_foreign_key_target_arity_mismatch() {
+	// Arrange
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("connect to in-memory SQLite");
+	connection
+		.execute(
+			"CREATE TABLE composite_parent (first INTEGER, second INTEGER, PRIMARY KEY (first, second))",
+			vec![],
+		)
+		.await
+		.expect("create composite primary key parent");
+	connection
+		.execute(
+			"CREATE TABLE arity_child (parent_value INTEGER, obsolete TEXT, FOREIGN KEY (parent_value) REFERENCES composite_parent)",
+			vec![],
+		)
+		.await
+		.expect("create child with mismatched omitted target arity");
+	let conn = Arc::new(connection.clone());
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+	let recreate = create_test_migration(
+		"testapp",
+		"0001_recreate_arity_child",
+		vec![Operation::DropColumn {
+			table: "arity_child".to_string(),
+			column: "obsolete".to_string(),
+			old_definition: None,
+		}],
+	);
+
+	// Act
+	let result = executor.apply_migrations(&[recreate]).await;
+
+	// Assert
+	assert!(
+		matches!(
+			&result,
+			Err(MigrationError::InvalidMigration(message))
+				if message.contains("arity_child")
+					&& message.contains("composite_parent")
+					&& message.contains("1 source column")
+					&& message.contains("2 referenced columns")
+		),
+		"unexpected result: {result:?}"
+	);
+	let columns = conn
+		.fetch_all("PRAGMA table_info(\"arity_child\")", vec![])
+		.await
+		.expect("read unchanged child table");
+	assert!(
+		columns
+			.iter()
+			.any(|row| row.get::<String>("name").ok().as_deref() == Some("obsolete")),
+		"validation must stop before table recreation"
+	);
+}
+
+#[rstest]
+#[tokio::test]
+async fn non_atomic_recreation_restores_foreign_keys_after_ddl_failure() {
+	// Arrange
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("connect to in-memory SQLite");
+	connection
+		.execute(
+			"CREATE TABLE cleanup_parent (id INTEGER PRIMARY KEY)",
+			vec![],
+		)
+		.await
+		.expect("create parent table");
+	connection
+		.execute(
+			"CREATE TABLE cleanup_child (id INTEGER PRIMARY KEY, parent_id INTEGER REFERENCES cleanup_parent(id), obsolete TEXT)",
+			vec![],
+		)
+		.await
+		.expect("create child table");
+	connection
+		.execute("PRAGMA foreign_keys = ON", vec![])
+		.await
+		.expect("enable foreign key enforcement");
+	let conn = Arc::new(connection.clone());
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+	let mut recreate = create_test_migration(
+		"testapp",
+		"0001_fail_non_atomic_recreation",
+		vec![Operation::AddConstraint {
+			table: "cleanup_child".to_string(),
+			constraint_sql: "CONSTRAINT".to_string(),
+		}],
+	);
+	recreate.atomic = false;
+
+	// Act
+	let result = executor.apply_migrations(&[recreate]).await;
+
+	// Assert
+	assert!(result.is_err(), "invalid recreation DDL must fail");
+	let foreign_keys: i64 = conn
+		.fetch_one("PRAGMA foreign_keys", vec![])
+		.await
+		.expect("read restored foreign key setting")
+		.get("foreign_keys")
+		.expect("foreign_keys should be an integer");
+	assert_eq!(foreign_keys, 1, "foreign key enforcement must be restored");
+	let invalid_write = conn
+		.execute("INSERT INTO cleanup_child (parent_id) VALUES (999)", vec![])
+		.await;
+	assert!(
+		invalid_write.is_err(),
+		"restored foreign key enforcement must reject an invalid child row"
+	);
+}
+
+#[rstest]
+#[tokio::test]
+async fn atomic_recreation_rolls_back_after_ddl_failure() {
+	// Arrange
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("connect to in-memory SQLite");
+	connection
+		.execute(
+			"CREATE TABLE atomic_failure_parent (id INTEGER PRIMARY KEY)",
+			vec![],
+		)
+		.await
+		.expect("create parent table");
+	connection
+		.execute(
+			"CREATE TABLE atomic_failure_child (id INTEGER PRIMARY KEY, parent_id INTEGER REFERENCES atomic_failure_parent(id), obsolete TEXT)",
+			vec![],
+		)
+		.await
+		.expect("create child table");
+	connection
+		.execute("INSERT INTO atomic_failure_parent (id) VALUES (1)", vec![])
+		.await
+		.expect("insert parent row");
+	connection
+		.execute(
+			"INSERT INTO atomic_failure_child (id, parent_id, obsolete) VALUES (1, 1, 'keep')",
+			vec![],
+		)
+		.await
+		.expect("insert child row");
+	connection
+		.execute("PRAGMA foreign_keys = ON", vec![])
+		.await
+		.expect("enable foreign key enforcement");
+	let conn = Arc::new(connection.clone());
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+	let recreate = create_test_migration(
+		"testapp",
+		"0001_fail_atomic_recreation",
+		vec![Operation::AddConstraint {
+			table: "atomic_failure_child".to_string(),
+			constraint_sql: "CONSTRAINT".to_string(),
+		}],
+	);
+
+	// Act
+	let result = executor.apply_migrations(&[recreate]).await;
+
+	// Assert
+	assert!(result.is_err(), "invalid recreation DDL must fail");
+	let foreign_keys: i64 = conn
+		.fetch_one("PRAGMA foreign_keys", vec![])
+		.await
+		.expect("read restored foreign key setting")
+		.get("foreign_keys")
+		.expect("foreign_keys should be an integer");
+	assert_eq!(foreign_keys, 1, "foreign key enforcement must be restored");
+	let columns = conn
+		.fetch_all("PRAGMA table_info(atomic_failure_child)", vec![])
+		.await
+		.expect("read original child table columns");
+	assert!(
+		columns
+			.iter()
+			.any(|row| row.get::<String>("name").ok().as_deref() == Some("obsolete")),
+		"original child table must remain intact"
+	);
+	let original_rows: i64 = conn
+		.fetch_one("SELECT COUNT(*) AS count FROM atomic_failure_child", vec![])
+		.await
+		.expect("read original child rows")
+		.get("count")
+		.expect("count should be an integer");
+	assert_eq!(original_rows, 1, "original child data must remain intact");
+	let temporary_table = conn
+		.fetch_optional(
+			"SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'atomic_failure_child_new'",
+			vec![],
+		)
+		.await
+		.expect("check temporary table cleanup");
+	assert!(
+		temporary_table.is_none(),
+		"failed recreation temporary table must be removed"
+	);
+	let invalid_write = conn
+		.execute(
+			"INSERT INTO atomic_failure_child (id, parent_id) VALUES (2, 999)",
+			vec![],
+		)
+		.await;
+	assert!(
+		invalid_write.is_err(),
+		"restored foreign key enforcement must reject invalid child rows"
+	);
+}
+
+#[rstest]
+#[tokio::test]
+async fn atomic_parent_recreation_preserves_cascade_children() {
+	// Arrange
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("connect to in-memory SQLite");
+	connection
+		.execute(
+			"CREATE TABLE atomic_parent (id INTEGER PRIMARY KEY, obsolete TEXT)",
+			vec![],
+		)
+		.await
+		.expect("create parent table");
+	connection
+		.execute(
+			"CREATE TABLE atomic_cascade_child (id INTEGER PRIMARY KEY, parent_id INTEGER REFERENCES atomic_parent(id) ON DELETE CASCADE)",
+			vec![],
+		)
+		.await
+		.expect("create cascade child table");
+	connection
+		.execute(
+			"INSERT INTO atomic_parent (id, obsolete) VALUES (1, 'remove')",
+			vec![],
+		)
+		.await
+		.expect("insert parent row");
+	connection
+		.execute(
+			"INSERT INTO atomic_cascade_child (id, parent_id) VALUES (1, 1)",
+			vec![],
+		)
+		.await
+		.expect("insert child row");
+	let assertion_connection = Arc::new(connection.clone());
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+	let recreate = create_test_migration(
+		"testapp",
+		"0001_recreate_cascade_parent",
+		vec![Operation::DropColumn {
+			table: "atomic_parent".to_string(),
+			column: "obsolete".to_string(),
+			old_definition: None,
+		}],
+	);
+
+	// Act
+	let result = executor.apply_migrations(&[recreate]).await;
+
+	// Assert
+	result.expect("atomic parent recreation should succeed");
+	let child_count: i64 = assertion_connection
+		.fetch_one("SELECT COUNT(*) AS count FROM atomic_cascade_child", vec![])
+		.await
+		.expect("count cascade child rows")
+		.get("count")
+		.expect("count should be an integer");
+	assert_eq!(child_count, 1, "cascade child rows must be preserved");
+	let foreign_keys: i64 = assertion_connection
+		.fetch_one("PRAGMA foreign_keys", vec![])
+		.await
+		.expect("read foreign key state")
+		.get("foreign_keys")
+		.expect("foreign_keys should be an integer");
+	assert_eq!(foreign_keys, 1, "foreign key enforcement must be restored");
+	let invalid_write = assertion_connection
+		.execute(
+			"INSERT INTO atomic_cascade_child (id, parent_id) VALUES (2, 999)",
+			vec![],
+		)
+		.await;
+	assert!(
+		invalid_write.is_err(),
+		"restored foreign key enforcement must reject invalid child rows"
+	);
+}
+
+#[rstest]
+#[tokio::test]
+async fn atomic_parent_recreation_supports_restrict_children() {
+	// Arrange
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("connect to in-memory SQLite");
+	connection
+		.execute(
+			"CREATE TABLE atomic_restrict_parent (id INTEGER PRIMARY KEY, obsolete TEXT)",
+			vec![],
+		)
+		.await
+		.expect("create parent table");
+	connection
+		.execute(
+			"CREATE TABLE atomic_restrict_child (id INTEGER PRIMARY KEY, parent_id INTEGER REFERENCES atomic_restrict_parent(id) ON DELETE RESTRICT)",
+			vec![],
+		)
+		.await
+		.expect("create restrict child table");
+	connection
+		.execute(
+			"INSERT INTO atomic_restrict_parent (id, obsolete) VALUES (1, 'remove')",
+			vec![],
+		)
+		.await
+		.expect("insert parent row");
+	connection
+		.execute(
+			"INSERT INTO atomic_restrict_child (id, parent_id) VALUES (1, 1)",
+			vec![],
+		)
+		.await
+		.expect("insert child row");
+	let assertion_connection = Arc::new(connection.clone());
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+	let recreate = create_test_migration(
+		"testapp",
+		"0001_recreate_restrict_parent",
+		vec![Operation::DropColumn {
+			table: "atomic_restrict_parent".to_string(),
+			column: "obsolete".to_string(),
+			old_definition: None,
+		}],
+	);
+
+	// Act
+	let result = executor.apply_migrations(&[recreate]).await;
+
+	// Assert
+	result.expect("atomic recreation should temporarily suspend restrict enforcement");
+	let child_count: i64 = assertion_connection
+		.fetch_one(
+			"SELECT COUNT(*) AS count FROM atomic_restrict_child",
+			vec![],
+		)
+		.await
+		.expect("count restrict child rows")
+		.get("count")
+		.expect("count should be an integer");
+	assert_eq!(child_count, 1, "restrict child rows must be preserved");
+	let foreign_keys: i64 = assertion_connection
+		.fetch_one("PRAGMA foreign_keys", vec![])
+		.await
+		.expect("read foreign key state")
+		.get("foreign_keys")
+		.expect("foreign_keys should be an integer");
+	assert_eq!(foreign_keys, 1, "foreign key enforcement must be restored");
+	let invalid_write = assertion_connection
+		.execute(
+			"INSERT INTO atomic_restrict_child (id, parent_id) VALUES (2, 999)",
+			vec![],
+		)
+		.await;
+	assert!(
+		invalid_write.is_err(),
+		"restored foreign key enforcement must reject invalid child rows"
+	);
+}
+
+#[rstest]
+#[tokio::test]
+async fn recreation_preserves_bare_deferrable_as_initially_immediate() {
+	// Arrange
+	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		.await
+		.expect("connect to in-memory SQLite");
+	connection
+		.execute(
+			"CREATE TABLE bare_deferrable_parent (id INTEGER PRIMARY KEY)",
+			vec![],
+		)
+		.await
+		.expect("create parent table");
+	connection
+		.execute(
+			"CREATE TABLE bare_deferrable_child (id INTEGER PRIMARY KEY, parent_id INTEGER, obsolete TEXT, FOREIGN KEY (parent_id) REFERENCES bare_deferrable_parent(id) DEFERRABLE)",
+			vec![],
+		)
+		.await
+		.expect("create child table with bare deferrable foreign key");
+	let conn = Arc::new(connection.clone());
+	let mut executor = DatabaseMigrationExecutor::new(connection);
+	let recreate = create_test_migration(
+		"testapp",
+		"0001_recreate_bare_deferrable_child",
+		vec![Operation::DropColumn {
+			table: "bare_deferrable_child".to_string(),
+			column: "obsolete".to_string(),
+			old_definition: None,
+		}],
+	);
+
+	// Act
+	executor
+		.apply_migrations(&[recreate])
+		.await
+		.expect("recreate table with bare deferrable foreign key");
+
+	// Assert
+	let table_sql: String = conn
+		.fetch_one(
+			"SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'bare_deferrable_child'",
+			vec![],
+		)
+		.await
+		.expect("read recreated table SQL")
+		.get("sql")
+		.expect("table SQL should be text");
+	assert!(
+		table_sql.contains("DEFERRABLE INITIALLY IMMEDIATE"),
+		"{table_sql}"
+	);
 }

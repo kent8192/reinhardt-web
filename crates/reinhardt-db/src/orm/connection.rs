@@ -79,6 +79,30 @@ impl QueryRow {
 					native_json_fields.insert(key.clone());
 					serde_json::Value::Null
 				}
+				QueryValue::StringArray(values) => serde_json::Value::Array(
+					values.into_iter().map(serde_json::Value::String).collect(),
+				),
+				QueryValue::IntArray(values) => serde_json::Value::Array(
+					values.into_iter().map(serde_json::Value::from).collect(),
+				),
+				QueryValue::BigIntArray(values) => serde_json::Value::Array(
+					values.into_iter().map(serde_json::Value::from).collect(),
+				),
+				QueryValue::BoolArray(values) => serde_json::Value::Array(
+					values.into_iter().map(serde_json::Value::from).collect(),
+				),
+				QueryValue::FloatArray(values) => serde_json::Value::Array(
+					values.into_iter().map(serde_json::Value::from).collect(),
+				),
+				QueryValue::DoubleArray(values) => serde_json::Value::Array(
+					values.into_iter().map(serde_json::Value::from).collect(),
+				),
+				QueryValue::UuidArray(values) => serde_json::Value::Array(
+					values
+						.into_iter()
+						.map(|value| serde_json::Value::String(value.to_string()))
+						.collect(),
+				),
 				// NOW() should never appear in Row data (it's resolved to actual timestamp in database)
 				QueryValue::Now => panic!("QueryValue::Now should not appear in Row data"),
 			};
@@ -93,7 +117,7 @@ impl QueryRow {
 		}
 	}
 
-	pub(crate) fn deserialize_model<M: super::Model>(&self) -> Result<M, serde_json::Error> {
+	pub(crate) fn deserialize_model<M: super::Model>(&self) -> Result<M, super::FieldCodecError> {
 		super::json::deserialize_model_row::<M>(
 			self.data.clone(),
 			self.json_null_fields.clone(),

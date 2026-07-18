@@ -83,6 +83,7 @@ fn create_basic_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 		auto_increment: false,
 		default: None,
 		generated: None,
+		domain: None,
 	}
 }
 
@@ -97,6 +98,7 @@ fn create_auto_pk_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 		auto_increment: true,
 		default: None,
 		generated: None,
+		domain: None,
 	}
 }
 
@@ -632,6 +634,7 @@ async fn test_postgres_exclude_constraint(
 					default: None,
 
 					generated: None,
+					domain: None,
 				},
 				create_basic_column("start_date", FieldType::Date),
 				create_basic_column("end_date", FieldType::Date),
@@ -1389,6 +1392,7 @@ async fn test_sqlite_without_rowid() {
 				default: None,
 
 				generated: None,
+				domain: None,
 			},
 			create_basic_column("value", FieldType::Text),
 		],
@@ -1446,6 +1450,7 @@ async fn test_cockroachdb_interleave_table() {
 				default: None,
 
 				generated: None,
+				domain: None,
 			},
 			ColumnDefinition {
 				name: "order_id".to_string(),
@@ -1457,6 +1462,7 @@ async fn test_cockroachdb_interleave_table() {
 				default: None,
 
 				generated: None,
+				domain: None,
 			},
 		],
 		constraints: vec![],

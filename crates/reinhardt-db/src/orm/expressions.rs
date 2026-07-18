@@ -5,6 +5,7 @@ use std::marker::PhantomData;
 use crate::orm::query::{
 	FieldAssignment, Filter, FilterOperator, FilterValue, UpdateValue, quote_identifier,
 };
+use crate::orm::{DatabaseField, IntoFieldValue};
 
 /// F expression - represents a database field reference
 /// Similar to Django's F() objects for database-side operations
@@ -166,8 +167,12 @@ impl<M, T> FieldRef<M, T> {
 	///     .update_fields([User::field_last_login().assign(chrono::Utc::now())])
 	///     .await?;
 	/// ```
-	pub fn assign<V: Into<UpdateValue>>(&self, value: V) -> FieldAssignment {
-		FieldAssignment::new(self.name, value)
+	pub fn assign<V>(&self, value: V) -> FieldAssignment
+	where
+		T: DatabaseField,
+		V: IntoFieldValue<T>,
+	{
+		FieldAssignment::new(self.name, UpdateValue::Typed(value.into_field_value()))
 	}
 
 	/// Convert to SQL representation
@@ -190,18 +195,38 @@ impl<M, T> FieldRef<M, T> {
 	/// let filter = User::field_id().eq(42);
 	/// // Results in: WHERE id = 42
 	/// ```
-	pub fn eq<V: Into<FilterValue>>(&self, value: V) -> Filter {
-		Filter::new(self.name.to_string(), FilterOperator::Eq, value.into())
+	pub fn eq<V>(&self, value: V) -> Filter
+	where
+		T: DatabaseField,
+		V: IntoFieldValue<T>,
+	{
+		Filter::new(
+			self.name.to_string(),
+			FilterOperator::Eq,
+			FilterValue::Typed(value.into_field_value()),
+		)
 	}
 
 	/// Create an exact equality filter using Django lookup naming.
-	pub fn exact<V: Into<FilterValue>>(&self, value: V) -> Filter {
+	pub fn exact<V>(&self, value: V) -> Filter
+	where
+		T: DatabaseField,
+		V: IntoFieldValue<T>,
+	{
 		self.eq(value)
 	}
 
 	/// Create a case-insensitive exact match filter.
-	pub fn iexact<V: Into<FilterValue>>(&self, value: V) -> Filter {
-		Filter::new(self.name.to_string(), FilterOperator::IExact, value.into())
+	pub fn iexact<V>(&self, value: V) -> Filter
+	where
+		T: DatabaseField,
+		V: IntoFieldValue<T>,
+	{
+		Filter::new(
+			self.name.to_string(),
+			FilterOperator::IExact,
+			FilterValue::Typed(value.into_field_value()),
+		)
 	}
 
 	/// Create a not-equal filter for this field
@@ -212,8 +237,16 @@ impl<M, T> FieldRef<M, T> {
 	/// let filter = User::field_status().ne("inactive");
 	/// // Results in: WHERE status != 'inactive'
 	/// ```
-	pub fn ne<V: Into<FilterValue>>(&self, value: V) -> Filter {
-		Filter::new(self.name.to_string(), FilterOperator::Ne, value.into())
+	pub fn ne<V>(&self, value: V) -> Filter
+	where
+		T: DatabaseField,
+		V: IntoFieldValue<T>,
+	{
+		Filter::new(
+			self.name.to_string(),
+			FilterOperator::Ne,
+			FilterValue::Typed(value.into_field_value()),
+		)
 	}
 
 	/// Create a greater-than filter for this field
@@ -224,8 +257,16 @@ impl<M, T> FieldRef<M, T> {
 	/// let filter = User::field_age().gt(18);
 	/// // Results in: WHERE age > 18
 	/// ```
-	pub fn gt<V: Into<FilterValue>>(&self, value: V) -> Filter {
-		Filter::new(self.name.to_string(), FilterOperator::Gt, value.into())
+	pub fn gt<V>(&self, value: V) -> Filter
+	where
+		T: DatabaseField,
+		V: IntoFieldValue<T>,
+	{
+		Filter::new(
+			self.name.to_string(),
+			FilterOperator::Gt,
+			FilterValue::Typed(value.into_field_value()),
+		)
 	}
 
 	/// Create a greater-than-or-equal filter for this field
@@ -236,8 +277,16 @@ impl<M, T> FieldRef<M, T> {
 	/// let filter = User::field_age().gte(18);
 	/// // Results in: WHERE age >= 18
 	/// ```
-	pub fn gte<V: Into<FilterValue>>(&self, value: V) -> Filter {
-		Filter::new(self.name.to_string(), FilterOperator::Gte, value.into())
+	pub fn gte<V>(&self, value: V) -> Filter
+	where
+		T: DatabaseField,
+		V: IntoFieldValue<T>,
+	{
+		Filter::new(
+			self.name.to_string(),
+			FilterOperator::Gte,
+			FilterValue::Typed(value.into_field_value()),
+		)
 	}
 
 	/// Create a less-than filter for this field
@@ -248,8 +297,16 @@ impl<M, T> FieldRef<M, T> {
 	/// let filter = User::field_age().lt(65);
 	/// // Results in: WHERE age < 65
 	/// ```
-	pub fn lt<V: Into<FilterValue>>(&self, value: V) -> Filter {
-		Filter::new(self.name.to_string(), FilterOperator::Lt, value.into())
+	pub fn lt<V>(&self, value: V) -> Filter
+	where
+		T: DatabaseField,
+		V: IntoFieldValue<T>,
+	{
+		Filter::new(
+			self.name.to_string(),
+			FilterOperator::Lt,
+			FilterValue::Typed(value.into_field_value()),
+		)
 	}
 
 	/// Create a less-than-or-equal filter for this field
@@ -260,20 +317,34 @@ impl<M, T> FieldRef<M, T> {
 	/// let filter = User::field_age().lte(65);
 	/// // Results in: WHERE age <= 65
 	/// ```
-	pub fn lte<V: Into<FilterValue>>(&self, value: V) -> Filter {
-		Filter::new(self.name.to_string(), FilterOperator::Lte, value.into())
+	pub fn lte<V>(&self, value: V) -> Filter
+	where
+		T: DatabaseField,
+		V: IntoFieldValue<T>,
+	{
+		Filter::new(
+			self.name.to_string(),
+			FilterOperator::Lte,
+			FilterValue::Typed(value.into_field_value()),
+		)
 	}
 
 	/// Create an IN filter. Named `is_in` because `in` is a Rust keyword.
 	pub fn is_in<I, V>(&self, values: I) -> Filter
 	where
 		I: IntoIterator<Item = V>,
-		V: Into<FilterValue>,
+		T: DatabaseField,
+		V: IntoFieldValue<T>,
 	{
 		Filter::new(
 			self.name.to_string(),
 			FilterOperator::In,
-			FilterValue::List(values.into_iter().map(Into::into).collect()),
+			FilterValue::List(
+				values
+					.into_iter()
+					.map(|value| FilterValue::Typed(value.into_field_value()))
+					.collect(),
+			),
 		)
 	}
 
@@ -281,66 +352,96 @@ impl<M, T> FieldRef<M, T> {
 	pub fn not_in<I, V>(&self, values: I) -> Filter
 	where
 		I: IntoIterator<Item = V>,
-		V: Into<FilterValue>,
+		T: DatabaseField,
+		V: IntoFieldValue<T>,
 	{
 		Filter::new(
 			self.name.to_string(),
 			FilterOperator::NotIn,
-			FilterValue::List(values.into_iter().map(Into::into).collect()),
+			FilterValue::List(
+				values
+					.into_iter()
+					.map(|value| FilterValue::Typed(value.into_field_value()))
+					.collect(),
+			),
 		)
 	}
 
 	/// Create a LIKE `%value%` containment filter.
-	pub fn contains<V: Into<FilterValue>>(&self, value: V) -> Filter {
+	pub fn contains<V>(&self, value: V) -> Filter
+	where
+		T: DatabaseField,
+		V: IntoFieldValue<T>,
+	{
 		Filter::new(
 			self.name.to_string(),
 			FilterOperator::Contains,
-			value.into(),
+			FilterValue::Typed(value.into_field_value()),
 		)
 	}
 
 	/// Create a case-insensitive containment filter.
-	pub fn icontains<V: Into<FilterValue>>(&self, value: V) -> Filter {
+	pub fn icontains<V>(&self, value: V) -> Filter
+	where
+		T: DatabaseField,
+		V: IntoFieldValue<T>,
+	{
 		Filter::new(
 			self.name.to_string(),
 			FilterOperator::IContains,
-			value.into(),
+			FilterValue::Typed(value.into_field_value()),
 		)
 	}
 
 	/// Create a LIKE `value%` prefix filter.
-	pub fn starts_with<V: Into<FilterValue>>(&self, value: V) -> Filter {
+	pub fn starts_with<V>(&self, value: V) -> Filter
+	where
+		T: DatabaseField,
+		V: IntoFieldValue<T>,
+	{
 		Filter::new(
 			self.name.to_string(),
 			FilterOperator::StartsWith,
-			value.into(),
+			FilterValue::Typed(value.into_field_value()),
 		)
 	}
 
 	/// Create a case-insensitive prefix filter.
-	pub fn istarts_with<V: Into<FilterValue>>(&self, value: V) -> Filter {
+	pub fn istarts_with<V>(&self, value: V) -> Filter
+	where
+		T: DatabaseField,
+		V: IntoFieldValue<T>,
+	{
 		Filter::new(
 			self.name.to_string(),
 			FilterOperator::IStartsWith,
-			value.into(),
+			FilterValue::Typed(value.into_field_value()),
 		)
 	}
 
 	/// Create a LIKE `%value` suffix filter.
-	pub fn ends_with<V: Into<FilterValue>>(&self, value: V) -> Filter {
+	pub fn ends_with<V>(&self, value: V) -> Filter
+	where
+		T: DatabaseField,
+		V: IntoFieldValue<T>,
+	{
 		Filter::new(
 			self.name.to_string(),
 			FilterOperator::EndsWith,
-			value.into(),
+			FilterValue::Typed(value.into_field_value()),
 		)
 	}
 
 	/// Create a case-insensitive suffix filter.
-	pub fn iends_with<V: Into<FilterValue>>(&self, value: V) -> Filter {
+	pub fn iends_with<V>(&self, value: V) -> Filter
+	where
+		T: DatabaseField,
+		V: IntoFieldValue<T>,
+	{
 		Filter::new(
 			self.name.to_string(),
 			FilterOperator::IEndsWith,
-			value.into(),
+			FilterValue::Typed(value.into_field_value()),
 		)
 	}
 
@@ -363,25 +464,44 @@ impl<M, T> FieldRef<M, T> {
 	}
 
 	/// Create a regular expression filter.
-	pub fn regex<V: Into<FilterValue>>(&self, pattern: V) -> Filter {
-		Filter::new(self.name.to_string(), FilterOperator::Regex, pattern.into())
+	pub fn regex<V>(&self, pattern: V) -> Filter
+	where
+		T: DatabaseField,
+		V: IntoFieldValue<T>,
+	{
+		Filter::new(
+			self.name.to_string(),
+			FilterOperator::Regex,
+			FilterValue::Typed(pattern.into_field_value()),
+		)
 	}
 
 	/// Create a case-insensitive regular expression filter.
-	pub fn iregex<V: Into<FilterValue>>(&self, pattern: V) -> Filter {
+	pub fn iregex<V>(&self, pattern: V) -> Filter
+	where
+		T: DatabaseField,
+		V: IntoFieldValue<T>,
+	{
 		Filter::new(
 			self.name.to_string(),
 			FilterOperator::IRegex,
-			pattern.into(),
+			FilterValue::Typed(pattern.into_field_value()),
 		)
 	}
 
 	/// Create a BETWEEN filter.
-	pub fn range<V: Into<FilterValue>>(&self, start: V, end: V) -> Filter {
+	pub fn range<V>(&self, start: V, end: V) -> Filter
+	where
+		T: DatabaseField,
+		V: IntoFieldValue<T>,
+	{
 		Filter::new(
 			self.name.to_string(),
 			FilterOperator::Range,
-			FilterValue::Range(Box::new(start.into()), Box::new(end.into())),
+			FilterValue::Range(
+				Box::new(FilterValue::Typed(start.into_field_value())),
+				Box::new(FilterValue::Typed(end.into_field_value())),
+			),
 		)
 	}
 
@@ -487,11 +607,15 @@ impl<M, T> FieldRef<M, T> {
 	}
 
 	/// Create a PostgreSQL range field containment filter (`@>`).
-	pub fn range_contains<V: Into<FilterValue>>(&self, value: V) -> Filter {
+	pub fn range_contains<V>(&self, value: V) -> Filter
+	where
+		T: DatabaseField,
+		V: IntoFieldValue<T>,
+	{
 		Filter::new(
 			self.name.to_string(),
 			FilterOperator::RangeContains,
-			value.into(),
+			FilterValue::Typed(value.into_field_value()),
 		)
 	}
 

@@ -187,6 +187,18 @@ fn test_model_macro_parity_fail() {
 	t.compile_fail("tests/ui/model/fail/*.rs");
 }
 
+#[test]
+fn test_model_enum_macro_fail() {
+	let t = trybuild::TestCases::new();
+	t.compile_fail("tests/ui/model_enum/fail/*.rs");
+}
+
+#[test]
+fn test_model_enum_macro_pass() {
+	let t = trybuild::TestCases::new();
+	t.pass("tests/ui/model_enum/pass/*.rs");
+}
+
 // ===== DTO (Issue #4478) =====
 
 #[test]

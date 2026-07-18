@@ -97,7 +97,7 @@ where
 	Query::select()
 		.from(Alias::new(M::table_name()))
 		.column(ColumnRef::Asterisk)
-		.and_where(Expr::col(Alias::new(M::primary_key_field())).eq(pk.into()))
+		.and_where(Expr::col(Alias::new(M::primary_key_column())).eq(pk.into()))
 		.limit(1)
 		.to_owned()
 }
@@ -146,7 +146,7 @@ where
 {
 	Query::delete()
 		.from_table(Alias::new(M::table_name()))
-		.and_where(Expr::col(Alias::new(M::primary_key_field())).eq(pk.into()))
+		.and_where(Expr::col(Alias::new(M::primary_key_column())).eq(pk.into()))
 		.to_owned()
 }
 
@@ -282,7 +282,7 @@ where
 		stmt.value(Alias::new(col), val);
 	}
 
-	stmt.and_where(Expr::col(Alias::new(M::primary_key_field())).eq(pk.into()))
+	stmt.and_where(Expr::col(Alias::new(M::primary_key_column())).eq(pk.into()))
 		.to_owned()
 }
 
@@ -432,6 +432,66 @@ mod tests {
 		assert!(sql.contains("test_table"));
 		assert!(sql.contains("id"));
 		assert_eq!(values.0.len(), 1);
+	}
+
+	#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+	struct RenamedPrimaryKeyModel {
+		id: i64,
+	}
+
+	#[derive(Clone)]
+	struct RenamedPrimaryKeyFields;
+
+	impl crate::orm::FieldSelector for RenamedPrimaryKeyFields {
+		fn with_alias(self, _alias: &str) -> Self {
+			self
+		}
+	}
+
+	impl Model for RenamedPrimaryKeyModel {
+		type PrimaryKey = i64;
+		type Fields = RenamedPrimaryKeyFields;
+		type Objects = crate::orm::Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"renamed_primary_key_models"
+		}
+
+		fn new_fields() -> Self::Fields {
+			RenamedPrimaryKeyFields
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			Some(self.id)
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = value;
+		}
+
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+
+		fn primary_key_column() -> &'static str {
+			"user_id"
+		}
+	}
+
+	#[test]
+	fn primary_key_queries_use_the_physical_column_name() {
+		let get = build_get_query::<RenamedPrimaryKeyModel, _>(123);
+		let delete = build_delete_query::<RenamedPrimaryKeyModel, _>(123);
+		let update =
+			build_update_query::<RenamedPrimaryKeyModel, _>(vec![("name", "Ada".into())], 123);
+
+		let (get_sql, _) = PostgresQueryBuilder::new().build_select(&get);
+		let (delete_sql, _) = PostgresQueryBuilder::new().build_delete(&delete);
+		let (update_sql, _) = PostgresQueryBuilder::new().build_update(&update);
+
+		assert!(get_sql.contains("\"user_id\""));
+		assert!(delete_sql.contains("\"user_id\""));
+		assert!(update_sql.contains("\"user_id\""));
 	}
 
 	#[test]

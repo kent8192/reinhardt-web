@@ -88,6 +88,7 @@ fn create_basic_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 		auto_increment: false,
 		default: None,
 		generated: None,
+		domain: None,
 	}
 }
 
@@ -107,6 +108,7 @@ fn create_column_with_constraints(
 		auto_increment: false,
 		default: None,
 		generated: None,
+		domain: None,
 	}
 }
 
@@ -152,6 +154,7 @@ async fn test_migration_reversible_full_cycle(
 						default: None,
 
 						generated: None,
+						domain: None,
 					},
 					create_basic_column("username", FieldType::VarChar(Some(100))),
 				],
@@ -169,6 +172,7 @@ async fn test_migration_reversible_full_cycle(
 						default: None,
 
 						generated: None,
+						domain: None,
 					},
 					create_basic_column("title", FieldType::VarChar(Some(200))),
 				],
@@ -403,6 +407,7 @@ async fn test_migration_dependency_ordering_complex(
 					default: None,
 
 					generated: None,
+					domain: None,
 				},
 				create_basic_column("username", FieldType::VarChar(Some(100))),
 			],
@@ -425,6 +430,7 @@ async fn test_migration_dependency_ordering_complex(
 					default: None,
 
 					generated: None,
+					domain: None,
 				},
 				create_basic_column("user_id", FieldType::Integer),
 				create_basic_column("bio", FieldType::Text),
@@ -449,6 +455,7 @@ async fn test_migration_dependency_ordering_complex(
 					default: None,
 
 					generated: None,
+					domain: None,
 				},
 				create_basic_column("author_id", FieldType::Integer),
 				create_basic_column("title", FieldType::VarChar(Some(200))),
@@ -473,6 +480,7 @@ async fn test_migration_dependency_ordering_complex(
 					default: None,
 
 					generated: None,
+					domain: None,
 				},
 				create_basic_column("post_id", FieldType::Integer),
 				create_basic_column("profile_id", FieldType::Integer),
@@ -628,6 +636,7 @@ async fn test_migration_state_consistency_after_rollback(
 						default: None,
 
 						generated: None,
+						domain: None,
 					},
 					create_basic_column("username", FieldType::VarChar(Some(100))),
 					create_basic_column("email", FieldType::VarChar(Some(255))),
@@ -646,6 +655,7 @@ async fn test_migration_state_consistency_after_rollback(
 						default: None,
 
 						generated: None,
+						domain: None,
 					},
 					create_basic_column("user_id", FieldType::Integer),
 					create_basic_column("title", FieldType::VarChar(Some(200))),
@@ -665,6 +675,7 @@ async fn test_migration_state_consistency_after_rollback(
 						default: None,
 
 						generated: None,
+						domain: None,
 					},
 					create_basic_column("post_id", FieldType::Integer),
 					create_basic_column("user_id", FieldType::Integer),
@@ -863,6 +874,7 @@ async fn test_migration_with_data_preservation(
 					default: None,
 
 					generated: None,
+					domain: None,
 				},
 				create_basic_column("username", FieldType::VarChar(Some(100))),
 				create_basic_column("age", FieldType::VarChar(Some(10))),
@@ -1036,6 +1048,7 @@ async fn test_migration_history_integrity(
 					default: None,
 
 					generated: None,
+					domain: None,
 				}],
 			}],
 		);
@@ -1077,6 +1090,7 @@ async fn test_migration_history_integrity(
 				default: None,
 
 				generated: None,
+				domain: None,
 			}],
 		}],
 	);

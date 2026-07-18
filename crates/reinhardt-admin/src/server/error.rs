@@ -17,6 +17,7 @@ pub trait IntoServerFnError {
 impl IntoServerFnError for AdminError {
 	fn into_server_fn_error(self) -> ServerFnError {
 		match self {
+			AdminError::FieldCodec(_) => ServerFnError::server(500, "Field value encoding failed"),
 			AdminError::ModelNotRegistered(msg) => ServerFnError::server(404, msg),
 			AdminError::PermissionDenied(msg) => ServerFnError::server(403, msg),
 			AdminError::InvalidAction(msg) | AdminError::ValidationError(msg) => {
