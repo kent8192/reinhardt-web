@@ -308,23 +308,13 @@ pub fn use_websocket(url: &str, options: UseWebSocketOptions) -> WebSocketHandle
 				// Try text message first
 				if let Ok(txt) = e.data().dyn_into::<js_sys::JsString>() {
 					let text = txt.as_string().unwrap_or_default();
-					if latest_message_recv
-						.try_set(Some(WebSocketMessage::Text(text)))
-						.is_err()
-					{
-						return;
-					}
+					let _ = latest_message_recv.try_set(Some(WebSocketMessage::Text(text)));
 				}
 				// Try binary message (ArrayBuffer)
 				else if let Ok(array_buffer) = e.data().dyn_into::<js_sys::ArrayBuffer>() {
 					let array = js_sys::Uint8Array::new(&array_buffer);
 					let vec = array.to_vec();
-					if latest_message_recv
-						.try_set(Some(WebSocketMessage::Binary(vec)))
-						.is_err()
-					{
-						return;
-					}
+					let _ = latest_message_recv.try_set(Some(WebSocketMessage::Binary(vec)));
 				}
 			}) as Box<dyn FnMut(MessageEvent)>);
 			ws.set_onmessage(Some(onmessage.as_ref().unchecked_ref()));

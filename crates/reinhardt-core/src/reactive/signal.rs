@@ -521,26 +521,18 @@ mod tests {
 	fn test_signal_change_notification() {
 		crate::reactive::ReactiveScope::run(|| {
 			let signal = Signal::new(0);
+			let signal_for_effect = signal;
+			let effect = crate::reactive::Effect::new(move || {
+				let _ = signal_for_effect.get();
+			});
 
+			// Change the signal
+			signal.set(42);
+
+			// Verify the effect was scheduled for update
 			with_runtime(|rt| {
-				let effect_id = NodeId::new();
-
-				// Manually set up dependency
-				{
-					let mut graph = rt.dependency_graph.borrow_mut();
-					graph
-						.entry(signal.id())
-						.or_default()
-						.subscribers
-						.push(effect_id);
-				}
-
-				// Change the signal
-				signal.set(42);
-
-				// Verify the effect was scheduled for update
 				let pending = rt.pending_updates.borrow();
-				assert!(pending.contains(&effect_id));
+				assert!(pending.contains(&effect.id()));
 			});
 		});
 	}
