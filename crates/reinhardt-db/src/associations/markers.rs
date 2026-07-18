@@ -34,8 +34,10 @@
 
 use std::marker::PhantomData;
 
-// Import DatabaseConnection and QueryRow for method signatures
-use crate::orm::{DatabaseConnection, QueryRow};
+use reinhardt_query::IntoValue;
+
+// Import the caller-owned execution capability and ORM row wrapper.
+use crate::orm::{OrmExecutor, QueryRow};
 
 /// Configuration for ManyToMany relationship operations
 ///
@@ -125,20 +127,20 @@ impl<PK> ManyToManyConfig<PK> {
 /// // Usage with ManyToManyAccessor:
 /// use reinhardt_db::orm::ManyToManyAccessor;
 ///
-/// let user = User::find_by_id(&db, user_id).await?;
-/// let accessor = ManyToManyAccessor::new(&user, "groups", ());
+/// let user = User::find_by_id(&mut db, user_id).await?;
+/// let accessor = ManyToManyAccessor::new(&user, "groups");
 ///
 /// // Add relationship
-/// accessor.add(&group).await?;
+/// accessor.add_with_conn(&mut db, &group).await?;
 ///
 /// // Get all related
-/// let groups = accessor.all().await?;
+/// let groups = accessor.all_with_conn(&mut db).await?;
 ///
 /// // Remove relationship
-/// accessor.remove(&group).await?;
+/// accessor.remove_with_conn(&mut db, &group).await?;
 ///
 /// // Clear all
-/// accessor.clear().await?;
+/// accessor.clear_with_conn(&mut db).await?;
 ///
 /// # Ok(())
 /// # }
@@ -203,13 +205,13 @@ where
 	///
 	/// # Type Parameters
 	///
-	/// * `PK` - Primary key type (must implement Display and Clone)
+	/// * `PK` - Primary key type (must implement IntoValue and Clone)
 	fn get_manager<PK>(
 		&self,
 		config: ManyToManyConfig<PK>,
 	) -> crate::prelude::many_to_many_manager::ManyToManyManager<Source, Target, PK>
 	where
-		PK: std::fmt::Display + Clone,
+		PK: IntoValue + Clone,
 	{
 		crate::prelude::many_to_many_manager::ManyToManyManager::new(
 			config.source_pk,
@@ -223,7 +225,7 @@ where
 	///
 	/// # Arguments
 	///
-	/// * `conn` - Database connection
+	/// * `conn` - Caller-owned ORM executor
 	/// * `config` - Configuration containing source_pk, through_table, source_field, and target_field
 	/// * `target_pk` - Primary key of the target instance to add
 	///
@@ -239,17 +241,18 @@ where
 	///     "group_id".to_string(),
 	///     "user_id".to_string(),
 	/// );
-	/// group.members.add_with_db(&db, config, user.id).await?;
+	/// group.members.add_with_db(&mut db, config, user.id).await?;
 	/// ```
-	pub async fn add_with_db<PK, TPK>(
+	pub async fn add_with_db<E, PK, TPK>(
 		&self,
-		conn: &DatabaseConnection,
+		conn: &mut E,
 		config: ManyToManyConfig<PK>,
 		target_pk: TPK,
 	) -> reinhardt_core::exception::Result<()>
 	where
-		PK: std::fmt::Display + Clone,
-		TPK: std::fmt::Display,
+		E: OrmExecutor,
+		PK: IntoValue + Clone,
+		TPK: IntoValue,
 	{
 		self.get_manager(config).add_with_db(conn, target_pk).await
 	}
@@ -258,18 +261,19 @@ where
 	///
 	/// # Arguments
 	///
-	/// * `conn` - Database connection
+	/// * `conn` - Caller-owned ORM executor
 	/// * `config` - Configuration containing source_pk, through_table, source_field, and target_field
 	/// * `target_pk` - Primary key of the target instance to remove
-	pub async fn remove_with_db<PK, TPK>(
+	pub async fn remove_with_db<E, PK, TPK>(
 		&self,
-		conn: &DatabaseConnection,
+		conn: &mut E,
 		config: ManyToManyConfig<PK>,
 		target_pk: TPK,
 	) -> reinhardt_core::exception::Result<()>
 	where
-		PK: std::fmt::Display + Clone,
-		TPK: std::fmt::Display,
+		E: OrmExecutor,
+		PK: IntoValue + Clone,
+		TPK: IntoValue,
 	{
 		self.get_manager(config)
 			.remove_with_db(conn, target_pk)
@@ -280,7 +284,7 @@ where
 	///
 	/// # Arguments
 	///
-	/// * `conn` - Database connection
+	/// * `conn` - Caller-owned ORM executor
 	/// * `config` - Configuration containing source_pk, through_table, source_field, and target_field
 	/// * `target_pk` - Primary key of the target instance to check
 	///
@@ -288,15 +292,16 @@ where
 	///
 	/// * `Ok(true)` if the relationship exists
 	/// * `Ok(false)` if not
-	pub async fn contains_with_db<PK, TPK>(
+	pub async fn contains_with_db<E, PK, TPK>(
 		&self,
-		conn: &DatabaseConnection,
+		conn: &mut E,
 		config: ManyToManyConfig<PK>,
 		target_pk: TPK,
 	) -> reinhardt_core::exception::Result<bool>
 	where
-		PK: std::fmt::Display + Clone,
-		TPK: std::fmt::Display,
+		E: OrmExecutor,
+		PK: IntoValue + Clone,
+		TPK: IntoValue,
 	{
 		self.get_manager(config)
 			.contains_with_db(conn, target_pk)
@@ -307,7 +312,7 @@ where
 	///
 	/// # Arguments
 	///
-	/// * `conn` - Database connection
+	/// * `conn` - Caller-owned ORM executor
 	/// * `config` - Configuration containing source_pk, through_table, source_field, and target_field
 	/// * `target_table` - Name of the target table
 	/// * `target_pk_field` - Name of primary key column in target table
@@ -318,15 +323,16 @@ where
 	///
 	/// Note: Returns `Vec<QueryRow>` instead of `Vec<Target>` for flexibility.
 	/// Callers can deserialize QueryRow to their target type as needed.
-	pub async fn all_with_db<PK>(
+	pub async fn all_with_db<E, PK>(
 		&self,
-		conn: &DatabaseConnection,
+		conn: &mut E,
 		config: ManyToManyConfig<PK>,
 		target_table: &str,
 		target_pk_field: &str,
 	) -> reinhardt_core::exception::Result<Vec<QueryRow>>
 	where
-		PK: std::fmt::Display + Clone,
+		E: OrmExecutor,
+		PK: IntoValue + Clone,
 	{
 		self.get_manager(config)
 			.all_with_db(conn, target_table, target_pk_field)
@@ -337,15 +343,16 @@ where
 	///
 	/// # Arguments
 	///
-	/// * `conn` - Database connection
+	/// * `conn` - Caller-owned ORM executor
 	/// * `config` - Configuration containing source_pk, through_table, source_field, and target_field
-	pub async fn clear_with_db<PK>(
+	pub async fn clear_with_db<E, PK>(
 		&self,
-		conn: &DatabaseConnection,
+		conn: &mut E,
 		config: ManyToManyConfig<PK>,
 	) -> reinhardt_core::exception::Result<()>
 	where
-		PK: std::fmt::Display + Clone,
+		E: OrmExecutor,
+		PK: IntoValue + Clone,
 	{
 		self.get_manager(config).clear_with_db(conn).await
 	}
@@ -354,19 +361,20 @@ where
 	///
 	/// # Arguments
 	///
-	/// * `conn` - Database connection
+	/// * `conn` - Caller-owned ORM executor
 	/// * `config` - Configuration containing source_pk, through_table, source_field, and target_field
 	///
 	/// # Returns
 	///
 	/// Number of related instances
-	pub async fn count_with_db<PK>(
+	pub async fn count_with_db<E, PK>(
 		&self,
-		conn: &DatabaseConnection,
+		conn: &mut E,
 		config: ManyToManyConfig<PK>,
 	) -> reinhardt_core::exception::Result<usize>
 	where
-		PK: std::fmt::Display + Clone,
+		E: OrmExecutor,
+		PK: IntoValue + Clone,
 	{
 		self.get_manager(config).count_with_db(conn).await
 	}
@@ -384,7 +392,7 @@ where
 /// When using this type, the macro automatically:
 /// - Generates a `{field_name}_id` column for the foreign key value
 /// - Infers the target model from `T` (no need for `to = Model` attribute)
-/// - Generates lazy load accessor method `{field_name}(&self, conn)` -> `Result<Option<T>>`
+/// - Generates lazy load accessor method `{field_name}(&self, &mut executor)` -> `Result<Option<T>>`
 ///
 /// # Example
 ///
@@ -434,7 +442,7 @@ impl<T> ForeignKeyField<T> {
 /// When using this type, the macro automatically:
 /// - Generates a `{field_name}_id` column for the foreign key value
 /// - Infers the target model from `T` (no need for `to = Model` attribute)
-/// - Generates lazy load accessor method `{field_name}(&self, conn)` -> `Result<Option<T>>`
+/// - Generates lazy load accessor method `{field_name}(&self, &mut executor)` -> `Result<Option<T>>`
 /// - Adds UNIQUE constraint to the generated column
 ///
 /// # Example

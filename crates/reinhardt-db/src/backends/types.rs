@@ -133,6 +133,8 @@ impl From<Uuid> for QueryValue {
 pub struct QueryResult {
 	/// The rows affected.
 	pub rows_affected: u64,
+	/// The generated ID returned by this exact insert operation, if available.
+	pub last_insert_id: Option<u64>,
 }
 
 /// Row from query result

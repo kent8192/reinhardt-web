@@ -1,90 +1,57 @@
-//! # Transaction Management
+//! # Transaction SQL and ORM Atomicity
 //!
-//! This module provides transaction management APIs for database operations.
+//! [`DatabaseConnection`](super::connection::DatabaseConnection) owns the ORM
+//! transaction lifecycle through [`DatabaseConnection::atomic`]. Its callback
+//! receives an [`AtomicTransaction`], the only executor that may run ORM work
+//! until the callback returns. A successful outer callback commits; an error
+//! rolls back, and a rollback failure takes precedence over the callback error.
 //!
-//! ## Recommended API: Closure-based Transactions
+//! Nested work uses [`AtomicTransaction::atomic`]. It creates a savepoint on
+//! the same dedicated executor, releases it on success, and rolls back then
+//! releases it on error. Nested callbacks never acquire another connection.
 //!
-//! The recommended way to use transactions is through the closure-based API:
-//!
-//! - [`transaction()`] - Execute a closure with automatic commit/rollback
-//! - [`transaction_with_isolation()`] - Transaction with specific isolation level
-//!
-//! ### Example
-//!
-//! ```rust
+//! ```no_run
 //! use reinhardt_core::exception::Error;
-//! use reinhardt_db::orm::transaction::transaction;
-//! use reinhardt_db::orm::connection::DatabaseConnection;
+//! use reinhardt_db::orm::DatabaseConnection;
 //!
-//! # async fn example() -> reinhardt_core::exception::Result<()> {
-//! let conn = DatabaseConnection::connect("sqlite::memory:").await?;
-//!
-//! let result = transaction(&conn, async |_tx| {
-//!     // Your operations here
+//! # async fn example() -> Result<(), Error> {
+//! let connection = DatabaseConnection::connect("sqlite::memory:").await?;
+//! let answer = connection.atomic(async |transaction| {
+//!     transaction.atomic(async |_savepoint| {
+//!         Ok::<_, Error>(())
+//!     }).await?;
 //!     Ok::<_, Error>(42)
 //! }).await?;
-//!
-//! assert_eq!(result, 42);
+//! assert_eq!(answer, 42);
 //! # Ok(())
 //! # }
 //! ```
 //!
-//! ## Low-level API: TransactionScope
+//! Mutable executor references are exclusive: pass `&mut transaction` to
+//! `*_with_conn` or `*_with_db` methods and finish each await before the next
+//! operation. Panics are rethrown after best-effort rollback; task cancellation
+//! cannot guarantee an async rollback completes. MySQL DDL can implicitly
+//! commit, so do not rely on atomicity for DDL statements.
 //!
-//! For advanced use cases, you can use [`TransactionScope`] directly:
+//! [`Transaction`], [`Savepoint`], and [`IsolationLevel`] remain SQL-builder
+//! types. They generate SQL and are not ORM execution contexts; they cannot
+//! manually begin, commit, rollback, or control a live pooled connection.
 //!
-//! - Manual control over commit/rollback timing
-//! - Nested transactions via savepoints
-//! - Access to transaction metadata
-//!
-//! ### Example
-//!
-//! ```rust
-//! use reinhardt_db::orm::transaction::TransactionScope;
-//! use reinhardt_db::orm::connection::DatabaseConnection;
-//!
-//! # async fn example() -> reinhardt_core::exception::Result<()> {
-//! let conn = DatabaseConnection::connect("sqlite::memory:").await?;
-//! let tx = TransactionScope::begin(&conn).await?;
-//!
-//! // Perform operations
-//!
-//! tx.commit().await?;  // Explicit commit
-//! # Ok(())
-//! # }
 //! ```
+//! use reinhardt_db::orm::transaction::Transaction;
 //!
-//! ## Legacy API: atomic()
-//!
-//! The [`atomic()`] function is an alternative API that doesn't pass the
-//! transaction scope to the closure. Consider using [`transaction()`] instead
-//! for new code.
-//!
-//! ### Migration from atomic() to transaction()
-//!
-//! ```rust
-//! # use reinhardt_core::exception::Error;
-//! # use reinhardt_db::orm::connection::DatabaseConnection;
-//! # async fn example() -> reinhardt_core::exception::Result<()> {
-//! # let conn = DatabaseConnection::connect("sqlite::memory:").await?;
-//! // Old API (atomic)
-//! use reinhardt_db::orm::transaction::atomic;
-//! let result = atomic(&conn, || async move {
-//!     Ok::<_, Error>(42)
-//! }).await?;
-//!
-//! // New API (transaction) - preferred
-//! use reinhardt_db::orm::transaction::transaction;
-//! let result = transaction(&conn, async |_tx| {
-//!     Ok::<_, Error>(42)
-//! }).await?;
-//! # Ok(())
-//! # }
+//! let mut transaction = Transaction::new();
+//! assert_eq!(transaction.begin().unwrap(), "BEGIN TRANSACTION");
+//! assert_eq!(transaction.commit().unwrap(), "COMMIT");
 //! ```
 
+use futures::FutureExt;
+use reinhardt_core::exception::{DatabaseError, DatabaseErrorKind};
 use std::sync::{Arc, Mutex};
 
-use reinhardt_core::exception::{DatabaseError, DatabaseErrorKind};
+use super::connection::{
+	DatabaseBackend, OrmExecutor, QueryResult, QueryValue, Row, TransactionExecutor,
+};
 
 /// Transaction isolation levels
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -460,41 +427,6 @@ impl Transaction {
 		self.depth
 	}
 
-	/// Execute transaction begin on database
-	/// Documentation for `begin_db`
-	///
-	pub async fn begin_db(&mut self) -> reinhardt_core::exception::Result<()> {
-		let sql = self
-			.begin()
-			.map_err(|message| DatabaseError::new(DatabaseErrorKind::Transaction, message))?;
-		let conn = super::manager::get_connection().await?;
-		conn.execute(&sql, vec![]).await?;
-		Ok(())
-	}
-
-	/// Execute transaction commit on database
-	/// Documentation for `commit_db`
-	///
-	pub async fn commit_db(&mut self) -> reinhardt_core::exception::Result<()> {
-		let sql = self
-			.commit()
-			.map_err(|message| DatabaseError::new(DatabaseErrorKind::Transaction, message))?;
-		let conn = super::manager::get_connection().await?;
-		conn.execute(&sql, vec![]).await?;
-		Ok(())
-	}
-
-	/// Execute transaction rollback on database
-	/// Documentation for `rollback_db`
-	///
-	pub async fn rollback_db(&mut self) -> reinhardt_core::exception::Result<()> {
-		let sql = self
-			.rollback()
-			.map_err(|message| DatabaseError::new(DatabaseErrorKind::Transaction, message))?;
-		let conn = super::manager::get_connection().await?;
-		conn.execute(&sql, vec![]).await?;
-		Ok(())
-	}
 	/// Check if transaction is currently active
 	///
 	/// # Examples
@@ -601,93 +533,229 @@ impl Default for Transaction {
 	}
 }
 
-/// Atomic transaction builder (similar to Django's transaction.atomic)
-pub struct Atomic<F> {
-	_func: F,
-	_isolation_level: Option<IsolationLevel>,
+/// A closure-scoped transaction that owns one dedicated backend executor.
+///
+/// Instances are created only by [`super::connection::DatabaseConnection::atomic`]
+/// and are finalized by its lifecycle runner. Nested calls create savepoints on
+/// the same executor instead of acquiring another database connection.
+pub struct AtomicTransaction {
+	executor: Option<Box<dyn TransactionExecutor>>,
+	backend: DatabaseBackend,
+	savepoint_sequence: u64,
 }
 
-impl<F> Atomic<F> {
-	/// Create a new atomic transaction wrapper around a function
-	///
-	/// # Examples
-	///
-	/// ```
-	/// use reinhardt_db::orm::transaction::Atomic;
-	///
-	/// let atomic = Atomic::new(|| {
-	///     // Transaction logic here
-	/// });
-	/// // Verify the atomic transaction wrapper is created successfully
-	/// let _: Atomic<_> = atomic;
-	/// ```
-	pub fn new(func: F) -> Self {
+impl AtomicTransaction {
+	pub(crate) fn new(executor: Box<dyn TransactionExecutor>) -> Self {
+		let backend = DatabaseBackend::from(executor.backend());
 		Self {
-			_func: func,
-			_isolation_level: None,
+			executor: Some(executor),
+			backend,
+			savepoint_sequence: 0,
 		}
 	}
-	/// Set the isolation level for the atomic transaction
-	///
-	/// # Examples
-	///
-	/// ```
-	/// use reinhardt_db::orm::transaction::{Atomic, IsolationLevel};
-	///
-	/// let atomic = Atomic::new(|| {
-	///     // Transaction logic
-	/// }).with_isolation_level(IsolationLevel::Serializable);
-	/// // Verify the atomic transaction with isolation level is created successfully
-	/// let _: Atomic<_> = atomic;
-	/// ```
-	pub fn with_isolation_level(mut self, level: IsolationLevel) -> Self {
-		self._isolation_level = Some(level);
-		self
+
+	fn executor_mut<'transaction>(
+		&'transaction mut self,
+	) -> reinhardt_core::exception::Result<&'transaction mut (dyn TransactionExecutor + 'static)> {
+		self.executor
+			.as_deref_mut()
+			.ok_or_else(transaction_consumed_error)
+	}
+
+	async fn commit(&mut self) -> reinhardt_core::exception::Result<()> {
+		let executor = self
+			.executor
+			.take()
+			.ok_or_else(transaction_consumed_error)?;
+		executor.commit().await
+	}
+
+	async fn rollback(&mut self) -> reinhardt_core::exception::Result<()> {
+		let executor = self
+			.executor
+			.take()
+			.ok_or_else(transaction_consumed_error)?;
+		executor.rollback().await
+	}
+
+	fn next_savepoint_name(&mut self) -> reinhardt_core::exception::Result<String> {
+		let sequence = self.savepoint_sequence;
+		self.savepoint_sequence = self.savepoint_sequence.checked_add(1).ok_or_else(|| {
+			DatabaseError::new(
+				DatabaseErrorKind::Transaction,
+				"Atomic transaction savepoint sequence exhausted",
+			)
+		})?;
+		Ok(format!("reinhardt_atomic_{sequence}"))
+	}
+
+	async fn cleanup_savepoint(
+		&mut self,
+		name: &str,
+	) -> (
+		reinhardt_core::exception::Result<()>,
+		reinhardt_core::exception::Result<()>,
+	) {
+		let rollback_result = match self.executor_mut() {
+			Ok(executor) => executor.rollback_to_savepoint(name).await,
+			Err(error) => Err(error),
+		};
+		let release_result = match self.executor_mut() {
+			Ok(executor) => executor.release_savepoint(name).await,
+			Err(error) => Err(error),
+		};
+		(rollback_result, release_result)
+	}
+
+	pub(crate) async fn run<F, T, E>(mut self, f: F) -> std::result::Result<T, E>
+	where
+		F: for<'txn> std::ops::AsyncFnOnce(
+				&'txn mut AtomicTransaction,
+			) -> std::result::Result<T, E>,
+		E: std::error::Error + From<reinhardt_core::exception::Error>,
+	{
+		match std::panic::AssertUnwindSafe(f(&mut self))
+			.catch_unwind()
+			.await
+		{
+			Ok(Ok(value)) => {
+				self.commit().await.map_err(E::from)?;
+				Ok(value)
+			}
+			Ok(Err(operation_error)) => match self.rollback().await {
+				Ok(()) => Err(operation_error),
+				Err(rollback_error) => {
+					tracing::error!(
+						operation_error = %operation_error,
+						rollback_error = %rollback_error,
+						"Atomic transaction operation and rollback both failed"
+					);
+					Err(E::from(rollback_error))
+				}
+			},
+			Err(panic_payload) => {
+				if let Err(rollback_error) = self.rollback().await {
+					tracing::error!(
+						rollback_error = %rollback_error,
+						"Atomic transaction rollback failed while resuming callback panic"
+					);
+				}
+				std::panic::resume_unwind(panic_payload)
+			}
+		}
+	}
+
+	/// Runs a nested closure behind a savepoint on this transaction's executor.
+	pub async fn atomic<F, T, E>(&mut self, f: F) -> std::result::Result<T, E>
+	where
+		F: for<'txn> std::ops::AsyncFnOnce(
+				&'txn mut AtomicTransaction,
+			) -> std::result::Result<T, E>,
+		E: std::error::Error + From<reinhardt_core::exception::Error>,
+	{
+		let savepoint_name = self.next_savepoint_name().map_err(E::from)?;
+		self.executor_mut()?
+			.savepoint(&savepoint_name)
+			.await
+			.map_err(E::from)?;
+
+		match std::panic::AssertUnwindSafe(f(self)).catch_unwind().await {
+			Ok(Ok(value)) => self
+				.executor_mut()?
+				.release_savepoint(&savepoint_name)
+				.await
+				.map(|()| value)
+				.map_err(E::from),
+			Ok(Err(operation_error)) => {
+				let (rollback_result, release_result) =
+					self.cleanup_savepoint(&savepoint_name).await;
+				match (rollback_result, release_result) {
+					(Ok(()), Ok(())) => Err(operation_error),
+					(Err(rollback_error), Ok(())) => {
+						tracing::error!(
+							operation_error = %operation_error,
+							rollback_to_savepoint_error = %rollback_error,
+							"Nested atomic operation and rollback-to-savepoint both failed"
+						);
+						Err(E::from(rollback_error))
+					}
+					(Ok(()), Err(release_error)) => {
+						tracing::error!(
+							operation_error = %operation_error,
+							release_savepoint_error = %release_error,
+							"Nested atomic operation and release-savepoint both failed"
+						);
+						Err(E::from(release_error))
+					}
+					(Err(rollback_error), Err(release_error)) => {
+						tracing::error!(
+							operation_error = %operation_error,
+							rollback_to_savepoint_error = %rollback_error,
+							release_savepoint_error = %release_error,
+							"Nested atomic operation and both savepoint cleanup steps failed"
+						);
+						Err(E::from(rollback_error))
+					}
+				}
+			}
+			Err(panic_payload) => {
+				let (rollback_result, release_result) =
+					self.cleanup_savepoint(&savepoint_name).await;
+				if let Err(rollback_error) = rollback_result {
+					tracing::error!(
+						rollback_to_savepoint_error = %rollback_error,
+						"Nested atomic rollback-to-savepoint failed while resuming callback panic"
+					);
+				}
+				if let Err(release_error) = release_result {
+					tracing::error!(
+						release_savepoint_error = %release_error,
+						"Nested atomic release-savepoint failed while resuming callback panic"
+					);
+				}
+				std::panic::resume_unwind(panic_payload)
+			}
+		}
 	}
 }
 
-/// Transaction scope guard with automatic rollback on drop
-///
-/// This struct implements RAII (Resource Acquisition Is Initialization) pattern
-/// for database transactions. When the scope is dropped without explicit commit,
-/// it automatically rolls back the transaction.
-///
-/// # Connection Affinity
-///
-/// `TransactionScope` holds a dedicated database connection that is used for all
-/// queries within the transaction. This ensures proper transaction isolation by
-/// guaranteeing that all operations (BEGIN, queries, COMMIT/ROLLBACK) run on the
-/// same physical connection.
-///
-/// # Examples
-///
-/// ```no_run
-/// use reinhardt_db::orm::connection::DatabaseConnection;
-/// use reinhardt_db::orm::transaction::TransactionScope;
-///
-/// # async fn example() {
-/// // For doctest purposes, using mock connection (URL is ignored in current implementation)
-/// let conn = DatabaseConnection::connect("postgres://localhost/test").await.unwrap();
-///
-/// // Transaction is automatically rolled back if not committed
-/// {
-///     let mut tx = TransactionScope::begin(&conn).await.unwrap();
-///     // ... perform operations ...
-///     // If we don't call tx.commit(), rollback happens automatically
-/// }
-///
-/// // Explicit commit
-/// {
-///     let mut tx = TransactionScope::begin(&conn).await.unwrap();
-///     // ... perform operations ...
-///     tx.commit().await.unwrap(); // Explicit commit
-/// }
-/// # }
-/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
-/// ```
-pub struct TransactionScope {
-	executor: Option<Box<dyn super::connection::TransactionExecutor>>,
-	committed: bool,
+#[async_trait::async_trait]
+impl OrmExecutor for AtomicTransaction {
+	fn backend(&self) -> DatabaseBackend {
+		self.backend
+	}
+
+	async fn execute(
+		&mut self,
+		sql: &str,
+		params: Vec<QueryValue>,
+	) -> reinhardt_core::exception::Result<QueryResult> {
+		self.executor_mut()?.execute(sql, params).await
+	}
+
+	async fn fetch_one(
+		&mut self,
+		sql: &str,
+		params: Vec<QueryValue>,
+	) -> reinhardt_core::exception::Result<Row> {
+		self.executor_mut()?.fetch_one(sql, params).await
+	}
+
+	async fn fetch_all(
+		&mut self,
+		sql: &str,
+		params: Vec<QueryValue>,
+	) -> reinhardt_core::exception::Result<Vec<Row>> {
+		self.executor_mut()?.fetch_all(sql, params).await
+	}
+
+	async fn fetch_optional(
+		&mut self,
+		sql: &str,
+		params: Vec<QueryValue>,
+	) -> reinhardt_core::exception::Result<Option<Row>> {
+		self.executor_mut()?.fetch_optional(sql, params).await
+	}
 }
 
 fn transaction_consumed_error() -> reinhardt_core::exception::Error {
@@ -697,729 +765,6 @@ fn transaction_consumed_error() -> reinhardt_core::exception::Error {
 	)
 	.into()
 }
-
-impl TransactionScope {
-	/// Borrow the transaction-bound executor.
-	pub fn executor_mut(
-		&mut self,
-	) -> Result<
-		&mut (dyn super::connection::TransactionExecutor + 'static),
-		reinhardt_core::exception::Error,
-	> {
-		match self.executor.as_mut() {
-			Some(executor) => Ok(executor.as_mut()),
-			None => Err(transaction_consumed_error()),
-		}
-	}
-
-	/// Begin a new transaction scope
-	///
-	/// This acquires a dedicated database connection and begins a transaction on it.
-	/// All queries executed through this scope are guaranteed to run on the same
-	/// physical connection, ensuring proper transaction isolation.
-	///
-	/// # Examples
-	///
-	/// ```no_run
-	/// use reinhardt_db::orm::connection::DatabaseConnection;
-	/// use reinhardt_db::orm::transaction::TransactionScope;
-	///
-	/// # async fn example() {
-	/// // For doctest purposes, using mock connection (URL is ignored in current implementation)
-	/// let conn = DatabaseConnection::connect("postgres://localhost/test").await.unwrap();
-	/// let mut tx = TransactionScope::begin(&conn).await.unwrap();
-	/// // ... perform operations ...
-	/// tx.commit().await.unwrap();
-	/// # }
-	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
-	/// ```
-	pub async fn begin(
-		conn: &super::connection::DatabaseConnection,
-	) -> reinhardt_core::exception::Result<Self> {
-		let executor = conn.begin().await?;
-		Ok(Self {
-			executor: Some(executor),
-			committed: false,
-		})
-	}
-
-	/// Begin a new transaction scope with specific isolation level
-	///
-	/// This acquires a dedicated database connection and begins a transaction with
-	/// the specified isolation level. All queries executed through this scope are
-	/// guaranteed to run on the same physical connection.
-	///
-	/// # Arguments
-	///
-	/// * `conn` - The database connection
-	/// * `level` - The desired isolation level for the transaction
-	///
-	/// # Examples
-	///
-	/// ```no_run
-	/// use reinhardt_db::orm::connection::DatabaseConnection;
-	/// use reinhardt_db::orm::transaction::{TransactionScope, IsolationLevel};
-	///
-	/// # async fn example() {
-	/// let conn = DatabaseConnection::connect("postgres://localhost/test").await.unwrap();
-	/// let mut tx = TransactionScope::begin_with_isolation(&conn, IsolationLevel::Serializable).await.unwrap();
-	/// // ... perform operations ...
-	/// tx.commit().await.unwrap();
-	/// # }
-	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
-	/// ```
-	pub async fn begin_with_isolation(
-		conn: &super::connection::DatabaseConnection,
-		level: IsolationLevel,
-	) -> reinhardt_core::exception::Result<Self> {
-		let executor = conn.begin_with_isolation(level.to_backends_level()).await?;
-		Ok(Self {
-			executor: Some(executor),
-			committed: false,
-		})
-	}
-
-	/// Execute a SQL statement within the transaction
-	///
-	/// # Examples
-	///
-	/// ```no_run
-	/// use reinhardt_db::orm::connection::DatabaseConnection;
-	/// use reinhardt_db::orm::transaction::TransactionScope;
-	///
-	/// # async fn example() {
-	/// let conn = DatabaseConnection::connect("postgres://localhost/test").await.unwrap();
-	/// let mut tx = TransactionScope::begin(&conn).await.unwrap();
-	///
-	/// // Execute SQL within the transaction
-	/// tx.execute("INSERT INTO users (name) VALUES ($1)", vec!["Alice".into()]).await.unwrap();
-	///
-	/// tx.commit().await.unwrap();
-	/// # }
-	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
-	/// ```
-	pub async fn execute(
-		&mut self,
-		sql: &str,
-		params: Vec<super::connection::QueryValue>,
-	) -> reinhardt_core::exception::Result<u64> {
-		let executor = self
-			.executor
-			.as_mut()
-			.ok_or_else(transaction_consumed_error)?;
-		let result = executor.execute(sql, params).await?;
-		Ok(result.rows_affected)
-	}
-
-	/// Execute a SQL query and return a single row within the transaction
-	pub async fn query_one(
-		&mut self,
-		sql: &str,
-		params: Vec<super::connection::QueryValue>,
-	) -> reinhardt_core::exception::Result<super::connection::QueryRow> {
-		let executor = self
-			.executor
-			.as_mut()
-			.ok_or_else(transaction_consumed_error)?;
-		let row = executor.fetch_one(sql, params).await?;
-		Ok(super::connection::QueryRow::from_backend_row(row))
-	}
-
-	/// Execute a SQL query and return all rows within the transaction
-	pub async fn query(
-		&mut self,
-		sql: &str,
-		params: Vec<super::connection::QueryValue>,
-	) -> reinhardt_core::exception::Result<Vec<super::connection::QueryRow>> {
-		let executor = self
-			.executor
-			.as_mut()
-			.ok_or_else(transaction_consumed_error)?;
-		let rows = executor.fetch_all(sql, params).await?;
-		Ok(rows
-			.into_iter()
-			.map(super::connection::QueryRow::from_backend_row)
-			.collect())
-	}
-
-	/// Execute a SQL query and return an optional row within the transaction
-	pub async fn query_optional(
-		&mut self,
-		sql: &str,
-		params: Vec<super::connection::QueryValue>,
-	) -> reinhardt_core::exception::Result<Option<super::connection::QueryRow>> {
-		let executor = self
-			.executor
-			.as_mut()
-			.ok_or_else(transaction_consumed_error)?;
-		let row = executor.fetch_optional(sql, params).await?;
-		Ok(row.map(super::connection::QueryRow::from_backend_row))
-	}
-
-	/// Commit the transaction
-	///
-	/// # Examples
-	///
-	/// ```no_run
-	/// use reinhardt_db::orm::connection::DatabaseConnection;
-	/// use reinhardt_db::orm::transaction::TransactionScope;
-	///
-	/// # async fn example() {
-	/// // For doctest purposes, using mock connection (URL is ignored in current implementation)
-	/// let conn = DatabaseConnection::connect("postgres://localhost/test").await.unwrap();
-	/// let mut tx = TransactionScope::begin(&conn).await.unwrap();
-	/// // ... perform operations ...
-	/// tx.commit().await.unwrap();
-	/// # }
-	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
-	/// ```
-	pub async fn commit(mut self) -> reinhardt_core::exception::Result<()> {
-		let executor = self
-			.executor
-			.take()
-			.ok_or_else(transaction_consumed_error)?;
-		executor.commit().await?;
-		self.committed = true;
-		Ok(())
-	}
-
-	/// Explicit rollback
-	///
-	/// # Examples
-	///
-	/// ```no_run
-	/// use reinhardt_db::orm::connection::DatabaseConnection;
-	/// use reinhardt_db::orm::transaction::TransactionScope;
-	///
-	/// # async fn example() {
-	/// // For doctest purposes, using mock connection (URL is ignored in current implementation)
-	/// let conn = DatabaseConnection::connect("postgres://localhost/test").await.unwrap();
-	/// let mut tx = TransactionScope::begin(&conn).await.unwrap();
-	/// // ... error occurs ...
-	/// tx.rollback().await.unwrap();
-	/// # }
-	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
-	/// ```
-	pub async fn rollback(mut self) -> reinhardt_core::exception::Result<()> {
-		let executor = self
-			.executor
-			.take()
-			.ok_or_else(transaction_consumed_error)?;
-		executor.rollback().await?;
-		self.committed = true; // Mark as handled to prevent double rollback in Drop
-		Ok(())
-	}
-
-	/// Create a savepoint within the transaction
-	///
-	/// Savepoints allow partial rollback of a transaction. You can create
-	/// multiple savepoints and rollback to any of them without affecting
-	/// work done before that savepoint.
-	///
-	/// # Arguments
-	///
-	/// * `name` - The name of the savepoint
-	///
-	/// # Examples
-	///
-	/// ```no_run
-	/// use reinhardt_db::orm::connection::DatabaseConnection;
-	/// use reinhardt_db::orm::transaction::TransactionScope;
-	///
-	/// # async fn example() -> reinhardt_core::exception::Result<()> {
-	/// let conn = DatabaseConnection::connect("postgres://localhost/test").await?;
-	/// let mut tx = TransactionScope::begin(&conn).await?;
-	///
-	/// tx.execute("INSERT INTO users (name) VALUES ($1)", vec!["Alice".into()]).await?;
-	///
-	/// // Create a savepoint before risky operation
-	/// tx.savepoint("before_risky_op").await?;
-	///
-	/// // Perform risky operation
-	/// if let Err(_) = tx.execute("INSERT INTO users (name) VALUES ($1)", vec!["Invalid".into()]).await {
-	///     // Rollback to savepoint, keeping Alice's insert
-	///     tx.rollback_to_savepoint("before_risky_op").await?;
-	/// }
-	///
-	/// tx.commit().await?;
-	/// # Ok(())
-	/// # }
-	/// ```
-	pub async fn savepoint(&mut self, name: &str) -> reinhardt_core::exception::Result<()> {
-		let executor = self
-			.executor
-			.as_mut()
-			.ok_or_else(transaction_consumed_error)?;
-		executor.savepoint(name).await?;
-		Ok(())
-	}
-
-	/// Release a savepoint
-	///
-	/// Releasing a savepoint removes it from the transaction's savepoint stack.
-	/// This is typically done after the risky operation succeeded and the
-	/// savepoint is no longer needed.
-	///
-	/// # Arguments
-	///
-	/// * `name` - The name of the savepoint to release
-	///
-	/// # Examples
-	///
-	/// ```no_run
-	/// use reinhardt_db::orm::connection::DatabaseConnection;
-	/// use reinhardt_db::orm::transaction::TransactionScope;
-	///
-	/// # async fn example() -> reinhardt_core::exception::Result<()> {
-	/// let conn = DatabaseConnection::connect("postgres://localhost/test").await?;
-	/// let mut tx = TransactionScope::begin(&conn).await?;
-	///
-	/// tx.savepoint("sp1").await?;
-	/// // ... operations succeeded ...
-	/// tx.release_savepoint("sp1").await?;
-	///
-	/// tx.commit().await?;
-	/// # Ok(())
-	/// # }
-	/// ```
-	pub async fn release_savepoint(&mut self, name: &str) -> reinhardt_core::exception::Result<()> {
-		let executor = self
-			.executor
-			.as_mut()
-			.ok_or_else(transaction_consumed_error)?;
-		executor.release_savepoint(name).await?;
-		Ok(())
-	}
-
-	/// Rollback to a savepoint
-	///
-	/// This undoes all changes made after the savepoint was created,
-	/// but keeps the transaction open for further operations.
-	///
-	/// # Arguments
-	///
-	/// * `name` - The name of the savepoint to rollback to
-	///
-	/// # Examples
-	///
-	/// ```no_run
-	/// use reinhardt_db::orm::connection::DatabaseConnection;
-	/// use reinhardt_db::orm::transaction::TransactionScope;
-	///
-	/// # async fn example() -> reinhardt_core::exception::Result<()> {
-	/// let conn = DatabaseConnection::connect("postgres://localhost/test").await?;
-	/// let mut tx = TransactionScope::begin(&conn).await?;
-	///
-	/// tx.execute("INSERT INTO users (name) VALUES ($1)", vec!["Alice".into()]).await?;
-	/// tx.savepoint("sp1").await?;
-	///
-	/// // This will be rolled back
-	/// tx.execute("INSERT INTO users (name) VALUES ($1)", vec!["Bob".into()]).await?;
-	///
-	/// // Rollback to savepoint - Bob's insert is undone, Alice's remains
-	/// tx.rollback_to_savepoint("sp1").await?;
-	///
-	/// tx.commit().await?; // Only Alice is committed
-	/// # Ok(())
-	/// # }
-	/// ```
-	pub async fn rollback_to_savepoint(
-		&mut self,
-		name: &str,
-	) -> reinhardt_core::exception::Result<()> {
-		let executor = self
-			.executor
-			.as_mut()
-			.ok_or_else(transaction_consumed_error)?;
-		executor.rollback_to_savepoint(name).await?;
-		Ok(())
-	}
-
-	/// Execute a closure and automatically commit on success or rollback on error
-	///
-	/// This method provides a closure-based API for executing operations within
-	/// the transaction scope. The transaction is automatically committed if the
-	/// closure returns Ok, or rolled back if it returns Err.
-	///
-	/// Use an async closure when the operation borrows the transaction scope
-	/// across an await point, for example `async |tx| { tx.execute(...).await }`.
-	///
-	/// # Examples
-	///
-	/// ```no_run
-	/// use reinhardt_core::exception::Error;
-	/// use reinhardt_db::orm::connection::DatabaseConnection;
-	/// use reinhardt_db::orm::transaction::TransactionScope;
-	///
-	/// # async fn example() -> reinhardt_core::exception::Result<()> {
-	/// let conn = DatabaseConnection::connect("sqlite::memory:").await?;
-	/// let mut tx = TransactionScope::begin(&conn).await?;
-	///
-	/// let result = tx.run(async |tx| {
-	///     // Perform operations via tx.execute(), tx.query(), etc.
-	///     Ok::<_, Error>(42)
-	/// }).await?;
-	///
-	/// assert_eq!(result, 42);
-	/// # Ok(())
-	/// # }
-	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
-	/// ```
-	pub async fn run<F, T, E>(mut self, f: F) -> std::result::Result<T, E>
-	where
-		F: for<'scope> std::ops::AsyncFnOnce(&'scope mut Self) -> std::result::Result<T, E>,
-		E: std::error::Error + From<reinhardt_core::exception::Error>,
-	{
-		match f(&mut self).await {
-			Ok(result) => {
-				self.commit().await.map_err(E::from)?;
-				Ok(result)
-			}
-			Err(operation_error) => match self.rollback().await {
-				Ok(()) => Err(operation_error),
-				Err(rollback_error) => {
-					tracing::error!(
-						operation_error = %operation_error,
-						rollback_error = %rollback_error,
-						"Transaction operation and rollback both failed"
-					);
-					Err(E::from(rollback_error))
-				}
-			},
-		}
-	}
-}
-
-impl Drop for TransactionScope {
-	/// Automatically rollback transaction if not committed
-	///
-	/// This ensures that transactions are always cleaned up, even if
-	/// an error occurs or the scope is exited early.
-	///
-	/// # Note
-	///
-	/// When using `TransactionScope` directly (not through `transaction()` function),
-	/// it's recommended to explicitly call `commit()` or `rollback()` to handle
-	/// errors properly. The automatic rollback in Drop cannot propagate errors.
-	///
-	/// The automatic rollback in Drop requires a multi-threaded tokio runtime.
-	/// For single-threaded runtimes or when no runtime is available, only a
-	/// warning message is printed.
-	fn drop(&mut self) {
-		if !self.committed
-			&& let Some(executor) = self.executor.take()
-		{
-			eprintln!(
-				"Warning: TransactionScope dropped without explicit commit/rollback. \
-					 Consider using transaction() function for automatic error handling."
-			);
-
-			// Try to execute rollback in blocking context
-			// This only works on multi-threaded runtime
-			// Note: Errors during Drop cannot be propagated, so we just log them
-			if let Ok(handle) = tokio::runtime::Handle::try_current() {
-				// Try to use block_in_place if available (multi-threaded runtime)
-				let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-					tokio::task::block_in_place(|| {
-						handle.block_on(async { executor.rollback().await })
-					})
-				}));
-
-				match result {
-					Ok(Ok(())) => {
-						// Rollback succeeded
-					}
-					Ok(Err(e)) => {
-						eprintln!("Error during automatic rollback: {}", e);
-					}
-					Err(_) => {
-						// block_in_place panicked (likely single-threaded runtime)
-						eprintln!(
-							"Warning: Cannot perform automatic rollback on single-threaded runtime. \
-								 Use transaction() function or explicit commit()/rollback()."
-						);
-					}
-				}
-			} else {
-				// No runtime available
-				eprintln!(
-					"Warning: No async runtime available for automatic rollback. \
-						 Transaction may not be cleaned up properly."
-				);
-			}
-		}
-	}
-}
-
-/// Execute a function within a transaction scope
-///
-/// This is a convenience function that automatically handles transaction
-/// begin/commit/rollback. If the function returns Ok, the transaction is
-/// committed. If it returns Err or panics, the transaction is rolled back.
-///
-/// # Examples
-///
-/// ```no_run
-/// use reinhardt_db::orm::connection::DatabaseConnection;
-/// use reinhardt_db::orm::transaction::atomic;
-///
-/// # async fn example() {
-/// // For doctest purposes, using mock connection (URL is ignored in current implementation)
-/// let conn = DatabaseConnection::connect("postgres://localhost/test").await.unwrap();
-///
-/// let result = atomic(&conn, || async move {
-///     // Perform operations using conn...
-///     // The transaction is automatically managed
-///     Ok::<_, reinhardt_core::exception::Error>(42)
-/// }).await.unwrap();
-///
-/// assert_eq!(result, 42);
-/// # }
-/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
-/// ```
-pub async fn atomic<F, Fut, T, E>(
-	conn: &super::connection::DatabaseConnection,
-	f: F,
-) -> std::result::Result<T, E>
-where
-	F: FnOnce() -> Fut,
-	Fut: std::future::Future<Output = std::result::Result<T, E>>,
-	E: std::error::Error + From<reinhardt_core::exception::Error>,
-{
-	let tx = TransactionScope::begin(conn).await.map_err(E::from)?;
-	match f().await {
-		Ok(result) => {
-			tx.commit().await.map_err(E::from)?;
-			Ok(result)
-		}
-		Err(operation_error) => match tx.rollback().await {
-			Ok(()) => Err(operation_error),
-			Err(rollback_error) => {
-				tracing::error!(
-					operation_error = %operation_error,
-					rollback_error = %rollback_error,
-					"Transaction operation and rollback both failed"
-				);
-				Err(E::from(rollback_error))
-			}
-		},
-	}
-}
-
-/// Execute a function within a transaction with specific isolation level
-///
-/// # Examples
-///
-/// ```no_run
-/// use reinhardt_db::orm::connection::DatabaseConnection;
-/// use reinhardt_db::orm::transaction::{atomic_with_isolation, IsolationLevel};
-///
-/// # async fn example() {
-/// // For doctest purposes, using mock connection (URL is ignored in current implementation)
-/// let conn = DatabaseConnection::connect("postgres://localhost/test").await.unwrap();
-///
-/// let result = atomic_with_isolation(
-///     &conn,
-///     IsolationLevel::Serializable,
-///     || async move {
-///         // Perform operations...
-///         Ok::<_, reinhardt_core::exception::Error>(42)
-///     }
-/// ).await.unwrap();
-///
-/// assert_eq!(result, 42);
-/// # }
-/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
-/// ```
-pub async fn atomic_with_isolation<F, Fut, T, E>(
-	conn: &super::connection::DatabaseConnection,
-	level: IsolationLevel,
-	f: F,
-) -> std::result::Result<T, E>
-where
-	F: FnOnce() -> Fut,
-	Fut: std::future::Future<Output = std::result::Result<T, E>>,
-	E: std::error::Error + From<reinhardt_core::exception::Error>,
-{
-	let tx = TransactionScope::begin_with_isolation(conn, level)
-		.await
-		.map_err(E::from)?;
-	match f().await {
-		Ok(result) => {
-			tx.commit().await.map_err(E::from)?;
-			Ok(result)
-		}
-		Err(operation_error) => match tx.rollback().await {
-			Ok(()) => Err(operation_error),
-			Err(rollback_error) => {
-				tracing::error!(
-					operation_error = %operation_error,
-					rollback_error = %rollback_error,
-					"Transaction operation and rollback both failed"
-				);
-				Err(E::from(rollback_error))
-			}
-		},
-	}
-}
-
-/// Execute a closure within a transaction scope with automatic commit/rollback
-///
-/// This function provides closure-based transaction management:
-/// - On success (Ok): Automatically commits the transaction
-/// - On error (Err): Automatically rolls back the transaction
-///
-/// The closure receives a mutable reference to the `TransactionScope` which can be used
-/// to execute SQL within the transaction.
-/// Use the `async |tx| { ... }` closure form when the returned future borrows
-/// the transaction scope across an await point.
-///
-/// # Examples
-///
-/// ```rust,ignore
-/// # #[tokio::main]
-/// # async fn main() {
-/// use reinhardt_core::exception::Error;
-/// use reinhardt_db::orm::connection::DatabaseConnection;
-/// use reinhardt_db::orm::transaction::transaction;
-/// # async fn example() -> reinhardt_core::exception::Result<()> {
-/// // For doctest purposes, using mock connection (URL is ignored in current implementation)
-/// let conn = DatabaseConnection::connect("sqlite::memory:").await?;
-///
-/// // Simple transaction
-/// transaction(&conn, async |tx| {
-///     tx.execute("INSERT INTO users (name) VALUES (?)", vec!["Alice".into()]).await?;
-///     Ok::<(), Error>(())
-/// }).await?;
-///
-/// // Transaction with return value
-/// let user_id: i64 = transaction(&conn, async |tx| {
-///     tx.execute("INSERT INTO users (name) VALUES (?)", vec!["Bob".into()]).await?;
-///     Ok::<_, Error>(42_i64) // Example return value
-/// }).await?;
-///
-/// assert_eq!(user_id, 42);
-/// # Ok(())
-/// # }
-/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
-/// # }
-/// ```
-///
-/// # Error Handling
-///
-/// If the closure returns an error, the transaction is automatically rolled back:
-///
-/// ```no_run
-/// use reinhardt_db::orm::connection::DatabaseConnection;
-/// use reinhardt_db::orm::transaction::transaction;
-///
-/// use reinhardt_core::exception::Error;
-///
-/// #[derive(Debug, thiserror::Error)]
-/// enum ApplicationError {
-///     #[error("application rejected the operation")]
-///     Rejected,
-///     #[error(transparent)]
-///     Framework(#[from] Error),
-/// }
-///
-/// # async fn example() -> Result<(), ApplicationError> {
-/// let conn = DatabaseConnection::connect("sqlite::memory:").await?;
-///
-/// let result: Result<(), ApplicationError> = transaction(&conn, async |_tx| {
-///     // Simulate an error
-///     Err(ApplicationError::Rejected)
-/// }).await;
-///
-/// assert!(result.is_err()); // Transaction was automatically rolled back
-/// # Ok(())
-/// # }
-/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
-/// ```
-pub async fn transaction<F, T, E>(
-	conn: &super::connection::DatabaseConnection,
-	f: F,
-) -> std::result::Result<T, E>
-where
-	F: for<'scope> std::ops::AsyncFnOnce(&'scope mut TransactionScope) -> std::result::Result<T, E>,
-	E: std::error::Error + From<reinhardt_core::exception::Error>,
-{
-	let mut tx = TransactionScope::begin(conn).await.map_err(E::from)?;
-
-	match f(&mut tx).await {
-		Ok(result) => {
-			tx.commit().await.map_err(E::from)?;
-			Ok(result)
-		}
-		Err(operation_error) => match tx.rollback().await {
-			Ok(()) => Err(operation_error),
-			Err(rollback_error) => {
-				tracing::error!(
-					operation_error = %operation_error,
-					rollback_error = %rollback_error,
-					"Transaction operation and rollback both failed"
-				);
-				Err(E::from(rollback_error))
-			}
-		},
-	}
-}
-
-/// Execute a closure within a transaction with specified isolation level
-///
-/// Like `transaction()`, but allows specifying the isolation level for the transaction.
-///
-/// # Examples
-///
-/// ```no_run
-/// use reinhardt_core::exception::Error;
-/// use reinhardt_db::orm::connection::DatabaseConnection;
-/// use reinhardt_db::orm::transaction::{transaction_with_isolation, IsolationLevel};
-///
-/// # async fn example() -> reinhardt_core::exception::Result<()> {
-/// let conn = DatabaseConnection::connect("sqlite::memory:").await?;
-///
-/// transaction_with_isolation(&conn, IsolationLevel::Serializable, async |_tx| {
-///     // Critical operation requiring serializable isolation
-///     // update_inventory().await?;
-///     Ok::<(), Error>(())
-/// }).await?;
-/// # Ok(())
-/// # }
-/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
-/// ```
-pub async fn transaction_with_isolation<F, T, E>(
-	conn: &super::connection::DatabaseConnection,
-	level: IsolationLevel,
-	f: F,
-) -> std::result::Result<T, E>
-where
-	F: for<'scope> std::ops::AsyncFnOnce(&'scope mut TransactionScope) -> std::result::Result<T, E>,
-	E: std::error::Error + From<reinhardt_core::exception::Error>,
-{
-	let mut tx = TransactionScope::begin_with_isolation(conn, level)
-		.await
-		.map_err(E::from)?;
-
-	match f(&mut tx).await {
-		Ok(result) => {
-			tx.commit().await.map_err(E::from)?;
-			Ok(result)
-		}
-		Err(operation_error) => match tx.rollback().await {
-			Ok(()) => Err(operation_error),
-			Err(rollback_error) => {
-				tracing::error!(
-					operation_error = %operation_error,
-					rollback_error = %rollback_error,
-					"Transaction operation and rollback both failed"
-				);
-				Err(E::from(rollback_error))
-			}
-		},
-	}
-}
-
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -1428,12 +773,14 @@ mod tests {
 	use crate::backends::error::Result;
 	use crate::backends::types::{DatabaseType, QueryResult, QueryValue, Row, TransactionExecutor};
 	use crate::orm::Manager;
-	use crate::orm::connection::{DatabaseBackend, DatabaseConnection};
+	use crate::orm::connection::{DatabaseBackend, DatabaseConnection, OrmExecutor};
 	use crate::prelude::Model;
+	use futures::FutureExt;
 	use reinhardt_core::exception::{DatabaseError, DatabaseErrorKind};
 	use rstest::*;
 	use std::collections::BTreeSet;
 	use std::fmt;
+	use std::sync::atomic::{AtomicBool, Ordering};
 	use std::sync::{Arc, Mutex};
 	use tracing::field::{Field, Visit};
 	use tracing_subscriber::layer::{Context, Layer};
@@ -1453,9 +800,13 @@ mod tests {
 		begin: bool,
 		commit: bool,
 		rollback: bool,
+		savepoint: bool,
+		release_savepoint: bool,
+		rollback_to_savepoint: bool,
+		unsupported_savepoints: bool,
 	}
 
-	type TransactionCalls = Arc<Mutex<Vec<&'static str>>>;
+	type TransactionCalls = Arc<Mutex<Vec<String>>>;
 
 	// Mock transaction executor for testing
 	struct MockTransactionExecutor {
@@ -1470,7 +821,11 @@ mod tests {
 		}
 
 		async fn execute(&mut self, _sql: &str, _params: Vec<QueryValue>) -> Result<QueryResult> {
-			Ok(QueryResult { rows_affected: 0 })
+			self.calls.lock().unwrap().push("execute".to_string());
+			Ok(QueryResult {
+				rows_affected: 0,
+				last_insert_id: None,
+			})
 		}
 
 		async fn fetch_one(&mut self, _sql: &str, _params: Vec<QueryValue>) -> Result<Row> {
@@ -1490,7 +845,7 @@ mod tests {
 		}
 
 		async fn commit(self: Box<Self>) -> Result<()> {
-			self.calls.lock().unwrap().push("commit");
+			self.calls.lock().unwrap().push("commit".to_string());
 			if self.failure_plan.commit {
 				Err(transaction_failure("commit failed"))
 			} else {
@@ -1499,7 +854,96 @@ mod tests {
 		}
 
 		async fn rollback(self: Box<Self>) -> Result<()> {
-			self.calls.lock().unwrap().push("rollback");
+			self.calls.lock().unwrap().push("rollback".to_string());
+			if self.failure_plan.rollback {
+				Err(transaction_failure("rollback failed"))
+			} else {
+				Ok(())
+			}
+		}
+
+		async fn savepoint(&mut self, name: &str) -> Result<()> {
+			self.calls.lock().unwrap().push(format!("savepoint:{name}"));
+			if self.failure_plan.savepoint {
+				Err(transaction_failure("savepoint failed"))
+			} else {
+				Ok(())
+			}
+		}
+
+		async fn release_savepoint(&mut self, name: &str) -> Result<()> {
+			self.calls
+				.lock()
+				.unwrap()
+				.push(format!("release_savepoint:{name}"));
+			if self.failure_plan.release_savepoint {
+				Err(transaction_failure("release savepoint failed"))
+			} else {
+				Ok(())
+			}
+		}
+
+		async fn rollback_to_savepoint(&mut self, name: &str) -> Result<()> {
+			self.calls
+				.lock()
+				.unwrap()
+				.push(format!("rollback_to_savepoint:{name}"));
+			if self.failure_plan.rollback_to_savepoint {
+				Err(transaction_failure("rollback to savepoint failed"))
+			} else {
+				Ok(())
+			}
+		}
+	}
+
+	/// A test executor that deliberately uses the trait's default unsupported
+	/// savepoint methods.
+	struct UnsupportedSavepointTransactionExecutor {
+		failure_plan: FailurePlan,
+		calls: TransactionCalls,
+	}
+
+	#[async_trait::async_trait]
+	impl TransactionExecutor for UnsupportedSavepointTransactionExecutor {
+		fn backend(&self) -> DatabaseType {
+			DatabaseType::Postgres
+		}
+
+		async fn execute(&mut self, _sql: &str, _params: Vec<QueryValue>) -> Result<QueryResult> {
+			self.calls.lock().unwrap().push("execute".to_string());
+			Ok(QueryResult {
+				rows_affected: 0,
+				last_insert_id: None,
+			})
+		}
+
+		async fn fetch_one(&mut self, _sql: &str, _params: Vec<QueryValue>) -> Result<Row> {
+			Ok(Row::new())
+		}
+
+		async fn fetch_all(&mut self, _sql: &str, _params: Vec<QueryValue>) -> Result<Vec<Row>> {
+			Ok(Vec::new())
+		}
+
+		async fn fetch_optional(
+			&mut self,
+			_sql: &str,
+			_params: Vec<QueryValue>,
+		) -> Result<Option<Row>> {
+			Ok(None)
+		}
+
+		async fn commit(self: Box<Self>) -> Result<()> {
+			self.calls.lock().unwrap().push("commit".to_string());
+			if self.failure_plan.commit {
+				Err(transaction_failure("commit failed"))
+			} else {
+				Ok(())
+			}
+		}
+
+		async fn rollback(self: Box<Self>) -> Result<()> {
+			self.calls.lock().unwrap().push("rollback".to_string());
 			if self.failure_plan.rollback {
 				Err(transaction_failure("rollback failed"))
 			} else {
@@ -1511,6 +955,22 @@ mod tests {
 	struct MockBackend {
 		failure_plan: FailurePlan,
 		calls: TransactionCalls,
+	}
+
+	impl MockBackend {
+		fn transaction_executor(&self) -> Box<dyn TransactionExecutor> {
+			if self.failure_plan.unsupported_savepoints {
+				Box::new(UnsupportedSavepointTransactionExecutor {
+					failure_plan: self.failure_plan,
+					calls: Arc::clone(&self.calls),
+				})
+			} else {
+				Box::new(MockTransactionExecutor {
+					failure_plan: self.failure_plan,
+					calls: Arc::clone(&self.calls),
+				})
+			}
+		}
 	}
 
 	#[async_trait::async_trait]
@@ -1528,7 +988,10 @@ mod tests {
 			true
 		}
 		async fn execute(&self, _sql: &str, _params: Vec<QueryValue>) -> Result<QueryResult> {
-			Ok(QueryResult { rows_affected: 1 })
+			Ok(QueryResult {
+				rows_affected: 1,
+				last_insert_id: None,
+			})
 		}
 		async fn fetch_one(&self, _sql: &str, _params: Vec<QueryValue>) -> Result<Row> {
 			Ok(Row::new())
@@ -1547,14 +1010,26 @@ mod tests {
 			self
 		}
 		async fn begin(&self) -> Result<Box<dyn TransactionExecutor>> {
-			self.calls.lock().unwrap().push("begin");
+			self.calls.lock().unwrap().push("begin".to_string());
 			if self.failure_plan.begin {
 				Err(transaction_failure("begin failed"))
 			} else {
-				Ok(Box::new(MockTransactionExecutor {
-					failure_plan: self.failure_plan,
-					calls: Arc::clone(&self.calls),
-				}))
+				Ok(self.transaction_executor())
+			}
+		}
+
+		async fn begin_with_isolation(
+			&self,
+			_isolation_level: crate::backends::types::IsolationLevel,
+		) -> Result<Box<dyn TransactionExecutor>> {
+			self.calls
+				.lock()
+				.unwrap()
+				.push("begin_with_isolation".to_string());
+			if self.failure_plan.begin {
+				Err(transaction_failure("begin failed"))
+			} else {
+				Ok(self.transaction_executor())
 			}
 		}
 	}
@@ -1576,6 +1051,25 @@ mod tests {
 			DatabaseConnection::new(DatabaseBackend::Postgres, backends_conn),
 			calls,
 		)
+	}
+
+	fn assert_transaction_calls(calls: &TransactionCalls, expected: &[&str]) {
+		let actual = calls.lock().unwrap().clone();
+		let expected = expected
+			.iter()
+			.map(|call| (*call).to_string())
+			.collect::<Vec<_>>();
+		assert_eq!(actual, expected);
+	}
+
+	fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
+		if let Some(message) = payload.downcast_ref::<&str>() {
+			(*message).to_string()
+		} else if let Some(message) = payload.downcast_ref::<String>() {
+			message.clone()
+		} else {
+			"unknown panic payload".to_string()
+		}
 	}
 
 	#[fixture]
@@ -1610,58 +1104,42 @@ mod tests {
 		}
 	}
 
-	#[rstest]
 	#[tokio::test]
-	async fn test_typed_transaction_preserves_success(mock_connection: DatabaseConnection) {
-		let result: std::result::Result<u64, ApplicationError> =
-			transaction(&mock_connection, async |tx| {
-				let rows_affected = tx.execute("SELECT 1", vec![]).await?;
-				Ok(rows_affected)
+	async fn test_connection_atomic_commits_successful_callback() {
+		let (connection, calls) = mock_connection_with_failures(FailurePlan::default());
+
+		let result: std::result::Result<u64, ApplicationError> = connection
+			.atomic(async |transaction| {
+				let result = transaction.execute("SELECT 1", vec![]).await?;
+				Ok(result.rows_affected)
 			})
 			.await;
 
 		assert_eq!(result.unwrap(), 0);
+		assert_transaction_calls(&calls, &["begin", "execute", "commit"]);
 	}
 
 	#[tokio::test]
-	async fn test_typed_transaction_converts_begin_failure() {
-		let (connection, calls) = mock_connection_with_failures(FailurePlan {
-			begin: true,
-			..FailurePlan::default()
-		});
-
-		let result: std::result::Result<(), ApplicationError> =
-			transaction(&connection, async |_tx| Ok(())).await;
-
-		match result {
-			Err(ApplicationError::Framework(error)) => {
-				assert_eq!(error.database_kind(), Some(DatabaseErrorKind::Transaction));
-			}
-			other => panic!("expected a framework begin failure, got {other:?}"),
-		}
-		assert_eq!(*calls.lock().unwrap(), vec!["begin"]);
-	}
-
-	#[tokio::test]
-	async fn test_typed_transaction_preserves_operation_failure_after_rollback() {
+	async fn test_connection_atomic_rolls_back_callback_error() {
 		let (connection, calls) = mock_connection_with_failures(FailurePlan::default());
 
-		let result: std::result::Result<(), ApplicationError> =
-			transaction(&connection, async |_tx| Err(ApplicationError::Rejected)).await;
+		let result: std::result::Result<(), ApplicationError> = connection
+			.atomic(async |_transaction| Err(ApplicationError::Rejected))
+			.await;
 
 		assert!(matches!(result, Err(ApplicationError::Rejected)));
-		assert_eq!(*calls.lock().unwrap(), vec!["begin", "rollback"]);
+		assert_transaction_calls(&calls, &["begin", "rollback"]);
 	}
 
 	#[tokio::test]
-	async fn test_typed_transaction_converts_commit_failure() {
+	async fn test_connection_atomic_returns_commit_failure() {
 		let (connection, calls) = mock_connection_with_failures(FailurePlan {
 			commit: true,
 			..FailurePlan::default()
 		});
 
 		let result: std::result::Result<(), ApplicationError> =
-			transaction(&connection, async |_tx| Ok(())).await;
+			connection.atomic(async |_transaction| Ok(())).await;
 
 		match result {
 			Err(ApplicationError::Framework(error)) => {
@@ -1669,11 +1147,11 @@ mod tests {
 			}
 			other => panic!("expected a framework commit failure, got {other:?}"),
 		}
-		assert_eq!(*calls.lock().unwrap(), vec!["begin", "commit"]);
+		assert_transaction_calls(&calls, &["begin", "commit"]);
 	}
 
 	#[tokio::test]
-	async fn test_typed_transaction_rollback_failure_wins_and_records_both_errors() {
+	async fn test_connection_atomic_rollback_failure_wins_and_records_both_errors() {
 		let (connection, calls) = mock_connection_with_failures(FailurePlan {
 			rollback: true,
 			..FailurePlan::default()
@@ -1684,8 +1162,9 @@ mod tests {
 		});
 		let _subscriber_guard = tracing::subscriber::set_default(subscriber);
 
-		let result: std::result::Result<(), ApplicationError> =
-			transaction(&connection, async |_tx| Err(ApplicationError::Rejected)).await;
+		let result: std::result::Result<(), ApplicationError> = connection
+			.atomic(async |_transaction| Err(ApplicationError::Rejected))
+			.await;
 
 		match result {
 			Err(ApplicationError::Framework(error)) => {
@@ -1693,110 +1172,234 @@ mod tests {
 			}
 			other => panic!("expected the framework rollback failure, got {other:?}"),
 		}
-		assert_eq!(*calls.lock().unwrap(), vec!["begin", "rollback"]);
+		assert_transaction_calls(&calls, &["begin", "rollback"]);
 		assert!(events.lock().unwrap().iter().any(|fields| {
 			fields.contains("operation_error") && fields.contains("rollback_error")
 		}));
 	}
 
-	#[rstest]
 	#[tokio::test]
-	async fn test_transaction_scope_commit(mock_connection: DatabaseConnection) {
-		let conn = mock_connection;
-
-		let tx = TransactionScope::begin(&conn).await;
-		let tx = tx.unwrap();
-		assert!(!tx.committed);
-
-		let result = tx.commit().await;
-		assert!(result.is_ok());
-	}
-
-	#[test]
-	fn executor_mut_errors_after_scope_is_consumed() {
-		let mut scope = TransactionScope {
-			executor: None,
-			committed: true,
-		};
-
-		let error = match scope.executor_mut() {
-			Ok(_) => panic!("consumed scope must not expose an executor"),
-			Err(error) => error,
-		};
-
-		assert_eq!(error.to_string(), "Transaction already consumed");
-	}
-
-	#[rstest]
-	#[tokio::test]
-	async fn test_transaction_scope_rollback(mock_connection: DatabaseConnection) {
-		let conn = mock_connection;
-
-		let tx = TransactionScope::begin(&conn).await.unwrap();
-		let result = tx.rollback().await;
-		assert!(result.is_ok());
-	}
-
-	#[rstest]
-	#[tokio::test]
-	async fn test_transaction_scope_with_isolation(mock_connection: DatabaseConnection) {
-		let conn = mock_connection;
-
-		let tx = TransactionScope::begin_with_isolation(&conn, IsolationLevel::Serializable).await;
-		let tx = tx.unwrap();
-		let result = tx.commit().await;
-		assert!(result.is_ok());
-	}
-
-	#[rstest]
-	#[tokio::test]
-	async fn test_atomic_helper(mock_connection: DatabaseConnection) {
-		let conn = mock_connection;
-
-		let result = atomic(&conn, || async move { Ok::<_, ApplicationError>(42) }).await;
-
-		assert!(result.is_ok());
-		assert_eq!(result.unwrap(), 42);
-	}
-
-	#[tokio::test]
-	async fn test_atomic_helper_with_error() {
+	async fn test_connection_atomic_with_isolation_uses_same_lifecycle() {
 		let (connection, calls) = mock_connection_with_failures(FailurePlan::default());
 
-		let result = atomic(&connection, || async move {
-			Err::<i32, _>(ApplicationError::Rejected)
-		})
-		.await;
-
-		assert!(matches!(result, Err(ApplicationError::Rejected)));
-		assert_eq!(*calls.lock().unwrap(), vec!["begin", "rollback"]);
-	}
-
-	#[tokio::test]
-	async fn test_transaction_scope_run_preserves_typed_error_after_rollback() {
-		let (connection, calls) = mock_connection_with_failures(FailurePlan::default());
-		let transaction = TransactionScope::begin(&connection).await.unwrap();
-
-		let result: std::result::Result<(), ApplicationError> = transaction
-			.run(async |_tx| Err(ApplicationError::Rejected))
+		let result: std::result::Result<(), ApplicationError> = connection
+			.atomic_with_isolation(IsolationLevel::Serializable, async |_transaction| Ok(()))
 			.await;
 
-		assert!(matches!(result, Err(ApplicationError::Rejected)));
-		assert_eq!(*calls.lock().unwrap(), vec!["begin", "rollback"]);
+		assert!(result.is_ok());
+		assert_transaction_calls(&calls, &["begin_with_isolation", "commit"]);
 	}
 
-	#[rstest]
 	#[tokio::test]
-	async fn test_atomic_with_isolation_helper(mock_connection: DatabaseConnection) {
-		let conn = mock_connection;
+	async fn test_atomic_transaction_releases_successful_nested_savepoint() {
+		let (connection, calls) = mock_connection_with_failures(FailurePlan::default());
 
-		let result = atomic_with_isolation(&conn, IsolationLevel::Serializable, || async move {
-			Ok::<_, ApplicationError>(100)
-		})
-		.await;
+		let result: std::result::Result<(), ApplicationError> = connection
+			.atomic(async |transaction| {
+				let nested: std::result::Result<(), ApplicationError> = transaction
+					.atomic(async |nested| {
+						nested.execute("SELECT 1", vec![]).await?;
+						Ok(())
+					})
+					.await;
+				nested?;
+				Ok(())
+			})
+			.await;
 
 		assert!(result.is_ok());
-		assert_eq!(result.unwrap(), 100);
+		assert_transaction_calls(
+			&calls,
+			&[
+				"begin",
+				"savepoint:reinhardt_atomic_0",
+				"execute",
+				"release_savepoint:reinhardt_atomic_0",
+				"commit",
+			],
+		);
+	}
+
+	#[tokio::test]
+	async fn test_atomic_transaction_allocates_distinct_savepoints_for_sibling_nested_callbacks() {
+		let (connection, calls) = mock_connection_with_failures(FailurePlan::default());
+
+		let result: std::result::Result<(), ApplicationError> = connection
+			.atomic(async |transaction| {
+				let first: std::result::Result<(), ApplicationError> =
+					transaction.atomic(async |_nested| Ok(())).await;
+				first?;
+
+				let second: std::result::Result<(), ApplicationError> =
+					transaction.atomic(async |_nested| Ok(())).await;
+				second?;
+				Ok(())
+			})
+			.await;
+
+		assert!(result.is_ok());
+		assert_transaction_calls(
+			&calls,
+			&[
+				"begin",
+				"savepoint:reinhardt_atomic_0",
+				"release_savepoint:reinhardt_atomic_0",
+				"savepoint:reinhardt_atomic_1",
+				"release_savepoint:reinhardt_atomic_1",
+				"commit",
+			],
+		);
+	}
+
+	#[tokio::test]
+	async fn test_atomic_transaction_rolls_back_and_releases_failed_nested_savepoint() {
+		let (connection, calls) = mock_connection_with_failures(FailurePlan::default());
+
+		let result: std::result::Result<(), ApplicationError> = connection
+			.atomic(async |transaction| {
+				let nested: std::result::Result<(), ApplicationError> = transaction
+					.atomic(async |_nested| Err(ApplicationError::Rejected))
+					.await;
+				assert!(matches!(nested, Err(ApplicationError::Rejected)));
+				Ok(())
+			})
+			.await;
+
+		assert!(result.is_ok());
+		assert_transaction_calls(
+			&calls,
+			&[
+				"begin",
+				"savepoint:reinhardt_atomic_0",
+				"rollback_to_savepoint:reinhardt_atomic_0",
+				"release_savepoint:reinhardt_atomic_0",
+				"commit",
+			],
+		);
+	}
+
+	#[tokio::test]
+	async fn test_atomic_transaction_rejects_default_unsupported_savepoints_before_callback() {
+		let (connection, calls) = mock_connection_with_failures(FailurePlan {
+			unsupported_savepoints: true,
+			..FailurePlan::default()
+		});
+		let callback_was_run = Arc::new(AtomicBool::new(false));
+		let callback_state = Arc::clone(&callback_was_run);
+
+		let result: std::result::Result<(), ApplicationError> = connection
+			.atomic(async move |transaction| {
+				let nested: std::result::Result<(), ApplicationError> = transaction
+					.atomic(async move |_nested| {
+						callback_state.store(true, Ordering::SeqCst);
+						Ok(())
+					})
+					.await;
+				match nested {
+					Err(ApplicationError::Framework(error)) => {
+						assert_eq!(error.database_kind(), Some(DatabaseErrorKind::Unsupported));
+					}
+					other => panic!("expected an unsupported savepoint error, got {other:?}"),
+				}
+				Ok(())
+			})
+			.await;
+
+		assert!(result.is_ok());
+		assert!(!callback_was_run.load(Ordering::SeqCst));
+		assert_transaction_calls(&calls, &["begin", "commit"]);
+	}
+
+	#[tokio::test]
+	async fn test_atomic_transaction_returns_first_nested_cleanup_failure_after_attempting_both() {
+		let (connection, calls) = mock_connection_with_failures(FailurePlan {
+			rollback_to_savepoint: true,
+			release_savepoint: true,
+			..FailurePlan::default()
+		});
+
+		let result: std::result::Result<(), ApplicationError> = connection
+			.atomic(async |transaction| {
+				let nested: std::result::Result<(), ApplicationError> = transaction
+					.atomic(async |_nested| Err(ApplicationError::Rejected))
+					.await;
+				match nested {
+					Err(ApplicationError::Framework(error)) => {
+						assert_eq!(error.database_kind(), Some(DatabaseErrorKind::Transaction));
+						assert_eq!(
+							error
+								.database_error()
+								.expect("the cleanup error must retain database details")
+								.message(),
+							"rollback to savepoint failed"
+						);
+					}
+					other => panic!("expected the first nested cleanup error, got {other:?}"),
+				}
+				Ok(())
+			})
+			.await;
+
+		assert!(result.is_ok());
+		assert_transaction_calls(
+			&calls,
+			&[
+				"begin",
+				"savepoint:reinhardt_atomic_0",
+				"rollback_to_savepoint:reinhardt_atomic_0",
+				"release_savepoint:reinhardt_atomic_0",
+				"commit",
+			],
+		);
+	}
+
+	#[tokio::test]
+	async fn test_connection_atomic_rolls_back_and_rethrows_callback_panic() {
+		let (connection, calls) = mock_connection_with_failures(FailurePlan::default());
+
+		let panic = std::panic::AssertUnwindSafe(async {
+			let _: std::result::Result<(), ApplicationError> = connection
+				.atomic(async |_transaction| panic!("atomic callback panic"))
+				.await;
+		})
+		.catch_unwind()
+		.await;
+
+		let payload = panic.expect_err("the callback panic must be rethrown");
+		assert_eq!(panic_message(payload.as_ref()), "atomic callback panic");
+		assert_transaction_calls(&calls, &["begin", "rollback"]);
+	}
+
+	#[tokio::test]
+	async fn test_connection_atomic_rethrows_callback_panic_when_rollback_fails() {
+		let (connection, calls) = mock_connection_with_failures(FailurePlan {
+			rollback: true,
+			..FailurePlan::default()
+		});
+		let events = Arc::new(Mutex::new(Vec::new()));
+		let subscriber = tracing_subscriber::registry().with(EventCaptureLayer {
+			events: Arc::clone(&events),
+		});
+		let _subscriber_guard = tracing::subscriber::set_default(subscriber);
+
+		let panic = std::panic::AssertUnwindSafe(async {
+			let _: std::result::Result<(), ApplicationError> = connection
+				.atomic(async |_transaction| panic!("atomic callback panic"))
+				.await;
+		})
+		.catch_unwind()
+		.await;
+
+		let payload = panic.expect_err("the callback panic must be rethrown");
+		assert_eq!(panic_message(payload.as_ref()), "atomic callback panic");
+		assert_transaction_calls(&calls, &["begin", "rollback"]);
+		assert!(
+			events
+				.lock()
+				.unwrap()
+				.iter()
+				.any(|fields| fields.contains("rollback_error"))
+		);
 	}
 
 	#[test]
@@ -1970,52 +1573,6 @@ mod tests {
 		}
 	}
 
-	async fn setup_transaction_test_db() -> reinhardt_core::exception::Result<()> {
-		use sqlx::SqlitePool;
-		use tokio::sync::OnceCell;
-
-		static POOL: OnceCell<SqlitePool> = OnceCell::const_new();
-
-		// Initialize in-memory SQLite database for testing
-		let pool = POOL
-			.get_or_init(|| async {
-				SqlitePool::connect("sqlite::memory:")
-					.await
-					.expect("Failed to create in-memory SQLite pool")
-			})
-			.await;
-
-		// Create table if not exists and clear existing data for test isolation
-		sqlx::query(
-			"CREATE TABLE IF NOT EXISTS test_items (
-                id INTEGER PRIMARY KEY,
-                name TEXT NOT NULL,
-                value INTEGER NOT NULL
-            )",
-		)
-		.execute(pool)
-		.await
-		.map_err(|error| {
-			reinhardt_core::exception::Error::from(DatabaseError::new(
-				DatabaseErrorKind::Query,
-				format!("Create table failed: {error}"),
-			))
-		})?;
-
-		// Clear any existing data
-		sqlx::query("DELETE FROM test_items")
-			.execute(pool)
-			.await
-			.map_err(|error| {
-				reinhardt_core::exception::Error::from(DatabaseError::new(
-					DatabaseErrorKind::Query,
-					format!("Clear table data failed: {error}"),
-				))
-			})?;
-
-		Ok(())
-	}
-
 	/// Test: Transaction begin SQL generation and state management
 	///
 	/// This test verifies that:
@@ -2023,11 +1580,8 @@ mod tests {
 	/// 2. Transaction state is correctly updated (active, depth)
 	/// 3. begin() returns the expected SQL statement
 	///
-	/// NOTE: This test does NOT execute against a real database (no begin_db()).
-	/// It only tests SQL generation and state management logic.
-	/// Database execution tests are in tests/integration/.
-	#[tokio::test]
-	async fn test_begin_db_execution() {
+	#[test]
+	fn test_transaction_begin_sql_generation() {
 		let mut tx = Transaction::new();
 
 		// Test SQL generation
@@ -2042,12 +1596,8 @@ mod tests {
 		assert_eq!(tx.depth(), 1, "Transaction depth should be 1");
 	}
 
-	#[tokio::test]
-	async fn test_commit_db_sql_generation() {
-		// Test that commit_db() generates and attempts to execute correct SQL
-		// Note: Full transaction semantics require a dedicated connection
-		setup_transaction_test_db().await.unwrap();
-
+	#[test]
+	fn test_transaction_commit_sql_generation() {
 		let mut tx = Transaction::new();
 
 		// Verify begin generates correct SQL and updates state
@@ -2063,11 +1613,8 @@ mod tests {
 		assert_eq!(tx.depth(), 0);
 	}
 
-	#[tokio::test]
-	async fn test_rollback_db_sql_generation() {
-		// Test that rollback_db() generates and attempts to execute correct SQL
-		setup_transaction_test_db().await.unwrap();
-
+	#[test]
+	fn test_transaction_rollback_sql_generation() {
 		let mut tx = Transaction::new();
 
 		// Verify begin generates correct SQL
@@ -2082,11 +1629,9 @@ mod tests {
 		assert_eq!(tx.depth(), 0);
 	}
 
-	#[tokio::test]
-	async fn test_nested_transaction_sql_generation() {
+	#[test]
+	fn test_nested_transaction_sql_generation() {
 		// Test nested transaction (savepoint) SQL generation
-		setup_transaction_test_db().await.unwrap();
-
 		let mut tx = Transaction::new();
 
 		// Begin outer transaction
@@ -2112,941 +1657,13 @@ mod tests {
 		assert!(!tx.is_active());
 	}
 
-	#[tokio::test]
-	async fn test_transaction_isolation_level_sql() {
+	#[test]
+	fn test_transaction_isolation_level_sql() {
 		// Test that isolation level is properly included in BEGIN statement
-		setup_transaction_test_db().await.unwrap();
-
 		let mut tx = Transaction::new().with_isolation_level(IsolationLevel::Serializable);
 		let begin_sql = tx.begin().unwrap();
 
 		assert!(begin_sql.contains("ISOLATION LEVEL SERIALIZABLE"));
 		assert!(tx.is_active());
-	}
-}
-// Auto-generated tests for transaction module
-// Translated from Django/SQLAlchemy test suite
-// Total available: 80 | Included: 80
-
-#[cfg(test)]
-mod transaction_extended_tests {
-	use super::tests::ApplicationError;
-	use super::*;
-	use crate::backends::backend::DatabaseBackend as BackendTrait;
-	use crate::backends::connection::DatabaseConnection as BackendsConnection;
-	use crate::backends::error::Result;
-	use crate::backends::types::{DatabaseType, QueryResult, QueryValue, Row, TransactionExecutor};
-	use crate::orm::connection::{DatabaseBackend, DatabaseConnection};
-	use rstest::*;
-	use std::sync::Arc;
-
-	// Mock transaction executor for testing
-	struct MockTransactionExecutor;
-
-	#[async_trait::async_trait]
-	impl TransactionExecutor for MockTransactionExecutor {
-		fn backend(&self) -> DatabaseType {
-			DatabaseType::Postgres
-		}
-
-		async fn execute(&mut self, _sql: &str, _params: Vec<QueryValue>) -> Result<QueryResult> {
-			Ok(QueryResult { rows_affected: 0 })
-		}
-
-		async fn fetch_one(&mut self, _sql: &str, _params: Vec<QueryValue>) -> Result<Row> {
-			Ok(Row::new())
-		}
-
-		async fn fetch_all(&mut self, _sql: &str, _params: Vec<QueryValue>) -> Result<Vec<Row>> {
-			Ok(Vec::new())
-		}
-
-		async fn fetch_optional(
-			&mut self,
-			_sql: &str,
-			_params: Vec<QueryValue>,
-		) -> Result<Option<Row>> {
-			Ok(None)
-		}
-
-		async fn commit(self: Box<Self>) -> Result<()> {
-			Ok(())
-		}
-
-		async fn rollback(self: Box<Self>) -> Result<()> {
-			Ok(())
-		}
-	}
-
-	struct MockBackend;
-
-	#[async_trait::async_trait]
-	impl BackendTrait for MockBackend {
-		fn database_type(&self) -> DatabaseType {
-			DatabaseType::Postgres
-		}
-
-		fn placeholder(&self, index: usize) -> String {
-			format!("${}", index)
-		}
-
-		fn supports_returning(&self) -> bool {
-			true
-		}
-
-		fn supports_on_conflict(&self) -> bool {
-			true
-		}
-
-		async fn execute(&self, _sql: &str, _params: Vec<QueryValue>) -> Result<QueryResult> {
-			Ok(QueryResult { rows_affected: 1 })
-		}
-
-		async fn fetch_one(&self, _sql: &str, _params: Vec<QueryValue>) -> Result<Row> {
-			Ok(Row::new())
-		}
-
-		async fn fetch_all(&self, _sql: &str, _params: Vec<QueryValue>) -> Result<Vec<Row>> {
-			Ok(Vec::new())
-		}
-
-		async fn fetch_optional(
-			&self,
-			_sql: &str,
-			_params: Vec<QueryValue>,
-		) -> Result<Option<Row>> {
-			Ok(None)
-		}
-
-		fn as_any(&self) -> &dyn std::any::Any {
-			self
-		}
-
-		async fn begin(&self) -> Result<Box<dyn TransactionExecutor>> {
-			Ok(Box::new(MockTransactionExecutor))
-		}
-	}
-
-	#[fixture]
-	fn mock_connection() -> DatabaseConnection {
-		let mock_backend = Arc::new(MockBackend);
-		let backends_conn = BackendsConnection::new(mock_backend);
-		DatabaseConnection::new(DatabaseBackend::Postgres, backends_conn)
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_alternate_decorator_syntax_commit() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.commit().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_alternate_decorator_syntax_commit_1() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.commit().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_alternate_decorator_syntax_rollback() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.rollback().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_alternate_decorator_syntax_rollback_1() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.rollback().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_atomic_allows_queries_after_fixing_transaction() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.rollback().unwrap();
-		assert!(!tx.is_active());
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_atomic_allows_queries_after_fixing_transaction_1() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.rollback().unwrap();
-		assert!(!tx.is_active());
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_atomic_does_not_leak_savepoints_on_failure() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.begin().unwrap();
-		tx.rollback().unwrap();
-		assert_eq!(tx.depth(), 1);
-		assert!(tx.is_active());
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_atomic_does_not_leak_savepoints_on_failure_1() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.begin().unwrap();
-		tx.rollback().unwrap();
-		assert_eq!(tx.depth(), 1);
-		assert!(tx.is_active());
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_atomic_prevents_calling_transaction_methods() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		assert!(tx.is_active());
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_atomic_prevents_calling_transaction_methods_1() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		assert!(tx.is_active());
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_atomic_prevents_queries_in_broken_transaction() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.rollback().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_atomic_prevents_queries_in_broken_transaction_1() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.rollback().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_atomic_prevents_queries_in_broken_transaction_after_client_close() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.rollback().unwrap();
-		assert!(!tx.is_active());
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_atomic_prevents_queries_in_broken_transaction_after_client_close_1() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.rollback().unwrap();
-		assert!(!tx.is_active());
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_atomic_prevents_setting_autocommit() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		assert!(tx.is_active());
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_atomic_prevents_setting_autocommit_1() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		assert!(tx.is_active());
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_commit() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.commit().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_commit_1() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.commit().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_commit_2() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.commit().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_commit_3() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.commit().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_decorator_syntax_commit() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.commit().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_decorator_syntax_commit_1() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.commit().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_decorator_syntax_rollback() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.rollback().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_decorator_syntax_rollback_1() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.rollback().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_failure_on_exit_transaction() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.rollback().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_failure_on_exit_transaction_1() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.rollback().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_force_rollback() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.rollback().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_force_rollback_1() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.rollback().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_implicit_savepoint_rollback() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.begin().unwrap();
-		tx.rollback().unwrap();
-		assert_eq!(tx.depth(), 1);
-		assert!(tx.is_active());
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_implicit_savepoint_rollback_1() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.begin().unwrap();
-		tx.rollback().unwrap();
-		assert_eq!(tx.depth(), 1);
-		assert!(tx.is_active());
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_mark_for_rollback_on_error_in_autocommit() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.rollback().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_mark_for_rollback_on_error_in_autocommit_1() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.rollback().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_mark_for_rollback_on_error_in_transaction() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.rollback().unwrap();
-		assert_eq!(tx.state(), Ok(TransactionState::RolledBack));
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_mark_for_rollback_on_error_in_transaction_1() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.rollback().unwrap();
-		assert_eq!(tx.state(), Ok(TransactionState::RolledBack));
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_merged_commit_commit() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.begin().unwrap();
-		tx.commit().unwrap();
-		tx.commit().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_merged_commit_commit_1() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.begin().unwrap();
-		tx.commit().unwrap();
-		tx.commit().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_merged_commit_rollback() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.begin().unwrap();
-		tx.commit().unwrap();
-		tx.rollback().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_merged_commit_rollback_1() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.begin().unwrap();
-		tx.commit().unwrap();
-		tx.rollback().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_merged_inner_savepoint_rollback() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.begin().unwrap();
-		tx.rollback().unwrap();
-		assert_eq!(tx.depth(), 1);
-		assert!(tx.is_active());
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_merged_inner_savepoint_rollback_1() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.begin().unwrap();
-		tx.rollback().unwrap();
-		assert_eq!(tx.depth(), 1);
-		assert!(tx.is_active());
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_merged_outer_rollback() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.begin().unwrap();
-		tx.rollback().unwrap();
-		tx.rollback().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_merged_outer_rollback_1() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.begin().unwrap();
-		tx.rollback().unwrap();
-		tx.rollback().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_merged_rollback_commit() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.begin().unwrap();
-		tx.rollback().unwrap();
-		tx.commit().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_merged_rollback_commit_1() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.begin().unwrap();
-		tx.rollback().unwrap();
-		tx.commit().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_merged_rollback_rollback() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.begin().unwrap();
-		tx.rollback().unwrap();
-		tx.rollback().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_merged_rollback_rollback_1() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.begin().unwrap();
-		tx.rollback().unwrap();
-		tx.rollback().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_nested_both_durable() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.begin().unwrap();
-		tx.commit().unwrap();
-		tx.commit().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_nested_both_durable_1() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.begin().unwrap();
-		tx.commit().unwrap();
-		tx.commit().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_nested_commit_commit() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.begin().unwrap();
-		tx.commit().unwrap();
-		assert_eq!(tx.depth(), 1);
-		tx.commit().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_nested_commit_commit_1() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.begin().unwrap();
-		tx.commit().unwrap();
-		assert_eq!(tx.depth(), 1);
-		tx.commit().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_nested_commit_rollback() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.begin().unwrap();
-		tx.commit().unwrap();
-		tx.rollback().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_nested_commit_rollback_1() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.begin().unwrap();
-		tx.commit().unwrap();
-		tx.rollback().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_nested_inner_durable() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.begin().unwrap();
-		tx.commit().unwrap();
-		assert_eq!(tx.depth(), 1);
-		assert!(tx.is_active());
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_nested_inner_durable_1() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.begin().unwrap();
-		tx.commit().unwrap();
-		assert_eq!(tx.depth(), 1);
-		assert!(tx.is_active());
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_nested_outer_durable() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.begin().unwrap();
-		tx.commit().unwrap();
-		tx.commit().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_nested_outer_durable_1() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.begin().unwrap();
-		tx.commit().unwrap();
-		tx.commit().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_nested_rollback_commit() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.begin().unwrap();
-		tx.rollback().unwrap();
-		tx.commit().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_nested_rollback_commit_1() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.begin().unwrap();
-		tx.rollback().unwrap();
-		tx.commit().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_nested_rollback_rollback() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.begin().unwrap();
-		tx.rollback().unwrap();
-		tx.rollback().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_nested_rollback_rollback_1() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.begin().unwrap();
-		tx.rollback().unwrap();
-		tx.rollback().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_orm_query_after_error_and_rollback() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.rollback().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_orm_query_after_error_and_rollback_1() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.rollback().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_orm_query_without_autocommit() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		assert!(tx.is_active());
-		tx.commit().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_orm_query_without_autocommit_1() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		assert!(tx.is_active());
-		tx.commit().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_prevent_rollback() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.commit().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_prevent_rollback_1() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.commit().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_reuse_commit_commit() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.commit().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_reuse_commit_commit_1() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.commit().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_reuse_commit_rollback() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.commit().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_reuse_commit_rollback_1() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.commit().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_reuse_rollback_commit() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.rollback().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_reuse_rollback_commit_1() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.rollback().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_reuse_rollback_rollback() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.rollback().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_reuse_rollback_rollback_1() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.rollback().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_rollback() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.rollback().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_rollback_1() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.rollback().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::RolledBack);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_sequence_of_durables() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.commit().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_sequence_of_durables_1() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.commit().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_wrap_callable_instance() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.commit().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
-	}
-
-	#[test]
-	// From: Django/transactions
-	fn test_wrap_callable_instance_1() {
-		let mut tx = Transaction::new();
-		tx.begin().unwrap();
-		tx.commit().unwrap();
-		assert_eq!(tx.state().unwrap(), TransactionState::Committed);
-	}
-
-	// Tests for new closure-based transaction API
-	#[rstest]
-	#[tokio::test]
-	async fn test_transaction_closure_success(mock_connection: DatabaseConnection) {
-		let conn = mock_connection;
-
-		let result: std::result::Result<_, ApplicationError> =
-			transaction(&conn, async |_tx| Ok(42)).await;
-
-		assert!(result.is_ok());
-		assert_eq!(result.unwrap(), 42);
-	}
-
-	#[rstest]
-	#[tokio::test]
-	async fn test_transaction_closure_error_rollback(mock_connection: DatabaseConnection) {
-		let conn = mock_connection;
-
-		let result: std::result::Result<(), ApplicationError> =
-			transaction(&conn, async |_tx| Err(ApplicationError::Rejected)).await;
-
-		assert!(matches!(result, Err(ApplicationError::Rejected)));
-	}
-
-	#[rstest]
-	#[tokio::test]
-	async fn test_transaction_with_isolation_level(mock_connection: DatabaseConnection) {
-		let conn = mock_connection;
-
-		let result: std::result::Result<_, ApplicationError> =
-			transaction_with_isolation(&conn, IsolationLevel::Serializable, async |_tx| Ok(()))
-				.await;
-
-		assert!(result.is_ok());
 	}
 }

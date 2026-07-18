@@ -473,7 +473,7 @@ framework for discovery via the `inventory` crate.
 - **`core` feature**: `Request`, `Response`, `Handler`, `Middleware`, Signals (`post_save`, `pre_save`, etc.)
 - **`routing` feature**: `Router`, `DefaultRouter`, `ServerRouter`
 - **`api`, `standard`, or `api-only` features**: `View`, `ListView`, `DetailView`, `ViewSet`, `ModelViewSet`, `ReadOnlyModelViewSet`
-- **`database` feature**: `Model`, `DatabaseConnection`, `F`, `Q`, `Transaction`, `atomic`, Database functions (`Concat`, `Upper`, `Lower`, `Now`, `CurrentDate`), Window functions (`Window`, `RowNumber`, `Rank`, `DenseRank`), Constraints (`UniqueConstraint`, `CheckConstraint`, `ForeignKeyConstraint`)
+- **`database` feature**: `Model`, `DatabaseConnection`, `AtomicTransaction`, `OrmExecutor`, `F`, `Q`, `Transaction`, Database functions (`Concat`, `Upper`, `Lower`, `Now`, `CurrentDate`), Window functions (`Window`, `RowNumber`, `Rank`, `DenseRank`), Constraints (`UniqueConstraint`, `CheckConstraint`, `ForeignKeyConstraint`)
 - **`auth` feature**: `BaseUser`, `FullUser`, `PermissionsMixin`, `BaseUserManager`, `Argon2Hasher`, `PasswordHasher`, `PasswordHashPolicy`, `PasswordVerification`, `PasswordCheck`, optional `BcryptHasher`, `GroupManager`, `CreateGroupData`, `Permission`, `ObjectPermission`, `ObjectPermissionManager`
 - **`minimal`, `standard`, or `di` features**: `Body`, `Cookie`, `Header`, `Json`, `Path`, `Query`
 - **`rest` feature**: Serializers, Parsers, Pagination, Throttling, Versioning
@@ -689,13 +689,10 @@ async fn complex_user_query() -> Result<Vec<User>, Box<dyn std::error::Error>> {
 // Transaction support
 async fn create_user_with_transaction(
 	conn: &DatabaseConnection,
-	user_data: CreateUserRequest
-) -> Result<User, Box<dyn std::error::Error>> {
-	// Transaction with automatic rollback on error
-	transaction(conn, |_tx| async move {
-		let user = User::create(user_data).await?;
-		log_user_creation(&user).await?;
-		Ok(user)
+	user: &User,
+) -> reinhardt::core::exception::Result<User> {
+	conn.atomic(async |transaction| {
+		User::objects().create_with_conn(transaction, user).await
 	}).await
 }
 ```

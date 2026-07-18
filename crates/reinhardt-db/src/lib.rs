@@ -139,7 +139,6 @@
 //! ```rust,no_run
 //! use reinhardt_core::exception::Error;
 //! use reinhardt_db::orm::connection::DatabaseConnection;
-//! use reinhardt_db::orm::transaction::transaction;
 //!
 //! #[derive(Debug, thiserror::Error)]
 //! enum ApplicationError {
@@ -151,7 +150,7 @@
 //!
 //! # async fn example() -> Result<(), ApplicationError> {
 //! let connection = DatabaseConnection::connect("sqlite::memory:").await?;
-//! let result: Result<(), ApplicationError> = transaction(&connection, async |_transaction| {
+//! let result: Result<(), ApplicationError> = connection.atomic(async |_transaction| {
 //!     Err(ApplicationError::Rejected)
 //! }).await;
 //!

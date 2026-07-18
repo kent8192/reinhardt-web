@@ -1,102 +1,87 @@
 # Migration Guide: 0.3.x to 0.4.0
 
-This guide covers the breaking model identity, Reinhardt Pages event API, and
-controlled form-element binding changes introduced for 0.4.
+This guide covers the breaking Reinhardt Pages event API and closure-scoped ORM
+transaction API introduced for 0.4.
 
-## Explicit model application labels and conventional table names
+## Closure-scoped ORM transactions
 
-`#[model(...)]` now requires `app_label`. The previous implicit `"default"`
-application label has been removed because it could silently group unrelated
-models in migrations, application discovery, the model registry, and admin
-configuration.
-
-`table_name` is now optional. When omitted, Reinhardt prefixes the application
-label and converts the Rust struct name to snake_case without pluralization or
-English inflection:
-
-| Struct | Default table name |
-|---|---|
-| `User` in `accounts` | `accounts_user` |
-| `BlogPost` in `blog` | `blog_blog_post` |
-| `HTTPRoute` in `routing` | `routing_http_route` |
-| `Person` in `people` | `people_person` |
-
-To preserve an existing schema, add the application label and keep the current
-table name explicit:
+ORM transactions are now exclusively closure-scoped. `DatabaseConnection::atomic`
+opens the outer transaction and lends its executor to the callback. Call
+`AtomicTransaction::atomic` from that callback to create a nested savepoint.
+The executor is mutable and cannot be used outside its callback, so all ORM
+operations in the scope must use `*_with_conn(transaction, ...)` or
+`*_with_db(transaction)` methods.
 
 ```rust,ignore
-// Before: the model was registered in the implicit "default" application.
-#[model(table_name = "users")]
-pub struct User {
-    // Fields omitted.
-}
+// Before
+let mut transaction = connection.begin().await?;
+let user = User::objects()
+    .create_with_conn(&mut transaction, &new_user)
+    .await?;
+transaction.commit().await?;
 
-// After: application ownership and the existing plural table are explicit.
-#[model(app_label = "default", table_name = "users")]
-pub struct User {
-    // Fields omitted.
-}
+// After: the nested callback stays inside the outer callback's scope.
+let user = connection.atomic(async |transaction| {
+    let user = User::objects()
+        .create_with_conn(transaction, &new_user)
+        .await?;
+
+    // A nested callback is a savepoint on the same executor.
+    transaction.atomic(async |nested_transaction| {
+        audit_manager
+            .create_with_conn(nested_transaction, &audit_log)
+            .await
+    }).await?;
+
+    Ok(user)
+}).await?;
 ```
 
-New models may adopt the convention by omitting only `table_name`:
+Outside an atomic block, acquire and pass a mutable connection directly rather
+than starting a manual transaction:
 
 ```rust,ignore
-#[model(app_label = "routing")]
-pub struct HTTPRoute {
-    // Uses the `routing_http_route` table.
-}
+let mut connection = get_connection().await?;
+let user = User::objects()
+    .create_with_conn(&mut connection, &new_user)
+    .await?;
 ```
 
-Omitting an explicit `table_name` from an existing model is a schema decision,
-not a source-only cleanup. For example, changing `User` in the `accounts` app
-from `users` to the derived `accounts_user` name requires a table rename migration. `makemigrations`
-recognizes this same-model table-name change and emits `RenameTable` instead of
-destructive drop/create operations. Audit model attributes before upgrading:
+`Session` remains a unit-of-work tracker. Use `Session::flush` to persist its
+tracked changes, but do not use it as a transaction boundary. For multi-write
+atomicity, perform the writes through `DatabaseConnection::atomic` and its
+callback-owned executor. To abandon unflushed session state, discard and
+recreate the `Session` instead of rolling it back.
 
-```bash
-rg -n '#\[model(?:\([^]]*\))?\]' src crates examples
-```
+`AsyncSession::begin` and `Engine::begin` are also removed. Use
+`DatabaseConnection::atomic` for ORM transaction boundaries. `Engine` and raw
+SQL remain available for operations outside the ORM atomic API.
 
-For an implicit `ManyToMany` relationship, the same migration also renames the
-convention-derived through table and any affected foreign-key columns. This
-preserves existing relationship rows when the source model changes from a
-plural table name to its singular convention-derived name. Qualified string
-foreign keys such as `#[field(foreign_key = "blog.Post")]` resolve the target
-model's registered `table_name`, including explicit table-name overrides.
+The following public ORM APIs are removed:
 
-For every result, add a meaningful `app_label`. Preserve `table_name` whenever
-the deployed database already uses that table; omit it only when the derived
-name is the intended schema contract.
+- `TransactionScope` and `Atomic`
+- free `atomic`, `atomic_with_isolation`, `transaction`, and
+  `transaction_with_isolation` functions
+- `DatabaseConnection::{begin_transaction, begin_transaction_with_isolation,
+  commit_transaction, rollback_transaction, savepoint, release_savepoint,
+  rollback_to_savepoint, begin, begin_with_isolation}`
+- `Transaction::{begin_db, commit_db, rollback_db}`
+- `Session::{begin, commit, rollback, has_transaction}` and
+  `SessionError::TransactionError`
+- `AsyncSession::begin`
+- `Engine::begin`
 
-## Reserved `bind` directive
+Use `DatabaseConnection::atomic_with_isolation` when the outer transaction
+requires a particular isolation level. `Transaction`, `Savepoint`, and
+`IsolationLevel` remain available only as synchronous SQL-builder types; they
+do not own or execute ORM transactions.
 
-`bind:` is now a reserved `page!` directive on supported `input`, `textarea`,
-and `select` controls. It connects a typed `Signal` to the control property and
-must not be used to emit a literal nonstandard HTML attribute.
-
-```rust,ignore
-// Before: emitted a nonstandard literal `bind` attribute.
-page!({ input { bind: "search-model" } })
-
-// After: prefer a standards-compatible data attribute.
-page!({ input { data_bind: "search-model" } })
-
-// Or use the low-level builder when the literal attribute name is required.
-PageElement::new("input").attr("bind", "search-model")
-```
-
-For controlled state, replace imperative DOM reads with a typed signal:
-
-```rust,ignore
-let query = Signal::new(String::new());
-page!({ input { aria_label: "Search", bind: query } })
-```
-
-The compiler validates the binding shape: text, radio, and single-select
-controls use `Signal<String>`; checkboxes use `Signal<bool>`; multiple selects
-use `Signal<Vec<String>>`; and numeric controls accept supported primitives via
-direct `bind: value`. Use `bind: number(value, parse_error)` only when rejected
-numeric text should also update an error signal.
+Callback failures roll back the active transaction. If rollback or savepoint
+cleanup also fails, the cleanup error is returned because it is the most useful
+signal that database state could not be restored. Panics and task cancellation
+are not recoverable callback results; do not rely on them for rollback control
+flow. MySQL implicitly commits many DDL statements, so do not put schema changes
+inside an atomic callback and expect them to roll back.
 
 ## Typed intrinsic events
 

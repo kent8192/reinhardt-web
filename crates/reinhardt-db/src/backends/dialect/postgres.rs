@@ -94,6 +94,7 @@ impl DatabaseBackend for PostgresBackend {
 			.map_err(map_sqlx_error)?;
 		Ok(QueryResult {
 			rows_affected: result.rows_affected(),
+			last_insert_id: None,
 		})
 	}
 
@@ -394,6 +395,7 @@ impl TransactionExecutor for PgTransactionExecutor {
 		let result = query.execute(&mut **tx).await.map_err(map_sqlx_error)?;
 		Ok(QueryResult {
 			rows_affected: result.rows_affected(),
+			last_insert_id: None,
 		})
 	}
 
@@ -521,7 +523,32 @@ impl TransactionExecutor for PgTransactionExecutor {
 
 #[cfg(test)]
 mod tests {
+	use super::PgTransactionExecutor;
+	use crate::backends::types::{DatabaseType, TransactionExecutor};
 	use rstest::rstest;
+
+	#[test]
+	fn test_transaction_executor_reports_postgres_backend() {
+		let executor = PgTransactionExecutor { tx: None };
+
+		assert_eq!(executor.backend(), DatabaseType::Postgres);
+	}
+
+	/// Verify that normal Decimal values succeed to_f64() conversion
+	#[rstest]
+	#[case::positive(rust_decimal::Decimal::new(12345, 2), 123.45)]
+	#[case::zero(rust_decimal::Decimal::ZERO, 0.0)]
+	#[case::negative(rust_decimal::Decimal::new(-999, 1), -99.9)]
+	#[case::max(rust_decimal::Decimal::MAX, 7.922816251426434e28)]
+	fn test_decimal_to_f64_conversion_succeeds(
+		#[case] decimal: rust_decimal::Decimal,
+		#[case] expected: f64,
+	) {
+		// Act
+		let result = decimal.to_f64();
+		assert!(result.is_some());
+		assert!((result.unwrap() - expected).abs() < f64::EPSILON * expected.abs().max(1.0));
+	}
 
 	#[tokio::test]
 	async fn convert_row_preserves_postgres_arrays_and_decimals() {

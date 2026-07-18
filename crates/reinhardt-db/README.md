@@ -72,8 +72,8 @@ This crate provides the following modules:
   - Named savepoints (create, release, rollback to savepoint)
   - Transaction state tracking (NotStarted, Active, Committed, RolledBack)
   - Two-phase commit (2PC) for distributed transactions
-  - Atomic transaction wrapper (Django-style transaction.atomic)
-  - Database-level transaction execution methods
+  - Closure-scoped atomic transactions with nested savepoints
+  - Mutable executor ownership for transaction-scoped ORM work
   - Typed callback errors with automatic conversion from framework failures
 
 - **Structured Database Errors**
@@ -105,7 +105,6 @@ failures retain the same typed channel as domain failures:
 ```rust,no_run
 use reinhardt_core::exception::Error;
 use reinhardt_db::orm::connection::DatabaseConnection;
-use reinhardt_db::orm::transaction::transaction;
 
 #[derive(Debug, thiserror::Error)]
 enum ApplicationError {
@@ -117,7 +116,7 @@ enum ApplicationError {
 
 # async fn example() -> Result<(), ApplicationError> {
 let connection = DatabaseConnection::connect("sqlite::memory:").await?;
-let result: Result<(), ApplicationError> = transaction(&connection, async |_transaction| {
+let result: Result<(), ApplicationError> = connection.atomic(async |_transaction| {
     Err(ApplicationError::Rejected)
 }).await;
 

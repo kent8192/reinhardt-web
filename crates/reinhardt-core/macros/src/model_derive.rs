@@ -2470,18 +2470,14 @@ fn generate_m2m_accessor_methods(
 				field_name_str
 			);
 
-			Some(quote! {
-				#[doc = #doc_comment]
-				pub fn #method_name(
-					&self,
-					db: #orm_crate::connection::DatabaseConnection
-				) -> #orm_crate::ManyToManyAccessor<#struct_name, #target_ty> {
-					#orm_crate::ManyToManyAccessor::new(
-						self,
-						#field_name_str,
-						db
-					)
-				}
+				Some(quote! {
+					#[doc = #doc_comment]
+					pub fn #method_name(&self) -> #orm_crate::ManyToManyAccessor<#struct_name, #target_ty> {
+						#orm_crate::ManyToManyAccessor::new(
+							self,
+							#field_name_str
+						)
+					}
 			})
 		})
 		.collect();
@@ -2536,20 +2532,20 @@ fn generate_fk_accessor_methods(
 
 			// Extract Target from ForeignKeyField<Target> or OneToOneField<Target>
 			let target_ty = extract_foreign_key_target_type(&field.ty);
-
 			let doc_comment = format!(
 				"Load the related '{}' instance from the database",
 				field_name_str
 			);
 
-			quote! {
-				#[doc = #doc_comment]
-				pub async fn #method_name(
-					&self,
-					db: &#orm_crate::connection::DatabaseConnection
-				) -> #core_crate::exception::Result<Option<#target_ty>> {
-					use #orm_crate::Model;
-
+				quote! {
+					#[doc = #doc_comment]
+					pub async fn #method_name<E>(
+						&self,
+						db: &mut E
+					) -> #core_crate::exception::Result<Option<#target_ty>>
+					where
+						E: #orm_crate::connection::OrmExecutor,
+					{
 					// Get FK _id value.
 					let fk_id = self.#fk_id_field_name();
 
@@ -2609,8 +2605,8 @@ fn generate_fk_accessor_methods(
 ///
 /// ```ignore
 /// // Get reverse accessor for User → Tweets relationship
-/// let tweets_accessor = Tweet::user_accessor().reverse(&user, db);
-/// let tweets = tweets_accessor.all().await?;
+/// let tweets_accessor = Tweet::user_accessor().reverse(&user);
+/// let tweets = tweets_accessor.all_with_conn(&mut db).await?;
 /// ```
 fn generate_fk_static_accessor_methods(
 	struct_name: &syn::Ident,
@@ -2628,8 +2624,11 @@ fn generate_fk_static_accessor_methods(
 			let field_name = &field.name;
 			let field_name_str = field_name.to_string();
 
-			// FK _id field name (e.g., user → user_id)
-			let db_column = format!("{}_id", field_name_str);
+			let db_column = field
+				.rel
+				.as_ref()
+				.and_then(|rel| rel.db_column.clone())
+				.unwrap_or_else(|| format!("{}_id", field_name_str));
 
 			// Method name: {field_name}_accessor
 			let method_name =
@@ -3079,6 +3078,10 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 		.db_column
 		.clone()
 		.unwrap_or_else(|| pk_fields[0].name.to_string());
+	let primary_key_uses_zero_sentinel = !is_composite_pk
+		&& !pk_is_option
+		&& is_integer_primary_key_type(&pk_fields[0].ty)
+		&& pk_fields[0].config.auto_increment.unwrap_or(true);
 
 	// Generate field_metadata implementation
 	let field_metadata_items = generate_field_metadata(&field_infos, &fk_field_infos)?;
@@ -3417,6 +3420,10 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 
 			fn primary_key_column() -> &'static str {
 				#pk_column_name
+			}
+
+			fn primary_key_uses_zero_sentinel() -> bool {
+				#primary_key_uses_zero_sentinel
 			}
 
 			fn field_is_none(&self, field_name: &str) -> bool {
@@ -7221,6 +7228,44 @@ mod tests {
 			error.to_string(),
 			"Generated columns cannot be auto-incrementing"
 		);
+	}
+
+	#[test]
+	fn test_model_marks_scalar_integer_auto_increment_primary_key_zero_sentinel() {
+		let input = quote! {
+			#[model(app_label = "test", table_name = "scalar_users", info = false)]
+			struct ScalarUser {
+				#[field(primary_key = true)]
+				id: i64,
+				#[field(max_length = 120)]
+				name: String,
+			}
+		};
+
+		let output = model_derive_impl(syn::parse2(input).unwrap())
+			.expect("scalar integer primary key model must generate")
+			.to_string();
+
+		assert!(output.contains("fn primary_key_uses_zero_sentinel () -> bool { true }"));
+	}
+
+	#[test]
+	fn test_model_disables_zero_sentinel_for_non_auto_increment_primary_key() {
+		let input = quote! {
+			#[model(app_label = "test", table_name = "manual_users", info = false)]
+			struct ManualUser {
+				#[field(primary_key = true, auto_increment = false)]
+				id: i64,
+				#[field(max_length = 120)]
+				name: String,
+			}
+		};
+
+		let output = model_derive_impl(syn::parse2(input).unwrap())
+			.expect("manual integer primary key model must generate")
+			.to_string();
+
+		assert!(output.contains("fn primary_key_uses_zero_sentinel () -> bool { false }"));
 	}
 
 	#[cfg(feature = "db-sqlite")]

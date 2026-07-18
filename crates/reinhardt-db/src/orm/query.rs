@@ -3,6 +3,7 @@
 //! This module provides a unified entry point for querying functionality.
 //! By default, it exports the expression-based query API (SQLAlchemy-style).
 
+use super::connection::{OrmExecutor, QueryRow};
 use super::field_codec::{
 	DatabaseField, DatabaseValue, FieldCodecError, IntoFieldValue, database_value_to_query_value,
 };
@@ -1467,6 +1468,7 @@ where
 		let mut queryset = self.clone();
 		queryset.relation_joins = RelationJoinGraph::new(T::table_name());
 		queryset.from_alias = None;
+		queryset.resolve_write_predicate_fields();
 		queryset.build_where_condition()
 	}
 
@@ -3534,6 +3536,139 @@ where
 			ColumnRef::table_column(Alias::new(self.root_alias()), Alias::new(field))
 		} else {
 			parse_column_reference(field)
+		}
+	}
+
+	fn database_column_for_field(field: &str) -> String {
+		if field.contains('.') {
+			return field.to_string();
+		}
+
+		T::field_metadata()
+			.iter()
+			.find(|metadata| metadata.name == field)
+			.map(|metadata| metadata.db_column_name().to_string())
+			.unwrap_or_else(|| field.to_string())
+	}
+
+	fn resolve_write_predicate_fields(&mut self) {
+		for filter in &mut self.filters {
+			Self::resolve_write_filter_fields(filter);
+		}
+
+		for condition in &mut self.filter_conditions {
+			Self::resolve_write_filter_condition_fields(condition);
+		}
+
+		for condition in &mut self.subquery_conditions {
+			match condition {
+				SubqueryCondition::In { field, .. } | SubqueryCondition::NotIn { field, .. } => {
+					*field = Self::database_column_for_field(field);
+				}
+				SubqueryCondition::Exists { .. } | SubqueryCondition::NotExists { .. } => {}
+			}
+		}
+	}
+
+	fn resolve_write_filter_condition_fields(condition: &mut FilterCondition) {
+		match condition {
+			FilterCondition::Single(filter) => Self::resolve_write_filter_fields(filter),
+			FilterCondition::And(conditions) | FilterCondition::Or(conditions) => {
+				for condition in conditions {
+					Self::resolve_write_filter_condition_fields(condition);
+				}
+			}
+			FilterCondition::Not(condition) => {
+				Self::resolve_write_filter_condition_fields(condition)
+			}
+		}
+	}
+
+	fn resolve_write_filter_fields(filter: &mut Filter) {
+		if filter.relation.is_some() {
+			return;
+		}
+
+		if matches!(&filter.field_source, FilterField::Column) {
+			filter.field = Self::database_column_for_field(&filter.field);
+		}
+		Self::resolve_write_filter_value_fields(&mut filter.value);
+	}
+
+	fn resolve_write_filter_value_fields(value: &mut FilterValue) {
+		match value {
+			FilterValue::List(values) => {
+				for value in values {
+					Self::resolve_write_filter_value_fields(value);
+				}
+			}
+			FilterValue::Range(start, end) => {
+				Self::resolve_write_filter_value_fields(start);
+				Self::resolve_write_filter_value_fields(end);
+			}
+			FilterValue::FieldRef(field) => {
+				field.field = Self::database_column_for_field(&field.field);
+			}
+			FilterValue::Expression(expression) => {
+				Self::resolve_write_expression_fields(expression);
+			}
+			_ => {}
+		}
+	}
+
+	fn resolve_write_expression_fields(expression: &mut super::annotation::Expression) {
+		use super::annotation::Expression;
+
+		match expression {
+			Expression::Add(left, right)
+			| Expression::Subtract(left, right)
+			| Expression::Multiply(left, right)
+			| Expression::Divide(left, right) => {
+				Self::resolve_write_annotation_value_fields(left);
+				Self::resolve_write_annotation_value_fields(right);
+			}
+			Expression::Case { whens, default } => {
+				for when in whens {
+					Self::resolve_write_q_fields(&mut when.condition);
+					Self::resolve_write_annotation_value_fields(&mut when.then);
+				}
+				if let Some(default) = default {
+					Self::resolve_write_annotation_value_fields(default);
+				}
+			}
+			Expression::Coalesce(values) => {
+				for value in values {
+					Self::resolve_write_annotation_value_fields(value);
+				}
+			}
+		}
+	}
+
+	fn resolve_write_annotation_value_fields(value: &mut super::annotation::AnnotationValue) {
+		match value {
+			super::annotation::AnnotationValue::Field(field) => {
+				field.field = Self::database_column_for_field(&field.field);
+			}
+			super::annotation::AnnotationValue::Expression(expression) => {
+				Self::resolve_write_expression_fields(expression);
+			}
+			_ => {}
+		}
+	}
+
+	fn resolve_write_q_fields(condition: &mut super::expressions::Q) {
+		match condition {
+			super::expressions::Q::Condition {
+				field, operator, ..
+			} if !field.is_empty() && !operator.is_empty() => {
+				*field = Self::database_column_for_field(field);
+			}
+			super::expressions::Q::Combined { conditions, .. } => {
+				for condition in conditions {
+					Self::resolve_write_q_fields(condition);
+				}
+			}
+			_ => {}
 		}
 	}
 
@@ -5659,107 +5794,8 @@ where
 	where
 		T: serde::de::DeserializeOwned,
 	{
-		let conn = super::manager::get_connection().await?;
-
-		let stmt = if !self.has_select_related() {
-			// Simple SELECT without JOINs
-			let mut stmt = Query::select();
-			self.apply_model_from(&mut stmt);
-
-			// Column selection considering selected_fields and deferred_fields
-			if let Some(ref fields) = self.selected_fields {
-				for field in fields {
-					// Detect raw SQL expressions (like COUNT(*), AVG(price), etc.)
-					if field.contains('(') && field.contains(')') {
-						// Use expr() for raw SQL expressions - clone to satisfy lifetime
-						stmt.expr(Expr::cust(field.clone()));
-					} else {
-						// Regular column reference
-						let col_ref = self.root_column_reference(field);
-						stmt.column(col_ref);
-					}
-				}
-			} else if !self.deferred_fields.is_empty() {
-				let all_fields = T::field_metadata();
-				for field in all_fields {
-					if !self.deferred_fields.contains(&field.name) {
-						let col_ref = self.root_column_reference(&field.name);
-						stmt.column(col_ref);
-					}
-				}
-			} else {
-				self.add_default_select_columns(&mut stmt);
-			}
-
-			self.apply_relation_joins(&mut stmt);
-
-			if let Some(cond) = self.build_where_condition()? {
-				stmt.cond_where(cond);
-			}
-
-			// Apply ORDER BY clause
-			for order_field in &self.order_by_fields {
-				let (field, is_desc) = if let Some(stripped) = order_field.strip_prefix('-') {
-					(stripped, true)
-				} else {
-					(order_field.as_str(), false)
-				};
-
-				let col_ref = self.root_column_reference(field);
-				let expr = Expr::col(col_ref);
-				if is_desc {
-					stmt.order_by_expr(expr, Order::Desc);
-				} else {
-					stmt.order_by_expr(expr, Order::Asc);
-				}
-			}
-
-			// Apply LIMIT/OFFSET
-			if let Some(limit) = self.limit {
-				stmt.limit(limit as u64);
-			}
-			if let Some(offset) = self.offset {
-				stmt.offset(offset as u64);
-			}
-
-			stmt.to_owned()
-		} else {
-			// SELECT with JOINs for select_related
-			self.select_related_query()?
-		};
-
-		// Convert statement to SQL with inline values (no placeholders)
-		let sql = stmt.to_string(PostgresQueryBuilder);
-
-		// Execute query and deserialize results
-		let started_at = Instant::now();
-		let query_result = conn.query(&sql, vec![]).await;
-		let duration = started_at.elapsed();
-
-		let rows = match query_result {
-			Ok(rows) => {
-				super::instrumentation::instrumentation()
-					.orm_query_end_with_params(&sql, &[], duration)
-					.await;
-				rows
-			}
-			Err(error) => {
-				super::instrumentation::instrumentation()
-					.orm_query_error(&sql, &format!("{error:?}"))
-					.await;
-				return Err(error);
-			}
-		};
-		rows.into_iter()
-			.map(|row| {
-				row.deserialize_model::<T>().map_err(|error| {
-					Error::from(DatabaseError::new(
-						DatabaseErrorKind::Serialization,
-						format!("Deserialization error: {error}"),
-					))
-				})
-			})
-			.collect()
+		let mut conn = super::manager::get_connection().await?;
+		self.all_with_db(&mut conn).await
 	}
 
 	/// Execute the queryset and return the first matching record
@@ -5810,8 +5846,8 @@ where
 	where
 		T: serde::de::DeserializeOwned,
 	{
-		let mut results = self.all().await?;
-		Ok(results.drain(..).next())
+		let mut conn = super::manager::get_connection().await?;
+		self.first_with_db(&mut conn).await
 	}
 
 	/// Execute the queryset and return a single matching record
@@ -5864,20 +5900,8 @@ where
 	where
 		T: serde::de::DeserializeOwned,
 	{
-		let results = self.all().await?;
-		match results.len() {
-			0 => Err(DatabaseError::new(
-				DatabaseErrorKind::Query,
-				"No record found matching the query",
-			)
-			.into()),
-			1 => Ok(results.into_iter().next().unwrap()),
-			n => Err(DatabaseError::new(
-				DatabaseErrorKind::Query,
-				format!("Multiple records found ({n}), expected exactly one"),
-			)
-			.into()),
-		}
+		let mut conn = super::manager::get_connection().await?;
+		self.get_with_db(&mut conn).await
 	}
 
 	/// Execute the queryset with an explicit database connection and return all records
@@ -5904,20 +5928,18 @@ where
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
 	/// # }
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// # let db = reinhardt_db::orm::manager::get_connection().await?;
+	/// # let mut db = reinhardt_db::orm::manager::get_connection().await?;
 	/// let users = User::objects()
 	///     .all()
-	///     .all_with_db(&db)
+	///     .all_with_db(&mut db)
 	///     .await?;
 	/// # Ok(())
 	/// # }
 	/// ```
-	pub async fn all_with_db(
-		&self,
-		conn: &super::connection::DatabaseConnection,
-	) -> reinhardt_core::exception::Result<Vec<T>>
+	pub async fn all_with_db<E>(&self, conn: &mut E) -> reinhardt_core::exception::Result<Vec<T>>
 	where
 		T: serde::de::DeserializeOwned,
+		E: OrmExecutor,
 	{
 		let stmt = if !self.has_select_related() {
 			let mut stmt = Query::select();
@@ -5987,7 +6009,7 @@ where
 		let sql = render_select_statement(&stmt, conn.backend());
 
 		let started_at = Instant::now();
-		let query_result = conn.query(&sql, vec![]).await;
+		let query_result = conn.fetch_all(&sql, vec![]).await;
 		let duration = started_at.elapsed();
 
 		let rows = match query_result {
@@ -6006,12 +6028,14 @@ where
 		};
 		rows.into_iter()
 			.map(|row| {
-				row.deserialize_model::<T>().map_err(|error| {
-					Error::from(DatabaseError::new(
-						DatabaseErrorKind::Serialization,
-						format!("Deserialization error: {error}"),
-					))
-				})
+				QueryRow::from_backend_row(row)
+					.deserialize_model::<T>()
+					.map_err(|error| {
+						Error::from(DatabaseError::new(
+							DatabaseErrorKind::Serialization,
+							format!("Deserialization error: {error}"),
+						))
+					})
 			})
 			.collect()
 	}
@@ -6092,20 +6116,18 @@ where
 	/// # }
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 	/// # let user_id = 1;
-	/// let db = reinhardt_db::orm::manager::get_connection().await?;
+	/// let mut db = reinhardt_db::orm::manager::get_connection().await?;
 	/// let user = User::objects()
 	///     .filter(reinhardt_db::orm::Filter::new("id", reinhardt_db::orm::FilterOperator::Eq, reinhardt_db::orm::FilterValue::Integer(user_id)))
-	///     .get_with_db(&db)
+	///     .get_with_db(&mut db)
 	///     .await?;
 	/// # Ok(())
 	/// # }
 	/// ```
-	pub async fn get_with_db(
-		&self,
-		conn: &super::connection::DatabaseConnection,
-	) -> reinhardt_core::exception::Result<T>
+	pub async fn get_with_db<E>(&self, conn: &mut E) -> reinhardt_core::exception::Result<T>
 	where
 		T: serde::de::DeserializeOwned,
+		E: OrmExecutor,
 	{
 		let results = self.all_with_db(conn).await?;
 		match results.len() {
@@ -6131,26 +6153,11 @@ where
 	{
 		let mut queryset = self.clone();
 		queryset.limit = Some(queryset.limit.map_or(2, |limit| limit.min(2)));
-		queryset.all_with_db(conn).await
+		let mut conn = conn.clone();
+		queryset.all_with_db(&mut conn).await
 	}
 
 	/// Count this queryset through an explicit connection without resolving the global connection.
-	pub async fn count_with_db(
-		&self,
-		conn: &super::connection::DatabaseConnection,
-	) -> reinhardt_core::exception::Result<u64> {
-		let stmt = self.count_select_query()?;
-		let (sql, values) = Self::build_select_for_backend(&stmt, conn.backend());
-		let params = super::execution::convert_values(values);
-		let row = conn.query_one(&sql, params).await?;
-		row.get::<u64>("count").ok_or_else(|| {
-			Error::from(DatabaseError::new(
-				DatabaseErrorKind::Query,
-				"COUNT query did not return a numeric count column",
-			))
-		})
-	}
-
 	/// Execute the queryset with an explicit database connection and return the first record
 	///
 	/// # Examples
@@ -6175,20 +6182,21 @@ where
 	/// #     fn set_primary_key(&mut self, value: Self::PrimaryKey) { self.id = Some(value); }
 	/// # }
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// let db = reinhardt_db::orm::manager::get_connection().await?;
+	/// let mut db = reinhardt_db::orm::manager::get_connection().await?;
 	/// let user = User::objects()
 	///     .filter(reinhardt_db::orm::Filter::new("status", reinhardt_db::orm::FilterOperator::Eq, reinhardt_db::orm::FilterValue::String("active".to_string())))
-	///     .first_with_db(&db)
+	///     .first_with_db(&mut db)
 	///     .await?;
 	/// # Ok(())
 	/// # }
 	/// ```
-	pub async fn first_with_db(
+	pub async fn first_with_db<E>(
 		&self,
-		conn: &super::connection::DatabaseConnection,
+		conn: &mut E,
 	) -> reinhardt_core::exception::Result<Option<T>>
 	where
 		T: serde::de::DeserializeOwned,
+		E: OrmExecutor,
 	{
 		let mut results = self.all_with_db(conn).await?;
 		Ok(results.drain(..).next())
@@ -6236,32 +6244,31 @@ where
 	/// # }
 	/// ```
 	pub async fn count(&self) -> reinhardt_core::exception::Result<usize> {
-		use reinhardt_query::prelude::{PostgresQueryBuilder, QueryBuilder};
+		let mut conn = super::manager::get_connection().await?;
+		self.count_with_db(&mut conn).await
+	}
 
-		let conn = super::manager::get_connection().await?;
-
+	/// Execute the count query through a caller-owned ORM executor.
+	pub async fn count_with_db<E>(&self, conn: &mut E) -> reinhardt_core::exception::Result<usize>
+	where
+		E: OrmExecutor,
+	{
 		let stmt = self.count_select_query()?;
-
-		// Convert to SQL and extract parameter values
-		let (sql, values) = PostgresQueryBuilder.build_select(&stmt);
+		let (sql, values) = Self::build_select_for_backend(&stmt, conn.backend());
 		let param_samples = values
 			.iter()
 			.map(|value| value.to_sql_literal())
 			.collect::<Vec<_>>();
-
-		// Convert reinhardt_query::value::Values to QueryValue
 		let params = super::execution::convert_values(values);
-
-		// Execute query with parameters
 		let started_at = Instant::now();
-		let query_result = conn.query(&sql, params).await;
+		let query_result = conn.fetch_one(&sql, params).await;
 		let duration = started_at.elapsed();
-		let rows = match query_result {
-			Ok(rows) => {
+		let row = match query_result {
+			Ok(row) => {
 				super::instrumentation::instrumentation()
 					.orm_query_end_with_params(&sql, &param_samples, duration)
 					.await;
-				rows
+				row
 			}
 			Err(error) => {
 				super::instrumentation::instrumentation()
@@ -6270,16 +6277,8 @@ where
 				return Err(error);
 			}
 		};
-		if let Some(row) = rows.first() {
-			// Extract count from first row
-			if let Some(count_value) = row.data.get("count")
-				&& let Some(count) = count_value.as_i64()
-			{
-				return Ok(count as usize);
-			}
-		}
-
-		Ok(0)
+		let row = QueryRow::from_backend_row(row);
+		Ok(row.get::<i64>("count").unwrap_or_default() as usize)
 	}
 
 	fn count_distinct_composite_primary_key_query(
@@ -6298,7 +6297,10 @@ where
 		}
 
 		let mut count_stmt = Query::select();
-		count_stmt.expr(Func::count(Expr::asterisk().into_simple_expr()));
+		count_stmt.expr_as(
+			Func::count(Expr::asterisk().into_simple_expr()),
+			Alias::new("count"),
+		);
 		count_stmt.from_subquery(distinct_stmt.to_owned(), Alias::new("distinct_root_rows"));
 		Ok(count_stmt.to_owned())
 	}
@@ -6319,12 +6321,18 @@ where
 		let mut stmt = Query::select();
 		count_queryset.apply_model_from(&mut stmt);
 		if filter_relation_joins.has_multi_valued_join() {
-			stmt.expr(Expr::cust(format!(
-				"COUNT(DISTINCT {})",
-				count_queryset.distinct_root_primary_key_sql()
-			)));
+			stmt.expr_as(
+				Expr::cust(format!(
+					"COUNT(DISTINCT {})",
+					count_queryset.distinct_root_primary_key_sql()
+				)),
+				Alias::new("count"),
+			);
 		} else {
-			stmt.expr(Func::count(Expr::asterisk().into_simple_expr()));
+			stmt.expr_as(
+				Func::count(Expr::asterisk().into_simple_expr()),
+				Alias::new("count"),
+			);
 		}
 
 		Self::apply_relation_join_graph(&mut stmt, &filter_relation_joins);
@@ -6380,8 +6388,16 @@ where
 	/// # }
 	/// ```
 	pub async fn exists(&self) -> reinhardt_core::exception::Result<bool> {
-		let count = self.count().await?;
-		Ok(count > 0)
+		let mut conn = super::manager::get_connection().await?;
+		self.exists_with_db(&mut conn).await
+	}
+
+	/// Check whether this queryset has rows through a caller-owned ORM executor.
+	pub async fn exists_with_db<E>(&self, conn: &mut E) -> reinhardt_core::exception::Result<bool>
+	where
+		E: OrmExecutor,
+	{
+		Ok(self.count_with_db(conn).await? > 0)
 	}
 
 	/// Create a new object in the database
@@ -6421,14 +6437,25 @@ where
 	where
 		T: super::Model + Clone,
 	{
-		// Delegate to Manager::create() which handles all the SQL generation,
-		// database connection, primary key retrieval, and error handling
+		let mut conn = super::manager::get_connection().await?;
+		self.create_with_conn(&mut conn, object).await
+	}
+
+	/// Create an object through a caller-owned ORM executor.
+	pub async fn create_with_conn<E>(
+		&self,
+		conn: &mut E,
+		object: T,
+	) -> reinhardt_core::exception::Result<T>
+	where
+		T: super::Model + Clone,
+		E: OrmExecutor,
+	{
 		match &self.manager {
-			Some(manager) => manager.create(&object).await,
+			Some(manager) => manager.create_with_conn(conn, &object).await,
 			None => {
-				// Fallback: create a new manager instance if none exists
 				let manager = super::manager::Manager::<T>::new();
-				manager.create(&object).await
+				manager.create_with_conn(conn, &object).await
 			}
 		}
 	}
@@ -6448,12 +6475,13 @@ where
 			if T::generated_field_names().contains(&field.as_str()) {
 				continue;
 			}
-			stmt.value_expr(Alias::new(field), Self::update_value_to_query_expr(value)?);
+			let column = Self::database_column_for_field(field);
+			stmt.value_expr(Alias::new(column), Self::update_value_to_query_expr(value)?);
 			has_values = true;
 		}
 
 		if !has_values {
-			let primary_key = T::primary_key_field();
+			let primary_key = T::primary_key_column();
 			stmt.value_expr(Alias::new(primary_key), Expr::col(Alias::new(primary_key)));
 		}
 
@@ -6513,17 +6541,18 @@ where
 		I: IntoIterator<Item = A>,
 		A: Into<FieldAssignment>,
 	{
-		let conn = super::manager::get_connection().await?;
-		self.update_fields_with_conn(&conn, values).await
+		let mut conn = super::manager::get_connection().await?;
+		self.update_fields_with_conn(&mut conn, values).await
 	}
 
 	/// Update fields using an explicit database connection.
-	pub async fn update_fields_with_conn<I, A>(
+	pub async fn update_fields_with_conn<E, I, A>(
 		&self,
-		conn: &super::connection::DatabaseConnection,
+		conn: &mut E,
 		values: I,
 	) -> reinhardt_core::exception::Result<u64>
 	where
+		E: OrmExecutor,
 		I: IntoIterator<Item = A>,
 		A: Into<FieldAssignment>,
 	{
@@ -6531,7 +6560,7 @@ where
 		let (sql, values) = Self::build_update_for_backend(&stmt, conn.backend());
 		let params = super::execution::convert_values(values);
 
-		conn.execute(&sql, params).await
+		Ok(conn.execute(&sql, params).await?.rows_affected)
 	}
 
 	fn collect_field_assignments<I, A>(values: I) -> Vec<FieldAssignment>
@@ -6566,8 +6595,9 @@ where
 		stmt.table(Alias::new(T::table_name()));
 
 		for assignment in assignments {
+			let column = Self::database_column_for_field(assignment.field());
 			stmt.value_expr(
-				Alias::new(assignment.field()),
+				Alias::new(column),
 				Self::update_value_to_query_expr(assignment.value())?,
 			);
 		}
@@ -6662,8 +6692,14 @@ where
 			UpdateValue::Uuid(uuid) => {
 				Expr::val(reinhardt_query::value::Value::Uuid(Some(Box::new(*uuid))))
 			}
-			UpdateValue::FieldRef(f) => Expr::col(Alias::new(&f.field)),
-			UpdateValue::Expression(expr) => Self::expression_to_query_expr(expr),
+			UpdateValue::FieldRef(field) => Expr::col(parse_column_reference(
+				&Self::database_column_for_field(&field.field),
+			)),
+			UpdateValue::Expression(expression) => {
+				let mut expression = expression.clone();
+				Self::resolve_write_expression_fields(&mut expression);
+				Self::expression_to_query_expr(&expression)
+			}
 		};
 		Ok(expr)
 	}
@@ -6872,9 +6908,17 @@ where
 	where
 		T: super::Model + Clone,
 	{
-		use reinhardt_query::prelude::{Alias, BinOper, ColumnRef, Expr, Value};
+		Self::composite_primary_key_for_values(pk_values)?;
+		let mut conn = super::manager::get_connection().await?;
+		self.get_composite_with_db(&mut conn, pk_values).await
+	}
 
-		// Get composite primary key definition from the model
+	fn composite_primary_key_for_values(
+		pk_values: &HashMap<String, super::composite_pk::PkValue>,
+	) -> reinhardt_core::exception::Result<super::composite_pk::CompositePrimaryKey>
+	where
+		T: super::Model,
+	{
 		let composite_pk = T::composite_primary_key().ok_or_else(|| {
 			Error::from(DatabaseError::new(
 				DatabaseErrorKind::Query,
@@ -6882,13 +6926,29 @@ where
 			))
 		})?;
 
-		// Validate that all required PK fields are provided
 		composite_pk.validate(pk_values).map_err(|error| {
 			Error::from(DatabaseError::new(
 				DatabaseErrorKind::Query,
 				format!("Composite PK validation failed: {error}"),
 			))
 		})?;
+
+		Ok(composite_pk)
+	}
+
+	/// Retrieve a composite-primary-key row through a caller-owned ORM executor.
+	pub async fn get_composite_with_db<E>(
+		&self,
+		conn: &mut E,
+		pk_values: &HashMap<String, super::composite_pk::PkValue>,
+	) -> reinhardt_core::exception::Result<T>
+	where
+		T: super::Model + Clone,
+		E: OrmExecutor,
+	{
+		use reinhardt_query::prelude::{Alias, BinOper, ColumnRef, Expr, Value};
+
+		let composite_pk = Self::composite_primary_key_for_values(pk_values)?;
 
 		// Build SELECT query using reinhardt-query
 		let table_name = T::table_name();
@@ -6899,9 +6959,15 @@ where
 		query.from(table_alias).column(ColumnRef::Asterisk);
 
 		// Add WHERE conditions for each composite PK field
+		let field_metadata = T::field_metadata();
 		for field_name in composite_pk.fields() {
 			let pk_value: &super::composite_pk::PkValue = pk_values.get(field_name).unwrap();
-			let col_alias = Alias::new(field_name);
+			let column = field_metadata
+				.iter()
+				.find(|field| field.name == *field_name)
+				.map(|field| field.db_column_name())
+				.unwrap_or(field_name);
+			let col_alias = Alias::new(column);
 
 			match pk_value {
 				&super::composite_pk::PkValue::Int(v) => {
@@ -6929,7 +6995,6 @@ where
 			}
 		}
 
-		let conn = super::manager::get_connection().await?;
 		let (sql, values) = Self::build_select_for_backend(&query, conn.backend());
 		let param_samples = values
 			.iter()
@@ -6938,7 +7003,7 @@ where
 		let params = super::execution::convert_values(values);
 
 		let started_at = Instant::now();
-		let query_result = conn.query(&sql, params).await;
+		let query_result = conn.fetch_all(&sql, params).await;
 		let duration = started_at.elapsed();
 		let rows = match query_result {
 			Ok(rows) => {
@@ -6976,20 +7041,14 @@ where
 		}
 
 		// Deserialize the single row into the model
-		let row = &rows[0];
-		let value = serde_json::to_value(&row.data).map_err(|error| {
-			Error::from(DatabaseError::new(
-				DatabaseErrorKind::Serialization,
-				format!("Serialization error: {error}"),
-			))
-		})?;
-
-		serde_json::from_value(value).map_err(|error| {
-			Error::from(DatabaseError::new(
-				DatabaseErrorKind::Serialization,
-				format!("Deserialization error: {error}"),
-			))
-		})
+		QueryRow::from_backend_row(rows.into_iter().next().expect("row count was checked"))
+			.deserialize_model::<T>()
+			.map_err(|error| {
+				Error::from(DatabaseError::new(
+					DatabaseErrorKind::Serialization,
+					format!("Deserialization error: {error}"),
+				))
+			})
 	}
 
 	/// Add an annotation to the QuerySet
@@ -9596,7 +9655,7 @@ mod tests {
 			.expect("count select query");
 		let sql = stmt.to_string(PostgresQueryBuilder);
 
-		assert!(sql.starts_with(r#"SELECT COUNT(*) FROM "test_users" AS "u""#));
+		assert!(sql.starts_with(r#"SELECT COUNT(*) AS "count" FROM "test_users" AS "u""#));
 		assert!(sql.contains(r#""u"."corpus_file_id" = "corpus_file"."id""#));
 		assert!(!sql.contains(r#""test_users"."corpus_file_id" = "corpus_file"."id""#));
 	}
@@ -9940,7 +9999,7 @@ mod tests {
 			.expect("count select query")
 			.to_string(PostgresQueryBuilder);
 
-		assert_eq!(sql, r#"SELECT COUNT(*) FROM "test_users""#);
+		assert_eq!(sql, r#"SELECT COUNT(*) AS "count" FROM "test_users""#);
 	}
 
 	#[test]
@@ -10472,7 +10531,9 @@ mod tests {
 			.expect("count select query")
 			.to_string(PostgresQueryBuilder);
 
-		assert!(sql.starts_with(r#"SELECT COUNT(DISTINCT "test_users"."id") FROM "test_users""#));
+		assert!(sql.starts_with(
+			r#"SELECT COUNT(DISTINCT "test_users"."id") AS "count" FROM "test_users""#
+		));
 	}
 
 	#[test]
@@ -10490,7 +10551,7 @@ mod tests {
 			.expect("count select query")
 			.to_string(SqliteQueryBuilder);
 
-		assert!(sql.starts_with(r#"SELECT COUNT(*) FROM (SELECT DISTINCT "test_memberships"."member_user_id", "test_memberships"."member_role_id" FROM "test_memberships""#));
+		assert!(sql.starts_with(r#"SELECT COUNT(*) AS "count" FROM (SELECT DISTINCT "test_memberships"."member_user_id", "test_memberships"."member_role_id" FROM "test_memberships""#));
 		assert!(!sql.contains("COUNT(DISTINCT"));
 		assert!(sql.contains(r#"WHERE "projects"."name" ILIKE '%rust%' ESCAPE '\'"#));
 	}

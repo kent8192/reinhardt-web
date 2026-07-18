@@ -1,7 +1,7 @@
 //! MySQL JSON transaction integration tests.
 
 use reinhardt_db::backends::types::QueryValue;
-use reinhardt_db::orm::connection::DatabaseConnection;
+use reinhardt_db::orm::connection::{DatabaseConnection, OrmExecutor};
 use reinhardt_test::fixtures::testcontainers::mysql_container;
 use rstest::rstest;
 use sqlx::MySqlPool;
@@ -33,18 +33,18 @@ async fn test_mysql_transaction_fetch_preserves_json_value(
 		)
 		.await
 		.unwrap();
-	let mut transaction = connection.begin().await.unwrap();
-
-	// Act
-	let row = transaction
-		.fetch_one(
-			"SELECT payload FROM json_transaction_rows WHERE id = ?",
-			vec![QueryValue::Int(1)],
-		)
+	let row = connection
+		.atomic(async |transaction| {
+			transaction
+				.fetch_one(
+					"SELECT payload FROM json_transaction_rows WHERE id = ?",
+					vec![QueryValue::Int(1)],
+				)
+				.await
+		})
 		.await
 		.unwrap();
 
 	// Assert
 	assert_eq!(row.data.get("payload"), Some(&expected));
-	transaction.rollback().await.unwrap();
 }

@@ -230,19 +230,19 @@ use super::server_error::{VoteRequestError, map_vote_error};
 use crate::apps::polls::models::{Choice, ChoiceInfo};
 use crate::shared::types::VoteRequest;
 use reinhardt::pages::server_fn::ServerFnError;
-use reinhardt::{DatabaseConnection, Model, atomic};
+use reinhardt::{DatabaseConnection, Model};
 use std::result::Result;
 
 pub async fn vote_internal(
     request: VoteRequest,
     db: DatabaseConnection,
 ) -> Result<ChoiceInfo, ServerFnError> {
-    let updated_choice = atomic(&db, || async {
+    let updated_choice = db.atomic(async |transaction| {
         let choice_manager = Choice::objects();
 
         let mut choice = choice_manager
             .get(request.choice_id)
-            .first()
+            .first_with_db(transaction)
             .await?
             .ok_or(VoteRequestError::ChoiceNotFound)?;
 
@@ -250,7 +250,7 @@ pub async fn vote_internal(
             return Err(VoteRequestError::ChoiceQuestionMismatch);
         }
 
-        choice.vote().await?;
+        choice.vote_with_conn(transaction).await?;
         Ok(choice)
     })
     .await
@@ -260,17 +260,29 @@ pub async fn vote_internal(
 }
 ```
 
-Add the `Choice::vote()` model helper in `src/apps/polls/models.rs`:
+Add the `Choice::vote()` and `Choice::vote_with_conn()` model helpers in `src/apps/polls/models.rs`:
 
 ```rust
 #[cfg(server)]
 use reinhardt::core::exception::Result;
+#[cfg(server)]
+use reinhardt::db::orm::OrmExecutor;
 
 #[cfg(server)]
 impl Choice {
     pub async fn vote(&mut self) -> Result<()> {
+        use reinhardt::db::orm::manager::get_connection;
+
+        let mut connection = get_connection().await?;
+        self.vote_with_conn(&mut connection).await
+    }
+
+    pub async fn vote_with_conn<E>(&mut self, connection: &mut E) -> Result<()>
+    where
+        E: OrmExecutor,
+    {
         self.votes += 1;
-        self.save().await
+        self.save_with_conn(connection).await
     }
 }
 ```
@@ -441,4 +453,4 @@ Before continuing:
 - `get_question_detail`, `get_question_results`, `vote`, and `submit_vote` are registered in the polls server router.
 - Detail and results routes are registered in the polls client router.
 - The voting form uses `server_fn: submit_vote`, not an ad hoc HTTP endpoint.
-- Vote updates run inside `atomic(&db, ...)` and verify the choice belongs to the question.
+- Vote updates run inside `DatabaseConnection::atomic(...)` and verify the choice belongs to the question.

@@ -183,7 +183,12 @@ mod manager {
 			extra: HashMap<String, Value>,
 		) -> Result<User, Error> {
 			let new_user = self.build_user(username, password, &extra).await?;
-			User::objects().create_with_conn(&self.db, &new_user).await
+			User::objects()
+				.create_with_conn(&mut self.db, &new_user)
+				.await
+				.map_err(|error| {
+					DatabaseError::new(DatabaseErrorKind::Query, error.to_string()).into()
+				})
 		}
 
 		async fn create_superuser(
@@ -194,7 +199,12 @@ mod manager {
 		) -> Result<User, Error> {
 			let mut new_user = self.build_user(username, password, &extra).await?;
 			new_user.is_superuser = true;
-			User::objects().create_with_conn(&self.db, &new_user).await
+			User::objects()
+				.create_with_conn(&mut self.db, &new_user)
+				.await
+				.map_err(|error| {
+					DatabaseError::new(DatabaseErrorKind::Query, error.to_string()).into()
+				})
 		}
 	}
 }

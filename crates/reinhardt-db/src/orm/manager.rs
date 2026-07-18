@@ -1,4 +1,4 @@
-use super::connection::{DatabaseBackend, DatabaseConnection};
+use super::connection::{DatabaseBackend, DatabaseConnection, OrmExecutor, QueryRow, QueryValue};
 use super::field_codec::{DatabaseArrayType, database_value_to_query_value};
 use super::inspection::FieldInfo;
 use super::query::RelationLoadInput;
@@ -334,7 +334,13 @@ impl<M: Model> Manager<M> {
 				|_| reinhardt_query::value::Value::String(Some(Box::new(pk_string.clone()))),
 				|value| reinhardt_query::value::Value::Uuid(Some(Box::new(value))),
 			),
-			_ => reinhardt_query::value::Value::String(Some(Box::new(pk_string))),
+			// Manual models often do not provide field metadata. Preserve the
+			// numeric storage type for those models when the primary key is
+			// represented by an integer.
+			_ => pk_string.parse::<i64>().map_or_else(
+				|_| reinhardt_query::value::Value::String(Some(Box::new(pk_string))),
+				|value| reinhardt_query::value::Value::BigInt(Some(value)),
+			),
 		}
 	}
 
@@ -346,6 +352,35 @@ impl<M: Model> Manager<M> {
 		find_field_info(field_metadata, field_name)
 			.map(FieldInfo::db_column_name)
 			.unwrap_or(field_name)
+	}
+
+	fn normalize_primary_key_aliases(
+		mut fields: HashMap<String, String>,
+	) -> reinhardt_core::exception::Result<HashMap<String, String>> {
+		let primary_key_field = M::primary_key_field();
+		let primary_key_column = M::primary_key_column();
+		if primary_key_field == primary_key_column {
+			return Ok(fields);
+		}
+
+		let logical_value = fields.get(primary_key_field).cloned();
+		let physical_value = fields.get(primary_key_column).cloned();
+		match (logical_value, physical_value) {
+			(Some(logical_value), Some(physical_value)) if logical_value != physical_value => {
+				return Err(Error::Validation(format!(
+					"Conflicting values for primary key aliases `{primary_key_field}` and `{primary_key_column}`"
+				)));
+			}
+			(Some(_), Some(_)) => {
+				fields.remove(primary_key_column);
+			}
+			(None, Some(physical_value)) => {
+				fields.remove(primary_key_column);
+				fields.insert(primary_key_field.to_string(), physical_value);
+			}
+			_ => {}
+		}
+		Ok(fields)
 	}
 
 	fn returning_columns_from_object(
@@ -448,7 +483,9 @@ impl<M: Model> Manager<M> {
 					if matches!(v, DatabaseValue::Null) {
 						return false;
 					}
-					if matches!(v, DatabaseValue::I32(0) | DatabaseValue::I64(0)) {
+					if M::primary_key_uses_zero_sentinel()
+						&& matches!(v, DatabaseValue::I32(0) | DatabaseValue::I64(0))
+					{
 						return false;
 					}
 				}
@@ -968,8 +1005,8 @@ impl<M: Model> Manager<M> {
 
 	/// Create a new record using reinhardt-query for SQL injection protection
 	pub async fn create(&self, model: &M) -> reinhardt_core::exception::Result<M> {
-		let conn = get_connection().await?;
-		self.create_with_conn(&conn, model).await
+		let mut conn = get_connection().await?;
+		self.create_with_conn(&mut conn, model).await
 	}
 
 	async fn create_with_executor(
@@ -1113,42 +1150,76 @@ impl<M: Model> Manager<M> {
 	/// # Ok(())
 	/// # }
 	/// ```
-	pub async fn create_with_conn(
+	pub async fn create_with_conn<E>(
 		&self,
-		conn: &DatabaseConnection,
+		conn: &mut E,
 		model: &M,
-	) -> reinhardt_core::exception::Result<M> {
-		let (sql, values) = self.create_insert_sql_values(conn, model)?;
-		let row = conn.query_one(&sql, values).await?;
-
-		// row.data is already serde_json::Value::Object so deserialize directly
-		row.deserialize_model::<M>().map_err(|error| {
-			DatabaseError::new(DatabaseErrorKind::Serialization, error.to_string()).into()
-		})
-	}
-
-	/// Build the INSERT statement and bound values used by `create`.
-	pub(crate) fn create_insert_sql_values(
-		&self,
-		conn: &DatabaseConnection,
-		model: &M,
-	) -> reinhardt_core::exception::Result<(String, Vec<super::connection::QueryValue>)> {
+	) -> reinhardt_core::exception::Result<M>
+	where
+		E: OrmExecutor,
+	{
 		let obj = model.encode_database_fields().map_err(field_codec_error)?;
-
 		let mut stmt =
 			Self::build_insert_statement_from_object(&obj, |field| model.field_is_none(field))?;
-
-		// Add RETURNING clause with explicit column names from JSON object
-		// Note: Using Asterisk in columns() may not work correctly with reinhardt-query
-		stmt.returning(Self::returning_columns_from_object(&obj));
-
-		let (sql, values) = build_insert_sql(&stmt, conn.backend());
-		let values: Vec<_> = values
+		let backend = conn.backend();
+		if backend != DatabaseBackend::MySql {
+			stmt.returning(Self::returning_columns_from_object(&obj));
+		}
+		let (sql, values) = build_insert_sql(&stmt, backend);
+		let params = values
 			.0
 			.into_iter()
 			.map(Self::sea_value_to_query_value)
 			.collect();
-		Ok((sql, values))
+
+		if backend == DatabaseBackend::MySql {
+			let explicit_primary_key = obj
+				.get(M::primary_key_field())
+				.filter(|value| {
+					!matches!(
+						value,
+						DatabaseValue::Null | DatabaseValue::I32(0) | DatabaseValue::I64(0)
+					)
+				})
+				.cloned();
+			let result = conn.execute(&sql, params).await?;
+			let primary_key = explicit_primary_key
+				.map(database_value_to_query_value)
+				.or_else(|| {
+					result
+						.last_insert_id
+						.and_then(|id| i64::try_from(id).ok())
+						.map(|id| reinhardt_query::value::Value::BigInt(Some(id)))
+				})
+				.ok_or_else(|| {
+					Error::from(DatabaseError::new(
+						DatabaseErrorKind::Query,
+						"MySQL insert did not return a generated primary key",
+					))
+				})?;
+			let field_metadata = M::field_metadata();
+			let primary_key_column = Self::field_column(&field_metadata, M::primary_key_field());
+			let mut select = Query::select();
+			select
+				.from(Alias::new(M::table_name()))
+				.column(ColumnRef::Asterisk)
+				.and_where(Expr::col(Alias::new(primary_key_column)).eq(primary_key));
+			let (select_sql, select_values) = build_select_sql(&select, backend);
+			let select_params = select_values
+				.0
+				.into_iter()
+				.map(Self::sea_value_to_query_value)
+				.collect();
+			let row = conn.fetch_one(&select_sql, select_params).await?;
+			return QueryRow::from_backend_row(row)
+				.deserialize_model::<M>()
+				.map_err(field_codec_error);
+		}
+
+		let row = conn.fetch_one(&sql, params).await?;
+		QueryRow::from_backend_row(row)
+			.deserialize_model::<M>()
+			.map_err(field_codec_error)
 	}
 
 	pub(crate) fn json_to_sea_value_for_field(
@@ -1387,6 +1458,53 @@ impl<M: Model> Manager<M> {
 		}
 	}
 
+	fn query_value_to_sea_value(value: QueryValue) -> reinhardt_query::value::Value {
+		match value {
+			QueryValue::Null => reinhardt_query::value::Value::Int(None),
+			QueryValue::Bool(value) => reinhardt_query::value::Value::Bool(Some(value)),
+			QueryValue::Int(value) => reinhardt_query::value::Value::BigInt(Some(value)),
+			QueryValue::Float(value) => reinhardt_query::value::Value::Double(Some(value)),
+			QueryValue::String(value) => {
+				reinhardt_query::value::Value::String(Some(Box::new(value)))
+			}
+			QueryValue::Bytes(value) => reinhardt_query::value::Value::Bytes(Some(Box::new(value))),
+			QueryValue::Timestamp(value) => {
+				reinhardt_query::value::Value::ChronoDateTimeUtc(Some(Box::new(value)))
+			}
+			QueryValue::Uuid(value) => reinhardt_query::value::Value::Uuid(Some(Box::new(value))),
+			QueryValue::Json(value) => reinhardt_query::value::Value::Json(value),
+			QueryValue::StringArray(values) => {
+				reinhardt_query::value::Value::Json(Some(Box::new(serde_json::Value::Array(
+					values.into_iter().map(serde_json::Value::String).collect(),
+				))))
+			}
+			QueryValue::IntArray(values) => reinhardt_query::value::Value::Json(Some(Box::new(
+				serde_json::Value::Array(values.into_iter().map(serde_json::Value::from).collect()),
+			))),
+			QueryValue::BigIntArray(values) => reinhardt_query::value::Value::Json(Some(Box::new(
+				serde_json::Value::Array(values.into_iter().map(serde_json::Value::from).collect()),
+			))),
+			QueryValue::BoolArray(values) => reinhardt_query::value::Value::Json(Some(Box::new(
+				serde_json::Value::Array(values.into_iter().map(serde_json::Value::from).collect()),
+			))),
+			QueryValue::FloatArray(values) => reinhardt_query::value::Value::Json(Some(Box::new(
+				serde_json::Value::Array(values.into_iter().map(serde_json::Value::from).collect()),
+			))),
+			QueryValue::DoubleArray(values) => reinhardt_query::value::Value::Json(Some(Box::new(
+				serde_json::Value::Array(values.into_iter().map(serde_json::Value::from).collect()),
+			))),
+			QueryValue::UuidArray(values) => {
+				reinhardt_query::value::Value::Json(Some(Box::new(serde_json::Value::Array(
+					values
+						.into_iter()
+						.map(|value| serde_json::Value::String(value.to_string()))
+						.collect(),
+				))))
+			}
+			QueryValue::Now => reinhardt_query::value::Value::Int(None),
+		}
+	}
+
 	/// Serialize a JSON value to SQL-compatible string representation
 	// Allow dead_code: internal helper for JSON-to-SQL serialization in manager operations
 	#[allow(dead_code)]
@@ -1414,8 +1532,8 @@ impl<M: Model> Manager<M> {
 
 	/// Update an existing record using reinhardt-query for SQL injection protection
 	pub async fn update(&self, model: &M) -> reinhardt_core::exception::Result<M> {
-		let conn = get_connection().await?;
-		self.update_with_conn(&conn, model).await
+		let mut conn = get_connection().await?;
+		self.update_with_conn(&mut conn, model).await
 	}
 
 	async fn update_with_executor(
@@ -1505,40 +1623,77 @@ impl<M: Model> Manager<M> {
 	/// # Ok(())
 	/// # }
 	/// ```
-	pub async fn update_with_conn(
+	pub async fn update_with_conn<E>(
 		&self,
-		conn: &DatabaseConnection,
+		conn: &mut E,
 		model: &M,
-	) -> reinhardt_core::exception::Result<M> {
+	) -> reinhardt_core::exception::Result<M>
+	where
+		E: OrmExecutor,
+	{
 		model.primary_key().ok_or_else(|| {
 			Error::from(DatabaseError::new(
-				DatabaseErrorKind::Type,
+				DatabaseErrorKind::Query,
 				"Model must have primary key",
 			))
 		})?;
 
 		let obj = model.encode_database_fields().map_err(field_codec_error)?;
-
-		let stmt =
+		let backend = conn.backend();
+		let stmt = if backend == DatabaseBackend::MySql {
+			Self::build_update_statement_from_object_with_returning(&obj, false)
+		} else {
 			Self::build_update_statement_from_object(&obj, |field| model.field_is_none(field))
-				.map_err(field_codec_error)?;
+		}
+		.map_err(field_codec_error)?;
 
-		let (sql, values) = build_update_sql(&stmt, conn.backend());
+		let (sql, values) = build_update_sql(&stmt, backend);
 		let values: Vec<_> = values
 			.0
 			.into_iter()
 			.map(Self::sea_value_to_query_value)
 			.collect();
 
-		let row = conn.query_one(&sql, values).await?;
-		// row.data is already serde_json::Value::Object so deserialize directly
-		row.deserialize_model::<M>().map_err(field_codec_error)
+		let pk = model.primary_key().ok_or_else(|| {
+			Error::from(DatabaseError::new(
+				DatabaseErrorKind::Query,
+				"Model must have primary key",
+			))
+		})?;
+		if backend == DatabaseBackend::MySql {
+			conn.execute(&sql, values).await?;
+			let field_metadata = M::field_metadata();
+			let primary_key_column = Self::field_column(&field_metadata, M::primary_key_field());
+			let mut select = Query::select();
+			select
+				.from(Alias::new(M::table_name()))
+				.column(ColumnRef::Asterisk)
+				.and_where(
+					Expr::col(Alias::new(primary_key_column))
+						.eq(Self::primary_key_query_value(&pk)),
+				);
+			let (select_sql, select_values) = build_select_sql(&select, backend);
+			let select_params = select_values
+				.0
+				.into_iter()
+				.map(Self::sea_value_to_query_value)
+				.collect();
+			let row = conn.fetch_one(&select_sql, select_params).await?;
+			return QueryRow::from_backend_row(row)
+				.deserialize_model::<M>()
+				.map_err(field_codec_error);
+		}
+
+		let row = conn.fetch_one(&sql, values).await?;
+		QueryRow::from_backend_row(row)
+			.deserialize_model::<M>()
+			.map_err(field_codec_error)
 	}
 
 	/// Delete a record using reinhardt-query for SQL injection protection
 	pub async fn delete(&self, pk: M::PrimaryKey) -> reinhardt_core::exception::Result<()> {
-		let conn = get_connection().await?;
-		self.delete_with_conn(&conn, pk).await
+		let mut conn = get_connection().await?;
+		self.delete_with_conn(&mut conn, pk).await
 	}
 
 	/// Delete a model by primary key through a caller-owned transaction executor.
@@ -1593,18 +1748,23 @@ impl<M: Model> Manager<M> {
 	/// # Ok(())
 	/// # }
 	/// ```
-	pub async fn delete_with_conn(
+	pub async fn delete_with_conn<E>(
 		&self,
-		conn: &DatabaseConnection,
+		conn: &mut E,
 		pk: M::PrimaryKey,
-	) -> reinhardt_core::exception::Result<()> {
+	) -> reinhardt_core::exception::Result<()>
+	where
+		E: OrmExecutor,
+	{
 		// Build reinhardt-query DELETE statement
 		let mut stmt = Query::delete();
 
 		let pk_value = Self::primary_key_query_value(&pk);
+		let field_metadata = M::field_metadata();
+		let primary_key_column = Self::field_column(&field_metadata, M::primary_key_field());
 
 		stmt.from_table(Alias::new(M::table_name()))
-			.and_where(Expr::col(Alias::new(M::primary_key_column())).eq(pk_value));
+			.and_where(Expr::col(Alias::new(primary_key_column)).eq(pk_value));
 
 		let (sql, values) = build_delete_sql(&stmt, conn.backend());
 		let values: Vec<_> = values
@@ -1619,8 +1779,8 @@ impl<M: Model> Manager<M> {
 
 	/// Count records using reinhardt-query
 	pub async fn count(&self) -> reinhardt_core::exception::Result<i64> {
-		let conn = get_connection().await?;
-		self.count_with_conn(&conn).await
+		let mut conn = get_connection().await?;
+		self.count_with_conn(&mut conn).await
 	}
 
 	/// Count records with an explicit database connection
@@ -1649,10 +1809,10 @@ impl<M: Model> Manager<M> {
 	/// # Ok(())
 	/// # }
 	/// ```
-	pub async fn count_with_conn(
-		&self,
-		conn: &DatabaseConnection,
-	) -> reinhardt_core::exception::Result<i64> {
+	pub async fn count_with_conn<E>(&self, conn: &mut E) -> reinhardt_core::exception::Result<i64>
+	where
+		E: OrmExecutor,
+	{
 		// Build reinhardt-query SELECT COUNT(*) statement with explicit alias
 		let stmt = Query::select()
 			.from(Alias::new(M::table_name()))
@@ -1666,7 +1826,7 @@ impl<M: Model> Manager<M> {
 			.map(Self::sea_value_to_query_value)
 			.collect();
 
-		let row = conn.query_one(&sql, values).await?;
+		let row = QueryRow::from_backend_row(conn.fetch_one(&sql, values).await?);
 		row.get::<i64>("count").ok_or_else(|| {
 			Error::from(DatabaseError::new(
 				DatabaseErrorKind::Query,
@@ -1704,7 +1864,10 @@ impl<M: Model> Manager<M> {
 			.iter()
 			.filter_map(|(name, value)| {
 				if Self::is_generated_field(name.as_str())
-					|| (name == primary_key && matches!(value, DatabaseValue::Null))
+					|| (name == primary_key
+						&& (matches!(value, DatabaseValue::Null)
+							|| (M::primary_key_uses_zero_sentinel()
+								&& matches!(value, DatabaseValue::I32(0) | DatabaseValue::I64(0)))))
 				{
 					None
 				} else {
@@ -1805,7 +1968,7 @@ impl<M: Model> Manager<M> {
 			&lookup_fields,
 			&defaults.clone().unwrap_or_default(),
 			conn.backend(),
-		);
+		)?;
 
 		if let Ok(Some(row)) = conn.query_optional(&select_sql, vec![]).await {
 			// row.data is already serde_json::Value::Object so deserialize directly
@@ -1833,6 +1996,99 @@ impl<M: Model> Manager<M> {
 		// row.data is already serde_json::Value::Object so deserialize directly
 		let model: M = row.deserialize_model().map_err(field_codec_error)?;
 
+		Ok((model, true))
+	}
+
+	/// Retrieve a record through a caller-owned executor, or insert it when missing.
+	pub async fn get_or_create_with_conn<E>(
+		&self,
+		conn: &mut E,
+		lookup_fields: HashMap<String, String>,
+		defaults: Option<HashMap<String, String>>,
+	) -> reinhardt_core::exception::Result<(M, bool)>
+	where
+		E: OrmExecutor,
+	{
+		let lookup_fields = Self::normalize_primary_key_aliases(lookup_fields)?;
+		let defaults = Self::normalize_primary_key_aliases(defaults.unwrap_or_default())?;
+		let mut insert_fields = lookup_fields.clone();
+		insert_fields.extend(defaults.clone());
+		let (select_stmt, mut insert_stmt) =
+			self.get_or_create_queries_from_normalized_fields(&lookup_fields, &defaults);
+		let (select_sql, select_values) = build_select_sql(&select_stmt, conn.backend());
+		let select_params = select_values
+			.0
+			.into_iter()
+			.map(Self::sea_value_to_query_value)
+			.collect();
+
+		if let Some(row) = conn.fetch_optional(&select_sql, select_params).await? {
+			let model = QueryRow::from_backend_row(row)
+				.deserialize_model::<M>()
+				.map_err(field_codec_error)?;
+			return Ok((model, false));
+		}
+
+		let backend = conn.backend();
+		if backend != DatabaseBackend::MySql {
+			insert_stmt.returning(Self::returning_columns_from_object(
+				&insert_fields
+					.iter()
+					.map(|(key, value)| (key.clone(), DatabaseValue::String(value.clone())))
+					.collect(),
+			));
+		}
+		let (insert_sql, insert_values) = build_insert_sql(&insert_stmt, backend);
+		let insert_params = insert_values
+			.0
+			.into_iter()
+			.map(Self::sea_value_to_query_value)
+			.collect();
+
+		if backend == DatabaseBackend::MySql {
+			let result = conn.execute(&insert_sql, insert_params).await?;
+			let primary_key = insert_fields
+				.get(M::primary_key_field())
+				.map(|value| QueryValue::String(value.clone()))
+				.or_else(|| {
+					result
+						.last_insert_id
+						.and_then(|id| i64::try_from(id).ok())
+						.map(QueryValue::Int)
+				})
+				.ok_or_else(|| {
+					Error::from(DatabaseError::new(
+						DatabaseErrorKind::Query,
+						"MySQL get_or_create did not return a primary key",
+					))
+				})?;
+			let field_metadata = M::field_metadata();
+			let primary_key_column = Self::field_column(&field_metadata, M::primary_key_field());
+			let mut reload = Query::select();
+			reload
+				.from(Alias::new(M::table_name()))
+				.column(ColumnRef::Asterisk)
+				.and_where(
+					Expr::col(Alias::new(primary_key_column))
+						.eq(Self::query_value_to_sea_value(primary_key)),
+				);
+			let (reload_sql, reload_values) = build_select_sql(&reload, backend);
+			let reload_params = reload_values
+				.0
+				.into_iter()
+				.map(Self::sea_value_to_query_value)
+				.collect();
+			let row = conn.fetch_one(&reload_sql, reload_params).await?;
+			let model = QueryRow::from_backend_row(row)
+				.deserialize_model::<M>()
+				.map_err(field_codec_error)?;
+			return Ok((model, true));
+		}
+
+		let row = conn.fetch_one(&insert_sql, insert_params).await?;
+		let model = QueryRow::from_backend_row(row)
+			.deserialize_model::<M>()
+			.map_err(field_codec_error)?;
 		Ok((model, true))
 	}
 
@@ -1907,6 +2163,72 @@ impl<M: Model> Manager<M> {
 			}
 		}
 
+		Ok(results)
+	}
+
+	/// Bulk-insert models through a caller-owned executor.
+	pub async fn bulk_create_with_conn<E>(
+		&self,
+		conn: &mut E,
+		models: Vec<M>,
+		batch_size: Option<usize>,
+		ignore_conflicts: bool,
+		_update_conflicts: bool,
+	) -> reinhardt_core::exception::Result<Vec<M>>
+	where
+		E: OrmExecutor,
+	{
+		if models.is_empty() {
+			return Ok(Vec::new());
+		}
+
+		let batch_size = batch_size.unwrap_or(models.len());
+		let mut results = Vec::new();
+		for chunk in models.chunks(batch_size) {
+			let Some(mut statement) = self
+				.try_bulk_create_query(chunk)
+				.map_err(field_codec_error)?
+			else {
+				continue;
+			};
+			let backend = conn.backend();
+			if !ignore_conflicts && backend != DatabaseBackend::MySql {
+				statement.returning_all();
+			}
+			let (sql, values) = build_insert_sql(&statement, backend);
+			let sql = if ignore_conflicts {
+				match backend {
+					DatabaseBackend::Postgres => format!("{sql} ON CONFLICT DO NOTHING"),
+					DatabaseBackend::MySql => sql.replacen("INSERT INTO", "INSERT IGNORE INTO", 1),
+					DatabaseBackend::Sqlite => {
+						sql.replacen("INSERT INTO", "INSERT OR IGNORE INTO", 1)
+					}
+				}
+			} else {
+				sql
+			};
+			let values = values
+				.0
+				.into_iter()
+				.map(Self::sea_value_to_query_value)
+				.collect();
+
+			if ignore_conflicts || backend == DatabaseBackend::MySql {
+				conn.execute(&sql, values).await?;
+				if !ignore_conflicts {
+					results.extend(chunk.iter().cloned());
+				}
+				continue;
+			}
+
+			for row in conn.fetch_all(&sql, values).await? {
+				results.push(
+					QueryRow::from_backend_row(row)
+						.deserialize_model::<M>()
+						.map_err(field_codec_error)?,
+				);
+			}
+		}
 		Ok(results)
 	}
 
@@ -1990,20 +2312,97 @@ impl<M: Model> Manager<M> {
 		Ok(total_updated)
 	}
 
+	/// Bulk-update models through a caller-owned executor.
+	pub async fn bulk_update_with_conn<E>(
+		&self,
+		conn: &mut E,
+		models: Vec<M>,
+		fields: Vec<String>,
+		batch_size: Option<usize>,
+	) -> reinhardt_core::exception::Result<usize>
+	where
+		E: OrmExecutor,
+	{
+		if models.is_empty() || fields.is_empty() {
+			return Ok(0);
+		}
+
+		let batch_size = batch_size.unwrap_or(models.len());
+		let mut total_updated = 0;
+		for chunk in models.chunks(batch_size) {
+			let updates: Vec<(DatabaseValue, HashMap<String, DatabaseValue>)> = chunk
+				.iter()
+				.map(|model| {
+					model.primary_key().ok_or_else(|| {
+						Error::from(DatabaseError::new(
+							DatabaseErrorKind::Type,
+							"Bulk update model must have primary key",
+						))
+					})?;
+					let obj = model.encode_database_fields().map_err(field_codec_error)?;
+					let pk = obj
+						.get(M::primary_key_field())
+						.filter(|value| !matches!(value, DatabaseValue::Null))
+						.cloned()
+						.ok_or_else(|| {
+							Error::from(DatabaseError::new(
+								DatabaseErrorKind::Type,
+								format!(
+									"Encoded bulk update model must contain primary key '{}'",
+									M::primary_key_field()
+								),
+							))
+						})?;
+					let field_map = fields
+						.iter()
+						.filter(|field| !Self::is_generated_field(field.as_str()))
+						.filter_map(|field| {
+							obj.get(field).cloned().map(|value| (field.clone(), value))
+						})
+						.collect();
+					Ok((pk, field_map))
+				})
+				.collect::<reinhardt_core::exception::Result<_>>()?;
+
+			if updates.is_empty() {
+				continue;
+			}
+			let sql = self
+				.bulk_update_database_values_sql_detailed(&updates, &fields, conn.backend())
+				.map_err(field_codec_error)?;
+			if sql.is_empty() {
+				continue;
+			}
+			total_updated += conn.execute(&sql, Vec::new()).await?.rows_affected as usize;
+		}
+		Ok(total_updated)
+	}
+
 	/// Get or create - SQL generation using reinhardt-query (for testing)
 	pub fn get_or_create_queries(
 		&self,
 		lookup_fields: &HashMap<String, String>,
 		defaults: &HashMap<String, String>,
+	) -> reinhardt_core::exception::Result<(SelectStatement, InsertStatement)> {
+		let lookup_fields = Self::normalize_primary_key_aliases(lookup_fields.clone())?;
+		let defaults = Self::normalize_primary_key_aliases(defaults.clone())?;
+		Ok(self.get_or_create_queries_from_normalized_fields(&lookup_fields, &defaults))
+	}
+
+	fn get_or_create_queries_from_normalized_fields(
+		&self,
+		lookup_fields: &HashMap<String, String>,
+		defaults: &HashMap<String, String>,
 	) -> (SelectStatement, InsertStatement) {
-		// Generate SELECT query with reinhardt-query
+		let field_metadata = M::field_metadata();
 		let mut select_stmt = Query::select();
 		select_stmt
 			.from(Alias::new(M::table_name()))
 			.column(ColumnRef::Asterisk);
 
 		for (k, v) in lookup_fields.iter() {
-			select_stmt.and_where(Expr::col(Alias::new(k.as_str())).eq(v.as_str()));
+			let column = Self::field_column(&field_metadata, k);
+			select_stmt.and_where(Expr::col(Alias::new(column)).eq(v.as_str()));
 		}
 
 		// Generate INSERT query with reinhardt-query
@@ -2015,7 +2414,7 @@ impl<M: Model> Manager<M> {
 
 		let columns: Vec<_> = insert_fields
 			.keys()
-			.map(|k| Alias::new(k.as_str()))
+			.map(|k| Alias::new(Self::field_column(&field_metadata, k)))
 			.collect();
 		let values: Vec<reinhardt_query::prelude::Expr> = insert_fields
 			.values()
@@ -2040,12 +2439,12 @@ impl<M: Model> Manager<M> {
 		lookup_fields: &HashMap<String, String>,
 		defaults: &HashMap<String, String>,
 		backend: DatabaseBackend,
-	) -> (String, String) {
-		let (select_stmt, insert_stmt) = self.get_or_create_queries(lookup_fields, defaults);
-		(
+	) -> reinhardt_core::exception::Result<(String, String)> {
+		let (select_stmt, insert_stmt) = self.get_or_create_queries(lookup_fields, defaults)?;
+		Ok((
 			select_to_string(&select_stmt, backend),
 			insert_to_string(&insert_stmt, backend),
-		)
+		))
 	}
 
 	/// Bulk create - SQL generation only (for testing)
@@ -2542,8 +2941,9 @@ mod tests {
 		let mut defaults = HashMap::new();
 		defaults.insert("name".to_string(), "Test User".to_string());
 
-		let (select_sql, insert_sql) =
-			manager.get_or_create_sql(&lookup, &defaults, DatabaseBackend::Postgres);
+		let (select_sql, insert_sql) = manager
+			.get_or_create_sql(&lookup, &defaults, DatabaseBackend::Postgres)
+			.unwrap();
 
 		// reinhardt-query uses quoted identifiers and TestUser table is "test_user"
 		assert!(select_sql.contains("SELECT") && select_sql.contains("FROM"));
@@ -2938,8 +3338,9 @@ mod tests {
 		let lookup: HashMap<String, String> = HashMap::new();
 		let defaults: HashMap<String, String> = HashMap::new();
 
-		let (select_sql, insert_sql) =
-			manager.get_or_create_sql(&lookup, &defaults, DatabaseBackend::Postgres);
+		let (select_sql, insert_sql) = manager
+			.get_or_create_sql(&lookup, &defaults, DatabaseBackend::Postgres)
+			.unwrap();
 
 		// Empty lookup still produces valid SQL structure
 		assert!(select_sql.contains("SELECT") || select_sql.contains("select"));
@@ -2955,8 +3356,9 @@ mod tests {
 
 		let defaults: HashMap<String, String> = HashMap::new();
 
-		let (select_sql, _insert_sql) =
-			manager.get_or_create_sql(&lookup, &defaults, DatabaseBackend::Postgres);
+		let (select_sql, _insert_sql) = manager
+			.get_or_create_sql(&lookup, &defaults, DatabaseBackend::Postgres)
+			.unwrap();
 
 		// Should have both conditions in WHERE clause
 		assert!(select_sql.contains("email"));

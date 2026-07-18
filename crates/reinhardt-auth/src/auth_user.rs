@@ -94,10 +94,11 @@ where
 				message: "CurrentUser: DatabaseConnection not registered in DI context".to_string(),
 			}
 		})?;
+	let mut db = (*db).clone();
 
 	U::objects()
 		.get(model_pk)
-		.first_with_db(&db)
+		.first_with_db(&mut db)
 		.await
 		.map_err(|e| {
 			::tracing::warn!(error = ?e, "CurrentUser: Failed to load user from database");

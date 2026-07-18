@@ -260,11 +260,6 @@ impl AsyncSession {
 	pub async fn execute(&self, sql: &str) -> Result<u64> {
 		self.engine.execute(sql).await
 	}
-	/// Begin a transaction
-	///
-	pub async fn begin(&self) -> Result<sqlx::Transaction<'_, sqlx::Any>> {
-		self.engine.begin().await
-	}
 }
 
 #[cfg(test)]

@@ -118,7 +118,7 @@ use reinhardt_query::{InsertStatement, SelectStatement};
 
 use super::annotation::Annotation;
 use super::composite_pk::PkValue;
-use super::connection::{DatabaseBackend, DatabaseConnection};
+use super::connection::{DatabaseBackend, OrmExecutor};
 use super::cte::CTE;
 use super::manager::Manager;
 use super::model::Model;
@@ -361,11 +361,14 @@ pub trait CustomManager: Sized + Send + Sync {
 	}
 
 	/// Insert a new record using an explicit connection (for transactions).
-	fn create_with_conn<'a>(
+	fn create_with_conn<'a, E>(
 		&'a self,
-		conn: &'a DatabaseConnection,
+		conn: &'a mut E,
 		model: &'a Self::Model,
-	) -> impl Future<Output = reinhardt_core::exception::Result<Self::Model>> + Send + 'a {
+	) -> impl Future<Output = reinhardt_core::exception::Result<Self::Model>> + Send + 'a
+	where
+		E: OrmExecutor + 'a,
+	{
 		async move {
 			let mut model = model.clone();
 			self.before_save(&mut model)?;
@@ -388,11 +391,14 @@ pub trait CustomManager: Sized + Send + Sync {
 	}
 
 	/// Update an existing record using an explicit connection.
-	fn update_with_conn<'a>(
+	fn update_with_conn<'a, E>(
 		&'a self,
-		conn: &'a DatabaseConnection,
+		conn: &'a mut E,
 		model: &'a Self::Model,
-	) -> impl Future<Output = reinhardt_core::exception::Result<Self::Model>> + Send + 'a {
+	) -> impl Future<Output = reinhardt_core::exception::Result<Self::Model>> + Send + 'a
+	where
+		E: OrmExecutor + 'a,
+	{
 		async move {
 			let mut model = model.clone();
 			self.before_save(&mut model)?;
@@ -408,17 +414,20 @@ pub trait CustomManager: Sized + Send + Sync {
 		pk: <Self::Model as Model>::PrimaryKey,
 	) -> impl Future<Output = reinhardt_core::exception::Result<()>> + Send + 'a {
 		async move {
-			let conn = super::manager::get_connection().await?;
-			self.delete_with_conn(&conn, pk).await
+			let mut conn = super::manager::get_connection().await?;
+			self.delete_with_conn(&mut conn, pk).await
 		}
 	}
 
 	/// Delete a record by primary key using an explicit connection.
-	fn delete_with_conn<'a>(
+	fn delete_with_conn<'a, E>(
 		&'a self,
-		conn: &'a DatabaseConnection,
+		conn: &'a mut E,
 		pk: <Self::Model as Model>::PrimaryKey,
-	) -> impl Future<Output = reinhardt_core::exception::Result<()>> + Send + 'a {
+	) -> impl Future<Output = reinhardt_core::exception::Result<()>> + Send + 'a
+	where
+		E: OrmExecutor + 'a,
+	{
 		async move {
 			let manager = Manager::<Self::Model>::new();
 			if let Some(model) = manager.get(pk.clone()).first_with_db(conn).await? {
@@ -436,10 +445,13 @@ pub trait CustomManager: Sized + Send + Sync {
 	}
 
 	/// Count records using an explicit connection.
-	fn count_with_conn<'a>(
+	fn count_with_conn<'a, E>(
 		&'a self,
-		conn: &'a DatabaseConnection,
-	) -> impl Future<Output = reinhardt_core::exception::Result<i64>> + Send + 'a {
+		conn: &'a mut E,
+	) -> impl Future<Output = reinhardt_core::exception::Result<i64>> + Send + 'a
+	where
+		E: OrmExecutor + 'a,
+	{
 		async move { Manager::<Self::Model>::new().count_with_conn(conn).await }
 	}
 
@@ -450,13 +462,33 @@ pub trait CustomManager: Sized + Send + Sync {
 		defaults: Option<HashMap<String, String>>,
 	) -> impl Future<Output = reinhardt_core::exception::Result<(Self::Model, bool)>> + Send + 'a {
 		async move {
+			let mut conn = super::manager::get_connection().await?;
+			self.get_or_create_with_conn(&mut conn, lookup_fields, defaults)
+				.await
+		}
+	}
+
+	/// Retrieve a record matching `lookup_fields` through a caller-owned executor, or insert it.
+	fn get_or_create_with_conn<'a, E>(
+		&'a self,
+		conn: &'a mut E,
+		lookup_fields: HashMap<String, String>,
+		defaults: Option<HashMap<String, String>>,
+	) -> impl Future<Output = reinhardt_core::exception::Result<(Self::Model, bool)>> + Send + 'a
+	where
+		E: OrmExecutor + 'a,
+	{
+		async move {
 			Manager::<Self::Model>::new()
-				.get_or_create(lookup_fields, defaults)
+				.get_or_create_with_conn(conn, lookup_fields, defaults)
 				.await
 		}
 	}
 
 	/// Bulk-insert multiple records (Django: `bulk_create`).
+	///
+	/// The default implementation returns an empty result before acquiring the
+	/// global connection when `models` is empty.
 	fn bulk_create<'a>(
 		&'a self,
 		models: Vec<Self::Model>,
@@ -468,13 +500,48 @@ pub trait CustomManager: Sized + Send + Sync {
 		Self::Model: 'a,
 	{
 		async move {
+			if models.is_empty() {
+				return Ok(Vec::new());
+			}
+
+			let mut conn = super::manager::get_connection().await?;
+			self.bulk_create_with_conn(
+				&mut conn,
+				models,
+				batch_size,
+				ignore_conflicts,
+				update_conflicts,
+			)
+			.await
+		}
+	}
+
+	/// Bulk-insert multiple records through a caller-owned executor.
+	fn bulk_create_with_conn<'a, E>(
+		&'a self,
+		conn: &'a mut E,
+		models: Vec<Self::Model>,
+		batch_size: Option<usize>,
+		ignore_conflicts: bool,
+		update_conflicts: bool,
+	) -> impl Future<Output = reinhardt_core::exception::Result<Vec<Self::Model>>> + Send + 'a
+	where
+		E: OrmExecutor + 'a,
+		Self::Model: 'a,
+	{
+		async move {
 			Manager::<Self::Model>::new()
-				.bulk_create(models, batch_size, ignore_conflicts, update_conflicts)
+				.bulk_create_with_conn(conn, models, batch_size, ignore_conflicts, update_conflicts)
 				.await
 		}
 	}
 
 	/// Bulk-update multiple records (Django: `bulk_update`).
+	///
+	/// The default implementation skips empty input and runs [`Self::before_bulk_update`] before
+	/// acquiring the global connection. It then executes through [`Manager::bulk_update_with_conn`]
+	/// with that connection, so a veto never opens a database connection and the hook runs exactly
+	/// once.
 	fn bulk_update<'a>(
 		&'a self,
 		models: Vec<Self::Model>,
@@ -491,8 +558,37 @@ pub trait CustomManager: Sized + Send + Sync {
 
 			let mut models = models;
 			self.before_bulk_update(&mut models)?;
+			let mut conn = super::manager::get_connection().await?;
 			Manager::<Self::Model>::new()
-				.bulk_update(models, fields, batch_size)
+				.bulk_update_with_conn(&mut conn, models, fields, batch_size)
+				.await
+		}
+	}
+
+	/// Bulk-update multiple records through a caller-owned executor.
+	///
+	/// The default implementation skips empty input and runs [`Self::before_bulk_update`] exactly
+	/// once before it executes through the supplied executor.
+	fn bulk_update_with_conn<'a, E>(
+		&'a self,
+		conn: &'a mut E,
+		models: Vec<Self::Model>,
+		fields: Vec<String>,
+		batch_size: Option<usize>,
+	) -> impl Future<Output = reinhardt_core::exception::Result<usize>> + Send + 'a
+	where
+		E: OrmExecutor + 'a,
+		Self::Model: 'a,
+	{
+		async move {
+			if models.is_empty() || fields.is_empty() {
+				return Ok(0);
+			}
+
+			let mut models = models;
+			self.before_bulk_update(&mut models)?;
+			Manager::<Self::Model>::new()
+				.bulk_update_with_conn(conn, models, fields, batch_size)
 				.await
 		}
 	}
@@ -529,21 +625,29 @@ pub trait CustomManager: Sized + Send + Sync {
 	}
 
 	/// Build the `(SELECT, INSERT)` statement pair used by `get_or_create`.
+	///
+	/// Logical and physical primary-key aliases are normalized by [`Manager`].
+	/// Conflicting aliases return `Error::Validation`, so callers should use `?`
+	/// or otherwise handle the result before rendering or executing the statements.
 	fn get_or_create_queries(
 		&self,
 		lookup_fields: &HashMap<String, String>,
 		defaults: &HashMap<String, String>,
-	) -> (SelectStatement, InsertStatement) {
+	) -> reinhardt_core::exception::Result<(SelectStatement, InsertStatement)> {
 		Manager::<Self::Model>::new().get_or_create_queries(lookup_fields, defaults)
 	}
 
 	/// Build the SQL strings used by `get_or_create`.
+	///
+	/// Logical and physical primary-key aliases are normalized by [`Manager`].
+	/// Conflicting aliases return `Error::Validation`, so callers should use `?`
+	/// or otherwise handle the result before using the SQL strings.
 	fn get_or_create_sql(
 		&self,
 		lookup_fields: &HashMap<String, String>,
 		defaults: &HashMap<String, String>,
 		backend: DatabaseBackend,
-	) -> (String, String) {
+	) -> reinhardt_core::exception::Result<(String, String)> {
 		Manager::<Self::Model>::new().get_or_create_sql(lookup_fields, defaults, backend)
 	}
 

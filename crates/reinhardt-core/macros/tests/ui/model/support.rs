@@ -313,6 +313,9 @@ pub mod db {
 			fn constraint_metadata() -> Vec<inspection::ConstraintInfo>;
 			fn relationship_metadata() -> Vec<inspection::RelationInfo>;
 			fn generated_field_names() -> &'static [&'static str];
+			fn primary_key_uses_zero_sentinel() -> bool {
+				false
+			}
 
 			fn objects() -> Self::Objects
 			where

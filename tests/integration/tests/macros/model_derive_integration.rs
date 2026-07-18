@@ -5,6 +5,7 @@
 //! - reinhardt-orm (Model trait)
 //! - reinhardt-migrations (model_registry)
 
+use async_trait::async_trait;
 use reinhardt_db::Json;
 use reinhardt_db::associations::{ForeignKeyField, OneToOneField};
 use reinhardt_db::migrations::FieldType;
@@ -12,6 +13,7 @@ use reinhardt_db::migrations::model_registry::global_registry;
 use reinhardt_db::migrations::{GeneratedStorage, SchemaExpr, SchemaFunc};
 use reinhardt_db::orm::Model as ModelTrait;
 use reinhardt_db::orm::QuerySet;
+use reinhardt_db::orm::connection::{DatabaseBackend, OrmExecutor, QueryResult, QueryValue, Row};
 use reinhardt_db::orm::fields::FieldKwarg;
 use reinhardt_db::orm::fixtures::global_fixture_registry;
 use reinhardt_db::orm::relationship::RelationshipType;
@@ -96,6 +98,116 @@ struct TraversalPost {
 
 	#[rel(foreign_key, db_column = "author_slug", to_field = "slug")]
 	author: ForeignKeyField<TraversalAuthor>,
+}
+
+#[model(app_label = "accessor_test", table_name = "accessor_targets")]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct AccessorTarget {
+	#[field(primary_key = true, db_column = "target_pk")]
+	id: Option<i64>,
+
+	#[field(db_column = "target_external_key")]
+	external_key: i64,
+}
+
+#[model(app_label = "accessor_test", table_name = "accessor_primary_sources")]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct AccessorPrimarySource {
+	#[field(primary_key = true)]
+	id: Option<i64>,
+
+	#[rel(foreign_key, db_column = "target_fk")]
+	target: ForeignKeyField<AccessorTarget>,
+}
+
+#[model(app_label = "accessor_test", table_name = "accessor_to_field_sources")]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct AccessorToFieldSource {
+	#[field(primary_key = true)]
+	id: Option<i64>,
+
+	#[rel(
+		foreign_key,
+		db_column = "target_external_fk",
+		to_field = "external_key"
+	)]
+	target: ForeignKeyField<AccessorTarget>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct RecordedOrmCall {
+	kind: &'static str,
+	sql: String,
+	params: Vec<QueryValue>,
+}
+
+#[derive(Debug)]
+struct RecordingOrmExecutor {
+	backend: DatabaseBackend,
+	calls: Vec<RecordedOrmCall>,
+}
+
+impl RecordingOrmExecutor {
+	fn postgres() -> Self {
+		Self {
+			backend: DatabaseBackend::Postgres,
+			calls: Vec::new(),
+		}
+	}
+
+	fn record(&mut self, kind: &'static str, sql: &str, params: Vec<QueryValue>) {
+		self.calls.push(RecordedOrmCall {
+			kind,
+			sql: sql.to_string(),
+			params,
+		});
+	}
+}
+
+#[async_trait]
+impl OrmExecutor for RecordingOrmExecutor {
+	fn backend(&self) -> DatabaseBackend {
+		self.backend
+	}
+
+	async fn execute(
+		&mut self,
+		sql: &str,
+		params: Vec<QueryValue>,
+	) -> reinhardt_core::exception::Result<QueryResult> {
+		self.record("execute", sql, params);
+		Ok(QueryResult {
+			rows_affected: 0,
+			last_insert_id: None,
+		})
+	}
+
+	async fn fetch_one(
+		&mut self,
+		sql: &str,
+		params: Vec<QueryValue>,
+	) -> reinhardt_core::exception::Result<Row> {
+		self.record("fetch_one", sql, params);
+		Ok(Row::new())
+	}
+
+	async fn fetch_all(
+		&mut self,
+		sql: &str,
+		params: Vec<QueryValue>,
+	) -> reinhardt_core::exception::Result<Vec<Row>> {
+		self.record("fetch_all", sql, params);
+		Ok(Vec::new())
+	}
+
+	async fn fetch_optional(
+		&mut self,
+		sql: &str,
+		params: Vec<QueryValue>,
+	) -> reinhardt_core::exception::Result<Option<Row>> {
+		self.record("fetch_optional", sql, params);
+		Ok(None)
+	}
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -288,6 +400,79 @@ fn test_relation_descriptor_resolves_to_field_physical_column() {
 	assert_eq!(
 		TraversalPost::rel_author().steps()[0].target_column,
 		"author_slug"
+	);
+}
+
+#[tokio::test]
+async fn generated_relation_accessors_render_configured_physical_columns() {
+	let primary_source = AccessorPrimarySource::build()
+		.id(Some(1_i64))
+		.target(7_i64)
+		.finish();
+	let mut primary_loader = RecordingOrmExecutor::postgres();
+
+	let primary_result = primary_source
+		.target(&mut primary_loader)
+		.await
+		.expect("generated primary-key loader must use the supplied executor");
+	assert!(primary_result.is_none());
+	assert_eq!(primary_loader.calls.len(), 1);
+	assert_eq!(primary_loader.calls[0].kind, "fetch_all");
+	assert!(
+		primary_loader.calls[0]
+			.sql
+			.contains(r#"WHERE "target_pk" = '7'"#),
+		"generated primary-key loader must use the physical primary-key column: {}",
+		primary_loader.calls[0].sql
+	);
+	assert!(
+		!primary_loader.calls[0].sql.contains(r#"WHERE "id" = '7'"#),
+		"generated primary-key loader must not use the logical primary-key field name"
+	);
+
+	let target = AccessorTarget::build()
+		.id(Some(7_i64))
+		.external_key(7_i64)
+		.finish();
+	let reverse = AccessorPrimarySource::target_accessor().reverse(&target);
+	let mut reverse_executor = RecordingOrmExecutor::postgres();
+
+	let related = reverse
+		.all_with_conn(&mut reverse_executor)
+		.await
+		.expect("generated reverse accessor must use the supplied executor");
+	assert!(related.is_empty());
+	assert_eq!(reverse_executor.calls.len(), 1);
+	assert_eq!(reverse_executor.calls[0].kind, "fetch_all");
+	assert!(
+		reverse_executor.calls[0].sql.contains(r#""target_fk""#),
+		"generated reverse accessor must use the configured physical foreign-key column: {}",
+		reverse_executor.calls[0].sql
+	);
+	assert!(
+		!reverse_executor.calls[0].sql.contains(r#""target_id""#),
+		"generated reverse accessor must not fall back to the default foreign-key column"
+	);
+
+	let to_field_source = AccessorToFieldSource::build()
+		.id(Some(2_i64))
+		.target(7_i64)
+		.finish();
+	let mut to_field_loader = RecordingOrmExecutor::postgres();
+
+	let to_field_result = to_field_source
+		.target(&mut to_field_loader)
+		.await
+		.expect("generated to_field loader must use the supplied executor");
+	assert!(to_field_result.is_none());
+	assert_eq!(to_field_loader.calls.len(), 1);
+	assert_eq!(to_field_loader.calls[0].kind, "fetch_all");
+	assert!(
+		to_field_loader.calls[0]
+			.sql
+			.contains(r#"WHERE "target_external_key" = '7'"#),
+		"generated to_field loader must resolve the target field's physical column: {}",
+		to_field_loader.calls[0].sql
 	);
 }
 

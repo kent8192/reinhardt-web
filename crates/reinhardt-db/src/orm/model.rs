@@ -270,6 +270,15 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 		&[]
 	}
 
+	/// Return whether a scalar integer primary key uses zero as its auto-generated sentinel.
+	///
+	/// The model macro enables this for non-`Option` integer primary keys whose
+	/// `auto_increment` setting is enabled. Manual model implementations can
+	/// override it when they use the same database convention.
+	fn primary_key_uses_zero_sentinel() -> bool {
+		false
+	}
+
 	/// Django-style objects manager accessor
 	///
 	/// Returns the configured manager for this model type. When a custom manager
@@ -365,11 +374,26 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 		Self: Sized,
 	{
 		async move {
-			use super::events::{EventResult, get_active_registry};
 			use super::manager::get_connection;
 
+			let mut conn = get_connection().await?;
+			self.save_with_conn(&mut conn).await
+		}
+	}
+
+	/// Save the model instance through a caller-owned ORM executor.
+	fn save_with_conn<'a, E>(
+		&'a mut self,
+		conn: &'a mut E,
+	) -> impl std::future::Future<Output = reinhardt_core::exception::Result<()>> + Send + 'a
+	where
+		Self: Sized,
+		E: super::connection::OrmExecutor + 'a,
+	{
+		async move {
+			use super::events::{EventResult, get_active_registry};
+
 			let registry = get_active_registry();
-			let conn = get_connection().await?;
 			let manager = super::Manager::<Self>::new();
 
 			let json = serde_json::to_value(&*self).map_err(|error| {
@@ -379,7 +403,13 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 				))
 			})?;
 
-			if self.primary_key().is_none() {
+			let uses_zero_sentinel_primary_key = Self::primary_key_uses_zero_sentinel()
+				&& json
+					.as_object()
+					.and_then(|fields| fields.get(Self::primary_key_field()))
+					.is_some_and(|value| value.as_i64() == Some(0) || value.as_u64() == Some(0));
+
+			if self.primary_key().is_none() || uses_zero_sentinel_primary_key {
 				// INSERT: new record
 				let instance_id = format!("{}-new-{}", Self::table_name(), uuid::Uuid::now_v7());
 
@@ -398,7 +428,7 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 				}
 
 				// Perform the INSERT
-				let created = manager.create_with_conn(&conn, self).await?;
+				let created = manager.create_with_conn(conn, self).await?;
 				*self = created;
 
 				// Dispatch after_insert event if registry is active
@@ -438,7 +468,7 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 				}
 
 				// Perform the UPDATE
-				let updated = manager.update_with_conn(&conn, self).await?;
+				let updated = manager.update_with_conn(conn, self).await?;
 				*self = updated;
 
 				// Dispatch after_update event if registry is active
@@ -623,8 +653,24 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 		Self: Sized,
 	{
 		async move {
-			use super::events::{EventResult, get_active_registry};
 			use super::manager::get_connection;
+
+			let mut conn = get_connection().await?;
+			self.delete_with_conn(&mut conn).await
+		}
+	}
+
+	/// Delete the model instance through a caller-owned ORM executor.
+	fn delete_with_conn<'a, E>(
+		&'a self,
+		conn: &'a mut E,
+	) -> impl std::future::Future<Output = reinhardt_core::exception::Result<()>> + Send + 'a
+	where
+		Self: Sized,
+		E: super::connection::OrmExecutor + 'a,
+	{
+		async move {
+			use super::events::{EventResult, get_active_registry};
 
 			let pk = self.primary_key().ok_or_else(|| {
 				Error::from(DatabaseError::new(
@@ -633,7 +679,6 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 				))
 			})?;
 
-			let conn = get_connection().await?;
 			let manager = super::Manager::<Self>::new();
 
 			let instance_id = format!("{}-{}", Self::table_name(), pk);
@@ -653,7 +698,7 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 			}
 
 			// Perform the DELETE
-			manager.delete_with_conn(&conn, pk.clone()).await?;
+			manager.delete_with_conn(conn, pk.clone()).await?;
 
 			// Dispatch after_delete event if registry is available
 			if let Some(registry) = get_active_registry() {

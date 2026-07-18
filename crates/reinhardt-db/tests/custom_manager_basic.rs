@@ -18,6 +18,8 @@
 //! connection, so it can run in any environment.
 
 use std::collections::HashMap;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use rstest::rstest;
 use serde::{Deserialize, Serialize};
@@ -146,6 +148,25 @@ impl CustomManager for DenyAllArticleManager {
 			"bulk update vetoed by custom manager",
 		)
 		.into())
+	}
+}
+
+struct CountingBulkUpdateVetoManager {
+	calls: Arc<AtomicUsize>,
+}
+
+impl CustomManager for CountingBulkUpdateVetoManager {
+	type Model = Article;
+
+	fn new() -> Self {
+		Self {
+			calls: Arc::new(AtomicUsize::new(0)),
+		}
+	}
+
+	fn before_bulk_update(&self, _models: &mut [Article]) -> reinhardt_core::exception::Result<()> {
+		self.calls.fetch_add(1, Ordering::SeqCst);
+		Err(DatabaseError::new(DatabaseErrorKind::Query, "bulk update vetoed exactly once").into())
 	}
 }
 
@@ -421,6 +442,29 @@ async fn default_bulk_update_invokes_before_bulk_update_veto_before_database_acc
 }
 
 #[tokio::test]
+async fn default_bulk_update_runs_before_bulk_update_once_before_database_access() {
+	// Arrange
+	let manager = CountingBulkUpdateVetoManager::new();
+	let articles = vec![Article {
+		id: Some(1),
+		title: "blocked-once".into(),
+		is_archived: false,
+	}];
+
+	// Act
+	let result = manager
+		.bulk_update(articles, vec!["title".to_string()], None)
+		.await;
+
+	// Assert
+	assert_eq!(
+		format!("{}", result.unwrap_err()),
+		"Database error: bulk update vetoed exactly once"
+	);
+	assert_eq!(manager.calls.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
 async fn default_bulk_update_skips_hook_for_empty_models() {
 	// Arrange
 	let manager = DenyAllArticleManager;
@@ -449,6 +493,18 @@ async fn default_bulk_update_skips_hook_for_empty_fields() {
 
 	// Assert
 	assert_eq!(result.unwrap(), 0);
+}
+
+#[tokio::test]
+async fn default_bulk_create_skips_database_for_empty_models() {
+	// Arrange
+	let manager = ActiveArticleManager::new();
+
+	// Act
+	let result = manager.bulk_create(Vec::new(), None, false, false).await;
+
+	// Assert
+	assert_eq!(result.unwrap(), Vec::<Article>::new());
 }
 
 // -----------------------------------------------------------------------------
@@ -491,10 +547,12 @@ fn get_or_create_sql_via_trait_matches_inherent_method() {
 	let defaults = HashMap::new();
 
 	// Act
-	let (inherent_select, inherent_insert) =
-		manager.get_or_create_sql(&lookup, &defaults, DatabaseBackend::Postgres);
+	let (inherent_select, inherent_insert) = manager
+		.get_or_create_sql(&lookup, &defaults, DatabaseBackend::Postgres)
+		.unwrap();
 	let (trait_select, trait_insert) =
-		CustomManager::get_or_create_sql(&manager, &lookup, &defaults, DatabaseBackend::Postgres);
+		CustomManager::get_or_create_sql(&manager, &lookup, &defaults, DatabaseBackend::Postgres)
+			.unwrap();
 
 	// Assert: trait dispatch produces identical SQL to the inherent path.
 	assert_eq!(inherent_select, trait_select);
@@ -532,10 +590,12 @@ fn get_or_create_sql_parity_with_defaults() {
 	defaults.insert("is_archived".into(), "false".into());
 
 	// Act
-	let (inherent_select, inherent_insert) =
-		manager.get_or_create_sql(&lookup, &defaults, DatabaseBackend::Postgres);
+	let (inherent_select, inherent_insert) = manager
+		.get_or_create_sql(&lookup, &defaults, DatabaseBackend::Postgres)
+		.unwrap();
 	let (trait_select, trait_insert) =
-		CustomManager::get_or_create_sql(&manager, &lookup, &defaults, DatabaseBackend::Postgres);
+		CustomManager::get_or_create_sql(&manager, &lookup, &defaults, DatabaseBackend::Postgres)
+			.unwrap();
 
 	// Assert: defaults map is preserved through trait dispatch.
 	assert_eq!(inherent_select, trait_select);

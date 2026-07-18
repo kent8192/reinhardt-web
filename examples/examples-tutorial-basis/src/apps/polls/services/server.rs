@@ -4,7 +4,7 @@ use super::server_error::{VoteRequestError, map_vote_error};
 use crate::apps::polls::models::{Choice, ChoiceInfo};
 use crate::shared::types::VoteRequest;
 use reinhardt::pages::server_fn::ServerFnError;
-use reinhardt::{DatabaseConnection, Model, atomic};
+use reinhardt::{DatabaseConnection, Model};
 use std::result::Result;
 
 /// Shared vote implementation used by both typed and form-backed server
@@ -13,12 +13,12 @@ pub async fn vote_internal(
 	request: VoteRequest,
 	db: DatabaseConnection,
 ) -> Result<ChoiceInfo, ServerFnError> {
-	let updated_choice = atomic(&db, || async {
+	let updated_choice = db.atomic(async |transaction| {
 		let choice_manager = Choice::objects();
 
 		let mut choice = choice_manager
 			.get(request.choice_id)
-			.first()
+			.first_with_db(transaction)
 			.await?
 			.ok_or(VoteRequestError::ChoiceNotFound)?;
 
@@ -26,7 +26,7 @@ pub async fn vote_internal(
 			return Err(VoteRequestError::ChoiceQuestionMismatch);
 		}
 
-		choice.vote().await?;
+		choice.vote_with_conn(transaction).await?;
 
 		Ok(choice)
 	})

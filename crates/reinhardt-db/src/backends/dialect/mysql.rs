@@ -1,7 +1,9 @@
 //! MySQL dialect implementation
 
 use async_trait::async_trait;
-use sqlx::{Column, MySql, MySqlPool, Row as SqlxRow, Transaction, TypeInfo, mysql::MySqlRow};
+use sqlx::{
+	Column, Executor, MySql, MySqlPool, Row as SqlxRow, Transaction, TypeInfo, mysql::MySqlRow,
+};
 use std::sync::Arc;
 
 use crate::backends::{
@@ -17,6 +19,54 @@ fn transaction_consumed_error() -> DatabaseError {
 		DatabaseErrorKind::Transaction,
 		"Transaction already consumed",
 	)
+}
+
+fn optional_last_insert_id(last_insert_id: u64) -> Option<u64> {
+	(last_insert_id != 0).then_some(last_insert_id)
+}
+
+/// Returns whether SQLx identified a MySQL column as a boolean.
+///
+/// SQLx normally exposes `TINYINT(1)` as `BOOLEAN`, but some MySQL-compatible
+/// servers and result paths preserve the wire spelling. Calling `try_get::<bool>`
+/// on every integer column would otherwise coerce primary keys and aggregate
+/// counts to booleans before their numeric decoders have a chance to run.
+fn is_boolean_type(type_name: &str) -> bool {
+	matches!(type_name, "BOOLEAN" | "BOOL" | "TINYINT(1)")
+}
+
+/// Builds a MySQL savepoint statement with a validated identifier.
+///
+/// MySQL does not accept the ANSI double-quoted identifier form emitted by
+/// [`Savepoint`]. Its constructor still validates the caller-provided name
+/// before this dialect renders it with MySQL backticks.
+///
+/// Workaround for launchbadge/sqlx#3613 (tracked in reinhardt-web#5699).
+/// Remove this workaround when reinhardt-db upgrades to an SQLx release that
+/// includes the upstream lifetime fix.
+///
+/// Ideal implementation (without workaround):
+/// `sqlx::raw_sql(&sql).execute(&mut **tx).await?;`
+///
+/// SQLx 0.8's convenience method cannot be used in this `async_trait` path.
+/// Calling [`Executor::execute`] directly still selects MySQL's non-prepared
+/// protocol. Validation prevents this raw SQL path from interpolating an
+/// arbitrary identifier.
+fn mysql_savepoint_sql(name: &str) -> String {
+	let savepoint = Savepoint::new(name);
+	format!("SAVEPOINT `{}`", savepoint.name())
+}
+
+/// Builds a MySQL release-savepoint statement with a validated identifier.
+fn mysql_release_savepoint_sql(name: &str) -> String {
+	let savepoint = Savepoint::new(name);
+	format!("RELEASE SAVEPOINT `{}`", savepoint.name())
+}
+
+/// Builds a MySQL rollback-to-savepoint statement with a validated identifier.
+fn mysql_rollback_to_savepoint_sql(name: &str) -> String {
+	let savepoint = Savepoint::new(name);
+	format!("ROLLBACK TO SAVEPOINT `{}`", savepoint.name())
 }
 
 /// MySQL database backend
@@ -110,7 +160,9 @@ impl MySqlBackend {
 				};
 				continue;
 			}
-			if let Ok(value) = mysql_row.try_get::<bool, _>(column_name) {
+			if is_boolean_type(&type_name)
+				&& let Ok(value) = mysql_row.try_get::<bool, _>(column_name)
+			{
 				row.insert(column_name.to_string(), QueryValue::Bool(value));
 			} else if let Ok(value) = mysql_row.try_get::<i64, _>(column_name) {
 				row.insert(column_name.to_string(), QueryValue::Int(value));
@@ -185,8 +237,10 @@ impl DatabaseBackend for MySqlBackend {
 			.execute(self.pool.as_ref())
 			.await
 			.map_err(map_sqlx_error)?;
+		let last_insert_id = result.last_insert_id();
 		Ok(QueryResult {
 			rows_affected: result.rows_affected(),
+			last_insert_id: optional_last_insert_id(last_insert_id),
 		})
 	}
 
@@ -242,18 +296,18 @@ impl DatabaseBackend for MySqlBackend {
 		// Strategy: acquire a connection, set isolation level, send BEGIN manually,
 		// then wrap the connection in a raw transaction executor that manages
 		// COMMIT/ROLLBACK explicitly.
-		let mut conn = self.pool.acquire().await.map_err(map_sqlx_error)?;
+		let conn = self.pool.acquire().await.map_err(map_sqlx_error)?;
+		let mut conn = CloseOnDropGuard::new(conn);
 
 		let set_sql = format!(
 			"SET TRANSACTION ISOLATION LEVEL {}",
 			isolation_level.to_sql(DatabaseType::Mysql)
 		);
-		sqlx::query(&set_sql)
-			.execute(&mut *conn)
+		// MySQL rejects transaction-control statements sent through its prepared protocol.
+		Executor::execute(&mut **conn.connection_mut(), sqlx::raw_sql(&set_sql))
 			.await
 			.map_err(map_sqlx_error)?;
-		sqlx::query("BEGIN")
-			.execute(&mut *conn)
+		Executor::execute(&mut **conn.connection_mut(), sqlx::raw_sql("BEGIN"))
 			.await
 			.map_err(map_sqlx_error)?;
 
@@ -335,8 +389,10 @@ impl TransactionExecutor for MySqlTransactionExecutor {
 			query = Self::bind_value(query, param);
 		}
 		let result = query.execute(&mut **tx).await.map_err(map_sqlx_error)?;
+		let last_insert_id = result.last_insert_id();
 		Ok(QueryResult {
 			rows_affected: result.rows_affected(),
+			last_insert_id: optional_last_insert_id(last_insert_id),
 		})
 	}
 
@@ -389,36 +445,91 @@ impl TransactionExecutor for MySqlTransactionExecutor {
 	}
 
 	async fn savepoint(&mut self, name: &str) -> Result<()> {
+		let sql = mysql_savepoint_sql(name);
 		let tx = self.tx.as_mut().ok_or_else(transaction_consumed_error)?;
 
-		let sp = Savepoint::new(name);
-		sqlx::query(&sp.to_sql())
-			.execute(&mut **tx)
+		Executor::execute(&mut **tx, sqlx::raw_sql(&sql))
 			.await
 			.map_err(map_sqlx_error)?;
 		Ok(())
 	}
 
 	async fn release_savepoint(&mut self, name: &str) -> Result<()> {
+		let sql = mysql_release_savepoint_sql(name);
 		let tx = self.tx.as_mut().ok_or_else(transaction_consumed_error)?;
 
-		let sp = Savepoint::new(name);
-		sqlx::query(&sp.release_sql())
-			.execute(&mut **tx)
+		Executor::execute(&mut **tx, sqlx::raw_sql(&sql))
 			.await
 			.map_err(map_sqlx_error)?;
 		Ok(())
 	}
 
 	async fn rollback_to_savepoint(&mut self, name: &str) -> Result<()> {
+		let sql = mysql_rollback_to_savepoint_sql(name);
 		let tx = self.tx.as_mut().ok_or_else(transaction_consumed_error)?;
 
-		let sp = Savepoint::new(name);
-		sqlx::query(&sp.rollback_sql())
-			.execute(&mut **tx)
+		Executor::execute(&mut **tx, sqlx::raw_sql(&sql))
 			.await
 			.map_err(map_sqlx_error)?;
 		Ok(())
+	}
+}
+
+/// Marks a connection to close instead of returning it to its pool when dropped.
+trait CloseOnDrop {
+	fn mark_for_close_on_drop(&mut self);
+}
+
+impl CloseOnDrop for sqlx::pool::PoolConnection<MySql> {
+	fn mark_for_close_on_drop(&mut self) {
+		self.close_on_drop();
+	}
+}
+
+/// Keeps a manually started transaction connection safe while an operation awaits.
+///
+/// The guard is armed until successful finalization disarms it. Dropping it on
+/// an error path or when the future is cancelled marks the connection to close
+/// instead of returning it to the pool with an active transaction.
+struct CloseOnDropGuard<T: CloseOnDrop> {
+	connection: Option<T>,
+	close_on_drop: bool,
+}
+
+impl<T: CloseOnDrop> CloseOnDropGuard<T> {
+	fn new(connection: T) -> Self {
+		Self {
+			connection: Some(connection),
+			close_on_drop: true,
+		}
+	}
+
+	fn connection_mut(&mut self) -> &mut T {
+		self.connection
+			.as_mut()
+			.expect("an armed finalization guard must own its connection")
+	}
+
+	fn disarm(mut self) -> T {
+		self.close_on_drop = false;
+		self.connection
+			.take()
+			.expect("an armed finalization guard must own its connection")
+	}
+
+	fn mark_for_close_on_drop(&mut self) {
+		if self.close_on_drop {
+			if let Some(connection) = self.connection.as_mut() {
+				connection.mark_for_close_on_drop();
+			}
+			self.close_on_drop = false;
+		}
+	}
+}
+
+impl<T: CloseOnDrop> Drop for CloseOnDropGuard<T> {
+	fn drop(&mut self) {
+		self.mark_for_close_on_drop();
 	}
 }
 
@@ -429,14 +540,19 @@ impl TransactionExecutor for MySqlTransactionExecutor {
 /// when we need to execute `SET TRANSACTION ISOLATION LEVEL` before `BEGIN` on
 /// the same connection to avoid the race condition with connection pools.
 struct MySqlRawTransactionExecutor {
-	conn: Option<sqlx::pool::PoolConnection<MySql>>,
+	conn: Option<CloseOnDropGuard<sqlx::pool::PoolConnection<MySql>>>,
 }
 
 impl MySqlRawTransactionExecutor {
 	/// Creates a new raw transaction executor wrapping a pool connection
 	/// that already has an active transaction (BEGIN was sent manually).
-	fn new(conn: sqlx::pool::PoolConnection<MySql>) -> Self {
+	fn new(conn: CloseOnDropGuard<sqlx::pool::PoolConnection<MySql>>) -> Self {
 		Self { conn: Some(conn) }
+	}
+
+	fn connection_mut(&mut self) -> Result<&mut sqlx::pool::PoolConnection<MySql>> {
+		let conn = self.conn.as_mut().ok_or_else(transaction_consumed_error)?;
+		Ok(conn.connection_mut())
 	}
 
 	fn bind_value<'q>(
@@ -451,6 +567,15 @@ impl MySqlRawTransactionExecutor {
 	}
 }
 
+impl Drop for MySqlRawTransactionExecutor {
+	fn drop(&mut self) {
+		if let Some(conn) = self.conn.as_mut() {
+			// A manually issued BEGIN must never return an active connection to the pool.
+			conn.mark_for_close_on_drop();
+		}
+	}
+}
+
 #[async_trait]
 impl TransactionExecutor for MySqlRawTransactionExecutor {
 	fn backend(&self) -> DatabaseType {
@@ -458,20 +583,22 @@ impl TransactionExecutor for MySqlRawTransactionExecutor {
 	}
 
 	async fn execute(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<QueryResult> {
-		let conn = self.conn.as_mut().ok_or_else(transaction_consumed_error)?;
+		let conn = self.connection_mut()?;
 
 		let mut query = sqlx::query(sql);
 		for param in &params {
 			query = Self::bind_value(query, param);
 		}
 		let result = query.execute(&mut **conn).await.map_err(map_sqlx_error)?;
+		let last_insert_id = result.last_insert_id();
 		Ok(QueryResult {
 			rows_affected: result.rows_affected(),
+			last_insert_id: optional_last_insert_id(last_insert_id),
 		})
 	}
 
 	async fn fetch_one(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<Row> {
-		let conn = self.conn.as_mut().ok_or_else(transaction_consumed_error)?;
+		let conn = self.connection_mut()?;
 
 		let mut query = sqlx::query(sql);
 		for param in &params {
@@ -482,7 +609,7 @@ impl TransactionExecutor for MySqlRawTransactionExecutor {
 	}
 
 	async fn fetch_all(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<Vec<Row>> {
-		let conn = self.conn.as_mut().ok_or_else(transaction_consumed_error)?;
+		let conn = self.connection_mut()?;
 
 		let mut query = sqlx::query(sql);
 		for param in &params {
@@ -493,7 +620,7 @@ impl TransactionExecutor for MySqlRawTransactionExecutor {
 	}
 
 	async fn fetch_optional(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<Option<Row>> {
-		let conn = self.conn.as_mut().ok_or_else(transaction_consumed_error)?;
+		let conn = self.connection_mut()?;
 
 		let mut query = sqlx::query(sql);
 		for param in &params {
@@ -508,52 +635,148 @@ impl TransactionExecutor for MySqlRawTransactionExecutor {
 
 	async fn commit(mut self: Box<Self>) -> Result<()> {
 		let mut conn = self.conn.take().ok_or_else(transaction_consumed_error)?;
-		sqlx::query("COMMIT")
-			.execute(&mut *conn)
-			.await
-			.map_err(map_sqlx_error)?;
-		Ok(())
+		let result = sqlx::query("COMMIT")
+			.execute(&mut **conn.connection_mut())
+			.await;
+		match result {
+			Ok(_) => {
+				let connection = conn.disarm();
+				drop(connection);
+				Ok(())
+			}
+			Err(error) => Err(map_sqlx_error(error).into()),
+		}
 	}
 
 	async fn rollback(mut self: Box<Self>) -> Result<()> {
 		let mut conn = self.conn.take().ok_or_else(transaction_consumed_error)?;
-		sqlx::query("ROLLBACK")
-			.execute(&mut *conn)
-			.await
-			.map_err(map_sqlx_error)?;
-		Ok(())
+		let result =
+			Executor::execute(&mut **conn.connection_mut(), sqlx::raw_sql("ROLLBACK")).await;
+		match result {
+			Ok(_) => {
+				let connection = conn.disarm();
+				drop(connection);
+				Ok(())
+			}
+			Err(error) => Err(map_sqlx_error(error).into()),
+		}
 	}
 
 	async fn savepoint(&mut self, name: &str) -> Result<()> {
-		let conn = self.conn.as_mut().ok_or_else(transaction_consumed_error)?;
+		let sql = mysql_savepoint_sql(name);
+		let conn = self.connection_mut()?;
 
-		let sp = Savepoint::new(name);
-		sqlx::query(&sp.to_sql())
-			.execute(&mut **conn)
+		Executor::execute(&mut **conn, sqlx::raw_sql(&sql))
 			.await
 			.map_err(map_sqlx_error)?;
 		Ok(())
 	}
 
 	async fn release_savepoint(&mut self, name: &str) -> Result<()> {
-		let conn = self.conn.as_mut().ok_or_else(transaction_consumed_error)?;
+		let sql = mysql_release_savepoint_sql(name);
+		let conn = self.connection_mut()?;
 
-		let sp = Savepoint::new(name);
-		sqlx::query(&sp.release_sql())
-			.execute(&mut **conn)
+		Executor::execute(&mut **conn, sqlx::raw_sql(&sql))
 			.await
 			.map_err(map_sqlx_error)?;
 		Ok(())
 	}
 
 	async fn rollback_to_savepoint(&mut self, name: &str) -> Result<()> {
-		let conn = self.conn.as_mut().ok_or_else(transaction_consumed_error)?;
+		let sql = mysql_rollback_to_savepoint_sql(name);
+		let conn = self.connection_mut()?;
 
-		let sp = Savepoint::new(name);
-		sqlx::query(&sp.rollback_sql())
-			.execute(&mut **conn)
+		Executor::execute(&mut **conn, sqlx::raw_sql(&sql))
 			.await
 			.map_err(map_sqlx_error)?;
 		Ok(())
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::{
+		CloseOnDrop, CloseOnDropGuard, MySqlRawTransactionExecutor, MySqlTransactionExecutor,
+		is_boolean_type, mysql_release_savepoint_sql, mysql_rollback_to_savepoint_sql,
+		mysql_savepoint_sql, optional_last_insert_id,
+	};
+	use crate::backends::types::{DatabaseType, TransactionExecutor};
+	use std::sync::Arc;
+	use std::sync::atomic::{AtomicUsize, Ordering};
+
+	struct TestCloseOnDropConnection {
+		close_on_drop_calls: Arc<AtomicUsize>,
+	}
+
+	impl CloseOnDrop for TestCloseOnDropConnection {
+		fn mark_for_close_on_drop(&mut self) {
+			self.close_on_drop_calls.fetch_add(1, Ordering::SeqCst);
+		}
+	}
+
+	#[test]
+	fn test_close_on_drop_guard_marks_dropped_finalization_connection() {
+		let close_on_drop_calls = Arc::new(AtomicUsize::new(0));
+
+		{
+			let _guard = CloseOnDropGuard::new(TestCloseOnDropConnection {
+				close_on_drop_calls: Arc::clone(&close_on_drop_calls),
+			});
+		}
+
+		assert_eq!(close_on_drop_calls.load(Ordering::SeqCst), 1);
+	}
+
+	#[test]
+	fn test_close_on_drop_guard_disarms_successful_finalization_connection() {
+		let close_on_drop_calls = Arc::new(AtomicUsize::new(0));
+		let guard = CloseOnDropGuard::new(TestCloseOnDropConnection {
+			close_on_drop_calls: Arc::clone(&close_on_drop_calls),
+		});
+
+		let connection = guard.disarm();
+		drop(connection);
+
+		assert_eq!(close_on_drop_calls.load(Ordering::SeqCst), 0);
+	}
+
+	#[test]
+	fn test_transaction_executors_report_mysql_backend() {
+		let transaction_executor = MySqlTransactionExecutor { tx: None };
+		let raw_transaction_executor = MySqlRawTransactionExecutor { conn: None };
+
+		assert_eq!(transaction_executor.backend(), DatabaseType::Mysql);
+		assert_eq!(raw_transaction_executor.backend(), DatabaseType::Mysql);
+	}
+
+	#[test]
+	fn test_optional_last_insert_id_maps_zero_and_nonzero_values() {
+		assert_eq!(optional_last_insert_id(0), None);
+		assert_eq!(optional_last_insert_id(42), Some(42));
+	}
+
+	#[test]
+	fn test_boolean_type_recognizes_mysql_aliases_without_matching_other_integers() {
+		assert!(is_boolean_type("BOOLEAN"));
+		assert!(is_boolean_type("BOOL"));
+		assert!(is_boolean_type("TINYINT(1)"));
+		assert!(!is_boolean_type("TINYINT"));
+		assert!(!is_boolean_type("TINYINT UNSIGNED"));
+	}
+
+	#[test]
+	fn test_savepoint_sql_uses_mysql_quoted_validated_identifiers() {
+		assert_eq!(
+			mysql_savepoint_sql("reinhardt_atomic_0"),
+			"SAVEPOINT `reinhardt_atomic_0`"
+		);
+		assert_eq!(
+			mysql_release_savepoint_sql("reinhardt_atomic_0"),
+			"RELEASE SAVEPOINT `reinhardt_atomic_0`"
+		);
+		assert_eq!(
+			mysql_rollback_to_savepoint_sql("reinhardt_atomic_0"),
+			"ROLLBACK TO SAVEPOINT `reinhardt_atomic_0`"
+		);
 	}
 }

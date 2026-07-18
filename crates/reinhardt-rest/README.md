@@ -620,53 +620,53 @@ let updated_user = serializer.update(validated_data, existing_user).await?;
 
 #### Transaction Management
 
-- **`TransactionHelper`**: RAII-based transaction management
-- **Automatic Rollback**: Drop-based cleanup on errors
-- **Savepoint Support**: Nested transaction handling
+- **`TransactionHelper`**: Serializer-error adapter for closure-scoped atomic work
+- **Automatic Rollback**: Callback failures roll back the supplied executor
+- **Savepoint Support**: Nested callbacks use the caller-owned atomic transaction
 
 ```rust
-use reinhardt::rest::serializers::TransactionHelper;
+use reinhardt::db::orm::DatabaseConnection;
+use reinhardt::rest::serializers::{SerializerError, TransactionHelper};
 
-// Wrap operations in transaction
-TransactionHelper::with_transaction(|| async {
-    // All database operations here are atomic
-    let user = manager.create(user_data).await?;
-    let profile = manager.create(profile_data).await?;
+// The outer callback owns the only transaction executor for its body.
+TransactionHelper::with_transaction(&connection, async |transaction| {
+    let user = user_manager
+        .create_with_conn(transaction, &user_data)
+        .await
+        .map_err(SerializerError::from)?;
+    let profile = TransactionHelper::savepoint(transaction, async |nested_transaction| {
+        profile_manager
+            .create_with_conn(nested_transaction, &profile_data)
+            .await
+            .map_err(SerializerError::from)
+    }).await?;
     Ok((user, profile))
-}).await?;
-
-// Nested transactions with savepoints
-TransactionHelper::savepoint(depth, || async {
-    // Nested operation with automatic savepoint
-    manager.update(instance).await
 }).await?;
 ```
 
 #### Nested Save Context
 
-- **`NestedSaveContext`**: Depth-aware transaction management
-- **Automatic Scope Selection**: Transaction vs savepoint based on depth
+- **`NestedSaveContext`**: Parent-data and depth tracking
+- **Explicit Scope Selection**: Callers choose the outer atomic callback or nested savepoint
 - **Hierarchical Operations**: Support for deeply nested serializers
 
 ```rust
 use reinhardt::rest::serializers::NestedSaveContext;
 
-let context = NestedSaveContext::new(depth);
+let context = NestedSaveContext::new();
 
-// Automatically uses transaction (depth=0) or savepoint (depth>0)
-context.with_scope(|| async {
-    // Nested serializer save operations
-    nested_serializer.save(data).await
-}).await?;
+// The context does not acquire a connection or choose a transaction scope.
+let child = context.child_context()?;
 ```
 
 #### Many-to-Many Relationship Management
 
 - **`ManyToManyManager`**: Junction table operations
 - **Bulk Operations**: Efficient batch insert/delete
-- **Set Operations**: Replace all relationships atomically
+- **Set Operations**: Replace all relationships through a caller-owned executor
 
 ```rust
+use reinhardt::db::orm::DatabaseConnection;
 use reinhardt::rest::serializers::ManyToManyManager;
 
 let m2m_manager = ManyToManyManager::<User, Tag>::new(
@@ -675,17 +675,12 @@ let m2m_manager = ManyToManyManager::<User, Tag>::new(
     "tag_id"          // Target FK
 );
 
-// Add multiple relationships
-m2m_manager.add_bulk(&user_id, vec![tag1_id, tag2_id, tag3_id]).await?;
-
-// Remove specific relationships
-m2m_manager.remove_bulk(&user_id, vec![tag1_id]).await?;
-
-// Replace all relationships atomically
-m2m_manager.set(&user_id, vec![tag4_id, tag5_id]).await?;
-
-// Clear all relationships
-m2m_manager.clear(&user_id).await?;
+connection.atomic(async |transaction| {
+    m2m_manager.add_bulk_with_conn(transaction, &user_id, vec![tag1_id, tag2_id, tag3_id]).await?;
+    m2m_manager.remove_bulk_with_conn(transaction, &user_id, vec![tag1_id]).await?;
+    m2m_manager.set_with_conn(transaction, &user_id, vec![tag4_id, tag5_id]).await?;
+    m2m_manager.clear_with_conn(transaction, &user_id).await
+}).await?;
 ```
 
 #### Relation Field Database Lookups

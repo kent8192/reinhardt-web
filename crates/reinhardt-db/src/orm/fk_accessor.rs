@@ -18,14 +18,14 @@
 //! // Tweet model has: #[rel(foreign_key)] user: ForeignKeyField<User>
 //!
 //! // Get a reverse accessor to fetch all tweets for a user
-//! let tweets_accessor = Tweet::user_accessor().reverse(&user, db.clone());
+//! let tweets_accessor = Tweet::user_accessor().reverse(&user);
 //!
 //! // Use the accessor to query related records
-//! let tweets = tweets_accessor.all().await?;
-//! let tweet_count = tweets_accessor.count().await?;
+//! let tweets = tweets_accessor.all_with_conn(&mut db).await?;
+//! let tweet_count = tweets_accessor.count_with_conn(&mut db).await?;
 //!
 //! // Paginate results
-//! let page1 = tweets_accessor.paginate(1, 10).all().await?;
+//! let page1 = tweets_accessor.paginate(1, 10).all_with_conn(&mut db).await?;
 //! ```
 //!
 //! ## API Design
@@ -36,7 +36,6 @@
 //! - **Compile-time checks**: Invalid relationships cause compilation errors
 //! - **Consistent pattern**: Follows the same pattern as ManyToMany accessors
 
-use super::connection::DatabaseConnection;
 use super::reverse_accessor::ReverseAccessor;
 use crate::orm::Model;
 use serde::{Serialize, de::DeserializeOwned};
@@ -58,8 +57,8 @@ use std::marker::PhantomData;
 /// // Tweet has: #[rel(foreign_key)] user: ForeignKeyField<User>
 ///
 /// // Get reverse accessor for User → Tweets relationship
-/// let tweets_accessor = Tweet::user_accessor().reverse(&user, db);
-/// let tweets = tweets_accessor.all().await?;
+/// let tweets_accessor = Tweet::user_accessor().reverse(&user);
+/// let tweets = tweets_accessor.all_with_conn(&mut db).await?;
 /// ```
 pub struct ForeignKeyAccessor<Source, Target> {
 	db_column: &'static str,
@@ -96,7 +95,6 @@ where
 	/// # Parameters
 	///
 	/// - `target`: The target model instance (e.g., User)
-	/// - `db`: Database connection
 	///
 	/// # Returns
 	///
@@ -106,21 +104,17 @@ where
 	///
 	/// ```rust,ignore
 	/// // Get all tweets for a user
-	/// let tweets_accessor = Tweet::user_accessor().reverse(&user, db);
-	/// let tweets = tweets_accessor.all().await?;
+	/// let tweets_accessor = Tweet::user_accessor().reverse(&user);
+	/// let tweets = tweets_accessor.all_with_conn(&mut db).await?;
 	///
 	/// // Count related records
-	/// let count = tweets_accessor.count().await?;
+	/// let count = tweets_accessor.count_with_conn(&mut db).await?;
 	///
 	/// // Paginate results
-	/// let page1 = tweets_accessor.paginate(1, 10).all().await?;
+	/// let page1 = tweets_accessor.paginate(1, 10).all_with_conn(&mut db).await?;
 	/// ```
-	pub fn reverse(
-		&self,
-		target: &Target,
-		db: DatabaseConnection,
-	) -> ReverseAccessor<Target, Source> {
-		ReverseAccessor::new(target, self.db_column, db)
+	pub fn reverse(&self, target: &Target) -> ReverseAccessor<Target, Source> {
+		ReverseAccessor::new(target, self.db_column)
 	}
 }
 

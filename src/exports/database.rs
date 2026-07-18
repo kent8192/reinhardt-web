@@ -1,8 +1,8 @@
 //! Database, ORM, and query builder re-exports.
 
 pub use reinhardt_db::orm::{
-	DatabaseBackend, DatabaseConnection, FieldAssignment, Model, QuerySet, SoftDeletable,
-	SoftDelete, Timestamped, Timestamps, UpdateValue,
+	AtomicTransaction, DatabaseBackend, DatabaseConnection, FieldAssignment, Model, OrmExecutor,
+	QuerySet, SoftDeletable, SoftDelete, Timestamped, Timestamps, UpdateValue,
 };
 
 // Query expressions (Django-style F/Q objects)
@@ -17,8 +17,7 @@ pub use reinhardt_db::orm::{
 
 // Transaction management
 pub use reinhardt_db::orm::{
-	IsolationLevel, QueryValue, Savepoint, Transaction, TransactionExecutor, TransactionScope,
-	atomic, atomic_with_isolation,
+	IsolationLevel, QueryValue, Savepoint, Transaction, TransactionExecutor,
 };
 
 // Database functions

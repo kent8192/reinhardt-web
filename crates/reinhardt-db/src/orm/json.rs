@@ -159,6 +159,56 @@ pub(crate) fn deserialize_model_row<M: Model>(
 		fields.insert(field.name.clone(), decoded_value);
 	}
 
+	let renamed_fields: Vec<_> = M::field_metadata()
+		.into_iter()
+		.filter(|field| {
+			!is_json_field_type(&field.field_type) && field.db_column_name() != field.name
+		})
+		.collect();
+	if !renamed_fields.is_empty() {
+		let mut aliased_fields = fields.clone();
+		let mut has_physical_alias = false;
+		for field in &renamed_fields {
+			if let Some(value) = fields.get(field.db_column_name()).cloned() {
+				aliased_fields.entry(field.name.clone()).or_insert(value);
+				has_physical_alias = true;
+			}
+		}
+
+		if has_physical_alias {
+			let aliased_data = serde_json::Value::Object(aliased_fields);
+			match deserialize_model_value::<M>(aliased_data, &json_null_fields) {
+				Ok(model) => return Ok(model),
+				Err(aliased_error) => {
+					if let Ok(model) = deserialize_model_value::<M>(
+						serde_json::Value::Object(fields.clone()),
+						&json_null_fields,
+					) {
+						return Ok(model);
+					}
+
+					let mut logical_fields = fields;
+					for field in renamed_fields {
+						let column_name = field.db_column_name().to_string();
+						if logical_fields.contains_key(&field.name) {
+							logical_fields.remove(&column_name);
+						} else if let Some(value) = logical_fields.remove(&column_name) {
+							logical_fields.insert(field.name, value);
+						}
+					}
+					return deserialize_model_value(
+						serde_json::Value::Object(logical_fields),
+						&json_null_fields,
+					)
+					.map_err(|error| FieldCodecError::Serialization(error.to_string()))
+					.or(Err(FieldCodecError::Serialization(
+						aliased_error.to_string(),
+					)));
+				}
+			}
+		}
+	}
+
 	deserialize_model_value(serde_json::Value::Object(fields), &json_null_fields)
 		.map_err(|error| FieldCodecError::Serialization(error.to_string()))
 }

@@ -188,11 +188,12 @@ where
 				})?;
 
 			let model_pk = <U as Model>::PrimaryKey::from(pk);
+			let mut db = (*db).clone();
 
 			// Query user from database
 			let user = U::objects()
 				.get(model_pk)
-				.first_with_db(&db)
+				.first_with_db(&mut db)
 				.await
 				.map_err(|e| {
 					::tracing::warn!(error = ?e, "AdminUserLoader: Database query failed");
@@ -283,6 +284,8 @@ where
 
 	let authenticator: AdminLoginAuthenticatorFn = Arc::new(move |username, password, db| {
 		Box::pin(async move {
+			let mut db = (*db).clone();
+
 			// Query user by username
 			let user: Option<U> = U::objects()
 				.filter(Filter::new(
@@ -290,7 +293,7 @@ where
 					FilterOperator::Eq,
 					FilterValue::String(username.clone()),
 				))
-				.first_with_db(&db)
+				.first_with_db(&mut db)
 				.await
 				.map_err(|e| {
 					::tracing::warn!(error = ?e, "AdminLoginAuthenticator: Database query failed");

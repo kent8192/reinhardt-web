@@ -6,8 +6,9 @@
 
 use crate::backends::types::QueryValue;
 use crate::orm::Model;
+use crate::orm::connection::{DatabaseBackend, OrmExecutor, QueryRow};
 use reinhardt_query::prelude::{
-	Alias, ColumnRef, Expr, ExprTrait, Func, Query, QueryStatementBuilder, SelectStatement,
+	Alias, ColumnRef, Expr, ExprTrait, Func, Query, QueryBuilder, SelectStatement,
 };
 use reinhardt_query::value::Value as SV;
 use rust_decimal::prelude::ToPrimitive;
@@ -48,6 +49,10 @@ pub enum ExecutionError {
 	#[error("Failed to deserialize result: {0}")]
 	Deserialization(#[from] serde_json::Error),
 
+	/// Typed field codec error
+	#[error("Field codec error: {0}")]
+	FieldCodec(#[from] crate::orm::FieldCodecError),
+
 	/// Query building error
 	#[error("Query building error: {0}")]
 	QueryBuild(String),
@@ -55,6 +60,8 @@ pub enum ExecutionError {
 
 /// Convert reinhardt_query Value to QueryValue for parameter binding
 fn convert_value_to_query_value(value: reinhardt_query::value::Value) -> QueryValue {
+	use reinhardt_query::value::Value as SV;
+
 	match value {
 		// Null values
 		SV::Bool(None)
@@ -219,6 +226,19 @@ fn query_value_to_json(value: &SV) -> serde_json::Value {
 	}
 }
 
+fn build_select_for_backend(
+	stmt: &SelectStatement,
+	backend: DatabaseBackend,
+) -> (String, reinhardt_query::prelude::Values) {
+	match backend {
+		DatabaseBackend::Postgres => {
+			reinhardt_query::prelude::PostgresQueryBuilder.build_select(stmt)
+		}
+		DatabaseBackend::MySql => reinhardt_query::prelude::MySqlQueryBuilder.build_select(stmt),
+		DatabaseBackend::Sqlite => reinhardt_query::prelude::SqliteQueryBuilder.build_select(stmt),
+	}
+}
+
 /// Query execution methods with both sync builders and async execution
 #[async_trait::async_trait]
 pub trait QueryExecution<T: Model>
@@ -228,13 +248,10 @@ where
 {
 	/// Get a single result by primary key (async execution)
 	/// Corresponds to SQLAlchemy's .get()
-	async fn get_async(
-		&self,
-		db: &super::connection::DatabaseConnection,
-		pk: &T::PrimaryKey,
-	) -> Result<T, ExecutionError>
+	async fn get_async<E>(&self, db: &mut E, pk: &T::PrimaryKey) -> Result<T, ExecutionError>
 	where
-		T: for<'de> serde::Deserialize<'de>;
+		T: for<'de> serde::Deserialize<'de>,
+		E: OrmExecutor;
 
 	/// Get a single result by primary key (statement builder)
 	/// Returns a SelectStatement for manual execution
@@ -242,12 +259,10 @@ where
 
 	/// Get all results (async execution)
 	/// Corresponds to SQLAlchemy's .all()
-	async fn all_async(
-		&self,
-		db: &super::connection::DatabaseConnection,
-	) -> Result<Vec<T>, ExecutionError>
+	async fn all_async<E>(&self, db: &mut E) -> Result<Vec<T>, ExecutionError>
 	where
-		T: for<'de> serde::Deserialize<'de>;
+		T: for<'de> serde::Deserialize<'de>,
+		E: OrmExecutor;
 
 	/// Get all results (statement builder)
 	/// Returns a SelectStatement for manual execution
@@ -255,12 +270,10 @@ where
 
 	/// Get first result or None (async execution)
 	/// Corresponds to SQLAlchemy's .first()
-	async fn first_async(
-		&self,
-		db: &super::connection::DatabaseConnection,
-	) -> Result<Option<T>, ExecutionError>
+	async fn first_async<E>(&self, db: &mut E) -> Result<Option<T>, ExecutionError>
 	where
-		T: for<'de> serde::Deserialize<'de>;
+		T: for<'de> serde::Deserialize<'de>,
+		E: OrmExecutor;
 
 	/// Get first result or None (statement builder)
 	/// Returns a SelectStatement for manual execution
@@ -268,12 +281,10 @@ where
 
 	/// Get exactly one result, raise if 0 or >1 (async execution)
 	/// Corresponds to SQLAlchemy's .one()
-	async fn one_async(
-		&self,
-		db: &super::connection::DatabaseConnection,
-	) -> Result<T, ExecutionError>
+	async fn one_async<E>(&self, db: &mut E) -> Result<T, ExecutionError>
 	where
-		T: for<'de> serde::Deserialize<'de>;
+		T: for<'de> serde::Deserialize<'de>,
+		E: OrmExecutor;
 
 	/// Get exactly one result (statement builder)
 	/// Returns a SelectStatement for manual execution
@@ -281,12 +292,10 @@ where
 
 	/// Get one result or None, raise if >1 (async execution)
 	/// Corresponds to SQLAlchemy's .one_or_none()
-	async fn one_or_none_async(
-		&self,
-		db: &super::connection::DatabaseConnection,
-	) -> Result<Option<T>, ExecutionError>
+	async fn one_or_none_async<E>(&self, db: &mut E) -> Result<Option<T>, ExecutionError>
 	where
-		T: for<'de> serde::Deserialize<'de>;
+		T: for<'de> serde::Deserialize<'de>,
+		E: OrmExecutor;
 
 	/// Get one result or None (statement builder)
 	/// Returns a SelectStatement for manual execution
@@ -294,12 +303,10 @@ where
 
 	/// Get scalar value (first column of first row) (async execution)
 	/// Corresponds to SQLAlchemy's .scalar()
-	async fn scalar_async<S>(
-		&self,
-		db: &super::connection::DatabaseConnection,
-	) -> Result<Option<S>, ExecutionError>
+	async fn scalar_async<S, E>(&self, db: &mut E) -> Result<Option<S>, ExecutionError>
 	where
-		S: for<'de> serde::Deserialize<'de>;
+		S: for<'de> serde::Deserialize<'de>,
+		E: OrmExecutor;
 
 	/// Get scalar value (statement builder)
 	/// Returns a SelectStatement for manual execution
@@ -307,10 +314,9 @@ where
 
 	/// Count results (async execution)
 	/// Corresponds to SQLAlchemy's .count()
-	async fn count_async(
-		&self,
-		db: &super::connection::DatabaseConnection,
-	) -> Result<i64, ExecutionError>;
+	async fn count_async<E>(&self, db: &mut E) -> Result<i64, ExecutionError>
+	where
+		E: OrmExecutor;
 
 	/// Count results (statement builder)
 	/// Returns a SelectStatement for manual execution
@@ -318,10 +324,9 @@ where
 
 	/// Check if any results exist (async execution)
 	/// Corresponds to SQLAlchemy's .exists()
-	async fn exists_async(
-		&self,
-		db: &super::connection::DatabaseConnection,
-	) -> Result<bool, ExecutionError>;
+	async fn exists_async<E>(&self, db: &mut E) -> Result<bool, ExecutionError>
+	where
+		E: OrmExecutor;
 
 	/// Check if any results exist (statement builder)
 	/// Returns a SelectStatement for manual execution
@@ -434,7 +439,7 @@ where
 			.from(Alias::new(T::table_name()))
 			.column(ColumnRef::Asterisk)
 			.and_where(
-				Expr::col(Alias::new(T::primary_key_field())).eq(Expr::val(pk.clone().into())),
+				Expr::col(Alias::new(T::primary_key_column())).eq(Expr::val(pk.clone().into())),
 			)
 			.limit(1)
 			.to_owned()
@@ -493,130 +498,109 @@ where
 			.to_owned()
 	}
 
-	async fn get_async(
-		&self,
-		db: &super::connection::DatabaseConnection,
-		pk: &T::PrimaryKey,
-	) -> Result<T, ExecutionError>
+	async fn get_async<E>(&self, db: &mut E, pk: &T::PrimaryKey) -> Result<T, ExecutionError>
 	where
 		T: for<'de> serde::Deserialize<'de>,
+		E: OrmExecutor,
 	{
 		let stmt = self.get(pk);
-		let (sql, values) = stmt.build_any(&reinhardt_query::prelude::PostgresQueryBuilder);
+		let (sql, values) = build_select_for_backend(&stmt, db.backend());
 
 		let query_values = convert_values(values);
-		let row = db.query_one(&sql, query_values).await?;
-		let json = serde_json::to_value(&row)?;
-		let result = serde_json::from_value(json)?;
-		Ok(result)
+		let row = db.fetch_one(&sql, query_values).await?;
+		Ok(QueryRow::from_backend_row(row).deserialize_model::<T>()?)
 	}
 
-	async fn all_async(
-		&self,
-		db: &super::connection::DatabaseConnection,
-	) -> Result<Vec<T>, ExecutionError>
+	async fn all_async<E>(&self, db: &mut E) -> Result<Vec<T>, ExecutionError>
 	where
 		T: for<'de> serde::Deserialize<'de>,
+		E: OrmExecutor,
 	{
 		let stmt = self.all();
-		let (sql, values) = stmt.build_any(&reinhardt_query::prelude::PostgresQueryBuilder);
+		let (sql, values) = build_select_for_backend(&stmt, db.backend());
 
 		let query_values = convert_values(values);
-		let rows = db.query(&sql, query_values).await?;
+		let rows = db.fetch_all(&sql, query_values).await?;
 		let mut results = Vec::with_capacity(rows.len());
 		for row in rows {
-			let json = serde_json::to_value(&row)?;
-			let result = serde_json::from_value(json)?;
-			results.push(result);
+			results.push(QueryRow::from_backend_row(row).deserialize_model::<T>()?);
 		}
 		Ok(results)
 	}
 
-	async fn first_async(
-		&self,
-		db: &super::connection::DatabaseConnection,
-	) -> Result<Option<T>, ExecutionError>
+	async fn first_async<E>(&self, db: &mut E) -> Result<Option<T>, ExecutionError>
 	where
 		T: for<'de> serde::Deserialize<'de>,
+		E: OrmExecutor,
 	{
 		let stmt = self.first();
-		let (sql, values) = stmt.build_any(&reinhardt_query::prelude::PostgresQueryBuilder);
+		let (sql, values) = build_select_for_backend(&stmt, db.backend());
 
 		let query_values = convert_values(values);
-		let rows = db.query(&sql, query_values).await?;
-		match rows.first() {
-			Some(row) => {
-				let json = serde_json::to_value(row)?;
-				let result = serde_json::from_value(json)?;
-				Ok(Some(result))
-			}
+		let rows = db.fetch_all(&sql, query_values).await?;
+		match rows.into_iter().next() {
+			Some(row) => Ok(Some(
+				QueryRow::from_backend_row(row).deserialize_model::<T>()?,
+			)),
 			None => Ok(None),
 		}
 	}
 
-	async fn one_async(
-		&self,
-		db: &super::connection::DatabaseConnection,
-	) -> Result<T, ExecutionError>
+	async fn one_async<E>(&self, db: &mut E) -> Result<T, ExecutionError>
 	where
 		T: for<'de> serde::Deserialize<'de>,
+		E: OrmExecutor,
 	{
 		let stmt = self.one();
-		let (sql, values) = stmt.build_any(&reinhardt_query::prelude::PostgresQueryBuilder);
+		let (sql, values) = build_select_for_backend(&stmt, db.backend());
 
 		let query_values = convert_values(values);
-		let rows = db.query(&sql, query_values).await?;
+		let rows = db.fetch_all(&sql, query_values).await?;
 		match rows.len() {
 			0 => Err(ExecutionError::NoResultFound),
-			1 => {
-				let json = serde_json::to_value(&rows[0])?;
-				let result = serde_json::from_value(json)?;
-				Ok(result)
-			}
+			1 => Ok(QueryRow::from_backend_row(
+				rows.into_iter().next().expect("row count was checked"),
+			)
+			.deserialize_model::<T>()?),
 			n => Err(ExecutionError::MultipleResultsFound(n)),
 		}
 	}
 
-	async fn one_or_none_async(
-		&self,
-		db: &super::connection::DatabaseConnection,
-	) -> Result<Option<T>, ExecutionError>
+	async fn one_or_none_async<E>(&self, db: &mut E) -> Result<Option<T>, ExecutionError>
 	where
 		T: for<'de> serde::Deserialize<'de>,
+		E: OrmExecutor,
 	{
 		let stmt = self.one_or_none();
-		let (sql, values) = stmt.build_any(&reinhardt_query::prelude::PostgresQueryBuilder);
+		let (sql, values) = build_select_for_backend(&stmt, db.backend());
 
 		let query_values = convert_values(values);
-		let rows = db.query(&sql, query_values).await?;
+		let rows = db.fetch_all(&sql, query_values).await?;
 		match rows.len() {
 			0 => Ok(None),
-			1 => {
-				let json = serde_json::to_value(&rows[0])?;
-				let result = serde_json::from_value(json)?;
-				Ok(Some(result))
-			}
+			1 => Ok(Some(
+				QueryRow::from_backend_row(rows.into_iter().next().expect("row count was checked"))
+					.deserialize_model::<T>()?,
+			)),
 			n => Err(ExecutionError::MultipleResultsFound(n)),
 		}
 	}
 
-	async fn scalar_async<S>(
-		&self,
-		db: &super::connection::DatabaseConnection,
-	) -> Result<Option<S>, ExecutionError>
+	async fn scalar_async<S, E>(&self, db: &mut E) -> Result<Option<S>, ExecutionError>
 	where
 		S: for<'de> serde::Deserialize<'de>,
+		E: OrmExecutor,
 	{
 		let stmt = self.scalar();
-		let (sql, values) = stmt.build_any(&reinhardt_query::prelude::PostgresQueryBuilder);
+		let (sql, values) = build_select_for_backend(&stmt, db.backend());
 
 		let query_values = convert_values(values);
-		let rows = db.query(&sql, query_values).await?;
-		match rows.first() {
+		let rows = db.fetch_all(&sql, query_values).await?;
+		match rows.into_iter().next() {
 			Some(row) => {
 				// Get the first column value
-				let json = serde_json::to_value(row)?;
-				if let Some(obj) = json.as_object()
+				let query_row = QueryRow::from_backend_row(row);
+				if let Some(obj) = query_row.data.as_object()
 					&& let Some((_, value)) = obj.iter().next()
 				{
 					let result = serde_json::from_value(value.clone())?;
@@ -628,19 +612,18 @@ where
 		}
 	}
 
-	async fn count_async(
-		&self,
-		db: &super::connection::DatabaseConnection,
-	) -> Result<i64, ExecutionError> {
+	async fn count_async<E>(&self, db: &mut E) -> Result<i64, ExecutionError>
+	where
+		E: OrmExecutor,
+	{
 		let stmt = self.count();
-		let (sql, values) = stmt.build_any(&reinhardt_query::prelude::PostgresQueryBuilder);
+		let (sql, values) = build_select_for_backend(&stmt, db.backend());
 
 		let query_values = convert_values(values);
-		let row = db.query_one(&sql, query_values).await?;
-		let json = serde_json::to_value(&row)?;
+		let query_row = QueryRow::from_backend_row(db.fetch_one(&sql, query_values).await?);
 
 		// Extract count from the result (usually the first column)
-		if let Some(obj) = json.as_object()
+		if let Some(obj) = query_row.data.as_object()
 			&& let Some((_, value)) = obj.iter().next()
 		{
 			let count: i64 = serde_json::from_value(value.clone())?;
@@ -652,19 +635,18 @@ where
 		))
 	}
 
-	async fn exists_async(
-		&self,
-		db: &super::connection::DatabaseConnection,
-	) -> Result<bool, ExecutionError> {
+	async fn exists_async<E>(&self, db: &mut E) -> Result<bool, ExecutionError>
+	where
+		E: OrmExecutor,
+	{
 		let stmt = self.exists();
-		let (sql, values) = stmt.build_any(&reinhardt_query::prelude::PostgresQueryBuilder);
+		let (sql, values) = build_select_for_backend(&stmt, db.backend());
 
 		let query_values = convert_values(values);
-		let row = db.query_one(&sql, query_values).await?;
-		let json = serde_json::to_value(&row)?;
+		let query_row = QueryRow::from_backend_row(db.fetch_one(&sql, query_values).await?);
 
 		// Extract exists from the result (usually the first column)
-		if let Some(obj) = json.as_object()
+		if let Some(obj) = query_row.data.as_object()
 			&& let Some((_, value)) = obj.iter().next()
 		{
 			let exists: bool = serde_json::from_value(value.clone())?;

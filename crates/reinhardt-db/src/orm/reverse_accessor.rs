@@ -2,8 +2,8 @@
 //!
 //! This module provides the ReverseAccessor type, which implements
 //! Django-style API for accessing reverse ForeignKey relationships:
-//! - `all()` - Get all related records
-//! - `count()` - Count related records
+//! - `all_with_conn()` - Get all related records through a supplied executor
+//! - `count_with_conn()` - Count related records through a supplied executor
 //! - `limit()` / `offset()` / `paginate()` - Query modifiers
 //!
 //! ## Usage
@@ -14,23 +14,23 @@
 //!
 //! ```rust,ignore
 //! // Tweet has: #[rel(foreign_key)] user: ForeignKeyField<User>
-//! let user = User::objects().filter(...).first_with_db(&db).await?;
+//! let user = User::objects().filter(...).first_with_db(&mut db).await?;
 //!
 //! // Get reverse accessor through ForeignKeyAccessor
-//! let tweets_accessor = Tweet::user_accessor().reverse(&user, db.clone());
-//! let tweets = tweets_accessor.all().await?;
-//! let tweet_count = tweets_accessor.count().await?;
+//! let tweets_accessor = Tweet::user_accessor().reverse(&user);
+//! let tweets = tweets_accessor.all_with_conn(&mut db).await?;
+//! let tweet_count = tweets_accessor.count_with_conn(&mut db).await?;
 //!
 //! // Paginate results
-//! let page1 = tweets_accessor.paginate(1, 10).all().await?;
+//! let page1 = tweets_accessor.paginate(1, 10).all_with_conn(&mut db).await?;
 //! ```
 //!
 //! For advanced use cases, you can also create a ReverseAccessor manually:
 //!
 //! ```rust,ignore
-//! let user = User::objects().filter(...).first_with_db(&db).await?;
-//! let accessor = ReverseAccessor::<User, Tweet>::new(&user, "user_id", db.clone());
-//! let tweets = accessor.all().await?;
+//! let user = User::objects().filter(...).first_with_db(&mut db).await?;
+//! let accessor = ReverseAccessor::<User, Tweet>::new(&user, "user_id");
+//! let tweets = accessor.all_with_conn(&mut db).await?;
 //! ```
 //!
 //! ## Type Safety
@@ -39,7 +39,7 @@
 //! auto-completion support, as all relationship information is determined
 //! at compile time. No string literals are required.
 
-use super::connection::{DatabaseBackend, DatabaseConnection};
+use super::connection::{DatabaseBackend, OrmExecutor, QueryRow};
 use crate::orm::Model;
 use reinhardt_query::prelude::{
 	Alias, BinOper, ColumnRef, Expr, Func, MySqlQueryBuilder, PostgresQueryBuilder, Query,
@@ -78,8 +78,8 @@ fn value_samples(values: &Values) -> Vec<String> {
 ///
 /// ```rust,ignore
 /// // Tweet has: #[rel(foreign_key)] user: ForeignKeyField<User>
-/// let tweets_accessor = Tweet::user_accessor().reverse(&user, db.clone());
-/// let tweets = tweets_accessor.all().await?;
+/// let tweets_accessor = Tweet::user_accessor().reverse(&user);
+/// let tweets = tweets_accessor.all_with_conn(&mut db).await?;
 /// ```
 ///
 /// # Manual Creation
@@ -91,17 +91,17 @@ fn value_samples(values: &Values) -> Vec<String> {
 /// # async fn main() {
 /// use reinhardt_db::orm::{Model, ReverseAccessor};
 ///
-/// let user = User::objects().filter(...).first_with_db(&db).await?;
-/// let accessor = ReverseAccessor::<User, Tweet>::new(&user, "user_id", db.clone());
+/// let user = User::objects().filter(...).first_with_db(&mut db).await?;
+/// let accessor = ReverseAccessor::<User, Tweet>::new(&user, "user_id");
 ///
 /// // Get all related records
-/// let tweets = accessor.all().await?;
+/// let tweets = accessor.all_with_conn(&mut db).await?;
 ///
 /// // Count related records
-/// let count = accessor.count().await?;
+/// let count = accessor.count_with_conn(&mut db).await?;
 ///
 /// // Paginate results
-/// let page1 = accessor.paginate(1, 10).all().await?;
+/// let page1 = accessor.paginate(1, 10).all_with_conn(&mut db).await?;
 ///
 /// # }
 /// ```
@@ -112,7 +112,6 @@ where
 {
 	source_id: S::PrimaryKey,
 	foreign_key_field: String,
-	db: DatabaseConnection,
 	limit: Option<usize>,
 	offset: Option<usize>,
 	_phantom_source: PhantomData<S>,
@@ -131,12 +130,11 @@ where
 	///
 	/// - `source`: The source model instance (e.g., User)
 	/// - `foreign_key_field`: The name of the ForeignKey field in the target model (e.g., "user_id")
-	/// - `db`: Database connection
 	///
 	/// # Panics
 	///
 	/// Panics if the source model has no primary key.
-	pub fn new(source: &S, foreign_key_field: &str, db: DatabaseConnection) -> Self {
+	pub fn new(source: &S, foreign_key_field: &str) -> Self {
 		let source_id = source
 			.primary_key()
 			.expect("Source model must have primary key")
@@ -145,7 +143,6 @@ where
 		Self {
 			source_id,
 			foreign_key_field: foreign_key_field.to_string(),
-			db,
 			limit: None,
 			offset: None,
 			_phantom_source: PhantomData,
@@ -165,9 +162,12 @@ where
 	/// # Examples
 	///
 	/// ```ignore
-	/// let tweets = accessor.all().await?;
+	/// let tweets = accessor.all_with_conn(&mut db).await?;
 	/// ```
-	pub async fn all(&self) -> Result<Vec<T>, String> {
+	pub async fn all_with_conn<E>(&self, conn: &mut E) -> reinhardt_core::exception::Result<Vec<T>>
+	where
+		E: OrmExecutor,
+	{
 		let mut query = Query::select();
 		query
 			.from(Alias::new(T::table_name()))
@@ -186,11 +186,11 @@ where
 		}
 
 		let query = query.to_owned();
-		let (sql, values) = build_select_sql(&query, self.db.backend());
+		let (sql, values) = build_select_sql(&query, conn.backend());
 		let params = value_samples(&values);
 		let query_values = super::execution::convert_values(values);
 		let started_at = Instant::now();
-		let query_result = self.db.query(&sql, query_values).await;
+		let query_result = conn.fetch_all(&sql, query_values).await;
 		let duration = started_at.elapsed();
 		let rows = match query_result {
 			Ok(rows) => {
@@ -203,12 +203,22 @@ where
 				super::instrumentation::instrumentation()
 					.orm_query_error(&sql, &error.to_string())
 					.await;
-				return Err(error.to_string());
+				return Err(error);
 			}
 		};
 
 		rows.into_iter()
-			.map(|row| row.deserialize_model::<T>().map_err(|e| e.to_string()))
+			.map(QueryRow::from_backend_row)
+			.map(|row| {
+				row.deserialize_model::<T>().map_err(|error| {
+					reinhardt_core::exception::Error::from(
+						reinhardt_core::exception::DatabaseError::new(
+							reinhardt_core::exception::DatabaseErrorKind::Serialization,
+							error.to_string(),
+						),
+					)
+				})
+			})
 			.collect()
 	}
 
@@ -224,23 +234,29 @@ where
 	/// # Examples
 	///
 	/// ```ignore
-	/// let total_tweets = accessor.count().await?;
+	/// let total_tweets = accessor.count_with_conn(&mut db).await?;
 	/// ```
-	pub async fn count(&self) -> Result<usize, String> {
+	pub async fn count_with_conn<E>(&self, conn: &mut E) -> reinhardt_core::exception::Result<usize>
+	where
+		E: OrmExecutor,
+	{
 		let query = Query::select()
 			.from(Alias::new(T::table_name()))
-			.expr(Func::count(Expr::asterisk().into_simple_expr()))
+			.expr_as(
+				Func::count(Expr::asterisk().into_simple_expr()),
+				Alias::new("count"),
+			)
 			.and_where(
 				Expr::col(Alias::new(&self.foreign_key_field))
 					.binary(BinOper::Equal, Expr::val(self.source_id.clone())),
 			)
 			.to_owned();
 
-		let (sql, values) = build_select_sql(&query, self.db.backend());
+		let (sql, values) = build_select_sql(&query, conn.backend());
 		let params = value_samples(&values);
 		let query_values = super::execution::convert_values(values);
 		let started_at = Instant::now();
-		let query_result = self.db.query(&sql, query_values).await;
+		let query_result = conn.fetch_all(&sql, query_values).await;
 		let duration = started_at.elapsed();
 		let rows = match query_result {
 			Ok(rows) => {
@@ -253,13 +269,12 @@ where
 				super::instrumentation::instrumentation()
 					.orm_query_error(&sql, &error.to_string())
 					.await;
-				return Err(error.to_string());
+				return Err(error);
 			}
 		};
 
-		if let Some(row) = rows.first()
-			&& let Some(count_value) = row.data.get("count")
-			&& let Some(count) = count_value.as_i64()
+		if let Some(row) = rows.into_iter().next().map(QueryRow::from_backend_row)
+			&& let Some(count) = row.get::<i64>("count")
 		{
 			return Ok(count as usize);
 		}
@@ -274,7 +289,7 @@ where
 	/// # Examples
 	///
 	/// ```ignore
-	/// let tweets = accessor.limit(10).all().await?;
+	/// let tweets = accessor.limit(10).all_with_conn(&mut db).await?;
 	/// ```
 	pub fn limit(mut self, limit: usize) -> Self {
 		self.limit = Some(limit);
@@ -288,7 +303,7 @@ where
 	/// # Examples
 	///
 	/// ```ignore
-	/// let tweets = accessor.offset(20).limit(10).all().await?;
+	/// let tweets = accessor.offset(20).limit(10).all_with_conn(&mut db).await?;
 	/// ```
 	pub fn offset(mut self, offset: usize) -> Self {
 		self.offset = Some(offset);
@@ -303,7 +318,7 @@ where
 	///
 	/// ```ignore
 	/// // Page 3, 10 items per page (offset=20, limit=10)
-	/// let tweets = accessor.paginate(3, 10).all().await?;
+	/// let tweets = accessor.paginate(3, 10).all_with_conn(&mut db).await?;
 	/// ```
 	pub fn paginate(self, page: usize, page_size: usize) -> Self {
 		let offset = page.saturating_sub(1) * page_size;
