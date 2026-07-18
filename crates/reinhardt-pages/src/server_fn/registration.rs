@@ -17,9 +17,9 @@
 //!     .server_fn(logout);
 //! ```
 
+use super::ServerFnError;
 use super::metadata::ServerFnMetadata;
 use super::registry::ServerFnHandler;
-use super::{ServerFnError, ServerFnErrorKind};
 use bytes::Bytes;
 use hyper::StatusCode;
 use reinhardt_http::Request;
@@ -72,18 +72,15 @@ use reinhardt_http::Request;
 pub trait ServerFnRegistration: ServerFnMetadata + Send + Sync {
 	/// Select the HTTP status for a serialized error response.
 	///
-	/// The default extracts the status from a version 1 wire envelope when its
-	/// kind is `server` and the status is in the valid HTTP range. Malformed
-	/// envelopes and non-server kinds are deliberately collapsed to 500.
+	/// The default extracts a valid HTTP status from a version 1 wire envelope.
+	/// Malformed envelopes and invalid statuses are deliberately collapsed to
+	/// 500.
 	fn error_status(error_body: &[u8]) -> u16 {
 		serde_json::from_slice::<ServerFnError>(error_body)
 			.ok()
-			.and_then(|error| match (error.kind(), error.status()) {
-				(ServerFnErrorKind::Server, Some(status)) if (100..=599).contains(&status) => {
-					StatusCode::from_u16(status).ok()
-				}
-				_ => None,
-			})
+			.and_then(|error| error.status())
+			.filter(|status| (100..=599).contains(status))
+			.and_then(|status| StatusCode::from_u16(status).ok())
 			.unwrap_or(StatusCode::INTERNAL_SERVER_ERROR)
 			.as_u16()
 	}

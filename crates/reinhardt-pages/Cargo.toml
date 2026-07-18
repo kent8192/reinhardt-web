@@ -308,6 +308,7 @@ tempfile = { workspace = true }
 # `chrono::Naive*` paths, so trybuild fixtures exercising those fields need
 # `chrono` resolvable in the generated fixture binary.
 chrono = { workspace = true }
+base64 = { workspace = true }
 
 [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dev-dependencies]
 # Used by tests/wasm/client_launcher_navigation_test.rs (Refs #4075) to

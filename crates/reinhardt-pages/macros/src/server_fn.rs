@@ -938,7 +938,10 @@ fn generate_client_stub(
 		}
 	} else {
 		quote! {
-			return Err(#pages_crate::server_fn::ServerFnError::server(__status, __message).into());
+			return Err(#pages_crate::server_fn::ServerFnError::from_http_response(
+				__status,
+				&__message,
+			).into());
 		}
 	};
 
@@ -1247,11 +1250,11 @@ fn generate_server_handler(
 			}
 		} else {
 			quote! {
-				match e {
-					#di_crate::params::ParamError::Authentication(_) => {
-						let server_err = #pages_crate_for_ext::server_fn::ServerFnError::server(
-							401u16,
-							"Authentication required",
+					match e {
+						#di_crate::params::ParamError::Authentication(_) => {
+							let server_err = #pages_crate_for_ext::server_fn::ServerFnError::auth(
+								401u16,
+								"Authentication required",
 						);
 						::serde_json::to_string(&server_err)
 							.unwrap_or_else(|_| "Authentication required".to_string())
@@ -2304,6 +2307,34 @@ mod tests {
 		assert!(
 			!generated.contains("error = ? e"),
 			"extractor errors must not be logged with Debug formatting: {generated}"
+		);
+	}
+
+	#[test]
+	fn generated_client_stub_decodes_generic_error_envelopes() {
+		use syn::parse_quote;
+
+		let func: syn::ItemFn = parse_quote! {
+			pub async fn select_choice(choice_id: String) -> Result<(), ServerFnError> {
+				Ok(())
+			}
+		};
+		let info = ServerFnInfo {
+			func,
+			options: ServerFnOptions::default(),
+			metadata_name: None,
+			endpoint_tokens: None,
+			metadata_name_tokens: None,
+			detail: false,
+			transactional: false,
+			structured_error: false,
+		};
+
+		let generated = generate_server_fn(&info).to_string();
+
+		assert!(
+			generated.contains("from_http_response"),
+			"generic client stubs must decode structured error envelopes: {generated}"
 		);
 	}
 

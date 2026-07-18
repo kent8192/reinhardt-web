@@ -5,7 +5,9 @@ use bytes::Bytes;
 use hyper::{Method, header};
 use reinhardt_di::params::{FromRequest, ParamContext, ParamError, ParamResult};
 use reinhardt_http::Request;
-use reinhardt_pages::server_fn::{ServerFnError, ServerFnRegistration, server_fn};
+use reinhardt_pages::server_fn::{
+	ServerFnError, ServerFnErrorKind, ServerFnRegistration, server_fn,
+};
 use rstest::rstest;
 
 #[server_fn]
@@ -16,6 +18,18 @@ async fn echo_name(name: String) -> Result<String, ServerFnError> {
 #[server_fn]
 async fn echo_alias(name: String) -> Result<String, ServerFnError> {
 	Ok(name)
+}
+
+#[server_fn]
+async fn invalid_choice(choice_id: String) -> Result<(), ServerFnError> {
+	if choice_id.is_empty() {
+		return Err(ServerFnError::validation_with_message(
+			"Validation failed",
+			[("choice_id", "Select a choice")],
+		));
+	}
+
+	Ok(())
 }
 
 struct Authorization;
@@ -50,21 +64,25 @@ async fn internal_extractor(_session_id: SessionId) -> Result<(), ServerFnError>
 
 #[tokio::test]
 async fn authentication_extractor_returns_sanitized_unauthorized_error() {
+	// Arrange
 	let request = Request::builder()
 		.method(Method::POST)
 		.uri("/api/server_fn/authentication_extractor")
 		.build()
 		.expect("request should build");
 
+	// Act
 	let body = authentication_extractor::marker::handle(request)
 		.await
 		.expect_err("authentication extractor should reject the request");
 
+	let error = serde_json::from_slice::<ServerFnError>(&body).expect("error should be valid JSON");
+
+	// Assert
 	assert_eq!(authentication_extractor::marker::error_status(&body), 401);
-	assert_eq!(
-		serde_json::from_slice::<ServerFnError>(&body).expect("error should be valid JSON"),
-		ServerFnError::server(401, "Authentication required")
-	);
+	assert_eq!(error.kind(), ServerFnErrorKind::Auth);
+	assert_eq!(error.status(), Some(401));
+	assert_eq!(error.message(), "Authentication required");
 	assert!(
 		!String::from_utf8(body.to_vec())
 			.unwrap()
@@ -74,26 +92,82 @@ async fn authentication_extractor_returns_sanitized_unauthorized_error() {
 
 #[tokio::test]
 async fn internal_extractor_returns_sanitized_internal_error() {
+	// Arrange
 	let request = Request::builder()
 		.method(Method::POST)
 		.uri("/api/server_fn/internal_extractor")
 		.build()
 		.expect("request should build");
 
+	// Act
 	let body = internal_extractor::marker::handle(request)
 		.await
 		.expect_err("internal extractor should reject the request");
 
+	let error = serde_json::from_slice::<ServerFnError>(&body).expect("error should be valid JSON");
+
+	// Assert
 	assert_eq!(internal_extractor::marker::error_status(&body), 500);
-	assert_eq!(
-		serde_json::from_slice::<ServerFnError>(&body).expect("error should be valid JSON"),
-		ServerFnError::server(500, "Internal server error")
-	);
+	assert_eq!(error.kind(), ServerFnErrorKind::Server);
+	assert_eq!(error.status(), Some(500));
+	assert_eq!(error.message(), "Internal server error");
 	assert!(
 		!String::from_utf8(body.to_vec())
 			.unwrap()
 			.contains("top-secret")
 	);
+}
+
+#[tokio::test]
+async fn validation_handler_returns_versioned_error_envelope() {
+	// Arrange
+	let request = Request::builder()
+		.method(Method::POST)
+		.uri("/api/server_fn/invalid_choice")
+		.body(Bytes::from_static(br#"{"choice_id":""}"#))
+		.build()
+		.expect("request should build");
+
+	// Act
+	let body = invalid_choice::marker::handle(request)
+		.await
+		.expect_err("validation error should reject the request");
+	let error: ServerFnError = serde_json::from_slice(&body).expect("error should be valid JSON");
+	let value: serde_json::Value = serde_json::from_slice(&body).expect("error should be JSON");
+
+	// Assert
+	assert_eq!(invalid_choice::marker::error_status(&body), 422);
+	assert_eq!(error.kind(), ServerFnErrorKind::Validation);
+	assert_eq!(error.status(), Some(422));
+	assert_eq!(value["version"], 1);
+	assert_eq!(error.field_errors()[0].field(), "choice_id");
+	assert_eq!(error.field_errors()[0].message(), "Select a choice");
+}
+
+#[test]
+fn http_response_error_decoding_preserves_envelopes_and_sanitizes_raw_bodies() {
+	// Arrange
+	let envelope = serde_json::json!({
+		"version": 1,
+		"kind": "validation",
+		"status": null,
+		"message": "Choose a value",
+		"field_errors": [{ "field": "choice_id", "message": "Select a choice" }],
+	})
+	.to_string();
+
+	// Act
+	let structured = ServerFnError::from_http_response(422, &envelope);
+	let fallback = ServerFnError::from_http_response(502, "database password=top-secret");
+
+	// Assert
+	assert_eq!(structured.kind(), ServerFnErrorKind::Validation);
+	assert_eq!(structured.status(), Some(422));
+	assert_eq!(structured.field_errors()[0].field(), "choice_id");
+	assert_eq!(fallback.kind(), ServerFnErrorKind::Deserialization);
+	assert_eq!(fallback.status(), Some(502));
+	assert_eq!(fallback.message(), "Invalid server function error response");
+	assert!(!fallback.message().contains("top-secret"));
 }
 
 #[tokio::test]

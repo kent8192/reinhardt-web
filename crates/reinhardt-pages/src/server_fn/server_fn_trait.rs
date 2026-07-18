@@ -147,6 +147,29 @@ impl ServerFnError {
 		Self::new(ServerFnErrorKind::Deserialization, None, msg)
 	}
 
+	fn deserialization_with_status(status: u16, message: impl Into<String>) -> Self {
+		Self::new(ServerFnErrorKind::Deserialization, Some(status), message)
+	}
+
+	/// Decode a server function error response without exposing raw response bodies.
+	pub fn from_http_response(status: u16, body: &str) -> Self {
+		match serde_json::from_str::<Self>(body) {
+			Ok(mut error) => {
+				error.payload.status = error
+					.payload
+					.status
+					.filter(|value| (100..=599).contains(value));
+				if error.payload.status.is_none() {
+					error.payload.status = Some(status);
+				}
+				error
+			}
+			Err(_) => {
+				Self::deserialization_with_status(status, "Invalid server function error response")
+			}
+		}
+	}
+
 	/// Returns the error category.
 	pub fn kind(&self) -> ServerFnErrorKind {
 		self.payload.kind
