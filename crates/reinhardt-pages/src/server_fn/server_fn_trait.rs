@@ -548,6 +548,7 @@ mod tests {
 
 	#[test]
 	fn validation_errors_convert_to_server_fn_field_errors() {
+		// Arrange
 		let mut validation = ValidationErrors::new();
 		validation.add("name", ValidationError::TooShort { length: 0, min: 1 });
 		validation.add(
@@ -559,8 +560,10 @@ mod tests {
 			ValidationError::Custom("Email is invalid".to_string()),
 		);
 
+		// Act
 		let error: ServerFnError = validation.into();
 
+		// Assert
 		assert_eq!(error.kind(), ServerFnErrorKind::Validation);
 		assert_eq!(error.status(), Some(422));
 		assert_eq!(error.field_errors().len(), 3);
