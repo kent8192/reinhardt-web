@@ -32,8 +32,9 @@
 #[cfg(not(target_arch = "wasm32"))]
 use proptest::prelude::*;
 use reinhardt_core::reactive::ReactiveScope;
+use reinhardt_pages::deps;
 use reinhardt_pages::reactive::hooks::{use_effect, use_memo, use_ref, use_state};
-use reinhardt_pages::{deps, reactive::Signal};
+use reinhardt_pages::reactive::{ExplicitDeps, Signal};
 use rstest::*;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -583,10 +584,8 @@ fn test_hooks_boundary_dependency_array_size(
 				*effect_counter_clone.borrow_mut() += 1;
 				None::<fn()>
 			},
-			// Dynamic deps construction — opaque to the compile-time verifier.
-			reinhardt_core::reactive::ExplicitDeps::from_node_ids(
-				signals_for_deps.iter().map(|s| s.id()).collect::<Vec<_>>(),
-			),
+			// Dynamic dependency construction is opaque to the compile-time verifier.
+			ExplicitDeps::from_node_ids(signals_for_deps.iter().map(|signal| signal.id())),
 		);
 
 		assert!(*effect_counter.borrow() >= 1);

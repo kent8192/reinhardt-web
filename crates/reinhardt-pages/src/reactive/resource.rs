@@ -17,6 +17,7 @@ use std::task::{Context, Poll};
 
 use crate::platform::{defer_yield, spawn_task};
 use crate::reactive::pages_arena::{PageNodeKey, PageNodeKind, allocate_page_node, with_page_node};
+#[cfg(native)]
 use reinhardt_core::deps;
 use reinhardt_core::reactive::{ScopeId, current_scope_id, scope::enter_scope};
 
