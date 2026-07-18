@@ -123,7 +123,7 @@ fn effect_cleanup_can_use_page_handles_until_scope_disposal_finishes() {
 				let callback = callback;
 				Some(move || callback.call(()))
 			},
-			(),
+			crate::deps![],
 		);
 	});
 
