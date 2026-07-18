@@ -8,12 +8,33 @@ use super::{
 	query_builder::{DeleteBuilder, InsertBuilder, SelectBuilder, UpdateBuilder},
 };
 
+#[cfg(any(feature = "postgres", feature = "sqlite", feature = "mysql"))]
+use super::error::map_sqlx_error;
+#[cfg(any(
+	feature = "postgres",
+	feature = "sqlite",
+	feature = "mysql",
+	feature = "settings"
+))]
+use super::error::{DatabaseError, DatabaseErrorKind};
+
 #[cfg(feature = "postgres")]
 use super::dialect::PostgresBackend;
 
 /// SQLSTATE code for "invalid_catalog_name" (database does not exist)
 #[cfg(feature = "postgres")]
 const SQLSTATE_INVALID_CATALOG_NAME: &str = "3D000";
+
+#[cfg(feature = "postgres")]
+fn map_postgres_initial_connect_error(error: sqlx::Error) -> DatabaseError {
+	match error {
+		sqlx::Error::PoolTimedOut => DatabaseError::new(
+			DatabaseErrorKind::Timeout,
+			"Initial PostgreSQL connection timed out",
+		),
+		error => map_sqlx_error(error),
+	}
+}
 
 #[cfg(feature = "sqlite")]
 use super::dialect::SqliteBackend;
@@ -131,7 +152,9 @@ impl DatabaseConnection {
 		url: &str,
 		pool_size: Option<u32>,
 	) -> Result<Self> {
-		let pool = Self::build_postgres_pool(url, pool_size).await?;
+		let pool = Self::build_postgres_pool(url, pool_size)
+			.await
+			.map_err(map_postgres_initial_connect_error)?;
 		let is_cockroachdb = Self::probe_cockroachdb(&pool).await;
 
 		Ok(Self {
@@ -249,7 +272,7 @@ impl DatabaseConnection {
 					sqlx::Error::Database(db_err) if db_err.code().as_deref() == Some(SQLSTATE_INVALID_CATALOG_NAME)
 				);
 				if !is_db_not_found {
-					return Err(e.into());
+					return Err(map_postgres_initial_connect_error(e).into());
 				}
 				// Database doesn't exist, try to create it
 			}
@@ -267,24 +290,14 @@ impl DatabaseConnection {
 			.acquire_timeout(Duration::from_secs(10))
 			.connect(&admin_url)
 			.await
-			.map_err(|e| {
-				super::error::DatabaseError::ConnectionError(format!(
-					"Failed to connect to postgres database for auto-creation: {}",
-					e
-				))
-			})?;
+			.map_err(map_postgres_initial_connect_error)?;
 
 		// Create the database (escape double quotes to prevent SQL injection)
 		let create_sql = format!("CREATE DATABASE \"{}\"", db_name.replace('"', "\"\""));
 		sqlx::query(&create_sql)
 			.execute(&admin_pool)
 			.await
-			.map_err(|e| {
-				super::error::DatabaseError::QueryError(format!(
-					"Failed to create database '{}': {}",
-					db_name, e
-				))
-			})?;
+			.map_err(map_sqlx_error)?;
 
 		// Close admin connection
 		admin_pool.close().await;
@@ -304,7 +317,8 @@ impl DatabaseConnection {
 			.strip_prefix("postgres://")
 			.or_else(|| url.strip_prefix("postgresql://"))
 			.ok_or_else(|| {
-				super::error::DatabaseError::ConnectionError(
+				DatabaseError::new(
+					DatabaseErrorKind::Configuration,
 					"Invalid PostgreSQL URL: must start with postgres:// or postgresql://"
 						.to_string(),
 				)
@@ -318,7 +332,8 @@ impl DatabaseConnection {
 
 		// Find the last '/' which separates host:port from database name
 		let last_slash_pos = path_part.rfind('/').ok_or_else(|| {
-			super::error::DatabaseError::ConnectionError(
+			DatabaseError::new(
+				DatabaseErrorKind::Configuration,
 				"Invalid PostgreSQL URL: no database name found".to_string(),
 			)
 		})?;
@@ -327,9 +342,11 @@ impl DatabaseConnection {
 		let db_name = &path_part[last_slash_pos + 1..];
 
 		if db_name.is_empty() {
-			return Err(super::error::DatabaseError::ConnectionError(
-				"Invalid PostgreSQL URL: database name is empty".to_string(),
-			));
+			return Err(DatabaseError::new(
+				DatabaseErrorKind::Configuration,
+				"Invalid PostgreSQL URL: database name is empty",
+			)
+			.into());
 		}
 
 		// Construct admin URL with 'postgres' database
@@ -356,7 +373,8 @@ impl DatabaseConnection {
 				.idle_timeout(None)
 				.max_lifetime(None)
 				.connect(url)
-				.await?;
+				.await
+				.map_err(map_sqlx_error)?;
 			return Ok(Self {
 				backend: Arc::new(SqliteBackend::new(pool)),
 				is_cockroachdb: false,
@@ -373,10 +391,10 @@ impl DatabaseConnection {
 			let rel_path = url.trim_start_matches("sqlite://");
 			std::env::current_dir()
 				.map_err(|e| {
-					super::error::DatabaseError::ConnectionError(format!(
-						"Failed to get current directory: {}",
-						e
-					))
+					DatabaseError::new(
+						DatabaseErrorKind::Connection,
+						format!("Failed to get current directory: {}", e),
+					)
 				})?
 				.join(rel_path)
 				.to_string_lossy()
@@ -387,10 +405,10 @@ impl DatabaseConnection {
 			let rel_path = url.trim_start_matches("sqlite:");
 			std::env::current_dir()
 				.map_err(|e| {
-					super::error::DatabaseError::ConnectionError(format!(
-						"Failed to get current directory: {}",
-						e
-					))
+					DatabaseError::new(
+						DatabaseErrorKind::Connection,
+						format!("Failed to get current directory: {}", e),
+					)
 				})?
 				.join(rel_path)
 				.to_string_lossy()
@@ -404,11 +422,10 @@ impl DatabaseConnection {
 		let normalized_path = if db_path.exists() {
 			// If file exists, canonicalize to get absolute path
 			db_path.canonicalize().map_err(|e| {
-				super::error::DatabaseError::ConnectionError(format!(
-					"Failed to canonicalize path {}: {}",
-					db_path.display(),
-					e
-				))
+				DatabaseError::new(
+					DatabaseErrorKind::Connection,
+					format!("Failed to canonicalize path {}: {}", db_path.display(), e),
+				)
 			})?
 		} else {
 			// If file doesn't exist, use the path as-is but ensure it's absolute
@@ -418,10 +435,10 @@ impl DatabaseConnection {
 				// Convert relative path to absolute
 				std::env::current_dir()
 					.map_err(|e| {
-						super::error::DatabaseError::ConnectionError(format!(
-							"Failed to get current directory: {}",
-							e
-						))
+						DatabaseError::new(
+							DatabaseErrorKind::Connection,
+							format!("Failed to get current directory: {}", e),
+						)
 					})?
 					.join(db_path)
 			}
@@ -433,11 +450,14 @@ impl DatabaseConnection {
 			&& !parent.exists()
 		{
 			std::fs::create_dir_all(parent).map_err(|e| {
-				super::error::DatabaseError::ConnectionError(format!(
-					"Failed to create database directory {}: {}",
-					parent.display(),
-					e
-				))
+				DatabaseError::new(
+					DatabaseErrorKind::Connection,
+					format!(
+						"Failed to create database directory {}: {}",
+						parent.display(),
+						e
+					),
+				)
 			})?;
 		}
 
@@ -448,15 +468,12 @@ impl DatabaseConnection {
 
 		// Use SqliteConnectOptions with create_if_missing enabled
 		let options = SqliteConnectOptions::from_str(&absolute_url)
-			.map_err(|e| {
-				super::error::DatabaseError::ConnectionError(format!(
-					"Invalid SQLite URL '{}': {}",
-					absolute_url, e
-				))
-			})?
+			.map_err(map_sqlx_error)?
 			.create_if_missing(true);
 
-		let pool = SqlitePool::connect_with(options).await?;
+		let pool = SqlitePool::connect_with(options)
+			.await
+			.map_err(map_sqlx_error)?;
 
 		Ok(Self {
 			backend: Arc::new(SqliteBackend::new(pool)),
@@ -477,7 +494,7 @@ impl DatabaseConnection {
 	#[cfg(feature = "mysql")]
 	pub async fn connect_mysql(url: &str) -> Result<Self> {
 		use sqlx::MySqlPool;
-		let pool = MySqlPool::connect(url).await?;
+		let pool = MySqlPool::connect(url).await.map_err(map_sqlx_error)?;
 		Ok(Self {
 			backend: Arc::new(MySqlBackend::new(pool)),
 			is_cockroachdb: false,
@@ -578,7 +595,8 @@ impl DatabaseConnection {
 
 		let core = settings.core();
 		let db_config = core.databases.get("default").ok_or_else(|| {
-			super::error::DatabaseError::ConnectionError(
+			DatabaseError::new(
+				DatabaseErrorKind::Configuration,
 				"Database configuration `core.databases.default` not found in settings."
 					.to_string(),
 			)
@@ -709,6 +727,14 @@ impl DatabaseConnection {
 mod tests {
 	use rstest::rstest;
 
+	#[cfg(feature = "postgres")]
+	#[test]
+	fn postgres_initial_pool_timeout_is_classified_as_timeout() {
+		let error = super::map_postgres_initial_connect_error(sqlx::Error::PoolTimedOut);
+
+		assert_eq!(error.kind(), super::DatabaseErrorKind::Timeout);
+	}
+
 	/// Helper to build a CREATE DATABASE SQL statement with proper identifier escaping.
 	/// Mirrors the escaping logic used in `connect_postgres_or_create_with_pool_size`.
 	fn build_create_database_sql(db_name: &str) -> String {
@@ -766,6 +792,22 @@ mod tests {
 		// Assert
 		assert_eq!(db_name, "testdb");
 		assert_eq!(admin_url, "postgres://user:pass@localhost:5432/postgres");
+	}
+
+	#[cfg(feature = "postgres")]
+	#[rstest]
+	#[case("http://localhost/testdb")]
+	#[case("postgres://localhost")]
+	#[case("postgres://localhost/")]
+	fn test_parse_postgres_url_rejects_invalid_configuration(#[case] url: &str) {
+		// Act
+		let error = super::DatabaseConnection::parse_postgres_url_for_creation(url).unwrap_err();
+
+		// Assert
+		assert_eq!(
+			error.database_kind(),
+			Some(super::DatabaseErrorKind::Configuration)
+		);
 	}
 
 	#[cfg(feature = "sqlite")]

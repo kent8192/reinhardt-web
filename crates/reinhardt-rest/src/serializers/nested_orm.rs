@@ -117,15 +117,16 @@ impl NestedSaveContext {
 	/// ```ignore
 	/// let context = NestedSaveContext::new();
 	/// // Verify transaction scope handling
-	/// let result = context.with_scope(|_tx| async move {
+	/// let result = context.with_scope(async |_tx| {
 	///     // Perform operations
 	///     Ok(value)
 	/// }).await?;
 	/// ```
-	pub async fn with_scope<F, Fut, T>(&self, f: F) -> Result<T, SerializerError>
+	pub async fn with_scope<F, T>(&self, f: F) -> Result<T, SerializerError>
 	where
-		F: FnOnce(&mut TransactionScope) -> Fut,
-		Fut: std::future::Future<Output = Result<T, Box<dyn std::error::Error + Send + Sync>>>,
+		F: for<'scope> std::ops::AsyncFnOnce(
+				&'scope mut TransactionScope,
+			) -> Result<T, SerializerError>,
 	{
 		if self.depth == 0 {
 			// Top-level transaction
@@ -454,40 +455,24 @@ impl TransactionHelper {
 	/// use reinhardt_rest::serializers::nested_orm_integration::TransactionHelper;
 	///
 	/// // Verify transaction scope with automatic commit/rollback
-	/// let result = TransactionHelper::with_transaction(|_tx| async move {
+	/// let result = TransactionHelper::with_transaction(async |_tx| {
 	///     // Perform database operations within transaction
 	///     Ok(created_instance)
 	/// }).await?;
 	/// ```
-	pub async fn with_transaction<F, Fut, T>(f: F) -> Result<T, SerializerError>
+	pub async fn with_transaction<F, T>(f: F) -> Result<T, SerializerError>
 	where
-		F: FnOnce(&mut TransactionScope) -> Fut,
-		Fut: std::future::Future<Output = Result<T, Box<dyn std::error::Error + Send + Sync>>>,
+		F: for<'scope> std::ops::AsyncFnOnce(
+				&'scope mut TransactionScope,
+			) -> Result<T, SerializerError>,
 	{
 		use reinhardt_db::orm::manager::get_connection;
 
 		// Get database connection
-		let conn = get_connection().await.map_err(|e| SerializerError::Other {
-			message: format!("Failed to get connection: {}", e),
-		})?;
-
-		// Wrap the closure to convert Box<dyn Error> to anyhow::Error
-		let wrapped_f = |tx: &mut TransactionScope| {
-			let fut = f(tx);
-			async move {
-				match fut.await {
-					Ok(value) => Ok(value),
-					Err(e) => Err(anyhow::anyhow!("{}", e)),
-				}
-			}
-		};
+		let conn = get_connection().await.map_err(SerializerError::from)?;
 
 		// Use the transaction helper function for automatic commit/rollback
-		transaction(&conn, wrapped_f)
-			.await
-			.map_err(|e| SerializerError::Other {
-				message: format!("Transaction failed: {}", e),
-			})
+		transaction(&conn, f).await
 	}
 
 	/// Create a savepoint for nested transaction using RAII pattern
@@ -503,60 +488,361 @@ impl TransactionHelper {
 	/// use reinhardt_rest::serializers::nested_orm_integration::TransactionHelper;
 	///
 	/// // Verify nested savepoint creation and rollback handling
-	/// let result = TransactionHelper::savepoint(2, |_tx| async move {
+	/// let result = TransactionHelper::savepoint(2, async |_tx| {
 	///     // Perform nested operations
 	///     Ok(result)
 	/// }).await?;
 	/// ```
-	pub async fn savepoint<F, Fut, T>(depth: usize, f: F) -> Result<T, SerializerError>
+	pub async fn savepoint<F, T>(depth: usize, f: F) -> Result<T, SerializerError>
 	where
-		F: FnOnce(&mut TransactionScope) -> Fut,
-		Fut: std::future::Future<Output = Result<T, Box<dyn std::error::Error + Send + Sync>>>,
+		F: for<'scope> std::ops::AsyncFnOnce(
+				&'scope mut TransactionScope,
+			) -> Result<T, SerializerError>,
 	{
 		use reinhardt_db::orm::manager::get_connection;
 
 		// Get database connection
-		let conn = get_connection().await.map_err(|e| SerializerError::Other {
-			message: format!("Failed to get connection: {}", e),
-		})?;
+		let conn = get_connection().await.map_err(SerializerError::from)?;
+		Self::savepoint_with_connection(&conn, depth, f).await
+	}
 
+	async fn savepoint_with_connection<F, T>(
+		conn: &reinhardt_db::orm::connection::DatabaseConnection,
+		depth: usize,
+		f: F,
+	) -> Result<T, SerializerError>
+	where
+		F: for<'scope> std::ops::AsyncFnOnce(
+				&'scope mut TransactionScope,
+			) -> Result<T, SerializerError>,
+	{
 		// Create a new transaction scope
-		let mut tx = TransactionScope::begin(&conn)
+		let mut tx = TransactionScope::begin(conn)
 			.await
-			.map_err(|e| SerializerError::Other {
-				message: format!("Failed to begin transaction: {}", e),
-			})?;
+			.map_err(SerializerError::from)?;
 
 		// Create savepoint with unique name based on depth
 		let savepoint_name = format!("nested_save_sp_{}", depth);
 		tx.savepoint(&savepoint_name)
 			.await
-			.map_err(|e| SerializerError::Other {
-				message: format!("Failed to create savepoint: {}", e),
-			})?;
+			.map_err(SerializerError::from)?;
 
 		// Execute the closure
 		match f(&mut tx).await {
 			Ok(result) => {
 				// Success - release savepoint and commit
-				tx.release_savepoint(&savepoint_name).await.map_err(|e| {
-					SerializerError::Other {
-						message: format!("Failed to release savepoint: {}", e),
-					}
-				})?;
-				tx.commit().await.map_err(|e| SerializerError::Other {
-					message: format!("Failed to commit transaction: {}", e),
-				})?;
+				tx.release_savepoint(&savepoint_name)
+					.await
+					.map_err(SerializerError::from)?;
+				tx.commit().await.map_err(SerializerError::from)?;
 				Ok(result)
 			}
-			Err(e) => {
+			Err(operation_error) => {
 				// Error - rollback to savepoint and then rollback transaction
-				let _ = tx.rollback_to_savepoint(&savepoint_name).await;
-				let _ = tx.rollback().await;
-				Err(SerializerError::Other {
-					message: format!("Savepoint operation failed: {}", e),
-				})
+				match tx.rollback_to_savepoint(&savepoint_name).await {
+					Ok(()) => match tx.rollback().await {
+						Ok(()) => Err(operation_error),
+						Err(rollback_error) => {
+							tracing::error!(
+								operation_error = %operation_error,
+								rollback_error = %rollback_error,
+								"Nested savepoint operation and transaction rollback both failed"
+							);
+							Err(SerializerError::from(rollback_error))
+						}
+					},
+					Err(savepoint_rollback_error) => {
+						tracing::error!(
+							operation_error = %operation_error,
+							rollback_error = %savepoint_rollback_error,
+							"Nested savepoint operation and rollback both failed"
+						);
+
+						if let Err(transaction_rollback_error) = tx.rollback().await {
+							tracing::error!(
+								savepoint_rollback_error = %savepoint_rollback_error,
+								rollback_error = %transaction_rollback_error,
+								"Transaction cleanup failed after savepoint rollback failure"
+							);
+						}
+
+						Err(SerializerError::from(savepoint_rollback_error))
+					}
+				}
 			}
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use reinhardt_core::exception::{DatabaseError, DatabaseErrorKind};
+	use reinhardt_db::backends::DatabaseBackend as BackendTrait;
+	use reinhardt_db::backends::DatabaseConnection as BackendsConnection;
+	use reinhardt_db::backends::Result as BackendResult;
+	use reinhardt_db::backends::types::{
+		DatabaseType, QueryResult, QueryValue, Row, TransactionExecutor,
+	};
+	use reinhardt_db::orm::connection::{
+		DatabaseBackend as OrmDatabaseBackend, DatabaseConnection as OrmDatabaseConnection,
+	};
+	use rstest::rstest;
+	use std::sync::{Arc, Mutex};
+
+	#[derive(Clone, Copy, Debug, Default)]
+	struct FailurePlan {
+		rollback_to_savepoint: bool,
+		rollback: bool,
+	}
+
+	type TransactionCalls = Arc<Mutex<Vec<String>>>;
+
+	struct RecordingTransactionExecutor {
+		failure_plan: FailurePlan,
+		calls: TransactionCalls,
+	}
+
+	#[async_trait]
+	impl TransactionExecutor for RecordingTransactionExecutor {
+		async fn execute(
+			&mut self,
+			_sql: &str,
+			_params: Vec<QueryValue>,
+		) -> BackendResult<QueryResult> {
+			Ok(QueryResult { rows_affected: 0 })
+		}
+
+		async fn fetch_one(&mut self, _sql: &str, _params: Vec<QueryValue>) -> BackendResult<Row> {
+			Ok(Row::new())
+		}
+
+		async fn fetch_all(
+			&mut self,
+			_sql: &str,
+			_params: Vec<QueryValue>,
+		) -> BackendResult<Vec<Row>> {
+			Ok(Vec::new())
+		}
+
+		async fn fetch_optional(
+			&mut self,
+			_sql: &str,
+			_params: Vec<QueryValue>,
+		) -> BackendResult<Option<Row>> {
+			Ok(None)
+		}
+
+		async fn commit(self: Box<Self>) -> BackendResult<()> {
+			self.calls.lock().unwrap().push("commit".to_string());
+			Ok(())
+		}
+
+		async fn rollback(self: Box<Self>) -> BackendResult<()> {
+			self.calls.lock().unwrap().push("rollback".to_string());
+			if self.failure_plan.rollback {
+				Err(transaction_failure("transaction rollback failed"))
+			} else {
+				Ok(())
+			}
+		}
+
+		async fn savepoint(&mut self, name: &str) -> BackendResult<()> {
+			self.calls.lock().unwrap().push(format!("savepoint:{name}"));
+			Ok(())
+		}
+
+		async fn release_savepoint(&mut self, name: &str) -> BackendResult<()> {
+			self.calls
+				.lock()
+				.unwrap()
+				.push(format!("release_savepoint:{name}"));
+			Ok(())
+		}
+
+		async fn rollback_to_savepoint(&mut self, name: &str) -> BackendResult<()> {
+			self.calls
+				.lock()
+				.unwrap()
+				.push(format!("rollback_to_savepoint:{name}"));
+			if self.failure_plan.rollback_to_savepoint {
+				Err(transaction_failure("savepoint rollback failed"))
+			} else {
+				Ok(())
+			}
+		}
+	}
+
+	struct RecordingBackend {
+		failure_plan: FailurePlan,
+		calls: TransactionCalls,
+	}
+
+	#[async_trait]
+	impl BackendTrait for RecordingBackend {
+		fn database_type(&self) -> DatabaseType {
+			DatabaseType::Postgres
+		}
+
+		fn placeholder(&self, index: usize) -> String {
+			format!("${index}")
+		}
+
+		fn supports_returning(&self) -> bool {
+			true
+		}
+
+		fn supports_on_conflict(&self) -> bool {
+			true
+		}
+
+		async fn execute(
+			&self,
+			_sql: &str,
+			_params: Vec<QueryValue>,
+		) -> BackendResult<QueryResult> {
+			Ok(QueryResult { rows_affected: 0 })
+		}
+
+		async fn fetch_one(&self, _sql: &str, _params: Vec<QueryValue>) -> BackendResult<Row> {
+			Ok(Row::new())
+		}
+
+		async fn fetch_all(&self, _sql: &str, _params: Vec<QueryValue>) -> BackendResult<Vec<Row>> {
+			Ok(Vec::new())
+		}
+
+		async fn fetch_optional(
+			&self,
+			_sql: &str,
+			_params: Vec<QueryValue>,
+		) -> BackendResult<Option<Row>> {
+			Ok(None)
+		}
+
+		async fn begin(&self) -> BackendResult<Box<dyn TransactionExecutor>> {
+			self.calls.lock().unwrap().push("begin".to_string());
+			Ok(Box::new(RecordingTransactionExecutor {
+				failure_plan: self.failure_plan,
+				calls: Arc::clone(&self.calls),
+			}))
+		}
+
+		fn as_any(&self) -> &dyn std::any::Any {
+			self
+		}
+	}
+
+	fn transaction_failure(message: &str) -> reinhardt_core::exception::Error {
+		DatabaseError::new(DatabaseErrorKind::Transaction, message).into()
+	}
+
+	fn recording_connection(
+		failure_plan: FailurePlan,
+	) -> (OrmDatabaseConnection, TransactionCalls) {
+		let calls = Arc::new(Mutex::new(Vec::new()));
+		let backend = Arc::new(RecordingBackend {
+			failure_plan,
+			calls: Arc::clone(&calls),
+		});
+		let backend_connection = BackendsConnection::new(backend);
+		(
+			OrmDatabaseConnection::new(OrmDatabaseBackend::Postgres, backend_connection),
+			calls,
+		)
+	}
+
+	fn operation_error() -> SerializerError {
+		SerializerError::Validation(ValidatorError::Custom {
+			message: "nested operation failed".to_string(),
+		})
+	}
+
+	fn expected_calls() -> Vec<String> {
+		vec![
+			"begin".to_string(),
+			"savepoint:nested_save_sp_2".to_string(),
+			"operation".to_string(),
+			"rollback_to_savepoint:nested_save_sp_2".to_string(),
+			"rollback".to_string(),
+		]
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn savepoint_preserves_operation_error_when_rollbacks_succeed() {
+		let (connection, calls) = recording_connection(FailurePlan::default());
+		let operation_calls = Arc::clone(&calls);
+
+		let result =
+			TransactionHelper::savepoint_with_connection(&connection, 2, async move |_tx| {
+				operation_calls
+					.lock()
+					.unwrap()
+					.push("operation".to_string());
+				Err::<(), SerializerError>(operation_error())
+			})
+			.await;
+
+		assert_eq!(result, Err(operation_error()));
+		assert_eq!(*calls.lock().unwrap(), expected_calls());
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn savepoint_rollback_error_wins_over_operation_error() {
+		let (connection, calls) = recording_connection(FailurePlan {
+			rollback_to_savepoint: true,
+			rollback: false,
+		});
+		let operation_calls = Arc::clone(&calls);
+
+		let result =
+			TransactionHelper::savepoint_with_connection(&connection, 2, async move |_tx| {
+				operation_calls
+					.lock()
+					.unwrap()
+					.push("operation".to_string());
+				Err::<(), SerializerError>(operation_error())
+			})
+			.await;
+
+		assert_eq!(
+			result,
+			Err(SerializerError::Database(DatabaseError::new(
+				DatabaseErrorKind::Transaction,
+				"savepoint rollback failed",
+			)))
+		);
+		assert_eq!(*calls.lock().unwrap(), expected_calls());
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn transaction_rollback_error_wins_over_operation_error() {
+		let (connection, calls) = recording_connection(FailurePlan {
+			rollback_to_savepoint: false,
+			rollback: true,
+		});
+		let operation_calls = Arc::clone(&calls);
+
+		let result =
+			TransactionHelper::savepoint_with_connection(&connection, 2, async move |_tx| {
+				operation_calls
+					.lock()
+					.unwrap()
+					.push("operation".to_string());
+				Err::<(), SerializerError>(operation_error())
+			})
+			.await;
+
+		assert_eq!(
+			result,
+			Err(SerializerError::Database(DatabaseError::new(
+				DatabaseErrorKind::Transaction,
+				"transaction rollback failed",
+			)))
+		);
+		assert_eq!(*calls.lock().unwrap(), expected_calls());
 	}
 }

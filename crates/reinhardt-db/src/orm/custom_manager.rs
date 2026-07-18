@@ -52,9 +52,11 @@
 //!
 //!     fn before_save(&self, user: &mut User) -> Result<()> {
 //!         if user.username.is_empty() {
-//!             return Err(reinhardt_core::exception::Error::Database(
-//!                 "username must not be empty".into(),
-//!             ));
+//!             return Err(reinhardt_core::exception::DatabaseError::new(
+//!                 reinhardt_core::exception::DatabaseErrorKind::Query,
+//!                 "username must not be empty",
+//!             )
+//!             .into());
 //!         }
 //!         Ok(())
 //!     }

@@ -19,17 +19,18 @@
 //! ### Basic Usage
 //!
 //! ```rust
+//! use reinhardt_core::exception::Error;
 //! use reinhardt_db::orm::connection::DatabaseConnection;
 //! use reinhardt_db::orm::transaction::transaction;
 //!
-//! # async fn example() -> Result<(), anyhow::Error> {
+//! # async fn example() -> reinhardt_core::exception::Result<()> {
 //! let conn = DatabaseConnection::connect("sqlite::memory:").await?;
 //!
 //! // Automatic commit on success, rollback on error
-//! let user_id = transaction(&conn, |_tx| async move {
+//! let user_id = transaction(&conn, async |_tx| {
 //!     // Your database operations here
 //!     // let id = insert_user("Alice").await?;
-//!     Ok(42)
+//!     Ok::<_, Error>(42)
 //! }).await?;
 //!
 //! assert_eq!(user_id, 42);
@@ -40,14 +41,15 @@
 //! ### With Isolation Level
 //!
 //! ```rust
+//! use reinhardt_core::exception::Error;
 //! use reinhardt_db::orm::transaction::{transaction_with_isolation, IsolationLevel};
 //! # use reinhardt_db::orm::connection::DatabaseConnection;
 //!
-//! # async fn example() -> Result<(), anyhow::Error> {
+//! # async fn example() -> reinhardt_core::exception::Result<()> {
 //! # let conn = DatabaseConnection::connect("sqlite::memory:").await?;
-//! transaction_with_isolation(&conn, IsolationLevel::Serializable, |_tx| async move {
+//! transaction_with_isolation(&conn, IsolationLevel::Serializable, async |_tx| {
 //!     // Critical operations requiring serializable isolation
-//!     Ok(())
+//!     Ok::<(), Error>(())
 //! }).await?;
 //! # Ok(())
 //! # }
@@ -58,14 +60,15 @@
 //! ```rust
 //! use reinhardt_db::orm::transaction::transaction;
 //! # use reinhardt_db::orm::connection::DatabaseConnection;
+//! use reinhardt_core::exception::Error;
 //!
-//! # async fn example() -> Result<(), anyhow::Error> {
+//! # async fn example() -> reinhardt_core::exception::Result<()> {
 //! # let conn = DatabaseConnection::connect("sqlite::memory:").await?;
 //! # let some_condition = true;
-//! let result = transaction(&conn, |_tx| async move {
+//! let result: reinhardt_core::exception::Result<i32> = transaction(&conn, async |_tx| {
 //!     // Simulate an error
 //!     if some_condition {
-//!         return Err(anyhow::anyhow!("Operation failed"));
+//!         return Err(Error::Internal("Operation failed".to_string()));
 //!     }
 //!     Ok(42)
 //! }).await;

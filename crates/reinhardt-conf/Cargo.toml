@@ -82,7 +82,6 @@ futures = { workspace = true }
 tempfile = "3.8"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 env_logger = "0.11"
-anyhow = { workspace = true }
 hex = "0.4"
 colored = { workspace = true }
 mockito = "1.5"

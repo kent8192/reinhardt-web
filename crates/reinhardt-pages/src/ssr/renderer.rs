@@ -740,8 +740,9 @@ impl SsrRenderer {
 		&mut self,
 		view: V,
 	) -> String {
+		let view = view.into_page();
 		let (_, content, body_tail) = self
-			.render_view_parts_from_factory(Self::into_page_factory(view), false)
+			.render_view_parts_from_factory(|| view.clone(), false)
 			.await;
 		let view_head = self.current_buffered_rendered_head();
 		self.wrap_in_html_with_head_and_body_tail(&content, &body_tail, view_head.as_ref())

@@ -141,8 +141,7 @@ mod manager {
 			let existing = manager
 				.filter(User::field_username().eq(username.to_string()))
 				.first()
-				.await
-				.map_err(|e| Error::Database(e.to_string()))?;
+				.await?;
 			if existing.is_some() {
 				return Err(Error::Validation("Username is already taken".to_string()));
 			}
@@ -184,10 +183,7 @@ mod manager {
 			extra: HashMap<String, Value>,
 		) -> Result<User, Error> {
 			let new_user = self.build_user(username, password, &extra).await?;
-			User::objects()
-				.create_with_conn(&self.db, &new_user)
-				.await
-				.map_err(|e| Error::Database(e.to_string()))
+			User::objects().create_with_conn(&self.db, &new_user).await
 		}
 
 		async fn create_superuser(
@@ -198,10 +194,7 @@ mod manager {
 		) -> Result<User, Error> {
 			let mut new_user = self.build_user(username, password, &extra).await?;
 			new_user.is_superuser = true;
-			User::objects()
-				.create_with_conn(&self.db, &new_user)
-				.await
-				.map_err(|e| Error::Database(e.to_string()))
+			User::objects().create_with_conn(&self.db, &new_user).await
 		}
 	}
 }

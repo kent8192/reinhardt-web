@@ -3,6 +3,7 @@ use super::field_codec::{DatabaseArrayType, database_value_to_query_value};
 use super::inspection::FieldInfo;
 use super::query::RelationLoadInput;
 use super::{DatabaseValue, FieldCodecError, Model, QuerySet};
+use reinhardt_core::exception::{DatabaseError, DatabaseErrorKind, Error};
 use reinhardt_query::prelude::{
 	Alias, ColumnRef, DeleteStatement, Expr, ExprTrait, Func, InsertStatement, MySqlQueryBuilder,
 	PostgresQueryBuilder, Query, QueryBuilder, SelectStatement, SqliteQueryBuilder,
@@ -16,6 +17,16 @@ use uuid::Uuid;
 
 fn find_field_info<'a>(field_metadata: &'a [FieldInfo], field_name: &str) -> Option<&'a FieldInfo> {
 	field_metadata.iter().find(|field| field.name == field_name)
+}
+
+fn field_codec_error(error: FieldCodecError) -> Error {
+	let kind = match error {
+		FieldCodecError::TypeMismatch { .. } | FieldCodecError::InvalidEnumValue { .. } => {
+			DatabaseErrorKind::Type
+		}
+		FieldCodecError::Serialization(_) => DatabaseErrorKind::Serialization,
+	};
+	DatabaseError::new(kind, error.to_string()).into()
 }
 
 /// Build SQL with values from an INSERT statement based on database backend
@@ -239,11 +250,17 @@ pub async fn replace_database_connection_for_testing(
 /// Get a reference to the global database connection
 pub async fn get_connection() -> reinhardt_core::exception::Result<DatabaseConnection> {
 	let db = DB.get().ok_or_else(|| {
-		reinhardt_core::exception::Error::Database("Database not initialized".to_string())
+		Error::from(DatabaseError::new(
+			DatabaseErrorKind::Configuration,
+			"Database not initialized",
+		))
 	})?;
 	let guard = db.read().await;
 	guard.clone().ok_or_else(|| {
-		reinhardt_core::exception::Error::Database("Database connection not available".to_string())
+		Error::from(DatabaseError::new(
+			DatabaseErrorKind::Connection,
+			"Database connection not available",
+		))
 	})
 }
 
@@ -384,9 +401,12 @@ impl<M: Model> Manager<M> {
 			.unzip();
 
 		if fields.is_empty() {
-			return Err(reinhardt_core::exception::Error::Database(format!(
-				"Cannot create {} because no writable fields remain after filtering generated and defaulted columns",
-				M::table_name()
+			return Err(Error::from(DatabaseError::new(
+				DatabaseErrorKind::Query,
+				format!(
+					"Cannot create {} because no writable fields remain after filtering generated and defaulted columns",
+					M::table_name()
+				),
 			)));
 		}
 
@@ -920,8 +940,9 @@ impl<M: Model> Manager<M> {
 		let row = conn.query_one(&sql, values).await?;
 
 		// row.data is already serde_json::Value::Object so deserialize directly
-		row.deserialize_model::<M>()
-			.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))
+		row.deserialize_model::<M>().map_err(|error| {
+			DatabaseError::new(DatabaseErrorKind::Serialization, error.to_string()).into()
+		})
 	}
 
 	/// Build the INSERT statement and bound values used by `create`.
@@ -930,9 +951,7 @@ impl<M: Model> Manager<M> {
 		conn: &DatabaseConnection,
 		model: &M,
 	) -> reinhardt_core::exception::Result<(String, Vec<super::connection::QueryValue>)> {
-		let obj = model
-			.encode_database_fields()
-			.map_err(|error| reinhardt_core::exception::Error::Other(anyhow::Error::new(error)))?;
+		let obj = model.encode_database_fields().map_err(field_codec_error)?;
 
 		let mut stmt =
 			Self::build_insert_statement_from_object(&obj, |field| model.field_is_none(field))?;
@@ -1250,18 +1269,17 @@ impl<M: Model> Manager<M> {
 		model: &M,
 	) -> reinhardt_core::exception::Result<M> {
 		model.primary_key().ok_or_else(|| {
-			reinhardt_core::exception::Error::Database("Model must have primary key".to_string())
+			Error::from(DatabaseError::new(
+				DatabaseErrorKind::Type,
+				"Model must have primary key",
+			))
 		})?;
 
-		let obj = model
-			.encode_database_fields()
-			.map_err(|error| reinhardt_core::exception::Error::Other(anyhow::Error::new(error)))?;
+		let obj = model.encode_database_fields().map_err(field_codec_error)?;
 
 		let stmt =
 			Self::build_update_statement_from_object(&obj, |field| model.field_is_none(field))
-				.map_err(|error| {
-					reinhardt_core::exception::Error::Other(anyhow::Error::new(error))
-				})?;
+				.map_err(field_codec_error)?;
 
 		let (sql, values) = build_update_sql(&stmt, conn.backend());
 		let values: Vec<_> = values
@@ -1272,8 +1290,7 @@ impl<M: Model> Manager<M> {
 
 		let row = conn.query_one(&sql, values).await?;
 		// row.data is already serde_json::Value::Object so deserialize directly
-		row.deserialize_model::<M>()
-			.map_err(|error| reinhardt_core::exception::Error::Other(anyhow::Error::new(error)))
+		row.deserialize_model::<M>().map_err(field_codec_error)
 	}
 
 	/// Delete a record using reinhardt-query for SQL injection protection
@@ -1392,7 +1409,10 @@ impl<M: Model> Manager<M> {
 
 		let row = conn.query_one(&sql, values).await?;
 		row.get::<i64>("count").ok_or_else(|| {
-			reinhardt_core::exception::Error::Database("Failed to get count".to_string())
+			Error::from(DatabaseError::new(
+				DatabaseErrorKind::Query,
+				"Failed to get count",
+			))
 		})
 	}
 
@@ -1530,9 +1550,7 @@ impl<M: Model> Manager<M> {
 
 		if let Ok(Some(row)) = conn.query_optional(&select_sql, vec![]).await {
 			// row.data is already serde_json::Value::Object so deserialize directly
-			let model: M = row.deserialize_model().map_err(|error| {
-				reinhardt_core::exception::Error::Other(anyhow::Error::new(error))
-			})?;
+			let model: M = row.deserialize_model().map_err(field_codec_error)?;
 			return Ok((model, false));
 		}
 
@@ -1554,9 +1572,7 @@ impl<M: Model> Manager<M> {
 
 		let row = conn.query_one(&insert_sql, vec![]).await?;
 		// row.data is already serde_json::Value::Object so deserialize directly
-		let model: M = row
-			.deserialize_model()
-			.map_err(|error| reinhardt_core::exception::Error::Other(anyhow::Error::new(error)))?;
+		let model: M = row.deserialize_model().map_err(field_codec_error)?;
 
 		Ok((model, true))
 	}
@@ -1592,9 +1608,9 @@ impl<M: Model> Manager<M> {
 		let mut results = Vec::new();
 
 		for chunk in models.chunks(batch_size) {
-			let Some(mut statement) = self.try_bulk_create_query(chunk).map_err(|error| {
-				reinhardt_core::exception::Error::Other(anyhow::Error::new(error))
-			})?
+			let Some(mut statement) = self
+				.try_bulk_create_query(chunk)
+				.map_err(field_codec_error)?
 			else {
 				continue;
 			};
@@ -1626,9 +1642,7 @@ impl<M: Model> Manager<M> {
 			} else {
 				let rows = conn.query(&sql, values).await?;
 				for row in rows {
-					let model: M = row.deserialize_model().map_err(|error| {
-						reinhardt_core::exception::Error::Other(anyhow::Error::new(error))
-					})?;
+					let model: M = row.deserialize_model().map_err(field_codec_error)?;
 					results.push(model);
 				}
 			}
@@ -1668,21 +1682,23 @@ impl<M: Model> Manager<M> {
 				.iter()
 				.map(|model| {
 					model.primary_key().ok_or_else(|| {
-						reinhardt_core::exception::Error::Database(
-							"Bulk update model must have primary key".to_string(),
-						)
+						Error::from(DatabaseError::new(
+							DatabaseErrorKind::Type,
+							"Bulk update model must have primary key",
+						))
 					})?;
-					let obj = model.encode_database_fields().map_err(|error| {
-						reinhardt_core::exception::Error::Other(anyhow::Error::new(error))
-					})?;
+					let obj = model.encode_database_fields().map_err(field_codec_error)?;
 					let pk = obj
 						.get(M::primary_key_field())
 						.filter(|value| !matches!(value, DatabaseValue::Null))
 						.cloned()
 						.ok_or_else(|| {
-							reinhardt_core::exception::Error::Database(format!(
-								"Encoded bulk update model must contain primary key '{}'",
-								M::primary_key_field()
+							Error::from(DatabaseError::new(
+								DatabaseErrorKind::Type,
+								format!(
+									"Encoded bulk update model must contain primary key '{}'",
+									M::primary_key_field()
+								),
 							))
 						})?;
 
@@ -1703,9 +1719,7 @@ impl<M: Model> Manager<M> {
 			if !updates.is_empty() {
 				let sql = self
 					.bulk_update_database_values_sql_detailed(&updates, &fields, conn.backend())
-					.map_err(|error| {
-						reinhardt_core::exception::Error::Other(anyhow::Error::new(error))
-					})?;
+					.map_err(field_codec_error)?;
 				if sql.is_empty() {
 					continue;
 				}

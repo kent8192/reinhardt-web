@@ -14,8 +14,8 @@ use reinhardt_db::backends::query_builder::{
 };
 use reinhardt_db::backends::types::{Savepoint, TransactionExecutor};
 use reinhardt_db::backends::{
-	DatabaseBackend, DatabaseError, DatabaseType, InsertBuilder, IsolationLevel, QueryCache,
-	QueryCacheConfig, QueryResult, QueryValue, Row, SelectBuilder, UpdateBuilder,
+	DatabaseBackend, DatabaseError, DatabaseErrorKind, DatabaseType, InsertBuilder, IsolationLevel,
+	QueryCache, QueryCacheConfig, QueryResult, QueryValue, Row, SelectBuilder, UpdateBuilder,
 };
 
 // ==================== Mock backend for testing ====================
@@ -86,9 +86,11 @@ impl DatabaseBackend for MockBackend {
 	}
 
 	async fn begin(&self) -> reinhardt_db::backends::Result<Box<dyn TransactionExecutor>> {
-		Err(DatabaseError::NotSupported(
-			"Mock backend does not support transactions".to_string(),
-		))
+		Err(DatabaseError::new(
+			DatabaseErrorKind::Unsupported,
+			"Mock backend does not support transactions",
+		)
+		.into())
 	}
 
 	fn as_any(&self) -> &dyn std::any::Any {
@@ -598,137 +600,36 @@ fn test_query_value_from_uuid() {
 // ==================== DatabaseError tests ====================
 
 #[rstest]
-fn test_database_error_unsupported_feature() {
+#[case(DatabaseErrorKind::Unsupported, "unsupported feature")]
+#[case(DatabaseErrorKind::Syntax, "unexpected token")]
+#[case(DatabaseErrorKind::Type, "cannot convert")]
+#[case(DatabaseErrorKind::Connection, "connection timed out")]
+#[case(DatabaseErrorKind::Query, "invalid column")]
+#[case(DatabaseErrorKind::Serialization, "invalid json")]
+#[case(DatabaseErrorKind::Configuration, "missing url")]
+#[case(DatabaseErrorKind::ColumnNotFound, "user_id")]
+#[case(DatabaseErrorKind::Transaction, "deadlock detected")]
+fn test_database_error_preserves_kind_and_message(
+	#[case] kind: DatabaseErrorKind,
+	#[case] message: &str,
+) {
 	// Arrange
 
 	// Act
-	let err = DatabaseError::UnsupportedFeature {
-		database: "MySQL".to_string(),
-		feature: "transactional DDL".to_string(),
-	};
+	let error = DatabaseError::new(kind, message);
 
 	// Assert
-	let msg = err.to_string();
-	assert!(msg.contains("transactional DDL"));
-	assert!(msg.contains("MySQL"));
-}
-
-#[rstest]
-fn test_database_error_not_supported() {
-	// Arrange
-
-	// Act
-	let err = DatabaseError::NotSupported("savepoints".to_string());
-
-	// Assert
-	assert!(err.to_string().contains("savepoints"));
-}
-
-#[rstest]
-fn test_database_error_syntax_error() {
-	// Arrange
-
-	// Act
-	let err = DatabaseError::SyntaxError("unexpected token".to_string());
-
-	// Assert
-	assert!(err.to_string().contains("unexpected token"));
-}
-
-#[rstest]
-fn test_database_error_type_error() {
-	// Arrange
-
-	// Act
-	let err = DatabaseError::TypeError("cannot convert".to_string());
-
-	// Assert
-	assert!(err.to_string().contains("cannot convert"));
-}
-
-#[rstest]
-fn test_database_error_connection_error() {
-	// Arrange
-
-	// Act
-	let err = DatabaseError::ConnectionError("timeout".to_string());
-
-	// Assert
-	assert!(err.to_string().contains("timeout"));
-}
-
-#[rstest]
-fn test_database_error_query_error() {
-	// Arrange
-
-	// Act
-	let err = DatabaseError::QueryError("invalid column".to_string());
-
-	// Assert
-	assert!(err.to_string().contains("invalid column"));
-}
-
-#[rstest]
-fn test_database_error_serialization_error() {
-	// Arrange
-
-	// Act
-	let err = DatabaseError::SerializationError("invalid json".to_string());
-
-	// Assert
-	assert!(err.to_string().contains("invalid json"));
-}
-
-#[rstest]
-fn test_database_error_config_error() {
-	// Arrange
-
-	// Act
-	let err = DatabaseError::ConfigError("missing url".to_string());
-
-	// Assert
-	assert!(err.to_string().contains("missing url"));
-}
-
-#[rstest]
-fn test_database_error_column_not_found() {
-	// Arrange
-
-	// Act
-	let err = DatabaseError::ColumnNotFound("user_id".to_string());
-
-	// Assert
-	assert!(err.to_string().contains("user_id"));
-}
-
-#[rstest]
-fn test_database_error_transaction_error() {
-	// Arrange
-
-	// Act
-	let err = DatabaseError::TransactionError("deadlock detected".to_string());
-
-	// Assert
-	assert!(err.to_string().contains("deadlock detected"));
-}
-
-#[rstest]
-fn test_database_error_other() {
-	// Arrange
-
-	// Act
-	let err = DatabaseError::Other("unknown error".to_string());
-
-	// Assert
-	assert!(err.to_string().contains("unknown error"));
+	assert_eq!(error.kind(), kind);
+	assert_eq!(error.message(), message);
+	assert_eq!(error.to_string(), message);
 }
 
 #[rstest]
 fn test_database_error_equality() {
 	// Arrange
-	let err1 = DatabaseError::QueryError("test".to_string());
-	let err2 = DatabaseError::QueryError("test".to_string());
-	let err3 = DatabaseError::QueryError("other".to_string());
+	let err1 = DatabaseError::new(DatabaseErrorKind::Query, "test");
+	let err2 = DatabaseError::new(DatabaseErrorKind::Query, "test");
+	let err3 = DatabaseError::new(DatabaseErrorKind::Query, "other");
 
 	// Act
 

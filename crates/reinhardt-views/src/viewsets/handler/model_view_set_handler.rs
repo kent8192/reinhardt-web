@@ -16,6 +16,13 @@ use serde::de::DeserializeOwned;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
+fn map_serializer_error(error: reinhardt_core::serializers::SerializerError) -> ViewError {
+	match error {
+		reinhardt_core::serializers::SerializerError::Database(error) => ViewError::Database(error),
+		error => ViewError::Serialization(error.to_string()),
+	}
+}
+
 /// Django REST Framework-style ViewSet handler for models.
 ///
 /// Provides automatic CRUD operations with permission checks, filtering,
@@ -486,9 +493,7 @@ where
 		// Serialize all objects
 		let mut serialized_items = Vec::new();
 		for item in &items {
-			let json = serializer
-				.serialize(item)
-				.map_err(|e| ViewError::Serialization(e.to_string()))?;
+			let json = serializer.serialize(item).map_err(map_serializer_error)?;
 			serialized_items.push(json);
 		}
 
@@ -603,9 +608,7 @@ where
 				.ok_or_else(|| ViewError::NotFound(format!("Object with pk={} not found", pk)))?
 		};
 
-		let json = serializer
-			.serialize(&item)
-			.map_err(|e| ViewError::Serialization(e.to_string()))?;
+		let json = serializer.serialize(&item).map_err(map_serializer_error)?;
 
 		Ok(Response::ok().with_body(json))
 	}
@@ -670,7 +673,7 @@ where
 		// Deserialize into model
 		let item = serializer
 			.deserialize(&body_str)
-			.map_err(|e| ViewError::Serialization(e.to_string()))?;
+			.map_err(map_serializer_error)?;
 
 		// Save to database if pool is available
 		if let Some(pool) = &self.pool {
@@ -736,16 +739,14 @@ where
 				// Serialize the complete object (including auto-populated fields)
 				let response_body = serializer
 					.serialize(&created_item)
-					.map_err(|e| ViewError::Serialization(e.to_string()))?;
+					.map_err(map_serializer_error)?;
 
 				return Ok(Response::created().with_body(response_body));
 			}
 		}
 
 		// Fallback: return the original item if no database pool
-		let response_body = serializer
-			.serialize(&item)
-			.map_err(|e| ViewError::Serialization(e.to_string()))?;
+		let response_body = serializer.serialize(&item).map_err(map_serializer_error)?;
 
 		Ok(Response::created().with_body(response_body))
 	}
@@ -868,7 +869,7 @@ where
 		// Serialize existing object to JSON and merge with patch data
 		let existing_json = serializer
 			.serialize(&existing_obj)
-			.map_err(|e| ViewError::Serialization(e.to_string()))?;
+			.map_err(map_serializer_error)?;
 		let mut existing_value: serde_json::Value = serde_json::from_str(&existing_json)
 			.map_err(|e| ViewError::Serialization(format!("Failed to parse existing: {}", e)))?;
 
@@ -881,7 +882,7 @@ where
 			.map_err(|e| ViewError::Serialization(format!("Failed to serialize merged: {}", e)))?;
 		let updated_item: T = serializer
 			.deserialize(&merged_json)
-			.map_err(|e| ViewError::Serialization(e.to_string()))?;
+			.map_err(map_serializer_error)?;
 
 		// Update database if pool is available
 		if let Some(pool) = &self.pool {
@@ -989,7 +990,7 @@ where
 		// Deserialize into model
 		let item = serializer
 			.deserialize(&body_str)
-			.map_err(|e| ViewError::Serialization(e.to_string()))?;
+			.map_err(map_serializer_error)?;
 
 		// Delete from database if pool is available
 		if let Some(pool) = &self.pool {

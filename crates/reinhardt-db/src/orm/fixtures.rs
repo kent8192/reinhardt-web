@@ -54,12 +54,6 @@ pub enum FixtureError {
 	Database(String),
 }
 
-impl From<anyhow::Error> for FixtureError {
-	fn from(error: anyhow::Error) -> Self {
-		Self::Database(error.to_string())
-	}
-}
-
 impl From<reinhardt_core::exception::Error> for FixtureError {
 	fn from(error: reinhardt_core::exception::Error) -> Self {
 		Self::Database(error.to_string())

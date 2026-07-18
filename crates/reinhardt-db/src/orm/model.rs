@@ -1,3 +1,4 @@
+use reinhardt_core::exception::{DatabaseError, DatabaseErrorKind, Error};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 
@@ -371,8 +372,12 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 			let conn = get_connection().await?;
 			let manager = super::Manager::<Self>::new();
 
-			let json = serde_json::to_value(&*self)
-				.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))?;
+			let json = serde_json::to_value(&*self).map_err(|error| {
+				Error::from(DatabaseError::new(
+					DatabaseErrorKind::Serialization,
+					error.to_string(),
+				))
+			})?;
 
 			if self.primary_key().is_none() {
 				// INSERT: new record
@@ -384,9 +389,11 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 						.dispatch_before_insert(Self::table_name(), &instance_id, &json)
 						.await;
 					if result == EventResult::Veto {
-						return Err(reinhardt_core::exception::Error::Database(
-							"Insert operation vetoed by event listener".to_string(),
-						));
+						return Err(DatabaseError::new(
+							DatabaseErrorKind::Query,
+							"Insert operation vetoed by event listener",
+						)
+						.into());
 					}
 				}
 
@@ -422,9 +429,11 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 						.dispatch_before_update(Self::table_name(), &instance_id, &json)
 						.await;
 					if result == EventResult::Veto {
-						return Err(reinhardt_core::exception::Error::Database(
-							"Update operation vetoed by event listener".to_string(),
-						));
+						return Err(DatabaseError::new(
+							DatabaseErrorKind::Query,
+							"Update operation vetoed by event listener",
+						)
+						.into());
 					}
 				}
 
@@ -492,9 +501,10 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 			use super::manager::get_connection;
 
 			let pk = self.primary_key().ok_or_else(|| {
-				reinhardt_core::exception::Error::Database(
-					"Cannot delete model without primary key".to_string(),
-				)
+				Error::from(DatabaseError::new(
+					DatabaseErrorKind::Query,
+					"Cannot delete model without primary key",
+				))
 			})?;
 
 			let conn = get_connection().await?;
@@ -508,9 +518,11 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 					.dispatch_before_delete(Self::table_name(), &instance_id)
 					.await;
 				if result == EventResult::Veto {
-					return Err(reinhardt_core::exception::Error::Database(
-						"Delete operation vetoed by event listener".to_string(),
-					));
+					return Err(DatabaseError::new(
+						DatabaseErrorKind::Query,
+						"Delete operation vetoed by event listener",
+					)
+					.into());
 				}
 			}
 

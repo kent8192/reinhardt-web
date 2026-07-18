@@ -806,35 +806,56 @@ mod tests {
 	/// Handler that returns a database error containing sensitive internal details
 	struct ErrorHandler {
 		error_message: String,
+		error_kind: reinhardt_core::exception::DatabaseErrorKind,
 	}
 
 	#[async_trait::async_trait]
 	impl Handler for ErrorHandler {
 		async fn handle(&self, _request: Request) -> reinhardt_core::exception::Result<Response> {
-			Err(reinhardt_core::exception::Error::Database(
+			Err(reinhardt_core::exception::DatabaseError::new(
+				self.error_kind,
 				self.error_message.clone(),
-			))
+			)
+			.into())
 		}
 	}
 
 	#[rstest]
 	#[case::database_connection_string(
 		"postgres://admin:s3cret@10.0.0.5/prod_db: connection refused",
-		"postgres"
+		"postgres",
+		reinhardt_core::exception::DatabaseErrorKind::Connection,
+		StatusCode::SERVICE_UNAVAILABLE
 	)]
-	#[case::internal_file_path("/opt/app/config/secrets.yml: file not found", "/opt/app")]
+	#[case::internal_file_path(
+		"/opt/app/config/secrets.yml: file not found",
+		"/opt/app",
+		reinhardt_core::exception::DatabaseErrorKind::Configuration,
+		StatusCode::INTERNAL_SERVER_ERROR
+	)]
 	#[case::sql_query_details(
 		"SELECT * FROM users WHERE password = 'hash123': syntax error",
-		"SELECT"
+		"SELECT",
+		reinhardt_core::exception::DatabaseErrorKind::Query,
+		StatusCode::INTERNAL_SERVER_ERROR
+	)]
+	#[case::serialization_details(
+		"failed to serialize field `password_hash`",
+		"password_hash",
+		reinhardt_core::exception::DatabaseErrorKind::Serialization,
+		StatusCode::INTERNAL_SERVER_ERROR
 	)]
 	#[tokio::test]
 	async fn test_error_handler_does_not_leak_internal_details(
 		#[case] sensitive_message: &str,
 		#[case] leaked_fragment: &str,
+		#[case] error_kind: reinhardt_core::exception::DatabaseErrorKind,
+		#[case] expected_status: StatusCode,
 	) {
 		// Arrange
 		let server = HttpServer::new(ErrorHandler {
 			error_message: sensitive_message.to_string(),
+			error_kind,
 		});
 		let handler = server.build_handler();
 		let request = Request::builder()
@@ -851,7 +872,7 @@ mod tests {
 		let body = String::from_utf8(response.body.to_vec()).unwrap();
 
 		// Assert
-		assert_eq!(response.status, StatusCode::INTERNAL_SERVER_ERROR);
+		assert_eq!(response.status, expected_status);
 		assert!(
 			!body.contains(leaked_fragment),
 			"Response body must not contain internal details '{leaked_fragment}', but got: {body}"

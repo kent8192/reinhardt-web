@@ -302,7 +302,7 @@ impl TestDatabaseBuilder {
 			let orm_connection = reinhardt_db::orm::connection::DatabaseConnection::connect(&url)
 				.await
 				.map_err(|source| TestDatabaseError::OrmGlobalInit {
-					source: source.into_boxed_dyn_error(),
+					source: Box::new(source),
 				})?;
 			let previous = reinhardt_db::orm::manager::replace_database_connection_for_testing(
 				Some(orm_connection),
@@ -565,7 +565,7 @@ async fn create_di_context(url: &str) -> Result<reinhardt_di::InjectionContext, 
 	let orm_connection = reinhardt_db::orm::connection::DatabaseConnection::connect(url)
 		.await
 		.map_err(|source| TestDatabaseError::DiContextInit {
-			source: source.into_boxed_dyn_error(),
+			source: Box::new(source),
 		})?;
 	let singleton_scope = std::sync::Arc::new(reinhardt_di::SingletonScope::new());
 	singleton_scope.set(orm_connection);

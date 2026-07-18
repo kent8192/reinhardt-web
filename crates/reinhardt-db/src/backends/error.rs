@@ -1,99 +1,283 @@
 //! Error types for database operations
 
-use thiserror::Error;
-
-/// Database operation errors
-#[non_exhaustive]
-#[derive(Error, Debug, Clone, PartialEq, Eq)]
-pub enum DatabaseError {
-	/// Feature not supported by this database
-	#[error("Feature '{feature}' is not supported by {database}")]
-	UnsupportedFeature {
-		/// The database that does not support the feature.
-		database: String,
-		/// The feature that is not supported.
-		feature: String,
-	},
-
-	/// Operation not supported by this backend
-	#[error("Not supported: {0}")]
-	NotSupported(String),
-
-	/// SQL syntax error
-	#[error("SQL syntax error: {0}")]
-	SyntaxError(String),
-
-	/// Type conversion error
-	#[error("Type conversion error: {0}")]
-	TypeError(String),
-
-	/// Connection error
-	#[error("Connection error: {0}")]
-	ConnectionError(String),
-
-	/// Query execution error
-	#[error("Query execution error: {0}")]
-	QueryError(String),
-
-	/// Serialization/deserialization error
-	#[error("Serialization error: {0}")]
-	SerializationError(String),
-
-	/// Configuration error
-	#[error("Configuration error: {0}")]
-	ConfigError(String),
-
-	/// Column not found error
-	#[error("Column not found: {0}")]
-	ColumnNotFound(String),
-
-	/// Transaction error
-	#[error("Transaction error: {0}")]
-	TransactionError(String),
-
-	/// Generic database error
-	#[error("Database error: {0}")]
-	Other(String),
-}
+pub use reinhardt_core::exception::{DatabaseError, DatabaseErrorKind};
 
 /// Result type for database operations
-pub type Result<T> = std::result::Result<T, DatabaseError>;
+pub type Result<T> = reinhardt_core::exception::Result<T>;
 
-impl From<serde_json::Error> for DatabaseError {
-	fn from(err: serde_json::Error) -> Self {
-		DatabaseError::SerializationError(err.to_string())
+#[cfg(any(
+	feature = "orm",
+	feature = "postgres",
+	feature = "sqlite",
+	feature = "mysql",
+	test
+))]
+pub(crate) fn map_sqlx_error(error: sqlx::Error) -> DatabaseError {
+	use sqlx::error::ErrorKind;
+
+	match error {
+		sqlx::Error::Database(error) => {
+			let code = error.code().map(|code| code.into_owned());
+			let kind = match code.as_deref() {
+				Some("40001") => DatabaseErrorKind::Serialization,
+				Some("42601") => DatabaseErrorKind::Syntax,
+				_ => match error.kind() {
+					ErrorKind::UniqueViolation => DatabaseErrorKind::UniqueViolation,
+					ErrorKind::ForeignKeyViolation => DatabaseErrorKind::ForeignKeyViolation,
+					ErrorKind::NotNullViolation => DatabaseErrorKind::NotNullViolation,
+					ErrorKind::CheckViolation => DatabaseErrorKind::CheckViolation,
+					ErrorKind::Other => DatabaseErrorKind::Query,
+					_ => DatabaseErrorKind::Query,
+				},
+			};
+			let database_error = DatabaseError::new(kind, error.message());
+			match code {
+				Some(code) => database_error.with_code(code),
+				None => database_error,
+			}
+		}
+		sqlx::Error::PoolTimedOut => {
+			DatabaseError::new(DatabaseErrorKind::Timeout, "Pool timed out")
+		}
+		sqlx::Error::Io(error) => {
+			DatabaseError::new(DatabaseErrorKind::Connection, error.to_string())
+		}
+		sqlx::Error::Tls(error) => {
+			DatabaseError::new(DatabaseErrorKind::Connection, error.to_string())
+		}
+		sqlx::Error::Protocol(message) => {
+			DatabaseError::new(DatabaseErrorKind::Connection, message)
+		}
+		sqlx::Error::PoolClosed => DatabaseError::new(DatabaseErrorKind::Connection, "Pool closed"),
+		sqlx::Error::WorkerCrashed => {
+			DatabaseError::new(DatabaseErrorKind::Connection, "Worker crashed")
+		}
+		sqlx::Error::Configuration(error) => {
+			DatabaseError::new(DatabaseErrorKind::Configuration, error.to_string())
+		}
+		sqlx::Error::TypeNotFound { type_name } => DatabaseError::new(
+			DatabaseErrorKind::Type,
+			format!("Type not found: {type_name}"),
+		),
+		sqlx::Error::ColumnIndexOutOfBounds { index, len } => DatabaseError::new(
+			DatabaseErrorKind::ColumnNotFound,
+			format!("Column index {index} out of bounds (len: {len})"),
+		),
+		sqlx::Error::ColumnNotFound(name) => DatabaseError::new(
+			DatabaseErrorKind::ColumnNotFound,
+			format!("Column not found: {name}"),
+		),
+		sqlx::Error::ColumnDecode { index, source } => DatabaseError::new(
+			DatabaseErrorKind::Type,
+			format!("Failed to decode column {index}: {source}"),
+		),
+		sqlx::Error::Decode(error) => {
+			DatabaseError::new(DatabaseErrorKind::Type, error.to_string())
+		}
+		sqlx::Error::RowNotFound => DatabaseError::new(DatabaseErrorKind::Query, "Row not found"),
+		error @ sqlx::Error::InvalidSavePointStatement => {
+			DatabaseError::new(DatabaseErrorKind::Transaction, error.to_string())
+		}
+		error @ sqlx::Error::BeginFailed => {
+			DatabaseError::new(DatabaseErrorKind::Transaction, error.to_string())
+		}
+		sqlx::Error::Migrate(error) => DatabaseError::new(
+			DatabaseErrorKind::Query,
+			format!("Migration error: {error}"),
+		),
+		error => DatabaseError::new(DatabaseErrorKind::Query, error.to_string()),
 	}
 }
 
-impl From<sqlx::Error> for DatabaseError {
-	fn from(err: sqlx::Error) -> Self {
-		use sqlx::Error::*;
-		match err {
-			Configuration(msg) => DatabaseError::ConfigError(msg.to_string()),
-			Database(e) => DatabaseError::QueryError(e.to_string()),
-			Io(e) => DatabaseError::ConnectionError(e.to_string()),
-			Tls(e) => DatabaseError::ConnectionError(e.to_string()),
-			Protocol(msg) => DatabaseError::QueryError(msg),
-			RowNotFound => DatabaseError::QueryError("Row not found".to_string()),
-			TypeNotFound { type_name } => {
-				DatabaseError::TypeError(format!("Type not found: {}", type_name))
-			}
-			ColumnIndexOutOfBounds { index, len } => DatabaseError::QueryError(format!(
-				"Column index {} out of bounds (len: {})",
-				index, len
-			)),
-			ColumnNotFound(name) => {
-				DatabaseError::QueryError(format!("Column not found: {}", name))
-			}
-			ColumnDecode { index, source } => {
-				DatabaseError::TypeError(format!("Failed to decode column {}: {}", index, source))
-			}
-			Decode(e) => DatabaseError::TypeError(e.to_string()),
-			PoolTimedOut => DatabaseError::ConnectionError("Pool timed out".to_string()),
-			PoolClosed => DatabaseError::ConnectionError("Pool closed".to_string()),
-			WorkerCrashed => DatabaseError::ConnectionError("Worker crashed".to_string()),
-			Migrate(e) => DatabaseError::QueryError(format!("Migration error: {}", e)),
-			_ => DatabaseError::Other(err.to_string()),
+#[cfg(test)]
+mod tests {
+	use std::borrow::Cow;
+	use std::fmt;
+	use std::io;
+
+	use rstest::rstest;
+	use sqlx::error::{DatabaseError as SqlxDatabaseError, ErrorKind};
+
+	use super::{DatabaseError, DatabaseErrorKind, map_sqlx_error};
+
+	const DATABASE_MESSAGE: &str = "database operation failed";
+	const DATABASE_CODE: &str = "VENDOR-CODE";
+	const CONSTRAINT_NAME: &str = "private_constraint";
+	const TABLE_NAME: &str = "private_table";
+
+	#[derive(Debug)]
+	struct TestSqlxDatabaseError {
+		kind: fn() -> ErrorKind,
+		code: &'static str,
+	}
+
+	fn unique_violation() -> ErrorKind {
+		ErrorKind::UniqueViolation
+	}
+
+	fn foreign_key_violation() -> ErrorKind {
+		ErrorKind::ForeignKeyViolation
+	}
+
+	fn not_null_violation() -> ErrorKind {
+		ErrorKind::NotNullViolation
+	}
+
+	fn check_violation() -> ErrorKind {
+		ErrorKind::CheckViolation
+	}
+
+	fn other_database_error() -> ErrorKind {
+		ErrorKind::Other
+	}
+
+	impl fmt::Display for TestSqlxDatabaseError {
+		fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+			formatter.write_str(DATABASE_MESSAGE)
 		}
+	}
+
+	impl std::error::Error for TestSqlxDatabaseError {}
+
+	impl SqlxDatabaseError for TestSqlxDatabaseError {
+		fn message(&self) -> &str {
+			DATABASE_MESSAGE
+		}
+
+		fn code(&self) -> Option<Cow<'_, str>> {
+			Some(Cow::Borrowed(self.code))
+		}
+
+		fn as_error(&self) -> &(dyn std::error::Error + Send + Sync + 'static) {
+			self
+		}
+
+		fn as_error_mut(&mut self) -> &mut (dyn std::error::Error + Send + Sync + 'static) {
+			self
+		}
+
+		fn into_error(self: Box<Self>) -> Box<dyn std::error::Error + Send + Sync + 'static> {
+			self
+		}
+
+		fn constraint(&self) -> Option<&str> {
+			Some(CONSTRAINT_NAME)
+		}
+
+		fn table(&self) -> Option<&str> {
+			Some(TABLE_NAME)
+		}
+
+		fn kind(&self) -> ErrorKind {
+			(self.kind)()
+		}
+	}
+
+	#[rstest]
+	#[case(unique_violation, DatabaseErrorKind::UniqueViolation)]
+	#[case(foreign_key_violation, DatabaseErrorKind::ForeignKeyViolation)]
+	#[case(not_null_violation, DatabaseErrorKind::NotNullViolation)]
+	#[case(check_violation, DatabaseErrorKind::CheckViolation)]
+	#[case(other_database_error, DatabaseErrorKind::Query)]
+	fn map_sqlx_error_classifies_database_errors(
+		#[case] sqlx_kind: fn() -> ErrorKind,
+		#[case] expected_kind: DatabaseErrorKind,
+	) {
+		// Arrange
+		let error = sqlx::Error::Database(Box::new(TestSqlxDatabaseError {
+			kind: sqlx_kind,
+			code: DATABASE_CODE,
+		}));
+
+		// Act
+		let error = map_sqlx_error(error);
+
+		// Assert
+		assert_eq!(
+			error,
+			DatabaseError::new(expected_kind, DATABASE_MESSAGE).with_code(DATABASE_CODE)
+		);
+		assert_eq!(error.message(), DATABASE_MESSAGE);
+		assert_eq!(error.code(), Some(DATABASE_CODE));
+		assert_eq!(error.to_string(), DATABASE_MESSAGE);
+	}
+
+	#[test]
+	fn map_sqlx_error_classifies_serialization_sqlstate() {
+		// Arrange
+		let error = sqlx::Error::Database(Box::new(TestSqlxDatabaseError {
+			kind: other_database_error,
+			code: "40001",
+		}));
+
+		// Act
+		let error = map_sqlx_error(error);
+
+		// Assert
+		assert_eq!(error.kind(), DatabaseErrorKind::Serialization);
+		assert_eq!(error.code(), Some("40001"));
+	}
+
+	#[test]
+	fn map_sqlx_error_classifies_syntax_sqlstate() {
+		// Arrange
+		let error = sqlx::Error::Database(Box::new(TestSqlxDatabaseError {
+			kind: other_database_error,
+			code: "42601",
+		}));
+
+		// Act
+		let error = map_sqlx_error(error);
+
+		// Assert
+		assert_eq!(error.kind(), DatabaseErrorKind::Syntax);
+		assert_eq!(error.code(), Some("42601"));
+	}
+
+	#[rstest]
+	#[case(sqlx::Error::PoolTimedOut, DatabaseErrorKind::Timeout)]
+	#[case(sqlx::Error::PoolClosed, DatabaseErrorKind::Connection)]
+	#[case(sqlx::Error::WorkerCrashed, DatabaseErrorKind::Connection)]
+	#[case(
+		sqlx::Error::Protocol("wire failure".to_string()),
+		DatabaseErrorKind::Connection
+	)]
+	#[case(
+		sqlx::Error::Configuration(Box::new(io::Error::other("invalid configuration"))),
+		DatabaseErrorKind::Configuration
+	)]
+	#[case(
+		sqlx::Error::TypeNotFound {
+			type_name: "missing_type".to_string(),
+		},
+		DatabaseErrorKind::Type
+	)]
+	#[case(
+		sqlx::Error::ColumnIndexOutOfBounds { index: 2, len: 1 },
+		DatabaseErrorKind::ColumnNotFound
+	)]
+	#[case(
+		sqlx::Error::ColumnNotFound("missing_column".to_string()),
+		DatabaseErrorKind::ColumnNotFound
+	)]
+	#[case(
+		sqlx::Error::Decode(Box::new(io::Error::other("decode failed"))),
+		DatabaseErrorKind::Type
+	)]
+	#[case(sqlx::Error::RowNotFound, DatabaseErrorKind::Query)]
+	#[case(sqlx::Error::InvalidSavePointStatement, DatabaseErrorKind::Transaction)]
+	#[case(sqlx::Error::BeginFailed, DatabaseErrorKind::Transaction)]
+	fn map_sqlx_error_classifies_non_database_errors(
+		#[case] sqlx_error: sqlx::Error,
+		#[case] expected_kind: DatabaseErrorKind,
+	) {
+		// Arrange
+
+		// Act
+		let error = map_sqlx_error(sqlx_error);
+
+		// Assert
+		assert_eq!(error.kind(), expected_kind);
+		assert_eq!(error.code(), None);
 	}
 }
