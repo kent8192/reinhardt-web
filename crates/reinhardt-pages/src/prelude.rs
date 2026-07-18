@@ -50,6 +50,8 @@
 //! ## Events and Callbacks
 //! - [`Callback`], [`IntoEventHandler`], [`into_event_handler`]
 //! - [`Event`] (platform-agnostic event type)
+//! - Controlled form support: [`ControlBindingError`], [`NumberParseError`],
+//!   [`NumberParseErrorKind`], [`NumberValue`]
 //!
 //! ## DOM
 //! - [`Document`], [`Element`], [`CustomEventOptions`], [`EventHandle`],
@@ -135,6 +137,10 @@ pub use crate::event::{
 	MouseButton, MouseButtons, Point, PointerKind,
 };
 
+pub use crate::control_binding::{
+	ControlBindingError, NumberParseError, NumberParseErrorKind, NumberValue,
+};
+
 // Platform-agnostic Event type
 pub use crate::cancellation::{CancellationHandle, CancellationToken, Cancelled};
 pub use crate::platform::Event;
@@ -205,7 +211,13 @@ pub use crate::i18n::{
 // Static File URL Resolver
 // ============================================================================
 
-pub use crate::static_resolver::{init_static_resolver, is_initialized, resolve_static};
+pub use crate::static_resolver::{
+	component_stylesheet_url, init_static_resolver, is_initialized, resolve_static,
+};
+pub use crate::style::{
+	ClassList, ClassToken, CssAngle, CssColor, CssInteger, CssLength, CssLengthPercentage,
+	CssNumber, CssPercentage, CssTime, CssValueError, StyleVars,
+};
 
 // ============================================================================
 // Forms (native only)
@@ -243,6 +255,8 @@ pub use crate::head;
 pub use crate::layout;
 pub use crate::page;
 pub use crate::page_props;
+pub use crate::style;
+pub use crate::style_def;
 #[cfg(feature = "i18n")]
 pub use crate::t;
 pub use crate::wasm_server_api;

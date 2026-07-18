@@ -1371,6 +1371,10 @@ impl QueryBuilder for PostgresQueryBuilder {
 			writer.push(")");
 		}
 
+		if stmt.overriding_system_value {
+			writer.push_keyword("OVERRIDING SYSTEM VALUE");
+		}
+
 		// VALUES clause or SELECT subquery
 		match &stmt.source {
 			InsertSource::Values(values) if !values.is_empty() => {
@@ -4697,6 +4701,7 @@ mod tests {
 		expr::{Expr, ExprTrait},
 		query::Query,
 		types::{Alias, IntoIden},
+		value::Value,
 	};
 	use rstest::rstest;
 
@@ -4784,6 +4789,23 @@ mod tests {
 		assert_eq!(
 			sql,
 			"INSERT INTO \"users\" (\"name\", \"email\") VALUES ($1, $2)"
+		);
+		assert_eq!(values.len(), 2);
+	}
+
+	#[test]
+	fn test_insert_overriding_system_value() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::insert();
+		stmt.into_table("users")
+			.columns(["id", "name"])
+			.values_panic(vec![Value::from(1), Value::from("Alice")])
+			.overriding_system_value();
+
+		let (sql, values) = builder.build_insert(&stmt);
+		assert_eq!(
+			sql,
+			"INSERT INTO \"users\" (\"id\", \"name\") OVERRIDING SYSTEM VALUE VALUES ($1, $2)"
 		);
 		assert_eq!(values.len(), 2);
 	}

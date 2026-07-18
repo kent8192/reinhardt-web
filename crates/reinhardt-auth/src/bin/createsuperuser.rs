@@ -54,7 +54,7 @@ struct Args {
 }
 
 #[cfg(feature = "database")]
-#[model(table_name = "auth_user")]
+#[model(app_label = "default", table_name = "auth_user")]
 #[derive(serde::Serialize, serde::Deserialize)]
 /// Authentication user model for the createsuperuser command.
 pub struct AuthUser {

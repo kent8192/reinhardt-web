@@ -33,18 +33,25 @@
 use proc_macro2::Span;
 use std::collections::HashSet;
 use syn::punctuated::Punctuated;
+use syn::spanned::Spanned;
 use syn::visit::{self, Visit};
 use syn::{Expr, Result, Token};
 
 use reinhardt_manouche::core::{
 	ComponentEventProp, IntrinsicEvent, PageAttr, PageBody, PageComponent, PageElement, PageElse,
 	PageExpression, PageFor, PageIf, PageMacro, PageMacroForm, PageNode, PageParam, PageWatch,
-	TypedNamedSlot, TypedPageAttr, TypedPageBody, TypedPageComponent, TypedPageElement,
-	TypedPageElse, TypedPageFor, TypedPageIf, TypedPageMacro, TypedPageMacroForm, TypedPageNode,
-	TypedPageWatch, types::AttrValue,
+	TypedControlBinding, TypedControlBindingExpr, TypedControlBindingKind, TypedNamedSlot,
+	TypedPageAttr, TypedPageBody, TypedPageComponent, TypedPageElement, TypedPageElse,
+	TypedPageFor, TypedPageIf, TypedPageMacro, TypedPageMacroForm, TypedPageNode, TypedPageWatch,
+	types::AttrValue,
 };
 
 use super::scope_utils::collect_pat_idents;
+
+#[derive(Clone, Copy, Default)]
+struct ValidationContext {
+	inside_bound_select: bool,
+}
 
 /// Check if a URL is safe (no dangerous schemes like javascript:).
 ///
@@ -83,7 +90,7 @@ pub(super) fn validate(ast: &PageMacro) -> Result<TypedPageMacro> {
 	let form = match &ast.form {
 		PageMacroForm::StrictClosure { params, body } => {
 			enforce_strict_captures(ast.head.as_ref(), body, params)?;
-			let typed_body = transform_body(body, &[])?;
+			let typed_body = transform_body(body, &[], ValidationContext::default())?;
 			reinhardt_manouche::validator::validate_page_accessibility(&typed_body)?;
 			TypedPageMacroForm::StrictClosure {
 				params: params.clone(),
@@ -91,7 +98,7 @@ pub(super) fn validate(ast: &PageMacro) -> Result<TypedPageMacro> {
 			}
 		}
 		PageMacroForm::ImplicitBody { body } => {
-			let typed_body = transform_body(body, &[])?;
+			let typed_body = transform_body(body, &[], ValidationContext::default())?;
 			reinhardt_manouche::validator::validate_page_accessibility(&typed_body)?;
 			TypedPageMacroForm::ImplicitBody {
 				captures: collect_free_idents(ast.head.as_ref(), body, &[]),
@@ -192,6 +199,17 @@ impl CaptureChecker {
 	fn visit_element(&mut self, el: &PageElement) {
 		for a in &el.attrs {
 			if a.html_name() == "a11y" {
+				continue;
+			}
+			if a.html_name() == "bind"
+				&& let Expr::Call(call) = &a.value
+				&& let Expr::Path(path) = call.func.as_ref()
+				&& path.qself.is_none()
+				&& path.path.is_ident("number")
+			{
+				for argument in &call.args {
+					self.visit_expr(argument);
+				}
 				continue;
 			}
 			self.visit_expr(&a.value);
@@ -464,8 +482,12 @@ fn missing_param_error(ident: &syn::Ident) -> syn::Error {
 ///
 /// * `body` - The untyped body to transform
 /// * `parent_tags` - Stack of parent element tag names (for nesting validation)
-fn transform_body(body: &PageBody, parent_tags: &[String]) -> Result<TypedPageBody> {
-	let nodes = transform_nodes(&body.nodes, parent_tags)?;
+fn transform_body(
+	body: &PageBody,
+	parent_tags: &[String],
+	context: ValidationContext,
+) -> Result<TypedPageBody> {
+	let nodes = transform_nodes(&body.nodes, parent_tags, context)?;
 	Ok(TypedPageBody {
 		nodes,
 		span: body.span,
@@ -478,11 +500,15 @@ fn transform_body(body: &PageBody, parent_tags: &[String]) -> Result<TypedPageBo
 ///
 /// * `nodes` - The nodes to transform
 /// * `parent_tags` - Stack of parent element tag names (for nesting validation)
-fn transform_nodes(nodes: &[PageNode], parent_tags: &[String]) -> Result<Vec<TypedPageNode>> {
+fn transform_nodes(
+	nodes: &[PageNode],
+	parent_tags: &[String],
+	context: ValidationContext,
+) -> Result<Vec<TypedPageNode>> {
 	let mut typed_nodes = Vec::new();
 
 	for node in nodes {
-		typed_nodes.push(transform_node(node, parent_tags)?);
+		typed_nodes.push(transform_node(node, parent_tags, context)?);
 	}
 
 	Ok(typed_nodes)
@@ -491,11 +517,16 @@ fn transform_nodes(nodes: &[PageNode], parent_tags: &[String]) -> Result<Vec<Typ
 /// Transforms a single PageNode into a TypedPageNode.
 ///
 /// Dispatches to the appropriate transformation function based on node type.
-fn transform_node(node: &PageNode, parent_tags: &[String]) -> Result<TypedPageNode> {
+fn transform_node(
+	node: &PageNode,
+	parent_tags: &[String],
+	context: ValidationContext,
+) -> Result<TypedPageNode> {
 	match node {
 		PageNode::Element(elem) => Ok(TypedPageNode::Element(transform_element(
 			elem,
 			parent_tags,
+			context,
 		)?)),
 		PageNode::Text(text) => Ok(TypedPageNode::Text(text.clone())),
 		PageNode::Expression(expr) => {
@@ -523,14 +554,20 @@ fn transform_node(node: &PageNode, parent_tags: &[String]) -> Result<TypedPageNo
 			}
 			Ok(TypedPageNode::Expression(expr.clone()))
 		}
-		PageNode::If(if_node) => Ok(TypedPageNode::If(transform_if(if_node, parent_tags)?)),
+		PageNode::If(if_node) => Ok(TypedPageNode::If(transform_if(
+			if_node,
+			parent_tags,
+			context,
+		)?)),
 		PageNode::For(for_node) => Ok(TypedPageNode::For(Box::new(transform_for(
 			for_node,
 			parent_tags,
+			context,
 		)?))),
 		PageNode::Component(comp) => Ok(TypedPageNode::Component(transform_component(
 			comp,
 			parent_tags,
+			context,
 		)?)),
 		PageNode::Watch(watch_node) => Err(syn::Error::new(
 			watch_node.span,
@@ -548,13 +585,14 @@ fn transform_node(node: &PageNode, parent_tags: &[String]) -> Result<TypedPageNo
 fn transform_if(
 	if_node: &reinhardt_manouche::core::PageIf,
 	parent_tags: &[String],
+	context: ValidationContext,
 ) -> Result<TypedPageIf> {
 	// Transform then branch
-	let then_branch = transform_nodes(&if_node.then_branch, parent_tags)?;
+	let then_branch = transform_nodes(&if_node.then_branch, parent_tags, context)?;
 
 	// Transform else branch if present
 	let else_branch = if let Some(else_br) = &if_node.else_branch {
-		Some(transform_else(else_br, parent_tags)?)
+		Some(transform_else(else_br, parent_tags, context)?)
 	} else {
 		None
 	};
@@ -568,15 +606,19 @@ fn transform_if(
 }
 
 /// Transforms a PageElse branch.
-fn transform_else(else_branch: &PageElse, parent_tags: &[String]) -> Result<TypedPageElse> {
+fn transform_else(
+	else_branch: &PageElse,
+	parent_tags: &[String],
+	context: ValidationContext,
+) -> Result<TypedPageElse> {
 	match else_branch {
 		PageElse::Block(nodes) => {
-			let typed_nodes = transform_nodes(nodes, parent_tags)?;
+			let typed_nodes = transform_nodes(nodes, parent_tags, context)?;
 			Ok(TypedPageElse::Block(typed_nodes))
 		}
 		PageElse::If(nested_if) => {
 			// Recursively transform nested if
-			let typed_if = transform_if(nested_if, parent_tags)?;
+			let typed_if = transform_if(nested_if, parent_tags, context)?;
 			Ok(TypedPageElse::If(Box::new(typed_if)))
 		}
 	}
@@ -586,8 +628,9 @@ fn transform_else(else_branch: &PageElse, parent_tags: &[String]) -> Result<Type
 fn transform_for(
 	for_node: &reinhardt_manouche::core::PageFor,
 	parent_tags: &[String],
+	context: ValidationContext,
 ) -> Result<TypedPageFor> {
-	let body = transform_nodes(&for_node.body, parent_tags)?;
+	let body = transform_nodes(&for_node.body, parent_tags, context)?;
 
 	Ok(TypedPageFor {
 		pat: for_node.pat.clone(),
@@ -604,8 +647,12 @@ fn transform_for(
 /// outright (Task 11 / spec §4.1 removal). Retained as a thin scaffold so
 /// the future PR3 codemod can re-use it if a deprecation window is added.
 #[allow(dead_code)] // Task 11: watch is rejected before this is reached.
-fn transform_watch(watch_node: &PageWatch, parent_tags: &[String]) -> Result<TypedPageWatch> {
-	let inner = transform_node(&watch_node.expr, parent_tags)?;
+fn transform_watch(
+	watch_node: &PageWatch,
+	parent_tags: &[String],
+	context: ValidationContext,
+) -> Result<TypedPageWatch> {
+	let inner = transform_node(&watch_node.expr, parent_tags, context)?;
 
 	Ok(TypedPageWatch {
 		expr: Box::new(inner),
@@ -616,7 +663,11 @@ fn transform_watch(watch_node: &PageWatch, parent_tags: &[String]) -> Result<Typ
 /// Transforms a PageComponent node.
 ///
 /// Recursively transforms the component's children (if any) and named slots.
-fn transform_component(comp: &PageComponent, parent_tags: &[String]) -> Result<TypedPageComponent> {
+fn transform_component(
+	comp: &PageComponent,
+	parent_tags: &[String],
+	context: ValidationContext,
+) -> Result<TypedPageComponent> {
 	// Validate component event handlers (same as element events)
 	for event in &comp.events {
 		validate_component_event_handler(event)?;
@@ -624,7 +675,7 @@ fn transform_component(comp: &PageComponent, parent_tags: &[String]) -> Result<T
 
 	// Transform children if present
 	let typed_children = if let Some(children) = &comp.children {
-		Some(transform_nodes(children, parent_tags)?)
+		Some(transform_nodes(children, parent_tags, context)?)
 	} else {
 		None
 	};
@@ -635,7 +686,7 @@ fn transform_component(comp: &PageComponent, parent_tags: &[String]) -> Result<T
 		.map(|slot| {
 			Ok(TypedNamedSlot {
 				name: slot.name.clone(),
-				children: transform_nodes(&slot.children, parent_tags)?,
+				children: transform_nodes(&slot.children, parent_tags, context)?,
 				span: slot.span,
 			})
 		})
@@ -660,7 +711,11 @@ fn transform_component(comp: &PageComponent, parent_tags: &[String]) -> Result<T
 /// - Element nesting rules
 /// - Required attributes
 /// - HTML specification compliance (Phase 2)
-fn transform_element(elem: &PageElement, parent_tags: &[String]) -> Result<TypedPageElement> {
+fn transform_element(
+	elem: &PageElement,
+	parent_tags: &[String],
+	context: ValidationContext,
+) -> Result<TypedPageElement> {
 	let tag = elem.tag.to_string();
 
 	// 1. Validate events (unchanged from untyped version)
@@ -668,8 +723,40 @@ fn transform_element(elem: &PageElement, parent_tags: &[String]) -> Result<Typed
 		validate_intrinsic_event_handler(event)?;
 	}
 
-	// 2. Transform and validate attributes
-	let transformed_attrs = transform_attrs(&elem.attrs, &tag)?;
+	// 2. Extract the binding before transforming ordinary attributes
+	let (mut ordinary_attrs, binding_attr) = split_binding_attr(&elem.attrs)?;
+	let control_binding = binding_attr
+		.as_ref()
+		.map(|attr| classify_control_binding(&tag, &ordinary_attrs, attr))
+		.transpose()?
+		.map(Box::new);
+	if control_binding
+		.as_deref()
+		.is_some_and(|binding| binding.kind == TypedControlBindingKind::SelectOne)
+	{
+		ordinary_attrs.retain(|attr| {
+			!(attr.html_name() == "multiple"
+				&& matches!(&attr.value, Expr::Lit(lit) if matches!(&lit.lit, syn::Lit::Bool(value) if !value.value())))
+		});
+	}
+	if control_binding.as_deref().is_some_and(|binding| {
+		matches!(
+			binding.kind,
+			TypedControlBindingKind::Checkbox | TypedControlBindingKind::Radio
+		)
+	}) {
+		ordinary_attrs.retain(|attr| {
+			!(attr.html_name() == "checked"
+				&& matches!(&attr.value, Expr::Lit(lit) if matches!(&lit.lit, syn::Lit::Bool(value) if !value.value())))
+		});
+	}
+	if tag == "option" && context.inside_bound_select {
+		ordinary_attrs.retain(|attr| {
+			!(attr.html_name() == "selected"
+				&& matches!(&attr.value, Expr::Lit(lit) if matches!(&lit.lit, syn::Lit::Bool(value) if !value.value())))
+		});
+	}
+	let transformed_attrs = transform_attrs(&ordinary_attrs, &tag)?;
 	let typed_attrs = transformed_attrs.attrs;
 
 	// 3. Validate element nesting
@@ -678,12 +765,31 @@ fn transform_element(elem: &PageElement, parent_tags: &[String]) -> Result<Typed
 	// 4. Recursively transform children
 	let mut child_tags = parent_tags.to_vec();
 	child_tags.push(tag.clone());
-	let typed_children = transform_nodes(&elem.children, &child_tags)?;
+	let child_context = ValidationContext {
+		inside_bound_select: if tag == "select" {
+			control_binding.as_deref().is_some_and(|binding| {
+				matches!(
+					binding.kind,
+					TypedControlBindingKind::SelectOne | TypedControlBindingKind::SelectMany
+				)
+			})
+		} else {
+			context.inside_bound_select
+		},
+	};
+	let typed_children = transform_nodes(&elem.children, &child_tags, child_context)?;
+	validate_control_binding_structure(
+		&tag,
+		control_binding.as_deref(),
+		&typed_attrs,
+		&typed_children,
+	)?;
 
 	// Create typed element
 	let typed_element = TypedPageElement {
 		tag: elem.tag.clone(),
 		attrs: typed_attrs,
+		control_binding,
 		events: elem.events.clone(),
 		children: typed_children,
 		a11y_disabled: transformed_attrs.a11y_disabled,
@@ -691,9 +797,382 @@ fn transform_element(elem: &PageElement, parent_tags: &[String]) -> Result<Typed
 	};
 
 	// 6. Validate against HTML specification (Phase 2)
-	super::html_spec::validate_against_spec(&typed_element)?;
+	if tag == "option" && context.inside_bound_select {
+		super::html_spec::validate_bound_select_element(&typed_element)?;
+	} else {
+		super::html_spec::validate_against_spec(&typed_element)?;
+	}
 
 	Ok(typed_element)
+}
+
+fn split_binding_attr(attrs: &[PageAttr]) -> Result<(Vec<PageAttr>, Option<PageAttr>)> {
+	let mut ordinary_attrs = Vec::with_capacity(attrs.len());
+	let mut binding_attr = None;
+
+	for attr in attrs {
+		if attr.html_name() == "bind" {
+			if binding_attr.is_some() {
+				return Err(syn::Error::new_spanned(
+					&attr.value,
+					"`bind:` may only be specified once per control",
+				));
+			}
+			binding_attr = Some(attr.clone());
+		} else {
+			ordinary_attrs.push(attr.clone());
+		}
+	}
+
+	Ok((ordinary_attrs, binding_attr))
+}
+
+fn parse_binding_expression(expr: &Expr) -> Result<TypedControlBindingExpr> {
+	if let Expr::Call(call) = expr
+		&& let Expr::Path(path) = call.func.as_ref()
+		&& path.qself.is_none()
+		&& path.path.is_ident("number")
+	{
+		if call.args.len() != 2 {
+			return Err(syn::Error::new_spanned(
+				call,
+				"`number(value, error)` requires exactly two arguments",
+			));
+		}
+		return Ok(TypedControlBindingExpr::NumberWithError {
+			value: Box::new(call.args[0].clone()),
+			error: Box::new(call.args[1].clone()),
+		});
+	}
+
+	Ok(TypedControlBindingExpr::Direct(Box::new(expr.clone())))
+}
+
+fn classify_control_binding(
+	element_tag: &str,
+	attrs: &[PageAttr],
+	binding_attr: &PageAttr,
+) -> Result<TypedControlBinding> {
+	let (kind, radio_value) = match element_tag {
+		"input" => classify_input_binding(attrs, binding_attr)?,
+		"textarea" => (TypedControlBindingKind::Text, None),
+		"select" => (classify_select_binding(attrs, binding_attr)?, None),
+		_ => {
+			return Err(syn::Error::new_spanned(
+				&binding_attr.value,
+				"`bind:` is only valid on `input`, `textarea`, and `select`",
+			));
+		}
+	};
+	let expression = parse_binding_expression(&binding_attr.value)?;
+
+	if matches!(expression, TypedControlBindingExpr::NumberWithError { .. })
+		&& kind != TypedControlBindingKind::Number
+	{
+		return Err(syn::Error::new_spanned(
+			&binding_attr.value,
+			"`number(value, error)` is only valid on a number input",
+		));
+	}
+
+	Ok(TypedControlBinding {
+		kind,
+		expression,
+		radio_value,
+		span: binding_attr.value.span(),
+	})
+}
+
+fn classify_input_binding(
+	attrs: &[PageAttr],
+	binding_attr: &PageAttr,
+) -> Result<(TypedControlBindingKind, Option<Expr>)> {
+	let input_type = match unique_untyped_attr(
+		attrs,
+		"type",
+		binding_attr,
+		"a bound input requires a static `type`",
+	)? {
+		Some(attr) => static_string_value(&attr.value).ok_or_else(|| {
+			syn::Error::new_spanned(
+				&binding_attr.value,
+				"a bound input requires a static `type`",
+			)
+		})?,
+		None => "text".to_owned(),
+	};
+
+	match input_type.to_ascii_lowercase().as_str() {
+		"text" => Ok((TypedControlBindingKind::Text, None)),
+		"number" => Ok((TypedControlBindingKind::Number, None)),
+		"checkbox" => Ok((TypedControlBindingKind::Checkbox, None)),
+		"radio" => {
+			let value = unique_untyped_attr(
+				attrs,
+				"value",
+				binding_attr,
+				"a bound radio input cannot specify duplicate `value` attributes",
+			)?
+			.ok_or_else(|| {
+				syn::Error::new_spanned(
+					&binding_attr.value,
+					"a bound radio input requires a `value` attribute",
+				)
+			})?;
+			Ok((TypedControlBindingKind::Radio, Some(value.value.clone())))
+		}
+		unsupported => Err(syn::Error::new_spanned(
+			&binding_attr.value,
+			format!("`bind:` does not support input type `{unsupported}`"),
+		)),
+	}
+}
+
+fn classify_select_binding(
+	attrs: &[PageAttr],
+	binding_attr: &PageAttr,
+) -> Result<TypedControlBindingKind> {
+	match unique_untyped_attr(
+		attrs,
+		"multiple",
+		binding_attr,
+		"a bound select requires a static `multiple`",
+	)? {
+		None => Ok(TypedControlBindingKind::SelectOne),
+		Some(attr) => match &attr.value {
+			Expr::Lit(lit) => match &lit.lit {
+				syn::Lit::Bool(value) if value.value() => Ok(TypedControlBindingKind::SelectMany),
+				syn::Lit::Bool(_) => Ok(TypedControlBindingKind::SelectOne),
+				_ => Err(syn::Error::new_spanned(
+					&binding_attr.value,
+					"a bound select requires a static `multiple`",
+				)),
+			},
+			_ => Err(syn::Error::new_spanned(
+				&binding_attr.value,
+				"a bound select requires a static `multiple`",
+			)),
+		},
+	}
+}
+
+fn unique_untyped_attr<'a>(
+	attrs: &'a [PageAttr],
+	name: &str,
+	binding_attr: &PageAttr,
+	diagnostic: &str,
+) -> Result<Option<&'a PageAttr>> {
+	let mut matching = attrs.iter().filter(|attr| attr.html_name() == name);
+	let attr = matching.next();
+	if matching.next().is_some() {
+		return Err(syn::Error::new_spanned(&binding_attr.value, diagnostic));
+	}
+	Ok(attr)
+}
+
+fn static_string_value(expr: &Expr) -> Option<String> {
+	let Expr::Lit(lit) = expr else {
+		return None;
+	};
+	let syn::Lit::Str(value) = &lit.lit else {
+		return None;
+	};
+	Some(value.value())
+}
+
+fn validate_control_binding_structure(
+	element_tag: &str,
+	binding: Option<&TypedControlBinding>,
+	attrs: &[TypedPageAttr],
+	children: &[TypedPageNode],
+) -> Result<()> {
+	let Some(binding) = binding else {
+		return Ok(());
+	};
+
+	let conflict = match binding.kind {
+		TypedControlBindingKind::Text | TypedControlBindingKind::Number
+			if element_tag == "input" && find_typed_attr(attrs, "value").is_some() =>
+		{
+			Some("a bound text or number input cannot specify a `value` attribute")
+		}
+		TypedControlBindingKind::Text
+			if element_tag == "textarea" && find_typed_attr(attrs, "value").is_some() =>
+		{
+			Some("a bound textarea cannot specify a `value` attribute")
+		}
+		TypedControlBindingKind::Checkbox | TypedControlBindingKind::Radio
+			if find_typed_attr(attrs, "checked").is_some() =>
+		{
+			Some("a bound checkbox or radio input cannot specify a `checked` attribute")
+		}
+		TypedControlBindingKind::Text if element_tag == "textarea" && !children.is_empty() => {
+			Some("a bound textarea cannot contain initial child content")
+		}
+		TypedControlBindingKind::SelectOne | TypedControlBindingKind::SelectMany
+			if contains_selected_option(children) =>
+		{
+			Some("a bound select cannot contain an option with a `selected` attribute")
+		}
+		TypedControlBindingKind::SelectOne | TypedControlBindingKind::SelectMany
+			if contains_option_with_duplicate_value(children) =>
+		{
+			Some("a bound select cannot contain an option with duplicate `value` attributes")
+		}
+		TypedControlBindingKind::SelectOne | TypedControlBindingKind::SelectMany
+			if contains_dynamic_option_without_value(children) =>
+		{
+			Some(
+				"an option with dynamic content inside a bound select requires an explicit `value` attribute",
+			)
+		}
+		_ => None,
+	};
+
+	match conflict {
+		Some(message) => Err(syn::Error::new(binding.span, message)),
+		None => Ok(()),
+	}
+}
+
+fn find_typed_attr<'a>(attrs: &'a [TypedPageAttr], name: &str) -> Option<&'a TypedPageAttr> {
+	attrs.iter().find(|attr| attr.html_name() == name)
+}
+
+fn is_false_selected_attr(attr: &TypedPageAttr) -> bool {
+	attr.html_name() == "selected"
+		&& matches!(&attr.value, AttrValue::BoolLit(value) if !value.value())
+}
+
+fn contains_selected_option(nodes: &[TypedPageNode]) -> bool {
+	nodes.iter().any(|node| match node {
+		TypedPageNode::Element(element) => {
+			(element.tag == "option"
+				&& find_typed_attr(&element.attrs, "selected")
+					.is_some_and(|attr| !is_false_selected_attr(attr)))
+				|| contains_selected_option(&element.children)
+		}
+		TypedPageNode::If(page_if) => page_if_contains_selected_option(page_if),
+		TypedPageNode::For(page_for) => contains_selected_option(&page_for.body),
+		TypedPageNode::Watch(watch) => {
+			contains_selected_option(std::slice::from_ref(watch.expr.as_ref()))
+		}
+		TypedPageNode::Component(component) => {
+			component
+				.children
+				.as_deref()
+				.is_some_and(contains_selected_option)
+				|| component
+					.named_slots
+					.iter()
+					.any(|slot| contains_selected_option(&slot.children))
+		}
+		TypedPageNode::Text(_) | TypedPageNode::Expression(_) => false,
+	})
+}
+
+fn contains_option_with_duplicate_value(nodes: &[TypedPageNode]) -> bool {
+	nodes.iter().any(|node| match node {
+		TypedPageNode::Element(element) => {
+			(element.tag == "option"
+				&& element
+					.attrs
+					.iter()
+					.filter(|attr| attr.html_name() == "value")
+					.nth(1)
+					.is_some()) || contains_option_with_duplicate_value(&element.children)
+		}
+		TypedPageNode::If(page_if) => page_if_contains_option_with_duplicate_value(page_if),
+		TypedPageNode::For(page_for) => contains_option_with_duplicate_value(&page_for.body),
+		TypedPageNode::Watch(watch) => {
+			contains_option_with_duplicate_value(std::slice::from_ref(watch.expr.as_ref()))
+		}
+		TypedPageNode::Component(component) => {
+			component
+				.children
+				.as_deref()
+				.is_some_and(contains_option_with_duplicate_value)
+				|| component
+					.named_slots
+					.iter()
+					.any(|slot| contains_option_with_duplicate_value(&slot.children))
+		}
+		TypedPageNode::Text(_) | TypedPageNode::Expression(_) => false,
+	})
+}
+
+fn page_if_contains_option_with_duplicate_value(page_if: &TypedPageIf) -> bool {
+	contains_option_with_duplicate_value(&page_if.then_branch)
+		|| page_if
+			.else_branch
+			.as_ref()
+			.is_some_and(|else_branch| match else_branch {
+				TypedPageElse::Block(nodes) => contains_option_with_duplicate_value(nodes),
+				TypedPageElse::If(page_if) => page_if_contains_option_with_duplicate_value(page_if),
+			})
+}
+
+fn contains_dynamic_option_without_value(nodes: &[TypedPageNode]) -> bool {
+	nodes.iter().any(|node| match node {
+		TypedPageNode::Element(element) => {
+			(element.tag == "option"
+				&& find_typed_attr(&element.attrs, "value").is_none()
+				&& contains_dynamic_option_content(&element.children))
+				|| contains_dynamic_option_without_value(&element.children)
+		}
+		TypedPageNode::If(page_if) => page_if_contains_dynamic_option_without_value(page_if),
+		TypedPageNode::For(page_for) => contains_dynamic_option_without_value(&page_for.body),
+		TypedPageNode::Component(component) => {
+			component
+				.children
+				.as_deref()
+				.is_some_and(contains_dynamic_option_without_value)
+				|| component
+					.named_slots
+					.iter()
+					.any(|slot| contains_dynamic_option_without_value(&slot.children))
+		}
+		TypedPageNode::Watch(watch) => {
+			contains_dynamic_option_without_value(std::slice::from_ref(watch.expr.as_ref()))
+		}
+		TypedPageNode::Text(_) | TypedPageNode::Expression(_) => false,
+	})
+}
+
+fn page_if_contains_dynamic_option_without_value(page_if: &TypedPageIf) -> bool {
+	contains_dynamic_option_without_value(&page_if.then_branch)
+		|| page_if
+			.else_branch
+			.as_ref()
+			.is_some_and(|branch| match branch {
+				TypedPageElse::Block(nodes) => contains_dynamic_option_without_value(nodes),
+				TypedPageElse::If(page_if) => {
+					page_if_contains_dynamic_option_without_value(page_if)
+				}
+			})
+}
+
+fn contains_dynamic_option_content(nodes: &[TypedPageNode]) -> bool {
+	nodes.iter().any(|node| match node {
+		TypedPageNode::Text(_) => false,
+		TypedPageNode::Element(element) => contains_dynamic_option_content(&element.children),
+		TypedPageNode::Expression(_)
+		| TypedPageNode::If(_)
+		| TypedPageNode::For(_)
+		| TypedPageNode::Component(_)
+		| TypedPageNode::Watch(_) => true,
+	})
+}
+
+fn page_if_contains_selected_option(page_if: &TypedPageIf) -> bool {
+	contains_selected_option(&page_if.then_branch)
+		|| page_if
+			.else_branch
+			.as_ref()
+			.is_some_and(|else_branch| match else_branch {
+				TypedPageElse::Block(nodes) => contains_selected_option(nodes),
+				TypedPageElse::If(page_if) => page_if_contains_selected_option(page_if),
+			})
 }
 
 struct TransformedPageAttrs {
@@ -1312,6 +1791,567 @@ mod tests {
 	use rstest::rstest;
 	use syn::parse_quote;
 
+	fn controlled_binding_invalid_cases() -> Vec<(proc_macro2::TokenStream, &'static str)> {
+		vec![
+			(
+				quote::quote!({ div { bind: value } }),
+				"`bind:` is only valid on `input`, `textarea`, and `select`",
+			),
+			(
+				quote::quote!({ input { type: dynamic_type, bind: value } }),
+				"a bound input requires a static `type`",
+			),
+			(
+				quote::quote!({ input { type: "radio", bind: value } }),
+				"a bound radio input requires a `value` attribute",
+			),
+			(
+				quote::quote!({ input { a11y: off, type: "radio", value: "one", value: "two", bind: value } }),
+				"a bound radio input cannot specify duplicate `value` attributes",
+			),
+			(
+				quote::quote!({
+					select {
+						a11y: off,
+						bind: value,
+						if condition {
+							optgroup { option { value: "one", value: "two", "Choice" } }
+						}
+					}
+				}),
+				"a bound select cannot contain an option with duplicate `value` attributes",
+			),
+			(
+				quote::quote!({
+					input {
+						bind: first,
+						bind: second,
+					}
+				}),
+				"`bind:` may only be specified once per control",
+			),
+			(
+				quote::quote!({
+					select {
+						multiple: dynamic_multiple,
+						bind: value,
+					}
+				}),
+				"a bound select requires a static `multiple`",
+			),
+			(
+				quote::quote!({ input { a11y: off, type: "text", type: dynamic_type, bind: value } }),
+				"a bound input requires a static `type`",
+			),
+			(
+				quote::quote!({
+					select {
+						a11y: off,
+						multiple: false,
+						multiple: dynamic_multiple,
+						bind: value,
+					}
+				}),
+				"a bound select requires a static `multiple`",
+			),
+			(
+				quote::quote!({ input { type: "file", bind: value } }),
+				"`bind:` does not support input type `file`",
+			),
+			(
+				quote::quote!({
+					textarea {
+						bind: number(value, error),
+					}
+				}),
+				"`number(value, error)` is only valid on a number input",
+			),
+			(
+				quote::quote!({ input { type: "number", bind: number(value) } }),
+				"`number(value, error)` requires exactly two arguments",
+			),
+			(
+				quote::quote!({
+					input {
+						value: "initial",
+						bind: value,
+					}
+				}),
+				"a bound text or number input cannot specify a `value` attribute",
+			),
+			(
+				quote::quote!({ input { type: "checkbox", checked: true, bind: value } }),
+				"a bound checkbox or radio input cannot specify a `checked` attribute",
+			),
+			(
+				quote::quote!({ textarea { bind: value, "initial" } }),
+				"a bound textarea cannot contain initial child content",
+			),
+			(
+				quote::quote!({
+					select {
+						a11y: off,
+						bind: value,
+						option { { dynamic_label } }
+					}
+				}),
+				"an option with dynamic content inside a bound select requires an explicit `value` attribute",
+			),
+			(
+				quote::quote!({
+					select {
+						a11y: off,
+						bind: value,
+						option { script { "ignored" } }
+					}
+				}),
+				"Element <option> in a bound select only supports non-interactive phrasing content",
+			),
+			(
+				quote::quote!({
+					select {
+						a11y: off,
+						bind: value,
+						option {
+							value: "explicit",
+							span { strong { tabindex: dynamic_tabindex, "Label" } }
+						}
+					}
+				}),
+				"Element <option> in a bound select cannot contain a descendant with a `tabindex` attribute",
+			),
+			(
+				quote::quote!({
+					select {
+						bind: value,
+						optgroup { option { value: "one", selected: true, "One" } }
+					}
+				}),
+				"a bound select cannot contain an option with a `selected` attribute",
+			),
+			(
+				quote::quote!({
+					select {
+						a11y: off,
+						bind: value,
+						if first {
+							option { value: "one", "One" }
+						} else if second {
+							option { value: "two", "Two" }
+						} else {
+							option { value: "three", selected: true, "Three" }
+						}
+					}
+				}),
+				"a bound select cannot contain an option with a `selected` attribute",
+			),
+		]
+	}
+
+	#[rstest]
+	#[case(
+		quote::quote!({ div { bind: value } }),
+		"`bind:` is only valid on `input`, `textarea`, and `select`"
+	)]
+	#[case(
+		quote::quote!({ input { type: dynamic_type, bind: value } }),
+		"a bound input requires a static `type`"
+	)]
+	#[case(
+		quote::quote!({ input { type: "radio", bind: value } }),
+		"a bound radio input requires a `value` attribute"
+	)]
+	#[case(
+		quote::quote!({ input { bind: first, bind: second } }),
+		"`bind:` may only be specified once per control"
+	)]
+	#[case(
+		quote::quote!({ select { multiple: dynamic_multiple, bind: value } }),
+		"a bound select requires a static `multiple`"
+	)]
+	#[case(
+		quote::quote!({ input { a11y: off, type: "text", type: dynamic_type, bind: value } }),
+		"a bound input requires a static `type`"
+	)]
+	#[case(
+		quote::quote!({ select { a11y: off, multiple: false, multiple: dynamic_multiple, bind: value } }),
+		"a bound select requires a static `multiple`"
+	)]
+	#[case(
+		quote::quote!({ input { type: "file", bind: value } }),
+		"`bind:` does not support input type `file`"
+	)]
+	#[case(
+		quote::quote!({ textarea { bind: number(value, error) } }),
+		"`number(value, error)` is only valid on a number input"
+	)]
+	#[case(
+		quote::quote!({ input { type: "number", bind: number(value) } }),
+		"`number(value, error)` requires exactly two arguments"
+	)]
+	#[case(
+		quote::quote!({ input { value: "initial", bind: value } }),
+		"a bound text or number input cannot specify a `value` attribute"
+	)]
+	#[case(
+		quote::quote!({ input { type: "checkbox", checked: true, bind: value } }),
+		"a bound checkbox or radio input cannot specify a `checked` attribute"
+	)]
+	#[case(
+		quote::quote!({ textarea { bind: value, "initial" } }),
+		"a bound textarea cannot contain initial child content"
+	)]
+	#[case(
+		quote::quote!({
+			select {
+				bind: value,
+				optgroup { option { value: "one", selected: true, "One" } }
+			}
+		}),
+		"a bound select cannot contain an option with a `selected` attribute"
+	)]
+	#[case(
+		quote::quote!({
+			select {
+				a11y: off,
+				bind: value,
+				if first {
+					option { value: "one", "One" }
+				} else if second {
+					option { value: "two", "Two" }
+				} else {
+					option { value: "three", selected: true, "Three" }
+				}
+			}
+		}),
+		"a bound select cannot contain an option with a `selected` attribute"
+	)]
+	fn controlled_binding_rejects_invalid_structure(
+		#[case] input: proc_macro2::TokenStream,
+		#[case] expected: &str,
+	) {
+		// Arrange
+		let ast: PageMacro = syn::parse2(input).unwrap();
+
+		// Act
+		let error = validate(&ast).unwrap_err();
+
+		// Assert
+		assert_eq!(error.to_string(), expected);
+	}
+
+	#[test]
+	fn controlled_binding_accepts_false_selected_option() {
+		// Arrange
+		let ast: PageMacro = syn::parse2(quote::quote!({
+			select { a11y: off, bind: value, option { selected: false, value: "one", "One" } }
+		}))
+		.unwrap();
+
+		// Act
+		let result = validate(&ast);
+
+		// Assert
+		assert!(result.is_ok());
+	}
+
+	#[test]
+	fn controlled_binding_rejects_textarea_value_attribute() {
+		// Arrange
+		let ast: PageMacro = syn::parse2(quote::quote!({
+			textarea {
+				bind: value,
+				value: "stale",
+			}
+		}))
+		.unwrap();
+
+		// Act
+		let error = validate(&ast).unwrap_err();
+
+		// Assert
+		assert_eq!(
+			error.to_string(),
+			"a bound textarea cannot specify a `value` attribute"
+		);
+	}
+
+	#[test]
+	fn literal_bound_select_marker_tag_does_not_enable_option_phrasing() {
+		// Arrange
+		let ast: PageMacro = syn::parse2(quote::quote!({
+			__reinhardt_bound_select { option { span { "Label" } } }
+		}))
+		.unwrap();
+
+		// Act
+		let error = validate(&ast).unwrap_err();
+
+		// Assert
+		assert_eq!(
+			error.to_string(),
+			"Element <option> can only contain text, not child elements"
+		);
+	}
+
+	#[rstest]
+	#[case(false, false)]
+	#[case(true, true)]
+	fn select_resets_inherited_bound_context(
+		#[case] nested_is_bound: bool,
+		#[case] should_accept_phrasing_option: bool,
+	) {
+		// Arrange
+		let input = if nested_is_bound {
+			quote::quote!({ select { a11y: off, bind: nested, option { span { "Nested" } } } })
+		} else {
+			quote::quote!({ select { a11y: off, option { span { "Nested" } } } })
+		};
+		let ast: PageMacro = syn::parse2(input).unwrap();
+		let PageNode::Element(element) = &ast.body().nodes[0] else {
+			panic!("expected an element");
+		};
+
+		// Act
+		let result = transform_element(
+			element,
+			&[],
+			ValidationContext {
+				inside_bound_select: true,
+			},
+		);
+
+		// Assert
+		assert_eq!(result.is_ok(), should_accept_phrasing_option);
+		if !should_accept_phrasing_option {
+			assert_eq!(
+				result.unwrap_err().to_string(),
+				"Element <option> can only contain text, not child elements"
+			);
+		}
+	}
+
+	#[test]
+	fn bound_select_context_does_not_leak_to_outside_sibling() {
+		// Arrange
+		let ast: PageMacro = syn::parse2(quote::quote!({
+			div {
+				select { a11y: off, bind: outer, option { value: "outer", "Outer" } }
+				select { a11y: off, option { span { "Sibling" } } }
+			}
+		}))
+		.unwrap();
+
+		// Act
+		let error = validate(&ast).unwrap_err();
+
+		// Assert
+		assert_eq!(
+			error.to_string(),
+			"Element <option> can only contain text, not child elements"
+		);
+	}
+
+	#[rstest]
+	#[case(quote::quote!({
+		select {
+			a11y: off,
+			bind: selected,
+			if show { option { span { "Flow" } } }
+		}
+	}))]
+	#[case(quote::quote!({
+		select {
+			a11y: off,
+			bind: selected,
+			ChoiceList() { option { span { "Component" } } }
+		}
+	}))]
+	#[case(quote::quote!({
+		select {
+			a11y: off,
+			bind: selected,
+			ChoiceList() { $choices { option { span { "Slot" } } } }
+		}
+	}))]
+	fn bound_select_context_propagates_through_non_select_nodes(
+		#[case] input: proc_macro2::TokenStream,
+	) {
+		// Arrange
+		let ast: PageMacro = syn::parse2(input).unwrap();
+
+		// Act
+		let result = validate(&ast);
+
+		// Assert
+		assert!(result.is_ok());
+	}
+
+	#[rstest]
+	#[case(quote::quote!({ select { a11y: off, bind: selected, option { span { tabindex: 0, "Zero" } } } }))]
+	#[case(quote::quote!({ select { a11y: off, bind: selected, option { span { tabindex: -1, "Negative" } } } }))]
+	#[case(quote::quote!({ select { a11y: off, bind: selected, option { span { tabindex: dynamic_tabindex, "Dynamic" } } } }))]
+	#[case(quote::quote!({ select { a11y: off, bind: selected, option { value: "explicit", span { strong { tabindex: 0, "Nested" } } } } }))]
+	fn bound_option_rejects_descendant_tabindex(#[case] input: proc_macro2::TokenStream) {
+		// Arrange
+		let ast: PageMacro = syn::parse2(input).unwrap();
+
+		// Act
+		let error = validate(&ast).unwrap_err();
+
+		// Assert
+		assert_eq!(
+			error.to_string(),
+			"Element <option> in a bound select cannot contain a descendant with a `tabindex` attribute"
+		);
+	}
+
+	#[test]
+	fn bound_option_rejects_non_phrasing_control_flow_content() {
+		// Arrange
+		let ast: PageMacro = syn::parse2(quote::quote!({
+			select {
+				a11y: off,
+				bind: value,
+				option {
+					value: "choice",
+					if condition { div { "Block" } }
+				}
+			}
+		}))
+		.unwrap();
+
+		// Act
+		let error = validate(&ast).unwrap_err();
+
+		// Assert
+		assert_eq!(
+			error.to_string(),
+			"Element <option> in a bound select only supports non-interactive phrasing content"
+		);
+	}
+
+	#[rstest]
+	#[case(quote::quote!({ input { a11y: off, bind: value } }), TypedControlBindingKind::Text, false)]
+	#[case(
+		quote::quote!({ input { a11y: off, type: "checkbox", bind: value } }),
+		TypedControlBindingKind::Checkbox,
+		false
+	)]
+	#[case(
+		quote::quote!({ input { a11y: off, type: "checkbox", checked: false, bind: value } }),
+		TypedControlBindingKind::Checkbox,
+		false
+	)]
+	#[case(
+		quote::quote!({ input { a11y: off, type: "radio", value: choice, bind: value } }),
+		TypedControlBindingKind::Radio,
+		false
+	)]
+	#[case(
+		quote::quote!({ input { a11y: off, type: "radio", value: choice, checked: false, bind: value } }),
+		TypedControlBindingKind::Radio,
+		false
+	)]
+	#[case(
+		quote::quote!({ input { a11y: off, type: "number", bind: value } }),
+		TypedControlBindingKind::Number,
+		false
+	)]
+	#[case(
+		quote::quote!({ input { a11y: off, type: "number", bind: number(value, error) } }),
+		TypedControlBindingKind::Number,
+		true
+	)]
+	#[case(quote::quote!({ textarea { a11y: off, bind: value } }), TypedControlBindingKind::Text, false)]
+	#[case(quote::quote!({ select { a11y: off, bind: value } }), TypedControlBindingKind::SelectOne, false)]
+	#[case(
+		quote::quote!({
+			select {
+				a11y: off,
+				bind: value,
+				option { span { "Static" } }
+			}
+		}),
+		TypedControlBindingKind::SelectOne,
+		false
+	)]
+	#[case(
+		quote::quote!({
+			select {
+				a11y: off,
+				bind: value,
+				option { value: "dynamic", { dynamic_label } }
+			}
+		}),
+		TypedControlBindingKind::SelectOne,
+		false
+	)]
+	#[case(
+		quote::quote!({ select { a11y: off, multiple: true, bind: value } }),
+		TypedControlBindingKind::SelectMany,
+		false
+	)]
+	#[case(
+		quote::quote!({ select { a11y: off, multiple: false, bind: value } }),
+		TypedControlBindingKind::SelectOne,
+		false
+	)]
+	fn controlled_binding_accepts_supported_structure(
+		#[case] input: proc_macro2::TokenStream,
+		#[case] expected_kind: TypedControlBindingKind,
+		#[case] expects_number_error: bool,
+	) {
+		// Arrange
+		let ast: PageMacro = syn::parse2(input).unwrap();
+
+		// Act
+		let typed = validate(&ast).unwrap();
+		let TypedPageNode::Element(element) = &typed.body().nodes[0] else {
+			panic!("expected a typed element");
+		};
+		let binding = element.control_binding.as_ref().unwrap();
+
+		// Assert
+		assert!(element.attrs.iter().all(|attr| attr.html_name() != "bind"));
+		assert_eq!(binding.kind, expected_kind);
+		assert_eq!(
+			matches!(
+				binding.expression,
+				TypedControlBindingExpr::NumberWithError { .. }
+			),
+			expects_number_error
+		);
+		if expected_kind == TypedControlBindingKind::SelectOne {
+			assert!(
+				element
+					.attrs
+					.iter()
+					.all(|attr| attr.html_name() != "multiple")
+			);
+		}
+		assert_eq!(
+			binding.radio_value.is_some(),
+			expected_kind == TypedControlBindingKind::Radio
+		);
+	}
+
+	#[rstest]
+	fn controlled_binding_diagnostics_match_shared_validator() {
+		for (input, expected) in controlled_binding_invalid_cases() {
+			// Arrange
+			let ast: PageMacro = syn::parse2(input).unwrap();
+
+			// Act
+			let shared_error = reinhardt_manouche::validator::validate_page(&ast).unwrap_err();
+			let macro_error = validate(&ast).unwrap_err();
+
+			// Assert
+			assert_eq!(shared_error.to_string(), expected);
+			assert_eq!(macro_error.to_string(), shared_error.to_string());
+		}
+	}
+
 	#[test]
 	fn test_validate_valid_closure() {
 		let event = IntrinsicEvent::Standard {
@@ -1869,6 +2909,7 @@ mod tests {
 		let children = vec![TypedPageNode::Element(TypedPageElement {
 			tag: syn::Ident::new("span", proc_macro2::Span::call_site()),
 			attrs: vec![],
+			control_binding: None,
 			events: vec![],
 			children: vec![TypedPageNode::Text(PageText {
 				content: "Submit".to_string(),
@@ -1998,6 +3039,19 @@ mod capture_tests {
 		let result = enforce_strict_captures(ast.head.as_ref(), ast.body(), ast.params());
 
 		// Assert
+		assert!(result.is_ok());
+	}
+
+	#[rstest]
+	fn accepts_numeric_binding_sentinel_without_a_bogus_parameter() {
+		let ast = parse(quote! {
+			|amount: reinhardt_pages::reactive::Signal<i32>, parse_error: reinhardt_pages::reactive::Signal<Option<String>>| {
+				input { a11y: off, type: "number", bind: number(amount, parse_error) }
+			}
+		});
+
+		let result = enforce_strict_captures(ast.head.as_ref(), ast.body(), ast.params());
+
 		assert!(result.is_ok());
 	}
 

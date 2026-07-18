@@ -2,14 +2,13 @@
 
 use reinhardt_pages::event::{ClickEvent, InputEvent, KeyDownEvent, SubmitEvent};
 use reinhardt_pages::{Callback, page};
-use reinhardt_core::reactive::ReactiveScope;
 
 fn handle_submit(event: SubmitEvent) {
 	event.prevent_default();
 }
 
 fn main() {
-	ReactiveScope::run(|| {
+	reinhardt_core::reactive::ReactiveScope::run(|| {
 		let _inferred = page!(|| {
 			button {
 				@click: |event| {

@@ -147,7 +147,10 @@ impl RouterHandle {
 /// # Example
 ///
 /// ```ignore
-/// use reinhardt_pages::reactive::hooks::{use_retained_effect, use_router, use_state};
+/// use reinhardt_pages::{
+///     deps,
+///     reactive::hooks::{use_retained_effect, use_router, use_state},
+/// };
 ///
 /// // Navigate to `/welcome` once `should_redirect` flips to `true`.
 /// let (should_redirect, _set) = use_state(false);
@@ -162,7 +165,7 @@ impl RouterHandle {
 ///             None::<fn()>
 ///         }
 ///     },
-///     (should_redirect.clone(),),
+///     deps![should_redirect.clone()],
 /// );
 /// ```
 pub fn use_router() -> RouterHandle {

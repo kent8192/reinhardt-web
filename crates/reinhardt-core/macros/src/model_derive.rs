@@ -37,6 +37,7 @@ use crate::crate_paths::{
 	get_linkme_crate, get_reinhardt_core_crate, get_reinhardt_crate, get_reinhardt_db_crate,
 	get_reinhardt_migrations_crate, get_reinhardt_orm_crate,
 };
+use crate::identifier_case::to_snake_case;
 use crate::rel::RelAttribute;
 
 /// Constraint specification from `#[model(constraints = [...])]`
@@ -464,15 +465,18 @@ impl ModelConfig {
 			}
 		}
 
-		let table_name = table_name.ok_or_else(|| {
+		let app_label = app_label.ok_or_else(|| {
 			syn::Error::new_spanned(
 				struct_name,
-				"table_name attribute is required in #[model(...)]",
+				"app_label attribute is required in #[model(...)]",
 			)
 		})?;
+		let table_name = table_name.unwrap_or_else(|| {
+			format!("{}_{}", app_label, to_snake_case(&struct_name.to_string()))
+		});
 
 		Ok(Self {
-			app_label: app_label.unwrap_or_else(|| "default".to_string()),
+			app_label,
 			table_name,
 			constraints,
 			manager,
@@ -680,6 +684,8 @@ impl ModelConfig {
 enum ForeignKeySpec {
 	/// Type directly: `#[field(foreign_key = User)]`
 	Type(syn::Type),
+	/// Bare model name: `#[field(foreign_key = "User")]`
+	ModelName(String),
 	/// app_label.model_name format: `#[field(foreign_key = "users.User")]`
 	AppModel {
 		app_label: String,
@@ -906,13 +912,14 @@ impl FieldConfig {
 					Ok(())
 				} else if meta.path.is_ident("foreign_key") {
 					// Try parsing as Type first (direct type specification)
-					if let Ok(ty) = meta.value()?.parse::<syn::Type>() {
+					let value = meta.value()?;
+					if let Ok(ty) = value.parse::<syn::Type>() {
 						config.foreign_key = Some(ForeignKeySpec::Type(ty));
 						return Ok(());
 					}
 
 					// Fall back to string specification
-					if let Ok(value) = meta.value()?.parse::<syn::LitStr>() {
+					if let Ok(value) = value.parse::<syn::LitStr>() {
 						let spec_str = value.value();
 
 						if spec_str.contains('.') {
@@ -930,13 +937,8 @@ impl FieldConfig {
 								));
 							}
 						} else {
-							// Type name only (for backward compatibility)
-							if let Ok(ty) = syn::parse_str::<syn::Type>(&spec_str) {
-								config.foreign_key = Some(ForeignKeySpec::Type(ty));
-								return Ok(());
-							} else {
-								return Err(meta.error("Invalid foreign_key specification"));
-							}
+							config.foreign_key = Some(ForeignKeySpec::ModelName(spec_str));
+							return Ok(());
 						}
 					}
 
@@ -2846,15 +2848,16 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 	let field_metadata_items = generate_field_metadata(&field_infos, &fk_field_infos)?;
 
 	// Generate auto-registration code
-	let registration_code = generate_registration_code(
+	let registration_code = generate_registration_code(RegistrationCodeInput {
 		struct_name,
+		generics,
 		app_label,
 		table_name,
-		&field_infos,
-		&fk_field_infos,
-		&unique_constraint_names,
-		&unique_constraint_field_lists,
-	)?;
+		field_infos: &field_infos,
+		fk_field_infos: &fk_field_infos,
+		unique_constraint_names: &unique_constraint_names,
+		unique_constraint_field_lists: &unique_constraint_field_lists,
+	})?;
 
 	// Generate relationship registration code for RELATIONSHIPS registry
 	let relationship_registrations =
@@ -3058,6 +3061,8 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 		.filter(|field| field.config.generated.is_some() || field.config.generated_sql.is_some())
 		.map(|field| LitStr::new(&field.name.to_string(), field.name.span()))
 		.collect();
+	let fixture_validation =
+		generate_fixture_validation(struct_name, generics, &field_infos, &fk_field_infos);
 
 	// Generate the Model implementation
 	let expanded = quote! {
@@ -3136,6 +3141,8 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 				}
 			}
 
+			#fixture_validation
+
 			#pk_impl
 
 			#set_pk_impl
@@ -3200,6 +3207,433 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 	};
 
 	Ok(expanded)
+}
+
+fn fixture_projection_serde_meta_is_deserialization_adapter(meta: &syn::Meta) -> bool {
+	meta.path().is_ident("with")
+		|| meta.path().is_ident("deserialize_with")
+		|| meta.path().is_ident("bound")
+}
+
+fn fixture_projection_serde_attr(attr: &syn::Attribute) -> Option<syn::Attribute> {
+	if !attr.path().is_ident("serde") {
+		return None;
+	}
+
+	let syn::Meta::List(meta_list) = &attr.meta else {
+		return None;
+	};
+	let kept = meta_list
+		.parse_args_with(Punctuated::<syn::Meta, Token![,]>::parse_terminated)
+		.ok()?
+		.into_iter()
+		.filter(fixture_projection_serde_meta_is_deserialization_adapter)
+		.collect::<Vec<_>>();
+	if kept.is_empty() {
+		return None;
+	}
+
+	Some(parse_quote! {
+		#[serde(#(#kept),*)]
+	})
+}
+
+fn fixture_projection_serde_attrs(field: &FieldInfo) -> Vec<syn::Attribute> {
+	field
+		.serde_attrs
+		.iter()
+		.filter_map(fixture_projection_serde_attr)
+		.collect()
+}
+
+fn fixture_projection_serde_bounds(field: &FieldInfo) -> Vec<syn::Attribute> {
+	field
+		.serde_attrs
+		.iter()
+		.filter_map(|attr| {
+			if !attr.path().is_ident("serde") {
+				return None;
+			}
+			let syn::Meta::List(meta_list) = &attr.meta else {
+				return None;
+			};
+			let bounds = meta_list
+				.parse_args_with(Punctuated::<syn::Meta, Token![,]>::parse_terminated)
+				.ok()?
+				.into_iter()
+				.filter(|meta| meta.path().is_ident("bound"))
+				.collect::<Vec<_>>();
+			(!bounds.is_empty()).then(|| parse_quote!(#[serde(#(#bounds),*)]))
+		})
+		.collect()
+}
+
+fn fixture_projection_serde_deserializer(field: &FieldInfo) -> Option<TokenStream> {
+	field.serde_attrs.iter().find_map(|attr| {
+		if !attr.path().is_ident("serde") {
+			return None;
+		}
+
+		let syn::Meta::List(meta_list) = &attr.meta else {
+			return None;
+		};
+		meta_list
+			.parse_args_with(Punctuated::<syn::Meta, Token![,]>::parse_terminated)
+			.ok()?
+			.iter()
+			.find_map(fixture_projection_serde_meta_deserializer)
+	})
+}
+
+fn fixture_projection_serde_meta_deserializer(meta: &syn::Meta) -> Option<TokenStream> {
+	let syn::Meta::NameValue(meta) = meta else {
+		return None;
+	};
+	let syn::Expr::Lit(value) = &meta.value else {
+		return None;
+	};
+	let syn::Lit::Str(path) = &value.lit else {
+		return None;
+	};
+	let path = path.parse::<syn::Path>().ok()?;
+	if meta.path.is_ident("with") {
+		return Some(quote! { #path::deserialize });
+	}
+	if meta.path.is_ident("deserialize_with") {
+		return Some(quote! { #path });
+	}
+	None
+}
+
+fn generate_fixture_validation(
+	struct_name: &Ident,
+	generics: &syn::Generics,
+	field_infos: &[FieldInfo],
+	fk_field_infos: &[ForeignKeyFieldInfo],
+) -> TokenStream {
+	let orm_crate = get_reinhardt_orm_crate();
+	let mut projection_fields = Vec::new();
+	let mut projection_field_names = Vec::new();
+	let mut has_defaulted_fixture_field = false;
+	let mut defaulted_fixture_field_validators = Vec::new();
+	let mut has_required_fixture_foreign_key = false;
+	let mut has_nullable_fixture_foreign_key = false;
+
+	for field in field_infos {
+		if field.config.skip
+			|| field.is_fk_id_field
+			|| is_relationship_field_type(&field.ty)
+			|| is_many_to_many_field_type(&field.ty)
+			|| is_fixture_computed_field(field)
+		{
+			continue;
+		}
+
+		let field_name = &field.name;
+		let field_type = &field.ty;
+		let is_database_generated = is_fixture_generated_field(field);
+		let has_sql_default = field
+			.config
+			.default
+			.as_ref()
+			.and_then(serialize_field_default)
+			.is_some();
+		if has_sql_default {
+			let serde_bounds = fixture_projection_serde_bounds(field);
+			let (is_option, inner_type) = extract_option_type(field_type);
+			let custom_deserializer = fixture_projection_serde_deserializer(field);
+			let fixture_validation_type = if custom_deserializer.is_some() {
+				quote! { #field_type }
+			} else if is_option && field.config.null == Some(false) {
+				quote! { #inner_type }
+			} else {
+				quote! { #field_type }
+			};
+			let validator = if let Some(deserializer) = custom_deserializer {
+				let validator_name = Ident::new(
+					&format!("__reinhardt_validate_defaulted_fixture_field_{field_name}"),
+					field_name.span(),
+				);
+				let null_error_message = LitStr::new(
+					&format!("fixture field '{field_name}' cannot be null"),
+					field_name.span(),
+				);
+				let validation = if is_option && field.config.null == Some(false) {
+					quote! {
+						let value: #field_type = #deserializer(deserializer)?;
+						if value.is_none() {
+							return Err(<D::Error as #orm_crate::serde::de::Error>::custom(
+								#null_error_message,
+							));
+						}
+					}
+				} else {
+					quote! {
+						let _: #field_type = #deserializer(deserializer)?;
+					}
+				};
+				defaulted_fixture_field_validators.push(quote! {
+					fn #validator_name<'de, D>(
+						deserializer: D,
+					) -> ::std::result::Result<::std::marker::PhantomData<#fixture_validation_type>, D::Error>
+					where
+						D: #orm_crate::serde::Deserializer<'de>,
+					{
+						#validation
+						Ok(::std::marker::PhantomData::<#fixture_validation_type>)
+					}
+				});
+				LitStr::new(&validator_name.to_string(), field_name.span())
+			} else {
+				has_defaulted_fixture_field = true;
+				LitStr::new(
+					"__reinhardt_validate_defaulted_fixture_field",
+					field_name.span(),
+				)
+			};
+			projection_fields.push(quote! {
+				#(#serde_bounds)*
+				#[serde(default, deserialize_with = #validator)]
+				#field_name: ::std::marker::PhantomData<#fixture_validation_type>
+			});
+		} else {
+			let serde_attrs = fixture_projection_serde_attrs(field);
+			let serde_bounds = fixture_projection_serde_bounds(field);
+			let custom_deserializer = fixture_projection_serde_deserializer(field);
+			let (is_option, inner_type) = extract_option_type(field_type);
+			let fixture_validation_type = if is_database_generated {
+				quote! { ::std::option::Option<#field_type> }
+			} else if is_option
+				&& (field.config.null == Some(false)
+					|| (field.config.primary_key && !is_fixture_generated_field(field)))
+			{
+				quote! { #inner_type }
+			} else {
+				quote! { #field_type }
+			};
+			let type_is_rewritten = is_database_generated
+				|| (is_option
+					&& (field.config.null == Some(false)
+						|| (field.config.primary_key && !is_fixture_generated_field(field))));
+			if let Some(deserializer) = custom_deserializer.filter(|_| type_is_rewritten) {
+				let validator_name = Ident::new(
+					&format!("__reinhardt_validate_fixture_field_{field_name}"),
+					field_name.span(),
+				);
+				let validator = LitStr::new(&validator_name.to_string(), field_name.span());
+				let null_error_message = LitStr::new(
+					&format!("fixture field '{field_name}' cannot be null"),
+					field_name.span(),
+				);
+				let rejects_null = is_option
+					&& (field.config.null == Some(false)
+						|| (field.config.primary_key && !is_fixture_generated_field(field)));
+				let validation = if rejects_null {
+					quote! {
+						let value: #field_type = #deserializer(deserializer)?;
+						if value.is_none() {
+							return Err(<D::Error as #orm_crate::serde::de::Error>::custom(
+								#null_error_message,
+							));
+						}
+					}
+				} else {
+					quote! {
+						let _: #field_type = #deserializer(deserializer)?;
+					}
+				};
+				defaulted_fixture_field_validators.push(quote! {
+					fn #validator_name<'de, D>(
+						deserializer: D,
+					) -> ::std::result::Result<::std::marker::PhantomData<#fixture_validation_type>, D::Error>
+					where
+						D: #orm_crate::serde::Deserializer<'de>,
+					{
+						#validation
+						Ok(::std::marker::PhantomData::<#fixture_validation_type>)
+					}
+				});
+				let serde_default = if is_database_generated {
+					quote! { #[serde(default, deserialize_with = #validator)] }
+				} else {
+					quote! { #[serde(deserialize_with = #validator)] }
+				};
+				projection_fields.push(quote! {
+					#(#serde_bounds)*
+					#serde_default
+					#field_name: ::std::marker::PhantomData<#fixture_validation_type>
+				});
+			} else {
+				projection_fields.push(quote! {
+					#(#serde_attrs)*
+					#field_name: #fixture_validation_type
+				});
+			}
+		}
+		projection_field_names.push(field_name.clone());
+	}
+
+	for (index, foreign_key) in fk_field_infos.iter().enumerate() {
+		let field_name = Ident::new(
+			&format!("__reinhardt_fixture_foreign_key_{index}"),
+			foreign_key.field_name.span(),
+		);
+		let column_name = LitStr::new(&foreign_key.id_column_name, foreign_key.field_name.span());
+		let is_nullable = foreign_key.rel_attr.null.unwrap_or(false);
+		let field_type = if is_nullable {
+			quote! { ::std::option::Option<#orm_crate::FixtureValue> }
+		} else {
+			has_required_fixture_foreign_key = true;
+			quote! { #orm_crate::FixtureValue }
+		};
+		let deserialize_with = if is_nullable {
+			has_nullable_fixture_foreign_key = true;
+			quote! { #[serde(default, deserialize_with = "__reinhardt_validate_nullable_fixture_foreign_key")] }
+		} else {
+			quote! { #[serde(deserialize_with = "__reinhardt_validate_required_fixture_foreign_key")] }
+		};
+		projection_fields.push(quote! {
+			#[serde(rename = #column_name)]
+			#deserialize_with
+			#field_name: #field_type
+		});
+		projection_field_names.push(field_name);
+	}
+
+	let (_, ty_generics, where_clause) = generics.split_for_impl();
+	let marker_field = if generics.params.is_empty() {
+		quote! {}
+	} else {
+		quote! {
+			#[serde(skip)]
+			__reinhardt_fixture_projection_marker: ::std::marker::PhantomData<#struct_name #ty_generics>,
+		}
+	};
+	let marker_pattern = if generics.params.is_empty() {
+		quote! {}
+	} else {
+		quote! {
+			__reinhardt_fixture_projection_marker: _,
+		}
+	};
+	let defaulted_fixture_field_validator = if has_defaulted_fixture_field {
+		quote! {
+			fn __reinhardt_validate_defaulted_fixture_field<'de, D, T>(
+				deserializer: D,
+			) -> ::std::result::Result<::std::marker::PhantomData<T>, D::Error>
+			where
+				D: #orm_crate::serde::Deserializer<'de>,
+				T: #orm_crate::serde::Deserialize<'de>,
+			{
+				let _ = <T as #orm_crate::serde::Deserialize>::deserialize(deserializer)?;
+				Ok(::std::marker::PhantomData)
+			}
+		}
+	} else {
+		quote! {}
+	};
+	let required_fixture_foreign_key_validator = if has_required_fixture_foreign_key {
+		quote! {
+			fn __reinhardt_validate_required_fixture_foreign_key<'de, D>(
+				deserializer: D,
+			) -> ::std::result::Result<#orm_crate::FixtureValue, D::Error>
+			where
+				D: #orm_crate::serde::Deserializer<'de>,
+			{
+				let value = <#orm_crate::FixtureValue as #orm_crate::serde::Deserialize>::deserialize(deserializer)?;
+				if value.is_null() || value.is_object() || value.is_array() {
+					return Err(<D::Error as #orm_crate::serde::de::Error>::custom(
+						"required foreign key fixture fields must be scalar identifiers",
+					));
+				}
+				Ok(value)
+			}
+		}
+	} else {
+		quote! {}
+	};
+	let nullable_fixture_foreign_key_validator = if has_nullable_fixture_foreign_key {
+		quote! {
+			fn __reinhardt_validate_nullable_fixture_foreign_key<'de, D>(
+				deserializer: D,
+			) -> ::std::result::Result<::std::option::Option<#orm_crate::FixtureValue>, D::Error>
+			where
+				D: #orm_crate::serde::Deserializer<'de>,
+			{
+				let value = <::std::option::Option<#orm_crate::FixtureValue> as #orm_crate::serde::Deserialize>::deserialize(deserializer)?;
+				if value.as_ref().is_some_and(|value| value.is_object() || value.is_array()) {
+					return Err(<D::Error as #orm_crate::serde::de::Error>::custom(
+						"nullable foreign key fixture fields must be scalar identifiers or null",
+					));
+				}
+				Ok(value)
+			}
+		}
+	} else {
+		quote! {}
+	};
+
+	quote! {
+	fn validate_fixture_fields(
+			fields: &#orm_crate::FixtureFields,
+		) -> ::std::result::Result<(), ::std::string::String> {
+			#(#defaulted_fixture_field_validators)*
+			#defaulted_fixture_field_validator
+			#required_fixture_foreign_key_validator
+			#nullable_fixture_foreign_key_validator
+
+			// This projection is deserialized only to validate fixture input.
+			#[allow(dead_code)]
+			#[derive(#orm_crate::serde::Deserialize)]
+			struct __ReinhardtFixtureProjection #generics #where_clause {
+				#(#projection_fields,)*
+				#marker_field
+			}
+
+			let __ReinhardtFixtureProjection {
+				#(#projection_field_names: _,)*
+				#marker_pattern
+			} = #orm_crate::fixtures::__deserialize_fixture_projection::<
+				__ReinhardtFixtureProjection #ty_generics,
+			>(fields)?;
+			Ok(())
+		}
+	}
+}
+
+/// Determine whether a field can be omitted from fixture validation because the database generates it.
+fn is_fixture_generated_field(field: &FieldInfo) -> bool {
+	if field.config.generated.is_some() || field.config.generated_sql.is_some() {
+		return true;
+	}
+
+	if field.config.auto_increment == Some(true)
+		|| (field.config.primary_key
+			&& is_integer_primary_key_type(&field.ty)
+			&& field.config.auto_increment.unwrap_or(true))
+	{
+		return true;
+	}
+
+	#[cfg(feature = "db-sqlite")]
+	if field.config.autoincrement == Some(true) {
+		return true;
+	}
+
+	// PostgreSQL identity metadata is only available when the macro is compiled
+	// with PostgreSQL support, matching attribute parsing and model metadata generation.
+	#[cfg(feature = "db-postgres")]
+	{
+		field.config.identity_always == Some(true) || field.config.identity_by_default == Some(true)
+	}
+
+	#[cfg(not(feature = "db-postgres"))]
+	false
+}
+
+/// Determine whether a database-computed field cannot be supplied by a fixture.
+fn is_fixture_computed_field(field: &FieldInfo) -> bool {
+	field.config.generated.is_some() || field.config.generated_sql.is_some()
 }
 
 /// Generate FieldInfo construction for field_metadata()
@@ -3511,6 +3945,7 @@ fn generate_field_metadata(
 			.as_ref()
 			.and_then(|value| field_default_to_metadata(value, &orm_crate))
 			.map_or_else(|| quote! { None }, |value| quote! { Some(#value) });
+		let db_default = default.clone();
 
 		let item = quote! {
 			{
@@ -3526,7 +3961,7 @@ fn generate_field_metadata(
 					blank: #blank,
 					editable: #editable,
 					default: #default,
-					db_default: None,
+					db_default: #db_default,
 					db_column: #db_column_value,
 					choices: None,
 					attributes,
@@ -3595,11 +4030,18 @@ fn field_default_to_metadata(expr: &syn::Expr, orm_crate: &TokenStream) -> Optio
 	if let syn::Expr::Unary(unary) = expr
 		&& matches!(unary.op, syn::UnOp::Neg(_))
 		&& let syn::Expr::Lit(literal) = unary.expr.as_ref()
-		&& let syn::Lit::Int(value) = &literal.lit
-		&& let Ok(value) = value.base10_parse::<i64>()
 	{
-		let value = -value;
-		return Some(quote! { #field_kwarg::Int(#value) });
+		match &literal.lit {
+			syn::Lit::Int(value) => {
+				let value = -value.base10_parse::<i64>().ok()?;
+				return Some(quote! { #field_kwarg::Int(#value) });
+			}
+			syn::Lit::Float(value) => {
+				let value = -value.base10_parse::<f64>().ok()?;
+				return Some(quote! { #field_kwarg::Float(#value) });
+			}
+			_ => {}
+		}
 	}
 
 	let syn::Expr::Lit(literal) = expr else {
@@ -3627,16 +4069,29 @@ fn field_default_to_metadata(expr: &syn::Expr, orm_crate: &TokenStream) -> Optio
 	}
 }
 
-/// Generate automatic registration code using ctor
-fn generate_registration_code(
-	struct_name: &syn::Ident,
-	app_label: &str,
-	table_name: &str,
-	field_infos: &[FieldInfo],
-	fk_field_infos: &[ForeignKeyFieldInfo],
-	unique_constraint_names: &[String],
-	unique_constraint_field_lists: &[Vec<String>],
-) -> Result<TokenStream> {
+struct RegistrationCodeInput<'a> {
+	struct_name: &'a syn::Ident,
+	generics: &'a syn::Generics,
+	app_label: &'a str,
+	table_name: &'a str,
+	field_infos: &'a [FieldInfo],
+	fk_field_infos: &'a [ForeignKeyFieldInfo],
+	unique_constraint_names: &'a [String],
+	unique_constraint_field_lists: &'a [Vec<String>],
+}
+
+/// Generate automatic registration code using ctor.
+fn generate_registration_code(input: RegistrationCodeInput<'_>) -> Result<TokenStream> {
+	let RegistrationCodeInput {
+		struct_name,
+		generics,
+		app_label,
+		table_name,
+		field_infos,
+		fk_field_infos,
+		unique_constraint_names,
+		unique_constraint_field_lists,
+	} = input;
 	let migrations_crate = get_reinhardt_migrations_crate();
 	let orm_crate = get_reinhardt_orm_crate();
 	let model_name = struct_name.to_string();
@@ -3647,6 +4102,14 @@ fn generate_registration_code(
 		),
 		struct_name.span(),
 	);
+	let fixture_registration = if generics.params.is_empty() {
+		quote! {
+			// Register type-erased fixture handlers for dumpdata/loaddata.
+			#orm_crate::fixtures::global_fixture_registry().register_model::<#struct_name>();
+		}
+	} else {
+		quote! {}
+	};
 
 	// Separate ManyToMany fields from regular fields (also exclude ForeignKeyField/OneToOneField and FK _id fields)
 	let (m2m_fields, regular_fields_with_fk_id): (Vec<_>, Vec<_>) =
@@ -3764,14 +4227,20 @@ fn generate_registration_code(
 		let fk_registration = if let Some(fk_spec) = &config.foreign_key {
 			match fk_spec {
 				ForeignKeySpec::Type(ty) => {
-					// For direct type reference, extract type name and convert to snake_case
-					let type_name_str = quote! { #ty }.to_string();
+					// Preserve the registry identity using the final Rust path segment.
+					let type_name = if let Type::Path(type_path) = ty {
+						type_path
+							.path
+							.segments
+							.last()
+							.map(|segment| segment.ident.to_string())
+							.unwrap_or_else(|| quote! { #ty }.to_string())
+					} else {
+						quote! { #ty }.to_string()
+					};
 					quote! {
 						.with_foreign_key({
-							// Extract last segment of type path and convert to snake_case
-							let type_name = #type_name_str;
-							let last_segment = type_name.split("::").last().unwrap_or(&type_name);
-							let referenced_table = #migrations_crate::to_snake_case(last_segment);
+							let referenced_table = #migrations_crate::to_snake_case(#type_name);
 
 							#migrations_crate::ForeignKeyInfo {
 								referenced_table,
@@ -3780,16 +4249,33 @@ fn generate_registration_code(
 								on_update: #migrations_crate::ForeignKeyAction::Cascade,
 							}
 						})
+						// Obtain the app label from the target's Model implementation so
+						// qualified and imported types resolve to their registered app.
+						.with_param("fk_target_app", <#ty as #orm_crate::Model>::app_label())
+						.with_param("fk_target_model", #type_name)
+					}
+				}
+				ForeignKeySpec::ModelName(model_name) => {
+					quote! {
+						.with_param("fk_target_app", #app_label)
+						.with_param("fk_target_model", #model_name)
+						.with_foreign_key(#migrations_crate::ForeignKeyInfo {
+							referenced_table: #migrations_crate::to_snake_case(#model_name),
+							referenced_column: "id".to_string(),
+							on_delete: #migrations_crate::ForeignKeyAction::Cascade,
+							on_update: #migrations_crate::ForeignKeyAction::Cascade,
+						})
 					}
 				}
 				ForeignKeySpec::AppModel {
 					app_label,
 					model_name,
 				} => {
-					let table_name_str = format!("{}_{}", app_label, model_name.to_lowercase());
 					quote! {
+						.with_param("fk_target_app", #app_label)
+						.with_param("fk_target_model", #model_name)
 						.with_foreign_key(#migrations_crate::ForeignKeyInfo {
-							referenced_table: #table_name_str.to_string(),
+							referenced_table: #migrations_crate::to_snake_case(#model_name),
 							referenced_column: "id".to_string(),
 							on_delete: #migrations_crate::ForeignKeyAction::Cascade,
 							on_update: #migrations_crate::ForeignKeyAction::Cascade,
@@ -3818,24 +4304,25 @@ fn generate_registration_code(
 	let mut m2m_registrations = Vec::new();
 	for field_info in &m2m_fields {
 		let field_name = field_info.name.to_string();
-
-		// Get target model name: from #[rel(to = "...")] or infer from ManyToManyField<Source, Target>
-		let to_model = if let Some(rel) = &field_info.rel
-			&& let Some(to_type) = &rel.to
-		{
-			// Explicit 'to' parameter in #[rel(...)]
-			quote! { #to_type }.to_string()
-		} else if let Some(target_ty) = extract_m2m_target_type(&field_info.ty) {
-			// Infer from ManyToManyField<Source, Target> - extract Target type name
-			if let Type::Path(type_path) = target_ty
-				&& let Some(last_segment) = type_path.path.segments.last()
-			{
-				last_segment.ident.to_string()
-			} else {
-				continue; // Skip if cannot extract target type
-			}
-		} else {
-			continue; // Skip if no 'to' parameter and cannot infer from type
+		let target_ty = extract_m2m_target_type(&field_info.ty)
+			.cloned()
+			.or_else(|| {
+				field_info.rel.as_ref().and_then(|rel| {
+					rel.to
+						.clone()
+						.map(|path| Type::Path(syn::TypePath { qself: None, path }))
+				})
+			});
+		let Some(target_ty) = target_ty else {
+			continue;
+		};
+		let target_model_name = relation_target_model_name(&target_ty);
+		let target_model_label = quote! {
+			format!(
+				"{}.{}",
+				<#target_ty as #orm_crate::Model>::app_label(),
+				#target_model_name,
+			)
 		};
 
 		// Get relationship attributes (may be None if no #[rel(...)] attribute)
@@ -3868,7 +4355,7 @@ fn generate_registration_code(
 			metadata.add_many_to_many(
 				#migrations_crate::model_registry::ManyToManyMetadata {
 					field_name: #field_name.to_string(),
-					to_model: #to_model.to_string(),
+					to_model: #target_model_label,
 					related_name: #related_name,
 					through: #through,
 					source_field: #source_field,
@@ -4029,6 +4516,8 @@ fn generate_registration_code(
 					table_name: #table_name.to_string(),
 				}
 			);
+
+			#fixture_registration
 		}
 	};
 
@@ -4505,7 +4994,8 @@ fn generate_relationship_metadata(
 				},
 				|field| {
 					let target = relation_target_model_name(&field.target_type);
-					quote! { #target }
+					let target_ty = &field.target_type;
+					quote! { format!("{}.{}", <#target_ty as #orm_crate::Model>::app_label(), #target) }
 				},
 			);
 
@@ -6414,6 +6904,120 @@ mod tests {
 	}
 
 	#[test]
+	fn test_table_name_defaults_to_app_label_and_struct_name_in_snake_case() {
+		let cases = [
+			("User", "test_user"),
+			("BlogPost", "test_blog_post"),
+			("Person", "test_person"),
+			("HTTPRoute", "test_http_route"),
+		];
+
+		for (struct_name, expected_table_name) in cases {
+			let struct_name = syn::Ident::new(struct_name, proc_macro2::Span::call_site());
+			let attrs = vec![parse_quote! { #[model(app_label = "test")] }];
+
+			let config = ModelConfig::from_attrs(&attrs, &struct_name)
+				.expect("table name should be derived from the struct name");
+
+			assert_eq!(config.table_name, expected_table_name);
+		}
+	}
+
+	#[test]
+	fn test_app_label_is_required() {
+		let struct_name = parse_quote! { User };
+		let attrs = vec![parse_quote! { #[model(table_name = "users")] }];
+
+		let error = ModelConfig::from_attrs(&attrs, &struct_name)
+			.expect_err("models without an app_label should be rejected");
+
+		assert_eq!(
+			error.to_string(),
+			"app_label attribute is required in #[model(...)]"
+		);
+	}
+
+	#[test]
+	fn test_explicit_table_name_overrides_convention() {
+		let struct_name = parse_quote! { User };
+		let attrs = vec![parse_quote! {
+			#[model(app_label = "users", table_name = "users_v2")]
+		}];
+
+		let config = ModelConfig::from_attrs(&attrs, &struct_name)
+			.expect("explicit table names should remain supported");
+
+		assert_eq!(config.table_name, "users_v2");
+	}
+
+	#[test]
+	fn test_qualified_foreign_key_registration_preserves_target_identity() {
+		let input = quote! {
+			#[model(app_label = "comments", table_name = "comments")]
+			pub struct Comment {
+				#[field(primary_key = true)]
+				pub id: i64,
+				#[field(foreign_key = "blog.Post")]
+				pub post: i64,
+			}
+		};
+
+		let output = model_derive_impl(syn::parse2(input).unwrap()).unwrap();
+		let output_str = output.to_string();
+
+		assert!(output_str.contains("fk_target_app"));
+		assert!(output_str.contains("fk_target_model"));
+		assert!(output_str.contains("to_snake_case"));
+	}
+
+	#[test]
+	fn test_bare_string_foreign_key_registration_uses_the_source_app() {
+		let input = quote! {
+			#[model(app_label = "comments")]
+			pub struct Comment {
+				#[field(primary_key = true)]
+				pub id: i64,
+				#[field(foreign_key = "User")]
+				pub user_id: i64,
+			}
+		};
+
+		let output = model_derive_impl(syn::parse2(input).unwrap())
+			.unwrap()
+			.to_string();
+
+		assert!(output.contains("fk_target_model"));
+		assert!(
+			output.contains("with_param (\"fk_target_app\" , \"comments\")"),
+			"bare string foreign keys must carry their source app for table resolution: {output}"
+		);
+		assert!(output.contains("User"));
+		assert!(!output.contains("< User as"));
+	}
+
+	#[test]
+	fn test_direct_qualified_foreign_key_registration_uses_target_identity() {
+		let input = quote! {
+			#[model(app_label = "comments")]
+			pub struct Comment {
+				#[field(primary_key = true)]
+				pub id: i64,
+				#[field(foreign_key = crate::models::User)]
+				pub user_id: i64,
+			}
+		};
+
+		let output = model_derive_impl(syn::parse2(input).unwrap())
+			.unwrap()
+			.to_string();
+
+		assert!(output.contains("fk_target_model"));
+		assert!(output.contains("User"));
+		assert!(output.contains("crate :: models :: User as"));
+		assert!(!output.contains("crate :: models :: User \""));
+	}
+
+	#[test]
 	fn test_getter_methods_generated() {
 		let input = quote! {
 			#[model(app_label = "test", table_name = "test")]
@@ -6517,6 +7121,9 @@ mod tests {
 		// Assert
 		assert!(output_str.contains("related_model : \"Tag\" . to_string ()"));
 		assert!(!output_str.contains("related_model : \"\" . to_string ()"));
+		assert!(output_str.contains("to_model : format !"));
+		assert!(output_str.contains("< Tag as"));
+		assert!(output_str.contains(":: app_label ()"));
 	}
 
 	#[test]
@@ -6633,5 +7240,338 @@ mod tests {
 		);
 		assert!(!output_str.contains("pub fn set_id"));
 		assert!(!output_str.contains("pub fn set_created_at"));
+	}
+
+	#[test]
+	fn test_fixture_handler_registration_does_not_depend_on_serde_config_flags() {
+		let input = quote! {
+			#[model_config(app_label = "fixture_tests", table_name = "fixture_models")]
+			struct FixtureModel {
+				#[field(primary_key = true)]
+				id: i64,
+			}
+		};
+
+		let output = model_derive_impl(syn::parse2(input).unwrap()).unwrap();
+
+		assert!(
+			output
+				.to_string()
+				.contains("register_model :: < FixtureModel >"),
+			"fixture handler registration must not depend on serde flags forwarded by #[model]"
+		);
+	}
+
+	#[test]
+	fn test_generic_models_skip_fixture_handler_registration() {
+		let input = quote! {
+			#[model_config(app_label = "fixture_tests", table_name = "fixture_models")]
+			struct GenericFixtureModel<T> {
+				#[field(primary_key = true)]
+				id: i64,
+			}
+		};
+
+		let output = model_derive_impl(syn::parse2(input).unwrap()).unwrap();
+
+		assert!(
+			!output
+				.to_string()
+				.contains("register_model :: < GenericFixtureModel >"),
+			"generic model registration must not require an unspecified type parameter"
+		);
+	}
+
+	#[test]
+	fn test_fixture_projection_rejects_omitted_non_sql_defaults() {
+		let input = quote! {
+			#[model(app_label = "fixture_tests", table_name = "fixture_models")]
+			struct FixtureModel {
+				#[field(primary_key = true)]
+				id: i64,
+				#[field(max_length = 255, default = default_title())]
+				title: String,
+			}
+		};
+
+		let output =
+			model_derive_impl(syn::parse2(input).unwrap()).expect("fixture model must generate");
+
+		assert!(
+			!output
+				.to_string()
+				.contains("__reinhardt_validate_defaulted_fixture_field"),
+			"fixture projections must not make fields with non-SQL defaults optional"
+		);
+	}
+
+	#[test]
+	fn test_fixture_projection_allows_omitted_sql_defaults() {
+		let input = quote! {
+			#[model(app_label = "fixture_tests", table_name = "fixture_models")]
+			struct FixtureModel {
+				#[field(primary_key = true)]
+				id: i64,
+				#[field(max_length = 255, default = "draft")]
+				title: String,
+			}
+		};
+
+		let output =
+			model_derive_impl(syn::parse2(input).unwrap()).expect("fixture model must generate");
+
+		assert!(
+			output
+				.to_string()
+				.contains("__reinhardt_validate_defaulted_fixture_field"),
+			"fixture projections must allow fields with serialized SQL defaults to be omitted"
+		);
+	}
+
+	#[test]
+	fn test_fixture_sql_defaults_are_reflected_in_database_default_metadata() {
+		let input = quote! {
+			#[model(app_label = "fixture_tests", table_name = "fixture_models")]
+			struct FixtureModel {
+				#[field(primary_key = true)]
+				id: i64,
+				#[field(max_length = 255, default = "draft")]
+				status: String,
+			}
+		};
+
+		let output = model_derive_impl(syn::parse2(input).unwrap())
+			.expect("fixture model must generate")
+			.to_string();
+
+		assert!(
+			output.contains("db_default : Some"),
+			"serialized SQL defaults must be exposed as database defaults"
+		);
+	}
+
+	#[test]
+	fn test_fixture_projection_rejects_null_for_non_null_defaulted_option() {
+		let input = quote! {
+			#[model(app_label = "fixture_tests", table_name = "fixture_models")]
+			struct FixtureModel {
+				#[field(primary_key = true)]
+				id: i64,
+				#[field(max_length = 255, null = false, default = "draft")]
+				status: Option<String>,
+			}
+		};
+
+		let output = model_derive_impl(syn::parse2(input).unwrap())
+			.expect("fixture model must generate")
+			.to_string();
+
+		assert!(
+			output.contains("PhantomData < String >"),
+			"non-null defaulted Option fields must deserialize their inner type"
+		);
+	}
+
+	#[test]
+	fn test_fixture_projection_rejects_null_for_required_foreign_keys() {
+		let input = quote! {
+			#[model(app_label = "fixture_tests", table_name = "fixture_models")]
+			struct FixtureModel {
+				#[field(primary_key = true)]
+				id: i64,
+				#[rel(foreign_key)]
+				author: ForeignKeyField<Author>,
+			}
+		};
+
+		let output = model_derive_impl(syn::parse2(input).unwrap())
+			.expect("fixture model must generate")
+			.to_string();
+
+		assert!(
+			output.contains("validate_required_fixture_foreign_key"),
+			"required foreign keys must use a null-rejecting fixture deserializer"
+		);
+	}
+
+	#[test]
+	fn test_fixture_projection_allows_omitted_nullable_foreign_keys() {
+		let input = quote! {
+			#[model(app_label = "fixture_tests", table_name = "fixture_models")]
+			struct FixtureModel {
+				#[field(primary_key = true)]
+				id: i64,
+				#[rel(foreign_key, null = true)]
+				author: ForeignKeyField<Author>,
+			}
+		};
+
+		let output = model_derive_impl(syn::parse2(input).unwrap())
+			.expect("fixture model must generate")
+			.to_string();
+
+		assert!(
+			output.contains(
+				"default , deserialize_with = \"__reinhardt_validate_nullable_fixture_foreign_key\""
+			),
+			"nullable foreign keys must permit omitted fixture relation values"
+		);
+	}
+
+	#[test]
+	fn test_fixture_projection_allows_omitted_implicit_auto_increment_primary_keys() {
+		let input = quote! {
+			#[model(app_label = "fixture_tests", table_name = "fixture_models")]
+			struct FixtureModel {
+				#[field(primary_key = true)]
+				id: i64,
+				#[field(max_length = 255)]
+				name: String,
+			}
+		};
+
+		let output = model_derive_impl(syn::parse2(input).unwrap())
+			.expect("fixture model must generate")
+			.to_string();
+		let fixture_projection = output
+			.split("struct __ReinhardtFixtureProjection")
+			.nth(1)
+			.expect("fixture validation must generate a projection")
+			.split('}')
+			.next()
+			.expect("fixture projection must have a body");
+
+		assert!(
+			!fixture_projection.contains("id : i64"),
+			"implicit integer primary keys must be omitted from fixture projections"
+		);
+	}
+
+	#[test]
+	fn test_fixture_projection_validates_supplied_implicit_auto_increment_primary_keys() {
+		let input = quote! {
+			#[model(app_label = "fixture_tests", table_name = "fixture_models")]
+			struct FixtureModel {
+				#[field(primary_key = true)]
+				id: i64,
+				#[field(max_length = 255)]
+				name: String,
+			}
+		};
+
+		let output = model_derive_impl(syn::parse2(input).unwrap())
+			.expect("fixture model must generate")
+			.to_string();
+		let fixture_projection = output
+			.split("struct __ReinhardtFixtureProjection")
+			.nth(1)
+			.expect("fixture validation must generate a projection")
+			.split('}')
+			.next()
+			.expect("fixture projection must have a body");
+
+		assert!(
+			fixture_projection.contains("id : :: std :: option :: Option < i64 >"),
+			"generated primary keys must remain optional while validating supplied values"
+		);
+	}
+
+	#[test]
+	fn test_fixture_projection_requires_non_generated_option_primary_keys() {
+		let input = quote! {
+			#[model(app_label = "fixture_tests", table_name = "fixture_models")]
+			struct FixtureModel {
+				#[field(primary_key = true, auto_increment = false)]
+				id: Option<i64>,
+				#[field(max_length = 255)]
+				name: String,
+			}
+		};
+
+		let output = model_derive_impl(syn::parse2(input).unwrap())
+			.expect("fixture model must generate")
+			.to_string();
+		let fixture_projection = output
+			.split("struct __ReinhardtFixtureProjection")
+			.nth(1)
+			.expect("fixture validation must generate a projection")
+			.split('}')
+			.next()
+			.expect("fixture projection must have a body");
+
+		assert!(
+			fixture_projection.contains("id : i64"),
+			"non-generated primary keys must reject omitted and null fixture values"
+		);
+	}
+
+	#[cfg(feature = "db-postgres")]
+	#[test]
+	fn test_fixture_projection_allows_omitted_identity_columns() {
+		let input = quote! {
+			#[model(app_label = "fixture_tests", table_name = "fixture_models")]
+			struct FixtureModel {
+				#[field(primary_key = true)]
+				id: i64,
+				#[field(identity_always = true)]
+				sequence: i64,
+			}
+		};
+
+		let output =
+			model_derive_impl(syn::parse2(input).unwrap()).expect("fixture model must generate");
+		let output = output.to_string();
+		let fixture_projection = output
+			.split("struct __ReinhardtFixtureProjection")
+			.nth(1)
+			.expect("fixture validation must generate a projection")
+			.split('}')
+			.next()
+			.expect("fixture projection must have a body");
+
+		assert!(
+			!fixture_projection.contains("sequence : i64"),
+			"fixture projections must not require database-generated identity columns"
+		);
+	}
+
+	#[test]
+	fn test_fixture_projection_preserves_deserialize_bounds() {
+		let attr: syn::Attribute = parse_quote! {
+			#[serde(
+				bound(deserialize = "T: serde::Deserialize<'de>"),
+				skip_serializing_if = "Option::is_none"
+			)]
+		};
+
+		let projected = fixture_projection_serde_attr(&attr)
+			.expect("deserialize bounds must be retained")
+			.meta;
+		let projected = quote! { #projected }.to_string();
+
+		assert!(projected.contains("bound"));
+		assert!(projected.contains("deserialize"));
+		assert!(!projected.contains("skip_serializing_if"));
+	}
+
+	#[test]
+	fn test_defaulted_fixture_projection_preserves_deserialize_bounds() {
+		let input = quote! {
+			#[model(app_label = "fixture_tests", table_name = "fixture_models")]
+			struct FixtureModel {
+				#[field(primary_key = true)]
+				id: i64,
+				#[field(max_length = 255, default = "draft")]
+				#[serde(bound(deserialize = "String: serde::Deserialize<'de>"))]
+				title: String,
+			}
+		};
+
+		let output = model_derive_impl(syn::parse2(input).unwrap())
+			.expect("fixture model must generate")
+			.to_string();
+
+		assert!(output.contains("bound"));
+		assert!(output.contains("__reinhardt_validate_defaulted_fixture_field"));
 	}
 }

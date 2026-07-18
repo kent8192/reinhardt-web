@@ -397,8 +397,10 @@ impl reinhardt_auth::BaseUserManager<User> for UserManager {
 - `#[user]` does NOT auto-derive `Serialize` or `Deserialize`; add
   `#[derive(...)]` explicitly for those traits. `Default` is now required
   whenever the auto-manager is enabled (the default).
-- `#[model]` is still required for database integration; `app_label` and
-  `table_name` are configured there
+- `#[model]` is still required for database integration; `app_label` must be
+  configured there, while `table_name` defaults to the app label plus the
+  singular snake_case struct name and remains available for existing or custom
+  schemas
 - Each field uses `#[field(...)]` attributes to declare constraints such as
   `primary_key`, `unique`, `max_length`, `default`, and `include_in_new`
 

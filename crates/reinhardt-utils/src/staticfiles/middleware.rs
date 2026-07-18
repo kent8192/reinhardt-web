@@ -14,6 +14,7 @@ use reinhardt_http::{Request, Response};
 
 use super::caching::CacheControlConfig;
 use super::handler::{StaticError, StaticFileHandler};
+use super::template_integration::TemplateStaticConfig;
 
 /// Detected WASM entry point for auto-injection.
 #[derive(Debug, Clone)]
@@ -80,6 +81,11 @@ pub struct StaticFilesConfig {
 	pub wasm_entry: Option<String>,
 	/// Manifest mapping original filenames to hashed filenames
 	pub wasm_manifest: Option<HashMap<String, String>>,
+	/// Static URL resolver applied to `{{ static_url("...") }}` in SPA HTML responses.
+	///
+	/// This preserves source templates for production collection while allowing
+	/// development SPA fallbacks to resolve framework-managed static assets.
+	pub template_static_config: Option<TemplateStaticConfig>,
 	/// Trusted HTML fragments appended to SPA HTML responses.
 	///
 	/// These fragments are not escaped. They are intended for framework-owned
@@ -102,6 +108,7 @@ impl Default for StaticFilesConfig {
 			auto_inject_wasm: true,
 			wasm_entry: None,
 			wasm_manifest: None,
+			template_static_config: None,
 			trusted_html_injections: Vec::new(),
 		}
 	}
@@ -236,6 +243,12 @@ impl StaticFilesConfig {
 	/// Set the WASM manifest for filename resolution (e.g., hashed filenames).
 	pub fn wasm_manifest(mut self, manifest: HashMap<String, String>) -> Self {
 		self.wasm_manifest = Some(manifest);
+		self
+	}
+
+	/// Set the static URL resolver used while serving SPA HTML fallbacks.
+	pub fn template_static_config(mut self, config: TemplateStaticConfig) -> Self {
+		self.template_static_config = Some(config);
 		self
 	}
 
@@ -409,6 +422,18 @@ impl StaticFilesMiddleware {
 			.map(|s| s.as_str())
 			.unwrap_or(filename);
 		format!("{url_prefix}{resolved}")
+	}
+
+	/// Resolve static URL template expressions in an SPA HTML response.
+	fn render_static_url_templates(html: &str, config: &TemplateStaticConfig) -> String {
+		static STATIC_URL_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+			regex::Regex::new(r#"\{\{\s*static_url\("([^"]+)"\)\s*\}\}"#).unwrap()
+		});
+		STATIC_URL_RE
+			.replace_all(html, |captures: &regex::Captures| {
+				config.resolve_url(&captures[1])
+			})
+			.into_owned()
 	}
 
 	/// Inject a WASM auto-loader script into HTML content before `</body>`.
@@ -625,37 +650,43 @@ impl StaticFilesMiddleware {
 			.and_then(|n| n.to_str())
 			.unwrap_or("index.html");
 
-		// Apply WASM and trusted development-script injections if needed.
-		let final_content =
-			if self.wasm_entry.is_some() || !self.config.trusted_html_injections.is_empty() {
-				match String::from_utf8(content) {
-					Ok(html) => {
-						let mut injected = html;
-						if let Some(ref entry) = self.wasm_entry {
-							injected = Self::inject_wasm_script(
-								&injected,
-								entry,
-								&self.config.url_prefix,
-								self.config.wasm_manifest.as_ref(),
-							);
-							tracing::debug!("injected WASM auto-loader into SPA response");
-						}
-						for fragment in &self.config.trusted_html_injections {
-							injected = Self::inject_trusted_html_fragment(&injected, fragment);
-						}
-						injected.into_bytes()
+		// Apply static URL resolution, WASM, and trusted development-script injections if needed.
+		let final_content = if self.wasm_entry.is_some()
+			|| self.config.template_static_config.is_some()
+			|| !self.config.trusted_html_injections.is_empty()
+		{
+			match String::from_utf8(content) {
+				Ok(html) => {
+					let mut injected = html;
+					if let Some(template_static_config) = &self.config.template_static_config {
+						injected =
+							Self::render_static_url_templates(&injected, template_static_config);
 					}
-					Err(e) => {
-						tracing::warn!(
-							"SPA fallback is not valid UTF-8, serving raw content: {}",
-							e
+					if let Some(ref entry) = self.wasm_entry {
+						injected = Self::inject_wasm_script(
+							&injected,
+							entry,
+							&self.config.url_prefix,
+							self.config.wasm_manifest.as_ref(),
 						);
-						e.into_bytes()
+						tracing::debug!("injected WASM auto-loader into SPA response");
 					}
+					for fragment in &self.config.trusted_html_injections {
+						injected = Self::inject_trusted_html_fragment(&injected, fragment);
+					}
+					injected.into_bytes()
 				}
-			} else {
-				content
-			};
+				Err(e) => {
+					tracing::warn!(
+						"SPA fallback is not valid UTF-8, serving raw content: {}",
+						e
+					);
+					e.into_bytes()
+				}
+			}
+		} else {
+			content
+		};
 
 		// Generate ETag from final content (post-injection)
 		let etag = {
@@ -1688,6 +1719,34 @@ mod tests {
 		assert!(body.contains("await import('/my_app.js')"));
 		assert!(body.contains("await init({ module_or_path: '/my_app_bg.wasm' })"));
 		assert!(body.contains("</body></html>"));
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_serve_spa_fallback_resolves_static_url_templates() {
+		// Arrange
+		let directory = tempfile::tempdir().unwrap();
+		std::fs::write(
+			directory.path().join("index.html"),
+			"<html><head><link rel=\"stylesheet\" href=\"{{ static_url(\"__reinhardt__/components.css\") }}\"></head><body></body></html>",
+		)
+		.unwrap();
+		let config = StaticFilesConfig::new(directory.path())
+			.auto_inject_wasm(false)
+			.template_static_config(crate::staticfiles::TemplateStaticConfig::new(
+				"/assets/".to_string(),
+			));
+		let middleware = StaticFilesMiddleware::new(config);
+
+		// Act
+		let response = middleware.serve_spa_fallback().await.unwrap();
+
+		// Assert
+		let body = std::str::from_utf8(&response.body).unwrap();
+		assert_eq!(
+			body,
+			"<html><head><link rel=\"stylesheet\" href=\"/assets/__reinhardt__/components.css\"></head><body></body></html>"
+		);
 	}
 
 	#[rstest]

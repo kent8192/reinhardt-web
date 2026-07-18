@@ -14,8 +14,6 @@
 //! canonicalize JSON object arguments, hydrated success and error states remain
 //! visible through the first client mount, and query handles distinguish initial
 //! pending state from background fetching.
-//! Route-level loaders use the same keyed cache while keeping navigation in a
-//! prepare-then-commit flow; see `docs/route_loaders.md` for the full contract.
 //!
 //! ## Features
 //!
@@ -24,30 +22,44 @@
 //! - **Django-like API**: Familiar patterns for Reinhardt developers
 //! - **Boundaries**: Suspense and error boundaries for async UI states
 //!
-//! ## React-aligned hook signatures (v0.2, Refs #4195)
+//! ## React-aligned hook signatures (v0.4, Refs #5511 and #5577)
 //!
-//! `use_effect`, `use_retained_effect`, `use_layout_effect`,
-//! `use_retained_layout_effect`, `use_memo`, `use_callback`, and
-//! `use_callback_with` take an explicit dependency tuple as the second
-//! argument. Effect closures return `()` when no cleanup is needed, or
-//! `Option<C>` when they register cleanup:
+//! `use_effect`, `use_layout_effect`, and `use_memo` accept either an explicit
+//! `deps![...]` dependency list or `deps_auto!()`. Retained effects, callbacks,
+//! and resources require an explicit list. Effect closures return `()` when no
+//! cleanup is needed, or `Option<C>` when they register cleanup:
 //!
 //! ```ignore
 //! use reinhardt_pages::prelude::*;
+//! use reinhardt_pages::reactive::ReactiveScope;
 //!
-//! let count = Signal::new(0_i32);
-//! let count_for_effect = count.clone();
-//! use_retained_effect(
-//!     move || {
-//!         println!("count = {}", count_for_effect.get());
-//!     },
-//!     (count.clone(),),
-//! );
+//! ReactiveScope::run(|| {
+//!     let count = Signal::new(0_i32);
+//!     use_retained_effect(
+//!         {
+//!             let count = count.clone();
+//!             move || {
+//!                 println!("count = {}", count.get());
+//!             }
+//!         },
+//!         deps![count],
+//!     );
+//! });
 //! ```
 //!
-//! Closures run with no active reactive Observer ("Option A"), so
-//! `Signal::get` inside does NOT auto-subscribe — subscriptions derive
-//! exclusively from the deps tuple. Pass `()` for mount-only effects.
+//! In explicit dependency mode (`deps![...]`), effect, layout-effect, and memo
+//! closures run with no active reactive Observer ("Option A"); `Signal::get`
+//! inside does not auto-subscribe, and subscriptions derive exclusively from
+//! the dependency list. Pass `deps![]` for a mount-only effect or memo.
+//! Automatic tracking is available only for effects, layout effects, and memos;
+//! pass `deps_auto!()` as their second argument to subscribe to signals read by
+//! the closure. Retained effects, callbacks, and resources always use explicit
+//! dependency lists.
+//!
+//! This is a breaking migration from the tuple and unit forms. Replace `()`
+//! with `deps![]`, and replace `(signal.clone(), ...)` with `deps![signal, ...]`.
+//! See `docs/migration/0.4.0-hook-dependency-modes.md` for the complete
+//! migration guide and the relationship between #5511 and #5577.
 //!
 //! For a concept-by-concept mapping from React to Reinhardt Pages, see
 //! `docs/react_to_reinhardt.md` in this crate.
@@ -75,6 +87,7 @@
 //! - [`portal`]: Explicit portal mounting into existing DOM targets
 //! - `i18n`: Reactive page translations with SSR-resolved catalogs (requires the `i18n` feature)
 //! - [`static_resolver`]: Static file URL resolution (collectstatic support)
+//! - [`mod@style`]: Scoped class composition and typed runtime CSS values
 //!
 //! ## Typed events
 //!
@@ -102,6 +115,59 @@
 //! [`platform::Event`] transport. Typed custom detail values are outside this
 //! contract and tracked by #5636. Component `@event` props retain the type of
 //! their declared component prop instead of using the intrinsic event catalog.
+//!
+//! ## Controlled form elements
+//!
+//! The `bind:` directive connects native form controls to typed [`Signal`]
+//! values. Text and radio groups use `Signal<String>`, checkboxes use
+//! `Signal<bool>`, numeric inputs use a primitive implementing [`NumberValue`],
+//! and multiple selects use `Signal<Vec<String>>`. Numeric bindings may expose
+//! a [`NumberParseError`] signal that retains recoverable invalid editor text.
+//! Only unmodified Arrow/Home/End keyboard moves are predicted; modifier-key
+//! commands and already-canceled key events are treated as unknown. When a
+//! pointer-positioned number edit is sanitized before its inaccessible selection
+//! can be recovered, the error reports the browser's empty value.
+//! Radio `value` expressions are evaluated once per rendered element. A bound
+//! single select projects only its first matching option in tree order during
+//! SSR, including options resolved inside a pending boundary; a multiple
+//! select projects every match.
+//!
+//! ```rust
+//! use reinhardt_pages::prelude::*;
+//! use reinhardt_pages::reactive::ReactiveScope;
+//!
+//! ReactiveScope::run(|| {
+//!     let query = Signal::new(String::new());
+//!     let enabled = Signal::new(false);
+//!     let mode = Signal::new("draft".to_owned());
+//!     let amount = Signal::new(0_f64);
+//!     let amount_error = Signal::new(None::<NumberParseError>);
+//!     let targets = Signal::new(Vec::<String>::new());
+//!
+//!     let _form = page!({
+//!         input { aria_label: "Search", bind: query }
+//!         input { aria_label: "Enabled", type: "checkbox", bind: enabled }
+//!         input {
+//!             aria_label: "Draft",
+//!             type: "radio",
+//!             value: "draft",
+//!             bind: mode,
+//!         }
+//!         input {
+//!             aria_label: "Amount",
+//!             type: "number",
+//!             bind: number(amount, amount_error),
+//!         }
+//!         select {
+//!             aria_label: "Targets",
+//!             multiple: true,
+//!             bind: targets,
+//!             option { value: "native", "Native" }
+//!             option { value: "wasm", "WebAssembly" }
+//!         }
+//!     });
+//! });
+//! ```
 //!
 //! ## Forms
 //!
@@ -246,6 +312,8 @@
 //! - [`page!`]: JSX-like macro for defining view components
 //! - [`head!`]: JSX-like macro for defining HTML head sections
 //! - [`form!`]: Type-safe form component macro
+//! - [`style!`]: Typed component-scoped style definition language
+//! - [`style_def`]: Canonical static-item bridge for `style!`
 //! - `t!`: Reactive page translation macro (requires the `i18n` feature)
 //! - [`client_page`]: Client page function macro with native route-table stubs
 //! - `#[component]`: Route-backed page component macro
@@ -259,16 +327,19 @@
 //! ### Basic Component
 //!
 //! ```no_run
-//! use reinhardt_pages::{Signal, Page, page};
+//! use reinhardt_pages::{Page, Signal, page};
+//! use reinhardt_pages::reactive::ReactiveScope;
 //!
-//! fn counter() -> Page {
-//!     let count = Signal::new(0);
+//! fn counter(scope: &ReactiveScope) -> Page {
+//!     scope.enter(|| {
+//!         let count = Signal::new(0);
 //!
-//!     page!(|count: Signal<i32>| {
-//!         div {
-//!             p { { format!("Count: {}", count.get()) } }
-//!         }
-//!     })(count)
+//!         page!(|count: Signal<i32>| {
+//!             div {
+//!                 p { { format!("Count: {}", count.get()) } }
+//!             }
+//!         })(count)
+//!     })
 //! }
 //! ```
 //!
@@ -356,11 +427,6 @@
 
 #![warn(missing_docs)]
 
-// Attribute macros also run inside this crate's native unit-test target. Keep
-// the package-name alias available there so generated paths remain identical
-// to the paths emitted for downstream applications.
-extern crate self as reinhardt_pages;
-
 // Re-export AST definitions from reinhardt-pages-ast
 // This is deprecated but kept for backward compatibility
 #[allow(deprecated)] // Intentional: maintaining backward compatibility with existing code
@@ -380,12 +446,15 @@ pub use cancellation::{CancellationHandle, CancellationToken, Cancelled};
 pub(crate) use reactive::{
 	QueryAcquireOptions, QueryConsumer, QueryErrorPolicy, QueryLease, acquire_query,
 };
+pub mod control_binding;
 pub mod dom;
 pub mod event;
 #[cfg(feature = "i18n")]
 pub mod i18n;
 pub mod logging;
 pub mod reactive;
+/// Typed runtime values generated by component style definitions.
+pub mod style;
 
 // Platform abstraction (unified types and task spawning for WASM and native)
 pub mod platform;
@@ -492,7 +561,10 @@ pub use component::{
 	ScriptTag, StyleTag, SuspenseBoundary, ViewTransitionBoundary, ViewTransitionHandle,
 	ViewTransitionStatus, start_view_transition,
 };
-pub use csrf::{CsrfManager, CsrfTokenSignal, get_csrf_token};
+pub use control_binding::{
+	ControlBindingError, NumberParseError, NumberParseErrorKind, NumberValue,
+};
+pub use csrf::{CsrfManager, get_csrf_token};
 pub use dom::{CustomEventOptions, Document, Element, EventHandle, EventType, document};
 #[cfg(native)]
 pub use form::{FormBinding, FormComponent};
@@ -512,7 +584,7 @@ pub use portal::{Portal, PortalError, PortalHandle, PortalTarget, mount_portal};
 pub use reactive::{
 	Effect, ExplicitDeps, LatestResourceState, LatestResourceValue, LatestResourceValueBuilder,
 	Memo, QueryHandle, QueryKey, QueryPhase, ReactiveDeps, Resource, ResourceState, Signal,
-	use_latest_resource_value, use_resource, use_resource_with_key,
+	Trackable, use_latest_resource_value, use_resource, use_resource_with_key,
 };
 // Re-export Context system
 pub use reactive::{
@@ -535,15 +607,6 @@ pub use reinhardt_forms::{
 	wasm_compat::{FieldMetadata, FormMetadata},
 };
 pub use router::Link;
-pub use router::PrefetchMode;
-pub use router::RouteLoaderId;
-pub use router::loader::{
-	Loader, LoaderInputError, LoaderInputKind, LoaderInputSpec, LoaderStore, LoaderStoreError,
-	RouteLoader, RouteLoaderError, canonical_loader_inputs, loader_cache_id,
-};
-pub use router::loader_store::{
-	LoaderStoreScope, active_loader_store, enter_loader_store, with_loader_store,
-};
 // Imperative SPA navigation API (Issue #4610). `navigate` is the free
 // function; `use_router` returns a `RouterHandle` for use inside hooks /
 // components. `NavigateError` is the public error returned by both paths.
@@ -554,7 +617,13 @@ pub use server_fn::{ServerFn, ServerFnError, parse_server_error_message};
 pub use ssr::SsrState;
 #[cfg(native)]
 pub use ssr::{SsrChunk, SsrOptions, SsrRenderer, SsrRouteOutput, SsrStream};
-pub use static_resolver::{init_static_resolver, is_initialized, resolve_static};
+pub use static_resolver::{
+	component_stylesheet_url, init_static_resolver, is_initialized, resolve_static,
+};
+pub use style::{
+	ClassList, ClassToken, CssAngle, CssColor, CssInteger, CssLength, CssLengthPercentage,
+	CssNumber, CssPercentage, CssTime, CssValueError, StyleValue, StyleVars,
+};
 
 #[cfg(feature = "i18n")]
 pub use i18n::{
@@ -568,6 +637,8 @@ pub use reinhardt_pages_macros::head;
 pub use reinhardt_pages_macros::layout;
 pub use reinhardt_pages_macros::loader;
 pub use reinhardt_pages_macros::page;
+pub use reinhardt_pages_macros::style;
+pub use reinhardt_pages_macros::style_def;
 pub use reinhardt_pages_macros::wasm_server_api;
 pub use reinhardt_pages_macros::{
 	ClientForm, ClientFormChoices, FromRequest, client_page, component, page_props,
@@ -595,8 +666,6 @@ pub mod __private {
 	pub use hyper;
 	pub use inventory;
 	pub use reinhardt_urls;
-	pub use serde;
-	pub use serde_json;
 
 	// `tracing` is enabled for all targets *except* browser wasm (wasm32-unknown-unknown).
 	// Browser wasm uses a different logging mechanism, so tracing is intentionally excluded there.

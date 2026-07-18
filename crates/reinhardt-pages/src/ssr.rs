@@ -40,6 +40,8 @@
 //! entry-blocking route-loader preparation and emits the successful values in
 //! the normal [`SsrState`] hydration payload.
 
+#[cfg(native)]
+pub(crate) mod control_binding;
 mod markers;
 #[cfg(native)]
 mod renderer;

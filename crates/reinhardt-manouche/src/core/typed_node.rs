@@ -129,6 +129,8 @@ pub struct TypedPageElement {
 	pub tag: Ident,
 	/// Typed attributes (with `AttrValue` instead of `Expr`)
 	pub attrs: Vec<TypedPageAttr>,
+	/// Typed controlled-value binding, kept separate from HTML attributes.
+	pub control_binding: Option<Box<TypedControlBinding>>,
 	/// Catalog-resolved intrinsic event handlers.
 	pub events: Vec<IntrinsicEvent>,
 	/// Validated child nodes
@@ -145,6 +147,7 @@ impl TypedPageElement {
 		Self {
 			tag,
 			attrs: Vec::new(),
+			control_binding: None,
 			events: Vec::new(),
 			children: Vec::new(),
 			a11y_disabled: false,
@@ -165,6 +168,50 @@ impl TypedPageElement {
 				| "track" | "wbr"
 		)
 	}
+}
+
+/// A structurally validated controlled-value binding.
+#[derive(Debug)]
+pub struct TypedControlBinding {
+	/// Control behavior selected from the element and its static attributes.
+	pub kind: TypedControlBindingKind,
+	/// Value signal expression and optional numeric error signal expression.
+	pub expression: TypedControlBindingExpr,
+	/// Owned radio choice expression.
+	pub radio_value: Option<Expr>,
+	/// Span for error reporting.
+	pub span: Span,
+}
+
+/// The structurally classified control kind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TypedControlBindingKind {
+	/// Text input or textarea.
+	Text,
+	/// Numeric input.
+	Number,
+	/// Checkbox input.
+	Checkbox,
+	/// Radio input.
+	Radio,
+	/// Single-select control.
+	SelectOne,
+	/// Multi-select control.
+	SelectMany,
+}
+
+/// Expressions supplied to a controlled-value binding.
+#[derive(Debug)]
+pub enum TypedControlBindingExpr {
+	/// A direct value signal expression.
+	Direct(Box<Expr>),
+	/// A numeric value signal paired with a parse-error signal.
+	NumberWithError {
+		/// Numeric value signal expression.
+		value: Box<Expr>,
+		/// Numeric parse-error signal expression.
+		error: Box<Expr>,
+	},
 }
 
 /// A typed attribute on an element.

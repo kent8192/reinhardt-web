@@ -2,6 +2,43 @@
 
 WASM-based reactive frontend framework for Reinhardt with Django-like API.
 
+## Component-scoped styles
+
+Component styles use the canonical `#[style_def] static ... = style! { ... };`
+envelope. Selectors and properties remain CSS-shaped, while `globals` and
+defaulted `vars` provide checked references and typed runtime overrides:
+
+```rust,ignore
+use reinhardt_pages::{CssColor, page, style, style_def};
+
+#[style_def]
+static STYLES: CardStyles = style! {
+	globals { border: Color; }
+	vars { accent: Color = red; }
+
+	.card {
+		border-color: globals.border;
+		color: vars.accent;
+		.label { color: vars.accent; }
+	}
+};
+
+let accent = CssColor::parse("blue")?;
+let card = page!({
+	article {
+		class: STYLES.card() + "legacy-card",
+		style: STYLES.vars().accent(accent),
+		"Card"
+	}
+});
+# Ok::<_, reinhardt_pages::CssValueError>(card)
+```
+
+The generated stylesheet is a static asset; applications must link it once per
+document. Plain string `class:` and `style:` values remain supported for gradual
+migration. Descendants use nested rules because Rust token streams do not retain
+selector whitespace.
+
 ## Features
 
 - **Fine-grained Reactivity**: Leptos/Solid.js-style Signal system with automatic dependency tracking
@@ -11,6 +48,7 @@ WASM-based reactive frontend framework for Reinhardt with Django-like API.
 - **Security First**: Built-in CSRF protection, XSS prevention, and session management
 - **Simplified Conditional Compilation**: `cfg_aliases` integration and automatic event handler handling
 - **Action State Helpers**: `use_action_state` and `Action::dispatching*` reduce async mutation boilerplate
+- **Controlled Form Elements**: `bind:` synchronizes typed signals with text, checkbox, radio, numeric, and select controls
 
 For a React concept mapping, see
 [Reinhardt Pages for React developers](docs/react_to_reinhardt.md).
@@ -66,6 +104,42 @@ Use `@custom("name")` and `platform::Event` for an arbitrary raw DOM event.
 Custom typed `detail` values are intentionally deferred to #5636. Component
 `@event` props remain typed by the component's declared prop type; the DOM
 event catalog applies only to intrinsic elements.
+
+### Controlled form elements
+
+Use `bind:` when a signal should own a native control after hydration. The
+control shape determines the signal type: `String` for text, radio, and
+single-select controls; `bool` for checkboxes; a supported numeric primitive
+for number inputs; and `Vec<String>` for multiple selects.
+
+```rust
+use reinhardt_pages::prelude::*;
+
+let query = Signal::new(String::new());
+let parse_error = Signal::new(None::<NumberParseError>);
+let amount = Signal::new(0_f64);
+
+let _controls = page!({
+    input { aria_label: "Search", bind: query, placeholder: "Search" }
+    input {
+        aria_label: "Amount",
+        type: "number",
+        bind: number(amount, parse_error),
+    }
+});
+```
+
+Hydration first adopts the live DOM value, preserving browser restoration and
+edits made before hydration. Later signal changes update the control. See the
+[React migration guide](docs/react_to_reinhardt.md#controlled-and-uncontrolled-form-controls)
+for event ordering, IME, numeric-error, and low-level escape-hatch details.
+For `input[type=number]`, the binding combines `beforeinput` metadata with the
+browser value so parse errors retain incomplete editor states when their edit
+position is known. Only unmodified Arrow/Home/End keyboard moves are predicted;
+modifier-key commands and already-canceled key events are treated as unknown. Browsers
+do not expose number-input selection ranges; after
+a pointer move followed immediately by sanitization, the error safely reports
+the browser's empty value instead of inventing raw text.
 
 ### Simplified cfg Attributes with cfg_aliases
 
@@ -521,6 +595,7 @@ or native component-test mocks. Query handles can also be tracked by
   scope, while `Callback::new_in_scope` creates external callbacks under an explicit disposable
   `ReactiveScope`
 - `raw_event_handler` and `platform::Event` for explicit raw custom events
+- `ControlBindingError`, `NumberParseError`, `NumberParseErrorKind`, `NumberValue`
 - [Native component testing](docs/native_component_testing.md)
 
 ### DOM
@@ -646,3 +721,7 @@ fn counter() -> View {
 ## License
 
 Licensed under the BSD 3-Clause License.
+For SSR documents, include generated component styles explicitly with
+`component_stylesheet_url()`. The helper resolves the stable
+`__reinhardt__/components.css` logical path through the active development URL
+or production manifest; it does not inject a `<link>` element automatically.

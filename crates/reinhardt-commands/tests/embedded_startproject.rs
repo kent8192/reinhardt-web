@@ -163,6 +163,8 @@ async fn startproject_pages_from_embedded_only() {
 		generated.join("src").is_dir(),
 		"src/ directory must be generated"
 	);
+	let index_html = std::fs::read_to_string(generated.join("index.html")).unwrap();
+	assert!(index_html.contains("{{ static_url(\"__reinhardt__/components.css\") }}"));
 	let cargo_toml = std::fs::read_to_string(generated.join("Cargo.toml")).unwrap();
 	assert!(cargo_toml.contains(
 		"package = \"reinhardt-web\", default-features = false, features = [\"pages\", \"client-router\"]"
