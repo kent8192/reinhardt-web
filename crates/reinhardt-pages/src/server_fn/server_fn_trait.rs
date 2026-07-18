@@ -2,6 +2,7 @@
 //!
 //! This module defines the core trait and error types for server functions.
 
+use reinhardt_core::validators::ValidationErrors;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// Common trait for all server functions
@@ -315,6 +316,22 @@ impl From<WireServerFnErrorKind> for ServerFnErrorKind {
 
 impl std::error::Error for ServerFnError {}
 
+impl From<ValidationErrors> for ServerFnError {
+	fn from(errors: ValidationErrors) -> Self {
+		let field_errors = errors
+			.field_errors()
+			.iter()
+			.flat_map(|(field, errors)| {
+				errors
+					.iter()
+					.map(|error| (field.as_ref(), error.to_string()))
+			})
+			.collect::<Vec<_>>();
+
+		Self::validation_with_message("Validation failed", field_errors)
+	}
+}
+
 /// Extract the human-readable message from a `ServerFnError` string,
 /// regardless of format.
 ///
@@ -379,6 +396,7 @@ fn unwrap_nested_or_raw(msg: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+	use reinhardt_core::validators::{ValidationError, ValidationErrors};
 	use rstest::rstest;
 
 	use super::*;
@@ -526,6 +544,35 @@ mod tests {
 		assert_eq!(multiple_field_errors[0].message(), "Required");
 		assert_eq!(multiple_field_errors[1].field(), "email");
 		assert_eq!(multiple_field_errors[1].message(), "Invalid address");
+	}
+
+	#[test]
+	fn validation_errors_convert_to_server_fn_field_errors() {
+		let mut validation = ValidationErrors::new();
+		validation.add("name", ValidationError::TooShort { length: 0, min: 1 });
+		validation.add(
+			"name",
+			ValidationError::Custom("Name is required".to_string()),
+		);
+		validation.add(
+			"email",
+			ValidationError::Custom("Email is invalid".to_string()),
+		);
+
+		let error: ServerFnError = validation.into();
+
+		assert_eq!(error.kind(), ServerFnErrorKind::Validation);
+		assert_eq!(error.status(), Some(422));
+		assert_eq!(error.field_errors().len(), 3);
+		assert_eq!(error.field_errors()[0].field(), "email");
+		assert_eq!(error.field_errors()[1].field(), "name");
+		assert_eq!(error.field_errors()[2].field(), "name");
+		assert_eq!(error.field_errors()[0].message(), "Email is invalid");
+		assert_eq!(
+			error.field_errors()[1].message(),
+			"Length too short: 0 (minimum: 1)"
+		);
+		assert_eq!(error.field_errors()[2].message(), "Name is required");
 	}
 
 	#[rstest]
