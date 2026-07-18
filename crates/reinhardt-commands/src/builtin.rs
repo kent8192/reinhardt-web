@@ -4,6 +4,7 @@
 
 use crate::{BaseCommand, CommandArgument, CommandContext, CommandOption, CommandResult};
 use async_trait::async_trait;
+use std::path::PathBuf;
 
 #[cfg(feature = "migrations")]
 use reinhardt_db::migrations::DatabaseMigrationExecutor;
@@ -1945,6 +1946,9 @@ impl ShellCommand {
 /// Development server command
 pub struct RunServerCommand;
 
+#[cfg(any(feature = "pages", all(feature = "server", feature = "autoreload")))]
+const GENERATED_STYLE_ROOT_ENV: &str = "REINHARDT_GENERATED_STYLE_ROOT";
+
 #[cfg(all(feature = "server", feature = "autoreload"))]
 struct AutoreloadChildOptions<'a> {
 	address: &'a str,
@@ -1960,9 +1964,64 @@ struct AutoreloadChildOptions<'a> {
 	no_override_wasm: bool,
 	force_wasm: bool,
 	wasm_optional: bool,
+	package: Option<&'a str>,
+	features: &'a [String],
+	all_features: bool,
+	generated_style_root: Option<&'a std::path::Path>,
+}
+
+#[cfg(feature = "server")]
+fn configured_static_url(base_dir: &std::path::Path) -> Result<String, String> {
+	crate::StaticAssetSettings::from_project_dir(base_dir).map(|settings| settings.static_url)
+}
+
+#[cfg(feature = "server")]
+fn spa_excluded_prefixes(generated_style_url: &str) -> Vec<String> {
+	let configured_admin_prefix = format!("{}/admin/", generated_style_url.trim_end_matches('/'));
+	vec![
+		"/api/".to_string(),
+		"/admin/".to_string(),
+		"/static/admin/".to_string(),
+		configured_admin_prefix,
+	]
+}
+
+#[cfg(feature = "pages")]
+fn require_pages_wasm_target(
+	package_context: &crate::StylePackageContext,
+	has_component_styles: bool,
+) -> Result<(), crate::wasm_builder::WasmBuildError> {
+	if has_component_styles && !package_context.has_cdylib_target() {
+		return Err(
+			crate::wasm_builder::WasmBuildError::PackageResolutionFailed(format!(
+				"selected package `{}` has component styles but no Pages cdylib target",
+				package_context.package_name
+			)),
+		);
+	}
+	Ok(())
+}
+
+#[cfg(feature = "pages")]
+fn should_prepare_component_styles(with_pages: bool, has_inherited_style_root: bool) -> bool {
+	with_pages && !has_inherited_style_root
 }
 
 impl RunServerCommand {
+	#[cfg(any(feature = "pages", all(feature = "server", feature = "autoreload")))]
+	fn style_feature_selection_from_context(ctx: &CommandContext) -> crate::StyleFeatureSelection {
+		if ctx.has_option("all-features") {
+			crate::StyleFeatureSelection::all_features()
+		} else {
+			crate::StyleFeatureSelection::with_features(
+				ctx.option("features")
+					.into_iter()
+					.flat_map(|raw| raw.split(','))
+					.filter(|feature| !feature.is_empty()),
+			)
+		}
+	}
+
 	/// Consume `UrlPatternsRegistration` `inventory` entries and install the
 	/// merged `ServerRouter` as the process-wide HTTP router.
 	///
@@ -2144,6 +2203,11 @@ impl BaseCommand for RunServerCommand {
 				"wasm-optional",
 				"Allow server to start even if WASM build fails",
 			),
+			CommandOption::option(
+				None,
+				"package",
+				"Cargo package containing component style definitions",
+			),
 		]
 	}
 
@@ -2207,6 +2271,65 @@ impl BaseCommand for RunServerCommand {
 		let force_wasm_legacy = ctx.has_option("force-wasm");
 		#[cfg_attr(not(feature = "pages"), allow(unused_variables))]
 		let wasm_optional = ctx.has_option("wasm-optional");
+		#[cfg(feature = "pages")]
+		let requested_package = ctx.option("package").cloned();
+		#[cfg(feature = "pages")]
+		let style_feature_selection = Self::style_feature_selection_from_context(ctx);
+		#[cfg(not(feature = "pages"))]
+		#[cfg_attr(not(feature = "server"), allow(unused_variables))]
+		let requested_package: Option<String> = None;
+		#[cfg(feature = "pages")]
+		let inherited_style_root = std::env::var_os(GENERATED_STYLE_ROOT_ENV).map(PathBuf::from);
+		#[cfg(feature = "pages")]
+		let component_style_state =
+			if should_prepare_component_styles(with_pages, inherited_style_root.is_some()) {
+				let manifest = std::env::current_dir()
+					.map_err(crate::CommandError::IoError)?
+					.join("Cargo.toml");
+				Some(std::sync::Arc::new(std::sync::Mutex::new(
+					crate::ComponentStyleState::initialize_with_features(
+						manifest,
+						requested_package.clone(),
+						style_feature_selection,
+					)
+					.map_err(crate::CommandError::ExecutionError)?,
+				)))
+			} else {
+				None
+			};
+		#[cfg(all(not(feature = "pages"), feature = "server"))]
+		let component_style_state: Option<
+			std::sync::Arc<std::sync::Mutex<crate::ComponentStyleState>>,
+		> = None;
+		#[cfg(feature = "pages")]
+		let (generated_style_root, component_styles_present) = if let Some(root) = inherited_style_root {
+			(Some(root), false)
+		} else if let Some(state) = &component_style_state {
+			let state = state.lock().map_err(|_| {
+				crate::CommandError::ExecutionError(
+					"component style state lock was poisoned".to_string(),
+				)
+			})?;
+			(
+				Some(state.generated_root().to_path_buf()),
+				state.has_component_styles(),
+			)
+		} else {
+			(None, false)
+		};
+		#[cfg(feature = "pages")]
+		if component_styles_present && let Some(state) = &component_style_state {
+			let state = state.lock().map_err(|_| {
+				crate::CommandError::ExecutionError(
+					"component style state lock was poisoned".to_string(),
+				)
+			})?;
+			require_pages_wasm_target(state.package_context(), true)
+				.map_err(|error| crate::CommandError::ExecutionError(error.to_string()))?;
+		}
+		#[cfg(not(feature = "pages"))]
+		#[cfg_attr(not(feature = "server"), allow(unused_variables))]
+		let generated_style_root: Option<PathBuf> = None;
 		// Build WASM frontend if --with-pages and not --no-wasm
 		#[cfg(feature = "pages")]
 		{
@@ -2412,6 +2535,9 @@ impl BaseCommand for RunServerCommand {
 					no_override_wasm,
 					force_wasm_legacy,
 					wasm_optional,
+					requested_package.as_deref(),
+					generated_style_root.as_deref(),
+					component_style_state.clone(),
 					watch_delay,
 				)
 				.await;
@@ -2434,6 +2560,7 @@ impl BaseCommand for RunServerCommand {
 				no_override_wasm,
 				force_wasm_legacy,
 				wasm_optional,
+				generated_style_root.as_deref(),
 			)
 			.await
 		}
@@ -2507,8 +2634,7 @@ impl RunServerCommand {
 	// Allow many arguments: CLI command handler needs to accept all server configuration options
 	#[allow(clippy::too_many_arguments)]
 	async fn run_server(
-		// Context parameter reserved for future extensions (e.g., accessing global config)
-		#[allow(unused_variables)] ctx: &CommandContext,
+		ctx: &CommandContext,
 		address: &str,
 		noreload: bool,
 		// Only consumed by the autoreload pipeline; allow unused when feature is off.
@@ -2523,6 +2649,7 @@ impl RunServerCommand {
 		no_override_wasm: bool,
 		force_wasm: bool,
 		wasm_optional: bool,
+		generated_style_root: Option<&std::path::Path>,
 	) -> CommandResult<()> {
 		use reinhardt_server::{HttpServer, ShutdownCoordinator};
 
@@ -2661,13 +2788,39 @@ impl RunServerCommand {
 
 		// Add static files middleware for WASM frontend if enabled
 		if with_pages {
-			use reinhardt_utils::staticfiles::PathResolver;
 			use reinhardt_utils::staticfiles::caching::CacheControlConfig;
 			use reinhardt_utils::staticfiles::middleware::{
 				StaticFilesConfig, StaticFilesMiddleware,
 			};
+			use reinhardt_utils::staticfiles::{PathResolver, TemplateStaticConfig};
+			let generated_style_url =
+				match PathResolver::find_project_root().or_else(|| std::env::current_dir().ok()) {
+					Some(project_root) => match configured_static_url(&project_root) {
+						Ok(url) => url,
+						Err(error) => {
+							ctx.warning(&format!(
+								"Failed to load static URL for generated component styles: {error}. Using /static/."
+							));
+							"/static/".to_string()
+						}
+					},
+					None => "/static/".to_string(),
+				};
 
-			// Auto-mount <project-root>/static/ at /static/ unless opted out.
+			if let Some(generated_root) = generated_style_root {
+				let mut generated_config = StaticFilesConfig::new(generated_root.to_path_buf())
+					.url_prefix(generated_style_url.clone())
+					.spa_mode(false)
+					.auto_inject_wasm(false);
+				#[cfg(debug_assertions)]
+				{
+					generated_config =
+						generated_config.cache_config(CacheControlConfig::disabled());
+				}
+				server = server.with_middleware(StaticFilesMiddleware::new(generated_config));
+			}
+
+			// Auto-mount <project-root>/static/ at the configured static URL unless opted out.
 			// This is registered BEFORE the dist/ middleware so that, when
 			// MiddlewareChain::handle reverses registration order at request
 			// time, the project-static middleware sits outermost and runs
@@ -2676,12 +2829,15 @@ impl RunServerCommand {
 			if !no_project_static && let Some(project_root) = PathResolver::find_project_root() {
 				let project_static_dir = project_root.join("static");
 				if project_static_dir.is_dir() {
+					let project_static_url = generated_style_url.clone();
+					let project_static_admin_url =
+						format!("{}/admin/", project_static_url.trim_end_matches('/'));
 					let mut project_static_config =
 						StaticFilesConfig::new(project_static_dir.clone())
-							.url_prefix("/static/")
+							.url_prefix(project_static_url.clone())
 							.spa_mode(false)
 							.auto_inject_wasm(false)
-							.passthrough_prefixes(vec!["/static/admin/".to_string()]);
+							.passthrough_prefixes(vec![project_static_admin_url]);
 					// Disable long-lived caching in dev (mirrors #4383 for the
 					// dist/ bundle so hot-reload picks up CSS/JS edits).
 					#[cfg(debug_assertions)]
@@ -2692,8 +2848,9 @@ impl RunServerCommand {
 					server =
 						server.with_middleware(StaticFilesMiddleware::new(project_static_config));
 					ctx.verbose(&format!(
-						"Project static files middleware enabled: {} (mounted at /static/)",
-						project_static_dir.display()
+						"Project static files middleware enabled: {} (mounted at {})",
+						project_static_dir.display(),
+						project_static_url
 					));
 				}
 			}
@@ -2704,14 +2861,11 @@ impl RunServerCommand {
 			let mut static_config = StaticFilesConfig::new(resolved_static_dir.clone())
 				.url_prefix("/")
 				.spa_mode(!no_spa)
+				.template_static_config(TemplateStaticConfig::new(generated_style_url.clone()))
 				// Exclude framework-managed route prefixes from SPA fallback
 				// so that API endpoints and admin panel are handled by the
 				// application router instead of receiving index.html.
-				.excluded_prefixes(vec![
-					"/api/".to_string(),
-					"/admin/".to_string(),
-					"/static/admin/".to_string(),
-				]);
+				.excluded_prefixes(spa_excluded_prefixes(&generated_style_url));
 
 			// Issue #4383: In debug builds (dev runserver), disable the
 			// long-lived `public, immutable, max-age=31536000` Cache-Control
@@ -2790,6 +2944,9 @@ impl RunServerCommand {
 					no_override_wasm,
 					force_wasm,
 					wasm_optional,
+					ctx.option("package").map(String::as_str),
+					generated_style_root,
+					None,
 					crate::debounced_watcher::DEBOUNCE_WINDOW,
 				)
 				.await
@@ -2901,8 +3058,14 @@ impl RunServerCommand {
 		no_override_wasm: bool,
 		force_wasm: bool,
 		wasm_optional: bool,
+		package: Option<&str>,
+		generated_style_root: Option<&std::path::Path>,
+		component_style_state: Option<std::sync::Arc<std::sync::Mutex<crate::ComponentStyleState>>>,
 		debounce_window: std::time::Duration,
 	) -> CommandResult<()> {
+		#[cfg(not(feature = "pages"))]
+		let _ = &component_style_state;
+
 		// Resolve the cargo metadata for the current working directory.
 		let metadata = cargo_metadata::MetadataCommand::new().exec().map_err(|e| {
 			crate::CommandError::ExecutionError(format!("cargo metadata failed: {}", e))
@@ -2913,7 +3076,15 @@ impl RunServerCommand {
 		})?;
 		let cwd_manifest = cwd.join("Cargo.toml");
 
-		let roots = crate::source_roots::SourceRoots::from_metadata(&metadata, &cwd_manifest);
+		let mut roots = crate::source_roots::SourceRoots::from_metadata(&metadata, &cwd_manifest);
+		if let Some(package) = package {
+			let pages_manifest =
+				crate::source_roots::SourceRoots::selected_package_manifest(&metadata, package)
+					.map_err(crate::CommandError::ExecutionError)?;
+			let pages_roots =
+				crate::source_roots::SourceRoots::from_metadata(&metadata, &pages_manifest);
+			roots.merge(pages_roots);
+		}
 
 		// Derive the bin name from the current executable file stem. The
 		// child server is always re-spawned by re-execing the same binary,
@@ -2982,6 +3153,12 @@ impl RunServerCommand {
 		let address_owned = address.to_string();
 		let static_dir_owned = static_dir.to_string();
 		let index_owned = index.map(|s| s.to_string());
+		let package_owned = package.map(str::to_string);
+		let style_feature_selection = Self::style_feature_selection_from_context(ctx);
+		let style_features = style_feature_selection.features().to_vec();
+		let all_style_features = style_feature_selection.all_features_enabled();
+		let respawn_features = style_features.clone();
+		let generated_style_root_owned = generated_style_root.map(std::path::Path::to_path_buf);
 		#[cfg(feature = "pages")]
 		let hmr = Self::start_autoreload_hmr(ctx, with_pages).await?;
 		#[cfg(feature = "pages")]
@@ -3006,6 +3183,10 @@ impl RunServerCommand {
 				no_override_wasm,
 				force_wasm,
 				wasm_optional,
+				package_owned.as_deref(),
+				&respawn_features,
+				all_style_features,
+				generated_style_root_owned.as_deref(),
 			)
 			.map_err(|e| std::io::Error::other(e.to_string()))
 		};
@@ -3027,13 +3208,20 @@ impl RunServerCommand {
 			pages_enabled: with_pages,
 			#[cfg(feature = "pages")]
 			hmr_tx,
+			#[cfg(feature = "pages")]
+			component_styles: component_style_state,
 		};
 
-		crate::debounced_watcher::run_watcher(ctx, &cfg, shutdown_rx, child, respawn)
-			.await
-			.map_err(|e| {
-				crate::CommandError::ExecutionError(format!("File watcher error: {}", e))
-			})?;
+		crate::debounced_watcher::run_watcher_for_package(
+			ctx,
+			&cfg,
+			crate::debounced_watcher::ServerRebuildContext::for_native_server(),
+			shutdown_rx,
+			child,
+			respawn,
+		)
+		.await
+		.map_err(|e| crate::CommandError::ExecutionError(format!("File watcher error: {}", e)))?;
 
 		Ok(())
 	}
@@ -3213,6 +3401,10 @@ impl RunServerCommand {
 		no_override_wasm: bool,
 		force_wasm: bool,
 		wasm_optional: bool,
+		package: Option<&str>,
+		features: &[String],
+		all_features: bool,
+		generated_style_root: Option<&std::path::Path>,
 	) -> CommandResult<tokio::process::Child> {
 		let current_exe = std::env::current_exe().map_err(|e| {
 			crate::CommandError::ExecutionError(format!("Failed to get current executable: {}", e))
@@ -3250,10 +3442,17 @@ impl RunServerCommand {
 			no_override_wasm,
 			force_wasm,
 			wasm_optional,
+			package,
+			features,
+			all_features,
+			generated_style_root,
 		};
 		cmd.args(Self::build_autoreload_child_args(&child_options));
 		if let Some(port) = child_options.hmr_port {
 			cmd.env("REINHARDT_HMR_PORT", port.to_string());
+		}
+		if let Some(root) = child_options.generated_style_root {
+			cmd.env(GENERATED_STYLE_ROOT_ENV, root);
 		}
 
 		// Set environment variable to indicate this is a child process (prevent log duplication, etc.)
@@ -3325,6 +3524,16 @@ impl RunServerCommand {
 		if options.wasm_optional {
 			args.push("--wasm-optional".to_string());
 		}
+		if let Some(package) = options.package {
+			args.push("--package".to_string());
+			args.push(package.to_string());
+		}
+		if options.all_features {
+			args.push("--all-features".to_string());
+		} else if !options.features.is_empty() {
+			args.push("--features".to_string());
+			args.push(options.features.join(","));
+		}
 
 		args
 	}
@@ -3347,41 +3556,31 @@ impl RunServerCommand {
 			}
 		};
 		let cargo_toml_path = cwd.join("Cargo.toml");
-
+		let feature_selection = Self::style_feature_selection_from_context(ctx);
+		let package_context = crate::StylePackageContext::resolve_with_features(
+			&cargo_toml_path,
+			ctx.option("package").map(String::as_str),
+			feature_selection.clone(),
+		)
+		.map_err(crate::wasm_builder::WasmBuildError::PackageResolutionFailed)?;
 		// Only build if this project exports cdylib
-		if !crate::wasm_builder::detect_cdylib_in_cargo_toml(&cargo_toml_path) {
+		if !package_context.has_cdylib_target() {
 			return Ok(());
 		}
+		let package_name = package_context.package_name.clone();
+		let target_name = package_context.wasm_target_name().to_owned();
+		let static_dir = ctx
+			.option("static-dir")
+			.map(String::as_str)
+			.unwrap_or("dist");
 
-		// Parse the crate name from Cargo.toml
-		let crate_name = match std::fs::read_to_string(&cargo_toml_path) {
-			Ok(content) => {
-				let mut name = String::new();
-				for line in content.lines() {
-					let trimmed = line.trim();
-					if trimmed.starts_with("name")
-						&& trimmed.contains('=')
-						&& let Some(val) = trimmed.split('=').nth(1)
-					{
-						name = val.trim().trim_matches('"').trim_matches('\'').to_string();
-						break;
-					}
-				}
-				if name.is_empty() {
-					ctx.warning("Could not determine crate name from Cargo.toml");
-					return Ok(());
-				}
-				name
-			}
-			Err(e) => {
-				ctx.warning(&format!("Failed to read Cargo.toml: {}", e));
-				return Ok(());
-			}
-		};
-
-		let js_name = crate_name.replace('-', "_");
-		let artifact = cwd.join("dist").join(format!("{}_bg.wasm", js_name));
-		if !force && !crate::wasm_builder::is_wasm_stale(&cwd, &artifact) {
+		let js_name = target_name.replace('-', "_");
+		let artifact = cwd.join(static_dir).join(format!("{}_bg.wasm", js_name));
+		if !force
+			&& !crate::wasm_builder::is_wasm_stale_for_roots(
+				package_context.source_package_roots(),
+				&artifact,
+			) {
 			ctx.info("Pages WASM: artifacts up to date, skipping build (--no-override-wasm)");
 			return Ok(());
 		}
@@ -3395,16 +3594,33 @@ impl RunServerCommand {
 		};
 		ctx.info(&format!(
 			"Building pages WASM for {} ({})...",
-			crate_name, reason
+			package_name, reason
 		));
-		let config = crate::wasm_builder::WasmBuildConfig::new(".").output_dir("dist");
-		match crate::wasm_builder::WasmBuilder::new(config).build() {
+		let config = Self::pages_wasm_build_config(&package_name, &target_name, static_dir);
+		let builder = crate::wasm_builder::WasmBuilder::new(config)
+			.features(feature_selection.features().iter().cloned())
+			.all_features(feature_selection.all_features_enabled());
+		match builder.build() {
 			Ok(_) => {
 				ctx.info("Pages WASM build succeeded.");
 				Ok(())
 			}
 			Err(e) => Err(e),
 		}
+	}
+
+	/// Configure the Pages bundle to use the same debug cfgs as style extraction.
+	#[cfg(feature = "pages")]
+	fn pages_wasm_build_config(
+		package_name: &str,
+		target_name: &str,
+		static_dir: &str,
+	) -> crate::wasm_builder::WasmBuildConfig {
+		crate::wasm_builder::WasmBuildConfig::new(".")
+			.output_dir(static_dir)
+			.release(!cfg!(debug_assertions))
+			.target_name(target_name)
+			.package(package_name)
 	}
 }
 
@@ -4817,6 +5033,88 @@ mod tests {
 		assert!(result.is_ok() || result.is_err());
 	}
 
+	#[cfg(feature = "server")]
+	#[test]
+	fn generated_component_styles_use_the_project_static_url() {
+		let directory = tempfile::tempdir().expect("create project directory");
+		let settings_dir = directory.path().join("settings");
+		std::fs::create_dir_all(&settings_dir).expect("create settings directory");
+		std::fs::write(
+			settings_dir.join("base.toml"),
+			"[static]\nurl = \"/assets/\"\n",
+		)
+		.expect("write static settings");
+
+		let static_url = configured_static_url(directory.path())
+			.expect("resolve the generated stylesheet URL prefix");
+
+		assert_eq!(static_url, "/assets/");
+	}
+
+	#[cfg(feature = "server")]
+	#[test]
+	fn spa_fallback_excludes_the_configured_admin_static_prefix() {
+		assert!(spa_excluded_prefixes("/assets/").contains(&"/assets/admin/".to_string()));
+	}
+
+	#[cfg(feature = "pages")]
+	#[test]
+	fn styled_packages_without_a_pages_target_are_rejected() {
+		let directory = tempfile::tempdir().expect("create package directory");
+		let manifest_path = directory.path().join("Cargo.toml");
+		std::fs::create_dir(directory.path().join("src")).expect("create package source directory");
+		std::fs::write(directory.path().join("src/lib.rs"), "").expect("write package source");
+		std::fs::write(
+			&manifest_path,
+			"[package]\nname = \"server-only\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+		)
+		.expect("write package manifest");
+
+		let package_context = crate::StylePackageContext::resolve(&manifest_path, None)
+			.expect("resolve package metadata");
+		let error = require_pages_wasm_target(&package_context, true)
+			.expect_err("component styles require a Pages cdylib target");
+
+		assert!(error.to_string().contains("Pages cdylib target"));
+	}
+
+	#[cfg(feature = "pages")]
+	#[test]
+	fn styled_packages_with_multiline_cdylib_targets_are_accepted() {
+		let directory = tempfile::tempdir().expect("create package directory");
+		let manifest_path = directory.path().join("Cargo.toml");
+		std::fs::create_dir(directory.path().join("src")).expect("create package source directory");
+		std::fs::write(directory.path().join("src/lib.rs"), "").expect("write package source");
+		std::fs::write(
+			&manifest_path,
+			concat!(
+				"[package]\n",
+				"name = \"multiline-cdylib\"\n",
+				"version = \"0.1.0\"\n",
+				"edition = \"2024\"\n\n",
+				"[lib]\n",
+				"crate-type = [\n",
+				"  \"cdylib\",\n",
+				"  \"rlib\",\n",
+				"]\n",
+			),
+		)
+		.expect("write package manifest");
+
+		let package_context = crate::StylePackageContext::resolve(&manifest_path, None)
+			.expect("resolve package metadata");
+		require_pages_wasm_target(&package_context, true)
+			.expect("Cargo metadata should recognize a multiline cdylib target");
+	}
+
+	#[cfg(feature = "pages")]
+	#[test]
+	fn component_styles_are_initialized_when_wasm_builds_are_disabled() {
+		assert!(should_prepare_component_styles(true, false));
+		assert!(!should_prepare_component_styles(true, true));
+		assert!(!should_prepare_component_styles(false, false));
+	}
+
 	#[test]
 	#[cfg(feature = "reinhardt-db")]
 	#[serial_test::serial(env)]
@@ -5181,8 +5479,23 @@ name = "db.sqlite3"
 	}
 
 	#[test]
+	#[cfg(feature = "pages")]
+	fn pages_wasm_build_config_uses_the_served_static_directory() {
+		// Act
+		let config =
+			RunServerCommand::pages_wasm_build_config("style-app", "client_app", "static/app");
+
+		// Assert
+		assert_eq!(config.release, !cfg!(debug_assertions));
+		assert_eq!(config.package.as_deref(), Some("style-app"));
+		assert_eq!(config.target_name.as_deref(), Some("client_app"));
+		assert_eq!(config.output_dir, std::path::PathBuf::from("static/app"));
+	}
+
+	#[test]
 	#[cfg(all(feature = "server", feature = "autoreload"))]
 	fn test_autoreload_child_args_forward_wasm_startup_flags() {
+		let features = vec!["brand".to_string(), "theme".to_string()];
 		let args = RunServerCommand::build_autoreload_child_args(&AutoreloadChildOptions {
 			address: "127.0.0.1:8000",
 			insecure: true,
@@ -5197,6 +5510,10 @@ name = "db.sqlite3"
 			no_override_wasm: true,
 			force_wasm: true,
 			wasm_optional: true,
+			package: Some("poll-app"),
+			features: &features,
+			all_features: false,
+			generated_style_root: None,
 		});
 
 		assert_eq!(
@@ -5218,6 +5535,45 @@ name = "db.sqlite3"
 				"--no-override-wasm",
 				"--force-wasm",
 				"--wasm-optional",
+				"--package",
+				"poll-app",
+				"--features",
+				"brand,theme",
+			]
+		);
+	}
+
+	#[test]
+	#[cfg(all(feature = "server", feature = "autoreload"))]
+	fn test_autoreload_child_args_forward_all_features() {
+		let args = RunServerCommand::build_autoreload_child_args(&AutoreloadChildOptions {
+			address: "127.0.0.1:8000",
+			insecure: false,
+			no_docs: false,
+			with_pages: true,
+			static_dir: "",
+			no_spa: false,
+			no_project_static: false,
+			index: None,
+			hmr_port: None,
+			no_wasm: false,
+			no_override_wasm: false,
+			force_wasm: false,
+			wasm_optional: false,
+			package: None,
+			features: &[],
+			all_features: true,
+			generated_style_root: None,
+		});
+
+		assert_eq!(
+			args,
+			vec![
+				"runserver",
+				"127.0.0.1:8000",
+				"--noreload",
+				"--with-pages",
+				"--all-features",
 			]
 		);
 	}
@@ -5239,6 +5595,10 @@ name = "db.sqlite3"
 			no_override_wasm: false,
 			force_wasm: false,
 			wasm_optional: false,
+			package: None,
+			features: &[],
+			all_features: false,
+			generated_style_root: None,
 		});
 
 		assert_eq!(args, vec!["runserver", "127.0.0.1:8000", "--noreload"]);

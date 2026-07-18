@@ -20,8 +20,7 @@ use reinhardt_conf::settings::sources::{DefaultSource, LowPriorityEnvSource, Tom
 use reinhardt_utils::staticfiles::StaticFilesConfig;
 use serde_json::Value;
 use std::env;
-#[allow(unused)]
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 #[cfg(feature = "routers")]
@@ -192,6 +191,23 @@ pub enum Commands {
 		/// Path to index.html for SPA fallback (auto-detected from project root)
 		#[arg(long)]
 		index: Option<String>,
+
+		/// Cargo package containing component style definitions
+		#[arg(long, value_name = "NAME")]
+		package: Option<String>,
+
+		/// Cargo features enabled for the Pages component style package
+		#[arg(
+			long,
+			value_delimiter = ',',
+			value_name = "FEATURE",
+			conflicts_with = "all_features"
+		)]
+		features: Vec<String>,
+
+		/// Enable all Cargo features for the Pages component style package
+		#[arg(long)]
+		all_features: bool,
 	},
 
 	/// Run an interactive Rust shell (REPL)
@@ -238,6 +254,23 @@ pub enum Commands {
 		/// Path to index.html source file (auto-detected from project root)
 		#[arg(long)]
 		index: Option<String>,
+
+		/// Cargo package containing component style definitions
+		#[arg(long, value_name = "NAME")]
+		package: Option<String>,
+
+		/// Cargo features enabled for the component style package
+		#[arg(
+			long,
+			value_delimiter = ',',
+			value_name = "FEATURE",
+			conflicts_with = "all_features"
+		)]
+		features: Vec<String>,
+
+		/// Enable all Cargo features for the component style package
+		#[arg(long)]
+		all_features: bool,
 	},
 
 	/// Display all registered server URL patterns
@@ -311,7 +344,8 @@ pub enum Commands {
 	///
 	/// This variant is not exposed in the CLI help. It is used internally
 	/// by [`execute_from_command_line_with_registry`] to dispatch commands
-	/// that are not built-in but were registered by the downstream project.
+	/// registered by the downstream project and fixture commands that preserve
+	/// their CLI syntax without expanding this public enum.
 	#[command(skip)]
 	Custom {
 		/// The name of the custom command to execute.
@@ -319,6 +353,92 @@ pub enum Commands {
 		/// Positional arguments forwarded to the custom command.
 		args: Vec<String>,
 	},
+}
+
+#[cfg(feature = "reinhardt-db")]
+#[derive(Debug)]
+enum FixtureCommand {
+	Dumpdata {
+		selectors: Vec<String>,
+		exclude: Vec<String>,
+	},
+	Loaddata {
+		fixtures: Vec<PathBuf>,
+	},
+	Seed {
+		app_labels: Vec<String>,
+	},
+}
+
+#[cfg(feature = "reinhardt-db")]
+#[derive(Debug, Parser)]
+#[command(name = "dumpdata")]
+struct DumpdataArgs {
+	#[arg(value_name = "APP_OR_MODEL")]
+	selectors: Vec<String>,
+	#[arg(long, value_name = "APP_OR_MODEL")]
+	exclude: Vec<String>,
+}
+
+#[cfg(feature = "reinhardt-db")]
+#[derive(Debug, Parser)]
+#[command(name = "loaddata")]
+struct LoaddataArgs {
+	#[arg(value_name = "FIXTURE")]
+	fixtures: Vec<PathBuf>,
+}
+
+#[cfg(feature = "reinhardt-db")]
+#[derive(Debug, Parser)]
+#[command(name = "seed")]
+struct SeedArgs {
+	#[arg(value_name = "APP_LABEL")]
+	app_labels: Vec<String>,
+}
+
+#[cfg(feature = "reinhardt-db")]
+fn fixture_command_argv(name: &str, args: &[String]) -> Vec<String> {
+	std::iter::once(name.to_string())
+		.chain(args.iter().cloned())
+		.collect()
+}
+
+#[cfg(feature = "reinhardt-db")]
+fn parse_fixture_command(
+	name: &str,
+	args: &[String],
+) -> Result<Option<FixtureCommand>, clap::Error> {
+	match name {
+		"dumpdata" => DumpdataArgs::try_parse_from(fixture_command_argv(name, args)).map(|args| {
+			Some(FixtureCommand::Dumpdata {
+				selectors: args.selectors,
+				exclude: args.exclude,
+			})
+		}),
+		"loaddata" => LoaddataArgs::try_parse_from(fixture_command_argv(name, args)).map(|args| {
+			Some(FixtureCommand::Loaddata {
+				fixtures: args.fixtures,
+			})
+		}),
+		"seed" => SeedArgs::try_parse_from(fixture_command_argv(name, args)).map(|args| {
+			Some(FixtureCommand::Seed {
+				app_labels: args.app_labels,
+			})
+		}),
+		_ => Ok(None),
+	}
+}
+
+fn is_fixture_command_name(name: &str) -> bool {
+	#[cfg(feature = "reinhardt-db")]
+	{
+		matches!(name, "dumpdata" | "loaddata" | "seed")
+	}
+	#[cfg(not(feature = "reinhardt-db"))]
+	{
+		let _ = name;
+		false
+	}
 }
 
 /// Execute commands from command-line arguments
@@ -495,7 +615,9 @@ async fn execute_with_registry_and_optional_settings(
 ) -> Result<(), Box<dyn std::error::Error>> {
 	// Attempt normal clap parsing first. If it fails (e.g., unknown subcommand),
 	// fall back to checking the registry for a matching custom command.
-	let (command, verbosity) = match Cli::try_parse() {
+	let raw_args: Vec<String> = env::args().collect();
+	let normalized_args = normalize_count_style_verbosity_args(&raw_args);
+	let (command, verbosity) = match Cli::try_parse_from(&normalized_args) {
 		Ok(cli) => (cli.command, cli.verbosity),
 		Err(clap_err) => {
 			// Only intercept "unknown subcommand" errors; re-raise others (--help, --version, etc.)
@@ -503,10 +625,19 @@ async fn execute_with_registry_and_optional_settings(
 				clap_err.exit();
 			}
 
-			// Extract the raw arguments and try to find a matching custom command.
-			let raw_args: Vec<String> = env::args().collect();
+			// Resolve custom commands from the original arguments to preserve the
+			// legacy value-style verbosity convention for their command contexts.
 			match resolve_custom_command(&raw_args, &registry) {
-				Some((name, args, verbosity)) => (Commands::Custom { name, args }, verbosity),
+				Some((name, args, verbosity)) => {
+					#[cfg(feature = "reinhardt-db")]
+					if registry.get(&name).is_none()
+						&& is_fixture_command_name(&name)
+						&& let Err(error) = parse_fixture_command(&name, &args)
+					{
+						error.exit();
+					}
+					(Commands::Custom { name, args }, verbosity)
+				}
 				None => {
 					// No custom command matched either; let clap display its error.
 					clap_err.exit();
@@ -560,10 +691,13 @@ fn requires_router(command: &Commands) -> bool {
 /// before execution via [`initialize_orm_database()`].
 /// This is symmetric with [`requires_router()`] which controls HTTP route registration.
 #[cfg(feature = "reinhardt-db")]
-fn requires_database(command: &Commands) -> bool {
+fn requires_database(command: &Commands, registry: &CommandRegistry) -> bool {
 	match command {
 		Commands::Runserver { .. } => true,
 		Commands::Migrate { .. } => true,
+		Commands::Custom { name, .. } => {
+			registry.get(name).is_none() && is_fixture_command_name(name)
+		}
 		#[cfg(feature = "auth")]
 		Commands::Createsuperuser { .. } => true,
 		_ => false,
@@ -576,8 +710,9 @@ fn requires_database(command: &Commands) -> bool {
 /// For most use cases, prefer using [`execute_from_command_line`] or
 /// [`execute_from_command_line_with_registry`] instead.
 ///
-/// Note: this function does **not** dispatch [`Commands::Custom`] variants.
-/// Use [`run_command_with_registry`] when custom commands may be present.
+/// Fixture command names carried by [`Commands::Custom`] are dispatched
+/// directly. Use [`run_command_with_registry`] when registered custom commands
+/// may be present.
 ///
 /// # Arguments
 ///
@@ -635,9 +770,13 @@ async fn run_command_core(
 	// This must happen before command dispatch so that commands like
 	// createsuperuser can use the ORM connection pool. (#3186)
 	#[cfg(feature = "reinhardt-db")]
-	if requires_database(&command) {
+	if requires_database(&command, &registry) {
 		let mut ctx = crate::CommandContext::new(vec![]);
 		ctx.verbosity = verbosity;
+		ctx.set_output_suppressed(matches!(
+			&command,
+			Commands::Custom { name, .. } if name == "dumpdata"
+		));
 		// Thread the project's composed settings into the ORM-init context so the
 		// database URL can be resolved from `settings/*.toml`
 		// (`[core.databases.default]`) when `DATABASE_URL` is unset (#5042).
@@ -722,6 +861,9 @@ async fn run_command_core(
 			static_dir,
 			no_spa,
 			index,
+			package,
+			features,
+			all_features,
 		} => {
 			execute_runserver(RunServerOptions {
 				address,
@@ -738,6 +880,9 @@ async fn run_command_core(
 				static_dir,
 				no_spa,
 				index,
+				package,
+				features,
+				all_features,
 				verbosity,
 			})
 			.await
@@ -751,7 +896,24 @@ async fn run_command_core(
 			link,
 			ignore,
 			index,
-		} => execute_collectstatic(clear, no_input, dry_run, link, ignore, index, verbosity).await,
+			package,
+			features,
+			all_features,
+		} => {
+			execute_collectstatic(
+				clear,
+				no_input,
+				dry_run,
+				link,
+				ignore,
+				index,
+				package,
+				features,
+				all_features,
+				verbosity,
+			)
+			.await
+		}
 		Commands::Showurls { names } => execute_showurls(names, verbosity).await,
 		#[cfg(feature = "introspect")]
 		Commands::Introspect { format, section } => execute_introspect(format, section, verbosity).await,
@@ -780,9 +942,36 @@ async fn run_command_core(
 			.await
 		}
 		Commands::Custom { name, args } => {
+			#[cfg(feature = "reinhardt-db")]
+			if registry.get(&name).is_none()
+				&& let Some(command) = parse_fixture_command(&name, &args)?
+			{
+				return execute_fixture_command(command, verbosity, settings).await;
+			}
 			execute_custom_command(&name, &args, verbosity, &registry).await
 		}
 	}
+}
+
+/// Rewrite `--verbosity=N` into clap's count-style verbosity flags.
+///
+/// This lets the standard parser reach its `InvalidSubcommand` path for a
+/// custom command, while [`resolve_custom_command`] still reads the original
+/// arguments and passes the requested numeric verbosity to that command.
+fn normalize_count_style_verbosity_args(raw_args: &[String]) -> Vec<String> {
+	let mut normalized = Vec::with_capacity(raw_args.len());
+	for argument in raw_args {
+		let Some(value) = argument.strip_prefix("--verbosity=") else {
+			normalized.push(argument.clone());
+			continue;
+		};
+		let Ok(count) = value.parse::<u8>() else {
+			normalized.push(argument.clone());
+			continue;
+		};
+		normalized.extend(std::iter::repeat_n("--verbosity".to_string(), count.into()));
+	}
+	normalized
 }
 
 /// Returns `true` when the clap error represents an unrecognised subcommand.
@@ -794,18 +983,11 @@ fn is_unknown_subcommand(err: &clap::Error) -> bool {
 	matches!(err.kind(), clap::error::ErrorKind::InvalidSubcommand)
 }
 
-/// Known global options that accept a separate value argument.
-///
-/// When skipping leading flags we must also consume the following token for
-/// options that take a value (e.g. `--verbosity 2`). Without this, the value
-/// would be mistaken for the subcommand name.
-const GLOBAL_OPTIONS_WITH_VALUE: &[&str] = &["--verbosity"];
-
 /// Try to resolve raw CLI arguments into a custom command from the registry.
 ///
 /// The convention is: `manage <subcommand> [args...]`.  Global flags that
-/// appear before the subcommand (e.g., `-v`) are skipped.  The function also
-/// extracts the verbosity level so it can be forwarded to the custom command.
+/// appear before the subcommand (e.g., `-v`) are skipped. Both count-style
+/// `--verbosity` and legacy value-style `--verbosity 2` are accepted.
 fn resolve_custom_command(
 	raw_args: &[String],
 	registry: &CommandRegistry,
@@ -823,23 +1005,19 @@ fn resolve_custom_command(
 		if flag == "-v" || flag == "--verbose" {
 			verbosity = verbosity.saturating_add(1);
 		} else if flag == "--verbosity" {
-			// Consume the next token as the value.
-			if let Some(val) = iter.peek()
-				&& !val.starts_with('-')
-			{
-				verbosity = val.parse().unwrap_or(0);
+			if let Some(value) = iter.peek().and_then(|value| value.parse::<u8>().ok()) {
+				verbosity = value;
 				iter.next();
+			} else {
+				verbosity = verbosity.saturating_add(1);
 			}
-		} else if let Some(val) = flag.strip_prefix("--verbosity=") {
-			verbosity = val.parse().unwrap_or(0);
-		} else if GLOBAL_OPTIONS_WITH_VALUE.contains(&flag.as_str()) {
-			// Skip the value for other known options that take one.
-			iter.next();
+		} else if let Some(value) = flag.strip_prefix("--verbosity=") {
+			verbosity = value.parse().ok()?;
 		}
 	}
 
 	let subcommand = iter.next()?;
-	if registry.get(subcommand).is_some() {
+	if registry.get(subcommand).is_some() || is_fixture_command_name(subcommand) {
 		let remaining: Vec<String> = iter.cloned().collect();
 		Some((subcommand.clone(), remaining, verbosity))
 	} else {
@@ -869,6 +1047,25 @@ async fn execute_custom_command(
 	}
 
 	cmd.execute(&ctx).await.map_err(|e| e.into())
+}
+
+#[cfg(feature = "reinhardt-db")]
+async fn execute_fixture_command(
+	command: FixtureCommand,
+	verbosity: u8,
+	settings: Option<Arc<dyn HasCommonSettings>>,
+) -> Result<(), Box<dyn std::error::Error>> {
+	match command {
+		FixtureCommand::Dumpdata { selectors, exclude } => {
+			crate::data_commands::execute_dumpdata(selectors, exclude).await
+		}
+		FixtureCommand::Loaddata { fixtures } => {
+			crate::data_commands::execute_loaddata(fixtures).await
+		}
+		FixtureCommand::Seed { app_labels } => {
+			crate::data_commands::execute_seed(app_labels, verbosity, settings).await
+		}
+	}
 }
 
 /// Execute the makemigrations command
@@ -989,6 +1186,9 @@ struct RunServerOptions {
 	static_dir: String,
 	no_spa: bool,
 	index: Option<String>,
+	package: Option<String>,
+	features: Vec<String>,
+	all_features: bool,
 	verbosity: u8,
 }
 
@@ -1031,6 +1231,15 @@ fn runserver_context_from_options(options: &RunServerOptions) -> CommandContext 
 	}
 	if let Some(ref index) = options.index {
 		ctx.set_option("index".to_string(), index.clone());
+	}
+	if let Some(ref package) = options.package {
+		ctx.set_option("package".to_string(), package.clone());
+	}
+	if !options.features.is_empty() {
+		ctx.set_option("features".to_string(), options.features.join(","));
+	}
+	if options.all_features {
+		ctx.set_option("all-features".to_string(), "true".to_string());
 	}
 
 	ctx
@@ -1081,6 +1290,7 @@ async fn execute_check(
 }
 
 /// Execute the collectstatic command
+#[allow(clippy::too_many_arguments)] // The handler mirrors collectstatic's independent CLI options.
 async fn execute_collectstatic(
 	clear: bool,
 	no_input: bool,
@@ -1088,6 +1298,9 @@ async fn execute_collectstatic(
 	link: bool,
 	ignore: Vec<String>,
 	index: Option<String>,
+	package: Option<String>,
+	features: Vec<String>,
+	all_features: bool,
 	verbosity: u8,
 ) -> Result<(), Box<dyn std::error::Error>> {
 	// Load settings from TOML files
@@ -1161,16 +1374,11 @@ async fn execute_collectstatic(
 		))
 		.build()?;
 
-	// Construct StaticFilesConfig directly from merged settings
-	let static_root = merged
-		.get::<String>("static_root")
-		.ok()
-		.map(PathBuf::from)
-		.unwrap_or_else(|| base_dir.join("staticfiles"));
+	let static_settings = crate::StaticAssetSettings::from_merged(&merged, &base_dir);
 	let config = StaticFilesConfig {
-		static_root,
-		static_url: merged.get_or("static_url", "/static/".to_string()),
-		staticfiles_dirs: merged.get_or("staticfiles_dirs", Vec::new()),
+		static_root: static_settings.static_root,
+		static_url: static_settings.static_url,
+		staticfiles_dirs: static_settings.staticfiles_dirs,
 		media_url: None,
 	};
 
@@ -1205,6 +1413,18 @@ async fn execute_collectstatic(
 	// Create and execute command in blocking context
 	let mut cmd = CollectStaticCommand::new(config, options);
 	cmd.set_index_source(index_source);
+	let feature_selection = if all_features {
+		crate::StyleFeatureSelection::all_features()
+	} else {
+		crate::StyleFeatureSelection::with_features(features)
+	};
+	let style_context = resolve_collectstatic_style_context(
+		&base_dir.join("Cargo.toml"),
+		package.as_deref(),
+		feature_selection,
+	)
+	.map_err(|error| format!("failed to select component style package: {error}"))?;
+	cmd.set_style_context(style_context);
 	let result = tokio::task::spawn_blocking(move || {
 		// Call the sync execute() method directly (not the BaseCommand trait method)
 		CollectStaticCommand::execute(&mut cmd)
@@ -1216,6 +1436,31 @@ async fn execute_collectstatic(
 		Ok(Err(e)) => Err(Box::new(e) as Box<dyn std::error::Error>),
 		Err(e) => Err(Box::new(e) as Box<dyn std::error::Error>),
 	}
+}
+
+fn resolve_collectstatic_style_context(
+	manifest_path: &Path,
+	requested_package: Option<&str>,
+	feature_selection: crate::StyleFeatureSelection,
+) -> Result<Option<crate::StylePackageContext>, String> {
+	match crate::StylePackageContext::resolve_with_features(
+		manifest_path,
+		requested_package,
+		feature_selection,
+	) {
+		Ok(context) => Ok(Some(context)),
+		Err(error)
+			if requested_package.is_none() && virtual_workspace_has_no_style_package(&error) =>
+		{
+			Ok(None)
+		}
+		Err(error) => Err(error),
+	}
+}
+
+fn virtual_workspace_has_no_style_package(error: &str) -> bool {
+	error == "the Cargo workspace has no root package; pass --package <NAME>"
+		|| (error.contains("manifest is virtual") && error.contains("workspace has no members"))
 }
 
 /// Execute the showurls command
@@ -1551,6 +1796,27 @@ pub(crate) fn generate_random_secret_key() -> String {
 mod tests {
 	use super::*;
 	use rstest::rstest;
+	#[cfg(feature = "reinhardt-db")]
+	use std::sync::atomic::{AtomicBool, Ordering};
+
+	#[cfg(feature = "reinhardt-db")]
+	struct RegisteredFixtureNameCommand;
+
+	#[cfg(feature = "reinhardt-db")]
+	static REGISTERED_FIXTURE_NAME_COMMAND_EXECUTED: AtomicBool = AtomicBool::new(false);
+
+	#[cfg(feature = "reinhardt-db")]
+	#[async_trait::async_trait]
+	impl BaseCommand for RegisteredFixtureNameCommand {
+		fn name(&self) -> &str {
+			"seed"
+		}
+
+		async fn execute(&self, _ctx: &CommandContext) -> crate::CommandResult<()> {
+			REGISTERED_FIXTURE_NAME_COMMAND_EXECUTED.store(true, Ordering::SeqCst);
+			Ok(())
+		}
+	}
 
 	/// `Runserver` is intentionally **not** in the pre-dispatch
 	/// `requires_router` list (Refs #4453): the HTTP-route inventory
@@ -1576,6 +1842,9 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: None,
+			package: None,
+			features: vec![],
+			all_features: false,
 		};
 
 		// Act
@@ -1672,6 +1941,9 @@ mod tests {
 			link: false,
 			ignore: vec![],
 			index: None,
+			package: None,
+			features: vec![],
+			all_features: false,
 		};
 
 		// Act
@@ -1765,6 +2037,9 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: Some("./index.html".to_string()),
+			package: None,
+			features: vec![],
+			all_features: false,
 		};
 
 		// Act & Assert
@@ -1793,6 +2068,9 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: None,
+			package: None,
+			features: vec![],
+			all_features: false,
 		};
 
 		// Act & Assert
@@ -1821,6 +2099,9 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: true,
 			index: Some("./index.html".to_string()),
+			package: None,
+			features: vec![],
+			all_features: false,
 		};
 
 		// Assert
@@ -1850,6 +2131,9 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: Some("./index.html".to_string()),
+			package: None,
+			features: vec![],
+			all_features: false,
 		};
 
 		// Assert
@@ -1882,6 +2166,9 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: None,
+			package: None,
+			features: vec![],
+			all_features: false,
 			verbosity: 0,
 		};
 
@@ -1911,6 +2198,9 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: None,
+			package: None,
+			features: vec![],
+			all_features: false,
 			verbosity: 0,
 		};
 
@@ -1942,6 +2232,9 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: None,
+			package: None,
+			features: vec![],
+			all_features: false,
 			verbosity: 0,
 		};
 
@@ -1970,6 +2263,9 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: None,
+			package: None,
+			features: vec![],
+			all_features: false,
 			verbosity: 0,
 		};
 
@@ -2045,6 +2341,169 @@ mod tests {
 		}
 	}
 
+	#[cfg(feature = "reinhardt-db")]
+	#[rstest]
+	fn test_fixture_commands_parse_without_public_command_variants() {
+		let command = parse_fixture_command(
+			"dumpdata",
+			&[
+				"writing_sources.WritingProject".to_string(),
+				"auth".to_string(),
+				"--exclude".to_string(),
+				"sessions.Session".to_string(),
+			],
+		)
+		.expect("dumpdata arguments must parse")
+		.expect("dumpdata must be recognized as a built-in fixture command");
+
+		match command {
+			FixtureCommand::Dumpdata { selectors, exclude } => {
+				assert_eq!(
+					selectors,
+					vec![
+						"writing_sources.WritingProject".to_string(),
+						"auth".to_string()
+					]
+				);
+				assert_eq!(exclude, vec!["sessions.Session".to_string()]);
+			}
+			_ => panic!("Expected FixtureCommand::Dumpdata"),
+		}
+
+		let registry = CommandRegistry::new();
+		let resolved = resolve_custom_command(
+			&[
+				"manage".to_string(),
+				"dumpdata".to_string(),
+				"writing_sources.WritingProject".to_string(),
+			],
+			&registry,
+		);
+
+		assert_eq!(
+			resolved,
+			Some((
+				"dumpdata".to_string(),
+				vec!["writing_sources.WritingProject".to_string()],
+				0,
+			))
+		);
+	}
+
+	#[cfg(feature = "reinhardt-db")]
+	#[rstest]
+	fn test_fixture_commands_resolve_after_count_style_verbosity() {
+		let registry = CommandRegistry::new();
+
+		for fixture_command in ["dumpdata", "seed"] {
+			let resolved = resolve_custom_command(
+				&[
+					"manage".to_string(),
+					"--verbosity".to_string(),
+					fixture_command.to_string(),
+				],
+				&registry,
+			);
+
+			assert_eq!(resolved, Some((fixture_command.to_string(), Vec::new(), 1)));
+		}
+	}
+
+	#[cfg(feature = "reinhardt-db")]
+	#[rstest]
+	fn test_fixture_commands_resolve_after_value_style_verbosity() {
+		let registry = CommandRegistry::new();
+
+		for args in [
+			vec!["--verbosity".to_string(), "2".to_string()],
+			vec!["--verbosity=2".to_string()],
+		] {
+			let mut raw_args = vec!["manage".to_string()];
+			raw_args.extend(args);
+			raw_args.push("dumpdata".to_string());
+			assert_eq!(
+				resolve_custom_command(&raw_args, &registry),
+				Some(("dumpdata".to_string(), Vec::new(), 2))
+			);
+		}
+	}
+
+	#[cfg(feature = "reinhardt-db")]
+	#[rstest]
+	fn test_value_style_verbosity_reaches_the_custom_command_fallback() {
+		let registry = CommandRegistry::new();
+		let raw_args = vec![
+			"manage".to_string(),
+			"--verbosity=2".to_string(),
+			"seed".to_string(),
+		];
+
+		let normalized_args = normalize_count_style_verbosity_args(&raw_args);
+		let clap_error = Cli::try_parse_from(&normalized_args)
+			.expect_err("fixture subcommands must remain eligible for custom resolution");
+
+		assert!(is_unknown_subcommand(&clap_error));
+		assert_eq!(
+			resolve_custom_command(&raw_args, &registry),
+			Some(("seed".to_string(), Vec::new(), 2))
+		);
+	}
+
+	#[cfg(feature = "reinhardt-db")]
+	#[tokio::test]
+	async fn test_registered_fixture_name_dispatches_before_fixture_commands() {
+		REGISTERED_FIXTURE_NAME_COMMAND_EXECUTED.store(false, Ordering::SeqCst);
+		let mut registry = CommandRegistry::new();
+		registry.register(Box::new(RegisteredFixtureNameCommand));
+		let command = Commands::Custom {
+			name: "seed".to_string(),
+			args: vec!["project".to_string()],
+		};
+
+		assert!(!requires_database(&command, &registry));
+		run_command_with_registry(command, 0, registry)
+			.await
+			.expect("registered fixture-named commands must dispatch through the registry");
+		assert!(REGISTERED_FIXTURE_NAME_COMMAND_EXECUTED.load(Ordering::SeqCst));
+	}
+
+	#[cfg(feature = "reinhardt-db")]
+	#[rstest]
+	fn test_loaddata_fixture_parser_accepts_paths() {
+		let command = parse_fixture_command("loaddata", &["fixtures/dev.json".to_string()])
+			.expect("loaddata arguments must parse")
+			.expect("loaddata must be recognized as a built-in fixture command");
+
+		match command {
+			FixtureCommand::Loaddata { fixtures } => {
+				assert_eq!(
+					fixtures,
+					vec![std::path::PathBuf::from("fixtures/dev.json")]
+				);
+			}
+			_ => panic!("Expected FixtureCommand::Loaddata"),
+		}
+	}
+
+	#[cfg(feature = "reinhardt-db")]
+	#[rstest]
+	fn test_seed_fixture_parser_accepts_app_labels() {
+		let command =
+			parse_fixture_command("seed", &["writing_sources".to_string(), "auth".to_string()])
+				.expect("seed arguments must parse")
+				.expect("seed must be recognized as a built-in fixture command");
+
+		match command {
+			FixtureCommand::Seed { app_labels } => {
+				assert_eq!(
+					app_labels,
+					vec!["writing_sources".to_string(), "auth".to_string()]
+				);
+			}
+			_ => panic!("Expected FixtureCommand::Seed"),
+		}
+	}
+
 	#[rstest]
 	fn test_collectstatic_with_index_option() {
 		// Arrange & Act
@@ -2055,6 +2514,9 @@ mod tests {
 			link: false,
 			ignore: vec![],
 			index: Some("./index.html".to_string()),
+			package: None,
+			features: vec![],
+			all_features: false,
 		};
 
 		// Assert
@@ -2063,6 +2525,84 @@ mod tests {
 		} else {
 			panic!("Expected Collectstatic command");
 		}
+	}
+
+	#[rstest]
+	fn collectstatic_package_option_parses() {
+		let cli = Cli::try_parse_from(["manage", "collectstatic", "--package", "poll-app"])
+			.expect("collectstatic package option should parse");
+
+		match cli.command {
+			Commands::Collectstatic { package, .. } => {
+				assert_eq!(package.as_deref(), Some("poll-app"));
+			}
+			_ => panic!("expected collectstatic command"),
+		}
+	}
+
+	#[rstest]
+	fn collectstatic_style_feature_options_parse() {
+		let cli = Cli::try_parse_from(["manage", "collectstatic", "--features", "theme,brand"])
+			.expect("collectstatic style features should parse");
+
+		let Commands::Collectstatic {
+			features,
+			all_features,
+			..
+		} = cli.command
+		else {
+			panic!("expected collectstatic command");
+		};
+		assert_eq!(features, ["theme", "brand"]);
+		assert!(!all_features);
+	}
+
+	#[rstest]
+	fn collectstatic_without_package_allows_a_virtual_workspace_root() {
+		let directory = tempfile::tempdir().expect("create temporary workspace");
+		let manifest_path = directory.path().join("Cargo.toml");
+		std::fs::write(
+			&manifest_path,
+			"[workspace]\nmembers = []\nresolver = \"3\"\n",
+		)
+		.expect("write virtual workspace manifest");
+
+		let context = resolve_collectstatic_style_context(
+			&manifest_path,
+			None,
+			crate::StyleFeatureSelection::default(),
+		)
+		.expect("a virtual workspace has no component stylesheet package by default");
+
+		assert!(context.is_none());
+	}
+
+	#[rstest]
+	fn runserver_package_option_parses_and_forwards() {
+		let cli = Cli::try_parse_from(["manage", "runserver", "--package", "poll-app"])
+			.expect("runserver package option should parse");
+
+		let Commands::Runserver { package, .. } = cli.command else {
+			panic!("expected runserver command");
+		};
+		assert_eq!(package.as_deref(), Some("poll-app"));
+	}
+
+	#[rstest]
+	fn runserver_all_style_features_option_parses() {
+		let cli = Cli::try_parse_from(["manage", "runserver", "--all-features"])
+			.expect("runserver all style features should parse");
+
+		let Commands::Runserver {
+			features,
+			all_features,
+			..
+		} = cli.command
+		else {
+			panic!("expected runserver command");
+		};
+		assert!(features.is_empty());
+		assert!(all_features);
 	}
 
 	#[cfg(feature = "reinhardt-db")]
@@ -2084,10 +2624,13 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: None,
+			package: None,
+			features: vec![],
+			all_features: false,
 		};
 
 		// Act
-		let result = requires_database(&command);
+		let result = requires_database(&command, &CommandRegistry::new());
 
 		// Assert
 		assert!(result);
@@ -2106,7 +2649,7 @@ mod tests {
 		};
 
 		// Act
-		let result = requires_database(&command);
+		let result = requires_database(&command, &CommandRegistry::new());
 
 		// Assert
 		assert!(result);
@@ -2127,10 +2670,35 @@ mod tests {
 		};
 
 		// Act
-		let result = requires_database(&command);
+		let result = requires_database(&command, &CommandRegistry::new());
 
 		// Assert
 		assert!(result);
+	}
+
+	#[cfg(feature = "reinhardt-db")]
+	#[rstest]
+	fn test_requires_database_for_model_fixture_commands() {
+		// Arrange
+		let commands = [
+			Commands::Custom {
+				name: "dumpdata".to_string(),
+				args: vec![],
+			},
+			Commands::Custom {
+				name: "loaddata".to_string(),
+				args: vec!["fixtures/dev.json".to_string()],
+			},
+			Commands::Custom {
+				name: "seed".to_string(),
+				args: vec![],
+			},
+		];
+
+		// Act & Assert
+		for command in commands {
+			assert!(requires_database(&command, &CommandRegistry::new()));
+		}
 	}
 
 	#[cfg(feature = "reinhardt-db")]
@@ -2140,7 +2708,7 @@ mod tests {
 		let command = Commands::Shell { command: None };
 
 		// Act
-		let result = requires_database(&command);
+		let result = requires_database(&command, &CommandRegistry::new());
 
 		// Assert
 		assert!(!result);
@@ -2156,7 +2724,7 @@ mod tests {
 		};
 
 		// Act
-		let result = requires_database(&command);
+		let result = requires_database(&command, &CommandRegistry::new());
 
 		// Assert
 		assert!(!result);
@@ -2173,10 +2741,13 @@ mod tests {
 			link: false,
 			ignore: vec![],
 			index: None,
+			package: None,
+			features: vec![],
+			all_features: false,
 		};
 
 		// Act
-		let result = requires_database(&command);
+		let result = requires_database(&command, &CommandRegistry::new());
 
 		// Assert
 		assert!(!result);

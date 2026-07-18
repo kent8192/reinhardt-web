@@ -202,11 +202,12 @@ pub(crate) fn model_attribute_impl(
 		}
 	}
 
-	// Detect serde derives visible at this point and forward as bare flags.
-	// When `#[model]` appears before `#[derive(Serialize)]` in source, the
-	// attribute macro can see the derive. When `#[derive]` comes first, attrs
-	// will be empty (Rust processes outer attributes top-to-bottom).
-	// The recommended attribute order is `#[model]` first.
+	// Detect serde derives visible at this point and forward as bare flags for
+	// generated companion types. When `#[model]` appears before
+	// `#[derive(Serialize)]` in source, the attribute macro can see the derive.
+	// When `#[derive]` comes first, attrs will be empty because Rust processes
+	// outer attributes top-to-bottom. Fixture registration is independent of
+	// these flags because Model carries the required serde bounds.
 	let has_serialize = has_derive_trait(&input.attrs, "Serialize");
 	let has_deserialize = has_derive_trait(&input.attrs, "Deserialize");
 
