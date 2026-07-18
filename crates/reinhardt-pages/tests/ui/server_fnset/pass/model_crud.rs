@@ -29,13 +29,13 @@ impl CreateModelInput<Article> for CreateArticle { fn build(self) -> Result<Arti
 impl UpdateModelInput<Article> for UpdateArticle { fn apply(self, model: &mut Article) -> Result<(), ServerFnSetError> { model.title = self.title; Ok(()) } }
 impl PatchModelInput<Article> for PatchArticle { fn apply_patch(self, model: &mut Article) -> Result<(), ServerFnSetError> { if let Some(title) = self.title { model.title = title; } Ok(()) } }
 
-pub struct ArticleResource;
-impl ServerFnResource for ArticleResource {
+pub struct ArticleSet;
+impl ServerFnResource for ArticleSet {
 	type Lookup = i64; type Read = ArticleDto; type Create = CreateArticle;
 	type Update = UpdateArticle; type Patch = PatchArticle; type ListQuery = ListQuery;
 }
 #[async_trait::async_trait]
-impl ModelServerFnResource for ArticleResource {
+impl ModelServerFnResource for ArticleSet {
 	type Model = Article; type Policy = AllowAllPolicy;
 	fn lookup_field() -> UniqueFieldRef<Article, i64> {
 		// SAFETY: The handwritten test model declares `id` as its unique primary key.
@@ -47,7 +47,7 @@ impl ModelServerFnResource for ArticleResource {
 }
 
 #[server_fnset(name = "article")]
-pub fn article_fns() -> ModelServerFnSet<ArticleResource> { ModelServerFnSet::new() }
+pub fn article_fns() -> ModelServerFnSet<ArticleSet> { ModelServerFnSet::new() }
 
 fn assert_registration<T: ServerFnSetRegistration>(_: T) {}
 fn main() {

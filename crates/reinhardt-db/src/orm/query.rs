@@ -1284,6 +1284,7 @@ where
 			self.add_default_select_columns(&mut stmt);
 		}
 		self.apply_relation_joins(&mut stmt);
+		self.apply_manual_joins(&mut stmt);
 
 		if let Some(condition) = self.build_where_condition()? {
 			stmt.cond_where(condition);
@@ -3655,6 +3656,39 @@ where
 	fn apply_relation_joins(&self, stmt: &mut SelectStatement) {
 		let graph = self.relation_join_graph_for_query();
 		Self::apply_relation_join_graph(stmt, &graph);
+	}
+
+	fn apply_manual_joins(&self, stmt: &mut SelectStatement) {
+		for join in &self.joins {
+			if join.on_condition.is_empty() {
+				if let Some(ref alias) = join.target_alias {
+					stmt.cross_join((Alias::new(&join.target_table), Alias::new(alias)));
+				} else {
+					stmt.cross_join(Alias::new(&join.target_table));
+				}
+				continue;
+			}
+
+			let sea_join_type = match join.join_type {
+				super::sqlalchemy_query::JoinType::Inner => SeaJoinType::InnerJoin,
+				super::sqlalchemy_query::JoinType::Left => SeaJoinType::LeftJoin,
+				super::sqlalchemy_query::JoinType::Right => SeaJoinType::RightJoin,
+				super::sqlalchemy_query::JoinType::Full => SeaJoinType::FullOuterJoin,
+			};
+			if let Some(ref alias) = join.target_alias {
+				stmt.join(
+					sea_join_type,
+					(Alias::new(&join.target_table), Alias::new(alias)),
+					Expr::cust(join.on_condition.clone()),
+				);
+			} else {
+				stmt.join(
+					sea_join_type,
+					Alias::new(&join.target_table),
+					Expr::cust(join.on_condition.clone()),
+				);
+			}
+		}
 	}
 
 	fn apply_relation_join_graph(stmt: &mut SelectStatement, graph: &RelationJoinGraph) {
@@ -9677,6 +9711,25 @@ mod tests {
 				r#"WHERE "corpus_file__corpus_file"."normalized_path" = '/docs/index.md'"#
 			)
 		);
+	}
+
+	#[test]
+	fn test_executor_select_preserves_manual_joins() {
+		let stmt = QuerySet::<TestUser>::new()
+			.inner_join_on::<TestProject>("test_users.id = test_projects.user_id")
+			.filter(Filter::new(
+				"test_projects.name",
+				FilterOperator::Eq,
+				FilterValue::String("reinhardt".to_owned()),
+			))
+			.build_select_statement()
+			.expect("executor select should compile");
+		let sql = stmt.to_string(PostgresQueryBuilder);
+
+		assert!(
+			sql.contains(r#"INNER JOIN "test_projects" ON test_users.id = test_projects.user_id"#)
+		);
+		assert!(sql.contains(r#"WHERE "test_projects"."name" = 'reinhardt'"#));
 	}
 
 	#[test]

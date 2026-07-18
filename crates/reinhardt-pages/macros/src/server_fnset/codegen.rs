@@ -60,8 +60,13 @@ fn expand_model(mut input: ValidatedFnSet, resource: syn::Type) -> TokenStream {
 		"__ReinhardtDefaultServerFnSetActions{}",
 		pascal(&function_name.to_string())
 	);
+	let resource_alias_ident = quote::format_ident!(
+		"__ReinhardtServerFnSetResource{}",
+		pascal(&function_name.to_string())
+	);
+	let resource_alias: syn::Type = parse_quote!(#resource_alias_ident);
 	let vis = input.function.vis.clone();
-	let action_specs = standard_actions(&resource);
+	let action_specs = standard_actions(&resource_alias);
 	let generated = action_specs.iter().map(|action| {
 		generate_internal_server_fn(
 			action.function.clone(),
@@ -99,6 +104,7 @@ fn expand_model(mut input: ValidatedFnSet, resource: syn::Type) -> TokenStream {
 		#vis mod #function_name {
 			use super::*;
 			use #pages::server_fn::*;
+			type #resource_alias_ident = #resource;
 			#(#generated)*
 		}
 		struct #default_actions_ident;

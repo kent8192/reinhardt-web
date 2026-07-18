@@ -14,9 +14,9 @@ use reinhardt_db::orm::{
 use reinhardt_di::params::{FromRequest, ParamContext, ParamResult};
 use reinhardt_http::Request;
 use reinhardt_pages::server_fn::{
-	CreateModelInput, ModelServerFnResource, ModelServerFnSet, PageRequest, PatchModelInput,
-	ServerFnListQuery, ServerFnResource, ServerFnSetAction, ServerFnSetError, ServerFnSetPolicy,
-	UpdateModelInput,
+	CreateActionContext, CreateModelInput, ModelServerFnResource, ModelServerFnSet, PageRequest,
+	PatchModelInput, ServerFnListQuery, ServerFnResource, ServerFnSetAction, ServerFnSetError,
+	ServerFnSetPolicy, UpdateModelInput,
 };
 use serde::{Deserialize, Serialize};
 use serial_test::serial;
@@ -947,6 +947,95 @@ async fn transactional_custom_detail_actions_receive_authorized_object_and_rollb
 		.await
 		.expect("original row should load after rollback");
 	assert_eq!(original[0].name, "original");
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[serial(model_server_fnset_runtime)]
+async fn transactional_detail_overrides_reauthorize_the_mutated_object() {
+	let (_directory, connection) = database().await;
+	insert(&connection, 1, "original").await;
+	reset_state();
+	state()
+		.lock()
+		.expect("recording mutex should not be poisoned")
+		.deny_mutated_object = true;
+
+	let result = ModelServerFnSet::<WidgetResource>::transactional_detail_action(
+		&Principal,
+		&connection,
+		"original".to_owned(),
+		ServerFnSetAction::Update,
+		|mut context| {
+			Box::pin(async move {
+				context.object_mut().name = "forbidden".to_owned();
+				let (object, executor) = context.parts_mut();
+				object
+					.save_with_executor(executor)
+					.await
+					.map_err(|_| ServerFnSetError::Internal)?;
+				Ok::<_, ServerFnSetError>(())
+			})
+		},
+	)
+	.await;
+
+	assert!(matches!(result, Err(ServerFnSetError::Forbidden)));
+	let original = QuerySet::<Widget>::new()
+		.filter(Filter::new(
+			"id",
+			reinhardt_db::orm::FilterOperator::Eq,
+			FilterValue::Integer(1_i64),
+		))
+		.one_with_db(&connection)
+		.await
+		.expect("rejected override should roll back");
+	assert_eq!(original[0].name, "original");
+	assert_events(&[
+		"authorize_action",
+		"base_queryset",
+		"authorize_object",
+		"authorize_object",
+	]);
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[serial(model_server_fnset_runtime)]
+async fn create_overrides_can_authorize_objects_before_persistence() {
+	let (_directory, connection) = database().await;
+	insert(&connection, 1, "original").await;
+	reset_state();
+	state()
+		.lock()
+		.expect("recording mutex should not be poisoned")
+		.deny_created_object = true;
+
+	let result = ModelServerFnSet::<WidgetResource>::transactional_create_action(
+		&Principal,
+		&connection,
+		|mut context: CreateActionContext<'_, WidgetResource>| {
+			Box::pin(async move {
+				let mut object = Widget {
+					id: None,
+					name: "created".to_owned(),
+				};
+				context.authorize_object(&object).await?;
+				object
+					.save_with_executor(context.executor_mut())
+					.await
+					.map_err(|_| ServerFnSetError::Internal)?;
+				Ok::<_, ServerFnSetError>(())
+			})
+		},
+	)
+	.await;
+
+	assert!(matches!(result, Err(ServerFnSetError::Forbidden)));
+	let rows = connection
+		.query("SELECT COUNT(*) AS count FROM tenant_42_widgets", vec![])
+		.await
+		.expect("widget count query should succeed");
+	assert_eq!(rows[0].get::<i64>("count").expect("count column"), 1);
+	assert_events(&["authorize_action", "authorize_object"]);
 }
 
 #[tokio::test(flavor = "current_thread")]

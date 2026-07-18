@@ -495,8 +495,10 @@ the decoded lookup while the framework performs the authorized object lookup.
 A resource should set `ModelServerFnResource::PUBLIC_NAME` to the stable name
 used in client-visible not-found errors; the default is the generic
 `"resource"` and never exposes the physical database table name.
-A standard create override receives `CreateActionContext`, which exposes only
-the active transaction executor and does not run queryset scoping. Transactional
+A standard create override receives `CreateActionContext`, which exposes the
+active transaction executor and a principal-aware `authorize_object` method.
+Overrides that persist a model must call `authorize_object` before using the
+executor to write it; create overrides do not run queryset scoping. Transactional
 collection custom actions instead receive a policy-scoped
 `CollectionActionContext`.
 

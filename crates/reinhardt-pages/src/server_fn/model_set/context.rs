@@ -2,7 +2,7 @@ use std::marker::PhantomData;
 
 use reinhardt_db::orm::{DatabaseConnection, QuerySet, TransactionExecutor};
 
-use super::ModelServerFnResource;
+use super::{ModelServerFnResource, ServerFnSetAction, ServerFnSetError, ServerFnSetPolicy};
 
 /// Transaction-bound context for collection overrides and custom actions.
 pub struct CollectionActionContext<'a, R>
@@ -20,6 +20,7 @@ pub struct CreateActionContext<'a, R>
 where
 	R: ModelServerFnResource,
 {
+	principal: &'a <<R as ModelServerFnResource>::Policy as ServerFnSetPolicy<R>>::Principal,
 	executor: &'a mut dyn TransactionExecutor,
 	_resource: PhantomData<fn() -> R>,
 }
@@ -28,11 +29,26 @@ impl<'a, R> CreateActionContext<'a, R>
 where
 	R: ModelServerFnResource,
 {
-	pub(crate) fn new(executor: &'a mut dyn TransactionExecutor) -> Self {
+	pub(crate) fn new(
+		principal: &'a <<R as ModelServerFnResource>::Policy as ServerFnSetPolicy<R>>::Principal,
+		executor: &'a mut dyn TransactionExecutor,
+	) -> Self {
 		Self {
+			principal,
 			executor,
 			_resource: PhantomData,
 		}
+	}
+
+	/// Authorize a model before a create override persists it.
+	pub async fn authorize_object(&mut self, object: &R::Model) -> Result<(), ServerFnSetError> {
+		<R::Policy as ServerFnSetPolicy<R>>::authorize_object(
+			self.principal,
+			ServerFnSetAction::Create,
+			object,
+			Some(&mut *self.executor),
+		)
+		.await
 	}
 
 	/// Return the active transaction executor.
@@ -137,7 +153,7 @@ pub struct DetailActionContext<'a, R>
 where
 	R: ModelServerFnResource,
 {
-	object: R::Model,
+	object: &'a mut R::Model,
 	executor: &'a mut dyn TransactionExecutor,
 }
 
@@ -147,18 +163,18 @@ where
 {
 	// This constructor is reserved for the sibling model action runtime.
 	#[allow(dead_code)]
-	pub(crate) fn new(object: R::Model, executor: &'a mut dyn TransactionExecutor) -> Self {
+	pub(crate) fn new(object: &'a mut R::Model, executor: &'a mut dyn TransactionExecutor) -> Self {
 		Self { object, executor }
 	}
 
 	/// Return the authorized model object.
 	pub fn object(&self) -> &R::Model {
-		&self.object
+		&*self.object
 	}
 
 	/// Mutably access the authorized model object.
 	pub fn object_mut(&mut self) -> &mut R::Model {
-		&mut self.object
+		&mut *self.object
 	}
 
 	/// Return the active transaction executor.
@@ -168,7 +184,7 @@ where
 
 	/// Borrow the authorized object and active executor together.
 	pub fn parts_mut(&mut self) -> (&mut R::Model, &mut (dyn TransactionExecutor + 'a)) {
-		(&mut self.object, self.executor)
+		(&mut *self.object, self.executor)
 	}
 }
 
@@ -391,13 +407,12 @@ mod tests {
 		}
 
 		{
-			let mut context = DetailActionContext::<WidgetResource>::new(
-				Widget {
-					id: Some(7),
-					name: "updated".to_owned(),
-				},
-				&mut executor,
-			);
+			let mut object = Widget {
+				id: Some(7),
+				name: "updated".to_owned(),
+			};
+			let mut context =
+				DetailActionContext::<WidgetResource>::new(&mut object, &mut executor);
 			let (object, transaction_executor) = context.parts_mut();
 			object
 				.save_with_executor(transaction_executor)

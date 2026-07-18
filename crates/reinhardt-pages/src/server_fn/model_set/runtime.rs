@@ -340,7 +340,7 @@ where
 				Some(transaction.executor_mut()?),
 			)
 			.await?;
-			let object = Self::lookup_in_transaction(&mut transaction, lookup.clone()).await?;
+			let mut object = Self::lookup_in_transaction(&mut transaction, lookup.clone()).await?;
 			<R::Policy as ServerFnSetPolicy<R>>::authorize_object(
 				principal,
 				action,
@@ -349,7 +349,7 @@ where
 			)
 			.await?;
 			let callback_result = callback(DetailActionContext::new(
-				object,
+				&mut object,
 				transaction.executor_mut()?,
 			))
 			.await?;
@@ -357,7 +357,6 @@ where
 				action,
 				ServerFnSetAction::Update | ServerFnSetAction::PartialUpdate
 			) {
-				let object = Self::lookup_in_transaction(&mut transaction, lookup).await?;
 				<R::Policy as ServerFnSetPolicy<R>>::authorize_object(
 					principal,
 					action,
@@ -429,7 +428,11 @@ where
 				Some(transaction.executor_mut()?),
 			)
 			.await?;
-			callback(CreateActionContext::new(transaction.executor_mut()?)).await
+			callback(CreateActionContext::new(
+				principal,
+				transaction.executor_mut()?,
+			))
+			.await
 		}
 		.await;
 		transaction.complete(result).await
