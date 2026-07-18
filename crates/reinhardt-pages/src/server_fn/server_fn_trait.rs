@@ -472,19 +472,32 @@ mod tests {
 
 	#[test]
 	fn validation_supports_empty_and_multiple_field_errors() {
+		// Arrange
 		let empty = ServerFnError::validation();
-		assert_eq!(empty.status(), Some(422));
-		assert!(empty.field_errors().is_empty());
 
+		// Act
+		let empty_field_errors = empty.field_errors();
+
+		// Assert
+		assert_eq!(empty.status(), Some(422));
+		let expected_empty_field_errors: &[ServerFnFieldError] = &[];
+		assert_eq!(empty_field_errors, expected_empty_field_errors);
+
+		// Arrange
 		let multiple = ServerFnError::validation_with_message(
 			"Invalid form",
 			[("name", "Required"), ("email", "Invalid address")],
 		);
-		assert_eq!(multiple.field_errors().len(), 2);
-		assert_eq!(multiple.field_errors()[0].field(), "name");
-		assert_eq!(multiple.field_errors()[0].message(), "Required");
-		assert_eq!(multiple.field_errors()[1].field(), "email");
-		assert_eq!(multiple.field_errors()[1].message(), "Invalid address");
+
+		// Act
+		let multiple_field_errors = multiple.field_errors();
+
+		// Assert
+		assert_eq!(multiple_field_errors.len(), 2);
+		assert_eq!(multiple_field_errors[0].field(), "name");
+		assert_eq!(multiple_field_errors[0].message(), "Required");
+		assert_eq!(multiple_field_errors[1].field(), "email");
+		assert_eq!(multiple_field_errors[1].message(), "Invalid address");
 	}
 
 	#[rstest]

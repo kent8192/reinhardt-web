@@ -72,9 +72,9 @@ use reinhardt_http::Request;
 pub trait ServerFnRegistration: ServerFnMetadata + Send + Sync {
 	/// Select the HTTP status for a serialized error response.
 	///
-	/// The default preserves the legacy `ServerFnError::Server` envelope used by
-	/// existing low-level server functions. Invalid and non-server errors are
-	/// deliberately collapsed to 500.
+	/// The default extracts the status from a version 1 wire envelope when its
+	/// kind is `server` and the status is in the valid HTTP range. Malformed
+	/// envelopes and non-server kinds are deliberately collapsed to 500.
 	fn error_status(error_body: &[u8]) -> u16 {
 		serde_json::from_slice::<ServerFnError>(error_body)
 			.ok()

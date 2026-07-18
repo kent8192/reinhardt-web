@@ -60,3 +60,25 @@ Per Task 1 scope, those unrelated baseline failures were not expanded into separ
 ## Commit
 
 The implementation is committed on the non-protected task branch. No push was performed.
+
+## Follow-up reviewer fixes
+
+- Updated the `ServerFnRegistration::error_status` rustdoc to describe the version 1 wire envelope: only a `server` kind with a valid HTTP status is propagated; malformed or non-server envelopes use 500.
+- Updated the empty/multiple field-error test to use explicit Arrange-Act-Assert phases and strict `assert_eq!` against an explicitly typed empty slice.
+- Deliberately did not add Task 7 migration/API documentation. Those files and the cross-task migration contract belong to Task 7; this Task 1 follow-up records that dependency without expanding scope.
+
+Follow-up verification:
+
+```text
+cargo check -p reinhardt-pages --lib       PASS
+cargo fmt --all -- --check                 PASS
+git diff --check                            PASS
+```
+
+The focused command was attempted again:
+
+```text
+cargo test -p reinhardt-pages server_fn::server_fn_trait::tests --lib
+```
+
+It remains blocked before test execution by the known pre-existing test-harness compilation failures (navigation macro self-crate alias/`Loader` errors, `install_task_sink` feature gating, and duplicate `deps` import). No new Task 1 production compilation errors were observed; the library check passes.
