@@ -1066,7 +1066,7 @@ mod tests {
 								Some(move || effect_log.borrow_mut().push("cleanup".to_string()))
 							}
 						},
-						(effect_signal.clone(),),
+						crate::deps![effect_signal],
 					);
 					PageElement::new("span")
 						.child(format!("value:{render_value}"))
@@ -1121,7 +1121,7 @@ mod tests {
 									})
 								}
 							},
-							(effect_signal.clone(),),
+							crate::deps![effect_signal],
 						);
 						PageElement::new("span").child("value:0").into_page()
 					}

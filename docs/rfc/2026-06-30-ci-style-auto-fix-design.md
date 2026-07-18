@@ -32,7 +32,9 @@ Keep the write boundary narrow:
 
 - only same-repository pull requests are eligible;
 - fork pull requests remain read-only;
-- protected branches remain read-only;
+- branches with classic or write-blocking protection remain read-only;
+- a non-fast-forward-only ruleset remains eligible because it permits the
+  normal commit used by auto-fix while still rejecting history rewrites;
 - release-managed branches remain read-only;
 - no pull-request comments are posted by the auto-fix workflow.
 
@@ -57,9 +59,13 @@ Add three downstream jobs to `.github/workflows/ci.yml`:
 
 The target job runs only when the reusable `fmt` or `clippy` job fails. It is
 gated to `pull_request` events where the pull-request head repository is the
-same as the base repository. It also checks the repository branch API so the
-write path is disabled when the PR head branch is actually protected, not just
-when its name matches a local denylist.
+same as the base repository. It checks the repository branch summary and active
+branch rules so the write path is disabled for classic or write-blocking
+protection, not just when a name matches a local denylist. GitHub's aggregate
+`protected` flag also covers non-fast-forward-only rulesets, so that
+force-push-only case remains eligible. Both target checks load the shared
+policy from the pull request's base commit, so a pull-request head cannot alter
+the eligibility code that guards the write path.
 
 The fix job checks out the pull-request head SHA that triggered the workflow,
 installs the same tools and environment used by the style gates, runs the
@@ -69,8 +75,10 @@ leaves a worktree diff.
 ## 5. Execution Flow
 
 1. `ci.yml` runs the existing `fmt` and `clippy` reusable workflows.
-2. If either job fails, `auto-fix-style-target` evaluates the same-repository,
-   release-managed, project read-only branch, and branch-protection gates.
+2. If either job fails, `auto-fix-style-target` loads the shared policy from the
+   trusted base commit and evaluates the same-repository, release-managed,
+   project read-only branch, classic protection, and active branch-rule gates.
+   A `non_fast_forward`-only ruleset remains eligible.
 3. If the pull request is ineligible, the downstream fix and write jobs are
    skipped.
 4. If eligible, `auto-fix-style` checks out the PR head SHA that triggered the
@@ -85,8 +93,9 @@ leaves a worktree diff.
 8. If there is a diff, the fix job uploads a binary patch artifact.
 9. `commit-auto-fix-style` checks out a clean copy of the same PR head SHA and
    applies the patch without executing PR-controlled build or make code.
-10. The write job rechecks the target branch protection state before generating
-    a write-capable token.
+10. The write job reloads the policy from the trusted base commit and rechecks
+    the target branch protection and active rule state before generating a
+    write-capable token.
 11. If the branch is still eligible, the write job creates the commit with
     GitHub GraphQL `createCommitOnBranch`, using the triggering head SHA as the
     expected branch head.
@@ -99,14 +108,16 @@ the job exports only a patch artifact.
 
 The write job starts from a clean checkout, downloads the patch, and applies it
 with `git apply --index`. It does not run `cargo make`, build scripts,
-proc-macros, or repository hooks before generating the write token.
+proc-macros, repository hooks, or policy code from the pull-request head before
+generating the write token. The eligibility policy is sparse-checked out from
+the pull request's base commit into an isolated path.
 
 The write job validates the staged patch before generating the write token.
 Unsupported file statuses and symlink additions are rejected, and GraphQL file
 contents are read from staged blobs instead of following working-tree paths.
 
 The GitHub App token is generated only in the write job after the patch is
-applied and the target branch protection state is rechecked. The
+applied and the target branch protection and active rules are rechecked. The
 `permission-contents: write` action input grants only the GitHub App
 `contents: write` repository permission.
 
@@ -148,9 +159,14 @@ The workflow does not post PR comments. The GraphQL commit is the audit trail.
 Local validation for the workflow change:
 
 - `actionlint -shellcheck= .github/workflows/ci.yml`
+- `bash scripts/tests/test-ci-auto-fix-style-target.sh`
 - shell syntax checks for any extracted multi-line shell script used by the job
-- inspection that the target job uses the branch API before the write-capable
-  path can run
+- inspection that both target checks use the shared branch policy before the
+  write-capable path can run
+- inspection that both policy copies are sparse-checked out from the pull
+  request's base commit rather than the pull-request head
+- unit coverage that non-fast-forward-only protection remains eligible while
+  classic and write-blocking protection remain ineligible
 - inspection that the App token step grants only the `contents: write`
   repository permission
 - inspection that both auto-fix jobs check out the triggering PR head SHA
@@ -161,6 +177,8 @@ Local validation for the workflow change:
 Hosted validation:
 
 - create or update a same-repository test PR with intentional formatter drift;
+- confirm a topic branch covered only by the repository-wide non-fast-forward
+  rule reaches the fix and write jobs;
 - confirm the fix job uploads a patch artifact and the write job creates a
   GraphQL commit;
 - confirm the new GraphQL commit triggers a fresh CI run;
