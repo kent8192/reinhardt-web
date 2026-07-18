@@ -569,6 +569,7 @@ pub(crate) fn subscribe_node_to_observer(node: NodeId, observer: NodeId) {
 mod tests {
 	use super::*;
 	use serial_test::serial;
+	use std::{cell::Cell, rc::Rc};
 
 	#[test]
 	#[serial]
@@ -647,29 +648,31 @@ mod tests {
 	}
 
 	#[test]
-	#[serial]
+	#[serial(reactive_runtime)]
 	fn test_notify_signal_change() {
-		let runtime = Runtime::new();
+		crate::reactive::ReactiveScope::run(|| {
+			let signal = crate::reactive::Signal::new(0_i32);
+			let run_count = Rc::new(Cell::new(0));
+			let signal_for_effect = signal;
+			let run_count_for_effect = Rc::clone(&run_count);
+			let effect = crate::reactive::Effect::new(move || {
+				let _ = signal_for_effect.get();
+				run_count_for_effect.set(run_count_for_effect.get() + 1);
+			});
+			assert_eq!(run_count.get(), 1);
 
-		let signal_id = NodeId::new();
-		let effect_id = NodeId::new();
+			with_runtime(|runtime| {
+				let graph = runtime.dependency_graph.borrow();
+				assert!(graph[&signal.id()].subscribers.contains(&effect.id()));
+				assert!(graph[&effect.id()].dependencies.contains(&signal.id()));
+				drop(graph);
 
-		// Manually add dependency
-		{
-			let mut graph = runtime.dependency_graph.borrow_mut();
-			graph
-				.entry(signal_id)
-				.or_default()
-				.subscribers
-				.push(effect_id);
-		}
-
-		// Notify change
-		runtime.notify_signal_change(signal_id);
-
-		// Verify update was scheduled
-		let pending = runtime.pending_updates.borrow();
-		assert!(pending.contains(&effect_id));
+				runtime.notify_signal_change(signal.id());
+				assert!(runtime.pending_updates.borrow().contains(&effect.id()));
+				runtime.flush_updates();
+			});
+			assert_eq!(run_count.get(), 2);
+		});
 	}
 
 	#[test]
