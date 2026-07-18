@@ -999,7 +999,8 @@ impl TestDom {
 				requested_values.iter().any(|candidate| candidate == value)
 					&& (multiple || selected_values.is_empty())
 			});
-			node.attrs.retain(|(name, _)| name != "selected");
+			node.attrs
+				.retain(|(name, _)| !name.eq_ignore_ascii_case("selected"));
 			if selected {
 				node.attrs
 					.push(("selected".to_owned(), "selected".to_owned()));
@@ -1083,6 +1084,7 @@ impl ElementNode {
 	}
 
 	fn apply_control_value(&mut self, binding: &ControlBinding, value: ControlValue) {
+		self.project_controlled_attributes(binding, &value);
 		match value {
 			ControlValue::Text(value) => {
 				self.value = Some(value.clone());
@@ -1099,6 +1101,38 @@ impl ElementNode {
 			ControlValue::SelectedValues(values) => {
 				self.value = Some(values.first().cloned().unwrap_or_default());
 				self.selected_values = values;
+			}
+		}
+	}
+
+	fn project_controlled_attributes(&mut self, binding: &ControlBinding, value: &ControlValue) {
+		let projects_value = self.tag.eq_ignore_ascii_case("input")
+			&& matches!(
+				binding.kind(),
+				ControlKind::Text | ControlKind::Number | ControlKind::Radio
+			);
+		if projects_value {
+			self.attrs
+				.retain(|(name, _)| !name.eq_ignore_ascii_case("value"));
+			let projected_value = match binding.kind() {
+				ControlKind::Text | ControlKind::Number => match value {
+					ControlValue::Text(value) => Some(value.as_str()),
+					_ => None,
+				},
+				ControlKind::Radio => binding.radio_value(),
+				_ => None,
+			};
+			if let Some(value) = projected_value {
+				self.attrs.push(("value".to_owned(), value.to_owned()));
+			}
+		}
+
+		if matches!(binding.kind(), ControlKind::Checkbox | ControlKind::Radio) {
+			self.attrs
+				.retain(|(name, _)| !name.eq_ignore_ascii_case("checked"));
+			if matches!(value, ControlValue::Checked(true)) {
+				self.attrs
+					.push(("checked".to_owned(), "checked".to_owned()));
 			}
 		}
 	}
@@ -1179,6 +1213,8 @@ fn has_effective_text_type(input_type: Option<&str>) -> bool {
 mod case_normalization_tests {
 	use super::*;
 	use crate::reactive::{ReactiveScope, Signal};
+	use reinhardt_core::page::IntoPage;
+	use reinhardt_core::types::page::PageElement;
 
 	fn element(tag: &str, input_type: Option<&str>) -> ElementNode {
 		ElementNode {
@@ -1230,6 +1266,74 @@ mod case_normalization_tests {
 	fn native_value_support_normalizes_ascii_case() {
 		assert!(element("TEXTAREA", None).supports_value());
 		assert!(!element("INPUT", Some("HIDDEN")).supports_value());
+	}
+
+	#[test]
+	fn native_controlled_attributes_replace_stale_input_projection() {
+		ReactiveScope::run(|| {
+			let text = Signal::new("current".to_owned());
+			let dom = TestDom::render(
+				PageElement::new("INPUT")
+					.attr("VALUE", "stale")
+					.control_binding(ControlBinding::text(text))
+					.into_page(),
+			);
+			let node = dom.children(dom.root())[0];
+
+			assert_eq!(
+				dom.element(node).unwrap().attrs(),
+				&[("value".to_owned(), "current".to_owned())]
+			);
+		});
+	}
+
+	#[test]
+	fn native_controlled_boolean_attributes_follow_signal_state() {
+		ReactiveScope::run(|| {
+			let checked = Signal::new(false);
+			let mut dom = TestDom::render(
+				PageElement::new("input")
+					.attr("CHECKED", "checked")
+					.attr("type", "checkbox")
+					.control_binding(ControlBinding::checkbox(checked.clone()))
+					.into_page(),
+			);
+			let node = dom.children(dom.root())[0];
+
+			assert_eq!(dom.element(node).unwrap().attr("checked"), None);
+			checked.set(true);
+			dom.refresh_control_bindings();
+			assert_eq!(dom.element(node).unwrap().attr("checked"), Some("checked"));
+			checked.set(false);
+			dom.refresh_control_bindings();
+			assert_eq!(dom.element(node).unwrap().attr("checked"), None);
+		});
+	}
+
+	#[test]
+	fn native_controlled_select_removes_stale_selected_attribute_case_insensitively() {
+		ReactiveScope::run(|| {
+			let selected = Signal::new("current".to_owned());
+			let dom = TestDom::render(
+				PageElement::new("select")
+					.control_binding(ControlBinding::select_one(selected))
+					.child(
+						PageElement::new("option")
+							.attr("value", "stale")
+							.attr("SELECTED", "selected"),
+					)
+					.child(PageElement::new("option").attr("value", "current"))
+					.into_page(),
+			);
+			let options = dom
+				.all_elements()
+				.into_iter()
+				.filter_map(|node| dom.element(node).filter(|element| element.tag == "option"))
+				.collect::<Vec<_>>();
+
+			assert_eq!(options[0].attr("selected"), None);
+			assert_eq!(options[1].attr("selected"), Some("selected"));
+		});
 	}
 }
 

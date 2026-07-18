@@ -1815,7 +1815,29 @@ fn option_child_is_allowed(child: &TypedPageNode) -> bool {
 					| "u" | "var" | "wbr"
 			) && element.children.iter().all(option_child_is_allowed)
 		}
+		TypedPageNode::If(if_node) => {
+			if_node.then_branch.iter().all(option_child_is_allowed)
+				&& if_node
+					.else_branch
+					.as_ref()
+					.is_none_or(option_else_children_are_allowed)
+		}
+		TypedPageNode::For(for_node) => for_node.body.iter().all(option_child_is_allowed),
+		TypedPageNode::Watch(watch) => option_child_is_allowed(&watch.expr),
 		_ => true,
+	}
+}
+
+fn option_else_children_are_allowed(else_branch: &TypedPageElse) -> bool {
+	match else_branch {
+		TypedPageElse::Block(nodes) => nodes.iter().all(option_child_is_allowed),
+		TypedPageElse::If(if_node) => {
+			if_node.then_branch.iter().all(option_child_is_allowed)
+				&& if_node
+					.else_branch
+					.as_ref()
+					.is_none_or(option_else_children_are_allowed)
+		}
 	}
 }
 

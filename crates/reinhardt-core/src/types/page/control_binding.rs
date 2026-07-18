@@ -780,15 +780,12 @@ mod tests {
 	use std::rc::Rc;
 
 	#[rstest]
-	#[case("", NumberParseErrorKind::Empty)]
-	#[case("-", NumberParseErrorKind::Incomplete)]
-	#[case("1.", NumberParseErrorKind::Incomplete)]
-	#[case("1e-", NumberParseErrorKind::Incomplete)]
-	#[case("abc", NumberParseErrorKind::Invalid)]
-	fn number_binding_preserves_last_value_on_invalid_input(
-		#[case] raw: &str,
-		#[case] expected_kind: NumberParseErrorKind,
-	) {
+	#[case("")]
+	#[case("-")]
+	#[case("1.")]
+	#[case("1e-")]
+	#[case("abc")]
+	fn number_binding_preserves_last_value_on_invalid_input(#[case] raw: &str) {
 		ReactiveScope::run(|| {
 			// Arrange
 			let value = Signal::new(7.5_f64);
@@ -801,7 +798,15 @@ mod tests {
 			// Assert
 			assert_eq!(value.get(), 7.5);
 			assert_eq!(outcome, ControlWriteOutcome::Rejected(error.get().unwrap()));
-			assert_eq!(error.get().unwrap().kind(), expected_kind);
+			assert_eq!(
+				error.get().unwrap().kind(),
+				match raw {
+					"" => NumberParseErrorKind::Empty,
+					"-" | "1." | "1e-" => NumberParseErrorKind::Incomplete,
+					"abc" => NumberParseErrorKind::Invalid,
+					_ => unreachable!("unexpected invalid numeric input case"),
+				}
+			);
 		});
 	}
 

@@ -10,6 +10,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 #[cfg(wasm)]
+use crate::component::ControlBinding;
+#[cfg(wasm)]
 use crate::dom::control_binding::ControlBindingController;
 #[cfg(wasm)]
 use crate::dom::{Element, EventHandle};
@@ -88,6 +90,9 @@ pub struct EventRegistry {
 	/// Whether hydration adopted a live control value into a signal.
 	#[cfg(wasm)]
 	control_binding_adopted: bool,
+	/// Whether the owning traversal should hydrate bound controls.
+	#[cfg(wasm)]
+	hydrate_control_bindings: bool,
 	/// Event handles for non-WASM (placeholder).
 	#[cfg(native)]
 	handles: HashMap<String, Vec<String>>,
@@ -97,6 +102,21 @@ impl EventRegistry {
 	/// Creates a new event registry.
 	pub fn new() -> Self {
 		Self::default()
+	}
+
+	/// Creates a registry for the automatic Page hydration traversal.
+	#[cfg(wasm)]
+	pub(crate) fn new_for_hydration() -> Self {
+		Self {
+			hydrate_control_bindings: true,
+			..Self::default()
+		}
+	}
+
+	/// Returns whether bound controls should be hydrated during traversal.
+	#[cfg(wasm)]
+	pub(crate) fn should_hydrate_control_bindings(&self) -> bool {
+		self.hydrate_control_bindings
 	}
 
 	/// Registers an event handle for an element.
@@ -188,6 +208,26 @@ impl EventRegistry {
 			}
 		}
 	}
+}
+
+/// Hydrates a bound form control and retains its controller in the registry.
+///
+/// Page-based hydration traversals call this helper when they encounter a
+/// controlled element. Keeping the controller in the registry is required for
+/// its listeners, reactive effect, and select-option observer to remain alive.
+#[cfg(wasm)]
+pub(crate) fn hydrate_control_binding(
+	element: &Element,
+	binding: &ControlBinding,
+	registry: &mut EventRegistry,
+) -> Result<(), EventAttachError> {
+	let (controller, adopted) = ControlBindingController::hydrate(element.clone(), binding.clone())
+		.map_err(|error| EventAttachError {
+			event_type: "control-binding".to_owned(),
+			reason: error.to_string(),
+		})?;
+	registry.register_control_binding(controller, adopted);
+	Ok(())
 }
 
 /// Error type for event attachment.

@@ -149,13 +149,32 @@ impl CaptureCollector {
 			if attr.html_name() == "a11y" {
 				continue;
 			}
-			self.visit_expr(&attr.value);
+			if attr.html_name() == "bind" {
+				self.visit_binding_expr(&attr.value);
+			} else {
+				self.visit_expr(&attr.value);
+			}
 		}
 		for event in &el.events {
 			self.visit_expr(event.handler());
 		}
 		for child in &el.children {
 			self.visit_node(child);
+		}
+	}
+
+	fn visit_binding_expr(&mut self, expr: &Expr) {
+		if let Expr::Call(call) = expr
+			&& let Expr::Path(path) = call.func.as_ref()
+			&& path.qself.is_none()
+			&& path.path.is_ident("number")
+			&& call.args.len() == 2
+		{
+			for arg in &call.args {
+				self.visit_expr(arg);
+			}
+		} else {
+			self.visit_expr(expr);
 		}
 	}
 
@@ -631,7 +650,13 @@ fn transform_element(
 	{
 		ordinary_attrs.retain(|attr| !is_false_multiple_attr(attr));
 	}
-	let transformed_attrs = transform_attrs(&ordinary_attrs, &tag)?;
+	let allow_false_checked = control_binding.as_deref().is_some_and(|binding| {
+		matches!(
+			binding.kind,
+			TypedControlBindingKind::Checkbox | TypedControlBindingKind::Radio
+		)
+	});
+	let transformed_attrs = transform_attrs(&ordinary_attrs, &tag, allow_false_checked)?;
 	let typed_attrs = transformed_attrs.attrs;
 
 	// 3. Validate element nesting
@@ -888,7 +913,8 @@ fn validate_control_binding_structure(
 			Some("a bound text or number input cannot specify a `value` attribute")
 		}
 		TypedControlBindingKind::Checkbox | TypedControlBindingKind::Radio
-			if find_typed_attr(attrs, "checked").is_some() =>
+			if find_typed_attr(attrs, "checked")
+				.is_some_and(|attr| !is_false_checked_attr(attr)) =>
 		{
 			Some("a bound checkbox or radio input cannot specify a `checked` attribute")
 		}
@@ -923,6 +949,11 @@ fn validate_control_binding_structure(
 
 fn find_typed_attr<'a>(attrs: &'a [TypedPageAttr], name: &str) -> Option<&'a TypedPageAttr> {
 	attrs.iter().find(|attr| attr.html_name() == name)
+}
+
+fn is_false_checked_attr(attr: &TypedPageAttr) -> bool {
+	attr.html_name() == "checked"
+		&& matches!(&attr.value, AttrValue::BoolLit(value) if !value.value())
 }
 
 fn contains_selected_option(nodes: &[TypedPageNode]) -> bool {
@@ -1064,7 +1095,11 @@ struct TransformedPageAttrs {
 ///
 /// This function converts `Expr` attribute values into `AttrValue`,
 /// enabling type-specific validation.
-fn transform_attrs(attrs: &[PageAttr], element_tag: &str) -> Result<TransformedPageAttrs> {
+fn transform_attrs(
+	attrs: &[PageAttr],
+	element_tag: &str,
+	allow_false_checked: bool,
+) -> Result<TransformedPageAttrs> {
 	let mut typed_attrs = Vec::new();
 	let mut a11y_disabled = false;
 
@@ -1082,7 +1117,12 @@ fn transform_attrs(attrs: &[PageAttr], element_tag: &str) -> Result<TransformedP
 		let typed_value = AttrValue::from_expr(attr.value.clone());
 
 		// Validate attribute type for specific elements/attributes
-		validate_attr_type(&attr.name.to_string(), &typed_value, element_tag, attr.span)?;
+		if !(allow_false_checked
+			&& attr.html_name() == "checked"
+			&& matches!(&typed_value, AttrValue::BoolLit(value) if !value.value()))
+		{
+			validate_attr_type(&attr.name.to_string(), &typed_value, element_tag, attr.span)?;
+		}
 
 		typed_attrs.push(TypedPageAttr {
 			name: attr.name.clone(),
@@ -2515,6 +2555,26 @@ mod tests {
 	}
 
 	#[rstest]
+	#[case(quote!({ select { a11y: off, bind: selected, if show { option { div { "Flow" } } } } }))]
+	#[case(quote!({ select { a11y: off, bind: selected, for item in items { option { div { "For" } } } } }))]
+	#[case(quote!({ select { a11y: off, bind: selected, watch { option { div { "Watch" } } } } }))]
+	fn bound_option_rejects_disallowed_content_inside_control_flow(
+		#[case] input: proc_macro2::TokenStream,
+	) {
+		// Arrange
+		let ast: PageMacro = syn::parse2(input).unwrap();
+
+		// Act
+		let error = validate_page(&ast).unwrap_err();
+
+		// Assert
+		assert_eq!(
+			error.to_string(),
+			"Element <option> in a bound select only supports non-interactive phrasing content"
+		);
+	}
+
+	#[rstest]
 	#[case(quote!({ select { a11y: off, bind: selected, option { span { tabindex: 0, "Zero" } } } }))]
 	#[case(quote!({ select { a11y: off, bind: selected, option { span { tabindex: -1, "Negative" } } } }))]
 	#[case(quote!({ select { a11y: off, bind: selected, option { span { tabindex: dynamic_tabindex, "Dynamic" } } } }))]
@@ -2541,7 +2601,17 @@ mod tests {
 		false
 	)]
 	#[case(
+		quote!({ input { a11y: off, type: "checkbox", checked: false, bind: value } }),
+		TypedControlBindingKind::Checkbox,
+		false
+	)]
+	#[case(
 		quote!({ input { a11y: off, type: "radio", value: choice, bind: value } }),
+		TypedControlBindingKind::Radio,
+		false
+	)]
+	#[case(
+		quote!({ input { a11y: off, type: "radio", value: "one", checked: false, bind: value } }),
 		TypedControlBindingKind::Radio,
 		false
 	)]
@@ -2650,6 +2720,20 @@ mod tests {
 
 		// Assert
 		assert_eq!(captures, vec!["outer_value"]);
+	}
+
+	#[rstest]
+	fn test_implicit_body_excludes_number_binding_helper_from_captures() {
+		// Arrange
+		let ast = parse(quote! {
+			{ input { a11y: off, type: "number", bind: number(value, error) } }
+		});
+
+		// Act
+		let captures = implicit_capture_names(&ast);
+
+		// Assert
+		assert_eq!(captures, vec!["value", "error"]);
 	}
 
 	#[rstest]
@@ -2943,7 +3027,7 @@ mod tests {
 		}];
 
 		// Act
-		let result = transform_attrs(&attrs, "img");
+		let result = transform_attrs(&attrs, "img", false);
 
 		// Assert
 		assert!(result.is_ok());
@@ -2962,7 +3046,7 @@ mod tests {
 		}];
 
 		// Act
-		let result = transform_attrs(&attrs, "div");
+		let result = transform_attrs(&attrs, "div", false);
 
 		// Assert
 		assert!(result.is_ok());
@@ -3710,7 +3794,7 @@ mod tests {
 		}];
 
 		// Act
-		let result = transform_attrs(&attrs, "input");
+		let result = transform_attrs(&attrs, "input", false);
 
 		// Assert
 		let transformed = result.unwrap();
@@ -3728,7 +3812,7 @@ mod tests {
 		}];
 
 		// Act
-		let result = transform_attrs(&attrs, "input");
+		let result = transform_attrs(&attrs, "input", false);
 
 		// Assert
 		assert!(result.unwrap_err().to_string().contains("a11y"));

@@ -188,32 +188,34 @@ pub fn hydrate<C: Component>(component: &C, root: &Element) -> Result<(), Hydrat
 		})?;
 
 		let prepass_store = new_reactive_node_store();
-		let view = with_reactive_node_store(&prepass_store, || -> Result<_, HydrationError> {
-			// 2. Render the component to get expected structure
-			let view = component.render();
-			let resource_counter_offset =
-				crate::reactive::resource::current_client_resource_counter();
-			let id_counter_offset = crate::reactive::hooks::id::id_counter_snapshot();
-			web_sys::console::log_1(&"[Hydration] View rendered".into());
+		let (view, registry) =
+			with_reactive_node_store(&prepass_store, || -> Result<_, HydrationError> {
+				// 2. Render the component to get expected structure
+				let view = component.render();
+				let resource_counter_offset =
+					crate::reactive::resource::current_client_resource_counter();
+				let id_counter_offset = crate::reactive::hooks::id::id_counter_snapshot();
+				web_sys::console::log_1(&"[Hydration] View rendered".into());
 
-			// 3. Reconcile DOM structure
-			crate::reactive::resource::set_client_resource_counter(resource_counter_offset);
-			crate::reactive::hooks::id::restore_id_counter(id_counter_offset);
-			reconcile(root, &view).map_err(|e| {
-				HydrationError::StateParseError(format!("Reconciliation failed: {}", e))
+				// 3. Reconcile DOM structure
+				crate::reactive::resource::set_client_resource_counter(resource_counter_offset);
+				crate::reactive::hooks::id::restore_id_counter(id_counter_offset);
+				reconcile(root, &view).map_err(|e| {
+					HydrationError::StateParseError(format!("Reconciliation failed: {}", e))
+				})?;
+				web_sys::console::log_1(&"[Hydration] Reconciliation complete".into());
+
+				// 4. Attach event handlers
+				crate::reactive::resource::set_client_resource_counter(resource_counter_offset);
+				crate::reactive::hooks::id::restore_id_counter(id_counter_offset);
+				let mut registry = EventRegistry::new_for_hydration();
+				attach_events_recursive(root, &view, &mut registry)?;
+				crate::reactive::resource::set_client_resource_counter(resource_counter_offset);
+				crate::reactive::hooks::id::restore_id_counter(id_counter_offset);
+				web_sys::console::log_1(&"[Hydration] Events attached".into());
+				Ok((view, registry))
 			})?;
-			web_sys::console::log_1(&"[Hydration] Reconciliation complete".into());
-
-			// 4. Attach event handlers
-			crate::reactive::resource::set_client_resource_counter(resource_counter_offset);
-			crate::reactive::hooks::id::restore_id_counter(id_counter_offset);
-			let mut registry = EventRegistry::new();
-			attach_events_recursive(root, &view, &mut registry)?;
-			crate::reactive::resource::set_client_resource_counter(resource_counter_offset);
-			crate::reactive::hooks::id::restore_id_counter(id_counter_offset);
-			web_sys::console::log_1(&"[Hydration] Events attached".into());
-			Ok(view)
-		})?;
+		crate::component::store_reactive_node(registry);
 
 		// 5. Install reactive DOM owners for hydrated reactive views
 		install_hydrated_reactive_nodes(root, &view);
@@ -730,6 +732,7 @@ pub fn attach_events_to_mounted_view(
 
 	let mut registry = EventRegistry::new();
 	attach_events_recursive(element, view, &mut registry)?;
+	crate::component::store_reactive_node(registry);
 
 	web_sys::console::log_1(&"[CSR] Events attached successfully!".into());
 
@@ -753,6 +756,13 @@ pub(crate) fn attach_events_recursive(
 		Page::Element(el_view) => {
 			let tag = el_view.tag_name();
 			let event_count = el_view.event_handlers().len();
+
+			if registry.should_hydrate_control_bindings()
+				&& let Some(binding) = el_view.bound_control()
+			{
+				super::events::hydrate_control_binding(element, binding, registry)
+					.map_err(|error| HydrationError::EventAttachmentFailed(error.to_string()))?;
+			}
 
 			if event_count > 0 {
 				web_sys::console::log_1(

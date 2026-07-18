@@ -237,6 +237,7 @@ impl Drop for ControlBindingController {
 struct MountedNumberBinding {
 	target: NodeId,
 	element: web_sys::Element,
+	position: usize,
 }
 
 struct NumberBindingRegistration {
@@ -252,13 +253,17 @@ impl NumberBindingRegistration {
 		}
 		ACTIVE_NUMBER_BINDINGS.with(|registered| {
 			let mut registered = registered.borrow_mut();
-			let position = registered
-				.iter()
-				.filter(|candidate| candidate.target == binding.target())
-				.count();
+			let position = (0..)
+				.find(|position| {
+					!registered.iter().any(|candidate| {
+						candidate.target == binding.target() && candidate.position == *position
+					})
+				})
+				.expect("number binding position overflow");
 			registered.push(MountedNumberBinding {
 				target: binding.target(),
 				element: element.as_web_sys().clone(),
+				position,
 			});
 			Some(Self {
 				target: binding.target(),
@@ -403,9 +408,7 @@ impl ControlBindingController {
 			commit_or_stage_hydration_snapshot(snapshot);
 			let adopted = matches!(outcome, ControlWriteOutcome::Committed);
 			let rejected = matches!(outcome, ControlWriteOutcome::Rejected(_));
-			if matches!(outcome, ControlWriteOutcome::Ignored)
-				&& binding.kind() != ControlKind::Radio
-			{
+			if matches!(outcome, ControlWriteOutcome::Ignored) {
 				write_control(&element, binding.kind(), &expected_value)?;
 			}
 			if rejected {
@@ -1506,6 +1509,65 @@ mod tests {
 	}
 
 	#[wasm_bindgen_test]
+	fn rejected_numeric_raw_keeps_position_when_another_control_remounts() {
+		let scope = ReactiveScope::new();
+		scope.enter(|| {
+			// Arrange
+			let value = Signal::new(12_i32);
+			let first = element("input");
+			let first_input: web_sys::HtmlInputElement =
+				first.as_web_sys().clone().unchecked_into();
+			first_input.set_type("number");
+			let second = element("input");
+			let second_input: web_sys::HtmlInputElement =
+				second.as_web_sys().clone().unchecked_into();
+			second_input.set_type("number");
+			let first_controller =
+				ControlBindingController::mount(first, ControlBinding::number(value.clone()))
+					.expect("first binding");
+			let second_controller =
+				ControlBindingController::mount(second, ControlBinding::number(value.clone()))
+					.expect("second binding");
+
+			// Act: remount only the first control, then remount the second one.
+			with_rejected_number_snapshot_transaction(|| {
+				second_input.set_value("2147483648");
+				second_input
+					.dispatch_event(&web_sys::InputEvent::new("input").expect("input event"))
+					.expect("dispatch");
+				drop(first_controller);
+				let replacement_first = element("input");
+				let replacement_first_input: web_sys::HtmlInputElement =
+					replacement_first.as_web_sys().clone().unchecked_into();
+				replacement_first_input.set_type("number");
+				let replacement_first_controller = ControlBindingController::mount(
+					replacement_first,
+					ControlBinding::number(value.clone()),
+				)
+				.expect("replacement first binding");
+
+				drop(second_controller);
+				let replacement_second = element("input");
+				let replacement_second_input: web_sys::HtmlInputElement =
+					replacement_second.as_web_sys().clone().unchecked_into();
+				replacement_second_input.set_type("number");
+				let _replacement_second_controller = ControlBindingController::mount(
+					replacement_second,
+					ControlBinding::number(value),
+				)
+				.expect("replacement second binding");
+
+				// Assert
+				assert_eq!(replacement_first_input.value(), "12");
+				assert_eq!(replacement_second_input.value(), "2147483648");
+				drop(replacement_first_controller);
+				Ok::<_, ControlBindingError>(())
+			})
+			.expect("rejected snapshot transaction");
+		});
+	}
+
+	#[wasm_bindgen_test]
 	fn committed_numeric_raw_does_not_restore_on_remount() {
 		let scope = ReactiveScope::new();
 		scope.enter(|| {
@@ -1631,6 +1693,30 @@ mod tests {
 			)
 			.expect("select one");
 			assert_eq!(select_one_input.value(), "second");
+		});
+	}
+
+	#[wasm_bindgen_test]
+	fn hydration_restores_an_ignored_false_radio_to_the_expected_state() {
+		let scope = ReactiveScope::new();
+		scope.enter(|| {
+			// Arrange
+			let element = element("input");
+			let input: web_sys::HtmlInputElement = element.as_web_sys().clone().unchecked_into();
+			input.set_type("radio");
+			input.set_checked(false);
+			let selected = Signal::new("choice".to_owned());
+
+			// Act
+			let _controller = ControlBindingController::hydrate(
+				element,
+				ControlBinding::radio(selected.clone(), "choice".to_owned()),
+			)
+			.expect("binding");
+
+			// Assert
+			assert!(input.checked());
+			assert_eq!(selected.get(), "choice");
 		});
 	}
 
