@@ -331,7 +331,13 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 				))
 			})?;
 
-			if self.primary_key().is_none() {
+			let uses_zero_sentinel_primary_key = Self::primary_key_uses_zero_sentinel()
+				&& json
+					.as_object()
+					.and_then(|fields| fields.get(Self::primary_key_field()))
+					.is_some_and(|value| value.as_i64() == Some(0) || value.as_u64() == Some(0));
+
+			if self.primary_key().is_none() || uses_zero_sentinel_primary_key {
 				// INSERT: new record
 				let instance_id = format!("{}-new-{}", Self::table_name(), uuid::Uuid::now_v7());
 
