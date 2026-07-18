@@ -1568,11 +1568,16 @@ fn fixture_related_model_handler(
 	related_model: &str,
 ) -> FixtureResult<Option<Arc<dyn FixtureModelHandler>>> {
 	let registry = global_fixture_registry();
+	let related_model = related_model.trim();
 	if related_model.contains('.') {
 		return Ok(registry.get(related_model));
 	}
 
-	let related_model = related_model.rsplit("::").next().unwrap_or(related_model);
+	let related_model = related_model
+		.rsplit("::")
+		.next()
+		.unwrap_or(related_model)
+		.trim();
 	let mut handlers = registry
 		.all()
 		.into_iter()
@@ -1928,10 +1933,7 @@ where
 		.iter()
 		.map(|field| {
 			let target_metadata = related_model_metadata(&metadata.app_label, &field.to_model);
-			let target_handler = global_fixture_registry().get(&field.to_model).or_else(|| {
-				global_fixture_registry()
-					.get(&canonical_label(&metadata.app_label, &field.to_model))
-			});
+			let target_handler = fixture_related_model_handler(M::app_label(), &field.to_model)?;
 			let target_table = target_metadata
 				.as_ref()
 				.map(|target| target.table_name.clone())
@@ -4934,6 +4936,7 @@ mod tests {
 
 	#[cfg(feature = "migrations")]
 	#[test]
+	#[serial_test::serial(fixture_model_registry)]
 	fn dumped_foreign_key_fields_use_django_relation_names() {
 		let mut post =
 			crate::migrations::ModelMetadata::new("fixture_tests", "FixturePost", "fixture_post");
@@ -6081,7 +6084,7 @@ mod tests {
 		);
 		post.add_many_to_many(crate::migrations::ManyToManyMetadata::new(
 			"tags",
-			"fixture_registered_m2m.FixtureRegisteredTextTarget",
+			"other :: FixtureRegisteredTextTarget",
 		));
 		crate::migrations::model_registry::global_registry().register_model(post);
 		global_fixture_registry().register_model::<FixtureRegisteredTextTarget>();
