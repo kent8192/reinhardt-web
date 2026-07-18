@@ -1,0 +1,5 @@
+error: style_def does not accept arguments
+ --> tests/ui/style/fail/style_def_nonempty_arguments.rs:3:13
+  |
+3 | #[style_def(configured)]
+  |             ^^^^^^^^^^

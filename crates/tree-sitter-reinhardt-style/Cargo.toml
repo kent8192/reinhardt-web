@@ -1,0 +1,23 @@
+[package]
+name = "tree-sitter-reinhardt-style"
+version = "0.3.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "tree-sitter grammar for the Reinhardt style! DSL"
+publish = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+tree-sitter-language = "0.1"
+
+[dev-dependencies]
+rstest = { workspace = true }
+tree-sitter = "0.26"
+
+[build-dependencies]
+cc = "1"

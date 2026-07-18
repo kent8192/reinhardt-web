@@ -603,3 +603,16 @@ reinhardt-admin startproject myproject
 ## License
 
 Licensed under the BSD 3-Clause License.
+- Component styles are compiled from canonical `#[style_def] static ... = style! { ... }`
+  definitions. In workspaces, select the owning crate with `collectstatic --package NAME`
+  or `runserver --package NAME`. For feature-gated Pages styles, pass matching
+  `--features feature_a,feature_b` or `--all-features` options so extraction
+  uses the same Cargo feature set as the WASM build.
+- Pages WASM artifacts use the selected Cargo library target name, while package
+  selection continues to use the Cargo package name. This supports packages
+  whose `[lib] name` differs from `[package] name`.
+- The framework reserves `__reinhardt__/` for generated assets. Production
+  collection hashes `__reinhardt__/components.css` through `manifest.json`;
+  development serves the same logical URL from an RAII-owned temporary root.
+- Applications must include the stylesheet link explicitly. Neither production
+  collection nor development serving injects it into arbitrary documents.
