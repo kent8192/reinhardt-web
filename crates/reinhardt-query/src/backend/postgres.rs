@@ -1439,7 +1439,13 @@ impl QueryBuilder for PostgresQueryBuilder {
 		}
 
 		// RETURNING clause (PostgreSQL specific)
-		if let Some(returning) = &stmt.returning {
+		if let Some(expressions) = &stmt.returning_exprs {
+			writer.push_keyword("RETURNING");
+			writer.push_space();
+			writer.push_list(expressions, ", ", |w, expression| {
+				self.write_simple_expr(w, expression);
+			});
+		} else if let Some(returning) = &stmt.returning {
 			writer.push_keyword("RETURNING");
 			writer.push_space();
 
@@ -1494,7 +1500,13 @@ impl QueryBuilder for PostgresQueryBuilder {
 		}
 
 		// RETURNING clause (PostgreSQL specific)
-		if let Some(returning) = &stmt.returning {
+		if let Some(expressions) = &stmt.returning_exprs {
+			writer.push_keyword("RETURNING");
+			writer.push_space();
+			writer.push_list(expressions, ", ", |w, expression| {
+				self.write_simple_expr(w, expression);
+			});
+		} else if let Some(returning) = &stmt.returning {
 			writer.push_keyword("RETURNING");
 			writer.push_space();
 
@@ -1537,7 +1549,13 @@ impl QueryBuilder for PostgresQueryBuilder {
 		}
 
 		// RETURNING clause (PostgreSQL specific)
-		if let Some(returning) = &stmt.returning {
+		if let Some(expressions) = &stmt.returning_exprs {
+			writer.push_keyword("RETURNING");
+			writer.push_space();
+			writer.push_list(expressions, ", ", |w, expression| {
+				self.write_simple_expr(w, expression);
+			});
+		} else if let Some(returning) = &stmt.returning {
 			writer.push_keyword("RETURNING");
 			writer.push_space();
 
@@ -4842,6 +4860,23 @@ mod tests {
 		assert!(sql.contains("RETURNING"));
 		assert!(sql.contains("\"id\""));
 		assert!(sql.contains("\"created_at\""));
+		assert_eq!(values.len(), 1);
+	}
+
+	#[test]
+	fn test_insert_with_returning_expressions() {
+		let builder = PostgresQueryBuilder::new();
+		let mut stmt = Query::insert();
+		stmt.into_table("users")
+			.columns(["display_name"])
+			.values_panic(["Alice"])
+			.returning_exprs([Expr::col("display_name").expr_as("name")]);
+
+		let (sql, values) = builder.build_insert(&stmt);
+		assert_eq!(
+			sql,
+			"INSERT INTO \"users\" (\"display_name\") VALUES ($1) RETURNING \"display_name\" AS \"name\""
+		);
 		assert_eq!(values.len(), 1);
 	}
 

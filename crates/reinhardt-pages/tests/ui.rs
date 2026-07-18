@@ -64,6 +64,55 @@ fn test_server_fn_macro_fail() {
 }
 
 #[test]
+fn test_server_fnset_macro_pass() {
+	let t = trybuild::TestCases::new();
+	t.pass("tests/ui/server_fnset/pass/low_level.rs");
+	#[cfg(feature = "model-server-fnset")]
+	{
+		t.pass("tests/ui/server_fnset/pass/model_*.rs");
+		t.pass("tests/ui/server_fnset/pass/overrides_and_actions.rs");
+	}
+}
+
+#[test]
+fn test_server_fnset_macro_fail() {
+	let t = trybuild::TestCases::new();
+	t.compile_fail("tests/ui/server_fnset/fail/empty_name.rs");
+	t.compile_fail("tests/ui/server_fnset/fail/invalid_item.rs");
+	t.compile_fail("tests/ui/server_fnset/fail/missing_for.rs");
+	t.compile_fail("tests/ui/server_fnset/fail/missing_name.rs");
+	t.compile_fail("tests/ui/server_fnset/fail/unknown_key.rs");
+	t.compile_fail("tests/ui/server_fnset/fail/unsafe_name.rs");
+	#[cfg(feature = "model-server-fnset")]
+	{
+		t.compile_fail("tests/ui/server_fnset/fail/action_*.rs");
+		t.compile_fail("tests/ui/server_fnset/fail/collection_lookup.rs");
+		t.compile_fail("tests/ui/server_fnset/fail/duplicate_*.rs");
+		t.compile_fail("tests/ui/server_fnset/fail/endpoint_collision.rs");
+		t.compile_fail("tests/ui/server_fnset/fail/invalid_lookup.rs");
+		t.compile_fail("tests/ui/server_fnset/fail/mismatched_for.rs");
+		t.compile_fail("tests/ui/server_fnset/fail/missing_dto_mapping.rs");
+		t.compile_fail("tests/ui/server_fnset/fail/non_unique_lookup.rs");
+		t.compile_fail("tests/ui/server_fnset/fail/transactional_raw_connection.rs");
+		t.compile_fail("tests/ui/server_fnset/fail/wrong_*.rs");
+	}
+}
+
+#[cfg(feature = "model-server-fnset")]
+#[test]
+fn test_model_server_fnset_contract_fail() {
+	let t = trybuild::TestCases::new();
+	t.compile_fail("tests/ui/server_fnset/model_contract/fail/*.rs");
+}
+
+#[cfg(not(feature = "model-server-fnset"))]
+#[test]
+fn test_model_server_fnset_feature_boundary_fail() {
+	let t = trybuild::TestCases::new();
+	t.compile_fail("tests/ui/server_fnset/feature_boundary/fail/*.rs");
+}
+
+#[test]
 fn test_client_form_choices_pass() {
 	let t = trybuild::TestCases::new();
 	t.pass("tests/ui/client_form/choices/pass/*.rs");

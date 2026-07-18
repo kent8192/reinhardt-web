@@ -383,6 +383,19 @@ pub mod db {
 					true
 				}
 			}
+
+			#[derive(Debug, Clone)]
+			pub struct UniqueFieldRef<Model, Type> {
+				_marker: core::marker::PhantomData<(Model, Type)>,
+			}
+
+			impl<Model, Type> UniqueFieldRef<Model, Type> {
+				pub const unsafe fn from_model_field(_name: &'static str) -> Self {
+					Self {
+						_marker: core::marker::PhantomData,
+					}
+				}
+			}
 		}
 
 		pub mod relations {

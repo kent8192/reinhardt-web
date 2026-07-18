@@ -354,8 +354,11 @@ impl<T: fmt::Debug + Clone + 'static> fmt::Debug for Signal<T> {
 mod tests {
 	use super::*;
 	use crate::reactive::runtime::NodeType;
+	use crate::reactive::{Effect, batch};
 	use rstest::rstest;
 	use serial_test::serial;
+	use std::cell::Cell;
+	use std::rc::Rc;
 
 	#[rstest]
 	#[serial(reactive_runtime)]
@@ -544,14 +547,34 @@ mod tests {
 				let _ = signal_for_effect.get();
 			});
 
-			// Change the signal
+			// Change the signal.
 			signal.set(42);
 
-			// Verify the effect was scheduled for update
+			// Verify the effect was scheduled for update.
 			with_runtime(|rt| {
 				let pending = rt.pending_updates.borrow();
 				assert!(pending.contains(&effect.id()));
 			});
+		});
+	}
+
+	#[test]
+	#[serial]
+	fn test_batched_signal_change_notifies_effect() {
+		crate::reactive::ReactiveScope::run(|| {
+			let signal = Signal::new(0);
+			let runs = Rc::new(Cell::new(0));
+			let runs_for_effect = Rc::clone(&runs);
+			let _effect = Effect::new(move || {
+				let _ = signal.get();
+				runs_for_effect.set(runs_for_effect.get() + 1);
+			});
+
+			assert_eq!(runs.get(), 1);
+
+			batch(|| signal.set(42));
+
+			assert_eq!(runs.get(), 2);
 		});
 	}
 }

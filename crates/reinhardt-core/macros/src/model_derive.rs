@@ -24,7 +24,7 @@
 //! The macro generates linkme distributed_slice registrations for each relationship,
 //! enabling `build_reverse_relations()` to construct reverse accessors at runtime.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use proc_macro2::TokenStream;
 use quote::quote;
@@ -1960,8 +1960,38 @@ fn extract_option_type(ty: &Type) -> (bool, &Type) {
 ///     pub const fn field_name() -> FieldRef<User, String> { FieldRef::new("name") }
 /// }
 /// ```
-fn generate_field_accessors(struct_name: &syn::Ident, field_infos: &[FieldInfo]) -> TokenStream {
+fn generate_field_accessors(
+	struct_name: &syn::Ident,
+	field_infos: &[FieldInfo],
+	constraints: &[ConstraintSpec],
+) -> TokenStream {
 	let orm_crate = get_reinhardt_orm_crate();
+	let primary_key_fields: Vec<_> = field_infos
+		.iter()
+		.filter(|field| field.config.primary_key)
+		.collect();
+	let mut unique_field_names: HashSet<String> = field_infos
+		.iter()
+		.filter(|field| field.config.unique == Some(true))
+		.map(|field| field.name.to_string())
+		.collect();
+
+	if let [primary_key] = primary_key_fields.as_slice() {
+		unique_field_names.insert(primary_key.name.to_string());
+	}
+
+	for constraint in constraints {
+		match constraint {
+			ConstraintSpec::Unique {
+				fields,
+				condition: None,
+				..
+			} if fields.len() == 1 => {
+				unique_field_names.insert(fields[0].clone());
+			}
+			_ => {}
+		}
+	}
 
 	let accessor_methods: Vec<_> = field_infos
 		.iter()
@@ -1987,10 +2017,37 @@ fn generate_field_accessors(struct_name: &syn::Ident, field_infos: &[FieldInfo])
 			}
 		})
 		.collect();
+	let unique_fields: Vec<_> = field_infos
+		.iter()
+		.filter(|field| !field.config.skip)
+		.filter(|field| unique_field_names.contains(&field.name.to_string()))
+		.collect();
+	let unique_accessor_methods: Vec<_> = unique_fields
+		.iter()
+		.map(|field| {
+			let field_name = &field.name;
+			let (_, lookup_type) = extract_option_type(&field.ty);
+			let field_name_str = field
+				.config
+				.db_column
+				.clone()
+				.unwrap_or_else(|| field_name.to_string());
+			let method_name = syn::Ident::new(&format!("unique_{}", field_name), field_name.span());
+
+			quote! {
+				/// Unique-field accessor for type-safe single-row lookups.
+				pub const fn #method_name() -> #orm_crate::expressions::UniqueFieldRef<#struct_name, #lookup_type> {
+					// SAFETY: This accessor is generated only for fields proven unique by model metadata.
+					unsafe { #orm_crate::expressions::UniqueFieldRef::from_model_field(#field_name_str) }
+				}
+			}
+		})
+		.collect();
 
 	quote! {
 		impl #struct_name {
 			#(#accessor_methods)*
+			#(#unique_accessor_methods)*
 		}
 	}
 }
@@ -3137,7 +3194,8 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 	};
 
 	// Generate field accessor methods
-	let field_accessors = generate_field_accessors(struct_name, &field_infos);
+	let field_accessors =
+		generate_field_accessors(struct_name, &field_infos, &model_config.constraints);
 
 	// Generate typed relation traversal methods
 	let relation_traversal_accessors =
@@ -7656,6 +7714,28 @@ mod tests {
 
 		assert!(slug_accessor.contains("FieldRef :: new (\"slug\")"));
 		assert!(!slug_accessor.contains("FieldRef :: new (\"email\")"));
+	}
+
+	#[test]
+	fn test_unique_accessors_use_the_physical_database_column() {
+		let input = quote! {
+			#[model(app_label = "test", table_name = "users")]
+			pub struct User {
+				#[field(primary_key = true)]
+				pub id: i64,
+				#[field(unique = true, max_length = 120, db_column = "email_addr")]
+				pub email: String,
+			}
+		};
+
+		let output = model_derive_impl(syn::parse2(input).unwrap()).unwrap();
+		let output_str = output.to_string();
+		let unique_accessor = output_str
+			.split("pub const fn unique_email")
+			.nth(1)
+			.expect("generated unique email accessor");
+
+		assert!(unique_accessor.contains("UniqueFieldRef :: from_model_field (\"email_addr\")"));
 	}
 
 	#[test]

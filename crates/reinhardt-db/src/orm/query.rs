@@ -3,10 +3,10 @@
 //! This module provides a unified entry point for querying functionality.
 //! By default, it exports the expression-based query API (SQLAlchemy-style).
 
-use super::FieldSelector;
 use super::field_codec::{
 	DatabaseField, DatabaseValue, FieldCodecError, IntoFieldValue, database_value_to_query_value,
 };
+use super::{FieldSelector, Model};
 use crate::naming::to_snake_case;
 use crate::orm::query_fields::GroupByFields;
 use crate::orm::query_fields::aggregate::{AggregateExpr, ComparisonExpr};
@@ -26,6 +26,13 @@ use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::time::Instant;
 use uuid::Uuid;
+
+fn executor_error(error: reinhardt_core::exception::Error) -> DatabaseError {
+	match error {
+		reinhardt_core::exception::Error::Database(error) => error,
+		error => DatabaseError::new(DatabaseErrorKind::Query, error.to_string()),
+	}
+}
 
 // Django QuerySet API types
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -190,6 +197,7 @@ pub struct Filter {
 	pub field: String,
 	field_source: FilterField,
 	relation: Option<Box<FilterRelation>>,
+	field_type: Option<String>,
 	/// The operator.
 	pub operator: FilterOperator,
 	/// The value.
@@ -204,6 +212,7 @@ impl Filter {
 			field,
 			field_source: FilterField::Column,
 			relation: None,
+			field_type: None,
 			operator,
 			value,
 		}
@@ -219,10 +228,16 @@ impl Filter {
 	where
 		P: RelationPathLike,
 	{
+		let field = field.into();
+		let field_type = P::Target::field_metadata()
+			.into_iter()
+			.find(|metadata| metadata.name == field || metadata.db_column_name() == field)
+			.map(|metadata| metadata.field_type);
 		Self {
-			field: field.into(),
+			field,
 			field_source: FilterField::Column,
 			relation: Some(Box::new(FilterRelation::from_path(path))),
+			field_type,
 			operator,
 			value,
 		}
@@ -266,6 +281,7 @@ impl Filter {
 			field: sql.clone(),
 			field_source: FilterField::Expression(sql),
 			relation: None,
+			field_type: None,
 			operator,
 			value,
 		}
@@ -1225,6 +1241,86 @@ where
 			from_alias: None,
 			from_subquery_sql: None,
 		}
+	}
+
+	fn executor_backend(
+		executor: &dyn super::connection::TransactionExecutor,
+	) -> super::connection::DatabaseBackend {
+		match executor.backend() {
+			crate::backends::types::DatabaseType::Postgres => {
+				super::connection::DatabaseBackend::Postgres
+			}
+			crate::backends::types::DatabaseType::Mysql => {
+				super::connection::DatabaseBackend::MySql
+			}
+			crate::backends::types::DatabaseType::Sqlite => {
+				super::connection::DatabaseBackend::Sqlite
+			}
+		}
+	}
+
+	fn build_select_statement(&self) -> reinhardt_core::exception::Result<SelectStatement> {
+		if self.has_select_related() {
+			return self.select_related_query();
+		}
+
+		let mut stmt = Query::select();
+		self.apply_model_from(&mut stmt);
+		if let Some(ref fields) = self.selected_fields {
+			for field in fields {
+				if field.contains('(') && field.contains(')') {
+					stmt.expr(Expr::cust(field.clone()));
+				} else {
+					stmt.column(self.root_column_reference(field));
+				}
+			}
+		} else if !self.deferred_fields.is_empty() {
+			for field in T::field_metadata() {
+				if !self.deferred_fields.contains(&field.name) {
+					stmt.column(self.root_column_reference(&field.name));
+				}
+			}
+		} else {
+			self.add_default_select_columns(&mut stmt);
+		}
+		self.apply_relation_joins(&mut stmt);
+		self.apply_manual_joins(&mut stmt);
+
+		if let Some(condition) = self.build_where_condition()? {
+			stmt.cond_where(condition);
+		}
+		for order_field in &self.order_by_fields {
+			let (field, order) = order_field
+				.strip_prefix('-')
+				.map_or((order_field.as_str(), Order::Asc), |field| {
+					(field, Order::Desc)
+				});
+			stmt.order_by_expr(Expr::col(self.root_column_reference(field)), order);
+		}
+		if let Some(limit) = self.limit {
+			stmt.limit(limit as u64);
+		}
+		if let Some(offset) = self.offset {
+			stmt.offset(offset as u64);
+		}
+		Ok(stmt.to_owned())
+	}
+
+	fn decode_backend_rows(
+		rows: Vec<crate::backends::types::Row>,
+	) -> Result<Vec<T>, crate::backends::error::DatabaseError>
+	where
+		T: serde::de::DeserializeOwned,
+	{
+		rows.into_iter()
+			.map(|row| {
+				super::connection::QueryRow::from_backend_row(row)
+					.deserialize_model::<T>()
+					.map_err(|error| {
+						DatabaseError::new(DatabaseErrorKind::Serialization, error.to_string())
+					})
+			})
+			.collect()
 	}
 
 	/// Sets the manager and returns self for chaining.
@@ -3562,6 +3658,39 @@ where
 		Self::apply_relation_join_graph(stmt, &graph);
 	}
 
+	fn apply_manual_joins(&self, stmt: &mut SelectStatement) {
+		for join in &self.joins {
+			if join.on_condition.is_empty() {
+				if let Some(ref alias) = join.target_alias {
+					stmt.cross_join((Alias::new(&join.target_table), Alias::new(alias)));
+				} else {
+					stmt.cross_join(Alias::new(&join.target_table));
+				}
+				continue;
+			}
+
+			let sea_join_type = match join.join_type {
+				super::sqlalchemy_query::JoinType::Inner => SeaJoinType::InnerJoin,
+				super::sqlalchemy_query::JoinType::Left => SeaJoinType::LeftJoin,
+				super::sqlalchemy_query::JoinType::Right => SeaJoinType::RightJoin,
+				super::sqlalchemy_query::JoinType::Full => SeaJoinType::FullOuterJoin,
+			};
+			if let Some(ref alias) = join.target_alias {
+				stmt.join(
+					sea_join_type,
+					(Alias::new(&join.target_table), Alias::new(alias)),
+					Expr::cust(join.on_condition.clone()),
+				);
+			} else {
+				stmt.join(
+					sea_join_type,
+					Alias::new(&join.target_table),
+					Expr::cust(join.on_condition.clone()),
+				);
+			}
+		}
+	}
+
 	fn apply_relation_join_graph(stmt: &mut SelectStatement, graph: &RelationJoinGraph) {
 		for join in graph.joins() {
 			let sea_join_type = match join.join_kind {
@@ -3745,14 +3874,28 @@ where
 				(FilterOperator::IExact, FilterValue::String(s)) => {
 					self.like_expr(filter, s, LikePattern::Exact, true)
 				}
-				(FilterOperator::IExact, v) => col.eq(Self::filter_value_to_sea_value(v)?),
+				(FilterOperator::IExact, v) => {
+					col.eq(self.filter_value_to_sea_value_for_filter(filter, v)?)
+				}
 				// Generic value comparisons (catch-all for other FilterValue types)
-				(FilterOperator::Eq, v) => col.eq(Self::filter_value_to_sea_value(v)?),
-				(FilterOperator::Ne, v) => col.ne(Self::filter_value_to_sea_value(v)?),
-				(FilterOperator::Gt, v) => col.gt(Self::filter_value_to_sea_value(v)?),
-				(FilterOperator::Gte, v) => col.gte(Self::filter_value_to_sea_value(v)?),
-				(FilterOperator::Lt, v) => col.lt(Self::filter_value_to_sea_value(v)?),
-				(FilterOperator::Lte, v) => col.lte(Self::filter_value_to_sea_value(v)?),
+				(FilterOperator::Eq, v) => {
+					col.eq(self.filter_value_to_sea_value_for_filter(filter, v)?)
+				}
+				(FilterOperator::Ne, v) => {
+					col.ne(self.filter_value_to_sea_value_for_filter(filter, v)?)
+				}
+				(FilterOperator::Gt, v) => {
+					col.gt(self.filter_value_to_sea_value_for_filter(filter, v)?)
+				}
+				(FilterOperator::Gte, v) => {
+					col.gte(self.filter_value_to_sea_value_for_filter(filter, v)?)
+				}
+				(FilterOperator::Lt, v) => {
+					col.lt(self.filter_value_to_sea_value_for_filter(filter, v)?)
+				}
+				(FilterOperator::Lte, v) => {
+					col.lte(self.filter_value_to_sea_value_for_filter(filter, v)?)
+				}
 				(FilterOperator::In, FilterValue::String(s)) => {
 					let values = Self::parse_array_string(s);
 					col.is_in(values)
@@ -3763,7 +3906,7 @@ where
 				(FilterOperator::In, FilterValue::List(values)) => col.is_in(
 					values
 						.iter()
-						.map(Self::filter_value_to_sea_value)
+						.map(|value| self.filter_value_to_sea_value_for_filter(filter, value))
 						.collect::<reinhardt_core::exception::Result<Vec<_>>>()?,
 				),
 				(FilterOperator::NotIn, FilterValue::String(s)) => {
@@ -3776,7 +3919,7 @@ where
 				(FilterOperator::NotIn, FilterValue::List(values)) => col.is_not_in(
 					values
 						.iter()
-						.map(Self::filter_value_to_sea_value)
+						.map(|value| self.filter_value_to_sea_value_for_filter(filter, value))
 						.collect::<reinhardt_core::exception::Result<Vec<_>>>()?,
 				),
 				(FilterOperator::Contains, FilterValue::String(s)) => {
@@ -3822,8 +3965,8 @@ where
 				(FilterOperator::Range, FilterValue::Range(start, end)) => Expr::cust_with_values(
 					format!("{} BETWEEN ? AND ?", self.filter_lhs_sql(filter)),
 					[
-						Self::filter_value_to_sea_value(start)?,
-						Self::filter_value_to_sea_value(end)?,
+						self.filter_value_to_sea_value_for_filter(filter, start)?,
+						self.filter_value_to_sea_value_for_filter(filter, end)?,
 					],
 				)
 				.into_simple_expr(),
@@ -4021,7 +4164,7 @@ where
 					// field @> ? - parameterized
 					Expr::cust_with_values(
 						format!("{} @> ?", self.filter_lhs_sql(filter)),
-						[Self::filter_value_to_sea_value(v)?],
+						[self.filter_value_to_sea_value_for_filter(filter, v)?],
 					)
 					.into_simple_expr()
 				}
@@ -4044,7 +4187,7 @@ where
 				// Fallback for unsupported combinations
 				_ => {
 					// Default to equality for unhandled cases
-					col.eq(Self::filter_value_to_sea_value(&filter.value)?)
+					col.eq(self.filter_value_to_sea_value_for_filter(filter, &filter.value)?)
 				}
 			};
 
@@ -4622,6 +4765,49 @@ where
 			FilterValue::OuterRef(outer_ref) => outer_ref.field.clone().into(),
 		};
 		Ok(value)
+	}
+
+	fn filter_value_to_sea_value_for_filter(
+		&self,
+		filter: &Filter,
+		value: &FilterValue,
+	) -> reinhardt_core::exception::Result<reinhardt_query::value::Value> {
+		let field_type = filter.field_type.clone().or_else(|| {
+			let field_name = filter.field.rsplit("__").next().unwrap_or(&filter.field);
+			T::field_metadata()
+				.into_iter()
+				.find(|metadata| {
+					metadata.name == field_name || metadata.db_column_name() == field_name
+				})
+				.map(|metadata| metadata.field_type)
+		});
+		let Some(field_type) = field_type else {
+			return Self::filter_value_to_sea_value(value);
+		};
+
+		let FilterValue::String(value) = value else {
+			return Self::filter_value_to_sea_value(value);
+		};
+
+		Ok(match field_type.rsplit('.').next() {
+			Some("IntegerField") | Some("AutoField") => value
+				.parse::<i32>()
+				.map_or_else(|_| value.clone().into(), Into::into),
+			Some("BigIntegerField") | Some("BigAutoField") => value
+				.parse::<i64>()
+				.map_or_else(|_| value.clone().into(), Into::into),
+			Some("FloatField") => value
+				.parse::<f64>()
+				.map_or_else(|_| value.clone().into(), Into::into),
+			Some("BooleanField") => value
+				.parse::<bool>()
+				.map_or_else(|_| value.clone().into(), Into::into),
+			Some("UuidField") => Uuid::parse_str(value).map_or_else(
+				|_| value.clone().into(),
+				|uuid| reinhardt_query::value::Value::Uuid(Some(Box::new(uuid))),
+			),
+			_ => value.clone().into(),
+		})
 	}
 
 	/// Convert FilterValue to String representation
@@ -5830,6 +6016,57 @@ where
 			.collect()
 	}
 
+	/// Execute the queryset through an active transaction executor and return all records.
+	pub async fn all_with_executor(
+		&self,
+		executor: &mut dyn super::connection::TransactionExecutor,
+	) -> Result<Vec<T>, crate::backends::error::DatabaseError>
+	where
+		T: serde::de::DeserializeOwned,
+	{
+		let stmt = self.build_select_statement().map_err(executor_error)?;
+		let (sql, values) = Self::build_select_for_backend(&stmt, Self::executor_backend(executor));
+		let param_samples = values
+			.iter()
+			.map(|value| value.to_sql_literal())
+			.collect::<Vec<_>>();
+		let params = super::execution::convert_values(values);
+		let started = Instant::now();
+		let result = executor
+			.fetch_all(&sql, params)
+			.await
+			.map_err(executor_error);
+		let duration = started.elapsed();
+		let rows = match result {
+			Ok(rows) => {
+				super::instrumentation::instrumentation()
+					.orm_query_end_with_params(&sql, &param_samples, duration)
+					.await;
+				rows
+			}
+			Err(error) => {
+				super::instrumentation::instrumentation()
+					.orm_query_error(&sql, &format!("{error:?}"))
+					.await;
+				return Err(error);
+			}
+		};
+		Self::decode_backend_rows(rows)
+	}
+
+	/// Execute the queryset through an active transaction executor and return one record.
+	pub async fn one_with_executor(
+		&self,
+		executor: &mut dyn super::connection::TransactionExecutor,
+	) -> Result<Vec<T>, crate::backends::error::DatabaseError>
+	where
+		T: serde::de::DeserializeOwned,
+	{
+		let mut queryset = self.clone();
+		queryset.limit = Some(queryset.limit.map_or(2, |limit| limit.min(2)));
+		queryset.all_with_executor(executor).await
+	}
+
 	/// Execute the queryset with an explicit database connection and return a single record
 	///
 	/// # Examples
@@ -5882,6 +6119,36 @@ where
 			)
 			.into()),
 		}
+	}
+
+	/// Execute this queryset through an explicit connection and return at most two rows.
+	pub async fn one_with_db(
+		&self,
+		conn: &super::connection::DatabaseConnection,
+	) -> reinhardt_core::exception::Result<Vec<T>>
+	where
+		T: serde::de::DeserializeOwned,
+	{
+		let mut queryset = self.clone();
+		queryset.limit = Some(queryset.limit.map_or(2, |limit| limit.min(2)));
+		queryset.all_with_db(conn).await
+	}
+
+	/// Count this queryset through an explicit connection without resolving the global connection.
+	pub async fn count_with_db(
+		&self,
+		conn: &super::connection::DatabaseConnection,
+	) -> reinhardt_core::exception::Result<u64> {
+		let stmt = self.count_select_query()?;
+		let (sql, values) = Self::build_select_for_backend(&stmt, conn.backend());
+		let params = super::execution::convert_values(values);
+		let row = conn.query_one(&sql, params).await?;
+		row.get::<u64>("count").ok_or_else(|| {
+			Error::from(DatabaseError::new(
+				DatabaseErrorKind::Query,
+				"COUNT query did not return a numeric count column",
+			))
+		})
 	}
 
 	/// Execute the queryset with an explicit database connection and return the first record
@@ -9444,6 +9711,25 @@ mod tests {
 				r#"WHERE "corpus_file__corpus_file"."normalized_path" = '/docs/index.md'"#
 			)
 		);
+	}
+
+	#[test]
+	fn test_executor_select_preserves_manual_joins() {
+		let stmt = QuerySet::<TestUser>::new()
+			.inner_join_on::<TestProject>("test_users.id = test_projects.user_id")
+			.filter(Filter::new(
+				"test_projects.name",
+				FilterOperator::Eq,
+				FilterValue::String("reinhardt".to_owned()),
+			))
+			.build_select_statement()
+			.expect("executor select should compile");
+		let sql = stmt.to_string(PostgresQueryBuilder);
+
+		assert!(
+			sql.contains(r#"INNER JOIN "test_projects" ON test_users.id = test_projects.user_id"#)
+		);
+		assert!(sql.contains(r#"WHERE "test_projects"."name" = 'reinhardt'"#));
 	}
 
 	#[test]

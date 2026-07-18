@@ -50,6 +50,7 @@ msw = [
   "dep:hyper-util",
   "dep:http-body-util",
 ]
+model-server-fnset-msw = ["msw", "reinhardt-pages/model-server-fnset"]
 # Server function testing utilities
 server-fn-test = ["reinhardt-pages/testing"]
 # E2E browser testing via WebDriver (fantoccini)

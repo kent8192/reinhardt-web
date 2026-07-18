@@ -1,0 +1,9 @@
+error[E0308]: mismatched types
+ --> tests/ui/server_fnset/fail/wrong_standard_output.rs:6:1
+  |
+6 | #[server_fnset(for = article_fns)]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `Result<ArticleDto, ServerFnSetError>`, found `Result<String, ServerFnSetError>`
+  |
+  = note: expected enum `Result<ArticleDto, reinhardt_pages::server_fn::ServerFnSetError>`
+             found enum `Result<std::string::String, reinhardt_pages::server_fn::ServerFnSetError>`
+  = note: this error originates in the macro `__reinhardt_generate_server_fnset_Actions` which comes from the expansion of the attribute macro `server_fnset` (in Nightly builds, run with -Z macro-backtrace for more info)

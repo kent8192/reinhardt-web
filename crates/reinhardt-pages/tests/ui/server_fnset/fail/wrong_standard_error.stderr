@@ -1,0 +1,10 @@
+error[E0271]: expected `impl Future<Output = Result<ArticleDto, String>>` to be a future that resolves to `Result<_, ServerFnSetError>`, but it resolves to `Result<ArticleDto, String>`
+ --> tests/ui/server_fnset/fail/wrong_standard_error.rs:6:1
+  |
+6 | #[server_fnset(for = article_fns)]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `Result<ArticleDto, ServerFnSetError>`, found `Result<ArticleDto, String>`
+  |
+  = note: expected enum `Result<ArticleDto, reinhardt_pages::server_fn::ServerFnSetError>`
+             found enum `Result<ArticleDto, std::string::String>`
+  = note: required for the cast from `Pin<Box<impl Future<Output = Result<ArticleDto, std::string::String>>>>` to `Pin<Box<dyn Future<Output = Result<ArticleDto, reinhardt_pages::server_fn::ServerFnSetError>> + Send>>`
+  = note: this error originates in the macro `__reinhardt_generate_server_fnset_Actions` which comes from the expansion of the attribute macro `server_fnset` (in Nightly builds, run with -Z macro-backtrace for more info)

@@ -29,6 +29,23 @@ fn field_codec_error(error: FieldCodecError) -> Error {
 	DatabaseError::new(kind, error.to_string()).into()
 }
 
+fn executor_field_codec_error(error: FieldCodecError) -> crate::backends::error::DatabaseError {
+	crate::backends::error::DatabaseError::new(
+		crate::backends::error::DatabaseErrorKind::Serialization,
+		error.to_string(),
+	)
+}
+
+fn executor_error(error: Error) -> crate::backends::error::DatabaseError {
+	match error {
+		Error::Database(error) => error,
+		error => crate::backends::error::DatabaseError::new(
+			crate::backends::error::DatabaseErrorKind::Query,
+			error.to_string(),
+		),
+	}
+}
+
 /// Build SQL with values from an INSERT statement based on database backend
 fn build_insert_sql(stmt: &InsertStatement, backend: DatabaseBackend) -> (String, Values) {
 	match backend {
@@ -278,6 +295,49 @@ impl<M: Model> Manager<M> {
 		}
 	}
 
+	fn executor_backend(executor: &dyn super::connection::TransactionExecutor) -> DatabaseBackend {
+		match executor.backend() {
+			crate::backends::types::DatabaseType::Postgres => DatabaseBackend::Postgres,
+			crate::backends::types::DatabaseType::Mysql => DatabaseBackend::MySql,
+			crate::backends::types::DatabaseType::Sqlite => DatabaseBackend::Sqlite,
+		}
+	}
+
+	fn decode_executor_row(
+		row: crate::backends::types::Row,
+	) -> Result<M, crate::backends::error::DatabaseError> {
+		super::connection::QueryRow::from_backend_row(row)
+			.deserialize_model::<M>()
+			.map_err(executor_field_codec_error)
+	}
+
+	/// Preserve the model-declared primary-key storage type when binding executor queries.
+	fn primary_key_query_value(pk: &M::PrimaryKey) -> reinhardt_query::value::Value {
+		let pk_string = pk.to_string();
+		let field_type = M::field_metadata()
+			.into_iter()
+			.find(|field| field.name == M::primary_key_field())
+			.map(|field| field.field_type);
+
+		match field_type
+			.as_deref()
+			.and_then(|value| value.rsplit('.').next())
+		{
+			Some("AutoField")
+			| Some("IntegerField")
+			| Some("BigAutoField")
+			| Some("BigIntegerField") => pk_string.parse::<i64>().map_or_else(
+				|_| reinhardt_query::value::Value::String(Some(Box::new(pk_string.clone()))),
+				|value| reinhardt_query::value::Value::BigInt(Some(value)),
+			),
+			Some("UuidField") => Uuid::parse_str(&pk_string).map_or_else(
+				|_| reinhardt_query::value::Value::String(Some(Box::new(pk_string.clone()))),
+				|value| reinhardt_query::value::Value::Uuid(Some(Box::new(value))),
+			),
+			_ => reinhardt_query::value::Value::String(Some(Box::new(pk_string))),
+		}
+	}
+
 	fn is_generated_field(field: &str) -> bool {
 		M::generated_field_names().contains(&field)
 	}
@@ -308,6 +368,13 @@ impl<M: Model> Manager<M> {
 	fn build_update_statement_from_object(
 		obj: &std::collections::BTreeMap<String, DatabaseValue>,
 		_field_is_none: impl Fn(&str) -> bool,
+	) -> Result<reinhardt_query::prelude::UpdateStatement, FieldCodecError> {
+		Self::build_update_statement_from_object_with_returning(obj, true)
+	}
+
+	fn build_update_statement_from_object_with_returning(
+		obj: &std::collections::BTreeMap<String, DatabaseValue>,
+		include_returning: bool,
 	) -> Result<reinhardt_query::prelude::UpdateStatement, FieldCodecError> {
 		let mut stmt = Query::update();
 		stmt.table(Alias::new(M::table_name()));
@@ -355,7 +422,9 @@ impl<M: Model> Manager<M> {
 			Expr::col(Alias::new(primary_key_column)).eq(database_value_to_query_value(pk_value)),
 		);
 
-		stmt.returning(Self::returning_columns_from_object(obj));
+		if include_returning {
+			stmt.returning(Self::returning_columns_from_object(obj));
+		}
 		Ok(stmt)
 	}
 
@@ -903,6 +972,119 @@ impl<M: Model> Manager<M> {
 		self.create_with_conn(&conn, model).await
 	}
 
+	async fn create_with_executor(
+		&self,
+		executor: &mut dyn super::connection::TransactionExecutor,
+		model: &M,
+	) -> Result<M, crate::backends::error::DatabaseError> {
+		let obj = model
+			.encode_database_fields()
+			.map_err(executor_field_codec_error)?;
+		let mut stmt =
+			Self::build_insert_statement_from_object(&obj, |field| model.field_is_none(field))
+				.map_err(executor_error)?;
+		let backend = Self::executor_backend(executor);
+
+		if backend != DatabaseBackend::MySql {
+			stmt.returning(Self::returning_columns_from_object(&obj));
+		}
+		let (sql, values) = build_insert_sql(&stmt, backend);
+		let params = values
+			.0
+			.into_iter()
+			.map(Self::sea_value_to_query_value)
+			.collect();
+
+		if backend == DatabaseBackend::MySql {
+			let explicit_primary_key = obj
+				.get(M::primary_key_field())
+				.filter(|value| {
+					!matches!(
+						value,
+						DatabaseValue::Null | DatabaseValue::I32(0) | DatabaseValue::I64(0)
+					)
+				})
+				.cloned();
+			if explicit_primary_key.is_none() {
+				executor
+					.fetch_one("SELECT LAST_INSERT_ID(0) AS generated_id", Vec::new())
+					.await
+					.map_err(executor_error)?;
+			}
+			executor
+				.execute(&sql, params)
+				.await
+				.map_err(executor_error)?;
+
+			let primary_key_value = if let Some(primary_key) = explicit_primary_key {
+				database_value_to_query_value(primary_key)
+			} else {
+				let row = executor
+					.fetch_one(
+						"SELECT CAST(LAST_INSERT_ID() AS SIGNED) AS generated_id",
+						Vec::new(),
+					)
+					.await
+					.map_err(executor_error)?;
+				let generated_id = row.get::<i64>("generated_id")?;
+				if generated_id <= 0 {
+					return Err(crate::backends::error::DatabaseError::new(
+						crate::backends::error::DatabaseErrorKind::Unsupported,
+						"MySQL executor inserts without an explicit primary key require an auto-increment integer primary key",
+					));
+				}
+				reinhardt_query::value::Value::BigInt(Some(generated_id))
+			};
+
+			let mut select = Query::select();
+			select.from(Alias::new(M::table_name()));
+			select.column(ColumnRef::Asterisk);
+			let field_metadata = M::field_metadata();
+			let primary_key_column = Self::field_column(&field_metadata, M::primary_key_field());
+			select.and_where(Expr::col(Alias::new(primary_key_column)).eq(primary_key_value));
+			let (select_sql, select_values) = build_select_sql(&select, backend);
+			let select_params = select_values
+				.0
+				.into_iter()
+				.map(Self::sea_value_to_query_value)
+				.collect();
+			let row = executor
+				.fetch_one(&select_sql, select_params)
+				.await
+				.map_err(executor_error)?;
+			return Self::decode_executor_row(row);
+		}
+
+		let row = executor
+			.fetch_one(&sql, params)
+			.await
+			.map_err(executor_error)?;
+		Self::decode_executor_row(row)
+	}
+
+	/// Insert a model through a caller-owned transaction executor, regardless of
+	/// whether its primary key is already populated.
+	pub async fn insert_with_executor(
+		&self,
+		executor: &mut dyn super::connection::TransactionExecutor,
+		model: &M,
+	) -> Result<M, crate::backends::error::DatabaseError> {
+		self.create_with_executor(executor, model).await
+	}
+
+	/// Save a model through a caller-owned transaction executor.
+	pub async fn save_with_executor(
+		&self,
+		executor: &mut dyn super::connection::TransactionExecutor,
+		model: &M,
+	) -> Result<M, crate::backends::error::DatabaseError> {
+		if model.primary_key().is_some() {
+			self.update_with_executor(executor, model).await
+		} else {
+			self.create_with_executor(executor, model).await
+		}
+	}
+
 	/// Create a new record with an explicit database connection
 	///
 	/// This method allows using a specific connection, which is essential for
@@ -1236,6 +1418,66 @@ impl<M: Model> Manager<M> {
 		self.update_with_conn(&conn, model).await
 	}
 
+	async fn update_with_executor(
+		&self,
+		executor: &mut dyn super::connection::TransactionExecutor,
+		model: &M,
+	) -> Result<M, crate::backends::error::DatabaseError> {
+		let pk = model.primary_key().ok_or_else(|| {
+			crate::backends::error::DatabaseError::new(
+				crate::backends::error::DatabaseErrorKind::Query,
+				"Model must have primary key",
+			)
+		})?;
+		let obj = model
+			.encode_database_fields()
+			.map_err(executor_field_codec_error)?;
+		let backend = Self::executor_backend(executor);
+		let stmt = Self::build_update_statement_from_object_with_returning(
+			&obj,
+			backend != DatabaseBackend::MySql,
+		)
+		.map_err(executor_field_codec_error)?;
+		let (sql, values) = build_update_sql(&stmt, backend);
+		let params = values
+			.0
+			.into_iter()
+			.map(Self::sea_value_to_query_value)
+			.collect();
+
+		if backend == DatabaseBackend::MySql {
+			executor
+				.execute(&sql, params)
+				.await
+				.map_err(executor_error)?;
+			let mut select = Query::select();
+			select.from(Alias::new(M::table_name()));
+			select.column(ColumnRef::Asterisk);
+			let field_metadata = M::field_metadata();
+			let primary_key_column = Self::field_column(&field_metadata, M::primary_key_field());
+			select.and_where(
+				Expr::col(Alias::new(primary_key_column)).eq(Self::primary_key_query_value(&pk)),
+			);
+			let (select_sql, select_values) = build_select_sql(&select, backend);
+			let select_params = select_values
+				.0
+				.into_iter()
+				.map(Self::sea_value_to_query_value)
+				.collect();
+			let row = executor
+				.fetch_one(&select_sql, select_params)
+				.await
+				.map_err(executor_error)?;
+			return Self::decode_executor_row(row);
+		}
+
+		let row = executor
+			.fetch_one(&sql, params)
+			.await
+			.map_err(executor_error)?;
+		Self::decode_executor_row(row)
+	}
+
 	/// Update an existing record with an explicit database connection
 	///
 	/// This method allows using a specific connection, which is essential for
@@ -1299,6 +1541,31 @@ impl<M: Model> Manager<M> {
 		self.delete_with_conn(&conn, pk).await
 	}
 
+	/// Delete a model by primary key through a caller-owned transaction executor.
+	pub async fn delete_with_executor(
+		&self,
+		executor: &mut dyn super::connection::TransactionExecutor,
+		pk: M::PrimaryKey,
+	) -> Result<(), crate::backends::error::DatabaseError> {
+		let mut stmt = Query::delete();
+		let field_metadata = M::field_metadata();
+		let primary_key_column = Self::field_column(&field_metadata, M::primary_key_field());
+		stmt.from_table(Alias::new(M::table_name())).and_where(
+			Expr::col(Alias::new(primary_key_column)).eq(Self::primary_key_query_value(&pk)),
+		);
+		let (sql, values) = build_delete_sql(&stmt, Self::executor_backend(executor));
+		let params = values
+			.0
+			.into_iter()
+			.map(Self::sea_value_to_query_value)
+			.collect();
+		executor
+			.execute(&sql, params)
+			.await
+			.map_err(executor_error)?;
+		Ok(())
+	}
+
 	/// Delete a record with an explicit database connection
 	///
 	/// This method allows using a specific connection, which is essential for
@@ -1334,15 +1601,7 @@ impl<M: Model> Manager<M> {
 		// Build reinhardt-query DELETE statement
 		let mut stmt = Query::delete();
 
-		// Try to parse as i64 first (common for primary keys), fallback to string
-		let pk_str = pk.to_string();
-		let pk_value = if let Ok(int_value) = pk_str.parse::<i64>() {
-			reinhardt_query::value::Value::BigInt(Some(int_value))
-		} else if let Ok(uuid) = Uuid::parse_str(&pk_str) {
-			reinhardt_query::value::Value::Uuid(Some(Box::new(uuid)))
-		} else {
-			reinhardt_query::value::Value::String(Some(Box::new(pk_str)))
-		};
+		let pk_value = Self::primary_key_query_value(&pk);
 
 		stmt.from_table(Alias::new(M::table_name()))
 			.and_where(Expr::col(Alias::new(M::primary_key_column())).eq(pk_value));

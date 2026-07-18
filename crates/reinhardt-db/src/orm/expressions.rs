@@ -120,6 +120,44 @@ pub struct FieldRef<M, T> {
 	_phantom: PhantomData<(M, T)>,
 }
 
+/// Type-safe proof that a model field can identify at most one row.
+///
+/// `UniqueFieldRef<M, T>` is generated for single-column primary keys,
+/// fields declared with `unique = true`, and unconditional single-field
+/// unique constraints. Nullable fields use their inner type for lookups.
+#[derive(Debug, Clone, Copy)]
+pub struct UniqueFieldRef<M, T> {
+	field: FieldRef<M, T>,
+}
+
+impl<M, T: DatabaseField> UniqueFieldRef<M, T> {
+	/// Construct a reference for a field proven unique by model metadata.
+	///
+	/// # Safety
+	///
+	/// The caller must ensure that `name` identifies a field of `M` whose
+	/// lookup value is `T` and which has a single-column uniqueness guarantee.
+	#[doc(hidden)]
+	pub const unsafe fn from_model_field(name: &'static str) -> Self {
+		Self {
+			field: FieldRef::new(name),
+		}
+	}
+
+	/// Get the unique field name.
+	pub const fn name(&self) -> &'static str {
+		self.field.name()
+	}
+
+	/// Create an equality filter using the unique field's lookup type.
+	pub fn eq(&self, value: T) -> Filter
+	where
+		T: Into<FilterValue>,
+	{
+		self.field.eq(value)
+	}
+}
+
 impl<M, T> FieldRef<M, T> {
 	/// Create a new field reference with compile-time type safety
 	///

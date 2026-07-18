@@ -21,10 +21,11 @@ env:
   CARGO_BUILD_JOBS: ${{ inputs.cargo-build-jobs || '1' }}
   RUSTDOCFLAGS: "--cfg docsrs -D warnings"
   # Workaround for katharostech/cfg_aliases#16 (tracked in reinhardt-web#5692).
-  # Remove this when the upstream macro no longer expands trailing semicolons.
+  # Remove this workaround when cfg_aliases no longer expands recursive rules
+  # with trailing semicolons in expression position.
   #
   # Ideal implementation (without workaround):
-  #   Omit this lint override after upgrading to a fixed cfg_aliases release.
+  #   (no lint override; cfg_aliases compiles cleanly on nightly)
   RUSTFLAGS: "-Asemicolon_in_expressions_from_macros"
   # Workaround for arduino/setup-protoc#112, cloudflare/wrangler-action#413,
   # hashicorp/setup-packer#162 (tracked in reinhardt-web#4125). Remove this

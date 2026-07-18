@@ -1,0 +1,5 @@
+error: missing required `for` option
+ --> tests/ui/server_fnset/fail/missing_for.rs:6:6
+  |
+6 | impl Actions {}
+  |      ^^^^^^^

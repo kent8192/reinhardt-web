@@ -77,6 +77,7 @@ pub mod injectable;
 pub mod metadata;
 #[cfg(feature = "msw")]
 pub mod mockable;
+pub mod model_set;
 #[cfg(native)]
 pub mod negotiation;
 #[cfg(native)]
@@ -86,6 +87,7 @@ pub mod registry;
 #[cfg(native)]
 pub mod router_ext;
 pub mod server_fn_trait;
+pub mod set;
 
 // Re-exports
 #[cfg(feature = "msgpack")]
@@ -99,6 +101,17 @@ pub use metadata::{
 };
 #[cfg(feature = "msw")]
 pub use mockable::MockableServerFn;
+#[cfg(all(native, feature = "model-server-fnset"))]
+pub use model_set::{
+	AllowAllPolicy, AllowAllPrincipal, CollectionActionContext, CollectionReadActionContext,
+	CreateActionContext, CreateModelInput, DetailActionContext, DetailReadActionContext,
+	ModelServerFnResource, ModelServerFnSet, PatchModelInput, PolicyPrincipal, ServerFnSetAction,
+	ServerFnSetPolicy, UpdateModelInput,
+};
+pub use model_set::{
+	FieldError, FieldErrors, ModelServerFnSetLink, Page, PageRequest, ServerFnListQuery,
+	ServerFnResource, ServerFnSetError, ValidatedPageRequest,
+};
 #[cfg(native)]
 pub use negotiation::convert_body_for_codec;
 #[cfg(native)]
@@ -108,6 +121,11 @@ pub use registry::{ServerFnHandler, ServerFnRoute};
 #[cfg(native)]
 pub use router_ext::ServerFnRouterExt;
 pub use server_fn_trait::{ServerFn, ServerFnError, parse_server_error_message};
+pub use set::{
+	NamedServerFnSet, ServerFnSet, ServerFnSetActionMetadata, ServerFnSetActions,
+	ServerFnSetChainExt, ServerFnSetCons, ServerFnSetMetadata, ServerFnSetNil,
+	ServerFnSetRegistration,
+};
 
 #[cfg(all(native, feature = "testing", feature = "msw"))]
 pub use crate::testing::component::server_fn_mock::try_call_active_mock;
@@ -124,7 +142,7 @@ where
 }
 
 // Re-export the macro for convenience
-pub use reinhardt_pages_macros::server_fn;
+pub use reinhardt_pages_macros::{server_fn, server_fnset};
 
 #[cfg(any(wasm, test))]
 fn prefixed_same_origin_path(prefix: &str, path: &str) -> String {

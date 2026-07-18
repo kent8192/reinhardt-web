@@ -375,6 +375,10 @@ impl PostgresBackend {
 
 #[async_trait]
 impl TransactionExecutor for PgTransactionExecutor {
+	fn backend(&self) -> DatabaseType {
+		DatabaseType::Postgres
+	}
+
 	async fn execute(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<QueryResult> {
 		let tx = self.tx.as_mut().ok_or_else(|| {
 			DatabaseError::new(

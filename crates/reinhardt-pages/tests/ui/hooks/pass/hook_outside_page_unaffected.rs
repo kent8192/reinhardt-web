@@ -15,7 +15,7 @@ fn main() {
 		// not inside a `page!` body, the static validator does not see it.
 		let _e = use_effect(
 			{
-				let count = count;
+				let count = count.clone();
 				move || {
 					let _ = count.get();
 					None::<fn()>

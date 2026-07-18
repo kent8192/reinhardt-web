@@ -436,6 +436,10 @@ impl SqliteTransactionExecutor {
 
 #[async_trait]
 impl TransactionExecutor for SqliteTransactionExecutor {
+	fn backend(&self) -> DatabaseType {
+		DatabaseType::Sqlite
+	}
+
 	async fn execute(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<QueryResult> {
 		let tx = self.tx.as_mut().ok_or_else(transaction_consumed_error)?;
 

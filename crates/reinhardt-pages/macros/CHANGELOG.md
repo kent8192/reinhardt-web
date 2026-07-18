@@ -9,14 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Add `style!` and `#[style_def]` code generation backed by the shared Manouche
-  style compiler.
-
-### Fixed
-
-- Generate distinct conditional Pages-crate aliases for multiple `#[style_def]` declarations in one module.
-- Generate component-variable setters that enforce direct property numeric
-  constraints.
+- Add fn-form `#[server_fnset]` generation for named low-level marker sets and
+  model-backed CRUD namespaces.
+- Add impl-form checked standard overrides and custom actions with detail and
+  transaction metadata, normalized endpoints, and compile-time diagnostics for
+  invalid names, links, lookups, signatures, collisions, and REST-only options.
+- Generate all six checked standard override paths, including the dedicated
+  transaction-only create context.
 
 ### Changed
 

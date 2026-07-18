@@ -1,0 +1,7 @@
+error[E0046]: not all trait items implemented, missing: `Policy`
+  --> tests/ui/server_fnset/model_contract/fail/missing_policy.rs:63:1
+   |
+63 | impl ModelServerFnResource for ArticleResource {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `Policy` in implementation
+   |
+   = help: implement the missing item: `type Policy = /* Type */;`

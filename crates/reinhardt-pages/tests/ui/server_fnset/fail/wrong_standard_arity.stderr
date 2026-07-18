@@ -1,0 +1,33 @@
+error: standard action override has the wrong number of client parameters
+  --> tests/ui/server_fnset/fail/wrong_standard_arity.rs:9:2
+   |
+ 9 | /     async fn update(
+10 | |         lookup: i64,
+11 | |         #[inject] context: DetailActionContext<ArticleResource>,
+12 | |     ) -> Result<ArticleDto, ServerFnSetError> {
+   | |_____________________________________________^
+
+error[E0277]: the trait bound `Actions: ServerFnSetActions<ArticleResource>` is not satisfied
+ --> tests/ui/server_fnset/fail/wrong_standard_arity.rs:4:44
+  |
+4 | #[server_fnset(name = "article", actions = Actions)]
+  |                                            ^^^^^^^ unsatisfied trait bound
+  |
+help: the trait `ServerFnSetActions<ArticleResource>` is not implemented for `Actions`
+ --> tests/ui/server_fnset/fail/wrong_standard_arity.rs:3:1
+  |
+3 | struct Actions;
+  | ^^^^^^^^^^^^^^
+
+error[E0277]: the trait bound `Actions: ServerFnSetActions<ArticleResource>` is not satisfied
+ --> tests/ui/server_fnset/fail/wrong_standard_arity.rs:4:1
+  |
+4 | #[server_fnset(name = "article", actions = Actions)]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
+  |
+help: the trait `ServerFnSetActions<ArticleResource>` is not implemented for `Actions`
+ --> tests/ui/server_fnset/fail/wrong_standard_arity.rs:3:1
+  |
+3 | struct Actions;
+  | ^^^^^^^^^^^^^^
+  = note: this error originates in the attribute macro `server_fnset` (in Nightly builds, run with -Z macro-backtrace for more info)

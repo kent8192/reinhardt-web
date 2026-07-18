@@ -28,7 +28,7 @@ pub trait ServerFn {
 ///
 /// This error type covers all possible error conditions when calling
 /// a server function from the client side.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ServerFnError {
 	/// Network error (connection failed, timeout, etc.)
 	Network(String),

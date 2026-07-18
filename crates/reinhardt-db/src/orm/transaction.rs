@@ -699,6 +699,19 @@ fn transaction_consumed_error() -> reinhardt_core::exception::Error {
 }
 
 impl TransactionScope {
+	/// Borrow the transaction-bound executor.
+	pub fn executor_mut(
+		&mut self,
+	) -> Result<
+		&mut (dyn super::connection::TransactionExecutor + 'static),
+		reinhardt_core::exception::Error,
+	> {
+		match self.executor.as_mut() {
+			Some(executor) => Ok(executor.as_mut()),
+			None => Err(transaction_consumed_error()),
+		}
+	}
+
 	/// Begin a new transaction scope
 	///
 	/// This acquires a dedicated database connection and begins a transaction on it.
@@ -1452,6 +1465,10 @@ mod tests {
 
 	#[async_trait::async_trait]
 	impl TransactionExecutor for MockTransactionExecutor {
+		fn backend(&self) -> DatabaseType {
+			DatabaseType::Postgres
+		}
+
 		async fn execute(&mut self, _sql: &str, _params: Vec<QueryValue>) -> Result<QueryResult> {
 			Ok(QueryResult { rows_affected: 0 })
 		}
@@ -1693,6 +1710,21 @@ mod tests {
 
 		let result = tx.commit().await;
 		assert!(result.is_ok());
+	}
+
+	#[test]
+	fn executor_mut_errors_after_scope_is_consumed() {
+		let mut scope = TransactionScope {
+			executor: None,
+			committed: true,
+		};
+
+		let error = match scope.executor_mut() {
+			Ok(_) => panic!("consumed scope must not expose an executor"),
+			Err(error) => error,
+		};
+
+		assert_eq!(error.to_string(), "Transaction already consumed");
 	}
 
 	#[rstest]
@@ -2113,6 +2145,10 @@ mod transaction_extended_tests {
 
 	#[async_trait::async_trait]
 	impl TransactionExecutor for MockTransactionExecutor {
+		fn backend(&self) -> DatabaseType {
+			DatabaseType::Postgres
+		}
+
 		async fn execute(&mut self, _sql: &str, _params: Vec<QueryValue>) -> Result<QueryResult> {
 			Ok(QueryResult { rows_affected: 0 })
 		}

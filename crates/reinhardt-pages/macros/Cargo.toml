@@ -16,6 +16,7 @@ proc-macro = true
 [features]
 default = []
 msw = []
+model-server-fnset = []
 
 [dependencies]
 # DSL definitions (new canonical location)

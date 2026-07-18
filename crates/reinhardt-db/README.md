@@ -358,9 +358,14 @@ string such as `.eq("queued")` to an enum field is a compile error.
 - `#[field(auto_now = true)]` - Auto-update on save
 - `#[field(null = true)]` - Allow NULL values
 - `#[field(default = value)]` - Default value
+- `#[field(db_column = "...")]` - Physical database column name
 - `#[field(foreign_key = "ModelType")]` - Foreign key relationship
 - `#[field(generated = SchemaExpr::..., generated_stored = true)]` - Typed generated column expression
 - `#[field(generated_sql = "...", generated_stored = true)]` - Backend-specific raw SQL generated column expression
+
+ORM executor writes alias physical `db_column` names back to their Rust field
+names in `RETURNING` and MySQL reload projections. This lets creates and updates
+hydrate renamed scalar and JSON fields without ambiguous in-memory key remapping.
 
 Typed JSON fields use `Json<T>` to keep the Rust field type explicit while
 storing JSON in the database. Migrations emit JSONB for PostgreSQL/CockroachDB,

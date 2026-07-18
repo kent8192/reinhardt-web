@@ -1,0 +1,10 @@
+error[E0599]: no associated function or constant named `unique_title` found for struct `Article` in the current scope
+ --> tests/ui/server_fnset/fail/non_unique_lookup.rs:4:11
+  |
+4 |     Article::unique_title()
+  |              ^^^^^^^^^^^^ associated function or constant not found in `Article`
+  |
+ ::: tests/ui/server_fnset/fail/../pass/model_crud_types.inc
+  |
+  | pub struct Article { id: Option<i64>, title: String }
+  | ------------------ associated function or constant `unique_title` not found for this struct
