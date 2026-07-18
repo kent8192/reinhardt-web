@@ -252,7 +252,7 @@ async fn mysql_constraint_errors_have_portable_kinds() {
 #[cfg(feature = "postgres")]
 #[rstest]
 #[tokio::test]
-async fn refused_postgres_connection_is_classified_as_connection() {
+async fn unavailable_postgres_endpoint_is_classified_as_timeout() {
 	// Arrange
 	let listener = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
 		.expect("a local ephemeral port must be available");
@@ -271,7 +271,7 @@ async fn refused_postgres_connection_is_classified_as_connection() {
 
 	// Assert
 	let Err(error) = result else {
-		panic!("a closed local endpoint must refuse the framework connection");
+		panic!("a closed local endpoint must time out through the framework pool");
 	};
-	assert_database_kind(error, DatabaseErrorKind::Connection);
+	assert_database_kind(error, DatabaseErrorKind::Timeout);
 }

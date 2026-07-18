@@ -268,6 +268,7 @@ impl CockroachDBTransactionManager {
 		error.database_error().is_some_and(|database_error| {
 			database_error.code() == Some("40001")
 				|| database_error.message().contains("restart transaction")
+				|| database_error.message().contains("serialization failure")
 		})
 	}
 
@@ -371,12 +372,10 @@ mod tests {
 		assert!(CockroachDBTransactionManager::is_serialization_error(&err1));
 
 		let err2 = Error::from(DatabaseError::new(
-			DatabaseErrorKind::Serialization,
+			DatabaseErrorKind::Query,
 			"serialization failure",
 		));
-		assert!(!CockroachDBTransactionManager::is_serialization_error(
-			&err2
-		));
+		assert!(CockroachDBTransactionManager::is_serialization_error(&err2));
 
 		let message_only = Error::from(DatabaseError::new(
 			DatabaseErrorKind::Query,
