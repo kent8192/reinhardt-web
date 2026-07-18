@@ -1319,6 +1319,25 @@ struct HydratedInput {
 	observed: Rc<RefCell<String>>,
 }
 
+struct HydratedInputAfterText {
+	value: Signal<String>,
+}
+
+impl Component for HydratedInputAfterText {
+	fn name() -> &'static str {
+		"HydratedInputAfterText"
+	}
+
+	fn render(&self) -> Page {
+		PageElement::new("div")
+			.child("Label")
+			.child(
+				PageElement::new("input").control_binding(ControlBinding::text(self.value.clone())),
+			)
+			.into_page()
+	}
+}
+
 struct FailingHydrationRoot {
 	trigger: Signal<u32>,
 	render_count: Rc<Cell<u32>>,
@@ -1635,6 +1654,43 @@ fn public_hydration_adopts_the_live_dom_property() {
 			.expect("dispatch");
 		assert_eq!(value.get(), "edited");
 		assert_eq!(&*observed.borrow(), "edited");
+		reinhardt_pages::cleanup_reactive_nodes();
+	});
+}
+
+#[wasm_bindgen_test]
+fn hydration_attaches_controls_after_text_siblings() {
+	ReactiveScope::run(|| {
+		let document = web_sys::window()
+			.expect("window")
+			.document()
+			.expect("document");
+		let raw_root = document.create_element("div").expect("root");
+		raw_root
+			.append_child(&document.create_text_node("Label"))
+			.expect("label");
+		let raw_input = document.create_element("input").expect("input");
+		let input: web_sys::HtmlInputElement = raw_input.clone().unchecked_into();
+		input.set_value("restored");
+		raw_root.append_child(&raw_input).expect("input child");
+		let root = Element::new(raw_root);
+		let value = Signal::new("server".to_owned());
+		let _state = SsrStateElement::install(&document);
+
+		reinhardt_pages::hydration::hydrate(
+			&HydratedInputAfterText {
+				value: value.clone(),
+			},
+			&root,
+		)
+		.expect("hydrate control after text sibling");
+
+		assert_eq!(value.get(), "restored");
+		input.set_value("edited");
+		input
+			.dispatch_event(&web_sys::InputEvent::new("input").expect("event"))
+			.expect("dispatch");
+		assert_eq!(value.get(), "edited");
 		reinhardt_pages::cleanup_reactive_nodes();
 	});
 }

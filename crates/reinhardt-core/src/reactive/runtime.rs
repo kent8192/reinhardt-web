@@ -278,9 +278,24 @@ impl Runtime {
 	///
 	/// * `signal_id` - ID of the Signal that changed
 	pub fn notify_signal_change(&self, signal_id: NodeId) {
+		self.notify_signal_changes(core::slice::from_ref(&signal_id));
+	}
+
+	/// Notify multiple signals as one propagation wave.
+	///
+	/// All source values must already be updated before this method is called.
+	/// Keeping the source IDs in the same wave prevents a consumer subscribed to
+	/// more than one source from running once per source.
+	pub(crate) fn notify_signal_changes(&self, signal_ids: &[NodeId]) {
+		if signal_ids.is_empty() {
+			return;
+		}
+
 		let mut revisions = self.signal_revisions.borrow_mut();
-		let revision = revisions.entry(signal_id).or_default();
-		*revision = revision.saturating_add(1);
+		for &signal_id in signal_ids {
+			let revision = revisions.entry(signal_id).or_default();
+			*revision = revision.saturating_add(1);
+		}
 		drop(revisions);
 		match self.notification_phase.get() {
 			NotificationPhase::Idle => {
@@ -288,16 +303,20 @@ impl Runtime {
 					core::mem::take(&mut *self.notification_recovery_sources.borrow_mut());
 				let mut sources = self.notification_sources.borrow_mut();
 				sources.extend(recovery);
-				sources.push(signal_id);
+				sources.extend(signal_ids.iter().copied());
 				drop(sources);
 				self.notification_phase.set(NotificationPhase::Propagating);
 				self.process_notification_epochs();
 			}
 			NotificationPhase::Propagating => {
-				self.notification_sources.borrow_mut().push(signal_id);
+				self.notification_sources
+					.borrow_mut()
+					.extend(signal_ids.iter().copied());
 			}
 			NotificationPhase::Consuming => {
-				self.notification_next_sources.borrow_mut().push(signal_id);
+				self.notification_next_sources
+					.borrow_mut()
+					.extend(signal_ids.iter().copied());
 			}
 		}
 	}

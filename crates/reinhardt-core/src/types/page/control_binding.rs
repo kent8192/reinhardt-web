@@ -375,9 +375,12 @@ impl ControlBinding {
 						signal.set_without_notify(value);
 						if let Some(error) = &error {
 							error.set_without_notify(None);
-							error.notify_subscribers();
+							crate::reactive::runtime::with_runtime(|runtime| {
+								runtime.notify_signal_changes(&[signal.id(), error.id()]);
+							});
+						} else {
+							signal.notify_subscribers();
 						}
-						signal.notify_subscribers();
 						Ok(ControlWriteOutcome::Committed)
 					}
 					Err(parse_error) => {
@@ -399,9 +402,12 @@ impl ControlBinding {
 						if let Some(error) = &restore_error {
 							error.set_without_notify(parse_error);
 						}
-						restore_signal.notify_subscribers();
 						if let Some(error) = restore_error {
-							error.notify_subscribers();
+							crate::reactive::runtime::with_runtime(|runtime| {
+								runtime.notify_signal_changes(&[restore_signal.id(), error.id()]);
+							});
+						} else {
+							restore_signal.notify_subscribers();
 						}
 					})),
 				}
@@ -811,6 +817,36 @@ mod tests {
 	}
 
 	#[rstest]
+	fn number_binding_notifies_shared_consumers_once_when_clearing_error() {
+		ReactiveScope::run(|| {
+			// Arrange
+			let value = Signal::new(7_i32);
+			let original_error = NumberParseError::new("invalid", NumberParseErrorKind::Invalid);
+			let error = Signal::new(Some(original_error));
+			let binding = ControlBinding::number_with_error(value.clone(), error.clone());
+			let observations = Rc::new(RefCell::new(Vec::new()));
+			let observed_value = value.clone();
+			let observed_error = error.clone();
+			let observations_for_effect = Rc::clone(&observations);
+			let _effect = Effect::new_with_timing(
+				move || {
+					observations_for_effect
+						.borrow_mut()
+						.push((observed_value.get(), observed_error.get()));
+				},
+				EffectTiming::Layout,
+			);
+			observations.borrow_mut().clear();
+
+			// Act
+			binding.write(ControlValue::Text("8".to_owned())).unwrap();
+
+			// Assert
+			assert_eq!(observations.borrow().as_slice(), &[(8, None)]);
+		});
+	}
+
+	#[rstest]
 	fn text_binding_reads_and_writes_the_signal() {
 		ReactiveScope::run(|| {
 			// Arrange
@@ -990,7 +1026,7 @@ mod tests {
 			drop(snapshot);
 
 			// Assert
-			assert!(!observations.borrow().is_empty());
+			assert_eq!(observations.borrow().len(), 1);
 			assert!(
 				observations
 					.borrow()
