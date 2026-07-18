@@ -1470,12 +1470,21 @@ mod tests {
 	use rstest::rstest;
 
 	// Mock transaction executor for testing
-	struct MockTransactionExecutor;
+	struct MockTransactionExecutor {
+		backend: DatabaseType,
+	}
 
 	#[async_trait::async_trait]
 	impl TransactionExecutor for MockTransactionExecutor {
+		fn backend(&self) -> DatabaseType {
+			self.backend
+		}
+
 		async fn execute(&mut self, _sql: &str, _params: Vec<QueryValue>) -> Result<QueryResult> {
-			Ok(QueryResult { rows_affected: 0 })
+			Ok(QueryResult {
+				rows_affected: 0,
+				last_insert_id: None,
+			})
 		}
 
 		async fn fetch_one(&mut self, _sql: &str, _params: Vec<QueryValue>) -> Result<Row> {
@@ -1524,7 +1533,10 @@ mod tests {
 		}
 
 		async fn execute(&self, _sql: &str, _params: Vec<QueryValue>) -> Result<QueryResult> {
-			Ok(QueryResult { rows_affected: 1 })
+			Ok(QueryResult {
+				rows_affected: 1,
+				last_insert_id: None,
+			})
 		}
 
 		async fn fetch_one(&self, _sql: &str, _params: Vec<QueryValue>) -> Result<Row> {
@@ -1548,7 +1560,9 @@ mod tests {
 		}
 
 		async fn begin(&self) -> Result<Box<dyn TransactionExecutor>> {
-			Ok(Box::new(MockTransactionExecutor))
+			Ok(Box::new(MockTransactionExecutor {
+				backend: DatabaseType::Postgres,
+			}))
 		}
 	}
 
@@ -1626,7 +1640,10 @@ mod tests {
 			false
 		}
 		async fn execute(&self, _sql: &str, _params: Vec<QueryValue>) -> Result<QueryResult> {
-			Ok(QueryResult { rows_affected: 1 })
+			Ok(QueryResult {
+				rows_affected: 1,
+				last_insert_id: None,
+			})
 		}
 		async fn fetch_one(&self, _sql: &str, _params: Vec<QueryValue>) -> Result<Row> {
 			Ok(Row::new())
@@ -1645,7 +1662,9 @@ mod tests {
 			self
 		}
 		async fn begin(&self) -> Result<Box<dyn TransactionExecutor>> {
-			Ok(Box::new(MockTransactionExecutor))
+			Ok(Box::new(MockTransactionExecutor {
+				backend: DatabaseType::Mysql,
+			}))
 		}
 	}
 
@@ -1666,7 +1685,10 @@ mod tests {
 			true
 		}
 		async fn execute(&self, _sql: &str, _params: Vec<QueryValue>) -> Result<QueryResult> {
-			Ok(QueryResult { rows_affected: 1 })
+			Ok(QueryResult {
+				rows_affected: 1,
+				last_insert_id: None,
+			})
 		}
 		async fn fetch_one(&self, _sql: &str, _params: Vec<QueryValue>) -> Result<Row> {
 			Ok(Row::new())
@@ -1685,8 +1707,21 @@ mod tests {
 			self
 		}
 		async fn begin(&self) -> Result<Box<dyn TransactionExecutor>> {
-			Ok(Box::new(MockTransactionExecutor))
+			Ok(Box::new(MockTransactionExecutor {
+				backend: DatabaseType::Sqlite,
+			}))
 		}
+	}
+
+	#[tokio::test]
+	async fn test_mock_transaction_executors_report_origin_backend() {
+		let postgres_transaction = MockBackend.begin().await.unwrap();
+		let mysql_transaction = MockMysqlBackend.begin().await.unwrap();
+		let sqlite_transaction = MockSqliteBackend.begin().await.unwrap();
+
+		assert_eq!(postgres_transaction.backend(), DatabaseType::Postgres);
+		assert_eq!(mysql_transaction.backend(), DatabaseType::Mysql);
+		assert_eq!(sqlite_transaction.backend(), DatabaseType::Sqlite);
 	}
 
 	// Tests for OnConflictClause (new fluent API)

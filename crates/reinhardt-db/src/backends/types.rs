@@ -119,6 +119,8 @@ impl From<Uuid> for QueryValue {
 pub struct QueryResult {
 	/// The rows affected.
 	pub rows_affected: u64,
+	/// The generated ID returned by this exact insert operation, if available.
+	pub last_insert_id: Option<u64>,
 }
 
 /// Row from query result
@@ -492,6 +494,9 @@ fn validate_savepoint_name(name: &str) -> Result<(), String> {
 /// maintains connection affinity.
 #[async_trait::async_trait]
 pub trait TransactionExecutor: Send + Sync {
+	/// Returns the database backend for this dedicated transaction connection.
+	fn backend(&self) -> DatabaseType;
+
 	/// Execute a query that modifies the database within the transaction
 	async fn execute(
 		&mut self,

@@ -2,14 +2,14 @@
 //!
 //! This module provides the ManyToManyAccessor type, which implements
 //! Django-style API for managing many-to-many relationships:
-//! - `add()` - Add a relationship
-//! - `remove()` - Remove a relationship
-//! - `all()` - Get all related records
-//! - `clear()` - Remove all relationships
-//! - `set()` - Replace all relationships
+//! - `add_with_conn()` - Add a relationship through a supplied executor
+//! - `remove_with_conn()` - Remove a relationship through a supplied executor
+//! - `all_with_conn()` - Get all related records through a supplied executor
+//! - `clear_with_conn()` - Remove all relationships through a supplied executor
+//! - `set_with_conn()` - Replace all relationships through a supplied executor
 
 use super::Manager;
-use super::connection::{DatabaseBackend, DatabaseConnection};
+use super::connection::{DatabaseBackend, OrmExecutor, QueryRow};
 use super::relationship::RelationshipType;
 use crate::m2m_naming::{default_m2m_columns, default_through_table};
 use crate::orm::Model;
@@ -69,20 +69,20 @@ fn build_delete_sql(stmt: &DeleteStatement, backend: DatabaseBackend) -> (String
 /// # async fn main() {
 /// use reinhardt_db::orm::{Model, ManyToManyAccessor};
 ///
-/// let user = User::find_by_id(&db, user_id).await?;
-/// let accessor = ManyToManyAccessor::new(&user, "groups", db.clone());
+/// let user = User::find_by_id(&mut db, user_id).await?;
+/// let accessor = ManyToManyAccessor::new(&user, "groups");
 ///
 /// // Add a relationship
-/// accessor.add(&group).await?;
+/// accessor.add_with_conn(&mut db, &group).await?;
 ///
 /// // Get all related records
-/// let groups = accessor.all().await?;
+/// let groups = accessor.all_with_conn(&mut db).await?;
 ///
 /// // Remove a relationship
-/// accessor.remove(&group).await?;
+/// accessor.remove_with_conn(&mut db, &group).await?;
 ///
 /// // Clear all relationships
-/// accessor.clear().await?;
+/// accessor.clear_with_conn(&mut db).await?;
 ///
 /// # }
 /// ```
@@ -97,7 +97,6 @@ where
 	through_table: String,
 	source_field: String,
 	target_field: String,
-	db: DatabaseConnection,
 	limit: Option<usize>,
 	offset: Option<usize>,
 	_phantom_source: PhantomData<S>,
@@ -117,14 +116,13 @@ where
 	///
 	/// - `source`: The source model instance
 	/// - `field_name`: The name of the ManyToMany field
-	/// - `db`: Database connection
 	///
 	/// # Panics
 	///
 	/// Panics if:
 	/// - The field_name does not correspond to a ManyToMany field
 	/// - The source model has no primary key
-	pub fn new(source: &S, field_name: &str, db: DatabaseConnection) -> Self {
+	pub fn new(source: &S, field_name: &str) -> Self {
 		// Try to get through table info from model metadata
 		let rel_info = S::relationship_metadata()
 			.into_iter()
@@ -163,7 +161,6 @@ where
 			through_table,
 			source_field,
 			target_field,
-			db,
 			limit: None,
 			offset: None,
 			_phantom_source: PhantomData,
@@ -177,6 +174,7 @@ where
 	///
 	/// # Parameters
 	///
+	/// - `conn`: Caller-owned ORM executor
 	/// - `target`: The target model to add
 	///
 	/// # Errors
@@ -188,12 +186,22 @@ where
 	/// # Examples
 	///
 	/// ```ignore
-	/// accessor.add(&group).await?;
+	/// accessor.add_with_conn(&mut db, &group).await?;
 	/// ```
-	pub async fn add(&self, target: &T) -> Result<(), String> {
-		let target_id = target
-			.primary_key()
-			.ok_or_else(|| "Target model has no primary key".to_string())?;
+	pub async fn add_with_conn<E>(
+		&self,
+		conn: &mut E,
+		target: &T,
+	) -> reinhardt_core::exception::Result<()>
+	where
+		E: OrmExecutor,
+	{
+		let target_id = target.primary_key().ok_or_else(|| {
+			reinhardt_core::exception::Error::from(reinhardt_core::exception::DatabaseError::new(
+				reinhardt_core::exception::DatabaseErrorKind::Query,
+				"Target model has no primary key",
+			))
+		})?;
 
 		let query = Query::insert()
 			.into_table(Alias::new(&self.through_table))
@@ -202,17 +210,14 @@ where
 				Alias::new(&self.target_field),
 			])
 			.values_panic([
-				Expr::val(self.source_id.to_string()),
-				Expr::val(target_id.to_string()),
+				Expr::val(self.source_id.clone()),
+				Expr::val(target_id.clone()),
 			])
 			.to_owned();
 
-		let (sql, _values) = build_insert_sql(&query, self.db.backend());
-
-		self.db
-			.execute(&sql, vec![])
-			.await
-			.map_err(|e| e.to_string())?;
+		let (sql, values) = build_insert_sql(&query, conn.backend());
+		conn.execute(&sql, super::execution::convert_values(values))
+			.await?;
 
 		Ok(())
 	}
@@ -223,6 +228,7 @@ where
 	///
 	/// # Parameters
 	///
+	/// - `conn`: Caller-owned ORM executor
 	/// - `target`: The target model to remove
 	///
 	/// # Errors
@@ -234,33 +240,74 @@ where
 	/// # Examples
 	///
 	/// ```ignore
-	/// accessor.remove(&group).await?;
+	/// accessor.remove_with_conn(&mut db, &group).await?;
 	/// ```
-	pub async fn remove(&self, target: &T) -> Result<(), String> {
-		let target_id = target
-			.primary_key()
-			.ok_or_else(|| "Target model has no primary key".to_string())?;
+	pub async fn remove_with_conn<E>(
+		&self,
+		conn: &mut E,
+		target: &T,
+	) -> reinhardt_core::exception::Result<()>
+	where
+		E: OrmExecutor,
+	{
+		let target_id = target.primary_key().ok_or_else(|| {
+			reinhardt_core::exception::Error::from(reinhardt_core::exception::DatabaseError::new(
+				reinhardt_core::exception::DatabaseErrorKind::Query,
+				"Target model has no primary key",
+			))
+		})?;
 
 		let query = Query::delete()
 			.from_table(Alias::new(&self.through_table))
 			.and_where(
 				Expr::col(Alias::new(&self.source_field))
-					.binary(BinOper::Equal, Expr::val(self.source_id.to_string())),
+					.binary(BinOper::Equal, Expr::val(self.source_id.clone())),
 			)
 			.and_where(
 				Expr::col(Alias::new(&self.target_field))
-					.binary(BinOper::Equal, Expr::val(target_id.to_string())),
+					.binary(BinOper::Equal, Expr::val(target_id.clone())),
 			)
 			.to_owned();
 
-		let (sql, _values) = build_delete_sql(&query, self.db.backend());
-
-		self.db
-			.execute(&sql, vec![])
-			.await
-			.map_err(|e| e.to_string())?;
+		let (sql, values) = build_delete_sql(&query, conn.backend());
+		conn.execute(&sql, super::execution::convert_values(values))
+			.await?;
 
 		Ok(())
+	}
+
+	/// Returns whether the target is related through the caller-owned executor.
+	pub async fn contains_with_conn<E>(
+		&self,
+		conn: &mut E,
+		target: &T,
+	) -> reinhardt_core::exception::Result<bool>
+	where
+		E: OrmExecutor,
+	{
+		let target_id = target.primary_key().ok_or_else(|| {
+			reinhardt_core::exception::Error::from(reinhardt_core::exception::DatabaseError::new(
+				reinhardt_core::exception::DatabaseErrorKind::Query,
+				"Target model has no primary key",
+			))
+		})?;
+		let query = Query::select()
+			.from(Alias::new(&self.through_table))
+			.expr(Expr::asterisk())
+			.and_where(
+				Expr::col(Alias::new(&self.source_field))
+					.binary(BinOper::Equal, Expr::val(self.source_id.clone())),
+			)
+			.and_where(
+				Expr::col(Alias::new(&self.target_field))
+					.binary(BinOper::Equal, Expr::val(target_id.clone())),
+			)
+			.to_owned();
+		let (sql, values) = build_select_sql(&query, conn.backend());
+		Ok(!conn
+			.fetch_all(&sql, super::execution::convert_values(values))
+			.await?
+			.is_empty())
 	}
 
 	/// Set LIMIT clause
@@ -270,7 +317,7 @@ where
 	/// # Examples
 	///
 	/// ```ignore
-	/// let followers = accessor.limit(10).all().await?;
+	/// let followers = accessor.limit(10).all_with_conn(&mut db).await?;
 	/// ```
 	pub fn limit(mut self, limit: usize) -> Self {
 		self.limit = Some(limit);
@@ -284,7 +331,7 @@ where
 	/// # Examples
 	///
 	/// ```ignore
-	/// let followers = accessor.offset(20).limit(10).all().await?;
+	/// let followers = accessor.offset(20).limit(10).all_with_conn(&mut db).await?;
 	/// ```
 	pub fn offset(mut self, offset: usize) -> Self {
 		self.offset = Some(offset);
@@ -299,7 +346,7 @@ where
 	///
 	/// ```ignore
 	/// // Page 3, 10 items per page (offset=20, limit=10)
-	/// let followers = accessor.paginate(3, 10).all().await?;
+	/// let followers = accessor.paginate(3, 10).all_with_conn(&mut db).await?;
 	/// ```
 	pub fn paginate(self, page: usize, page_size: usize) -> Self {
 		let offset = page.saturating_sub(1) * page_size;
@@ -318,24 +365,30 @@ where
 	/// # Examples
 	///
 	/// ```ignore
-	/// let total_followers = accessor.count().await?;
+	/// let total_followers = accessor.count_with_conn(&mut db).await?;
 	/// ```
-	pub async fn count(&self) -> Result<usize, String> {
+	pub async fn count_with_conn<E>(&self, conn: &mut E) -> reinhardt_core::exception::Result<usize>
+	where
+		E: OrmExecutor,
+	{
 		let mut query = Query::select();
 		query
 			.from(Alias::new(&self.through_table))
-			.expr(Func::count(Expr::asterisk().into_simple_expr()))
+			.expr_as(
+				Func::count(Expr::asterisk().into_simple_expr()),
+				Alias::new("count"),
+			)
 			.and_where(
 				Expr::col(Alias::new(&self.source_field))
 					.binary(BinOper::Equal, Expr::val(self.source_id.clone())),
 			);
 
 		let query = query.to_owned();
-		let (sql, values) = build_select_sql(&query, self.db.backend());
+		let (sql, values) = build_select_sql(&query, conn.backend());
 		let params = value_samples(&values);
 		let query_values = super::execution::convert_values(values);
 		let started_at = Instant::now();
-		let query_result = self.db.query(&sql, query_values).await;
+		let query_result = conn.fetch_all(&sql, query_values).await;
 		let duration = started_at.elapsed();
 		let rows = match query_result {
 			Ok(rows) => {
@@ -348,13 +401,12 @@ where
 				super::instrumentation::instrumentation()
 					.orm_query_error(&sql, &error.to_string())
 					.await;
-				return Err(error.to_string());
+				return Err(error);
 			}
 		};
 
-		if let Some(row) = rows.first()
-			&& let Some(count_value) = row.data.get("count")
-			&& let Some(count) = count_value.as_i64()
+		if let Some(row) = rows.into_iter().next().map(QueryRow::from_backend_row)
+			&& let Some(count) = row.get::<i64>("count")
 		{
 			return Ok(count as usize);
 		}
@@ -374,9 +426,12 @@ where
 	/// # Examples
 	///
 	/// ```ignore
-	/// let groups = accessor.all().await?;
+	/// let groups = accessor.all_with_conn(&mut db).await?;
 	/// ```
-	pub async fn all(&self) -> Result<Vec<T>, String> {
+	pub async fn all_with_conn<E>(&self, conn: &mut E) -> reinhardt_core::exception::Result<Vec<T>>
+	where
+		E: OrmExecutor,
+	{
 		let mut query = Query::select();
 		query.from(Alias::new(T::table_name()));
 
@@ -392,14 +447,21 @@ where
 		} else {
 			// Explicitly select only target table columns
 			for field in field_metadata {
-				query.column((Alias::new(T::table_name()), Alias::new(&field.name)));
+				query.column((
+					Alias::new(T::table_name()),
+					Alias::new(field.db_column_name()),
+				));
 			}
 		}
 
 		query
 			.inner_join(
 				Alias::new(&self.through_table),
-				Expr::col((Alias::new(T::table_name()), Alias::new("id"))).equals((
+				Expr::col((
+					Alias::new(T::table_name()),
+					Alias::new(T::primary_key_column()),
+				))
+				.equals((
 					Alias::new(&self.through_table),
 					Alias::new(&self.target_field),
 				)),
@@ -421,11 +483,11 @@ where
 		}
 
 		let query = query.to_owned();
-		let (sql, values) = build_select_sql(&query, self.db.backend());
+		let (sql, values) = build_select_sql(&query, conn.backend());
 		let params = value_samples(&values);
 		let query_values = super::execution::convert_values(values);
 		let started_at = Instant::now();
-		let query_result = self.db.query(&sql, query_values).await;
+		let query_result = conn.fetch_all(&sql, query_values).await;
 		let duration = started_at.elapsed();
 		let rows = match query_result {
 			Ok(rows) => {
@@ -438,12 +500,22 @@ where
 				super::instrumentation::instrumentation()
 					.orm_query_error(&sql, &error.to_string())
 					.await;
-				return Err(error.to_string());
+				return Err(error);
 			}
 		};
 
 		rows.into_iter()
-			.map(|row| row.deserialize_model::<T>().map_err(|e| e.to_string()))
+			.map(QueryRow::from_backend_row)
+			.map(|row| {
+				row.deserialize_model::<T>().map_err(|error| {
+					reinhardt_core::exception::Error::from(
+						reinhardt_core::exception::DatabaseError::new(
+							reinhardt_core::exception::DatabaseErrorKind::Serialization,
+							error.to_string(),
+						),
+					)
+				})
+			})
 			.collect()
 	}
 
@@ -458,32 +530,31 @@ where
 	/// # Examples
 	///
 	/// ```ignore
-	/// accessor.clear().await?;
+	/// accessor.clear_with_conn(&mut db).await?;
 	/// ```
-	pub async fn clear(&self) -> Result<(), String> {
+	pub async fn clear_with_conn<E>(&self, conn: &mut E) -> reinhardt_core::exception::Result<()>
+	where
+		E: OrmExecutor,
+	{
 		let query = Query::delete()
 			.from_table(Alias::new(&self.through_table))
 			.and_where(
 				Expr::col(Alias::new(&self.source_field))
-					.binary(BinOper::Equal, Expr::val(self.source_id.to_string())),
+					.binary(BinOper::Equal, Expr::val(self.source_id.clone())),
 			)
 			.to_owned();
 
-		let (sql, _values) = build_delete_sql(&query, self.db.backend());
-
-		self.db
-			.execute(&sql, vec![])
-			.await
-			.map_err(|e| e.to_string())?;
+		let (sql, values) = build_delete_sql(&query, conn.backend());
+		conn.execute(&sql, super::execution::convert_values(values))
+			.await?;
 
 		Ok(())
 	}
 
 	/// Replace all relationships with a new set.
 	///
-	/// This is a transactional operation that:
-	/// 1. Removes all existing relationships
-	/// 2. Adds new relationships
+	/// The caller controls atomicity. Pass an [`AtomicTransaction`](super::AtomicTransaction)
+	/// when clearing and adding must be committed or rolled back together.
 	///
 	/// # Parameters
 	///
@@ -496,53 +567,20 @@ where
 	/// # Examples
 	///
 	/// ```ignore
-	/// accessor.set(&[group1, group2, group3]).await?;
+	/// accessor.set_with_conn(&mut transaction, &[group1, group2, group3]).await?;
 	/// ```
-	pub async fn set(&self, targets: &[T]) -> Result<(), String> {
-		// Use transaction for atomicity
-		let mut tx = self.db.begin().await.map_err(|e| e.to_string())?;
-		let backend = self.db.backend();
-
-		// Build and execute clear query within transaction
-		let clear_query = Query::delete()
-			.from_table(Alias::new(&self.through_table))
-			.and_where(
-				Expr::col(Alias::new(&self.source_field))
-					.binary(BinOper::Equal, Expr::val(self.source_id.to_string())),
-			)
-			.to_owned();
-		let (clear_sql, _) = build_delete_sql(&clear_query, backend);
-		tx.execute(&clear_sql, vec![])
-			.await
-			.map_err(|e| e.to_string())?;
-
-		// Add new relationships within transaction
+	pub async fn set_with_conn<E>(
+		&self,
+		conn: &mut E,
+		targets: &[T],
+	) -> reinhardt_core::exception::Result<()>
+	where
+		E: OrmExecutor,
+	{
+		self.clear_with_conn(conn).await?;
 		for target in targets {
-			let target_id = target
-				.primary_key()
-				.ok_or_else(|| "Target model has no primary key".to_string())?;
-
-			let insert_query = Query::insert()
-				.into_table(Alias::new(&self.through_table))
-				.columns([
-					Alias::new(&self.source_field),
-					Alias::new(&self.target_field),
-				])
-				.values_panic([
-					Expr::val(self.source_id.to_string()),
-					Expr::val(target_id.to_string()),
-				])
-				.to_owned();
-
-			let (insert_sql, _) = build_insert_sql(&insert_query, backend);
-			tx.execute(&insert_sql, vec![])
-				.await
-				.map_err(|e| e.to_string())?;
+			self.add_with_conn(conn, target).await?;
 		}
-
-		// Commit transaction
-		tx.commit().await.map_err(|e| e.to_string())?;
-
 		Ok(())
 	}
 
@@ -562,7 +600,7 @@ where
 	/// - `source_manager`: Manager for the source model
 	/// - `field_name`: Name of the ManyToMany field on the source model
 	/// - `target`: The target model instance to filter by
-	/// - `db`: Database connection
+	/// - `conn`: Caller-owned ORM executor
 	///
 	/// # Returns
 	///
@@ -579,12 +617,12 @@ where
 	///
 	/// ```ignore
 	/// // Find all rooms where a specific user is a member
-	/// let user = User::find_by_id(&db, user_id).await?;
-	/// let rooms = ManyToManyAccessor::<DMRoom, User>::filter_by_target(
+	/// let user = User::find_by_id(&mut db, user_id).await?;
+	/// let rooms = ManyToManyAccessor::<DMRoom, User>::filter_by_target_with_conn(
 	///     &DMRoom::objects(),
 	///     "members",
 	///     &user,
-	///     db.clone()
+	///     &mut db
 	/// ).await?;
 	/// ```
 	///
@@ -595,15 +633,21 @@ where
 	/// INNER JOIN through_table ON source_table.id = through_table.source_id
 	/// WHERE through_table.target_id = $1
 	/// ```
-	pub async fn filter_by_target(
+	pub async fn filter_by_target_with_conn<E>(
 		_source_manager: &Manager<S>,
 		field_name: &str,
 		target: &T,
-		db: DatabaseConnection,
-	) -> Result<Vec<S>, String> {
-		let target_id = target
-			.primary_key()
-			.ok_or_else(|| "Target model has no primary key".to_string())?;
+		conn: &mut E,
+	) -> reinhardt_core::exception::Result<Vec<S>>
+	where
+		E: OrmExecutor,
+	{
+		let target_id = target.primary_key().ok_or_else(|| {
+			reinhardt_core::exception::Error::from(reinhardt_core::exception::DatabaseError::new(
+				reinhardt_core::exception::DatabaseErrorKind::Query,
+				"Target model has no primary key",
+			))
+		})?;
 
 		// Resolve through-table and FK column names through the same
 		// metadata-aware path as `new()`, routing the fallbacks through
@@ -642,15 +686,21 @@ where
 			query.column(ColumnRef::table_asterisk(Alias::new(S::table_name())));
 		} else {
 			for field in field_metadata {
-				query.column((Alias::new(S::table_name()), Alias::new(&field.name)));
+				query.column((
+					Alias::new(S::table_name()),
+					Alias::new(field.db_column_name()),
+				));
 			}
 		}
 
 		let query = query
 			.inner_join(
 				Alias::new(&through_table),
-				Expr::col((Alias::new(S::table_name()), Alias::new("id")))
-					.equals((Alias::new(&through_table), Alias::new(&source_field))),
+				Expr::col((
+					Alias::new(S::table_name()),
+					Alias::new(S::primary_key_column()),
+				))
+				.equals((Alias::new(&through_table), Alias::new(&source_field))),
 			)
 			.and_where(
 				Expr::col((Alias::new(&through_table), Alias::new(&target_field)))
@@ -658,11 +708,11 @@ where
 			)
 			.to_owned();
 
-		let (sql, values) = build_select_sql(&query, db.backend());
+		let (sql, values) = build_select_sql(&query, conn.backend());
 		let params = value_samples(&values);
 		let query_values = super::execution::convert_values(values);
 		let started_at = Instant::now();
-		let query_result = db.query(&sql, query_values).await;
+		let query_result = conn.fetch_all(&sql, query_values).await;
 		let duration = started_at.elapsed();
 		let rows = match query_result {
 			Ok(rows) => {
@@ -675,12 +725,22 @@ where
 				super::instrumentation::instrumentation()
 					.orm_query_error(&sql, &error.to_string())
 					.await;
-				return Err(error.to_string());
+				return Err(error);
 			}
 		};
 
 		rows.into_iter()
-			.map(|row| row.deserialize_model::<S>().map_err(|e| e.to_string()))
+			.map(QueryRow::from_backend_row)
+			.map(|row| {
+				row.deserialize_model::<S>().map_err(|error| {
+					reinhardt_core::exception::Error::from(
+						reinhardt_core::exception::DatabaseError::new(
+							reinhardt_core::exception::DatabaseErrorKind::Serialization,
+							error.to_string(),
+						),
+					)
+				})
+			})
 			.collect()
 	}
 }

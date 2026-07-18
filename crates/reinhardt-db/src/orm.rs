@@ -7,98 +7,38 @@
 //! records the SQL joins required by the filter, so application code does not
 //! need raw join builders for common FK, reverse, or M2M lookups.
 //!
-//! ## Documentation
-//!
-//! - [README.md](../README.md) - Feature list and API reference
-//! - [USAGE_GUIDE.md](../USAGE_GUIDE.md) - Comprehensive usage guide with examples and best practices
-//!
 //! ## Transaction Management
 //!
-//! Reinhardt ORM provides a closure-based API for automatic transaction management:
+//! ORM writes run inside closure-scoped transactions. Start an outer operation
+//! with [`DatabaseConnection::atomic`], then use the supplied mutable
+//! [`AtomicTransaction`] for every `*_with_conn` or `*_with_db` operation.
+//! Nested [`AtomicTransaction::atomic`] callbacks use savepoints on the same
+//! dedicated connection.
 //!
-//! ### Basic Usage
-//!
-//! ```rust
+//! ```no_run
 //! use reinhardt_core::exception::Error;
-//! use reinhardt_db::orm::connection::DatabaseConnection;
-//! use reinhardt_db::orm::transaction::transaction;
+//! use reinhardt_db::orm::DatabaseConnection;
 //!
-//! # async fn example() -> reinhardt_core::exception::Result<()> {
-//! let conn = DatabaseConnection::connect("sqlite::memory:").await?;
-//!
-//! // Automatic commit on success, rollback on error
-//! let user_id = transaction(&conn, async |_tx| {
-//!     // Your database operations here
-//!     // let id = insert_user("Alice").await?;
+//! # async fn example() -> Result<(), Error> {
+//! let connection = DatabaseConnection::connect("sqlite::memory:").await?;
+//! let result = connection.atomic(async |transaction| {
+//!     transaction.atomic(async |_savepoint| {
+//!         Ok::<_, Error>(())
+//!     }).await?;
 //!     Ok::<_, Error>(42)
 //! }).await?;
-//!
-//! assert_eq!(user_id, 42);
+//! assert_eq!(result, 42);
 //! # Ok(())
 //! # }
 //! ```
 //!
-//! ### With Isolation Level
+//! Callback errors roll back the relevant scope. If rollback or savepoint
+//! cleanup fails, that framework error takes precedence. Callback panics are
+//! rethrown after best-effort cleanup; cancellation cannot guarantee completion.
+//! MySQL DDL may implicitly commit and is outside this atomicity guarantee.
 //!
-//! ```rust
-//! use reinhardt_core::exception::Error;
-//! use reinhardt_db::orm::transaction::{transaction_with_isolation, IsolationLevel};
-//! # use reinhardt_db::orm::connection::DatabaseConnection;
-//!
-//! # async fn example() -> reinhardt_core::exception::Result<()> {
-//! # let conn = DatabaseConnection::connect("sqlite::memory:").await?;
-//! transaction_with_isolation(&conn, IsolationLevel::Serializable, async |_tx| {
-//!     // Critical operations requiring serializable isolation
-//!     Ok::<(), Error>(())
-//! }).await?;
-//! # Ok(())
-//! # }
-//! ```
-//!
-//! ### Error Handling
-//!
-//! ```rust
-//! use reinhardt_db::orm::transaction::transaction;
-//! # use reinhardt_db::orm::connection::DatabaseConnection;
-//! use reinhardt_core::exception::Error;
-//!
-//! # async fn example() -> reinhardt_core::exception::Result<()> {
-//! # let conn = DatabaseConnection::connect("sqlite::memory:").await?;
-//! # let some_condition = true;
-//! let result: reinhardt_core::exception::Result<i32> = transaction(&conn, async |_tx| {
-//!     // Simulate an error
-//!     if some_condition {
-//!         return Err(Error::Internal("Operation failed".to_string()));
-//!     }
-//!     Ok(42)
-//! }).await;
-//!
-//! match result {
-//!     Ok(value) => println!("Transaction committed: {}", value),
-//!     Err(e) => println!("Transaction rolled back: {}", e),
-//! }
-//! # Ok(())
-//! # }
-//! ```
-//!
-//! **Key Features:**
-//! - ✅ **Automatic commit** on successful closure completion
-//! - ✅ **Automatic rollback** on error or panic
-//! - ✅ **RAII-style cleanup** with Drop implementation
-//! - ✅ **Nested transactions** support via savepoints (TransactionScope API)
-//! - ✅ **Isolation level** control with `transaction_with_isolation()`
-//!
-//! See [`transaction`](transaction/index.html) module for detailed documentation.
-//!
-//! ## Migration System
-//!
-//! The reinhardt-migrations crate provides comprehensive migration support:
-//! - **Migration generation from model changes** (✅ Implemented)
-//! - **Migration dependency resolution with DAG** (✅ Implemented)
-//! - **Forward and backward migration execution** (✅ Implemented)
-//! - **Schema introspection and diffing** (✅ Implemented)
-//!
-//! See `reinhardt-migrations` crate for detailed documentation.
+//! [`Transaction`], [`Savepoint`], and [`IsolationLevel`] remain SQL-builder
+//! values only. They may generate SQL but cannot control a live ORM transaction.
 
 // Core modules - always available
 pub mod aggregation;
@@ -213,7 +153,7 @@ pub use paste;
 pub use aggregation::{Aggregate, AggregateFunc, AggregateResult, AggregateValue};
 pub use annotation::{Annotation, AnnotationValue, Expression, Value, When};
 pub use connection::{
-	DatabaseBackend, DatabaseConnection, DatabaseExecutor, QueryRow, QueryValue, Row,
+	DatabaseBackend, DatabaseConnection, OrmExecutor, QueryResult, QueryRow, QueryValue, Row,
 	TransactionExecutor,
 };
 pub use constraints::{
@@ -235,8 +175,7 @@ pub use query_fields::{
 };
 pub use set_operations::{CombinedQuery, SetOperation, SetOperationBuilder};
 pub use transaction::{
-	Atomic, IsolationLevel, Savepoint, Transaction, TransactionScope, TransactionState, atomic,
-	atomic_with_isolation,
+	AtomicTransaction, IsolationLevel, Savepoint, Transaction, TransactionState,
 };
 pub use two_phase_commit::{
 	Participant, ParticipantStatus, TransactionState as TwoPhaseTransactionState, TwoPhaseCommit,

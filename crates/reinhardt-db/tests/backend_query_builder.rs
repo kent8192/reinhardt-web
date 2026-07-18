@@ -32,6 +32,60 @@ impl MockBackend {
 	}
 }
 
+struct MockTransactionExecutor {
+	backend: DatabaseType,
+}
+
+#[async_trait]
+impl TransactionExecutor for MockTransactionExecutor {
+	fn backend(&self) -> DatabaseType {
+		self.backend
+	}
+
+	async fn execute(
+		&mut self,
+		_sql: &str,
+		_params: Vec<QueryValue>,
+	) -> reinhardt_db::backends::Result<QueryResult> {
+		Ok(QueryResult {
+			rows_affected: 0,
+			last_insert_id: None,
+		})
+	}
+
+	async fn fetch_one(
+		&mut self,
+		_sql: &str,
+		_params: Vec<QueryValue>,
+	) -> reinhardt_db::backends::Result<Row> {
+		Ok(Row::new())
+	}
+
+	async fn fetch_all(
+		&mut self,
+		_sql: &str,
+		_params: Vec<QueryValue>,
+	) -> reinhardt_db::backends::Result<Vec<Row>> {
+		Ok(Vec::new())
+	}
+
+	async fn fetch_optional(
+		&mut self,
+		_sql: &str,
+		_params: Vec<QueryValue>,
+	) -> reinhardt_db::backends::Result<Option<Row>> {
+		Ok(None)
+	}
+
+	async fn commit(self: Box<Self>) -> reinhardt_db::backends::Result<()> {
+		Ok(())
+	}
+
+	async fn rollback(self: Box<Self>) -> reinhardt_db::backends::Result<()> {
+		Ok(())
+	}
+}
+
 #[async_trait]
 impl DatabaseBackend for MockBackend {
 	fn database_type(&self) -> DatabaseType {
@@ -58,7 +112,10 @@ impl DatabaseBackend for MockBackend {
 		_sql: &str,
 		_params: Vec<QueryValue>,
 	) -> reinhardt_db::backends::Result<QueryResult> {
-		Ok(QueryResult { rows_affected: 0 })
+		Ok(QueryResult {
+			rows_affected: 0,
+			last_insert_id: None,
+		})
 	}
 
 	async fn fetch_one(
@@ -1129,24 +1186,52 @@ fn test_query_result_rows_affected() {
 	// Arrange
 
 	// Act
-	let result = QueryResult { rows_affected: 5 };
+	let result = QueryResult {
+		rows_affected: 5,
+		last_insert_id: Some(42),
+	};
 
 	// Assert
 	assert_eq!(result.rows_affected, 5);
+	assert_eq!(result.last_insert_id, Some(42));
 }
 
 #[rstest]
 fn test_query_result_equality() {
 	// Arrange
-	let r1 = QueryResult { rows_affected: 3 };
-	let r2 = QueryResult { rows_affected: 3 };
-	let r3 = QueryResult { rows_affected: 7 };
+	let r1 = QueryResult {
+		rows_affected: 3,
+		last_insert_id: None,
+	};
+	let r2 = QueryResult {
+		rows_affected: 3,
+		last_insert_id: None,
+	};
+	let r3 = QueryResult {
+		rows_affected: 3,
+		last_insert_id: Some(7),
+	};
 
 	// Act
 
 	// Assert
 	assert_eq!(r1, r2);
 	assert_ne!(r1, r3);
+}
+
+#[rstest]
+#[case(DatabaseType::Postgres)]
+#[case(DatabaseType::Mysql)]
+#[case(DatabaseType::Sqlite)]
+fn test_transaction_executor_reports_its_backend(#[case] backend: DatabaseType) {
+	// Arrange
+	let executor = MockTransactionExecutor { backend };
+
+	// Act
+	let reported_backend = executor.backend();
+
+	// Assert
+	assert_eq!(reported_backend, backend);
 }
 
 // ==================== Row tests ====================

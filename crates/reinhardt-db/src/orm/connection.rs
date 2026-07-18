@@ -6,9 +6,14 @@
 use async_trait::async_trait;
 use reinhardt_core::exception::{DatabaseError, DatabaseErrorKind, Result};
 
+use super::transaction::AtomicTransaction;
+
 /// Re-export backends types
 pub use crate::backends::connection::DatabaseConnection as BackendsConnection;
-pub use crate::backends::types::{IsolationLevel, QueryValue, Row, TransactionExecutor};
+use crate::backends::types::DatabaseType;
+pub use crate::backends::types::{
+	IsolationLevel, QueryResult, QueryValue, Row, TransactionExecutor,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 /// Defines possible database backend values.
@@ -19,6 +24,16 @@ pub enum DatabaseBackend {
 	MySql,
 	/// Sqlite variant.
 	Sqlite,
+}
+
+impl From<DatabaseType> for DatabaseBackend {
+	fn from(database_type: DatabaseType) -> Self {
+		match database_type {
+			DatabaseType::Postgres => Self::Postgres,
+			DatabaseType::Mysql => Self::MySql,
+			DatabaseType::Sqlite => Self::Sqlite,
+		}
+	}
 }
 
 /// Query row wrapper for ORM compatibility
@@ -116,12 +131,22 @@ impl QueryRow {
 }
 
 #[async_trait]
-/// Trait defining database executor behavior.
-pub trait DatabaseExecutor: Send + Sync {
-	/// Executes a SQL statement and returns the number of affected rows.
-	async fn execute(&self, sql: &str) -> Result<u64>;
-	/// Executes a SQL query and returns the resulting rows.
-	async fn query(&self, sql: &str) -> Result<Vec<QueryRow>>;
+/// Typed capability for executing ORM statements against one backend.
+pub trait OrmExecutor: Send {
+	/// Returns the backend used to generate SQL for this executor.
+	fn backend(&self) -> DatabaseBackend;
+
+	/// Executes a SQL statement and preserves backend-specific result metadata.
+	async fn execute(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<QueryResult>;
+
+	/// Fetches one row.
+	async fn fetch_one(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<Row>;
+
+	/// Fetches all matching rows.
+	async fn fetch_all(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<Vec<Row>>;
+
+	/// Fetches an optional row without swallowing backend failures.
+	async fn fetch_optional(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<Option<Row>>;
 }
 
 /// Database connection wrapper
@@ -310,6 +335,13 @@ impl DatabaseConnection {
 	///
 	/// This provides access to the low-level connection for operations
 	/// that require direct database access.
+	///
+	/// # ORM warning
+	///
+	/// This is a backend-level escape hatch. It bypasses the connection affinity
+	/// and atomicity guarantees of [`Self::atomic`]. Do not use it for ORM
+	/// `*_with_conn` operations; run those through the callback-owned executor
+	/// supplied by [`Self::atomic`] instead.
 	pub fn inner(&self) -> &BackendsConnection {
 		&self.inner
 	}
@@ -318,6 +350,12 @@ impl DatabaseConnection {
 	///
 	/// This is useful when you need to pass ownership of the connection
 	/// to functions that expect a `BackendsConnection`.
+	///
+	/// # ORM warning
+	///
+	/// The returned backend connection is not an [`OrmExecutor`]. It bypasses
+	/// [`Self::atomic`] connection affinity and atomicity guarantees, so do not
+	/// use it for ORM `*_with_conn` operations.
 	pub fn into_inner(self) -> BackendsConnection {
 		self.inner
 	}
@@ -334,10 +372,8 @@ impl DatabaseConnection {
 		sql: &str,
 		params: Vec<QueryValue>,
 	) -> Result<Option<QueryRow>> {
-		match self.inner.fetch_one(sql, params).await {
-			Ok(row) => Ok(Some(QueryRow::from_backend_row(row))),
-			Err(_) => Ok(None),
-		}
+		let row = self.inner.fetch_optional(sql, params).await?;
+		Ok(row.map(QueryRow::from_backend_row))
 	}
 
 	/// Execute a SQL statement (INSERT, UPDATE, DELETE, etc.)
@@ -352,198 +388,77 @@ impl DatabaseConnection {
 		Ok(rows.into_iter().map(QueryRow::from_backend_row).collect())
 	}
 
-	/// Begin a database transaction
-	///
-	/// # Examples
-	///
-	/// ```no_run
-	/// # async fn example() {
-	/// use reinhardt_db::orm::connection::DatabaseConnection;
-	///
-	/// let conn = DatabaseConnection::connect("sqlite::memory:").await.unwrap();
-	/// let result = conn.begin_transaction().await;
-	/// assert!(result.is_ok());
-	/// # }
-	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
-	/// ```
-	pub async fn begin_transaction(&self) -> Result<()> {
-		self.execute("BEGIN TRANSACTION", vec![]).await?;
-		Ok(())
+	async fn begin_atomic(&self) -> Result<AtomicTransaction> {
+		let executor = self.inner.begin().await?;
+		Ok(AtomicTransaction::new(executor))
 	}
 
-	/// Begin a transaction with a specific isolation level
-	///
-	/// # Examples
-	///
-	/// ```no_run
-	/// # async fn example() {
-	/// use reinhardt_db::orm::connection::DatabaseConnection;
-	/// use reinhardt_db::orm::transaction::IsolationLevel;
-	///
-	/// let conn = DatabaseConnection::connect("sqlite::memory:").await.unwrap();
-	/// let result = conn.begin_transaction_with_isolation(IsolationLevel::Serializable).await;
-	/// assert!(result.is_ok());
-	/// # }
-	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
-	/// ```
-	pub async fn begin_transaction_with_isolation(
+	async fn begin_atomic_with_isolation(
 		&self,
 		level: super::transaction::IsolationLevel,
-	) -> Result<()> {
-		let sql = format!("BEGIN TRANSACTION ISOLATION LEVEL {}", level.to_sql());
-		self.execute(&sql, vec![]).await?;
-		Ok(())
+	) -> Result<AtomicTransaction> {
+		let executor = self
+			.inner
+			.begin_with_isolation(level.to_backends_level())
+			.await?;
+		Ok(AtomicTransaction::new(executor))
 	}
 
-	/// Commit the current transaction
+	/// Runs a closure inside one dedicated transaction connection.
 	///
-	/// # Examples
-	///
-	/// ```no_run
-	/// # async fn example() {
-	/// use reinhardt_db::orm::connection::DatabaseConnection;
-	///
-	/// let conn = DatabaseConnection::connect("sqlite::memory:").await.unwrap();
-	/// conn.begin_transaction().await.unwrap();
-	/// // ... perform operations ...
-	/// let result = conn.commit_transaction().await;
-	/// assert!(result.is_ok());
-	/// # }
-	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
-	/// ```
-	pub async fn commit_transaction(&self) -> Result<()> {
-		self.execute("COMMIT", vec![]).await?;
-		Ok(())
+	/// Successful callbacks commit the transaction. Callback errors roll it back,
+	/// while a rollback failure takes precedence over the callback error.
+	pub async fn atomic<F, T, E>(&self, f: F) -> std::result::Result<T, E>
+	where
+		F: for<'txn> std::ops::AsyncFnOnce(
+				&'txn mut AtomicTransaction,
+			) -> std::result::Result<T, E>,
+		E: std::error::Error + From<reinhardt_core::exception::Error>,
+	{
+		let transaction = self.begin_atomic().await.map_err(E::from)?;
+		transaction.run(f).await
 	}
 
-	/// Rollback the current transaction
-	///
-	/// # Examples
-	///
-	/// ```no_run
-	/// # async fn example() {
-	/// use reinhardt_db::orm::connection::DatabaseConnection;
-	///
-	/// let conn = DatabaseConnection::connect("sqlite::memory:").await.unwrap();
-	/// conn.begin_transaction().await.unwrap();
-	/// // ... error occurs ...
-	/// let result = conn.rollback_transaction().await;
-	/// assert!(result.is_ok());
-	/// # }
-	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
-	/// ```
-	pub async fn rollback_transaction(&self) -> Result<()> {
-		self.execute("ROLLBACK", vec![]).await?;
-		Ok(())
-	}
-
-	/// Create a savepoint for nested transactions
-	///
-	/// # Examples
-	///
-	/// ```no_run
-	/// # async fn example() {
-	/// use reinhardt_db::orm::connection::DatabaseConnection;
-	///
-	/// let conn = DatabaseConnection::connect("sqlite::memory:").await.unwrap();
-	/// conn.begin_transaction().await.unwrap();
-	/// let result = conn.savepoint("sp1").await;
-	/// assert!(result.is_ok());
-	/// // ... nested operations ...
-	/// conn.release_savepoint("sp1").await.unwrap();
-	/// # }
-	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
-	/// ```
-	pub async fn savepoint(&self, name: &str) -> Result<()> {
-		let sql = format!("SAVEPOINT {}", name);
-		self.execute(&sql, vec![]).await?;
-		Ok(())
-	}
-
-	/// Release a savepoint
-	pub async fn release_savepoint(&self, name: &str) -> Result<()> {
-		let sql = format!("RELEASE SAVEPOINT {}", name);
-		self.execute(&sql, vec![]).await?;
-		Ok(())
-	}
-
-	/// Rollback to a savepoint
-	pub async fn rollback_to_savepoint(&self, name: &str) -> Result<()> {
-		let sql = format!("ROLLBACK TO SAVEPOINT {}", name);
-		self.execute(&sql, vec![]).await?;
-		Ok(())
-	}
-
-	/// Begin a database transaction and return a dedicated executor
-	///
-	/// This method acquires a dedicated database connection and begins a
-	/// transaction on it. All queries executed through the returned
-	/// `TransactionExecutor` are guaranteed to run on the same physical
-	/// connection, ensuring proper transaction isolation.
-	///
-	/// # Returns
-	///
-	/// A boxed `TransactionExecutor` that holds the dedicated connection
-	/// and provides methods for executing queries within the transaction.
-	///
-	/// # Example
-	///
-	/// ```no_run
-	/// # async fn example() -> reinhardt_core::exception::Result<()> {
-	/// use reinhardt_db::orm::connection::DatabaseConnection;
-	///
-	/// let conn = DatabaseConnection::connect("postgres://localhost/mydb").await?;
-	/// let mut tx = conn.begin().await?;
-	///
-	/// tx.execute("INSERT INTO users (name) VALUES ($1)", vec!["Alice".into()]).await?;
-	/// tx.commit().await?;
-	/// # Ok(())
-	/// # }
-	/// ```
-	pub async fn begin(&self) -> Result<Box<dyn TransactionExecutor>> {
-		self.inner.begin().await
-	}
-
-	/// Begin a transaction with a specific isolation level using TransactionExecutor
-	///
-	/// This method returns a `TransactionExecutor` that provides dedicated connection
-	/// semantics with the specified isolation level. All queries executed through
-	/// the returned executor are guaranteed to run on the same physical connection.
-	///
-	/// # Arguments
-	///
-	/// * `level` - The desired isolation level for the transaction
-	///
-	/// # Examples
-	///
-	/// ```no_run
-	/// # async fn example() -> reinhardt_core::exception::Result<()> {
-	/// use reinhardt_db::orm::connection::{DatabaseConnection, IsolationLevel};
-	///
-	/// let conn = DatabaseConnection::connect("postgres://localhost/mydb").await?;
-	/// let mut tx = conn.begin_with_isolation(IsolationLevel::Serializable).await?;
-	///
-	/// tx.execute("INSERT INTO users (name) VALUES ($1)", vec!["Alice".into()]).await?;
-	/// tx.commit().await?;
-	/// # Ok(())
-	/// # }
-	/// ```
-	pub async fn begin_with_isolation(
+	/// Runs a closure inside one dedicated transaction at the requested isolation level.
+	pub async fn atomic_with_isolation<F, T, E>(
 		&self,
-		level: IsolationLevel,
-	) -> Result<Box<dyn TransactionExecutor>> {
-		self.inner.begin_with_isolation(level).await
+		level: super::transaction::IsolationLevel,
+		f: F,
+	) -> std::result::Result<T, E>
+	where
+		F: for<'txn> std::ops::AsyncFnOnce(
+				&'txn mut AtomicTransaction,
+			) -> std::result::Result<T, E>,
+		E: std::error::Error + From<reinhardt_core::exception::Error>,
+	{
+		let transaction = self
+			.begin_atomic_with_isolation(level)
+			.await
+			.map_err(E::from)?;
+		transaction.run(f).await
 	}
 }
 
 #[async_trait]
-impl DatabaseExecutor for DatabaseConnection {
-	async fn execute(&self, sql: &str) -> Result<u64> {
-		self.execute(sql, vec![]).await
+impl OrmExecutor for DatabaseConnection {
+	fn backend(&self) -> DatabaseBackend {
+		DatabaseConnection::backend(self)
 	}
 
-	async fn query(&self, sql: &str) -> Result<Vec<QueryRow>> {
-		self.query(sql, vec![]).await
+	async fn execute(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<QueryResult> {
+		self.inner.execute(sql, params).await
+	}
+
+	async fn fetch_one(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<Row> {
+		self.inner.fetch_one(sql, params).await
+	}
+
+	async fn fetch_all(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<Vec<Row>> {
+		self.inner.fetch_all(sql, params).await
+	}
+
+	async fn fetch_optional(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<Option<Row>> {
+		self.inner.fetch_optional(sql, params).await
 	}
 }
 
@@ -603,8 +518,25 @@ impl reinhardt_di::Injectable for DatabaseConnection {
 
 #[cfg(test)]
 mod tests {
-	use super::DatabaseConnection;
+	use super::{DatabaseBackend, DatabaseConnection, OrmExecutor};
 	use crate::backends::DatabaseErrorKind;
+	use crate::backends::types::DatabaseType;
+
+	#[test]
+	fn test_database_backend_converts_each_database_type() {
+		assert_eq!(
+			DatabaseBackend::from(DatabaseType::Postgres),
+			DatabaseBackend::Postgres
+		);
+		assert_eq!(
+			DatabaseBackend::from(DatabaseType::Mysql),
+			DatabaseBackend::MySql
+		);
+		assert_eq!(
+			DatabaseBackend::from(DatabaseType::Sqlite),
+			DatabaseBackend::Sqlite
+		);
+	}
 
 	#[tokio::test]
 	async fn test_error_kind_for_unsupported_url_scheme() {
@@ -656,6 +588,60 @@ mod tests {
 			.await
 		else {
 			panic!("querying a missing column must fail");
+		};
+
+		assert_eq!(error.database_kind(), Some(DatabaseErrorKind::Query));
+	}
+
+	#[cfg(feature = "sqlite")]
+	#[tokio::test]
+	async fn test_orm_executor_preserves_sqlite_query_result_metadata() {
+		let mut connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+			.await
+			.expect("the in-memory SQLite database must connect");
+
+		let create_result = OrmExecutor::execute(
+			&mut connection,
+			"CREATE TABLE records (id INTEGER PRIMARY KEY, name TEXT NOT NULL)",
+			vec![],
+		)
+		.await
+		.expect("the fixture table must be created");
+		assert_eq!(create_result.last_insert_id, None);
+
+		let insert_result = OrmExecutor::execute(
+			&mut connection,
+			"INSERT INTO records (name) VALUES ('first')",
+			vec![],
+		)
+		.await
+		.expect("the fixture row must be inserted");
+
+		assert_eq!(OrmExecutor::backend(&connection), DatabaseBackend::Sqlite);
+		assert_eq!(insert_result.rows_affected, 1);
+		assert_eq!(insert_result.last_insert_id, None);
+	}
+
+	#[cfg(feature = "sqlite")]
+	#[tokio::test]
+	async fn test_query_optional_preserves_sqlite_backend_errors() {
+		let mut connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+			.await
+			.expect("the in-memory SQLite database must connect");
+		OrmExecutor::execute(
+			&mut connection,
+			"CREATE TABLE records (id INTEGER PRIMARY KEY)",
+			vec![],
+		)
+		.await
+		.expect("the fixture table must be created");
+
+		let error = match connection
+			.query_optional("SELECT missing_column FROM records", vec![])
+			.await
+		{
+			Err(error) => error,
+			Ok(_) => panic!("an invalid optional query must preserve its backend error"),
 		};
 
 		assert_eq!(error.database_kind(), Some(DatabaseErrorKind::Query));

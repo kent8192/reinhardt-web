@@ -173,6 +173,7 @@ impl DatabaseBackend for SqliteBackend {
 			.map_err(map_sqlx_error)?;
 		Ok(QueryResult {
 			rows_affected: result.rows_affected(),
+			last_insert_id: None,
 		})
 	}
 
@@ -394,6 +395,10 @@ impl SqliteTransactionExecutor {
 
 #[async_trait]
 impl TransactionExecutor for SqliteTransactionExecutor {
+	fn backend(&self) -> DatabaseType {
+		DatabaseType::Sqlite
+	}
+
 	async fn execute(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<QueryResult> {
 		let tx = self.tx.as_mut().ok_or_else(transaction_consumed_error)?;
 
@@ -404,6 +409,7 @@ impl TransactionExecutor for SqliteTransactionExecutor {
 		let result = query.execute(&mut **tx).await.map_err(map_sqlx_error)?;
 		Ok(QueryResult {
 			rows_affected: result.rows_affected(),
+			last_insert_id: None,
 		})
 	}
 
@@ -486,5 +492,18 @@ impl TransactionExecutor for SqliteTransactionExecutor {
 			.await
 			.map_err(map_sqlx_error)?;
 		Ok(())
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::SqliteTransactionExecutor;
+	use crate::backends::types::{DatabaseType, TransactionExecutor};
+
+	#[test]
+	fn test_transaction_executor_reports_sqlite_backend() {
+		let executor = SqliteTransactionExecutor { tx: None };
+
+		assert_eq!(executor.backend(), DatabaseType::Sqlite);
 	}
 }

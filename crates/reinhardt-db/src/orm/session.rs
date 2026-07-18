@@ -12,9 +12,8 @@
 //! ORM Session - SQLAlchemy-style database session with identity map and unit of work pattern
 //!
 //! This module provides a Session object that manages database operations with automatic
-//! object tracking, identity mapping, and transaction management.
+//! object tracking, identity mapping, and unit-of-work persistence.
 
-use super::transaction::Transaction;
 use crate::orm::inspection::FieldInfo;
 use crate::orm::model::Model;
 use crate::orm::query::OrmQuery;
@@ -40,8 +39,6 @@ pub enum SessionError {
 	DatabaseError(String),
 	/// Object not found in session
 	ObjectNotFound(String),
-	/// Transaction error
-	TransactionError(String),
 	/// Serialization/deserialization error
 	SerializationError(String),
 	/// Invalid state
@@ -55,7 +52,6 @@ impl std::fmt::Display for SessionError {
 		match self {
 			Self::DatabaseError(msg) => write!(f, "Database error: {}", msg),
 			Self::ObjectNotFound(msg) => write!(f, "Object not found: {}", msg),
-			Self::TransactionError(msg) => write!(f, "Transaction error: {}", msg),
 			Self::SerializationError(msg) => write!(f, "Serialization error: {}", msg),
 			Self::InvalidState(msg) => write!(f, "Invalid state: {}", msg),
 			Self::FlushError(msg) => write!(f, "Flush error: {}", msg),
@@ -83,7 +79,12 @@ struct IdentityEntry {
 	is_dirty: bool,
 }
 
-/// SQLAlchemy-style ORM session with identity map and unit of work
+/// SQLAlchemy-style ORM session with identity map and unit of work.
+///
+/// A session tracks objects and writes them with [`Self::flush`], but it does
+/// not own a database transaction. Use [`super::DatabaseConnection::atomic`]
+/// for atomic ORM operations and discard or recreate a session when tracked
+/// state must be abandoned.
 ///
 /// # Examples
 ///
@@ -103,13 +104,11 @@ struct IdentityEntry {
 /// ```
 pub struct Session {
 	/// Connection pool
-	// Allow dead_code: pool stored for session-scoped query execution and transaction management
+	// Allow dead_code: pool stored for session-scoped query execution and flushing.
 	#[allow(dead_code)]
 	pool: Arc<AnyPool>,
 	/// Database backend type
 	db_backend: DbBackend,
-	/// Active transaction (if any)
-	transaction: Option<Transaction>,
 	/// Identity map: tracks objects by type and primary key
 	identity_map: HashMap<String, IdentityEntry>,
 	/// Set of object keys that have been modified
@@ -145,7 +144,6 @@ impl Session {
 		Ok(Self {
 			pool,
 			db_backend,
-			transaction: None,
 			identity_map: HashMap::new(),
 			dirty_objects: HashSet::new(),
 			deleted_objects: HashSet::new(),
@@ -1147,73 +1145,6 @@ impl Session {
 			.map_err(|e| SessionError::FlushError(e.to_string()))
 	}
 
-	/// Commit the current transaction and flush changes
-	///
-	/// # Examples
-	///
-	/// ```no_run
-	/// use reinhardt_db::orm::session::Session;
-	/// use sqlx::AnyPool;
-	/// use std::sync::Arc;
-	/// use reinhardt_db::orm::query_types::DbBackend;
-	///
-	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// let pool = AnyPool::connect("sqlite::memory:").await?;
-	/// let mut session = Session::new(Arc::new(pool), DbBackend::Sqlite).await?;
-	///
-	/// // Add/modify objects...
-	/// session.commit().await?;
-	/// # Ok(())
-	/// # }
-	/// ```
-	pub async fn commit(&mut self) -> Result<(), SessionError> {
-		self.check_closed()?;
-
-		// Flush pending changes
-		self.flush().await?;
-
-		// Commit transaction if active
-		if let Some(mut tx) = self.transaction.take() {
-			tx.commit().map_err(SessionError::TransactionError)?;
-		}
-
-		Ok(())
-	}
-
-	/// Rollback the current transaction
-	///
-	/// # Examples
-	///
-	/// ```no_run
-	/// use reinhardt_db::orm::session::Session;
-	/// use sqlx::AnyPool;
-	/// use std::sync::Arc;
-	/// use reinhardt_db::orm::query_types::DbBackend;
-	///
-	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// let pool = AnyPool::connect("sqlite::memory:").await?;
-	/// let mut session = Session::new(Arc::new(pool), DbBackend::Sqlite).await?;
-	///
-	/// // Operations...
-	/// session.rollback().await?;
-	/// # Ok(())
-	/// # }
-	/// ```
-	pub async fn rollback(&mut self) -> Result<(), SessionError> {
-		self.check_closed()?;
-
-		// Clear dirty and deleted objects
-		self.dirty_objects.clear();
-		self.deleted_objects.clear();
-
-		// Rollback transaction if active
-		if let Some(mut tx) = self.transaction.take() {
-			tx.rollback().map_err(SessionError::TransactionError)?;
-		}
-
-		Ok(())
-	}
-
 	/// Close the session
 	///
 	/// # Examples
@@ -1237,47 +1168,7 @@ impl Session {
 			return Ok(());
 		}
 
-		// Rollback any pending transaction
-		if self.transaction.is_some() {
-			self.rollback().await?;
-		}
-
 		self.is_closed = true;
-		Ok(())
-	}
-
-	/// Begin a new transaction
-	///
-	/// # Examples
-	///
-	/// ```no_run
-	/// use reinhardt_db::orm::session::Session;
-	/// use sqlx::AnyPool;
-	/// use std::sync::Arc;
-	/// use reinhardt_db::orm::query_types::DbBackend;
-	///
-	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// let pool = AnyPool::connect("sqlite::memory:").await?;
-	/// let mut session = Session::new(Arc::new(pool), DbBackend::Sqlite).await?;
-	///
-	/// session.begin().await?;
-	/// # Ok(())
-	/// # }
-	/// ```
-	pub async fn begin(&mut self) -> Result<(), SessionError> {
-		self.check_closed()?;
-
-		if self.transaction.is_some() {
-			return Err(SessionError::TransactionError(
-				"Transaction already active".to_string(),
-			));
-		}
-
-		let mut tx = Transaction::new();
-		tx.begin().map_err(SessionError::TransactionError)?;
-
-		self.transaction = Some(tx);
-
 		Ok(())
 	}
 
@@ -1393,28 +1284,6 @@ impl Session {
 	/// ```
 	pub fn dirty_count(&self) -> usize {
 		self.dirty_objects.len()
-	}
-
-	/// Check if session has active transaction
-	///
-	/// # Examples
-	///
-	/// ```no_run
-	/// use reinhardt_db::orm::session::Session;
-	/// use sqlx::AnyPool;
-	/// use std::sync::Arc;
-	/// use reinhardt_db::orm::query_types::DbBackend;
-	///
-	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// let pool = AnyPool::connect("sqlite::memory:").await?;
-	/// let session = Session::new(Arc::new(pool), DbBackend::Sqlite).await?;
-	///
-	/// let has_tx = session.has_transaction();
-	/// # Ok(())
-	/// # }
-	/// ```
-	pub fn has_transaction(&self) -> bool {
-		self.transaction.is_some()
 	}
 
 	/// Check if session is closed
@@ -2235,63 +2104,6 @@ mod tests {
 
 	#[tokio::test]
 
-	async fn test_session_transaction_begin() {
-		let pool = create_test_pool().await;
-		let mut session = Session::new(pool, DbBackend::Sqlite).await.unwrap();
-
-		assert!(!session.has_transaction());
-
-		session.begin().await.unwrap();
-		assert!(session.has_transaction());
-	}
-
-	#[rstest]
-	#[serial(sqlx_drivers)]
-	#[tokio::test]
-	async fn test_session_transaction_commit(_init_drivers: ()) {
-		let pool = create_test_pool().await;
-		let mut session = Session::new(pool, DbBackend::Sqlite).await.unwrap();
-
-		session.begin().await.unwrap();
-
-		let user = TestUser {
-			id: Some(1),
-			name: "Eve".to_string(),
-			email: "eve@example.com".to_string(),
-		};
-
-		session.add(user).await.unwrap();
-		session.commit().await.unwrap();
-
-		assert!(!session.has_transaction());
-		assert_eq!(session.dirty_count(), 0);
-	}
-
-	#[tokio::test]
-
-	async fn test_session_transaction_rollback() {
-		let pool = create_test_pool().await;
-		let mut session = Session::new(pool, DbBackend::Sqlite).await.unwrap();
-
-		session.begin().await.unwrap();
-
-		let user = TestUser {
-			id: Some(1),
-			name: "Frank".to_string(),
-			email: "frank@example.com".to_string(),
-		};
-
-		session.add(user).await.unwrap();
-		assert_eq!(session.dirty_count(), 1);
-
-		session.rollback().await.unwrap();
-
-		assert!(!session.has_transaction());
-		assert_eq!(session.dirty_count(), 0);
-	}
-
-	#[tokio::test]
-
 	async fn test_session_close() {
 		let pool = create_test_pool().await;
 		let session = Session::new(pool, DbBackend::Sqlite).await.unwrap();
@@ -2367,18 +2179,6 @@ mod tests {
 	}
 
 	#[tokio::test]
-
-	async fn test_session_double_begin_fails() {
-		let pool = create_test_pool().await;
-		let mut session = Session::new(pool, DbBackend::Sqlite).await.unwrap();
-
-		session.begin().await.unwrap();
-		let result = session.begin().await;
-
-		assert!(result.is_err());
-	}
-
-	#[tokio::test]
 	async fn test_session_add_without_pk_succeeds() {
 		let pool = create_test_pool().await;
 		let mut session = Session::new(pool, DbBackend::Sqlite).await.unwrap();
@@ -2408,12 +2208,6 @@ mod tests {
 	fn test_session_error_object_not_found_display() {
 		let err = SessionError::ObjectNotFound("user:123".to_string());
 		assert_eq!(err.to_string(), "Object not found: user:123");
-	}
-
-	#[test]
-	fn test_session_error_transaction_error_display() {
-		let err = SessionError::TransactionError("commit failed".to_string());
-		assert_eq!(err.to_string(), "Transaction error: commit failed");
 	}
 
 	#[test]

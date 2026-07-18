@@ -238,11 +238,6 @@ impl Engine {
 			.await
 			.map_err(map_sqlx_error)?)
 	}
-	/// Begin a transaction
-	///
-	pub async fn begin(&self) -> Result<sqlx::Transaction<'_, Any>> {
-		Ok(self.pool.begin().await.map_err(map_sqlx_error)?)
-	}
 	/// Get the engine configuration
 	///
 	pub fn config(&self) -> &EngineConfig {

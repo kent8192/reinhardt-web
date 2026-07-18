@@ -87,6 +87,7 @@ impl DatabaseBackend for PostgresBackend {
 			.map_err(map_sqlx_error)?;
 		Ok(QueryResult {
 			rows_affected: result.rows_affected(),
+			last_insert_id: None,
 		})
 	}
 
@@ -269,6 +270,10 @@ impl PostgresBackend {
 
 #[async_trait]
 impl TransactionExecutor for PgTransactionExecutor {
+	fn backend(&self) -> DatabaseType {
+		DatabaseType::Postgres
+	}
+
 	async fn execute(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<QueryResult> {
 		let tx = self.tx.as_mut().ok_or_else(|| {
 			DatabaseError::new(
@@ -284,6 +289,7 @@ impl TransactionExecutor for PgTransactionExecutor {
 		let result = query.execute(&mut **tx).await.map_err(map_sqlx_error)?;
 		Ok(QueryResult {
 			rows_affected: result.rows_affected(),
+			last_insert_id: None,
 		})
 	}
 
@@ -411,8 +417,17 @@ impl TransactionExecutor for PgTransactionExecutor {
 
 #[cfg(test)]
 mod tests {
+	use super::PgTransactionExecutor;
+	use crate::backends::types::{DatabaseType, TransactionExecutor};
 	use rstest::rstest;
 	use rust_decimal::prelude::ToPrimitive;
+
+	#[test]
+	fn test_transaction_executor_reports_postgres_backend() {
+		let executor = PgTransactionExecutor { tx: None };
+
+		assert_eq!(executor.backend(), DatabaseType::Postgres);
+	}
 
 	/// Verify that normal Decimal values succeed to_f64() conversion
 	#[rstest]
