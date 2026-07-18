@@ -558,7 +558,7 @@ async fn typed_model_enum_filters_lists_and_assignments_use_persistent_values() 
 #[serial(model_enum_database)]
 async fn typed_codec_errors_surface_before_filter_or_update_execution() {
 	let (_database, url) = sqlite_database_url();
-	let connection = reinhardt::db::orm::connection::DatabaseConnection::connect(&url)
+	let mut connection = reinhardt::db::orm::connection::DatabaseConnection::connect(&url)
 		.await
 		.expect("SQLite connection should initialize");
 	connection
@@ -599,7 +599,7 @@ async fn typed_codec_errors_surface_before_filter_or_update_execution() {
 
 	let filter_error = CodecJob::objects()
 		.filter(CodecJob::field_status().eq(RejectingStatus("queued".to_owned())))
-		.all_with_db(&connection)
+		.all_with_db(&mut connection)
 		.await
 		.expect_err("filter codec error should surface before SQL execution");
 	let filter_source =
@@ -609,7 +609,7 @@ async fn typed_codec_errors_surface_before_filter_or_update_execution() {
 	let select_related_error = CodecJob::objects()
 		.select_related(&["owner"])
 		.filter(CodecJob::field_status().eq(RejectingStatus("queued".to_owned())))
-		.all_with_db(&connection)
+		.all_with_db(&mut connection)
 		.await
 		.expect_err("select-related codec error should surface before SQL execution");
 	let select_related_source = std::error::Error::source(&select_related_error)
@@ -631,7 +631,7 @@ async fn typed_codec_errors_surface_before_filter_or_update_execution() {
 	let update_error = CodecJob::objects()
 		.filter(CodecJob::field_id().eq(Some(1)))
 		.update_fields_with_conn(
-			&connection,
+			&mut connection,
 			[CodecJob::field_status().assign(RejectingStatus("running".to_owned()))],
 		)
 		.await
@@ -901,7 +901,7 @@ async fn foreign_key_loader_uses_target_primary_key_database_column() {
 	reinitialize_database(&url)
 		.await
 		.expect("SQLite ORM connection should initialize");
-	let connection = get_connection()
+	let mut connection = get_connection()
 		.await
 		.expect("SQLite ORM connection should be available");
 	connection
@@ -921,7 +921,7 @@ async fn foreign_key_loader_uses_target_primary_key_database_column() {
 	let attempt = CustomKeyJobAttempt::build().job(41_i64).finish();
 
 	let related = attempt
-		.job(&connection)
+		.job(&mut connection)
 		.await
 		.expect("foreign-key loader should use the target database column")
 		.expect("related custom key job should exist");

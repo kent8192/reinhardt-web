@@ -526,6 +526,7 @@ mod tests {
 	use super::PgTransactionExecutor;
 	use crate::backends::types::{DatabaseType, TransactionExecutor};
 	use rstest::rstest;
+	use rust_decimal::prelude::ToPrimitive;
 
 	#[test]
 	fn test_transaction_executor_reports_postgres_backend() {

@@ -403,10 +403,11 @@ async fn insert(connection: &DatabaseConnection, id: i64, name: &str) {
 }
 
 async fn count(connection: &DatabaseConnection) -> u64 {
+	let mut connection = connection.clone();
 	QuerySet::<Widget>::new()
-		.count_with_db(connection)
+		.count_with_db(&mut connection)
 		.await
-		.expect("widget count should succeed")
+		.expect("widget count should succeed") as u64
 }
 
 fn assert_one_executor() {

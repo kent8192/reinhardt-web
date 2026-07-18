@@ -209,8 +209,25 @@ pub(crate) fn deserialize_model_row<M: Model>(
 		}
 	}
 
-	deserialize_model_value(serde_json::Value::Object(fields), &json_null_fields)
-		.map_err(|error| FieldCodecError::Serialization(error.to_string()))
+	match deserialize_model_value::<M>(serde_json::Value::Object(fields.clone()), &json_null_fields)
+	{
+		Ok(model) => Ok(model),
+		Err(logical_error) => {
+			let mut physical_fields = fields;
+			for field in M::field_metadata().into_iter().filter(|field| {
+				!is_json_field_type(&field.field_type) && field.db_column_name() != field.name
+			}) {
+				if let Some(value) = physical_fields.remove(&field.name) {
+					physical_fields.insert(field.db_column_name().to_string(), value);
+				}
+			}
+			deserialize_model_value::<M>(
+				serde_json::Value::Object(physical_fields),
+				&json_null_fields,
+			)
+			.map_err(|_| FieldCodecError::Serialization(logical_error.to_string()))
+		}
+	}
 }
 
 pub(crate) fn database_value_from_json(
