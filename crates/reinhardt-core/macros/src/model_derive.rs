@@ -37,6 +37,7 @@ use crate::crate_paths::{
 	get_linkme_crate, get_reinhardt_core_crate, get_reinhardt_crate, get_reinhardt_db_crate,
 	get_reinhardt_migrations_crate, get_reinhardt_orm_crate,
 };
+use crate::identifier_case::to_snake_case;
 use crate::rel::RelAttribute;
 
 /// Constraint specification from `#[model(constraints = [...])]`
@@ -464,15 +465,18 @@ impl ModelConfig {
 			}
 		}
 
-		let table_name = table_name.ok_or_else(|| {
+		let app_label = app_label.ok_or_else(|| {
 			syn::Error::new_spanned(
 				struct_name,
-				"table_name attribute is required in #[model(...)]",
+				"app_label attribute is required in #[model(...)]",
 			)
 		})?;
+		let table_name = table_name.unwrap_or_else(|| {
+			format!("{}_{}", app_label, to_snake_case(&struct_name.to_string()))
+		});
 
 		Ok(Self {
-			app_label: app_label.unwrap_or_else(|| "default".to_string()),
+			app_label,
 			table_name,
 			constraints,
 			manager,
@@ -680,6 +684,8 @@ impl ModelConfig {
 enum ForeignKeySpec {
 	/// Type directly: `#[field(foreign_key = User)]`
 	Type(syn::Type),
+	/// Bare model name: `#[field(foreign_key = "User")]`
+	ModelName(String),
 	/// app_label.model_name format: `#[field(foreign_key = "users.User")]`
 	AppModel {
 		app_label: String,
@@ -906,13 +912,14 @@ impl FieldConfig {
 					Ok(())
 				} else if meta.path.is_ident("foreign_key") {
 					// Try parsing as Type first (direct type specification)
-					if let Ok(ty) = meta.value()?.parse::<syn::Type>() {
+					let value = meta.value()?;
+					if let Ok(ty) = value.parse::<syn::Type>() {
 						config.foreign_key = Some(ForeignKeySpec::Type(ty));
 						return Ok(());
 					}
 
 					// Fall back to string specification
-					if let Ok(value) = meta.value()?.parse::<syn::LitStr>() {
+					if let Ok(value) = value.parse::<syn::LitStr>() {
 						let spec_str = value.value();
 
 						if spec_str.contains('.') {
@@ -930,13 +937,8 @@ impl FieldConfig {
 								));
 							}
 						} else {
-							// Type name only (for backward compatibility)
-							if let Ok(ty) = syn::parse_str::<syn::Type>(&spec_str) {
-								config.foreign_key = Some(ForeignKeySpec::Type(ty));
-								return Ok(());
-							} else {
-								return Err(meta.error("Invalid foreign_key specification"));
-							}
+							config.foreign_key = Some(ForeignKeySpec::ModelName(spec_str));
+							return Ok(());
 						}
 					}
 
@@ -4225,14 +4227,20 @@ fn generate_registration_code(input: RegistrationCodeInput<'_>) -> Result<TokenS
 		let fk_registration = if let Some(fk_spec) = &config.foreign_key {
 			match fk_spec {
 				ForeignKeySpec::Type(ty) => {
-					// For direct type reference, extract type name and convert to snake_case
-					let type_name_str = quote! { #ty }.to_string();
+					// Preserve the registry identity using the final Rust path segment.
+					let type_name = if let Type::Path(type_path) = ty {
+						type_path
+							.path
+							.segments
+							.last()
+							.map(|segment| segment.ident.to_string())
+							.unwrap_or_else(|| quote! { #ty }.to_string())
+					} else {
+						quote! { #ty }.to_string()
+					};
 					quote! {
 						.with_foreign_key({
-							// Extract last segment of type path and convert to snake_case
-							let type_name = #type_name_str;
-							let last_segment = type_name.split("::").last().unwrap_or(&type_name);
-							let referenced_table = #migrations_crate::to_snake_case(last_segment);
+							let referenced_table = #migrations_crate::to_snake_case(#type_name);
 
 							#migrations_crate::ForeignKeyInfo {
 								referenced_table,
@@ -4241,16 +4249,33 @@ fn generate_registration_code(input: RegistrationCodeInput<'_>) -> Result<TokenS
 								on_update: #migrations_crate::ForeignKeyAction::Cascade,
 							}
 						})
+						// Obtain the app label from the target's Model implementation so
+						// qualified and imported types resolve to their registered app.
+						.with_param("fk_target_app", <#ty as #orm_crate::Model>::app_label())
+						.with_param("fk_target_model", #type_name)
+					}
+				}
+				ForeignKeySpec::ModelName(model_name) => {
+					quote! {
+						.with_param("fk_target_app", #app_label)
+						.with_param("fk_target_model", #model_name)
+						.with_foreign_key(#migrations_crate::ForeignKeyInfo {
+							referenced_table: #migrations_crate::to_snake_case(#model_name),
+							referenced_column: "id".to_string(),
+							on_delete: #migrations_crate::ForeignKeyAction::Cascade,
+							on_update: #migrations_crate::ForeignKeyAction::Cascade,
+						})
 					}
 				}
 				ForeignKeySpec::AppModel {
 					app_label,
 					model_name,
 				} => {
-					let table_name_str = format!("{}_{}", app_label, model_name.to_lowercase());
 					quote! {
+						.with_param("fk_target_app", #app_label)
+						.with_param("fk_target_model", #model_name)
 						.with_foreign_key(#migrations_crate::ForeignKeyInfo {
-							referenced_table: #table_name_str.to_string(),
+							referenced_table: #migrations_crate::to_snake_case(#model_name),
 							referenced_column: "id".to_string(),
 							on_delete: #migrations_crate::ForeignKeyAction::Cascade,
 							on_update: #migrations_crate::ForeignKeyAction::Cascade,
@@ -6876,6 +6901,120 @@ mod tests {
 		// Verify that fields are not pub
 		assert!(!output_str.contains("pub id"));
 		assert!(!output_str.contains("pub name"));
+	}
+
+	#[test]
+	fn test_table_name_defaults_to_app_label_and_struct_name_in_snake_case() {
+		let cases = [
+			("User", "test_user"),
+			("BlogPost", "test_blog_post"),
+			("Person", "test_person"),
+			("HTTPRoute", "test_http_route"),
+		];
+
+		for (struct_name, expected_table_name) in cases {
+			let struct_name = syn::Ident::new(struct_name, proc_macro2::Span::call_site());
+			let attrs = vec![parse_quote! { #[model(app_label = "test")] }];
+
+			let config = ModelConfig::from_attrs(&attrs, &struct_name)
+				.expect("table name should be derived from the struct name");
+
+			assert_eq!(config.table_name, expected_table_name);
+		}
+	}
+
+	#[test]
+	fn test_app_label_is_required() {
+		let struct_name = parse_quote! { User };
+		let attrs = vec![parse_quote! { #[model(table_name = "users")] }];
+
+		let error = ModelConfig::from_attrs(&attrs, &struct_name)
+			.expect_err("models without an app_label should be rejected");
+
+		assert_eq!(
+			error.to_string(),
+			"app_label attribute is required in #[model(...)]"
+		);
+	}
+
+	#[test]
+	fn test_explicit_table_name_overrides_convention() {
+		let struct_name = parse_quote! { User };
+		let attrs = vec![parse_quote! {
+			#[model(app_label = "users", table_name = "users_v2")]
+		}];
+
+		let config = ModelConfig::from_attrs(&attrs, &struct_name)
+			.expect("explicit table names should remain supported");
+
+		assert_eq!(config.table_name, "users_v2");
+	}
+
+	#[test]
+	fn test_qualified_foreign_key_registration_preserves_target_identity() {
+		let input = quote! {
+			#[model(app_label = "comments", table_name = "comments")]
+			pub struct Comment {
+				#[field(primary_key = true)]
+				pub id: i64,
+				#[field(foreign_key = "blog.Post")]
+				pub post: i64,
+			}
+		};
+
+		let output = model_derive_impl(syn::parse2(input).unwrap()).unwrap();
+		let output_str = output.to_string();
+
+		assert!(output_str.contains("fk_target_app"));
+		assert!(output_str.contains("fk_target_model"));
+		assert!(output_str.contains("to_snake_case"));
+	}
+
+	#[test]
+	fn test_bare_string_foreign_key_registration_uses_the_source_app() {
+		let input = quote! {
+			#[model(app_label = "comments")]
+			pub struct Comment {
+				#[field(primary_key = true)]
+				pub id: i64,
+				#[field(foreign_key = "User")]
+				pub user_id: i64,
+			}
+		};
+
+		let output = model_derive_impl(syn::parse2(input).unwrap())
+			.unwrap()
+			.to_string();
+
+		assert!(output.contains("fk_target_model"));
+		assert!(
+			output.contains("with_param (\"fk_target_app\" , \"comments\")"),
+			"bare string foreign keys must carry their source app for table resolution: {output}"
+		);
+		assert!(output.contains("User"));
+		assert!(!output.contains("< User as"));
+	}
+
+	#[test]
+	fn test_direct_qualified_foreign_key_registration_uses_target_identity() {
+		let input = quote! {
+			#[model(app_label = "comments")]
+			pub struct Comment {
+				#[field(primary_key = true)]
+				pub id: i64,
+				#[field(foreign_key = crate::models::User)]
+				pub user_id: i64,
+			}
+		};
+
+		let output = model_derive_impl(syn::parse2(input).unwrap())
+			.unwrap()
+			.to_string();
+
+		assert!(output.contains("fk_target_model"));
+		assert!(output.contains("User"));
+		assert!(output.contains("crate :: models :: User as"));
+		assert!(!output.contains("crate :: models :: User \""));
 	}
 
 	#[test]

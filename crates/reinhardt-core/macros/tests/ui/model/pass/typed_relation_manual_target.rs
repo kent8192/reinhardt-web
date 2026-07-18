@@ -80,7 +80,7 @@ impl db::orm::Model for ManualTarget {
 	}
 }
 
-#[model(table_name = "derived_sources")]
+#[model(app_label = "derived", table_name = "derived_sources")]
 #[derive(Serialize, Deserialize)]
 struct DerivedSource {
 	#[field(primary_key = true)]

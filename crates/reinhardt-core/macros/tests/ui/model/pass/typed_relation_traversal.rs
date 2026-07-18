@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 include!("../support.rs");
 
-#[model(table_name = "corpus_files")]
+#[model(app_label = "corpus", table_name = "corpus_files")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct CorpusFile {
 	#[field(primary_key = true, db_column = "corpus_pk")]
@@ -12,7 +12,7 @@ struct CorpusFile {
 	normalized_path: String,
 }
 
-#[model(table_name = "tags")]
+#[model(app_label = "tags", table_name = "tags")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Tag {
 	#[field(primary_key = true)]
@@ -21,7 +21,7 @@ struct Tag {
 	label: String,
 }
 
-#[model(table_name = "projects")]
+#[model(app_label = "projects", table_name = "projects")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Project {
 	#[field(primary_key = true)]
@@ -40,7 +40,7 @@ struct Project {
 	tags: db::associations::ManyToManyField<Project, Tag>,
 }
 
-#[model(table_name = "documents")]
+#[model(app_label = "documents", table_name = "documents")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Document {
 	#[field(primary_key = true)]

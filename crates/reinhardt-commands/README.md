@@ -545,6 +545,10 @@ reinhardt-admin startapp myapp --template rest
 Templates are embedded in the binary using `rust-embed` for fast,
 dependency-free project generation.
 
+Generated model examples always declare `app_label` and rely on the model
+macro's singular snake_case table-name convention. Add `table_name = "..."`
+when a generated app must map a model to an existing or custom table.
+
 ## Architecture
 
 `reinhardt-commands` is designed to be:

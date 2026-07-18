@@ -910,6 +910,15 @@ async fn build_from_state_from_files(
 pub struct MakeMigrationsCommand;
 
 #[cfg(feature = "migrations")]
+fn validate_global_migration_changes(
+	from_state: &reinhardt_db::migrations::ProjectState,
+	target_state: &reinhardt_db::migrations::ProjectState,
+) -> reinhardt_db::migrations::Result<()> {
+	reinhardt_db::migrations::MigrationAutodetector::new(from_state.clone(), target_state.clone())
+		.validate_table_rename_destinations()
+}
+
+#[cfg(feature = "migrations")]
 #[async_trait]
 impl BaseCommand for MakeMigrationsCommand {
 	fn name(&self) -> &str {
@@ -1424,37 +1433,42 @@ impl BaseCommand for MakeMigrationsCommand {
 			};
 
 			// Check for migration conflicts before proceeding
-			{
-				let all_migrations = service.load_all().await.map_err(|e| {
-					CommandError::ExecutionError(format!(
-						"Failed to load migrations for conflict check: {}",
-						e
-					))
-				})?;
-				if !all_migrations.is_empty() {
-					let graph = build_migration_graph(&all_migrations);
+			let existing_migrations = service.load_all().await.map_err(|e| {
+				CommandError::ExecutionError(format!(
+					"Failed to load migrations for conflict check: {}",
+					e
+				))
+			})?;
+			if !existing_migrations.is_empty() {
+				let graph = build_migration_graph(&existing_migrations);
 
-					let conflicts = graph.detect_conflicts();
-					if !conflicts.is_empty() {
-						let mut conflict_apps: Vec<&String> = conflicts.keys().collect();
-						conflict_apps.sort();
-						for app in &conflict_apps {
-							let leaves = &conflicts[*app];
-							let leaf_names: Vec<&str> =
-								leaves.iter().map(|k| k.name.as_str()).collect();
-							ctx.error(&format!(
-								"Conflicting migrations detected for '{}': {}",
-								app,
-								leaf_names.join(", ")
-							));
-						}
-						return Err(CommandError::ExecutionError(
-							"Run 'makemigrations --merge' to resolve migration conflicts."
-								.to_string(),
+				let conflicts = graph.detect_conflicts();
+				if !conflicts.is_empty() {
+					let mut conflict_apps: Vec<&String> = conflicts.keys().collect();
+					conflict_apps.sort();
+					for app in &conflict_apps {
+						let leaves = &conflicts[*app];
+						let leaf_names: Vec<&str> =
+							leaves.iter().map(|k| k.name.as_str()).collect();
+						ctx.error(&format!(
+							"Conflicting migrations detected for '{}': {}",
+							app,
+							leaf_names.join(", ")
 						));
 					}
+					return Err(CommandError::ExecutionError(
+						"Run 'makemigrations --merge' to resolve migration conflicts.".to_string(),
+					));
 				}
 			}
+
+			// Validate the complete state before per-app filtering so another app's
+			// physical table ownership cannot be hidden from collision detection.
+			validate_global_migration_changes(&from_state, &target_project_state).map_err(
+				|error| {
+					CommandError::ExecutionError(format!("Failed to validate migrations: {error}"))
+				},
+			)?;
 
 			for app_name in &app_names {
 				// Filter target state for this app only
@@ -1494,7 +1508,9 @@ impl BaseCommand for MakeMigrationsCommand {
 					app_from_state,
 					app_target_state,
 				);
-				let generated_migrations = detector.generate_migrations();
+				let generated_migrations = detector.try_generate_migrations().map_err(|error| {
+					CommandError::ExecutionError(format!("Failed to generate migrations: {error}"))
+				})?;
 
 				// Process generated migrations for this app
 				for migration in generated_migrations {
@@ -1574,6 +1590,20 @@ impl BaseCommand for MakeMigrationsCommand {
 				}
 			}
 
+			// A table-name rename frees its old physical name only after the
+			// producing migration has run. When another app creates a table with
+			// that name in the same invocation, record the cross-app edge using
+			// the final generated migration names.
+			let mut generated_migrations = results
+				.iter_mut()
+				.map(|result| &mut result.migration)
+				.collect::<Vec<_>>();
+			add_reused_table_name_dependencies_with_history(
+				&mut generated_migrations,
+				&existing_migrations,
+			)
+			.map_err(crate::CommandError::ExecutionError)?;
+
 			// 4. Write all migrations
 			if !results.is_empty() {
 				for result in results {
@@ -1642,6 +1672,144 @@ impl BaseCommand for MakeMigrationsCommand {
 			Ok(())
 		}
 	}
+}
+
+#[cfg(feature = "migrations")]
+fn add_reused_table_name_dependencies_with_history(
+	migrations: &mut [&mut reinhardt_db::migrations::Migration],
+	historical_migrations: &[reinhardt_db::migrations::Migration],
+) -> Result<(), String> {
+	use reinhardt_db::migrations::Operation;
+
+	let all_migrations = historical_migrations
+		.iter()
+		.chain(migrations.iter().map(|migration| &**migration))
+		.collect::<Vec<_>>();
+
+	let renamed_tables: Vec<(String, String, String)> = all_migrations
+		.iter()
+		.flat_map(|migration| {
+			migration
+				.operations
+				.iter()
+				.filter_map(|operation| match operation {
+					Operation::RenameTable { old_name, .. } => Some((
+						migration.app_label.clone(),
+						migration.name.clone(),
+						old_name.clone(),
+					)),
+					Operation::MoveModel {
+						rename_table: true,
+						old_table_name: Some(old_name),
+						..
+					} => Some((
+						migration.app_label.clone(),
+						migration.name.clone(),
+						old_name.clone(),
+					)),
+					_ => None,
+				})
+		})
+		.collect();
+	let dropped_tables: Vec<(String, String, String)> = all_migrations
+		.iter()
+		.flat_map(|migration| {
+			migration
+				.operations
+				.iter()
+				.filter_map(|operation| match operation {
+					Operation::DropTable { name } => Some((
+						migration.app_label.clone(),
+						migration.name.clone(),
+						name.clone(),
+					)),
+					_ => None,
+				})
+		})
+		.collect();
+
+	let mut dependencies = Vec::new();
+	for (migration_index, migration) in migrations.iter().enumerate() {
+		let reused_tables: Vec<&str> = migration
+			.operations
+			.iter()
+			.filter_map(|operation| match operation {
+				Operation::CreateTable { name, .. } => Some(name.as_str()),
+				Operation::RenameTable { new_name, .. } => Some(new_name.as_str()),
+				Operation::MoveModel {
+					rename_table: true,
+					new_table_name: Some(new_name),
+					..
+				} => Some(new_name.as_str()),
+				_ => None,
+			})
+			.collect();
+		for (producer_app, producer_name, old_table) in &renamed_tables {
+			if producer_app != &migration.app_label && reused_tables.contains(&old_table.as_str()) {
+				dependencies.push((
+					migration_index,
+					(producer_app.clone(), producer_name.clone()),
+				));
+			}
+		}
+		for (producer_app, producer_name, dropped_table) in &dropped_tables {
+			if producer_app != &migration.app_label
+				&& reused_tables.contains(&dropped_table.as_str())
+			{
+				dependencies.push((
+					migration_index,
+					(producer_app.clone(), producer_name.clone()),
+				));
+			}
+		}
+	}
+
+	let mut graph = vec![Vec::new(); migrations.len()];
+	for (consumer_index, producer) in &dependencies {
+		if let Some(producer_index) = migrations
+			.iter()
+			.position(|migration| migration.app_label == producer.0 && migration.name == producer.1)
+		{
+			graph[*consumer_index].push(producer_index);
+		}
+	}
+	fn has_cycle(
+		node: usize,
+		graph: &[Vec<usize>],
+		visiting: &mut [bool],
+		visited: &mut [bool],
+	) -> bool {
+		if visiting[node] {
+			return true;
+		}
+		if visited[node] {
+			return false;
+		}
+		visiting[node] = true;
+		let cyclic = graph[node]
+			.iter()
+			.any(|&next| has_cycle(next, graph, visiting, visited));
+		visiting[node] = false;
+		visited[node] = true;
+		cyclic
+	}
+	let mut visiting = vec![false; migrations.len()];
+	let mut visited = vec![false; migrations.len()];
+	if (0..migrations.len()).any(|node| has_cycle(node, &graph, &mut visiting, &mut visited)) {
+		return Err("cannot generate a cyclic cross-app table-name dependency; split the rename through an explicit temporary table migration".to_string());
+	}
+
+	for (consumer_index, producer) in dependencies {
+		let migration = &mut migrations[consumer_index];
+		if !migration
+			.dependencies
+			.iter()
+			.any(|dependency| dependency == &producer)
+		{
+			migration.dependencies.push(producer);
+		}
+	}
+	Ok(())
 }
 
 /// Interactive shell command
@@ -4548,6 +4716,235 @@ fn detect_database_type(url: &str) -> Result<DatabaseType, crate::CommandError> 
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	fn global_migration_validation_rejects_cross_app_table_rename_collisions() {
+		use reinhardt_db::migrations::{ModelState, ProjectState};
+
+		let mut from_state = ProjectState::new();
+		let mut old_profile = ModelState::new("accounts", "Profile");
+		old_profile.table_name = "accounts_profile".to_string();
+		from_state.add_model(old_profile);
+		let mut audit_user = ModelState::new("audit", "User");
+		audit_user.table_name = "users".to_string();
+		from_state.add_model(audit_user);
+
+		let mut target_state = ProjectState::new();
+		let mut renamed_profile = ModelState::new("accounts", "Profile");
+		renamed_profile.table_name = "users".to_string();
+		target_state.add_model(renamed_profile);
+		let mut retained_audit_user = ModelState::new("audit", "User");
+		retained_audit_user.table_name = "users".to_string();
+		target_state.add_model(retained_audit_user);
+
+		let error = validate_global_migration_changes(&from_state, &target_state)
+			.expect_err("cross-app table rename collisions must be rejected before app filtering");
+
+		assert!(error.to_string().contains("multiple target models claim"));
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	fn global_migration_validation_ignores_unrelated_field_rename_ambiguity() {
+		use reinhardt_db::migrations::{FieldState, FieldType, ModelState, ProjectState};
+
+		let mut from_state = ProjectState::new();
+		from_state.add_model(ModelState::new("blog", "Post"));
+		let mut old_audit_entry = ModelState::new("audit", "Entry");
+		old_audit_entry.fields.insert(
+			"legacy_code".to_string(),
+			FieldState::new("legacy_code", FieldType::VarChar(255), false),
+		);
+		old_audit_entry.fields.insert(
+			"old_code".to_string(),
+			FieldState::new("old_code", FieldType::VarChar(255), false),
+		);
+		from_state.add_model(old_audit_entry);
+
+		let mut target_state = ProjectState::new();
+		target_state.add_model(ModelState::new("blog", "Post"));
+		let mut new_audit_entry = ModelState::new("audit", "Entry");
+		new_audit_entry.fields.insert(
+			"code".to_string(),
+			FieldState::new("code", FieldType::VarChar(255), false),
+		);
+		target_state.add_model(new_audit_entry);
+
+		validate_global_migration_changes(&from_state, &target_state)
+			.expect("global validation should not inspect unrelated field rename ambiguity");
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	fn reused_table_name_depends_on_the_cross_app_rename() {
+		use reinhardt_db::migrations::{Migration, Operation};
+
+		let mut producer =
+			Migration::new("0007_rename_user", "accounts").add_operation(Operation::RenameTable {
+				old_name: "user".to_string(),
+				new_name: "account".to_string(),
+			});
+		let mut consumer =
+			Migration::new("0001_initial", "profiles").add_operation(Operation::CreateTable {
+				name: "user".to_string(),
+				columns: Vec::new(),
+				constraints: Vec::new(),
+				without_rowid: None,
+				interleave_in_parent: None,
+				partition: None,
+			});
+
+		add_reused_table_name_dependencies_with_history(&mut [&mut producer, &mut consumer], &[])
+			.unwrap();
+
+		assert_eq!(
+			consumer.dependencies,
+			vec![("accounts".to_string(), "0007_rename_user".to_string())]
+		);
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	fn cross_app_rename_into_a_reused_table_depends_on_the_producer() {
+		use reinhardt_db::migrations::{Migration, Operation};
+
+		let mut producer =
+			Migration::new("0007_rename_user", "accounts").add_operation(Operation::RenameTable {
+				old_name: "users".to_string(),
+				new_name: "user".to_string(),
+			});
+		let mut consumer =
+			Migration::new("0004_archive", "archive").add_operation(Operation::RenameTable {
+				old_name: "archive_users".to_string(),
+				new_name: "users".to_string(),
+			});
+
+		add_reused_table_name_dependencies_with_history(&mut [&mut producer, &mut consumer], &[])
+			.unwrap();
+
+		assert_eq!(
+			consumer.dependencies,
+			vec![("accounts".to_string(), "0007_rename_user".to_string())]
+		);
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	fn move_model_table_rename_frees_a_reused_name() {
+		use reinhardt_db::migrations::{Migration, Operation};
+
+		let mut producer =
+			Migration::new("0003_move", "archive").add_operation(Operation::MoveModel {
+				model_name: "User".to_string(),
+				from_app: "accounts".to_string(),
+				to_app: "archive".to_string(),
+				rename_table: true,
+				old_table_name: Some("users".to_string()),
+				new_table_name: Some("archived_users".to_string()),
+			});
+		let mut consumer =
+			Migration::new("0001_initial", "profiles").add_operation(Operation::CreateTable {
+				name: "users".to_string(),
+				columns: Vec::new(),
+				constraints: Vec::new(),
+				without_rowid: None,
+				interleave_in_parent: None,
+				partition: None,
+			});
+
+		add_reused_table_name_dependencies_with_history(&mut [&mut producer, &mut consumer], &[])
+			.unwrap();
+
+		assert_eq!(
+			consumer.dependencies,
+			vec![("archive".to_string(), "0003_move".to_string())]
+		);
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	fn cross_app_created_table_depends_on_the_drop_that_frees_its_name() {
+		use reinhardt_db::migrations::{Migration, Operation};
+
+		let mut producer =
+			Migration::new("0004_remove_legacy", "accounts").add_operation(Operation::DropTable {
+				name: "legacy".to_string(),
+			});
+		let mut consumer =
+			Migration::new("0001_initial", "archive").add_operation(Operation::CreateTable {
+				name: "legacy".to_string(),
+				columns: Vec::new(),
+				constraints: Vec::new(),
+				without_rowid: None,
+				interleave_in_parent: None,
+				partition: None,
+			});
+
+		add_reused_table_name_dependencies_with_history(&mut [&mut producer, &mut consumer], &[])
+			.unwrap();
+
+		assert_eq!(
+			consumer.dependencies,
+			vec![("accounts".to_string(), "0004_remove_legacy".to_string())]
+		);
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	fn reused_table_name_depends_on_a_historical_cross_app_rename() {
+		use reinhardt_db::migrations::{Migration, Operation};
+
+		let historical =
+			Migration::new("0002_rename_user", "accounts").add_operation(Operation::RenameTable {
+				old_name: "users".to_string(),
+				new_name: "accounts_user".to_string(),
+			});
+		let mut consumer =
+			Migration::new("0001_initial", "profiles").add_operation(Operation::CreateTable {
+				name: "users".to_string(),
+				columns: Vec::new(),
+				constraints: Vec::new(),
+				without_rowid: None,
+				interleave_in_parent: None,
+				partition: None,
+			});
+
+		add_reused_table_name_dependencies_with_history(&mut [&mut consumer], &[historical])
+			.unwrap();
+
+		assert_eq!(
+			consumer.dependencies,
+			vec![("accounts".to_string(), "0002_rename_user".to_string())]
+		);
+	}
+
+	#[cfg(feature = "migrations")]
+	#[test]
+	fn cross_app_table_name_swaps_are_rejected_before_adding_a_cycle() {
+		use reinhardt_db::migrations::{Migration, Operation};
+
+		let mut accounts =
+			Migration::new("0002_swap", "accounts").add_operation(Operation::RenameTable {
+				old_name: "users".to_string(),
+				new_name: "accounts_users".to_string(),
+			});
+		let mut archive =
+			Migration::new("0002_swap", "archive").add_operation(Operation::RenameTable {
+				old_name: "accounts_users".to_string(),
+				new_name: "users".to_string(),
+			});
+
+		let error = add_reused_table_name_dependencies_with_history(
+			&mut [&mut accounts, &mut archive],
+			&[],
+		)
+		.expect_err("cross-app table-name swaps require an explicit temporary migration");
+
+		assert!(error.contains("cyclic cross-app table-name dependency"));
+		assert!(accounts.dependencies.is_empty());
+		assert!(archive.dependencies.is_empty());
+	}
 
 	#[cfg(feature = "reinhardt-db")]
 	struct EnvVarGuard {
