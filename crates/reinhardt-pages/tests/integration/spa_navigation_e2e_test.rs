@@ -152,6 +152,10 @@ async fn spa_navigation_link_click_re_renders_view(#[future] cdp_browser: CdpBro
 		"expected LOGIN VIEW after link click; got: {html}"
 	);
 	assert!(
+		html.contains("prepared route data"),
+		"expected the route loader value to be rendered; got: {html}"
+	);
+	assert!(
 		!html.contains("Go to login"),
 		"home view should be unmounted after navigation; got: {html}"
 	);

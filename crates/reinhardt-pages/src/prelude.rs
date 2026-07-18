@@ -58,7 +58,7 @@
 //!   [`EventType`], [`document`](fn@document)
 //!
 //! ## Routing
-//! - [`Link`], `Router`, `Route`, `RouterOutlet`, `PathPattern`
+//! - [`Link`], [`PrefetchMode`], [`Loader`], `RouterOutlet`, `RouteLoaderError`
 //!
 //! ## Macros
 //! - [`page`] - Component DSL for defining views
@@ -142,6 +142,7 @@ pub use crate::control_binding::{
 };
 
 // Platform-agnostic Event type
+pub use crate::cancellation::{CancellationHandle, CancellationToken, Cancelled};
 pub use crate::platform::Event;
 
 // Platform-agnostic task spawning (cross-target)
@@ -160,6 +161,12 @@ pub use crate::dom::{CustomEventOptions, Document, Element, EventHandle, EventTy
 
 // Non-deprecated rendering primitives.
 pub use crate::router::Link;
+pub use crate::router::PrefetchMode;
+pub use crate::router::RouteLoaderId;
+pub use crate::router::loader::{
+	Loader, LoaderInputError, LoaderInputKind, LoaderInputSpec, LoaderStore, LoaderStoreError,
+	RouteLoader, RouteLoaderError, canonical_loader_inputs, loader_cache_id,
+};
 
 // ============================================================================
 // API and Server Functions
@@ -188,7 +195,7 @@ pub use crate::hydration::{
 pub use crate::hydration::mark_hydration_complete;
 pub use crate::ssr::SsrState;
 #[cfg(native)]
-pub use crate::ssr::{SsrChunk, SsrOptions, SsrRenderer, SsrStream};
+pub use crate::ssr::{SsrChunk, SsrOptions, SsrRenderer, SsrRouteOutput, SsrStream};
 
 // ============================================================================
 // I18n

@@ -7,6 +7,8 @@
 
 #![cfg(wasm)]
 
+use js_sys::{Function, Object, Reflect};
+use wasm_bindgen::JsValue;
 use wasm_bindgen_test::*;
 
 wasm_bindgen_test_configure!(run_in_browser);
@@ -36,6 +38,136 @@ impl From<reinhardt_pages::server_fn::ServerFnError> for CustomClientError {
 #[server_fn]
 async fn custom_error_server_fn(value: u32) -> Result<u32, CustomClientError> {
 	Ok(value)
+}
+
+#[server_fn]
+async fn server_fn_cancellation_probe(
+	value: u32,
+) -> Result<u32, reinhardt_pages::server_fn::ServerFnError> {
+	Ok(value)
+}
+
+struct FetchStubGuard {
+	window: web_sys::Window,
+	previous_fetch: JsValue,
+	previous_abort_controller: JsValue,
+	probe: Object,
+}
+
+impl FetchStubGuard {
+	fn install() -> Self {
+		let window = web_sys::window().expect("browser window");
+		let global = js_sys::global();
+		let previous_fetch = Reflect::get(window.as_ref(), &JsValue::from_str("fetch"))
+			.expect("window.fetch must be readable");
+		let previous_abort_controller =
+			Reflect::get(global.as_ref(), &JsValue::from_str("AbortController"))
+				.expect("global AbortController must be readable");
+		let probe = Object::new();
+		Reflect::set(&probe, &JsValue::from_str("aborted"), &JsValue::FALSE)
+			.expect("probe aborted property");
+		Reflect::set(
+			&probe,
+			&JsValue::from_str("abortControllerCalls"),
+			&JsValue::from_f64(0.0),
+		)
+		.expect("probe abortControllerCalls property");
+		Reflect::set(
+			global.as_ref(),
+			&JsValue::from_str("__reinhardtServerFnFetchProbe"),
+			&probe,
+		)
+		.expect("install server function fetch probe");
+		let abort_controller_spy = Function::new_with_args(
+			"OriginalAbortController, probe",
+			r#"
+				return class extends OriginalAbortController {
+					constructor() {
+						super();
+						probe.abortControllerCalls += 1;
+					}
+				};
+			"#,
+		)
+		.call2(&JsValue::NULL, &previous_abort_controller, &probe)
+		.expect("create AbortController spy");
+		Reflect::set(
+			global.as_ref(),
+			&JsValue::from_str("AbortController"),
+			&abort_controller_spy,
+		)
+		.expect("install AbortController spy");
+		let stub = Function::new_with_args(
+			"request",
+			r#"
+			const probe = globalThis.__reinhardtServerFnFetchProbe;
+			probe.aborted = request.signal ? request.signal.aborted : false;
+			return Promise.resolve(new Response('42', { status: 200 }));
+			"#,
+		);
+		Reflect::set(window.as_ref(), &JsValue::from_str("fetch"), stub.as_ref())
+			.expect("install server function fetch stub");
+
+		Self {
+			window,
+			previous_fetch,
+			previous_abort_controller,
+			probe,
+		}
+	}
+
+	fn flag(&self, name: &str) -> bool {
+		Reflect::get(&self.probe, &JsValue::from_str(name))
+			.expect("probe flag must be readable")
+			.as_bool()
+			.unwrap_or(false)
+	}
+
+	fn abort_controller_calls(&self) -> u32 {
+		Reflect::get(&self.probe, &JsValue::from_str("abortControllerCalls"))
+			.expect("probe abortControllerCalls must be readable")
+			.as_f64()
+			.unwrap_or_default() as u32
+	}
+}
+
+impl Drop for FetchStubGuard {
+	fn drop(&mut self) {
+		let _ = Reflect::set(
+			self.window.as_ref(),
+			&JsValue::from_str("fetch"),
+			&self.previous_fetch,
+		);
+		let _ = Reflect::set(
+			js_sys::global().as_ref(),
+			&JsValue::from_str("AbortController"),
+			&self.previous_abort_controller,
+		);
+		let _ = Reflect::delete_property(
+			js_sys::global().as_ref(),
+			&JsValue::from_str("__reinhardtServerFnFetchProbe"),
+		);
+	}
+}
+
+#[wasm_bindgen_test]
+async fn server_fn_call_without_active_cancellation_does_not_construct_abort_controller() {
+	// Arrange
+	let fetch_stub = FetchStubGuard::install();
+
+	// Act
+	let result = server_fn_cancellation_probe(7)
+		.await
+		.expect("the stubbed server function request should resolve");
+
+	// Assert
+	assert_eq!(result, 42);
+	assert_eq!(
+		fetch_stub.abort_controller_calls(),
+		0,
+		"a normal server function call must not construct an AbortController"
+	);
+	assert!(!fetch_stub.flag("aborted"));
 }
 
 #[wasm_bindgen_test]

@@ -221,90 +221,6 @@ impl DatabaseMigrationExecutor {
 		self.db_type
 	}
 
-	/// Check if a table exists in the database
-	///
-	/// # Examples
-	///
-	/// ```ignore
-	/// use reinhardt_db::migrations::executor::DatabaseMigrationExecutor;
-	/// use reinhardt_db::backends::DatabaseConnection;
-	///
-	/// # async fn example() {
-	/// let db = DatabaseConnection::connect_postgres("postgres://localhost/mydb").await.unwrap();
-	/// let executor = DatabaseMigrationExecutor::new(db);
-	/// let exists = executor.table_exists("users").await.unwrap();
-	/// # }
-	/// ```
-	async fn table_exists(&self, table_name: &str) -> Result<bool> {
-		use reinhardt_query::prelude::{
-			Alias, Cond, Expr, ExprTrait, MySqlQueryBuilder, PostgresQueryBuilder, Query,
-			QueryStatementBuilder, SqliteQueryBuilder,
-		};
-
-		match self.db_type {
-			DatabaseType::Postgres => {
-				// Build parameterized query using reinhardt-query
-				let subquery = Query::select()
-					.expr(Expr::asterisk())
-					.from((Alias::new("information_schema"), Alias::new("tables")))
-					.cond_where(
-						Cond::all()
-							.add(Expr::col(Alias::new("table_schema")).eq("public"))
-							.add(Expr::col(Alias::new("table_name")).eq(table_name)),
-					)
-					.to_owned();
-
-				let query_str = format!(
-					"SELECT EXISTS ({})",
-					subquery.to_string(PostgresQueryBuilder)
-				);
-
-				// For PostgreSQL, EXISTS returns a boolean value
-				let result = self.connection.fetch_one(&query_str, vec![]).await?;
-				match result.data.get("exists") {
-					Some(crate::backends::types::QueryValue::Bool(b)) => Ok(*b),
-					_ => Ok(false),
-				}
-			}
-			DatabaseType::Sqlite => {
-				// Build parameterized query using reinhardt-query
-				let query = Query::select()
-					.column(Alias::new("name"))
-					.from(Alias::new("sqlite_master"))
-					.cond_where(
-						Cond::all()
-							.add(Expr::col(Alias::new("type")).eq("table"))
-							.add(Expr::col(Alias::new("name")).eq(table_name)),
-					)
-					.to_owned();
-
-				let query_str = query.to_string(SqliteQueryBuilder);
-
-				// For SQLite, check if any row is returned
-				let result = self.connection.fetch_optional(&query_str, vec![]).await?;
-				Ok(result.is_some())
-			}
-			DatabaseType::Mysql => {
-				// Build parameterized query using reinhardt-query
-				let query = Query::select()
-					.column(Alias::new("TABLE_NAME"))
-					.from((Alias::new("information_schema"), Alias::new("tables")))
-					.cond_where(
-						Cond::all()
-							.add(Expr::col(Alias::new("table_schema")).eq(Expr::cust("DATABASE()")))
-							.add(Expr::col(Alias::new("table_name")).eq(table_name)),
-					)
-					.to_owned();
-
-				let query_str = query.to_string(MySqlQueryBuilder);
-
-				// For MySQL, check if any row is returned
-				let result = self.connection.fetch_optional(&query_str, vec![]).await?;
-				Ok(result.is_some())
-			}
-		}
-	}
-
 	/// Performs the apply migrations operation.
 	pub async fn apply_migrations(&mut self, migrations: &[Migration]) -> Result<ExecutionResult> {
 		#[cfg(feature = "postgres")]
@@ -491,11 +407,18 @@ impl DatabaseMigrationExecutor {
 			crate::backends::types::DatabaseType::Sqlite => SqlDialect::Sqlite,
 		};
 
+		let requires_sqlite_recreation = matches!(dialect, SqlDialect::Sqlite)
+			&& migration
+				.operations
+				.iter()
+				.any(Operation::reverse_requires_sqlite_recreation);
+
 		// Create SchemaEditor for atomic operations
-		let mut editor = SchemaEditor::new(
+		let mut editor = SchemaEditor::new_for_migration(
 			self.connection.clone(),
 			migration.atomic,
 			self.connection.database_type(),
+			requires_sqlite_recreation,
 		)
 		.await?;
 
@@ -585,9 +508,20 @@ impl DatabaseMigrationExecutor {
 			DatabaseType::Mysql => SqlDialect::Mysql,
 		};
 
+		let requires_sqlite_recreation = matches!(dialect, SqlDialect::Sqlite)
+			&& migration
+				.operations
+				.iter()
+				.any(Operation::requires_sqlite_recreation);
+
 		// Create schema editor with atomic support based on migration's atomic flag
-		let mut editor =
-			SchemaEditor::new(self.connection.clone(), migration.atomic, self.db_type).await?;
+		let mut editor = SchemaEditor::new_for_migration(
+			self.connection.clone(),
+			migration.atomic,
+			self.db_type,
+			requires_sqlite_recreation,
+		)
+		.await?;
 
 		// Log if database_only flag is set
 		// Note: ProjectState tracking during migration execution is a planned enhancement.
@@ -725,12 +659,6 @@ impl DatabaseMigrationExecutor {
 	async fn apply_after_schema_table(&mut self, plan: &MigrationPlan) -> Result<ExecutionResult> {
 		let mut applied = Vec::new();
 
-		let dialect = match self.db_type {
-			DatabaseType::Postgres => SqlDialect::Postgres,
-			DatabaseType::Sqlite => SqlDialect::Sqlite,
-			DatabaseType::Mysql => SqlDialect::Mysql,
-		};
-
 		for migration in &plan.migrations {
 			// Check if already applied
 			if self
@@ -741,41 +669,7 @@ impl DatabaseMigrationExecutor {
 				continue;
 			}
 
-			// Apply migration
-			for operation in &migration.operations {
-				// Check if this is a CreateTable operation and if the table already exists
-				if let Operation::CreateTable { name, .. } = operation {
-					let table_exists = self.table_exists(name).await?;
-					if table_exists {
-						eprintln!(
-							"⏭️  Table '{}' already exists, skipping CREATE TABLE operation",
-							name
-						);
-						continue;
-					}
-				}
-
-				#[cfg(feature = "sqlite")]
-				if matches!(dialect, SqlDialect::Sqlite) && operation.requires_sqlite_recreation() {
-					let mut editor =
-						SchemaEditor::new(self.connection.clone(), migration.atomic, self.db_type)
-							.await?;
-					self.handle_sqlite_recreation(operation, &mut editor)
-						.await?;
-					editor.finish().await?;
-					continue;
-				}
-
-				let sql = operation.to_sql(&dialect);
-
-				// Split SQL into individual statements to handle PostgreSQL's
-				// prepared statement limitation (cannot execute multiple commands)
-				for statement in split_sql_statements(&sql) {
-					if !statement.trim().is_empty() {
-						self.connection.execute(&statement, vec![]).await?;
-					}
-				}
-			}
+			self.apply_migration(migration).await?;
 
 			// Record migration as applied
 			self.recorder
@@ -814,7 +708,7 @@ impl DatabaseMigrationExecutor {
 		Ok(plan)
 	}
 
-	/// Read columns + constraints for a SQLite table using the SchemaEditor's
+	/// Read recreation metadata for a SQLite table using the SchemaEditor's
 	/// currently-open transaction (if any), falling back to the live pool when
 	/// the editor is non-atomic.
 	///
@@ -831,8 +725,13 @@ impl DatabaseMigrationExecutor {
 		table_name: &str,
 	) -> Result<(
 		Vec<super::ColumnDefinition>,
+		Vec<(String, String)>,
 		Vec<super::Constraint>,
+		Vec<super::operations::SqliteRecreatedConstraint>,
 		Vec<super::operations::SqliteRecreatedIndex>,
+		Vec<String>,
+		bool,
+		bool,
 	)> {
 		// 1. PRAGMA table_xinfo(<table>) → columns. Identifier interpolation
 		//    via the shared `sqlite_pragma` helper. See issue #4454.
@@ -881,20 +780,58 @@ impl DatabaseMigrationExecutor {
 			)
 			.await?;
 		let create_sql: Option<String> = create_sql_row.and_then(|r| r.get("sql").ok());
+		let column_collations = create_sql
+			.as_deref()
+			.map(parse_sqlite_column_collations)
+			.unwrap_or_default();
 		let has_autoincrement = create_sql
 			.as_ref()
 			.map(|sql| sql.to_uppercase().contains("AUTOINCREMENT"))
 			.unwrap_or(false);
+		// SQLite exposes table options as structured metadata. Reading them via
+		// the editor keeps this lookup on the dedicated migration connection and
+		// avoids parsing CREATE SQL that may contain comments or unusual spacing.
+		// nosemgrep: rust.actix.sql.sqlx-taint.sqlx-taint
+		let table_list_sql = format!(
+			"PRAGMA table_list({})",
+			super::sqlite_pragma::quote_pragma_identifier(table_name)
+		);
+		let table_options = editor.fetch_optional(&table_list_sql, vec![]).await?;
+		let without_rowid = table_options
+			.as_ref()
+			.and_then(|row| row.get::<i64>("wr").ok())
+			.map(|value| value != 0)
+			.unwrap_or_else(|| {
+				// SQLite versions before table_list was introduced can still use
+				// WITHOUT ROWID, so retain the CREATE SQL fallback for that option.
+				create_sql.as_deref().is_some_and(|sql| {
+					sql.rsplit_once(')').is_some_and(|(_, options)| {
+						options.to_ascii_uppercase().contains("WITHOUT ROWID")
+					})
+				})
+			});
+		let strict = table_options
+			.as_ref()
+			.and_then(|row| row.get::<i64>("strict").ok())
+			.unwrap_or(0)
+			!= 0;
 
 		// 3. Build ColumnDefinition list, mirroring the introspector's
 		//    semantics (PK columns are implicitly NOT NULL; AUTOINCREMENT is
 		//    only meaningful on PK columns).
+		let mut composite_primary_key: Vec<(i64, String)> = col_rows
+			.iter()
+			.filter(|column| column.pk > 0)
+			.map(|column| (column.pk, column.name.clone()))
+			.collect();
+		composite_primary_key.sort_by_key(|(ordinal, _)| *ordinal);
+		let has_composite_primary_key = composite_primary_key.len() > 1;
 		let mut columns: Vec<super::ColumnDefinition> = col_rows
 			.iter()
 			.map(|c| {
-				let is_pk = c.pk > 0;
+				let is_pk = c.pk > 0 && !has_composite_primary_key;
 				let is_auto = is_pk && has_autoincrement;
-				let nullable = if is_pk { false } else { c.notnull == 0 };
+				let nullable = if c.pk > 0 { false } else { c.notnull == 0 };
 				// Preserve `dflt_value` verbatim as the raw SQL fragment
 				// (e.g. `'pending'` including surrounding quotes). The
 				// downstream `format!("DEFAULT {}", default)` paths in
@@ -918,6 +855,7 @@ impl DatabaseMigrationExecutor {
 						&c.name,
 						c.hidden,
 					),
+					domain: None,
 				}
 			})
 			.collect();
@@ -967,9 +905,9 @@ impl DatabaseMigrationExecutor {
 			})
 			.collect();
 
-		let named_fks = create_sql
-			.as_ref()
-			.map(|sql| SQLiteIntrospector::parse_fk_constraint_names(sql))
+		let fk_metadata = create_sql
+			.as_deref()
+			.map(parse_sqlite_fk_metadata)
 			.unwrap_or_default();
 
 		let mut fk_groups: std::collections::HashMap<i64, Vec<FkRow>> =
@@ -989,16 +927,79 @@ impl DatabaseMigrationExecutor {
 		}
 
 		let mut constraints: Vec<super::Constraint> = Vec::new();
+		if has_composite_primary_key {
+			constraints.push(super::Constraint::PrimaryKey {
+				name: format!("{}_pkey", table_name),
+				columns: composite_primary_key
+					.into_iter()
+					.map(|(_, column)| column)
+					.collect(),
+			});
+		}
 		for (fk_id, mut group) in fk_groups {
 			group.sort_by_key(|r| r.seq);
 			let referenced_table = group[0].table.clone();
 			let columns_from: Vec<String> = group.iter().map(|r| r.from.clone()).collect();
-			let columns_to: Vec<String> = group.iter().map(|r| r.to.clone()).collect();
-			let signature = (columns_from.clone(), referenced_table.clone());
-			let name = named_fks
-				.get(&signature)
-				.cloned()
+			let mut columns_to: Vec<String> = group
+				.iter()
+				.map(|r| r.to.clone())
+				.filter(|column| !column.is_empty())
+				.collect();
+			let signature = (
+				columns_from.clone(),
+				referenced_table.clone(),
+				columns_to.clone(),
+			);
+			let metadata = fk_metadata.get(&signature);
+			let name = metadata
+				.and_then(|metadata| metadata.name.clone())
 				.unwrap_or_else(|| format!("fk_{}_{}", table_name, fk_id));
+			if columns_to.is_empty() {
+				// SQLite leaves the target columns null when REFERENCES omits them.
+				// Resolve the target primary key in its declared ordinal order so the
+				// recreated table emits a valid explicit foreign key target list.
+				let target_columns_sql = format!(
+					"PRAGMA table_info({})",
+					super::sqlite_pragma::quote_pragma_identifier(&referenced_table)
+				);
+				let target_column_rows = editor.fetch_all(&target_columns_sql, vec![]).await?;
+				let mut target_primary_key: Vec<(i64, String)> = target_column_rows
+					.iter()
+					.filter_map(|row| {
+						let ordinal = row.get::<i64>("pk").ok()?;
+						let name = row.get::<String>("name").ok()?;
+						(ordinal > 0).then_some((ordinal, name))
+					})
+					.collect();
+				target_primary_key.sort_by_key(|(ordinal, _)| *ordinal);
+				columns_to = target_primary_key
+					.into_iter()
+					.map(|(_, column)| column)
+					.collect();
+				if columns_to.is_empty() {
+					return Err(MigrationError::InvalidMigration(format!(
+						"cannot recreate SQLite table '{table_name}': foreign key '{name}' omits referenced columns, but referenced table '{referenced_table}' has no primary key"
+					)));
+				}
+			}
+			if columns_from.len() != columns_to.len() {
+				let source_label = if columns_from.len() == 1 {
+					"column"
+				} else {
+					"columns"
+				};
+				let referenced_label = if columns_to.len() == 1 {
+					"column"
+				} else {
+					"columns"
+				};
+				return Err(MigrationError::InvalidMigration(format!(
+					"cannot recreate SQLite table '{table_name}': foreign key '{name}' has {} source {source_label}, but referenced table '{referenced_table}' resolves to {} referenced {referenced_label}",
+					columns_from.len(),
+					columns_to.len()
+				)));
+			}
+			let deferrable = metadata.and_then(|metadata| metadata.deferrable);
 			constraints.push(super::Constraint::ForeignKey {
 				name,
 				columns: columns_from,
@@ -1006,7 +1007,7 @@ impl DatabaseMigrationExecutor {
 				referenced_columns: columns_to,
 				on_delete: fk_action(&group[0].on_delete),
 				on_update: fk_action(&group[0].on_update),
-				deferrable: None,
+				deferrable,
 			});
 		}
 
@@ -1020,6 +1021,24 @@ impl DatabaseMigrationExecutor {
 			super::sqlite_pragma::quote_pragma_identifier(table_name)
 		);
 		let idx_rows = editor.fetch_all(&idx_list_sql, vec![]).await?;
+		let unique_constraint_metadata = create_sql
+			.as_deref()
+			.map(parse_sqlite_unique_constraint_metadata)
+			.unwrap_or_default();
+		let raw_constraint_metadata = unique_constraint_metadata
+			.iter()
+			.filter(|metadata| metadata.raw_sql.is_some())
+			.collect::<Vec<_>>();
+		let mut raw_constraints = raw_constraint_metadata
+			.iter()
+			.map(|metadata| super::operations::SqliteRecreatedConstraint {
+				name: metadata.name.clone(),
+				physical_name: None,
+				columns: metadata.columns.clone(),
+				sql: metadata.raw_sql.clone().unwrap_or_default(),
+			})
+			.collect::<Vec<_>>();
+		let mut restored_unique_constraint_names = std::collections::HashSet::new();
 		let mut indexes = Vec::new();
 		for row in &idx_rows {
 			let origin: String = row.get("origin").unwrap_or_default();
@@ -1046,10 +1065,79 @@ impl DatabaseMigrationExecutor {
 				.filter_map(|r| r.get::<String>("name").ok())
 				.collect();
 			if origin == "u" && unique == 1 {
-				constraints.push(super::Constraint::Unique {
-					name: idx_name,
-					columns: cols,
-				});
+				// nosemgrep: rust.actix.sql.sqlx-taint.sqlx-taint
+				let xinfo_sql = format!(
+					"PRAGMA index_xinfo({})",
+					super::sqlite_pragma::quote_pragma_identifier(&idx_name)
+				);
+				let indexed_columns = editor
+					.fetch_all(&xinfo_sql, vec![])
+					.await?
+					.into_iter()
+					.filter(|row| row.get::<i64>("key").unwrap_or(1) == 1)
+					.filter_map(|row| {
+						Some(SqliteIndexedColumnMetadata {
+							name: row.get::<String>("name").ok()?,
+							collation: row.get::<String>("coll").ok(),
+							descending: Some(row.get::<i64>("desc").unwrap_or(0) != 0),
+						})
+					})
+					.collect::<Vec<_>>();
+				let scored_raw_constraints = raw_constraint_metadata
+					.iter()
+					.enumerate()
+					.filter(|(index, _)| raw_constraints[*index].physical_name.is_none())
+					.filter_map(|(index, metadata)| {
+						sqlite_unique_index_match_score(&metadata.indexed_columns, &indexed_columns)
+							.map(|score| (index, score))
+					})
+					.collect::<Vec<_>>();
+				if let Some(max_score) =
+					scored_raw_constraints.iter().map(|(_, score)| *score).max()
+				{
+					for (index, _) in scored_raw_constraints
+						.into_iter()
+						.filter(|(_, score)| *score == max_score)
+					{
+						raw_constraints[index].physical_name = Some(idx_name.clone());
+					}
+				}
+				let matches_columns = |metadata: &SqliteUniqueConstraintMetadata| {
+					metadata.columns.len() == cols.len()
+						&& metadata
+							.columns
+							.iter()
+							.zip(&cols)
+							.all(|(declared, actual)| declared.eq_ignore_ascii_case(actual))
+				};
+				if unique_constraint_metadata
+					.iter()
+					.filter(|metadata| metadata.raw_sql.is_some())
+					.any(&matches_columns)
+				{
+					continue;
+				}
+				let declared_names: Vec<_> = unique_constraint_metadata
+					.iter()
+					.filter(|metadata| metadata.raw_sql.is_none())
+					.filter(|metadata| matches_columns(metadata))
+					.filter_map(|metadata| metadata.name.clone())
+					.collect();
+				if declared_names.is_empty() {
+					constraints.push(super::Constraint::Unique {
+						name: idx_name,
+						columns: cols,
+					});
+				} else {
+					for name in declared_names {
+						if restored_unique_constraint_names.insert(name.clone()) {
+							constraints.push(super::Constraint::Unique {
+								name,
+								columns: cols.clone(),
+							});
+						}
+					}
+				}
 			} else if origin == "c" && (!cols.is_empty() || idx_sql.is_some()) {
 				indexes.push(super::operations::SqliteRecreatedIndex {
 					name: idx_name,
@@ -1074,7 +1162,32 @@ impl DatabaseMigrationExecutor {
 			}
 		}
 
-		Ok((columns, constraints, indexes))
+		// 7. Triggers must be recreated after the temporary table is renamed.
+		//    Dropping the original table removes them from sqlite_master. Preserve
+		//    sqlite_master row order so their creation order does not change.
+		let trigger_rows = editor
+			.fetch_all(
+				"SELECT sql FROM sqlite_master WHERE type='trigger' AND tbl_name=? AND sql IS NOT NULL ORDER BY rowid",
+				vec![table_name.into()],
+			)
+			.await?;
+		let mut triggers = Vec::with_capacity(trigger_rows.len());
+		for row in &trigger_rows {
+			triggers.push(row.get::<String>("sql").map_err(|error| {
+				MigrationError::IntrospectionError(format!("sqlite_master trigger SQL: {error}"))
+			})?);
+		}
+
+		Ok((
+			columns,
+			column_collations,
+			constraints,
+			raw_constraints,
+			indexes,
+			triggers,
+			without_rowid,
+			strict,
+		))
 	}
 
 	/// Handle SQLite table recreation for operations that require it
@@ -1095,10 +1208,6 @@ impl DatabaseMigrationExecutor {
 	) -> Result<()> {
 		use super::operations::SqliteTableRecreation;
 
-		// Disable foreign key checks before table recreation
-		// This prevents FK violations during the temporary DROP TABLE phase
-		editor.disable_foreign_keys().await?;
-
 		// Build the recreation plan based on operation type.
 		//
 		// Critical: introspection must run via the editor's open transaction so
@@ -1114,10 +1223,23 @@ impl DatabaseMigrationExecutor {
 					table,
 					column.name
 				);
-				let (columns, constraints, indexes) =
-					Self::read_sqlite_table_via_editor(editor, table).await?;
+				let (
+					columns,
+					column_collations,
+					constraints,
+					raw_constraints,
+					indexes,
+					triggers,
+					without_rowid,
+					strict,
+				) = Self::read_sqlite_table_via_editor(editor, table).await?;
 				SqliteTableRecreation::for_add_column(table, columns, column.clone(), constraints)
+					.with_column_collations(column_collations)
+					.with_raw_constraints(raw_constraints)
 					.with_indexes(indexes)
+					.with_triggers(triggers)
+					.with_without_rowid(without_rowid)
+					.with_strict(strict)
 			}
 			Operation::DropColumn { table, column, .. } => {
 				tracing::debug!(
@@ -1125,10 +1247,24 @@ impl DatabaseMigrationExecutor {
 					table,
 					column
 				);
-				let (columns, constraints, indexes) =
-					Self::read_sqlite_table_via_editor(editor, table).await?;
+				let (
+					columns,
+					column_collations,
+					constraints,
+					raw_constraints,
+					indexes,
+					triggers,
+					without_rowid,
+					strict,
+				) = Self::read_sqlite_table_via_editor(editor, table).await?;
 				SqliteTableRecreation::for_drop_column(table, columns, column, constraints)
+					.with_column_collations(column_collations)
+					.with_raw_constraints(raw_constraints)
 					.with_indexes(indexes)
+					.with_triggers(triggers)
+					.with_without_rowid(without_rowid)
+					.with_strict(strict)
+					.without_raw_constraints_referencing(column)
 					.without_indexes_referencing(column)
 			}
 			Operation::AlterColumn {
@@ -1142,8 +1278,16 @@ impl DatabaseMigrationExecutor {
 					table,
 					column
 				);
-				let (columns, constraints, indexes) =
-					Self::read_sqlite_table_via_editor(editor, table).await?;
+				let (
+					columns,
+					column_collations,
+					constraints,
+					raw_constraints,
+					indexes,
+					triggers,
+					without_rowid,
+					strict,
+				) = Self::read_sqlite_table_via_editor(editor, table).await?;
 				SqliteTableRecreation::for_alter_column(
 					table,
 					columns,
@@ -1151,7 +1295,12 @@ impl DatabaseMigrationExecutor {
 					new_definition.clone(),
 					constraints,
 				)
+				.with_column_collations(column_collations)
+				.with_raw_constraints(raw_constraints)
 				.with_indexes(indexes)
+				.with_triggers(triggers)
+				.with_without_rowid(without_rowid)
+				.with_strict(strict)
 			}
 			Operation::AddConstraint {
 				table,
@@ -1165,34 +1314,120 @@ impl DatabaseMigrationExecutor {
 					"Handling SQLite table recreation for AddConstraint: table={}",
 					table
 				);
-				let (columns, constraints, indexes) =
-					Self::read_sqlite_table_via_editor(editor, table).await?;
+				let (
+					columns,
+					column_collations,
+					constraints,
+					raw_constraints,
+					indexes,
+					triggers,
+					without_rowid,
+					strict,
+				) = Self::read_sqlite_table_via_editor(editor, table).await?;
 				SqliteTableRecreation::for_add_constraint(
 					table,
 					columns,
 					constraints,
 					constraint_sql.clone(),
 				)
+				.with_column_collations(column_collations)
+				.with_raw_constraints(raw_constraints)
 				.with_indexes(indexes)
+				.with_triggers(triggers)
+				.with_without_rowid(without_rowid)
+				.with_strict(strict)
+			}
+			Operation::AddConstraintDefinition { table, constraint } => {
+				tracing::debug!(
+					"Handling SQLite table recreation for typed constraint: table={}",
+					table
+				);
+				let (
+					columns,
+					column_collations,
+					constraints,
+					raw_constraints,
+					indexes,
+					triggers,
+					without_rowid,
+					strict,
+				) = Self::read_sqlite_table_via_editor(editor, table).await?;
+				SqliteTableRecreation::for_add_constraint_definition(
+					table,
+					columns,
+					constraints,
+					constraint.clone(),
+				)
+				.with_column_collations(column_collations)
+				.with_raw_constraints(raw_constraints)
+				.with_indexes(indexes)
+				.with_triggers(triggers)
+				.with_without_rowid(without_rowid)
+				.with_strict(strict)
 			}
 			Operation::DropConstraint {
 				table,
 				constraint_name,
+				..
 			} => {
 				tracing::debug!(
 					"Handling SQLite table recreation for DropConstraint: table={}, constraint={}",
 					table,
 					constraint_name
 				);
-				let (columns, constraints, indexes) =
-					Self::read_sqlite_table_via_editor(editor, table).await?;
+				let (
+					columns,
+					column_collations,
+					constraints,
+					raw_constraints,
+					indexes,
+					triggers,
+					without_rowid,
+					strict,
+				) = Self::read_sqlite_table_via_editor(editor, table).await?;
 				SqliteTableRecreation::for_drop_constraint(
 					table,
 					columns,
 					constraints,
 					constraint_name,
 				)
+				.with_column_collations(column_collations)
+				.with_raw_constraints(raw_constraints)
+				.without_raw_constraint_named(constraint_name)
 				.with_indexes(indexes)
+				.with_triggers(triggers)
+				.with_without_rowid(without_rowid)
+				.with_strict(strict)
+			}
+			Operation::DropConstraintDefinition { table, constraint } => {
+				tracing::debug!(
+					"Handling SQLite table recreation for typed constraint drop: table={}, constraint={}",
+					table,
+					constraint.name()
+				);
+				let (
+					columns,
+					column_collations,
+					constraints,
+					raw_constraints,
+					indexes,
+					triggers,
+					without_rowid,
+					strict,
+				) = Self::read_sqlite_table_via_editor(editor, table).await?;
+				SqliteTableRecreation::for_drop_constraint(
+					table,
+					columns,
+					constraints,
+					constraint.name(),
+				)
+				.with_column_collations(column_collations)
+				.with_raw_constraints(raw_constraints)
+				.without_raw_constraint_named(constraint.name())
+				.with_indexes(indexes)
+				.with_triggers(triggers)
+				.with_without_rowid(without_rowid)
+				.with_strict(strict)
 			}
 			_ => {
 				// This branch should not be reached if requires_sqlite_recreation() is correct
@@ -1201,31 +1436,35 @@ impl DatabaseMigrationExecutor {
 					Attempting to execute as-is, which may fail.",
 					std::mem::discriminant(operation)
 				);
-				// Re-enable FK checks and fall back to normal SQL execution
-				editor.enable_foreign_keys().await?;
+				// No scoped foreign-key state has been changed at this point.
 				let sql = operation.to_sql(&super::operations::SqlDialect::Sqlite);
 				editor.execute(&sql).await?;
 				return Ok(());
 			}
 		};
 
-		// Execute recreation steps
-		for stmt in recreation.to_sql_statements() {
-			tracing::debug!("Executing recreation SQL: {}", &stmt[..stmt.len().min(100)]);
-			editor.execute(&stmt).await?;
-		}
-
-		// Re-enable foreign key checks
-		editor.enable_foreign_keys().await?;
-
-		// Check for FK integrity violations (logs warning if any found)
-		let violations = editor.check_foreign_key_integrity().await?;
-		if !violations.is_empty() {
-			return Err(MigrationError::ForeignKeyViolation(format!(
-				"Foreign key violations detected after table recreation: {}",
-				violations.join("; ")
-			)));
-		}
+		let statements = recreation.to_sql_statements();
+		editor
+			.with_foreign_keys_disabled(move |editor| {
+				Box::pin(async move {
+					for stmt in statements {
+						tracing::debug!(
+							"Executing recreation SQL: {}",
+							&stmt[..stmt.len().min(100)]
+						);
+						editor.execute(&stmt).await?;
+					}
+					let violations = editor.check_foreign_key_integrity().await?;
+					if !violations.is_empty() {
+						return Err(MigrationError::ForeignKeyViolation(format!(
+							"Foreign key violations detected after table recreation: {}",
+							violations.join("; ")
+						)));
+					}
+					Ok(())
+				})
+			})
+			.await?;
 
 		tracing::debug!(
 			"SQLite table recreation completed for {:?}",
@@ -1602,6 +1841,7 @@ impl OperationOptimizer {
 						Operation::DropConstraint {
 							table: t2,
 							constraint_name,
+							..
 						},
 					) if t1 == t2 => {
 						// Try to extract constraint name from SQL for exact matching
@@ -1780,16 +2020,44 @@ fn split_sqlite_top_level_list(sql: &str) -> Vec<&str> {
 	let mut start = 0;
 	let mut depth = 0usize;
 	let mut quote: Option<char> = None;
+	let mut line_comment = false;
+	let mut block_comment = false;
+	let mut chars = sql.char_indices().peekable();
 
-	for (index, ch) in sql.char_indices() {
+	while let Some((index, ch)) = chars.next() {
+		if line_comment {
+			if ch == '\n' {
+				line_comment = false;
+			}
+			continue;
+		}
+		if block_comment {
+			if ch == '*' && chars.peek().is_some_and(|(_, next)| *next == '/') {
+				chars.next();
+				block_comment = false;
+			}
+			continue;
+		}
 		if let Some(quote_ch) = quote {
 			if ch == quote_ch {
-				quote = None;
+				if chars.peek().is_some_and(|(_, next)| *next == quote_ch) {
+					chars.next();
+				} else {
+					quote = None;
+				}
 			}
 			continue;
 		}
 
 		match ch {
+			'-' if chars.peek().is_some_and(|(_, next)| *next == '-') => {
+				chars.next();
+				line_comment = true;
+			}
+			'/' if chars.peek().is_some_and(|(_, next)| *next == '*') => {
+				chars.next();
+				block_comment = true;
+			}
 			'\'' | '"' | '`' => quote = Some(ch),
 			'[' => quote = Some(']'),
 			'(' => depth += 1,
@@ -1810,37 +2078,568 @@ fn split_sqlite_top_level_list(sql: &str) -> Vec<&str> {
 }
 
 #[cfg(feature = "sqlite")]
-fn sqlite_column_name(definition: &str) -> Option<String> {
-	let trimmed = definition.trim_start();
-	let first_word = trimmed
-		.split_whitespace()
-		.next()
-		.unwrap_or("")
-		.to_ascii_uppercase();
-	if matches!(
-		first_word.as_str(),
-		"CONSTRAINT" | "PRIMARY" | "FOREIGN" | "UNIQUE" | "CHECK"
-	) {
+#[derive(Debug)]
+struct SqliteFkMetadata {
+	name: Option<String>,
+	deferrable: Option<super::operations::DeferrableOption>,
+}
+
+#[cfg(feature = "sqlite")]
+#[derive(Debug, PartialEq, Eq)]
+struct SqliteUniqueConstraintMetadata {
+	name: Option<String>,
+	columns: Vec<String>,
+	indexed_columns: Vec<SqliteIndexedColumnMetadata>,
+	raw_sql: Option<String>,
+}
+
+#[cfg(feature = "sqlite")]
+#[derive(Debug, PartialEq, Eq)]
+struct SqliteIndexedColumnMetadata {
+	name: String,
+	collation: Option<String>,
+	descending: Option<bool>,
+}
+
+#[cfg(feature = "sqlite")]
+fn sqlite_top_level_word_index(tokens: &[SqliteDdlToken], word: &str) -> Option<usize> {
+	let mut depth = 0usize;
+	for (index, token) in tokens.iter().enumerate() {
+		match token {
+			SqliteDdlToken::OpenParen => depth += 1,
+			SqliteDdlToken::CloseParen => depth = depth.saturating_sub(1),
+			token if depth == 0 && sqlite_token_is_word(token, word) => return Some(index),
+			_ => {}
+		}
+	}
+	None
+}
+
+#[cfg(feature = "sqlite")]
+fn sqlite_unique_conflict_mode(tokens: &[SqliteDdlToken], unique_index: usize) -> Option<String> {
+	let mut depth = 0usize;
+	for (index, token) in tokens.iter().enumerate().skip(unique_index + 1) {
+		match token {
+			SqliteDdlToken::OpenParen => depth += 1,
+			SqliteDdlToken::CloseParen => depth = depth.saturating_sub(1),
+			token
+				if depth == 0
+					&& sqlite_token_is_word(token, "ON")
+					&& tokens
+						.get(index + 1)
+						.is_some_and(|token| sqlite_token_is_word(token, "CONFLICT")) =>
+			{
+				return tokens.get(index + 2).and_then(sqlite_token_identifier);
+			}
+			token
+				if depth == 0
+					&& [
+						"CONSTRAINT",
+						"PRIMARY",
+						"NOT",
+						"CHECK",
+						"DEFAULT",
+						"COLLATE",
+						"REFERENCES",
+						"GENERATED",
+						"UNIQUE",
+					]
+					.iter()
+					.any(|keyword| sqlite_token_is_word(token, keyword)) =>
+			{
+				return None;
+			}
+			_ => {}
+		}
+	}
+	None
+}
+
+#[cfg(feature = "sqlite")]
+fn sqlite_canonical_unique_sql(
+	name: Option<&str>,
+	columns: &[SqliteIndexedColumnMetadata],
+	conflict_mode: Option<&str>,
+) -> String {
+	let quote = super::sqlite_pragma::quote_sqlite_identifier;
+	let columns = columns
+		.iter()
+		.map(|column| {
+			let collation = column.collation.as_deref().unwrap_or("BINARY");
+			let ordering = if column.descending == Some(true) {
+				"DESC"
+			} else {
+				"ASC"
+			};
+			format!(
+				"{} COLLATE {} {ordering}",
+				quote(&column.name),
+				quote(collation)
+			)
+		})
+		.collect::<Vec<_>>()
+		.join(", ");
+	let mut sql = match name {
+		Some(name) => format!("CONSTRAINT {} UNIQUE ({columns})", quote(name)),
+		None => format!("UNIQUE ({columns})"),
+	};
+	if let Some(conflict_mode) = conflict_mode {
+		sql.push_str(" ON CONFLICT ");
+		sql.push_str(conflict_mode);
+	}
+	sql
+}
+
+#[cfg(feature = "sqlite")]
+#[derive(Debug)]
+enum SqliteDdlToken {
+	Word(String),
+	Identifier(String),
+	OpenParen,
+	CloseParen,
+	Comma,
+}
+
+#[cfg(feature = "sqlite")]
+fn parse_sqlite_fk_metadata(
+	create_sql: &str,
+) -> std::collections::HashMap<(Vec<String>, String, Vec<String>), SqliteFkMetadata> {
+	let Some(body) = sqlite_create_table_body(create_sql) else {
+		return std::collections::HashMap::new();
+	};
+	let mut metadata = std::collections::HashMap::new();
+	for definition in split_sqlite_top_level_list(body) {
+		let tokens = tokenize_sqlite_definition(definition);
+		let Some(references_index) = tokens
+			.iter()
+			.position(|token| sqlite_token_is_word(token, "REFERENCES"))
+		else {
+			continue;
+		};
+		let Some(referenced_table) = tokens
+			.get(references_index + 1)
+			.and_then(sqlite_token_identifier)
+		else {
+			continue;
+		};
+		let referenced_columns = tokens
+			.iter()
+			.enumerate()
+			.skip(references_index + 2)
+			.find(|(_, token)| matches!(token, SqliteDdlToken::OpenParen))
+			.map(|(index, _)| sqlite_identifier_list(&tokens, index))
+			.unwrap_or_default();
+
+		let foreign_index = tokens.windows(2).position(|pair| {
+			sqlite_token_is_word(&pair[0], "FOREIGN") && sqlite_token_is_word(&pair[1], "KEY")
+		});
+		let (name, source_columns) = if let Some(foreign_index) = foreign_index {
+			let source_columns = tokens
+				.iter()
+				.enumerate()
+				.skip(foreign_index + 2)
+				.find(|(_, token)| matches!(token, SqliteDdlToken::OpenParen))
+				.map(|(index, _)| sqlite_identifier_list(&tokens, index))
+				.unwrap_or_default();
+			let name = if tokens
+				.first()
+				.is_some_and(|token| sqlite_token_is_word(token, "CONSTRAINT"))
+			{
+				tokens.get(1).and_then(sqlite_token_identifier)
+			} else {
+				None
+			};
+			(name, source_columns)
+		} else {
+			let Some(column) = tokens.first().and_then(sqlite_token_identifier) else {
+				continue;
+			};
+			if sqlite_token_is_word(&tokens[0], "CONSTRAINT") {
+				continue;
+			}
+			let name = tokens[..references_index]
+				.windows(2)
+				.rev()
+				.find_map(|pair| {
+					sqlite_token_is_word(&pair[0], "CONSTRAINT")
+						.then(|| sqlite_token_identifier(&pair[1]))
+						.flatten()
+				});
+			(name, vec![column])
+		};
+		if source_columns.is_empty() {
+			continue;
+		}
+
+		let deferrable = sqlite_fk_deferrable(&tokens);
+		metadata.insert(
+			(source_columns, referenced_table, referenced_columns),
+			SqliteFkMetadata { name, deferrable },
+		);
+	}
+	metadata
+}
+
+#[cfg(feature = "sqlite")]
+fn parse_sqlite_column_collations(create_sql: &str) -> Vec<(String, String)> {
+	let Some(body) = sqlite_create_table_body(create_sql) else {
+		return Vec::new();
+	};
+	split_sqlite_top_level_list(body)
+		.into_iter()
+		.filter_map(|definition| {
+			let column = sqlite_column_name(definition)?;
+			let tokens = tokenize_sqlite_definition(definition);
+			let collation = sqlite_top_level_collation(tokens.iter())?;
+			Some((column, collation))
+		})
+		.collect()
+}
+
+#[cfg(feature = "sqlite")]
+fn parse_sqlite_unique_constraint_metadata(
+	create_sql: &str,
+) -> Vec<SqliteUniqueConstraintMetadata> {
+	let Some(body) = sqlite_create_table_body(create_sql) else {
+		return Vec::new();
+	};
+	let column_collations = parse_sqlite_column_collations(create_sql);
+	let normalize_indexed_columns = |columns: &mut [SqliteIndexedColumnMetadata]| {
+		for column in columns {
+			if column.collation.is_none() {
+				column.collation = column_collations
+					.iter()
+					.find(|(name, _)| name.eq_ignore_ascii_case(&column.name))
+					.map(|(_, collation)| collation.clone())
+					.or_else(|| Some("BINARY".to_string()));
+			}
+			column.descending.get_or_insert(false);
+		}
+	};
+	let mut metadata = Vec::new();
+	for definition in split_sqlite_top_level_list(body) {
+		let tokens = tokenize_sqlite_definition(definition);
+		let table_unique = if tokens.len() >= 4
+			&& sqlite_token_is_word(&tokens[0], "CONSTRAINT")
+			&& sqlite_token_is_word(&tokens[2], "UNIQUE")
+		{
+			Some((sqlite_token_identifier(&tokens[1]), 3, 2))
+		} else if tokens
+			.first()
+			.is_some_and(|token| sqlite_token_is_word(token, "UNIQUE"))
+		{
+			Some((None, 1, 0))
+		} else {
+			None
+		};
+		if let Some((name, tokens_to_skip, unique_index)) = table_unique {
+			let Some(open_index) = tokens
+				.iter()
+				.skip(tokens_to_skip)
+				.position(|token| matches!(token, SqliteDdlToken::OpenParen))
+				.map(|index| index + tokens_to_skip)
+			else {
+				continue;
+			};
+			let mut indexed_columns = sqlite_indexed_column_metadata(&tokens, open_index);
+			normalize_indexed_columns(&mut indexed_columns);
+			if !indexed_columns.is_empty() {
+				let conflict_mode = sqlite_unique_conflict_mode(&tokens, unique_index);
+				let raw_sql = sqlite_canonical_unique_sql(
+					name.as_deref(),
+					&indexed_columns,
+					conflict_mode.as_deref(),
+				);
+				metadata.push(SqliteUniqueConstraintMetadata {
+					name,
+					columns: indexed_columns
+						.iter()
+						.map(|column| column.name.clone())
+						.collect(),
+					indexed_columns,
+					raw_sql: Some(raw_sql),
+				});
+			}
+			continue;
+		}
+
+		let Some(column) = sqlite_column_name(definition) else {
+			continue;
+		};
+		let Some(unique_index) = sqlite_top_level_word_index(&tokens, "UNIQUE") else {
+			continue;
+		};
+		let mut depth = 0usize;
+		let mut name = None;
+		for (index, token) in tokens.iter().take(unique_index).enumerate() {
+			match token {
+				SqliteDdlToken::OpenParen => depth += 1,
+				SqliteDdlToken::CloseParen => depth = depth.saturating_sub(1),
+				token if depth == 0 && sqlite_token_is_word(token, "CONSTRAINT") => {
+					name = tokens.get(index + 1).and_then(sqlite_token_identifier);
+				}
+				_ => {}
+			}
+		}
+		let mut indexed_columns = vec![SqliteIndexedColumnMetadata {
+			name: column.clone(),
+			collation: None,
+			descending: None,
+		}];
+		normalize_indexed_columns(&mut indexed_columns);
+		let conflict_mode = sqlite_unique_conflict_mode(&tokens, unique_index);
+		let raw_sql = sqlite_canonical_unique_sql(
+			name.as_deref(),
+			&indexed_columns,
+			conflict_mode.as_deref(),
+		);
+		metadata.push(SqliteUniqueConstraintMetadata {
+			name,
+			columns: vec![column.clone()],
+			indexed_columns,
+			raw_sql: Some(raw_sql),
+		});
+	}
+	metadata
+}
+
+#[cfg(feature = "sqlite")]
+fn sqlite_unique_index_match_score(
+	declared: &[SqliteIndexedColumnMetadata],
+	actual: &[SqliteIndexedColumnMetadata],
+) -> Option<usize> {
+	if declared.len() != actual.len() {
 		return None;
 	}
+	let mut score = 0;
+	for (declared, actual) in declared.iter().zip(actual) {
+		if !declared.name.eq_ignore_ascii_case(&actual.name) {
+			return None;
+		}
+		if let Some(collation) = &declared.collation {
+			if !actual
+				.collation
+				.as_deref()
+				.is_some_and(|actual| collation.eq_ignore_ascii_case(actual))
+			{
+				return None;
+			}
+			score += 1;
+		}
+		if let Some(descending) = declared.descending {
+			if actual.descending != Some(descending) {
+				return None;
+			}
+			score += 1;
+		}
+	}
+	Some(score)
+}
 
-	if let Some(rest) = trimmed.strip_prefix('"') {
-		let end = rest.find('"')?;
-		return Some(rest[..end].to_string());
-	}
-	if let Some(rest) = trimmed.strip_prefix('`') {
-		let end = rest.find('`')?;
-		return Some(rest[..end].to_string());
-	}
-	if let Some(rest) = trimmed.strip_prefix('[') {
-		let end = rest.find(']')?;
-		return Some(rest[..end].to_string());
+#[cfg(feature = "sqlite")]
+fn tokenize_sqlite_definition(definition: &str) -> Vec<SqliteDdlToken> {
+	fn flush_word(tokens: &mut Vec<SqliteDdlToken>, word: &mut String) {
+		if !word.is_empty() {
+			tokens.push(SqliteDdlToken::Word(std::mem::take(word)));
+		}
 	}
 
-	trimmed
-		.split_whitespace()
-		.next()
-		.map(|name| name.trim_matches(',').to_string())
+	let mut tokens = Vec::new();
+	let mut word = String::new();
+	let mut chars = definition.chars().peekable();
+	while let Some(ch) = chars.next() {
+		match ch {
+			'-' if chars.peek() == Some(&'-') => {
+				flush_word(&mut tokens, &mut word);
+				chars.next();
+				for next in chars.by_ref() {
+					if next == '\n' {
+						break;
+					}
+				}
+			}
+			'/' if chars.peek() == Some(&'*') => {
+				flush_word(&mut tokens, &mut word);
+				chars.next();
+				while let Some(next) = chars.next() {
+					if next == '*' && chars.peek() == Some(&'/') {
+						chars.next();
+						break;
+					}
+				}
+			}
+			'"' | '`' | '\'' | '[' => {
+				flush_word(&mut tokens, &mut word);
+				let closing = if ch == '[' { ']' } else { ch };
+				let mut identifier = String::new();
+				while let Some(next) = chars.next() {
+					if next == closing {
+						if chars.peek() == Some(&closing) {
+							identifier.push(closing);
+							chars.next();
+							continue;
+						}
+						break;
+					}
+					identifier.push(next);
+				}
+				tokens.push(SqliteDdlToken::Identifier(identifier));
+			}
+			'(' => {
+				flush_word(&mut tokens, &mut word);
+				tokens.push(SqliteDdlToken::OpenParen);
+			}
+			')' => {
+				flush_word(&mut tokens, &mut word);
+				tokens.push(SqliteDdlToken::CloseParen);
+			}
+			',' => {
+				flush_word(&mut tokens, &mut word);
+				tokens.push(SqliteDdlToken::Comma);
+			}
+			ch if ch.is_whitespace() => flush_word(&mut tokens, &mut word),
+			_ => word.push(ch),
+		}
+	}
+	flush_word(&mut tokens, &mut word);
+	tokens
+}
+
+#[cfg(feature = "sqlite")]
+fn sqlite_token_is_word(token: &SqliteDdlToken, expected: &str) -> bool {
+	matches!(token, SqliteDdlToken::Word(word) if word.eq_ignore_ascii_case(expected))
+}
+
+#[cfg(feature = "sqlite")]
+fn sqlite_token_identifier(token: &SqliteDdlToken) -> Option<String> {
+	match token {
+		SqliteDdlToken::Word(identifier) | SqliteDdlToken::Identifier(identifier) => {
+			Some(identifier.clone())
+		}
+		_ => None,
+	}
+}
+
+#[cfg(feature = "sqlite")]
+fn sqlite_top_level_collation<'a>(
+	tokens: impl IntoIterator<Item = &'a SqliteDdlToken>,
+) -> Option<String> {
+	let mut depth = 0usize;
+	let mut collation = None;
+	let mut tokens = tokens.into_iter().peekable();
+	while let Some(token) = tokens.next() {
+		match token {
+			SqliteDdlToken::OpenParen => depth += 1,
+			SqliteDdlToken::CloseParen => depth = depth.saturating_sub(1),
+			token if depth == 0 && sqlite_token_is_word(token, "COLLATE") => {
+				collation = tokens
+					.peek()
+					.and_then(|token| sqlite_token_identifier(token));
+			}
+			_ => {}
+		}
+	}
+	collation
+}
+
+#[cfg(feature = "sqlite")]
+fn sqlite_fk_deferrable(tokens: &[SqliteDdlToken]) -> Option<super::operations::DeferrableOption> {
+	if tokens.windows(2).any(|pair| {
+		sqlite_token_is_word(&pair[0], "NOT") && sqlite_token_is_word(&pair[1], "DEFERRABLE")
+	}) {
+		return None;
+	}
+	let explicit_mode = tokens.windows(3).find_map(|sequence| {
+		if !sqlite_token_is_word(&sequence[0], "DEFERRABLE")
+			|| !sqlite_token_is_word(&sequence[1], "INITIALLY")
+		{
+			return None;
+		}
+		if sqlite_token_is_word(&sequence[2], "DEFERRED") {
+			Some(super::operations::DeferrableOption::Deferred)
+		} else if sqlite_token_is_word(&sequence[2], "IMMEDIATE") {
+			Some(super::operations::DeferrableOption::Immediate)
+		} else {
+			None
+		}
+	});
+	explicit_mode.or_else(|| {
+		tokens
+			.iter()
+			.any(|token| sqlite_token_is_word(token, "DEFERRABLE"))
+			.then_some(super::operations::DeferrableOption::Immediate)
+	})
+}
+
+#[cfg(feature = "sqlite")]
+fn sqlite_identifier_list(tokens: &[SqliteDdlToken], open_index: usize) -> Vec<String> {
+	tokens
+		.iter()
+		.skip(open_index + 1)
+		.take_while(|token| !matches!(token, SqliteDdlToken::CloseParen))
+		.filter_map(sqlite_token_identifier)
+		.collect()
+}
+
+#[cfg(feature = "sqlite")]
+fn sqlite_indexed_column_metadata(
+	tokens: &[SqliteDdlToken],
+	open_index: usize,
+) -> Vec<SqliteIndexedColumnMetadata> {
+	fn parse_column(tokens: &[&SqliteDdlToken]) -> Option<SqliteIndexedColumnMetadata> {
+		let name = tokens
+			.first()
+			.and_then(|token| sqlite_token_identifier(token))?;
+		let collation = sqlite_top_level_collation(tokens.iter().copied());
+		let descending = tokens.iter().find_map(|token| {
+			if sqlite_token_is_word(token, "DESC") {
+				Some(true)
+			} else if sqlite_token_is_word(token, "ASC") {
+				Some(false)
+			} else {
+				None
+			}
+		});
+		Some(SqliteIndexedColumnMetadata {
+			name,
+			collation,
+			descending,
+		})
+	}
+
+	let mut columns = Vec::new();
+	let mut current = Vec::new();
+	for token in tokens.iter().skip(open_index + 1) {
+		match token {
+			SqliteDdlToken::CloseParen => {
+				if let Some(column) = parse_column(&current) {
+					columns.push(column);
+				}
+				break;
+			}
+			SqliteDdlToken::Comma => {
+				if let Some(column) = parse_column(&current) {
+					columns.push(column);
+				}
+				current.clear();
+			}
+			_ => current.push(token),
+		}
+	}
+	columns
+}
+
+#[cfg(feature = "sqlite")]
+fn sqlite_column_name(definition: &str) -> Option<String> {
+	let tokens = tokenize_sqlite_definition(definition);
+	let first = tokens.first()?;
+	if ["CONSTRAINT", "PRIMARY", "FOREIGN", "UNIQUE", "CHECK"]
+		.iter()
+		.any(|keyword| sqlite_token_is_word(first, keyword))
+	{
+		return None;
+	}
+	sqlite_token_identifier(first)
 }
 
 #[cfg(feature = "sqlite")]
@@ -1905,16 +2704,47 @@ fn sqlite_keyword_boundary(ch: char) -> bool {
 fn find_matching_sqlite_paren(sql: &str, open_index: usize) -> Option<usize> {
 	let mut depth = 0usize;
 	let mut quote: Option<char> = None;
+	let mut line_comment = false;
+	let mut block_comment = false;
+	let mut chars = sql
+		.char_indices()
+		.filter(|(index, _)| *index >= open_index)
+		.peekable();
 
-	for (index, ch) in sql.char_indices().filter(|(index, _)| *index >= open_index) {
+	while let Some((index, ch)) = chars.next() {
+		if line_comment {
+			if ch == '\n' {
+				line_comment = false;
+			}
+			continue;
+		}
+		if block_comment {
+			if ch == '*' && chars.peek().is_some_and(|(_, next)| *next == '/') {
+				chars.next();
+				block_comment = false;
+			}
+			continue;
+		}
 		if let Some(quote_ch) = quote {
 			if ch == quote_ch {
-				quote = None;
+				if chars.peek().is_some_and(|(_, next)| *next == quote_ch) {
+					chars.next();
+				} else {
+					quote = None;
+				}
 			}
 			continue;
 		}
 
 		match ch {
+			'-' if chars.peek().is_some_and(|(_, next)| *next == '-') => {
+				chars.next();
+				line_comment = true;
+			}
+			'/' if chars.peek().is_some_and(|(_, next)| *next == '*') => {
+				chars.next();
+				block_comment = true;
+			}
 			'\'' | '"' | '`' => quote = Some(ch),
 			'[' => quote = Some(']'),
 			'(' => depth += 1,
@@ -1934,6 +2764,55 @@ fn find_matching_sqlite_paren(sql: &str, open_index: usize) -> Option<usize> {
 #[cfg(all(test, feature = "sqlite"))]
 mod sqlite_generated_column_tests {
 	use super::*;
+	use rstest::rstest;
+
+	#[rstest]
+	fn parse_sqlite_fk_metadata_restores_escaped_inline_constraint() {
+		// Arrange
+		let create_sql = r#"CREATE TABLE child (
+			"a""b" INTEGER CONSTRAINT "inline""fk" REFERENCES parent(id) DEFERRABLE INITIALLY DEFERRED
+		)"#;
+
+		// Act
+		let metadata = parse_sqlite_fk_metadata(create_sql);
+		let parsed = metadata
+			.get(&(
+				vec![r#"a"b"#.to_string()],
+				"parent".to_string(),
+				vec!["id".to_string()],
+			))
+			.expect("escaped inline foreign key metadata should be parsed");
+
+		// Assert
+		assert_eq!(parsed.name.as_deref(), Some(r#"inline"fk"#));
+		assert_eq!(
+			parsed.deferrable,
+			Some(super::super::operations::DeferrableOption::Deferred)
+		);
+	}
+
+	#[rstest]
+	fn parse_sqlite_fk_metadata_maps_bare_deferrable_to_immediate() {
+		// Arrange
+		let create_sql = "CREATE TABLE child (parent_id INTEGER, FOREIGN KEY (parent_id) REFERENCES parent(id) DEFERRABLE)";
+
+		// Act
+		let metadata = parse_sqlite_fk_metadata(create_sql);
+		let parsed = metadata
+			.get(&(
+				vec!["parent_id".to_string()],
+				"parent".to_string(),
+				vec!["id".to_string()],
+			))
+			.expect("bare deferrable foreign key metadata should be parsed");
+
+		// Assert
+		assert_eq!(parsed.name, None);
+		assert_eq!(
+			parsed.deferrable,
+			Some(super::super::operations::DeferrableOption::Immediate)
+		);
+	}
 
 	#[test]
 	fn parse_sqlite_generated_column_restores_virtual_column() {
@@ -1987,6 +2866,331 @@ mod sqlite_generated_column_tests {
 		let create_sql = r#"CREATE TABLE users (id integer primary key, name text)"#;
 
 		assert!(parse_sqlite_generated_column(Some(create_sql), "name", 0).is_none());
+	}
+
+	#[rstest]
+	fn parse_sqlite_unique_metadata_preserves_quoted_composite_constraint() {
+		// Arrange
+		let create_sql = r#"CREATE TABLE jobs (
+			"tenant id" TEXT,
+			"code,value" TEXT,
+			note TEXT CHECK (note != 'CONSTRAINT fake UNIQUE (code)'),
+			CONSTRAINT "unique jobs code" UNIQUE ("tenant id", "code,value")
+		)"#;
+
+		// Act
+		let metadata = parse_sqlite_unique_constraint_metadata(create_sql);
+
+		// Assert
+		assert_eq!(
+			metadata,
+			vec![SqliteUniqueConstraintMetadata {
+				name: Some("unique jobs code".to_string()),
+				columns: vec!["tenant id".to_string(), "code,value".to_string()],
+				indexed_columns: vec![
+					SqliteIndexedColumnMetadata {
+						name: "tenant id".to_string(),
+						collation: Some("BINARY".to_string()),
+						descending: Some(false),
+					},
+					SqliteIndexedColumnMetadata {
+						name: "code,value".to_string(),
+						collation: Some("BINARY".to_string()),
+						descending: Some(false),
+					},
+				],
+				raw_sql: Some(
+					"CONSTRAINT \"unique jobs code\" UNIQUE (\"tenant id\" COLLATE \"BINARY\" ASC, \"code,value\" COLLATE \"BINARY\" ASC)"
+						.to_string(),
+				),
+			}]
+		);
+	}
+
+	#[rstest]
+	fn parse_sqlite_unique_metadata_preserves_inline_constraint() {
+		// Arrange
+		let create_sql =
+			"CREATE TABLE jobs (code TEXT CONSTRAINT `unique jobs code` UNIQUE, status TEXT)";
+
+		// Act
+		let metadata = parse_sqlite_unique_constraint_metadata(create_sql);
+
+		// Assert
+		assert_eq!(
+			metadata,
+			vec![SqliteUniqueConstraintMetadata {
+				name: Some("unique jobs code".to_string()),
+				columns: vec!["code".to_string()],
+				indexed_columns: vec![SqliteIndexedColumnMetadata {
+					name: "code".to_string(),
+					collation: Some("BINARY".to_string()),
+					descending: Some(false),
+				}],
+				raw_sql: Some(
+					"CONSTRAINT \"unique jobs code\" UNIQUE (\"code\" COLLATE \"BINARY\" ASC)"
+						.to_string(),
+				),
+			}]
+		);
+	}
+
+	#[rstest]
+	fn parse_sqlite_unique_metadata_preserves_duplicate_column_constraints() {
+		// Arrange
+		let create_sql = r#"CREATE TABLE jobs (
+			tenant TEXT,
+			code TEXT,
+			CONSTRAINT uq_jobs_primary UNIQUE (tenant, code),
+			CONSTRAINT uq_jobs_secondary UNIQUE (tenant, code)
+		)"#;
+
+		// Act
+		let metadata = parse_sqlite_unique_constraint_metadata(create_sql);
+
+		// Assert
+		assert_eq!(
+			metadata,
+			vec![
+				SqliteUniqueConstraintMetadata {
+					name: Some("uq_jobs_primary".to_string()),
+					columns: vec!["tenant".to_string(), "code".to_string()],
+					indexed_columns: vec![
+						SqliteIndexedColumnMetadata {
+							name: "tenant".to_string(),
+							collation: Some("BINARY".to_string()),
+							descending: Some(false),
+						},
+						SqliteIndexedColumnMetadata {
+							name: "code".to_string(),
+							collation: Some("BINARY".to_string()),
+							descending: Some(false),
+						},
+					],
+					raw_sql: Some(
+						"CONSTRAINT \"uq_jobs_primary\" UNIQUE (\"tenant\" COLLATE \"BINARY\" ASC, \"code\" COLLATE \"BINARY\" ASC)"
+							.to_string(),
+					),
+				},
+				SqliteUniqueConstraintMetadata {
+					name: Some("uq_jobs_secondary".to_string()),
+					columns: vec!["tenant".to_string(), "code".to_string()],
+					indexed_columns: vec![
+						SqliteIndexedColumnMetadata {
+							name: "tenant".to_string(),
+							collation: Some("BINARY".to_string()),
+							descending: Some(false),
+						},
+						SqliteIndexedColumnMetadata {
+							name: "code".to_string(),
+							collation: Some("BINARY".to_string()),
+							descending: Some(false),
+						},
+					],
+					raw_sql: Some(
+						"CONSTRAINT \"uq_jobs_secondary\" UNIQUE (\"tenant\" COLLATE \"BINARY\" ASC, \"code\" COLLATE \"BINARY\" ASC)"
+							.to_string(),
+					),
+				},
+			]
+		);
+	}
+
+	#[rstest]
+	fn parse_sqlite_unique_metadata_preserves_collation_sql() {
+		// Arrange
+		let create_sql = r#"CREATE TABLE jobs (
+			code TEXT,
+			CONSTRAINT "uq_jobs_nocase" UNIQUE ("code" COLLATE NOCASE),
+			CONSTRAINT "uq_jobs_binary" UNIQUE ("code" COLLATE BINARY)
+		)"#;
+
+		// Act
+		let metadata = parse_sqlite_unique_constraint_metadata(create_sql);
+
+		// Assert
+		assert_eq!(metadata.len(), 2);
+		assert_eq!(
+			metadata[0].raw_sql.as_deref(),
+			Some("CONSTRAINT \"uq_jobs_nocase\" UNIQUE (\"code\" COLLATE \"NOCASE\" ASC)")
+		);
+		assert_eq!(
+			metadata[1].raw_sql.as_deref(),
+			Some("CONSTRAINT \"uq_jobs_binary\" UNIQUE (\"code\" COLLATE \"BINARY\" ASC)")
+		);
+		assert_eq!(
+			metadata[0].indexed_columns[0].collation.as_deref(),
+			Some("NOCASE")
+		);
+		assert_eq!(
+			metadata[1].indexed_columns[0].collation.as_deref(),
+			Some("BINARY")
+		);
+		assert!(
+			sqlite_unique_index_match_score(
+				&metadata[0].indexed_columns,
+				&metadata[1].indexed_columns
+			)
+			.is_none()
+		);
+	}
+
+	#[rstest]
+	fn parse_sqlite_unique_metadata_normalizes_default_binary_collation() {
+		// Arrange
+		let create_sql = r#"CREATE TABLE jobs (
+			code TEXT,
+			UNIQUE (code),
+			UNIQUE (code COLLATE BINARY)
+		)"#;
+
+		// Act
+		let metadata = parse_sqlite_unique_constraint_metadata(create_sql);
+
+		// Assert
+		assert_eq!(metadata.len(), 2);
+		assert_eq!(
+			metadata[0].indexed_columns[0].collation.as_deref(),
+			Some("BINARY")
+		);
+		assert_eq!(metadata[0].indexed_columns[0].descending, Some(false));
+		assert_eq!(
+			sqlite_unique_index_match_score(
+				&metadata[0].indexed_columns,
+				&metadata[1].indexed_columns
+			),
+			Some(2)
+		);
+	}
+
+	#[rstest]
+	#[case("code TEXT CHECK (code COLLATE NOCASE <> '')", "BINARY")]
+	#[case(
+		"code TEXT GENERATED ALWAYS AS (source COLLATE NOCASE) STORED",
+		"BINARY"
+	)]
+	#[case("code TEXT COLLATE NOCASE COLLATE RTRIM", "RTRIM")]
+	#[case(
+		"code TEXT COLLATE NOCASE CHECK (code COLLATE BINARY <> '') COLLATE RTRIM",
+		"RTRIM"
+	)]
+	fn parse_sqlite_unique_metadata_uses_last_top_level_column_collation(
+		#[case] column_definition: &str,
+		#[case] expected_collation: &str,
+	) {
+		let create_sql =
+			format!("CREATE TABLE jobs (source TEXT, {column_definition}, UNIQUE (code))");
+
+		let metadata = parse_sqlite_unique_constraint_metadata(&create_sql);
+
+		assert_eq!(
+			metadata[0].indexed_columns[0].collation.as_deref(),
+			Some(expected_collation)
+		);
+	}
+
+	#[rstest]
+	fn parse_sqlite_unique_metadata_uses_last_indexed_column_collation() {
+		let create_sql =
+			"CREATE TABLE jobs (code TEXT, UNIQUE (code COLLATE NOCASE COLLATE RTRIM))";
+
+		let metadata = parse_sqlite_unique_constraint_metadata(create_sql);
+
+		assert_eq!(
+			metadata[0].indexed_columns[0].collation.as_deref(),
+			Some("RTRIM")
+		);
+	}
+
+	#[rstest]
+	fn parse_sqlite_unique_metadata_ignores_parentheses_inside_comments() {
+		let create_sql = "CREATE TABLE jobs (code TEXT, UNIQUE (code /* ) */ COLLATE NOCASE), -- )\n UNIQUE (code COLLATE BINARY))";
+
+		let metadata = parse_sqlite_unique_constraint_metadata(create_sql);
+
+		assert_eq!(metadata.len(), 2);
+		assert_eq!(
+			metadata[0].indexed_columns[0].collation.as_deref(),
+			Some("NOCASE")
+		);
+	}
+
+	#[rstest]
+	fn parse_sqlite_unique_metadata_preserves_inline_conflict_mode() {
+		let create_sql =
+			"CREATE TABLE jobs (code TEXT CONSTRAINT uq_jobs_code UNIQUE ON CONFLICT IGNORE)";
+
+		let metadata = parse_sqlite_unique_constraint_metadata(create_sql);
+
+		assert_eq!(
+			metadata[0].raw_sql.as_deref(),
+			Some(
+				"CONSTRAINT \"uq_jobs_code\" UNIQUE (\"code\" COLLATE \"BINARY\" ASC) ON CONFLICT IGNORE"
+			)
+		);
+	}
+
+	#[rstest]
+	#[case(
+		"code TEXT NOT NULL ON CONFLICT IGNORE UNIQUE ON CONFLICT REPLACE",
+		"REPLACE"
+	)]
+	#[case(
+		"code TEXT PRIMARY KEY ON CONFLICT FAIL UNIQUE ON CONFLICT REPLACE",
+		"REPLACE"
+	)]
+	fn parse_sqlite_unique_metadata_attributes_inline_conflict_to_unique_constraint(
+		#[case] column_definition: &str,
+		#[case] expected_mode: &str,
+	) {
+		let create_sql = format!("CREATE TABLE jobs ({column_definition})");
+		let expected_sql =
+			format!("UNIQUE (\"code\" COLLATE \"BINARY\" ASC) ON CONFLICT {expected_mode}");
+
+		let metadata = parse_sqlite_unique_constraint_metadata(&create_sql);
+
+		assert_eq!(metadata[0].raw_sql.as_deref(), Some(expected_sql.as_str()));
+	}
+
+	#[rstest]
+	fn parse_sqlite_unique_metadata_does_not_use_later_constraint_conflict_mode() {
+		let create_sql = "CREATE TABLE jobs (code TEXT UNIQUE NOT NULL ON CONFLICT IGNORE)";
+
+		let metadata = parse_sqlite_unique_constraint_metadata(create_sql);
+
+		assert_eq!(
+			metadata[0].raw_sql.as_deref(),
+			Some("UNIQUE (\"code\" COLLATE \"BINARY\" ASC)")
+		);
+	}
+
+	#[rstest]
+	fn parse_sqlite_unique_metadata_quotes_keyword_identifiers() {
+		let create_sql =
+			r#"CREATE TABLE jobs ("select" TEXT, CONSTRAINT "unique" UNIQUE ("select"))"#;
+
+		let metadata = parse_sqlite_unique_constraint_metadata(create_sql);
+
+		assert_eq!(
+			metadata[0].raw_sql.as_deref(),
+			Some("CONSTRAINT \"unique\" UNIQUE (\"select\" COLLATE \"BINARY\" ASC)")
+		);
+	}
+
+	#[rstest]
+	fn parse_sqlite_unique_metadata_decodes_quoted_column_names() {
+		let create_sql = r#"CREATE TABLE jobs ("a""b" TEXT COLLATE NOCASE, UNIQUE ("a""b"), 'c' TEXT COLLATE RTRIM, UNIQUE ('c'))"#;
+
+		let metadata = parse_sqlite_unique_constraint_metadata(create_sql);
+
+		assert_eq!(
+			metadata[0].indexed_columns[0].collation.as_deref(),
+			Some("NOCASE")
+		);
+		assert_eq!(
+			metadata[1].indexed_columns[0].collation.as_deref(),
+			Some("RTRIM")
+		);
 	}
 }
 
@@ -2360,8 +3564,13 @@ mod rollback_orchestration_tests {
 
 	use super::*;
 	use crate::backends::DatabaseConnection;
+	use crate::field_domain::{FieldDomain, ModelEnumRepr, ModelEnumValue};
 	use crate::migrations::recorder::DatabaseMigrationRecorder;
-	use crate::migrations::{ColumnDefinition, FieldType, Migration};
+	use crate::migrations::{
+		ColumnDefinition, Constraint, FieldType, ForeignKeyAction, GeneratedColumnDefinition,
+		Migration,
+	};
+	use reinhardt_query::prelude::GeneratedStorage;
 	use rstest::*;
 
 	/// Open a fresh SQLite `:memory:` database and wrap it in a
@@ -2578,6 +3787,237 @@ mod rollback_orchestration_tests {
 				.await
 				.expect("query recorder after"),
 			"recorder must reflect unapplied state after warn-and-skip rollback"
+		);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn typed_enum_constraint_uses_sqlite_recreation_and_preserves_schema() {
+		let mut parent_id = ColumnDefinition::new("id", FieldType::Integer);
+		parent_id.primary_key = true;
+		let mut job_id = ColumnDefinition::new("id", FieldType::Integer);
+		job_id.primary_key = true;
+		let parent_ref = ColumnDefinition::new("parent_id", FieldType::Integer);
+		let mut status = ColumnDefinition::new("status", FieldType::VarChar(32));
+		status.default = Some("'queued'".to_string());
+		let mut status_copy = ColumnDefinition::new("status_copy", FieldType::VarChar(32));
+		status_copy.generated = Some(GeneratedColumnDefinition::raw_sql(
+			"status || '_copy'",
+			GeneratedStorage::Stored,
+		));
+
+		let mut initial = Migration::new("0001_initial", "rolltest");
+		initial.operations = vec![
+			Operation::CreateTable {
+				name: "enum_parents".to_string(),
+				columns: vec![parent_id],
+				constraints: vec![],
+				without_rowid: None,
+				interleave_in_parent: None,
+				partition: None,
+			},
+			Operation::CreateTable {
+				name: "enum_jobs".to_string(),
+				columns: vec![job_id, parent_ref, status, status_copy],
+				constraints: vec![Constraint::ForeignKey {
+					name: "enum_jobs_parent_fk".to_string(),
+					columns: vec!["parent_id".to_string()],
+					referenced_table: "enum_parents".to_string(),
+					referenced_columns: vec!["id".to_string()],
+					on_delete: ForeignKeyAction::Cascade,
+					on_update: ForeignKeyAction::NoAction,
+					deferrable: None,
+				}],
+				without_rowid: None,
+				interleave_in_parent: None,
+				partition: None,
+			},
+			Operation::CreateIndex {
+				table: "enum_jobs".to_string(),
+				columns: vec!["status".to_string()],
+				unique: false,
+				index_type: None,
+				where_clause: None,
+				concurrently: false,
+				expressions: None,
+				mysql_options: None,
+				operator_class: None,
+			},
+		];
+		let mut add_domain = Migration::new("0002_status_domain", "rolltest");
+		add_domain
+			.operations
+			.push(Operation::AddConstraintDefinition {
+				table: "enum_jobs".to_string(),
+				constraint: Constraint::EnumDomain {
+					name: "enum_jobs_status_model_enum_check".to_string(),
+					column: "status".to_string(),
+					domain: FieldDomain::Enum {
+						repr: ModelEnumRepr::String,
+						values: vec![
+							ModelEnumValue::String("queued".to_string()),
+							ModelEnumValue::String("running".to_string()),
+						],
+					},
+				},
+			});
+		let mut executor = make_executor().await;
+
+		executor
+			.apply_migrations(&[initial, add_domain])
+			.await
+			.expect("typed enum constraint should recreate the SQLite table");
+
+		let table_sql = executor
+			.connection()
+			.fetch_optional(
+				"SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?",
+				vec!["enum_jobs".into()],
+			)
+			.await
+			.expect("read recreated table")
+			.expect("enum_jobs should exist")
+			.get::<String>("sql")
+			.expect("table SQL should be text");
+		assert!(
+			table_sql.contains("enum_jobs_status_model_enum_check"),
+			"{table_sql}"
+		);
+		assert!(table_sql.contains("REFERENCES enum_parents"), "{table_sql}");
+		assert!(table_sql.contains("DEFAULT 'queued'"), "{table_sql}");
+		assert!(table_sql.contains("GENERATED ALWAYS AS"), "{table_sql}");
+
+		let index_exists = executor
+			.connection()
+			.fetch_optional(
+				"SELECT name FROM sqlite_master WHERE type = 'index' AND name = ?",
+				vec!["idx_enum_jobs_status".into()],
+			)
+			.await
+			.expect("read recreated index")
+			.is_some();
+		assert_eq!(index_exists, true);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn enum_constraint_replacement_rollback_restores_old_domain_without_runtime_state() {
+		let mut id = ColumnDefinition::new("id", FieldType::Integer);
+		id.primary_key = true;
+		let status = ColumnDefinition::new("status", FieldType::VarChar(32));
+		let constraint_name = "enum_jobs_status_model_enum_check";
+		let old_constraint = Constraint::EnumDomain {
+			name: constraint_name.to_string(),
+			column: "status".to_string(),
+			domain: FieldDomain::Enum {
+				repr: ModelEnumRepr::String,
+				values: vec![ModelEnumValue::String("queued".to_string())],
+			},
+		};
+		let new_constraint = Constraint::EnumDomain {
+			name: constraint_name.to_string(),
+			column: "status".to_string(),
+			domain: FieldDomain::Enum {
+				repr: ModelEnumRepr::String,
+				values: vec![ModelEnumValue::String("running".to_string())],
+			},
+		};
+		let mut initial = Migration::new("0001_initial", "rolltest");
+		initial.operations.push(Operation::CreateTable {
+			name: "enum_jobs".to_string(),
+			columns: vec![id, status],
+			constraints: vec![old_constraint.clone()],
+			without_rowid: None,
+			interleave_in_parent: None,
+			partition: None,
+		});
+		let mut replacement = Migration::new("0002_replace_status", "rolltest");
+		replacement.operations = vec![
+			Operation::DropConstraintDefinition {
+				table: "enum_jobs".to_string(),
+				constraint: old_constraint,
+			},
+			Operation::AddConstraintDefinition {
+				table: "enum_jobs".to_string(),
+				constraint: new_constraint,
+			},
+		];
+		let mut executor = make_executor().await;
+		executor
+			.apply_migrations(&[initial, replacement.clone()])
+			.await
+			.expect("apply enum replacement");
+
+		executor
+			.rollback_migrations(std::slice::from_ref(&replacement))
+			.await
+			.expect("rollback enum replacement");
+
+		let table_sql = executor
+			.connection()
+			.fetch_optional(
+				"SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?",
+				vec!["enum_jobs".into()],
+			)
+			.await
+			.expect("read rolled-back table")
+			.expect("enum_jobs should exist")
+			.get::<String>("sql")
+			.expect("table SQL should be text");
+		assert!(table_sql.contains("IN ('queued')"), "{table_sql}");
+		assert!(!table_sql.contains("IN ('running')"), "{table_sql}");
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn typed_enum_constraint_recreation_preserves_without_rowid() {
+		let mut id = ColumnDefinition::new("id", FieldType::Integer);
+		id.primary_key = true;
+		let status = ColumnDefinition::new("status", FieldType::VarChar(32));
+		let mut initial = Migration::new("0001_without_rowid", "rolltest");
+		initial.operations.push(Operation::CreateTable {
+			name: "enum_jobs_without_rowid".to_string(),
+			columns: vec![id, status],
+			constraints: vec![],
+			without_rowid: Some(true),
+			interleave_in_parent: None,
+			partition: None,
+		});
+		let mut add_domain = Migration::new("0002_status_domain", "rolltest");
+		add_domain
+			.operations
+			.push(Operation::AddConstraintDefinition {
+				table: "enum_jobs_without_rowid".to_string(),
+				constraint: Constraint::EnumDomain {
+					name: "enum_jobs_without_rowid_status_model_enum_check".to_string(),
+					column: "status".to_string(),
+					domain: FieldDomain::Enum {
+						repr: ModelEnumRepr::String,
+						values: vec![ModelEnumValue::String("queued".to_string())],
+					},
+				},
+			});
+		let mut executor = make_executor().await;
+
+		executor
+			.apply_migrations(&[initial, add_domain])
+			.await
+			.expect("typed enum constraint should recreate WITHOUT ROWID table");
+
+		let table_sql = executor
+			.connection()
+			.fetch_optional(
+				"SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?",
+				vec!["enum_jobs_without_rowid".into()],
+			)
+			.await
+			.expect("read recreated table")
+			.expect("table should exist")
+			.get::<String>("sql")
+			.expect("table SQL should be text");
+		assert!(
+			table_sql.trim_end().ends_with("WITHOUT ROWID"),
+			"{table_sql}"
 		);
 	}
 }

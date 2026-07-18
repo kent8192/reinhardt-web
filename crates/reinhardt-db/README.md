@@ -280,6 +280,76 @@ pub struct User {
 }
 ```
 
+### Native Model Enum Fields
+
+Use `ModelEnum` when a column has a finite set of domain values. Choose the
+physical representation once and give every variant an explicit database
+value:
+
+```rust
+use reinhardt::ModelEnum;
+use reinhardt::core::serde::{Deserialize, Serialize};
+use reinhardt::prelude::*;
+
+#[derive(ModelEnum, Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[model_enum(repr = "string")]
+enum Status {
+	#[model_enum(value = "queued")]
+	Queued,
+	#[model_enum(value = "in_progress")]
+	Running,
+}
+
+#[derive(ModelEnum, Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[model_enum(repr = "i32")]
+enum Priority {
+	#[model_enum(value = 10)]
+	Low,
+	#[model_enum(value = 20)]
+	High,
+}
+
+#[model(app_label = "jobs", table_name = "jobs")]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct Job {
+	#[field(primary_key = true)]
+	id: Option<i64>,
+	#[field(max_length = 32)]
+	status: Status,
+	priority: Priority,
+	#[field(max_length = 32, null = true)]
+	fallback_status: Option<Status>,
+}
+```
+
+String enums use a character column, `i32` enums use an integer column, and
+generated migrations add named check constraints for the declared values.
+Nullable enum fields accept `None`; `Some(value)` uses the enum's normal codec.
+
+Field references require enum values for filters and partial updates:
+
+```rust,ignore
+let jobs = Job::objects()
+	.filter(Job::field_status().eq(Status::Queued))
+	.filter(Job::field_priority().is_in([Priority::Low, Priority::High]))
+	.all()
+	.await?;
+
+Job::objects()
+	.filter(Job::field_id().eq(job_id))
+	.update_fields([
+		Job::field_status().assign(Status::Running),
+		Job::field_fallback_status().assign(Some(Status::Queued)),
+	])
+	.await?;
+```
+
+Rust variant names, serde names, and database values are independent
+contracts. Renaming `Running`, applying `#[serde(rename = "RUNNING")]`, or
+changing `#[model_enum(value = "in_progress")]` affects a different boundary.
+Unknown stored values fail hydration with field context, and passing a raw
+string such as `.eq("queued")` to an enum field is a compile error.
+
 **Field Attributes:**
 - `#[field(primary_key = true)]` - Primary key
 - `#[field(max_length = N)]` - Maximum length for strings
@@ -299,6 +369,12 @@ JSON for MySQL, and TEXT for SQLite. Scalar wrappers such as `Json<String>` and
 relationship accessor, and session operations preserve the typed value during
 writes and hydration. For nullable fields, `None` maps to SQL `NULL`, while
 `Some(Json::new(serde_json::Value::Null))` maps to a present JSON `null` value.
+
+Vector model fields use native PostgreSQL arrays for `String`, `i32`, `i64`,
+`bool`, `f32`, `f64`, and `Uuid` elements. The manager, session, and bulk-update
+paths preserve those array types on PostgreSQL; MySQL and SQLite serialize the
+same vectors as JSON text. Session hydration also converts date, time, and
+timestamp columns to their typed chrono values on every supported backend.
 
 ```rust
 use reinhardt_db::Json;

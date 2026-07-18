@@ -65,6 +65,7 @@ fn create_basic_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 		auto_increment: false,
 		default: None,
 		generated: None,
+		domain: None,
 	}
 }
 
@@ -117,6 +118,7 @@ async fn test_rename_detection_with_type_changes(
 					default: None,
 
 					generated: None,
+					domain: None,
 				},
 				create_basic_column("age", FieldType::VarChar(Some(10))),
 				create_basic_column("email", FieldType::VarChar(Some(255))),
@@ -295,6 +297,7 @@ async fn test_complex_constraint_detection(
 					default: None,
 
 					generated: None,
+					domain: None,
 				},
 				create_basic_column("price", FieldType::Custom("DECIMAL(10, 2)".to_string())),
 				create_basic_column("sku", FieldType::VarChar(Some(100))),
@@ -562,6 +565,7 @@ async fn test_custom_type_handling(
 					default: None,
 
 					generated: None,
+					domain: None,
 				},
 				create_basic_column("username", FieldType::VarChar(Some(100))),
 				create_basic_column("status", FieldType::Custom("user_status".to_string())),
@@ -757,6 +761,7 @@ async fn test_implicit_dependency_detection(
 					default: None,
 
 					generated: None,
+					domain: None,
 				},
 				create_basic_column("username", FieldType::VarChar(Some(100))),
 				create_basic_column("is_active", FieldType::Boolean),
@@ -1031,6 +1036,7 @@ async fn test_schema_snapshot_isolation(
 					default: None,
 
 					generated: None,
+					domain: None,
 				},
 				create_basic_column("username", FieldType::VarChar(Some(100))),
 			],

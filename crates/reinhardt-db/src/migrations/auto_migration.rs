@@ -246,6 +246,12 @@ impl AutoMigrationGenerator {
 
 				// Constraint operations
 				Operation::AddConstraint { .. } => None, // Cannot rollback without constraint name
+				Operation::AddConstraintDefinition { table, constraint } => {
+					Some(Operation::DropConstraintDefinition {
+						table: table.clone(),
+						constraint: constraint.clone(),
+					})
+				}
 				Operation::AddConstraintRepair { .. } => None,
 				Operation::RestoreConstraintOnRollback {
 					table,
@@ -255,6 +261,12 @@ impl AutoMigrationGenerator {
 					constraint_sql: constraint_sql.clone(),
 				}),
 				Operation::DropConstraint { .. } => None, // Cannot rollback without constraint SQL
+				Operation::DropConstraintDefinition { table, constraint } => {
+					Some(Operation::AddConstraintDefinition {
+						table: table.clone(),
+						constraint: constraint.clone(),
+					})
+				}
 
 				// Index operations
 				Operation::CreateIndex { table, columns, .. } => Some(Operation::DropIndex {

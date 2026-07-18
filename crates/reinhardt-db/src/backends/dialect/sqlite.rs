@@ -38,7 +38,7 @@ impl SqliteBackend {
 		&self.pool
 	}
 
-	fn bind_value<'q>(
+	pub(crate) fn bind_value<'q>(
 		query: sqlx::query::Query<'q, sqlx::Sqlite, sqlx::sqlite::SqliteArguments<'q>>,
 		value: &'q QueryValue,
 	) -> sqlx::query::Query<'q, sqlx::Sqlite, sqlx::sqlite::SqliteArguments<'q>> {
@@ -53,6 +53,27 @@ impl SqliteBackend {
 			// SQLite stores UUIDs as strings
 			QueryValue::Uuid(u) => query.bind(u.to_string()),
 			QueryValue::Json(value) => query.bind(value.as_deref().cloned().map(sqlx::types::Json)),
+			QueryValue::StringArray(values) => {
+				query.bind(serde_json::to_string(values).expect("string arrays serialize"))
+			}
+			QueryValue::IntArray(values) => {
+				query.bind(serde_json::to_string(values).expect("integer arrays serialize"))
+			}
+			QueryValue::BigIntArray(values) => {
+				query.bind(serde_json::to_string(values).expect("big integer arrays serialize"))
+			}
+			QueryValue::BoolArray(values) => {
+				query.bind(serde_json::to_string(values).expect("boolean arrays serialize"))
+			}
+			QueryValue::FloatArray(values) => {
+				query.bind(serde_json::to_string(values).expect("float arrays serialize"))
+			}
+			QueryValue::DoubleArray(values) => {
+				query.bind(serde_json::to_string(values).expect("double arrays serialize"))
+			}
+			QueryValue::UuidArray(values) => {
+				query.bind(serde_json::to_string(values).expect("UUID arrays serialize"))
+			}
 			QueryValue::Now => {
 				// SQLite uses datetime('now'), which should be part of SQL string
 				// For binding, we use current UTC time
@@ -61,7 +82,7 @@ impl SqliteBackend {
 		}
 	}
 
-	fn convert_row(sqlite_row: SqliteRow) -> Result<Row> {
+	pub(crate) fn convert_row(sqlite_row: SqliteRow) -> Result<Row> {
 		let mut row = Row::new();
 		for column in sqlite_row.columns() {
 			let column_name = column.name();
@@ -305,6 +326,27 @@ impl SqliteTransactionExecutor {
 			// SQLite doesn't have native UUID type; bind as string
 			QueryValue::Uuid(u) => query.bind(u.to_string()),
 			QueryValue::Json(value) => query.bind(value.as_deref().cloned().map(sqlx::types::Json)),
+			QueryValue::StringArray(values) => {
+				query.bind(serde_json::to_string(values).expect("string arrays serialize"))
+			}
+			QueryValue::IntArray(values) => {
+				query.bind(serde_json::to_string(values).expect("integer arrays serialize"))
+			}
+			QueryValue::BigIntArray(values) => {
+				query.bind(serde_json::to_string(values).expect("big integer arrays serialize"))
+			}
+			QueryValue::BoolArray(values) => {
+				query.bind(serde_json::to_string(values).expect("boolean arrays serialize"))
+			}
+			QueryValue::FloatArray(values) => {
+				query.bind(serde_json::to_string(values).expect("float arrays serialize"))
+			}
+			QueryValue::DoubleArray(values) => {
+				query.bind(serde_json::to_string(values).expect("double arrays serialize"))
+			}
+			QueryValue::UuidArray(values) => {
+				query.bind(serde_json::to_string(values).expect("UUID arrays serialize"))
+			}
 			QueryValue::Now => query.bind(chrono::Utc::now()),
 		}
 	}

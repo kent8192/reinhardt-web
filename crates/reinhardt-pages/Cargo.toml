@@ -100,6 +100,11 @@ web-sys-full = [
 	"web-sys/RequestCredentials",
 	"web-sys/RequestInit",
 	"web-sys/RequestMode",
+	"web-sys/AbortController",
+	"web-sys/AbortSignal",
+	"web-sys/IntersectionObserver",
+	"web-sys/IntersectionObserverEntry",
+	"web-sys/IntersectionObserverInit",
 	"web-sys/Response",
 	"web-sys/WebSocket",
 	"web-sys/MessageEvent",
@@ -193,6 +198,9 @@ web-sys = { version = "0.3.83", features = [
 	"WheelEvent",
 	"SecurityPolicyViolationEvent",
 	"PopStateEvent",
+	"IntersectionObserver",
+	"IntersectionObserverEntry",
+	"IntersectionObserverInit",
 	"AnimationEvent",
 	"ClipboardEvent",
 	"CommandEvent",
@@ -237,6 +245,8 @@ web-sys = { version = "0.3.83", features = [
 	"RequestCredentials",
 	"RequestInit",
 	"RequestMode",
+	"AbortController",
+	"AbortSignal",
 	"Response",
 	# Storage API (for JWT token management)
 	"Storage",
@@ -370,6 +380,16 @@ required-features = []
 [[test]]
 name = "client_launcher_router_client_test"
 path = "tests/wasm/client_launcher_router_client_test.rs"
+required-features = []
+
+[[test]]
+name = "route_loader_navigation_wasm_test"
+path = "tests/wasm/route_loader_navigation_wasm_test.rs"
+required-features = []
+
+[[test]]
+name = "route_loader_prefetch_wasm_test"
+path = "tests/wasm/route_loader_prefetch_wasm_test.rs"
 required-features = []
 
 [[test]]

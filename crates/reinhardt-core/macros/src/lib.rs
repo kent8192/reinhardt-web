@@ -37,6 +37,7 @@ mod installed_apps;
 mod macro_state;
 mod model_attribute;
 mod model_derive;
+mod model_enum_derive;
 mod orm_reflectable_derive;
 mod pascal_case;
 mod path_macro;
@@ -1043,6 +1044,58 @@ pub fn derive_validate(input: TokenStream) -> TokenStream {
 
 	validate_derive::validate_derive_impl(input)
 		.unwrap_or_else(|e| e.to_compile_error())
+		.into()
+}
+
+/// Derives explicit database codecs for a unit enum.
+///
+/// The enum must declare its physical representation and every unit variant
+/// must declare an explicit persistent value. String and `i32` representations
+/// are supported:
+///
+/// ```rust,ignore
+/// use reinhardt::ModelEnum;
+/// use reinhardt::core::serde::{Deserialize, Serialize};
+///
+/// #[derive(ModelEnum, Clone, Debug, PartialEq, Serialize, Deserialize)]
+/// #[model_enum(repr = "string")]
+/// enum Status {
+///     #[model_enum(value = "queued")]
+///     Queued,
+///     #[model_enum(value = "in_progress")]
+///     Running,
+/// }
+///
+/// #[derive(ModelEnum, Clone, Debug, PartialEq, Serialize, Deserialize)]
+/// #[model_enum(repr = "i32")]
+/// enum Priority {
+///     #[model_enum(value = 10)]
+///     Low,
+///     #[model_enum(value = 20)]
+///     High,
+/// }
+/// ```
+///
+/// The derive implements the ORM's database codec and model-enum metadata
+/// contracts. Model fields may use the enum directly or as `Option<Enum>`.
+/// Generated migrations use a character column for `"string"`, an integer
+/// column for `"i32"`, and a named check constraint containing the declared
+/// values.
+///
+/// Rust variant names, serde names, and database values are independent
+/// contracts. For example, `#[serde(rename = "RUNNING")]` changes serialized
+/// data but does not change `#[model_enum(value = "in_progress")]`.
+///
+/// Duplicate values, missing values, data-carrying variants, explicit Rust
+/// discriminants, and values that do not match the selected representation are
+/// rejected at compile time. An unknown scalar read from the database returns
+/// a contextual ORM hydration error instead of selecting a fallback variant.
+#[proc_macro_derive(ModelEnum, attributes(model_enum))]
+pub fn derive_model_enum(input: TokenStream) -> TokenStream {
+	let input = parse_macro_input!(input as syn::DeriveInput);
+
+	model_enum_derive::model_enum_derive_impl(input)
+		.unwrap_or_else(|error| error.to_compile_error())
 		.into()
 }
 

@@ -69,6 +69,7 @@ fn create_basic_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 		auto_increment: false,
 		default: None,
 		generated: None,
+		domain: None,
 	}
 }
 
@@ -88,6 +89,7 @@ fn create_column_with_constraints(
 		auto_increment: primary_key,
 		default: None,
 		generated: None,
+		domain: None,
 	}
 }
 

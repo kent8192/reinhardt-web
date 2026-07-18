@@ -67,6 +67,7 @@ fn create_basic_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 		auto_increment: false,
 		default: None,
 		generated: None,
+		domain: None,
 	}
 }
 
@@ -133,6 +134,7 @@ async fn test_cross_database_foreign_key_handling(
 					default: None,
 
 					generated: None,
+					domain: None,
 				},
 				create_basic_column("username", FieldType::VarChar(Some(100))),
 				create_basic_column("email", FieldType::VarChar(Some(255))),

@@ -4898,6 +4898,7 @@ dependencies = [
  "reinhardt-di",
  "reinhardt-http",
  "reinhardt-mail",
+ "reinhardt-manouche",
  "reinhardt-middleware",
  "reinhardt-pages",
  "reinhardt-server",
@@ -4912,6 +4913,7 @@ dependencies = [
  "sha2 0.10.9",
  "sqlx",
  "syn 2.0.119",
+ "tempfile",
  "tera",
  "thiserror 2.0.18",
  "tokio",
@@ -5157,6 +5159,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "reinhardt-event-catalog",
+ "sha2 0.10.9",
  "syn 2.0.119",
 ]
 

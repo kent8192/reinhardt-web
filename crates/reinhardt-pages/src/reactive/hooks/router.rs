@@ -15,6 +15,8 @@
 //! See also the free [`crate::router::navigate`] function for one-shot
 //! navigation calls outside a hook context.
 
+use crate::app::NavigationIntent;
+use crate::app::try_with_navigation_coordinator;
 use crate::app::try_with_spa_router;
 use crate::router::NavigationType;
 
@@ -80,6 +82,11 @@ impl RouterHandle {
 	/// component re-renders — all without a document reload.
 	pub fn push(&self, path: impl Into<String>) -> Result<(), NavigateError> {
 		let path = path.into();
+		if let Some(result) = try_with_navigation_coordinator(|coordinator| {
+			coordinator.navigate(path.clone(), NavigationIntent::Push)
+		}) {
+			return result;
+		}
 		try_with_spa_router(|router| router.push(&path))
 			.ok_or(NavigateError::RouterNotInstalled)?
 			.map_err(|e| NavigateError::RouterRejected(e.to_string()))
@@ -92,6 +99,11 @@ impl RouterHandle {
 	/// the user's back/forward history (e.g. post-login redirect).
 	pub fn replace(&self, path: impl Into<String>) -> Result<(), NavigateError> {
 		let path = path.into();
+		if let Some(result) = try_with_navigation_coordinator(|coordinator| {
+			coordinator.navigate(path.clone(), NavigationIntent::Replace)
+		}) {
+			return result;
+		}
 		try_with_spa_router(|router| router.replace(&path))
 			.ok_or(NavigateError::RouterNotInstalled)?
 			.map_err(|e| NavigateError::RouterRejected(e.to_string()))

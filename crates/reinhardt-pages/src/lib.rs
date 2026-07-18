@@ -435,6 +435,17 @@ pub use reinhardt_pages_ast as ast;
 // Core modules
 pub mod builder;
 pub mod callback;
+// The cancellation substrate is introduced before its query/navigation
+// consumers; this temporary allow keeps the foundational task warning-free.
+#[allow(dead_code)]
+mod cancellation;
+pub use cancellation::{CancellationHandle, CancellationToken, Cancelled};
+// Internal query lease symbols are re-exported for the loader runtime added
+// in subsequent implementation tasks.
+#[allow(unused_imports)]
+pub(crate) use reactive::{
+	QueryAcquireOptions, QueryConsumer, QueryErrorPolicy, QueryLease, acquire_query,
+};
 pub mod control_binding;
 pub mod dom;
 pub mod event;
@@ -605,7 +616,7 @@ pub use router::{Path, Query};
 pub use server_fn::{ServerFn, ServerFnError, parse_server_error_message};
 pub use ssr::SsrState;
 #[cfg(native)]
-pub use ssr::{SsrChunk, SsrOptions, SsrRenderer, SsrStream};
+pub use ssr::{SsrChunk, SsrOptions, SsrRenderer, SsrRouteOutput, SsrStream};
 pub use static_resolver::{
 	component_stylesheet_url, init_static_resolver, is_initialized, resolve_static,
 };
@@ -624,6 +635,7 @@ pub use i18n::{
 pub use reinhardt_pages_macros::form;
 pub use reinhardt_pages_macros::head;
 pub use reinhardt_pages_macros::layout;
+pub use reinhardt_pages_macros::loader;
 pub use reinhardt_pages_macros::page;
 pub use reinhardt_pages_macros::style;
 pub use reinhardt_pages_macros::style_def;

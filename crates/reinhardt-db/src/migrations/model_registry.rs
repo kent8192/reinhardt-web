@@ -13,6 +13,7 @@
 
 use super::autodetector::{FieldState, ModelState, to_snake_case};
 use super::{ConstraintDefinition, GeneratedColumnDefinition};
+use crate::field_domain::FieldDomain;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
@@ -106,6 +107,16 @@ impl ModelMetadata {
 		self.constraints.push(constraint);
 	}
 
+	/// Adds the typed enum-domain constraint for a database column.
+	pub fn add_enum_domain_constraint(&mut self, column: &str, domain: FieldDomain) {
+		let name = super::operations::truncate_identifier_with_hash(&format!(
+			"{}_{}_model_enum_check",
+			self.table_name, column
+		));
+		self.constraints
+			.push(ConstraintDefinition::enum_domain(name, column, domain));
+	}
+
 	/// Returns model-level constraints registered by the `#[model(...)]`
 	/// macro (currently composite UNIQUE from `unique_together`).
 	///
@@ -147,8 +158,13 @@ impl ModelMetadata {
 
 		// Convert fields
 		for (name, field_meta) in &self.fields {
+			let column_name = field_meta
+				.params
+				.get("db_column")
+				.cloned()
+				.unwrap_or_else(|| name.clone());
 			let mut field_state = FieldState::new(
-				name.clone(),
+				column_name,
 				field_meta.field_type.clone(),
 				field_meta.nullable,
 			);
@@ -159,6 +175,7 @@ impl ModelMetadata {
 				field_state.params.insert(key.clone(), value.clone());
 			}
 			field_state.generated = field_meta.generated.clone();
+			field_state.domain = field_meta.domain.clone();
 			// Resolve qualified string FK targets after all model metadata has been
 			// registered so explicit table-name overrides are preserved (#5673).
 			let mut foreign_key = field_meta.foreign_key.clone();
@@ -182,7 +199,11 @@ impl ModelMetadata {
 		// Generate ForeignKey constraints from fields
 		for (field_name, field_meta) in &self.fields {
 			if field_meta.foreign_key.is_some() {
-				model_state.add_foreign_key_constraint_from_field(field_name);
+				let column_name = field_meta
+					.params
+					.get("db_column")
+					.map_or(field_name, |name| name);
+				model_state.add_foreign_key_constraint_from_field(column_name);
 			}
 		}
 
@@ -192,15 +213,19 @@ impl ModelMetadata {
 		// Generate Unique constraints from field params
 		for (field_name, field_meta) in &self.fields {
 			if field_meta.params.get("unique").map(String::as_str) == Some("true") {
+				let column_name = field_meta
+					.params
+					.get("db_column")
+					.map_or(field_name, |name| name);
 				let constraint = ConstraintDefinition {
 					name: format!(
 						"{}_{}_{}_uniq",
 						self.app_label,
 						self.model_name.to_lowercase(),
-						field_name
+						column_name
 					),
 					constraint_type: "unique".to_string(),
-					fields: vec![field_name.clone()],
+					fields: vec![column_name.clone()],
 					expression: None,
 					foreign_key_info: None,
 				};
@@ -214,6 +239,34 @@ impl ModelMetadata {
 		model_state
 			.constraints
 			.extend(self.constraints.iter().cloned());
+
+		for (name, field_meta) in &self.fields {
+			let Some(domain) = &field_meta.domain else {
+				continue;
+			};
+			let column = field_meta
+				.params
+				.get("db_column")
+				.map(String::as_str)
+				.unwrap_or(name);
+			let constraint_name = super::operations::truncate_identifier_with_hash(&format!(
+				"{}_{}_model_enum_check",
+				self.table_name, column
+			));
+			if !model_state
+				.constraints
+				.iter()
+				.any(|constraint| constraint.name == constraint_name)
+			{
+				model_state
+					.constraints
+					.push(ConstraintDefinition::enum_domain(
+						constraint_name,
+						column,
+						domain.clone(),
+					));
+			}
+		}
 
 		model_state
 	}
@@ -234,6 +287,8 @@ pub struct FieldMetadata {
 	pub params: HashMap<String, String>,
 	/// Generated-column metadata.
 	pub generated: Option<GeneratedColumnDefinition>,
+	/// Structured database value domain.
+	pub domain: Option<FieldDomain>,
 	/// ForeignKey information if this field is a foreign key
 	pub foreign_key: Option<super::autodetector::ForeignKeyInfo>,
 }
@@ -246,6 +301,7 @@ impl FieldMetadata {
 			nullable: false,
 			params: HashMap::new(),
 			generated: None,
+			domain: None,
 			foreign_key: None,
 		}
 	}
@@ -272,6 +328,18 @@ impl FieldMetadata {
 	/// Sets generated-column metadata and returns self for chaining.
 	pub fn with_generated(mut self, generated: GeneratedColumnDefinition) -> Self {
 		self.generated = Some(generated);
+		self
+	}
+
+	/// Sets optional structured field-domain metadata and returns self for chaining.
+	pub fn with_domain_opt(mut self, domain: Option<FieldDomain>) -> Self {
+		self.domain = domain.map(FieldDomain::canonicalized);
+		self
+	}
+
+	/// Sets structured database value domain metadata.
+	pub fn with_domain(mut self, domain: FieldDomain) -> Self {
+		self.domain = Some(domain.canonicalized());
 		self
 	}
 

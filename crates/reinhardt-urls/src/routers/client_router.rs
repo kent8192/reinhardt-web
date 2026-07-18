@@ -82,6 +82,7 @@ mod handler;
 // callable cross-crate, but the more ergonomic re-exports at this
 // module level are intentionally limited (see below).
 pub mod history;
+pub mod loader;
 mod params;
 mod pattern;
 pub mod scope;
@@ -99,11 +100,14 @@ pub use error::{MergeError, PathError, RouteRegistrationError, RouterError};
 // `use reinhardt_urls::routers::client_router::{FromRequest, ...}`.
 pub use from_request::{ExtractError, FromRequest, PathParam, QueryParam, RouteContext};
 pub use handler::RouteHandler;
+pub use loader::RouteLoaderId;
 // Issue #4217: drop helper-function re-exports from this module's
 // public surface. Callers should use `Router::push()` / `ClientRouter::push()`
 // instead. The functions remain `pub` at `history::*` so reinhardt-pages
 // can re-export them across the crate boundary.
 pub use history::{HistoryState, NavigationType};
+#[cfg(wasm)]
+pub use history::{PopNavigationRequest, PopStateSubscription, listen_pop_requests};
 pub use params::{FromPath, ParamContext, Path, SingleFromPath};
 pub use pattern::ClientPathPattern;
 pub use scope::{RouteScope, ScopeKind};

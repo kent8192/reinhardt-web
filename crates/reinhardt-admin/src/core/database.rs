@@ -10,6 +10,7 @@ use reinhardt_db::migrations::FieldType as DbFieldType;
 use reinhardt_db::orm::execution::convert_values;
 use reinhardt_db::orm::{
 	DatabaseConnection, Filter, FilterCondition, FilterOperator, FilterValue, Model,
+	database_value_to_query_value,
 };
 use reinhardt_di::{DiResult, Injectable, InjectionContext, KeyedFactoryOutput};
 use reinhardt_query::prelude::{
@@ -192,8 +193,11 @@ fn parse_pk_values(table_name: &str, pk_field: &str, ids: &[String]) -> Vec<Valu
 
 /// Convert FilterValue to Value
 #[doc(hidden)]
-pub fn filter_value_to_sea_value(v: &FilterValue) -> Value {
-	match v {
+pub fn filter_value_to_sea_value(v: &FilterValue) -> AdminResult<Value> {
+	let value = match v {
+		FilterValue::Typed(value) => {
+			database_value_to_query_value(value.clone().map_err(AdminError::FieldCodec)?)
+		}
 		FilterValue::String(s) => s.clone().into(),
 		FilterValue::Integer(i) | FilterValue::Int(i) => (*i).into(),
 		FilterValue::Float(f) => (*f).into(),
@@ -222,7 +226,8 @@ pub fn filter_value_to_sea_value(v: &FilterValue) -> Value {
 			// Proper handling is in build_single_filter_expr().
 			Value::String(Some(Box::new(outer.field.clone())))
 		}
-	}
+	};
+	Ok(value)
 }
 
 /// Convert an annotation `AnnotationValue` to a safe SeaQuery `SimpleExpr`.
@@ -356,7 +361,26 @@ fn escape_like_pattern(input: &str) -> String {
 
 /// Build a SimpleExpr from a single Filter
 #[doc(hidden)]
-pub fn build_single_filter_expr(filter: &Filter) -> Option<SimpleExpr> {
+pub fn build_single_filter_expr(filter: &Filter) -> AdminResult<Option<SimpleExpr>> {
+	if let FilterValue::Typed(Err(error)) = &filter.value {
+		return Err(AdminError::FieldCodec(error.clone()));
+	}
+
+	if let FilterValue::Typed(Ok(value)) = &filter.value {
+		let raw_value = match value {
+			reinhardt_db::orm::DatabaseValue::String(value) => {
+				Some(FilterValue::String(value.clone()))
+			}
+			reinhardt_db::orm::DatabaseValue::Null => Some(FilterValue::Null),
+			_ => None,
+		};
+		if let Some(raw_value) = raw_value {
+			let mut normalized = filter.clone();
+			normalized.value = raw_value;
+			return build_single_filter_expr(&normalized);
+		}
+	}
+
 	let col = filter.lhs_expr();
 	let lhs_sql = filter.lhs_sql();
 
@@ -367,7 +391,7 @@ pub fn build_single_filter_expr(filter: &Filter) -> Option<SimpleExpr> {
 		(FilterOperator::IExact, FilterValue::String(s)) => {
 			col.binary(BinOper::ILike, SimpleExpr::from(s.clone()))
 		}
-		(FilterOperator::IExact, v) => col.eq(filter_value_to_sea_value(v)),
+		(FilterOperator::IExact, v) => col.eq(filter_value_to_sea_value(v)?),
 
 		// FieldRef: Column-to-column comparisons
 		(FilterOperator::Eq, FilterValue::FieldRef(f)) => col.eq(Expr::col(Alias::new(&f.field))),
@@ -418,12 +442,12 @@ pub fn build_single_filter_expr(filter: &Filter) -> Option<SimpleExpr> {
 		}
 
 		// Generic scalar value patterns
-		(FilterOperator::Eq, v) => col.eq(filter_value_to_sea_value(v)),
-		(FilterOperator::Ne, v) => col.ne(filter_value_to_sea_value(v)),
-		(FilterOperator::Gt, v) => col.gt(filter_value_to_sea_value(v)),
-		(FilterOperator::Gte, v) => col.gte(filter_value_to_sea_value(v)),
-		(FilterOperator::Lt, v) => col.lt(filter_value_to_sea_value(v)),
-		(FilterOperator::Lte, v) => col.lte(filter_value_to_sea_value(v)),
+		(FilterOperator::Eq, v) => col.eq(filter_value_to_sea_value(v)?),
+		(FilterOperator::Ne, v) => col.ne(filter_value_to_sea_value(v)?),
+		(FilterOperator::Gt, v) => col.gt(filter_value_to_sea_value(v)?),
+		(FilterOperator::Gte, v) => col.gte(filter_value_to_sea_value(v)?),
+		(FilterOperator::Lt, v) => col.lt(filter_value_to_sea_value(v)?),
+		(FilterOperator::Lte, v) => col.lte(filter_value_to_sea_value(v)?),
 
 		// String-specific operators
 		(FilterOperator::Contains, FilterValue::String(s)) => {
@@ -456,46 +480,46 @@ pub fn build_single_filter_expr(filter: &Filter) -> Option<SimpleExpr> {
 		(FilterOperator::Range, FilterValue::Range(start, end)) => Expr::cust_with_values(
 			format!("{} BETWEEN ? AND ?", lhs_sql),
 			[
-				filter_value_to_sea_value(start),
-				filter_value_to_sea_value(end),
+				filter_value_to_sea_value(start)?,
+				filter_value_to_sea_value(end)?,
 			],
 		)
 		.into(),
 		// Array-based In/NotIn: convert each element to a Value
 		(FilterOperator::In, FilterValue::Array(arr)) => {
 			if arr.is_empty() {
-				return None;
+				return Ok(None);
 			}
 			let values: Vec<Value> = arr.iter().map(|v| v.as_str().into_value()).collect();
 			col.is_in(values)
 		}
 		(FilterOperator::NotIn, FilterValue::Array(arr)) => {
 			if arr.is_empty() {
-				return None;
+				return Ok(None);
 			}
 			let values: Vec<Value> = arr.iter().map(|v| v.as_str().into_value()).collect();
 			col.is_not_in(values)
 		}
 		(FilterOperator::In, FilterValue::List(values)) => {
 			if values.is_empty() {
-				return None;
+				return Ok(None);
 			}
 			col.is_in(
 				values
 					.iter()
 					.map(filter_value_to_sea_value)
-					.collect::<Vec<_>>(),
+					.collect::<AdminResult<Vec<_>>>()?,
 			)
 		}
 		(FilterOperator::NotIn, FilterValue::List(values)) => {
 			if values.is_empty() {
-				return None;
+				return Ok(None);
 			}
 			col.is_not_in(
 				values
 					.iter()
 					.map(filter_value_to_sea_value)
-					.collect::<Vec<_>>(),
+					.collect::<AdminResult<Vec<_>>>()?,
 			)
 		}
 
@@ -509,30 +533,30 @@ pub fn build_single_filter_expr(filter: &Filter) -> Option<SimpleExpr> {
 		}
 
 		// Skip unsupported combinations
-		_ => return None,
+		_ => return Ok(None),
 	};
 
-	Some(expr)
+	Ok(Some(expr))
 }
 
 /// Build Condition from filters (AND logic only)
 #[doc(hidden)]
-pub fn build_filter_condition(filters: &[Filter]) -> Option<Condition> {
+pub fn build_filter_condition(filters: &[Filter]) -> AdminResult<Option<Condition>> {
 	if filters.is_empty() {
-		return None;
+		return Ok(None);
 	}
 
 	let mut condition = Condition::all();
 	let mut added = false;
 
 	for filter in filters {
-		if let Some(expr) = build_single_filter_expr(filter) {
+		if let Some(expr) = build_single_filter_expr(filter)? {
 			condition = condition.add(expr);
 			added = true;
 		}
 	}
 
-	if added { Some(condition) } else { None }
+	Ok(if added { Some(condition) } else { None })
 }
 
 /// Maximum recursion depth for filter conditions to prevent stack overflow
@@ -572,7 +596,7 @@ pub fn build_composite_filter_condition_with_depth(
 
 	match filter_condition {
 		FilterCondition::Single(filter) => {
-			Ok(build_single_filter_expr(filter).map(|expr| Condition::all().add(expr)))
+			Ok(build_single_filter_expr(filter)?.map(|expr| Condition::all().add(expr)))
 		}
 		FilterCondition::And(conditions) => {
 			if conditions.is_empty() {
@@ -638,7 +662,7 @@ fn build_combined_filter_condition(
 		combined = combined.add(cond);
 	}
 
-	if let Some(simple_cond) = build_filter_condition(additional_filters) {
+	if let Some(simple_cond) = build_filter_condition(additional_filters)? {
 		combined = combined.add(simple_cond);
 	}
 
@@ -770,7 +794,7 @@ impl AdminDatabase {
 			.to_owned();
 
 		// Apply filters using build_filter_condition helper
-		if let Some(condition) = build_filter_condition(&filters) {
+		if let Some(condition) = build_filter_condition(&filters)? {
 			query.cond_where(condition);
 		}
 
@@ -1365,7 +1389,7 @@ impl AdminDatabase {
 			.to_owned();
 
 		// Apply filters using build_filter_condition helper
-		if let Some(condition) = build_filter_condition(&filters) {
+		if let Some(condition) = build_filter_condition(&filters)? {
 			query.cond_where(condition);
 		}
 
@@ -1485,6 +1509,98 @@ mod tests {
 	use reinhardt_db::orm::annotation::Expression;
 	use reinhardt_db::orm::expressions::{F, OuterRef};
 	use rstest::rstest;
+
+	#[test]
+	fn typed_filter_codec_error_stops_admin_compilation() {
+		let filter = Filter::new(
+			"status",
+			FilterOperator::Eq,
+			FilterValue::Typed(Err(reinhardt_db::orm::FieldCodecError::Serialization(
+				"rejected admin filter".to_owned(),
+			))),
+		);
+
+		let error = build_single_filter_expr(&filter)
+			.expect_err("typed codec error should stop admin filter compilation");
+		let source =
+			std::error::Error::source(&error).expect("admin codec source should be preserved");
+		assert!(
+			source
+				.downcast_ref::<reinhardt_db::orm::FieldCodecError>()
+				.is_some()
+		);
+	}
+
+	#[rstest]
+	#[case(FilterOperator::Contains)]
+	#[case(FilterOperator::StartsWith)]
+	#[case(FilterOperator::Regex)]
+	fn typed_filter_codec_error_stops_string_operator_compilation(
+		#[case] operator: FilterOperator,
+	) {
+		let filter = Filter::new(
+			"status",
+			operator,
+			FilterValue::Typed(Err(reinhardt_db::orm::FieldCodecError::Serialization(
+				"rejected admin filter".to_owned(),
+			))),
+		);
+
+		assert!(build_single_filter_expr(&filter).is_err());
+	}
+
+	fn render_admin_filter(filter: &Filter) -> String {
+		let expr = build_single_filter_expr(filter)
+			.expect("filter should compile")
+			.expect("operator should produce a condition");
+		let mut query = Query::select();
+		query
+			.column(Alias::new("id"))
+			.from(Alias::new("records"))
+			.cond_where(Condition::all().add(expr));
+		query.to_string(PostgresQueryBuilder)
+	}
+
+	#[rstest]
+	#[case(FilterOperator::IExact)]
+	#[case(FilterOperator::Contains)]
+	#[case(FilterOperator::IContains)]
+	#[case(FilterOperator::StartsWith)]
+	#[case(FilterOperator::IStartsWith)]
+	#[case(FilterOperator::EndsWith)]
+	#[case(FilterOperator::IEndsWith)]
+	#[case(FilterOperator::Regex)]
+	#[case(FilterOperator::IRegex)]
+	fn typed_string_filter_uses_raw_string_operator_semantics(#[case] operator: FilterOperator) {
+		let raw = Filter::new(
+			"name",
+			operator.clone(),
+			FilterValue::String("a%b_c".to_owned()),
+		);
+		let typed = Filter::new(
+			"name",
+			operator,
+			FilterValue::Typed(Ok(reinhardt_db::orm::DatabaseValue::String(
+				"a%b_c".to_owned(),
+			))),
+		);
+
+		assert_eq!(render_admin_filter(&typed), render_admin_filter(&raw));
+	}
+
+	#[rstest]
+	#[case(FilterOperator::Eq)]
+	#[case(FilterOperator::Ne)]
+	fn typed_null_filter_uses_raw_null_operator_semantics(#[case] operator: FilterOperator) {
+		let raw = Filter::new("deleted_at", operator.clone(), FilterValue::Null);
+		let typed = Filter::new(
+			"deleted_at",
+			operator,
+			FilterValue::Typed(Ok(reinhardt_db::orm::DatabaseValue::Null)),
+		);
+
+		assert_eq!(render_admin_filter(&typed), render_admin_filter(&raw));
+	}
 
 	// ==================== escape_like_pattern tests ====================
 
@@ -1773,7 +1889,7 @@ mod tests {
 			FilterOperator::Eq,
 			FilterValue::FieldRef(F::new("discount_price")),
 		);
-		let result = build_single_filter_expr(&filter);
+		let result = build_single_filter_expr(&filter).expect("filter should compile");
 		assert!(result.is_some());
 
 		let query = Query::select()
@@ -1792,7 +1908,7 @@ mod tests {
 			FilterOperator::Gt,
 			FilterValue::FieldRef(F::new("cost")),
 		);
-		let result = build_single_filter_expr(&filter);
+		let result = build_single_filter_expr(&filter).expect("filter should compile");
 		assert!(result.is_some());
 	}
 
@@ -1813,7 +1929,7 @@ mod tests {
 				op.clone(),
 				FilterValue::FieldRef(F::new("field_b")),
 			);
-			let result = build_single_filter_expr(&filter);
+			let result = build_single_filter_expr(&filter).expect("filter should compile");
 			assert!(
 				result.is_some(),
 				"FieldRef with {:?} should produce Some",
@@ -1829,7 +1945,7 @@ mod tests {
 			FilterOperator::Eq,
 			FilterValue::OuterRef(OuterRef::new("authors.id")),
 		);
-		let result = build_single_filter_expr(&filter);
+		let result = build_single_filter_expr(&filter).expect("filter should compile");
 		assert!(result.is_some());
 
 		let query = Query::select()
@@ -1858,7 +1974,7 @@ mod tests {
 				op.clone(),
 				FilterValue::OuterRef(OuterRef::new("parent.id")),
 			);
-			let result = build_single_filter_expr(&filter);
+			let result = build_single_filter_expr(&filter).expect("filter should compile");
 			assert!(
 				result.is_some(),
 				"OuterRef with {:?} should produce Some",
@@ -1881,7 +1997,7 @@ mod tests {
 			FilterOperator::Gt,
 			FilterValue::Expression(expr),
 		);
-		let result = build_single_filter_expr(&filter);
+		let result = build_single_filter_expr(&filter).expect("filter should compile");
 		assert!(result.is_some());
 	}
 
@@ -1908,7 +2024,7 @@ mod tests {
 				op.clone(),
 				FilterValue::Expression(expr),
 			);
-			let result = build_single_filter_expr(&filter);
+			let result = build_single_filter_expr(&filter).expect("filter should compile");
 			assert!(
 				result.is_some(),
 				"Expression with {:?} should produce Some",
@@ -1925,7 +2041,7 @@ mod tests {
 			.range(2024, 2026);
 
 		// Act
-		let result = build_single_filter_expr(&filter);
+		let result = build_single_filter_expr(&filter).expect("filter should compile");
 
 		// Assert
 		assert!(result.is_some());
@@ -1943,7 +2059,7 @@ mod tests {
 	#[test]
 	fn test_filter_value_to_sea_value_field_ref_fallback() {
 		let value = FilterValue::FieldRef(F::new("test_field"));
-		let sea_value = filter_value_to_sea_value(&value);
+		let sea_value = filter_value_to_sea_value(&value).expect("value should compile");
 
 		// Should return string representation, not panic
 		match sea_value {
@@ -1955,7 +2071,7 @@ mod tests {
 	#[test]
 	fn test_filter_value_to_sea_value_outer_ref_fallback() {
 		let value = FilterValue::OuterRef(OuterRef::new("outer.field"));
-		let sea_value = filter_value_to_sea_value(&value);
+		let sea_value = filter_value_to_sea_value(&value).expect("value should compile");
 
 		// Should return string representation, not panic
 		match sea_value {
@@ -1973,7 +2089,7 @@ mod tests {
 			Box::new(AnnotationValue::Value(OrmValue::Int(1))),
 		);
 		let value = FilterValue::Expression(expr);
-		let sea_value = filter_value_to_sea_value(&value);
+		let sea_value = filter_value_to_sea_value(&value).expect("value should compile");
 
 		// Should return SQL string representation, not panic
 		match sea_value {
@@ -2038,7 +2154,7 @@ mod tests {
 		);
 
 		// Act
-		let result = build_single_filter_expr(&filter);
+		let result = build_single_filter_expr(&filter).expect("filter should compile");
 
 		// Assert: should produce a valid expression using quoted identifiers
 		assert!(result.is_some());
@@ -2066,7 +2182,7 @@ mod tests {
 		);
 
 		// Act
-		let result = build_single_filter_expr(&filter);
+		let result = build_single_filter_expr(&filter).expect("filter should compile");
 
 		// Assert: the injection string should be treated as a quoted identifier
 		assert!(result.is_some());
@@ -2115,7 +2231,7 @@ mod tests {
 		);
 
 		// Act
-		let result = build_single_filter_expr(&filter);
+		let result = build_single_filter_expr(&filter).expect("filter should compile");
 
 		// Assert
 		assert!(result.is_some());
@@ -2148,7 +2264,7 @@ mod tests {
 		);
 
 		// Act
-		let result = build_single_filter_expr(&filter);
+		let result = build_single_filter_expr(&filter).expect("filter should compile");
 
 		// Assert
 		assert!(result.is_some());
@@ -2172,7 +2288,7 @@ mod tests {
 				op.clone(),
 				FilterValue::OuterRef(OuterRef::new("field_b")),
 			);
-			let result = build_single_filter_expr(&filter);
+			let result = build_single_filter_expr(&filter).expect("filter should compile");
 			assert!(
 				result.is_some(),
 				"OuterRef with {:?} should produce Some",
@@ -2199,7 +2315,7 @@ mod tests {
 		);
 
 		// Act
-		let result = build_single_filter_expr(&filter);
+		let result = build_single_filter_expr(&filter).expect("filter should compile");
 
 		// Assert
 		assert!(result.is_some());
@@ -2243,7 +2359,7 @@ mod tests {
 		);
 
 		// Act
-		let result = build_single_filter_expr(&filter);
+		let result = build_single_filter_expr(&filter).expect("filter should compile");
 
 		// Assert
 		assert!(result.is_some());
@@ -2579,7 +2695,7 @@ mod tests {
 		];
 
 		// Act
-		let result = build_filter_condition(&filters);
+		let result = build_filter_condition(&filters).expect("filters should compile");
 
 		// Assert
 		assert!(
@@ -2775,7 +2891,7 @@ mod tests {
 		);
 
 		// Act
-		let result = build_single_filter_expr(&filter);
+		let result = build_single_filter_expr(&filter).expect("filter should compile");
 
 		// Assert
 		assert!(
@@ -2803,7 +2919,7 @@ mod tests {
 		);
 
 		// Act
-		let result = build_single_filter_expr(&filter);
+		let result = build_single_filter_expr(&filter).expect("filter should compile");
 
 		// Assert
 		assert!(
@@ -2833,7 +2949,7 @@ mod tests {
 		);
 
 		// Act
-		let result = build_single_filter_expr(&filter);
+		let result = build_single_filter_expr(&filter).expect("filter should compile");
 
 		// Assert
 		assert!(
@@ -2852,7 +2968,7 @@ mod tests {
 		);
 
 		// Act
-		let result = build_single_filter_expr(&filter);
+		let result = build_single_filter_expr(&filter).expect("filter should compile");
 
 		// Assert
 		assert!(
@@ -2878,7 +2994,7 @@ mod tests {
 		);
 
 		// Act
-		let result = build_single_filter_expr(&filter);
+		let result = build_single_filter_expr(&filter).expect("filter should compile");
 
 		// Assert
 		assert!(

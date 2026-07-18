@@ -42,6 +42,11 @@ pub(crate) fn quote_pragma_identifier(name: &str) -> String {
 	format!("'{}'", name.replace('\'', "''"))
 }
 
+/// Quotes an identifier for SQLite DDL using standard double quotes.
+pub(crate) fn quote_sqlite_identifier(name: &str) -> String {
+	format!("\"{}\"", name.replace('"', "\"\""))
+}
+
 /// Returns the `dflt_value` from `PRAGMA table_info` in the form that
 /// downstream DDL emission expects.
 ///
@@ -91,6 +96,16 @@ mod tests {
 
 		// Assert
 		assert_eq!(quoted, expected);
+	}
+
+	#[rstest]
+	#[case("select", "\"select\"")]
+	#[case("a\"b", "\"a\"\"b\"")]
+	fn quote_sqlite_identifier_uses_escaped_double_quotes(
+		#[case] input: &str,
+		#[case] expected: &str,
+	) {
+		assert_eq!(quote_sqlite_identifier(input), expected);
 	}
 
 	#[rstest]

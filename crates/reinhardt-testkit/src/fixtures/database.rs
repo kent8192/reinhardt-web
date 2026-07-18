@@ -802,6 +802,8 @@ mod tests {
 				FieldInfo {
 					name: "id".to_string(),
 					field_type: "IntegerField".to_string(),
+					storage_kind: None,
+					domain: None,
 					nullable: false,
 					primary_key: true,
 					unique: false,
@@ -816,6 +818,8 @@ mod tests {
 				FieldInfo {
 					name: "name".to_string(),
 					field_type: "CharField".to_string(),
+					storage_kind: None,
+					domain: None,
 					nullable: false,
 					primary_key: false,
 					unique: false,

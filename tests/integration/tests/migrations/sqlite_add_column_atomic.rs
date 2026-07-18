@@ -31,6 +31,7 @@ fn pk_column(name: &str) -> ColumnDefinition {
 		auto_increment: true,
 		default: None,
 		generated: None,
+		domain: None,
 	}
 }
 
@@ -44,6 +45,7 @@ fn col(name: &str, ty: FieldType, not_null: bool) -> ColumnDefinition {
 		auto_increment: false,
 		default: None,
 		generated: None,
+		domain: None,
 	}
 }
 
@@ -115,6 +117,7 @@ async fn issue_4447_add_column_then_add_constraint_preserves_column() {
 					default: Some("false".to_string()),
 
 					generated: None,
+					domain: None,
 				},
 				mysql_options: None,
 			},
@@ -251,6 +254,7 @@ async fn issue_4447_failed_add_column_does_not_record_applied() {
 				default: None,
 
 				generated: None,
+				domain: None,
 			},
 			mysql_options: None,
 		}],

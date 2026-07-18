@@ -16,6 +16,7 @@ Reinhardt release lines.
 ## Reinhardt Release Lines
 
 - [0.2.x to 0.3.0](0-2-to-0-3/) - Upgrade an existing Reinhardt application to the 0.3 release line.
+- [0.3.x to 0.4.0](0-3-to-0-4/) - Adopt native model enums and migrate persistent enum values safely.
 
 ## From Other Frameworks
 
