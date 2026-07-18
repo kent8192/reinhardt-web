@@ -187,9 +187,6 @@ mod manager {
 			User::objects()
 				.create_with_conn(&self.db, &new_user)
 				.await
-				.map_err(|error| {
-					DatabaseError::new(DatabaseErrorKind::Query, error.to_string()).into()
-				})
 		}
 
 		async fn create_superuser(
@@ -203,9 +200,6 @@ mod manager {
 			User::objects()
 				.create_with_conn(&self.db, &new_user)
 				.await
-				.map_err(|error| {
-					DatabaseError::new(DatabaseErrorKind::Query, error.to_string()).into()
-				})
 		}
 	}
 }

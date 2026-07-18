@@ -18,17 +18,17 @@ pub(crate) fn map_sqlx_error(error: sqlx::Error) -> DatabaseError {
 	match error {
 		sqlx::Error::Database(error) => {
 			let code = error.code().map(|code| code.into_owned());
-			let kind = if code.as_deref() == Some("40001") {
-				DatabaseErrorKind::Serialization
-			} else {
-				match error.kind() {
+			let kind = match code.as_deref() {
+				Some("40001") => DatabaseErrorKind::Serialization,
+				Some("42601") => DatabaseErrorKind::Syntax,
+				_ => match error.kind() {
 					ErrorKind::UniqueViolation => DatabaseErrorKind::UniqueViolation,
 					ErrorKind::ForeignKeyViolation => DatabaseErrorKind::ForeignKeyViolation,
 					ErrorKind::NotNullViolation => DatabaseErrorKind::NotNullViolation,
 					ErrorKind::CheckViolation => DatabaseErrorKind::CheckViolation,
 					ErrorKind::Other => DatabaseErrorKind::Query,
 					_ => DatabaseErrorKind::Query,
-				}
+				},
 			};
 			let database_error = DatabaseError::new(kind, error.message());
 			match code {
@@ -216,6 +216,22 @@ mod tests {
 		// Assert
 		assert_eq!(error.kind(), DatabaseErrorKind::Serialization);
 		assert_eq!(error.code(), Some("40001"));
+	}
+
+	#[test]
+	fn map_sqlx_error_classifies_syntax_sqlstate() {
+		// Arrange
+		let error = sqlx::Error::Database(Box::new(TestSqlxDatabaseError {
+			kind: other_database_error,
+			code: "42601",
+		}));
+
+		// Act
+		let error = map_sqlx_error(error);
+
+		// Assert
+		assert_eq!(error.kind(), DatabaseErrorKind::Syntax);
+		assert_eq!(error.code(), Some("42601"));
 	}
 
 	#[rstest]
