@@ -7,19 +7,34 @@ use std::collections::HashMap;
 #[cfg(wasm)]
 use super::link_interceptor::install_link_interceptor;
 #[cfg(wasm)]
-use super::{store_spa_router, with_spa_router};
-#[cfg(wasm)]
-use crate::component::MountError;
-#[cfg(wasm)]
-use crate::component::PageExt as _;
+use super::{
+	store_link_interceptor_guard, store_navigation_coordinator, store_popstate_subscription,
+	store_spa_router, with_spa_router,
+};
 #[cfg(wasm)]
 use crate::component::reactive_if::{
 	ReactiveNodeStore, clear_reactive_node_store, new_reactive_node_store, with_reactive_node_store,
 };
+#[cfg(any(wasm, test))]
+use crate::component::{IntoPage as _, Page, PageElement};
+#[cfg(wasm)]
+use crate::component::{MountError, PageExt as _};
+#[cfg(any(wasm, test))]
+use crate::router::loader::RouteLoaderError;
+#[cfg(wasm)]
+use crate::router::loader::{
+	LoaderStore, active_loader_store, loader_cache_id, route_context, with_loader_store,
+};
+#[cfg(wasm)]
+use crate::router::loader_registry::LoaderRegistry;
 #[cfg(wasm)]
 use reinhardt_core::page::Outlet;
 #[cfg(wasm)]
-use reinhardt_urls::routers::client_router::{ClientRouteTreeMatch, ClientRouter, LayoutKey};
+use reinhardt_urls::routers::client_router::history::normalize_initial_state;
+#[cfg(wasm)]
+use reinhardt_urls::routers::client_router::{
+	ClientRouteTreeMatch, ClientRouter, HistoryState, LayoutKey, listen_pop_requests,
+};
 
 #[cfg(wasm)]
 thread_local! {
@@ -34,8 +49,11 @@ thread_local! {
 #[cfg(wasm)]
 struct PersistentLayoutRenderer {
 	layout_keys: Vec<LayoutKey>,
+	layout_loader_keys: Vec<Option<String>>,
 	layout_stores: Vec<ReactiveNodeStore>,
+	layout_loader_stores: Vec<LoaderStore>,
 	leaf_store: Option<ReactiveNodeStore>,
+	leaf_loader_store: Option<LoaderStore>,
 }
 
 #[cfg(wasm)]
@@ -43,8 +61,11 @@ impl PersistentLayoutRenderer {
 	fn new() -> Self {
 		Self {
 			layout_keys: Vec::new(),
+			layout_loader_keys: Vec::new(),
 			layout_stores: Vec::new(),
+			layout_loader_stores: Vec::new(),
 			leaf_store: None,
+			leaf_loader_store: None,
 		}
 	}
 
@@ -55,7 +76,10 @@ impl PersistentLayoutRenderer {
 		if let Some(store) = self.leaf_store.take() {
 			clear_reactive_node_store(&store);
 		}
+		self.layout_loader_stores.clear();
+		self.leaf_loader_store = None;
 		self.layout_keys.clear();
+		self.layout_loader_keys.clear();
 	}
 
 	fn clear_from_layout_depth(&mut self, depth: usize) {
@@ -65,7 +89,10 @@ impl PersistentLayoutRenderer {
 		if let Some(store) = self.leaf_store.take() {
 			clear_reactive_node_store(&store);
 		}
+		self.layout_loader_stores.truncate(depth);
+		self.leaf_loader_store = None;
 		self.layout_keys.truncate(depth);
+		self.layout_loader_keys.truncate(depth);
 	}
 
 	fn render(
@@ -88,7 +115,43 @@ impl PersistentLayoutRenderer {
 			.iter()
 			.map(|layout| layout.key().clone())
 			.collect::<Vec<_>>();
+		let loader_context = route_context(&route_match);
+		let registry = LoaderRegistry::global().ok();
+		let next_loader_keys = route_match
+			.layouts()
+			.iter()
+			.map(|layout| {
+				let query_key = format!(
+					"route-query:{}?{}",
+					layout.key().full_pattern(),
+					route_match.query().unwrap_or_default()
+				);
+				if let Some(id) = layout.metadata().loader_id() {
+					let cache_key = registry
+						.as_ref()
+						.and_then(|registry| registry.get(id).ok())
+						.and_then(|registration| {
+							loader_cache_id(id, &loader_context, registration.inputs).ok()
+						});
+					let cache_key = cache_key.unwrap_or_else(|| {
+						format!(
+							"route-loader:{}:{}?{}",
+							id.as_str(),
+							route_match.path(),
+							route_match.query().unwrap_or_default()
+						)
+					});
+					Some(format!("{cache_key}:{query_key}"))
+				} else {
+					Some(query_key)
+				}
+			})
+			.collect::<Vec<_>>();
 		let mut preserved = common_layout_prefix_len(&self.layout_keys, &next_keys);
+		preserved = preserved.min(common_loader_prefix_len(
+			&self.layout_loader_keys,
+			&next_loader_keys,
+		));
 		if preserved > 0 && Self::find_outlet(root_el, preserved - 1).is_err() {
 			preserved = 0;
 		}
@@ -105,6 +168,7 @@ impl PersistentLayoutRenderer {
 
 		self.mount_suffix(root_el, router, &route_match, preserved)?;
 		self.layout_keys = next_keys;
+		self.layout_loader_keys = next_loader_keys;
 		Ok(true)
 	}
 
@@ -120,42 +184,55 @@ impl PersistentLayoutRenderer {
 		} else {
 			Self::find_outlet(root_el, start_depth - 1)?
 		};
+		let loader_store = active_loader_store().unwrap_or_default();
 
 		for depth in start_depth..route_match.layouts().len() {
 			let outlet_id = Self::outlet_id(depth);
 			let store = new_reactive_node_store();
 			let scope = reinhardt_core::reactive::ReactiveScope::new();
 			let parent_wrapper = crate::dom::Element::new(parent.clone());
-			scope.enter(|| {
-				with_reactive_node_store(&store, || {
-					let page = router
-						.__render_tree_layout(route_match, depth, Outlet::placeholder(outlet_id))
-						.ok_or(MountError::CreateElementFailed)?;
-					page.mount(&parent_wrapper)
+			let mounted = with_loader_store(&loader_store, || {
+				scope.enter(|| {
+					with_reactive_node_store(&store, || {
+						let page = router
+							.__render_tree_layout(
+								route_match,
+								depth,
+								Outlet::placeholder(outlet_id),
+							)
+							.ok_or(MountError::CreateElementFailed)?;
+						page.mount(&parent_wrapper)
+					})
 				})
-			})?;
+			});
+			mounted?;
 			with_reactive_node_store(&store, || {
 				crate::component::store_reactive_scope(scope);
 			});
 			self.layout_stores.push(store);
+			self.layout_loader_stores.push(loader_store.clone());
 			parent = Self::find_outlet(root_el, depth)?;
 		}
 
 		let leaf_store = new_reactive_node_store();
 		let leaf_scope = reinhardt_core::reactive::ReactiveScope::new();
 		let parent_wrapper = crate::dom::Element::new(parent);
-		leaf_scope.enter(|| {
-			with_reactive_node_store(&leaf_store, || {
-				let leaf = router
-					.__render_tree_leaf(route_match)
-					.ok_or(MountError::CreateElementFailed)?;
-				leaf.mount(&parent_wrapper)
+		let mounted = with_loader_store(&loader_store, || {
+			leaf_scope.enter(|| {
+				with_reactive_node_store(&leaf_store, || {
+					let leaf = router
+						.__render_tree_leaf(route_match)
+						.ok_or(MountError::CreateElementFailed)?;
+					leaf.mount(&parent_wrapper)
+				})
 			})
-		})?;
+		});
+		mounted?;
 		with_reactive_node_store(&leaf_store, || {
 			crate::component::store_reactive_scope(leaf_scope);
 		});
 		self.leaf_store = Some(leaf_store);
+		self.leaf_loader_store = Some(loader_store);
 		Ok(())
 	}
 
@@ -177,6 +254,15 @@ impl PersistentLayoutRenderer {
 
 #[cfg(wasm)]
 fn common_layout_prefix_len(previous: &[LayoutKey], next: &[LayoutKey]) -> usize {
+	previous
+		.iter()
+		.zip(next)
+		.take_while(|(previous, next)| previous == next)
+		.count()
+}
+
+#[cfg(wasm)]
+fn common_loader_prefix_len(previous: &[Option<String>], next: &[Option<String>]) -> usize {
 	previous
 		.iter()
 		.zip(next)
@@ -314,7 +400,11 @@ impl<'a> PathCtx<'a> {
 		self.document
 	}
 
-	/// The currently active path (e.g. `"/orgs/foo/"`).
+	/// The currently active route location (e.g. `"/orgs/foo/?tab=activity"`).
+	///
+	/// [`ClientLauncher::on_path`] and [`ClientLauncher::on_path_pattern`]
+	/// match only the pathname, but callbacks retain the full location so they
+	/// can read the active query when needed.
 	pub fn path(&self) -> &str {
 		self.path
 	}
@@ -393,7 +483,8 @@ pub(super) struct PathSubscription {
 /// Diff state machine shared by `on_path` / `on_path_pattern`
 /// subscriptions.
 ///
-/// Evaluates `pattern` against `path`, updates `last_params` with the
+/// Evaluates `pattern` against the pathname component of `path`, updates
+/// `last_params` with the
 /// new match (or `None`) regardless of the transition, and returns
 /// `Some(new_params)` only on transitions that should fire the user
 /// callback:
@@ -409,13 +500,23 @@ pub(super) struct PathSubscription {
 /// implementation; the same helper is invoked once at registration to
 /// deliver the bootstrap route and again from each `Router::on_navigate`
 /// dispatch (Refs #4101).
+fn pathname_for_path_subscription(path: &str) -> &str {
+	path.split_once('?').map_or(path, |(pathname, _)| pathname)
+}
+
+/// Match a subscription against a route's pathname while preserving the full
+/// route location for [`PathCtx::path`].
+// Native production builds do not install router observers; native unit tests
+// and the WASM launcher both exercise this helper.
 #[allow(dead_code)]
 fn next_path_subscription_match(
 	pattern: &ClientPathPattern,
 	path: &str,
 	last_params: &RefCell<Option<HashMap<String, String>>>,
 ) -> Option<HashMap<String, String>> {
-	let new_match: Option<HashMap<String, String>> = pattern.matches(path).map(|(p, _)| p);
+	let new_match: Option<HashMap<String, String>> = pattern
+		.matches(pathname_for_path_subscription(path))
+		.map(|(p, _)| p);
 	let should_fire = {
 		let mut prev = last_params.borrow_mut();
 		let fire = match (&*prev, &new_match) {
@@ -577,6 +678,8 @@ impl ClientLauncher {
 	/// with borrows of the `window`, `document`, and root element that
 	/// `launch()` already owns. The router is fully initialised at this
 	/// point, so [`with_spa_router`](crate::app::with_spa_router) is safe to call.
+	/// When an unhydrated initial route loader delays that first mount, callbacks
+	/// wait until the loader-backed route commits and mounts successfully.
 	///
 	/// Multiple calls accumulate in registration order.
 	pub fn after_launch<F>(mut self, hook: F) -> Self
@@ -589,8 +692,9 @@ impl ClientLauncher {
 
 	/// Register a side effect that fires on transitions into `path` (exact match).
 	///
-	/// The callback receives a [`PathCtx`] with the current document and
-	/// path; for exact-match registrations, `params()` is always empty.
+	/// The callback receives a [`PathCtx`] with the current document and full
+	/// route location; matching ignores the query string, and for exact-match
+	/// registrations `params()` is always empty.
 	///
 	/// Internally each registration becomes a leaked `Router::on_navigate`
 	/// listener; the callback fires when the application enters the matching
@@ -635,8 +739,40 @@ impl ClientLauncher {
 	}
 }
 
+#[cfg(any(wasm, test))]
+fn initial_loader_error_page(error: Option<RouteLoaderError>) -> Page {
+	let Some(error) = error else {
+		return Page::Empty;
+	};
+	PageElement::new("div")
+		.attr("data-route-error", "loader")
+		.child(error.public_message().to_owned())
+		.into_page()
+}
+
 #[cfg(wasm)]
 impl ClientLauncher {
+	fn mount_initial_loader_error_surface(
+		root_el: &web_sys::Element,
+	) -> Result<(), crate::component::MountError> {
+		crate::component::cleanup_reactive_nodes();
+		let scope = reinhardt_core::reactive::ReactiveScope::new();
+		let page = Page::reactive(move || {
+			let error = crate::app::try_with_navigation_coordinator(|coordinator| {
+				coordinator.error().get()
+			})
+			.flatten();
+			initial_loader_error_page(error)
+		});
+		root_el.set_inner_html("");
+		let root = crate::dom::Element::new(root_el.clone());
+		let result = scope.enter(|| page.mount(&root));
+		if result.is_ok() {
+			crate::component::store_reactive_scope(scope);
+		}
+		result
+	}
+
 	/// Render the current route into the given root element.
 	///
 	/// Performs `cleanup_reactive_nodes` -> `Router::render_current` ->
@@ -648,11 +784,22 @@ impl ClientLauncher {
 	/// Refs #4101.
 	fn render_and_mount(root_el: &web_sys::Element) -> Result<(), crate::component::MountError> {
 		RENDER_COUNT.with(|c| c.set(c.get() + 1));
+		let mounted_loader_store =
+			crate::app::try_with_navigation_coordinator(|coordinator| coordinator.mounted_store())
+				.flatten();
 		let client_router = with_spa_router(|r| r.as_any().downcast_ref::<ClientRouter>().cloned());
 		if let Some(router) = client_router {
-			let handled_by_layout_renderer = PERSISTENT_LAYOUT_RENDERER
-				.with(|renderer| renderer.borrow_mut().render(root_el, &router))?;
+			let render_layouts = || {
+				PERSISTENT_LAYOUT_RENDERER
+					.with(|renderer| renderer.borrow_mut().render(root_el, &router))
+			};
+			let handled_by_layout_renderer = if let Some(store) = mounted_loader_store.as_ref() {
+				with_loader_store(store, render_layouts)
+			} else {
+				render_layouts()
+			}?;
 			if handled_by_layout_renderer {
+				crate::app::observe_viewport_prefetch_links();
 				return Ok(());
 			}
 		}
@@ -664,14 +811,20 @@ impl ClientLauncher {
 		// re-enter the runtime and abort the navigation before DOM remount.
 		crate::component::cleanup_reactive_nodes();
 		let scope = reinhardt_core::reactive::ReactiveScope::new();
-		let result = scope.enter(|| {
+		let render_current = || {
 			let view = with_spa_router(|r| r.render_current());
 			root_el.set_inner_html("");
 			let wrapper = crate::dom::Element::new(root_el.clone());
 			view.mount(&wrapper)
-		});
+		};
+		let result = if let Some(store) = mounted_loader_store.as_ref() {
+			with_loader_store(store, || scope.enter(render_current))
+		} else {
+			scope.enter(render_current)
+		};
 		if result.is_ok() {
 			crate::component::store_reactive_scope(scope);
+			crate::app::observe_viewport_prefetch_links();
 		}
 		result
 	}
@@ -690,6 +843,77 @@ impl ClientLauncher {
 	#[doc(hidden)]
 	pub fn __diag_render_count() -> u64 {
 		RENDER_COUNT.with(|c| c.get())
+	}
+
+	/// Run the lifecycle work that requires a successfully mounted initial route.
+	///
+	/// Path subscriptions intentionally retain their router observers for the
+	/// application lifetime. A WASM module has no application shutdown phase, so
+	/// the subscriptions are leaked after registration just as the render
+	/// observer is in [`Self::launch`].
+	fn activate_post_mount_lifecycle(
+		after_launch_hooks: Vec<AfterLaunchHook>,
+		path_subscriptions: Vec<PathSubscription>,
+		window: &web_sys::Window,
+		document: &web_sys::Document,
+		root_el: &web_sys::Element,
+		scope: &std::rc::Rc<reinhardt_core::reactive::ReactiveScope>,
+	) {
+		let ctx = LaunchCtx {
+			window,
+			document,
+			root_element: root_el,
+		};
+		for hook in after_launch_hooks {
+			hook(&ctx);
+		}
+
+		for sub in path_subscriptions {
+			let PathSubscription {
+				pattern,
+				callback,
+				last_params,
+			} = sub;
+			let pattern: std::rc::Rc<ClientPathPattern> = std::rc::Rc::new(pattern);
+			let callback: std::rc::Rc<dyn Fn(&PathCtx<'_>) + 'static> = std::rc::Rc::from(callback);
+			let last_params: std::rc::Rc<RefCell<Option<HashMap<String, String>>>> =
+				std::rc::Rc::new(last_params);
+
+			let pattern_for_listener = pattern.clone();
+			let callback_for_listener = callback.clone();
+			let last_params_for_listener = last_params.clone();
+			let document_for_listener = document.clone();
+			let scope_for_listener = std::rc::Rc::clone(scope);
+			let listener_subscription = with_spa_router(|r| {
+				r.on_navigate_dyn(Box::new(move |path, _params_from_router| {
+					if let Some(params) = next_path_subscription_match(
+						&pattern_for_listener,
+						path,
+						&last_params_for_listener,
+					) {
+						let ctx = PathCtx {
+							document: &document_for_listener,
+							path,
+							params: &params,
+						};
+						scope_for_listener.enter(|| callback_for_listener(&ctx));
+					}
+				}))
+			});
+			std::mem::forget(listener_subscription);
+
+			let initial_path = with_spa_router(|r| r.current_path().get());
+			if let Some(params) =
+				next_path_subscription_match(&pattern, &initial_path, &last_params)
+			{
+				let ctx = PathCtx {
+					document,
+					path: &initial_path,
+					params: &params,
+				};
+				scope.enter(|| callback(&ctx));
+			}
+		}
 	}
 
 	/// Start the WASM client application.
@@ -718,12 +942,14 @@ impl ClientLauncher {
 	///    launcher's render listener via [`Router::on_navigate`] (the
 	///    returned [`NavigationSubscription`] is leaked via
 	///    `mem::forget` so it persists for the WASM module lifetime),
-	///    runs registered `after_launch` callbacks, then registers
+	///    then runs registered `after_launch` callbacks and registers
 	///    one `Router::on_navigate` listener per `on_path` /
 	///    `on_path_pattern` subscription. Each path-subscription
 	///    listener fires only on transitions into or between matching
 	///    param sets (de-duplicated through a
-	///    `RefCell<Option<HashMap>>` state).
+	///    `RefCell<Option<HashMap>>` state). If an unhydrated initial
+	///    route loader defers Phase B, the post-mount lifecycle waits
+	///    for that loader-backed route to commit and mount successfully.
 	///
 	/// The launcher does **not** create any reactive `Effect`. The
 	/// render pipeline is driven entirely by [`Router::on_navigate`]
@@ -812,6 +1038,62 @@ impl ClientLauncher {
 				}
 			};
 		store_spa_router(spa_router, std::rc::Rc::clone(&scope));
+		let mut coordinator_installed = false;
+		let mut initial_preparation_path = None;
+		if let Some(router) =
+			with_spa_router(|router| router.as_any().downcast_ref::<ClientRouter>().cloned())
+		{
+			let coordinator =
+				super::navigation::NavigationCoordinator::new(std::rc::Rc::new(router.clone()))
+					.map_err(|error| {
+						wasm_bindgen::JsValue::from_str(&format!(
+							"route-loader coordinator initialization failed: {error}"
+						))
+					})?;
+			let initial_path = with_spa_router(|router| router.current_path().get());
+			let proposed_initial_state = router
+				.match_tree(&initial_path)
+				.map(|matched| {
+					let leaf = matched.leaf_match();
+					let mut state =
+						HistoryState::new(initial_path.clone()).with_params(leaf.params.clone());
+					if let Some(name) = leaf.route.name() {
+						state = state.with_route_name(name);
+					}
+					state
+				})
+				.unwrap_or_else(|| HistoryState::new(initial_path.clone()));
+			let initial_state =
+				normalize_initial_state(proposed_initial_state).map_err(|error| {
+					wasm_bindgen::JsValue::from_str(&format!(
+						"initial history state normalization failed: {error}"
+					))
+				})?;
+			coordinator.initialize_committed_index(initial_state.entry_index().unwrap_or(0));
+			let initial_store_hydrated =
+				coordinator
+					.hydrate_initial_store(&initial_path)
+					.map_err(|error| {
+						wasm_bindgen::JsValue::from_str(&format!(
+							"initial route-loader hydration failed: {error}"
+						))
+					})?;
+			if !initial_store_hydrated {
+				initial_preparation_path = Some(initial_path.clone());
+			}
+			let pop_coordinator = std::rc::Rc::clone(&coordinator);
+			let pop_subscription = listen_pop_requests(move |request| {
+				if pop_coordinator.consume_restoration_pop() {
+					return;
+				}
+				let target_index = request.state.entry_index();
+				let _ = pop_coordinator
+					.navigate(request.path, super::NavigationIntent::Pop { target_index });
+			})?;
+			store_navigation_coordinator(coordinator);
+			store_popstate_subscription(pop_subscription);
+			coordinator_installed = true;
+		}
 
 		crate::nav_diag!(
 			"site=store_router router_id={} route_count={}",
@@ -820,7 +1102,9 @@ impl ClientLauncher {
 		);
 		crate::nav_diag_dom!("store_router");
 
-		with_spa_router(|r| r.setup_history_listener());
+		if !coordinator_installed {
+			with_spa_router(|r| r.setup_history_listener());
+		}
 
 		let window = web_sys::window()
 			.ok_or_else(|| wasm_bindgen::JsValue::from_str("no global `window`"))?;
@@ -829,7 +1113,8 @@ impl ClientLauncher {
 			.ok_or_else(|| wasm_bindgen::JsValue::from_str("no document on window"))?;
 
 		if self.intercept_links {
-			install_link_interceptor(&document)?;
+			let guard = install_link_interceptor(&document)?;
+			store_link_interceptor_guard(guard);
 		}
 
 		let root_el = document
@@ -841,121 +1126,93 @@ impl ClientLauncher {
 				))
 			})?;
 		PERSISTENT_LAYOUT_RENDERER.with(|renderer| renderer.borrow_mut().reset());
+		let pending_post_mount_lifecycle = std::rc::Rc::new(RefCell::new(Some((
+			std::mem::take(&mut self.after_launch_hooks),
+			std::mem::take(&mut self.path_subscriptions),
+		))));
 
 		// Phase B: initial mount runs inline (no Effect). Errors
 		// propagate directly because no Effect/Signal indirection
 		// captures them. Refs #4101.
-		Self::render_and_mount(&root_el)
-			.map_err(|e| wasm_bindgen::JsValue::from_str(&format!("initial mount failed: {e}")))?;
+		if initial_preparation_path.is_none() {
+			Self::render_and_mount(&root_el).map_err(|e| {
+				wasm_bindgen::JsValue::from_str(&format!("initial mount failed: {e}"))
+			})?;
+		}
 
 		// Phase C (part 1): register the launcher's render listener
-		// via Router::on_navigate. Registered BEFORE the after_launch
-		// drain so that any router.push() / router.replace()
-		// triggered from an after_launch hook re-renders, matching
-		// the previous behaviour where the render Effect was already
-		// active by that point. Router::on_navigate fires for both
-		// programmatic navigation and popstate (popstate dispatch
+		// via Router::on_navigate before post-mount lifecycle activation.
+		// This preserves the previous ordering for navigation triggered from
+		// an after_launch hook and defers that lifecycle until an initially
+		// unhydrated loader route has committed and mounted. Router::on_navigate
+		// fires for both programmatic navigation and popstate (popstate dispatch
 		// added in #4108).
 		//
 		// The subscription is leaked for the entire WASM module
 		// lifetime (modules never terminate, so there is no
 		// destructor to run). Refs #4101, #4108, #4088.
 		let render_root = root_el.clone();
+		let lifecycle_for_render = std::rc::Rc::clone(&pending_post_mount_lifecycle);
+		let window_for_render = window.clone();
+		let document_for_render = document.clone();
+		let scope_for_render = std::rc::Rc::clone(&scope);
 		let render_subscription = with_spa_router(|r| {
-			r.on_navigate_dyn(Box::new(move |_path, _params| {
-				if let Err(e) = Self::render_and_mount(&render_root) {
-					web_sys::console::error_1(&format!("re-render failed: {e}").into());
-				}
-			}))
+			r.on_navigate_dyn(Box::new(
+				move |_path, _params| match Self::render_and_mount(&render_root) {
+					Ok(()) => {
+						if let Some((after_launch_hooks, path_subscriptions)) =
+							lifecycle_for_render.borrow_mut().take()
+						{
+							Self::activate_post_mount_lifecycle(
+								after_launch_hooks,
+								path_subscriptions,
+								&window_for_render,
+								&document_for_render,
+								&render_root,
+								&scope_for_render,
+							);
+						}
+					}
+					Err(error) => {
+						web_sys::console::error_1(&format!("re-render failed: {error}").into());
+					}
+				},
+			))
 		});
 		std::mem::forget(render_subscription);
+
+		if let Some(path) = initial_preparation_path {
+			Self::mount_initial_loader_error_surface(&root_el).map_err(|error| {
+				wasm_bindgen::JsValue::from_str(&format!(
+					"initial loader error surface failed to mount: {error}"
+				))
+			})?;
+			let result = crate::app::try_with_navigation_coordinator(|coordinator| {
+				coordinator.navigate(path, super::NavigationIntent::Initial)
+			});
+			if let Some(Err(error)) = result {
+				return Err(wasm_bindgen::JsValue::from_str(&format!(
+					"initial route-loader preparation failed to start: {error}"
+				)));
+			}
+		} else if let Some((after_launch_hooks, path_subscriptions)) =
+			pending_post_mount_lifecycle.borrow_mut().take()
+		{
+			Self::activate_post_mount_lifecycle(
+				after_launch_hooks,
+				path_subscriptions,
+				&window,
+				&document,
+				&root_el,
+				&scope,
+			);
+		}
 
 		crate::nav_diag!(
 			"site=register_render_listener router_id={} observer_count_after={}",
 			with_spa_router(|r| r.__diag_router_id()),
 			with_spa_router(|r| r.__diag_observer_count())
 		);
-
-		// Phase C (between part 1 and part 2): drain after_launch
-		// callbacks now that the router is live, the first DOM mount
-		// has completed, and the render listener is active. Path
-		// subscriptions registered below see whatever path the
-		// after_launch hooks may have pushed.
-		if !self.after_launch_hooks.is_empty() {
-			let ctx = LaunchCtx {
-				window: &window,
-				document: &document,
-				root_element: &root_el,
-			};
-			for hook in self.after_launch_hooks.drain(..) {
-				hook(&ctx);
-			}
-		}
-
-		// Phase C (part 2, #4101): register one leaked
-		// Router::on_navigate listener per path subscription, then
-		// manually evaluate the current path once so subscriptions
-		// whose pattern matches the bootstrap route deliver the initial
-		// route at startup. The previous Effect-based implementation
-		// got the initial-route delivery for free because Effects run
-		// their closure once at creation; the on_navigate-based
-		// implementation only fires on subsequent navigations, so the
-		// initial evaluation is restored explicitly here.
-		//
-		// The listener is registered BEFORE the initial evaluation so
-		// that any `Router::push` triggered from inside the user
-		// callback during initial eval is observed by this listener
-		// (matching the previous behaviour where the reactive runtime
-		// would re-execute the Effect on the same Signal change). The
-		// `Rc<RefCell<Option<HashMap>>>` diff state is shared between
-		// the listener closure and the initial-eval site so transitions
-		// between the two are detected by the same state machine.
-		for sub in self.path_subscriptions.into_iter() {
-			let PathSubscription {
-				pattern,
-				callback,
-				last_params,
-			} = sub;
-			let pattern: std::rc::Rc<ClientPathPattern> = std::rc::Rc::new(pattern);
-			let callback: std::rc::Rc<dyn Fn(&PathCtx<'_>) + 'static> = std::rc::Rc::from(callback);
-			let last_params: std::rc::Rc<RefCell<Option<HashMap<String, String>>>> =
-				std::rc::Rc::new(last_params);
-
-			let pattern_for_listener = pattern.clone();
-			let callback_for_listener = callback.clone();
-			let last_params_for_listener = last_params.clone();
-			let document_for_listener = document.clone();
-			let scope_for_listener = std::rc::Rc::clone(&scope);
-			let listener_subscription = with_spa_router(|r| {
-				r.on_navigate_dyn(Box::new(move |path, _params_from_router| {
-					if let Some(params) = next_path_subscription_match(
-						&pattern_for_listener,
-						path,
-						&last_params_for_listener,
-					) {
-						let ctx = PathCtx {
-							document: &document_for_listener,
-							path,
-							params: &params,
-						};
-						scope_for_listener.enter(|| callback_for_listener(&ctx));
-					}
-				}))
-			});
-			std::mem::forget(listener_subscription);
-
-			let initial_path = with_spa_router(|r| r.current_path().get());
-			if let Some(params) =
-				next_path_subscription_match(&pattern, &initial_path, &last_params)
-			{
-				let ctx = PathCtx {
-					document: &document,
-					path: &initial_path,
-					params: &params,
-				};
-				scope.enter(|| callback(&ctx));
-			}
-		}
 
 		Ok(())
 	}
@@ -964,6 +1221,16 @@ impl ClientLauncher {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn initial_loader_error_page_renders_a_safe_failure_surface() {
+		assert_eq!(initial_loader_error_page(None).render_to_string(), "");
+		let page = initial_loader_error_page(Some(RouteLoaderError::new("initial loader failed")));
+		assert_eq!(
+			page.render_to_string(),
+			"<div data-route-error=\"loader\">initial loader failed</div>"
+		);
+	}
 	use rstest::*;
 
 	#[rstest]
@@ -1091,6 +1358,20 @@ mod tests {
 				.borrow()
 				.is_none()
 		);
+	}
+
+	#[rstest]
+	fn path_subscriptions_match_the_pathname_when_the_route_has_a_query() {
+		// Arrange
+		let pattern = ClientPathPattern::new("/query-loaded").expect("valid path pattern");
+		let last_params = RefCell::new(None);
+
+		// Act
+		let matched =
+			next_path_subscription_match(&pattern, "/query-loaded?tab=initial", &last_params);
+
+		// Assert
+		assert_eq!(matched, Some(HashMap::new()));
 	}
 
 	// --- transition logic regression test ---

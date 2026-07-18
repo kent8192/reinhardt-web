@@ -477,6 +477,16 @@ impl SsrRenderer {
 		&mut self.state
 	}
 
+	/// Returns the configured timeout used by entry-blocking route loaders.
+	pub(crate) fn route_loader_timeout(&self) -> Duration {
+		self.options.resource_timeout
+	}
+
+	/// Clears resource state before a route render installs its loader payload.
+	pub(crate) fn begin_route_loader_render(&mut self) {
+		self.begin_render(true);
+	}
+
 	/// Renders a component to an HTML string.
 	pub async fn render<C: Component>(&mut self, component: &C) -> String {
 		self.render_view_factory(|| component.render()).await
@@ -716,6 +726,22 @@ impl SsrRenderer {
 		let view = view.into_page();
 		let (_, content, body_tail) = self
 			.render_view_parts_from_factory(|| view.clone(), true)
+			.await;
+		let view_head = self.current_buffered_rendered_head();
+		self.wrap_in_html_with_head_and_body_tail(&content, &body_tail, view_head.as_ref())
+	}
+
+	/// Renders a full page while retaining already prepared resource state.
+	///
+	/// Route loaders install their serialized values before page wrapping so the
+	/// generated state script can hydrate the initial route without another
+	/// client fetch.
+	pub(crate) async fn render_page_into_page_to_string_preserving_resource_state<V: IntoPage>(
+		&mut self,
+		view: V,
+	) -> String {
+		let (_, content, body_tail) = self
+			.render_view_parts_from_factory(Self::into_page_factory(view), false)
 			.await;
 		let view_head = self.current_buffered_rendered_head();
 		self.wrap_in_html_with_head_and_body_tail(&content, &body_tail, view_head.as_ref())

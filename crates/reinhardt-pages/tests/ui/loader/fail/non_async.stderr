@@ -1,0 +1,5 @@
+error: #[loader] functions must be async
+ --> tests/ui/loader/fail/non_async.rs:4:1
+  |
+4 | fn not_async() -> Result<u8, String> {
+  | ^^

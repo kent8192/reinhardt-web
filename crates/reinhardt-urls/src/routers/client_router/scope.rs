@@ -130,6 +130,7 @@ impl RouteScope {
 			Some(P::component_name().to_string()),
 			Some(P::function_name().to_string()),
 			Some(P::props_type_name().to_string()),
+			P::loader_id(),
 			RouteMetadata::default(),
 		);
 		self.register_leaf(LeafRegistration {
@@ -186,6 +187,7 @@ impl RouteScope {
 			Some(P::component_name().to_string()),
 			Some(P::function_name().to_string()),
 			Some(P::props_type_name().to_string()),
+			P::loader_id(),
 			RouteMetadata::default(),
 		);
 		self.nodes.push(RouteNode::new(
@@ -236,6 +238,7 @@ impl RouteScope {
 			Some(P::component_name().to_string()),
 			Some(P::function_name().to_string()),
 			Some(P::props_type_name().to_string()),
+			P::loader_id(),
 			RouteMetadata::default(),
 		);
 		self.register_leaf(LeafRegistration {
@@ -281,6 +284,7 @@ impl RouteScope {
 			Some(name.to_string()),
 			path,
 			full_pattern.clone(),
+			None,
 			None,
 			None,
 			None,
@@ -343,6 +347,7 @@ impl RouteScope {
 			None,
 			None,
 			None,
+			None,
 			RouteMetadata::default(),
 		);
 		self.nodes.push(RouteNode::new(
@@ -388,6 +393,7 @@ impl RouteScope {
 			Some(name.to_string()),
 			"",
 			full_pattern.clone(),
+			None,
 			None,
 			None,
 			None,

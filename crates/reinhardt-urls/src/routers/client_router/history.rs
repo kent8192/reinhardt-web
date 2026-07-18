@@ -38,6 +38,11 @@ pub struct HistoryState {
 	pub data: HashMap<String, String>,
 	/// Scroll position to restore.
 	pub scroll_position: Option<(i32, i32)>,
+	/// Monotonic framework-owned index for this history entry.
+	///
+	/// Older entries may omit this field; callers should normalize a missing
+	/// value during initial launch rather than inferring it from `data`.
+	pub entry_index: Option<i64>,
 }
 
 impl HistoryState {
@@ -49,6 +54,7 @@ impl HistoryState {
 			route_name: None,
 			data: HashMap::new(),
 			scroll_position: None,
+			entry_index: None,
 		}
 	}
 
@@ -76,6 +82,17 @@ impl HistoryState {
 		self
 	}
 
+	/// Sets the framework-owned history entry index.
+	pub fn with_entry_index(mut self, index: i64) -> Self {
+		self.entry_index = Some(index);
+		self
+	}
+
+	/// Returns the framework-owned history entry index, when present.
+	pub fn entry_index(&self) -> Option<i64> {
+		self.entry_index
+	}
+
 	/// Serializes the state to a JSON string.
 	pub fn to_json(&self) -> Result<String, serde_json::Error> {
 		serde_json::to_string(&HistoryStateJson {
@@ -85,6 +102,7 @@ impl HistoryState {
 			data: self.data.clone(),
 			scroll_x: self.scroll_position.map(|(x, _)| x),
 			scroll_y: self.scroll_position.map(|(_, y)| y),
+			entry_index: self.entry_index,
 		})
 	}
 
@@ -100,6 +118,7 @@ impl HistoryState {
 				(Some(x), Some(y)) => Some((x, y)),
 				_ => None,
 			},
+			entry_index: parsed.entry_index,
 		})
 	}
 }
@@ -112,6 +131,8 @@ struct HistoryStateJson {
 	data: HashMap<String, String>,
 	scroll_x: Option<i32>,
 	scroll_y: Option<i32>,
+	#[serde(default)]
+	entry_index: Option<i64>,
 }
 
 /// Pushes a new state to the browser history.
@@ -159,6 +180,20 @@ pub fn replace_state(state: &HistoryState) -> Result<(), String> {
 		.map_err(|_| "Failed to replace state".to_string())
 }
 
+/// Replaces framework state without changing the browser URL.
+///
+/// Used when a launcher upgrades the current history entry with framework
+/// metadata. In particular, this preserves fragments used for anchors.
+#[cfg(wasm)]
+fn replace_current_state(state: &HistoryState) -> Result<(), String> {
+	let window = web_sys::window().ok_or("Window not available")?;
+	let history = window.history().map_err(|_| "History not available")?;
+	let js_state = state_to_js_object(state)?;
+	history
+		.replace_state_with_url(&js_state, "", None)
+		.map_err(|_| "Failed to replace state".to_string())
+}
+
 /// Non-WASM version for testing.
 #[cfg(native)]
 pub fn replace_state(_state: &HistoryState) -> Result<(), String> {
@@ -176,6 +211,7 @@ fn state_to_js_object(state: &HistoryState) -> Result<wasm_bindgen::JsValue, Str
 		data: state.data.clone(),
 		scroll_x: state.scroll_position.map(|(x, _)| x),
 		scroll_y: state.scroll_position.map(|(_, y)| y),
+		entry_index: state.entry_index,
 	};
 	serde_wasm_bindgen::to_value(&wire).map_err(|e| format!("serialize state: {e}"))
 }
@@ -207,7 +243,49 @@ fn state_from_js_value(value: wasm_bindgen::JsValue) -> Option<HistoryState> {
 			(Some(x), Some(y)) => Some((x, y)),
 			_ => None,
 		},
+		entry_index: wire.entry_index,
 	})
+}
+
+#[cfg(any(wasm, test))]
+fn normalize_legacy_initial_state(proposed: HistoryState, existing: HistoryState) -> HistoryState {
+	HistoryState {
+		path: proposed.path,
+		params: proposed.params,
+		route_name: proposed.route_name,
+		data: existing.data,
+		scroll_position: existing.scroll_position,
+		entry_index: Some(0),
+	}
+}
+
+#[cfg(wasm)]
+/// Normalizes the current browser history entry for the first router launch.
+///
+/// The loader coordinator needs a framework-owned index to restore a failed
+/// popstate navigation. Entries created by older versions (or by the host
+/// application) may not have one, so the first launch upgrades the existing
+/// state in place with index `0`. A state that already carries an index is
+/// preserved verbatim so reloads do not change the browser's traversal
+/// position.
+pub fn normalize_initial_state(proposed: HistoryState) -> Result<HistoryState, String> {
+	let window = web_sys::window().ok_or("Window not available")?;
+	let history = window.history().map_err(|_| "History not available")?;
+	let browser_state = history
+		.state()
+		.map_err(|_| "Failed to read current history state".to_string())?;
+	if let Some(existing) = state_from_js_value(browser_state) {
+		if existing.entry_index().is_some() {
+			return Ok(existing);
+		}
+		let normalized = normalize_legacy_initial_state(proposed, existing);
+		replace_current_state(&normalized)?;
+		return Ok(normalized);
+	}
+
+	let normalized = proposed.with_entry_index(0);
+	replace_current_state(&normalized)?;
+	Ok(normalized)
 }
 
 /// Navigates back in the browser history.
@@ -290,6 +368,18 @@ pub fn current_search() -> Result<String, String> {
 		.map_err(|_| "Failed to get search".to_string())
 }
 
+/// Combines a pathname and a browser search string into a router path.
+#[cfg(any(wasm, test))]
+fn path_with_search(path: String, search: String) -> String {
+	format!("{path}{search}")
+}
+
+/// Gets the current pathname together with its search query.
+#[cfg(wasm)]
+pub fn current_location_path() -> Result<String, String> {
+	Ok(path_with_search(current_path()?, current_search()?))
+}
+
 /// Gets the current hash from the browser.
 ///
 /// Wasm-only by design (see [`current_search`] for the rationale).
@@ -300,6 +390,64 @@ pub fn current_hash() -> Result<String, String> {
 	location
 		.hash()
 		.map_err(|_| "Failed to get hash".to_string())
+}
+
+/// The URL and framework state received from a browser `popstate` event.
+#[cfg(wasm)]
+#[derive(Debug, Clone)]
+pub struct PopNavigationRequest {
+	/// Pathname at the time the event was dispatched.
+	pub path: String,
+	/// Structured framework state, or a default state for a legacy entry.
+	pub state: HistoryState,
+}
+
+/// RAII subscription for browser popstate requests.
+#[cfg(wasm)]
+pub struct PopStateSubscription {
+	window: web_sys::Window,
+	callback: wasm_bindgen::closure::Closure<dyn FnMut(web_sys::PopStateEvent)>,
+}
+
+#[cfg(wasm)]
+impl Drop for PopStateSubscription {
+	fn drop(&mut self) {
+		use wasm_bindgen::JsCast;
+		let _ = self.window.remove_event_listener_with_callback(
+			"popstate",
+			self.callback.as_ref().unchecked_ref(),
+		);
+	}
+}
+
+/// Listens for browser history traversals without mutating route signals.
+///
+/// The returned subscription owns both the browser closure and its listener;
+/// dropping it removes the listener through RAII. Pages uses this lower-level
+/// hook to prepare a destination before deciding whether to commit the pop.
+#[cfg(wasm)]
+pub fn listen_pop_requests<F>(callback: F) -> Result<PopStateSubscription, wasm_bindgen::JsValue>
+where
+	F: FnMut(PopNavigationRequest) + 'static,
+{
+	use wasm_bindgen::JsCast;
+
+	let window =
+		web_sys::window().ok_or_else(|| wasm_bindgen::JsValue::from_str("No window object"))?;
+	let mut callback = callback;
+	let closure =
+		wasm_bindgen::closure::Closure::wrap(Box::new(move |event: web_sys::PopStateEvent| {
+			let path = current_location_path().unwrap_or_else(|_| "/".to_string());
+			let state = state_from_js_value(event.state())
+				.unwrap_or_else(|| HistoryState::new(path.clone()));
+			callback(PopNavigationRequest { path, state });
+		}) as Box<dyn FnMut(_)>);
+
+	window.add_event_listener_with_callback("popstate", closure.as_ref().unchecked_ref())?;
+	Ok(PopStateSubscription {
+		window,
+		callback: closure,
+	})
 }
 
 /// Sets up a popstate event listener that triggers when browser back/forward is used.
@@ -382,6 +530,7 @@ mod tests {
 		assert_eq!(state.path, "/users/42/");
 		assert!(state.params.is_empty());
 		assert!(state.route_name.is_none());
+		assert_eq!(state.entry_index(), None);
 	}
 
 	#[test]
@@ -393,13 +542,15 @@ mod tests {
 			.with_params(params)
 			.with_route_name("user_detail")
 			.with_data("ref", "home")
-			.with_scroll(0, 500);
+			.with_scroll(0, 500)
+			.with_entry_index(3);
 
 		assert_eq!(state.path, "/users/42/");
 		assert_eq!(state.params.get("id"), Some(&"42".to_string()));
 		assert_eq!(state.route_name, Some("user_detail".to_string()));
 		assert_eq!(state.data.get("ref"), Some(&"home".to_string()));
 		assert_eq!(state.scroll_position, Some((0, 500)));
+		assert_eq!(state.entry_index(), Some(3));
 	}
 
 	#[test]
@@ -417,6 +568,34 @@ mod tests {
 		assert_eq!(restored.path, state.path);
 		assert_eq!(restored.params, state.params);
 		assert_eq!(restored.route_name, state.route_name);
+		assert_eq!(restored.entry_index(), state.entry_index());
+
+		let legacy = r#"{"path":"/legacy/","params":{},"route_name":null,"data":{},"scroll_x":null,"scroll_y":null}"#;
+		assert_eq!(HistoryState::from_json(legacy).unwrap().entry_index(), None);
+	}
+
+	#[test]
+	fn legacy_initial_state_keeps_the_proposed_current_url() {
+		let mut params = HashMap::new();
+		params.insert("tab".to_owned(), "open".to_owned());
+		let proposed = HistoryState::new("/search?tab=open")
+			.with_params(params.clone())
+			.with_route_name("search");
+		let existing = HistoryState::new("/search")
+			.with_data("host", "legacy")
+			.with_scroll(12, 34);
+
+		let normalized = normalize_legacy_initial_state(proposed, existing);
+
+		assert_eq!(normalized.path, "/search?tab=open");
+		assert_eq!(normalized.params, params);
+		assert_eq!(normalized.route_name.as_deref(), Some("search"));
+		assert_eq!(
+			normalized.data.get("host").map(String::as_str),
+			Some("legacy")
+		);
+		assert_eq!(normalized.scroll_position, Some((12, 34)));
+		assert_eq!(normalized.entry_index(), Some(0));
 	}
 
 	#[test]
@@ -444,5 +623,13 @@ mod tests {
 		// stubs were removed to avoid a public-API footgun where callers
 		// would silently receive empty strings on non-wasm targets).
 		assert_eq!(current_path().unwrap(), "/");
+	}
+
+	#[test]
+	fn path_with_search_keeps_the_query_for_router_matching() {
+		assert_eq!(
+			path_with_search("/projects/".to_string(), "?page=2".to_string()),
+			"/projects/?page=2"
+		);
 	}
 }

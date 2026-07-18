@@ -85,15 +85,44 @@ pub async fn request_with_credentials(
 	headers: Vec<(String, String)>,
 	credentials: FetchCredentials,
 ) -> Result<FetchResponse, ServerFnError> {
+	request_with_credentials_and_cancellation(
+		method,
+		url,
+		body,
+		headers,
+		credentials,
+		crate::cancellation::active_cancellation(),
+	)
+	.await
+}
+
+#[cfg(wasm)]
+pub(crate) async fn request_with_credentials_and_cancellation(
+	method: &str,
+	url: &str,
+	body: Option<&str>,
+	headers: Vec<(String, String)>,
+	credentials: FetchCredentials,
+	cancellation: Option<crate::cancellation::CancellationHandle>,
+) -> Result<FetchResponse, ServerFnError> {
 	use wasm_bindgen::JsCast;
 	use wasm_bindgen::JsValue;
 	use wasm_bindgen_futures::JsFuture;
-	use web_sys::{Request, RequestInit, RequestMode, Response, window};
+	use web_sys::{AbortController, Request, RequestInit, RequestMode, Response, window};
 
 	let init = RequestInit::new();
 	init.set_method(method);
 	init.set_mode(RequestMode::Cors);
 	init.set_credentials(credentials.into_request_credentials());
+	let _cancellation_registration = if let Some(cancellation) = cancellation {
+		let controller = AbortController::new()
+			.map_err(|error| ServerFnError::network(js_error_message(error)))?;
+		let signal = controller.signal();
+		init.set_signal(Some(&signal));
+		Some(cancellation.on_cancel(move || controller.abort()))
+	} else {
+		None
+	};
 	if let Some(body) = body {
 		init.set_body(&JsValue::from_str(body));
 	}
@@ -154,5 +183,154 @@ mod tests {
 	#[test]
 	fn default_credentials_mode_is_same_origin() {
 		assert_eq!(FetchCredentials::default(), FetchCredentials::SameOrigin);
+	}
+}
+
+#[cfg(all(test, wasm))]
+mod wasm_tests {
+	use std::cell::RefCell;
+	use std::rc::Rc;
+
+	use js_sys::{Function, Object, Reflect};
+	use wasm_bindgen::JsValue;
+	use wasm_bindgen_test::*;
+
+	use super::*;
+	use crate::cancellation::{CancellationSource, scope_cancellation};
+
+	wasm_bindgen_test_configure!(run_in_browser);
+
+	struct FetchStubGuard {
+		window: web_sys::Window,
+		previous_fetch: JsValue,
+		probe: Object,
+	}
+
+	impl FetchStubGuard {
+		fn install(script: &str) -> Self {
+			let window = web_sys::window().expect("browser window");
+			let previous_fetch = Reflect::get(window.as_ref(), &JsValue::from_str("fetch"))
+				.expect("window.fetch must be readable");
+			let probe = Object::new();
+			Reflect::set(&probe, &JsValue::from_str("signalSeen"), &JsValue::FALSE)
+				.expect("probe signalSeen property");
+			Reflect::set(&probe, &JsValue::from_str("aborted"), &JsValue::FALSE)
+				.expect("probe aborted property");
+			Reflect::set(
+				js_sys::global().as_ref(),
+				&JsValue::from_str("__reinhardtFetchProbe"),
+				&probe,
+			)
+			.expect("install fetch probe");
+			let stub = Function::new_with_args("request", script);
+			Reflect::set(window.as_ref(), &JsValue::from_str("fetch"), stub.as_ref())
+				.expect("install fetch stub");
+
+			Self {
+				window,
+				previous_fetch,
+				probe,
+			}
+		}
+
+		fn flag(&self, name: &str) -> bool {
+			Reflect::get(&self.probe, &JsValue::from_str(name))
+				.expect("probe flag must be readable")
+				.as_bool()
+				.unwrap_or(false)
+		}
+	}
+
+	impl Drop for FetchStubGuard {
+		fn drop(&mut self) {
+			let _ = Reflect::set(
+				self.window.as_ref(),
+				&JsValue::from_str("fetch"),
+				&self.previous_fetch,
+			);
+			let _ = Reflect::delete_property(
+				js_sys::global().as_ref(),
+				&JsValue::from_str("__reinhardtFetchProbe"),
+			);
+		}
+	}
+
+	#[wasm_bindgen_test]
+	async fn active_cancellation_attaches_abort_signal() {
+		// Arrange
+		let _stub = FetchStubGuard::install(
+			r#"
+			const probe = globalThis.__reinhardtFetchProbe;
+			probe.signalSeen = !!request.signal;
+			probe.aborted = request.signal ? request.signal.aborted : false;
+			return Promise.resolve(new Response('{}', { status: 200 }));
+			"#,
+		);
+		let source = CancellationSource::new();
+
+		// Act
+		let response = scope_cancellation(
+			source.handle(),
+			request("GET", "/__reinhardt_cancellation_probe", None, vec![]),
+		)
+		.await
+		.expect("stubbed fetch should resolve");
+
+		// Assert
+		assert_eq!(response.status(), 200);
+		// The request was polled inside the scoped cancellation future.
+		// `source` is still live, so the signal must not have been aborted.
+		assert!(!_stub.flag("aborted"));
+		assert!(_stub.flag("signalSeen"));
+	}
+
+	#[wasm_bindgen_test]
+	async fn cancelling_active_scope_aborts_browser_fetch() {
+		// Arrange
+		let _stub = FetchStubGuard::install(
+			r#"
+			const probe = globalThis.__reinhardtFetchProbe;
+			probe.signalSeen = !!request.signal;
+			return new Promise((resolve, reject) => {
+				request.signal.addEventListener('abort', () => {
+					probe.aborted = true;
+					reject(new Error('aborted'));
+				});
+			});
+			"#,
+		);
+		let source = CancellationSource::new();
+		let result_slot: Rc<RefCell<Option<Result<FetchResponse, ServerFnError>>>> =
+			Rc::new(RefCell::new(None));
+		let result_slot_for_task = Rc::clone(&result_slot);
+		let token = source.handle();
+
+		// Act
+		wasm_bindgen_futures::spawn_local(async move {
+			let result = scope_cancellation(
+				token,
+				request("GET", "/__reinhardt_cancellation_probe", None, vec![]),
+			)
+			.await;
+			*result_slot_for_task.borrow_mut() = Some(result);
+		});
+		for _ in 0..8 {
+			crate::platform::defer_yield().await;
+			if _stub.flag("signalSeen") {
+				break;
+			}
+		}
+		assert!(_stub.flag("signalSeen"));
+		source.cancel();
+		for _ in 0..8 {
+			crate::platform::defer_yield().await;
+			if result_slot.borrow().is_some() {
+				break;
+			}
+		}
+
+		// Assert
+		assert!(_stub.flag("aborted"));
+		assert!(result_slot.borrow().is_some());
 	}
 }

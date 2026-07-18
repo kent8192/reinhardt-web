@@ -5,7 +5,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::reactive::Signal;
+use crate::reactive::{Effect, Signal};
 
 /// Type alias for the start_transition function type.
 ///
@@ -17,7 +17,10 @@ type StartTransitionFn = Rc<RefCell<Box<dyn Fn(Box<dyn FnOnce()>)>>>;
 ///
 /// Contains the pending state and a function to start transitions.
 pub struct TransitionState {
-	/// Whether a transition is currently pending.
+	/// Whether a local transition or route-loader navigation is currently pending.
+	///
+	/// The navigation coordinator is joined when the hook runs inside a launched
+	/// client application; standalone/native hooks retain their local behavior.
 	pub is_pending: Signal<bool>,
 	/// Function to start a transition.
 	start_transition: StartTransitionFn,
@@ -90,12 +93,24 @@ impl TransitionState {
 /// `untracked`. (Option A, Refs #4195).
 pub fn use_transition() -> TransitionState {
 	let owner_scope = reinhardt_core::reactive::scope::require_active_scope("use_transition");
+	let local_pending = Signal::new(false);
 	let is_pending = Signal::new(false);
+	let navigation_pending =
+		crate::app::try_with_navigation_coordinator(|coordinator| coordinator.pending());
+	let combined_pending = is_pending;
+	Effect::new(move || {
+		let navigation_is_pending = navigation_pending.is_some_and(|signal| signal.get());
+		combined_pending.set(local_pending.get() || navigation_is_pending);
+	});
 
 	let start_transition: StartTransitionFn = {
+		let immediate_pending = is_pending;
+		let completion_pending = is_pending;
+		let completion_navigation_pending = navigation_pending;
 		Rc::new(RefCell::new(Box::new(move |f: Box<dyn FnOnce()>| {
 			let Ok(Ok(())) = reinhardt_core::reactive::scope::enter_scope(owner_scope, || {
-				is_pending.try_set(true)
+				local_pending.try_set(true)?;
+				immediate_pending.try_set(true)
 			}) else {
 				return;
 			};
@@ -103,17 +118,22 @@ pub fn use_transition() -> TransitionState {
 			#[cfg(wasm)]
 			{
 				use crate::platform::spawn_task;
-				let is_pending = is_pending;
 				spawn_task(async move {
 					let _ = reinhardt_core::reactive::scope::enter_scope(owner_scope, f);
-					let _ = is_pending.try_set(false);
+					let _ = local_pending.try_set(false);
+					let navigation_is_pending =
+						completion_navigation_pending.is_some_and(|signal| signal.get());
+					let _ = completion_pending.try_set(navigation_is_pending);
 				});
 			}
 
 			#[cfg(native)]
 			{
 				let _ = reinhardt_core::reactive::scope::enter_scope(owner_scope, f);
-				let _ = is_pending.try_set(false);
+				let _ = local_pending.try_set(false);
+				let navigation_is_pending =
+					completion_navigation_pending.is_some_and(|signal| signal.get());
+				let _ = completion_pending.try_set(navigation_is_pending);
 			}
 		})))
 	};
@@ -262,8 +282,10 @@ mod tests {
 			}
 		});
 
+		assert!(transition.is_pending.get());
 		gloo_timers::future::TimeoutFuture::new(0).await;
 		assert!(ran.get());
+		assert!(!transition.is_pending.get());
 	}
 
 	#[test]

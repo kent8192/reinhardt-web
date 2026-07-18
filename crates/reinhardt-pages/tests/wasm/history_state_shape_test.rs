@@ -173,3 +173,29 @@ async fn history_state_is_object_after_router_replace() {
 		state
 	);
 }
+
+#[wasm_bindgen_test]
+fn launcher_normalizes_missing_history_entry_index() {
+	let _root = install_app_root();
+	let history = web_sys::window()
+		.expect("window")
+		.history()
+		.expect("history");
+	history
+		.replace_state_with_url(&JsValue::NULL, "", Some("/"))
+		.expect("clear legacy history state");
+
+	ClientLauncher::new("#app")
+		.router_client(build_router)
+		.launch()
+		.expect("launch");
+
+	let state = raw_history_state();
+	let entry_index = js_sys::Reflect::get(&state, &JsValue::from_str("entry_index"))
+		.expect("entry_index property");
+	assert_eq!(
+		entry_index.as_f64(),
+		Some(0.0),
+		"initial launch must replace legacy/null state with a numeric index"
+	);
+}
