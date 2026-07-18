@@ -396,6 +396,9 @@ impl ControlBindingController {
 				binding.kind(),
 				ControlKind::SelectOne | ControlKind::SelectMany
 			) && !select_has_option_values(&element, &expected_value));
+		let should_restore_expected = should_restore_expected
+			|| (binding.kind() == ControlKind::SelectOne
+				&& !select_one_matches_expected_option(&element, &expected_value));
 		let refresh_required = if should_restore_expected {
 			write_control(&element, binding.kind(), &expected_value)?;
 			crate::component::into_page::initialize_control_default(&element, &binding);
@@ -516,6 +519,26 @@ fn select_has_option_values(element: &Element, value: &ControlValue) -> bool {
 			.all(|value| available.iter().any(|option| option == value)),
 		ControlValue::Checked(_) => true,
 	}
+}
+
+fn select_one_matches_expected_option(element: &Element, value: &ControlValue) -> bool {
+	let ControlValue::Text(value) = value else {
+		return true;
+	};
+	let Some(select) = element.as_web_sys().dyn_ref::<web_sys::HtmlSelectElement>() else {
+		return true;
+	};
+	let options = select.options();
+	for index in 0..options.length() {
+		if let Some(option) = options
+			.item(index)
+			.and_then(|option| option.dyn_into::<web_sys::HtmlOptionElement>().ok())
+			&& option.value() == *value
+		{
+			return option.selected();
+		}
+	}
+	false
 }
 
 fn write_radio_value(
@@ -1207,12 +1230,23 @@ pub(crate) fn write_control(
 				.as_web_sys()
 				.dyn_ref::<web_sys::HtmlSelectElement>()
 				.ok_or_else(|| missing(kind, "value"))?;
-			if select.value() == *value {
-				Ok(false)
-			} else {
-				select.set_value(value);
-				Ok(true)
+			let options = select.options();
+			let mut selected = false;
+			let mut changed = false;
+			for index in 0..options.length() {
+				if let Some(option) = options
+					.item(index)
+					.and_then(|option| option.dyn_into::<web_sys::HtmlOptionElement>().ok())
+				{
+					let matches = !selected && option.value() == *value;
+					selected |= matches;
+					if option.selected() != matches {
+						option.set_selected(matches);
+						changed = true;
+					}
+				}
 			}
+			Ok(changed)
 		}
 		(ControlKind::SelectMany, ControlValue::SelectedValues(values)) => {
 			let select = element
@@ -1404,6 +1438,39 @@ mod tests {
 
 			assert_eq!(signal.get(), "restored");
 			assert_eq!(raw_select.value(), "restored");
+		});
+	}
+
+	#[wasm_bindgen_test]
+	fn hydration_restores_the_first_matching_duplicate_select_option() {
+		let scope = ReactiveScope::new();
+		scope.enter(|| {
+			let select = element("select");
+			let raw_select: web_sys::HtmlSelectElement =
+				select.as_web_sys().clone().unchecked_into();
+			for index in 0..2 {
+				let option: web_sys::HtmlOptionElement = web_sys::window()
+					.expect("window")
+					.document()
+					.expect("document")
+					.create_element("option")
+					.expect("option")
+					.unchecked_into();
+				option.set_value("duplicate");
+				option.set_text(&format!("Option {index}"));
+				raw_select.append_child(&option).expect("append option");
+			}
+			raw_select.set_selected_index(1);
+			let signal = Signal::new("duplicate".to_owned());
+
+			let _controller = ControlBindingController::hydrate(
+				select,
+				ControlBinding::select_one(signal.clone()),
+			)
+			.expect("binding");
+
+			assert_eq!(signal.get(), "duplicate");
+			assert_eq!(raw_select.selected_index(), 0);
 		});
 	}
 

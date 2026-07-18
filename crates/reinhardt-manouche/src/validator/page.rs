@@ -650,6 +650,12 @@ fn transform_element(
 	{
 		ordinary_attrs.retain(|attr| !is_false_multiple_attr(attr));
 	}
+	if tag == "option" && context.inside_bound_select {
+		ordinary_attrs.retain(|attr| {
+			!(attr.html_name() == "selected"
+				&& matches!(&attr.value, Expr::Lit(lit) if matches!(&lit.lit, syn::Lit::Bool(value) if !value.value())))
+		});
+	}
 	let allow_false_checked = control_binding.as_deref().is_some_and(|binding| {
 		matches!(
 			binding.kind,
@@ -912,6 +918,11 @@ fn validate_control_binding_structure(
 		{
 			Some("a bound text or number input cannot specify a `value` attribute")
 		}
+		TypedControlBindingKind::Text
+			if element_tag == "textarea" && find_typed_attr(attrs, "value").is_some() =>
+		{
+			Some("a bound textarea cannot specify a `value` attribute")
+		}
 		TypedControlBindingKind::Checkbox | TypedControlBindingKind::Radio
 			if find_typed_attr(attrs, "checked")
 				.is_some_and(|attr| !is_false_checked_attr(attr)) =>
@@ -956,10 +967,17 @@ fn is_false_checked_attr(attr: &TypedPageAttr) -> bool {
 		&& matches!(&attr.value, AttrValue::BoolLit(value) if !value.value())
 }
 
+fn is_false_selected_attr(attr: &TypedPageAttr) -> bool {
+	attr.html_name() == "selected"
+		&& matches!(&attr.value, AttrValue::BoolLit(value) if !value.value())
+}
+
 fn contains_selected_option(nodes: &[TypedPageNode]) -> bool {
 	nodes.iter().any(|node| match node {
 		TypedPageNode::Element(element) => {
-			(element.tag == "option" && find_typed_attr(&element.attrs, "selected").is_some())
+			(element.tag == "option"
+				&& find_typed_attr(&element.attrs, "selected")
+					.is_some_and(|attr| !is_false_selected_attr(attr)))
 				|| contains_selected_option(&element.children)
 		}
 		TypedPageNode::If(page_if) => page_if_contains_selected_option(page_if),
@@ -2441,6 +2459,42 @@ mod tests {
 
 		// Assert
 		assert_eq!(error.to_string(), expected);
+	}
+
+	#[test]
+	fn controlled_binding_accepts_false_selected_option() {
+		// Arrange
+		let ast: PageMacro = syn::parse2(quote!({
+			select { a11y: off, bind: value, option { selected: false, value: "one", "One" } }
+		}))
+		.unwrap();
+
+		// Act
+		let result = validate_page(&ast);
+
+		// Assert
+		assert!(result.is_ok());
+	}
+
+	#[test]
+	fn controlled_binding_rejects_textarea_value_attribute() {
+		// Arrange
+		let ast: PageMacro = syn::parse2(quote!({
+			textarea {
+				bind: value,
+				value: "stale",
+			}
+		}))
+		.unwrap();
+
+		// Act
+		let error = validate_page(&ast).unwrap_err();
+
+		// Assert
+		assert_eq!(
+			error.to_string(),
+			"a bound textarea cannot specify a `value` attribute"
+		);
 	}
 
 	#[test]
