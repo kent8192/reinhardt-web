@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.3.2...reinhardt-admin-cli@v0.4.0) - 2026-07-18
+
+### Changed
+
+- *(pages)* migrate hooks to deps list syntax
+
+### Fixed
+
+- *(pages)* harden hook dependency migration
+- *(pages)* harden dependency migration
+- *(pages)* harden dependency migration edge cases
+- *(pages)* harden dependency migration edge cases
+- *(admin)* satisfy migration clippy lints
+- *(admin)* preserve unresolved local hook calls
+- *(admin)* preserve unresolved omitted hook calls
+- *(pages)* repair hook dependency migration tests
+
+### Maintenance
+
+- migrate dependency policy checks to cargo-deny
+- refresh main forward merge from develop/0.4.0
+
 ## [0.3.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.3.1...reinhardt-admin-cli@v0.3.2) - 2026-07-14
 
 ### Fixed
