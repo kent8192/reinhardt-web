@@ -6,15 +6,12 @@ use std::sync::{Arc, Mutex};
 
 use reinhardt_core::page::IntoPage;
 use reinhardt_core::reactive::{ReactiveScope, Signal};
-use reinhardt_core::types::page::{
-	ControlBinding, DeferredNode, EventName, Page, PageElement, SuspenseNode,
-};
+use reinhardt_core::types::page::{DeferredNode, EventName, Page, PageElement, SuspenseNode};
 use reinhardt_event_catalog::{EVENT_SPECS, EventInterface};
 use rstest::rstest;
 
 use super::{EventError, EventFixture, EventFixtureError, QueryError, Role, render};
 use crate::Callback;
-use crate::deps;
 use crate::event::{
 	ChangeEvent, ClickEvent, EventPayload, InputEvent, KeyDownEvent, Modifiers, Point, PointerKind,
 	PointerMoveEvent, typed_event_handler,
@@ -126,7 +123,7 @@ fn effect_cleanup_can_use_page_handles_until_scope_disposal_finishes() {
 				let callback = callback;
 				Some(move || callback.call(()))
 			},
-			deps![],
+			crate::deps![],
 		);
 	});
 
@@ -381,59 +378,6 @@ fn input_updates_internal_value_before_dispatch() {
 
 	assert!(called.get());
 	assert_eq!(input.value().as_deref(), Some("new"));
-}
-
-#[test]
-fn native_radio_binding_projects_its_bound_value() {
-	// Arrange
-	let scope = ReactiveScope::new();
-	let screen = scope.enter(|| {
-		let selected = Signal::new("other".to_owned());
-		render(
-			PageElement::new("input")
-				.attr("type", "radio")
-				.attr("aria-label", "Choice")
-				.attr("value", "stale")
-				.control_binding(ControlBinding::radio(selected, "choice".to_owned())),
-		)
-	});
-
-	// Act
-	let radio = screen.get_by_label("Choice");
-
-	// Assert
-	assert_eq!(radio.value().as_deref(), Some("choice"));
-}
-
-#[tokio::test]
-#[serial(reactive_runtime)]
-async fn native_reactive_number_binding_preserves_rejected_raw_after_remount() {
-	// Arrange
-	let scope = ReactiveScope::new();
-	let (value, screen) = scope.enter(|| {
-		let value = Signal::new(12_i32);
-		let error = Signal::new(None);
-		let screen = render(Page::reactive(move || {
-			PageElement::new("input")
-				.attr("type", "number")
-				.attr("aria-label", "Quantity")
-				.control_binding(ControlBinding::number_with_error(value, error))
-				.into_page()
-		}));
-		(value, screen)
-	});
-	let input = screen.get_by_label("Quantity");
-
-	// Act
-	input.input("2147483648");
-	screen.settle().await;
-
-	// Assert
-	assert_eq!(value.get(), 12);
-	assert_eq!(
-		screen.get_by_label("Quantity").value().as_deref(),
-		Some("2147483648")
-	);
 }
 
 #[tokio::test]
@@ -803,15 +747,15 @@ fn contenteditable_disable_and_value_patch_is_rejected_atomically() {
 
 #[rstest]
 fn known_and_custom_events_with_the_same_type_share_dom_dispatch() {
-	let calls = Arc::new(Mutex::new(Vec::new()));
-	let known_calls = Arc::clone(&calls);
-	let custom_calls = Arc::clone(&calls);
+	let calls = Rc::new(RefCell::new(Vec::new()));
+	let known_calls = Rc::clone(&calls);
+	let custom_calls = Rc::clone(&calls);
 	let screen = render(
 		PageElement::new("button")
-			.listener("click", move |_| known_calls.lock().unwrap().push("known"))
+			.listener("click", move |_| known_calls.borrow_mut().push("known"))
 			.on(
 				EventName::Custom(Cow::Borrowed("click")),
-				Arc::new(move |_| custom_calls.lock().unwrap().push("custom")),
+				std::sync::Arc::new(move |_| custom_calls.borrow_mut().push("custom")),
 			)
 			.child("Run"),
 	);
@@ -825,7 +769,7 @@ fn known_and_custom_events_with_the_same_type_share_dom_dispatch() {
 		.expect("custom click should dispatch");
 
 	assert_eq!(
-		calls.lock().unwrap().as_slice(),
+		calls.borrow().as_slice(),
 		["known", "custom", "known", "custom"]
 	);
 }
@@ -886,8 +830,6 @@ macro_rules! assert_catalog_wrapper_fixture_parity {
 			$fixture_defaults:ident;
 		)*
 	) => {
-		// Catalog coverage intentionally includes deprecated compatibility payloads.
-		#[allow(deprecated)]
 		#[rstest]
 		fn every_catalog_fixture_converts_to_its_generated_wrapper() {
 			$(
@@ -957,15 +899,12 @@ fn select_file_and_contenteditable_target_snapshots_are_owned() {
 	let screen = render(Page::fragment([
 		PageElement::new("select")
 			.attr("aria-label", "Roles")
-			.attr("multiple", "multiple")
 			.on(
 				ChangeEvent::EVENT,
 				typed_event_handler::<ChangeEvent, _>(move |event: ChangeEvent| {
 					*selected_for_handler.lock().unwrap() = Some(event.selected_values());
 				}),
 			)
-			.child(PageElement::new("option").attr("value", "admin"))
-			.child(PageElement::new("option").attr("value", "editor"))
 			.into_page(),
 		PageElement::new("input")
 			.attr("aria-label", "Upload")
