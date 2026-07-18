@@ -207,7 +207,7 @@ fn test_many_to_many_accessor_methods_generated() {
 	// The accessor method should exist (compile-time check)
 	// Note: We verify the method exists by type-checking a function pointer
 	// We can't actually call it without a database connection
-	let _accessor_method: fn(&M2mUser, _) -> _ = M2mUser::following_accessor;
+	let _accessor_method: fn(&M2mUser) -> _ = M2mUser::following_accessor;
 	let _ = _accessor_method;
 }
 
@@ -232,8 +232,8 @@ fn test_self_referential_many_to_many() {
 	};
 
 	// Both accessor methods should exist (compile-time check)
-	let _following: fn(&SocialUser, _) -> _ = SocialUser::following_accessor;
-	let _blocked: fn(&SocialUser, _) -> _ = SocialUser::blocked_users_accessor;
+	let _following: fn(&SocialUser) -> _ = SocialUser::following_accessor;
+	let _blocked: fn(&SocialUser) -> _ = SocialUser::blocked_users_accessor;
 	let _ = (_following, _blocked);
 }
 
@@ -266,8 +266,8 @@ fn test_multiple_many_to_many_fields() {
 	};
 
 	// Both accessor methods should exist with correct type parameters (compile-time check)
-	let _groups: fn(&MultiUser, _) -> _ = MultiUser::groups_accessor;
-	let _friends: fn(&MultiUser, _) -> _ = MultiUser::friends_accessor;
+	let _groups: fn(&MultiUser) -> _ = MultiUser::groups_accessor;
+	let _friends: fn(&MultiUser) -> _ = MultiUser::friends_accessor;
 	let _ = (_groups, _friends);
 }
 

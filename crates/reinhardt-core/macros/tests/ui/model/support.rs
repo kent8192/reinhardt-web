@@ -225,7 +225,33 @@ pub mod db {
 	}
 
 	pub mod orm {
+		pub struct Filter;
+
+		pub enum FilterOperator {
+			Eq,
+		}
+
+		pub enum FilterValue {
+			String(String),
+		}
+
+		impl Filter {
+			pub fn new(
+				_column: impl Into<String>,
+				_operator: FilterOperator,
+				_value: FilterValue,
+			) -> Self {
+				Self
+			}
+		}
+
 		pub struct Manager<T>(core::marker::PhantomData<T>);
+
+		pub trait CustomManager: Sized {
+			type Model;
+
+			fn filter(&self, _condition: Filter) -> Manager<Self::Model>;
+		}
 
 		impl<T> Default for Manager<T> {
 			fn default() -> Self {
@@ -238,17 +264,30 @@ pub mod db {
 				self
 			}
 
-			pub async fn first_with_db(
+			pub async fn first_with_db<E>(
 				self,
-				_db: &connection::DatabaseConnection,
-			) -> crate::exception::Result<Option<T>> {
+				_db: &mut E,
+			) -> crate::exception::Result<Option<T>>
+			where
+				E: connection::OrmExecutor,
+			{
 				Ok(None)
+			}
+		}
+
+		impl<T> CustomManager for Manager<T> {
+			type Model = T;
+
+			fn filter(&self, _condition: Filter) -> Manager<Self::Model> {
+				Manager::default()
 			}
 		}
 
 		pub mod connection {
 			#[derive(Debug, Clone)]
 			pub struct DatabaseConnection;
+
+			pub trait OrmExecutor: Send {}
 		}
 
 		pub trait FieldSelector: Sized {
@@ -320,7 +359,6 @@ pub mod db {
 			pub const fn new(
 				_source: &Source,
 				_field_name: &'static str,
-				_db: connection::DatabaseConnection,
 			) -> Self {
 				Self {
 					_marker: core::marker::PhantomData,

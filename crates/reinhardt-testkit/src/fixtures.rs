@@ -30,7 +30,7 @@
 //!     mock_database.expect_execute()
 //!         .withf(|sql, params| sql.contains("INSERT") && params.len() == 2)
 //!         .times(1)
-//!         .returning(|_, _| Ok(QueryResult { rows_affected: 1 }));
+//!         .returning(|_, _| Ok(QueryResult { rows_affected: 1, last_insert_id: None }));
 //!
 //!     // Test code...
 //! }

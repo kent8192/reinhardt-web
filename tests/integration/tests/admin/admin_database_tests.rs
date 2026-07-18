@@ -926,8 +926,12 @@ async fn test_create_returns_id_when_response_has_id_field() {
 		.returning(|idx| format!("${}", idx));
 	mock.expect_supports_returning().return_const(true);
 	mock.expect_supports_on_conflict().return_const(true);
-	mock.expect_execute()
-		.returning(|_, _| Ok(QueryResult { rows_affected: 1 }));
+	mock.expect_execute().returning(|_, _| {
+		Ok(QueryResult {
+			rows_affected: 1,
+			last_insert_id: None,
+		})
+	});
 	mock.expect_fetch_all().returning(|_, _| Ok(Vec::new()));
 	mock.expect_fetch_optional().returning(|_, _| Ok(None));
 
@@ -975,8 +979,12 @@ async fn test_create_returns_error_when_pk_field_missing() {
 		.returning(|idx| format!("${}", idx));
 	mock.expect_supports_returning().return_const(true);
 	mock.expect_supports_on_conflict().return_const(true);
-	mock.expect_execute()
-		.returning(|_, _| Ok(QueryResult { rows_affected: 1 }));
+	mock.expect_execute().returning(|_, _| {
+		Ok(QueryResult {
+			rows_affected: 1,
+			last_insert_id: None,
+		})
+	});
 	mock.expect_fetch_all().returning(|_, _| Ok(Vec::new()));
 	mock.expect_fetch_optional().returning(|_, _| Ok(None));
 
@@ -1028,8 +1036,12 @@ async fn test_create_returns_one_for_string_pk() {
 		.returning(|idx| format!("${}", idx));
 	mock.expect_supports_returning().return_const(true);
 	mock.expect_supports_on_conflict().return_const(true);
-	mock.expect_execute()
-		.returning(|_, _| Ok(QueryResult { rows_affected: 1 }));
+	mock.expect_execute().returning(|_, _| {
+		Ok(QueryResult {
+			rows_affected: 1,
+			last_insert_id: None,
+		})
+	});
 	mock.expect_fetch_all().returning(|_, _| Ok(Vec::new()));
 	mock.expect_fetch_optional().returning(|_, _| Ok(None));
 

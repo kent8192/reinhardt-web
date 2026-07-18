@@ -105,7 +105,7 @@ mod tests {
 	async fn test_snippet_create(
 		#[future] sqlite_with_migrations: (NamedTempFile, DatabaseConnection),
 	) {
-		let (_file, conn) = sqlite_with_migrations.await;
+		let (_file, mut conn) = sqlite_with_migrations.await;
 
 		// Arrange
 		let snippet = Snippet::build()
@@ -116,7 +116,7 @@ mod tests {
 
 		// Act
 		let created = Manager::<Snippet>::new()
-			.create_with_conn(&conn, &snippet)
+			.create_with_conn(&mut conn, &snippet)
 			.await
 			.expect("Failed to create snippet");
 
@@ -132,7 +132,7 @@ mod tests {
 	async fn test_snippet_read(
 		#[future] sqlite_with_migrations: (NamedTempFile, DatabaseConnection),
 	) {
-		let (_file, conn) = sqlite_with_migrations.await;
+		let (_file, mut conn) = sqlite_with_migrations.await;
 
 		// Arrange
 		let snippet = Snippet::build()
@@ -141,14 +141,14 @@ mod tests {
 			.language("rust")
 			.finish();
 		let created = Manager::<Snippet>::new()
-			.create_with_conn(&conn, &snippet)
+			.create_with_conn(&mut conn, &snippet)
 			.await
 			.expect("Failed to create snippet");
 
 		// Act
 		let found = Manager::<Snippet>::new()
 			.get(created.id)
-			.all_with_db(&conn)
+			.all_with_db(&mut conn)
 			.await
 			.expect("Failed to read snippet");
 
@@ -165,7 +165,7 @@ mod tests {
 	async fn test_snippet_update(
 		#[future] sqlite_with_migrations: (NamedTempFile, DatabaseConnection),
 	) {
-		let (_file, conn) = sqlite_with_migrations.await;
+		let (_file, mut conn) = sqlite_with_migrations.await;
 
 		// Arrange
 		let snippet = Snippet::build()
@@ -175,7 +175,7 @@ mod tests {
 			.finish();
 		let manager = Manager::<Snippet>::new();
 		let created = manager
-			.create_with_conn(&conn, &snippet)
+			.create_with_conn(&mut conn, &snippet)
 			.await
 			.expect("Failed to create snippet");
 
@@ -186,7 +186,7 @@ mod tests {
 
 		// Act
 		let updated = manager
-			.update_with_conn(&conn, &to_update)
+			.update_with_conn(&mut conn, &to_update)
 			.await
 			.expect("Failed to update snippet");
 
@@ -202,7 +202,7 @@ mod tests {
 	async fn test_snippet_delete(
 		#[future] sqlite_with_migrations: (NamedTempFile, DatabaseConnection),
 	) {
-		let (_file, conn) = sqlite_with_migrations.await;
+		let (_file, mut conn) = sqlite_with_migrations.await;
 
 		// Arrange
 		let snippet = Snippet::build()
@@ -212,20 +212,20 @@ mod tests {
 			.finish();
 		let manager = Manager::<Snippet>::new();
 		let created = manager
-			.create_with_conn(&conn, &snippet)
+			.create_with_conn(&mut conn, &snippet)
 			.await
 			.expect("Failed to create snippet");
 
 		// Act
 		manager
-			.delete_with_conn(&conn, created.id)
+			.delete_with_conn(&mut conn, created.id)
 			.await
 			.expect("Failed to delete snippet");
 
 		// Assert
 		let remaining = manager
 			.get(created.id)
-			.all_with_db(&conn)
+			.all_with_db(&mut conn)
 			.await
 			.expect("Failed to query after deletion");
 		assert_eq!(remaining.len(), 0);
@@ -240,7 +240,7 @@ mod tests {
 	async fn test_snippet_list_all(
 		#[future] sqlite_with_migrations: (NamedTempFile, DatabaseConnection),
 	) {
-		let (_file, conn) = sqlite_with_migrations.await;
+		let (_file, mut conn) = sqlite_with_migrations.await;
 
 		// Arrange
 		let manager = Manager::<Snippet>::new();
@@ -255,7 +255,7 @@ mod tests {
 				.language(language)
 				.finish();
 			manager
-				.create_with_conn(&conn, &snippet)
+				.create_with_conn(&mut conn, &snippet)
 				.await
 				.expect("Failed to create snippet");
 		}
@@ -264,7 +264,7 @@ mod tests {
 		let snippets = manager
 			.all()
 			.order_by(&["id"])
-			.all_with_db(&conn)
+			.all_with_db(&mut conn)
 			.await
 			.expect("Failed to list snippets");
 
@@ -280,7 +280,7 @@ mod tests {
 	async fn test_snippet_filter_by_language(
 		#[future] sqlite_with_migrations: (NamedTempFile, DatabaseConnection),
 	) {
-		let (_file, conn) = sqlite_with_migrations.await;
+		let (_file, mut conn) = sqlite_with_migrations.await;
 
 		// Arrange
 		let manager = Manager::<Snippet>::new();
@@ -295,7 +295,7 @@ mod tests {
 				.language(language)
 				.finish();
 			manager
-				.create_with_conn(&conn, &snippet)
+				.create_with_conn(&mut conn, &snippet)
 				.await
 				.expect("Failed to create snippet");
 		}
@@ -309,7 +309,7 @@ mod tests {
 		let rust_snippets = manager
 			.filter(filter)
 			.order_by(&["id"])
-			.all_with_db(&conn)
+			.all_with_db(&mut conn)
 			.await
 			.expect("Failed to filter snippets");
 
@@ -324,7 +324,7 @@ mod tests {
 	async fn test_snippet_search_by_title(
 		#[future] sqlite_with_migrations: (NamedTempFile, DatabaseConnection),
 	) {
-		let (_file, conn) = sqlite_with_migrations.await;
+		let (_file, mut conn) = sqlite_with_migrations.await;
 
 		// Arrange
 		let manager = Manager::<Snippet>::new();
@@ -339,7 +339,7 @@ mod tests {
 				.language(language)
 				.finish();
 			manager
-				.create_with_conn(&conn, &snippet)
+				.create_with_conn(&mut conn, &snippet)
 				.await
 				.expect("Failed to create snippet");
 		}
@@ -353,7 +353,7 @@ mod tests {
 		let results = manager
 			.filter(filter)
 			.order_by(&["id"])
-			.all_with_db(&conn)
+			.all_with_db(&mut conn)
 			.await
 			.expect("Failed to search snippets");
 
@@ -368,7 +368,7 @@ mod tests {
 	async fn test_snippet_count(
 		#[future] sqlite_with_migrations: (NamedTempFile, DatabaseConnection),
 	) {
-		let (_file, conn) = sqlite_with_migrations.await;
+		let (_file, mut conn) = sqlite_with_migrations.await;
 
 		// Arrange
 		let manager = Manager::<Snippet>::new();
@@ -379,7 +379,7 @@ mod tests {
 				.language("rust")
 				.finish();
 			manager
-				.create_with_conn(&conn, &snippet)
+				.create_with_conn(&mut conn, &snippet)
 				.await
 				.expect("Failed to create snippet");
 		}
@@ -387,7 +387,7 @@ mod tests {
 		// Act
 		let snippets = manager
 			.all()
-			.all_with_db(&conn)
+			.all_with_db(&mut conn)
 			.await
 			.expect("Failed to count snippets");
 
@@ -400,7 +400,7 @@ mod tests {
 	async fn test_snippet_order_by_title(
 		#[future] sqlite_with_migrations: (NamedTempFile, DatabaseConnection),
 	) {
-		let (_file, conn) = sqlite_with_migrations.await;
+		let (_file, mut conn) = sqlite_with_migrations.await;
 
 		// Arrange
 		let manager = Manager::<Snippet>::new();
@@ -411,7 +411,7 @@ mod tests {
 				.language("rust")
 				.finish();
 			manager
-				.create_with_conn(&conn, &snippet)
+				.create_with_conn(&mut conn, &snippet)
 				.await
 				.expect("Failed to create snippet");
 		}
@@ -420,7 +420,7 @@ mod tests {
 		let snippets = manager
 			.all()
 			.order_by(&["title"])
-			.all_with_db(&conn)
+			.all_with_db(&mut conn)
 			.await
 			.expect("Failed to order snippets by title");
 
@@ -436,7 +436,7 @@ mod tests {
 	async fn test_snippet_pagination(
 		#[future] sqlite_with_migrations: (NamedTempFile, DatabaseConnection),
 	) {
-		let (_file, conn) = sqlite_with_migrations.await;
+		let (_file, mut conn) = sqlite_with_migrations.await;
 
 		// Arrange
 		let manager = Manager::<Snippet>::new();
@@ -447,7 +447,7 @@ mod tests {
 				.language("rust")
 				.finish();
 			manager
-				.create_with_conn(&conn, &snippet)
+				.create_with_conn(&mut conn, &snippet)
 				.await
 				.expect("Failed to create snippet");
 		}
@@ -458,7 +458,7 @@ mod tests {
 			.order_by(&["id"])
 			.limit(2)
 			.offset(0)
-			.all_with_db(&conn)
+			.all_with_db(&mut conn)
 			.await
 			.expect("Failed to fetch page 1");
 
@@ -468,7 +468,7 @@ mod tests {
 			.order_by(&["id"])
 			.limit(2)
 			.offset(2)
-			.all_with_db(&conn)
+			.all_with_db(&mut conn)
 			.await
 			.expect("Failed to fetch page 2");
 
@@ -491,12 +491,12 @@ mod tests {
 	async fn test_snippet_empty_database(
 		#[future] sqlite_with_migrations: (NamedTempFile, DatabaseConnection),
 	) {
-		let (_file, conn) = sqlite_with_migrations.await;
+		let (_file, mut conn) = sqlite_with_migrations.await;
 
 		// Act
 		let snippets = Manager::<Snippet>::new()
 			.all()
-			.all_with_db(&conn)
+			.all_with_db(&mut conn)
 			.await
 			.expect("Failed to query empty database");
 
@@ -509,12 +509,12 @@ mod tests {
 	async fn test_snippet_nonexistent_id(
 		#[future] sqlite_with_migrations: (NamedTempFile, DatabaseConnection),
 	) {
-		let (_file, conn) = sqlite_with_migrations.await;
+		let (_file, mut conn) = sqlite_with_migrations.await;
 
 		// Act
 		let result = Manager::<Snippet>::new()
 			.get(99999)
-			.all_with_db(&conn)
+			.all_with_db(&mut conn)
 			.await
 			.expect("Failed to query nonexistent id");
 
@@ -527,7 +527,7 @@ mod tests {
 	async fn test_snippet_update_nonexistent(
 		#[future] sqlite_with_migrations: (NamedTempFile, DatabaseConnection),
 	) {
-		let (_file, conn) = sqlite_with_migrations.await;
+		let (_file, mut conn) = sqlite_with_migrations.await;
 
 		// Arrange - a model instance whose primary key has no matching row
 		let mut nonexistent = Snippet::build()
@@ -539,7 +539,7 @@ mod tests {
 
 		// Act
 		let result = Manager::<Snippet>::new()
-			.update_with_conn(&conn, &nonexistent)
+			.update_with_conn(&mut conn, &nonexistent)
 			.await;
 
 		// Assert

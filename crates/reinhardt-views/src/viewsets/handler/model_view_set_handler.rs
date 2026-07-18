@@ -681,11 +681,6 @@ where
 					ViewError::DatabaseError(format!("Failed to create session: {}", e))
 				})?;
 
-			// Begin transaction
-			session.begin().await.map_err(|e| {
-				ViewError::DatabaseError(format!("Failed to begin transaction: {}", e))
-			})?;
-
 			// Add object to session
 			session
 				.add(item.clone())
@@ -700,12 +695,6 @@ where
 
 			// Get the generated ID from the session
 			let generated_id = session.get_generated_ids().first().map(|(_, id)| *id);
-
-			// Commit transaction
-			session
-				.commit()
-				.await
-				.map_err(|e| ViewError::DatabaseError(format!("Failed to commit: {}", e)))?;
 
 			// Re-fetch the created object from the database to get all auto-populated fields
 			// (e.g., created_at which is set by database DEFAULT)
@@ -892,11 +881,6 @@ where
 					ViewError::DatabaseError(format!("Failed to create session: {}", e))
 				})?;
 
-			// Begin transaction
-			session.begin().await.map_err(|e| {
-				ViewError::DatabaseError(format!("Failed to begin transaction: {}", e))
-			})?;
-
 			// Add updated object to session (marks as dirty for UPDATE)
 			session
 				.add(updated_item.clone())
@@ -908,12 +892,6 @@ where
 				.flush()
 				.await
 				.map_err(|e| ViewError::DatabaseError(format!("Failed to flush: {}", e)))?;
-
-			// Commit transaction
-			session
-				.commit()
-				.await
-				.map_err(|e| ViewError::DatabaseError(format!("Failed to commit: {}", e)))?;
 		}
 
 		// Return the complete merged/updated object
@@ -1000,11 +978,6 @@ where
 					ViewError::DatabaseError(format!("Failed to create session: {}", e))
 				})?;
 
-			// Begin transaction
-			session.begin().await.map_err(|e| {
-				ViewError::DatabaseError(format!("Failed to begin transaction: {}", e))
-			})?;
-
 			// Mark object for deletion
 			session.delete(item).await.map_err(|e| {
 				ViewError::DatabaseError(format!("Failed to mark object for deletion: {}", e))
@@ -1015,12 +988,6 @@ where
 				.flush()
 				.await
 				.map_err(|e| ViewError::DatabaseError(format!("Failed to flush: {}", e)))?;
-
-			// Commit transaction
-			session
-				.commit()
-				.await
-				.map_err(|e| ViewError::DatabaseError(format!("Failed to commit: {}", e)))?;
 		}
 
 		Ok(Response::no_content())

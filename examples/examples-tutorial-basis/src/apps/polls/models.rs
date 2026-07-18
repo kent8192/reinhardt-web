@@ -1,6 +1,8 @@
 use chrono::{DateTime, Utc};
 #[cfg(server)]
 use reinhardt::core::exception::Result;
+#[cfg(server)]
+use reinhardt::db::orm::OrmExecutor;
 use reinhardt::db::associations::ForeignKeyField;
 use reinhardt::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -57,15 +59,23 @@ pub struct Choice {
 impl Choice {
 	/// Increment the vote count and persist it.
 	///
-	/// Uses Django-style `Model::save()` (see
-	/// `crates/reinhardt-db/src/orm/model.rs` `Model::save`) so the row is
-	/// updated in place; `before_update` / `after_update` signals fire as part
-	/// of the standard model lifecycle. Call sites can therefore drop a
-	/// separate `manager.update(&choice).await?` and treat `vote()` as the
-	/// canonical "increment + flush" operation.
+	/// This convenience method acquires the global connection and delegates to
+	/// [`Self::vote_with_conn`]. Transactional callers should pass their
+	/// closure-scoped executor to `vote_with_conn` instead.
 	pub async fn vote(&mut self) -> Result<()> {
+		use reinhardt::db::orm::manager::get_connection;
+
+		let mut connection = get_connection().await?;
+		self.vote_with_conn(&mut connection).await
+	}
+
+	/// Increment the vote count and persist it through a caller-owned executor.
+	pub async fn vote_with_conn<E>(&mut self, connection: &mut E) -> Result<()>
+	where
+		E: OrmExecutor,
+	{
 		self.votes += 1;
-		self.save().await
+		self.save_with_conn(connection).await
 	}
 }
 

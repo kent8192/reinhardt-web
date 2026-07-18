@@ -42,7 +42,7 @@ mock! {
 	///             sql.contains("INSERT INTO users") && params.len() == 2
 	///         })
 	///         .times(1)
-	///         .returning(|_, _| Ok(QueryResult { rows_affected: 1 }));
+	///         .returning(|_, _| Ok(QueryResult { rows_affected: 1, last_insert_id: None }));
 	///
 	///     // Execute the query (must call to satisfy .times(1) expectation)
 	///     let result = mock.execute(
@@ -160,8 +160,12 @@ pub fn mock_connection() -> DatabaseConnection {
 	// It will panic if called, which is the desired behavior for tests
 
 	// Default query behavior: return empty results
-	mock.expect_execute()
-		.returning(|_, _| Ok(QueryResult { rows_affected: 0 }));
+	mock.expect_execute().returning(|_, _| {
+		Ok(QueryResult {
+			rows_affected: 0,
+			last_insert_id: None,
+		})
+	});
 
 	mock.expect_fetch_all().returning(|_, _| Ok(Vec::new()));
 
@@ -212,7 +216,12 @@ mod tests {
 		mock.expect_execute()
 			.withf(|sql, params| sql.contains("INSERT INTO users") && params.len() == 2)
 			.times(1)
-			.returning(|_, _| Ok(QueryResult { rows_affected: 1 }));
+			.returning(|_, _| {
+				Ok(QueryResult {
+					rows_affected: 1,
+					last_insert_id: None,
+				})
+			});
 
 		let result = mock
 			.execute(

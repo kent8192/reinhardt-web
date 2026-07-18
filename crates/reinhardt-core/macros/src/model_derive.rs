@@ -2253,18 +2253,14 @@ fn generate_m2m_accessor_methods(
 				field_name_str
 			);
 
-			Some(quote! {
-				#[doc = #doc_comment]
-				pub fn #method_name(
-					&self,
-					db: #orm_crate::connection::DatabaseConnection
-				) -> #orm_crate::ManyToManyAccessor<#struct_name, #target_ty> {
-					#orm_crate::ManyToManyAccessor::new(
-						self,
-						#field_name_str,
-						db
-					)
-				}
+				Some(quote! {
+					#[doc = #doc_comment]
+					pub fn #method_name(&self) -> #orm_crate::ManyToManyAccessor<#struct_name, #target_ty> {
+						#orm_crate::ManyToManyAccessor::new(
+							self,
+							#field_name_str
+						)
+					}
 			})
 		})
 		.collect();
@@ -2319,27 +2315,53 @@ fn generate_fk_accessor_methods(
 
 			// Extract Target from ForeignKeyField<Target> or OneToOneField<Target>
 			let target_ty = extract_foreign_key_target_type(&field.ty);
+			let target_column = field
+				.rel
+				.as_ref()
+				.and_then(|rel| rel.to_field.as_ref())
+				.map_or_else(
+					|| quote! { <#target_ty as #orm_crate::Model>::primary_key_column() },
+					|to_field| {
+						quote! {
+							<#target_ty as #orm_crate::Model>::field_metadata()
+								.into_iter()
+								.find_map(|field_info| {
+									if field_info.name == #to_field {
+										Some(field_info.db_column.unwrap_or(field_info.name))
+									} else {
+										None
+									}
+								})
+								.unwrap_or_else(|| #to_field.to_string())
+						}
+					},
+				);
 
 			let doc_comment = format!(
 				"Load the related '{}' instance from the database",
 				field_name_str
 			);
 
-			quote! {
-				#[doc = #doc_comment]
-				pub async fn #method_name(
-					&self,
-					db: &#orm_crate::connection::DatabaseConnection
-				) -> #core_crate::exception::Result<Option<#target_ty>> {
-					use #orm_crate::Model;
-
+				quote! {
+					#[doc = #doc_comment]
+					pub async fn #method_name<E>(
+						&self,
+						db: &mut E
+					) -> #core_crate::exception::Result<Option<#target_ty>>
+					where
+						E: #orm_crate::connection::OrmExecutor,
+					{
 					// Get FK _id value.
 					let fk_id = self.#fk_id_field_name();
 
-					// Query the target model using the FK _id via the typed
-					// `FieldRef::eq` builder (Issue #4650).
-					#target_ty::objects()
-						.filter(#target_ty::field_id().eq(fk_id.to_string()))
+					// Query the target model using the relationship's physical target column.
+					#orm_crate::CustomManager::filter(
+						&<#target_ty as #orm_crate::Model>::objects(),
+						#orm_crate::Filter::new(
+							#target_column,
+							#orm_crate::FilterOperator::Eq,
+							#orm_crate::FilterValue::String(fk_id.to_string()),
+						))
 						.first_with_db(db)
 						.await
 				}
@@ -2385,8 +2407,8 @@ fn generate_fk_accessor_methods(
 ///
 /// ```ignore
 /// // Get reverse accessor for User → Tweets relationship
-/// let tweets_accessor = Tweet::user_accessor().reverse(&user, db);
-/// let tweets = tweets_accessor.all().await?;
+/// let tweets_accessor = Tweet::user_accessor().reverse(&user);
+/// let tweets = tweets_accessor.all_with_conn(&mut db).await?;
 /// ```
 fn generate_fk_static_accessor_methods(
 	struct_name: &syn::Ident,
@@ -2404,8 +2426,11 @@ fn generate_fk_static_accessor_methods(
 			let field_name = &field.name;
 			let field_name_str = field_name.to_string();
 
-			// FK _id field name (e.g., user → user_id)
-			let db_column = format!("{}_id", field_name_str);
+			let db_column = field
+				.rel
+				.as_ref()
+				.and_then(|rel| rel.db_column.clone())
+				.unwrap_or_else(|| format!("{}_id", field_name_str));
 
 			// Method name: {field_name}_accessor
 			let method_name =
