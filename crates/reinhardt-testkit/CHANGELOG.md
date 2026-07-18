@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.3.2...reinhardt-testkit@v0.4.0) - 2026-07-18
+
+### Added
+
+- *(testkit)* add model-derived test database fixture
+
+### Fixed
+
+- *(testkit)* harden test database fixture startup
+- *(testkit)* preserve model schema metadata
+- *(testkit)* harden model-derived schema metadata
+- *(testkit)* complete model-derived schema fidelity
+- *(ci)* terminate cfg aliases macro invocations
+
+### Maintenance
+
+- migrate dependency policy checks to cargo-deny
+
 ## [0.3.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-testkit@v0.3.1...reinhardt-testkit@v0.3.2) - 2026-07-14
 
 ### Fixed
