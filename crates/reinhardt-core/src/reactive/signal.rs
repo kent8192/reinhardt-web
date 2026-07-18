@@ -524,6 +524,27 @@ mod tests {
 	fn test_signal_change_notification() {
 		crate::reactive::ReactiveScope::run(|| {
 			let signal = Signal::new(0);
+			let signal_for_effect = signal;
+			let effect = crate::reactive::Effect::new(move || {
+				let _ = signal_for_effect.get();
+			});
+
+			// Change the signal.
+			signal.set(42);
+
+			// Verify the effect was scheduled for update.
+			with_runtime(|rt| {
+				let pending = rt.pending_updates.borrow();
+				assert!(pending.contains(&effect.id()));
+			});
+		});
+	}
+
+	#[test]
+	#[serial]
+	fn test_batched_signal_change_notifies_effect() {
+		crate::reactive::ReactiveScope::run(|| {
+			let signal = Signal::new(0);
 			let runs = Rc::new(Cell::new(0));
 			let runs_for_effect = Rc::clone(&runs);
 			let _effect = Effect::new(move || {

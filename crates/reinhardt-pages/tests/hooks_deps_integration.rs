@@ -5,7 +5,7 @@
 //! consumed by an Effect) under Option A semantics:
 //!
 //! - Closure runs with no active reactive Observer.
-//! - Subscriptions are derived exclusively from the explicit deps collection.
+//! - Subscriptions are derived exclusively from the explicit dependency list.
 //! - Cleanup functions run before re-execution and on dispose.
 
 #![cfg(not(target_arch = "wasm32"))]
@@ -45,7 +45,7 @@ fn callback_accepts_copy_handles_without_clone_ceremony() {
 	});
 }
 
-/// Verifies that a Memo wired into an Effect's deps collection re-runs the
+/// Verifies that a Memo wired into an Effect's dependency list re-runs the
 /// Effect when the Memo's listed deps change.
 #[test]
 #[serial(hooks_deps_integration)]
@@ -55,11 +55,11 @@ fn memo_feeding_effect_propagates_listed_dep_changes() {
 		let count = Signal::new(1_i32);
 		let runs = Rc::new(RefCell::new(0_i32));
 
-		// Memo doubles the count; listed deps = deps![count].
+		// Memo doubles the count; listed deps = [count].
 		let count_for_memo = count.clone();
 		let doubled = use_memo(move || count_for_memo.get() * 2, deps![count]);
 
-		// Effect re-runs when the memo changes; listed deps = deps![doubled].
+		// Effect re-runs when the memo changes; listed deps = [doubled].
 		let runs_for_effect = runs.clone();
 		let doubled_for_effect = doubled.clone();
 		let _eff = use_effect(
@@ -167,7 +167,7 @@ fn effect_cleanup_runs_before_rerun() {
 	});
 }
 
-/// Verifies that an empty dependency collection makes the effect mount-only —
+/// Verifies that an empty `deps![]` list makes the effect mount-only —
 /// no re-run regardless of which signals change in the environment.
 #[test]
 #[serial(hooks_deps_integration)]
@@ -199,7 +199,7 @@ fn effect_with_empty_deps_is_mount_only() {
 		assert_eq!(
 			*runs.borrow(),
 			1,
-			"empty deps must make the effect mount-only"
+			"empty deps `deps![]` must make the effect mount-only"
 		);
 	});
 }

@@ -33,8 +33,10 @@ use crate::reactive::{ExplicitDeps, Memo, ReactiveDeps};
 /// # Example
 ///
 /// ```no_run
-/// use reinhardt_pages::deps;
-/// use reinhardt_pages::reactive::hooks::{use_state, use_memo};
+/// use reinhardt_pages::{
+///     deps,
+///     reactive::hooks::{use_memo, use_state},
+/// };
 ///
 /// let (items, _set_items) = use_state(vec![1, 2, 3, 4, 5]);
 /// let (filter, _set_filter) = use_state(2);

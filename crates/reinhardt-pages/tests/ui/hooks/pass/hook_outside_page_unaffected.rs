@@ -1,8 +1,8 @@
 //! Compile-pass (scope guarantee): a hook with a missing dep that is called
 //! OUTSIDE a `page!` body is invisible to the `page!` macro and therefore not
 //! checked by the deps validator — it must still compile (spec §4.5 scope
-//! limitation, #4721/#4746). The runtime signature still guarantees a
-//! dependency mode is present.
+//! limitation, #4721/#4746). The runtime type check still guarantees an
+//! explicit dependency list is present.
 
 use reinhardt_pages::deps;
 use reinhardt_pages::reactive::Signal;
