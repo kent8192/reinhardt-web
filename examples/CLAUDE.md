@@ -255,7 +255,8 @@ use reinhardt::prelude::*;
 // - StatusCode
 // - ViewSet, ModelViewSet, ReadOnlyModelViewSet
 // - (if core feature) Request, Response, Handler, Middleware, Signals
-// - (if database feature) Model, DatabaseConnection, F, Q, Transaction, atomic
+// - (if database feature) Model, DatabaseConnection, AtomicTransaction,
+//   OrmExecutor, F, Q, Transaction
 // - (if di feature) Body, Cookie, Header, Json, Path, Query
 // - (if rest feature) Serializer, Paginator, Throttle, Versioning
 // - (if auth feature) User, UserManager, GroupManager, Permission

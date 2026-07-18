@@ -107,7 +107,7 @@ impl BaseUserManager<User> for AuthUserManager {
     ) -> Result<User, Error> {
         let new_user = self.build_user(username, password, &extra).await?;
         User::objects()
-            .create_with_conn(&self.db, &new_user)
+            .create_with_conn(&mut self.db, &new_user)
             .await
             .map_err(|error| {
                 DatabaseError::new(DatabaseErrorKind::Query, error.to_string()).into()

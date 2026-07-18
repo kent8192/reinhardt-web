@@ -1,7 +1,87 @@
 # Migration Guide: 0.3.x to 0.4.0
 
-This guide currently covers the breaking Reinhardt Pages event API introduced
-for 0.4. Add later 0.4 migration topics as their public contracts stabilize.
+This guide covers the breaking Reinhardt Pages event API and closure-scoped ORM
+transaction API introduced for 0.4.
+
+## Closure-scoped ORM transactions
+
+ORM transactions are now exclusively closure-scoped. `DatabaseConnection::atomic`
+opens the outer transaction and lends its executor to the callback. Call
+`AtomicTransaction::atomic` from that callback to create a nested savepoint.
+The executor is mutable and cannot be used outside its callback, so all ORM
+operations in the scope must use `*_with_conn(transaction, ...)` or
+`*_with_db(transaction)` methods.
+
+```rust,ignore
+// Before
+let mut transaction = connection.begin().await?;
+let user = User::objects()
+    .create_with_conn(&mut transaction, &new_user)
+    .await?;
+transaction.commit().await?;
+
+// After: the nested callback stays inside the outer callback's scope.
+let user = connection.atomic(async |transaction| {
+    let user = User::objects()
+        .create_with_conn(transaction, &new_user)
+        .await?;
+
+    // A nested callback is a savepoint on the same executor.
+    transaction.atomic(async |nested_transaction| {
+        audit_manager
+            .create_with_conn(nested_transaction, &audit_log)
+            .await
+    }).await?;
+
+    Ok(user)
+}).await?;
+```
+
+Outside an atomic block, acquire and pass a mutable connection directly rather
+than starting a manual transaction:
+
+```rust,ignore
+let mut connection = get_connection().await?;
+let user = User::objects()
+    .create_with_conn(&mut connection, &new_user)
+    .await?;
+```
+
+`Session` remains a unit-of-work tracker. Use `Session::flush` to persist its
+tracked changes, but do not use it as a transaction boundary. For multi-write
+atomicity, perform the writes through `DatabaseConnection::atomic` and its
+callback-owned executor. To abandon unflushed session state, discard and
+recreate the `Session` instead of rolling it back.
+
+`AsyncSession::begin` and `Engine::begin` are also removed. Use
+`DatabaseConnection::atomic` for ORM transaction boundaries. `Engine` and raw
+SQL remain available for operations outside the ORM atomic API.
+
+The following public ORM APIs are removed:
+
+- `TransactionScope` and `Atomic`
+- free `atomic`, `atomic_with_isolation`, `transaction`, and
+  `transaction_with_isolation` functions
+- `DatabaseConnection::{begin_transaction, begin_transaction_with_isolation,
+  commit_transaction, rollback_transaction, savepoint, release_savepoint,
+  rollback_to_savepoint, begin, begin_with_isolation}`
+- `Transaction::{begin_db, commit_db, rollback_db}`
+- `Session::{begin, commit, rollback, has_transaction}` and
+  `SessionError::TransactionError`
+- `AsyncSession::begin`
+- `Engine::begin`
+
+Use `DatabaseConnection::atomic_with_isolation` when the outer transaction
+requires a particular isolation level. `Transaction`, `Savepoint`, and
+`IsolationLevel` remain available only as synchronous SQL-builder types; they
+do not own or execute ORM transactions.
+
+Callback failures roll back the active transaction. If rollback or savepoint
+cleanup also fails, the cleanup error is returned because it is the most useful
+signal that database state could not be restored. Panics and task cancellation
+are not recoverable callback results; do not rely on them for rollback control
+flow. MySQL implicitly commits many DDL statements, so do not put schema changes
+inside an atomic callback and expect them to roll back.
 
 ## Typed intrinsic events
 

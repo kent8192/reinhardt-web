@@ -219,7 +219,8 @@ The handlers will not create connections by hand. They ask the route macro to in
 ```rust
 #[get("/snippets/", name = "snippets-list")]
 pub async fn list(#[inject] db: DatabaseConnection) -> ViewResult<Response> {
-	let snippets = Manager::<Snippet>::new().all().all_with_db(&db).await?;
+	let mut db = db;
+	let snippets = Manager::<Snippet>::new().all().all_with_db(&mut db).await?;
 	let snippet_responses: Vec<SnippetResponse> =
 		snippets.iter().map(SnippetResponse::from_model).collect();
 
@@ -241,6 +242,7 @@ pub async fn create(
 	Json(serializer): Json<SnippetSerializer>,
 	#[inject] db: DatabaseConnection,
 ) -> ViewResult<Response> {
+	let mut db = db;
 	let snippet = Snippet::build()
 		.title(serializer.title.clone())
 		.code(serializer.code.clone())
@@ -248,7 +250,7 @@ pub async fn create(
 		.finish();
 
 	let created = Manager::<Snippet>::new()
-		.create_with_conn(&db, &snippet)
+		.create_with_conn(&mut db, &snippet)
 		.await?;
 
 	let response_data = json!({
@@ -273,9 +275,10 @@ pub async fn retrieve(
 	Path(snippet_id): Path<i64>,
 	#[inject] db: DatabaseConnection,
 ) -> ViewResult<Response> {
+	let mut db = db;
 	let snippets = Manager::<Snippet>::new()
 		.get(snippet_id)
-		.all_with_db(&db)
+		.all_with_db(&mut db)
 		.await?;
 
 	let snippet = match snippets.first() {
@@ -308,10 +311,11 @@ pub async fn update(
 	Json(serializer): Json<SnippetSerializer>,
 	#[inject] db: DatabaseConnection,
 ) -> ViewResult<Response> {
+	let mut db = db;
 	serializer.validate()?;
 
 	let manager = Manager::<Snippet>::new();
-	let existing = manager.get(snippet_id).all_with_db(&db).await?;
+	let existing = manager.get(snippet_id).all_with_db(&mut db).await?;
 
 	let mut snippet = match existing.into_iter().next() {
 		Some(snippet) => snippet,
@@ -327,7 +331,7 @@ pub async fn update(
 	snippet.code = serializer.code.clone();
 	snippet.language = serializer.language.clone();
 
-	let updated = manager.update_with_conn(&db, &snippet).await?;
+	let updated = manager.update_with_conn(&mut db, &snippet).await?;
 
 	let response_data = json!({
 		"message": "Snippet updated",
@@ -351,8 +355,9 @@ pub async fn delete(
 	Path(snippet_id): Path<i64>,
 	#[inject] db: DatabaseConnection,
 ) -> ViewResult<Response> {
+	let mut db = db;
 	let manager = Manager::<Snippet>::new();
-	let existing = manager.get(snippet_id).all_with_db(&db).await?;
+	let existing = manager.get(snippet_id).all_with_db(&mut db).await?;
 
 	if existing.is_empty() {
 		let error = json::to_string(&json!({"error": "Snippet not found"}))?;
@@ -361,7 +366,7 @@ pub async fn delete(
 			.with_body(error));
 	}
 
-	manager.delete_with_conn(&db, snippet_id).await?;
+	manager.delete_with_conn(&mut db, snippet_id).await?;
 
 	Ok(Response::new(StatusCode::NO_CONTENT))
 }
@@ -474,7 +479,7 @@ cargo check --all-features
 
 You replaced the temporary Part 2 handlers with real database-backed CRUD:
 
-- CRUD handlers receive `#[inject] db: DatabaseConnection`.
+- CRUD handlers shadow their injected `DatabaseConnection` as `mut db` before passing it as a mutable ORM executor.
 - Project-local providers resolve through keyed `Depends<K, T>`, so `(*cfg).as_ref()` is the tool you need for fallible dependencies.
 - `Manager::<Snippet>` queries, inserts, updates, and deletes rows through the injected connection.
 - `di.rs` registers plain and fallible providers with `#[injectable]` and `FactoryOutput<K, T>`.
