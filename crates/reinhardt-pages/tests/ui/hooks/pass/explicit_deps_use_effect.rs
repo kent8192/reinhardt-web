@@ -10,7 +10,7 @@ fn main() {
 		let count = Signal::new(0_i32);
 		let _e = use_effect(
 			{
-				let count = count;
+				let count = count.clone();
 				move || {
 					let _ = count.get();
 					None::<fn()>

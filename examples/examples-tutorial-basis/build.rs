@@ -21,5 +21,5 @@ fn main() {
 		// Compatibility aliases used by framework macro expansions.
 		wasm: { target_arch = "wasm32" },
 		native: { not(target_arch = "wasm32") },
-	}
+	};
 }

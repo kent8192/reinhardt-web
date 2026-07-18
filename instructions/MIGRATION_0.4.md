@@ -1,8 +1,7 @@
 # Migration Guide: 0.3.x to 0.4.0
 
-This guide covers the breaking model identity and Reinhardt Pages event API
-changes introduced for 0.4. Add later 0.4 migration topics as their public
-contracts stabilize.
+This guide covers the breaking model identity, Reinhardt Pages event API, and
+controlled form-element binding changes introduced for 0.4.
 
 ## Explicit model application labels and conventional table names
 
@@ -68,6 +67,36 @@ model's registered `table_name`, including explicit table-name overrides.
 For every result, add a meaningful `app_label`. Preserve `table_name` whenever
 the deployed database already uses that table; omit it only when the derived
 name is the intended schema contract.
+
+## Reserved `bind` directive
+
+`bind:` is now a reserved `page!` directive on supported `input`, `textarea`,
+and `select` controls. It connects a typed `Signal` to the control property and
+must not be used to emit a literal nonstandard HTML attribute.
+
+```rust,ignore
+// Before: emitted a nonstandard literal `bind` attribute.
+page!({ input { bind: "search-model" } })
+
+// After: prefer a standards-compatible data attribute.
+page!({ input { data_bind: "search-model" } })
+
+// Or use the low-level builder when the literal attribute name is required.
+PageElement::new("input").attr("bind", "search-model")
+```
+
+For controlled state, replace imperative DOM reads with a typed signal:
+
+```rust,ignore
+let query = Signal::new(String::new());
+page!({ input { aria_label: "Search", bind: query } })
+```
+
+The compiler validates the binding shape: text, radio, and single-select
+controls use `Signal<String>`; checkboxes use `Signal<bool>`; multiple selects
+use `Signal<Vec<String>>`; and numeric controls accept supported primitives via
+direct `bind: value`. Use `bind: number(value, parse_error)` only when rejected
+numeric text should also update an error signal.
 
 ## Typed intrinsic events
 

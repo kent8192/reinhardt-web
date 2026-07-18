@@ -17,13 +17,15 @@ pub use reinhardt_core::types::page::NativeEvent;
 pub(super) use reinhardt_core::types::page::{BOOLEAN_ATTRS, is_boolean_attr_truthy};
 
 #[cfg(wasm)]
-use crate::component::reactive_if::{ReactiveIfNode, ReactiveNode, store_reactive_node};
+use crate::component::reactive_if::{
+	ReactiveIfNode, ReactiveNode, store_reactive_node, with_reactive_node_transaction,
+};
 #[cfg(wasm)]
-use crate::dom::Element;
+use crate::dom::control_binding::ControlBindingController;
+#[cfg(wasm)]
+use crate::dom::{Element, EventHandle};
 #[cfg(wasm)]
 use wasm_bindgen::JsCast;
-#[cfg(wasm)]
-use wasm_bindgen::closure::Closure;
 
 /// Extension trait for mounting Page to DOM (WASM only).
 ///
@@ -43,13 +45,85 @@ impl PageExt for Page {
 }
 
 #[cfg(wasm)]
+use reinhardt_core::types::page::{ControlBinding, ControlKind, ControlValue};
+#[cfg(wasm)]
+pub(crate) fn controlled_attribute_is_overridden(
+	binding: Option<&ControlBinding>,
+	name: &str,
+) -> bool {
+	binding.is_some_and(|binding| match binding.kind() {
+		ControlKind::Text | ControlKind::Number => name.eq_ignore_ascii_case("value"),
+		ControlKind::Checkbox => name.eq_ignore_ascii_case("checked"),
+		ControlKind::Radio => {
+			name.eq_ignore_ascii_case("checked") || name.eq_ignore_ascii_case("value")
+		}
+		ControlKind::SelectOne | ControlKind::SelectMany => false,
+	})
+}
+
+#[cfg(wasm)]
+pub(crate) fn initialize_control_default(element: &Element, binding: &ControlBinding) {
+	let value = crate::reactive::untracked(|| binding.read());
+	match (binding.kind(), value) {
+		(ControlKind::Text | ControlKind::Number, ControlValue::Text(value)) => {
+			if let Some(input) = element.as_web_sys().dyn_ref::<web_sys::HtmlInputElement>() {
+				input.set_default_value(&value);
+			} else if let Some(textarea) = element
+				.as_web_sys()
+				.dyn_ref::<web_sys::HtmlTextAreaElement>()
+			{
+				let _ = textarea.set_default_value(&value);
+			}
+		}
+		(ControlKind::Checkbox | ControlKind::Radio, ControlValue::Checked(checked)) => {
+			if let Some(input) = element.as_web_sys().dyn_ref::<web_sys::HtmlInputElement>() {
+				input.set_default_checked(checked);
+			}
+		}
+		(ControlKind::SelectOne, ControlValue::Text(value)) => {
+			if let Some(select) = element.as_web_sys().dyn_ref::<web_sys::HtmlSelectElement>() {
+				let options = select.options();
+				let mut selected = false;
+				for index in 0..options.length() {
+					if let Some(option) = options
+						.item(index)
+						.and_then(|option| option.dyn_into::<web_sys::HtmlOptionElement>().ok())
+					{
+						let matches = !selected && option.value() == value;
+						option.set_default_selected(matches);
+						selected |= matches;
+					}
+				}
+			}
+		}
+		(ControlKind::SelectMany, ControlValue::SelectedValues(values)) => {
+			if let Some(select) = element.as_web_sys().dyn_ref::<web_sys::HtmlSelectElement>() {
+				let options = select.options();
+				for index in 0..options.length() {
+					if let Some(option) = options
+						.item(index)
+						.and_then(|option| option.dyn_into::<web_sys::HtmlOptionElement>().ok())
+					{
+						option.set_default_selected(
+							values.iter().any(|value| value == &option.value()),
+						);
+					}
+				}
+			}
+		}
+		_ => {}
+	}
+}
+
+#[cfg(wasm)]
 fn mount_inner(page: Page, parent: &Element) -> Result<(), MountError> {
 	use crate::dom::document;
 
 	match page {
 		Page::Element(el) => {
 			let doc = document();
-			let (tag, attrs, children, _is_void, event_handlers) = el.into_parts();
+			let (tag, attrs, children, _is_void, event_handlers, control_binding) =
+				el.into_parts_with_control_binding();
 
 			let element = doc
 				.create_element(&tag)
@@ -64,6 +138,9 @@ fn mount_inner(page: Page, parent: &Element) -> Result<(), MountError> {
 				let is_falsy = !is_boolean_attr_truthy(value_str);
 
 				if is_boolean && is_falsy {
+					continue;
+				}
+				if controlled_attribute_is_overridden(control_binding.as_ref(), name.as_ref()) {
 					continue;
 				}
 
@@ -83,50 +160,58 @@ fn mount_inner(page: Page, parent: &Element) -> Result<(), MountError> {
 					})?;
 			}
 
-			// Attach event handlers before mounting children
-			for (event_type, handler) in event_handlers {
-				let handler_clone = handler.clone();
-				let scope = reinhardt_core::reactive::scope::current_scope_id();
-				#[cfg(feature = "i18n")]
-				let i18n_context = crate::i18n::current_i18n_callback_context();
-				let closure = Closure::wrap(Box::new(move |event: web_sys::Event| {
-					#[cfg(feature = "i18n")]
-					{
-						crate::i18n::with_optional_i18n_context(i18n_context.as_ref(), || {
-							crate::callback::run_event_handler_in_scope(
-								scope,
-								&handler_clone,
-								event,
-							);
-						});
+			let mount_children_before_binding = tag.eq_ignore_ascii_case("select");
+			let skip_bound_textarea_children =
+				control_binding.is_some() && tag.eq_ignore_ascii_case("textarea");
+			let mount_element = || {
+				let mut children = children.into_iter();
+				if mount_children_before_binding {
+					for child in children.by_ref() {
+						mount_inner(child, &element)?;
 					}
-					#[cfg(not(feature = "i18n"))]
-					crate::callback::run_event_handler_in_scope(scope, &handler_clone, event);
-				}) as Box<dyn FnMut(web_sys::Event)>);
+				}
 
-				element
-					.inner()
-					.add_event_listener_with_callback(
+				if let Some(binding) = control_binding.as_ref() {
+					initialize_control_default(&element, binding);
+				}
+				let binding_controller = control_binding
+					.map(|binding| ControlBindingController::mount(element.clone(), binding))
+					.transpose()?;
+				let mut event_handles: Vec<EventHandle> = Vec::new();
+
+				for (event_type, handler) in event_handlers {
+					let handler_clone = handler.clone();
+					#[cfg(feature = "i18n")]
+					let i18n_context = crate::i18n::current_i18n_callback_context();
+					event_handles.push(element.add_event_listener_with_event(
 						event_type.as_str(),
-						closure.as_ref().unchecked_ref(),
-					)
-					.expect("Failed to add event listener");
+						move |event| {
+							#[cfg(feature = "i18n")]
+							{
+								crate::i18n::with_optional_i18n_context(
+									i18n_context.as_ref(),
+									|| handler_clone(event),
+								);
+							}
+							#[cfg(not(feature = "i18n"))]
+							handler_clone(event);
+						},
+					));
+				}
 
-				// Intentional memory leak: the closure must outlive the element's DOM
-				// lifetime. Since mount_inner creates closures in a recursive loop
-				// with no parent struct to store them, forget() is the practical
-				// choice here. For components with frequent mount/unmount cycles,
-				// consider using a lifecycle-managed approach instead.
-				closure.forget();
-			}
+				if !skip_bound_textarea_children {
+					for child in children {
+						mount_inner(child, &element)?;
+					}
+				}
 
-			for child in children {
-				mount_inner(child, &element)?;
-			}
-
-			parent
-				.append_child(element)
-				.map_err(|_| MountError::AppendChildFailed)?;
+				parent
+					.append_child(element)
+					.map_err(|_| MountError::AppendChildFailed)?;
+				store_reactive_node((binding_controller, event_handles));
+				Ok::<(), MountError>(())
+			};
+			with_reactive_node_transaction(mount_element)?;
 		}
 		Page::Text(text) => {
 			let window = web_sys::window().ok_or(MountError::NoWindow)?;

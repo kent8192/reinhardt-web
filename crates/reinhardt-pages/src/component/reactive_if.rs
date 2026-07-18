@@ -8,19 +8,17 @@ use crate::component::into_page::PageExt;
 #[cfg(wasm)]
 use crate::reactive::effect::Effect;
 #[cfg(wasm)]
-use crate::reactive::runtime::EffectTiming;
+use crate::reactive::runtime::{EffectTiming, with_runtime};
 #[cfg(wasm)]
 use reinhardt_core::reactive::ReactiveScope;
 #[cfg(wasm)]
-use reinhardt_core::types::page::{BOOLEAN_ATTRS, Page, is_boolean_attr_truthy};
+use reinhardt_core::types::page::{BOOLEAN_ATTRS, MountError, Page, is_boolean_attr_truthy};
 #[cfg(wasm)]
 use std::cell::Cell;
 use std::cell::RefCell;
 #[cfg(native)]
 use std::future::Future;
 use std::rc::Rc;
-#[cfg(wasm)]
-use wasm_bindgen::JsCast;
 
 pub(crate) type ReactiveNodeStore = Rc<RefCell<Vec<Box<dyn std::any::Any>>>>;
 
@@ -91,6 +89,56 @@ pub(crate) fn with_reactive_node_store<R>(store: &ReactiveNodeStore, f: impl FnO
 	f()
 }
 
+#[cfg(any(wasm, test))]
+struct ReactiveNodeTransaction {
+	destination: ReactiveNodeStore,
+	staged: ReactiveNodeStore,
+	committed: bool,
+}
+
+#[cfg(any(wasm, test))]
+impl ReactiveNodeTransaction {
+	fn new(destination: ReactiveNodeStore) -> Self {
+		Self {
+			destination,
+			staged: new_reactive_node_store(),
+			committed: false,
+		}
+	}
+
+	fn store(&self) -> ReactiveNodeStore {
+		self.staged.clone()
+	}
+
+	fn commit(&mut self) {
+		self.destination
+			.borrow_mut()
+			.append(&mut self.staged.borrow_mut());
+		self.committed = true;
+	}
+}
+
+#[cfg(any(wasm, test))]
+impl Drop for ReactiveNodeTransaction {
+	fn drop(&mut self) {
+		if !self.committed {
+			clear_reactive_node_store(&self.staged);
+		}
+	}
+}
+
+#[cfg(wasm)]
+pub(crate) fn with_reactive_node_transaction<T, E>(
+	f: impl FnOnce() -> Result<T, E>,
+) -> Result<T, E> {
+	let mut transaction = ReactiveNodeTransaction::new(current_reactive_node_store());
+	let result = with_reactive_node_store(&transaction.store(), f);
+	if result.is_ok() {
+		transaction.commit();
+	}
+	result
+}
+
 #[cfg(native)]
 pub(crate) async fn scope_reactive_node_store<R>(future: impl Future<Output = R>) -> R {
 	SSR_REACTIVE_NODE_STORE
@@ -148,9 +196,10 @@ pub struct ReactiveIfNode {
 	last_condition: Rc<RefCell<Option<bool>>>,
 	/// Nested reactive nodes owned by the current branch.
 	reactive_nodes: ReactiveNodeStore,
+	/// Whether hydration retained the original server-rendered nodes.
+	hydrated_nodes_preserved: Rc<Cell<bool>>,
 	/// Effect handle (kept alive to maintain reactivity)
-	#[allow(dead_code)] // Effect is kept alive for its side effects
-	effect: Effect,
+	effect: Option<Effect>,
 }
 
 #[cfg(wasm)]
@@ -181,7 +230,38 @@ impl ReactiveIfNode {
 			.inner()
 			.append_child(&marker)
 			.expect("should append marker");
+		Self::new_with_markers(marker, None, condition, then_view, else_view)
+	}
 
+	fn new_before_marker(
+		anchor: &web_sys::Comment,
+		condition: std::sync::Arc<dyn Fn() -> bool + 'static>,
+		then_view: std::sync::Arc<dyn Fn() -> Page + 'static>,
+		else_view: std::sync::Arc<dyn Fn() -> Page + 'static>,
+	) -> Self {
+		let document = web_sys::window()
+			.expect("window should be available")
+			.document()
+			.expect("document should be available");
+		let start_marker = document.create_comment("reactive-if-start");
+		let marker = document.create_comment("reactive-if");
+		let parent = anchor.parent_node().expect("marker should have a parent");
+		parent
+			.insert_before(&start_marker, Some(anchor))
+			.expect("should insert start marker");
+		parent
+			.insert_before(&marker, Some(anchor))
+			.expect("should insert marker");
+		Self::new_with_markers(marker, Some(start_marker), condition, then_view, else_view)
+	}
+
+	fn new_with_markers(
+		marker: web_sys::Comment,
+		start_marker: Option<web_sys::Comment>,
+		condition: std::sync::Arc<dyn Fn() -> bool + 'static>,
+		then_view: std::sync::Arc<dyn Fn() -> Page + 'static>,
+		else_view: std::sync::Arc<dyn Fn() -> Page + 'static>,
+	) -> Self {
 		// Shared state for the Effect
 		let current_nodes: Rc<RefCell<Vec<web_sys::Node>>> = Rc::new(RefCell::new(Vec::new()));
 		let last_condition: Rc<RefCell<Option<bool>>> = Rc::new(RefCell::new(None));
@@ -220,18 +300,21 @@ impl ReactiveIfNode {
 						nodes.drain(..).collect::<Vec<_>>()
 					};
 					for node in old_nodes {
-						remove_owned_node(node);
+						if let Some(parent_node) = node.parent_node() {
+							let _ = parent_node.remove_child(&node);
+						}
 					}
 
 					let new_nodes = with_reactive_node_store(&branch_reactive_node_store, || {
-						// Build and mount the branch in a scope owned by this branch store.
-						mount_view_before_marker(&marker_clone, || {
-							if new_condition {
-								then_view()
-							} else {
-								else_view()
-							}
-						})
+						// Generate the appropriate view
+						let view = if new_condition {
+							then_view()
+						} else {
+							else_view()
+						};
+
+						// Mount new nodes before the marker
+						mount_before_marker(&marker_clone, view)
 					});
 					*current_nodes_clone.borrow_mut() = new_nodes;
 				});
@@ -241,22 +324,28 @@ impl ReactiveIfNode {
 
 		Self {
 			marker,
-			start_marker: None,
+			start_marker,
 			current_nodes,
 			last_condition,
 			reactive_nodes,
-			effect,
+			hydrated_nodes_preserved: Rc::new(Cell::new(false)),
+			effect: Some(effect),
 		}
 	}
 
+	// DOM boundary coordinates, the precreated owner store, and the hydrated baseline must stay
+	// explicit so hydration adopts the exact server-rendered range without reconstructing state.
+	#[allow(clippy::too_many_arguments)]
 	pub(crate) fn hydrate_at(
 		parent: web_sys::Node,
 		next_sibling: Option<web_sys::Node>,
 		existing_nodes: Vec<web_sys::Node>,
+		hydrated_condition: bool,
 		condition: std::sync::Arc<dyn Fn() -> bool + 'static>,
 		then_view: std::sync::Arc<dyn Fn() -> Page + 'static>,
 		else_view: std::sync::Arc<dyn Fn() -> Page + 'static>,
 		reactive_nodes: ReactiveNodeStore,
+		refresh_after_control_adoption: bool,
 	) -> Option<Self> {
 		let document = web_sys::window()
 			.expect("window should be available")
@@ -269,7 +358,8 @@ impl ReactiveIfNode {
 		let _ = parent.insert_before(&marker, next_sibling.as_ref());
 
 		let current_nodes: Rc<RefCell<Vec<web_sys::Node>>> = Rc::new(RefCell::new(existing_nodes));
-		let last_condition: Rc<RefCell<Option<bool>>> = Rc::new(RefCell::new(None));
+		let last_condition: Rc<RefCell<Option<bool>>> =
+			Rc::new(RefCell::new(Some(hydrated_condition)));
 		let current_nodes_clone = current_nodes.clone();
 		let last_condition_clone = last_condition.clone();
 		let start_marker_clone = Some(start_marker.clone());
@@ -278,6 +368,10 @@ impl ReactiveIfNode {
 		let branch_reactive_node_store = reactive_nodes.clone();
 		let first_run = Rc::new(Cell::new(true));
 		let first_run_clone = first_run.clone();
+		let hydration_mismatch = Rc::new(Cell::new(false));
+		let hydration_mismatch_clone = hydration_mismatch.clone();
+		let hydrated_nodes_preserved = Rc::new(Cell::new(true));
+		let hydrated_nodes_preserved_clone = hydrated_nodes_preserved.clone();
 		#[cfg(feature = "i18n")]
 		let i18n_context = crate::i18n::current_i18n_callback_context();
 
@@ -287,18 +381,22 @@ impl ReactiveIfNode {
 					with_reactive_node_store(&effect_reactive_node_store, || {
 						let new_condition = condition();
 
-						if first_run_clone.replace(false) {
-							*last_condition_clone.borrow_mut() = Some(new_condition);
-							return;
+						let first_run = first_run_clone.replace(false);
+						if first_run {
+							hydration_mismatch_clone.set(new_condition != hydrated_condition);
+							if !refresh_after_control_adoption {
+								return;
+							}
 						}
 
 						let mut last = last_condition_clone.borrow_mut();
-						if *last == Some(new_condition) {
+						if *last == Some(new_condition) && !first_run {
 							return;
 						}
 						*last = Some(new_condition);
 						drop(last);
 
+						hydrated_nodes_preserved_clone.set(false);
 						clear_reactive_node_store(&branch_reactive_node_store);
 
 						refresh_current_nodes_before_marker(
@@ -311,18 +409,19 @@ impl ReactiveIfNode {
 							nodes.drain(..).collect::<Vec<_>>()
 						};
 						for node in old_nodes {
-							remove_owned_node(node);
+							if let Some(parent_node) = node.parent_node() {
+								let _ = parent_node.remove_child(&node);
+							}
 						}
 
 						let new_nodes =
 							with_reactive_node_store(&branch_reactive_node_store, || {
-								mount_view_before_marker(&marker_clone, || {
-									if new_condition {
-										then_view()
-									} else {
-										else_view()
-									}
-								})
+								let view = if new_condition {
+									then_view()
+								} else {
+									else_view()
+								};
+								mount_before_marker(&marker_clone, view)
 							});
 						*current_nodes_clone.borrow_mut() = new_nodes;
 					});
@@ -334,6 +433,9 @@ impl ReactiveIfNode {
 			},
 			EffectTiming::Layout,
 		);
+		if hydration_mismatch.get() {
+			with_runtime(|runtime| runtime.schedule_update(effect.id()));
+		}
 
 		Some(Self {
 			marker,
@@ -341,16 +443,17 @@ impl ReactiveIfNode {
 			current_nodes,
 			last_condition,
 			reactive_nodes,
-			effect,
+			hydrated_nodes_preserved,
+			effect: Some(effect),
 		})
-	}
-
-	pub(crate) fn marker_node(&self) -> web_sys::Node {
-		self.marker.clone().into()
 	}
 
 	pub(crate) fn reactive_node_store(&self) -> ReactiveNodeStore {
 		self.reactive_nodes.clone()
+	}
+
+	pub(crate) fn hydrated_nodes_preserved(&self) -> bool {
+		self.hydrated_nodes_preserved.get()
 	}
 
 	pub(crate) fn refresh_hydrated_current_nodes(&self) {
@@ -359,6 +462,17 @@ impl ReactiveIfNode {
 			&self.marker,
 			&self.current_nodes,
 		);
+	}
+}
+
+#[cfg(wasm)]
+impl Drop for ReactiveIfNode {
+	fn drop(&mut self) {
+		let _marker_removal = MarkerRemovalGuard::new(self.start_marker.as_ref(), &self.marker);
+		if let Some(effect) = self.effect.take() {
+			effect.dispose();
+		}
+		clear_reactive_node_store(&self.reactive_nodes);
 	}
 }
 
@@ -379,9 +493,10 @@ pub struct ReactiveNode {
 	current_nodes: Rc<RefCell<Vec<web_sys::Node>>>,
 	/// Nested reactive nodes owned by the current render.
 	reactive_nodes: ReactiveNodeStore,
+	/// Whether hydration retained the original server-rendered nodes.
+	hydrated_nodes_preserved: Rc<Cell<bool>>,
 	/// Effect handle (kept alive to maintain reactivity)
-	#[allow(dead_code)] // Effect is kept alive for its side effects
-	effect: Effect,
+	effect: Option<Effect>,
 }
 
 #[cfg(wasm)]
@@ -408,7 +523,34 @@ impl ReactiveNode {
 			.inner()
 			.append_child(&marker)
 			.expect("should append marker");
+		Self::new_with_markers(marker, None, render)
+	}
 
+	fn new_before_marker(
+		anchor: &web_sys::Comment,
+		render: std::sync::Arc<dyn Fn() -> Page + 'static>,
+	) -> Self {
+		let document = web_sys::window()
+			.expect("window should be available")
+			.document()
+			.expect("document should be available");
+		let start_marker = document.create_comment("reactive-start");
+		let marker = document.create_comment("reactive");
+		let parent = anchor.parent_node().expect("marker should have a parent");
+		parent
+			.insert_before(&start_marker, Some(anchor))
+			.expect("should insert start marker");
+		parent
+			.insert_before(&marker, Some(anchor))
+			.expect("should insert marker");
+		Self::new_with_markers(marker, Some(start_marker), render)
+	}
+
+	fn new_with_markers(
+		marker: web_sys::Comment,
+		start_marker: Option<web_sys::Comment>,
+		render: std::sync::Arc<dyn Fn() -> Page + 'static>,
+	) -> Self {
 		// Shared state for the Effect
 		let current_nodes: Rc<RefCell<Vec<web_sys::Node>>> = Rc::new(RefCell::new(Vec::new()));
 
@@ -417,8 +559,10 @@ impl ReactiveNode {
 		let marker_clone = marker.clone();
 		let reactive_nodes = new_reactive_node_store();
 		let effect_reactive_node_store = current_reactive_node_store();
-		let render_reactive_node_store = Rc::new(RefCell::new(new_reactive_node_store()));
+		let render_reactive_node_store = new_reactive_node_store();
 		let mount_reactive_node_store = reactive_nodes.clone();
+		let hydrated_nodes_preserved = Rc::new(Cell::new(true));
+		let hydrated_nodes_preserved_clone = hydrated_nodes_preserved.clone();
 		#[cfg(feature = "i18n")]
 		let i18n_context = crate::i18n::current_i18n_callback_context();
 
@@ -427,21 +571,21 @@ impl ReactiveNode {
 			move || {
 				let update = || {
 					with_reactive_node_store(&effect_reactive_node_store, || {
-						let next_render_reactive_node_store = new_reactive_node_store();
-						// Render a candidate view separately so preserved activity DOM keeps
-						// the scope that owns its existing event handlers.
-						let view = render_view_in_reactive_node_store(
-							&next_render_reactive_node_store,
-							|| render(),
-						);
+						let candidate_render_store = new_reactive_node_store();
+						// Render into a candidate store so an Activity attribute-only update
+						// retains the owners for the already-mounted content.
+						let ScopedRender { view, scope } =
+							render_in_reactive_scope(&candidate_render_store, || render());
 
 						if update_activity_boundary_attrs(&current_nodes_clone, &view) {
-							clear_reactive_node_store(&next_render_reactive_node_store);
+							clear_reactive_node_store(&candidate_render_store);
 							return;
 						}
-						let previous_render_reactive_node_store =
-							render_reactive_node_store.replace(next_render_reactive_node_store);
-						clear_reactive_node_store(&previous_render_reactive_node_store);
+						clear_reactive_node_store(&render_reactive_node_store);
+						render_reactive_node_store
+							.borrow_mut()
+							.append(&mut candidate_render_store.borrow_mut());
+						hydrated_nodes_preserved_clone.set(false);
 
 						clear_reactive_node_store(&mount_reactive_node_store);
 
@@ -453,14 +597,20 @@ impl ReactiveNode {
 							nodes.drain(..).collect::<Vec<_>>()
 						};
 						for node in old_nodes {
-							remove_owned_node(node);
+							if let Some(parent_node) = node.parent_node() {
+								let _ = parent_node.remove_child(&node);
+							}
 						}
 
 						// Mount new nodes before the marker
-						let new_nodes =
+						let new_nodes = scope.enter(|| {
 							with_reactive_node_store(&mount_reactive_node_store, || {
 								mount_before_marker(&marker_clone, view)
-							});
+							})
+						});
+						with_reactive_node_store(&mount_reactive_node_store, || {
+							store_reactive_scope(scope)
+						});
 						*current_nodes_clone.borrow_mut() = new_nodes;
 					});
 				};
@@ -474,10 +624,11 @@ impl ReactiveNode {
 
 		Self {
 			marker,
-			start_marker: None,
+			start_marker,
 			current_nodes,
 			reactive_nodes,
-			effect,
+			hydrated_nodes_preserved,
+			effect: Some(effect),
 		}
 	}
 
@@ -487,6 +638,8 @@ impl ReactiveNode {
 		existing_nodes: Vec<web_sys::Node>,
 		render: std::sync::Arc<dyn Fn() -> Page + 'static>,
 		render_reactive_node_store: ReactiveNodeStore,
+		reactive_nodes: ReactiveNodeStore,
+		refresh_after_control_adoption: bool,
 	) -> Option<Self> {
 		let document = web_sys::window()
 			.expect("window should be available")
@@ -502,12 +655,12 @@ impl ReactiveNode {
 		let current_nodes_clone = current_nodes.clone();
 		let start_marker_clone = Some(start_marker.clone());
 		let marker_clone = marker.clone();
-		let reactive_nodes = new_reactive_node_store();
 		let effect_reactive_node_store = current_reactive_node_store();
-		let render_reactive_node_store = Rc::new(RefCell::new(render_reactive_node_store));
 		let mount_reactive_node_store = reactive_nodes.clone();
 		let first_run = Rc::new(Cell::new(true));
 		let first_run_clone = first_run.clone();
+		let hydrated_nodes_preserved = Rc::new(Cell::new(true));
+		let hydrated_nodes_preserved_clone = hydrated_nodes_preserved.clone();
 		#[cfg(feature = "i18n")]
 		let i18n_context = crate::i18n::current_i18n_callback_context();
 
@@ -515,34 +668,36 @@ impl ReactiveNode {
 			move || {
 				let update = || {
 					with_reactive_node_store(&effect_reactive_node_store, || {
-						let next_render_reactive_node_store = new_reactive_node_store();
+						let candidate_render_store = new_reactive_node_store();
 						let first_run_resource_counter =
 							crate::reactive::resource::current_client_resource_counter();
 						let first_run_id_counter =
 							crate::reactive::hooks::id::id_counter_snapshot();
-						let view = render_view_in_reactive_node_store(
-							&next_render_reactive_node_store,
-							|| render(),
-						);
-						let previous_render_reactive_node_store =
-							render_reactive_node_store.replace(next_render_reactive_node_store);
+						let ScopedRender { view, scope } =
+							render_in_reactive_scope(&candidate_render_store, || render());
 
-						if first_run_clone.replace(false) {
-							clear_reactive_node_store(&previous_render_reactive_node_store);
+						let preserve_adopted_control = refresh_after_control_adoption
+							&& single_control_attrs_match(&current_nodes_clone, &view);
+						if first_run_clone.replace(false)
+							&& (!refresh_after_control_adoption || preserve_adopted_control)
+						{
 							crate::reactive::resource::set_client_resource_counter(
 								first_run_resource_counter,
 							);
 							crate::reactive::hooks::id::restore_id_counter(first_run_id_counter);
+							clear_reactive_node_store(&candidate_render_store);
 							return;
 						}
 
 						if update_activity_boundary_attrs(&current_nodes_clone, &view) {
-							let rejected_render_reactive_node_store = render_reactive_node_store
-								.replace(previous_render_reactive_node_store);
-							clear_reactive_node_store(&rejected_render_reactive_node_store);
+							clear_reactive_node_store(&candidate_render_store);
 							return;
 						}
-						clear_reactive_node_store(&previous_render_reactive_node_store);
+						clear_reactive_node_store(&render_reactive_node_store);
+						render_reactive_node_store
+							.borrow_mut()
+							.append(&mut candidate_render_store.borrow_mut());
+						hydrated_nodes_preserved_clone.set(false);
 
 						clear_reactive_node_store(&mount_reactive_node_store);
 
@@ -556,13 +711,19 @@ impl ReactiveNode {
 							nodes.drain(..).collect::<Vec<_>>()
 						};
 						for node in old_nodes {
-							remove_owned_node(node);
+							if let Some(parent_node) = node.parent_node() {
+								let _ = parent_node.remove_child(&node);
+							}
 						}
 
-						let new_nodes =
+						let new_nodes = scope.enter(|| {
 							with_reactive_node_store(&mount_reactive_node_store, || {
 								mount_before_marker(&marker_clone, view)
-							});
+							})
+						});
+						with_reactive_node_store(&mount_reactive_node_store, || {
+							store_reactive_scope(scope)
+						});
 						*current_nodes_clone.borrow_mut() = new_nodes;
 					});
 				};
@@ -579,16 +740,17 @@ impl ReactiveNode {
 			start_marker: Some(start_marker),
 			current_nodes,
 			reactive_nodes,
-			effect,
+			hydrated_nodes_preserved,
+			effect: Some(effect),
 		})
-	}
-
-	pub(crate) fn marker_node(&self) -> web_sys::Node {
-		self.marker.clone().into()
 	}
 
 	pub(crate) fn reactive_node_store(&self) -> ReactiveNodeStore {
 		self.reactive_nodes.clone()
+	}
+
+	pub(crate) fn hydrated_nodes_preserved(&self) -> bool {
+		self.hydrated_nodes_preserved.get()
 	}
 
 	pub(crate) fn refresh_hydrated_current_nodes(&self) {
@@ -597,6 +759,168 @@ impl ReactiveNode {
 			&self.marker,
 			&self.current_nodes,
 		);
+	}
+}
+
+#[cfg(wasm)]
+struct ScopedRender {
+	view: Page,
+	scope: ReactiveScope,
+}
+
+#[cfg(wasm)]
+fn render_in_reactive_scope(
+	store: &ReactiveNodeStore,
+	render: impl FnOnce() -> Page,
+) -> ScopedRender {
+	let scope = ReactiveScope::new();
+	let view = scope.enter(|| with_reactive_node_store(store, render));
+	ScopedRender { view, scope }
+}
+
+#[cfg(wasm)]
+fn single_control_attrs_match(
+	current_nodes: &Rc<RefCell<Vec<web_sys::Node>>>,
+	view: &Page,
+) -> bool {
+	use wasm_bindgen::JsCast;
+
+	match view {
+		Page::Element(element)
+			if element.bound_control().is_some() && element.child_views().is_empty() =>
+		{
+			let existing_element = current_nodes
+				.borrow()
+				.iter()
+				.find_map(|node| node.dyn_ref::<web_sys::Element>())
+				.cloned();
+			let Some(existing_element) = existing_element else {
+				return false;
+			};
+			let expected_attrs_match = element.attrs().iter().all(|(name, value)| {
+				let name = name.as_ref();
+				if crate::component::into_page::controlled_attribute_is_overridden(
+					element.bound_control(),
+					name,
+				) {
+					return true;
+				}
+				let expected = if BOOLEAN_ATTRS.contains(&name) && !is_boolean_attr_truthy(value) {
+					None
+				} else {
+					Some(value.as_ref())
+				};
+				existing_element.get_attribute(name).as_deref() == expected
+			});
+			let actual_attrs = existing_element.attributes();
+			let actual_attrs_match = (0..actual_attrs.length()).all(|index| {
+				let Some(attribute) = actual_attrs.item(index) else {
+					return true;
+				};
+				let name = attribute.name();
+				if crate::component::into_page::controlled_attribute_is_overridden(
+					element.bound_control(),
+					&name,
+				) {
+					return true;
+				}
+				element
+					.attrs()
+					.iter()
+					.any(|(expected_name, _)| expected_name.as_ref().eq_ignore_ascii_case(&name))
+			});
+			expected_attrs_match && actual_attrs_match
+		}
+		Page::Fragment(children) => {
+			children.len() == 1
+				&& children
+					.first()
+					.is_some_and(|child| single_control_attrs_match(current_nodes, child))
+		}
+		_ => false,
+	}
+}
+
+#[cfg(wasm)]
+impl Drop for ReactiveNode {
+	fn drop(&mut self) {
+		let _marker_removal = MarkerRemovalGuard::new(self.start_marker.as_ref(), &self.marker);
+		if let Some(effect) = self.effect.take() {
+			effect.dispose();
+		}
+		clear_reactive_node_store(&self.reactive_nodes);
+	}
+}
+
+#[cfg(wasm)]
+struct MarkerRemovalGuard {
+	start_marker: Option<web_sys::Comment>,
+	marker: web_sys::Comment,
+}
+
+#[cfg(wasm)]
+impl MarkerRemovalGuard {
+	fn new(start_marker: Option<&web_sys::Comment>, marker: &web_sys::Comment) -> Self {
+		Self {
+			start_marker: start_marker.cloned(),
+			marker: marker.clone(),
+		}
+	}
+}
+
+#[cfg(wasm)]
+impl Drop for MarkerRemovalGuard {
+	fn drop(&mut self) {
+		if let Some(start_marker) = self.start_marker.as_ref()
+			&& remove_marker_range_from_dom(start_marker, &self.marker)
+		{
+			return;
+		}
+		remove_marker_from_dom(self.start_marker.as_ref());
+		remove_marker_from_dom(Some(&self.marker));
+	}
+}
+
+#[cfg(wasm)]
+fn remove_marker_range_from_dom(
+	start_marker: &web_sys::Comment,
+	marker: &web_sys::Comment,
+) -> bool {
+	let start_node: web_sys::Node = start_marker.clone().into();
+	let marker_node: web_sys::Node = marker.clone().into();
+	let Some(parent) = start_node.parent_node() else {
+		return false;
+	};
+	if !marker_node
+		.parent_node()
+		.is_some_and(|marker_parent| marker_parent.is_same_node(Some(&parent)))
+	{
+		return false;
+	}
+
+	let mut nodes = Vec::new();
+	let mut current = Some(start_node);
+	while let Some(node) = current {
+		let is_marker = node.is_same_node(Some(&marker_node));
+		current = node.next_sibling();
+		nodes.push(node);
+		if is_marker {
+			for node in nodes {
+				let _ = parent.remove_child(&node);
+			}
+			return true;
+		}
+	}
+
+	false
+}
+
+#[cfg(wasm)]
+fn remove_marker_from_dom(marker: Option<&web_sys::Comment>) {
+	let Some(marker) = marker else { return };
+	let marker_node: web_sys::Node = marker.clone().into();
+	if let Some(parent) = marker_node.parent_node() {
+		let _ = parent.remove_child(&marker_node);
 	}
 }
 
@@ -656,22 +980,16 @@ fn update_activity_boundary_attrs(
 	}
 
 	let nodes = current_nodes.borrow();
-	if nodes.len() != 1 {
-		return false;
-	}
-
-	let Some(existing_element) = nodes[0].dyn_ref::<web_sys::Element>() else {
+	let Some(existing_element) = nodes
+		.iter()
+		.filter_map(|node| node.dyn_ref::<web_sys::Element>())
+		.find(|element| {
+			element.get_attribute("data-rh-state-preserved").as_deref() == Some("true")
+				&& element.get_attribute("data-rh-activity").is_some()
+		})
+	else {
 		return false;
 	};
-
-	if existing_element
-		.get_attribute("data-rh-state-preserved")
-		.as_deref()
-		!= Some("true")
-		|| existing_element.get_attribute("data-rh-activity").is_none()
-	{
-		return false;
-	}
 
 	let _ = existing_element.set_attribute("data-rh-activity", activity_mode);
 	let _ = existing_element.set_attribute("data-rh-state-preserved", "true");
@@ -687,135 +1005,12 @@ fn update_activity_boundary_attrs(
 	true
 }
 
-#[cfg(wasm)]
-fn relocate_nested_reactive_range(
-	document: &web_sys::Document,
-	parent: &web_sys::Node,
-	outer_marker: &web_sys::Comment,
-	current_nodes: &Rc<RefCell<Vec<web_sys::Node>>>,
-	reactive_marker: web_sys::Node,
-) -> web_sys::Node {
-	let start = document.create_comment("reactive-range-start");
-	let end = document.create_comment("reactive-range-end");
-	parent
-		.insert_before(&start, Some(outer_marker))
-		.expect("should insert nested reactive range start");
-	for node in current_nodes.borrow().iter() {
-		let mut owned_nodes = vec![node.clone()];
-		let is_range_start = node
-			.dyn_ref::<web_sys::Comment>()
-			.is_some_and(|comment| comment.data() == "reactive-range-start");
-		if is_range_start {
-			let mut depth = 1usize;
-			let mut next = node.next_sibling();
-			while let Some(current) = next {
-				next = current.next_sibling();
-				let is_nested_range_start = current
-					.dyn_ref::<web_sys::Comment>()
-					.is_some_and(|comment| comment.data() == "reactive-range-start");
-				let is_range_end = current
-					.dyn_ref::<web_sys::Comment>()
-					.is_some_and(|comment| comment.data() == "reactive-range-end");
-				owned_nodes.push(current);
-				if is_nested_range_start {
-					depth += 1;
-				}
-				if is_range_end {
-					depth -= 1;
-				}
-				if depth == 0 {
-					break;
-				}
-			}
-		}
-		for owned_node in owned_nodes {
-			parent
-				.insert_before(&owned_node, Some(outer_marker))
-				.expect("should relocate nested reactive node");
-		}
-	}
-	parent
-		.insert_before(&reactive_marker, Some(outer_marker))
-		.expect("should relocate nested reactive marker");
-	parent
-		.insert_before(&end, Some(outer_marker))
-		.expect("should insert nested reactive range end");
-	start.into()
-}
-
-#[cfg(wasm)]
-fn remove_owned_node(node: web_sys::Node) {
-	use wasm_bindgen::JsCast;
-
-	let is_range_start = node
-		.dyn_ref::<web_sys::Comment>()
-		.is_some_and(|comment| comment.data() == "reactive-range-start");
-	if !is_range_start {
-		if let Some(parent) = node.parent_node() {
-			let _ = parent.remove_child(&node);
-		}
-		return;
-	}
-	let mut depth = 0usize;
-	let mut next = Some(node);
-	while let Some(current) = next {
-		next = current.next_sibling();
-		let is_range_start = current
-			.dyn_ref::<web_sys::Comment>()
-			.is_some_and(|comment| comment.data() == "reactive-range-start");
-		let is_range_end = current
-			.dyn_ref::<web_sys::Comment>()
-			.is_some_and(|comment| comment.data() == "reactive-range-end");
-		if is_range_start {
-			depth += 1;
-		}
-		if let Some(parent) = current.parent_node() {
-			let _ = parent.remove_child(&current);
-		}
-		if is_range_end {
-			depth -= 1;
-		}
-		if depth == 0 {
-			break;
-		}
-	}
-}
-
 /// Mounts a Page before a marker node and returns the created DOM nodes.
 ///
 /// This function recursively mounts the view tree and inserts all created
 /// nodes before the marker comment node.
 #[cfg(wasm)]
 fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::Node> {
-	mount_view_before_marker(marker, || view)
-}
-
-#[cfg(wasm)]
-fn mount_view_before_marker(
-	marker: &web_sys::Comment,
-	render: impl FnOnce() -> Page,
-) -> Vec<web_sys::Node> {
-	let scope = ReactiveScope::new();
-	let nodes = scope.enter(|| mount_before_marker_inner(marker, render()));
-	store_reactive_scope(scope);
-	nodes
-}
-
-#[cfg(wasm)]
-pub(crate) fn render_view_in_reactive_node_store(
-	store: &ReactiveNodeStore,
-	render: impl FnOnce() -> Page,
-) -> Page {
-	with_reactive_node_store(store, || {
-		let scope = ReactiveScope::new();
-		let view = scope.enter(render);
-		store_reactive_scope(scope);
-		view
-	})
-}
-
-#[cfg(wasm)]
-fn mount_before_marker_inner(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::Node> {
 	use wasm_bindgen::JsCast;
 
 	let document = web_sys::window()
@@ -829,62 +1024,97 @@ fn mount_before_marker_inner(marker: &web_sys::Comment, view: Page) -> Vec<web_s
 
 	match view {
 		Page::Element(el) => {
-			// Decompose the element to avoid ownership issues
-			let (tag, attrs, children, _is_void, event_handlers) = el.into_parts();
+			let mount_element = || {
+				// Decompose the element to avoid ownership issues
+				let (tag, attrs, children, _is_void, event_handlers, control_binding) =
+					el.into_parts_with_control_binding();
+				let element = document
+					.create_element(&tag)
+					.expect("should create element");
 
-			let element = document
-				.create_element(&tag)
-				.expect("should create element");
-
-			// Set attributes
-			for (name, value) in attrs {
-				// Skip falsy boolean attributes
-				let name_str: &str = name.as_ref();
-				if BOOLEAN_ATTRS.contains(&name_str) && !is_boolean_attr_truthy(&value) {
-					continue;
-				}
-				let _ = element.set_attribute(&name, &value);
-			}
-
-			// Mount children
-			let element_wrapper = crate::dom::Element::new(element.clone());
-			for child in children {
-				let _ = child.mount(&element_wrapper);
-			}
-
-			// Attach event handlers
-			for (event_type, handler) in event_handlers {
-				use wasm_bindgen::closure::Closure;
-
-				let handler_clone = handler.clone();
-				let scope = reinhardt_core::reactive::scope::current_scope_id();
-				#[cfg(feature = "i18n")]
-				let i18n_context = crate::i18n::current_i18n_callback_context();
-				let closure = Closure::wrap(Box::new(move |event: web_sys::Event| {
-					#[cfg(feature = "i18n")]
-					{
-						crate::i18n::with_optional_i18n_context(i18n_context.as_ref(), || {
-							crate::callback::run_event_handler_in_scope(
-								scope,
-								&handler_clone,
-								event,
-							);
-						});
+				// Set attributes
+				for (name, value) in attrs {
+					// Skip falsy boolean attributes
+					let name_str: &str = name.as_ref();
+					if BOOLEAN_ATTRS.contains(&name_str) && !is_boolean_attr_truthy(&value) {
+						continue;
 					}
-					#[cfg(not(feature = "i18n"))]
-					crate::callback::run_event_handler_in_scope(scope, &handler_clone, event);
-				}) as Box<dyn FnMut(web_sys::Event)>);
+					if crate::component::into_page::controlled_attribute_is_overridden(
+						control_binding.as_ref(),
+						name_str,
+					) {
+						continue;
+					}
+					let _ = element.set_attribute(&name, &value);
+				}
 
-				let _ = element.add_event_listener_with_callback(
-					event_type.as_str(),
-					closure.as_ref().unchecked_ref(),
-				);
-				closure.forget();
-			}
+				let element_wrapper = crate::dom::Element::new(element.clone());
+				let mount_children_before_binding = tag.eq_ignore_ascii_case("select");
+				let skip_bound_textarea_children =
+					control_binding.is_some() && tag.eq_ignore_ascii_case("textarea");
+				let mut children = children.into_iter();
+				if mount_children_before_binding {
+					for child in children.by_ref() {
+						child.mount(&element_wrapper)?;
+					}
+				}
 
-			// Insert before marker
-			let _ = parent.insert_before(&element, Some(marker));
-			nodes.push(element.unchecked_into());
+				if let Some(binding) = control_binding.as_ref() {
+					crate::component::into_page::initialize_control_default(
+						&element_wrapper,
+						binding,
+					);
+				}
+				let binding_controller = control_binding
+					.map(|binding| {
+						crate::dom::control_binding::ControlBindingController::mount(
+							element_wrapper.clone(),
+							binding,
+						)
+					})
+					.transpose()?;
+				let mut event_handles = Vec::new();
+				for (event_type, handler) in event_handlers {
+					let handler_clone = handler.clone();
+					#[cfg(feature = "i18n")]
+					let i18n_context = crate::i18n::current_i18n_callback_context();
+					event_handles.push(element_wrapper.add_event_listener_with_event(
+						event_type.as_str(),
+						move |event| {
+							#[cfg(feature = "i18n")]
+							{
+								crate::i18n::with_optional_i18n_context(
+									i18n_context.as_ref(),
+									|| handler_clone(event),
+								);
+							}
+							#[cfg(not(feature = "i18n"))]
+							handler_clone(event);
+						},
+					));
+				}
+
+				if !mount_children_before_binding && !skip_bound_textarea_children {
+					let child_marker = document.create_comment("reactive-element-children");
+					element
+						.append_child(&child_marker)
+						.map_err(|_| MountError::AppendChildFailed)?;
+					for child in children {
+						mount_before_marker(&child_marker, child);
+					}
+					let _ = element.remove_child(&child_marker);
+				}
+
+				parent
+					.insert_before(&element, Some(marker))
+					.map_err(|_| MountError::AppendChildFailed)?;
+				store_reactive_node((binding_controller, event_handles));
+				Ok::<_, MountError>(element.unchecked_into::<web_sys::Node>())
+			};
+			let Ok(element) = with_reactive_node_transaction(mount_element) else {
+				return nodes;
+			};
+			nodes.push(element);
 		}
 		Page::Text(text) => {
 			let text_node = document.create_text_node(&text);
@@ -893,18 +1123,18 @@ fn mount_before_marker_inner(marker: &web_sys::Comment, view: Page) -> Vec<web_s
 		}
 		Page::Fragment(children) => {
 			for child in children {
-				nodes.extend(mount_before_marker_inner(marker, child));
+				nodes.extend(mount_before_marker(marker, child));
 			}
 		}
 		Page::KeyedFragment(children) => {
 			for (_, child) in children {
-				nodes.extend(mount_before_marker_inner(marker, child));
+				nodes.extend(mount_before_marker(marker, child));
 			}
 		}
 		Page::Outlet(outlet) => {
 			let id = outlet.id().map(str::to_string);
 			if let Some(child) = outlet.into_child() {
-				nodes.extend(mount_before_marker_inner(marker, child));
+				nodes.extend(mount_before_marker(marker, child));
 			} else if let Some(id) = id {
 				let element = document
 					.create_element("reinhardt-outlet")
@@ -918,168 +1148,97 @@ fn mount_before_marker_inner(marker: &web_sys::Comment, view: Page) -> Vec<web_s
 		Page::Empty => {}
 		Page::WithHead { view, .. } => {
 			// Head is handled separately; just mount the content
-			nodes.extend(mount_before_marker_inner(marker, *view));
+			nodes.extend(mount_before_marker(marker, *view));
 		}
 		Page::ReactiveIf(reactive_if) => {
-			// Decompose the ReactiveIf to get the closures
 			let (condition, then_view, else_view) = reactive_if.into_parts();
-
-			let parent_wrapper = crate::dom::Element::new(parent.clone().unchecked_into());
-			let nested_node = ReactiveIfNode::new(&parent_wrapper, condition, then_view, else_view);
-			nodes.push(relocate_nested_reactive_range(
-				&document,
-				&parent,
-				marker,
-				&nested_node.current_nodes,
-				nested_node.marker_node(),
-			));
+			let nested_node =
+				ReactiveIfNode::new_before_marker(marker, condition, then_view, else_view);
 			store_reactive_node(nested_node);
 		}
 		Page::Reactive(reactive) => {
-			let parent_wrapper = crate::dom::Element::new(parent.clone().unchecked_into());
 			let render = reactive.into_render();
-			let nested_node = ReactiveNode::new(&parent_wrapper, render);
-			nodes.push(relocate_nested_reactive_range(
-				&document,
-				&parent,
-				marker,
-				&nested_node.current_nodes,
-				nested_node.marker_node(),
-			));
+			let nested_node = ReactiveNode::new_before_marker(marker, render);
 			store_reactive_node(nested_node);
 		}
 		Page::Suspense(node) => {
-			nodes.extend(mount_before_marker_inner(marker, node.render_branch()));
+			nodes.extend(mount_before_marker(marker, node.render_branch()));
 		}
 		Page::Deferred(node) => {
-			nodes.extend(mount_before_marker_inner(marker, node.content()));
+			nodes.extend(mount_before_marker(marker, node.content()));
 		}
 	}
 
 	nodes
 }
 
-#[cfg(all(test, wasm))]
+// Note: is_boolean_attr_truthy and BOOLEAN_ATTRS are imported from reinhardt_core::types::page
+
+#[cfg(all(test, native))]
 mod tests {
-	use super::*;
-	use crate::reactive::{Effect, Signal, with_runtime};
-	use std::cell::{Cell, RefCell};
+	use std::cell::Cell;
+	use std::panic::{AssertUnwindSafe, catch_unwind};
 	use std::rc::Rc;
-	use std::sync::Arc;
-	use wasm_bindgen_test::*;
 
-	wasm_bindgen_test_configure!(run_in_browser);
+	use rstest::rstest;
 
-	#[wasm_bindgen_test]
-	fn replacing_a_reactive_branch_disposes_its_nested_effects() {
-		let document = web_sys::window()
-			.expect("window should be available")
-			.document()
-			.expect("document should be available");
-		let host = document
-			.create_element("div")
-			.expect("host element should be created");
-		document
-			.body()
-			.expect("document should have a body")
-			.append_child(&host)
-			.expect("host should be attached");
+	use super::*;
 
-		let scope = ReactiveScope::new();
-		let effect_runs = Rc::new(Cell::new(0));
-		let nested_signal = Rc::new(RefCell::new(None));
-		let (branch, _node) = scope.enter(|| {
-			let branch = Signal::new(true);
-			let branch_for_condition = branch;
-			let effect_runs_for_view = Rc::clone(&effect_runs);
-			let nested_signal_for_view = Rc::clone(&nested_signal);
-			let then_view = Arc::new(move || {
-				let nested = Signal::new(0_i32);
-				*nested_signal_for_view.borrow_mut() = Some(nested);
-				let nested_for_effect = nested;
-				let effect_runs = Rc::clone(&effect_runs_for_view);
-				Effect::new(move || {
-					let _ = nested_for_effect.get();
-					effect_runs.set(effect_runs.get() + 1);
-				});
-				Page::text("then")
-			});
-			let node = ReactiveIfNode::new(
-				&crate::dom::Element::new(host.clone()),
-				Arc::new(move || branch_for_condition.get()),
-				then_view,
-				Arc::new(|| Page::text("else")),
-			);
-			(branch, node)
-		});
-
-		assert_eq!(effect_runs.get(), 1);
-		branch.set(false);
-		with_runtime(|runtime| runtime.flush_updates());
-
-		let nested = nested_signal
-			.borrow()
-			.expect("then branch should create a nested signal");
-		assert!(nested.try_set(1).is_err());
-		assert_eq!(effect_runs.get(), 1);
-
-		scope.dispose();
-		host.remove();
+	struct CyclicDropProbe {
+		drops: Rc<Cell<usize>>,
+		_store_cycle: ReactiveNodeStore,
 	}
 
-	#[wasm_bindgen_test]
-	fn replacing_a_reactive_view_disposes_its_rendered_effects() {
-		let document = web_sys::window()
-			.expect("window should be available")
-			.document()
-			.expect("document should be available");
-		let host = document
-			.create_element("div")
-			.expect("host element should be created");
-		document
-			.body()
-			.expect("document should have a body")
-			.append_child(&host)
-			.expect("host should be attached");
+	impl Drop for CyclicDropProbe {
+		fn drop(&mut self) {
+			self.drops.set(self.drops.get() + 1);
+		}
+	}
 
-		let scope = ReactiveScope::new();
-		let effect_runs = Rc::new(Cell::new(0));
-		let nested_signals = Rc::new(RefCell::new(Vec::new()));
-		let (trigger, _node) = scope.enter(|| {
-			let trigger = Signal::new(false);
-			let trigger_for_render = trigger;
-			let effect_runs_for_view = Rc::clone(&effect_runs);
-			let nested_signals_for_view = Rc::clone(&nested_signals);
-			let node = ReactiveNode::new(
-				&crate::dom::Element::new(host.clone()),
-				Arc::new(move || {
-					let _ = trigger_for_render.get();
-					let nested = Signal::new(0_i32);
-					nested_signals_for_view.borrow_mut().push(nested);
-					let nested_for_effect = nested;
-					let effect_runs = Rc::clone(&effect_runs_for_view);
-					Effect::new(move || {
-						let _ = nested_for_effect.get();
-						effect_runs.set(effect_runs.get() + 1);
-					});
-					Page::text("reactive")
-				}),
-			);
-			(trigger, node)
-		});
+	#[rstest]
+	fn reactive_node_transaction_rolls_back_cycles_during_unwind() {
+		// Arrange
+		let destination = new_reactive_node_store();
+		let drops = Rc::new(Cell::new(0));
+		let transaction_drops = Rc::clone(&drops);
 
-		assert_eq!(effect_runs.get(), 1);
-		trigger.set(true);
-		with_runtime(|runtime| runtime.flush_updates());
+		// Act
+		let result = catch_unwind(AssertUnwindSafe(|| {
+			let transaction = ReactiveNodeTransaction::new(destination.clone());
+			let staged = transaction.store();
+			staged.borrow_mut().push(Box::new(CyclicDropProbe {
+				drops: transaction_drops,
+				_store_cycle: staged.clone(),
+			}));
+			panic!("transaction rollback");
+		}));
 
-		let nested = nested_signals.borrow();
-		assert_eq!(nested.len(), 2);
-		assert!(nested[0].try_set(1).is_err());
-		assert_eq!(effect_runs.get(), 2);
+		// Assert
+		assert!(result.is_err());
+		assert_eq!(drops.get(), 1);
+		assert!(destination.borrow().is_empty());
+	}
 
-		scope.dispose();
-		host.remove();
+	#[rstest]
+	fn reactive_node_transaction_transfers_committed_owners() {
+		// Arrange
+		let destination = new_reactive_node_store();
+		let drops = Rc::new(Cell::new(0));
+		let mut transaction = ReactiveNodeTransaction::new(destination.clone());
+		let staged = transaction.store();
+		staged.borrow_mut().push(Box::new(CyclicDropProbe {
+			drops: Rc::clone(&drops),
+			_store_cycle: staged.clone(),
+		}));
+
+		// Act
+		transaction.commit();
+		drop(transaction);
+
+		// Assert
+		assert_eq!(drops.get(), 0);
+		assert_eq!(destination.borrow().len(), 1);
+		clear_reactive_node_store(&destination);
+		assert_eq!(drops.get(), 1);
 	}
 }
-
-// Note: is_boolean_attr_truthy and BOOLEAN_ATTRS are imported from reinhardt_core::types::page

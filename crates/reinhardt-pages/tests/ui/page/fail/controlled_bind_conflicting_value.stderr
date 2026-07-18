@@ -1,0 +1,5 @@
+error: a bound text or number input cannot specify a `value` attribute
+ --> tests/ui/page/fail/controlled_bind_conflicting_value.rs:8:10
+  |
+8 |             bind: (),
+  |                   ^^

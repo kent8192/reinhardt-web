@@ -14,8 +14,8 @@ use reinhardt_core::security::redirect::{
 	RedirectValidationError, is_safe_redirect, validate_redirect_url,
 };
 use reinhardt_core::security::xss::{
-	escape_css_selector, escape_html, escape_html_attr, escape_html_content, escape_javascript,
-	sanitize_html, strip_tags_safe, validate_css_selector,
+	escape_css_selector, escape_html, escape_html_attr, escape_javascript, sanitize_html,
+	strip_tags_safe, validate_css_selector,
 };
 use rstest::rstest;
 
@@ -347,12 +347,12 @@ fn xss_escape_html_preserves_safe_text() {
 }
 
 #[rstest]
-fn xss_escape_html_content_works() {
+fn xss_escape_html_for_content_works() {
 	// Arrange
 	let input = "<div>content & more</div>";
 
 	// Act
-	let escaped = escape_html_content(input);
+	let escaped = escape_html(input);
 
 	// Assert
 	assert!(!escaped.contains('<'));
@@ -736,7 +736,7 @@ fn security_error_xss_detected() {
 #[rstest]
 fn security_error_is_debug_printable() {
 	// Arrange
-	let errors = vec![
+	let errors = [
 		SecurityError::CsrfValidationFailed("test".into()),
 		SecurityError::MissingCsrfToken,
 		SecurityError::InvalidConfiguration("test".into()),

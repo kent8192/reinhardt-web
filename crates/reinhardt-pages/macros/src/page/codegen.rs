@@ -25,7 +25,7 @@
 //! ```
 
 use proc_macro2::{Span, TokenStream};
-use quote::quote;
+use quote::{quote, quote_spanned};
 use std::collections::HashSet;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
@@ -38,8 +38,9 @@ use reinhardt_event_catalog::KnownEvent;
 use reinhardt_manouche::core::types::AttrValue;
 use reinhardt_manouche::core::{
 	ComponentInvocationForm, ImplicitPageCapture, IntrinsicEvent, PageExpression, PageParam,
-	PageText, TypedPageAttr, TypedPageBody, TypedPageComponent, TypedPageElement, TypedPageElse,
-	TypedPageFor, TypedPageIf, TypedPageMacro, TypedPageMacroForm, TypedPageNode, TypedPageWatch,
+	PageText, TypedControlBinding, TypedControlBindingExpr, TypedControlBindingKind, TypedPageAttr,
+	TypedPageBody, TypedPageComponent, TypedPageElement, TypedPageElse, TypedPageFor, TypedPageIf,
+	TypedPageMacro, TypedPageMacroForm, TypedPageNode, TypedPageWatch,
 };
 
 use super::scope_utils::collect_pat_idents;
@@ -289,6 +290,20 @@ impl NodeCaptureCollector<'_> {
 			TypedPageNode::Element(elem) => {
 				for attr in &elem.attrs {
 					self.expr_collector.visit_expr(&attr.value.to_expr());
+				}
+				if let Some(binding) = &elem.control_binding {
+					match &binding.expression {
+						TypedControlBindingExpr::Direct(value) => {
+							self.expr_collector.visit_expr(value);
+						}
+						TypedControlBindingExpr::NumberWithError { value, error } => {
+							self.expr_collector.visit_expr(value);
+							self.expr_collector.visit_expr(error);
+						}
+					}
+					if let Some(value) = &binding.radio_value {
+						self.expr_collector.visit_expr(value);
+					}
 				}
 				for event in &elem.events {
 					self.expr_collector.visit_expr(event.handler());
@@ -541,13 +556,35 @@ fn generate_element(
 	ctx: &CodegenContext,
 ) -> TokenStream {
 	let tag = elem.tag.to_string();
+	let radio_value_ident = syn::Ident::new("__reinhardt_radio_value", Span::mixed_site());
+	let radio_value = elem.control_binding.as_ref().and_then(|binding| {
+		(binding.kind == TypedControlBindingKind::Radio).then(|| {
+			let value = binding.radio_value.as_ref().expect("validated radio value");
+			let value = wrap_expr_with_captures(value, pages_crate, ctx);
+			quote! { (#value).to_string() }
+		})
+	});
+	let radio_value_initializer = radio_value.as_ref().map(|value| {
+		quote! { let #radio_value_ident = #value; }
+	});
 
 	// Generate attributes
 	let regular_attrs: Vec<TokenStream> = elem
 		.attrs
 		.iter()
 		.filter(|attr| !BOOLEAN_ATTRS.contains(&attr.html_name().as_str()))
-		.map(|attr| generate_regular_attr_pair(attr, pages_crate, ctx))
+		.map(|attr| {
+			if radio_value.is_some() && attr.html_name() == "value" {
+				quote! {
+					(
+						::std::borrow::Cow::Borrowed("value"),
+						::std::borrow::Cow::Owned(#radio_value_ident.clone())
+					)
+				}
+			} else {
+				generate_regular_attr_pair(attr, pages_crate, ctx)
+			}
+		})
 		.collect();
 	let bool_attrs: Vec<TokenStream> = elem
 		.attrs
@@ -588,10 +625,29 @@ fn generate_element(
 		};
 	}
 
+	if let Some(binding) = &elem.control_binding {
+		let control_binding = generate_control_binding(
+			binding,
+			pages_crate,
+			ctx,
+			radio_value
+				.as_ref()
+				.map(|_| quote! { #radio_value_ident.clone() }),
+		);
+		base_builder = quote! {
+			#base_builder #control_binding
+		};
+	}
+
 	// Fast path: no events - simple generation.
 	if elem.events.is_empty() {
-		return quote! {
+		let page = quote! {
 			#pages_crate::component::IntoPage::into_page(#base_builder)
+		};
+		return if let Some(initializer) = radio_value_initializer {
+			quote! {{ #initializer #page }}
+		} else {
+			page
 		};
 	}
 
@@ -602,11 +658,69 @@ fn generate_element(
 		.map(|event| generate_event(event, pages_crate, ctx))
 		.collect();
 
-	quote! {
+	let page = quote! {
 		#pages_crate::component::IntoPage::into_page(
 			#base_builder #(#event_bindings)*
 		)
+	};
+	if let Some(initializer) = radio_value_initializer {
+		quote! {{ #initializer #page }}
+	} else {
+		page
 	}
+}
+
+fn generate_control_binding(
+	binding: &TypedControlBinding,
+	pages_crate: &TokenStream,
+	ctx: &CodegenContext,
+	radio_value_override: Option<TokenStream>,
+) -> TokenStream {
+	let value = match &binding.expression {
+		TypedControlBindingExpr::Direct(value) => value,
+		TypedControlBindingExpr::NumberWithError { value, .. } => value,
+	};
+	let value = wrap_expr_with_captures(value, pages_crate, ctx);
+	let binding_span = binding.span;
+	let descriptor = match (&binding.kind, &binding.expression) {
+		(TypedControlBindingKind::Text, _) => {
+			quote_spanned!(binding_span=> #pages_crate::component::ControlBinding::text((#value).clone()))
+		}
+		(TypedControlBindingKind::Checkbox, _) => {
+			quote_spanned!(binding_span=> #pages_crate::component::ControlBinding::checkbox((#value).clone()))
+		}
+		(TypedControlBindingKind::SelectOne, _) => {
+			quote_spanned!(binding_span=> #pages_crate::component::ControlBinding::select_one((#value).clone()))
+		}
+		(TypedControlBindingKind::SelectMany, _) => {
+			quote_spanned!(binding_span=> #pages_crate::component::ControlBinding::select_many((#value).clone()))
+		}
+		(TypedControlBindingKind::Number, TypedControlBindingExpr::Direct(_)) => {
+			quote_spanned!(binding_span=> #pages_crate::component::ControlBinding::number((#value).clone()))
+		}
+		(
+			TypedControlBindingKind::Number,
+			TypedControlBindingExpr::NumberWithError { error, .. },
+		) => {
+			let error = wrap_expr_with_captures(error, pages_crate, ctx);
+			quote_spanned!(binding_span=> #pages_crate::component::ControlBinding::number_with_error(
+				(#value).clone(),
+				(#error).clone()
+			))
+		}
+		(TypedControlBindingKind::Radio, _) => {
+			let radio_value = radio_value_override.unwrap_or_else(|| {
+				let radio_value = binding.radio_value.as_ref().expect("validated radio value");
+				let radio_value = wrap_expr_with_captures(radio_value, pages_crate, ctx);
+				quote! { (#radio_value).to_string() }
+			});
+			quote_spanned!(binding_span=> #pages_crate::component::ControlBinding::radio(
+				(#value).clone(),
+				#radio_value
+			))
+		}
+	};
+	quote!(.control_binding(#descriptor))
 }
 
 /// Boolean attributes that should use `.bool_attr()` method.
@@ -1625,6 +1739,30 @@ mod tests {
 			.collect();
 
 		assert_eq!(captures, vec!["items"]);
+	}
+
+	#[test]
+	fn test_if_capture_includes_control_binding_expression() {
+		let input = quote::quote!({
+			if visible.get() {
+				input {
+					a11y: off,
+					bind: selected,
+				}
+			}
+		});
+		let untyped_ast: reinhardt_manouche::core::PageMacro = syn::parse2(input).unwrap();
+		let typed_ast = crate::page::validator::validate(&untyped_ast).unwrap();
+		let if_node = &typed_ast.body().nodes[0];
+		let ctx = CodegenContext::new(typed_ast.implicit_captures());
+
+		let captures: Vec<String> = ctx
+			.captures_in_node(if_node)
+			.into_iter()
+			.map(|ident| ident.to_string())
+			.collect();
+
+		assert_eq!(captures, vec!["visible", "selected"]);
 	}
 
 	#[test]
