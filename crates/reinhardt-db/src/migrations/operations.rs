@@ -625,7 +625,7 @@ impl Constraint {
 				column,
 				domain,
 			} => {
-				let crate::field_domain::FieldDomain::Enum { values, .. } =
+				let crate::field_domain::FieldDomain::Enum { repr, values } =
 					domain.clone().canonicalized();
 				let literals = values
 					.into_iter()
@@ -638,10 +638,17 @@ impl Constraint {
 						}
 					})
 					.collect::<Vec<_>>();
+				let column_expression = if matches!(dialect, SqlDialect::Mysql)
+					&& matches!(repr, crate::field_domain::ModelEnumRepr::String)
+				{
+					format!("BINARY {}", quote(column))
+				} else {
+					quote(column)
+				};
 				format!(
 					"CONSTRAINT {} CHECK ({} IN ({}))",
 					quote(name),
-					quote(column),
+					column_expression,
 					literals.join(", ")
 				)
 			}
@@ -6736,7 +6743,10 @@ mod tests {
 
 		let sql = operation.to_sql(&SqlDialect::Mysql);
 
-		assert!(sql.contains("CHECK (`job_status` IN ('queued'))"), "{sql}");
+		assert!(
+			sql.contains("CHECK (BINARY `job_status` IN ('queued'))"),
+			"{sql}"
+		);
 	}
 
 	#[test]
@@ -6801,7 +6811,10 @@ mod tests {
 			.expect("drop table should be reversible")
 			.join("\n");
 
-		assert!(sql.contains("CHECK (`job_status` IN ('queued'))"), "{sql}");
+		assert!(
+			sql.contains("CHECK (BINARY `job_status` IN ('queued'))"),
+			"{sql}"
+		);
 	}
 
 	#[test]
@@ -6823,7 +6836,10 @@ mod tests {
 
 		let sql = operation.to_sql(&SqlDialect::Mysql);
 
-		assert!(sql.contains("CHECK (`job_status` IN ('queued'))"), "{sql}");
+		assert!(
+			sql.contains("CHECK (BINARY `job_status` IN ('queued'))"),
+			"{sql}"
+		);
 	}
 
 	#[test]
@@ -6850,7 +6866,10 @@ mod tests {
 			sql.contains("ALTER TABLE `jobs` ADD CONSTRAINT `jobs_status_model_enum_check`"),
 			"{sql}"
 		);
-		assert!(sql.contains("CHECK (`job_status` IN ('queued'))"), "{sql}");
+		assert!(
+			sql.contains("CHECK (BINARY `job_status` IN ('queued'))"),
+			"{sql}"
+		);
 	}
 
 	#[test]
@@ -6879,7 +6898,10 @@ mod tests {
 
 		assert!(sql.starts_with("CREATE TABLE `jobs`"), "{sql}");
 		assert!(sql.contains("`job_status` VARCHAR(32)"), "{sql}");
-		assert!(sql.contains("CHECK (`job_status` IN ('queued'))"), "{sql}");
+		assert!(
+			sql.contains("CHECK (BINARY `job_status` IN ('queued'))"),
+			"{sql}"
+		);
 	}
 
 	#[test]
@@ -7071,7 +7093,7 @@ mod tests {
 		let sql = operation.to_sql(&SqlDialect::Mysql);
 
 		assert!(
-			sql.contains(&format!("CHECK (`{column}` IN ('queued'))")),
+			sql.contains(&format!("CHECK (BINARY `{column}` IN ('queued'))")),
 			"{sql}"
 		);
 	}
@@ -9534,7 +9556,7 @@ mod tests {
 			.join("\n");
 
 		assert!(
-			sql.contains(&format!("CHECK (`{column}` IN ('queued'))")),
+			sql.contains(&format!("CHECK (BINARY `{column}` IN ('queued'))")),
 			"{sql}"
 		);
 	}

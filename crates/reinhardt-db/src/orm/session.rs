@@ -405,6 +405,11 @@ impl Session {
 					)),
 					Alias::new(column_name),
 				);
+			} else if field.field_type.contains("DecimalField") {
+				select_query.expr_as(
+					Expr::cust(decimal_select_column_sql(self.db_backend, column_name)),
+					Alias::new(column_name),
+				);
 			} else {
 				select_query.column(Alias::new(column_name));
 			}
@@ -523,6 +528,9 @@ impl Session {
 							.map(serde_json::Value::from)
 							.unwrap_or(serde_json::Value::Null)
 					}
+				}
+				typ if typ.contains("DecimalField") => {
+					decimal_row_value(&row, column_name, field.nullable)
 				}
 				typ if typ.contains("BinaryField") => {
 					let bytes = if field.nullable {
@@ -654,6 +662,8 @@ impl Session {
 				json_or_array_select_column_alias_sql(self.db_backend, field, column_name)
 			} else if is_temporal_field_type(&field.field_type) {
 				temporal_select_column_alias_sql(self.db_backend, column_name, &field.field_type)
+			} else if field.field_type.contains("DecimalField") {
+				decimal_select_column_alias_sql(self.db_backend, column_name)
 			} else {
 				// Regular column
 				match self.db_backend {
@@ -781,6 +791,9 @@ impl Session {
 								.map(serde_json::Value::from)
 								.unwrap_or(serde_json::Value::Null)
 						}
+					}
+					typ if typ.contains("DecimalField") => {
+						decimal_row_value(&row, column_name, field.nullable)
 					}
 					typ if typ.contains("BinaryField") => {
 						let bytes = if field.nullable {
@@ -1660,7 +1673,35 @@ fn temporal_select_column_alias_sql(
 	}
 }
 
+fn decimal_select_column_sql(backend: DbBackend, column_name: &str) -> String {
+	match backend {
+		DbBackend::Postgres => format!("CAST(\"{}\" AS TEXT)", column_name),
+		DbBackend::Mysql => format!("CAST(`{}` AS CHAR)", column_name),
+		DbBackend::Sqlite => format!("\"{}\"", column_name),
+	}
+}
+
+fn decimal_select_column_alias_sql(backend: DbBackend, column_name: &str) -> String {
+	let expression = decimal_select_column_sql(backend, column_name);
+	match backend {
+		DbBackend::Postgres | DbBackend::Sqlite => format!("{} AS \"{}\"", expression, column_name),
+		DbBackend::Mysql => format!("{} AS `{}`", expression, column_name),
+	}
+}
+
 fn temporal_row_value(row: &sqlx::any::AnyRow, column_name: &str, nullable: bool) -> Value {
+	if nullable {
+		row.try_get::<Option<String>, _>(column_name)
+			.map(|value| value.map(Value::from).unwrap_or(Value::Null))
+			.unwrap_or(Value::Null)
+	} else {
+		row.try_get::<String, _>(column_name)
+			.map(Value::from)
+			.unwrap_or(Value::Null)
+	}
+}
+
+fn decimal_row_value(row: &sqlx::any::AnyRow, column_name: &str, nullable: bool) -> Value {
 	if nullable {
 		row.try_get::<Option<String>, _>(column_name)
 			.map(|value| value.map(Value::from).unwrap_or(Value::Null))
@@ -2336,6 +2377,58 @@ mod tests {
 		}
 	}
 
+	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+	struct DecimalSessionModel {
+		id: Option<i64>,
+		amount: rust_decimal::Decimal,
+	}
+
+	#[derive(Debug, Clone)]
+	struct DecimalSessionModelFields;
+
+	impl crate::orm::model::FieldSelector for DecimalSessionModelFields {
+		fn with_alias(self, _alias: &str) -> Self {
+			self
+		}
+	}
+
+	impl Model for DecimalSessionModel {
+		type PrimaryKey = i64;
+		type Fields = DecimalSessionModelFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"decimal_session_models"
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = Some(value);
+		}
+
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+
+		fn new_fields() -> Self::Fields {
+			DecimalSessionModelFields
+		}
+
+		fn field_metadata() -> Vec<FieldInfo> {
+			vec![
+				test_field_info("id", "reinhardt.orm.models.BigIntegerField", false, true),
+				typed_test_field_info(
+					"amount",
+					"reinhardt.orm.models.DecimalField",
+					crate::orm::DatabaseStorageKind::Decimal,
+				),
+			]
+		}
+	}
+
 	fn test_field_info(
 		name: &str,
 		field_type: &str,
@@ -2538,6 +2631,36 @@ mod tests {
 			.execute(&pool)
 			.await
 			.expect("Failed to clear temporal_session_models table");
+
+		Arc::new(pool)
+	}
+
+	async fn create_decimal_session_test_pool() -> Arc<AnyPool> {
+		use sqlx::pool::PoolOptions;
+
+		sqlx::any::install_default_drivers();
+
+		let pool = PoolOptions::<Any>::new()
+			.min_connections(1)
+			.max_connections(5)
+			.connect("sqlite:file:test_session_decimal_db?mode=memory&cache=shared")
+			.await
+			.expect("Failed to create decimal session test pool");
+
+		sqlx::query(
+			"CREATE TABLE IF NOT EXISTS decimal_session_models (
+				id INTEGER PRIMARY KEY,
+				amount TEXT NOT NULL
+			)",
+		)
+		.execute(&pool)
+		.await
+		.expect("Failed to create decimal_session_models table");
+
+		sqlx::query("DELETE FROM decimal_session_models")
+			.execute(&pool)
+			.await
+			.expect("Failed to clear decimal_session_models table");
 
 		Arc::new(pool)
 	}
@@ -3493,6 +3616,42 @@ mod tests {
 			.list_all::<ArraySessionModel>()
 			.await
 			.expect("session list_all should succeed");
+		assert_eq!(all, vec![expected]);
+	}
+
+	#[rstest]
+	#[serial(sqlx_drivers)]
+	#[tokio::test]
+	async fn test_session_hydrates_decimal_fields(_init_drivers: ()) {
+		// Arrange
+		let pool = create_decimal_session_test_pool().await;
+		sqlx::query(
+			"INSERT INTO decimal_session_models (id, amount) VALUES (1, '9007199254740993.01')",
+		)
+		.execute(&*pool)
+		.await
+		.expect("decimal row should insert");
+		let mut session = Session::new(pool, DbBackend::Sqlite)
+			.await
+			.expect("session should initialize");
+		let expected = DecimalSessionModel {
+			id: Some(1),
+			amount: rust_decimal::Decimal::new(900_719_925_474_099_301, 2),
+		};
+
+		// Act
+		let loaded = session
+			.get::<DecimalSessionModel>(1)
+			.await
+			.expect("session get should succeed")
+			.expect("decimal row should exist");
+		let all = session
+			.list_all::<DecimalSessionModel>()
+			.await
+			.expect("session list_all should succeed");
+
+		// Assert
+		assert_eq!(loaded, expected);
 		assert_eq!(all, vec![expected]);
 	}
 

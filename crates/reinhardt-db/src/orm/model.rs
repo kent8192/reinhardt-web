@@ -3,6 +3,20 @@ use std::collections::{BTreeMap, HashMap};
 
 use super::{DatabaseValue, FieldCodecError};
 
+fn legacy_storage_kind(field_type: &str) -> Option<super::DatabaseStorageKind> {
+	if field_type.contains("UuidField") || field_type.contains("UUIDField") {
+		Some(super::DatabaseStorageKind::Uuid)
+	} else if field_type.contains("DateTimeField") {
+		Some(super::DatabaseStorageKind::DateTime)
+	} else if field_type.contains("DateField") {
+		Some(super::DatabaseStorageKind::Date)
+	} else if field_type.contains("TimeField") {
+		Some(super::DatabaseStorageKind::Time)
+	} else {
+		None
+	}
+}
+
 /// JSON carrier used only for final whole-model assembly after field decoding.
 #[doc(hidden)]
 pub type ModelFieldJsonValue = serde_json::Value;
@@ -149,15 +163,17 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 			.iter()
 			.map(|(name, value)| {
 				let metadata = metadata.iter().find(|field| field.name == *name);
+				let storage_kind = metadata.and_then(|field| {
+					field
+						.storage_kind
+						.or_else(|| legacy_storage_kind(&field.field_type))
+				});
 				let is_json_field = metadata
 					.is_some_and(|field| super::json::is_json_field_type(&field.field_type));
 				let value = if is_json_field && !self.field_is_none(name) {
 					DatabaseValue::Json(value.clone())
 				} else {
-					super::json::database_value_from_json(
-						value.clone(),
-						metadata.and_then(|field| field.storage_kind),
-					)?
+					super::json::database_value_from_json(value.clone(), storage_kind)?
 				};
 				Ok((name.clone(), value))
 			})
@@ -659,10 +675,12 @@ impl Default for SoftDelete {
 #[cfg(test)]
 mod tests {
 	use super::Model;
-	use crate::orm::DatabaseValue;
+	use crate::orm::inspection::FieldInfo;
+	use crate::orm::{DatabaseValue, FieldSelector, Manager};
 	use reinhardt_core::macros::{ModelEnum, model};
 	use rstest::rstest;
 	use serde::{Deserialize, Serialize};
+	use std::collections::HashMap;
 
 	#[derive(ModelEnum, Clone, Debug, PartialEq, Serialize, Deserialize)]
 	#[model_enum(repr = "string")]
@@ -691,6 +709,76 @@ mod tests {
 		#[field(max_length = 16)]
 		status: Status,
 		priority: Priority,
+	}
+
+	#[derive(Clone, Debug, Serialize, Deserialize)]
+	struct LegacyTypedRecord {
+		id: Option<i64>,
+		external_id: uuid::Uuid,
+		occurred_at: chrono::DateTime<chrono::Utc>,
+	}
+
+	#[derive(Clone, Debug)]
+	struct LegacyTypedRecordFields;
+
+	impl FieldSelector for LegacyTypedRecordFields {
+		fn with_alias(self, _alias: &str) -> Self {
+			self
+		}
+	}
+
+	impl Model for LegacyTypedRecord {
+		type PrimaryKey = i64;
+		type Fields = LegacyTypedRecordFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"legacy_typed_records"
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = Some(value);
+		}
+
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+
+		fn new_fields() -> Self::Fields {
+			LegacyTypedRecordFields
+		}
+
+		fn field_metadata() -> Vec<FieldInfo> {
+			["id", "external_id", "occurred_at"]
+				.into_iter()
+				.map(|name| FieldInfo {
+					name: name.to_owned(),
+					field_type: match name {
+						"id" => "reinhardt.orm.models.BigIntegerField",
+						"external_id" => "reinhardt.orm.models.UuidField",
+						"occurred_at" => "reinhardt.orm.models.DateTimeField",
+						_ => unreachable!(),
+					}
+					.to_owned(),
+					storage_kind: None,
+					domain: None,
+					nullable: name == "id",
+					primary_key: name == "id",
+					unique: false,
+					blank: false,
+					editable: true,
+					default: None,
+					db_default: None,
+					db_column: None,
+					choices: None,
+					attributes: HashMap::new(),
+				})
+				.collect()
+		}
 	}
 
 	#[rstest]
@@ -745,5 +833,33 @@ mod tests {
 		// Assert
 		assert_eq!(database_value, DatabaseValue::I32(20));
 		assert_eq!(priority, Priority::Normal);
+	}
+
+	#[test]
+	fn legacy_metadata_infers_uuid_and_datetime_database_values() {
+		// Arrange
+		let occurred_at = chrono::DateTime::parse_from_rfc3339("2026-07-18T12:00:00Z")
+			.expect("timestamp should parse")
+			.with_timezone(&chrono::Utc);
+		let record = LegacyTypedRecord {
+			id: Some(1),
+			external_id: uuid::Uuid::nil(),
+			occurred_at,
+		};
+
+		// Act
+		let fields = record
+			.encode_database_fields()
+			.expect("legacy model fields should encode");
+
+		// Assert
+		assert_eq!(
+			fields.get("external_id"),
+			Some(&DatabaseValue::Uuid(uuid::Uuid::nil()))
+		);
+		assert_eq!(
+			fields.get("occurred_at"),
+			Some(&DatabaseValue::DateTime(occurred_at))
+		);
 	}
 }

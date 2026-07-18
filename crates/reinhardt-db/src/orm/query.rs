@@ -10990,7 +10990,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			sql,
-			r#"SELECT * FROM \"test_users\" WHERE \"username\" IS NULL"#
+			r#"SELECT * FROM "test_users" WHERE "username" IS NULL"#
 		);
 	}
 
