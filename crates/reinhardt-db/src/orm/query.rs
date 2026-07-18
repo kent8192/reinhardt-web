@@ -3696,7 +3696,11 @@ where
 					| FilterOperator::IEndsWith),
 					FilterValue::Typed(value),
 				) => {
-					let value = Self::database_value_to_string(Self::typed_database_value(value)?);
+					let value = Self::typed_database_value(value)?;
+					if matches!(value, DatabaseValue::Null) {
+						return Ok(Some(Condition::all().add(col.is_null())));
+					}
+					let value = Self::database_value_to_string(value);
 					let (pattern, insensitive) = match operator {
 						FilterOperator::Contains => (LikePattern::Contains, false),
 						FilterOperator::IContains => (LikePattern::Contains, true),
@@ -10969,6 +10973,25 @@ mod tests {
 
 		// Assert
 		assert_eq!(sql, expected);
+	}
+
+	#[test]
+	fn typed_like_filters_treat_null_as_is_null() {
+		// Arrange
+		let queryset = QuerySet::<TestUser>::new().filter(Filter::new(
+			"username",
+			FilterOperator::Contains,
+			FilterValue::Typed(Ok(DatabaseValue::Null)),
+		));
+
+		// Act
+		let sql = queryset.to_sql().expect("query SQL should compile");
+
+		// Assert
+		assert_eq!(
+			sql,
+			r#"SELECT * FROM \"test_users\" WHERE \"username\" IS NULL"#
+		);
 	}
 
 	#[rstest]

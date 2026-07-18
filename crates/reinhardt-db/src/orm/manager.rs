@@ -1,5 +1,5 @@
 use super::connection::{DatabaseBackend, DatabaseConnection};
-use super::field_codec::database_value_to_query_value;
+use super::field_codec::{DatabaseArrayType, database_value_to_query_value};
 use super::inspection::FieldInfo;
 use super::query::RelationLoadInput;
 use super::{DatabaseValue, FieldCodecError, Model, QuerySet};
@@ -68,6 +68,25 @@ fn database_value_sql_literal(
 	value: DatabaseValue,
 	backend: DatabaseBackend,
 ) -> Result<String, FieldCodecError> {
+	if let DatabaseValue::Array {
+		element_type,
+		values,
+	} = &value
+		&& backend == DatabaseBackend::Postgres
+		&& values.is_empty()
+	{
+		let element_type = match element_type {
+			DatabaseArrayType::String => "text",
+			DatabaseArrayType::I32 => "integer",
+			DatabaseArrayType::I64 => "bigint",
+			DatabaseArrayType::F32 => "real",
+			DatabaseArrayType::F64 => "double precision",
+			DatabaseArrayType::Bool => "boolean",
+			DatabaseArrayType::Uuid => "uuid",
+		};
+		return Ok(format!("ARRAY[]::{element_type}[]"));
+	}
+
 	if backend == DatabaseBackend::Postgres || !matches!(&value, DatabaseValue::Array { .. }) {
 		return Ok(database_value_to_query_value(value).to_sql_literal());
 	}
@@ -2499,6 +2518,29 @@ mod tests {
 			.bulk_update_database_values_sql_detailed(&updates, &fields, DatabaseBackend::Postgres)
 			.expect("PostgreSQL array SQL should render");
 		assert!(postgres_sql.contains("ARRAY["));
+	}
+
+	#[test]
+	fn test_bulk_update_database_values_casts_empty_postgres_arrays() {
+		use crate::orm::{DatabaseArrayType, DatabaseValue};
+
+		let manager = TestUser::objects();
+		let mut field_values = HashMap::new();
+		field_values.insert(
+			"name".to_string(),
+			DatabaseValue::Array {
+				element_type: DatabaseArrayType::String,
+				values: vec![],
+			},
+		);
+		let updates = vec![(DatabaseValue::I64(1), field_values)];
+		let fields = vec!["name".to_string()];
+
+		let sql = manager
+			.bulk_update_database_values_sql_detailed(&updates, &fields, DatabaseBackend::Postgres)
+			.expect("PostgreSQL empty array SQL should render");
+
+		assert!(sql.contains("ARRAY[]::text[]"));
 	}
 
 	#[test]
