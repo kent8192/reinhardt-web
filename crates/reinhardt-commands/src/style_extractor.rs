@@ -1619,6 +1619,30 @@ fn is_style_def_path(path: &syn::Path) -> bool {
 		.is_some_and(|segment| segment.ident == "style_def")
 }
 
+fn contains_style_def_attribute(meta: &Meta) -> bool {
+	if is_style_def_attribute(meta) {
+		return true;
+	}
+	if !meta.path().is_ident("cfg_attr") {
+		return false;
+	}
+	let Meta::List(list) = meta else {
+		return false;
+	};
+	let Ok(arguments) =
+		list.parse_args_with(syn::punctuated::Punctuated::<Meta, syn::Token![,]>::parse_terminated)
+	else {
+		return false;
+	};
+	arguments.iter().skip(1).any(contains_style_def_attribute)
+}
+
+fn has_style_def_attribute(attributes: &[Attribute]) -> bool {
+	attributes
+		.iter()
+		.any(|attribute| contains_style_def_attribute(&attribute.meta))
+}
+
 impl<'ast> Visit<'ast> for DefinitionScanner<'_> {
 	fn visit_item_fn(&mut self, item: &'ast ItemFn) {
 		if !self.cfg.items_are_enabled(&item.attrs) {
@@ -1660,6 +1684,13 @@ impl<'ast> Visit<'ast> for DefinitionScanner<'_> {
 			_ => None,
 		};
 		if style_attributes.is_empty() {
+			if style_macro.is_some() && has_style_def_attribute(&item.attrs) {
+				self.reject(
+					item.static_token.span,
+					"cfg_attr-gated style_def must remain active for bare style! static items",
+				);
+				return;
+			}
 			syn::visit::visit_item_static(self, item);
 			return;
 		}

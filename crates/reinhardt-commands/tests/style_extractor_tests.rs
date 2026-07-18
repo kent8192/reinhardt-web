@@ -264,6 +264,30 @@ static THEME: ThemeStyles = style! { .theme { color: purple; } };
 }
 
 #[rstest]
+fn scanner_rejects_cfg_disabled_style_definitions_with_bare_style_macros() {
+	let directory = tempfile::tempdir().expect("create temporary package");
+	let manifest = write_package(
+		directory.path(),
+		r#"
+#[cfg_attr(feature = "theme", style_def)]
+static THEME: ThemeStyles = style! { .theme { color: purple; } };
+"#,
+	);
+	fs::write(
+		&manifest,
+		"[package]\nname = \"poll-app\"\nversion = \"0.4.0\"\nedition = \"2024\"\n\n[features]\ntheme = []\n",
+	)
+	.expect("write package feature");
+	let context = StylePackageContext::resolve(&manifest, None).expect("select root package");
+
+	let error = StyleExtractor::new(context)
+		.extract()
+		.expect_err("a disabled style_def must not leave a bare style macro");
+
+	assert!(error.contains("cfg_attr-gated style_def must remain active"));
+}
+
+#[rstest]
 fn scanner_includes_style_definitions_enabled_by_pages_cfg_aliases() {
 	let directory = tempfile::tempdir().expect("create temporary package");
 	let manifest = write_package(

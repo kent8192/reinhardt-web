@@ -710,13 +710,13 @@ fn valid_numeric_media_value(
 	allow_negative_dimension_values: bool,
 ) -> bool {
 	match tokens {
-		[StyleMediaToken::Number(number)] => valid_media_numeric_unit(feature, number),
+		[StyleMediaToken::Number(number)] => valid_media_numeric_value(feature, number),
 		[
 			StyleMediaToken::Punctuation(sign),
 			StyleMediaToken::Number(number),
 		] => {
 			is_numeric_sign(sign.kind)
-				&& valid_media_numeric_unit(feature, number)
+				&& valid_media_numeric_value(feature, number)
 				&& (allow_negative_dimension_values
 					|| sign.kind != StyleMediaPunctuationKind::Minus
 					|| !requires_dimension_unit(feature)
@@ -745,13 +745,19 @@ fn valid_numeric_media_value(
 			StyleMediaToken::Punctuation(slash),
 			StyleMediaToken::Number(denominator),
 		] => {
-			numerator.unit.is_none()
+			is_ratio_media_feature(feature)
+				&& numerator.unit.is_none()
 				&& denominator.unit.is_none()
 				&& slash.kind == StyleMediaPunctuationKind::Slash
 				&& !is_zero_decimal(&denominator.value)
 		}
 		_ => false,
 	}
+}
+
+fn valid_media_numeric_value(feature: &str, number: &StyleMediaNumber) -> bool {
+	valid_media_numeric_unit(feature, number)
+		&& (!is_integer_media_feature(feature) || number.kind == StyleMediaNumberKind::Integer)
 }
 
 fn media_feature_accepts_percentage(_feature: &str) -> bool {
@@ -763,12 +769,30 @@ fn valid_media_numeric_unit(feature: &str, number: &StyleMediaNumber) -> bool {
 	let Some(unit) = number.unit.as_deref() else {
 		return !requires_dimension_unit(feature) || is_zero_decimal(&number.value);
 	};
+	if is_ratio_media_feature(feature) || is_integer_media_feature(feature) {
+		return false;
+	}
 
 	match normalized_dimension_feature(feature) {
 		Some("width" | "height" | "device-width" | "device-height") => is_length_unit(unit),
 		Some("resolution") => is_resolution_unit(unit),
-		_ => is_length_unit(unit) || is_resolution_unit(unit),
+		_ => false,
 	}
+}
+
+fn is_ratio_media_feature(feature: &str) -> bool {
+	let feature = feature.to_ascii_lowercase();
+	let feature = feature
+		.strip_prefix("min-")
+		.or_else(|| feature.strip_prefix("max-"))
+		.unwrap_or(&feature);
+	matches!(feature, "aspect-ratio" | "device-aspect-ratio")
+}
+
+fn is_integer_media_feature(feature: &str) -> bool {
+	["color", "color-index", "monochrome", "grid"]
+		.iter()
+		.any(|candidate| feature.eq_ignore_ascii_case(candidate))
 }
 
 fn requires_dimension_unit(feature: &str) -> bool {
@@ -1352,9 +1376,10 @@ mod tests {
 	}
 
 	#[rstest]
-	fn parses_ratio_media_feature_values() {
+	#[case(quote! { @media (aspect-ratio: 16/9) {} })]
+	#[case(quote! { @media (device-aspect-ratio: 16/9) {} })]
+	fn parses_ratio_media_feature_values(#[case] input: proc_macro2::TokenStream) {
 		// Arrange
-		let input = quote! { @media (aspect-ratio: 16/9) {} };
 
 		// Act
 		let media = first_media(input);
@@ -1368,6 +1393,20 @@ mod tests {
 			panic!("expected an aspect-ratio separator");
 		};
 		assert_eq!(slash.kind, StyleMediaPunctuationKind::Slash);
+	}
+
+	#[rstest]
+	#[case(quote! { @media (width: 16/9) {} })]
+	#[case(quote! { @media (color: 16/9) {} })]
+	#[case(quote! { @media (aspect-ratio: 16px) {} })]
+	fn rejects_ratio_syntax_or_units_for_non_ratio_media_features(
+		#[case] input: proc_macro2::TokenStream,
+	) {
+		// Act
+		let error = parse_style(input).expect_err("only ratio media features accept slash ratios");
+
+		// Assert
+		assert_eq!(error.to_string(), "invalid media feature expression");
 	}
 
 	#[rstest]
@@ -1390,6 +1429,22 @@ mod tests {
 	fn rejects_invalid_values_for_discrete_media_features(#[case] input: proc_macro2::TokenStream) {
 		// Act
 		let error = parse_style(input).expect_err("discrete media features require defined values");
+
+		// Assert
+		assert_eq!(error.to_string(), "invalid media feature expression");
+	}
+
+	#[rstest]
+	#[case(quote! { @media (color: 1px) {} })]
+	#[case(quote! { @media (monochrome: 1rem) {} })]
+	#[case(quote! { @media (grid: 1dppx) {} })]
+	#[case(quote! { @media (color: 1.0) {} })]
+	#[case(quote! { @media (grid: 1/2) {} })]
+	fn rejects_invalid_units_and_domains_for_integer_media_features(
+		#[case] input: proc_macro2::TokenStream,
+	) {
+		// Act
+		let error = parse_style(input).expect_err("integer media features reject invalid domains");
 
 		// Assert
 		assert_eq!(error.to_string(), "invalid media feature expression");
