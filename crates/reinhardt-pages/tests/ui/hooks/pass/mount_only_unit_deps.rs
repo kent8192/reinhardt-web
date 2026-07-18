@@ -1,4 +1,4 @@
-//! Compile-pass: `deps![]` is the React-parity "mount-only" dependency list — the
+//! Compile-pass: `deps![]` is the React-parity "mount-only" deps shape — the
 //! effect runs once on mount and never re-runs (spec §4.2).
 
 use reinhardt_pages::deps;

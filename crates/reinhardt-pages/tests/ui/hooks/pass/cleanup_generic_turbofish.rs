@@ -1,5 +1,5 @@
-//! Compile-pass: explicit cleanup-type turbofish calls keep the pre-existing
-//! `use_effect::<_, C>` and `use_layout_effect::<_, C>` shape.
+//! Compile-pass: explicit cleanup-type turbofish calls specify the two public
+//! generic parameters and an explicit empty dependency list.
 
 use reinhardt_pages::deps;
 use reinhardt_pages::reactive::hooks::{use_effect, use_layout_effect};
