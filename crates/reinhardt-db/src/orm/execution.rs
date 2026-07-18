@@ -137,8 +137,8 @@ fn convert_value_to_query_value(value: reinhardt_query::value::Value) -> QueryVa
 			QueryValue::String(format!("{:?}", value))
 		}
 
-		// JSON - convert to string
-		SV::Json(_) => QueryValue::String(format!("{:?}", value)),
+		// Preserve native JSON values for backend-specific JSON parameter binding.
+		SV::Json(json) => QueryValue::Json(json),
 
 		// Decimal - convert to f64 with fallback through string parsing
 		SV::Decimal(Some(d)) => {

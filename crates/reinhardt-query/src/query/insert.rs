@@ -53,6 +53,7 @@ pub struct InsertStatement {
 	pub(crate) source: InsertSource,
 	pub(crate) returning: Option<ReturningClause>,
 	pub(crate) on_conflict: Option<super::on_conflict::OnConflict>,
+	pub(crate) overriding_system_value: bool,
 }
 
 impl InsertStatement {
@@ -64,6 +65,7 @@ impl InsertStatement {
 			source: InsertSource::Values(Vec::new()),
 			returning: None,
 			on_conflict: None,
+			overriding_system_value: false,
 		}
 	}
 
@@ -75,6 +77,7 @@ impl InsertStatement {
 			source: std::mem::replace(&mut self.source, InsertSource::Values(Vec::new())),
 			returning: self.returning.take(),
 			on_conflict: self.on_conflict.take(),
+			overriding_system_value: std::mem::take(&mut self.overriding_system_value),
 		}
 	}
 
@@ -267,6 +270,15 @@ impl InsertStatement {
 	/// ```
 	pub fn on_conflict(&mut self, on_conflict: super::on_conflict::OnConflict) -> &mut Self {
 		self.on_conflict = Some(on_conflict);
+		self
+	}
+
+	/// Add PostgreSQL's `OVERRIDING SYSTEM VALUE` clause.
+	///
+	/// This permits explicit values for columns declared as `GENERATED ALWAYS AS IDENTITY`.
+	/// Non-PostgreSQL query builders ignore the clause.
+	pub fn overriding_system_value(&mut self) -> &mut Self {
+		self.overriding_system_value = true;
 		self
 	}
 
