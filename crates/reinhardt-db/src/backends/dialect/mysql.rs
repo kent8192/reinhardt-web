@@ -27,11 +27,12 @@ fn optional_last_insert_id(last_insert_id: u64) -> Option<u64> {
 
 /// Returns whether SQLx identified a MySQL column as a boolean.
 ///
-/// SQLx exposes `TINYINT(1)` as `BOOLEAN`. Calling `try_get::<bool>` on every
-/// integer column would otherwise coerce primary keys and aggregate counts to
-/// booleans before their numeric decoders have a chance to run.
+/// SQLx normally exposes `TINYINT(1)` as `BOOLEAN`, but some MySQL-compatible
+/// servers and result paths preserve the wire spelling. Calling `try_get::<bool>`
+/// on every integer column would otherwise coerce primary keys and aggregate
+/// counts to booleans before their numeric decoders have a chance to run.
 fn is_boolean_type(type_name: &str) -> bool {
-	matches!(type_name, "BOOLEAN" | "BOOL")
+	matches!(type_name, "BOOLEAN" | "BOOL" | "TINYINT(1)")
 }
 
 /// Builds a MySQL savepoint statement with a validated identifier.
@@ -631,8 +632,8 @@ impl TransactionExecutor for MySqlRawTransactionExecutor {
 mod tests {
 	use super::{
 		CloseOnDrop, CloseOnDropGuard, MySqlRawTransactionExecutor, MySqlTransactionExecutor,
-		mysql_release_savepoint_sql, mysql_rollback_to_savepoint_sql, mysql_savepoint_sql,
-		optional_last_insert_id,
+		is_boolean_type, mysql_release_savepoint_sql, mysql_rollback_to_savepoint_sql,
+		mysql_savepoint_sql, optional_last_insert_id,
 	};
 	use crate::backends::types::{DatabaseType, TransactionExecutor};
 	use std::sync::Arc;
@@ -687,6 +688,15 @@ mod tests {
 	fn test_optional_last_insert_id_maps_zero_and_nonzero_values() {
 		assert_eq!(optional_last_insert_id(0), None);
 		assert_eq!(optional_last_insert_id(42), Some(42));
+	}
+
+	#[test]
+	fn test_boolean_type_recognizes_mysql_aliases_without_matching_other_integers() {
+		assert!(is_boolean_type("BOOLEAN"));
+		assert!(is_boolean_type("BOOL"));
+		assert!(is_boolean_type("TINYINT(1)"));
+		assert!(!is_boolean_type("TINYINT"));
+		assert!(!is_boolean_type("TINYINT UNSIGNED"));
 	}
 
 	#[test]
