@@ -88,7 +88,26 @@ mod page;
 mod page_props;
 mod server_fn;
 mod server_fnset;
+mod style;
 mod wasm_server_api;
+
+/// Defines one component-scoped style API from a canonical static item.
+#[proc_macro_attribute]
+pub fn style_def(args: TokenStream, input: TokenStream) -> TokenStream {
+	match style::expand_style_def(args.into(), input.into()) {
+		Ok(output) => output.into(),
+		Err(error) => error.to_compile_error().into(),
+	}
+}
+
+/// Parses the component style DSL and reports missing item context when used directly.
+#[proc_macro]
+pub fn style(input: TokenStream) -> TokenStream {
+	match style::expand_standalone_style(input.into()) {
+		Ok(output) => output.into(),
+		Err(error) => error.to_compile_error().into(),
+	}
+}
 
 /// Server Function macro
 ///

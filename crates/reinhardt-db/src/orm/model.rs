@@ -1,6 +1,14 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+/// Canonical fixture field values keyed by model field name.
+#[doc(hidden)]
+pub type FixtureFields = serde_json::Map<String, serde_json::Value>;
+
+/// One canonical fixture field value.
+#[doc(hidden)]
+pub type FixtureValue = serde_json::Value;
+
 /// Trait for type-safe field selectors
 ///
 /// This trait is automatically implemented for field selector structs generated
@@ -108,6 +116,23 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 			}
 			_ => false,
 		}
+	}
+
+	/// Validate canonical fixture fields before they are written to the database.
+	///
+	/// Macro-generated models override this with a projection that excludes
+	/// database-generated fields and ignores API-facing serde naming rules.
+	/// Manual models that expose field metadata use the fixture layer's canonical
+	/// field mapping, because that metadata does not retain API-facing serde
+	/// aliases. Manual implementations without metadata retain the serde-based
+	/// fallback and can override this method when they need stricter validation.
+	#[doc(hidden)]
+	fn validate_fixture_fields(fields: &FixtureFields) -> Result<(), String> {
+		if Self::field_metadata().is_empty() {
+			let _: Self = serde_json::from_value(serde_json::Value::Object(fields.clone()))
+				.map_err(|error| error.to_string())?;
+		}
+		Ok(())
 	}
 
 	/// Get field metadata for inspection

@@ -178,7 +178,13 @@ pub mod db {
 		#[derive(Debug, Clone, Copy)]
 		pub struct OneToOneField<T>(core::marker::PhantomData<T>);
 
-		#[derive(Debug, Clone, Copy)]
+		#[derive(
+			Debug,
+			Clone,
+			Copy,
+			serde::Serialize,
+			serde::Deserialize,
+		)]
 		pub struct ManyToManyField<Source, Target>(core::marker::PhantomData<(Source, Target)>);
 
 		impl<T> Default for ForeignKeyField<T> {
@@ -222,9 +228,27 @@ pub mod db {
 		}
 
 		impl<Source, Target> Eq for ManyToManyField<Source, Target> {}
+
+		pub struct ManyToManyAccessor<Source, Target>(core::marker::PhantomData<(Source, Target)>);
+
+		impl<Source, Target> ManyToManyAccessor<Source, Target> {
+			pub fn new(
+				_source: &Source,
+				_field_name: &str,
+				_db: super::orm::connection::DatabaseConnection,
+			) -> Self {
+				Self(core::marker::PhantomData)
+			}
+		}
 	}
 
 	pub mod orm {
+		pub use serde;
+		pub use super::associations::ManyToManyAccessor;
+
+		pub type FixtureFields = serde_json::Map<String, serde_json::Value>;
+		pub type FixtureValue = serde_json::Value;
+
 		pub struct Manager<T>(core::marker::PhantomData<T>);
 
 		impl<T> Default for Manager<T> {
@@ -270,6 +294,11 @@ pub mod db {
 			fn primary_key(&self) -> Option<Self::PrimaryKey>;
 			fn set_primary_key(&mut self, value: Self::PrimaryKey);
 			fn field_is_none(&self, field_name: &str) -> bool;
+			fn validate_fixture_fields(
+				_fields: &FixtureFields,
+			) -> core::result::Result<(), String> {
+				Ok(())
+			}
 			fn field_metadata() -> Vec<inspection::FieldInfo>;
 			fn index_metadata() -> Vec<inspection::IndexInfo>;
 			fn constraint_metadata() -> Vec<inspection::ConstraintInfo>;
@@ -306,22 +335,6 @@ pub mod db {
 
 		impl<Source, Target> ForeignKeyAccessor<Source, Target> {
 			pub const fn new(_db_column: &'static str) -> Self {
-				Self {
-					_marker: core::marker::PhantomData,
-				}
-			}
-		}
-
-		pub struct ManyToManyAccessor<Source, Target> {
-			_marker: core::marker::PhantomData<(Source, Target)>,
-		}
-
-		impl<Source, Target> ManyToManyAccessor<Source, Target> {
-			pub const fn new(
-				_source: &Source,
-				_field_name: &'static str,
-				_db: connection::DatabaseConnection,
-			) -> Self {
 				Self {
 					_marker: core::marker::PhantomData,
 				}
@@ -609,8 +622,8 @@ pub mod db {
 				pub unique: bool,
 				pub blank: bool,
 				pub editable: bool,
-				pub default: Option<String>,
-				pub db_default: Option<String>,
+				pub default: Option<FieldKwarg>,
+				pub db_default: Option<FieldKwarg>,
 				pub db_column: Option<String>,
 				pub choices: Option<Vec<String>>,
 				pub attributes: HashMap<String, FieldKwarg>,
@@ -667,6 +680,32 @@ pub mod db {
 
 			pub fn global_model_registry() -> Registry {
 				Registry
+			}
+		}
+
+		pub mod fixtures {
+			pub struct FixtureRegistry;
+
+			pub fn __deserialize_fixture_projection<T>(
+				_fields: &super::FixtureFields,
+			) -> core::result::Result<T, String>
+			where
+				T: serde::de::DeserializeOwned,
+			{
+				Err("fixture projection validation is unavailable in UI test support".to_string())
+			}
+
+			impl FixtureRegistry {
+				pub fn register_model<T>(&self)
+				where
+					T: super::Model + 'static,
+				{
+					let _ = core::any::type_name::<T>();
+				}
+			}
+
+			pub fn global_fixture_registry() -> FixtureRegistry {
+				FixtureRegistry
 			}
 		}
 	}

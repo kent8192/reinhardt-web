@@ -58,6 +58,9 @@ details.
 
 - **makemigrations** - Create new database migrations based on model changes
 - **migrate** - Apply database migrations
+- **dumpdata** - Export model rows as Django-compatible JSON fixtures
+- **loaddata** - Load Django-compatible JSON fixtures into the database
+- **seed** - Run idempotent per-application development seed hooks
 - **runserver** - Start the development server
 - **infra** - Start, stop, inspect, and use local development infrastructure
 - **shell** - Run an interactive REPL
@@ -70,6 +73,8 @@ details.
 
 - `migrations` - Enable migration-related commands (requires
   `reinhardt-db`)
+- `reinhardt-db` - Enable database-backed management commands such as
+  `dumpdata`, `loaddata`, and `seed`
 - `routers` - Enable URL-related commands (requires `reinhardt-urls`)
 
 ## Template System
@@ -182,6 +187,40 @@ Then run commands with:
 cargo run --bin manage makemigrations
 cargo run --bin manage migrate
 cargo run --bin manage runserver
+```
+
+### Model Fixture Commands
+
+`dumpdata` and `loaddata` use Django-compatible JSON records with
+`model`, `pk`, and `fields` keys. Model labels use the
+`app_label.ModelName` form registered by `#[model(...)]`.
+`dumpdata` keeps stdout as machine-readable JSON. `loaddata` loads fixtures
+inside one transaction, upserts rows by explicit primary key, preserves
+explicit `null` values, accepts Django-style foreign key field names, and
+validates foreign-key values as scalar identifiers (or `null` for nullable
+relationships). It also includes many-to-many fixture arrays, preserves binary
+fields as Django-compatible base64 strings, and resets PostgreSQL sequences
+after explicit integer primary keys.
+
+```bash
+# Export all registered fixture models.
+cargo run --bin manage dumpdata > fixtures/dev.json
+
+# Export selected models and exclude another app or model.
+cargo run --bin manage dumpdata writing_sources.WritingProject \
+  --exclude sessions.Session > fixtures/writing_projects.json
+
+# Load fixture files inside a database transaction.
+cargo run --bin manage loaddata fixtures/dev.json
+```
+
+The `seed` command runs registered idempotent seed hooks. Omit app labels to
+run every registered hook, or pass app labels to seed a subset. Every requested
+app label must have a registered hook.
+
+```bash
+cargo run --bin manage seed
+cargo run --bin manage seed writing_sources
 ```
 
 ### `infra` Command
@@ -506,6 +545,10 @@ reinhardt-admin startapp myapp --template rest
 Templates are embedded in the binary using `rust-embed` for fast,
 dependency-free project generation.
 
+Generated model examples always declare `app_label` and rely on the model
+macro's singular snake_case table-name convention. Add `table_name = "..."`
+when a generated app must map a model to an existing or custom table.
+
 ## Architecture
 
 `reinhardt-commands` is designed to be:
@@ -564,3 +607,16 @@ reinhardt-admin startproject myproject
 ## License
 
 Licensed under the BSD 3-Clause License.
+- Component styles are compiled from canonical `#[style_def] static ... = style! { ... }`
+  definitions. In workspaces, select the owning crate with `collectstatic --package NAME`
+  or `runserver --package NAME`. For feature-gated Pages styles, pass matching
+  `--features feature_a,feature_b` or `--all-features` options so extraction
+  uses the same Cargo feature set as the WASM build.
+- Pages WASM artifacts use the selected Cargo library target name, while package
+  selection continues to use the Cargo package name. This supports packages
+  whose `[lib] name` differs from `[package] name`.
+- The framework reserves `__reinhardt__/` for generated assets. Production
+  collection hashes `__reinhardt__/components.css` through `manifest.json`;
+  development serves the same logical URL from an RAII-owned temporary root.
+- Applications must include the stylesheet link explicitly. Neither production
+  collection nor development serving injects it into arbitrary documents.

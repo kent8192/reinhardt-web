@@ -30,6 +30,7 @@ reinhardt-auth = { workspace = true, optional = true }
 reinhardt-admin = { workspace = true, optional = true }
 reqwest = { workspace = true, optional = true }
 reinhardt-pages = { workspace = true }
+reinhardt-manouche = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true }
 tokio = { workspace = true, features = ["signal", "process", "fs"] }
@@ -60,9 +61,9 @@ rustyline = { version = "17.0.2", optional = true }
 rhai = { version = "1.20", optional = true }
 
 # AST dependencies for robust code generation
-syn = { workspace = true, features = ["full", "parsing"] }
+syn = { workspace = true, features = ["full", "parsing", "visit", "visit-mut"] }
 quote = { workspace = true }
-proc-macro2 = { workspace = true }
+proc-macro2 = { workspace = true, features = ["span-locations"] }
 prettyplease = "0.2"
 
 # TLS/HTTPS support
@@ -74,9 +75,10 @@ rcgen = "0.14.5"
 reinhardt-utils = {workspace = true, features = ["utils-core", "staticfiles"]}
 reinhardt-rest = {workspace = true, features = ["openapi"], optional = true}
 reinhardt-openapi = { workspace = true, optional = true }
-cargo_metadata = { workspace = true, optional = true }
+cargo_metadata = { workspace = true }
 serde_yaml = { workspace = true, optional = true }
 url = { workspace = true }
+tempfile = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.29", features = ["signal"] }
@@ -84,7 +86,6 @@ nix = { version = "0.29", features = ["signal"] }
 [dev-dependencies]
 insta = { workspace = true }
 tokio = { workspace = true, features = ["test-util", "macros", "rt-multi-thread"] }
-tempfile = "3.13"
 regex = { workspace = true }
 serial_test = { workspace = true }
 rstest = { workspace = true }
@@ -97,10 +98,10 @@ migrations = ["reinhardt-db"]
 routers = ["dep:reinhardt-urls", "dep:reinhardt-http"]
 di = ["dep:reinhardt-di"]
 openapi = ["dep:reinhardt-rest", "dep:reinhardt-http"]
-introspect = ["routers", "dep:cargo_metadata", "dep:serde_yaml"]
+introspect = ["routers", "dep:serde_yaml"]
 openapi-router = ["dep:reinhardt-openapi", "openapi"]
 server = ["dep:reinhardt-server", "dep:reinhardt-middleware", "routers", "di", "dep:reinhardt-admin", "dep:reqwest"]
-autoreload = ["dep:notify", "dep:cargo_metadata", "server"]
+autoreload = ["dep:notify", "server"]
 shell = ["dep:rustyline"]
 shell-rhai = ["shell", "dep:rhai"]
 reinhardt-db = ["dep:reinhardt-db"]

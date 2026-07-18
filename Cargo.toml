@@ -381,6 +381,9 @@ toml = { workspace = true }
 [build-dependencies]
 cfg_aliases = "0.2"
 
+[dev-dependencies]
+rstest = { workspace = true }
+
 [workspace]
 resolver = "3"
 members = [
@@ -519,6 +522,7 @@ reinhardt-formatter = { path = "crates/reinhardt-formatter", version = "0.3.2" }
 tree-sitter-reinhardt-page = { path = "crates/tree-sitter-reinhardt-page", version = "0.3.2" }
 tree-sitter-reinhardt-form = { path = "crates/tree-sitter-reinhardt-form", version = "0.3.2" }
 tree-sitter-reinhardt-head = { path = "crates/tree-sitter-reinhardt-head", version = "0.3.2" }
+tree-sitter-reinhardt-style = { path = "crates/tree-sitter-reinhardt-style", version = "0.3.1" }
 topiary-core = "0.7.3"
 topiary-tree-sitter-facade = "0.7.3"
 reinhardt-grpc = { path = "crates/reinhardt-grpc", version = "0.3.2" }

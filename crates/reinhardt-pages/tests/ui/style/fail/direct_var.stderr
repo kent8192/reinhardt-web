@@ -1,0 +1,5 @@
+error: direct `var(...)` is unsupported; declare a typed `global` or component `var` and reference it
+ --> tests/ui/style/fail/direct_var.rs:6:10
+  |
+6 |         color: var(accent);
+  |                ^^^

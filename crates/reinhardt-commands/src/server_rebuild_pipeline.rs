@@ -55,7 +55,42 @@ impl ServerRebuildPipeline {
 		current_child: &mut Child,
 		respawn: impl FnOnce() -> std::io::Result<Child>,
 	) -> (ServerRebuildOutcome, Option<Child>) {
-		Self::run_inner(bin_name, current_child, respawn, None).await
+		Self::run_for_package(bin_name, None, current_child, respawn).await
+	}
+
+	/// Run `cargo build --package <package> --bin <bin_name>` when a package is selected.
+	///
+	/// Passing `None` preserves the workspace-default cargo invocation used by
+	/// callers that did not select a package.
+	pub async fn run_for_package(
+		bin_name: &str,
+		package: Option<&str>,
+		current_child: &mut Child,
+		respawn: impl FnOnce() -> std::io::Result<Child>,
+	) -> (ServerRebuildOutcome, Option<Child>) {
+		Self::run_for_package_with_features(bin_name, package, &[], false, current_child, respawn)
+			.await
+	}
+
+	/// Run a package-selected native rebuild with the selected Cargo features.
+	pub async fn run_for_package_with_features(
+		bin_name: &str,
+		package: Option<&str>,
+		features: &[String],
+		all_features: bool,
+		current_child: &mut Child,
+		respawn: impl FnOnce() -> std::io::Result<Child>,
+	) -> (ServerRebuildOutcome, Option<Child>) {
+		Self::run_inner(
+			bin_name,
+			package,
+			features,
+			all_features,
+			current_child,
+			respawn,
+			None,
+		)
+		.await
 	}
 
 	/// Run `cargo build --bin <bin_name>`, swap the child, then wait until
@@ -70,21 +105,71 @@ impl ServerRebuildPipeline {
 		respawn: impl FnOnce() -> std::io::Result<Child>,
 		address: &str,
 	) -> (ServerRebuildOutcome, Option<Child>) {
+		Self::run_with_readiness_for_package(bin_name, None, current_child, respawn, address).await
+	}
+
+	/// Run a package-selected native rebuild and wait for the respawned server.
+	pub async fn run_with_readiness_for_package(
+		bin_name: &str,
+		package: Option<&str>,
+		current_child: &mut Child,
+		respawn: impl FnOnce() -> std::io::Result<Child>,
+		address: &str,
+	) -> (ServerRebuildOutcome, Option<Child>) {
+		Self::run_with_readiness_for_package_with_features(
+			bin_name,
+			package,
+			&[],
+			false,
+			current_child,
+			respawn,
+			address,
+		)
+		.await
+	}
+
+	/// Run a feature-selected native rebuild and wait for the respawned server.
+	pub async fn run_with_readiness_for_package_with_features(
+		bin_name: &str,
+		package: Option<&str>,
+		features: &[String],
+		all_features: bool,
+		current_child: &mut Child,
+		respawn: impl FnOnce() -> std::io::Result<Child>,
+		address: &str,
+	) -> (ServerRebuildOutcome, Option<Child>) {
 		let readiness = ServerReadinessProbe::new(address);
-		Self::run_inner(bin_name, current_child, respawn, Some(readiness)).await
+		Self::run_inner(
+			bin_name,
+			package,
+			features,
+			all_features,
+			current_child,
+			respawn,
+			Some(readiness),
+		)
+		.await
 	}
 
 	async fn run_inner(
 		bin_name: &str,
+		package: Option<&str>,
+		features: &[String],
+		all_features: bool,
 		current_child: &mut Child,
 		respawn: impl FnOnce() -> std::io::Result<Child>,
 		readiness: Option<ServerReadinessProbe>,
 	) -> (ServerRebuildOutcome, Option<Child>) {
 		let start = Instant::now();
 
-		// Phase 1: invoke `cargo build --bin <bin_name>`.
+		// Phase 1: invoke `cargo build [--package <package>] [feature selection] --bin <bin_name>`.
 		let output_result = Command::new("cargo")
-			.args(["build", "--bin", bin_name])
+			.args(Self::cargo_build_arguments(
+				bin_name,
+				package,
+				features,
+				all_features,
+			))
 			.output()
 			.await;
 
@@ -166,6 +251,25 @@ impl ServerRebuildPipeline {
 				(outcome, None)
 			}
 		}
+	}
+
+	fn cargo_build_arguments(
+		bin_name: &str,
+		package: Option<&str>,
+		features: &[String],
+		all_features: bool,
+	) -> Vec<String> {
+		let mut arguments = vec!["build".to_string()];
+		if let Some(package) = package {
+			arguments.extend(["--package".to_string(), package.to_string()]);
+		}
+		if all_features {
+			arguments.push("--all-features".to_string());
+		} else if !features.is_empty() {
+			arguments.extend(["--features".to_string(), features.join(",")]);
+		}
+		arguments.extend(["--bin".to_string(), bin_name.to_string()]);
+		arguments
 	}
 
 	/// Format the single-line summary printed to stderr by the watcher.
@@ -344,6 +448,86 @@ mod tests {
 
 		// Assert
 		assert_eq!(tail, "only-line-1\nonly-line-2");
+	}
+
+	#[test]
+	fn cargo_build_arguments_include_selected_package() {
+		// Act
+		let arguments =
+			ServerRebuildPipeline::cargo_build_arguments("manage", Some("web-app"), &[], false);
+
+		// Assert
+		assert_eq!(
+			arguments,
+			vec![
+				"build".to_string(),
+				"--package".to_string(),
+				"web-app".to_string(),
+				"--bin".to_string(),
+				"manage".to_string(),
+			]
+		);
+	}
+
+	#[test]
+	fn cargo_build_arguments_preserve_workspace_default_without_package() {
+		// Act
+		let arguments = ServerRebuildPipeline::cargo_build_arguments("manage", None, &[], false);
+
+		// Assert
+		assert_eq!(
+			arguments,
+			vec![
+				"build".to_string(),
+				"--bin".to_string(),
+				"manage".to_string()
+			]
+		);
+	}
+
+	#[test]
+	fn cargo_build_arguments_include_selected_features() {
+		// Arrange
+		let features = vec!["theme".to_string(), "tracing".to_string()];
+
+		// Act
+		let arguments = ServerRebuildPipeline::cargo_build_arguments(
+			"manage",
+			Some("web-app"),
+			&features,
+			false,
+		);
+
+		// Assert
+		assert_eq!(
+			arguments,
+			vec![
+				"build".to_string(),
+				"--package".to_string(),
+				"web-app".to_string(),
+				"--features".to_string(),
+				"theme,tracing".to_string(),
+				"--bin".to_string(),
+				"manage".to_string(),
+			]
+		);
+	}
+
+	#[test]
+	fn cargo_build_arguments_include_all_features() {
+		// Act
+		let arguments = ServerRebuildPipeline::cargo_build_arguments("manage", None, &[], true);
+
+		// Assert
+		assert_eq!(
+			arguments,
+			vec![
+				"build".to_string(),
+				"--all-features".to_string(),
+				"--bin".to_string(),
+				"manage".to_string(),
+			]
+		);
 	}
 
 	#[test]

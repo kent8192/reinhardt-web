@@ -224,3 +224,16 @@ fn test_client_page_macro_fail() {
 	let t = trybuild::TestCases::new();
 	t.compile_fail("tests/ui/client_page/fail/*.rs");
 }
+use rstest::rstest;
+
+#[rstest]
+fn test_style_macro_pass() {
+	let cases = trybuild::TestCases::new();
+	cases.pass("tests/ui/style/pass/*.rs");
+}
+
+#[rstest]
+fn test_style_macro_fail() {
+	let cases = trybuild::TestCases::new();
+	cases.compile_fail("tests/ui/style/fail/*.rs");
+}

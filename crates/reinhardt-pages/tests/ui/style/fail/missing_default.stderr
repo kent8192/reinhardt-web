@@ -1,0 +1,5 @@
+error: component variable `accent` is missing a default; add `= <typed value>`
+ --> tests/ui/style/fail/missing_default.rs:6:3
+  |
+6 |         accent: Color;
+  |         ^^^^^^
