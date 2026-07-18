@@ -153,6 +153,11 @@ impl ServerFnError {
 
 	/// Decode a server function error response without exposing raw response bodies.
 	pub fn from_http_response(status: u16, body: &str) -> Self {
+		let status = if (100..=599).contains(&status) {
+			status
+		} else {
+			500
+		};
 		match serde_json::from_str::<Self>(body) {
 			Ok(mut error) => {
 				error.payload.status = error

@@ -1241,7 +1241,7 @@ fn generate_server_handler(
 						);
 						let server_err = #pages_crate_for_ext::server_fn::ServerFnError::server(
 							400u16,
-							format!("Parameter extraction failed: {}", other),
+							"Parameter extraction failed",
 						);
 						::serde_json::to_string(&server_err)
 							.unwrap_or_else(|_| "Parameter extraction failed".to_string())
@@ -1278,7 +1278,7 @@ fn generate_server_handler(
 						);
 						let server_err = #pages_crate_for_ext::server_fn::ServerFnError::server(
 							400u16,
-							format!("Parameter extraction failed: {}", other),
+							"Parameter extraction failed",
 						);
 						::serde_json::to_string(&server_err)
 							.unwrap_or_else(|_| "Parameter extraction failed".to_string())
@@ -2307,6 +2307,49 @@ mod tests {
 		assert!(
 			!generated.contains("error = ? e"),
 			"extractor errors must not be logged with Debug formatting: {generated}"
+		);
+	}
+
+	#[test]
+	fn generated_extractor_errors_do_not_serialize_details() {
+		use syn::parse_quote;
+
+		let func: syn::ItemFn = parse_quote! {
+			pub async fn read_header(header: Header) -> Result<(), ServerFnError> {
+				Ok(())
+			}
+		};
+		let standard = ServerFnInfo {
+			func: func.clone(),
+			options: ServerFnOptions::default(),
+			metadata_name: None,
+			endpoint_tokens: None,
+			metadata_name_tokens: None,
+			detail: false,
+			transactional: false,
+			structured_error: false,
+		};
+		let structured = ServerFnInfo {
+			func,
+			options: ServerFnOptions::default(),
+			metadata_name: None,
+			endpoint_tokens: None,
+			metadata_name_tokens: None,
+			detail: false,
+			transactional: false,
+			structured_error: true,
+		};
+
+		let standard_generated = generate_server_fn(&standard).to_string();
+		let structured_generated = generate_server_fn(&structured).to_string();
+
+		assert!(
+			!standard_generated.contains("Parameter extraction failed: {}"),
+			"standard extractor errors must not serialize details: {standard_generated}"
+		);
+		assert!(
+			!structured_generated.contains("Parameter extraction failed: {}"),
+			"structured extractor errors must not serialize details: {structured_generated}"
 		);
 	}
 
