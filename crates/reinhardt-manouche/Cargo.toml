@@ -26,6 +26,9 @@ darling = "0.20"
 # Case conversion for identifiers
 convert_case = "0.6"
 
+# Deterministic component-style scope hashing
+sha2 = { workspace = true }
+
 [features]
 default = []
 doc-diagrams = ["dep:aquamarine"]

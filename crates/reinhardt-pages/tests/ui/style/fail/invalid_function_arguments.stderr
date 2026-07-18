@@ -1,0 +1,5 @@
+error: argument 1 to `rotate` has type `Length`; expected Angle
+ --> tests/ui/style/fail/invalid_function_arguments.rs:6:21
+  |
+6 |         transform: rotate(1px);
+  |                           ^^^

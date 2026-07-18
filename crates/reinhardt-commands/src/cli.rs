@@ -20,8 +20,7 @@ use reinhardt_conf::settings::sources::{DefaultSource, LowPriorityEnvSource, Tom
 use reinhardt_utils::staticfiles::StaticFilesConfig;
 use serde_json::Value;
 use std::env;
-#[allow(unused)]
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 #[cfg(feature = "routers")]
@@ -192,6 +191,23 @@ pub enum Commands {
 		/// Path to index.html for SPA fallback (auto-detected from project root)
 		#[arg(long)]
 		index: Option<String>,
+
+		/// Cargo package containing component style definitions
+		#[arg(long, value_name = "NAME")]
+		package: Option<String>,
+
+		/// Cargo features enabled for the Pages component style package
+		#[arg(
+			long,
+			value_delimiter = ',',
+			value_name = "FEATURE",
+			conflicts_with = "all_features"
+		)]
+		features: Vec<String>,
+
+		/// Enable all Cargo features for the Pages component style package
+		#[arg(long)]
+		all_features: bool,
 	},
 
 	/// Run an interactive Rust shell (REPL)
@@ -238,6 +254,23 @@ pub enum Commands {
 		/// Path to index.html source file (auto-detected from project root)
 		#[arg(long)]
 		index: Option<String>,
+
+		/// Cargo package containing component style definitions
+		#[arg(long, value_name = "NAME")]
+		package: Option<String>,
+
+		/// Cargo features enabled for the component style package
+		#[arg(
+			long,
+			value_delimiter = ',',
+			value_name = "FEATURE",
+			conflicts_with = "all_features"
+		)]
+		features: Vec<String>,
+
+		/// Enable all Cargo features for the component style package
+		#[arg(long)]
+		all_features: bool,
 	},
 
 	/// Display all registered server URL patterns
@@ -722,6 +755,9 @@ async fn run_command_core(
 			static_dir,
 			no_spa,
 			index,
+			package,
+			features,
+			all_features,
 		} => {
 			execute_runserver(RunServerOptions {
 				address,
@@ -738,6 +774,9 @@ async fn run_command_core(
 				static_dir,
 				no_spa,
 				index,
+				package,
+				features,
+				all_features,
 				verbosity,
 			})
 			.await
@@ -751,7 +790,24 @@ async fn run_command_core(
 			link,
 			ignore,
 			index,
-		} => execute_collectstatic(clear, no_input, dry_run, link, ignore, index, verbosity).await,
+			package,
+			features,
+			all_features,
+		} => {
+			execute_collectstatic(
+				clear,
+				no_input,
+				dry_run,
+				link,
+				ignore,
+				index,
+				package,
+				features,
+				all_features,
+				verbosity,
+			)
+			.await
+		}
 		Commands::Showurls { names } => execute_showurls(names, verbosity).await,
 		#[cfg(feature = "introspect")]
 		Commands::Introspect { format, section } => execute_introspect(format, section, verbosity).await,
@@ -989,6 +1045,9 @@ struct RunServerOptions {
 	static_dir: String,
 	no_spa: bool,
 	index: Option<String>,
+	package: Option<String>,
+	features: Vec<String>,
+	all_features: bool,
 	verbosity: u8,
 }
 
@@ -1031,6 +1090,15 @@ fn runserver_context_from_options(options: &RunServerOptions) -> CommandContext 
 	}
 	if let Some(ref index) = options.index {
 		ctx.set_option("index".to_string(), index.clone());
+	}
+	if let Some(ref package) = options.package {
+		ctx.set_option("package".to_string(), package.clone());
+	}
+	if !options.features.is_empty() {
+		ctx.set_option("features".to_string(), options.features.join(","));
+	}
+	if options.all_features {
+		ctx.set_option("all-features".to_string(), "true".to_string());
 	}
 
 	ctx
@@ -1081,6 +1149,7 @@ async fn execute_check(
 }
 
 /// Execute the collectstatic command
+#[allow(clippy::too_many_arguments)] // The handler mirrors collectstatic's independent CLI options.
 async fn execute_collectstatic(
 	clear: bool,
 	no_input: bool,
@@ -1088,6 +1157,9 @@ async fn execute_collectstatic(
 	link: bool,
 	ignore: Vec<String>,
 	index: Option<String>,
+	package: Option<String>,
+	features: Vec<String>,
+	all_features: bool,
 	verbosity: u8,
 ) -> Result<(), Box<dyn std::error::Error>> {
 	// Load settings from TOML files
@@ -1161,16 +1233,11 @@ async fn execute_collectstatic(
 		))
 		.build()?;
 
-	// Construct StaticFilesConfig directly from merged settings
-	let static_root = merged
-		.get::<String>("static_root")
-		.ok()
-		.map(PathBuf::from)
-		.unwrap_or_else(|| base_dir.join("staticfiles"));
+	let static_settings = crate::StaticAssetSettings::from_merged(&merged, &base_dir);
 	let config = StaticFilesConfig {
-		static_root,
-		static_url: merged.get_or("static_url", "/static/".to_string()),
-		staticfiles_dirs: merged.get_or("staticfiles_dirs", Vec::new()),
+		static_root: static_settings.static_root,
+		static_url: static_settings.static_url,
+		staticfiles_dirs: static_settings.staticfiles_dirs,
 		media_url: None,
 	};
 
@@ -1205,6 +1272,18 @@ async fn execute_collectstatic(
 	// Create and execute command in blocking context
 	let mut cmd = CollectStaticCommand::new(config, options);
 	cmd.set_index_source(index_source);
+	let feature_selection = if all_features {
+		crate::StyleFeatureSelection::all_features()
+	} else {
+		crate::StyleFeatureSelection::with_features(features)
+	};
+	let style_context = resolve_collectstatic_style_context(
+		&base_dir.join("Cargo.toml"),
+		package.as_deref(),
+		feature_selection,
+	)
+	.map_err(|error| format!("failed to select component style package: {error}"))?;
+	cmd.set_style_context(style_context);
 	let result = tokio::task::spawn_blocking(move || {
 		// Call the sync execute() method directly (not the BaseCommand trait method)
 		CollectStaticCommand::execute(&mut cmd)
@@ -1216,6 +1295,31 @@ async fn execute_collectstatic(
 		Ok(Err(e)) => Err(Box::new(e) as Box<dyn std::error::Error>),
 		Err(e) => Err(Box::new(e) as Box<dyn std::error::Error>),
 	}
+}
+
+fn resolve_collectstatic_style_context(
+	manifest_path: &Path,
+	requested_package: Option<&str>,
+	feature_selection: crate::StyleFeatureSelection,
+) -> Result<Option<crate::StylePackageContext>, String> {
+	match crate::StylePackageContext::resolve_with_features(
+		manifest_path,
+		requested_package,
+		feature_selection,
+	) {
+		Ok(context) => Ok(Some(context)),
+		Err(error)
+			if requested_package.is_none() && virtual_workspace_has_no_style_package(&error) =>
+		{
+			Ok(None)
+		}
+		Err(error) => Err(error),
+	}
+}
+
+fn virtual_workspace_has_no_style_package(error: &str) -> bool {
+	error == "the Cargo workspace has no root package; pass --package <NAME>"
+		|| (error.contains("manifest is virtual") && error.contains("workspace has no members"))
 }
 
 /// Execute the showurls command
@@ -1576,6 +1680,9 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: None,
+			package: None,
+			features: vec![],
+			all_features: false,
 		};
 
 		// Act
@@ -1672,6 +1779,9 @@ mod tests {
 			link: false,
 			ignore: vec![],
 			index: None,
+			package: None,
+			features: vec![],
+			all_features: false,
 		};
 
 		// Act
@@ -1765,6 +1875,9 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: Some("./index.html".to_string()),
+			package: None,
+			features: vec![],
+			all_features: false,
 		};
 
 		// Act & Assert
@@ -1793,6 +1906,9 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: None,
+			package: None,
+			features: vec![],
+			all_features: false,
 		};
 
 		// Act & Assert
@@ -1821,6 +1937,9 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: true,
 			index: Some("./index.html".to_string()),
+			package: None,
+			features: vec![],
+			all_features: false,
 		};
 
 		// Assert
@@ -1850,6 +1969,9 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: Some("./index.html".to_string()),
+			package: None,
+			features: vec![],
+			all_features: false,
 		};
 
 		// Assert
@@ -1882,6 +2004,9 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: None,
+			package: None,
+			features: vec![],
+			all_features: false,
 			verbosity: 0,
 		};
 
@@ -1911,6 +2036,9 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: None,
+			package: None,
+			features: vec![],
+			all_features: false,
 			verbosity: 0,
 		};
 
@@ -1942,6 +2070,9 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: None,
+			package: None,
+			features: vec![],
+			all_features: false,
 			verbosity: 0,
 		};
 
@@ -1970,6 +2101,9 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: None,
+			package: None,
+			features: vec![],
+			all_features: false,
 			verbosity: 0,
 		};
 
@@ -2055,6 +2189,9 @@ mod tests {
 			link: false,
 			ignore: vec![],
 			index: Some("./index.html".to_string()),
+			package: None,
+			features: vec![],
+			all_features: false,
 		};
 
 		// Assert
@@ -2063,6 +2200,84 @@ mod tests {
 		} else {
 			panic!("Expected Collectstatic command");
 		}
+	}
+
+	#[rstest]
+	fn collectstatic_package_option_parses() {
+		let cli = Cli::try_parse_from(["manage", "collectstatic", "--package", "poll-app"])
+			.expect("collectstatic package option should parse");
+
+		match cli.command {
+			Commands::Collectstatic { package, .. } => {
+				assert_eq!(package.as_deref(), Some("poll-app"));
+			}
+			_ => panic!("expected collectstatic command"),
+		}
+	}
+
+	#[rstest]
+	fn collectstatic_style_feature_options_parse() {
+		let cli = Cli::try_parse_from(["manage", "collectstatic", "--features", "theme,brand"])
+			.expect("collectstatic style features should parse");
+
+		let Commands::Collectstatic {
+			features,
+			all_features,
+			..
+		} = cli.command
+		else {
+			panic!("expected collectstatic command");
+		};
+		assert_eq!(features, ["theme", "brand"]);
+		assert!(!all_features);
+	}
+
+	#[rstest]
+	fn collectstatic_without_package_allows_a_virtual_workspace_root() {
+		let directory = tempfile::tempdir().expect("create temporary workspace");
+		let manifest_path = directory.path().join("Cargo.toml");
+		std::fs::write(
+			&manifest_path,
+			"[workspace]\nmembers = []\nresolver = \"3\"\n",
+		)
+		.expect("write virtual workspace manifest");
+
+		let context = resolve_collectstatic_style_context(
+			&manifest_path,
+			None,
+			crate::StyleFeatureSelection::default(),
+		)
+		.expect("a virtual workspace has no component stylesheet package by default");
+
+		assert!(context.is_none());
+	}
+
+	#[rstest]
+	fn runserver_package_option_parses_and_forwards() {
+		let cli = Cli::try_parse_from(["manage", "runserver", "--package", "poll-app"])
+			.expect("runserver package option should parse");
+
+		let Commands::Runserver { package, .. } = cli.command else {
+			panic!("expected runserver command");
+		};
+		assert_eq!(package.as_deref(), Some("poll-app"));
+	}
+
+	#[rstest]
+	fn runserver_all_style_features_option_parses() {
+		let cli = Cli::try_parse_from(["manage", "runserver", "--all-features"])
+			.expect("runserver all style features should parse");
+
+		let Commands::Runserver {
+			features,
+			all_features,
+			..
+		} = cli.command
+		else {
+			panic!("expected runserver command");
+		};
+		assert!(features.is_empty());
+		assert!(all_features);
 	}
 
 	#[cfg(feature = "reinhardt-db")]
@@ -2084,6 +2299,9 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: None,
+			package: None,
+			features: vec![],
+			all_features: false,
 		};
 
 		// Act
@@ -2173,6 +2391,9 @@ mod tests {
 			link: false,
 			ignore: vec![],
 			index: None,
+			package: None,
+			features: vec![],
+			all_features: false,
 		};
 
 		// Act
