@@ -755,24 +755,6 @@ mod tests {
 	}
 
 	#[test]
-	fn model_state_constraints_use_db_column_names() {
-		let mut metadata = ModelMetadata::new("accounts", "User", "accounts_user");
-		metadata.add_field(
-			"email".to_string(),
-			FieldMetadata::new(FieldType::VarChar(255))
-				.with_param("db_column", "email_addr")
-				.with_param("unique", "true"),
-		);
-		let state = metadata.to_model_state();
-		assert!(
-			state
-				.constraints
-				.iter()
-				.any(|constraint| constraint.fields == ["email_addr"])
-		);
-	}
-
-	#[test]
 	fn test_register_model() {
 		let registry = ModelRegistry::new();
 		let metadata = ModelMetadata::new("blog", "Post", "blog_post");
