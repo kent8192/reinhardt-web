@@ -19,7 +19,7 @@ pub(crate) enum NavigationIntent {
 	Initial,
 	Push,
 	Replace,
-	Pop { target_index: i64 },
+	Pop { target_index: Option<i64> },
 }
 
 impl NavigationIntent {
@@ -152,6 +152,13 @@ impl NavigationCoordinator {
 		})?;
 		let loader_context = route_context(&matched);
 		let store = LoaderStore::new();
+		let has_loader_state = matched
+			.loader_ids()
+			.iter()
+			.any(|id| hydration.get_route_loader_state(id.as_str()).is_some());
+		if !has_loader_state {
+			return Ok(false);
+		}
 		for id in matched.loader_ids() {
 			let value = hydration
 				.get_route_loader_state(id.as_str())
@@ -183,15 +190,13 @@ impl NavigationCoordinator {
 		self.error.set(None);
 		if matched.is_none() {
 			self.pending.set(false);
-			self.commit_unmatched(generation, path, intent);
-			return Ok(());
+			return self.commit_unmatched(generation, path, intent);
 		}
 		let matched = matched.expect("matched routes are handled above");
 
 		if matched.loader_ids().is_empty() {
 			self.pending.set(false);
-			self.commit_success(generation, path, intent, matched, LoaderStore::new());
-			return Ok(());
+			return self.commit_success(generation, path, intent, matched, LoaderStore::new());
 		}
 
 		self.pending.set(true);
@@ -229,7 +234,13 @@ impl NavigationCoordinator {
 			for prepared in results {
 				store.insert_prepared(prepared);
 			}
-			coordinator.commit_success(generation, path_for_task, intent, matched_for_task, store);
+			let _ = coordinator.commit_success(
+				generation,
+				path_for_task,
+				intent,
+				matched_for_task,
+				store,
+			);
 		});
 
 		*self.active_attempt.borrow_mut() = Some(NavigationAttempt {
@@ -302,7 +313,12 @@ impl NavigationCoordinator {
 		if let Some(attempt) = self.active_attempt.borrow().as_ref()
 			&& let NavigationIntent::Pop { target_index } = attempt.intent
 		{
-			let delta = self.committed_index.get().saturating_sub(target_index);
+			// Legacy history entries lack a framework index. The browser reached
+			// one through a back traversal from the committed entry, so move forward
+			// once rather than treating the destination as the committed entry.
+			let delta = target_index
+				.map(|target_index| self.committed_index.get().saturating_sub(target_index))
+				.unwrap_or(1);
 			if delta != 0 {
 				self.restoring_pop.set(true);
 				if reinhardt_urls::routers::client_router::history::go(
@@ -324,18 +340,19 @@ impl NavigationCoordinator {
 		intent: NavigationIntent,
 		matched: ClientRouteTreeMatch,
 		store: LoaderStore,
-	) {
+	) -> Result<(), NavigateError> {
 		if !self.is_current_generation(generation) {
-			return;
+			return Ok(());
 		}
 		if !matched.guards_allow() {
-			self.commit_unmatched(generation, path, intent);
-			return;
+			return self.commit_unmatched(generation, path, intent);
 		}
 		let entry_index = match intent {
 			NavigationIntent::Push => self.committed_index.get().saturating_add(1),
 			NavigationIntent::Replace | NavigationIntent::Initial => self.committed_index.get(),
-			NavigationIntent::Pop { target_index } => target_index,
+			NavigationIntent::Pop { target_index } => {
+				target_index.unwrap_or(self.committed_index.get())
+			}
 		};
 		let previous_store = self.mounted_store.borrow_mut().replace(store.clone());
 		let result = crate::router::loader::with_loader_store(&store, || {
@@ -348,22 +365,30 @@ impl NavigationCoordinator {
 				generation,
 				RouteLoaderError::with_status(error.to_string(), 500),
 			);
-			return;
+			return Err(NavigateError::RouterRejected(error.to_string()));
 		}
 		self.committed_index.set(entry_index);
 		self.pending.set(false);
 		self.error.set(None);
 		self.active_attempt.borrow_mut().take();
+		Ok(())
 	}
 
-	fn commit_unmatched(&self, generation: u64, path: String, intent: NavigationIntent) {
+	fn commit_unmatched(
+		&self,
+		generation: u64,
+		path: String,
+		intent: NavigationIntent,
+	) -> Result<(), NavigateError> {
 		if !self.is_current_generation(generation) {
-			return;
+			return Ok(());
 		}
 		let entry_index = match intent {
 			NavigationIntent::Push => self.committed_index.get().saturating_add(1),
 			NavigationIntent::Replace | NavigationIntent::Initial => self.committed_index.get(),
-			NavigationIntent::Pop { target_index } => target_index,
+			NavigationIntent::Pop { target_index } => {
+				target_index.unwrap_or(self.committed_index.get())
+			}
 		};
 		let previous_store = self.mounted_store.borrow_mut().replace(LoaderStore::new());
 		if let Err(error) =
@@ -375,12 +400,13 @@ impl NavigationCoordinator {
 				generation,
 				RouteLoaderError::with_status(error.to_string(), 500),
 			);
-			return;
+			return Err(NavigateError::RouterRejected(error.to_string()));
 		}
 		self.committed_index.set(entry_index);
 		self.pending.set(false);
 		self.error.set(None);
 		self.active_attempt.borrow_mut().take();
+		Ok(())
 	}
 }
 
@@ -828,7 +854,9 @@ mod tests {
 				coordinator
 					.navigate(
 						"/error/".to_owned(),
-						NavigationIntent::Pop { target_index: 2 },
+						NavigationIntent::Pop {
+							target_index: Some(2),
+						},
 					)
 					.expect("pop preparation starts");
 				poll_rounds(&tasks, 4);

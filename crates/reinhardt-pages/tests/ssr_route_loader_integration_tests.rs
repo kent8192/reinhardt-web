@@ -6,7 +6,37 @@ use reinhardt_pages::{
 	Loader, Outlet, Page, Path, RouteLoader, SsrRenderer, component, layout, loader, page,
 };
 use reinhardt_urls::routers::ClientRouter;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
+
+static SHARED_SSR_LOADER_CALLS: AtomicUsize = AtomicUsize::new(0);
+
+#[loader]
+async fn shared_ssr_loader() -> Result<String, String> {
+	SHARED_SSR_LOADER_CALLS.fetch_add(1, Ordering::SeqCst);
+	Ok("shared loader value".to_owned())
+}
+
+#[layout(
+	"/ssr-shared-loader/",
+	name = "ssr-shared-loader-shell",
+	loader = shared_ssr_loader,
+)]
+fn ssr_shared_loader_shell(Loader(value): Loader<String>, outlet: Outlet) -> Page {
+	page!(|value: String, outlet: Outlet| {
+		section {
+			{ value }
+			{ outlet }
+		}
+	})(value, outlet)
+}
+
+#[component("child/", name = "ssr-shared-loader-child", loader = shared_ssr_loader)]
+fn ssr_shared_loader_child(Loader(value): Loader<String>) -> Page {
+	page!(|value: String| {
+		p { { value } }
+	})(value)
+}
 
 #[loader]
 async fn ssr_greeting_loader() -> Result<String, String> {
@@ -234,5 +264,25 @@ fn nested_layout_and_leaf_loaders_prepare_in_parallel_for_ssr() {
 			renderer.state().get_route_loader_state(jobs_id.as_str()),
 			Some(&serde_json::json!("jobs-7"))
 		);
+	});
+}
+
+#[test]
+fn repeated_loader_is_prepared_once_for_ssr() {
+	tokio_test::block_on(async {
+		SHARED_SSR_LOADER_CALLS.store(0, Ordering::SeqCst);
+		let router = ClientRouter::new().routes(|routes| {
+			routes.layout(ssr_shared_loader_shell, |children| {
+				children.component(ssr_shared_loader_child)
+			})
+		});
+		let mut renderer = SsrRenderer::new();
+
+		let output = renderer
+			.render_route_to_string(&router, "/ssr-shared-loader/child/")
+			.await;
+
+		assert_eq!(output.status, 200);
+		assert_eq!(SHARED_SSR_LOADER_CALLS.load(Ordering::SeqCst), 1);
 	});
 }

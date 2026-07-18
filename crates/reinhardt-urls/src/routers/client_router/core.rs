@@ -3,7 +3,7 @@
 //! This module provides the main ClientRouter struct and routing logic.
 //! The router uses `Page` type for all view rendering.
 
-use super::component::ComponentInfo;
+use super::component::{ComponentInfo, ComponentMetadata};
 use super::error::{MergeError, RouteRegistrationError, RouterError};
 use super::from_request::FromRequest;
 use super::handler::{
@@ -858,12 +858,18 @@ impl ClientRouter {
 		P: FromRequest + Send + Sync + 'static,
 	{
 		let index = self.routes.len();
-		self.routes.push(ClientRoute::from_route_handler(
+		let loader_id = inventory::iter::<ComponentMetadata>
+			.into_iter()
+			.find(|metadata| metadata.name == name && metadata.path == pattern)
+			.and_then(|metadata| metadata.loader_id);
+		let mut route = ClientRoute::from_route_handler(
 			Some(name.to_string()),
 			ClientPathPattern::new(pattern)
 				.unwrap_or_else(|e| panic!("Invalid route pattern '{}': {}", pattern, e)),
 			from_request_handler(handler, pattern.to_string()),
-		));
+		);
+		route.set_loader_id(loader_id);
+		self.routes.push(route);
 		self.insert_named_route(name, index);
 		self
 	}
@@ -1155,7 +1161,10 @@ impl ClientRouter {
 
 		match navigation {
 			NavigationType::Push => push_state(&state),
-			NavigationType::Replace | NavigationType::Initial => replace_state(&state),
+			NavigationType::Replace => replace_state(&state),
+			// The launcher normalizes the first entry before preparation. Keeping
+			// this commit signal-only preserves host state upgraded during launch.
+			NavigationType::Initial => Ok(()),
 			NavigationType::Pop => Ok(()),
 		}
 		.map_err(RouterError::NavigationFailed)?;
@@ -1179,7 +1188,8 @@ impl ClientRouter {
 		let state = HistoryState::new(path).with_entry_index(entry_index);
 		match navigation {
 			NavigationType::Push => push_state(&state),
-			NavigationType::Replace | NavigationType::Initial => replace_state(&state),
+			NavigationType::Replace => replace_state(&state),
+			NavigationType::Initial => Ok(()),
 			NavigationType::Pop => Ok(()),
 		}
 		.map_err(RouterError::NavigationFailed)?;
@@ -1195,6 +1205,11 @@ impl ClientRouter {
 	/// Internal navigation implementation.
 	fn navigate(&self, path: &str, nav_type: NavigationType) -> Result<(), RouterError> {
 		if let Some(matched) = self.match_tree(path) {
+			if !matched.loader_ids().is_empty() {
+				return Err(RouterError::NavigationFailed(
+					"route loaders require navigation through reinhardt-pages".to_string(),
+				));
+			}
 			return self.commit_match(path, &matched, nav_type, 0);
 		}
 		self.commit_unmatched(path, nav_type, 0)
@@ -1507,9 +1522,34 @@ fn dispatch_navigation_observers(
 
 #[cfg(test)]
 mod tests {
+	use super::super::from_request::{ExtractError, RouteContext};
 	use super::*;
 	use reinhardt_core::reactive::{Effect, ReactiveScope, with_runtime};
 	use rstest::*;
+
+	struct LoaderBoundPageProps;
+
+	impl FromRequest for LoaderBoundPageProps {
+		fn from_request(_ctx: &RouteContext) -> Result<Self, ExtractError> {
+			Ok(Self)
+		}
+	}
+
+	inventory::submit! {
+		ComponentMetadata {
+			path: "/loaded/",
+			name: "loaded-page",
+			component_name: "LoadedPage",
+			function_name: "loaded_page",
+			props_type_name: "LoadedPageProps",
+			module_path: module_path!(),
+			loader_id: Some(RouteLoaderId::new("test:loaded-page")),
+		}
+	}
+
+	fn loaded_page(_props: LoaderBoundPageProps) -> Page {
+		Page::Empty
+	}
 
 	fn test_page() -> Page {
 		Page::Empty
@@ -1777,6 +1817,24 @@ mod tests {
 
 			// Non-WASM replace should succeed
 			assert!(router.replace("/").is_ok());
+		});
+	}
+
+	#[test]
+	fn page_registration_preserves_component_loader_metadata() {
+		ReactiveScope::run(|| {
+			let router = ClientRouter::new().page("loaded-page", "/loaded/", loaded_page);
+			let matched = router.match_tree("/loaded/").expect("route matches");
+
+			assert_eq!(
+				matched.loader_ids(),
+				&[RouteLoaderId::new("test:loaded-page")]
+			);
+			assert!(matches!(
+				router.push("/loaded/"),
+				Err(RouterError::NavigationFailed(message))
+					if message == "route loaders require navigation through reinhardt-pages"
+			));
 		});
 	}
 

@@ -116,7 +116,13 @@ async fn prepare_route_loaders(
 	let source = CancellationSource::new();
 	let handle = source.handle();
 	let context = route_context(matched);
-	let results = match try_join_all(matched.loader_ids().iter().copied().map(|id| {
+	let mut loader_ids = Vec::new();
+	for id in matched.loader_ids().iter().copied() {
+		if !loader_ids.contains(&id) {
+			loader_ids.push(id);
+		}
+	}
+	let results = match try_join_all(loader_ids.into_iter().map(|id| {
 		execute_loader(
 			&registry,
 			id,

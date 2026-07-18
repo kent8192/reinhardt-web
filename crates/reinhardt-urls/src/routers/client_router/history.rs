@@ -180,6 +180,20 @@ pub fn replace_state(state: &HistoryState) -> Result<(), String> {
 		.map_err(|_| "Failed to replace state".to_string())
 }
 
+/// Replaces framework state without changing the browser URL.
+///
+/// Used when a launcher upgrades the current history entry with framework
+/// metadata. In particular, this preserves fragments used for anchors.
+#[cfg(wasm)]
+fn replace_current_state(state: &HistoryState) -> Result<(), String> {
+	let window = web_sys::window().ok_or("Window not available")?;
+	let history = window.history().map_err(|_| "History not available")?;
+	let js_state = state_to_js_object(state)?;
+	history
+		.replace_state_with_url(&js_state, "", None)
+		.map_err(|_| "Failed to replace state".to_string())
+}
+
 /// Non-WASM version for testing.
 #[cfg(native)]
 pub fn replace_state(_state: &HistoryState) -> Result<(), String> {
@@ -265,12 +279,12 @@ pub fn normalize_initial_state(proposed: HistoryState) -> Result<HistoryState, S
 			return Ok(existing);
 		}
 		let normalized = normalize_legacy_initial_state(proposed, existing);
-		replace_state(&normalized)?;
+		replace_current_state(&normalized)?;
 		return Ok(normalized);
 	}
 
 	let normalized = proposed.with_entry_index(0);
-	replace_state(&normalized)?;
+	replace_current_state(&normalized)?;
 	Ok(normalized)
 }
 

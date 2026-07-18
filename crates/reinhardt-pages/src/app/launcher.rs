@@ -121,6 +121,11 @@ impl PersistentLayoutRenderer {
 			.layouts()
 			.iter()
 			.map(|layout| {
+				let query_key = format!(
+					"route-query:{}?{}",
+					layout.key().full_pattern(),
+					route_match.query().unwrap_or_default()
+				);
 				if let Some(id) = layout.metadata().loader_id() {
 					let cache_key = registry
 						.as_ref()
@@ -128,20 +133,17 @@ impl PersistentLayoutRenderer {
 						.and_then(|registration| {
 							loader_cache_id(id, &loader_context, registration.inputs).ok()
 						});
-					Some(cache_key.unwrap_or_else(|| {
+					let cache_key = cache_key.unwrap_or_else(|| {
 						format!(
 							"route-loader:{}:{}?{}",
 							id.as_str(),
 							route_match.path(),
 							route_match.query().unwrap_or_default()
 						)
-					}))
+					});
+					Some(format!("{cache_key}:{query_key}"))
 				} else {
-					Some(format!(
-						"route-query:{}?{}",
-						layout.key().full_pattern(),
-						route_match.query().unwrap_or_default()
-					))
+					Some(query_key)
 				}
 			})
 			.collect::<Vec<_>>();
@@ -1084,7 +1086,7 @@ impl ClientLauncher {
 				if pop_coordinator.consume_restoration_pop() {
 					return;
 				}
-				let target_index = request.state.entry_index().unwrap_or(0);
+				let target_index = request.state.entry_index();
 				let _ = pop_coordinator
 					.navigate(request.path, super::NavigationIntent::Pop { target_index });
 			})?;
