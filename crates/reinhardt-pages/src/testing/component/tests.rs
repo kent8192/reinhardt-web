@@ -4,7 +4,6 @@ use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-use reinhardt_core::deps;
 use reinhardt_core::page::IntoPage;
 use reinhardt_core::reactive::{ReactiveScope, Signal};
 use reinhardt_core::types::page::{DeferredNode, EventName, Page, PageElement, SuspenseNode};

@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 use std::pin::Pin;
 
 use reinhardt_db::orm::{
-	DatabaseConnection, DatabaseField, FilterValue, Model, TransactionExecutor, TransactionScope,
+	AtomicTransaction, DatabaseConnection, DatabaseField, FilterValue, Model, TransactionExecutor,
 };
 
 use super::{
@@ -33,38 +33,17 @@ impl<R> ModelServerFnSet<R> {
 	}
 }
 
-struct MutationTransaction {
-	scope: TransactionScope,
+struct MutationTransaction<'a> {
+	transaction: &'a mut AtomicTransaction,
 }
 
-impl MutationTransaction {
-	async fn begin(connection: &DatabaseConnection) -> Result<Self, ServerFnSetError> {
-		let scope = TransactionScope::begin(connection)
-			.await
-			.map_err(internal_error)?;
-		Ok(Self { scope })
+impl<'a> MutationTransaction<'a> {
+	fn new(transaction: &'a mut AtomicTransaction) -> Self {
+		Self { transaction }
 	}
 
-	fn executor_mut(
-		&mut self,
-	) -> Result<&mut (dyn TransactionExecutor + 'static), ServerFnSetError> {
-		self.scope.executor_mut().map_err(internal_error)
-	}
-
-	async fn complete<T>(self, result: Result<T, ServerFnSetError>) -> Result<T, ServerFnSetError> {
-		match result {
-			Ok(value) => {
-				self.scope.commit().await.map_err(internal_error)?;
-				Ok(value)
-			}
-			Err(error) => match self.scope.rollback().await {
-				Ok(()) => Err(error),
-				Err(rollback_error) => {
-					tracing::error!(%rollback_error, "model server function transaction rollback failed");
-					Err(ServerFnSetError::Internal)
-				}
-			},
-		}
+	fn executor_mut(&mut self) -> Result<&mut (dyn TransactionExecutor + '_), ServerFnSetError> {
+		Ok(self.transaction)
 	}
 }
 
@@ -116,10 +95,15 @@ where
 		let queryset =
 			<R::Policy as ServerFnSetPolicy<R>>::scope_query(principal, queryset, None).await?;
 		let queryset = R::apply_list_query(queryset, &query)?;
+		let mut read_connection = connection.clone();
 		let total = queryset
-			.count_with_db(connection)
+			.count_with_db(&mut read_connection)
 			.await
 			.map_err(internal_error)?;
+		let total = u64::try_from(total).map_err(|error| {
+			tracing::error!(%error, "pagination total is not representable as u64");
+			ServerFnSetError::Internal
+		})?;
 		let offset = usize::try_from(page.offset).map_err(|error| {
 			tracing::error!(%error, offset = page.offset, "pagination offset is not representable");
 			ServerFnSetError::Internal
@@ -127,7 +111,7 @@ where
 		let models = queryset
 			.offset(offset)
 			.limit(page.limit as usize)
-			.all_with_db(connection)
+			.all_with_db(&mut read_connection)
 			.await
 			.map_err(internal_error)?;
 		let mut items = Vec::with_capacity(models.len());
@@ -179,27 +163,27 @@ where
 		connection: &DatabaseConnection,
 		input: R::Create,
 	) -> Result<R::Read, ServerFnSetError> {
-		let mut transaction = MutationTransaction::begin(connection).await?;
-		let result = async {
-			<R::Policy as ServerFnSetPolicy<R>>::authorize_action(
-				principal,
-				ServerFnSetAction::Create,
-				Some(transaction.executor_mut()?),
-			)
-			.await?;
-			R::validate_create(&input, transaction.executor_mut()?).await?;
-			let object = R::perform_create(input, transaction.executor_mut()?).await?;
-			<R::Policy as ServerFnSetPolicy<R>>::authorize_object(
-				principal,
-				ServerFnSetAction::Create,
-				&object,
-				Some(transaction.executor_mut()?),
-			)
-			.await?;
-			R::to_read(&object, Some(transaction.executor_mut()?)).await
-		}
-		.await;
-		transaction.complete(result).await
+		connection
+			.atomic(async |raw_transaction| {
+				let mut transaction = MutationTransaction::new(raw_transaction);
+				<R::Policy as ServerFnSetPolicy<R>>::authorize_action(
+					principal,
+					ServerFnSetAction::Create,
+					Some(transaction.executor_mut()?),
+				)
+				.await?;
+				R::validate_create(&input, transaction.executor_mut()?).await?;
+				let object = R::perform_create(input, transaction.executor_mut()?).await?;
+				<R::Policy as ServerFnSetPolicy<R>>::authorize_object(
+					principal,
+					ServerFnSetAction::Create,
+					&object,
+					Some(transaction.executor_mut()?),
+				)
+				.await?;
+				R::to_read(&object, Some(transaction.executor_mut()?)).await
+			})
+			.await
 	}
 
 	/// Execute the transactional full-update pipeline.
@@ -209,35 +193,35 @@ where
 		lookup: R::Lookup,
 		input: R::Update,
 	) -> Result<R::Read, ServerFnSetError> {
-		let mut transaction = MutationTransaction::begin(connection).await?;
-		let result = async {
-			<R::Policy as ServerFnSetPolicy<R>>::authorize_action(
-				principal,
-				ServerFnSetAction::Update,
-				Some(transaction.executor_mut()?),
-			)
-			.await?;
-			let mut object = Self::lookup_in_transaction(&mut transaction, lookup).await?;
-			<R::Policy as ServerFnSetPolicy<R>>::authorize_object(
-				principal,
-				ServerFnSetAction::Update,
-				&object,
-				Some(transaction.executor_mut()?),
-			)
-			.await?;
-			R::validate_update(&input, &object, transaction.executor_mut()?).await?;
-			R::perform_update(input, &mut object, transaction.executor_mut()?).await?;
-			<R::Policy as ServerFnSetPolicy<R>>::authorize_object(
-				principal,
-				ServerFnSetAction::Update,
-				&object,
-				Some(transaction.executor_mut()?),
-			)
-			.await?;
-			R::to_read(&object, Some(transaction.executor_mut()?)).await
-		}
-		.await;
-		transaction.complete(result).await
+		connection
+			.atomic(async |raw_transaction| {
+				let mut transaction = MutationTransaction::new(raw_transaction);
+				<R::Policy as ServerFnSetPolicy<R>>::authorize_action(
+					principal,
+					ServerFnSetAction::Update,
+					Some(transaction.executor_mut()?),
+				)
+				.await?;
+				let mut object = Self::lookup_in_transaction(&mut transaction, lookup).await?;
+				<R::Policy as ServerFnSetPolicy<R>>::authorize_object(
+					principal,
+					ServerFnSetAction::Update,
+					&object,
+					Some(transaction.executor_mut()?),
+				)
+				.await?;
+				R::validate_update(&input, &object, transaction.executor_mut()?).await?;
+				R::perform_update(input, &mut object, transaction.executor_mut()?).await?;
+				<R::Policy as ServerFnSetPolicy<R>>::authorize_object(
+					principal,
+					ServerFnSetAction::Update,
+					&object,
+					Some(transaction.executor_mut()?),
+				)
+				.await?;
+				R::to_read(&object, Some(transaction.executor_mut()?)).await
+			})
+			.await
 	}
 
 	/// Execute the transactional partial-update pipeline.
@@ -247,35 +231,35 @@ where
 		lookup: R::Lookup,
 		input: R::Patch,
 	) -> Result<R::Read, ServerFnSetError> {
-		let mut transaction = MutationTransaction::begin(connection).await?;
-		let result = async {
-			<R::Policy as ServerFnSetPolicy<R>>::authorize_action(
-				principal,
-				ServerFnSetAction::PartialUpdate,
-				Some(transaction.executor_mut()?),
-			)
-			.await?;
-			let mut object = Self::lookup_in_transaction(&mut transaction, lookup).await?;
-			<R::Policy as ServerFnSetPolicy<R>>::authorize_object(
-				principal,
-				ServerFnSetAction::PartialUpdate,
-				&object,
-				Some(transaction.executor_mut()?),
-			)
-			.await?;
-			R::validate_patch(&input, &object, transaction.executor_mut()?).await?;
-			R::perform_patch(input, &mut object, transaction.executor_mut()?).await?;
-			<R::Policy as ServerFnSetPolicy<R>>::authorize_object(
-				principal,
-				ServerFnSetAction::PartialUpdate,
-				&object,
-				Some(transaction.executor_mut()?),
-			)
-			.await?;
-			R::to_read(&object, Some(transaction.executor_mut()?)).await
-		}
-		.await;
-		transaction.complete(result).await
+		connection
+			.atomic(async |raw_transaction| {
+				let mut transaction = MutationTransaction::new(raw_transaction);
+				<R::Policy as ServerFnSetPolicy<R>>::authorize_action(
+					principal,
+					ServerFnSetAction::PartialUpdate,
+					Some(transaction.executor_mut()?),
+				)
+				.await?;
+				let mut object = Self::lookup_in_transaction(&mut transaction, lookup).await?;
+				<R::Policy as ServerFnSetPolicy<R>>::authorize_object(
+					principal,
+					ServerFnSetAction::PartialUpdate,
+					&object,
+					Some(transaction.executor_mut()?),
+				)
+				.await?;
+				R::validate_patch(&input, &object, transaction.executor_mut()?).await?;
+				R::perform_patch(input, &mut object, transaction.executor_mut()?).await?;
+				<R::Policy as ServerFnSetPolicy<R>>::authorize_object(
+					principal,
+					ServerFnSetAction::PartialUpdate,
+					&object,
+					Some(transaction.executor_mut()?),
+				)
+				.await?;
+				R::to_read(&object, Some(transaction.executor_mut()?)).await
+			})
+			.await
 	}
 
 	/// Execute the transactional destroy pipeline.
@@ -284,30 +268,30 @@ where
 		connection: &DatabaseConnection,
 		lookup: R::Lookup,
 	) -> Result<(), ServerFnSetError> {
-		let mut transaction = MutationTransaction::begin(connection).await?;
-		let result = async {
-			<R::Policy as ServerFnSetPolicy<R>>::authorize_action(
-				principal,
-				ServerFnSetAction::Destroy,
-				Some(transaction.executor_mut()?),
-			)
-			.await?;
-			let object = Self::lookup_in_transaction(&mut transaction, lookup).await?;
-			<R::Policy as ServerFnSetPolicy<R>>::authorize_object(
-				principal,
-				ServerFnSetAction::Destroy,
-				&object,
-				Some(transaction.executor_mut()?),
-			)
-			.await?;
-			R::perform_destroy(&object, transaction.executor_mut()?).await
-		}
-		.await;
-		transaction.complete(result).await
+		connection
+			.atomic(async |raw_transaction| {
+				let mut transaction = MutationTransaction::new(raw_transaction);
+				<R::Policy as ServerFnSetPolicy<R>>::authorize_action(
+					principal,
+					ServerFnSetAction::Destroy,
+					Some(transaction.executor_mut()?),
+				)
+				.await?;
+				let object = Self::lookup_in_transaction(&mut transaction, lookup).await?;
+				<R::Policy as ServerFnSetPolicy<R>>::authorize_object(
+					principal,
+					ServerFnSetAction::Destroy,
+					&object,
+					Some(transaction.executor_mut()?),
+				)
+				.await?;
+				R::perform_destroy(&object, transaction.executor_mut()?).await
+			})
+			.await
 	}
 
 	async fn lookup_in_transaction(
-		transaction: &mut MutationTransaction,
+		transaction: &mut MutationTransaction<'_>,
 		lookup: R::Lookup,
 	) -> Result<R::Model, ServerFnSetError> {
 		let rows = R::base_queryset()
@@ -332,31 +316,17 @@ where
 		)
 			-> Pin<Box<dyn Future<Output = Result<T, ServerFnSetError>> + Send + 'a>>,
 	{
-		let mut transaction = MutationTransaction::begin(connection).await?;
-		let result = async {
-			<R::Policy as ServerFnSetPolicy<R>>::authorize_action(
-				principal,
-				action,
-				Some(transaction.executor_mut()?),
-			)
-			.await?;
-			let mut object = Self::lookup_in_transaction(&mut transaction, lookup.clone()).await?;
-			<R::Policy as ServerFnSetPolicy<R>>::authorize_object(
-				principal,
-				action,
-				&object,
-				Some(transaction.executor_mut()?),
-			)
-			.await?;
-			let callback_result = callback(DetailActionContext::new(
-				&mut object,
-				transaction.executor_mut()?,
-			))
-			.await?;
-			if matches!(
-				action,
-				ServerFnSetAction::Update | ServerFnSetAction::PartialUpdate
-			) {
+		connection
+			.atomic(async |raw_transaction| {
+				let mut transaction = MutationTransaction::new(raw_transaction);
+				<R::Policy as ServerFnSetPolicy<R>>::authorize_action(
+					principal,
+					action,
+					Some(transaction.executor_mut()?),
+				)
+				.await?;
+				let mut object =
+					Self::lookup_in_transaction(&mut transaction, lookup.clone()).await?;
 				<R::Policy as ServerFnSetPolicy<R>>::authorize_object(
 					principal,
 					action,
@@ -364,11 +334,26 @@ where
 					Some(transaction.executor_mut()?),
 				)
 				.await?;
-			}
-			Ok(callback_result)
-		}
-		.await;
-		transaction.complete(result).await
+				let callback_result = callback(DetailActionContext::new(
+					&mut object,
+					transaction.executor_mut()?,
+				))
+				.await?;
+				if matches!(
+					action,
+					ServerFnSetAction::Update | ServerFnSetAction::PartialUpdate
+				) {
+					<R::Policy as ServerFnSetPolicy<R>>::authorize_object(
+						principal,
+						action,
+						&object,
+						Some(transaction.executor_mut()?),
+					)
+					.await?;
+				}
+				Ok(callback_result)
+			})
+			.await
 	}
 
 	/// Execute a transaction-bound collection override or custom action.
@@ -384,28 +369,28 @@ where
 		)
 			-> Pin<Box<dyn Future<Output = Result<T, ServerFnSetError>> + Send + 'a>>,
 	{
-		let mut transaction = MutationTransaction::begin(connection).await?;
-		let result = async {
-			<R::Policy as ServerFnSetPolicy<R>>::authorize_action(
-				principal,
-				action,
-				Some(transaction.executor_mut()?),
-			)
-			.await?;
-			let queryset = <R::Policy as ServerFnSetPolicy<R>>::scope_query(
-				principal,
-				R::base_queryset(),
-				Some(transaction.executor_mut()?),
-			)
-			.await?;
-			callback(CollectionActionContext::new(
-				queryset,
-				transaction.executor_mut()?,
-			))
+		connection
+			.atomic(async |raw_transaction| {
+				let mut transaction = MutationTransaction::new(raw_transaction);
+				<R::Policy as ServerFnSetPolicy<R>>::authorize_action(
+					principal,
+					action,
+					Some(transaction.executor_mut()?),
+				)
+				.await?;
+				let queryset = <R::Policy as ServerFnSetPolicy<R>>::scope_query(
+					principal,
+					R::base_queryset(),
+					Some(transaction.executor_mut()?),
+				)
+				.await?;
+				callback(CollectionActionContext::new(
+					queryset,
+					transaction.executor_mut()?,
+				))
+				.await
+			})
 			.await
-		}
-		.await;
-		transaction.complete(result).await
 	}
 
 	/// Execute a standard create override without an existing-object queryset.
@@ -420,22 +405,22 @@ where
 		)
 			-> Pin<Box<dyn Future<Output = Result<T, ServerFnSetError>> + Send + 'a>>,
 	{
-		let mut transaction = MutationTransaction::begin(connection).await?;
-		let result = async {
-			<R::Policy as ServerFnSetPolicy<R>>::authorize_action(
-				principal,
-				ServerFnSetAction::Create,
-				Some(transaction.executor_mut()?),
-			)
-			.await?;
-			callback(CreateActionContext::new(
-				principal,
-				transaction.executor_mut()?,
-			))
+		connection
+			.atomic(async |raw_transaction| {
+				let mut transaction = MutationTransaction::new(raw_transaction);
+				<R::Policy as ServerFnSetPolicy<R>>::authorize_action(
+					principal,
+					ServerFnSetAction::Create,
+					Some(transaction.executor_mut()?),
+				)
+				.await?;
+				callback(CreateActionContext::new(
+					principal,
+					transaction.executor_mut()?,
+				))
+				.await
+			})
 			.await
-		}
-		.await;
-		transaction.complete(result).await
 	}
 
 	/// Execute a non-transactional detail custom action.
