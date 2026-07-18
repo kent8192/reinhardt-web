@@ -183,7 +183,7 @@ impl TestDatabase {
 }
 
 /// Test user model for validation tests
-#[model(table_name = "test_users")]
+#[model(app_label = "default", table_name = "test_users")]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TestUser {
 	#[field(primary_key = true)]
@@ -202,7 +202,7 @@ impl TestUser {
 }
 
 /// Test product model for validation tests
-#[model(table_name = "test_products")]
+#[model(app_label = "default", table_name = "test_products")]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TestProduct {
 	#[field(primary_key = true)]
@@ -218,7 +218,7 @@ pub struct TestProduct {
 }
 
 /// Test order model for validation tests
-#[model(table_name = "test_orders")]
+#[model(app_label = "default", table_name = "test_orders")]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TestOrder {
 	#[field(primary_key = true)]

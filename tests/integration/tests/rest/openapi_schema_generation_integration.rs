@@ -25,7 +25,7 @@ use reinhardt_views::viewsets::{ModelViewSet, ReadOnlyModelViewSet};
 
 /// User model for testing
 #[allow(dead_code)]
-#[model(table_name = "users")]
+#[model(app_label = "default", table_name = "users")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct User {
 	#[field(primary_key = true)]

@@ -11,7 +11,7 @@ struct StyleSettings {
 	theme: String,
 }
 
-#[model(table_name = "writing_projects")]
+#[model(app_label = "default", table_name = "writing_projects")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct WritingProject {
 	#[field(primary_key = true)]

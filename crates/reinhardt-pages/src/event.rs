@@ -196,6 +196,8 @@ mod tests {
 				$fixture_defaults:ident;
 			)*
 		) => {
+			// Catalog coverage intentionally includes deprecated compatibility payloads.
+			#[allow(deprecated)]
 			#[test]
 			fn event_catalog_generates_every_distinct_payload_type() {
 				fn assert_payload<P: EventPayload>() {}

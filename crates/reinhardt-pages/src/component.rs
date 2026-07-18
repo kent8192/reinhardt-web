@@ -31,7 +31,7 @@
 
 pub mod activity;
 pub mod error_boundary;
-mod into_page;
+pub(crate) mod into_page;
 mod props;
 pub(crate) mod reactive_if;
 pub mod suspense;
@@ -56,8 +56,11 @@ pub(crate) use reactive_if::scope_reactive_node_store;
 pub use reactive_if::{ReactiveIfNode, ReactiveNode, store_reactive_node};
 #[cfg(wasm)]
 pub(crate) use reactive_if::{
-	new_reactive_node_store, render_view_in_reactive_node_store, store_reactive_scope,
-	with_reactive_node_store,
+	new_reactive_node_store, store_reactive_scope, with_reactive_node_store,
+};
+pub use reinhardt_core::types::page::{
+	ControlBinding, ControlBindingError, ControlKind, ControlValue, ControlWriteOutcome,
+	NumberParseError, NumberParseErrorKind, NumberValue,
 };
 pub use suspense::{ResourceTracker, SuspenseBoundary};
 pub use r#trait::Component;

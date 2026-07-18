@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 include!("../support.rs");
 
-#[model(table_name = "tenants")]
+#[model(app_label = "default", table_name = "tenants")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Tenant {
 	#[field(primary_key = true)]
@@ -16,7 +16,7 @@ fn default_tenant() -> db::associations::ForeignKeyField<Tenant> {
 	db::associations::ForeignKeyField::default()
 }
 
-#[model(table_name = "documents")]
+#[model(app_label = "default", table_name = "documents")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Document {
 	#[field(primary_key = true)]

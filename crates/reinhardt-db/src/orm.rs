@@ -113,6 +113,8 @@ pub mod constraints;
 pub mod expressions;
 /// Fields module.
 pub mod fields;
+/// Fixture loading and dumping module.
+pub mod fixtures;
 /// Functions module.
 pub mod functions;
 pub mod hybrid_dml;
@@ -228,11 +230,16 @@ pub use functions::{
 pub use indexes::{BTreeIndex, GinIndex, GistIndex, HashIndex, Index};
 pub use into_primary_key::IntoPrimaryKey;
 pub use json::Json;
-pub use model::{FieldSelector, Model, SoftDeletable, SoftDelete, Timestamped, Timestamps};
+pub use model::{
+	FieldSelector, FixtureFields, FixtureValue, Model, SoftDeletable, SoftDelete, Timestamped,
+	Timestamps,
+};
 pub use query_fields::{
 	Comparable, DateTimeType, Field, GroupByFields, Lookup, LookupType, LookupValue, NumericType,
 	QueryFieldCompiler, StringType,
 };
+#[doc(hidden)]
+pub use serde;
 pub use set_operations::{CombinedQuery, SetOperation, SetOperationBuilder};
 pub use transaction::{
 	Atomic, IsolationLevel, Savepoint, Transaction, TransactionScope, TransactionState, atomic,

@@ -3209,7 +3209,7 @@ mod tests {
 		let questions = sections
 			.fields
 			.iter()
-			.find(|entry| entry.name().to_string() == "questions")
+			.find(|entry| entry.name() == "questions")
 			.and_then(FormFieldEntry::as_collection)
 			.expect("questions nested collection");
 		assert_eq!(questions.fields.len(), 1);

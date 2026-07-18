@@ -1,0 +1,5 @@
+error: a bound radio input requires a `value` attribute
+ --> tests/ui/page/fail/controlled_bind_missing_radio_value.rs:8:10
+  |
+8 |             bind: ()
+  |                   ^^

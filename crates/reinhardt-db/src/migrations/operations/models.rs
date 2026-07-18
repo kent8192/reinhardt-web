@@ -560,6 +560,7 @@ impl CreateModel {
 	/// Apply to project state (forward)
 	pub fn state_forwards(&self, app_label: &str, state: &mut ProjectState) {
 		let mut model = ModelState::new(app_label, &self.name);
+		model.table_name = self.name.clone();
 
 		for field_def in &self.fields {
 			let field = FieldState::new(
@@ -1147,6 +1148,26 @@ mod tests {
 		assert_eq!(model.fields.len(), 2);
 		assert_eq!(model.fields.get("id").unwrap().name, "id");
 		assert_eq!(model.fields.get("name").unwrap().name, "name");
+	}
+
+	#[test]
+	fn test_create_model_state_forwards_preserves_physical_table_name() {
+		let mut state = ProjectState::new();
+		let create = CreateModel::new(
+			"users",
+			vec![FieldDefinition::new(
+				"id",
+				FieldType::Integer,
+				true,
+				false,
+				None::<String>,
+			)],
+		);
+
+		create.state_forwards("myapp", &mut state);
+
+		let model = state.get_model("myapp", "users").unwrap();
+		assert_eq!(model.table_name, "users");
 	}
 
 	#[test]

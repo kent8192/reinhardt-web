@@ -208,17 +208,11 @@ pub async fn replace_database_connection_for_testing(
 /// Get a reference to the global database connection
 pub async fn get_connection() -> reinhardt_core::exception::Result<DatabaseConnection> {
 	let db = DB.get().ok_or_else(|| {
-		Error::from(DatabaseError::new(
-			DatabaseErrorKind::Configuration,
-			"Database not initialized",
-		))
+		reinhardt_core::exception::Error::Database("Database not initialized".to_string())
 	})?;
 	let guard = db.read().await;
 	guard.clone().ok_or_else(|| {
-		Error::from(DatabaseError::new(
-			DatabaseErrorKind::Configuration,
-			"Database connection not available",
-		))
+		reinhardt_core::exception::Error::Database("Database connection not available".to_string())
 	})
 }
 
@@ -346,14 +340,10 @@ impl<M: Model> Manager<M> {
 			.unzip();
 
 		if fields.is_empty() {
-			return Err(DatabaseError::new(
-				DatabaseErrorKind::Query,
-				format!(
-					"Cannot create {} because no writable fields remain after filtering generated and defaulted columns",
-					M::table_name()
-				),
-			)
-			.into());
+			return Err(reinhardt_core::exception::Error::Database(format!(
+				"Cannot create {} because no writable fields remain after filtering generated and defaulted columns",
+				M::table_name()
+			)));
 		}
 
 		stmt.columns(fields);
@@ -868,6 +858,21 @@ impl<M: Model> Manager<M> {
 		conn: &DatabaseConnection,
 		model: &M,
 	) -> reinhardt_core::exception::Result<M> {
+		let (sql, values) = self.create_insert_sql_values(conn, model)?;
+		let row = conn.query_one(&sql, values).await?;
+
+		// row.data is already serde_json::Value::Object so deserialize directly
+		row.deserialize_model::<M>().map_err(|error| {
+			DatabaseError::new(DatabaseErrorKind::Serialization, error.to_string()).into()
+		})
+	}
+
+	/// Build the INSERT statement and bound values used by `create`.
+	pub(crate) fn create_insert_sql_values(
+		&self,
+		conn: &DatabaseConnection,
+		model: &M,
+	) -> reinhardt_core::exception::Result<(String, Vec<super::connection::QueryValue>)> {
 		let json = serde_json::to_value(model).map_err(|error| {
 			Error::from(DatabaseError::new(
 				DatabaseErrorKind::Serialization,
@@ -896,16 +901,10 @@ impl<M: Model> Manager<M> {
 			.into_iter()
 			.map(Self::sea_value_to_query_value)
 			.collect();
-
-		let row = conn.query_one(&sql, values).await?;
-
-		// row.data is already serde_json::Value::Object so deserialize directly
-		row.deserialize_model::<M>().map_err(|error| {
-			DatabaseError::new(DatabaseErrorKind::Serialization, error.to_string()).into()
-		})
+		Ok((sql, values))
 	}
 
-	fn json_to_sea_value_for_field(
+	pub(crate) fn json_to_sea_value_for_field(
 		value: &serde_json::Value,
 		field_info: Option<&FieldInfo>,
 		field_is_none: bool,
@@ -925,7 +924,7 @@ impl<M: Model> Manager<M> {
 	}
 
 	/// Convert serde_json::Value to reinhardt_query::value::Value for parameter binding
-	fn json_to_sea_value(v: &serde_json::Value) -> reinhardt_query::value::Value {
+	pub(crate) fn json_to_sea_value(v: &serde_json::Value) -> reinhardt_query::value::Value {
 		match v {
 			serde_json::Value::Null => reinhardt_query::value::Value::Int(None),
 			serde_json::Value::Bool(b) => reinhardt_query::value::Value::Bool(Some(*b)),
@@ -991,7 +990,9 @@ impl<M: Model> Manager<M> {
 	}
 
 	/// Convert reinhardt_query::value::Value to QueryValue for database parameter binding
-	fn sea_value_to_query_value(v: reinhardt_query::value::Value) -> super::connection::QueryValue {
+	pub(crate) fn sea_value_to_query_value(
+		v: reinhardt_query::value::Value,
+	) -> super::connection::QueryValue {
 		use super::connection::QueryValue;
 
 		match v {
@@ -1115,24 +1116,14 @@ impl<M: Model> Manager<M> {
 		model: &M,
 	) -> reinhardt_core::exception::Result<M> {
 		let pk = model.primary_key().ok_or_else(|| {
-			Error::from(DatabaseError::new(
-				DatabaseErrorKind::Query,
-				"Model must have primary key",
-			))
+			reinhardt_core::exception::Error::Database("Model must have primary key".to_string())
 		})?;
 
-		let json = serde_json::to_value(model).map_err(|error| {
-			Error::from(DatabaseError::new(
-				DatabaseErrorKind::Serialization,
-				error.to_string(),
-			))
-		})?;
+		let json = serde_json::to_value(model)
+			.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))?;
 
 		let obj = json.as_object().ok_or_else(|| {
-			Error::from(DatabaseError::new(
-				DatabaseErrorKind::Serialization,
-				"Model must serialize to object",
-			))
+			reinhardt_core::exception::Error::Database("Model must serialize to object".to_string())
 		})?;
 
 		let stmt =
@@ -1147,9 +1138,8 @@ impl<M: Model> Manager<M> {
 
 		let row = conn.query_one(&sql, values).await?;
 		// row.data is already serde_json::Value::Object so deserialize directly
-		row.deserialize_model::<M>().map_err(|error| {
-			DatabaseError::new(DatabaseErrorKind::Serialization, error.to_string()).into()
-		})
+		row.deserialize_model::<M>()
+			.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))
 	}
 
 	/// Delete a record using reinhardt-query for SQL injection protection
@@ -1268,10 +1258,7 @@ impl<M: Model> Manager<M> {
 
 		let row = conn.query_one(&sql, values).await?;
 		row.get::<i64>("count").ok_or_else(|| {
-			Error::from(DatabaseError::new(
-				DatabaseErrorKind::Query,
-				"Failed to get count",
-			))
+			reinhardt_core::exception::Error::Database("Failed to get count".to_string())
 		})
 	}
 
@@ -1409,12 +1396,9 @@ impl<M: Model> Manager<M> {
 
 		if let Ok(Some(row)) = conn.query_optional(&select_sql, vec![]).await {
 			// row.data is already serde_json::Value::Object so deserialize directly
-			let model: M = row.deserialize_model().map_err(|error| {
-				Error::from(DatabaseError::new(
-					DatabaseErrorKind::Serialization,
-					error.to_string(),
-				))
-			})?;
+			let model: M = row
+				.deserialize_model()
+				.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))?;
 			return Ok((model, false));
 		}
 
@@ -1436,12 +1420,9 @@ impl<M: Model> Manager<M> {
 
 		let row = conn.query_one(&insert_sql, vec![]).await?;
 		// row.data is already serde_json::Value::Object so deserialize directly
-		let model: M = row.deserialize_model().map_err(|error| {
-			Error::from(DatabaseError::new(
-				DatabaseErrorKind::Serialization,
-				error.to_string(),
-			))
-		})?;
+		let model: M = row
+			.deserialize_model()
+			.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))?;
 
 		Ok((model, true))
 	}
@@ -1508,12 +1489,9 @@ impl<M: Model> Manager<M> {
 			} else {
 				let rows = conn.query(&sql, values).await?;
 				for row in rows {
-					let model: M = row.deserialize_model().map_err(|error| {
-						Error::from(DatabaseError::new(
-							DatabaseErrorKind::Serialization,
-							error.to_string(),
-						))
-					})?;
+					let model: M = row
+						.deserialize_model()
+						.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))?;
 					results.push(model);
 				}
 			}

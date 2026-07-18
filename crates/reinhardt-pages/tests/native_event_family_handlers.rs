@@ -10,6 +10,8 @@ use reinhardt_pages::page;
 use reinhardt_pages::testing::component::{EventFixture, render};
 use rstest::rstest;
 
+type EncryptedObservation = Arc<Mutex<Option<(String, Vec<u8>)>>>;
+
 #[rstest]
 fn page_clipboard_handler_receives_fixture_text() {
 	// Arrange
@@ -131,7 +133,7 @@ fn page_transition_handler_receives_fixture_data() {
 fn page_encrypted_media_handler_receives_fixture_data() {
 	// Arrange
 	let observed = Arc::new(Mutex::new(None));
-	let screen = render(page!(|observed: Arc<Mutex<Option<(String, Vec<u8>)>>>| {
+	let screen = render(page!(|observed: EncryptedObservation| {
 		video {
 			@encrypted: move |event: EncryptedEvent| {
 				*observed.lock().unwrap() = Some((event.init_data_type(), event.init_data()));

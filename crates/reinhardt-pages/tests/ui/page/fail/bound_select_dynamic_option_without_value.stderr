@@ -1,0 +1,5 @@
+error: an option with dynamic content inside a bound select requires an explicit `value` attribute
+  --> tests/ui/page/fail/bound_select_dynamic_option_without_value.rs:10:10
+   |
+10 |             bind: selected,
+   |                   ^^^^^^^^

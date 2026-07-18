@@ -207,6 +207,109 @@ event props are not DOM events: their argument type comes from the component's
 declared prop. Native component tests execute standard handlers with
 `EventFixture`, including bubbling, target state, and async settling.
 
+## Controlled and uncontrolled form controls
+
+A control without `bind:` is uncontrolled: its current value belongs to the
+DOM, and application code reads it through an event payload or another
+explicit DOM integration. A control with `bind:` connects the DOM property to
+a `Signal`, providing the Reinhardt equivalent of a React controlled input.
+
+| Control shape | Bound signal |
+| --- | --- |
+| `input` with no `type` or static `type: "text"` | `Signal<String>` |
+| `input` with static `type: "number"` | `Signal<T>` where `T: NumberValue`; optionally an error signal |
+| `input` with static `type: "checkbox"` | `Signal<bool>` |
+| `input` with static `type: "radio"` | `Signal<String>`; each radio also declares a static or dynamic `value` expression |
+| `textarea` | `Signal<String>` |
+| `select` with no `multiple` or static `multiple: false` | `Signal<String>` |
+| `select` with static `multiple: true` | `Signal<Vec<String>>` |
+
+Other input types, including `search`, `email`, and `range`, are not binding
+shapes. Bound input `type` and select `multiple` classifiers must be static so
+the macro can validate the signal type at compile time.
+
+```rust
+use reinhardt_pages::prelude::*;
+
+let query = Signal::new(String::new());
+let parse_error = Signal::new(None::<NumberParseError>);
+let amount = Signal::new(0_f64);
+
+page!({
+    input { aria_label: "Search", bind: query, placeholder: "Search" }
+    input {
+        aria_label: "Amount",
+        type: "number",
+        bind: number(amount, parse_error),
+    }
+})
+```
+
+The ownership transition during hydration is deliberate. The live DOM wins
+initially: Reinhardt adopts browser-restored values and user edits made before
+hydration instead of overwriting them with the server-time signal snapshot.
+After hydration, the signal wins: application writes update the corresponding
+DOM property. User input updates the signal before an explicit handler for the
+same event runs, so the handler observes the new signal value.
+
+Text writes are deferred while an IME composition is active. The completed
+value is committed at `compositionend`, and a duplicate final `input` event is
+not committed twice. Explicit composition and input handlers still run in
+normal dispatch order.
+
+For numeric controls, `bind: number(value, error)` preserves the last valid
+numeric signal and the user's raw text when parsing fails. The error signal is
+cleared after a valid value and otherwise contains a `NumberParseError` with
+one of these stable meanings:
+
+- `Empty`: the browser-exposed value is empty.
+- `Incomplete`: the text is a valid prefix such as `-`, `1.`, or `1e-`.
+- `Invalid`: the text is not a numeric lexeme.
+- `OutOfRange`: the number cannot be represented by the bound primitive.
+
+Browsers may sanitize an incomplete HTML number value to an empty string before
+the `input` handler runs. The binding tracks the editor's `beforeinput` changes
+and unmodified Arrow/Home/End keyboard selection moves so recoverable incomplete
+states remain available through `NumberParseError::raw`. Modifier-key commands,
+including Ctrl/Cmd+A, and already-canceled key events are treated as unknown
+positions.
+Number inputs do not expose selection ranges,
+and `beforeinput` target ranges are empty. If a pointer moves the caret and the
+very next edit is sanitized, the position is unknowable; the binding reports
+the browser's empty value rather than fabricating raw text. A subsequent valid
+input resynchronizes the predicted caret. Composition updates remain deferred
+until `compositionend`, and the duplicate final `input` event is not committed
+twice.
+
+Use an explicit typed handler when the binding is not the only response to an
+event. For browser-specific integrations that truly need the underlying DOM
+event, use `payload.raw()` on WASM or wrap a low-level handler with
+`raw_event_handler`. Keep `bind:` responsible for synchronization; the raw
+event path is an escape hatch, not a second source of control state.
+
+Imperative DOM lookup is therefore unnecessary for ordinary controlled input:
+
+```rust,ignore
+// Before: WASM-only DOM ownership.
+let input = document
+    .get_element_by_id("search")
+    .unwrap()
+    .dyn_into::<web_sys::HtmlInputElement>()
+    .unwrap();
+let query = input.value();
+
+// After: cross-target signal ownership.
+let query = Signal::new(String::new());
+let query_for_submit = query.clone();
+page!({
+    input { id: "search", aria_label: "Search", bind: query }
+    button {
+        @click: move |_| submit(query_for_submit.get()),
+        "Search"
+    }
+})
+```
+
 ## State and reactivity
 
 React state is component-local and re-rendered through the virtual DOM.

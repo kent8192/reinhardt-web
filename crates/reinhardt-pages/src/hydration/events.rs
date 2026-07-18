@@ -10,6 +10,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 #[cfg(wasm)]
+use crate::component::ControlBinding;
+#[cfg(wasm)]
+use crate::dom::control_binding::ControlBindingController;
+#[cfg(wasm)]
 use crate::dom::{Element, EventHandle};
 #[cfg(any(wasm, test))]
 use reinhardt_core::types::page::EventName;
@@ -77,6 +81,18 @@ pub struct EventRegistry {
 	/// Event handles indexed by element ID.
 	#[cfg(wasm)]
 	handles: HashMap<String, Vec<EventHandle>>,
+	/// Event handles on elements without hydration IDs.
+	#[cfg(wasm)]
+	anonymous_handles: Vec<EventHandle>,
+	/// Controlled form-element bindings installed during hydration.
+	#[cfg(wasm)]
+	control_bindings: Vec<ControlBindingController>,
+	/// Whether hydration adopted a live control value into a signal.
+	#[cfg(wasm)]
+	control_binding_adopted: bool,
+	/// Whether the owning traversal should hydrate bound controls.
+	#[cfg(wasm)]
+	hydrate_control_bindings: bool,
 	/// Event handles for non-WASM (placeholder).
 	#[cfg(native)]
 	handles: HashMap<String, Vec<String>>,
@@ -88,6 +104,21 @@ impl EventRegistry {
 		Self::default()
 	}
 
+	/// Creates a registry for the automatic Page hydration traversal.
+	#[cfg(wasm)]
+	pub(crate) fn new_for_hydration() -> Self {
+		Self {
+			hydrate_control_bindings: true,
+			..Self::default()
+		}
+	}
+
+	/// Returns whether bound controls should be hydrated during traversal.
+	#[cfg(wasm)]
+	pub(crate) fn should_hydrate_control_bindings(&self) -> bool {
+		self.hydrate_control_bindings
+	}
+
 	/// Registers an event handle for an element.
 	#[cfg(wasm)]
 	pub fn register(&mut self, element_id: impl Into<String>, handle: EventHandle) {
@@ -95,6 +126,35 @@ impl EventRegistry {
 			.entry(element_id.into())
 			.or_default()
 			.push(handle);
+	}
+
+	/// Registers an event handle for an element without a hydration ID.
+	#[cfg(wasm)]
+	pub(crate) fn register_anonymous(&mut self, handle: EventHandle) {
+		self.anonymous_handles.push(handle);
+	}
+
+	/// Retains a controlled form-element binding for the hydration lifetime.
+	#[cfg(wasm)]
+	pub(crate) fn register_control_binding(
+		&mut self,
+		controller: ControlBindingController,
+		adopted: bool,
+	) {
+		self.control_binding_adopted |= adopted;
+		self.control_bindings.push(controller);
+	}
+
+	/// Returns whether this registry adopted a live form-control value.
+	#[cfg(wasm)]
+	pub(crate) fn control_binding_adopted(&self) -> bool {
+		self.control_binding_adopted
+	}
+
+	/// Propagates an adopted control value from a nested hydration branch.
+	#[cfg(wasm)]
+	pub(crate) fn mark_control_binding_adopted(&mut self) {
+		self.control_binding_adopted = true;
 	}
 
 	/// Registers an event handle (non-WASM placeholder).
@@ -114,17 +174,60 @@ impl EventRegistry {
 	/// Removes all registered event handles.
 	pub fn clear(&mut self) {
 		self.handles.clear();
+		#[cfg(wasm)]
+		{
+			self.anonymous_handles.clear();
+			self.control_bindings.clear();
+		}
 	}
 
-	/// Returns the number of registered elements.
+	/// Returns the number of registered keyed elements and anonymous handles.
 	pub fn len(&self) -> usize {
-		self.handles.len()
+		self.handles.len() + {
+			#[cfg(wasm)]
+			{
+				self.anonymous_handles.len()
+			}
+			#[cfg(native)]
+			{
+				0
+			}
+		}
 	}
 
 	/// Returns true if no event handles are registered.
 	pub fn is_empty(&self) -> bool {
-		self.handles.is_empty()
+		self.handles.is_empty() && {
+			#[cfg(wasm)]
+			{
+				self.anonymous_handles.is_empty() && self.control_bindings.is_empty()
+			}
+			#[cfg(native)]
+			{
+				true
+			}
+		}
 	}
+}
+
+/// Hydrates a bound form control and retains its controller in the registry.
+///
+/// Page-based hydration traversals call this helper when they encounter a
+/// controlled element. Keeping the controller in the registry is required for
+/// its listeners, reactive effect, and select-option observer to remain alive.
+#[cfg(wasm)]
+pub(crate) fn hydrate_control_binding(
+	element: &Element,
+	binding: &ControlBinding,
+	registry: &mut EventRegistry,
+) -> Result<(), EventAttachError> {
+	let (controller, adopted) = ControlBindingController::hydrate(element.clone(), binding.clone())
+		.map_err(|error| EventAttachError {
+			event_type: "control-binding".to_owned(),
+			reason: error.to_string(),
+		})?;
+	registry.register_control_binding(controller, adopted);
+	Ok(())
 }
 
 /// Error type for event attachment.
@@ -211,6 +314,8 @@ pub fn attach_event(
 	// Get element ID for registry
 	if let Some(id) = element.get_attribute("data-rh-id") {
 		registry.register(id, handle);
+	} else {
+		registry.register_anonymous(handle);
 	}
 
 	Ok(())
