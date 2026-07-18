@@ -10241,7 +10241,6 @@ mod tests {
 	}
 
 	#[test]
-	#[should_panic(expected = "typed related filters are not supported in delete queries")]
 	fn test_delete_rejects_related_filters() {
 		let filter =
 			crate::orm::relations::RelationPath::<TestUser, TestCorpusFile>::from_descriptor::<
@@ -10250,7 +10249,17 @@ mod tests {
 			.field(TestCorpusFile::field_normalized_path())
 			.eq("/docs/index.md");
 
-		let _ = QuerySet::<TestUser>::new().filter(filter).delete_sql();
+		let error = QuerySet::<TestUser>::new()
+			.filter(filter)
+			.delete_sql()
+			.expect_err("related filters should not render unsupported delete aliases");
+
+		assert!(matches!(
+			error,
+			reinhardt_core::exception::Error::Validation(message)
+				if message
+					== "QuerySet::delete_query does not support typed related filters; use a subquery or select query first"
+		));
 	}
 
 	#[test]
