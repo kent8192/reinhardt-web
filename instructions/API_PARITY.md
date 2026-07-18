@@ -13,6 +13,12 @@ Public APIs that can be named by normal application code in both native and
 
 The level applies per symbol. A type can be P1 while selected methods are P0.
 
+## P2 API Surface
+
+| API | Native behavior | WASM behavior |
+|---|---|---|
+| `page!` controlled `bind:` directive and `control_binding` support types | Renders signal state during SSR and synchronizes values in native component tests. | Adopts the live control property during hydration, then synchronizes user and signal writes. |
+
 ## Stub Taxonomy
 
 - Mirror: the same user-facing operation is meaningful on both targets.

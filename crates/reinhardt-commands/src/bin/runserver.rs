@@ -15,10 +15,12 @@ use hyper::service::service_fn;
 use hyper::{Request, Response, StatusCode, body::Incoming};
 use hyper_util::rt::TokioIo;
 use reinhardt_commands::WelcomePage;
+#[cfg(feature = "admin")]
+use reinhardt_commands::is_wasm_stale;
 use reinhardt_commands::{CollectStaticCommand, CollectStaticOptions};
 #[cfg(any(feature = "admin", feature = "pages"))]
 use reinhardt_commands::{
-	WasmBuildConfig, WasmBuilder, detect_cdylib_in_cargo_toml, is_wasm_stale,
+	WasmBuildConfig, WasmBuilder, detect_cdylib_in_cargo_toml, is_wasm_stale_for_roots,
 };
 use reinhardt_pages::ssr::SsrRenderer;
 use reinhardt_utils::safe_path_join;
@@ -65,6 +67,7 @@ struct RunServerSettings {
 	static_url: String,
 	static_root: Option<PathBuf>,
 	staticfiles_dirs: Vec<PathBuf>,
+	generated_style_root: Option<PathBuf>,
 }
 
 impl Default for RunServerSettings {
@@ -74,6 +77,7 @@ impl Default for RunServerSettings {
 			static_url: "/static/".to_string(),
 			static_root: None,
 			staticfiles_dirs: Vec::new(),
+			generated_style_root: None,
 		}
 	}
 }
@@ -131,6 +135,23 @@ struct Args {
 	/// Skip collectstatic at startup
 	#[arg(long)]
 	no_collectstatic: bool,
+
+	/// Cargo package containing component style definitions
+	#[arg(long, value_name = "NAME")]
+	package: Option<String>,
+
+	/// Cargo features enabled for the component style package
+	#[arg(
+		long,
+		value_delimiter = ',',
+		value_name = "FEATURE",
+		conflicts_with = "all_features"
+	)]
+	features: Vec<String>,
+
+	/// Enable all Cargo features for the component style package
+	#[arg(long)]
+	all_features: bool,
 }
 
 /// Get MIME type based on file extension
@@ -275,10 +296,8 @@ fn load_settings() -> RunServerSettings {
 
 	match merged {
 		Ok(merged_settings) => {
-			let static_url: String = merged_settings.get_or("static_url", "/static/".to_string());
-			let static_root: Option<PathBuf> = merged_settings.get("static_root").ok().flatten();
-			let staticfiles_dirs: Vec<PathBuf> =
-				merged_settings.get_or("staticfiles_dirs", Vec::new());
+			let static_settings =
+				reinhardt_commands::StaticAssetSettings::from_merged(&merged_settings, &base_dir);
 			match merged_settings.into_typed::<CoreSettings>() {
 				Ok(core) => {
 					println!(
@@ -291,9 +310,10 @@ fn load_settings() -> RunServerSettings {
 					);
 					RunServerSettings {
 						debug: core.debug,
-						static_url,
-						static_root,
-						staticfiles_dirs,
+						static_url: static_settings.static_url,
+						static_root: Some(static_settings.static_root),
+						staticfiles_dirs: static_settings.staticfiles_dirs,
+						generated_style_root: None,
 					}
 				}
 				Err(e) => {
@@ -380,7 +400,7 @@ async fn handle_request(
 	req: Request<Incoming>,
 	settings: Arc<RunServerSettings>,
 	spa_index: Option<Arc<PathBuf>>,
-	remote_addr: SocketAddr,
+	#[cfg_attr(not(feature = "routers"), allow(unused_variables))] remote_addr: SocketAddr,
 ) -> Result<Response<BoxBody>, Infallible> {
 	let path = req.uri().path().to_string();
 
@@ -408,6 +428,12 @@ async fn handle_request(
 
 		// Find file in all staticfiles_dirs (in reverse order for override behavior)
 		let mut found_files: Vec<PathBuf> = Vec::new();
+		if let Some(root) = &settings.generated_style_root
+			&& let Ok(file_path) = safe_path_join(root, relative_path)
+			&& file_path.is_file()
+		{
+			return serve_static_file(&file_path).await;
+		}
 
 		for dir in settings.staticfiles_dirs.iter().rev() {
 			// Use safe_path_join to prevent path traversal attacks
@@ -660,7 +686,11 @@ fn build_admin_wasm(force: bool) -> bool {
 /// Returns `true` if the build succeeded or was skipped, `false` on failure or if the
 /// current project is not a cdylib.
 #[cfg(feature = "pages")]
-fn build_pages_wasm(force: bool) -> bool {
+fn build_pages_wasm(
+	force: bool,
+	feature_selection: &reinhardt_commands::StyleFeatureSelection,
+	package: Option<&str>,
+) -> bool {
 	let cwd = match env::current_dir() {
 		Ok(d) => d,
 		Err(e) => {
@@ -672,47 +702,32 @@ fn build_pages_wasm(force: bool) -> bool {
 		}
 	};
 	let cargo_toml_path = cwd.join("Cargo.toml");
-
-	// Only build if this project exports cdylib
-	if !detect_cdylib_in_cargo_toml(&cargo_toml_path) {
-		return false;
-	}
-
-	// Parse the crate name from Cargo.toml
-	let crate_name = match std::fs::read_to_string(&cargo_toml_path) {
-		Ok(content) => {
-			let mut name = String::new();
-			for line in content.lines() {
-				let trimmed = line.trim();
-				if trimmed.starts_with("name")
-					&& trimmed.contains('=')
-					&& let Some(val) = trimmed.split('=').nth(1)
-				{
-					name = val.trim().trim_matches('"').trim_matches('\'').to_string();
-					break;
-				}
-			}
-			if name.is_empty() {
-				eprintln!(
-					"{}",
-					"Warning: Could not determine crate name from Cargo.toml".yellow()
-				);
-				return false;
-			}
-			name
-		}
-		Err(e) => {
+	let package_context = match reinhardt_commands::StylePackageContext::resolve_with_features(
+		&cargo_toml_path,
+		package,
+		feature_selection.clone(),
+	) {
+		Ok(context) => context,
+		Err(error) => {
 			eprintln!(
 				"{}",
-				format!("Warning: Failed to read Cargo.toml: {}", e).yellow()
+				format!("Warning: Failed to resolve Pages package: {error}").yellow()
 			);
 			return false;
 		}
 	};
+	let package_manifest_path = &package_context.package_manifest_path;
+	// Only build if this project exports cdylib
+	if !detect_cdylib_in_cargo_toml(package_manifest_path) {
+		return false;
+	}
 
-	let js_name = crate_name.replace('-', "_");
+	let target_name = package_context.wasm_target_name().to_owned();
+	let package_name = package_context.package_name.clone();
+
+	let js_name = target_name.replace('-', "_");
 	let artifact = cwd.join("dist").join(format!("{}_bg.wasm", js_name));
-	if !force && !is_wasm_stale(&cwd, &artifact) {
+	if !force && !is_wasm_stale_for_roots(package_context.source_package_roots(), &artifact) {
 		println!(
 			"{}",
 			"Pages WASM: artifacts up to date, skipping build (--no-override-wasm)".dimmed()
@@ -729,22 +744,17 @@ fn build_pages_wasm(force: bool) -> bool {
 	};
 	println!(
 		"{}",
-		format!("Building pages WASM for {} ({})...", crate_name, reason).cyan()
+		format!("Building pages WASM for {} ({})...", package_name, reason).cyan()
 	);
-	// Resolve workspace root so wasm-bindgen finds the artifact in the
-	// workspace-level target directory, not relative to the member crate CWD.
-	let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-	let workspace_root = manifest_dir
-		.parent()
-		.and_then(|p| p.parent())
-		.and_then(|p| p.parent())
-		.and_then(|p| p.parent())
-		.map(PathBuf::from)
-		.unwrap_or_else(|| PathBuf::from("."));
-	let config = WasmBuildConfig::new(".")
+	let config = WasmBuildConfig::new(&cwd)
 		.output_dir("dist")
-		.target_dir(workspace_root.join("target"));
-	match WasmBuilder::new(config).build() {
+		.release(!cfg!(debug_assertions))
+		.target_name(&target_name)
+		.package(&package_name);
+	let builder = WasmBuilder::new(config)
+		.features(feature_selection.features().iter().cloned())
+		.all_features(feature_selection.all_features_enabled());
+	match builder.build() {
 		Ok(_) => {
 			println!("{}", "Pages WASM build succeeded.".green());
 			true
@@ -765,10 +775,16 @@ fn build_pages_wasm(force: bool) -> bool {
 /// without it, WASM is rebuilt unconditionally to avoid serving stale bundles.
 /// `force_wasm_legacy` accepts the deprecated `--force-wasm` flag and emits a
 /// warning; rebuild is otherwise the default.
-fn build_wasm_targets(no_wasm: bool, no_override_wasm: bool, force_wasm_legacy: bool) {
+fn build_wasm_targets(
+	no_wasm: bool,
+	no_override_wasm: bool,
+	force_wasm_legacy: bool,
+	_feature_selection: &reinhardt_commands::StyleFeatureSelection,
+	package: Option<&str>,
+) -> bool {
 	if no_wasm {
 		println!("{}", "WASM builds skipped (--no-wasm)".dimmed());
-		return;
+		return true;
 	}
 
 	if force_wasm_legacy {
@@ -781,22 +797,41 @@ fn build_wasm_targets(no_wasm: bool, no_override_wasm: bool, force_wasm_legacy: 
 	}
 
 	#[cfg(not(any(feature = "admin", feature = "pages")))]
-	let _ = no_override_wasm;
+	let _ = (no_override_wasm, package);
+
+	#[cfg(all(feature = "admin", not(feature = "pages")))]
+	let _ = package;
 
 	#[cfg(any(feature = "admin", feature = "pages"))]
 	let force = !no_override_wasm;
 
 	#[cfg(feature = "admin")]
-	build_admin_wasm(force);
+	let admin_build_succeeded = build_admin_wasm(force);
+	#[cfg(not(feature = "admin"))]
+	let admin_build_succeeded = true;
 
 	#[cfg(feature = "pages")]
-	build_pages_wasm(force);
+	let pages_build_succeeded = build_pages_wasm(force, _feature_selection, package);
+	#[cfg(not(feature = "pages"))]
+	let pages_build_succeeded = true;
+
+	admin_build_succeeded && pages_build_succeeded
+}
+
+fn should_abort_after_wasm_build(
+	component_styles_enabled: bool,
+	wasm_build_succeeded: bool,
+) -> bool {
+	component_styles_enabled && !wasm_build_succeeded
 }
 
 /// Run collectstatic to copy all static files into STATIC_ROOT.
 ///
 /// Returns `true` on success, `false` on failure.
-fn run_collectstatic(settings: &RunServerSettings) -> bool {
+fn run_collectstatic(
+	settings: &RunServerSettings,
+	style_context: Option<reinhardt_commands::StylePackageContext>,
+) -> bool {
 	let cwd = match env::current_dir() {
 		Ok(d) => d,
 		Err(e) => {
@@ -840,6 +875,7 @@ fn run_collectstatic(settings: &RunServerSettings) -> bool {
 	};
 
 	let mut cmd = CollectStaticCommand::new(config, options);
+	cmd.set_style_context(style_context);
 
 	// If dist/index.html exists in cwd, set it as the index source
 	let index_path = cwd.join("dist").join("index.html");
@@ -905,15 +941,52 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 		return Err("Cannot use both --cert/--key and --self-signed".into());
 	}
 
+	let manifest = env::current_dir()?.join("Cargo.toml");
+	let style_feature_selection = if args.all_features {
+		reinhardt_commands::StyleFeatureSelection::all_features()
+	} else {
+		reinhardt_commands::StyleFeatureSelection::with_features(args.features.clone())
+	};
+	let component_style_state =
+		reinhardt_commands::ComponentStyleState::initialize_optional_with_features(
+			manifest,
+			args.package.clone(),
+			style_feature_selection.clone(),
+		)?;
+
 	// Phase 1: Build WASM targets
-	build_wasm_targets(args.no_wasm, args.no_override_wasm, args.force_wasm);
+	let wasm_build_succeeded = build_wasm_targets(
+		args.no_wasm,
+		args.no_override_wasm,
+		args.force_wasm,
+		&style_feature_selection,
+		args.package.as_deref(),
+	);
+	if should_abort_after_wasm_build(
+		component_style_state
+			.as_ref()
+			.is_some_and(reinhardt_commands::ComponentStyleState::has_component_styles),
+		wasm_build_succeeded,
+	) {
+		return Err("Pages WASM build failed; refusing to serve generated component styles with a stale bundle".into());
+	}
 
 	// Load settings at startup
-	let settings = Arc::new(load_settings());
+	let mut loaded_settings = load_settings();
+	if let Some(component_style_state) = &component_style_state {
+		loaded_settings.generated_style_root =
+			Some(component_style_state.generated_root().to_path_buf());
+	}
+	let settings = Arc::new(loaded_settings);
 
 	// Phase 2: Run collectstatic
 	if !args.no_collectstatic {
-		run_collectstatic(&settings);
+		run_collectstatic(
+			&settings,
+			component_style_state
+				.as_ref()
+				.map(|state| state.package_context().clone()),
+		);
 	} else {
 		println!("{}", "collectstatic skipped (--no-collectstatic)".dimmed());
 	}
@@ -1063,5 +1136,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 				}
 			});
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::should_abort_after_wasm_build;
+
+	#[test]
+	fn component_styles_do_not_start_after_a_wasm_build_failure() {
+		assert!(should_abort_after_wasm_build(true, false));
+		assert!(!should_abort_after_wasm_build(true, true));
+		assert!(!should_abort_after_wasm_build(false, false));
+	}
+
+	#[test]
+	fn empty_component_styles_do_not_require_a_pages_wasm_build() {
+		assert!(!should_abort_after_wasm_build(false, false));
 	}
 }

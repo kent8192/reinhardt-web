@@ -17,7 +17,7 @@ use std::sync::Arc;
 ///
 /// This model uses the `#[model(...)]` macro which automatically derives
 /// `Model` trait. The `Model::build()` builder is used for initialization.
-#[model(table_name = "users")]
+#[model(app_label = "default", table_name = "users")]
 pub struct User {
 	#[field(primary_key = true)]
 	pub id: i32,
@@ -46,7 +46,7 @@ impl User {
 }
 
 /// Post model for GraphQL testing with relationship to User.
-#[model(table_name = "posts")]
+#[model(app_label = "default", table_name = "posts")]
 pub struct Post {
 	#[field(primary_key = true)]
 	pub id: i32,

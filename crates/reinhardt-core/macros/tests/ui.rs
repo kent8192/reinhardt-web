@@ -176,6 +176,12 @@ fn test_model_macro_parity_pass() {
 }
 
 #[test]
+fn test_fixture_projection_deserializer_pass() {
+	let t = trybuild::TestCases::new();
+	t.pass("tests/ui/model/pass/fixture_projection_preserves_deserializer.rs");
+}
+
+#[test]
 fn test_model_macro_parity_fail() {
 	let t = trybuild::TestCases::new();
 	t.compile_fail("tests/ui/model/fail/*.rs");

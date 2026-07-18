@@ -35,7 +35,7 @@ use testcontainers::{ContainerAsync, GenericImage};
 // ============================================================================
 
 /// Test post model for constraint validation tests
-#[model(table_name = "test_posts")]
+#[model(app_label = "default", table_name = "test_posts")]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct TestPost {
 	#[field(primary_key = true)]
@@ -49,7 +49,7 @@ pub(crate) struct TestPost {
 }
 
 /// Test comment model for constraint validation tests
-#[model(table_name = "test_comments")]
+#[model(app_label = "default", table_name = "test_comments")]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct TestComment {
 	#[field(primary_key = true)]

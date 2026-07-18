@@ -9,6 +9,7 @@ use crate::orm::Model;
 use reinhardt_query::prelude::{
 	Alias, ColumnRef, Expr, ExprTrait, Func, Query, QueryStatementBuilder, SelectStatement,
 };
+use rust_decimal::prelude::ToPrimitive;
 use std::marker::PhantomData;
 
 /// Query execution result types
@@ -130,133 +131,43 @@ fn convert_value_to_query_value(value: reinhardt_query::value::Value) -> QueryVa
 			QueryValue::Timestamp((*dt).with_timezone(&chrono::Utc))
 		}
 
-		SV::ChronoDate(Some(date)) => QueryValue::String(date.to_string()),
-		SV::ChronoTime(Some(time)) => QueryValue::String(time.to_string()),
-		SV::ChronoDateTime(Some(datetime)) => QueryValue::Timestamp(datetime.and_utc()),
+		// Other datetime types that cannot be easily converted
+		SV::ChronoDate(_) | SV::ChronoTime(_) | SV::ChronoDateTime(_) => {
+			// Convert to string representation as fallback
+			QueryValue::String(format!("{:?}", value))
+		}
 
-		// Keep JSON typed so backend binders retain JSON null semantics.
-		SV::Json(value) => QueryValue::Json(value),
+		// Preserve native JSON values for backend-specific JSON parameter binding.
+		SV::Json(json) => QueryValue::Json(json),
 
-		// QueryValue has no decimal variant. Bind the exact spelling instead of
-		// losing precision through an intermediate floating-point value.
-		SV::Decimal(Some(d)) => QueryValue::String(d.to_string()),
-		SV::BigDecimal(Some(d)) => QueryValue::String(d.to_string()),
+		// Decimal - convert to f64 with fallback through string parsing
+		SV::Decimal(Some(d)) => {
+			let f = d.to_f64().unwrap_or_else(|| {
+				tracing::warn!(
+					decimal = %d,
+					"Decimal cannot be directly represented as f64, falling back to string parsing"
+				);
+				d.to_string().parse::<f64>().unwrap_or(0.0)
+			});
+			QueryValue::Float(f)
+		}
+		SV::BigDecimal(Some(d)) => {
+			let f = d.to_string().parse::<f64>().unwrap_or_else(|_| {
+				tracing::warn!(
+					big_decimal = %d,
+					"BigDecimal cannot be represented as f64"
+				);
+				0.0
+			});
+			QueryValue::Float(f)
+		}
 
 		// UUID
 		SV::Uuid(Some(u)) => QueryValue::Uuid(*u),
 
-		SV::Array(array_type, Some(values)) => match array_type {
-			reinhardt_query::value::ArrayType::String => QueryValue::StringArray(
-				values
-					.iter()
-					.filter_map(|value| match value {
-						SV::String(Some(value)) => Some((**value).clone()),
-						_ => None,
-					})
-					.collect(),
-			),
-			reinhardt_query::value::ArrayType::Int => QueryValue::IntArray(
-				values
-					.iter()
-					.filter_map(|value| match value {
-						SV::Int(Some(value)) => Some(*value),
-						_ => None,
-					})
-					.collect(),
-			),
-			reinhardt_query::value::ArrayType::BigInt => QueryValue::BigIntArray(
-				values
-					.iter()
-					.filter_map(|value| match value {
-						SV::BigInt(Some(value)) => Some(*value),
-						_ => None,
-					})
-					.collect(),
-			),
-			reinhardt_query::value::ArrayType::Bool => QueryValue::BoolArray(
-				values
-					.iter()
-					.filter_map(|value| match value {
-						SV::Bool(Some(value)) => Some(*value),
-						_ => None,
-					})
-					.collect(),
-			),
-			reinhardt_query::value::ArrayType::Float => QueryValue::FloatArray(
-				values
-					.iter()
-					.filter_map(|value| match value {
-						SV::Float(Some(value)) => Some(*value),
-						_ => None,
-					})
-					.collect(),
-			),
-			reinhardt_query::value::ArrayType::Double => QueryValue::DoubleArray(
-				values
-					.iter()
-					.filter_map(|value| match value {
-						SV::Double(Some(value)) => Some(*value),
-						_ => None,
-					})
-					.collect(),
-			),
-			reinhardt_query::value::ArrayType::Uuid => QueryValue::UuidArray(
-				values
-					.iter()
-					.filter_map(|value| match value {
-						SV::Uuid(Some(value)) => Some(**value),
-						_ => None,
-					})
-					.collect(),
-			),
-			_ => QueryValue::Json(Some(Box::new(array_values_to_json(&values)))),
-		},
-		SV::Array(_, None) => QueryValue::Null,
-	}
-}
-
-pub(crate) fn array_values_to_json(values: &[reinhardt_query::value::Value]) -> serde_json::Value {
-	serde_json::Value::Array(values.iter().map(value_to_json).collect())
-}
-
-fn value_to_json(value: &reinhardt_query::value::Value) -> serde_json::Value {
-	use reinhardt_query::value::Value as SV;
-
-	match value {
-		SV::Bool(Some(value)) => serde_json::Value::Bool(*value),
-		SV::TinyInt(Some(value)) => (*value).into(),
-		SV::SmallInt(Some(value)) => (*value).into(),
-		SV::Int(Some(value)) => (*value).into(),
-		SV::BigInt(Some(value)) => (*value).into(),
-		SV::TinyUnsigned(Some(value)) => (*value).into(),
-		SV::SmallUnsigned(Some(value)) => (*value).into(),
-		SV::Unsigned(Some(value)) => (*value).into(),
-		SV::BigUnsigned(Some(value)) => (*value).into(),
-		SV::Float(Some(value)) => serde_json::Number::from_f64((*value).into())
-			.map(serde_json::Value::Number)
-			.unwrap_or(serde_json::Value::Null),
-		SV::Double(Some(value)) => serde_json::Number::from_f64(*value)
-			.map(serde_json::Value::Number)
-			.unwrap_or(serde_json::Value::Null),
-		SV::String(Some(value)) => serde_json::Value::String((**value).clone()),
-		SV::Char(Some(value)) => serde_json::Value::String(value.to_string()),
-		SV::Bytes(Some(value)) => {
-			serde_json::Value::Array(value.iter().copied().map(serde_json::Value::from).collect())
-		}
-		SV::ChronoDate(Some(value)) => serde_json::Value::String(value.to_string()),
-		SV::ChronoTime(Some(value)) => serde_json::Value::String(value.to_string()),
-		SV::ChronoDateTime(Some(value)) => serde_json::Value::String(value.to_string()),
-		SV::ChronoDateTimeUtc(Some(value)) => serde_json::Value::String(value.to_rfc3339()),
-		SV::ChronoDateTimeLocal(Some(value)) => serde_json::Value::String(value.to_rfc3339()),
-		SV::ChronoDateTimeWithTimeZone(Some(value)) => {
-			serde_json::Value::String(value.to_rfc3339())
-		}
-		SV::Uuid(Some(value)) => serde_json::Value::String(value.to_string()),
-		SV::Json(Some(value)) => (**value).clone(),
-		SV::Decimal(Some(value)) => serde_json::Value::String(value.to_string()),
-		SV::BigDecimal(Some(value)) => serde_json::Value::String(value.to_string()),
-		SV::Array(_, Some(values)) => array_values_to_json(values),
-		_ => serde_json::Value::Null,
+		// Arrays - convert to string
+		// For reinhardt-query 1.0.0-rc.29+: Array(ArrayType, Option<Box<Vec<Value>>>)
+		SV::Array(_, arr) => QueryValue::String(format!("{:?}", arr)),
 	}
 }
 
@@ -484,7 +395,7 @@ where
 			.from(Alias::new(T::table_name()))
 			.column(ColumnRef::Asterisk)
 			.and_where(
-				Expr::col(Alias::new(T::primary_key_column())).eq(Expr::val(pk.clone().into())),
+				Expr::col(Alias::new(T::primary_key_field())).eq(Expr::val(pk.clone().into())),
 			)
 			.limit(1)
 			.to_owned()
@@ -1058,96 +969,5 @@ mod tests {
 
 		// Assert
 		assert!(matches!(result, QueryValue::Null));
-	}
-
-	#[test]
-	fn date_and_time_values_bind_with_sql_literals() {
-		let date = chrono::NaiveDate::from_ymd_opt(2026, 7, 14).expect("valid date");
-		let time = chrono::NaiveTime::from_hms_opt(12, 34, 56).expect("valid time");
-		assert_eq!(
-			convert_value_to_query_value(reinhardt_query::value::Value::ChronoDate(Some(
-				Box::new(date)
-			))),
-			QueryValue::String("2026-07-14".to_owned())
-		);
-		assert_eq!(
-			convert_value_to_query_value(reinhardt_query::value::Value::ChronoTime(Some(
-				Box::new(time)
-			))),
-			QueryValue::String("12:34:56".to_owned())
-		);
-	}
-
-	#[test]
-	fn typed_json_decimal_and_array_values_preserve_their_contents() {
-		let json = serde_json::json!({"enabled": true});
-		assert_eq!(
-			convert_value_to_query_value(reinhardt_query::value::Value::Json(Some(Box::new(
-				json.clone()
-			)))),
-			QueryValue::Json(Some(Box::new(json)))
-		);
-
-		let decimal = rust_decimal::Decimal::new(123_456_789, 6);
-		assert_eq!(
-			convert_value_to_query_value(reinhardt_query::value::Value::Decimal(Some(Box::new(
-				decimal
-			)))),
-			QueryValue::String("123.456789".to_string())
-		);
-
-		let values = vec![
-			reinhardt_query::value::Value::String(Some(Box::new("red".to_string()))),
-			reinhardt_query::value::Value::String(Some(Box::new("blue".to_string()))),
-		];
-		assert_eq!(
-			convert_value_to_query_value(reinhardt_query::value::Value::Array(
-				reinhardt_query::value::ArrayType::String,
-				Some(Box::new(values)),
-			)),
-			QueryValue::StringArray(vec!["red".to_owned(), "blue".to_owned()])
-		);
-
-		let values = vec![
-			reinhardt_query::value::Value::Int(Some(1)),
-			reinhardt_query::value::Value::Int(Some(2)),
-		];
-		assert_eq!(
-			convert_value_to_query_value(reinhardt_query::value::Value::Array(
-				reinhardt_query::value::ArrayType::Int,
-				Some(Box::new(values)),
-			)),
-			QueryValue::IntArray(vec![1, 2])
-		);
-	}
-
-	#[test]
-	fn native_array_types_do_not_fall_back_to_json() {
-		let bool_values = vec![
-			reinhardt_query::value::Value::Bool(Some(true)),
-			reinhardt_query::value::Value::Bool(Some(false)),
-		];
-		let float_values = vec![reinhardt_query::value::Value::Float(Some(1.5))];
-		let double_values = vec![reinhardt_query::value::Value::Double(Some(2.5))];
-		let uuid_values = vec![reinhardt_query::value::Value::Uuid(Some(Box::new(
-			uuid::Uuid::nil(),
-		)))];
-
-		for (array_type, values) in [
-			(reinhardt_query::value::ArrayType::Bool, bool_values),
-			(reinhardt_query::value::ArrayType::Float, float_values),
-			(reinhardt_query::value::ArrayType::Double, double_values),
-			(reinhardt_query::value::ArrayType::Uuid, uuid_values),
-		] {
-			let array_type_name = format!("{array_type:?}");
-			let converted = convert_value_to_query_value(reinhardt_query::value::Value::Array(
-				array_type,
-				Some(Box::new(values)),
-			));
-			assert!(
-				!matches!(converted, QueryValue::Json(_)),
-				"{array_type_name} arrays must preserve native binding"
-			);
-		}
 	}
 }

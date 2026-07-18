@@ -2,7 +2,7 @@ use reinhardt_macros::model;
 
 include!("../support.rs");
 
-#[model(table_name = "secrets", server_only)]
+#[model(app_label = "default", table_name = "secrets", server_only)]
 struct Secret {
 	#[field(primary_key = true)]
 	id: i64,

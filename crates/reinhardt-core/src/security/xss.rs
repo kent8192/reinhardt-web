@@ -501,12 +501,12 @@ mod tests {
 	}
 
 	#[test]
-	fn test_escape_html_content() {
+	fn test_escape_html_content_with_replacement_api() {
 		assert_eq!(
-			escape_html_content("<script>alert('XSS')</script>"),
+			escape_html("<script>alert('XSS')</script>"),
 			"&lt;script&gt;alert(&#x27;XSS&#x27;)&lt;/script&gt;"
 		);
-		assert_eq!(escape_html_content("safe text"), "safe text");
+		assert_eq!(escape_html("safe text"), "safe text");
 	}
 
 	#[test]

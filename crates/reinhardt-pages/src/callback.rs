@@ -502,16 +502,10 @@ where
 
 #[cfg(test)]
 impl<Args: 'static, Ret: 'static> Callback<Args, Ret> {
-	/// Test-only accessor for raw inner-Arc pointer identity.
-	///
-	/// Used by `callback_with_deps` tests to assert `Arc::ptr_eq` semantics.
-	/// Named `_rc_ptr` for historical alignment with the plan template
-	/// despite the inner being `Arc` not `Rc`.
-	pub(crate) fn inner_rc_ptr(&self) -> *const () {
-		with_page_node::<CallbackSlot<Args, Ret>, _>(self.key, |slot| {
-			Arc::as_ptr(&slot.inner) as *const u8 as *const ()
-		})
-		.unwrap_or_else(|err| panic!("{err}"))
+	/// Test-only clone that keeps the callback allocation alive for identity checks.
+	pub(crate) fn inner_arc(&self) -> Arc<dyn Fn(Args) -> Ret + 'static> {
+		with_page_node::<CallbackSlot<Args, Ret>, _>(self.key, |slot| Arc::clone(&slot.inner))
+			.unwrap_or_else(|err| panic!("{err}"))
 	}
 }
 
@@ -1124,7 +1118,7 @@ mod tests_with_deps {
 		reinhardt_core::reactive::ReactiveScope::run(|| {
 			// Arrange
 			let s = Signal::new(0_i32);
-			let mut prev: Option<*const ()> = None;
+			let mut previous = None;
 
 			// Act — same call site (loop body) re-entered with same deps.
 			for _ in 0..3 {
@@ -1137,16 +1131,16 @@ mod tests_with_deps {
 					},
 					deps![s].into_deps(),
 				);
-				let rc = cb.inner_rc_ptr();
+				let inner = cb.inner_arc();
 
 				// Assert
-				if let Some(prev_rc) = prev {
-					assert_eq!(
-						rc, prev_rc,
+				if let Some(previous) = previous.as_ref() {
+					assert!(
+						Arc::ptr_eq(&inner, previous),
 						"Arc<Fn> identity must be stable when deps unchanged"
 					);
 				}
-				prev = Some(rc);
+				previous = Some(inner);
 			}
 		});
 	}
@@ -1158,22 +1152,22 @@ mod tests_with_deps {
 		reinhardt_core::reactive::ReactiveScope::run(|| {
 			// Arrange
 			let signals: Vec<Signal<i32>> = (0..3).map(Signal::new).collect();
-			let mut prev: Option<*const ()> = None;
+			let mut previous = None;
 
 			// Act — same call site (loop body) re-entered with different
 			// deps each iteration.
 			for s in &signals {
 				let cb = callback_with_deps::<i32, ()>(|_: i32| {}, deps![s].into_deps());
-				let rc = cb.inner_rc_ptr();
+				let inner = cb.inner_arc();
 
 				// Assert
-				if let Some(prev_rc) = prev {
-					assert_ne!(
-						rc, prev_rc,
+				if let Some(previous) = previous.as_ref() {
+					assert!(
+						!Arc::ptr_eq(&inner, previous),
 						"Arc<Fn> identity must change when deps NodeIds differ"
 					);
 				}
-				prev = Some(rc);
+				previous = Some(inner);
 			}
 		});
 	}

@@ -1,0 +1,543 @@
+//! Development ownership and last-good replacement for generated component CSS.
+
+use std::io::Write as _;
+use std::path::{Path, PathBuf};
+
+use tempfile::{NamedTempFile, TempDir};
+
+use crate::{
+	COMPONENT_STYLES_PATH, StyleExtractor, StyleFeatureSelection, StyleFingerprints,
+	StylePackageContext,
+};
+
+/// Result of comparing a newly compiled style bundle with the last-good state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ComponentStyleStageResult {
+	/// No relevant output changed.
+	Unchanged,
+	/// Only CSS bytes changed, so a browser stylesheet refresh is sufficient.
+	CssOnly,
+	/// Ordinary Rust or the generated component API changed.
+	RustOrApiChanged,
+	/// Compilation failed and the last-good snapshot was retained.
+	Failed,
+}
+
+/// RAII owner for the temporary development static root.
+#[derive(Debug)]
+pub struct GeneratedStyleAssets {
+	root: TempDir,
+}
+
+impl GeneratedStyleAssets {
+	/// Create an owned static root and write the initial stylesheet atomically.
+	pub fn new(css: &[u8]) -> Result<Self, String> {
+		let root = tempfile::tempdir()
+			.map_err(|error| format!("failed to create component style asset root: {error}"))?;
+		let assets = Self { root };
+		assets.replace(css)?;
+		Ok(assets)
+	}
+
+	/// Root directory mounted before application-owned static sources.
+	pub fn root(&self) -> &Path {
+		self.root.path()
+	}
+
+	/// Exact generated stylesheet path inside the owned root.
+	pub fn stylesheet_path(&self) -> PathBuf {
+		self.root.path().join(COMPONENT_STYLES_PATH)
+	}
+
+	/// Atomically replace the generated stylesheet bytes.
+	pub fn replace(&self, css: &[u8]) -> Result<(), String> {
+		let destination = self.stylesheet_path();
+		let parent = destination
+			.parent()
+			.ok_or_else(|| "component stylesheet destination has no parent".to_string())?;
+		std::fs::create_dir_all(parent)
+			.map_err(|error| format!("failed to create component stylesheet directory: {error}"))?;
+		let mut temporary = NamedTempFile::new_in(parent).map_err(|error| {
+			format!("failed to create component stylesheet temporary file: {error}")
+		})?;
+		temporary
+			.write_all(css)
+			.map_err(|error| format!("failed to write component stylesheet: {error}"))?;
+		temporary
+			.as_file()
+			.sync_all()
+			.map_err(|error| format!("failed to sync component stylesheet: {error}"))?;
+		temporary.persist(&destination).map_err(|error| {
+			format!(
+				"failed to replace component stylesheet atomically: {}",
+				error.error
+			)
+		})?;
+		Ok(())
+	}
+}
+
+/// Last-good development compiler state retained for the server lifetime.
+#[derive(Debug)]
+pub struct ComponentStyleState {
+	manifest_path: PathBuf,
+	requested_package: Option<String>,
+	feature_selection: StyleFeatureSelection,
+	context: StylePackageContext,
+	extractor: StyleExtractor,
+	fingerprints: StyleFingerprints,
+	assets: GeneratedStyleAssets,
+	has_component_styles: bool,
+	#[cfg(feature = "pages")]
+	pending: Option<PendingStyleBundle>,
+}
+
+/// A valid stylesheet candidate awaiting a matching Rust rebuild.
+#[cfg(feature = "pages")]
+#[derive(Debug)]
+struct PendingStyleBundle {
+	context: StylePackageContext,
+	extractor: StyleExtractor,
+	css: Vec<u8>,
+	fingerprints: StyleFingerprints,
+}
+
+impl ComponentStyleState {
+	/// Resolve, compile, and write the initial stylesheet before server startup.
+	pub fn initialize(
+		manifest_path: impl Into<PathBuf>,
+		requested_package: Option<String>,
+	) -> Result<Self, String> {
+		Self::initialize_with_features(
+			manifest_path,
+			requested_package,
+			StyleFeatureSelection::default(),
+		)
+	}
+
+	/// Initialize component styles when Cargo selects a package for the Pages bundle.
+	///
+	/// A virtual workspace without a root package can still run commands that do
+	/// not serve component styles. In that case, omitting `--package` returns
+	/// `Ok(None)` instead of preventing the command from starting.
+	pub fn initialize_optional_with_features(
+		manifest_path: impl Into<PathBuf>,
+		requested_package: Option<String>,
+		feature_selection: StyleFeatureSelection,
+	) -> Result<Option<Self>, String> {
+		let manifest_path = manifest_path.into();
+		match Self::initialize_with_features(
+			manifest_path,
+			requested_package.clone(),
+			feature_selection,
+		) {
+			Ok(state) => Ok(Some(state)),
+			Err(error)
+				if requested_package.is_none()
+					&& virtual_workspace_has_no_style_package(&error) =>
+			{
+				Ok(None)
+			}
+			Err(error) => Err(error),
+		}
+	}
+
+	/// Resolve component styles with the features enabled for the Pages build.
+	pub fn initialize_with_features(
+		manifest_path: impl Into<PathBuf>,
+		requested_package: Option<String>,
+		feature_selection: StyleFeatureSelection,
+	) -> Result<Self, String> {
+		let manifest_path = manifest_path.into();
+		let context = StylePackageContext::resolve_with_features(
+			&manifest_path,
+			requested_package.as_deref(),
+			feature_selection.clone(),
+		)?;
+		let extractor = StyleExtractor::new(context.clone());
+		let bundle = extractor.extract()?;
+		let has_component_styles = !bundle.css.is_empty();
+		let assets = GeneratedStyleAssets::new(&bundle.css)?;
+		let fingerprints = bundle.fingerprints;
+		Ok(Self {
+			manifest_path,
+			requested_package,
+			feature_selection,
+			context,
+			extractor,
+			fingerprints,
+			assets,
+			has_component_styles,
+			#[cfg(feature = "pages")]
+			pending: None,
+		})
+	}
+
+	/// Owned development static root.
+	pub fn generated_root(&self) -> &Path {
+		self.assets.root()
+	}
+
+	/// Selected package context shared with production collection when requested.
+	pub fn package_context(&self) -> &StylePackageContext {
+		&self.context
+	}
+
+	/// Consume compiler state while retaining only the Send-safe RAII asset owner.
+	pub fn into_generated_assets(self) -> GeneratedStyleAssets {
+		self.assets
+	}
+
+	/// Stable public stylesheet URL for the supplied static prefix.
+	pub fn stylesheet_url(&self, static_url: &str) -> String {
+		join_static_url(static_url, COMPONENT_STYLES_PATH)
+	}
+
+	/// Return whether the selected package emitted component stylesheet content.
+	pub fn has_component_styles(&self) -> bool {
+		self.has_component_styles
+	}
+
+	/// Return whether `path` is part of the source graph used for component styles.
+	///
+	/// The watcher uses this to distinguish a stylesheet-only batch from a
+	/// coalesced batch that also needs a native or WASM rebuild.
+	#[cfg(feature = "pages")]
+	pub(crate) fn tracks_source_path(&self, path: &Path) -> bool {
+		self.extractor.tracks_source_path(path)
+	}
+
+	/// Recompile generated styles and advance the last-good snapshot when safe.
+	pub fn refresh(&mut self, metadata_changed: bool) -> ComponentStyleStageResult {
+		let candidate_context = if metadata_changed {
+			match StylePackageContext::resolve_with_features(
+				&self.manifest_path,
+				self.requested_package.as_deref(),
+				self.feature_selection.clone(),
+			) {
+				Ok(context) => context,
+				Err(error) => {
+					#[cfg(feature = "pages")]
+					{
+						self.pending = None;
+					}
+					eprintln!("component style metadata refresh failed: {error}");
+					return ComponentStyleStageResult::Failed;
+				}
+			}
+		} else {
+			self.context.clone()
+		};
+		let candidate_extractor = StyleExtractor::new(candidate_context.clone());
+		let candidate = match candidate_extractor.extract() {
+			Ok(bundle) => bundle,
+			Err(error) => {
+				#[cfg(feature = "pages")]
+				{
+					self.pending = None;
+				}
+				eprintln!("component style compilation failed: {error}");
+				return ComponentStyleStageResult::Failed;
+			}
+		};
+
+		let old = self.fingerprints;
+		let new = candidate.fingerprints;
+		if old == new {
+			if metadata_changed {
+				self.context = candidate_context;
+				self.extractor = candidate_extractor;
+			}
+			#[cfg(feature = "pages")]
+			{
+				self.pending = None;
+			}
+			return ComponentStyleStageResult::Unchanged;
+		}
+		if old.non_style_rust == new.non_style_rust && old.generated_api == new.generated_api {
+			if old.css != new.css
+				&& let Err(error) = self.assets.replace(&candidate.css)
+			{
+				eprintln!("component style asset replacement failed: {error}");
+				return ComponentStyleStageResult::Failed;
+			}
+			self.context = candidate_context;
+			self.extractor = candidate_extractor;
+			self.fingerprints = new;
+			self.has_component_styles = !candidate.css.is_empty();
+			#[cfg(feature = "pages")]
+			{
+				self.pending = None;
+			}
+			return ComponentStyleStageResult::CssOnly;
+		}
+
+		#[cfg(feature = "pages")]
+		{
+			self.pending = Some(PendingStyleBundle {
+				context: candidate_context,
+				extractor: candidate_extractor,
+				css: candidate.css,
+				fingerprints: candidate.fingerprints,
+			});
+		}
+		#[cfg(not(feature = "pages"))]
+		{
+			self.context = candidate_context;
+			self.extractor = candidate_extractor;
+			self.fingerprints = new;
+		}
+		ComponentStyleStageResult::RustOrApiChanged
+	}
+
+	/// Commit the newest API-changing stylesheet only after its rebuild succeeds.
+	#[cfg(feature = "pages")]
+	pub(crate) fn commit_pending(&mut self) -> Result<bool, String> {
+		let Some(candidate) = self.pending.take() else {
+			return Ok(false);
+		};
+		if self.fingerprints.css != candidate.fingerprints.css
+			&& let Err(error) = self.assets.replace(&candidate.css)
+		{
+			self.pending = Some(candidate);
+			return Err(error);
+		}
+		self.context = candidate.context;
+		self.extractor = candidate.extractor;
+		self.fingerprints = candidate.fingerprints;
+		self.has_component_styles = !candidate.css.is_empty();
+		Ok(true)
+	}
+}
+
+fn virtual_workspace_has_no_style_package(error: &str) -> bool {
+	error == "the Cargo workspace has no root package; pass --package <NAME>"
+		|| (error.contains("manifest is virtual") && error.contains("workspace has no members"))
+}
+
+/// Join a configured static URL and a logical asset path without duplicate separators.
+pub fn join_static_url(static_url: &str, logical_path: &str) -> String {
+	format!(
+		"{}/{}",
+		static_url.trim_end_matches('/'),
+		logical_path.trim_start_matches('/')
+	)
+}
+
+#[cfg(test)]
+mod tests {
+	use rstest::rstest;
+
+	use super::*;
+
+	#[rstest]
+	#[case("/static/", "/static/__reinhardt__/components.css")]
+	#[case("/assets", "/assets/__reinhardt__/components.css")]
+	#[case(
+		"https://cdn.example.test/static/",
+		"https://cdn.example.test/static/__reinhardt__/components.css"
+	)]
+	fn joins_static_urls(#[case] prefix: &str, #[case] expected: &str) {
+		assert_eq!(join_static_url(prefix, COMPONENT_STYLES_PATH), expected);
+	}
+
+	#[rstest]
+	fn generated_assets_replace_bytes_and_accept_empty_output() {
+		let assets = GeneratedStyleAssets::new(b"first").expect("create assets");
+		assert_eq!(std::fs::read(assets.stylesheet_path()).unwrap(), b"first");
+		assets.replace(b"").expect("replace assets");
+		assert_eq!(std::fs::read(assets.stylesheet_path()).unwrap(), b"");
+		assert!(assets.stylesheet_path().ends_with(COMPONENT_STYLES_PATH));
+	}
+
+	#[rstest]
+	fn optional_initialization_skips_a_virtual_workspace_without_a_package() {
+		let directory = tempfile::tempdir().expect("create virtual workspace");
+		let manifest_path = directory.path().join("Cargo.toml");
+		std::fs::write(
+			&manifest_path,
+			"[workspace]\nresolver = \"3\"\nmembers = []\n",
+		)
+		.expect("write virtual workspace manifest");
+
+		let state = ComponentStyleState::initialize_optional_with_features(
+			&manifest_path,
+			None,
+			StyleFeatureSelection::default(),
+		)
+		.expect("skip component styles without a selected package");
+
+		assert!(state.is_none());
+	}
+
+	#[rstest]
+	fn initialization_marks_a_server_only_package_as_style_free() {
+		let directory = tempfile::tempdir().expect("create server package");
+		std::fs::create_dir(directory.path().join("src")).expect("create source directory");
+		std::fs::write(
+			directory.path().join("Cargo.toml"),
+			"[package]\nname = \"server-only\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+		)
+		.expect("write package manifest");
+		std::fs::write(directory.path().join("src/lib.rs"), "pub fn server() {}\n")
+			.expect("write source");
+
+		let state = ComponentStyleState::initialize(directory.path().join("Cargo.toml"), None)
+			.expect("initialize empty component style state");
+
+		assert!(!state.has_component_styles());
+	}
+
+	#[rstest]
+	fn refresh_keeps_last_good_css_then_dispatches_css_only() {
+		let directory = tempfile::tempdir().expect("create temporary package");
+		std::fs::create_dir(directory.path().join("src")).unwrap();
+		std::fs::write(
+			directory.path().join("Cargo.toml"),
+			"[package]\nname = \"style-refresh\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+		)
+		.unwrap();
+		let source_path = directory.path().join("src/lib.rs");
+		std::fs::write(
+			&source_path,
+			"#[style_def] static STYLES: Styles = style! { .card { color: red; } };\n",
+		)
+		.unwrap();
+		let mut state = ComponentStyleState::initialize(directory.path().join("Cargo.toml"), None)
+			.expect("initialize style state");
+		let output = state.generated_root().join(COMPONENT_STYLES_PATH);
+		let last_good = std::fs::read(&output).unwrap();
+
+		std::fs::write(
+			&source_path,
+			"#[style_def] static STYLES: Styles = style! { .card { color: not-a-color; } };\n",
+		)
+		.unwrap();
+		assert_eq!(state.refresh(false), ComponentStyleStageResult::Failed);
+		assert_eq!(std::fs::read(&output).unwrap(), last_good);
+
+		std::fs::write(
+			&source_path,
+			"#[style_def] static STYLES: Styles = style! { .card { color: blue; } };\n",
+		)
+		.unwrap();
+		assert_eq!(state.refresh(false), ComponentStyleStageResult::CssOnly);
+		assert_ne!(std::fs::read(&output).unwrap(), last_good);
+	}
+
+	#[cfg(feature = "pages")]
+	#[rstest]
+	fn state_tracks_component_style_sources_but_not_server_bins() {
+		// Arrange
+		let directory = tempfile::tempdir().expect("create temporary package");
+		let source_dir = directory.path().join("src");
+		let bin_dir = source_dir.join("bin");
+		std::fs::create_dir_all(&bin_dir).expect("create source directories");
+		std::fs::write(
+			directory.path().join("Cargo.toml"),
+			"[package]\nname = \"style-source-tracking\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+		)
+		.expect("write manifest");
+		let style_source = source_dir.join("lib.rs");
+		let server_bin = bin_dir.join("server.rs");
+		std::fs::write(
+			&style_source,
+			"#[style_def] static STYLES: Styles = style! { .card { color: red; } };\n",
+		)
+		.expect("write style source");
+		std::fs::write(&server_bin, "fn main() {}\n").expect("write server binary");
+		let state = ComponentStyleState::initialize(directory.path().join("Cargo.toml"), None)
+			.expect("initialize style state");
+
+		// Act & Assert
+		assert!(state.tracks_source_path(&style_source));
+		assert!(!state.tracks_source_path(&server_bin));
+	}
+
+	#[rstest]
+	fn refresh_updates_context_after_metadata_only_changes() {
+		let directory = tempfile::tempdir().expect("create temporary package");
+		std::fs::create_dir(directory.path().join("src")).unwrap();
+		let manifest_path = directory.path().join("Cargo.toml");
+		std::fs::write(
+			&manifest_path,
+			"[package]\nname = \"style-context-refresh\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[features]\nalt = []\n",
+		)
+		.unwrap();
+		let source_path = directory.path().join("src/lib.rs");
+		std::fs::write(
+			&source_path,
+			r#"
+#[cfg(feature = "alt")]
+#[style_def]
+static STYLES: CardStyles = style! { .card { color: red; } };
+
+#[cfg(not(feature = "alt"))]
+#[style_def]
+static STYLES: CardStyles = style! { .card { color: red; } };
+"#,
+		)
+		.unwrap();
+		let mut state =
+			ComponentStyleState::initialize(&manifest_path, None).expect("initialize style state");
+
+		std::fs::write(
+			&manifest_path,
+			"[package]\nname = \"style-context-refresh\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[features]\ndefault = [\"alt\"]\nalt = []\n",
+		)
+		.unwrap();
+		assert_eq!(state.refresh(true), ComponentStyleStageResult::Unchanged);
+
+		std::fs::write(
+			&source_path,
+			r#"
+#[cfg(feature = "alt")]
+#[style_def]
+static STYLES: CardStyles = style! { .card { color: blue; } };
+
+#[cfg(not(feature = "alt"))]
+#[style_def]
+static STYLES: CardStyles = style! { .card { color: red; } };
+"#,
+		)
+		.unwrap();
+
+		assert_eq!(state.refresh(false), ComponentStyleStageResult::CssOnly);
+	}
+
+	#[cfg(feature = "pages")]
+	#[rstest]
+	fn refresh_defers_api_changing_stylesheet_until_the_rust_rebuild_succeeds() {
+		let directory = tempfile::tempdir().expect("create temporary package");
+		std::fs::create_dir(directory.path().join("src")).unwrap();
+		std::fs::write(
+			directory.path().join("Cargo.toml"),
+			"[package]\nname = \"style-api-refresh\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+		)
+		.unwrap();
+		let source_path = directory.path().join("src/lib.rs");
+		std::fs::write(
+			&source_path,
+			"#[style_def] static STYLES: Styles = style! { .card { color: red; } };\n",
+		)
+		.unwrap();
+		let mut state = ComponentStyleState::initialize(directory.path().join("Cargo.toml"), None)
+			.expect("initialize style state");
+		let output = state.generated_root().join(COMPONENT_STYLES_PATH);
+		let last_good = std::fs::read(&output).unwrap();
+
+		std::fs::write(
+			&source_path,
+			"#[style_def] static STYLES: Styles = style! { .card { color: red; } .label { color: blue; } };\n",
+		)
+		.unwrap();
+
+		assert_eq!(
+			state.refresh(false),
+			ComponentStyleStageResult::RustOrApiChanged
+		);
+		assert_eq!(std::fs::read(&output).unwrap(), last_good);
+		assert!(state.commit_pending().expect("commit rebuilt styles"));
+		assert_ne!(std::fs::read(&output).unwrap(), last_good);
+	}
+}

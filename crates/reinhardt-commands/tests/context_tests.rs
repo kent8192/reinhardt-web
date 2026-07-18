@@ -31,6 +31,21 @@ fn populated_context() -> CommandContext {
 	ctx
 }
 
+#[test]
+fn test_context_public_struct_literal_remains_supported() {
+	let ctx = CommandContext {
+		args: Vec::new(),
+		options: HashMap::new(),
+		verbosity: 0,
+		settings: None,
+	};
+
+	assert!(ctx.args.is_empty());
+	assert!(ctx.options.is_empty());
+	assert_eq!(ctx.verbosity, 0);
+	assert!(ctx.settings.is_none());
+}
+
 // =============================================================================
 // Happy Path Tests - Extended
 // =============================================================================

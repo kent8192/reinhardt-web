@@ -7,6 +7,7 @@
 //! - `page!` - Anonymous component DSL macro
 //! - `head!` - HTML head section DSL macro
 //! - `form!` - Type-safe form component macro with reactive bindings
+//! - `style!` / `#[style_def]` - Typed component-scoped style definitions
 //! - `#[server_fn]` - Server Functions (RPC) macro
 //! - `#[client_page]` - Client page function macro with native route-table stubs
 //! - `#[layout]` - Route-backed layout component macro for `ClientRouter`
@@ -86,6 +87,7 @@ mod head;
 mod page;
 mod page_props;
 mod server_fn;
+mod style;
 mod wasm_server_api;
 
 /// Server Function macro
@@ -858,6 +860,24 @@ pub fn page(input: TokenStream) -> TokenStream {
 #[proc_macro]
 pub fn head(input: TokenStream) -> TokenStream {
 	head::head_impl(input)
+}
+
+/// Defines one component-scoped style API from a canonical static item.
+#[proc_macro_attribute]
+pub fn style_def(args: TokenStream, input: TokenStream) -> TokenStream {
+	match style::expand_style_def(args.into(), input.into()) {
+		Ok(output) => output.into(),
+		Err(error) => error.to_compile_error().into(),
+	}
+}
+
+/// Parses the component style DSL and reports missing item context when used directly.
+#[proc_macro]
+pub fn style(input: TokenStream) -> TokenStream {
+	match style::expand_standalone_style(input.into()) {
+		Ok(output) => output.into(),
+		Err(error) => error.to_compile_error().into(),
+	}
 }
 
 /// Form component macro

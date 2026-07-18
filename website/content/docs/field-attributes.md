@@ -23,6 +23,12 @@ Reinhardt's `#[model(...)]` attribute macro automatically applies
 through field-level attributes. Currently, **49 attributes** are supported (20
 existing + 22 newly implemented + 7 additional implemented attributes).
 
+Every model requires an explicit `app_label`. The model-level `table_name` is
+optional and defaults to the app label plus the struct name in snake_case
+without pluralization; for example, `#[model(app_label = "routing")] struct
+HTTPRoute` maps to `routing_http_route`. Keep an explicit `table_name` when the
+model targets an existing table.
+
 **Note:** When using `#[model(...)]`, you don't need to explicitly add
 `#[derive(Model)]`.
 
@@ -891,7 +897,7 @@ Creates a SQLite STRICT table.
 
 ```rust
 #[cfg(feature = "db-sqlite")]
-#[model(table_name = "users", strict = true)]
+#[model(app_label = "accounts", table_name = "users", strict = true)]
 struct User {
 	// ...
 }
@@ -909,7 +915,7 @@ Creates a SQLite WITHOUT ROWID table.
 
 ```rust
 #[cfg(feature = "db-sqlite")]
-#[model(table_name = "cache", without_rowid = true)]
+#[model(app_label = "cache", table_name = "cache", without_rowid = true)]
 struct CacheEntry {
 	#[field(primary_key = true)]
 	key: String,
@@ -949,7 +955,7 @@ Available feature flags:
 use reinhardt::db::orm::prelude::*;
 use chrono::NaiveDateTime;
 
-#[model(table_name = "articles")]
+#[model(app_label = "publishing", table_name = "articles")]
 #[cfg_attr(feature = "db-sqlite", model(strict = true))]
 struct Article {
 	// PostgreSQL: IDENTITY BY DEFAULT

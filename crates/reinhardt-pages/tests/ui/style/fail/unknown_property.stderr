@@ -1,0 +1,5 @@
+error: unknown property `colour`; use a registered canonical CSS property name
+ --> tests/ui/style/fail/unknown_property.rs:6:3
+  |
+6 |         colour: red;
+  |         ^^^^^^

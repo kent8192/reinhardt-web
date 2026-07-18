@@ -6,6 +6,7 @@ use std::fmt::Write as _;
 use std::rc::Rc;
 use std::time::Duration;
 
+use super::control_binding::{SsrControlProjection, SsrSelectionState, project};
 use super::markers::{HydrationMarker, HydrationStrategy};
 use super::resource_context::{
 	RenderOwnerRegistration, SsrResourceContext, enter_boundary, register_render_owner,
@@ -15,7 +16,9 @@ use super::resource_context::{
 use super::state::SsrState;
 use super::stream::{SsrChunk, SsrStream};
 use crate::auth::AuthData;
-use crate::component::{Component, Head, IntoPage, Page, scope_reactive_node_store};
+use crate::component::{
+	Component, ControlKind, Head, IntoPage, Page, PageElement, scope_reactive_node_store,
+};
 use crate::reactive::hooks::id::{
 	id_counter_snapshot, reset_id_counter, restore_id_counter, scope_id_counter,
 	scope_id_counter_with,
@@ -236,6 +239,31 @@ pub struct SsrRenderer {
 	active_reactive_scope: Rc<RefCell<Option<Rc<ReactiveScope>>>>,
 }
 
+/// Restores the previous reactive scope when an SSR render entrypoint exits.
+struct ActiveReactiveScopeGuard {
+	active_scope: Rc<RefCell<Option<Rc<ReactiveScope>>>>,
+	previous_scope: Option<Rc<ReactiveScope>>,
+}
+
+impl ActiveReactiveScopeGuard {
+	fn install(
+		active_scope: Rc<RefCell<Option<Rc<ReactiveScope>>>>,
+		reactive_scope: Rc<ReactiveScope>,
+	) -> Self {
+		let previous_scope = active_scope.borrow_mut().replace(reactive_scope);
+		Self {
+			active_scope,
+			previous_scope,
+		}
+	}
+}
+
+impl Drop for ActiveReactiveScopeGuard {
+	fn drop(&mut self) {
+		drop(self.active_scope.replace(self.previous_scope.take()));
+	}
+}
+
 impl Clone for SsrRenderer {
 	fn clone(&self) -> Self {
 		Self {
@@ -267,6 +295,7 @@ struct PendingSuspenseBoundary {
 	boundary_id: String,
 	node: SuspenseNode,
 	boundary_start: DeterministicRenderSnapshot,
+	selection: Option<SsrSelectionState>,
 }
 
 #[derive(Clone, Copy)]
@@ -454,17 +483,12 @@ impl SsrRenderer {
 	}
 
 	/// Renders an IntoPage to an HTML string.
-	///
-	/// The conversion runs once inside the renderer-owned reactive scope.
 	pub async fn render_into_page<V: IntoPage>(&mut self, view: V) -> String {
-		self.render_view_factory(Self::into_page_factory(view))
-			.await
+		let view = view.into_page();
+		self.render_view(&view).await
 	}
 
-	/// Renders a pre-built View to an HTML string.
-	///
-	/// This is a low-level entrypoint. Callers that construct reactive nodes
-	/// before passing the view must keep its owning [`ReactiveScope`] alive.
+	/// Renders a View to an HTML string.
 	pub async fn render_view(&mut self, view: &Page) -> String {
 		self.render_view_factory(|| view.clone()).await
 	}
@@ -578,24 +602,6 @@ impl SsrRenderer {
 		}
 	}
 
-	fn into_page_factory<V: IntoPage>(view: V) -> impl FnMut() -> Page {
-		let mut source = Some(view);
-		let mut rendered_page: Option<Page> = None;
-
-		move || {
-			if let Some(page) = rendered_page.as_ref() {
-				return page.clone();
-			}
-
-			let page = source
-				.take()
-				.expect("IntoPage source must be available before its first render")
-				.into_page();
-			rendered_page = Some(page.clone());
-			page
-		}
-	}
-
 	fn begin_buffered_render_pass(&mut self) {
 		self.rendered_head = None;
 	}
@@ -636,17 +642,14 @@ impl SsrRenderer {
 	}
 
 	/// Renders an IntoPage to a full HTML page.
-	///
-	/// The conversion runs once inside the renderer-owned reactive scope, which
-	/// remains alive through streaming replacement traversal.
 	pub async fn render_page_into_page<V: IntoPage>(&mut self, view: V) -> SsrStream {
-		let view_factory = Self::into_page_factory(view);
+		let view = view.into_page();
 		if self.options.suspense_streaming && !self.options.minify {
-			return self.render_page_stream_from_factory(view_factory).await;
+			return self.render_page_stream_from_factory(|| view.clone()).await;
 		}
 
 		let (_, content, body_tail) = self
-			.render_view_parts_from_factory(view_factory, true)
+			.render_view_parts_from_factory(|| view.clone(), true)
 			.await;
 		let view_head = self.current_buffered_rendered_head();
 		SsrStream::from_chunks(self.wrap_in_html_with_head_and_body_tail_chunks(
@@ -709,11 +712,10 @@ impl SsrRenderer {
 	}
 
 	/// Renders an IntoPage to a buffered full HTML page.
-	///
-	/// The conversion runs once inside the renderer-owned reactive scope.
 	pub async fn render_page_into_page_to_string<V: IntoPage>(&mut self, view: V) -> String {
+		let view = view.into_page();
 		let (_, content, body_tail) = self
-			.render_view_parts_from_factory(Self::into_page_factory(view), true)
+			.render_view_parts_from_factory(|| view.clone(), true)
 			.await;
 		let view_head = self.current_buffered_rendered_head();
 		self.wrap_in_html_with_head_and_body_tail(&content, &body_tail, view_head.as_ref())
@@ -735,10 +737,10 @@ impl SsrRenderer {
 		if !self.should_resolve_resources() {
 			let reactive_scope = Rc::new(ReactiveScope::new());
 			let _render_owner = register_render_owner(&reactive_scope);
-			let active_scope = Rc::clone(&self.active_reactive_scope);
-			let previous_scope = active_scope
-				.borrow_mut()
-				.replace(Rc::clone(&reactive_scope));
+			let _active_scope_guard = ActiveReactiveScopeGuard::install(
+				Rc::clone(&self.active_reactive_scope),
+				Rc::clone(&reactive_scope),
+			);
 			let context = Rc::new(RefCell::new(SsrResourceContext::new(
 				self.options.resource_timeout,
 			)));
@@ -767,17 +769,15 @@ impl SsrRenderer {
 			});
 			#[cfg(feature = "i18n")]
 			let render = with_i18n_context_future(i18n_context, render);
-			let result = scope_id_counter(render).await;
-			*active_scope.borrow_mut() = previous_scope;
-			return result;
+			return scope_id_counter(render).await;
 		}
 
 		let reactive_scope = Rc::new(ReactiveScope::new());
 		let render_owner = register_render_owner(&reactive_scope);
-		let active_scope = Rc::clone(&self.active_reactive_scope);
-		let previous_scope = active_scope
-			.borrow_mut()
-			.replace(Rc::clone(&reactive_scope));
+		let _active_scope_guard = ActiveReactiveScopeGuard::install(
+			Rc::clone(&self.active_reactive_scope),
+			Rc::clone(&reactive_scope),
+		);
 		let context = Rc::new(RefCell::new(SsrResourceContext::new(
 			self.options.resource_timeout,
 		)));
@@ -873,7 +873,10 @@ impl SsrRenderer {
 								let replacement = scope_id_counter_with(
 									Rc::clone(&runtime.id_counter),
 									scope_context(Rc::clone(&runtime.context), async {
-										if boundary.node.is_pending() {
+										if runtime
+											.reactive_scope
+											.enter(|| boundary.node.is_pending())
+										{
 											return None;
 										}
 										let (replacement, nested_boundaries) = loop {
@@ -898,9 +901,10 @@ impl SsrRenderer {
 												let mut nested_boundaries = Vec::new();
 												let replacement = runtime
 													.renderer
-													.render_stream_shell_page(
+													.render_stream_shell_page_with_selection(
 														&replacement_page,
 														&mut nested_boundaries,
+														boundary.selection.clone(),
 													)
 													.await;
 												drop(boundary_guard);
@@ -987,9 +991,7 @@ impl SsrRenderer {
 		});
 		#[cfg(feature = "i18n")]
 		let render = with_i18n_context_future(i18n_context, render);
-		let result = scope_id_counter_with(scoped_id_counter, render).await;
-		*active_scope.borrow_mut() = previous_scope;
-		result
+		scope_id_counter_with(scoped_id_counter, render).await
 	}
 
 	async fn render_view_factory<F>(&mut self, view_factory: F) -> String
@@ -1022,10 +1024,10 @@ impl SsrRenderer {
 	{
 		let reactive_scope = Rc::new(ReactiveScope::new());
 		let _render_owner = register_render_owner(&reactive_scope);
-		let active_scope = Rc::clone(&self.active_reactive_scope);
-		let previous_scope = active_scope
-			.borrow_mut()
-			.replace(Rc::clone(&reactive_scope));
+		let _active_scope_guard = ActiveReactiveScopeGuard::install(
+			Rc::clone(&self.active_reactive_scope),
+			Rc::clone(&reactive_scope),
+		);
 		let context = if clear_resource_states {
 			Rc::new(RefCell::new(SsrResourceContext::new(
 				self.options.resource_timeout,
@@ -1096,13 +1098,11 @@ impl SsrRenderer {
 		});
 		#[cfg(feature = "i18n")]
 		let render = with_i18n_context_future(i18n_context, render);
-		let result = if let Some(marker_id_counter) = marker_id_counter {
+		if let Some(marker_id_counter) = marker_id_counter {
 			scope_id_counter_with(marker_id_counter, render).await
 		} else {
 			scope_id_counter(render).await
-		};
-		*active_scope.borrow_mut() = previous_scope;
-		result
+		}
 	}
 
 	fn add_resolved_resources_to_state(&mut self, context: &Rc<RefCell<SsrResourceContext>>) {
@@ -1116,32 +1116,51 @@ impl SsrRenderer {
 		view: &'a Page,
 		boundaries: &'a mut Vec<PendingSuspenseBoundary>,
 	) -> LocalBoxFuture<'a, String> {
+		self.render_stream_shell_page_with_selection(view, boundaries, None)
+	}
+
+	fn render_stream_shell_page_with_selection<'a>(
+		&'a mut self,
+		view: &'a Page,
+		boundaries: &'a mut Vec<PendingSuspenseBoundary>,
+		selection: Option<SsrSelectionState>,
+	) -> LocalBoxFuture<'a, String> {
 		Box::pin(async move {
 			match view {
 				Page::Element(el) => {
-					let mut html = String::new();
-					html.push('<');
-					html.push_str(el.tag_name());
-
-					for (name, value) in el.attrs() {
-						let name_str = name.as_ref();
-						if BOOLEAN_ATTRS.contains(&name_str) && !is_boolean_attr_truthy(value) {
-							continue;
-						}
-
-						html.push(' ');
-						html.push_str(name.as_ref());
-						html.push_str("=\"");
-						html.push_str(&html_escape(value));
-						html.push('"');
-					}
+					let projection = project(el.bound_control());
+					let mut html = render_element_opening(el, &projection, selection.as_ref());
 
 					if el.is_void() {
 						html.push_str(" />");
 					} else {
 						html.push('>');
-						for child in el.child_views() {
-							html.push_str(&self.render_stream_shell_page(child, boundaries).await);
+						if el.tag_name().eq_ignore_ascii_case("textarea")
+							&& let Some(text) = projection.textarea_text.as_deref()
+						{
+							html.push_str(&html_escape(text));
+						} else {
+							let child_selection = if el.tag_name().eq_ignore_ascii_case("select") {
+								el.bound_control().map(|binding| {
+									SsrSelectionState::new(
+										binding,
+										projection.selected_values.clone(),
+									)
+								})
+							} else {
+								selection
+							};
+							for child in el.child_views() {
+								html.push_str(
+									&self
+										.render_stream_shell_page_with_selection(
+											child,
+											boundaries,
+											child_selection.clone(),
+										)
+										.await,
+								);
+							}
 						}
 						html.push_str("</");
 						html.push_str(el.tag_name());
@@ -1154,21 +1173,38 @@ impl SsrRenderer {
 				Page::Fragment(children) => {
 					let mut html = String::new();
 					for child in children {
-						html.push_str(&self.render_stream_shell_page(child, boundaries).await);
+						html.push_str(
+							&self
+								.render_stream_shell_page_with_selection(
+									child,
+									boundaries,
+									selection.clone(),
+								)
+								.await,
+						);
 					}
 					html
 				}
 				Page::KeyedFragment(children) => {
 					let mut html = String::new();
 					for (_, child) in children {
-						html.push_str(&self.render_stream_shell_page(child, boundaries).await);
+						html.push_str(
+							&self
+								.render_stream_shell_page_with_selection(
+									child,
+									boundaries,
+									selection.clone(),
+								)
+								.await,
+						);
 					}
 					html
 				}
 				Page::Empty => String::new(),
 				Page::WithHead { view, head } => {
 					self.record_buffered_rendered_head(head);
-					self.render_stream_shell_page(view, boundaries).await
+					self.render_stream_shell_page_with_selection(view, boundaries, selection)
+						.await
 				}
 				Page::ReactiveIf(reactive_if) => {
 					let branch = self.with_active_reactive_scope(|| {
@@ -1178,14 +1214,286 @@ impl SsrRenderer {
 							reactive_if.else_view()
 						}
 					});
-					self.render_stream_shell_page(&branch, boundaries).await
+					self.render_stream_shell_page_with_selection(&branch, boundaries, selection)
+						.await
 				}
 				Page::Reactive(reactive) => {
 					let rendered = self.with_active_reactive_scope(|| reactive.render());
-					self.render_stream_shell_page(&rendered, boundaries).await
+					self.render_stream_shell_page_with_selection(&rendered, boundaries, selection)
+						.await
 				}
 				Page::Suspense(node) => {
 					let boundary_id = self.suspense_boundary_id(node);
+					let boundary_selection = selection.as_ref().map(SsrSelectionState::fork);
+					let content_selection =
+						boundary_selection.as_ref().map(SsrSelectionState::fork);
+
+					if let Some(context) = super::resource_context::with_active_context(Rc::clone) {
+						context.borrow_mut().assign_resources_to_boundary(
+							node.tracked_resource_ids(),
+							&boundary_id,
+						);
+					}
+
+					let boundary_start = self.deterministic_render_snapshot();
+					let nested_boundary_start = boundaries.len();
+					let boundary_guard = super::resource_context::with_active_context(|context| {
+						enter_boundary(context, boundary_id.clone())
+					});
+					let content_page = self.with_active_reactive_scope(|| node.render_content());
+					let content = self
+						.render_stream_shell_page_with_selection(
+							&content_page,
+							boundaries,
+							content_selection.clone(),
+						)
+						.await;
+
+					drop(boundary_guard);
+
+					let has_pending = super::resource_context::with_active_context(|context| {
+						context.borrow().has_pending_for_boundary(&boundary_id)
+					})
+					.unwrap_or(false);
+					let mut inline_single_select_uses_fallback = false;
+
+					if has_pending
+						&& self.should_resolve_resources()
+						&& selection
+							.as_ref()
+							.is_some_and(SsrSelectionState::selects_one)
+						&& let Some(context) =
+							super::resource_context::with_active_context(Rc::clone)
+					{
+						// A single select must know whether this earlier boundary contains the
+						// first matching option before later options are emitted in the shell.
+						// Buffer only this boundary; unrelated and multiple-select boundaries
+						// retain the normal streaming path.
+						let boundary_resolved =
+							resolve_boundary_resources(&context, &boundary_id).await;
+						self.restore_deterministic_render_snapshot(boundary_start);
+						boundaries.truncate(nested_boundary_start);
+						if boundary_resolved
+							&& !self.with_active_reactive_scope(|| node.is_pending())
+						{
+							let boundary_guard =
+								super::resource_context::with_active_context(|context| {
+									enter_boundary(context, boundary_id.clone())
+								});
+							let resolved_page =
+								self.with_active_reactive_scope(|| node.render_content());
+							let resolved_selection =
+								boundary_selection.as_ref().map(SsrSelectionState::fork);
+							let resolved = self
+								.render_stream_shell_page_with_selection(
+									&resolved_page,
+									boundaries,
+									resolved_selection.clone(),
+								)
+								.await;
+							drop(boundary_guard);
+							if let (Some(parent), Some(rendered)) =
+								(selection.as_ref(), resolved_selection.as_ref())
+							{
+								parent.commit_from(rendered);
+							}
+							return resolved;
+						}
+						inline_single_select_uses_fallback = true;
+					}
+
+					if has_pending {
+						if self.should_resolve_resources()
+							&& !inline_single_select_uses_fallback
+							&& let Some(parent) = selection.as_ref()
+						{
+							parent.reserve_pending_match();
+						}
+						self.restore_deterministic_render_snapshot(boundary_start);
+						let fallback_page =
+							self.with_active_reactive_scope(|| node.render_fallback());
+						let fallback_selection = if inline_single_select_uses_fallback {
+							selection.clone()
+						} else if self.should_resolve_resources() {
+							boundary_selection
+								.as_ref()
+								.map(SsrSelectionState::fork_after_pending_match)
+						} else {
+							boundary_selection.as_ref().map(SsrSelectionState::fork)
+						};
+						let fallback = self
+							.render_stream_shell_page_with_selection(
+								&fallback_page,
+								boundaries,
+								fallback_selection.clone(),
+							)
+							.await;
+						if !self.should_resolve_resources()
+							&& let (Some(parent), Some(rendered)) =
+								(selection.as_ref(), fallback_selection.as_ref())
+						{
+							parent.commit_from(rendered);
+						}
+						let pending_selection = if inline_single_select_uses_fallback {
+							selection.as_ref().map(SsrSelectionState::fork)
+						} else {
+							boundary_selection
+						};
+						boundaries.push(PendingSuspenseBoundary {
+							boundary_id: boundary_id.clone(),
+							node: node.clone(),
+							boundary_start,
+							selection: pending_selection,
+						});
+						self.render_suspense_fallback(&boundary_id, fallback)
+					} else if self.with_active_reactive_scope(|| node.is_pending()) {
+						self.restore_deterministic_render_snapshot(boundary_start);
+						let fallback_page =
+							self.with_active_reactive_scope(|| node.render_fallback());
+						let fallback = self
+							.render_stream_shell_page_with_selection(
+								&fallback_page,
+								boundaries,
+								selection,
+							)
+							.await;
+						self.render_suspense_fallback(&boundary_id, fallback)
+					} else {
+						if let (Some(parent), Some(rendered)) =
+							(selection.as_ref(), content_selection.as_ref())
+						{
+							parent.commit_from(rendered);
+						}
+						content
+					}
+				}
+				Page::Deferred(node) => {
+					let content = self.with_active_reactive_scope(|| node.render_content());
+					self.render_stream_shell_page_with_selection(&content, boundaries, selection)
+						.await
+				}
+				Page::Outlet(outlet) => {
+					if let Some(child) = outlet.child() {
+						self.render_stream_shell_page_with_selection(child, boundaries, selection)
+							.await
+					} else {
+						String::new()
+					}
+				}
+			}
+		})
+	}
+
+	fn render_async_page<'a>(
+		&'a mut self,
+		view: &'a Page,
+		mode: AsyncRenderMode,
+	) -> LocalBoxFuture<'a, String> {
+		self.render_async_page_with_selection(view, mode, None)
+	}
+
+	fn render_async_page_with_selection<'a>(
+		&'a mut self,
+		view: &'a Page,
+		mode: AsyncRenderMode,
+		selection: Option<SsrSelectionState>,
+	) -> LocalBoxFuture<'a, String> {
+		Box::pin(async move {
+			match view {
+				Page::Element(el) => {
+					let projection = project(el.bound_control());
+					let mut html = render_element_opening(el, &projection, selection.as_ref());
+
+					if el.is_void() {
+						html.push_str(" />");
+					} else {
+						html.push('>');
+						if el.tag_name().eq_ignore_ascii_case("textarea")
+							&& let Some(text) = projection.textarea_text.as_deref()
+						{
+							html.push_str(&html_escape(text));
+						} else {
+							let child_selection = if el.tag_name().eq_ignore_ascii_case("select") {
+								el.bound_control().map(|binding| {
+									SsrSelectionState::new(
+										binding,
+										projection.selected_values.clone(),
+									)
+								})
+							} else {
+								selection
+							};
+							for child in el.child_views() {
+								html.push_str(
+									&self
+										.render_async_page_with_selection(
+											child,
+											mode,
+											child_selection.clone(),
+										)
+										.await,
+								);
+							}
+						}
+						html.push_str("</");
+						html.push_str(el.tag_name());
+						html.push('>');
+					}
+
+					html
+				}
+				Page::Text(text) => html_escape(text),
+				Page::Fragment(children) => {
+					let mut html = String::new();
+					for child in children {
+						html.push_str(
+							&self
+								.render_async_page_with_selection(child, mode, selection.clone())
+								.await,
+						);
+					}
+					html
+				}
+				Page::KeyedFragment(children) => {
+					let mut html = String::new();
+					for (_, child) in children {
+						html.push_str(
+							&self
+								.render_async_page_with_selection(child, mode, selection.clone())
+								.await,
+						);
+					}
+					html
+				}
+				Page::Empty => String::new(),
+				Page::WithHead { view, head } => {
+					if !matches!(mode, AsyncRenderMode::Discovery) {
+						self.record_buffered_rendered_head(head);
+					}
+					self.render_async_page_with_selection(view, mode, selection)
+						.await
+				}
+				Page::ReactiveIf(reactive_if) => {
+					let branch = self.with_active_reactive_scope(|| {
+						if reactive_if.condition() {
+							reactive_if.then_view()
+						} else {
+							reactive_if.else_view()
+						}
+					});
+					self.render_async_page_with_selection(&branch, mode, selection)
+						.await
+				}
+				Page::Reactive(reactive) => {
+					let rendered = self.with_active_reactive_scope(|| reactive.render());
+					self.render_async_page_with_selection(&rendered, mode, selection)
+						.await
+				}
+				Page::Suspense(node) => {
+					let boundary_id = self.suspense_boundary_id(node);
+					let boundary_selection = selection.as_ref().map(SsrSelectionState::fork);
+					let content_selection =
+						boundary_selection.as_ref().map(SsrSelectionState::fork);
 
 					if let Some(context) = super::resource_context::with_active_context(Rc::clone) {
 						context.borrow_mut().assign_resources_to_boundary(
@@ -1200,141 +1508,12 @@ impl SsrRenderer {
 					});
 					let content_page = self.with_active_reactive_scope(|| node.render_content());
 					let content = self
-						.render_stream_shell_page(&content_page, boundaries)
+						.render_async_page_with_selection(
+							&content_page,
+							mode,
+							content_selection.clone(),
+						)
 						.await;
-
-					drop(boundary_guard);
-
-					let has_pending = super::resource_context::with_active_context(|context| {
-						context.borrow().has_pending_for_boundary(&boundary_id)
-					})
-					.unwrap_or(false);
-
-					if has_pending || node.is_pending() {
-						self.restore_deterministic_render_snapshot(boundary_start);
-						let fallback_page =
-							self.with_active_reactive_scope(|| node.render_fallback());
-						let fallback = self
-							.render_stream_shell_page(&fallback_page, boundaries)
-							.await;
-						if has_pending {
-							boundaries.push(PendingSuspenseBoundary {
-								boundary_id: boundary_id.clone(),
-								node: node.clone(),
-								boundary_start,
-							});
-						}
-						self.render_suspense_fallback(&boundary_id, fallback)
-					} else {
-						content
-					}
-				}
-				Page::Deferred(node) => {
-					let content = self.with_active_reactive_scope(|| node.render_content());
-					self.render_stream_shell_page(&content, boundaries).await
-				}
-				Page::Outlet(outlet) => {
-					if let Some(child) = outlet.child() {
-						self.render_stream_shell_page(child, boundaries).await
-					} else {
-						String::new()
-					}
-				}
-			}
-		})
-	}
-
-	fn render_async_page<'a>(
-		&'a mut self,
-		view: &'a Page,
-		mode: AsyncRenderMode,
-	) -> LocalBoxFuture<'a, String> {
-		Box::pin(async move {
-			match view {
-				Page::Element(el) => {
-					let mut html = String::new();
-					html.push('<');
-					html.push_str(el.tag_name());
-
-					for (name, value) in el.attrs() {
-						let name_str = name.as_ref();
-						if BOOLEAN_ATTRS.contains(&name_str) && !is_boolean_attr_truthy(value) {
-							continue;
-						}
-
-						html.push(' ');
-						html.push_str(name.as_ref());
-						html.push_str("=\"");
-						html.push_str(&html_escape(value));
-						html.push('"');
-					}
-
-					if el.is_void() {
-						html.push_str(" />");
-					} else {
-						html.push('>');
-						for child in el.child_views() {
-							html.push_str(&self.render_async_page(child, mode).await);
-						}
-						html.push_str("</");
-						html.push_str(el.tag_name());
-						html.push('>');
-					}
-
-					html
-				}
-				Page::Text(text) => html_escape(text),
-				Page::Fragment(children) => {
-					let mut html = String::new();
-					for child in children {
-						html.push_str(&self.render_async_page(child, mode).await);
-					}
-					html
-				}
-				Page::KeyedFragment(children) => {
-					let mut html = String::new();
-					for (_, child) in children {
-						html.push_str(&self.render_async_page(child, mode).await);
-					}
-					html
-				}
-				Page::Empty => String::new(),
-				Page::WithHead { view, head } => {
-					if !matches!(mode, AsyncRenderMode::Discovery) {
-						self.record_buffered_rendered_head(head);
-					}
-					self.render_async_page(view, mode).await
-				}
-				Page::ReactiveIf(reactive_if) => {
-					let branch = self.with_active_reactive_scope(|| {
-						if reactive_if.condition() {
-							reactive_if.then_view()
-						} else {
-							reactive_if.else_view()
-						}
-					});
-					self.render_async_page(&branch, mode).await
-				}
-				Page::Reactive(reactive) => {
-					let rendered = self.with_active_reactive_scope(|| reactive.render());
-					self.render_async_page(&rendered, mode).await
-				}
-				Page::Suspense(node) => {
-					let boundary_id = self.suspense_boundary_id(node);
-
-					if let Some(context) = super::resource_context::with_active_context(Rc::clone) {
-						context.borrow_mut().assign_resources_to_boundary(
-							node.tracked_resource_ids(),
-							&boundary_id,
-						);
-					}
-
-					let boundary_start = self.deterministic_render_snapshot();
-					let boundary_guard = super::resource_context::with_active_context(|context| {
-						enter_boundary(context, boundary_id.clone())
-					});
-					let content_page = self.with_active_reactive_scope(|| node.render_content());
-					let content = self.render_async_page(&content_page, mode).await;
 					let boundary_end_index =
 						super::resource_context::with_active_context(|context| {
 							context.borrow().call_order_index()
@@ -1348,18 +1527,29 @@ impl SsrRenderer {
 					.unwrap_or(false);
 
 					if matches!(mode, AsyncRenderMode::Discovery) {
-						if has_pending || node.is_pending() {
+						if let (Some(parent), Some(rendered)) =
+							(selection.as_ref(), content_selection.as_ref())
+						{
+							parent.commit_from(rendered);
+						}
+						if has_pending || self.with_active_reactive_scope(|| node.is_pending()) {
 							self.restore_deterministic_render_snapshot(boundary_start);
 						}
 						return content;
 					}
 
-					if has_pending || node.is_pending() {
+					if has_pending || self.with_active_reactive_scope(|| node.is_pending()) {
 						self.restore_deterministic_render_snapshot(boundary_start);
 						let fallback_page =
 							self.with_active_reactive_scope(|| node.render_fallback());
+						let fallback_selection =
+							boundary_selection.as_ref().map(SsrSelectionState::fork);
 						let fallback = self
-							.render_async_page(&fallback_page, AsyncRenderMode::Buffered)
+							.render_async_page_with_selection(
+								&fallback_page,
+								AsyncRenderMode::Buffered,
+								fallback_selection.clone(),
+							)
 							.await;
 
 						if has_pending
@@ -1367,21 +1557,46 @@ impl SsrRenderer {
 								super::resource_context::with_active_context(Rc::clone)
 						{
 							if !self.should_resolve_resources() {
+								if let (Some(parent), Some(rendered)) =
+									(selection.as_ref(), fallback_selection.as_ref())
+								{
+									parent.commit_from(rendered);
+								}
 								return self.render_suspense_fallback(&boundary_id, fallback);
 							}
 							if context.borrow().has_pending_external() {
+								if let (Some(parent), Some(rendered)) =
+									(selection.as_ref(), fallback_selection.as_ref())
+								{
+									parent.commit_from(rendered);
+								}
 								return self.render_suspense_fallback(&boundary_id, fallback);
 							}
 							let boundary_resolved =
 								resolve_boundary_resources(&context, &boundary_id).await;
 							if !boundary_resolved {
+								if let (Some(parent), Some(rendered)) =
+									(selection.as_ref(), fallback_selection.as_ref())
+								{
+									parent.commit_from(rendered);
+								}
 								return self.render_suspense_fallback(&boundary_id, fallback);
 							}
 							self.restore_deterministic_render_snapshot(boundary_start);
-							if node.is_pending() {
+							if self.with_active_reactive_scope(|| node.is_pending()) {
+								if let (Some(parent), Some(rendered)) =
+									(selection.as_ref(), fallback_selection.as_ref())
+								{
+									parent.commit_from(rendered);
+								}
 								return self.render_suspense_fallback(&boundary_id, fallback);
 							}
 						} else {
+							if let (Some(parent), Some(rendered)) =
+								(selection.as_ref(), fallback_selection.as_ref())
+							{
+								parent.commit_from(rendered);
+							}
 							return self.render_suspense_fallback(&boundary_id, fallback);
 						}
 
@@ -1391,8 +1606,14 @@ impl SsrRenderer {
 							});
 						let replacement_page =
 							self.with_active_reactive_scope(|| node.render_content());
+						let replacement_selection =
+							boundary_selection.as_ref().map(SsrSelectionState::fork);
 						let replacement = self
-							.render_async_page(&replacement_page, AsyncRenderMode::Buffered)
+							.render_async_page_with_selection(
+								&replacement_page,
+								AsyncRenderMode::Buffered,
+								replacement_selection.clone(),
+							)
 							.await;
 						drop(boundary_guard);
 						if let Some(index) = boundary_end_index
@@ -1401,19 +1622,31 @@ impl SsrRenderer {
 						{
 							context.borrow_mut().set_call_order_index(index);
 						}
+						if let (Some(parent), Some(rendered)) =
+							(selection.as_ref(), replacement_selection.as_ref())
+						{
+							parent.commit_from(rendered);
+						}
 
 						replacement
 					} else {
+						if let (Some(parent), Some(rendered)) =
+							(selection.as_ref(), content_selection.as_ref())
+						{
+							parent.commit_from(rendered);
+						}
 						content
 					}
 				}
 				Page::Deferred(node) => {
 					let content = self.with_active_reactive_scope(|| node.render_content());
-					self.render_async_page(&content, mode).await
+					self.render_async_page_with_selection(&content, mode, selection)
+						.await
 				}
 				Page::Outlet(outlet) => {
 					if let Some(child) = outlet.child() {
-						self.render_async_page(child, mode).await
+						self.render_async_page_with_selection(child, mode, selection)
+							.await
 					} else {
 						String::new()
 					}
@@ -1687,6 +1920,66 @@ impl SsrRenderer {
 	}
 }
 
+fn render_element_opening(
+	element: &PageElement,
+	projection: &SsrControlProjection,
+	selection: Option<&SsrSelectionState>,
+) -> String {
+	let mut html = String::new();
+	html.push('<');
+	html.push_str(element.tag_name());
+
+	let projects_value =
+		element.tag_name().eq_ignore_ascii_case("input") && projection.value.is_some();
+	let projects_checked = element.bound_control().is_some_and(|binding| {
+		matches!(binding.kind(), ControlKind::Checkbox | ControlKind::Radio)
+	});
+	let projected_option_selection = if element.tag_name().eq_ignore_ascii_case("option") {
+		selection.map(|selection| selection.option_selected(element))
+	} else {
+		None
+	};
+
+	for (name, value) in element.attrs() {
+		let name = name.as_ref();
+		if (name.eq_ignore_ascii_case("value") && projects_value)
+			|| (name.eq_ignore_ascii_case("checked") && projects_checked)
+			|| (name.eq_ignore_ascii_case("selected") && projected_option_selection.is_some())
+		{
+			continue;
+		}
+		if BOOLEAN_ATTRS.contains(&name) && !is_boolean_attr_truthy(value) {
+			continue;
+		}
+
+		push_escaped_attribute(&mut html, name, value);
+	}
+
+	if projects_value {
+		push_escaped_attribute(
+			&mut html,
+			"value",
+			projection.value.as_deref().unwrap_or_default(),
+		);
+	}
+	if projects_checked && projection.checked {
+		push_escaped_attribute(&mut html, "checked", "checked");
+	}
+	if projected_option_selection == Some(true) {
+		push_escaped_attribute(&mut html, "selected", "selected");
+	}
+
+	html
+}
+
+fn push_escaped_attribute(html: &mut String, name: &str, value: &str) {
+	html.push(' ');
+	html.push_str(name);
+	html.push_str("=\"");
+	html.push_str(&html_escape(value));
+	html.push('"');
+}
+
 /// Simple HTML escape function.
 fn html_escape(s: &str) -> String {
 	s.replace('&', "&amp;")
@@ -1901,10 +2194,11 @@ fn test_ssr_options_default_strategy_static() {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::component::PageElement;
+	use crate::component::{ControlBinding, PageElement};
+	use crate::reactive::Signal;
 	use crate::reactive::hooks::use_retained_effect;
 	use crate::reactive::runtime::with_runtime;
-	use crate::reactive::{ReactiveScope, Signal};
+	use reinhardt_core::deps;
 	use reinhardt_core::types::page::DeferredNode;
 	use rstest::rstest;
 	use serial_test::serial;
@@ -1923,47 +2217,6 @@ mod tests {
 
 		fn name() -> &'static str {
 			"TestComponent"
-		}
-	}
-
-	struct ScopedIntoPage;
-
-	impl IntoPage for ScopedIntoPage {
-		fn into_page(self) -> Page {
-			use crate::reactive::Signal;
-
-			let value = Signal::new("scoped IntoPage conversion".to_string());
-			Page::reactive(move || Page::text(value.get()))
-		}
-	}
-
-	struct StreamingScopedIntoPage;
-
-	impl IntoPage for StreamingScopedIntoPage {
-		fn into_page(self) -> Page {
-			use crate::component::suspense::SuspenseBoundary;
-			use crate::reactive::{Signal, use_resource};
-
-			let value = Signal::new("streamed scoped IntoPage conversion".to_string());
-			Page::reactive(move || {
-				let resource = use_resource(
-					|| async {
-						tokio::time::sleep(Duration::from_millis(5)).await;
-						Ok::<_, String>(())
-					},
-					crate::deps![],
-				);
-				let content_value = value.clone();
-
-				SuspenseBoundary::new()
-					.fallback(|| Page::text("streamed IntoPage loading"))
-					.track(resource)
-					.content(move || {
-						let value = content_value.clone();
-						Page::reactive(move || Page::text(value.get()))
-					})
-					.into_page()
-			})
 		}
 	}
 
@@ -1989,6 +2242,66 @@ mod tests {
 		assert!(opts.suspense_streaming);
 	}
 
+	#[test]
+	fn render_element_opening_normalizes_controlled_html_names() {
+		ReactiveScope::run(|| {
+			let element = PageElement::new("INPUT")
+				.attr("VALUE", "stale")
+				.control_binding(ControlBinding::text(Signal::new("current".to_owned())));
+			let projection = project(element.bound_control());
+
+			assert_eq!(
+				render_element_opening(&element, &projection, None),
+				"<INPUT value=\"current\""
+			);
+		});
+	}
+
+	#[tokio::test]
+	async fn controlled_uppercase_textarea_and_select_render_in_buffered_and_streaming_paths() {
+		let reactive_scope = ReactiveScope::new();
+		let (textarea, select) = reactive_scope.enter(|| {
+			let textarea = PageElement::new("TEXTAREA")
+				.control_binding(ControlBinding::text(Signal::new("current".to_owned())))
+				.child("stale child")
+				.into_page();
+			let select = PageElement::new("SELECT")
+				.control_binding(ControlBinding::select_one(Signal::new(
+					"current".to_owned(),
+				)))
+				.child(
+					PageElement::new("OPTION")
+						.attr("value", "current")
+						.child("Current"),
+				)
+				.child(
+					PageElement::new("OPTION")
+						.attr("value", "stale")
+						.child("Stale"),
+				)
+				.into_page();
+			(textarea, select)
+		});
+		let view = Page::Fragment(vec![textarea, select]);
+		let mut buffered_renderer = SsrRenderer::new();
+		let mut streaming_renderer = SsrRenderer::new();
+
+		let buffered = buffered_renderer.render_view(&view).await;
+		let streaming = streaming_renderer
+			.render_page_with_view_head(view)
+			.await
+			.collect_string()
+			.await;
+
+		for html in [&buffered, &streaming] {
+			assert!(html.contains("<TEXTAREA>current</TEXTAREA>"), "{html}");
+			assert!(
+				html.contains("<OPTION value=\"current\" selected=\"selected\">Current</OPTION>"),
+				"{html}"
+			);
+		}
+	}
+
 	#[tokio::test]
 	async fn test_ssr_renderer_render() {
 		let component = TestComponent {
@@ -2000,32 +2313,7 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn ssr_render_creates_isolated_reactive_scopes() {
-		use crate::reactive::Signal;
-
-		struct ScopedCounter;
-
-		impl Component for ScopedCounter {
-			fn render(&self) -> Page {
-				let count = Signal::new(1);
-				Page::text(count.get().to_string())
-			}
-
-			fn name() -> &'static str {
-				"ScopedCounter"
-			}
-		}
-
-		let mut renderer = SsrRenderer::new();
-
-		assert_eq!(renderer.render(&ScopedCounter).await, "1");
-		assert_eq!(renderer.render(&ScopedCounter).await, "1");
-	}
-
-	#[tokio::test]
 	async fn ssr_reactive_traversal_reenters_the_render_scope() {
-		use crate::reactive::Signal;
-
 		let mut renderer = SsrRenderer::new();
 		let html = renderer
 			.render_view_factory(|| {
@@ -2041,8 +2329,6 @@ mod tests {
 
 	#[tokio::test]
 	async fn streaming_ssr_reactive_traversal_reenters_the_render_scope() {
-		use crate::reactive::Signal;
-
 		let mut renderer = SsrRenderer::new();
 		let html = renderer
 			.render_page_with_view_head(Page::reactive(|| {
@@ -2054,31 +2340,6 @@ mod tests {
 			.await;
 
 		assert!(html.contains("streamed scoped traversal"));
-	}
-
-	#[tokio::test]
-	async fn buffered_full_page_into_page_conversion_runs_in_the_render_scope() {
-		let mut renderer = SsrRenderer::with_options(SsrOptions::new().suspense_streaming(false));
-
-		let html = renderer
-			.render_page_into_page_to_string(ScopedIntoPage)
-			.await;
-
-		assert!(html.contains("scoped IntoPage conversion"));
-	}
-
-	#[tokio::test]
-	async fn streaming_full_page_into_page_scope_lives_through_page_traversal() {
-		let mut renderer = SsrRenderer::new();
-
-		let html = renderer
-			.render_page_into_page(StreamingScopedIntoPage)
-			.await
-			.collect_string()
-			.await;
-
-		assert!(html.contains("streamed IntoPage loading"));
-		assert!(html.contains("streamed scoped IntoPage conversion"));
 	}
 
 	#[tokio::test]
@@ -2104,7 +2365,7 @@ mod tests {
 							Some(move || *cleanup_count.borrow_mut() += 1)
 						}
 					},
-					crate::deps![self.signal.clone()],
+					deps![self.signal],
 				);
 				PageElement::new("div").child("retained").into_page()
 			}
@@ -2114,8 +2375,8 @@ mod tests {
 			}
 		}
 
-		let signal_scope = ReactiveScope::new();
-		let signal = signal_scope.enter(|| Signal::new(0));
+		let reactive_scope = ReactiveScope::new();
+		let signal = reactive_scope.enter(|| Signal::new(0));
 		let render_count = Rc::new(RefCell::new(0));
 		let effect_run_count = Rc::new(RefCell::new(0));
 		let cleanup_count = Rc::new(RefCell::new(0));
@@ -2141,28 +2402,29 @@ mod tests {
 	#[tokio::test]
 	#[serial]
 	async fn test_ssr_head_lookup_does_not_retain_deferred_content_effects() {
-		let signal_scope = ReactiveScope::new();
-		let signal = signal_scope.enter(|| Signal::new(0_i32));
+		let scope = Rc::new(ReactiveScope::new());
+		let signal = scope.enter(|| Signal::new(0_i32));
 		let effect_run_count = Rc::new(RefCell::new(0_usize));
 		let view = Page::Deferred(DeferredNode::new(
 			"retained-effect-head-lookup",
 			|| Page::Empty,
 			{
-				let signal = signal.clone();
+				let scope = Rc::clone(&scope);
 				let effect_run_count = Rc::clone(&effect_run_count);
 				move || {
-					use_retained_effect(
-						{
-							let signal = signal.clone();
-							let effect_run_count = Rc::clone(&effect_run_count);
-							move || {
-								signal.get();
-								*effect_run_count.borrow_mut() += 1;
-							}
-						},
-						crate::deps![signal.clone()],
-					);
-					PageElement::new("div").child("retained").into_page()
+					scope.enter(|| {
+						use_retained_effect(
+							{
+								let effect_run_count = Rc::clone(&effect_run_count);
+								move || {
+									signal.get();
+									*effect_run_count.borrow_mut() += 1;
+								}
+							},
+							deps![signal],
+						);
+						PageElement::new("div").child("retained").into_page()
+					})
 				}
 			},
 		));

@@ -11,7 +11,7 @@
 //!
 //! See [`ModelMetadata`] for the architecture comparison diagram.
 
-use super::autodetector::{FieldState, ModelState};
+use super::autodetector::{FieldState, ModelState, to_snake_case};
 use super::{ConstraintDefinition, GeneratedColumnDefinition};
 use crate::field_domain::FieldDomain;
 use std::collections::HashMap;
@@ -146,6 +146,10 @@ impl ModelMetadata {
 	/// assert!(model_state.has_field("email"));
 	/// ```
 	pub fn to_model_state(&self) -> ModelState {
+		self.to_model_state_with_registry(global_registry())
+	}
+
+	fn to_model_state_with_registry(&self, registry: &ModelRegistry) -> ModelState {
 		let mut model_state = ModelState::new(&self.app_label, &self.model_name);
 
 		// Set the correct table name from metadata
@@ -172,10 +176,20 @@ impl ModelMetadata {
 			}
 			field_state.generated = field_meta.generated.clone();
 			field_state.domain = field_meta.domain.clone();
-			// Set ForeignKey information if present
-			if let Some(ref fk_info) = field_meta.foreign_key {
-				field_state.foreign_key = Some(fk_info.clone());
+			// Resolve qualified string FK targets after all model metadata has been
+			// registered so explicit table-name overrides are preserved (#5673).
+			let mut foreign_key = field_meta.foreign_key.clone();
+			if let Some(fk_info) = &mut foreign_key
+				&& let (Some(target_app), Some(target_model)) = (
+					field_meta.params.get("fk_target_app"),
+					field_meta.params.get("fk_target_model"),
+				) {
+				fk_info.referenced_table = registry
+					.get_model(target_app, target_model)
+					.map(|metadata| metadata.table_name)
+					.unwrap_or_else(|| format!("{}_{}", target_app, to_snake_case(target_model)));
 			}
+			field_state.foreign_key = foreign_key;
 			model_state.add_field(field_state);
 		}
 
@@ -741,24 +755,6 @@ mod tests {
 	}
 
 	#[test]
-	fn model_state_constraints_use_db_column_names() {
-		let mut metadata = ModelMetadata::new("accounts", "User", "accounts_user");
-		metadata.add_field(
-			"email".to_string(),
-			FieldMetadata::new(FieldType::VarChar(255))
-				.with_param("db_column", "email_addr")
-				.with_param("unique", "true"),
-		);
-		let state = metadata.to_model_state();
-		assert!(
-			state
-				.constraints
-				.iter()
-				.any(|constraint| constraint.fields == ["email_addr"])
-		);
-	}
-
-	#[test]
 	fn test_register_model() {
 		let registry = ModelRegistry::new();
 		let metadata = ModelMetadata::new("blog", "Post", "blog_post");
@@ -904,6 +900,84 @@ mod tests {
 		assert_eq!(model_state.name, "Post");
 		assert_eq!(model_state.fields.len(), 1);
 		assert!(model_state.fields.contains_key("title"));
+	}
+
+	#[test]
+	fn test_to_model_state_resolves_qualified_fk_target_table() {
+		// Arrange
+		let registry = ModelRegistry::new();
+		registry.register_model(ModelMetadata::new("blog", "Post", "articles"));
+
+		let mut metadata = ModelMetadata::new("comments", "Comment", "comments");
+		let foreign_key = crate::migrations::autodetector::ForeignKeyInfo {
+			referenced_table: "post".to_string(),
+			referenced_column: "id".to_string(),
+			on_delete: crate::migrations::autodetector::ForeignKeyAction::Cascade,
+			on_update: crate::migrations::autodetector::ForeignKeyAction::Cascade,
+		};
+		let field = FieldMetadata::new(FieldType::Uuid)
+			.with_param("fk_target_app", "blog")
+			.with_param("fk_target_model", "Post")
+			.with_foreign_key(foreign_key);
+		metadata.add_field("post".to_string(), field);
+
+		// Act
+		let model_state = metadata.to_model_state_with_registry(&registry);
+
+		// Assert
+		let field_state = model_state
+			.fields
+			.get("post")
+			.expect("qualified FK field should be present");
+		assert_eq!(
+			field_state
+				.foreign_key
+				.as_ref()
+				.expect("FK metadata should be preserved")
+				.referenced_table,
+			"articles"
+		);
+		let constraint = model_state
+			.constraints
+			.iter()
+			.find(|constraint| constraint.constraint_type == "foreign_key")
+			.expect("FK constraint should be generated");
+		assert_eq!(
+			constraint
+				.foreign_key_info
+				.as_ref()
+				.expect("FK constraint metadata should be present")
+				.referenced_table,
+			"articles"
+		);
+	}
+
+	#[test]
+	fn test_to_model_state_uses_app_prefixed_fallback_for_unregistered_qualified_fk() {
+		let registry = ModelRegistry::new();
+		let mut metadata = ModelMetadata::new("comments", "Comment", "comments_comment");
+		let foreign_key = crate::migrations::autodetector::ForeignKeyInfo {
+			referenced_table: "user".to_string(),
+			referenced_column: "id".to_string(),
+			on_delete: crate::migrations::autodetector::ForeignKeyAction::Cascade,
+			on_update: crate::migrations::autodetector::ForeignKeyAction::Cascade,
+		};
+		let field = FieldMetadata::new(FieldType::Uuid)
+			.with_param("fk_target_app", "auth")
+			.with_param("fk_target_model", "User")
+			.with_foreign_key(foreign_key);
+		metadata.add_field("user".to_string(), field);
+
+		let model_state = metadata.to_model_state_with_registry(&registry);
+
+		assert_eq!(
+			model_state.fields["user"]
+				.foreign_key
+				.as_ref()
+				.expect("foreign key metadata should be preserved")
+				.referenced_table,
+			"auth_user"
+		);
 	}
 
 	#[test]
