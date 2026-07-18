@@ -5132,7 +5132,15 @@ impl MigrationAutodetector {
 						.any(|(app, _old_model, new_model)| {
 							app == &reused_app && new_model == &reused_model
 						});
-				if !reused_model_exists_in_from_state && !reused_model_is_renamed {
+				let reused_model_is_moved = changes.moved_models.iter().any(
+					|(_from_app, _from_model, to_app, to_model, _, _, _)| {
+						to_app == &reused_app && to_model == &reused_model
+					},
+				);
+				if !reused_model_exists_in_from_state
+					&& !reused_model_is_renamed
+					&& !reused_model_is_moved
+				{
 					changes.created_models.push((reused_app, reused_model));
 				}
 			}
@@ -5161,6 +5169,18 @@ impl MigrationAutodetector {
 				continue;
 			};
 			renamed_table_targets.push((app_label.clone(), old_model_name.clone(), new_table_name));
+		}
+		for (_from_app, _from_model, to_app, to_model, _rename_table, _old_table, new_table) in
+			&changes.moved_models
+		{
+			let Some(new_table_name) = new_table.clone().or_else(|| {
+				self.to_state
+					.get_model(to_app, to_model)
+					.map(|model| model.table_name.clone())
+			}) else {
+				continue;
+			};
+			renamed_table_targets.push((to_app.clone(), to_model.clone(), new_table_name));
 		}
 
 		for (app_label, renamed_model_name, new_name) in renamed_table_targets {
@@ -10529,6 +10549,128 @@ mod tests {
 				.created_models
 				.contains(&("app".to_string(), "Bar".to_string())),
 			"a model that is already being table-renamed must not also be created: {changes:?}"
+		);
+	}
+
+	#[rstest]
+	fn detect_changes_recovers_owner_displaced_by_cross_app_move() {
+		// Regression for #5673: a moved model can claim a table that was owned by
+		// a model removed from the target app.
+		let from_profile = build_model_state_with_table_name(
+			"legacy",
+			"Profile",
+			"legacy_profile",
+			sample_fields(),
+		);
+		let from_owner = build_model_state_with_table_name(
+			"accounts",
+			"User",
+			"shared",
+			vec![FieldState::new(
+				"id",
+				super::super::FieldType::BigInteger,
+				false,
+			)],
+		);
+		let to_profile =
+			build_model_state_with_table_name("accounts", "Profile", "shared", sample_fields());
+		let detector = MigrationAutodetector::new(
+			build_project_state(vec![
+				(("legacy".to_string(), "Profile".to_string()), from_profile),
+				(("accounts".to_string(), "User".to_string()), from_owner),
+			]),
+			build_project_state(vec![(
+				("accounts".to_string(), "Profile".to_string()),
+				to_profile,
+			)]),
+		);
+
+		let changes = detector.detect_changes();
+
+		assert!(
+			changes.moved_models.iter().any(
+				|(from_app, from_model, to_app, to_model, rename_table, old_table, new_table)| {
+					from_app == "legacy"
+						&& from_model == "Profile"
+						&& to_app == "accounts"
+						&& to_model == "Profile"
+						&& *rename_table && old_table.as_deref() == Some("legacy_profile")
+						&& new_table.as_deref() == Some("shared")
+				}
+			),
+			"cross-app move was not detected: {:?}",
+			changes.moved_models
+		);
+		assert!(
+			changes
+				.deleted_models
+				.contains(&("accounts".to_string(), "User".to_string())),
+			"the displaced table owner must be recovered as deleted: {changes:?}"
+		);
+	}
+
+	#[rstest]
+	fn detect_changes_does_not_create_a_cross_app_move_target_reusing_a_renamed_table() {
+		// Regression for #5673: a moved target that reuses the old table name of
+		// another model must not emit a conflicting CreateTable operation.
+		let from_existing =
+			build_model_state_with_table_name("accounts", "Existing", "shared", sample_fields());
+		let from_profile = build_model_state_with_table_name(
+			"legacy",
+			"Profile",
+			"legacy_profile",
+			sample_fields(),
+		);
+		let to_existing = build_model_state_with_table_name(
+			"accounts",
+			"Existing",
+			"accounts_existing",
+			sample_fields(),
+		);
+		let to_profile =
+			build_model_state_with_table_name("accounts", "Profile", "shared", sample_fields());
+		let detector = MigrationAutodetector::new(
+			build_project_state(vec![
+				(
+					("accounts".to_string(), "Existing".to_string()),
+					from_existing,
+				),
+				(("legacy".to_string(), "Profile".to_string()), from_profile),
+			]),
+			build_project_state(vec![
+				(
+					("accounts".to_string(), "Existing".to_string()),
+					to_existing,
+				),
+				(("accounts".to_string(), "Profile".to_string()), to_profile),
+			]),
+		);
+
+		let changes = detector.detect_changes();
+
+		assert!(changes.moved_models.iter().any(
+			|(_from_app, _from_model, to_app, to_model, _, _, _)| {
+				to_app == "accounts" && to_model == "Profile"
+			}
+		));
+		assert!(
+			!changes
+				.created_models
+				.contains(&("accounts".to_string(), "Profile".to_string())),
+			"moved target must not remain in created_models: {changes:?}"
+		);
+
+		let operations: Vec<_> = detector
+			.generate_migrations()
+			.into_iter()
+			.flat_map(|migration| migration.operations)
+			.collect();
+		assert!(
+			operations.iter().all(|operation| !matches!(
+				operation,
+				super::super::Operation::CreateTable { name, .. } if name == "shared"
+			)),
+			"cross-app move must not recreate the reused table: {operations:?}"
 		);
 	}
 
