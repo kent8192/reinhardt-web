@@ -26,7 +26,7 @@ use sqlx::any::install_default_drivers;
 use std::sync::Arc;
 
 #[allow(dead_code)]
-#[model(table_name = "items")]
+#[model(app_label = "default", table_name = "items")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Item {
 	#[field(primary_key = true)]

@@ -1370,6 +1370,7 @@ impl Operation {
 		match self {
 			Operation::CreateTable { name, columns, .. } => {
 				let mut model = ModelState::new(app_label, name.clone());
+				model.table_name = name.clone();
 				for column in columns {
 					let mut field = FieldState::new(
 						column.name.to_string(),
@@ -1382,10 +1383,10 @@ impl Operation {
 				state.add_model(model);
 			}
 			Operation::DropTable { name } => {
-				state.remove_model(app_label, name);
+				state.remove_model_by_table_name(app_label, name);
 			}
 			Operation::AddColumn { table, column, .. } => {
-				if let Some(model) = state.get_model_mut(app_label, table) {
+				if let Some(model) = state.get_model_by_table_mut(app_label, table) {
 					let mut field = FieldState::new(
 						column.name.to_string(),
 						column.type_definition.clone(),
@@ -1396,7 +1397,7 @@ impl Operation {
 				}
 			}
 			Operation::DropColumn { table, column, .. } => {
-				if let Some(model) = state.get_model_mut(app_label, table) {
+				if let Some(model) = state.get_model_by_table_mut(app_label, table) {
 					model.remove_field(column);
 				}
 			}
@@ -1406,7 +1407,7 @@ impl Operation {
 				new_definition,
 				..
 			} => {
-				if let Some(model) = state.get_model_mut(app_label, table) {
+				if let Some(model) = state.get_model_by_table_mut(app_label, table) {
 					let mut field = FieldState::new(
 						column.to_string(),
 						new_definition.type_definition.clone(),
@@ -1417,14 +1418,14 @@ impl Operation {
 				}
 			}
 			Operation::RenameTable { old_name, new_name } => {
-				state.rename_model(app_label, old_name, new_name.to_string());
+				state.rename_table_in_app(app_label, old_name, new_name);
 			}
 			Operation::RenameColumn {
 				table,
 				old_name,
 				new_name,
 			} => {
-				if let Some(model) = state.get_model_mut(app_label, table) {
+				if let Some(model) = state.get_model_by_table_mut(app_label, table) {
 					model.rename_field(old_name, new_name.to_string());
 				}
 			}
@@ -1435,6 +1436,7 @@ impl Operation {
 				join_column,
 			} => {
 				let mut model = ModelState::new(app_label, name.clone());
+				model.table_name = name.clone();
 				model.base_model = Some(base_table.to_string());
 				model.inheritance_type = Some("joined_table".to_string());
 
@@ -1460,7 +1462,7 @@ impl Operation {
 				column_name,
 				default_value,
 			} => {
-				if let Some(model) = state.get_model_mut(app_label, table) {
+				if let Some(model) = state.get_model_by_table_mut(app_label, table) {
 					model.discriminator_column = Some(column_name.to_string());
 					model.inheritance_type = Some("single_table".to_string());
 					let field = FieldState::new(
@@ -1498,6 +1500,11 @@ impl Operation {
 				new_table_name,
 			} => {
 				// Move the model from one app to another in the project state
+				if *rename_table
+					&& let (Some(old_name), Some(new_name)) = (old_table_name, new_table_name)
+				{
+					state.rename_table_in_app(from_app, old_name, new_name);
+				}
 				// First get the model, then remove it from the old location
 				if let Some(model) = state.get_model(from_app, model_name).cloned() {
 					state.remove_model(from_app, model_name);
@@ -1506,14 +1513,22 @@ impl Operation {
 					let mut new_model = model;
 					new_model.app_label = to_app.to_string();
 
-					// Update table name if rename_table is true
-					if *rename_table
-						&& let (Some(_old_name), Some(new_name)) = (old_table_name, new_table_name)
-					{
-						new_model.table_name = new_name.to_string();
-					}
-
 					state.add_model(new_model);
+				}
+				for model in state.models.values_mut() {
+					for field in model.fields.values_mut() {
+						if field.params.get("fk_target_app").map(String::as_str) == Some(from_app)
+							&& field
+								.params
+								.get("fk_target_model")
+								.or_else(|| field.params.get("fk_target"))
+								.map(String::as_str) == Some(model_name)
+						{
+							field
+								.params
+								.insert("fk_target_app".to_string(), to_app.to_string());
+						}
+					}
 				}
 			}
 			// Schema operations don't affect ProjectState (models/fields only)
@@ -3307,16 +3322,7 @@ impl Operation {
 				// For proper rollback, use to_reverse_sql with pre-operation ProjectState.
 			}
 			Operation::RenameTable { old_name, new_name } => {
-				// Reverse: Rename back from new_name to old_name
-				if let Some(mut model) = state
-					.models
-					.remove(&(app_label.to_string(), new_name.to_string()))
-				{
-					model.table_name = old_name.to_string();
-					state
-						.models
-						.insert((app_label.to_string(), old_name.to_string()), model);
-				}
+				state.rename_table_in_app(app_label, new_name, old_name);
 			}
 			Operation::AddColumn { table, column, .. } => {
 				// Reverse: Remove the column from the model
@@ -5740,6 +5746,7 @@ impl MigrationOperation for Operation {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::migrations::autodetector::{ForeignKeyAction, ForeignKeyInfo};
 	use FieldType;
 	use reinhardt_query::prelude::SchemaBinOper;
 	use rstest::rstest;
@@ -6383,6 +6390,7 @@ mod tests {
 		let model = state.get_model("myapp", "users");
 		assert!(model.is_some(), "Model 'users' should exist in state");
 		let model = model.unwrap();
+		assert_eq!(model.table_name, "users");
 		assert_eq!(
 			model.fields.len(),
 			2,
@@ -6407,7 +6415,7 @@ mod tests {
 		state.add_model(model);
 
 		let op = Operation::DropTable {
-			name: "users".to_string(),
+			name: "myapp_users".to_string(),
 		};
 
 		op.state_forwards("myapp", &mut state);
@@ -6418,6 +6426,29 @@ mod tests {
 	}
 
 	#[test]
+	fn state_forwards_drops_a_table_after_it_was_renamed() {
+		// Arrange
+		let mut state = ProjectState::new();
+		let mut model = ModelState::new("auth", "User");
+		model.table_name = "users".to_string();
+		state.add_model(model);
+
+		// Act
+		Operation::RenameTable {
+			old_name: "users".to_string(),
+			new_name: "auth_user".to_string(),
+		}
+		.state_forwards("auth", &mut state);
+		Operation::DropTable {
+			name: "auth_user".to_string(),
+		}
+		.state_forwards("auth", &mut state);
+
+		// Assert
+		assert!(state.get_model("auth", "User").is_none());
+	}
+
+	#[test]
 	fn test_state_forwards_add_column() {
 		let mut state = ProjectState::new();
 		let mut model = ModelState::new("myapp", "users");
@@ -6425,7 +6456,7 @@ mod tests {
 		state.add_model(model);
 
 		let op = Operation::AddColumn {
-			table: "users".to_string(),
+			table: "myapp_users".to_string(),
 			column: ColumnDefinition {
 				name: "email".to_string(),
 				type_definition: FieldType::VarChar(255),
@@ -6466,7 +6497,7 @@ mod tests {
 		state.add_model(model);
 
 		let op = Operation::DropColumn {
-			table: "users".to_string(),
+			table: "myapp_users".to_string(),
 			column: "email".to_string(),
 			old_definition: None,
 		};
@@ -6488,7 +6519,8 @@ mod tests {
 	#[test]
 	fn test_state_forwards_rename_table() {
 		let mut state = ProjectState::new();
-		let mut model = ModelState::new("myapp", "users");
+		let mut model = ModelState::new("myapp", "User");
+		model.table_name = "users".to_string();
 		model.add_field(FieldState::new("id".to_string(), FieldType::Integer, false));
 		state.add_model(model);
 
@@ -6499,12 +6531,214 @@ mod tests {
 
 		op.state_forwards("myapp", &mut state);
 		assert!(
-			state.get_model("myapp", "users").is_none(),
-			"Old model name 'users' should not exist after rename"
+			state.get_model("myapp", "User").is_some(),
+			"Model identity should remain unchanged after a table rename"
 		);
-		assert!(
-			state.get_model("myapp", "accounts").is_some(),
-			"New model name 'accounts' should exist after rename"
+		assert_eq!(
+			state.get_model("myapp", "User").unwrap().table_name,
+			"accounts"
+		);
+	}
+
+	#[test]
+	fn state_forwards_rename_table_scopes_the_lookup_to_the_app() {
+		let mut state = ProjectState::new();
+		let mut accounts_model = ModelState::new("accounts", "User");
+		accounts_model.table_name = "users".to_string();
+		state.add_model(accounts_model);
+		let mut audit_model = ModelState::new("audit", "User");
+		audit_model.table_name = "users".to_string();
+		state.add_model(audit_model);
+
+		Operation::RenameTable {
+			old_name: "users".to_string(),
+			new_name: "accounts_user".to_string(),
+		}
+		.state_forwards("accounts", &mut state);
+
+		assert_eq!(
+			state.get_model("accounts", "User").unwrap().table_name,
+			"accounts_user"
+		);
+		assert_eq!(
+			state.get_model("audit", "User").unwrap().table_name,
+			"users"
+		);
+	}
+
+	#[test]
+	fn state_forwards_uses_the_renamed_table_for_column_operations() {
+		let mut state = ProjectState::new();
+		let mut model = ModelState::new("myapp", "User");
+		model.table_name = "users".to_string();
+		state.add_model(model);
+		Operation::RenameTable {
+			old_name: "users".into(),
+			new_name: "user".into(),
+		}
+		.state_forwards("myapp", &mut state);
+		Operation::AddColumn {
+			table: "user".into(),
+			column: ColumnDefinition::new("email", FieldType::VarChar(255)),
+			mysql_options: None,
+		}
+		.state_forwards("myapp", &mut state);
+		assert!(state.get_model("myapp", "User").unwrap().has_field("email"));
+	}
+
+	#[test]
+	fn test_state_forwards_rename_table_updates_table_and_foreign_key_metadata() {
+		let mut state = ProjectState::new();
+		let mut user = ModelState::new("myapp", "User");
+		user.table_name = "users".to_string();
+		state.add_model(user);
+
+		let mut post = ModelState::new("myapp", "Post");
+		post.table_name = "posts".to_string();
+		post.add_field(FieldState::with_foreign_key(
+			"user_id",
+			FieldType::Integer,
+			false,
+			ForeignKeyInfo {
+				referenced_table: "users".to_string(),
+				referenced_column: "id".to_string(),
+				on_delete: ForeignKeyAction::Cascade,
+				on_update: ForeignKeyAction::Cascade,
+			},
+		));
+		post.add_foreign_key_constraint_from_field("user_id");
+		state.add_model(post);
+
+		Operation::RenameTable {
+			old_name: "users".to_string(),
+			new_name: "user".to_string(),
+		}
+		.state_forwards("myapp", &mut state);
+
+		assert_eq!(state.get_model("myapp", "User").unwrap().table_name, "user");
+		let post = state.get_model("myapp", "Post").unwrap();
+		assert_eq!(
+			post.fields["user_id"]
+				.foreign_key
+				.as_ref()
+				.unwrap()
+				.referenced_table,
+			"user"
+		);
+		assert_eq!(
+			post.constraints[0]
+				.foreign_key_info
+				.as_ref()
+				.unwrap()
+				.referenced_table,
+			"user"
+		);
+	}
+
+	#[test]
+	fn state_forwards_move_model_renames_foreign_key_references() {
+		let mut state = ProjectState::new();
+		let mut user = ModelState::new("accounts", "User");
+		user.table_name = "users".to_string();
+		state.add_model(user);
+		let mut post = ModelState::new("blog", "Post");
+		post.table_name = "posts".to_string();
+		post.add_field(FieldState::with_foreign_key(
+			"user_id",
+			FieldType::Integer,
+			false,
+			ForeignKeyInfo {
+				referenced_table: "users".to_string(),
+				referenced_column: "id".to_string(),
+				on_delete: ForeignKeyAction::Cascade,
+				on_update: ForeignKeyAction::Cascade,
+			},
+		));
+		post.fields
+			.get_mut("user_id")
+			.unwrap()
+			.params
+			.insert("fk_target_app".to_string(), "accounts".to_string());
+		post.fields
+			.get_mut("user_id")
+			.unwrap()
+			.params
+			.insert("fk_target_model".to_string(), "User".to_string());
+		post.add_foreign_key_constraint_from_field("user_id");
+		state.add_model(post);
+
+		Operation::MoveModel {
+			model_name: "User".to_string(),
+			from_app: "accounts".to_string(),
+			to_app: "auth".to_string(),
+			rename_table: true,
+			old_table_name: Some("users".to_string()),
+			new_table_name: Some("auth_user".to_string()),
+		}
+		.state_forwards("auth", &mut state);
+
+		assert_eq!(
+			state.get_model("auth", "User").unwrap().table_name,
+			"auth_user"
+		);
+		let post = state.get_model("blog", "Post").unwrap();
+		assert_eq!(
+			post.fields["user_id"]
+				.foreign_key
+				.as_ref()
+				.unwrap()
+				.referenced_table,
+			"auth_user"
+		);
+		assert_eq!(
+			post.constraints[0]
+				.foreign_key_info
+				.as_ref()
+				.unwrap()
+				.referenced_table,
+			"auth_user"
+		);
+		assert_eq!(
+			post.fields["user_id"].params.get("fk_target_app"),
+			Some(&"auth".to_string())
+		);
+		assert_eq!(
+			post.fields["user_id"].params.get("fk_target_model"),
+			Some(&"User".to_string())
+		);
+	}
+
+	#[test]
+	fn state_forwards_move_model_updates_foreign_key_field_target_app() {
+		let mut state = ProjectState::new();
+		state.add_model(ModelState::new("accounts", "User"));
+
+		let mut post = ModelState::new("blog", "Post");
+		let mut field = FieldState::new("user_id", FieldType::Uuid, false);
+		field
+			.params
+			.insert("fk_target_app".to_string(), "accounts".to_string());
+		field
+			.params
+			.insert("fk_target".to_string(), "User".to_string());
+		post.add_field(field);
+		state.add_model(post);
+
+		Operation::MoveModel {
+			model_name: "User".to_string(),
+			from_app: "accounts".to_string(),
+			to_app: "auth".to_string(),
+			rename_table: false,
+			old_table_name: None,
+			new_table_name: None,
+		}
+		.state_forwards("auth", &mut state);
+
+		assert_eq!(
+			state.get_model("blog", "Post").unwrap().fields["user_id"]
+				.params
+				.get("fk_target_app"),
+			Some(&"auth".to_string())
 		);
 	}
 
@@ -6520,7 +6754,7 @@ mod tests {
 		state.add_model(model);
 
 		let op = Operation::RenameColumn {
-			table: "users".to_string(),
+			table: "myapp_users".to_string(),
 			old_name: "name".to_string(),
 			new_name: "full_name".to_string(),
 		};
@@ -7072,7 +7306,7 @@ mod tests {
 		let mut state = ProjectState::new();
 		state.add_model(model);
 		let op = Operation::DropTable {
-			name: "metric".to_string(),
+			name: "metrics_metric".to_string(),
 		};
 
 		// Act
@@ -7110,7 +7344,7 @@ mod tests {
 		let mut state = ProjectState::new();
 		state.add_model(model);
 		let op = Operation::DropTable {
-			name: "metric".to_string(),
+			name: "metrics_metric".to_string(),
 		};
 
 		let _ = op.to_reverse_operation(&state);
@@ -7729,7 +7963,7 @@ mod tests {
 		state.add_model(model);
 
 		let op = Operation::AlterColumn {
-			table: "users".to_string(),
+			table: "myapp_users".to_string(),
 			column: "age".to_string(),
 			old_definition: None,
 			new_definition: ColumnDefinition {
@@ -7802,7 +8036,7 @@ mod tests {
 		state.add_model(model);
 
 		let op = Operation::AddDiscriminatorColumn {
-			table: "users".to_string(),
+			table: "myapp_users".to_string(),
 			column_name: "user_type".to_string(),
 			default_value: "regular".to_string(),
 		};
@@ -7819,6 +8053,35 @@ mod tests {
 			Some("single_table".to_string()),
 			"inheritance_type should be 'single_table'"
 		);
+	}
+
+	#[test]
+	fn state_forwards_adds_a_discriminator_after_a_table_rename() {
+		// Arrange
+		let mut state = ProjectState::new();
+		let mut model = ModelState::new("auth", "User");
+		model.table_name = "users".to_string();
+		state.add_model(model);
+
+		// Act
+		Operation::RenameTable {
+			old_name: "users".to_string(),
+			new_name: "auth_user".to_string(),
+		}
+		.state_forwards("auth", &mut state);
+		Operation::AddDiscriminatorColumn {
+			table: "auth_user".to_string(),
+			column_name: "kind".to_string(),
+			default_value: "user".to_string(),
+		}
+		.state_forwards("auth", &mut state);
+
+		// Assert
+		let model = state
+			.get_model("auth", "User")
+			.expect("renamed model should remain in state");
+		assert_eq!(model.discriminator_column.as_deref(), Some("kind"));
+		assert!(model.has_field("kind"));
 	}
 
 	#[rstest]

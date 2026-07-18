@@ -71,10 +71,10 @@ fn assert_models_placeholder_is_tutorial_safe(
 		"models.rs placeholder example must avoid undeclared direct serde dependency:\n{models_rs}"
 	);
 	let model_attr =
-		format!("#[model(app_label = \"{app_label}\", table_name = \"{app_label}_items\")]");
+		format!("#[model(app_label = \"{app_label}\", table_name = \"{app_label}_item\")]");
 	assert!(
 		models_rs.contains(&model_attr),
-		"models.rs placeholder example must include the generated app_label:\n{models_rs}"
+		"models.rs placeholder example must include the generated app_label and explicit table name:\n{models_rs}"
 	);
 	assert!(
 		models_rs.contains(&format!("pub struct {expected_type}")),

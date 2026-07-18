@@ -1,0 +1,5 @@
+error: `bind:` is only valid on `input`, `textarea`, and `select`
+ --> tests/ui/page/fail/controlled_bind_unsupported_element.rs:7:10
+  |
+7 |             bind: (),
+  |                   ^^

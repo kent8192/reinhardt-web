@@ -605,6 +605,13 @@ The `#[model(...)]` attribute automatically generates:
 - Global model registry registration
 - Support for composite primary keys
 
+Every model must declare an `app_label` so migrations and registry entries are
+assigned to an explicit application. `table_name` is optional: when omitted,
+Reinhardt prefixes the app label to the Rust struct name converted to snake_case
+without pluralizing it (`network::HTTPRoute` becomes `network_http_route`). Keep
+`table_name = "..."` when a model must continue using an existing database table,
+as the `User` example above does.
+
 **Note:** When using `#[model(...)]`, you do NOT need to add `#[derive(Model)]` separately,
 as it is automatically applied by the `#[model(...)]` attribute.
 

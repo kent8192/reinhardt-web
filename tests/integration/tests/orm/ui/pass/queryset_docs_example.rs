@@ -6,7 +6,7 @@ use reinhardt::model;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
-#[model(table_name = "users")]
+#[model(app_label = "default", table_name = "users")]
 struct User {
 	#[field(primary_key = true)]
 	id: i64,

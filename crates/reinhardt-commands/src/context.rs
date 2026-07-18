@@ -4,6 +4,8 @@ use reinhardt_conf::HasCommonSettings;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+const SUPPRESS_OUTPUT_OPTION: &str = "__reinhardt_suppress_output";
+
 /// Execution context passed to management commands.
 ///
 /// Contains command arguments, options, verbosity level, and optional
@@ -31,6 +33,7 @@ impl std::fmt::Debug for CommandContext {
 			.field("args", &self.args)
 			.field("options", &self.options)
 			.field("verbosity", &self.verbosity)
+			.field("suppress_output", &self.output_is_suppressed())
 			.field("settings", &self.settings.as_ref().map(|_| "<settings>"))
 			.finish()
 	}
@@ -89,14 +92,35 @@ impl CommandContext {
 		self.options.contains_key(key)
 	}
 
+	/// Controls whether informational, success, and verbose messages are printed.
+	///
+	/// The state is stored in the existing options map to preserve compatibility
+	/// for callers that construct [`CommandContext`] with a public struct literal.
+	pub fn set_output_suppressed(&mut self, suppress_output: bool) {
+		if suppress_output {
+			self.options
+				.insert(SUPPRESS_OUTPUT_OPTION.to_string(), Vec::new());
+		} else {
+			self.options.remove(SUPPRESS_OUTPUT_OPTION);
+		}
+	}
+
+	fn output_is_suppressed(&self) -> bool {
+		self.options.contains_key(SUPPRESS_OUTPUT_OPTION)
+	}
+
 	/// Prints an informational message to stdout.
 	pub fn info(&self, message: &str) {
-		println!("[INFO] {}", message);
+		if !self.output_is_suppressed() {
+			println!("[INFO] {}", message);
+		}
 	}
 
 	/// Prints a success message to stdout.
 	pub fn success(&self, message: &str) {
-		println!("[SUCCESS] {}", message);
+		if !self.output_is_suppressed() {
+			println!("[SUCCESS] {}", message);
+		}
 	}
 
 	/// Prints a warning message to stderr.
@@ -106,7 +130,9 @@ impl CommandContext {
 
 	/// Prints a verbose message to stdout.
 	pub fn verbose(&self, message: &str) {
-		println!("[VERBOSE] {}", message);
+		if !self.output_is_suppressed() {
+			println!("[VERBOSE] {}", message);
+		}
 	}
 
 	/// Prints an error message to stderr.
@@ -254,7 +280,19 @@ mod tests {
 		assert_eq!(ctx.args[1], "arg2");
 		assert!(ctx.options.is_empty());
 		assert_eq!(ctx.verbosity, 0);
+		assert!(!ctx.output_is_suppressed());
 		assert!(ctx.settings.is_none());
+	}
+
+	#[rstest]
+	fn output_suppression_uses_the_existing_options_map() {
+		let mut ctx = CommandContext::default();
+
+		ctx.set_output_suppressed(true);
+		assert!(ctx.output_is_suppressed());
+
+		ctx.set_output_suppressed(false);
+		assert!(!ctx.output_is_suppressed());
 	}
 
 	#[rstest]

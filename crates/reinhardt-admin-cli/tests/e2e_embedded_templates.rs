@@ -18,6 +18,8 @@ use walkdir::WalkDir;
 // `CARGO_BIN_EXE_reinhardt-admin` is set by Cargo at test-compilation time to the
 // absolute path of the compiled binary, so no manual `cargo build` is required.
 const REINHARDT_ADMIN: &str = env!("CARGO_BIN_EXE_reinhardt-admin");
+const RUNTIME_COMPONENTS_CSS_PLACEHOLDER: &str =
+	"{{ static_url(\"__reinhardt__/components.css\") }}";
 
 /// Walk `dir` and return all files that still contain an unrendered Tera
 /// placeholder (`{{`).  Returns a list of `(relative_path, offending_line)`.
@@ -33,7 +35,10 @@ fn find_unrendered_variables(dir: &Path) -> Vec<(PathBuf, String)> {
 		let Ok(content) = fs::read_to_string(entry.path()) else {
 			continue; // skip non-UTF-8 (compiled artifacts, etc.)
 		};
-		if let Some(bad_line) = content.lines().find(|l| l.contains("{{")) {
+		if let Some(bad_line) = content.lines().find(|line| {
+			let without_runtime_placeholder = line.replace(RUNTIME_COMPONENTS_CSS_PLACEHOLDER, "");
+			without_runtime_placeholder.contains("{{")
+		}) {
 			hits.push((entry.path().to_path_buf(), bad_line.to_string()));
 		}
 	}

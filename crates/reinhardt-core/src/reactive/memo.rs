@@ -69,6 +69,10 @@ pub(crate) fn is_memo(node_id: NodeId) -> bool {
 	find_node_key(node_id, NodeKind::Memo).is_some()
 }
 
+pub(crate) fn is_memo_registered(node_id: NodeId) -> bool {
+	is_memo(node_id)
+}
+
 /// A memoized reactive computation that caches its result
 ///
 /// `Memo<T>` is similar to a Signal in that it can be read with `get()` and can have dependents.

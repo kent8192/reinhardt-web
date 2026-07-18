@@ -62,7 +62,9 @@ pub use context::{
 pub use deps::{Deps, ExplicitDeps, ReactiveDeps, Trackable};
 pub use effect::Effect;
 pub use memo::Memo;
-pub use runtime::{EffectTiming, NodeId, NodeType, Observer, Runtime, batch, with_runtime};
+pub use runtime::{
+	EffectTiming, NodeId, NodeType, Observer, Runtime, batch, untracked, with_runtime,
+};
 pub use scope::{
 	NodeKey, ReactiveScope, ReactiveScopeError, ScopeId, current_scope_id, enter_scope,
 	on_scope_dispose, on_scope_dispose_after_nodes,

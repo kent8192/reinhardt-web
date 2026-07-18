@@ -1,29 +1,18 @@
-error[E0277]: the trait bound `i32: Trackable` is not satisfied
+error[E0277]: the trait bound `i32: reinhardt_core::reactive::deps::Trackable` is not satisfied
  --> tests/ui/hooks/fail/non_trackable_dep.rs:9:3
   |
 9 |         deps![42_i32],
   |         ^^^^^^^^^^^^^
   |         |
-  |         the trait `Trackable` is not implemented for `i32`
+  |         the trait `reinhardt_core::reactive::deps::Trackable` is not implemented for `i32`
   |         required by a bound introduced by this call
   |
-help: the following other types implement trait `Trackable`
- --> src/reactive/hooks/async_action.rs
-  |
-  |   impl<T: Clone + 'static, E: Clone + 'static> Trackable for Action<T, E> {
-  |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `Action<T, E>`
-  |
- ::: src/reactive/resource.rs
-  |
-  | / impl<T: Clone + 'static, E: Clone + 'static> reinhardt_core::reactive::deps::Trackable
-  | |     for Resource<T, E>
-  | |______________________^ `Resource<T, E>`
-  |
- ::: $WORKSPACE/crates/reinhardt-core/src/reactive/deps.rs
-  |
-  |   impl<T: 'static> Trackable for Signal<T> {
-  |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `reinhardt_pages::Signal<T>`
-...
-  |   impl<T: Clone + 'static> Trackable for Memo<T> {
-  |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `reinhardt_pages::Memo<T>`
+  = help: the following other types implement trait `reinhardt_core::reactive::deps::Trackable`:
+            &T
+            Action<T, E>
+            AuthSignal<T>
+            CsrfTokenSignal
+            Resource<T, E>
+            reinhardt_pages::Memo<T>
+            reinhardt_pages::Signal<T>
   = note: this error originates in the macro `deps` (in Nightly builds, run with -Z macro-backtrace for more info)

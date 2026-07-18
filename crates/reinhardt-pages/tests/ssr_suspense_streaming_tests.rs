@@ -3,10 +3,13 @@
 use futures_util::StreamExt;
 use reinhardt_core::types::page::{DeferredNode, Head, SuspenseNode};
 use reinhardt_pages::component::suspense::SuspenseBoundary;
-use reinhardt_pages::component::{Component, IntoPage, Page, PageElement};
+use reinhardt_pages::component::{Component, ControlBinding, IntoPage, Page, PageElement};
 use reinhardt_pages::deps;
-use reinhardt_pages::reactive::{ResourceState, use_id, use_resource, use_resource_with_key};
+use reinhardt_pages::reactive::{
+	ReactiveScope, ResourceState, Signal, use_id, use_resource, use_resource_with_key,
+};
 use reinhardt_pages::ssr::{SsrChunk, SsrOptions, SsrRenderer, SsrStream};
+use rstest::rstest;
 use std::cell::Cell;
 use std::rc::Rc;
 use std::time::Duration;
@@ -59,6 +62,146 @@ fn delayed_suspense_resource_view(delay: Duration, value: &'static str) -> Page 
 			})
 			.into_page()
 	})
+}
+
+fn controlled_select_suspense_option_view(scope: &ReactiveScope) -> Page {
+	let selected = scope.enter(|| Signal::new(vec!["rust".to_owned()]));
+
+	PageElement::new("select")
+		.attr("multiple", "multiple")
+		.control_binding(ControlBinding::select_many(selected))
+		.child(Page::reactive(|| {
+			let resource = use_resource(
+				|| async {
+					tokio::time::sleep(Duration::from_millis(5)).await;
+					Ok::<_, String>("rust".to_owned())
+				},
+				deps![],
+			);
+			let content_resource = resource.clone();
+
+			SuspenseBoundary::new()
+				.fallback(|| {
+					PageElement::new("option")
+						.attr("value", "loading")
+						.child("Loading")
+						.into_page()
+				})
+				.track(resource)
+				.content(move || {
+					resource_to_page(content_resource.get(), "option", "Loading", |value| {
+						PageElement::new("option")
+							.attr("value", value)
+							.child("Rust")
+							.into_page()
+					})
+				})
+				.into_page()
+		}))
+		.into_page()
+}
+
+fn controlled_single_select_suspense_duplicate_view(
+	scope: &ReactiveScope,
+	before_matches: bool,
+	inside_matches: bool,
+) -> Page {
+	let selected = scope.enter(|| Signal::new("duplicate".to_owned()));
+	let before_value = if before_matches { "duplicate" } else { "other" };
+	let resolved_value = if inside_matches { "duplicate" } else { "other" };
+
+	PageElement::new("select")
+		.control_binding(ControlBinding::select_one(selected))
+		.child(
+			PageElement::new("option")
+				.attr("value", before_value)
+				.child("Before"),
+		)
+		.child(Page::reactive(move || {
+			let resource = use_resource(
+				move || async move {
+					tokio::time::sleep(Duration::from_millis(5)).await;
+					Ok::<_, String>(resolved_value.to_owned())
+				},
+				deps![],
+			);
+			let content_resource = resource.clone();
+
+			SuspenseBoundary::new()
+				.fallback(|| {
+					PageElement::new("option")
+						.attr("value", "loading")
+						.child("Loading")
+						.into_page()
+				})
+				.track(resource)
+				.content(move || {
+					resource_to_page(content_resource.get(), "option", "Loading", |value| {
+						PageElement::new("option")
+							.attr("value", value)
+							.child("Inside Suspense")
+							.into_page()
+					})
+				})
+				.into_page()
+		}))
+		.child(
+			PageElement::new("optgroup").child(
+				PageElement::new("option")
+					.attr("value", "duplicate")
+					.child("After"),
+			),
+		)
+		.into_page()
+}
+
+fn controlled_single_select_timed_out_suspense_view(
+	scope: &ReactiveScope,
+	fallback_matches: bool,
+) -> Page {
+	let selected = scope.enter(|| Signal::new("duplicate".to_owned()));
+	let fallback_value = if fallback_matches {
+		"duplicate"
+	} else {
+		"loading"
+	};
+
+	PageElement::new("select")
+		.control_binding(ControlBinding::select_one(selected))
+		.child(Page::reactive(move || {
+			let resource = use_resource(
+				|| async {
+					tokio::time::sleep(Duration::from_secs(60)).await;
+					Ok::<_, String>("duplicate".to_owned())
+				},
+				deps![],
+			);
+			let content_resource = resource.clone();
+
+			SuspenseBoundary::new()
+				.fallback(move || {
+					PageElement::new("option")
+						.attr("value", fallback_value)
+						.child("Fallback")
+						.into_page()
+				})
+				.track(resource)
+				.content(move || {
+					resource_to_page(content_resource.get(), "option", "Loading", |value| {
+						PageElement::new("option")
+							.attr("value", value)
+							.child("Inside Suspense")
+							.into_page()
+					})
+				})
+				.into_page()
+		}))
+		.child(
+			PageElement::new("option")
+				.attr("value", "duplicate")
+				.child("After"),
+		)
+		.into_page()
 }
 
 fn pending_nested_boundary(label: &'static str) -> Page {
@@ -631,6 +774,133 @@ async fn streaming_page_without_state_script_skips_resource_replacements() {
 	assert!(!html.contains("resolved"));
 	assert!(!html.contains(r#"data-rh-suspense-chunk="rh-suspense-0""#));
 	assert!(!html.contains("ssr-state"));
+}
+
+#[tokio::test]
+async fn streaming_single_select_without_state_script_commits_fallback_selection() {
+	// Arrange
+	let mut options = SsrOptions::new();
+	options.include_state_script = false;
+	let reactive_scope = ReactiveScope::new();
+	let view = controlled_single_select_timed_out_suspense_view(&reactive_scope, true);
+	let mut renderer = SsrRenderer::with_options(options);
+
+	// Act
+	let html = renderer
+		.render_page_with_view_head(view)
+		.await
+		.collect_string()
+		.await;
+
+	// Assert
+	assert_eq!(html.matches("selected=\"selected\"").count(), 1, "{html}");
+	assert!(html.contains("selected=\"selected\">Fallback</option>"));
+}
+
+#[rstest]
+#[tokio::test]
+async fn streaming_controlled_select_replacement_preserves_selected_values() {
+	// Arrange
+	let reactive_scope = ReactiveScope::new();
+	let view = controlled_select_suspense_option_view(&reactive_scope);
+	let mut buffered_renderer = SsrRenderer::new();
+	let mut streaming_renderer = SsrRenderer::new();
+
+	// Act
+	let buffered = buffered_renderer
+		.render_page_with_view_head_to_string(view.clone())
+		.await;
+	let mut stream = streaming_renderer.render_page_with_view_head(view).await;
+	let _shell = stream.next().await.unwrap().into_string();
+	let replacement = stream.next().await.unwrap().into_string();
+	let replacement_content = replacement
+		.split_once('>')
+		.unwrap()
+		.1
+		.split_once("</template>")
+		.unwrap()
+		.0;
+
+	// Assert
+	assert!(buffered.contains(
+		"<select multiple=\"multiple\"><option value=\"rust\" selected=\"selected\">Rust</option></select>"
+	));
+	assert_eq!(
+		replacement_content,
+		"<option value=\"rust\" selected=\"selected\">Rust</option>"
+	);
+}
+
+#[rstest]
+#[case(true, true, "Before")]
+#[case(false, true, "Inside Suspense")]
+#[case(false, false, "After")]
+#[tokio::test]
+async fn streaming_controlled_single_select_preserves_first_duplicate_in_tree_order(
+	#[case] before_matches: bool,
+	#[case] inside_matches: bool,
+	#[case] selected_label: &str,
+) {
+	// Arrange
+	let reactive_scope = ReactiveScope::new();
+	let view = controlled_single_select_suspense_duplicate_view(
+		&reactive_scope,
+		before_matches,
+		inside_matches,
+	);
+	let mut buffered_renderer = SsrRenderer::new();
+	let mut streaming_renderer = SsrRenderer::new();
+
+	// Act
+	let buffered = buffered_renderer
+		.render_page_with_view_head_to_string(view.clone())
+		.await;
+	let streaming = streaming_renderer
+		.render_page_with_view_head(view)
+		.await
+		.collect_string()
+		.await;
+
+	// Assert
+	assert_eq!(
+		buffered.matches("selected=\"selected\"").count(),
+		1,
+		"{buffered}"
+	);
+	assert!(buffered.contains(&format!("selected=\"selected\">{selected_label}</option>")));
+	assert_eq!(
+		streaming.matches("selected=\"selected\"").count(),
+		1,
+		"{streaming}"
+	);
+	assert!(streaming.contains(&format!("selected=\"selected\">{selected_label}</option>")));
+}
+
+#[rstest]
+#[case(true, "Fallback")]
+#[case(false, "After")]
+#[tokio::test]
+async fn streaming_timed_out_single_select_uses_emitted_fallback_tree_order(
+	#[case] fallback_matches: bool,
+	#[case] selected_label: &str,
+) {
+	// Arrange
+	let reactive_scope = ReactiveScope::new();
+	let view = controlled_single_select_timed_out_suspense_view(&reactive_scope, fallback_matches);
+	let mut renderer =
+		SsrRenderer::with_options(SsrOptions::new().resource_timeout(Duration::from_millis(1)));
+
+	// Act
+	let html = renderer
+		.render_page_with_view_head(view)
+		.await
+		.collect_string()
+		.await;
+
+	// Assert
+	assert_eq!(html.matches("selected=\"selected\"").count(), 1, "{html}");
+	assert!(html.contains(&format!("selected=\"selected\">{selected_label}</option>")));
+	assert!(!html.contains("data-rh-suspense-chunk"));
 }
 
 #[tokio::test]

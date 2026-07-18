@@ -29,7 +29,7 @@ use std::sync::Arc;
 use testcontainers::{ContainerAsync, GenericImage};
 
 /// Test model for async query tests
-#[model(table_name = "test_models")]
+#[model(app_label = "default", table_name = "test_models")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct TestModel {
 	#[field(primary_key = true)]
