@@ -1,7 +1,8 @@
 //! Compile-pass: `use_effect` with an explicit single-element dependency list
 //! is the canonical React-parity shape (spec §4.2).
 
-use reinhardt_pages::{deps, reactive::Signal};
+use reinhardt_pages::deps;
+use reinhardt_pages::reactive::Signal;
 use reinhardt_pages::reactive::hooks::use_effect;
 
 fn main() {
