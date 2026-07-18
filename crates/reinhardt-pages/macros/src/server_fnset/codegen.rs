@@ -615,7 +615,7 @@ fn override_wrapper(
 		"partial_update" => quote!(ServerFnSetAction::PartialUpdate),
 		"destroy" => quote!(ServerFnSetAction::Destroy),
 		_ => {
-			let name = ident.to_string();
+			let name = ident.unraw().to_string();
 			quote!(ServerFnSetAction::Custom(#name))
 		}
 	};

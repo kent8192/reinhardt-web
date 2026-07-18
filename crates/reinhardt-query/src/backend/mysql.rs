@@ -972,7 +972,7 @@ impl QueryBuilder for MySqlQueryBuilder {
 		}
 
 		// RETURNING clause - NOT SUPPORTED in MySQL
-		if stmt.returning.is_some() {
+		if stmt.returning.is_some() || stmt.returning_exprs.is_some() {
 			panic!("MySQL does not support RETURNING clause. Use LAST_INSERT_ID() instead.");
 		}
 
@@ -1014,7 +1014,7 @@ impl QueryBuilder for MySqlQueryBuilder {
 		}
 
 		// RETURNING clause - NOT SUPPORTED in MySQL
-		if stmt.returning.is_some() {
+		if stmt.returning.is_some() || stmt.returning_exprs.is_some() {
 			panic!("MySQL does not support RETURNING clause.");
 		}
 
@@ -1044,7 +1044,7 @@ impl QueryBuilder for MySqlQueryBuilder {
 		}
 
 		// RETURNING clause - NOT SUPPORTED in MySQL
-		if stmt.returning.is_some() {
+		if stmt.returning.is_some() || stmt.returning_exprs.is_some() {
 			panic!("MySQL does not support RETURNING clause.");
 		}
 
@@ -3579,6 +3579,19 @@ mod tests {
 	}
 
 	#[test]
+	#[should_panic(expected = "MySQL does not support RETURNING clause")]
+	fn test_insert_with_returning_expressions_panics() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::insert();
+		stmt.into_table("users")
+			.columns(["name"])
+			.values_panic(["Alice"])
+			.returning_exprs([Expr::col("name").expr_as("display_name")]);
+
+		let _ = builder.build_insert(&stmt);
+	}
+
+	#[test]
 	fn test_insert_from_subquery() {
 		let builder = MySqlQueryBuilder::new();
 
@@ -3671,6 +3684,18 @@ mod tests {
 	}
 
 	#[test]
+	#[should_panic(expected = "MySQL does not support RETURNING clause")]
+	fn test_update_with_returning_expressions_panics() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::update();
+		stmt.table("users")
+			.value("active", false)
+			.returning_exprs([Expr::col("id").expr_as("user_id")]);
+
+		let _ = builder.build_update(&stmt);
+	}
+
+	#[test]
 	fn test_delete_basic() {
 		let builder = MySqlQueryBuilder::new();
 		let mut stmt = Query::delete();
@@ -3703,6 +3728,17 @@ mod tests {
 		stmt.from_table("users")
 			.and_where(Expr::col("id").eq(1))
 			.returning(["id", "name"]);
+
+		let _ = builder.build_delete(&stmt);
+	}
+
+	#[test]
+	#[should_panic(expected = "MySQL does not support RETURNING clause")]
+	fn test_delete_with_returning_expressions_panics() {
+		let builder = MySqlQueryBuilder::new();
+		let mut stmt = Query::delete();
+		stmt.from_table("users")
+			.returning_exprs([Expr::col("id").expr_as("user_id")]);
 
 		let _ = builder.build_delete(&stmt);
 	}

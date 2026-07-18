@@ -184,6 +184,7 @@ pub struct Filter {
 	pub field: String,
 	field_source: FilterField,
 	relation: Option<Box<FilterRelation>>,
+	field_type: Option<String>,
 	/// The operator.
 	pub operator: FilterOperator,
 	/// The value.
@@ -198,6 +199,7 @@ impl Filter {
 			field,
 			field_source: FilterField::Column,
 			relation: None,
+			field_type: None,
 			operator,
 			value,
 		}
@@ -213,10 +215,16 @@ impl Filter {
 	where
 		P: RelationPathLike,
 	{
+		let field = field.into();
+		let field_type = P::Target::field_metadata()
+			.into_iter()
+			.find(|metadata| metadata.name == field || metadata.db_column_name() == field)
+			.map(|metadata| metadata.field_type);
 		Self {
-			field: field.into(),
+			field,
 			field_source: FilterField::Column,
 			relation: Some(Box::new(FilterRelation::from_path(path))),
+			field_type,
 			operator,
 			value,
 		}
@@ -260,6 +268,7 @@ impl Filter {
 			field: sql.clone(),
 			field_source: FilterField::Expression(sql),
 			relation: None,
+			field_type: None,
 			operator,
 			value,
 		}
@@ -3735,26 +3744,26 @@ where
 					self.like_expr(filter, s, LikePattern::Exact, true)
 				}
 				(FilterOperator::IExact, v) => {
-					col.eq(self.filter_value_to_sea_value_for_field(&filter.field, v))
+					col.eq(self.filter_value_to_sea_value_for_filter(filter, v))
 				}
 				// Generic value comparisons (catch-all for other FilterValue types)
 				(FilterOperator::Eq, v) => {
-					col.eq(self.filter_value_to_sea_value_for_field(&filter.field, v))
+					col.eq(self.filter_value_to_sea_value_for_filter(filter, v))
 				}
 				(FilterOperator::Ne, v) => {
-					col.ne(self.filter_value_to_sea_value_for_field(&filter.field, v))
+					col.ne(self.filter_value_to_sea_value_for_filter(filter, v))
 				}
 				(FilterOperator::Gt, v) => {
-					col.gt(self.filter_value_to_sea_value_for_field(&filter.field, v))
+					col.gt(self.filter_value_to_sea_value_for_filter(filter, v))
 				}
 				(FilterOperator::Gte, v) => {
-					col.gte(self.filter_value_to_sea_value_for_field(&filter.field, v))
+					col.gte(self.filter_value_to_sea_value_for_filter(filter, v))
 				}
 				(FilterOperator::Lt, v) => {
-					col.lt(self.filter_value_to_sea_value_for_field(&filter.field, v))
+					col.lt(self.filter_value_to_sea_value_for_filter(filter, v))
 				}
 				(FilterOperator::Lte, v) => {
-					col.lte(self.filter_value_to_sea_value_for_field(&filter.field, v))
+					col.lte(self.filter_value_to_sea_value_for_filter(filter, v))
 				}
 				(FilterOperator::In, FilterValue::String(s)) => {
 					let values = Self::parse_array_string(s);
@@ -3766,7 +3775,7 @@ where
 				(FilterOperator::In, FilterValue::List(values)) => col.is_in(
 					values
 						.iter()
-						.map(|value| self.filter_value_to_sea_value_for_field(&filter.field, value))
+						.map(|value| self.filter_value_to_sea_value_for_filter(filter, value))
 						.collect::<Vec<_>>(),
 				),
 				(FilterOperator::NotIn, FilterValue::String(s)) => {
@@ -3779,7 +3788,7 @@ where
 				(FilterOperator::NotIn, FilterValue::List(values)) => col.is_not_in(
 					values
 						.iter()
-						.map(|value| self.filter_value_to_sea_value_for_field(&filter.field, value))
+						.map(|value| self.filter_value_to_sea_value_for_filter(filter, value))
 						.collect::<Vec<_>>(),
 				),
 				(FilterOperator::Contains, FilterValue::String(s)) => {
@@ -3825,8 +3834,8 @@ where
 				(FilterOperator::Range, FilterValue::Range(start, end)) => Expr::cust_with_values(
 					format!("{} BETWEEN ? AND ?", self.filter_lhs_sql(filter)),
 					[
-						self.filter_value_to_sea_value_for_field(&filter.field, start),
-						self.filter_value_to_sea_value_for_field(&filter.field, end),
+						self.filter_value_to_sea_value_for_filter(filter, start),
+						self.filter_value_to_sea_value_for_filter(filter, end),
 					],
 				)
 				.into_simple_expr(),
@@ -4024,7 +4033,7 @@ where
 					// field @> ? - parameterized
 					Expr::cust_with_values(
 						format!("{} @> ?", self.filter_lhs_sql(filter)),
-						[self.filter_value_to_sea_value_for_field(&filter.field, v)],
+						[self.filter_value_to_sea_value_for_filter(filter, v)],
 					)
 					.into_simple_expr()
 				}
@@ -4047,7 +4056,7 @@ where
 				// Fallback for unsupported combinations
 				_ => {
 					// Default to equality for unhandled cases
-					col.eq(self.filter_value_to_sea_value_for_field(&filter.field, &filter.value))
+					col.eq(self.filter_value_to_sea_value_for_filter(filter, &filter.value))
 				}
 			};
 
@@ -4584,15 +4593,21 @@ where
 		}
 	}
 
-	fn filter_value_to_sea_value_for_field(
+	fn filter_value_to_sea_value_for_filter(
 		&self,
-		field: &str,
+		filter: &Filter,
 		value: &FilterValue,
 	) -> reinhardt_query::value::Value {
-		let field_name = field.rsplit("__").next().unwrap_or(field);
-		let Some(metadata) = T::field_metadata().into_iter().find(|metadata| {
-			metadata.name == field_name || metadata.db_column_name() == field_name
-		}) else {
+		let field_type = filter.field_type.clone().or_else(|| {
+			let field_name = filter.field.rsplit("__").next().unwrap_or(&filter.field);
+			T::field_metadata()
+				.into_iter()
+				.find(|metadata| {
+					metadata.name == field_name || metadata.db_column_name() == field_name
+				})
+				.map(|metadata| metadata.field_type)
+		});
+		let Some(field_type) = field_type else {
 			// Related and manually implemented models may not expose metadata for the
 			// filtered column, so retain UUID binding unless metadata proves another type.
 			if let FilterValue::String(value) = value
@@ -4607,7 +4622,7 @@ where
 			return Self::filter_value_to_sea_value(value);
 		};
 
-		match metadata.field_type.rsplit('.').next() {
+		match field_type.rsplit('.').next() {
 			Some("IntegerField") => value
 				.parse::<i32>()
 				.map_or_else(|_| value.clone().into(), Into::into),
@@ -8134,6 +8149,12 @@ mod tests {
 		fn generated_field_names() -> &'static [&'static str] {
 			&["full_name"]
 		}
+
+		fn field_metadata() -> Vec<crate::orm::inspection::FieldInfo> {
+			let mut id = test_field_info("id", None, true);
+			id.field_type = "reinhardt.orm.models.IntegerField".to_string();
+			vec![id]
+		}
 	}
 
 	#[derive(Debug, Clone, Serialize, Deserialize)]
@@ -8249,7 +8270,10 @@ mod tests {
 		}
 
 		fn field_metadata() -> Vec<crate::orm::inspection::FieldInfo> {
+			let mut id = test_field_info("id", None, true);
+			id.field_type = "reinhardt.orm.models.UuidField".to_string();
 			vec![
+				id,
 				test_field_info("normalized_path", None, false),
 				test_field_info("email", Some("email_addr"), false),
 			]
@@ -11078,8 +11102,12 @@ mod tests {
 			Uuid::parse_str("00000000-0000-0000-0000-000000000001").expect("valid test UUID");
 
 		// Act
-		let value = queryset
-			.filter_value_to_sea_value_for_field("id", &FilterValue::String(uuid.to_string()));
+		let filter = Filter::new(
+			"id",
+			FilterOperator::Eq,
+			FilterValue::String(uuid.to_string()),
+		);
+		let value = queryset.filter_value_to_sea_value_for_filter(&filter, &filter.value);
 
 		// Assert
 		assert_eq!(
@@ -11132,10 +11160,38 @@ mod tests {
 			Uuid::parse_str("00000000-0000-0000-0000-000000000002").expect("valid test UUID");
 
 		// Act
-		let value = queryset.filter_value_to_sea_value_for_field(
+		let filter = Filter::new(
 			"owner__id",
-			&FilterValue::String(uuid.to_string()),
+			FilterOperator::Eq,
+			FilterValue::String(uuid.to_string()),
 		);
+		let value = queryset.filter_value_to_sea_value_for_filter(&filter, &filter.value);
+
+		// Assert
+		assert_eq!(
+			value,
+			reinhardt_query::value::Value::Uuid(Some(Box::new(uuid)))
+		);
+	}
+
+	#[rstest]
+	fn test_related_filter_uses_target_field_metadata() {
+		// Arrange
+		let queryset = QuerySet::<TestUser>::new();
+		let uuid =
+			Uuid::parse_str("00000000-0000-0000-0000-000000000003").expect("valid test UUID");
+		let path = crate::orm::relations::RelationPath::<TestUser, TestCorpusFile>::from_descriptor::<
+			TestUserCorpusFile,
+		>();
+		let filter = Filter::related(
+			"id",
+			FilterOperator::Eq,
+			FilterValue::String(uuid.to_string()),
+			&path,
+		);
+
+		// Act
+		let value = queryset.filter_value_to_sea_value_for_filter(&filter, &filter.value);
 
 		// Assert
 		assert_eq!(

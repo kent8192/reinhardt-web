@@ -39,6 +39,15 @@ impl ArticleActions {
 	) -> Result<ArticleDto, ServerFnSetError> {
 		Ok(ArticleDto { id: lookup, title: format!("{}:{}", context.object().title, input.label) })
 	}
+
+	#[action(detail = true, transactional = true)]
+	pub async fn r#type(
+		lookup: i64,
+		input: PublishArticle,
+		#[inject] context: DetailActionContext<ArticleResource>,
+	) -> Result<ArticleDto, ServerFnSetError> {
+		Ok(ArticleDto { id: lookup, title: format!("{}:{}", context.object().title, input.label) })
+	}
 }
 
 #[cfg(all(target_family = "wasm", target_os = "unknown"))]
@@ -50,6 +59,7 @@ async fn assert_all_client_signatures() {
 	let _ = article_fns::partial_update(1, PatchArticle { title: None }).await;
 	let _ = article_fns::destroy(1).await;
 	let _ = article_fns::publish(1, PublishArticle { label: String::new() }).await;
+	let _ = article_fns::r#type(1, PublishArticle { label: String::new() }).await;
 }
 
 fn main() {
@@ -70,6 +80,7 @@ fn main() {
 			("/api/server_fn/article-api/partial-update", "article-api-partial-update", true, true),
 			("/api/server_fn/article-api/destroy", "article-api-destroy", true, true),
 			("/api/server_fn/article-api/publish", "article-api-publish", true, true),
+			("/api/server_fn/article-api/type", "article-api-type", true, true),
 		],
 	);
 	let _ = (
@@ -80,5 +91,6 @@ fn main() {
 		article_fns::partial_update,
 		article_fns::destroy,
 		article_fns::publish,
+		article_fns::r#type,
 	);
 }
