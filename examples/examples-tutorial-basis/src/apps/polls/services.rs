@@ -2,3 +2,5 @@
 
 #[cfg(server)]
 pub mod server;
+#[cfg(server)]
+mod server_error;

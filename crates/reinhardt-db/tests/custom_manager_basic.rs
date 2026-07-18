@@ -22,6 +22,7 @@ use std::collections::HashMap;
 use rstest::rstest;
 use serde::{Deserialize, Serialize};
 
+use reinhardt_core::exception::{DatabaseError, DatabaseErrorKind};
 use reinhardt_db::orm::connection::DatabaseBackend;
 use reinhardt_db::orm::custom_manager::CustomManager;
 use reinhardt_db::orm::manager::Manager;
@@ -112,9 +113,9 @@ impl CustomManager for GuardedArticleManager {
 
 	fn before_save(&self, model: &mut Article) -> reinhardt_core::exception::Result<()> {
 		if model.title.trim().is_empty() {
-			return Err(reinhardt_core::exception::Error::Database(
-				"title must not be empty".into(),
-			));
+			return Err(
+				DatabaseError::new(DatabaseErrorKind::Query, "title must not be empty").into(),
+			);
 		}
 		Ok(())
 	}
@@ -132,21 +133,19 @@ impl CustomManager for DenyAllArticleManager {
 	}
 
 	fn before_save(&self, _model: &mut Article) -> reinhardt_core::exception::Result<()> {
-		Err(reinhardt_core::exception::Error::Database(
-			"save vetoed by custom manager".into(),
-		))
+		Err(DatabaseError::new(DatabaseErrorKind::Query, "save vetoed by custom manager").into())
 	}
 
 	fn before_delete(&self, _model: &Article) -> reinhardt_core::exception::Result<()> {
-		Err(reinhardt_core::exception::Error::Database(
-			"delete vetoed by custom manager".into(),
-		))
+		Err(DatabaseError::new(DatabaseErrorKind::Query, "delete vetoed by custom manager").into())
 	}
 
 	fn before_bulk_update(&self, _models: &mut [Article]) -> reinhardt_core::exception::Result<()> {
-		Err(reinhardt_core::exception::Error::Database(
-			"bulk update vetoed by custom manager".into(),
-		))
+		Err(DatabaseError::new(
+			DatabaseErrorKind::Query,
+			"bulk update vetoed by custom manager",
+		)
+		.into())
 	}
 }
 
@@ -554,8 +553,11 @@ fn delete_queryset_sql_via_trait_matches_inherent_method() {
 	));
 
 	// Act
-	let (inherent_sql, inherent_params) = manager.delete_queryset(&qs);
-	let (trait_sql, trait_params) = CustomManager::delete_queryset(&manager, &qs);
+	let (inherent_sql, inherent_params) = manager
+		.delete_queryset(&qs)
+		.expect("delete SQL should compile");
+	let (trait_sql, trait_params) =
+		CustomManager::delete_queryset(&manager, &qs).expect("delete SQL should compile");
 
 	// Assert
 	assert_eq!(inherent_sql, trait_sql);
@@ -574,8 +576,11 @@ fn update_queryset_sql_via_trait_matches_inherent_method() {
 	let updates: &[(&str, &str)] = &[("title", "renamed")];
 
 	// Act
-	let (inherent_sql, inherent_params) = manager.update_queryset(&qs, updates);
-	let (trait_sql, trait_params) = CustomManager::update_queryset(&manager, &qs, updates);
+	let (inherent_sql, inherent_params) = manager
+		.update_queryset(&qs, updates)
+		.expect("manager update SQL should compile");
+	let (trait_sql, trait_params) = CustomManager::update_queryset(&manager, &qs, updates)
+		.expect("custom manager update SQL should compile");
 
 	// Assert
 	assert_eq!(inherent_sql, trait_sql);

@@ -11,7 +11,7 @@ help: the trait `for<'de> Deserialize<'de>` is not implemented for `SettingsResp
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
    = help: the following other types implement trait `Deserialize<'de>`:
              `&'a [u8]` implements `Deserialize<'de>`
-             `&'a serde_json::raw::RawValue` implements `Deserialize<'de>`
+             `&'a reinhardt_pages::__private::serde_json::raw::RawValue` implements `Deserialize<'de>`
              `&'a std::path::Path` implements `Deserialize<'de>`
              `&'a str` implements `Deserialize<'de>`
              `()` implements `Deserialize<'de>`

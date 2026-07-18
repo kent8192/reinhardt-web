@@ -4,6 +4,7 @@
 //! field definitions, relationships, indexes, and constraints at runtime.
 
 use super::constraints::{CheckConstraint, Constraint, ForeignKeyConstraint, UniqueConstraint};
+use super::field_codec::{DatabaseStorageKind, FieldDomain};
 use super::fields::{Field, FieldKwarg};
 use super::indexes::Index;
 use super::relationship::RelationshipType;
@@ -18,6 +19,10 @@ pub struct FieldInfo {
 	pub name: String,
 	/// Field type path (e.g., "reinhardt.orm.models.CharField")
 	pub field_type: String,
+	/// Physical database storage used by this field, when known.
+	pub storage_kind: Option<DatabaseStorageKind>,
+	/// Structured value constraints associated with this field.
+	pub domain: Option<FieldDomain>,
 	/// Is this field nullable?
 	pub nullable: bool,
 	/// Is this field the primary key?
@@ -77,6 +82,8 @@ impl FieldInfo {
 		Self {
 			name: deconstruction.name.unwrap_or_else(|| "unknown".to_string()),
 			field_type: deconstruction.path,
+			storage_kind: None,
+			domain: None,
 			nullable: deconstruction
 				.kwargs
 				.get("null")
@@ -164,6 +171,56 @@ impl FieldInfo {
 	/// ```
 	pub fn has_choices(&self) -> bool {
 		self.choices.is_some()
+	}
+}
+
+/// Returns the inspection field path for a typed database storage kind.
+#[doc(hidden)]
+pub fn database_field_type_path(storage_kind: DatabaseStorageKind) -> &'static str {
+	match storage_kind {
+		DatabaseStorageKind::Bool => "reinhardt.orm.models.BooleanField",
+		DatabaseStorageKind::I32 => "reinhardt.orm.models.IntegerField",
+		DatabaseStorageKind::I64 => "reinhardt.orm.models.BigIntegerField",
+		DatabaseStorageKind::F32 | DatabaseStorageKind::F64 => "reinhardt.orm.models.FloatField",
+		DatabaseStorageKind::Decimal => "reinhardt.orm.models.DecimalField",
+		DatabaseStorageKind::String => "reinhardt.orm.models.CharField",
+		DatabaseStorageKind::Bytes => "reinhardt.orm.models.BinaryField",
+		DatabaseStorageKind::Json => "reinhardt.orm.models.JsonField",
+		DatabaseStorageKind::Uuid => "reinhardt.orm.models.UuidField",
+		DatabaseStorageKind::Date => "reinhardt.orm.models.DateField",
+		DatabaseStorageKind::Time => "reinhardt.orm.models.TimeField",
+		DatabaseStorageKind::DateTime => "reinhardt.orm.models.DateTimeField",
+	}
+}
+
+/// Maps typed database storage metadata into migration field metadata.
+#[cfg(feature = "migrations")]
+#[doc(hidden)]
+pub fn database_storage_field_type(
+	storage_kind: DatabaseStorageKind,
+	max_length: Option<u32>,
+) -> crate::migrations::FieldType {
+	use crate::migrations::FieldType;
+
+	match storage_kind {
+		DatabaseStorageKind::Bool => FieldType::Boolean,
+		DatabaseStorageKind::I32 => FieldType::Integer,
+		DatabaseStorageKind::I64 => FieldType::BigInteger,
+		DatabaseStorageKind::F32 => FieldType::Float,
+		DatabaseStorageKind::F64 => FieldType::Double,
+		DatabaseStorageKind::Decimal => FieldType::Decimal {
+			precision: 38,
+			scale: 10,
+		},
+		DatabaseStorageKind::String => FieldType::VarChar(
+			max_length.expect("string database fields require max_length attribute"),
+		),
+		DatabaseStorageKind::Bytes => FieldType::Binary,
+		DatabaseStorageKind::Json => FieldType::JsonBinary,
+		DatabaseStorageKind::Uuid => FieldType::Uuid,
+		DatabaseStorageKind::Date => FieldType::Date,
+		DatabaseStorageKind::Time => FieldType::Time,
+		DatabaseStorageKind::DateTime => FieldType::TimestampTz,
 	}
 }
 

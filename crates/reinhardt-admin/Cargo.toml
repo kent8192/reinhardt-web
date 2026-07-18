@@ -19,7 +19,6 @@ serde_json = { workspace = true }
 serde_urlencoded = { workspace = true }  # Needed for URL codec in server functions
 serde_bytes = { workspace = true }
 thiserror = { workspace = true }
-anyhow = { workspace = true }
 base64 = { workspace = true }
 percent-encoding = "2.3"
 reinhardt-pages = { workspace = true }

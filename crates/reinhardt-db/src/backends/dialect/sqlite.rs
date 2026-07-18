@@ -7,11 +7,18 @@ use tracing::warn;
 
 use crate::backends::{
 	backend::DatabaseBackend,
-	error::Result,
+	error::{DatabaseError, DatabaseErrorKind, Result, map_sqlx_error},
 	types::{
 		DatabaseType, IsolationLevel, QueryResult, QueryValue, Row, Savepoint, TransactionExecutor,
 	},
 };
+
+fn transaction_consumed_error() -> DatabaseError {
+	DatabaseError::new(
+		DatabaseErrorKind::Transaction,
+		"Transaction already consumed",
+	)
+}
 
 /// SQLite database backend
 pub struct SqliteBackend {
@@ -31,7 +38,7 @@ impl SqliteBackend {
 		&self.pool
 	}
 
-	fn bind_value<'q>(
+	pub(crate) fn bind_value<'q>(
 		query: sqlx::query::Query<'q, sqlx::Sqlite, sqlx::sqlite::SqliteArguments<'q>>,
 		value: &'q QueryValue,
 	) -> sqlx::query::Query<'q, sqlx::Sqlite, sqlx::sqlite::SqliteArguments<'q>> {
@@ -46,6 +53,27 @@ impl SqliteBackend {
 			// SQLite stores UUIDs as strings
 			QueryValue::Uuid(u) => query.bind(u.to_string()),
 			QueryValue::Json(value) => query.bind(value.as_deref().cloned().map(sqlx::types::Json)),
+			QueryValue::StringArray(values) => {
+				query.bind(serde_json::to_string(values).expect("string arrays serialize"))
+			}
+			QueryValue::IntArray(values) => {
+				query.bind(serde_json::to_string(values).expect("integer arrays serialize"))
+			}
+			QueryValue::BigIntArray(values) => {
+				query.bind(serde_json::to_string(values).expect("big integer arrays serialize"))
+			}
+			QueryValue::BoolArray(values) => {
+				query.bind(serde_json::to_string(values).expect("boolean arrays serialize"))
+			}
+			QueryValue::FloatArray(values) => {
+				query.bind(serde_json::to_string(values).expect("float arrays serialize"))
+			}
+			QueryValue::DoubleArray(values) => {
+				query.bind(serde_json::to_string(values).expect("double arrays serialize"))
+			}
+			QueryValue::UuidArray(values) => {
+				query.bind(serde_json::to_string(values).expect("UUID arrays serialize"))
+			}
 			QueryValue::Now => {
 				// SQLite uses datetime('now'), which should be part of SQL string
 				// For binding, we use current UTC time
@@ -54,7 +82,7 @@ impl SqliteBackend {
 		}
 	}
 
-	fn convert_row(sqlite_row: SqliteRow) -> Result<Row> {
+	pub(crate) fn convert_row(sqlite_row: SqliteRow) -> Result<Row> {
 		let mut row = Row::new();
 		for column in sqlite_row.columns() {
 			let column_name = column.name();
@@ -160,7 +188,10 @@ impl DatabaseBackend for SqliteBackend {
 		for param in &params {
 			query = Self::bind_value(query, param);
 		}
-		let result = query.execute(self.pool.as_ref()).await?;
+		let result = query
+			.execute(self.pool.as_ref())
+			.await
+			.map_err(map_sqlx_error)?;
 		Ok(QueryResult {
 			rows_affected: result.rows_affected(),
 		})
@@ -171,7 +202,10 @@ impl DatabaseBackend for SqliteBackend {
 		for param in &params {
 			query = Self::bind_value(query, param);
 		}
-		let row = query.fetch_one(self.pool.as_ref()).await?;
+		let row = query
+			.fetch_one(self.pool.as_ref())
+			.await
+			.map_err(map_sqlx_error)?;
 		Self::convert_row(row)
 	}
 
@@ -180,7 +214,10 @@ impl DatabaseBackend for SqliteBackend {
 		for param in &params {
 			query = Self::bind_value(query, param);
 		}
-		let rows = query.fetch_all(self.pool.as_ref()).await?;
+		let rows = query
+			.fetch_all(self.pool.as_ref())
+			.await
+			.map_err(map_sqlx_error)?;
 		rows.into_iter().map(Self::convert_row).collect()
 	}
 
@@ -189,12 +226,15 @@ impl DatabaseBackend for SqliteBackend {
 		for param in &params {
 			query = Self::bind_value(query, param);
 		}
-		let row = query.fetch_optional(self.pool.as_ref()).await?;
+		let row = query
+			.fetch_optional(self.pool.as_ref())
+			.await
+			.map_err(map_sqlx_error)?;
 		row.map(Self::convert_row).transpose()
 	}
 
 	async fn begin(&self) -> Result<Box<dyn TransactionExecutor>> {
-		let tx = self.pool.begin().await?;
+		let tx = self.pool.begin().await.map_err(map_sqlx_error)?;
 		Ok(Box::new(SqliteTransactionExecutor::new(tx)))
 	}
 
@@ -251,7 +291,7 @@ impl DatabaseBackend for SqliteBackend {
 			);
 		}
 
-		let tx = self.pool.begin().await?;
+		let tx = self.pool.begin().await.map_err(map_sqlx_error)?;
 		Ok(Box::new(SqliteTransactionExecutor::new(tx)))
 	}
 
@@ -286,6 +326,27 @@ impl SqliteTransactionExecutor {
 			// SQLite doesn't have native UUID type; bind as string
 			QueryValue::Uuid(u) => query.bind(u.to_string()),
 			QueryValue::Json(value) => query.bind(value.as_deref().cloned().map(sqlx::types::Json)),
+			QueryValue::StringArray(values) => {
+				query.bind(serde_json::to_string(values).expect("string arrays serialize"))
+			}
+			QueryValue::IntArray(values) => {
+				query.bind(serde_json::to_string(values).expect("integer arrays serialize"))
+			}
+			QueryValue::BigIntArray(values) => {
+				query.bind(serde_json::to_string(values).expect("big integer arrays serialize"))
+			}
+			QueryValue::BoolArray(values) => {
+				query.bind(serde_json::to_string(values).expect("boolean arrays serialize"))
+			}
+			QueryValue::FloatArray(values) => {
+				query.bind(serde_json::to_string(values).expect("float arrays serialize"))
+			}
+			QueryValue::DoubleArray(values) => {
+				query.bind(serde_json::to_string(values).expect("double arrays serialize"))
+			}
+			QueryValue::UuidArray(values) => {
+				query.bind(serde_json::to_string(values).expect("UUID arrays serialize"))
+			}
 			QueryValue::Now => query.bind(chrono::Utc::now()),
 		}
 	}
@@ -380,120 +441,96 @@ impl TransactionExecutor for SqliteTransactionExecutor {
 	}
 
 	async fn execute(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<QueryResult> {
-		let tx = self.tx.as_mut().ok_or_else(|| {
-			crate::backends::error::DatabaseError::TransactionError(
-				"Transaction already consumed".to_string(),
-			)
-		})?;
+		let tx = self.tx.as_mut().ok_or_else(transaction_consumed_error)?;
 
 		let mut query = sqlx::query(sql);
 		for param in &params {
 			query = Self::bind_value(query, param);
 		}
-		let result = query.execute(&mut **tx).await?;
+		let result = query.execute(&mut **tx).await.map_err(map_sqlx_error)?;
 		Ok(QueryResult {
 			rows_affected: result.rows_affected(),
 		})
 	}
 
 	async fn fetch_one(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<Row> {
-		let tx = self.tx.as_mut().ok_or_else(|| {
-			crate::backends::error::DatabaseError::TransactionError(
-				"Transaction already consumed".to_string(),
-			)
-		})?;
+		let tx = self.tx.as_mut().ok_or_else(transaction_consumed_error)?;
 
 		let mut query = sqlx::query(sql);
 		for param in &params {
 			query = Self::bind_value(query, param);
 		}
-		let row = query.fetch_one(&mut **tx).await?;
+		let row = query.fetch_one(&mut **tx).await.map_err(map_sqlx_error)?;
 		Self::convert_row(row)
 	}
 
 	async fn fetch_all(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<Vec<Row>> {
-		let tx = self.tx.as_mut().ok_or_else(|| {
-			crate::backends::error::DatabaseError::TransactionError(
-				"Transaction already consumed".to_string(),
-			)
-		})?;
+		let tx = self.tx.as_mut().ok_or_else(transaction_consumed_error)?;
 
 		let mut query = sqlx::query(sql);
 		for param in &params {
 			query = Self::bind_value(query, param);
 		}
-		let rows = query.fetch_all(&mut **tx).await?;
+		let rows = query.fetch_all(&mut **tx).await.map_err(map_sqlx_error)?;
 		rows.into_iter().map(Self::convert_row).collect()
 	}
 
 	async fn fetch_optional(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<Option<Row>> {
-		let tx = self.tx.as_mut().ok_or_else(|| {
-			crate::backends::error::DatabaseError::TransactionError(
-				"Transaction already consumed".to_string(),
-			)
-		})?;
+		let tx = self.tx.as_mut().ok_or_else(transaction_consumed_error)?;
 
 		let mut query = sqlx::query(sql);
 		for param in &params {
 			query = Self::bind_value(query, param);
 		}
-		let row = query.fetch_optional(&mut **tx).await?;
+		let row = query
+			.fetch_optional(&mut **tx)
+			.await
+			.map_err(map_sqlx_error)?;
 		row.map(Self::convert_row).transpose()
 	}
 
 	async fn commit(mut self: Box<Self>) -> Result<()> {
-		let tx = self.tx.take().ok_or_else(|| {
-			crate::backends::error::DatabaseError::TransactionError(
-				"Transaction already consumed".to_string(),
-			)
-		})?;
-		tx.commit().await?;
+		let tx = self.tx.take().ok_or_else(transaction_consumed_error)?;
+		tx.commit().await.map_err(map_sqlx_error)?;
 		Ok(())
 	}
 
 	async fn rollback(mut self: Box<Self>) -> Result<()> {
-		let tx = self.tx.take().ok_or_else(|| {
-			crate::backends::error::DatabaseError::TransactionError(
-				"Transaction already consumed".to_string(),
-			)
-		})?;
-		tx.rollback().await?;
+		let tx = self.tx.take().ok_or_else(transaction_consumed_error)?;
+		tx.rollback().await.map_err(map_sqlx_error)?;
 		Ok(())
 	}
 
 	async fn savepoint(&mut self, name: &str) -> Result<()> {
-		let tx = self.tx.as_mut().ok_or_else(|| {
-			crate::backends::error::DatabaseError::TransactionError(
-				"Transaction already consumed".to_string(),
-			)
-		})?;
+		let tx = self.tx.as_mut().ok_or_else(transaction_consumed_error)?;
 
 		let sp = Savepoint::new(name);
-		sqlx::query(&sp.to_sql()).execute(&mut **tx).await?;
+		sqlx::query(&sp.to_sql())
+			.execute(&mut **tx)
+			.await
+			.map_err(map_sqlx_error)?;
 		Ok(())
 	}
 
 	async fn release_savepoint(&mut self, name: &str) -> Result<()> {
-		let tx = self.tx.as_mut().ok_or_else(|| {
-			crate::backends::error::DatabaseError::TransactionError(
-				"Transaction already consumed".to_string(),
-			)
-		})?;
+		let tx = self.tx.as_mut().ok_or_else(transaction_consumed_error)?;
 
 		let sp = Savepoint::new(name);
-		sqlx::query(&sp.release_sql()).execute(&mut **tx).await?;
+		sqlx::query(&sp.release_sql())
+			.execute(&mut **tx)
+			.await
+			.map_err(map_sqlx_error)?;
 		Ok(())
 	}
 
 	async fn rollback_to_savepoint(&mut self, name: &str) -> Result<()> {
-		let tx = self.tx.as_mut().ok_or_else(|| {
-			crate::backends::error::DatabaseError::TransactionError(
-				"Transaction already consumed".to_string(),
-			)
-		})?;
+		let tx = self.tx.as_mut().ok_or_else(transaction_consumed_error)?;
 
 		let sp = Savepoint::new(name);
-		sqlx::query(&sp.rollback_sql()).execute(&mut **tx).await?;
+		sqlx::query(&sp.rollback_sql())
+			.execute(&mut **tx)
+			.await
+			.map_err(map_sqlx_error)?;
 		Ok(())
 	}
 }

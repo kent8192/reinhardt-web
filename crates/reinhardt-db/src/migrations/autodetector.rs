@@ -141,6 +141,8 @@ pub struct FieldState {
 	pub params: std::collections::HashMap<String, String>,
 	/// Generated-column metadata.
 	pub generated: Option<super::GeneratedColumnDefinition>,
+	/// Structured database value domain.
+	pub domain: Option<crate::field_domain::FieldDomain>,
 	/// ForeignKey information if this field is a foreign key
 	pub foreign_key: Option<ForeignKeyInfo>,
 }
@@ -154,6 +156,7 @@ impl FieldState {
 			nullable,
 			params: std::collections::HashMap::new(),
 			generated: None,
+			domain: None,
 			foreign_key: None,
 		}
 	}
@@ -171,8 +174,15 @@ impl FieldState {
 			nullable,
 			params: std::collections::HashMap::new(),
 			generated: None,
+			domain: None,
 			foreign_key: Some(foreign_key),
 		}
+	}
+
+	/// Sets structured database value domain metadata.
+	pub fn with_domain(mut self, domain: crate::field_domain::FieldDomain) -> Self {
+		self.domain = Some(domain.canonicalized());
+		self
 	}
 }
 
@@ -284,10 +294,41 @@ fn parse_single_column_unique(constraint_sql: &str) -> Option<&str> {
 }
 
 impl ConstraintDefinition {
+	/// Creates a typed enum-domain constraint definition.
+	pub fn enum_domain(
+		name: impl Into<String>,
+		column: impl Into<String>,
+		domain: crate::field_domain::FieldDomain,
+	) -> Self {
+		let domain = domain.canonicalized();
+		Self {
+			name: name.into(),
+			constraint_type: "enum_domain".to_string(),
+			fields: vec![column.into()],
+			expression: Some(
+				serde_json::to_string(&domain).expect("FieldDomain serialization must succeed"),
+			),
+			foreign_key_info: None,
+		}
+	}
+
 	/// Convert ConstraintDefinition to operations::Constraint
 	pub fn to_constraint(&self) -> super::operations::Constraint {
 		match self.constraint_type.as_str() {
+			"enum_domain" => super::operations::Constraint::EnumDomain {
+				name: self.name.clone(),
+				column: self.fields.first().cloned().unwrap_or_default(),
+				domain: serde_json::from_str::<crate::field_domain::FieldDomain>(
+					self.expression.as_deref().unwrap_or(""),
+				)
+				.expect("enum-domain constraint metadata must contain a FieldDomain")
+				.canonicalized(),
+			},
 			"unique" => super::operations::Constraint::Unique {
+				name: self.name.clone(),
+				columns: self.fields.clone(),
+			},
+			"primary_key" => super::operations::Constraint::PrimaryKey {
 				name: self.name.clone(),
 				columns: self.fields.clone(),
 			},
@@ -1412,6 +1453,23 @@ impl ProjectState {
 						model.constraints.push(constraint);
 					}
 				}
+				Operation::AddConstraintDefinition { table, constraint } => {
+					if let Some(model) = self.find_model_by_table_mut(table) {
+						if let super::Constraint::EnumDomain { column, domain, .. } = constraint
+							&& let Some(field) = model.fields.get_mut(column)
+						{
+							field.domain = Some(domain.clone().canonicalized());
+						}
+						let constraint = Self::constraint_to_definition(constraint);
+						if !model
+							.constraints
+							.iter()
+							.any(|existing| existing.name == constraint.name)
+						{
+							model.constraints.push(constraint);
+						}
+					}
+				}
 				Operation::DropConstraint {
 					table,
 					constraint_name,
@@ -1420,6 +1478,18 @@ impl ProjectState {
 						model
 							.constraints
 							.retain(|constraint| constraint.name != *constraint_name);
+					}
+				}
+				Operation::DropConstraintDefinition { table, constraint } => {
+					if let Some(model) = self.find_model_by_table_mut(table) {
+						if let super::Constraint::EnumDomain { column, .. } = constraint
+							&& let Some(field) = model.fields.get_mut(column)
+						{
+							field.domain = None;
+						}
+						model
+							.constraints
+							.retain(|definition| definition.name != constraint.name());
 					}
 				}
 				// Other operations don't affect the schema state in ways we track.
@@ -1475,7 +1545,7 @@ impl ProjectState {
 			.collect()
 	}
 
-	fn constraint_to_definition(
+	pub(crate) fn constraint_to_definition(
 		constraint: &super::operations::Constraint,
 	) -> ConstraintDefinition {
 		match constraint {
@@ -1520,6 +1590,11 @@ impl ProjectState {
 				expression: Some(expression.clone()),
 				foreign_key_info: None,
 			},
+			super::operations::Constraint::EnumDomain {
+				name,
+				column,
+				domain,
+			} => ConstraintDefinition::enum_domain(name.clone(), column.clone(), domain.clone()),
 			super::operations::Constraint::OneToOne {
 				name,
 				column,
@@ -1714,6 +1789,7 @@ impl ProjectState {
 			nullable: !col.not_null,
 			params,
 			generated: col.generated.clone(),
+			domain: col.domain.clone(),
 			foreign_key: None,
 		}
 	}
@@ -1939,6 +2015,64 @@ pub struct MigrationAutodetector {
 	similarity_config: SimilarityConfig,
 }
 
+/// A structured warning produced while comparing migration states.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AutodetectorWarning {
+	/// Existing rows may not satisfy the replacement enum-domain constraint.
+	EnumDomainDataMigrationRequired {
+		/// Database table containing the enum-backed column.
+		table: String,
+		/// Resolved database column name.
+		column: String,
+		/// Domain enforced before the migration.
+		old_domain: crate::field_domain::FieldDomain,
+		/// Domain enforced after the migration.
+		new_domain: crate::field_domain::FieldDomain,
+	},
+}
+
+/// Migration generation output including actionable schema-change warnings.
+#[derive(Debug, Clone)]
+pub struct GeneratedMigrations {
+	/// Generated migrations grouped by application.
+	pub migrations: Vec<super::Migration>,
+	/// Warnings discovered while comparing the migration states.
+	pub warnings: Vec<AutodetectorWarning>,
+}
+
+impl std::fmt::Display for AutodetectorWarning {
+	fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Self::EnumDomainDataMigrationRequired {
+				table,
+				column,
+				old_domain,
+				new_domain,
+			} => {
+				let crate::field_domain::FieldDomain::Enum {
+					values: old_values, ..
+				} = old_domain;
+				let crate::field_domain::FieldDomain::Enum {
+					values: new_values, ..
+				} = new_domain;
+				let removed_values = old_values
+					.iter()
+					.filter(|value| !new_values.contains(value))
+					.map(|value| match value {
+						crate::field_domain::ModelEnumValue::String(value) => value.clone(),
+						crate::field_domain::ModelEnumValue::I32(value) => value.to_string(),
+					})
+					.collect::<Vec<_>>()
+					.join(", ");
+				write!(
+					formatter,
+					"enum domain change for {table}.{column} removes or re-encodes values [{removed_values}]; place a data migration before the new constraint"
+				)
+			}
+		}
+	}
+}
+
 /// Type alias for moved model information:
 /// (from_app, from_model, to_app, to_model, rename_table, old_table, new_table)
 type MovedModelInfo = (
@@ -1969,6 +2103,8 @@ type ModelMatchResult = ((String, String), (String, String), f64);
 /// Detected changes between two project states
 #[derive(Debug, Clone, Default)]
 pub struct DetectedChanges {
+	/// Actionable warnings discovered while comparing schema metadata.
+	pub warnings: Vec<AutodetectorWarning>,
 	/// Models that were created: (app_label, model_name)
 	pub created_models: Vec<(String, String)>,
 	/// Models that were deleted: (app_label, model_name)
@@ -4186,6 +4322,7 @@ impl MigrationAutodetector {
 		self.detect_added_fields(&mut changes);
 		self.detect_removed_fields(&mut changes);
 		self.detect_altered_fields(&mut changes);
+		self.detect_enum_domain_warnings(&mut changes);
 		self.detect_renamed_fields(&mut changes, strict_rename_ambiguity)?;
 
 		// Detect index and constraint changes
@@ -4212,6 +4349,20 @@ impl MigrationAutodetector {
 		changes.renamed_models.sort();
 		changes.renamed_tables.sort();
 		changes.renamed_fields.sort();
+		changes.warnings.sort_by(|left, right| match (left, right) {
+			(
+				AutodetectorWarning::EnumDomainDataMigrationRequired {
+					table: left_table,
+					column: left_column,
+					..
+				},
+				AutodetectorWarning::EnumDomainDataMigrationRequired {
+					table: right_table,
+					column: right_column,
+					..
+				},
+			) => (left_table, left_column).cmp(&(right_table, right_column)),
+		});
 
 		// Sort by (app_label, model_name) for index and constraint changes
 		changes
@@ -4383,6 +4534,63 @@ impl MigrationAutodetector {
 							));
 						}
 					}
+				}
+			}
+		}
+	}
+
+	fn detect_enum_domain_warnings(&self, changes: &mut DetectedChanges) {
+		for ((app_label, model_name), to_model) in &self.to_state.models {
+			let Some(from_model) =
+				self.matching_from_model_for_to_model(app_label, model_name, to_model, changes)
+			else {
+				continue;
+			};
+			for (column, to_field) in &to_model.fields {
+				let Some(from_field) = from_model.fields.get(column) else {
+					continue;
+				};
+				let (old_domain, new_domain) = match (&from_field.domain, &to_field.domain) {
+					(Some(old_domain), Some(new_domain)) => (
+						old_domain.clone().canonicalized(),
+						new_domain.clone().canonicalized(),
+					),
+					(None, Some(new_domain @ crate::field_domain::FieldDomain::Enum { .. })) => {
+						let new_domain = new_domain.clone().canonicalized();
+						changes.warnings.push(
+							AutodetectorWarning::EnumDomainDataMigrationRequired {
+								table: to_model.table_name.clone(),
+								column: column.clone(),
+								old_domain: new_domain.clone(),
+								new_domain,
+							},
+						);
+						continue;
+					}
+					_ => continue,
+				};
+				if old_domain == new_domain {
+					continue;
+				}
+				let crate::field_domain::FieldDomain::Enum {
+					repr: old_repr,
+					values: old_values,
+				} = &old_domain;
+				let crate::field_domain::FieldDomain::Enum {
+					repr: new_repr,
+					values: new_values,
+				} = &new_domain;
+				if old_repr != new_repr
+					|| old_values.iter().any(|value| !new_values.contains(value))
+				{
+					changes
+						.warnings
+						.push(AutodetectorWarning::EnumDomainDataMigrationRequired {
+							table: to_model.table_name.clone(),
+							column: column.clone(),
+							old_domain,
+							new_domain,
+						});
 				}
 			}
 		}
@@ -5741,11 +5949,7 @@ impl MigrationAutodetector {
 				self.matching_from_model_for_to_model(app_label, model_name, to_model, changes)
 			{
 				for to_constraint in &to_model.constraints {
-					if from_model
-						.constraints
-						.iter()
-						.any(|c| c.name == to_constraint.name)
-					{
+					if from_model.constraints.iter().any(|c| c == to_constraint) {
 						continue;
 					}
 					if Self::single_field_unique_already_present(to_constraint, from_model) {
@@ -5791,11 +5995,7 @@ impl MigrationAutodetector {
 				self.matching_to_model_for_from_model(app_label, model_name, from_model, changes)
 			{
 				for from_constraint in &from_model.constraints {
-					if to_model
-						.constraints
-						.iter()
-						.any(|c| c.name == from_constraint.name)
-					{
+					if to_model.constraints.iter().any(|c| c == from_constraint) {
 						continue;
 					}
 					if Self::single_field_unique_already_present(from_constraint, to_model) {
@@ -6176,6 +6376,7 @@ impl MigrationAutodetector {
 				auto_increment: true,
 				default: None,
 				generated: None,
+				domain: None,
 			},
 			// source_id column
 			super::ColumnDefinition {
@@ -6187,6 +6388,7 @@ impl MigrationAutodetector {
 				auto_increment: false,
 				default: None,
 				generated: None,
+				domain: None,
 			},
 			// target_id column
 			super::ColumnDefinition {
@@ -6198,6 +6400,7 @@ impl MigrationAutodetector {
 				auto_increment: false,
 				default: None,
 				generated: None,
+				domain: None,
 			},
 		];
 
@@ -6360,9 +6563,11 @@ impl MigrationAutodetector {
 			| super::Operation::DropColumn { table, .. }
 			| super::Operation::RenameColumn { table, .. }
 			| super::Operation::AddConstraint { table, .. }
+			| super::Operation::AddConstraintDefinition { table, .. }
 			| super::Operation::AddConstraintRepair { table, .. }
 			| super::Operation::RestoreConstraintOnRollback { table, .. }
 			| super::Operation::DropConstraint { table, .. }
+			| super::Operation::DropConstraintDefinition { table, .. }
 			| super::Operation::CreateIndex { table, .. }
 			| super::Operation::CreateIndexRepair { table, .. }
 			| super::Operation::RestoreIndexOnRollback { table, .. }
@@ -6395,6 +6600,7 @@ impl MigrationAutodetector {
 			super::Constraint::PrimaryKey { .. }
 			| super::Constraint::Unique { .. }
 			| super::Constraint::Check { .. }
+			| super::Constraint::EnumDomain { .. }
 			| super::Constraint::Exclude { .. } => false,
 		}
 	}
@@ -6444,6 +6650,9 @@ impl MigrationAutodetector {
 			| super::Operation::AddConstraintRepair { constraint_sql, .. }
 			| super::Operation::RestoreConstraintOnRollback { constraint_sql, .. } => {
 				Self::constraint_sql_references_table(constraint_sql, table_name)
+			}
+			super::Operation::AddConstraintDefinition { constraint, .. } => {
+				Self::constraint_references_table(constraint, table_name)
 			}
 			_ => false,
 		}
@@ -6798,6 +7007,58 @@ impl MigrationAutodetector {
 			}
 		}
 
+		// Enum-domain checks must be removed before a storage-type alteration.
+		// The replacement constraint is emitted after column changes below.
+		let mut retained_enum_constraints = Vec::new();
+		for (app_label, model_name, constraint_name) in &changes.removed_constraints {
+			let Some(from_model) = self.from_state.get_model(app_label, model_name) else {
+				continue;
+			};
+			let Some(constraint) = from_model
+				.constraints
+				.iter()
+				.find(|constraint| constraint.name == *constraint_name)
+			else {
+				continue;
+			};
+			if constraint.constraint_type == "enum_domain" {
+				by_app.entry(app_label.clone()).or_default().push(
+					super::Operation::DropConstraintDefinition {
+						table: from_model.table_name.clone(),
+						constraint: constraint.to_constraint(),
+					},
+				);
+			}
+		}
+		for (app_label, model_name, field_name) in &changes.altered_fields {
+			let Some(from_model) = self.from_state.get_model(app_label, model_name) else {
+				continue;
+			};
+			let Some(to_model) = self.to_state.get_model(app_label, model_name) else {
+				continue;
+			};
+			for constraint in from_model.constraints.iter().filter(|constraint| {
+				constraint.constraint_type == "enum_domain"
+					&& constraint.fields.as_slice() == std::slice::from_ref(field_name)
+					&& to_model
+						.constraints
+						.iter()
+						.any(|to_constraint| to_constraint == *constraint)
+			}) {
+				by_app.entry(app_label.clone()).or_default().push(
+					super::Operation::DropConstraintDefinition {
+						table: from_model.table_name.clone(),
+						constraint: constraint.to_constraint(),
+					},
+				);
+				retained_enum_constraints.push((
+					app_label.clone(),
+					model_name.clone(),
+					constraint.clone(),
+				));
+			}
+		}
+
 		// AlterColumn for changed fields.
 		let mut generated_replacement_columns: BTreeSet<(String, String, String)> = BTreeSet::new();
 		for (app_label, model_name, field_name) in &changes.altered_fields {
@@ -7002,12 +7263,21 @@ impl MigrationAutodetector {
 		// DropConstraint for modified composite PKs (drop before recreate).
 		for (app_label, model_name, constraint_name) in &changes.removed_composite_primary_keys {
 			if let Some(model) = self.from_state.get_model(app_label, model_name) {
-				by_app.entry(app_label.clone()).or_default().push(
-					super::Operation::DropConstraint {
-						table: model.table_name.clone(),
-						constraint_name: constraint_name.clone(),
-					},
-				);
+				let operation = model
+					.constraints
+					.iter()
+					.find(|constraint| constraint.name == *constraint_name)
+					.map_or_else(
+						|| super::Operation::DropConstraint {
+							table: model.table_name.clone(),
+							constraint_name: constraint_name.clone(),
+						},
+						|constraint| super::Operation::DropConstraintDefinition {
+							table: model.table_name.clone(),
+							constraint: constraint.to_constraint(),
+						},
+					);
+				by_app.entry(app_label.clone()).or_default().push(operation);
 			}
 		}
 
@@ -7041,6 +7311,14 @@ impl MigrationAutodetector {
 			if is_composite_pk {
 				continue;
 			}
+			let is_enum_domain = from_model
+				.constraints
+				.iter()
+				.find(|constraint| constraint.name == *constraint_name)
+				.is_some_and(|constraint| constraint.constraint_type == "enum_domain");
+			if is_enum_domain {
+				continue;
+			}
 			let replaced_fields = Self::generated_replacement_fields_for_model(
 				&generated_replacement_columns,
 				app_label,
@@ -7056,13 +7334,21 @@ impl MigrationAutodetector {
 					}) {
 				continue;
 			}
-			by_app
-				.entry(app_label.clone())
-				.or_default()
-				.push(super::Operation::DropConstraint {
-					table: from_model.table_name.clone(),
-					constraint_name: constraint_name.clone(),
-				});
+			let operation = from_model
+				.constraints
+				.iter()
+				.find(|constraint| constraint.name == *constraint_name)
+				.map_or_else(
+					|| super::Operation::DropConstraint {
+						table: from_model.table_name.clone(),
+						constraint_name: constraint_name.clone(),
+					},
+					|constraint| super::Operation::DropConstraintDefinition {
+						table: from_model.table_name.clone(),
+						constraint: constraint.to_constraint(),
+					},
+				);
+			by_app.entry(app_label.clone()).or_default().push(operation);
 		}
 
 		// AddConstraint for non-PK constraints added to existing tables.
@@ -7085,13 +7371,30 @@ impl MigrationAutodetector {
 			let Some(to_model) = self.to_state.get_model(app_label, model_name) else {
 				continue;
 			};
-			let constraint_sql = constraint.to_constraint().to_string();
-			by_app
-				.entry(app_label.clone())
-				.or_default()
-				.push(super::Operation::AddConstraint {
+			let operation = if constraint.constraint_type == "enum_domain" {
+				super::Operation::AddConstraintDefinition {
 					table: to_model.table_name.clone(),
-					constraint_sql,
+					constraint: constraint.to_constraint(),
+				}
+			} else {
+				super::Operation::AddConstraint {
+					table: to_model.table_name.clone(),
+					constraint_sql: constraint.to_constraint().to_string(),
+				}
+			};
+			by_app.entry(app_label.clone()).or_default().push(operation);
+		}
+
+		for (app_label, model_name, constraint) in retained_enum_constraints {
+			let Some(to_model) = self.to_state.get_model(&app_label, &model_name) else {
+				continue;
+			};
+			by_app
+				.entry(app_label)
+				.or_default()
+				.push(super::Operation::AddConstraintDefinition {
+					table: to_model.table_name.clone(),
+					constraint: constraint.to_constraint(),
 				});
 		}
 
@@ -7151,14 +7454,30 @@ impl MigrationAutodetector {
 	/// assert!(!migrations[0].operations.is_empty());
 	/// ```
 	pub fn generate_migrations(&self) -> Vec<super::Migration> {
+		self.generate_migrations_with_warnings().migrations
+	}
+
+	/// Generate migrations together with actionable schema-change warnings.
+	pub fn generate_migrations_with_warnings(&self) -> GeneratedMigrations {
 		let changes = self.detect_changes();
-		self.generate_migrations_from_changes(&changes)
+		GeneratedMigrations {
+			migrations: self.generate_migrations_from_changes(&changes),
+			warnings: changes.warnings,
+		}
 	}
 
 	/// Generate migrations and fail on ambiguous rename-like changes.
 	pub fn try_generate_migrations(&self) -> super::Result<Vec<super::Migration>> {
+		Ok(self.try_generate_migrations_with_warnings()?.migrations)
+	}
+
+	/// Generate migrations and warnings, failing on ambiguous rename-like changes.
+	pub fn try_generate_migrations_with_warnings(&self) -> super::Result<GeneratedMigrations> {
 		let changes = self.try_detect_changes()?;
-		Ok(self.generate_migrations_from_changes(&changes))
+		Ok(GeneratedMigrations {
+			migrations: self.generate_migrations_from_changes(&changes),
+			warnings: changes.warnings,
+		})
 	}
 
 	fn generate_migrations_from_changes(&self, changes: &DetectedChanges) -> Vec<super::Migration> {
@@ -7252,6 +7571,7 @@ impl MigrationAutodetector {
 					auto_increment: true,
 					default: None,
 					generated: None,
+					domain: None,
 				},
 				super::ColumnDefinition {
 					name: source_column.clone(),
@@ -7262,6 +7582,7 @@ impl MigrationAutodetector {
 					auto_increment: false,
 					default: None,
 					generated: None,
+					domain: None,
 				},
 				super::ColumnDefinition {
 					name: target_column.clone(),
@@ -7272,6 +7593,7 @@ impl MigrationAutodetector {
 					auto_increment: false,
 					default: None,
 					generated: None,
+					domain: None,
 				},
 			];
 
@@ -8222,6 +8544,69 @@ mod tests {
 	}
 
 	#[rstest]
+	fn altered_enum_column_recreates_unchanged_domain_constraint() {
+		// Arrange
+		let from_field = FieldState::new("status", super::super::FieldType::VarChar(16), false);
+		let to_field = FieldState::new("status", super::super::FieldType::VarChar(32), false);
+		let domain = crate::field_domain::FieldDomain::Enum {
+			repr: crate::field_domain::ModelEnumRepr::String,
+			values: vec![
+				crate::field_domain::ModelEnumValue::String("queued".to_string()),
+				crate::field_domain::ModelEnumValue::String("completed".to_string()),
+			],
+		};
+		let constraint =
+			ConstraintDefinition::enum_domain("ck_accounts_user_status_enum", "status", domain);
+		let from_model = build_model_state(
+			"accounts",
+			"User",
+			vec![from_field],
+			Vec::new(),
+			vec![constraint.clone()],
+		);
+		let to_model = build_model_state(
+			"accounts",
+			"User",
+			vec![to_field],
+			Vec::new(),
+			vec![constraint],
+		);
+		let detector = MigrationAutodetector::new(
+			build_project_state(vec![(
+				("accounts".to_string(), "User".to_string()),
+				from_model,
+			)]),
+			build_project_state(vec![(
+				("accounts".to_string(), "User".to_string()),
+				to_model,
+			)]),
+		);
+
+		// Act
+		let operations = detector.generate_operations();
+
+		// Assert
+		assert_eq!(operations.len(), 3, "unexpected operations: {operations:?}");
+		assert!(matches!(
+			&operations[0],
+			super::super::Operation::DropConstraintDefinition { table, constraint }
+				if table == "accounts_user"
+					&& constraint.name() == "ck_accounts_user_status_enum"
+		));
+		assert!(matches!(
+			&operations[1],
+			super::super::Operation::AlterColumn { table, column, .. }
+				if table == "accounts_user" && column == "status"
+		));
+		assert!(matches!(
+			&operations[2],
+			super::super::Operation::AddConstraintDefinition { table, constraint }
+				if table == "accounts_user"
+					&& constraint.name() == "ck_accounts_user_status_enum"
+		));
+	}
+
+	#[rstest]
 	fn apply_migration_operations_replays_foreign_key_add_constraint() {
 		// Arrange
 		let create_posts = super::super::Operation::CreateTable {
@@ -8236,6 +8621,7 @@ mod tests {
 					auto_increment: true,
 					default: None,
 					generated: None,
+					domain: None,
 				},
 				super::super::ColumnDefinition {
 					name: "user_id".to_string(),
@@ -8246,6 +8632,7 @@ mod tests {
 					auto_increment: false,
 					default: None,
 					generated: None,
+					domain: None,
 				},
 			],
 			constraints: vec![],
@@ -8298,6 +8685,7 @@ mod tests {
 					auto_increment: true,
 					default: None,
 					generated: None,
+					domain: None,
 				},
 				super::super::ColumnDefinition {
 					name: "user_id".to_string(),
@@ -8308,6 +8696,7 @@ mod tests {
 					auto_increment: false,
 					default: None,
 					generated: None,
+					domain: None,
 				},
 			],
 			constraints: vec![],
@@ -8352,6 +8741,7 @@ mod tests {
 					auto_increment: true,
 					default: None,
 					generated: None,
+					domain: None,
 				},
 				super::super::ColumnDefinition {
 					name: "user_id".to_string(),
@@ -8362,6 +8752,7 @@ mod tests {
 					auto_increment: false,
 					default: None,
 					generated: None,
+					domain: None,
 				},
 			],
 			constraints: vec![],
@@ -10756,6 +11147,7 @@ mod tests {
 			nullable: false,
 			params: std::collections::HashMap::new(),
 			generated: None,
+			domain: None,
 			foreign_key: None,
 		};
 		let mut to_params = std::collections::HashMap::new();
@@ -10768,6 +11160,7 @@ mod tests {
 			nullable: false,
 			params: to_params,
 			generated: None,
+			domain: None,
 			foreign_key: None,
 		};
 
@@ -12361,8 +12754,10 @@ mod tests {
 
 		// Assert — expect DropConstraint followed by CreateCompositePrimaryKey
 		let drop_op = operations.iter().find(|op| {
-			matches!(op, super::super::Operation::DropConstraint { constraint_name, .. }
-				if constraint_name == "billing_invoice_pkey")
+			matches!(op, super::super::Operation::DropConstraintDefinition {
+				constraint: super::super::Constraint::PrimaryKey { name, columns }, ..
+			} if name == "billing_invoice_pkey"
+				&& columns == &["id".to_string(), "tenant_id".to_string()])
 		});
 		let create_op = operations.iter().find(|op| {
 			matches!(op, super::super::Operation::CreateCompositePrimaryKey { columns, .. }
@@ -12370,7 +12765,7 @@ mod tests {
 		});
 		assert!(
 			drop_op.is_some(),
-			"expected DropConstraint for modified composite PK, got: {:?}",
+			"expected typed DropConstraintDefinition for modified composite PK, got: {:?}",
 			operations
 		);
 		assert!(
@@ -12564,21 +12959,18 @@ mod tests {
 			"expected exactly one DropConstraint operation, got: {:?}",
 			operations
 		);
-		let super::super::Operation::DropConstraint {
+		let super::super::Operation::DropConstraintDefinition {
 			table,
-			constraint_name,
+			constraint: super::super::Constraint::Unique { name, .. },
 		} = &operations[0]
 		else {
 			panic!(
-				"expected Operation::DropConstraint, got: {:?}",
+				"expected Operation::DropConstraintDefinition, got: {:?}",
 				operations[0]
 			);
 		};
 		assert_eq!(table, "clusters_cluster");
-		assert_eq!(
-			constraint_name,
-			"clusters_cluster_organization_id_name_uniq"
-		);
+		assert_eq!(name, "clusters_cluster_organization_id_name_uniq");
 	}
 
 	#[rstest]
@@ -12720,21 +13112,18 @@ mod tests {
 			"expected exactly one DropConstraint operation, got: {:?}",
 			operations
 		);
-		let super::super::Operation::DropConstraint {
+		let super::super::Operation::DropConstraintDefinition {
 			table,
-			constraint_name,
+			constraint: super::super::Constraint::Unique { name, .. },
 		} = &operations[0]
 		else {
 			panic!(
-				"expected Operation::DropConstraint, got: {:?}",
+				"expected Operation::DropConstraintDefinition, got: {:?}",
 				operations[0]
 			);
 		};
 		assert_eq!(table, "clusters_cluster");
-		assert_eq!(
-			constraint_name,
-			"clusters_cluster_organization_id_name_uniq"
-		);
+		assert_eq!(name, "clusters_cluster_organization_id_name_uniq");
 	}
 
 	#[rstest]
@@ -12760,6 +13149,7 @@ mod tests {
 			nullable: false,
 			params: from_params,
 			generated: None,
+			domain: None,
 			foreign_key: None,
 		};
 
@@ -12782,6 +13172,7 @@ mod tests {
 			nullable: false,
 			params: to_params,
 			generated: None,
+			domain: None,
 			foreign_key: None,
 		};
 
@@ -12823,6 +13214,7 @@ mod tests {
 			nullable: false,
 			params: from_id_params,
 			generated: None,
+			domain: None,
 			foreign_key: None,
 		};
 		let org_field = FieldState::new("organization_id", super::super::FieldType::Integer, false);
@@ -12857,6 +13249,7 @@ mod tests {
 			nullable: false,
 			params: to_id_params,
 			generated: None,
+			domain: None,
 			foreign_key: None,
 		};
 		let unique_constraint = ConstraintDefinition {
@@ -12998,6 +13391,7 @@ mod tests {
 					auto_increment: true,
 					default: None,
 					generated: None,
+					domain: None,
 				},
 				super::super::ColumnDefinition {
 					name: "name".to_string(),
@@ -13008,6 +13402,7 @@ mod tests {
 					auto_increment: false,
 					default: None,
 					generated: None,
+					domain: None,
 				},
 			],
 			constraints: vec![],
@@ -13105,6 +13500,7 @@ mod tests {
 					auto_increment: true,
 					default: None,
 					generated: None,
+					domain: None,
 				},
 				super::super::ColumnDefinition {
 					name: "target_id".to_string(),
@@ -13115,6 +13511,7 @@ mod tests {
 					auto_increment: false,
 					default: None,
 					generated: None,
+					domain: None,
 				},
 			],
 			constraints: vec![],
@@ -13197,6 +13594,7 @@ mod tests {
 					auto_increment: false,
 					default: None,
 					generated: None,
+					domain: None,
 				},
 				super::super::ColumnDefinition {
 					name: "username".to_string(),
@@ -13207,6 +13605,7 @@ mod tests {
 					auto_increment: false,
 					default: None,
 					generated: None,
+					domain: None,
 				},
 				super::super::ColumnDefinition {
 					name: "email".to_string(),
@@ -13217,6 +13616,7 @@ mod tests {
 					auto_increment: false,
 					default: None,
 					generated: None,
+					domain: None,
 				},
 				super::super::ColumnDefinition {
 					name: "first_name".to_string(),
@@ -13227,6 +13627,7 @@ mod tests {
 					auto_increment: false,
 					default: Some("''".to_string()),
 					generated: None,
+					domain: None,
 				},
 				super::super::ColumnDefinition {
 					name: "last_name".to_string(),
@@ -13237,6 +13638,7 @@ mod tests {
 					auto_increment: false,
 					default: Some("''".to_string()),
 					generated: None,
+					domain: None,
 				},
 				super::super::ColumnDefinition {
 					name: "is_active".to_string(),
@@ -13247,6 +13649,7 @@ mod tests {
 					auto_increment: false,
 					default: Some("true".to_string()),
 					generated: None,
+					domain: None,
 				},
 				super::super::ColumnDefinition {
 					name: "is_staff".to_string(),
@@ -13257,6 +13660,7 @@ mod tests {
 					auto_increment: false,
 					default: Some("false".to_string()),
 					generated: None,
+					domain: None,
 				},
 				super::super::ColumnDefinition {
 					name: "is_superuser".to_string(),
@@ -13267,6 +13671,7 @@ mod tests {
 					auto_increment: false,
 					default: Some("false".to_string()),
 					generated: None,
+					domain: None,
 				},
 			],
 			constraints: vec![super::super::operations::Constraint::Unique {
@@ -13293,6 +13698,7 @@ mod tests {
 					auto_increment: true,
 					default: None,
 					generated: None,
+					domain: None,
 				},
 				super::super::ColumnDefinition {
 					name: "name".to_string(),
@@ -13303,6 +13709,7 @@ mod tests {
 					auto_increment: false,
 					default: None,
 					generated: None,
+					domain: None,
 				},
 			],
 			constraints: vec![],
@@ -13579,21 +13986,18 @@ mod tests {
 			"expected exactly one operation in the migration, got: {:?}",
 			migrations[0].operations
 		);
-		let super::super::Operation::DropConstraint {
+		let super::super::Operation::DropConstraintDefinition {
 			table,
-			constraint_name,
+			constraint: super::super::Constraint::Unique { name, .. },
 		} = &migrations[0].operations[0]
 		else {
 			panic!(
-				"expected Operation::DropConstraint, got: {:?}",
+				"expected Operation::DropConstraintDefinition, got: {:?}",
 				migrations[0].operations[0]
 			);
 		};
 		assert_eq!(table, "clusters_cluster");
-		assert_eq!(
-			constraint_name,
-			"clusters_cluster_organization_id_name_uniq"
-		);
+		assert_eq!(name, "clusters_cluster_organization_id_name_uniq");
 	}
 
 	#[rstest]
@@ -13975,6 +14379,7 @@ mod tests {
 					auto_increment: false,
 					default: None,
 					generated: None,
+					domain: None,
 				},
 				mysql_options: None,
 			},

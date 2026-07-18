@@ -11,6 +11,7 @@
 //! - `#[server_fnset]` - Named server function set macro
 //! - `#[client_page]` - Client page function macro with native route-table stubs
 //! - `#[layout]` - Route-backed layout component macro for `ClientRouter`
+//! - `#[loader]` - Async route-level data loader with hydration registration
 //! - `#[wasm_server_api]` - API parity guard for matching WASM/server surfaces
 //!
 //! ## Form Design
@@ -84,6 +85,7 @@ mod crate_paths;
 mod form;
 mod from_request;
 mod head;
+mod loader;
 mod page;
 mod page_props;
 mod server_fn;
@@ -192,6 +194,16 @@ pub fn component(args: TokenStream, input: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn layout(args: TokenStream, input: TokenStream) -> TokenStream {
 	component::layout_impl(args, input)
+}
+
+/// Declares an async route-level data loader.
+///
+/// The original function remains directly callable. The generated marker is
+/// used by `#[component(loader = ...)]`/`#[layout(loader = ...)]`, the shared
+/// query-cache executor, and SSR hydration deserialization.
+#[proc_macro_attribute]
+pub fn loader(args: TokenStream, input: TokenStream) -> TokenStream {
+	loader::loader_impl(args, input)
 }
 
 /// Declares public APIs with matching WASM and server-side surfaces.

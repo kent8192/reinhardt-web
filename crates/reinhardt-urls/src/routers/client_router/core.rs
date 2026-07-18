@@ -3,7 +3,7 @@
 //! This module provides the main ClientRouter struct and routing logic.
 //! The router uses `Page` type for all view rendering.
 
-use super::component::ComponentInfo;
+use super::component::{ComponentInfo, ComponentMetadata};
 use super::error::{MergeError, RouteRegistrationError, RouterError};
 use super::from_request::FromRequest;
 use super::handler::{
@@ -11,8 +11,13 @@ use super::handler::{
 	result_handler, with_params_handler,
 };
 #[cfg(wasm)]
+use super::history::current_location_path;
+#[cfg(native)]
+use super::history::current_path;
+#[cfg(wasm)]
 use super::history::setup_popstate_listener;
-use super::history::{HistoryState, NavigationType, current_path, push_state, replace_state};
+use super::history::{HistoryState, NavigationType, push_state, replace_state};
+use super::loader::RouteLoaderId;
 use super::params::{FromPath, ParamContext, Path};
 use super::pattern::ClientPathPattern;
 use super::scope::{RegisteredRouteScope, RouteScope};
@@ -211,6 +216,8 @@ pub struct ClientRoute {
 	name: Option<String>,
 	/// Route-level metadata.
 	metadata: RouteMetadata,
+	/// Optional loader metadata for a flat component registration.
+	loader_id: Option<RouteLoaderId>,
 	/// The route handler.
 	handler: ClientRouteHandler,
 	/// Optional guard function.
@@ -237,6 +244,7 @@ impl Clone for ClientRoute {
 			pattern: self.pattern.clone(),
 			name: self.name.clone(),
 			metadata: self.metadata.clone(),
+			loader_id: self.loader_id,
 			handler: self.handler.clone(),
 			guard: self.guard.clone(),
 		}
@@ -300,6 +308,7 @@ impl ClientRoute {
 			pattern,
 			name,
 			metadata: RouteMetadata::default(),
+			loader_id: None,
 			handler: ClientRouteHandler::Leaf(handler),
 			guard: None,
 		}
@@ -314,6 +323,7 @@ impl ClientRoute {
 			pattern,
 			name,
 			metadata: RouteMetadata::default(),
+			loader_id: None,
 			handler: ClientRouteHandler::Layout(handler),
 			guard: None,
 		}
@@ -336,6 +346,14 @@ impl ClientRoute {
 
 	pub(crate) fn set_metadata(&mut self, metadata: RouteMetadata) {
 		self.metadata = metadata;
+	}
+
+	pub(crate) fn set_loader_id(&mut self, loader_id: Option<RouteLoaderId>) {
+		self.loader_id = loader_id;
+	}
+
+	pub(crate) fn loader_id(&self) -> Option<RouteLoaderId> {
+		self.loader_id
 	}
 
 	pub(crate) fn set_guard(&mut self, guard: RouteGuard) {
@@ -489,6 +507,9 @@ impl Default for ClientRouter {
 impl ClientRouter {
 	/// Creates a new router.
 	pub fn new() -> Self {
+		#[cfg(wasm)]
+		let initial_path = current_location_path().unwrap_or_else(|_| "/".to_string());
+		#[cfg(native)]
 		let initial_path = current_path().unwrap_or_else(|_| "/".to_string());
 		let (current_path, current_params, current_route_name, navigation_scope) =
 			create_navigation_signals(initial_path);
@@ -837,12 +858,18 @@ impl ClientRouter {
 		P: FromRequest + Send + Sync + 'static,
 	{
 		let index = self.routes.len();
-		self.routes.push(ClientRoute::from_route_handler(
+		let loader_id = inventory::iter::<ComponentMetadata>
+			.into_iter()
+			.find(|metadata| metadata.name == name && metadata.path == pattern)
+			.and_then(|metadata| metadata.loader_id);
+		let mut route = ClientRoute::from_route_handler(
 			Some(name.to_string()),
 			ClientPathPattern::new(pattern)
 				.unwrap_or_else(|e| panic!("Invalid route pattern '{}': {}", pattern, e)),
 			from_request_handler(handler, pattern.to_string()),
-		));
+		);
+		route.set_loader_id(loader_id);
+		self.routes.push(route);
 		self.insert_named_route(name, index);
 		self
 	}
@@ -871,7 +898,11 @@ impl ClientRouter {
 		F: Fn(P) -> Page + Send + Sync + 'static,
 		P: FromRequest + ComponentInfo + Send + Sync + 'static,
 	{
-		self.page(P::name(), P::path(), handler)
+		let mut router = self.page(P::name(), P::path(), handler);
+		if let Some(index) = router.named_routes.get(P::name()).copied() {
+			router.routes[index].set_loader_id(P::loader_id());
+		}
+		router
 	}
 
 	/// Adds a route with a guard.
@@ -1038,6 +1069,7 @@ impl ClientRouter {
 				None,
 				None,
 				None,
+				leaf.route.loader_id(),
 				leaf.route.metadata().clone(),
 			);
 			ClientRouteTreeMatch::new(leaf, Vec::new(), leaf_metadata)
@@ -1106,57 +1138,81 @@ impl ClientRouter {
 		self.navigate(path, NavigationType::Replace)
 	}
 
-	/// Internal navigation implementation.
-	fn navigate(&self, path: &str, nav_type: NavigationType) -> Result<(), RouterError> {
-		let route_match = self.match_path(path);
+	/// Commits an already matched route after any asynchronous preparation.
+	///
+	/// Matching and guard evaluation are deliberately separate from this
+	/// operation. `Push` and `Replace` update browser history first; `Pop` and
+	/// the signal-only `Initial` path do not create a new entry. Signals and
+	/// observers are updated exactly once after the history operation succeeds.
+	pub fn commit_match(
+		&self,
+		path: &str,
+		matched: &ClientRouteTreeMatch,
+		navigation: NavigationType,
+		entry_index: i64,
+	) -> Result<(), RouterError> {
+		let leaf = matched.leaf_match();
+		let mut state = HistoryState::new(path)
+			.with_params(leaf.params.clone())
+			.with_entry_index(entry_index);
+		if let Some(name) = leaf.route.name() {
+			state = state.with_route_name(name);
+		}
 
-		let state = HistoryState::new(path)
-			.with_params(
-				route_match
-					.as_ref()
-					.map(|m| m.params.clone())
-					.unwrap_or_default(),
-			)
-			.with_route_name(
-				route_match
-					.as_ref()
-					.and_then(|m| m.route.name())
-					.unwrap_or(""),
-			);
-
-		let result = match nav_type {
+		match navigation {
 			NavigationType::Push => push_state(&state),
 			NavigationType::Replace => replace_state(&state),
-			_ => Ok(()),
-		};
+			// The launcher normalizes the first entry before preparation. Keeping
+			// this commit signal-only preserves host state upgraded during launch.
+			NavigationType::Initial => Ok(()),
+			NavigationType::Pop => Ok(()),
+		}
+		.map_err(RouterError::NavigationFailed)?;
 
-		result.map_err(RouterError::NavigationFailed)?;
-
-		// Update reactive signals
 		self.current_path.set(path.to_string());
-		self.current_params.set(
-			route_match
-				.as_ref()
-				.map(|m| m.params.clone())
-				.unwrap_or_default(),
-		);
-		self.current_route_name.set(
-			route_match
-				.as_ref()
-				.and_then(|m| m.route.name().map(|s| s.to_string())),
-		);
-
-		// (Refs #4234, Inv-1, Inv-5) Invoke registered navigation observers
-		// AFTER the history mutation succeeds and AFTER signal updates so
-		// listeners reading `Signal::get` from inside their closure see the
-		// new state. Mirrors `pages::Router::navigate`.
-		let params_for_observers = route_match
-			.as_ref()
-			.map(|m| m.params.clone())
-			.unwrap_or_default();
-		self.notify_observers(path, &params_for_observers);
-
+		self.current_params.set(leaf.params.clone());
+		self.current_route_name
+			.set(leaf.route.name().map(str::to_string));
+		self.notify_observers(path, &leaf.params);
 		Ok(())
+	}
+
+	/// Commits a path that has no matching route so the configured not-found
+	/// renderer observes the navigation just like a direct [`Self::push`].
+	pub fn commit_unmatched(
+		&self,
+		path: &str,
+		navigation: NavigationType,
+		entry_index: i64,
+	) -> Result<(), RouterError> {
+		let state = HistoryState::new(path).with_entry_index(entry_index);
+		match navigation {
+			NavigationType::Push => push_state(&state),
+			NavigationType::Replace => replace_state(&state),
+			NavigationType::Initial => Ok(()),
+			NavigationType::Pop => Ok(()),
+		}
+		.map_err(RouterError::NavigationFailed)?;
+
+		self.current_path.set(path.to_string());
+		let params = HashMap::new();
+		self.current_params.set(params.clone());
+		self.current_route_name.set(None);
+		self.notify_observers(path, &params);
+		Ok(())
+	}
+
+	/// Internal navigation implementation.
+	fn navigate(&self, path: &str, nav_type: NavigationType) -> Result<(), RouterError> {
+		if let Some(matched) = self.match_tree(path) {
+			if !matched.loader_ids().is_empty() {
+				return Err(RouterError::NavigationFailed(
+					"route loaders require navigation through reinhardt-pages".to_string(),
+				));
+			}
+			return self.commit_match(path, &matched, nav_type, 0);
+		}
+		self.commit_unmatched(path, nav_type, 0)
 	}
 
 	/// Register a listener for navigation events.
@@ -1466,9 +1522,34 @@ fn dispatch_navigation_observers(
 
 #[cfg(test)]
 mod tests {
+	use super::super::from_request::{ExtractError, RouteContext};
 	use super::*;
 	use reinhardt_core::reactive::{Effect, ReactiveScope, with_runtime};
 	use rstest::*;
+
+	struct LoaderBoundPageProps;
+
+	impl FromRequest for LoaderBoundPageProps {
+		fn from_request(_ctx: &RouteContext) -> Result<Self, ExtractError> {
+			Ok(Self)
+		}
+	}
+
+	inventory::submit! {
+		ComponentMetadata {
+			path: "/loaded/",
+			name: "loaded-page",
+			component_name: "LoadedPage",
+			function_name: "loaded_page",
+			props_type_name: "LoadedPageProps",
+			module_path: module_path!(),
+			loader_id: Some(RouteLoaderId::new("test:loaded-page")),
+		}
+	}
+
+	fn loaded_page(_props: LoaderBoundPageProps) -> Page {
+		Page::Empty
+	}
 
 	fn test_page() -> Page {
 		Page::Empty
@@ -1736,6 +1817,24 @@ mod tests {
 
 			// Non-WASM replace should succeed
 			assert!(router.replace("/").is_ok());
+		});
+	}
+
+	#[test]
+	fn page_registration_preserves_component_loader_metadata() {
+		ReactiveScope::run(|| {
+			let router = ClientRouter::new().page("loaded-page", "/loaded/", loaded_page);
+			let matched = router.match_tree("/loaded/").expect("route matches");
+
+			assert_eq!(
+				matched.loader_ids(),
+				&[RouteLoaderId::new("test:loaded-page")]
+			);
+			assert!(matches!(
+				router.push("/loaded/"),
+				Err(RouterError::NavigationFailed(message))
+					if message == "route loaders require navigation through reinhardt-pages"
+			));
 		});
 	}
 

@@ -14,6 +14,7 @@ use darling::FromMeta;
 use darling::ast::NestedMeta;
 use proc_macro::TokenStream;
 use quote::quote;
+use syn::ext::IdentExt;
 use syn::punctuated::Punctuated;
 use syn::{FnArg, ItemFn, Meta, Token, parse_macro_input};
 
@@ -59,7 +60,7 @@ fn generate_inject_resolver_expr(
 /// assert_eq!(pascal.to_string(), "GetUserList");
 /// ```
 fn to_pascal_case_ident(ident: &proc_macro2::Ident) -> proc_macro2::Ident {
-	let pascal_name = ident.to_string().to_case(Case::Pascal);
+	let pascal_name = ident.unraw().to_string().to_case(Case::Pascal);
 	quote::format_ident!("{}", pascal_name)
 }
 
@@ -233,9 +234,37 @@ pub(crate) fn is_extractor_type(ty: &syn::Type) -> bool {
 		&& let Some(last_seg) = type_path.path.segments.last()
 	{
 		let name = last_seg.ident.to_string();
+		if name == "PolicyPrincipal" {
+			return is_model_policy_principal_type(ty);
+		}
 		return KNOWN_EXTRACTOR_TYPES.contains(&name.as_str());
 	}
 	false
+}
+
+fn is_model_policy_principal_type(ty: &syn::Type) -> bool {
+	let syn::Type::Path(type_path) = ty else {
+		return false;
+	};
+	if type_path.path.leading_colon.is_some() || type_path.path.segments.len() != 1 {
+		return false;
+	}
+	let Some(segment) = type_path.path.segments.last() else {
+		return false;
+	};
+	if segment.ident != "PolicyPrincipal" {
+		return false;
+	}
+	let syn::PathArguments::AngleBracketed(arguments) = &segment.arguments else {
+		return false;
+	};
+	let Some(syn::GenericArgument::Type(syn::Type::Path(resource))) = arguments.args.first() else {
+		return false;
+	};
+	resource.path.segments.last().is_some_and(|segment| {
+		let name = segment.ident.to_string();
+		name.ends_with("Resource") || name.starts_with("__ReinhardtServerFnSetResource")
+	})
 }
 
 /// Detect parameters that implement `FromRequest` (extractors).
@@ -1506,7 +1535,7 @@ fn generate_server_handler(
 	// the function because Rust's value namespace doesn't allow both a function
 	// and a `use` item with the same name in the same module.
 	let marker_module_name = name.clone();
-	let metadata_alias_prefix = name.to_string().to_case(Case::Pascal);
+	let metadata_alias_prefix = name.unraw().to_string().to_case(Case::Pascal);
 	let response_alias = quote::format_ident!("__ServerFn{}Response", metadata_alias_prefix);
 	let error_alias = quote::format_ident!("__ServerFn{}Error", metadata_alias_prefix);
 	let request_alias = quote::format_ident!("__ServerFn{}Request", metadata_alias_prefix);
@@ -2316,6 +2345,12 @@ mod tests {
 
 		let ty: syn::Type = parse_quote!(Body);
 		assert!(is_extractor_type(&ty), "Body should be an extractor");
+
+		let ty: syn::Type = parse_quote!(PolicyPrincipal<ArticleResource>);
+		assert!(
+			is_extractor_type(&ty),
+			"model PolicyPrincipal should be an extractor"
+		);
 	}
 
 	/// Tests for `is_extractor_type` — verifies that non-extractor types return false.
@@ -2345,6 +2380,12 @@ mod tests {
 		assert!(
 			!is_extractor_type(&ty),
 			"Vec<String> should not be an extractor"
+		);
+
+		let ty: syn::Type = parse_quote!(PolicyPrincipal<String>);
+		assert!(
+			!is_extractor_type(&ty),
+			"unrelated PolicyPrincipal types should not be extractors"
 		);
 	}
 

@@ -5,7 +5,7 @@
 
 use async_trait::async_trait;
 use hyper::{Method, Uri};
-use reinhardt_core::exception::Result;
+use reinhardt_core::exception::{DatabaseError, DatabaseErrorKind, Result};
 use reinhardt_http::{Handler, Middleware};
 use reinhardt_http::{Request, Response};
 use std::sync::Arc;
@@ -137,9 +137,13 @@ impl BrowsableApiMiddleware {
 		response: Response,
 	) -> reinhardt_core::exception::Result<Response> {
 		// Parse JSON response
-		let json_body: serde_json::Value = serde_json::from_slice(&response.body).map_err(|e| {
-			reinhardt_core::exception::Error::Other(anyhow::anyhow!("Failed to parse JSON: {}", e))
-		})?;
+		let json_body: serde_json::Value =
+			serde_json::from_slice(&response.body).map_err(|error| {
+				DatabaseError::new(
+					DatabaseErrorKind::Query,
+					format!("Failed to parse downstream JSON response: {error}"),
+				)
+			})?;
 
 		// Extract CSRF token from response cookies for form inclusion
 		let csrf_token = Self::extract_csrf_token(&response);
@@ -171,8 +175,8 @@ impl BrowsableApiMiddleware {
 		};
 
 		// Render HTML
-		let html = self.renderer.render(&context).map_err(|e| {
-			reinhardt_core::exception::Error::Other(anyhow::anyhow!("Failed to render HTML: {}", e))
+		let html = self.renderer.render(&context).map_err(|error| {
+			reinhardt_core::exception::Error::Internal(format!("Failed to render HTML: {error}"))
 		})?;
 
 		// Create new response with HTML body, preserving Set-Cookie headers

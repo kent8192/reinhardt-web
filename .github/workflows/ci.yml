@@ -462,6 +462,15 @@ jobs:
       runner: ${{ needs.determine-runner.outputs.runner }}
       cargo-build-jobs: ${{ needs.determine-runner.outputs.cargo-build-jobs }}
 
+  anyhow-check:
+    name: Anyhow Check
+    needs: [determine-runner, check-branch-status]
+    if: needs.check-branch-status.outputs.has-conflicts != 'true'
+    uses: ./.github/workflows/anyhow-check.yml
+    with:
+      runner: ${{ needs.determine-runner.outputs.runner }}
+      cargo-build-jobs: ${{ needs.determine-runner.outputs.cargo-build-jobs }}
+
   version-markers:
     name: Version Markers Lint
     needs: [check-branch-status]
@@ -471,6 +480,14 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+
+      - name: Install ripgrep
+        run: sudo apt-get update && sudo apt-get install --yes ripgrep
+
+      - name: Setup Rust
+        uses: ./.github/actions/setup-rust
+        with:
+          cache-key: version-markers
 
       - name: Run shell-script tests
         run: bash scripts/tests/run-all.sh
@@ -655,6 +672,7 @@ jobs:
       - wasm-check
       - publish-check
       - todo-check
+      - anyhow-check
       - feature-check
       - security-audit
       - terraform-check
@@ -686,6 +704,7 @@ jobs:
             "clippy:${{ needs.clippy.result }}"
             "wasm-check:${{ needs.wasm-check.result }}"
             "todo-check:${{ needs.todo-check.result }}"
+            "anyhow-check:${{ needs.anyhow-check.result }}"
             "security-audit:${{ needs.security-audit.result }}"
             "docs-rs-check:${{ needs.docs-rs-check.result }}"
             "cross-platform-check:${{ needs.cross-platform-check.result }}"

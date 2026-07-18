@@ -41,7 +41,9 @@
 //! Copyright 2005-2025 SQLAlchemy authors and contributors
 //! Licensed under MIT License. See THIRD-PARTY-NOTICES for details.
 
-use crate::backends::{DatabaseError, DatabaseType, Row as DbRow, connection::DatabaseConnection};
+use crate::backends::error::map_sqlx_error;
+use crate::backends::{DatabaseType, Row as DbRow, connection::DatabaseConnection};
+use reinhardt_core::exception::Result;
 use sqlx::{Any, AnyPool, pool::PoolOptions};
 use std::time::Duration;
 
@@ -143,7 +145,7 @@ pub struct Engine {
 impl Engine {
 	/// Create a new engine from config
 	///
-	pub async fn from_config(config: EngineConfig) -> Result<Self, sqlx::Error> {
+	pub async fn from_config(config: EngineConfig) -> Result<Self> {
 		let mut pool_options = PoolOptions::<Any>::new()
 			.min_connections(config.pool_min_size)
 			.max_connections(config.pool_max_size)
@@ -159,7 +161,10 @@ impl Engine {
 			pool_options = pool_options.max_lifetime(Duration::from_secs(max_lifetime));
 		}
 
-		let pool = pool_options.connect(&config.url).await?;
+		let pool = pool_options
+			.connect(&config.url)
+			.await
+			.map_err(map_sqlx_error)?;
 
 		Ok(Self { pool, config })
 	}
@@ -177,57 +182,66 @@ impl Engine {
 	///
 	/// **Note:** This requires the appropriate sqlx driver feature to be enabled.
 	/// For simpler usage, see `DatabaseEngine::from_sqlite` or other database-specific constructors.
-	pub async fn new(url: impl Into<String>) -> Result<Self, sqlx::Error> {
+	pub async fn new(url: impl Into<String>) -> Result<Self> {
 		Self::from_config(EngineConfig::new(url)).await
 	}
 	/// Get a connection from the pool
 	///
-	pub async fn connect(&self) -> Result<sqlx::pool::PoolConnection<Any>, sqlx::Error> {
-		self.pool.acquire().await
+	pub async fn connect(&self) -> Result<sqlx::pool::PoolConnection<Any>> {
+		Ok(self.pool.acquire().await.map_err(map_sqlx_error)?)
 	}
 	/// Execute a SQL statement
-	pub async fn execute(&self, sql: &str) -> Result<u64, sqlx::Error> {
+	pub async fn execute(&self, sql: &str) -> Result<u64> {
 		if self.config.echo {
 			println!("SQL: {}", sql);
 		}
 
-		let result = sqlx::query(sql).execute(&self.pool).await?;
+		let result = sqlx::query(sql)
+			.execute(&self.pool)
+			.await
+			.map_err(map_sqlx_error)?;
 		Ok(result.rows_affected())
 	}
 	/// Execute a query and return results
 	///
-	pub async fn fetch_all(&self, sql: &str) -> Result<Vec<sqlx::any::AnyRow>, sqlx::Error> {
+	pub async fn fetch_all(&self, sql: &str) -> Result<Vec<sqlx::any::AnyRow>> {
 		if self.config.echo {
 			println!("SQL: {}", sql);
 		}
 
-		sqlx::query(sql).fetch_all(&self.pool).await
+		Ok(sqlx::query(sql)
+			.fetch_all(&self.pool)
+			.await
+			.map_err(map_sqlx_error)?)
 	}
 	/// Execute a query and return a single result
 	///
-	pub async fn fetch_one(&self, sql: &str) -> Result<sqlx::any::AnyRow, sqlx::Error> {
+	pub async fn fetch_one(&self, sql: &str) -> Result<sqlx::any::AnyRow> {
 		if self.config.echo {
 			println!("SQL: {}", sql);
 		}
 
-		sqlx::query(sql).fetch_one(&self.pool).await
+		Ok(sqlx::query(sql)
+			.fetch_one(&self.pool)
+			.await
+			.map_err(map_sqlx_error)?)
 	}
 	/// Execute a query and return an optional result
 	///
-	pub async fn fetch_optional(
-		&self,
-		sql: &str,
-	) -> Result<Option<sqlx::any::AnyRow>, sqlx::Error> {
+	pub async fn fetch_optional(&self, sql: &str) -> Result<Option<sqlx::any::AnyRow>> {
 		if self.config.echo {
 			println!("SQL: {}", sql);
 		}
 
-		sqlx::query(sql).fetch_optional(&self.pool).await
+		Ok(sqlx::query(sql)
+			.fetch_optional(&self.pool)
+			.await
+			.map_err(map_sqlx_error)?)
 	}
 	/// Begin a transaction
 	///
-	pub async fn begin(&self) -> Result<sqlx::Transaction<'_, Any>, sqlx::Error> {
-		self.pool.begin().await
+	pub async fn begin(&self) -> Result<sqlx::Transaction<'_, Any>> {
+		Ok(self.pool.begin().await.map_err(map_sqlx_error)?)
 	}
 	/// Get the engine configuration
 	///
@@ -250,12 +264,12 @@ impl Engine {
 }
 /// Create a new database engine
 ///
-pub async fn create_engine(url: impl Into<String>) -> Result<Engine, sqlx::Error> {
+pub async fn create_engine(url: impl Into<String>) -> Result<Engine> {
 	Engine::new(url).await
 }
 /// Create a new database engine with configuration
 ///
-pub async fn create_engine_with_config(config: EngineConfig) -> Result<Engine, sqlx::Error> {
+pub async fn create_engine_with_config(config: EngineConfig) -> Result<Engine> {
 	Engine::from_config(config).await
 }
 
@@ -320,7 +334,7 @@ impl DatabaseEngine {
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
 	/// ```
 	#[cfg(feature = "postgres")]
-	pub async fn from_postgres(url: &str) -> Result<Self, DatabaseError> {
+	pub async fn from_postgres(url: &str) -> Result<Self> {
 		let connection = DatabaseConnection::connect_postgres(url).await?;
 		Ok(Self::new(connection, DatabaseType::Postgres))
 	}
@@ -342,14 +356,14 @@ impl DatabaseEngine {
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
 	/// ```
 	#[cfg(feature = "sqlite")]
-	pub async fn from_sqlite(url: &str) -> Result<Self, DatabaseError> {
+	pub async fn from_sqlite(url: &str) -> Result<Self> {
 		let connection = DatabaseConnection::connect_sqlite(url).await?;
 		Ok(Self::new(connection, DatabaseType::Sqlite))
 	}
 
 	/// Create a new MySQL engine
 	#[cfg(feature = "mysql")]
-	pub async fn from_mysql(url: &str) -> Result<Self, DatabaseError> {
+	pub async fn from_mysql(url: &str) -> Result<Self> {
 		let connection = DatabaseConnection::connect_mysql(url).await?;
 		Ok(Self::new(connection, DatabaseType::Mysql))
 	}
@@ -394,7 +408,7 @@ impl DatabaseEngine {
 	/// # }
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
 	/// ```
-	pub async fn execute(&self, sql: &str) -> Result<u64, DatabaseError> {
+	pub async fn execute(&self, sql: &str) -> Result<u64> {
 		if self.config.echo {
 			println!("SQL: {}", sql);
 		}
@@ -404,7 +418,7 @@ impl DatabaseEngine {
 	}
 
 	/// Execute a query and return all results
-	pub async fn fetch_all(&self, sql: &str) -> Result<Vec<DbRow>, DatabaseError> {
+	pub async fn fetch_all(&self, sql: &str) -> Result<Vec<DbRow>> {
 		if self.config.echo {
 			println!("SQL: {}", sql);
 		}
@@ -413,7 +427,7 @@ impl DatabaseEngine {
 	}
 
 	/// Execute a query and return a single result
-	pub async fn fetch_one(&self, sql: &str) -> Result<DbRow, DatabaseError> {
+	pub async fn fetch_one(&self, sql: &str) -> Result<DbRow> {
 		if self.config.echo {
 			println!("SQL: {}", sql);
 		}
@@ -422,7 +436,7 @@ impl DatabaseEngine {
 	}
 
 	/// Execute a query and return an optional result
-	pub async fn fetch_optional(&self, sql: &str) -> Result<Option<DbRow>, DatabaseError> {
+	pub async fn fetch_optional(&self, sql: &str) -> Result<Option<DbRow>> {
 		if self.config.echo {
 			println!("SQL: {}", sql);
 		}
@@ -443,19 +457,19 @@ impl DatabaseEngine {
 
 /// Create a new database engine from PostgreSQL URL
 #[cfg(feature = "postgres")]
-pub async fn create_database_engine_postgres(url: &str) -> Result<DatabaseEngine, DatabaseError> {
+pub async fn create_database_engine_postgres(url: &str) -> Result<DatabaseEngine> {
 	DatabaseEngine::from_postgres(url).await
 }
 
 /// Create a new database engine from SQLite URL
 #[cfg(feature = "sqlite")]
-pub async fn create_database_engine_sqlite(url: &str) -> Result<DatabaseEngine, DatabaseError> {
+pub async fn create_database_engine_sqlite(url: &str) -> Result<DatabaseEngine> {
 	DatabaseEngine::from_sqlite(url).await
 }
 
 /// Create a new database engine from MySQL URL
 #[cfg(feature = "mysql")]
-pub async fn create_database_engine_mysql(url: &str) -> Result<DatabaseEngine, DatabaseError> {
+pub async fn create_database_engine_mysql(url: &str) -> Result<DatabaseEngine> {
 	DatabaseEngine::from_mysql(url).await
 }
 

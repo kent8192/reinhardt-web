@@ -1,7 +1,9 @@
 //! Tests for the Error hierarchy, status codes, ErrorKind mapping,
 //! Display formatting, From conversions, and ParamErrorContext.
 
-use reinhardt_core::exception::{Error, ErrorKind, ParamErrorContext, ParamType};
+use reinhardt_core::exception::{
+	DatabaseError, DatabaseErrorKind, Error, ErrorKind, ParamErrorContext, ParamType,
+};
 use rstest::rstest;
 
 // ---------------------------------------------------------------------------
@@ -29,10 +31,12 @@ use rstest::rstest;
 #[case::template_not_found(Error::TemplateNotFound("index.html".to_string()), 404)]
 #[case::method_not_allowed(Error::MethodNotAllowed("PATCH not allowed".to_string()), 405)]
 #[case::conflict(Error::Conflict("duplicate email".to_string()), 409)]
-#[case::database(Error::Database("connection timeout".to_string()), 500)]
+#[case::database(
+	Error::from(DatabaseError::new(DatabaseErrorKind::Query, "query execution failed",)),
+	500
+)]
 #[case::internal(Error::Internal("unexpected error".to_string()), 500)]
 #[case::improperly_configured(Error::ImproperlyConfigured("missing DATABASE_URL".to_string()), 500)]
-#[case::other(Error::Other(anyhow::anyhow!("unknown error")), 500)]
 fn status_code_for_variant(#[case] error: Error, #[case] expected_status: u16) {
 	// Act
 	let status = error.status_code();
@@ -48,7 +52,10 @@ fn status_code_for_variant(#[case] error: Error, #[case] expected_status: u16) {
 #[rstest]
 #[case::http(Error::Http("x".to_string()), ErrorKind::Http)]
 #[case::missing_content_type(Error::MissingContentType, ErrorKind::Http)]
-#[case::database(Error::Database("x".to_string()), ErrorKind::Database)]
+#[case::database(
+	Error::from(DatabaseError::new(DatabaseErrorKind::Query, "x")),
+	ErrorKind::Database
+)]
 #[case::serialization(Error::Serialization("x".to_string()), ErrorKind::Serialization)]
 #[case::validation(Error::Validation("x".to_string()), ErrorKind::Validation)]
 #[case::invalid_page(Error::InvalidPage("x".to_string()), ErrorKind::Validation)]
@@ -69,7 +76,6 @@ fn status_code_for_variant(#[case] error: Error, #[case] expected_status: u16) {
 	Error::ParamValidation(Box::new(ParamErrorContext::new(ParamType::Query, "bad"))),
 	ErrorKind::ParamValidation
 )]
-#[case::other(Error::Other(anyhow::anyhow!("x")), ErrorKind::Other)]
 fn error_kind_for_variant(#[case] error: Error, #[case] expected_kind: ErrorKind) {
 	// Act
 	let kind = error.kind();
@@ -84,7 +90,10 @@ fn error_kind_for_variant(#[case] error: Error, #[case] expected_kind: ErrorKind
 
 #[rstest]
 #[case::http(Error::Http("bad request".to_string()), "HTTP error: bad request")]
-#[case::database(Error::Database("timeout".to_string()), "Database error: timeout")]
+#[case::database(
+	Error::from(DatabaseError::new(DatabaseErrorKind::Timeout, "timeout")),
+	"Database error: timeout"
+)]
 #[case::serialization(Error::Serialization("invalid".to_string()), "Serialization error: invalid")]
 #[case::validation(Error::Validation("email".to_string()), "Validation error: email")]
 #[case::authentication(Error::Authentication("expired".to_string()), "Authentication error: expired")]
@@ -175,20 +184,6 @@ fn from_str_ref() {
 }
 
 #[rstest]
-fn from_anyhow_error() {
-	// Arrange
-	let anyhow_err = anyhow::anyhow!("anyhow wrapped error");
-
-	// Act
-	let error: Error = anyhow_err.into();
-
-	// Assert
-	assert_eq!(error.status_code(), 500);
-	assert_eq!(error.kind(), ErrorKind::Other);
-	assert!(error.to_string().contains("anyhow wrapped error"));
-}
-
-#[rstest]
 fn from_http_error() {
 	// Arrange
 	// Build an invalid HTTP request to trigger http::Error
@@ -204,6 +199,76 @@ fn from_http_error() {
 	assert_eq!(error.status_code(), 400);
 	assert_eq!(error.kind(), ErrorKind::Http);
 	assert!(error.to_string().contains("HTTP error"));
+}
+
+#[test]
+fn database_error_preserves_structured_metadata() {
+	// Arrange
+	let database_error = DatabaseError::new(
+		DatabaseErrorKind::UniqueViolation,
+		"duplicate key value violates unique constraint",
+	)
+	.with_code("23505");
+
+	// Act
+	let kind = database_error.kind();
+	let message = database_error.message();
+	let code = database_error.code();
+	let display = database_error.to_string();
+
+	// Assert
+	assert_eq!(kind, DatabaseErrorKind::UniqueViolation);
+	assert_eq!(message, "duplicate key value violates unique constraint");
+	assert_eq!(code, Some("23505"));
+	assert_eq!(display, "duplicate key value violates unique constraint");
+}
+
+#[test]
+fn framework_error_exposes_database_classification() {
+	// Arrange
+	let error = Error::from(DatabaseError::new(
+		DatabaseErrorKind::Timeout,
+		"pool timed out",
+	));
+
+	// Act
+	let kind = error.kind();
+	let database_kind = error.database_kind();
+	let database_message = error.database_error().map(DatabaseError::message);
+
+	// Assert
+	assert_eq!(kind, ErrorKind::Database);
+	assert_eq!(database_kind, Some(DatabaseErrorKind::Timeout));
+	assert_eq!(database_message, Some("pool timed out"));
+}
+
+#[rstest]
+#[case::connection(DatabaseErrorKind::Connection, 503)]
+#[case::timeout(DatabaseErrorKind::Timeout, 503)]
+#[case::unique_violation(DatabaseErrorKind::UniqueViolation, 409)]
+#[case::foreign_key_violation(DatabaseErrorKind::ForeignKeyViolation, 409)]
+#[case::not_null_violation(DatabaseErrorKind::NotNullViolation, 400)]
+#[case::check_violation(DatabaseErrorKind::CheckViolation, 400)]
+#[case::syntax(DatabaseErrorKind::Syntax, 500)]
+#[case::type_error(DatabaseErrorKind::Type, 500)]
+#[case::column_not_found(DatabaseErrorKind::ColumnNotFound, 500)]
+#[case::transaction(DatabaseErrorKind::Transaction, 500)]
+#[case::configuration(DatabaseErrorKind::Configuration, 500)]
+#[case::serialization(DatabaseErrorKind::Serialization, 500)]
+#[case::unsupported(DatabaseErrorKind::Unsupported, 500)]
+#[case::query(DatabaseErrorKind::Query, 500)]
+fn database_error_kind_status_code(
+	#[case] database_kind: DatabaseErrorKind,
+	#[case] expected_status: u16,
+) {
+	// Arrange
+	let error = Error::from(DatabaseError::new(database_kind, "database failure"));
+
+	// Act
+	let status = error.status_code();
+
+	// Assert
+	assert_eq!(status, expected_status);
 }
 
 // ---------------------------------------------------------------------------

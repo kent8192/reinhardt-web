@@ -523,6 +523,7 @@ where
 			reinhardt_rest::serializers::SerializerError::Validation(v) => {
 				Error::Validation(v.to_string())
 			}
+			reinhardt_rest::serializers::SerializerError::Database(error) => Error::Database(error),
 			reinhardt_rest::serializers::SerializerError::Serde { message } => {
 				Error::Serialization(message)
 			}

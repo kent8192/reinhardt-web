@@ -37,7 +37,6 @@ async-trait = { workspace = true }
 thiserror = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-anyhow = { workspace = true }
 
 # Semantic versioning
 semver = "1.0"

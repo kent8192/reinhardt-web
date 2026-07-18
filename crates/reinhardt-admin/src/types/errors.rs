@@ -5,6 +5,10 @@ use thiserror::Error;
 /// Admin panel error type
 #[derive(Debug, Error)]
 pub enum AdminError {
+	/// Typed model field encoding failed before SQL compilation.
+	#[error("Field codec error: {0}")]
+	FieldCodec(#[from] reinhardt_db::orm::FieldCodecError),
+
 	/// Model not registered with admin
 	#[error("Model '{0}' is not registered with admin")]
 	ModelNotRegistered(String),
@@ -174,17 +178,27 @@ mod tests {
 #[cfg(server)]
 impl From<AdminError> for reinhardt_core::exception::Error {
 	fn from(err: AdminError) -> Self {
+		use reinhardt_core::exception::{DatabaseError, DatabaseErrorKind, Error};
+
 		match err {
-			AdminError::ModelNotRegistered(msg) => reinhardt_core::exception::Error::NotFound(msg),
-			AdminError::PermissionDenied(msg) => {
-				reinhardt_core::exception::Error::Authorization(msg)
+			AdminError::FieldCodec(error) => {
+				let kind = match error {
+					reinhardt_db::orm::FieldCodecError::TypeMismatch { .. }
+					| reinhardt_db::orm::FieldCodecError::InvalidEnumValue { .. } => DatabaseErrorKind::Type,
+					reinhardt_db::orm::FieldCodecError::Serialization(_) => {
+						DatabaseErrorKind::Serialization
+					}
+				};
+				DatabaseError::new(kind, format!("admin field codec failed: {error}")).into()
 			}
-			AdminError::InvalidAction(msg) => reinhardt_core::exception::Error::Http(msg),
-			AdminError::DatabaseError(msg) => reinhardt_core::exception::Error::Database(msg),
-			AdminError::ValidationError(msg) => reinhardt_core::exception::Error::Validation(msg),
-			AdminError::TemplateError(msg) => {
-				reinhardt_core::exception::Error::Other(anyhow::anyhow!(msg))
+			AdminError::ModelNotRegistered(message) => Error::NotFound(message),
+			AdminError::PermissionDenied(message) => Error::Authorization(message),
+			AdminError::InvalidAction(message) => Error::Http(message),
+			AdminError::DatabaseError(message) => {
+				DatabaseError::new(DatabaseErrorKind::Query, message).into()
 			}
+			AdminError::ValidationError(message) => Error::Validation(message),
+			AdminError::TemplateError(message) => Error::Internal(message),
 		}
 	}
 }

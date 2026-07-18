@@ -205,13 +205,16 @@ fn expand_impl(mut input: ValidatedImplSet) -> TokenStream {
 	let set_resource_metavariable: TokenStream = "$set_resource"
 		.parse()
 		.expect("static set resource metavariable should parse");
-	let link_path = input.link.clone();
-	let mut link_macro_path = link_path.clone();
-	link_macro_path
-		.segments
-		.last_mut()
-		.expect("validated link path should have a segment")
-		.ident = link_macro_ident.clone();
+	let link_macro_path: Path = if input.link.segments.len() == 1 {
+		parse_quote!(self::#link_macro_ident)
+	} else {
+		let mut path = input.link.clone();
+		path.segments
+			.last_mut()
+			.expect("validated link path should have a segment")
+			.ident = link_macro_ident.clone();
+		path
+	};
 	let resource_alias_ident = quote::format_ident!(
 		"__ReinhardtServerFnSetResource{}{}",
 		pascal(&action_module_ident.to_string()),
@@ -506,7 +509,39 @@ fn override_wrapper(
 	let mut extractor_inputs = Vec::new();
 	let mut call_args = Vec::new();
 	let mut context_count = 0;
-	let canonical_inputs = canonical.map(client_parameters);
+	let mut canonical_inputs = canonical.map(client_parameters);
+	if let Some(inputs) = &mut canonical_inputs {
+		let mut reserved_client_names = info
+			.method
+			.sig
+			.inputs
+			.iter()
+			.filter_map(|argument| match argument {
+				FnArg::Typed(parameter)
+					if parameter.attrs.iter().any(is_inject_attribute)
+						|| is_extractor_type(&parameter.ty)
+						|| is_model_policy_principal_type(&parameter.ty) =>
+				{
+					match parameter.pat.as_ref() {
+						Pat::Ident(pattern) => Some(pattern.ident.to_string()),
+						_ => None,
+					}
+				}
+				FnArg::Typed(_) | FnArg::Receiver(_) => None,
+			})
+			.collect::<HashSet<_>>();
+		for parameter in inputs {
+			let Pat::Ident(pattern) = parameter.pat.as_mut() else {
+				unreachable!()
+			};
+			let ident = unique_generated_parameter_ident(
+				&pattern.ident.to_string(),
+				&mut reserved_client_names,
+			);
+			pattern.ident = ident.clone();
+			generated_parameter_names.insert(ident.to_string());
+		}
+	}
 	let mut client_index = 0;
 	for argument in &info.method.sig.inputs {
 		let FnArg::Typed(parameter) = argument else {
@@ -546,7 +581,10 @@ fn override_wrapper(
 				continue;
 			}
 		}
-		if injected || is_extractor_type(&parameter.ty) {
+		if injected
+			|| is_extractor_type(&parameter.ty)
+			|| is_model_policy_principal_type(&parameter.ty)
+		{
 			let Pat::Ident(pattern) = parameter.pat.as_ref() else {
 				return Err(syn::Error::new_spanned(
 					&parameter.pat,
@@ -607,6 +645,12 @@ fn override_wrapper(
 	}
 	let ident = &info.ident;
 	let output = canonical.map_or(&info.method.sig.output, |function| &function.sig.output);
+	let cfg_attributes = info
+		.method
+		.attrs
+		.iter()
+		.filter(|attribute| attribute.path().is_ident("cfg"))
+		.collect::<Vec<_>>();
 	let action = match ident.to_string().as_str() {
 		"list" => quote!(ServerFnSetAction::List),
 		"retrieve" => quote!(ServerFnSetAction::Retrieve),
@@ -648,6 +692,7 @@ fn override_wrapper(
 		quote!(ModelServerFnSet::<#resource>::read_collection_action(&#principal.0, &#connection, #action, |#context| Box::pin(#call)).await)
 	};
 	Ok(parse_quote! {
+		#(#cfg_attributes)*
 		pub async fn #ident(
 			#(#client_inputs,)*
 			#(#injected_inputs,)*
@@ -682,13 +727,41 @@ fn client_parameters(function: &syn::ItemFn) -> Vec<syn::PatType> {
 			let FnArg::Typed(parameter) = argument else {
 				return None;
 			};
-			if parameter.attrs.iter().any(is_inject_attribute) || is_extractor_type(&parameter.ty) {
+			if parameter.attrs.iter().any(is_inject_attribute)
+				|| is_extractor_type(&parameter.ty)
+				|| is_model_policy_principal_type(&parameter.ty)
+			{
 				None
 			} else {
 				Some(parameter.clone())
 			}
 		})
 		.collect()
+}
+
+fn is_model_policy_principal_type(ty: &Type) -> bool {
+	let Type::Path(type_path) = ty else {
+		return false;
+	};
+	if type_path.path.leading_colon.is_some() || type_path.path.segments.len() != 1 {
+		return false;
+	}
+	let Some(segment) = type_path.path.segments.last() else {
+		return false;
+	};
+	if segment.ident != "PolicyPrincipal" {
+		return false;
+	}
+	let syn::PathArguments::AngleBracketed(arguments) = &segment.arguments else {
+		return false;
+	};
+	let Some(syn::GenericArgument::Type(Type::Path(resource))) = arguments.args.first() else {
+		return false;
+	};
+	resource.path.segments.last().is_some_and(|segment| {
+		let name = segment.ident.to_string();
+		name.ends_with("Resource") || name.starts_with("__ReinhardtServerFnSetResource")
+	})
 }
 
 fn type_last_ident(ty: &Type) -> Option<&syn::Ident> {

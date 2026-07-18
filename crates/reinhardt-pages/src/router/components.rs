@@ -4,7 +4,21 @@
 //! declarative navigation in component trees.
 
 use crate::component::{Component, IntoPage, Page, PageElement};
+use crate::router::loader::{LoaderStore, RouteLoaderError, with_loader_store};
 use reinhardt_urls::routers::ClientRouter;
+use std::rc::Rc;
+
+/// Controls when a link prepares matched route loaders in the background.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum PrefetchMode {
+	/// Do not prefetch route data.
+	#[default]
+	None,
+	/// Prefetch on pointer intent or keyboard focus.
+	Hover,
+	/// Prefetch when the link enters the viewport.
+	Viewport,
+}
 
 /// A link component that navigates without full page reload.
 ///
@@ -29,6 +43,8 @@ pub struct Link {
 	replace: bool,
 	/// Whether to open in a new tab (disables SPA navigation).
 	external: bool,
+	/// Background route-loader preparation policy.
+	prefetch: PrefetchMode,
 	/// Custom attributes.
 	attrs: Vec<(String, String)>,
 }
@@ -42,6 +58,7 @@ impl Link {
 			class: None,
 			replace: false,
 			external: false,
+			prefetch: PrefetchMode::None,
 			attrs: Vec::new(),
 		}
 	}
@@ -61,6 +78,12 @@ impl Link {
 	/// Sets whether this is an external link.
 	pub fn external(mut self, external: bool) -> Self {
 		self.external = external;
+		self
+	}
+
+	/// Sets the route-loader prefetch policy for this link.
+	pub fn prefetch(mut self, mode: PrefetchMode) -> Self {
+		self.prefetch = mode;
 		self
 	}
 
@@ -89,6 +112,11 @@ impl Link {
 	pub fn is_external(&self) -> bool {
 		self.external
 	}
+
+	/// Returns the configured prefetch mode.
+	pub fn prefetch_mode(&self) -> PrefetchMode {
+		self.prefetch
+	}
 }
 
 impl Component for Link {
@@ -104,6 +132,11 @@ impl Component for Link {
 			el = el.attr("data-link", "true");
 			if self.replace {
 				el = el.attr("data-replace", "true");
+			}
+			match self.prefetch {
+				PrefetchMode::None => {}
+				PrefetchMode::Hover => el = el.attr("data-prefetch", "hover"),
+				PrefetchMode::Viewport => el = el.attr("data-prefetch", "viewport"),
 			}
 		} else {
 			el = el.attr("target", "_blank");
@@ -123,20 +156,52 @@ impl Component for Link {
 	}
 }
 
+type NavigationErrorFallback = Rc<dyn Fn(&RouteLoaderError) -> Page>;
+
 /// Renders the current route from a [`ClientRouter`].
 ///
 /// `RouterOutlet` is a component-level adapter for embedding the canonical
 /// `reinhardt-urls` client router in a pages component tree.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct RouterOutlet {
 	/// Router used to resolve and render the current client-side route.
 	router: ClientRouter,
+	/// Optional sibling fallback for a failed route-loader navigation.
+	navigation_error_fallback: Option<NavigationErrorFallback>,
+}
+
+impl std::fmt::Debug for RouterOutlet {
+	fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		formatter
+			.debug_struct("RouterOutlet")
+			.field("router", &self.router)
+			.field(
+				"has_navigation_error_fallback",
+				&self.navigation_error_fallback.is_some(),
+			)
+			.finish()
+	}
 }
 
 impl RouterOutlet {
 	/// Creates a new router outlet backed by `router`.
 	pub fn new(router: ClientRouter) -> Self {
-		Self { router }
+		Self {
+			router,
+			navigation_error_fallback: None,
+		}
+	}
+
+	/// Adds a sibling boundary for errors raised while preparing a route.
+	///
+	/// The current route remains mounted; the fallback is rendered alongside it
+	/// until a subsequent navigation clears the coordinator error.
+	pub fn navigation_error_fallback<F>(mut self, fallback: F) -> Self
+	where
+		F: Fn(&RouteLoaderError) -> Page + 'static,
+	{
+		self.navigation_error_fallback = Some(Rc::new(fallback));
+		self
 	}
 
 	/// Returns the router backing this outlet.
@@ -147,12 +212,38 @@ impl RouterOutlet {
 
 impl Component for RouterOutlet {
 	fn render(&self) -> Page {
-		self.router.render_current()
+		let router = self.router.clone();
+		let fallback = self.navigation_error_fallback.clone();
+		Page::reactive(move || {
+			let mounted_store = crate::app::try_with_navigation_coordinator(|coordinator| {
+				coordinator.mounted_store()
+			})
+			.flatten();
+			let current = render_current_with_mounted_loader_store(&router, mounted_store);
+			if let Some(fallback) = &fallback
+				&& let Some(Some(error)) =
+					crate::app::try_with_navigation_coordinator(|coordinator| {
+						coordinator.error().get()
+					}) {
+				return Page::Fragment(vec![current, fallback(&error)]);
+			}
+			current
+		})
 	}
 
 	fn name() -> &'static str {
 		"RouterOutlet"
 	}
+}
+
+fn render_current_with_mounted_loader_store(
+	router: &ClientRouter,
+	mounted_store: Option<LoaderStore>,
+) -> Page {
+	if let Some(store) = mounted_store {
+		return with_loader_store(&store, || router.render_current());
+	}
+	router.render_current()
 }
 
 impl IntoPage for RouterOutlet {
@@ -279,6 +370,44 @@ where
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::router::loader::active_loader_store;
+	use reinhardt_core::reactive::ReactiveScope;
+	use reinhardt_urls::routers::ClientRouter;
+	use serial_test::serial;
+
+	#[test]
+	#[serial]
+	fn router_outlet_reacts_to_loader_errors_after_its_initial_render() {
+		ReactiveScope::run(|| {
+			let router = ClientRouter::new().route("home", "/", || {
+				assert!(
+					active_loader_store().is_some(),
+					"loader-backed rerenders must retain their mounted store"
+				);
+				Page::text("HOME")
+			});
+			crate::app::__install_client_router_for_test(router.clone());
+			crate::app::try_with_navigation_coordinator(|coordinator| {
+				coordinator.set_mounted_store_for_test(LoaderStore::new());
+			})
+			.expect("test router installs a navigation coordinator");
+			let outlet = RouterOutlet::new(router).navigation_error_fallback(|error| {
+				Page::text(format!("FAILED: {}", error.public_message()))
+			});
+			let page = outlet.render();
+
+			assert_eq!(page.render_to_string(), "HOME");
+			crate::app::try_with_navigation_coordinator(|coordinator| {
+				coordinator
+					.error()
+					.set(Some(RouteLoaderError::new("loader failed")));
+			})
+			.expect("test router installs a navigation coordinator");
+			assert_eq!(page.render_to_string(), "HOMEFAILED: loader failed");
+
+			crate::app::__clear_spa_router_for_test();
+		});
+	}
 
 	#[test]
 	fn test_link_new() {
@@ -371,6 +500,15 @@ mod tests {
 	#[test]
 	fn test_link_component_name() {
 		assert_eq!(Link::name(), "Link");
+	}
+
+	#[test]
+	fn test_link_prefetch_attribute() {
+		let html = Link::new("/jobs/", "Jobs")
+			.prefetch(PrefetchMode::Hover)
+			.render()
+			.render_to_string();
+		assert!(html.contains("data-prefetch=\"hover\""));
 	}
 
 	#[test]

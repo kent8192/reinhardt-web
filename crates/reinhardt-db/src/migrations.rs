@@ -70,6 +70,7 @@ pub mod zero_downtime;
 pub use crate::contenttypes::migration::MigrationRecord;
 pub use autodetector::{
 	// Pattern Learning and Inference
+	AutodetectorWarning,
 	ChangeTracker,
 	ConstraintDefinition,
 	DetectedChanges,
@@ -77,6 +78,7 @@ pub use autodetector::{
 	ForeignKeyAction,
 	ForeignKeyConstraintInfo,
 	ForeignKeyInfo,
+	GeneratedMigrations,
 	IndexDefinition,
 	InferenceEngine,
 	InferenceRule,
@@ -226,6 +228,10 @@ pub enum MigrationError {
 	#[error("Database error: {0}")]
 	DatabaseError(#[from] crate::backends::QueryDatabaseError),
 
+	/// A non-database framework error occurred during migration execution.
+	#[error("Framework error: {0}")]
+	FrameworkError(#[source] reinhardt_core::exception::Error),
+
 	/// The migration definition is invalid.
 	#[error("Invalid migration: {0}")]
 	InvalidMigration(String),
@@ -291,8 +297,74 @@ pub enum MigrationError {
 	PathTraversal(String),
 }
 
+impl From<reinhardt_core::exception::Error> for MigrationError {
+	fn from(error: reinhardt_core::exception::Error) -> Self {
+		match error {
+			reinhardt_core::exception::Error::Database(database_error) => {
+				Self::DatabaseError(database_error)
+			}
+			error => Self::FrameworkError(error),
+		}
+	}
+}
+
 /// Type alias for result.
 pub type Result<T> = std::result::Result<T, MigrationError>;
+
+#[cfg(test)]
+mod tests {
+	use std::error::Error as _;
+
+	use reinhardt_core::exception::{
+		DatabaseError, DatabaseErrorKind, Error as FrameworkError, ErrorKind,
+	};
+
+	use super::MigrationError;
+
+	#[test]
+	fn framework_database_error_preserves_structured_migration_category_and_source() {
+		let database_error = DatabaseError::new(
+			DatabaseErrorKind::UniqueViolation,
+			"duplicate migration record",
+		)
+		.with_code("23505");
+
+		let migration_error = MigrationError::from(FrameworkError::from(database_error.clone()));
+
+		match &migration_error {
+			MigrationError::DatabaseError(error) => assert_eq!(error, &database_error),
+			other => panic!("expected database migration error, got {other:?}"),
+		}
+		assert_eq!(
+			migration_error
+				.source()
+				.and_then(|source| source.downcast_ref::<DatabaseError>())
+				.map(DatabaseError::kind),
+			Some(DatabaseErrorKind::UniqueViolation)
+		);
+	}
+
+	#[test]
+	fn non_database_framework_error_preserves_framework_category_and_source() {
+		let migration_error = MigrationError::from(FrameworkError::Validation(
+			"invalid migration input".to_string(),
+		));
+
+		match &migration_error {
+			MigrationError::FrameworkError(error) => {
+				assert_eq!(error.kind(), ErrorKind::Validation);
+			}
+			other => panic!("expected framework migration error, got {other:?}"),
+		}
+		assert_eq!(
+			migration_error
+				.source()
+				.and_then(|source| source.downcast_ref::<FrameworkError>())
+				.map(FrameworkError::kind),
+			Some(ErrorKind::Validation)
+		);
+	}
+}
 
 // Prelude for migrations
 /// Prelude module.
@@ -302,4 +374,5 @@ pub mod prelude {
 		ColumnDefinition, ColumnType, Constraint, ForeignKeyAction, GeneratedColumnDefinition,
 		GeneratedStorage, Migration, Operation, SchemaBinOper, SchemaExpr, SchemaFunc,
 	};
+	pub use crate::field_domain::{FieldDomain, ModelEnumRepr, ModelEnumValue};
 }

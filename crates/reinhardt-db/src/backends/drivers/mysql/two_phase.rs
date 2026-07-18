@@ -22,7 +22,7 @@ use sqlx::pool::PoolConnection;
 use sqlx::{MySql, MySqlPool, Row};
 use std::sync::Arc;
 
-use crate::backends::error::{DatabaseError, Result};
+use crate::backends::error::{Result, map_sqlx_error};
 
 /// XA transaction session in Started state
 ///
@@ -205,7 +205,7 @@ impl MySqlTwoPhaseParticipant {
 	/// ```
 	pub async fn begin(&self, xid: impl Into<String>) -> Result<XaSessionStarted> {
 		// Acquire new connection for XA transaction
-		let mut connection = self.pool.acquire().await.map_err(DatabaseError::from)?;
+		let mut connection = self.pool.acquire().await.map_err(map_sqlx_error)?;
 		let xid = xid.into();
 
 		let sql = format!("XA START '{}'", Self::escape_xid(&xid));
@@ -213,7 +213,7 @@ impl MySqlTwoPhaseParticipant {
 		sqlx::raw_sql(&sql)
 			.execute(&mut *connection)
 			.await
-			.map_err(DatabaseError::from)?;
+			.map_err(map_sqlx_error)?;
 
 		Ok(XaSessionStarted { connection, xid })
 	}
@@ -248,7 +248,7 @@ impl MySqlTwoPhaseParticipant {
 		sqlx::raw_sql(&sql)
 			.execute(&mut *session.connection)
 			.await
-			.map_err(DatabaseError::from)?;
+			.map_err(map_sqlx_error)?;
 
 		Ok(XaSessionEnded {
 			connection: session.connection,
@@ -288,7 +288,7 @@ impl MySqlTwoPhaseParticipant {
 		sqlx::raw_sql(&sql)
 			.execute(&mut *session.connection)
 			.await
-			.map_err(DatabaseError::from)?;
+			.map_err(map_sqlx_error)?;
 
 		Ok(XaSessionPrepared {
 			connection: session.connection,
@@ -328,7 +328,7 @@ impl MySqlTwoPhaseParticipant {
 		sqlx::raw_sql(&sql)
 			.execute(&mut *session.connection)
 			.await
-			.map_err(DatabaseError::from)?;
+			.map_err(map_sqlx_error)?;
 
 		// Session is consumed and connection is dropped
 		Ok(())
@@ -353,12 +353,12 @@ impl MySqlTwoPhaseParticipant {
 	/// # }
 	/// ```
 	pub async fn commit_by_xid(&self, xid: &str) -> Result<()> {
-		let mut conn = self.pool.acquire().await.map_err(DatabaseError::from)?;
+		let mut conn = self.pool.acquire().await.map_err(map_sqlx_error)?;
 		let sql = format!("XA COMMIT '{}'", Self::escape_xid(xid));
 		sqlx::raw_sql(&sql)
 			.execute(&mut *conn)
 			.await
-			.map_err(DatabaseError::from)?;
+			.map_err(map_sqlx_error)?;
 		Ok(())
 	}
 
@@ -399,7 +399,7 @@ impl MySqlTwoPhaseParticipant {
 		sqlx::raw_sql(&sql)
 			.execute(&mut *session.connection)
 			.await
-			.map_err(DatabaseError::from)?;
+			.map_err(map_sqlx_error)?;
 
 		// Session is consumed and connection is dropped
 		Ok(())
@@ -435,7 +435,7 @@ impl MySqlTwoPhaseParticipant {
 		sqlx::raw_sql(&sql)
 			.execute(&mut *session.connection)
 			.await
-			.map_err(DatabaseError::from)?;
+			.map_err(map_sqlx_error)?;
 
 		// Session is consumed and connection is dropped
 		Ok(())
@@ -473,7 +473,7 @@ impl MySqlTwoPhaseParticipant {
 		sqlx::raw_sql(&sql)
 			.execute(&mut *session.connection)
 			.await
-			.map_err(DatabaseError::from)?;
+			.map_err(map_sqlx_error)?;
 
 		// Session is consumed and connection is dropped
 		Ok(())
@@ -498,12 +498,12 @@ impl MySqlTwoPhaseParticipant {
 	/// # }
 	/// ```
 	pub async fn rollback_by_xid(&self, xid: &str) -> Result<()> {
-		let mut conn = self.pool.acquire().await.map_err(DatabaseError::from)?;
+		let mut conn = self.pool.acquire().await.map_err(map_sqlx_error)?;
 		let sql = format!("XA ROLLBACK '{}'", Self::escape_xid(xid));
 		sqlx::raw_sql(&sql)
 			.execute(&mut *conn)
 			.await
-			.map_err(DatabaseError::from)?;
+			.map_err(map_sqlx_error)?;
 		Ok(())
 	}
 
@@ -532,15 +532,15 @@ impl MySqlTwoPhaseParticipant {
 		let rows = sqlx::raw_sql("XA RECOVER")
 			.fetch_all(self.pool.as_ref())
 			.await
-			.map_err(DatabaseError::from)?;
+			.map_err(map_sqlx_error)?;
 
 		let mut transactions = Vec::new();
 		for row in rows {
 			// XA RECOVER returns: formatID, gtrid_length, bqual_length, data
-			let format_id: i32 = row.try_get("formatID").map_err(DatabaseError::from)?;
-			let gtrid_length: i32 = row.try_get("gtrid_length").map_err(DatabaseError::from)?;
-			let bqual_length: i32 = row.try_get("bqual_length").map_err(DatabaseError::from)?;
-			let data: Vec<u8> = row.try_get("data").map_err(DatabaseError::from)?;
+			let format_id: i32 = row.try_get("formatID").map_err(map_sqlx_error)?;
+			let gtrid_length: i32 = row.try_get("gtrid_length").map_err(map_sqlx_error)?;
+			let bqual_length: i32 = row.try_get("bqual_length").map_err(map_sqlx_error)?;
+			let data: Vec<u8> = row.try_get("data").map_err(map_sqlx_error)?;
 
 			transactions.push(XaTransactionInfo {
 				format_id,

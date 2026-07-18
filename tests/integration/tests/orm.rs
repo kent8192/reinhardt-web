@@ -25,6 +25,9 @@ mod crud_lifecycle_integration;
 #[path = "orm/multi_database_integration.rs"]
 mod multi_database_integration;
 
+#[path = "orm/model_enum_integration.rs"]
+mod model_enum_integration;
+
 #[path = "orm/mysql_json_transaction_integration.rs"]
 mod mysql_json_transaction_integration;
 

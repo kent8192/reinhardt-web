@@ -1409,7 +1409,8 @@ struct ForeignKeyFieldInfo {
 }
 
 /// Generate field metadata string from Rust type
-fn field_type_to_metadata_string(ty: &Type, _config: &FieldConfig) -> Result<String> {
+fn field_type_to_metadata_string(ty: &Type, _config: &FieldConfig) -> Result<TokenStream> {
+	let orm_crate = get_reinhardt_orm_crate();
 	let (_is_option, inner_ty) = extract_option_type(ty);
 
 	match inner_ty {
@@ -1435,16 +1436,18 @@ fn field_type_to_metadata_string(ty: &Type, _config: &FieldConfig) -> Result<Str
 				"Vec" => "ArrayField",
 				"Json" => "JsonField",
 				"Value" => "JsonField",
-				"HashMap" => "HStoreField",
-				other => {
-					return Err(syn::Error::new_spanned(
-						ty,
-						format!("Unsupported field type: {}", other),
-					));
+				"HashMap" => "JsonField",
+				_ => {
+					return Ok(quote! {
+						#orm_crate::inspection::database_field_type_path(
+							<<#inner_ty as #orm_crate::DatabaseField>::Storage as #orm_crate::DatabaseScalar>::STORAGE_KIND
+						)
+					});
 				}
 			};
 
-			Ok(format!("reinhardt.orm.models.{}", type_name))
+			let field_type_path = format!("reinhardt.orm.models.{}", type_name);
+			Ok(quote! { #field_type_path })
 		}
 		_ => Err(syn::Error::new_spanned(ty, "Unsupported field type")),
 	}
@@ -1535,6 +1538,7 @@ fn generated_column_registration(
 /// Map Rust type to ORM field type
 fn map_type_to_field_type(ty: &Type, config: &FieldConfig) -> Result<TokenStream> {
 	let migrations_crate = get_reinhardt_migrations_crate();
+	let orm_crate = get_reinhardt_orm_crate();
 
 	// PostgreSQL: Check for explicit field_type attribute first
 	#[cfg(feature = "db-postgres")]
@@ -1590,6 +1594,9 @@ fn map_type_to_field_type(ty: &Type, config: &FieldConfig) -> Result<TokenStream
 				// PostgreSQL: Vec<T> -> Array type
 				#[cfg(feature = "db-postgres")]
 				"Vec" => {
+					if is_byte_vector(ty) {
+						return Ok(quote! { #migrations_crate::FieldType::Binary });
+					}
 					return map_vec_to_array_type(ty, last_segment, config, &migrations_crate);
 				}
 				// Json<T> and serde_json::Value -> JSONB on PostgreSQL, JSON/TEXT elsewhere.
@@ -1599,16 +1606,24 @@ fn map_type_to_field_type(ty: &Type, config: &FieldConfig) -> Result<TokenStream
 				"Value" => {
 					quote! { #migrations_crate::FieldType::JsonBinary }
 				}
-				// PostgreSQL: HashMap<String, String> -> HStore
-				#[cfg(feature = "db-postgres")]
+				// Hash maps use the JSON field codec on every database backend.
 				"HashMap" => {
-					quote! { #migrations_crate::FieldType::HStore }
+					quote! { #migrations_crate::FieldType::JsonBinary }
 				}
 				_ => {
-					return Err(syn::Error::new_spanned(
-						ty,
-						format!("Unsupported field type: {}", last_segment.ident),
-					));
+					let max_length = config
+						.max_length
+						.map(|value| {
+							let value = value as u32;
+							quote! { ::core::option::Option::Some(#value) }
+						})
+						.unwrap_or_else(|| quote! { ::core::option::Option::None });
+					quote! {
+						#orm_crate::inspection::database_storage_field_type(
+							<<#inner_ty as #orm_crate::DatabaseField>::Storage as #orm_crate::DatabaseScalar>::STORAGE_KIND,
+							#max_length,
+						)
+					}
 				}
 			}
 		}
@@ -1618,6 +1633,130 @@ fn map_type_to_field_type(ty: &Type, config: &FieldConfig) -> Result<TokenStream
 	};
 
 	Ok(field_type)
+}
+
+fn is_builtin_model_field_type(ty: &Type) -> bool {
+	let (_is_option, inner_ty) = extract_option_type(ty);
+	let Type::Path(type_path) = inner_ty else {
+		return false;
+	};
+	let Some(last_segment) = type_path.path.segments.last() else {
+		return false;
+	};
+
+	matches!(
+		last_segment.ident.to_string().as_str(),
+		"i32"
+			| "i64" | "String"
+			| "bool" | "f32"
+			| "f64" | "DateTime"
+			| "Date" | "Time"
+			| "Decimal"
+			| "Uuid" | "Vec"
+			| "Json" | "Value"
+			| "HashMap"
+	)
+}
+
+fn builtin_storage_kind(ty: &Type, orm_crate: &TokenStream) -> Option<TokenStream> {
+	let (_is_option, inner_ty) = extract_option_type(ty);
+	let Type::Path(type_path) = inner_ty else {
+		return None;
+	};
+	let last_segment = type_path.path.segments.last()?;
+	if last_segment.ident == "Vec" {
+		let PathArguments::AngleBracketed(arguments) = &last_segment.arguments else {
+			return None;
+		};
+		if arguments.args.len() != 1 {
+			return None;
+		}
+		let Some(GenericArgument::Type(Type::Path(element))) = arguments.args.first() else {
+			return None;
+		};
+		return Some(if element.path.is_ident("u8") {
+			quote! { #orm_crate::DatabaseStorageKind::Bytes }
+		} else {
+			quote! { #orm_crate::DatabaseStorageKind::Json }
+		});
+	}
+	let kind = match last_segment.ident.to_string().as_str() {
+		"bool" => quote! { #orm_crate::DatabaseStorageKind::Bool },
+		"i32" => quote! { #orm_crate::DatabaseStorageKind::I32 },
+		"i64" => quote! { #orm_crate::DatabaseStorageKind::I64 },
+		"f32" => quote! { #orm_crate::DatabaseStorageKind::F32 },
+		"f64" => quote! { #orm_crate::DatabaseStorageKind::F64 },
+		"Decimal" => quote! { #orm_crate::DatabaseStorageKind::Decimal },
+		"String" => quote! { #orm_crate::DatabaseStorageKind::String },
+		"Json" | "Value" | "HashMap" => quote! { #orm_crate::DatabaseStorageKind::Json },
+		"Uuid" => quote! { #orm_crate::DatabaseStorageKind::Uuid },
+		"Date" => quote! { #orm_crate::DatabaseStorageKind::Date },
+		"Time" => quote! { #orm_crate::DatabaseStorageKind::Time },
+		"DateTime" => quote! { #orm_crate::DatabaseStorageKind::DateTime },
+		_ => return None,
+	};
+
+	Some(kind)
+}
+
+fn is_regular_persisted_field(field: &FieldInfo) -> bool {
+	!field.config.skip
+		&& !field.is_fk_id_field
+		&& !field.injected_relation_serde_skip
+		&& !is_relationship_field_type(&field.ty)
+		&& !field
+			.rel
+			.as_ref()
+			.map(|relation| matches!(relation.rel_type, crate::rel::RelationType::ManyToMany))
+			.unwrap_or(false)
+}
+
+fn generate_database_field_validations(field_infos: &[FieldInfo]) -> Vec<TokenStream> {
+	let orm_crate = get_reinhardt_orm_crate();
+
+	field_infos
+		.iter()
+		.filter(|field| {
+			is_regular_persisted_field(field) && !is_builtin_model_field_type(&field.ty)
+		})
+		.map(|field| {
+			let (_is_option, inner_ty) = extract_option_type(&field.ty);
+			let storage_kind = quote! {
+				<<#inner_ty as #orm_crate::DatabaseField>::Storage as #orm_crate::DatabaseScalar>::STORAGE_KIND
+			};
+			let max_length_validation = if let Some(max_length) = field.config.max_length {
+				let max_length = max_length as usize;
+				quote! {
+					match #storage_kind {
+						#orm_crate::DatabaseStorageKind::String => {
+							if let ::core::option::Option::Some(required) =
+								<#inner_ty as #orm_crate::DatabaseField>::MAX_STRING_VALUE_CHARS
+							{
+								assert!(required <= #max_length, "model enum value exceeds field max_length");
+							}
+						}
+						#orm_crate::DatabaseStorageKind::I32 => {
+							panic!("integer database fields do not accept max_length");
+						}
+						_ => {}
+					}
+				}
+			} else {
+				quote! {
+					if let #orm_crate::DatabaseStorageKind::String = #storage_kind {
+						panic!("string database fields require max_length attribute");
+					}
+				}
+			};
+
+			quote! {
+				#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+				const _: () = {
+					#max_length_validation
+				};
+			}
+		})
+		.collect()
 }
 
 /// Map explicit PostgreSQL field type string to FieldType
@@ -1654,6 +1793,21 @@ fn map_explicit_field_type(
 		}
 	};
 	Ok(field_type)
+}
+
+#[cfg(feature = "db-postgres")]
+fn is_byte_vector(ty: &Type) -> bool {
+	let (_is_option, inner_ty) = extract_option_type(ty);
+	let Type::Path(type_path) = inner_ty else {
+		return false;
+	};
+	let Some(segment) = type_path.path.segments.last() else {
+		return false;
+	};
+	let PathArguments::AngleBracketed(arguments) = &segment.arguments else {
+		return false;
+	};
+	matches!(arguments.args.first(), Some(GenericArgument::Type(Type::Path(element))) if element.path.is_ident("u8"))
 }
 
 /// Map `Vec<T>` to PostgreSQL Array type
@@ -1846,7 +2000,11 @@ fn generate_field_accessors(
 			let field_name = &field.name;
 			let field_type = &field.ty;
 			let method_name = syn::Ident::new(&format!("field_{}", field_name), field_name.span());
-			let field_name_str = field_name.to_string();
+			let column_name = field
+				.config
+				.db_column
+				.clone()
+				.unwrap_or_else(|| field_name.to_string());
 
 			quote! {
 				/// Field accessor for type-safe field references
@@ -1854,7 +2012,7 @@ fn generate_field_accessors(
 				/// Returns a `FieldRef<#struct_name, #field_type>` that provides compile-time
 				/// type safety for field operations.
 				pub const fn #method_name() -> #orm_crate::expressions::FieldRef<#struct_name, #field_type> {
-					#orm_crate::expressions::FieldRef::new(#field_name_str)
+					#orm_crate::expressions::FieldRef::new(#column_name)
 				}
 			}
 		})
@@ -2395,10 +2553,17 @@ fn generate_fk_accessor_methods(
 					// Get FK _id value.
 					let fk_id = self.#fk_id_field_name();
 
-					// Query the target model using the FK _id via the typed
-					// `FieldRef::eq` builder (Issue #4650).
+					// Query the target model using the FK primary key's database codec.
 					#target_ty::objects()
-						.filter(#target_ty::field_id().eq(fk_id.to_string()))
+						.filter(#orm_crate::Filter::new(
+							<#target_ty as #orm_crate::Model>::primary_key_column(),
+							#orm_crate::FilterOperator::Eq,
+							#orm_crate::FilterValue::Typed(
+								<<#target_ty as #orm_crate::Model>::PrimaryKey as #orm_crate::IntoFieldValue<
+									<#target_ty as #orm_crate::Model>::PrimaryKey
+								>>::into_field_value(fk_id)
+							)
+						))
 						.first_with_db(db)
 						.await
 				}
@@ -2812,6 +2977,13 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 		.collect();
 
 	// Process unique constraints from model config
+	let resolve_db_column = |field_name: &str| {
+		field_infos
+			.iter()
+			.find(|field| field.name == field_name)
+			.and_then(|field| field.config.db_column.clone())
+			.unwrap_or_else(|| field_name.to_string())
+	};
 	let unique_constraints: Vec<(Vec<String>, Option<String>, Option<String>)> = model_config
 		.constraints
 		.iter()
@@ -2820,7 +2992,14 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 				fields,
 				name,
 				condition,
-			} => (fields.clone(), name.clone(), condition.clone()),
+			} => (
+				fields
+					.iter()
+					.map(|field| resolve_db_column(field))
+					.collect(),
+				name.clone(),
+				condition.clone(),
+			),
 		})
 		.collect();
 
@@ -2903,6 +3082,7 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 
 	// Generate field_metadata implementation
 	let field_metadata_items = generate_field_metadata(&field_infos, &fk_field_infos)?;
+	let database_field_validations = generate_database_field_validations(&field_infos);
 
 	// Generate auto-registration code
 	let registration_code = generate_registration_code(RegistrationCodeInput {
@@ -3117,8 +3297,51 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 	let generated_field_names: Vec<_> = field_infos
 		.iter()
 		.filter(|field| field.config.generated.is_some() || field.config.generated_sql.is_some())
-		.map(|field| LitStr::new(&field.name.to_string(), field.name.span()))
+		.flat_map(|field| {
+			let rust_name = LitStr::new(&field.name.to_string(), field.name.span());
+			let column_name = field.config.db_column.as_ref().and_then(|name| {
+				(name != &field.name.to_string()).then(|| LitStr::new(name, field.name.span()))
+			});
+			std::iter::once(rust_name).chain(column_name)
+		})
 		.collect();
+	let database_codec_fields: Vec<_> = field_infos
+		.iter()
+		.filter(|field| is_regular_persisted_field(field) || field.is_fk_id_field)
+		.collect();
+	let encode_database_fields = database_codec_fields.iter().map(|field| {
+		let field_name = &field.name;
+		let field_ty = &field.ty;
+		quote! {
+			fields.insert(
+				stringify!(#field_name).to_string(),
+				<<#field_ty as #orm_crate::DatabaseField>::Storage as #orm_crate::DatabaseScalar>::into_database_value(
+					<#field_ty as #orm_crate::DatabaseField>::encode_database(&self.#field_name)?
+				),
+			);
+		}
+	});
+	let decode_database_fields = database_codec_fields.iter().map(|field| {
+		let field_name = &field.name;
+		let field_ty = &field.ty;
+		let column_name = field
+			.config
+			.db_column
+			.clone()
+			.unwrap_or_else(|| field_name.to_string());
+		quote! {
+			stringify!(#field_name) => {
+				let storage = <<#field_ty as #orm_crate::DatabaseField>::Storage as #orm_crate::DatabaseScalar>::from_database_value(value)?;
+				let context = #orm_crate::FieldCodecContext::new(
+					stringify!(#struct_name),
+					stringify!(#field_name),
+					#column_name,
+				);
+				let decoded = <#field_ty as #orm_crate::DatabaseField>::decode_database(storage, &context)?;
+				#orm_crate::model::serialize_decoded_database_field(decoded)
+			}
+		}
+	});
 	let fixture_validation =
 		generate_fixture_validation(struct_name, generics, &field_infos, &fk_field_infos);
 
@@ -3128,6 +3351,10 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 			#composite_pk_type_def
 
 			#shared_info_output
+
+			#(
+				#database_field_validations
+			)*
 
 			// Generate new() as a zero-arg alias of build()
 			#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
@@ -3199,6 +3426,26 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 				}
 			}
 
+			fn encode_database_fields(
+				&self,
+			) -> ::core::result::Result<
+				::std::collections::BTreeMap<::std::string::String, #orm_crate::DatabaseValue>,
+				#orm_crate::FieldCodecError,
+			> {
+				let mut fields = ::std::collections::BTreeMap::new();
+				#(#encode_database_fields)*
+				::core::result::Result::Ok(fields)
+			}
+
+			fn decode_database_field(
+				field_name: &str,
+				value: #orm_crate::DatabaseValue,
+			) -> ::core::result::Result<#orm_crate::model::ModelFieldJsonValue, #orm_crate::FieldCodecError> {
+				match field_name {
+					#(#decode_database_fields,)*
+					_ => value.into_json_value(),
+				}
+			}
 			#fixture_validation
 
 			#pk_impl
@@ -3701,32 +3948,10 @@ fn generate_field_metadata(
 ) -> Result<Vec<TokenStream>> {
 	let mut items = Vec::new();
 
-	// Filter out skipped, ManyToMany, ForeignKeyField, OneToOneField, and FK _id fields
+	// Filter out non-persisted and relation-managed fields.
 	let regular_fields: Vec<_> = field_infos
 		.iter()
-		.filter(|f| {
-			// Exclude fields marked with #[field(skip = true)]
-			if f.config.skip {
-				return false;
-			}
-			// Exclude FK _id fields (auto-generated by #[model] attribute macro)
-			if f.is_fk_id_field {
-				return false;
-			}
-			// Exclude ManyToMany
-			if f.rel
-				.as_ref()
-				.map(|r| matches!(r.rel_type, crate::rel::RelationType::ManyToMany))
-				.unwrap_or(false)
-			{
-				return false;
-			}
-			// Exclude ForeignKeyField and OneToOneField (we generate _id fields instead)
-			if is_relationship_field_type(&f.ty) {
-				return false;
-			}
-			true
-		})
+		.filter(|field| is_regular_persisted_field(field))
 		.collect();
 
 	let orm_crate = get_reinhardt_orm_crate();
@@ -3741,6 +3966,22 @@ fn generate_field_metadata(
 		let field_type_path = field_type_to_metadata_string(&field_info.ty, &field_info.config)?;
 		let _field_type = map_type_to_field_type(&field_info.ty, &field_info.config)?;
 		let config = &field_info.config;
+		let (_is_option, inner_ty) = extract_option_type(&field_info.ty);
+		let (storage_kind, domain) = if is_builtin_model_field_type(&field_info.ty) {
+			let storage_kind = builtin_storage_kind(&field_info.ty, &orm_crate)
+				.map(|kind| quote! { ::core::option::Option::Some(#kind) })
+				.unwrap_or_else(|| quote! { ::core::option::Option::None });
+			(storage_kind, quote! { ::core::option::Option::None })
+		} else {
+			(
+				quote! {
+					::core::option::Option::Some(
+						<<#inner_ty as #orm_crate::DatabaseField>::Storage as #orm_crate::DatabaseScalar>::STORAGE_KIND
+					)
+				},
+				quote! { <#inner_ty as #orm_crate::DatabaseField>::domain() },
+			)
+		};
 
 		let (is_option, _) = extract_option_type(&field_info.ty);
 		let nullable = config.null.unwrap_or(is_option);
@@ -4013,6 +4254,8 @@ fn generate_field_metadata(
 				#orm_crate::inspection::FieldInfo {
 					name: #name.to_string(),
 					field_type: #field_type_path.to_string(),
+					storage_kind: #storage_kind,
+					domain: #domain,
 					nullable: #nullable,
 					primary_key: #primary_key,
 					unique: #unique,
@@ -4033,13 +4276,16 @@ fn generate_field_metadata(
 	// Generate _id field metadata for ForeignKeyField and OneToOneField
 	for fk_info in fk_field_infos {
 		let name = &fk_info.id_column_name;
+		let target_type = &fk_info.target_type;
 		let nullable = fk_info.rel_attr.null.unwrap_or(false);
 		let unique = fk_info.is_one_to_one; // OneToOne fields have UNIQUE constraint
 		let db_index = fk_info.rel_attr.db_index.unwrap_or(true); // FK fields are indexed by default
 
-		// Generate the field type based on target model's primary key
-		// We use IntegerField as a safe default; runtime will resolve the actual type
-		let field_type_path = "IntegerField";
+		// Derive both the field type and storage kind from the target primary key.
+		let storage_kind = quote! {
+			<<<#target_type as #orm_crate::Model>::PrimaryKey as #orm_crate::DatabaseField>::Storage as #orm_crate::DatabaseScalar>::STORAGE_KIND
+		};
+		let field_type_storage_kind = storage_kind.clone();
 
 		let item = quote! {
 			{
@@ -4054,10 +4300,16 @@ fn generate_field_metadata(
 					"relation_managed".to_string(),
 					#orm_crate::fields::FieldKwarg::Bool(true)
 				);
+				attributes.insert(
+					"fk_id_field".to_string(),
+					#orm_crate::fields::FieldKwarg::Bool(true)
+				);
 
 				#orm_crate::inspection::FieldInfo {
 					name: #name.to_string(),
-					field_type: #field_type_path.to_string(),
+					field_type: #orm_crate::inspection::database_field_type_path(#field_type_storage_kind).to_string(),
+					storage_kind: ::core::option::Option::Some(#storage_kind),
+					domain: ::core::option::Option::None,
 					nullable: #nullable,
 					primary_key: false,
 					unique: #unique,
@@ -4197,8 +4449,13 @@ fn generate_registration_code(input: RegistrationCodeInput<'_>) -> Result<TokenS
 	let mut field_registrations = Vec::new();
 	for field_info in &regular_fields {
 		let field_name = field_info.name.to_string();
+		let field_ty = &field_info.ty;
 		let field_type = map_type_to_field_type(&field_info.ty, &field_info.config)?;
 		let config = &field_info.config;
+		let resolved_column = config
+			.db_column
+			.clone()
+			.unwrap_or_else(|| field_name.clone());
 
 		let mut params = Vec::new();
 		if config.primary_key {
@@ -4348,13 +4605,19 @@ fn generate_registration_code(input: RegistrationCodeInput<'_>) -> Result<TokenS
 		let generated_registration = generated_column_registration(config, &migrations_crate);
 
 		field_registrations.push(quote! {
+			let field_domain = <#field_ty as #orm_crate::DatabaseField>::domain();
 			metadata.add_field(
-				#field_name.to_string(),
+				#resolved_column.to_string(),
 				#migrations_crate::model_registry::FieldMetadata::new(#field_type)
 					#(#params)*
+					.with_param("db_column", #resolved_column)
+					.with_domain_opt(field_domain.clone())
 					#generated_registration
 					#fk_registration
 			);
+			if let Some(field_domain) = field_domain {
+				metadata.add_enum_domain_constraint(#resolved_column, field_domain);
+			}
 		});
 	}
 
@@ -6190,7 +6453,11 @@ fn generate_field_selector_struct(
 		.iter()
 		.map(|field| {
 			let field_name = &field.name;
-			let field_name_str = field_name.to_string();
+			let field_name_str = field
+				.config
+				.db_column
+				.clone()
+				.unwrap_or_else(|| field_name.to_string());
 			quote! {
 				#field_name: #orm_crate::query_fields::Field::new(vec![#field_name_str])
 			}
@@ -6806,6 +7073,67 @@ mod tests {
 	use super::*;
 
 	#[test]
+	fn builtin_storage_kind_distinguishes_byte_and_array_vectors() {
+		let orm_crate = quote! { orm };
+		let bytes: Type = parse_quote! { Vec<u8> };
+		let strings: Type = parse_quote! { Vec<String> };
+
+		assert_eq!(
+			builtin_storage_kind(&bytes, &orm_crate)
+				.expect("Vec<u8> should have byte storage")
+				.to_string(),
+			quote! { orm::DatabaseStorageKind::Bytes }.to_string()
+		);
+		assert_eq!(
+			builtin_storage_kind(&strings, &orm_crate)
+				.expect("Vec<String> should retain JSON row metadata")
+				.to_string(),
+			quote! { orm::DatabaseStorageKind::Json }.to_string()
+		);
+	}
+
+	#[test]
+	fn builtin_storage_kind_recognizes_decimal_fields() {
+		let orm_crate = quote! { orm };
+		let decimal: Type = parse_quote! { rust_decimal::Decimal };
+
+		assert_eq!(
+			builtin_storage_kind(&decimal, &orm_crate)
+				.expect("Decimal should have decimal storage")
+				.to_string(),
+			quote! { orm::DatabaseStorageKind::Decimal }.to_string()
+		);
+	}
+
+	#[test]
+	fn hash_map_fields_use_json_storage_consistently() {
+		let orm_crate = quote! { orm };
+		let migrations_crate = get_reinhardt_migrations_crate();
+		let hash_map: Type = parse_quote! { std::collections::HashMap<String, String> };
+		let config = FieldConfig::default();
+
+		assert_eq!(
+			field_type_to_metadata_string(&hash_map, &config)
+				.expect("HashMap metadata should generate")
+				.to_string(),
+			quote! { "reinhardt.orm.models.JsonField" }.to_string()
+		);
+		assert_eq!(
+			map_type_to_field_type(&hash_map, &config)
+				.expect("HashMap migration type should generate")
+				.to_string(),
+			quote! { #migrations_crate::FieldType::JsonBinary }.to_string()
+		);
+
+		assert_eq!(
+			builtin_storage_kind(&hash_map, &orm_crate)
+				.expect("HashMap should retain JSON row metadata")
+				.to_string(),
+			quote! { orm::DatabaseStorageKind::Json }.to_string()
+		);
+	}
+
+	#[test]
 	fn test_generated_schema_expr_validation_accepts_reconstructable_expr() {
 		let expr: syn::Expr = parse_quote! {
 			SchemaExpr::concat([SchemaExpr::col("first_name"), SchemaExpr::val(" "), SchemaExpr::col("last_name")])
@@ -6962,6 +7290,141 @@ mod tests {
 	}
 
 	#[test]
+	fn test_full_expansion_keeps_foreign_key_primary_key_type() {
+		let input = quote! {
+			#[model(app_label = "test", table_name = "audits", info = false)]
+			pub struct Audit {
+				#[field(primary_key = true)]
+				pub id: i64,
+				#[rel(foreign_key)]
+				pub owner: db::associations::ForeignKeyField<Account>,
+			}
+		};
+
+		let output = model_derive_impl(syn::parse2(input).unwrap()).unwrap();
+		let compact = output.to_string().replace(' ', "");
+
+		assert!(compact.contains("IntoFieldValue"));
+		assert!(compact.contains("into_field_value(fk_id)"));
+		assert!(compact.contains("primary_key_column()"));
+		assert!(!compact.contains("fk_id.to_string()"));
+	}
+
+	#[test]
+	fn test_db_column_expansion_preserves_write_filters_constraints_and_selectors() {
+		let input = quote! {
+			#[model(
+				app_label = "test",
+				table_name = "records",
+				unique_together = ("email", "full_name")
+			)]
+			pub struct Record {
+				#[field(primary_key = true)]
+				pub id: i64,
+				#[field(db_column = "email_addr")]
+				pub email: String,
+				#[field(db_column = "display_name", generated_sql = "lower(email_addr)")]
+				pub full_name: String,
+				#[rel(foreign_key)]
+				pub owner: db::associations::ForeignKeyField<Account>,
+			}
+		};
+
+		let output = model_derive_impl(syn::parse2(input).unwrap()).unwrap();
+		let compact = output.to_string().replace(' ', "");
+
+		assert!(compact.contains("stringify!(owner_id).to_string()"));
+		assert!(compact.contains("\"full_name\",\"display_name\""));
+		assert!(
+			compact
+				.contains("fields:vec![\"email_addr\".to_string(),\"display_name\".to_string()]")
+		);
+		assert!(compact.contains("Field::new(vec![\"email_addr\"])"));
+	}
+
+	#[test]
+	fn test_database_field_validation_is_native_gated() {
+		let input = quote! {
+			#[model(app_label = "test", table_name = "test")]
+			pub struct TestModel {
+				#[field(primary_key = true)]
+				pub id: i64,
+				#[field(max_length = 1)]
+				pub status: Status,
+			}
+		};
+
+		let output = model_derive_impl(syn::parse2(input).unwrap()).unwrap();
+		let output_string = output.to_string();
+		let file: syn::File = syn::parse2(output).expect("model expansion should parse as a file");
+		let validation = file
+			.items
+			.iter()
+			.find_map(|item| {
+				let syn::Item::Const(item_const) = item else {
+					return None;
+				};
+				quote!(#item_const)
+					.to_string()
+					.contains("model enum value exceeds field max_length")
+					.then_some(item_const)
+			})
+			.unwrap_or_else(|| {
+				panic!(
+					"custom database field validation const should be generated: {output_string}"
+				)
+			});
+
+		assert_eq!(
+			validation.attrs.len(),
+			1,
+			"database field schema validation must have one native cfg gate"
+		);
+		let cfg_attribute = validation
+			.attrs
+			.first()
+			.expect("database field schema validation must have a cfg attribute");
+		assert!(cfg_attribute.path().is_ident("cfg"));
+		let syn::Meta::List(cfg) = &cfg_attribute.meta else {
+			panic!("database field schema validation cfg must contain a condition");
+		};
+		let condition: String = cfg
+			.tokens
+			.to_string()
+			.chars()
+			.filter(|character| !character.is_whitespace())
+			.collect();
+		assert_eq!(
+			condition,
+			"not(all(target_family=\"wasm\",target_os=\"unknown\"))"
+		);
+	}
+
+	#[test]
+	fn test_foreign_key_metadata_uses_target_primary_key_storage_kind() {
+		let field_info = ForeignKeyFieldInfo {
+			field_name: parse_quote! { owner },
+			target_type: parse_quote! { User },
+			id_column_name: "owner_id".to_string(),
+			related_name: None,
+			is_one_to_one: false,
+			rel_attr: RelAttribute::default(),
+		};
+
+		let metadata = generate_field_metadata(&[], &[field_info])
+			.expect("foreign key metadata should generate")
+			.into_iter()
+			.next()
+			.expect("foreign key metadata item should exist")
+			.to_string();
+
+		assert!(metadata.contains("storage_kind : :: core :: option :: Option :: Some"));
+		assert!(metadata.contains("User as"));
+		assert!(metadata.contains("fk_id_field"));
+		assert!(metadata.contains("domain : :: core :: option :: Option :: None"));
+		assert!(metadata.contains("database_field_type_path"));
+	}
+
 	fn test_table_name_defaults_to_app_label_and_struct_name_in_snake_case() {
 		let cases = [
 			("User", "test_user"),

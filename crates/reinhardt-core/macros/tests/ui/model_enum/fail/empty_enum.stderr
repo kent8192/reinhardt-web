@@ -1,0 +1,5 @@
+error: ModelEnum requires at least one variant
+ --> tests/ui/model_enum/fail/empty_enum.rs:5:6
+  |
+5 | enum EmptyEnum {}
+  |      ^^^^^^^^^

@@ -1,5 +1,34 @@
+use reinhardt_core::exception::{DatabaseError, DatabaseErrorKind, Error};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
+
+use super::{DatabaseValue, FieldCodecError};
+
+fn legacy_storage_kind(field_type: &str) -> Option<super::DatabaseStorageKind> {
+	if field_type.contains("UuidField") || field_type.contains("UUIDField") {
+		Some(super::DatabaseStorageKind::Uuid)
+	} else if field_type.contains("DateTimeField") {
+		Some(super::DatabaseStorageKind::DateTime)
+	} else if field_type.contains("DateField") {
+		Some(super::DatabaseStorageKind::Date)
+	} else if field_type.contains("TimeField") {
+		Some(super::DatabaseStorageKind::Time)
+	} else {
+		None
+	}
+}
+
+/// JSON carrier used only for final whole-model assembly after field decoding.
+#[doc(hidden)]
+pub type ModelFieldJsonValue = serde_json::Value;
+
+/// Serializes a decoded typed database field for final model assembly.
+#[doc(hidden)]
+pub fn serialize_decoded_database_field<T: Serialize>(
+	value: T,
+) -> Result<ModelFieldJsonValue, FieldCodecError> {
+	serde_json::to_value(value).map_err(|error| FieldCodecError::Serialization(error.to_string()))
+}
 
 /// Canonical fixture field values keyed by model field name.
 #[doc(hidden)]
@@ -116,6 +145,50 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 			}
 			_ => false,
 		}
+	}
+
+	/// Encodes model fields into their canonical database representations.
+	///
+	/// Macro-generated models override this method with typed field codecs.
+	/// This serde-based implementation preserves compatibility for manual model
+	/// implementations.
+	fn encode_database_fields(&self) -> Result<BTreeMap<String, DatabaseValue>, FieldCodecError> {
+		let value = serde_json::to_value(self)
+			.map_err(|error| FieldCodecError::Serialization(error.to_string()))?;
+		let fields = value.as_object().ok_or_else(|| {
+			FieldCodecError::Serialization("model must serialize to an object".to_owned())
+		})?;
+		let metadata = Self::field_metadata();
+
+		fields
+			.iter()
+			.map(|(name, value)| {
+				let metadata = metadata.iter().find(|field| field.name == *name);
+				let storage_kind = metadata.and_then(|field| {
+					field
+						.storage_kind
+						.or_else(|| legacy_storage_kind(&field.field_type))
+				});
+				let is_json_field = metadata
+					.is_some_and(|field| super::json::is_json_field_type(&field.field_type));
+				let value = if is_json_field && !self.field_is_none(name) {
+					DatabaseValue::Json(value.clone())
+				} else {
+					super::json::database_value_from_json(value.clone(), storage_kind)?
+				};
+				Ok((name.clone(), value))
+			})
+			.collect()
+	}
+
+	/// Decodes one canonical database value for final model assembly.
+	///
+	/// Macro-generated models override this method with typed field codecs.
+	fn decode_database_field(
+		_field_name: &str,
+		value: DatabaseValue,
+	) -> Result<serde_json::Value, FieldCodecError> {
+		value.into_json_value()
 	}
 
 	/// Validate canonical fixture fields before they are written to the database.
@@ -299,8 +372,12 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 			let conn = get_connection().await?;
 			let manager = super::Manager::<Self>::new();
 
-			let json = serde_json::to_value(&*self)
-				.map_err(|e| reinhardt_core::exception::Error::Database(e.to_string()))?;
+			let json = serde_json::to_value(&*self).map_err(|error| {
+				Error::from(DatabaseError::new(
+					DatabaseErrorKind::Serialization,
+					error.to_string(),
+				))
+			})?;
 
 			if self.primary_key().is_none() {
 				// INSERT: new record
@@ -312,9 +389,11 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 						.dispatch_before_insert(Self::table_name(), &instance_id, &json)
 						.await;
 					if result == EventResult::Veto {
-						return Err(reinhardt_core::exception::Error::Database(
-							"Insert operation vetoed by event listener".to_string(),
-						));
+						return Err(DatabaseError::new(
+							DatabaseErrorKind::Query,
+							"Insert operation vetoed by event listener",
+						)
+						.into());
 					}
 				}
 
@@ -350,9 +429,11 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 						.dispatch_before_update(Self::table_name(), &instance_id, &json)
 						.await;
 					if result == EventResult::Veto {
-						return Err(reinhardt_core::exception::Error::Database(
-							"Update operation vetoed by event listener".to_string(),
-						));
+						return Err(DatabaseError::new(
+							DatabaseErrorKind::Query,
+							"Update operation vetoed by event listener",
+						)
+						.into());
 					}
 				}
 
@@ -384,7 +465,9 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 
 			let registry = get_active_registry();
 			let manager = super::Manager::<Self>::new();
-			let json = serde_json::to_value(&*self)?;
+			let json = serde_json::to_value(&*self).map_err(|error| {
+				DatabaseError::new(DatabaseErrorKind::Serialization, error.to_string())
+			})?;
 			let is_insert = self.primary_key().is_none();
 			let instance_id = if is_insert {
 				format!("{}-new-{}", Self::table_name(), uuid::Uuid::now_v7())
@@ -410,9 +493,10 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 				};
 				if result == EventResult::Veto {
 					let operation = if is_insert { "Insert" } else { "Update" };
-					return Err(crate::backends::error::DatabaseError::QueryError(format!(
-						"{operation} operation vetoed by event listener"
-					)));
+					return Err(crate::backends::error::DatabaseError::new(
+						crate::backends::error::DatabaseErrorKind::Query,
+						format!("{operation} operation vetoed by event listener"),
+					));
 				}
 			}
 
@@ -458,7 +542,9 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 
 			let registry = get_active_registry();
 			let manager = super::Manager::<Self>::new();
-			let json = serde_json::to_value(&*self)?;
+			let json = serde_json::to_value(&*self).map_err(|error| {
+				DatabaseError::new(DatabaseErrorKind::Serialization, error.to_string())
+			})?;
 			let instance_id = format!("{}-new-{}", Self::table_name(), uuid::Uuid::now_v7());
 
 			if let Some(ref registry) = registry {
@@ -466,8 +552,9 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 					.dispatch_before_insert(Self::table_name(), &instance_id, &json)
 					.await;
 				if result == EventResult::Veto {
-					return Err(crate::backends::error::DatabaseError::QueryError(
-						"Insert operation vetoed by event listener".to_string(),
+					return Err(crate::backends::error::DatabaseError::new(
+						crate::backends::error::DatabaseErrorKind::Query,
+						"Insert operation vetoed by event listener",
 					));
 				}
 			}
@@ -540,9 +627,10 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 			use super::manager::get_connection;
 
 			let pk = self.primary_key().ok_or_else(|| {
-				reinhardt_core::exception::Error::Database(
-					"Cannot delete model without primary key".to_string(),
-				)
+				Error::from(DatabaseError::new(
+					DatabaseErrorKind::Query,
+					"Cannot delete model without primary key",
+				))
 			})?;
 
 			let conn = get_connection().await?;
@@ -556,9 +644,11 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 					.dispatch_before_delete(Self::table_name(), &instance_id)
 					.await;
 				if result == EventResult::Veto {
-					return Err(reinhardt_core::exception::Error::Database(
-						"Delete operation vetoed by event listener".to_string(),
-					));
+					return Err(DatabaseError::new(
+						DatabaseErrorKind::Query,
+						"Delete operation vetoed by event listener",
+					)
+					.into());
 				}
 			}
 
@@ -588,8 +678,9 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 			use super::events::{EventResult, get_active_registry};
 
 			let pk = self.primary_key().ok_or_else(|| {
-				crate::backends::error::DatabaseError::QueryError(
-					"Cannot delete model without primary key".to_string(),
+				crate::backends::error::DatabaseError::new(
+					crate::backends::error::DatabaseErrorKind::Query,
+					"Cannot delete model without primary key",
 				)
 			})?;
 			let instance_id = format!("{}-{}", Self::table_name(), pk);
@@ -599,8 +690,9 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 					.dispatch_before_delete(Self::table_name(), &instance_id)
 					.await;
 				if result == EventResult::Veto {
-					return Err(crate::backends::error::DatabaseError::QueryError(
-						"Delete operation vetoed by event listener".to_string(),
+					return Err(crate::backends::error::DatabaseError::new(
+						crate::backends::error::DatabaseErrorKind::Query,
+						"Delete operation vetoed by event listener",
 					));
 				}
 			}
@@ -760,5 +852,197 @@ impl SoftDelete {
 impl Default for SoftDelete {
 	fn default() -> Self {
 		Self::new()
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::Model;
+	use crate::orm::inspection::FieldInfo;
+	use crate::orm::{DatabaseValue, FieldSelector, Manager};
+	use reinhardt_core::macros::{ModelEnum, model};
+	use rstest::rstest;
+	use serde::{Deserialize, Serialize};
+	use std::collections::HashMap;
+
+	#[derive(ModelEnum, Clone, Debug, PartialEq, Serialize, Deserialize)]
+	#[model_enum(repr = "string")]
+	#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+	enum Status {
+		#[model_enum(value = "queued")]
+		Queued,
+		#[model_enum(value = "running")]
+		Running,
+	}
+
+	#[derive(ModelEnum, Clone, Debug, PartialEq, Serialize, Deserialize)]
+	#[model_enum(repr = "i32")]
+	enum Priority {
+		#[model_enum(value = 10)]
+		Low,
+		#[model_enum(value = 20)]
+		Normal,
+	}
+
+	#[model(app_label = "tests", table_name = "field_map_records")]
+	#[derive(Clone, Debug, Serialize, Deserialize)]
+	struct FieldMapRecord {
+		#[field(primary_key = true)]
+		id: Option<i64>,
+		#[field(max_length = 16)]
+		status: Status,
+		priority: Priority,
+	}
+
+	#[derive(Clone, Debug, Serialize, Deserialize)]
+	struct LegacyTypedRecord {
+		id: Option<i64>,
+		external_id: uuid::Uuid,
+		occurred_at: chrono::DateTime<chrono::Utc>,
+	}
+
+	#[derive(Clone, Debug)]
+	struct LegacyTypedRecordFields;
+
+	impl FieldSelector for LegacyTypedRecordFields {
+		fn with_alias(self, _alias: &str) -> Self {
+			self
+		}
+	}
+
+	impl Model for LegacyTypedRecord {
+		type PrimaryKey = i64;
+		type Fields = LegacyTypedRecordFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"legacy_typed_records"
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = Some(value);
+		}
+
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+
+		fn new_fields() -> Self::Fields {
+			LegacyTypedRecordFields
+		}
+
+		fn field_metadata() -> Vec<FieldInfo> {
+			["id", "external_id", "occurred_at"]
+				.into_iter()
+				.map(|name| FieldInfo {
+					name: name.to_owned(),
+					field_type: match name {
+						"id" => "reinhardt.orm.models.BigIntegerField",
+						"external_id" => "reinhardt.orm.models.UuidField",
+						"occurred_at" => "reinhardt.orm.models.DateTimeField",
+						_ => unreachable!(),
+					}
+					.to_owned(),
+					storage_kind: None,
+					domain: None,
+					nullable: name == "id",
+					primary_key: name == "id",
+					unique: false,
+					blank: false,
+					editable: true,
+					default: None,
+					db_default: None,
+					db_column: None,
+					choices: None,
+					attributes: HashMap::new(),
+				})
+				.collect()
+		}
+	}
+
+	#[rstest]
+	fn string_enum_database_value_survives_field_map_round_trip() {
+		// Arrange
+		let record = FieldMapRecord {
+			id: None,
+			status: Status::Queued,
+			priority: Priority::Normal,
+		};
+
+		// Act
+		let fields = record
+			.encode_database_fields()
+			.expect("model fields should encode");
+		let database_value = fields
+			.get("status")
+			.cloned()
+			.expect("status should be encoded");
+		let decoded = FieldMapRecord::decode_database_field("status", database_value.clone())
+			.expect("status should decode");
+		let status: Status =
+			serde_json::from_value(decoded).expect("decoded status should deserialize");
+
+		// Assert
+		assert_eq!(database_value, DatabaseValue::String("queued".to_owned()));
+		assert_eq!(status, Status::Queued);
+	}
+
+	#[rstest]
+	fn i32_enum_database_value_survives_field_map_round_trip() {
+		// Arrange
+		let record = FieldMapRecord {
+			id: None,
+			status: Status::Queued,
+			priority: Priority::Normal,
+		};
+
+		// Act
+		let fields = record
+			.encode_database_fields()
+			.expect("model fields should encode");
+		let database_value = fields
+			.get("priority")
+			.cloned()
+			.expect("priority should be encoded");
+		let decoded = FieldMapRecord::decode_database_field("priority", database_value.clone())
+			.expect("priority should decode");
+		let priority: Priority =
+			serde_json::from_value(decoded).expect("decoded priority should deserialize");
+
+		// Assert
+		assert_eq!(database_value, DatabaseValue::I32(20));
+		assert_eq!(priority, Priority::Normal);
+	}
+
+	#[test]
+	fn legacy_metadata_infers_uuid_and_datetime_database_values() {
+		// Arrange
+		let occurred_at = chrono::DateTime::parse_from_rfc3339("2026-07-18T12:00:00Z")
+			.expect("timestamp should parse")
+			.with_timezone(&chrono::Utc);
+		let record = LegacyTypedRecord {
+			id: Some(1),
+			external_id: uuid::Uuid::nil(),
+			occurred_at,
+		};
+
+		// Act
+		let fields = record
+			.encode_database_fields()
+			.expect("legacy model fields should encode");
+
+		// Assert
+		assert_eq!(
+			fields.get("external_id"),
+			Some(&DatabaseValue::Uuid(uuid::Uuid::nil()))
+		);
+		assert_eq!(
+			fields.get("occurred_at"),
+			Some(&DatabaseValue::DateTime(occurred_at))
+		);
 	}
 }

@@ -74,6 +74,56 @@ This crate provides the following modules:
   - Two-phase commit (2PC) for distributed transactions
   - Atomic transaction wrapper (Django-style transaction.atomic)
   - Database-level transaction execution methods
+  - Typed callback errors with automatic conversion from framework failures
+
+- **Structured Database Errors**
+  - `DatabaseErrorKind` provides portable connection, constraint, transaction, serialization, and query categories
+  - `Error::database_kind()` supports category matching without driver-specific downcasts
+  - `DatabaseError::code()` preserves an optional vendor code for diagnostics
+
+### Structured Error Handling
+
+Construct framework database failures with a portable category and inspect that
+category at application boundaries:
+
+```rust
+use reinhardt_core::exception::{DatabaseError, DatabaseErrorKind, Error};
+
+let error = Error::from(DatabaseError::new(
+    DatabaseErrorKind::UniqueViolation,
+    "email already exists",
+).with_code("23505"));
+
+assert_eq!(error.database_kind(), Some(DatabaseErrorKind::UniqueViolation));
+assert_eq!(error.database_error().and_then(DatabaseError::code), Some("23505"));
+```
+
+Transaction callbacks may return an application-owned error. The error must
+implement `From<reinhardt_core::exception::Error>` so begin, commit, and rollback
+failures retain the same typed channel as domain failures:
+
+```rust,no_run
+use reinhardt_core::exception::Error;
+use reinhardt_db::orm::connection::DatabaseConnection;
+use reinhardt_db::orm::transaction::transaction;
+
+#[derive(Debug, thiserror::Error)]
+enum ApplicationError {
+    #[error("operation rejected")]
+    Rejected,
+    #[error(transparent)]
+    Framework(#[from] Error),
+}
+
+# async fn example() -> Result<(), ApplicationError> {
+let connection = DatabaseConnection::connect("sqlite::memory:").await?;
+let result: Result<(), ApplicationError> = transaction(&connection, async |_transaction| {
+    Err(ApplicationError::Rejected)
+}).await;
+
+result
+# }
+```
 
 - **Database Replication and Routing**
   - Read/write splitting via DatabaseRouter
@@ -230,6 +280,76 @@ pub struct User {
 }
 ```
 
+### Native Model Enum Fields
+
+Use `ModelEnum` when a column has a finite set of domain values. Choose the
+physical representation once and give every variant an explicit database
+value:
+
+```rust
+use reinhardt::ModelEnum;
+use reinhardt::core::serde::{Deserialize, Serialize};
+use reinhardt::prelude::*;
+
+#[derive(ModelEnum, Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[model_enum(repr = "string")]
+enum Status {
+	#[model_enum(value = "queued")]
+	Queued,
+	#[model_enum(value = "in_progress")]
+	Running,
+}
+
+#[derive(ModelEnum, Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[model_enum(repr = "i32")]
+enum Priority {
+	#[model_enum(value = 10)]
+	Low,
+	#[model_enum(value = 20)]
+	High,
+}
+
+#[model(app_label = "jobs", table_name = "jobs")]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct Job {
+	#[field(primary_key = true)]
+	id: Option<i64>,
+	#[field(max_length = 32)]
+	status: Status,
+	priority: Priority,
+	#[field(max_length = 32, null = true)]
+	fallback_status: Option<Status>,
+}
+```
+
+String enums use a character column, `i32` enums use an integer column, and
+generated migrations add named check constraints for the declared values.
+Nullable enum fields accept `None`; `Some(value)` uses the enum's normal codec.
+
+Field references require enum values for filters and partial updates:
+
+```rust,ignore
+let jobs = Job::objects()
+	.filter(Job::field_status().eq(Status::Queued))
+	.filter(Job::field_priority().is_in([Priority::Low, Priority::High]))
+	.all()
+	.await?;
+
+Job::objects()
+	.filter(Job::field_id().eq(job_id))
+	.update_fields([
+		Job::field_status().assign(Status::Running),
+		Job::field_fallback_status().assign(Some(Status::Queued)),
+	])
+	.await?;
+```
+
+Rust variant names, serde names, and database values are independent
+contracts. Renaming `Running`, applying `#[serde(rename = "RUNNING")]`, or
+changing `#[model_enum(value = "in_progress")]` affects a different boundary.
+Unknown stored values fail hydration with field context, and passing a raw
+string such as `.eq("queued")` to an enum field is a compile error.
+
 **Field Attributes:**
 - `#[field(primary_key = true)]` - Primary key
 - `#[field(max_length = N)]` - Maximum length for strings
@@ -254,6 +374,12 @@ JSON for MySQL, and TEXT for SQLite. Scalar wrappers such as `Json<String>` and
 relationship accessor, and session operations preserve the typed value during
 writes and hydration. For nullable fields, `None` maps to SQL `NULL`, while
 `Some(Json::new(serde_json::Value::Null))` maps to a present JSON `null` value.
+
+Vector model fields use native PostgreSQL arrays for `String`, `i32`, `i64`,
+`bool`, `f32`, `f64`, and `Uuid` elements. The manager, session, and bulk-update
+paths preserve those array types on PostgreSQL; MySQL and SQLite serialize the
+same vectors as JSON text. Session hydration also converts date, time, and
+timestamp columns to their typed chrono values on every supported backend.
 
 ```rust
 use reinhardt_db::Json;
@@ -463,7 +589,7 @@ is fully opt-in and backward compatible.
 
 ```rust,ignore
 use reinhardt_db::orm::custom_manager::CustomManager;
-use reinhardt_core::exception::Result;
+use reinhardt_core::exception::{DatabaseError, DatabaseErrorKind, Result};
 
 #[derive(Default)]
 struct ActiveUserManager;
@@ -487,9 +613,11 @@ impl CustomManager for ActiveUserManager {
     // Veto saves with empty usernames.
     fn before_save(&self, user: &mut User) -> Result<()> {
         if user.username.is_empty() {
-            return Err(reinhardt_core::exception::Error::Database(
-                "username must not be empty".into(),
-            ));
+            return Err(DatabaseError::new(
+                DatabaseErrorKind::Query,
+                "username must not be empty",
+            )
+            .into());
         }
         Ok(())
     }

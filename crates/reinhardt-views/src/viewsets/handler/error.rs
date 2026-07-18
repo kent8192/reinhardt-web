@@ -5,6 +5,8 @@
 pub enum ViewError {
 	/// Serialization or deserialization failure.
 	Serialization(String),
+	/// A structured database failure returned by a serializer.
+	Database(reinhardt_core::exception::DatabaseError),
 	/// Permission denied for the requested action.
 	Permission(String),
 	/// The requested resource was not found.
@@ -21,6 +23,7 @@ impl std::fmt::Display for ViewError {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
 			ViewError::Serialization(msg) => write!(f, "Serialization error: {}", msg),
+			ViewError::Database(error) => write!(f, "Database error: {}", error),
 			ViewError::Permission(msg) => write!(f, "Permission denied: {}", msg),
 			ViewError::NotFound(msg) => write!(f, "Not found: {}", msg),
 			ViewError::BadRequest(msg) => write!(f, "Bad request: {}", msg),
@@ -43,16 +46,63 @@ impl std::error::Error for ViewError {}
 /// | `NotFound`         | `NotFound`      | 404    |
 /// | `BadRequest`       | `Http`          | 400    |
 /// | `Internal`         | `Internal`      | 500    |
+/// | `Database`         | `Database`      | varies |
 /// | `DatabaseError`    | `Database`      | 500    |
 impl From<ViewError> for reinhardt_core::exception::Error {
 	fn from(value: ViewError) -> Self {
+		use reinhardt_core::exception::{DatabaseError, DatabaseErrorKind};
+
 		match value {
 			ViewError::Serialization(m) => Self::Serialization(m),
+			ViewError::Database(error) => Self::Database(error),
 			ViewError::Permission(m) => Self::Authorization(m),
 			ViewError::NotFound(m) => Self::NotFound(m),
 			ViewError::BadRequest(m) => Self::Http(m),
 			ViewError::Internal(m) => Self::Internal(m),
-			ViewError::DatabaseError(m) => Self::Database(m),
+			ViewError::DatabaseError(m) => DatabaseError::new(DatabaseErrorKind::Query, m).into(),
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use reinhardt_core::exception::DatabaseErrorKind;
+
+	use super::ViewError;
+
+	#[test]
+	fn database_failure_converts_to_structured_query_error() {
+		// Arrange
+		let error = ViewError::DatabaseError("query failed".to_string());
+
+		// Act
+		let framework_error: reinhardt_core::exception::Error = error.into();
+
+		// Assert
+		match framework_error {
+			reinhardt_core::exception::Error::Database(error) => {
+				assert_eq!(error.kind(), DatabaseErrorKind::Query);
+				assert_eq!(error.message(), "query failed");
+			}
+			other => panic!("unexpected framework error variant: {other:?}"),
+		}
+	}
+
+	#[test]
+	fn structured_database_failure_preserves_its_classification() {
+		// Arrange
+		let error = ViewError::Database(reinhardt_core::exception::DatabaseError::new(
+			DatabaseErrorKind::UniqueViolation,
+			"username already exists",
+		));
+
+		// Act
+		let framework_error: reinhardt_core::exception::Error = error.into();
+
+		// Assert
+		assert_eq!(
+			framework_error.database_kind(),
+			Some(DatabaseErrorKind::UniqueViolation)
+		);
 	}
 }

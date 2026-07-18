@@ -10,6 +10,7 @@ use super::engine::Engine;
 use super::types::DatabaseDialect;
 use crate::orm::Model;
 use crate::orm::expressions::{Q, QOperator};
+use reinhardt_core::exception::{DatabaseError, DatabaseErrorKind, Result};
 use reinhardt_query::prelude::{
 	Alias, ColumnRef, Condition, DeleteStatement, Expr, InsertStatement, Order, Query,
 	SelectStatement, SimpleExpr, UpdateStatement,
@@ -285,51 +286,59 @@ impl<T: Model> ExecutableQuery<T> {
 	}
 	/// Execute the query and return affected rows
 	///
-	pub async fn execute(&self) -> Result<u64, sqlx::Error> {
+	pub async fn execute(&self) -> Result<u64> {
 		match &self.engine {
 			Some(engine) => engine.execute(&self.sql).await,
-			None => Err(sqlx::Error::Configuration(
-				"No engine bound to query".into(),
-			)),
+			None => Err(DatabaseError::new(
+				DatabaseErrorKind::Configuration,
+				"No engine bound to query",
+			)
+			.into()),
 		}
 	}
 	/// Execute the query and fetch all results
 	///
-	pub async fn fetch_all(&self) -> Result<Vec<sqlx::any::AnyRow>, sqlx::Error>
+	pub async fn fetch_all(&self) -> Result<Vec<sqlx::any::AnyRow>>
 	where
 		T: DeserializeOwned,
 	{
 		match &self.engine {
 			Some(engine) => engine.fetch_all(&self.sql).await,
-			None => Err(sqlx::Error::Configuration(
-				"No engine bound to query".into(),
-			)),
+			None => Err(DatabaseError::new(
+				DatabaseErrorKind::Configuration,
+				"No engine bound to query",
+			)
+			.into()),
 		}
 	}
 	/// Execute the query and fetch one result
 	///
-	pub async fn fetch_one(&self) -> Result<sqlx::any::AnyRow, sqlx::Error>
+	pub async fn fetch_one(&self) -> Result<sqlx::any::AnyRow>
 	where
 		T: DeserializeOwned,
 	{
 		match &self.engine {
 			Some(engine) => engine.fetch_one(&self.sql).await,
-			None => Err(sqlx::Error::Configuration(
-				"No engine bound to query".into(),
-			)),
+			None => Err(DatabaseError::new(
+				DatabaseErrorKind::Configuration,
+				"No engine bound to query",
+			)
+			.into()),
 		}
 	}
 	/// Execute the query and fetch optional result
 	///
-	pub async fn fetch_optional(&self) -> Result<Option<sqlx::any::AnyRow>, sqlx::Error>
+	pub async fn fetch_optional(&self) -> Result<Option<sqlx::any::AnyRow>>
 	where
 		T: DeserializeOwned,
 	{
 		match &self.engine {
 			Some(engine) => engine.fetch_optional(&self.sql).await,
-			None => Err(sqlx::Error::Configuration(
-				"No engine bound to query".into(),
-			)),
+			None => Err(DatabaseError::new(
+				DatabaseErrorKind::Configuration,
+				"No engine bound to query",
+			)
+			.into()),
 		}
 	}
 }

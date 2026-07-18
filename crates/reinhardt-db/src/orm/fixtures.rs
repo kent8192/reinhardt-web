@@ -54,12 +54,6 @@ pub enum FixtureError {
 	Database(String),
 }
 
-impl From<anyhow::Error> for FixtureError {
-	fn from(error: anyhow::Error) -> Self {
-		Self::Database(error.to_string())
-	}
-}
-
 impl From<reinhardt_core::exception::Error> for FixtureError {
 	fn from(error: reinhardt_core::exception::Error) -> Self {
 		Self::Database(error.to_string())
@@ -4575,6 +4569,8 @@ mod tests {
 		crate::orm::inspection::FieldInfo {
 			name: name.to_string(),
 			field_type: field_type.to_string(),
+			storage_kind: None,
+			domain: None,
 			nullable,
 			primary_key: false,
 			unique: false,

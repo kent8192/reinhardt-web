@@ -655,14 +655,16 @@ fn test_build_single_filter_expr_field_ref_eq() {
 	);
 
 	// Act
-	let result = build_single_filter_expr(&filter);
+	let result = build_single_filter_expr(&filter).expect("FieldRef filter should build");
 
 	// Assert
 	assert!(result.is_some());
 	let query = Query::select()
 		.from(Alias::new("products"))
 		.column(ColumnRef::Asterisk)
-		.cond_where(Condition::all().add(result.unwrap()))
+		.cond_where(
+			Condition::all().add(result.expect("FieldRef filter should produce an expression")),
+		)
 		.to_string(PostgresQueryBuilder);
 	assert!(query.contains("\"price\""));
 	assert!(query.contains("\"discount_price\""));
@@ -678,7 +680,7 @@ fn test_build_single_filter_expr_field_ref_gt() {
 	);
 
 	// Act
-	let result = build_single_filter_expr(&filter);
+	let result = build_single_filter_expr(&filter).expect("FieldRef filter should build");
 
 	// Assert
 	assert!(result.is_some());
@@ -703,7 +705,7 @@ fn test_build_single_filter_expr_field_ref_all_operators() {
 			op.clone(),
 			FilterValue::FieldRef(F::new("field_b")),
 		);
-		let result = build_single_filter_expr(&filter);
+		let result = build_single_filter_expr(&filter).expect("FieldRef filter should build");
 
 		// Assert
 		assert!(
@@ -724,14 +726,16 @@ fn test_build_single_filter_expr_outer_ref() {
 	);
 
 	// Act
-	let result = build_single_filter_expr(&filter);
+	let result = build_single_filter_expr(&filter).expect("OuterRef filter should build");
 
 	// Assert
 	assert!(result.is_some());
 	let query = Query::select()
 		.from(Alias::new("books"))
 		.column(ColumnRef::Asterisk)
-		.cond_where(Condition::all().add(result.unwrap()))
+		.cond_where(
+			Condition::all().add(result.expect("OuterRef filter should produce an expression")),
+		)
 		.to_string(PostgresQueryBuilder);
 	assert!(query.contains("author_id"));
 	assert!(query.contains("authors.id"));
@@ -756,7 +760,7 @@ fn test_build_single_filter_expr_outer_ref_all_operators() {
 			op.clone(),
 			FilterValue::OuterRef(OuterRef::new("parent.id")),
 		);
-		let result = build_single_filter_expr(&filter);
+		let result = build_single_filter_expr(&filter).expect("OuterRef filter should build");
 
 		// Assert
 		assert!(
@@ -783,7 +787,7 @@ fn test_build_single_filter_expr_expression() {
 	);
 
 	// Act
-	let result = build_single_filter_expr(&filter);
+	let result = build_single_filter_expr(&filter).expect("Expression filter should build");
 
 	// Assert
 	assert!(result.is_some());
@@ -815,7 +819,7 @@ fn test_build_single_filter_expr_expression_all_operators() {
 		);
 
 		// Act
-		let result = build_single_filter_expr(&filter);
+		let result = build_single_filter_expr(&filter).expect("Expression filter should build");
 
 		// Assert
 		assert!(
@@ -832,7 +836,7 @@ fn test_filter_value_to_sea_value_field_ref_fallback() {
 	let value = FilterValue::FieldRef(F::new("test_field"));
 
 	// Act
-	let sea_value = filter_value_to_sea_value(&value);
+	let sea_value = filter_value_to_sea_value(&value).expect("field reference should convert");
 
 	// Assert
 	match sea_value {
@@ -847,7 +851,7 @@ fn test_filter_value_to_sea_value_outer_ref_fallback() {
 	let value = FilterValue::OuterRef(OuterRef::new("outer.field"));
 
 	// Act
-	let sea_value = filter_value_to_sea_value(&value);
+	let sea_value = filter_value_to_sea_value(&value).expect("outer reference should convert");
 
 	// Assert
 	match sea_value {
@@ -868,7 +872,7 @@ fn test_filter_value_to_sea_value_expression_fallback() {
 	let value = FilterValue::Expression(expr);
 
 	// Act
-	let sea_value = filter_value_to_sea_value(&value);
+	let sea_value = filter_value_to_sea_value(&value).expect("expression should convert");
 
 	// Assert
 	match sea_value {

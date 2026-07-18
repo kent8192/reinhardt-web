@@ -1242,7 +1242,7 @@ async fn nc_17_constraint_deletion_creates_drop_constraint() {
 	let has_drop_constraint = result.operations.iter().any(|op| {
 		matches!(
 			op,
-			Operation::DropConstraint { table, constraint_name }
+			Operation::DropConstraint { table, constraint_name, .. }
 			if table == &"todos" && constraint_name == "chk_title_length"
 		)
 	});

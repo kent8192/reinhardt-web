@@ -214,6 +214,18 @@ fn test_layout_macro_fail() {
 }
 
 #[test]
+fn test_loader_macro_pass() {
+	let t = trybuild::TestCases::new();
+	t.pass("tests/ui/loader/pass/*.rs");
+}
+
+#[test]
+fn test_loader_macro_fail() {
+	let t = trybuild::TestCases::new();
+	t.compile_fail("tests/ui/loader/fail/*.rs");
+}
+
+#[test]
 fn test_client_page_macro_pass() {
 	let t = trybuild::TestCases::new();
 	t.pass("tests/ui/client_page/pass/*.rs");

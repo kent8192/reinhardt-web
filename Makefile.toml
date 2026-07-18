@@ -116,6 +116,11 @@ args = [
   "-D", "clippy::dbg_macro",
 ]
 
+[tasks.anyhow-check]
+description = "Reject direct anyhow dependencies and owned-source usage"
+command = "bash"
+args = ["scripts/check-anyhow.sh"]
+
 [tasks.semver-check]
 description = "Run cargo-semver-checks locally (mirrors CI semver-check.yml). Override baseline via BASELINE_REV; set SEMVER_PACKAGE=<name> to check a single crate (mirrors CI's per-crate matrix shard); override release-type via SEMVER_RELEASE_TYPE (e.g. SEMVER_RELEASE_TYPE=major for SP-3 breaking-change PRs, SEMVER_RELEASE_TYPE= [empty] to omit --release-type and let cargo-semver-checks auto-detect from Cargo.toml version bumps as on release-plz PRs). Defaults to --release-type minor when unset."
 script_runner = "sh"

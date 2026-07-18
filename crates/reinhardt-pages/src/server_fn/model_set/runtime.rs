@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 use std::pin::Pin;
 
 use reinhardt_db::orm::{
-	DatabaseConnection, FilterValue, Model, TransactionExecutor, TransactionScope,
+	DatabaseConnection, DatabaseField, FilterValue, Model, TransactionExecutor, TransactionScope,
 };
 
 use super::{
@@ -94,7 +94,7 @@ fn map_detail<R: ModelServerFnResource>(
 impl<R> ModelServerFnSet<R>
 where
 	R: ModelServerFnResource,
-	R::Lookup: Into<FilterValue> + Send,
+	R::Lookup: DatabaseField + Into<FilterValue> + Send,
 	R::Create: CreateModelInput<R::Model> + Send,
 	R::Update: UpdateModelInput<R::Model> + Send,
 	R::Patch: PatchModelInput<R::Model> + Send,
@@ -340,7 +340,7 @@ where
 				Some(transaction.executor_mut()?),
 			)
 			.await?;
-			let object = Self::lookup_in_transaction(&mut transaction, lookup).await?;
+			let object = Self::lookup_in_transaction(&mut transaction, lookup.clone()).await?;
 			<R::Policy as ServerFnSetPolicy<R>>::authorize_object(
 				principal,
 				action,
@@ -348,11 +348,25 @@ where
 				Some(transaction.executor_mut()?),
 			)
 			.await?;
-			callback(DetailActionContext::new(
+			let callback_result = callback(DetailActionContext::new(
 				object,
 				transaction.executor_mut()?,
 			))
-			.await
+			.await?;
+			if matches!(
+				action,
+				ServerFnSetAction::Update | ServerFnSetAction::PartialUpdate
+			) {
+				let object = Self::lookup_in_transaction(&mut transaction, lookup).await?;
+				<R::Policy as ServerFnSetPolicy<R>>::authorize_object(
+					principal,
+					action,
+					&object,
+					Some(transaction.executor_mut()?),
+				)
+				.await?;
+			}
+			Ok(callback_result)
 		}
 		.await;
 		transaction.complete(result).await

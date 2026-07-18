@@ -5,6 +5,10 @@
 //! typed by their result and error payloads, and `#[server_fn]` generates
 //! key helpers that include the server function identity plus an opaque digest
 //! of canonical JSON arguments.
+//!
+//! Route loaders acquire these same keyed entries through an imperative RAII
+//! lease. Prefetch, navigation, mounted-route state, and `use_query` therefore
+//! share in-flight work without introducing a second route-data cache.
 
 mod canonical_json;
 
@@ -15,11 +19,13 @@ use std::future::Future;
 use std::marker::PhantomData;
 use std::pin::Pin;
 use std::rc::Rc;
-use std::task::{Context, Poll};
+use std::task::{Context, Poll, Waker};
 use std::time::Duration;
 #[cfg(not(wasm))]
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use futures_util::future::AbortHandle;
+use futures_util::future::Abortable;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use sha2::{Digest, Sha256};
@@ -27,10 +33,13 @@ use sha2::{Digest, Sha256};
 use super::Signal;
 use super::hooks::async_action::{Action, use_action};
 use super::resource::ResourceState;
+use crate::cancellation::{
+	AbortableTaskGuard, CancellationHandle, CancellationSource, scope_cancellation,
+};
 use reinhardt_core::reactive::{ReactiveScope, ScopeId, scope::enter_scope};
 
 type QueryFuture<T, E> = Pin<Box<dyn Future<Output = Result<T, E>> + 'static>>;
-type QueryFetcher<T, E> = dyn Fn() -> QueryFuture<T, E> + 'static;
+type QueryFetcher<T, E> = dyn Fn(CancellationHandle) -> QueryFuture<T, E> + 'static;
 
 const DEFAULT_STALE_TIME: Duration = Duration::from_secs(30);
 const DEFAULT_GC_TIME: Duration = Duration::from_secs(5 * 60);
@@ -79,9 +88,18 @@ impl<T, E> QueryKey<T, E> {
 		F: Fn() -> Fut + 'static,
 		Fut: Future<Output = Result<T, E>> + 'static,
 	{
+		Self::new_with_cancellation(id, move |_| fetcher())
+	}
+
+	pub(crate) fn new_with_cancellation<Id, F, Fut>(id: Id, fetcher: F) -> Self
+	where
+		Id: Into<String>,
+		F: Fn(CancellationHandle) -> Fut + 'static,
+		Fut: Future<Output = Result<T, E>> + 'static,
+	{
 		Self {
 			id: id.into(),
-			fetcher: Rc::new(move || Box::pin(fetcher())),
+			fetcher: Rc::new(move |cancellation| Box::pin(fetcher(cancellation))),
 			stale_time: DEFAULT_STALE_TIME,
 			gc_time: DEFAULT_GC_TIME,
 			ssr_prefetch: true,
@@ -141,17 +159,92 @@ impl<T, E> QueryKey<T, E> {
 	}
 }
 
+/// Identifies the runtime consumer holding a query lease.
+// These consumer variants are part of the internal loader contract; later
+// navigation and prefetch phases construct the variants that are not used by
+// the ordinary `use_query` hook yet.
+#[allow(dead_code)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum QueryConsumer {
+	Prefetch,
+	Navigation(u64),
+	MountedRoute(u64),
+	MountedQuery,
+	Maintenance,
+}
+
+/// Controls whether a failed fetch remains a reusable cache error.
+// The discard policy is exercised by route loaders added in later tasks.
+#[allow(dead_code)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum QueryErrorPolicy {
+	Retain,
+	Discard,
+}
+
+/// Options for an imperative query acquisition.
+pub(crate) struct QueryAcquireOptions {
+	pub consumer: QueryConsumer,
+	pub error_policy: QueryErrorPolicy,
+}
+
+struct QueryRequest<T, E> {
+	generation: u64,
+	source: CancellationSource,
+	_guard: AbortableTaskGuard,
+	_marker: PhantomData<fn() -> Result<T, E>>,
+}
+
 struct QueryEntry<T: Clone + 'static, E: Clone + 'static> {
 	_scope: Rc<ReactiveScope>,
 	id: String,
 	state: Signal<ResourceState<T, E>>,
 	is_fetching: Signal<bool>,
 	fetcher: RefCell<Rc<QueryFetcher<T, E>>>,
-	in_flight: Cell<bool>,
+	request: RefCell<Option<QueryRequest<T, E>>>,
+	next_generation: Cell<u64>,
+	completed: RefCell<Option<(u64, Result<T, E>)>>,
+	waiters: RefCell<Vec<Waker>>,
+	lease_count: Cell<usize>,
+	retain_lease_count: Cell<usize>,
 	refetch_after_in_flight: Cell<bool>,
 	last_fetched_ms: Cell<Option<u64>>,
 	stale_time: Cell<Duration>,
 	gc_time: Cell<Duration>,
+}
+
+struct QueryLeaseInner<T: Clone + 'static, E: Clone + 'static> {
+	entry: Rc<QueryEntry<T, E>>,
+	generation: Cell<Option<u64>>,
+	retains_errors: bool,
+}
+
+/// RAII interest in one keyed query entry.
+pub(crate) struct QueryLease<T: Clone + 'static, E: Clone + 'static> {
+	inner: Rc<QueryLeaseInner<T, E>>,
+}
+
+impl<T: Clone + 'static, E: Clone + 'static> Clone for QueryLease<T, E> {
+	fn clone(&self) -> Self {
+		Self {
+			inner: Rc::clone(&self.inner),
+		}
+	}
+}
+
+impl<T: Clone + 'static, E: Clone + 'static> Drop for QueryLeaseInner<T, E> {
+	fn drop(&mut self) {
+		let entry = &self.entry;
+		let remaining = entry.lease_count.get().saturating_sub(1);
+		entry.lease_count.set(remaining);
+		if self.retains_errors {
+			let retained = entry.retain_lease_count.get().saturating_sub(1);
+			entry.retain_lease_count.set(retained);
+		}
+		if remaining == 0 {
+			entry.cancel_request();
+		}
+	}
 }
 
 /// Polls cached query work in the scope that owns the query entry.
@@ -197,7 +290,15 @@ impl<T: Clone + 'static, E: Clone + 'static> QueryEntry<T, E> {
 		T: Serialize + DeserializeOwned,
 		E: Serialize + DeserializeOwned,
 	{
-		let (initial_state, last_fetched_ms) = initial_query_state(hydrated_query_state(&key.id));
+		let hydrated_state = hydrated_query_state(&key.id);
+		Self::new_with_hydrated_state(key, hydrated_state)
+	}
+
+	fn new_with_hydrated_state(
+		key: QueryKey<T, E>,
+		hydrated_state: Option<ResourceState<T, E>>,
+	) -> Self {
+		let (initial_state, last_fetched_ms) = initial_query_state(hydrated_state);
 		let id = key.id;
 		let scope = Rc::new(ReactiveScope::new());
 		let (state, is_fetching) = scope.enter(|| (Signal::new(initial_state), Signal::new(false)));
@@ -208,7 +309,12 @@ impl<T: Clone + 'static, E: Clone + 'static> QueryEntry<T, E> {
 			state,
 			is_fetching,
 			fetcher: RefCell::new(key.fetcher),
-			in_flight: Cell::new(false),
+			request: RefCell::new(None),
+			next_generation: Cell::new(0),
+			completed: RefCell::new(None),
+			waiters: RefCell::new(Vec::new()),
+			lease_count: Cell::new(0),
+			retain_lease_count: Cell::new(0),
 			refetch_after_in_flight: Cell::new(false),
 			last_fetched_ms: Cell::new(last_fetched_ms),
 			stale_time: Cell::new(key.stale_time),
@@ -234,6 +340,96 @@ impl<T: Clone + 'static, E: Clone + 'static> QueryEntry<T, E> {
 			.with_untracked(|state| matches!(state, ResourceState::Loading) || self.is_stale())
 	}
 
+	fn has_request(&self) -> bool {
+		self.request.borrow().is_some()
+	}
+
+	fn next_request_generation(&self) -> u64 {
+		let generation = self.next_generation.get();
+		self.next_generation.set(generation.wrapping_add(1));
+		generation
+	}
+
+	fn cancel_request(&self) {
+		if let Some(request) = self.request.borrow_mut().take() {
+			request.source.cancel();
+			self.refetch_after_in_flight.set(false);
+			self.is_fetching.set(false);
+			self.wake_waiters();
+		}
+	}
+
+	fn wake_waiters(&self) {
+		let waiters = std::mem::take(&mut *self.waiters.borrow_mut());
+		for waiter in waiters {
+			waiter.wake();
+		}
+	}
+
+	// The lease result future registers here while a navigation waits for a
+	// generation to settle; later loader tasks will exercise this path.
+	#[allow(dead_code)]
+	fn register_waiter(&self, waker: &Waker) {
+		let mut waiters = self.waiters.borrow_mut();
+		if !waiters.iter().any(|previous| previous.will_wake(waker)) {
+			waiters.push(waker.clone());
+		}
+	}
+
+	fn make_lease(
+		self: &Rc<Self>,
+		generation: Option<u64>,
+		error_policy: QueryErrorPolicy,
+	) -> QueryLease<T, E> {
+		self.lease_count.set(self.lease_count.get() + 1);
+		let retains_errors = error_policy == QueryErrorPolicy::Retain;
+		if retains_errors {
+			self.retain_lease_count
+				.set(self.retain_lease_count.get() + 1);
+		}
+		QueryLease {
+			inner: Rc::new(QueryLeaseInner {
+				entry: Rc::clone(self),
+				generation: Cell::new(generation),
+				retains_errors,
+			}),
+		}
+	}
+
+	fn acquire(self: &Rc<Self>, options: QueryAcquireOptions) -> QueryLease<T, E>
+	where
+		T: Serialize + DeserializeOwned,
+		E: Serialize + DeserializeOwned,
+	{
+		let _consumer = options.consumer;
+		let should_fetch = if self.has_request() {
+			false
+		} else if options.error_policy == QueryErrorPolicy::Retain {
+			self.should_fetch_on_mount()
+		} else {
+			match self.state.with_untracked(|state| state.clone()) {
+				ResourceState::Success(_) => self.is_stale(),
+				ResourceState::Error(_) => true,
+				ResourceState::Loading => true,
+			}
+		};
+		// Register interest before starting work. Native test execution may poll
+		// a ready fetch synchronously, and completion must observe this lease when
+		// deciding whether an error is retainable or whether invalidation queues a
+		// follow-up request.
+		let lease = self.make_lease(None, options.error_policy);
+		let generation = if should_fetch {
+			Some(self.start_fetch(false))
+		} else {
+			self.request
+				.borrow()
+				.as_ref()
+				.map(|request| request.generation)
+		};
+		lease.inner.generation.set(generation);
+		lease
+	}
+
 	#[cfg(native)]
 	fn mark_resolved_fetched(&self) {
 		if self.state.with_untracked(|state| {
@@ -243,60 +439,205 @@ impl<T: Clone + 'static, E: Clone + 'static> QueryEntry<T, E> {
 		}
 	}
 
-	fn start_fetch(self: &Rc<Self>, force: bool) {
-		if self.in_flight.replace(true) {
+	fn start_fetch(self: &Rc<Self>, force: bool) -> u64 {
+		if self.has_request() {
 			if force {
 				self.refetch_after_in_flight.set(true);
 			}
-			return;
+			return self
+				.request
+				.borrow()
+				.as_ref()
+				.map(|request| request.generation)
+				.unwrap_or_default();
 		}
 
 		let had_success = self
 			.state
 			.with_untracked(|state| matches!(state, ResourceState::Success(_)));
 		if !force && had_success && !self.is_stale() {
-			self.in_flight.set(false);
-			return;
+			return self.next_generation.get();
 		}
+		let generation = self.next_request_generation();
+		let source = CancellationSource::new();
+		let token = source.handle();
+		let (abort_handle, abort_registration) = AbortHandle::new_pair();
+		let guard = AbortableTaskGuard::new(abort_handle);
+		*self.request.borrow_mut() = Some(QueryRequest {
+			generation,
+			source,
+			_guard: guard,
+			_marker: PhantomData,
+		});
 		self.is_fetching.set(true);
 		if !had_success {
 			self.state.set(ResourceState::Loading);
 		}
 
 		let entry = Rc::clone(self);
+		let fetch_entry = Rc::clone(&entry);
 		let scope = entry._scope.id();
-		spawn_query_task(ScopedQueryFuture {
+		let fetch_cancellation = token.clone();
+		let scoped = ScopedQueryFuture {
 			scope,
 			future: Box::pin(async move {
-				loop {
-					let fetcher = entry.fetcher.borrow().clone();
-					let result = fetcher().await;
-					match result {
-						Ok(value) => {
-							entry.last_fetched_ms.set(Some(now_ms()));
-							entry.state.set(ResourceState::Success(value));
-						}
-						Err(error) => {
-							entry.last_fetched_ms.set(Some(now_ms()));
-							entry.state.set(ResourceState::Error(error));
-						}
-					}
-					if entry.refetch_after_in_flight.replace(false) {
-						let has_success = entry
-							.state
-							.with_untracked(|state| matches!(state, ResourceState::Success(_)));
-						if !has_success {
-							entry.state.set(ResourceState::Loading);
-						}
-						continue;
-					}
-					entry.is_fetching.set(false);
-					entry.in_flight.set(false);
-					break;
-				}
+				let result = scope_cancellation(token, async move {
+					let fetcher = fetch_entry.fetcher.borrow().clone();
+					fetcher(fetch_cancellation).await
+				})
+				.await;
+				entry.complete_fetch(generation, result);
 			}),
+		};
+		spawn_query_task(async move {
+			let _ = Abortable::new(scoped, abort_registration).await;
 		});
+		generation
 	}
+
+	fn complete_fetch(self: &Rc<Self>, generation: u64, result: Result<T, E>) {
+		let cancelled = self
+			.request
+			.borrow()
+			.as_ref()
+			.map(|request| request.source.handle().is_cancelled())
+			.unwrap_or(true);
+		let matches_request = self
+			.request
+			.borrow()
+			.as_ref()
+			.is_some_and(|request| request.generation == generation);
+		if cancelled || !matches_request {
+			return;
+		}
+		self.request.borrow_mut().take();
+		self.completed
+			.borrow_mut()
+			.replace((generation, result.clone()));
+		match result {
+			Ok(value) => {
+				self.last_fetched_ms.set(Some(now_ms()));
+				self.state.set(ResourceState::Success(value));
+			}
+			Err(error) => {
+				if self.retain_lease_count.get() > 0 {
+					self.last_fetched_ms.set(Some(now_ms()));
+				} else {
+					self.last_fetched_ms.set(None);
+				}
+				self.state.set(ResourceState::Error(error));
+			}
+		}
+		self.is_fetching.set(false);
+		self.wake_waiters();
+		if self.refetch_after_in_flight.replace(false) && self.lease_count.get() > 0 {
+			self.start_fetch(true);
+		}
+	}
+}
+
+// Route preparation consumes this future in later implementation tasks.
+#[allow(dead_code)]
+struct QueryResultFuture<T: Clone + 'static, E: Clone + 'static> {
+	entry: Rc<QueryEntry<T, E>>,
+	generation: Option<u64>,
+}
+
+impl<T: Clone + 'static, E: Clone + 'static> Future for QueryResultFuture<T, E> {
+	type Output = Result<T, E>;
+
+	fn poll(self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<Self::Output> {
+		let this = self.get_mut();
+		if let Some(generation) = this.generation {
+			if let Some((completed_generation, result)) = this.entry.completed.borrow().as_ref()
+				&& *completed_generation == generation
+			{
+				return Poll::Ready(result.clone());
+			}
+		} else {
+			match this.entry.state.with_untracked(|state| state.clone()) {
+				ResourceState::Success(value) => return Poll::Ready(Ok(value)),
+				ResourceState::Error(error) => return Poll::Ready(Err(error)),
+				ResourceState::Loading => {}
+			}
+		}
+		this.entry.register_waiter(context.waker());
+		Poll::Pending
+	}
+}
+
+impl<T: Clone + 'static, E: Clone + 'static> QueryLease<T, E> {
+	// Route preparation consumes this result operation in later implementation
+	// tasks; keep it available while the public hook remains synchronous.
+	#[allow(dead_code)]
+	pub(crate) async fn result(&self) -> Result<T, E> {
+		QueryResultFuture {
+			entry: Rc::clone(&self.inner.entry),
+			generation: self.inner.generation.get(),
+		}
+		.await
+	}
+
+	// Route preparation reads the settled state when a loader joins cached work.
+	#[allow(dead_code)]
+	pub(crate) fn state(&self) -> ResourceState<T, E> {
+		self.inner.entry.state.with_untracked(|state| state.clone())
+	}
+}
+
+pub(crate) fn acquire_query<T, E>(
+	key: QueryKey<T, E>,
+	options: QueryAcquireOptions,
+) -> QueryLease<T, E>
+where
+	T: Clone + Serialize + DeserializeOwned + 'static,
+	E: Clone + Serialize + DeserializeOwned + 'static,
+{
+	query_entry(key).acquire(options)
+}
+
+pub(crate) fn seed_query_from_serialized<T, E>(
+	key: QueryKey<T, E>,
+	serialized: &serde_json::Value,
+) -> Result<(), serde_json::Error>
+where
+	T: Clone + Serialize + DeserializeOwned + 'static,
+	E: Clone + Serialize + DeserializeOwned + 'static,
+{
+	let hydrated_state = serde_json::from_value(serialized.clone())?;
+	let id = key.id.clone();
+	#[cfg(any(wasm, test))]
+	super::resource::reserve_client_resource_key(&id);
+	let cache_id = scoped_query_cache_id(&id);
+	QUERY_CACHE.with(|cache| {
+		let mut cache = cache.borrow_mut();
+		if let Some(cached) = cache.get(&cache_id) {
+			let _entry = Rc::clone(&cached.typed)
+				.downcast::<QueryEntry<T, E>>()
+				.unwrap_or_else(|_| {
+					panic!("query cache key `{id}` was reused with incompatible types")
+				});
+			return;
+		}
+
+		let entry = Rc::new(QueryEntry::new_with_hydrated_state(
+			key,
+			Some(hydrated_state),
+		));
+		cache.insert(
+			cache_id,
+			CachedQueryEntry {
+				typed: entry.clone(),
+				refetch: Rc::new({
+					let entry = Rc::clone(&entry);
+					move || {
+						entry.start_fetch(true);
+					}
+				}),
+			},
+		);
+	});
+	Ok(())
 }
 
 /// Current phase of a query.
@@ -346,6 +687,7 @@ impl<T, E> QueryPhase<T, E> {
 /// Reactive handle returned by [`use_query`].
 pub struct QueryHandle<T: Clone + 'static, E: Clone + 'static> {
 	entry: Rc<QueryEntry<T, E>>,
+	lease: QueryLease<T, E>,
 	guards: Rc<RefCell<Vec<QueryGuard>>>,
 }
 
@@ -353,6 +695,7 @@ impl<T: Clone + 'static, E: Clone + 'static> Clone for QueryHandle<T, E> {
 	fn clone(&self) -> Self {
 		Self {
 			entry: Rc::clone(&self.entry),
+			lease: self.lease.clone(),
 			guards: Rc::clone(&self.guards),
 		}
 	}
@@ -476,13 +819,18 @@ where
 		return query;
 	}
 
-	let entry = query_entry(key);
-	if entry.should_fetch_on_mount() {
-		entry.start_fetch(false);
-	}
+	let lease = acquire_query(
+		key,
+		QueryAcquireOptions {
+			consumer: QueryConsumer::MountedQuery,
+			error_policy: QueryErrorPolicy::Retain,
+		},
+	);
+	let entry = Rc::clone(&lease.inner.entry);
 
 	QueryHandle {
 		entry,
+		lease,
 		guards: Rc::new(RefCell::new(Vec::new())),
 	}
 }
@@ -545,7 +893,9 @@ where
 				typed: entry.clone(),
 				refetch: Rc::new({
 					let entry = Rc::clone(&entry);
-					move || entry.start_fetch(true)
+					move || {
+						entry.start_fetch(true);
+					}
 				}),
 			},
 		);
@@ -567,14 +917,23 @@ where
 			let fetcher = entry.fetcher.borrow().clone();
 			context.borrow_mut().register_resource_with_owner(
 				entry.id.clone(),
-				move || fetcher(),
+				move || {
+					let source = CancellationSource::new();
+					let cancellation = source.handle();
+					async move {
+						let _source = source;
+						fetcher(cancellation).await
+					}
+				},
 				entry.state,
 				Some(Rc::clone(&entry._scope)),
 			);
 			entry.mark_resolved_fetched();
 		}
+		let lease = entry.make_lease(None, QueryErrorPolicy::Retain);
 		QueryHandle {
-			entry,
+			entry: Rc::clone(&entry),
+			lease,
 			guards: Rc::new(RefCell::new(Vec::new())),
 		}
 	})
@@ -619,6 +978,38 @@ where
 }
 
 #[cfg(all(test, not(wasm)))]
+thread_local! {
+	static INLINE_QUERY_TASK_DEPTH: Cell<usize> = const { Cell::new(0) };
+	static DEFERRED_QUERY_TASKS: RefCell<std::collections::VecDeque<Pin<Box<dyn Future<Output = ()> + 'static>>>> =
+		const { RefCell::new(std::collections::VecDeque::new()) };
+}
+
+#[cfg(all(test, not(wasm)))]
+struct InlineQueryTaskGuard;
+
+#[cfg(all(test, not(wasm)))]
+impl InlineQueryTaskGuard {
+	fn new() -> Option<Self> {
+		INLINE_QUERY_TASK_DEPTH.with(|depth| {
+			let current = depth.get();
+			if current == 0 {
+				depth.set(1);
+				Some(Self)
+			} else {
+				None
+			}
+		})
+	}
+}
+
+#[cfg(all(test, not(wasm)))]
+impl Drop for InlineQueryTaskGuard {
+	fn drop(&mut self) {
+		INLINE_QUERY_TASK_DEPTH.with(|depth| depth.set(depth.get().saturating_sub(1)));
+	}
+}
+
+#[cfg(all(test, not(wasm)))]
 fn spawn_query_task<F>(fut: F)
 where
 	F: Future<Output = ()> + 'static,
@@ -626,7 +1017,20 @@ where
 	if crate::platform::has_task_sink() {
 		schedule_query_task(fut);
 	} else {
-		tokio_test::block_on(fut);
+		let Some(_guard) = InlineQueryTaskGuard::new() else {
+			DEFERRED_QUERY_TASKS.with(|tasks| tasks.borrow_mut().push_back(Box::pin(fut)));
+			return;
+		};
+		tokio_test::block_on(async move {
+			fut.await;
+			loop {
+				let task = DEFERRED_QUERY_TASKS.with(|tasks| tasks.borrow_mut().pop_front());
+				let Some(task) = task else {
+					break;
+				};
+				task.await;
+			}
+		});
 	}
 }
 
@@ -735,7 +1139,11 @@ pub(crate) fn clear_query_cache_for_test() {
 
 #[cfg(all(test, not(wasm)))]
 mod tests {
-	use std::cell::Cell;
+	use std::cell::{Cell, RefCell};
+	use std::collections::VecDeque;
+	use std::future::Future;
+	use std::pin::Pin;
+	use std::task::{Context, Poll, Waker};
 
 	use reinhardt_core::reactive::ReactiveScope;
 	use rstest::rstest;
@@ -773,6 +1181,610 @@ mod tests {
 			}
 			map.end()
 		}
+	}
+
+	type TestTask = Pin<Box<dyn Future<Output = ()> + 'static>>;
+
+	fn poll_one_task(tasks: &Rc<RefCell<VecDeque<TestTask>>>) -> Poll<()> {
+		let mut task = tasks
+			.borrow_mut()
+			.pop_front()
+			.expect("a query request should schedule one task");
+		let mut context = Context::from_waker(Waker::noop());
+		let result = task.as_mut().poll(&mut context);
+		if result.is_pending() {
+			tasks.borrow_mut().push_back(task);
+		}
+		result
+	}
+
+	struct TestGate {
+		ready: Rc<Cell<bool>>,
+		dropped: Rc<Cell<usize>>,
+		result: Option<Result<String, String>>,
+	}
+
+	impl Future for TestGate {
+		type Output = Result<String, String>;
+
+		fn poll(self: Pin<&mut Self>, _context: &mut Context<'_>) -> Poll<Self::Output> {
+			let this = self.get_mut();
+			if this.ready.get() {
+				Poll::Ready(
+					this.result
+						.take()
+						.expect("test gate polled after completion"),
+				)
+			} else {
+				Poll::Pending
+			}
+		}
+	}
+
+	impl Drop for TestGate {
+		fn drop(&mut self) {
+			self.dropped.set(self.dropped.get() + 1);
+		}
+	}
+
+	#[test]
+	#[serial(query_cache)]
+	fn imperative_acquisition_deduplicates_in_flight_work() {
+		ReactiveScope::run(|| {
+			// Arrange
+			clear_query_cache_for_test();
+			let tasks = Rc::new(RefCell::new(VecDeque::new()));
+			let tasks_for_sink = Rc::clone(&tasks);
+			let _sink = crate::platform::install_task_sink(move |task| {
+				tasks_for_sink.borrow_mut().push_back(task);
+			});
+			let calls = Rc::new(Cell::new(0));
+			let key = QueryKey::new("imperative-dedupe", {
+				let calls = Rc::clone(&calls);
+				move || {
+					calls.set(calls.get() + 1);
+					async { Ok::<_, String>("value".to_string()) }
+				}
+			});
+
+			// Act
+			let first = acquire_query(
+				key.clone(),
+				QueryAcquireOptions {
+					consumer: QueryConsumer::Navigation(1),
+					error_policy: QueryErrorPolicy::Discard,
+				},
+			);
+			let second = acquire_query(
+				key,
+				QueryAcquireOptions {
+					consumer: QueryConsumer::Navigation(2),
+					error_policy: QueryErrorPolicy::Discard,
+				},
+			);
+
+			// Assert
+			assert_eq!(calls.get(), 0, "acquisition must not run a second fetch");
+			assert_eq!(tasks.borrow().len(), 1);
+			assert_eq!(poll_one_task(&tasks), Poll::Ready(()));
+			assert_eq!(calls.get(), 1);
+			assert_eq!(
+				tokio_test::block_on(first.result()),
+				Ok("value".to_string())
+			);
+			assert_eq!(
+				tokio_test::block_on(second.result()),
+				Ok("value".to_string())
+			);
+		});
+	}
+
+	#[test]
+	#[serial(query_cache)]
+	fn dropping_one_of_two_leases_keeps_request_alive() {
+		ReactiveScope::run(|| {
+			// Arrange
+			clear_query_cache_for_test();
+			let tasks = Rc::new(RefCell::new(VecDeque::new()));
+			let tasks_for_sink = Rc::clone(&tasks);
+			let _sink = crate::platform::install_task_sink(move |task| {
+				tasks_for_sink.borrow_mut().push_back(task);
+			});
+			let ready = Rc::new(Cell::new(false));
+			let dropped = Rc::new(Cell::new(0));
+			let key: QueryKey<String, String> = QueryKey::new("two-leases", {
+				let ready = Rc::clone(&ready);
+				let dropped = Rc::clone(&dropped);
+				move || TestGate {
+					ready: Rc::clone(&ready),
+					dropped: Rc::clone(&dropped),
+					result: Some(Ok("shared".to_string())),
+				}
+			});
+			let entry = query_entry(key.clone());
+			let first = acquire_query(
+				key.clone(),
+				QueryAcquireOptions {
+					consumer: QueryConsumer::Navigation(1),
+					error_policy: QueryErrorPolicy::Discard,
+				},
+			);
+			let second = acquire_query(
+				key,
+				QueryAcquireOptions {
+					consumer: QueryConsumer::MountedRoute(2),
+					error_policy: QueryErrorPolicy::Discard,
+				},
+			);
+			assert_eq!(poll_one_task(&tasks), Poll::Pending);
+
+			// Act
+			drop(first);
+			assert_eq!(entry.lease_count.get(), 1);
+			assert!(entry.has_request(), "the remaining lease keeps work alive");
+			ready.set(true);
+			let completion = poll_one_task(&tasks);
+
+			// Assert
+			assert_eq!(completion, Poll::Ready(()));
+			assert_eq!(
+				entry.state.with_untracked(|state| state.clone()),
+				ResourceState::Success("shared".to_string())
+			);
+			assert_eq!(
+				tokio_test::block_on(second.result()),
+				Ok("shared".to_string())
+			);
+			assert_eq!(dropped.get(), 1);
+		});
+	}
+
+	#[test]
+	#[serial(query_cache)]
+	fn shared_fetch_receives_the_query_request_cancellation_handle() {
+		ReactiveScope::run(|| {
+			// Arrange
+			clear_query_cache_for_test();
+			let tasks = Rc::new(RefCell::new(VecDeque::new()));
+			let tasks_for_sink = Rc::clone(&tasks);
+			let _sink = crate::platform::install_task_sink(move |task| {
+				tasks_for_sink.borrow_mut().push_back(task);
+			});
+			let ready = Rc::new(Cell::new(false));
+			let dropped = Rc::new(Cell::new(0));
+			let observed_cancellation = Rc::new(RefCell::new(None));
+			let key: QueryKey<String, String> =
+				QueryKey::new_with_cancellation("shared-request-cancellation", {
+					let ready = Rc::clone(&ready);
+					let dropped = Rc::clone(&dropped);
+					let observed_cancellation = Rc::clone(&observed_cancellation);
+					move |cancellation| {
+						observed_cancellation.borrow_mut().replace(cancellation);
+						TestGate {
+							ready: Rc::clone(&ready),
+							dropped: Rc::clone(&dropped),
+							result: Some(Ok("shared".to_string())),
+						}
+					}
+				});
+			let first = acquire_query(
+				key.clone(),
+				QueryAcquireOptions {
+					consumer: QueryConsumer::Prefetch,
+					error_policy: QueryErrorPolicy::Discard,
+				},
+			);
+			let second = acquire_query(
+				key,
+				QueryAcquireOptions {
+					consumer: QueryConsumer::Navigation(2),
+					error_policy: QueryErrorPolicy::Discard,
+				},
+			);
+			assert_eq!(poll_one_task(&tasks), Poll::Pending);
+
+			// Act
+			drop(first);
+			let cancellation = observed_cancellation
+				.borrow()
+				.as_ref()
+				.expect("the shared fetch receives a cancellation handle")
+				.clone();
+
+			// Assert
+			assert!(
+				!cancellation.is_cancelled(),
+				"the remaining lease keeps the shared request cancellation alive"
+			);
+			ready.set(true);
+			assert_eq!(poll_one_task(&tasks), Poll::Ready(()));
+			assert_eq!(
+				tokio_test::block_on(second.result()),
+				Ok("shared".to_string())
+			);
+			assert_eq!(dropped.get(), 1);
+		});
+	}
+
+	#[test]
+	#[serial(query_cache)]
+	fn dropping_final_lease_cancels_request_once() {
+		ReactiveScope::run(|| {
+			// Arrange
+			clear_query_cache_for_test();
+			let tasks = Rc::new(RefCell::new(VecDeque::new()));
+			let tasks_for_sink = Rc::clone(&tasks);
+			let _sink = crate::platform::install_task_sink(move |task| {
+				tasks_for_sink.borrow_mut().push_back(task);
+			});
+			let ready = Rc::new(Cell::new(false));
+			let dropped = Rc::new(Cell::new(0));
+			let key: QueryKey<String, String> = QueryKey::new("final-lease-cancel", {
+				let ready = Rc::clone(&ready);
+				let dropped = Rc::clone(&dropped);
+				move || TestGate {
+					ready: Rc::clone(&ready),
+					dropped: Rc::clone(&dropped),
+					result: Some(Ok("never-published".to_string())),
+				}
+			});
+			let entry = query_entry(key.clone());
+			let lease = acquire_query(
+				key,
+				QueryAcquireOptions {
+					consumer: QueryConsumer::Navigation(3),
+					error_policy: QueryErrorPolicy::Discard,
+				},
+			);
+			assert_eq!(poll_one_task(&tasks), Poll::Pending);
+			let cancelled = Rc::new(Cell::new(0));
+			let cancelled_for_callback = Rc::clone(&cancelled);
+			let registration = entry
+				.request
+				.borrow()
+				.as_ref()
+				.expect("the pending request must be owned by the entry")
+				.source
+				.register(move || cancelled_for_callback.set(cancelled_for_callback.get() + 1));
+
+			// Act
+			drop(lease);
+			let completion = poll_one_task(&tasks);
+
+			// Assert
+			assert_eq!(cancelled.get(), 1, "the source must cancel exactly once");
+			assert!(entry.request.borrow().is_none());
+			assert!(!entry.is_fetching.get());
+			assert_eq!(completion, Poll::Ready(()));
+			assert_eq!(dropped.get(), 1, "the aborted fetch future must be dropped");
+			drop(registration);
+			let _ = ready;
+		});
+	}
+
+	#[test]
+	#[serial(query_cache)]
+	fn queued_refetch_keeps_completed_generation_for_existing_lease() {
+		ReactiveScope::run(|| {
+			// Arrange
+			clear_query_cache_for_test();
+			let tasks = Rc::new(RefCell::new(VecDeque::new()));
+			let tasks_for_sink = Rc::clone(&tasks);
+			let _sink = crate::platform::install_task_sink(move |task| {
+				tasks_for_sink.borrow_mut().push_back(task);
+			});
+			let ready = Rc::new(Cell::new(false));
+			let dropped = Rc::new(Cell::new(0));
+			let key: QueryKey<String, String> = QueryKey::new("queued-generation", {
+				let ready = Rc::clone(&ready);
+				let dropped = Rc::clone(&dropped);
+				move || TestGate {
+					ready: Rc::clone(&ready),
+					dropped: Rc::clone(&dropped),
+					result: Some(Ok("first".to_string())),
+				}
+			});
+			let entry = query_entry(key.clone());
+			let lease = acquire_query(
+				key,
+				QueryAcquireOptions {
+					consumer: QueryConsumer::Navigation(11),
+					error_policy: QueryErrorPolicy::Discard,
+				},
+			);
+			assert_eq!(poll_one_task(&tasks), Poll::Pending);
+			let _ = entry.start_fetch(true);
+
+			// Act
+			ready.set(true);
+			assert_eq!(poll_one_task(&tasks), Poll::Ready(()));
+			let mut result = Box::pin(lease.result());
+			let mut context = Context::from_waker(Waker::noop());
+
+			// Assert
+			assert!(
+				entry.has_request(),
+				"the queued refetch must start after completion"
+			);
+			assert_eq!(
+				result.as_mut().poll(&mut context),
+				Poll::Ready(Ok("first".to_string()))
+			);
+			drop(result);
+			drop(lease);
+		});
+	}
+
+	#[test]
+	#[serial(query_cache)]
+	fn cancelling_request_discards_queued_refetch() {
+		ReactiveScope::run(|| {
+			// Arrange
+			clear_query_cache_for_test();
+			let tasks = Rc::new(RefCell::new(VecDeque::new()));
+			let tasks_for_sink = Rc::clone(&tasks);
+			let _sink = crate::platform::install_task_sink(move |task| {
+				tasks_for_sink.borrow_mut().push_back(task);
+			});
+			let ready = Rc::new(Cell::new(false));
+			let dropped = Rc::new(Cell::new(0));
+			let key: QueryKey<String, String> = QueryKey::new("cancel-queued-refetch", {
+				let ready = Rc::clone(&ready);
+				let dropped = Rc::clone(&dropped);
+				move || TestGate {
+					ready: Rc::clone(&ready),
+					dropped: Rc::clone(&dropped),
+					result: Some(Ok("replacement".to_string())),
+				}
+			});
+			let entry = query_entry(key.clone());
+			let lease = acquire_query(
+				key.clone(),
+				QueryAcquireOptions {
+					consumer: QueryConsumer::Navigation(12),
+					error_policy: QueryErrorPolicy::Discard,
+				},
+			);
+			assert_eq!(poll_one_task(&tasks), Poll::Pending);
+			let _ = entry.start_fetch(true);
+			assert!(entry.refetch_after_in_flight.get());
+
+			// Act
+			drop(lease);
+
+			// Assert
+			assert!(!entry.refetch_after_in_flight.get());
+			assert_eq!(poll_one_task(&tasks), Poll::Ready(()));
+			ready.set(true);
+			let replacement = acquire_query(
+				key,
+				QueryAcquireOptions {
+					consumer: QueryConsumer::Navigation(13),
+					error_policy: QueryErrorPolicy::Discard,
+				},
+			);
+			assert_eq!(poll_one_task(&tasks), Poll::Ready(()));
+			assert!(
+				!entry.has_request(),
+				"a cancelled request must not schedule a stale follow-up fetch"
+			);
+			assert_eq!(
+				tokio_test::block_on(replacement.result()),
+				Ok("replacement".to_string())
+			);
+		});
+	}
+
+	#[test]
+	#[serial(query_cache)]
+	fn cancel_completion_race_does_not_publish_obsolete_value() {
+		ReactiveScope::run(|| {
+			// Arrange
+			clear_query_cache_for_test();
+			let tasks = Rc::new(RefCell::new(VecDeque::new()));
+			let tasks_for_sink = Rc::clone(&tasks);
+			let _sink = crate::platform::install_task_sink(move |task| {
+				tasks_for_sink.borrow_mut().push_back(task);
+			});
+			let ready = Rc::new(Cell::new(false));
+			let dropped = Rc::new(Cell::new(0));
+			let key: QueryKey<String, String> = QueryKey::new("cancel-race", {
+				let ready = Rc::clone(&ready);
+				let dropped = Rc::clone(&dropped);
+				move || TestGate {
+					ready: Rc::clone(&ready),
+					dropped: Rc::clone(&dropped),
+					result: Some(Ok("obsolete".to_string())),
+				}
+			});
+			let entry = query_entry(key.clone());
+			let lease = acquire_query(
+				key,
+				QueryAcquireOptions {
+					consumer: QueryConsumer::Navigation(4),
+					error_policy: QueryErrorPolicy::Discard,
+				},
+			);
+			assert_eq!(poll_one_task(&tasks), Poll::Pending);
+			let generation = entry
+				.request
+				.borrow()
+				.as_ref()
+				.expect("the request generation must be visible")
+				.generation;
+
+			// Act
+			drop(lease);
+			entry.complete_fetch(generation, Ok("obsolete".to_string()));
+			let completion = poll_one_task(&tasks);
+
+			// Assert
+			assert_eq!(completion, Poll::Ready(()));
+			assert_eq!(
+				entry.state.with_untracked(|state| state.clone()),
+				ResourceState::Loading
+			);
+			assert!(entry.completed.borrow().is_none());
+			assert_eq!(dropped.get(), 1);
+			let _ = ready;
+		});
+	}
+
+	#[test]
+	#[serial(query_cache)]
+	fn cancelled_revalidation_preserves_previous_success() {
+		ReactiveScope::run(|| {
+			// Arrange
+			clear_query_cache_for_test();
+			let tasks = Rc::new(RefCell::new(VecDeque::new()));
+			let tasks_for_sink = Rc::clone(&tasks);
+			let _sink = crate::platform::install_task_sink(move |task| {
+				tasks_for_sink.borrow_mut().push_back(task);
+			});
+			let ready = Rc::new(Cell::new(false));
+			let dropped = Rc::new(Cell::new(0));
+			let key: QueryKey<String, String> = QueryKey::new("cancel-revalidation", {
+				let ready = Rc::clone(&ready);
+				let dropped = Rc::clone(&dropped);
+				move || TestGate {
+					ready: Rc::clone(&ready),
+					dropped: Rc::clone(&dropped),
+					result: Some(Ok("new".to_string())),
+				}
+			})
+			.with_stale_time(Duration::ZERO);
+			let entry = query_entry(key.clone());
+			entry.state.set(ResourceState::Success("old".to_string()));
+			entry.last_fetched_ms.set(Some(now_ms()));
+			let lease = acquire_query(
+				key,
+				QueryAcquireOptions {
+					consumer: QueryConsumer::Navigation(5),
+					error_policy: QueryErrorPolicy::Discard,
+				},
+			);
+			assert_eq!(poll_one_task(&tasks), Poll::Pending);
+
+			// Act
+			drop(lease);
+			ready.set(true);
+			let completion = poll_one_task(&tasks);
+
+			// Assert
+			assert_eq!(completion, Poll::Ready(()));
+			assert_eq!(
+				entry.state.with_untracked(|state| state.clone()),
+				ResourceState::Success("old".to_string())
+			);
+			assert!(!entry.is_fetching.get());
+			assert!(entry.last_fetched_ms.get().is_some());
+			assert_eq!(dropped.get(), 1);
+		});
+	}
+
+	#[test]
+	#[serial(query_cache)]
+	fn discarded_error_retries_on_next_acquisition() {
+		ReactiveScope::run(|| {
+			// Arrange
+			clear_query_cache_for_test();
+			let calls = Rc::new(Cell::new(0));
+			let key: QueryKey<String, String> = QueryKey::new("discarded-error", {
+				let calls = Rc::clone(&calls);
+				move || {
+					calls.set(calls.get() + 1);
+					async { Err::<String, _>("route failed".to_string()) }
+				}
+			});
+
+			// Act
+			let first = acquire_query(
+				key.clone(),
+				QueryAcquireOptions {
+					consumer: QueryConsumer::Navigation(6),
+					error_policy: QueryErrorPolicy::Discard,
+				},
+			);
+			assert_eq!(
+				tokio_test::block_on(first.result()),
+				Err("route failed".to_string())
+			);
+			let second = acquire_query(
+				key,
+				QueryAcquireOptions {
+					consumer: QueryConsumer::Navigation(7),
+					error_policy: QueryErrorPolicy::Discard,
+				},
+			);
+
+			// Assert
+			assert_eq!(calls.get(), 2);
+			assert_eq!(
+				tokio_test::block_on(second.result()),
+				Err("route failed".to_string())
+			);
+		});
+	}
+
+	#[test]
+	#[serial(query_cache)]
+	fn invalidation_survives_cancelled_request() {
+		ReactiveScope::run(|| {
+			// Arrange
+			clear_query_cache_for_test();
+			let tasks = Rc::new(RefCell::new(VecDeque::new()));
+			let tasks_for_sink = Rc::clone(&tasks);
+			let _sink = crate::platform::install_task_sink(move |task| {
+				tasks_for_sink.borrow_mut().push_back(task);
+			});
+			let ready = Rc::new(Cell::new(false));
+			let dropped = Rc::new(Cell::new(0));
+			let calls = Rc::new(Cell::new(0));
+			let key: QueryKey<String, String> = QueryKey::new("cancel-then-invalidate", {
+				let ready = Rc::clone(&ready);
+				let dropped = Rc::clone(&dropped);
+				let calls = Rc::clone(&calls);
+				move || {
+					calls.set(calls.get() + 1);
+					TestGate {
+						ready: Rc::clone(&ready),
+						dropped: Rc::clone(&dropped),
+						result: Some(Ok("refetched".to_string())),
+					}
+				}
+			});
+			let lease = acquire_query(
+				key,
+				QueryAcquireOptions {
+					consumer: QueryConsumer::Navigation(8),
+					error_policy: QueryErrorPolicy::Discard,
+				},
+			);
+			assert_eq!(poll_one_task(&tasks), Poll::Pending);
+
+			// Act
+			drop(lease);
+			ready.set(true);
+			invalidate_query_id("cancel-then-invalidate");
+			assert_eq!(
+				tasks.borrow().len(),
+				2,
+				"the invalidation must queue a replacement request"
+			);
+			assert_eq!(poll_one_task(&tasks), Poll::Ready(()));
+			assert_eq!(poll_one_task(&tasks), Poll::Ready(()));
+
+			// Assert
+			assert_eq!(calls.get(), 2);
+			assert_eq!(dropped.get(), 2);
+			let entry = query_entry(QueryKey::new("cancel-then-invalidate", || async {
+				Ok::<_, String>("unused".to_string())
+			}));
+			assert_eq!(
+				entry.state.with_untracked(|state| state.clone()),
+				ResourceState::Success("refetched".to_string())
+			);
+		});
 	}
 
 	#[rstest]
@@ -893,8 +1905,10 @@ mod tests {
 				.state
 				.set(ResourceState::Success("cached".to_string()));
 			entry.is_fetching.set(true);
+			let lease = entry.make_lease(None, QueryErrorPolicy::Retain);
 			let query = QueryHandle {
 				entry,
+				lease,
 				guards: Rc::new(RefCell::new(Vec::new())),
 			};
 

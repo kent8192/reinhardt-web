@@ -1,6 +1,9 @@
 use thiserror::Error;
 
+/// Structured database error types.
+pub mod database;
 pub mod param_error;
+pub use database::{DatabaseError, DatabaseErrorKind};
 pub use param_error::{ParamErrorContext, ParamType};
 
 /// The main error type for the Reinhardt framework.
@@ -12,7 +15,7 @@ pub use param_error::{ParamErrorContext, ParamType};
 /// # Examples
 ///
 /// ```
-/// use reinhardt_core::exception::Error;
+/// use reinhardt_core::exception::{DatabaseError, DatabaseErrorKind, Error};
 ///
 /// // Create an HTTP error
 /// let http_err = Error::Http("Invalid request format".to_string());
@@ -20,7 +23,10 @@ pub use param_error::{ParamErrorContext, ParamType};
 /// assert_eq!(http_err.status_code(), 400);
 ///
 /// // Create a database error
-/// let db_err = Error::Database("Connection timeout".to_string());
+/// let db_err = Error::from(DatabaseError::new(
+///     DatabaseErrorKind::Query,
+///     "Connection timeout",
+/// ));
 /// assert_eq!(db_err.status_code(), 500);
 ///
 /// // Create an authentication error
@@ -44,19 +50,22 @@ pub enum Error {
 	#[error("HTTP error: {0}")]
 	Http(String),
 
-	/// Database-related errors (status code: 500)
+	/// Database-related errors (status code depends on the structured classification)
 	///
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_core::exception::Error;
+	/// use reinhardt_core::exception::{DatabaseError, DatabaseErrorKind, Error};
 	///
-	/// let error = Error::Database("Query execution failed".to_string());
+	/// let error = Error::from(DatabaseError::new(
+	///     DatabaseErrorKind::Query,
+	///     "Query execution failed",
+	/// ));
 	/// assert_eq!(error.status_code(), 500);
 	/// assert!(error.to_string().contains("Database error"));
 	/// ```
 	#[error("Database error: {0}")]
-	Database(String),
+	Database(#[from] DatabaseError),
 
 	/// Serialization/deserialization errors (status code: 400)
 	///
@@ -266,21 +275,6 @@ pub enum Error {
 	// Box wrapper to reduce enum size (clippy::result_large_err mitigation)
 	// ParamErrorContext contains multiple String fields which make the enum large
 	ParamValidation(Box<ParamErrorContext>),
-
-	/// Wraps any other error type using `anyhow::Error` (status code: 500)
-	///
-	/// # Examples
-	///
-	/// ```
-	/// use reinhardt_core::exception::Error;
-	/// use anyhow::anyhow;
-	///
-	/// let other_error = anyhow!("Something went wrong");
-	/// let error: Error = other_error.into();
-	/// assert_eq!(error.status_code(), 500);
-	/// ```
-	#[error(transparent)]
-	Other(#[from] anyhow::Error),
 }
 
 /// A convenient `Result` type alias using `reinhardt_core::exception::Error` as the error type.
@@ -334,7 +328,7 @@ pub trait HttpError {
 pub enum ErrorKind {
 	/// HTTP-related errors (400).
 	Http,
-	/// Database-related errors (500).
+	/// Database-related errors (status code depends on the structured classification).
 	Database,
 	/// Serialization/deserialization errors (400).
 	Serialization,
@@ -360,8 +354,6 @@ pub enum ErrorKind {
 	Parse,
 	/// Parameter validation errors (400).
 	ParamValidation,
-	/// Catch-all for other errors (500).
-	Other,
 }
 
 impl Error {
@@ -378,12 +370,14 @@ impl Error {
 	/// - `NotFound`, `TemplateNotFound`: 404 (Not Found)
 	/// - `MethodNotAllowed`: 405 (Method Not Allowed)
 	/// - `Conflict`: 409 (Conflict)
-	/// - `Database`, `Internal`, `ImproperlyConfigured`, `Other`: 500 (Internal Server Error)
+	/// - database constraint errors: 400 or 409 depending on classification
+	/// - database connection and timeout errors: 503 (Service Unavailable)
+	/// - all other `Database` errors, `Internal`, `ImproperlyConfigured`: 500 (Internal Server Error)
 	///
 	/// # Examples
 	///
 	/// ```
-	/// use reinhardt_core::exception::Error;
+	/// use reinhardt_core::exception::{DatabaseError, DatabaseErrorKind, Error};
 	///
 	/// // Client errors (4xx)
 	/// assert_eq!(Error::Http("Bad request".to_string()).status_code(), 400);
@@ -393,7 +387,11 @@ impl Error {
 	/// assert_eq!(Error::NotFound("Resource missing".to_string()).status_code(), 404);
 	///
 	/// // Server errors (5xx)
-	/// assert_eq!(Error::Database("Connection failed".to_string()).status_code(), 500);
+	/// let database_error = Error::from(DatabaseError::new(
+	///     DatabaseErrorKind::Query,
+	///     "Query execution failed",
+	/// ));
+	/// assert_eq!(database_error.status_code(), 500);
 	/// assert_eq!(Error::Internal("Crash".to_string()).status_code(), 500);
 	/// assert_eq!(Error::ImproperlyConfigured("Bad config".to_string()).status_code(), 500);
 	///
@@ -401,21 +399,22 @@ impl Error {
 	/// assert_eq!(Error::BodyAlreadyConsumed.status_code(), 400);
 	/// assert_eq!(Error::ParseError("Invalid data".to_string()).status_code(), 400);
 	/// ```
-	///
-	/// # Using with anyhow errors
-	///
-	/// ```
-	/// use reinhardt_core::exception::Error;
-	/// use anyhow::anyhow;
-	///
-	/// let anyhow_error = anyhow!("Unexpected error");
-	/// let error: Error = anyhow_error.into();
-	/// assert_eq!(error.status_code(), 500);
-	/// ```
 	pub fn status_code(&self) -> u16 {
 		match self {
 			Error::Http(_) => 400,
-			Error::Database(_) => 500,
+			Error::Database(database_error) => match database_error.kind() {
+				DatabaseErrorKind::UniqueViolation | DatabaseErrorKind::ForeignKeyViolation => 409,
+				DatabaseErrorKind::NotNullViolation | DatabaseErrorKind::CheckViolation => 400,
+				DatabaseErrorKind::Connection | DatabaseErrorKind::Timeout => 503,
+				DatabaseErrorKind::Syntax
+				| DatabaseErrorKind::Type
+				| DatabaseErrorKind::ColumnNotFound
+				| DatabaseErrorKind::Transaction
+				| DatabaseErrorKind::Configuration
+				| DatabaseErrorKind::Serialization
+				| DatabaseErrorKind::Unsupported
+				| DatabaseErrorKind::Query => 500,
+			},
 			Error::Serialization(_) => 400,
 			Error::Validation(_) => 400,
 			Error::Authentication(_) => 401,
@@ -434,7 +433,6 @@ impl Error {
 			Error::InvalidLimit(_) => 400,
 			Error::MissingParameter(_) => 400,
 			Error::ParamValidation(_) => 400,
-			Error::Other(_) => 500,
 		}
 	}
 
@@ -461,8 +459,20 @@ impl Error {
 			Error::InvalidLimit(_) => ErrorKind::Validation,
 			Error::MissingParameter(_) => ErrorKind::Validation,
 			Error::ParamValidation(_) => ErrorKind::ParamValidation,
-			Error::Other(_) => ErrorKind::Other,
 		}
+	}
+
+	/// Returns the structured database error when this is a database failure.
+	pub fn database_error(&self) -> Option<&DatabaseError> {
+		match self {
+			Self::Database(error) => Some(error),
+			_ => None,
+		}
+	}
+
+	/// Returns the database classification when this is a database failure.
+	pub fn database_kind(&self) -> Option<DatabaseErrorKind> {
+		self.database_error().map(DatabaseError::kind)
 	}
 }
 
@@ -516,7 +526,7 @@ mod tests {
 
 		// Database errors
 		assert_eq!(
-			Error::Database("test".to_string()).kind(),
+			Error::from(DatabaseError::new(DatabaseErrorKind::Query, "test")).kind(),
 			ErrorKind::Database
 		);
 
@@ -599,12 +609,6 @@ mod tests {
 			Error::ParseError("test".to_string()).kind(),
 			ErrorKind::Parse
 		);
-
-		// Other errors
-		assert_eq!(
-			Error::Other(anyhow::anyhow!("test")).kind(),
-			ErrorKind::Other
-		);
 	}
 
 	#[test]
@@ -664,13 +668,15 @@ mod tests {
 		);
 
 		// 500 errors
-		assert_eq!(Error::Database("test".to_string()).status_code(), 500);
+		assert_eq!(
+			Error::from(DatabaseError::new(DatabaseErrorKind::Query, "test")).status_code(),
+			500
+		);
 		assert_eq!(Error::Internal("test".to_string()).status_code(), 500);
 		assert_eq!(
 			Error::ImproperlyConfigured("test".to_string()).status_code(),
 			500
 		);
-		assert_eq!(Error::Other(anyhow::anyhow!("test")).status_code(), 500);
 	}
 
 	#[test]

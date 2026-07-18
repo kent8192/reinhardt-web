@@ -3,13 +3,17 @@
 //! This module provides a unified entry point for querying functionality.
 //! By default, it exports the expression-based query API (SQLAlchemy-style).
 
-use super::FieldSelector;
+use super::field_codec::{
+	DatabaseField, DatabaseValue, FieldCodecError, IntoFieldValue, database_value_to_query_value,
+};
+use super::{FieldSelector, Model};
 use crate::naming::to_snake_case;
 use crate::orm::query_fields::GroupByFields;
 use crate::orm::query_fields::aggregate::{AggregateExpr, ComparisonExpr};
 use crate::orm::query_fields::comparison::FieldComparison;
 use crate::orm::query_fields::compiler::QueryFieldCompiler;
 use crate::orm::relations::{RelationJoinGraph, RelationJoinKind, RelationPathLike, RelationStep};
+use reinhardt_core::exception::{DatabaseError, DatabaseErrorKind, Error};
 use reinhardt_query::prelude::{
 	Alias, BinOper, ColumnRef, Condition, Expr, ExprTrait, Func, JoinType as SeaJoinType,
 	MySqlQueryBuilder, Order, PostgresQueryBuilder, Query, QueryBuilder, QueryStatementBuilder,
@@ -22,6 +26,13 @@ use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::time::Instant;
 use uuid::Uuid;
+
+fn executor_error(error: reinhardt_core::exception::Error) -> DatabaseError {
+	match error {
+		reinhardt_core::exception::Error::Database(error) => error,
+		error => DatabaseError::new(DatabaseErrorKind::Query, error.to_string()),
+	}
+}
 
 // Django QuerySet API types
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -102,6 +113,8 @@ pub enum FilterOperator {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// Defines possible filter value values.
 pub enum FilterValue {
+	/// Fallible scalar produced by a typed field codec.
+	Typed(Result<DatabaseValue, FieldCodecError>),
 	/// String variant.
 	String(String),
 	/// Integer variant.
@@ -384,6 +397,8 @@ where
 /// Values that can be used in UPDATE statements
 #[derive(Debug, Clone)]
 pub enum UpdateValue {
+	/// Fallible scalar produced by a typed field codec.
+	Typed(Result<DatabaseValue, FieldCodecError>),
 	/// String variant.
 	String(String),
 	/// Integer variant.
@@ -496,10 +511,14 @@ impl FieldAssignment {
 
 impl<M, T, V> From<(super::expressions::FieldRef<M, T>, V)> for FieldAssignment
 where
-	V: Into<UpdateValue>,
+	T: DatabaseField,
+	V: IntoFieldValue<T>,
 {
 	fn from((field, value): (super::expressions::FieldRef<M, T>, V)) -> Self {
-		Self::new(field.name(), value)
+		Self {
+			field: field.name().to_owned(),
+			value: UpdateValue::Typed(value.into_field_value()),
+		}
 	}
 }
 
@@ -1194,22 +1213,6 @@ impl<T> QuerySet<T>
 where
 	T: super::Model,
 {
-	fn executor_backend(
-		executor: &dyn super::connection::TransactionExecutor,
-	) -> super::connection::DatabaseBackend {
-		match executor.backend() {
-			crate::backends::types::DatabaseType::Postgres => {
-				super::connection::DatabaseBackend::Postgres
-			}
-			crate::backends::types::DatabaseType::Mysql => {
-				super::connection::DatabaseBackend::MySql
-			}
-			crate::backends::types::DatabaseType::Sqlite => {
-				super::connection::DatabaseBackend::Sqlite
-			}
-		}
-	}
-
 	/// Creates a new instance.
 	pub fn new() -> Self {
 		Self {
@@ -1240,14 +1243,29 @@ where
 		}
 	}
 
+	fn executor_backend(
+		executor: &dyn super::connection::TransactionExecutor,
+	) -> super::connection::DatabaseBackend {
+		match executor.backend() {
+			crate::backends::types::DatabaseType::Postgres => {
+				super::connection::DatabaseBackend::Postgres
+			}
+			crate::backends::types::DatabaseType::Mysql => {
+				super::connection::DatabaseBackend::MySql
+			}
+			crate::backends::types::DatabaseType::Sqlite => {
+				super::connection::DatabaseBackend::Sqlite
+			}
+		}
+	}
+
 	fn build_select_statement(&self) -> reinhardt_core::exception::Result<SelectStatement> {
 		if self.has_select_related() {
-			return self.select_related_query_result();
+			return self.select_related_query();
 		}
 
 		let mut stmt = Query::select();
 		self.apply_model_from(&mut stmt);
-
 		if let Some(ref fields) = self.selected_fields {
 			for field in fields {
 				if field.contains('(') && field.contains(')') {
@@ -1270,7 +1288,6 @@ where
 		if let Some(condition) = self.build_where_condition()? {
 			stmt.cond_where(condition);
 		}
-
 		for order_field in &self.order_by_fields {
 			let (field, order) = order_field
 				.strip_prefix('-')
@@ -1279,19 +1296,13 @@ where
 				});
 			stmt.order_by_expr(Expr::col(self.root_column_reference(field)), order);
 		}
-
 		if let Some(limit) = self.limit {
 			stmt.limit(limit as u64);
 		}
 		if let Some(offset) = self.offset {
 			stmt.offset(offset as u64);
 		}
-
 		Ok(stmt.to_owned())
-	}
-
-	fn build_count_statement(&self) -> reinhardt_core::exception::Result<SelectStatement> {
-		self.count_select_query()
 	}
 
 	fn decode_backend_rows(
@@ -1302,20 +1313,13 @@ where
 	{
 		rows.into_iter()
 			.map(|row| {
-				Self::decode_query_row(super::connection::QueryRow::from_backend_row(row)).map_err(
-					|error| {
-						crate::backends::error::DatabaseError::SerializationError(error.to_string())
-					},
-				)
+				super::connection::QueryRow::from_backend_row(row)
+					.deserialize_model::<T>()
+					.map_err(|error| {
+						DatabaseError::new(DatabaseErrorKind::Serialization, error.to_string())
+					})
 			})
 			.collect()
-	}
-
-	fn decode_query_row(row: super::connection::QueryRow) -> Result<T, serde_json::Error>
-	where
-		T: serde::de::DeserializeOwned,
-	{
-		row.deserialize_model::<T>()
 	}
 
 	/// Sets the manager and returns self for chaining.
@@ -1465,13 +1469,6 @@ where
 		queryset.build_where_condition()
 	}
 
-	fn build_where_condition_for_write_or_false(&self) -> Option<Condition> {
-		match self.build_where_condition_for_write() {
-			Ok(condition) => condition,
-			Err(_) => Some(Self::false_condition()),
-		}
-	}
-
 	/// Create a QuerySet from a subquery (FROM clause subquery / derived table)
 	///
 	/// This method creates a new QuerySet that uses a subquery as its data source
@@ -1520,11 +1517,13 @@ where
 	///     },
 	///     "book_stats"
 	/// )
+	/// .expect("subquery should compile")
 	/// .filter(Filter::new("book_count", FilterOperator::Gt, FilterValue::Int(1)))
-	/// .to_sql();
+	/// .to_sql()
+	/// .expect("query SQL should compile");
 	/// // Generates: SELECT * FROM (SELECT author_id, COUNT(*) AS book_count FROM books GROUP BY author_id) AS book_stats WHERE book_count > 1
 	/// ```
-	pub fn from_subquery<M, F>(builder: F, alias: &str) -> Self
+	pub fn from_subquery<M, F>(builder: F, alias: &str) -> reinhardt_core::exception::Result<Self>
 	where
 		M: super::Model + 'static,
 		F: FnOnce(QuerySet<M>) -> QuerySet<M>,
@@ -1534,10 +1533,10 @@ where
 		// Apply the builder to configure the subquery
 		let configured_subquery = builder(subquery_qs);
 		// Generate SQL for the subquery (wrapped in parentheses)
-		let subquery_sql = configured_subquery.as_subquery();
+		let subquery_sql = configured_subquery.as_subquery()?;
 
 		// Create a new QuerySet with the subquery as FROM source
-		Self {
+		Ok(Self {
 			_phantom: std::marker::PhantomData,
 			filters: SmallVec::new(),
 			filter_conditions: SmallVec::new(),
@@ -1562,7 +1561,7 @@ where
 			subquery_conditions: Vec::new(),
 			from_alias: Some(alias.to_string()),
 			from_subquery_sql: Some(subquery_sql),
-		}
+		})
 	}
 
 	/// Add an INNER JOIN to the query
@@ -3082,25 +3081,29 @@ where
 	///     .filter_in_subquery("id", |subq: QuerySet<Book>| {
 	///         subq.filter(Filter::new("price", FilterOperator::Gt, FilterValue::Int(1500)))
 	///             .values(&["author_id"])
-	///     })
+	///     })?
 	///     .all()
 	///     .await?;
 	/// # Ok(())
 	/// # }
 	/// ```
-	pub fn filter_in_subquery<R: super::Model, F>(mut self, field: &str, subquery_fn: F) -> Self
+	pub fn filter_in_subquery<R: super::Model, F>(
+		mut self,
+		field: &str,
+		subquery_fn: F,
+	) -> reinhardt_core::exception::Result<Self>
 	where
 		F: FnOnce(QuerySet<R>) -> QuerySet<R>,
 	{
 		let subquery_qs = subquery_fn(QuerySet::<R>::new());
-		let subquery_sql = subquery_qs.as_subquery();
+		let subquery_sql = subquery_qs.as_subquery()?;
 
 		self.subquery_conditions.push(SubqueryCondition::In {
 			field: field.to_string(),
 			subquery: subquery_sql,
 		});
 
-		self
+		Ok(self)
 	}
 
 	/// Add WHERE NOT IN (subquery) condition
@@ -3151,25 +3154,29 @@ where
 	///     .filter_not_in_subquery("id", |subq: QuerySet<Book>| {
 	///         subq.filter(Filter::new("price", FilterOperator::Gt, FilterValue::Int(1500)))
 	///             .values(&["author_id"])
-	///     })
+	///     })?
 	///     .all()
 	///     .await?;
 	/// # Ok(())
 	/// # }
 	/// ```
-	pub fn filter_not_in_subquery<R: super::Model, F>(mut self, field: &str, subquery_fn: F) -> Self
+	pub fn filter_not_in_subquery<R: super::Model, F>(
+		mut self,
+		field: &str,
+		subquery_fn: F,
+	) -> reinhardt_core::exception::Result<Self>
 	where
 		F: FnOnce(QuerySet<R>) -> QuerySet<R>,
 	{
 		let subquery_qs = subquery_fn(QuerySet::<R>::new());
-		let subquery_sql = subquery_qs.as_subquery();
+		let subquery_sql = subquery_qs.as_subquery()?;
 
 		self.subquery_conditions.push(SubqueryCondition::NotIn {
 			field: field.to_string(),
 			subquery: subquery_sql,
 		});
 
-		self
+		Ok(self)
 	}
 
 	/// Add WHERE EXISTS (subquery) condition
@@ -3221,24 +3228,27 @@ where
 	/// let authors = Author::objects()
 	///     .filter_exists(|subq: QuerySet<Book>| {
 	///         subq.filter(Filter::new("author_id", FilterOperator::Eq, FilterValue::FieldRef(F::new("authors.id"))))
-	///     })
+	///     })?
 	///     .all()
 	///     .await?;
 	/// # Ok(())
 	/// # }
 	/// ```
-	pub fn filter_exists<R: super::Model, F>(mut self, subquery_fn: F) -> Self
+	pub fn filter_exists<R: super::Model, F>(
+		mut self,
+		subquery_fn: F,
+	) -> reinhardt_core::exception::Result<Self>
 	where
 		F: FnOnce(QuerySet<R>) -> QuerySet<R>,
 	{
 		let subquery_qs = subquery_fn(QuerySet::<R>::new());
-		let subquery_sql = subquery_qs.as_subquery();
+		let subquery_sql = subquery_qs.as_subquery()?;
 
 		self.subquery_conditions.push(SubqueryCondition::Exists {
 			subquery: subquery_sql,
 		});
 
-		self
+		Ok(self)
 	}
 
 	/// Add WHERE NOT EXISTS (subquery) condition
@@ -3290,24 +3300,27 @@ where
 	/// let authors = Author::objects()
 	///     .filter_not_exists(|subq: QuerySet<Book>| {
 	///         subq.filter(Filter::new("author_id", FilterOperator::Eq, FilterValue::FieldRef(F::new("authors.id"))))
-	///     })
+	///     })?
 	///     .all()
 	///     .await?;
 	/// # Ok(())
 	/// # }
 	/// ```
-	pub fn filter_not_exists<R: super::Model, F>(mut self, subquery_fn: F) -> Self
+	pub fn filter_not_exists<R: super::Model, F>(
+		mut self,
+		subquery_fn: F,
+	) -> reinhardt_core::exception::Result<Self>
 	where
 		F: FnOnce(QuerySet<R>) -> QuerySet<R>,
 	{
 		let subquery_qs = subquery_fn(QuerySet::<R>::new());
-		let subquery_sql = subquery_qs.as_subquery();
+		let subquery_sql = subquery_qs.as_subquery()?;
 
 		self.subquery_conditions.push(SubqueryCondition::NotExists {
 			subquery: subquery_sql,
 		});
 
-		self
+		Ok(self)
 	}
 
 	/// Add a Common Table Expression (WITH clause) to the query
@@ -3737,6 +3750,90 @@ where
 				(FilterOperator::Lte, FilterValue::Expression(expr)) => {
 					col.lte(self.filter_expression_to_query_expr(expr))
 				}
+				// Typed scalar values retain codec errors until this compilation step.
+				(FilterOperator::Eq, FilterValue::Typed(value)) => {
+					match Self::typed_database_value(value)? {
+						DatabaseValue::Null => col.is_null(),
+						value => col.eq(database_value_to_query_value(value.clone())),
+					}
+				}
+				(FilterOperator::Ne, FilterValue::Typed(value)) => {
+					match Self::typed_database_value(value)? {
+						DatabaseValue::Null => col.is_not_null(),
+						value => col.ne(database_value_to_query_value(value.clone())),
+					}
+				}
+				(FilterOperator::Gt, FilterValue::Typed(value)) => col.gt(
+					database_value_to_query_value(Self::typed_database_value(value)?.clone()),
+				),
+				(FilterOperator::Gte, FilterValue::Typed(value)) => col.gte(
+					database_value_to_query_value(Self::typed_database_value(value)?.clone()),
+				),
+				(FilterOperator::Lt, FilterValue::Typed(value)) => col.lt(
+					database_value_to_query_value(Self::typed_database_value(value)?.clone()),
+				),
+				(FilterOperator::Lte, FilterValue::Typed(value)) => col.lte(
+					database_value_to_query_value(Self::typed_database_value(value)?.clone()),
+				),
+				(FilterOperator::IExact, FilterValue::Typed(value)) => {
+					match Self::typed_database_value(value)? {
+						DatabaseValue::String(value) => {
+							self.like_expr(filter, value, LikePattern::Exact, true)
+						}
+						value => col.eq(database_value_to_query_value(value.clone())),
+					}
+				}
+				(
+					operator @ (FilterOperator::Contains
+					| FilterOperator::IContains
+					| FilterOperator::StartsWith
+					| FilterOperator::IStartsWith
+					| FilterOperator::EndsWith
+					| FilterOperator::IEndsWith),
+					FilterValue::Typed(value),
+				) => {
+					let value = Self::typed_database_value(value)?;
+					if matches!(value, DatabaseValue::Null) {
+						return Ok(Some(Condition::all().add(col.is_null())));
+					}
+					let value = Self::database_value_to_string(value);
+					let (pattern, insensitive) = match operator {
+						FilterOperator::Contains => (LikePattern::Contains, false),
+						FilterOperator::IContains => (LikePattern::Contains, true),
+						FilterOperator::StartsWith => (LikePattern::StartsWith, false),
+						FilterOperator::IStartsWith => (LikePattern::StartsWith, true),
+						FilterOperator::EndsWith => (LikePattern::EndsWith, false),
+						FilterOperator::IEndsWith => (LikePattern::EndsWith, true),
+						_ => unreachable!(),
+					};
+					self.like_expr(filter, &value, pattern, insensitive)
+				}
+				(
+					operator @ (FilterOperator::Regex | FilterOperator::IRegex),
+					FilterValue::Typed(value),
+				) => {
+					let value = Self::database_value_to_string(Self::typed_database_value(value)?);
+					let sql_operator = if matches!(operator, FilterOperator::IRegex) {
+						"~*"
+					} else {
+						"~"
+					};
+					Expr::cust_with_values(
+						format!("{} {sql_operator} ?", self.filter_lhs_sql(filter)),
+						[value],
+					)
+					.into_simple_expr()
+				}
+				(FilterOperator::In, FilterValue::Typed(value)) => {
+					col.is_in([database_value_to_query_value(
+						Self::typed_database_value(value)?.clone(),
+					)])
+				}
+				(FilterOperator::NotIn, FilterValue::Typed(value)) => {
+					col.is_not_in([database_value_to_query_value(
+						Self::typed_database_value(value)?.clone(),
+					)])
+				}
 				// NULL checks
 				(FilterOperator::Eq, FilterValue::Null) => col.is_null(),
 				(FilterOperator::Ne, FilterValue::Null) => col.is_not_null(),
@@ -3744,26 +3841,26 @@ where
 					self.like_expr(filter, s, LikePattern::Exact, true)
 				}
 				(FilterOperator::IExact, v) => {
-					col.eq(self.filter_value_to_sea_value_for_filter(filter, v))
+					col.eq(self.filter_value_to_sea_value_for_filter(filter, v)?)
 				}
 				// Generic value comparisons (catch-all for other FilterValue types)
 				(FilterOperator::Eq, v) => {
-					col.eq(self.filter_value_to_sea_value_for_filter(filter, v))
+					col.eq(self.filter_value_to_sea_value_for_filter(filter, v)?)
 				}
 				(FilterOperator::Ne, v) => {
-					col.ne(self.filter_value_to_sea_value_for_filter(filter, v))
+					col.ne(self.filter_value_to_sea_value_for_filter(filter, v)?)
 				}
 				(FilterOperator::Gt, v) => {
-					col.gt(self.filter_value_to_sea_value_for_filter(filter, v))
+					col.gt(self.filter_value_to_sea_value_for_filter(filter, v)?)
 				}
 				(FilterOperator::Gte, v) => {
-					col.gte(self.filter_value_to_sea_value_for_filter(filter, v))
+					col.gte(self.filter_value_to_sea_value_for_filter(filter, v)?)
 				}
 				(FilterOperator::Lt, v) => {
-					col.lt(self.filter_value_to_sea_value_for_filter(filter, v))
+					col.lt(self.filter_value_to_sea_value_for_filter(filter, v)?)
 				}
 				(FilterOperator::Lte, v) => {
-					col.lte(self.filter_value_to_sea_value_for_filter(filter, v))
+					col.lte(self.filter_value_to_sea_value_for_filter(filter, v)?)
 				}
 				(FilterOperator::In, FilterValue::String(s)) => {
 					let values = Self::parse_array_string(s);
@@ -3776,7 +3873,7 @@ where
 					values
 						.iter()
 						.map(|value| self.filter_value_to_sea_value_for_filter(filter, value))
-						.collect::<Vec<_>>(),
+						.collect::<reinhardt_core::exception::Result<Vec<_>>>()?,
 				),
 				(FilterOperator::NotIn, FilterValue::String(s)) => {
 					let values = Self::parse_array_string(s);
@@ -3789,7 +3886,7 @@ where
 					values
 						.iter()
 						.map(|value| self.filter_value_to_sea_value_for_filter(filter, value))
-						.collect::<Vec<_>>(),
+						.collect::<reinhardt_core::exception::Result<Vec<_>>>()?,
 				),
 				(FilterOperator::Contains, FilterValue::String(s)) => {
 					self.like_expr(filter, s, LikePattern::Contains, false)
@@ -3834,8 +3931,8 @@ where
 				(FilterOperator::Range, FilterValue::Range(start, end)) => Expr::cust_with_values(
 					format!("{} BETWEEN ? AND ?", self.filter_lhs_sql(filter)),
 					[
-						self.filter_value_to_sea_value_for_filter(filter, start),
-						self.filter_value_to_sea_value_for_filter(filter, end),
+						self.filter_value_to_sea_value_for_filter(filter, start)?,
+						self.filter_value_to_sea_value_for_filter(filter, end)?,
 					],
 				)
 				.into_simple_expr(),
@@ -4033,7 +4130,7 @@ where
 					// field @> ? - parameterized
 					Expr::cust_with_values(
 						format!("{} @> ?", self.filter_lhs_sql(filter)),
-						[self.filter_value_to_sea_value_for_filter(filter, v)],
+						[self.filter_value_to_sea_value_for_filter(filter, v)?],
 					)
 					.into_simple_expr()
 				}
@@ -4056,7 +4153,7 @@ where
 				// Fallback for unsupported combinations
 				_ => {
 					// Default to equality for unhandled cases
-					col.eq(self.filter_value_to_sea_value_for_filter(filter, &filter.value))
+					col.eq(self.filter_value_to_sea_value_for_filter(filter, &filter.value)?)
 				}
 			};
 
@@ -4151,17 +4248,6 @@ where
 			FilterCondition::Not(condition) => Ok(self
 				.build_filter_condition(condition, depth + 1)?
 				.map(|condition| condition.not())),
-		}
-	}
-
-	fn false_condition() -> Condition {
-		Condition::all().add(Expr::cust("FALSE").into_simple_expr())
-	}
-
-	fn build_where_condition_or_false(&self) -> Option<Condition> {
-		match self.build_where_condition() {
-			Ok(condition) => condition,
-			Err(_) => Some(Self::false_condition()),
 		}
 	}
 
@@ -4565,9 +4651,62 @@ where
 		.into_simple_expr()
 	}
 
-	fn filter_value_to_sea_value(v: &FilterValue) -> reinhardt_query::value::Value {
-		match v {
-			FilterValue::String(s) => s.clone().into(),
+	fn typed_database_value(
+		value: &Result<DatabaseValue, FieldCodecError>,
+	) -> reinhardt_core::exception::Result<&DatabaseValue> {
+		value.as_ref().map_err(|error| {
+			let kind = match error {
+				FieldCodecError::TypeMismatch { .. } | FieldCodecError::InvalidEnumValue { .. } => {
+					DatabaseErrorKind::Type
+				}
+				FieldCodecError::Serialization(_) => DatabaseErrorKind::Serialization,
+			};
+			DatabaseError::new(kind, format!("typed field codec failed: {error}")).into()
+		})
+	}
+
+	fn database_value_to_string(value: &DatabaseValue) -> String {
+		match value {
+			DatabaseValue::Null => String::new(),
+			DatabaseValue::Bool(value) => value.to_string(),
+			DatabaseValue::I32(value) => value.to_string(),
+			DatabaseValue::I64(value) => value.to_string(),
+			DatabaseValue::F32(value) => value.to_string(),
+			DatabaseValue::F64(value) => value.to_string(),
+			DatabaseValue::Decimal(value) => value.to_string(),
+			DatabaseValue::String(value) => value.clone(),
+			DatabaseValue::Bytes(value) => String::from_utf8_lossy(value).into_owned(),
+			DatabaseValue::Json(value) => value.to_string(),
+			DatabaseValue::Array { values, .. } => serde_json::Value::Array(
+				values
+					.iter()
+					.cloned()
+					.map(|value| value.into_json_value().unwrap_or(serde_json::Value::Null))
+					.collect(),
+			)
+			.to_string(),
+			DatabaseValue::Uuid(value) => value.to_string(),
+			DatabaseValue::Date(value) => value.to_string(),
+			DatabaseValue::Time(value) => value.to_string(),
+			DatabaseValue::DateTime(value) => value.to_rfc3339(),
+		}
+	}
+
+	fn filter_value_to_sea_value(
+		v: &FilterValue,
+	) -> reinhardt_core::exception::Result<reinhardt_query::value::Value> {
+		let value = match v {
+			FilterValue::Typed(value) => {
+				database_value_to_query_value(Self::typed_database_value(value)?.clone())
+			}
+			FilterValue::String(s) => {
+				// Try to parse as UUID first for proper PostgreSQL uuid column handling
+				if let Ok(uuid) = Uuid::parse_str(s) {
+					reinhardt_query::value::Value::Uuid(Some(Box::new(uuid)))
+				} else {
+					s.clone().into()
+				}
+			}
 			FilterValue::Integer(i) | FilterValue::Int(i) => (*i).into(),
 			FilterValue::Float(f) => (*f).into(),
 			FilterValue::Boolean(b) | FilterValue::Bool(b) => (*b).into(),
@@ -4576,13 +4715,13 @@ where
 			FilterValue::List(values) => values
 				.iter()
 				.map(Self::value_to_string)
-				.collect::<Vec<_>>()
+				.collect::<reinhardt_core::exception::Result<Vec<_>>>()?
 				.join(",")
 				.into(),
 			FilterValue::Range(start, end) => format!(
 				"{},{}",
-				Self::value_to_string(start),
-				Self::value_to_string(end)
+				Self::value_to_string(start)?,
+				Self::value_to_string(end)?
 			)
 			.into(),
 			// FieldRef, Expression, and OuterRef are typically handled separately
@@ -4590,14 +4729,15 @@ where
 			FilterValue::FieldRef(f) => f.field.clone().into(),
 			FilterValue::Expression(expr) => expr.to_sql().into(),
 			FilterValue::OuterRef(outer_ref) => outer_ref.field.clone().into(),
-		}
+		};
+		Ok(value)
 	}
 
 	fn filter_value_to_sea_value_for_filter(
 		&self,
 		filter: &Filter,
 		value: &FilterValue,
-	) -> reinhardt_query::value::Value {
+	) -> reinhardt_core::exception::Result<reinhardt_query::value::Value> {
 		let field_type = filter.field_type.clone().or_else(|| {
 			let field_name = filter.field.rsplit("__").next().unwrap_or(&filter.field);
 			T::field_metadata()
@@ -4608,13 +4748,6 @@ where
 				.map(|metadata| metadata.field_type)
 		});
 		let Some(field_type) = field_type else {
-			// Related and manually implemented models may not expose metadata for the
-			// filtered column, so retain UUID binding unless metadata proves another type.
-			if let FilterValue::String(value) = value
-				&& let Ok(uuid) = Uuid::parse_str(value)
-			{
-				return reinhardt_query::value::Value::Uuid(Some(Box::new(uuid)));
-			}
 			return Self::filter_value_to_sea_value(value);
 		};
 
@@ -4622,11 +4755,11 @@ where
 			return Self::filter_value_to_sea_value(value);
 		};
 
-		match field_type.rsplit('.').next() {
-			Some("IntegerField") => value
+		Ok(match field_type.rsplit('.').next() {
+			Some("IntegerField") | Some("AutoField") => value
 				.parse::<i32>()
 				.map_or_else(|_| value.clone().into(), Into::into),
-			Some("BigIntegerField") => value
+			Some("BigIntegerField") | Some("BigAutoField") => value
 				.parse::<i64>()
 				.map_or_else(|_| value.clone().into(), Into::into),
 			Some("FloatField") => value
@@ -4640,14 +4773,17 @@ where
 				|uuid| reinhardt_query::value::Value::Uuid(Some(Box::new(uuid))),
 			),
 			_ => value.clone().into(),
-		}
+		})
 	}
 
 	/// Convert FilterValue to String representation
 	// Allow dead_code: internal conversion helper for filter value stringification in queries
 	#[allow(dead_code)]
-	fn value_to_string(v: &FilterValue) -> String {
-		match v {
+	fn value_to_string(v: &FilterValue) -> reinhardt_core::exception::Result<String> {
+		let value = match v {
+			FilterValue::Typed(value) => {
+				Self::database_value_to_string(Self::typed_database_value(value)?)
+			}
 			FilterValue::String(s) => s.clone(),
 			FilterValue::Integer(i) | FilterValue::Int(i) => i.to_string(),
 			FilterValue::Float(f) => f.to_string(),
@@ -4657,19 +4793,20 @@ where
 			FilterValue::List(values) => values
 				.iter()
 				.map(Self::value_to_string)
-				.collect::<Vec<_>>()
+				.collect::<reinhardt_core::exception::Result<Vec<_>>>()?
 				.join(","),
 			FilterValue::Range(start, end) => {
 				format!(
 					"{},{}",
-					Self::value_to_string(start),
-					Self::value_to_string(end)
+					Self::value_to_string(start)?,
+					Self::value_to_string(end)?
 				)
 			}
 			FilterValue::FieldRef(f) => f.field.clone(),
 			FilterValue::Expression(expr) => expr.to_sql(),
 			FilterValue::OuterRef(outer_ref) => outer_ref.field.clone(),
-		}
+		};
+		Ok(value)
 	}
 
 	/// Parse array string into `Vec<reinhardt_query::value::Value>`
@@ -4713,25 +4850,32 @@ where
 	/// Convert FilterValue to array of reinhardt_query::value::Value
 	// Allow dead_code: internal conversion for IN clause array parameter binding
 	#[allow(dead_code)]
-	fn value_to_array(v: &FilterValue) -> Vec<reinhardt_query::value::Value> {
-		match v {
+	fn value_to_array(
+		v: &FilterValue,
+	) -> reinhardt_core::exception::Result<Vec<reinhardt_query::value::Value>> {
+		let values = match v {
+			FilterValue::Typed(value) => vec![database_value_to_query_value(
+				Self::typed_database_value(value)?.clone(),
+			)],
 			FilterValue::String(s) => Self::parse_array_string(s),
 			FilterValue::Integer(i) | FilterValue::Int(i) => vec![(*i).into()],
 			FilterValue::Float(f) => vec![(*f).into()],
 			FilterValue::Boolean(b) | FilterValue::Bool(b) => vec![(*b).into()],
 			FilterValue::Null => vec![reinhardt_query::value::Value::Int(None)],
 			FilterValue::Array(arr) => arr.iter().map(|s| s.clone().into()).collect(),
-			FilterValue::List(values) => {
-				values.iter().map(Self::filter_value_to_sea_value).collect()
-			}
+			FilterValue::List(values) => values
+				.iter()
+				.map(Self::filter_value_to_sea_value)
+				.collect::<reinhardt_core::exception::Result<Vec<_>>>()?,
 			FilterValue::Range(start, end) => vec![
-				Self::filter_value_to_sea_value(start),
-				Self::filter_value_to_sea_value(end),
+				Self::filter_value_to_sea_value(start)?,
+				Self::filter_value_to_sea_value(end)?,
 			],
 			FilterValue::FieldRef(f) => vec![f.field.clone().into()],
 			FilterValue::Expression(expr) => vec![expr.to_sql().into()],
 			FilterValue::OuterRef(outer) => vec![outer.field.clone().into()],
-		}
+		};
+		Ok(values)
 	}
 
 	/// Build WHERE clause from accumulated filters
@@ -4746,16 +4890,16 @@ where
 	/// the WHERE portion, which is less efficient than using `build_where_condition()`.
 	// Allow dead_code: backward-compatible string-based WHERE clause builder for legacy code paths
 	#[allow(dead_code)]
-	fn build_where_clause(&self) -> (String, Vec<String>) {
+	fn build_where_clause(&self) -> reinhardt_core::exception::Result<(String, Vec<String>)> {
 		if !self.has_where_predicates() {
-			return (String::new(), Vec::new());
+			return Ok((String::new(), Vec::new()));
 		}
 
 		// Build reinhardt-query condition
 		let mut stmt = Query::select();
 		stmt.from(Alias::new("dummy"));
 
-		if let Some(cond) = self.build_where_condition_or_false() {
+		if let Some(cond) = self.build_where_condition()? {
 			stmt.cond_where(cond);
 		}
 
@@ -4770,7 +4914,7 @@ where
 			String::new()
 		};
 
-		(where_clause, Vec::new())
+		Ok((where_clause, Vec::new()))
 	}
 
 	/// Eagerly load related objects using JOIN queries
@@ -4863,18 +5007,14 @@ where
 	///     .select_related(&["author", "category"])
 	///     .filter(Filter::new("published", FilterOperator::Eq, FilterValue::Boolean(true)));
 	///
-	/// let stmt = queryset.select_related_query();
+	/// let stmt = queryset.select_related_query().expect("select-related query should compile");
 	/// // Generates:
 	/// // SELECT posts.*, author.*, category.* FROM posts
 	/// //   LEFT JOIN users AS author ON posts.author_id = author.id
 	/// //   LEFT JOIN categories AS category ON posts.category_id = category.id
 	/// //   WHERE posts.published = $1
 	/// ```
-	pub fn select_related_query(&self) -> SelectStatement {
-		self.select_related_query_with_condition(self.build_where_condition_or_false())
-	}
-
-	fn select_related_query_result(&self) -> reinhardt_core::exception::Result<SelectStatement> {
+	pub fn select_related_query(&self) -> reinhardt_core::exception::Result<SelectStatement> {
 		Ok(self.select_related_query_with_condition(self.build_where_condition()?))
 	}
 
@@ -5430,81 +5570,6 @@ where
 		stmt.to_owned()
 	}
 
-	/// Execute this queryset through a caller-owned transaction executor.
-	///
-	/// This method never resolves a global database connection. SQL is compiled
-	/// for the executor's backend and every row is decoded through the canonical
-	/// model row decoder.
-	///
-	/// # Errors
-	///
-	/// Returns an error if query compilation, executor fetch, or row decoding fails.
-	pub async fn all_with_executor(
-		&self,
-		executor: &mut dyn super::connection::TransactionExecutor,
-	) -> Result<Vec<T>, crate::backends::error::DatabaseError>
-	where
-		T: serde::de::DeserializeOwned,
-	{
-		let stmt = self.build_select_statement().map_err(|error| {
-			crate::backends::error::DatabaseError::QueryError(error.to_string())
-		})?;
-		let (sql, values) = Self::build_select_for_backend(&stmt, Self::executor_backend(executor));
-		let param_samples = values
-			.iter()
-			.map(|value| value.to_sql_literal())
-			.collect::<Vec<_>>();
-		let params = super::execution::convert_values(values);
-		let started_at = Instant::now();
-		let result = executor.fetch_all(&sql, params).await;
-		let duration = started_at.elapsed();
-
-		let rows = match result {
-			Ok(rows) => {
-				super::instrumentation::instrumentation()
-					.orm_query_end_with_params(&sql, &param_samples, duration)
-					.await;
-				rows
-			}
-			Err(error) => {
-				super::instrumentation::instrumentation()
-					.orm_query_error(&sql, &format!("{error:?}"))
-					.await;
-				return Err(error);
-			}
-		};
-
-		Self::decode_backend_rows(rows)
-	}
-
-	/// Execute this queryset through a transaction executor and return at most two rows.
-	pub async fn one_with_executor(
-		&self,
-		executor: &mut dyn super::connection::TransactionExecutor,
-	) -> Result<Vec<T>, crate::backends::error::DatabaseError>
-	where
-		T: serde::de::DeserializeOwned,
-	{
-		let mut queryset = self.clone();
-		queryset.limit = Some(queryset.limit.map_or(2, |limit| limit.min(2)));
-		queryset.all_with_executor(executor).await
-	}
-
-	/// Count this queryset through a caller-owned transaction executor.
-	pub async fn count_with_executor(
-		&self,
-		executor: &mut dyn super::connection::TransactionExecutor,
-	) -> Result<u64, crate::backends::error::DatabaseError> {
-		let stmt = self.build_count_statement().map_err(|error| {
-			crate::backends::error::DatabaseError::QueryError(error.to_string())
-		})?;
-
-		let (sql, values) = Self::build_select_for_backend(&stmt, Self::executor_backend(executor));
-		let params = super::execution::convert_values(values);
-		let row = executor.fetch_one(&sql, params).await?;
-		row.get::<u64>("count")
-	}
-
 	/// Execute the queryset and return all matching records
 	///
 	/// Fetches all records from the database that match the accumulated filters.
@@ -5562,23 +5627,85 @@ where
 	{
 		let conn = super::manager::get_connection().await?;
 
-		let stmt = self.build_select_statement()?;
-		let (sql, values) = Self::build_select_for_backend(&stmt, conn.backend());
-		let param_samples = values
-			.iter()
-			.map(|value| value.to_sql_literal())
-			.collect::<Vec<_>>();
-		let params = super::execution::convert_values(values);
+		let stmt = if !self.has_select_related() {
+			// Simple SELECT without JOINs
+			let mut stmt = Query::select();
+			self.apply_model_from(&mut stmt);
+
+			// Column selection considering selected_fields and deferred_fields
+			if let Some(ref fields) = self.selected_fields {
+				for field in fields {
+					// Detect raw SQL expressions (like COUNT(*), AVG(price), etc.)
+					if field.contains('(') && field.contains(')') {
+						// Use expr() for raw SQL expressions - clone to satisfy lifetime
+						stmt.expr(Expr::cust(field.clone()));
+					} else {
+						// Regular column reference
+						let col_ref = self.root_column_reference(field);
+						stmt.column(col_ref);
+					}
+				}
+			} else if !self.deferred_fields.is_empty() {
+				let all_fields = T::field_metadata();
+				for field in all_fields {
+					if !self.deferred_fields.contains(&field.name) {
+						let col_ref = self.root_column_reference(&field.name);
+						stmt.column(col_ref);
+					}
+				}
+			} else {
+				self.add_default_select_columns(&mut stmt);
+			}
+
+			self.apply_relation_joins(&mut stmt);
+
+			if let Some(cond) = self.build_where_condition()? {
+				stmt.cond_where(cond);
+			}
+
+			// Apply ORDER BY clause
+			for order_field in &self.order_by_fields {
+				let (field, is_desc) = if let Some(stripped) = order_field.strip_prefix('-') {
+					(stripped, true)
+				} else {
+					(order_field.as_str(), false)
+				};
+
+				let col_ref = self.root_column_reference(field);
+				let expr = Expr::col(col_ref);
+				if is_desc {
+					stmt.order_by_expr(expr, Order::Desc);
+				} else {
+					stmt.order_by_expr(expr, Order::Asc);
+				}
+			}
+
+			// Apply LIMIT/OFFSET
+			if let Some(limit) = self.limit {
+				stmt.limit(limit as u64);
+			}
+			if let Some(offset) = self.offset {
+				stmt.offset(offset as u64);
+			}
+
+			stmt.to_owned()
+		} else {
+			// SELECT with JOINs for select_related
+			self.select_related_query()?
+		};
+
+		// Convert statement to SQL with inline values (no placeholders)
+		let sql = stmt.to_string(PostgresQueryBuilder);
 
 		// Execute query and deserialize results
 		let started_at = Instant::now();
-		let query_result = conn.query(&sql, params).await;
+		let query_result = conn.query(&sql, vec![]).await;
 		let duration = started_at.elapsed();
 
 		let rows = match query_result {
 			Ok(rows) => {
 				super::instrumentation::instrumentation()
-					.orm_query_end_with_params(&sql, &param_samples, duration)
+					.orm_query_end_with_params(&sql, &[], duration)
 					.await;
 				rows
 			}
@@ -5586,15 +5713,15 @@ where
 				super::instrumentation::instrumentation()
 					.orm_query_error(&sql, &format!("{error:?}"))
 					.await;
-				return Err(error.into());
+				return Err(error);
 			}
 		};
 		rows.into_iter()
 			.map(|row| {
-				Self::decode_query_row(row).map_err(|e| {
-					reinhardt_core::exception::Error::Database(format!(
-						"Deserialization error: {}",
-						e
+				row.deserialize_model::<T>().map_err(|error| {
+					Error::from(DatabaseError::new(
+						DatabaseErrorKind::Serialization,
+						format!("Deserialization error: {error}"),
 					))
 				})
 			})
@@ -5705,14 +5832,17 @@ where
 	{
 		let results = self.all().await?;
 		match results.len() {
-			0 => Err(reinhardt_core::exception::Error::Database(
-				"No record found matching the query".to_string(),
-			)),
+			0 => Err(DatabaseError::new(
+				DatabaseErrorKind::Query,
+				"No record found matching the query",
+			)
+			.into()),
 			1 => Ok(results.into_iter().next().unwrap()),
-			n => Err(reinhardt_core::exception::Error::Database(format!(
-				"Multiple records found ({}), expected exactly one",
-				n
-			))),
+			n => Err(DatabaseError::new(
+				DatabaseErrorKind::Query,
+				format!("Multiple records found ({n}), expected exactly one"),
+			)
+			.into()),
 		}
 	}
 
@@ -5755,19 +5885,125 @@ where
 	where
 		T: serde::de::DeserializeOwned,
 	{
-		let stmt = self.build_select_statement()?;
-		let (sql, values) = Self::build_select_for_backend(&stmt, conn.backend());
+		let stmt = if !self.has_select_related() {
+			let mut stmt = Query::select();
+			self.apply_model_from(&mut stmt);
+
+			// Column selection considering selected_fields and deferred_fields
+			if let Some(ref fields) = self.selected_fields {
+				for field in fields {
+					// Detect raw SQL expressions (like COUNT(*), AVG(price), etc.)
+					if field.contains('(') && field.contains(')') {
+						// Use expr() for raw SQL expressions - clone to satisfy lifetime
+						stmt.expr(Expr::cust(field.clone()));
+					} else {
+						// Regular column reference
+						let col_ref = self.root_column_reference(field);
+						stmt.column(col_ref);
+					}
+				}
+			} else if !self.deferred_fields.is_empty() {
+				let all_fields = T::field_metadata();
+				for field in all_fields {
+					if !self.deferred_fields.contains(&field.name) {
+						let col_ref = self.root_column_reference(&field.name);
+						stmt.column(col_ref);
+					}
+				}
+			} else {
+				self.add_default_select_columns(&mut stmt);
+			}
+
+			self.apply_relation_joins(&mut stmt);
+
+			if let Some(cond) = self.build_where_condition()? {
+				stmt.cond_where(cond);
+			}
+
+			// Apply ORDER BY clause
+			for order_field in &self.order_by_fields {
+				let (field, is_desc) = if let Some(stripped) = order_field.strip_prefix('-') {
+					(stripped, true)
+				} else {
+					(order_field.as_str(), false)
+				};
+
+				let col_ref = self.root_column_reference(field);
+				let expr = Expr::col(col_ref);
+				if is_desc {
+					stmt.order_by_expr(expr, Order::Desc);
+				} else {
+					stmt.order_by_expr(expr, Order::Asc);
+				}
+			}
+
+			// Apply LIMIT/OFFSET
+			if let Some(limit) = self.limit {
+				stmt.limit(limit as u64);
+			}
+			if let Some(offset) = self.offset {
+				stmt.offset(offset as u64);
+			}
+
+			stmt.to_owned()
+		} else {
+			self.select_related_query()?
+		};
+
+		let sql = render_select_statement(&stmt, conn.backend());
+
+		let started_at = Instant::now();
+		let query_result = conn.query(&sql, vec![]).await;
+		let duration = started_at.elapsed();
+
+		let rows = match query_result {
+			Ok(rows) => {
+				super::instrumentation::instrumentation()
+					.orm_query_end_with_params(&sql, &[], duration)
+					.await;
+				rows
+			}
+			Err(error) => {
+				super::instrumentation::instrumentation()
+					.orm_query_error(&sql, &format!("{error:?}"))
+					.await;
+				return Err(error);
+			}
+		};
+		rows.into_iter()
+			.map(|row| {
+				row.deserialize_model::<T>().map_err(|error| {
+					Error::from(DatabaseError::new(
+						DatabaseErrorKind::Serialization,
+						format!("Deserialization error: {error}"),
+					))
+				})
+			})
+			.collect()
+	}
+
+	/// Execute the queryset through an active transaction executor and return all records.
+	pub async fn all_with_executor(
+		&self,
+		executor: &mut dyn super::connection::TransactionExecutor,
+	) -> Result<Vec<T>, crate::backends::error::DatabaseError>
+	where
+		T: serde::de::DeserializeOwned,
+	{
+		let stmt = self.build_select_statement().map_err(executor_error)?;
+		let (sql, values) = Self::build_select_for_backend(&stmt, Self::executor_backend(executor));
 		let param_samples = values
 			.iter()
 			.map(|value| value.to_sql_literal())
 			.collect::<Vec<_>>();
 		let params = super::execution::convert_values(values);
-
-		let started_at = Instant::now();
-		let query_result = conn.query(&sql, params).await;
-		let duration = started_at.elapsed();
-
-		let rows = match query_result {
+		let started = Instant::now();
+		let result = executor
+			.fetch_all(&sql, params)
+			.await
+			.map_err(executor_error);
+		let duration = started.elapsed();
+		let rows = match result {
 			Ok(rows) => {
 				super::instrumentation::instrumentation()
 					.orm_query_end_with_params(&sql, &param_samples, duration)
@@ -5778,54 +6014,23 @@ where
 				super::instrumentation::instrumentation()
 					.orm_query_error(&sql, &format!("{error:?}"))
 					.await;
-				return Err(error.into());
+				return Err(error);
 			}
 		};
-		rows.into_iter()
-			.map(|row| {
-				Self::decode_query_row(row).map_err(|e| {
-					reinhardt_core::exception::Error::Database(format!(
-						"Deserialization error: {}",
-						e
-					))
-				})
-			})
-			.collect()
+		Self::decode_backend_rows(rows)
 	}
 
-	/// Execute this queryset with an explicit connection and return at most two rows.
-	///
-	/// An existing stricter limit is preserved. This method never resolves the
-	/// process-global ORM connection and does not open a transaction.
-	pub async fn one_with_db(
+	/// Execute the queryset through an active transaction executor and return one record.
+	pub async fn one_with_executor(
 		&self,
-		conn: &super::connection::DatabaseConnection,
-	) -> reinhardt_core::exception::Result<Vec<T>>
+		executor: &mut dyn super::connection::TransactionExecutor,
+	) -> Result<Vec<T>, crate::backends::error::DatabaseError>
 	where
 		T: serde::de::DeserializeOwned,
 	{
 		let mut queryset = self.clone();
 		queryset.limit = Some(queryset.limit.map_or(2, |limit| limit.min(2)));
-		queryset.all_with_db(conn).await
-	}
-
-	/// Count this queryset through an explicit database connection.
-	///
-	/// The count uses the same filters as the queryset while intentionally
-	/// excluding pagination. It never resolves the process-global ORM connection.
-	pub async fn count_with_db(
-		&self,
-		conn: &super::connection::DatabaseConnection,
-	) -> reinhardt_core::exception::Result<u64> {
-		let stmt = self.build_count_statement()?;
-		let (sql, values) = Self::build_select_for_backend(&stmt, conn.backend());
-		let params = super::execution::convert_values(values);
-		let row = conn.query_one(&sql, params).await?;
-		row.get::<u64>("count").ok_or_else(|| {
-			reinhardt_core::exception::Error::Database(
-				"COUNT query did not return a numeric count column".to_owned(),
-			)
-		})
+		queryset.all_with_executor(executor).await
 	}
 
 	/// Execute the queryset with an explicit database connection and return a single record
@@ -5874,11 +6079,42 @@ where
 				"No record found matching the query".to_string(),
 			)),
 			1 => Ok(results.into_iter().next().unwrap()),
-			n => Err(reinhardt_core::exception::Error::Database(format!(
-				"Multiple records found ({}), expected exactly one",
-				n
-			))),
+			n => Err(DatabaseError::new(
+				DatabaseErrorKind::Query,
+				format!("Multiple records found ({n}), expected exactly one"),
+			)
+			.into()),
 		}
+	}
+
+	/// Execute this queryset through an explicit connection and return at most two rows.
+	pub async fn one_with_db(
+		&self,
+		conn: &super::connection::DatabaseConnection,
+	) -> reinhardt_core::exception::Result<Vec<T>>
+	where
+		T: serde::de::DeserializeOwned,
+	{
+		let mut queryset = self.clone();
+		queryset.limit = Some(queryset.limit.map_or(2, |limit| limit.min(2)));
+		queryset.all_with_db(conn).await
+	}
+
+	/// Count this queryset through an explicit connection without resolving the global connection.
+	pub async fn count_with_db(
+		&self,
+		conn: &super::connection::DatabaseConnection,
+	) -> reinhardt_core::exception::Result<u64> {
+		let stmt = self.count_select_query()?;
+		let (sql, values) = Self::build_select_for_backend(&stmt, conn.backend());
+		let params = super::execution::convert_values(values);
+		let row = conn.query_one(&sql, params).await?;
+		row.get::<u64>("count").ok_or_else(|| {
+			Error::from(DatabaseError::new(
+				DatabaseErrorKind::Query,
+				"COUNT query did not return a numeric count column",
+			))
+		})
 	}
 
 	/// Execute the queryset with an explicit database connection and return the first record
@@ -5966,9 +6202,14 @@ where
 	/// # }
 	/// ```
 	pub async fn count(&self) -> reinhardt_core::exception::Result<usize> {
+		use reinhardt_query::prelude::{PostgresQueryBuilder, QueryBuilder};
+
 		let conn = super::manager::get_connection().await?;
-		let stmt = self.build_count_statement()?;
-		let (sql, values) = Self::build_select_for_backend(&stmt, conn.backend());
+
+		let stmt = self.count_select_query()?;
+
+		// Convert to SQL and extract parameter values
+		let (sql, values) = PostgresQueryBuilder.build_select(&stmt);
 		let param_samples = values
 			.iter()
 			.map(|value| value.to_sql_literal())
@@ -5992,7 +6233,7 @@ where
 				super::instrumentation::instrumentation()
 					.orm_query_error(&sql, &format!("{error:?}"))
 					.await;
-				return Err(error.into());
+				return Err(error);
 			}
 		};
 		if let Some(row) = rows.first() {
@@ -6023,10 +6264,7 @@ where
 		}
 
 		let mut count_stmt = Query::select();
-		count_stmt.expr_as(
-			Func::count(Expr::asterisk().into_simple_expr()),
-			Alias::new("count"),
-		);
+		count_stmt.expr(Func::count(Expr::asterisk().into_simple_expr()));
 		count_stmt.from_subquery(distinct_stmt.to_owned(), Alias::new("distinct_root_rows"));
 		Ok(count_stmt.to_owned())
 	}
@@ -6047,18 +6285,12 @@ where
 		let mut stmt = Query::select();
 		count_queryset.apply_model_from(&mut stmt);
 		if filter_relation_joins.has_multi_valued_join() {
-			stmt.expr_as(
-				Expr::cust(format!(
-					"COUNT(DISTINCT {})",
-					count_queryset.distinct_root_primary_key_sql()
-				)),
-				Alias::new("count"),
-			);
+			stmt.expr(Expr::cust(format!(
+				"COUNT(DISTINCT {})",
+				count_queryset.distinct_root_primary_key_sql()
+			)));
 		} else {
-			stmt.expr_as(
-				Func::count(Expr::asterisk().into_simple_expr()),
-				Alias::new("count"),
-			);
+			stmt.expr(Func::count(Expr::asterisk().into_simple_expr()));
 		}
 
 		Self::apply_relation_join_graph(&mut stmt, &filter_relation_joins);
@@ -6171,10 +6403,8 @@ where
 	pub fn update_query(
 		&self,
 		updates: &HashMap<String, UpdateValue>,
-	) -> reinhardt_query::prelude::UpdateStatement {
-		self.validate_no_related_filters_for_write("QuerySet::update_query")
-			.expect("typed related filters are not supported in update queries");
-
+	) -> reinhardt_core::exception::Result<reinhardt_query::prelude::UpdateStatement> {
+		self.validate_no_related_filters_for_write("QuerySet::update_query")?;
 		let mut stmt = Query::update();
 		stmt.table(Alias::new(T::table_name()));
 
@@ -6184,7 +6414,7 @@ where
 			if T::generated_field_names().contains(&field.as_str()) {
 				continue;
 			}
-			stmt.value_expr(Alias::new(field), Self::update_value_to_query_expr(value));
+			stmt.value_expr(Alias::new(field), Self::update_value_to_query_expr(value)?);
 			has_values = true;
 		}
 
@@ -6194,11 +6424,11 @@ where
 		}
 
 		// Add WHERE conditions
-		if let Some(cond) = self.build_where_condition_for_write_or_false() {
+		if let Some(cond) = self.build_where_condition_for_write()? {
 			stmt.cond_where(cond);
 		}
 
-		stmt.to_owned()
+		Ok(stmt.to_owned())
 	}
 
 	/// Generate an UPDATE statement for field assignments on rows matched by this `QuerySet`.
@@ -6267,9 +6497,7 @@ where
 		let (sql, values) = Self::build_update_for_backend(&stmt, conn.backend());
 		let params = super::execution::convert_values(values);
 
-		conn.execute(&sql, params)
-			.await
-			.map_err(|error| reinhardt_core::exception::Error::Database(error.to_string()))
+		conn.execute(&sql, params).await
 	}
 
 	fn collect_field_assignments<I, A>(values: I) -> Vec<FieldAssignment>
@@ -6306,7 +6534,7 @@ where
 		for assignment in assignments {
 			stmt.value_expr(
 				Alias::new(assignment.field()),
-				Self::update_value_to_query_expr(assignment.value()),
+				Self::update_value_to_query_expr(assignment.value())?,
 			);
 		}
 
@@ -6343,6 +6571,12 @@ where
 			)));
 		}
 
+		for assignment in assignments {
+			if let UpdateValue::Typed(value) = assignment.value() {
+				Self::typed_database_value(value)?;
+			}
+		}
+
 		Ok(())
 	}
 
@@ -6368,8 +6602,21 @@ where
 		}
 	}
 
-	fn update_value_to_query_expr(value: &UpdateValue) -> Expr {
-		match value {
+	fn update_value_to_query_expr(value: &UpdateValue) -> reinhardt_core::exception::Result<Expr> {
+		let expr = match value {
+			UpdateValue::Typed(Ok(value)) => {
+				Expr::val(database_value_to_query_value(value.clone()))
+			}
+			UpdateValue::Typed(Err(error)) => {
+				let kind = match error {
+					FieldCodecError::TypeMismatch { .. }
+					| FieldCodecError::InvalidEnumValue { .. } => DatabaseErrorKind::Type,
+					FieldCodecError::Serialization(_) => DatabaseErrorKind::Serialization,
+				};
+				return Err(
+					DatabaseError::new(kind, format!("typed field codec failed: {error}")).into(),
+				);
+			}
 			UpdateValue::String(s) => Expr::val(s.clone()),
 			UpdateValue::Integer(i) => Expr::val(*i),
 			UpdateValue::Float(f) => Expr::val(*f),
@@ -6383,7 +6630,8 @@ where
 			}
 			UpdateValue::FieldRef(f) => Expr::col(Alias::new(&f.field)),
 			UpdateValue::Expression(expr) => Self::expression_to_query_expr(expr),
-		}
+		};
+		Ok(expr)
 	}
 
 	/// Generate UPDATE SQL with WHERE clause and parameter binding
@@ -6420,19 +6668,22 @@ where
 	/// let mut updates = HashMap::new();
 	/// updates.insert("name".to_string(), UpdateValue::String("Alice".to_string()));
 	/// updates.insert("email".to_string(), UpdateValue::String("alice@example.com".to_string()));
-	/// let (sql, params) = queryset.update_sql(&updates);
+	/// let (sql, params) = queryset.update_sql(&updates).expect("update SQL should compile");
 	/// // sql: "UPDATE users SET name = $1, email = $2 WHERE id = $3"
 	/// // params: ["Alice", "alice@example.com", "1"]
 	/// ```
-	pub fn update_sql(&self, updates: &HashMap<String, UpdateValue>) -> (String, Vec<String>) {
-		let stmt = self.update_query(updates);
+	pub fn update_sql(
+		&self,
+		updates: &HashMap<String, UpdateValue>,
+	) -> reinhardt_core::exception::Result<(String, Vec<String>)> {
+		let stmt = self.update_query(updates)?;
 		use reinhardt_query::prelude::{PostgresQueryBuilder, QueryBuilder};
 		let (sql, values) = PostgresQueryBuilder.build_update(&stmt);
 		let params: Vec<String> = values
 			.iter()
 			.map(|v| Self::sea_value_to_string(v))
 			.collect();
-		(sql, params)
+		Ok((sql, params))
 	}
 
 	/// Convert reinhardt-query Value to String without SQL quoting
@@ -6492,22 +6743,22 @@ where
 	/// let queryset = User::objects()
 	///     .filter(Filter::new("id", FilterOperator::Eq, FilterValue::Integer(1)));
 	///
-	/// let (sql, params) = queryset.delete_sql();
+	/// let (sql, params) = queryset.delete_sql().expect("delete SQL should compile");
 	/// // sql: "DELETE FROM users WHERE id = $1"
 	/// // params: ["1"]
 	/// ```
 	/// Generate DELETE statement using reinhardt-query
-	pub fn delete_query(&self) -> reinhardt_query::prelude::DeleteStatement {
-		self.validate_no_related_filters_for_write("QuerySet::delete_query")
-			.expect("typed related filters are not supported in delete queries");
-
+	pub fn delete_query(
+		&self,
+	) -> reinhardt_core::exception::Result<reinhardt_query::prelude::DeleteStatement> {
+		self.validate_no_related_filters_for_write("QuerySet::delete_query")?;
 		if !self.has_where_predicates() {
 			panic!(
 				"DELETE without WHERE clause is not allowed. Use .filter() to specify which rows to delete."
 			);
 		}
 
-		let Some(cond) = self.build_where_condition_for_write_or_false() else {
+		let Some(cond) = self.build_where_condition_for_write()? else {
 			panic!(
 				"DELETE without WHERE clause is not allowed. Use .filter() to specify which rows to delete."
 			);
@@ -6517,19 +6768,19 @@ where
 		stmt.from_table(Alias::new(T::table_name()));
 		stmt.cond_where(cond);
 
-		stmt.to_owned()
+		Ok(stmt.to_owned())
 	}
 
 	/// Deletes sql.
-	pub fn delete_sql(&self) -> (String, Vec<String>) {
-		let stmt = self.delete_query();
+	pub fn delete_sql(&self) -> reinhardt_core::exception::Result<(String, Vec<String>)> {
+		let stmt = self.delete_query()?;
 		use reinhardt_query::prelude::{PostgresQueryBuilder, QueryBuilder};
 		let (sql, values) = PostgresQueryBuilder.build_delete(&stmt);
 		let params: Vec<String> = values
 			.iter()
 			.map(|v| Self::sea_value_to_string(v))
 			.collect();
-		(sql, params)
+		Ok((sql, params))
 	}
 
 	/// Retrieve a single object by composite primary key
@@ -6591,16 +6842,17 @@ where
 
 		// Get composite primary key definition from the model
 		let composite_pk = T::composite_primary_key().ok_or_else(|| {
-			reinhardt_core::exception::Error::Database(
-				"Model does not have a composite primary key".to_string(),
-			)
+			Error::from(DatabaseError::new(
+				DatabaseErrorKind::Query,
+				"Model does not have a composite primary key",
+			))
 		})?;
 
 		// Validate that all required PK fields are provided
-		composite_pk.validate(pk_values).map_err(|e| {
-			reinhardt_core::exception::Error::Database(format!(
-				"Composite PK validation failed: {}",
-				e
+		composite_pk.validate(pk_values).map_err(|error| {
+			Error::from(DatabaseError::new(
+				DatabaseErrorKind::Query,
+				format!("Composite PK validation failed: {error}"),
 			))
 		})?;
 
@@ -6665,32 +6917,44 @@ where
 				super::instrumentation::instrumentation()
 					.orm_query_error(&sql, &format!("{error:?}"))
 					.await;
-				return Err(error.into());
+				return Err(error);
 			}
 		};
 
 		// Composite PK queries should return exactly one row
 		if rows.is_empty() {
-			return Err(reinhardt_core::exception::Error::Database(
-				"No record found matching the composite primary key".to_string(),
-			));
+			return Err(DatabaseError::new(
+				DatabaseErrorKind::Query,
+				"No record found matching the composite primary key",
+			)
+			.into());
 		}
 
 		if rows.len() > 1 {
-			return Err(reinhardt_core::exception::Error::Database(format!(
-				"Multiple records found ({}) for composite primary key, expected exactly one",
-				rows.len()
-			)));
+			return Err(DatabaseError::new(
+				DatabaseErrorKind::Query,
+				format!(
+					"Multiple records found ({}) for composite primary key, expected exactly one",
+					rows.len()
+				),
+			)
+			.into());
 		}
 
 		// Deserialize the single row into the model
 		let row = &rows[0];
-		let value = serde_json::to_value(&row.data).map_err(|e| {
-			reinhardt_core::exception::Error::Database(format!("Serialization error: {}", e))
+		let value = serde_json::to_value(&row.data).map_err(|error| {
+			Error::from(DatabaseError::new(
+				DatabaseErrorKind::Serialization,
+				format!("Serialization error: {error}"),
+			))
 		})?;
 
-		serde_json::from_value(value).map_err(|e| {
-			reinhardt_core::exception::Error::Database(format!("Deserialization error: {}", e))
+		serde_json::from_value(value).map_err(|error| {
+			Error::from(DatabaseError::new(
+				DatabaseErrorKind::Serialization,
+				format!("Deserialization error: {error}"),
+			))
 		})
 	}
 
@@ -6802,14 +7066,18 @@ where
 	///             FilterValue::OuterRef(OuterRef::new("authors.id"))
 	///         ))
 	///         .values(&["COUNT(*)"])
-	///     })
+	///     })?
 	///     .all()
 	///     .await?;
 	/// // Generates: SELECT *, (SELECT COUNT(*) FROM books WHERE author_id = authors.id) AS book_count FROM authors
 	/// # Ok(())
 	/// # }
 	/// ```
-	pub fn annotate_subquery<M, F>(mut self, name: &str, builder: F) -> Self
+	pub fn annotate_subquery<M, F>(
+		mut self,
+		name: &str,
+		builder: F,
+	) -> reinhardt_core::exception::Result<Self>
 	where
 		M: super::Model + 'static,
 		F: FnOnce(QuerySet<M>) -> QuerySet<M>,
@@ -6819,7 +7087,7 @@ where
 		// Apply the builder to configure the subquery
 		let configured_subquery = builder(subquery_qs);
 		// Generate SQL for the subquery (wrapped in parentheses)
-		let subquery_sql = configured_subquery.as_subquery();
+		let subquery_sql = configured_subquery.as_subquery()?;
 
 		// Add as annotation using AnnotationValue::Subquery
 		let annotation = super::annotation::Annotation {
@@ -6827,7 +7095,7 @@ where
 			value: super::annotation::AnnotationValue::Subquery(subquery_sql),
 		};
 		self.annotations.push(annotation);
-		self
+		Ok(self)
 	}
 
 	/// Perform an aggregation on the QuerySet
@@ -6906,7 +7174,7 @@ where
 	}
 
 	/// Converts to sql.
-	pub fn to_sql(&self) -> String {
+	pub fn to_sql(&self) -> reinhardt_core::exception::Result<String> {
 		let mut stmt = if !self.has_select_related() {
 			// Simple SELECT without JOINs
 			let mut stmt = Query::select();
@@ -6985,7 +7253,7 @@ where
 			}
 
 			// Apply WHERE conditions
-			if let Some(cond) = self.build_where_condition_or_false() {
+			if let Some(cond) = self.build_where_condition()? {
 				stmt.cond_where(cond);
 			}
 
@@ -7066,7 +7334,7 @@ where
 			stmt.to_owned()
 		} else {
 			// SELECT with JOINs for select_related
-			self.select_related_query()
+			self.select_related_query()?
 		};
 
 		// Add annotations to SELECT clause if any using reinhardt-query API
@@ -7125,9 +7393,9 @@ where
 
 		// Prepend CTE clause if any CTEs are defined
 		if let Some(cte_sql) = self.ctes.to_sql() {
-			format!("{} {}", cte_sql, select_sql)
+			Ok(format!("{} {}", cte_sql, select_sql))
 		} else {
-			select_sql
+			Ok(select_sql)
 		}
 	}
 
@@ -7431,17 +7699,19 @@ where
 	/// let active_user_ids = User::objects()
 	///     .filter(Filter::new("is_active", FilterOperator::Eq, FilterValue::Bool(true)))
 	///     .values(&["id"])
-	///     .as_subquery();
+	///     .as_subquery()
+	///     .expect("subquery should compile");
 	/// // Generates: (SELECT id FROM users WHERE is_active = $1)
 	///
 	/// // Use as derived table
 	/// let subquery = Post::objects()
 	///     .filter(Filter::new("published", FilterOperator::Eq, FilterValue::Bool(true)))
-	///     .as_subquery();
+	///     .as_subquery()
+	///     .expect("subquery should compile");
 	/// // Generates: (SELECT * FROM posts WHERE published = $1)
 	/// ```
-	pub fn as_subquery(self) -> String {
-		format!("({})", self.to_sql())
+	pub fn as_subquery(self) -> reinhardt_core::exception::Result<String> {
+		Ok(format!("({})", self.to_sql()?))
 	}
 
 	/// Defer loading of specific fields
@@ -7971,7 +8241,6 @@ fn escape_like_pattern(value: &str) -> String {
 	escaped
 }
 
-#[cfg(test)]
 fn render_select_statement(
 	statement: &SelectStatement,
 	backend: super::connection::DatabaseBackend,
@@ -7991,7 +8260,10 @@ mod tests {
 	};
 	use crate::orm::connection::DatabaseBackend;
 	use crate::orm::query::{FieldAssignment, UpdateValue};
-	use crate::orm::{FilterOperator, FilterValue, Manager, Model, QuerySet, query::Filter};
+	use crate::orm::{
+		DatabaseValue, FieldCodecError, FilterOperator, FilterValue, Manager, Model, QuerySet,
+		query::Filter,
+	};
 	use reinhardt_query::{
 		QueryBuilder,
 		prelude::{PostgresQueryBuilder, QueryStatementBuilder, SqliteQueryBuilder},
@@ -7999,7 +8271,6 @@ mod tests {
 	use rstest::rstest;
 	use serde::{Deserialize, Serialize};
 	use std::collections::HashMap;
-	use uuid::Uuid;
 
 	#[test]
 	fn render_select_statement_uses_mysql_identifier_quoting() {
@@ -8024,6 +8295,8 @@ mod tests {
 		crate::orm::inspection::FieldInfo {
 			name: name.to_string(),
 			field_type: "reinhardt.orm.models.CharField".to_string(),
+			storage_kind: None,
+			domain: None,
 			nullable: false,
 			primary_key,
 			unique: false,
@@ -8071,7 +8344,12 @@ mod tests {
 			crate::orm::expressions::FieldRef::new("full_name")
 		}
 
-		const fn field_created_at() -> crate::orm::expressions::FieldRef<TestUser, String> {
+		const fn field_display_name() -> crate::orm::expressions::FieldRef<TestUser, String> {
+			crate::orm::expressions::FieldRef::new("display_name")
+		}
+
+		const fn field_created_at()
+		-> crate::orm::expressions::FieldRef<TestUser, chrono::DateTime<chrono::Utc>> {
 			crate::orm::expressions::FieldRef::new("created_at")
 		}
 
@@ -8147,13 +8425,7 @@ mod tests {
 		}
 
 		fn generated_field_names() -> &'static [&'static str] {
-			&["full_name"]
-		}
-
-		fn field_metadata() -> Vec<crate::orm::inspection::FieldInfo> {
-			let mut id = test_field_info("id", None, true);
-			id.field_type = "reinhardt.orm.models.IntegerField".to_string();
-			vec![id]
+			&["full_name", "display_name"]
 		}
 	}
 
@@ -8270,10 +8542,7 @@ mod tests {
 		}
 
 		fn field_metadata() -> Vec<crate::orm::inspection::FieldInfo> {
-			let mut id = test_field_info("id", None, true);
-			id.field_type = "reinhardt.orm.models.UuidField".to_string();
 			vec![
-				id,
 				test_field_info("normalized_path", None, false),
 				test_field_info("email", Some("email_addr"), false),
 			]
@@ -8587,7 +8856,10 @@ mod tests {
 		let assignment: FieldAssignment = (TestUser::field_created_at(), timestamp).into();
 
 		assert_eq!(assignment.field(), "created_at");
-		assert!(matches!(assignment.value(), UpdateValue::Timestamp(_)));
+		assert!(matches!(
+			assignment.value(),
+			UpdateValue::Typed(Ok(DatabaseValue::DateTime(_)))
+		));
 	}
 
 	#[test]
@@ -8597,7 +8869,7 @@ mod tests {
 		assert_eq!(assignment.field(), "username");
 		assert!(matches!(
 			assignment.value(),
-			UpdateValue::String(value) if value == "alice"
+			UpdateValue::Typed(Ok(DatabaseValue::String(value))) if value == "alice"
 		));
 	}
 
@@ -8666,7 +8938,9 @@ mod tests {
 			UpdateValue::String("Alice Doe".to_string()),
 		);
 
-		let stmt = queryset.update_query(&updates);
+		let stmt = queryset
+			.update_query(&updates)
+			.expect("update query should compile");
 		let (sql, params) = super::PostgresQueryBuilder.build_update(&stmt);
 
 		assert_eq!(
@@ -8685,7 +8959,9 @@ mod tests {
 			UpdateValue::String("Alice Doe".to_string()),
 		);
 
-		let (sql, params) = queryset.update_sql(&updates);
+		let (sql, params) = queryset
+			.update_sql(&updates)
+			.expect("update SQL should compile");
 
 		assert_eq!(
 			sql,
@@ -8707,6 +8983,86 @@ mod tests {
 			reinhardt_core::exception::Error::Validation(message)
 				if message == "QuerySet::update_fields cannot assign generated field `full_name`"
 		));
+	}
+
+	#[test]
+	fn test_update_fields_sql_rejects_db_column_generated_fields() {
+		let queryset = QuerySet::<TestUser>::new().filter(TestUser::field_id().eq(7));
+		let error = queryset
+			.update_fields_sql([(TestUser::field_display_name(), "Alice Doe")])
+			.expect_err("generated database columns should be rejected");
+		assert!(matches!(
+			error,
+			reinhardt_core::exception::Error::Validation(message)
+				if message == "QuerySet::update_fields cannot assign generated field `display_name`"
+		));
+	}
+
+	#[test]
+	fn test_legacy_update_query_preserves_typed_codec_error() {
+		let queryset = QuerySet::<TestUser>::new().filter(TestUser::field_id().eq(7));
+		let mut updates = HashMap::new();
+		updates.insert(
+			"username".to_owned(),
+			UpdateValue::Typed(Err(FieldCodecError::Serialization(
+				"rejected update value".to_owned(),
+			))),
+		);
+
+		let error = queryset
+			.update_query(&updates)
+			.expect_err("typed codec error should stop legacy update compilation");
+		let source = std::error::Error::source(&error)
+			.expect("typed codec source should be preserved by update compilation");
+		assert!(source.downcast_ref::<FieldCodecError>().is_some());
+	}
+
+	fn rejecting_typed_filter() -> Filter {
+		Filter::new(
+			"username",
+			FilterOperator::Eq,
+			FilterValue::Typed(Err(FieldCodecError::Serialization(
+				"rejected query value".to_owned(),
+			))),
+		)
+	}
+
+	#[test]
+	fn test_select_related_query_preserves_typed_codec_error() {
+		let queryset = QuerySet::<TestUser>::new()
+			.select_related(&["profile"])
+			.filter(rejecting_typed_filter());
+
+		let error = queryset
+			.select_related_query()
+			.expect_err("typed codec error must stop select-related compilation");
+		let source = std::error::Error::source(&error)
+			.expect("select-related codec source should be preserved");
+		assert!(source.downcast_ref::<FieldCodecError>().is_some());
+	}
+
+	#[test]
+	fn test_delete_query_preserves_typed_codec_error() {
+		let queryset = QuerySet::<TestUser>::new().filter(rejecting_typed_filter());
+
+		let error = queryset
+			.delete_query()
+			.expect_err("typed codec error must stop delete compilation");
+		let source =
+			std::error::Error::source(&error).expect("delete codec source should be preserved");
+		assert!(source.downcast_ref::<FieldCodecError>().is_some());
+	}
+
+	#[test]
+	fn test_debug_sql_preserves_typed_codec_error() {
+		let queryset = QuerySet::<TestUser>::new().filter(rejecting_typed_filter());
+
+		let error = queryset
+			.to_sql()
+			.expect_err("typed codec error must stop debug SQL compilation");
+		let source =
+			std::error::Error::source(&error).expect("debug SQL codec source should be preserved");
+		assert!(source.downcast_ref::<FieldCodecError>().is_some());
 	}
 
 	#[tokio::test]
@@ -8863,7 +9219,9 @@ mod tests {
 			"username".to_string(),
 			UpdateValue::String("alice".to_string()),
 		);
-		let (sql, params) = queryset.update_sql(&updates);
+		let (sql, params) = queryset
+			.update_sql(&updates)
+			.expect("update SQL should compile");
 
 		assert_eq!(
 			sql,
@@ -8895,7 +9253,9 @@ mod tests {
 			"email".to_string(),
 			UpdateValue::String("bob@test.com".to_string()),
 		);
-		let (sql, params) = queryset.update_sql(&updates);
+		let (sql, params) = queryset
+			.update_sql(&updates)
+			.expect("update SQL should compile");
 
 		// HashMap iteration order is not guaranteed, so we check both possible orderings
 		let valid_sql_1 = "UPDATE \"test_users\" SET \"username\" = $1, \"email\" = $2 WHERE (\"id\" > $3 AND \"email\" LIKE $4 ESCAPE '\\')";
@@ -8922,7 +9282,7 @@ mod tests {
 			FilterValue::Integer(1),
 		));
 
-		let (sql, params) = queryset.delete_sql();
+		let (sql, params) = queryset.delete_sql().expect("delete SQL should compile");
 
 		assert_eq!(sql, "DELETE FROM \"test_users\" WHERE \"id\" = $1");
 		assert_eq!(params, vec!["1"]);
@@ -8942,7 +9302,7 @@ mod tests {
 				FilterValue::String("alice@".to_string()),
 			));
 
-		let (sql, params) = queryset.delete_sql();
+		let (sql, params) = queryset.delete_sql().expect("delete SQL should compile");
 
 		assert_eq!(
 			sql,
@@ -8983,7 +9343,7 @@ mod tests {
 				FilterValue::String("admin".to_string()),
 			));
 
-		let (sql, params) = queryset.delete_sql();
+		let (sql, params) = queryset.delete_sql().expect("delete SQL should compile");
 
 		assert_eq!(
 			sql,
@@ -9000,7 +9360,7 @@ mod tests {
 			FilterValue::Null,
 		));
 
-		let (sql, params) = queryset.delete_sql();
+		let (sql, params) = queryset.delete_sql().expect("delete SQL should compile");
 
 		assert_eq!(sql, "DELETE FROM \"test_users\" WHERE \"email\" IS NULL");
 		assert_eq!(params, Vec::<String>::new());
@@ -9014,7 +9374,7 @@ mod tests {
 			FilterValue::Null,
 		));
 
-		let (sql, params) = queryset.delete_sql();
+		let (sql, params) = queryset.delete_sql().expect("delete SQL should compile");
 
 		assert_eq!(
 			sql,
@@ -9030,7 +9390,9 @@ mod tests {
 		// Test that select_related_query() generates SelectStatement correctly
 		let queryset = QuerySet::<TestUser>::new().select_related(&["profile", "department"]);
 
-		let stmt = queryset.select_related_query();
+		let stmt = queryset
+			.select_related_query()
+			.expect("select-related query should compile");
 
 		// Convert to SQL to verify structure
 		use reinhardt_query::prelude::{PostgresQueryBuilder, QueryStatementBuilder};
@@ -9071,7 +9433,10 @@ mod tests {
 			.field(TestCorpusFile::field_normalized_path())
 			.eq("/docs/index.md");
 
-		let sql = QuerySet::<TestUser>::new().filter(filter).to_sql();
+		let sql = QuerySet::<TestUser>::new()
+			.filter(filter)
+			.to_sql()
+			.expect("query SQL should compile");
 
 		assert_eq!(
 			sql,
@@ -9093,7 +9458,8 @@ mod tests {
 				"corpus_file",
 				"SELECT 1",
 			))
-			.to_sql();
+			.to_sql()
+			.expect("query SQL should compile");
 
 		assert!(sql.contains(r#"AS "corpus_file__corpus_file""#));
 		assert!(sql.contains(r#"WHERE "corpus_file__corpus_file"."normalized_path""#));
@@ -9111,7 +9477,8 @@ mod tests {
 		let sql = QuerySet::<TestUser>::new()
 			.from_as("u")
 			.filter(filter)
-			.to_sql();
+			.to_sql()
+			.expect("query SQL should compile");
 
 		assert!(sql.starts_with(r#"SELECT "u".* FROM "test_users" AS "u""#));
 		assert!(sql.contains(r#""u"."corpus_file_id" = "corpus_file"."id""#));
@@ -9130,7 +9497,8 @@ mod tests {
 		let sql = QuerySet::<TestUser>::new()
 			.from_as("corpus_file")
 			.filter(filter)
-			.to_sql();
+			.to_sql()
+			.expect("query SQL should compile");
 
 		assert_eq!(
 			sql,
@@ -9147,7 +9515,8 @@ mod tests {
 		let sql = QuerySet::<TestUser>::new()
 			.filter(filter)
 			.from_as("corpus_file")
-			.to_sql();
+			.to_sql()
+			.expect("query SQL should compile");
 
 		assert_eq!(
 			sql,
@@ -9168,7 +9537,8 @@ mod tests {
 		let sql = QuerySet::<TestUser>::new()
 			.from_as("corpus_file__project")
 			.filter(filter)
-			.to_sql();
+			.to_sql()
+			.expect("query SQL should compile");
 
 		assert!(sql.contains(
 			r#"LEFT JOIN "test_projects" AS "corpus_file__project__project" ON "corpus_file"."project_id" = "corpus_file__project__project"."id""#
@@ -9192,7 +9562,7 @@ mod tests {
 			.expect("count select query");
 		let sql = stmt.to_string(PostgresQueryBuilder);
 
-		assert!(sql.starts_with(r#"SELECT COUNT(*) AS "count" FROM "test_users" AS "u""#));
+		assert!(sql.starts_with(r#"SELECT COUNT(*) FROM "test_users" AS "u""#));
 		assert!(sql.contains(r#""u"."corpus_file_id" = "corpus_file"."id""#));
 		assert!(!sql.contains(r#""test_users"."corpus_file_id" = "corpus_file"."id""#));
 	}
@@ -9240,19 +9610,22 @@ mod tests {
 			.inner_join_as::<TestProject, _>("corpus_file__project", "manual_project", |_, _| {
 				aliased_join_condition("corpus_file__project", "manual_project")
 			})
-			.to_sql();
+			.to_sql()
+			.expect("query SQL should compile");
 		let left_sql = QuerySet::<TestUser>::new()
 			.filter(nested_project_name_filter())
 			.left_join_as::<TestProject, _>("corpus_file__project", "manual_project", |_, _| {
 				aliased_join_condition("corpus_file__project", "manual_project")
 			})
-			.to_sql();
+			.to_sql()
+			.expect("query SQL should compile");
 		let right_sql = QuerySet::<TestUser>::new()
 			.filter(nested_project_name_filter())
 			.right_join_as::<TestProject, _>("corpus_file__project", "manual_project", |_, _| {
 				aliased_join_condition("corpus_file__project", "manual_project")
 			})
-			.to_sql();
+			.to_sql()
+			.expect("query SQL should compile");
 
 		for sql in [inner_sql, left_sql, right_sql] {
 			assert!(sql.ends_with(r#"WHERE "corpus_file__project__project"."name" = 'reinhardt'"#));
@@ -9273,7 +9646,8 @@ mod tests {
 		let sql = QuerySet::<TestProjects>::new()
 			.filter(make_filter())
 			.inner_join::<TestProjects>("id", "parent_id")
-			.to_sql();
+			.to_sql()
+			.expect("query SQL should compile");
 
 		assert!(sql.ends_with(r#"WHERE "projects__projects"."id" = 1"#));
 	}
@@ -9292,7 +9666,8 @@ mod tests {
 			.inner_join_as::<TestProject, _>("test_users", "corpus_file", |_, _| {
 				aliased_join_condition("test_users", "corpus_file")
 			})
-			.to_sql();
+			.to_sql()
+			.expect("query SQL should compile");
 
 		assert!(sql.contains(
 			r#"INNER JOIN "test_corpus_files" AS "corpus_file__corpus_file" ON "test_users"."corpus_file_id" = "corpus_file__corpus_file"."id""#
@@ -9328,7 +9703,8 @@ mod tests {
 				FilterOperator::Eq,
 				FilterValue::Expression(expression),
 			))
-			.to_sql();
+			.to_sql()
+			.expect("query SQL should compile");
 
 		assert!(sql.contains(r#""test_users"."updated_at" = ("test_users"."created_at" + 1)"#));
 	}
@@ -9343,7 +9719,10 @@ mod tests {
 			.field(TestCorpusFile::field_normalized_path())
 			.is_null();
 
-		let sql = QuerySet::<TestUser>::new().filter(filter).to_sql();
+		let sql = QuerySet::<TestUser>::new()
+			.filter(filter)
+			.to_sql()
+			.expect("query SQL should compile");
 
 		assert_eq!(
 			sql,
@@ -9360,7 +9739,8 @@ mod tests {
 		let sql = QuerySet::<TestUser>::new()
 			.select_related(&["corpus_file"])
 			.select_related(path)
-			.to_sql();
+			.to_sql()
+			.expect("query SQL should compile");
 
 		assert_eq!(
 			sql.matches(r#"JOIN "test_corpus_files" AS "corpus_file""#)
@@ -9384,7 +9764,8 @@ mod tests {
 		let sql = QuerySet::<TestUser>::new()
 			.select_related(&["corpus_file"])
 			.filter(filter)
-			.to_sql();
+			.to_sql()
+			.expect("query SQL should compile");
 
 		assert!(sql.starts_with(r#"SELECT "test_users".*, "corpus_file".* FROM "test_users""#));
 		assert_eq!(
@@ -9403,11 +9784,13 @@ mod tests {
 		let values_sql = QuerySet::<TestUser>::new()
 			.values(&["id"])
 			.select_related(path.clone())
-			.to_sql();
+			.to_sql()
+			.expect("query SQL should compile");
 		let only_sql = QuerySet::<TestUser>::new()
 			.only(&["id"])
 			.select_related(path)
-			.to_sql();
+			.to_sql()
+			.expect("query SQL should compile");
 
 		assert_eq!(
 			values_sql,
@@ -9426,7 +9809,8 @@ mod tests {
 			.from_as("corpus_file")
 			.select_related(&["corpus_file"])
 			.select_related(path)
-			.to_sql();
+			.to_sql()
+			.expect("query SQL should compile");
 
 		assert!(!sql.contains(r#"LEFT JOIN "corpus_files""#));
 		assert!(sql.contains(
@@ -9440,7 +9824,10 @@ mod tests {
 			TestUserCorpusFile,
 		>();
 
-		let sql = QuerySet::<TestUser>::new().select_related(path).to_sql();
+		let sql = QuerySet::<TestUser>::new()
+			.select_related(path)
+			.to_sql()
+			.expect("query SQL should compile");
 
 		assert_eq!(
 			sql,
@@ -9456,7 +9843,10 @@ mod tests {
 			>()
 			.then::<TestCorpusFileProject, TestProject>();
 
-		let sql = QuerySet::<TestUser>::new().select_related(path).to_sql();
+		let sql = QuerySet::<TestUser>::new()
+			.select_related(path)
+			.to_sql()
+			.expect("query SQL should compile");
 
 		assert!(sql.starts_with(
 			r#"SELECT "test_users".*, "corpus_file".*, "corpus_file__project".* FROM "test_users""#
@@ -9474,7 +9864,8 @@ mod tests {
 		let sql = QuerySet::<TestUser>::new()
 			.from_as("corpus_file__project")
 			.select_related(path)
-			.to_sql();
+			.to_sql()
+			.expect("query SQL should compile");
 
 		assert!(sql.starts_with(
 			r#"SELECT "corpus_file__project".*, "corpus_file".*, "corpus_file__project__project".* FROM "test_users" AS "corpus_file__project""#
@@ -9496,7 +9887,7 @@ mod tests {
 			.expect("count select query")
 			.to_string(PostgresQueryBuilder);
 
-		assert_eq!(sql, r#"SELECT COUNT(*) AS "count" FROM "test_users""#);
+		assert_eq!(sql, r#"SELECT COUNT(*) FROM "test_users""#);
 	}
 
 	#[test]
@@ -9541,7 +9932,8 @@ mod tests {
 		let sql = QuerySet::<TestUser>::new()
 			.values(&["id"])
 			.filter(filter)
-			.to_sql();
+			.to_sql()
+			.expect("query SQL should compile");
 
 		assert!(sql.starts_with(r#"SELECT "test_users"."id" FROM "test_users""#));
 	}
@@ -9559,7 +9951,8 @@ mod tests {
 			.filter(related_filter)
 			.filter(Filter::new("id", FilterOperator::Eq, FilterValue::Int(1)))
 			.order_by(&["id"])
-			.to_sql();
+			.to_sql()
+			.expect("query SQL should compile");
 
 		assert_eq!(
 			sql,
@@ -9581,10 +9974,13 @@ mod tests {
 			.filter_in_subquery("id", |queryset: QuerySet<TestProject>| {
 				queryset.values(&["id"])
 			})
+			.expect("IN subquery filter should compile")
 			.filter_not_in_subquery("id", |queryset: QuerySet<TestProject>| {
 				queryset.values(&["id"])
 			})
-			.to_sql();
+			.expect("NOT IN subquery filter should compile")
+			.to_sql()
+			.expect("query SQL should compile");
 
 		assert!(sql.contains(r#""test_users"."id" IN (SELECT "id" FROM "test_projects")"#));
 		assert!(sql.contains(r#""test_users"."id" NOT IN (SELECT "id" FROM "test_projects")"#));
@@ -9602,7 +9998,8 @@ mod tests {
 		let sql = QuerySet::<TestUser>::new()
 			.filter(related_filter)
 			.filter(TestUser::field_created_at().year().eq(2026))
-			.to_sql();
+			.to_sql()
+			.expect("query SQL should compile");
 
 		assert!(sql.contains(r#"EXTRACT(YEAR FROM "test_users"."created_at") = 2026"#));
 	}
@@ -9623,7 +10020,8 @@ mod tests {
 				FilterOperator::Eq,
 				FilterValue::Integer(2026),
 			))
-			.to_sql();
+			.to_sql()
+			.expect("query SQL should compile");
 
 		assert!(sql.contains(r#"COALESCE("test_users"."created_at", '"created_at"') = 2026"#));
 	}
@@ -9642,7 +10040,8 @@ mod tests {
 			.aggregate(
 				crate::orm::aggregation::Aggregate::count(Some("id")).with_alias("user_count"),
 			)
-			.to_sql();
+			.to_sql()
+			.expect("query SQL should compile");
 
 		assert!(sql.contains(r#"COUNT("test_users"."id") AS "user_count""#));
 	}
@@ -9661,7 +10060,8 @@ mod tests {
 			.aggregate(
 				crate::orm::aggregation::Aggregate::count(Some("*")).with_alias("user_count"),
 			)
-			.to_sql();
+			.to_sql()
+			.expect("query SQL should compile");
 
 		assert!(sql.contains(r#"COUNT(*) AS "user_count""#));
 		assert!(!sql.contains(r#""test_users"."*""#));
@@ -9686,7 +10086,7 @@ mod tests {
 				value: AggregateValue::Int(1),
 			});
 
-		let sql = queryset.to_sql();
+		let sql = queryset.to_sql().expect("query SQL should compile");
 
 		assert!(sql.contains(r#"HAVING SUM("test_users"."id") > 1"#));
 	}
@@ -9716,7 +10116,8 @@ mod tests {
 					Box::new(AnnotationValue::Value(Value::Int(1))),
 				)),
 			))
-			.to_sql();
+			.to_sql()
+			.expect("query SQL should compile");
 
 		assert!(sql.contains(r#""test_users"."id" AS "user_id""#));
 		assert!(sql.contains(r#"("test_users"."id" + 1) AS "next_user_id""#));
@@ -9746,7 +10147,8 @@ mod tests {
 					default: Some(Box::new(AnnotationValue::Value(Value::Int(0)))),
 				}),
 			))
-			.to_sql();
+			.to_sql()
+			.expect("query SQL should compile");
 
 		assert!(
 			sql.contains(r#"CASE WHEN "test_users"."id" = 1 THEN 1 ELSE 0 END AS "is_primary""#)
@@ -9792,7 +10194,8 @@ mod tests {
 					"rust".to_string(),
 				)),
 			))
-			.to_sql();
+			.to_sql()
+			.expect("query SQL should compile");
 
 		assert!(sql.contains(r#"ARRAY_AGG("test_users"."id") AS "ids""#));
 		assert!(sql.contains(r#"STRING_AGG("test_users"."username", ',') AS "names""#));
@@ -9832,7 +10235,10 @@ mod tests {
 			.field(TestCorpusFile::field_email())
 			.eq("person@example.com");
 
-		let sql = QuerySet::<TestUser>::new().filter(filter).to_sql();
+		let sql = QuerySet::<TestUser>::new()
+			.filter(filter)
+			.to_sql()
+			.expect("query SQL should compile");
 
 		assert_eq!(
 			sql,
@@ -9856,7 +10262,8 @@ mod tests {
 				FilterOperator::Eq,
 				FilterValue::FieldRef(crate::orm::expressions::F::new("email")),
 			))
-			.to_sql();
+			.to_sql()
+			.expect("query SQL should compile");
 
 		assert_eq!(
 			sql,
@@ -9875,7 +10282,7 @@ mod tests {
 		let mut queryset = QuerySet::<TestUser>::new().filter(filter);
 		queryset.group_by_fields = vec!["id".to_string()];
 
-		let sql = queryset.to_sql();
+		let sql = queryset.to_sql().expect("query SQL should compile");
 
 		assert_eq!(
 			sql,
@@ -10012,9 +10419,7 @@ mod tests {
 			.expect("count select query")
 			.to_string(PostgresQueryBuilder);
 
-		assert!(sql.starts_with(
-			r#"SELECT COUNT(DISTINCT "test_users"."id") AS "count" FROM "test_users""#
-		));
+		assert!(sql.starts_with(r#"SELECT COUNT(DISTINCT "test_users"."id") FROM "test_users""#));
 	}
 
 	#[test]
@@ -10032,7 +10437,7 @@ mod tests {
 			.expect("count select query")
 			.to_string(SqliteQueryBuilder);
 
-		assert!(sql.starts_with(r#"SELECT COUNT(*) AS "count" FROM (SELECT DISTINCT "test_memberships"."member_user_id", "test_memberships"."member_role_id" FROM "test_memberships""#));
+		assert!(sql.starts_with(r#"SELECT COUNT(*) FROM (SELECT DISTINCT "test_memberships"."member_user_id", "test_memberships"."member_role_id" FROM "test_memberships""#));
 		assert!(!sql.contains("COUNT(DISTINCT"));
 		assert!(sql.contains(r#"WHERE "projects"."name" ILIKE '%rust%' ESCAPE '\'"#));
 	}
@@ -10087,11 +10492,15 @@ mod tests {
 			UpdateValue::String("alice".to_string()),
 		);
 
-		let (update_sql, _) = queryset.update_sql(&updates);
+		let (update_sql, _) = queryset
+			.update_sql(&updates)
+			.expect("eager-only update SQL should compile");
 		let (update_fields_sql, _) = queryset
 			.update_fields_sql([("username", "alice")])
 			.expect("eager-only update fields should build");
-		let (delete_sql, _) = queryset.delete_sql();
+		let (delete_sql, _) = queryset
+			.delete_sql()
+			.expect("eager-only delete SQL should compile");
 
 		for sql in [update_sql, update_fields_sql, delete_sql] {
 			assert!(!sql.contains(r#""u"."id""#));
@@ -10100,7 +10509,6 @@ mod tests {
 	}
 
 	#[test]
-	#[should_panic(expected = "typed related filters are not supported in delete queries")]
 	fn test_delete_rejects_related_filters() {
 		let filter =
 			crate::orm::relations::RelationPath::<TestUser, TestCorpusFile>::from_descriptor::<
@@ -10109,7 +10517,17 @@ mod tests {
 			.field(TestCorpusFile::field_normalized_path())
 			.eq("/docs/index.md");
 
-		let _ = QuerySet::<TestUser>::new().filter(filter).delete_sql();
+		let error = QuerySet::<TestUser>::new()
+			.filter(filter)
+			.delete_sql()
+			.expect_err("related filters should not render unsupported delete aliases");
+
+		assert!(matches!(
+			error,
+			reinhardt_core::exception::Error::Validation(message)
+				if message
+					== "QuerySet::delete_query does not support typed related filters; use a subquery or select query first"
+		));
 	}
 
 	#[test]
@@ -10147,7 +10565,9 @@ mod tests {
 			.prefetch_related(&["posts", "comments"]);
 
 		// Check select_related generates query
-		let select_stmt = queryset.select_related_query();
+		let select_stmt = queryset
+			.select_related_query()
+			.expect("select-related query should compile");
 		use reinhardt_query::prelude::{PostgresQueryBuilder, QueryStatementBuilder};
 		let select_sql = select_stmt.build(PostgresQueryBuilder).0;
 		assert!(select_sql.contains("LEFT JOIN"));
@@ -10177,7 +10597,7 @@ mod tests {
 		assert_eq!(queryset.filters.len(), 10);
 
 		// Generate SQL to ensure filters work correctly
-		let (sql, params) = queryset.delete_sql();
+		let (sql, params) = queryset.delete_sql().expect("delete SQL should compile");
 		assert!(sql.contains("WHERE"));
 		assert_eq!(params.len(), 10);
 	}
@@ -10199,7 +10619,7 @@ mod tests {
 		assert_eq!(queryset.filters.len(), 15);
 
 		// Generate SQL to ensure filters work correctly even after heap fallback
-		let (sql, params) = queryset.delete_sql();
+		let (sql, params) = queryset.delete_sql().expect("delete SQL should compile");
 		assert!(sql.contains("WHERE"));
 		assert_eq!(params.len(), 15);
 	}
@@ -10228,7 +10648,7 @@ mod tests {
 		assert_eq!(queryset.filters.len(), 3);
 
 		// Generate SQL
-		let (sql, params) = queryset.delete_sql();
+		let (sql, params) = queryset.delete_sql().expect("delete SQL should compile");
 		assert!(sql.contains("WHERE"));
 		assert!(sql.contains("\"username\" LIKE"));
 		assert!(sql.contains("\"email\" LIKE"));
@@ -10245,7 +10665,9 @@ mod tests {
 		assert!(queryset.filters.is_empty());
 
 		// Generate SQL with no filters should not include WHERE clause
-		let (where_clause, params) = queryset.build_where_clause();
+		let (where_clause, params) = queryset
+			.build_where_clause()
+			.expect("where clause should compile");
 		assert!(where_clause.is_empty());
 		assert!(params.is_empty());
 	}
@@ -10261,7 +10683,7 @@ mod tests {
 
 		assert_eq!(queryset.filters.len(), 1);
 
-		let (sql, params) = queryset.delete_sql();
+		let (sql, params) = queryset.delete_sql().expect("delete SQL should compile");
 		assert_eq!(sql, "DELETE FROM \"test_users\" WHERE \"id\" = $1");
 		assert_eq!(params, vec!["1"]);
 	}
@@ -10296,7 +10718,7 @@ mod tests {
 		));
 
 		// Act
-		let sql = queryset.to_sql();
+		let sql = queryset.to_sql().expect("query SQL should compile");
 
 		// Assert
 		assert_eq!(
@@ -10315,7 +10737,7 @@ mod tests {
 		));
 
 		// Act
-		let sql = queryset.to_sql();
+		let sql = queryset.to_sql().expect("query SQL should compile");
 
 		// Assert
 		assert_eq!(
@@ -10335,7 +10757,7 @@ mod tests {
 		));
 
 		// Act
-		let sql = queryset.to_sql();
+		let sql = queryset.to_sql().expect("query SQL should compile");
 
 		// Assert
 		assert_eq!(
@@ -10389,7 +10811,7 @@ mod tests {
 		));
 
 		// Act
-		let sql = queryset.to_sql();
+		let sql = queryset.to_sql().expect("query SQL should compile");
 
 		// Assert
 		let expected = format!(
@@ -10409,7 +10831,7 @@ mod tests {
 		));
 
 		// Act
-		let sql = queryset.to_sql();
+		let sql = queryset.to_sql().expect("query SQL should compile");
 
 		// Assert
 		assert_eq!(
@@ -10428,7 +10850,7 @@ mod tests {
 		));
 
 		// Act
-		let sql = queryset.to_sql();
+		let sql = queryset.to_sql().expect("query SQL should compile");
 
 		// Assert
 		assert_eq!(
@@ -10447,7 +10869,7 @@ mod tests {
 		));
 
 		// Act
-		let sql = queryset.to_sql();
+		let sql = queryset.to_sql().expect("query SQL should compile");
 
 		// Assert
 		assert_eq!(
@@ -10466,7 +10888,7 @@ mod tests {
 		));
 
 		// Act
-		let sql = queryset.to_sql();
+		let sql = queryset.to_sql().expect("query SQL should compile");
 
 		// Assert
 		assert_eq!(
@@ -10485,7 +10907,7 @@ mod tests {
 		));
 
 		// Act
-		let sql = queryset.to_sql();
+		let sql = queryset.to_sql().expect("query SQL should compile");
 
 		// Assert
 		assert_eq!(
@@ -10504,7 +10926,7 @@ mod tests {
 		));
 
 		// Act
-		let sql = queryset.to_sql();
+		let sql = queryset.to_sql().expect("query SQL should compile");
 
 		// Assert
 		assert_eq!(
@@ -10523,7 +10945,7 @@ mod tests {
 		));
 
 		// Act
-		let sql = queryset.to_sql();
+		let sql = queryset.to_sql().expect("query SQL should compile");
 
 		// Assert
 		assert_eq!(
@@ -10542,7 +10964,7 @@ mod tests {
 		));
 
 		// Act
-		let sql = queryset.to_sql();
+		let sql = queryset.to_sql().expect("query SQL should compile");
 
 		// Assert
 		assert_eq!(
@@ -10561,7 +10983,7 @@ mod tests {
 		));
 
 		// Act
-		let sql = queryset.to_sql();
+		let sql = queryset.to_sql().expect("query SQL should compile");
 
 		// Assert
 		assert_eq!(
@@ -10600,7 +11022,7 @@ mod tests {
 		let queryset = QuerySet::<TestUser>::new().filter(filter);
 
 		// Act
-		let sql = queryset.to_sql();
+		let sql = queryset.to_sql().expect("query SQL should compile");
 
 		// Assert
 		assert_eq!(sql, expected);
@@ -10615,7 +11037,7 @@ mod tests {
 		let queryset = QuerySet::<TestUser>::new().filter(condition);
 
 		// Act
-		let sql = queryset.to_sql();
+		let sql = queryset.to_sql().expect("query SQL should compile");
 
 		// Assert
 		assert_eq!(
@@ -10633,7 +11055,7 @@ mod tests {
 		let queryset = QuerySet::<TestUser>::new().filter(condition);
 
 		// Act
-		let sql = queryset.to_sql();
+		let sql = queryset.to_sql().expect("query SQL should compile");
 
 		// Assert
 		assert_eq!(
@@ -10649,7 +11071,7 @@ mod tests {
 		let queryset = QuerySet::<TestUser>::new().filter(condition);
 
 		// Act
-		let sql = queryset.to_sql();
+		let sql = queryset.to_sql().expect("query SQL should compile");
 
 		// Assert
 		assert_eq!(
@@ -10668,7 +11090,7 @@ mod tests {
 		);
 
 		// Act
-		let (sql, params) = queryset.delete_sql();
+		let (sql, params) = queryset.delete_sql().expect("delete SQL should compile");
 
 		// Assert
 		assert_eq!(
@@ -10679,7 +11101,7 @@ mod tests {
 	}
 
 	#[rstest]
-	fn test_over_deep_filter_condition_returns_error_and_to_sql_stays_safe() {
+	fn test_over_deep_filter_condition_returns_error_from_to_sql() {
 		// Arrange
 		let mut condition = FilterCondition::Single(TestUser::field_username().exact("alice"));
 		for _ in 0..=MAX_FILTER_CONDITION_DEPTH {
@@ -10688,19 +11110,22 @@ mod tests {
 		let queryset = QuerySet::<TestUser>::new().filter(condition);
 
 		// Act
-		let result = queryset.build_where_condition();
-		let sql = queryset.to_sql();
+		let condition_result = queryset.build_where_condition();
+		let sql_result = queryset.to_sql();
 
 		// Assert
 		assert!(matches!(
-			result,
+			condition_result,
 			Err(reinhardt_core::exception::Error::Validation(_))
 		));
-		assert_eq!(sql, r#"SELECT * FROM "test_users" WHERE FALSE"#);
+		assert!(matches!(
+			sql_result,
+			Err(reinhardt_core::exception::Error::Validation(_))
+		));
 	}
 
 	#[rstest]
-	fn test_select_related_query_result_propagates_over_deep_filter_error() {
+	fn test_select_related_query_propagates_over_deep_filter_error() {
 		let path = crate::orm::relations::RelationPath::<TestUser, TestCorpusFile>::from_descriptor::<
 			TestUserCorpusFile,
 		>();
@@ -10713,15 +11138,9 @@ mod tests {
 			.select_related(path);
 
 		assert!(matches!(
-			queryset.select_related_query_result(),
+			queryset.select_related_query(),
 			Err(reinhardt_core::exception::Error::Validation(_))
 		));
-		assert_eq!(
-			queryset
-				.select_related_query()
-				.to_string(PostgresQueryBuilder),
-			r#"SELECT "test_users".*, "corpus_file".* FROM "test_users" INNER JOIN "test_corpus_files" AS "corpus_file" ON "test_users"."corpus_file_id" = "corpus_file"."id" WHERE FALSE"#
-		);
 	}
 
 	#[rstest]
@@ -10787,7 +11206,7 @@ mod tests {
 		let queryset = QuerySet::<TestUser>::new().filter(filter);
 
 		// Act
-		let sql = queryset.to_sql();
+		let sql = queryset.to_sql().expect("query SQL should compile");
 
 		// Assert
 		assert_eq!(sql, expected);
@@ -10814,10 +11233,29 @@ mod tests {
 		let queryset = QuerySet::<TestUser>::new().filter(filter);
 
 		// Act
-		let sql = queryset.to_sql();
+		let sql = queryset.to_sql().expect("query SQL should compile");
 
 		// Assert
 		assert_eq!(sql, expected);
+	}
+
+	#[test]
+	fn typed_like_filters_treat_null_as_is_null() {
+		// Arrange
+		let queryset = QuerySet::<TestUser>::new().filter(Filter::new(
+			"username",
+			FilterOperator::Contains,
+			FilterValue::Typed(Ok(DatabaseValue::Null)),
+		));
+
+		// Act
+		let sql = queryset.to_sql().expect("query SQL should compile");
+
+		// Assert
+		assert_eq!(
+			sql,
+			r#"SELECT * FROM "test_users" WHERE "username" IS NULL"#
+		);
 	}
 
 	#[rstest]
@@ -10830,7 +11268,7 @@ mod tests {
 		));
 
 		// Act
-		let sql = queryset.to_sql();
+		let sql = queryset.to_sql().expect("query SQL should compile");
 
 		// Assert
 		assert_eq!(sql, r#"SELECT * FROM "test_users" WHERE "id" IN (1, 2)"#);
@@ -10849,7 +11287,7 @@ mod tests {
 		));
 
 		// Act
-		let sql = queryset.to_sql();
+		let sql = queryset.to_sql().expect("query SQL should compile");
 
 		// Assert
 		assert_eq!(
@@ -10868,7 +11306,7 @@ mod tests {
 		));
 
 		// Act
-		let sql = queryset.to_sql();
+		let sql = queryset.to_sql().expect("query SQL should compile");
 
 		// Assert
 		assert_eq!(
@@ -10887,7 +11325,7 @@ mod tests {
 		));
 
 		// Act
-		let sql = queryset.to_sql();
+		let sql = queryset.to_sql().expect("query SQL should compile");
 
 		// Assert
 		assert_eq!(
@@ -10908,7 +11346,7 @@ mod tests {
 		let queryset = QuerySet::<TestUser>::new().filter(filter);
 
 		// Act
-		let sql = queryset.to_sql();
+		let sql = queryset.to_sql().expect("query SQL should compile");
 
 		// Assert
 		assert_eq!(sql, r#"SELECT * FROM "test_users" WHERE "email" = 'alice'"#);
@@ -10922,7 +11360,7 @@ mod tests {
 		let queryset = QuerySet::<TestUser>::new().filter(filter);
 
 		// Act
-		let sql = queryset.to_sql();
+		let sql = queryset.to_sql().expect("query SQL should compile");
 
 		// Assert
 		assert_eq!(
@@ -10941,7 +11379,7 @@ mod tests {
 			.filter(TestUser::field_created_at().year().gte(2026));
 
 		// Act
-		let sql = queryset.to_sql();
+		let sql = queryset.to_sql().expect("query SQL should compile");
 
 		// Assert
 		assert_eq!(
@@ -10959,7 +11397,7 @@ mod tests {
 			.filter(TestUser::field_id().range(100_i64, 200));
 
 		// Act
-		let sql = queryset.to_sql();
+		let sql = queryset.to_sql().expect("query SQL should compile");
 
 		// Assert
 		assert_eq!(
@@ -10981,7 +11419,7 @@ mod tests {
 			.filter(TestUser::field_username().iregex("^A.*E$"));
 
 		// Act
-		let sql = queryset.to_sql();
+		let sql = queryset.to_sql().expect("query SQL should compile");
 
 		// Assert
 		assert_eq!(
@@ -11010,7 +11448,7 @@ mod tests {
 		let queryset = QuerySet::<TestUser>::new().filter(filter);
 
 		// Act
-		let sql = queryset.to_sql();
+		let sql = queryset.to_sql().expect("query SQL should compile");
 
 		// Assert
 		assert_eq!(sql, expected);
@@ -11027,7 +11465,7 @@ mod tests {
 			.filter(TestUser::field_active_period().range_overlaps("[2026-01-01,2027-01-01)"));
 
 		// Act
-		let sql = queryset.to_sql();
+		let sql = queryset.to_sql().expect("query SQL should compile");
 
 		// Assert
 		assert_eq!(
@@ -11049,154 +11487,12 @@ mod tests {
 			.offset(50);
 
 		// Act
-		let sql = queryset.to_sql();
+		let sql = queryset.to_sql().expect("query SQL should compile");
 
 		// Assert
 		assert_eq!(
 			sql,
 			r#"SELECT DISTINCT * FROM "test_users" WHERE ("email" ILIKE '%example.com%' ESCAPE '\' AND "username" IS NOT NULL AND EXTRACT(YEAR FROM "created_at") BETWEEN 2024 AND 2026) ORDER BY "created_at" DESC, "username" ASC LIMIT 25 OFFSET 50"#
-		);
-	}
-
-	#[rstest]
-	fn test_manual_uuid_primary_key_filter_uses_uuid_value_without_metadata() {
-		// Arrange
-		#[derive(Debug, Clone, Serialize, Deserialize)]
-		struct ManualUuidModel {
-			id: Uuid,
-		}
-
-		#[derive(Debug, Clone)]
-		struct ManualUuidModelFields;
-
-		impl crate::orm::model::FieldSelector for ManualUuidModelFields {
-			fn with_alias(self, _alias: &str) -> Self {
-				self
-			}
-		}
-
-		impl Model for ManualUuidModel {
-			type PrimaryKey = Uuid;
-			type Fields = ManualUuidModelFields;
-			type Objects = Manager<Self>;
-
-			fn table_name() -> &'static str {
-				"manual_uuid_models"
-			}
-
-			fn new_fields() -> Self::Fields {
-				ManualUuidModelFields
-			}
-
-			fn primary_key(&self) -> Option<Self::PrimaryKey> {
-				Some(self.id)
-			}
-
-			fn set_primary_key(&mut self, value: Self::PrimaryKey) {
-				self.id = value;
-			}
-		}
-
-		let queryset = QuerySet::<ManualUuidModel>::new();
-		let uuid =
-			Uuid::parse_str("00000000-0000-0000-0000-000000000001").expect("valid test UUID");
-
-		// Act
-		let filter = Filter::new(
-			"id",
-			FilterOperator::Eq,
-			FilterValue::String(uuid.to_string()),
-		);
-		let value = queryset.filter_value_to_sea_value_for_filter(&filter, &filter.value);
-
-		// Assert
-		assert_eq!(
-			value,
-			reinhardt_query::value::Value::Uuid(Some(Box::new(uuid)))
-		);
-	}
-
-	#[rstest]
-	fn test_metadata_free_uuid_related_filter_uses_uuid_value() {
-		// Arrange
-		#[derive(Debug, Clone, Serialize, Deserialize)]
-		struct ManualModel {
-			id: i64,
-		}
-
-		#[derive(Debug, Clone)]
-		struct ManualModelFields;
-
-		impl crate::orm::model::FieldSelector for ManualModelFields {
-			fn with_alias(self, _alias: &str) -> Self {
-				self
-			}
-		}
-
-		impl Model for ManualModel {
-			type PrimaryKey = i64;
-			type Fields = ManualModelFields;
-			type Objects = Manager<Self>;
-
-			fn table_name() -> &'static str {
-				"manual_models"
-			}
-
-			fn new_fields() -> Self::Fields {
-				ManualModelFields
-			}
-
-			fn primary_key(&self) -> Option<Self::PrimaryKey> {
-				Some(self.id)
-			}
-
-			fn set_primary_key(&mut self, value: Self::PrimaryKey) {
-				self.id = value;
-			}
-		}
-
-		let queryset = QuerySet::<ManualModel>::new();
-		let uuid =
-			Uuid::parse_str("00000000-0000-0000-0000-000000000002").expect("valid test UUID");
-
-		// Act
-		let filter = Filter::new(
-			"owner__id",
-			FilterOperator::Eq,
-			FilterValue::String(uuid.to_string()),
-		);
-		let value = queryset.filter_value_to_sea_value_for_filter(&filter, &filter.value);
-
-		// Assert
-		assert_eq!(
-			value,
-			reinhardt_query::value::Value::Uuid(Some(Box::new(uuid)))
-		);
-	}
-
-	#[rstest]
-	fn test_related_filter_uses_target_field_metadata() {
-		// Arrange
-		let queryset = QuerySet::<TestUser>::new();
-		let uuid =
-			Uuid::parse_str("00000000-0000-0000-0000-000000000003").expect("valid test UUID");
-		let path = crate::orm::relations::RelationPath::<TestUser, TestCorpusFile>::from_descriptor::<
-			TestUserCorpusFile,
-		>();
-		let filter = Filter::related(
-			"id",
-			FilterOperator::Eq,
-			FilterValue::String(uuid.to_string()),
-			&path,
-		);
-
-		// Act
-		let value = queryset.filter_value_to_sea_value_for_filter(&filter, &filter.value);
-
-		// Assert
-		assert_eq!(
-			value,
-			reinhardt_query::value::Value::Uuid(Some(Box::new(uuid)))
 		);
 	}
 
@@ -11210,7 +11506,7 @@ mod tests {
 		));
 
 		// Act
-		let sql = queryset.to_sql();
+		let sql = queryset.to_sql().expect("query SQL should compile");
 
 		// Assert
 		assert_eq!(
@@ -11229,7 +11525,7 @@ mod tests {
 		));
 
 		// Act
-		let sql = queryset.to_sql();
+		let sql = queryset.to_sql().expect("query SQL should compile");
 
 		// Assert
 		assert_eq!(
@@ -11248,7 +11544,7 @@ mod tests {
 		));
 
 		// Act
-		let sql = queryset.to_sql();
+		let sql = queryset.to_sql().expect("query SQL should compile");
 
 		// Assert
 		assert_eq!(

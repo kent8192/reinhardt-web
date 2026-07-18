@@ -1,0 +1,588 @@
+//! Integration tests for native model-enum migration metadata.
+
+use reinhardt_db::field_domain::{FieldDomain, ModelEnumRepr, ModelEnumValue};
+use reinhardt_db::migrations::{
+	AutodetectorWarning, ColumnDefinition, Constraint, FieldMetadata, FieldType, ForeignKeyAction,
+	MigrationAutodetector, ModelMetadata, Operation, ProjectState, SqlDialect,
+};
+use reinhardt_db::orm::DatabaseField;
+use reinhardt_macros::{ModelEnum, model};
+use rstest::rstest;
+use serde::{Deserialize, Serialize};
+
+#[derive(ModelEnum, Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[model_enum(repr = "string")]
+enum MigrationStatus {
+	#[model_enum(value = "queued")]
+	Queued,
+	#[model_enum(value = "running")]
+	Running,
+}
+
+#[derive(ModelEnum, Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[model_enum(repr = "string")]
+enum ReorderedMigrationStatus {
+	#[model_enum(value = "running")]
+	Running,
+	#[model_enum(value = "queued")]
+	Queued,
+}
+
+#[model(
+	app_label = "model_enum_migrations",
+	table_name = "model_enum_migration_jobs"
+)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct MigrationJob {
+	#[field(primary_key = true)]
+	id: Option<i64>,
+	#[field(db_column = "job_status", max_length = 32)]
+	status: MigrationStatus,
+}
+
+#[model(
+	app_label = "model_enum_migrations",
+	table_name = "model_enum_migration_jobs_reordered"
+)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+// This fixture is registered through its generated constructor and inspected via migration metadata.
+#[allow(dead_code)]
+struct ReorderedMigrationJob {
+	#[field(primary_key = true)]
+	id: Option<i64>,
+	#[field(db_column = "job_status", max_length = 32)]
+	status: ReorderedMigrationStatus,
+}
+
+#[model(
+	app_label = "model_enum_migrations",
+	table_name = "model_enum_optional_jobs"
+)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct OptionalMigrationJob {
+	#[field(primary_key = true)]
+	id: Option<i64>,
+	#[field(db_column = "optional_status", max_length = 32)]
+	status: Option<MigrationStatus>,
+}
+
+#[derive(ModelEnum, Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[model_enum(repr = "i32")]
+enum MigrationPriority {
+	#[model_enum(value = 10)]
+	Low,
+	#[model_enum(value = 20)]
+	Normal,
+}
+
+#[model(
+	app_label = "model_enum_migrations",
+	table_name = "cross_backend_migration_jobs"
+)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+// Allow dead_code: the model is registered through inventory and inspected as migration metadata.
+#[allow(dead_code)]
+struct CrossBackendMigrationJob {
+	#[field(primary_key = true)]
+	id: Option<i64>,
+	#[field(db_column = "job_status", max_length = 32)]
+	status: MigrationStatus,
+	#[field(db_column = "job_priority")]
+	priority: MigrationPriority,
+	#[field(db_column = "fallback_status", max_length = 32, null = true)]
+	fallback: Option<MigrationStatus>,
+}
+
+fn string_domain(values: &[&str]) -> FieldDomain {
+	FieldDomain::Enum {
+		repr: ModelEnumRepr::String,
+		values: values
+			.iter()
+			.map(|value| ModelEnumValue::String((*value).to_string()))
+			.collect(),
+	}
+}
+
+fn i32_domain(values: &[i32]) -> FieldDomain {
+	FieldDomain::Enum {
+		repr: ModelEnumRepr::I32,
+		values: values.iter().copied().map(ModelEnumValue::I32).collect(),
+	}
+}
+
+fn project_state_with_field(field_type: FieldType, domain: Option<FieldDomain>) -> ProjectState {
+	let mut metadata = ModelMetadata::new("model_enum_state", "Job", "model_enum_state_jobs");
+	let mut field = FieldMetadata::new(field_type).with_param("db_column", "job_status");
+	if let Some(domain) = domain {
+		field = field.with_domain(domain);
+	}
+	metadata.add_field("status".to_string(), field);
+
+	let mut state = ProjectState::new();
+	state.add_model(metadata.to_model_state());
+	state
+}
+
+fn project_state_with_domain(values: &[&str]) -> ProjectState {
+	project_state_with_field(FieldType::VarChar(32), Some(string_domain(values)))
+}
+
+#[rstest]
+#[case::postgres(SqlDialect::Postgres, '"')]
+#[case::mysql(SqlDialect::Mysql, '`')]
+#[case::sqlite(SqlDialect::Sqlite, '"')]
+fn model_enum_create_table_renders_string_i32_and_nullable_checks_for_each_backend(
+	#[case] dialect: SqlDialect,
+	#[case] quote: char,
+) {
+	// Arrange
+	let metadata = reinhardt_db::migrations::global_registry()
+		.get_model("model_enum_migrations", "CrossBackendMigrationJob")
+		.expect("cross-backend model enum metadata should be registered");
+	let mut target = ProjectState::new();
+	target.add_model(metadata.to_model_state());
+	let operation = MigrationAutodetector::new(ProjectState::new(), target)
+		.generate_operations()
+		.into_iter()
+		.find(|operation| matches!(operation, Operation::CreateTable { .. }))
+		.expect("cross-backend model enum migration should create its table");
+	let Operation::CreateTable {
+		columns,
+		constraints,
+		..
+	} = &operation
+	else {
+		panic!("model schema should compile to CREATE TABLE");
+	};
+
+	// Act
+	let sql = operation.to_sql(&dialect);
+
+	// Assert
+	let column = |name: &str| {
+		columns
+			.iter()
+			.find(|column| column.name == name)
+			.unwrap_or_else(|| panic!("missing cross-backend column {name}: {columns:?}"))
+	};
+	let id = column("id");
+	assert_eq!(id.type_definition, FieldType::BigInteger);
+	assert!(id.not_null);
+	assert!(id.primary_key);
+	assert!(id.auto_increment);
+	let status = column("job_status");
+	assert_eq!(status.type_definition, FieldType::VarChar(32));
+	assert!(status.not_null);
+	let priority = column("job_priority");
+	assert_eq!(priority.type_definition, FieldType::Integer);
+	assert!(priority.not_null);
+	let fallback = column("fallback_status");
+	assert_eq!(fallback.type_definition, FieldType::VarChar(32));
+	assert!(!fallback.not_null);
+	assert_eq!(constraints.len(), 3);
+	for (name, column, domain) in [
+		(
+			"cross_backend_migration_jobs_job_status_model_enum_check",
+			"job_status",
+			string_domain(&["queued", "running"]),
+		),
+		(
+			"cross_backend_migration_jobs_job_priority_model_enum_check",
+			"job_priority",
+			i32_domain(&[10, 20]),
+		),
+		(
+			"cross_backend_migration_jobs_fallback_status_model_enum_check",
+			"fallback_status",
+			string_domain(&["queued", "running"]),
+		),
+	] {
+		assert!(
+			constraints.iter().any(|constraint| matches!(
+				constraint,
+				Constraint::EnumDomain {
+					name: actual_name,
+					column: actual_column,
+					domain: actual_domain,
+				} if actual_name == name && actual_column == column && actual_domain == &domain
+			)),
+			"missing {name} on {column} with {domain:?}: {constraints:?}"
+		);
+		assert!(
+			sql.contains(&format!("CONSTRAINT {quote}{name}{quote}")),
+			"missing dialect-quoted constraint {name}: {sql}"
+		);
+	}
+	for fragment in [
+		format!("CHECK ({quote}job_status{quote} IN ('queued', 'running'))"),
+		format!("CHECK ({quote}job_priority{quote} IN (10, 20))"),
+		format!("CHECK ({quote}fallback_status{quote} IN ('queued', 'running'))"),
+	] {
+		assert!(
+			sql.contains(&fragment),
+			"missing dialect-specific enum check {fragment}: {sql}"
+		);
+	}
+}
+
+#[test]
+fn enum_domain_order_is_canonical_for_autodetection() {
+	let from_state = project_state_with_domain(&["queued", "running"]);
+	let to_state = project_state_with_domain(&["running", "queued"]);
+
+	let operations = MigrationAutodetector::new(from_state, to_state).generate_operations();
+
+	assert_eq!(operations, Vec::<Operation>::new());
+}
+
+#[test]
+fn macro_registered_variant_reorder_is_a_migration_noop() {
+	let registry = reinhardt_db::migrations::global_registry();
+	let from_model = registry
+		.get_model("model_enum_migrations", "MigrationJob")
+		.expect("MigrationJob should be registered")
+		.to_model_state();
+	let mut to_model = registry
+		.get_model("model_enum_migrations", "ReorderedMigrationJob")
+		.expect("ReorderedMigrationJob should be registered")
+		.to_model_state();
+
+	to_model.name = from_model.name.clone();
+	to_model.table_name = from_model.table_name.clone();
+	let constraint_name = from_model
+		.constraints
+		.iter()
+		.find(|constraint| constraint.constraint_type == "enum_domain")
+		.expect("source enum-domain constraint should exist")
+		.name
+		.clone();
+	to_model
+		.constraints
+		.iter_mut()
+		.find(|constraint| constraint.constraint_type == "enum_domain")
+		.expect("reordered enum-domain constraint should exist")
+		.name = constraint_name;
+
+	let mut from_state = ProjectState::new();
+	from_state.add_model(from_model);
+	let mut to_state = ProjectState::new();
+	to_state.add_model(to_model);
+
+	let operations = MigrationAutodetector::new(from_state, to_state).generate_operations();
+
+	assert_eq!(operations, Vec::<Operation>::new());
+}
+
+#[test]
+fn enum_domain_value_replacement_recreates_the_constraint() {
+	let from_state = project_state_with_domain(&["queued", "running"]);
+	let to_state = project_state_with_domain(&["queued", "executing"]);
+
+	let operations = MigrationAutodetector::new(from_state, to_state).generate_operations();
+
+	assert_eq!(operations.len(), 2, "operations = {operations:?}");
+	assert!(matches!(
+		&operations[0],
+		Operation::DropConstraintDefinition {
+			table,
+			constraint: Constraint::EnumDomain { name, .. },
+		} if table == "model_enum_state_jobs"
+			&& name == "model_enum_state_jobs_job_status_model_enum_check"
+	));
+	assert!(
+		matches!(
+			&operations[1],
+			Operation::AddConstraintDefinition {
+				table,
+				constraint: reinhardt_db::migrations::Constraint::EnumDomain {
+					name,
+					column,
+					domain,
+				},
+			} if table == "model_enum_state_jobs"
+				&& name == "model_enum_state_jobs_job_status_model_enum_check"
+				&& column == "job_status"
+				&& domain == &string_domain(&["executing", "queued"])
+		),
+		"operations = {operations:?}"
+	);
+}
+
+#[test]
+fn enum_domain_value_addition_replaces_the_constraint_without_warning() {
+	let from_state = project_state_with_domain(&["queued"]);
+	let to_state = project_state_with_domain(&["queued", "running"]);
+	let detector = MigrationAutodetector::new(from_state, to_state);
+
+	let changes = detector.detect_changes();
+	let operations = detector.generate_operations();
+
+	assert_eq!(changes.warnings, Vec::<AutodetectorWarning>::new());
+	assert!(matches!(
+		operations.as_slice(),
+		[
+			Operation::DropConstraintDefinition { .. },
+			Operation::AddConstraintDefinition { .. },
+		]
+	));
+}
+
+#[test]
+fn enum_domain_value_removal_warns_with_the_removed_value() {
+	let from_state = project_state_with_domain(&["queued", "running"]);
+	let to_state = project_state_with_domain(&["queued"]);
+	let detector = MigrationAutodetector::new(from_state, to_state);
+
+	let changes = detector.detect_changes();
+	let operations = detector.generate_operations();
+
+	assert!(matches!(
+		operations.as_slice(),
+		[
+			Operation::DropConstraintDefinition { .. },
+			Operation::AddConstraintDefinition { .. },
+		]
+	));
+	assert_eq!(changes.warnings.len(), 1);
+	let warning = &changes.warnings[0];
+	assert!(matches!(
+		warning,
+		AutodetectorWarning::EnumDomainDataMigrationRequired {
+			table,
+			column,
+			old_domain,
+			new_domain,
+		} if table == "model_enum_state_jobs"
+			&& column == "job_status"
+			&& old_domain == &string_domain(&["queued", "running"])
+			&& new_domain == &string_domain(&["queued"])
+	));
+	assert!(warning.to_string().contains("running"), "{warning}");
+}
+
+#[test]
+fn migration_generation_returns_enum_domain_warnings_without_breaking_legacy_api() {
+	let from_state = project_state_with_domain(&["queued", "running"]);
+	let to_state = project_state_with_domain(&["queued"]);
+	let detector = MigrationAutodetector::new(from_state, to_state);
+
+	let generated = detector.generate_migrations_with_warnings();
+	let legacy_migrations = detector.generate_migrations();
+
+	assert_eq!(generated.migrations.len(), legacy_migrations.len());
+	for (generated_migration, legacy_migration) in
+		generated.migrations.iter().zip(&legacy_migrations)
+	{
+		assert_eq!(generated_migration.name, legacy_migration.name);
+		assert_eq!(generated_migration.app_label, legacy_migration.app_label);
+		assert_eq!(generated_migration.operations, legacy_migration.operations);
+	}
+	assert_eq!(generated.warnings.len(), 1);
+	assert!(generated.warnings[0].to_string().contains("running"));
+}
+
+#[test]
+fn enum_storage_change_drops_alters_adds_and_warns_actionably() {
+	let from_state = project_state_with_domain(&["queued", "running"]);
+	let to_state = project_state_with_field(FieldType::Integer, Some(i32_domain(&[1, 2])));
+	let detector = MigrationAutodetector::new(from_state, to_state);
+
+	let changes = detector.detect_changes();
+	let operations = detector.generate_operations();
+
+	assert!(matches!(operations.as_slice(), [
+		Operation::DropConstraintDefinition { .. },
+		Operation::AlterColumn {
+			column,
+			new_definition,
+			..
+		},
+		Operation::AddConstraintDefinition { .. },
+	] if column == "job_status"
+		&& new_definition.type_definition == FieldType::Integer));
+	assert_eq!(changes.warnings.len(), 1);
+	assert!(matches!(
+		&changes.warnings[0],
+		AutodetectorWarning::EnumDomainDataMigrationRequired {
+			table,
+			column,
+			old_domain,
+			new_domain,
+		} if table == "model_enum_state_jobs"
+			&& column == "job_status"
+			&& old_domain == &string_domain(&["queued", "running"])
+			&& new_domain == &i32_domain(&[1, 2])
+	));
+	let message = changes.warnings[0].to_string();
+	assert!(message.contains("data migration"), "{message}");
+	assert!(message.contains("before the new constraint"), "{message}");
+}
+
+#[test]
+fn enum_to_plain_string_drops_constraint_and_clears_state_domain() {
+	let from_state = project_state_with_domain(&["queued", "running"]);
+	let to_state = project_state_with_field(FieldType::VarChar(32), None);
+	let detector = MigrationAutodetector::new(from_state.clone(), to_state);
+	let operations = detector.generate_operations();
+
+	assert!(matches!(
+		operations.as_slice(),
+		[Operation::DropConstraintDefinition { .. }]
+	));
+	let mut migrated_state = from_state;
+	migrated_state.apply_migration_operations(&operations, "model_enum_state");
+	let field = migrated_state
+		.find_model_by_table("model_enum_state_jobs")
+		.expect("model should remain")
+		.fields
+		.get("job_status")
+		.expect("field should remain");
+	assert_eq!(field.domain, None);
+}
+
+#[test]
+fn enum_constraint_replacement_retains_old_typed_definition() {
+	let from_state = project_state_with_domain(&["queued", "running"]);
+	let to_state = project_state_with_domain(&["queued", "executing"]);
+
+	let operations = MigrationAutodetector::new(from_state, to_state).generate_operations();
+
+	assert!(matches!(
+		&operations[0],
+		Operation::DropConstraintDefinition {
+			constraint: Constraint::EnumDomain { domain, .. },
+			..
+		} if domain == &string_domain(&["queued", "running"])
+	));
+}
+
+#[test]
+fn enum_bearing_create_table_quotes_every_constraint_identifier() {
+	let operation = Operation::CreateTable {
+		name: "order".to_string(),
+		columns: vec![
+			ColumnDefinition::new("select", FieldType::Integer),
+			ColumnDefinition::new("status", FieldType::VarChar(32)),
+		],
+		constraints: vec![
+			Constraint::EnumDomain {
+				name: "enum check".to_string(),
+				column: "status".to_string(),
+				domain: string_domain(&["queued"]),
+			},
+			Constraint::ForeignKey {
+				name: "foreign key".to_string(),
+				columns: vec!["select".to_string()],
+				referenced_table: "group".to_string(),
+				referenced_columns: vec!["primary".to_string()],
+				on_delete: ForeignKeyAction::Cascade,
+				on_update: ForeignKeyAction::Restrict,
+				deferrable: None,
+			},
+			Constraint::Unique {
+				name: "unique key".to_string(),
+				columns: vec!["select".to_string()],
+			},
+			Constraint::OneToOne {
+				name: "one key".to_string(),
+				column: "select".to_string(),
+				referenced_table: "group".to_string(),
+				referenced_column: "primary".to_string(),
+				on_delete: ForeignKeyAction::Cascade,
+				on_update: ForeignKeyAction::Restrict,
+				deferrable: None,
+			},
+		],
+		without_rowid: None,
+		interleave_in_parent: None,
+		partition: None,
+	};
+
+	let sql = operation.to_sql(&SqlDialect::Mysql);
+
+	for identifier in [
+		"`enum check`",
+		"`foreign key`",
+		"`select`",
+		"`group`",
+		"`primary`",
+		"`unique key`",
+		"`one key`",
+		"`one key_unique`",
+	] {
+		assert!(sql.contains(identifier), "missing {identifier} in {sql}");
+	}
+}
+
+#[test]
+fn model_macro_registers_domain_for_the_resolved_database_column() {
+	let _job = MigrationJob {
+		id: None,
+		status: MigrationStatus::Queued,
+	};
+	let metadata = reinhardt_db::migrations::global_registry()
+		.get_model("model_enum_migrations", "MigrationJob")
+		.expect("MigrationJob should be registered");
+
+	let field = metadata
+		.fields
+		.get("job_status")
+		.expect("resolved database column should be registered");
+	assert_eq!(field.domain, <MigrationStatus as DatabaseField>::domain());
+
+	let state = metadata.to_model_state();
+	let state_field = state
+		.fields
+		.get("job_status")
+		.expect("resolved database column should reach migration state");
+	assert_eq!(
+		state_field.domain,
+		<MigrationStatus as DatabaseField>::domain()
+	);
+	assert_eq!(
+		state.constraints[0].name,
+		"model_enum_migration_jobs_job_status_model_enum_check"
+	);
+}
+
+#[test]
+fn optional_model_enum_registers_the_inner_domain() {
+	let _job = OptionalMigrationJob {
+		id: None,
+		status: None,
+	};
+	let metadata = reinhardt_db::migrations::global_registry()
+		.get_model("model_enum_migrations", "OptionalMigrationJob")
+		.expect("OptionalMigrationJob should be registered");
+	let field = metadata
+		.fields
+		.get("optional_status")
+		.expect("resolved optional database column should be registered");
+
+	assert_eq!(field.domain, <MigrationStatus as DatabaseField>::domain());
+	assert_eq!(
+		metadata.to_model_state().constraints[0].name,
+		"model_enum_optional_jobs_optional_status_model_enum_check"
+	);
+}
+
+#[test]
+fn column_definition_domain_survives_serialization() {
+	let column = ColumnDefinition::new("job_status", FieldType::VarChar(32))
+		.with_domain(string_domain(&["queued", "running"]));
+
+	let serialized = serde_json::to_string(&column).expect("column should serialize");
+	let restored: ColumnDefinition =
+		serde_json::from_str(&serialized).expect("column should deserialize");
+
+	assert_eq!(restored, column);
+
+	let mut legacy = serde_json::to_value(&column).expect("column should serialize as a value");
+	legacy
+		.as_object_mut()
+		.expect("column serialization should be an object")
+		.remove("domain");
+	let restored: ColumnDefinition =
+		serde_json::from_value(legacy).expect("legacy column should deserialize");
+	assert_eq!(restored.domain, None);
+}

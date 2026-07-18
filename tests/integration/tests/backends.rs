@@ -3,3 +3,6 @@
 
 #[path = "backends/analyze_statement_integration.rs"]
 mod analyze_statement_integration;
+
+#[path = "backends/database_error_classification.rs"]
+mod database_error_classification;

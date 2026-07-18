@@ -91,6 +91,7 @@ fn create_basic_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 		auto_increment: false,
 		default: None,
 		generated: None,
+		domain: None,
 	}
 }
 
@@ -130,6 +131,7 @@ async fn test_simultaneous_migrate(
 				default: None,
 
 				generated: None,
+				domain: None,
 			}],
 			constraints: vec![],
 			without_rowid: None,
@@ -361,7 +363,7 @@ async fn test_deadlock_detection(
 
 		conn.execute("COMMIT", vec![]).await?;
 
-		Ok::<_, reinhardt_db::backends::DatabaseError>(result.is_ok())
+		Ok::<_, reinhardt_core::exception::Error>(result.is_ok())
 	});
 
 	// Task 2: Lock B then try to lock A
@@ -390,7 +392,7 @@ async fn test_deadlock_detection(
 
 		conn.execute("COMMIT", vec![]).await?;
 
-		Ok::<_, reinhardt_db::backends::DatabaseError>(result.is_ok())
+		Ok::<_, reinhardt_core::exception::Error>(result.is_ok())
 	});
 
 	// Wait for both tasks
@@ -458,6 +460,7 @@ async fn test_migration_timeout(
 					default: None,
 
 					generated: None,
+					domain: None,
 				}],
 				constraints: vec![],
 				without_rowid: None,
@@ -533,6 +536,7 @@ async fn test_crash_recovery(
 					default: None,
 
 					generated: None,
+					domain: None,
 				},
 				create_basic_column("data", FieldType::Text),
 			],

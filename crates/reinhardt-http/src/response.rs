@@ -1076,6 +1076,7 @@ impl<S> StreamingResponse<S> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use reinhardt_core::exception::{DatabaseError, DatabaseErrorKind};
 	use rstest::rstest;
 
 	#[derive(Debug)]
@@ -1375,24 +1376,45 @@ mod tests {
 	}
 
 	#[rstest]
-	fn test_from_error_produces_safe_output_for_5xx() {
+	#[case(
+		DatabaseErrorKind::NotNullViolation,
+		StatusCode::BAD_REQUEST,
+		"Bad Request"
+	)]
+	#[case(DatabaseErrorKind::UniqueViolation, StatusCode::CONFLICT, "Conflict")]
+	#[case(
+		DatabaseErrorKind::Timeout,
+		StatusCode::SERVICE_UNAVAILABLE,
+		"Service Unavailable"
+	)]
+	#[case(
+		DatabaseErrorKind::Query,
+		StatusCode::INTERNAL_SERVER_ERROR,
+		"Internal Server Error"
+	)]
+	fn test_database_error_response_is_safe(
+		#[case] kind: DatabaseErrorKind,
+		#[case] expected_status: StatusCode,
+		#[case] expected_message: &str,
+	) {
 		// Arrange
-		let error = crate::Error::Database(
-			"Connection to postgres://user:pass@db:5432/mydb failed".to_string(),
+		let error = crate::Error::from(
+			DatabaseError::new(kind, "postgres://user:pass@db:5432/private")
+				.with_code("SECRET-CODE"),
 		);
 
 		// Act
 		let response: Response = error.into();
 
 		// Assert
-		assert_eq!(response.status, StatusCode::INTERNAL_SERVER_ERROR);
+		assert_eq!(response.status, expected_status);
 		let body: serde_json::Value = serde_json::from_slice(&response.body).unwrap();
-		assert_eq!(body["error"], "Internal Server Error");
-		// Must NOT contain internal connection details
+		assert_eq!(body["error"], expected_message);
+		assert_eq!(body.get("detail"), None);
 		let body_str = String::from_utf8_lossy(&response.body);
-		assert!(!body_str.contains("postgres://"));
-		assert!(!body_str.contains("user:pass"));
-		assert!(body.get("detail").is_none());
+		for sensitive_value in ["postgres://", "user:pass", "private", "SECRET-CODE"] {
+			assert!(!body_str.contains(sensitive_value));
+		}
 	}
 
 	#[rstest]
