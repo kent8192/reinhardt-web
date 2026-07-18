@@ -302,6 +302,15 @@ fn parse_single_operation(expr: &Expr) -> Option<super::Operation> {
 					constraint_sql,
 				});
 			}
+			"AddConstraintDefinition" => {
+				let table = extract_string_field(&expr_struct.fields, "table")?;
+				let constraint = expr_struct.fields.iter().find_map(|field| {
+					matches!(&field.member, syn::Member::Named(ident) if ident == "constraint")
+						.then(|| parse_single_constraint(&field.expr))
+						.flatten()
+				})?;
+				return Some(super::Operation::AddConstraintDefinition { table, constraint });
+			}
 			"AddConstraintRepair" => {
 				let table = extract_string_field(&expr_struct.fields, "table")?;
 				let constraint_sql = extract_string_field(&expr_struct.fields, "constraint_sql")?;
@@ -325,6 +334,15 @@ fn parse_single_operation(expr: &Expr) -> Option<super::Operation> {
 					table,
 					constraint_name,
 				});
+			}
+			"DropConstraintDefinition" => {
+				let table = extract_string_field(&expr_struct.fields, "table")?;
+				let constraint = expr_struct
+					.fields
+					.iter()
+					.find(|field| field.member.to_token_stream().to_string() == "constraint")
+					.and_then(|field| parse_single_constraint(&field.expr))?;
+				return Some(super::Operation::DropConstraintDefinition { table, constraint });
 			}
 			"RunSQL" => {
 				// Use extract_string_field to handle both literal and .to_string() patterns (#1336)
@@ -669,6 +687,21 @@ fn parse_single_constraint(expr: &Expr) -> Option<super::Constraint> {
 
 				return Some(super::Constraint::Check { name, expression });
 			}
+			"EnumDomain" => {
+				let name = extract_string_field(&expr_struct.fields, "name")?;
+				let column = extract_string_field(&expr_struct.fields, "column")?;
+				let domain = expr_struct.fields.iter().find_map(|field| {
+					matches!(&field.member, syn::Member::Named(ident) if ident == "domain")
+						.then(|| parse_field_domain(&field.expr))
+						.flatten()
+				})?;
+
+				return Some(super::Constraint::EnumDomain {
+					name,
+					column,
+					domain,
+				});
+			}
 			"OneToOne" => {
 				let name = extract_string_field(&expr_struct.fields, "name")?;
 				let column = extract_string_field(&expr_struct.fields, "column")?;
@@ -856,6 +889,7 @@ fn parse_column_definition(expr: &Expr) -> Option<super::ColumnDefinition> {
 			extract_bool_field(&expr_struct.fields, "auto_increment").unwrap_or(false);
 		let default = extract_optional_str_field(&expr_struct.fields, "default");
 		let generated = extract_generated_column_field(&expr_struct.fields);
+		let domain = extract_field_domain(&expr_struct.fields);
 
 		return Some(super::ColumnDefinition {
 			name,
@@ -866,10 +900,115 @@ fn parse_column_definition(expr: &Expr) -> Option<super::ColumnDefinition> {
 			auto_increment,
 			default,
 			generated,
+			domain,
 		});
 	}
 
 	None
+}
+
+fn extract_field_domain(
+	fields: &syn::punctuated::Punctuated<syn::FieldValue, syn::token::Comma>,
+) -> Option<crate::field_domain::FieldDomain> {
+	let expr = fields.iter().find_map(|field| {
+		matches!(&field.member, syn::Member::Named(ident) if ident == "domain")
+			.then_some(&field.expr)
+	})?;
+	let Expr::Call(call) = expr else {
+		return None;
+	};
+	let Expr::Path(path) = &*call.func else {
+		return None;
+	};
+	if !path.path.is_ident("Some") || call.args.len() != 1 {
+		return None;
+	}
+	parse_field_domain(&call.args[0])
+}
+
+fn parse_field_domain(expr: &Expr) -> Option<crate::field_domain::FieldDomain> {
+	let Expr::Struct(domain) = expr else {
+		return None;
+	};
+	if domain.path.segments.last()?.ident != "Enum" {
+		return None;
+	}
+	let repr_expr = domain.fields.iter().find_map(|field| {
+		matches!(&field.member, syn::Member::Named(ident) if ident == "repr").then_some(&field.expr)
+	})?;
+	let repr_path = match repr_expr {
+		Expr::Path(path) => path.path.segments.last()?.ident.to_string(),
+		_ => return None,
+	};
+	let repr = match repr_path.as_str() {
+		"String" => crate::field_domain::ModelEnumRepr::String,
+		"I32" => crate::field_domain::ModelEnumRepr::I32,
+		_ => return None,
+	};
+	let values_expr = domain.fields.iter().find_map(|field| {
+		matches!(&field.member, syn::Member::Named(ident) if ident == "values")
+			.then_some(&field.expr)
+	})?;
+	let values = parse_model_enum_values(values_expr)?;
+	Some(crate::field_domain::FieldDomain::Enum { repr, values }.canonicalized())
+}
+
+fn parse_model_enum_values(expr: &Expr) -> Option<Vec<crate::field_domain::ModelEnumValue>> {
+	let Expr::Macro(expr_macro) = expr else {
+		return None;
+	};
+	if !expr_macro.mac.path.is_ident("vec") {
+		return None;
+	}
+	let values = expr_macro
+		.mac
+		.parse_body_with(syn::punctuated::Punctuated::<Expr, syn::Token![,]>::parse_terminated)
+		.ok()?;
+	values.iter().map(parse_model_enum_value).collect()
+}
+
+fn parse_model_enum_value(expr: &Expr) -> Option<crate::field_domain::ModelEnumValue> {
+	let Expr::Call(call) = expr else {
+		return None;
+	};
+	let Expr::Path(path) = &*call.func else {
+		return None;
+	};
+	let variant = path.path.segments.last()?.ident.to_string();
+	let value = call.args.first()?;
+	match variant.as_str() {
+		"String" => extract_string_expr(value).map(crate::field_domain::ModelEnumValue::String),
+		"I32" => parse_i32_expr(value).map(crate::field_domain::ModelEnumValue::I32),
+		_ => None,
+	}
+}
+
+fn parse_i32_expr(expr: &Expr) -> Option<i32> {
+	i32::try_from(parse_signed_integer_expr(expr)?).ok()
+}
+
+fn parse_signed_integer_expr(expr: &Expr) -> Option<i128> {
+	match expr {
+		Expr::Lit(syn::ExprLit {
+			lit: syn::Lit::Int(value),
+			..
+		}) => value.base10_parse().ok(),
+		Expr::Unary(unary) if matches!(unary.op, syn::UnOp::Neg(_)) => {
+			parse_signed_integer_expr(&unary.expr)?.checked_neg()
+		}
+		_ => None,
+	}
+}
+
+fn extract_string_expr(expr: &Expr) -> Option<String> {
+	match expr {
+		Expr::MethodCall(call) if call.method == "to_string" => extract_string_expr(&call.receiver),
+		Expr::Lit(syn::ExprLit {
+			lit: syn::Lit::Str(value),
+			..
+		}) => Some(value.value()),
+		_ => None,
+	}
 }
 
 fn extract_generated_column_field(
@@ -1450,7 +1589,152 @@ fn parse_bool_return(func: &ItemFn) -> Option<bool> {
 #[cfg(test)]
 mod tests {
 	use super::extract_migration_metadata;
-	use crate::migrations::{ColumnType, GeneratedStorage, Operation, SchemaExpr};
+	use crate::field_domain::{FieldDomain, ModelEnumRepr, ModelEnumValue};
+	use crate::migrations::{ColumnType, Constraint, GeneratedStorage, Operation, SchemaExpr};
+
+	#[test]
+	fn drop_constraint_ast_accepts_legacy_and_typed_variants() {
+		let legacy: syn::Expr = syn::parse_str(
+			r#"Operation::DropConstraint {
+				table: "jobs".to_string(),
+				constraint_name: "jobs_status_check".to_string(),
+			}"#,
+		)
+		.expect("legacy operation should parse as Rust syntax");
+		assert_eq!(
+			super::parse_single_operation(&legacy),
+			Some(Operation::DropConstraint {
+				table: "jobs".to_string(),
+				constraint_name: "jobs_status_check".to_string(),
+			})
+		);
+
+		let typed: syn::Expr = syn::parse_str(
+			r#"Operation::DropConstraintDefinition {
+				table: "jobs".to_string(),
+				constraint: Constraint::EnumDomain {
+					name: "jobs_status_check".to_string(),
+					column: "status".to_string(),
+					domain: FieldDomain::Enum {
+						repr: ModelEnumRepr::String,
+						values: vec![ModelEnumValue::String("queued".to_string())],
+					},
+				},
+			}"#,
+		)
+		.expect("typed operation should parse as Rust syntax");
+		assert!(matches!(
+			super::parse_single_operation(&typed),
+			Some(Operation::DropConstraintDefinition {
+				constraint: Constraint::EnumDomain { column, .. },
+				..
+			}) if column == "status"
+		));
+	}
+
+	#[test]
+	fn extract_migration_metadata_restores_model_enum_domain() {
+		let source = r#"
+use reinhardt_db::migrations::prelude::*;
+
+pub(super) fn migration() -> Migration {
+	Migration {
+		app_label: "jobs".to_string(),
+		name: "0001_initial".to_string(),
+		operations: vec![Operation::AddColumn {
+			table: "jobs".to_string(),
+			column: ColumnDefinition {
+				name: "job_status".to_string(),
+				type_definition: FieldType::VarChar(32),
+				not_null: true,
+				unique: false,
+				primary_key: false,
+				auto_increment: false,
+				default: None,
+				generated: None,
+				domain: Some(FieldDomain::Enum {
+					repr: ModelEnumRepr::String,
+					values: vec![
+						ModelEnumValue::String("queued".to_string()),
+						ModelEnumValue::String("running".to_string()),
+					],
+				}),
+			},
+			mysql_options: None,
+		}],
+		dependencies: vec![], atomic: true, replaces: vec![], initial: None,
+		state_only: false, database_only: false,
+		swappable_dependencies: vec![], optional_dependencies: vec![],
+	}
+
+}
+"#;
+		let ast = syn::parse_file(source).expect("migration source must parse");
+
+		let migration = extract_migration_metadata(&ast, "jobs", "0001_initial")
+			.expect("migration metadata must parse");
+		let Operation::AddColumn { column, .. } = &migration.operations[0] else {
+			panic!("expected AddColumn operation");
+		};
+
+		assert_eq!(
+			column.domain,
+			Some(FieldDomain::Enum {
+				repr: ModelEnumRepr::String,
+				values: vec![
+					ModelEnumValue::String("queued".to_string()),
+					ModelEnumValue::String("running".to_string()),
+				],
+			})
+		);
+	}
+
+	#[test]
+	fn extract_migration_metadata_restores_negative_enum_domain_constraint() {
+		let source = r#"
+use reinhardt_db::migrations::prelude::*;
+
+pub(super) fn migration() -> Migration {
+	Migration {
+		app_label: "jobs".to_string(), name: "0001_initial".to_string(),
+		operations: vec![Operation::CreateTable {
+			name: "jobs".to_string(), columns: vec![],
+			constraints: vec![Constraint::EnumDomain {
+				name: "jobs_status_model_enum_check".to_string(),
+				column: "status".to_string(),
+				domain: FieldDomain::Enum {
+					repr: ModelEnumRepr::I32,
+					values: vec![ModelEnumValue::I32(-2147483648i32), ModelEnumValue::I32(1)],
+				},
+			}],
+			without_rowid: None, interleave_in_parent: None, partition: None,
+		}],
+		dependencies: vec![], atomic: true, replaces: vec![], initial: Some(true),
+		state_only: false, database_only: false,
+		swappable_dependencies: vec![], optional_dependencies: vec![],
+	}
+}
+"#;
+		let ast = syn::parse_file(source).expect("migration source must parse");
+
+		let migration = extract_migration_metadata(&ast, "jobs", "0001_initial")
+			.expect("migration metadata must parse");
+		let Operation::CreateTable { constraints, .. } = &migration.operations[0] else {
+			panic!("expected CreateTable operation");
+		};
+
+		assert_eq!(
+			constraints,
+			&vec![crate::migrations::Constraint::EnumDomain {
+				name: "jobs_status_model_enum_check".to_string(),
+				column: "status".to_string(),
+				domain: FieldDomain::Enum {
+					repr: ModelEnumRepr::I32,
+					values: vec![ModelEnumValue::I32(i32::MIN), ModelEnumValue::I32(1)],
+				},
+			}]
+		);
+	}
 
 	#[test]
 	fn extract_migration_metadata_restores_typed_generated_expression() {
@@ -1482,6 +1766,7 @@ pub(super) fn migration() -> Migration {
 						raw_sql: None,
 						storage: GeneratedStorage::Stored,
 					}),
+					domain: None,
 				},
 				mysql_options: None,
 			},
@@ -1549,6 +1834,7 @@ pub(super) fn migration() -> Migration {
 						"SchemaExpr::concat([SchemaExpr::col(\"first_name\"), SchemaExpr::val(\" \"), SchemaExpr::col(\"last_name\")])",
 						GeneratedStorage::Stored,
 					)),
+					domain: None,
 				},
 				mysql_options: None,
 			},
@@ -1563,6 +1849,7 @@ pub(super) fn migration() -> Migration {
 					auto_increment: false,
 					default: None,
 					generated: Some(GeneratedColumnDefinition::raw_sql("LOWER(full_name)", GeneratedStorage::Virtual)),
+					domain: None,
 				},
 				mysql_options: None,
 			},

@@ -41,6 +41,76 @@ fn query_value_to_sea_value(qv: &QueryValue) -> Value {
 		QueryValue::Timestamp(dt) => Value::ChronoDateTimeUtc(Some(Box::new(*dt))),
 		QueryValue::Uuid(u) => Value::Uuid(Some(Box::new(*u))),
 		QueryValue::Json(value) => Value::Json(value.clone()),
+		QueryValue::StringArray(values) => Value::Array(
+			reinhardt_query::value::ArrayType::String,
+			Some(Box::new(
+				values
+					.iter()
+					.cloned()
+					.map(|value| Value::String(Some(Box::new(value))))
+					.collect(),
+			)),
+		),
+		QueryValue::IntArray(values) => Value::Array(
+			reinhardt_query::value::ArrayType::Int,
+			Some(Box::new(
+				values
+					.iter()
+					.copied()
+					.map(|value| Value::Int(Some(value)))
+					.collect(),
+			)),
+		),
+		QueryValue::BigIntArray(values) => Value::Array(
+			reinhardt_query::value::ArrayType::BigInt,
+			Some(Box::new(
+				values
+					.iter()
+					.copied()
+					.map(|value| Value::BigInt(Some(value)))
+					.collect(),
+			)),
+		),
+		QueryValue::BoolArray(values) => Value::Array(
+			reinhardt_query::value::ArrayType::Bool,
+			Some(Box::new(
+				values
+					.iter()
+					.copied()
+					.map(|value| Value::Bool(Some(value)))
+					.collect(),
+			)),
+		),
+		QueryValue::FloatArray(values) => Value::Array(
+			reinhardt_query::value::ArrayType::Float,
+			Some(Box::new(
+				values
+					.iter()
+					.copied()
+					.map(|value| Value::Float(Some(value)))
+					.collect(),
+			)),
+		),
+		QueryValue::DoubleArray(values) => Value::Array(
+			reinhardt_query::value::ArrayType::Double,
+			Some(Box::new(
+				values
+					.iter()
+					.copied()
+					.map(|value| Value::Double(Some(value)))
+					.collect(),
+			)),
+		),
+		QueryValue::UuidArray(values) => Value::Array(
+			reinhardt_query::value::ArrayType::Uuid,
+			Some(Box::new(
+				values
+					.iter()
+					.copied()
+					.map(|value| Value::Uuid(Some(Box::new(value))))
+					.collect(),
+			)),
+		),
 		// NOW() is handled specially in build() methods, should not reach here
 		QueryValue::Now => {
 			panic!("QueryValue::Now should be handled in build() method, not converted to Value")

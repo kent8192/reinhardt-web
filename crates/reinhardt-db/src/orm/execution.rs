@@ -10,6 +10,7 @@ use crate::orm::connection::{DatabaseBackend, OrmExecutor, QueryRow};
 use reinhardt_query::prelude::{
 	Alias, ColumnRef, Expr, ExprTrait, Func, Query, QueryBuilder, SelectStatement,
 };
+use reinhardt_query::value::Value as SV;
 use rust_decimal::prelude::ToPrimitive;
 use std::marker::PhantomData;
 
@@ -47,6 +48,10 @@ pub enum ExecutionError {
 	/// Deserialization error
 	#[error("Failed to deserialize result: {0}")]
 	Deserialization(#[from] serde_json::Error),
+
+	/// Typed field codec error
+	#[error("Field codec error: {0}")]
+	FieldCodec(#[from] crate::orm::FieldCodecError),
 
 	/// Query building error
 	#[error("Query building error: {0}")]
@@ -175,6 +180,50 @@ pub fn convert_values(values: reinhardt_query::prelude::Values) -> Vec<QueryValu
 		.into_iter()
 		.map(convert_value_to_query_value)
 		.collect()
+}
+
+/// Converts query array values to a JSON array for backends without a native
+/// binding representation for the element type.
+pub(crate) fn array_values_to_json(values: &[SV]) -> serde_json::Value {
+	serde_json::Value::Array(values.iter().map(query_value_to_json).collect())
+}
+
+fn query_value_to_json(value: &SV) -> serde_json::Value {
+	match value {
+		SV::Bool(value) => serde_json::json!(value),
+		SV::TinyInt(value) => serde_json::json!(value),
+		SV::SmallInt(value) => serde_json::json!(value),
+		SV::Int(value) => serde_json::json!(value),
+		SV::BigInt(value) => serde_json::json!(value),
+		SV::TinyUnsigned(value) => serde_json::json!(value),
+		SV::SmallUnsigned(value) => serde_json::json!(value),
+		SV::Unsigned(value) => serde_json::json!(value),
+		SV::BigUnsigned(value) => serde_json::json!(value),
+		SV::Float(value) => serde_json::json!(value),
+		SV::Double(value) => serde_json::json!(value),
+		SV::Char(value) => serde_json::json!(value),
+		SV::String(value) => serde_json::json!(value),
+		SV::Bytes(value) => serde_json::json!(value),
+		SV::ChronoDate(value) => serde_json::json!(value.as_deref().map(ToString::to_string)),
+		SV::ChronoTime(value) => serde_json::json!(value.as_deref().map(ToString::to_string)),
+		SV::ChronoDateTime(value) => serde_json::json!(value.as_deref().map(ToString::to_string)),
+		SV::ChronoDateTimeUtc(value) => {
+			serde_json::json!(value.as_deref().map(ToString::to_string))
+		}
+		SV::ChronoDateTimeLocal(value) => {
+			serde_json::json!(value.as_deref().map(ToString::to_string))
+		}
+		SV::ChronoDateTimeWithTimeZone(value) => {
+			serde_json::json!(value.as_deref().map(ToString::to_string))
+		}
+		SV::Uuid(value) => serde_json::json!(value.as_deref().map(ToString::to_string)),
+		SV::Json(value) => value.as_deref().cloned().unwrap_or(serde_json::Value::Null),
+		SV::Decimal(value) => serde_json::json!(value.as_deref().map(ToString::to_string)),
+		SV::BigDecimal(value) => serde_json::json!(value.as_deref().map(ToString::to_string)),
+		SV::Array(_, value) => value.as_deref().map_or(serde_json::Value::Null, |values| {
+			array_values_to_json(values)
+		}),
+	}
 }
 
 fn build_select_for_backend(

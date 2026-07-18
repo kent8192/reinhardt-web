@@ -70,6 +70,7 @@ fn create_basic_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 		auto_increment: false,
 		default: None,
 		generated: None,
+		domain: None,
 	}
 }
 
@@ -116,6 +117,7 @@ async fn test_partial_migration_failure_recovery(
 						default: None,
 
 						generated: None,
+						domain: None,
 					},
 					create_basic_column("username", FieldType::VarChar(Some(100))),
 				],
@@ -133,6 +135,7 @@ async fn test_partial_migration_failure_recovery(
 						default: None,
 
 						generated: None,
+						domain: None,
 					},
 					create_basic_column("title", FieldType::VarChar(Some(200))),
 				],
@@ -362,6 +365,7 @@ async fn test_concurrent_migration_conflict_detection(
 					default: None,
 
 					generated: None,
+					domain: None,
 				},
 				create_basic_column("name", FieldType::VarChar(Some(100))),
 			],
@@ -496,6 +500,7 @@ async fn test_schema_drift_detection(
 						default: None,
 
 						generated: None,
+						domain: None,
 					},
 					create_basic_column("username", FieldType::VarChar(Some(100))),
 					create_basic_column("email", FieldType::VarChar(Some(255))),
@@ -514,6 +519,7 @@ async fn test_schema_drift_detection(
 						default: None,
 
 						generated: None,
+						domain: None,
 					},
 					create_basic_column("title", FieldType::VarChar(Some(200))),
 					create_basic_column("content", FieldType::Text),
@@ -707,6 +713,7 @@ async fn test_database_connection_loss_recovery(
 					default: None,
 
 					generated: None,
+					domain: None,
 				},
 				create_basic_column("name", FieldType::VarChar(Some(100))),
 			],
@@ -752,6 +759,7 @@ async fn test_database_connection_loss_recovery(
 				default: None,
 
 				generated: None,
+				domain: None,
 			}],
 		}],
 	);
@@ -907,6 +915,7 @@ async fn test_irreversible_operation_error_handling(
 					default: None,
 
 					generated: None,
+					domain: None,
 				},
 				create_basic_column("username", FieldType::VarChar(Some(100))),
 			],

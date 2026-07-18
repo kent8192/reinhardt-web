@@ -10,6 +10,7 @@
 //! - **Named Routes**: Reverse URL lookup by route name
 //! - **Reactive Navigation**: Signal-based current route tracking
 //! - **Route Guards**: Optional authentication/authorization checks
+//! - **Route Loaders**: Entry-blocking layout and leaf data with prefetch
 //!
 //! ## Usage
 //!
@@ -97,10 +98,18 @@
 //!
 //! On browser WASM, navigating between sibling children with the same layout
 //! key preserves the layout shell and remounts only the outlet subtree.
+//!
+//! Route loaders are bound with `loader = ...` on `#[component]` and
+//! `#[layout]`; see [`crate::router::loader`] and
+//! `docs/route_loaders.md` for the prepare/commit and hydration contract.
 
 mod components;
 mod history;
 mod navigate;
+
+pub mod loader;
+pub mod loader_registry;
+pub mod loader_store;
 
 /// Manouche DSL v2 spec §4.3 `FromRequest`-based page handlers.
 ///
@@ -140,11 +149,11 @@ pub mod request {
 	};
 }
 
-pub use components::{Link, Redirect, RouterOutlet, guard, guard_or};
+pub use components::{Link, PrefetchMode, Redirect, RouterOutlet, guard, guard_or};
 pub use history::{HistoryState, NavigationType};
 pub use navigate::navigate;
 pub use reinhardt_urls::routers::ClientRouter;
-pub use reinhardt_urls::routers::client_router::Path;
+pub use reinhardt_urls::routers::client_router::{Path, RouteLoaderId};
 // `setup_popstate_listener` is wasm-only — see `history` module docs.
 #[cfg(wasm)]
 pub use history::setup_popstate_listener;

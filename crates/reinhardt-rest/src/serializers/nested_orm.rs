@@ -824,9 +824,10 @@ mod tests {
 
 			assert_eq!(
 				nested_result,
-				Err(SerializerError::Other {
-					message: "Database error: savepoint rollback failed".to_string(),
-				})
+				Err(SerializerError::Database(DatabaseError::new(
+					DatabaseErrorKind::Transaction,
+					"savepoint rollback failed",
+				)))
 			);
 			Ok::<(), SerializerError>(())
 		})
@@ -856,9 +857,10 @@ mod tests {
 
 		assert_eq!(
 			result,
-			Err(SerializerError::Other {
-				message: "Database error: transaction rollback failed".to_string(),
-			})
+			Err(SerializerError::Database(DatabaseError::new(
+				DatabaseErrorKind::Transaction,
+				"transaction rollback failed",
+			)))
 		);
 		assert_eq!(
 			*calls.lock().unwrap(),

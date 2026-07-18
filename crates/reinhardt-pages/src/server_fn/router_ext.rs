@@ -17,8 +17,8 @@
 //! }
 //! ```
 
-use super::ServerFnError;
 use super::registration::ServerFnRegistration;
+use super::set::ServerFnSetRegistration;
 use hyper::header::{CONTENT_TYPE, HeaderValue};
 use hyper::{Method, StatusCode};
 use reinhardt_core::endpoint::EndpointInfo;
@@ -73,11 +73,18 @@ pub trait ServerFnRouterExt {
 	///     .server_fn(login);
 	/// ```
 	fn server_fn<S: ServerFnRegistration + 'static>(self, marker: S) -> Self;
+
+	/// Register every member of a named server function set.
+	fn server_fnset<S: ServerFnSetRegistration>(self, set: S) -> Self;
 }
 
 impl ServerFnRouterExt for ServerRouter {
 	fn server_fn<S: ServerFnRegistration + 'static>(self, _marker: S) -> Self {
 		self.endpoint(|| ServerFnEndpoint::<S>(PhantomData))
+	}
+
+	fn server_fnset<S: ServerFnSetRegistration>(self, set: S) -> Self {
+		set.register(self)
 	}
 }
 
@@ -148,14 +155,7 @@ impl<S: ServerFnRegistration> Handler for ServerFnEndpoint<S> {
 					String::from_utf8_lossy(&error_body)
 				);
 
-				// Extract status code from ServerFnError if possible.
-				let status_code = serde_json::from_slice::<ServerFnError>(&error_body)
-					.ok()
-					.map(|err| match err {
-						ServerFnError::Server { status, .. } => StatusCode::from_u16(status)
-							.unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
-						_ => StatusCode::INTERNAL_SERVER_ERROR,
-					})
+				let status_code = StatusCode::from_u16(S::error_status(&error_body))
 					.unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
 
 				response_with_codec_body::<S>(status_code, error_body)

@@ -290,10 +290,19 @@ pub mod db {
 			fn new_fields() -> Self::Fields;
 			fn app_label() -> &'static str;
 			fn primary_key_field() -> &'static str;
-			fn primary_key_column() -> &'static str;
+			fn primary_key_column() -> &'static str {
+				Self::primary_key_field()
+			}
 			fn primary_key(&self) -> Option<Self::PrimaryKey>;
 			fn set_primary_key(&mut self, value: Self::PrimaryKey);
 			fn field_is_none(&self, field_name: &str) -> bool;
+			fn encode_database_fields(
+				&self,
+			) -> Result<std::collections::BTreeMap<String, DatabaseValue>, FieldCodecError>;
+			fn decode_database_field(
+				field_name: &str,
+				value: DatabaseValue,
+			) -> Result<model::ModelFieldJsonValue, FieldCodecError>;
 			fn validate_fixture_fields(
 				_fields: &FixtureFields,
 			) -> core::result::Result<(), String> {
@@ -373,8 +382,21 @@ pub mod db {
 					self.name
 				}
 
-				pub fn eq(self, _value: impl Into<String>) -> bool {
+				pub fn eq(self, _value: impl Into<Type>) -> bool {
 					true
+				}
+			}
+
+			#[derive(Debug, Clone)]
+			pub struct UniqueFieldRef<Model, Type> {
+				_marker: core::marker::PhantomData<(Model, Type)>,
+			}
+
+			impl<Model, Type> UniqueFieldRef<Model, Type> {
+				pub const unsafe fn from_model_field(_name: &'static str) -> Self {
+					Self {
+						_marker: core::marker::PhantomData,
+					}
 				}
 			}
 		}
@@ -599,14 +621,253 @@ pub mod db {
 			}
 		}
 
+		#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+		pub enum DatabaseStorageKind {
+			Bool,
+			I32,
+			I64,
+			F32,
+			F64,
+			Decimal,
+			String,
+			Bytes,
+			Json,
+			Uuid,
+			Date,
+			Time,
+			DateTime,
+		}
+
+		#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+		pub enum ModelEnumRepr {
+			String,
+			I32,
+		}
+
+		#[derive(Debug, Clone, PartialEq, Eq)]
+		pub enum ModelEnumValue {
+			String(String),
+			I32(i32),
+		}
+
+		#[derive(Debug, Clone, PartialEq, Eq)]
+		pub enum FieldDomain {
+			Enum {
+				repr: ModelEnumRepr,
+				values: Vec<ModelEnumValue>,
+			},
+		}
+
+		#[derive(Debug, Clone)]
+		pub struct FieldCodecContext;
+
+		impl FieldCodecContext {
+			pub fn new(
+				_model: impl Into<String>,
+				_field: impl Into<String>,
+				_column: impl Into<String>,
+			) -> Self {
+				Self
+			}
+		}
+
+		#[derive(Debug, Clone)]
+		pub struct FieldCodecError;
+
+		#[derive(Debug, Clone)]
+		pub struct DatabaseValue(serde_json::Value);
+
+		impl DatabaseValue {
+			pub fn into_json_value(self) -> Result<serde_json::Value, FieldCodecError> {
+				Ok(self.0)
+			}
+		}
+
+		pub trait DatabaseScalar: Clone {
+			const STORAGE_KIND: DatabaseStorageKind;
+			fn into_database_value(self) -> DatabaseValue;
+			fn from_database_value(value: DatabaseValue) -> Result<Self, FieldCodecError>;
+		}
+
+		pub trait DatabaseField:
+			Clone + serde::Serialize + serde::de::DeserializeOwned + Send + Sync + 'static
+		{
+			type Storage: DatabaseScalar;
+			const MAX_STRING_VALUE_CHARS: Option<usize> = None;
+
+			fn encode_database(&self) -> Result<Self::Storage, FieldCodecError>;
+			fn decode_database(
+				value: Self::Storage,
+				_context: &FieldCodecContext,
+			) -> Result<Self, FieldCodecError>;
+			fn domain() -> Option<FieldDomain> {
+				None
+			}
+		}
+
+		pub trait IntoFieldValue<T> {
+			fn into_field_value(self) -> Result<DatabaseValue, FieldCodecError>;
+		}
+
+		impl<T: DatabaseField> IntoFieldValue<T> for T {
+			fn into_field_value(self) -> Result<DatabaseValue, FieldCodecError> {
+				self.encode_database()
+					.map(DatabaseScalar::into_database_value)
+			}
+		}
+
+		pub enum FilterOperator {
+			Eq,
+		}
+
+		pub enum FilterValue {
+			Typed(Result<DatabaseValue, FieldCodecError>),
+		}
+
+		pub struct Filter;
+
+		impl Filter {
+			pub fn new(
+				_field: impl Into<String>,
+				_operator: FilterOperator,
+				_value: FilterValue,
+			) -> Self {
+				Self
+			}
+		}
+
+		macro_rules! scalar_codec {
+			($type:ty, $kind:ident) => {
+				impl DatabaseScalar for $type {
+					const STORAGE_KIND: DatabaseStorageKind = DatabaseStorageKind::$kind;
+
+					fn into_database_value(self) -> DatabaseValue {
+						DatabaseValue(serde_json::to_value(self).unwrap())
+					}
+
+					fn from_database_value(value: DatabaseValue) -> Result<Self, FieldCodecError> {
+						serde_json::from_value(value.0).map_err(|_| FieldCodecError)
+					}
+				}
+
+				impl DatabaseField for $type {
+					type Storage = Self;
+
+					fn encode_database(&self) -> Result<Self::Storage, FieldCodecError> {
+						Ok(self.clone())
+					}
+
+					fn decode_database(
+						value: Self::Storage,
+						_context: &FieldCodecContext,
+					) -> Result<Self, FieldCodecError> {
+						Ok(value)
+					}
+				}
+			};
+		}
+
+		scalar_codec!(bool, Bool);
+		scalar_codec!(i32, I32);
+		scalar_codec!(i64, I64);
+		scalar_codec!(String, String);
+
+		impl<S: DatabaseScalar> DatabaseScalar for Option<S> {
+			const STORAGE_KIND: DatabaseStorageKind = S::STORAGE_KIND;
+
+			fn into_database_value(self) -> DatabaseValue {
+				self.map_or_else(
+					|| DatabaseValue(serde_json::Value::Null),
+					DatabaseScalar::into_database_value,
+				)
+			}
+
+			fn from_database_value(value: DatabaseValue) -> Result<Self, FieldCodecError> {
+				if value.0.is_null() {
+					Ok(None)
+				} else {
+					S::from_database_value(value).map(Some)
+				}
+			}
+		}
+
+		impl<T: DatabaseField> DatabaseField for Option<T> {
+			type Storage = Option<T::Storage>;
+
+			fn encode_database(&self) -> Result<Self::Storage, FieldCodecError> {
+				self.as_ref().map(DatabaseField::encode_database).transpose()
+			}
+
+			fn decode_database(
+				value: Self::Storage,
+				context: &FieldCodecContext,
+			) -> Result<Self, FieldCodecError> {
+				value
+					.map(|value| T::decode_database(value, context))
+					.transpose()
+			}
+		}
+
+		impl<T> DatabaseField for super::Json<T>
+		where
+			T: Clone + serde::Serialize + serde::de::DeserializeOwned + Send + Sync + 'static,
+		{
+			type Storage = String;
+
+			fn encode_database(&self) -> Result<Self::Storage, FieldCodecError> {
+				serde_json::to_string(&self.0).map_err(|_| FieldCodecError)
+			}
+
+			fn decode_database(
+				value: Self::Storage,
+				_context: &FieldCodecContext,
+			) -> Result<Self, FieldCodecError> {
+				serde_json::from_str(&value)
+					.map(super::Json)
+					.map_err(|_| FieldCodecError)
+			}
+		}
+
+		pub mod model {
+			pub type ModelFieldJsonValue = serde_json::Value;
+
+			pub fn serialize_decoded_database_field<T: serde::Serialize>(
+				value: T,
+			) -> Result<ModelFieldJsonValue, super::FieldCodecError> {
+				serde_json::to_value(value).map_err(|_| super::FieldCodecError)
+			}
+		}
+
 		pub mod inspection {
 			use super::fields::FieldKwarg;
+			use super::{DatabaseStorageKind, FieldDomain};
 			use std::collections::HashMap;
+
+			pub fn database_field_type_path(storage_kind: DatabaseStorageKind) -> &'static str {
+				match storage_kind {
+					DatabaseStorageKind::Bool => "reinhardt.orm.models.BooleanField",
+					DatabaseStorageKind::I32 => "reinhardt.orm.models.IntegerField",
+					DatabaseStorageKind::I64 => "reinhardt.orm.models.BigIntegerField",
+					DatabaseStorageKind::F32 | DatabaseStorageKind::F64 => {
+						"reinhardt.orm.models.FloatField"
+					}
+					DatabaseStorageKind::Decimal => "reinhardt.orm.models.DecimalField",
+					DatabaseStorageKind::String => "reinhardt.orm.models.CharField",
+					DatabaseStorageKind::Bytes => "reinhardt.orm.models.BinaryField",
+					DatabaseStorageKind::Json => "reinhardt.orm.models.JsonField",
+					DatabaseStorageKind::Uuid => "reinhardt.orm.models.UuidField",
+					DatabaseStorageKind::Date => "reinhardt.orm.models.DateField",
+					DatabaseStorageKind::Time => "reinhardt.orm.models.TimeField",
+					DatabaseStorageKind::DateTime => "reinhardt.orm.models.DateTimeField",
+				}
+			}
 
 			#[derive(Debug, Clone, PartialEq)]
 			pub struct FieldInfo {
 				pub name: String,
 				pub field_type: String,
+				pub storage_kind: Option<DatabaseStorageKind>,
+				pub domain: Option<FieldDomain>,
 				pub nullable: bool,
 				pub primary_key: bool,
 				pub unique: bool,
@@ -767,6 +1028,10 @@ pub mod db {
 				pub fn with_foreign_key(self, _foreign_key: ForeignKeyInfo) -> Self {
 					self
 				}
+
+				pub fn with_domain_opt(self, _domain: Option<crate::db::orm::FieldDomain>) -> Self {
+					self
+				}
 			}
 
 			#[derive(Debug, Clone, PartialEq)]
@@ -792,6 +1057,13 @@ pub mod db {
 				pub fn add_many_to_many(&mut self, _metadata: ManyToManyMetadata) {}
 
 				pub fn add_constraint(&mut self, _constraint: ConstraintDefinition) {}
+
+				pub fn add_enum_domain_constraint(
+					&mut self,
+					_column: impl Into<String>,
+					_domain: crate::db::orm::FieldDomain,
+				) {
+				}
 			}
 
 			pub struct Registry;

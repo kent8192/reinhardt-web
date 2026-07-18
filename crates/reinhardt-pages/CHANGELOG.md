@@ -9,8 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Add typed component-scoped `style!` definitions, scoped class tokens, and
-  source-ordered runtime variable overrides.
+- Add named typed server function sets with mixed-codec marker chains,
+  explicit router registration, and unchanged per-action metadata and mocks.
+- Add opt-in model-backed server function sets with six typed CRUD RPCs,
+  mandatory policies, typed list pagination, unique lookups, DTO mappings,
+  checked overrides, transaction-bound custom actions, structured errors, and
+  action-level component/MSW mock identity.
+- Keep standard create overrides on the create authorization path with an
+  executor-only context, without collection queryset scoping.
 - *(pages)* add `SetStateExt::update` for previous-value state updates from
   `use_state` setters.
 - Add native component testing utilities under
@@ -20,13 +26,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Sanitize authentication and internal extractor failures in generated server
+  function handlers, and keep physical table names out of model not-found
+  errors.
 - **BREAKING**: Route-backed component macros now require the route name as
   `name = "..."`, for example `#[component("/path", name = "name")]`.
-
-### Fixed
-
-- *(style)* preserve direct property numeric constraints in generated component
-  variable setters.
 
 ### Migration Notes
 

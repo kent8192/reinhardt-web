@@ -53,6 +53,9 @@ selector whitespace.
 For a React concept mapping, see
 [Reinhardt Pages for React developers](docs/react_to_reinhardt.md).
 
+For route-level loaders, prepare/commit navigation, prefetch, cancellation, and
+SSR hydration, see [Route-level data loaders](docs/route_loaders.md).
+
 ## Quick Start
 
 ### Using the Prelude (Recommended)
@@ -488,6 +491,51 @@ fn error_display() -> View {
 3. **Clone captured handles**: direct `page!({ ... })` clones captured values into generated closures
 4. **Use closure form for factories**: keep `page!(|props: Props| { ... })` when the page must be called later
 
+## Typed Server Function Sets
+
+`#[server_fnset]` groups existing `#[server_fn]` markers into a named, typed
+registration chain. Members retain their individual codecs, CSRF behavior,
+extractors, injected parameters, metadata, and mock identity. Registration stays
+explicit:
+
+```rust,ignore
+#[server_fnset(name = "admin")]
+pub fn admin_fns() -> impl ServerFnSetRegistration {
+    ServerFnSet::new()
+        .server_fn(load_dashboard::marker)
+        .server_fn(export_data::marker)
+}
+
+let router = ServerRouter::new().server_fnset(admin_fns());
+```
+
+The opt-in `model-server-fnset` feature generates exactly six typed POST RPCs
+for a resource: `list`, `retrieve`, `create`, `update`, `partial_update`, and
+`destroy`. Resources use explicit wire DTO mappings, a typed unique lookup, and
+a mandatory policy; unrestricted access requires choosing `AllowAllPolicy`.
+Standard methods can be replaced with checked overrides, while additional
+methods use `#[action(detail = ..., transactional = ...)]`. Action underscores
+normalize to hyphens under `/api/server_fn/<set-name>/<action>`.
+
+Offset pagination defaults to 25, accepts limits from 1 through 100, and returns
+the policy-scoped total before slicing. Structured model errors map to stable
+400, 401, 403, 404, 409, and 500 responses, with internal failures sanitized on
+the wire. Each generated action has its own marker for component and MSW mocks;
+`reinhardt-test` model-action mocks use `model-server-fnset-msw`.
+
+Full and partial model updates authorize the loaded object before mutation and
+authorize the resulting object again before its read mapping and transaction
+commit, so ownership or tenant changes cannot bypass object policy.
+
+WASM builds retain wire contracts, metadata, markers, and client stubs. ORM
+resources, policies, action contexts, database executors, native handlers, and
+the `ModelServerFnSet` constructor remain native-only. Model sets do not provide
+action subsets, a read-only set type, REST/OpenAPI generation, cursor
+pagination, bulk or nested actions, composite lookups, global discovery, or
+automatic model-to-DTO derivation. See the
+[Server Function Macro Guide](docs/server_fn_macro.md#typed-server-function-sets)
+for the complete `ArticleResource` example and target boundary.
+
 ## Testing
 
 ### Native Component Tests
@@ -706,7 +754,10 @@ fn counter() -> View {
 | Feature | Description |
 |---------|-------------|
 | `msgpack` | MessagePack serialization support |
-| `pages-full` | All features enabled (`msgpack` + `web-sys-full`) |
+| `model-server-fnset` | Native model-backed typed CRUD server function sets plus cross-target wire/client generation |
+| `msw` | Typed marker metadata for component and MSW server function mocks |
+| `testing` | Cross-target testing support; combine with `msw` for native component mocks |
+| `pages-full` | Browser-oriented bundle (`msgpack` + `web-sys-full`); enable `model-server-fnset`, `msw`, and `testing` separately |
 | `static` | Static file serving |
 | `urls` | URL routing integration |
 | `debug-hooks` | Debug hooks for development |

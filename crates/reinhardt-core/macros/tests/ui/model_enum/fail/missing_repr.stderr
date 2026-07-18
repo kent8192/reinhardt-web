@@ -1,0 +1,5 @@
+error: ModelEnum requires #[model_enum(repr = "string" | "i32")]
+ --> tests/ui/model_enum/fail/missing_repr.rs:4:6
+  |
+4 | enum MissingRepr {
+  |      ^^^^^^^^^^^

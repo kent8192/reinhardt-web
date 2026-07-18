@@ -1,0 +1,30 @@
+error: unknown server function set action option
+ --> tests/ui/server_fnset/fail/action_unknown_key.rs:8:26
+  |
+8 |     #[action(detail = true, atomic = true)]
+  |                             ^^^^^^
+
+error[E0277]: the trait bound `Actions: ServerFnSetActions<ArticleResource>` is not satisfied
+ --> tests/ui/server_fnset/fail/action_unknown_key.rs:4:44
+  |
+4 | #[server_fnset(name = "article", actions = Actions)]
+  |                                            ^^^^^^^ unsatisfied trait bound
+  |
+help: the trait `ServerFnSetActions<ArticleResource>` is not implemented for `Actions`
+ --> tests/ui/server_fnset/fail/action_unknown_key.rs:3:1
+  |
+3 | struct Actions;
+  | ^^^^^^^^^^^^^^
+
+error[E0277]: the trait bound `Actions: ServerFnSetActions<ArticleResource>` is not satisfied
+ --> tests/ui/server_fnset/fail/action_unknown_key.rs:4:1
+  |
+4 | #[server_fnset(name = "article", actions = Actions)]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
+  |
+help: the trait `ServerFnSetActions<ArticleResource>` is not implemented for `Actions`
+ --> tests/ui/server_fnset/fail/action_unknown_key.rs:3:1
+  |
+3 | struct Actions;
+  | ^^^^^^^^^^^^^^
+  = note: this error originates in the attribute macro `server_fnset` (in Nightly builds, run with -Z macro-backtrace for more info)

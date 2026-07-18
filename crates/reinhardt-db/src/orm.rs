@@ -51,6 +51,7 @@ pub mod connection_ext; // reinhardt-query connection support
 pub mod constraints;
 /// Expressions module.
 pub mod expressions;
+pub mod field_codec;
 /// Fields module.
 pub mod fields;
 /// Fixture loading and dumping module.
@@ -161,7 +162,7 @@ pub use connection::{
 pub use constraints::{
 	CheckConstraint, Constraint, ForeignKeyConstraint, OnDelete, OnUpdate, UniqueConstraint,
 };
-pub use expressions::{Exists, F, FieldRef, OuterRef, Q, QOperator, Subquery};
+pub use expressions::{Exists, F, FieldRef, OuterRef, Q, QOperator, Subquery, UniqueFieldRef};
 pub use functions::{
 	Abs, Cast, Ceil, Concat, CurrentDate, CurrentTime, Extract, ExtractComponent, Floor, Greatest,
 	Least, Length, Lower, Mod, Now, NullIf, Power, Round, SqlType, Sqrt, Substr, Trim, TrimType,
@@ -225,6 +226,7 @@ pub use events::{
 	with_event_registry,
 };
 pub use execution::{ExecutionResult, QueryExecution, SelectExecution};
+pub use field_codec::*;
 // Re-export from reinhardt-hybrid
 pub use crate::hybrid::{
 	Comparator as HybridComparator, HybridMethod, HybridProperty, UpperCaseComparator,

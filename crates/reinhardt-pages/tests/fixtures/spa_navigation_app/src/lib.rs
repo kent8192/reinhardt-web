@@ -4,7 +4,7 @@
 //!
 //! Two routes:
 //! - `/` renders `<div id="route-home"><a href="/login">Go to login</a></div>`
-//! - `/login` renders `<div id="route-login">LOGIN VIEW</div>`
+//! - `/login` prepares a route loader and renders `<div id="route-login">LOGIN VIEW: prepared route data</div>`
 //!
 //! Refs #4088.
 

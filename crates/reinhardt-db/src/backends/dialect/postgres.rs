@@ -45,6 +45,13 @@ impl PostgresBackend {
 			QueryValue::Timestamp(dt) => query.bind(dt),
 			QueryValue::Uuid(u) => query.bind(u),
 			QueryValue::Json(value) => query.bind(value.as_deref().cloned().map(sqlx::types::Json)),
+			QueryValue::StringArray(values) => query.bind(values),
+			QueryValue::IntArray(values) => query.bind(values),
+			QueryValue::BigIntArray(values) => query.bind(values),
+			QueryValue::BoolArray(values) => query.bind(values),
+			QueryValue::FloatArray(values) => query.bind(values),
+			QueryValue::DoubleArray(values) => query.bind(values),
+			QueryValue::UuidArray(values) => query.bind(values),
 			QueryValue::Now => {
 				// PostgreSQL uses NOW() function, which should be part of SQL string
 				// For binding, we use current UTC time
@@ -185,6 +192,13 @@ impl PgTransactionExecutor {
 			QueryValue::Timestamp(dt) => query.bind(dt),
 			QueryValue::Uuid(u) => query.bind(u),
 			QueryValue::Json(value) => query.bind(value.as_deref().cloned().map(sqlx::types::Json)),
+			QueryValue::StringArray(values) => query.bind(values),
+			QueryValue::IntArray(values) => query.bind(values),
+			QueryValue::BigIntArray(values) => query.bind(values),
+			QueryValue::BoolArray(values) => query.bind(values),
+			QueryValue::FloatArray(values) => query.bind(values),
+			QueryValue::DoubleArray(values) => query.bind(values),
+			QueryValue::UuidArray(values) => query.bind(values),
 			QueryValue::Now => query.bind(chrono::Utc::now()),
 		}
 	}
@@ -197,7 +211,6 @@ impl PgTransactionExecutor {
 impl PostgresBackend {
 	/// Internal row conversion method shared between backend and transaction executor
 	pub(crate) fn convert_row_internal(pg_row: PgRow) -> Result<Row> {
-		use rust_decimal::prelude::ToPrimitive;
 		use sqlx::Row as SqlxRow;
 
 		let mut row = Row::new();
@@ -216,6 +229,107 @@ impl PostgresBackend {
 				continue;
 			}
 
+			match type_name.as_str() {
+				"TEXT[]" | "VARCHAR[]" | "BPCHAR[]" => {
+					match pg_row
+						.try_get::<Option<Vec<String>>, _>(column_name)
+						.map_err(map_sqlx_error)?
+					{
+						Some(values) => {
+							row.insert(column_name.to_string(), QueryValue::StringArray(values))
+						}
+						None => row.insert(column_name.to_string(), QueryValue::Null),
+					};
+					continue;
+				}
+				"INT4[]" => {
+					match pg_row
+						.try_get::<Option<Vec<i32>>, _>(column_name)
+						.map_err(map_sqlx_error)?
+					{
+						Some(values) => {
+							row.insert(column_name.to_string(), QueryValue::IntArray(values))
+						}
+						None => row.insert(column_name.to_string(), QueryValue::Null),
+					};
+					continue;
+				}
+				"INT8[]" => {
+					match pg_row
+						.try_get::<Option<Vec<i64>>, _>(column_name)
+						.map_err(map_sqlx_error)?
+					{
+						Some(values) => {
+							row.insert(column_name.to_string(), QueryValue::BigIntArray(values))
+						}
+						None => row.insert(column_name.to_string(), QueryValue::Null),
+					};
+					continue;
+				}
+				"BOOL[]" => {
+					match pg_row
+						.try_get::<Option<Vec<bool>>, _>(column_name)
+						.map_err(map_sqlx_error)?
+					{
+						Some(values) => {
+							row.insert(column_name.to_string(), QueryValue::BoolArray(values))
+						}
+						None => row.insert(column_name.to_string(), QueryValue::Null),
+					};
+					continue;
+				}
+				"FLOAT4[]" => {
+					match pg_row
+						.try_get::<Option<Vec<f32>>, _>(column_name)
+						.map_err(map_sqlx_error)?
+					{
+						Some(values) => {
+							row.insert(column_name.to_string(), QueryValue::FloatArray(values))
+						}
+						None => row.insert(column_name.to_string(), QueryValue::Null),
+					};
+					continue;
+				}
+				"FLOAT8[]" => {
+					match pg_row
+						.try_get::<Option<Vec<f64>>, _>(column_name)
+						.map_err(map_sqlx_error)?
+					{
+						Some(values) => {
+							row.insert(column_name.to_string(), QueryValue::DoubleArray(values))
+						}
+						None => row.insert(column_name.to_string(), QueryValue::Null),
+					};
+					continue;
+				}
+				"UUID[]" => {
+					match pg_row
+						.try_get::<Option<Vec<Uuid>>, _>(column_name)
+						.map_err(map_sqlx_error)?
+					{
+						Some(values) => {
+							row.insert(column_name.to_string(), QueryValue::UuidArray(values))
+						}
+						None => row.insert(column_name.to_string(), QueryValue::Null),
+					};
+					continue;
+				}
+				_ => {}
+			}
+			if matches!(type_name.as_str(), "NUMERIC" | "DECIMAL") {
+				match pg_row.try_get::<Option<rust_decimal::Decimal>, _>(column_name) {
+					Ok(Some(value)) => {
+						row.insert(
+							column_name.to_string(),
+							QueryValue::String(value.to_string()),
+						);
+					}
+					Ok(None) => row.insert(column_name.to_string(), QueryValue::Null),
+					Err(error) => return Err(map_sqlx_error(error).into()),
+				};
+				continue;
+			}
+
 			if let Ok(value) = pg_row.try_get::<Uuid, _>(column_name) {
 				row.insert(column_name.to_string(), QueryValue::Uuid(value));
 			} else if let Ok(value) = pg_row.try_get::<bool, _>(column_name) {
@@ -224,15 +338,18 @@ impl PostgresBackend {
 				row.insert(column_name.to_string(), QueryValue::Int(value));
 			} else if let Ok(value) = pg_row.try_get::<i32, _>(column_name) {
 				row.insert(column_name.to_string(), QueryValue::Int(value as i64));
-			} else if let Ok(value) = pg_row.try_get::<rust_decimal::Decimal, _>(column_name) {
-				// Convert DECIMAL/NUMERIC to f64 for Float storage
-				if let Some(f) = value.to_f64() {
-					row.insert(column_name.to_string(), QueryValue::Float(f));
-				} else {
-					return Err(Self::decimal_conversion_error(&value, column_name).into());
-				}
 			} else if let Ok(value) = pg_row.try_get::<f64, _>(column_name) {
 				row.insert(column_name.to_string(), QueryValue::Float(value));
+			} else if let Ok(value) = pg_row.try_get::<chrono::NaiveDate, _>(column_name) {
+				row.insert(
+					column_name.to_string(),
+					QueryValue::String(value.to_string()),
+				);
+			} else if let Ok(value) = pg_row.try_get::<chrono::NaiveTime, _>(column_name) {
+				row.insert(
+					column_name.to_string(),
+					QueryValue::String(value.to_string()),
+				);
 			} else if let Ok(value) = pg_row.try_get::<String, _>(column_name) {
 				row.insert(column_name.to_string(), QueryValue::String(value));
 			} else if let Ok(value) = pg_row.try_get::<Vec<u8>, _>(column_name) {
@@ -254,17 +371,6 @@ impl PostgresBackend {
 			}
 		}
 		Ok(row)
-	}
-
-	/// Build a TypeError for failed Decimal-to-f64 conversion
-	fn decimal_conversion_error(value: &rust_decimal::Decimal, column_name: &str) -> DatabaseError {
-		DatabaseError::new(
-			DatabaseErrorKind::Type,
-			format!(
-				"Failed to convert Decimal value '{}' to f64 for column '{}'",
-				value, column_name
-			),
-		)
 	}
 }
 
@@ -420,7 +526,6 @@ mod tests {
 	use super::PgTransactionExecutor;
 	use crate::backends::types::{DatabaseType, TransactionExecutor};
 	use rstest::rstest;
-	use rust_decimal::prelude::ToPrimitive;
 
 	#[test]
 	fn test_transaction_executor_reports_postgres_backend() {
@@ -441,48 +546,91 @@ mod tests {
 	) {
 		// Act
 		let result = decimal.to_f64();
-
-		// Assert
-		assert!(
-			result.is_some(),
-			"Decimal '{}' should convert to f64",
-			decimal
-		);
-		let f = result.unwrap();
-
-		// Use combined relative and absolute tolerance for float comparison
-		let diff = (f - expected).abs();
-		let rel_tol = 1e-12;
-		let abs_tol = 1e-12;
-		let tol = expected.abs() * rel_tol + abs_tol;
-
-		assert!(
-			diff <= tol,
-			"Expected approximately {} (tolerance {}, diff {}), got {}",
-			expected,
-			tol,
-			diff,
-			f
-		);
+		assert!(result.is_some());
+		assert!((result.unwrap() - expected).abs() < f64::EPSILON * expected.abs().max(1.0));
 	}
 
-	/// Verify the TypeError is constructed correctly for conversion failures
-	#[rstest]
-	fn test_decimal_conversion_error_message_format() {
-		use crate::backends::error::DatabaseErrorKind;
+	#[tokio::test]
+	async fn convert_row_preserves_postgres_arrays_and_decimals() {
+		use sqlx::postgres::PgPoolOptions;
+		use testcontainers::{GenericImage, ImageExt, core::WaitFor, runners::AsyncRunner};
 
-		// Arrange
-		let value = rust_decimal::Decimal::new(12345, 2);
-		let column_name = "price_column";
+		let container = GenericImage::new("postgres", "17-alpine")
+			.with_wait_for(WaitFor::message_on_stderr(
+				"database system is ready to accept connections",
+			))
+			.with_env_var("POSTGRES_HOST_AUTH_METHOD", "trust")
+			.start()
+			.await
+			.expect("PostgreSQL test container should start");
+		let port = container
+			.get_host_port_ipv4(5432)
+			.await
+			.expect("PostgreSQL test container should expose port 5432");
+		let pool = PgPoolOptions::new()
+			.max_connections(1)
+			.connect(format!("postgres://postgres@localhost:{port}/postgres").as_str())
+			.await
+			.expect("test pool should connect to PostgreSQL");
 
-		// Act
-		let error = super::PostgresBackend::decimal_conversion_error(&value, column_name);
+		let row = sqlx::query(
+			"SELECT \
+				ARRAY['alpha', 'beta']::text[] AS string_values, \
+				ARRAY[1, 2]::integer[] AS int_values, \
+				ARRAY[3, 4]::bigint[] AS bigint_values, \
+				ARRAY[TRUE, FALSE]::boolean[] AS bool_values, \
+				ARRAY[1.5, 2.5]::real[] AS float_values, \
+				ARRAY[3.5, 4.5]::double precision[] AS double_values, \
+				ARRAY['00000000-0000-0000-0000-000000000000']::uuid[] AS uuid_values, \
+				9007199254740993.01::numeric AS decimal_value",
+		)
+		.fetch_one(&pool)
+		.await
+		.expect("PostgreSQL should return native arrays");
+		let converted = super::PostgresBackend::convert_row_internal(row)
+			.expect("backend row conversion should preserve arrays");
 
-		// Assert
-		assert_eq!(error.kind(), DatabaseErrorKind::Type);
 		assert_eq!(
-			error.to_string(),
-			"Failed to convert Decimal value '123.45' to f64 for column 'price_column'"
+			converted.data.get("string_values"),
+			Some(&super::QueryValue::StringArray(vec![
+				"alpha".to_string(),
+				"beta".to_string(),
+			]))
+		);
+		assert_eq!(
+			converted.data.get("int_values"),
+			Some(&super::QueryValue::IntArray(vec![1, 2]))
+		);
+		assert_eq!(
+			converted.data.get("bigint_values"),
+			Some(&super::QueryValue::BigIntArray(vec![3, 4]))
+		);
+		assert_eq!(
+			converted.data.get("bool_values"),
+			Some(&super::QueryValue::BoolArray(vec![true, false]))
+		);
+		assert_eq!(
+			converted.data.get("float_values"),
+			Some(&super::QueryValue::FloatArray(vec![1.5, 2.5]))
+		);
+		assert_eq!(
+			converted.data.get("double_values"),
+			Some(&super::QueryValue::DoubleArray(vec![3.5, 4.5]))
+		);
+		assert_eq!(
+			converted.data.get("uuid_values"),
+			Some(&super::QueryValue::UuidArray(vec![uuid::Uuid::nil()]))
+		);
+		assert_eq!(
+			converted.data.get("decimal_value"),
+			Some(&super::QueryValue::String(
+				"9007199254740993.01".to_string()
+			))
+		);
+		let query_row = crate::orm::connection::QueryRow::from_backend_row(converted);
+		assert_eq!(
+			query_row.get::<rust_decimal::Decimal>("decimal_value"),
+			Some(rust_decimal::Decimal::new(900_719_925_474_099_301, 2))
 		);
 	}
 

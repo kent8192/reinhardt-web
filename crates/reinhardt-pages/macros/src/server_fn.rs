@@ -14,6 +14,7 @@ use darling::FromMeta;
 use darling::ast::NestedMeta;
 use proc_macro::TokenStream;
 use quote::quote;
+use syn::ext::IdentExt;
 use syn::punctuated::Punctuated;
 use syn::{FnArg, ItemFn, Meta, Token, parse_macro_input};
 
@@ -59,7 +60,7 @@ fn generate_inject_resolver_expr(
 /// assert_eq!(pascal.to_string(), "GetUserList");
 /// ```
 fn to_pascal_case_ident(ident: &proc_macro2::Ident) -> proc_macro2::Ident {
-	let pascal_name = ident.to_string().to_case(Case::Pascal);
+	let pascal_name = ident.unraw().to_string().to_case(Case::Pascal);
 	quote::format_ident!("{}", pascal_name)
 }
 
@@ -221,20 +222,49 @@ const KNOWN_EXTRACTOR_TYPES: &[&str] = &[
 	"ContentType",
 	"SessionId",
 	"CsrfToken",
+	"PolicyPrincipal",
 ];
 
 /// Check if a type is a known `FromRequest` extractor.
 ///
 /// Returns `true` if the outermost type segment matches one of the
 /// known extractor names from `reinhardt_di::params`.
-fn is_extractor_type(ty: &syn::Type) -> bool {
+pub(crate) fn is_extractor_type(ty: &syn::Type) -> bool {
 	if let syn::Type::Path(type_path) = ty
 		&& let Some(last_seg) = type_path.path.segments.last()
 	{
 		let name = last_seg.ident.to_string();
+		if name == "PolicyPrincipal" {
+			return is_model_policy_principal_type(ty);
+		}
 		return KNOWN_EXTRACTOR_TYPES.contains(&name.as_str());
 	}
 	false
+}
+
+fn is_model_policy_principal_type(ty: &syn::Type) -> bool {
+	let syn::Type::Path(type_path) = ty else {
+		return false;
+	};
+	if type_path.path.leading_colon.is_some() || type_path.path.segments.len() != 1 {
+		return false;
+	}
+	let Some(segment) = type_path.path.segments.last() else {
+		return false;
+	};
+	if segment.ident != "PolicyPrincipal" {
+		return false;
+	}
+	let syn::PathArguments::AngleBracketed(arguments) = &segment.arguments else {
+		return false;
+	};
+	let Some(syn::GenericArgument::Type(syn::Type::Path(resource))) = arguments.args.first() else {
+		return false;
+	};
+	resource.path.segments.last().is_some_and(|segment| {
+		let name = segment.ident.to_string();
+		name.ends_with("Resource") || name.starts_with("__ReinhardtServerFnSetResource")
+	})
 }
 
 /// Detect parameters that implement `FromRequest` (extractors).
@@ -382,6 +412,12 @@ struct ServerFnInfo {
 	func: ItemFn,
 	/// Parsed options
 	options: ServerFnOptions,
+	metadata_name: Option<String>,
+	endpoint_tokens: Option<proc_macro2::TokenStream>,
+	metadata_name_tokens: Option<proc_macro2::TokenStream>,
+	detail: bool,
+	transactional: bool,
+	structured_error: bool,
 }
 
 impl ServerFnInfo {
@@ -396,7 +432,16 @@ impl ServerFnInfo {
 			validate_endpoint_path(endpoint)?;
 		}
 
-		Ok(Self { func, options })
+		Ok(Self {
+			func,
+			options,
+			metadata_name: None,
+			endpoint_tokens: None,
+			metadata_name_tokens: None,
+			detail: false,
+			transactional: false,
+			structured_error: false,
+		})
 	}
 
 	/// Get the function name
@@ -423,11 +468,15 @@ impl ServerFnInfo {
 	/// Get the endpoint path
 	///
 	/// Returns the custom endpoint if specified, otherwise generates default.
-	fn endpoint(&self) -> String {
-		self.options
-			.endpoint
-			.clone()
-			.unwrap_or_else(|| format!("/api/server_fn/{}", self.name()))
+	fn endpoint(&self) -> proc_macro2::TokenStream {
+		self.endpoint_tokens.clone().unwrap_or_else(|| {
+			let endpoint = self
+				.options
+				.endpoint
+				.clone()
+				.unwrap_or_else(|| format!("/api/server_fn/{}", self.name()));
+			quote!(#endpoint)
+		})
 	}
 
 	/// Get the codec name
@@ -435,10 +484,65 @@ impl ServerFnInfo {
 		&self.options.codec
 	}
 
+	fn metadata_name(&self) -> proc_macro2::TokenStream {
+		self.metadata_name_tokens.clone().unwrap_or_else(|| {
+			let name = self
+				.metadata_name
+				.clone()
+				.unwrap_or_else(|| self.name().to_string());
+			quote!(#name)
+		})
+	}
+
 	/// Check if the deprecated `use_inject` option is enabled (for deprecation warning)
 	fn use_inject_enabled(&self) -> bool {
 		self.options.use_inject
 	}
+}
+
+/// Generate one server function for a sibling proc-macro expansion.
+pub(crate) fn generate_internal_server_fn(
+	func: ItemFn,
+	endpoint: String,
+	metadata_name: String,
+	detail: bool,
+	transactional: bool,
+) -> proc_macro2::TokenStream {
+	let info = ServerFnInfo {
+		func,
+		options: ServerFnOptions {
+			endpoint: Some(endpoint),
+			..ServerFnOptions::default()
+		},
+		metadata_name: Some(metadata_name),
+		endpoint_tokens: None,
+		metadata_name_tokens: None,
+		detail,
+		transactional,
+		structured_error: true,
+	};
+	generate_server_fn(&info)
+}
+
+/// Generate one server function whose endpoint metadata is supplied as Rust expressions.
+pub(crate) fn generate_internal_server_fn_with_tokens(
+	func: ItemFn,
+	endpoint: proc_macro2::TokenStream,
+	metadata_name: proc_macro2::TokenStream,
+	detail: bool,
+	transactional: bool,
+) -> proc_macro2::TokenStream {
+	let info = ServerFnInfo {
+		func,
+		options: ServerFnOptions::default(),
+		metadata_name: None,
+		endpoint_tokens: Some(endpoint),
+		metadata_name_tokens: Some(metadata_name),
+		detail,
+		transactional,
+		structured_error: true,
+	};
+	generate_server_fn(&info)
 }
 
 fn attribute_allows_private_interfaces(attr: &syn::Attribute) -> bool {
@@ -825,6 +929,18 @@ fn generate_client_stub(
 			__headers.push((__auth_header_name.to_string(), __auth_header_value));
 		}
 	};
+	let error_decode_code = if info.structured_error {
+		quote! {
+			return Err(#pages_crate::server_fn::ServerFnSetError::from_http_error(
+				__status,
+				&__message,
+			));
+		}
+	} else {
+		quote! {
+			return Err(#pages_crate::server_fn::ServerFnError::server(__status, __message).into());
+		}
+	};
 
 	// Generate codec-specific serialization and deserialization code
 	let (content_type, serialize_code, deserialize_code) = match codec {
@@ -880,7 +996,7 @@ fn generate_client_stub(
 	quote! {
 		#[cfg(all(target_family = "wasm", target_os = "unknown"))]
 		#vis #client_sig {
-			use ::serde::{Serialize, Deserialize};
+			use ::serde::Serialize;
 
 			// Conditional crate path resolution for WASM/server compatibility
 			#pages_use_statement
@@ -920,7 +1036,7 @@ fn generate_client_stub(
 			if !__response.is_success() {
 				let __status = __response.status();
 				let __message = __response.into_text();
-				return Err(#pages_crate::server_fn::ServerFnError::server(__status, __message).into());
+				#error_decode_code
 			}
 
 			// Deserialize response based on codec
@@ -1097,6 +1213,76 @@ fn generate_server_handler(
 	let extractor_resolution = if !extractor_params.is_empty() {
 		let di_crate = get_reinhardt_di_crate();
 		let pages_crate_for_ext = get_reinhardt_pages_crate();
+		let extractor_error = if info.structured_error {
+			quote! {
+				match e {
+					#di_crate::params::ParamError::Authentication(_) =>
+						::serde_json::to_string(
+							&#pages_crate_for_ext::server_fn::ServerFnSetError::Unauthenticated,
+						)
+						.unwrap_or_else(|_| "\"Unauthenticated\"".to_string()),
+					#di_crate::params::ParamError::Internal(detail) => {
+						#pages_crate_for_ext::__private::tracing::error!(
+							error = %detail,
+							"FromRequest extractor failed internally",
+						);
+						::serde_json::to_string(
+							&#pages_crate_for_ext::server_fn::ServerFnSetError::Internal,
+						)
+						.unwrap_or_else(|_| "\"Internal\"".to_string())
+					}
+					other => {
+						#pages_crate_for_ext::__private::tracing::error!(
+							error = %other,
+							"FromRequest extractor failed",
+						);
+						let server_err = #pages_crate_for_ext::server_fn::ServerFnError::server(
+							400u16,
+							format!("Parameter extraction failed: {}", other),
+						);
+						::serde_json::to_string(&server_err)
+							.unwrap_or_else(|_| "Parameter extraction failed".to_string())
+					}
+				}
+			}
+		} else {
+			quote! {
+				match e {
+					#di_crate::params::ParamError::Authentication(_) => {
+						let server_err = #pages_crate_for_ext::server_fn::ServerFnError::server(
+							401u16,
+							"Authentication required",
+						);
+						::serde_json::to_string(&server_err)
+							.unwrap_or_else(|_| "Authentication required".to_string())
+					}
+					#di_crate::params::ParamError::Internal(detail) => {
+						#pages_crate_for_ext::__private::tracing::error!(
+							error = %detail,
+							"FromRequest extractor failed internally",
+						);
+						let server_err = #pages_crate_for_ext::server_fn::ServerFnError::server(
+							500u16,
+							"Internal server error",
+						);
+						::serde_json::to_string(&server_err)
+							.unwrap_or_else(|_| "Internal server error".to_string())
+					}
+					other => {
+						#pages_crate_for_ext::__private::tracing::error!(
+							error = %other,
+							"FromRequest extractor failed",
+						);
+						let server_err = #pages_crate_for_ext::server_fn::ServerFnError::server(
+							400u16,
+							format!("Parameter extraction failed: {}", other),
+						);
+						::serde_json::to_string(&server_err)
+							.unwrap_or_else(|_| "Parameter extraction failed".to_string())
+					}
+				}
+			}
+		};
 
 		let ext_resolutions: Vec<_> = extractor_params
 			.iter()
@@ -1106,19 +1292,7 @@ fn generate_server_handler(
 				quote! {
 					let #pat: #ty = <#ty as #di_crate::params::FromRequest>::from_request(&__req, &__param_ctx)
 						.await
-						.map_err(|e| {
-							#pages_crate_for_ext::__private::tracing::error!(
-								error = %e,
-								param = stringify!(#ty),
-								"FromRequest extractor failed",
-							);
-							let server_err = #pages_crate_for_ext::server_fn::ServerFnError::server(
-								400u16,
-								format!("Parameter extraction failed: {}", e),
-							);
-							::serde_json::to_string(&server_err)
-								.unwrap_or_else(|_| "Parameter extraction failed".to_string())
-						})?;
+						.map_err(|e| #extractor_error)?;
 				}
 			})
 			.collect();
@@ -1336,7 +1510,9 @@ fn generate_server_handler(
 
 	// Generate unique name for the static wrapper function
 	let static_wrapper_name = quote::format_ident!("__server_fn_static_wrapper_{}", name);
-	let name_str = name.to_string();
+	let name_str = info.metadata_name();
+	let detail = info.detail;
+	let transactional = info.transactional;
 	let is_json_codec = codec == "json";
 
 	// Note: pages_crate is already resolved above for body extraction.
@@ -1359,7 +1535,7 @@ fn generate_server_handler(
 	// the function because Rust's value namespace doesn't allow both a function
 	// and a `use` item with the same name in the same module.
 	let marker_module_name = name.clone();
-	let metadata_alias_prefix = name.to_string().to_case(Case::Pascal);
+	let metadata_alias_prefix = name.unraw().to_string().to_case(Case::Pascal);
 	let response_alias = quote::format_ident!("__ServerFn{}Response", metadata_alias_prefix);
 	let error_alias = quote::format_ident!("__ServerFn{}Error", metadata_alias_prefix);
 	let request_alias = quote::format_ident!("__ServerFn{}Request", metadata_alias_prefix);
@@ -1440,6 +1616,33 @@ fn generate_server_handler(
 		})
 		.collect();
 	let uses_response_cookie_jar = !inject_params.is_empty() || !extractor_params.is_empty();
+	let sanitize_error = if info.structured_error {
+		quote! {
+			let e = e.into_server_wire_error();
+		}
+	} else {
+		quote! {}
+	};
+	let structured_status_override = if info.structured_error {
+		quote! {
+			fn error_status(error_body: &[u8]) -> u16 {
+				#pages_crate::server_fn::ServerFnSetError::http_status_from_body(error_body)
+			}
+		}
+	} else {
+		quote! {}
+	};
+	let handle_call = if info.structured_error {
+		quote! {
+			async move {
+				super::#handler_name(req)
+					.await
+					.map_err(#pages_crate::server_fn::ServerFnSetError::sanitize_server_error_body)
+			}
+		}
+	} else {
+		quote! { super::#handler_name(req) }
+	};
 	let regular_param_idents: Vec<_> = regular_params
 		.iter()
 		.filter_map(|p| {
@@ -1735,6 +1938,8 @@ fn generate_server_handler(
 			#[doc = "Parity: P1."]
 			#[doc = ""]
 			#[doc = "The marker is emitted on WASM so shared route declarations can name it, but server route registration is native-only behavior."]
+			// The public API intentionally names marker types `function_name::marker`.
+			#[allow(non_camel_case_types)]
 			#marker_struct_vis struct marker;
 
 			impl #pages_crate::server_fn::ServerFnMetadata for marker {
@@ -1743,6 +1948,8 @@ fn generate_server_handler(
 				const CODEC: &'static str = #codec;
 				const IS_JSON_CODEC: bool = #is_json_codec;
 				const INJECTED_PARAMS: &'static [&'static str] = &[#(#inject_param_name_strs),*];
+				const DETAIL: bool = #detail;
+				const TRANSACTIONAL: bool = #transactional;
 				const USES_RESPONSE_COOKIE_JAR: bool = #uses_response_cookie_jar;
 			}
 
@@ -1761,7 +1968,7 @@ fn generate_server_handler(
 		/// This function is called by the router when the endpoint receives a request.
 		/// It deserializes the request body, calls the server function, and serializes the response.
 		#handler_signature {
-			use ::serde::{Deserialize, Serialize};
+			use ::serde::Deserialize;
 
 			// Argument struct for deserialization (only regular parameters)
 			#[derive(Deserialize)]
@@ -1795,7 +2002,7 @@ fn generate_server_handler(
 					#serialize_response_code
 				}
 				Err(e) => {
-					// Serialize the error as ServerFnError
+					#sanitize_error
 					let error_json = ::serde_json::to_string(&e)
 						.map_err(|e| #pages_crate::__private::bytes::Bytes::from(
 							format!("Failed to serialize error: {}", e)
@@ -1852,6 +2059,8 @@ fn generate_server_handler(
 		// the generated function directly.
 		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 		#vis mod #marker_module_name {
+			// User-defined types in generated signatures may require parent-scope imports.
+			#[allow(unused_imports)]
 			use super::*;
 
 			#[doc = concat!("Marker struct for server function `", #name_str, "` (use with `.server_fn()`).")]
@@ -1859,6 +2068,8 @@ fn generate_server_handler(
 			#[doc = "Parity: P1."]
 			#[doc = ""]
 			#[doc = "The marker is emitted on both native and WASM so shared route declarations can name it. Native builds register the server handler; WASM builds keep the marker metadata inert."]
+			// The public API intentionally names marker types `function_name::marker`.
+			#[allow(non_camel_case_types)]
 			#marker_struct_vis struct marker;
 
 			// Cross-target metadata. ServerFnMetadata lives in reinhardt-pages
@@ -1872,6 +2083,8 @@ fn generate_server_handler(
 				const CODEC: &'static str = #codec;
 				const IS_JSON_CODEC: bool = #is_json_codec;
 				const INJECTED_PARAMS: &'static [&'static str] = &[#(#inject_param_name_strs),*];
+				const DETAIL: bool = #detail;
+				const TRANSACTIONAL: bool = #transactional;
 				const USES_RESPONSE_COOKIE_JAR: bool = #uses_response_cookie_jar;
 			}
 
@@ -1880,6 +2093,8 @@ fn generate_server_handler(
 
 			// Native-only handler entry point for explicit router registration.
 			impl #pages_crate::server_fn::ServerFnRegistration for marker {
+				#structured_status_override
+
 				fn handler() -> #pages_crate::server_fn::ServerFnHandler {
 					super::#static_wrapper_name
 				}
@@ -1887,7 +2102,7 @@ fn generate_server_handler(
 				fn handle(
 					req: #http_crate_for_wrapper::Request
 				) -> impl ::std::future::Future<Output = ::std::result::Result<#pages_crate::__private::bytes::Bytes, #pages_crate::__private::bytes::Bytes>> + ::std::marker::Send {
-					super::#handler_name(req)
+					#handle_call
 				}
 			}
 
@@ -2072,12 +2287,18 @@ mod tests {
 		let info = ServerFnInfo {
 			func,
 			options: ServerFnOptions::default(),
+			metadata_name: None,
+			endpoint_tokens: None,
+			metadata_name_tokens: None,
+			detail: false,
+			transactional: false,
+			structured_error: false,
 		};
 
 		let generated = generate_server_fn(&info).to_string();
 
 		assert!(
-			generated.contains("error = % e"),
+			generated.contains("error = %"),
 			"extractor errors should be logged with Display formatting: {generated}"
 		);
 		assert!(
@@ -2124,6 +2345,12 @@ mod tests {
 
 		let ty: syn::Type = parse_quote!(Body);
 		assert!(is_extractor_type(&ty), "Body should be an extractor");
+
+		let ty: syn::Type = parse_quote!(PolicyPrincipal<ArticleResource>);
+		assert!(
+			is_extractor_type(&ty),
+			"model PolicyPrincipal should be an extractor"
+		);
 	}
 
 	/// Tests for `is_extractor_type` — verifies that non-extractor types return false.
@@ -2153,6 +2380,12 @@ mod tests {
 		assert!(
 			!is_extractor_type(&ty),
 			"Vec<String> should not be an extractor"
+		);
+
+		let ty: syn::Type = parse_quote!(PolicyPrincipal<String>);
+		assert!(
+			!is_extractor_type(&ty),
+			"unrelated PolicyPrincipal types should not be extractors"
 		);
 	}
 

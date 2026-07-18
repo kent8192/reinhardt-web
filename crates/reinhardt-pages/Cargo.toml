@@ -18,6 +18,7 @@ msgpack = ["dep:rmp-serde"]
 testing = []
 # Exposes MockableServerFn trait for MSW-style testing
 msw = ["reinhardt-pages-macros/msw"]
+model-server-fnset = ["dep:reinhardt-db", "reinhardt-pages-macros/model-server-fnset"]
 pages-full = ["msgpack", "web-sys-full"]
 static = []
 urls = []
@@ -100,6 +101,11 @@ web-sys-full = [
 	"web-sys/RequestCredentials",
 	"web-sys/RequestInit",
 	"web-sys/RequestMode",
+	"web-sys/AbortController",
+	"web-sys/AbortSignal",
+	"web-sys/IntersectionObserver",
+	"web-sys/IntersectionObserverEntry",
+	"web-sys/IntersectionObserverInit",
 	"web-sys/Response",
 	"web-sys/WebSocket",
 	"web-sys/MessageEvent",
@@ -193,6 +199,9 @@ web-sys = { version = "0.3.83", features = [
 	"WheelEvent",
 	"SecurityPolicyViolationEvent",
 	"PopStateEvent",
+	"IntersectionObserver",
+	"IntersectionObserverEntry",
+	"IntersectionObserverInit",
 	"AnimationEvent",
 	"ClipboardEvent",
 	"CommandEvent",
@@ -237,6 +246,8 @@ web-sys = { version = "0.3.83", features = [
 	"RequestCredentials",
 	"RequestInit",
 	"RequestMode",
+	"AbortController",
+	"AbortSignal",
 	"Response",
 	# Storage API (for JWT token management)
 	"Storage",
@@ -263,6 +274,7 @@ reinhardt-urls = { workspace = true, default-features = false, features = ["clie
 
 # Server-side only dependencies (DI, HTTP, Forms, Server Function Registry)
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
+reinhardt-db = { workspace = true, optional = true, features = ["orm"] }
 reinhardt-forms = { workspace = true }
 reinhardt-di = { workspace = true }
 reinhardt-http = { workspace = true }
@@ -348,6 +360,11 @@ path = "tests/wasm/server_fn_wasm_test.rs"
 required-features = ["testing"]
 
 [[test]]
+name = "server_fnset_wasm_compile_test"
+path = "tests/wasm/server_fnset_wasm_compile_test.rs"
+required-features = ["model-server-fnset"]
+
+[[test]]
 name = "suspense_boundary_wasm_test"
 path = "tests/wasm/suspense_boundary_wasm_test.rs"
 required-features = []
@@ -370,6 +387,16 @@ required-features = []
 [[test]]
 name = "client_launcher_router_client_test"
 path = "tests/wasm/client_launcher_router_client_test.rs"
+required-features = []
+
+[[test]]
+name = "route_loader_navigation_wasm_test"
+path = "tests/wasm/route_loader_navigation_wasm_test.rs"
+required-features = []
+
+[[test]]
+name = "route_loader_prefetch_wasm_test"
+path = "tests/wasm/route_loader_prefetch_wasm_test.rs"
 required-features = []
 
 [[test]]

@@ -3,6 +3,7 @@
 
 use bytes::Bytes;
 use hyper::{Method, header};
+use reinhardt_di::params::{FromRequest, ParamContext, ParamError, ParamResult};
 use reinhardt_http::Request;
 use reinhardt_pages::server_fn::{ServerFnError, ServerFnRegistration, server_fn};
 use rstest::rstest;
@@ -15,6 +16,84 @@ async fn echo_name(name: String) -> Result<String, ServerFnError> {
 #[server_fn]
 async fn echo_alias(name: String) -> Result<String, ServerFnError> {
 	Ok(name)
+}
+
+struct Authorization;
+
+#[async_trait::async_trait]
+impl FromRequest for Authorization {
+	async fn from_request(_request: &Request, _context: &ParamContext) -> ParamResult<Self> {
+		Err(ParamError::Authentication("token=top-secret".to_string()))
+	}
+}
+
+struct SessionId;
+
+#[async_trait::async_trait]
+impl FromRequest for SessionId {
+	async fn from_request(_request: &Request, _context: &ParamContext) -> ParamResult<Self> {
+		Err(ParamError::Internal(
+			"database password=top-secret".to_string(),
+		))
+	}
+}
+
+#[server_fn]
+async fn authentication_extractor(_authorization: Authorization) -> Result<(), ServerFnError> {
+	Ok(())
+}
+
+#[server_fn]
+async fn internal_extractor(_session_id: SessionId) -> Result<(), ServerFnError> {
+	Ok(())
+}
+
+#[tokio::test]
+async fn authentication_extractor_returns_sanitized_unauthorized_error() {
+	let request = Request::builder()
+		.method(Method::POST)
+		.uri("/api/server_fn/authentication_extractor")
+		.build()
+		.expect("request should build");
+
+	let body = authentication_extractor::marker::handle(request)
+		.await
+		.expect_err("authentication extractor should reject the request");
+
+	assert_eq!(authentication_extractor::marker::error_status(&body), 401);
+	assert_eq!(
+		serde_json::from_slice::<ServerFnError>(&body).expect("error should be valid JSON"),
+		ServerFnError::server(401, "Authentication required")
+	);
+	assert!(
+		!String::from_utf8(body.to_vec())
+			.unwrap()
+			.contains("top-secret")
+	);
+}
+
+#[tokio::test]
+async fn internal_extractor_returns_sanitized_internal_error() {
+	let request = Request::builder()
+		.method(Method::POST)
+		.uri("/api/server_fn/internal_extractor")
+		.build()
+		.expect("request should build");
+
+	let body = internal_extractor::marker::handle(request)
+		.await
+		.expect_err("internal extractor should reject the request");
+
+	assert_eq!(internal_extractor::marker::error_status(&body), 500);
+	assert_eq!(
+		serde_json::from_slice::<ServerFnError>(&body).expect("error should be valid JSON"),
+		ServerFnError::server(500, "Internal server error")
+	);
+	assert!(
+		!String::from_utf8(body.to_vec())
+			.unwrap()
+			.contains("top-secret")
+	);
 }
 
 #[tokio::test]

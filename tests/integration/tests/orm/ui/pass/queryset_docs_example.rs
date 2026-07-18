@@ -40,6 +40,7 @@ fn documented_composite_filter_chain() -> String {
 				.or(User::field_email().icontains("example.com").not()),
 		)
 		.to_sql()
+		.expect("documented filter chain should render SQL")
 }
 
 fn main() {}

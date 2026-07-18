@@ -89,6 +89,36 @@
 //! - [`static_resolver`]: Static file URL resolution (collectstatic support)
 //! - [`mod@style`]: Scoped class composition and typed runtime CSS values
 //!
+//! ## Typed server function sets
+//!
+//! [`server_fn::server_fnset`] groups existing server function markers into a
+//! named, typed registration chain. Members retain their codec, CSRF,
+//! dependency-injection, extractor, metadata, and mock contracts; applications
+//! explicitly attach the completed set with
+//! [`server_fn::ServerFnRouterExt::server_fnset`]. Mixed-codec sets are valid.
+//!
+//! The opt-in `model-server-fnset` feature generates exactly six standard POST
+//! RPCs for a [`server_fn::ServerFnResource`]: `list`, `retrieve`, `create`,
+//! `update`, `partial_update`, and `destroy`. Native resources select an
+//! explicit `ServerFnSetPolicy`, provide model-to-DTO mappings, and
+//! return a typed unique lookup. Pagination defaults to 25, accepts `1..=100`,
+//! and reports the policy-scoped total before slicing. Checked standard
+//! overrides and custom transactional actions share the same policy and
+//! transaction runtime. Full and partial updates authorize the resulting object
+//! again before read mapping and transaction commit.
+//!
+//! Wire contracts, structured errors, metadata, generated markers, and client
+//! stubs are cross-target. ORM resources, policies, action contexts, database
+//! executors, native CRUD handlers, and `ModelServerFnSet` are
+//! native-only. Generated model failures map to stable 400/401/403/404/409/500
+//! responses, and internal details are sanitized before serialization. Action
+//! markers remain independent for component and MSW mocks.
+//!
+//! Model sets intentionally do not provide subsets, a read-only set type,
+//! REST/OpenAPI generation, cursor pagination, bulk or nested actions,
+//! composite lookups, global discovery, or automatic model-to-DTO derivation.
+//! See `docs/server_fn_macro.md` for a complete resource and action example.
+//!
 //! ## Typed events
 //!
 //! Standard intrinsic `page!` events use one catalog-generated payload type per
@@ -435,6 +465,17 @@ pub use reinhardt_pages_ast as ast;
 // Core modules
 pub mod builder;
 pub mod callback;
+// The cancellation substrate is introduced before its query/navigation
+// consumers; this temporary allow keeps the foundational task warning-free.
+#[allow(dead_code)]
+mod cancellation;
+pub use cancellation::{CancellationHandle, CancellationToken, Cancelled};
+// Internal query lease symbols are re-exported for the loader runtime added
+// in subsequent implementation tasks.
+#[allow(unused_imports)]
+pub(crate) use reactive::{
+	QueryAcquireOptions, QueryConsumer, QueryErrorPolicy, QueryLease, acquire_query,
+};
 pub mod control_binding;
 pub mod dom;
 pub mod event;
@@ -605,7 +646,7 @@ pub use router::{Path, Query};
 pub use server_fn::{ServerFn, ServerFnError, parse_server_error_message};
 pub use ssr::SsrState;
 #[cfg(native)]
-pub use ssr::{SsrChunk, SsrOptions, SsrRenderer, SsrStream};
+pub use ssr::{SsrChunk, SsrOptions, SsrRenderer, SsrRouteOutput, SsrStream};
 pub use static_resolver::{
 	component_stylesheet_url, init_static_resolver, is_initialized, resolve_static,
 };
@@ -624,6 +665,7 @@ pub use i18n::{
 pub use reinhardt_pages_macros::form;
 pub use reinhardt_pages_macros::head;
 pub use reinhardt_pages_macros::layout;
+pub use reinhardt_pages_macros::loader;
 pub use reinhardt_pages_macros::page;
 pub use reinhardt_pages_macros::style;
 pub use reinhardt_pages_macros::style_def;

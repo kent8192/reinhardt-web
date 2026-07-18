@@ -3,6 +3,7 @@
 //! This module provides the `InsertStatement` type for building SQL INSERT queries.
 
 use crate::{
+	expr::SimpleExpr,
 	types::{DynIden, IntoIden, IntoTableRef, TableRef},
 	value::{IntoValue, Value, Values},
 };
@@ -52,6 +53,7 @@ pub struct InsertStatement {
 	pub(crate) columns: Vec<DynIden>,
 	pub(crate) source: InsertSource,
 	pub(crate) returning: Option<ReturningClause>,
+	pub(crate) returning_exprs: Option<Vec<SimpleExpr>>,
 	pub(crate) on_conflict: Option<super::on_conflict::OnConflict>,
 	pub(crate) overriding_system_value: bool,
 }
@@ -64,6 +66,7 @@ impl InsertStatement {
 			columns: Vec::new(),
 			source: InsertSource::Values(Vec::new()),
 			returning: None,
+			returning_exprs: None,
 			on_conflict: None,
 			overriding_system_value: false,
 		}
@@ -76,6 +79,7 @@ impl InsertStatement {
 			columns: std::mem::take(&mut self.columns),
 			source: std::mem::replace(&mut self.source, InsertSource::Values(Vec::new())),
 			returning: self.returning.take(),
+			returning_exprs: self.returning_exprs.take(),
 			on_conflict: self.on_conflict.take(),
 			overriding_system_value: std::mem::take(&mut self.overriding_system_value),
 		}
@@ -230,6 +234,7 @@ impl InsertStatement {
 		C: crate::types::IntoColumnRef,
 	{
 		self.returning = Some(ReturningClause::columns(cols));
+		self.returning_exprs = None;
 		self
 	}
 
@@ -251,6 +256,20 @@ impl InsertStatement {
 		C: crate::types::IntoColumnRef,
 	{
 		self.returning = Some(ReturningClause::columns([col]));
+		self.returning_exprs = None;
+		self
+	}
+
+	/// Add a RETURNING clause with expressions.
+	///
+	/// Expressions can alias physical database columns to caller-visible names.
+	pub fn returning_exprs<I, E>(&mut self, expressions: I) -> &mut Self
+	where
+		I: IntoIterator<Item = E>,
+		E: Into<SimpleExpr>,
+	{
+		self.returning = None;
+		self.returning_exprs = Some(expressions.into_iter().map(Into::into).collect());
 		self
 	}
 
@@ -297,6 +316,7 @@ impl InsertStatement {
 	/// ```
 	pub fn returning_all(&mut self) -> &mut Self {
 		self.returning = Some(ReturningClause::all());
+		self.returning_exprs = None;
 		self
 	}
 

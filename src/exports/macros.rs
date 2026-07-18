@@ -10,7 +10,7 @@ pub use reinhardt_macros::settings;
 
 #[cfg(all(feature = "core", native))]
 pub use reinhardt_macros::HttpError;
-pub use reinhardt_macros::{Model, model};
+pub use reinhardt_macros::{Model, ModelEnum, model};
 
 pub use reinhardt_macros::Validate;
 pub use reinhardt_macros::dto;

@@ -62,6 +62,20 @@ pub enum QueryValue {
 	Uuid(Uuid),
 	/// JSON value, preserving the distinction between JSON null and SQL NULL.
 	Json(Option<Box<serde_json::Value>>),
+	/// PostgreSQL-compatible string array parameter.
+	StringArray(Vec<String>),
+	/// PostgreSQL-compatible 32-bit integer array parameter.
+	IntArray(Vec<i32>),
+	/// PostgreSQL-compatible 64-bit integer array parameter.
+	BigIntArray(Vec<i64>),
+	/// PostgreSQL-compatible boolean array parameter.
+	BoolArray(Vec<bool>),
+	/// PostgreSQL-compatible 32-bit floating-point array parameter.
+	FloatArray(Vec<f32>),
+	/// PostgreSQL-compatible 64-bit floating-point array parameter.
+	DoubleArray(Vec<f64>),
+	/// PostgreSQL-compatible UUID array parameter.
+	UuidArray(Vec<Uuid>),
 	/// Represents SQL NOW() function
 	Now,
 }
@@ -494,8 +508,13 @@ fn validate_savepoint_name(name: &str) -> Result<(), String> {
 /// maintains connection affinity.
 #[async_trait::async_trait]
 pub trait TransactionExecutor: Send + Sync {
-	/// Returns the database backend for this dedicated transaction connection.
-	fn backend(&self) -> DatabaseType;
+	/// Return the database backend used by this transaction executor.
+	///
+	/// PostgreSQL is retained as the compatibility default for executors that
+	/// predate backend reporting.
+	fn backend(&self) -> DatabaseType {
+		DatabaseType::Postgres
+	}
 
 	/// Execute a query that modifies the database within the transaction
 	async fn execute(
@@ -596,6 +615,74 @@ pub trait TransactionExecutor: Send + Sync {
 mod tests {
 	use super::*;
 	use rstest::rstest;
+
+	struct LegacyExecutor;
+
+	#[async_trait::async_trait]
+	impl TransactionExecutor for LegacyExecutor {
+		async fn execute(
+			&mut self,
+			_sql: &str,
+			_params: Vec<QueryValue>,
+		) -> super::super::error::Result<QueryResult> {
+			Err(super::super::error::DatabaseError::new(
+				DatabaseErrorKind::Unsupported,
+				"legacy executor does not execute test queries",
+			)
+			.into())
+		}
+
+		async fn fetch_one(
+			&mut self,
+			_sql: &str,
+			_params: Vec<QueryValue>,
+		) -> super::super::error::Result<Row> {
+			Err(super::super::error::DatabaseError::new(
+				DatabaseErrorKind::Unsupported,
+				"legacy executor does not fetch test rows",
+			)
+			.into())
+		}
+
+		async fn fetch_all(
+			&mut self,
+			_sql: &str,
+			_params: Vec<QueryValue>,
+		) -> super::super::error::Result<Vec<Row>> {
+			Err(super::super::error::DatabaseError::new(
+				DatabaseErrorKind::Unsupported,
+				"legacy executor does not fetch test rows",
+			)
+			.into())
+		}
+
+		async fn fetch_optional(
+			&mut self,
+			_sql: &str,
+			_params: Vec<QueryValue>,
+		) -> super::super::error::Result<Option<Row>> {
+			Err(super::super::error::DatabaseError::new(
+				DatabaseErrorKind::Unsupported,
+				"legacy executor does not fetch test rows",
+			)
+			.into())
+		}
+
+		async fn commit(self: Box<Self>) -> super::super::error::Result<()> {
+			Ok(())
+		}
+
+		async fn rollback(self: Box<Self>) -> super::super::error::Result<()> {
+			Ok(())
+		}
+	}
+
+	#[rstest]
+	fn transaction_executor_defaults_to_postgres_for_legacy_implementations() {
+		let executor = LegacyExecutor;
+
+		assert_eq!(executor.backend(), DatabaseType::Postgres);
+	}
 
 	// ==================== Savepoint name validation tests ====================
 

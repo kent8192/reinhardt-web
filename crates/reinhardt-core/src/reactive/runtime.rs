@@ -873,6 +873,31 @@ mod tests {
 
 	#[test]
 	#[serial]
+	fn test_notify_signal_change_ignores_stale_subscribers() {
+		let runtime = Runtime::new();
+		let signal_id = NodeId::new();
+		let stale_effect_id = NodeId::new();
+
+		// Manually add a dependency whose effect node no longer exists.
+		{
+			let mut graph = runtime.dependency_graph.borrow_mut();
+			graph
+				.entry(signal_id)
+				.or_default()
+				.subscribers
+				.push(stale_effect_id);
+		}
+
+		// Notify change.
+		runtime.notify_signal_change(signal_id);
+
+		// Stale scope-owned effects must not be scheduled.
+		let pending = runtime.pending_updates.borrow();
+		assert!(!pending.contains(&stale_effect_id));
+	}
+
+	#[test]
+	#[serial]
 	fn test_clear_dependencies() {
 		let runtime = Runtime::new();
 

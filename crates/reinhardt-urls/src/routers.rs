@@ -260,7 +260,7 @@ pub use unified_router::UnifiedRouter;
 pub use client_router::{
 	ClientPathPattern, ClientRoute, ClientRouteMatch, ClientRouter, FromPath, HistoryState,
 	MergeError, NavigationSubscription, NavigationType, ParamContext, Path, RouteHandler,
-	RouteMetadata, RouteRegistrationError, RouteScope, ScopeKind, SingleFromPath,
+	RouteLoaderId, RouteMetadata, RouteRegistrationError, RouteScope, ScopeKind, SingleFromPath,
 };
 pub use resolver::{ClientUrlResolver, WebSocketUrlResolver};
 

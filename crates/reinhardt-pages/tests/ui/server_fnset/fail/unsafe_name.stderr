@@ -1,0 +1,5 @@
+error: server function set name may contain only ASCII letters, digits, '-' and '_'
+ --> tests/ui/server_fnset/fail/unsafe_name.rs:3:23
+  |
+3 | #[server_fnset(name = "{tenant}")]
+  |                       ^^^^^^^^^^

@@ -1,0 +1,5 @@
+error[E0080]: evaluation panicked: integer database fields do not accept max_length
+  --> tests/macros/ui/fail/model_enum_integer_max_length.rs:15:1
+   |
+15 | #[model(app_label = "jobs", table_name = "jobs")]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `_` failed here

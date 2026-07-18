@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Generate typed `unique_<field>()` accessors for single-column primary keys,
+  fields declared with `unique = true`, and unconditional single-field unique
+  constraints, backed by model-owned compile-time field proofs.
+
 ## [0.3.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.3.0...reinhardt-core@v0.3.1) - 2026-07-04
 
 ### Fixed

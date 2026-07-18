@@ -384,7 +384,8 @@ fn test_related_field_accessor_uses_physical_column_in_filter() {
 				.field_email()
 				.exact("person@example.com"),
 		)
-		.to_sql();
+		.to_sql()
+		.expect("query with a valid relationship path should generate SQL");
 
 	assert_eq!(
 		sql,

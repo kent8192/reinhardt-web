@@ -4569,6 +4569,8 @@ mod tests {
 		crate::orm::inspection::FieldInfo {
 			name: name.to_string(),
 			field_type: field_type.to_string(),
+			storage_kind: None,
+			domain: None,
 			nullable,
 			primary_key: false,
 			unique: false,

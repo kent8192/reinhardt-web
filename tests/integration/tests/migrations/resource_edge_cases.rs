@@ -64,6 +64,7 @@ fn create_column_with_constraints(
 		auto_increment: primary_key,
 		default: None,
 		generated: None,
+		domain: None,
 	}
 }
 
@@ -78,6 +79,7 @@ fn create_basic_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 		auto_increment: false,
 		default: None,
 		generated: None,
+		domain: None,
 	}
 }
 
@@ -282,6 +284,7 @@ async fn test_transaction_rollback_on_migration_failure(
 					default: None,
 
 					generated: None,
+					domain: None,
 				},
 				mysql_options: None,
 			},

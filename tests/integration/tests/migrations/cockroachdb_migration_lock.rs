@@ -49,6 +49,7 @@ fn create_users_migration() -> Migration {
 					default: None,
 
 					generated: None,
+					domain: None,
 				},
 				ColumnDefinition {
 					name: "name".to_string(),
@@ -60,6 +61,7 @@ fn create_users_migration() -> Migration {
 					default: None,
 
 					generated: None,
+					domain: None,
 				},
 			],
 			constraints: vec![],

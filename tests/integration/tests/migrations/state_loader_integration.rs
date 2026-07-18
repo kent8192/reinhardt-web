@@ -90,6 +90,7 @@ async fn test_single_create_table_migration() {
 				default: None,
 
 				generated: None,
+				domain: None,
 			}],
 			constraints: vec![],
 			without_rowid: None,
@@ -167,6 +168,7 @@ async fn test_multiple_migrations_in_order() {
 				default: None,
 
 				generated: None,
+				domain: None,
 			}],
 			constraints: vec![],
 			without_rowid: None,
@@ -199,6 +201,7 @@ async fn test_multiple_migrations_in_order() {
 				default: None,
 
 				generated: None,
+				domain: None,
 			},
 			mysql_options: None,
 		}],
@@ -276,6 +279,7 @@ async fn test_unapplied_migrations_not_included() {
 				default: None,
 
 				generated: None,
+				domain: None,
 			}],
 			constraints: vec![],
 			without_rowid: None,
@@ -308,6 +312,7 @@ async fn test_unapplied_migrations_not_included() {
 				default: None,
 
 				generated: None,
+				domain: None,
 			},
 			mysql_options: None,
 		}],
