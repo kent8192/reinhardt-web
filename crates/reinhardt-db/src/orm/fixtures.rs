@@ -4,9 +4,9 @@
 //! registered model still loads through its generated `Model` implementation
 //! and canonical fixture-field validation.
 
-use super::connection::{DatabaseBackend, QueryValue};
+use super::connection::{DatabaseBackend, OrmExecutor, QueryValue};
 use super::manager::get_connection;
-use super::transaction::TransactionScope;
+use super::transaction::AtomicTransaction;
 use super::{DatabaseConnection, Manager, Model};
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
@@ -52,12 +52,6 @@ pub enum FixtureError {
 	/// Database execution failed.
 	#[error("fixture database error: {0}")]
 	Database(String),
-}
-
-impl From<anyhow::Error> for FixtureError {
-	fn from(error: anyhow::Error) -> Self {
-		Self::Database(error.to_string())
-	}
 }
 
 impl From<reinhardt_core::exception::Error> for FixtureError {
@@ -185,7 +179,7 @@ pub trait FixtureModelHandler: Send + Sync {
 		&self,
 		record: &FixtureRecord,
 		conn: &DatabaseConnection,
-		tx: &mut TransactionScope,
+		tx: &mut AtomicTransaction,
 	) -> FixtureResult<()>;
 
 	/// Load deferred many-to-many assignments for one fixture record.
@@ -193,7 +187,7 @@ pub trait FixtureModelHandler: Send + Sync {
 		&self,
 		_record: &FixtureRecord,
 		_conn: &DatabaseConnection,
-		_tx: &mut TransactionScope,
+		_tx: &mut AtomicTransaction,
 	) -> FixtureResult<()> {
 		Ok(())
 	}
@@ -365,7 +359,7 @@ where
 		&self,
 		record: &FixtureRecord,
 		conn: &DatabaseConnection,
-		tx: &mut TransactionScope,
+		tx: &mut AtomicTransaction,
 	) -> FixtureResult<()> {
 		let expected = self.label();
 		if !labels_match(&expected, &record.model) {
@@ -392,7 +386,7 @@ where
 		&self,
 		record: &FixtureRecord,
 		conn: &DatabaseConnection,
-		tx: &mut TransactionScope,
+		tx: &mut AtomicTransaction,
 	) -> FixtureResult<()> {
 		let source_pk = fixture_record_primary_key_value::<M>(record)?;
 		let mut object = record.fields.clone();
@@ -443,25 +437,25 @@ pub async fn dump_fixture_records(
 pub async fn load_fixture_records(records: &[FixtureRecord]) -> FixtureResult<usize> {
 	let ordered_records = order_records_by_dependencies(records)?;
 	let conn = get_connection().await?;
-	let mut tx = TransactionScope::begin(&conn).await?;
-
-	for record in &ordered_records {
-		let handler = global_fixture_registry()
-			.get(&record.model)
-			.ok_or_else(|| FixtureError::ModelNotRegistered(record.model.clone()))?;
-		handler.load_record(record, &conn, &mut tx).await?;
-	}
-	for record in &ordered_records {
-		let handler = global_fixture_registry()
-			.get(&record.model)
-			.ok_or_else(|| FixtureError::ModelNotRegistered(record.model.clone()))?;
-		handler
-			.load_many_to_many_assignments(record, &conn, &mut tx)
-			.await?;
-	}
-	reset_sequences_after_explicit_pks(&conn, &mut tx, &ordered_records).await?;
-
-	tx.commit().await?;
+	conn.atomic(async |tx| {
+		for record in &ordered_records {
+			let handler = global_fixture_registry()
+				.get(&record.model)
+				.ok_or_else(|| FixtureError::ModelNotRegistered(record.model.clone()))?;
+			handler.load_record(record, &conn, tx).await?;
+		}
+		for record in &ordered_records {
+			let handler = global_fixture_registry()
+				.get(&record.model)
+				.ok_or_else(|| FixtureError::ModelNotRegistered(record.model.clone()))?;
+			handler
+				.load_many_to_many_assignments(record, &conn, tx)
+				.await?;
+		}
+		reset_sequences_after_explicit_pks(&conn, tx, &ordered_records).await?;
+		Ok::<_, FixtureError>(())
+	})
+	.await?;
 	Ok(ordered_records.len())
 }
 
@@ -522,7 +516,7 @@ fn build_update_sql(stmt: &UpdateStatement, backend: DatabaseBackend) -> (String
 
 async fn execute_fixture_upsert<M>(
 	conn: &DatabaseConnection,
-	tx: &mut TransactionScope,
+	tx: &mut AtomicTransaction,
 	object: &Map<String, Value>,
 	json_null_fields: &BTreeSet<String>,
 ) -> FixtureResult<()>
@@ -539,7 +533,7 @@ where
 				json_null_fields,
 			)?;
 		if tx
-			.query_optional(&lookup_sql, lookup_values)
+			.fetch_optional(&lookup_sql, lookup_values)
 			.await?
 			.is_some()
 		{
@@ -1777,7 +1771,7 @@ where
 }
 
 async fn load_many_to_many_assignments<M>(
-	tx: &mut TransactionScope,
+	tx: &mut AtomicTransaction,
 	conn: &DatabaseConnection,
 	source_pk: Option<&Value>,
 	assignments: &[FixtureManyToManyAssignment],
@@ -2046,7 +2040,7 @@ where
 
 async fn reset_sequences_after_explicit_pks(
 	conn: &DatabaseConnection,
-	tx: &mut TransactionScope,
+	tx: &mut AtomicTransaction,
 	records: &[FixtureRecord],
 ) -> FixtureResult<()> {
 	if conn.backend() != DatabaseBackend::Postgres {
@@ -2057,7 +2051,7 @@ async fn reset_sequences_after_explicit_pks(
 		fixture_identity_sequence_reset_targets(global_fixture_registry(), records)?
 	{
 		let sql = build_postgres_sequence_reset_sql(handler.table_name(), &column);
-		tx.query_optional(
+		tx.fetch_optional(
 			&sql,
 			vec![
 				QueryValue::String(handler.table_name().to_string()),
@@ -4193,7 +4187,7 @@ mod tests {
 			&self,
 			_record: &FixtureRecord,
 			_conn: &DatabaseConnection,
-			_tx: &mut TransactionScope,
+			_tx: &mut AtomicTransaction,
 		) -> FixtureResult<()> {
 			Ok(())
 		}
@@ -6194,15 +6188,15 @@ mod tests {
 			]),
 		);
 		let handler = TypedFixtureModel::<FixtureFieldPrimaryKeyM2mPost>::new();
-		let mut tx = TransactionScope::begin(&conn)
-			.await
-			.expect("fixture transaction must begin");
-
-		handler
-			.load_many_to_many_assignments(&record, &conn, &mut tx)
-			.await
-			.expect("field-supplied primary key must drive deferred many-to-many writes");
-		tx.commit().await.expect("fixture transaction must commit");
+		conn.atomic(async |tx| {
+			handler
+				.load_many_to_many_assignments(&record, &conn, tx)
+				.await
+				.expect("field-supplied primary key must drive deferred many-to-many writes");
+			Ok::<_, FixtureError>(())
+		})
+		.await
+		.expect("fixture transaction must commit");
 
 		let rows = conn
 			.query(

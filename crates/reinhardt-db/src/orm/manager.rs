@@ -1063,7 +1063,7 @@ impl<M: Model> Manager<M> {
 			})
 	}
 
-	fn json_to_sea_value_for_field(
+	pub(crate) fn json_to_sea_value_for_field(
 		value: &serde_json::Value,
 		field_info: Option<&FieldInfo>,
 		field_is_none: bool,
@@ -1083,7 +1083,7 @@ impl<M: Model> Manager<M> {
 	}
 
 	/// Convert serde_json::Value to reinhardt_query::value::Value for parameter binding
-	fn json_to_sea_value(v: &serde_json::Value) -> reinhardt_query::value::Value {
+	pub(crate) fn json_to_sea_value(v: &serde_json::Value) -> reinhardt_query::value::Value {
 		match v {
 			serde_json::Value::Null => reinhardt_query::value::Value::Int(None),
 			serde_json::Value::Bool(b) => reinhardt_query::value::Value::Bool(Some(*b)),
@@ -1149,7 +1149,9 @@ impl<M: Model> Manager<M> {
 	}
 
 	/// Convert reinhardt_query::value::Value to QueryValue for database parameter binding
-	fn sea_value_to_query_value(v: reinhardt_query::value::Value) -> super::connection::QueryValue {
+	pub(crate) fn sea_value_to_query_value(
+		v: reinhardt_query::value::Value,
+	) -> super::connection::QueryValue {
 		use super::connection::QueryValue;
 
 		match v {
@@ -2262,6 +2264,44 @@ mod tests {
 	}
 
 	#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+	struct SerdeRenamedScalarModel {
+		id: Option<i64>,
+		#[serde(rename = "email_address")]
+		email: String,
+	}
+
+	impl Model for SerdeRenamedScalarModel {
+		type PrimaryKey = i64;
+		type Fields = RenamedScalarModelFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"serde_renamed_scalar_models"
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = Some(value);
+		}
+
+		fn new_fields() -> Self::Fields {
+			RenamedScalarModelFields
+		}
+
+		fn field_metadata() -> Vec<FieldInfo> {
+			let mut email = test_manager_field_info("email", "CharField", false, false);
+			email.db_column = Some("email_address".to_string());
+			vec![
+				test_manager_field_info("id", "BigIntegerField", true, true),
+				email,
+			]
+		}
+	}
+
+	#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 	struct TestSettings {
 		theme: String,
 	}
@@ -2790,6 +2830,28 @@ mod tests {
 		assert_eq!(
 			model,
 			RenamedScalarModel {
+				id: Some(1),
+				email: "alice@example.com".to_string(),
+			}
+		);
+	}
+
+	#[test]
+	fn test_deserialize_preserves_physical_column_for_serde_renamed_field() {
+		let mut backend_row = crate::backends::types::Row::new();
+		backend_row.insert("id".to_string(), crate::backends::types::QueryValue::Int(1));
+		backend_row.insert(
+			"email_address".to_string(),
+			crate::backends::types::QueryValue::String("alice@example.com".to_string()),
+		);
+
+		let model = crate::orm::connection::QueryRow::from_backend_row(backend_row)
+			.deserialize_model::<SerdeRenamedScalarModel>()
+			.expect("serde-renamed physical columns should remain deserializable");
+
+		assert_eq!(
+			model,
+			SerdeRenamedScalarModel {
 				id: Some(1),
 				email: "alice@example.com".to_string(),
 			}

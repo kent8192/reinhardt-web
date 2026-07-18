@@ -584,9 +584,8 @@ impl TransactionExecutor for MySqlRawTransactionExecutor {
 
 	async fn rollback(mut self: Box<Self>) -> Result<()> {
 		let mut conn = self.conn.take().ok_or_else(transaction_consumed_error)?;
-		let result = sqlx::query("ROLLBACK")
-			.execute(&mut **conn.connection_mut())
-			.await;
+		let result =
+			Executor::execute(&mut **conn.connection_mut(), sqlx::raw_sql("ROLLBACK")).await;
 		match result {
 			Ok(_) => {
 				let connection = conn.disarm();

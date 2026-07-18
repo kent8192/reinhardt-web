@@ -6877,6 +6877,7 @@ mod tests {
 			struct ScalarUser {
 				#[field(primary_key = true)]
 				id: i64,
+				#[field(max_length = 120)]
 				name: String,
 			}
 		};
@@ -6895,6 +6896,7 @@ mod tests {
 			struct ManualUser {
 				#[field(primary_key = true, auto_increment = false)]
 				id: i64,
+				#[field(max_length = 120)]
 				name: String,
 			}
 		};
