@@ -469,7 +469,9 @@ impl ReactiveIfNode {
 impl Drop for ReactiveIfNode {
 	fn drop(&mut self) {
 		let _marker_removal = MarkerRemovalGuard::new(self.start_marker.as_ref(), &self.marker);
-		let _ = self.effect.take();
+		if let Some(effect) = self.effect.take() {
+			effect.dispose();
+		}
 		clear_reactive_node_store(&self.reactive_nodes);
 	}
 }
@@ -843,7 +845,9 @@ fn single_control_attrs_match(
 impl Drop for ReactiveNode {
 	fn drop(&mut self) {
 		let _marker_removal = MarkerRemovalGuard::new(self.start_marker.as_ref(), &self.marker);
-		let _ = self.effect.take();
+		if let Some(effect) = self.effect.take() {
+			effect.dispose();
+		}
 		clear_reactive_node_store(&self.reactive_nodes);
 	}
 }

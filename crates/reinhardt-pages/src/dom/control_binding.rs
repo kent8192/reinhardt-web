@@ -222,10 +222,16 @@ fn restore_rejected_number_snapshot(element: &Element, snapshot: &RejectedNumber
 }
 
 pub(crate) struct ControlBindingController {
-	_effect: Effect,
+	effect: Effect,
 	_listeners: Vec<EventHandle>,
 	_option_observer: Option<SelectOptionObserver>,
 	_number_binding_registration: Option<NumberBindingRegistration>,
+}
+
+impl Drop for ControlBindingController {
+	fn drop(&mut self) {
+		self.effect.dispose();
+	}
 }
 
 struct MountedNumberBinding {
@@ -416,7 +422,7 @@ impl ControlBindingController {
 		let effect = install_effect(element, binding, true, state);
 		Ok((
 			Self {
-				_effect: effect,
+				effect,
 				_listeners: listeners,
 				_option_observer: option_observer,
 				_number_binding_registration: number_binding_registration,
@@ -442,7 +448,7 @@ impl ControlBindingController {
 		let option_observer = install_select_option_observer(&element, &binding);
 		let effect = install_effect(element, binding, skip_first_write, state);
 		Ok(Self {
-			_effect: effect,
+			effect,
 			_listeners: listeners,
 			_option_observer: option_observer,
 			_number_binding_registration: number_binding_registration,
