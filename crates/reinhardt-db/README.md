@@ -21,6 +21,7 @@ This crate provides the following modules:
   - Timestamped and SoftDeletable traits
   - Relationship management
   - Validators and choices
+  - Django-compatible model fixture dump/load support
 
 - **Migrations**: Schema migration system
   - Automatic migration generation from model changes
@@ -190,6 +191,12 @@ Available features:
 
 ### Define Models
 
+`app_label` is required and identifies the application used by migrations and
+the model registry. `table_name` may be omitted to derive a singular snake_case
+name from the app label and struct (`HTTPRoute` in `network` becomes
+`network_http_route`). The examples below keep
+explicit plural table names because they represent an existing schema.
+
 ```rust
 use reinhardt_db::prelude::*;
 use serde::{Serialize, Deserialize};
@@ -295,6 +302,21 @@ pub full_name: String,
 - `Model` trait implementation
 - Type-safe field accessors (`User::field_username()`, `User::field_email()`, etc.)
 - Global model registry registration
+- Model fixture handler registration for `dumpdata` and `loaddata`
+- Django-compatible fixture upserts with explicit null, foreign key, many-to-many,
+  binary base64, and PostgreSQL sequence handling
+- Custom many-to-many through table and column names round-trip as fixture arrays;
+  registered through models with additional fields remain explicit-through records
+- Nullable JSON fixture values preserve SQL `NULL` versus JSON `null` using the
+  stable `_reinhardt_json_null_fields` sidecar emitted by `dumpdata`
+- Fixture field names derived from model metadata, independent of API-facing serde renames
+  and omission rules
+- Single-column fixture primary keys may be supplied through either the top-level
+  `pk` member or the corresponding field entry; matching values are required when both are set
+- Writable fixture validation that omits database-generated columns while preserving
+  required-field and Rust-type checks
+- Nullable foreign-key fixture fields may be omitted; supplied values remain limited to
+  scalar identifiers or `null`
 - Support for composite primary keys
 
 ### Query with QuerySet

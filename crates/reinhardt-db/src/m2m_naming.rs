@@ -5,7 +5,7 @@
 //! `ManyToMany` relationship does not provide an explicit `through`,
 //! `source_field`, or `target_field`.
 //!
-//! Three call sites depend on these conventions and must stay byte-for-byte
+//! Four call sites depend on these conventions and must stay byte-for-byte
 //! aligned, otherwise migrations diverge from runtime queries:
 //!
 //! 1. `crate::orm::many_to_many_accessor::ManyToManyAccessor` — runtime queries.
@@ -14,6 +14,9 @@
 //! 3. `crate::migrations::autodetector::MigrationAutodetector::detect_created_many_to_many`
 //!    — looks the intermediate table up in `from_state` to decide whether to
 //!    emit a `CreateModel` for it.
+//! 4. `crate::migrations::autodetector::MigrationAutodetector::find_implicit_many_to_many_table_rename`
+//!    — derives the old and new through-table names and FK columns when a
+//!    source model adopts a different table name.
 //!
 //! The module deliberately lives at the crate root rather than under
 //! `migrations::` because the `orm` and `migrations` features are independent

@@ -11,6 +11,8 @@
 //! - **Command Registry**: Automatic command discovery
 //! - **Interactive Mode**: Support for interactive prompts
 //! - **Colored Output**: Rich terminal output
+//! - **Data Fixtures**: Django-compatible `dumpdata`, transaction-safe `loaddata`,
+//!   binary fixture values, many-to-many arrays, and seed hooks
 //! - **AST-Based Code Generation**: Robust code generation using Abstract Syntax Trees
 //! - **Auto-Reload**: Built-in hot-reload for the development server (server + wasm)
 //! - **Tera Template Engine**: Powerful template rendering for project/app generation
@@ -128,11 +130,16 @@ pub mod builtin;
 pub mod cli;
 /// Static file collection command.
 pub mod collectstatic;
+/// Generated component stylesheet ownership for development servers.
+pub mod component_styles;
 /// Command execution context (settings, output, verbosity).
 pub mod context;
 /// Superuser creation command.
 #[cfg(feature = "auth")]
 pub(crate) mod createsuperuser;
+/// Data fixture and development seeding commands.
+#[cfg(feature = "reinhardt-db")]
+pub mod data_commands;
 /// Debounced file-system watcher for hot-reload (replaces inline watcher).
 #[cfg(feature = "autoreload")]
 #[doc(hidden)]
@@ -175,6 +182,10 @@ pub mod server_rebuild_pipeline;
 pub mod source_roots;
 /// Project and app scaffolding commands (startproject, startapp).
 pub mod start_commands;
+/// Shared static asset settings resolution.
+pub mod static_asset_settings;
+/// Component-style package selection and deterministic source extraction.
+pub mod style_extractor;
 /// Template-based code generation utilities.
 pub mod template;
 /// Template source abstraction over embedded and filesystem assets.
@@ -234,8 +245,18 @@ pub use cli::{
 	execute_from_command_line_with_registry, execute_from_command_line_with_registry_and_settings,
 	execute_from_command_line_with_settings, run_command, run_command_with_registry,
 };
-pub use collectstatic::{CollectStaticCommand, CollectStaticOptions, CollectStaticStats};
+pub use collectstatic::{
+	CollectStaticCommand, CollectStaticOptions, CollectStaticStats, VirtualStaticAsset,
+};
+pub use component_styles::{
+	ComponentStyleStageResult, ComponentStyleState, GeneratedStyleAssets, join_static_url,
+};
 pub use context::CommandContext;
+#[cfg(feature = "reinhardt-db")]
+pub use data_commands::{
+	SeedContext, SeedHook, SeedHookRegistration, collect_seed_hooks, execute_dumpdata,
+	execute_loaddata, execute_seed,
+};
 pub use i18n_commands::{CompileMessagesCommand, MakeMessagesCommand};
 #[cfg(feature = "introspect")]
 pub use introspect::IntrospectCommand;
@@ -246,11 +267,16 @@ pub use registry::CommandRegistry;
 #[cfg(feature = "server")]
 pub use runserver_hooks::{RunserverContext, RunserverHook, RunserverHookRegistration};
 pub use start_commands::{StartAppCommand, StartProjectCommand};
+pub use static_asset_settings::StaticAssetSettings;
+pub use style_extractor::{
+	COMPONENT_STYLES_PATH, ExtractedStyleDefinition, StyleBundle, StyleExtractor,
+	StyleFeatureSelection, StyleFingerprints, StylePackageContext,
+};
 pub use template::{TemplateCommand, TemplateContext, generate_secret_key, to_camel_case};
 pub use wasm_builder::{
 	WasmBuildConfig, WasmBuildError, WasmBuildOutput, WasmBuilder, check_wasm_tools_installed,
 	detect_cdylib_in_cargo_toml, detect_cdylib_in_cargo_toml_content, is_wasm_stale,
-	latest_source_mtime,
+	is_wasm_stale_for_roots, latest_source_mtime,
 };
 pub use welcome_page::WelcomePage;
 

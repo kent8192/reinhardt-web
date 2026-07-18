@@ -148,7 +148,9 @@ does not rewrite DSL bodies it cannot classify confidently.
 
 ### Format Reinhardt Macro DSLs
 
-Format `page!`, `form!`, and `head!` macro DSLs in your source files:
+Format `page!`, `form!`, `head!`, and `style!` macro DSLs in your source files. The
+admin command delegates all DSL formatting, including component styles, to the
+`reinhardt-formatter` binary:
 
 ```bash
 # Format all Rust files in the current directory
