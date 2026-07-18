@@ -374,6 +374,14 @@ pub fn resolve_static(path: &str) -> String {
 	format!("{}/{}", prefix, path)
 }
 
+/// Resolve the generated component stylesheet through the active static backend.
+///
+/// The document link remains explicit; this helper only centralizes the stable
+/// logical asset path used in development and production manifests.
+pub fn component_stylesheet_url() -> String {
+	resolve_static("__reinhardt__/components.css")
+}
+
 /// Checks if the static resolver has been initialized.
 ///
 /// This can be useful for debugging or for conditional initialization.

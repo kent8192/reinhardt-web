@@ -1,0 +1,20 @@
+error[E0308]: mismatched types
+  --> tests/ui/page/fail/controlled_bind_wrong_signal.rs:8:10
+   |
+ 5 |       let _ = page!({
+   |  _____________-
+ 6 | |         input {
+ 7 | |             a11y: off,
+ 8 | |             bind: wrong,
+   | |                   ^^^^^ expected `Signal<String>`, found `Signal<bool>`
+ 9 | |         }
+10 | |     });
+   | |______- arguments to this function are incorrect
+   |
+   = note: expected struct `reinhardt_pages::Signal<std::string::String>`
+              found struct `reinhardt_pages::Signal<bool>`
+note: associated function defined here
+  --> $WORKSPACE/crates/reinhardt-core/src/types/page/control_binding.rs
+   |
+   |     pub fn text(signal: Signal<String>) -> Self {
+   |            ^^^^

@@ -13,7 +13,7 @@
 
 use syn::Result;
 
-use reinhardt_manouche::core::TypedPageElement;
+use reinhardt_manouche::core::{TypedPageAttr, TypedPageElement, TypedPageElse, TypedPageNode};
 
 /// HTML element specification.
 #[derive(Debug, Clone)]
@@ -1584,6 +1584,17 @@ pub(crate) fn get_element_spec(tag: &str) -> Option<&'static ElementSpec> {
 ///
 /// Returns a compile error if any validation rule is violated.
 pub(crate) fn validate_against_spec(element: &TypedPageElement) -> Result<()> {
+	validate_against_spec_inner(element, false)
+}
+
+pub(crate) fn validate_bound_select_element(element: &TypedPageElement) -> Result<()> {
+	validate_against_spec_inner(element, true)
+}
+
+fn validate_against_spec_inner(
+	element: &TypedPageElement,
+	allow_option_phrasing: bool,
+) -> Result<()> {
 	let tag = element.tag.to_string();
 
 	// Get specification for this element (if it exists)
@@ -1601,7 +1612,7 @@ pub(crate) fn validate_against_spec(element: &TypedPageElement) -> Result<()> {
 	}
 
 	// Check content model (void elements, text-only, etc.)
-	validate_content_model(element, spec)?;
+	validate_content_model(element, spec, allow_option_phrasing)?;
 
 	Ok(())
 }
@@ -1668,7 +1679,11 @@ fn validate_allowed_attributes(element: &TypedPageElement, allowed: &[&str]) -> 
 }
 
 /// Validates content model constraints.
-fn validate_content_model(element: &TypedPageElement, spec: &ElementSpec) -> Result<()> {
+fn validate_content_model(
+	element: &TypedPageElement,
+	spec: &ElementSpec,
+	allow_option_phrasing: bool,
+) -> Result<()> {
 	match &spec.content_model {
 		Some(ContentModel::Empty) => {
 			if !element.children.is_empty() {
@@ -1679,6 +1694,22 @@ fn validate_content_model(element: &TypedPageElement, spec: &ElementSpec) -> Res
 			}
 		}
 		Some(ContentModel::TextOnly) => {
+			if spec.tag == "option" && allow_option_phrasing {
+				if let Some(tabindex) = element.children.iter().find_map(option_descendant_tabindex)
+				{
+					return Err(syn::Error::new(
+						tabindex.span,
+						"Element <option> in a bound select cannot contain a descendant with a `tabindex` attribute",
+					));
+				}
+				if element.children.iter().all(option_child_is_allowed) {
+					return Ok(());
+				}
+				return Err(syn::Error::new(
+					element.span,
+					"Element <option> in a bound select only supports non-interactive phrasing content",
+				));
+			}
 			// Text-only elements can have text and expressions, but not other elements
 			for child in &element.children {
 				if matches!(child, reinhardt_manouche::core::TypedPageNode::Element(_)) {
@@ -1716,6 +1747,99 @@ fn validate_content_model(element: &TypedPageElement, spec: &ElementSpec) -> Res
 	}
 
 	Ok(())
+}
+
+fn option_descendant_tabindex(node: &TypedPageNode) -> Option<&TypedPageAttr> {
+	match node {
+		TypedPageNode::Element(element) => element
+			.attrs
+			.iter()
+			.find(|attr| attr.html_name() == "tabindex")
+			.or_else(|| element.children.iter().find_map(option_descendant_tabindex)),
+		TypedPageNode::If(if_node) => if_node
+			.then_branch
+			.iter()
+			.find_map(option_descendant_tabindex)
+			.or_else(|| {
+				if_node
+					.else_branch
+					.as_ref()
+					.and_then(option_else_descendant_tabindex)
+			}),
+		TypedPageNode::For(for_node) => for_node.body.iter().find_map(option_descendant_tabindex),
+		TypedPageNode::Component(component) => component
+			.children
+			.as_ref()
+			.and_then(|children| children.iter().find_map(option_descendant_tabindex))
+			.or_else(|| {
+				component
+					.named_slots
+					.iter()
+					.find_map(|slot| slot.children.iter().find_map(option_descendant_tabindex))
+			}),
+		TypedPageNode::Watch(watch) => option_descendant_tabindex(&watch.expr),
+		TypedPageNode::Text(_) | TypedPageNode::Expression(_) => None,
+	}
+}
+
+fn option_else_descendant_tabindex(else_branch: &TypedPageElse) -> Option<&TypedPageAttr> {
+	match else_branch {
+		TypedPageElse::Block(nodes) => nodes.iter().find_map(option_descendant_tabindex),
+		TypedPageElse::If(if_node) => if_node
+			.then_branch
+			.iter()
+			.find_map(option_descendant_tabindex)
+			.or_else(|| {
+				if_node
+					.else_branch
+					.as_ref()
+					.and_then(option_else_descendant_tabindex)
+			}),
+	}
+}
+
+fn option_child_is_allowed(child: &TypedPageNode) -> bool {
+	match child {
+		TypedPageNode::Element(element) => {
+			matches!(
+				element.tag.to_string().as_str(),
+				"abbr"
+					| "b" | "bdi" | "bdo"
+					| "br" | "cite" | "code"
+					| "data" | "dfn"
+					| "em" | "i" | "kbd"
+					| "mark" | "q" | "rp"
+					| "rt" | "ruby" | "s"
+					| "samp" | "small"
+					| "span" | "strong"
+					| "sub" | "sup" | "time"
+					| "u" | "var" | "wbr"
+			) && element.children.iter().all(option_child_is_allowed)
+		}
+		TypedPageNode::If(if_node) => {
+			if_node.then_branch.iter().all(option_child_is_allowed)
+				&& if_node
+					.else_branch
+					.as_ref()
+					.is_none_or(option_else_children_are_allowed)
+		}
+		TypedPageNode::For(for_node) => for_node.body.iter().all(option_child_is_allowed),
+		TypedPageNode::Watch(watch) => option_child_is_allowed(&watch.expr),
+		_ => true,
+	}
+}
+
+fn option_else_children_are_allowed(else_branch: &TypedPageElse) -> bool {
+	match else_branch {
+		TypedPageElse::Block(nodes) => nodes.iter().all(option_child_is_allowed),
+		TypedPageElse::If(if_node) => {
+			if_node.then_branch.iter().all(option_child_is_allowed)
+				&& if_node
+					.else_branch
+					.as_ref()
+					.is_none_or(option_else_children_are_allowed)
+		}
+	}
 }
 
 /// Checks if an attribute is a global HTML attribute.

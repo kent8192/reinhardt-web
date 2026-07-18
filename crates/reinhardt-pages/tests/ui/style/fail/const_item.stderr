@@ -1,0 +1,5 @@
+error: expected `static`
+ --> tests/ui/style/fail/const_item.rs:4:1
+  |
+4 | const STYLES: CardStyles = style! {
+  | ^^^^^

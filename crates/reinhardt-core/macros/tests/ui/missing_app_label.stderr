@@ -1,5 +1,0 @@
-error: String fields require max_length attribute
-  --> tests/ui/model/fail/missing_app_label.rs:13:12
-   |
-13 |     username: String,
-   |               ^^^^^^

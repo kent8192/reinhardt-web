@@ -258,6 +258,24 @@ impl<T: 'static> Signal<T> {
 		self.try_set(value).unwrap_or_else(|err| panic!("{err}"));
 	}
 
+	pub(crate) fn set_without_notify(&self, value: T) {
+		with_node_mut::<SignalSlot<T>, _>(self.key, |slot| {
+			#[cfg(not(target_arch = "wasm32"))]
+			{
+				*slot.value.write().expect("Signal lock poisoned") = value;
+			}
+			#[cfg(target_arch = "wasm32")]
+			{
+				*slot.value.borrow_mut() = value;
+			}
+		})
+		.unwrap_or_else(|err| panic!("{err}"));
+	}
+
+	pub(crate) fn notify_subscribers(&self) {
+		with_runtime(|rt| rt.notify_signal_change(self.id()));
+	}
+
 	/// Set the signal if its owning scope is still alive.
 	///
 	/// This non-panicking form is intended for asynchronous completion paths

@@ -1,0 +1,5 @@
+error: style_def requires a direct bare style! initializer
+ --> tests/ui/style/fail/indirect_initializer.rs:4:29
+  |
+4 | static STYLES: CardStyles = make_styles();
+  |                             ^^^^^^^^^^^^^

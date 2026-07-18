@@ -13,9 +13,18 @@
 //! 6. Edge Cases - SVG, custom attributes, fragments
 
 use reinhardt_pages::component::{
-	Component, Head, IntoPage, LinkTag, MetaTag, Page, PageElement, ScriptTag,
+	Component, ControlBinding, Head, IntoPage, LinkTag, MetaTag, Page, PageElement, ScriptTag,
 };
+use reinhardt_pages::page;
+use reinhardt_pages::reactive::{ReactiveScope, Signal};
 use reinhardt_pages::ssr::{HydrationStrategy, SsrOptions, SsrRenderer};
+use rstest::rstest;
+use std::cell::Cell;
+use std::rc::Rc;
+
+fn signal_in_scope<T: 'static>(scope: &ReactiveScope, value: T) -> Signal<T> {
+	scope.enter(|| Signal::new(value))
+}
 
 // ============================================================================
 // Test Components
@@ -607,6 +616,318 @@ async fn test_ssr_options_struct_literal_remains_exhaustive() {
 		.await;
 
 	assert!(html.contains("Count: 3"));
+}
+
+fn controlled_bindings_page(scope: &ReactiveScope) -> Page {
+	let text = signal_in_scope(scope, "A&B".to_owned());
+	let checked = signal_in_scope(scope, true);
+	let selected = signal_in_scope(scope, vec!["rust".to_owned(), "wasm".to_owned()]);
+
+	page!({
+		input {
+			a11y: off,
+			bind: text
+		}
+		textarea {
+			a11y: off,
+			bind: text
+		}
+		input {
+			a11y: off,
+			type: "checkbox",
+			bind: checked
+		}
+		select {
+			a11y: off,
+			multiple: true,
+			bind: selected,
+			optgroup {
+				option {
+					value: "rust",
+					"Rust"
+				}
+				option {
+					value: "wasm",
+					"WebAssembly"
+				}
+			}
+		}
+	})
+}
+
+#[rstest]
+#[tokio::test]
+async fn controlled_bindings_render_html_initial_state() {
+	// Arrange
+	let reactive_scope = ReactiveScope::new();
+	let component = controlled_bindings_page(&reactive_scope);
+	let mut renderer = SsrRenderer::new();
+
+	// Act
+	let html = renderer.render_page_into_page_to_string(component).await;
+
+	// Assert
+	let body = html
+		.split_once("<body>")
+		.unwrap()
+		.1
+		.split_once("</body>")
+		.unwrap()
+		.0
+		.strip_prefix("\n<div id=\"app\">")
+		.unwrap()
+		.strip_suffix("</div>\n")
+		.unwrap();
+	assert_eq!(
+		body,
+		concat!(
+			"<input value=\"A&amp;B\" />",
+			"<textarea>A&amp;B</textarea>",
+			"<input type=\"checkbox\" checked=\"checked\" />",
+			"<select multiple=\"multiple\"><optgroup>",
+			"<option value=\"rust\" selected=\"selected\">Rust</option>",
+			"<option value=\"wasm\" selected=\"selected\">WebAssembly</option>",
+			"</optgroup></select>"
+		)
+	);
+}
+
+#[rstest]
+#[tokio::test]
+async fn bound_radio_value_expression_is_evaluated_once_for_attribute_and_binding() {
+	// Arrange
+	let reactive_scope = ReactiveScope::new();
+	let selected = signal_in_scope(&reactive_scope, "first".to_owned());
+	let evaluations = Rc::new(Cell::new(0));
+	let value_evaluations = Rc::clone(&evaluations);
+	let component = page!({
+		input {
+			a11y: off,
+			type: "radio",
+			value: {
+				let count = value_evaluations.get() + 1;
+				value_evaluations.set(count);
+				if count == 1 { "first" } else { "second" }
+			},
+			bind: selected
+		}
+	});
+	let mut renderer = SsrRenderer::new();
+
+	// Act
+	let html = renderer.render_page_into_page_to_string(component).await;
+
+	// Assert
+	assert_eq!(evaluations.get(), 1);
+	let body = html
+		.split_once("<body>")
+		.unwrap()
+		.1
+		.split_once("</body>")
+		.unwrap()
+		.0
+		.strip_prefix("\n<div id=\"app\">")
+		.unwrap()
+		.strip_suffix("</div>\n")
+		.unwrap();
+	assert_eq!(
+		body,
+		"<input type=\"radio\" value=\"first\" checked=\"checked\" />"
+	);
+}
+
+#[rstest]
+#[tokio::test]
+async fn manual_bound_radio_projects_its_binding_value() {
+	// Arrange
+	let reactive_scope = ReactiveScope::new();
+	let selected = signal_in_scope(&reactive_scope, "draft".to_owned());
+	let component = PageElement::new("input")
+		.attr("type", "radio")
+		.attr("value", "stale")
+		.control_binding(ControlBinding::radio(selected, "draft".to_owned()))
+		.into_page();
+	let mut renderer = SsrRenderer::new();
+
+	// Act
+	let html = renderer.render_page_into_page_to_string(component).await;
+
+	// Assert
+	assert!(html.contains("type=\"radio\" value=\"draft\" checked=\"checked\""));
+}
+
+#[rstest]
+#[tokio::test]
+async fn controlled_single_select_marks_only_the_first_duplicate_in_tree_order() {
+	// Arrange
+	let reactive_scope = ReactiveScope::new();
+	let selected = signal_in_scope(&reactive_scope, "duplicate".to_owned());
+	let component = PageElement::new("select")
+		.control_binding(ControlBinding::select_one(selected))
+		.child(
+			PageElement::new("option")
+				.attr("value", "duplicate")
+				.child("Before"),
+		)
+		.child(
+			PageElement::new("optgroup")
+				.child(
+					PageElement::new("option")
+						.attr("value", "duplicate")
+						.child("Inside"),
+				)
+				.child(
+					PageElement::new("option")
+						.attr("value", "duplicate")
+						.child("Inside after"),
+				),
+		)
+		.child(
+			PageElement::new("option")
+				.attr("value", "duplicate")
+				.child("After"),
+		)
+		.into_page();
+	let mut buffered_renderer = SsrRenderer::new();
+	let mut streaming_renderer = SsrRenderer::new();
+
+	// Act
+	let buffered = buffered_renderer
+		.render_page_into_page_to_string(component.clone())
+		.await;
+	let streaming = streaming_renderer
+		.render_page_into_page(component)
+		.await
+		.collect_string()
+		.await;
+
+	// Assert
+	assert_eq!(streaming, buffered);
+	assert_eq!(buffered.matches("selected=\"selected\"").count(), 1);
+	assert!(buffered.contains("<option value=\"duplicate\" selected=\"selected\">Before</option>"));
+}
+
+#[rstest]
+#[tokio::test]
+async fn controlled_multiple_select_marks_every_duplicate() {
+	// Arrange
+	let reactive_scope = ReactiveScope::new();
+	let selected = signal_in_scope(&reactive_scope, vec!["duplicate".to_owned()]);
+	let component = PageElement::new("select")
+		.bool_attr("multiple", true)
+		.control_binding(ControlBinding::select_many(selected))
+		.child(
+			PageElement::new("option")
+				.attr("value", "duplicate")
+				.child("First"),
+		)
+		.child(
+			PageElement::new("optgroup").child(
+				PageElement::new("option")
+					.attr("value", "duplicate")
+					.child("Second"),
+			),
+		)
+		.into_page();
+	let mut renderer = SsrRenderer::new();
+
+	// Act
+	let html = renderer.render_page_into_page_to_string(component).await;
+
+	// Assert
+	assert_eq!(html.matches("selected=\"selected\"").count(), 2);
+}
+
+#[rstest]
+#[tokio::test]
+async fn controlled_select_uses_flattened_option_text_when_value_is_omitted() {
+	// Arrange
+	let reactive_scope = ReactiveScope::new();
+	let selected = signal_in_scope(
+		&reactive_scope,
+		vec![
+			"Rust & WebAssembly".to_owned(),
+			"Nested\u{a0}<Choice>".to_owned(),
+		],
+	);
+	let component = PageElement::new("select")
+		.bool_attr("multiple", true)
+		.control_binding(ControlBinding::select_many(selected))
+		.child(
+			PageElement::new("optgroup")
+				.child(
+					PageElement::new("option")
+						.child(" \tRust\n")
+						.child(PageElement::new("script").child("ignored"))
+						.child("  &\r\nWebAssembly\x0c "),
+				)
+				.child(PageElement::new("option").child(Page::Fragment(vec![
+					Page::text(" Nested\u{a0}"),
+					PageElement::new("span").child("<Choice>").into_page(),
+					PageElement::new("script").child("ignored").into_page(),
+					Page::text(" "),
+				]))),
+		)
+		.into_page();
+	let mut buffered_renderer =
+		SsrRenderer::with_options(SsrOptions::new().suspense_streaming(false));
+	let mut streaming_renderer = SsrRenderer::new();
+
+	// Act
+	let html = buffered_renderer
+		.render_page_into_page_to_string(component.clone())
+		.await;
+	let streaming = streaming_renderer
+		.render_page_into_page(component)
+		.await
+		.collect_string()
+		.await;
+
+	// Assert
+	assert_eq!(streaming, html);
+	let body = html
+		.split_once("<body>")
+		.unwrap()
+		.1
+		.split_once("</body>")
+		.unwrap()
+		.0
+		.strip_prefix("\n<div id=\"app\">")
+		.unwrap()
+		.strip_suffix("</div>\n")
+		.unwrap();
+	assert_eq!(
+		body,
+		concat!(
+			"<select multiple=\"multiple\"><optgroup>",
+			"<option selected=\"selected\"> \tRust\n<script>ignored</script>  &amp;\r\nWebAssembly\x0c </option>",
+			"<option selected=\"selected\"> Nested\u{a0}<span>&lt;Choice&gt;</span><script>ignored</script> </option>",
+			"</optgroup></select>"
+		)
+	);
+}
+
+#[rstest]
+#[tokio::test]
+async fn controlled_bindings_have_buffered_streaming_byte_parity() {
+	// Arrange
+	let reactive_scope = ReactiveScope::new();
+	let component = controlled_bindings_page(&reactive_scope);
+	let mut buffered_renderer = SsrRenderer::new();
+	let mut streaming_renderer = SsrRenderer::new();
+
+	// Act
+	let buffered = buffered_renderer
+		.render_page_into_page_to_string(component.clone())
+		.await;
+	let streaming = streaming_renderer
+		.render_page_into_page(component)
+		.await
+		.collect_string()
+		.await;
+
+	// Assert
+	assert_eq!(streaming, buffered);
 }
 
 // ============================================================================

@@ -78,7 +78,7 @@ use super::cache::{SessionBackend, SessionError};
 ///     .last_accessed(Some(now_ms))
 ///     .finish();
 /// ```
-#[model(table_name = "sessions")]
+#[model(app_label = "default", table_name = "sessions")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Session {
 	/// Unique session key (primary key)

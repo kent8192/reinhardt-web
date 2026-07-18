@@ -21,12 +21,18 @@
 //! let html = view.render_to_string();
 //! ```
 
+/// Controlled form-element binding descriptors.
+pub mod control_binding;
 pub mod event;
 pub mod head;
 #[cfg(native)]
 pub mod native_event;
 mod util;
 
+pub use control_binding::{
+	ControlBinding, ControlBindingError, ControlBindingSnapshot, ControlKind, ControlValue,
+	ControlWriteOutcome, NumberParseError, NumberParseErrorKind, NumberValue,
+};
 pub use event::{EventInterface, EventName, EventType};
 pub use head::{Head, LinkTag, MetaTag, ScriptTag, StyleTag};
 #[cfg(native)]
@@ -59,6 +65,8 @@ pub enum MountError {
 	SetAttributeFailed,
 	/// Failed to append a child element.
 	AppendChildFailed,
+	/// Failed to install a controlled form-element binding.
+	ControlBinding(ControlBindingError),
 }
 
 impl std::fmt::Display for MountError {
@@ -69,11 +77,25 @@ impl std::fmt::Display for MountError {
 			MountError::CreateElementFailed => write!(f, "Failed to create element"),
 			MountError::SetAttributeFailed => write!(f, "Failed to set attribute"),
 			MountError::AppendChildFailed => write!(f, "Failed to append child"),
+			MountError::ControlBinding(error) => write!(f, "Failed to bind control: {error}"),
 		}
 	}
 }
 
-impl std::error::Error for MountError {}
+impl std::error::Error for MountError {
+	fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+		match self {
+			Self::ControlBinding(error) => Some(error),
+			_ => None,
+		}
+	}
+}
+
+impl From<ControlBindingError> for MountError {
+	fn from(error: ControlBindingError) -> Self {
+		Self::ControlBinding(error)
+	}
+}
 
 /// Reactive conditional rendering.
 ///
@@ -466,6 +488,8 @@ pub struct PageElement {
 	is_void: bool,
 	/// Event handlers attached to this element.
 	event_handlers: Vec<(EventName, PageEventHandler)>,
+	/// Optional controlled form-element binding.
+	control_binding: Option<ControlBinding>,
 }
 
 impl std::fmt::Debug for PageElement {
@@ -476,6 +500,7 @@ impl std::fmt::Debug for PageElement {
 			.field("children", &self.children)
 			.field("is_void", &self.is_void)
 			.field("event_handlers_count", &self.event_handlers.len())
+			.field("control_binding", &self.control_binding)
 			.finish()
 	}
 }
@@ -504,22 +529,19 @@ impl PageElement {
 	/// Creates a new element view.
 	pub fn new(tag: impl Into<Cow<'static, str>>) -> Self {
 		let tag = tag.into();
-		let is_void = matches!(
-			tag.as_ref(),
-			"area"
-				| "base" | "br"
-				| "col" | "embed"
-				| "hr" | "img"
-				| "input" | "link"
-				| "meta" | "source"
-				| "track" | "wbr"
-		);
+		let is_void = [
+			"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source",
+			"track", "wbr",
+		]
+		.iter()
+		.any(|void_tag| tag.eq_ignore_ascii_case(void_tag));
 		Self {
 			tag,
 			attrs: Vec::new(),
 			children: Vec::new(),
 			is_void,
 			event_handlers: Vec::new(),
+			control_binding: None,
 		}
 	}
 
@@ -604,6 +626,12 @@ impl PageElement {
 	pub fn on(mut self, event_type: impl Into<EventName>, handler: PageEventHandler) -> Self {
 		self.event_handlers
 			.push((event_type.into(), scoped_event_handler(handler)));
+		self
+	}
+
+	/// Attaches a controlled form-element binding.
+	pub fn control_binding(mut self, binding: ControlBinding) -> Self {
+		self.control_binding = Some(binding);
 		self
 	}
 
@@ -692,6 +720,11 @@ impl PageElement {
 		&self.event_handlers
 	}
 
+	/// Returns the controlled form-element binding, if present.
+	pub fn bound_control(&self) -> Option<&ControlBinding> {
+		self.control_binding.as_ref()
+	}
+
 	/// Consumes the element view and returns the children.
 	pub fn into_children(self) -> Vec<Page> {
 		self.children
@@ -702,7 +735,7 @@ impl PageElement {
 		self.event_handlers
 	}
 
-	/// Consumes the element view and returns all parts.
+	/// Consumes the element view and returns its original public parts.
 	///
 	/// Returns a tuple of (tag, attrs, children, is_void, event_handlers).
 	#[allow(clippy::type_complexity)] // Tuple decomposition is intentional for destructuring
@@ -721,6 +754,30 @@ impl PageElement {
 			self.children,
 			self.is_void,
 			self.event_handlers,
+		)
+	}
+
+	/// Consumes the element view and returns all parts, including its control binding.
+	///
+	/// Returns a tuple of (tag, attrs, children, is_void, event_handlers, control_binding).
+	#[allow(clippy::type_complexity)] // Tuple decomposition is intentional for destructuring
+	pub fn into_parts_with_control_binding(
+		self,
+	) -> (
+		Cow<'static, str>,
+		Vec<(Cow<'static, str>, Cow<'static, str>)>,
+		Vec<Page>,
+		bool,
+		Vec<(EventName, PageEventHandler)>,
+		Option<ControlBinding>,
+	) {
+		(
+			self.tag,
+			self.attrs,
+			self.children,
+			self.is_void,
+			self.event_handlers,
+			self.control_binding,
 		)
 	}
 }
@@ -960,20 +1017,44 @@ impl Page {
 	/// This is the core SSR method that converts the view tree to HTML.
 	pub fn render_to_string(&self) -> String {
 		let mut output = String::new();
-		self.render_to_string_inner(&mut output);
+		self.render_to_string_inner(&mut output, None);
 		output
 	}
 
-	fn render_to_string_inner(&self, output: &mut String) {
+	fn render_to_string_inner(
+		&self,
+		output: &mut String,
+		selection: Option<&StringRenderSelection>,
+	) {
 		match self {
 			Page::Element(el) => {
 				output.push('<');
 				output.push_str(el.tag_name());
+				let binding = el.bound_control();
+				let binding_value = binding.map(ControlBinding::read);
+				let projected_input_value =
+					binding.and_then(|binding| match (binding.kind(), binding_value.as_ref()) {
+						(
+							ControlKind::Text | ControlKind::Number,
+							Some(ControlValue::Text(value)),
+						) => Some(value.as_str()),
+						(ControlKind::Radio, _) => binding.radio_value(),
+						_ => None,
+					});
+				let projects_value =
+					el.tag_name().eq_ignore_ascii_case("input") && projected_input_value.is_some();
+				let projects_checked = matches!(binding_value, Some(ControlValue::Checked(true)));
+				let projects_selected = el.tag_name().eq_ignore_ascii_case("option")
+					&& selection.is_some_and(|selection| selection.matches(el));
 
 				for (name, value) in el.attrs() {
 					// Skip boolean attributes with falsy values (empty, "false", "0")
 					let name_str: &str = name.as_ref();
-					if BOOLEAN_ATTRS.contains(&name_str) && !is_boolean_attr_truthy(value) {
+					if (name_str.eq_ignore_ascii_case("value") && projects_value)
+						|| (name_str.eq_ignore_ascii_case("checked") && binding.is_some())
+						|| (name_str.eq_ignore_ascii_case("selected") && selection.is_some())
+						|| (BOOLEAN_ATTRS.contains(&name_str) && !is_boolean_attr_truthy(value))
+					{
 						continue;
 					}
 
@@ -983,13 +1064,40 @@ impl Page {
 					output.push_str(&html_escape(value));
 					output.push('"');
 				}
+				if let Some(value) = projected_input_value
+					&& el.tag_name().eq_ignore_ascii_case("input")
+				{
+					output.push_str(" value=\"");
+					output.push_str(&html_escape(value));
+					output.push('"');
+				}
+				if projects_checked {
+					output.push_str(" checked=\"checked\"");
+				}
+				if projects_selected {
+					output.push_str(" selected=\"selected\"");
+				}
 
 				if el.is_void() {
 					output.push_str(" />");
 				} else {
 					output.push('>');
-					for child in el.child_views() {
-						child.render_to_string_inner(output);
+					if el.tag_name().eq_ignore_ascii_case("textarea")
+						&& let Some(ControlValue::Text(value)) = &binding_value
+					{
+						output.push_str(&html_escape(value));
+					} else {
+						let child_selection = if el.tag_name().eq_ignore_ascii_case("select") {
+							StringRenderSelection::from_binding(binding, binding_value.as_ref())
+						} else {
+							None
+						};
+						for child in el.child_views() {
+							child.render_to_string_inner(
+								output,
+								child_selection.as_ref().or(selection),
+							);
+						}
 					}
 					output.push_str("</");
 					output.push_str(el.tag_name());
@@ -1001,23 +1109,23 @@ impl Page {
 			}
 			Page::Fragment(children) => {
 				for child in children {
-					child.render_to_string_inner(output);
+					child.render_to_string_inner(output, selection);
 				}
 			}
 			Page::KeyedFragment(children) => {
 				for (_, child) in children {
-					child.render_to_string_inner(output);
+					child.render_to_string_inner(output, selection);
 				}
 			}
 			Page::Outlet(outlet) => {
 				if let Some(child) = outlet.child() {
-					child.render_to_string_inner(output);
+					child.render_to_string_inner(output, selection);
 				}
 			}
 			Page::Empty => {}
 			Page::WithHead { view, .. } => {
 				// The head is extracted separately during SSR; here we just render the content
-				view.render_to_string_inner(output);
+				view.render_to_string_inner(output, selection);
 			}
 			Page::ReactiveIf(reactive_if) => {
 				// For SSR, evaluate condition once and render the appropriate branch
@@ -1027,20 +1135,135 @@ impl Page {
 				} else {
 					(reactive_if.else_view)()
 				};
-				view.render_to_string_inner(output);
+				view.render_to_string_inner(output, selection);
 			}
 			Page::Reactive(reactive) => {
 				// For SSR, evaluate render once and render the result
 				let view = reactive.render();
-				view.render_to_string_inner(output);
+				view.render_to_string_inner(output, selection);
 			}
 			Page::Suspense(node) => {
 				let view = node.render_branch();
-				view.render_to_string_inner(output);
+				view.render_to_string_inner(output, selection);
 			}
 			Page::Deferred(node) => {
 				let view = node.content();
-				view.render_to_string_inner(output);
+				view.render_to_string_inner(output, selection);
+			}
+		}
+	}
+}
+
+#[derive(Clone)]
+enum StringRenderSelection {
+	One {
+		value: String,
+		matched: std::cell::Cell<bool>,
+	},
+	Many(Vec<String>),
+}
+
+impl StringRenderSelection {
+	fn from_binding(
+		binding: Option<&ControlBinding>,
+		value: Option<&ControlValue>,
+	) -> Option<Self> {
+		match (binding.map(ControlBinding::kind), value) {
+			(Some(ControlKind::SelectOne), Some(ControlValue::Text(value))) => Some(Self::One {
+				value: value.clone(),
+				matched: std::cell::Cell::new(false),
+			}),
+			(Some(ControlKind::SelectMany), Some(ControlValue::SelectedValues(values))) => {
+				Some(Self::Many(values.clone()))
+			}
+			_ => None,
+		}
+	}
+
+	fn matches(&self, option: &PageElement) -> bool {
+		let value = option
+			.attrs()
+			.iter()
+			.find(|(name, _)| name.eq_ignore_ascii_case("value"))
+			.map(|(_, value)| value.as_ref().to_owned())
+			.or_else(|| {
+				(!Self::has_dynamic_option_content(option))
+					.then(|| Self::normalize_option_text(option))
+			});
+		let Some(value) = value else {
+			return false;
+		};
+		match self {
+			Self::One {
+				value: selected,
+				matched,
+			} => selected == &value && !matched.replace(true),
+			Self::Many(selected) => selected.iter().any(|selected| selected == &value),
+		}
+	}
+
+	fn normalize_option_text(option: &PageElement) -> String {
+		Self::text_content_without_script(&Page::Element(option.clone()))
+			.split_ascii_whitespace()
+			.collect::<Vec<_>>()
+			.join(" ")
+	}
+
+	fn has_dynamic_option_content(option: &PageElement) -> bool {
+		option
+			.child_views()
+			.iter()
+			.any(Self::page_has_dynamic_content)
+	}
+
+	fn is_script_element(element: &PageElement) -> bool {
+		let tag = element.tag_name();
+		tag.eq_ignore_ascii_case("script") || tag.eq_ignore_ascii_case("svg:script")
+	}
+
+	fn page_has_dynamic_content(page: &Page) -> bool {
+		match page {
+			Page::Element(element) if Self::is_script_element(element) => false,
+			Page::Element(element) => element
+				.child_views()
+				.iter()
+				.any(Self::page_has_dynamic_content),
+			Page::Text(_) | Page::Empty => false,
+			Page::Fragment(children) => children.iter().any(Self::page_has_dynamic_content),
+			Page::KeyedFragment(children) => children
+				.iter()
+				.any(|(_, child)| Self::page_has_dynamic_content(child)),
+			Page::Outlet(outlet) => outlet.child().is_some_and(Self::page_has_dynamic_content),
+			Page::WithHead { view, .. } => Self::page_has_dynamic_content(view),
+			Page::ReactiveIf(_) | Page::Reactive(_) | Page::Suspense(_) | Page::Deferred(_) => true,
+		}
+	}
+
+	fn text_content_without_script(page: &Page) -> String {
+		match page {
+			Page::Element(element) if Self::is_script_element(element) => String::new(),
+			Page::Element(element) => element
+				.child_views()
+				.iter()
+				.map(Self::text_content_without_script)
+				.collect(),
+			Page::Text(text) => text.to_string(),
+			Page::Fragment(children) => children
+				.iter()
+				.map(Self::text_content_without_script)
+				.collect(),
+			Page::KeyedFragment(children) => children
+				.iter()
+				.map(|(_, child)| Self::text_content_without_script(child))
+				.collect(),
+			Page::Outlet(outlet) => outlet
+				.child()
+				.map(Self::text_content_without_script)
+				.unwrap_or_default(),
+			Page::Empty => String::new(),
+			Page::WithHead { view, .. } => Self::text_content_without_script(view),
+			Page::ReactiveIf(_) | Page::Reactive(_) | Page::Suspense(_) | Page::Deferred(_) => {
+				String::new()
 			}
 		}
 	}
@@ -1146,6 +1369,20 @@ impl<A: IntoPage, B: IntoPage, C: IntoPage, D: IntoPage> IntoPage for (A, B, C, 
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::reactive::{ReactiveScope, Signal};
+
+	#[test]
+	fn mount_error_preserves_control_binding_failure() {
+		let binding_error = ControlBindingError::UnsupportedElement {
+			control: ControlKind::Checkbox,
+			actual_tag: "select".to_owned(),
+		};
+
+		let mount_error = MountError::from(binding_error.clone());
+
+		assert_eq!(mount_error, MountError::ControlBinding(binding_error));
+		assert!(std::error::Error::source(&mount_error).is_some());
+	}
 
 	#[test]
 	fn event_type_reexports_the_complete_catalog() {
@@ -1341,6 +1578,7 @@ mod tests {
 		assert!(PageElement::new("br").is_void);
 		assert!(PageElement::new("img").is_void);
 		assert!(PageElement::new("input").is_void);
+		assert!(PageElement::new("INPUT").is_void);
 		assert!(!PageElement::new("div").is_void);
 		assert!(!PageElement::new("span").is_void);
 	}
@@ -1382,6 +1620,191 @@ mod tests {
 	fn test_render_simple_element() {
 		let view = PageElement::new("div").into_page();
 		assert_eq!(view.render_to_string(), "<div></div>");
+	}
+
+	#[test]
+	fn render_to_string_projects_bound_input_and_textarea_values() {
+		ReactiveScope::run(|| {
+			let input = PageElement::new("input")
+				.attr("type", "text")
+				.attr("value", "stale")
+				.control_binding(ControlBinding::text(Signal::new("current".to_owned())))
+				.into_page();
+			let textarea = PageElement::new("textarea")
+				.control_binding(ControlBinding::text(Signal::new("current".to_owned())))
+				.into_page();
+
+			assert_eq!(
+				input.render_to_string(),
+				"<input type=\"text\" value=\"current\" />"
+			);
+			assert_eq!(textarea.render_to_string(), "<textarea>current</textarea>");
+		});
+	}
+
+	#[test]
+	fn render_to_string_projects_bound_radio_values() {
+		ReactiveScope::run(|| {
+			let input = PageElement::new("input")
+				.attr("type", "radio")
+				.attr("value", "stale")
+				.control_binding(ControlBinding::radio(
+					Signal::new("draft".to_owned()),
+					"draft".to_owned(),
+				))
+				.into_page();
+
+			assert_eq!(
+				input.render_to_string(),
+				"<input type=\"radio\" value=\"draft\" checked=\"checked\" />"
+			);
+		});
+	}
+
+	#[test]
+	fn render_to_string_normalizes_controlled_attribute_names() {
+		ReactiveScope::run(|| {
+			let input = PageElement::new("INPUT")
+				.attr("VALUE", "stale")
+				.control_binding(ControlBinding::text(Signal::new("current".to_owned())))
+				.into_page();
+
+			assert_eq!(input.render_to_string(), "<INPUT value=\"current\" />");
+		});
+	}
+
+	#[test]
+	fn render_to_string_projects_bound_select_option_state() {
+		ReactiveScope::run(|| {
+			let single = PageElement::new("select")
+				.control_binding(ControlBinding::select_one(Signal::new("wasm".to_owned())))
+				.child(
+					PageElement::new("option")
+						.attr("value", "rust")
+						.child("Rust"),
+				)
+				.child(
+					PageElement::new("option")
+						.attr("value", "wasm")
+						.attr("selected", "selected")
+						.child("WebAssembly"),
+				)
+				.into_page();
+			let multiple = PageElement::new("select")
+				.attr("multiple", "multiple")
+				.control_binding(ControlBinding::select_many(Signal::new(vec![
+					"rust".to_owned(),
+					"wasm".to_owned(),
+				])))
+				.child(
+					PageElement::new("option")
+						.attr("value", "rust")
+						.child("Rust"),
+				)
+				.child(PageElement::new("option").child("WebAssembly"))
+				.into_page();
+
+			assert_eq!(
+				single.render_to_string(),
+				"<select><option value=\"rust\">Rust</option><option value=\"wasm\" selected=\"selected\">WebAssembly</option></select>"
+			);
+			assert_eq!(
+				multiple.render_to_string(),
+				"<select multiple=\"multiple\"><option value=\"rust\" selected=\"selected\">Rust</option><option>WebAssembly</option></select>"
+			);
+		});
+	}
+
+	#[test]
+	fn render_to_string_projects_bound_select_only_once() {
+		ReactiveScope::run(|| {
+			let select = PageElement::new("SELECT")
+				.control_binding(ControlBinding::select_one(Signal::new("Rust".to_owned())))
+				.child(
+					PageElement::new("OPTION")
+						.attr("value", "Rust")
+						.child("First"),
+				)
+				.child(
+					PageElement::new("option")
+						.attr("value", "Rust")
+						.child("Second"),
+				)
+				.into_page();
+
+			assert_eq!(
+				select.render_to_string(),
+				"<SELECT><OPTION value=\"Rust\" selected=\"selected\">First</OPTION><option value=\"Rust\">Second</option></SELECT>"
+			);
+		});
+	}
+
+	#[test]
+	fn render_to_string_normalizes_inferred_bound_option_value() {
+		ReactiveScope::run(|| {
+			let select = PageElement::new("select")
+				.control_binding(ControlBinding::select_one(Signal::new("Rust".to_owned())))
+				.child(PageElement::new("option").child(" \tRust\n"))
+				.into_page();
+
+			assert_eq!(
+				select.render_to_string(),
+				"<select><option selected=\"selected\"> \tRust\n</option></select>"
+			);
+		});
+	}
+
+	#[test]
+	fn render_to_string_ignores_svg_script_when_inferring_bound_option_value() {
+		ReactiveScope::run(|| {
+			// Arrange
+			let select = PageElement::new("select")
+				.control_binding(ControlBinding::select_one(Signal::new("Rust".to_owned())))
+				.child(
+					PageElement::new("option")
+						.child("Rust")
+						.child(PageElement::new("svg:script").child("ignored")),
+				)
+				.into_page();
+
+			// Act
+			let html = select.render_to_string();
+
+			// Assert
+			assert_eq!(
+				html,
+				"<select><option selected=\"selected\">Rust<svg:script>ignored</svg:script></option></select>"
+			);
+		});
+	}
+
+	#[test]
+	fn render_to_string_does_not_evaluate_dynamic_option_content_to_infer_value() {
+		ReactiveScope::run(|| {
+			// Arrange
+			let renders = std::rc::Rc::new(std::cell::Cell::new(0));
+			let render_count = std::rc::Rc::clone(&renders);
+			let select = PageElement::new("select")
+				.control_binding(ControlBinding::select_one(Signal::new(
+					"Static Dynamic".to_owned(),
+				)))
+				.child(
+					PageElement::new("option")
+						.child("Static")
+						.child(Page::reactive(move || {
+							render_count.set(render_count.get() + 1);
+							Page::text(" Dynamic")
+						})),
+				)
+				.into_page();
+
+			// Act
+			let html = select.render_to_string();
+
+			// Assert
+			assert_eq!(renders.get(), 1);
+			assert_eq!(html, "<select><option>Static Dynamic</option></select>");
+		});
 	}
 
 	#[test]

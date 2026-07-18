@@ -1,0 +1,5 @@
+error: `number(value, error)` requires exactly two arguments
+ --> tests/ui/page/fail/controlled_bind_invalid_number_arity.rs:8:10
+  |
+8 |             bind: number(())
+  |                   ^^^^^^^^^^

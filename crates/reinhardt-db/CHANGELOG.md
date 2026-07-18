@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- *(migrations)* preserve physical table identity across renamed-table replay
+- *(migrations)* validate moved table rename destinations and acronym-aware M2M fallbacks
+
 ## [0.3.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.3.1...reinhardt-db@v0.3.2) - 2026-07-14
 
 ### Fixed

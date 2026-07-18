@@ -413,6 +413,7 @@ async fn hr_3_no_wasm_rebuild_flag_skips_wasm_pipeline() {
 		no_wasm_rebuild: true,
 		pages_enabled: true,
 		hmr_tx: None,
+		component_styles: None,
 	};
 
 	// Act: read the flag back.
@@ -633,6 +634,7 @@ async fn hr_7_run_watcher_processes_events() {
 		no_wasm_rebuild: true,
 		pages_enabled: false,
 		hmr_tx: None,
+		component_styles: None,
 	};
 
 	let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
@@ -758,6 +760,7 @@ async fn hr_9_run_watcher_broadcasts_reload_after_server_rebuild() {
 		no_wasm_rebuild: true,
 		pages_enabled: true,
 		hmr_tx: Some(hmr_tx),
+		component_styles: None,
 	};
 
 	// Act: edit the server source. With no_wasm_rebuild=true, this should

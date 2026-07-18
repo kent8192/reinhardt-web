@@ -2,6 +2,8 @@
 
 use std::fmt;
 
+use reinhardt_core::types::page::ControlBindingError;
+
 use super::fixture::EventFixtureError;
 
 /// Error returned when a DOM query cannot identify one element.
@@ -35,6 +37,8 @@ pub enum EventError {
 	UnsupportedElement,
 	/// The synthetic event fixture is invalid for this dispatch.
 	InvalidFixture(EventFixtureError),
+	/// A controlled binding could not read or write the target element.
+	ControlBinding(ControlBindingError),
 }
 
 impl fmt::Display for EventError {
@@ -44,6 +48,7 @@ impl fmt::Display for EventError {
 			Self::MissingHandler => write!(f, "element has no handler for the requested event"),
 			Self::UnsupportedElement => write!(f, "event is not supported for this element"),
 			Self::InvalidFixture(error) => write!(f, "invalid event fixture: {error}"),
+			Self::ControlBinding(error) => write!(f, "control binding failed: {error}"),
 		}
 	}
 }
@@ -52,6 +57,7 @@ impl std::error::Error for EventError {
 	fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
 		match self {
 			Self::InvalidFixture(error) => Some(error),
+			Self::ControlBinding(error) => Some(error),
 			_ => None,
 		}
 	}
@@ -60,5 +66,11 @@ impl std::error::Error for EventError {
 impl From<EventFixtureError> for EventError {
 	fn from(error: EventFixtureError) -> Self {
 		Self::InvalidFixture(error)
+	}
+}
+
+impl From<ControlBindingError> for EventError {
+	fn from(error: ControlBindingError) -> Self {
+		Self::ControlBinding(error)
 	}
 }

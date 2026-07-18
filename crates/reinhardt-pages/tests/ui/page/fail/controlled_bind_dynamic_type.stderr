@@ -1,0 +1,5 @@
+error: a bound input requires a static `type`
+ --> tests/ui/page/fail/controlled_bind_dynamic_type.rs:8:10
+  |
+8 |             bind: ()
+  |                   ^^

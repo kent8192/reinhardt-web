@@ -134,8 +134,8 @@ fn convert_value_to_query_value(value: reinhardt_query::value::Value) -> QueryVa
 		SV::ChronoTime(Some(time)) => QueryValue::String(time.to_string()),
 		SV::ChronoDateTime(Some(datetime)) => QueryValue::Timestamp(datetime.and_utc()),
 
-		// Keep JSON typed so backend binders retain JSON null semantics.
-		SV::Json(value) => QueryValue::Json(value),
+		// Preserve native JSON values for backend-specific JSON parameter binding.
+		SV::Json(json) => QueryValue::Json(json),
 
 		// QueryValue has no decimal variant. Bind the exact spelling instead of
 		// losing precision through an intermediate floating-point value.
