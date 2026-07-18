@@ -623,9 +623,11 @@ mod tests {
 			_sql: &str,
 			_params: Vec<QueryValue>,
 		) -> super::super::error::Result<QueryResult> {
-			Err(super::super::error::DatabaseError::NotSupported(
-				"legacy executor does not execute test queries".to_string(),
-			))
+			Err(super::super::error::DatabaseError::new(
+				DatabaseErrorKind::Unsupported,
+				"legacy executor does not execute test queries",
+			)
+			.into())
 		}
 
 		async fn fetch_one(
@@ -633,9 +635,11 @@ mod tests {
 			_sql: &str,
 			_params: Vec<QueryValue>,
 		) -> super::super::error::Result<Row> {
-			Err(super::super::error::DatabaseError::NotSupported(
-				"legacy executor does not fetch test rows".to_string(),
-			))
+			Err(super::super::error::DatabaseError::new(
+				DatabaseErrorKind::Unsupported,
+				"legacy executor does not fetch test rows",
+			)
+			.into())
 		}
 
 		async fn fetch_all(
@@ -643,9 +647,11 @@ mod tests {
 			_sql: &str,
 			_params: Vec<QueryValue>,
 		) -> super::super::error::Result<Vec<Row>> {
-			Err(super::super::error::DatabaseError::NotSupported(
-				"legacy executor does not fetch test rows".to_string(),
-			))
+			Err(super::super::error::DatabaseError::new(
+				DatabaseErrorKind::Unsupported,
+				"legacy executor does not fetch test rows",
+			)
+			.into())
 		}
 
 		async fn fetch_optional(
@@ -653,9 +659,11 @@ mod tests {
 			_sql: &str,
 			_params: Vec<QueryValue>,
 		) -> super::super::error::Result<Option<Row>> {
-			Err(super::super::error::DatabaseError::NotSupported(
-				"legacy executor does not fetch test rows".to_string(),
-			))
+			Err(super::super::error::DatabaseError::new(
+				DatabaseErrorKind::Unsupported,
+				"legacy executor does not fetch test rows",
+			)
+			.into())
 		}
 
 		async fn commit(self: Box<Self>) -> super::super::error::Result<()> {
