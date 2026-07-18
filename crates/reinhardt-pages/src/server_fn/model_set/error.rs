@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::server_fn::ServerFnError;
+use crate::server_fn::{ServerFnError, ServerFnErrorKind};
 
 /// A stable client-visible validation error for one field.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -74,8 +74,8 @@ impl ServerFnSetError {
 		}
 		serde_json::from_slice::<ServerFnError>(error_body)
 			.ok()
-			.and_then(|error| match error {
-				ServerFnError::Server { status, .. } if (100..=599).contains(&status) => {
+			.and_then(|error| match (error.kind(), error.status()) {
+				(ServerFnErrorKind::Server, Some(status)) if (100..=599).contains(&status) => {
 					Some(status)
 				}
 				_ => None,
@@ -110,7 +110,9 @@ impl ServerFnSetError {
 		}
 		if matches!(
 			serde_json::from_slice::<ServerFnError>(&body),
-			Ok(ServerFnError::Server { status, .. }) if (100..=599).contains(&status)
+			Ok(error)
+				if error.kind() == ServerFnErrorKind::Server
+					&& error.status().is_some_and(|status| (100..=599).contains(&status))
 		) {
 			return body;
 		}

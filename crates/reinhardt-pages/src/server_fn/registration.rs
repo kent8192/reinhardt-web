@@ -17,9 +17,9 @@
 //!     .server_fn(logout);
 //! ```
 
-use super::ServerFnError;
 use super::metadata::ServerFnMetadata;
 use super::registry::ServerFnHandler;
+use super::{ServerFnError, ServerFnErrorKind};
 use bytes::Bytes;
 use hyper::StatusCode;
 use reinhardt_http::Request;
@@ -78,8 +78,8 @@ pub trait ServerFnRegistration: ServerFnMetadata + Send + Sync {
 	fn error_status(error_body: &[u8]) -> u16 {
 		serde_json::from_slice::<ServerFnError>(error_body)
 			.ok()
-			.and_then(|error| match error {
-				ServerFnError::Server { status, .. } if (100..=599).contains(&status) => {
+			.and_then(|error| match (error.kind(), error.status()) {
+				(ServerFnErrorKind::Server, Some(status)) if (100..=599).contains(&status) => {
 					StatusCode::from_u16(status).ok()
 				}
 				_ => None,
