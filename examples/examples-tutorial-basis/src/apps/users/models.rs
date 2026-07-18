@@ -77,7 +77,7 @@ mod manager {
 	use reinhardt::DatabaseConnection;
 	use reinhardt::Model;
 	use reinhardt::core::async_trait;
-	use reinhardt::core::exception::{DatabaseError, DatabaseErrorKind, Error};
+	use reinhardt::core::exception::Error;
 	use reinhardt::di::injectable;
 	// `BaseUserManager` lives in `reinhardt-auth` and is not yet re-exported
 	// at the top level of `reinhardt`; reach it via the doc-hidden module
@@ -141,8 +141,7 @@ mod manager {
 			let existing = manager
 				.filter(User::field_username().eq(username.to_string()))
 				.first()
-				.await
-				.map_err(|error| DatabaseError::new(DatabaseErrorKind::Query, error.to_string()))?;
+				.await?;
 			if existing.is_some() {
 				return Err(Error::Validation("Username is already taken".to_string()));
 			}
@@ -184,9 +183,7 @@ mod manager {
 			extra: HashMap<String, Value>,
 		) -> Result<User, Error> {
 			let new_user = self.build_user(username, password, &extra).await?;
-			User::objects()
-				.create_with_conn(&self.db, &new_user)
-				.await
+			User::objects().create_with_conn(&self.db, &new_user).await
 		}
 
 		async fn create_superuser(
@@ -197,9 +194,7 @@ mod manager {
 		) -> Result<User, Error> {
 			let mut new_user = self.build_user(username, password, &extra).await?;
 			new_user.is_superuser = true;
-			User::objects()
-				.create_with_conn(&self.db, &new_user)
-				.await
+			User::objects().create_with_conn(&self.db, &new_user).await
 		}
 	}
 }
