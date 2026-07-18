@@ -426,7 +426,7 @@ mod annotation_extended_tests {
 			))
 			.aggregate(Aggregate::sum("other_age").with_alias("otherage_sum"));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("SUM") || sql.contains("age"),
@@ -450,7 +450,7 @@ mod annotation_extended_tests {
 			))
 			.aggregate(Aggregate::count(Some("value_alias")).with_alias("count_alias"));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("COUNT") || sql.contains("value"),
@@ -475,7 +475,7 @@ mod annotation_extended_tests {
 			))
 			.aggregate(Aggregate::sum("other_age").with_alias("otherage_sum"));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		// Should contain the annotation
 		assert!(
@@ -506,7 +506,7 @@ mod annotation_extended_tests {
 			))
 			.aggregate(Aggregate::avg("doubled").with_alias("avg_doubled"));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("AVG") || sql.contains("value") || sql.contains("doubled"),
@@ -530,7 +530,7 @@ mod annotation_extended_tests {
 			))
 			.aggregate(Aggregate::max("computed").with_alias("max_computed"));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("MAX") || sql.contains("field1") || sql.contains("computed"),
@@ -554,7 +554,7 @@ mod annotation_extended_tests {
 			))
 			.aggregate(Aggregate::min("calc").with_alias("min_calc"));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("MIN") || sql.contains("price") || sql.contains("calc"),
@@ -577,7 +577,7 @@ mod annotation_extended_tests {
 				AnnotationValue::Field(F::new("age")),
 			));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("name") && sql.contains("age"),
@@ -600,7 +600,7 @@ mod annotation_extended_tests {
 				AnnotationValue::Field(F::new("name")),
 			));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("id") && sql.contains("name"),
@@ -625,7 +625,7 @@ mod annotation_extended_tests {
 				AnnotationValue::Field(F::new("rating_count_alias")),
 			));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("COUNT") || sql.contains("rating"),
@@ -649,7 +649,7 @@ mod annotation_extended_tests {
 				AnnotationValue::Field(F::new("total_alias")),
 			));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("SUM") || sql.contains("price") || sql.contains("total"),
@@ -670,7 +670,7 @@ mod annotation_extended_tests {
 			AnnotationValue::Field(F::new("field1")),
 		));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("field1") || sql.contains("expr_alias"),
@@ -691,7 +691,7 @@ mod annotation_extended_tests {
 			AnnotationValue::Field(F::new("value")),
 		));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("value") || sql.contains("complex"),
@@ -712,7 +712,7 @@ mod annotation_extended_tests {
 			AnnotationValue::Field(F::new("name")),
 		));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("name") || sql.contains("default_alias"),
@@ -738,7 +738,7 @@ mod annotation_extended_tests {
 				AnnotationValue::Field(F::new("field2")),
 			));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("field1") || sql.contains("field2"),
@@ -811,14 +811,15 @@ mod annotation_extended_tests {
 				FilterOperator::Eq,
 				FilterValue::String("active".to_string()),
 			))
-			.as_subquery();
+			.as_subquery()
+			.expect("subquery SQL should compile");
 
 		let qs = QuerySet::<TestModel>::new().annotate(Annotation::field(
 			"has_active",
 			AnnotationValue::Subquery(subquery),
 		));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("SELECT") && (sql.contains("active") || sql.contains("status")),
@@ -839,14 +840,15 @@ mod annotation_extended_tests {
 				FilterOperator::Gt,
 				FilterValue::Int(0),
 			))
-			.as_subquery();
+			.as_subquery()
+			.expect("subquery SQL should compile");
 
 		let qs = QuerySet::<TestModel>::new().annotate(Annotation::field(
 			"exists_check",
 			AnnotationValue::Subquery(subquery),
 		));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.starts_with("SELECT") || sql.contains(" SELECT "),
@@ -870,7 +872,7 @@ mod annotation_extended_tests {
 			))
 			.aggregate(Aggregate::sum("value_doubled").with_alias("total"));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("SUM") || sql.contains("value"),
@@ -891,7 +893,7 @@ mod annotation_extended_tests {
 			AnnotationValue::Aggregate(Aggregate::count(Some("items"))),
 		));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("COUNT") || sql.contains("items"),
@@ -912,7 +914,7 @@ mod annotation_extended_tests {
 			AnnotationValue::Aggregate(Aggregate::count(Some("related_id"))),
 		));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("COUNT("),
@@ -933,7 +935,7 @@ mod annotation_extended_tests {
 			AnnotationValue::Aggregate(Aggregate::sum("related_value")),
 		));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("SUM("),
@@ -1011,7 +1013,7 @@ mod annotation_extended_tests {
 			))
 			.values_list(&["max_date"]);
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("MAX") || sql.contains("pubdate"),
@@ -1033,7 +1035,8 @@ mod annotation_extended_tests {
 				FilterOperator::Gt,
 				FilterValue::Int(0),
 			))
-			.as_subquery();
+			.as_subquery()
+			.expect("subquery SQL should compile");
 
 		let qs = QuerySet::<TestModel>::new()
 			.annotate(Annotation::field(
@@ -1046,7 +1049,7 @@ mod annotation_extended_tests {
 			))
 			.values(&["count"]);
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("COUNT") || sql.contains("SELECT"),
@@ -1100,7 +1103,7 @@ mod annotation_extended_tests {
 				AnnotationValue::Aggregate(Aggregate::count(Some("id"))),
 			));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("COUNT") || sql.contains("type"),
@@ -1128,7 +1131,7 @@ mod annotation_extended_tests {
 				AnnotationValue::Aggregate(Aggregate::count(Some("*"))),
 			));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("COUNT") || sql.contains("status"),
@@ -1153,7 +1156,7 @@ mod annotation_extended_tests {
 				AnnotationValue::Aggregate(Aggregate::sum("pages")),
 			));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("SUM") || sql.contains("pages"),
@@ -1175,7 +1178,8 @@ mod annotation_extended_tests {
 				FilterOperator::Gt,
 				FilterValue::Int(3),
 			))
-			.as_subquery();
+			.as_subquery()
+			.expect("subquery SQL should compile");
 
 		let qs = QuerySet::<TestModel>::new()
 			.annotate(Annotation::field(
@@ -1188,7 +1192,7 @@ mod annotation_extended_tests {
 			))
 			.values(&["total", "top_rating"]);
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("SUM") || sql.contains("SELECT"),
@@ -1209,7 +1213,7 @@ mod annotation_extended_tests {
 			AnnotationValue::Field(F::new("field1")),
 		));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("field1") || sql.contains("expr"),
@@ -1235,7 +1239,7 @@ mod annotation_extended_tests {
 				AnnotationValue::Field(F::new("field2")),
 			));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("field1") || sql.contains("field2"),
@@ -1256,7 +1260,7 @@ mod annotation_extended_tests {
 			AnnotationValue::Field(F::new("active")),
 		));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("active") || sql.contains("is_active"),
@@ -1283,7 +1287,7 @@ mod annotation_extended_tests {
 				FilterValue::Bool(true),
 			));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("enabled") || sql.contains("WHERE"),
@@ -1332,7 +1336,7 @@ mod annotation_extended_tests {
 			))
 			.values(&["id", "name", "annotated"]);
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("id")
@@ -1357,7 +1361,7 @@ mod annotation_extended_tests {
 			))
 			.values(&["extra", "id"]);
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("id") && (sql.contains("value") || sql.contains("extra")),
@@ -1380,7 +1384,7 @@ mod annotation_extended_tests {
 				AnnotationValue::Field(F::new("value")),
 			));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("value") || sql.contains("computed"),
@@ -1403,7 +1407,7 @@ mod annotation_extended_tests {
 				AnnotationValue::Field(F::new("field1")),
 			));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("id") && sql.contains("name"),
@@ -1433,7 +1437,7 @@ mod annotation_extended_tests {
 				AnnotationValue::Aggregate(Aggregate::count(Some("rating"))),
 			));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("COUNT") || sql.contains("value"),
@@ -1460,7 +1464,7 @@ mod annotation_extended_tests {
 				AnnotationValue::Aggregate(Aggregate::sum("field2")),
 			));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("SUM") || sql.contains("field"),
@@ -1490,7 +1494,7 @@ mod annotation_extended_tests {
 				AnnotationValue::Aggregate(Aggregate::count(Some("rating"))),
 			));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("COUNT") || sql.contains("price") || sql.contains("rating"),
@@ -1517,7 +1521,7 @@ mod annotation_extended_tests {
 				AnnotationValue::Aggregate(Aggregate::max("value2")),
 			));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("MAX") || sql.contains("value"),
@@ -1541,7 +1545,7 @@ mod annotation_extended_tests {
 			))
 			.distinct();
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("DISTINCT") || sql.contains("rating"),
@@ -1564,7 +1568,7 @@ mod annotation_extended_tests {
 			))
 			.distinct();
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.starts_with("DISTINCT") || sql.contains(" DISTINCT "),
@@ -1588,7 +1592,7 @@ mod annotation_extended_tests {
 			))
 			.distinct();
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("DISTINCT") && (sql.contains("last_name") || sql.contains("name_lower"))
@@ -1613,7 +1617,7 @@ mod annotation_extended_tests {
 			))
 			.distinct();
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.starts_with("DISTINCT") || sql.contains(" DISTINCT "),
@@ -1634,7 +1638,7 @@ mod annotation_extended_tests {
 			AnnotationValue::Field(F::new("id")),
 		));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("id") || sql.contains("simple"),
@@ -1655,7 +1659,7 @@ mod annotation_extended_tests {
 			AnnotationValue::Field(F::new("name")),
 		));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("name") || sql.contains("minimal"),
@@ -1910,7 +1914,7 @@ mod annotation_extended_tests {
 			AnnotationValue::Field(F::new("field1")),
 		));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("field1") || sql.contains("full_expr"),
@@ -1937,7 +1941,7 @@ mod annotation_extended_tests {
 				FilterValue::Int(0),
 			));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("value1") || sql.contains("complex_expr"),
@@ -1964,7 +1968,7 @@ mod annotation_extended_tests {
 				AnnotationValue::Aggregate(Aggregate::sum("quantity")),
 			));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("SUM") || sql.contains("price"),
@@ -1991,7 +1995,7 @@ mod annotation_extended_tests {
 				AnnotationValue::Aggregate(Aggregate::count(Some("id"))),
 			));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("COUNT") || sql.contains("value"),
@@ -2012,7 +2016,7 @@ mod annotation_extended_tests {
 			AnnotationValue::Field(F::new("field1")),
 		));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("field1") || sql.contains("wrapped"),
@@ -2033,7 +2037,7 @@ mod annotation_extended_tests {
 			AnnotationValue::Field(F::new("value")),
 		));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("value") || sql.contains("wrapped_expr"),
@@ -2061,7 +2065,7 @@ mod annotation_extended_tests {
 				AnnotationValue::Aggregate(Aggregate::count(Some("id"))),
 			));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("COUNT") || sql.contains("category"),
@@ -2089,7 +2093,7 @@ mod annotation_extended_tests {
 				AnnotationValue::Aggregate(Aggregate::sum("value")),
 			));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("SUM") || sql.contains("status"),
@@ -2110,7 +2114,7 @@ mod annotation_extended_tests {
 			AnnotationValue::Field(F::new("related__name")),
 		));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("related") || sql.contains("name"),
@@ -2131,7 +2135,7 @@ mod annotation_extended_tests {
 			AnnotationValue::Field(F::new("parent__value")),
 		));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("parent") || sql.contains("value"),
@@ -2152,7 +2156,7 @@ mod annotation_extended_tests {
 			AnnotationValue::Field(F::new("foreign_key__field")),
 		));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("foreign_key") || sql.contains("field"),
@@ -2173,7 +2177,7 @@ mod annotation_extended_tests {
 			AnnotationValue::Field(F::new("relation__data")),
 		));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("relation") || sql.contains("data"),
@@ -2194,7 +2198,7 @@ mod annotation_extended_tests {
 			AnnotationValue::Field(F::new("related__transformed_field")),
 		));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("related") || sql.contains("transformed"),
@@ -2215,7 +2219,7 @@ mod annotation_extended_tests {
 			AnnotationValue::Field(F::new("parent__converted_value")),
 		));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("parent") || sql.contains("converted"),
@@ -2239,7 +2243,7 @@ mod annotation_extended_tests {
 			))
 			.order_by(&["count"]);
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("ORDER BY") && sql.contains("COUNT"),
@@ -2263,7 +2267,7 @@ mod annotation_extended_tests {
 			))
 			.order_by(&["-total"]);
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("ORDER BY") && sql.contains("SUM"),
@@ -2286,7 +2290,7 @@ mod annotation_extended_tests {
 			))
 			.order_by(&["other_age"]);
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("ORDER BY") && (sql.contains("age") || sql.contains("other_age")),
@@ -2309,7 +2313,7 @@ mod annotation_extended_tests {
 			))
 			.order_by(&["name_alias"]);
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("ORDER BY"),
@@ -2335,7 +2339,7 @@ mod annotation_extended_tests {
 			))
 			.order_by(&["age_count", "age"]);
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("ORDER BY") && (sql.contains("COUNT") || sql.contains("age")),
@@ -2358,7 +2362,7 @@ mod annotation_extended_tests {
 			))
 			.order_by(&["-total"]);
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("ORDER BY") && sql.contains("SUM"),
@@ -2381,7 +2385,7 @@ mod annotation_extended_tests {
 			))
 			.order_by(&["other_age"]);
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("ORDER BY") && (sql.contains("age") || sql.contains("other_age")),
@@ -2408,7 +2412,7 @@ mod annotation_extended_tests {
 			))
 			.order_by(&["field1_alias", "-field2_alias"]);
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("ORDER BY"),
@@ -2434,7 +2438,7 @@ mod annotation_extended_tests {
 				AnnotationValue::Aggregate(Aggregate::count(Some("id"))),
 			));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("COUNT") || sql.contains("value"),
@@ -2460,7 +2464,7 @@ mod annotation_extended_tests {
 				AnnotationValue::Aggregate(Aggregate::sum("amount")),
 			));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("SUM") || sql.contains("status"),
@@ -2480,7 +2484,7 @@ mod annotation_extended_tests {
 			AnnotationValue::Field(F::new("inherited_field")),
 		));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("inherited_field") || sql.contains("raw_field"),
@@ -2500,7 +2504,7 @@ mod annotation_extended_tests {
 			AnnotationValue::Field(F::new("base_field")),
 		));
 
-		let sql = qs.to_sql();
+		let sql = qs.to_sql().expect("query SQL should compile");
 
 		assert!(
 			sql.contains("base_field") || sql.contains("parent_field"),

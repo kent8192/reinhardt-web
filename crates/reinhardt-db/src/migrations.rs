@@ -70,6 +70,7 @@ pub mod zero_downtime;
 pub use crate::contenttypes::migration::MigrationRecord;
 pub use autodetector::{
 	// Pattern Learning and Inference
+	AutodetectorWarning,
 	ChangeTracker,
 	ConstraintDefinition,
 	DetectedChanges,
@@ -77,6 +78,7 @@ pub use autodetector::{
 	ForeignKeyAction,
 	ForeignKeyConstraintInfo,
 	ForeignKeyInfo,
+	GeneratedMigrations,
 	IndexDefinition,
 	InferenceEngine,
 	InferenceRule,
@@ -302,4 +304,5 @@ pub mod prelude {
 		ColumnDefinition, ColumnType, Constraint, ForeignKeyAction, GeneratedColumnDefinition,
 		GeneratedStorage, Migration, Operation, SchemaBinOper, SchemaExpr, SchemaFunc,
 	};
+	pub use crate::field_domain::{FieldDomain, ModelEnumRepr, ModelEnumValue};
 }

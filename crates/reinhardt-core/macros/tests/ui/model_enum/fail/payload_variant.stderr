@@ -1,0 +1,5 @@
+error: ModelEnum variants must be unit variants
+ --> tests/ui/model_enum/fail/payload_variant.rs:7:8
+  |
+7 |     Queued(String),
+  |           ^^^^^^^^

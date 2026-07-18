@@ -7,7 +7,7 @@ include!("../support.rs");
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Project {
 	#[field(primary_key = true)]
-	id: i64,
+	id: Option<i64>,
 	#[field(max_length = 120)]
 	name: String,
 }

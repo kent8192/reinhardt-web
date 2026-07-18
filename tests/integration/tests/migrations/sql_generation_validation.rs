@@ -72,6 +72,7 @@ fn create_basic_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 		auto_increment: false,
 		default: None,
 		generated: None,
+		domain: None,
 	}
 }
 
@@ -86,6 +87,7 @@ fn create_not_null_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 		auto_increment: false,
 		default: None,
 		generated: None,
+		domain: None,
 	}
 }
 
@@ -100,6 +102,7 @@ fn create_column_with_default(name: &str, type_def: FieldType, default: &str) ->
 		auto_increment: false,
 		default: Some(default.to_string()),
 		generated: None,
+		domain: None,
 	}
 }
 
@@ -114,6 +117,7 @@ fn create_auto_pk_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 		auto_increment: true,
 		default: None,
 		generated: None,
+		domain: None,
 	}
 }
 
@@ -242,6 +246,7 @@ async fn test_create_table_with_composite_primary_key() {
 				default: None,
 
 				generated: None,
+				domain: None,
 			},
 			ColumnDefinition {
 				name: "item_id".to_string(),
@@ -253,6 +258,7 @@ async fn test_create_table_with_composite_primary_key() {
 				default: None,
 
 				generated: None,
+				domain: None,
 			},
 			create_basic_column("quantity", FieldType::Integer),
 		],
@@ -351,6 +357,7 @@ async fn test_alter_table_alter_column_type_syntax() {
 			default: None,
 
 			generated: None,
+			domain: None,
 		},
 		mysql_options: None,
 	};
@@ -905,6 +912,7 @@ async fn test_composite_primary_key_syntax_postgres() {
 				default: None,
 
 				generated: None,
+				domain: None,
 			},
 			ColumnDefinition {
 				name: "item_id".to_string(),
@@ -916,6 +924,7 @@ async fn test_composite_primary_key_syntax_postgres() {
 				default: None,
 
 				generated: None,
+				domain: None,
 			},
 			ColumnDefinition {
 				name: "quantity".to_string(),
@@ -927,6 +936,7 @@ async fn test_composite_primary_key_syntax_postgres() {
 				default: Some("1".to_string()),
 
 				generated: None,
+				domain: None,
 			},
 		],
 		constraints: vec![],
@@ -977,6 +987,7 @@ async fn test_composite_primary_key_syntax_mysql() {
 				default: None,
 
 				generated: None,
+				domain: None,
 			},
 			ColumnDefinition {
 				name: "role_id".to_string(),
@@ -988,6 +999,7 @@ async fn test_composite_primary_key_syntax_mysql() {
 				default: None,
 
 				generated: None,
+				domain: None,
 			},
 		],
 		constraints: vec![],
@@ -1052,6 +1064,7 @@ async fn test_composite_primary_key_postgres_integration(
 					default: None,
 
 					generated: None,
+					domain: None,
 				},
 				ColumnDefinition {
 					name: "course_id".to_string(),
@@ -1063,6 +1076,7 @@ async fn test_composite_primary_key_postgres_integration(
 					default: None,
 
 					generated: None,
+					domain: None,
 				},
 				ColumnDefinition {
 					name: "enrolled_at".to_string(),
@@ -1074,6 +1088,7 @@ async fn test_composite_primary_key_postgres_integration(
 					default: Some("CURRENT_TIMESTAMP".to_string()),
 
 					generated: None,
+					domain: None,
 				},
 			],
 			constraints: vec![],
@@ -1196,6 +1211,7 @@ async fn test_composite_primary_key_three_columns(
 					default: None,
 
 					generated: None,
+					domain: None,
 				},
 				ColumnDefinition {
 					name: "room_number".to_string(),
@@ -1207,6 +1223,7 @@ async fn test_composite_primary_key_three_columns(
 					default: None,
 
 					generated: None,
+					domain: None,
 				},
 				ColumnDefinition {
 					name: "booking_date".to_string(),
@@ -1218,6 +1235,7 @@ async fn test_composite_primary_key_three_columns(
 					default: None,
 
 					generated: None,
+					domain: None,
 				},
 				ColumnDefinition {
 					name: "guest_name".to_string(),
@@ -1229,6 +1247,7 @@ async fn test_composite_primary_key_three_columns(
 					default: None,
 
 					generated: None,
+					domain: None,
 				},
 			],
 			constraints: vec![],

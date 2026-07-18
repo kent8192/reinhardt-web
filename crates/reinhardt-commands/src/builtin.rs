@@ -910,6 +910,81 @@ async fn build_from_state_from_files(
 pub struct MakeMigrationsCommand;
 
 #[cfg(feature = "migrations")]
+fn format_makemigrations_warning(
+	warning: &reinhardt_db::migrations::AutodetectorWarning,
+) -> String {
+	warning.to_string()
+}
+
+#[cfg(feature = "migrations")]
+fn report_autodetector_warnings_with(
+	warnings: &[reinhardt_db::migrations::AutodetectorWarning],
+	mut report: impl FnMut(&str),
+) {
+	for warning in warnings {
+		let message = format_makemigrations_warning(warning);
+		report(&message);
+	}
+}
+
+#[cfg(feature = "migrations")]
+fn makemigrations_operation_description(operation: &reinhardt_db::migrations::Operation) -> String {
+	use reinhardt_db::migrations::Operation;
+
+	match operation {
+		Operation::CreateTable { name, .. } => format!("Create model {}", name),
+		Operation::DropTable { name } => format!("Delete model {}", name),
+		Operation::RenameTable { old_name, new_name } => {
+			format!("Rename model {} to {}", old_name, new_name)
+		}
+		Operation::AddColumn { table, column, .. } => {
+			format!("Add field {} to {}", column.name, table)
+		}
+		Operation::DropColumn { table, column, .. } => {
+			format!("Remove field {} from {}", column, table)
+		}
+		Operation::AlterColumn { table, column, .. } => {
+			format!("Alter field {} on {}", column, table)
+		}
+		Operation::RenameColumn {
+			table,
+			old_name,
+			new_name,
+		} => format!("Rename field {} to {} on {}", old_name, new_name, table),
+		Operation::CreateIndex {
+			table,
+			columns,
+			unique,
+			..
+		} => {
+			let index_type = if *unique { "unique index" } else { "index" };
+			format!(
+				"Create {} on {} ({})",
+				index_type,
+				table,
+				columns.join(", ")
+			)
+		}
+		Operation::DropIndex { table, columns } => {
+			format!("Remove index on {} ({})", table, columns.join(", "))
+		}
+		Operation::AddConstraint { table, .. } => format!("Add constraint on {}", table),
+		Operation::AddConstraintDefinition { table, constraint } => {
+			format!("Add constraint {} on {}", constraint.name(), table)
+		}
+		Operation::DropConstraint {
+			table,
+			constraint_name,
+		} => format!("Remove constraint {} from {}", constraint_name, table),
+		Operation::DropConstraintDefinition { table, constraint } => {
+			format!("Remove constraint {} from {}", constraint.name(), table)
+		}
+		Operation::RunSQL { .. } => "Execute custom SQL".to_string(),
+		Operation::RunRust { .. } => "Execute custom Rust code".to_string(),
+		_ => format!("{:?}", operation),
+	}
+}
+
 fn validate_global_migration_changes(
 	from_state: &reinhardt_db::migrations::ProjectState,
 	target_state: &reinhardt_db::migrations::ProjectState,
@@ -962,73 +1037,6 @@ impl BaseCommand for MakeMigrationsCommand {
 	}
 
 	async fn execute(&self, ctx: &CommandContext) -> CommandResult<()> {
-		fn operation_description(operation: &reinhardt_db::migrations::Operation) -> String {
-			use reinhardt_db::migrations::Operation;
-
-			match operation {
-				// Table operations (corresponds to Model operations in Django)
-				Operation::CreateTable { name, .. } => format!("Create model {}", name),
-				Operation::DropTable { name } => format!("Delete model {}", name),
-				Operation::RenameTable { old_name, new_name } => {
-					format!("Rename model {} to {}", old_name, new_name)
-				}
-
-				// Column operations (corresponds to Field operations in Django)
-				Operation::AddColumn { table, column, .. } => {
-					format!("Add field {} to {}", column.name, table)
-				}
-				Operation::DropColumn { table, column, .. } => {
-					format!("Remove field {} from {}", column, table)
-				}
-				Operation::AlterColumn { table, column, .. } => {
-					format!("Alter field {} on {}", column, table)
-				}
-				Operation::RenameColumn {
-					table,
-					old_name,
-					new_name,
-				} => {
-					format!("Rename field {} to {} on {}", old_name, new_name, table)
-				}
-
-				// Index operations
-				Operation::CreateIndex {
-					table,
-					columns,
-					unique,
-					..
-				} => {
-					let index_type = if *unique { "unique index" } else { "index" };
-					format!(
-						"Create {} on {} ({})",
-						index_type,
-						table,
-						columns.join(", ")
-					)
-				}
-				Operation::DropIndex { table, columns } => {
-					format!("Remove index on {} ({})", table, columns.join(", "))
-				}
-
-				// Constraint operations
-				Operation::AddConstraint { table, .. } => {
-					format!("Add constraint on {}", table)
-				}
-				Operation::DropConstraint {
-					table,
-					constraint_name,
-				} => {
-					format!("Remove constraint {} from {}", constraint_name, table)
-				}
-
-				// Special operations
-				Operation::RunSQL { .. } => "Execute custom SQL".to_string(),
-				Operation::RunRust { .. } => "Execute custom Rust code".to_string(),
-
-				// Other operations
-				_ => format!("{:?}", operation),
-			}
-		}
 		use std::path::PathBuf;
 		ctx.info("Detecting model changes...");
 
@@ -1508,9 +1516,18 @@ impl BaseCommand for MakeMigrationsCommand {
 					app_from_state,
 					app_target_state,
 				);
-				let generated_migrations = detector.try_generate_migrations().map_err(|error| {
-					CommandError::ExecutionError(format!("Failed to generate migrations: {error}"))
-				})?;
+				let generated =
+					detector
+						.try_generate_migrations_with_warnings()
+						.map_err(|error| {
+							CommandError::ExecutionError(format!(
+								"Failed to generate migrations: {error}"
+							))
+						})?;
+				report_autodetector_warnings_with(&generated.warnings, |message| {
+					ctx.warning(message);
+				});
+				let generated_migrations = generated.migrations;
 
 				// Process generated migrations for this app
 				for migration in generated_migrations {
@@ -1640,7 +1657,7 @@ impl BaseCommand for MakeMigrationsCommand {
 						// Show detailed operations if --verbose
 						if is_verbose {
 							for operation in &result.migration.operations {
-								let description = operation_description(operation);
+								let description = makemigrations_operation_description(operation);
 								ctx.info(&format!("    - {}", description));
 							}
 						}
@@ -1652,7 +1669,7 @@ impl BaseCommand for MakeMigrationsCommand {
 
 						if is_verbose {
 							for operation in &result.migration.operations {
-								let description = operation_description(operation);
+								let description = makemigrations_operation_description(operation);
 								ctx.info(&format!("    - {}", description));
 							}
 						}
@@ -4717,6 +4734,38 @@ fn detect_database_type(url: &str) -> Result<DatabaseType, crate::CommandError> 
 mod tests {
 	use super::*;
 
+	#[test]
+	#[cfg(feature = "migrations")]
+	fn makemigrations_reports_enum_domain_warnings_to_the_command_sink() {
+		use reinhardt_db::field_domain::{FieldDomain, ModelEnumRepr, ModelEnumValue};
+		use reinhardt_db::migrations::AutodetectorWarning;
+
+		let warning = AutodetectorWarning::EnumDomainDataMigrationRequired {
+			table: "jobs".to_string(),
+			column: "status".to_string(),
+			old_domain: FieldDomain::Enum {
+				repr: ModelEnumRepr::String,
+				values: vec![
+					ModelEnumValue::String("queued".to_string()),
+					ModelEnumValue::String("running".to_string()),
+				],
+			},
+			new_domain: FieldDomain::Enum {
+				repr: ModelEnumRepr::String,
+				values: vec![ModelEnumValue::String("queued".to_string())],
+			},
+		};
+		let mut reported = Vec::new();
+
+		report_autodetector_warnings_with(&[warning], |message| {
+			reported.push(message.to_string());
+		});
+
+		assert_eq!(reported.len(), 1);
+		assert!(reported[0].contains("running"), "{}", reported[0]);
+		assert!(reported[0].contains("data migration"), "{}", reported[0]);
+	}
+
 	#[cfg(feature = "migrations")]
 	#[test]
 	fn global_migration_validation_rejects_cross_app_table_rename_collisions() {
@@ -5307,6 +5356,61 @@ name = "db.sqlite3"
 
 		// Should succeed (dry-run mode, no actual files created)
 		assert!(result.is_ok(), "Failed with: {:?}", result.err());
+	}
+
+	#[test]
+	#[cfg(feature = "migrations")]
+	fn makemigrations_formats_enum_domain_warning_for_stderr() {
+		use reinhardt_db::field_domain::{FieldDomain, ModelEnumRepr, ModelEnumValue};
+		use reinhardt_db::migrations::AutodetectorWarning;
+
+		let warning = AutodetectorWarning::EnumDomainDataMigrationRequired {
+			table: "jobs".to_string(),
+			column: "status".to_string(),
+			old_domain: FieldDomain::Enum {
+				repr: ModelEnumRepr::String,
+				values: vec![ModelEnumValue::String("running".to_string())],
+			},
+			new_domain: FieldDomain::Enum {
+				repr: ModelEnumRepr::String,
+				values: vec![ModelEnumValue::String("queued".to_string())],
+			},
+		};
+
+		let message = super::format_makemigrations_warning(&warning);
+
+		assert_eq!(
+			message,
+			"enum domain change for jobs.status removes or re-encodes values [running]; place a data migration before the new constraint"
+		);
+	}
+
+	#[test]
+	#[cfg(feature = "migrations")]
+	fn makemigrations_describes_typed_constraint_operations_for_people() {
+		use reinhardt_db::migrations::{Constraint, Operation};
+
+		let constraint = Constraint::Unique {
+			name: "jobs_code_key".to_string(),
+			columns: vec!["code".to_string()],
+		};
+		let add = Operation::AddConstraintDefinition {
+			table: "jobs".to_string(),
+			constraint: constraint.clone(),
+		};
+		let drop = Operation::DropConstraintDefinition {
+			table: "jobs".to_string(),
+			constraint,
+		};
+
+		assert_eq!(
+			super::makemigrations_operation_description(&add),
+			"Add constraint jobs_code_key on jobs"
+		);
+		assert_eq!(
+			super::makemigrations_operation_description(&drop),
+			"Remove constraint jobs_code_key from jobs"
+		);
 	}
 
 	#[tokio::test]

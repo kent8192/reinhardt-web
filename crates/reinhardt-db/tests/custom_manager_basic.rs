@@ -554,8 +554,11 @@ fn delete_queryset_sql_via_trait_matches_inherent_method() {
 	));
 
 	// Act
-	let (inherent_sql, inherent_params) = manager.delete_queryset(&qs);
-	let (trait_sql, trait_params) = CustomManager::delete_queryset(&manager, &qs);
+	let (inherent_sql, inherent_params) = manager
+		.delete_queryset(&qs)
+		.expect("delete SQL should compile");
+	let (trait_sql, trait_params) =
+		CustomManager::delete_queryset(&manager, &qs).expect("delete SQL should compile");
 
 	// Assert
 	assert_eq!(inherent_sql, trait_sql);
@@ -574,8 +577,11 @@ fn update_queryset_sql_via_trait_matches_inherent_method() {
 	let updates: &[(&str, &str)] = &[("title", "renamed")];
 
 	// Act
-	let (inherent_sql, inherent_params) = manager.update_queryset(&qs, updates);
-	let (trait_sql, trait_params) = CustomManager::update_queryset(&manager, &qs, updates);
+	let (inherent_sql, inherent_params) = manager
+		.update_queryset(&qs, updates)
+		.expect("manager update SQL should compile");
+	let (trait_sql, trait_params) = CustomManager::update_queryset(&manager, &qs, updates)
+		.expect("custom manager update SQL should compile");
 
 	// Assert
 	assert_eq!(inherent_sql, trait_sql);

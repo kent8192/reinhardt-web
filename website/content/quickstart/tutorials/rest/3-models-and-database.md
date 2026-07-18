@@ -60,6 +60,79 @@ The fields are ordinary Rust fields with database metadata:
 - `title`, `code`, and `language` become required `VARCHAR` columns with the declared lengths.
 - `created_at` is filled when a new model is built because it uses `auto_now_add = true`.
 
+## Use an Enum for a Finite Domain
+
+Keep `language` as `String` for this tutorial because syntax names are
+open-ended. For a field with a fixed domain, use a native model enum instead of
+accepting arbitrary strings. For example, you could add snippet visibility as
+a string-backed enum:
+
+```rust
+#[derive(ModelEnum, Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[model_enum(repr = "string")]
+pub enum Visibility {
+	#[model_enum(value = "private")]
+	Private,
+	#[model_enum(value = "unlisted")]
+	Unlisted,
+	#[model_enum(value = "public")]
+	Public,
+}
+```
+
+Every variant has an explicit database value. If numeric storage is more
+appropriate, select `repr = "i32"` and use integer values:
+
+```rust
+#[derive(ModelEnum, Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[model_enum(repr = "i32")]
+pub enum ReviewPriority {
+	#[model_enum(value = 10)]
+	Low,
+	#[model_enum(value = 20)]
+	Normal,
+	#[model_enum(value = 30)]
+	High,
+}
+```
+
+The corresponding required and nullable model fields would be:
+
+```rust,ignore
+#[field(max_length = 16)]
+pub visibility: Visibility,
+
+#[field(null = true)]
+pub review_priority: Option<ReviewPriority>,
+```
+
+Generated migrations use character storage for `Visibility`, integer storage
+for `ReviewPriority`, and named check constraints for their declared values.
+Use enum values in typed filters and updates:
+
+```rust,ignore
+let public_snippets = Snippet::objects()
+	.filter(Snippet::field_visibility().eq(Visibility::Public))
+	.filter(
+		Snippet::field_review_priority()
+			.is_in([ReviewPriority::Normal, ReviewPriority::High]),
+	)
+	.all()
+	.await?;
+
+Snippet::objects()
+	.filter(Snippet::field_id().eq(snippet_id))
+	.update_fields([
+		Snippet::field_visibility().assign(Visibility::Unlisted),
+		Snippet::field_review_priority().assign(Some(ReviewPriority::High)),
+	])
+	.await?;
+```
+
+Rust variant names, serde names, and database values are separate contracts.
+A raw string such as `.eq("public")` does not compile for a `Visibility` field;
+use `Visibility::Public` so queries share the model's database codec.
+
 ## Add a Normal Model Method
 
 The reference example also gives `Snippet` a method that turns the code into highlighted HTML:

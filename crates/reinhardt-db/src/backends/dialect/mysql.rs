@@ -45,6 +45,27 @@ impl MySqlBackend {
 			// MySQL stores UUIDs as BINARY(16) or CHAR(36); we bind as string
 			QueryValue::Uuid(u) => query.bind(u.to_string()),
 			QueryValue::Json(value) => query.bind(value.as_deref().cloned().map(sqlx::types::Json)),
+			QueryValue::StringArray(values) => {
+				query.bind(serde_json::to_string(values).expect("string arrays serialize"))
+			}
+			QueryValue::IntArray(values) => {
+				query.bind(serde_json::to_string(values).expect("integer arrays serialize"))
+			}
+			QueryValue::BigIntArray(values) => {
+				query.bind(serde_json::to_string(values).expect("big integer arrays serialize"))
+			}
+			QueryValue::BoolArray(values) => {
+				query.bind(serde_json::to_string(values).expect("boolean arrays serialize"))
+			}
+			QueryValue::FloatArray(values) => {
+				query.bind(serde_json::to_string(values).expect("float arrays serialize"))
+			}
+			QueryValue::DoubleArray(values) => {
+				query.bind(serde_json::to_string(values).expect("double arrays serialize"))
+			}
+			QueryValue::UuidArray(values) => {
+				query.bind(serde_json::to_string(values).expect("UUID arrays serialize"))
+			}
 			QueryValue::Now => {
 				// MySQL uses NOW() function, which should be part of SQL string
 				// For binding, we use current UTC time
@@ -69,6 +90,19 @@ impl MySqlBackend {
 				};
 				continue;
 			}
+			if matches!(type_name.as_str(), "DECIMAL" | "NEWDECIMAL") {
+				match mysql_row.try_get::<Option<rust_decimal::Decimal>, _>(column_name) {
+					Ok(Some(value)) => {
+						row.insert(
+							column_name.to_string(),
+							QueryValue::String(value.to_string()),
+						);
+					}
+					Ok(None) => row.insert(column_name.to_string(), QueryValue::Null),
+					Err(error) => return Err(error.into()),
+				};
+				continue;
+			}
 			if let Ok(value) = mysql_row.try_get::<bool, _>(column_name) {
 				row.insert(column_name.to_string(), QueryValue::Bool(value));
 			} else if let Ok(value) = mysql_row.try_get::<i64, _>(column_name) {
@@ -77,6 +111,16 @@ impl MySqlBackend {
 				row.insert(column_name.to_string(), QueryValue::Int(value as i64));
 			} else if let Ok(value) = mysql_row.try_get::<f64, _>(column_name) {
 				row.insert(column_name.to_string(), QueryValue::Float(value));
+			} else if let Ok(value) = mysql_row.try_get::<chrono::NaiveDate, _>(column_name) {
+				row.insert(
+					column_name.to_string(),
+					QueryValue::String(value.to_string()),
+				);
+			} else if let Ok(value) = mysql_row.try_get::<chrono::NaiveTime, _>(column_name) {
+				row.insert(
+					column_name.to_string(),
+					QueryValue::String(value.to_string()),
+				);
 			} else if let Ok(value) = mysql_row.try_get::<String, _>(column_name) {
 				row.insert(column_name.to_string(), QueryValue::String(value));
 			} else if let Ok(value) = mysql_row.try_get::<Vec<u8>, _>(column_name) {
@@ -222,6 +266,27 @@ impl MySqlTransactionExecutor {
 			// MySQL stores UUIDs as BINARY(16) or CHAR(36); we bind as string
 			QueryValue::Uuid(u) => query.bind(u.to_string()),
 			QueryValue::Json(value) => query.bind(value.as_deref().cloned().map(sqlx::types::Json)),
+			QueryValue::StringArray(values) => {
+				query.bind(serde_json::to_string(values).expect("string arrays serialize"))
+			}
+			QueryValue::IntArray(values) => {
+				query.bind(serde_json::to_string(values).expect("integer arrays serialize"))
+			}
+			QueryValue::BigIntArray(values) => {
+				query.bind(serde_json::to_string(values).expect("big integer arrays serialize"))
+			}
+			QueryValue::BoolArray(values) => {
+				query.bind(serde_json::to_string(values).expect("boolean arrays serialize"))
+			}
+			QueryValue::FloatArray(values) => {
+				query.bind(serde_json::to_string(values).expect("float arrays serialize"))
+			}
+			QueryValue::DoubleArray(values) => {
+				query.bind(serde_json::to_string(values).expect("double arrays serialize"))
+			}
+			QueryValue::UuidArray(values) => {
+				query.bind(serde_json::to_string(values).expect("UUID arrays serialize"))
+			}
 			QueryValue::Now => query.bind(chrono::Utc::now()),
 		}
 	}

@@ -260,6 +260,12 @@ pub(crate) fn get_reinhardt_db_crate() -> TokenStream {
 	quote!(::reinhardt_db)
 }
 
+/// Resolves the path to the database ORM API used by generated field codecs.
+pub(crate) fn get_reinhardt_db_orm_crate() -> TokenStream {
+	let db_crate = get_reinhardt_db_crate();
+	quote!(#db_crate::orm)
+}
+
 /// Resolves the path to the reinhardt_orm module dynamically.
 /// Note: reinhardt-orm has been merged into reinhardt-db as a submodule.
 pub(crate) fn get_reinhardt_orm_crate() -> TokenStream {

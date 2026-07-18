@@ -69,6 +69,7 @@ fn create_basic_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 		auto_increment: false,
 		default: None,
 		generated: None,
+		domain: None,
 	}
 }
 
@@ -83,6 +84,7 @@ fn create_not_null_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 		auto_increment: false,
 		default: None,
 		generated: None,
+		domain: None,
 	}
 }
 
@@ -97,6 +99,7 @@ fn create_auto_pk_column(name: &str, type_def: FieldType) -> ColumnDefinition {
 		auto_increment: true,
 		default: None,
 		generated: None,
+		domain: None,
 	}
 }
 
@@ -111,6 +114,7 @@ fn create_column_with_default(name: &str, type_def: FieldType, default: &str) ->
 		auto_increment: false,
 		default: Some(default.to_string()),
 		generated: None,
+		domain: None,
 	}
 }
 
