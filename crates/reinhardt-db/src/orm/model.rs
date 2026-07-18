@@ -198,6 +198,15 @@ pub trait Model: Serialize + for<'de> Deserialize<'de> + Send + Sync + Clone {
 		&[]
 	}
 
+	/// Return whether a scalar integer primary key uses zero as its auto-generated sentinel.
+	///
+	/// The model macro enables this for non-`Option` integer primary keys whose
+	/// `auto_increment` setting is enabled. Manual model implementations can
+	/// override it when they use the same database convention.
+	fn primary_key_uses_zero_sentinel() -> bool {
+		false
+	}
+
 	/// Django-style objects manager accessor
 	///
 	/// Returns the configured manager for this model type. When a custom manager

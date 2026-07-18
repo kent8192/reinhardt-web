@@ -111,6 +111,17 @@ pub(crate) fn deserialize_model_row<M: Model>(
 		return serde_json::from_value(data);
 	};
 
+	for field in M::field_metadata().into_iter().filter(|field| {
+		!is_json_field_type(&field.field_type) && field.db_column_name() != field.name
+	}) {
+		let column_name = field.db_column_name().to_string();
+		if fields.contains_key(&field.name) {
+			fields.remove(&column_name);
+		} else if let Some(value) = fields.remove(&column_name) {
+			fields.insert(field.name, value);
+		}
+	}
+
 	for field in M::field_metadata()
 		.into_iter()
 		.filter(|field| is_json_field_type(&field.field_type))

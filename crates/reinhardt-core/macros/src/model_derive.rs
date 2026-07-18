@@ -2868,6 +2868,10 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 		.db_column
 		.clone()
 		.unwrap_or_else(|| pk_fields[0].name.to_string());
+	let primary_key_uses_zero_sentinel = !is_composite_pk
+		&& !pk_is_option
+		&& is_integer_primary_key_type(&pk_fields[0].ty)
+		&& pk_fields[0].config.auto_increment.unwrap_or(true);
 
 	// Generate field_metadata implementation
 	let field_metadata_items = generate_field_metadata(&field_infos, &fk_field_infos)?;
@@ -3157,6 +3161,10 @@ pub(crate) fn model_derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 
 			fn primary_key_column() -> &'static str {
 				#pk_column_name
+			}
+
+			fn primary_key_uses_zero_sentinel() -> bool {
+				#primary_key_uses_zero_sentinel
 			}
 
 			fn field_is_none(&self, field_name: &str) -> bool {
@@ -6860,6 +6868,42 @@ mod tests {
 			error.to_string(),
 			"Generated columns cannot be auto-incrementing"
 		);
+	}
+
+	#[test]
+	fn test_model_marks_scalar_integer_auto_increment_primary_key_zero_sentinel() {
+		let input = quote! {
+			#[model(app_label = "test", table_name = "scalar_users", info = false)]
+			struct ScalarUser {
+				#[field(primary_key = true)]
+				id: i64,
+				name: String,
+			}
+		};
+
+		let output = model_derive_impl(syn::parse2(input).unwrap())
+			.expect("scalar integer primary key model must generate")
+			.to_string();
+
+		assert!(output.contains("fn primary_key_uses_zero_sentinel () -> bool { true }"));
+	}
+
+	#[test]
+	fn test_model_disables_zero_sentinel_for_non_auto_increment_primary_key() {
+		let input = quote! {
+			#[model(app_label = "test", table_name = "manual_users", info = false)]
+			struct ManualUser {
+				#[field(primary_key = true, auto_increment = false)]
+				id: i64,
+				name: String,
+			}
+		};
+
+		let output = model_derive_impl(syn::parse2(input).unwrap())
+			.expect("manual integer primary key model must generate")
+			.to_string();
+
+		assert!(output.contains("fn primary_key_uses_zero_sentinel () -> bool { false }"));
 	}
 
 	#[cfg(feature = "db-sqlite")]

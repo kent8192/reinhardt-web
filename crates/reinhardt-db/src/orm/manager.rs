@@ -240,6 +240,11 @@ impl<M: Model> Manager<M> {
 		M::generated_field_names().contains(&field)
 	}
 
+	fn is_zero_sentinel_primary_key(value: &serde_json::Value) -> bool {
+		M::primary_key_uses_zero_sentinel()
+			&& (value.as_i64() == Some(0) || value.as_u64() == Some(0))
+	}
+
 	fn database_column_for_field(field_metadata: &[FieldInfo], field: &str) -> String {
 		let primary_key_field = M::primary_key_field();
 		let primary_key_column = M::primary_key_column();
@@ -389,7 +394,7 @@ impl<M: Model> Manager<M> {
 				if Self::is_generated_field(key) {
 					return false;
 				}
-				if key == pk_field && v.is_null() {
+				if key == pk_field && (v.is_null() || Self::is_zero_sentinel_primary_key(v)) {
 					return false;
 				}
 				if v.is_null()
@@ -968,7 +973,11 @@ impl<M: Model> Manager<M> {
 
 		if matches!(backend, DatabaseBackend::MySql) {
 			let result = conn.execute(&sql, values).await?;
-			let primary_key = if model.primary_key().is_some() {
+			let primary_key = if model.primary_key().is_some()
+				&& !obj
+					.get(M::primary_key_field())
+					.is_some_and(Self::is_zero_sentinel_primary_key)
+			{
 				Self::serialized_primary_key_value(obj)?
 			} else {
 				Self::generated_primary_key_value(result.last_insert_id)?
@@ -1485,7 +1494,8 @@ impl<M: Model> Manager<M> {
 			.iter()
 			.filter_map(|(name, value)| {
 				if Self::is_generated_field(name.as_str())
-					|| (name == primary_key && value.is_null())
+					|| (name == primary_key
+						&& (value.is_null() || Self::is_zero_sentinel_primary_key(value)))
 				{
 					None
 				} else {
@@ -2160,6 +2170,97 @@ mod tests {
 		}
 	}
 
+	#[derive(Debug, Clone, Serialize, Deserialize)]
+	struct ScalarPrimaryKeyUser {
+		id: i64,
+		name: String,
+	}
+
+	#[derive(Debug, Clone)]
+	struct ScalarPrimaryKeyUserFields;
+
+	impl FieldSelector for ScalarPrimaryKeyUserFields {
+		fn with_alias(self, _alias: &str) -> Self {
+			self
+		}
+	}
+
+	impl Model for ScalarPrimaryKeyUser {
+		type PrimaryKey = i64;
+		type Fields = ScalarPrimaryKeyUserFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"scalar_primary_key_user"
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			Some(self.id)
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = value;
+		}
+
+		fn primary_key_field() -> &'static str {
+			"id"
+		}
+
+		fn primary_key_uses_zero_sentinel() -> bool {
+			true
+		}
+
+		fn new_fields() -> Self::Fields {
+			ScalarPrimaryKeyUserFields
+		}
+	}
+
+	#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+	struct RenamedScalarModel {
+		id: Option<i64>,
+		email: String,
+	}
+
+	#[derive(Debug, Clone)]
+	struct RenamedScalarModelFields;
+
+	impl FieldSelector for RenamedScalarModelFields {
+		fn with_alias(self, _alias: &str) -> Self {
+			self
+		}
+	}
+
+	impl Model for RenamedScalarModel {
+		type PrimaryKey = i64;
+		type Fields = RenamedScalarModelFields;
+		type Objects = Manager<Self>;
+
+		fn table_name() -> &'static str {
+			"renamed_scalar_models"
+		}
+
+		fn primary_key(&self) -> Option<Self::PrimaryKey> {
+			self.id
+		}
+
+		fn set_primary_key(&mut self, value: Self::PrimaryKey) {
+			self.id = Some(value);
+		}
+
+		fn new_fields() -> Self::Fields {
+			RenamedScalarModelFields
+		}
+
+		fn field_metadata() -> Vec<FieldInfo> {
+			let mut email = test_manager_field_info("email", "CharField", false, false);
+			email.db_column = Some("email_address".to_string());
+			vec![
+				test_manager_field_info("id", "BigIntegerField", true, true),
+				email,
+			]
+		}
+	}
+
 	#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 	struct TestSettings {
 		theme: String,
@@ -2637,6 +2738,61 @@ mod tests {
 		assert!(
 			err.to_string().contains("no writable fields remain"),
 			"unexpected error: {err}"
+		);
+	}
+
+	#[test]
+	fn test_insert_omits_zero_sentinel_scalar_primary_key() {
+		let model = ScalarPrimaryKeyUser {
+			id: 0,
+			name: "Alice".to_string(),
+		};
+		let json = serde_json::to_value(&model).expect("model should serialize");
+		let obj = json.as_object().expect("model should serialize to object");
+		let stmt =
+			Manager::<ScalarPrimaryKeyUser>::build_insert_statement_from_object(obj, |_| false)
+				.expect("zero-sentinel inserts should retain writable fields");
+		let (sql, values) = super::build_insert_sql(&stmt, DatabaseBackend::Postgres);
+
+		assert_eq!(
+			sql,
+			"INSERT INTO \"scalar_primary_key_user\" (\"name\") VALUES ($1)"
+		);
+		assert_eq!(values.0.len(), 1);
+
+		let explicit_model = ScalarPrimaryKeyUser {
+			id: 7,
+			name: "Bob".to_string(),
+		};
+		let json = serde_json::to_value(&explicit_model).expect("model should serialize");
+		let obj = json.as_object().expect("model should serialize to object");
+		let stmt =
+			Manager::<ScalarPrimaryKeyUser>::build_insert_statement_from_object(obj, |_| false)
+				.expect("explicit primary keys should remain writable");
+		let (sql, _) = super::build_insert_sql(&stmt, DatabaseBackend::Postgres);
+
+		assert!(sql.contains("\"id\""));
+	}
+
+	#[test]
+	fn test_deserialize_maps_physical_non_json_column_to_model_field() {
+		let mut backend_row = crate::backends::types::Row::new();
+		backend_row.insert("id".to_string(), crate::backends::types::QueryValue::Int(1));
+		backend_row.insert(
+			"email_address".to_string(),
+			crate::backends::types::QueryValue::String("alice@example.com".to_string()),
+		);
+
+		let model = crate::orm::connection::QueryRow::from_backend_row(backend_row)
+			.deserialize_model::<RenamedScalarModel>()
+			.expect("physical database columns should deserialize into logical fields");
+
+		assert_eq!(
+			model,
+			RenamedScalarModel {
+				id: Some(1),
+				email: "alice@example.com".to_string(),
+			}
 		);
 	}
 

@@ -5898,7 +5898,10 @@ where
 		}
 
 		let mut count_stmt = Query::select();
-		count_stmt.expr(Func::count(Expr::asterisk().into_simple_expr()));
+		count_stmt.expr_as(
+			Func::count(Expr::asterisk().into_simple_expr()),
+			Alias::new("count"),
+		);
 		count_stmt.from_subquery(distinct_stmt.to_owned(), Alias::new("distinct_root_rows"));
 		Ok(count_stmt.to_owned())
 	}
@@ -5919,12 +5922,18 @@ where
 		let mut stmt = Query::select();
 		count_queryset.apply_model_from(&mut stmt);
 		if filter_relation_joins.has_multi_valued_join() {
-			stmt.expr(Expr::cust(format!(
-				"COUNT(DISTINCT {})",
-				count_queryset.distinct_root_primary_key_sql()
-			)));
+			stmt.expr_as(
+				Expr::cust(format!(
+					"COUNT(DISTINCT {})",
+					count_queryset.distinct_root_primary_key_sql()
+				)),
+				Alias::new("count"),
+			);
 		} else {
-			stmt.expr(Func::count(Expr::asterisk().into_simple_expr()));
+			stmt.expr_as(
+				Func::count(Expr::asterisk().into_simple_expr()),
+				Alias::new("count"),
+			);
 		}
 
 		Self::apply_relation_join_graph(&mut stmt, &filter_relation_joins);
@@ -9109,7 +9118,7 @@ mod tests {
 			.expect("count select query");
 		let sql = stmt.to_string(PostgresQueryBuilder);
 
-		assert!(sql.starts_with(r#"SELECT COUNT(*) FROM "test_users" AS "u""#));
+		assert!(sql.starts_with(r#"SELECT COUNT(*) AS "count" FROM "test_users" AS "u""#));
 		assert!(sql.contains(r#""u"."corpus_file_id" = "corpus_file"."id""#));
 		assert!(!sql.contains(r#""test_users"."corpus_file_id" = "corpus_file"."id""#));
 	}
@@ -9413,7 +9422,7 @@ mod tests {
 			.expect("count select query")
 			.to_string(PostgresQueryBuilder);
 
-		assert_eq!(sql, r#"SELECT COUNT(*) FROM "test_users""#);
+		assert_eq!(sql, r#"SELECT COUNT(*) AS "count" FROM "test_users""#);
 	}
 
 	#[test]
@@ -9929,7 +9938,9 @@ mod tests {
 			.expect("count select query")
 			.to_string(PostgresQueryBuilder);
 
-		assert!(sql.starts_with(r#"SELECT COUNT(DISTINCT "test_users"."id") FROM "test_users""#));
+		assert!(sql.starts_with(
+			r#"SELECT COUNT(DISTINCT "test_users"."id") AS "count" FROM "test_users""#
+		));
 	}
 
 	#[test]
@@ -9947,7 +9958,7 @@ mod tests {
 			.expect("count select query")
 			.to_string(SqliteQueryBuilder);
 
-		assert!(sql.starts_with(r#"SELECT COUNT(*) FROM (SELECT DISTINCT "test_memberships"."member_user_id", "test_memberships"."member_role_id" FROM "test_memberships""#));
+		assert!(sql.starts_with(r#"SELECT COUNT(*) AS "count" FROM (SELECT DISTINCT "test_memberships"."member_user_id", "test_memberships"."member_role_id" FROM "test_memberships""#));
 		assert!(!sql.contains("COUNT(DISTINCT"));
 		assert!(sql.contains(r#"WHERE "projects"."name" ILIKE '%rust%' ESCAPE '\'"#));
 	}
