@@ -4,6 +4,7 @@
 //! By default, it exports the expression-based query API (SQLAlchemy-style).
 
 use super::FieldSelector;
+use crate::backends::types::QueryValue;
 use crate::naming::to_snake_case;
 use crate::orm::query_fields::GroupByFields;
 use crate::orm::query_fields::aggregate::{AggregateExpr, ComparisonExpr};
@@ -15,6 +16,7 @@ use reinhardt_query::prelude::{
 	SelectStatement, SimpleExpr, SqliteQueryBuilder, UpdateStatement,
 };
 use reinhardt_query::types::PgBinOper;
+use reinhardt_query::value::Value;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use std::collections::HashMap;
@@ -4355,16 +4357,20 @@ where
 			self.select_related_query()
 		};
 
-		let sql = render_select_statement(&stmt, conn.backend());
+		let (sql, params) = build_select_statement(&stmt, conn.backend());
 
 		let started_at = Instant::now();
-		let query_result = conn.query(&sql, vec![]).await;
+		let query_result = conn.query(&sql, params.clone()).await;
 		let duration = started_at.elapsed();
 
 		let rows = match query_result {
 			Ok(rows) => {
+				let instrumentation_params = params
+					.iter()
+					.map(|param| format!("{param:?}"))
+					.collect::<Vec<_>>();
 				super::instrumentation::instrumentation()
-					.orm_query_end_with_params(&sql, &[], duration)
+					.orm_query_end_with_params(&sql, &instrumentation_params, duration)
 					.await;
 				rows
 			}
@@ -6424,23 +6430,88 @@ fn escape_like_pattern(value: &str) -> String {
 	escaped
 }
 
+fn build_select_statement(
+	statement: &SelectStatement,
+	backend: super::connection::DatabaseBackend,
+) -> (String, Vec<QueryValue>) {
+	let (sql, values) = match backend {
+		super::connection::DatabaseBackend::Postgres => statement.build(PostgresQueryBuilder),
+		super::connection::DatabaseBackend::MySql => statement.build(MySqlQueryBuilder),
+		super::connection::DatabaseBackend::Sqlite => statement.build(SqliteQueryBuilder),
+	};
+
+	let params = values.into_iter().map(query_value_from_sea_value).collect();
+	(sql, params)
+}
+
+#[cfg(test)]
 fn render_select_statement(
 	statement: &SelectStatement,
 	backend: super::connection::DatabaseBackend,
 ) -> String {
-	match backend {
-		super::connection::DatabaseBackend::Postgres => statement.to_string(PostgresQueryBuilder),
-		super::connection::DatabaseBackend::MySql => statement.to_string(MySqlQueryBuilder),
-		super::connection::DatabaseBackend::Sqlite => statement.to_string(SqliteQueryBuilder),
+	let (sql, values) = build_select_statement(statement, backend);
+	inline_query_params(&sql, &values)
+}
+
+fn query_value_from_sea_value(value: Value) -> QueryValue {
+	match value {
+		Value::Bool(Some(v)) => QueryValue::Bool(v),
+		Value::TinyInt(Some(v)) => QueryValue::Int(i64::from(v)),
+		Value::SmallInt(Some(v)) => QueryValue::Int(i64::from(v)),
+		Value::Int(Some(v)) => QueryValue::Int(i64::from(v)),
+		Value::BigInt(Some(v)) => QueryValue::Int(v),
+		Value::TinyUnsigned(Some(v)) => QueryValue::Int(i64::from(v)),
+		Value::SmallUnsigned(Some(v)) => QueryValue::Int(i64::from(v)),
+		Value::Unsigned(Some(v)) => QueryValue::Int(i64::from(v)),
+		Value::BigUnsigned(Some(v)) => QueryValue::Int(v.try_into().unwrap_or(i64::MAX)),
+		Value::Float(Some(v)) => QueryValue::Float(f64::from(v)),
+		Value::Double(Some(v)) => QueryValue::Float(v),
+		Value::Char(Some(v)) => QueryValue::String(v.to_string()),
+		Value::String(Some(v)) => QueryValue::String(*v),
+		Value::Bytes(Some(v)) => QueryValue::Bytes(*v),
+		Value::ChronoDateTimeUtc(Some(v)) => QueryValue::Timestamp(*v),
+		Value::Uuid(Some(v)) => QueryValue::Uuid(*v),
+		_ => QueryValue::Null,
+	}
+}
+
+#[cfg(test)]
+fn inline_query_params(sql: &str, params: &[QueryValue]) -> String {
+	let mut rendered = sql.to_string();
+	for value in params {
+		rendered = rendered.replacen('?', &query_value_to_sql_literal(value), 1);
+	}
+	rendered
+}
+
+#[cfg(test)]
+fn query_value_to_sql_literal(value: &QueryValue) -> String {
+	match value {
+		QueryValue::Null => "NULL".to_string(),
+		QueryValue::Bool(v) => v.to_string(),
+		QueryValue::Int(v) => v.to_string(),
+		QueryValue::Float(v) => v.to_string(),
+		QueryValue::String(v) => format!("'{}'", v.replace('\\', "\\\\").replace('\'', "''")),
+		QueryValue::Bytes(v) => format!(
+			"X'{}'",
+			v.iter().map(|b| format!("{b:02X}")).collect::<String>()
+		),
+		QueryValue::Timestamp(v) => format!("'{}'", v.to_rfc3339()),
+		QueryValue::Uuid(v) => format!("'{}'", v),
+		QueryValue::Now => "NOW()".to_string(),
 	}
 }
 
 #[cfg(test)]
 mod tests {
-	use super::{FilterCondition, MAX_FILTER_CONDITION_DEPTH, render_select_statement};
+	use super::{
+		FilterCondition, MAX_FILTER_CONDITION_DEPTH, build_select_statement,
+		render_select_statement,
+	};
 	use crate::orm::connection::DatabaseBackend;
 	use crate::orm::query::{FieldAssignment, UpdateValue};
 	use crate::orm::{FilterOperator, FilterValue, Manager, Model, QuerySet, query::Filter};
+	use reinhardt_query::prelude::ExprTrait;
 	use rstest::rstest;
 	use serde::{Deserialize, Serialize};
 	use std::collections::HashMap;
@@ -6458,6 +6529,32 @@ mod tests {
 
 		// Assert
 		assert_eq!(sql, "SELECT `id` FROM `articles`");
+	}
+
+	#[test]
+	fn build_select_statement_keeps_mysql_filter_values_bound() {
+		// Arrange
+		let payload = "\\' OR 1=1 -- ";
+		let mut statement = reinhardt_query::prelude::Query::select();
+		statement
+			.column(reinhardt_query::prelude::Alias::new("id"))
+			.from(reinhardt_query::prelude::Alias::new("users"))
+			.and_where(
+				reinhardt_query::prelude::Expr::col(reinhardt_query::prelude::Alias::new("name"))
+					.eq(payload),
+			);
+
+		// Act
+		let (sql, params) = build_select_statement(&statement, DatabaseBackend::MySql);
+
+		// Assert
+		assert_eq!(sql, "SELECT `id` FROM `users` WHERE `name` = ?");
+		assert_eq!(
+			params,
+			vec![crate::backends::types::QueryValue::String(
+				payload.to_string()
+			)]
+		);
 	}
 
 	#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
