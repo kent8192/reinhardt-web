@@ -301,17 +301,14 @@ impl<S: MockableServerFn> ErasedHandler for ServerFnContextHandler<S> {
 }
 
 fn server_fn_error_response(err: ServerFnError) -> MockResponse {
-	let status = if err.kind() == reinhardt_pages::server_fn::ServerFnErrorKind::Server {
-		err.status().unwrap_or(500)
-	} else {
-		500
-	};
-	let body = err.user_message().to_string();
+	let status = err.status().unwrap_or(500);
+	let body = serde_json::to_string(&err)
+		.expect("ServerFnError must serialize into its versioned error envelope");
 	MockResponse {
 		status,
 		headers: {
 			let mut h = HashMap::new();
-			h.insert("content-type".to_string(), "text/plain".to_string());
+			h.insert("content-type".to_string(), "application/json".to_string());
 			h
 		},
 		body,
@@ -396,5 +393,29 @@ mod tests {
 				.respond(&make_intercepted("/api/fail", "GET"))
 				.is_none()
 		);
+	}
+
+	#[rstest]
+	fn server_fn_error_response_uses_the_versioned_json_envelope() {
+		// Arrange
+		let error = ServerFnError::server(503, "Mock unavailable");
+
+		// Act
+		let response = server_fn_error_response(error);
+		let decoded: ServerFnError =
+			serde_json::from_str(&response.body).expect("response must contain a ServerFnError");
+
+		// Assert
+		assert_eq!(response.status, 503);
+		assert_eq!(
+			response.headers.get("content-type"),
+			Some(&"application/json".to_string())
+		);
+		assert_eq!(
+			decoded.kind(),
+			reinhardt_pages::server_fn::ServerFnErrorKind::Server
+		);
+		assert_eq!(decoded.status(), Some(503));
+		assert_eq!(decoded.user_message(), "Mock unavailable");
 	}
 }

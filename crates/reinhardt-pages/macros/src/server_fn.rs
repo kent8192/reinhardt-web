@@ -1633,6 +1633,34 @@ fn generate_server_handler(
 	} else {
 		quote! {}
 	};
+	let serialize_error = if info.structured_error {
+		quote! {
+			let error_json = ::serde_json::to_string(&e)
+				.map_err(|e| #pages_crate::__private::bytes::Bytes::from(
+					format!("Failed to serialize error: {}", e)
+				))?;
+		}
+	} else {
+		quote! {
+			let serialized_error = ::serde_json::to_value(&e)
+				.map_err(|e| #pages_crate::__private::bytes::Bytes::from(
+					format!("Failed to serialize error: {}", e)
+				))?;
+			let error_message = match serialized_error {
+				::serde_json::Value::String(message) => message,
+				::serde_json::Value::Object(mut fields) => fields
+					.remove("message")
+					.and_then(|value| value.as_str().map(::std::string::String::from))
+					.unwrap_or_else(|| "Server function failed".to_string()),
+				_ => "Server function failed".to_string(),
+			};
+			let error = #pages_crate::server_fn::ServerFnError::application(error_message);
+			let error_json = ::serde_json::to_string(&error)
+				.map_err(|e| #pages_crate::__private::bytes::Bytes::from(
+					format!("Failed to serialize error: {}", e)
+				))?;
+		}
+	};
 	let structured_status_override = if info.structured_error {
 		quote! {
 			fn error_status(error_body: &[u8]) -> u16 {
@@ -2013,10 +2041,7 @@ fn generate_server_handler(
 				}
 				Err(e) => {
 					#sanitize_error
-					let error_json = ::serde_json::to_string(&e)
-						.map_err(|e| #pages_crate::__private::bytes::Bytes::from(
-							format!("Failed to serialize error: {}", e)
-						))?;
+					#serialize_error
 					Err(#pages_crate::__private::bytes::Bytes::from(error_json))
 				}
 			}

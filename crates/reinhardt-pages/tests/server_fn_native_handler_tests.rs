@@ -32,6 +32,20 @@ async fn invalid_choice(choice_id: String) -> Result<(), ServerFnError> {
 	Ok(())
 }
 
+#[derive(serde::Serialize)]
+struct CustomServerError(String);
+
+impl From<ServerFnError> for CustomServerError {
+	fn from(error: ServerFnError) -> Self {
+		Self(error.to_string())
+	}
+}
+
+#[server_fn]
+async fn custom_error() -> Result<(), CustomServerError> {
+	Err(CustomServerError("Custom failure".to_string()))
+}
+
 struct Authorization;
 
 #[async_trait::async_trait]
@@ -185,6 +199,28 @@ async fn validation_handler_returns_versioned_error_envelope() {
 	assert_eq!(value["version"], 1);
 	assert_eq!(error.field_errors()[0].field(), "choice_id");
 	assert_eq!(error.field_errors()[0].message(), "Select a choice");
+}
+
+#[tokio::test]
+async fn custom_error_handler_returns_a_versioned_error_envelope() {
+	// Arrange
+	let request = Request::builder()
+		.method(Method::POST)
+		.uri("/api/server_fn/custom_error")
+		.build()
+		.expect("request should build");
+
+	// Act
+	let body = custom_error::marker::handle(request)
+		.await
+		.expect_err("custom error should reject the request");
+	let error: ServerFnError = serde_json::from_slice(&body).expect("error should be valid JSON");
+
+	// Assert
+	assert_eq!(custom_error::marker::error_status(&body), 500);
+	assert_eq!(error.kind(), ServerFnErrorKind::Application);
+	assert_eq!(error.status(), Some(500));
+	assert_eq!(error.message(), "Custom failure");
 }
 
 #[test]
