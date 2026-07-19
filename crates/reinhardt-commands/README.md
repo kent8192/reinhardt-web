@@ -77,6 +77,22 @@ details.
   `dumpdata`, `loaddata`, and `seed`
 - `routers` - Enable URL-related commands (requires `reinhardt-urls`)
 
+### Pages template hot reload
+
+The `pages` feature enables the Pages HMR transport used by
+`runserver --with-pages`. For WASM-owned `page!` source, literal text and
+literal attribute edits can use transactional template patches that preserve
+reactive state and DOM-bound handlers. Changes to dynamic expressions,
+handlers, bindings, control flow, components, callsite structure, or shared
+server-visible code conservatively fall back to the normal rebuild path.
+
+Patch application is gated by each mounted template's key and dynamic ABI.
+Patches for unloaded routes or branches are retained until their descriptor
+first mounts, then validated before use. A rejected patch or failed build keeps
+the last successful client active while the HMR channel reports normalized
+diagnostics; a successful fallback uses the existing readiness-gated reload
+behavior.
+
 ## Template System
 
 `reinhardt-commands` uses the

@@ -25,6 +25,8 @@
 pub mod control_binding;
 pub mod event;
 pub mod head;
+#[cfg(feature = "page-hot-reload")]
+pub mod hot_reload;
 #[cfg(native)]
 pub mod native_event;
 mod util;
@@ -35,6 +37,8 @@ pub use control_binding::{
 };
 pub use event::{EventInterface, EventName, EventType};
 pub use head::{Head, LinkTag, MetaTag, ScriptTag, StyleTag};
+#[cfg(feature = "page-hot-reload")]
+pub use hot_reload::DevTemplateMetadata;
 #[cfg(native)]
 pub use native_event::*;
 pub(crate) use util::html_escape;
@@ -452,6 +456,22 @@ pub enum Page {
 		/// The actual view content.
 		view: Box<Page>,
 	},
+	/// A development template descriptor paired with its renderable view.
+	#[cfg(feature = "page-hot-reload")]
+	DevTemplate {
+		/// Opaque descriptor emitted by the template macro.
+		metadata: DevTemplateMetadata,
+		/// The renderable template view.
+		view: Box<Page>,
+	},
+	/// A development dynamic-slot marker paired with its renderable view.
+	#[cfg(feature = "page-hot-reload")]
+	DevSlot {
+		/// Stable slot identity within the containing template.
+		slot_id: u32,
+		/// The renderable dynamic slot view.
+		view: Box<Page>,
+	},
 	/// A reactive conditional view.
 	///
 	/// This variant enables automatic DOM updates when the condition's
@@ -850,6 +870,63 @@ impl Page {
 		}
 	}
 
+	/// Attaches opaque development template metadata to this view.
+	#[cfg(feature = "page-hot-reload")]
+	pub fn with_dev_template_metadata<T>(self, metadata: T) -> Self
+	where
+		T: std::any::Any + Send + Sync,
+	{
+		Self::DevTemplate {
+			metadata: DevTemplateMetadata::new(metadata),
+			view: Box::new(self),
+		}
+	}
+
+	/// Marks this view as a development dynamic slot.
+	#[cfg(feature = "page-hot-reload")]
+	pub fn with_dev_slot(self, slot_id: u32) -> Self {
+		Self::DevSlot {
+			slot_id,
+			view: Box::new(self),
+		}
+	}
+
+	/// Returns development template metadata without consuming the view.
+	#[cfg(feature = "page-hot-reload")]
+	pub fn dev_template_metadata(&self) -> Option<&DevTemplateMetadata> {
+		match self {
+			Self::DevTemplate { metadata, .. } => Some(metadata),
+			_ => None,
+		}
+	}
+
+	/// Consumes a development template wrapper and returns its parts.
+	#[cfg(feature = "page-hot-reload")]
+	pub fn into_dev_template_parts(self) -> Option<(DevTemplateMetadata, Page)> {
+		match self {
+			Self::DevTemplate { metadata, view } => Some((metadata, *view)),
+			_ => None,
+		}
+	}
+
+	/// Returns the development slot identity without consuming the view.
+	#[cfg(feature = "page-hot-reload")]
+	pub fn dev_slot_id(&self) -> Option<u32> {
+		match self {
+			Self::DevSlot { slot_id, .. } => Some(*slot_id),
+			_ => None,
+		}
+	}
+
+	/// Consumes a development slot wrapper and returns its parts.
+	#[cfg(feature = "page-hot-reload")]
+	pub fn into_dev_slot_parts(self) -> Option<(u32, Page)> {
+		match self {
+			Self::DevSlot { slot_id, view } => Some((slot_id, *view)),
+			_ => None,
+		}
+	}
+
 	/// Creates a reactive conditional view.
 	///
 	/// The condition is re-evaluated whenever its Signal dependencies change,
@@ -950,11 +1027,13 @@ impl Page {
 
 	/// Extracts the head section from this view if it has one.
 	///
-	/// Returns `Some(&Head)` if this view is a `WithHead` variant,
-	/// or `None` for other variants.
+	/// Returns `Some(&Head)` if this view is a `WithHead` variant or a
+	/// development wrapper around one, or `None` for other variants.
 	pub fn extract_head(&self) -> Option<&Head> {
 		match self {
 			Page::WithHead { head, .. } => Some(head),
+			#[cfg(feature = "page-hot-reload")]
+			Page::DevTemplate { view, .. } | Page::DevSlot { view, .. } => view.extract_head(),
 			_ => None,
 		}
 	}
@@ -986,6 +1065,8 @@ impl Page {
 				children.iter().find_map(|(_, v)| v.find_topmost_head())
 			}
 			Page::Outlet(outlet) => outlet.child().and_then(Page::find_topmost_head),
+			#[cfg(feature = "page-hot-reload")]
+			Page::DevTemplate { view, .. } | Page::DevSlot { view, .. } => view.find_topmost_head(),
 			_ => None,
 		}
 	}
@@ -1006,6 +1087,8 @@ impl Page {
 				.iter()
 				.find_map(|(_, v)| v.find_topmost_head_owned()),
 			Page::Outlet(outlet) => outlet.child().and_then(Page::find_topmost_head_owned),
+			#[cfg(feature = "page-hot-reload")]
+			Page::DevTemplate { view, .. } | Page::DevSlot { view, .. } => view.find_topmost_head_owned(),
 			Page::Suspense(node) => node.find_topmost_content_head_owned(),
 			Page::Deferred(node) => node.find_topmost_content_head_owned(),
 			_ => None,
@@ -1127,6 +1210,10 @@ impl Page {
 				// The head is extracted separately during SSR; here we just render the content
 				view.render_to_string_inner(output, selection);
 			}
+			#[cfg(feature = "page-hot-reload")]
+			Page::DevTemplate { view, .. } | Page::DevSlot { view, .. } => {
+				view.render_to_string_inner(output, selection);
+			}
 			Page::ReactiveIf(reactive_if) => {
 				// For SSR, evaluate condition once and render the appropriate branch
 				let condition_result = (reactive_if.condition)();
@@ -1235,6 +1322,10 @@ impl StringRenderSelection {
 				.any(|(_, child)| Self::page_has_dynamic_content(child)),
 			Page::Outlet(outlet) => outlet.child().is_some_and(Self::page_has_dynamic_content),
 			Page::WithHead { view, .. } => Self::page_has_dynamic_content(view),
+			#[cfg(feature = "page-hot-reload")]
+			Page::DevTemplate { view, .. } => Self::page_has_dynamic_content(view),
+			#[cfg(feature = "page-hot-reload")]
+			Page::DevSlot { .. } => true,
 			Page::ReactiveIf(_) | Page::Reactive(_) | Page::Suspense(_) | Page::Deferred(_) => true,
 		}
 	}
@@ -1262,6 +1353,10 @@ impl StringRenderSelection {
 				.unwrap_or_default(),
 			Page::Empty => String::new(),
 			Page::WithHead { view, .. } => Self::text_content_without_script(view),
+			#[cfg(feature = "page-hot-reload")]
+			Page::DevTemplate { view, .. } => Self::text_content_without_script(view),
+			#[cfg(feature = "page-hot-reload")]
+			Page::DevSlot { .. } => String::new(),
 			Page::ReactiveIf(_) | Page::Reactive(_) | Page::Suspense(_) | Page::Deferred(_) => {
 				String::new()
 			}
@@ -1370,6 +1465,25 @@ impl<A: IntoPage, B: IntoPage, C: IntoPage, D: IntoPage> IntoPage for (A, B, C, 
 mod tests {
 	use super::*;
 	use crate::reactive::{ReactiveScope, Signal};
+
+	#[cfg(feature = "page-hot-reload")]
+	#[test]
+	fn dev_page_metadata_round_trips() {
+		// Arrange
+		let page = Page::text("body")
+			.with_dev_slot(7)
+			.with_dev_template_metadata(String::from("descriptor"));
+
+		// Act
+		let (metadata, view) = page.into_dev_template_parts().expect("metadata");
+
+		// Assert
+		assert_eq!(
+			metadata.downcast_ref::<String>(),
+			Some(&String::from("descriptor"))
+		);
+		assert!(matches!(view, Page::DevSlot { slot_id: 7, .. }));
+	}
 
 	#[test]
 	fn mount_error_preserves_control_binding_failure() {
