@@ -501,7 +501,7 @@ async fn client_form_server_submit_blocks_validation_failure() {
 	});
 
 	let outcome = runtime
-		.submit_async(|| {
+		.submit_server_fn(|| {
 			let request = SubmitProjectRequestClientForm::to_request(&runtime);
 			async move { submit_project(request).await }
 		})
@@ -513,7 +513,7 @@ async fn client_form_server_submit_blocks_validation_failure() {
 }
 
 #[tokio::test]
-async fn client_form_server_submit_calls_server_function_on_success() {
+async fn client_form_submit_server_fn_calls_server_function_on_success() {
 	SUBMIT_CALL_COUNT.with(|count| count.set(0));
 	let scope = ReactiveScope::new();
 	let runtime = scope.enter(|| {
@@ -524,7 +524,7 @@ async fn client_form_server_submit_calls_server_function_on_success() {
 	});
 
 	let outcome = runtime
-		.submit_async(|| {
+		.submit_server_fn(|| {
 			let request = SubmitProjectRequestClientForm::to_request(&runtime);
 			async move { submit_project(request).await }
 		})

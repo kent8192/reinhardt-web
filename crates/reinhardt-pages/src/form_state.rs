@@ -1702,6 +1702,24 @@ where
 		}
 	}
 
+	/// Runs an async server-function submit and routes structured errors to form state.
+	pub async fn submit_server_fn<Submit, Fut, Output>(
+		&self,
+		submit: Submit,
+	) -> Result<UseFormAsyncSubmitOutcome<Output>, ServerFnError>
+	where
+		Submit: FnOnce() -> Fut,
+		Fut: Future<Output = Result<Output, ServerFnError>>,
+	{
+		match self.submit_async(submit).await {
+			Ok(outcome) => Ok(outcome),
+			Err(error) => {
+				self.apply_server_error(&error);
+				Err(error)
+			}
+		}
+	}
+
 	/// Reconciles values and defaults from a newly generated form instance.
 	pub fn reconcile_from(&self, form: &Form, deps: Deps) {
 		self.reconcile_defaults(form.runtime_initial_values(), deps);

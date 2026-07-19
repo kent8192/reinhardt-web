@@ -7,6 +7,7 @@ use std::task::{Context, Poll, Waker};
 
 use reinhardt_core::reactive::ReactiveScope;
 use reinhardt_pages::reactive::Signal;
+use reinhardt_pages::server_fn::ServerFnErrorKind;
 use reinhardt_pages::{
 	CollectionItem, CollectionItemKey, CustomWidgetContext, CustomWidgetRawValue, FieldError,
 	FormEvent, FormWidgetAdapter, FormWidgetError, FormWidgetValueKind, Page, ResetOnDeps,
@@ -1917,6 +1918,59 @@ async fn submit_async_success_updates_state_and_runs_callbacks() {
 	assert!(runtime.form_state().submit_error.get().is_none());
 	assert!(runtime.form_state().error.get().is_none());
 	assert_eq!(order.get(), 2);
+}
+
+#[tokio::test]
+async fn submit_server_fn_returns_submitted_outcome() {
+	let profile = form! {
+		name: TypedAsyncSuccessForm,
+		action: "/profile",
+		fields: {
+			display_name: CharField { initial: "Ada" },
+		}
+	};
+	let runtime = use_form(&profile).build();
+
+	let outcome = runtime
+		.submit_server_fn(|| async { Ok::<_, ServerFnError>("saved".to_string()) })
+		.await
+		.expect("typed server-function submit should succeed");
+
+	assert_eq!(
+		outcome,
+		UseFormAsyncSubmitOutcome::Submitted("saved".to_string())
+	);
+}
+
+#[tokio::test]
+async fn submit_server_fn_routes_typed_server_errors() {
+	let profile = form! {
+		name: TypedAsyncServerErrorForm,
+		action: "/profile",
+		fields: {
+			display_name: CharField { initial: "Ada" },
+		}
+	};
+	let runtime = use_form(&profile).build();
+
+	let result = runtime
+		.submit_server_fn(|| async {
+			Err::<(), _>(ServerFnError::validation_with_message(
+				"Validation failed",
+				[("display_name", "Display name is already used")],
+			))
+		})
+		.await;
+
+	assert!(matches!(result, Err(error) if error.kind() == ServerFnErrorKind::Validation));
+	assert_eq!(
+		runtime
+			.get_field_state(profile.display_name_field())
+			.error
+			.as_ref()
+			.map(FieldError::message),
+		Some("Display name is already used")
+	);
 }
 
 #[tokio::test]

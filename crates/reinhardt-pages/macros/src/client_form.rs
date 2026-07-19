@@ -516,8 +516,7 @@ fn generate_submit_method(
 			<#server_fn::marker as #pages_crate::server_fn::ServerFnResponseMetadata>::Response:
 				::serde::de::DeserializeOwned,
 			<#server_fn::marker as #pages_crate::server_fn::ServerFnResponseMetadata>::Error:
-				::core::fmt::Display
-				+ ::core::convert::From<#pages_crate::server_fn::ServerFnError>,
+				::core::convert::Into<#pages_crate::server_fn::ServerFnError>,
 		{
 		}
 
@@ -529,19 +528,18 @@ fn generate_submit_method(
 			#pages_crate::UseFormAsyncSubmitOutcome<
 				<#server_fn::marker as #pages_crate::server_fn::ServerFnResponseMetadata>::Response,
 			>,
-			<#server_fn::marker as #pages_crate::server_fn::ServerFnResponseMetadata>::Error,
+			#pages_crate::server_fn::ServerFnError,
 		>
 			where
 				Deps: ::core::clone::Clone + ::core::cmp::PartialEq + 'static,
 				<#server_fn::marker as #pages_crate::server_fn::ServerFnResponseMetadata>::Error:
-					::core::fmt::Display
-					+ ::core::convert::From<#pages_crate::server_fn::ServerFnError>,
+					::core::convert::Into<#pages_crate::server_fn::ServerFnError>,
 			{
 			let _ = self;
 			runtime
-				.submit_async(|| {
+				.submit_server_fn(|| {
 					let request = #form_ident::to_request(runtime);
-					async move { #server_fn(request).await }
+					async move { #server_fn(request).await.map_err(::core::convert::Into::into) }
 				})
 				.await
 		}
