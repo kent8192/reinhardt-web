@@ -158,12 +158,12 @@ impl HydrationContext {
 		self.state.get_resource_state(id)
 	}
 
-	/// Gets a route-loader value by its stable loader ID.
+	/// Gets a successful route-loader value by its stable loader ID.
 	///
 	/// Route-loader values are serialized in their own namespace so initial
 	/// navigation hydration can restore the typed loader store without relying
 	/// on call-order resource identifiers.
-	pub fn get_route_loader_state(&self, id: &str) -> Option<&serde_json::Value> {
+	pub fn get_route_loader_state(&self, id: impl AsRef<str>) -> Option<&serde_json::Value> {
 		self.state.get_route_loader_state(id)
 	}
 
