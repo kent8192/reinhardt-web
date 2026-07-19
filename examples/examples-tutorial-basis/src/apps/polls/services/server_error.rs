@@ -1,6 +1,6 @@
 //! Server-only vote error mapping.
 
-use reinhardt::pages::server_fn::{ServerFnError, ServerFnErrorKind};
+use reinhardt::pages::server_fn::ServerFnError;
 use std::fmt;
 
 #[derive(Debug)]
@@ -67,6 +67,7 @@ pub(super) fn map_vote_error(error: VoteRequestError) -> ServerFnError {
 mod tests {
 	use super::*;
 	use reinhardt::core::exception::{DatabaseError, DatabaseErrorKind, Error};
+	use reinhardt::pages::server_fn::ServerFnErrorKind;
 	use rstest::rstest;
 
 	#[rstest]

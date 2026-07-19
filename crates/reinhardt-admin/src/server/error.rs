@@ -5,7 +5,7 @@
 
 use crate::types::AdminError;
 use reinhardt_http::AuthState;
-use reinhardt_pages::server_fn::{ServerFnError, ServerFnErrorKind, ServerFnRequest};
+use reinhardt_pages::server_fn::{ServerFnError, ServerFnRequest};
 use std::sync::Arc;
 
 /// Extension trait for converting AdminError to ServerFnError
@@ -222,6 +222,7 @@ impl AdminAuth {
 mod tests {
 	use super::*;
 	use async_trait::async_trait;
+	use reinhardt_pages::server_fn::ServerFnErrorKind;
 	use rstest::rstest;
 	use std::sync::Arc;
 
