@@ -92,6 +92,9 @@ themes, live-region roles and announcements, localization, and error
 redaction remain application-owned. Error slots receive the typed `&E` value;
 the UI primitives do not stringify or log errors automatically.
 
+For lifecycle-managed `Head` declarations across SSR, hydration, and SPA
+navigation, see [Document head management](docs/document_head_management.md).
+
 ## Development template hot reload
 
 Enable the `hmr` feature when developing a Pages WASM client and start the
@@ -170,6 +173,31 @@ Use `@custom("name")` and `platform::Event` for an arbitrary raw DOM event.
 Custom typed `detail` values are intentionally deferred to #5636. Component
 `@event` props remain typed by the component's declared prop type; the DOM
 event catalog applies only to intrinsic elements.
+
+### Lifecycle-managed document head
+
+Head declarations are resolved from the active page and route tree. Use
+`head!` for structural values, attach them with `#head:`/`Page::with_head`, or
+provide route metadata with `RouteMetadata::with_head`:
+
+```rust,ignore
+let metadata = RouteMetadata::new().with_head(head!(|| {
+    base { href: "/app/" }
+    title { "Workspace" }
+}));
+```
+
+Use `use_head` or `use_page_title` for retained reactive contributions. These
+hooks require explicit dependencies, for example `deps![project.clone()]`, and
+their registrations are removed with the owning reactive scope. A persistent
+layout keeps its contribution while sibling routes change, and removing a
+child reveals the previous parent or layout value.
+
+The same resolution model is used by buffered/streaming SSR, hydration, and
+browser mounting. Hydration adopts framework-marked SSR nodes before the body
+pass. Browser reconciliation manages only `data-reinhardt-head` nodes, so
+third-party head elements remain untouched. Unchanged scripts reuse their DOM
+node; removing a script cannot undo side effects that already executed.
 
 ### Controlled form elements
 
@@ -489,6 +517,43 @@ Arguments supplied from ambient context use `ambient_arguments`. The old
 transport layer: `#[server_fn]` client stubs attach `X-CSRFToken`, while
 non-WASM forms still render the hidden CSRF input for traditional posts.
 
+### Structured server-function errors
+
+`ServerFnError` is a typed, versioned error contract shared by server handlers,
+client stubs, `Action<T, ServerFnError>`, and `Resource<T, ServerFnError>`.
+Use `kind()`, `status()`, `user_message()`, and `field_errors()` rather than
+parsing a server response:
+
+```rust,ignore
+use reinhardt_pages::{ServerFnError, ServerFnErrorKind};
+
+fn render_error(error: &ServerFnError) {
+    match error.kind() {
+        ServerFnErrorKind::Validation => {
+            for field_error in error.field_errors() {
+                show_field_error(field_error.field(), field_error.message());
+            }
+        }
+        ServerFnErrorKind::Auth => redirect_to_login(),
+        _ => show_message(error.user_message()),
+    }
+}
+```
+
+Construct server failures with `validation(field_errors)`, `validation_with_message(...)`,
+`auth(status, message)`, `application(message)`, `server(status, message)`,
+`transport(message)`, or `deserialization(message)`. A validation error has
+status `422`; converting `ValidationErrors` with `?` preserves every field
+message for generated forms.
+
+Failure responses use a version 1 JSON envelope with `version`, lowercase
+`kind`, nullable `status`, safe `message`, and a `field_errors` array. This is
+a breaking 0.4 API and wire-format change: enum variant matching and legacy
+externally tagged JSON parsing are no longer supported. Deploy server and WASM
+client artifacts together because the legacy error envelope is not accepted at
+runtime. See the [Server Function Macro Guide](docs/server_fn_macro.md) and
+the [0.4 migration guide](../../instructions/MIGRATION_0.4.md) for examples.
+
 ### Reactive Conditional Rendering
 
 `page!` wraps expression, `if`, and `for` nodes in reactive render scopes. When
@@ -723,7 +788,7 @@ or native component-test mocks. Query handles can also be tracked by
 
 ### API and Server Functions
 - `ApiModel`, `ApiQuerySet`, `Filter`, `FilterOp`
-- `ServerFn`, `ServerFnError`
+- `ServerFn`, `ServerFnError`, `ServerFnErrorPayload`, `ServerFnErrorKind`, `ServerFnFieldError`
 - See [Server Function Macro Guide](docs/server_fn_macro.md) for detailed usage and migration information
 - Use `#[client_page]` for client page functions that must also compile as native route-table stubs
 - See [WASM/server API Parity Macro](docs/wasm_server_api.md) for APIs that need matching public surfaces with target-specific implementations

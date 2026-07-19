@@ -411,7 +411,10 @@ fn model_client_errors_decode_structured_then_legacy_then_raw() {
 
 	assert_eq!(
 		ServerFnSetError::from_http_error(502, "upstream unavailable"),
-		ServerFnSetError::Transport(ServerFnError::server(502, "upstream unavailable")),
+		ServerFnSetError::Transport(ServerFnError::from_http_response(
+			502,
+			"upstream unavailable",
+		)),
 	);
 }
 

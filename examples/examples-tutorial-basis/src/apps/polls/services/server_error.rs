@@ -67,6 +67,7 @@ pub(super) fn map_vote_error(error: VoteRequestError) -> ServerFnError {
 mod tests {
 	use super::*;
 	use reinhardt::core::exception::{DatabaseError, DatabaseErrorKind, Error};
+	use reinhardt::pages::server_fn::ServerFnErrorKind;
 	use rstest::rstest;
 
 	#[rstest]
@@ -90,13 +91,9 @@ mod tests {
 		);
 
 		let client_error = map_vote_error(vote_error);
-		match &client_error {
-			ServerFnError::Server { status, message } => {
-				assert_eq!(*status, expected_status);
-				assert_eq!(message, expected_message);
-			}
-			other => panic!("unexpected client error variant: {other:?}"),
-		}
+		assert_eq!(client_error.kind(), ServerFnErrorKind::Server);
+		assert_eq!(client_error.status(), Some(expected_status));
+		assert_eq!(client_error.user_message(), expected_message);
 
 		let serialized =
 			serde_json::to_string(&client_error).expect("server function error should serialize");

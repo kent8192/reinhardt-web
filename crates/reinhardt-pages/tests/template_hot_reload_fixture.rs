@@ -1,3 +1,5 @@
+#![cfg(feature = "hmr")]
+
 use reinhardt_pages::hmr::{
 	DynamicAbiHash, DynamicSlotDescriptor, DynamicSlotId, StaticTemplateNode, TemplateDescriptor,
 	TemplateKey,

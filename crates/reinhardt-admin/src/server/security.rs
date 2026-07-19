@@ -614,6 +614,7 @@ pub fn extract_admin_auth_cookie(headers: &hyper::HeaderMap) -> Option<String> {
 #[cfg(all(test, server))]
 mod tests {
 	use super::*;
+	use reinhardt_pages::server_fn::ServerFnErrorKind;
 	use rstest::rstest;
 
 	// ============================================================
@@ -1164,14 +1165,10 @@ mod tests {
 		let result = require_csrf_token(&body_token, &headers);
 
 		// Assert
-		let err = result.unwrap_err();
-		match err {
-			reinhardt_pages::server_fn::ServerFnError::Server { status, message } => {
-				assert_eq!(status, 403);
-				assert_eq!(message, "CSRF token validation failed");
-			}
-			other => panic!("Expected Server error with status 403, got: {:?}", other),
-		}
+		let error = result.unwrap_err();
+		assert_eq!(error.kind(), ServerFnErrorKind::Server);
+		assert_eq!(error.status(), Some(403));
+		assert_eq!(error.user_message(), "CSRF token validation failed");
 	}
 
 	#[rstest]
@@ -1184,14 +1181,13 @@ mod tests {
 		let result = require_csrf_token(&body_token, &headers);
 
 		// Assert
-		let err = result.unwrap_err();
-		match err {
-			reinhardt_pages::server_fn::ServerFnError::Server { status, message } => {
-				assert_eq!(status, 403);
-				assert_eq!(message, "CSRF token missing from cookie and header");
-			}
-			other => panic!("Expected Server error with status 403, got: {:?}", other),
-		}
+		let error = result.unwrap_err();
+		assert_eq!(error.kind(), ServerFnErrorKind::Server);
+		assert_eq!(error.status(), Some(403));
+		assert_eq!(
+			error.user_message(),
+			"CSRF token missing from cookie and header"
+		);
 	}
 
 	#[rstest]
@@ -1206,14 +1202,10 @@ mod tests {
 		let result = require_csrf_token("", &headers);
 
 		// Assert
-		let err = result.unwrap_err();
-		match err {
-			reinhardt_pages::server_fn::ServerFnError::Server { status, message } => {
-				assert_eq!(status, 403);
-				assert_eq!(message, "CSRF token validation failed");
-			}
-			other => panic!("Expected Server error with status 403, got: {:?}", other),
-		}
+		let error = result.unwrap_err();
+		assert_eq!(error.kind(), ServerFnErrorKind::Server);
+		assert_eq!(error.status(), Some(403));
+		assert_eq!(error.user_message(), "CSRF token validation failed");
 	}
 
 	#[rstest]
@@ -1243,14 +1235,10 @@ mod tests {
 		let result = require_csrf_header(&headers);
 
 		// Assert
-		let err = result.unwrap_err();
-		match err {
-			reinhardt_pages::server_fn::ServerFnError::Server { status, message } => {
-				assert_eq!(status, 403);
-				assert_eq!(message, "CSRF token validation failed");
-			}
-			other => panic!("Expected Server error with status 403, got: {:?}", other),
-		}
+		let error = result.unwrap_err();
+		assert_eq!(error.kind(), ServerFnErrorKind::Server);
+		assert_eq!(error.status(), Some(403));
+		assert_eq!(error.user_message(), "CSRF token validation failed");
 	}
 
 	#[rstest]
@@ -1264,14 +1252,10 @@ mod tests {
 		let result = require_csrf_header(&headers);
 
 		// Assert
-		let err = result.unwrap_err();
-		match err {
-			reinhardt_pages::server_fn::ServerFnError::Server { status, message } => {
-				assert_eq!(status, 403);
-				assert_eq!(message, "CSRF token missing from cookie");
-			}
-			other => panic!("Expected Server error with status 403, got: {:?}", other),
-		}
+		let error = result.unwrap_err();
+		assert_eq!(error.kind(), ServerFnErrorKind::Server);
+		assert_eq!(error.status(), Some(403));
+		assert_eq!(error.user_message(), "CSRF token missing from cookie");
 	}
 
 	// ============================================================
@@ -1346,13 +1330,9 @@ mod tests {
 
 		// Assert
 		assert!(result.is_err(), "Empty body token should be rejected");
-		let err = result.unwrap_err();
-		match err {
-			reinhardt_pages::server_fn::ServerFnError::Server { status, .. } => {
-				assert_eq!(status, 403);
-			}
-			other => panic!("Expected Server error with status 403, got: {:?}", other),
-		}
+		let error = result.unwrap_err();
+		assert_eq!(error.kind(), ServerFnErrorKind::Server);
+		assert_eq!(error.status(), Some(403));
 	}
 
 	#[rstest]

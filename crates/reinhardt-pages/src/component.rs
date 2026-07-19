@@ -50,8 +50,6 @@ pub use into_page::{
 };
 pub use props::Props;
 pub use reactive_if::cleanup_reactive_nodes;
-#[cfg(native)]
-pub(crate) use reactive_if::scope_reactive_node_store;
 #[cfg(wasm)]
 pub(crate) use reactive_if::{
 	ReactiveAttributeEffects, new_reactive_node_store, store_reactive_scope,
@@ -59,6 +57,8 @@ pub(crate) use reactive_if::{
 };
 #[cfg(wasm)]
 pub use reactive_if::{ReactiveIfNode, ReactiveNode, store_reactive_node};
+#[cfg(native)]
+pub(crate) use reactive_if::{scope_reactive_node_store, scope_reactive_node_transaction};
 pub use reinhardt_core::types::page::{
 	ControlBinding, ControlBindingError, ControlKind, ControlValue, ControlWriteOutcome,
 	NumberParseError, NumberParseErrorKind, NumberValue,

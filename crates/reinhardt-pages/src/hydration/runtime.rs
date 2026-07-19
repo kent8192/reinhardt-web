@@ -17,6 +17,12 @@ use crate::component::{
 };
 
 #[cfg(wasm)]
+use crate::document_head::{
+	DocumentHeadManager, current_document_head_manager, ensure_browser_document_head_manager,
+	with_document_head_manager,
+};
+
+#[cfg(wasm)]
 use crate::ssr::HYDRATION_ATTR_ID;
 
 /// Errors that can occur during hydration.
@@ -195,40 +201,62 @@ pub fn hydrate<C: Component>(component: &C, root: &Element) -> Result<(), Hydrat
 		let i18n_guard = crate::i18n::provide_i18n_from_hydration_context(&context).map_err(|e| {
 			HydrationError::StateParseError(format!("Failed to hydrate i18n state: {}", e))
 		})?;
+		let document_head_manager = ensure_browser_document_head_manager().map_err(|error| {
+			HydrationError::StateParseError(format!("Document-head initialization failed: {error}"))
+		})?;
+		document_head_manager.begin_batch();
 
-		let (view, resource_counter_offset, id_counter_offset) = {
-			let prepass_store = new_reactive_node_store();
-			with_reactive_node_store(&prepass_store, || -> Result<_, HydrationError> {
-				// Reconciliation only inspects lazy views. Keep retained hook effects from
-				// this prepass out of the mounted root store.
+		let installation_result = with_document_head_manager(&document_head_manager, || {
+			crate::component::reactive_if::with_reactive_node_transaction(|| {
+				// Render the root component exactly once in the durable hydration store so
+				// retained hooks own the hydrated root lifetime.
 				let view = component.render();
 				let resource_counter_offset =
 					crate::reactive::resource::current_client_resource_counter();
 				let id_counter_offset = crate::reactive::hooks::id::id_counter_snapshot();
 				web_sys::console::log_1(&"[Hydration] View rendered".into());
 
+				// Reconciliation may render lazy branches. Keep that shape prepass fully
+				// disposable so it cannot register root-owned hooks or consume browser-head
+				// registry slots before the hydrated ownership pass.
+				let prepass_head_manager = DocumentHeadManager::new(crate::component::Head::new());
 				crate::reactive::resource::set_client_resource_counter(resource_counter_offset);
 				crate::reactive::hooks::id::restore_id_counter(id_counter_offset);
-				reconcile(root, &view).map_err(|e| {
-					HydrationError::StateParseError(format!("Reconciliation failed: {}", e))
-				})?;
-				validate_hydrated_controls(root, &view)?;
+				let prepass_result = with_document_head_manager(&prepass_head_manager, || {
+					with_hydration_prepass_store(|| -> Result<(), HydrationError> {
+						reconcile(root, &view).map_err(|error| {
+							HydrationError::StateParseError(format!(
+								"Reconciliation failed: {error}"
+							))
+						})?;
+						validate_hydrated_controls(root, &view)
+					})
+				});
+				crate::reactive::resource::set_client_resource_counter(resource_counter_offset);
+				crate::reactive::hooks::id::restore_id_counter(id_counter_offset);
+				prepass_result?;
 				web_sys::console::log_1(&"[Hydration] Reconciliation complete".into());
 
-				Ok((view, resource_counter_offset, id_counter_offset))
-			})?
-		};
-		crate::reactive::resource::set_client_resource_counter(resource_counter_offset);
-		crate::reactive::hooks::id::restore_id_counter(id_counter_offset);
-
-		// 5. Install hydration guards and reactive DOM owners in the same ownership pass.
-		crate::dom::control_binding::with_hydration_snapshot_transaction(|| {
-			crate::component::reactive_if::with_reactive_node_transaction(|| {
-				let mut root_registry = EventRegistry::new_for_hydration();
-				install_hydrated_reactive_nodes(root, &view, &mut root_registry)?;
-				store_reactive_node(root_registry);
-				Ok::<_, HydrationError>(())
+				// Install hydration guards and reactive DOM owners in the same ownership pass.
+				crate::dom::control_binding::with_hydration_snapshot_transaction(|| {
+					let mut root_registry = EventRegistry::new_for_hydration();
+					install_hydrated_reactive_nodes(root, &view, &mut root_registry)?;
+					store_reactive_node(root_registry);
+					document_head_manager.reconcile().map_err(|error| {
+						HydrationError::StateParseError(format!(
+							"Document-head reconciliation failed: {error}"
+						))
+					})?;
+					Ok::<_, HydrationError>(())
+				})
 			})
+		});
+		let batch_result = document_head_manager.end_batch(false);
+		installation_result.map_err(|error| {
+			HydrationError::StateParseError(format!("Document-head installation failed: {error}"))
+		})?;
+		batch_result.map_err(|error| {
+			HydrationError::StateParseError(format!("Document-head reconciliation failed: {error}"))
 		})?;
 		web_sys::console::log_1(&"[Hydration] Events attached".into());
 		web_sys::console::log_1(&"[Hydration] Reactive nodes installed".into());
@@ -413,6 +441,17 @@ impl Drop for HydrationBranchTransaction {
 }
 
 #[cfg(wasm)]
+fn register_hydrated_static_head(head: &crate::component::Head) -> Result<(), HydrationError> {
+	let registration = current_document_head_manager()
+		.and_then(|manager| manager.register_static_page(head.clone()))
+		.map_err(|error| {
+			HydrationError::StateParseError(format!("Document-head registration failed: {error}"))
+		})?;
+	store_reactive_node(registration);
+	Ok(())
+}
+
+#[cfg(wasm)]
 fn install_hydrated_reactive_nodes(
 	element: &Element,
 	view: &Page,
@@ -430,8 +469,13 @@ fn install_hydrated_reactive_nodes(
 				install_hydrated_element_children(element, element_view.child_views(), registry)?;
 			}
 		}
-		Page::WithHead { view, .. } => install_hydrated_reactive_nodes(element, view, registry)?,
-		Page::Fragment(children) => install_hydrated_element_children(element, children, registry)?,
+		Page::WithHead { view, head } => {
+			register_hydrated_static_head(head)?;
+			install_hydrated_reactive_nodes(element, view, registry)?;
+		}
+		Page::Fragment(children) => {
+			install_hydrated_element_children(element, children, registry)?;
+		}
 		Page::KeyedFragment(children) => {
 			let child_views = children
 				.iter()
@@ -708,7 +752,8 @@ fn install_hydrated_child_reactive_nodes(
 				install_hydrated_reactive_nodes(&Element::new(element.clone()), view, registry)?;
 			}
 		}
-		Page::WithHead { view, .. } => {
+		Page::WithHead { view, head } => {
+			register_hydrated_static_head(head)?;
 			install_hydrated_child_reactive_nodes(parent, nodes, next_sibling, view, registry)?;
 		}
 		#[cfg(feature = "hmr")]
@@ -1323,10 +1368,10 @@ mod tests {
 	use super::*;
 	#[cfg(wasm)]
 	use crate::component::{
-		ControlBinding, IntoPage, PageElement, PageExt, cleanup_reactive_nodes,
+		Component, ControlBinding, IntoPage, PageElement, PageExt, cleanup_reactive_nodes,
 	};
 	#[cfg(wasm)]
-	use crate::reactive::hooks::use_retained_effect;
+	use crate::reactive::hooks::{use_head, use_page_title, use_retained_effect};
 	#[cfg(wasm)]
 	use crate::reactive::{ReactiveScope, Signal, with_runtime};
 	#[cfg(wasm)]
@@ -1342,6 +1387,128 @@ mod tests {
 
 	#[cfg(wasm)]
 	wasm_bindgen_test_configure!(run_in_browser);
+
+	#[cfg(wasm)]
+	struct RootHeadHydrationComponent {
+		title: Signal<String>,
+		render_count: Rc<Cell<usize>>,
+		head_factory_count: Rc<Cell<usize>>,
+		title_factory_count: Rc<Cell<usize>>,
+	}
+
+	#[cfg(wasm)]
+	impl Component for RootHeadHydrationComponent {
+		fn render(&self) -> Page {
+			self.render_count.set(self.render_count.get() + 1);
+			use_head(
+				{
+					let title = self.title.clone();
+					let head_factory_count = Rc::clone(&self.head_factory_count);
+					move || {
+						head_factory_count.set(head_factory_count.get() + 1);
+						crate::component::Head::new().meta_description(title.get())
+					}
+				},
+				deps![self.title.clone()],
+			);
+			use_page_title(
+				{
+					let title = self.title.clone();
+					let title_factory_count = Rc::clone(&self.title_factory_count);
+					move || {
+						title_factory_count.set(title_factory_count.get() + 1);
+						title.get()
+					}
+				},
+				deps![self.title.clone()],
+			);
+			Page::text("hydrated root")
+		}
+
+		fn name() -> &'static str {
+			"RootHeadHydrationComponent"
+		}
+	}
+
+	#[cfg(wasm)]
+	struct HydrationStructuralHeadComponent;
+
+	#[cfg(wasm)]
+	impl Component for HydrationStructuralHeadComponent {
+		fn render(&self) -> Page {
+			Page::fragment([
+				Page::reactive(|| {
+					PageElement::new("span")
+						.child("reactive")
+						.into_page()
+						.with_head(crate::component::Head::new().title("Reactive title"))
+				}),
+				Page::reactive_if(
+					|| true,
+					|| {
+						PageElement::new("span")
+							.child("conditional")
+							.into_page()
+							.with_head(crate::component::Head::new().title("Conditional title"))
+					},
+					|| Page::Empty,
+				),
+				PageElement::new("span")
+					.child("trailing")
+					.into_page()
+					.with_head(crate::component::Head::new().title("Trailing title")),
+			])
+		}
+
+		fn name() -> &'static str {
+			"HydrationStructuralHeadComponent"
+		}
+	}
+
+	#[cfg(wasm)]
+	struct HydrationHeadFixture {
+		document: web_sys::Document,
+		root: web_sys::Element,
+		state: web_sys::Element,
+		original_title: String,
+	}
+
+	#[cfg(wasm)]
+	impl HydrationHeadFixture {
+		fn new(markup: &str) -> Self {
+			cleanup_reactive_nodes();
+			let document = web_sys::window().unwrap().document().unwrap();
+			let original_title = document.title();
+			let state = document.create_element("script").unwrap();
+			state.set_id("ssr-state");
+			state.set_text_content(Some("{}"));
+			document.body().unwrap().append_child(&state).unwrap();
+			let root = document.create_element("div").unwrap();
+			root.set_inner_html(markup);
+			document.body().unwrap().append_child(&root).unwrap();
+
+			Self {
+				document,
+				root,
+				state,
+				original_title,
+			}
+		}
+
+		fn root(&self) -> Element {
+			Element::new(self.root.clone())
+		}
+	}
+
+	#[cfg(wasm)]
+	impl Drop for HydrationHeadFixture {
+		fn drop(&mut self) {
+			cleanup_reactive_nodes();
+			self.state.remove();
+			self.root.remove();
+			self.document.set_title(&self.original_title);
+		}
+	}
 
 	#[test]
 	fn test_hydration_context_new() {
@@ -1406,6 +1573,90 @@ mod tests {
 		// Non-WASM version should return empty context
 		let ctx = HydrationContext::from_window().unwrap();
 		assert!(!ctx.is_hydrated());
+	}
+
+	#[cfg(wasm)]
+	#[wasm_bindgen_test]
+	fn hydration_retains_root_document_head_hook_without_rerendering_component() {
+		cleanup_reactive_nodes();
+		let document = web_sys::window().unwrap().document().unwrap();
+		let original_title = document.title();
+		let state = document.create_element("script").unwrap();
+		state.set_id("ssr-state");
+		state.set_text_content(Some("{}"));
+		document.body().unwrap().append_child(&state).unwrap();
+		let root = document.create_element("div").unwrap();
+		root.set_inner_html("hydrated root");
+		document.body().unwrap().append_child(&root).unwrap();
+
+		let title = Signal::new("Initial title".to_string());
+		let render_count = Rc::new(Cell::new(0));
+		let head_factory_count = Rc::new(Cell::new(0));
+		let title_factory_count = Rc::new(Cell::new(0));
+		let component = RootHeadHydrationComponent {
+			title: title.clone(),
+			render_count: Rc::clone(&render_count),
+			head_factory_count: Rc::clone(&head_factory_count),
+			title_factory_count: Rc::clone(&title_factory_count),
+		};
+
+		hydrate(&component, &Element::new(root.clone())).expect("root hydration succeeds");
+
+		assert_eq!(
+			render_count.get(),
+			1,
+			"hydration must not rerender the root component"
+		);
+		assert_eq!(head_factory_count.get(), 1);
+		assert_eq!(title_factory_count.get(), 1);
+		assert_eq!(document.title(), "Initial title");
+		assert_eq!(
+			document
+				.query_selector_all(
+					"meta[name='description'][content='Initial title'][data-reinhardt-head]"
+				)
+				.unwrap()
+				.length(),
+			1
+		);
+		title.set("Updated title".to_string());
+		with_runtime(|runtime| runtime.flush_updates());
+		assert_eq!(head_factory_count.get(), 2);
+		assert_eq!(title_factory_count.get(), 2);
+		assert_eq!(document.title(), "Updated title");
+		assert_eq!(
+			document
+				.query_selector_all(
+					"meta[name='description'][content='Updated title'][data-reinhardt-head]"
+				)
+				.unwrap()
+				.length(),
+			1
+		);
+		assert_eq!(
+			document
+				.query_selector_all("meta[name='description'][data-reinhardt-head]")
+				.unwrap()
+				.length(),
+			1
+		);
+
+		cleanup_reactive_nodes();
+		state.remove();
+		root.remove();
+		document.set_title(&original_title);
+	}
+
+	#[cfg(wasm)]
+	#[wasm_bindgen_test]
+	fn hydration_preserves_structural_head_precedence_across_reactive_branches() {
+		let fixture = HydrationHeadFixture::new(
+			"<span>reactive</span><span>conditional</span><span>trailing</span>",
+		);
+
+		hydrate(&HydrationStructuralHeadComponent, &fixture.root()).expect("hydration succeeds");
+
+		assert_eq!(fixture.document.title(), "Trailing title");
 	}
 
 	#[cfg(wasm)]

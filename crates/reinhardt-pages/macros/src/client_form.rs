@@ -3,6 +3,7 @@
 use convert_case::{Case, Casing};
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
+use std::collections::BTreeMap;
 use syn::{
 	Data, DeriveInput, Fields, Ident, LitStr, Path, Token, Type, Visibility, parse_macro_input,
 };
@@ -88,8 +89,17 @@ fn expand_client_form(input: DeriveInput) -> syn::Result<proc_macro2::TokenStrea
 		}
 
 		let kind = FieldKind::classify(&field.ty)?;
-		editable_fields.push(EditableField::new(field_ident, field.vis, field.ty, kind));
+		let serialized_name = field_options.serialized_name(&field_ident, options.serde_rename_all);
+		editable_fields.push(EditableField::new(
+			field_ident,
+			field.vis,
+			field.ty,
+			kind,
+			serialized_name,
+		));
 	}
+
+	reject_runtime_field_name_collisions(&editable_fields)?;
 
 	if editable_fields.is_empty() {
 		return Err(syn::Error::new_spanned(
@@ -122,6 +132,30 @@ fn expand_client_form(input: DeriveInput) -> syn::Result<proc_macro2::TokenStrea
 			#submit_method
 		}
 	})
+}
+
+fn reject_runtime_field_name_collisions(fields: &[EditableField]) -> syn::Result<()> {
+	let mut accepted_names: BTreeMap<String, &EditableField> = BTreeMap::new();
+
+	for field in fields {
+		let name = ident_name_without_raw_prefix(&field.name);
+		let raw_name = field.name.to_string();
+		for accepted_name in [field.serialized_name.clone(), name, raw_name] {
+			if let Some(previous) = accepted_names.get(&accepted_name)
+				&& previous.name != field.name
+			{
+				return Err(syn::Error::new_spanned(
+					&field.name,
+					format!(
+						"ClientForm field name `{accepted_name}` collides with another field's runtime alias"
+					),
+				));
+			}
+			accepted_names.insert(accepted_name, field);
+		}
+	}
+
+	Ok(())
 }
 
 struct FormItemContext<'a> {
@@ -304,12 +338,12 @@ fn generate_form_items(context: FormItemContext<'_>) -> proc_macro2::TokenStream
 	let field_name_arms = field_token_fields.iter().map(|field| {
 		let raw_name = field.name.to_string();
 		let name = ident_name_without_raw_prefix(&field.name);
+		let serialized_name = &field.serialized_name;
 		let variant = &field.variant;
-		if raw_name == name {
-			quote! { #name => ::core::option::Option::Some(#field_ident::#variant) }
-		} else {
-			quote! { #name | #raw_name => ::core::option::Option::Some(#field_ident::#variant) }
-		}
+		let mut names = vec![serialized_name.clone(), name.clone(), raw_name];
+		names.sort();
+		names.dedup();
+		quote! { #(#names)|* => ::core::option::Option::Some(#field_ident::#variant) }
 	});
 	let runtime_validate_method = if validate {
 		quote! {
@@ -399,6 +433,10 @@ fn generate_form_items(context: FormItemContext<'_>) -> proc_macro2::TokenStream
 		impl #pages_crate::FormRuntimeSource for #form_ident {
 			type Values = #values_ident;
 			type Field = #field_ident;
+
+			fn runtime_field_by_name(&self, name: &str) -> ::core::option::Option<Self::Field> {
+				Self::field_from_name(name)
+			}
 
 			fn runtime_initial_values(&self) -> Self::Values {
 				self.__initial_values.borrow().clone()
@@ -505,8 +543,7 @@ fn generate_submit_method(
 			<#server_fn::marker as #pages_crate::server_fn::ServerFnResponseMetadata>::Response:
 				::serde::de::DeserializeOwned,
 			<#server_fn::marker as #pages_crate::server_fn::ServerFnResponseMetadata>::Error:
-				::core::fmt::Display
-				+ ::core::convert::From<#pages_crate::server_fn::ServerFnError>,
+				::core::convert::Into<#pages_crate::server_fn::ServerFnError>,
 		{
 		}
 
@@ -518,19 +555,18 @@ fn generate_submit_method(
 			#pages_crate::UseFormAsyncSubmitOutcome<
 				<#server_fn::marker as #pages_crate::server_fn::ServerFnResponseMetadata>::Response,
 			>,
-			<#server_fn::marker as #pages_crate::server_fn::ServerFnResponseMetadata>::Error,
+			#pages_crate::server_fn::ServerFnError,
 		>
 			where
 				Deps: ::core::clone::Clone + ::core::cmp::PartialEq + 'static,
 				<#server_fn::marker as #pages_crate::server_fn::ServerFnResponseMetadata>::Error:
-					::core::fmt::Display
-					+ ::core::convert::From<#pages_crate::server_fn::ServerFnError>,
+					::core::convert::Into<#pages_crate::server_fn::ServerFnError>,
 			{
 			let _ = self;
 			runtime
-				.submit_async(|| {
+				.submit_server_fn(|| {
 					let request = #form_ident::to_request(runtime);
-					async move { #server_fn(request).await }
+					async move { #server_fn(request).await.map_err(::core::convert::Into::into) }
 				})
 				.await
 		}
@@ -541,6 +577,7 @@ struct ClientFormOptions {
 	name: Option<Ident>,
 	server_fn: Option<Path>,
 	validate: bool,
+	serde_rename_all: Option<SerdeRenameRule>,
 }
 
 impl ClientFormOptions {
@@ -549,9 +586,20 @@ impl ClientFormOptions {
 			name: None,
 			server_fn: None,
 			validate: false,
+			serde_rename_all: None,
 		};
 		for attr in attrs {
 			if !attr.path().is_ident("client_form") {
+				if attr.path().is_ident("serde") {
+					attr.parse_nested_meta(|meta| {
+						if meta.path.is_ident("rename_all") {
+							options.serde_rename_all = parse_serde_rename_all(meta)?;
+						} else {
+							consume_serde_meta(meta)?;
+						}
+						Ok(())
+					})?;
+				}
 				continue;
 			}
 			attr.parse_nested_meta(|meta| {
@@ -573,6 +621,93 @@ impl ClientFormOptions {
 	}
 }
 
+#[derive(Clone, Copy)]
+enum SerdeRenameRule {
+	Lowercase,
+	Uppercase,
+	PascalCase,
+	CamelCase,
+	SnakeCase,
+	ScreamingSnakeCase,
+	KebabCase,
+	ScreamingKebabCase,
+}
+
+impl SerdeRenameRule {
+	fn parse(value: &str) -> syn::Result<Self> {
+		match value {
+			"lowercase" => Ok(Self::Lowercase),
+			"UPPERCASE" => Ok(Self::Uppercase),
+			"PascalCase" => Ok(Self::PascalCase),
+			"camelCase" => Ok(Self::CamelCase),
+			"snake_case" => Ok(Self::SnakeCase),
+			"SCREAMING_SNAKE_CASE" => Ok(Self::ScreamingSnakeCase),
+			"kebab-case" => Ok(Self::KebabCase),
+			"SCREAMING-KEBAB-CASE" => Ok(Self::ScreamingKebabCase),
+			_ => Err(syn::Error::new(
+				proc_macro2::Span::call_site(),
+				"unsupported serde rename_all rule for ClientForm",
+			)),
+		}
+	}
+
+	fn apply(self, field: &str) -> String {
+		match self {
+			Self::Lowercase | Self::SnakeCase => field.to_string(),
+			Self::Uppercase | Self::ScreamingSnakeCase => field.to_ascii_uppercase(),
+			Self::PascalCase => {
+				let mut value = String::new();
+				let mut capitalize = true;
+				for character in field.chars() {
+					if character == '_' {
+						capitalize = true;
+					} else if capitalize {
+						value.push(character.to_ascii_uppercase());
+						capitalize = false;
+					} else {
+						value.push(character);
+					}
+				}
+				value
+			}
+			Self::CamelCase => {
+				let pascal = Self::PascalCase.apply(field);
+				pascal[..1].to_ascii_lowercase() + &pascal[1..]
+			}
+			Self::KebabCase => field.replace('_', "-"),
+			Self::ScreamingKebabCase => field.to_ascii_uppercase().replace('_', "-"),
+		}
+	}
+}
+
+fn parse_serde_rename_all(
+	meta: syn::meta::ParseNestedMeta<'_>,
+) -> syn::Result<Option<SerdeRenameRule>> {
+	parse_serde_serialize_name(meta)?
+		.map(|name| SerdeRenameRule::parse(&name))
+		.transpose()
+}
+
+fn parse_serde_serialize_name(meta: syn::meta::ParseNestedMeta<'_>) -> syn::Result<Option<String>> {
+	if meta.input.peek(Token![=]) {
+		return Ok(Some(meta.value()?.parse::<LitStr>()?.value()));
+	}
+	if !meta.input.peek(syn::token::Paren) {
+		return Err(meta.error("expected a serde rename value"));
+	}
+
+	let mut serialize_name = None;
+	meta.parse_nested_meta(|nested| {
+		if nested.path.is_ident("serialize") {
+			serialize_name = Some(nested.value()?.parse::<LitStr>()?.value());
+		} else {
+			consume_serde_meta(nested)?;
+		}
+		Ok(())
+	})?;
+	Ok(serialize_name)
+}
+
 struct ClientFormFieldOptions {
 	skip: bool,
 	serde_skip: bool,
@@ -580,6 +715,7 @@ struct ClientFormFieldOptions {
 	serde_skip_serializing_if: bool,
 	serde_skip_deserializing: bool,
 	serde_default: Option<SerdeDefaultExpr>,
+	serde_rename: Option<String>,
 }
 
 impl ClientFormFieldOptions {
@@ -591,6 +727,7 @@ impl ClientFormFieldOptions {
 			serde_skip_serializing_if: false,
 			serde_skip_deserializing: false,
 			serde_default: None,
+			serde_rename: None,
 		};
 		for attr in attrs {
 			if attr.path().is_ident("client_form") {
@@ -612,13 +749,15 @@ impl ClientFormFieldOptions {
 						options.serde_skip_serializing = true;
 					} else if meta.path.is_ident("skip_serializing_if") {
 						options.serde_skip_serializing_if = true;
-						consume_serde_field_meta(meta)?;
+						consume_serde_meta(meta)?;
 					} else if meta.path.is_ident("skip_deserializing") {
 						options.serde_skip_deserializing = true;
 					} else if meta.path.is_ident("default") {
 						options.serde_default = Some(parse_serde_default_expr(meta)?);
+					} else if meta.path.is_ident("rename") {
+						options.serde_rename = parse_serde_serialize_name(meta)?;
 					} else {
-						consume_serde_field_meta(meta)?;
+						consume_serde_meta(meta)?;
 					}
 					Ok(())
 				})?;
@@ -642,6 +781,13 @@ impl ClientFormFieldOptions {
 			.as_ref()
 			.unwrap_or(&SerdeDefaultExpr::Default)
 			.to_tokens(dto_ident)
+	}
+
+	fn serialized_name(&self, field: &Ident, rename_all: Option<SerdeRenameRule>) -> String {
+		let name = ident_name_without_raw_prefix(field);
+		self.serde_rename
+			.clone()
+			.unwrap_or_else(|| rename_all.map_or(name.clone(), |rule| rule.apply(&name)))
 	}
 }
 
@@ -677,17 +823,18 @@ fn parse_serde_default_expr(meta: syn::meta::ParseNestedMeta<'_>) -> syn::Result
 	}
 }
 
-fn consume_serde_field_meta(meta: syn::meta::ParseNestedMeta<'_>) -> syn::Result<()> {
+fn consume_serde_meta(meta: syn::meta::ParseNestedMeta<'_>) -> syn::Result<()> {
 	if meta.input.peek(Token![=]) {
 		let _value = meta.value()?.parse::<syn::Expr>()?;
 	} else if meta.input.peek(syn::token::Paren) {
-		meta.parse_nested_meta(consume_serde_field_meta)?;
+		meta.parse_nested_meta(consume_serde_meta)?;
 	}
 	Ok(())
 }
 
 struct EditableField {
 	name: Ident,
+	serialized_name: String,
 	variant: Ident,
 	vis: Visibility,
 	ty: Type,
@@ -695,13 +842,20 @@ struct EditableField {
 }
 
 impl EditableField {
-	fn new(name: Ident, vis: Visibility, ty: Type, kind: FieldKind) -> Self {
+	fn new(
+		name: Ident,
+		vis: Visibility,
+		ty: Type,
+		kind: FieldKind,
+		serialized_name: String,
+	) -> Self {
 		let variant = format_ident!(
 			"{}",
 			ident_name_without_raw_prefix(&name).to_case(Case::Pascal)
 		);
 		Self {
 			name,
+			serialized_name,
 			variant,
 			vis,
 			ty,

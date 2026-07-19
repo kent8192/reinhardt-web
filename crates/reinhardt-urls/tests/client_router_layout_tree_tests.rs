@@ -1,6 +1,6 @@
 #![cfg(feature = "client-router")]
 
-use reinhardt_core::page::{IntoPage, Outlet, Page};
+use reinhardt_core::page::{Head, IntoPage, Outlet, Page};
 use reinhardt_urls::routers::client_router::{
 	ClientRouter, FromRequest, LayoutInfo, PathParam, RouteContext, RouteLoaderId, RouteMetadata,
 	RouteRegistrationError,
@@ -203,6 +203,61 @@ fn layout_and_leaf_metadata_compose_in_match_order() {
 	assert!(metadata[0].route_metadata().requires_auth());
 	assert_eq!(metadata[1].name(), Some("writing-jobs"));
 	assert_eq!(metadata[1].route_metadata().breadcrumb(), Some("Jobs"));
+}
+
+#[test]
+fn metadata_chain_retains_full_heads_from_root_layout_to_leaf() {
+	let root_head = Head::new()
+		.title("Writing")
+		.meta_description("Writing root layout");
+	let nested_head = Head::new()
+		.title("Projects")
+		.meta_description("Projects nested layout");
+	let leaf_head = Head::new()
+		.title("Jobs")
+		.meta_description("Jobs leaf route");
+	let router = ClientRouter::new()
+		.try_routes(|routes| {
+			routes.layout_route(
+				"writing-root",
+				"/writing/",
+				|outlet| outlet.into_page(),
+				|children| {
+					children.layout_route(
+						"writing-projects",
+						"projects/",
+						|outlet| outlet.into_page(),
+						|children| children.index_route("writing-jobs", || Page::text("jobs")),
+					)
+				},
+			)
+		})
+		.expect("nested route tree should register")
+		.with_route_metadata(
+			"writing-root",
+			RouteMetadata::new().with_head(root_head.clone()),
+		)
+		.with_route_metadata(
+			"writing-projects",
+			RouteMetadata::new().with_head(nested_head.clone()),
+		)
+		.with_route_metadata(
+			"writing-jobs",
+			RouteMetadata::new().with_head(leaf_head.clone()),
+		);
+
+	let matched = router
+		.match_tree("/writing/projects/")
+		.expect("route should match");
+	let metadata = matched.metadata_chain();
+
+	assert_eq!(metadata.len(), 3);
+	assert_eq!(metadata[0].name(), Some("writing-root"));
+	assert_eq!(metadata[0].route_metadata().head(), &root_head);
+	assert_eq!(metadata[1].name(), Some("writing-projects"));
+	assert_eq!(metadata[1].route_metadata().head(), &nested_head);
+	assert_eq!(metadata[2].name(), Some("writing-jobs"));
+	assert_eq!(metadata[2].route_metadata().head(), &leaf_head);
 }
 
 #[test]

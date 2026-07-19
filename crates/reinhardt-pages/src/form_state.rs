@@ -14,6 +14,7 @@ use std::task::{Context, Poll};
 use crate::reactive::{
 	Action, ActionPhase, Effect, EffectTiming, ReactiveScope, Signal, use_action,
 };
+use crate::server_fn::ServerFnError;
 use reinhardt_core::reactive::{ScopeId, current_scope_id, scope::enter_scope};
 
 /// Polls form submission work inside the scope that owns the form state.
@@ -595,6 +596,11 @@ pub trait FormRuntimeSource: Clone + 'static {
 	fn runtime_watch_field<T>(&self, field: Self::Field) -> Option<Signal<T>>
 	where
 		T: Clone + 'static;
+
+	/// Resolves a serialized field name to its generated field token.
+	fn runtime_field_by_name(&self, _name: &str) -> Option<Self::Field> {
+		None
+	}
 
 	/// Returns the current custom-widget bridge error for one generated field.
 	fn runtime_custom_widget_error(&self, _field: Self::Field) -> Option<FieldError> {
@@ -1364,6 +1370,57 @@ where
 		self.sync_first_error();
 	}
 
+	/// Routes a server-function error to matching field and form-level error state.
+	pub fn apply_server_error(&self, error: &ServerFnError) {
+		let mut matched_errors = HashMap::<Form::Field, Vec<String>>::new();
+		let mut unmatched_errors = Vec::new();
+
+		for field_error in error.field_errors() {
+			if let Some(field) = self.form.runtime_field_by_name(field_error.field()) {
+				matched_errors
+					.entry(field)
+					.or_default()
+					.push(field_error.message().to_string());
+			} else {
+				unmatched_errors.push(format!(
+					"{}: {}",
+					field_error.field(),
+					field_error.message()
+				));
+			}
+		}
+
+		let field_errors: HashMap<Form::Field, FieldError> = matched_errors
+			.into_iter()
+			.map(|(field, messages)| (field, FieldError::new(messages.join("\n"))))
+			.collect();
+		let form_error = if field_errors.is_empty() || !unmatched_errors.is_empty() {
+			let mut messages = Vec::with_capacity(unmatched_errors.len() + 1);
+			messages.push(error.user_message().to_string());
+			messages.extend(unmatched_errors);
+			Some(messages.join("\n"))
+		} else {
+			None
+		};
+
+		for field in self.form.runtime_fields() {
+			self.form.runtime_set_custom_widget_error(*field, None);
+		}
+		{
+			let mut custom_widget_errors = self.custom_widget_error_fields.borrow_mut();
+			custom_widget_errors.clear();
+			for (field, field_error) in &field_errors {
+				self.form
+					.runtime_set_custom_widget_error(*field, Some(field_error.clone()));
+				custom_widget_errors.insert(*field, field_error.clone());
+			}
+		}
+		self.state.field_errors.set(field_errors);
+		self.state.form_error.set(form_error.clone());
+		self.state.submit_error.set(form_error);
+		self.sync_first_error();
+	}
+
 	/// Clears all validation and submit errors.
 	pub fn clear_errors(&self) {
 		for field in self.form.runtime_fields() {
@@ -1652,6 +1709,32 @@ where
 					}
 					self.notify(FormEvent::SubmitFailed);
 				});
+				Err(error)
+			}
+		}
+	}
+
+	/// Runs an async server-function submit and routes structured errors to form state.
+	pub async fn submit_server_fn<Submit, Fut, Output>(
+		&self,
+		submit: Submit,
+	) -> Result<UseFormAsyncSubmitOutcome<Output>, ServerFnError>
+	where
+		Submit: FnOnce() -> Fut,
+		Fut: Future<Output = Result<Output, ServerFnError>>,
+	{
+		match self.submit_async(submit).await {
+			Ok(outcome) => Ok(outcome),
+			Err(error) => {
+				if self.state.is_submitting.try_get_untracked().is_ok() {
+					self.apply_server_error(&error);
+					let _ = self.in_owner_scope(|| {
+						if let Some(callback) = &self.on_submit_error {
+							callback(self);
+						}
+						self.notify(FormEvent::SubmitFailed);
+					});
+				}
 				Err(error)
 			}
 		}

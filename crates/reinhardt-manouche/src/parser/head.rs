@@ -70,14 +70,13 @@ impl Parse for HeadElement {
 		// Parse based on tag type
 		let (attrs, content) = match tag_str.as_str() {
 			"title" => parse_title_content(&content_stream)?,
-			"meta" => (parse_attrs(&content_stream)?, None),
-			"link" => (parse_attrs(&content_stream)?, None),
+			"base" | "meta" | "link" => (parse_attrs(&content_stream)?, None),
 			"style" => parse_style_content(&content_stream)?,
 			_ => {
 				return Err(syn::Error::new(
 					span,
 					format!(
-						"Unknown head element '{}'. Expected: title, meta, link, style",
+						"Unknown head element '{}'. Expected: title, base, meta, link, style",
 						tag_str
 					),
 				));
@@ -235,6 +234,21 @@ mod tests {
 		assert_eq!(ast.elements[0].attrs.len(), 2);
 		assert_eq!(ast.elements[0].attrs[0].name.to_string(), "rel");
 		assert_eq!(ast.elements[0].attrs[1].name.to_string(), "href");
+	}
+
+	#[rstest]
+	fn test_parse_head_base_with_href() {
+		// Arrange
+		let input = quote!(|| { base { href: "/app/" } });
+
+		// Act
+		let ast = parse_head(input).unwrap();
+
+		// Assert
+		assert_eq!(ast.elements.len(), 1);
+		assert_eq!(ast.elements[0].tag.to_string(), "base");
+		assert_eq!(ast.elements[0].attrs.len(), 1);
+		assert_eq!(ast.elements[0].attrs[0].name.to_string(), "href");
 	}
 
 	#[rstest]

@@ -103,6 +103,7 @@ web-sys-full = [
 	"web-sys/MutationObserver",
 	"web-sys/MutationObserverInit",
 	"web-sys/HtmlDocument",
+	"web-sys/HtmlHeadElement",
 	"web-sys/History",
 	"web-sys/Location",
 	"web-sys/Url",
@@ -322,6 +323,7 @@ tempfile = { workspace = true }
 # `chrono::Naive*` paths, so trybuild fixtures exercising those fields need
 # `chrono` resolvable in the generated fixture binary.
 chrono = { workspace = true }
+base64 = { workspace = true }
 
 [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dev-dependencies]
 # Used by tests/wasm/client_launcher_navigation_test.rs (Refs #4075) to
@@ -371,6 +373,11 @@ required-features = ["testing"]
 [[test]]
 name = "server_fn_wasm_test"
 path = "tests/wasm/server_fn_wasm_test.rs"
+required-features = ["testing"]
+
+[[test]]
+name = "document_head_wasm_test"
+path = "tests/wasm/document_head_wasm_test.rs"
 required-features = ["testing"]
 
 [[test]]

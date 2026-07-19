@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::server_fn::ServerFnError;
+use crate::server_fn::{ServerFnError, ServerFnErrorKind};
 
 /// A stable client-visible validation error for one field.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -74,12 +74,8 @@ impl ServerFnSetError {
 		}
 		serde_json::from_slice::<ServerFnError>(error_body)
 			.ok()
-			.and_then(|error| match error {
-				ServerFnError::Server { status, .. } if (100..=599).contains(&status) => {
-					Some(status)
-				}
-				_ => None,
-			})
+			.and_then(|error| error.status())
+			.filter(|status| (100..=599).contains(status))
 			.unwrap_or(500)
 	}
 
@@ -89,10 +85,7 @@ impl ServerFnSetError {
 		if let Ok(error) = serde_json::from_str::<Self>(body) {
 			return error;
 		}
-		if let Ok(error) = serde_json::from_str::<ServerFnError>(body) {
-			return Self::Transport(error);
-		}
-		Self::Transport(ServerFnError::server(status, body))
+		Self::Transport(ServerFnError::from_http_response(status, body))
 	}
 
 	/// Sanitize a generated model handler error before the router returns it.
@@ -108,10 +101,12 @@ impl ServerFnSetError {
 				_ => body,
 			};
 		}
-		if matches!(
-			serde_json::from_slice::<ServerFnError>(&body),
-			Ok(ServerFnError::Server { status, .. }) if (100..=599).contains(&status)
-		) {
+		if let Ok(error) = serde_json::from_slice::<ServerFnError>(&body)
+			&& error.kind() != ServerFnErrorKind::Transport
+			&& error
+				.status()
+				.is_some_and(|status| (100..=599).contains(&status))
+		{
 			return body;
 		}
 		bytes::Bytes::from_static(b"\"Internal\"")
@@ -165,5 +160,31 @@ impl From<reinhardt_core::exception::Error> for ServerFnSetError {
 	#[cfg(wasm)]
 	fn from(_error: reinhardt_core::exception::Error) -> Self {
 		Self::Internal
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn from_http_error_retains_a_version_one_generic_envelope() {
+		let body = r#"{"version":1,"kind":"auth","status":401,"message":"Sign in required","field_errors":[]}"#;
+
+		let error = ServerFnSetError::from_http_error(401, body);
+
+		let ServerFnSetError::Transport(error) = error else {
+			panic!("generic envelope should remain a transport error");
+		};
+		assert_eq!(error.kind(), ServerFnErrorKind::Auth);
+		assert_eq!(error.status(), Some(401));
+		assert_eq!(error.user_message(), "Sign in required");
+	}
+
+	#[test]
+	fn http_status_from_body_reads_the_generic_envelope_status() {
+		let body = br#"{"version":1,"kind":"auth","status":401,"message":"Sign in required","field_errors":[]}"#;
+
+		assert_eq!(ServerFnSetError::http_status_from_body(body), 401);
 	}
 }

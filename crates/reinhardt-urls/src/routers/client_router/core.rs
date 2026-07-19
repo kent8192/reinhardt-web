@@ -22,8 +22,7 @@ use super::params::{FromPath, ParamContext, Path};
 use super::pattern::ClientPathPattern;
 use super::scope::{RegisteredRouteScope, RouteScope};
 use super::tree::{ClientRouteTreeMatch, ResolvedRouteMetadata, RouteNode};
-use reinhardt_core::page::Outlet;
-use reinhardt_core::page::Page;
+use reinhardt_core::page::{Head, Outlet, Page};
 use reinhardt_core::reactive::{ReactiveScope, Signal, scope::current_scope_id};
 #[cfg(wasm)]
 use reinhardt_core::reactive::{ScopeId, scope::enter_scope};
@@ -158,10 +157,14 @@ pub struct ClientRouteMatch {
 }
 
 /// Route-level metadata exposed alongside matched client routes.
+///
+/// The head contribution is mounted as an outer structural page wrapper. A
+/// matched layout contributes before its active child route, and the existing
+/// layout/leaf lifetimes determine when each contribution is removed.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RouteMetadata {
-	/// Browser/document title associated with the route.
-	title: Option<String>,
+	/// Structural document-head contribution associated with the route.
+	head: Head,
 	/// Human-readable breadcrumb label associated with the route.
 	breadcrumb: Option<String>,
 	/// Whether this route should be treated as authentication-protected.
@@ -174,10 +177,18 @@ impl RouteMetadata {
 		Self::default()
 	}
 
-	/// Sets the route title.
-	pub fn with_title(mut self, title: impl Into<String>) -> Self {
-		self.title = Some(title.into());
+	/// Merges a structural document-head contribution into the route metadata.
+	///
+	/// The contribution participates in SSR, hydration, and browser resolution;
+	/// it is not a separate title-only lookup table.
+	pub fn with_head(mut self, head: Head) -> Self {
+		self.head = self.head.merge(head);
 		self
+	}
+
+	/// Sets the route title.
+	pub fn with_title(self, title: impl Into<String>) -> Self {
+		self.with_head(Head::new().title(title.into()))
 	}
 
 	/// Sets the breadcrumb label.
@@ -194,7 +205,12 @@ impl RouteMetadata {
 
 	/// Returns the route title, if configured.
 	pub fn title(&self) -> Option<&str> {
-		self.title.as_deref()
+		self.head.title.as_deref()
+	}
+
+	/// Returns the structural document-head contribution.
+	pub fn head(&self) -> &Head {
+		&self.head
 	}
 
 	/// Returns the breadcrumb label, if configured.
@@ -1096,7 +1112,12 @@ impl ClientRouter {
 	#[doc(hidden)]
 	pub fn __render_tree_leaf(&self, route_match: &ClientRouteTreeMatch) -> Option<Page> {
 		let ctx = Self::param_context_from_match(route_match.leaf_match());
-		route_match.leaf().handle_leaf(&ctx).ok()
+		let head = route_match.leaf().metadata().head().clone();
+		route_match
+			.leaf()
+			.handle_leaf(&ctx)
+			.ok()
+			.map(|page| page.with_head(head))
 	}
 
 	/// Renders one matched layout using the provided outlet.
@@ -1110,12 +1131,13 @@ impl ClientRouter {
 		outlet: Outlet,
 	) -> Option<Page> {
 		let ctx = Self::param_context_from_match(route_match.leaf_match());
-		route_match
-			.layouts()
-			.get(layout_index)?
+		let layout = route_match.layouts().get(layout_index)?;
+		let head = layout.metadata().route_metadata().head().clone();
+		layout
 			.route()
 			.handle_layout(&ctx, outlet)
 			.ok()
+			.map(|page| page.with_head(head))
 	}
 
 	/// Renders a path without mutating router navigation state.

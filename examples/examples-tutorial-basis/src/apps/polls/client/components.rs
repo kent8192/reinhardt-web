@@ -10,7 +10,7 @@
 //! same page! v2 shape:
 //!
 //! - Data is loaded with `use_resource(fetcher, deps![])` and flows into `page!`
-//!   as a `Resource<T, String>` parameter. The view branches on it inside a
+//!   as a `Resource<T, ServerFnError>` parameter. The view branches on it inside a
 //!   single `{ match resource.get() { Loading => .., Error(e) => .., Success(v)
 //!   => .. } }` block. Reading the resource exactly once matters: `page!`
 //!   auto-wraps each `{ .. }` / `if` / `for` in `Page::reactive(move || ..)`
@@ -21,7 +21,7 @@
 //!   in `tests/wasm/polls_mock_test.rs`).
 //! - page! v2 forbids implicit captures, so every value used in the body is a
 //!   declared parameter and free functions are called through a multi-segment
-//!   path (`self::format_server_error`, `polls_routes::reverse`). Form sub-views
+//!   path (`polls_routes::reverse`). Form sub-views
 //!   that depend on the form's `error` / `loading` signals are rendered inline as
 //!   `{ .. }` blocks that read each signal exactly once.
 
@@ -37,6 +37,7 @@ pub mod question_new;
 
 use crate::apps::polls::models::{ChoiceInfo, QuestionInfo};
 use crate::apps::users::models::UserInfo;
+use reinhardt::pages::ServerFnError;
 use reinhardt::pages::component::Page;
 use reinhardt::pages::deps;
 use reinhardt::pages::form;
@@ -54,33 +55,6 @@ use crate::apps::polls::urls as polls_routes;
 // choice) on the viewer being the question's author (issue #4703). Server-
 // side `require_question_author` checks remain in place as defense in depth.
 use crate::apps::users::server_fn::current_user;
-
-// =========================================================================
-// Error display helpers
-// =========================================================================
-
-/// Extract the human-readable message from a `ServerFnError`-shaped JSON
-/// payload so the alert banner shows prose, not raw JSON (issue #4702).
-///
-/// `ServerFnError` is serialized with serde's externally-tagged format —
-/// e.g. `{"Application":"Invalid choice_id"}` for `ServerFnError::Application`
-/// or `{"Server":{"status":403,"message":"..."}}` for `ServerFnError::Server`.
-/// This helper unwraps the variant tag for display purposes only; the
-/// wire format the server sends is intentionally unchanged.
-fn format_server_error(raw: &str) -> String {
-	if let Ok(value) = serde_json::from_str::<serde_json::Value>(raw)
-		&& let Some(obj) = value.as_object()
-		&& let Some((_, payload)) = obj.iter().next()
-	{
-		if let Some(s) = payload.as_str() {
-			return s.to_string();
-		}
-		if let Some(msg) = payload.get("message").and_then(|v| v.as_str()) {
-			return msg.to_string();
-		}
-	}
-	raw.to_string()
-}
 
 fn static_url(path: &str) -> String {
 	resolve_static(path)
@@ -110,13 +84,10 @@ pub fn error_page(message: &str) -> Page {
 /// Displays a list of available polls with links to vote.
 /// Uses watch blocks for reactive UI updates when async data loads.
 pub fn polls_index() -> Page {
-	let load_questions = use_resource(
-		|| async move { get_questions().await.map_err(|e| e.to_string()) },
-		deps![],
-	);
+	let load_questions = use_resource(|| async move { get_questions().await }, deps![]);
 	let new_question_href = polls_routes::reverse("question_new", &[]);
 
-	page!(|load_questions: Resource<Vec<QuestionInfo>, String>, new_question_href: String| {
+	page!(|load_questions: Resource<Vec<QuestionInfo>, ServerFnError>, new_question_href: String| {
 		div {
 			class: "max-w-4xl mx-auto px-4 mt-12",
 			div {
@@ -143,11 +114,11 @@ pub fn polls_index() -> Page {
 							}
 						}
 					})(),
-					ResourceState::Error(error) => page!(|error: String| {
+					ResourceState::Error(error) => page!(|error: ServerFnError| {
 						div {
 							class: "alert-danger",
 							{
-								self::format_server_error(&error)
+								error.user_message()
 							}
 						}
 					})(error),
@@ -196,7 +167,7 @@ pub fn polls_detail(question_id: i64) -> Page {
 
 	// Load the question detail once on mount.
 	let load_detail = use_resource(
-		move || async move { get_question_detail(qid).await.map_err(|e| e.to_string()) },
+		move || async move { get_question_detail(qid).await },
 		deps![],
 	);
 
@@ -206,10 +177,7 @@ pub fn polls_detail(question_id: i64) -> Page {
 	// session has no authenticated user, so any non-`Some(Some(u))` shape
 	// disables the controls. Server-side `require_question_author` still
 	// rejects unauthorized mutations as defense in depth.
-	let load_current_user = use_resource(
-		|| async move { current_user().await.map_err(|e| e.to_string()) },
-		deps![],
-	);
+	let load_current_user = use_resource(|| async move { current_user().await }, deps![]);
 
 	// Voting form via the `form!` macro. Keep this instance stable for the
 	// lifetime of the route component; recreating it inside the reactive render
@@ -277,9 +245,7 @@ pub fn polls_detail(question_id: i64) -> Page {
 					err.clone().map(|e| page!(|e: String| {
 						div {
 							class: "alert-danger mt-3",
-							{
-								self::format_server_error(&e)
-							}
+							{ e }
 						}
 					})(e)).unwrap_or(Page::Empty)
 				} })(err)
@@ -300,7 +266,7 @@ pub fn polls_detail(question_id: i64) -> Page {
 	// `RadioSelect` group for choiceless questions, so any submit emitted
 	// `choice_id=""` and `submit_vote` rejected the request with the
 	// runtime `Invalid choice_id` application error.
-	page!(|load_detail: Resource<(QuestionInfo, Vec<ChoiceInfo>), String>, load_current_user: Resource<Option<UserInfo>, String>, choice_options_signal: Signal<Vec<(i64, String) >>, voting_form_page: Page, question_id: i64| {
+	page!(|load_detail: Resource<(QuestionInfo, Vec<ChoiceInfo>), ServerFnError>, load_current_user: Resource<Option<UserInfo>, ServerFnError>, choice_options_signal: Signal<Vec<(i64, String) >>, voting_form_page: Page, question_id: i64| {
 		div { {
 			match load_detail.get() {
 				ResourceState::Loading => page!(|| {
@@ -316,13 +282,13 @@ pub fn polls_detail(question_id: i64) -> Page {
 						}
 					}
 				})(),
-				ResourceState::Error(error) => page!(|error: String, question_id: i64| {
+				ResourceState::Error(error) => page!(|error: ServerFnError, question_id: i64| {
 					div {
 						class: "max-w-4xl mx-auto px-4 mt-12",
 						div {
 							class: "alert-danger",
 							{
-								self::format_server_error(&error)
+								error.user_message()
 							}
 						}
 						a {
@@ -423,19 +389,12 @@ pub fn polls_detail(question_id: i64) -> Page {
 /// `require_question_author` checks remain in place as defense in depth.
 pub fn polls_results(question_id: i64) -> Page {
 	let load_results = use_resource(
-		move || async move {
-			get_question_results(question_id)
-				.await
-				.map_err(|e| e.to_string())
-		},
+		move || async move { get_question_results(question_id).await },
 		deps![],
 	);
-	let load_current_user = use_resource(
-		|| async move { current_user().await.map_err(|e| e.to_string()) },
-		deps![],
-	);
+	let load_current_user = use_resource(|| async move { current_user().await }, deps![]);
 
-	page!(|load_results: Resource<(QuestionInfo, Vec<ChoiceInfo>, i32), String>, load_current_user: Resource<Option<UserInfo>, String>, question_id: i64| {
+	page!(|load_results: Resource<(QuestionInfo, Vec<ChoiceInfo>, i32), ServerFnError>, load_current_user: Resource<Option<UserInfo>, ServerFnError>, question_id: i64| {
 		div { {
 			match load_results.get() {
 				ResourceState::Loading => page!(|| {
@@ -451,13 +410,13 @@ pub fn polls_results(question_id: i64) -> Page {
 						}
 					}
 				})(),
-				ResourceState::Error(error) => page!(|error: String| {
+				ResourceState::Error(error) => page!(|error: ServerFnError| {
 					div {
 						class: "max-w-4xl mx-auto px-4 mt-12",
 						div {
 							class: "alert-danger",
 							{
-								self::format_server_error(&error)
+								error.user_message()
 							}
 						}
 						a {
@@ -582,12 +541,9 @@ pub fn polls_results(question_id: i64) -> Page {
 /// This function is identical to polls_index() but adds poll icons using
 /// static URL resolution.
 pub fn polls_index_with_logo() -> Page {
-	let load_questions = use_resource(
-		|| async move { get_questions().await.map_err(|e| e.to_string()) },
-		deps![],
-	);
+	let load_questions = use_resource(|| async move { get_questions().await }, deps![]);
 
-	page!(|load_questions: Resource<Vec<QuestionInfo>, String>| {
+	page!(|load_questions: Resource<Vec<QuestionInfo>, ServerFnError>| {
 		div {
 			class: "max-w-4xl mx-auto px-4 mt-12",
 			div {
@@ -617,11 +573,11 @@ pub fn polls_index_with_logo() -> Page {
 							}
 						}
 					})(),
-					ResourceState::Error(error) => page!(|error: String| {
+					ResourceState::Error(error) => page!(|error: ServerFnError| {
 						div {
 							class: "alert-danger",
 							{
-								self::format_server_error(&error)
+								error.user_message()
 							}
 						}
 					})(error),
@@ -717,7 +673,7 @@ pub fn question_new() -> Page {
 					div {
 						class: "alert-danger mb-3",
 						{
-							self::format_server_error(&message)
+							message
 						}
 					}
 				})(message)
@@ -757,7 +713,7 @@ pub fn question_new() -> Page {
 pub fn question_edit(question_id: i64) -> Page {
 	let qid = question_id;
 	let load_detail = use_resource(
-		move || async move { get_question_detail(qid).await.map_err(|e| e.to_string()) },
+		move || async move { get_question_detail(qid).await },
 		deps![],
 	);
 
@@ -818,7 +774,7 @@ pub fn question_edit(question_id: i64) -> Page {
 					div {
 						class: "alert-danger mb-3",
 						{
-							self::format_server_error(&message)
+							message
 						}
 					}
 				})(message)
@@ -855,7 +811,7 @@ pub fn question_edit(question_id: i64) -> Page {
 		question_id,
 	);
 
-	page!(|load_detail: Resource<(QuestionInfo, Vec<ChoiceInfo>), String>,
+	page!(|load_detail: Resource<(QuestionInfo, Vec<ChoiceInfo>), ServerFnError>,
 	 edit_form_view: Page,
 	 question_id: i64| {
 		div { {
@@ -873,12 +829,12 @@ pub fn question_edit(question_id: i64) -> Page {
 						}
 					}
 				})(),
-				ResourceState::Error(error) => page!(|error: String| {
+				ResourceState::Error(error) => page!(|error: ServerFnError| {
 					div {
 						class: "max-w-4xl mx-auto px-4 mt-12",
 						div {
 							class: "alert-danger",
-							{ self::format_server_error(&error) }
+							{ error.user_message() }
 						}
 						a {
 							href: polls_routes::reverse("index", &[]),
@@ -897,7 +853,7 @@ pub fn question_edit(question_id: i64) -> Page {
 pub fn question_delete_confirm(question_id: i64) -> Page {
 	let qid = question_id;
 	let load_detail = use_resource(
-		move || async move { get_question_detail(qid).await.map_err(|e| e.to_string()) },
+		move || async move { get_question_detail(qid).await },
 		deps![],
 	);
 
@@ -921,7 +877,7 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 		&[("question_id", question_id.to_string().as_str())],
 	);
 
-	page!(|load_detail: Resource<(QuestionInfo, Vec<ChoiceInfo>), String>,
+	page!(|load_detail: Resource<(QuestionInfo, Vec<ChoiceInfo>), ServerFnError>,
 	 error_signal: Signal<Option<String>>,
 	 loading_signal: Signal<bool>,
 	 form_view: Page,
@@ -955,10 +911,10 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 							}
 						}
 					})(q),
-					ResourceState::Error(error) => page!(|error: String| {
+					ResourceState::Error(error) => page!(|error: ServerFnError| {
 						div {
 							class: "alert-danger",
-							{ self::format_server_error(&error) }
+							{ error.user_message() }
 						}
 					})(error),
 				}
@@ -970,7 +926,7 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 					div {
 						class: "alert-danger mt-3",
 						{
-							self::format_server_error(&message)
+							message
 						}
 					}
 				})(message)
@@ -1073,7 +1029,7 @@ pub fn choice_new(question_id: i64) -> Page {
 					div {
 						class: "alert-danger mb-3",
 						{
-							self::format_server_error(&message)
+							message
 						}
 					}
 				})(message)
@@ -1155,7 +1111,7 @@ pub fn choice_edit(question_id: i64, choice_id: i64) -> Page {
 					div {
 						class: "alert-danger mb-3",
 						{
-							self::format_server_error(&message)
+							message
 						}
 					}
 				})(message)
@@ -1235,7 +1191,7 @@ pub fn choice_delete_confirm(question_id: i64, choice_id: i64) -> Page {
 					div {
 						class: "alert-danger mt-3",
 						{
-							self::format_server_error(&message)
+							message
 						}
 					}
 				})(message)

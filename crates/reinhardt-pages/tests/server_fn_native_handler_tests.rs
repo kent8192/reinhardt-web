@@ -5,7 +5,9 @@ use bytes::Bytes;
 use hyper::{Method, header};
 use reinhardt_di::params::{FromRequest, ParamContext, ParamError, ParamResult};
 use reinhardt_http::Request;
-use reinhardt_pages::server_fn::{ServerFnError, ServerFnRegistration, server_fn};
+use reinhardt_pages::server_fn::{
+	ServerFnError, ServerFnErrorKind, ServerFnRegistration, server_fn,
+};
 use rstest::rstest;
 
 #[server_fn]
@@ -16,6 +18,32 @@ async fn echo_name(name: String) -> Result<String, ServerFnError> {
 #[server_fn]
 async fn echo_alias(name: String) -> Result<String, ServerFnError> {
 	Ok(name)
+}
+
+#[server_fn]
+async fn invalid_choice(choice_id: String) -> Result<(), ServerFnError> {
+	if choice_id.is_empty() {
+		return Err(ServerFnError::validation_with_message(
+			"Validation failed",
+			[("choice_id", "Select a choice")],
+		));
+	}
+
+	Ok(())
+}
+
+#[derive(serde::Serialize)]
+struct CustomServerError(String);
+
+impl From<ServerFnError> for CustomServerError {
+	fn from(error: ServerFnError) -> Self {
+		Self(error.to_string())
+	}
+}
+
+#[server_fn]
+async fn custom_error() -> Result<(), CustomServerError> {
+	Err(CustomServerError("Custom failure".to_string()))
 }
 
 struct Authorization;
@@ -38,6 +66,17 @@ impl FromRequest for SessionId {
 	}
 }
 
+struct Header;
+
+#[async_trait::async_trait]
+impl FromRequest for Header {
+	async fn from_request(_request: &Request, _context: &ParamContext) -> ParamResult<Self> {
+		Err(ParamError::BodyError(
+			"request token=top-secret is malformed".to_string(),
+		))
+	}
+}
+
 #[server_fn]
 async fn authentication_extractor(_authorization: Authorization) -> Result<(), ServerFnError> {
 	Ok(())
@@ -48,23 +87,32 @@ async fn internal_extractor(_session_id: SessionId) -> Result<(), ServerFnError>
 	Ok(())
 }
 
+#[server_fn]
+async fn parameter_extractor(_header: Header) -> Result<(), ServerFnError> {
+	Ok(())
+}
+
 #[tokio::test]
 async fn authentication_extractor_returns_sanitized_unauthorized_error() {
+	// Arrange
 	let request = Request::builder()
 		.method(Method::POST)
 		.uri("/api/server_fn/authentication_extractor")
 		.build()
 		.expect("request should build");
 
+	// Act
 	let body = authentication_extractor::marker::handle(request)
 		.await
 		.expect_err("authentication extractor should reject the request");
 
+	let error = serde_json::from_slice::<ServerFnError>(&body).expect("error should be valid JSON");
+
+	// Assert
 	assert_eq!(authentication_extractor::marker::error_status(&body), 401);
-	assert_eq!(
-		serde_json::from_slice::<ServerFnError>(&body).expect("error should be valid JSON"),
-		ServerFnError::server(401, "Authentication required")
-	);
+	assert_eq!(error.kind(), ServerFnErrorKind::Auth);
+	assert_eq!(error.status(), Some(401));
+	assert_eq!(error.message(), "Authentication required");
 	assert!(
 		!String::from_utf8(body.to_vec())
 			.unwrap()
@@ -74,26 +122,180 @@ async fn authentication_extractor_returns_sanitized_unauthorized_error() {
 
 #[tokio::test]
 async fn internal_extractor_returns_sanitized_internal_error() {
+	// Arrange
 	let request = Request::builder()
 		.method(Method::POST)
 		.uri("/api/server_fn/internal_extractor")
 		.build()
 		.expect("request should build");
 
+	// Act
 	let body = internal_extractor::marker::handle(request)
 		.await
 		.expect_err("internal extractor should reject the request");
 
+	let error = serde_json::from_slice::<ServerFnError>(&body).expect("error should be valid JSON");
+
+	// Assert
 	assert_eq!(internal_extractor::marker::error_status(&body), 500);
-	assert_eq!(
-		serde_json::from_slice::<ServerFnError>(&body).expect("error should be valid JSON"),
-		ServerFnError::server(500, "Internal server error")
-	);
+	assert_eq!(error.kind(), ServerFnErrorKind::Server);
+	assert_eq!(error.status(), Some(500));
+	assert_eq!(error.message(), "Internal server error");
 	assert!(
 		!String::from_utf8(body.to_vec())
 			.unwrap()
 			.contains("top-secret")
 	);
+}
+
+#[tokio::test]
+async fn parameter_extractor_returns_sanitized_bad_request_error() {
+	// Arrange
+	let request = Request::builder()
+		.method(Method::POST)
+		.uri("/api/server_fn/parameter_extractor")
+		.build()
+		.expect("request should build");
+
+	// Act
+	let body = parameter_extractor::marker::handle(request)
+		.await
+		.expect_err("parameter extractor should reject the request");
+	let error = serde_json::from_slice::<ServerFnError>(&body).expect("error should be valid JSON");
+
+	// Assert
+	assert_eq!(parameter_extractor::marker::error_status(&body), 400);
+	assert_eq!(error.kind(), ServerFnErrorKind::Server);
+	assert_eq!(error.status(), Some(400));
+	assert_eq!(error.message(), "Parameter extraction failed");
+	assert!(
+		!String::from_utf8(body.to_vec())
+			.unwrap()
+			.contains("top-secret")
+	);
+}
+
+#[tokio::test]
+async fn validation_handler_returns_versioned_error_envelope() {
+	// Arrange
+	let request = Request::builder()
+		.method(Method::POST)
+		.uri("/api/server_fn/invalid_choice")
+		.body(Bytes::from_static(br#"{"choice_id":""}"#))
+		.build()
+		.expect("request should build");
+
+	// Act
+	let body = invalid_choice::marker::handle(request)
+		.await
+		.expect_err("validation error should reject the request");
+	let error: ServerFnError = serde_json::from_slice(&body).expect("error should be valid JSON");
+	let value: serde_json::Value = serde_json::from_slice(&body).expect("error should be JSON");
+
+	// Assert
+	assert_eq!(invalid_choice::marker::error_status(&body), 422);
+	assert_eq!(error.kind(), ServerFnErrorKind::Validation);
+	assert_eq!(error.status(), Some(422));
+	assert_eq!(value["version"], 1);
+	assert_eq!(error.field_errors()[0].field(), "choice_id");
+	assert_eq!(error.field_errors()[0].message(), "Select a choice");
+}
+
+#[tokio::test]
+async fn custom_error_handler_returns_a_versioned_error_envelope() {
+	// Arrange
+	let request = Request::builder()
+		.method(Method::POST)
+		.uri("/api/server_fn/custom_error")
+		.build()
+		.expect("request should build");
+
+	// Act
+	let body = custom_error::marker::handle(request)
+		.await
+		.expect_err("custom error should reject the request");
+	let error: ServerFnError = serde_json::from_slice(&body).expect("error should be valid JSON");
+
+	// Assert
+	assert_eq!(custom_error::marker::error_status(&body), 500);
+	assert_eq!(error.kind(), ServerFnErrorKind::Application);
+	assert_eq!(error.status(), Some(500));
+	assert_eq!(error.message(), "Custom failure");
+}
+
+#[tokio::test]
+async fn malformed_server_fn_request_returns_bad_request_envelope() {
+	// Arrange
+	let request = Request::builder()
+		.method(Method::POST)
+		.uri("/api/server_fn/echo_name")
+		.body(Bytes::from_static(br#"{"name":}"#))
+		.build()
+		.expect("request should build");
+
+	// Act
+	let body = echo_name::marker::handle(request)
+		.await
+		.expect_err("malformed request should be rejected");
+	let error: ServerFnError = serde_json::from_slice(&body).expect("error should be valid JSON");
+
+	// Assert
+	assert_eq!(echo_name::marker::error_status(&body), 400);
+	assert_eq!(error.kind(), ServerFnErrorKind::Server);
+	assert_eq!(error.status(), Some(400));
+	assert_eq!(error.message(), "Invalid server function request");
+}
+
+#[test]
+fn http_response_error_decoding_preserves_envelopes_and_sanitizes_raw_bodies() {
+	// Arrange
+	let envelope = serde_json::json!({
+		"version": 1,
+		"kind": "validation",
+		"status": null,
+		"message": "Choose a value",
+		"field_errors": [{ "field": "choice_id", "message": "Select a choice" }],
+	})
+	.to_string();
+
+	// Act
+	let structured = ServerFnError::from_http_response(422, &envelope);
+	let fallback = ServerFnError::from_http_response(502, "database password=top-secret");
+
+	// Assert
+	assert_eq!(structured.kind(), ServerFnErrorKind::Validation);
+	assert_eq!(structured.status(), Some(422));
+	assert_eq!(structured.field_errors()[0].field(), "choice_id");
+	assert_eq!(fallback.kind(), ServerFnErrorKind::Deserialization);
+	assert_eq!(fallback.status(), Some(502));
+	assert_eq!(fallback.message(), "Invalid server function error response");
+	assert!(!fallback.message().contains("top-secret"));
+}
+
+#[test]
+fn http_response_error_decoding_normalizes_invalid_outer_statuses() {
+	// Arrange
+	let envelope_without_status = serde_json::json!({
+		"version": 1,
+		"kind": "validation",
+		"status": null,
+		"message": "Choose a value",
+		"field_errors": [],
+	})
+	.to_string();
+
+	// Act
+	let zero_outer_status = ServerFnError::from_http_response(0, &envelope_without_status);
+	let invalid_outer_status = ServerFnError::from_http_response(700, "not an error envelope");
+
+	// Assert
+	assert_eq!(zero_outer_status.kind(), ServerFnErrorKind::Validation);
+	assert_eq!(zero_outer_status.status(), Some(500));
+	assert_eq!(
+		invalid_outer_status.kind(),
+		ServerFnErrorKind::Deserialization
+	);
+	assert_eq!(invalid_outer_status.status(), Some(500));
 }
 
 #[tokio::test]

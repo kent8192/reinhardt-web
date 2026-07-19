@@ -39,7 +39,7 @@
 //! - [`use_id`], [`use_layout_effect`], [`use_debug_value`]
 //! - [`use_optimistic`], [`use_shared_state`]
 //! - [`use_action`], [`use_action_state`], [`use_sync_external_store`]
-//! - [`use_query`], [`use_mutation`]
+//! - [`use_query`], [`use_mutation`], [`use_head`], [`use_page_title`]
 //!
 //! ## Component System
 //! - [`Component`], [`PageElement`], [`IntoPage`], [`Page`], [`Props`]
@@ -106,9 +106,9 @@ pub use crate::reactive::{Action, ActionPhase, ActionStateBuilder, use_action, u
 pub use crate::reactive::{
 	Dispatch, EffectReturn, OptimisticState, Ref, SetState, SetStateExt, SharedSetState,
 	SharedSignal, TransitionState, use_callback, use_context, use_debug_value, use_deferred_value,
-	use_effect, use_id, use_layout_effect, use_memo, use_optimistic, use_reducer, use_ref,
-	use_retained_effect, use_retained_layout_effect, use_shared_state, use_state,
-	use_sync_external_store, use_transition,
+	use_effect, use_head, use_id, use_layout_effect, use_memo, use_optimistic, use_page_title,
+	use_reducer, use_ref, use_retained_effect, use_retained_layout_effect, use_shared_state,
+	use_state, use_sync_external_store, use_transition,
 };
 pub use crate::reactive::{use_mutation, use_query};
 
@@ -182,7 +182,9 @@ pub use crate::router::loader::{
 // ============================================================================
 
 pub use crate::api::{ApiModel, ApiQuerySet, Filter, FilterOp};
-pub use crate::server_fn::{ServerFn, ServerFnError};
+pub use crate::server_fn::{
+	ServerFn, ServerFnError, ServerFnErrorKind, ServerFnErrorPayload, ServerFnFieldError,
+};
 
 // ============================================================================
 // Authentication and Security

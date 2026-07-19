@@ -120,7 +120,9 @@ pub use registration::ServerFnRegistration;
 pub use registry::{ServerFnHandler, ServerFnRoute};
 #[cfg(native)]
 pub use router_ext::ServerFnRouterExt;
-pub use server_fn_trait::{ServerFn, ServerFnError, parse_server_error_message};
+pub use server_fn_trait::{
+	ServerFn, ServerFnError, ServerFnErrorKind, ServerFnErrorPayload, ServerFnFieldError,
+};
 pub use set::{
 	NamedServerFnSet, ServerFnSet, ServerFnSetActionMetadata, ServerFnSetActions,
 	ServerFnSetChainExt, ServerFnSetCons, ServerFnSetMetadata, ServerFnSetNil,

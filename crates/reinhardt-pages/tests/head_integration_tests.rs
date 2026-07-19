@@ -5,16 +5,16 @@
 //! 1. Head type builds correctly with all builder methods
 //! 2. head! macro generates correct Head instances
 //! 3. View::WithHead correctly attaches head to views
-//! 4. find_topmost_head correctly traverses view tree
+//! 4. find_topmost_head preserves legacy first-head inspection behavior
 //! 5. render_to_string handles WithHead variant
 //! 6. resolve_static returns correct URLs
 //!
 //! Test Categories:
-//! - Happy Path: 6 tests
+//! - Happy Path: 7 tests
 //! - Edge Cases: 4 tests
 //! - Combination: 3 tests
 //!
-//! Total: 13 tests
+//! Total: 14 tests
 
 use reinhardt_pages::component::{Head, IntoPage, LinkTag, MetaTag, Page, PageElement, ScriptTag};
 use reinhardt_pages::head;
@@ -77,6 +77,18 @@ fn test_head_macro_basic() {
 	);
 }
 
+/// Tests that head! macro supports a base URL.
+#[rstest]
+fn head_macro_supports_base_href() {
+	let head = head!(|| {
+		base { href: "/app/" }
+		title { "Outline" }
+	});
+
+	assert_eq!(head.base.as_deref(), Some("/app/"));
+	assert!(head.to_html().starts_with("<base href=\"/app/\">"));
+}
+
 /// Tests that View::with_head attaches head correctly.
 #[rstest]
 fn test_view_with_head() {
@@ -130,14 +142,14 @@ fn test_extract_head_returns_none_for_non_withhead() {
 	assert!(empty_view.extract_head().is_none());
 }
 
-/// Tests that find_topmost_head works with nested fragments.
+/// Tests that legacy first-head inspection works with nested fragments.
 #[rstest]
 fn test_find_topmost_head_nested_fragment() {
 	let inner_view = Page::text("Inner").with_head(Head::new().title("Inner Head"));
 
 	let outer_view = Page::fragment(vec![Page::text("Before"), inner_view, Page::text("After")]);
 
-	// Should find the inner head
+	// Compatibility inspection returns the first structural head.
 	let found_head = outer_view.find_topmost_head();
 	assert!(found_head.is_some());
 	assert_eq!(
@@ -146,14 +158,14 @@ fn test_find_topmost_head_nested_fragment() {
 	);
 }
 
-/// Tests that find_topmost_head returns outermost head when nested.
+/// Tests that legacy first-head inspection returns the outermost head when nested.
 #[rstest]
 fn test_find_topmost_head_prefers_outer() {
 	let inner_view = Page::text("Inner").with_head(Head::new().title("Inner Head"));
 
 	let outer_view = Page::fragment(vec![inner_view]).with_head(Head::new().title("Outer Head"));
 
-	// Should find the outer head first
+	// Compatibility inspection returns the outer head first.
 	let found_head = outer_view.find_topmost_head();
 	assert!(found_head.is_some());
 	assert_eq!(

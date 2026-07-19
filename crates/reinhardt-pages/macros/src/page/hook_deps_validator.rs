@@ -4,10 +4,11 @@
 //!
 //! # What this checks
 //!
-//! For every `use_effect` / `use_retained_effect` / `use_layout_effect` /
-//! `use_retained_layout_effect` / `use_memo` / `use_callback` /
-//! `use_callback_with` call written **directly inside a `page!` body**, this
-//! pass walks the hook's closure (positional arg 0) and collects the Signal
+//! For every verified hook call (`use_effect` / `use_retained_effect` /
+//! `use_layout_effect` / `use_retained_layout_effect` / `use_memo` /
+//! `use_callback` / `use_callback_with` / `use_head` / `use_page_title`)
+//! written **directly inside a `page!` body**, this pass walks the hook's
+//! closure (positional arg 0) and collects the Signal
 //! reads — `signal.get()`, `signal.with(...)`, `signal.into_value()`. Reads
 //! through the explicit escape hatches `get_untracked` / `with_untracked` are
 //! ignored. It then compares those reads against the explicit `deps![...]`
@@ -57,6 +58,8 @@ pub(crate) const VERIFIED_HOOKS: &[&str] = &[
 	"use_memo",
 	"use_callback",
 	"use_callback_with",
+	"use_head",
+	"use_page_title",
 ];
 
 /// Methods that explicitly opt out of deps verification — reading these
