@@ -37,6 +37,7 @@ pub mod question_new;
 
 use crate::apps::polls::models::{ChoiceInfo, QuestionInfo};
 use crate::apps::users::models::UserInfo;
+use reinhardt::pages::ServerFnError;
 use reinhardt::pages::component::Page;
 use reinhardt::pages::deps;
 use reinhardt::pages::form;
@@ -44,7 +45,6 @@ use reinhardt::pages::page;
 use reinhardt::pages::reactive::hooks::use_retained_effect;
 use reinhardt::pages::reactive::{Resource, ResourceState, Signal, use_resource};
 use reinhardt::pages::resolve_static;
-use reinhardt::pages::ServerFnError;
 
 use crate::apps::polls::server_fn::{
 	create_choice, create_question, delete_choice, delete_question, get_question_detail,
@@ -84,10 +84,7 @@ pub fn error_page(message: &str) -> Page {
 /// Displays a list of available polls with links to vote.
 /// Uses watch blocks for reactive UI updates when async data loads.
 pub fn polls_index() -> Page {
-	let load_questions = use_resource(
-		|| async move { get_questions().await },
-		deps![],
-	);
+	let load_questions = use_resource(|| async move { get_questions().await }, deps![]);
 	let new_question_href = polls_routes::reverse("question_new", &[]);
 
 	page!(|load_questions: Resource<Vec<QuestionInfo>, ServerFnError>, new_question_href: String| {
@@ -180,10 +177,7 @@ pub fn polls_detail(question_id: i64) -> Page {
 	// session has no authenticated user, so any non-`Some(Some(u))` shape
 	// disables the controls. Server-side `require_question_author` still
 	// rejects unauthorized mutations as defense in depth.
-	let load_current_user = use_resource(
-		|| async move { current_user().await },
-		deps![],
-	);
+	let load_current_user = use_resource(|| async move { current_user().await }, deps![]);
 
 	// Voting form via the `form!` macro. Keep this instance stable for the
 	// lifetime of the route component; recreating it inside the reactive render
@@ -251,9 +245,7 @@ pub fn polls_detail(question_id: i64) -> Page {
 					err.clone().map(|e| page!(|e: String| {
 						div {
 							class: "alert-danger mt-3",
-							{
-								e
-							}
+							{ e }
 						}
 					})(e)).unwrap_or(Page::Empty)
 				} })(err)
@@ -397,15 +389,10 @@ pub fn polls_detail(question_id: i64) -> Page {
 /// `require_question_author` checks remain in place as defense in depth.
 pub fn polls_results(question_id: i64) -> Page {
 	let load_results = use_resource(
-		move || async move {
-			get_question_results(question_id).await
-		},
+		move || async move { get_question_results(question_id).await },
 		deps![],
 	);
-	let load_current_user = use_resource(
-		|| async move { current_user().await },
-		deps![],
-	);
+	let load_current_user = use_resource(|| async move { current_user().await }, deps![]);
 
 	page!(|load_results: Resource<(QuestionInfo, Vec<ChoiceInfo>, i32), ServerFnError>, load_current_user: Resource<Option<UserInfo>, ServerFnError>, question_id: i64| {
 		div { {
@@ -554,10 +541,7 @@ pub fn polls_results(question_id: i64) -> Page {
 /// This function is identical to polls_index() but adds poll icons using
 /// static URL resolution.
 pub fn polls_index_with_logo() -> Page {
-	let load_questions = use_resource(
-		|| async move { get_questions().await },
-		deps![],
-	);
+	let load_questions = use_resource(|| async move { get_questions().await }, deps![]);
 
 	page!(|load_questions: Resource<Vec<QuestionInfo>, ServerFnError>| {
 		div {
