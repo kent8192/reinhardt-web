@@ -1199,6 +1199,24 @@ fn attach_hydrated_element_events(
 			.map_err(|error| HydrationError::EventAttachmentFailed(error.to_string()))?;
 	}
 
+	let reactive_attribute_effects = element_view
+		.reactive_attrs()
+		.iter()
+		.cloned()
+		.map(|attribute| {
+			let element = element.clone();
+			crate::reactive::Effect::new(move || match attribute.value() {
+				Some(value) => {
+					let _ = element.set_attribute(attribute.name(), &value);
+				}
+				None => {
+					let _ = element.remove_attribute(attribute.name());
+				}
+			})
+		})
+		.collect::<Vec<_>>();
+	store_reactive_node(reactive_attribute_effects);
+
 	Ok(())
 }
 
