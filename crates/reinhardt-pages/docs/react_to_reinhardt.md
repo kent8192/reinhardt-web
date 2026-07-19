@@ -23,6 +23,7 @@ application.
 | `useTransition` | `use_transition()` | Returns `TransitionState` with `is_pending` and `start_transition`. |
 | `useDeferredValue` | `use_deferred_value(signal)` | Defers a `Signal<T>` value. |
 | React actions / server functions | `use_action` + `#[server_fn]` | Server calls are typed Rust functions with generated WASM client stubs. |
+| Action buttons and async result/resource panels | `reinhardt_pages::ui::{ActionButton, ActionResultPanel, ResourcePanel}` | Headless components bind typed action/resource state to slots; styling and accessible announcements remain application-owned. |
 
 ## React 19 and 19.2 parity classification
 
@@ -579,12 +580,44 @@ Pages:
 - `use_action_state` builds the same action handle with success/error
   callbacks, optional reset-on-success behavior, and dispatch callbacks for
   UI event handlers.
+- `reinhardt_pages::ui::ActionButton` renders a semantic button and prevents a
+  second dispatch while its `Action` is pending.
+- `reinhardt_pages::ui::ActionResultPanel` maps action phases to repeatable
+  `Fn() -> Page`, `Fn(&T) -> Page`, and `Fn(&E) -> Page` slots.
+- `reinhardt_pages::ui::ResourcePanel` maps loading, empty, success, and error
+  states to slots and can read `Resource::latest_after(action)` values.
 
 React `useActionState` combines form submission, pending state, result state,
 and errors behind one hook. Reinhardt keeps form validation explicit: use
 `use_form` for typed form state and validation, then use `use_action_state`
 or `use_action` to run the `#[server_fn]` mutation after the form is valid.
 React's DOM `action={function}` behavior is not supported directly.
+
+The UI primitives are intentionally headless. Applications own CSS and other
+visual presentation, live-region roles and announcements, localization, and
+redaction of errors before they are shown. Error slots receive typed `&E`
+values, so an application can select a safe user-facing message instead of
+exposing an internal diagnostic.
+
+```rust,ignore
+use reinhardt_pages::component::Page;
+use reinhardt_pages::ui::{ActionButton, ActionResultPanel, ResourcePanel};
+
+let save_button = ActionButton::new(save, project_id, Page::text("Save"));
+let save_result = ActionResultPanel::new(save)
+    .pending(|| Page::text("Saving"))
+    .success(|value| Page::text(value.clone()));
+let project_view = ResourcePanel::new(project)
+    .loading(|| Page::text("Loading"))
+    .success(|value| Page::text(value.clone()));
+```
+
+`ActionButton::new` takes an `Action<T, E>`, a cloneable payload `P`, and
+`C: IntoPage`; `ActionButton::new_with` instead takes `F: Fn() -> P + 'static`
+to build the payload at click time. `ActionResultPanel` and `ResourcePanel`
+take repeatable closures, so their slot signatures remain explicit and do not
+consume the values they render. See the `reinhardt_pages::ui` rustdoc for the
+complete constructor and builder signatures.
 
 ```rust,ignore
 use reinhardt::pages::prelude::*;
