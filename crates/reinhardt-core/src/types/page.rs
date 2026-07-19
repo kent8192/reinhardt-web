@@ -1175,12 +1175,17 @@ impl Page {
 					&& selection.is_some_and(|selection| selection.matches(el));
 
 				for (name, value) in el.attrs() {
+					let has_reactive_attribute = el
+						.reactive_attrs()
+						.iter()
+						.any(|attribute| attribute.name().eq_ignore_ascii_case(name));
 					// Skip boolean attributes with falsy values (empty, "false", "0")
 					let name_str: &str = name.as_ref();
 					if (name_str.eq_ignore_ascii_case("value") && projects_value)
 						|| (name_str.eq_ignore_ascii_case("checked") && binding.is_some())
 						|| (name_str.eq_ignore_ascii_case("selected") && selection.is_some())
 						|| (BOOLEAN_ATTRS.contains(&name_str) && !is_boolean_attr_truthy(value))
+						|| has_reactive_attribute
 					{
 						continue;
 					}
@@ -1787,6 +1792,16 @@ mod tests {
 	fn test_render_simple_element() {
 		let view = PageElement::new("div").into_page();
 		assert_eq!(view.render_to_string(), "<div></div>");
+	}
+
+	#[test]
+	fn render_to_string_prefers_reactive_attributes() {
+		let view = PageElement::new("div")
+			.attr("class", "stale")
+			.reactive_attr("CLASS", || Some("current".into()))
+			.into_page();
+
+		assert_eq!(view.render_to_string(), "<div CLASS=\"current\"></div>");
 	}
 
 	#[test]

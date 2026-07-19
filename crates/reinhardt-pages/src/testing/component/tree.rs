@@ -652,8 +652,15 @@ impl TestDom {
 					.tag_name()
 					.eq_ignore_ascii_case("option")
 					.then(|| crate::ssr::control_binding::option_value(&element));
-				let (tag, attrs, children, is_void, event_handlers, control_binding) =
-					element.into_parts_with_control_binding();
+				let (
+					tag,
+					attrs,
+					_reactive_attrs,
+					children,
+					is_void,
+					event_handlers,
+					control_binding,
+				) = element.into_parts_with_control_binding();
 				let attrs = attrs
 					.into_iter()
 					.map(|(name, value)| (name.into_owned(), value.into_owned()))

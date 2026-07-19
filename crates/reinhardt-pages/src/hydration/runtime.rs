@@ -12,7 +12,8 @@ use crate::dom::{Element, document};
 
 #[cfg(wasm)]
 use crate::component::{
-	Page, new_reactive_node_store, store_reactive_node, with_reactive_node_store,
+	Page, ReactiveAttributeEffects, new_reactive_node_store, store_reactive_node,
+	with_reactive_node_store,
 };
 
 #[cfg(wasm)]
@@ -1215,7 +1216,7 @@ fn attach_hydrated_element_events(
 			})
 		})
 		.collect::<Vec<_>>();
-	store_reactive_node(reactive_attribute_effects);
+	store_reactive_node(ReactiveAttributeEffects::new(reactive_attribute_effects));
 
 	Ok(())
 }

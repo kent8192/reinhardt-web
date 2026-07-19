@@ -18,8 +18,12 @@ pub(super) use reinhardt_core::types::page::{BOOLEAN_ATTRS, is_boolean_attr_trut
 
 #[cfg(wasm)]
 use crate::component::reactive_if::{
-	ReactiveIfNode, ReactiveNode, clear_reactive_node_store, new_reactive_node_store,
-	store_reactive_node, with_reactive_node_store, with_reactive_node_transaction,
+	ReactiveAttributeEffects, ReactiveIfNode, ReactiveNode, store_reactive_node,
+	with_reactive_node_transaction,
+};
+#[cfg(all(wasm, feature = "hmr"))]
+use crate::component::reactive_if::{
+	clear_reactive_node_store, new_reactive_node_store, with_reactive_node_store,
 };
 #[cfg(wasm)]
 use crate::dom::control_binding::ControlBindingController;
@@ -299,7 +303,7 @@ fn mount_inner(page: Page, parent: &Element) -> Result<(), MountError> {
 				}
 
 				parent
-					.append_child(element)
+					.append_child(element.clone())
 					.map_err(|_| MountError::AppendChildFailed)?;
 				let reactive_attribute_effects = reactive_attrs
 					.into_iter()
@@ -318,7 +322,7 @@ fn mount_inner(page: Page, parent: &Element) -> Result<(), MountError> {
 				store_reactive_node((
 					binding_controller,
 					event_handles,
-					reactive_attribute_effects,
+					ReactiveAttributeEffects::new(reactive_attribute_effects),
 				));
 				Ok::<(), MountError>(())
 			};

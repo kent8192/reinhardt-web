@@ -1979,9 +1979,14 @@ fn render_element_opening(
 
 	for (name, value) in element.attrs() {
 		let name = name.as_ref();
+		let has_reactive_attribute = element
+			.reactive_attrs()
+			.iter()
+			.any(|attribute| attribute.name().eq_ignore_ascii_case(name));
 		if (name.eq_ignore_ascii_case("value") && projects_value)
 			|| (name.eq_ignore_ascii_case("checked") && projects_checked)
 			|| (name.eq_ignore_ascii_case("selected") && projected_option_selection.is_some())
+			|| has_reactive_attribute
 		{
 			continue;
 		}

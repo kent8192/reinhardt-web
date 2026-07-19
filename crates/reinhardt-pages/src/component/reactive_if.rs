@@ -168,6 +168,28 @@ pub(crate) fn store_reactive_node<T: 'static>(node: T) {
 		.push(Box::new(node));
 }
 
+/// Owns element attribute effects and disposes their runtime subscriptions on teardown.
+#[cfg(wasm)]
+pub(crate) struct ReactiveAttributeEffects {
+	effects: Vec<Effect>,
+}
+
+#[cfg(wasm)]
+impl ReactiveAttributeEffects {
+	pub(crate) fn new(effects: Vec<Effect>) -> Self {
+		Self { effects }
+	}
+}
+
+#[cfg(wasm)]
+impl Drop for ReactiveAttributeEffects {
+	fn drop(&mut self) {
+		for effect in self.effects.drain(..) {
+			effect.dispose();
+		}
+	}
+}
+
 /// Cleanup function to release all reactive nodes.
 ///
 /// This should be called when the application is being torn down or
@@ -1026,8 +1048,15 @@ fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::No
 		Page::Element(el) => {
 			let mount_element = || {
 				// Decompose the element to avoid ownership issues
-				let (tag, attrs, children, _is_void, event_handlers, control_binding) =
-					el.into_parts_with_control_binding();
+				let (
+					tag,
+					attrs,
+					reactive_attrs,
+					children,
+					_is_void,
+					event_handlers,
+					control_binding,
+				) = el.into_parts_with_control_binding();
 				let element = document
 					.create_element(&tag)
 					.expect("should create element");
@@ -1108,7 +1137,25 @@ fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::No
 				parent
 					.insert_before(&element, Some(marker))
 					.map_err(|_| MountError::AppendChildFailed)?;
-				store_reactive_node((binding_controller, event_handles));
+				let reactive_attribute_effects = reactive_attrs
+					.into_iter()
+					.map(|attribute| {
+						let element = element.clone();
+						Effect::new(move || match attribute.value() {
+							Some(value) => {
+								let _ = element.set_attribute(attribute.name(), &value);
+							}
+							None => {
+								let _ = element.remove_attribute(attribute.name());
+							}
+						})
+					})
+					.collect::<Vec<_>>();
+				store_reactive_node((
+					binding_controller,
+					event_handles,
+					ReactiveAttributeEffects::new(reactive_attribute_effects),
+				));
 				Ok::<_, MountError>(element.unchecked_into::<web_sys::Node>())
 			};
 			let Ok(element) = with_reactive_node_transaction(mount_element) else {
