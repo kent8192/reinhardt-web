@@ -278,6 +278,10 @@ fn reconcile_at_path(
 			// For hydration, just reconcile the inner view
 			reconcile_at_path(element, view, path, inside_controlled_select)
 		}
+		#[cfg(feature = "hmr")]
+		Page::DevTemplate { view, .. } | Page::DevSlot { view, .. } => {
+			reconcile_at_path(element, view, path, inside_controlled_select)
+		}
 		Page::ReactiveIf(reactive_if) => {
 			// For hydration, evaluate the condition and reconcile the rendered branch.
 			// SSR rendered one branch based on the initial condition value.
@@ -432,6 +436,10 @@ fn reconcile_dom_node_at_path(
 		}
 		Page::Empty => Ok(()),
 		Page::WithHead { view, .. } => {
+			reconcile_dom_node_at_path(node, view, path, inside_controlled_select)
+		}
+		#[cfg(feature = "hmr")]
+		Page::DevTemplate { view, .. } | Page::DevSlot { view, .. } => {
 			reconcile_dom_node_at_path(node, view, path, inside_controlled_select)
 		}
 		Page::ReactiveIf(reactive_if) => {
@@ -774,6 +782,16 @@ fn reconcile_options_children_at_path(
 				inside_controlled_select,
 			);
 		}
+		#[cfg(feature = "hmr")]
+		Page::DevTemplate { view, .. } | Page::DevSlot { view, .. } => {
+			return reconcile_options_children_at_path(
+				element,
+				view,
+				options,
+				path,
+				inside_controlled_select,
+			);
+		}
 		Page::ReactiveIf(reactive_if) => {
 			let branch_view = if reactive_if.condition() {
 				reactive_if.then_view()
@@ -1051,6 +1069,10 @@ fn compare_recursive(element: &Element, view: &Page, path: &str, differences: &m
 		Page::WithHead { view, .. } => {
 			// Head section is handled separately during SSR
 			// For comparison, just compare the inner view
+			compare_recursive(element, view, path, differences);
+		}
+		#[cfg(feature = "hmr")]
+		Page::DevTemplate { view, .. } | Page::DevSlot { view, .. } => {
 			compare_recursive(element, view, path, differences);
 		}
 		Page::ReactiveIf(reactive_if) => {
