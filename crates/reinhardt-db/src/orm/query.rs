@@ -106,6 +106,8 @@ pub enum FilterValue {
 	String(String),
 	/// UTC timestamp variant.
 	Timestamp(chrono::DateTime<chrono::Utc>),
+	/// UUID variant.
+	Uuid(uuid::Uuid),
 	/// Integer variant.
 	Integer(i64),
 	/// Alias for Integer (for compatibility with test code)
@@ -535,7 +537,7 @@ impl From<chrono::DateTime<chrono::Utc>> for FilterValue {
 
 impl From<uuid::Uuid> for FilterValue {
 	fn from(u: uuid::Uuid) -> Self {
-		FilterValue::String(u.to_string())
+		Self::Uuid(u)
 	}
 }
 
@@ -3303,6 +3305,7 @@ where
 		match v {
 			FilterValue::String(s) => s.clone().into(),
 			FilterValue::Timestamp(value) => (*value).into(),
+			FilterValue::Uuid(value) => (*value).into(),
 			FilterValue::Integer(i) | FilterValue::Int(i) => (*i).into(),
 			FilterValue::Float(f) => (*f).into(),
 			FilterValue::Boolean(b) | FilterValue::Bool(b) => (*b).into(),
@@ -3335,6 +3338,7 @@ where
 		match v {
 			FilterValue::String(s) => s.clone(),
 			FilterValue::Timestamp(value) => value.to_rfc3339(),
+			FilterValue::Uuid(value) => value.to_string(),
 			FilterValue::Integer(i) | FilterValue::Int(i) => i.to_string(),
 			FilterValue::Float(f) => f.to_string(),
 			FilterValue::Boolean(b) | FilterValue::Bool(b) => b.to_string(),
@@ -3403,6 +3407,7 @@ where
 		match v {
 			FilterValue::String(s) => Self::parse_array_string(s),
 			FilterValue::Timestamp(value) => vec![(*value).into()],
+			FilterValue::Uuid(value) => vec![(*value).into()],
 			FilterValue::Integer(i) | FilterValue::Int(i) => vec![(*i).into()],
 			FilterValue::Float(f) => vec![(*f).into()],
 			FilterValue::Boolean(b) | FilterValue::Bool(b) => vec![(*b).into()],
@@ -6701,6 +6706,24 @@ mod tests {
 		assert!(matches!(
 			bound,
 			reinhardt_query::value::Value::ChronoDateTimeUtc(Some(_))
+		));
+	}
+
+	#[test]
+	fn test_typed_uuid_filter_binds_as_uuid() {
+		// Arrange
+		let uuid =
+			uuid::Uuid::parse_str("123e4567-e89b-12d3-a456-426614174000").expect("valid UUID");
+		let value: FilterValue = uuid.into();
+
+		// Act
+		let bound = QuerySet::<TestUser>::filter_value_to_sea_value(&value);
+
+		// Assert
+		assert!(matches!(value, FilterValue::Uuid(_)));
+		assert!(matches!(
+			bound,
+			reinhardt_query::value::Value::Uuid(Some(_))
 		));
 	}
 
