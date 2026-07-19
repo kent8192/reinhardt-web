@@ -1137,31 +1137,29 @@ impl<M: Model> Manager<M> {
 		}
 	}
 
-	/// Create a new record with an explicit database connection
+	/// Create a new record through a caller-owned ORM executor.
 	///
-	/// This method allows using a specific connection, which is essential for
-	/// transaction support. When operations are performed within a transaction,
-	/// the same connection must be used throughout.
+	/// Pass the transaction supplied by [`DatabaseConnection::atomic`] when the
+	/// write must participate in a closure-scoped transaction.
 	///
 	/// # Arguments
 	///
-	/// * `conn` - The database connection to use
+	/// * `conn` - The mutable ORM executor to use
 	/// * `model` - The model to create
 	///
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_db::orm::{Model, Manager, TransactionScope};
+	/// # use reinhardt_db::orm::{Manager, Model};
 	/// # async fn example<M: Model>(manager: Manager<M>, model: &M) -> reinhardt_core::exception::Result<()> {
 	/// use reinhardt_db::orm::manager::get_connection;
 	///
 	/// let conn = get_connection().await?;
-	/// let tx = TransactionScope::begin(&conn).await?;
-	///
-	/// // Create within transaction
-	/// let created = manager.create_with_conn(&conn, model).await?;
-	///
-	/// tx.commit().await?;
+	/// let _created = conn
+	///     .atomic(async |transaction| {
+	///         manager.create_with_conn(transaction, model).await
+	///     })
+	///     .await?;
 	/// # Ok(())
 	/// # }
 	/// ```
@@ -1612,30 +1610,29 @@ impl<M: Model> Manager<M> {
 		Self::decode_executor_row(row)
 	}
 
-	/// Update an existing record with an explicit database connection
+	/// Update an existing record through a caller-owned ORM executor.
 	///
-	/// This method allows using a specific connection, which is essential for
-	/// transaction support.
+	/// Pass the transaction supplied by [`DatabaseConnection::atomic`] when the
+	/// write must participate in a closure-scoped transaction.
 	///
 	/// # Arguments
 	///
-	/// * `conn` - The database connection to use
+	/// * `conn` - The mutable ORM executor to use
 	/// * `model` - The model to update (must have primary key set)
 	///
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_db::orm::{Model, Manager, TransactionScope};
+	/// # use reinhardt_db::orm::{Manager, Model};
 	/// # async fn example<M: Model>(manager: Manager<M>, model: &M) -> reinhardt_core::exception::Result<()> {
 	/// use reinhardt_db::orm::manager::get_connection;
 	///
 	/// let conn = get_connection().await?;
-	/// let tx = TransactionScope::begin(&conn).await?;
-	///
-	/// // Update within transaction
-	/// let updated = manager.update_with_conn(&conn, model).await?;
-	///
-	/// tx.commit().await?;
+	/// let _updated = conn
+	///     .atomic(async |transaction| {
+	///         manager.update_with_conn(transaction, model).await
+	///     })
+	///     .await?;
 	/// # Ok(())
 	/// # }
 	/// ```
@@ -1737,30 +1734,28 @@ impl<M: Model> Manager<M> {
 		Ok(())
 	}
 
-	/// Delete a record with an explicit database connection
+	/// Delete a record through a caller-owned ORM executor.
 	///
-	/// This method allows using a specific connection, which is essential for
-	/// transaction support.
+	/// Pass the transaction supplied by [`DatabaseConnection::atomic`] when the
+	/// deletion must participate in a closure-scoped transaction.
 	///
 	/// # Arguments
 	///
-	/// * `conn` - The database connection to use
+	/// * `conn` - The mutable ORM executor to use
 	/// * `pk` - The primary key of the record to delete
 	///
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_db::orm::{Model, Manager, TransactionScope};
+	/// # use reinhardt_db::orm::{Manager, Model};
 	/// # async fn example<M: Model>(manager: Manager<M>, pk: M::PrimaryKey) -> reinhardt_core::exception::Result<()> {
 	/// use reinhardt_db::orm::manager::get_connection;
 	///
 	/// let conn = get_connection().await?;
-	/// let tx = TransactionScope::begin(&conn).await?;
-	///
-	/// // Delete within transaction
-	/// manager.delete_with_conn(&conn, pk).await?;
-	///
-	/// tx.commit().await?;
+	/// conn.atomic(async |transaction| {
+	///     manager.delete_with_conn(transaction, pk).await
+	/// })
+	/// .await?;
 	/// # Ok(())
 	/// # }
 	/// ```
@@ -1799,29 +1794,26 @@ impl<M: Model> Manager<M> {
 		self.count_with_conn(&mut conn).await
 	}
 
-	/// Count records with an explicit database connection
+	/// Count records through a caller-owned ORM executor.
 	///
-	/// This method allows using a specific connection, which is essential for
-	/// verifying data within a transaction before commit/rollback.
+	/// Pass the transaction supplied by [`DatabaseConnection::atomic`] to observe
+	/// writes that have not yet been committed.
 	///
 	/// # Arguments
 	///
-	/// * `conn` - The database connection to use
+	/// * `conn` - The mutable ORM executor to use
 	///
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_db::orm::{Model, Manager, TransactionScope};
+	/// # use reinhardt_db::orm::{Manager, Model};
 	/// # async fn example<M: Model>(manager: Manager<M>) -> reinhardt_core::exception::Result<()> {
 	/// use reinhardt_db::orm::manager::get_connection;
 	///
 	/// let conn = get_connection().await?;
-	/// let tx = TransactionScope::begin(&conn).await?;
-	///
-	/// // Count within transaction (sees uncommitted data)
-	/// let count = manager.count_with_conn(&conn).await?;
-	///
-	/// tx.commit().await?;
+	/// let _count = conn
+	///     .atomic(async |transaction| manager.count_with_conn(transaction).await)
+	///     .await?;
 	/// # Ok(())
 	/// # }
 	/// ```
