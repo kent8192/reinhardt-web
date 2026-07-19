@@ -985,6 +985,7 @@ fn makemigrations_operation_description(operation: &reinhardt_db::migrations::Op
 	}
 }
 
+#[cfg(feature = "migrations")]
 fn validate_global_migration_changes(
 	from_state: &reinhardt_db::migrations::ProjectState,
 	target_state: &reinhardt_db::migrations::ProjectState,
@@ -3184,6 +3185,8 @@ impl RunServerCommand {
 		let hmr_port: Option<u16> = None;
 		#[cfg(feature = "pages")]
 		let hmr_tx = hmr.as_ref().map(|(server, _)| server.sender());
+		#[cfg(feature = "pages")]
+		let hmr_server = hmr.as_ref().map(|(server, _)| server.clone());
 
 		let respawn = move || -> std::io::Result<tokio::process::Child> {
 			Self::spawn_server_process(
@@ -3215,6 +3218,8 @@ impl RunServerCommand {
 		})?;
 
 		let cfg = crate::debounced_watcher::WatcherConfig {
+			#[cfg(feature = "pages")]
+			project_root: cwd,
 			bin_name,
 			address: address.to_string(),
 			roots,
@@ -3225,6 +3230,8 @@ impl RunServerCommand {
 			pages_enabled: with_pages,
 			#[cfg(feature = "pages")]
 			hmr_tx,
+			#[cfg(feature = "pages")]
+			hmr_server,
 			#[cfg(feature = "pages")]
 			component_styles: component_style_state,
 		};

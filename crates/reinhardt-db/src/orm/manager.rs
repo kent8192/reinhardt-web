@@ -20,13 +20,14 @@ fn find_field_info<'a>(field_metadata: &'a [FieldInfo], field_name: &str) -> Opt
 }
 
 fn field_codec_error(error: FieldCodecError) -> Error {
-	let kind = match error {
+	let kind = match &error {
 		FieldCodecError::TypeMismatch { .. } | FieldCodecError::InvalidEnumValue { .. } => {
 			DatabaseErrorKind::Type
 		}
 		FieldCodecError::Serialization(_) => DatabaseErrorKind::Serialization,
 	};
-	DatabaseError::new(kind, error.to_string()).into()
+	let message = error.to_string();
+	Error::database_with_source(kind, message, error)
 }
 
 fn executor_field_codec_error(error: FieldCodecError) -> crate::backends::error::DatabaseError {
@@ -37,13 +38,12 @@ fn executor_field_codec_error(error: FieldCodecError) -> crate::backends::error:
 }
 
 fn executor_error(error: Error) -> crate::backends::error::DatabaseError {
-	match error {
-		Error::Database(error) => error,
-		error => crate::backends::error::DatabaseError::new(
+	error.database_error().cloned().unwrap_or_else(|| {
+		crate::backends::error::DatabaseError::new(
 			crate::backends::error::DatabaseErrorKind::Query,
 			error.to_string(),
-		),
-	}
+		)
+	})
 }
 
 /// Build SQL with values from an INSERT statement based on database backend
@@ -121,6 +121,15 @@ fn database_value_sql_literal(
 
 	let json = value.into_json_value()?;
 	Ok(format!("'{}'", json.to_string().replace('\'', "''")))
+}
+
+fn quote_identifier(identifier: &str, backend: DatabaseBackend) -> String {
+	let quote = if backend == DatabaseBackend::MySql {
+		'`'
+	} else {
+		'"'
+	};
+	format!("{quote}{identifier}{quote}")
 }
 
 /// Global database connection state
@@ -351,7 +360,13 @@ impl<M: Model> Manager<M> {
 	fn field_column<'a>(field_metadata: &'a [FieldInfo], field_name: &'a str) -> &'a str {
 		find_field_info(field_metadata, field_name)
 			.map(FieldInfo::db_column_name)
-			.unwrap_or(field_name)
+			.unwrap_or_else(|| {
+				if field_name == M::primary_key_field() {
+					M::primary_key_column()
+				} else {
+					field_name
+				}
+			})
 	}
 
 	fn normalize_primary_key_aliases(
@@ -1122,31 +1137,29 @@ impl<M: Model> Manager<M> {
 		}
 	}
 
-	/// Create a new record with an explicit database connection
+	/// Create a new record through a caller-owned ORM executor.
 	///
-	/// This method allows using a specific connection, which is essential for
-	/// transaction support. When operations are performed within a transaction,
-	/// the same connection must be used throughout.
+	/// Pass the transaction supplied by [`DatabaseConnection::atomic`] when the
+	/// write must participate in a closure-scoped transaction.
 	///
 	/// # Arguments
 	///
-	/// * `conn` - The database connection to use
+	/// * `conn` - The mutable ORM executor to use
 	/// * `model` - The model to create
 	///
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_db::orm::{Model, Manager, TransactionScope};
+	/// # use reinhardt_db::orm::{Manager, Model};
 	/// # async fn example<M: Model>(manager: Manager<M>, model: &M) -> reinhardt_core::exception::Result<()> {
 	/// use reinhardt_db::orm::manager::get_connection;
 	///
 	/// let conn = get_connection().await?;
-	/// let tx = TransactionScope::begin(&conn).await?;
-	///
-	/// // Create within transaction
-	/// let created = manager.create_with_conn(&conn, model).await?;
-	///
-	/// tx.commit().await?;
+	/// let _created = conn
+	///     .atomic(async |transaction| {
+	///         manager.create_with_conn(transaction, model).await
+	///     })
+	///     .await?;
 	/// # Ok(())
 	/// # }
 	/// ```
@@ -1189,11 +1202,12 @@ impl<M: Model> Manager<M> {
 					result
 						.last_insert_id
 						.and_then(|id| i64::try_from(id).ok())
+						.filter(|id| *id > 0)
 						.map(|id| reinhardt_query::value::Value::BigInt(Some(id)))
 				})
 				.ok_or_else(|| {
 					Error::from(DatabaseError::new(
-						DatabaseErrorKind::Query,
+						DatabaseErrorKind::Unsupported,
 						"MySQL insert did not return a generated primary key",
 					))
 				})?;
@@ -1596,30 +1610,29 @@ impl<M: Model> Manager<M> {
 		Self::decode_executor_row(row)
 	}
 
-	/// Update an existing record with an explicit database connection
+	/// Update an existing record through a caller-owned ORM executor.
 	///
-	/// This method allows using a specific connection, which is essential for
-	/// transaction support.
+	/// Pass the transaction supplied by [`DatabaseConnection::atomic`] when the
+	/// write must participate in a closure-scoped transaction.
 	///
 	/// # Arguments
 	///
-	/// * `conn` - The database connection to use
+	/// * `conn` - The mutable ORM executor to use
 	/// * `model` - The model to update (must have primary key set)
 	///
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_db::orm::{Model, Manager, TransactionScope};
+	/// # use reinhardt_db::orm::{Manager, Model};
 	/// # async fn example<M: Model>(manager: Manager<M>, model: &M) -> reinhardt_core::exception::Result<()> {
 	/// use reinhardt_db::orm::manager::get_connection;
 	///
 	/// let conn = get_connection().await?;
-	/// let tx = TransactionScope::begin(&conn).await?;
-	///
-	/// // Update within transaction
-	/// let updated = manager.update_with_conn(&conn, model).await?;
-	///
-	/// tx.commit().await?;
+	/// let _updated = conn
+	///     .atomic(async |transaction| {
+	///         manager.update_with_conn(transaction, model).await
+	///     })
+	///     .await?;
 	/// # Ok(())
 	/// # }
 	/// ```
@@ -1721,30 +1734,28 @@ impl<M: Model> Manager<M> {
 		Ok(())
 	}
 
-	/// Delete a record with an explicit database connection
+	/// Delete a record through a caller-owned ORM executor.
 	///
-	/// This method allows using a specific connection, which is essential for
-	/// transaction support.
+	/// Pass the transaction supplied by [`DatabaseConnection::atomic`] when the
+	/// deletion must participate in a closure-scoped transaction.
 	///
 	/// # Arguments
 	///
-	/// * `conn` - The database connection to use
+	/// * `conn` - The mutable ORM executor to use
 	/// * `pk` - The primary key of the record to delete
 	///
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_db::orm::{Model, Manager, TransactionScope};
+	/// # use reinhardt_db::orm::{Manager, Model};
 	/// # async fn example<M: Model>(manager: Manager<M>, pk: M::PrimaryKey) -> reinhardt_core::exception::Result<()> {
 	/// use reinhardt_db::orm::manager::get_connection;
 	///
 	/// let conn = get_connection().await?;
-	/// let tx = TransactionScope::begin(&conn).await?;
-	///
-	/// // Delete within transaction
-	/// manager.delete_with_conn(&conn, pk).await?;
-	///
-	/// tx.commit().await?;
+	/// conn.atomic(async |transaction| {
+	///     manager.delete_with_conn(transaction, pk).await
+	/// })
+	/// .await?;
 	/// # Ok(())
 	/// # }
 	/// ```
@@ -1783,29 +1794,26 @@ impl<M: Model> Manager<M> {
 		self.count_with_conn(&mut conn).await
 	}
 
-	/// Count records with an explicit database connection
+	/// Count records through a caller-owned ORM executor.
 	///
-	/// This method allows using a specific connection, which is essential for
-	/// verifying data within a transaction before commit/rollback.
+	/// Pass the transaction supplied by [`DatabaseConnection::atomic`] to observe
+	/// writes that have not yet been committed.
 	///
 	/// # Arguments
 	///
-	/// * `conn` - The database connection to use
+	/// * `conn` - The mutable ORM executor to use
 	///
 	/// # Examples
 	///
 	/// ```no_run
-	/// # use reinhardt_db::orm::{Model, Manager, TransactionScope};
+	/// # use reinhardt_db::orm::{Manager, Model};
 	/// # async fn example<M: Model>(manager: Manager<M>) -> reinhardt_core::exception::Result<()> {
 	/// use reinhardt_db::orm::manager::get_connection;
 	///
 	/// let conn = get_connection().await?;
-	/// let tx = TransactionScope::begin(&conn).await?;
-	///
-	/// // Count within transaction (sees uncommitted data)
-	/// let count = manager.count_with_conn(&conn).await?;
-	///
-	/// tx.commit().await?;
+	/// let _count = conn
+	///     .atomic(async |transaction| manager.count_with_conn(transaction).await)
+	///     .await?;
 	/// # Ok(())
 	/// # }
 	/// ```
@@ -2543,8 +2551,8 @@ impl<M: Model> Manager<M> {
 			for (pk, field_map) in updates {
 				if let Some(value) = field_map.get(field) {
 					when_clauses.push(format!(
-						"WHEN \"{}\" = {} THEN {}",
-						primary_key_column,
+						"WHEN {} = {} THEN {}",
+						quote_identifier(primary_key_column, backend),
 						database_value_sql_literal(pk.clone(), backend)?,
 						database_value_sql_literal(value.clone(), backend)?
 					));
@@ -2553,8 +2561,8 @@ impl<M: Model> Manager<M> {
 			if !when_clauses.is_empty() {
 				let column_name = Self::field_column(&field_metadata, field);
 				set_clauses.push(format!(
-					"\"{}\" = CASE {} END",
-					column_name,
+					"{} = CASE {} END",
+					quote_identifier(column_name, backend),
 					when_clauses.join(" ")
 				));
 			}
@@ -2569,10 +2577,10 @@ impl<M: Model> Manager<M> {
 			.collect::<Result<Vec<_>, _>>()?
 			.join(", ");
 		Ok(format!(
-			"UPDATE \"{}\" SET {} WHERE \"{}\" IN ({})",
-			table_name,
+			"UPDATE {} SET {} WHERE {} IN ({})",
+			quote_identifier(table_name, backend),
 			set_clauses.join(", "),
-			primary_key_column,
+			quote_identifier(primary_key_column, backend),
 			ids
 		))
 	}
@@ -2662,14 +2670,33 @@ impl<M: Model> Default for Manager<M> {
 
 #[cfg(test)]
 mod tests {
-	use super::Manager;
-	use crate::orm::FieldSelector;
+	use super::{Manager, field_codec_error};
 	use crate::orm::Json;
 	use crate::orm::Model;
 	use crate::orm::connection::DatabaseBackend;
 	use crate::orm::inspection::FieldInfo;
+	use crate::orm::{FieldCodecError, FieldSelector};
 	use serde::{Deserialize, Serialize};
 	use std::collections::HashMap;
+
+	#[test]
+	fn test_field_codec_error_preserves_typed_source() {
+		let error = field_codec_error(FieldCodecError::Serialization(
+			"rejected manager value".to_owned(),
+		));
+
+		assert_eq!(
+			error.database_kind(),
+			Some(reinhardt_core::exception::DatabaseErrorKind::Serialization)
+		);
+		assert_eq!(
+			error.to_string(),
+			"Database error: field serialization failed: rejected manager value"
+		);
+		let source = std::error::Error::source(&error)
+			.expect("manager codec error should preserve its typed source");
+		assert!(source.downcast_ref::<FieldCodecError>().is_some());
+	}
 
 	#[serial_test::serial(sqlx_drivers)]
 	#[tokio::test]
@@ -3059,7 +3086,7 @@ mod tests {
 	async fn test_manager_create_roundtrips_typed_json_fields_on_sqlite() {
 		let database_file = tempfile::NamedTempFile::new().unwrap();
 		let database_url = format!("sqlite://{}", database_file.path().display());
-		let connection = crate::orm::connection::DatabaseConnection::connect(&database_url)
+		let mut connection = crate::orm::connection::DatabaseConnection::connect(&database_url)
 			.await
 			.unwrap();
 		connection
@@ -3083,7 +3110,7 @@ mod tests {
 		};
 
 		let created = JsonManagerModel::objects()
-			.create_with_conn(&connection, &model)
+			.create_with_conn(&mut connection, &model)
 			.await
 			.unwrap();
 

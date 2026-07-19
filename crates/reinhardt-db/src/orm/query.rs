@@ -29,10 +29,10 @@ use std::time::Instant;
 use uuid::Uuid;
 
 fn executor_error(error: reinhardt_core::exception::Error) -> DatabaseError {
-	match error {
-		reinhardt_core::exception::Error::Database(error) => error,
-		error => DatabaseError::new(DatabaseErrorKind::Query, error.to_string()),
-	}
+	error
+		.database_error()
+		.cloned()
+		.unwrap_or_else(|| DatabaseError::new(DatabaseErrorKind::Query, error.to_string()))
 }
 
 // Django QuerySet API types
@@ -4823,15 +4823,20 @@ where
 	fn typed_database_value(
 		value: &Result<DatabaseValue, FieldCodecError>,
 	) -> reinhardt_core::exception::Result<&DatabaseValue> {
-		value.as_ref().map_err(|error| {
-			let kind = match error {
-				FieldCodecError::TypeMismatch { .. } | FieldCodecError::InvalidEnumValue { .. } => {
-					DatabaseErrorKind::Type
-				}
-				FieldCodecError::Serialization(_) => DatabaseErrorKind::Serialization,
-			};
-			DatabaseError::new(kind, format!("typed field codec failed: {error}")).into()
-		})
+		value
+			.as_ref()
+			.map_err(|error| Self::typed_field_codec_error(error.clone()))
+	}
+
+	fn typed_field_codec_error(error: FieldCodecError) -> Error {
+		let kind = match &error {
+			FieldCodecError::TypeMismatch { .. } | FieldCodecError::InvalidEnumValue { .. } => {
+				DatabaseErrorKind::Type
+			}
+			FieldCodecError::Serialization(_) => DatabaseErrorKind::Serialization,
+		};
+		let message = format!("typed field codec failed: {error}");
+		Error::database_with_source(kind, message, error)
 	}
 
 	fn database_value_to_string(value: &DatabaseValue) -> String {
@@ -6078,6 +6083,22 @@ where
 		Self::decode_backend_rows(rows)
 	}
 
+	/// Execute the count query through an active transaction executor.
+	pub async fn count_with_executor(
+		&self,
+		executor: &mut dyn super::connection::TransactionExecutor,
+	) -> Result<usize, crate::backends::error::DatabaseError> {
+		let stmt = self.count_select_query().map_err(executor_error)?;
+		let (sql, values) = Self::build_select_for_backend(&stmt, Self::executor_backend(executor));
+		let params = super::execution::convert_values(values);
+		let row = executor
+			.fetch_one(&sql, params)
+			.await
+			.map_err(executor_error)?;
+		let row = QueryRow::from_backend_row(row);
+		Ok(row.get::<i64>("count").unwrap_or_default() as usize)
+	}
+
 	/// Execute the queryset through an active transaction executor and return one record.
 	pub async fn one_with_executor(
 		&self,
@@ -6672,14 +6693,7 @@ where
 				Expr::val(database_value_to_query_value(value.clone()))
 			}
 			UpdateValue::Typed(Err(error)) => {
-				let kind = match error {
-					FieldCodecError::TypeMismatch { .. }
-					| FieldCodecError::InvalidEnumValue { .. } => DatabaseErrorKind::Type,
-					FieldCodecError::Serialization(_) => DatabaseErrorKind::Serialization,
-				};
-				return Err(
-					DatabaseError::new(kind, format!("typed field codec failed: {error}")).into(),
-				);
+				return Err(Self::typed_field_codec_error(error.clone()));
 			}
 			UpdateValue::String(s) => Expr::val(s.clone()),
 			UpdateValue::Integer(i) => Expr::val(*i),
@@ -9105,8 +9119,16 @@ mod tests {
 		let error = queryset
 			.update_query(&updates)
 			.expect_err("typed codec error should stop legacy update compilation");
-		let source = std::error::Error::source(&error)
-			.expect("typed codec source should be preserved by update compilation");
+		assert_typed_codec_error(&error);
+	}
+
+	fn assert_typed_codec_error(error: &reinhardt_core::exception::Error) {
+		assert_eq!(
+			error.database_kind(),
+			Some(reinhardt_core::exception::DatabaseErrorKind::Serialization)
+		);
+		let source =
+			std::error::Error::source(error).expect("typed codec source should be preserved");
 		assert!(source.downcast_ref::<FieldCodecError>().is_some());
 	}
 
@@ -9129,9 +9151,7 @@ mod tests {
 		let error = queryset
 			.select_related_query()
 			.expect_err("typed codec error must stop select-related compilation");
-		let source = std::error::Error::source(&error)
-			.expect("select-related codec source should be preserved");
-		assert!(source.downcast_ref::<FieldCodecError>().is_some());
+		assert_typed_codec_error(&error);
 	}
 
 	#[test]
@@ -9141,9 +9161,7 @@ mod tests {
 		let error = queryset
 			.delete_query()
 			.expect_err("typed codec error must stop delete compilation");
-		let source =
-			std::error::Error::source(&error).expect("delete codec source should be preserved");
-		assert!(source.downcast_ref::<FieldCodecError>().is_some());
+		assert_typed_codec_error(&error);
 	}
 
 	#[test]
@@ -9153,9 +9171,7 @@ mod tests {
 		let error = queryset
 			.to_sql()
 			.expect_err("typed codec error must stop debug SQL compilation");
-		let source =
-			std::error::Error::source(&error).expect("debug SQL codec source should be preserved");
-		assert!(source.downcast_ref::<FieldCodecError>().is_some());
+		assert_typed_codec_error(&error);
 	}
 
 	#[tokio::test]

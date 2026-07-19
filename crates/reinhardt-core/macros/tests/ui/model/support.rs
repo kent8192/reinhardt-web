@@ -262,10 +262,13 @@ pub mod db {
 				self
 			}
 
-			pub async fn first_with_db(
+			pub async fn first_with_db<E>(
 				self,
-				_db: &connection::DatabaseConnection,
-			) -> crate::exception::Result<Option<T>> {
+				_db: &mut E,
+			) -> crate::exception::Result<Option<T>>
+			where
+				E: connection::OrmExecutor,
+			{
 				Ok(None)
 			}
 		}
@@ -273,6 +276,10 @@ pub mod db {
 		pub mod connection {
 			#[derive(Debug, Clone)]
 			pub struct DatabaseConnection;
+
+			pub trait OrmExecutor: Send {}
+
+			impl OrmExecutor for DatabaseConnection {}
 		}
 
 		pub trait FieldSelector: Sized {

@@ -1275,6 +1275,11 @@ impl SsrRenderer {
 					self.render_stream_shell_page_with_selection(view, boundaries, selection)
 						.await
 				}
+				#[cfg(feature = "hmr")]
+				Page::DevTemplate { view, .. } | Page::DevSlot { view, .. } => {
+					self.render_stream_shell_page_with_selection(view, boundaries, selection)
+						.await
+				}
 				Page::ReactiveIf(reactive_if) => {
 					let branch = self.with_active_reactive_scope(|| {
 						if reactive_if.condition() {
@@ -1551,6 +1556,11 @@ impl SsrRenderer {
 					if !matches!(mode, AsyncRenderMode::Discovery) {
 						self.record_rendered_head(head);
 					}
+					self.render_async_page_with_selection(view, mode, selection)
+						.await
+				}
+				#[cfg(feature = "hmr")]
+				Page::DevTemplate { view, .. } | Page::DevSlot { view, .. } => {
 					self.render_async_page_with_selection(view, mode, selection)
 						.await
 				}

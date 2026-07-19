@@ -52,12 +52,22 @@ wasm-diag-test = []
 #
 # OFF by default: production builds incur zero overhead.
 nav-diag-dom = []
-hmr = ["dep:notify", "dep:tokio-tungstenite", "dep:futures-util"]
+hmr = [
+	"dep:notify",
+	"dep:tokio-tungstenite",
+	"dep:futures-util",
+	"reinhardt-core/page-hot-reload",
+	"reinhardt-pages-macros/hmr",
+]
 # web-sys features for WASM applications
 # Applications should use this feature to get all required web-sys features
 web-sys-full = [
 	"web-sys/Window",
 	"web-sys/Document",
+	"web-sys/DocumentFragment",
+	"web-sys/ShadowRoot",
+	"web-sys/ShadowRootInit",
+	"web-sys/ShadowRootMode",
 	"web-sys/Element",
 	"web-sys/HtmlElement",
 	"web-sys/Node",
@@ -175,6 +185,10 @@ chrono = { version = "0.4", optional = true, default-features = false, features 
 web-sys = { version = "0.3.83", features = [
 	"Window",
 	"Document",
+	"DocumentFragment",
+	"ShadowRoot",
+	"ShadowRootInit",
+	"ShadowRootMode",
 	"Element",
 	"HtmlElement",
 	"Node",

@@ -1145,7 +1145,8 @@ impl ClientLauncher {
 		if !coordinator_installed {
 			with_spa_router(|r| r.setup_history_listener());
 		}
-
+		#[cfg(feature = "hmr")]
+		crate::hmr::HmrBridge::new().install(&document)?;
 		if self.intercept_links {
 			let guard = install_link_interceptor(&document)?;
 			store_link_interceptor_guard(guard);

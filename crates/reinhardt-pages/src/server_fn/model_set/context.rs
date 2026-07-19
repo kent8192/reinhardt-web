@@ -240,7 +240,10 @@ mod tests {
 			_params: Vec<QueryValue>,
 		) -> BackendResult<QueryResult> {
 			self.record("save");
-			Ok(QueryResult { rows_affected: 1 })
+			Ok(QueryResult {
+				rows_affected: 1,
+				last_insert_id: None,
+			})
 		}
 
 		async fn fetch_one(&mut self, sql: &str, _params: Vec<QueryValue>) -> BackendResult<Row> {

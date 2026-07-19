@@ -490,6 +490,8 @@
 
 #![warn(missing_docs)]
 
+extern crate self as reinhardt_pages;
+
 // Re-export AST definitions from reinhardt-pages-ast
 // This is deprecated but kept for backward compatibility
 #[allow(deprecated)] // Intentional: maintaining backward compatibility with existing code
@@ -595,8 +597,8 @@ pub mod testing;
 // Static file URL resolver
 pub mod static_resolver;
 
-// Hot Module Replacement (server-side only, feature-gated)
-#[cfg(all(native, feature = "hmr"))]
+// Hot Module Replacement (feature-gated with target-neutral protocol types)
+#[cfg(feature = "hmr")]
 pub mod hmr;
 
 // Table utilities (django-tables2 equivalent)
@@ -676,8 +678,13 @@ pub use router::Link;
 // function; `use_router` returns a `RouterHandle` for use inside hooks /
 // components. `NavigateError` is the public error returned by both paths.
 pub use reactive::hooks::router::{NavigateError, RouterHandle, use_router};
+pub use router::loader::{
+	Loader, LoaderInputError, LoaderInputKind, LoaderInputSpec, LoaderStore, LoaderStoreError,
+	LoaderStoreScope, RouteLoader, RouteLoaderError, active_loader_store, canonical_loader_inputs,
+	enter_loader_store, loader_cache_id, with_loader_store,
+};
 pub use router::{NavigationType, navigate};
-pub use router::{Path, Query};
+pub use router::{Path, Query, RouteLoaderId};
 pub use server_fn::{ServerFn, ServerFnError, parse_server_error_message};
 pub use ssr::SsrState;
 #[cfg(native)]
@@ -731,6 +738,8 @@ pub mod __private {
 	pub use hyper;
 	pub use inventory;
 	pub use reinhardt_urls;
+	pub use serde;
+	pub use serde_json;
 
 	// `tracing` is enabled for all targets *except* browser wasm (wasm32-unknown-unknown).
 	// Browser wasm uses a different logging mechanism, so tracing is intentionally excluded there.
@@ -743,3 +752,31 @@ pub mod __private {
 
 // Logging macros are automatically exported via #[macro_export]
 // Users can access them as: reinhardt_pages::debug_log!, reinhardt_pages::info_log!, etc.
+
+#[cfg(all(test, feature = "hmr"))]
+mod hmr_feature_tests {
+	use super::{Page, page};
+	use crate::hmr::protocol::{SourceId, TemplateKey};
+
+	#[test]
+	fn hmr_feature_enables_page_metadata_and_page_macro() {
+		// Arrange
+		let key = TemplateKey {
+			source_id: SourceId("src/app.rs".to_owned()),
+			line: 12,
+			column: 4,
+			nested_template_index: 0,
+		};
+
+		// Act
+		let view = page!({ "body" })
+			.with_dev_slot(3)
+			.with_dev_template_metadata(key.clone());
+		let (metadata, slot) = view.into_dev_template_parts().expect("metadata");
+
+		// Assert
+		assert_eq!(metadata.downcast_ref::<TemplateKey>(), Some(&key));
+		assert_eq!(slot.dev_slot_id(), Some(3));
+		assert!(matches!(slot, Page::DevSlot { .. }));
+	}
+}

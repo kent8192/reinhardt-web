@@ -59,6 +59,36 @@ SSR hydration, see [Route-level data loaders](docs/route_loaders.md).
 For lifecycle-managed `Head` declarations across SSR, hydration, and SPA
 navigation, see [Document head management](docs/document_head_management.md).
 
+## Development template hot reload
+
+Enable the `hmr` feature when developing a Pages WASM client and start the
+existing development server with `runserver --with-pages`. Literal text and
+literal attribute edits inside a WASM-owned `page!` template are classified as
+state-preserving template patches. The browser validates each registered
+template key and dynamic ABI, applies the DOM update transactionally, and
+keeps retained dynamic ranges, event handlers, keyed instances, and bound
+elements alive. Patches for templates that have not mounted yet are retained
+until their first mount and validated against that descriptor then.
+
+Edits to Rust expressions, event handlers, bindings, control flow, components,
+the page callsite set, or shared/SSR-visible code are outside the safe static
+boundary and use the normal WASM/server rebuild path. Failed builds and patch
+rejections retain the last successful application, show normalized diagnostics
+in the development overlay, and recover through the existing reload path.
+
+The current static boundary is intentionally conservative: a literal edit
+inside an element with a direct dynamic attribute, control binding, or event
+handler, and any nested template edit, uses the normal rebuild path until that
+subtree has an independently mountable runtime range.
+
+The patch contract does not guarantee preservation of focus, selection, scroll
+position, or uncontrolled input state when those nodes are replaced. A
+representative development command is:
+
+```bash
+cargo run --bin manage -- runserver --with-pages
+```
+
 ## Quick Start
 
 ### Using the Prelude (Recommended)
