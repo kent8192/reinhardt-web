@@ -484,6 +484,8 @@
 
 #![warn(missing_docs)]
 
+extern crate self as reinhardt_pages;
+
 // Re-export AST definitions from reinhardt-pages-ast
 // This is deprecated but kept for backward compatibility
 #[allow(deprecated)] // Intentional: maintaining backward compatibility with existing code
@@ -668,8 +670,13 @@ pub use router::Link;
 // function; `use_router` returns a `RouterHandle` for use inside hooks /
 // components. `NavigateError` is the public error returned by both paths.
 pub use reactive::hooks::router::{NavigateError, RouterHandle, use_router};
+pub use router::loader::{
+	Loader, LoaderInputError, LoaderInputKind, LoaderInputSpec, LoaderStore, LoaderStoreError,
+	LoaderStoreScope, RouteLoader, RouteLoaderError, active_loader_store, canonical_loader_inputs,
+	enter_loader_store, loader_cache_id, with_loader_store,
+};
 pub use router::{NavigationType, navigate};
-pub use router::{Path, Query};
+pub use router::{Path, Query, RouteLoaderId};
 pub use server_fn::{
 	ServerFn, ServerFnError, ServerFnErrorKind, ServerFnErrorPayload, ServerFnFieldError,
 };
@@ -725,6 +732,8 @@ pub mod __private {
 	pub use hyper;
 	pub use inventory;
 	pub use reinhardt_urls;
+	pub use serde;
+	pub use serde_json;
 
 	// `tracing` is enabled for all targets *except* browser wasm (wasm32-unknown-unknown).
 	// Browser wasm uses a different logging mechanism, so tracing is intentionally excluded there.

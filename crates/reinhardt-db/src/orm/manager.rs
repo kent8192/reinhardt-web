@@ -123,6 +123,15 @@ fn database_value_sql_literal(
 	Ok(format!("'{}'", json.to_string().replace('\'', "''")))
 }
 
+fn quote_identifier(identifier: &str, backend: DatabaseBackend) -> String {
+	let quote = if backend == DatabaseBackend::MySql {
+		'`'
+	} else {
+		'"'
+	};
+	format!("{quote}{identifier}{quote}")
+}
+
 /// Global database connection state
 static DB: once_cell::sync::OnceCell<Arc<RwLock<Option<DatabaseConnection>>>> =
 	once_cell::sync::OnceCell::new();
@@ -351,7 +360,13 @@ impl<M: Model> Manager<M> {
 	fn field_column<'a>(field_metadata: &'a [FieldInfo], field_name: &'a str) -> &'a str {
 		find_field_info(field_metadata, field_name)
 			.map(FieldInfo::db_column_name)
-			.unwrap_or(field_name)
+			.unwrap_or_else(|| {
+				if field_name == M::primary_key_field() {
+					M::primary_key_column()
+				} else {
+					field_name
+				}
+			})
 	}
 
 	fn normalize_primary_key_aliases(
@@ -1189,11 +1204,12 @@ impl<M: Model> Manager<M> {
 					result
 						.last_insert_id
 						.and_then(|id| i64::try_from(id).ok())
+						.filter(|id| *id > 0)
 						.map(|id| reinhardt_query::value::Value::BigInt(Some(id)))
 				})
 				.ok_or_else(|| {
 					Error::from(DatabaseError::new(
-						DatabaseErrorKind::Query,
+						DatabaseErrorKind::Unsupported,
 						"MySQL insert did not return a generated primary key",
 					))
 				})?;
@@ -2543,8 +2559,8 @@ impl<M: Model> Manager<M> {
 			for (pk, field_map) in updates {
 				if let Some(value) = field_map.get(field) {
 					when_clauses.push(format!(
-						"WHEN \"{}\" = {} THEN {}",
-						primary_key_column,
+						"WHEN {} = {} THEN {}",
+						quote_identifier(primary_key_column, backend),
 						database_value_sql_literal(pk.clone(), backend)?,
 						database_value_sql_literal(value.clone(), backend)?
 					));
@@ -2553,8 +2569,8 @@ impl<M: Model> Manager<M> {
 			if !when_clauses.is_empty() {
 				let column_name = Self::field_column(&field_metadata, field);
 				set_clauses.push(format!(
-					"\"{}\" = CASE {} END",
-					column_name,
+					"{} = CASE {} END",
+					quote_identifier(column_name, backend),
 					when_clauses.join(" ")
 				));
 			}
@@ -2569,10 +2585,10 @@ impl<M: Model> Manager<M> {
 			.collect::<Result<Vec<_>, _>>()?
 			.join(", ");
 		Ok(format!(
-			"UPDATE \"{}\" SET {} WHERE \"{}\" IN ({})",
-			table_name,
+			"UPDATE {} SET {} WHERE {} IN ({})",
+			quote_identifier(table_name, backend),
 			set_clauses.join(", "),
-			primary_key_column,
+			quote_identifier(primary_key_column, backend),
 			ids
 		))
 	}
@@ -3059,7 +3075,7 @@ mod tests {
 	async fn test_manager_create_roundtrips_typed_json_fields_on_sqlite() {
 		let database_file = tempfile::NamedTempFile::new().unwrap();
 		let database_url = format!("sqlite://{}", database_file.path().display());
-		let connection = crate::orm::connection::DatabaseConnection::connect(&database_url)
+		let mut connection = crate::orm::connection::DatabaseConnection::connect(&database_url)
 			.await
 			.unwrap();
 		connection
@@ -3083,7 +3099,7 @@ mod tests {
 		};
 
 		let created = JsonManagerModel::objects()
-			.create_with_conn(&connection, &model)
+			.create_with_conn(&mut connection, &model)
 			.await
 			.unwrap();
 

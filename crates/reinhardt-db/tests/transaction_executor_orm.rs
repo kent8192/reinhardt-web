@@ -202,6 +202,8 @@ impl Model for Article {
 				unique: false,
 				blank: false,
 				editable: true,
+				storage_kind: None,
+				domain: None,
 				default: None,
 				db_default: None,
 				db_column: Some("article_id".to_string()),
@@ -216,6 +218,8 @@ impl Model for Article {
 				unique: false,
 				blank: false,
 				editable: true,
+				storage_kind: None,
+				domain: None,
 				default: None,
 				db_default: None,
 				db_column: Some("article_title".to_string()),
@@ -1214,7 +1218,9 @@ async fn explicit_manager_crud_and_queryset_terminals_use_one_recorder() {
 		FilterValue::String("updated".to_string()),
 	));
 	let updates = HashMap::from([("title".to_string(), UpdateValue::FieldRef(F::new("id")))]);
-	let (update_sql, update_params) = queryset.update_sql(&updates);
+	let (update_sql, update_params) = queryset
+		.update_sql(&updates)
+		.expect("update SQL should compile");
 	assert_eq!(
 		update_sql,
 		"UPDATE \"articles\" SET \"article_title\" = \"article_id\" WHERE \"article_title\" = $1"

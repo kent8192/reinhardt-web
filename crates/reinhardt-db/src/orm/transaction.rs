@@ -52,6 +52,7 @@ use std::sync::{Arc, Mutex};
 use super::connection::{
 	DatabaseBackend, OrmExecutor, QueryResult, QueryValue, Row, TransactionExecutor,
 };
+use crate::backends::types::DatabaseType;
 
 /// Transaction isolation levels
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -758,6 +759,83 @@ impl OrmExecutor for AtomicTransaction {
 	}
 }
 
+// Keep the legacy transaction executor contract available while callers migrate
+// to the closure-scoped `AtomicTransaction` API.
+#[async_trait::async_trait]
+impl TransactionExecutor for AtomicTransaction {
+	fn backend(&self) -> DatabaseType {
+		match self.backend {
+			DatabaseBackend::Postgres => DatabaseType::Postgres,
+			DatabaseBackend::MySql => DatabaseType::Mysql,
+			DatabaseBackend::Sqlite => DatabaseType::Sqlite,
+		}
+	}
+
+	async fn execute(
+		&mut self,
+		sql: &str,
+		params: Vec<QueryValue>,
+	) -> reinhardt_core::exception::Result<QueryResult> {
+		self.executor_mut()?.execute(sql, params).await
+	}
+
+	async fn fetch_one(
+		&mut self,
+		sql: &str,
+		params: Vec<QueryValue>,
+	) -> reinhardt_core::exception::Result<Row> {
+		self.executor_mut()?.fetch_one(sql, params).await
+	}
+
+	async fn fetch_all(
+		&mut self,
+		sql: &str,
+		params: Vec<QueryValue>,
+	) -> reinhardt_core::exception::Result<Vec<Row>> {
+		self.executor_mut()?.fetch_all(sql, params).await
+	}
+
+	async fn fetch_optional(
+		&mut self,
+		sql: &str,
+		params: Vec<QueryValue>,
+	) -> reinhardt_core::exception::Result<Option<Row>> {
+		self.executor_mut()?.fetch_optional(sql, params).await
+	}
+
+	async fn commit(self: Box<Self>) -> reinhardt_core::exception::Result<()> {
+		let mut transaction = *self;
+		transaction
+			.executor
+			.take()
+			.ok_or_else(transaction_consumed_error)?
+			.commit()
+			.await
+	}
+
+	async fn rollback(self: Box<Self>) -> reinhardt_core::exception::Result<()> {
+		let mut transaction = *self;
+		transaction
+			.executor
+			.take()
+			.ok_or_else(transaction_consumed_error)?
+			.rollback()
+			.await
+	}
+
+	async fn savepoint(&mut self, name: &str) -> reinhardt_core::exception::Result<()> {
+		self.executor_mut()?.savepoint(name).await
+	}
+
+	async fn release_savepoint(&mut self, name: &str) -> reinhardt_core::exception::Result<()> {
+		self.executor_mut()?.release_savepoint(name).await
+	}
+
+	async fn rollback_to_savepoint(&mut self, name: &str) -> reinhardt_core::exception::Result<()> {
+		self.executor_mut()?.rollback_to_savepoint(name).await
+	}
+}
+
 fn transaction_consumed_error() -> reinhardt_core::exception::Error {
 	DatabaseError::new(
 		DatabaseErrorKind::Transaction,
@@ -1110,7 +1188,7 @@ mod tests {
 
 		let result: std::result::Result<u64, ApplicationError> = connection
 			.atomic(async |transaction| {
-				let result = transaction.execute("SELECT 1", vec![]).await?;
+				let result = OrmExecutor::execute(transaction, "SELECT 1", vec![]).await?;
 				Ok(result.rows_affected)
 			})
 			.await;
@@ -1198,7 +1276,7 @@ mod tests {
 			.atomic(async |transaction| {
 				let nested: std::result::Result<(), ApplicationError> = transaction
 					.atomic(async |nested| {
-						nested.execute("SELECT 1", vec![]).await?;
+						OrmExecutor::execute(nested, "SELECT 1", vec![]).await?;
 						Ok(())
 					})
 					.await;

@@ -479,6 +479,12 @@ pub mod db {
 	/// ORM query building and model operations.
 	pub mod orm {
 		pub use reinhardt_db::orm::*;
+
+		/// Compatibility path for model-macro generated executor bounds.
+		pub mod connection {
+			pub use reinhardt_db::orm::OrmExecutor;
+			pub use reinhardt_db::orm::connection::*;
+		}
 	}
 
 	/// Model relationship (association) definitions.
