@@ -25,6 +25,9 @@ use crate::document_head::{
 #[cfg(wasm)]
 use crate::ssr::HYDRATION_ATTR_ID;
 
+#[cfg(wasm)]
+use reinhardt_core::types::page::{BOOLEAN_ATTRS, is_boolean_attr_truthy};
+
 /// Errors that can occur during hydration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HydrationError {
@@ -1265,6 +1268,12 @@ fn attach_hydrated_element_events(
 		.map(|attribute| {
 			let element = element.clone();
 			crate::reactive::Effect::new(move || match attribute.value() {
+				Some(value)
+					if BOOLEAN_ATTRS.contains(&attribute.name())
+						&& !is_boolean_attr_truthy(&value) =>
+				{
+					let _ = element.remove_attribute(attribute.name());
+				}
 				Some(value) => {
 					let _ = element.set_attribute(attribute.name(), &value);
 				}

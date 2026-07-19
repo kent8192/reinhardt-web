@@ -1212,7 +1212,10 @@ impl Page {
 					{
 						continue;
 					}
-					if let Some(value) = attribute.value() {
+					if let Some(value) = attribute.value()
+						&& !(BOOLEAN_ATTRS.contains(&attribute.name())
+							&& !is_boolean_attr_truthy(&value))
+					{
 						output.push(' ');
 						output.push_str(attribute.name());
 						output.push_str("=\"");
@@ -1817,6 +1820,20 @@ mod tests {
 			.into_page();
 
 		assert_eq!(view.render_to_string(), "<div CLASS=\"current\"></div>");
+	}
+
+	#[test]
+	fn render_to_string_omits_falsy_reactive_boolean_attributes() {
+		// Arrange
+		let view = PageElement::new("button")
+			.reactive_attr("disabled", || Some("false".into()))
+			.into_page();
+
+		// Act
+		let html = view.render_to_string();
+
+		// Assert
+		assert_eq!(html, "<button></button>");
 	}
 
 	#[test]

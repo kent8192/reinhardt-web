@@ -5,8 +5,9 @@ use std::rc::Rc;
 
 use reinhardt_core::reactive::{ReactiveScope, runtime::NodeId as ReactiveNodeId};
 use reinhardt_core::types::page::{
-	ControlBinding, ControlBindingError, ControlKind, ControlValue, ControlWriteOutcome, EventName,
-	NativeEventFile, NativeEventTarget, Page, PageEventHandler, is_boolean_attr_truthy,
+	BOOLEAN_ATTRS, ControlBinding, ControlBindingError, ControlKind, ControlValue,
+	ControlWriteOutcome, EventName, NativeEventFile, NativeEventTarget, Page, PageEventHandler,
+	is_boolean_attr_truthy,
 };
 
 use super::fixture::{EventFixtureError, TargetStatePatch};
@@ -794,6 +795,7 @@ impl TestDom {
 								("data-rh-outlet-id".to_string(), id),
 								("style".to_string(), "display: contents;".to_string()),
 							],
+							reactive_attrs: Vec::new(),
 							children: Vec::new(),
 							parent: Some(parent),
 							is_void: false,
@@ -1165,7 +1167,9 @@ impl ElementNode {
 			}
 			self.attrs
 				.retain(|(name, _)| !name.eq_ignore_ascii_case(attribute.name()));
-			if let Some(value) = attribute.value() {
+			if let Some(value) = attribute.value()
+				&& !(BOOLEAN_ATTRS.contains(&attribute.name()) && !is_boolean_attr_truthy(&value))
+			{
 				self.attrs
 					.push((attribute.name().to_owned(), value.into_owned()));
 			}

@@ -5,8 +5,11 @@
 use std::cell::Cell;
 use std::rc::Rc;
 
-use reinhardt_pages::component::{IntoPage, Page, PageElement, PageExt, cleanup_reactive_nodes};
+use reinhardt_pages::component::{
+	Component, IntoPage, Page, PageElement, PageExt, cleanup_reactive_nodes,
+};
 use reinhardt_pages::dom::Element;
+use reinhardt_pages::hydration::reconcile;
 use reinhardt_pages::prelude::{defer_yield, use_action};
 use reinhardt_pages::reactive::ReactiveScope;
 use reinhardt_pages::ui::{ActionButton, ActionResultPanel};
@@ -41,6 +44,50 @@ impl Drop for BodyRoot {
 		cleanup_reactive_nodes();
 		self.element.remove();
 	}
+}
+
+#[wasm_bindgen_test]
+fn reactive_boolean_attributes_remove_falsy_values_after_mount() {
+	// Arrange
+	let root = BodyRoot::new("reactive-boolean-attribute");
+	let page = PageElement::new("button")
+		.reactive_attr("disabled", || Some("false".into()))
+		.into_page();
+
+	// Act
+	page.mount(&Element::new(root.element.clone()))
+		.expect("button mounts");
+
+	// Assert
+	let button = root
+		.element
+		.query_selector("button")
+		.expect("query button")
+		.expect("button exists");
+	assert!(!button.has_attribute("disabled"));
+}
+
+#[wasm_bindgen_test]
+fn hydration_reconciliation_ignores_static_reactive_attribute_overrides() {
+	// Arrange
+	let document = web_sys::window()
+		.expect("window")
+		.document()
+		.expect("document");
+	let element = document.create_element("div").expect("create element");
+	element
+		.set_attribute("class", "current")
+		.expect("set server attribute");
+	let page = PageElement::new("div")
+		.attr("class", "stale")
+		.reactive_attr("CLASS", || Some("current".into()))
+		.into_page();
+
+	// Act
+	let result = reconcile(&Element::new(element), &page);
+
+	// Assert
+	assert!(result.is_ok());
 }
 
 #[wasm_bindgen_test]

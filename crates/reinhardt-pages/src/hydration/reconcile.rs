@@ -474,10 +474,17 @@ fn reconcile_attrs_at_path(
 ) -> Result<(), ReconcileError> {
 	for (name, value) in el_view.attrs() {
 		let name_str = name.as_ref();
+		let has_reactive_override = el_view
+			.reactive_attrs()
+			.iter()
+			.any(|attribute| attribute.name().eq_ignore_ascii_case(name_str));
 		if inside_controlled_select
 			&& el_view.tag_name().eq_ignore_ascii_case("option")
 			&& name_str.eq_ignore_ascii_case("selected")
 		{
+			continue;
+		}
+		if has_reactive_override {
 			continue;
 		}
 		if crate::component::into_page::controlled_attribute_is_overridden(

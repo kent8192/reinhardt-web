@@ -2076,7 +2076,9 @@ fn render_element_opening(
 		{
 			continue;
 		}
-		if let Some(value) = attribute.value() {
+		if let Some(value) = attribute.value()
+			&& !(BOOLEAN_ATTRS.contains(&attribute.name()) && !is_boolean_attr_truthy(&value))
+		{
 			push_escaped_attribute(&mut html, attribute.name(), &value);
 		}
 	}

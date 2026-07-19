@@ -1164,6 +1164,12 @@ fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::No
 						let attribute = attribute.clone();
 						let element = element.clone();
 						Effect::new(move || match attribute.value() {
+							Some(value)
+								if BOOLEAN_ATTRS.contains(&attribute.name())
+									&& !is_boolean_attr_truthy(&value) =>
+							{
+								let _ = element.remove_attribute(attribute.name());
+							}
 							Some(value) => {
 								let _ = element.set_attribute(attribute.name(), &value);
 							}

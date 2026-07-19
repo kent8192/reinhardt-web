@@ -151,8 +151,9 @@ impl PageExt for Page {
 }
 
 #[cfg(wasm)]
-use reinhardt_core::types::page::{ControlBinding, ControlKind, ControlValue};
-#[cfg(wasm)]
+use reinhardt_core::types::page::ControlValue;
+use reinhardt_core::types::page::{ControlBinding, ControlKind};
+
 pub(crate) fn controlled_attribute_is_overridden(
 	binding: Option<&ControlBinding>,
 	name: &str,
@@ -333,6 +334,12 @@ fn mount_inner(page: Page, parent: &Element) -> Result<(), MountError> {
 						let attribute = attribute.clone();
 						let element = element.clone();
 						crate::reactive::Effect::new(move || match attribute.value() {
+							Some(value)
+								if BOOLEAN_ATTRS.contains(&attribute.name())
+									&& !is_boolean_attr_truthy(&value) =>
+							{
+								let _ = element.remove_attribute(attribute.name());
+							}
 							Some(value) => {
 								let _ = element.set_attribute(attribute.name(), &value);
 							}
