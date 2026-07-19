@@ -1545,7 +1545,10 @@ mod tests {
 		let contains = TestUser::field_name().icontains("alice");
 		assert_eq!(contains.field, "name");
 		assert!(matches!(contains.operator, FilterOperator::IContains));
-		assert!(matches!(contains.value, FilterValue::String(value) if value == "alice"));
+		assert!(matches!(
+			contains.value,
+			FilterValue::Typed(Ok(crate::orm::DatabaseValue::String(value))) if value == "alice"
+		));
 
 		let in_filter = TestUser::field_id().is_in([1_i64, 2_i64]);
 		assert_eq!(in_filter.field, "id");
