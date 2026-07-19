@@ -156,8 +156,14 @@ impl From<ServerFnError> for ServerFnSetError {
 }
 
 impl From<reinhardt_core::exception::Error> for ServerFnSetError {
+	#[cfg(native)]
 	fn from(error: reinhardt_core::exception::Error) -> Self {
 		tracing::error!(%error, "model server function transaction failed");
+		Self::Internal
+	}
+
+	#[cfg(wasm)]
+	fn from(_error: reinhardt_core::exception::Error) -> Self {
 		Self::Internal
 	}
 }
