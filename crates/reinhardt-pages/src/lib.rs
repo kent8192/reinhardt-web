@@ -74,6 +74,8 @@
 //! - [`dom`]: DOM abstraction layer
 //! - [`builder`]: HTML element builder API
 //! - [`component`](mod@component): Component system with IntoPage trait, Head management
+//! - [`ui`]: Headless asynchronous UI primitives ([`ui::ActionButton`],
+//!   [`ui::ActionResultPanel`], and [`ui::ResourcePanel`])
 //! - [`form`](mod@form): Django Form integration
 //! - [`form_state`]: Typed `use_form` runtime state
 //! - [`client_form`]: Runtime support for DTO-derived client forms
@@ -516,6 +518,9 @@ pub mod prelude;
 
 // Component system
 pub mod component;
+
+/// Headless UI primitives for common asynchronous screen states.
+pub mod ui;
 
 // Form and security
 pub mod auth;

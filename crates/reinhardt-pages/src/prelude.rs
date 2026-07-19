@@ -47,6 +47,9 @@
 //! - [`SuspenseBoundary`], [`ErrorBoundary`], [`ActivityBoundary`],
 //!   [`ViewTransitionBoundary`], [`BoundaryError`]
 //!
+//! ## Headless UI Primitives
+//! - [`ActionButton`], [`ActionResultPanel`], [`ResourcePanel`]
+//!
 //! ## Events and Callbacks
 //! - [`Callback`], [`IntoEventHandler`], [`into_event_handler`]
 //! - [`Event`] (platform-agnostic event type)
@@ -122,6 +125,12 @@ pub use crate::component::{
 	ResourceTracker, ScriptTag, StyleTag, SuspenseBoundary, ViewTransitionBoundary,
 	ViewTransitionHandle, ViewTransitionStatus, start_view_transition,
 };
+
+// ============================================================================
+// Headless UI primitives
+// ============================================================================
+
+pub use crate::ui::{ActionButton, ActionResultPanel, ResourcePanel};
 
 // ============================================================================
 // Events and Callbacks
