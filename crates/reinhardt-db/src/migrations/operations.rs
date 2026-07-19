@@ -6360,7 +6360,7 @@ mod tests {
 		);
 		assert_eq!(
 			statements[1],
-			"INSERT INTO \"order\"\"items_new\" (id, \"select\"\"value\") SELECT id, \"select\"\"value\" FROM \"order\"\"items\";"
+			"INSERT INTO \"order\"\"items_new\" (\"id\", \"select\"\"value\") SELECT \"id\", \"select\"\"value\" FROM \"order\"\"items\";"
 		);
 		assert_eq!(statements[2], "DROP TABLE \"order\"\"items\";");
 		assert_eq!(
@@ -7022,7 +7022,9 @@ mod tests {
 			constraint: constraint.clone(),
 		};
 		let mut state = ProjectState::new();
-		state.add_model(ModelState::new("tasks", "jobs"));
+		let mut model = ModelState::new("tasks", "jobs");
+		model.table_name = "jobs".to_string();
+		state.add_model(model);
 
 		operation.state_forwards("tasks", &mut state);
 
@@ -7131,7 +7133,9 @@ mod tests {
 			values: vec![crate::field_domain::ModelEnumValue::I32(1)],
 		};
 		let mut state = ProjectState::new();
-		state.add_model(ModelState::new("tasks", "jobs"));
+		let mut model = ModelState::new("tasks", "jobs");
+		model.table_name = "jobs".to_string();
+		state.add_model(model);
 		let operation = Operation::AddColumn {
 			table: "jobs".to_string(),
 			column: ColumnDefinition::new("status", FieldType::Integer).with_domain(domain.clone()),
@@ -7153,6 +7157,7 @@ mod tests {
 			values: vec![crate::field_domain::ModelEnumValue::I32(1)],
 		};
 		let mut model = ModelState::new("tasks", "jobs");
+		model.table_name = "jobs".to_string();
 		model.add_field(FieldState::new("status", FieldType::Integer, false));
 		let mut state = ProjectState::new();
 		state.add_model(model);
