@@ -88,7 +88,7 @@ fn expand_client_form(input: DeriveInput) -> syn::Result<proc_macro2::TokenStrea
 		}
 
 		let kind = FieldKind::classify(&field.ty)?;
-		let serialized_name = field_options.serialized_name(&field_ident);
+		let serialized_name = field_options.serialized_name(&field_ident, options.serde_rename_all);
 		editable_fields.push(EditableField::new(
 			field_ident,
 			field.vis,
@@ -552,6 +552,7 @@ struct ClientFormOptions {
 	name: Option<Ident>,
 	server_fn: Option<Path>,
 	validate: bool,
+	serde_rename_all: Option<SerdeRenameRule>,
 }
 
 impl ClientFormOptions {
@@ -560,9 +561,20 @@ impl ClientFormOptions {
 			name: None,
 			server_fn: None,
 			validate: false,
+			serde_rename_all: None,
 		};
 		for attr in attrs {
 			if !attr.path().is_ident("client_form") {
+				if attr.path().is_ident("serde") {
+					attr.parse_nested_meta(|meta| {
+						if meta.path.is_ident("rename_all") {
+							options.serde_rename_all = parse_serde_rename_all(meta)?;
+						} else {
+							consume_serde_meta(meta)?;
+						}
+						Ok(())
+					})?;
+				}
 				continue;
 			}
 			attr.parse_nested_meta(|meta| {
@@ -582,6 +594,93 @@ impl ClientFormOptions {
 		}
 		Ok(options)
 	}
+}
+
+#[derive(Clone, Copy)]
+enum SerdeRenameRule {
+	Lowercase,
+	Uppercase,
+	PascalCase,
+	CamelCase,
+	SnakeCase,
+	ScreamingSnakeCase,
+	KebabCase,
+	ScreamingKebabCase,
+}
+
+impl SerdeRenameRule {
+	fn parse(value: &str) -> syn::Result<Self> {
+		match value {
+			"lowercase" => Ok(Self::Lowercase),
+			"UPPERCASE" => Ok(Self::Uppercase),
+			"PascalCase" => Ok(Self::PascalCase),
+			"camelCase" => Ok(Self::CamelCase),
+			"snake_case" => Ok(Self::SnakeCase),
+			"SCREAMING_SNAKE_CASE" => Ok(Self::ScreamingSnakeCase),
+			"kebab-case" => Ok(Self::KebabCase),
+			"SCREAMING-KEBAB-CASE" => Ok(Self::ScreamingKebabCase),
+			_ => Err(syn::Error::new(
+				proc_macro2::Span::call_site(),
+				"unsupported serde rename_all rule for ClientForm",
+			)),
+		}
+	}
+
+	fn apply(self, field: &str) -> String {
+		match self {
+			Self::Lowercase | Self::SnakeCase => field.to_string(),
+			Self::Uppercase | Self::ScreamingSnakeCase => field.to_ascii_uppercase(),
+			Self::PascalCase => {
+				let mut value = String::new();
+				let mut capitalize = true;
+				for character in field.chars() {
+					if character == '_' {
+						capitalize = true;
+					} else if capitalize {
+						value.push(character.to_ascii_uppercase());
+						capitalize = false;
+					} else {
+						value.push(character);
+					}
+				}
+				value
+			}
+			Self::CamelCase => {
+				let pascal = Self::PascalCase.apply(field);
+				pascal[..1].to_ascii_lowercase() + &pascal[1..]
+			}
+			Self::KebabCase => field.replace('_', "-"),
+			Self::ScreamingKebabCase => field.to_ascii_uppercase().replace('_', "-"),
+		}
+	}
+}
+
+fn parse_serde_rename_all(
+	meta: syn::meta::ParseNestedMeta<'_>,
+) -> syn::Result<Option<SerdeRenameRule>> {
+	parse_serde_serialize_name(meta)?
+		.map(|name| SerdeRenameRule::parse(&name))
+		.transpose()
+}
+
+fn parse_serde_serialize_name(meta: syn::meta::ParseNestedMeta<'_>) -> syn::Result<Option<String>> {
+	if meta.input.peek(Token![=]) {
+		return Ok(Some(meta.value()?.parse::<LitStr>()?.value()));
+	}
+	if !meta.input.peek(syn::token::Paren) {
+		return Err(meta.error("expected a serde rename value"));
+	}
+
+	let mut serialize_name = None;
+	meta.parse_nested_meta(|nested| {
+		if nested.path.is_ident("serialize") {
+			serialize_name = Some(nested.value()?.parse::<LitStr>()?.value());
+		} else {
+			consume_serde_meta(nested)?;
+		}
+		Ok(())
+	})?;
+	Ok(serialize_name)
 }
 
 struct ClientFormFieldOptions {
@@ -625,15 +724,15 @@ impl ClientFormFieldOptions {
 						options.serde_skip_serializing = true;
 					} else if meta.path.is_ident("skip_serializing_if") {
 						options.serde_skip_serializing_if = true;
-						consume_serde_field_meta(meta)?;
+						consume_serde_meta(meta)?;
 					} else if meta.path.is_ident("skip_deserializing") {
 						options.serde_skip_deserializing = true;
 					} else if meta.path.is_ident("default") {
 						options.serde_default = Some(parse_serde_default_expr(meta)?);
 					} else if meta.path.is_ident("rename") {
-						options.serde_rename = Some(meta.value()?.parse::<LitStr>()?.value());
+						options.serde_rename = parse_serde_serialize_name(meta)?;
 					} else {
-						consume_serde_field_meta(meta)?;
+						consume_serde_meta(meta)?;
 					}
 					Ok(())
 				})?;
@@ -659,10 +758,11 @@ impl ClientFormFieldOptions {
 			.to_tokens(dto_ident)
 	}
 
-	fn serialized_name(&self, field: &Ident) -> String {
+	fn serialized_name(&self, field: &Ident, rename_all: Option<SerdeRenameRule>) -> String {
+		let name = ident_name_without_raw_prefix(field);
 		self.serde_rename
 			.clone()
-			.unwrap_or_else(|| ident_name_without_raw_prefix(field))
+			.unwrap_or_else(|| rename_all.map_or(name.clone(), |rule| rule.apply(&name)))
 	}
 }
 
@@ -698,11 +798,11 @@ fn parse_serde_default_expr(meta: syn::meta::ParseNestedMeta<'_>) -> syn::Result
 	}
 }
 
-fn consume_serde_field_meta(meta: syn::meta::ParseNestedMeta<'_>) -> syn::Result<()> {
+fn consume_serde_meta(meta: syn::meta::ParseNestedMeta<'_>) -> syn::Result<()> {
 	if meta.input.peek(Token![=]) {
 		let _value = meta.value()?.parse::<syn::Expr>()?;
 	} else if meta.input.peek(syn::token::Paren) {
-		meta.parse_nested_meta(consume_serde_field_meta)?;
+		meta.parse_nested_meta(consume_serde_meta)?;
 	}
 	Ok(())
 }

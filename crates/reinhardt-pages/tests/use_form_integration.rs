@@ -236,6 +236,10 @@ fn use_form_routes_all_server_field_errors_without_form_error() {
 		.form_state()
 		.submit_error
 		.set(Some("previous submit error".to_string()));
+	runtime
+		.form_state()
+		.error
+		.set(Some("previous first error".to_string()));
 	let error = ServerFnError::validation_with_message(
 		"Please correct the submitted values",
 		[
@@ -264,6 +268,33 @@ fn use_form_routes_all_server_field_errors_without_form_error() {
 	);
 	assert_eq!(runtime.form_state().form_error.get(), None);
 	assert_eq!(runtime.form_state().submit_error.get(), None);
+}
+
+#[test]
+fn use_form_syncs_first_error_when_all_server_errors_match_fields() {
+	let profile = form! {
+		name: FirstErrorServerErrorProfileForm,
+		action: "/profile",
+		fields: {
+			display_name: CharField { initial: "Ada" },
+		}
+	};
+	let runtime = use_form(&profile).build();
+	runtime
+		.form_state()
+		.error
+		.set(Some("previous first error".to_string()));
+	let error = ServerFnError::validation_with_message(
+		"Please correct the submitted values",
+		[("display_name", "Display name is already used")],
+	);
+
+	runtime.apply_server_error(&error);
+
+	assert_eq!(
+		runtime.form_state().error.get(),
+		Some("Display name is already used".to_string())
+	);
 }
 
 #[test]
@@ -308,6 +339,10 @@ fn use_form_aggregates_unmatched_nested_server_errors_at_form_level() {
 		}
 	};
 	let runtime = use_form(&profile).build();
+	runtime
+		.form_state()
+		.error
+		.set(Some("previous first error".to_string()));
 	let error = ServerFnError::validation_with_message(
 		"Please correct the submitted values",
 		[("addresses.0.street", "Street is required")],
@@ -332,6 +367,13 @@ fn use_form_aggregates_unmatched_nested_server_errors_at_form_level() {
 	assert_eq!(
 		runtime.get_field_state(profile.display_name_field()).error,
 		None
+	);
+	assert_eq!(
+		runtime.form_state().error.get(),
+		Some(
+			"Please correct the submitted values\naddresses.0.street: Street is required"
+				.to_string()
+		)
 	);
 }
 

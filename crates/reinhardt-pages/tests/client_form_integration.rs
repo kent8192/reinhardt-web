@@ -346,6 +346,114 @@ fn client_form_routes_serialized_and_raw_server_field_names() {
 	});
 }
 
+#[derive(Clone, Default, Debug, PartialEq, ClientForm)]
+struct DirectionalRenameServerErrorRequest {
+	#[serde(rename(serialize = "wireDisplayName", deserialize = "display_name"))]
+	display_name: String,
+	r#type: String,
+}
+
+#[test]
+fn client_form_routes_directional_serialize_rename_and_raw_field_names() {
+	ReactiveScope::run(|| {
+		let form = DirectionalRenameServerErrorRequestClientForm::new().with_defaults(
+			DirectionalRenameServerErrorRequest {
+				display_name: "Ada".to_string(),
+				r#type: "profile".to_string(),
+			},
+		);
+		let runtime = use_form(&form).build();
+		let error = ServerFnError::validation_with_message(
+			"Please correct the submitted values",
+			[
+				("wireDisplayName", "Display name is already used"),
+				("type", "Type is unsupported"),
+			],
+		);
+
+		runtime.apply_server_error(&error);
+
+		assert_eq!(
+			runtime
+				.get_field_state(DirectionalRenameServerErrorRequestClientFormField::DisplayName)
+				.error
+				.as_ref()
+				.map(FieldError::message),
+			Some("Display name is already used")
+		);
+		assert_eq!(
+			runtime
+				.get_field_state(DirectionalRenameServerErrorRequestClientFormField::Type)
+				.error
+				.as_ref()
+				.map(FieldError::message),
+			Some("Type is unsupported")
+		);
+		assert_eq!(runtime.form_state().form_error.get(), None);
+	});
+}
+
+#[derive(Clone, Default, Debug, PartialEq, ClientForm)]
+#[serde(rename_all = "camelCase")]
+struct CamelCaseServerErrorRequest {
+	display_name: String,
+}
+
+#[derive(Clone, Default, Debug, PartialEq, ClientForm)]
+#[serde(rename_all = "SCREAMING-KEBAB-CASE")]
+struct ScreamingKebabServerErrorRequest {
+	display_name: String,
+}
+
+#[test]
+fn client_form_routes_serde_rename_all_serialized_field_names() {
+	ReactiveScope::run(|| {
+		let camel_case_form = CamelCaseServerErrorRequestClientForm::new().with_defaults(
+			CamelCaseServerErrorRequest {
+				display_name: "Ada".to_string(),
+			},
+		);
+		let camel_case_runtime = use_form(&camel_case_form).build();
+		let camel_case_error = ServerFnError::validation_with_message(
+			"Please correct the submitted values",
+			[("displayName", "Display name is already used")],
+		);
+
+		camel_case_runtime.apply_server_error(&camel_case_error);
+
+		assert_eq!(
+			camel_case_runtime
+				.get_field_state(CamelCaseServerErrorRequestClientFormField::DisplayName)
+				.error
+				.as_ref()
+				.map(FieldError::message),
+			Some("Display name is already used")
+		);
+
+		let screaming_kebab_form = ScreamingKebabServerErrorRequestClientForm::new().with_defaults(
+			ScreamingKebabServerErrorRequest {
+				display_name: "Grace".to_string(),
+			},
+		);
+		let screaming_kebab_runtime = use_form(&screaming_kebab_form).build();
+		let screaming_kebab_error = ServerFnError::validation_with_message(
+			"Please correct the submitted values",
+			[("DISPLAY-NAME", "Display name is already used")],
+		);
+
+		screaming_kebab_runtime.apply_server_error(&screaming_kebab_error);
+
+		assert_eq!(
+			screaming_kebab_runtime
+				.get_field_state(ScreamingKebabServerErrorRequestClientFormField::DisplayName)
+				.error
+				.as_ref()
+				.map(FieldError::message),
+			Some("Display name is already used")
+		);
+	});
+}
+
 thread_local! {
 	static SUBMIT_CALL_COUNT: Cell<usize> = const { Cell::new(0) };
 }
