@@ -89,14 +89,12 @@ pub(crate) fn with_reactive_node_store<R>(store: &ReactiveNodeStore, f: impl FnO
 	f()
 }
 
-#[cfg(any(wasm, test))]
-struct ReactiveNodeTransaction {
+pub(crate) struct ReactiveNodeTransaction {
 	destination: ReactiveNodeStore,
 	staged: ReactiveNodeStore,
 	committed: bool,
 }
 
-#[cfg(any(wasm, test))]
 impl ReactiveNodeTransaction {
 	fn new(destination: ReactiveNodeStore) -> Self {
 		Self {
@@ -110,7 +108,7 @@ impl ReactiveNodeTransaction {
 		self.staged.clone()
 	}
 
-	fn commit(&mut self) {
+	pub(crate) fn commit(&mut self) {
 		self.destination
 			.borrow_mut()
 			.append(&mut self.staged.borrow_mut());
@@ -118,7 +116,6 @@ impl ReactiveNodeTransaction {
 	}
 }
 
-#[cfg(any(wasm, test))]
 impl Drop for ReactiveNodeTransaction {
 	fn drop(&mut self) {
 		if !self.committed {
@@ -144,6 +141,17 @@ pub(crate) async fn scope_reactive_node_store<R>(future: impl Future<Output = R>
 	SSR_REACTIVE_NODE_STORE
 		.scope(new_reactive_node_store(), future)
 		.await
+}
+
+#[cfg(native)]
+pub(crate) async fn scope_reactive_node_transaction<R>(
+	future: impl Future<Output = R>,
+) -> (R, ReactiveNodeTransaction) {
+	let transaction = ReactiveNodeTransaction::new(current_reactive_node_store());
+	let result = SSR_REACTIVE_NODE_STORE
+		.scope(transaction.store(), future)
+		.await;
+	(result, transaction)
 }
 
 /// Stores a reactive node to keep it alive.
@@ -1146,8 +1154,15 @@ fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::No
 			}
 		}
 		Page::Empty => {}
-		Page::WithHead { view, .. } => {
-			// Head is handled separately; just mount the content
+		Page::WithHead { view, head } => {
+			match crate::document_head::current_document_head_manager()
+				.and_then(|manager| manager.register_static_page(head))
+			{
+				Ok(registration) => store_reactive_node(registration),
+				Err(error) => {
+					web_sys::console::error_1(&wasm_bindgen::JsValue::from_str(&error.to_string()));
+				}
+			}
 			nodes.extend(mount_before_marker(marker, *view));
 		}
 		#[cfg(feature = "hmr")]

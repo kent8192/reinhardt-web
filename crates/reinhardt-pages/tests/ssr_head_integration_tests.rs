@@ -19,9 +19,29 @@
 
 #[cfg(native)]
 mod ssr_tests {
-	use reinhardt_pages::component::{Head, IntoPage, LinkTag, MetaTag, PageElement};
-	use reinhardt_pages::head;
+	use reinhardt_pages::component::{Head, IntoPage, LinkTag, MetaTag, Outlet, Page, PageElement};
+	use reinhardt_pages::reactive::hooks::{use_head, use_page_title};
 	use reinhardt_pages::ssr::SsrRenderer;
+	use reinhardt_pages::{deps, head, page};
+	use reinhardt_urls::routers::{ClientRouter, RouteMetadata};
+
+	fn has_managed_head_entry(
+		html: &str,
+		tag: &str,
+		marker_fragment: &str,
+		semantic_content: &str,
+	) -> bool {
+		let marker_prefix = format!("<{tag} data-reinhardt-head=\"{marker_fragment}");
+		html.lines()
+			.any(|line| line.starts_with(&marker_prefix) && line.contains(semantic_content))
+	}
+
+	fn managed_head_entry_count(html: &str, tag: &str, semantic_content: &str) -> usize {
+		let marker_prefix = format!("<{tag} data-reinhardt-head=\"");
+		html.lines()
+			.filter(|line| line.starts_with(&marker_prefix) && line.contains(semantic_content))
+			.count()
+	}
 
 	// ============================================================================
 	// View Head Only Tests
@@ -39,7 +59,12 @@ mod ssr_tests {
 		let mut renderer = SsrRenderer::new();
 		let html = renderer.render_page_with_view_head_to_string(view).await;
 
-		assert!(html.contains("<title>View Title</title>"));
+		assert!(has_managed_head_entry(
+			&html,
+			"title",
+			"",
+			"\">View Title</title>",
+		));
 	}
 
 	/// Tests that render_page_with_view_head includes View's meta tags.
@@ -54,7 +79,12 @@ mod ssr_tests {
 		let mut renderer = SsrRenderer::new();
 		let html = renderer.render_page_with_view_head_to_string(view).await;
 
-		assert!(html.contains("<meta name=\"description\" content=\"View description\""));
+		assert!(has_managed_head_entry(
+			&html,
+			"meta",
+			"",
+			"name=\"description\" content=\"View description\"",
+		));
 	}
 
 	// ============================================================================
@@ -95,8 +125,18 @@ mod ssr_tests {
 		let mut renderer = SsrRenderer::new();
 		let html = renderer.render_page_with_view_head_to_string(view).await;
 
-		assert!(html.contains("<meta name=\"description\" content=\"Page desc\""));
-		assert!(html.contains("<meta name=\"author\" content=\"Test Author\""));
+		assert!(has_managed_head_entry(
+			&html,
+			"meta",
+			"",
+			"name=\"description\" content=\"Page desc\"",
+		));
+		assert!(has_managed_head_entry(
+			&html,
+			"meta",
+			"",
+			"name=\"author\" content=\"Test Author\"",
+		));
 	}
 
 	/// Tests multiple CSS links via Head.
@@ -113,8 +153,18 @@ mod ssr_tests {
 		let mut renderer = SsrRenderer::new();
 		let html = renderer.render_page_with_view_head_to_string(view).await;
 
-		assert!(html.contains("href=\"/style1.css\""));
-		assert!(html.contains("href=\"/style2.css\""));
+		assert!(has_managed_head_entry(
+			&html,
+			"link",
+			"",
+			"rel=\"stylesheet\" href=\"/style1.css\"",
+		));
+		assert!(has_managed_head_entry(
+			&html,
+			"link",
+			"",
+			"rel=\"stylesheet\" href=\"/style2.css\"",
+		));
 	}
 
 	/// Tests title combined with meta tags.
@@ -131,8 +181,18 @@ mod ssr_tests {
 		let mut renderer = SsrRenderer::new();
 		let html = renderer.render_page_with_view_head_to_string(view).await;
 
-		assert!(html.contains("<title>My Page</title>"));
-		assert!(html.contains("<meta name=\"description\" content=\"Page description\""));
+		assert!(has_managed_head_entry(
+			&html,
+			"title",
+			"",
+			"\">My Page</title>",
+		));
+		assert!(has_managed_head_entry(
+			&html,
+			"meta",
+			"",
+			"name=\"description\" content=\"Page description\"",
+		));
 	}
 
 	/// Tests exact duplicate asset hints are deduplicated during SSR.
@@ -152,13 +212,19 @@ mod ssr_tests {
 		let html = renderer.render_page_with_view_head_to_string(view).await;
 
 		assert_eq!(
-			html.matches("<link rel=\"preconnect\" href=\"https://cdn.example.com\">")
-				.count(),
+			managed_head_entry_count(
+				&html,
+				"link",
+				"rel=\"preconnect\" href=\"https://cdn.example.com\"",
+			),
 			1
 		);
 		assert_eq!(
-			html.matches("<link rel=\"preload\" href=\"/static/app.js\" as=\"script\">")
-				.count(),
+			managed_head_entry_count(
+				&html,
+				"link",
+				"rel=\"preload\" href=\"/static/app.js\" as=\"script\"",
+			),
 			1
 		);
 	}
@@ -175,6 +241,33 @@ mod ssr_tests {
 		let mut renderer = SsrRenderer::new();
 		let html = renderer.render_page_with_view_head_to_string(view).await;
 
+		assert_eq!(html.matches("charset=\"UTF-8\"").count(), 1);
+		assert_eq!(
+			html.matches("name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"")
+				.count(),
+			1
+		);
+		assert!(has_managed_head_entry(
+			&html,
+			"meta",
+			"",
+			"charset=\"UTF-8\"",
+		));
+		assert!(has_managed_head_entry(
+			&html,
+			"meta",
+			"",
+			"name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"",
+		));
+	}
+
+	#[tokio::test]
+	async fn implicit_default_meta_entries_remain_unmanaged() {
+		let mut renderer = SsrRenderer::new();
+		let html = renderer
+			.render_page_with_view_head_to_string(Page::text("Content"))
+			.await;
+
 		assert_eq!(html.matches("<meta charset=\"UTF-8\">").count(), 1);
 		assert_eq!(
 			html.matches(
@@ -183,6 +276,159 @@ mod ssr_tests {
 			.count(),
 			1
 		);
+		assert!(!has_managed_head_entry(
+			&html,
+			"meta",
+			"",
+			"charset=\"UTF-8\"",
+		));
+		assert!(!has_managed_head_entry(
+			&html,
+			"meta",
+			"",
+			"name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"",
+		));
+	}
+
+	#[tokio::test]
+	async fn managed_head_entries_compose_in_structural_order() {
+		// Arrange
+		let view = Page::fragment([
+			Page::text("before").with_head(
+				Head::new()
+					.title("Parent")
+					.meta_description("parent")
+					.base_url("https://example.test/parent/"),
+			),
+			Page::text("child").with_head(
+				Head::new()
+					.title("Child")
+					.canonical("https://example.test/child")
+					.base_url("https://example.test/child/"),
+			),
+		]);
+		let mut renderer = SsrRenderer::new();
+
+		// Act
+		let html = renderer.render_page_with_view_head_to_string(view).await;
+
+		// Assert
+		assert!(has_managed_head_entry(
+			&html,
+			"title",
+			"slot-2-title-",
+			"\">Child</title>",
+		));
+		assert!(has_managed_head_entry(
+			&html,
+			"meta",
+			"slot-1-meta-",
+			"name=\"description\" content=\"parent\"",
+		));
+		assert!(has_managed_head_entry(
+			&html,
+			"link",
+			"slot-2-link-",
+			"rel=\"canonical\" href=\"https://example.test/child\"",
+		));
+		assert!(has_managed_head_entry(
+			&html,
+			"base",
+			"slot-2-base-",
+			"href=\"https://example.test/child/\"",
+		));
+		assert!(!html.contains("https://example.test/parent/"));
+	}
+
+	#[tokio::test]
+	async fn retained_head_hooks_compose_after_static_page_heads() {
+		// Arrange
+		let view = Page::fragment([
+			Page::reactive(|| {
+				use_head(
+					|| Head::new().meta(MetaTag::new("hook", "retained")),
+					deps![],
+				);
+				use_page_title(|| "Hook title", deps![]);
+				Page::text("hook body")
+			}),
+			Page::text("static body").with_head(
+				Head::new()
+					.title("Static title")
+					.meta_description("static description"),
+			),
+		]);
+		let mut renderer = SsrRenderer::new();
+
+		// Act
+		let html = renderer.render_page_with_view_head_to_string(view).await;
+
+		// Assert
+		assert!(has_managed_head_entry(
+			&html,
+			"title",
+			"slot-2-title-",
+			"\">Hook title</title>",
+		));
+		assert!(!html.contains("\">Static title</title>"));
+		assert!(has_managed_head_entry(
+			&html,
+			"meta",
+			"slot-1-meta-",
+			"name=\"hook\" content=\"retained\"",
+		));
+		assert!(has_managed_head_entry(
+			&html,
+			"meta",
+			"slot-3-meta-",
+			"name=\"description\" content=\"static description\"",
+		));
+	}
+
+	#[tokio::test]
+	async fn exact_duplicate_uses_the_first_structural_owner_marker() {
+		// Arrange
+		let duplicate = Head::new().meta_description("shared description");
+		let view = Page::fragment([
+			Page::text("first").with_head(duplicate.clone()),
+			Page::text("second").with_head(duplicate),
+		]);
+		let mut renderer = SsrRenderer::new();
+
+		// Act
+		let html = renderer.render_page_with_view_head_to_string(view).await;
+
+		// Assert
+		assert_eq!(
+			html.matches("name=\"description\" content=\"shared description\"")
+				.count(),
+			1
+		);
+		assert!(has_managed_head_entry(
+			&html,
+			"meta",
+			"slot-1-meta-",
+			"name=\"description\" content=\"shared description\"",
+		));
+		assert!(!has_managed_head_entry(
+			&html,
+			"meta",
+			"slot-2-meta-",
+			"name=\"description\" content=\"shared description\"",
+		));
+	}
+
+	#[test]
+	fn standalone_head_html_remains_unmarked() {
+		// Arrange
+		let head = Head::new().title("x");
+
+		// Act
+		let html = head.to_html();
+
+		// Assert
+		assert_eq!(html, "<title>x</title>");
+		assert!(!html.contains("data-reinhardt-head"));
 	}
 
 	// ============================================================================
@@ -227,8 +473,107 @@ mod ssr_tests {
 		let mut renderer = SsrRenderer::new();
 		let html = renderer.render_page_with_view_head_to_string(view).await;
 
-		assert!(html.contains("<title>Macro Title</title>"));
-		assert!(html.contains("<meta name=\"description\" content=\"Macro description\""));
+		assert!(has_managed_head_entry(
+			&html,
+			"title",
+			"",
+			"\">Macro Title</title>",
+		));
+		assert!(has_managed_head_entry(
+			&html,
+			"meta",
+			"",
+			"name=\"description\" content=\"Macro description\"",
+		));
 		assert!(html.contains("<div>Hello</div>"));
+	}
+
+	#[tokio::test]
+	async fn client_router_metadata_heads_merge_with_leaf_head_declaration() {
+		fn layout(outlet: Outlet) -> Page {
+			PageElement::new("section")
+				.child(outlet.into_page())
+				.into_page()
+		}
+
+		fn leaf() -> Page {
+			let leaf_head = head!(|| {
+				title { "Leaf declaration" }
+				meta { name: "leaf-declaration", content: "present" }
+			});
+			page!(#head: leaf_head, {
+				main { "Leaf page" }
+			})
+		}
+
+		let router = ClientRouter::new()
+			.try_routes(|routes| {
+				routes.layout_route("root", "/", layout, |children| {
+					children.layout_route("nested", "nested/", layout, |children| {
+						children.index_route("leaf", leaf)
+					})
+				})
+			})
+			.expect("route tree should register")
+			.with_route_metadata(
+				"root",
+				RouteMetadata::new().with_head(
+					Head::new()
+						.title("Root route")
+						.meta_description("root metadata"),
+				),
+			)
+			.with_route_metadata(
+				"nested",
+				RouteMetadata::new().with_head(
+					Head::new()
+						.title("Nested route")
+						.meta_description("nested metadata"),
+				),
+			)
+			.with_route_metadata(
+				"leaf",
+				RouteMetadata::new().with_head(
+					Head::new()
+						.title("Leaf route")
+						.meta_description("leaf metadata"),
+				),
+			);
+
+		let mut renderer = SsrRenderer::new();
+		let html = renderer
+			.render_page_with_view_head_to_string(router.render_path("/nested/"))
+			.await;
+
+		assert!(has_managed_head_entry(
+			&html,
+			"meta",
+			"",
+			"name=\"description\" content=\"root metadata\"",
+		));
+		assert!(has_managed_head_entry(
+			&html,
+			"meta",
+			"",
+			"name=\"description\" content=\"nested metadata\"",
+		));
+		assert!(has_managed_head_entry(
+			&html,
+			"meta",
+			"",
+			"name=\"description\" content=\"leaf metadata\"",
+		));
+		assert!(has_managed_head_entry(
+			&html,
+			"meta",
+			"",
+			"name=\"leaf-declaration\" content=\"present\"",
+		));
+		assert!(has_managed_head_entry(
+			&html,
+			"title",
+			"",
+			"\">Leaf declaration</title>",
+		));
 	}
 }

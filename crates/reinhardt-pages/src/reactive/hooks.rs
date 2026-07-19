@@ -109,6 +109,7 @@ pub mod async_action;
 pub mod context;
 pub mod debug;
 pub mod effect;
+pub mod head;
 pub mod id;
 pub mod memo;
 pub mod refs;
@@ -129,6 +130,7 @@ pub use debug::use_debug_value;
 pub use effect::{
 	EffectReturn, use_effect, use_layout_effect, use_retained_effect, use_retained_layout_effect,
 };
+pub use head::{use_head, use_page_title};
 pub use id::use_id;
 pub use memo::{use_callback, use_callback_with, use_memo};
 pub use refs::{Ref, use_ref};
