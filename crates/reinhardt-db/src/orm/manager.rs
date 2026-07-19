@@ -20,13 +20,14 @@ fn find_field_info<'a>(field_metadata: &'a [FieldInfo], field_name: &str) -> Opt
 }
 
 fn field_codec_error(error: FieldCodecError) -> Error {
-	let kind = match error {
+	let kind = match &error {
 		FieldCodecError::TypeMismatch { .. } | FieldCodecError::InvalidEnumValue { .. } => {
 			DatabaseErrorKind::Type
 		}
 		FieldCodecError::Serialization(_) => DatabaseErrorKind::Serialization,
 	};
-	DatabaseError::new(kind, error.to_string()).into()
+	let message = error.to_string();
+	Error::database_with_source(kind, message, error)
 }
 
 fn executor_field_codec_error(error: FieldCodecError) -> crate::backends::error::DatabaseError {
@@ -37,13 +38,12 @@ fn executor_field_codec_error(error: FieldCodecError) -> crate::backends::error:
 }
 
 fn executor_error(error: Error) -> crate::backends::error::DatabaseError {
-	match error {
-		Error::Database(error) => error,
-		error => crate::backends::error::DatabaseError::new(
+	error.database_error().cloned().unwrap_or_else(|| {
+		crate::backends::error::DatabaseError::new(
 			crate::backends::error::DatabaseErrorKind::Query,
 			error.to_string(),
-		),
-	}
+		)
+	})
 }
 
 /// Build SQL with values from an INSERT statement based on database backend
@@ -2678,14 +2678,33 @@ impl<M: Model> Default for Manager<M> {
 
 #[cfg(test)]
 mod tests {
-	use super::Manager;
-	use crate::orm::FieldSelector;
+	use super::{Manager, field_codec_error};
 	use crate::orm::Json;
 	use crate::orm::Model;
 	use crate::orm::connection::DatabaseBackend;
 	use crate::orm::inspection::FieldInfo;
+	use crate::orm::{FieldCodecError, FieldSelector};
 	use serde::{Deserialize, Serialize};
 	use std::collections::HashMap;
+
+	#[test]
+	fn test_field_codec_error_preserves_typed_source() {
+		let error = field_codec_error(FieldCodecError::Serialization(
+			"rejected manager value".to_owned(),
+		));
+
+		assert_eq!(
+			error.database_kind(),
+			Some(reinhardt_core::exception::DatabaseErrorKind::Serialization)
+		);
+		assert_eq!(
+			error.to_string(),
+			"Database error: field serialization failed: rejected manager value"
+		);
+		let source = std::error::Error::source(&error)
+			.expect("manager codec error should preserve its typed source");
+		assert!(source.downcast_ref::<FieldCodecError>().is_some());
+	}
 
 	#[serial_test::serial(sqlx_drivers)]
 	#[tokio::test]
