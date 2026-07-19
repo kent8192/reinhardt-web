@@ -154,7 +154,7 @@ impl BrowserDocumentHead {
 		let mut available_nodes = mem::take(&mut self.managed_nodes);
 		let mut next_nodes = Vec::with_capacity(desired_entries.len());
 
-		for entry in desired_entries {
+		for (index, entry) in desired_entries.iter().enumerate() {
 			let marker = entry.marker();
 			let identity = MarkerIdentity::parse(&marker).ok_or_else(|| {
 				DocumentHeadError::DomOperation(format!(
@@ -175,7 +175,12 @@ impl BrowserDocumentHead {
 				if !descriptor_is_unchanged && identity.kind.can_update_in_place() {
 					apply_descriptor(&Element::new(node.element.clone()), entry)?;
 				} else if !descriptor_is_unchanged {
-					let replacement = self.create_managed_node(entry, marker, identity)?;
+					let insert_before = next_matching_desired_node(
+						&desired_entries[index + 1..],
+						&available_nodes,
+					)?;
+					let replacement =
+						self.create_managed_node(entry, marker, identity, insert_before.as_ref())?;
 					remove_managed_node(&node.element)?;
 					next_nodes.push(replacement);
 					continue;
@@ -189,7 +194,14 @@ impl BrowserDocumentHead {
 				node.identity = Some(identity);
 				next_nodes.push(node);
 			} else {
-				next_nodes.push(self.create_managed_node(entry, marker, identity)?);
+				let insert_before =
+					next_matching_desired_node(&desired_entries[index + 1..], &available_nodes)?;
+				next_nodes.push(self.create_managed_node(
+					entry,
+					marker,
+					identity,
+					insert_before.as_ref(),
+				)?);
 			}
 		}
 
@@ -213,6 +225,7 @@ impl BrowserDocumentHead {
 		entry: &ResolvedHeadEntry,
 		marker: String,
 		identity: MarkerIdentity,
+		insert_before: Option<&web_sys::Element>,
 	) -> Result<ManagedHeadNode, DocumentHeadError> {
 		let element = self
 			.document
@@ -222,9 +235,17 @@ impl BrowserDocumentHead {
 		element
 			.set_attribute(MANAGED_ATTRIBUTE, &marker)
 			.map_err(DocumentHeadError::DomOperation)?;
-		self.head
-			.append_child(element.as_web_sys())
-			.map_err(|error| dom_error("append framework-managed head node", error))?;
+		let head_node: web_sys::Node = self.head.clone().unchecked_into();
+		let element_node: web_sys::Node = element.as_web_sys().clone().unchecked_into();
+		let anchor = insert_before
+			.map(|element| element.clone().unchecked_into())
+			.filter(|node: &web_sys::Node| {
+				node.parent_node()
+					.is_some_and(|parent| parent.is_same_node(Some(&head_node)))
+			});
+		head_node
+			.insert_before(&element_node, anchor.as_ref())
+			.map_err(|error| dom_error("insert framework-managed head node", error))?;
 
 		Ok(ManagedHeadNode {
 			element: element.as_web_sys().clone(),
@@ -370,6 +391,28 @@ fn take_matching_node(
 	Some(nodes.remove(index))
 }
 
+fn next_matching_desired_node(
+	desired_entries: &[ResolvedHeadEntry],
+	available_nodes: &[ManagedHeadNode],
+) -> Result<Option<web_sys::Element>, DocumentHeadError> {
+	for entry in desired_entries {
+		let marker = entry.marker();
+		let identity = MarkerIdentity::parse(&marker).ok_or_else(|| {
+			DocumentHeadError::DomOperation(format!(
+				"resolved head marker has an invalid identity: {marker}"
+			))
+		})?;
+		if let Some(node) = available_nodes.iter().find(|node| {
+			(node.marker == marker || node.has_descriptor(&identity))
+				&& node.matches_kind(identity.kind)
+		}) {
+			return Ok(Some(node.element.clone()));
+		}
+	}
+
+	Ok(None)
+}
+
 fn apply_descriptor(element: &Element, entry: &ResolvedHeadEntry) -> Result<(), DocumentHeadError> {
 	match entry {
 		ResolvedHeadEntry::Base { descriptor, .. } => {
@@ -409,9 +452,15 @@ fn apply_descriptor(element: &Element, entry: &ResolvedHeadEntry) -> Result<(), 
 			element.set_text_content(&descriptor.content);
 		}
 		ResolvedHeadEntry::Script { descriptor, .. } => {
-			set_optional_attribute(element, "src", descriptor.src.as_deref())?;
 			set_optional_attribute(element, "type", descriptor.type_attr.as_deref())?;
 			set_boolean_attribute(element, "async", descriptor.is_async)?;
+			element
+				.set_property(
+					"async",
+					&wasm_bindgen::JsValue::from_bool(descriptor.is_async),
+				)
+				.map_err(DocumentHeadError::DomOperation)?;
+			set_optional_attribute(element, "src", descriptor.src.as_deref())?;
 			set_boolean_attribute(element, "defer", descriptor.is_defer)?;
 			set_optional_attribute(element, "crossorigin", descriptor.crossorigin.as_deref())?;
 			set_optional_attribute(element, "integrity", descriptor.integrity.as_deref())?;
@@ -468,4 +517,101 @@ fn remove_managed_node(element: &web_sys::Element) -> Result<(), DocumentHeadErr
 
 fn dom_error(context: &str, error: wasm_bindgen::JsValue) -> DocumentHeadError {
 	DocumentHeadError::DomOperation(format!("{context}: {error:?}"))
+}
+
+#[cfg(test)]
+mod tests {
+	use wasm_bindgen::JsCast;
+	use wasm_bindgen_test::*;
+
+	use super::{BrowserDocumentHead, MANAGED_ATTRIBUTE};
+	use crate::component::ScriptTag;
+	use crate::document_head::registry::{HeadSlotId, ResolvedHeadEntry};
+	use crate::dom::Element;
+
+	wasm_bindgen_test_configure!(run_in_browser);
+
+	struct BrowserDocumentHeadFixture {
+		browser: BrowserDocumentHead,
+	}
+
+	impl BrowserDocumentHeadFixture {
+		fn new() -> Self {
+			Self {
+				browser: BrowserDocumentHead::new().expect("browser document head"),
+			}
+		}
+
+		fn reconcile(&mut self, entries: &[ResolvedHeadEntry]) {
+			self.browser
+				.reconcile(entries)
+				.expect("document-head reconciliation");
+		}
+
+		fn managed_script_markers(&self) -> Vec<String> {
+			let scripts = self
+				.browser
+				.head
+				.query_selector_all(&format!("script[{MANAGED_ATTRIBUTE}]"))
+				.expect("managed script selector");
+			(0..scripts.length())
+				.filter_map(|index| scripts.item(index))
+				.filter_map(|node| node.dyn_into::<web_sys::Element>().ok())
+				.filter(|element| {
+					self.browser
+						.managed_nodes
+						.iter()
+						.any(|node| element.is_same_node(Some(&node.element)))
+				})
+				.filter_map(|element| element.get_attribute(MANAGED_ATTRIBUTE))
+				.collect()
+		}
+
+		fn managed_element(&self, marker: &str) -> web_sys::Element {
+			self.browser
+				.managed_nodes
+				.iter()
+				.find(|node| node.marker == marker)
+				.map(|node| node.element.clone())
+				.expect("managed head node")
+		}
+	}
+
+	impl Drop for BrowserDocumentHeadFixture {
+		fn drop(&mut self) {
+			let _ = self.browser.reconcile(&[]);
+		}
+	}
+
+	fn external_script(owner: u64, src: &'static str) -> ResolvedHeadEntry {
+		ResolvedHeadEntry::Script {
+			owner: HeadSlotId(owner),
+			descriptor: ScriptTag::external(src),
+		}
+	}
+
+	#[wasm_bindgen_test]
+	fn replacing_early_script_preserves_order_and_sync_property() {
+		let mut fixture = BrowserDocumentHeadFixture::new();
+		let first = external_script(1, "data:text/javascript,void%200");
+		let second = external_script(2, "data:text/javascript,void%201");
+		fixture.reconcile(&[first, second.clone()]);
+
+		let replacement = external_script(1, "data:text/javascript,void%202");
+		fixture.reconcile(&[replacement.clone(), second.clone()]);
+
+		assert_eq!(
+			fixture.managed_script_markers(),
+			vec![replacement.marker(), second.marker()],
+			"replacing an earlier script must retain the resolved collection order"
+		);
+		assert_eq!(
+			Element::new(fixture.managed_element(&replacement.marker()))
+				.get_property("async")
+				.expect("script async property")
+				.as_bool(),
+			Some(false),
+			"external scripts without with_async() must remain synchronous"
+		);
+	}
 }
