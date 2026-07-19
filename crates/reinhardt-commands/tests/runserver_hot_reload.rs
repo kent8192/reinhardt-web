@@ -401,6 +401,7 @@ async fn hr_9_server_restart_accepts_connections_after_pipeline_ok() {
 async fn hr_3_no_wasm_rebuild_flag_skips_wasm_pipeline() {
 	// Arrange: a config with the flag set, plus an empty SourceRoots.
 	let config = WatcherConfig {
+		project_root: PathBuf::from("/project"),
 		bin_name: "manage".to_string(),
 		address: "127.0.0.1:0".to_string(),
 		roots: SourceRoots {
@@ -413,6 +414,7 @@ async fn hr_3_no_wasm_rebuild_flag_skips_wasm_pipeline() {
 		no_wasm_rebuild: true,
 		pages_enabled: true,
 		hmr_tx: None,
+		hmr_server: None,
 		component_styles: None,
 	};
 
@@ -622,6 +624,7 @@ async fn hr_7_run_watcher_processes_events() {
 
 	let ctx = CommandContext::default();
 	let config = WatcherConfig {
+		project_root: fixture.path().to_path_buf(),
 		bin_name: "manage".to_string(),
 		address: "127.0.0.1:0".to_string(),
 		roots: SourceRoots {
@@ -634,6 +637,7 @@ async fn hr_7_run_watcher_processes_events() {
 		no_wasm_rebuild: true,
 		pages_enabled: false,
 		hmr_tx: None,
+		hmr_server: None,
 		component_styles: None,
 	};
 
@@ -748,6 +752,7 @@ async fn hr_9_run_watcher_broadcasts_reload_after_server_rebuild() {
 	let (hmr_tx, mut hmr_rx) = tokio::sync::broadcast::channel::<String>(8);
 	let ctx = CommandContext::default();
 	let config = WatcherConfig {
+		project_root: fixture.path().to_path_buf(),
 		bin_name: "manage".to_string(),
 		address: addr.clone(),
 		roots: SourceRoots {
@@ -760,6 +765,7 @@ async fn hr_9_run_watcher_broadcasts_reload_after_server_rebuild() {
 		no_wasm_rebuild: true,
 		pages_enabled: true,
 		hmr_tx: Some(hmr_tx),
+		hmr_server: None,
 		component_styles: None,
 	};
 

@@ -7366,12 +7366,19 @@ mod tests {
 			pub struct Record {
 				#[field(primary_key = true)]
 				pub id: i64,
-				#[field(db_column = "email_addr")]
+				#[field(db_column = "email_addr", max_length = 255)]
 				pub email: String,
-				#[field(db_column = "display_name", generated_sql = "lower(email_addr)")]
+				#[field(
+					db_column = "display_name",
+					generated_sql = "lower(email_addr)",
+					max_length = 255,
+					generated_stored = true
+				)]
 				pub full_name: String,
 				#[rel(foreign_key)]
 				pub owner: db::associations::ForeignKeyField<Account>,
+				#[serde(default)]
+				owner_id: <Account as reinhardt::model_info::InfoModel>::PrimaryKey,
 			}
 		};
 

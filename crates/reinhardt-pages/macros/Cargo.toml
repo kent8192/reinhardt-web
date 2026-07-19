@@ -15,6 +15,7 @@ proc-macro = true
 
 [features]
 default = []
+hmr = []
 msw = []
 model-server-fnset = []
 
