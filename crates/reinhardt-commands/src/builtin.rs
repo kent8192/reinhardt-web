@@ -985,6 +985,7 @@ fn makemigrations_operation_description(operation: &reinhardt_db::migrations::Op
 	}
 }
 
+#[cfg(feature = "migrations")]
 fn validate_global_migration_changes(
 	from_state: &reinhardt_db::migrations::ProjectState,
 	target_state: &reinhardt_db::migrations::ProjectState,

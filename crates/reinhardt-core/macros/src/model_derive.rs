@@ -2550,7 +2550,7 @@ fn generate_fk_accessor_methods(
 					let fk_id = self.#fk_id_field_name();
 
 					// Query the target model using the FK primary key's database codec.
-					#target_ty::objects()
+					<#target_ty as #orm_crate::Model>::objects()
 						.filter(#orm_crate::Filter::new(
 							<#target_ty as #orm_crate::Model>::primary_key_column(),
 							#orm_crate::FilterOperator::Eq,

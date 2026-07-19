@@ -154,3 +154,10 @@ impl From<ServerFnError> for ServerFnSetError {
 		Self::Transport(error)
 	}
 }
+
+impl From<reinhardt_core::exception::Error> for ServerFnSetError {
+	fn from(error: reinhardt_core::exception::Error) -> Self {
+		tracing::error!(%error, "model server function transaction failed");
+		Self::Internal
+	}
+}

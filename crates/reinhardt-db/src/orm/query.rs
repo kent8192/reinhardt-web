@@ -6078,6 +6078,22 @@ where
 		Self::decode_backend_rows(rows)
 	}
 
+	/// Execute the count query through an active transaction executor.
+	pub async fn count_with_executor(
+		&self,
+		executor: &mut dyn super::connection::TransactionExecutor,
+	) -> Result<usize, crate::backends::error::DatabaseError> {
+		let stmt = self.count_select_query().map_err(executor_error)?;
+		let (sql, values) = Self::build_select_for_backend(&stmt, Self::executor_backend(executor));
+		let params = super::execution::convert_values(values);
+		let row = executor
+			.fetch_one(&sql, params)
+			.await
+			.map_err(executor_error)?;
+		let row = QueryRow::from_backend_row(row);
+		Ok(row.get::<i64>("count").unwrap_or_default() as usize)
+	}
+
 	/// Execute the queryset through an active transaction executor and return one record.
 	pub async fn one_with_executor(
 		&self,
