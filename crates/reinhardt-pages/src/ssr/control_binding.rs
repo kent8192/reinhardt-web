@@ -139,6 +139,8 @@ fn page_option_text(page: &Page) -> String {
 		Page::Outlet(outlet) => outlet.child().map(page_option_text).unwrap_or_default(),
 		Page::Empty => String::new(),
 		Page::WithHead { view, .. } => page_option_text(view),
+		#[cfg(feature = "hmr")]
+		Page::DevTemplate { view, .. } | Page::DevSlot { view, .. } => page_option_text(view),
 		Page::ReactiveIf(_) | Page::Reactive(_) | Page::Suspense(_) | Page::Deferred(_) => {
 			String::new()
 		}

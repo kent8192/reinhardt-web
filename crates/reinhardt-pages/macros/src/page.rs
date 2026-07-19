@@ -122,6 +122,8 @@
 
 mod codegen;
 pub(crate) mod hook_deps_validator;
+#[cfg(feature = "hmr")]
+mod hot_reload;
 pub(crate) mod html_spec;
 mod scope_utils;
 mod validator;
@@ -286,5 +288,34 @@ mod tests {
 		let output = codegen::generate(&typed_ast).to_string();
 
 		assert!(output.contains("->"));
+	}
+
+	#[cfg(feature = "hmr")]
+	#[test]
+	fn test_hmr_generation_contains_descriptor_and_dynamic_slot_markers() {
+		let input = quote!(|count: i32, class_name: String, show: bool, items: Vec<i32>| {
+			section {
+				class: "shell",
+				id: class_name,
+				button { @click: |_| { self::handle_click(); }, { count } }
+			}
+			if show { div { "shown" } }
+			for item in items @key(item) { span { { item } } }
+		});
+		let untyped_ast: PageMacro = syn::parse2(input).unwrap();
+		let typed_ast = validator::validate(&untyped_ast).unwrap();
+		let output_tokens = codegen::generate(&typed_ast);
+		syn::parse2::<syn::Expr>(output_tokens.clone()).expect("HMR codegen must be valid Rust");
+		let output = output_tokens.to_string();
+
+		assert!(output.contains("with_dev_template_metadata"));
+		assert!(output.contains("TemplateDescriptor"));
+		assert!(output.contains("DynamicAbiHash"));
+		assert!(output.contains("StaticTemplateNode"));
+		assert!(output.contains("with_dev_slot"));
+		assert!(output.contains("file ! ()"));
+		assert!(output.contains("line ! ()"));
+		assert!(output.contains("column ! ()"));
+		assert!(output.contains("shell"));
 	}
 }

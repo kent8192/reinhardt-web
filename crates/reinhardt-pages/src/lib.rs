@@ -457,6 +457,9 @@
 
 #![warn(missing_docs)]
 
+#[cfg(test)]
+extern crate self as reinhardt_pages;
+
 // Re-export AST definitions from reinhardt-pages-ast
 // This is deprecated but kept for backward compatibility
 #[allow(deprecated)] // Intentional: maintaining backward compatibility with existing code
@@ -560,8 +563,8 @@ pub mod testing;
 // Static file URL resolver
 pub mod static_resolver;
 
-// Hot Module Replacement (server-side only, feature-gated)
-#[cfg(all(native, feature = "hmr"))]
+// Hot Module Replacement (feature-gated with target-neutral protocol types)
+#[cfg(feature = "hmr")]
 pub mod hmr;
 
 // Table utilities (django-tables2 equivalent)
@@ -708,3 +711,31 @@ pub mod __private {
 
 // Logging macros are automatically exported via #[macro_export]
 // Users can access them as: reinhardt_pages::debug_log!, reinhardt_pages::info_log!, etc.
+
+#[cfg(all(test, feature = "hmr"))]
+mod hmr_feature_tests {
+	use super::{Page, page};
+	use crate::hmr::protocol::{SourceId, TemplateKey};
+
+	#[test]
+	fn hmr_feature_enables_page_metadata_and_page_macro() {
+		// Arrange
+		let key = TemplateKey {
+			source_id: SourceId("src/app.rs".to_owned()),
+			line: 12,
+			column: 4,
+			nested_template_index: 0,
+		};
+
+		// Act
+		let view = page!({ "body" })
+			.with_dev_slot(3)
+			.with_dev_template_metadata(key.clone());
+		let (metadata, slot) = view.into_dev_template_parts().expect("metadata");
+
+		// Assert
+		assert_eq!(metadata.downcast_ref::<TemplateKey>(), Some(&key));
+		assert_eq!(slot.dev_slot_id(), Some(3));
+		assert!(matches!(slot, Page::DevSlot { .. }));
+	}
+}
