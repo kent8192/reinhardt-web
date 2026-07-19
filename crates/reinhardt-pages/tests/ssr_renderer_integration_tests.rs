@@ -198,6 +198,21 @@ fn test_empty_component() {
 	assert_eq!(html, "<div></div>");
 }
 
+#[tokio::test]
+async fn ssr_renderer_omits_falsy_reactive_boolean_attributes() {
+	// Arrange
+	let view = PageElement::new("button")
+		.reactive_attr("DISABLED", || Some("false".into()))
+		.into_page();
+	let mut renderer = SsrRenderer::new();
+
+	// Act
+	let html = renderer.render_view(&view).await;
+
+	// Assert
+	assert_eq!(html, "<button></button>");
+}
+
 #[test]
 fn test_component_composition() {
 	let container = PageElement::new("div")

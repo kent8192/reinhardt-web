@@ -396,6 +396,11 @@ path = "tests/wasm/activity_view_transition_wasm_test.rs"
 required-features = []
 
 [[test]]
+name = "ui_primitives_wasm_test"
+path = "tests/wasm/ui_primitives_wasm_test.rs"
+required-features = []
+
+[[test]]
 name = "custom_element_interop_wasm_test"
 path = "tests/wasm/custom_element_interop_wasm_test.rs"
 required-features = []

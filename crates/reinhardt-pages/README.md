@@ -48,6 +48,7 @@ selector whitespace.
 - **Security First**: Built-in CSRF protection, XSS prevention, and session management
 - **Simplified Conditional Compilation**: `cfg_aliases` integration and automatic event handler handling
 - **Action State Helpers**: `use_action_state` and `Action::dispatching*` reduce async mutation boilerplate
+- **Headless UI Primitives**: `reinhardt_pages::ui::{ActionButton, ActionResultPanel, ResourcePanel}` compose typed action and resource states without imposing visual styles
 - **Controlled Form Elements**: `bind:` synchronizes typed signals with text, checkbox, radio, numeric, and select controls
 
 For a React concept mapping, see
@@ -55,6 +56,41 @@ For a React concept mapping, see
 
 For route-level loaders, prepare/commit navigation, prefetch, cancellation, and
 SSR hydration, see [Route-level data loaders](docs/route_loaders.md).
+
+## Headless UI primitives
+
+The `reinhardt_pages::ui` module provides small, headless building blocks for
+action-heavy screens. `ActionButton` renders a semantic
+`<button type="button">`, dispatches an `Action`, and manages `disabled` plus
+`aria-busy="true"` while the action is pending. `ActionResultPanel` selects
+idle, pending, success, or error content. `ResourcePanel` selects loading,
+empty, success, or error content and can also consume a
+`Resource::latest_after(action)` value so a successful mutation can take
+precedence over stale resource data.
+
+```rust,ignore
+use reinhardt_pages::component::Page;
+use reinhardt_pages::ui::{ActionButton, ActionResultPanel, ResourcePanel};
+
+let save_button = ActionButton::new(save, project_id, Page::text("Save"));
+let save_result = ActionResultPanel::new(save)
+    .pending(|| Page::text("Saving"))
+    .success(|value| Page::text(value.clone()));
+let project_view = ResourcePanel::new(project)
+    .loading(|| Page::text("Loading"))
+    .success(|value| Page::text(value.clone()));
+```
+
+The examples use application-defined `save`, `project_id`, and `project`
+handles. Slot closures are repeatable: idle and pending/loading slots use
+`Fn() -> Page`, value slots use `Fn(&T) -> Page`, and error slots use
+`Fn(&E) -> Page`. `ResourcePanel::empty_if` takes `Fn(&T) -> bool` and runs
+before the success slot. Unconfigured slots render an empty page.
+
+These primitives deliberately own behavior rather than presentation. CSS,
+themes, live-region roles and announcements, localization, and error
+redaction remain application-owned. Error slots receive the typed `&E` value;
+the UI primitives do not stringify or log errors automatically.
 
 For lifecycle-managed `Head` declarations across SSR, hydration, and SPA
 navigation, see [Document head management](docs/document_head_management.md).
@@ -695,6 +731,12 @@ The prelude includes:
 - `use_optimistic`, `use_action`, `Action::with_optimistic`, `use_shared_state`, `use_sync_external_store`
 - `use_resource` (async data fetching; `use_resource(fetcher, deps![...])` uses an explicit dependency list, while SSR registers the fetcher in the request context, awaits it up to `SsrOptions::resource_timeout`, and serializes resolved state for hydration)
 - `use_query`, `use_mutation`, `QueryKey` (app-wide keyed async data cache over `#[server_fn]` reads, with manual refetch, polling, stale-time policy, and mutation invalidation)
+
+### Headless UI primitives
+
+The three public components are also re-exported by the prelude. Prefer the
+explicit `reinhardt_pages::ui::{ActionButton, ActionResultPanel, ResourcePanel}`
+path when documenting component boundaries or when a narrower import is useful.
 
 `Resource::latest_after(&action)` and `use_latest_resource_value(resource)` compose loaded resource state with one or more `Action` success values. Later actions have higher priority, and `refetch_on_success()` can automatically refresh the resource after a mutation succeeds.
 

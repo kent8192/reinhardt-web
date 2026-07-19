@@ -10,7 +10,7 @@ use crate::component::ControlKind;
 #[cfg(wasm)]
 use crate::dom::Element;
 #[cfg(wasm)]
-use reinhardt_core::types::page::{BOOLEAN_ATTRS, PageElement, is_boolean_attr_truthy};
+use reinhardt_core::types::page::{PageElement, is_boolean_attr, is_boolean_attr_truthy};
 #[cfg(wasm)]
 use wasm_bindgen::JsCast;
 
@@ -474,10 +474,17 @@ fn reconcile_attrs_at_path(
 ) -> Result<(), ReconcileError> {
 	for (name, value) in el_view.attrs() {
 		let name_str = name.as_ref();
+		let has_reactive_override = el_view
+			.reactive_attrs()
+			.iter()
+			.any(|attribute| attribute.name().eq_ignore_ascii_case(name_str));
 		if inside_controlled_select
 			&& el_view.tag_name().eq_ignore_ascii_case("option")
 			&& name_str.eq_ignore_ascii_case("selected")
 		{
+			continue;
+		}
+		if has_reactive_override {
 			continue;
 		}
 		if crate::component::into_page::controlled_attribute_is_overridden(
@@ -663,7 +670,7 @@ fn path_with_dom_component(element: &Element, path: ReconcilePath) -> ReconcileP
 
 #[cfg(wasm)]
 fn expected_dom_attr_value(name: &str, value: &str) -> Option<String> {
-	if BOOLEAN_ATTRS.contains(&name) && !is_boolean_attr_truthy(value) {
+	if is_boolean_attr(name) && !is_boolean_attr_truthy(value) {
 		None
 	} else {
 		Some(value.to_string())

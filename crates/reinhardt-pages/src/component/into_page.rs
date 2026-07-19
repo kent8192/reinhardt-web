@@ -14,12 +14,16 @@ pub use reinhardt_core::types::page::NativeEvent;
 // Re-export boolean attribute utilities (used in WASM mount)
 // Note: EventType is re-exported from dom::event module
 #[cfg(wasm)]
-pub(super) use reinhardt_core::types::page::{BOOLEAN_ATTRS, is_boolean_attr_truthy};
+pub(super) use reinhardt_core::types::page::{is_boolean_attr, is_boolean_attr_truthy};
 
 #[cfg(wasm)]
 use crate::component::reactive_if::{
-	ReactiveIfNode, ReactiveNode, clear_reactive_node_store, new_reactive_node_store,
-	store_reactive_node, with_reactive_node_store, with_reactive_node_transaction,
+	ReactiveAttributeEffects, ReactiveIfNode, ReactiveNode, store_reactive_node,
+	with_reactive_node_transaction,
+};
+#[cfg(all(wasm, feature = "hmr"))]
+use crate::component::reactive_if::{
+	clear_reactive_node_store, new_reactive_node_store, with_reactive_node_store,
 };
 #[cfg(wasm)]
 use crate::dom::control_binding::ControlBindingController;
@@ -147,8 +151,9 @@ impl PageExt for Page {
 }
 
 #[cfg(wasm)]
-use reinhardt_core::types::page::{ControlBinding, ControlKind, ControlValue};
-#[cfg(wasm)]
+use reinhardt_core::types::page::ControlValue;
+use reinhardt_core::types::page::{ControlBinding, ControlKind};
+
 pub(crate) fn controlled_attribute_is_overridden(
 	binding: Option<&ControlBinding>,
 	name: &str,
@@ -224,7 +229,7 @@ fn mount_inner(page: Page, parent: &Element) -> Result<(), MountError> {
 	match page {
 		Page::Element(el) => {
 			let doc = document();
-			let (tag, attrs, children, _is_void, event_handlers, control_binding) =
+			let (tag, attrs, reactive_attrs, children, _is_void, event_handlers, control_binding) =
 				el.into_parts_with_control_binding();
 
 			let element = doc
@@ -236,7 +241,7 @@ fn mount_inner(page: Page, parent: &Element) -> Result<(), MountError> {
 				// This ensures `disabled: ""` doesn't set the attribute
 				let name_str: &str = name.as_ref();
 				let value_str: &str = value.as_ref();
-				let is_boolean = BOOLEAN_ATTRS.contains(&name_str);
+				let is_boolean = is_boolean_attr(name_str);
 				let is_falsy = !is_boolean_attr_truthy(value_str);
 
 				if is_boolean && is_falsy {
@@ -277,6 +282,7 @@ fn mount_inner(page: Page, parent: &Element) -> Result<(), MountError> {
 					initialize_control_default(&element, binding);
 				}
 				let binding_controller = control_binding
+					.clone()
 					.map(|binding| ControlBindingController::mount(element.clone(), binding))
 					.transpose()?;
 				let mut event_handles: Vec<EventHandle> = Vec::new();
@@ -308,9 +314,46 @@ fn mount_inner(page: Page, parent: &Element) -> Result<(), MountError> {
 				}
 
 				parent
-					.append_child(element)
+					.append_child(element.clone())
 					.map_err(|_| MountError::AppendChildFailed)?;
-				store_reactive_node((binding_controller, event_handles));
+				let reactive_attribute_effects = reactive_attrs
+					.iter()
+					.enumerate()
+					.filter(|(index, attribute)| {
+						!reactive_attrs[*index + 1..]
+							.iter()
+							.any(|later| later.name().eq_ignore_ascii_case(attribute.name()))
+					})
+					.filter(|(_, attribute)| {
+						!controlled_attribute_is_overridden(
+							control_binding.as_ref(),
+							attribute.name(),
+						)
+					})
+					.map(|(_, attribute)| {
+						let attribute = attribute.clone();
+						let element = element.clone();
+						crate::reactive::Effect::new(move || match attribute.value() {
+							Some(value)
+								if is_boolean_attr(attribute.name())
+									&& !is_boolean_attr_truthy(&value) =>
+							{
+								let _ = element.remove_attribute(attribute.name());
+							}
+							Some(value) => {
+								let _ = element.set_attribute(attribute.name(), &value);
+							}
+							None => {
+								let _ = element.remove_attribute(attribute.name());
+							}
+						})
+					})
+					.collect::<Vec<_>>();
+				store_reactive_node((
+					binding_controller,
+					event_handles,
+					ReactiveAttributeEffects::new(reactive_attribute_effects),
+				));
 				Ok::<(), MountError>(())
 			};
 			with_reactive_node_transaction(mount_element)?;

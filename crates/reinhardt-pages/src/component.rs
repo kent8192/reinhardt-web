@@ -51,11 +51,12 @@ pub use into_page::{
 pub use props::Props;
 pub use reactive_if::cleanup_reactive_nodes;
 #[cfg(wasm)]
-pub use reactive_if::{ReactiveIfNode, ReactiveNode, store_reactive_node};
-#[cfg(wasm)]
 pub(crate) use reactive_if::{
-	new_reactive_node_store, store_reactive_scope, with_reactive_node_store,
+	ReactiveAttributeEffects, new_reactive_node_store, store_reactive_scope,
+	with_reactive_node_store,
 };
+#[cfg(wasm)]
+pub use reactive_if::{ReactiveIfNode, ReactiveNode, store_reactive_node};
 #[cfg(native)]
 pub(crate) use reactive_if::{scope_reactive_node_store, scope_reactive_node_transaction};
 pub use reinhardt_core::types::page::{

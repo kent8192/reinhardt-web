@@ -12,7 +12,8 @@ use crate::dom::{Element, document};
 
 #[cfg(wasm)]
 use crate::component::{
-	Page, new_reactive_node_store, store_reactive_node, with_reactive_node_store,
+	Page, ReactiveAttributeEffects, new_reactive_node_store, store_reactive_node,
+	with_reactive_node_store,
 };
 
 #[cfg(wasm)]
@@ -23,6 +24,9 @@ use crate::document_head::{
 
 #[cfg(wasm)]
 use crate::ssr::HYDRATION_ATTR_ID;
+
+#[cfg(wasm)]
+use reinhardt_core::types::page::{is_boolean_attr, is_boolean_attr_truthy};
 
 /// Errors that can occur during hydration.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1243,6 +1247,42 @@ fn attach_hydrated_element_events(
 		attach_event(element, event_type, handler.clone(), registry)
 			.map_err(|error| HydrationError::EventAttachmentFailed(error.to_string()))?;
 	}
+
+	let reactive_attribute_effects = element_view
+		.reactive_attrs()
+		.iter()
+		.enumerate()
+		.filter(|(index, attribute)| {
+			!element_view.reactive_attrs()[*index + 1..]
+				.iter()
+				.any(|later| later.name().eq_ignore_ascii_case(attribute.name()))
+		})
+		.filter(|(_, attribute)| {
+			!crate::component::into_page::controlled_attribute_is_overridden(
+				element_view.bound_control(),
+				attribute.name(),
+			)
+		})
+		.map(|(_, attribute)| attribute)
+		.cloned()
+		.map(|attribute| {
+			let element = element.clone();
+			crate::reactive::Effect::new(move || match attribute.value() {
+				Some(value)
+					if is_boolean_attr(attribute.name()) && !is_boolean_attr_truthy(&value) =>
+				{
+					let _ = element.remove_attribute(attribute.name());
+				}
+				Some(value) => {
+					let _ = element.set_attribute(attribute.name(), &value);
+				}
+				None => {
+					let _ = element.remove_attribute(attribute.name());
+				}
+			})
+		})
+		.collect::<Vec<_>>();
+	store_reactive_node(ReactiveAttributeEffects::new(reactive_attribute_effects));
 
 	Ok(())
 }

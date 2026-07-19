@@ -42,7 +42,7 @@ pub use hot_reload::DevTemplateMetadata;
 #[cfg(native)]
 pub use native_event::*;
 pub(crate) use util::html_escape;
-pub use util::{BOOLEAN_ATTRS, is_boolean_attr_truthy};
+pub use util::{BOOLEAN_ATTRS, is_boolean_attr, is_boolean_attr_truthy};
 
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -54,6 +54,31 @@ pub type PageEventHandler = Arc<dyn Fn(web_sys::Event) + 'static>;
 /// Type alias for event handler functions on native targets.
 #[cfg(native)]
 pub type PageEventHandler = Arc<dyn Fn(NativeEvent) + 'static>;
+
+#[derive(Clone)]
+pub struct ReactiveAttribute {
+	name: Cow<'static, str>,
+	render: Arc<dyn Fn() -> Option<Cow<'static, str>> + 'static>,
+}
+
+impl std::fmt::Debug for ReactiveAttribute {
+	fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		formatter
+			.debug_struct("ReactiveAttribute")
+			.field("name", &self.name)
+			.finish_non_exhaustive()
+	}
+}
+
+impl ReactiveAttribute {
+	pub fn name(&self) -> &str {
+		&self.name
+	}
+
+	pub fn value(&self) -> Option<Cow<'static, str>> {
+		(self.render)()
+	}
+}
 
 /// Error type for mounting views to the DOM.
 #[non_exhaustive]
@@ -502,6 +527,7 @@ pub struct PageElement {
 	tag: Cow<'static, str>,
 	/// HTML attributes.
 	attrs: Vec<(Cow<'static, str>, Cow<'static, str>)>,
+	reactive_attrs: Vec<ReactiveAttribute>,
 	/// Child views.
 	children: Vec<Page>,
 	/// Whether this is a void element (no closing tag).
@@ -558,6 +584,7 @@ impl PageElement {
 		Self {
 			tag,
 			attrs: Vec::new(),
+			reactive_attrs: Vec::new(),
 			children: Vec::new(),
 			is_void,
 			event_handlers: Vec::new(),
@@ -586,6 +613,17 @@ impl PageElement {
 				.into_iter()
 				.map(|(name, value)| (name.into(), value.into())),
 		);
+		self
+	}
+
+	pub fn reactive_attr<F>(mut self, name: impl Into<Cow<'static, str>>, render: F) -> Self
+	where
+		F: Fn() -> Option<Cow<'static, str>> + 'static,
+	{
+		self.reactive_attrs.push(ReactiveAttribute {
+			name: name.into(),
+			render: Arc::new(render),
+		});
 		self
 	}
 
@@ -701,6 +739,10 @@ impl PageElement {
 		&self.attrs
 	}
 
+	pub fn reactive_attrs(&self) -> &[ReactiveAttribute] {
+		&self.reactive_attrs
+	}
+
 	/// Returns the child views.
 	pub fn child_views(&self) -> &[Page] {
 		&self.children
@@ -779,13 +821,14 @@ impl PageElement {
 
 	/// Consumes the element view and returns all parts, including its control binding.
 	///
-	/// Returns a tuple of (tag, attrs, children, is_void, event_handlers, control_binding).
+	/// Returns a tuple of (tag, attrs, reactive_attrs, children, is_void, event_handlers, control_binding).
 	#[allow(clippy::type_complexity)] // Tuple decomposition is intentional for destructuring
 	pub fn into_parts_with_control_binding(
 		self,
 	) -> (
 		Cow<'static, str>,
 		Vec<(Cow<'static, str>, Cow<'static, str>)>,
+		Vec<ReactiveAttribute>,
 		Vec<Page>,
 		bool,
 		Vec<(EventName, PageEventHandler)>,
@@ -794,6 +837,7 @@ impl PageElement {
 		(
 			self.tag,
 			self.attrs,
+			self.reactive_attrs,
 			self.children,
 			self.is_void,
 			self.event_handlers,
@@ -1133,12 +1177,17 @@ impl Page {
 					&& selection.is_some_and(|selection| selection.matches(el));
 
 				for (name, value) in el.attrs() {
+					let has_reactive_attribute = el
+						.reactive_attrs()
+						.iter()
+						.any(|attribute| attribute.name().eq_ignore_ascii_case(name));
 					// Skip boolean attributes with falsy values (empty, "false", "0")
 					let name_str: &str = name.as_ref();
 					if (name_str.eq_ignore_ascii_case("value") && projects_value)
 						|| (name_str.eq_ignore_ascii_case("checked") && binding.is_some())
 						|| (name_str.eq_ignore_ascii_case("selected") && selection.is_some())
-						|| (BOOLEAN_ATTRS.contains(&name_str) && !is_boolean_attr_truthy(value))
+						|| (is_boolean_attr(name_str) && !is_boolean_attr_truthy(value))
+						|| has_reactive_attribute
 					{
 						continue;
 					}
@@ -1148,6 +1197,30 @@ impl Page {
 					output.push_str("=\"");
 					output.push_str(&html_escape(value));
 					output.push('"');
+				}
+				for (index, attribute) in el.reactive_attrs().iter().enumerate() {
+					let name = attribute.name();
+					if (name.eq_ignore_ascii_case("value") && projects_value)
+						|| (name.eq_ignore_ascii_case("checked") && binding.is_some())
+						|| (name.eq_ignore_ascii_case("selected") && selection.is_some())
+					{
+						continue;
+					}
+					if el.reactive_attrs()[index + 1..]
+						.iter()
+						.any(|later| later.name().eq_ignore_ascii_case(attribute.name()))
+					{
+						continue;
+					}
+					if let Some(value) = attribute.value()
+						&& !(is_boolean_attr(attribute.name()) && !is_boolean_attr_truthy(&value))
+					{
+						output.push(' ');
+						output.push_str(attribute.name());
+						output.push_str("=\"");
+						output.push_str(&html_escape(&value));
+						output.push('"');
+					}
 				}
 				if let Some(value) = projected_input_value
 					&& el.tag_name().eq_ignore_ascii_case("input")
@@ -1736,6 +1809,30 @@ mod tests {
 	fn test_render_simple_element() {
 		let view = PageElement::new("div").into_page();
 		assert_eq!(view.render_to_string(), "<div></div>");
+	}
+
+	#[test]
+	fn render_to_string_prefers_reactive_attributes() {
+		let view = PageElement::new("div")
+			.attr("class", "stale")
+			.reactive_attr("CLASS", || Some("current".into()))
+			.into_page();
+
+		assert_eq!(view.render_to_string(), "<div CLASS=\"current\"></div>");
+	}
+
+	#[test]
+	fn render_to_string_omits_falsy_reactive_boolean_attributes() {
+		// Arrange
+		let view = PageElement::new("button")
+			.reactive_attr("DISABLED", || Some("false".into()))
+			.into_page();
+
+		// Act
+		let html = view.render_to_string();
+
+		// Assert
+		assert_eq!(html, "<button></button>");
 	}
 
 	#[test]

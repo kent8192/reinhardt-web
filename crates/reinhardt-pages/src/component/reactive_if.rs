@@ -12,7 +12,7 @@ use crate::reactive::runtime::{EffectTiming, with_runtime};
 #[cfg(wasm)]
 use reinhardt_core::reactive::ReactiveScope;
 #[cfg(wasm)]
-use reinhardt_core::types::page::{BOOLEAN_ATTRS, MountError, Page, is_boolean_attr_truthy};
+use reinhardt_core::types::page::{MountError, Page, is_boolean_attr, is_boolean_attr_truthy};
 #[cfg(wasm)]
 use std::cell::Cell;
 use std::cell::RefCell;
@@ -174,6 +174,28 @@ pub(crate) fn store_reactive_node<T: 'static>(node: T) {
 	current_reactive_node_store()
 		.borrow_mut()
 		.push(Box::new(node));
+}
+
+/// Owns element attribute effects and disposes their runtime subscriptions on teardown.
+#[cfg(wasm)]
+pub(crate) struct ReactiveAttributeEffects {
+	effects: Vec<Effect>,
+}
+
+#[cfg(wasm)]
+impl ReactiveAttributeEffects {
+	pub(crate) fn new(effects: Vec<Effect>) -> Self {
+		Self { effects }
+	}
+}
+
+#[cfg(wasm)]
+impl Drop for ReactiveAttributeEffects {
+	fn drop(&mut self) {
+		for effect in self.effects.drain(..) {
+			effect.dispose();
+		}
+	}
 }
 
 /// Cleanup function to release all reactive nodes.
@@ -805,38 +827,68 @@ fn single_control_attrs_match(
 			let Some(existing_element) = existing_element else {
 				return false;
 			};
+			let has_reactive_override = |name: &str| {
+				element
+					.reactive_attrs()
+					.iter()
+					.any(|attribute| attribute.name().eq_ignore_ascii_case(name))
+			};
 			let expected_attrs_match = element.attrs().iter().all(|(name, value)| {
 				let name = name.as_ref();
+				if has_reactive_override(name) {
+					return true;
+				}
 				if crate::component::into_page::controlled_attribute_is_overridden(
 					element.bound_control(),
 					name,
 				) {
 					return true;
 				}
-				let expected = if BOOLEAN_ATTRS.contains(&name) && !is_boolean_attr_truthy(value) {
+				let expected = if is_boolean_attr(&name) && !is_boolean_attr_truthy(value) {
 					None
 				} else {
 					Some(value.as_ref())
 				};
 				existing_element.get_attribute(name).as_deref() == expected
-			});
+			}) && element
+				.reactive_attrs()
+				.iter()
+				.enumerate()
+				.filter(|(index, attribute)| {
+					!element.reactive_attrs()[*index + 1..]
+						.iter()
+						.any(|later| later.name().eq_ignore_ascii_case(attribute.name()))
+				})
+				.all(|(_, attribute)| {
+					if crate::component::into_page::controlled_attribute_is_overridden(
+						element.bound_control(),
+						attribute.name(),
+					) {
+						return true;
+					}
+					let expected = attribute.value().filter(|value| {
+						!(is_boolean_attr(attribute.name()) && !is_boolean_attr_truthy(value))
+					});
+					existing_element.get_attribute(attribute.name()).as_deref()
+						== expected.as_deref()
+				});
 			let actual_attrs = existing_element.attributes();
-			let actual_attrs_match = (0..actual_attrs.length()).all(|index| {
-				let Some(attribute) = actual_attrs.item(index) else {
-					return true;
-				};
-				let name = attribute.name();
-				if crate::component::into_page::controlled_attribute_is_overridden(
-					element.bound_control(),
-					&name,
-				) {
-					return true;
-				}
-				element
-					.attrs()
-					.iter()
-					.any(|(expected_name, _)| expected_name.as_ref().eq_ignore_ascii_case(&name))
-			});
+			let actual_attrs_match =
+				(0..actual_attrs.length()).all(|index| {
+					let Some(attribute) = actual_attrs.item(index) else {
+						return true;
+					};
+					let name = attribute.name();
+					if crate::component::into_page::controlled_attribute_is_overridden(
+						element.bound_control(),
+						&name,
+					) {
+						return true;
+					}
+					element.attrs().iter().any(|(expected_name, _)| {
+						expected_name.as_ref().eq_ignore_ascii_case(&name)
+					}) || has_reactive_override(&name)
+				});
 			expected_attrs_match && actual_attrs_match
 		}
 		Page::Fragment(children) => {
@@ -1034,8 +1086,15 @@ fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::No
 		Page::Element(el) => {
 			let mount_element = || {
 				// Decompose the element to avoid ownership issues
-				let (tag, attrs, children, _is_void, event_handlers, control_binding) =
-					el.into_parts_with_control_binding();
+				let (
+					tag,
+					attrs,
+					reactive_attrs,
+					children,
+					_is_void,
+					event_handlers,
+					control_binding,
+				) = el.into_parts_with_control_binding();
 				let element = document
 					.create_element(&tag)
 					.expect("should create element");
@@ -1044,7 +1103,7 @@ fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::No
 				for (name, value) in attrs {
 					// Skip falsy boolean attributes
 					let name_str: &str = name.as_ref();
-					if BOOLEAN_ATTRS.contains(&name_str) && !is_boolean_attr_truthy(&value) {
+					if is_boolean_attr(name_str) && !is_boolean_attr_truthy(&value) {
 						continue;
 					}
 					if crate::component::into_page::controlled_attribute_is_overridden(
@@ -1074,6 +1133,7 @@ fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::No
 					);
 				}
 				let binding_controller = control_binding
+					.clone()
 					.map(|binding| {
 						crate::dom::control_binding::ControlBindingController::mount(
 							element_wrapper.clone(),
@@ -1116,7 +1176,44 @@ fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::No
 				parent
 					.insert_before(&element, Some(marker))
 					.map_err(|_| MountError::AppendChildFailed)?;
-				store_reactive_node((binding_controller, event_handles));
+				let reactive_attribute_effects = reactive_attrs
+					.iter()
+					.enumerate()
+					.filter(|(index, attribute)| {
+						!reactive_attrs[*index + 1..]
+							.iter()
+							.any(|later| later.name().eq_ignore_ascii_case(attribute.name()))
+					})
+					.filter(|(_, attribute)| {
+						!crate::component::into_page::controlled_attribute_is_overridden(
+							control_binding.as_ref(),
+							attribute.name(),
+						)
+					})
+					.map(|(_, attribute)| {
+						let attribute = attribute.clone();
+						let element = element.clone();
+						Effect::new(move || match attribute.value() {
+							Some(value)
+								if is_boolean_attr(attribute.name())
+									&& !is_boolean_attr_truthy(&value) =>
+							{
+								let _ = element.remove_attribute(attribute.name());
+							}
+							Some(value) => {
+								let _ = element.set_attribute(attribute.name(), &value);
+							}
+							None => {
+								let _ = element.remove_attribute(attribute.name());
+							}
+						})
+					})
+					.collect::<Vec<_>>();
+				store_reactive_node((
+					binding_controller,
+					event_handles,
+					ReactiveAttributeEffects::new(reactive_attribute_effects),
+				));
 				Ok::<_, MountError>(element.unchecked_into::<web_sys::Node>())
 			};
 			let Ok(element) = with_reactive_node_transaction(mount_element) else {
@@ -1191,7 +1288,7 @@ fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::No
 	nodes
 }
 
-// Note: is_boolean_attr_truthy and BOOLEAN_ATTRS are imported from reinhardt_core::types::page
+// Note: boolean attribute helpers are imported from reinhardt_core::types::page.
 
 #[cfg(all(test, native))]
 mod tests {

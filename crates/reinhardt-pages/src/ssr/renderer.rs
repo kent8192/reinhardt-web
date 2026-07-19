@@ -33,7 +33,7 @@ use futures_util::StreamExt;
 use futures_util::future::{FutureExt, LocalBoxFuture};
 use futures_util::stream::{self, FuturesUnordered};
 use reinhardt_core::reactive::ReactiveScope;
-use reinhardt_core::types::page::{BOOLEAN_ATTRS, SuspenseNode, is_boolean_attr_truthy};
+use reinhardt_core::types::page::{SuspenseNode, is_boolean_attr, is_boolean_attr_truthy};
 
 /// Options for SSR rendering.
 #[derive(Debug, Clone)]
@@ -2046,17 +2046,41 @@ fn render_element_opening(
 
 	for (name, value) in element.attrs() {
 		let name = name.as_ref();
+		let has_reactive_attribute = element
+			.reactive_attrs()
+			.iter()
+			.any(|attribute| attribute.name().eq_ignore_ascii_case(name));
 		if (name.eq_ignore_ascii_case("value") && projects_value)
 			|| (name.eq_ignore_ascii_case("checked") && projects_checked)
 			|| (name.eq_ignore_ascii_case("selected") && projected_option_selection.is_some())
+			|| has_reactive_attribute
 		{
 			continue;
 		}
-		if BOOLEAN_ATTRS.contains(&name) && !is_boolean_attr_truthy(value) {
+		if is_boolean_attr(name) && !is_boolean_attr_truthy(value) {
 			continue;
 		}
 
 		push_escaped_attribute(&mut html, name, value);
+	}
+	for (index, attribute) in element.reactive_attrs().iter().enumerate() {
+		if crate::component::into_page::controlled_attribute_is_overridden(
+			element.bound_control(),
+			attribute.name(),
+		) {
+			continue;
+		}
+		if element.reactive_attrs()[index + 1..]
+			.iter()
+			.any(|later| later.name().eq_ignore_ascii_case(attribute.name()))
+		{
+			continue;
+		}
+		if let Some(value) = attribute.value()
+			&& !(is_boolean_attr(attribute.name()) && !is_boolean_attr_truthy(&value))
+		{
+			push_escaped_attribute(&mut html, attribute.name(), &value);
+		}
 	}
 
 	if projects_value {

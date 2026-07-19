@@ -6,7 +6,8 @@ use std::rc::Rc;
 use reinhardt_core::reactive::{ReactiveScope, runtime::NodeId as ReactiveNodeId};
 use reinhardt_core::types::page::{
 	ControlBinding, ControlBindingError, ControlKind, ControlValue, ControlWriteOutcome, EventName,
-	NativeEventFile, NativeEventTarget, Page, PageEventHandler, is_boolean_attr_truthy,
+	NativeEventFile, NativeEventTarget, Page, PageEventHandler, is_boolean_attr,
+	is_boolean_attr_truthy,
 };
 
 use super::fixture::{EventFixtureError, TargetStatePatch};
@@ -50,6 +51,7 @@ pub(crate) struct TestDom {
 pub(crate) struct ElementNode {
 	pub tag: String,
 	attrs: Vec<(String, String)>,
+	reactive_attrs: Vec<reinhardt_core::types::page::ReactiveAttribute>,
 	pub children: Vec<NodeId>,
 	parent: Option<NodeId>,
 	is_void: bool,
@@ -573,6 +575,7 @@ impl TestDom {
 			let TestNode::Element(element) = node else {
 				continue;
 			};
+			element.refresh_reactive_attributes();
 			let Some(binding) = element.control_binding.clone() else {
 				continue;
 			};
@@ -652,8 +655,15 @@ impl TestDom {
 					.tag_name()
 					.eq_ignore_ascii_case("option")
 					.then(|| crate::ssr::control_binding::option_value(&element));
-				let (tag, attrs, children, is_void, event_handlers, control_binding) =
-					element.into_parts_with_control_binding();
+				let (
+					tag,
+					attrs,
+					reactive_attrs,
+					children,
+					is_void,
+					event_handlers,
+					control_binding,
+				) = element.into_parts_with_control_binding();
 				let attrs = attrs
 					.into_iter()
 					.map(|(name, value)| (name.into_owned(), value.into_owned()))
@@ -687,6 +697,7 @@ impl TestDom {
 				let mut element_node = ElementNode {
 					tag: tag.into_owned(),
 					attrs,
+					reactive_attrs,
 					children: Vec::new(),
 					parent: Some(parent),
 					is_void,
@@ -704,6 +715,7 @@ impl TestDom {
 					last_observed_control_value: last_observed_control_value.clone(),
 					last_observed_signal_revision,
 				};
+				element_node.refresh_reactive_attributes();
 				let binding_supported = element_node
 					.control_binding
 					.as_ref()
@@ -783,6 +795,7 @@ impl TestDom {
 								("data-rh-outlet-id".to_string(), id),
 								("style".to_string(), "display: contents;".to_string()),
 							],
+							reactive_attrs: Vec::new(),
 							children: Vec::new(),
 							parent: Some(parent),
 							is_void: false,
@@ -1140,6 +1153,25 @@ impl ElementNode {
 			if matches!(value, ControlValue::Checked(true)) {
 				self.attrs
 					.push(("checked".to_owned(), "checked".to_owned()));
+			}
+		}
+	}
+
+	fn refresh_reactive_attributes(&mut self) {
+		for (index, attribute) in self.reactive_attrs.iter().enumerate() {
+			if self.reactive_attrs[index + 1..]
+				.iter()
+				.any(|later| later.name().eq_ignore_ascii_case(attribute.name()))
+			{
+				continue;
+			}
+			self.attrs
+				.retain(|(name, _)| !name.eq_ignore_ascii_case(attribute.name()));
+			if let Some(value) = attribute.value()
+				&& !(is_boolean_attr(attribute.name()) && !is_boolean_attr_truthy(&value))
+			{
+				self.attrs
+					.push((attribute.name().to_owned(), value.into_owned()));
 			}
 		}
 	}
