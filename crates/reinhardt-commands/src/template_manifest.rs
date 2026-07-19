@@ -198,11 +198,10 @@ struct PageMacroCollector<'a> {
 
 impl<'ast> Visit<'ast> for PageMacroCollector<'_> {
 	fn visit_macro(&mut self, macro_node: &'ast syn::Macro) {
-		if is_page_macro(&macro_node.path) {
-			if let Err(error) = self.collect_macro(macro_node) {
+		if is_page_macro(&macro_node.path)
+			&& let Err(error) = self.collect_macro(macro_node) {
 				self.errors.push(error);
 			}
-		}
 		syn::visit::visit_macro(self, macro_node);
 	}
 }
