@@ -1,5 +1,5 @@
 use reinhardt_pages::head;
 
 fn main() {
-	let _ = head!(|| { base { } });
+	let _ = head!(|| { base {} });
 }

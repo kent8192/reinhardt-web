@@ -499,7 +499,10 @@ mod ssr_tests {
 		fn leaf() -> Page {
 			let leaf_head = head!(|| {
 				title { "Leaf declaration" }
-				meta { name: "leaf-declaration", content: "present" }
+				meta {
+					name: "leaf-declaration",
+					content: "present"
+				}
 			});
 			page!(#head: leaf_head, {
 				main { "Leaf page" }
