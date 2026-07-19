@@ -1,7 +1,8 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, fmt::Write as _};
 
 use reinhardt_pages::{CssColor, CssLength, CssNumber, style_def};
 use rstest::rstest;
+use sha2::{Digest, Sha256};
 
 #[style_def]
 pub(crate) static STYLES: RuntimeStyles = style! {
@@ -25,10 +26,28 @@ pub(crate) static RANGE_STYLES: RuntimeRangeStyles = style! {
 	}
 };
 
+fn expected_scope_suffix(style_type_name: &str) -> String {
+	let identity = format!(
+		"rstyle-v2\0{}\0{}\0{style_type_name}",
+		env!("CARGO_PKG_NAME"),
+		env!("CARGO_PKG_VERSION")
+	);
+	let digest = Sha256::digest(identity.as_bytes());
+	let mut suffix = String::with_capacity(12);
+	for byte in &digest[..6] {
+		write!(&mut suffix, "{byte:02x}").expect("writing to a String cannot fail");
+	}
+	suffix
+}
+
 #[rstest]
 fn generated_accessors_and_variables_use_locked_scope_names() {
 	// Arrange
 	let accent = CssColor::parse("blue").expect("blue should be a checked color");
+	let scope_suffix = expected_scope_suffix("RuntimeStyles");
+	let expected_class = format!("card--rs-{scope_suffix}");
+	let expected_vars =
+		format!("--rs-{scope_suffix}-accent: blue;--rs-{scope_suffix}-padding: 8px;");
 
 	// Act
 	let class = STYLES.card();
@@ -39,11 +58,8 @@ fn generated_accessors_and_variables_use_locked_scope_names() {
 		.into();
 
 	// Assert
-	assert_eq!(class.as_str(), "card--rs-cde6a1fbe15e");
-	assert_eq!(
-		vars,
-		"--rs-cde6a1fbe15e-accent: blue;--rs-cde6a1fbe15e-padding: 8px;"
-	);
+	assert_eq!(class.as_str(), expected_class);
+	assert_eq!(vars.as_ref(), expected_vars);
 }
 
 #[rstest]
@@ -64,6 +80,7 @@ fn generated_variable_setters_preserve_nonnegative_property_constraints() {
 fn generated_variable_setters_preserve_numeric_range_property_constraints() {
 	// Arrange
 	let too_heavy = CssNumber::new(1001.0);
+	let expected_class = format!("card--rs-{}", expected_scope_suffix("RuntimeRangeStyles"));
 
 	// Act
 	let class = RANGE_STYLES.card();
@@ -72,6 +89,6 @@ fn generated_variable_setters_preserve_numeric_range_property_constraints() {
 	});
 
 	// Assert
-	assert_eq!(class.as_str(), "card--rs-e97db4180022");
+	assert_eq!(class.as_str(), expected_class);
 	assert!(result.is_err());
 }
