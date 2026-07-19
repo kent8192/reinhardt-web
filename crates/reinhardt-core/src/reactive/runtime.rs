@@ -453,12 +453,6 @@ impl Runtime {
 				{
 					super::memo::mark_memo_dirty_by_id(subscriber_id);
 				}
-			} else if self
-				.notification_consumers_seen
-				.borrow_mut()
-				.insert(subscriber_id)
-			{
-				self.notification_passive.borrow_mut().push(subscriber_id);
 			}
 		}
 	}
