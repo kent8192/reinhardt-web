@@ -306,8 +306,15 @@ fn mount_inner(page: Page, parent: &Element) -> Result<(), MountError> {
 					.append_child(element.clone())
 					.map_err(|_| MountError::AppendChildFailed)?;
 				let reactive_attribute_effects = reactive_attrs
-					.into_iter()
-					.map(|attribute| {
+					.iter()
+					.enumerate()
+					.filter(|(index, attribute)| {
+						!reactive_attrs[*index + 1..]
+							.iter()
+							.any(|later| later.name().eq_ignore_ascii_case(attribute.name()))
+					})
+					.map(|(_, attribute)| {
+						let attribute = attribute.clone();
 						let element = element.clone();
 						crate::reactive::Effect::new(move || match attribute.value() {
 							Some(value) => {

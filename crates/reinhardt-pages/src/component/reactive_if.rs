@@ -1095,6 +1095,7 @@ fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::No
 					);
 				}
 				let binding_controller = control_binding
+					.clone()
 					.map(|binding| {
 						crate::dom::control_binding::ControlBindingController::mount(
 							element_wrapper.clone(),
@@ -1138,8 +1139,21 @@ fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::No
 					.insert_before(&element, Some(marker))
 					.map_err(|_| MountError::AppendChildFailed)?;
 				let reactive_attribute_effects = reactive_attrs
-					.into_iter()
-					.map(|attribute| {
+					.iter()
+					.enumerate()
+					.filter(|(index, attribute)| {
+						!reactive_attrs[*index + 1..]
+							.iter()
+							.any(|later| later.name().eq_ignore_ascii_case(attribute.name()))
+					})
+					.filter(|(_, attribute)| {
+						!crate::component::into_page::controlled_attribute_is_overridden(
+							control_binding.as_ref(),
+							attribute.name(),
+						)
+					})
+					.map(|(_, attribute)| {
+						let attribute = attribute.clone();
 						let element = element.clone();
 						Effect::new(move || match attribute.value() {
 							Some(value) => {

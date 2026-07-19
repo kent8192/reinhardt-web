@@ -1997,6 +1997,12 @@ fn render_element_opening(
 		push_escaped_attribute(&mut html, name, value);
 	}
 	for (index, attribute) in element.reactive_attrs().iter().enumerate() {
+		if crate::component::into_page::controlled_attribute_is_overridden(
+			element.bound_control(),
+			attribute.name(),
+		) {
+			continue;
+		}
 		if element.reactive_attrs()[index + 1..]
 			.iter()
 			.any(|later| later.name().eq_ignore_ascii_case(attribute.name()))

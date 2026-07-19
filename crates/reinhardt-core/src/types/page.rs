@@ -1197,6 +1197,13 @@ impl Page {
 					output.push('"');
 				}
 				for (index, attribute) in el.reactive_attrs().iter().enumerate() {
+					let name = attribute.name();
+					if (name.eq_ignore_ascii_case("value") && projects_value)
+						|| (name.eq_ignore_ascii_case("checked") && binding.is_some())
+						|| (name.eq_ignore_ascii_case("selected") && selection.is_some())
+					{
+						continue;
+					}
 					if el.reactive_attrs()[index + 1..]
 						.iter()
 						.any(|later| later.name().eq_ignore_ascii_case(attribute.name()))

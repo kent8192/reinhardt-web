@@ -1203,6 +1203,19 @@ fn attach_hydrated_element_events(
 	let reactive_attribute_effects = element_view
 		.reactive_attrs()
 		.iter()
+		.enumerate()
+		.filter(|(index, attribute)| {
+			!element_view.reactive_attrs()[*index + 1..]
+				.iter()
+				.any(|later| later.name().eq_ignore_ascii_case(attribute.name()))
+		})
+		.filter(|(_, attribute)| {
+			!crate::component::into_page::controlled_attribute_is_overridden(
+				element_view.bound_control(),
+				attribute.name(),
+			)
+		})
+		.map(|(_, attribute)| attribute)
 		.cloned()
 		.map(|attribute| {
 			let element = element.clone();
