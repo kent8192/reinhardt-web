@@ -10,7 +10,7 @@ use crate::component::ControlKind;
 #[cfg(wasm)]
 use crate::dom::Element;
 #[cfg(wasm)]
-use reinhardt_core::types::page::{BOOLEAN_ATTRS, PageElement, is_boolean_attr_truthy};
+use reinhardt_core::types::page::{PageElement, is_boolean_attr, is_boolean_attr_truthy};
 #[cfg(wasm)]
 use wasm_bindgen::JsCast;
 
@@ -670,7 +670,7 @@ fn path_with_dom_component(element: &Element, path: ReconcilePath) -> ReconcileP
 
 #[cfg(wasm)]
 fn expected_dom_attr_value(name: &str, value: &str) -> Option<String> {
-	if BOOLEAN_ATTRS.contains(&name) && !is_boolean_attr_truthy(value) {
+	if is_boolean_attr(name) && !is_boolean_attr_truthy(value) {
 		None
 	} else {
 		Some(value.to_string())

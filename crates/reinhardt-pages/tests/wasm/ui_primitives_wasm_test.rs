@@ -51,7 +51,7 @@ fn reactive_boolean_attributes_remove_falsy_values_after_mount() {
 	// Arrange
 	let root = BodyRoot::new("reactive-boolean-attribute");
 	let page = PageElement::new("button")
-		.reactive_attr("disabled", || Some("false".into()))
+		.reactive_attr("DISABLED", || Some("false".into()))
 		.into_page();
 
 	// Act

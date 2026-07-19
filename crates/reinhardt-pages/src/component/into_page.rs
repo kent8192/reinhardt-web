@@ -14,7 +14,7 @@ pub use reinhardt_core::types::page::NativeEvent;
 // Re-export boolean attribute utilities (used in WASM mount)
 // Note: EventType is re-exported from dom::event module
 #[cfg(wasm)]
-pub(super) use reinhardt_core::types::page::{BOOLEAN_ATTRS, is_boolean_attr_truthy};
+pub(super) use reinhardt_core::types::page::{is_boolean_attr, is_boolean_attr_truthy};
 
 #[cfg(wasm)]
 use crate::component::reactive_if::{
@@ -241,7 +241,7 @@ fn mount_inner(page: Page, parent: &Element) -> Result<(), MountError> {
 				// This ensures `disabled: ""` doesn't set the attribute
 				let name_str: &str = name.as_ref();
 				let value_str: &str = value.as_ref();
-				let is_boolean = BOOLEAN_ATTRS.contains(&name_str);
+				let is_boolean = is_boolean_attr(name_str);
 				let is_falsy = !is_boolean_attr_truthy(value_str);
 
 				if is_boolean && is_falsy {
@@ -335,7 +335,7 @@ fn mount_inner(page: Page, parent: &Element) -> Result<(), MountError> {
 						let element = element.clone();
 						crate::reactive::Effect::new(move || match attribute.value() {
 							Some(value)
-								if BOOLEAN_ATTRS.contains(&attribute.name())
+								if is_boolean_attr(attribute.name())
 									&& !is_boolean_attr_truthy(&value) =>
 							{
 								let _ = element.remove_attribute(attribute.name());

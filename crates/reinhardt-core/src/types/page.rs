@@ -42,7 +42,7 @@ pub use hot_reload::DevTemplateMetadata;
 #[cfg(native)]
 pub use native_event::*;
 pub(crate) use util::html_escape;
-pub use util::{BOOLEAN_ATTRS, is_boolean_attr_truthy};
+pub use util::{BOOLEAN_ATTRS, is_boolean_attr, is_boolean_attr_truthy};
 
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -1186,7 +1186,7 @@ impl Page {
 					if (name_str.eq_ignore_ascii_case("value") && projects_value)
 						|| (name_str.eq_ignore_ascii_case("checked") && binding.is_some())
 						|| (name_str.eq_ignore_ascii_case("selected") && selection.is_some())
-						|| (BOOLEAN_ATTRS.contains(&name_str) && !is_boolean_attr_truthy(value))
+						|| (is_boolean_attr(name_str) && !is_boolean_attr_truthy(value))
 						|| has_reactive_attribute
 					{
 						continue;
@@ -1213,8 +1213,7 @@ impl Page {
 						continue;
 					}
 					if let Some(value) = attribute.value()
-						&& !(BOOLEAN_ATTRS.contains(&attribute.name())
-							&& !is_boolean_attr_truthy(&value))
+						&& !(is_boolean_attr(attribute.name()) && !is_boolean_attr_truthy(&value))
 					{
 						output.push(' ');
 						output.push_str(attribute.name());
@@ -1826,7 +1825,7 @@ mod tests {
 	fn render_to_string_omits_falsy_reactive_boolean_attributes() {
 		// Arrange
 		let view = PageElement::new("button")
-			.reactive_attr("disabled", || Some("false".into()))
+			.reactive_attr("DISABLED", || Some("false".into()))
 			.into_page();
 
 		// Act

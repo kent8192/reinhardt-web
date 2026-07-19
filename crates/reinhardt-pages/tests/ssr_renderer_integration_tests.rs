@@ -202,7 +202,7 @@ fn test_empty_component() {
 async fn ssr_renderer_omits_falsy_reactive_boolean_attributes() {
 	// Arrange
 	let view = PageElement::new("button")
-		.reactive_attr("disabled", || Some("false".into()))
+		.reactive_attr("DISABLED", || Some("false".into()))
 		.into_page();
 	let mut renderer = SsrRenderer::new();
 

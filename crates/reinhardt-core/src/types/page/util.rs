@@ -72,6 +72,16 @@ pub const BOOLEAN_ATTRS: &[&str] = &[
 	"truespeed",
 ];
 
+/// Returns whether an HTML attribute is boolean, ignoring ASCII case.
+///
+/// HTML attribute names are ASCII case-insensitive, so renderers must apply
+/// boolean presence semantics equally to names such as `disabled` and `DISABLED`.
+pub fn is_boolean_attr(name: &str) -> bool {
+	BOOLEAN_ATTRS
+		.iter()
+		.any(|attribute| attribute.eq_ignore_ascii_case(name))
+}
+
 /// Checks if a boolean attribute value should result in the attribute being set.
 ///
 /// Returns `true` if the value is non-empty and not "false" or "0".
@@ -126,5 +136,12 @@ mod tests {
 		assert!(!is_boolean_attr_truthy(""));
 		assert!(!is_boolean_attr_truthy("false"));
 		assert!(!is_boolean_attr_truthy("0"));
+	}
+
+	#[test]
+	fn test_is_boolean_attr_ignores_ascii_case() {
+		assert!(is_boolean_attr("disabled"));
+		assert!(is_boolean_attr("DISABLED"));
+		assert!(!is_boolean_attr("data-disabled"));
 	}
 }

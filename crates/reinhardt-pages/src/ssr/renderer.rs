@@ -33,7 +33,7 @@ use futures_util::StreamExt;
 use futures_util::future::{FutureExt, LocalBoxFuture};
 use futures_util::stream::{self, FuturesUnordered};
 use reinhardt_core::reactive::ReactiveScope;
-use reinhardt_core::types::page::{BOOLEAN_ATTRS, SuspenseNode, is_boolean_attr_truthy};
+use reinhardt_core::types::page::{SuspenseNode, is_boolean_attr, is_boolean_attr_truthy};
 
 /// Options for SSR rendering.
 #[derive(Debug, Clone)]
@@ -2057,7 +2057,7 @@ fn render_element_opening(
 		{
 			continue;
 		}
-		if BOOLEAN_ATTRS.contains(&name) && !is_boolean_attr_truthy(value) {
+		if is_boolean_attr(name) && !is_boolean_attr_truthy(value) {
 			continue;
 		}
 
@@ -2077,7 +2077,7 @@ fn render_element_opening(
 			continue;
 		}
 		if let Some(value) = attribute.value()
-			&& !(BOOLEAN_ATTRS.contains(&attribute.name()) && !is_boolean_attr_truthy(&value))
+			&& !(is_boolean_attr(attribute.name()) && !is_boolean_attr_truthy(&value))
 		{
 			push_escaped_attribute(&mut html, attribute.name(), &value);
 		}

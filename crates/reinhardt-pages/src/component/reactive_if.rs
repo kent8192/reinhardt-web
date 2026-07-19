@@ -12,7 +12,7 @@ use crate::reactive::runtime::{EffectTiming, with_runtime};
 #[cfg(wasm)]
 use reinhardt_core::reactive::ReactiveScope;
 #[cfg(wasm)]
-use reinhardt_core::types::page::{BOOLEAN_ATTRS, MountError, Page, is_boolean_attr_truthy};
+use reinhardt_core::types::page::{MountError, Page, is_boolean_attr, is_boolean_attr_truthy};
 #[cfg(wasm)]
 use std::cell::Cell;
 use std::cell::RefCell;
@@ -844,7 +844,7 @@ fn single_control_attrs_match(
 				) {
 					return true;
 				}
-				let expected = if BOOLEAN_ATTRS.contains(&name) && !is_boolean_attr_truthy(value) {
+				let expected = if is_boolean_attr(&name) && !is_boolean_attr_truthy(value) {
 					None
 				} else {
 					Some(value.as_ref())
@@ -867,8 +867,7 @@ fn single_control_attrs_match(
 						return true;
 					}
 					let expected = attribute.value().filter(|value| {
-						!(BOOLEAN_ATTRS.contains(&attribute.name())
-							&& !is_boolean_attr_truthy(value))
+						!(is_boolean_attr(attribute.name()) && !is_boolean_attr_truthy(value))
 					});
 					existing_element.get_attribute(attribute.name()).as_deref()
 						== expected.as_deref()
@@ -1104,7 +1103,7 @@ fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::No
 				for (name, value) in attrs {
 					// Skip falsy boolean attributes
 					let name_str: &str = name.as_ref();
-					if BOOLEAN_ATTRS.contains(&name_str) && !is_boolean_attr_truthy(&value) {
+					if is_boolean_attr(name_str) && !is_boolean_attr_truthy(&value) {
 						continue;
 					}
 					if crate::component::into_page::controlled_attribute_is_overridden(
@@ -1196,7 +1195,7 @@ fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::No
 						let element = element.clone();
 						Effect::new(move || match attribute.value() {
 							Some(value)
-								if BOOLEAN_ATTRS.contains(&attribute.name())
+								if is_boolean_attr(attribute.name())
 									&& !is_boolean_attr_truthy(&value) =>
 							{
 								let _ = element.remove_attribute(attribute.name());
@@ -1289,7 +1288,7 @@ fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::No
 	nodes
 }
 
-// Note: is_boolean_attr_truthy and BOOLEAN_ATTRS are imported from reinhardt_core::types::page
+// Note: boolean attribute helpers are imported from reinhardt_core::types::page.
 
 #[cfg(all(test, native))]
 mod tests {

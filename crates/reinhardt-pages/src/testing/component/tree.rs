@@ -5,8 +5,8 @@ use std::rc::Rc;
 
 use reinhardt_core::reactive::{ReactiveScope, runtime::NodeId as ReactiveNodeId};
 use reinhardt_core::types::page::{
-	BOOLEAN_ATTRS, ControlBinding, ControlBindingError, ControlKind, ControlValue,
-	ControlWriteOutcome, EventName, NativeEventFile, NativeEventTarget, Page, PageEventHandler,
+	ControlBinding, ControlBindingError, ControlKind, ControlValue, ControlWriteOutcome, EventName,
+	NativeEventFile, NativeEventTarget, Page, PageEventHandler, is_boolean_attr,
 	is_boolean_attr_truthy,
 };
 
@@ -1168,7 +1168,7 @@ impl ElementNode {
 			self.attrs
 				.retain(|(name, _)| !name.eq_ignore_ascii_case(attribute.name()));
 			if let Some(value) = attribute.value()
-				&& !(BOOLEAN_ATTRS.contains(&attribute.name()) && !is_boolean_attr_truthy(&value))
+				&& !(is_boolean_attr(attribute.name()) && !is_boolean_attr_truthy(&value))
 			{
 				self.attrs
 					.push((attribute.name().to_owned(), value.into_owned()));
