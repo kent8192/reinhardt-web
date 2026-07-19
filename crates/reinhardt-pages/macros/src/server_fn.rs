@@ -1675,7 +1675,7 @@ fn generate_server_handler(
 				_ => "Server function failed".to_string(),
 			};
 			let error = ::serde_json::from_value::<#pages_crate::server_fn::ServerFnError>(serialized_error)
-				.unwrap_or_else(|_| #pages_crate::server_fn::ServerFnError::application(error_message));
+				.unwrap_or_else(|_| #pages_crate::server_fn::ServerFnError::application_with_status(500u16, error_message));
 			let error_json = ::serde_json::to_string(&error)
 				.map_err(|e| #pages_crate::__private::bytes::Bytes::from(
 					format!("Failed to serialize error: {}", e)

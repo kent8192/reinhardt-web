@@ -136,6 +136,11 @@ impl ServerFnError {
 		Self::new(ServerFnErrorKind::Application, None, message)
 	}
 
+	/// Create an application error with an HTTP status.
+	pub fn application_with_status(status: u16, message: impl Into<String>) -> Self {
+		Self::new(ServerFnErrorKind::Application, Some(status), message)
+	}
+
 	/// Create a server-side error.
 	pub fn server(status: u16, message: impl Into<String>) -> Self {
 		Self::new(ServerFnErrorKind::Server, Some(status), message)
