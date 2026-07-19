@@ -88,7 +88,14 @@ fn expand_client_form(input: DeriveInput) -> syn::Result<proc_macro2::TokenStrea
 		}
 
 		let kind = FieldKind::classify(&field.ty)?;
-		editable_fields.push(EditableField::new(field_ident, field.vis, field.ty, kind));
+		let serialized_name = field_options.serialized_name(&field_ident);
+		editable_fields.push(EditableField::new(
+			field_ident,
+			field.vis,
+			field.ty,
+			kind,
+			serialized_name,
+		));
 	}
 
 	if editable_fields.is_empty() {
@@ -304,12 +311,12 @@ fn generate_form_items(context: FormItemContext<'_>) -> proc_macro2::TokenStream
 	let field_name_arms = field_token_fields.iter().map(|field| {
 		let raw_name = field.name.to_string();
 		let name = ident_name_without_raw_prefix(&field.name);
+		let serialized_name = &field.serialized_name;
 		let variant = &field.variant;
-		if raw_name == name {
-			quote! { #name => ::core::option::Option::Some(#field_ident::#variant) }
-		} else {
-			quote! { #name | #raw_name => ::core::option::Option::Some(#field_ident::#variant) }
-		}
+		let mut names = vec![serialized_name.clone(), name.clone(), raw_name];
+		names.sort();
+		names.dedup();
+		quote! { #(#names)|* => ::core::option::Option::Some(#field_ident::#variant) }
 	});
 	let runtime_validate_method = if validate {
 		quote! {
@@ -399,6 +406,10 @@ fn generate_form_items(context: FormItemContext<'_>) -> proc_macro2::TokenStream
 		impl #pages_crate::FormRuntimeSource for #form_ident {
 			type Values = #values_ident;
 			type Field = #field_ident;
+
+			fn runtime_field_by_name(&self, name: &str) -> ::core::option::Option<Self::Field> {
+				Self::field_from_name(name)
+			}
 
 			fn runtime_initial_values(&self) -> Self::Values {
 				self.__initial_values.borrow().clone()
@@ -580,6 +591,7 @@ struct ClientFormFieldOptions {
 	serde_skip_serializing_if: bool,
 	serde_skip_deserializing: bool,
 	serde_default: Option<SerdeDefaultExpr>,
+	serde_rename: Option<String>,
 }
 
 impl ClientFormFieldOptions {
@@ -591,6 +603,7 @@ impl ClientFormFieldOptions {
 			serde_skip_serializing_if: false,
 			serde_skip_deserializing: false,
 			serde_default: None,
+			serde_rename: None,
 		};
 		for attr in attrs {
 			if attr.path().is_ident("client_form") {
@@ -617,6 +630,8 @@ impl ClientFormFieldOptions {
 						options.serde_skip_deserializing = true;
 					} else if meta.path.is_ident("default") {
 						options.serde_default = Some(parse_serde_default_expr(meta)?);
+					} else if meta.path.is_ident("rename") {
+						options.serde_rename = Some(meta.value()?.parse::<LitStr>()?.value());
 					} else {
 						consume_serde_field_meta(meta)?;
 					}
@@ -642,6 +657,12 @@ impl ClientFormFieldOptions {
 			.as_ref()
 			.unwrap_or(&SerdeDefaultExpr::Default)
 			.to_tokens(dto_ident)
+	}
+
+	fn serialized_name(&self, field: &Ident) -> String {
+		self.serde_rename
+			.clone()
+			.unwrap_or_else(|| ident_name_without_raw_prefix(field))
 	}
 }
 
@@ -688,6 +709,7 @@ fn consume_serde_field_meta(meta: syn::meta::ParseNestedMeta<'_>) -> syn::Result
 
 struct EditableField {
 	name: Ident,
+	serialized_name: String,
 	variant: Ident,
 	vis: Visibility,
 	ty: Type,
@@ -695,13 +717,20 @@ struct EditableField {
 }
 
 impl EditableField {
-	fn new(name: Ident, vis: Visibility, ty: Type, kind: FieldKind) -> Self {
+	fn new(
+		name: Ident,
+		vis: Visibility,
+		ty: Type,
+		kind: FieldKind,
+		serialized_name: String,
+	) -> Self {
 		let variant = format_ident!(
 			"{}",
 			ident_name_without_raw_prefix(&name).to_case(Case::Pascal)
 		);
 		Self {
 			name,
+			serialized_name,
 			variant,
 			vis,
 			ty,

@@ -296,6 +296,56 @@ fn client_form_validation_maps_raw_dto_field_errors() {
 	});
 }
 
+#[derive(Clone, Default, Debug, PartialEq, ClientForm)]
+struct RenamedServerErrorRequest {
+	#[serde(rename = "displayName")]
+	display_name: String,
+	r#type: String,
+}
+
+#[test]
+fn client_form_routes_serialized_and_raw_server_field_names() {
+	ReactiveScope::run(|| {
+		let form =
+			RenamedServerErrorRequestClientForm::new().with_defaults(RenamedServerErrorRequest {
+				display_name: "Ada".to_string(),
+				r#type: "profile".to_string(),
+			});
+		let runtime = use_form(&form).build();
+		let error = ServerFnError::validation_with_message(
+			"Please correct the submitted values",
+			[
+				("displayName", "Display name is already used"),
+				("type", "Type is unsupported"),
+				("missing_field", "Unknown field"),
+			],
+		);
+
+		runtime.apply_server_error(&error);
+
+		assert_eq!(
+			runtime
+				.get_field_state(RenamedServerErrorRequestClientFormField::DisplayName)
+				.error
+				.as_ref()
+				.map(FieldError::message),
+			Some("Display name is already used")
+		);
+		assert_eq!(
+			runtime
+				.get_field_state(RenamedServerErrorRequestClientFormField::Type)
+				.error
+				.as_ref()
+				.map(FieldError::message),
+			Some("Type is unsupported")
+		);
+		assert_eq!(
+			runtime.form_state().form_error.get(),
+			Some("Please correct the submitted values\nmissing_field: Unknown field".to_string())
+		);
+	});
+}
+
 thread_local! {
 	static SUBMIT_CALL_COUNT: Cell<usize> = const { Cell::new(0) };
 }

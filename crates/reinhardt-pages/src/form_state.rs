@@ -14,6 +14,7 @@ use std::task::{Context, Poll};
 use crate::reactive::{
 	Action, ActionPhase, Effect, EffectTiming, ReactiveScope, Signal, use_action,
 };
+use crate::server_fn::ServerFnError;
 use reinhardt_core::reactive::{ScopeId, current_scope_id, scope::enter_scope};
 
 /// Polls form submission work inside the scope that owns the form state.
@@ -595,6 +596,11 @@ pub trait FormRuntimeSource: Clone + 'static {
 	fn runtime_watch_field<T>(&self, field: Self::Field) -> Option<Signal<T>>
 	where
 		T: Clone + 'static;
+
+	/// Resolves a serialized field name to its generated field token.
+	fn runtime_field_by_name(&self, _name: &str) -> Option<Self::Field> {
+		None
+	}
 
 	/// Returns the current custom-widget bridge error for one generated field.
 	fn runtime_custom_widget_error(&self, _field: Self::Field) -> Option<FieldError> {
@@ -1361,6 +1367,45 @@ where
 		let mut errors = self.state.field_errors.get();
 		errors.insert(field, error);
 		self.state.field_errors.set(errors);
+		self.sync_first_error();
+	}
+
+	/// Routes a server-function error to matching field and form-level error state.
+	pub fn apply_server_error(&self, error: &ServerFnError) {
+		let mut matched_errors = HashMap::<Form::Field, Vec<String>>::new();
+		let mut unmatched_errors = Vec::new();
+
+		for field_error in error.field_errors() {
+			if let Some(field) = self.form.runtime_field_by_name(field_error.field()) {
+				matched_errors
+					.entry(field)
+					.or_default()
+					.push(field_error.message().to_string());
+			} else {
+				unmatched_errors.push(format!(
+					"{}: {}",
+					field_error.field(),
+					field_error.message()
+				));
+			}
+		}
+
+		let field_errors: HashMap<Form::Field, FieldError> = matched_errors
+			.into_iter()
+			.map(|(field, messages)| (field, FieldError::new(messages.join("\n"))))
+			.collect();
+		let form_error = if field_errors.is_empty() || !unmatched_errors.is_empty() {
+			let mut messages = Vec::with_capacity(unmatched_errors.len() + 1);
+			messages.push(error.user_message().to_string());
+			messages.extend(unmatched_errors);
+			Some(messages.join("\n"))
+		} else {
+			None
+		};
+
+		self.state.field_errors.set(field_errors);
+		self.state.form_error.set(form_error.clone());
+		self.state.submit_error.set(form_error);
 		self.sync_first_error();
 	}
 

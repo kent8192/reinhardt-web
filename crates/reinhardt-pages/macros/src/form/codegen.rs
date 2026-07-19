@@ -405,6 +405,17 @@ fn generate_form_runtime_contract(
 		.iter()
 		.map(|field| field_variant_ident(&field.name))
 		.collect();
+	let field_name_arms: Vec<TokenStream> = all_fields
+		.iter()
+		.zip(field_variants.iter())
+		.map(|(field, variant)| {
+			let name = field.name.to_string();
+			let name = name.strip_prefix("r#").unwrap_or(&name).to_string();
+			quote! {
+				#name => ::core::option::Option::Some(#field_ident::#variant),
+			}
+		})
+		.collect();
 	let field_accessor_methods: Vec<TokenStream> = all_fields
 		.iter()
 		.zip(field_variants.iter())
@@ -1582,6 +1593,13 @@ fn generate_form_runtime_contract(
 
 			fn runtime_initial_values(&self) -> Self::Values {
 				self.__initial_values.borrow().clone()
+			}
+
+			fn runtime_field_by_name(&self, name: &str) -> ::core::option::Option<Self::Field> {
+				match name {
+					#(#field_name_arms)*
+					_ => ::core::option::Option::None,
+				}
 			}
 
 			fn runtime_current_values(&self) -> Self::Values {
