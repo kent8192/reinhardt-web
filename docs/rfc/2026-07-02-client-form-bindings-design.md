@@ -247,16 +247,19 @@ response type:
 
 ```rust
 pub trait ServerFnResponseMetadata: ServerFnMetadata {
-    type Response: serde::Serialize + serde::de::DeserializeOwned + 'static;
-    type Error: std::fmt::Display + 'static;
+    type Response: 'static;
+    type Error: 'static;
 }
 ```
 
 `#[server_fn]` implements this trait for its generated marker type, and
 `ClientForm` uses `<server_fn_path::marker as ServerFnResponseMetadata>::Response`
-for the generated submit helper output. Its declared `Error` type must implement
-`Into<ServerFnError>` so the generated helper can preserve the normalized error
-contract.
+for the generated submit helper output. The generated `submit_server_fn` helper
+adds the method-level bounds
+`Response: serde::de::DeserializeOwned` and
+`Error: Into<ServerFnError>` so it can decode the response and normalize the
+declared error. These bounds belong to the generated helper, not to
+`ServerFnResponseMetadata` itself.
 
 ## Error Handling
 
