@@ -241,6 +241,33 @@ mod ssr_tests {
 		let mut renderer = SsrRenderer::new();
 		let html = renderer.render_page_with_view_head_to_string(view).await;
 
+		assert_eq!(html.matches("charset=\"UTF-8\"").count(), 1);
+		assert_eq!(
+			html.matches("name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"")
+				.count(),
+			1
+		);
+		assert!(has_managed_head_entry(
+			&html,
+			"meta",
+			"",
+			"charset=\"UTF-8\"",
+		));
+		assert!(has_managed_head_entry(
+			&html,
+			"meta",
+			"",
+			"name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"",
+		));
+	}
+
+	#[tokio::test]
+	async fn implicit_default_meta_entries_remain_unmanaged() {
+		let mut renderer = SsrRenderer::new();
+		let html = renderer
+			.render_page_with_view_head_to_string(Page::text("Content"))
+			.await;
+
 		assert_eq!(html.matches("<meta charset=\"UTF-8\">").count(), 1);
 		assert_eq!(
 			html.matches(
@@ -249,13 +276,18 @@ mod ssr_tests {
 			.count(),
 			1
 		);
-		assert!(!html.lines().any(|line| {
-			line.contains("charset=\"UTF-8\"") && line.contains("data-reinhardt-head")
-		}));
-		assert!(!html.lines().any(|line| {
-			line.contains("name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"")
-				&& line.contains("data-reinhardt-head")
-		}));
+		assert!(!has_managed_head_entry(
+			&html,
+			"meta",
+			"",
+			"charset=\"UTF-8\"",
+		));
+		assert!(!has_managed_head_entry(
+			&html,
+			"meta",
+			"",
+			"name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"",
+		));
 	}
 
 	#[tokio::test]

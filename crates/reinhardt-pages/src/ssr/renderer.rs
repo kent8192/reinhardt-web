@@ -1803,12 +1803,14 @@ impl SsrRenderer {
 			html_escape(&self.html_lang())
 		));
 		html.push_str("<head>\n");
-		push_unique_head_entry(html, &mut seen_head_entries, "<meta charset=\"UTF-8\">");
-		push_unique_head_entry(
-			html,
-			&mut seen_head_entries,
-			"<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">",
-		);
+		for default_entry in DEFAULT_DOCUMENT_HEAD_ENTRIES {
+			if head_entries
+				.iter()
+				.all(|entry| serialize_managed_head_entry(entry) != default_entry)
+			{
+				push_unique_head_entry(html, &mut seen_head_entries, default_entry);
+			}
+		}
 
 		for entry in head_entries {
 			write_managed_head_entry(html, &mut seen_head_entries, entry);
@@ -2146,18 +2148,7 @@ fn write_managed_head_entry(
 	seen: &mut BTreeSet<String>,
 	entry: &ResolvedHeadEntry,
 ) {
-	let serialized = match entry {
-		ResolvedHeadEntry::Base { descriptor, .. } => {
-			format!("<base href=\"{}\">", html_escape(descriptor))
-		}
-		ResolvedHeadEntry::Meta { descriptor, .. } => descriptor.to_html(),
-		ResolvedHeadEntry::Title { descriptor, .. } => {
-			format!("<title>{}</title>", html_escape(descriptor))
-		}
-		ResolvedHeadEntry::Link { descriptor, .. } => descriptor.to_html(),
-		ResolvedHeadEntry::Style { descriptor, .. } => descriptor.to_html(),
-		ResolvedHeadEntry::Script { descriptor, .. } => descriptor.to_html(),
-	};
+	let serialized = serialize_managed_head_entry(entry);
 	if !seen.insert(serialized.clone()) {
 		return;
 	}
@@ -2178,6 +2169,26 @@ fn write_managed_head_entry(
 	html.push_str(&serialized[tag_name_end..]);
 	html.push('\n');
 }
+
+fn serialize_managed_head_entry(entry: &ResolvedHeadEntry) -> String {
+	match entry {
+		ResolvedHeadEntry::Base { descriptor, .. } => {
+			format!("<base href=\"{}\">", html_escape(descriptor))
+		}
+		ResolvedHeadEntry::Meta { descriptor, .. } => descriptor.to_html(),
+		ResolvedHeadEntry::Title { descriptor, .. } => {
+			format!("<title>{}</title>", html_escape(descriptor))
+		}
+		ResolvedHeadEntry::Link { descriptor, .. } => descriptor.to_html(),
+		ResolvedHeadEntry::Style { descriptor, .. } => descriptor.to_html(),
+		ResolvedHeadEntry::Script { descriptor, .. } => descriptor.to_html(),
+	}
+}
+
+const DEFAULT_DOCUMENT_HEAD_ENTRIES: [&str; 2] = [
+	"<meta charset=\"UTF-8\">",
+	"<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">",
+];
 
 fn push_unique_head_entry(
 	html: &mut String,
