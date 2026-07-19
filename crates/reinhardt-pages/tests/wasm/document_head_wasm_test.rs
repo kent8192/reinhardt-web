@@ -4,7 +4,7 @@ use js_sys::Reflect;
 use reinhardt_pages::component::{Head, Page, PageExt, ScriptTag, cleanup_reactive_nodes};
 use reinhardt_pages::dom::Element;
 use reinhardt_pages::reactive::Signal;
-use wasm_bindgen::{JsCast, JsValue};
+use wasm_bindgen::JsValue;
 use wasm_bindgen_test::*;
 
 wasm_bindgen_test_configure!(run_in_browser);
@@ -91,7 +91,7 @@ fn static_page_head_updates_managed_nodes_without_removing_unmanaged_nodes() {
 #[wasm_bindgen_test]
 fn nested_static_pages_follow_structural_order_and_cleanup() {
 	// Arrange
-	let mut fixture = DocumentHeadFixture::new();
+	let fixture = DocumentHeadFixture::new();
 	let original_title = fixture.document.title();
 	let page = Page::fragment([Page::text("inner").with_head(Head::new().title("Inner"))])
 		.with_head(Head::new().title("Outer"));
