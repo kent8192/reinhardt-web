@@ -1,5 +1,6 @@
 extern crate self as reinhardt;
 extern crate self as reinhardt_core;
+extern crate self as reinhardt_db;
 
 pub mod macros {
 	pub use reinhardt_macros::Model;
@@ -232,11 +233,7 @@ pub mod db {
 		pub struct ManyToManyAccessor<Source, Target>(core::marker::PhantomData<(Source, Target)>);
 
 		impl<Source, Target> ManyToManyAccessor<Source, Target> {
-			pub fn new(
-				_source: &Source,
-				_field_name: &str,
-				_db: super::orm::connection::DatabaseConnection,
-			) -> Self {
+			pub fn new(_source: &Source, _field_name: &str) -> Self {
 				Self(core::marker::PhantomData)
 			}
 		}
@@ -305,11 +302,15 @@ pub mod db {
 			fn field_is_none(&self, field_name: &str) -> bool;
 			fn encode_database_fields(
 				&self,
-			) -> Result<std::collections::BTreeMap<String, DatabaseValue>, FieldCodecError>;
+			) -> Result<std::collections::BTreeMap<String, DatabaseValue>, FieldCodecError> {
+				Ok(std::collections::BTreeMap::new())
+			}
 			fn decode_database_field(
-				field_name: &str,
+				_field_name: &str,
 				value: DatabaseValue,
-			) -> Result<model::ModelFieldJsonValue, FieldCodecError>;
+			) -> Result<model::ModelFieldJsonValue, FieldCodecError> {
+				value.into_json_value()
+			}
 			fn validate_fixture_fields(
 				_fields: &FixtureFields,
 			) -> core::result::Result<(), String> {

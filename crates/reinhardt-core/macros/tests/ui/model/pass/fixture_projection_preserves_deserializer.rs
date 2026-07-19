@@ -63,7 +63,7 @@ mod optional_uuid_serde {
 	}
 }
 
-#[model(table_name = "fixture_projection_models")]
+#[model(app_label = "fixtures", table_name = "fixture_projection_models")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct FixtureProjectionModel {
 	#[field(primary_key = true)]

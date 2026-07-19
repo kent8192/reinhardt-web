@@ -4,7 +4,7 @@ include!("../support.rs");
 
 use db::orm::Model;
 
-#[model(table_name = "native_models")]
+#[model(app_label = "default", table_name = "native_models")]
 #[derive(Debug, Clone)]
 struct NativeModel {
 	#[field(primary_key = true)]
