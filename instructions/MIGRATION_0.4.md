@@ -3,6 +3,27 @@
 This guide covers the breaking Reinhardt Pages event API and closure-scoped ORM
 transaction API introduced for 0.4.
 
+## Structured server-function errors
+
+`ServerFnError` is now a structured type with `kind()`, `status()`,
+`user_message()`, and `field_errors()` accessors. Replace enum constructors,
+pattern matches, and raw response JSON parsing with the typed API:
+
+| Previous API | New API |
+| --- | --- |
+| `ServerFnError::Network(message)` | `ServerFnError::transport(message)` |
+| `ServerFnError::Serialization(message)` | `ServerFnError::serialization(message)` or `ServerFnError::transport(message)` |
+| `ServerFnError::Deserialization(message)` | `ServerFnError::deserialization(message)` |
+| `ServerFnError::Server { status, message }` | `ServerFnError::server(status, message)` |
+| `ServerFnError::Application(message)` | `ServerFnError::application(message)` |
+| enum pattern matching | `kind()`, `status()`, `user_message()`, and `field_errors()` |
+| raw error JSON parsing | typed `ServerFnError` accessors |
+
+Server-function failures now use the version 1 JSON envelope with lowercase
+`kind`, nullable `status`, a safe `message`, and `field_errors`. Legacy
+externally tagged JSON is not accepted as a runtime fallback. Deploy server and
+WASM client artifacts together so both sides use the version 1 envelope.
+
 ## Closure-scoped ORM transactions
 
 ORM transactions are now exclusively closure-scoped. `DatabaseConnection::atomic`

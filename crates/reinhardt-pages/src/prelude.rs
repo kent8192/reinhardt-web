@@ -173,7 +173,7 @@ pub use crate::router::loader::{
 // ============================================================================
 
 pub use crate::api::{ApiModel, ApiQuerySet, Filter, FilterOp};
-pub use crate::server_fn::{ServerFn, ServerFnError};
+pub use crate::server_fn::{ServerFn, ServerFnError, ServerFnErrorKind, ServerFnFieldError};
 
 // ============================================================================
 // Authentication and Security

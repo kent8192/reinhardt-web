@@ -89,6 +89,33 @@
 //! - [`static_resolver`]: Static file URL resolution (collectstatic support)
 //! - [`mod@style`]: Scoped class composition and typed runtime CSS values
 //!
+//! ## Structured server-function errors
+//!
+//! [`ServerFnError`] carries a versioned error envelope with a stable kind,
+//! optional HTTP status, safe user message, and validation field errors. Match
+//! on [`ServerFnErrorKind`] instead of parsing response JSON:
+//!
+//! ```no_run
+//! use reinhardt_pages::{ServerFnError, ServerFnErrorKind};
+//!
+//! # fn log(_: &str, _: &str) {}
+//! # fn redirect_to_login() {}
+//! # fn show_message(_: &str) {}
+//! # let error = ServerFnError::validation_with_message(
+//! #     "Please correct the submitted values",
+//! #     [("email", "Enter a valid email address")],
+//! # );
+//! match error.kind() {
+//!     ServerFnErrorKind::Validation => {
+//!         for field_error in error.field_errors() {
+//!             log(field_error.field(), field_error.message());
+//!         }
+//!     }
+//!     ServerFnErrorKind::Auth => redirect_to_login(),
+//!     _ => show_message(error.user_message()),
+//! }
+//! ```
+//!
 //! ## Typed server function sets
 //!
 //! [`server_fn::server_fnset`] groups existing server function markers into a
@@ -643,7 +670,7 @@ pub use router::Link;
 pub use reactive::hooks::router::{NavigateError, RouterHandle, use_router};
 pub use router::{NavigationType, navigate};
 pub use router::{Path, Query};
-pub use server_fn::{ServerFn, ServerFnError};
+pub use server_fn::{ServerFn, ServerFnError, ServerFnErrorKind, ServerFnFieldError};
 pub use ssr::SsrState;
 #[cfg(native)]
 pub use ssr::{SsrChunk, SsrOptions, SsrRenderer, SsrRouteOutput, SsrStream};
