@@ -1,9 +1,9 @@
 use chrono::{DateTime, Utc};
 #[cfg(server)]
 use reinhardt::core::exception::Result;
+use reinhardt::db::associations::ForeignKeyField;
 #[cfg(server)]
 use reinhardt::db::orm::OrmExecutor;
-use reinhardt::db::associations::ForeignKeyField;
 use reinhardt::prelude::*;
 use serde::{Deserialize, Serialize};
 

@@ -32,6 +32,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **BREAKING**: Route-backed component macros now require the route name as
   `name = "..."`, for example `#[component("/path", name = "name")]`.
 
+### Removed
+
+- *(hmr)* remove the whole-root `HtmlReplace` message and client-side
+  `innerHTML` replacement path in favor of state-preserving template patches.
+
 ### Migration Notes
 
 - **BREAKING**: Dependency-aware hooks now require a named second argument.
