@@ -159,6 +159,10 @@ impl HydrationContext {
 	}
 
 	/// Gets a successful route-loader value by its stable loader ID.
+	///
+	/// Route-loader values are serialized in their own namespace so initial
+	/// navigation hydration can restore the typed loader store without relying
+	/// on call-order resource identifiers.
 	pub fn get_route_loader_state(&self, id: impl AsRef<str>) -> Option<&serde_json::Value> {
 		self.state.get_route_loader_state(id)
 	}
@@ -265,6 +269,10 @@ fn validate_hydrated_controls(element: &Element, view: &Page) -> Result<(), Hydr
 			validate_hydrated_element_children(element, element_view.child_views())?;
 		}
 		Page::WithHead { view, .. } => validate_hydrated_controls(element, view)?,
+		#[cfg(feature = "hmr")]
+		Page::DevTemplate { view, .. } | Page::DevSlot { view, .. } => {
+			validate_hydrated_controls(element, view)?
+		}
 		Page::Fragment(children) => validate_hydrated_element_children(element, children)?,
 		Page::KeyedFragment(children) => {
 			let child_views = children
@@ -329,6 +337,10 @@ fn validate_hydrated_child_controls(
 			}
 		}
 		Page::WithHead { view, .. } => validate_hydrated_child_controls(nodes, view)?,
+		#[cfg(feature = "hmr")]
+		Page::DevTemplate { view, .. } | Page::DevSlot { view, .. } => {
+			validate_hydrated_child_controls(nodes, view)?
+		}
 		Page::Fragment(children) => validate_hydrated_child_sequence(nodes, children)?,
 		Page::KeyedFragment(children) => {
 			let child_views = children
@@ -698,6 +710,10 @@ fn install_hydrated_child_reactive_nodes(
 		Page::WithHead { view, .. } => {
 			install_hydrated_child_reactive_nodes(parent, nodes, next_sibling, view, registry)?;
 		}
+		#[cfg(feature = "hmr")]
+		Page::DevTemplate { view, .. } | Page::DevSlot { view, .. } => {
+			install_hydrated_child_reactive_nodes(parent, nodes, next_sibling, view, registry)?;
+		}
 		Page::Fragment(children) => {
 			install_hydrated_children_reactive_nodes(
 				parent,
@@ -775,6 +791,8 @@ fn hydrated_node_count(view: &Page) -> usize {
 			.sum(),
 		Page::Outlet(outlet) => outlet.child().map(hydrated_node_count).unwrap_or(0),
 		Page::WithHead { view, .. } => hydrated_node_count(view),
+		#[cfg(feature = "hmr")]
+		Page::DevTemplate { view, .. } | Page::DevSlot { view, .. } => hydrated_node_count(view),
 		Page::ReactiveIf(reactive_if) => {
 			let branch_view = if reactive_if.condition() {
 				reactive_if.then_view()
@@ -873,6 +891,10 @@ fn collect_expected_dom_children(view: &Page, children: &mut Vec<ExpectedDomChil
 			}
 		}
 		Page::WithHead { view, .. } => collect_expected_dom_children(view, children),
+		#[cfg(feature = "hmr")]
+		Page::DevTemplate { view, .. } | Page::DevSlot { view, .. } => {
+			collect_expected_dom_children(view, children)
+		}
 		Page::ReactiveIf(reactive_if) => {
 			let branch_view = if reactive_if.condition() {
 				reactive_if.then_view()
@@ -1035,6 +1057,10 @@ fn collect_event_child_views(views: &[Page], children: &mut Vec<Page>) {
 			Page::WithHead { view, .. } => {
 				collect_event_child_views(std::slice::from_ref(view), children);
 			}
+			#[cfg(feature = "hmr")]
+			Page::DevTemplate { view, .. } | Page::DevSlot { view, .. } => {
+				collect_event_child_views(std::slice::from_ref(view), children);
+			}
 			Page::ReactiveIf(reactive_if) => {
 				let branch_view = if reactive_if.condition() {
 					reactive_if.then_view()
@@ -1108,6 +1134,10 @@ pub(crate) fn attach_events_recursive(
 		Page::WithHead { view, .. } => {
 			// Head section doesn't have event handlers
 			// Attach events to the inner view
+			attach_events_recursive(element, view, registry)?;
+		}
+		#[cfg(feature = "hmr")]
+		Page::DevTemplate { view, .. } | Page::DevSlot { view, .. } => {
 			attach_events_recursive(element, view, registry)?;
 		}
 		Page::ReactiveIf(reactive_if) => {
@@ -1269,7 +1299,6 @@ mod tests {
 	use crate::reactive::{ReactiveScope, Signal, with_runtime};
 	#[cfg(wasm)]
 	use reinhardt_core::deps;
-	use rstest::rstest;
 	#[cfg(wasm)]
 	use std::cell::{Cell, RefCell};
 	#[cfg(wasm)]
@@ -1315,13 +1344,14 @@ mod tests {
 		);
 	}
 
-	#[rstest]
+	#[test]
 	fn test_hydration_context_get_route_loader_state() {
 		let mut state = SsrState::new();
 		state.add_route_loader_state("app::loader", serde_json::json!({"name": "Ada"}));
-		let ctx = HydrationContext::from_state(state);
+		let context = HydrationContext::from_state(state);
+
 		assert_eq!(
-			ctx.get_route_loader_state("app::loader"),
+			context.get_route_loader_state("app::loader"),
 			Some(&serde_json::json!({"name": "Ada"}))
 		);
 	}

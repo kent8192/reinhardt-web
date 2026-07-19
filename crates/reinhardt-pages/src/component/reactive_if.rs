@@ -1150,6 +1150,10 @@ fn mount_before_marker(marker: &web_sys::Comment, view: Page) -> Vec<web_sys::No
 			// Head is handled separately; just mount the content
 			nodes.extend(mount_before_marker(marker, *view));
 		}
+		#[cfg(feature = "hmr")]
+		Page::DevTemplate { view, .. } | Page::DevSlot { view, .. } => {
+			nodes.extend(mount_before_marker(marker, *view));
+		}
 		Page::ReactiveIf(reactive_if) => {
 			let (condition, then_view, else_view) = reactive_if.into_parts();
 			let nested_node =

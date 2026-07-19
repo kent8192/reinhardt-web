@@ -1111,6 +1111,8 @@ impl ClientLauncher {
 		let document = window
 			.document()
 			.ok_or_else(|| wasm_bindgen::JsValue::from_str("no document on window"))?;
+		#[cfg(feature = "hmr")]
+		crate::hmr::HmrBridge::new().install(&document)?;
 
 		if self.intercept_links {
 			let guard = install_link_interceptor(&document)?;

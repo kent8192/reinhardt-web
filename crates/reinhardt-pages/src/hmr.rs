@@ -27,16 +27,44 @@
 //! server.start().await;
 //! ```
 
+#[cfg(native)]
 mod change_kind;
+#[cfg(native)]
 mod client_script;
+#[cfg(native)]
 mod config;
+#[cfg(native)]
 mod message;
+pub mod protocol;
+pub use protocol::*;
+#[cfg(wasm)]
+pub mod bridge;
+#[cfg(wasm)]
+pub use bridge::HmrBridge;
+#[cfg(wasm)]
+pub mod diagnostics;
+#[cfg(wasm)]
+pub mod overlay;
+#[cfg(wasm)]
+pub mod patch_transaction;
+#[cfg(native)]
 mod server;
+#[cfg(wasm)]
+pub mod template_instance;
+#[cfg(wasm)]
+pub mod template_registry;
+#[cfg(native)]
 mod watcher;
 
+#[cfg(native)]
 pub use change_kind::ChangeKind;
+#[cfg(native)]
 pub use client_script::{HMR_CLIENT_SCRIPT, hmr_script_tag};
+#[cfg(native)]
 pub use config::{HmrConfig, HmrConfigBuilder};
+#[cfg(native)]
 pub use message::HmrMessage;
+#[cfg(native)]
 pub use server::HmrServer;
+#[cfg(native)]
 pub use watcher::FileWatcher;
