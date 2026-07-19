@@ -3293,14 +3293,7 @@ where
 
 	fn filter_value_to_sea_value(v: &FilterValue) -> reinhardt_query::value::Value {
 		match v {
-			FilterValue::String(s) => {
-				// Try to parse as UUID first for proper PostgreSQL uuid column handling
-				if let Ok(uuid) = Uuid::parse_str(s) {
-					reinhardt_query::value::Value::Uuid(Some(Box::new(uuid)))
-				} else {
-					s.clone().into()
-				}
-			}
+			FilterValue::String(s) => s.clone().into(),
 			FilterValue::Integer(i) | FilterValue::Int(i) => (*i).into(),
 			FilterValue::Float(f) => (*f).into(),
 			FilterValue::Boolean(b) | FilterValue::Bool(b) => (*b).into(),
