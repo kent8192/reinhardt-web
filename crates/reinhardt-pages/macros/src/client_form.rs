@@ -3,6 +3,7 @@
 use convert_case::{Case, Casing};
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
+use std::collections::BTreeMap;
 use syn::{
 	Data, DeriveInput, Fields, Ident, LitStr, Path, Token, Type, Visibility, parse_macro_input,
 };
@@ -98,6 +99,8 @@ fn expand_client_form(input: DeriveInput) -> syn::Result<proc_macro2::TokenStrea
 		));
 	}
 
+	reject_runtime_field_name_collisions(&editable_fields)?;
+
 	if editable_fields.is_empty() {
 		return Err(syn::Error::new_spanned(
 			dto_ident,
@@ -129,6 +132,30 @@ fn expand_client_form(input: DeriveInput) -> syn::Result<proc_macro2::TokenStrea
 			#submit_method
 		}
 	})
+}
+
+fn reject_runtime_field_name_collisions(fields: &[EditableField]) -> syn::Result<()> {
+	let mut accepted_names: BTreeMap<String, &EditableField> = BTreeMap::new();
+
+	for field in fields {
+		let name = ident_name_without_raw_prefix(&field.name);
+		let raw_name = field.name.to_string();
+		for accepted_name in [field.serialized_name.clone(), name, raw_name] {
+			if let Some(previous) = accepted_names.get(&accepted_name)
+				&& previous.name != field.name
+			{
+				return Err(syn::Error::new_spanned(
+					&field.name,
+					format!(
+						"ClientForm field name `{accepted_name}` collides with another field's runtime alias"
+					),
+				));
+			}
+			accepted_names.insert(accepted_name, field);
+		}
+	}
+
+	Ok(())
 }
 
 struct FormItemContext<'a> {

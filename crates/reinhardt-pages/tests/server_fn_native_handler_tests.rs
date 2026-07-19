@@ -223,6 +223,29 @@ async fn custom_error_handler_returns_a_versioned_error_envelope() {
 	assert_eq!(error.message(), "Custom failure");
 }
 
+#[tokio::test]
+async fn malformed_server_fn_request_returns_bad_request_envelope() {
+	// Arrange
+	let request = Request::builder()
+		.method(Method::POST)
+		.uri("/api/server_fn/echo_name")
+		.body(Bytes::from_static(br#"{"name":}"#))
+		.build()
+		.expect("request should build");
+
+	// Act
+	let body = echo_name::marker::handle(request)
+		.await
+		.expect_err("malformed request should be rejected");
+	let error: ServerFnError = serde_json::from_slice(&body).expect("error should be valid JSON");
+
+	// Assert
+	assert_eq!(echo_name::marker::error_status(&body), 400);
+	assert_eq!(error.kind(), ServerFnErrorKind::Server);
+	assert_eq!(error.status(), Some(400));
+	assert_eq!(error.message(), "Invalid server function request");
+}
+
 #[test]
 fn http_response_error_decoding_preserves_envelopes_and_sanitizes_raw_bodies() {
 	// Arrange

@@ -1335,19 +1335,19 @@ fn generate_server_handler(
 	let deserialize_code = match codec {
 		"json" => quote! {
 			let args: #args_struct_name = ::serde_json::from_slice(body)
-				.map_err(|e| format!("Failed to deserialize arguments: {}", e))?;
+				.map_err(|_| __invalid_request_error())?;
 		},
 		"url" => quote! {
 			let args: #args_struct_name = ::serde_urlencoded::from_str(&body)
-				.map_err(|e| format!("Failed to deserialize arguments: {}", e))?;
+				.map_err(|_| __invalid_request_error())?;
 		},
 		"msgpack" => quote! {
 			// Decode base64 to bytes
 			let bytes = ::base64::Engine::decode(&::base64::engine::general_purpose::STANDARD, &body)
-				.map_err(|e| format!("Failed to decode base64: {}", e))?;
+				.map_err(|_| __invalid_request_error())?;
 			// Deserialize from msgpack bytes
 			let args: #args_struct_name = ::rmp_serde::from_slice(&bytes)
-				.map_err(|e| format!("Failed to deserialize arguments: {}", e))?;
+				.map_err(|_| __invalid_request_error())?;
 		},
 		// Fixes #843: emit compile error for unknown codec instead of silent fallback
 		unknown => {
@@ -1460,12 +1460,13 @@ fn generate_server_handler(
 						__req.body().as_ref()
 					} else {
 						let __body_text = ::std::string::String::from_utf8(__req.body().to_vec())
-							.map_err(|e| format!("Body is not valid UTF-8: {}", e))?;
+							.map_err(|_| __invalid_request_error())?;
 						__converted_body = #pages_crate::server_fn::convert_body_for_codec(
 							__body_text,
 							&__content_type,
 							#codec,
-						)?;
+						)
+						.map_err(|_| __invalid_request_error())?;
 						__converted_body.as_bytes()
 					};
 				}
@@ -1478,7 +1479,7 @@ fn generate_server_handler(
 						.and_then(|value| value.to_str().ok())
 						.unwrap_or("");
 					let body = __req.read_body()
-						.map_err(|e| format!("Failed to read body: {}", e))?;
+						.map_err(|_| __invalid_request_error())?;
 					let __media_type = __content_type
 						.split(';')
 						.next()
@@ -1491,12 +1492,13 @@ fn generate_server_handler(
 						body.as_ref()
 					} else {
 						let __body_text = ::std::string::String::from_utf8(body.to_vec())
-							.map_err(|e| format!("Body is not valid UTF-8: {}", e))?;
+							.map_err(|_| __invalid_request_error())?;
 						__converted_body = #pages_crate::server_fn::convert_body_for_codec(
 							__body_text,
 							&__content_type,
 							#codec,
-						)?;
+						)
+						.map_err(|_| __invalid_request_error())?;
 						__converted_body.as_bytes()
 					};
 				}
@@ -1508,11 +1510,28 @@ fn generate_server_handler(
 					.and_then(|value| value.to_str().ok())
 					.unwrap_or("");
 				let body = __req.read_body()
-					.map_err(|e| format!("Failed to read body: {}", e))?;
+					.map_err(|_| __invalid_request_error())?;
 				let body = ::std::string::String::from_utf8(body.to_vec())
-					.map_err(|e| format!("Body is not valid UTF-8: {}", e))?;
-				let body = #pages_crate::server_fn::convert_body_for_codec(body, &__content_type, #codec)?;
+					.map_err(|_| __invalid_request_error())?;
+				let body = #pages_crate::server_fn::convert_body_for_codec(body, &__content_type, #codec)
+					.map_err(|_| __invalid_request_error())?;
 			},
+		}
+	};
+	let invalid_request_error = if regular_params.is_empty() {
+		quote! {}
+	} else {
+		quote! {
+			let __invalid_request_error = || {
+				let error = #pages_crate::server_fn::ServerFnError::server(
+					400u16,
+					"Invalid server function request",
+				);
+				#pages_crate::__private::bytes::Bytes::from(
+					::serde_json::to_string(&error)
+						.expect("ServerFnError must serialize into its versioned error envelope"),
+				)
+			};
 		}
 	};
 	let wrapper_body_extraction = quote! {};
@@ -1670,8 +1689,8 @@ fn generate_server_handler(
 					error_body
 				} else {
 					let error = #pages_crate::server_fn::ServerFnError::server(
-						400u16,
-						"Invalid server function request",
+						500u16,
+						"Internal server error",
 					);
 					#pages_crate::__private::bytes::Bytes::from(
 						::serde_json::to_string(&error)
@@ -2028,6 +2047,7 @@ fn generate_server_handler(
 		#handler_signature {
 			use ::serde::Deserialize;
 			let __handler_result = async {
+			#invalid_request_error
 
 			// Argument struct for deserialization (only regular parameters)
 			#[derive(Deserialize)]
