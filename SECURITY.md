@@ -194,7 +194,7 @@ Your report should include:
 1. **Keep Dependencies Updated**
    - Regularly update Rust dependencies
    - Monitor security advisories for dependencies
-   - Use `cargo audit` to check for vulnerabilities
+   - Use `cargo deny` to check dependency policy
 
 2. **Input Validation**
    - Always validate user input
@@ -236,7 +236,7 @@ Your report should include:
 4. **Dependencies**
    - Keep dependencies updated
    - Review security advisories
-   - Use `cargo-audit` in CI
+   - Use `cargo-deny` in CI
 
 5. **Error Handling**
    - Don't expose sensitive information in errors
