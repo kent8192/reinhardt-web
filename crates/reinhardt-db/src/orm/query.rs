@@ -4357,7 +4357,7 @@ where
 			self.select_related_query()
 		};
 
-		let (sql, params) = build_select_statement(&stmt, conn.backend());
+		let (sql, params) = build_select_statement(&stmt, conn.backend())?;
 
 		let started_at = Instant::now();
 		let query_result = conn.query(&sql, params.clone()).await;
@@ -6433,15 +6433,18 @@ fn escape_like_pattern(value: &str) -> String {
 fn build_select_statement(
 	statement: &SelectStatement,
 	backend: super::connection::DatabaseBackend,
-) -> (String, Vec<QueryValue>) {
+) -> reinhardt_core::exception::Result<(String, Vec<QueryValue>)> {
 	let (sql, values) = match backend {
 		super::connection::DatabaseBackend::Postgres => statement.build(PostgresQueryBuilder),
 		super::connection::DatabaseBackend::MySql => statement.build(MySqlQueryBuilder),
 		super::connection::DatabaseBackend::Sqlite => statement.build(SqliteQueryBuilder),
 	};
 
-	let params = values.into_iter().map(query_value_from_sea_value).collect();
-	(sql, params)
+	let params = values
+		.into_iter()
+		.map(query_value_from_sea_value)
+		.collect::<reinhardt_core::exception::Result<Vec<_>>>()?;
+	Ok((sql, params))
 }
 
 #[cfg(test)]
@@ -6449,12 +6452,13 @@ fn render_select_statement(
 	statement: &SelectStatement,
 	backend: super::connection::DatabaseBackend,
 ) -> String {
-	let (sql, values) = build_select_statement(statement, backend);
+	let (sql, values) = build_select_statement(statement, backend)
+		.expect("test statements must contain bind values supported by QueryValue");
 	inline_query_params(&sql, &values)
 }
 
-fn query_value_from_sea_value(value: Value) -> QueryValue {
-	match value {
+fn query_value_from_sea_value(value: Value) -> reinhardt_core::exception::Result<QueryValue> {
+	let value = match value {
 		Value::Bool(Some(v)) => QueryValue::Bool(v),
 		Value::TinyInt(Some(v)) => QueryValue::Int(i64::from(v)),
 		Value::SmallInt(Some(v)) => QueryValue::Int(i64::from(v)),
@@ -6463,7 +6467,11 @@ fn query_value_from_sea_value(value: Value) -> QueryValue {
 		Value::TinyUnsigned(Some(v)) => QueryValue::Int(i64::from(v)),
 		Value::SmallUnsigned(Some(v)) => QueryValue::Int(i64::from(v)),
 		Value::Unsigned(Some(v)) => QueryValue::Int(i64::from(v)),
-		Value::BigUnsigned(Some(v)) => QueryValue::Int(v.try_into().unwrap_or(i64::MAX)),
+		Value::BigUnsigned(Some(v)) => QueryValue::Int(i64::try_from(v).map_err(|_| {
+			reinhardt_core::exception::Error::Database(format!(
+				"Unsigned query parameter {v} exceeds the supported i64 range"
+			))
+		})?),
 		Value::Float(Some(v)) => QueryValue::Float(f64::from(v)),
 		Value::Double(Some(v)) => QueryValue::Float(v),
 		Value::Char(Some(v)) => QueryValue::String(v.to_string()),
@@ -6472,7 +6480,8 @@ fn query_value_from_sea_value(value: Value) -> QueryValue {
 		Value::ChronoDateTimeUtc(Some(v)) => QueryValue::Timestamp(*v),
 		Value::Uuid(Some(v)) => QueryValue::Uuid(*v),
 		_ => QueryValue::Null,
-	}
+	};
+	Ok(value)
 }
 
 #[cfg(test)]
@@ -6545,7 +6554,8 @@ mod tests {
 			);
 
 		// Act
-		let (sql, params) = build_select_statement(&statement, DatabaseBackend::MySql);
+		let (sql, params) = build_select_statement(&statement, DatabaseBackend::MySql)
+			.expect("string filter should fit in QueryValue");
 
 		// Assert
 		assert_eq!(sql, "SELECT `id` FROM `users` WHERE `name` = ?");
@@ -6554,6 +6564,26 @@ mod tests {
 			vec![crate::backends::types::QueryValue::String(
 				payload.to_string()
 			)]
+		);
+	}
+
+	#[test]
+	fn build_select_statement_rejects_oversized_unsigned_parameters() {
+		// Arrange
+		let mut statement = reinhardt_query::prelude::Query::select();
+		statement
+			.column(reinhardt_query::prelude::Alias::new("id"))
+			.from(reinhardt_query::prelude::Alias::new("users"))
+			.limit((i64::MAX as u64) + 1);
+
+		// Act
+		let error = build_select_statement(&statement, DatabaseBackend::MySql)
+			.expect_err("oversized unsigned parameters must not be clamped");
+
+		// Assert
+		assert_eq!(
+			error.to_string(),
+			"Database error: Unsigned query parameter 9223372036854775808 exceeds the supported i64 range"
 		);
 	}
 
