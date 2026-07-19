@@ -77,7 +77,7 @@ mod manager {
 	use reinhardt::DatabaseConnection;
 	use reinhardt::Model;
 	use reinhardt::core::async_trait;
-	use reinhardt::core::exception::Error;
+	use reinhardt::core::exception::{DatabaseError, DatabaseErrorKind, Error};
 	use reinhardt::di::injectable;
 	// `BaseUserManager` lives in `reinhardt-auth` and is not yet re-exported
 	// at the top level of `reinhardt`; reach it via the doc-hidden module
