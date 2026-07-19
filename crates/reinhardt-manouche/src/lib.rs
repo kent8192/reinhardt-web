@@ -70,6 +70,7 @@
 //! ```
 
 pub mod core;
+pub mod hot_reload;
 pub mod parser;
 pub mod style;
 pub mod validator;
