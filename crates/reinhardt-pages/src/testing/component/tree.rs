@@ -809,6 +809,13 @@ impl TestDom {
 				*view,
 				rejected_number_snapshots,
 			),
+			#[cfg(feature = "hmr")]
+			Page::DevTemplate { view, .. } | Page::DevSlot { view, .. } => self
+				.append_page_with_rejected_number_snapshots(
+					parent,
+					*view,
+					rejected_number_snapshots,
+				),
 			Page::ReactiveIf(reactive_if) => {
 				let (condition, then_view, else_view) = reactive_if.into_parts();
 				let render: Rc<dyn Fn() -> Page + 'static> = Rc::new(move || {

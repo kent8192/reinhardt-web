@@ -21,6 +21,11 @@ use tokio::time::{Instant, sleep, timeout_at};
 
 use crate::CommandContext;
 use crate::source_roots::SourceRoots;
+#[cfg(feature = "pages")]
+use crate::{
+	DispatchOutcome, TemplateBuildArtifact, TemplateHotReloadCoordinator,
+	template_manifest::collect_client_baseline,
+};
 
 /// Default time window over which bursts of events are coalesced into a single
 /// rebuild trigger.
@@ -116,6 +121,9 @@ impl RebuildTargets {
 
 /// Configuration for `run_watcher`.
 pub struct WatcherConfig {
+	/// Project root used to derive stable, project-relative template keys.
+	#[cfg(feature = "pages")]
+	pub project_root: PathBuf,
 	/// Bin name passed to `cargo build --bin`.
 	pub bin_name: String,
 	/// Advertised runserver address that must be reachable after restart.
@@ -136,6 +144,9 @@ pub struct WatcherConfig {
 	/// successful rebuild. `None` keeps the watcher in compile-only mode.
 	#[cfg(feature = "pages")]
 	pub hmr_tx: Option<broadcast::Sender<String>>,
+	/// HMR server used for retained patch replay and client acknowledgements.
+	#[cfg(feature = "pages")]
+	pub hmr_server: Option<reinhardt_pages::hmr::HmrServer>,
 	/// Last-good component style compiler state processed before rebuild classification.
 	#[cfg(feature = "pages")]
 	pub component_styles: Option<std::sync::Arc<std::sync::Mutex<crate::ComponentStyleState>>>,
@@ -265,6 +276,15 @@ fn paths_change_cargo_metadata(paths: &[PathBuf]) -> bool {
 }
 
 #[cfg(feature = "pages")]
+fn can_attempt_template_patch(paths: &[PathBuf], config: &WatcherConfig) -> bool {
+	if !config.pages_enabled || config.no_wasm_rebuild || paths_change_cargo_metadata(paths) {
+		return false;
+	}
+	let targets = rebuild_targets_for_paths(paths, config);
+	targets.wasm && !targets.server
+}
+
+#[cfg(feature = "pages")]
 fn wasm_rebuild_succeeded(outcome: &crate::wasm_rebuild_pipeline::WasmRebuildOutcome) -> bool {
 	matches!(
 		outcome,
@@ -297,6 +317,27 @@ async fn wait_for_server_ready(address: Option<&str>) -> bool {
 		}
 		sleep(Duration::from_millis(50)).await;
 	}
+}
+
+#[cfg(feature = "pages")]
+async fn next_hmr_client_event(receiver: &mut Option<broadcast::Receiver<String>>) -> String {
+	loop {
+		let Some(receiver) = receiver.as_mut() else {
+			return std::future::pending::<String>().await;
+		};
+		match receiver.recv().await {
+			Ok(event) => return event,
+			Err(broadcast::error::RecvError::Lagged(_)) => continue,
+			Err(broadcast::error::RecvError::Closed) => {
+				return std::future::pending::<String>().await;
+			}
+		}
+	}
+}
+
+#[cfg(not(feature = "pages"))]
+async fn next_hmr_client_event(_: &mut ()) -> String {
+	std::future::pending::<String>().await
 }
 
 #[cfg(feature = "pages")]
@@ -353,30 +394,6 @@ fn commit_pending_component_styles(
 	}
 }
 
-#[cfg(feature = "pages")]
-fn notify_static_page_patch(
-	hmr_tx: Option<&broadcast::Sender<String>>,
-	paths: &[PathBuf],
-	targets: RebuildTargets,
-) -> bool {
-	if hmr_tx.is_none() || targets.server || !targets.wasm {
-		return false;
-	}
-	let Some(html) = crate::page_hot_patch::render_static_page_patch(paths) else {
-		return false;
-	};
-	let msg = reinhardt_pages::hmr::HmrMessage::HtmlReplace {
-		selector: "#app".to_string(),
-		html,
-	};
-	if let Ok(json) = msg.to_json()
-		&& let Some(tx) = hmr_tx
-	{
-		return tx.send(json).is_ok();
-	}
-	false
-}
-
 /// Dispatch one debounced path batch through the selected rebuild pipelines.
 ///
 /// This is split out from [`run_watcher`] so tests can validate the
@@ -396,6 +413,10 @@ pub async fn run_rebuild_for_paths(
 		paths,
 		current_child,
 		respawn,
+		#[cfg(feature = "pages")]
+		None,
+		#[cfg(feature = "pages")]
+		None,
 	)
 	.await;
 }
@@ -407,6 +428,10 @@ async fn run_rebuild_for_paths_for_package(
 	paths: Vec<PathBuf>,
 	current_child: &mut tokio::process::Child,
 	respawn: &(impl Fn() -> std::io::Result<tokio::process::Child> + Send + Sync),
+	#[cfg(feature = "pages")] mut template_coordinator: Option<&mut TemplateHotReloadCoordinator>,
+	#[cfg(feature = "pages")] template_fallback_generation: Option<
+		reinhardt_pages::hmr::PatchGeneration,
+	>,
 ) {
 	ctx.info(&format!(
 		"[hot-reload] change detected ({} path(s))",
@@ -447,14 +472,6 @@ async fn run_rebuild_for_paths_for_package(
 		ctx.info("[hot-reload] no rebuild target matched; waiting for next change");
 		return;
 	}
-	#[cfg(feature = "pages")]
-	if style_stage == crate::ComponentStyleStageResult::Unchanged
-		&& notify_static_page_patch(config.hmr_tx.as_ref(), &paths, targets)
-	{
-		ctx.info("[hot-reload] static page patch sent without rebuilding WASM");
-		return;
-	}
-
 	let wasm_fut = async {
 		#[cfg(feature = "pages")]
 		{
@@ -503,14 +520,26 @@ async fn run_rebuild_for_paths_for_package(
 			false
 		};
 		#[cfg(feature = "pages")]
-		if wasm_ok
+		let browser_ready = wasm_ok
 			&& server_ready
 			&& (css_only
-				|| commit_pending_component_styles(config.component_styles.as_ref(), wasm_ok))
-		{
+				|| commit_pending_component_styles(config.component_styles.as_ref(), wasm_ok));
+		#[cfg(feature = "pages")]
+		let template_fallback_handled = finalize_template_fallback_build(
+			template_coordinator.as_deref_mut(),
+			template_fallback_generation,
+			config,
+			browser_ready,
+		);
+		#[cfg(feature = "pages")]
+		if browser_ready && !template_fallback_handled {
 			notify_browser_reload(
 				config.hmr_tx.as_ref(),
 				"Rust rebuild completed successfully",
+			);
+			refresh_template_baseline_after_full_reload(
+				template_coordinator.as_deref_mut(),
+				config,
 			);
 		}
 		#[cfg(not(feature = "pages"))]
@@ -521,10 +550,23 @@ async fn run_rebuild_for_paths_for_package(
 		let component_styles_committed =
 			wasm_ok && commit_pending_component_styles(config.component_styles.as_ref(), wasm_ok);
 		#[cfg(feature = "pages")]
-		if should_notify_wasm_reload(wasm_ok, css_only, component_styles_committed) {
+		let browser_ready = should_notify_wasm_reload(wasm_ok, css_only, component_styles_committed);
+		#[cfg(feature = "pages")]
+		let template_fallback_handled = finalize_template_fallback_build(
+			template_coordinator.as_deref_mut(),
+			template_fallback_generation,
+			config,
+			browser_ready,
+		);
+		#[cfg(feature = "pages")]
+		if browser_ready && !template_fallback_handled {
 			notify_browser_reload(
 				config.hmr_tx.as_ref(),
 				"WASM rebuild completed successfully",
+			);
+			refresh_template_baseline_after_full_reload(
+				template_coordinator.as_deref_mut(),
+				config,
 			);
 		}
 		#[cfg(not(feature = "pages"))]
@@ -552,6 +594,64 @@ async fn run_rebuild_for_paths_for_package(
 	}
 	// Pipeline failures are recorded as log lines and never propagate as Err;
 	// the caller's loop continues unconditionally.
+}
+
+#[cfg(feature = "pages")]
+fn finalize_template_fallback_build(
+	coordinator: Option<&mut TemplateHotReloadCoordinator>,
+	generation: Option<reinhardt_pages::hmr::PatchGeneration>,
+	config: &WatcherConfig,
+	browser_ready: bool,
+) -> bool {
+	let (Some(coordinator), Some(generation)) = (coordinator, generation) else {
+		return false;
+	};
+	if !browser_ready {
+		coordinator.publish_build_failure(
+			generation,
+			reinhardt_pages::hmr::DiagnosticTarget::WasmRustc,
+			"The fallback build did not become ready; the last working page remains active.",
+		);
+		return true;
+	}
+	match collect_client_baseline(&config.project_root, &config.roots.src_dirs) {
+		Ok(baseline) => {
+			let artifact = TemplateBuildArtifact {
+				build_id: baseline.build_id,
+				manifest_digest: baseline.manifest_digest,
+				baseline,
+			};
+			if let Err(error) = coordinator.install_successful_build(artifact) {
+				coordinator.publish_build_failure(
+					generation,
+					reinhardt_pages::hmr::DiagnosticTarget::Template,
+					format!("failed to install the rebuilt template manifest: {error}"),
+				);
+			}
+		}
+		Err(error) => coordinator.publish_build_failure(
+			generation,
+			reinhardt_pages::hmr::DiagnosticTarget::Template,
+			format!("failed to collect the rebuilt template manifest: {error}"),
+		),
+	}
+	true
+}
+
+#[cfg(feature = "pages")]
+fn refresh_template_baseline_after_full_reload(
+	coordinator: Option<&mut TemplateHotReloadCoordinator>,
+	config: &WatcherConfig,
+) {
+	let Some(coordinator) = coordinator else {
+		return;
+	};
+	match collect_client_baseline(&config.project_root, &config.roots.src_dirs) {
+		Ok(baseline) => coordinator.refresh_successful_baseline(baseline),
+		Err(error) => eprintln!(
+			"[hot-reload] unable to refresh template patch baseline after full reload: {error}"
+		),
+	}
 }
 
 #[cfg(feature = "pages")]
@@ -671,6 +771,36 @@ pub(crate) async fn run_watcher_for_package(
 	}
 
 	let mut shutdown_rx = shutdown_rx;
+	#[cfg(feature = "pages")]
+	let mut template_coordinator = if config.pages_enabled && !config.no_wasm_rebuild {
+		match (
+			config.hmr_server.clone(),
+			collect_client_baseline(&config.project_root, &config.roots.src_dirs),
+		) {
+			(Some(server), Ok(baseline)) => {
+				let mut coordinator =
+					TemplateHotReloadCoordinator::new(config.project_root.clone(), Some(server));
+				coordinator.install_initial_baseline(baseline);
+				Some(coordinator)
+			}
+			(Some(_), Err(error)) => {
+				ctx.warning(&format!(
+					"[hot-reload] template patching is unavailable until the next successful WASM build: {error}"
+				));
+				None
+			}
+			(None, _) => None,
+		}
+	} else {
+		None
+	};
+	#[cfg(feature = "pages")]
+	let mut hmr_client_events = config
+		.hmr_server
+		.as_ref()
+		.map(reinhardt_pages::hmr::HmrServer::client_events);
+	#[cfg(not(feature = "pages"))]
+	let mut hmr_client_events = ();
 
 	loop {
 		tokio::select! {
@@ -680,6 +810,45 @@ pub(crate) async fn run_watcher_for_package(
 				let _ = current_child.wait().await;
 				return Ok(());
 			}
+			client_event = next_hmr_client_event(&mut hmr_client_events) => {
+				#[cfg(feature = "pages")]
+				{
+					let fallback = reinhardt_pages::hmr::HmrMessage::from_json(&client_event)
+						.ok()
+						.and_then(|message| match message {
+							reinhardt_pages::hmr::HmrMessage::PatchApplied { generation } => {
+								template_coordinator
+									.as_mut()
+									.map(|coordinator| coordinator.handle_patch_applied(generation));
+								None
+							}
+							reinhardt_pages::hmr::HmrMessage::PatchRejected { generation, reason } => {
+								template_coordinator.as_mut().and_then(|coordinator| {
+									let outcome = coordinator.handle_patch_rejection(generation, reason);
+									matches!(outcome, DispatchOutcome::RebuildStarted(_))
+										.then(|| coordinator.pending_rebuild_paths().map(|paths| (generation, paths.to_vec())))
+										.flatten()
+								})
+							}
+							_ => None,
+						});
+					if let Some((generation, paths)) = fallback {
+						run_rebuild_for_paths_for_package(
+							ctx,
+							config,
+							rebuild_context,
+							paths,
+							&mut current_child,
+							&respawn,
+							template_coordinator.as_mut(),
+							Some(generation),
+						)
+						.await;
+					}
+				}
+				#[cfg(not(feature = "pages"))]
+				let _ = client_event;
+			}
 				debounced = debounce_next(&mut rx, config.debounce_window) => {
 					let Some(paths) = debounced else {
 						// Channel closed: the watcher dropped or the OS torn
@@ -688,15 +857,34 @@ pub(crate) async fn run_watcher_for_package(
 						let _ = current_child.wait().await;
 						return Ok(());
 					};
-					run_rebuild_for_paths_for_package(
-						ctx,
-						config,
-						rebuild_context,
-						paths,
-						&mut current_child,
-						&respawn,
-					)
-					.await;
+					#[cfg(feature = "pages")]
+					let (patch_sent, fallback_generation) = if can_attempt_template_patch(&paths, config) {
+						match template_coordinator.as_mut().map(|coordinator| coordinator.classify_and_dispatch(paths.clone())) {
+							Some(DispatchOutcome::PatchSent(_) | DispatchOutcome::IgnoredStale(_)) => (true, None),
+							Some(DispatchOutcome::RebuildStarted(generation)) => (false, Some(generation)),
+							Some(DispatchOutcome::DiagnosticPublished(generation)) => (false, Some(generation)),
+							None => (false, None),
+						}
+					} else {
+						(false, None)
+					};
+					#[cfg(not(feature = "pages"))]
+					let patch_sent = false;
+					if !patch_sent {
+						run_rebuild_for_paths_for_package(
+							ctx,
+							config,
+							rebuild_context,
+							paths,
+							&mut current_child,
+							&respawn,
+							#[cfg(feature = "pages")]
+							template_coordinator.as_mut(),
+							#[cfg(feature = "pages")]
+							fallback_generation,
+						)
+						.await;
+					}
 				}
 		}
 	}
@@ -866,6 +1054,7 @@ mod tests {
 	#[cfg(feature = "pages")]
 	fn pages_config(no_wasm_rebuild: bool) -> WatcherConfig {
 		WatcherConfig {
+			project_root: PathBuf::from("/project"),
 			bin_name: "manage".to_string(),
 			address: "127.0.0.1:8000".to_string(),
 			roots: SourceRoots {
@@ -878,6 +1067,7 @@ mod tests {
 			no_wasm_rebuild,
 			pages_enabled: true,
 			hmr_tx: None,
+			hmr_server: None,
 			component_styles: None,
 		}
 	}
@@ -1101,127 +1291,6 @@ mod tests {
 		assert_eq!(
 			std::fs::read(&stylesheet).expect("read retained stylesheet"),
 			before
-		);
-	}
-
-	#[cfg(feature = "pages")]
-	#[test]
-	fn notify_static_page_patch_sends_html_replace_for_wasm_only_static_page() {
-		// Arrange
-		let temp_dir = tempfile::tempdir().expect("tempdir should be created");
-		let client_path = temp_dir.path().join("src").join("client.rs");
-		std::fs::create_dir_all(
-			client_path
-				.parent()
-				.expect("client path should have parent"),
-		)
-		.expect("client dir should be created");
-		std::fs::write(
-			&client_path,
-			r#"
-				use reinhardt_pages::page;
-
-				fn home_page() -> Page {
-					page!(|| {
-						div {
-							id: "route-home",
-							"Updated"
-						}
-					})()
-				}
-			"#,
-		)
-		.expect("client page fixture should be written");
-		let (tx, mut rx) = broadcast::channel::<String>(8);
-
-		// Act
-		let sent = notify_static_page_patch(
-			Some(&tx),
-			&[client_path],
-			RebuildTargets {
-				server: false,
-				wasm: true,
-			},
-		);
-
-		// Assert
-		assert!(sent, "static page patch should be sent");
-		let json = rx
-			.try_recv()
-			.expect("html patch message should be broadcast");
-		let message: reinhardt_pages::hmr::HmrMessage =
-			serde_json::from_str(&json).expect("message should be valid HMR JSON");
-		assert_eq!(
-			message,
-			reinhardt_pages::hmr::HmrMessage::HtmlReplace {
-				selector: "#app".to_string(),
-				html: r#"<div id="route-home">Updated</div>"#.to_string(),
-			}
-		);
-	}
-
-	#[cfg(feature = "pages")]
-	#[test]
-	fn notify_static_page_patch_falls_back_for_server_target() {
-		// Arrange
-		let (tx, _rx) = broadcast::channel::<String>(8);
-
-		// Act
-		let sent = notify_static_page_patch(
-			Some(&tx),
-			&[PathBuf::from("/project/src/lib.rs")],
-			RebuildTargets {
-				server: true,
-				wasm: true,
-			},
-		);
-
-		// Assert
-		assert!(!sent, "shared files must keep the rebuild path");
-	}
-
-	#[cfg(feature = "pages")]
-	#[test]
-	fn notify_static_page_patch_falls_back_without_hmr_receiver() {
-		// Arrange
-		let temp_dir = tempfile::tempdir().expect("tempdir should be created");
-		let client_path = temp_dir.path().join("src").join("client.rs");
-		std::fs::create_dir_all(
-			client_path
-				.parent()
-				.expect("client path should have parent"),
-		)
-		.expect("client dir should be created");
-		std::fs::write(
-			&client_path,
-			r#"
-				use reinhardt_pages::page;
-
-				fn home_page() -> Page {
-					page!(|| {
-						div { "Updated" }
-					})()
-				}
-			"#,
-		)
-		.expect("client page fixture should be written");
-		let (tx, rx) = broadcast::channel::<String>(8);
-		drop(rx);
-
-		// Act
-		let sent = notify_static_page_patch(
-			Some(&tx),
-			&[client_path],
-			RebuildTargets {
-				server: false,
-				wasm: true,
-			},
-		);
-
-		// Assert
-		assert!(
-			!sent,
-			"hot patch must fall back to WASM rebuild when no browser receives it"
 		);
 	}
 }

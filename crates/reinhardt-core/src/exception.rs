@@ -67,6 +67,20 @@ pub enum Error {
 	#[error("Database error: {0}")]
 	Database(#[from] DatabaseError),
 
+	/// Database-related error that preserves its typed source.
+	///
+	/// The structured [`DatabaseError`] keeps the database classification used
+	/// for HTTP status mapping, while `source` retains the originating error
+	/// for diagnostics.
+	#[error("Database error: {database_error}")]
+	DatabaseWithSource {
+		/// Structured database classification and diagnostic message.
+		database_error: DatabaseError,
+		/// Original typed error that caused the database failure.
+		#[source]
+		source: Box<dyn std::error::Error + Send + Sync>,
+	},
+
 	/// Serialization/deserialization errors (status code: 400)
 	///
 	/// # Examples
@@ -402,19 +416,23 @@ impl Error {
 	pub fn status_code(&self) -> u16 {
 		match self {
 			Error::Http(_) => 400,
-			Error::Database(database_error) => match database_error.kind() {
-				DatabaseErrorKind::UniqueViolation | DatabaseErrorKind::ForeignKeyViolation => 409,
-				DatabaseErrorKind::NotNullViolation | DatabaseErrorKind::CheckViolation => 400,
-				DatabaseErrorKind::Connection | DatabaseErrorKind::Timeout => 503,
-				DatabaseErrorKind::Syntax
-				| DatabaseErrorKind::Type
-				| DatabaseErrorKind::ColumnNotFound
-				| DatabaseErrorKind::Transaction
-				| DatabaseErrorKind::Configuration
-				| DatabaseErrorKind::Serialization
-				| DatabaseErrorKind::Unsupported
-				| DatabaseErrorKind::Query => 500,
-			},
+			Error::Database(database_error) | Error::DatabaseWithSource { database_error, .. } => {
+				match database_error.kind() {
+					DatabaseErrorKind::UniqueViolation | DatabaseErrorKind::ForeignKeyViolation => {
+						409
+					}
+					DatabaseErrorKind::NotNullViolation | DatabaseErrorKind::CheckViolation => 400,
+					DatabaseErrorKind::Connection | DatabaseErrorKind::Timeout => 503,
+					DatabaseErrorKind::Syntax
+					| DatabaseErrorKind::Type
+					| DatabaseErrorKind::ColumnNotFound
+					| DatabaseErrorKind::Transaction
+					| DatabaseErrorKind::Configuration
+					| DatabaseErrorKind::Serialization
+					| DatabaseErrorKind::Unsupported
+					| DatabaseErrorKind::Query => 500,
+				}
+			}
 			Error::Serialization(_) => 400,
 			Error::Validation(_) => 400,
 			Error::Authentication(_) => 401,
@@ -440,7 +458,7 @@ impl Error {
 	pub fn kind(&self) -> ErrorKind {
 		match self {
 			Error::Http(_) => ErrorKind::Http,
-			Error::Database(_) => ErrorKind::Database,
+			Error::Database(_) | Error::DatabaseWithSource { .. } => ErrorKind::Database,
 			Error::Serialization(_) => ErrorKind::Serialization,
 			Error::Validation(_) => ErrorKind::Validation,
 			Error::Authentication(_) => ErrorKind::Authentication,
@@ -465,7 +483,11 @@ impl Error {
 	/// Returns the structured database error when this is a database failure.
 	pub fn database_error(&self) -> Option<&DatabaseError> {
 		match self {
-			Self::Database(error) => Some(error),
+			Self::Database(error)
+			| Self::DatabaseWithSource {
+				database_error: error,
+				..
+			} => Some(error),
 			_ => None,
 		}
 	}
@@ -473,6 +495,18 @@ impl Error {
 	/// Returns the database classification when this is a database failure.
 	pub fn database_kind(&self) -> Option<DatabaseErrorKind> {
 		self.database_error().map(DatabaseError::kind)
+	}
+
+	/// Creates a structured database error while retaining a typed source error.
+	pub fn database_with_source(
+		kind: DatabaseErrorKind,
+		message: impl Into<String>,
+		source: impl std::error::Error + Send + Sync + 'static,
+	) -> Self {
+		Self::DatabaseWithSource {
+			database_error: DatabaseError::new(kind, message),
+			source: Box::new(source),
+		}
 	}
 }
 
@@ -517,6 +551,10 @@ impl From<crate::validators::ValidationErrors> for Error {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[derive(Debug, thiserror::Error)]
+	#[error("test source")]
+	struct TestSourceError;
 
 	#[test]
 	fn test_error_kind_mapping() {
@@ -609,6 +647,29 @@ mod tests {
 			Error::ParseError("test".to_string()).kind(),
 			ErrorKind::Parse
 		);
+	}
+
+	#[test]
+	fn test_database_error_with_source_preserves_classification_and_source() {
+		let error = Error::database_with_source(
+			DatabaseErrorKind::Serialization,
+			"typed field codec failed: test source",
+			TestSourceError,
+		);
+
+		assert_eq!(error.kind(), ErrorKind::Database);
+		assert_eq!(
+			error.database_kind(),
+			Some(DatabaseErrorKind::Serialization)
+		);
+		assert_eq!(error.status_code(), 500);
+		assert_eq!(
+			error.to_string(),
+			"Database error: typed field codec failed: test source"
+		);
+		let source = std::error::Error::source(&error)
+			.expect("database error should preserve its typed source");
+		assert!(source.downcast_ref::<TestSourceError>().is_some());
 	}
 
 	#[test]

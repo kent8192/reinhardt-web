@@ -13,25 +13,26 @@ pub async fn vote_internal(
 	request: VoteRequest,
 	db: DatabaseConnection,
 ) -> Result<ChoiceInfo, ServerFnError> {
-	let updated_choice = db.atomic(async |transaction| {
-		let choice_manager = Choice::objects();
+	let updated_choice = db
+		.atomic(async |transaction| {
+			let choice_manager = Choice::objects();
 
-		let mut choice = choice_manager
-			.get(request.choice_id)
-			.first_with_db(transaction)
-			.await?
-			.ok_or(VoteRequestError::ChoiceNotFound)?;
+			let mut choice = choice_manager
+				.get(request.choice_id)
+				.first_with_db(transaction)
+				.await?
+				.ok_or(VoteRequestError::ChoiceNotFound)?;
 
-		if choice.question_id() != request.question_id {
-			return Err(VoteRequestError::ChoiceQuestionMismatch);
-		}
+			if choice.question_id() != request.question_id {
+				return Err(VoteRequestError::ChoiceQuestionMismatch);
+			}
 
-		choice.vote_with_conn(transaction).await?;
+			choice.vote_with_conn(transaction).await?;
 
-		Ok(choice)
-	})
-	.await
-	.map_err(map_vote_error)?;
+			Ok(choice)
+		})
+		.await
+		.map_err(map_vote_error)?;
 
 	Ok(ChoiceInfo::from(updated_choice))
 }

@@ -18,14 +18,107 @@ pub(super) use reinhardt_core::types::page::{BOOLEAN_ATTRS, is_boolean_attr_trut
 
 #[cfg(wasm)]
 use crate::component::reactive_if::{
-	ReactiveIfNode, ReactiveNode, store_reactive_node, with_reactive_node_transaction,
+	ReactiveIfNode, ReactiveNode, clear_reactive_node_store, new_reactive_node_store,
+	store_reactive_node, with_reactive_node_store, with_reactive_node_transaction,
 };
 #[cfg(wasm)]
 use crate::dom::control_binding::ControlBindingController;
 #[cfg(wasm)]
 use crate::dom::{Element, EventHandle};
+#[cfg(all(wasm, feature = "hmr"))]
+use crate::hmr::{
+	DynamicSlotId, TemplatePatch, TemplatePatchBatch,
+	patch_transaction::PatchTransaction,
+	template_instance::{
+		DomRange, DynamicRange, MountedSlot, ReactiveOwnerHandle, TemplateInstance,
+	},
+	template_registry::TemplateRegistry,
+};
+#[cfg(all(wasm, feature = "hmr"))]
+use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
 #[cfg(wasm)]
 use wasm_bindgen::JsCast;
+
+#[cfg(all(wasm, feature = "hmr"))]
+struct TemplateMountContext {
+	slots: BTreeMap<DynamicSlotId, MountedSlot>,
+}
+
+#[cfg(all(wasm, feature = "hmr"))]
+thread_local! {
+	static TEMPLATE_MOUNT_CONTEXTS: RefCell<Vec<Rc<RefCell<TemplateMountContext>>>> = const { RefCell::new(Vec::new()) };
+}
+
+#[cfg(all(wasm, feature = "hmr"))]
+fn with_template_mount_context<T>(
+	mount: impl FnOnce() -> Result<T, MountError>,
+) -> Result<(T, BTreeMap<DynamicSlotId, MountedSlot>), MountError> {
+	let context = Rc::new(RefCell::new(TemplateMountContext {
+		slots: BTreeMap::new(),
+	}));
+	TEMPLATE_MOUNT_CONTEXTS.with(|contexts| contexts.borrow_mut().push(Rc::clone(&context)));
+	let result = mount();
+	TEMPLATE_MOUNT_CONTEXTS.with(|contexts| {
+		let popped = contexts.borrow_mut().pop();
+		debug_assert!(popped.is_some_and(|value| Rc::ptr_eq(&value, &context)));
+	});
+	let slots = std::mem::take(&mut context.borrow_mut().slots);
+	result.map(|value| (value, slots))
+}
+
+#[cfg(all(wasm, feature = "hmr"))]
+fn record_template_slot(slot_id: DynamicSlotId, slot: MountedSlot) {
+	TEMPLATE_MOUNT_CONTEXTS.with(|contexts| {
+		if let Some(context) = contexts.borrow().last() {
+			context.borrow_mut().slots.insert(slot_id, slot);
+		}
+	});
+}
+
+#[cfg(all(wasm, feature = "hmr"))]
+fn nodes_between(start: &web_sys::Comment, end: &web_sys::Comment) -> Vec<web_sys::Node> {
+	let end_node: web_sys::Node = end.clone().unchecked_into();
+	let mut current = start.next_sibling();
+	let mut nodes = Vec::new();
+	while let Some(node) = current {
+		if node.is_same_node(Some(&end_node)) {
+			break;
+		}
+		current = node.next_sibling();
+		nodes.push(node);
+	}
+	nodes
+}
+
+/// Replays the latest validated static overlay after a new instance mounts.
+///
+/// A static edit is delivered to currently mounted instances immediately, but
+/// navigation or a later list iteration can create another instance from the
+/// old compiled page value. Reapplying the validated overlay through the same
+/// transaction path keeps that future instance consistent without evaluating
+/// new Rust code or altering its dynamic ABI.
+#[cfg(all(wasm, feature = "hmr"))]
+fn replay_template_overlay(
+	registry: &TemplateRegistry,
+	descriptor: &crate::hmr::TemplateDescriptor,
+) {
+	let Some(static_tree) = registry.overlay_for(&descriptor.key) else {
+		return;
+	};
+	let (build_id, manifest_digest, generation) = registry.identity();
+	let batch = TemplatePatchBatch {
+		build_id,
+		manifest_digest,
+		generation,
+		patches: vec![TemplatePatch::static_replacement(descriptor, static_tree)],
+	};
+	if let Err(error) = PatchTransaction::plan(&batch, registry).and_then(PatchTransaction::commit)
+	{
+		web_sys::console::error_1(
+			&format!("failed to replay template hot-reload overlay: {error}").into(),
+		);
+	}
+}
 
 /// Extension trait for mounting Page to DOM (WASM only).
 ///
@@ -254,6 +347,104 @@ fn mount_inner(page: Page, parent: &Element) -> Result<(), MountError> {
 		Page::WithHead { view, .. } => {
 			// On client-side, head is handled separately; just mount the content
 			mount_inner(*view, parent)?;
+		}
+		#[cfg(feature = "hmr")]
+		Page::DevTemplate { metadata, view } => {
+			let descriptor = metadata
+				.downcast_ref::<crate::hmr::TemplateDescriptor>()
+				.cloned();
+			let registry = crate::hmr::bridge::active_registry();
+			let (Some(descriptor), Some(registry)) = (descriptor, registry) else {
+				mount_inner(*view, parent)?;
+				return Ok(());
+			};
+
+			let deferred_patch = registry.register_descriptor_tree(descriptor.clone());
+			if matches!(
+				deferred_patch,
+				crate::hmr::template_registry::DeferredPatchOutcome::AbiMismatch
+			) {
+				if let Some(window) = web_sys::window() {
+					let _ = window.location().reload();
+				}
+			}
+			let document = web_sys::window()
+				.ok_or(MountError::NoWindow)?
+				.document()
+				.ok_or(MountError::NoDocument)?;
+			let start = document.create_comment("reinhardt-hmr-template-start");
+			parent
+				.inner()
+				.append_child(&start)
+				.map_err(|_| MountError::AppendChildFailed)?;
+			let mounted = with_template_mount_context(|| mount_inner(*view, parent));
+			let ((), slots) = match mounted {
+				Ok(value) => value,
+				Err(error) => {
+					let _ = parent.inner().remove_child(&start);
+					return Err(error);
+				}
+			};
+			let end = document.create_comment("reinhardt-hmr-template-end");
+			parent
+				.inner()
+				.append_child(&end)
+				.map_err(|_| MountError::AppendChildFailed)?;
+			let instance = TemplateInstance {
+				root_range: DomRange {
+					nodes: nodes_between(&start, &end),
+					start,
+					end,
+				},
+				slots,
+				nested: Vec::new(),
+			};
+			let guard = registry.mount_instance(descriptor.key.clone(), instance);
+			replay_template_overlay(&registry, &descriptor);
+			store_reactive_node(guard);
+		}
+		#[cfg(feature = "hmr")]
+		Page::DevSlot { slot_id, view } => {
+			let captures_slot =
+				TEMPLATE_MOUNT_CONTEXTS.with(|contexts| !contexts.borrow().is_empty());
+			if !captures_slot {
+				mount_inner(*view, parent)?;
+				return Ok(());
+			}
+
+			let dynamic_slot_id = DynamicSlotId(slot_id);
+			let document = web_sys::window()
+				.ok_or(MountError::NoWindow)?
+				.document()
+				.ok_or(MountError::NoDocument)?;
+			let start = document.create_comment(&format!("reinhardt-hmr-slot-{slot_id}-start"));
+			parent
+				.inner()
+				.append_child(&start)
+				.map_err(|_| MountError::AppendChildFailed)?;
+			let store = new_reactive_node_store();
+			let mounted = with_reactive_node_store(&store, || mount_inner(*view, parent));
+			if let Err(error) = mounted {
+				clear_reactive_node_store(&store);
+				let _ = parent.inner().remove_child(&start);
+				return Err(error);
+			}
+			let end = document.create_comment(&format!("reinhardt-hmr-slot-{slot_id}-end"));
+			parent
+				.inner()
+				.append_child(&end)
+				.map_err(|_| MountError::AppendChildFailed)?;
+			record_template_slot(
+				dynamic_slot_id,
+				MountedSlot::DynamicRange(DynamicRange {
+					range: DomRange {
+						nodes: nodes_between(&start, &end),
+						start,
+						end,
+					},
+					owner: ReactiveOwnerHandle::from_store(store),
+				}),
+			);
 		}
 		Page::ReactiveIf(reactive_if) => {
 			// Decompose the ReactiveIf to get the closures
