@@ -104,6 +104,8 @@ pub enum FilterOperator {
 pub enum FilterValue {
 	/// String variant.
 	String(String),
+	/// UTC timestamp variant.
+	Timestamp(chrono::DateTime<chrono::Utc>),
 	/// Integer variant.
 	Integer(i64),
 	/// Alias for Integer (for compatibility with test code)
@@ -522,6 +524,12 @@ impl From<f64> for FilterValue {
 impl From<bool> for FilterValue {
 	fn from(b: bool) -> Self {
 		FilterValue::Boolean(b)
+	}
+}
+
+impl From<chrono::DateTime<chrono::Utc>> for FilterValue {
+	fn from(value: chrono::DateTime<chrono::Utc>) -> Self {
+		Self::Timestamp(value)
 	}
 }
 
@@ -3294,6 +3302,7 @@ where
 	fn filter_value_to_sea_value(v: &FilterValue) -> reinhardt_query::value::Value {
 		match v {
 			FilterValue::String(s) => s.clone().into(),
+			FilterValue::Timestamp(value) => (*value).into(),
 			FilterValue::Integer(i) | FilterValue::Int(i) => (*i).into(),
 			FilterValue::Float(f) => (*f).into(),
 			FilterValue::Boolean(b) | FilterValue::Bool(b) => (*b).into(),
@@ -3325,6 +3334,7 @@ where
 	fn value_to_string(v: &FilterValue) -> String {
 		match v {
 			FilterValue::String(s) => s.clone(),
+			FilterValue::Timestamp(value) => value.to_rfc3339(),
 			FilterValue::Integer(i) | FilterValue::Int(i) => i.to_string(),
 			FilterValue::Float(f) => f.to_string(),
 			FilterValue::Boolean(b) | FilterValue::Bool(b) => b.to_string(),
@@ -3392,6 +3402,7 @@ where
 	fn value_to_array(v: &FilterValue) -> Vec<reinhardt_query::value::Value> {
 		match v {
 			FilterValue::String(s) => Self::parse_array_string(s),
+			FilterValue::Timestamp(value) => vec![(*value).into()],
 			FilterValue::Integer(i) | FilterValue::Int(i) => vec![(*i).into()],
 			FilterValue::Float(f) => vec![(*f).into()],
 			FilterValue::Boolean(b) | FilterValue::Bool(b) => vec![(*b).into()],
@@ -6672,6 +6683,25 @@ mod tests {
 
 		assert_eq!(assignment.field(), "created_at");
 		assert!(matches!(assignment.value(), UpdateValue::Timestamp(_)));
+	}
+
+	#[test]
+	fn test_typed_timestamp_filter_binds_as_timestamp() {
+		// Arrange
+		let timestamp = chrono::DateTime::parse_from_rfc3339("2026-06-19T00:00:00Z")
+			.expect("valid timestamp")
+			.with_timezone(&chrono::Utc);
+		let value: FilterValue = timestamp.into();
+
+		// Act
+		let bound = QuerySet::<TestUser>::filter_value_to_sea_value(&value);
+
+		// Assert
+		assert!(matches!(value, FilterValue::Timestamp(_)));
+		assert!(matches!(
+			bound,
+			reinhardt_query::value::Value::ChronoDateTimeUtc(Some(_))
+		));
 	}
 
 	#[test]
