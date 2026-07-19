@@ -7,6 +7,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.3.2...reinhardt-macros@v0.4.0) - 2026-07-19
+
+### Added
+
+- *(dto)* support shared client validation
+- *(query,migrations)* [**breaking**] support typed generated column expressions
+
+### Fixed
+
+- address develop merge review feedback
+- *(benchmark,macros)* address develop merge review feedback
+- *(migrations)* address generated column review feedback
+- *(migrations)* handle generated column followups
+- *(db)* preserve generated-column replacement metadata
+- *(db)* address generated column review feedback
+- *(db)* address generated column review follow-up
+- *(db)* complete generated column review repairs
+- *(db)* harden generated column edge cases
+- *(db)* reject invalid generated column definitions
+- *(macros)* gate MySQL generated-column test
+- *(macros)* preserve model schema metadata
+- *(testkit)* harden model-derived schema metadata
+- *(macros)* gate fixture registration on serde
+- *(macros)* group model registration input
+- *(macros)* decouple fixture support from serde output
+- *(macros)* allow defaulted fixture omissions
+- *(macros)* preserve fixture deserializer metadata
+- *(fixtures)* harden relation metadata handling
+- *(fixtures)* preserve fixture relation metadata
+- *(fixtures)* honor registered relation metadata
+- *(fixtures)* support default and ORM relation edge cases
+- *(fixtures)* honor nullable and identity fields
+- *(fixtures)* support generated identity columns
+- *(fixtures)* validate generated fixture fields
+- *(fixtures)* validate generated fixture values
+- *(fixtures)* address review feedback
+- *(fixtures)* satisfy clippy for identity fields
+- *(macros)* remove duplicate fixture accessor
+- *(fixtures)* address PR 5630 review follow-ups
+- *(fixtures)* address remaining PR 5630 review threads
+- *(fixtures)* validate nullable foreign key identifiers
+- *(fixtures)* allow omitted nullable foreign keys
+- restore atomic ORM release compatibility
+
+### Maintenance
+
+- merge develop/0.4.0 into forward-merge branch
+- merge latest main into develop forward-merge
+- merge latest develop changes into typed JSON PR
+- merge develop/0.4.0 into model fixture commands
+- merge develop/0.4.0 into issue 5602 branch
+
+### Other
+
+- resolve develop/0.4.0 into model enum fields
+- sync develop/0.4.0 into server function set
+
+### Testing
+
+- *(macros)* declare fixture string length
+- *(macros)* align generated column fixture
+- *(macros)* update model UI fixtures
+
 ### Fixed
 
 - *(macros)* resolve bare string foreign keys within their source app

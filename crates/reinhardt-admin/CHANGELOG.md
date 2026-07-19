@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.3.2...reinhardt-admin@v0.4.0) - 2026-07-19
+
+### Added
+
+- *(manouche,pages)* lower typed intrinsic event handlers
+
+### Changed
+
+- *(pages)* migrate model-set error adapters
+
+### Fixed
+
+- *(manouche)* handle composed accessibility labels
+- *(admin)* satisfy strict clippy checks
+- *(pages)* align native callbacks with scoped handles
+- *(pages)* retain owner scopes for deferred work
+- *(pages)* merge deferred owner scope fixes
+- *(ci)* terminate cfg aliases macro invocations
+- *(pages)* retain mount scopes for events
+- *(pages)* scope error-kind imports to tests
+
+### Maintenance
+
+- merge latest develop/0.4.0 into forward-merge branch
+- merge latest main into develop forward-merge
+- *(pages)* merge develop/0.4.0 into typed events
+- merge develop/0.4.0 into retained effects
+- merge develop/0.4.0 into arena copy handles branch
+
+### Performance
+
+- [**breaking**] inline path parameter dispatch values
+
+### Testing
+
+- update path parameter assertions
+
 ## [0.3.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.3.0...reinhardt-admin@v0.3.1) - 2026-07-04
 
 ### Fixed

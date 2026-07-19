@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-apps@v0.3.2...reinhardt-apps@v0.4.0) - 2026-07-19
+
+### Changed
+
+- [**breaking**] remove remaining dynamic error dependencies
+
+### Fixed
+
+- *(ci)* restore nightly docs build
+
+### Maintenance
+
+- merge latest main into develop forward-merge
+- merge develop/0.4.0 into remove-anyhow branch
+
 ## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-apps@v0.2.0...reinhardt-apps@v0.3.0) - 2026-06-28
 
 Stable release of `reinhardt-apps` for the Reinhardt 0.3.0 line. This

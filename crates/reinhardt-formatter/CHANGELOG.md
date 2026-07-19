@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-formatter@v0.3.2...reinhardt-formatter@v0.4.0) - 2026-07-19
+
+### Added
+
+- *(formatter)* format component style DSL
+
+### Fixed
+
+- *(formatter)* preserve custom property tokens
+
+### Maintenance
+
+- merge develop/0.4.0 into forward-merge branch
+- merge latest main into develop forward-merge
+- merge develop/0.4.0 into component-style branch
+
+### Styling
+
+- format component style fixtures
+
+### Testing
+
+- *(pages)* cover implicit page body captures
+- *(formatter)* normalize component style fixtures
+
 ### Added
 
 - *(formatter)* format component-scoped `style!` DSL bodies while preserving them across rustfmt
