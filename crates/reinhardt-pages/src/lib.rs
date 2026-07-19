@@ -396,6 +396,39 @@
 //! }
 //! ```
 //!
+//! ### Lifecycle-managed document head
+//!
+//! `Head` declarations are composed in structural page order. A `page!`
+//! `#head:` contribution is retained while its page is mounted, and its
+//! parent contribution becomes visible again when the child is removed.
+//! Route metadata contributes through the same model:
+//!
+//! ```ignore
+//! use reinhardt_pages::{head, use_page_title, Head};
+//! use reinhardt_pages::deps;
+//! use reinhardt_urls::routers::RouteMetadata;
+//!
+//! let route_metadata = RouteMetadata::new().with_head(head!(|| {
+//!     base { href: "/app/" }
+//!     title { "Workspace" }
+//! }));
+//!
+//! let project = Signal::new("Outline".to_owned());
+//! use_page_title(
+//!     {
+//!         let project = project.clone();
+//!         move || format!("{} · Cocrea", project.get())
+//!     },
+//!     deps![project.clone()],
+//! );
+//! ```
+//!
+//! Server rendering, hydration, and browser mounting resolve the same active
+//! declarations. Hydration adopts framework-marked nodes, and browser
+//! reconciliation touches only those marked nodes; unmanaged head elements
+//! remain untouched. An unchanged script node is reused, but removing a
+//! script cannot undo side effects that already ran in the browser.
+//!
 //! ### WebSocket Integration
 //!
 //! The `use_websocket` hook provides reactive WebSocket connections:
@@ -479,6 +512,8 @@ pub(crate) use reactive::{
 	QueryAcquireOptions, QueryConsumer, QueryErrorPolicy, QueryLease, acquire_query,
 };
 pub mod control_binding;
+#[allow(dead_code)] // SSR and browser adapters consume this staged crate-private contract.
+pub(crate) mod document_head;
 pub mod dom;
 pub mod event;
 #[cfg(feature = "i18n")]
@@ -628,9 +663,9 @@ pub use reactive::{Action, ActionPhase, ActionStateBuilder, use_action, use_acti
 pub use reactive::{
 	Dispatch, EffectReturn, OptimisticState, Ref, SetState, SetStateExt, SharedSetState,
 	SharedSignal, TransitionState, use_callback, use_context, use_debug_value, use_deferred_value,
-	use_effect, use_id, use_layout_effect, use_memo, use_optimistic, use_reducer, use_ref,
-	use_retained_effect, use_retained_layout_effect, use_shared_state, use_state,
-	use_sync_external_store, use_transition,
+	use_effect, use_head, use_id, use_layout_effect, use_memo, use_optimistic, use_page_title,
+	use_reducer, use_ref, use_retained_effect, use_retained_layout_effect, use_shared_state,
+	use_state, use_sync_external_store, use_transition,
 };
 pub use reactive::{use_mutation, use_query};
 #[cfg(native)]

@@ -19,6 +19,10 @@ use crate::component::reactive_if::{
 use crate::component::{IntoPage as _, Page, PageElement};
 #[cfg(wasm)]
 use crate::component::{MountError, PageExt as _};
+#[cfg(wasm)]
+use crate::document_head::{
+	DocumentHeadManager, ensure_browser_document_head_manager, with_document_head_manager,
+};
 #[cfg(any(wasm, test))]
 use crate::router::loader::RouteLoaderError;
 #[cfg(wasm)]
@@ -99,6 +103,7 @@ impl PersistentLayoutRenderer {
 		&mut self,
 		root_el: &web_sys::Element,
 		router: &ClientRouter,
+		document_head_manager: &DocumentHeadManager,
 	) -> Result<bool, MountError> {
 		let path = router.current_path().get();
 		let Some(route_match) = router.match_tree(&path) else {
@@ -166,7 +171,13 @@ impl PersistentLayoutRenderer {
 			outlet.set_inner_html("");
 		}
 
-		self.mount_suffix(root_el, router, &route_match, preserved)?;
+		self.mount_suffix(
+			root_el,
+			router,
+			&route_match,
+			preserved,
+			document_head_manager,
+		)?;
 		self.layout_keys = next_keys;
 		self.layout_loader_keys = next_loader_keys;
 		Ok(true)
@@ -178,6 +189,7 @@ impl PersistentLayoutRenderer {
 		router: &ClientRouter,
 		route_match: &ClientRouteTreeMatch,
 		start_depth: usize,
+		document_head_manager: &DocumentHeadManager,
 	) -> Result<(), MountError> {
 		let mut parent = if start_depth == 0 {
 			root_el.clone()
@@ -191,17 +203,19 @@ impl PersistentLayoutRenderer {
 			let store = new_reactive_node_store();
 			let scope = reinhardt_core::reactive::ReactiveScope::new();
 			let parent_wrapper = crate::dom::Element::new(parent.clone());
-			let mounted = with_loader_store(&loader_store, || {
-				scope.enter(|| {
-					with_reactive_node_store(&store, || {
-						let page = router
-							.__render_tree_layout(
-								route_match,
-								depth,
-								Outlet::placeholder(outlet_id),
-							)
-							.ok_or(MountError::CreateElementFailed)?;
-						page.mount(&parent_wrapper)
+			let mounted = with_document_head_manager(document_head_manager, || {
+				with_loader_store(&loader_store, || {
+					scope.enter(|| {
+						with_reactive_node_store(&store, || {
+							let page = router
+								.__render_tree_layout(
+									route_match,
+									depth,
+									Outlet::placeholder(outlet_id),
+								)
+								.ok_or(MountError::CreateElementFailed)?;
+							page.mount(&parent_wrapper)
+						})
 					})
 				})
 			});
@@ -217,13 +231,15 @@ impl PersistentLayoutRenderer {
 		let leaf_store = new_reactive_node_store();
 		let leaf_scope = reinhardt_core::reactive::ReactiveScope::new();
 		let parent_wrapper = crate::dom::Element::new(parent);
-		let mounted = with_loader_store(&loader_store, || {
-			leaf_scope.enter(|| {
-				with_reactive_node_store(&leaf_store, || {
-					let leaf = router
-						.__render_tree_leaf(route_match)
-						.ok_or(MountError::CreateElementFailed)?;
-					leaf.mount(&parent_wrapper)
+		let mounted = with_document_head_manager(document_head_manager, || {
+			with_loader_store(&loader_store, || {
+				leaf_scope.enter(|| {
+					with_reactive_node_store(&leaf_store, || {
+						let leaf = router
+							.__render_tree_leaf(route_match)
+							.ok_or(MountError::CreateElementFailed)?;
+						leaf.mount(&parent_wrapper)
+					})
 				})
 			})
 		});
@@ -754,23 +770,26 @@ fn initial_loader_error_page(error: Option<RouteLoaderError>) -> Page {
 impl ClientLauncher {
 	fn mount_initial_loader_error_surface(
 		root_el: &web_sys::Element,
+		document_head_manager: &DocumentHeadManager,
 	) -> Result<(), crate::component::MountError> {
-		crate::component::cleanup_reactive_nodes();
-		let scope = reinhardt_core::reactive::ReactiveScope::new();
-		let page = Page::reactive(move || {
-			let error = crate::app::try_with_navigation_coordinator(|coordinator| {
-				coordinator.error().get()
-			})
-			.flatten();
-			initial_loader_error_page(error)
-		});
-		root_el.set_inner_html("");
-		let root = crate::dom::Element::new(root_el.clone());
-		let result = scope.enter(|| page.mount(&root));
-		if result.is_ok() {
-			crate::component::store_reactive_scope(scope);
-		}
-		result
+		with_document_head_manager(document_head_manager, || {
+			crate::component::cleanup_reactive_nodes();
+			let scope = reinhardt_core::reactive::ReactiveScope::new();
+			let page = Page::reactive(move || {
+				let error = crate::app::try_with_navigation_coordinator(|coordinator| {
+					coordinator.error().get()
+				})
+				.flatten();
+				initial_loader_error_page(error)
+			});
+			root_el.set_inner_html("");
+			let root = crate::dom::Element::new(root_el.clone());
+			let result = scope.enter(|| page.mount(&root));
+			if result.is_ok() {
+				crate::component::store_reactive_scope(scope);
+			}
+			result
+		})
 	}
 
 	/// Render the current route into the given root element.
@@ -782,51 +801,62 @@ impl ClientLauncher {
 	/// listener registered in Phase C).
 	///
 	/// Refs #4101.
-	fn render_and_mount(root_el: &web_sys::Element) -> Result<(), crate::component::MountError> {
-		RENDER_COUNT.with(|c| c.set(c.get() + 1));
-		let mounted_loader_store =
-			crate::app::try_with_navigation_coordinator(|coordinator| coordinator.mounted_store())
-				.flatten();
-		let client_router = with_spa_router(|r| r.as_any().downcast_ref::<ClientRouter>().cloned());
-		if let Some(router) = client_router {
-			let render_layouts = || {
-				PERSISTENT_LAYOUT_RENDERER
-					.with(|renderer| renderer.borrow_mut().render(root_el, &router))
-			};
-			let handled_by_layout_renderer = if let Some(store) = mounted_loader_store.as_ref() {
-				with_loader_store(store, render_layouts)
-			} else {
-				render_layouts()
-			}?;
-			if handled_by_layout_renderer {
-				crate::app::observe_viewport_prefetch_links();
-				return Ok(());
+	fn render_and_mount(
+		root_el: &web_sys::Element,
+		document_head_manager: &DocumentHeadManager,
+	) -> Result<(), crate::component::MountError> {
+		with_document_head_manager(document_head_manager, || {
+			RENDER_COUNT.with(|c| c.set(c.get() + 1));
+			let mounted_loader_store = crate::app::try_with_navigation_coordinator(|coordinator| {
+				coordinator.mounted_store()
+			})
+			.flatten();
+			let client_router =
+				with_spa_router(|r| r.as_any().downcast_ref::<ClientRouter>().cloned());
+			if let Some(router) = client_router {
+				let render_layouts = || {
+					PERSISTENT_LAYOUT_RENDERER.with(|renderer| {
+						renderer
+							.borrow_mut()
+							.render(root_el, &router, document_head_manager)
+					})
+				};
+				let handled_by_layout_renderer = if let Some(store) = mounted_loader_store.as_ref()
+				{
+					with_loader_store(store, render_layouts)
+				} else {
+					render_layouts()
+				}?;
+				if handled_by_layout_renderer {
+					crate::app::observe_viewport_prefetch_links();
+					return Ok(());
+				}
 			}
-		}
 
-		// Refs #5104: tear down the previous route's reactive graph before
-		// constructing the next route. Route construction can create forms,
-		// resources, and reactive blocks that synchronously touch signals; if
-		// stale route effects are still alive, those signal notifications can
-		// re-enter the runtime and abort the navigation before DOM remount.
-		crate::component::cleanup_reactive_nodes();
-		let scope = reinhardt_core::reactive::ReactiveScope::new();
-		let render_current = || {
-			let view = with_spa_router(|r| r.render_current());
-			root_el.set_inner_html("");
-			let wrapper = crate::dom::Element::new(root_el.clone());
-			view.mount(&wrapper)
-		};
-		let result = if let Some(store) = mounted_loader_store.as_ref() {
-			with_loader_store(store, || scope.enter(render_current))
-		} else {
-			scope.enter(render_current)
-		};
-		if result.is_ok() {
-			crate::component::store_reactive_scope(scope);
-			crate::app::observe_viewport_prefetch_links();
-		}
-		result
+			// Refs #5104: tear down the previous route's reactive graph before
+			// constructing the next route. Route construction can create forms,
+			// resources, and reactive blocks that synchronously touch signals; if
+			// stale route effects are still alive, those signal notifications can
+			// re-enter the runtime and abort the navigation before DOM remount.
+			crate::component::cleanup_reactive_nodes();
+			let scope = reinhardt_core::reactive::ReactiveScope::new();
+			let render_current = || {
+				let view = with_spa_router(|r| r.render_current());
+				root_el.set_inner_html("");
+				let wrapper = crate::dom::Element::new(root_el.clone());
+				view.mount(&wrapper)
+			};
+			let result = if let Some(store) = mounted_loader_store.as_ref() {
+				with_loader_store(store, || scope.enter(render_current))
+			} else {
+				scope.enter(render_current)
+			};
+			if result.is_ok() {
+				crate::component::store_reactive_scope(scope);
+				crate::app::observe_viewport_prefetch_links();
+			}
+			result
+		})
 	}
 
 	/// Diagnostic counter: cumulative count of `render_and_mount`
@@ -1038,6 +1068,16 @@ impl ClientLauncher {
 				}
 			};
 		store_spa_router(spa_router, std::rc::Rc::clone(&scope));
+		let window = web_sys::window()
+			.ok_or_else(|| wasm_bindgen::JsValue::from_str("no global `window`"))?;
+		let document = window
+			.document()
+			.ok_or_else(|| wasm_bindgen::JsValue::from_str("no document on window"))?;
+		let document_head_manager = ensure_browser_document_head_manager().map_err(|error| {
+			wasm_bindgen::JsValue::from_str(&format!(
+				"document-head manager initialization failed: {error}"
+			))
+		})?;
 		let mut coordinator_installed = false;
 		let mut initial_preparation_path = None;
 		if let Some(router) =
@@ -1105,15 +1145,8 @@ impl ClientLauncher {
 		if !coordinator_installed {
 			with_spa_router(|r| r.setup_history_listener());
 		}
-
-		let window = web_sys::window()
-			.ok_or_else(|| wasm_bindgen::JsValue::from_str("no global `window`"))?;
-		let document = window
-			.document()
-			.ok_or_else(|| wasm_bindgen::JsValue::from_str("no document on window"))?;
 		#[cfg(feature = "hmr")]
 		crate::hmr::HmrBridge::new().install(&document)?;
-
 		if self.intercept_links {
 			let guard = install_link_interceptor(&document)?;
 			store_link_interceptor_guard(guard);
@@ -1127,7 +1160,9 @@ impl ClientLauncher {
 					self.root_selector
 				))
 			})?;
-		PERSISTENT_LAYOUT_RENDERER.with(|renderer| renderer.borrow_mut().reset());
+		with_document_head_manager(&document_head_manager, || {
+			PERSISTENT_LAYOUT_RENDERER.with(|renderer| renderer.borrow_mut().reset());
+		});
 		let pending_post_mount_lifecycle = std::rc::Rc::new(RefCell::new(Some((
 			std::mem::take(&mut self.after_launch_hooks),
 			std::mem::take(&mut self.path_subscriptions),
@@ -1137,7 +1172,7 @@ impl ClientLauncher {
 		// propagate directly because no Effect/Signal indirection
 		// captures them. Refs #4101.
 		if initial_preparation_path.is_none() {
-			Self::render_and_mount(&root_el).map_err(|e| {
+			Self::render_and_mount(&root_el, &document_head_manager).map_err(|e| {
 				wasm_bindgen::JsValue::from_str(&format!("initial mount failed: {e}"))
 			})?;
 		}
@@ -1158,9 +1193,13 @@ impl ClientLauncher {
 		let window_for_render = window.clone();
 		let document_for_render = document.clone();
 		let scope_for_render = std::rc::Rc::clone(&scope);
+		let document_head_manager_for_render = document_head_manager.clone();
 		let render_subscription = with_spa_router(|r| {
 			r.on_navigate_dyn(Box::new(
-				move |_path, _params| match Self::render_and_mount(&render_root) {
+				move |_path, _params| match Self::render_and_mount(
+					&render_root,
+					&document_head_manager_for_render,
+				) {
 					Ok(()) => {
 						if let Some((after_launch_hooks, path_subscriptions)) =
 							lifecycle_for_render.borrow_mut().take()
@@ -1184,11 +1223,13 @@ impl ClientLauncher {
 		std::mem::forget(render_subscription);
 
 		if let Some(path) = initial_preparation_path {
-			Self::mount_initial_loader_error_surface(&root_el).map_err(|error| {
-				wasm_bindgen::JsValue::from_str(&format!(
-					"initial loader error surface failed to mount: {error}"
-				))
-			})?;
+			Self::mount_initial_loader_error_surface(&root_el, &document_head_manager).map_err(
+				|error| {
+					wasm_bindgen::JsValue::from_str(&format!(
+						"initial loader error surface failed to mount: {error}"
+					))
+				},
+			)?;
 			let result = crate::app::try_with_navigation_coordinator(|coordinator| {
 				coordinator.navigate(path, super::NavigationIntent::Initial)
 			});

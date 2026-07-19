@@ -24,17 +24,15 @@
 //! let html = head.to_html();
 //! ```
 
-use std::borrow::Cow;
-use std::collections::BTreeSet;
-
 use super::util::html_escape;
+use std::borrow::Cow;
 
 /// Represents an HTML `<meta>` tag.
 ///
 /// Meta tags provide metadata about the HTML document.
 /// They can specify character sets, descriptions, keywords,
 /// viewport settings, and Open Graph properties.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MetaTag {
 	/// The `name` attribute (e.g., "description", "viewport").
 	pub name: Option<Cow<'static, str>>,
@@ -131,7 +129,7 @@ impl MetaTag {
 ///
 /// Link tags define relationships between the document and external resources,
 /// such as stylesheets, icons, and preload directives.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LinkTag {
 	/// The `rel` attribute (e.g., "stylesheet", "icon", "preload").
 	pub rel: Cow<'static, str>,
@@ -289,7 +287,7 @@ impl LinkTag {
 /// Represents an HTML `<script>` tag.
 ///
 /// Script tags can reference external scripts or contain inline JavaScript.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScriptTag {
 	/// The `src` attribute for external scripts.
 	pub src: Option<Cow<'static, str>>,
@@ -434,7 +432,7 @@ impl ScriptTag {
 }
 
 /// Represents an HTML `<style>` tag with inline CSS.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StyleTag {
 	/// The CSS content.
 	pub content: Cow<'static, str>,
@@ -507,7 +505,7 @@ impl StyleTag {
 ///     .css("/static/css/style.css")
 ///     .js_defer("/static/js/app.js");
 /// ```
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Head {
 	/// The document title.
 	pub title: Option<Cow<'static, str>>,
@@ -750,8 +748,8 @@ impl Head {
 
 	/// Returns a copy with exact duplicate head entries removed.
 	///
-	/// Deduplication is intentionally conservative: only entries with identical
-	/// rendered HTML are collapsed. Distinct Open Graph images, media-specific
+	/// Deduplication is intentionally conservative: only structurally identical
+	/// descriptors are collapsed. Distinct Open Graph images, media-specific
 	/// stylesheets, or crossorigin variants stay separate.
 	pub fn deduplicated(&self) -> Self {
 		let mut head = self.clone();
@@ -767,10 +765,10 @@ impl Head {
 
 	/// Removes exact duplicate head entries in place.
 	pub fn dedup_in_place(&mut self) {
-		retain_unique_by(&mut self.meta_tags, MetaTag::to_html);
-		retain_unique_by(&mut self.links, LinkTag::to_html);
-		retain_unique_by(&mut self.styles, StyleTag::to_html);
-		retain_unique_by(&mut self.scripts, ScriptTag::to_html);
+		retain_unique(&mut self.meta_tags);
+		retain_unique(&mut self.links);
+		retain_unique(&mut self.styles);
+		retain_unique(&mut self.scripts);
 	}
 
 	/// Renders the head section to HTML string.
@@ -825,9 +823,19 @@ impl Head {
 	}
 }
 
-fn retain_unique_by<T>(items: &mut Vec<T>, mut key: impl FnMut(&T) -> String) {
-	let mut seen = BTreeSet::new();
-	items.retain(|item| seen.insert(key(item)));
+fn retain_unique<T>(items: &mut Vec<T>)
+where
+	T: Clone + Eq,
+{
+	let mut seen = Vec::new();
+	items.retain(|item| {
+		if seen.iter().any(|known| known == item) {
+			false
+		} else {
+			seen.push(item.clone());
+			true
+		}
+	});
 }
 
 #[cfg(test)]
@@ -1006,6 +1014,39 @@ mod tests {
 		assert_eq!(merged.title, Some(Cow::Borrowed("Override Title")));
 		assert_eq!(merged.meta_tags.len(), 2); // charset + description
 		assert_eq!(merged.links.len(), 2); // base.css + overlay.css
+	}
+
+	#[test]
+	fn merge_keeps_distinct_variants_and_uses_later_singletons() {
+		fn requires_eq<T: Eq>() {}
+		requires_eq::<Head>();
+
+		let parent = Head::new()
+			.title("Project")
+			.base_url("/parent/")
+			.link(LinkTag::stylesheet("/app.css").with_media("screen"));
+		let child = Head::new()
+			.title("Outline")
+			.base_url("/child/")
+			.link(LinkTag::stylesheet("/app.css").with_media("print"));
+
+		let resolved = parent.merge(child).dedup();
+
+		assert_eq!(resolved.title.as_deref(), Some("Outline"));
+		assert_eq!(resolved.base.as_deref(), Some("/child/"));
+		assert_eq!(resolved.links.len(), 2);
+	}
+
+	#[test]
+	fn dedup_removes_only_exact_descriptor_duplicates() {
+		let stylesheet = LinkTag::stylesheet("/app.css");
+		let resolved = Head::new()
+			.link(stylesheet.clone())
+			.link(stylesheet)
+			.link(LinkTag::stylesheet("/app.css").with_crossorigin("anonymous"))
+			.dedup();
+
+		assert_eq!(resolved.links.len(), 2);
 	}
 
 	#[rstest]

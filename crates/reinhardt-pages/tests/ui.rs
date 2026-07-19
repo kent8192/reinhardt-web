@@ -31,6 +31,16 @@ fn test_form_macro_fail() {
 	t.compile_fail("tests/ui/form/fail/*.rs");
 }
 
+#[test]
+fn test_head_macro_pass() {
+	trybuild::TestCases::new().pass("tests/ui/head/pass/*.rs");
+}
+
+#[test]
+fn test_head_macro_fail() {
+	trybuild::TestCases::new().compile_fail("tests/ui/head/fail/*.rs");
+}
+
 // server_fn macro tests
 #[test]
 fn test_server_fn_macro_ui() {

@@ -8,10 +8,10 @@
 #![cfg(wasm)]
 
 use reinhardt_pages::app::ClientLauncher;
-use reinhardt_pages::component::{IntoPage, Page, PageElement};
+use reinhardt_pages::component::{Head, IntoPage, Page, PageElement};
 use reinhardt_pages::reactive::hooks::RouterHandle;
 use reinhardt_pages::{Loader, Outlet, Query, component, layout, loader};
-use reinhardt_urls::routers::ClientRouter;
+use reinhardt_urls::routers::{ClientRouter, RouteMetadata};
 use std::cell::Cell;
 use wasm_bindgen::JsValue;
 use wasm_bindgen_test::*;
@@ -171,6 +171,22 @@ fn build_router() -> ClientRouter {
 		.component(query_loaded_page)
 		.component(slow_page)
 		.component(failed_page)
+		.with_route_metadata(
+			"home",
+			RouteMetadata::new().with_head(Head::new().title("Home")),
+		)
+		.with_route_metadata(
+			"loader-navigation-loaded",
+			RouteMetadata::new().with_head(Head::new().title("Loaded")),
+		)
+		.with_route_metadata(
+			"loader-navigation-slow",
+			RouteMetadata::new().with_head(Head::new().title("Slow")),
+		)
+		.with_route_metadata(
+			"loader-navigation-failed",
+			RouteMetadata::new().with_head(Head::new().title("Failed")),
+		)
 }
 
 fn build_persistent_layout_router() -> ClientRouter {
@@ -248,6 +264,10 @@ async fn route_loader_navigation_commits_after_prepare() {
 	yield_to_tasks().await;
 	assert_eq!(current_path(), "/loaded");
 	assert!(root.inner_html().contains("LOADED DATA"));
+	assert_eq!(
+		web_sys::window().unwrap().document().unwrap().title(),
+		"Loaded"
+	);
 	let committed_state = web_sys::window()
 		.expect("window")
 		.history()
@@ -299,6 +319,10 @@ async fn route_loader_navigation_failure_retains_old_route() {
 	assert_eq!(current_path(), "/");
 	assert!(root.inner_html().contains("HOME"));
 	assert!(!root.inner_html().contains("route-failed"));
+	assert_eq!(
+		web_sys::window().unwrap().document().unwrap().title(),
+		"Home"
+	);
 }
 
 #[wasm_bindgen_test]

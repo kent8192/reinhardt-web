@@ -56,6 +56,9 @@ For a React concept mapping, see
 For route-level loaders, prepare/commit navigation, prefetch, cancellation, and
 SSR hydration, see [Route-level data loaders](docs/route_loaders.md).
 
+For lifecycle-managed `Head` declarations across SSR, hydration, and SPA
+navigation, see [Document head management](docs/document_head_management.md).
+
 ## Development template hot reload
 
 Enable the `hmr` feature when developing a Pages WASM client and start the
@@ -134,6 +137,31 @@ Use `@custom("name")` and `platform::Event` for an arbitrary raw DOM event.
 Custom typed `detail` values are intentionally deferred to #5636. Component
 `@event` props remain typed by the component's declared prop type; the DOM
 event catalog applies only to intrinsic elements.
+
+### Lifecycle-managed document head
+
+Head declarations are resolved from the active page and route tree. Use
+`head!` for structural values, attach them with `#head:`/`Page::with_head`, or
+provide route metadata with `RouteMetadata::with_head`:
+
+```rust,ignore
+let metadata = RouteMetadata::new().with_head(head!(|| {
+    base { href: "/app/" }
+    title { "Workspace" }
+}));
+```
+
+Use `use_head` or `use_page_title` for retained reactive contributions. These
+hooks require explicit dependencies, for example `deps![project.clone()]`, and
+their registrations are removed with the owning reactive scope. A persistent
+layout keeps its contribution while sibling routes change, and removing a
+child reveals the previous parent or layout value.
+
+The same resolution model is used by buffered/streaming SSR, hydration, and
+browser mounting. Hydration adopts framework-marked SSR nodes before the body
+pass. Browser reconciliation manages only `data-reinhardt-head` nodes, so
+third-party head elements remain untouched. Unchanged scripts reuse their DOM
+node; removing a script cannot undo side effects that already executed.
 
 ### Controlled form elements
 
