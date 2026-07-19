@@ -827,8 +827,17 @@ fn single_control_attrs_match(
 			let Some(existing_element) = existing_element else {
 				return false;
 			};
+			let has_reactive_override = |name: &str| {
+				element
+					.reactive_attrs()
+					.iter()
+					.any(|attribute| attribute.name().eq_ignore_ascii_case(name))
+			};
 			let expected_attrs_match = element.attrs().iter().all(|(name, value)| {
 				let name = name.as_ref();
+				if has_reactive_override(name) {
+					return true;
+				}
 				if crate::component::into_page::controlled_attribute_is_overridden(
 					element.bound_control(),
 					name,
@@ -841,24 +850,46 @@ fn single_control_attrs_match(
 					Some(value.as_ref())
 				};
 				existing_element.get_attribute(name).as_deref() == expected
-			});
+			}) && element
+				.reactive_attrs()
+				.iter()
+				.enumerate()
+				.filter(|(index, attribute)| {
+					!element.reactive_attrs()[*index + 1..]
+						.iter()
+						.any(|later| later.name().eq_ignore_ascii_case(attribute.name()))
+				})
+				.all(|(_, attribute)| {
+					if crate::component::into_page::controlled_attribute_is_overridden(
+						element.bound_control(),
+						attribute.name(),
+					) {
+						return true;
+					}
+					let expected = attribute.value().filter(|value| {
+						!(BOOLEAN_ATTRS.contains(&attribute.name())
+							&& !is_boolean_attr_truthy(value))
+					});
+					existing_element.get_attribute(attribute.name()).as_deref()
+						== expected.as_deref()
+				});
 			let actual_attrs = existing_element.attributes();
-			let actual_attrs_match = (0..actual_attrs.length()).all(|index| {
-				let Some(attribute) = actual_attrs.item(index) else {
-					return true;
-				};
-				let name = attribute.name();
-				if crate::component::into_page::controlled_attribute_is_overridden(
-					element.bound_control(),
-					&name,
-				) {
-					return true;
-				}
-				element
-					.attrs()
-					.iter()
-					.any(|(expected_name, _)| expected_name.as_ref().eq_ignore_ascii_case(&name))
-			});
+			let actual_attrs_match =
+				(0..actual_attrs.length()).all(|index| {
+					let Some(attribute) = actual_attrs.item(index) else {
+						return true;
+					};
+					let name = attribute.name();
+					if crate::component::into_page::controlled_attribute_is_overridden(
+						element.bound_control(),
+						&name,
+					) {
+						return true;
+					}
+					element.attrs().iter().any(|(expected_name, _)| {
+						expected_name.as_ref().eq_ignore_ascii_case(&name)
+					}) || has_reactive_override(&name)
+				});
 			expected_attrs_match && actual_attrs_match
 		}
 		Page::Fragment(children) => {
