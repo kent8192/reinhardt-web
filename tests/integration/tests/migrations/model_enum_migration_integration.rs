@@ -128,12 +128,13 @@ fn project_state_with_domain(values: &[&str]) -> ProjectState {
 }
 
 #[rstest]
-#[case::postgres(SqlDialect::Postgres, '"')]
-#[case::mysql(SqlDialect::Mysql, '`')]
-#[case::sqlite(SqlDialect::Sqlite, '"')]
+#[case::postgres(SqlDialect::Postgres, '"', "")]
+#[case::mysql(SqlDialect::Mysql, '`', "BINARY ")]
+#[case::sqlite(SqlDialect::Sqlite, '"', "")]
 fn model_enum_create_table_renders_string_i32_and_nullable_checks_for_each_backend(
 	#[case] dialect: SqlDialect,
 	#[case] quote: char,
+	#[case] string_enum_column_prefix: &str,
 ) {
 	// Arrange
 	let metadata = reinhardt_db::migrations::global_registry()
@@ -214,9 +215,13 @@ fn model_enum_create_table_renders_string_i32_and_nullable_checks_for_each_backe
 		);
 	}
 	for fragment in [
-		format!("CHECK ({quote}job_status{quote} IN ('queued', 'running'))"),
+		format!(
+			"CHECK ({string_enum_column_prefix}{quote}job_status{quote} IN ('queued', 'running'))"
+		),
 		format!("CHECK ({quote}job_priority{quote} IN (10, 20))"),
-		format!("CHECK ({quote}fallback_status{quote} IN ('queued', 'running'))"),
+		format!(
+			"CHECK ({string_enum_column_prefix}{quote}fallback_status{quote} IN ('queued', 'running'))"
+		),
 	] {
 		assert!(
 			sql.contains(&fragment),
