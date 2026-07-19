@@ -1714,7 +1714,9 @@ where
 		match self.submit_async(submit).await {
 			Ok(outcome) => Ok(outcome),
 			Err(error) => {
-				self.apply_server_error(&error);
+				if self.state.is_submitting.try_get_untracked().is_ok() {
+					self.apply_server_error(&error);
+				}
 				Err(error)
 			}
 		}
