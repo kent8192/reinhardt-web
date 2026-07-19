@@ -136,6 +136,7 @@ skip = [
   { crate = "sync_wrapper@0.1.2", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   { crate = "system-configuration@0.5.1", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   { crate = "system-configuration-sys@0.5.0", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
+  { crate = "syn:>=2,<3", reason = "Workspace macro crates use syn 2 while upstream proc-macro dependencies retain the incompatible syn 3 line." },
   { crate = "tinystr@0.7.6", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   { crate = "toml@0.8.23", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   { crate = "toml_datetime@0.6.11", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
