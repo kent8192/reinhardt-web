@@ -1,7 +1,7 @@
 .card--rs-f69b9cbc74c9 {
   padding: var(--rs-f69b9cbc74c9-padding, 1rem);
   border: 1px solid var(--border);
-  width: calc(100% - var(--rs-f69b9cbc74c9-gutter, 1rem) * 2);
+  width: max(0, calc(100% - var(--rs-f69b9cbc74c9-gutter, 1rem) * 2));
   color: color-mix(in srgb, var(--rs-f69b9cbc74c9-accent, var(--surface-secondary)) calc(100% - 15%), white 15%);
   background-image: linear-gradient(to right, var(--rs-f69b9cbc74c9-accent, var(--surface-secondary)) 0%, color-mix(in srgb, var(--rs-f69b9cbc74c9-accent, var(--surface-secondary)) calc(100% - 20%), black 20%) 100%);
   transform: translateX(var(--rs-f69b9cbc74c9-offset, 0px)) rotate(6deg) scale(1.05);
