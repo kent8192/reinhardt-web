@@ -108,6 +108,7 @@ reactive = []
 
 # Page types feature
 page = ["types", "reactive", "dep:reinhardt-event-catalog"]
+page-hot-reload = ["page"]
 
 # External dependency features
 macros = ["dep:reinhardt-macros"]

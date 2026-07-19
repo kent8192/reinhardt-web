@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Add the shared component-style compiler boundary with deterministic scoping,
   stable diagnostics, structured CSS IR, and CSS serialization.
+- Add canonical static-template lowering and dynamic-ABI hashing for Pages
+  development hot reload.
 
 ### Fixed
 
