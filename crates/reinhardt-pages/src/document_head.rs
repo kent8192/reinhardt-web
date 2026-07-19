@@ -230,6 +230,7 @@ pub(crate) fn current_document_head_manager() -> Result<DocumentHeadManager, Doc
 }
 
 pub(crate) fn report_document_head_error(error: &DocumentHeadError) {
+	let _ = error;
 	crate::error_log!("{error}");
 }
 
