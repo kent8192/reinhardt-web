@@ -84,6 +84,24 @@ assert.equal(
   'both target checks must execute the trusted base policy copy',
 );
 
+assert.match(
+  workflow,
+  /git add -A -- ':!\.auto-fix-policy\/\*\*'/,
+  'patch export must exclude the trusted policy checkout path',
+);
+
+assert.match(
+  workflow,
+  /git apply --index --whitespace=nowarn --exclude='\.auto-fix-policy\/\*\*'/,
+  'patch apply must exclude the trusted policy checkout path',
+);
+
+assert.match(
+  workflow,
+  /git diff --cached --name-only -- \.auto-fix-policy \| grep -q \./,
+  'write job must fail closed if trusted policy checkout files are staged',
+);
+
 const outputs = new Map();
 const paginateCalls = [];
 await runAutoFixTargetPolicy({
