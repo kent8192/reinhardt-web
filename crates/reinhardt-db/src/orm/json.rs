@@ -246,12 +246,24 @@ pub(crate) fn database_value_from_json(
 		Some(DatabaseStorageKind::I64) => serde_json::from_value(value)
 			.map(DatabaseValue::I64)
 			.map_err(|error| FieldCodecError::Serialization(error.to_string())),
-		Some(DatabaseStorageKind::F32) => serde_json::from_value(value)
-			.map(DatabaseValue::F32)
-			.map_err(|error| FieldCodecError::Serialization(error.to_string())),
-		Some(DatabaseStorageKind::F64) => serde_json::from_value(value)
-			.map(DatabaseValue::F64)
-			.map_err(|error| FieldCodecError::Serialization(error.to_string())),
+		Some(DatabaseStorageKind::F32) => match value {
+			serde_json::Value::String(value) => value
+				.parse::<f32>()
+				.map(DatabaseValue::F32)
+				.map_err(|error| FieldCodecError::Serialization(error.to_string())),
+			value => serde_json::from_value(value)
+				.map(DatabaseValue::F32)
+				.map_err(|error| FieldCodecError::Serialization(error.to_string())),
+		},
+		Some(DatabaseStorageKind::F64) => match value {
+			serde_json::Value::String(value) => value
+				.parse::<f64>()
+				.map(DatabaseValue::F64)
+				.map_err(|error| FieldCodecError::Serialization(error.to_string())),
+			value => serde_json::from_value(value)
+				.map(DatabaseValue::F64)
+				.map_err(|error| FieldCodecError::Serialization(error.to_string())),
+		},
 		Some(DatabaseStorageKind::Decimal) => {
 			serde_json::from_value::<rust_decimal::Decimal>(value)
 				.map(DatabaseValue::Decimal)
@@ -396,6 +408,14 @@ mod tests {
 		payload: Vec<u8>,
 	}
 
+	#[model(app_label = "tests", table_name = "decimal_float_row_models")]
+	#[derive(Debug, Clone, Serialize, Deserialize)]
+	struct DecimalFloatRowModel {
+		#[field(primary_key = true)]
+		id: i64,
+		amount: f64,
+	}
+
 	#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 	struct NullablePayload {
 		enabled: bool,
@@ -477,6 +497,21 @@ mod tests {
 		// Assert
 		assert_eq!(model.id, 1);
 		assert_eq!(model.payload, vec![1, 2, 3]);
+	}
+
+	#[test]
+	fn model_rows_decode_decimal_strings_as_f64() {
+		// Arrange
+		let row = json!({ "id": 1, "amount": "99.99" });
+
+		// Act
+		let model =
+			deserialize_model_row::<DecimalFloatRowModel>(row, HashSet::new(), HashSet::new())
+				.expect("decimal strings should hydrate as f64 values");
+
+		// Assert
+		assert_eq!(model.id, 1);
+		assert_eq!(model.amount, 99.99);
 	}
 
 	#[test]
