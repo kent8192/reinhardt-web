@@ -1661,6 +1661,26 @@ fn generate_server_handler(
 				))?;
 		}
 	};
+	let normalize_handler_error = if info.structured_error {
+		quote! {}
+	} else {
+		quote! {
+			.map_err(|error_body| {
+				if ::serde_json::from_slice::<#pages_crate::server_fn::ServerFnError>(&error_body).is_ok() {
+					error_body
+				} else {
+					let error = #pages_crate::server_fn::ServerFnError::server(
+						400u16,
+						"Invalid server function request",
+					);
+					#pages_crate::__private::bytes::Bytes::from(
+						::serde_json::to_string(&error)
+							.expect("ServerFnError must serialize into its versioned error envelope"),
+					)
+				}
+			})
+		}
+	};
 	let structured_status_override = if info.structured_error {
 		quote! {
 			fn error_status(error_body: &[u8]) -> u16 {
@@ -2007,6 +2027,7 @@ fn generate_server_handler(
 		/// It deserializes the request body, calls the server function, and serializes the response.
 		#handler_signature {
 			use ::serde::Deserialize;
+			let __handler_result = async {
 
 			// Argument struct for deserialization (only regular parameters)
 			#[derive(Deserialize)]
@@ -2045,6 +2066,8 @@ fn generate_server_handler(
 					Err(#pages_crate::__private::bytes::Bytes::from(error_json))
 				}
 			}
+		};
+			__handler_result.await #normalize_handler_error
 		}
 
 		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
