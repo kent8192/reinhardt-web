@@ -20,8 +20,11 @@
 use std::net::SocketAddr;
 use std::time::Duration;
 
-use futures_util::StreamExt;
-use reinhardt_pages::hmr::{ChangeKind, HmrConfig, HmrMessage, HmrServer};
+use futures_util::{SinkExt, StreamExt};
+use reinhardt_pages::hmr::{
+	BuildDiagnostic, ChangeKind, CompiledBuildId, DiagnosticLevel, DiagnosticTarget, HmrConfig,
+	HmrMessage, HmrServer, PatchGeneration,
+};
 use rstest::rstest;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
@@ -78,6 +81,83 @@ async fn test_hmr_server_websocket_connection() {
 	};
 	let msg: HmrMessage = serde_json::from_str(&text).unwrap();
 	assert_eq!(msg, HmrMessage::Connected);
+}
+
+#[rstest]
+#[tokio::test]
+async fn test_hmr_server_replays_and_clears_build_diagnostics() {
+	// Arrange
+	let (server, url) = start_server().await;
+	let diagnostic = BuildDiagnostic {
+		generation: PatchGeneration(3),
+		target: DiagnosticTarget::WasmRustc,
+		level: DiagnosticLevel::Error,
+		message: "invalid page".to_owned(),
+		code: Some("E0001".to_owned()),
+		rendered: "error[E0001]: invalid page".to_owned(),
+		relative_spans: Vec::new(),
+	};
+	server.notify_build_diagnostics(vec![diagnostic.clone()]);
+	tokio::time::sleep(Duration::from_millis(20)).await;
+
+	let (mut ws, _) = connect_async(&url).await.unwrap();
+	let _ = tokio::time::timeout(Duration::from_secs(3), ws.next()).await;
+	let hello = HmrMessage::ClientHello {
+		build_id: CompiledBuildId([0; 32]),
+		manifest_digest: [0; 32],
+		abi_hashes: Vec::new(),
+	}
+	.to_json()
+	.unwrap();
+	ws.send(Message::Text(hello.clone().into())).await.unwrap();
+
+	// Act
+	let replayed = tokio::time::timeout(Duration::from_secs(3), ws.next())
+		.await
+		.unwrap()
+		.unwrap()
+		.unwrap();
+
+	// Assert
+	let replayed = match replayed {
+		Message::Text(text) => HmrMessage::from_json(&text).unwrap(),
+		other => panic!("unexpected frame: {other:?}"),
+	};
+	assert_eq!(
+		replayed,
+		HmrMessage::BuildDiagnostics {
+			generation: PatchGeneration(3),
+			diagnostics: vec![diagnostic],
+		}
+	);
+
+	server.notify_build_recovered(PatchGeneration(4));
+	let recovered = tokio::time::timeout(Duration::from_secs(3), ws.next())
+		.await
+		.unwrap()
+		.unwrap()
+		.unwrap();
+	let recovered = match recovered {
+		Message::Text(text) => HmrMessage::from_json(&text).unwrap(),
+		other => panic!("unexpected frame: {other:?}"),
+	};
+	assert_eq!(
+		recovered,
+		HmrMessage::BuildRecovered {
+			generation: PatchGeneration(4),
+		}
+	);
+
+	// A reconnect after recovery must not receive stale diagnostics.
+	tokio::time::sleep(Duration::from_millis(20)).await;
+	let (mut reconnected, _) = connect_async(&url).await.unwrap();
+	let _ = tokio::time::timeout(Duration::from_secs(3), reconnected.next()).await;
+	reconnected.send(Message::Text(hello.into())).await.unwrap();
+	let stale = tokio::time::timeout(Duration::from_millis(200), reconnected.next()).await;
+	assert!(
+		stale.is_err(),
+		"recovery must clear diagnostic replay state"
+	);
 }
 
 #[rstest]

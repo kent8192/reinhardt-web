@@ -159,9 +159,6 @@ pub mod local_infra;
 pub mod mail_commands;
 /// Terminal output wrapper with styling support.
 pub mod output;
-/// Compile-free static Pages hot patch support.
-#[cfg(all(feature = "autoreload", feature = "pages"))]
-mod page_hot_patch;
 /// Plugin management commands.
 #[cfg(feature = "plugins")]
 pub mod plugin_commands;
@@ -188,8 +185,23 @@ pub mod static_asset_settings;
 pub mod style_extractor;
 /// Template-based code generation utilities.
 pub mod template;
+/// Source-change classification for development template hot patching.
+#[cfg(feature = "pages")]
+pub mod template_classifier;
+/// Normalized compiler diagnostics for development HMR clients.
+#[cfg(feature = "pages")]
+pub mod template_diagnostics;
+/// Coordination of template patch dispatch and fallback rebuilds.
+#[cfg(feature = "pages")]
+pub mod template_hot_reload;
+/// Compiler manifest collection for development template hot patching.
+#[cfg(feature = "pages")]
+pub mod template_manifest;
 /// Template source abstraction over embedded and filesystem assets.
 pub mod template_source;
+/// Successful client baselines and mutable static overlays.
+#[cfg(feature = "pages")]
+pub mod template_state;
 /// WASM build tooling for client-side compilation.
 pub mod wasm_builder;
 /// Hot-reload WASM rebuild pipeline (timing + structured logging wrapper).
@@ -212,8 +224,6 @@ pub mod __hot_reload_test_api {
 		DEBOUNCE_WINDOW, RebuildTargets, WatcherConfig, debounce_next, is_relevant_change,
 		rebuild_targets_for_paths, run_rebuild_for_paths, run_watcher,
 	};
-	#[cfg(all(feature = "autoreload", feature = "pages"))]
-	pub use crate::page_hot_patch::render_static_page_patch;
 	pub use crate::server_rebuild_pipeline::{ServerRebuildOutcome, ServerRebuildPipeline};
 	pub use crate::source_roots::SourceRoots;
 	#[cfg(feature = "pages")]
@@ -273,6 +283,19 @@ pub use style_extractor::{
 	StyleFeatureSelection, StyleFingerprints, StylePackageContext,
 };
 pub use template::{TemplateCommand, TemplateContext, generate_secret_key, to_camel_case};
+#[cfg(feature = "pages")]
+pub use template_classifier::{
+	RebuildReason, TemplateClassification, TemplateDiagnostic, TemplatePatchSet,
+	classify_source_change,
+};
+#[cfg(feature = "pages")]
+pub use template_diagnostics::normalize_build_diagnostics;
+#[cfg(feature = "pages")]
+pub use template_hot_reload::{
+	CoordinatorError, DispatchOutcome, TemplateBuildArtifact, TemplateHotReloadCoordinator,
+};
+#[cfg(feature = "pages")]
+pub use template_state::{CompiledBaseline, SourceBaseline, StaticOverlayStore};
 pub use wasm_builder::{
 	WasmBuildConfig, WasmBuildError, WasmBuildOutput, WasmBuilder, check_wasm_tools_installed,
 	detect_cdylib_in_cargo_toml, detect_cdylib_in_cargo_toml_content, is_wasm_stale,
