@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - *(pages)* compile component styles for collectstatic and development serving with stable CSS-only refresh URLs
 
+### Removed
+
+- *(pages)* remove the obsolete whole-root static HTML hot-patch parser and helper
+
 ### Fixed
 
 - *(pages)* keep generated component styles aligned with compiled Cargo sources, configured static URLs, and successful rebuilds.
