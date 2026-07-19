@@ -5,6 +5,16 @@ use crate::component::{Component, IntoPage, Page, PageElement};
 use crate::dom::EventType;
 use crate::reactive::Action;
 
+#[cfg(wasm)]
+fn set_pending_attributes(button: &web_sys::HtmlButtonElement, pending: bool) {
+	button.set_disabled(pending);
+	if pending {
+		let _ = button.set_attribute("aria-busy", "true");
+	} else {
+		let _ = button.remove_attribute("aria-busy");
+	}
+}
+
 /// A headless button that dispatches an [`Action`] with a payload when clicked.
 ///
 /// The public constructors are available from [`reinhardt_pages::ui`]. Use
@@ -118,7 +128,62 @@ where
 		let children = self.children.clone();
 		let attrs = self.attrs.clone();
 
-		Page::reactive(move || {
+		#[cfg(wasm)]
+		{
+			use std::cell::RefCell;
+			use wasm_bindgen::JsCast;
+
+			let mounted_button = Rc::new(RefCell::new(None));
+			let success_button = Rc::clone(&mounted_button);
+			let error_button = Rc::clone(&mounted_button);
+			let action = action
+				.on_success(move |_| {
+					if let Some(button) = success_button.borrow().as_ref() {
+						set_pending_attributes(button, false);
+					}
+				})
+				.on_error(move |_| {
+					if let Some(button) = error_button.borrow().as_ref() {
+						set_pending_attributes(button, false);
+					}
+				});
+			let pending = action.is_pending();
+			let payload_for_click = Rc::clone(&payload);
+			let button_for_click = Rc::clone(&mounted_button);
+			let on_click = move |event: web_sys::Event| {
+				if !action.is_pending()
+					&& let Some(button) = event
+						.current_target()
+						.and_then(|target| target.dyn_into::<web_sys::HtmlButtonElement>().ok())
+				{
+					set_pending_attributes(&button, true);
+					*button_for_click.borrow_mut() = Some(button);
+					action.dispatch(payload_for_click());
+				}
+			};
+
+			let mut button = PageElement::new("button").attr("type", "button");
+			for (name, value) in &attrs {
+				if !name.eq_ignore_ascii_case("type")
+					&& !name.eq_ignore_ascii_case("disabled")
+					&& !name.eq_ignore_ascii_case("aria-busy")
+				{
+					button = button.attr(name.clone(), value.clone());
+				}
+			}
+			button = button.bool_attr("disabled", pending);
+			if pending {
+				button = button.attr("aria-busy", "true");
+			}
+
+			return button
+				.on(EventType::Click, on_click.into_event_handler())
+				.child(children)
+				.into_page();
+		}
+
+		#[cfg(native)]
+		{
 			let pending = action.is_pending();
 			let payload_for_click = Rc::clone(&payload);
 			let on_click = move |_event| {
@@ -143,9 +208,9 @@ where
 
 			button
 				.on(EventType::Click, on_click.into_event_handler())
-				.child(children.clone())
+				.child(children)
 				.into_page()
-		})
+		}
 	}
 
 	fn name() -> &'static str {
