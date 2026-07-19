@@ -93,6 +93,7 @@ web-sys-full = [
 	"web-sys/MutationObserver",
 	"web-sys/MutationObserverInit",
 	"web-sys/HtmlDocument",
+	"web-sys/HtmlHeadElement",
 	"web-sys/History",
 	"web-sys/Location",
 	"web-sys/Url",
@@ -357,6 +358,11 @@ required-features = ["testing"]
 [[test]]
 name = "server_fn_wasm_test"
 path = "tests/wasm/server_fn_wasm_test.rs"
+required-features = ["testing"]
+
+[[test]]
+name = "document_head_wasm_test"
+path = "tests/wasm/document_head_wasm_test.rs"
 required-features = ["testing"]
 
 [[test]]

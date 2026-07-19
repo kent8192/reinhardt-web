@@ -40,7 +40,16 @@ pub trait PageExt {
 #[cfg(wasm)]
 impl PageExt for Page {
 	fn mount(self, parent: &Element) -> Result<(), MountError> {
-		mount_inner(self, parent)
+		let manager = crate::document_head::ensure_browser_document_head_manager()
+			.map_err(|error| error.into_mount_error())?;
+		manager.begin_batch();
+		let result = crate::document_head::with_document_head_manager(&manager, || {
+			mount_inner(self, parent)
+		});
+		let reconcile = manager
+			.end_batch(result.is_ok())
+			.map_err(|error| error.into_mount_error());
+		result.and(reconcile)
 	}
 }
 
@@ -251,9 +260,14 @@ fn mount_inner(page: Page, parent: &Element) -> Result<(), MountError> {
 			}
 		}
 		Page::Empty => {}
-		Page::WithHead { view, .. } => {
-			// On client-side, head is handled separately; just mount the content
-			mount_inner(*view, parent)?;
+		Page::WithHead { view, head } => {
+			with_reactive_node_transaction(|| {
+				let registration = crate::document_head::current_document_head_manager()
+					.and_then(|manager| manager.register_static_page(head))
+					.map_err(|error| error.into_mount_error())?;
+				store_reactive_node(registration);
+				mount_inner(*view, parent)
+			})?;
 		}
 		Page::ReactiveIf(reactive_if) => {
 			// Decompose the ReactiveIf to get the closures

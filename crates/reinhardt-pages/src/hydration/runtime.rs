@@ -16,6 +16,12 @@ use crate::component::{
 };
 
 #[cfg(wasm)]
+use crate::document_head::{
+	DocumentHeadManager, current_document_head_manager, ensure_browser_document_head_manager,
+	with_document_head_manager,
+};
+
+#[cfg(wasm)]
 use crate::ssr::HYDRATION_ATTR_ID;
 
 /// Errors that can occur during hydration.
@@ -158,6 +164,11 @@ impl HydrationContext {
 		self.state.get_resource_state(id)
 	}
 
+	/// Gets a successful route-loader value by its stable loader ID.
+	pub fn get_route_loader_state(&self, id: impl AsRef<str>) -> Option<&serde_json::Value> {
+		self.state.get_route_loader_state(id)
+	}
+
 	/// Marks hydration as complete.
 	pub fn mark_hydrated(&mut self) {
 		self.hydrated = true;
@@ -185,40 +196,64 @@ pub fn hydrate<C: Component>(component: &C, root: &Element) -> Result<(), Hydrat
 		let i18n_guard = crate::i18n::provide_i18n_from_hydration_context(&context).map_err(|e| {
 			HydrationError::StateParseError(format!("Failed to hydrate i18n state: {}", e))
 		})?;
+		let document_head_manager = ensure_browser_document_head_manager().map_err(|error| {
+			HydrationError::StateParseError(format!("Document-head initialization failed: {error}"))
+		})?;
 
 		let (view, resource_counter_offset, id_counter_offset) = {
+			// Keep prepass hook registrations in a disposable manager instead of the browser
+			// manager. The prepass is only used to inspect body shape.
+			let prepass_head_manager = DocumentHeadManager::new(crate::component::Head::new());
 			let prepass_store = new_reactive_node_store();
-			with_reactive_node_store(&prepass_store, || -> Result<_, HydrationError> {
-				// Reconciliation only inspects lazy views. Keep retained hook effects from
-				// this prepass out of the mounted root store.
-				let view = component.render();
-				let resource_counter_offset =
-					crate::reactive::resource::current_client_resource_counter();
-				let id_counter_offset = crate::reactive::hooks::id::id_counter_snapshot();
-				web_sys::console::log_1(&"[Hydration] View rendered".into());
+			with_document_head_manager(&prepass_head_manager, || {
+				with_reactive_node_store(&prepass_store, || -> Result<_, HydrationError> {
+					// Reconciliation only inspects lazy views. Keep retained hook effects from
+					// this prepass out of the mounted root store.
+					let view = component.render();
+					let resource_counter_offset =
+						crate::reactive::resource::current_client_resource_counter();
+					let id_counter_offset = crate::reactive::hooks::id::id_counter_snapshot();
+					web_sys::console::log_1(&"[Hydration] View rendered".into());
 
-				crate::reactive::resource::set_client_resource_counter(resource_counter_offset);
-				crate::reactive::hooks::id::restore_id_counter(id_counter_offset);
-				reconcile(root, &view).map_err(|e| {
-					HydrationError::StateParseError(format!("Reconciliation failed: {}", e))
-				})?;
-				validate_hydrated_controls(root, &view)?;
-				web_sys::console::log_1(&"[Hydration] Reconciliation complete".into());
+					crate::reactive::resource::set_client_resource_counter(resource_counter_offset);
+					crate::reactive::hooks::id::restore_id_counter(id_counter_offset);
+					reconcile(root, &view).map_err(|e| {
+						HydrationError::StateParseError(format!("Reconciliation failed: {}", e))
+					})?;
+					validate_hydrated_controls(root, &view)?;
+					web_sys::console::log_1(&"[Hydration] Reconciliation complete".into());
 
-				Ok((view, resource_counter_offset, id_counter_offset))
+					Ok((view, resource_counter_offset, id_counter_offset))
+				})
 			})?
 		};
 		crate::reactive::resource::set_client_resource_counter(resource_counter_offset);
 		crate::reactive::hooks::id::restore_id_counter(id_counter_offset);
 
 		// 5. Install hydration guards and reactive DOM owners in the same ownership pass.
-		crate::dom::control_binding::with_hydration_snapshot_transaction(|| {
-			crate::component::reactive_if::with_reactive_node_transaction(|| {
-				let mut root_registry = EventRegistry::new_for_hydration();
-				install_hydrated_reactive_nodes(root, &view, &mut root_registry)?;
-				store_reactive_node(root_registry);
-				Ok::<_, HydrationError>(())
+		document_head_manager.begin_batch();
+		let installation_result = with_document_head_manager(&document_head_manager, || {
+			crate::dom::control_binding::with_hydration_snapshot_transaction(|| {
+				crate::component::reactive_if::with_reactive_node_transaction(|| {
+					activate_hydrated_static_heads(&view)?;
+					let mut root_registry = EventRegistry::new_for_hydration();
+					install_hydrated_reactive_nodes(root, &view, &mut root_registry)?;
+					store_reactive_node(root_registry);
+					document_head_manager.reconcile().map_err(|error| {
+						HydrationError::StateParseError(format!(
+							"Document-head reconciliation failed: {error}"
+						))
+					})?;
+					Ok::<_, HydrationError>(())
+				})
 			})
+		});
+		let batch_result = document_head_manager.end_batch(false);
+		installation_result.map_err(|error| {
+			HydrationError::StateParseError(format!("Document-head installation failed: {error}"))
+		})?;
+		batch_result.map_err(|error| {
+			HydrationError::StateParseError(format!("Document-head reconciliation failed: {error}"))
 		})?;
 		web_sys::console::log_1(&"[Hydration] Events attached".into());
 		web_sys::console::log_1(&"[Hydration] Reactive nodes installed".into());
@@ -238,6 +273,47 @@ pub fn hydrate<C: Component>(component: &C, root: &Element) -> Result<(), Hydrat
 		crate::component::store_reactive_scope(scope);
 	}
 	result
+}
+
+#[cfg(wasm)]
+fn activate_hydrated_static_heads(view: &Page) -> Result<(), HydrationError> {
+	match view {
+		Page::WithHead { view, head } => {
+			let registration = current_document_head_manager()
+				.and_then(|manager| manager.register_static_page(head.clone()))
+				.map_err(|error| {
+					HydrationError::StateParseError(format!(
+						"Document-head registration failed: {error}"
+					))
+				})?;
+			store_reactive_node(registration);
+			activate_hydrated_static_heads(view)
+		}
+		Page::Element(element) => {
+			for child in element.child_views() {
+				activate_hydrated_static_heads(child)?;
+			}
+			Ok(())
+		}
+		Page::Fragment(children) => {
+			for child in children {
+				activate_hydrated_static_heads(child)?;
+			}
+			Ok(())
+		}
+		Page::KeyedFragment(children) => {
+			for (_, child) in children {
+				activate_hydrated_static_heads(child)?;
+			}
+			Ok(())
+		}
+		Page::Outlet(outlet) => outlet
+			.child()
+			.map_or(Ok(()), activate_hydrated_static_heads),
+		Page::Suspense(node) => activate_hydrated_static_heads(&node.render_branch()),
+		Page::Deferred(node) => activate_hydrated_static_heads(&node.content()),
+		Page::Reactive(_) | Page::ReactiveIf(_) | Page::Text(_) | Page::Empty => Ok(()),
+	}
 }
 
 #[cfg(wasm)]
@@ -437,6 +513,7 @@ fn install_hydrated_reactive_nodes(
 			let nodes = relevant_child_nodes(element);
 			let mut branch_registry = super::events::EventRegistry::new_for_hydration();
 			with_reactive_node_store(&branch_store, || {
+				activate_hydrated_static_heads(&rendered)?;
 				install_hydrated_child_reactive_nodes(
 					&element.as_web_sys().clone().into(),
 					&nodes,
@@ -487,6 +564,7 @@ fn install_hydrated_reactive_nodes(
 			let nodes = relevant_child_nodes(element);
 			let mut branch_registry = super::events::EventRegistry::new_for_hydration();
 			with_reactive_node_store(&branch_store, || {
+				activate_hydrated_static_heads(&branch_view)?;
 				install_hydrated_child_reactive_nodes(
 					&element.as_web_sys().clone().into(),
 					&nodes,
@@ -593,6 +671,7 @@ fn install_hydrated_child_reactive_nodes(
 			let rendered = with_reactive_node_store(&render_store, || reactive.render());
 			let mut branch_registry = super::events::EventRegistry::new();
 			with_reactive_node_store(&branch_store, || {
+				activate_hydrated_static_heads(&rendered)?;
 				install_hydrated_child_reactive_nodes(
 					parent,
 					nodes,
@@ -643,6 +722,7 @@ fn install_hydrated_child_reactive_nodes(
 			});
 			let mut branch_registry = super::events::EventRegistry::new();
 			with_reactive_node_store(&branch_store, || {
+				activate_hydrated_static_heads(&branch_view)?;
 				install_hydrated_child_reactive_nodes(
 					parent,
 					nodes,
@@ -1306,6 +1386,17 @@ mod tests {
 		assert_eq!(
 			ctx.get_resource_state("rh-res-0"),
 			Some(&serde_json::json!({"Success": {"name": "Ada"}}))
+		);
+	}
+
+	#[test]
+	fn test_hydration_context_get_route_loader_state() {
+		let mut state = SsrState::new();
+		state.add_route_loader_state("app::loader", serde_json::json!({"name": "Ada"}));
+		let ctx = HydrationContext::from_state(state);
+		assert_eq!(
+			ctx.get_route_loader_state("app::loader"),
+			Some(&serde_json::json!({"name": "Ada"}))
 		);
 	}
 

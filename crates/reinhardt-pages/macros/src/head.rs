@@ -26,11 +26,13 @@ use syn::{Expr, Ident, LitStr, Token, braced};
 
 use crate::crate_paths::get_reinhardt_pages_crate;
 
-/// AST node for a head element (title, meta, link, script, style).
+/// AST node for a head element (title, base, meta, link, script, style).
 #[derive(Debug)]
 enum HeadElement {
 	/// `title { "Page Title" }`
 	Title(Expr),
+	/// `base { href: "/app/" }`
+	Base(Vec<HeadAttr>),
 	/// `meta { name: "...", content: "..." }` or `meta { property: "...", content: "..." }`
 	Meta(Vec<HeadAttr>),
 	/// `link { rel: "...", href: "...", ... }`
@@ -107,6 +109,11 @@ fn parse_head_element(input: ParseStream) -> syn::Result<HeadElement> {
 			let expr: Expr = content.parse()?;
 			Ok(HeadElement::Title(expr))
 		}
+		"base" => {
+			// base { href: "/app/" }
+			let attrs = parse_attrs(&content)?;
+			Ok(HeadElement::Base(attrs))
+		}
 		"meta" => {
 			// meta { name: "...", content: "..." }
 			let attrs = parse_attrs(&content)?;
@@ -137,7 +144,7 @@ fn parse_head_element(input: ParseStream) -> syn::Result<HeadElement> {
 		_ => Err(syn::Error::new(
 			tag.span(),
 			format!(
-				"Unknown head element '{}'. Expected: title, meta, link, script, style",
+				"Unknown head element '{}'. Expected: title, base, meta, link, script, style",
 				tag_str
 			),
 		)),
@@ -161,6 +168,9 @@ fn generate(ast: &HeadMacro) -> syn::Result<TokenStream2> {
 		match element {
 			HeadElement::Title(expr) => {
 				builder_calls.push(quote! { .title(#expr) });
+			}
+			HeadElement::Base(attrs) => {
+				builder_calls.push(generate_base_call(attrs)?);
 			}
 			HeadElement::Meta(attrs) => {
 				let meta_call = generate_meta_call(attrs, &pages_crate)?;
@@ -186,6 +196,46 @@ fn generate(ast: &HeadMacro) -> syn::Result<TokenStream2> {
 				#(#builder_calls)*
 		}
 	})
+}
+
+/// Generate a base tag builder call.
+fn generate_base_call(attrs: &[HeadAttr]) -> syn::Result<TokenStream2> {
+	let mut href = None;
+
+	for attr in attrs {
+		if attr.name != "href" {
+			return Err(syn::Error::new(
+				attr.name.span(),
+				format!(
+					"unknown attribute '{}' on base tag; expected only 'href'",
+					attr.name
+				),
+			));
+		}
+
+		if href.is_some() {
+			return Err(syn::Error::new(
+				attr.name.span(),
+				"base tag requires exactly one 'href' attribute with a value",
+			));
+		}
+
+		href = Some(attr);
+	}
+
+	let href = href.and_then(|attr| attr.value.as_ref()).ok_or_else(|| {
+		syn::Error::new(
+			attrs
+				.first()
+				.map(|attr| attr.name.span())
+				.unwrap_or_else(Span::call_site),
+			"base tag requires exactly one 'href' attribute with a value",
+		)
+	})?;
+
+	validate_url_scheme(href, "href", "base")?;
+
+	Ok(quote! { .base_url(#href) })
 }
 
 /// Generate a meta tag builder call.
@@ -519,6 +569,57 @@ mod tests {
 		});
 		let ast: HeadMacro = syn::parse2(input).unwrap();
 		assert_eq!(ast.elements.len(), 1);
+	}
+
+	#[test]
+	fn test_head_macro_base() {
+		let input = quote!(|| { base { href: "/app/" } });
+		let ast: HeadMacro = syn::parse2(input).unwrap();
+		let output = generate(&ast).unwrap();
+		assert!(output.to_string().contains(". base_url"));
+	}
+
+	#[test]
+	fn test_base_requires_exactly_one_href_attribute() {
+		for input in [
+			quote!(|| { base {} }),
+			quote!(|| { base { href } }),
+			quote!(|| {
+				base {
+					href: "/app/",
+					href: "/other/",
+				}
+			}),
+			quote!(|| { base { target: "_blank" } }),
+		] {
+			let ast: HeadMacro = syn::parse2(input).unwrap();
+			assert!(generate(&ast).is_err());
+		}
+	}
+
+	#[test]
+	fn test_base_rejects_dangerous_url_schemes() {
+		for input in [
+			quote!(|| {
+				base {
+					href: "javascript:alert(1)",
+				}
+			}),
+			quote!(|| {
+				base {
+					href: "data:text/html,unsafe",
+				}
+			}),
+			quote!(|| {
+				base {
+					href: "vbscript:MsgBox",
+				}
+			}),
+		] {
+			let ast: HeadMacro = syn::parse2(input).unwrap();
+			let error = generate(&ast).unwrap_err();
+			assert!(error.to_string().contains("dangerous URL scheme"));
+		}
 	}
 
 	#[test]

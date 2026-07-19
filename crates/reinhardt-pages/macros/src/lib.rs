@@ -826,6 +826,7 @@ pub fn page(input: TokenStream) -> TokenStream {
 /// ```text
 /// head!(|| {
 ///     title { "Page Title" }
+///     base { href: "/app/" }
 ///     meta { name: "description", content: "..." }
 ///     link { rel: "stylesheet", href: "..." }
 ///     script { src: "...", defer }
@@ -888,6 +889,7 @@ pub fn page(input: TokenStream) -> TokenStream {
 ///
 /// let my_head = head!(|| {
 ///     title { "My Application" }
+///     base { href: "/app/" }
 ///     meta { name: "description", content: "A great application" }
 ///     meta { name: "viewport", content: "width=device-width, initial-scale=1.0" }
 ///     link { rel: "icon", href: "/favicon.png", type: "image/png" }
@@ -898,6 +900,10 @@ pub fn page(input: TokenStream) -> TokenStream {
 /// // Use with SSR
 /// let html = my_head.to_html();
 /// ```
+///
+/// `head!` produces a structural [`Head`] value. Lifecycle ownership is
+/// established when the value is attached to a `Page` with `#head:` or
+/// supplied through route metadata; the macro does not flatten nested pages.
 #[proc_macro]
 pub fn head(input: TokenStream) -> TokenStream {
 	head::head_impl(input)

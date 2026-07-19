@@ -959,11 +959,10 @@ impl Page {
 		}
 	}
 
-	/// Finds the topmost head section in the view tree.
+	/// Finds the first structural `Head` for compatibility-oriented inspection.
 	///
-	/// This method searches the view tree from the root and returns the first
-	/// head section found. This ensures that the outermost (page-level) head
-	/// takes precedence over inner component heads.
+	/// This is not the document-head resolution API. SSR, hydration, and browser
+	/// mounting compose every active declaration through `reinhardt-pages`.
 	///
 	/// # Search Order
 	///
@@ -990,8 +989,11 @@ impl Page {
 		}
 	}
 
-	/// Finds the topmost head section and returns an owned copy.
+	/// Finds the first structural `Head` and returns an owned copy for
+	/// compatibility-oriented inspection.
 	///
+	/// This is not the document-head resolution API. SSR, hydration, and browser
+	/// mounting compose every active declaration through `reinhardt-pages`.
 	/// Unlike [`Page::find_topmost_head`], this method can evaluate lazy
 	/// Suspense/Deferred content without storing request state on the `Page`.
 	pub fn find_topmost_head_owned(&self) -> Option<Head> {

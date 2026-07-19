@@ -23,11 +23,11 @@
 use reinhardt_core::page::Outlet;
 use reinhardt_core::reactive::ReactiveScope;
 use reinhardt_pages::app::{ClientLauncher, with_spa_router};
-use reinhardt_pages::component::{IntoPage, Page, PageElement};
+use reinhardt_pages::component::{Head, IntoPage, Page, PageElement};
 use reinhardt_pages::deps;
 use reinhardt_pages::reactive::hooks::use_retained_effect;
 use reinhardt_pages::reactive::{Signal, with_runtime};
-use reinhardt_urls::routers::ClientRouter;
+use reinhardt_urls::routers::{ClientRouter, RouteMetadata};
 use std::cell::RefCell;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_test::*;
@@ -95,6 +95,21 @@ fn layout_shell(outlet: Outlet) -> Page {
 		.child("LAYOUT-SHELL")
 		.child(outlet)
 		.into_page()
+}
+
+fn managed_head_node(document: &web_sys::Document, selector: &str) -> web_sys::Element {
+	document
+		.query_selector(selector)
+		.expect("head selector should be valid")
+		.expect("managed head node should exist")
+}
+
+fn assert_single_managed_head_node(document: &web_sys::Document, selector: &str) {
+	assert_eq!(
+		document.query_selector_all(selector).unwrap().length(),
+		1,
+		"expected exactly one managed node for selector {selector}"
+	);
 }
 
 fn reset_retained_route_state() -> Signal<i32> {
@@ -415,6 +430,108 @@ async fn client_launcher_preserves_layout_shell_between_sibling_routes() {
 		!html.contains("ROUTE-A-CONTENT"),
 		"/a outlet content should be replaced, got: {html}"
 	);
+	replace_history_path("/");
+}
+
+#[wasm_bindgen_test]
+async fn client_launcher_preserves_layout_head_across_sibling_navigation_and_history() {
+	let root = install_app_root();
+	replace_history_path("/a");
+
+	ClientLauncher::new("#app")
+		.router_client(|| {
+			ClientRouter::new()
+				.routes(|routes| {
+					routes.layout_route("shell", "/", layout_shell, |children| {
+						children.route("a", "a", page_a).route("b", "b", page_b)
+					})
+				})
+				.with_route_metadata(
+					"shell",
+					RouteMetadata::new()
+						.with_head(Head::new().meta_description("layout-description")),
+				)
+				.with_route_metadata(
+					"a",
+					RouteMetadata::new().with_head(Head::new().title("Route A").canonical("/a")),
+				)
+				.with_route_metadata(
+					"b",
+					RouteMetadata::new().with_head(Head::new().title("Route B").canonical("/b")),
+				)
+		})
+		.launch()
+		.expect("launch");
+
+	yield_to_microtasks().await;
+	let document = web_sys::window().unwrap().document().unwrap();
+	assert_eq!(document.title(), "Route A");
+	let layout_description = managed_head_node(
+		&document,
+		"meta[name='description'][content='layout-description'][data-reinhardt-head]",
+	);
+	assert_single_managed_head_node(
+		&document,
+		"meta[name='description'][content='layout-description'][data-reinhardt-head]",
+	);
+	managed_head_node(
+		&document,
+		"link[rel='canonical'][href='/a'][data-reinhardt-head]",
+	);
+	assert_single_managed_head_node(
+		&document,
+		"link[rel='canonical'][href='/a'][data-reinhardt-head]",
+	);
+
+	with_spa_router(|r| r.push("/b")).expect("push /b");
+	yield_to_microtasks().await;
+	yield_to_microtasks().await;
+	assert_eq!(document.title(), "Route B");
+	assert!(layout_description.is_same_node(Some(&managed_head_node(
+		&document,
+		"meta[name='description'][content='layout-description'][data-reinhardt-head]",
+	))));
+	assert_single_managed_head_node(
+		&document,
+		"meta[name='description'][content='layout-description'][data-reinhardt-head]",
+	);
+	assert!(
+		document
+			.query_selector("link[rel='canonical'][href='/a'][data-reinhardt-head]")
+			.unwrap()
+			.is_none()
+	);
+	managed_head_node(
+		&document,
+		"link[rel='canonical'][href='/b'][data-reinhardt-head]",
+	);
+	assert_single_managed_head_node(
+		&document,
+		"link[rel='canonical'][href='/b'][data-reinhardt-head]",
+	);
+
+	web_sys::window()
+		.unwrap()
+		.history()
+		.unwrap()
+		.back()
+		.unwrap();
+	yield_to_microtasks().await;
+	yield_to_microtasks().await;
+	assert_eq!(document.title(), "Route A");
+	assert!(layout_description.is_same_node(Some(&managed_head_node(
+		&document,
+		"meta[name='description'][content='layout-description'][data-reinhardt-head]",
+	))));
+	assert_single_managed_head_node(
+		&document,
+		"meta[name='description'][content='layout-description'][data-reinhardt-head]",
+	);
+	managed_head_node(
+		&document,
+		"link[rel='canonical'][href='/a'][data-reinhardt-head]",
+	);
+	assert!(root.inner_html().contains("ROUTE-A-CONTENT"));
 	replace_history_path("/");
 }
 

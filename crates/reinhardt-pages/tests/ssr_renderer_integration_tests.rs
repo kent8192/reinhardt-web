@@ -26,6 +26,12 @@ fn signal_in_scope<T: 'static>(scope: &ReactiveScope, value: T) -> Signal<T> {
 	scope.enter(|| Signal::new(value))
 }
 
+fn has_managed_head_entry(html: &str, tag: &str, semantic_content: &str) -> bool {
+	let marker_prefix = format!("<{tag} data-reinhardt-head=\"");
+	html.lines()
+		.any(|line| line.starts_with(&marker_prefix) && line.contains(semantic_content))
+}
+
 // ============================================================================
 // Test Components
 // ============================================================================
@@ -468,7 +474,37 @@ async fn test_full_page_custom_title() {
 	let mut renderer = SsrRenderer::new();
 	let html = renderer.render_page_with_view_head_to_string(view).await;
 
-	assert!(html.contains("<title>Test Page</title>"));
+	assert!(has_managed_head_entry(
+		&html,
+		"title",
+		"\">Test Page</title>",
+	));
+}
+
+#[rstest]
+#[tokio::test]
+async fn reused_renderer_resets_managed_head_slot_identity_per_request() {
+	// Arrange
+	let mut renderer = SsrRenderer::new();
+	let first = Page::text("first").with_head(Head::new().title("First request"));
+	let second = Page::text("second").with_head(Head::new().title("Second request"));
+
+	// Act
+	let first_html = renderer.render_page_with_view_head_to_string(first).await;
+	let second_html = renderer.render_page_with_view_head_to_string(second).await;
+
+	// Assert
+	assert!(has_managed_head_entry(
+		&first_html,
+		"title",
+		"\">First request</title>",
+	));
+	assert!(has_managed_head_entry(
+		&second_html,
+		"title",
+		"\">Second request</title>",
+	));
+	assert!(!second_html.contains("First request"));
 }
 
 #[tokio::test]
@@ -489,7 +525,11 @@ async fn test_full_page_css_link() {
 	let mut renderer = SsrRenderer::new();
 	let html = renderer.render_page_with_view_head_to_string(view).await;
 
-	assert!(html.contains("<link rel=\"stylesheet\" href=\"/styles.css\">"));
+	assert!(has_managed_head_entry(
+		&html,
+		"link",
+		"rel=\"stylesheet\" href=\"/styles.css\"",
+	));
 }
 
 #[tokio::test]
@@ -502,8 +542,16 @@ async fn test_full_page_multiple_css_links() {
 	let mut renderer = SsrRenderer::new();
 	let html = renderer.render_page_with_view_head_to_string(view).await;
 
-	assert!(html.contains("<link rel=\"stylesheet\" href=\"/reset.css\">"));
-	assert!(html.contains("<link rel=\"stylesheet\" href=\"/main.css\">"));
+	assert!(has_managed_head_entry(
+		&html,
+		"link",
+		"rel=\"stylesheet\" href=\"/reset.css\"",
+	));
+	assert!(has_managed_head_entry(
+		&html,
+		"link",
+		"rel=\"stylesheet\" href=\"/main.css\"",
+	));
 }
 
 #[tokio::test]
@@ -514,7 +562,11 @@ async fn test_full_page_js_script() {
 	let mut renderer = SsrRenderer::new();
 	let html = renderer.render_page_with_view_head_to_string(view).await;
 
-	assert!(html.contains("<script src=\"/app.js\"></script>"));
+	assert!(has_managed_head_entry(
+		&html,
+		"script",
+		"src=\"/app.js\"></script>",
+	));
 }
 
 #[tokio::test]
@@ -527,8 +579,16 @@ async fn test_full_page_custom_meta_tags() {
 	let mut renderer = SsrRenderer::new();
 	let html = renderer.render_page_with_view_head_to_string(view).await;
 
-	assert!(html.contains("<meta name=\"description\" content=\"Test page\">"));
-	assert!(html.contains("<meta name=\"keywords\" content=\"test, rust, ssr\">"));
+	assert!(has_managed_head_entry(
+		&html,
+		"meta",
+		"name=\"description\" content=\"Test page\"",
+	));
+	assert!(has_managed_head_entry(
+		&html,
+		"meta",
+		"name=\"keywords\" content=\"test, rust, ssr\"",
+	));
 }
 
 #[tokio::test]
@@ -583,7 +643,11 @@ async fn test_full_page_combined_options() {
 	let mut renderer = SsrRenderer::with_options(options);
 	let html = renderer.render_page_with_view_head_to_string(view).await;
 
-	assert!(html.contains("<title>Combined Test</title>"));
+	assert!(has_managed_head_entry(
+		&html,
+		"title",
+		"\">Combined Test</title>",
+	));
 	assert!(html.contains("<html lang=\"fr\">"));
 	assert!(html.contains("href=\"/style.css\""));
 	assert!(html.contains("src=\"/script.js\""));

@@ -6,7 +6,7 @@ use reinhardt_pages::component::suspense::SuspenseBoundary;
 use reinhardt_pages::component::{Component, ControlBinding, IntoPage, Page, PageElement};
 use reinhardt_pages::deps;
 use reinhardt_pages::reactive::{
-	ReactiveScope, ResourceState, Signal, use_id, use_resource, use_resource_with_key,
+	ReactiveScope, ResourceState, Signal, use_head, use_id, use_resource, use_resource_with_key,
 };
 use reinhardt_pages::ssr::{SsrChunk, SsrOptions, SsrRenderer, SsrStream};
 use rstest::rstest;
@@ -62,6 +62,12 @@ fn delayed_suspense_resource_view(delay: Duration, value: &'static str) -> Page 
 			})
 			.into_page()
 	})
+}
+
+fn has_managed_head_entry(html: &str, tag: &str, semantic_content: &str) -> bool {
+	let marker_prefix = format!("<{tag} data-reinhardt-head=\"");
+	html.lines()
+		.any(|line| line.starts_with(&marker_prefix) && line.contains(semantic_content))
 }
 
 fn controlled_select_suspense_option_view(scope: &ReactiveScope) -> Page {
@@ -513,9 +519,85 @@ async fn buffered_suspense_caches_head_from_resolved_content_render() {
 	let mut renderer = SsrRenderer::new();
 	let html = renderer.render_page_with_view_head_to_string(view).await;
 
-	assert!(html.contains("<title>Resolved Suspense Head</title>"));
+	assert!(has_managed_head_entry(
+		&html,
+		"title",
+		"\">Resolved Suspense Head</title>",
+	));
 	assert!(html.contains("resolved"));
 	assert_eq!(content_calls.get(), 2);
+}
+
+#[tokio::test]
+async fn buffered_suspense_fallback_discards_pending_content_head() {
+	// Arrange
+	let view = Page::fragment([
+		Page::reactive(|| {
+			use_head(
+				|| Head::new().meta_description("buffered retained metadata"),
+				deps![],
+			);
+			Page::Empty
+		}),
+		Page::Suspense(SuspenseNode::new(
+			Some("buffered-pending-head".to_string()),
+			|| true,
+			|| {
+				PageElement::new("span")
+					.child("buffered fallback")
+					.into_page()
+					.with_head(
+						Head::new()
+							.title("Buffered Fallback Head")
+							.meta_description("buffered fallback metadata")
+							.canonical("https://example.test/buffered-fallback")
+							.base_url("https://example.test/buffered-fallback/"),
+					)
+			},
+			|| {
+				Page::reactive(|| {
+					use_head(
+						|| {
+							Head::new()
+								.meta_description("buffered pending hook metadata")
+								.canonical("https://example.test/buffered-pending-hook")
+						},
+						deps![],
+					);
+					PageElement::new("main")
+						.child("pending content")
+						.into_page()
+						.with_head(
+							Head::new()
+								.title("Buffered Pending Content Head")
+								.meta_description("buffered pending static metadata")
+								.canonical("https://example.test/buffered-pending-static")
+								.base_url("https://example.test/buffered-pending-static/"),
+						)
+				})
+			},
+		)),
+	]);
+	let mut renderer = SsrRenderer::new();
+
+	// Act
+	let html = renderer.render_page_with_view_head_to_string(view).await;
+
+	// Assert
+	assert!(has_managed_head_entry(
+		&html,
+		"title",
+		"\">Buffered Fallback Head</title>",
+	));
+	assert!(html.contains("buffered retained metadata"));
+	assert!(html.contains("buffered fallback metadata"));
+	assert!(html.contains("https://example.test/buffered-fallback"));
+	assert!(html.contains("buffered fallback"));
+	assert!(!html.contains("Buffered Pending Content Head"));
+	assert!(!html.contains("buffered pending static metadata"));
+	assert!(!html.contains("https://example.test/buffered-pending-static"));
+	assert!(!html.contains("buffered pending hook metadata"));
+	assert!(!html.contains("https://example.test/buffered-pending-hook"));
 }
 
 #[tokio::test]
@@ -555,7 +637,11 @@ async fn buffered_suspense_caches_head_after_replay_resources_settle() {
 	let mut renderer = SsrRenderer::new();
 	let html = renderer.render_page_with_view_head_to_string(view).await;
 
-	assert!(html.contains("<title>Inner Ready Head</title>"));
+	assert!(has_managed_head_entry(
+		&html,
+		"title",
+		"\">Inner Ready Head</title>",
+	));
 	assert!(html.contains("inner-ready"));
 	assert!(!html.contains("inner-loading"));
 }
@@ -736,8 +822,16 @@ async fn buffered_deferred_head_updates_after_replay_settles() {
 	let html = renderer.render_page_with_view_head_to_string(view).await;
 
 	assert!(html.contains("deferred-ready"));
-	assert!(html.contains("<title>Resolved Deferred Head</title>"));
-	assert!(!html.contains("<title>Loading Deferred Head</title>"));
+	assert!(has_managed_head_entry(
+		&html,
+		"title",
+		"\">Resolved Deferred Head</title>",
+	));
+	assert!(!has_managed_head_entry(
+		&html,
+		"title",
+		"\">Loading Deferred Head</title>",
+	));
 }
 
 #[tokio::test]
@@ -958,8 +1052,16 @@ async fn streaming_shell_drains_external_resources_discovered_during_replay() {
 
 	assert!(shell.contains("second-ready"));
 	assert!(!shell.contains("second-loading"));
-	assert!(shell.contains("<title>Second Ready Head</title>"));
-	assert!(!shell.contains("<title>Second Loading Head</title>"));
+	assert!(has_managed_head_entry(
+		&shell,
+		"title",
+		"\">Second Ready Head</title>",
+	));
+	assert!(!has_managed_head_entry(
+		&shell,
+		"title",
+		"\">Second Loading Head</title>",
+	));
 	assert!(closing.contains("rh-res-1"));
 	assert!(stream.next().await.is_none());
 }
@@ -1665,56 +1767,131 @@ async fn streaming_resource_state_helpers_mark_external_reads() {
 
 #[tokio::test]
 async fn streaming_shell_preserves_head_discovered_in_reactive_render() {
+	// Arrange
 	let view = Page::reactive(|| {
 		PageElement::new("main")
 			.child("reactive body")
 			.into_page()
 			.with_head(Head::new().title("Reactive Shell Head"))
 	});
+	let mut buffered_renderer = SsrRenderer::new();
+	let mut streaming_renderer = SsrRenderer::new();
 
-	let mut renderer = SsrRenderer::new();
-	let mut stream = renderer.render_page_with_view_head(view).await;
+	// Act
+	let buffered = buffered_renderer
+		.render_page_with_view_head_to_string(view.clone())
+		.await;
+	let mut stream = streaming_renderer.render_page_with_view_head(view).await;
 	let shell = stream.next().await.unwrap().into_string();
 
-	assert!(shell.contains("<title>Reactive Shell Head</title>"));
+	// Assert
+	let buffered_head = buffered
+		.split_once("<head>\n")
+		.and_then(|(_, html)| html.split_once("</head>"))
+		.map(|(head, _)| head)
+		.expect("buffered output should contain a head section");
+	let shell_head = shell
+		.split_once("<head>\n")
+		.and_then(|(_, html)| html.split_once("</head>"))
+		.map(|(head, _)| head)
+		.expect("streaming shell should contain a head section");
+	assert_eq!(shell_head, buffered_head);
+	assert!(has_managed_head_entry(
+		&shell,
+		"title",
+		"\">Reactive Shell Head</title>",
+	));
 	assert!(shell.contains("reactive body"));
 }
 
 #[tokio::test]
-async fn streaming_shell_uses_pending_suspense_content_head_from_shell_render() {
+async fn streaming_shell_uses_fallback_head_without_pending_content_head() {
+	// Arrange
 	let content_calls = Rc::new(Cell::new(0));
 	let render_calls = Rc::clone(&content_calls);
-	let view = Page::Suspense(SuspenseNode::new(
-		Some("pending-head".to_string()),
-		|| false,
-		|| PageElement::new("span").child("fallback").into_page(),
-		move || {
-			render_calls.set(render_calls.get() + 1);
-			Page::reactive(|| {
-				let resource = use_resource(
-					|| async {
-						tokio::time::sleep(Duration::from_millis(5)).await;
-						Ok::<_, String>("ready".to_string())
-					},
-					deps![],
-				);
-				match resource.get() {
-					ResourceState::Success(value) => {
-						PageElement::new("strong").child(value).into_page()
+	let view = Page::fragment([
+		Page::reactive(|| {
+			use_head(
+				|| Head::new().meta_description("streaming retained metadata"),
+				deps![],
+			);
+			Page::Empty
+		}),
+		Page::Suspense(SuspenseNode::new(
+			Some("pending-head".to_string()),
+			|| false,
+			|| {
+				PageElement::new("span")
+					.child("fallback")
+					.into_page()
+					.with_head(
+						Head::new()
+							.title("Fallback Head")
+							.meta_description("streaming fallback metadata")
+							.canonical("https://example.test/streaming-fallback")
+							.base_url("https://example.test/streaming-fallback/"),
+					)
+			},
+			move || {
+				render_calls.set(render_calls.get() + 1);
+				Page::reactive(|| {
+					use_head(
+						|| {
+							Head::new()
+								.meta_description("streaming pending hook metadata")
+								.canonical("https://example.test/streaming-pending-hook")
+						},
+						deps![],
+					);
+					let resource = use_resource(
+						|| async {
+							tokio::time::sleep(Duration::from_millis(5)).await;
+							Ok::<_, String>("ready".to_string())
+						},
+						deps![],
+					);
+					match resource.get() {
+						ResourceState::Success(value) => {
+							PageElement::new("strong").child(value).into_page()
+						}
+						ResourceState::Loading => {
+							PageElement::new("em").child("loading").into_page()
+						}
+						ResourceState::Error(error) => {
+							PageElement::new("em").child(error).into_page()
+						}
 					}
-					ResourceState::Loading => PageElement::new("em").child("loading").into_page(),
-					ResourceState::Error(error) => PageElement::new("em").child(error).into_page(),
-				}
-			})
-			.with_head(Head::new().title("Pending Suspense Head"))
-		},
-	));
-
+				})
+				.with_head(
+					Head::new()
+						.title("Pending Content Head")
+						.meta_description("streaming pending static metadata")
+						.canonical("https://example.test/streaming-pending-static")
+						.base_url("https://example.test/streaming-pending-static/"),
+				)
+			},
+		)),
+	]);
 	let mut renderer = SsrRenderer::new();
+
+	// Act
 	let mut stream = renderer.render_page_with_view_head(view).await;
 	let shell = stream.next().await.unwrap().into_string();
 
-	assert!(shell.contains("<title>Pending Suspense Head</title>"));
+	// Assert
+	assert!(has_managed_head_entry(
+		&shell,
+		"title",
+		"\">Fallback Head</title>",
+	));
+	assert!(shell.contains("streaming retained metadata"));
+	assert!(shell.contains("streaming fallback metadata"));
+	assert!(shell.contains("https://example.test/streaming-fallback"));
+	assert!(!shell.contains("Pending Content Head"));
+	assert!(!shell.contains("streaming pending static metadata"));
+	assert!(!shell.contains("https://example.test/streaming-pending-static"));
+	assert!(!shell.contains("streaming pending hook metadata"));
+	assert!(!shell.contains("https://example.test/streaming-pending-hook"));
 	assert_eq!(content_calls.get(), 2);
 }
 
