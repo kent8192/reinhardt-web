@@ -444,15 +444,13 @@ impl Runtime {
 						}
 					}
 				}
-			} else if super::memo::is_memo_registered(subscriber_id) {
-				if self
+			} else if super::memo::is_memo_registered(subscriber_id)
+				&& self
 					.notification_memos_seen
 					.borrow_mut()
 					.insert(subscriber_id)
-					&& super::memo::is_memo_registered(subscriber_id)
-				{
-					super::memo::mark_memo_dirty_by_id(subscriber_id);
-				}
+			{
+				super::memo::mark_memo_dirty_by_id(subscriber_id);
 			}
 		}
 	}
