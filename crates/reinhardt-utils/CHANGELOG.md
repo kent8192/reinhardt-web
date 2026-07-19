@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-utils@v0.3.2...reinhardt-utils@v0.4.0) - 2026-07-19
+
+### Maintenance
+
+- merge main into develop/0.4.0
+- merge develop/0.4.0 into remove-anyhow branch
+- merge develop/0.4.0 into anyhow removal branch
+
 ## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-utils@v0.2.0...reinhardt-utils@v0.3.0) - 2026-06-28
 
 Stable release of `reinhardt-utils` for the Reinhardt 0.3.0 line. This

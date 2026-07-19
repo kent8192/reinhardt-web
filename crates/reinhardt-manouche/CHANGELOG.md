@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-manouche@v0.3.2...reinhardt-manouche@v0.4.0) - 2026-07-19
+
+### Added
+
+- *(manouche)* [**breaking**] add compile-time accessibility validation
+- *(manouche,pages)* lower typed intrinsic event handlers
+- *(pages)* validate controlled binding syntax
+
+### Fixed
+
+- *(manouche)* address accessibility validation review feedback
+- *(manouche)* handle composed accessibility labels
+- *(pages)* reject duplicate binding classifiers
+- *(pages)* clear controlled input quality gates
+- *(pages)* align inferred option and IME semantics
+- *(pages)* close bound option validation gaps
+- *(pages)* reset nested select validation context
+- *(pages)* reject duplicate bound choice values
+- *(pages)* box controlled binding expressions
+- *(pages)* preserve controlled binding hydration state
+- *(pages)* close PR 5676 controlled input review gaps
+- *(pages)* preserve controlled select projection
+- *(manouche)* clamp representative style fixture width
+
+### Maintenance
+
+- merge develop/0.4.0 into accessibility pr
+- merge latest main into develop forward-merge
+
+### Other
+
+- resolve develop/0.4.0 conflicts for [[#5676](https://github.com/kent8192/reinhardt-web/issues/5676)](https://github.com/kent8192/reinhardt-web/issues/5676)
+
+### Testing
+
+- *(pages)* strengthen select sibling context coverage
+
 ### Added
 
 - Add the shared component-style compiler boundary with deterministic scoping,

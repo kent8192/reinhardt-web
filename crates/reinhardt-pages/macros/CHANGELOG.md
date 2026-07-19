@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.3.2...reinhardt-pages-macros@v0.4.0) - 2026-07-19
+
+### Added
+
+- *(pages)* apply transactional template hot patches
+
+### Fixed
+
+- *(pages)* preserve controlled binding state
+- *(pages)* preserve controlled select projection
+- resolve server function set review findings
+- *(pages)* resolve server function set review findings
+
+### Maintenance
+
+- merge main into develop/0.4.0
+- refresh main forward merge from develop/0.4.0
+- merge develop/0.4.0 into server function set branch
+
+### Other
+
+- resolve develop/0.4.0 conflicts for [[#5676](https://github.com/kent8192/reinhardt-web/issues/5676)](https://github.com/kent8192/reinhardt-web/issues/5676)
+- sync develop/0.4.0 into server function set
+
 ### Added
 
 - Add fn-form `#[server_fnset]` generation for named low-level marker sets and
