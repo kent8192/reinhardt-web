@@ -131,6 +131,22 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Workaround for release-plz/release-plz#2941 (tracked in reinhardt-web#5713).
+      # Remove this validation when release-plz copies Git-tracked files without
+      # applying ignore rules.
+      #
+      # Ideal implementation (without workaround):
+      #   release-plz release-pr copies every Git-tracked file from its base revision.
+      - name: Verify release-plz copy inputs
+        run: |
+          set -euo pipefail
+          tracked_ignored_files=$(git ls-files -ci --exclude-standard)
+          if [ -n "$tracked_ignored_files" ]; then
+            echo "::error::release-plz omits tracked files that match ignore rules."
+            printf '%s\n' "$tracked_ignored_files"
+            exit 1
+          fi
+
       - name: Setup Rust
         uses: ./.github/actions/setup-rust
 
