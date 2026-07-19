@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.3.1...reinhardt-views@v0.3.2) - 2026-07-14
+
+### Fixed
+
+- *(auth)* preserve active status in request identities
+- *(auth)* preserve active identity compatibility
+
 ## [0.3.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-views@v0.3.0...reinhardt-views@v0.3.1) - 2026-07-04
 
 ### Fixed

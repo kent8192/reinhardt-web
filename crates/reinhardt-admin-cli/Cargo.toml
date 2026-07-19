@@ -1,6 +1,6 @@
 [package]
 name = "reinhardt-admin-cli"
-version = "0.3.1"
+version = "0.3.2"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -11,7 +11,7 @@ publish = true
 
 [dependencies]
 # Documentation
-aquamarine = "0.5"
+aquamarine = { workspace = true }
 
 reinhardt-commands = { workspace = true, features = ["plugins"] }
 reinhardt-dentdelion = { workspace = true, features = ["cli"] }
