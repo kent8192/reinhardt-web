@@ -101,14 +101,13 @@ impl ServerFnSetError {
 				_ => body,
 			};
 		}
-		if let Ok(error) = serde_json::from_slice::<ServerFnError>(&body) {
-			if error.kind() != ServerFnErrorKind::Transport
-				&& error
-					.status()
-					.is_some_and(|status| (100..=599).contains(&status))
-			{
-				return body;
-			}
+		if let Ok(error) = serde_json::from_slice::<ServerFnError>(&body)
+			&& error.kind() != ServerFnErrorKind::Transport
+			&& error
+				.status()
+				.is_some_and(|status| (100..=599).contains(&status))
+		{
+			return body;
 		}
 		bytes::Bytes::from_static(b"\"Internal\"")
 	}
