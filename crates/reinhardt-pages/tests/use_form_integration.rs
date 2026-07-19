@@ -190,7 +190,9 @@ fn use_form_routes_server_field_errors_and_preserves_unmatched_errors() {
 		name: ServerErrorProfileForm,
 		action: "/profile",
 		fields: {
-			display_name: CharField { initial: "Ada" },
+			display_name: CharField {
+				initial: "Ada"
+			},
 		}
 	};
 	let runtime = use_form(&profile).build();
@@ -228,8 +230,12 @@ fn use_form_routes_all_server_field_errors_without_form_error() {
 		name: AllMatchedServerErrorProfileForm,
 		action: "/profile",
 		fields: {
-			display_name: CharField { initial: "Ada" },
-			bio: TextField { initial: "Compiler engineer" },
+			display_name: CharField {
+				initial: "Ada"
+			},
+			bio: TextField {
+				initial: "Compiler engineer"
+			},
 		}
 	};
 	let runtime = use_form(&profile).build();
@@ -277,7 +283,9 @@ fn use_form_syncs_first_error_when_all_server_errors_match_fields() {
 		name: FirstErrorServerErrorProfileForm,
 		action: "/profile",
 		fields: {
-			display_name: CharField { initial: "Ada" },
+			display_name: CharField {
+				initial: "Ada"
+			},
 		}
 	};
 	let runtime = use_form(&profile).build();
@@ -304,7 +312,9 @@ fn use_form_aggregates_duplicate_server_messages_for_one_field() {
 		name: DuplicateServerErrorProfileForm,
 		action: "/profile",
 		fields: {
-			display_name: CharField { initial: "Ada" },
+			display_name: CharField {
+				initial: "Ada"
+			},
 		}
 	};
 	let runtime = use_form(&profile).build();
@@ -336,7 +346,9 @@ fn use_form_aggregates_unmatched_nested_server_errors_at_form_level() {
 		name: NestedServerErrorProfileForm,
 		action: "/profile",
 		fields: {
-			display_name: CharField { initial: "Ada" },
+			display_name: CharField {
+				initial: "Ada"
+			},
 		}
 	};
 	let runtime = use_form(&profile).build();
@@ -384,7 +396,9 @@ fn use_form_routes_server_errors_without_field_entries_to_form_level() {
 		name: FormOnlyServerErrorProfileForm,
 		action: "/profile",
 		fields: {
-			display_name: CharField { initial: "Ada" },
+			display_name: CharField {
+				initial: "Ada"
+			},
 		}
 	};
 	let runtime = use_form(&profile).build();
@@ -1926,7 +1940,9 @@ async fn submit_server_fn_returns_submitted_outcome() {
 		name: TypedAsyncSuccessForm,
 		action: "/profile",
 		fields: {
-			display_name: CharField { initial: "Ada" },
+			display_name: CharField {
+				initial: "Ada"
+			},
 		}
 	};
 	let runtime = use_form(&profile).build();
@@ -1948,7 +1964,9 @@ async fn submit_server_fn_routes_typed_server_errors() {
 		name: TypedAsyncServerErrorForm,
 		action: "/profile",
 		fields: {
-			display_name: CharField { initial: "Ada" },
+			display_name: CharField {
+				initial: "Ada"
+			},
 		}
 	};
 	let runtime = use_form(&profile).build();

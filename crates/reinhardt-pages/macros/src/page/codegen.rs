@@ -26,6 +26,8 @@
 
 use proc_macro2::{Span, TokenStream};
 use quote::{quote, quote_spanned};
+#[cfg(feature = "hmr")]
+use std::cell::Cell;
 use std::collections::HashSet;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
@@ -74,6 +76,30 @@ pub(super) fn generate(macro_ast: &TypedPageMacro) -> TokenStream {
 		body
 	};
 
+	#[cfg(feature = "hmr")]
+	let body_with_head = {
+		// Head metadata participates in the ABI but has no DOM placement in the
+		// body template. Keep it out of the mounted-range registry so static body
+		// edits conservatively fall back instead of retaining an invalid range.
+		if macro_ast.head.is_some() {
+			let _ = ctx.allocate_slot();
+		}
+		body_with_head
+	};
+
+	#[cfg(feature = "hmr")]
+	let body_with_descriptor = {
+		let descriptor = super::hot_reload::generate_template_descriptor(macro_ast, pages_crate);
+		quote! {
+			{
+				let __view = #body_with_head;
+				__view.with_dev_template_metadata(#descriptor)
+			}
+		}
+	};
+	#[cfg(not(feature = "hmr"))]
+	let body_with_descriptor = body_with_head;
+
 	match &macro_ast.form {
 		TypedPageMacroForm::StrictClosure { params, .. } => {
 			let params = generate_params(params);
@@ -84,7 +110,7 @@ pub(super) fn generate(macro_ast: &TypedPageMacro) -> TokenStream {
 					#use_statement
 					#[allow(unused_variables)]
 					#params -> #pages_crate::component::Page {
-						#body_with_head
+						#body_with_descriptor
 					}
 				}
 			}
@@ -93,7 +119,7 @@ pub(super) fn generate(macro_ast: &TypedPageMacro) -> TokenStream {
 			quote! {
 				{
 					#use_statement
-					#body_with_head
+				#body_with_descriptor
 				}
 			}
 		}
@@ -102,13 +128,28 @@ pub(super) fn generate(macro_ast: &TypedPageMacro) -> TokenStream {
 
 struct CodegenContext {
 	capture_names: HashSet<String>,
+	#[cfg(feature = "hmr")]
+	next_slot_id: Cell<u32>,
 }
 
 impl CodegenContext {
 	fn new(captures: &[ImplicitPageCapture]) -> Self {
 		Self {
 			capture_names: captures.iter().map(|c| c.ident.to_string()).collect(),
+			#[cfg(feature = "hmr")]
+			next_slot_id: Cell::new(0),
 		}
+	}
+
+	#[cfg(feature = "hmr")]
+	fn allocate_slot(&self) -> u32 {
+		let slot_id = self.next_slot_id.get();
+		self.next_slot_id.set(
+			slot_id
+				.checked_add(1)
+				.expect("page template dynamic slot id overflow"),
+		);
+		slot_id
 	}
 
 	fn captures_in_expr(&self, expr: &syn::Expr) -> Vec<syn::Ident> {
@@ -531,18 +572,48 @@ fn generate_node(
 		TypedPageNode::Element(elem) => generate_element(elem, pages_crate, ctx),
 		TypedPageNode::Text(text) => generate_text(text, pages_crate),
 		TypedPageNode::Expression(expr) => {
+			#[cfg(feature = "hmr")]
+			let slot_id = ctx.allocate_slot();
 			let inner = generate_expression(expr, pages_crate);
-			wrap_reactive(inner, pages_crate, &ctx.captures_in_node(node))
+			let page = wrap_reactive(inner, pages_crate, &ctx.captures_in_node(node));
+			#[cfg(feature = "hmr")]
+			return super::hot_reload::wrap_dynamic_slot(slot_id, page, pages_crate);
+			#[cfg(not(feature = "hmr"))]
+			page
 		}
 		TypedPageNode::If(if_node) => {
+			#[cfg(feature = "hmr")]
+			let slot_id = ctx.allocate_slot();
 			let inner = generate_if(if_node, pages_crate, ctx);
-			wrap_reactive(inner, pages_crate, &ctx.captures_in_node(node))
+			let page = wrap_reactive(inner, pages_crate, &ctx.captures_in_node(node));
+			#[cfg(feature = "hmr")]
+			return super::hot_reload::wrap_dynamic_slot(slot_id, page, pages_crate);
+			#[cfg(not(feature = "hmr"))]
+			page
 		}
 		TypedPageNode::For(for_node) => {
+			#[cfg(feature = "hmr")]
+			let mut slot_ids = vec![ctx.allocate_slot()];
+			#[cfg(feature = "hmr")]
+			if for_node.key.is_some() {
+				slot_ids.push(ctx.allocate_slot());
+			}
 			let inner = generate_for(for_node, pages_crate, ctx);
-			wrap_reactive(inner, pages_crate, &ctx.captures_in_node(node))
+			let page = wrap_reactive(inner, pages_crate, &ctx.captures_in_node(node));
+			#[cfg(feature = "hmr")]
+			return super::hot_reload::wrap_dynamic_slots(page, &slot_ids, pages_crate);
+			#[cfg(not(feature = "hmr"))]
+			page
 		}
-		TypedPageNode::Component(comp) => generate_component(comp, pages_crate, ctx),
+		TypedPageNode::Component(comp) => {
+			#[cfg(feature = "hmr")]
+			let slot_id = ctx.allocate_slot();
+			let page = generate_component(comp, pages_crate, ctx);
+			#[cfg(feature = "hmr")]
+			return super::hot_reload::wrap_dynamic_slot(slot_id, page, pages_crate);
+			#[cfg(not(feature = "hmr"))]
+			page
+		}
 		TypedPageNode::Watch(watch_node) => generate_watch(watch_node, pages_crate, ctx),
 	}
 }
@@ -556,6 +627,8 @@ fn generate_element(
 	ctx: &CodegenContext,
 ) -> TokenStream {
 	let tag = elem.tag.to_string();
+	#[cfg(feature = "hmr")]
+	let mut dynamic_slot_ids = Vec::new();
 	let radio_value_ident = syn::Ident::new("__reinhardt_radio_value", Span::mixed_site());
 	let radio_value = elem.control_binding.as_ref().and_then(|binding| {
 		(binding.kind == TypedControlBindingKind::Radio).then(|| {
@@ -567,6 +640,12 @@ fn generate_element(
 	let radio_value_initializer = radio_value.as_ref().map(|value| {
 		quote! { let #radio_value_ident = #value; }
 	});
+	#[cfg(feature = "hmr")]
+	for attr in &elem.attrs {
+		if matches!(&attr.value, AttrValue::Dynamic(_)) {
+			dynamic_slot_ids.push(ctx.allocate_slot());
+		}
+	}
 
 	// Generate attributes
 	let regular_attrs: Vec<TokenStream> = elem
@@ -592,6 +671,15 @@ fn generate_element(
 		.filter(|attr| BOOLEAN_ATTRS.contains(&attr.html_name().as_str()))
 		.map(|attr| generate_bool_attr_pair(attr, pages_crate, ctx))
 		.collect();
+
+	#[cfg(feature = "hmr")]
+	if elem.control_binding.is_some() {
+		dynamic_slot_ids.push(ctx.allocate_slot());
+	}
+	#[cfg(feature = "hmr")]
+	for _event in &elem.events {
+		dynamic_slot_ids.push(ctx.allocate_slot());
+	}
 
 	// Generate children
 	let children: Vec<TokenStream> = elem
@@ -644,6 +732,8 @@ fn generate_element(
 		let page = quote! {
 			#pages_crate::component::IntoPage::into_page(#base_builder)
 		};
+		#[cfg(feature = "hmr")]
+		let page = super::hot_reload::wrap_dynamic_slots(page, &dynamic_slot_ids, pages_crate);
 		return if let Some(initializer) = radio_value_initializer {
 			quote! {{ #initializer #page }}
 		} else {
@@ -663,6 +753,8 @@ fn generate_element(
 			#base_builder #(#event_bindings)*
 		)
 	};
+	#[cfg(feature = "hmr")]
+	let page = super::hot_reload::wrap_dynamic_slots(page, &dynamic_slot_ids, pages_crate);
 	if let Some(initializer) = radio_value_initializer {
 		quote! {{ #initializer #page }}
 	} else {

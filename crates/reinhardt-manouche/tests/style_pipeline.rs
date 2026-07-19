@@ -15,7 +15,7 @@ const REPRESENTATIVE_SOURCE: &str = r#"
 	.card {
 		padding: vars.padding;
 		border: (1px, solid, globals.border);
-		width: 100% - vars.gutter * 2;
+		width: max(0, 100% - vars.gutter * 2);
 		color: vars.accent.mix(white, 15%);
 		background-image: linear_gradient(Direction::Right, [
 			stop(vars.accent, 0%),
@@ -112,7 +112,7 @@ fn representative_pipeline_publishes_metadata_and_canonical_css() {
 	assert_eq!(compiled.variables.len(), 4);
 	assert!(css.contains("linear-gradient("));
 	assert!(css.contains("translateX("));
-	assert_eq!(css.matches("width: calc(").count(), 1);
+	assert_eq!(css.matches("width: max(0, calc(").count(), 1);
 	assert!(css.find("padding:").unwrap() < css.find("border:").unwrap());
 }
 
