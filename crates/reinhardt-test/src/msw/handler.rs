@@ -301,10 +301,12 @@ impl<S: MockableServerFn> ErasedHandler for ServerFnContextHandler<S> {
 }
 
 fn server_fn_error_response(err: ServerFnError) -> MockResponse {
-	let (status, body) = match err {
-		ServerFnError::Server { status, message } => (status, message),
-		other => (500, other.message().to_string()),
+	let status = if err.kind() == reinhardt_pages::server_fn::ServerFnErrorKind::Server {
+		err.status().unwrap_or(500)
+	} else {
+		500
 	};
+	let body = err.user_message().to_string();
 	MockResponse {
 		status,
 		headers: {

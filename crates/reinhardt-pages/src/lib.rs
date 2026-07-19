@@ -643,7 +643,7 @@ pub use router::Link;
 pub use reactive::hooks::router::{NavigateError, RouterHandle, use_router};
 pub use router::{NavigationType, navigate};
 pub use router::{Path, Query};
-pub use server_fn::{ServerFn, ServerFnError, parse_server_error_message};
+pub use server_fn::{ServerFn, ServerFnError};
 pub use ssr::SsrState;
 #[cfg(native)]
 pub use ssr::{SsrChunk, SsrOptions, SsrRenderer, SsrRouteOutput, SsrStream};

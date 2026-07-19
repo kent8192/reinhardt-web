@@ -5,7 +5,7 @@
 
 use crate::types::AdminError;
 use reinhardt_http::AuthState;
-use reinhardt_pages::server_fn::{ServerFnError, ServerFnRequest};
+use reinhardt_pages::server_fn::{ServerFnError, ServerFnErrorKind, ServerFnRequest};
 use std::sync::Arc;
 
 /// Extension trait for converting AdminError to ServerFnError
@@ -357,13 +357,10 @@ mod tests {
 
 		// Assert
 		assert!(result.is_err());
-		match result.unwrap_err() {
-			ServerFnError::Server { status, message } => {
-				assert_eq!(status, 403);
-				assert_eq!(message, "Permission denied");
-			}
-			other => panic!("Expected Server error with 403, got: {other:?}"),
-		}
+		let error = result.unwrap_err();
+		assert_eq!(error.kind(), ServerFnErrorKind::Server);
+		assert_eq!(error.status(), Some(403));
+		assert_eq!(error.user_message(), "Permission denied");
 	}
 
 	#[rstest]
@@ -385,13 +382,13 @@ mod tests {
 
 		// Assert
 		assert!(result.is_err());
-		match result.unwrap_err() {
-			ServerFnError::Server { status, message } => {
-				assert_eq!(status, 403);
-				assert_eq!(message, "Staff access required for admin panel");
-			}
-			other => panic!("Expected Server error with 403, got: {other:?}"),
-		}
+		let error = result.unwrap_err();
+		assert_eq!(error.kind(), ServerFnErrorKind::Server);
+		assert_eq!(error.status(), Some(403));
+		assert_eq!(
+			error.user_message(),
+			"Staff access required for admin panel"
+		);
 	}
 
 	#[rstest]
@@ -413,13 +410,13 @@ mod tests {
 
 		// Assert
 		assert!(result.is_err());
-		match result.unwrap_err() {
-			ServerFnError::Server { status, message } => {
-				assert_eq!(status, 401);
-				assert_eq!(message, "Authentication required to access admin panel");
-			}
-			other => panic!("Expected Server error with 401, got: {other:?}"),
-		}
+		let error = result.unwrap_err();
+		assert_eq!(error.kind(), ServerFnErrorKind::Server);
+		assert_eq!(error.status(), Some(401));
+		assert_eq!(
+			error.user_message(),
+			"Authentication required to access admin panel"
+		);
 	}
 
 	#[rstest]
@@ -459,13 +456,9 @@ mod tests {
 		let admin_err = AdminError::ModelNotRegistered("User".into());
 		let server_err = admin_err.into_server_fn_error();
 
-		match server_err {
-			ServerFnError::Server { status, message } => {
-				assert_eq!(status, 404);
-				assert_eq!(message, "User");
-			}
-			_ => panic!("Expected Server error"),
-		}
+		assert_eq!(server_err.kind(), ServerFnErrorKind::Server);
+		assert_eq!(server_err.status(), Some(404));
+		assert_eq!(server_err.user_message(), "User");
 	}
 
 	#[rstest]
@@ -474,13 +467,9 @@ mod tests {
 		let admin_err = AdminError::PermissionDenied("Access denied".into());
 		let server_err = admin_err.into_server_fn_error();
 
-		match server_err {
-			ServerFnError::Server { status, message } => {
-				assert_eq!(status, 403);
-				assert_eq!(message, "Access denied");
-			}
-			_ => panic!("Expected Server error"),
-		}
+		assert_eq!(server_err.kind(), ServerFnErrorKind::Server);
+		assert_eq!(server_err.status(), Some(403));
+		assert_eq!(server_err.user_message(), "Access denied");
 	}
 
 	#[rstest]
@@ -489,12 +478,8 @@ mod tests {
 		let admin_err = AdminError::ValidationError("Invalid input".into());
 		let server_err = admin_err.into_server_fn_error();
 
-		match server_err {
-			ServerFnError::Application(msg) => {
-				assert_eq!(msg, "Invalid input");
-			}
-			_ => panic!("Expected Application error"),
-		}
+		assert_eq!(server_err.kind(), ServerFnErrorKind::Application);
+		assert_eq!(server_err.user_message(), "Invalid input");
 	}
 
 	#[rstest]
@@ -503,16 +488,11 @@ mod tests {
 		let admin_err = AdminError::DatabaseError("SQL syntax error at line 42".into());
 		let server_err = admin_err.into_server_fn_error();
 
-		match server_err {
-			ServerFnError::Server { status, message } => {
-				assert_eq!(status, 500);
-				assert_eq!(message, "Database operation failed");
-				// Verify that the original error details are hidden
-				assert!(!message.contains("SQL"));
-				assert!(!message.contains("42"));
-			}
-			_ => panic!("Expected Server error"),
-		}
+		assert_eq!(server_err.kind(), ServerFnErrorKind::Server);
+		assert_eq!(server_err.status(), Some(500));
+		assert_eq!(server_err.user_message(), "Database operation failed");
+		assert!(!server_err.user_message().contains("SQL"));
+		assert!(!server_err.user_message().contains("42"));
 	}
 
 	#[rstest]
@@ -522,9 +502,8 @@ mod tests {
 		let server_result = result.map_server_fn_error();
 
 		assert!(server_result.is_err());
-		match server_result.unwrap_err() {
-			ServerFnError::Server { status, .. } => assert_eq!(status, 404),
-			_ => panic!("Expected Server error"),
-		}
+		let error = server_result.unwrap_err();
+		assert_eq!(error.kind(), ServerFnErrorKind::Server);
+		assert_eq!(error.status(), Some(404));
 	}
 }
