@@ -2,8 +2,12 @@ use reinhardt_pages::{Head, Page, head, page};
 
 fn main() {
 	let view: Page = page!(#head: head!(|| {
-		base { href: "/app/" }
+		base {
+			href: "/app/"
+		}
 		title { "Embedded" }
-	}), { main { "body" } });
+	}), {
+		main { "body" }
+	});
 	let _ = (view, Head::new());
 }

@@ -55,6 +55,7 @@ pub type PageEventHandler = Arc<dyn Fn(web_sys::Event) + 'static>;
 #[cfg(native)]
 pub type PageEventHandler = Arc<dyn Fn(NativeEvent) + 'static>;
 
+/// An attribute whose value is evaluated from reactive state when rendered.
 #[derive(Clone)]
 pub struct ReactiveAttribute {
 	name: Cow<'static, str>,
@@ -71,10 +72,12 @@ impl std::fmt::Debug for ReactiveAttribute {
 }
 
 impl ReactiveAttribute {
+	/// Returns the attribute name.
 	pub fn name(&self) -> &str {
 		&self.name
 	}
 
+	/// Evaluates and returns the current attribute value.
 	pub fn value(&self) -> Option<Cow<'static, str>> {
 		(self.render)()
 	}
@@ -616,6 +619,7 @@ impl PageElement {
 		self
 	}
 
+	/// Adds an attribute whose value is evaluated from reactive state.
 	pub fn reactive_attr<F>(mut self, name: impl Into<Cow<'static, str>>, render: F) -> Self
 	where
 		F: Fn() -> Option<Cow<'static, str>> + 'static,
@@ -739,6 +743,7 @@ impl PageElement {
 		&self.attrs
 	}
 
+	/// Returns the reactive attributes.
 	pub fn reactive_attrs(&self) -> &[ReactiveAttribute] {
 		&self.reactive_attrs
 	}
@@ -1213,7 +1218,7 @@ impl Page {
 						continue;
 					}
 					if let Some(value) = attribute.value()
-						&& !(is_boolean_attr(attribute.name()) && !is_boolean_attr_truthy(&value))
+						&& (!is_boolean_attr(attribute.name()) || is_boolean_attr_truthy(&value))
 					{
 						output.push(' ');
 						output.push_str(attribute.name());

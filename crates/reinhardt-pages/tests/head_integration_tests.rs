@@ -81,7 +81,9 @@ fn test_head_macro_basic() {
 #[rstest]
 fn head_macro_supports_base_href() {
 	let head = head!(|| {
-		base { href: "/app/" }
+		base {
+			href: "/app/"
+		}
 		title { "Outline" }
 	});
 

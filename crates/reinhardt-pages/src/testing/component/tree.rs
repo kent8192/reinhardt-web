@@ -1261,6 +1261,7 @@ mod case_normalization_tests {
 			attrs: input_type
 				.map(|value| vec![("type".to_owned(), value.to_owned())])
 				.unwrap_or_default(),
+			reactive_attrs: Vec::new(),
 			children: Vec::new(),
 			parent: None,
 			is_void: false,
