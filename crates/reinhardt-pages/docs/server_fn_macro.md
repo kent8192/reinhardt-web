@@ -53,6 +53,93 @@ async fn fetch_data() {
 }
 ```
 
+## Structured errors (version 1)
+
+Every failed server-function response uses a JSON error envelope independent of
+the selected success codec. Version 1 uses stable lowercase error kinds and
+always includes `field_errors`:
+
+```json
+{
+  "version": 1,
+  "kind": "validation",
+  "status": 422,
+  "message": "Please correct the submitted values",
+  "field_errors": [
+    {
+      "field": "email",
+      "message": "Enter a valid email address"
+    }
+  ]
+}
+```
+
+Client code receives the same typed [`ServerFnError`] for every server-function
+failure. Use constructors on the server and accessors on the client instead of
+matching Rust variants or parsing JSON:
+
+```rust,ignore
+use reinhardt::pages::server_fn::{ServerFnError, ServerFnErrorKind};
+
+let validation = ServerFnError::validation_with_message(
+    "Please correct the submitted values",
+    [("email", "Enter a valid email address")],
+);
+let empty_validation = ServerFnError::validation(std::iter::empty::<(&str, &str)>());
+let forbidden = ServerFnError::auth(403, "Permission denied");
+let application = ServerFnError::application("The operation failed");
+let server = ServerFnError::server(500, "Internal server error");
+let transport = ServerFnError::transport("Connection timeout");
+let deserialization = ServerFnError::deserialization("Invalid response");
+
+match validation.kind() {
+    ServerFnErrorKind::Validation => {
+        for field_error in validation.field_errors() {
+            show_field_error(field_error.field(), field_error.message());
+        }
+    }
+    ServerFnErrorKind::Auth => redirect_to_login(),
+    _ => show_message(validation.user_message()),
+}
+```
+
+`message()` remains an alias for `user_message()`. `network()` and
+`serialization()` remain migration constructors and produce the `Transport`
+kind.
+
+Server-side DTO validation converts directly into `ServerFnError`, so a handler
+that returns `Result<_, ServerFnError>` can use `?` without rebuilding field
+errors:
+
+```rust,ignore
+use reinhardt::core::validators::Validate;
+use reinhardt::pages::server_fn::ServerFnError;
+
+#[server_fn]
+async fn create_profile(request: ProfileRequest) -> Result<Profile, ServerFnError> {
+    request.validate()?;
+    save_profile(request).await
+}
+```
+
+The conversion sets kind `Validation`, status `422`, and one ordered
+`ServerFnFieldError` per `ValidationErrors` entry. Generated server-function
+actions and forms retain this type end-to-end:
+
+```rust,ignore
+use reinhardt::pages::prelude::*;
+
+let save: Action<Profile, ServerFnError> = use_action(save_profile);
+let outcome = runtime
+    .submit_server_fn(|| save_profile(ProfileRequest::from(&runtime)))
+    .await?;
+```
+
+`submit_server_fn` routes matching validation field errors into the form state.
+Unmatched field errors and non-validation failures remain available through the
+form-level error signal, while the returned `Err(ServerFnError)` preserves the
+typed error for caller-specific handling.
+
 ## How It Works
 
 ### Code Generation Flow

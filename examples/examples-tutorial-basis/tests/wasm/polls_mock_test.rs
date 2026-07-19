@@ -31,7 +31,7 @@ use examples_tutorial_basis::shared::types::VoteRequest;
 use gloo_timers::future::TimeoutFuture;
 use reinhardt::model_info::RelationInfo;
 use reinhardt::pages::component::{Page, PageExt};
-use reinhardt::pages::server_fn::ServerFnError;
+use reinhardt::pages::server_fn::{ServerFnError, ServerFnErrorKind};
 use reinhardt::pages::{Element as DomElement, document};
 use reinhardt::test::msw::MockServiceWorker;
 use wasm_bindgen::JsCast;
@@ -269,16 +269,13 @@ async fn test_get_questions_surfaces_server_error() {
 	worker.start().await;
 
 	let err = get_questions().await.expect_err("expected server error");
-	match err {
-		ServerFnError::Server { status, message } => {
-			assert_eq!(status, 500, "expected HTTP 500 status");
-			assert_eq!(
-				message, "Internal server error",
-				"expected mocked server message to propagate verbatim"
-			);
-		}
-		other => panic!("expected ServerFnError::Server, got: {other:?}"),
-	}
+	assert_eq!(err.kind(), ServerFnErrorKind::Server);
+	assert_eq!(err.status(), Some(500), "expected HTTP 500 status");
+	assert_eq!(
+		err.user_message(),
+		"Internal server error",
+		"expected mocked server message to propagate verbatim"
+	);
 }
 
 /// `get_question_detail(qid)` round-trips the `(QuestionInfo, Vec<ChoiceInfo>)` tuple
@@ -317,16 +314,13 @@ async fn test_get_question_detail_surfaces_not_found() {
 	let err = get_question_detail(99)
 		.await
 		.expect_err("expected not-found error");
-	match err {
-		ServerFnError::Server { status, message } => {
-			assert_eq!(status, 404, "expected HTTP 404 status");
-			assert_eq!(
-				message, "Question not found",
-				"expected mocked not-found message to propagate verbatim"
-			);
-		}
-		other => panic!("expected ServerFnError::Server, got: {other:?}"),
-	}
+	assert_eq!(err.kind(), ServerFnErrorKind::Server);
+	assert_eq!(err.status(), Some(404), "expected HTTP 404 status");
+	assert_eq!(
+		err.user_message(),
+		"Question not found",
+		"expected mocked not-found message to propagate verbatim"
+	);
 }
 
 /// `get_question_results(qid)` round-trips the `(QuestionInfo, Vec<ChoiceInfo>, i32)`
@@ -387,16 +381,13 @@ async fn test_vote_surfaces_invalid_choice() {
 	})
 	.await
 	.expect_err("expected invalid-choice error");
-	match err {
-		ServerFnError::Server { status, message } => {
-			assert_eq!(status, 400, "expected HTTP 400 status");
-			assert_eq!(
-				message, "Invalid choice",
-				"expected mocked invalid-choice message to propagate verbatim"
-			);
-		}
-		other => panic!("expected ServerFnError::Server, got: {other:?}"),
-	}
+	assert_eq!(err.kind(), ServerFnErrorKind::Server);
+	assert_eq!(err.status(), Some(400), "expected HTTP 400 status");
+	assert_eq!(
+		err.user_message(),
+		"Invalid choice",
+		"expected mocked invalid-choice message to propagate verbatim"
+	);
 }
 
 // ============================================================================

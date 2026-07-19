@@ -876,7 +876,7 @@ mod auth_tests {
 		update_question,
 	};
 	use examples_tutorial_basis::apps::users::models::User;
-	use reinhardt::pages::server_fn::ServerFnError;
+	use reinhardt::pages::server_fn::{ServerFnError, ServerFnErrorKind};
 	use reinhardt::{CurrentUser, DatabaseConnection};
 	use rstest::*;
 	use tempfile::NamedTempFile;
@@ -914,22 +914,22 @@ mod auth_tests {
 	) {
 		match result {
 			Ok(_) => panic!("{} should reject inactive callers", operation),
-			Err(ServerFnError::Server { status, message }) => {
+			Err(error) => {
+				assert_eq!(error.kind(), ServerFnErrorKind::Server);
 				assert_eq!(
-					status, 403,
+					error.status(),
+					Some(403),
 					"{} should fail with inactive-user status, got message: {}",
-					operation, message
+					operation,
+					error.user_message()
 				);
 				assert_eq!(
-					message, "User account is inactive",
+					error.user_message(),
+					"User account is inactive",
 					"{} should fail with inactive-user message",
 					operation
 				);
 			}
-			Err(err) => panic!(
-				"{} should fail with inactive-user 403, got: {:?}",
-				operation, err
-			),
 		}
 	}
 

@@ -158,7 +158,7 @@ impl<S: ServerFnRegistration> Handler for ServerFnEndpoint<S> {
 				let status_code = StatusCode::from_u16(S::error_status(&error_body))
 					.unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
 
-				response_with_codec_body::<S>(status_code, error_body)
+				Response::from_json_body(status_code, error_body)
 			}
 		};
 

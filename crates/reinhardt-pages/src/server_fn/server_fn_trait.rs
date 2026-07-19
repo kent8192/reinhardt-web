@@ -2,7 +2,8 @@
 //!
 //! This module defines the core trait and error types for server functions.
 
-use serde::{Deserialize, Serialize};
+use reinhardt_core::validators::ValidationErrors;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// Common trait for all server functions
 ///
@@ -28,164 +29,330 @@ pub trait ServerFn {
 ///
 /// This error type covers all possible error conditions when calling
 /// a server function from the client side.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum ServerFnError {
-	/// Network error (connection failed, timeout, etc.)
-	Network(String),
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct ServerFnError {
+	payload: ServerFnErrorPayload,
+}
 
-	/// Serialization error (failed to serialize arguments)
-	Serialization(String),
+#[derive(Debug, Clone, PartialEq, Eq)]
+/// The opaque structured payload carried by a [`ServerFnError`].
+///
+/// Its fields remain private so callers use the error constructors and
+/// accessors rather than depending on payload layout.
+#[non_exhaustive]
+pub struct ServerFnErrorPayload {
+	kind: ServerFnErrorKind,
+	status: Option<u16>,
+	message: String,
+	field_errors: Vec<ServerFnFieldError>,
+}
 
-	/// Deserialization error (failed to deserialize response)
-	Deserialization(String),
+/// A validation error associated with one input field.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct ServerFnFieldError {
+	field: String,
+	message: String,
+}
 
-	/// Server-side error (HTTP 4xx, 5xx)
-	Server {
-		/// HTTP status code
-		status: u16,
-		/// Error message
-		message: String,
-	},
+impl ServerFnFieldError {
+	/// Returns the input field name.
+	pub fn field(&self) -> &str {
+		&self.field
+	}
 
-	/// Application error (custom error from server function)
-	Application(String),
+	/// Returns the safe message for the field.
+	pub fn message(&self) -> &str {
+		&self.message
+	}
+}
+
+/// The category represented by a [`ServerFnError`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum ServerFnErrorKind {
+	/// Input validation failed.
+	Validation,
+	/// Authentication or authorization failed.
+	Auth,
+	/// An application-level error was returned.
+	Application,
+	/// A server-side HTTP error was returned.
+	Server,
+	/// A transport-level error occurred.
+	Transport,
+	/// Deserialization of a response failed.
+	Deserialization,
 }
 
 impl ServerFnError {
-	/// Create a network error
-	pub fn network(msg: impl Into<String>) -> Self {
-		Self::Network(msg.into())
+	fn new(kind: ServerFnErrorKind, status: Option<u16>, message: impl Into<String>) -> Self {
+		Self {
+			payload: ServerFnErrorPayload {
+				kind,
+				status,
+				message: message.into(),
+				field_errors: Vec::new(),
+			},
+		}
 	}
 
-	/// Create a serialization error
-	pub fn serialization(msg: impl Into<String>) -> Self {
-		Self::Serialization(msg.into())
+	/// Create a validation error with the default message and field-specific messages.
+	pub fn validation<I, F, M>(field_errors: I) -> Self
+	where
+		I: IntoIterator<Item = (F, M)>,
+		F: Into<String>,
+		M: Into<String>,
+	{
+		Self::validation_with_message("Validation failed", field_errors)
 	}
 
-	/// Create a deserialization error
-	pub fn deserialization(msg: impl Into<String>) -> Self {
-		Self::Deserialization(msg.into())
+	/// Create a validation error with a custom message and field-specific messages.
+	pub fn validation_with_message<I, F, M>(message: impl Into<String>, field_errors: I) -> Self
+	where
+		I: IntoIterator<Item = (F, M)>,
+		F: Into<String>,
+		M: Into<String>,
+	{
+		let mut error = Self::new(ServerFnErrorKind::Validation, Some(422), message);
+		error.payload.field_errors = field_errors
+			.into_iter()
+			.map(|(field, message)| ServerFnFieldError {
+				field: field.into(),
+				message: message.into(),
+			})
+			.collect();
+		error
 	}
 
-	/// Create a server error
+	/// Create an authentication error.
+	pub fn auth(status: u16, message: impl Into<String>) -> Self {
+		Self::new(ServerFnErrorKind::Auth, Some(status), message)
+	}
+
+	/// Create an application error.
+	pub fn application(message: impl Into<String>) -> Self {
+		Self::new(ServerFnErrorKind::Application, None, message)
+	}
+
+	/// Create an application error with an HTTP status.
+	pub fn application_with_status(status: u16, message: impl Into<String>) -> Self {
+		Self::new(ServerFnErrorKind::Application, Some(status), message)
+	}
+
+	/// Create a server-side error.
 	pub fn server(status: u16, message: impl Into<String>) -> Self {
-		Self::Server {
-			status,
-			message: message.into(),
+		Self::new(ServerFnErrorKind::Server, Some(status), message)
+	}
+
+	/// Create a transport error.
+	pub fn transport(message: impl Into<String>) -> Self {
+		Self::new(ServerFnErrorKind::Transport, None, message)
+	}
+
+	/// Create a network error.
+	pub fn network(msg: impl Into<String>) -> Self {
+		Self::transport(msg)
+	}
+
+	/// Create a serialization transport error.
+	pub fn serialization(msg: impl Into<String>) -> Self {
+		Self::transport(msg)
+	}
+
+	/// Create a deserialization error.
+	pub fn deserialization(msg: impl Into<String>) -> Self {
+		Self::new(ServerFnErrorKind::Deserialization, None, msg)
+	}
+
+	fn deserialization_with_status(status: u16, message: impl Into<String>) -> Self {
+		Self::new(ServerFnErrorKind::Deserialization, Some(status), message)
+	}
+
+	/// Decode a server function error response without exposing raw response bodies.
+	pub fn from_http_response(status: u16, body: &str) -> Self {
+		let status = if (100..=599).contains(&status) {
+			status
+		} else {
+			500
+		};
+		match serde_json::from_str::<Self>(body) {
+			Ok(mut error) => {
+				error.payload.status = error
+					.payload
+					.status
+					.filter(|value| (100..=599).contains(value));
+				if error.payload.status.is_none() {
+					error.payload.status = Some(status);
+				}
+				error
+			}
+			Err(_) => {
+				Self::deserialization_with_status(status, "Invalid server function error response")
+			}
 		}
 	}
 
-	/// Create an application error
-	pub fn application(msg: impl Into<String>) -> Self {
-		Self::Application(msg.into())
+	/// Returns the error category.
+	pub fn kind(&self) -> ServerFnErrorKind {
+		self.payload.kind
 	}
 
-	/// Returns the human-readable message without the variant prefix.
-	///
-	/// Use this when surfacing the error text directly to end users;
-	/// use `to_string()` (`Display`) for the developer-facing form
-	/// that includes the variant tag.
-	///
-	/// # Examples
-	///
-	/// ```
-	/// use reinhardt_pages::ServerFnError;
-	///
-	/// let err = ServerFnError::application("Invalid choice_id");
-	/// assert_eq!(err.message(), "Invalid choice_id");
-	/// assert_eq!(err.to_string(), "Application error: Invalid choice_id");
-	/// ```
+	/// Returns the optional HTTP status code.
+	pub fn status(&self) -> Option<u16> {
+		self.payload.status
+	}
+
+	/// Returns the safe message intended for users.
+	pub fn user_message(&self) -> &str {
+		&self.payload.message
+	}
+
+	/// Returns the safe message intended for users.
 	pub fn message(&self) -> &str {
-		match self {
-			Self::Network(msg)
-			| Self::Serialization(msg)
-			| Self::Deserialization(msg)
-			| Self::Application(msg) => msg,
-			Self::Server { message, .. } => message,
-		}
+		self.user_message()
+	}
+
+	/// Returns field-specific validation errors.
+	pub fn field_errors(&self) -> &[ServerFnFieldError] {
+		&self.payload.field_errors
 	}
 }
 
 impl std::fmt::Display for ServerFnError {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		match self {
-			Self::Network(msg) => write!(f, "Network error: {}", msg),
-			Self::Serialization(msg) => write!(f, "Serialization error: {}", msg),
-			Self::Deserialization(msg) => write!(f, "Deserialization error: {}", msg),
-			Self::Server { status, message } => {
-				write!(f, "Server error ({}): {}", status, message)
-			}
-			Self::Application(msg) => write!(f, "Application error: {}", msg),
+		f.write_str(self.user_message())
+	}
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct WireServerFnError {
+	version: u8,
+	kind: WireServerFnErrorKind,
+	status: Option<u16>,
+	message: String,
+	field_errors: Vec<WireServerFnFieldError>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum WireServerFnErrorKind {
+	Validation,
+	Auth,
+	Application,
+	Server,
+	Transport,
+	Deserialization,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct WireServerFnFieldError {
+	field: String,
+	message: String,
+}
+
+impl Serialize for ServerFnError {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: Serializer,
+	{
+		WireServerFnError {
+			version: 1,
+			kind: self.payload.kind.into(),
+			status: self.payload.status,
+			message: self.payload.message.clone(),
+			field_errors: self
+				.payload
+				.field_errors
+				.iter()
+				.map(|error| WireServerFnFieldError {
+					field: error.field.clone(),
+					message: error.message.clone(),
+				})
+				.collect(),
+		}
+		.serialize(serializer)
+	}
+}
+
+impl<'de> Deserialize<'de> for ServerFnError {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
+		let wire = WireServerFnError::deserialize(deserializer)?;
+		if wire.version != 1 {
+			return Err(serde::de::Error::custom(format!(
+				"unsupported ServerFnError version: {}",
+				wire.version
+			)));
+		}
+		Ok(Self {
+			payload: ServerFnErrorPayload {
+				kind: wire.kind.into(),
+				status: wire.status,
+				message: wire.message,
+				field_errors: wire
+					.field_errors
+					.into_iter()
+					.map(|error| ServerFnFieldError {
+						field: error.field,
+						message: error.message,
+					})
+					.collect(),
+			},
+		})
+	}
+}
+
+impl From<ServerFnErrorKind> for WireServerFnErrorKind {
+	fn from(kind: ServerFnErrorKind) -> Self {
+		match kind {
+			ServerFnErrorKind::Validation => Self::Validation,
+			ServerFnErrorKind::Auth => Self::Auth,
+			ServerFnErrorKind::Application => Self::Application,
+			ServerFnErrorKind::Server => Self::Server,
+			ServerFnErrorKind::Transport => Self::Transport,
+			ServerFnErrorKind::Deserialization => Self::Deserialization,
+		}
+	}
+}
+
+impl From<WireServerFnErrorKind> for ServerFnErrorKind {
+	fn from(kind: WireServerFnErrorKind) -> Self {
+		match kind {
+			WireServerFnErrorKind::Validation => Self::Validation,
+			WireServerFnErrorKind::Auth => Self::Auth,
+			WireServerFnErrorKind::Application => Self::Application,
+			WireServerFnErrorKind::Server => Self::Server,
+			WireServerFnErrorKind::Transport => Self::Transport,
+			WireServerFnErrorKind::Deserialization => Self::Deserialization,
 		}
 	}
 }
 
 impl std::error::Error for ServerFnError {}
 
-/// Extract the human-readable message from a `ServerFnError` string,
-/// regardless of format.
-///
-/// Accepts three representations:
-///
-/// 1. **JSON wire format** — serde's externally-tagged envelope
-///    (e.g., `{"Application":"Invalid choice_id"}`).
-/// 2. **`Display` format** — the variant-prefixed string produced by
-///    `ServerFnError::to_string()` (e.g., `"Application error: msg"`).
-/// 3. **Plain text** — returned unchanged as a fallback.
-///
-/// # Examples
-///
-/// ```
-/// use reinhardt_pages::parse_server_error_message;
-///
-/// // JSON wire format
-/// let msg = parse_server_error_message(r#"{"Application":"Invalid choice_id"}"#);
-/// assert_eq!(msg, "Invalid choice_id");
-///
-/// // Display format (from .to_string())
-/// let msg = parse_server_error_message("Application error: Invalid choice_id");
-/// assert_eq!(msg, "Invalid choice_id");
-///
-/// // Plain text fallback
-/// let msg = parse_server_error_message("plain error text");
-/// assert_eq!(msg, "plain error text");
-/// ```
-pub fn parse_server_error_message(raw: &str) -> String {
-	// 1. Try JSON deserialization (wire format)
-	if let Ok(e) = serde_json::from_str::<ServerFnError>(raw) {
-		return unwrap_nested_or_raw(e.message());
-	}
-	// 2. Try stripping known Display prefixes
-	for prefix in [
-		"Network error: ",
-		"Serialization error: ",
-		"Deserialization error: ",
-		"Application error: ",
-	] {
-		if let Some(msg) = raw.strip_prefix(prefix) {
-			return unwrap_nested_or_raw(msg);
-		}
-	}
-	// 2b. Handle "Server error (NNN): " format
-	if let Some(rest) = raw.strip_prefix("Server error (")
-		&& let Some(idx) = rest.find("): ")
-	{
-		return unwrap_nested_or_raw(&rest[idx + 3..]);
-	}
-	// 3. Fallback: return unchanged
-	raw.to_string()
-}
+impl From<ValidationErrors> for ServerFnError {
+	fn from(errors: ValidationErrors) -> Self {
+		let field_errors = errors
+			.field_errors()
+			.iter()
+			.flat_map(|(field, errors)| {
+				errors
+					.iter()
+					.map(|error| (field.as_ref(), error.to_string()))
+			})
+			.collect::<Vec<_>>();
 
-/// If `msg` is itself a JSON-serialized `ServerFnError` (nested envelope),
-/// unwrap it; otherwise return the string as-is.
-fn unwrap_nested_or_raw(msg: &str) -> String {
-	serde_json::from_str::<ServerFnError>(msg)
-		.map(|e| e.message().to_string())
-		.unwrap_or_else(|_| msg.to_string())
+		Self::validation(field_errors)
+	}
 }
 
 #[cfg(test)]
 mod tests {
+	use reinhardt_core::validators::{ValidationError, ValidationErrors};
 	use rstest::rstest;
 
 	use super::*;
@@ -197,11 +364,8 @@ mod tests {
 		let server_err = ServerFnError::server(404, "Not found");
 
 		// Assert
-		assert!(matches!(network_err, ServerFnError::Network(_)));
-		assert!(matches!(
-			server_err,
-			ServerFnError::Server { status: 404, .. }
-		));
+		assert_eq!(network_err.kind(), ServerFnErrorKind::Transport);
+		assert_eq!(server_err.status(), Some(404));
 	}
 
 	#[rstest]
@@ -211,8 +375,8 @@ mod tests {
 		let server_err = ServerFnError::server(500, "Internal error");
 
 		// Act & Assert
-		assert_eq!(network_err.to_string(), "Network error: Connection timeout");
-		assert_eq!(server_err.to_string(), "Server error (500): Internal error");
+		assert_eq!(network_err.to_string(), "Connection timeout");
+		assert_eq!(server_err.to_string(), "Internal error");
 	}
 
 	#[rstest]
@@ -239,7 +403,7 @@ mod tests {
 	}
 
 	#[rstest]
-	fn test_message_differs_from_display() {
+	fn test_message_matches_display() {
 		// Arrange
 		let err = ServerFnError::application("Invalid choice_id");
 
@@ -248,92 +412,125 @@ mod tests {
 		let display = err.to_string();
 
 		// Assert
-		assert_ne!(message, display);
+		assert_eq!(message, display);
 		assert_eq!(message, "Invalid choice_id");
-		assert_eq!(display, "Application error: Invalid choice_id");
+		assert_eq!(display, "Invalid choice_id");
 	}
 
-	#[rstest]
-	#[case::application(r#"{"Application":"Invalid choice_id"}"#, "Invalid choice_id")]
-	#[case::server(r#"{"Server":{"status":403,"message":"Forbidden"}}"#, "Forbidden")]
-	#[case::network(r#"{"Network":"Connection timeout"}"#, "Connection timeout")]
-	fn test_parse_server_error_message_from_json(#[case] json: &str, #[case] expected: &str) {
-		// Act
-		let msg = parse_server_error_message(json);
+	#[test]
+	fn validation_error_serializes_to_version_one_envelope() {
+		let error = ServerFnError::validation_with_message(
+			"Please correct the submitted values",
+			[("choice_id", "Select a choice")],
+		);
 
-		// Assert
-		assert_eq!(msg, expected);
+		let value: serde_json::Value = serde_json::to_value(&error).unwrap();
+
+		assert_eq!(value["version"], 1);
+		assert_eq!(value["kind"], "validation");
+		assert_eq!(value["status"], 422);
+		assert_eq!(value["message"], "Please correct the submitted values");
+		assert_eq!(value["field_errors"][0]["field"], "choice_id");
+		assert_eq!(value["field_errors"][0]["message"], "Select a choice");
 	}
 
-	#[rstest]
-	#[case::application("Application error: Invalid choice_id", "Invalid choice_id")]
-	#[case::network("Network error: Connection timeout", "Connection timeout")]
-	#[case::serialization("Serialization error: bad input", "bad input")]
-	#[case::deserialization("Deserialization error: bad json", "bad json")]
-	#[case::server("Server error (403): Forbidden", "Forbidden")]
-	#[case::server_500("Server error (500): Internal error", "Internal error")]
-	fn test_parse_server_error_message_from_display(#[case] display: &str, #[case] expected: &str) {
-		// Act
-		let msg = parse_server_error_message(display);
+	#[test]
+	fn structured_error_round_trips_without_enum_tags() {
+		let original = ServerFnError::auth(403, "Permission denied");
+		let bytes = serde_json::to_vec(&original).unwrap();
+		let decoded: ServerFnError = serde_json::from_slice(&bytes).unwrap();
 
-		// Assert
-		assert_eq!(msg, expected);
+		assert_eq!(decoded, original);
+		assert_eq!(decoded.kind(), ServerFnErrorKind::Auth);
+		assert_eq!(decoded.status(), Some(403));
+		assert_eq!(decoded.user_message(), "Permission denied");
+		assert!(!String::from_utf8(bytes).unwrap().contains("Auth"));
 	}
 
-	#[rstest]
-	#[case::server_wrapping_application(
-		r#"Server error (500): {"Application":"Invalid choice_id"}"#,
-		"Invalid choice_id"
-	)]
-	#[case::server_wrapping_network(
-		r#"Server error (500): {"Network":"Connection lost"}"#,
-		"Connection lost"
-	)]
-	#[case::json_server_wrapping_application(
-		r#"{"Server":{"status":500,"message":"{\"Application\":\"Invalid choice_id\"}"}}"#,
-		"Invalid choice_id"
-	)]
-	fn test_parse_server_error_message_unwraps_nested_json(
-		#[case] input: &str,
-		#[case] expected: &str,
-	) {
-		// Act
-		let msg = parse_server_error_message(input);
-
-		// Assert
-		assert_eq!(msg, expected);
+	#[test]
+	fn transport_aliases_use_the_transport_kind() {
+		assert_eq!(
+			ServerFnError::network("offline").kind(),
+			ServerFnErrorKind::Transport
+		);
+		assert_eq!(
+			ServerFnError::serialization("bad input").kind(),
+			ServerFnErrorKind::Transport
+		);
 	}
 
-	#[rstest]
-	fn test_parse_server_error_message_falls_back_for_invalid_json() {
+	#[test]
+	fn unknown_version_is_rejected() {
+		let value = serde_json::json!({
+			"version": 2,
+			"kind": "application",
+			"status": null,
+			"message": "unsupported",
+			"field_errors": [],
+		});
+
+		assert!(serde_json::from_value::<ServerFnError>(value).is_err());
+	}
+
+	#[test]
+	fn validation_supports_empty_and_multiple_field_errors() {
 		// Arrange
-		let raw = "plain error text";
+		let empty = ServerFnError::validation(std::iter::empty::<(&str, &str)>());
 
 		// Act
-		let msg = parse_server_error_message(raw);
+		let empty_field_errors = empty.field_errors();
 
 		// Assert
-		assert_eq!(msg, "plain error text");
-	}
+		assert_eq!(empty.status(), Some(422));
+		let expected_empty_field_errors: &[ServerFnFieldError] = &[];
+		assert_eq!(empty_field_errors, expected_empty_field_errors);
 
-	#[rstest]
-	fn test_parse_server_error_message_falls_back_for_empty_string() {
-		// Act
-		let msg = parse_server_error_message("");
-
-		// Assert
-		assert_eq!(msg, "");
-	}
-
-	#[rstest]
-	fn test_parse_server_error_message_falls_back_for_non_server_fn_error_json() {
 		// Arrange
-		let raw = r#"{"foo":"bar"}"#;
+		let multiple = ServerFnError::validation_with_message(
+			"Invalid form",
+			[("name", "Required"), ("email", "Invalid address")],
+		);
 
 		// Act
-		let msg = parse_server_error_message(raw);
+		let multiple_field_errors = multiple.field_errors();
 
 		// Assert
-		assert_eq!(msg, raw);
+		assert_eq!(multiple_field_errors.len(), 2);
+		assert_eq!(multiple_field_errors[0].field(), "name");
+		assert_eq!(multiple_field_errors[0].message(), "Required");
+		assert_eq!(multiple_field_errors[1].field(), "email");
+		assert_eq!(multiple_field_errors[1].message(), "Invalid address");
+	}
+
+	#[test]
+	fn validation_errors_convert_to_server_fn_field_errors() {
+		// Arrange
+		let mut validation = ValidationErrors::new();
+		validation.add("name", ValidationError::TooShort { length: 0, min: 1 });
+		validation.add(
+			"name",
+			ValidationError::Custom("Name is required".to_string()),
+		);
+		validation.add(
+			"email",
+			ValidationError::Custom("Email is invalid".to_string()),
+		);
+
+		// Act
+		let error: ServerFnError = validation.into();
+
+		// Assert
+		assert_eq!(error.kind(), ServerFnErrorKind::Validation);
+		assert_eq!(error.status(), Some(422));
+		assert_eq!(error.field_errors().len(), 3);
+		assert_eq!(error.field_errors()[0].field(), "email");
+		assert_eq!(error.field_errors()[1].field(), "name");
+		assert_eq!(error.field_errors()[2].field(), "name");
+		assert_eq!(error.field_errors()[0].message(), "Email is invalid");
+		assert_eq!(
+			error.field_errors()[1].message(),
+			"Length too short: 0 (minimum: 1)"
+		);
+		assert_eq!(error.field_errors()[2].message(), "Name is required");
 	}
 }

@@ -1,0 +1,5 @@
+error: ClientForm field name `second` collides with another field's runtime alias
+ --> tests/ui/client_form/fail/serde_alias_collision.rs:7:2
+  |
+7 |     second: String,
+  |     ^^^^^^

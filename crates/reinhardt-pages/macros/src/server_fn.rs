@@ -938,7 +938,10 @@ fn generate_client_stub(
 		}
 	} else {
 		quote! {
-			return Err(#pages_crate::server_fn::ServerFnError::server(__status, __message).into());
+			return Err(#pages_crate::server_fn::ServerFnError::from_http_response(
+				__status,
+				&__message,
+			).into());
 		}
 	};
 
@@ -1238,7 +1241,7 @@ fn generate_server_handler(
 						);
 						let server_err = #pages_crate_for_ext::server_fn::ServerFnError::server(
 							400u16,
-							format!("Parameter extraction failed: {}", other),
+							"Parameter extraction failed",
 						);
 						::serde_json::to_string(&server_err)
 							.unwrap_or_else(|_| "Parameter extraction failed".to_string())
@@ -1247,11 +1250,11 @@ fn generate_server_handler(
 			}
 		} else {
 			quote! {
-				match e {
-					#di_crate::params::ParamError::Authentication(_) => {
-						let server_err = #pages_crate_for_ext::server_fn::ServerFnError::server(
-							401u16,
-							"Authentication required",
+					match e {
+						#di_crate::params::ParamError::Authentication(_) => {
+							let server_err = #pages_crate_for_ext::server_fn::ServerFnError::auth(
+								401u16,
+								"Authentication required",
 						);
 						::serde_json::to_string(&server_err)
 							.unwrap_or_else(|_| "Authentication required".to_string())
@@ -1275,7 +1278,7 @@ fn generate_server_handler(
 						);
 						let server_err = #pages_crate_for_ext::server_fn::ServerFnError::server(
 							400u16,
-							format!("Parameter extraction failed: {}", other),
+							"Parameter extraction failed",
 						);
 						::serde_json::to_string(&server_err)
 							.unwrap_or_else(|_| "Parameter extraction failed".to_string())
@@ -1332,19 +1335,19 @@ fn generate_server_handler(
 	let deserialize_code = match codec {
 		"json" => quote! {
 			let args: #args_struct_name = ::serde_json::from_slice(body)
-				.map_err(|e| format!("Failed to deserialize arguments: {}", e))?;
+				.map_err(|_| __invalid_request_error())?;
 		},
 		"url" => quote! {
 			let args: #args_struct_name = ::serde_urlencoded::from_str(&body)
-				.map_err(|e| format!("Failed to deserialize arguments: {}", e))?;
+				.map_err(|_| __invalid_request_error())?;
 		},
 		"msgpack" => quote! {
 			// Decode base64 to bytes
 			let bytes = ::base64::Engine::decode(&::base64::engine::general_purpose::STANDARD, &body)
-				.map_err(|e| format!("Failed to decode base64: {}", e))?;
+				.map_err(|_| __invalid_request_error())?;
 			// Deserialize from msgpack bytes
 			let args: #args_struct_name = ::rmp_serde::from_slice(&bytes)
-				.map_err(|e| format!("Failed to deserialize arguments: {}", e))?;
+				.map_err(|_| __invalid_request_error())?;
 		},
 		// Fixes #843: emit compile error for unknown codec instead of silent fallback
 		unknown => {
@@ -1367,19 +1370,26 @@ fn generate_server_handler(
 		deserialize_code
 	};
 
+	// Dynamically resolve crate paths for body extraction, serialization, and registration
+	let pages_crate = get_reinhardt_pages_crate();
+
 	// Generate pre_validate validation code
 	let validation_code = if pre_validate {
 		let core_crate = get_reinhardt_core_crate();
 		quote! {
-			#core_crate::validators::Validate::validate(&args)
-				.map_err(|e| ::serde_json::to_string(&e).unwrap_or_else(|_| format!("{}", e)))?;
+			if let Err(error) = #core_crate::validators::Validate::validate(&args) {
+				let error = #pages_crate::server_fn::ServerFnError::from(error);
+				let error_body = ::serde_json::to_vec(&error)
+					.map(#pages_crate::__private::bytes::Bytes::from)
+					.unwrap_or_else(|_| #pages_crate::__private::bytes::Bytes::from_static(
+						br#"{"version":1,"kind":"server","status":500,"message":"Internal server error","field_errors":[]}"#,
+					));
+				return Err(error_body);
+			}
 		}
 	} else {
 		quote! {}
 	};
-
-	// Dynamically resolve crate paths for body extraction, serialization, and registration
-	let pages_crate = get_reinhardt_pages_crate();
 
 	// Generate codec-specific serialization code for server response
 	let serialize_response_code = match codec {
@@ -1450,12 +1460,13 @@ fn generate_server_handler(
 						__req.body().as_ref()
 					} else {
 						let __body_text = ::std::string::String::from_utf8(__req.body().to_vec())
-							.map_err(|e| format!("Body is not valid UTF-8: {}", e))?;
+							.map_err(|_| __invalid_request_error())?;
 						__converted_body = #pages_crate::server_fn::convert_body_for_codec(
 							__body_text,
 							&__content_type,
 							#codec,
-						)?;
+						)
+						.map_err(|_| __invalid_request_error())?;
 						__converted_body.as_bytes()
 					};
 				}
@@ -1468,7 +1479,7 @@ fn generate_server_handler(
 						.and_then(|value| value.to_str().ok())
 						.unwrap_or("");
 					let body = __req.read_body()
-						.map_err(|e| format!("Failed to read body: {}", e))?;
+						.map_err(|_| __invalid_request_error())?;
 					let __media_type = __content_type
 						.split(';')
 						.next()
@@ -1481,12 +1492,13 @@ fn generate_server_handler(
 						body.as_ref()
 					} else {
 						let __body_text = ::std::string::String::from_utf8(body.to_vec())
-							.map_err(|e| format!("Body is not valid UTF-8: {}", e))?;
+							.map_err(|_| __invalid_request_error())?;
 						__converted_body = #pages_crate::server_fn::convert_body_for_codec(
 							__body_text,
 							&__content_type,
 							#codec,
-						)?;
+						)
+						.map_err(|_| __invalid_request_error())?;
 						__converted_body.as_bytes()
 					};
 				}
@@ -1498,11 +1510,28 @@ fn generate_server_handler(
 					.and_then(|value| value.to_str().ok())
 					.unwrap_or("");
 				let body = __req.read_body()
-					.map_err(|e| format!("Failed to read body: {}", e))?;
+					.map_err(|_| __invalid_request_error())?;
 				let body = ::std::string::String::from_utf8(body.to_vec())
-					.map_err(|e| format!("Body is not valid UTF-8: {}", e))?;
-				let body = #pages_crate::server_fn::convert_body_for_codec(body, &__content_type, #codec)?;
+					.map_err(|_| __invalid_request_error())?;
+				let body = #pages_crate::server_fn::convert_body_for_codec(body, &__content_type, #codec)
+					.map_err(|_| __invalid_request_error())?;
 			},
+		}
+	};
+	let invalid_request_error = if regular_params.is_empty() {
+		quote! {}
+	} else {
+		quote! {
+			let __invalid_request_error = || {
+				let error = #pages_crate::server_fn::ServerFnError::server(
+					400u16,
+					"Invalid server function request",
+				);
+				#pages_crate::__private::bytes::Bytes::from(
+					::serde_json::to_string(&error)
+						.expect("ServerFnError must serialize into its versioned error envelope"),
+				)
+			};
 		}
 	};
 	let wrapper_body_extraction = quote! {};
@@ -1622,6 +1651,56 @@ fn generate_server_handler(
 		}
 	} else {
 		quote! {}
+	};
+	let serialize_error = if info.structured_error {
+		quote! {
+			let error_json = ::serde_json::to_string(&e)
+				.map_err(|e| #pages_crate::__private::bytes::Bytes::from(
+					format!("Failed to serialize error: {}", e)
+				))?;
+		}
+	} else {
+		quote! {
+			let serialized_error = ::serde_json::to_value(&e)
+				.map_err(|e| #pages_crate::__private::bytes::Bytes::from(
+					format!("Failed to serialize error: {}", e)
+				))?;
+			let error_message = match &serialized_error {
+				::serde_json::Value::String(message) => message.clone(),
+				::serde_json::Value::Object(fields) => fields
+					.clone()
+					.remove("message")
+					.and_then(|value| value.as_str().map(::std::string::String::from))
+					.unwrap_or_else(|| "Server function failed".to_string()),
+				_ => "Server function failed".to_string(),
+			};
+			let error = ::serde_json::from_value::<#pages_crate::server_fn::ServerFnError>(serialized_error)
+				.unwrap_or_else(|_| #pages_crate::server_fn::ServerFnError::application_with_status(500u16, error_message));
+			let error_json = ::serde_json::to_string(&error)
+				.map_err(|e| #pages_crate::__private::bytes::Bytes::from(
+					format!("Failed to serialize error: {}", e)
+				))?;
+		}
+	};
+	let normalize_handler_error = if info.structured_error {
+		quote! {}
+	} else {
+		quote! {
+			.map_err(|error_body| {
+				if ::serde_json::from_slice::<#pages_crate::server_fn::ServerFnError>(&error_body).is_ok() {
+					error_body
+				} else {
+					let error = #pages_crate::server_fn::ServerFnError::server(
+						500u16,
+						"Internal server error",
+					);
+					#pages_crate::__private::bytes::Bytes::from(
+						::serde_json::to_string(&error)
+							.expect("ServerFnError must serialize into its versioned error envelope"),
+					)
+				}
+			})
+		}
 	};
 	let structured_status_override = if info.structured_error {
 		quote! {
@@ -1969,6 +2048,8 @@ fn generate_server_handler(
 		/// It deserializes the request body, calls the server function, and serializes the response.
 		#handler_signature {
 			use ::serde::Deserialize;
+			let __handler_result = async {
+			#invalid_request_error
 
 			// Argument struct for deserialization (only regular parameters)
 			#[derive(Deserialize)]
@@ -2003,13 +2084,12 @@ fn generate_server_handler(
 				}
 				Err(e) => {
 					#sanitize_error
-					let error_json = ::serde_json::to_string(&e)
-						.map_err(|e| #pages_crate::__private::bytes::Bytes::from(
-							format!("Failed to serialize error: {}", e)
-						))?;
+					#serialize_error
 					Err(#pages_crate::__private::bytes::Bytes::from(error_json))
 				}
 			}
+		};
+			__handler_result.await #normalize_handler_error
 		}
 
 		#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
@@ -2304,6 +2384,116 @@ mod tests {
 		assert!(
 			!generated.contains("error = ? e"),
 			"extractor errors must not be logged with Debug formatting: {generated}"
+		);
+	}
+
+	#[test]
+	fn generated_extractor_errors_do_not_serialize_details() {
+		use syn::parse_quote;
+
+		let func: syn::ItemFn = parse_quote! {
+			pub async fn read_header(header: Header) -> Result<(), ServerFnError> {
+				Ok(())
+			}
+		};
+		let standard = ServerFnInfo {
+			func: func.clone(),
+			options: ServerFnOptions::default(),
+			metadata_name: None,
+			endpoint_tokens: None,
+			metadata_name_tokens: None,
+			detail: false,
+			transactional: false,
+			structured_error: false,
+		};
+		let structured = ServerFnInfo {
+			func,
+			options: ServerFnOptions::default(),
+			metadata_name: None,
+			endpoint_tokens: None,
+			metadata_name_tokens: None,
+			detail: false,
+			transactional: false,
+			structured_error: true,
+		};
+
+		let standard_generated = generate_server_fn(&standard).to_string();
+		let structured_generated = generate_server_fn(&structured).to_string();
+
+		assert!(
+			!standard_generated.contains("Parameter extraction failed: {}"),
+			"standard extractor errors must not serialize details: {standard_generated}"
+		);
+		assert!(
+			!structured_generated.contains("Parameter extraction failed: {}"),
+			"structured extractor errors must not serialize details: {structured_generated}"
+		);
+	}
+
+	#[test]
+	fn generated_client_stub_decodes_generic_error_envelopes() {
+		use syn::parse_quote;
+
+		let func: syn::ItemFn = parse_quote! {
+			pub async fn select_choice(choice_id: String) -> Result<(), ServerFnError> {
+				Ok(())
+			}
+		};
+		let info = ServerFnInfo {
+			func,
+			options: ServerFnOptions::default(),
+			metadata_name: None,
+			endpoint_tokens: None,
+			metadata_name_tokens: None,
+			detail: false,
+			transactional: false,
+			structured_error: false,
+		};
+
+		let generated = generate_server_fn(&info).to_string();
+
+		assert!(
+			generated.contains("from_http_response"),
+			"generic client stubs must decode structured error envelopes: {generated}"
+		);
+	}
+
+	#[test]
+	fn generated_pre_validation_failures_use_the_structured_error_envelope() {
+		use syn::parse_quote;
+
+		let func: syn::ItemFn = parse_quote! {
+			async fn create_user(request: CreateUserRequest) -> Result<(), ServerFnError> {
+				Ok(())
+			}
+		};
+		let info = ServerFnInfo {
+			func,
+			options: ServerFnOptions {
+				pre_validate: true,
+				..ServerFnOptions::default()
+			},
+			metadata_name: None,
+			endpoint_tokens: None,
+			metadata_name_tokens: None,
+			detail: false,
+			transactional: false,
+			structured_error: false,
+		};
+
+		let generated = generate_server_fn(&info).to_string();
+
+		assert!(
+			generated.contains("ServerFnError :: from"),
+			"pre-validation failures must convert ValidationErrors into ServerFnError: {generated}"
+		);
+		assert!(
+			generated.contains("serde_json :: to_vec"),
+			"pre-validation failures must serialize the versioned error envelope: {generated}"
+		);
+		assert!(
+			generated.contains("Bytes :: from_static"),
+			"pre-validation failures must retain a valid envelope fallback: {generated}"
 		);
 	}
 
