@@ -1403,6 +1403,18 @@ where
 			None
 		};
 
+		for field in self.form.runtime_fields() {
+			self.form.runtime_set_custom_widget_error(*field, None);
+		}
+		{
+			let mut custom_widget_errors = self.custom_widget_error_fields.borrow_mut();
+			custom_widget_errors.clear();
+			for (field, field_error) in &field_errors {
+				self.form
+					.runtime_set_custom_widget_error(*field, Some(field_error.clone()));
+				custom_widget_errors.insert(*field, field_error.clone());
+			}
+		}
 		self.state.field_errors.set(field_errors);
 		self.state.form_error.set(form_error.clone());
 		self.state.submit_error.set(form_error);
@@ -1716,6 +1728,12 @@ where
 			Err(error) => {
 				if self.state.is_submitting.try_get_untracked().is_ok() {
 					self.apply_server_error(&error);
+					let _ = self.in_owner_scope(|| {
+						if let Some(callback) = &self.on_submit_error {
+							callback(self);
+						}
+						self.notify(FormEvent::SubmitFailed);
+					});
 				}
 				Err(error)
 			}
