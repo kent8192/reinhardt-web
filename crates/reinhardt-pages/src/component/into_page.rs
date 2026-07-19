@@ -215,7 +215,7 @@ fn mount_inner(page: Page, parent: &Element) -> Result<(), MountError> {
 	match page {
 		Page::Element(el) => {
 			let doc = document();
-			let (tag, attrs, children, _is_void, event_handlers, control_binding) =
+			let (tag, attrs, reactive_attrs, children, _is_void, event_handlers, control_binding) =
 				el.into_parts_with_control_binding();
 
 			let element = doc
@@ -301,7 +301,25 @@ fn mount_inner(page: Page, parent: &Element) -> Result<(), MountError> {
 				parent
 					.append_child(element)
 					.map_err(|_| MountError::AppendChildFailed)?;
-				store_reactive_node((binding_controller, event_handles));
+				let reactive_attribute_effects = reactive_attrs
+					.into_iter()
+					.map(|attribute| {
+						let element = element.clone();
+						crate::reactive::Effect::new(move || match attribute.value() {
+							Some(value) => {
+								let _ = element.set_attribute(attribute.name(), &value);
+							}
+							None => {
+								let _ = element.remove_attribute(attribute.name());
+							}
+						})
+					})
+					.collect::<Vec<_>>();
+				store_reactive_node((
+					binding_controller,
+					event_handles,
+					reactive_attribute_effects,
+				));
 				Ok::<(), MountError>(())
 			};
 			with_reactive_node_transaction(mount_element)?;

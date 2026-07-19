@@ -1991,6 +1991,11 @@ fn render_element_opening(
 
 		push_escaped_attribute(&mut html, name, value);
 	}
+	for attribute in element.reactive_attrs() {
+		if let Some(value) = attribute.value() {
+			push_escaped_attribute(&mut html, attribute.name(), &value);
+		}
+	}
 
 	if projects_value {
 		push_escaped_attribute(

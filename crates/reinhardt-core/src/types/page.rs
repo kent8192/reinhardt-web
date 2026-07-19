@@ -55,6 +55,31 @@ pub type PageEventHandler = Arc<dyn Fn(web_sys::Event) + 'static>;
 #[cfg(native)]
 pub type PageEventHandler = Arc<dyn Fn(NativeEvent) + 'static>;
 
+#[derive(Clone)]
+pub struct ReactiveAttribute {
+	name: Cow<'static, str>,
+	render: Arc<dyn Fn() -> Option<Cow<'static, str>> + 'static>,
+}
+
+impl std::fmt::Debug for ReactiveAttribute {
+	fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		formatter
+			.debug_struct("ReactiveAttribute")
+			.field("name", &self.name)
+			.finish_non_exhaustive()
+	}
+}
+
+impl ReactiveAttribute {
+	pub fn name(&self) -> &str {
+		&self.name
+	}
+
+	pub fn value(&self) -> Option<Cow<'static, str>> {
+		(self.render)()
+	}
+}
+
 /// Error type for mounting views to the DOM.
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -502,6 +527,7 @@ pub struct PageElement {
 	tag: Cow<'static, str>,
 	/// HTML attributes.
 	attrs: Vec<(Cow<'static, str>, Cow<'static, str>)>,
+	reactive_attrs: Vec<ReactiveAttribute>,
 	/// Child views.
 	children: Vec<Page>,
 	/// Whether this is a void element (no closing tag).
@@ -558,6 +584,7 @@ impl PageElement {
 		Self {
 			tag,
 			attrs: Vec::new(),
+			reactive_attrs: Vec::new(),
 			children: Vec::new(),
 			is_void,
 			event_handlers: Vec::new(),
@@ -586,6 +613,17 @@ impl PageElement {
 				.into_iter()
 				.map(|(name, value)| (name.into(), value.into())),
 		);
+		self
+	}
+
+	pub fn reactive_attr<F>(mut self, name: impl Into<Cow<'static, str>>, render: F) -> Self
+	where
+		F: Fn() -> Option<Cow<'static, str>> + 'static,
+	{
+		self.reactive_attrs.push(ReactiveAttribute {
+			name: name.into(),
+			render: Arc::new(render),
+		});
 		self
 	}
 
@@ -701,6 +739,10 @@ impl PageElement {
 		&self.attrs
 	}
 
+	pub fn reactive_attrs(&self) -> &[ReactiveAttribute] {
+		&self.reactive_attrs
+	}
+
 	/// Returns the child views.
 	pub fn child_views(&self) -> &[Page] {
 		&self.children
@@ -779,13 +821,14 @@ impl PageElement {
 
 	/// Consumes the element view and returns all parts, including its control binding.
 	///
-	/// Returns a tuple of (tag, attrs, children, is_void, event_handlers, control_binding).
+	/// Returns a tuple of (tag, attrs, reactive_attrs, children, is_void, event_handlers, control_binding).
 	#[allow(clippy::type_complexity)] // Tuple decomposition is intentional for destructuring
 	pub fn into_parts_with_control_binding(
 		self,
 	) -> (
 		Cow<'static, str>,
 		Vec<(Cow<'static, str>, Cow<'static, str>)>,
+		Vec<ReactiveAttribute>,
 		Vec<Page>,
 		bool,
 		Vec<(EventName, PageEventHandler)>,
@@ -794,6 +837,7 @@ impl PageElement {
 		(
 			self.tag,
 			self.attrs,
+			self.reactive_attrs,
 			self.children,
 			self.is_void,
 			self.event_handlers,
@@ -1146,6 +1190,15 @@ impl Page {
 					output.push_str("=\"");
 					output.push_str(&html_escape(value));
 					output.push('"');
+				}
+				for attribute in el.reactive_attrs() {
+					if let Some(value) = attribute.value() {
+						output.push(' ');
+						output.push_str(attribute.name());
+						output.push_str("=\"");
+						output.push_str(&html_escape(&value));
+						output.push('"');
+					}
 				}
 				if let Some(value) = projected_input_value
 					&& el.tag_name().eq_ignore_ascii_case("input")
