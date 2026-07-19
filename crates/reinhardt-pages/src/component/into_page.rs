@@ -272,6 +272,7 @@ fn mount_inner(page: Page, parent: &Element) -> Result<(), MountError> {
 					initialize_control_default(&element, binding);
 				}
 				let binding_controller = control_binding
+					.clone()
 					.map(|binding| ControlBindingController::mount(element.clone(), binding))
 					.transpose()?;
 				let mut event_handles: Vec<EventHandle> = Vec::new();
@@ -312,6 +313,12 @@ fn mount_inner(page: Page, parent: &Element) -> Result<(), MountError> {
 						!reactive_attrs[*index + 1..]
 							.iter()
 							.any(|later| later.name().eq_ignore_ascii_case(attribute.name()))
+					})
+					.filter(|(_, attribute)| {
+						!controlled_attribute_is_overridden(
+							control_binding.as_ref(),
+							attribute.name(),
+						)
 					})
 					.map(|(_, attribute)| {
 						let attribute = attribute.clone();
