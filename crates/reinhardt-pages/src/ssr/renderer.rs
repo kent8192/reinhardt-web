@@ -1996,7 +1996,13 @@ fn render_element_opening(
 
 		push_escaped_attribute(&mut html, name, value);
 	}
-	for attribute in element.reactive_attrs() {
+	for (index, attribute) in element.reactive_attrs().iter().enumerate() {
+		if element.reactive_attrs()[index + 1..]
+			.iter()
+			.any(|later| later.name().eq_ignore_ascii_case(attribute.name()))
+		{
+			continue;
+		}
 		if let Some(value) = attribute.value() {
 			push_escaped_attribute(&mut html, attribute.name(), &value);
 		}

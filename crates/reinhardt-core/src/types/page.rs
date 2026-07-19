@@ -1196,7 +1196,13 @@ impl Page {
 					output.push_str(&html_escape(value));
 					output.push('"');
 				}
-				for attribute in el.reactive_attrs() {
+				for (index, attribute) in el.reactive_attrs().iter().enumerate() {
+					if el.reactive_attrs()[index + 1..]
+						.iter()
+						.any(|later| later.name().eq_ignore_ascii_case(attribute.name()))
+					{
+						continue;
+					}
 					if let Some(value) = attribute.value() {
 						output.push(' ');
 						output.push_str(attribute.name());

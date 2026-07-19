@@ -50,6 +50,7 @@ pub(crate) struct TestDom {
 pub(crate) struct ElementNode {
 	pub tag: String,
 	attrs: Vec<(String, String)>,
+	reactive_attrs: Vec<reinhardt_core::types::page::ReactiveAttribute>,
 	pub children: Vec<NodeId>,
 	parent: Option<NodeId>,
 	is_void: bool,
@@ -573,6 +574,7 @@ impl TestDom {
 			let TestNode::Element(element) = node else {
 				continue;
 			};
+			element.refresh_reactive_attributes();
 			let Some(binding) = element.control_binding.clone() else {
 				continue;
 			};
@@ -655,7 +657,7 @@ impl TestDom {
 				let (
 					tag,
 					attrs,
-					_reactive_attrs,
+					reactive_attrs,
 					children,
 					is_void,
 					event_handlers,
@@ -694,6 +696,7 @@ impl TestDom {
 				let mut element_node = ElementNode {
 					tag: tag.into_owned(),
 					attrs,
+					reactive_attrs,
 					children: Vec::new(),
 					parent: Some(parent),
 					is_void,
@@ -711,6 +714,7 @@ impl TestDom {
 					last_observed_control_value: last_observed_control_value.clone(),
 					last_observed_signal_revision,
 				};
+				element_node.refresh_reactive_attributes();
 				let binding_supported = element_node
 					.control_binding
 					.as_ref()
@@ -1147,6 +1151,23 @@ impl ElementNode {
 			if matches!(value, ControlValue::Checked(true)) {
 				self.attrs
 					.push(("checked".to_owned(), "checked".to_owned()));
+			}
+		}
+	}
+
+	fn refresh_reactive_attributes(&mut self) {
+		for (index, attribute) in self.reactive_attrs.iter().enumerate() {
+			if self.reactive_attrs[index + 1..]
+				.iter()
+				.any(|later| later.name().eq_ignore_ascii_case(attribute.name()))
+			{
+				continue;
+			}
+			self.attrs
+				.retain(|(name, _)| !name.eq_ignore_ascii_case(attribute.name()));
+			if let Some(value) = attribute.value() {
+				self.attrs
+					.push((attribute.name().to_owned(), value.into_owned()));
 			}
 		}
 	}
