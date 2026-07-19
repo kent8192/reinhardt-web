@@ -42,7 +42,7 @@ environment variables.
 | `incremental-pages-wasm-check` | A Pages runtime WASM check loop |
 | `incremental-pages-wasm-build` | A Pages runtime WASM library build loop |
 | `incremental-pages-fixture-wasm-build` | A detached browser app fixture build after editing `page!` source |
-| `incremental-pages-fixture-hot-patch` | Compile-free static `page!` hot patch loop for the detached browser fixture |
+| `incremental-pages-template-hot-patch` | 30-iteration warmed `page!` manifest/descriptor proxy reporting p50 and p95 |
 | `incremental-pages-fixture-hot-reload-legacy-both-build` | Legacy detached browser app `page!` edit work shape: fixture WASM build plus native server build |
 | `incremental-server-build` | A server crate native build loop |
 | `incremental-hot-reload-client-legacy-both-build` | Legacy Pages client-edit hot-reload work shape: WASM build plus native server build |
@@ -72,9 +72,12 @@ Add that fixture-level scenario before claiming end-to-end browser artifact
 latency.
 Use `incremental-pages-fixture-wasm-build` when the claim is specifically
 about app-side `page!` edits rather than framework runtime edits.
-Use `incremental-pages-fixture-hot-patch` for static `page!(|| { ... })`
-edits that can be parsed and broadcast through the development HMR channel
-without rebuilding the WASM artifact.
+Use `incremental-pages-template-hot-patch` for a warmed 30-iteration p50/p95
+probe of the Manouche page-template manifest and wire descriptor path. This
+scenario is a deterministic pre-browser proxy: it does not claim browser
+paint, WebSocket delivery, or DOM MutationObserver latency. Record a real
+runserver/browser measurement in a separate result document before making a
+browser-visible performance claim.
 When reducing this scenario, prefer removing non-browser modules from the
 WASM compilation graph before changing Cargo profiles: profile changes measured
 noisy or slower locally, while feature/target gating gives a direct dependency
@@ -444,13 +447,13 @@ count query as a fallback so pagination metadata remains correct.
 | Empty out-of-range admin list page | 2 | 2 | 0.0% |
 
 Static `page!(|| { ... })` edits under WASM-owned client source paths can use
-the compile-free development hot patch path. The HMR payload replaces `#app`
-contents, preserving the development script and page shell. Dynamic Rust
-expressions, event handlers, control flow, components, and shared/server-owned
-files still fall back to the normal rebuild path. The Pages macro also emits
-batched attribute builders instead of one chained method call per generated
-attribute, which reduces generated Rust for attribute-heavy templates when a
-rebuild is still required.
+the compile-free state-preserving template patch path. The HMR payload carries
+static template data and retained-slot placements; it does not replace the
+whole application root. Dynamic Rust expressions, event handlers, control
+flow, components, and shared/server-owned files still fall back to the normal
+rebuild path. The Pages macro also emits batched attribute builders instead of
+one chained method call per generated attribute, which reduces generated Rust
+for attribute-heavy templates when a rebuild is still required.
 
 ## Develop 0.3.0 Browser-WASM Pruning
 
