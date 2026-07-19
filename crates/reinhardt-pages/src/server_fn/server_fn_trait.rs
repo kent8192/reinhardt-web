@@ -30,12 +30,18 @@ pub trait ServerFn {
 /// This error type covers all possible error conditions when calling
 /// a server function from the client side.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct ServerFnError {
 	payload: ServerFnErrorPayload,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct ServerFnErrorPayload {
+/// The opaque structured payload carried by a [`ServerFnError`].
+///
+/// Its fields remain private so callers use the error constructors and
+/// accessors rather than depending on payload layout.
+#[non_exhaustive]
+pub struct ServerFnErrorPayload {
 	kind: ServerFnErrorKind,
 	status: Option<u16>,
 	message: String,
@@ -44,6 +50,7 @@ struct ServerFnErrorPayload {
 
 /// A validation error associated with one input field.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct ServerFnFieldError {
 	field: String,
 	message: String,
@@ -63,6 +70,7 @@ impl ServerFnFieldError {
 
 /// The category represented by a [`ServerFnError`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ServerFnErrorKind {
 	/// Input validation failed.
 	Validation,
@@ -90,12 +98,17 @@ impl ServerFnError {
 		}
 	}
 
-	/// Create a validation error with the default message.
-	pub fn validation() -> Self {
-		Self::validation_with_message("Validation failed", std::iter::empty::<(&str, &str)>())
+	/// Create a validation error with the default message and field-specific messages.
+	pub fn validation<I, F, M>(field_errors: I) -> Self
+	where
+		I: IntoIterator<Item = (F, M)>,
+		F: Into<String>,
+		M: Into<String>,
+	{
+		Self::validation_with_message("Validation failed", field_errors)
 	}
 
-	/// Create a validation error with field-specific messages.
+	/// Create a validation error with a custom message and field-specific messages.
 	pub fn validation_with_message<I, F, M>(message: impl Into<String>, field_errors: I) -> Self
 	where
 		I: IntoIterator<Item = (F, M)>,
@@ -328,7 +341,7 @@ impl From<ValidationErrors> for ServerFnError {
 			})
 			.collect::<Vec<_>>();
 
-		Self::validation_with_message("Validation failed", field_errors)
+		Self::validation(field_errors)
 	}
 }
 
@@ -457,7 +470,7 @@ mod tests {
 	#[test]
 	fn validation_supports_empty_and_multiple_field_errors() {
 		// Arrange
-		let empty = ServerFnError::validation();
+		let empty = ServerFnError::validation(std::iter::empty::<(&str, &str)>());
 
 		// Act
 		let empty_field_errors = empty.field_errors();

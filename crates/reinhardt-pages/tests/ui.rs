@@ -53,6 +53,7 @@ fn test_server_fn_macro_ui() {
 	t.pass("tests/ui/server_fn/result_alias_query_key.rs");
 	t.pass("tests/ui/server_fn/response_metadata.rs");
 	t.pass("tests/ui/server_fn/result_alias.rs");
+	t.pass("tests/ui/server_fn/structured_error_public_api.rs");
 	// Issue #3858: verify FromRequest extractor params work in #[server_fn]
 	t.pass("tests/ui/server_fn/with_extractors.rs");
 }

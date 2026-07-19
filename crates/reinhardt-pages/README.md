@@ -446,7 +446,7 @@ fn render_error(error: &ServerFnError) {
 }
 ```
 
-Construct server failures with `validation()`, `validation_with_message(...)`,
+Construct server failures with `validation(field_errors)`, `validation_with_message(...)`,
 `auth(status, message)`, `application(message)`, `server(status, message)`,
 `transport(message)`, or `deserialization(message)`. A validation error has
 status `422`; converting `ValidationErrors` with `?` preserves every field
@@ -688,7 +688,7 @@ or native component-test mocks. Query handles can also be tracked by
 
 ### API and Server Functions
 - `ApiModel`, `ApiQuerySet`, `Filter`, `FilterOp`
-- `ServerFn`, `ServerFnError`, `ServerFnErrorKind`, `ServerFnFieldError`
+- `ServerFn`, `ServerFnError`, `ServerFnErrorPayload`, `ServerFnErrorKind`, `ServerFnFieldError`
 - See [Server Function Macro Guide](docs/server_fn_macro.md) for detailed usage and migration information
 - Use `#[client_page]` for client page functions that must also compile as native route-table stubs
 - See [WASM/server API Parity Macro](docs/wasm_server_api.md) for APIs that need matching public surfaces with target-specific implementations

@@ -1370,19 +1370,26 @@ fn generate_server_handler(
 		deserialize_code
 	};
 
+	// Dynamically resolve crate paths for body extraction, serialization, and registration
+	let pages_crate = get_reinhardt_pages_crate();
+
 	// Generate pre_validate validation code
 	let validation_code = if pre_validate {
 		let core_crate = get_reinhardt_core_crate();
 		quote! {
-			#core_crate::validators::Validate::validate(&args)
-				.map_err(|e| ::serde_json::to_string(&e).unwrap_or_else(|_| format!("{}", e)))?;
+			if let Err(error) = #core_crate::validators::Validate::validate(&args) {
+				let error = #pages_crate::server_fn::ServerFnError::from(error);
+				let error_body = ::serde_json::to_vec(&error)
+					.map(#pages_crate::__private::bytes::Bytes::from)
+					.unwrap_or_else(|_| #pages_crate::__private::bytes::Bytes::from_static(
+						br#"{"version":1,"kind":"server","status":500,"message":"Internal server error","field_errors":[]}"#,
+					));
+				return Err(error_body);
+			}
 		}
 	} else {
 		quote! {}
 	};
-
-	// Dynamically resolve crate paths for body extraction, serialization, and registration
-	let pages_crate = get_reinhardt_pages_crate();
 
 	// Generate codec-specific serialization code for server response
 	let serialize_response_code = match codec {
@@ -2378,6 +2385,45 @@ mod tests {
 		assert!(
 			generated.contains("from_http_response"),
 			"generic client stubs must decode structured error envelopes: {generated}"
+		);
+	}
+
+	#[test]
+	fn generated_pre_validation_failures_use_the_structured_error_envelope() {
+		use syn::parse_quote;
+
+		let func: syn::ItemFn = parse_quote! {
+			async fn create_user(request: CreateUserRequest) -> Result<(), ServerFnError> {
+				Ok(())
+			}
+		};
+		let info = ServerFnInfo {
+			func,
+			options: ServerFnOptions {
+				pre_validate: true,
+				..ServerFnOptions::default()
+			},
+			metadata_name: None,
+			endpoint_tokens: None,
+			metadata_name_tokens: None,
+			detail: false,
+			transactional: false,
+			structured_error: false,
+		};
+
+		let generated = generate_server_fn(&info).to_string();
+
+		assert!(
+			generated.contains("ServerFnError :: from"),
+			"pre-validation failures must convert ValidationErrors into ServerFnError: {generated}"
+		);
+		assert!(
+			generated.contains("serde_json :: to_vec"),
+			"pre-validation failures must serialize the versioned error envelope: {generated}"
+		);
+		assert!(
+			generated.contains("Bytes :: from_static"),
+			"pre-validation failures must retain a valid envelope fallback: {generated}"
 		);
 	}
 

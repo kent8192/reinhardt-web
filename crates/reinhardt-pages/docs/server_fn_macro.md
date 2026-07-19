@@ -85,7 +85,7 @@ let validation = ServerFnError::validation_with_message(
     "Please correct the submitted values",
     [("email", "Enter a valid email address")],
 );
-let empty_validation = ServerFnError::validation();
+let empty_validation = ServerFnError::validation(std::iter::empty::<(&str, &str)>());
 let forbidden = ServerFnError::auth(403, "Permission denied");
 let application = ServerFnError::application("The operation failed");
 let server = ServerFnError::server(500, "Internal server error");
