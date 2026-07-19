@@ -536,6 +536,70 @@ async fn client_launcher_preserves_layout_head_across_sibling_navigation_and_his
 }
 
 #[wasm_bindgen_test]
+async fn client_launcher_clears_route_head_when_next_route_has_no_metadata() {
+	let root = install_app_root();
+	replace_history_path("/metadata");
+	let document = web_sys::window().unwrap().document().unwrap();
+	let original_title = document.title();
+	document.set_title("Route head fallback");
+
+	ClientLauncher::new("#app")
+		.router_client(|| {
+			ClientRouter::new()
+				.route("metadata", "/metadata", page_a)
+				.route("plain", "/plain", page_b)
+				.with_route_metadata(
+					"metadata",
+					RouteMetadata::new().with_head(
+						Head::new()
+							.title("Metadata route")
+							.meta_description("metadata-description")
+							.canonical("/metadata"),
+					),
+				)
+		})
+		.launch()
+		.expect("launch");
+
+	yield_to_microtasks().await;
+	assert_eq!(document.title(), "Metadata route");
+	assert_single_managed_head_node(
+		&document,
+		"meta[name='description'][content='metadata-description'][data-reinhardt-head]",
+	);
+	assert_single_managed_head_node(
+		&document,
+		"link[rel='canonical'][href='/metadata'][data-reinhardt-head]",
+	);
+
+	with_spa_router(|router| router.push("/plain")).expect("push /plain");
+	yield_to_microtasks().await;
+	yield_to_microtasks().await;
+
+	assert_eq!(document.title(), "Route head fallback");
+	assert!(
+		document
+			.query_selector(
+				"meta[name='description'][content='metadata-description'][data-reinhardt-head]"
+			)
+			.unwrap()
+			.is_none(),
+		"route metadata must not leak into a route without metadata"
+	);
+	assert!(
+		document
+			.query_selector("link[rel='canonical'][href='/metadata'][data-reinhardt-head]")
+			.unwrap()
+			.is_none(),
+		"route canonical metadata must not leak into a route without metadata"
+	);
+	assert!(root.inner_html().contains("ROUTE-B-CONTENT"));
+
+	document.set_title(&original_title);
+	replace_history_path("/");
+}
+
+#[wasm_bindgen_test]
 async fn retained_route_effects_are_disposed_on_sibling_navigation() {
 	let root = install_app_root();
 	replace_history_path("/a");
