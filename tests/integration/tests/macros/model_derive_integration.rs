@@ -421,12 +421,12 @@ async fn generated_relation_accessors_render_configured_physical_columns() {
 	assert!(
 		primary_loader.calls[0]
 			.sql
-			.contains(r#"WHERE "target_pk" = '7'"#),
+			.contains(r#"WHERE "target_pk" = 7"#),
 		"generated primary-key loader must use the physical primary-key column: {}",
 		primary_loader.calls[0].sql
 	);
 	assert!(
-		!primary_loader.calls[0].sql.contains(r#"WHERE "id" = '7'"#),
+		!primary_loader.calls[0].sql.contains(r#"WHERE "id" = 7"#),
 		"generated primary-key loader must not use the logical primary-key field name"
 	);
 

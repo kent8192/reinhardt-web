@@ -2373,6 +2373,33 @@ fn main() {}";
 	}
 
 	#[rstest]
+	fn page_rustfmt_island_preserves_match_arm_space_after_pattern_call() {
+		// Arrange
+		let formatter = FormatEngine::new();
+		let source = r#"fn render() {
+	let view = page!(|| {
+		{
+			match resource {
+				ResourceState::Error(error) => {
+					message
+				}
+				_ => {}
+			}
+		}
+	});
+}"#;
+
+		// Act
+		let formatted = formatter.format(source).expect("format source").content;
+
+		// Assert
+		assert!(
+			formatted.contains("ResourceState::Error(error) => {"),
+			"match-arm arrow should retain a leading space after a pattern call: {formatted}"
+		);
+	}
+
+	#[rstest]
 	fn page_rustfmt_island_formats_closure_with_multiple_parameters() {
 		// Arrange / Act
 		let formatted = format_dsl(

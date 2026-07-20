@@ -2,7 +2,7 @@
 //!
 //! This module defines the core trait and error types for server functions.
 
-use reinhardt_core::validators::ValidationErrors;
+use reinhardt_core::validators::{ValidationError, ValidationErrors};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// Common trait for all server functions
@@ -340,9 +340,10 @@ impl From<ValidationErrors> for ServerFnError {
 			.field_errors()
 			.iter()
 			.flat_map(|(field, errors)| {
-				errors
-					.iter()
-					.map(|error| (field.as_ref(), error.to_string()))
+				errors.iter().map(|error| match error {
+					ValidationError::Custom(message) => (field.as_ref(), message.clone()),
+					_ => (field.as_ref(), error.to_string()),
+				})
 			})
 			.collect::<Vec<_>>();
 
