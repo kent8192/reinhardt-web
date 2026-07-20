@@ -2,12 +2,12 @@
 //!
 //! The public API consists of three concrete components:
 //!
-//! - [`crate::ui::ActionButton`] dispatches an [`Action`](crate::reactive::Action) from a
+//! - [`crate::ui::ActionButton`] dispatches an [`Action`] from a
 //!   semantic button and reflects its pending state.
 //! - [`crate::ui::ActionResultPanel`] selects idle, pending, success, or error content
 //!   from an action.
 //! - [`crate::ui::ResourcePanel`] selects loading, empty, success, or error content from
-//!   a [`Resource`](crate::reactive::Resource) or composed latest value.
+//!   a [`Resource`] or composed latest value.
 //!
 //! Shared slot and state-rendering helpers remain private to this module.
 
