@@ -1036,7 +1036,7 @@ async fn uuid_shaped_text_primary_key_stays_text_for_session_delete() {
 
 #[tokio::test]
 #[serial(model_enum_database)]
-async fn manager_omits_zero_i32_primary_key_for_autogeneration() {
+async fn manager_preserves_zero_i32_primary_key_when_present() {
 	let (_database, url) = sqlite_database_url();
 	reinitialize_database(&url)
 		.await
@@ -1055,16 +1055,16 @@ async fn manager_omits_zero_i32_primary_key_for_autogeneration() {
 	let created = I32KeyRecord::objects()
 		.create(&I32KeyRecord {
 			id: Some(0),
-			name: "generated".to_string(),
+			name: "explicit zero".to_string(),
 		})
 		.await
-		.expect("zero i32 primary key should use database generation");
+		.expect("an explicit optional zero primary key should be persisted");
 
-	assert_eq!(created.id, Some(1));
+	assert_eq!(created.id, Some(0));
 	let row = connection
 		.query_one("SELECT id, name FROM i32_key_records", vec![])
 		.await
-		.expect("generated row should be readable");
-	assert_eq!(row.get::<i32>("id"), Some(1));
-	assert_eq!(row.get::<String>("name").as_deref(), Some("generated"));
+		.expect("persisted row should be readable");
+	assert_eq!(row.get::<i32>("id"), Some(0));
+	assert_eq!(row.get::<String>("name").as_deref(), Some("explicit zero"));
 }
