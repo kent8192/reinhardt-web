@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.3.2...reinhardt-admin-cli@v0.4.0-alpha.1) - 2026-07-20
+
+### Changed
+
+- *(pages)* migrate hooks to deps list syntax
+
+### Fixed
+
+- *(pages)* harden hook dependency migration
+- *(pages)* harden dependency migration
+- *(pages)* harden dependency migration edge cases
+- *(pages)* harden dependency migration edge cases
+- *(admin)* satisfy migration clippy lints
+- *(admin)* preserve unresolved local hook calls
+- *(admin)* preserve unresolved omitted hook calls
+- *(pages)* repair hook dependency migration tests
+- *(release)* restore develop prerelease lifecycle
+
+### Maintenance
+
+- migrate dependency policy checks to cargo-deny
+- merge develop/0.4.0 into fix/issue-5561-remove-anyhow
+- merge develop/0.4.0 into remove-anyhow branch
+- merge develop/0.4.0 into anyhow removal branch
+
 ### Added
 
 - *(formatter)* delegate component-scoped `style!` formatting to `reinhardt-formatter`
