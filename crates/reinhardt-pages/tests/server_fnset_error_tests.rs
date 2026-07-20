@@ -10,7 +10,8 @@ use reinhardt_db::orm::DatabaseConnection;
 use reinhardt_di::{InjectionContext, SingletonScope};
 use reinhardt_http::Request;
 use reinhardt_pages::server_fn::{
-	ServerFnError, ServerFnHandler, ServerFnMetadata, ServerFnRegistration, ServerFnSetError,
+	ServerFnError, ServerFnErrorKind, ServerFnHandler, ServerFnMetadata, ServerFnRegistration,
+	ServerFnSetError,
 };
 
 // The shared compile fixture exports its contract types for macro expansion,
@@ -466,12 +467,23 @@ async fn generated_model_handles_sanitize_malformed_request_errors() {
 			.await
 			.expect_err("malformed arguments should fail");
 
+	let error = serde_json::from_slice::<ServerFnError>(&body)
+		.expect("error should retain the versioned generic server-function envelope");
+	assert_eq!(error.kind(), ServerFnErrorKind::Server);
+	assert_eq!(error.status(), Some(400));
+	assert_eq!(error.user_message(), "Invalid server function request");
 	assert_eq!(
-		serde_json::from_slice::<ServerFnSetError>(&body).expect("error should be sanitized JSON"),
-		ServerFnSetError::Internal,
+		serde_json::from_slice::<serde_json::Value>(&body).expect("error should be versioned JSON"),
+		serde_json::json!({
+			"version": 1,
+			"kind": "server",
+			"status": 400,
+			"message": "Invalid server function request",
+			"field_errors": [],
+		}),
 	);
 	assert_eq!(
 		<fixture::article_error_fns::retrieve::marker as ServerFnRegistration>::error_status(&body),
-		500,
+		400,
 	);
 }
