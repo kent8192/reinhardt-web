@@ -7,6 +7,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.3.2...reinhardt-commands@v0.4.0-alpha.1) - 2026-07-20
+
+### Added
+
+- feat!(pages): require named component route names
+- feat!(pages): resolve SSR resources asynchronously
+- *(commands)* dispatch static page edits as HMR patches
+
+### Fixed
+
+- *(pages)* harden async SSR resource rendering
+- *(docs)* remove redundant command links
+- *(commands)* harden component style delivery
+- *(commands)* harden component style delivery
+- *(commands)* resolve target-aware style extraction
+- *(commands)* retain metadata-refresh style context
+- *(commands)* align style extraction with build cfgs
+- *(commands)* align style extraction with Cargo build cfgs
+- *(commands)* follow active component style sources
+- *(commands)* allow styleless standalone runserver
+- *(commands)* align component styles with wasm builds
+- *(commands)* align selected Pages package rebuilds
+- *(commands)* honor selected Pages package context
+- *(commands)* preserve hot reload build context
+- *(commands)* keep Pages rebuild artifacts in sync
+- *(commands)* use library target names for Pages WASM
+- *(tests)* align style delivery CI expectations
+- harden component style delivery
+- expose dependency-aware wasm freshness check
+- compile dependency-aware wasm freshness check
+- *(styles)* validate font and style extraction edges
+- *(style)* validate generated component CSS
+- *(style)* preserve pages style runtime boundaries
+- *(commands)* preserve component style reload safety
+- *(styles)* align generated and extracted scopes
+- *(commands)* honor custom Pages static directories
+- *(commands)* preserve component style lifecycle
+- *(styles)* address component style review comments
+- *(commands)* isolate Pages package selection
+- *(commands)* fingerprint variable constraints
+- *(commands)* use metadata for Pages cdylib targets
+- *(manouche)* close PR 5641 media and extraction review gaps
+- *(commands)* restore phase 1 CI gates
+- *(release)* restore develop prerelease lifecycle
+
+### Maintenance
+
+- merge latest develop changes into typed JSON PR
+- merge develop/0.4.0 into component style branch
+- merge develop/0.4.0 into component-style branch
+- auto-fix fmt and clippy
+
+### Other
+
+- resolve develop/0.4.0 into model enum fields
+- sync develop/0.4.0 into page template hot patching
+
 ### Added
 
 - *(pages)* compile component styles for collectstatic and development serving with stable CSS-only refresh URLs

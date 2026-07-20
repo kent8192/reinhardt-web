@@ -7,6 +7,81 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.3.2...reinhardt-db@v0.4.0-alpha.1) - 2026-07-20
+
+### Added
+
+- *(db)* add typed JSON model fields
+
+### Fixed
+
+- *(db)* normalize gb freephone numbers
+- *(db)* normalize phone dialing variants
+- *(db)* bind typed JSON scalars as JSON
+- *(db)* address typed JSON review feedback
+- *(db)* preserve typed JSON values across ORM paths
+- *(db)* preserve JSON provenance across backend paths
+- *(testkit)* preserve model schema metadata
+- *(db)* avoid reconnecting initialized global database
+- *(db)* harden typed relation traversal
+- *(orm)* close typed relation traversal gaps
+- *(orm)* support manual relation targets
+- *(orm)* harden typed relation query SQL
+- *(orm)* map typed relation columns
+- *(orm)* align typed relation join aliases
+- *(db)* qualify annotations after relation joins
+- *(db)* qualify typed relation query clauses
+- *(db)* harden typed relation query rendering
+- *(db)* rebase typed relation query aliases
+- *(db)* validate typed relation load paths
+- *(db)* preserve typed eager load query semantics
+- *(orm)* rebase aliases after manual joins
+- *(db)* make aggregate field mapping explicit
+- *(db)* preserve count wildcard with relation joins
+- *(orm)* reserve typed relation aliases
+- *(orm)* guard composite typed relation paths
+- *(migrations)* preserve model table identity
+- *(build)* remove cfg alias macro semicolons
+- *(migrations)* preserve renamed table identity
+- *(migrations)* retain FK creates after table renames
+- *(migrations)* preserve create model table names
+- *(commands)* scope global migration validation
+- *(migrations)* preserve physical model state
+- *(migrations)* handle moved model table ownership in PR 5673
+- *(ci)* restore merged ORM compatibility
+- *(db)* preserve typed ORM values
+- preserve structured database errors
+- *(pages)* resolve server function set review findings
+- *(db)* update legacy executor test errors
+- restore atomic ORM release compatibility
+- *(orm)* decode string decimals as floating values
+- *(release)* restore develop prerelease lifecycle
+- *(ci)* stabilize release test failures
+
+### Maintenance
+
+- merge latest main into develop forward-merge
+- *(auth)* merge develop into password policy branch
+- merge latest develop changes into typed JSON PR
+- merge develop/0.4.0 into typed traversal branch
+- refresh main forward merge from develop/0.4.0
+- merge develop/0.4.0 into table-name branch
+
+### Other
+
+- resolve develop/0.4.0 into model enum fields
+- integrate latest enum field branch updates
+- sync develop/0.4.0 into server function set
+
+### Styling
+
+- *(db)* format query annotation rendering
+
+### Testing
+
+- *(db)* preserve migration model identity on table rename
+- *(migrations)* retain unrelated m2m constraints
+
 ### Added
 
 - Add typed `UniqueFieldRef` descriptors for compile-time model and lookup-value

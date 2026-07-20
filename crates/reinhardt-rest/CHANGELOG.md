@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.3.2...reinhardt-rest@v0.4.0-alpha.1) - 2026-07-20
+
+### Changed
+
+- [**breaking**] replace dynamic domain error adapters
+
+### Fixed
+
+- *(rest)* preserve domain error boundaries
+- preserve internal error classification
+- *(rest)* classify invalid model shapes as internal errors
+- *(errors)* preserve database retry classifications
+- preserve structured database errors
+- *(release)* restore develop prerelease lifecycle
+
+### Maintenance
+
+- merge latest main into develop forward-merge
+- merge develop/0.4.0 into fix/issue-5561-remove-anyhow
+- merge develop/0.4.0 into remove-anyhow branch
+
 ## [0.3.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-rest@v0.3.0...reinhardt-rest@v0.3.1) - 2026-07-04
 
 ### Added

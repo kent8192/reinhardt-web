@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.3.2...reinhardt-test@v0.4.0-alpha.1) - 2026-07-20
+
+### Added
+
+- *(testkit)* add model-derived test database fixture
+
+### Changed
+
+- *(pages)* migrate model-set error adapters
+
+### Fixed
+
+- *(testkit)* complete model-derived schema fidelity
+- *(ci)* terminate cfg aliases macro invocations
+- *(pages)* envelope server function failures
+- *(release)* restore develop prerelease lifecycle
+
+### Maintenance
+
+- merge develop/0.4.0 into server function set branch
+
 ## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-test@v0.2.0...reinhardt-test@v0.3.0) - 2026-06-28
 
 Stable release of `reinhardt-test` for the Reinhardt 0.3.0 line. This
