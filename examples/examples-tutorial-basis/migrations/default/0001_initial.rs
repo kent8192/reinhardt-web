@@ -17,6 +17,7 @@ pub(super) fn migration() -> Migration {
 					default: None,
 
 					generated: None,
+					domain: None,
 				},
 				ColumnDefinition {
 					name: "expire_date".to_string(),
@@ -28,6 +29,7 @@ pub(super) fn migration() -> Migration {
 					default: None,
 
 					generated: None,
+					domain: None,
 				},
 				ColumnDefinition {
 					name: "last_accessed".to_string(),
@@ -39,6 +41,7 @@ pub(super) fn migration() -> Migration {
 					default: None,
 
 					generated: None,
+					domain: None,
 				},
 				ColumnDefinition {
 					name: "session_data".to_string(),
@@ -50,6 +53,7 @@ pub(super) fn migration() -> Migration {
 					default: None,
 
 					generated: None,
+					domain: None,
 				},
 				ColumnDefinition {
 					name: "session_key".to_string(),
@@ -61,6 +65,7 @@ pub(super) fn migration() -> Migration {
 					default: None,
 
 					generated: None,
+					domain: None,
 				},
 			],
 			constraints: vec![],
