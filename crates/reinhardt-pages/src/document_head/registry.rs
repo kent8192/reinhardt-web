@@ -478,7 +478,7 @@ mod tests {
 			.next()
 			.expect("the title should resolve");
 		assert_eq!(initial.owner(), owner);
-		assert_eq!(initial.marker(), "slot-1-title-7bd04faf3cab580d");
+		assert_eq!(initial.marker(), "slot-1-title-2a7460b7d22dcc70");
 
 		assert!(registry.replace(owner, Head::new().title("Stable title")));
 		let replacement = registry
@@ -487,6 +487,6 @@ mod tests {
 			.next()
 			.expect("the replacement title should resolve");
 		assert_eq!(replacement.owner(), owner);
-		assert_eq!(replacement.marker(), "slot-1-title-7bd04faf3cab580d");
+		assert_eq!(replacement.marker(), "slot-1-title-2a7460b7d22dcc70");
 	}
 }
