@@ -844,7 +844,7 @@ fn single_control_attrs_match(
 				) {
 					return true;
 				}
-				let expected = if is_boolean_attr(&name) && !is_boolean_attr_truthy(value) {
+				let expected = if is_boolean_attr(name) && !is_boolean_attr_truthy(value) {
 					None
 				} else {
 					Some(value.as_ref())
@@ -867,7 +867,7 @@ fn single_control_attrs_match(
 						return true;
 					}
 					let expected = attribute.value().filter(|value| {
-						!(is_boolean_attr(attribute.name()) && !is_boolean_attr_truthy(value))
+						!is_boolean_attr(attribute.name()) || is_boolean_attr_truthy(value)
 					});
 					existing_element.get_attribute(attribute.name()).as_deref()
 						== expected.as_deref()

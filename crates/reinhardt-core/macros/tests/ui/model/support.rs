@@ -186,6 +186,7 @@ pub mod db {
 			serde::Serialize,
 			serde::Deserialize,
 		)]
+		#[serde(bound = "")]
 		pub struct ManyToManyField<Source, Target>(core::marker::PhantomData<(Source, Target)>);
 
 		impl<T> Default for ForeignKeyField<T> {
@@ -1086,3 +1087,5 @@ pub mod db {
 		}
 	}
 }
+
+pub use db::m2m_naming;

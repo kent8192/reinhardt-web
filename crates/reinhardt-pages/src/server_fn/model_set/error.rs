@@ -2,7 +2,9 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::server_fn::{ServerFnError, ServerFnErrorKind};
+use crate::server_fn::ServerFnError;
+#[cfg(any(native, test))]
+use crate::server_fn::ServerFnErrorKind;
 
 /// A stable client-visible validation error for one field.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

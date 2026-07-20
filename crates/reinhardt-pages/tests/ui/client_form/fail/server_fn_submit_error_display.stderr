@@ -1,27 +1,15 @@
-error[E0277]: the trait bound `SubmitError: From<ServerFnError>` is not satisfied
-  --> tests/ui/client_form/fail/server_fn_submit_error_display.rs:5:52
-   |
- 5 | #[derive(Clone, PartialEq, Serialize, Deserialize, ClientForm)]
-   |                                                    ^^^^^^^^^^ unsatisfied trait bound
-   |
-help: the trait `From<ServerFnError>` is not implemented for `SubmitError`
-      but trait `From<serde_json::Error>` is implemented for it
-  --> tests/ui/client_form/fail/server_fn_submit_error_display.rs:21:1
-   |
-21 | impl From<serde_json::Error> for SubmitError {
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-   = help: for that trait implementation, expected `serde_json::Error`, found `ServerFnError`
-   = note: this error originates in the derive macro `ClientForm` (in Nightly builds, run with -Z macro-backtrace for more info)
-
-error[E0277]: `SubmitError` doesn't implement `std::fmt::Display`
-  --> tests/ui/client_form/fail/server_fn_submit_error_display.rs:5:52
-   |
- 5 | #[derive(Clone, PartialEq, Serialize, Deserialize, ClientForm)]
-   |                                                    ^^^^^^^^^^ unsatisfied trait bound
-   |
-help: the trait `std::fmt::Display` is not implemented for `SubmitError`
-  --> tests/ui/client_form/fail/server_fn_submit_error_display.rs:17:1
-   |
-17 | pub struct SubmitError {
-   | ^^^^^^^^^^^^^^^^^^^^^^
-   = note: this error originates in the derive macro `ClientForm` (in Nightly builds, run with -Z macro-backtrace for more info)
+error[E0277]: the trait bound `ServerFnError: From<SubmitError>` is not satisfied
+ --> tests/ui/client_form/fail/server_fn_submit_error_display.rs:5:52
+  |
+5 | #[derive(Clone, PartialEq, Serialize, Deserialize, ClientForm)]
+  |                                                    ^^^^^^^^^^ the trait `From<SubmitError>` is not implemented for `ServerFnError`
+  |
+help: the trait `From<SubmitError>` is not implemented for `ServerFnError`
+      but trait `From<reinhardt_pages::client_form::__private::DtoValidationErrors>` is implemented for it
+ --> src/server_fn/server_fn_trait.rs
+  |
+  | impl From<ValidationErrors> for ServerFnError {
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  = help: for that trait implementation, expected `reinhardt_pages::client_form::__private::DtoValidationErrors`, found `SubmitError`
+  = note: required for `SubmitError` to implement `Into<ServerFnError>`
+  = note: this error originates in the derive macro `ClientForm` (in Nightly builds, run with -Z macro-backtrace for more info)

@@ -656,7 +656,7 @@ fn install_hydrated_child_reactive_nodes(
 			let mut branch_transaction = HydrationBranchTransaction::new();
 			let branch_store = branch_transaction.store();
 			let rendered = with_reactive_node_store(&render_store, || reactive.render());
-			let mut branch_registry = super::events::EventRegistry::new();
+			let mut branch_registry = super::events::EventRegistry::new_for_hydration();
 			with_reactive_node_store(&branch_store, || {
 				install_hydrated_child_reactive_nodes(
 					parent,
@@ -706,7 +706,7 @@ fn install_hydrated_child_reactive_nodes(
 				};
 				(hydrated_condition, branch_view)
 			});
-			let mut branch_registry = super::events::EventRegistry::new();
+			let mut branch_registry = super::events::EventRegistry::new_for_hydration();
 			with_reactive_node_store(&branch_store, || {
 				install_hydrated_child_reactive_nodes(
 					parent,
@@ -1856,12 +1856,9 @@ mod tests {
 
 			assert_eq!(cleanup_count.get(), 1);
 			assert_eq!(render_count.get(), 1, "drop must not re-render the parent");
-			assert_eq!(root.text_content().as_deref(), Some("initial"));
-			assert_eq!(direct_comment_count(&root), 1, "{}", root.inner_html());
-			assert_eq!(
-				root.inner_html(),
-				"<!--reactive-nested--><span>initial</span>"
-			);
+			assert_eq!(root.text_content().as_deref(), Some(""));
+			assert_eq!(direct_comment_count(&root), 0, "{}", root.inner_html());
+			assert_eq!(root.inner_html(), "");
 			root.remove();
 		});
 	}
@@ -1916,12 +1913,9 @@ mod tests {
 				1,
 				"drop must not re-evaluate the condition"
 			);
-			assert_eq!(root.text_content().as_deref(), Some("initial"));
-			assert_eq!(direct_comment_count(&root), 1, "{}", root.inner_html());
-			assert_eq!(
-				root.inner_html(),
-				"<!--reactive-nested--><span>initial</span>"
-			);
+			assert_eq!(root.text_content().as_deref(), Some(""));
+			assert_eq!(direct_comment_count(&root), 0, "{}", root.inner_html());
+			assert_eq!(root.inner_html(), "");
 			root.remove();
 		});
 	}
@@ -2180,6 +2174,46 @@ mod tests {
 				(root.text_content().as_deref(), marker_count),
 				(Some("nested:0"), 0),
 				"failed hydration must leave the initial DOM inert and marker-free",
+			);
+			cleanup_reactive_nodes();
+			root.remove();
+		});
+	}
+
+	#[cfg(wasm)]
+	#[wasm_bindgen_test]
+	fn failed_reactive_if_branch_hydration_rejects_invalid_control_binding() {
+		let scope = ReactiveScope::new();
+		scope.enter(|| {
+			cleanup_reactive_nodes();
+			let document = web_sys::window().unwrap().document().unwrap();
+			let root = document.create_element("div").unwrap();
+			root.set_inner_html("<div></div>");
+			let binding_value = Signal::new("server".to_owned());
+			let view = PageElement::new("div")
+				.child(Page::reactive_if(
+					|| true,
+					{
+						let binding_value = binding_value.clone();
+						move || {
+							PageElement::new("input")
+								.control_binding(ControlBinding::text(binding_value.clone()))
+								.into_page()
+						}
+					},
+					|| Page::Empty,
+				))
+				.into_page();
+			let mut registry = crate::hydration::events::EventRegistry::new();
+
+			let error =
+				install_hydrated_reactive_nodes(&Element::new(root.clone()), &view, &mut registry)
+					.expect_err("the reactive-if branch should reject the actual div");
+			assert_eq!(
+				error,
+				HydrationError::EventAttachmentFailed(
+					"text control does not support a <div> element".to_owned(),
+				),
 			);
 			cleanup_reactive_nodes();
 			root.remove();
