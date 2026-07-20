@@ -7,6 +7,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.3.2...reinhardt-core@v0.4.0-alpha.1) - 2026-07-20
+
+### Added
+
+- *(query,migrations)* [**breaking**] support typed generated column expressions
+
+### Fixed
+
+- *(benchmark,macros)* address develop merge review feedback
+- *(migrations)* address generated column review feedback
+- *(migrations)* handle generated column followups
+- *(db)* preserve generated-column replacement metadata
+- *(db)* address generated column review feedback
+- *(db)* address generated column review follow-up
+- *(db)* complete generated column review repairs
+- *(db)* harden generated column edge cases
+- *(db)* reject invalid generated column definitions
+- *(macros)* gate MySQL generated-column test
+- *(macros)* preserve model schema metadata
+- *(testkit)* harden model-derived schema metadata
+- *(db)* harden typed relation traversal
+- *(orm)* close typed relation traversal gaps
+- *(orm)* support manual relation targets
+- *(macros)* honor reverse relation to_field
+- *(db)* validate typed relation load paths
+- *(macros)* reject ambiguous composite reverse relations
+- *(orm)* guard composite typed relation paths
+- *(pages)* restore explicit deps compatibility
+- *(ci)* terminate cfg aliases macro invocations
+- *(pages)* retain reactive owners through review edge cases
+- *(reactive)* enforce explicit dependencies and memo invalidation
+- *(pages)* complete explicit dependency migration
+- *(reactive)* isolate scope cleanup observers
+- *(core)* restore reactive notification coverage
+- *(pages)* resolve controlled binding review feedback
+- restore atomic ORM release compatibility
+- *(core)* ignore stale reactive subscribers
+- *(pages)* bind action button attributes reactively
+- *(pages)* dispose reactive attribute effects
+- *(pages)* materialize reactive test attributes
+- *(pages)* preserve reactive attribute precedence
+- *(pages)* reconcile reactive attributes
+- *(pages)* normalize boolean attribute names
+- *(core)* satisfy reactive attribute lint requirements
+- *(core)* update PageElement parts regression test
+- *(release)* restore develop prerelease lifecycle
+
+### Maintenance
+
+- merge latest main into develop forward-merge
+- merge latest develop changes into typed JSON PR
+- merge develop/0.4.0 into typed traversal branch
+- merge develop/0.4.0 into issue 5575 branch
+
+### Other
+
+- resolve develop/0.4.0 conflicts for [[#5676](https://github.com/kent8192/reinhardt-web/issues/5676)](https://github.com/kent8192/reinhardt-web/issues/5676)
+- resolve develop/0.4.0 into model enum fields
+- sync develop/0.4.0 into server function set
+
+### Testing
+
+- *(reactive)* cover explicit deps macro compatibility
+- *(macros)* repair model UI fixture contracts
+
 ### Added
 
 - Generate typed `unique_<field>()` accessors for single-column primary keys,

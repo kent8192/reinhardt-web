@@ -7,6 +7,226 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.2...reinhardt-web@v0.4.0-alpha.1) - 2026-07-20
+
+### Added
+
+- *(db)* add scoped n+1 query detection
+- feat!(pages): resolve SSR resources asynchronously
+- *(pages)* add typed hook dependency constructors
+- *(pages)* select explicit or automatic memo dependencies
+- feat!(pages): require explicit hook dependency modes
+- *(pages)* validate deps macro hook arguments
+- *(pages)* add structured server function errors
+- *(pages)* connect structured server errors
+- *(pages)* convert validation errors to server errors
+- *(pages)* route structured server errors to form fields
+- *(pages)* add typed server function submits
+
+### Changed
+
+- *(pages)* unify effect dependency modes
+- *(pages)* migrate hooks to deps list syntax
+- *(pages)* migrate model-set error adapters
+
+### Documentation
+
+- document 0.4 performance migration
+- record disposable benchmark workflow
+- record backend benchmark procedure
+- refresh runtime scorecard measurements
+- record sync http follow-up measurements
+- refresh requestless perf measurements
+- record final backend measurements
+- record 2026-06-30 backend measurements
+- record local runtime floor measurement
+- set realistic 0.4 performance gates
+- record 0.4 promotion gate status
+- disambiguate async-trait rustdoc link
+- *(rest)* remove inactive prefetch guidance
+- *(pages)* explain hook dependency modes
+- *(pages)* fix resource migration example
+- *(pages)* note hook dependency migration
+- *(pages)* preserve historical migration examples
+- *(pages)* document structured server function errors
+- *(pages)* align client form metadata contract
+
+### Fixed
+
+- preserve route body and path param semantics
+- address 0.4 fast-path review comments
+- [**breaking**] preserve server_fn codec metadata invariants
+- preserve custom method router dispatch
+- *(db)* avoid listener map guards across awaits
+- *(rest)* keep validator doctests feature neutral
+- *(db)* address n+1 detector review gaps
+- *(db)* harden n+1 detector diagnostics
+- *(db)* address n plus one review feedback
+- *(db)* satisfy n plus one hash clippy
+- *(db)* address n plus one review feedback
+- *(db)* address orm review feedback
+- *(ci)* unblock quick-xml security audit
+- *(ci)* adapt XML parser to quick-xml 0.41
+- *(db)* remove inactive n plus one prefetch guidance
+- *(pages)* harden async SSR resource rendering
+- *(pages)* complete ssr suspense resource replay
+- *(pages)* drain streamed ssr resource replays
+- *(pages)* stabilize suspense resource replay
+- *(pages)* address SSR resource review feedback
+- *(pages)* reuse tracked SSR resources during replay
+- *(pages)* harden streaming suspense resource scopes
+- *(pages)* reuse pending tracked SSR resources
+- *(pages)* scope suspense resource replay caches
+- *(pages)* remove shared suspense head cache
+- *(pages)* preserve SSR resource replay consistency
+- *(pages)* keep buffered suspense head capture request scoped
+- *(pages)* preserve marker render allocators
+- *(pages)* satisfy resource hydration clippy
+- *(pages)* harden suspense hydration state
+- *(pages)* stabilize client form submit UI fixtures
+- *(pages)* drop duplicate component tree arms
+- resolve PR 5615 conflicts and feedback
+- *(macros)* gate MySQL generated-column test
+- *(macros)* preserve model schema metadata
+- *(testkit)* harden model-derived schema metadata
+- *(testkit)* complete model-derived schema fidelity
+- *(ci)* restore upgraded dependency checks
+- *(core)* make effect teardown panic-safe
+- *(core)* remove effects after cleanup panic
+- *(core)* deduplicate memo notification waves
+- *(core)* separate memo propagation from consumers
+- *(core)* recover interrupted notification epochs
+- *(pages)* harden hook dependency migration
+- *(pages)* harden dependency migration
+- *(pages)* harden dependency migration edge cases
+- *(pages)* harden dependency migration edge cases
+- *(pages)* align dependency mode exports and tests
+- *(core)* satisfy memo clippy lints
+- *(pages)* update dynamic dependency test
+- *(pages)* scope native resource dependency import
+- *(admin)* satisfy migration clippy lints
+- *(pages)* remove duplicate native cfg
+- *(admin)* preserve unresolved local hook calls
+- *(core)* tolerate runtime teardown during cleanup
+- *(admin)* preserve unresolved omitted hook calls
+- *(pages)* repair hook dependency migration tests
+- *(pages)* restore explicit deps compatibility
+- *(ci)* terminate cfg aliases macro invocations
+- *(pages)* retain reactive owners through review edge cases
+- *(pages)* guard stale lifecycle handles
+- *(pages)* retain mount scopes for events
+- *(reactive)* enforce explicit dependencies and memo invalidation
+- *(pages)* complete explicit dependency migration
+- *(reactive)* isolate scope cleanup observers
+- *(deeplink)* preserve client router extension
+- *(ci)* allow auto-fix on non-fast-forward-only branches
+- *(ci)* paginate auto-fix branch-rule checks
+- *(core)* restore reactive notification coverage
+- *(pages)* restore reactive CI compatibility
+- *(pages)* update legacy hook dependency tests
+- *(manouche)* close PR 5641 media and extraction review gaps
+- *(pages)* resolve controlled binding review feedback
+- *(pages)* preserve controlled select projection
+- *(pages)* address route loader review feedback
+- preserve structured database errors
+- *(examples)* preserve lookup database errors
+- *(pages)* resolve server function set review findings
+- *(db)* update legacy executor test errors
+- *(pages)* clarify structured error review fixes
+- *(pages)* sanitize server function extractor errors
+- *(pages)* resolve serde-renamed client form errors
+- *(pages)* scope error-kind imports to tests
+- *(pages)* satisfy clippy in model error sanitizer
+- *(pages)* preserve structured pre-validation errors
+- *(examples)* format basis tutorial sources
+- *(pages)* envelope server function failures
+- *(pages)* envelope server function request failures
+- *(pages)* skip stale server form errors
+- *(pages)* classify server function failures
+- *(pages)* preserve structured server form errors
+- *(pages)* retain custom error status
+- *(pages)* reconcile reactive attributes
+- *(pages)* preserve reactive control hydration
+- *(pages)* normalize boolean attribute names
+- *(core)* satisfy reactive attribute lint requirements
+- *(pages)* restore reactive attribute test checks
+- *(examples)* import tutorial database error types
+- *(pages)* stabilize empty head compile fixture
+- *(pages)* simplify reactive boolean attribute predicates
+- *(commands)* restore phase 1 CI gates
+- *(release)* restore develop prerelease lifecycle
+- *(pages)* prevent invalid head macro doc link
+- *(pages)* remove redundant UI doc link targets
+
+### Maintenance
+
+- refresh benchmark lockfile
+- merge develop/0.4.0 into component route branch
+- merge remote async SSR resource branch
+- merge develop/0.4.0 into client form bindings
+- merge develop/0.4.0 into client form bindings
+- *(serena)* update project configuration
+- merge latest develop changes into typed JSON PR
+- merge develop/0.4.0 into functional state setter
+- migrate dependency policy checks to cargo-deny
+- merge develop/0.4.0 into retained effects
+- merge develop/0.4.0 into issue 5575 branch
+- merge develop/0.4.0 into route loader branch
+- remove task execution reports
+- auto-fix fmt and clippy
+
+### Other
+
+- sync develop/0.4.0 into hook dependency modes
+- resolve develop/0.4.0 conflicts for [[#5676](https://github.com/kent8192/reinhardt-web/issues/5676)](https://github.com/kent8192/reinhardt-web/issues/5676)
+- sync develop/0.4.0 into server function set
+- sync develop/0.4.0 into structured server errors
+- sync develop/0.4.0 into structured server errors
+
+### Performance
+
+- [**breaking**] lazy-parse request query params
+- [**breaking**] inline path parameter dispatch values
+- avoid warning-path uri allocation
+- freeze compiled route tables
+- [**breaking**] borrow query parameter lookups
+- skip empty router dispatch work
+- bypass request builder in server adapters
+- remove boxed server request futures
+- cache raw query parameter ranges
+- borrow matched route handlers
+- add concrete router dispatch fast path
+- bypass router handler arc wrapper
+- add static response body fast path
+- reuse request body planning
+- bypass handler arc wrappers internally
+- add synchronous handler fast path
+- trim query and response fixed costs
+- flatten server router backend dispatch
+- add static server route fast path
+- expose synchronous router dispatch
+- use compact exact route tables
+- revert compact exact route table experiment
+- add synchronous HTTP connection adapter
+- add requestless sync route path
+- return server fn bytes directly
+- borrow server fn request bodies
+- avoid boxed server fn futures
+- shrink server fn endpoint futures
+- fast path json server fn content type
+- bypass exact route match materialization
+- streamline server fn responses
+- [**breaking**] specialize json server fn hot path
+- specialize server fn codec response path
+
+### Testing
+
+- simplify request config construction
+- update path parameter assertions
+- tighten review regression assertions
+- *(reactive)* cover explicit deps macro compatibility
+- *(pages)* clarify validation conversion phases
+
 ### Breaking Changes
 
 - *(pages)* Route-backed `#[component]` declarations now require explicit
