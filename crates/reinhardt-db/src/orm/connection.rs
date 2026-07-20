@@ -586,13 +586,20 @@ mod tests {
 
 	#[cfg(feature = "postgres")]
 	#[tokio::test]
-	async fn test_error_kind_for_refused_postgres_connection() {
-		let listener = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
+	async fn test_error_kind_for_postgres_handshake_timeout() {
+		let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
+			.await
 			.expect("a local ephemeral port must be available");
 		let address = listener
 			.local_addr()
 			.expect("the bound listener must have a local address");
-		drop(listener);
+		let _server = tokio::spawn(async move {
+			let (_stream, _) = listener
+				.accept()
+				.await
+				.expect("the timeout fixture must accept the PostgreSQL connection");
+			std::future::pending::<()>().await;
+		});
 		let url = format!(
 			"postgres://postgres@{}:{}/postgres?connect_timeout=1",
 			address.ip(),
@@ -600,10 +607,10 @@ mod tests {
 		);
 
 		let Err(error) = DatabaseConnection::connect_postgres(&url).await else {
-			panic!("a closed local endpoint must refuse the connection");
+			panic!("a PostgreSQL handshake that never completes must time out");
 		};
 
-		assert_eq!(error.database_kind(), Some(DatabaseErrorKind::Connection));
+		assert_eq!(error.database_kind(), Some(DatabaseErrorKind::Timeout));
 	}
 
 	#[cfg(feature = "sqlite")]
