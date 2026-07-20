@@ -8150,6 +8150,39 @@ mod tests {
 	}
 
 	#[test]
+	fn test_fixture_projection_preserves_custom_deserializers() {
+		let input = quote! {
+			#[model(app_label = "fixture_tests", table_name = "fixture_models")]
+			struct FixtureModel {
+				#[field(primary_key = true)]
+				id: i64,
+				#[serde(deserialize_with = "deserialize_uuid")]
+				payload: Uuid,
+				#[field(null = false)]
+				#[serde(with = "uuid_serde")]
+				optional_payload: Option<Uuid>,
+			}
+		};
+
+		let output = model_derive_impl(syn::parse2(input).unwrap())
+			.expect("fixture model must generate")
+			.to_string();
+
+		assert!(
+			output.contains("deserialize_uuid"),
+			"fixture projections must retain direct custom deserializers"
+		);
+		assert!(
+			output.contains("uuid_serde :: deserialize"),
+			"fixture projections must adapt serde(with) to its deserialize function"
+		);
+		assert!(
+			output.contains("__reinhardt_validate_fixture_field_optional_payload"),
+			"rewritten optional fixture fields must validate through their custom deserializer"
+		);
+	}
+
+	#[test]
 	fn test_defaulted_fixture_projection_preserves_deserialize_bounds() {
 		let input = quote! {
 			#[model(app_label = "fixture_tests", table_name = "fixture_models")]

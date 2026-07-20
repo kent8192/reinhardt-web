@@ -6,6 +6,15 @@ include!("../support.rs");
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 struct Uuid([u8; 16]);
 
+impl<'de> Deserialize<'de> for Uuid {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
+		<[u8; 16] as Deserialize>::deserialize(deserializer).map(Self)
+	}
+}
+
 fn deserialize_uuid<'de, D>(deserializer: D) -> Result<Uuid, D::Error>
 where
 	D: Deserializer<'de>,
@@ -60,6 +69,21 @@ mod optional_uuid_serde {
 	{
 		let value = <Option<std::string::String> as Deserialize>::deserialize(deserializer)?;
 		Ok(value.map(|_| Uuid([0; 16])))
+	}
+}
+
+impl db::orm::DatabaseField for Uuid {
+	type Storage = String;
+
+	fn encode_database(&self) -> Result<Self::Storage, db::orm::FieldCodecError> {
+		serde_json::to_string(self).map_err(|_| db::orm::FieldCodecError)
+	}
+
+	fn decode_database(
+		value: Self::Storage,
+		_context: &db::orm::FieldCodecContext,
+	) -> Result<Self, db::orm::FieldCodecError> {
+		serde_json::from_str(&value).map_err(|_| db::orm::FieldCodecError)
 	}
 }
 
