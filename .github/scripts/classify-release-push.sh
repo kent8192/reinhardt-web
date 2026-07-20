@@ -92,6 +92,22 @@ case "$head_branch" in
 		;;
 esac
 
+case "$base_branch" in
+	main)
+		expected_release_prefix="release-plz-"
+		;;
+	develop/*)
+		expected_release_prefix="develop-release-plz-"
+		;;
+	*)
+		fail "PR #$pr_number base '$base_branch' is not a supported release branch"
+		;;
+esac
+
+if [[ "$head_branch" != "$expected_release_prefix"* ]]; then
+	fail "PR #$pr_number head '$head_branch' does not use the required '$expected_release_prefix' prefix for base '$base_branch'"
+fi
+
 expected_repo="${GITHUB_REPOSITORY:-}"
 if [ -n "$expected_repo" ] && [ "$head_repo" != "$expected_repo" ]; then
 	fail "PR #$pr_number head repository '$head_repo' does not match '$expected_repo'"
