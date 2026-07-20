@@ -32,6 +32,8 @@ thread_local! {
 	static ROOT_REACTIVE_NODES: ReactiveNodeStore = Rc::new(RefCell::new(Vec::new()));
 	#[cfg(wasm)]
 	static ACTIVE_REACTIVE_NODE_STORE: RefCell<Option<ReactiveNodeStore>> = RefCell::new(None);
+	#[cfg(wasm)]
+	static HYDRATION_ROLLBACK_DEPTH: Cell<usize> = const { Cell::new(0) };
 }
 
 #[cfg(native)]
@@ -80,6 +82,40 @@ pub(crate) fn clear_reactive_node_store(store: &ReactiveNodeStore) {
 		let mut stored_nodes = store.borrow_mut();
 		std::mem::take(&mut *stored_nodes)
 	};
+}
+
+/// Drops failed hydration branch owners without removing the server-rendered DOM range.
+#[cfg(wasm)]
+pub(crate) fn clear_hydration_rollback_reactive_node_store(store: &ReactiveNodeStore) {
+	let _guard = HydrationRollbackGuard::enter();
+	clear_reactive_node_store(store);
+}
+
+#[cfg(wasm)]
+struct HydrationRollbackGuard;
+
+#[cfg(wasm)]
+impl HydrationRollbackGuard {
+	fn enter() -> Self {
+		HYDRATION_ROLLBACK_DEPTH.with(|depth| depth.set(depth.get() + 1));
+		Self
+	}
+}
+
+#[cfg(wasm)]
+impl Drop for HydrationRollbackGuard {
+	fn drop(&mut self) {
+		HYDRATION_ROLLBACK_DEPTH.with(|depth| {
+			let current_depth = depth.get();
+			debug_assert!(current_depth > 0);
+			depth.set(current_depth.saturating_sub(1));
+		});
+	}
+}
+
+#[cfg(wasm)]
+fn preserves_hydrated_dom_on_drop() -> bool {
+	HYDRATION_ROLLBACK_DEPTH.with(|depth| depth.get() > 0)
 }
 
 #[cfg(wasm)]
@@ -931,7 +967,8 @@ impl MarkerRemovalGuard {
 #[cfg(wasm)]
 impl Drop for MarkerRemovalGuard {
 	fn drop(&mut self) {
-		if let Some(start_marker) = self.start_marker.as_ref()
+		if !preserves_hydrated_dom_on_drop()
+			&& let Some(start_marker) = self.start_marker.as_ref()
 			&& remove_marker_range_from_dom(start_marker, &self.marker)
 		{
 			return;

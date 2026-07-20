@@ -438,7 +438,9 @@ impl HydrationBranchTransaction {
 impl Drop for HydrationBranchTransaction {
 	fn drop(&mut self) {
 		if !self.committed {
-			crate::component::reactive_if::clear_reactive_node_store(&self.store);
+			crate::component::reactive_if::clear_hydration_rollback_reactive_node_store(
+				&self.store,
+			);
 		}
 	}
 }
