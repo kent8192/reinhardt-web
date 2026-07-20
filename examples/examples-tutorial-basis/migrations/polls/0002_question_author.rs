@@ -17,6 +17,7 @@ pub(super) fn migration() -> Migration {
 				default: None,
 
 				generated: None,
+				domain: None,
 			},
 			mysql_options: None,
 		}],
