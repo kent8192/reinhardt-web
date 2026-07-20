@@ -1168,7 +1168,7 @@ impl ElementNode {
 			self.attrs
 				.retain(|(name, _)| !name.eq_ignore_ascii_case(attribute.name()));
 			if let Some(value) = attribute.value()
-				&& !(is_boolean_attr(attribute.name()) && !is_boolean_attr_truthy(&value))
+				&& (!is_boolean_attr(attribute.name()) || is_boolean_attr_truthy(&value))
 			{
 				self.attrs
 					.push((attribute.name().to_owned(), value.into_owned()));
