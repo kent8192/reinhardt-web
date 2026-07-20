@@ -184,6 +184,13 @@ impl Default for ServerRebuildContext<'_> {
 	}
 }
 
+/// Shared state required to rebuild one debounced path batch.
+struct WatcherRebuildContext<'a, 'b> {
+	command_context: &'a CommandContext,
+	config: &'a WatcherConfig,
+	server_rebuild_context: ServerRebuildContext<'b>,
+}
+
 /// Select rebuild pipelines for a debounced path batch.
 ///
 /// The classifier is deliberately conservative. It only suppresses a
@@ -407,9 +414,11 @@ pub async fn run_rebuild_for_paths(
 	respawn: &(impl Fn() -> std::io::Result<tokio::process::Child> + Send + Sync),
 ) {
 	run_rebuild_for_paths_for_package(
-		ctx,
-		config,
-		ServerRebuildContext::default(),
+		WatcherRebuildContext {
+			command_context: ctx,
+			config,
+			server_rebuild_context: ServerRebuildContext::default(),
+		},
 		paths,
 		current_child,
 		respawn,
@@ -422,9 +431,7 @@ pub async fn run_rebuild_for_paths(
 }
 
 async fn run_rebuild_for_paths_for_package(
-	ctx: &CommandContext,
-	config: &WatcherConfig,
-	rebuild_context: ServerRebuildContext<'_>,
+	watcher_rebuild_context: WatcherRebuildContext<'_, '_>,
 	paths: Vec<PathBuf>,
 	current_child: &mut tokio::process::Child,
 	respawn: &(impl Fn() -> std::io::Result<tokio::process::Child> + Send + Sync),
@@ -433,6 +440,12 @@ async fn run_rebuild_for_paths_for_package(
 		reinhardt_pages::hmr::PatchGeneration,
 	>,
 ) {
+	let WatcherRebuildContext {
+		command_context: ctx,
+		config,
+		server_rebuild_context: rebuild_context,
+	} = watcher_rebuild_context;
+
 	ctx.info(&format!(
 		"[hot-reload] change detected ({} path(s))",
 		paths.len()
@@ -564,10 +577,7 @@ async fn run_rebuild_for_paths_for_package(
 				config.hmr_tx.as_ref(),
 				"WASM rebuild completed successfully",
 			);
-			refresh_template_baseline_after_full_reload(
-				template_coordinator,
-				config,
-			);
+			refresh_template_baseline_after_full_reload(template_coordinator, config);
 		}
 		#[cfg(not(feature = "pages"))]
 		let _ = wasm_ok;
@@ -834,9 +844,11 @@ pub(crate) async fn run_watcher_for_package(
 						});
 					if let Some((generation, paths)) = fallback {
 						run_rebuild_for_paths_for_package(
-							ctx,
-							config,
-							rebuild_context,
+							WatcherRebuildContext {
+								command_context: ctx,
+								config,
+								server_rebuild_context: rebuild_context,
+							},
 							paths,
 							&mut current_child,
 							&respawn,
@@ -872,9 +884,11 @@ pub(crate) async fn run_watcher_for_package(
 					let patch_sent = false;
 					if !patch_sent {
 						run_rebuild_for_paths_for_package(
-							ctx,
-							config,
-							rebuild_context,
+							WatcherRebuildContext {
+								command_context: ctx,
+								config,
+								server_rebuild_context: rebuild_context,
+							},
 							paths,
 							&mut current_child,
 							&respawn,
