@@ -565,7 +565,7 @@ async fn run_rebuild_for_paths_for_package(
 				"WASM rebuild completed successfully",
 			);
 			refresh_template_baseline_after_full_reload(
-				template_coordinator.as_deref_mut(),
+				template_coordinator,
 				config,
 			);
 		}
