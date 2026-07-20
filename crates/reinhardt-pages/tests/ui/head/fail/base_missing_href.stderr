@@ -1,7 +1,7 @@
 error: base tag requires exactly one 'href' attribute with a value
- --> tests/ui/head/fail/base_missing_href.rs:10:10
-  |
+  --> tests/ui/head/fail/base_missing_href.rs:10:10
+   |
 10 |     let _ = head!(|| { base {} });
    |             ^^^^^^^^^^^^^^^^^^^^^
-  |
-  = note: this error originates in the macro `head` (in Nightly builds, run with -Z macro-backtrace for more info)
+   |
+   = note: this error originates in the macro `head` (in Nightly builds, run with -Z macro-backtrace for more info)
