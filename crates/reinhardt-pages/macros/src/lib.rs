@@ -901,7 +901,7 @@ pub fn page(input: TokenStream) -> TokenStream {
 /// let html = my_head.to_html();
 /// ```
 ///
-/// `head!` produces a structural [`Head`] value. Lifecycle ownership is
+/// `head!` produces a structural `Head` value. Lifecycle ownership is
 /// established when the value is attached to a `Page` with `#head:` or
 /// supplied through route metadata; the macro does not flatten nested pages.
 #[proc_macro]
