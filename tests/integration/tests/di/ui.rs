@@ -2,8 +2,8 @@
 //!
 //! Tests compile-time validation of DI macros using trybuild.
 //!
-//! Note: compile-fail tests have a 300s timeout configured in `.cargo/nextest.toml`
-//! because the compiler takes significant time to produce error messages.
+//! These cases run through the dedicated `ui-test` Nextest profile because the
+//! compiler can take significant time to produce error messages.
 
 /// Test: Compile-fail cases for #[injectable]
 ///
