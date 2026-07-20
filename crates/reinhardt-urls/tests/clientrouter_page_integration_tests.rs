@@ -73,10 +73,11 @@ fn router_render(router: &ClientRouter, path: &str) -> Page {
 	router.render_current()
 }
 
-fn page_text(page: &Page) -> String {
+fn page_text(page: &Page) -> &str {
 	match page {
-		Page::Text(t) => t.to_string(),
-		other => format!("{other:?}"),
+		Page::Text(text) => text.as_ref(),
+		Page::WithHead { view, .. } => page_text(view),
+		other => panic!("expected text page after unwrapping route metadata, got {other:?}"),
 	}
 }
 
@@ -91,6 +92,10 @@ fn page_method_registers_and_renders_with_path_param() {
 	let view = router_render(&router, "/users/42/");
 
 	// Assert
+	assert!(
+		matches!(&view, Page::WithHead { .. }),
+		"matched routes must preserve route metadata in an outer Page::WithHead",
+	);
 	let s = page_text(&view);
 	assert_eq!(s, "user 42", "expected `user 42`, got: {s}");
 }
