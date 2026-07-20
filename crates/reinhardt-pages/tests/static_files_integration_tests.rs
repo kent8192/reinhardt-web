@@ -250,8 +250,15 @@ async fn test_ssr_without_static_files() {
 		"HTML should not contain script tag with src"
 	);
 
-	// But should still have basic HTML structure
-	assert!(html.contains("<title>No Static Files</title>"));
+	// But should still include the managed page title and basic HTML structure.
+	assert!(
+		html.lines().any(|line| {
+			line.starts_with("<title data-reinhardt-head=\"")
+				&& line.ends_with("\">No Static Files</title>")
+		}),
+		"HTML should contain the managed page title.\nGenerated HTML:\n{}",
+		html
+	);
 	assert!(html.contains("<div>No static files</div>"));
 }
 

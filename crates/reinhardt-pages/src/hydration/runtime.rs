@@ -1586,73 +1586,76 @@ mod tests {
 	#[cfg(wasm)]
 	#[wasm_bindgen_test]
 	fn hydration_retains_root_document_head_hook_without_rerendering_component() {
-		cleanup_reactive_nodes();
-		let document = web_sys::window().unwrap().document().unwrap();
-		let original_title = document.title();
-		let state = document.create_element("script").unwrap();
-		state.set_id("ssr-state");
-		state.set_text_content(Some("{}"));
-		document.body().unwrap().append_child(&state).unwrap();
-		let root = document.create_element("div").unwrap();
-		root.set_inner_html("hydrated root");
-		document.body().unwrap().append_child(&root).unwrap();
+		let scope = ReactiveScope::new();
+		scope.enter(|| {
+			cleanup_reactive_nodes();
+			let document = web_sys::window().unwrap().document().unwrap();
+			let original_title = document.title();
+			let state = document.create_element("script").unwrap();
+			state.set_id("ssr-state");
+			state.set_text_content(Some("{}"));
+			document.body().unwrap().append_child(&state).unwrap();
+			let root = document.create_element("div").unwrap();
+			root.set_inner_html("hydrated root");
+			document.body().unwrap().append_child(&root).unwrap();
 
-		let title = Signal::new("Initial title".to_string());
-		let render_count = Rc::new(Cell::new(0));
-		let head_factory_count = Rc::new(Cell::new(0));
-		let title_factory_count = Rc::new(Cell::new(0));
-		let component = RootHeadHydrationComponent {
-			title: title.clone(),
-			render_count: Rc::clone(&render_count),
-			head_factory_count: Rc::clone(&head_factory_count),
-			title_factory_count: Rc::clone(&title_factory_count),
-		};
+			let title = Signal::new("Initial title".to_string());
+			let render_count = Rc::new(Cell::new(0));
+			let head_factory_count = Rc::new(Cell::new(0));
+			let title_factory_count = Rc::new(Cell::new(0));
+			let component = RootHeadHydrationComponent {
+				title: title.clone(),
+				render_count: Rc::clone(&render_count),
+				head_factory_count: Rc::clone(&head_factory_count),
+				title_factory_count: Rc::clone(&title_factory_count),
+			};
 
-		hydrate(&component, &Element::new(root.clone())).expect("root hydration succeeds");
+			hydrate(&component, &Element::new(root.clone())).expect("root hydration succeeds");
 
-		assert_eq!(
-			render_count.get(),
-			1,
-			"hydration must not rerender the root component"
-		);
-		assert_eq!(head_factory_count.get(), 1);
-		assert_eq!(title_factory_count.get(), 1);
-		assert_eq!(document.title(), "Initial title");
-		assert_eq!(
-			document
-				.query_selector_all(
-					"meta[name='description'][content='Initial title'][data-reinhardt-head]"
-				)
-				.unwrap()
-				.length(),
-			1
-		);
-		title.set("Updated title".to_string());
-		with_runtime(|runtime| runtime.flush_updates());
-		assert_eq!(head_factory_count.get(), 2);
-		assert_eq!(title_factory_count.get(), 2);
-		assert_eq!(document.title(), "Updated title");
-		assert_eq!(
-			document
-				.query_selector_all(
-					"meta[name='description'][content='Updated title'][data-reinhardt-head]"
-				)
-				.unwrap()
-				.length(),
-			1
-		);
-		assert_eq!(
-			document
-				.query_selector_all("meta[name='description'][data-reinhardt-head]")
-				.unwrap()
-				.length(),
-			1
-		);
+			assert_eq!(
+				render_count.get(),
+				1,
+				"hydration must not rerender the root component"
+			);
+			assert_eq!(head_factory_count.get(), 1);
+			assert_eq!(title_factory_count.get(), 1);
+			assert_eq!(document.title(), "Initial title");
+			assert_eq!(
+				document
+					.query_selector_all(
+						"meta[name='description'][content='Initial title'][data-reinhardt-head]"
+					)
+					.unwrap()
+					.length(),
+				1
+			);
+			title.set("Updated title".to_string());
+			with_runtime(|runtime| runtime.flush_updates());
+			assert_eq!(head_factory_count.get(), 2);
+			assert_eq!(title_factory_count.get(), 2);
+			assert_eq!(document.title(), "Updated title");
+			assert_eq!(
+				document
+					.query_selector_all(
+						"meta[name='description'][content='Updated title'][data-reinhardt-head]"
+					)
+					.unwrap()
+					.length(),
+				1
+			);
+			assert_eq!(
+				document
+					.query_selector_all("meta[name='description'][data-reinhardt-head]")
+					.unwrap()
+					.length(),
+				1
+			);
 
-		cleanup_reactive_nodes();
-		state.remove();
-		root.remove();
-		document.set_title(&original_title);
+			cleanup_reactive_nodes();
+			state.remove();
+			root.remove();
+			document.set_title(&original_title);
+		});
 	}
 
 	#[cfg(wasm)]
@@ -2161,7 +2164,8 @@ mod tests {
 			assert_eq!(
 				error,
 				HydrationError::EventAttachmentFailed(
-					"text control does not support a <div> element".to_owned(),
+					"Failed to attach 'control-binding' event: text control does not support a <div> element"
+						.to_owned(),
 				),
 			);
 			nested_value.set(1);
@@ -2212,7 +2216,8 @@ mod tests {
 			assert_eq!(
 				error,
 				HydrationError::EventAttachmentFailed(
-					"text control does not support a <div> element".to_owned(),
+					"Failed to attach 'control-binding' event: text control does not support a <div> element"
+						.to_owned(),
 				),
 			);
 			cleanup_reactive_nodes();
