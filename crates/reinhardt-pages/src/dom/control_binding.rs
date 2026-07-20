@@ -398,6 +398,7 @@ impl ControlBindingController {
 			) && !select_has_option_values(&element, &expected_value));
 		let should_restore_expected = should_restore_expected
 			|| (binding.kind() == ControlKind::SelectOne
+				&& expected_value == live_value
 				&& !select_one_matches_expected_option(&element, &expected_value));
 		let refresh_required = if should_restore_expected {
 			write_control(&element, binding.kind(), &expected_value)?;
