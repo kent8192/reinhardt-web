@@ -8,6 +8,18 @@ struct Todo {
 	title: String,
 }
 
+fn without_hmr_template_metadata(view: Page) -> Page {
+	#[cfg(feature = "hmr")]
+	{
+		match view {
+			Page::DevTemplate { view, .. } | Page::DevSlot { view, .. } => *view,
+			view => view,
+		}
+	}
+	#[cfg(not(feature = "hmr"))]
+	view
+}
+
 #[test]
 fn keyed_for_lowers_to_keyed_fragment() {
 	let render = page!(|todos: Vec<Todo>| {
@@ -29,15 +41,18 @@ fn keyed_for_lowers_to_keyed_fragment() {
 		},
 	]);
 
-	let Page::Element(ul) = view else {
+	let Page::Element(ul) = without_hmr_template_metadata(view) else {
 		panic!("expected page template output without a head declaration to be an element");
 	};
-	let [Page::Reactive(list)] = ul.child_views() else {
+	let [child] = ul.child_views() else {
+		panic!("expected keyed for loop to be auto-wrapped as a reactive child");
+	};
+	let Page::Reactive(list) = without_hmr_template_metadata(child.clone()) else {
 		panic!("expected keyed for loop to be auto-wrapped as a reactive child");
 	};
 	let rendered_list = list.render();
 
-	let Page::KeyedFragment(children) = rendered_list else {
+	let Page::KeyedFragment(children) = without_hmr_template_metadata(rendered_list) else {
 		panic!("expected keyed for loop to lower to KeyedFragment");
 	};
 	assert_eq!(children.len(), 2);
