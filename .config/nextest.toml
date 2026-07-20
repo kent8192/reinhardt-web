@@ -8,9 +8,9 @@
 # Views tests spawn PostgreSQL containers which consume significant resources
 test-threads = 2
 
-# Increase timeout for database operations
-# TestContainers startup can be slow, especially PostgreSQL 17
-slow-timeout = "360s"
+# Increase timeout for database operations while terminating a test that remains
+# stalled well beyond the TestContainers startup allowance.
+slow-timeout = { period = "360s", terminate-after = 2 }
 
 # Enable retries for flaky infrastructure tests
 retries = 2
