@@ -341,7 +341,7 @@ jobs:
     # substring checks are intentionally not used for this gate.
     #
     # Accepted Release PR merge shapes:
-    # - merge commit from release-plz-* or develop-release-plz-* branch
+    # - merge commit from release-plz-* on main or develop-release-plz-* on develop/*
     # - squash commit titled "chore: release (#N)"
     if: |
       github.event_name == 'push' &&
@@ -390,19 +390,23 @@ jobs:
       - name: Verify release branch name
         env:
           BRANCH: ${{ needs.classify-release-push.outputs.release_pr_head_branch }}
+          BASE_BRANCH: ${{ github.ref_name }}
         run: |
           if [ -z "$BRANCH" ]; then
             echo "::error::Release classifier did not emit a release branch name"
             exit 1
           fi
           echo "Extracted branch name: $BRANCH"
-          case "$BRANCH" in
-            release-plz-*|develop-release-plz-*)
-              echo "Branch '$BRANCH' matches release branch pattern"
+          case "$BASE_BRANCH:$BRANCH" in
+            main:release-plz-*)
+              echo "Branch '$BRANCH' matches the main release branch pattern"
+              ;;
+            develop/*:develop-release-plz-*)
+              echo "Branch '$BRANCH' matches the develop release branch pattern"
               ;;
             *)
-              echo "::error::Branch '$BRANCH' does not start with 'release-plz-' or 'develop-release-plz-'"
-              echo "::error::This push does not originate from a release-plz branch. Refusing to publish."
+              echo "::error::Branch '$BRANCH' does not use the required release prefix for '$BASE_BRANCH'"
+              echo "::error::This push does not originate from a matching release-plz branch. Refusing to publish."
               exit 1
               ;;
           esac
