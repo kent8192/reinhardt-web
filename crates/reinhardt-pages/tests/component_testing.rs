@@ -996,10 +996,11 @@ async fn injected_server_fn_query_mock_errors_render_query_errors() {
 	screen.settle().await;
 
 	// Assert
+	screen.get_by_text("injected query failed");
 	assert!(
 		screen
 			.query_by_text("Application error: injected query failed")
-			.is_some()
+			.is_none()
 	);
 	assert_eq!(
 		screen
@@ -1042,10 +1043,11 @@ async fn injected_server_fn_query_without_mock_renders_query_error() {
 	screen.settle().await;
 
 	// Assert
+	screen.get_by_text("no mock registered for active server function");
 	assert!(
 		screen
 			.query_by_text("Application error: no mock registered for active server function")
-			.is_some()
+			.is_none()
 	);
 	assert_eq!(
 		screen
@@ -1065,10 +1067,11 @@ async fn server_fn_mock_errors_render_resource_errors() {
 
 	screen.settle().await;
 
+	screen.get_by_text("mock failed");
 	assert!(
 		screen
 			.query_by_text("Application error: mock failed")
-			.is_some()
+			.is_none()
 	);
 	assert_eq!(screen.calls_to_server_fn::<load_jobs::marker>().len(), 1);
 }
@@ -1080,10 +1083,11 @@ async fn active_server_fn_mock_scope_requires_registered_handler() {
 
 	screen.settle().await;
 
+	screen.get_by_text("no mock registered for active server function");
 	assert!(
 		screen
 			.query_by_text("Application error: no mock registered for active server function")
-			.is_some()
+			.is_none()
 	);
 	assert_eq!(screen.calls_to_server_fn::<load_jobs::marker>().len(), 1);
 }

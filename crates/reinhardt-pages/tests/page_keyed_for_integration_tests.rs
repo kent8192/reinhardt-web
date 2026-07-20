@@ -29,8 +29,11 @@ fn keyed_for_lowers_to_keyed_fragment() {
 		},
 	]);
 
-	let Page::Element(ul) = view else {
-		panic!("expected top-level element");
+	let Page::WithHead { view, .. } = view else {
+		panic!("expected page template output to retain its head wrapper");
+	};
+	let Page::Element(ul) = *view else {
+		panic!("expected head-wrapped page template body to be an element");
 	};
 	let [Page::Reactive(list)] = ul.child_views() else {
 		panic!("expected keyed for loop to be auto-wrapped as a reactive child");
