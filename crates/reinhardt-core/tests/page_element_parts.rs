@@ -22,9 +22,10 @@ fn into_parts_with_control_binding_returns_the_binding() {
 		let binding = ControlBinding::text(Signal::new("draft".to_owned()));
 		let element = PageElement::new("input").control_binding(binding);
 
-		let (_tag, _attrs, _children, _is_void, _event_handlers, binding) =
+		let (_tag, _attrs, reactive_attrs, _children, _is_void, _event_handlers, binding) =
 			element.into_parts_with_control_binding();
 
+		assert!(reactive_attrs.is_empty());
 		assert_eq!(binding.unwrap().kind(), ControlKind::Text);
 	});
 }
