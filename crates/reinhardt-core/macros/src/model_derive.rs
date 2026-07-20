@@ -2532,6 +2532,25 @@ fn generate_fk_accessor_methods(
 
 			// Extract Target from ForeignKeyField<Target> or OneToOneField<Target>
 			let target_ty = extract_foreign_key_target_type(&field.ty);
+			let target_column = field.rel.as_ref().and_then(|relation| {
+				relation.to_field.as_ref().map(|target_field| {
+					quote! {
+						<#target_ty as #orm_crate::Model>::field_metadata()
+							.into_iter()
+							.find_map(|field_info| {
+								if field_info.name == #target_field {
+									Some(field_info.db_column.unwrap_or(field_info.name))
+								} else {
+									None
+								}
+							})
+							.unwrap_or_else(|| #target_field.to_string())
+					}
+				})
+			});
+			let target_column = target_column.unwrap_or_else(|| {
+				quote! { <#target_ty as #orm_crate::Model>::primary_key_column() }
+			});
 			let doc_comment = format!(
 				"Load the related '{}' instance from the database",
 				field_name_str
@@ -2549,10 +2568,10 @@ fn generate_fk_accessor_methods(
 					// Get FK _id value.
 					let fk_id = self.#fk_id_field_name();
 
-					// Query the target model using the FK primary key's database codec.
+					// Query the target model through the relation's configured target field.
 					<#target_ty as #orm_crate::Model>::objects()
 						.filter(#orm_crate::Filter::new(
-							<#target_ty as #orm_crate::Model>::primary_key_column(),
+							#target_column,
 							#orm_crate::FilterOperator::Eq,
 							#orm_crate::FilterValue::Typed(
 								<<#target_ty as #orm_crate::Model>::PrimaryKey as #orm_crate::IntoFieldValue<
@@ -7353,6 +7372,31 @@ mod tests {
 		assert!(compact.contains("into_field_value(fk_id)"));
 		assert!(compact.contains("primary_key_column()"));
 		assert!(!compact.contains("fk_id.to_string()"));
+	}
+
+	#[test]
+	fn test_foreign_key_accessor_resolves_to_field_physical_column() {
+		let input = quote! {
+			#[model(app_label = "test", table_name = "audits", info = false)]
+			pub struct Audit {
+				#[field(primary_key = true)]
+				pub id: i64,
+				#[rel(foreign_key, to_field = "external_key")]
+				pub owner: db::associations::ForeignKeyField<Account>,
+			}
+		};
+
+		let output = model_derive_impl(syn::parse2(input).unwrap()).unwrap();
+		let output = output.to_string();
+		let accessor = output
+			.split("pub async fn owner")
+			.nth(1)
+			.and_then(|output| output.split("pub fn owner_accessor").next())
+			.expect("foreign-key accessor must be generated");
+
+		assert!(accessor.contains("field_info . name == \"external_key\""));
+		assert!(accessor.contains("field_info . db_column . unwrap_or (field_info . name)"));
+		assert!(!accessor.contains("primary_key_column"));
 	}
 
 	#[test]

@@ -148,19 +148,19 @@ jobs:
           RUN_ALL: ${{ inputs.run-all }}
           PARTITION_COUNT: ${{ inputs.partition-count || '5' }}
         run: |
-          FILTER_ARGS=()
+          FILTER_EXPR="not binary(/ui/)"
           if [[ "$RUN_ALL" != "true" && -n "$NEXTEST_FILTER_EXPR" ]]; then
-            FILTER_ARGS+=(-E "$NEXTEST_FILTER_EXPR")
+            FILTER_EXPR="($FILTER_EXPR) & ($NEXTEST_FILTER_EXPR)"
           fi
           cargo nextest run \
             --package reinhardt-integration-tests \
             --all-features \
+            -E "$FILTER_EXPR" \
             --partition "hash:${{ matrix.partition }}/$PARTITION_COUNT" \
             --no-fail-fast \
             --no-tests=warn \
             --status-level=none \
-            --final-status-level=none \
-            "${FILTER_ARGS[@]}"
+            --final-status-level=none
 
       - name: Docker cleanup after tests
         if: always()

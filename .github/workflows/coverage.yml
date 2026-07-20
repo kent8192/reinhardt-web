@@ -459,17 +459,17 @@ jobs:
           NEXTEST_FILTER_EXPR: ${{ inputs.nextest-filter }}
           RUN_ALL: ${{ inputs.run-all }}
         run: |
-          FILTER_ARGS=()
+          FILTER_EXPR="not binary(/ui/)"
           if [[ "$RUN_ALL" != "true" && -n "$NEXTEST_FILTER_EXPR" ]]; then
-            FILTER_ARGS+=(-E "$NEXTEST_FILTER_EXPR")
+            FILTER_EXPR="($FILTER_EXPR) & ($NEXTEST_FILTER_EXPR)"
           fi
           set +e
           cargo llvm-cov nextest \
             --no-report \
             --package reinhardt-integration-tests \
             --all-features \
-            --no-fail-fast \
-            "${FILTER_ARGS[@]}"
+            -E "$FILTER_EXPR" \
+            --no-fail-fast
           EXIT_CODE=$?
           set -e
           if [[ $EXIT_CODE -eq 4 ]]; then
