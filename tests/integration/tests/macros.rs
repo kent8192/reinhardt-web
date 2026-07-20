@@ -10,9 +10,6 @@ mod constraint_integration;
 #[path = "macros/http_error_integration.rs"]
 mod http_error_integration;
 
-#[path = "macros/http_error_ui.rs"]
-mod http_error_ui;
-
 #[path = "macros/model_derive_integration.rs"]
 mod model_derive_integration;
 
@@ -34,14 +31,5 @@ mod repro_issue_4522;
 #[path = "macros/model_info_integration.rs"]
 mod model_info_integration;
 
-#[path = "macros/model_info_ui.rs"]
-mod model_info_ui;
-
 #[path = "macros/model_unique_field_ref.rs"]
 mod model_unique_field_ref;
-
-#[path = "macros/model_unique_field_ref_ui.rs"]
-mod model_unique_field_ref_ui;
-
-#[path = "macros/model_enum_ui.rs"]
-mod model_enum_ui;
