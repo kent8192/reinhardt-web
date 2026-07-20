@@ -420,10 +420,9 @@ fn mount_inner(page: Page, parent: &Element) -> Result<(), MountError> {
 			if matches!(
 				deferred_patch,
 				crate::hmr::template_registry::DeferredPatchOutcome::AbiMismatch
-			) {
-				if let Some(window) = web_sys::window() {
-					let _ = window.location().reload();
-				}
+			) && let Some(window) = web_sys::window()
+			{
+				let _ = window.location().reload();
 			}
 			let document = web_sys::window()
 				.ok_or(MountError::NoWindow)?

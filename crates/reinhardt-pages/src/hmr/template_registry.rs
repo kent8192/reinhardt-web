@@ -192,7 +192,7 @@ impl TemplateRegistry {
 		mut visit: impl FnMut(&TemplateInstance),
 	) {
 		let inner = self.inner.borrow();
-		for (_, (instance_key, instance)) in &inner.instances {
+		for (instance_key, instance) in inner.instances.values() {
 			if instance_key == key {
 				visit(instance);
 			}

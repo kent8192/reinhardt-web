@@ -11,11 +11,14 @@ use super::{
 use wasm_bindgen::{JsCast, JsValue, closure::Closure};
 use web_sys::Document;
 
+type PatchCallback = Closure<dyn FnMut(JsValue) -> js_sys::Promise>;
+type DiagnosticCallback = Closure<dyn FnMut(JsValue, JsValue)>;
+
 thread_local! {
 	static ACTIVE_BRIDGE: RefCell<Option<HmrBridge>> = const { RefCell::new(None) };
 	static HELLO_CALLBACK: RefCell<Option<Closure<dyn FnMut() -> JsValue>>> = const { RefCell::new(None) };
-	static PATCH_CALLBACK: RefCell<Option<Closure<dyn FnMut(JsValue) -> js_sys::Promise>>> = const { RefCell::new(None) };
-	static DIAGNOSTIC_CALLBACK: RefCell<Option<Closure<dyn FnMut(JsValue, JsValue)>>> = const { RefCell::new(None) };
+	static PATCH_CALLBACK: RefCell<Option<PatchCallback>> = const { RefCell::new(None) };
+	static DIAGNOSTIC_CALLBACK: RefCell<Option<DiagnosticCallback>> = const { RefCell::new(None) };
 	static DIAGNOSTIC_OVERLAY: RefCell<Option<Rc<RefCell<super::overlay::ShadowDiagnosticOverlay>>>> = const { RefCell::new(None) };
 }
 

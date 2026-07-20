@@ -42,6 +42,7 @@ impl DomRange {
 
 /// Owner handle for reactive resources belonging to a dynamic range.
 #[cfg(wasm)]
+#[derive(Default)]
 pub struct ReactiveOwnerHandle {
 	store: Option<crate::component::reactive_if::ReactiveNodeStore>,
 }
@@ -51,13 +52,6 @@ impl ReactiveOwnerHandle {
 	/// Retains an existing reactive-node store until this handle is dropped.
 	pub(crate) fn from_store(store: crate::component::reactive_if::ReactiveNodeStore) -> Self {
 		Self { store: Some(store) }
-	}
-}
-
-#[cfg(wasm)]
-impl Default for ReactiveOwnerHandle {
-	fn default() -> Self {
-		Self { store: None }
 	}
 }
 
