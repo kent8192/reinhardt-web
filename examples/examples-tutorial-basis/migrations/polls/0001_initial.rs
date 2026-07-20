@@ -18,6 +18,7 @@ pub(super) fn migration() -> Migration {
 						default: None,
 
 						generated: None,
+						domain: None,
 					},
 					ColumnDefinition {
 						name: "id".to_string(),
@@ -29,6 +30,7 @@ pub(super) fn migration() -> Migration {
 						default: None,
 
 						generated: None,
+						domain: None,
 					},
 					ColumnDefinition {
 						name: "question_id".to_string(),
@@ -40,6 +42,7 @@ pub(super) fn migration() -> Migration {
 						default: None,
 
 						generated: None,
+						domain: None,
 					},
 					ColumnDefinition {
 						name: "votes".to_string(),
@@ -51,6 +54,7 @@ pub(super) fn migration() -> Migration {
 						default: Some("0".to_string()),
 
 						generated: None,
+						domain: None,
 					},
 				],
 				constraints: vec![],
@@ -71,6 +75,7 @@ pub(super) fn migration() -> Migration {
 						default: None,
 
 						generated: None,
+						domain: None,
 					},
 					ColumnDefinition {
 						name: "pub_date".to_string(),
@@ -82,6 +87,7 @@ pub(super) fn migration() -> Migration {
 						default: None,
 
 						generated: None,
+						domain: None,
 					},
 					ColumnDefinition {
 						name: "question_text".to_string(),
@@ -93,6 +99,7 @@ pub(super) fn migration() -> Migration {
 						default: None,
 
 						generated: None,
+						domain: None,
 					},
 				],
 				constraints: vec![],
