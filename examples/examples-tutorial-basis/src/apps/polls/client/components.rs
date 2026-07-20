@@ -114,14 +114,17 @@ pub fn polls_index() -> Page {
 							}
 						}
 					})(),
-					ResourceState::Error(error) => page!(|error: ServerFnError| {
-						div {
-							class: "alert-danger",
-							{
-								error.user_message()
+					ResourceState::Error(error) => {
+						let message = error.user_message().to_owned();
+						page!(|message: String| {
+							div {
+								class: "alert-danger",
+								{
+									message
+								}
 							}
-						}
-					})(error),
+						})(message)
+					},
 					ResourceState::Success(questions)if questions.is_empty() => page!(|| {
 						p {
 							class: "text-muted",
@@ -282,27 +285,30 @@ pub fn polls_detail(question_id: i64) -> Page {
 						}
 					}
 				})(),
-				ResourceState::Error(error) => page!(|error: ServerFnError, question_id: i64| {
-					div {
-						class: "max-w-4xl mx-auto px-4 mt-12",
+				ResourceState::Error(error) => {
+					let message = error.user_message().to_owned();
+					page!(|message: String, question_id: i64| {
 						div {
-							class: "alert-danger",
-							{
-								error.user_message()
+							class: "max-w-4xl mx-auto px-4 mt-12",
+							div {
+								class: "alert-danger",
+								{
+									message
+								}
+							}
+							a {
+								href: polls_routes::reverse("detail", &[("question_id", question_id.to_string().as_str())]),
+								class: "btn-secondary",
+								"Try Again"
+							}
+							a {
+								href: polls_routes::reverse("index", &[]),
+								class: "btn-primary ml-2",
+								"Back to Polls"
 							}
 						}
-						a {
-							href: polls_routes::reverse("detail", &[("question_id", question_id.to_string().as_str())]),
-							class: "btn-secondary",
-							"Try Again"
-						}
-						a {
-							href: polls_routes::reverse("index", &[]),
-							class: "btn-primary ml-2",
-							"Back to Polls"
-						}
-					}
-				})(error, question_id),
+					})(message, question_id)
+				},
 				ResourceState::Success((q, choices)) => {
 					// Owner-only controls (Edit / Delete / Add choice) are hidden for
 					// non-authors and unauthenticated viewers (issue #4703). Any
@@ -410,22 +416,25 @@ pub fn polls_results(question_id: i64) -> Page {
 						}
 					}
 				})(),
-				ResourceState::Error(error) => page!(|error: ServerFnError| {
-					div {
-						class: "max-w-4xl mx-auto px-4 mt-12",
+				ResourceState::Error(error) => {
+					let message = error.user_message().to_owned();
+					page!(|message: String| {
 						div {
-							class: "alert-danger",
-							{
-								error.user_message()
+							class: "max-w-4xl mx-auto px-4 mt-12",
+							div {
+								class: "alert-danger",
+								{
+									message
+								}
+							}
+							a {
+								href: polls_routes::reverse("index", &[]),
+								class: "btn-primary",
+								"Back to Polls"
 							}
 						}
-						a {
-							href: polls_routes::reverse("index", &[]),
-							class: "btn-primary",
-							"Back to Polls"
-						}
-					}
-				})(error),
+					})(message)
+				},
 				ResourceState::Success((q, choices, total)) => {
 					// Owner-only controls (Edit / Delete) are hidden for non-authors
 					// and unauthenticated viewers (issue #4703).
@@ -573,14 +582,17 @@ pub fn polls_index_with_logo() -> Page {
 							}
 						}
 					})(),
-					ResourceState::Error(error) => page!(|error: ServerFnError| {
-						div {
-							class: "alert-danger",
-							{
-								error.user_message()
+					ResourceState::Error(error) => {
+						let message = error.user_message().to_owned();
+						page!(|message: String| {
+							div {
+								class: "alert-danger",
+								{
+									message
+								}
 							}
-						}
-					})(error),
+						})(message)
+					},
 					ResourceState::Success(questions)if questions.is_empty() => page!(|| {
 						p {
 							class: "text-muted",
@@ -829,20 +841,23 @@ pub fn question_edit(question_id: i64) -> Page {
 						}
 					}
 				})(),
-				ResourceState::Error(error) => page!(|error: ServerFnError| {
-					div {
-						class: "max-w-4xl mx-auto px-4 mt-12",
+				ResourceState::Error(error) => {
+					let message = error.user_message().to_owned();
+					page!(|message: String| {
 						div {
-							class: "alert-danger",
-							{ error.user_message() }
+							class: "max-w-4xl mx-auto px-4 mt-12",
+							div {
+								class: "alert-danger",
+								{ message }
+							}
+							a {
+								href: polls_routes::reverse("index", &[]),
+								class: "btn-primary",
+								"Back to Polls"
+							}
 						}
-						a {
-							href: polls_routes::reverse("index", &[]),
-							class: "btn-primary",
-							"Back to Polls"
-						}
-					}
-				})(error),
+					})(message)
+				},
 				ResourceState::Success(_) => edit_form_view.clone(),
 			}
 		} }
@@ -911,12 +926,15 @@ pub fn question_delete_confirm(question_id: i64) -> Page {
 							}
 						}
 					})(q),
-					ResourceState::Error(error) => page!(|error: ServerFnError| {
-						div {
-							class: "alert-danger",
-							{ error.user_message() }
-						}
-					})(error),
+					ResourceState::Error(error) => {
+						let message = error.user_message().to_owned();
+						page!(|message: String| {
+							div {
+								class: "alert-danger",
+								{ message }
+							}
+						})(message)
+					},
 				}
 			}
 			{ error_signal
