@@ -7,6 +7,133 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.3.2...reinhardt-pages@v0.4.0-alpha.1) - 2026-07-21
+
+### Added
+
+- *(pages)* compose resource values with action results
+- *(pages)* parse page body form
+- *(pages)* collect and generate implicit body captures
+- feat!(pages): resolve SSR resources asynchronously
+- feat!(pages): require explicit hook dependency modes
+- *(pages)* validate deps macro hook arguments
+
+### Changed
+
+- *(pages)* migrate hooks to deps list syntax
+
+### Documentation
+
+- docs!(pages): clarify direct body migration
+- *(pages)* explain hook dependency modes
+- *(pages)* note hook dependency migration
+
+### Fixed
+
+- address 0.4 fast-path review comments
+- [**breaking**] preserve server_fn codec metadata invariants
+- *(pages)* complete implicit body capture analysis
+- *(pages)* validate page body capture scopes
+- *(pages)* harden async SSR resource rendering
+- *(pages)* complete ssr suspense resource replay
+- *(pages)* drain streamed ssr resource replays
+- *(pages)* stabilize suspense resource replay
+- *(pages)* address SSR resource review feedback
+- *(pages)* reuse tracked SSR resources during replay
+- *(pages)* harden streaming suspense resource scopes
+- *(pages)* reuse pending tracked SSR resources
+- *(pages)* scope suspense resource replay caches
+- *(pages)* remove shared suspense head cache
+- *(pages)* preserve SSR resource replay consistency
+- *(pages)* keep buffered suspense head capture request scoped
+- *(pages)* preserve marker render allocators
+- *(pages)* satisfy resource hydration clippy
+- *(pages)* harden suspense hydration state
+- *(pages)* stabilize client form submit UI fixtures
+- *(pages)* drop duplicate component tree arms
+- *(ci)* restore upgraded dependency checks
+- *(pages)* harden hook dependency migration
+- *(pages)* harden dependency migration
+- *(pages)* align dependency mode exports and tests
+- *(pages)* update dynamic dependency test
+- *(pages)* scope native resource dependency import
+- *(pages)* remove duplicate native cfg
+- *(pages)* repair hook dependency migration tests
+- *(pages)* restore explicit deps compatibility
+- *(ci)* terminate cfg aliases macro invocations
+- *(pages)* retain reactive owners through review edge cases
+- *(pages)* guard stale lifecycle handles
+- *(pages)* retain mount scopes for events
+- *(reactive)* enforce explicit dependencies and memo invalidation
+- *(pages)* complete explicit dependency migration
+- *(pages)* restore reactive CI compatibility
+- *(pages)* update legacy hook dependency tests
+- *(pages)* resolve controlled binding review feedback
+- *(pages)* preserve controlled select projection
+- *(pages)* address route loader review feedback
+- *(pages)* resolve server function set review findings
+- restore atomic ORM release compatibility
+- *(pages)* restore WASM hydration compilation
+- *(pages)* envelope server function failures
+- *(pages)* envelope server function request failures
+- *(pages)* skip stale server form errors
+- *(pages)* classify server function failures
+- *(pages)* preserve structured server form errors
+- *(pages)* retain custom error status
+- *(pages)* reconcile reactive attributes
+- *(pages)* preserve reactive control hydration
+- *(pages)* normalize boolean attribute names
+- *(pages)* restore reactive attribute test checks
+- *(pages)* stabilize empty head compile fixture
+- *(pages)* simplify reactive boolean attribute predicates
+- *(release)* restore develop prerelease lifecycle
+- *(ci)* stabilize release test failures
+- *(pages)* align hydration and SSR regression tests
+- *(pages)* retain server DOM after hydration rollback
+- *(pages)* scope document head wasm signals
+- *(pages)* align server function error display test
+
+### Maintenance
+
+- merge develop/0.4.0 into component route branch
+- merge remote async SSR resource branch
+- merge develop/0.4.0 into client form bindings
+- merge develop/0.4.0 into client form bindings
+- merge develop/0.4.0 into typed JSON PR
+- merge latest develop changes into typed JSON PR
+- merge develop/0.4.0 into functional state setter
+- migrate dependency policy checks to cargo-deny
+- merge develop/0.4.0 into retained effects
+- merge develop/0.4.0 into issue 5575 branch
+- merge develop/0.4.0 into route loader branch
+
+### Other
+
+- sync develop/0.4.0 into hook dependency modes
+- resolve develop/0.4.0 conflicts for [[#5676](https://github.com/kent8192/reinhardt-web/issues/5676)](https://github.com/kent8192/reinhardt-web/issues/5676)
+- sync develop/0.4.0 into server function set
+- sync develop/0.4.0 into structured server errors
+
+### Performance
+
+- use compact exact route tables
+- revert compact exact route table experiment
+- return server fn bytes directly
+- borrow server fn request bodies
+- avoid boxed server fn futures
+- shrink server fn endpoint futures
+- fast path json server fn content type
+- streamline server fn responses
+- [**breaking**] specialize json server fn hot path
+- specialize server fn codec response path
+
+### Testing
+
+- update path parameter assertions
+- *(pages)* cover ast page body reexports
+- *(pages)* cover implicit page body captures
+- *(pages)* unwrap HMR template metadata in keyed test
+
 ### Added
 
 - Add named typed server function sets with mixed-codec marker chains,
