@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-ast@v0.3.2...reinhardt-pages-ast@v0.4.0-alpha.1) - 2026-07-21
+
+### Added
+
+- *(manouche)* [**breaking**] add compile-time accessibility validation
+
+### Fixed
+
+- *(pages)* align controlled binding renderers
+- *(release)* restore develop prerelease lifecycle
+
+### Maintenance
+
+- merge develop/0.4.0 into accessibility pr
+- merge latest main into develop forward-merge
+
 ## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-ast@v0.2.0...reinhardt-pages-ast@v0.3.0) - 2026-06-28
 
 Stable release of `reinhardt-pages-ast` for the Reinhardt 0.3.0 line. This

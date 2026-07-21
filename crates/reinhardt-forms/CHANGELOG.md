@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-forms@v0.3.2...reinhardt-forms@v0.4.0-alpha.1) - 2026-07-21
+
+### Changed
+
+- [**breaking**] remove remaining dynamic error dependencies
+
+### Fixed
+
+- *(release)* restore develop prerelease lifecycle
+
+### Maintenance
+
+- migrate dependency policy checks to cargo-deny
+- merge develop/0.4.0 into remove-anyhow branch
+
 ## [0.3.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-forms@v0.3.1...reinhardt-forms@v0.3.2) - 2026-07-14
 
 ### Fixed

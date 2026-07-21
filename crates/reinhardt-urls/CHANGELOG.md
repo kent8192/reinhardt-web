@@ -7,6 +7,73 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.3.2...reinhardt-urls@v0.4.0-alpha.1) - 2026-07-21
+
+### Added
+
+- *(urls)* [**breaking**] match nested client layout routes
+- *(urls)* [**breaking**] compose client layout guards and metadata
+- *(pages)* [**breaking**] preserve client layout shells
+- *(pages)* [**breaking**] add layout component macro
+- *(urls)* expose matched route loader metadata
+- *(urls)* split navigation match from commit
+- *(pages)* hydrate server-prepared route loaders
+- *(pages)* add lifecycle-aware document head management
+
+### Documentation
+
+- *(pages)* document route-level data loaders
+
+### Fixed
+
+- preserve route body and path param semantics
+- address 0.4 fast-path review comments
+- preserve custom method router dispatch
+- *(urls)* harden client layout route matching
+- *(urls)* reduce client route registration arguments
+- *(routers)* align consumers with scoped Copy signals
+- *(tests)* scope wasm router diagnostics
+- *(urls)* defer native client router construction
+- *(reactive)* retain scoped callback lifetimes
+- *(reactive)* preserve deferred handle ownership
+- *(reactive)* dispose retained lifecycle state
+- *(reactive)* retain standalone owner scopes
+- *(reactive)* close PR [[#5640](https://github.com/kent8192/reinhardt-web/issues/5640)](https://github.com/kent8192/reinhardt-web/issues/5640) CI and review gaps
+- *(pages)* retain copy handle owners
+- *(pages)* retain owner scopes for deferred work
+- *(pages)* merge deferred owner scope fixes
+- *(ci)* terminate cfg aliases macro invocations
+- *(reactive)* enforce explicit dependencies and memo invalidation
+- *(urls)* retain popstate subscription closure
+- *(pages)* normalize initial loader history state
+- *(urls)* satisfy route metadata clippy
+- *(pages)* resolve route loader review findings
+- *(urls)* preserve prepared route state
+- *(pages)* address route loader review feedback
+- *(release)* restore develop prerelease lifecycle
+
+### Performance
+
+- [**breaking**] inline path parameter dispatch values
+- freeze compiled route tables
+- skip empty router dispatch work
+- borrow matched route handlers
+- add concrete router dispatch fast path
+- bypass router handler arc wrapper
+- add synchronous handler fast path
+- flatten server router backend dispatch
+- add static server route fast path
+- expose synchronous router dispatch
+- use compact exact route tables
+- revert compact exact route table experiment
+- add requestless sync route path
+- bypass exact route match materialization
+
+### Testing
+
+- tighten review regression assertions
+- *(urls)* unwrap route metadata in tests
+
 ## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.2.0...reinhardt-urls@v0.3.0) - 2026-06-28
 
 Stable release of `reinhardt-urls` for the Reinhardt 0.3.0 line. This
