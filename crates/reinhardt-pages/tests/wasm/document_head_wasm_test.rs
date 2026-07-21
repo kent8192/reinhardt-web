@@ -3,7 +3,7 @@
 use js_sys::Reflect;
 use reinhardt_pages::component::{Head, Page, PageExt, ScriptTag, cleanup_reactive_nodes};
 use reinhardt_pages::dom::Element;
-use reinhardt_pages::reactive::Signal;
+use reinhardt_pages::reactive::{ReactiveScope, Signal};
 use wasm_bindgen::JsValue;
 use wasm_bindgen_test::*;
 
@@ -107,143 +107,147 @@ fn nested_static_pages_follow_structural_order_and_cleanup() {
 
 #[wasm_bindgen_test]
 fn reactive_branch_cleanup_restores_earlier_singletons_then_unmanaged_snapshots() {
-	// Arrange
-	let mut fixture = DocumentHeadFixture::new();
-	fixture.document.set_title("Unmanaged title");
-	let unmanaged_title = fixture
-		.document
-		.query_selector("title")
-		.unwrap()
-		.expect("document title element");
-	let unmanaged_base = fixture.append_head_element("base");
-	unmanaged_base.set_attribute("href", "/unmanaged/").unwrap();
-	let show_later = Signal::new(true);
-	let show_later_for_view = show_later.clone();
-	let page = Page::fragment([
-		Page::text("earlier").with_head(Head::new().title("Earlier").base_url("/earlier/")),
-		Page::reactive(move || {
-			if show_later_for_view.get() {
-				Page::text("later").with_head(Head::new().title("Later").base_url("/later/"))
-			} else {
-				Page::empty()
-			}
-		}),
-	]);
-
-	// Act
-	fixture.mount(page);
-
-	// Assert
-	assert_eq!(fixture.document.title(), "Later");
-	assert_eq!(
-		fixture
+	ReactiveScope::run(|| {
+		// Arrange
+		let mut fixture = DocumentHeadFixture::new();
+		fixture.document.set_title("Unmanaged title");
+		let unmanaged_title = fixture
 			.document
-			.query_selector("base[data-reinhardt-head]")
+			.query_selector("title")
 			.unwrap()
-			.unwrap()
-			.get_attribute("href")
-			.as_deref(),
-		Some("/later/")
-	);
+			.expect("document title element");
+		let unmanaged_base = fixture.append_head_element("base");
+		unmanaged_base.set_attribute("href", "/unmanaged/").unwrap();
+		let show_later = Signal::new(true);
+		let show_later_for_view = show_later.clone();
+		let page = Page::fragment([
+			Page::text("earlier").with_head(Head::new().title("Earlier").base_url("/earlier/")),
+			Page::reactive(move || {
+				if show_later_for_view.get() {
+					Page::text("later").with_head(Head::new().title("Later").base_url("/later/"))
+				} else {
+					Page::empty()
+				}
+			}),
+		]);
 
-	show_later.set(false);
-	assert_eq!(fixture.document.title(), "Earlier");
-	assert_eq!(
-		fixture
+		// Act
+		fixture.mount(page);
+
+		// Assert
+		assert_eq!(fixture.document.title(), "Later");
+		assert_eq!(
+			fixture
+				.document
+				.query_selector("base[data-reinhardt-head]")
+				.unwrap()
+				.unwrap()
+				.get_attribute("href")
+				.as_deref(),
+			Some("/later/")
+		);
+
+		show_later.set(false);
+		assert_eq!(fixture.document.title(), "Earlier");
+		assert_eq!(
+			fixture
+				.document
+				.query_selector("base[data-reinhardt-head]")
+				.unwrap()
+				.unwrap()
+				.get_attribute("href")
+				.as_deref(),
+			Some("/earlier/")
+		);
+
+		cleanup_reactive_nodes();
+		let restored_title = fixture
 			.document
-			.query_selector("base[data-reinhardt-head]")
+			.query_selector("title")
 			.unwrap()
+			.expect("restored title element");
+		let restored_base = fixture
+			.document
+			.query_selector("base")
 			.unwrap()
-			.get_attribute("href")
-			.as_deref(),
-		Some("/earlier/")
-	);
-
-	cleanup_reactive_nodes();
-	let restored_title = fixture
-		.document
-		.query_selector("title")
-		.unwrap()
-		.expect("restored title element");
-	let restored_base = fixture
-		.document
-		.query_selector("base")
-		.unwrap()
-		.expect("restored base element");
-	assert_eq!(fixture.document.title(), "Unmanaged title");
-	assert!(restored_title.is_same_node(Some(&unmanaged_title)));
-	assert_eq!(restored_title.get_attribute("data-reinhardt-head"), None);
-	assert!(restored_base.is_same_node(Some(&unmanaged_base)));
-	assert_eq!(
-		restored_base.get_attribute("href").as_deref(),
-		Some("/unmanaged/")
-	);
-	assert_eq!(restored_base.get_attribute("data-reinhardt-head"), None);
+			.expect("restored base element");
+		assert_eq!(fixture.document.title(), "Unmanaged title");
+		assert!(restored_title.is_same_node(Some(&unmanaged_title)));
+		assert_eq!(restored_title.get_attribute("data-reinhardt-head"), None);
+		assert!(restored_base.is_same_node(Some(&unmanaged_base)));
+		assert_eq!(
+			restored_base.get_attribute("href").as_deref(),
+			Some("/unmanaged/")
+		);
+		assert_eq!(restored_base.get_attribute("data-reinhardt-head"), None);
+	});
 }
 
 #[wasm_bindgen_test]
 fn duplicate_script_transfers_representative_without_reexecution() {
-	// Arrange
-	let fixture = DocumentHeadFixture::new();
-	let window = web_sys::window().unwrap();
-	let counter_name = JsValue::from_str("__reinhardtHeadScriptRuns");
-	Reflect::set(&window, &counter_name, &JsValue::from_f64(0.0)).unwrap();
-	let script = ScriptTag::inline(
-		"window.__reinhardtHeadScriptRuns = (window.__reinhardtHeadScriptRuns || 0) + 1;",
-	);
-	let show_first = Signal::new(true);
-	let show_first_for_view = show_first.clone();
-	let first_script = script.clone();
-	let page = Page::fragment([
-		Page::reactive(move || {
-			if show_first_for_view.get() {
-				Page::text("first").with_head(Head::new().script(first_script.clone()))
-			} else {
-				Page::empty()
-			}
-		}),
-		Page::text("second").with_head(Head::new().script(script)),
-	]);
+	ReactiveScope::run(|| {
+		// Arrange
+		let fixture = DocumentHeadFixture::new();
+		let window = web_sys::window().unwrap();
+		let counter_name = JsValue::from_str("__reinhardtHeadScriptRuns");
+		Reflect::set(&window, &counter_name, &JsValue::from_f64(0.0)).unwrap();
+		let script = ScriptTag::inline(
+			"window.__reinhardtHeadScriptRuns = (window.__reinhardtHeadScriptRuns || 0) + 1;",
+		);
+		let show_first = Signal::new(true);
+		let show_first_for_view = show_first.clone();
+		let first_script = script.clone();
+		let page = Page::fragment([
+			Page::reactive(move || {
+				if show_first_for_view.get() {
+					Page::text("first").with_head(Head::new().script(first_script.clone()))
+				} else {
+					Page::empty()
+				}
+			}),
+			Page::text("second").with_head(Head::new().script(script)),
+		]);
 
-	// Act
-	fixture.mount(page);
-	let original_script = fixture
-		.document
-		.query_selector("script[data-reinhardt-head]")
-		.unwrap()
-		.expect("managed script");
-
-	// Assert
-	assert_eq!(
-		fixture
+		// Act
+		fixture.mount(page);
+		let original_script = fixture
 			.document
-			.query_selector_all("script[data-reinhardt-head]")
+			.query_selector("script[data-reinhardt-head]")
 			.unwrap()
-			.length(),
-		1
-	);
-	assert_eq!(
-		Reflect::get(&window, &counter_name)
-			.unwrap()
-			.as_f64()
-			.unwrap(),
-		1.0
-	);
+			.expect("managed script");
 
-	show_first.set(false);
-	let transferred_script = fixture
-		.document
-		.query_selector("script[data-reinhardt-head]")
-		.unwrap()
-		.expect("transferred managed script");
-	assert!(transferred_script.is_same_node(Some(&original_script)));
-	assert_eq!(
-		Reflect::get(&window, &counter_name)
-			.unwrap()
-			.as_f64()
-			.unwrap(),
-		1.0
-	);
+		// Assert
+		assert_eq!(
+			fixture
+				.document
+				.query_selector_all("script[data-reinhardt-head]")
+				.unwrap()
+				.length(),
+			1
+		);
+		assert_eq!(
+			Reflect::get(&window, &counter_name)
+				.unwrap()
+				.as_f64()
+				.unwrap(),
+			1.0
+		);
 
-	Reflect::delete_property(&window, &counter_name).unwrap();
+		show_first.set(false);
+		let transferred_script = fixture
+			.document
+			.query_selector("script[data-reinhardt-head]")
+			.unwrap()
+			.expect("transferred managed script");
+		assert!(transferred_script.is_same_node(Some(&original_script)));
+		assert_eq!(
+			Reflect::get(&window, &counter_name)
+				.unwrap()
+				.as_f64()
+				.unwrap(),
+			1.0
+		);
+
+		Reflect::delete_property(&window, &counter_name).unwrap();
+	});
 }
