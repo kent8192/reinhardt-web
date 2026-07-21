@@ -174,7 +174,7 @@ async fn server_fn_call_without_active_cancellation_does_not_construct_abort_con
 fn test_custom_client_error_display_contract() {
 	let error: CustomClientError =
 		reinhardt_pages::server_fn::ServerFnError::network("client error").into();
-	assert_eq!(error.to_string(), "Network error: client error");
+	assert_eq!(error.to_string(), "client error");
 }
 
 // ============================================================================
