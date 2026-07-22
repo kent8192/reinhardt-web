@@ -42,6 +42,14 @@ use reinhardt::graphql::macros::{GrpcGraphQLConvert, GrpcSubscription};
   - Supports mutable bindings and destructuring patterns on `#[inject]` parameters
   - Preserves the declared pattern while forwarding the resolved dependency
 
+  ```rust,ignore
+  #[inject] mut db: DatabaseConnection
+  #[inject] Wrapper(mut value): Wrapper<Data>
+  ```
+
+  Mutability applies only to the resolver function's internal binding; it does
+  not change resolver ownership or caching.
+
 - **GrpcGraphQLConvert** - Automatic type conversion between Protobuf and GraphQL types
   - Derives `From<proto::T> for T` and `From<T> for proto::T`
   - Conditional field inclusion with `#[graphql(skip_if = "...")]`

@@ -43,6 +43,9 @@ struct ExtractorInfo {
 /// Information about `#[inject]` parameters
 #[derive(Clone)]
 pub(crate) struct InjectInfo {
+	// This pattern is consumed by action and receiver expansion paths, but not by
+	// every macro target that constructs injection metadata.
+	#[allow(dead_code)]
 	pub(crate) pat: Box<Pat>,
 	pub(crate) ty: Box<Type>,
 	pub(crate) options: InjectOptions,

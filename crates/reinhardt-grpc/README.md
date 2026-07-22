@@ -264,6 +264,14 @@ Injected parameters may use normal Rust binding patterns, including mutable
 bindings and newtype destructuring. The generated wrapper preserves the pattern
 on the handler implementation while forwarding the resolved dependency value.
 
+```rust,ignore
+#[inject] mut db: DatabaseConnection
+#[inject] Wrapper(mut value): Wrapper<Data>
+```
+
+Mutability applies only to the handler function's internal binding; it does not
+change resolver ownership or caching.
+
 ### Integration with GraphQL
 
 When using with the `reinhardt-graphql` crate, refer to the

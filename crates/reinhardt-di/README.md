@@ -529,6 +529,14 @@ by implementing `InjectableType` with the registry key in `type Inner`.
 Provider parameters support ordinary Rust patterns, including mutable bindings
 and destructuring; resolved dependencies are forwarded into those patterns.
 
+```rust,ignore
+#[inject] mut db: DatabaseConnection
+#[inject] Wrapper(mut value): Wrapper<Data>
+```
+
+Mutability applies only to the provider function's internal binding; it does
+not change resolver ownership or caching.
+
 ```rust
 use reinhardt::di::{InjectableKey, InjectableType, KeyedDepends, KeyedFactoryOutput};
 

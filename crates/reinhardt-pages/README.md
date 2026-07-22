@@ -524,6 +524,14 @@ non-WASM forms still render the hidden CSRF input for traditional posts.
 Injected server-function parameters support mutable bindings and destructuring
 patterns while preserving those bindings in the server implementation.
 
+```rust,ignore
+#[inject] mut db: DatabaseConnection
+#[inject] Wrapper(mut value): Wrapper<Data>
+```
+
+Mutability applies only to the server function's internal binding; it does not
+change resolver ownership or caching.
+
 ### Structured server-function errors
 
 `ServerFnError` is a typed, versioned error contract shared by server handlers,
