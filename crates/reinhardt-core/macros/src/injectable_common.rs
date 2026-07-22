@@ -188,8 +188,6 @@ pub(crate) fn generate_inject_resolver_expr(
 /// by macro extensions like `#[action]` and `#[receiver]` with use_inject support.
 #[derive(Clone)]
 pub(crate) struct InjectParamInfo {
-	/// Parameter pattern (variable name)
-	pub pat: Box<syn::Pat>,
 	/// Parameter type
 	pub ty: Box<syn::Type>,
 	/// Inject options (cache, scope)
@@ -224,7 +222,6 @@ pub(crate) fn detect_inject_params(
 					pat.span(),
 				);
 				inject_params.push(InjectParamInfo {
-					pat: pat.clone(),
 					ty: ty.clone(),
 					options,
 					resolved_ident,
