@@ -733,8 +733,9 @@ pub use style::{
 
 #[cfg(feature = "i18n")]
 pub use i18n::{
-	I18nContext, I18nStateError, TranslatedText, locale, provide_i18n_context, set_locale, tn, tnp,
-	tp, tr, use_i18n_context, with_i18n_context,
+	I18nContext, I18nError, I18nStateError, LazyString, MessageCatalog, TranslatedText,
+	TranslationContext, TranslationGuard, locale, provide_i18n_context, set_locale, tn, tnp, tp,
+	tr, use_i18n_context, with_i18n_context,
 };
 
 // Re-export procedural macros

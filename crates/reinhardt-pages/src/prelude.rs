@@ -81,7 +81,8 @@
 //!   (no-op on native; replaces the deprecated `spawn_local` re-export)
 //!
 //! ## I18n
-//! - `I18nContext`, `I18nStateError`, `TranslatedText`, `tr`, `tn`, `tp`, `tnp`
+//! - `I18nContext`, `I18nError`, `I18nStateError`, `LazyString`, `MessageCatalog`,
+//!   `TranslatedText`, `TranslationContext`, `TranslationGuard`, `tr`, `tn`, `tp`, `tnp`
 //! - `provide_i18n_context`, `use_i18n_context`, `with_i18n_context`
 //! - `set_locale`, `locale`
 //! - `t!` for inline page translations with named interpolation
@@ -214,8 +215,9 @@ pub use crate::ssr::{SsrChunk, SsrOptions, SsrRenderer, SsrRouteOutput, SsrStrea
 
 #[cfg(feature = "i18n")]
 pub use crate::i18n::{
-	I18nContext, I18nStateError, TranslatedText, locale, provide_i18n_context, set_locale, tn, tnp,
-	tp, tr, use_i18n_context, with_i18n_context,
+	I18nContext, I18nError, I18nStateError, LazyString, MessageCatalog, TranslatedText,
+	TranslationContext, TranslationGuard, locale, provide_i18n_context, set_locale, tn, tnp, tp,
+	tr, use_i18n_context, with_i18n_context,
 };
 
 // ============================================================================

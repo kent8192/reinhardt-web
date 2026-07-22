@@ -12,7 +12,12 @@ use std::future::Future;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use reinhardt_i18n::{I18nError, MessageCatalog, TranslationContext};
+pub use reinhardt_i18n::{
+	I18nError, LazyString, MessageCatalog, TranslationContext, TranslationGuard, activate,
+	activate_with_catalog, deactivate, get_active_translation, get_language, get_locale, gettext,
+	gettext_lazy, ngettext, ngettext_lazy, npgettext, pgettext, set_active_translation,
+	set_active_translation_permanent,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::component::{IntoPage, Page};
