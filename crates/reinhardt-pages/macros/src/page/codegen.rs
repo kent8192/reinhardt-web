@@ -40,8 +40,7 @@ fn macro_supports_named_arguments(path: &syn::Path) -> bool {
 		.iter()
 		.map(|segment| segment.ident.to_string())
 		.collect();
-	matches!(segments.as_slice(), [name] if matches!(name.as_str(), "t" | "format" | "format_args"))
-		|| matches!(segments.as_slice(), [prefix, name]
+	matches!(segments.as_slice(), [prefix, name]
 			if (prefix == "std" || prefix == "alloc") && matches!(name.as_str(), "format" | "format_args"))
 		|| matches!(segments.as_slice(), [prefix, name]
 			if prefix == "reinhardt_pages" && name == "t")
@@ -1909,7 +1908,7 @@ mod tests {
 	#[test]
 	fn test_named_macro_argument_key_is_not_a_capture() {
 		let input = quote::quote!({
-			p { { t!("Project {id}", id = project_id) } }
+			p { { reinhardt_pages::t!("Project {id}", id = project_id) } }
 		});
 		let untyped_ast: reinhardt_manouche::core::PageMacro = syn::parse2(input).unwrap();
 		let typed_ast = crate::page::validator::validate(&untyped_ast).unwrap();
@@ -1928,6 +1927,24 @@ mod tests {
 	fn test_custom_macro_assignment_lhs_remains_a_capture() {
 		let input = quote::quote!({
 			p { { custom!(label = fallback) } }
+		});
+		let untyped_ast: reinhardt_manouche::core::PageMacro = syn::parse2(input).unwrap();
+		let typed_ast = crate::page::validator::validate(&untyped_ast).unwrap();
+		let ctx = CodegenContext::new(typed_ast.implicit_captures());
+
+		let captures: Vec<String> = ctx
+			.captures_in_node(&typed_ast.body().nodes[0])
+			.into_iter()
+			.map(|ident| ident.to_string())
+			.collect();
+
+		assert_eq!(captures, vec!["label", "fallback"]);
+	}
+
+	#[test]
+	fn test_bare_t_macro_assignment_lhs_remains_a_capture() {
+		let input = quote::quote!({
+			p { { t!(label = fallback) } }
 		});
 		let untyped_ast: reinhardt_manouche::core::PageMacro = syn::parse2(input).unwrap();
 		let typed_ast = crate::page::validator::validate(&untyped_ast).unwrap();

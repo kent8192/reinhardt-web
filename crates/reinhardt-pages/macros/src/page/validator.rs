@@ -43,8 +43,7 @@ fn macro_supports_named_arguments(path: &syn::Path) -> bool {
 		.iter()
 		.map(|segment| segment.ident.to_string())
 		.collect();
-	matches!(segments.as_slice(), [name] if matches!(name.as_str(), "t" | "format" | "format_args"))
-		|| matches!(segments.as_slice(), [prefix, name]
+	matches!(segments.as_slice(), [prefix, name]
 			if (prefix == "std" || prefix == "alloc") && matches!(name.as_str(), "format" | "format_args"))
 		|| matches!(segments.as_slice(), [prefix, name]
 			if prefix == "reinhardt_pages" && name == "t")
@@ -3283,7 +3282,7 @@ mod capture_tests {
 	#[rstest]
 	fn body_only_form_ignores_named_macro_argument_key() {
 		let ast = parse(quote! {
-			{ p { {t!("Project {id}", id = project_id)} } }
+			{ p { {reinhardt_pages::t!("Project {id}", id = project_id)} } }
 		});
 
 		let result = validate(&ast).expect("implicit body should validate");
@@ -3299,7 +3298,7 @@ mod capture_tests {
 	#[rstest]
 	fn strict_form_ignores_named_macro_argument_key() {
 		let ast = parse(quote! {
-			|project_id: i64| { p { {t!("Project {id}", id = project_id)} } }
+			|project_id: i64| { p { {reinhardt_pages::t!("Project {id}", id = project_id)} } }
 		});
 
 		let result = enforce_strict_captures(ast.head.as_ref(), ast.body(), ast.params());
