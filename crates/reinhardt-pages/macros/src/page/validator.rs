@@ -37,6 +37,21 @@ use syn::spanned::Spanned;
 use syn::visit::{self, Visit};
 use syn::{Expr, Result, Token};
 
+fn macro_supports_named_arguments(path: &syn::Path) -> bool {
+	let segments: Vec<_> = path
+		.segments
+		.iter()
+		.map(|segment| segment.ident.to_string())
+		.collect();
+	matches!(segments.as_slice(), [name] if matches!(name.as_str(), "t" | "format" | "format_args"))
+		|| matches!(segments.as_slice(), [prefix, name]
+			if (prefix == "std" || prefix == "alloc") && matches!(name.as_str(), "format" | "format_args"))
+		|| matches!(segments.as_slice(), [prefix, name]
+			if prefix == "reinhardt_pages" && name == "t")
+		|| matches!(segments.as_slice(), [prefix, module, name]
+			if prefix == "reinhardt_pages" && module == "prelude" && name == "t")
+}
+
 use reinhardt_manouche::core::{
 	ComponentEventProp, IntrinsicEvent, PageAttr, PageBody, PageComponent, PageElement, PageElse,
 	PageExpression, PageFor, PageIf, PageMacro, PageMacroForm, PageNode, PageParam, PageWatch,
@@ -393,12 +408,13 @@ impl<'ast> Visit<'ast> for ExprIdentVisitor<'_> {
 	}
 
 	fn visit_expr_macro(&mut self, expr_macro: &'ast syn::ExprMacro) {
+		let has_named_arguments = macro_supports_named_arguments(&expr_macro.mac.path);
 		if let Ok(args) = expr_macro
 			.mac
 			.parse_body_with(Punctuated::<Expr, Token![,]>::parse_terminated)
 		{
 			for arg in args {
-				if let Expr::Assign(assign) = arg {
+				if has_named_arguments && let Expr::Assign(assign) = arg {
 					self.visit_expr(&assign.right);
 				} else {
 					self.visit_expr(&arg);
