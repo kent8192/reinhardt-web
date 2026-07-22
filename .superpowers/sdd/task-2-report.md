@@ -10,7 +10,7 @@ Implemented indexed, expression-safe injected dependency temporaries for the HTT
 - `routes_registration.rs`: async route factories resolve and forward indexed temporary identifiers.
 - `use_inject.rs`: removed mutable-pattern stripping, retained original patterns, and separated resolved call identifiers.
 - `websocket.rs`: generated consumer fields, factory resolution, and forwarding use indexed identifiers.
-- Added mutable identifier and destructuring-pattern fixtures for route, route registration, and `#[use_inject]` syntax.
+- Added compiler-checked mutable identifier and destructuring-pattern coverage for route, route registration, and `#[use_inject]` syntax.
 
 ## Verification
 
@@ -30,5 +30,24 @@ Implemented indexed, expression-safe injected dependency temporaries for the HTT
 
 ## Concerns
 
-- The new fixtures cannot currently be registered as trybuild pass cases without repairing the existing route pass fixture support/dependency setup; they remain present for the parent task to integrate with the planned test infrastructure.
 - `InjectInfo::pat` is retained to preserve the two-pattern metadata contract but is now unused in these code-generation paths, producing a dead-code warning.
+
+## Review Follow-up
+
+The three unregistered macro-crate fixtures were replaced with one registered integration trybuild fixture at `tests/integration/tests/di/ui/pass/mutable_inject_patterns_core_paths.rs`. It compiles the public `#[get]`, `#[use_inject]`, and `#[routes]` paths with both `mut db` and `Wrapper(mut value)` and mutably borrows every binding in each function body.
+
+Command:
+
+```text
+nix-shell -p openssl pkg-config protobuf --run '/run/current-system/sw/bin/cargo test -p reinhardt-integration-tests --test di_ui test_mutable_inject_patterns_core_paths_compile_pass -- --nocapture'
+```
+
+Result:
+
+```text
+test tests/di/ui/pass/mutable_inject_patterns_core_paths.rs ... ok
+test ui::test_mutable_inject_patterns_core_paths_compile_pass ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out
+```
+
+The Nix shell supplies host-only build prerequisites discovered during verification: OpenSSL development metadata and `protoc`.
