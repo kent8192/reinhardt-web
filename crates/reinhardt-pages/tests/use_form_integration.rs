@@ -2334,7 +2334,7 @@ fn form_action_ui_preserves_submit_semantics_and_renders_validation_errors() {
 
 		assert_eq!(
 			form_page.render_to_string(),
-			r#"<form><button type="submit" aria-label="Save signup">Save</button></form>"#
+			r#"<form><button type="submit" formnovalidate="formnovalidate" aria-label="Save signup">Save</button></form>"#
 		);
 		assert_eq!(panel.render().render_to_string(), "idle");
 		assert_eq!(latest.value(), None);

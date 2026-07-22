@@ -1985,6 +1985,9 @@ where
 	pub fn submit(&self) -> UseFormSubmitOutcome {
 		let outcome = self.form.begin_submit_lifecycle();
 		if outcome != UseFormSubmitOutcome::Submitted {
+			if outcome == UseFormSubmitOutcome::ValidationFailed {
+				self.action.reset();
+			}
 			return outcome;
 		}
 

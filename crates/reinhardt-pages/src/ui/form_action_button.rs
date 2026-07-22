@@ -7,7 +7,8 @@ use crate::form_state::{FormAction, FormRuntimeSource};
 ///
 /// Attach [`FormAction::submit_handler`] to the containing `form`. This button
 /// deliberately has no click dispatcher, so all activation follows the form's
-/// native submit lifecycle.
+/// native submit lifecycle. The button bypasses browser constraint validation
+/// so generated validation errors can be rendered by the form action.
 pub struct FormActionButton<Form, Deps, T, E>
 where
 	Form: FormRuntimeSource,
@@ -47,9 +48,12 @@ where
 
 	/// Renders the submit button.
 	pub fn render(&self) -> Page {
-		let mut button = PageElement::new("button").attr("type", "submit");
+		let mut button = PageElement::new("button")
+			.attr("type", "submit")
+			.attr("formnovalidate", "formnovalidate");
 		for (name, value) in &self.attrs {
 			if !name.eq_ignore_ascii_case("type")
+				&& !name.eq_ignore_ascii_case("formnovalidate")
 				&& !name.eq_ignore_ascii_case("disabled")
 				&& !name.eq_ignore_ascii_case("aria-busy")
 			{
