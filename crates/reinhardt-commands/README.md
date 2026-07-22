@@ -86,6 +86,12 @@ reactive state and DOM-bound handlers. Changes to dynamic expressions,
 handlers, bindings, control flow, components, callsite structure, or shared
 server-visible code conservatively fall back to the normal rebuild path.
 
+The served dist directory is available both at its legacy root URLs and under
+the configured `STATIC_URL`. This keeps SPA and WASM development URLs working
+while ensuring manifest-resolved `collectstatic` assets use the same URLs that
+`static_url()` emits. Missing assets under `STATIC_URL` return through the
+application router instead of receiving the SPA index fallback.
+
 Patch application is gated by each mounted template's key and dynamic ABI.
 Patches for unloaded routes or branches are retained until their descriptor
 first mounts, then validated before use. A rejected patch or failed build keeps

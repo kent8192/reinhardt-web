@@ -1996,12 +1996,16 @@ fn configured_static_url(base_dir: &std::path::Path) -> Result<String, String> {
 #[cfg(feature = "server")]
 fn spa_excluded_prefixes(generated_style_url: &str) -> Vec<String> {
 	let configured_admin_prefix = format!("{}/admin/", generated_style_url.trim_end_matches('/'));
-	vec![
+	let mut prefixes = vec![
 		"/api/".to_string(),
 		"/admin/".to_string(),
 		"/static/admin/".to_string(),
 		configured_admin_prefix,
-	]
+	];
+	if generated_style_url != "/" {
+		prefixes.push(generated_style_url.to_string());
+	}
+	prefixes
 }
 
 #[cfg(feature = "pages")]
@@ -2875,6 +2879,23 @@ impl RunServerCommand {
 
 			// Automatically resolve static directory path
 			let resolved_static_dir = PathResolver::resolve_static_dir(static_dir);
+
+			// Collected assets use the configured STATIC_URL, while the root mount
+			// below remains responsible for SPA routes and legacy bundle URLs.
+			if generated_style_url != "/" {
+				let mut collected_static_config =
+					StaticFilesConfig::new(resolved_static_dir.clone())
+						.url_prefix(generated_style_url.clone())
+						.spa_mode(false)
+						.auto_inject_wasm(false);
+				#[cfg(debug_assertions)]
+				{
+					collected_static_config =
+						collected_static_config.cache_config(CacheControlConfig::disabled());
+				}
+				server =
+					server.with_middleware(StaticFilesMiddleware::new(collected_static_config));
+			}
 
 			let mut static_config = StaticFilesConfig::new(resolved_static_dir.clone())
 				.url_prefix("/")
@@ -5111,6 +5132,13 @@ mod tests {
 	#[test]
 	fn spa_fallback_excludes_the_configured_admin_static_prefix() {
 		assert!(spa_excluded_prefixes("/assets/").contains(&"/assets/admin/".to_string()));
+	}
+
+	#[cfg(feature = "server")]
+	#[test]
+	fn spa_fallback_excludes_the_configured_static_prefix() {
+		assert!(spa_excluded_prefixes("/assets/").contains(&"/assets/".to_string()));
+		assert!(!spa_excluded_prefixes("/").contains(&"/".to_string()));
 	}
 
 	#[cfg(feature = "pages")]
