@@ -343,6 +343,34 @@ where
 		.collect()
 }
 
+/// Generates expression-safe call arguments in their original source order.
+pub(crate) fn generate_injected_call_args<'a>(
+	inputs: impl IntoIterator<Item = &'a syn::FnArg>,
+	inject_params: &[InjectParamInfo],
+) -> Vec<TokenStream> {
+	let mut inject_params = inject_params.iter();
+
+	inputs
+		.into_iter()
+		.filter_map(|arg| {
+			let syn::FnArg::Typed(pat_type) = arg else {
+				return None;
+			};
+
+			if pat_type.attrs.iter().any(is_inject_attr) {
+				let resolved_ident = &inject_params
+					.next()
+					.expect("each injected argument must have detected metadata")
+					.resolved_ident;
+				Some(quote::quote! { #resolved_ident })
+			} else {
+				let pat = &pat_type.pat;
+				Some(quote::quote! { #pat })
+			}
+		})
+		.collect()
+}
+
 /// Removes `#[inject]` attributes from function arguments.
 ///
 /// Returns a new list of FnArg with `#[inject]` attributes stripped.

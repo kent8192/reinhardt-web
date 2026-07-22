@@ -2,8 +2,8 @@
 
 use crate::crate_paths::get_reinhardt_di_crate;
 use crate::injectable_common::{
-	detect_inject_params, generate_di_context_extraction, generate_injection_calls,
-	strip_inject_attrs,
+	detect_inject_params, generate_di_context_extraction, generate_injected_call_args,
+	generate_injection_calls, strip_inject_attrs,
 };
 use proc_macro2::TokenStream;
 use quote::quote;
@@ -391,17 +391,7 @@ pub(crate) fn action_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 		let injection_calls = generate_injection_calls(&inject_params);
 
 		// Argument list
-		let inject_args: Vec<_> = inject_params.iter().map(|p| &p.resolved_ident).collect();
-		let regular_args: Vec<_> = stripped_inputs
-			.iter()
-			.filter_map(|arg| {
-				if let FnArg::Typed(pat_type) = arg {
-					Some(&pat_type.pat)
-				} else {
-					None
-				}
-			})
-			.collect();
+		let call_args = generate_injected_call_args(fn_inputs, &inject_params);
 
 		let di_crate = get_reinhardt_di_crate();
 
@@ -426,7 +416,7 @@ pub(crate) fn action_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 					#(#injection_calls)*
 
 					// Call original function
-					#original_fn_name(#(#regular_args,)* #(#inject_args),*).await
+					#original_fn_name(#(#call_args),*).await
 				}).await
 			}
 		})
@@ -448,6 +438,32 @@ pub(crate) fn action_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 mod meta_extractor_tests {
 	use super::*;
 	use quote::quote;
+
+	#[test]
+	fn mutable_inject_patterns_are_emitted_once_as_safe_action_call_arguments() {
+		// Arrange
+		let args = quote! { methods = "POST", detail = false, use_inject = true };
+		let input: ItemFn = syn::parse_quote! {
+			async fn update(
+				request: Request,
+				#[inject] database: Database,
+				#[inject] mut cache: Cache,
+				#[inject] Wrapper(mut value): Wrapper<Data>,
+			) -> Result<()> {
+				Ok(())
+			}
+		};
+
+		// Act
+		let generated = action_impl(args, input).unwrap().to_string();
+
+		// Assert
+		let expected_call = "update_original (request , __reinhardt_injected_0 , __reinhardt_injected_1 , __reinhardt_injected_2)";
+		assert_eq!(generated.matches(expected_call).count(), 1);
+		assert_eq!(generated.matches("database").count(), 1);
+		assert_eq!(generated.matches("mut cache").count(), 1);
+		assert_eq!(generated.matches("Wrapper (mut value)").count(), 1);
+	}
 
 	#[test]
 	fn url_name_defaults_to_fn_name_when_absent() {
