@@ -1124,10 +1124,15 @@ fn generate_server_handler(
 	let regular_param_types: Vec<_> = regular_params.iter().map(|p| &p.ty).collect();
 
 	// Injected source patterns belong to the implementation signature. Generated
-	// calls use plain identifiers so mutable and destructuring patterns are never
-	// emitted in expression position.
+	// calls use hygienic identifiers so mutable and destructuring patterns are
+	// never emitted in expression position or shadowed by call-site bindings.
 	let inject_param_names: Vec<_> = (0..inject_params.len())
-		.map(|index| quote::format_ident!("__server_fn_inject_{}", index))
+		.map(|index| {
+			proc_macro2::Ident::new(
+				&format!("__server_fn_inject_{}", index),
+				proc_macro2::Span::mixed_site(),
+			)
+		})
 		.collect();
 
 	// Extract extractor parameter names

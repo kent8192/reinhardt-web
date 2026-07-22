@@ -519,6 +519,11 @@ Arguments supplied from ambient context use `ambient_arguments`. The old
 transport layer: `#[server_fn]` client stubs attach `X-CSRFToken`, while
 non-WASM forms still render the hidden CSRF input for traditional posts.
 
+### Server-function injection
+
+Injected server-function parameters support mutable bindings and destructuring
+patterns while preserving those bindings in the server implementation.
+
 ### Structured server-function errors
 
 `ServerFnError` is a typed, versioned error contract shared by server handlers,
@@ -630,9 +635,6 @@ fn error_display() -> View {
 registration chain. Members retain their individual codecs, CSRF behavior,
 extractors, injected parameters, metadata, and mock identity. Registration stays
 explicit:
-
-Injected server-function parameters support mutable bindings and destructuring
-patterns while preserving those bindings in the server implementation.
 
 ```rust,ignore
 #[server_fnset(name = "admin")]

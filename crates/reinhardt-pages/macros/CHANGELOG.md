@@ -10,7 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Preserve mutable and destructuring `#[inject]` bindings in `#[server_fn]`
-  implementation signatures while forwarding resolved values by identifier.
+  implementation signatures while forwarding resolved values by hygienic
+  identifiers that cannot collide with user parameter bindings.
 
 ## [0.4.0-alpha.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.3.2...reinhardt-pages-macros@v0.4.0-alpha.1) - 2026-07-21
 

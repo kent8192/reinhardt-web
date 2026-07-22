@@ -9,7 +9,7 @@ use reinhardt_pages_macros::server_fn;
 use serde::{Deserialize, Serialize};
 
 // Mock types for testing
-#[derive(Clone)]
+#[derive(Clone, Deserialize)]
 struct Database {
 	connection_string: String,
 }
@@ -99,10 +99,19 @@ async fn simple_function(value: u32) -> Result<u32, ServerFnError> {
 	Ok(value * 2)
 }
 
-#[server_fn]
+#[server_fn(use_inject = true)]
 async fn update_database(#[inject] mut db: Database) -> Result<(), ServerFnError> {
 	db.connection_string.push_str("?write=true");
 	Ok(())
+}
+
+#[server_fn]
+async fn preserve_inject_across_extractor_collision(
+	#[inject] db: Database,
+	__server_fn_inject_0: reinhardt_di::params::Json<Database>,
+) -> Result<String, ServerFnError> {
+	let _ = __server_fn_inject_0;
+	Ok(db.connection_string)
 }
 
 #[server_fn]
