@@ -13,10 +13,14 @@
 
 mod action_button;
 mod action_result_panel;
+mod form_action_button;
+mod form_action_result_panel;
 mod resource_panel;
 
 pub use action_button::ActionButton;
 pub use action_result_panel::ActionResultPanel;
+pub use form_action_button::FormActionButton;
+pub use form_action_result_panel::FormActionResultPanel;
 pub use resource_panel::ResourcePanel;
 
 pub(crate) mod state;

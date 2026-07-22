@@ -314,6 +314,12 @@
 //! }
 //! ```
 //!
+//! Use [`ui::FormActionButton`] with [`FormAction::submit_handler`] to preserve
+//! native form submit semantics. [`ui::FormActionResultPanel`] renders
+//! validation and typed mutation errors separately, while
+//! [`Resource::latest_after_form`] composes successful validated mutations
+//! without exposing the underlying dispatch handle.
+//!
 //! `FileField` and `ImageField` participate in this runtime contract as
 //! `Option<web_sys::File>` values. File values are browser-owned and are
 //! tracked for dirty/touched state without treating the file payload as a

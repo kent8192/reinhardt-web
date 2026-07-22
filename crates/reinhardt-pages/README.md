@@ -468,6 +468,26 @@ if !save.is_pending() {
 }
 ```
 
+For native form submission and headless status UI, attach the form action's
+submit handler to the containing form and use the form-aware primitives:
+
+```rust,ignore
+use reinhardt_pages::ui::{FormActionButton, FormActionResultPanel};
+
+let submit = save.submit_handler();
+let button = FormActionButton::new(save.clone(), "Save");
+let result = FormActionResultPanel::new(save.clone())
+    .pending(|| Page::text("Saving"))
+    .validation_error(|message| Page::text(message.to_string()))
+    .success(|_| Page::text("Saved"))
+    .error(|error| Page::text(error.to_string()));
+```
+
+Bind `submit` to the containing element's `Submit` event. The button remains
+`type="submit"`, so pointer activation and Enter-key submission use the same
+validated `FormAction::submit()` path. `Resource::latest_after_form(&save)`
+reconciles successful form mutations without exposing payload dispatch.
+
 `FileField` and `ImageField` also participate in the generated runtime
 contract as `Option<web_sys::File>` values. File values are browser-owned and
 are tracked for dirty/touched state without treating the file payload as a
