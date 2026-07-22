@@ -467,8 +467,16 @@ async fn app_pages_layout_matches_tutorial() {
 	let client_rs =
 		fs::read_to_string(polls_dir.join("client.rs")).expect("read apps/polls/client.rs");
 	assert!(
-		client_rs.contains("pub mod components;") && !client_rs.contains("pub mod pages;"),
+		client_rs.contains("pub mod components;")
+			&& client_rs.contains("pub mod hooks;")
+			&& !client_rs.contains("pub mod pages;"),
 		"apps/polls/client.rs must be a client-only facade, not a mixed route-entry facade:\n{client_rs}"
+	);
+	let hooks_rs = fs::read_to_string(polls_dir.join("client").join("hooks.rs"))
+		.expect("read apps/polls/client/hooks.rs");
+	assert_eq!(
+		hooks_rs,
+		"//! Reusable client-side custom hooks for the polls application.\n"
 	);
 
 	let polls_components = polls_dir.join("client").join("components.rs");
@@ -766,6 +774,18 @@ async fn workspace_app_pages_uses_unified_template() {
 	assert!(
 		src.join("client").join("components.rs").exists(),
 		"apps/bar/src/client/components.rs must exist"
+	);
+	let workspace_client_rs =
+		fs::read_to_string(src.join("client.rs")).expect("read apps/bar/src/client.rs");
+	assert!(
+		workspace_client_rs.contains("pub mod hooks;"),
+		"apps/bar/src/client.rs must declare the custom hooks module:\n{workspace_client_rs}"
+	);
+	let workspace_hooks_rs = fs::read_to_string(src.join("client").join("hooks.rs"))
+		.expect("read apps/bar/src/client/hooks.rs");
+	assert_eq!(
+		workspace_hooks_rs,
+		"//! Reusable client-side custom hooks for the bar application.\n"
 	);
 	assert!(
 		src.join("client")

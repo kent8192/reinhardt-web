@@ -373,18 +373,30 @@ src/
 ├── apps/
 │   ├── polls.rs                  # per-app entry (sibling of polls/)
 │   └── polls/
-│       ├── client.rs             # #[cfg(client)] aggregator: pub mod components;
+│       ├── client.rs             # #[cfg(client)] aggregator: components and hooks
 │       ├── client/
-│       │   └── components.rs     # per-app UI (placeholder() returning Page)
-│       ├── pages.rs              # target-neutral page entry points
+│       │   ├── components.rs     # per-app component aggregator
+│       │   ├── components/
+│       │   │   └── placeholder.rs # route-backed placeholder component
+│       │   └── hooks.rs          # reusable client-side custom hooks
+│       ├── models.rs             # shared models and wire-safe info types
+│       ├── serializers.rs        # serializer aggregator
+│       ├── serializers/          # (.gitkeep — user adds submodules here)
 │       ├── server.rs             # #[cfg(server)] aggregator
 │       ├── server/
 │       │   ├── admin.rs          # admin registration
-│       │   ├── models.rs         # models
-│       │   ├── serializers.rs    # serializers
-│       │   ├── models/           # (.gitkeep — user adds submodules here)
-│       │   └── serializers/      # (.gitkeep)
-│       ├── server_fn.rs          # bi-target #[server_fn] handlers (placeholder)
+│       │   ├── forms.rs          # form aggregator
+│       │   ├── forms/            # (.gitkeep — user adds submodules here)
+│       │   └── views.rs          # server-side views
+│       ├── server_fn.rs          # bi-target server-function aggregator
+│       ├── server_fn/
+│       │   └── placeholder.rs    # placeholder #[server_fn] handler
+│       ├── services.rs           # cfg-gated service aggregator
+│       ├── services/
+│       │   ├── client.rs         # client service aggregator
+│       │   ├── client/           # (.gitkeep — user adds submodules here)
+│       │   ├── server.rs         # server service aggregator
+│       │   └── server/           # (.gitkeep — user adds submodules here)
 │       ├── tests/                # (.gitkeep)
 │       ├── urls.rs               # target-neutral server/client router aggregate
 │       └── urls/
