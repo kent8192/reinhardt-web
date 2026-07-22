@@ -61,20 +61,8 @@ use crate::sessions::cleanup::{CleanupableBackend, SessionMetadata};
 use super::cache::{SessionBackend, SessionError};
 
 async fn connect_backend(database_url: &str) -> Result<BackendsConnection, SessionError> {
-	let connection =
-		if database_url.starts_with("postgres://") || database_url.starts_with("postgresql://") {
-			BackendsConnection::connect_postgres(database_url).await
-		} else if database_url.starts_with("mysql://") {
-			BackendsConnection::connect_mysql(database_url).await
-		} else if database_url.starts_with("sqlite://") || database_url.starts_with("sqlite:") {
-			BackendsConnection::connect_sqlite(database_url).await
-		} else {
-			return Err(SessionError::CacheError(format!(
-				"Unsupported database URL scheme: {database_url}"
-			)));
-		};
-
-	connection
+	BackendsConnection::connect(database_url)
+		.await
 		.map_err(|error| SessionError::CacheError(format!("Database connection error: {error}")))
 }
 
