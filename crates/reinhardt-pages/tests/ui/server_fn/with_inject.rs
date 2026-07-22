@@ -14,6 +14,31 @@ struct Database {
 	connection_string: String,
 }
 
+#[derive(Clone)]
+struct Wrapper<T>(T);
+
+#[async_trait::async_trait]
+impl reinhardt_di::Injectable for Database {
+	async fn inject(
+		_ctx: &reinhardt_di::InjectionContext,
+	) -> reinhardt_di::DiResult<Self> {
+		Ok(Self {
+			connection_string: String::new(),
+		})
+	}
+}
+
+#[async_trait::async_trait]
+impl reinhardt_di::Injectable for Wrapper<Database> {
+	async fn inject(
+		_ctx: &reinhardt_di::InjectionContext,
+	) -> reinhardt_di::DiResult<Self> {
+		Ok(Self(Database {
+			connection_string: String::new(),
+		}))
+	}
+}
+
 #[derive(Serialize, Deserialize)]
 struct User {
 	id: u32,
@@ -72,6 +97,20 @@ async fn create_user(
 #[server_fn]
 async fn simple_function(value: u32) -> Result<u32, ServerFnError> {
 	Ok(value * 2)
+}
+
+#[server_fn]
+async fn update_database(#[inject] mut db: Database) -> Result<(), ServerFnError> {
+	db.connection_string.push_str("?write=true");
+	Ok(())
+}
+
+#[server_fn]
+async fn update_wrapped(
+	#[inject] Wrapper(mut value): Wrapper<Database>,
+) -> Result<(), ServerFnError> {
+	value.connection_string.push_str("?write=true");
+	Ok(())
 }
 
 fn main() {

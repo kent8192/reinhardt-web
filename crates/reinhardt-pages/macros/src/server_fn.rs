@@ -1123,8 +1123,12 @@ fn generate_server_handler(
 	let regular_param_names: Vec<_> = regular_params.iter().map(|p| &p.pat).collect();
 	let regular_param_types: Vec<_> = regular_params.iter().map(|p| &p.ty).collect();
 
-	// Extract inject parameter names (types handled per-param in di_resolution below)
-	let inject_param_names: Vec<_> = inject_params.iter().map(|p| &p.pat).collect();
+	// Injected source patterns belong to the implementation signature. Generated
+	// calls use plain identifiers so mutable and destructuring patterns are never
+	// emitted in expression position.
+	let inject_param_names: Vec<_> = (0..inject_params.len())
+		.map(|index| quote::format_ident!("__server_fn_inject_{}", index))
+		.collect();
 
 	// Extract extractor parameter names
 	let extractor_param_names: Vec<_> = extractor_params.iter().map(|p| &p.pat).collect();
@@ -1158,13 +1162,13 @@ fn generate_server_handler(
 
 		let param_resolutions: Vec<_> = inject_params
 			.iter()
-			.map(|p| {
-				let pat = &p.pat;
+			.zip(&inject_param_names)
+			.map(|(p, resolved_ident)| {
 				let ty = &p.ty;
 				let resolve_expr =
 					generate_inject_resolver_expr(&di_crate, ty, quote! { &__di_ctx }, true);
 				quote! {
-					let #pat: #ty =
+					let #resolved_ident: #ty =
 						#resolve_expr
 							.map_err(|e| {
 								// Auth errors (401/403) expose framework-provided user-facing

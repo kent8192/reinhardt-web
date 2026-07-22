@@ -631,6 +631,9 @@ registration chain. Members retain their individual codecs, CSRF behavior,
 extractors, injected parameters, metadata, and mock identity. Registration stays
 explicit:
 
+Injected server-function parameters support mutable bindings and destructuring
+patterns while preserving those bindings in the server implementation.
+
 ```rust,ignore
 #[server_fnset(name = "admin")]
 pub fn admin_fns() -> impl ServerFnSetRegistration {
