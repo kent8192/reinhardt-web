@@ -110,6 +110,29 @@ impl<T: 'static> Clone for Signal<T> {
 
 impl<T: 'static> Copy for Signal<T> {}
 
+/// Converts an owned or borrowed signal expression into its copied handle.
+pub trait IntoSignalHandle<T: 'static> {
+	/// Returns the copied signal handle.
+	fn into_signal_handle(self) -> Signal<T>;
+}
+
+impl<T: 'static> IntoSignalHandle<T> for Signal<T> {
+	fn into_signal_handle(self) -> Signal<T> {
+		self
+	}
+}
+
+impl<T: 'static> IntoSignalHandle<T> for &Signal<T> {
+	fn into_signal_handle(self) -> Signal<T> {
+		*self
+	}
+}
+
+/// Copies a reactive signal handle from either an owned or borrowed expression.
+pub fn copy_signal_handle<T: 'static>(signal: impl IntoSignalHandle<T>) -> Signal<T> {
+	signal.into_signal_handle()
+}
+
 impl<T: 'static> Signal<T> {
 	/// Create a new Signal with the given initial value
 	///

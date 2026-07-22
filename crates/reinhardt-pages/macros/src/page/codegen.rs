@@ -772,7 +772,12 @@ fn generate_control_binding(
 		TypedControlBindingExpr::Direct(value) => value,
 		TypedControlBindingExpr::NumberWithError { value, .. } => value,
 	};
-	let value = wrap_expr_with_captures(value, pages_crate, ctx);
+	let value = wrap_value_expr_with_captures(
+		quote! { #pages_crate::reactive::copy_signal_handle(#value) },
+		value,
+		pages_crate,
+		ctx,
+	);
 	let binding_span = binding.span;
 	let descriptor = match (&binding.kind, &binding.expression) {
 		(TypedControlBindingKind::Text, _) => {
@@ -794,7 +799,12 @@ fn generate_control_binding(
 			TypedControlBindingKind::Number,
 			TypedControlBindingExpr::NumberWithError { error, .. },
 		) => {
-			let error = wrap_expr_with_captures(error, pages_crate, ctx);
+			let error = wrap_value_expr_with_captures(
+				quote! { #pages_crate::reactive::copy_signal_handle(#error) },
+				error,
+				pages_crate,
+				ctx,
+			);
 			quote_spanned!(binding_span=> #pages_crate::component::ControlBinding::number_with_error(
 				#value,
 				#error
