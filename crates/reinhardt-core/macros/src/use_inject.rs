@@ -14,7 +14,7 @@ use crate::crate_paths::{
 use crate::injectable_common::generate_inject_resolver_expr;
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{Attribute, FnArg, ItemFn, Pat, PatType, Result, Type, spanned::Spanned};
+use syn::{Attribute, FnArg, ItemFn, Pat, PatType, Result, Type};
 
 /// Check if an attribute is `#[inject]`
 fn is_inject_attr(attr: &Attribute) -> bool {
@@ -139,7 +139,7 @@ pub(crate) fn use_inject_impl(_args: TokenStream, input: ItemFn) -> Result<Token
 				let mut processed = processed;
 				processed.resolved_ident = Some(syn::Ident::new(
 					&format!("__reinhardt_injected_{}", inject_params.len()),
-					processed.pat.span(),
+					proc_macro2::Span::mixed_site(),
 				));
 				inject_params.push(processed);
 			} else {
@@ -180,20 +180,17 @@ pub(crate) fn use_inject_impl(_args: TokenStream, input: ItemFn) -> Result<Token
 	let original_fn_name = syn::Ident::new(&format!("{}_original", fn_name), fn_name.span());
 
 	// Build the original function signature (all parameters including #[inject])
-	let mut original_params: Vec<FnArg> = Vec::new();
-	if let Some(ref self_p) = self_param {
-		original_params.push(self_p.clone());
-	}
-	for arg in &processed_args {
-		let pat = &arg.pat;
-		let ty = &arg.ty;
-		original_params.push(syn::parse_quote! { #pat: #ty });
-	}
-	for arg in &inject_params {
-		let pat = &arg.pat;
-		let ty = &arg.ty;
-		original_params.push(syn::parse_quote! { #pat: #ty });
-	}
+	let original_params: Vec<FnArg> = sig
+		.inputs
+		.iter()
+		.map(|arg| {
+			let mut arg = arg.clone();
+			if let FnArg::Typed(pat_type) = &mut arg {
+				pat_type.attrs.retain(|attr| !is_inject_attr(attr));
+			}
+			arg
+		})
+		.collect();
 
 	// Generate DI context extraction (from Request)
 	// Fork a per-request context from the shared router context so that
@@ -244,15 +241,23 @@ pub(crate) fn use_inject_impl(_args: TokenStream, input: ItemFn) -> Result<Token
 
 	// Extract argument patterns for the original function call
 	// Only include processed_args (non-inject) for the call, inject_params are resolved separately
-	let call_args: Vec<_> = processed_args
+	let mut inject_args = inject_params.iter();
+	let call_args: Vec<_> = sig
+		.inputs
 		.iter()
-		.chain(inject_params.iter())
-		.map(|arg| {
-			if let Some(ident) = &arg.resolved_ident {
-				quote! { #ident }
+		.filter_map(|arg| {
+			let FnArg::Typed(pat_type) = arg else {
+				return None;
+			};
+			if pat_type.attrs.iter().any(is_inject_attr) {
+				let ident = inject_args
+					.next()
+					.and_then(|arg| arg.resolved_ident.as_ref())
+					.expect("each injected argument must have a resolved identifier");
+				Some(quote! { #ident })
 			} else {
-				let pat = &arg.pat;
-				quote! { #pat }
+				let pat = &pat_type.pat;
+				Some(quote! { #pat })
 			}
 		})
 		.collect();
@@ -353,4 +358,26 @@ pub(crate) fn use_inject_impl(_args: TokenStream, input: ItemFn) -> Result<Token
 	};
 
 	Ok(expanded)
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use syn::parse_quote;
+
+	#[test]
+	fn preserves_interleaved_argument_order() {
+		let input: ItemFn = parse_quote! {
+			async fn handler(first: String, #[inject] mut left: Service, last: usize, #[inject] mut right: Service) -> Result<(), Error> { Ok(()) }
+		};
+		let generated = use_inject_impl(TokenStream::new(), input)
+			.unwrap()
+			.to_string();
+		assert!(
+			generated.contains(
+				"handler_original (first , __reinhardt_injected_0 , last , __reinhardt_injected_1)"
+			),
+			"{generated}"
+		);
+	}
 }

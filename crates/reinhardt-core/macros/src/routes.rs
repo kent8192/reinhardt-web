@@ -160,14 +160,14 @@ pub(crate) fn detect_inject_params(inputs: &Punctuated<FnArg, Token![,]>) -> Vec
 	let mut inject_params = Vec::new();
 
 	for input in inputs {
-		if let FnArg::Typed(PatType { attrs, pat, ty, .. }) = input {
+		if let FnArg::Typed(PatType { attrs, ty, .. }) = input {
 			let has_inject = attrs.iter().any(is_inject_attr);
 
 			if has_inject {
 				let options = parse_inject_options(attrs);
 				let resolved_ident = syn::Ident::new(
 					&format!("__reinhardt_injected_{}", inject_params.len()),
-					pat.span(),
+					Span::mixed_site(),
 				);
 				inject_params.push(InjectInfo {
 					ty: ty.clone(),
@@ -435,12 +435,6 @@ fn generate_wrapper_with_both(
 		})
 		.collect();
 
-	// Build call arguments for inject params (shared between both paths)
-	let inject_args: Vec<_> = inject_params
-		.iter()
-		.map(|param| &param.resolved_ident)
-		.collect();
-
 	// Generate extractor calls and validation differently based on pre_validate.
 	// When pre_validate = true and a destructuring pattern like `Json(body)` is used,
 	// extracting directly into the pattern would consume the wrapper, making it
@@ -529,6 +523,31 @@ fn generate_wrapper_with_both(
 		(calls, quote! {}, quote! {}, args)
 	};
 
+	let mut inject_args = inject_params.iter();
+	let mut extractor_args = extractor_args.iter();
+	let call_args: Vec<_> = original_fn
+		.sig
+		.inputs
+		.iter()
+		.filter_map(|arg| {
+			let FnArg::Typed(pat_type) = arg else {
+				return None;
+			};
+			if pat_type.attrs.iter().any(is_inject_attr) {
+				let ident = &inject_args
+					.next()
+					.expect("each injected argument must have detected metadata")
+					.resolved_ident;
+				Some(quote! { #ident })
+			} else {
+				let pat = extractor_args
+					.next()
+					.expect("each route argument must have extractor metadata");
+				Some(quote! { #pat })
+			}
+		})
+		.collect();
+
 	// Generate the handler body (injection + extraction + call)
 	let handler_body = quote! {
 		// Resolve injected dependencies
@@ -544,7 +563,7 @@ fn generate_wrapper_with_both(
 		#destructure_calls
 
 		// Call the original function
-		#original_fn_name(#(#extractor_args,)* #(#inject_args),*).await
+		#original_fn_name(#(#call_args),*).await
 	};
 
 	// Wrap handler body in RESOLVE_CTX.scope() when DI is active
@@ -1341,6 +1360,23 @@ mod url_resolver_tests {
 			.collect();
 
 		assert_eq!(names, vec!["CookieStruct", "Query"]);
+	}
+
+	#[test]
+	fn route_call_preserves_interleaved_argument_order() {
+		let input: ItemFn = syn::parse_quote! {
+			async fn handler(Json(first): Json<String>, #[inject] mut left: Service, Query(last): Query<usize>, #[inject] mut right: Service) -> String { String::new() }
+		};
+		let extractors = detect_extractors(&input.sig.inputs);
+		let inject_params = detect_inject_params(&input.sig.inputs);
+		let (_, wrapper) = generate_wrapper_with_both(
+			&input,
+			&extractors,
+			&inject_params,
+			&RouteOptions::default(),
+		);
+		let generated = wrapper.to_string();
+		assert!(generated.contains("handler_original (Json (first) , __reinhardt_injected_0 , Query (last) , __reinhardt_injected_1)"), "{generated}");
 	}
 
 	#[test]
