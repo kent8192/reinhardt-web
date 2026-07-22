@@ -38,6 +38,9 @@ use syn::visit::{self, Visit};
 use syn::{Expr, Result, Token};
 
 fn macro_supports_named_arguments(path: &syn::Path) -> bool {
+	if path.leading_colon.is_none() {
+		return false;
+	}
 	let segments: Vec<_> = path
 		.segments
 		.iter()
@@ -49,6 +52,8 @@ fn macro_supports_named_arguments(path: &syn::Path) -> bool {
 			if prefix == "reinhardt_pages" && name == "t")
 		|| matches!(segments.as_slice(), [prefix, module, name]
 			if prefix == "reinhardt_pages" && module == "prelude" && name == "t")
+		|| matches!(segments.as_slice(), [facade, module, name]
+			if facade == "reinhardt" && module == "pages" && name == "t")
 }
 
 use reinhardt_manouche::core::{
@@ -156,7 +161,8 @@ fn collect_free_idents(
 /// (`Vec`, `Option`), and constants (`MAX_LEN`) are exempt. Macro invocation
 /// names (`format!`) are exempt, but macro arguments are scanned for free
 /// identifiers when they parse as Rust expressions. Named argument keys such
-/// as `name` in `t!("Hello {name}", name = source)` are not value captures.
+/// as `name` in `::reinhardt_pages::t!("Hello {name}", name = source)` are not
+/// value captures when the macro path is absolute and resolution-safe.
 fn enforce_strict_captures(
 	head: Option<&Expr>,
 	body: &PageBody,
@@ -3282,7 +3288,7 @@ mod capture_tests {
 	#[rstest]
 	fn body_only_form_ignores_named_macro_argument_key() {
 		let ast = parse(quote! {
-			{ p { {reinhardt_pages::t!("Project {id}", id = project_id)} } }
+			{ p { {::reinhardt_pages::t!("Project {id}", id = project_id)} } }
 		});
 
 		let result = validate(&ast).expect("implicit body should validate");
@@ -3298,12 +3304,28 @@ mod capture_tests {
 	#[rstest]
 	fn strict_form_ignores_named_macro_argument_key() {
 		let ast = parse(quote! {
-			|project_id: i64| { p { {reinhardt_pages::t!("Project {id}", id = project_id)} } }
+			|project_id: i64| { p { {::reinhardt::pages::t!("Project {id}", id = project_id)} } }
 		});
 
 		let result = enforce_strict_captures(ast.head.as_ref(), ast.body(), ast.params());
 
 		assert!(result.is_ok());
+	}
+
+	#[rstest]
+	fn relative_framework_macro_path_keeps_assignment_key_as_capture() {
+		let ast = parse(quote! {
+			{ p { {reinhardt_pages::t!("Project {id}", id = project_id)} } }
+		});
+
+		let result = validate(&ast).expect("implicit body should validate");
+		let captures: Vec<String> = result
+			.implicit_captures()
+			.iter()
+			.map(|capture| capture.ident.to_string())
+			.collect();
+
+		assert_eq!(captures, vec!["id", "project_id"]);
 	}
 
 	#[rstest]
