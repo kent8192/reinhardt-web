@@ -34,6 +34,25 @@ use syn::spanned::Spanned;
 use syn::visit::{self, Visit};
 use syn::{LitStr, Token};
 
+fn macro_supports_named_arguments(path: &syn::Path) -> bool {
+	if path.leading_colon.is_none() {
+		return false;
+	}
+	let segments: Vec<_> = path
+		.segments
+		.iter()
+		.map(|segment| segment.ident.to_string())
+		.collect();
+	matches!(segments.as_slice(), [prefix, name]
+			if (prefix == "std" || prefix == "alloc") && matches!(name.as_str(), "format" | "format_args"))
+		|| matches!(segments.as_slice(), [prefix, name]
+			if prefix == "reinhardt_pages" && name == "t")
+		|| matches!(segments.as_slice(), [prefix, module, name]
+			if prefix == "reinhardt_pages" && module == "prelude" && name == "t")
+		|| matches!(segments.as_slice(), [facade, module, name]
+			if facade == "reinhardt" && module == "pages" && name == "t")
+}
+
 // Import AST types from reinhardt-manouche
 use crate::crate_paths::get_reinhardt_pages_crate_info;
 use reinhardt_event_catalog::KnownEvent;
@@ -284,12 +303,17 @@ impl<'ast> Visit<'ast> for ExprCaptureCollector<'_> {
 	}
 
 	fn visit_expr_macro(&mut self, expr_macro: &'ast syn::ExprMacro) {
+		let has_named_arguments = macro_supports_named_arguments(&expr_macro.mac.path);
 		if let Ok(args) = expr_macro
 			.mac
 			.parse_body_with(Punctuated::<syn::Expr, Token![,]>::parse_terminated)
 		{
 			for arg in args {
-				self.visit_expr(&arg);
+				if has_named_arguments && let syn::Expr::Assign(assign) = arg {
+					self.visit_expr(&assign.right);
+				} else {
+					self.visit_expr(&arg);
+				}
 			}
 		}
 	}
@@ -1884,5 +1908,77 @@ mod tests {
 			.collect();
 
 		assert_eq!(captures, vec!["selected"]);
+	}
+
+	#[test]
+	fn test_named_macro_argument_key_is_not_a_capture() {
+		let input = quote::quote!({
+			p { { ::reinhardt::pages::t!("Project {id}", id = project_id) } }
+		});
+		let untyped_ast: reinhardt_manouche::core::PageMacro = syn::parse2(input).unwrap();
+		let typed_ast = crate::page::validator::validate(&untyped_ast).unwrap();
+		let ctx = CodegenContext::new(typed_ast.implicit_captures());
+
+		let captures: Vec<String> = ctx
+			.captures_in_node(&typed_ast.body().nodes[0])
+			.into_iter()
+			.map(|ident| ident.to_string())
+			.collect();
+
+		assert_eq!(captures, vec!["project_id"]);
+	}
+
+	#[test]
+	fn test_relative_framework_macro_assignment_lhs_remains_a_capture() {
+		let input = quote::quote!({
+			p { { reinhardt_pages::t!("Project {id}", id = project_id) } }
+		});
+		let untyped_ast: reinhardt_manouche::core::PageMacro = syn::parse2(input).unwrap();
+		let typed_ast = crate::page::validator::validate(&untyped_ast).unwrap();
+		let ctx = CodegenContext::new(typed_ast.implicit_captures());
+
+		let captures: Vec<String> = ctx
+			.captures_in_node(&typed_ast.body().nodes[0])
+			.into_iter()
+			.map(|ident| ident.to_string())
+			.collect();
+
+		assert_eq!(captures, vec!["id", "project_id"]);
+	}
+
+	#[test]
+	fn test_custom_macro_assignment_lhs_remains_a_capture() {
+		let input = quote::quote!({
+			p { { custom!(label = fallback) } }
+		});
+		let untyped_ast: reinhardt_manouche::core::PageMacro = syn::parse2(input).unwrap();
+		let typed_ast = crate::page::validator::validate(&untyped_ast).unwrap();
+		let ctx = CodegenContext::new(typed_ast.implicit_captures());
+
+		let captures: Vec<String> = ctx
+			.captures_in_node(&typed_ast.body().nodes[0])
+			.into_iter()
+			.map(|ident| ident.to_string())
+			.collect();
+
+		assert_eq!(captures, vec!["label", "fallback"]);
+	}
+
+	#[test]
+	fn test_bare_t_macro_assignment_lhs_remains_a_capture() {
+		let input = quote::quote!({
+			p { { t!(label = fallback) } }
+		});
+		let untyped_ast: reinhardt_manouche::core::PageMacro = syn::parse2(input).unwrap();
+		let typed_ast = crate::page::validator::validate(&untyped_ast).unwrap();
+		let ctx = CodegenContext::new(typed_ast.implicit_captures());
+
+		let captures: Vec<String> = ctx
+			.captures_in_node(&typed_ast.body().nodes[0])
+			.into_iter()
+			.map(|ident| ident.to_string())
+			.collect();
+
+		assert_eq!(captures, vec!["label", "fallback"]);
 	}
 }
