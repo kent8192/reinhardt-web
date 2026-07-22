@@ -549,6 +549,9 @@ impl MakeMessagesCommand {
 			};
 
 			for msgid in extracted {
+				if msgid.is_empty() {
+					continue;
+				}
 				if seen_msgids.insert(msgid.clone()) {
 					messages.push(TranslatableMessage {
 						msgid,

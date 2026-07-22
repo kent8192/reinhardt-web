@@ -410,6 +410,36 @@ Line two");
 
 #[tokio::test]
 #[serial(cwd)]
+async fn test_makemessages_skips_empty_message_ids() {
+	let temp_dir = TempDir::new().unwrap();
+	let src_dir = temp_dir.path().join("src");
+	fs::create_dir(&src_dir).unwrap();
+	fs::write(
+		src_dir.join("lib.rs"),
+		"fn labels() { let _ = t!(\"\"); let _ = t!(\"Visible\"); }",
+	)
+	.unwrap();
+
+	let result = run_in_dir(temp_dir.path(), || async {
+		let cmd = MakeMessagesCommand;
+		let mut ctx = CommandContext::new(vec![]);
+		ctx.set_option_multi("locale".to_string(), vec!["ja".to_string()]);
+		cmd.execute(&ctx).await
+	})
+	.await;
+
+	assert!(result.is_ok(), "makemessages failed: {result:?}");
+	let content =
+		fs::read_to_string(temp_dir.path().join("locale/ja/LC_MESSAGES/reinhardt.po")).unwrap();
+	let msgids: Vec<_> = content
+		.lines()
+		.filter(|line| line.starts_with("msgid "))
+		.collect();
+	assert_eq!(msgids, vec![r#"msgid """#, r#"msgid "Visible""#]);
+}
+
+#[tokio::test]
+#[serial(cwd)]
 async fn test_makemessages_all_discovers_registered_app_locales() {
 	let temp_dir = TempDir::new().unwrap();
 	let app_locale_dir = temp_dir.path().join("registered_locale/fr/LC_MESSAGES");
