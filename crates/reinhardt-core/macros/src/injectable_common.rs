@@ -6,7 +6,7 @@
 use crate::crate_paths::{
 	get_reinhardt_core_crate, get_reinhardt_di_crate, get_reinhardt_signals_crate,
 };
-use syn::{Expr, Token, punctuated::Punctuated};
+use syn::{Expr, Token, punctuated::Punctuated, spanned::Spanned};
 
 /// Scope for dependency injection
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -194,6 +194,8 @@ pub(crate) struct InjectParamInfo {
 	pub ty: Box<syn::Type>,
 	/// Inject options (cache, scope)
 	pub options: InjectOptions,
+	/// Expression-safe identifier for the resolved dependency
+	pub resolved_ident: syn::Ident,
 }
 
 /// Detects parameters with `#[inject]` attribute from function arguments.
@@ -217,10 +219,15 @@ pub(crate) fn detect_inject_params(
 
 			if has_inject {
 				let options = parse_inject_options(attrs);
+				let resolved_ident = syn::Ident::new(
+					&format!("__reinhardt_injected_{}", inject_params.len()),
+					pat.span(),
+				);
 				inject_params.push(InjectParamInfo {
 					pat: pat.clone(),
 					ty: ty.clone(),
 					options,
+					resolved_ident,
 				});
 			}
 		}
@@ -280,7 +287,7 @@ pub(crate) fn generate_injection_calls(inject_params: &[InjectParamInfo]) -> Vec
 	inject_params
 		.iter()
 		.map(|param| {
-			let pat = &param.pat;
+			let resolved_ident = &param.resolved_ident;
 			let ty = &param.ty;
 			let use_cache = param.options.use_cache;
 			let resolve_expr = generate_inject_resolver_expr(
@@ -291,7 +298,7 @@ pub(crate) fn generate_injection_calls(inject_params: &[InjectParamInfo]) -> Vec
 			);
 
 			quote::quote! {
-				let #pat: #ty = #resolve_expr
+				let #resolved_ident: #ty = #resolve_expr
 					.map_err(|e| #core_crate::exception::Error::Internal(
 						format!("Dependency injection failed for {}: {:?}", stringify!(#ty), e)
 					))?;
@@ -317,7 +324,7 @@ where
 	inject_params
 		.iter()
 		.map(|param| {
-			let pat = &param.pat;
+			let resolved_ident = &param.resolved_ident;
 			let ty = &param.ty;
 			let use_cache = param.options.use_cache;
 			let error_conversion = error_mapper(ty);
@@ -329,7 +336,7 @@ where
 			);
 
 			quote::quote! {
-				let #pat: #ty = #resolve_expr
+				let #resolved_ident: #ty = #resolve_expr
 					.map_err(|e| #error_conversion)?;
 			}
 		})
@@ -356,4 +363,26 @@ pub(crate) fn strip_inject_attrs(
 			}
 		})
 		.collect()
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use syn::{FnArg, parse_quote, punctuated::Punctuated};
+
+	#[test]
+	fn mutable_inject_patterns_use_expression_safe_resolved_identifiers() {
+		// Arrange
+		let inputs: Punctuated<FnArg, Token![,]> = parse_quote! {
+			#[inject] mut db: Database,
+			#[inject] Wrapper(mut value): Wrapper<Data>
+		};
+
+		// Act
+		let params = detect_inject_params(&inputs);
+
+		// Assert
+		assert_eq!(params[0].resolved_ident, "__reinhardt_injected_0");
+		assert_eq!(params[1].resolved_ident, "__reinhardt_injected_1");
+	}
 }

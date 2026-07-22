@@ -391,7 +391,7 @@ pub(crate) fn action_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 		let injection_calls = generate_injection_calls(&inject_params);
 
 		// Argument list
-		let inject_args: Vec<_> = inject_params.iter().map(|p| &p.pat).collect();
+		let inject_args: Vec<_> = inject_params.iter().map(|p| &p.resolved_ident).collect();
 		let regular_args: Vec<_> = stripped_inputs
 			.iter()
 			.filter_map(|arg| {
