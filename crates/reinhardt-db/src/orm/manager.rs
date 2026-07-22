@@ -1,4 +1,6 @@
-use super::connection::{DatabaseBackend, DatabaseConnection, OrmExecutor, QueryRow, QueryValue};
+use super::connection::{
+	DatabaseBackend, DatabaseConnection, DatabaseConnectionLease, OrmExecutor, QueryRow, QueryValue,
+};
 use super::field_codec::{DatabaseArrayType, database_value_to_query_value};
 use super::inspection::FieldInfo;
 use super::query::RelationLoadInput;
@@ -132,8 +134,13 @@ fn quote_identifier(identifier: &str, backend: DatabaseBackend) -> String {
 	format!("{quote}{identifier}{quote}")
 }
 
+struct DefaultDatabase {
+	lease: DatabaseConnectionLease,
+	handle: DatabaseConnection,
+}
+
 /// Global database connection state
-static DB: once_cell::sync::OnceCell<Arc<RwLock<Option<DatabaseConnection>>>> =
+static DB: once_cell::sync::OnceCell<Arc<RwLock<Option<DefaultDatabase>>>> =
 	once_cell::sync::OnceCell::new();
 
 /// Initialize the global database connection
@@ -187,15 +194,20 @@ pub async fn init_database_with_pool_size(
 		return Ok(());
 	}
 
-	let conn = DatabaseConnection::connect_with_pool_size(url, pool_size).await?;
+	let owner = super::engine::connect_backend_with_pool_size(url, pool_size).await?;
+	let lease = DatabaseConnectionLease::register(owner)?;
+	let database = DefaultDatabase {
+		handle: lease.handle(),
+		lease,
+	};
 
 	if let Some(db_cell) = DB.get() {
 		let mut guard = db_cell.write().await;
 		if guard.is_none() {
-			*guard = Some(conn);
+			*guard = Some(database);
 		}
 	} else {
-		DB.get_or_init(|| Arc::new(RwLock::new(Some(conn))));
+		DB.get_or_init(|| Arc::new(RwLock::new(Some(database))));
 	}
 
 	Ok(())
@@ -246,15 +258,20 @@ pub async fn reinitialize_database_with_pool_size(
 	url: &str,
 	pool_size: Option<u32>,
 ) -> reinhardt_core::exception::Result<()> {
-	let conn = DatabaseConnection::connect_with_pool_size(url, pool_size).await?;
+	let owner = super::engine::connect_backend_with_pool_size(url, pool_size).await?;
+	let lease = DatabaseConnectionLease::register(owner)?;
+	let database = DefaultDatabase {
+		handle: lease.handle(),
+		lease,
+	};
 
 	if let Some(db_cell) = DB.get() {
 		// Replace existing connection
 		let mut guard = db_cell.write().await;
-		*guard = Some(conn);
+		*guard = Some(database);
 	} else {
 		// First time initialization
-		DB.get_or_init(|| Arc::new(RwLock::new(Some(conn))));
+		DB.get_or_init(|| Arc::new(RwLock::new(Some(database))));
 	}
 
 	Ok(())
@@ -266,11 +283,15 @@ pub async fn reinitialize_database_with_pool_size(
 /// preserving RAII cleanup semantics. Passing `None` clears the global connection.
 #[doc(hidden)]
 pub async fn replace_database_connection_for_testing(
-	connection: Option<DatabaseConnection>,
-) -> Option<DatabaseConnection> {
+	lease: Option<DatabaseConnectionLease>,
+) -> Option<DatabaseConnectionLease> {
 	let db = DB.get_or_init(|| Arc::new(RwLock::new(None)));
 	let mut guard = db.write().await;
-	std::mem::replace(&mut *guard, connection)
+	let database = lease.map(|lease| DefaultDatabase {
+		handle: lease.handle(),
+		lease,
+	});
+	std::mem::replace(&mut *guard, database).map(|database| database.lease)
 }
 
 /// Get a reference to the global database connection
@@ -282,12 +303,58 @@ pub async fn get_connection() -> reinhardt_core::exception::Result<DatabaseConne
 		))
 	})?;
 	let guard = db.read().await;
-	guard.clone().ok_or_else(|| {
+	guard
+		.as_ref()
+		.map(|database| database.handle)
+		.ok_or_else(|| {
+			Error::from(DatabaseError::new(
+				DatabaseErrorKind::Connection,
+				"Database connection not available",
+			))
+		})
+}
+
+/// Returns a lease that retains the global ORM database registration.
+#[doc(hidden)]
+pub async fn get_connection_lease() -> reinhardt_core::exception::Result<DatabaseConnectionLease> {
+	let db = DB.get().ok_or_else(|| {
 		Error::from(DatabaseError::new(
-			DatabaseErrorKind::Connection,
-			"Database connection not available",
+			DatabaseErrorKind::Configuration,
+			"Database not initialized",
 		))
-	})
+	})?;
+	let guard = db.read().await;
+	guard
+		.as_ref()
+		.map(|database| database.lease.clone())
+		.ok_or_else(|| {
+			Error::from(DatabaseError::new(
+				DatabaseErrorKind::Connection,
+				"Database connection not available",
+			))
+		})
+}
+
+/// Returns a coherent lease-and-handle snapshot of the global ORM registration.
+#[doc(hidden)]
+pub async fn get_connection_registration()
+-> reinhardt_core::exception::Result<(DatabaseConnectionLease, DatabaseConnection)> {
+	let db = DB.get().ok_or_else(|| {
+		Error::from(DatabaseError::new(
+			DatabaseErrorKind::Configuration,
+			"Database not initialized",
+		))
+	})?;
+	let guard = db.read().await;
+	guard
+		.as_ref()
+		.map(|database| (database.lease.clone(), database.handle))
+		.ok_or_else(|| {
+			Error::from(DatabaseError::new(
+				DatabaseErrorKind::Connection,
+				"Database connection not available",
+			))
+		})
 }
 
 /// Model manager (similar to Django's Manager)
@@ -2701,10 +2768,11 @@ mod tests {
 	#[serial_test::serial(sqlx_drivers)]
 	#[tokio::test]
 	async fn init_database_skips_connection_when_already_initialized() {
-		let connection = crate::orm::connection::DatabaseConnection::connect("sqlite::memory:")
+		let owner = crate::orm::connection::BackendsConnection::connect_sqlite("sqlite::memory:")
 			.await
 			.unwrap();
-		let previous = super::replace_database_connection_for_testing(Some(connection)).await;
+		let lease = crate::orm::connection::DatabaseConnectionLease::register(owner).unwrap();
+		let previous = super::replace_database_connection_for_testing(Some(lease)).await;
 
 		let result = super::init_database("unsupported://must-not-connect").await;
 		let backend = super::get_connection()
@@ -3086,9 +3154,11 @@ mod tests {
 	async fn test_manager_create_roundtrips_typed_json_fields_on_sqlite() {
 		let database_file = tempfile::NamedTempFile::new().unwrap();
 		let database_url = format!("sqlite://{}", database_file.path().display());
-		let mut connection = crate::orm::connection::DatabaseConnection::connect(&database_url)
+		let owner = crate::orm::connection::BackendsConnection::connect_sqlite(&database_url)
 			.await
 			.unwrap();
+		let lease = crate::orm::connection::DatabaseConnectionLease::register(owner).unwrap();
+		let mut connection = lease.handle();
 		connection
 			.execute(
 				"CREATE TABLE json_manager_models (\

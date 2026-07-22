@@ -13,13 +13,37 @@
 
 #[cfg(with_reinhardt)]
 mod tests {
-	use reinhardt::DatabaseConnection;
-	use reinhardt::db::orm::{Filter, FilterOperator, FilterValue, Manager};
+	use reinhardt::db::{
+		backends::DatabaseConnection as BackendsConnection,
+		orm::{
+			DatabaseConnection as DatabaseConnectionHandle, DatabaseConnectionLease, Filter,
+			FilterOperator, FilterValue, Manager,
+		},
+	};
 	use reinhardt::test::fixtures::create_table_for_model;
 	use rstest::*;
 	use tempfile::NamedTempFile;
 
 	use examples_tutorial_rest::apps::snippets::models::Snippet;
+
+	struct DatabaseConnection {
+		_lease: DatabaseConnectionLease,
+		handle: DatabaseConnectionHandle,
+	}
+
+	impl std::ops::Deref for DatabaseConnection {
+		type Target = DatabaseConnectionHandle;
+
+		fn deref(&self) -> &Self::Target {
+			&self.handle
+		}
+	}
+
+	impl std::ops::DerefMut for DatabaseConnection {
+		fn deref_mut(&mut self) -> &mut Self::Target {
+			&mut self.handle
+		}
+	}
 
 	/// Fixture: temporary SQLite database with the `snippets` table created
 	/// from the `Snippet` model metadata via `create_table_for_model`.
@@ -32,15 +56,21 @@ mod tests {
 		// `connect_sqlite` automatically sets `create_if_missing(true)`.
 		let database_url = format!("sqlite:///{}", db_path);
 
-		let conn = DatabaseConnection::connect_sqlite(&database_url)
+		let owner = BackendsConnection::connect_sqlite(&database_url)
 			.await
 			.expect("Failed to create DatabaseConnection");
 
 		// Create the `snippets` table from the `Snippet` model metadata.
 		// `create_table_for_model` operates on the inner backend connection.
-		create_table_for_model::<Snippet>(conn.inner())
+		create_table_for_model::<Snippet>(&owner)
 			.await
 			.expect("Failed to create snippets table");
+		let lease = DatabaseConnectionLease::register(owner)
+			.expect("Failed to register DatabaseConnection");
+		let conn = DatabaseConnection {
+			handle: lease.handle(),
+			_lease: lease,
+		};
 
 		(temp_file, conn)
 	}

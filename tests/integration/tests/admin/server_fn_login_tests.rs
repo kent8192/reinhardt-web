@@ -11,7 +11,7 @@ use reinhardt_auth::BaseUser;
 use reinhardt_core::reactive::ReactiveScope;
 use reinhardt_db::backends::connection::DatabaseConnection as BackendsConnection;
 use reinhardt_db::backends::dialect::PostgresBackend;
-use reinhardt_db::orm::connection::{DatabaseBackend, DatabaseConnection};
+use reinhardt_db::orm::connection::DatabaseConnectionLease;
 use reinhardt_di::{InjectionContext, SingletonScope};
 use reinhardt_http::Handler;
 use reinhardt_query::prelude::{
@@ -235,8 +235,11 @@ async fn build_login_router(pool: sqlx::PgPool, with_jwt_secret: bool) -> Server
 	// Build DatabaseConnection
 	let backend = Arc::new(PostgresBackend::new(pool));
 	let backends_conn = BackendsConnection::new(backend);
-	let connection = DatabaseConnection::new(DatabaseBackend::Postgres, backends_conn);
-	let db_conn = Arc::new(connection);
+	let connection_lease = Arc::new(
+		DatabaseConnectionLease::register(backends_conn)
+			.expect("Failed to register database connection"),
+	);
+	let db_conn = Arc::new(connection_lease.handle());
 
 	// Build AdminSite
 	let mut site = AdminSite::new("Login Test Admin");
@@ -251,6 +254,7 @@ async fn build_login_router(pool: sqlx::PgPool, with_jwt_secret: bool) -> Server
 	// Build complete router with DI
 	let singleton = Arc::new(SingletonScope::new());
 	singleton.set_arc(db_conn);
+	singleton.set_arc(connection_lease);
 	let di_ctx = Arc::new(InjectionContext::builder(singleton).build());
 
 	ReactiveScope::run(|| {
@@ -458,8 +462,11 @@ async fn test_admin_login_authenticator_returns_error(
 	// Build DatabaseConnection
 	let backend = Arc::new(PostgresBackend::new(pool));
 	let backends_conn = BackendsConnection::new(backend);
-	let connection = DatabaseConnection::new(DatabaseBackend::Postgres, backends_conn);
-	let db_conn = Arc::new(connection);
+	let connection_lease = Arc::new(
+		DatabaseConnectionLease::register(backends_conn)
+			.expect("Failed to register database connection"),
+	);
+	let db_conn = Arc::new(connection_lease.handle());
 
 	let mut site = AdminSite::new("Error Test Admin");
 	site.set_jwt_secret(TEST_JWT_SECRET);
@@ -469,6 +476,7 @@ async fn test_admin_login_authenticator_returns_error(
 
 	let singleton = Arc::new(SingletonScope::new());
 	singleton.set_arc(db_conn);
+	singleton.set_arc(connection_lease);
 	let di_ctx = Arc::new(InjectionContext::builder(singleton).build());
 
 	let router = ReactiveScope::run(|| {

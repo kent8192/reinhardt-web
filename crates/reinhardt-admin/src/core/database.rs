@@ -705,10 +705,13 @@ fn extract_admin_list_total_count(
 ///
 /// ```
 /// use reinhardt_admin::core::{AdminDatabase, AdminRecord};
-/// use reinhardt_db::orm::DatabaseConnection;
+/// use reinhardt_db::backends::DatabaseConnection as BackendsConnection;
+/// use reinhardt_db::orm::DatabaseConnectionLease;
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-/// let conn = DatabaseConnection::connect("postgres://localhost/test").await?;
+/// let owner = BackendsConnection::connect_postgres("postgres://localhost/test").await?;
+/// let lease = DatabaseConnectionLease::register(owner)?;
+/// let conn = lease.handle();
 /// let db = AdminDatabase::new(conn);
 ///
 /// // List items with filters
@@ -719,7 +722,7 @@ fn extract_admin_list_total_count(
 #[injectable(scope = Singleton, prebuilt = true)]
 #[derive(Clone)]
 pub struct AdminDatabase {
-	connection: Arc<DatabaseConnection>,
+	connection: DatabaseConnection,
 }
 
 /// Provider key for the admin database dependency.
@@ -729,19 +732,9 @@ pub struct AdminDatabaseKey;
 impl AdminDatabase {
 	/// Create a new admin database interface
 	///
-	/// This method accepts a DatabaseConnection directly without requiring `Arc` wrapping.
-	/// The `Arc` wrapping is handled internally for you.
+	/// The copyable ORM handle is stored directly. Its associated
+	/// `DatabaseConnectionLease` must remain alive for the lifetime of this value.
 	pub fn new(connection: DatabaseConnection) -> Self {
-		Self {
-			connection: Arc::new(connection),
-		}
-	}
-
-	/// Create a new admin database interface from an Arc-wrapped connection
-	///
-	/// This is provided for cases where you already have an `Arc<DatabaseConnection>`.
-	/// In most cases, you should use `new()` instead.
-	pub fn from_arc(connection: Arc<DatabaseConnection>) -> Self {
 		Self { connection }
 	}
 
@@ -750,23 +743,19 @@ impl AdminDatabase {
 		&self.connection
 	}
 
-	/// Get a cloned Arc of the connection (for cases where you need ownership)
-	///
-	/// In most cases, you should use `connection()` instead to get a reference.
-	pub fn connection_arc(&self) -> Arc<DatabaseConnection> {
-		Arc::clone(&self.connection)
-	}
-
 	/// List items with filters, ordering, and pagination
 	///
 	/// # Examples
 	///
 	/// ```
 	/// use reinhardt_admin::core::{AdminDatabase, AdminRecord};
-	/// use reinhardt_db::orm::{DatabaseConnection, Filter, FilterOperator, FilterValue};
+	/// use reinhardt_db::backends::DatabaseConnection as BackendsConnection;
+	/// use reinhardt_db::orm::{DatabaseConnectionLease, Filter, FilterOperator, FilterValue};
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// let conn = DatabaseConnection::connect("postgres://localhost/test").await?;
+	/// let owner = BackendsConnection::connect_postgres("postgres://localhost/test").await?;
+	/// let lease = DatabaseConnectionLease::register(owner)?;
+	/// let conn = lease.handle();
 	/// let db = AdminDatabase::new(conn);
 	///
 	/// let filters = vec![
@@ -1055,10 +1044,13 @@ impl AdminDatabase {
 	///
 	/// ```
 	/// use reinhardt_admin::core::{AdminDatabase, AdminRecord};
-	/// use reinhardt_db::orm::DatabaseConnection;
+	/// use reinhardt_db::backends::DatabaseConnection as BackendsConnection;
+	/// use reinhardt_db::orm::DatabaseConnectionLease;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// let conn = DatabaseConnection::connect("postgres://localhost/test").await?;
+	/// let owner = BackendsConnection::connect_postgres("postgres://localhost/test").await?;
+	/// let lease = DatabaseConnectionLease::register(owner)?;
+	/// let conn = lease.handle();
 	/// let db = AdminDatabase::new(conn);
 	///
 	/// let item = db.get::<AdminRecord>("admin_records", "id", "1").await?;
@@ -1109,11 +1101,14 @@ impl AdminDatabase {
 	///
 	/// ```
 	/// use reinhardt_admin::core::{AdminDatabase, AdminRecord};
-	/// use reinhardt_db::orm::DatabaseConnection;
+	/// use reinhardt_db::backends::DatabaseConnection as BackendsConnection;
+	/// use reinhardt_db::orm::DatabaseConnectionLease;
 	/// use std::collections::HashMap;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// let conn = DatabaseConnection::connect("postgres://localhost/test").await?;
+	/// let owner = BackendsConnection::connect_postgres("postgres://localhost/test").await?;
+	/// let lease = DatabaseConnectionLease::register(owner)?;
+	/// let conn = lease.handle();
 	/// let db = AdminDatabase::new(conn);
 	///
 	/// let mut data = HashMap::new();
@@ -1195,11 +1190,14 @@ impl AdminDatabase {
 	///
 	/// ```
 	/// use reinhardt_admin::core::{AdminDatabase, AdminRecord};
-	/// use reinhardt_db::orm::DatabaseConnection;
+	/// use reinhardt_db::backends::DatabaseConnection as BackendsConnection;
+	/// use reinhardt_db::orm::DatabaseConnectionLease;
 	/// use std::collections::HashMap;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// let conn = DatabaseConnection::connect("postgres://localhost/test").await?;
+	/// let owner = BackendsConnection::connect_postgres("postgres://localhost/test").await?;
+	/// let lease = DatabaseConnectionLease::register(owner)?;
+	/// let conn = lease.handle();
 	/// let db = AdminDatabase::new(conn);
 	///
 	/// let mut data = HashMap::new();
@@ -1249,10 +1247,13 @@ impl AdminDatabase {
 	///
 	/// ```
 	/// use reinhardt_admin::core::{AdminDatabase, AdminRecord};
-	/// use reinhardt_db::orm::DatabaseConnection;
+	/// use reinhardt_db::backends::DatabaseConnection as BackendsConnection;
+	/// use reinhardt_db::orm::DatabaseConnectionLease;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// let conn = DatabaseConnection::connect("postgres://localhost/test").await?;
+	/// let owner = BackendsConnection::connect_postgres("postgres://localhost/test").await?;
+	/// let lease = DatabaseConnectionLease::register(owner)?;
+	/// let conn = lease.handle();
 	/// let db = AdminDatabase::new(conn);
 	///
 	/// db.delete::<AdminRecord>("admin_records", "id", "1").await?;
@@ -1289,10 +1290,13 @@ impl AdminDatabase {
 	///
 	/// ```
 	/// use reinhardt_admin::core::{AdminDatabase, AdminRecord};
-	/// use reinhardt_db::orm::DatabaseConnection;
+	/// use reinhardt_db::backends::DatabaseConnection as BackendsConnection;
+	/// use reinhardt_db::orm::DatabaseConnectionLease;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// let conn = DatabaseConnection::connect("postgres://localhost/test").await?;
+	/// let owner = BackendsConnection::connect_postgres("postgres://localhost/test").await?;
+	/// let lease = DatabaseConnectionLease::register(owner)?;
+	/// let conn = lease.handle();
 	/// let db = AdminDatabase::new(conn);
 	///
 	/// let ids = vec!["1".to_string(), "2".to_string(), "3".to_string()];
@@ -1319,10 +1323,13 @@ impl AdminDatabase {
 	///
 	/// ```
 	/// use reinhardt_admin::core::AdminDatabase;
-	/// use reinhardt_db::orm::DatabaseConnection;
+	/// use reinhardt_db::backends::DatabaseConnection as BackendsConnection;
+	/// use reinhardt_db::orm::DatabaseConnectionLease;
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// let conn = DatabaseConnection::connect("postgres://localhost/test").await?;
+	/// let owner = BackendsConnection::connect_postgres("postgres://localhost/test").await?;
+	/// let lease = DatabaseConnectionLease::register(owner)?;
+	/// let conn = lease.handle();
 	/// let db = AdminDatabase::new(conn);
 	///
 	/// let ids = vec!["1".to_string(), "2".to_string(), "3".to_string()];
@@ -1364,10 +1371,13 @@ impl AdminDatabase {
 	///
 	/// ```
 	/// use reinhardt_admin::core::{AdminDatabase, AdminRecord};
-	/// use reinhardt_db::orm::{DatabaseConnection, Filter, FilterOperator, FilterValue};
+	/// use reinhardt_db::backends::DatabaseConnection as BackendsConnection;
+	/// use reinhardt_db::orm::{DatabaseConnectionLease, Filter, FilterOperator, FilterValue};
 	///
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// let conn = DatabaseConnection::connect("postgres://localhost/test").await?;
+	/// let owner = BackendsConnection::connect_postgres("postgres://localhost/test").await?;
+	/// let lease = DatabaseConnectionLease::register(owner)?;
+	/// let conn = lease.handle();
 	/// let db = AdminDatabase::new(conn);
 	///
 	/// let filters = vec![
@@ -1473,7 +1483,7 @@ impl Injectable for AdminDatabase {
 			}
 		})?;
 
-		let db = AdminDatabase::from_arc(conn);
+		let db = AdminDatabase::new(*conn);
 		// Cache for subsequent requests
 		ctx.set_singleton(db.clone());
 		Ok(db)

@@ -753,7 +753,7 @@ async fn build_from_state_from_db(
 	migrations_dir: &std::path::Path,
 	database_url: &str,
 ) -> Result<reinhardt_db::migrations::ProjectState, crate::CommandError> {
-	use reinhardt_db::DatabaseConnection;
+	use reinhardt_db::backends::DatabaseConnection;
 	use reinhardt_db::migrations::{
 		DatabaseMigrationRecorder, FilesystemSource, MigrationSource, MigrationStateLoader,
 	};
@@ -768,7 +768,7 @@ async fn build_from_state_from_db(
 	eprintln!("[DEBUG] Database connection successful");
 
 	// 3. Build state from database history
-	let recorder = DatabaseMigrationRecorder::new(connection.inner().clone());
+	let recorder = DatabaseMigrationRecorder::new(connection);
 	let applied_records = recorder.get_applied_migrations().await.map_err(|e| {
 		crate::CommandError::ExecutionError(format!("Failed to get applied migrations: {}", e))
 	})?;
@@ -2751,11 +2751,12 @@ impl RunServerCommand {
 		// and register it in the DI singleton scope. (#3186)
 		#[cfg(feature = "reinhardt-db")]
 		{
-			match reinhardt_db::orm::get_connection().await {
-				Ok(db_conn) => {
+			match reinhardt_db::orm::get_connection_registration().await {
+				Ok((database_lease, database_handle)) => {
 					// Register DatabaseConnection directly (not wrapped in Arc)
 					// The DI system wraps it in Arc internally via SingletonScope::set
-					singleton_scope.set(db_conn);
+					singleton_scope.set(database_lease);
+					singleton_scope.set(database_handle);
 					let url = std::env::var("DATABASE_URL").ok().unwrap_or_default();
 					ctx.info(&format!(
 						"💾 Database: {} (DI registered)",

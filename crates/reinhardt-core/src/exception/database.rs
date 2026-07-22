@@ -6,6 +6,8 @@ use thiserror::Error;
 pub enum DatabaseErrorKind {
 	/// A database connection could not be established or was lost.
 	Connection,
+	/// The injected database handle outlived its owning DI scope.
+	ConnectionHandleExpired,
 	/// A database operation or connection-pool acquisition timed out.
 	Timeout,
 	/// A unique constraint was violated.
@@ -72,5 +74,24 @@ impl DatabaseError {
 	/// Returns the driver- or database-specific error code, if available.
 	pub fn code(&self) -> Option<&str> {
 		self.code.as_deref()
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::{DatabaseError, DatabaseErrorKind};
+
+	#[test]
+	fn connection_handle_expired_has_stable_display_and_server_status() {
+		let error = DatabaseError::new(
+			DatabaseErrorKind::ConnectionHandleExpired,
+			"The injected database connection is no longer available because its DI scope has ended",
+		);
+
+		assert_eq!(
+			error.to_string(),
+			"The injected database connection is no longer available because its DI scope has ended"
+		);
+		assert_eq!(crate::exception::Error::from(error).status_code(), 500);
 	}
 }

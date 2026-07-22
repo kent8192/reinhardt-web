@@ -138,7 +138,10 @@
 //!
 //! ```rust,no_run
 //! use reinhardt_core::exception::Error;
-//! use reinhardt_db::orm::connection::DatabaseConnection;
+//! use reinhardt_db::{
+//!     backends::DatabaseConnection as BackendsConnection,
+//!     orm::DatabaseConnectionLease,
+//! };
 //!
 //! #[derive(Debug, thiserror::Error)]
 //! enum ApplicationError {
@@ -149,7 +152,9 @@
 //! }
 //!
 //! # async fn example() -> Result<(), ApplicationError> {
-//! let connection = DatabaseConnection::connect("sqlite::memory:").await?;
+//! let owner = BackendsConnection::connect_sqlite("sqlite::memory:").await?;
+//! let lease = DatabaseConnectionLease::register(owner)?;
+//! let connection = lease.handle();
 //! let result: Result<(), ApplicationError> = connection.atomic(async |_transaction| {
 //!     Err(ApplicationError::Rejected)
 //! }).await;
@@ -238,6 +243,13 @@ pub mod prelude {
 	#[cfg(feature = "orm")]
 	pub use crate::orm::*;
 
+	#[cfg(feature = "orm")]
+	// Allow the private explicit import to keep the lease out of the public prelude glob.
+	#[allow(hidden_glob_reexports)]
+	// Allow the shadowing import even though the prelude does not use the lease internally.
+	#[allow(unused_imports)]
+	use crate::orm::DatabaseConnectionLease;
+
 	#[cfg(feature = "migrations")]
 	pub use crate::migrations::*;
 
@@ -262,8 +274,11 @@ pub mod prelude {
 #[cfg(feature = "backends")]
 pub use backends::{DatabaseBackend, DatabaseError, DatabaseErrorKind};
 
-// Re-export ORM's DatabaseConnection which wraps BackendsConnection
-// This is the type used by Manager and other ORM components
+/// Copyable ORM connection handle used by managers and application handlers.
+///
+/// Standalone applications retain an [`orm::DatabaseConnectionLease`] for the
+/// full lifetime of every handle. Framework bootstrap owns that lease and
+/// injects this handle into request handlers.
 #[cfg(feature = "orm")]
 pub use orm::DatabaseConnection;
 #[cfg(feature = "orm")]
