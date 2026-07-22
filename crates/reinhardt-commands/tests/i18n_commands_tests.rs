@@ -328,8 +328,19 @@ async fn test_makemessages_updates_registered_app_catalog_with_interpolated_macr
 	let temp_dir = TempDir::new().unwrap();
 	let app_locale_dir = temp_dir.path().join("registered_locale/ja/LC_MESSAGES");
 	fs::create_dir_all(&app_locale_dir).unwrap();
-	let app_catalog = app_locale_dir.join("messages.po");
-	fs::write(&app_catalog, "msgid \"\"\nmsgstr \"\"\n").unwrap();
+	let existing_catalog = r#"msgid "Escaped \"label\""
+msgstr "Étiquette \"échappée\""
+
+msgid "Line one\nLine two"
+msgstr "Ligne un\nLigne deux"
+"#;
+	let app_catalogs = [
+		app_locale_dir.join("django.po"),
+		app_locale_dir.join("messages.po"),
+	];
+	for app_catalog in &app_catalogs {
+		fs::write(app_catalog, existing_catalog).unwrap();
+	}
 
 	let src_dir = temp_dir.path().join("src");
 	fs::create_dir(&src_dir).unwrap();
@@ -342,6 +353,8 @@ fn labels(project_id: u64) {
 		"Escaped \"label\"",
 	);
 	let _ = page!(|| { h1 { { t!("Page title") } } });
+	let _ = t!("Line one
+Line two");
 }
 "#,
 	)
@@ -356,19 +369,23 @@ fn labels(project_id: u64) {
 	.await;
 
 	assert!(result.is_ok(), "makemessages failed: {result:?}");
-	let content = fs::read_to_string(app_catalog).unwrap();
-	let msgids: Vec<_> = content
-		.lines()
-		.filter(|line| line.starts_with("msgid "))
-		.collect();
-	assert_eq!(
-		msgids,
-		vec![
-			r#"msgid "Escaped \"label\"""#,
-			r#"msgid "Page title""#,
-			r#"msgid "Project {id}""#,
-		]
-	);
+	for app_catalog in app_catalogs {
+		let content = fs::read_to_string(app_catalog).unwrap();
+		let entries: Vec<_> = content.lines().filter(|line| !line.is_empty()).collect();
+		assert_eq!(
+			entries,
+			vec![
+				r#"msgid "Escaped \"label\"""#,
+				r#"msgstr "Étiquette \"échappée\"""#,
+				r#"msgid "Line one\nLine two""#,
+				r#"msgstr "Ligne un\nLigne deux""#,
+				r#"msgid "Page title""#,
+				r#"msgstr """#,
+				r#"msgid "Project {id}""#,
+				r#"msgstr """#,
+			]
+		);
+	}
 }
 
 #[tokio::test]
@@ -398,21 +415,23 @@ async fn test_compilemessages_compiles_registered_app_catalog() {
 	let temp_dir = TempDir::new().unwrap();
 	let app_locale_dir = temp_dir.path().join("registered_locale/ja/LC_MESSAGES");
 	fs::create_dir_all(&app_locale_dir).unwrap();
-	fs::write(
-		app_locale_dir.join("messages.po"),
-		"msgid \"\"\nmsgstr \"\"\n\nmsgid \"Hello\"\nmsgstr \"こんにちは\"\n",
-	)
-	.unwrap();
+	for domain in ["django", "messages"] {
+		fs::write(
+			app_locale_dir.join(format!("{domain}.po")),
+			"msgid \"\"\nmsgstr \"\"\n\nmsgid \"Hello\"\nmsgstr \"こんにちは\"\n",
+		)
+		.unwrap();
+	}
 
 	let result = run_in_dir(temp_dir.path(), || async {
 		let cmd = CompileMessagesCommand;
-		let mut ctx = CommandContext::new(vec![]);
-		ctx.set_option_multi("locale".to_string(), vec!["ja".to_string()]);
+		let ctx = CommandContext::new(vec![]);
 		cmd.execute(&ctx).await
 	})
 	.await;
 
 	assert!(result.is_ok(), "compilemessages failed: {result:?}");
+	assert!(app_locale_dir.join("django.mo").exists());
 	assert!(app_locale_dir.join("messages.mo").exists());
 }
 
