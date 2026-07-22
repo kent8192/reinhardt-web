@@ -1994,6 +1994,15 @@ fn configured_static_url(base_dir: &std::path::Path) -> Result<String, String> {
 }
 
 #[cfg(feature = "server")]
+fn normalize_static_url_prefix(static_url: &str) -> String {
+	if static_url == "/" || static_url.ends_with('/') {
+		static_url.to_string()
+	} else {
+		format!("{static_url}/")
+	}
+}
+
+#[cfg(feature = "server")]
 fn spa_excluded_prefixes(generated_style_url: &str) -> Vec<String> {
 	let configured_admin_prefix = format!("{}/admin/", generated_style_url.trim_end_matches('/'));
 	let mut prefixes = vec![
@@ -2816,7 +2825,9 @@ impl RunServerCommand {
 			};
 			use reinhardt_utils::staticfiles::{PathResolver, TemplateStaticConfig};
 			let generated_style_url =
-				match PathResolver::find_project_root().or_else(|| std::env::current_dir().ok()) {
+				normalize_static_url_prefix(&match PathResolver::find_project_root()
+					.or_else(|| std::env::current_dir().ok())
+				{
 					Some(project_root) => match configured_static_url(&project_root) {
 						Ok(url) => url,
 						Err(error) => {
@@ -2827,7 +2838,7 @@ impl RunServerCommand {
 						}
 					},
 					None => "/static/".to_string(),
-				};
+				});
 
 			if let Some(generated_root) = generated_style_root {
 				let mut generated_config = StaticFilesConfig::new(generated_root.to_path_buf())
@@ -5139,6 +5150,14 @@ mod tests {
 	fn spa_fallback_excludes_the_configured_static_prefix() {
 		assert!(spa_excluded_prefixes("/assets/").contains(&"/assets/".to_string()));
 		assert!(!spa_excluded_prefixes("/").contains(&"/".to_string()));
+	}
+
+	#[cfg(feature = "server")]
+	#[test]
+	fn static_url_prefix_is_segment_terminated() {
+		assert_eq!(normalize_static_url_prefix("/assets"), "/assets/");
+		assert_eq!(normalize_static_url_prefix("/assets/"), "/assets/");
+		assert_eq!(normalize_static_url_prefix("/"), "/");
 	}
 
 	#[cfg(feature = "pages")]
