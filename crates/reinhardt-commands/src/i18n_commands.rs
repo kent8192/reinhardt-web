@@ -10,6 +10,7 @@ use crate::{
 	BaseCommand, CommandArgument, CommandContext, CommandError, CommandOption, CommandResult,
 };
 use async_trait::async_trait;
+use proc_macro2::{TokenStream, TokenTree};
 use regex::Regex;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -70,7 +71,33 @@ impl<'ast> Visit<'ast> for RustMessageVisitor {
 			self.messages.push(argument.value.value());
 		}
 
+		Self::visit_macro_tokens(node.tokens.clone(), &mut self.messages);
+
 		syn::visit::visit_macro(self, node);
+	}
+}
+
+impl RustMessageVisitor {
+	fn visit_macro_tokens(tokens: TokenStream, messages: &mut Vec<String>) {
+		let tokens: Vec<_> = tokens.into_iter().collect();
+		for window in tokens.windows(3) {
+			if let [
+				TokenTree::Ident(ident),
+				TokenTree::Punct(bang),
+				TokenTree::Group(arguments),
+			] = window && bang.as_char() == '!'
+				&& matches!(ident.to_string().as_str(), "t" | "gettext")
+				&& let Ok(argument) = syn::parse2::<FirstStringArgument>(arguments.stream())
+			{
+				messages.push(argument.value.value());
+			}
+		}
+
+		for token in tokens {
+			if let TokenTree::Group(group) = token {
+				Self::visit_macro_tokens(group.stream(), messages);
+			}
+		}
 	}
 }
 
@@ -577,38 +604,35 @@ impl BaseCommand for CompileMessagesCommand {
 
 		// Compile each locale
 		for locale in &locales_to_compile {
-			let locale_dir = PathBuf::from("locale").join(locale).join("LC_MESSAGES");
-			let po_file = locale_dir.join("reinhardt.po");
-			let mo_file = locale_dir.join("reinhardt.mo");
+			for po_file in MakeMessagesCommand::catalog_paths(locale) {
+				let mo_file = po_file.with_extension("mo");
 
-			if !po_file.exists() {
-				ctx.warning(&format!(
-					"PO file not found for locale {}: {}",
-					locale,
-					po_file.display()
-				));
-				continue;
-			}
-
-			ctx.verbose(&format!("Compiling {}", po_file.display()));
-
-			// Parse .po file and compile to .mo format
-			match Self::compile_po_to_mo(&po_file, &mo_file, _use_fuzzy) {
-				Ok(count) => {
-					ctx.verbose(&format!("Compiled {} messages", count));
-				}
-				Err(e) => {
-					ctx.warning(&format!("Failed to compile {}: {}", po_file.display(), e));
+				if !po_file.exists() {
+					ctx.warning(&format!(
+						"PO file not found for locale {}: {}",
+						locale,
+						po_file.display()
+					));
 					continue;
 				}
-			}
 
-			compiled_count += 1;
-			ctx.success(&format!("Compiled {}", locale));
+				ctx.verbose(&format!("Compiling {}", po_file.display()));
+
+				match Self::compile_po_to_mo(&po_file, &mo_file, _use_fuzzy) {
+					Ok(count) => ctx.verbose(&format!("Compiled {} messages", count)),
+					Err(e) => {
+						ctx.warning(&format!("Failed to compile {}: {}", po_file.display(), e));
+						continue;
+					}
+				}
+
+				compiled_count += 1;
+				ctx.success(&format!("Compiled {}", po_file.display()));
+			}
 		}
 
 		ctx.success(&format!(
-			"Successfully compiled {} locale(s)",
+			"Successfully compiled {} catalog(s)",
 			compiled_count
 		));
 		Ok(())
