@@ -98,7 +98,7 @@ pub(crate) fn receiver_impl(args: TokenStream, input: ItemFn) -> Result<TokenStr
 	// Validate: error if #[inject] is used when use_inject = false
 	if !use_inject && !inject_params.is_empty() {
 		return Err(syn::Error::new_spanned(
-			&inject_params[0].pat,
+			&inject_params[0].resolved_ident,
 			"#[inject] attribute requires use_inject = true option",
 		));
 	}

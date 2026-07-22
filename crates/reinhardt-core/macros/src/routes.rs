@@ -43,10 +43,6 @@ struct ExtractorInfo {
 /// Information about `#[inject]` parameters
 #[derive(Clone)]
 pub(crate) struct InjectInfo {
-	// This pattern is consumed by action and receiver expansion paths, but not by
-	// every macro target that constructs injection metadata.
-	#[allow(dead_code)]
-	pub(crate) pat: Box<Pat>,
 	pub(crate) ty: Box<Type>,
 	pub(crate) options: InjectOptions,
 	pub(crate) resolved_ident: syn::Ident,
@@ -174,7 +170,6 @@ pub(crate) fn detect_inject_params(inputs: &Punctuated<FnArg, Token![,]>) -> Vec
 					pat.span(),
 				);
 				inject_params.push(InjectInfo {
-					pat: pat.clone(),
 					ty: ty.clone(),
 					options,
 					resolved_ident,
