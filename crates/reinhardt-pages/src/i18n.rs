@@ -1,7 +1,9 @@
 //! Reactive page translation support.
 //!
 //! This module connects `reinhardt-i18n` catalogs to page rendering, SSR state,
-//! and client hydration.
+//! and client hydration. It is also the canonical native and WASM facade for
+//! constructing catalogs and using target-neutral global translation APIs in
+//! Pages applications.
 
 use std::borrow::Cow;
 #[cfg(wasm)]

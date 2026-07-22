@@ -27,9 +27,11 @@ The first supported pages i18n surface is feature-gated behind
 - `set_locale` updates the current page context, and existing `t!` output
   changes when the page snapshot is rendered again.
 
+Shared native and WASM Pages code should import catalog APIs from `reinhardt::pages::i18n` so the application depends only on the framework facade.
+
 ```rust,ignore
-use reinhardt_i18n::{MessageCatalog, TranslationContext};
-use reinhardt_pages::prelude::*;
+use reinhardt::pages::i18n::{I18nContext, MessageCatalog, TranslationContext};
+use reinhardt::pages::prelude::*;
 
 let mut translations = TranslationContext::new("ja", "en-US");
 let mut ja = MessageCatalog::new("ja");
