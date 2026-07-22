@@ -8,3 +8,4 @@
 //! `../urls/client_router.rs` as the app grows.
 
 pub mod components;
+pub mod hooks;
