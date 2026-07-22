@@ -776,19 +776,19 @@ fn generate_control_binding(
 	let binding_span = binding.span;
 	let descriptor = match (&binding.kind, &binding.expression) {
 		(TypedControlBindingKind::Text, _) => {
-			quote_spanned!(binding_span=> #pages_crate::component::ControlBinding::text((#value).clone()))
+			quote_spanned!(binding_span=> #pages_crate::component::ControlBinding::text(#value))
 		}
 		(TypedControlBindingKind::Checkbox, _) => {
-			quote_spanned!(binding_span=> #pages_crate::component::ControlBinding::checkbox((#value).clone()))
+			quote_spanned!(binding_span=> #pages_crate::component::ControlBinding::checkbox(#value))
 		}
 		(TypedControlBindingKind::SelectOne, _) => {
-			quote_spanned!(binding_span=> #pages_crate::component::ControlBinding::select_one((#value).clone()))
+			quote_spanned!(binding_span=> #pages_crate::component::ControlBinding::select_one(#value))
 		}
 		(TypedControlBindingKind::SelectMany, _) => {
-			quote_spanned!(binding_span=> #pages_crate::component::ControlBinding::select_many((#value).clone()))
+			quote_spanned!(binding_span=> #pages_crate::component::ControlBinding::select_many(#value))
 		}
 		(TypedControlBindingKind::Number, TypedControlBindingExpr::Direct(_)) => {
-			quote_spanned!(binding_span=> #pages_crate::component::ControlBinding::number((#value).clone()))
+			quote_spanned!(binding_span=> #pages_crate::component::ControlBinding::number(#value))
 		}
 		(
 			TypedControlBindingKind::Number,
@@ -796,8 +796,8 @@ fn generate_control_binding(
 		) => {
 			let error = wrap_expr_with_captures(error, pages_crate, ctx);
 			quote_spanned!(binding_span=> #pages_crate::component::ControlBinding::number_with_error(
-				(#value).clone(),
-				(#error).clone()
+				#value,
+				#error
 			))
 		}
 		(TypedControlBindingKind::Radio, _) => {
@@ -807,7 +807,7 @@ fn generate_control_binding(
 				quote! { (#radio_value).to_string() }
 			});
 			quote_spanned!(binding_span=> #pages_crate::component::ControlBinding::radio(
-				(#value).clone(),
+				#value,
 				#radio_value
 			))
 		}
@@ -1855,6 +1855,52 @@ mod tests {
 			.collect();
 
 		assert_eq!(captures, vec!["visible", "selected"]);
+	}
+
+	#[test]
+	fn test_control_binding_codegen_passes_copy_signals_by_value() {
+		let input = quote::quote!(|
+			text: Signal<String>,
+			checked: Signal<bool>,
+			radio: Signal<String>,
+			amount: Signal<i32>,
+			parse_error: Signal<Option<NumberParseError>>,
+			selected: Signal<String>,
+			selected_many: Signal<Vec<String>>,
+		| {
+			div {
+				input { a11y: off, bind: text }
+				input { a11y: off, type: "checkbox", bind: checked }
+				input { a11y: off, type: "radio", value: "choice", bind: radio }
+				input { a11y: off, type: "number", bind: number(amount, parse_error) }
+				select { a11y: off, bind: selected, option { value: "one", "One" } }
+				select { a11y: off, multiple: true, bind: selected_many, option { value: "one", "One" } }
+			}
+		});
+		let untyped_ast: reinhardt_manouche::core::PageMacro = syn::parse2(input).unwrap();
+		let typed_ast = crate::page::validator::validate(&untyped_ast).unwrap();
+		let TypedPageNode::Element(root) = &typed_ast.body().nodes[0] else {
+			panic!("expected root element");
+		};
+		let ctx = CodegenContext::new(typed_ast.implicit_captures());
+		let pages_crate = quote::quote!(reinhardt_pages);
+
+		for node in &root.children {
+			let TypedPageNode::Element(element) = node else {
+				panic!("expected bound control");
+			};
+			let binding = element.control_binding.as_ref().expect("validated binding");
+			let output = generate_control_binding(
+				binding,
+				&pages_crate,
+				&ctx,
+				(binding.kind == TypedControlBindingKind::Radio)
+					.then(|| quote::quote!("choice".to_string())),
+			)
+			.to_string()
+			.replace(' ', "");
+			assert!(!output.contains(".clone()"));
+		}
 	}
 
 	#[test]
