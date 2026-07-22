@@ -6,7 +6,7 @@
 use crate::crate_paths::{
 	get_reinhardt_core_crate, get_reinhardt_di_crate, get_reinhardt_signals_crate,
 };
-use syn::{Expr, Token, punctuated::Punctuated, spanned::Spanned};
+use syn::{Expr, Token, punctuated::Punctuated};
 
 /// Scope for dependency injection
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -212,14 +212,14 @@ pub(crate) fn detect_inject_params(
 	let mut inject_params = Vec::new();
 
 	for input in inputs {
-		if let syn::FnArg::Typed(syn::PatType { attrs, pat, ty, .. }) = input {
+		if let syn::FnArg::Typed(syn::PatType { attrs, ty, .. }) = input {
 			let has_inject = attrs.iter().any(is_inject_attr);
 
 			if has_inject {
 				let options = parse_inject_options(attrs);
 				let resolved_ident = syn::Ident::new(
 					&format!("__reinhardt_injected_{}", inject_params.len()),
-					pat.span(),
+					proc_macro2::Span::mixed_site(),
 				);
 				inject_params.push(InjectParamInfo {
 					ty: ty.clone(),
