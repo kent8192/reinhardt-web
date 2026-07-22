@@ -1989,8 +1989,10 @@ struct AutoreloadChildOptions<'a> {
 }
 
 #[cfg(feature = "server")]
-fn configured_static_url(base_dir: &std::path::Path) -> Result<String, String> {
-	crate::StaticAssetSettings::from_project_dir(base_dir).map(|settings| settings.static_url)
+fn configured_static_assets(
+	base_dir: &std::path::Path,
+) -> Result<crate::StaticAssetSettings, String> {
+	crate::StaticAssetSettings::from_project_dir(base_dir)
 }
 
 #[cfg(feature = "server")]
@@ -2824,21 +2826,24 @@ impl RunServerCommand {
 				StaticFilesConfig, StaticFilesMiddleware,
 			};
 			use reinhardt_utils::staticfiles::{PathResolver, TemplateStaticConfig};
-			let generated_style_url =
-				normalize_static_url_prefix(&match PathResolver::find_project_root()
-					.or_else(|| std::env::current_dir().ok())
-				{
-					Some(project_root) => match configured_static_url(&project_root) {
-						Ok(url) => url,
+			let static_asset_settings =
+				match PathResolver::find_project_root().or_else(|| std::env::current_dir().ok()) {
+					Some(project_root) => match configured_static_assets(&project_root) {
+						Ok(settings) => Some(settings),
 						Err(error) => {
 							ctx.warning(&format!(
 								"Failed to load static URL for generated component styles: {error}. Using /static/."
 							));
-							"/static/".to_string()
+							None
 						}
 					},
-					None => "/static/".to_string(),
-				});
+					None => None,
+				};
+			let generated_style_url = normalize_static_url_prefix(
+				static_asset_settings
+					.as_ref()
+					.map_or("/static/", |settings| settings.static_url.as_str()),
+			);
 
 			if let Some(generated_root) = generated_style_root {
 				let mut generated_config = StaticFilesConfig::new(generated_root.to_path_buf())
@@ -2890,15 +2895,18 @@ impl RunServerCommand {
 
 			// Automatically resolve static directory path
 			let resolved_static_dir = PathResolver::resolve_static_dir(static_dir);
+			let collected_static_dir = static_asset_settings.as_ref().map_or_else(
+				|| resolved_static_dir.clone(),
+				|settings| settings.static_root.clone(),
+			);
 
 			// Collected assets use the configured STATIC_URL, while the root mount
 			// below remains responsible for SPA routes and legacy bundle URLs.
 			if generated_style_url != "/" {
-				let mut collected_static_config =
-					StaticFilesConfig::new(resolved_static_dir.clone())
-						.url_prefix(generated_style_url.clone())
-						.spa_mode(false)
-						.auto_inject_wasm(false);
+				let mut collected_static_config = StaticFilesConfig::new(collected_static_dir)
+					.url_prefix(generated_style_url.clone())
+					.spa_mode(false)
+					.auto_inject_wasm(false);
 				#[cfg(debug_assertions)]
 				{
 					collected_static_config =
@@ -5133,10 +5141,28 @@ mod tests {
 		)
 		.expect("write static settings");
 
-		let static_url = configured_static_url(directory.path())
-			.expect("resolve the generated stylesheet URL prefix");
+		let static_url = configured_static_assets(directory.path())
+			.expect("resolve static asset settings")
+			.static_url;
 
 		assert_eq!(static_url, "/assets/");
+	}
+
+	#[cfg(feature = "server")]
+	#[test]
+	fn collected_assets_use_the_configured_static_root() {
+		let directory = tempfile::tempdir().expect("create project directory");
+		let settings_dir = directory.path().join("settings");
+		std::fs::create_dir_all(&settings_dir).expect("create settings directory");
+		std::fs::write(
+			settings_dir.join("base.toml"),
+			"[static]\nroot = \"collected\"\n",
+		)
+		.expect("write static settings");
+
+		let settings = configured_static_assets(directory.path()).expect("resolve static settings");
+
+		assert_eq!(settings.static_root, directory.path().join("collected"));
 	}
 
 	#[cfg(feature = "server")]
