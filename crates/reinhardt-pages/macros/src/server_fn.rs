@@ -709,18 +709,19 @@ fn add_native_mock_probe(
 
 				#[cfg(all(native, feature = "msw"))]
 				{
-					let __args = #name::Args {
-						#(#param_idents: #param_idents.clone()),*
-					};
-					if let Some(__mock_result) =
-						#pages_crate::server_fn::try_call_active_mock::<#name::marker>(__args)
-					{
-							match __mock_result {
-								Ok(__mock_value) => return Ok(__mock_value),
-								Err(__mock_error) => {
-									return Err(::std::convert::Into::into(__mock_error));
-								}
+					if #pages_crate::server_fn::has_active_server_fn_mock_scope() {
+						let __args = #name::Args {
+							#(#param_idents: #param_idents),*
+						};
+						let __mock_result =
+							#pages_crate::server_fn::try_call_active_mock::<#name::marker>(__args)
+								.expect("active server-function mock scope must return a result");
+						match __mock_result {
+							Ok(__mock_value) => return Ok(__mock_value),
+							Err(__mock_error) => {
+								return Err(::std::convert::Into::into(__mock_error));
 							}
+						}
 					}
 				}
 			}
@@ -1376,16 +1377,21 @@ fn generate_server_handler(
 	// Generate pre_validate validation code
 	let validation_code = if pre_validate {
 		let core_crate = get_reinhardt_core_crate();
-		quote! {
-			if let Err(error) = #core_crate::validators::Validate::validate(&args) {
-				let error = #pages_crate::server_fn::ServerFnError::from(error);
-				let error_body = ::serde_json::to_vec(&error)
-					.map(#pages_crate::__private::bytes::Bytes::from)
-					.unwrap_or_else(|_| #pages_crate::__private::bytes::Bytes::from_static(
-						br#"{"version":1,"kind":"server","status":500,"message":"Internal server error","field_errors":[]}"#,
-					));
-				return Err(error_body);
+		let validation_statements = regular_param_names.iter().map(|param_name| {
+			quote! {
+				if let Err(error) = #core_crate::validators::Validate::validate(&args.#param_name) {
+					let error = #pages_crate::server_fn::ServerFnError::from(error);
+					let error_body = ::serde_json::to_vec(&error)
+						.map(#pages_crate::__private::bytes::Bytes::from)
+						.unwrap_or_else(|_| #pages_crate::__private::bytes::Bytes::from_static(
+							br#"{"version":1,"kind":"server","status":500,"message":"Internal server error","field_errors":[]}"#,
+						));
+					return Err(error_body);
+				}
 			}
+		});
+		quote! {
+			#(#validation_statements)*
 		}
 	} else {
 		quote! {}
@@ -1921,7 +1927,7 @@ fn generate_server_handler(
 				use ::serde::{Serialize, Deserialize};
 
 				/// Public Args struct for MSW type-safe mocking.
-				#[derive(Serialize, Deserialize, Clone)]
+				#[derive(Serialize, Deserialize)]
 				pub struct Args {
 					#(pub #regular_param_names: #regular_param_types),*
 				}
@@ -1966,7 +1972,7 @@ fn generate_server_handler(
 					use ::serde::{Serialize, Deserialize};
 
 					/// Public Args struct for MSW type-safe mocking.
-					#[derive(Serialize, Deserialize, Clone)]
+					#[derive(Serialize, Deserialize)]
 					pub struct Args {
 						#(pub #regular_param_names: #regular_param_types),*
 					}
@@ -2486,6 +2492,10 @@ mod tests {
 		assert!(
 			generated.contains("ServerFnError :: from"),
 			"pre-validation failures must convert ValidationErrors into ServerFnError: {generated}"
+		);
+		assert!(
+			generated.contains("Validate :: validate (& args . request)"),
+			"pre-validation must validate the deserialized argument instead of the generated wrapper: {generated}"
 		);
 		assert!(
 			generated.contains("serde_json :: to_vec"),

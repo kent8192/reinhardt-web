@@ -397,7 +397,7 @@ impl Screen {
 		handler: impl Fn(S::Args) -> Result<S::Response, crate::server_fn::ServerFnError> + 'static,
 	) where
 		S: crate::server_fn::MockableServerFn + 'static,
-		S::Args: Clone + 'static,
+		S::Args: 'static,
 		S::Response: 'static,
 	{
 		self.inner.borrow().mocks.mock_server_fn::<S>(handler);
@@ -408,7 +408,7 @@ impl Screen {
 	pub fn calls_to_server_fn<S>(&self) -> ServerFnCallQuery<S>
 	where
 		S: crate::server_fn::MockableServerFn + 'static,
-		S::Args: Clone + 'static,
+		S::Args: 'static,
 	{
 		self.inner.borrow().mocks.calls_to_server_fn::<S>()
 	}

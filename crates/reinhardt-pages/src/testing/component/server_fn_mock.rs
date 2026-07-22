@@ -13,7 +13,7 @@ type ErasedHandler = Rc<dyn Fn(Box<dyn Any>) -> Result<Box<dyn Any>, ServerFnErr
 #[derive(Default)]
 pub(crate) struct ServerFnMockRegistry {
 	handlers: HashMap<TypeId, ErasedHandler>,
-	calls: HashMap<TypeId, Vec<Box<dyn Any>>>,
+	calls: HashMap<TypeId, Vec<Vec<u8>>>,
 }
 
 #[derive(Clone)]
@@ -78,23 +78,36 @@ pub(crate) fn active_scope_id() -> Option<u64> {
 	})
 }
 
+/// Returns whether the current thread has an active server-function mock scope.
+pub fn has_active_scope() -> bool {
+	ACTIVE_MOCKS.with(|slot| slot.borrow().is_some())
+}
+
 /// Calls the active native test mock for `S`, recording the typed arguments.
 pub fn try_call_active_mock<S>(args: S::Args) -> Option<Result<S::Response, ServerFnError>>
 where
 	S: MockableServerFn + 'static,
-	S::Args: Clone + 'static,
+	S::Args: 'static,
 	S::Response: 'static,
 {
 	ACTIVE_MOCKS.with(|slot| {
 		let mocks = slot.borrow().clone()?;
 		let type_id = TypeId::of::<S>();
+		let recorded_args = match serde_json::to_vec(&args) {
+			Ok(recorded_args) => recorded_args,
+			Err(error) => {
+				return Some(Err(ServerFnError::application(format!(
+					"failed to record mock arguments: {error}"
+				))));
+			}
+		};
 		let handler = {
 			let mut registry = mocks.inner.borrow_mut();
 			registry
 				.calls
 				.entry(type_id)
 				.or_default()
-				.push(Box::new(args.clone()));
+				.push(recorded_args);
 			registry.handlers.get(&type_id).cloned()
 		};
 		let Some(handler) = handler else {
@@ -118,7 +131,7 @@ impl SharedServerFnMocks {
 		handler: impl Fn(S::Args) -> Result<S::Response, ServerFnError> + 'static,
 	) where
 		S: MockableServerFn + 'static,
-		S::Args: Clone + 'static,
+		S::Args: 'static,
 		S::Response: 'static,
 	{
 		self.inner.borrow_mut().handlers.insert(
@@ -135,7 +148,7 @@ impl SharedServerFnMocks {
 	pub(crate) fn calls_to_server_fn<S>(&self) -> ServerFnCallQuery<S>
 	where
 		S: MockableServerFn + 'static,
-		S::Args: Clone + 'static,
+		S::Args: 'static,
 	{
 		let calls = self
 			.inner
@@ -145,7 +158,7 @@ impl SharedServerFnMocks {
 			.map(|values| {
 				values
 					.iter()
-					.filter_map(|value| value.downcast_ref::<S::Args>().cloned())
+					.filter_map(|value| serde_json::from_slice::<S::Args>(value).ok())
 					.map(|args| RecordedServerFnCall {
 						path: S::PATH.to_string(),
 						args,
