@@ -156,8 +156,8 @@ impl TestService {
 	#[grpc_handler]
 	async fn get_mutable_user(
 		&self,
-		__reinhardt_injected_0: Request<GetUserRequest>,
 		#[inject] mut db: MockDatabase,
+		__reinhardt_injected_0: Request<GetUserRequest>,
 		#[inject] Wrapper(mut cache): Wrapper<MockCache>,
 	) -> Result<Response<String>, Status> {
 		db.mark_used();

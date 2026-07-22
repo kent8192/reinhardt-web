@@ -235,8 +235,25 @@ pub(crate) fn expand_graphql_handler(input: ItemFn) -> Result<TokenStream> {
 		})
 		.collect();
 
-	// Collect parameter names for the original function call
-	let regular_args: Vec<_> = regular_params.iter().map(|p| &p.pat).collect();
+	// Preserve source parameter order while replacing injected patterns with values.
+	let mut inject_index = 0;
+	let call_args: Vec<_> = input
+		.sig
+		.inputs
+		.iter()
+		.filter_map(|arg| match arg {
+			FnArg::Receiver(_) => None,
+			FnArg::Typed(pat_type) if pat_type.attrs.iter().any(is_inject_attr) => {
+				let binding = &inject_bindings[inject_index];
+				inject_index += 1;
+				Some(quote! { #binding })
+			}
+			FnArg::Typed(pat_type) => {
+				let pat = &pat_type.pat;
+				Some(quote! { #pat })
+			}
+		})
+		.collect();
 
 	// Wrapper function inputs (only regular parameters, without #[inject])
 	let wrapper_inputs: Vec<_> = regular_params
@@ -273,7 +290,7 @@ pub(crate) fn expand_graphql_handler(input: ItemFn) -> Result<TokenStream> {
 			#(#injection_calls)*
 
 			// Call original function
-			#impl_fn_name(#(#regular_args,)* #(#inject_bindings),*).await
+			#impl_fn_name(#(#call_args),*).await
 		}
 	};
 

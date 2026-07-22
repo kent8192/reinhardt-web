@@ -323,11 +323,24 @@ pub(crate) fn expand_grpc_handler(input: ItemFn) -> Result<TokenStream> {
 	// Check if this is a method using proper AST receiver detection
 	let has_self = has_self_receiver(&input.sig.inputs);
 
-	// Collect parameter names for the original function call (excluding self)
-	let regular_args: Vec<_> = regular_params
+	// Preserve source parameter order while replacing injected patterns with values.
+	let mut inject_index = 0;
+	let call_args: Vec<_> = input
+		.sig
+		.inputs
 		.iter()
-		.skip(if has_self { 1 } else { 0 })
-		.map(|p| &p.pat)
+		.filter_map(|arg| match arg {
+			FnArg::Receiver(_) => None,
+			FnArg::Typed(pat_type) if pat_type.attrs.iter().any(is_inject_attr) => {
+				let binding = &inject_bindings[inject_index];
+				inject_index += 1;
+				Some(quote! { #binding })
+			}
+			FnArg::Typed(pat_type) => {
+				let pat = &pat_type.pat;
+				Some(quote! { #pat })
+			}
+		})
 		.collect();
 
 	// Wrapper function inputs (only regular parameters, without #[inject])
@@ -350,9 +363,9 @@ pub(crate) fn expand_grpc_handler(input: ItemFn) -> Result<TokenStream> {
 
 	// Generate the call to the impl function
 	let impl_call = if has_self {
-		quote! { self.#impl_fn_name(#(#regular_args,)* #(#inject_bindings),*).await }
+		quote! { self.#impl_fn_name(#(#call_args),*).await }
 	} else {
-		quote! { #impl_fn_name(#(#regular_args,)* #(#inject_bindings),*).await }
+		quote! { #impl_fn_name(#(#call_args),*).await }
 	};
 
 	// Generate the wrapper function

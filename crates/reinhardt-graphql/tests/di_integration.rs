@@ -223,8 +223,8 @@ async fn user_uncached_handler(
 #[graphql_handler]
 async fn mutable_handler(
 	_ctx: &Context<'_>,
-	__reinhardt_injected_0: ID,
 	#[inject] mut db: MockDatabase,
+	__reinhardt_injected_0: ID,
 	#[inject] Wrapper(mut cache): Wrapper<MockCache>,
 ) -> Result<User> {
 	db.mark_used();
