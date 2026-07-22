@@ -61,7 +61,33 @@ mod prelude_exports {
 	}
 }
 
-#[allow(dead_code)]
+mod crate_root_exports {
+	use reinhardt::pages::{
+		I18nError, LazyString, MessageCatalog, TranslationContext, TranslationGuard,
+	};
+
+	#[test]
+	fn pages_crate_root_exports_primary_types() {
+		fn accepts_primary_types(
+			_catalog: MessageCatalog,
+			_context: TranslationContext,
+			_error: Option<I18nError>,
+			_lazy: Option<LazyString>,
+			_guard: Option<TranslationGuard>,
+		) {
+		}
+
+		accepts_primary_types(
+			MessageCatalog::new("en-US"),
+			TranslationContext::new("en-US", "en-US"),
+			None,
+			None,
+			None,
+		);
+	}
+}
+
+#[test]
 fn target_neutral_exports_compile() {
 	let _activate: fn(&str) -> Result<(), I18nError> = activate;
 	let _activate_with_catalog: fn(&str, MessageCatalog) -> Result<(), I18nError> =
