@@ -263,7 +263,7 @@ mod tests {
 		// Verify connection is usable
 		assert!(matches!(
 			mock_connection.backend(),
-			DatabaseBackend::Postgres
+			reinhardt_db::orm::DatabaseBackend::Postgres
 		));
 	}
 }

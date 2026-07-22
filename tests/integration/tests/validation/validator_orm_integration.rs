@@ -353,7 +353,7 @@ mod constraint_validation_tests {
 						.bind(&value)
 					};
 
-					let result = query.fetch_one(&pool).await;
+					let result = query.fetch_one(pool.as_ref()).await;
 					result.map(|(count,)| count > 0).unwrap_or(false)
 				})
 			}),
@@ -384,7 +384,7 @@ mod constraint_validation_tests {
 			sqlx::query("INSERT INTO test_users (username, email) VALUES ($1, $2) RETURNING id")
 				.bind("alice")
 				.bind("different@example.com")
-				.fetch_one(&pool)
+				.fetch_one(pool.as_ref())
 				.await;
 		assert!(insert_result.is_err());
 
@@ -477,7 +477,7 @@ mod relationship_validation_tests {
 							"SELECT COUNT(*) FROM test_users WHERE id = $1",
 						)
 						.bind(id)
-						.fetch_one(&pool)
+						.fetch_one(pool.as_ref())
 						.await;
 						result.map(|(count,)| count > 0).unwrap_or(false)
 					} else {
@@ -500,7 +500,7 @@ mod relationship_validation_tests {
 							"SELECT COUNT(*) FROM test_products WHERE id = $1",
 						)
 						.bind(id)
-						.fetch_one(&pool)
+						.fetch_one(pool.as_ref())
 						.await;
 						result.map(|(count,)| count > 0).unwrap_or(false)
 					} else {
@@ -548,7 +548,7 @@ mod relationship_validation_tests {
 		.bind(99999) // non-existent user_id
 		.bind(product_id)
 		.bind(1)
-		.execute(&pool)
+		.execute(pool.as_ref())
 		.await;
 
 		assert!(insert_result.is_err());
@@ -596,7 +596,7 @@ mod relationship_validation_tests {
 			sqlx::query("UPDATE test_orders SET user_id = $1 WHERE id = $2")
 				.bind(99999)
 				.bind(order_id)
-				.execute(&pool)
+				.execute(pool.as_ref())
 				.await;
 
 		assert!(update_result.is_err());
@@ -645,7 +645,7 @@ mod relationship_validation_tests {
 		let delete_result: Result<sqlx::postgres::PgQueryResult, sqlx::Error> =
 			sqlx::query("DELETE FROM test_users WHERE id = $1")
 				.bind(user_id)
-				.execute(&pool)
+				.execute(pool.as_ref())
 				.await;
 
 		assert!(delete_result.is_err());
