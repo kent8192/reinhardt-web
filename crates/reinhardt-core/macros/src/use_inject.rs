@@ -21,6 +21,14 @@ fn is_inject_attr(attr: &Attribute) -> bool {
 	attr.path().is_ident("inject")
 }
 
+fn pattern_ident(pat: &Pat) -> Option<&syn::Ident> {
+	if let Pat::Ident(pat_ident) = pat {
+		Some(&pat_ident.ident)
+	} else {
+		None
+	}
+}
+
 /// Process a function argument and determine if it needs injection
 #[derive(Clone)]
 struct ProcessedArg {
@@ -135,6 +143,12 @@ pub(crate) fn use_inject_impl(_args: TokenStream, input: ItemFn) -> Result<Token
 
 	for arg in &sig.inputs {
 		if let Some(processed) = ProcessedArg::from_fn_arg(arg) {
+			if !processed.inject && pattern_ident(&processed.pat).is_none() {
+				return Err(syn::Error::new_spanned(
+					&processed.pat,
+					"#[use_inject] requires named non-injected parameters",
+				));
+			}
 			if processed.inject {
 				let mut processed = processed;
 				processed.resolved_ident = Some(syn::Ident::new(
@@ -155,7 +169,7 @@ pub(crate) fn use_inject_impl(_args: TokenStream, input: ItemFn) -> Result<Token
 				};
 
 				if is_request {
-					request_param = Some(processed.pat.clone());
+					request_param = pattern_ident(&processed.pat).cloned();
 				} else {
 					// This is a regular parameter (not Request, not inject)
 					other_params.push(processed.clone());
@@ -172,7 +186,7 @@ pub(crate) fn use_inject_impl(_args: TokenStream, input: ItemFn) -> Result<Token
 	let has_request = request_param.is_some();
 
 	// Use existing request pat or create a new one
-	let request_pat: Pat = request_param.unwrap_or_else(|| {
+	let request_ident = request_param.unwrap_or_else(|| {
 		syn::parse_quote! { __req }
 	});
 
@@ -197,7 +211,7 @@ pub(crate) fn use_inject_impl(_args: TokenStream, input: ItemFn) -> Result<Token
 	// the HTTP request is available for parameter extraction (e.g. AuthInfo).
 	let di_context_extraction = if !inject_params.is_empty() {
 		quote! {
-			let __shared_ctx = match #request_pat.get_di_context::<::std::sync::Arc<#di_crate::InjectionContext>>() {
+			let __shared_ctx = match #request_ident.get_di_context::<::std::sync::Arc<#di_crate::InjectionContext>>() {
 				Some(ctx) => ctx,
 				None => {
 					::tracing::warn!(
@@ -209,7 +223,7 @@ pub(crate) fn use_inject_impl(_args: TokenStream, input: ItemFn) -> Result<Token
 					))
 				}
 			};
-			let __di_request = #request_pat.clone_for_di();
+			let __di_request = #request_ident.clone_for_di();
 			let __di_ctx = ::std::sync::Arc::new((*__shared_ctx).fork_for_request(__di_request));
 			let __resolve_ctx = #di_crate::resolve_context::ResolveContext {
 				root: ::std::sync::Arc::clone(&__shared_ctx),
@@ -257,7 +271,8 @@ pub(crate) fn use_inject_impl(_args: TokenStream, input: ItemFn) -> Result<Token
 				Some(quote! { #ident })
 			} else {
 				let pat = &pat_type.pat;
-				Some(quote! { #pat })
+				let ident = pattern_ident(pat).expect("non-injected patterns are validated");
+				Some(quote! { #ident })
 			}
 		})
 		.collect();
@@ -291,31 +306,31 @@ pub(crate) fn use_inject_impl(_args: TokenStream, input: ItemFn) -> Result<Token
 		if has_request {
 			// Request was in original signature
 			if other_param_tokens.is_empty() {
-				quote! { #self_p, #request_pat: #http_crate::Request }
+				quote! { #self_p, #request_ident: #http_crate::Request }
 			} else {
-				quote! { #self_p, #request_pat: #http_crate::Request, #(#other_param_tokens),* }
+				quote! { #self_p, #request_ident: #http_crate::Request, #(#other_param_tokens),* }
 			}
 		} else {
 			// Request not in original, add it for DI
 			if other_param_tokens.is_empty() {
-				quote! { #self_p, #request_pat: #http_crate::Request }
+				quote! { #self_p, #request_ident: #http_crate::Request }
 			} else {
-				quote! { #self_p, #request_pat: #http_crate::Request, #(#other_param_tokens),* }
+				quote! { #self_p, #request_ident: #http_crate::Request, #(#other_param_tokens),* }
 			}
 		}
 	} else if has_request {
 		// Request was in original signature
 		if other_param_tokens.is_empty() {
-			quote! { #request_pat: #http_crate::Request }
+			quote! { #request_ident: #http_crate::Request }
 		} else {
-			quote! { #request_pat: #http_crate::Request, #(#other_param_tokens),* }
+			quote! { #request_ident: #http_crate::Request, #(#other_param_tokens),* }
 		}
 	} else {
 		// Request not in original, add it for DI
 		if other_param_tokens.is_empty() {
-			quote! { #request_pat: #http_crate::Request }
+			quote! { #request_ident: #http_crate::Request }
 		} else {
-			quote! { #request_pat: #http_crate::Request, #(#other_param_tokens),* }
+			quote! { #request_ident: #http_crate::Request, #(#other_param_tokens),* }
 		}
 	};
 
@@ -377,6 +392,29 @@ mod tests {
 			generated.contains(
 				"handler_original (first , __reinhardt_injected_0 , last , __reinhardt_injected_1)"
 			),
+			"{generated}"
+		);
+	}
+
+	#[test]
+	fn forwards_mutable_non_injected_parameters_by_identifier() {
+		let input: ItemFn = parse_quote! {
+			async fn handler(mut request: Request, mut value: String, #[inject] service: Service) -> Result<(), Error> { Ok(()) }
+		};
+		let generated = use_inject_impl(TokenStream::new(), input)
+			.unwrap()
+			.to_string();
+
+		assert!(
+			generated.contains("request . get_di_context"),
+			"{generated}"
+		);
+		assert!(
+			generated.contains("handler_original (request , value , __reinhardt_injected_0)"),
+			"{generated}"
+		);
+		assert!(
+			!generated.contains("mut request . get_di_context"),
 			"{generated}"
 		);
 	}
