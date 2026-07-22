@@ -1376,16 +1376,21 @@ fn generate_server_handler(
 	// Generate pre_validate validation code
 	let validation_code = if pre_validate {
 		let core_crate = get_reinhardt_core_crate();
-		quote! {
-			if let Err(error) = #core_crate::validators::Validate::validate(&args) {
-				let error = #pages_crate::server_fn::ServerFnError::from(error);
-				let error_body = ::serde_json::to_vec(&error)
-					.map(#pages_crate::__private::bytes::Bytes::from)
-					.unwrap_or_else(|_| #pages_crate::__private::bytes::Bytes::from_static(
-						br#"{"version":1,"kind":"server","status":500,"message":"Internal server error","field_errors":[]}"#,
-					));
-				return Err(error_body);
+		let validation_statements = regular_param_names.iter().map(|param_name| {
+			quote! {
+				if let Err(error) = #core_crate::validators::Validate::validate(&args.#param_name) {
+					let error = #pages_crate::server_fn::ServerFnError::from(error);
+					let error_body = ::serde_json::to_vec(&error)
+						.map(#pages_crate::__private::bytes::Bytes::from)
+						.unwrap_or_else(|_| #pages_crate::__private::bytes::Bytes::from_static(
+							br#"{"version":1,"kind":"server","status":500,"message":"Internal server error","field_errors":[]}"#,
+						));
+					return Err(error_body);
+				}
 			}
+		});
+		quote! {
+			#(#validation_statements)*
 		}
 	} else {
 		quote! {}
@@ -2486,6 +2491,10 @@ mod tests {
 		assert!(
 			generated.contains("ServerFnError :: from"),
 			"pre-validation failures must convert ValidationErrors into ServerFnError: {generated}"
+		);
+		assert!(
+			generated.contains("Validate :: validate (& args . request)"),
+			"pre-validation must validate the deserialized argument instead of the generated wrapper: {generated}"
 		);
 		assert!(
 			generated.contains("serde_json :: to_vec"),
