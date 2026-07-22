@@ -26,6 +26,10 @@ impl MockDatabase {
 		}
 	}
 
+	fn mark_used(&mut self) {
+		self.calls.lock().unwrap().push("used".to_string());
+	}
+
 	async fn fetch_user(&self, user_id: &str) -> Result<User> {
 		self.calls
 			.lock()
@@ -73,9 +77,23 @@ impl MockCache {
 		}
 	}
 
+	fn mark_used(&mut self) {
+		self.calls.lock().unwrap().push("used".to_string());
+	}
+
 	async fn get(&self, key: &str) -> Option<User> {
 		self.calls.lock().unwrap().push(format!("get({})", key));
 		None
+	}
+}
+
+#[derive(Clone)]
+struct Wrapper<T>(T);
+
+#[async_trait::async_trait]
+impl Injectable for Wrapper<MockCache> {
+	async fn inject(ctx: &InjectionContext) -> Result<Self, DiError> {
+		Ok(Self(MockCache::inject(ctx).await?))
 	}
 }
 
@@ -152,6 +170,10 @@ impl Query {
 	async fn user_uncached(&self, ctx: &Context<'_>, id: ID) -> Result<User> {
 		user_uncached_handler(ctx, id).await
 	}
+
+	async fn mutable_user(&self, ctx: &Context<'_>, id: ID) -> Result<User> {
+		mutable_handler(ctx, id).await
+	}
 }
 
 #[graphql_handler]
@@ -196,6 +218,38 @@ async fn user_uncached_handler(
 ) -> Result<User> {
 	let user = db.fetch_user(&id).await?;
 	Ok(user)
+}
+
+#[graphql_handler]
+async fn mutable_handler(
+	_ctx: &Context<'_>,
+	__reinhardt_injected_0: ID,
+	#[inject] mut db: MockDatabase,
+	#[inject] Wrapper(mut cache): Wrapper<MockCache>,
+) -> Result<User> {
+	db.mark_used();
+	cache.mark_used();
+	let user = db.fetch_user(&__reinhardt_injected_0).await?;
+	Ok(user)
+}
+
+#[rstest]
+#[tokio::test]
+async fn test_graphql_handler_forwards_mutable_and_destructured_dependencies(
+	injection_context_with_database: Arc<InjectionContext>,
+) {
+	let schema = Schema::build(Query, EmptyMutation, EmptySubscription)
+		.with_di_context(injection_context_with_database)
+		.finish();
+
+	let result = schema
+		.execute(r#"{ mutableUser(id: "pattern") { id name } }"#)
+		.await;
+
+	assert!(result.errors.is_empty());
+	let data = result.data.into_json().unwrap();
+	assert_eq!(data["mutableUser"]["id"], "pattern");
+	assert_eq!(data["mutableUser"]["name"], "User pattern");
 }
 
 #[rstest]

@@ -260,6 +260,10 @@ async fn handler(
 }
 ```
 
+Injected parameters may use normal Rust binding patterns, including mutable
+bindings and newtype destructuring. The generated wrapper preserves the pattern
+on the handler implementation while forwarding the resolved dependency value.
+
 ### Integration with GraphQL
 
 When using with the `reinhardt-graphql` crate, refer to the

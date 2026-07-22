@@ -38,6 +38,10 @@ use reinhardt::graphql::macros::{GrpcGraphQLConvert, GrpcSubscription};
 
 ### Implemented ✓
 
+- **graphql_handler** - Dependency-injected GraphQL resolver handlers
+  - Supports mutable bindings and destructuring patterns on `#[inject]` parameters
+  - Preserves the declared pattern while forwarding the resolved dependency
+
 - **GrpcGraphQLConvert** - Automatic type conversion between Protobuf and GraphQL types
   - Derives `From<proto::T> for T` and `From<T> for proto::T`
   - Conditional field inclusion with `#[graphql(skip_if = "...")]`

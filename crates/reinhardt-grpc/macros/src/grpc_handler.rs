@@ -18,7 +18,6 @@ struct ParamInfo {
 /// Information about `#[inject]` parameters
 #[derive(Clone)]
 struct InjectInfo {
-	pat: Box<Pat>,
 	ty: Box<Type>,
 	use_cache: bool,
 }
@@ -129,13 +128,12 @@ fn detect_inject_params(inputs: &Punctuated<FnArg, Token![,]>) -> Result<Vec<Inj
 	let mut inject_params = Vec::new();
 
 	for input in inputs {
-		if let FnArg::Typed(PatType { attrs, pat, ty, .. }) = input {
+		if let FnArg::Typed(PatType { attrs, ty, .. }) = input {
 			let has_inject = attrs.iter().any(is_inject_attr);
 
 			if has_inject {
 				let options = parse_inject_options(attrs)?;
 				inject_params.push(InjectInfo {
-					pat: pat.clone(),
 					ty: ty.clone(),
 					use_cache: options.use_cache,
 				});
@@ -297,15 +295,18 @@ pub(crate) fn expand_grpc_handler(input: ItemFn) -> Result<TokenStream> {
 	};
 
 	// Generate injection calls
+	let inject_bindings: Vec<_> = (0..inject_params.len())
+		.map(|index| syn::Ident::new(&format!("__reinhardt_injected_{index}"), Span::mixed_site()))
+		.collect();
 	let injection_calls: Vec<_> = inject_params
 		.iter()
-		.map(|param| {
-			let pat = &param.pat;
+		.zip(&inject_bindings)
+		.map(|(param, binding)| {
 			let ty = &param.ty;
 			let use_cache = param.use_cache;
 
 			quote! {
-				let #pat: #ty = {
+				let #binding: #ty = {
 					use #di_crate::{
 						__InjectFallbackResolver as _,
 						__InjectWrapperResolver as _,
@@ -328,7 +329,6 @@ pub(crate) fn expand_grpc_handler(input: ItemFn) -> Result<TokenStream> {
 		.skip(if has_self { 1 } else { 0 })
 		.map(|p| &p.pat)
 		.collect();
-	let inject_args: Vec<_> = inject_params.iter().map(|param| &param.pat).collect();
 
 	// Wrapper function inputs (only regular parameters, without #[inject])
 	// Use has_self flag from proper receiver detection instead of Pat::Verbatim matching
@@ -350,9 +350,9 @@ pub(crate) fn expand_grpc_handler(input: ItemFn) -> Result<TokenStream> {
 
 	// Generate the call to the impl function
 	let impl_call = if has_self {
-		quote! { self.#impl_fn_name(#(#regular_args,)* #(#inject_args),*).await }
+		quote! { self.#impl_fn_name(#(#regular_args,)* #(#inject_bindings),*).await }
 	} else {
-		quote! { #impl_fn_name(#(#regular_args,)* #(#inject_args),*).await }
+		quote! { #impl_fn_name(#(#regular_args,)* #(#inject_bindings),*).await }
 	};
 
 	// Generate the wrapper function
