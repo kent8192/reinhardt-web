@@ -709,18 +709,19 @@ fn add_native_mock_probe(
 
 				#[cfg(all(native, feature = "msw"))]
 				{
-					let __args = #name::Args {
-						#(#param_idents: #param_idents.clone()),*
-					};
-					if let Some(__mock_result) =
-						#pages_crate::server_fn::try_call_active_mock::<#name::marker>(__args)
-					{
-							match __mock_result {
-								Ok(__mock_value) => return Ok(__mock_value),
-								Err(__mock_error) => {
-									return Err(::std::convert::Into::into(__mock_error));
-								}
+					if #pages_crate::server_fn::has_active_server_fn_mock_scope() {
+						let __args = #name::Args {
+							#(#param_idents: #param_idents),*
+						};
+						let __mock_result =
+							#pages_crate::server_fn::try_call_active_mock::<#name::marker>(__args)
+								.expect("active server-function mock scope must return a result");
+						match __mock_result {
+							Ok(__mock_value) => return Ok(__mock_value),
+							Err(__mock_error) => {
+								return Err(::std::convert::Into::into(__mock_error));
 							}
+						}
 					}
 				}
 			}

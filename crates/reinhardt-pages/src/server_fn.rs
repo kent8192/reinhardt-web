@@ -130,7 +130,15 @@ pub use set::{
 };
 
 #[cfg(all(native, feature = "testing", feature = "msw"))]
-pub use crate::testing::component::server_fn_mock::try_call_active_mock;
+pub use crate::testing::component::server_fn_mock::{
+	has_active_scope as has_active_server_fn_mock_scope, try_call_active_mock,
+};
+
+#[cfg(all(native, feature = "msw", not(feature = "testing")))]
+/// Returns false outside component-test builds.
+pub const fn has_active_server_fn_mock_scope() -> bool {
+	false
+}
 
 #[cfg(all(native, feature = "msw", not(feature = "testing")))]
 /// No-op native server-function mock probe outside component-test builds.
