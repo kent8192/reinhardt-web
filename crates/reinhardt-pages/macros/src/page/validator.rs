@@ -141,7 +141,8 @@ fn collect_free_idents(
 /// `params` list. Item paths (`crate::util::fmt`), type identifiers
 /// (`Vec`, `Option`), and constants (`MAX_LEN`) are exempt. Macro invocation
 /// names (`format!`) are exempt, but macro arguments are scanned for free
-/// identifiers when they parse as Rust expressions.
+/// identifiers when they parse as Rust expressions. Named argument keys such
+/// as `name` in `t!("Hello {name}", name = source)` are not value captures.
 fn enforce_strict_captures(
 	head: Option<&Expr>,
 	body: &PageBody,
@@ -397,7 +398,11 @@ impl<'ast> Visit<'ast> for ExprIdentVisitor<'_> {
 			.parse_body_with(Punctuated::<Expr, Token![,]>::parse_terminated)
 		{
 			for arg in args {
-				self.visit_expr(&arg);
+				if let Expr::Assign(assign) = arg {
+					self.visit_expr(&assign.right);
+				} else {
+					self.visit_expr(&arg);
+				}
 			}
 		}
 	}
@@ -3257,6 +3262,33 @@ mod capture_tests {
 
 		// Assert
 		assert_eq!(captures, vec!["outer_value"]);
+	}
+
+	#[rstest]
+	fn body_only_form_ignores_named_macro_argument_key() {
+		let ast = parse(quote! {
+			{ p { {t!("Project {id}", id = project_id)} } }
+		});
+
+		let result = validate(&ast).expect("implicit body should validate");
+		let captures: Vec<String> = result
+			.implicit_captures()
+			.iter()
+			.map(|capture| capture.ident.to_string())
+			.collect();
+
+		assert_eq!(captures, vec!["project_id"]);
+	}
+
+	#[rstest]
+	fn strict_form_ignores_named_macro_argument_key() {
+		let ast = parse(quote! {
+			|project_id: i64| { p { {t!("Project {id}", id = project_id)} } }
+		});
+
+		let result = enforce_strict_captures(ast.head.as_ref(), ast.body(), ast.params());
+
+		assert!(result.is_ok());
 	}
 
 	#[rstest]

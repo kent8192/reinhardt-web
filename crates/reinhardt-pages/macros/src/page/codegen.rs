@@ -289,7 +289,11 @@ impl<'ast> Visit<'ast> for ExprCaptureCollector<'_> {
 			.parse_body_with(Punctuated::<syn::Expr, Token![,]>::parse_terminated)
 		{
 			for arg in args {
-				self.visit_expr(&arg);
+				if let syn::Expr::Assign(assign) = arg {
+					self.visit_expr(&assign.right);
+				} else {
+					self.visit_expr(&arg);
+				}
 			}
 		}
 	}
@@ -1884,5 +1888,23 @@ mod tests {
 			.collect();
 
 		assert_eq!(captures, vec!["selected"]);
+	}
+
+	#[test]
+	fn test_named_macro_argument_key_is_not_a_capture() {
+		let input = quote::quote!({
+			p { { t!("Project {id}", id = project_id) } }
+		});
+		let untyped_ast: reinhardt_manouche::core::PageMacro = syn::parse2(input).unwrap();
+		let typed_ast = crate::page::validator::validate(&untyped_ast).unwrap();
+		let ctx = CodegenContext::new(typed_ast.implicit_captures());
+
+		let captures: Vec<String> = ctx
+			.captures_in_node(&typed_ast.body().nodes[0])
+			.into_iter()
+			.map(|ident| ident.to_string())
+			.collect();
+
+		assert_eq!(captures, vec!["project_id"]);
 	}
 }
