@@ -6,6 +6,7 @@ use reinhardt::pages::i18n::{
 	gettext, gettext_lazy, ngettext, ngettext_lazy, npgettext, pgettext, set_active_translation,
 	set_active_translation_permanent,
 };
+use serial_test::serial;
 
 fn translated_context() -> TranslationContext {
 	let mut catalog = MessageCatalog::new("ja");
@@ -26,6 +27,7 @@ fn pages_i18n_facade_constructs_catalog_backed_context() {
 }
 
 #[test]
+#[serial(i18n)]
 fn pages_i18n_facade_restores_scoped_global_translation() {
 	assert!(get_active_translation().is_none());
 

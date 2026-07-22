@@ -387,6 +387,7 @@ cfg_aliases = "0.2"
 
 [dev-dependencies]
 rstest = { workspace = true }
+serial_test = { workspace = true }
 
 [workspace]
 resolver = "3"
