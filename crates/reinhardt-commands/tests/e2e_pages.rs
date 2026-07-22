@@ -478,6 +478,14 @@ async fn app_pages_layout_matches_tutorial() {
 		hooks_rs,
 		"//! Reusable client-side custom hooks for the polls application.\n"
 	);
+	assert!(
+		polls_dir
+			.join("client")
+			.join("hooks")
+			.join(".gitkeep")
+			.exists(),
+		"apps/polls/client/hooks/.gitkeep must preserve the directory for one hook per Rust file"
+	);
 
 	let polls_components = polls_dir.join("client").join("components.rs");
 	assert!(
@@ -786,6 +794,10 @@ async fn workspace_app_pages_uses_unified_template() {
 	assert_eq!(
 		workspace_hooks_rs,
 		"//! Reusable client-side custom hooks for the bar application.\n"
+	);
+	assert!(
+		src.join("client").join("hooks").join(".gitkeep").exists(),
+		"apps/bar/src/client/hooks/.gitkeep must preserve the directory for one hook per Rust file"
 	);
 	assert!(
 		src.join("client")

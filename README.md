@@ -378,7 +378,8 @@ src/
 │       │   ├── components.rs     # per-app component aggregator
 │       │   ├── components/
 │       │   │   └── placeholder.rs # route-backed placeholder component
-│       │   └── hooks.rs          # reusable client-side custom hooks
+│       │   ├── hooks.rs          # custom hook aggregator
+│       │   └── hooks/           # (.gitkeep — one custom hook per .rs file)
 │       ├── models.rs             # shared models and wire-safe info types
 │       ├── serializers.rs        # serializer aggregator
 │       ├── serializers/          # (.gitkeep — user adds submodules here)
