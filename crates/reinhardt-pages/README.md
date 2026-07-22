@@ -699,6 +699,25 @@ before exposing queryable text and roles.
 
 ## Architecture
 
+### Fresh CSR root contexts
+
+Install application-wide contexts on `ClientLauncher` so their RAII guards
+remain live for the initial render and later SPA navigations:
+
+```rust,ignore
+let i18n = I18nContext::empty("en-US", "en-US"); // Requires the `i18n` feature.
+
+ClientLauncher::new("#root")
+    .i18n_context(i18n)
+    .register_routes_from_inventory()
+    .launch()
+```
+
+For other context keys, use
+`ClientLauncher::provide_context(&context, value)`. The launcher installs all
+root contexts before lifecycle callbacks and router construction. A failed
+launch drops the guards automatically.
+
 This framework consists of several key modules:
 
 - **`reactive`**: Fine-grained reactivity system (Signal, Effect, Memo)
