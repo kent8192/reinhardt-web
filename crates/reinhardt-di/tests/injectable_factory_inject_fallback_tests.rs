@@ -29,8 +29,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use reinhardt_di::{
-	DiResult, Injectable, InjectableKey, InjectableType, InjectionContext, KeyedDepends,
-	KeyedFactoryOutput, SingletonScope, global_registry, injectable,
+	DiResult, FactoryOutput, Injectable, InjectableKey, InjectableType, InjectionContext,
+	KeyedDepends, KeyedFactoryOutput, SingletonScope, global_registry, injectable,
 };
 
 static FRESH_WRAPPER_COUNTER: AtomicU32 = AtomicU32::new(0);
@@ -440,5 +440,110 @@ async fn factory_prefers_injectable_type_wrapper_over_injectable_fallback() {
 	assert_eq!(
 		report.as_ref().as_ref(),
 		&DualModeReport { source: "registry" }
+	);
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct MutableConfig {
+	touches: u32,
+}
+
+impl MutableConfig {
+	fn touch(&mut self) {
+		self.touches += 1;
+	}
+}
+
+#[async_trait]
+impl Injectable for MutableConfig {
+	async fn inject(_ctx: &InjectionContext) -> DiResult<Self> {
+		Ok(Self { touches: 0 })
+	}
+}
+
+#[derive(Clone, Debug)]
+struct MutableWrapper<T> {
+	inner: Arc<T>,
+}
+
+impl<T> InjectableType for MutableWrapper<T>
+where
+	T: Send + Sync + 'static,
+{
+	type Inner = T;
+
+	fn from_resolved(inner: Arc<Self::Inner>, _use_cache: bool) -> Self {
+		Self { inner }
+	}
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct MutableOutput {
+	touches: u32,
+}
+
+struct MutableOutputKey;
+
+impl InjectableKey for MutableOutputKey {}
+
+#[derive(Clone, Debug, PartialEq)]
+struct WrappedMutableOutput {
+	touches: u32,
+}
+
+struct WrappedMutableOutputKey;
+
+impl InjectableKey for WrappedMutableOutputKey {}
+
+#[injectable(scope = "transient")]
+async fn mutable_provider(
+	#[inject] mut config: MutableConfig,
+) -> FactoryOutput<MutableOutputKey, MutableOutput> {
+	config.touch();
+	FactoryOutput::new(MutableOutput {
+		touches: config.touches,
+	})
+}
+
+#[injectable(scope = "transient")]
+async fn wrapped_mutable_provider(
+	#[inject] MutableWrapper {
+		inner: mut __reinhardt_injected_0,
+	}: MutableWrapper<MutableConfig>,
+) -> FactoryOutput<WrappedMutableOutputKey, WrappedMutableOutput> {
+	Arc::make_mut(&mut __reinhardt_injected_0).touch();
+	FactoryOutput::new(WrappedMutableOutput {
+		touches: __reinhardt_injected_0.touches,
+	})
+}
+
+#[rstest]
+#[serial(di_registry)]
+#[tokio::test]
+async fn factory_forwards_mutable_and_destructured_injected_parameters() {
+	// Arrange
+	let registry = global_registry();
+	let _guard = registry.register_override::<MutableConfig, _, _>(
+		reinhardt_di::DependencyScope::Transient,
+		|_ctx| async { Ok(MutableConfig { touches: 0 }) },
+	);
+	let scope = Arc::new(SingletonScope::new());
+	let ctx = InjectionContext::builder(scope).build();
+
+	// Act
+	let mutable = ctx
+		.resolve::<FactoryOutput<MutableOutputKey, MutableOutput>>()
+		.await
+		.expect("mutable injected parameter must be forwarded");
+	let wrapped = ctx
+		.resolve::<FactoryOutput<WrappedMutableOutputKey, WrappedMutableOutput>>()
+		.await
+		.expect("destructured injected parameter must be forwarded");
+
+	// Assert
+	assert_eq!(mutable.as_ref().as_ref(), &MutableOutput { touches: 1 });
+	assert_eq!(
+		wrapped.as_ref().as_ref(),
+		&WrappedMutableOutput { touches: 1 }
 	);
 }

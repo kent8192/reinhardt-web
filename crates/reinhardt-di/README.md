@@ -526,6 +526,8 @@ types only to avoid `TypeId` collisions.
 `#[inject]` wrapper detection is trait-based. `KeyedDepends<K, T>` resolves
 `KeyedFactoryOutput<K, T>`, and applications can define their own wrapper types
 by implementing `InjectableType` with the registry key in `type Inner`.
+Provider parameters support ordinary Rust patterns, including mutable bindings
+and destructuring; resolved dependencies are forwarded into those patterns.
 
 ```rust
 use reinhardt::di::{InjectableKey, InjectableType, KeyedDepends, KeyedFactoryOutput};

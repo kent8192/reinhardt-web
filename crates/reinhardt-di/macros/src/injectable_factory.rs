@@ -2,7 +2,7 @@
 
 use crate::crate_paths::get_reinhardt_di_crate;
 use crate::utils::{extract_scope_from_args, is_inject_attr};
-use proc_macro2::TokenStream;
+use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote};
 use syn::{FnArg, GenericArgument, ItemFn, Pat, PatType, PathArguments, Result, Type};
 
@@ -186,29 +186,26 @@ pub(crate) fn injectable_factory_impl(args: TokenStream, input: ItemFn) -> Resul
 	// The runtime resolver lets the compiler choose the `InjectableType`
 	// wrapper path first and falls back to normal `Injectable` resolution for
 	// non-wrapper parameters.
+	let injected_idents: Vec<_> = inject_params
+		.iter()
+		.enumerate()
+		.map(|(index, _)| {
+			format_ident!("__reinhardt_injected_{}", index, span = Span::mixed_site())
+		})
+		.collect();
 	let inject_resolutions: Vec<_> = inject_params
 		.iter()
-		.map(|(pat, ty)| {
+		.zip(&injected_idents)
+		.map(|((_, ty), injected_ident)| {
 			let resolve_expr = generate_inject_resolver_expr(&di_crate, ty, quote! { &*ctx }, true);
 			quote! {
-				let #pat: #ty = #resolve_expr?;
+				let #injected_ident: #ty = #resolve_expr?;
 			}
 		})
 		.collect();
 
-	// Generate parameter names for the original function call
-	let inject_param_names: Vec<_> = inject_params
-		.iter()
-		.map(|(pat, _)| {
-			// Extract the identifier from the pattern
-			if let Pat::Ident(pat_ident) = pat.as_ref() {
-				let ident = &pat_ident.ident;
-				quote! { #ident }
-			} else {
-				quote! { #pat }
-			}
-		})
-		.collect();
+	// Forward resolved values independently of the original parameter patterns.
+	let inject_param_names = injected_idents;
 
 	let regular_param_names: Vec<_> = regular_params
 		.iter()
