@@ -333,6 +333,17 @@ msgstr "Étiquette \"échappée\""
 
 msgid "Line one\nLine two"
 msgstr "Ligne un\nLigne deux"
+
+msgctxt "navigation"
+msgid ""
+"Page "
+"title"
+msgstr "Titre de navigation"
+
+msgid "Project"
+msgid_plural "Projects"
+msgstr[0] "Projet"
+msgstr[1] "Projets"
 "#;
 	let app_catalogs = [
 		app_locale_dir.join("django.po"),
@@ -379,6 +390,15 @@ Line two");
 				r#"msgstr "Étiquette \"échappée\"""#,
 				r#"msgid "Line one\nLine two""#,
 				r#"msgstr "Ligne un\nLigne deux""#,
+				r#"msgctxt "navigation""#,
+				r#"msgid """#,
+				r#""Page ""#,
+				r#""title""#,
+				r#"msgstr "Titre de navigation""#,
+				r#"msgid "Project""#,
+				r#"msgid_plural "Projects""#,
+				r#"msgstr[0] "Projet""#,
+				r#"msgstr[1] "Projets""#,
 				r#"msgid "Page title""#,
 				r#"msgstr """#,
 				r#"msgid "Project {id}""#,

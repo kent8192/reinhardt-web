@@ -60,8 +60,104 @@ fn unescape_po_string(s: &str) -> String {
 	value
 }
 
-static PO_ENTRY_RE: LazyLock<Regex> =
-	LazyLock::new(|| Regex::new(r#"msgid "((?:\\.|[^"])*)"\s*msgstr "((?:\\.|[^"])*)""#).unwrap());
+#[derive(Default)]
+struct PoEntry {
+	context: Option<String>,
+	msgid: Option<String>,
+	plural: Option<String>,
+	translations: Vec<(usize, String)>,
+}
+
+#[derive(Clone, Copy)]
+enum PoField {
+	Context,
+	Msgid,
+	Plural,
+	Translation(usize),
+}
+
+fn po_quoted_value(line: &str) -> Option<String> {
+	let value = line.trim().strip_prefix('"')?.strip_suffix('"')?;
+	Some(unescape_po_string(value))
+}
+
+fn parse_po_entries(content: &str) -> Vec<PoEntry> {
+	let mut entries = Vec::new();
+	let mut entry = PoEntry::default();
+	let mut field = None;
+
+	for line in content.lines() {
+		let trimmed = line.trim();
+		if trimmed.is_empty() {
+			if entry.msgid.is_some() {
+				entries.push(entry);
+				entry = PoEntry::default();
+			}
+			field = None;
+			continue;
+		}
+
+		let directive = if let Some(value) = trimmed.strip_prefix("msgctxt ") {
+			Some((PoField::Context, value))
+		} else if let Some(value) = trimmed.strip_prefix("msgid_plural ") {
+			Some((PoField::Plural, value))
+		} else if let Some(value) = trimmed.strip_prefix("msgid ") {
+			if entry.msgid.is_some() {
+				entries.push(entry);
+				entry = PoEntry::default();
+			}
+			Some((PoField::Msgid, value))
+		} else if let Some(value) = trimmed.strip_prefix("msgstr ") {
+			Some((PoField::Translation(0), value))
+		} else if let Some(indexed) = trimmed.strip_prefix("msgstr[") {
+			indexed.split_once("] ").and_then(|(index, value)| {
+				index
+					.parse()
+					.ok()
+					.map(|index| (PoField::Translation(index), value))
+			})
+		} else {
+			None
+		};
+
+		if let Some((next_field, value)) = directive {
+			field = Some(next_field);
+			if let Some(value) = po_quoted_value(value) {
+				match next_field {
+					PoField::Context => entry.context = Some(value),
+					PoField::Msgid => entry.msgid = Some(value),
+					PoField::Plural => entry.plural = Some(value),
+					PoField::Translation(index) => entry.translations.push((index, value)),
+				}
+			}
+			continue;
+		}
+
+		if let Some(value) = po_quoted_value(trimmed)
+			&& let Some(current_field) = field
+		{
+			match current_field {
+				PoField::Context => entry.context.get_or_insert_default().push_str(&value),
+				PoField::Msgid => entry.msgid.get_or_insert_default().push_str(&value),
+				PoField::Plural => entry.plural.get_or_insert_default().push_str(&value),
+				PoField::Translation(index) => {
+					if let Some((_, translation)) = entry
+						.translations
+						.iter_mut()
+						.find(|(entry_index, _)| *entry_index == index)
+					{
+						translation.push_str(&value);
+					}
+				}
+			}
+		}
+	}
+
+	if entry.msgid.is_some() {
+		entries.push(entry);
+	}
+	entries
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct TranslatableMessage {
@@ -474,62 +570,32 @@ impl MakeMessagesCommand {
 		let existing_content = std::fs::read_to_string(path)
 			.map_err(|e| CommandError::ExecutionError(format!("Failed to read PO file: {}", e)))?;
 
-		// Extract existing translations and decode PO escape sequences for lookup.
-		let mut existing_translations = std::collections::HashMap::new();
-		for cap in PO_ENTRY_RE.captures_iter(&existing_content) {
-			if let (Some(msgid), Some(msgstr)) = (cap.get(1), cap.get(2)) {
-				existing_translations.insert(
-					unescape_po_string(msgid.as_str()),
-					unescape_po_string(msgstr.as_str()),
-				);
-			}
-		}
+		let existing_msgids: HashSet<_> = parse_po_entries(&existing_content)
+			.into_iter()
+			.filter(|entry| entry.context.is_none())
+			.filter_map(|entry| entry.msgid)
+			.collect();
 
 		ctx.verbose(&format!(
-			"Merging {} new messages with {} existing translations",
+			"Merging {} new messages with {} existing entries",
 			messages.len(),
-			existing_translations.len()
+			existing_msgids.len()
 		));
 
-		// Create new content with merged messages
-		let header = Self::extract_po_header(&existing_content);
-		let mut new_content = header;
+		let mut new_content = existing_content.trim_end().to_string();
 
 		for msg in messages {
-			new_content.push_str(&format!("\nmsgid \"{}\"\n", escape_po_string(&msg.msgid)));
-
-			// Use existing translation if available, otherwise empty
-			if let Some(existing_msgstr) = existing_translations.get(&msg.msgid) {
-				new_content.push_str(&format!(
-					"msgstr \"{}\"\n",
-					escape_po_string(existing_msgstr)
-				));
-			} else {
-				new_content.push_str("msgstr \"\"\n");
+			if existing_msgids.contains(&msg.msgid) {
+				continue;
 			}
+			new_content.push_str(&format!("\nmsgid \"{}\"\n", escape_po_string(&msg.msgid)));
+			new_content.push_str("msgstr \"\"\n");
 		}
 
 		std::fs::write(path, new_content)
 			.map_err(|e| CommandError::ExecutionError(format!("Failed to write PO file: {}", e)))?;
 
 		Ok(())
-	}
-
-	fn extract_po_header(content: &str) -> String {
-		let header_marker = "msgid \"\"\nmsgstr \"\"";
-		let Some(header_start) = content.find(header_marker) else {
-			return String::new();
-		};
-		if content[..header_start].contains("msgid \"") {
-			return String::new();
-		}
-
-		let header_end = header_start + header_marker.len();
-		if let Some(next_entry) = content[header_end..].find("\nmsgid \"") {
-			return content[..header_end + next_entry].trim_end().to_string() + "\n";
-		}
-
-		content.trim_end().to_string() + "\n"
 	}
 
 	fn create_po_file_with_messages(
@@ -700,22 +766,30 @@ impl CompileMessagesCommand {
 
 	fn parse_po_file(content: &str) -> CommandResult<Vec<(String, String)>> {
 		let mut messages = Vec::new();
-		for cap in PO_ENTRY_RE.captures_iter(content) {
-			if let (Some(msgid), Some(msgstr)) = (cap.get(1), cap.get(2)) {
-				let msgid_str = unescape_po_string(msgid.as_str());
-				let msgstr_str = unescape_po_string(msgstr.as_str());
+		for mut entry in parse_po_entries(content) {
+			let Some(mut msgid) = entry.msgid.take() else {
+				continue;
+			};
+			if msgid.is_empty() {
+				continue;
+			}
+			if let Some(context) = entry.context {
+				msgid = format!("{context}\u{4}{msgid}");
+			}
+			if let Some(plural) = entry.plural {
+				msgid.push('\0');
+				msgid.push_str(&plural);
+			}
 
-				// Skip empty msgid (header entry)
-				if msgid_str.is_empty() {
-					continue;
-				}
-
-				// Skip untranslated messages (empty msgstr)
-				if msgstr_str.is_empty() {
-					continue;
-				}
-
-				messages.push((msgid_str, msgstr_str));
+			entry.translations.sort_by_key(|(index, _)| *index);
+			let msgstr = entry
+				.translations
+				.into_iter()
+				.map(|(_, translation)| translation)
+				.collect::<Vec<_>>()
+				.join("\0");
+			if !msgstr.is_empty() {
+				messages.push((msgid, msgstr));
 			}
 		}
 
@@ -857,6 +931,37 @@ mod tests {
 	#[case("mixed\n\"value\"")]
 	fn test_po_string_escape_round_trip(#[case] input: &str) {
 		assert_eq!(unescape_po_string(&escape_po_string(input)), input);
+	}
+
+	#[test]
+	fn test_parse_po_file_supports_wrapped_plural_and_contextual_entries() {
+		let content = r#"
+msgctxt "button"
+msgid ""
+"Save "
+"file"
+msgstr ""
+"Enregistrer "
+"le fichier"
+
+msgid "apple"
+msgid_plural "apples"
+msgstr[0] "pomme"
+msgstr[1] "pommes"
+"#;
+
+		let messages = CompileMessagesCommand::parse_po_file(content).unwrap();
+
+		assert_eq!(
+			messages,
+			vec![
+				(
+					"button\u{4}Save file".to_string(),
+					"Enregistrer le fichier".to_string(),
+				),
+				("apple\0apples".to_string(), "pomme\0pommes".to_string()),
+			]
+		);
 	}
 
 	#[rstest]
