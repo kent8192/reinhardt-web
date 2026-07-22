@@ -46,6 +46,7 @@ pub(crate) struct InjectInfo {
 	pub(crate) pat: Box<Pat>,
 	pub(crate) ty: Box<Type>,
 	pub(crate) options: InjectOptions,
+	pub(crate) resolved_ident: syn::Ident,
 }
 
 /// Validate a route path at compile time
@@ -165,10 +166,15 @@ pub(crate) fn detect_inject_params(inputs: &Punctuated<FnArg, Token![,]>) -> Vec
 
 			if has_inject {
 				let options = parse_inject_options(attrs);
+				let resolved_ident = syn::Ident::new(
+					&format!("__reinhardt_injected_{}", inject_params.len()),
+					pat.span(),
+				);
 				inject_params.push(InjectInfo {
 					pat: pat.clone(),
 					ty: ty.clone(),
 					options,
+					resolved_ident,
 				});
 			}
 		}
@@ -418,21 +424,24 @@ fn generate_wrapper_with_both(
 	let injection_calls: Vec<_> = inject_params
 		.iter()
 		.map(|param| {
-			let pat = &param.pat;
+			let resolved_ident = &param.resolved_ident;
 			let ty = &param.ty;
 			let use_cache = param.options.use_cache;
 			let resolve_expr =
 				generate_inject_resolver_expr(&di_crate, ty, quote! { &__di_ctx }, use_cache);
 
 			quote! {
-				let #pat: #ty = #resolve_expr
+				let #resolved_ident: #ty = #resolve_expr
 					.map_err(#core_crate::exception::Error::from)?;
 			}
 		})
 		.collect();
 
 	// Build call arguments for inject params (shared between both paths)
-	let inject_args: Vec<_> = inject_params.iter().map(|param| &param.pat).collect();
+	let inject_args: Vec<_> = inject_params
+		.iter()
+		.map(|param| &param.resolved_ident)
+		.collect();
 
 	// Generate extractor calls and validation differently based on pre_validate.
 	// When pre_validate = true and a destructuring pattern like `Json(body)` is used,

@@ -235,21 +235,21 @@ pub(crate) fn websocket_impl(args: TokenStream, mut input: ItemFn) -> Result<Tok
 	let inject_field_decls: Vec<TokenStream> = inject_params
 		.iter()
 		.map(|p| {
-			let pat = &p.pat;
+			let resolved_ident = &p.resolved_ident;
 			let ty = &p.ty;
-			quote! { pub #pat: #ty }
+			quote! { pub #resolved_ident: #ty }
 		})
 		.collect();
 
 	let inject_field_clones: Vec<TokenStream> = inject_params
 		.iter()
 		.map(|p| {
-			let pat = &p.pat;
-			quote! { self.#pat.clone() }
+			let resolved_ident = &p.resolved_ident;
+			quote! { self.#resolved_ident.clone() }
 		})
 		.collect();
 
-	let inject_pat_names: Vec<&Pat> = inject_params.iter().map(|p| p.pat.as_ref()).collect();
+	let inject_field_names: Vec<_> = inject_params.iter().map(|p| &p.resolved_ident).collect();
 
 	// Consumer struct body
 	let consumer_struct_body = if has_inject {
@@ -273,12 +273,12 @@ pub(crate) fn websocket_impl(args: TokenStream, mut input: ItemFn) -> Result<Tok
 		let resolve_stmts: Vec<TokenStream> = inject_params
 			.iter()
 			.map(|p| {
-				let pat = &p.pat;
+				let resolved_ident = &p.resolved_ident;
 				let ty = &p.ty;
 				let resolve_expr =
 					generate_inject_resolver_expr(&di_crate, ty, quote! { &__di_ctx }, true);
 				quote! {
-					let #pat: #ty = #resolve_expr
+					let #resolved_ident: #ty = #resolve_expr
 						.expect("websocket dependency injection failed");
 				}
 			})
@@ -290,7 +290,7 @@ pub(crate) fn websocket_impl(args: TokenStream, mut input: ItemFn) -> Result<Tok
 				async fn build(ctx: &#ws_crate::InjectionContext) -> Self {
 					let __di_ctx = ctx.clone();
 					#(#resolve_stmts)*
-					Self { #(#inject_pat_names),* }
+					Self { #(#inject_field_names),* }
 				}
 			}
 		}

@@ -14,7 +14,7 @@ use crate::crate_paths::{
 use crate::injectable_common::generate_inject_resolver_expr;
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{Attribute, FnArg, ItemFn, Pat, PatType, Result, Type};
+use syn::{Attribute, FnArg, ItemFn, Pat, PatType, Result, Type, spanned::Spanned};
 
 /// Check if an attribute is `#[inject]`
 fn is_inject_attr(attr: &Attribute) -> bool {
@@ -32,6 +32,8 @@ struct ProcessedArg {
 	inject: bool,
 	/// Whether to use cache (default: true)
 	use_cache: bool,
+	/// Expression-safe identifier used after dependency resolution
+	resolved_ident: Option<syn::Ident>,
 }
 
 impl ProcessedArg {
@@ -60,21 +62,12 @@ impl ProcessedArg {
 					}
 				}
 
-				// Remove `mut` modifier from pattern if present
-				let pat_without_mut = match &**pat {
-					syn::Pat::Ident(pat_ident) => {
-						let mut new_pat_ident = pat_ident.clone();
-						new_pat_ident.mutability = None;
-						syn::Pat::Ident(new_pat_ident)
-					}
-					other => other.clone(),
-				};
-
 				Some(ProcessedArg {
-					pat: pat_without_mut,
+					pat: (**pat).clone(),
 					ty: (**ty).clone(),
 					inject,
 					use_cache,
+					resolved_ident: None,
 				})
 			}
 			_ => None,
@@ -143,6 +136,11 @@ pub(crate) fn use_inject_impl(_args: TokenStream, input: ItemFn) -> Result<Token
 	for arg in &sig.inputs {
 		if let Some(processed) = ProcessedArg::from_fn_arg(arg) {
 			if processed.inject {
+				let mut processed = processed;
+				processed.resolved_ident = Some(syn::Ident::new(
+					&format!("__reinhardt_injected_{}", inject_params.len()),
+					processed.pat.span(),
+				));
 				inject_params.push(processed);
 			} else {
 				// Check if this is the Request parameter
@@ -228,13 +226,16 @@ pub(crate) fn use_inject_impl(_args: TokenStream, input: ItemFn) -> Result<Token
 	// Generate injection code for wrapper
 	let mut injection_stmts = Vec::new();
 	for arg in &inject_params {
-		let pat = &arg.pat;
+		let resolved_ident = arg
+			.resolved_ident
+			.as_ref()
+			.expect("injected parameters must have resolved identifiers");
 		let ty = &arg.ty;
 		let resolve_expr =
 			generate_inject_resolver_expr(&di_crate, ty, quote! { &__di_ctx }, arg.use_cache);
 
 		let injection_code = quote! {
-			let #pat: #ty = #resolve_expr
+			let #resolved_ident: #ty = #resolve_expr
 				.map_err(#core_crate::exception::Error::from)?;
 		};
 
@@ -246,7 +247,14 @@ pub(crate) fn use_inject_impl(_args: TokenStream, input: ItemFn) -> Result<Token
 	let call_args: Vec<_> = processed_args
 		.iter()
 		.chain(inject_params.iter())
-		.map(|arg| &arg.pat)
+		.map(|arg| {
+			if let Some(ident) = &arg.resolved_ident {
+				quote! { #ident }
+			} else {
+				let pat = &arg.pat;
+				quote! { #pat }
+			}
+		})
 		.collect();
 
 	// Determine if this is a method (has self parameter)
