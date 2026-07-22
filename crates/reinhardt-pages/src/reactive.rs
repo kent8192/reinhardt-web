@@ -103,10 +103,10 @@
 
 // Re-export core reactive primitives from reinhardt-reactive
 pub use reinhardt_core::reactive::{
-	Context, ContextGuard, Effect, EffectTiming, ExplicitDeps, Memo, NodeId, NodeType, Observer,
-	ReactiveDeps, ReactiveScope, Runtime, Signal, batch, context, create_context, current_scope_id,
-	effect, get_context, memo, provide_context, remove_context, runtime, signal, untracked,
-	with_runtime,
+	Context, ContextGuard, Effect, EffectTiming, ExplicitDeps, IntoSignalHandle, Memo, NodeId,
+	NodeType, Observer, ReactiveDeps, ReactiveScope, Runtime, Signal, batch, context,
+	copy_signal_handle, create_context, current_scope_id, effect, get_context, memo,
+	provide_context, remove_context, runtime, signal, untracked, with_runtime,
 };
 
 // WASM-specific modules (kept in reinhardt-pages)
