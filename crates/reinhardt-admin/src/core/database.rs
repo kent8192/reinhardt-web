@@ -78,7 +78,6 @@ fn json_to_sea_value(value: serde_json::Value) -> Value {
 		_ => Value::String(Some(Box::new(value.to_string()))),
 	}
 }
-use std::sync::Arc;
 
 /// Dummy record type for admin panel CRUD operations
 ///
