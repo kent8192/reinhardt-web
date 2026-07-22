@@ -9,6 +9,8 @@ use serial_test::serial;
 use std::fs;
 use tempfile::TempDir;
 
+reinhardt_apps::register_app_locale!("i18n-command-test", "registered_locale");
+
 /// Helper to run a command in a specific directory
 async fn run_in_dir<F, Fut>(dir: &std::path::Path, f: F) -> Fut::Output
 where
@@ -318,6 +320,65 @@ async fn test_makemessages_update_existing_po() {
 	assert!(result.is_ok());
 	// File should still exist after update
 	assert!(po_file.exists());
+}
+
+#[tokio::test]
+#[serial]
+async fn test_makemessages_updates_registered_app_catalog_with_interpolated_macros() {
+	let temp_dir = TempDir::new().unwrap();
+	let app_locale_dir = temp_dir.path().join("registered_locale/ja/LC_MESSAGES");
+	fs::create_dir_all(&app_locale_dir).unwrap();
+	let app_catalog = app_locale_dir.join("messages.po");
+	fs::write(&app_catalog, "msgid \"\"\nmsgstr \"\"\n").unwrap();
+
+	let src_dir = temp_dir.path().join("src");
+	fs::create_dir(&src_dir).unwrap();
+	fs::write(
+		src_dir.join("lib.rs"),
+		r#"
+fn labels(project_id: u64) {
+	let _ = t!("Project {id}", id = project_id);
+	let _ = t!(
+		"Escaped \"label\"",
+	);
+}
+"#,
+	)
+	.unwrap();
+
+	let result = run_in_dir(temp_dir.path(), || async {
+		let cmd = MakeMessagesCommand;
+		let mut ctx = CommandContext::new(vec![]);
+		ctx.set_option_multi("locale".to_string(), vec!["ja".to_string()]);
+		cmd.execute(&ctx).await
+	})
+	.await;
+
+	assert!(result.is_ok(), "makemessages failed: {result:?}");
+	let content = fs::read_to_string(app_catalog).unwrap();
+	assert!(content.contains("msgid \"Project {id}\""));
+	assert!(content.contains(r#"msgid "Escaped \"label\"""#));
+}
+
+#[tokio::test]
+#[serial]
+async fn test_makemessages_all_discovers_registered_app_locales() {
+	let temp_dir = TempDir::new().unwrap();
+	let app_locale_dir = temp_dir.path().join("registered_locale/fr/LC_MESSAGES");
+	fs::create_dir_all(&app_locale_dir).unwrap();
+	let app_catalog = app_locale_dir.join("django.po");
+	fs::write(&app_catalog, "msgid \"\"\nmsgstr \"\"\n").unwrap();
+
+	let result = run_in_dir(temp_dir.path(), || async {
+		let cmd = MakeMessagesCommand;
+		let mut ctx = CommandContext::new(vec![]);
+		ctx.set_option("all".to_string(), "true".to_string());
+		cmd.execute(&ctx).await
+	})
+	.await;
+
+	assert!(result.is_ok(), "makemessages failed: {result:?}");
+	assert!(app_catalog.exists());
 }
 
 #[tokio::test]
