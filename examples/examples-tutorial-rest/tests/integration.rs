@@ -115,7 +115,11 @@ mod tests {
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_create(
-		#[future] sqlite_with_migrations: (NamedTempFile, DatabaseConnectionLease, DatabaseConnectionHandle),
+		#[future] sqlite_with_migrations: (
+			NamedTempFile,
+			DatabaseConnectionLease,
+			DatabaseConnectionHandle,
+		),
 	) {
 		let (_file, _connection_lease, mut conn) = sqlite_with_migrations.await;
 
@@ -142,7 +146,11 @@ mod tests {
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_read(
-		#[future] sqlite_with_migrations: (NamedTempFile, DatabaseConnectionLease, DatabaseConnectionHandle),
+		#[future] sqlite_with_migrations: (
+			NamedTempFile,
+			DatabaseConnectionLease,
+			DatabaseConnectionHandle,
+		),
 	) {
 		let (_file, _connection_lease, mut conn) = sqlite_with_migrations.await;
 
@@ -175,7 +183,11 @@ mod tests {
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_update(
-		#[future] sqlite_with_migrations: (NamedTempFile, DatabaseConnectionLease, DatabaseConnectionHandle),
+		#[future] sqlite_with_migrations: (
+			NamedTempFile,
+			DatabaseConnectionLease,
+			DatabaseConnectionHandle,
+		),
 	) {
 		let (_file, _connection_lease, mut conn) = sqlite_with_migrations.await;
 
@@ -212,7 +224,11 @@ mod tests {
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_delete(
-		#[future] sqlite_with_migrations: (NamedTempFile, DatabaseConnectionLease, DatabaseConnectionHandle),
+		#[future] sqlite_with_migrations: (
+			NamedTempFile,
+			DatabaseConnectionLease,
+			DatabaseConnectionHandle,
+		),
 	) {
 		let (_file, _connection_lease, mut conn) = sqlite_with_migrations.await;
 
@@ -250,7 +266,11 @@ mod tests {
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_list_all(
-		#[future] sqlite_with_migrations: (NamedTempFile, DatabaseConnectionLease, DatabaseConnectionHandle),
+		#[future] sqlite_with_migrations: (
+			NamedTempFile,
+			DatabaseConnectionLease,
+			DatabaseConnectionHandle,
+		),
 	) {
 		let (_file, _connection_lease, mut conn) = sqlite_with_migrations.await;
 
@@ -290,7 +310,11 @@ mod tests {
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_filter_by_language(
-		#[future] sqlite_with_migrations: (NamedTempFile, DatabaseConnectionLease, DatabaseConnectionHandle),
+		#[future] sqlite_with_migrations: (
+			NamedTempFile,
+			DatabaseConnectionLease,
+			DatabaseConnectionHandle,
+		),
 	) {
 		let (_file, _connection_lease, mut conn) = sqlite_with_migrations.await;
 
@@ -334,7 +358,11 @@ mod tests {
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_search_by_title(
-		#[future] sqlite_with_migrations: (NamedTempFile, DatabaseConnectionLease, DatabaseConnectionHandle),
+		#[future] sqlite_with_migrations: (
+			NamedTempFile,
+			DatabaseConnectionLease,
+			DatabaseConnectionHandle,
+		),
 	) {
 		let (_file, _connection_lease, mut conn) = sqlite_with_migrations.await;
 
@@ -378,7 +406,11 @@ mod tests {
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_count(
-		#[future] sqlite_with_migrations: (NamedTempFile, DatabaseConnectionLease, DatabaseConnectionHandle),
+		#[future] sqlite_with_migrations: (
+			NamedTempFile,
+			DatabaseConnectionLease,
+			DatabaseConnectionHandle,
+		),
 	) {
 		let (_file, _connection_lease, mut conn) = sqlite_with_migrations.await;
 
@@ -410,7 +442,11 @@ mod tests {
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_order_by_title(
-		#[future] sqlite_with_migrations: (NamedTempFile, DatabaseConnectionLease, DatabaseConnectionHandle),
+		#[future] sqlite_with_migrations: (
+			NamedTempFile,
+			DatabaseConnectionLease,
+			DatabaseConnectionHandle,
+		),
 	) {
 		let (_file, _connection_lease, mut conn) = sqlite_with_migrations.await;
 
@@ -446,7 +482,11 @@ mod tests {
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_pagination(
-		#[future] sqlite_with_migrations: (NamedTempFile, DatabaseConnectionLease, DatabaseConnectionHandle),
+		#[future] sqlite_with_migrations: (
+			NamedTempFile,
+			DatabaseConnectionLease,
+			DatabaseConnectionHandle,
+		),
 	) {
 		let (_file, _connection_lease, mut conn) = sqlite_with_migrations.await;
 
@@ -501,7 +541,11 @@ mod tests {
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_empty_database(
-		#[future] sqlite_with_migrations: (NamedTempFile, DatabaseConnectionLease, DatabaseConnectionHandle),
+		#[future] sqlite_with_migrations: (
+			NamedTempFile,
+			DatabaseConnectionLease,
+			DatabaseConnectionHandle,
+		),
 	) {
 		let (_file, _connection_lease, mut conn) = sqlite_with_migrations.await;
 
@@ -519,7 +563,11 @@ mod tests {
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_nonexistent_id(
-		#[future] sqlite_with_migrations: (NamedTempFile, DatabaseConnectionLease, DatabaseConnectionHandle),
+		#[future] sqlite_with_migrations: (
+			NamedTempFile,
+			DatabaseConnectionLease,
+			DatabaseConnectionHandle,
+		),
 	) {
 		let (_file, _connection_lease, mut conn) = sqlite_with_migrations.await;
 
@@ -537,7 +585,11 @@ mod tests {
 	#[rstest]
 	#[tokio::test]
 	async fn test_snippet_update_nonexistent(
-		#[future] sqlite_with_migrations: (NamedTempFile, DatabaseConnectionLease, DatabaseConnectionHandle),
+		#[future] sqlite_with_migrations: (
+			NamedTempFile,
+			DatabaseConnectionLease,
+			DatabaseConnectionHandle,
+		),
 	) {
 		let (_file, _connection_lease, mut conn) = sqlite_with_migrations.await;
 
