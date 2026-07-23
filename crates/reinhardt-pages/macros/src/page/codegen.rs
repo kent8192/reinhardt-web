@@ -34,6 +34,25 @@ use syn::spanned::Spanned;
 use syn::visit::{self, Visit};
 use syn::{LitStr, Token};
 
+fn macro_supports_named_arguments(path: &syn::Path) -> bool {
+	if path.leading_colon.is_none() {
+		return false;
+	}
+	let segments: Vec<_> = path
+		.segments
+		.iter()
+		.map(|segment| segment.ident.to_string())
+		.collect();
+	matches!(segments.as_slice(), [prefix, name]
+			if (prefix == "std" || prefix == "alloc") && matches!(name.as_str(), "format" | "format_args"))
+		|| matches!(segments.as_slice(), [prefix, name]
+			if prefix == "reinhardt_pages" && name == "t")
+		|| matches!(segments.as_slice(), [prefix, module, name]
+			if prefix == "reinhardt_pages" && module == "prelude" && name == "t")
+		|| matches!(segments.as_slice(), [facade, module, name]
+			if facade == "reinhardt" && module == "pages" && name == "t")
+}
+
 // Import AST types from reinhardt-manouche
 use crate::crate_paths::get_reinhardt_pages_crate_info;
 use reinhardt_event_catalog::KnownEvent;
@@ -284,12 +303,17 @@ impl<'ast> Visit<'ast> for ExprCaptureCollector<'_> {
 	}
 
 	fn visit_expr_macro(&mut self, expr_macro: &'ast syn::ExprMacro) {
+		let has_named_arguments = macro_supports_named_arguments(&expr_macro.mac.path);
 		if let Ok(args) = expr_macro
 			.mac
 			.parse_body_with(Punctuated::<syn::Expr, Token![,]>::parse_terminated)
 		{
 			for arg in args {
-				self.visit_expr(&arg);
+				if has_named_arguments && let syn::Expr::Assign(assign) = arg {
+					self.visit_expr(&assign.right);
+				} else {
+					self.visit_expr(&arg);
+				}
 			}
 		}
 	}
@@ -772,32 +796,42 @@ fn generate_control_binding(
 		TypedControlBindingExpr::Direct(value) => value,
 		TypedControlBindingExpr::NumberWithError { value, .. } => value,
 	};
-	let value = wrap_expr_with_captures(value, pages_crate, ctx);
+	let value = wrap_value_expr_with_captures(
+		quote! { #pages_crate::reactive::copy_signal_handle(#value) },
+		value,
+		pages_crate,
+		ctx,
+	);
 	let binding_span = binding.span;
 	let descriptor = match (&binding.kind, &binding.expression) {
 		(TypedControlBindingKind::Text, _) => {
-			quote_spanned!(binding_span=> #pages_crate::component::ControlBinding::text((#value).clone()))
+			quote_spanned!(binding_span=> #pages_crate::component::ControlBinding::text(#value))
 		}
 		(TypedControlBindingKind::Checkbox, _) => {
-			quote_spanned!(binding_span=> #pages_crate::component::ControlBinding::checkbox((#value).clone()))
+			quote_spanned!(binding_span=> #pages_crate::component::ControlBinding::checkbox(#value))
 		}
 		(TypedControlBindingKind::SelectOne, _) => {
-			quote_spanned!(binding_span=> #pages_crate::component::ControlBinding::select_one((#value).clone()))
+			quote_spanned!(binding_span=> #pages_crate::component::ControlBinding::select_one(#value))
 		}
 		(TypedControlBindingKind::SelectMany, _) => {
-			quote_spanned!(binding_span=> #pages_crate::component::ControlBinding::select_many((#value).clone()))
+			quote_spanned!(binding_span=> #pages_crate::component::ControlBinding::select_many(#value))
 		}
 		(TypedControlBindingKind::Number, TypedControlBindingExpr::Direct(_)) => {
-			quote_spanned!(binding_span=> #pages_crate::component::ControlBinding::number((#value).clone()))
+			quote_spanned!(binding_span=> #pages_crate::component::ControlBinding::number(#value))
 		}
 		(
 			TypedControlBindingKind::Number,
 			TypedControlBindingExpr::NumberWithError { error, .. },
 		) => {
-			let error = wrap_expr_with_captures(error, pages_crate, ctx);
+			let error = wrap_value_expr_with_captures(
+				quote! { #pages_crate::reactive::copy_signal_handle(#error) },
+				error,
+				pages_crate,
+				ctx,
+			);
 			quote_spanned!(binding_span=> #pages_crate::component::ControlBinding::number_with_error(
-				(#value).clone(),
-				(#error).clone()
+				#value,
+				#error
 			))
 		}
 		(TypedControlBindingKind::Radio, _) => {
@@ -807,7 +841,7 @@ fn generate_control_binding(
 				quote! { (#radio_value).to_string() }
 			});
 			quote_spanned!(binding_span=> #pages_crate::component::ControlBinding::radio(
-				(#value).clone(),
+				#value,
 				#radio_value
 			))
 		}
@@ -1858,6 +1892,52 @@ mod tests {
 	}
 
 	#[test]
+	fn test_control_binding_codegen_passes_copy_signals_by_value() {
+		let input = quote::quote!(|
+			text: Signal<String>,
+			checked: Signal<bool>,
+			radio: Signal<String>,
+			amount: Signal<i32>,
+			parse_error: Signal<Option<NumberParseError>>,
+			selected: Signal<String>,
+			selected_many: Signal<Vec<String>>,
+		| {
+			div {
+				input { a11y: off, bind: text }
+				input { a11y: off, type: "checkbox", bind: checked }
+				input { a11y: off, type: "radio", value: "choice", bind: radio }
+				input { a11y: off, type: "number", bind: number(amount, parse_error) }
+				select { a11y: off, bind: selected, option { value: "one", "One" } }
+				select { a11y: off, multiple: true, bind: selected_many, option { value: "one", "One" } }
+			}
+		});
+		let untyped_ast: reinhardt_manouche::core::PageMacro = syn::parse2(input).unwrap();
+		let typed_ast = crate::page::validator::validate(&untyped_ast).unwrap();
+		let TypedPageNode::Element(root) = &typed_ast.body().nodes[0] else {
+			panic!("expected root element");
+		};
+		let ctx = CodegenContext::new(typed_ast.implicit_captures());
+		let pages_crate = quote::quote!(reinhardt_pages);
+
+		for node in &root.children {
+			let TypedPageNode::Element(element) = node else {
+				panic!("expected bound control");
+			};
+			let binding = element.control_binding.as_ref().expect("validated binding");
+			let output = generate_control_binding(
+				binding,
+				&pages_crate,
+				&ctx,
+				(binding.kind == TypedControlBindingKind::Radio)
+					.then(|| quote::quote!("choice".to_string())),
+			)
+			.to_string()
+			.replace(' ', "");
+			assert!(!output.contains(".clone()"));
+		}
+	}
+
+	#[test]
 	fn test_for_key_iteration_captures_macro_arguments() {
 		let input = quote::quote!({
 			ul {
@@ -1884,5 +1964,77 @@ mod tests {
 			.collect();
 
 		assert_eq!(captures, vec!["selected"]);
+	}
+
+	#[test]
+	fn test_named_macro_argument_key_is_not_a_capture() {
+		let input = quote::quote!({
+			p { { ::reinhardt::pages::t!("Project {id}", id = project_id) } }
+		});
+		let untyped_ast: reinhardt_manouche::core::PageMacro = syn::parse2(input).unwrap();
+		let typed_ast = crate::page::validator::validate(&untyped_ast).unwrap();
+		let ctx = CodegenContext::new(typed_ast.implicit_captures());
+
+		let captures: Vec<String> = ctx
+			.captures_in_node(&typed_ast.body().nodes[0])
+			.into_iter()
+			.map(|ident| ident.to_string())
+			.collect();
+
+		assert_eq!(captures, vec!["project_id"]);
+	}
+
+	#[test]
+	fn test_relative_framework_macro_assignment_lhs_remains_a_capture() {
+		let input = quote::quote!({
+			p { { reinhardt_pages::t!("Project {id}", id = project_id) } }
+		});
+		let untyped_ast: reinhardt_manouche::core::PageMacro = syn::parse2(input).unwrap();
+		let typed_ast = crate::page::validator::validate(&untyped_ast).unwrap();
+		let ctx = CodegenContext::new(typed_ast.implicit_captures());
+
+		let captures: Vec<String> = ctx
+			.captures_in_node(&typed_ast.body().nodes[0])
+			.into_iter()
+			.map(|ident| ident.to_string())
+			.collect();
+
+		assert_eq!(captures, vec!["id", "project_id"]);
+	}
+
+	#[test]
+	fn test_custom_macro_assignment_lhs_remains_a_capture() {
+		let input = quote::quote!({
+			p { { custom!(label = fallback) } }
+		});
+		let untyped_ast: reinhardt_manouche::core::PageMacro = syn::parse2(input).unwrap();
+		let typed_ast = crate::page::validator::validate(&untyped_ast).unwrap();
+		let ctx = CodegenContext::new(typed_ast.implicit_captures());
+
+		let captures: Vec<String> = ctx
+			.captures_in_node(&typed_ast.body().nodes[0])
+			.into_iter()
+			.map(|ident| ident.to_string())
+			.collect();
+
+		assert_eq!(captures, vec!["label", "fallback"]);
+	}
+
+	#[test]
+	fn test_bare_t_macro_assignment_lhs_remains_a_capture() {
+		let input = quote::quote!({
+			p { { t!(label = fallback) } }
+		});
+		let untyped_ast: reinhardt_manouche::core::PageMacro = syn::parse2(input).unwrap();
+		let typed_ast = crate::page::validator::validate(&untyped_ast).unwrap();
+		let ctx = CodegenContext::new(typed_ast.implicit_captures());
+
+		let captures: Vec<String> = ctx
+			.captures_in_node(&typed_ast.body().nodes[0])
+			.into_iter()
+			.map(|ident| ident.to_string())
+			.collect();
+
+		assert_eq!(captures, vec!["label", "fallback"]);
 	}
 }

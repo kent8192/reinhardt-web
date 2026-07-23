@@ -116,6 +116,33 @@ fn t_macro_interpolation_borrows_non_copy_page_captures() {
 
 #[test]
 #[serial(i18n)]
+fn t_macro_named_interpolation_uses_implicit_page_capture_value() {
+	let context = sample_i18n_context();
+	let _guard = provide_i18n_context(context);
+	let project_id = 42_i64;
+
+	let view = page!({
+		p { { ::reinhardt_pages::t!("Project {id}", id = project_id) } }
+	});
+
+	assert_eq!(view.render_to_string(), "<p>Project 42</p>");
+}
+
+#[test]
+#[serial(i18n)]
+fn t_macro_named_interpolation_uses_strict_page_parameter_value() {
+	let context = sample_i18n_context();
+	let _guard = provide_i18n_context(context);
+
+	let view = page!(|project_id: i64| {
+		p { { ::reinhardt_pages::t!("Project {id}", id = project_id) } }
+	})(42);
+
+	assert_eq!(view.render_to_string(), "<p>Project 42</p>");
+}
+
+#[test]
+#[serial(i18n)]
 fn page_macro_does_not_special_case_local_t_macro() {
 	macro_rules! t {
 		($message:literal) => {

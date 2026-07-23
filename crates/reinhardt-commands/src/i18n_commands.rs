@@ -1,15 +1,22 @@
 //! i18n management commands
 //!
-//! Commands for message extraction and compilation
+//! Commands for message extraction and compilation. `makemessages` updates the
+//! project catalog and catalogs registered through
+//! [`reinhardt_apps::register_app_locale!`]. Rust extraction parses translation
+//! macros so interpolated, multiline, escaped, and trailing-comma invocations
+//! retain their literal message identifiers.
 
 use crate::{
 	BaseCommand, CommandArgument, CommandContext, CommandError, CommandOption, CommandResult,
 };
 use async_trait::async_trait;
+use proc_macro2::{TokenStream, TokenTree};
 use regex::Regex;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
+use syn::parse::{Parse, ParseStream};
+use syn::visit::Visit;
 use walkdir::WalkDir;
 
 /// Escapes a string for use as a PO file field value.
@@ -28,10 +35,194 @@ fn escape_po_string(s: &str) -> String {
 		.replace('\t', "\\t")
 }
 
+fn unescape_po_string(s: &str) -> String {
+	let mut value = String::with_capacity(s.len());
+	let mut chars = s.chars();
+	while let Some(character) = chars.next() {
+		if character != '\\' {
+			value.push(character);
+			continue;
+		}
+
+		match chars.next() {
+			Some('\\') => value.push('\\'),
+			Some('"') => value.push('"'),
+			Some('n') => value.push('\n'),
+			Some('r') => value.push('\r'),
+			Some('t') => value.push('\t'),
+			Some(character) => {
+				value.push('\\');
+				value.push(character);
+			}
+			None => value.push('\\'),
+		}
+	}
+	value
+}
+
+#[derive(Default)]
+struct PoEntry {
+	context: Option<String>,
+	msgid: Option<String>,
+	plural: Option<String>,
+	translations: Vec<(usize, String)>,
+}
+
+#[derive(Clone, Copy)]
+enum PoField {
+	Context,
+	Msgid,
+	Plural,
+	Translation(usize),
+}
+
+fn po_quoted_value(line: &str) -> Option<String> {
+	let value = line.trim().strip_prefix('"')?.strip_suffix('"')?;
+	Some(unescape_po_string(value))
+}
+
+fn parse_po_entries(content: &str) -> Vec<PoEntry> {
+	let mut entries = Vec::new();
+	let mut entry = PoEntry::default();
+	let mut field = None;
+
+	for line in content.lines() {
+		let trimmed = line.trim();
+		if trimmed.is_empty() {
+			if entry.msgid.is_some() {
+				entries.push(entry);
+				entry = PoEntry::default();
+			}
+			field = None;
+			continue;
+		}
+
+		let directive = if let Some(value) = trimmed.strip_prefix("msgctxt ") {
+			Some((PoField::Context, value))
+		} else if let Some(value) = trimmed.strip_prefix("msgid_plural ") {
+			Some((PoField::Plural, value))
+		} else if let Some(value) = trimmed.strip_prefix("msgid ") {
+			if entry.msgid.is_some() {
+				entries.push(entry);
+				entry = PoEntry::default();
+			}
+			Some((PoField::Msgid, value))
+		} else if let Some(value) = trimmed.strip_prefix("msgstr ") {
+			Some((PoField::Translation(0), value))
+		} else if let Some(indexed) = trimmed.strip_prefix("msgstr[") {
+			indexed.split_once("] ").and_then(|(index, value)| {
+				index
+					.parse()
+					.ok()
+					.map(|index| (PoField::Translation(index), value))
+			})
+		} else {
+			None
+		};
+
+		if let Some((next_field, value)) = directive {
+			field = Some(next_field);
+			if let Some(value) = po_quoted_value(value) {
+				match next_field {
+					PoField::Context => entry.context = Some(value),
+					PoField::Msgid => entry.msgid = Some(value),
+					PoField::Plural => entry.plural = Some(value),
+					PoField::Translation(index) => entry.translations.push((index, value)),
+				}
+			}
+			continue;
+		}
+
+		if let Some(value) = po_quoted_value(trimmed)
+			&& let Some(current_field) = field
+		{
+			match current_field {
+				PoField::Context => entry.context.get_or_insert_default().push_str(&value),
+				PoField::Msgid => entry.msgid.get_or_insert_default().push_str(&value),
+				PoField::Plural => entry.plural.get_or_insert_default().push_str(&value),
+				PoField::Translation(index) => {
+					if let Some((_, translation)) = entry
+						.translations
+						.iter_mut()
+						.find(|(entry_index, _)| *entry_index == index)
+					{
+						translation.push_str(&value);
+					}
+				}
+			}
+		}
+	}
+
+	if entry.msgid.is_some() {
+		entries.push(entry);
+	}
+	entries
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct TranslatableMessage {
 	msgid: String,
 	locations: Vec<String>,
+}
+
+struct FirstStringArgument {
+	value: syn::LitStr,
+}
+
+impl Parse for FirstStringArgument {
+	fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
+		let value = input.parse()?;
+		let _remaining: proc_macro2::TokenStream = input.parse()?;
+		Ok(Self { value })
+	}
+}
+
+#[derive(Default)]
+struct RustMessageVisitor {
+	messages: Vec<String>,
+}
+
+impl<'ast> Visit<'ast> for RustMessageVisitor {
+	fn visit_macro(&mut self, node: &'ast syn::Macro) {
+		let is_translation_macro =
+			node.path.segments.last().is_some_and(|segment| {
+				matches!(segment.ident.to_string().as_str(), "t" | "gettext")
+			});
+
+		if is_translation_macro
+			&& let Ok(argument) = syn::parse2::<FirstStringArgument>(node.tokens.clone())
+		{
+			self.messages.push(argument.value.value());
+		}
+
+		Self::visit_macro_tokens(node.tokens.clone(), &mut self.messages);
+
+		syn::visit::visit_macro(self, node);
+	}
+}
+
+impl RustMessageVisitor {
+	fn visit_macro_tokens(tokens: TokenStream, messages: &mut Vec<String>) {
+		let tokens: Vec<_> = tokens.into_iter().collect();
+		for window in tokens.windows(3) {
+			if let [
+				TokenTree::Ident(ident),
+				TokenTree::Punct(bang),
+				TokenTree::Group(arguments),
+			] = window && bang.as_char() == '!'
+				&& matches!(ident.to_string().as_str(), "t" | "gettext")
+				&& let Ok(argument) = syn::parse2::<FirstStringArgument>(arguments.stream())
+			{
+				messages.push(argument.value.value());
+			}
+		}
+
+		for token in tokens {
+			if let TokenTree::Group(group) = token {
+				Self::visit_macro_tokens(group.stream(), messages);
+			}
+		}
+	}
 }
 
 /// Make messages command - extract translatable strings
@@ -142,43 +333,35 @@ impl BaseCommand for MakeMessagesCommand {
 			patterns
 		};
 
+		let mut messages = Self::extract_messages(".", &extensions, ctx)?;
+		messages.sort_by(|a, b| a.msgid.cmp(&b.msgid));
+		messages.dedup_by(|a, b| a.msgid == b.msgid);
+
+		ctx.verbose(&format!(
+			"Found {} unique translatable strings",
+			messages.len()
+		));
+
 		// Process each locale
 		for locale in &normalized_locales {
 			ctx.info(&format!("Processing locale: {}", locale));
 
-			let locale_dir = PathBuf::from("locale").join(locale).join("LC_MESSAGES");
-			std::fs::create_dir_all(&locale_dir).map_err(|e| {
-				CommandError::ExecutionError(format!("Failed to create locale directory: {}", e))
-			})?;
+			for po_file in Self::catalog_paths(locale) {
+				if let Some(locale_dir) = po_file.parent() {
+					std::fs::create_dir_all(locale_dir).map_err(|error| {
+						CommandError::ExecutionError(format!(
+							"Failed to create locale directory: {error}"
+						))
+					})?;
+				}
 
-			let po_file = locale_dir.join("reinhardt.po");
-
-			// Check if PO file exists
-			let exists = po_file.exists();
-
-			if exists {
-				ctx.verbose(&format!("Updating existing PO file: {}", po_file.display()));
-			} else {
-				ctx.verbose(&format!("Creating new PO file: {}", po_file.display()));
-			}
-
-			// Extract translatable strings from source files
-			let mut messages = Self::extract_messages(".", &extensions, ctx)?;
-
-			// Remove duplicates and sort
-			messages.sort_by(|a, b| a.msgid.cmp(&b.msgid));
-			messages.dedup_by(|a, b| a.msgid == b.msgid);
-
-			ctx.verbose(&format!(
-				"Found {} unique translatable strings",
-				messages.len()
-			));
-
-			// Create or update PO file
-			if exists {
-				Self::update_po_file(&po_file, &messages, ctx)?;
-			} else {
-				Self::create_po_file_with_messages(&po_file, locale, &messages)?;
+				if po_file.exists() {
+					ctx.verbose(&format!("Updating existing PO file: {}", po_file.display()));
+					Self::update_po_file(&po_file, &messages, ctx)?;
+				} else {
+					ctx.verbose(&format!("Creating new PO file: {}", po_file.display()));
+					Self::create_po_file_with_messages(&po_file, locale, &messages)?;
+				}
 			}
 
 			ctx.success(&format!("Processed locale: {}", locale));
@@ -193,6 +376,35 @@ impl BaseCommand for MakeMessagesCommand {
 }
 
 impl MakeMessagesCommand {
+	fn catalog_paths(locale: &str) -> Vec<PathBuf> {
+		let mut paths = vec![
+			PathBuf::from("locale")
+				.join(locale)
+				.join("LC_MESSAGES")
+				.join("reinhardt.po"),
+		];
+
+		for config in reinhardt_apps::get_app_locales() {
+			let messages_dir = PathBuf::from(config.locale_dir)
+				.join(locale)
+				.join("LC_MESSAGES");
+			let django_catalog = messages_dir.join("django.po");
+			let messages_catalog = messages_dir.join("messages.po");
+			let catalogs = match (django_catalog.exists(), messages_catalog.exists()) {
+				(true, true) => vec![django_catalog, messages_catalog],
+				(true, false) => vec![django_catalog],
+				(false, _) => vec![messages_catalog],
+			};
+			for catalog in catalogs {
+				if !paths.contains(&catalog) {
+					paths.push(catalog);
+				}
+			}
+		}
+
+		paths
+	}
+
 	fn validate_locale(locale: &str) -> CommandResult<()> {
 		// Validate locale format
 		if locale.is_empty() {
@@ -240,26 +452,32 @@ impl MakeMessagesCommand {
 	}
 
 	fn find_all_locales(base_path: &str) -> CommandResult<Vec<String>> {
-		let locale_dir = PathBuf::from(base_path).join("locale");
+		let mut locale_roots = vec![PathBuf::from(base_path).join("locale")];
+		locale_roots.extend(
+			reinhardt_apps::get_app_locales()
+				.into_iter()
+				.map(|config| PathBuf::from(config.locale_dir)),
+		);
 
-		if !locale_dir.exists() {
-			return Ok(vec![]);
-		}
-
-		let mut locales = Vec::new();
-
-		for entry in std::fs::read_dir(locale_dir).map_err(CommandError::IoError)? {
-			let entry = entry.map_err(CommandError::IoError)?;
-			let path = entry.path();
-
-			if path.is_dir()
-				&& let Some(name) = path.file_name()
-				&& let Some(name_str) = name.to_str()
-			{
-				locales.push(name_str.to_string());
+		let mut locales = HashSet::new();
+		for locale_root in locale_roots {
+			if !locale_root.exists() {
+				continue;
+			}
+			for entry in std::fs::read_dir(locale_root).map_err(CommandError::IoError)? {
+				let entry = entry.map_err(CommandError::IoError)?;
+				let path = entry.path();
+				if path.is_dir()
+					&& let Some(name) = path.file_name()
+					&& let Some(name_str) = name.to_str()
+				{
+					locales.insert(name_str.to_string());
+				}
 			}
 		}
 
+		let mut locales: Vec<_> = locales.into_iter().collect();
+		locales.sort();
 		Ok(locales)
 	}
 
@@ -271,13 +489,10 @@ impl MakeMessagesCommand {
 		let mut messages = Vec::new();
 		let mut seen_msgids = HashSet::new();
 
-		// Regex patterns for different gettext functions
-		// Matches: gettext!("message"), _("message"), t!("message")
+		// Regex patterns for non-Rust translation syntax.
 		static I18N_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
 			vec![
-				Regex::new(r#"gettext!\s*\(\s*"([^"]+)"\s*\)"#).unwrap(),
 				Regex::new(r#"_\s*\(\s*"([^"]+)"\s*\)"#).unwrap(),
-				Regex::new(r#"t!\s*\(\s*"([^"]+)"\s*\)"#).unwrap(),
 				// Template tags: {% trans "message" %}
 				Regex::new(r#"\{%\s*trans\s+"([^"]+)"\s*%\}"#).unwrap(),
 			]
@@ -318,20 +533,30 @@ impl MakeMessagesCommand {
 				Err(_) => continue,
 			};
 
-			// Extract messages using patterns
-			for pattern in patterns {
-				for cap in pattern.captures_iter(&content) {
-					if let Some(msgid) = cap.get(1) {
-						let msgid_str = msgid.as_str().to_string();
+			let extracted = if path.extension().is_some_and(|extension| extension == "rs") {
+				let Ok(file) = syn::parse_file(&content) else {
+					continue;
+				};
+				let mut visitor = RustMessageVisitor::default();
+				visitor.visit_file(&file);
+				visitor.messages
+			} else {
+				patterns
+					.iter()
+					.flat_map(|pattern| pattern.captures_iter(&content))
+					.filter_map(|capture| capture.get(1).map(|value| value.as_str().to_string()))
+					.collect()
+			};
 
-						if !seen_msgids.contains(&msgid_str) {
-							seen_msgids.insert(msgid_str.clone());
-							messages.push(TranslatableMessage {
-								msgid: msgid_str,
-								locations: vec![path.display().to_string()],
-							});
-						}
-					}
+			for msgid in extracted {
+				if msgid.is_empty() {
+					continue;
+				}
+				if seen_msgids.insert(msgid.clone()) {
+					messages.push(TranslatableMessage {
+						msgid,
+						locations: vec![path.display().to_string()],
+					});
 				}
 			}
 		}
@@ -348,58 +573,32 @@ impl MakeMessagesCommand {
 		let existing_content = std::fs::read_to_string(path)
 			.map_err(|e| CommandError::ExecutionError(format!("Failed to read PO file: {}", e)))?;
 
-		// Extract existing translations (simple approach: keep msgstr values)
-		let mut existing_translations = std::collections::HashMap::new();
-		static MSGID_MERGE_RE: LazyLock<Regex> =
-			LazyLock::new(|| Regex::new(r#"msgid "([^"]+)"\nmsgstr "([^"]*)""#).unwrap());
-
-		for cap in MSGID_MERGE_RE.captures_iter(&existing_content) {
-			if let (Some(msgid), Some(msgstr)) = (cap.get(1), cap.get(2)) {
-				existing_translations
-					.insert(msgid.as_str().to_string(), msgstr.as_str().to_string());
-			}
-		}
+		let existing_msgids: HashSet<_> = parse_po_entries(&existing_content)
+			.into_iter()
+			.filter(|entry| entry.context.is_none())
+			.filter_map(|entry| entry.msgid)
+			.collect();
 
 		ctx.verbose(&format!(
-			"Merging {} new messages with {} existing translations",
+			"Merging {} new messages with {} existing entries",
 			messages.len(),
-			existing_translations.len()
+			existing_msgids.len()
 		));
 
-		// Create new content with merged messages
-		let header = Self::extract_po_header(&existing_content);
-		let mut new_content = header;
+		let mut new_content = existing_content.trim_end().to_string();
 
 		for msg in messages {
-			new_content.push_str(&format!("\nmsgid \"{}\"\n", escape_po_string(&msg.msgid)));
-
-			// Use existing translation if available, otherwise empty
-			if let Some(existing_msgstr) = existing_translations.get(&msg.msgid) {
-				new_content.push_str(&format!(
-					"msgstr \"{}\"\n",
-					escape_po_string(existing_msgstr)
-				));
-			} else {
-				new_content.push_str("msgstr \"\"\n");
+			if existing_msgids.contains(&msg.msgid) {
+				continue;
 			}
+			new_content.push_str(&format!("\nmsgid \"{}\"\n", escape_po_string(&msg.msgid)));
+			new_content.push_str("msgstr \"\"\n");
 		}
 
 		std::fs::write(path, new_content)
 			.map_err(|e| CommandError::ExecutionError(format!("Failed to write PO file: {}", e)))?;
 
 		Ok(())
-	}
-
-	fn extract_po_header(content: &str) -> String {
-		// Extract header (everything up to the first real msgid)
-		if let Some(pos) = content.find("\nmsgid \"")
-			&& pos > 0
-		{
-			return content[..pos].to_string() + "\n";
-		}
-
-		// Default header if not found
-		String::new()
 	}
 
 	fn create_po_file_with_messages(
@@ -475,7 +674,7 @@ impl BaseCommand for CompileMessagesCommand {
 		let locales = if let Some(specified) = ctx.option_values("locale") {
 			specified
 		} else {
-			Self::find_all_locales(".")?
+			MakeMessagesCommand::find_all_locales(".")?
 		};
 
 		if locales.is_empty() {
@@ -508,38 +707,35 @@ impl BaseCommand for CompileMessagesCommand {
 
 		// Compile each locale
 		for locale in &locales_to_compile {
-			let locale_dir = PathBuf::from("locale").join(locale).join("LC_MESSAGES");
-			let po_file = locale_dir.join("reinhardt.po");
-			let mo_file = locale_dir.join("reinhardt.mo");
+			for po_file in MakeMessagesCommand::catalog_paths(locale) {
+				let mo_file = po_file.with_extension("mo");
 
-			if !po_file.exists() {
-				ctx.warning(&format!(
-					"PO file not found for locale {}: {}",
-					locale,
-					po_file.display()
-				));
-				continue;
-			}
-
-			ctx.verbose(&format!("Compiling {}", po_file.display()));
-
-			// Parse .po file and compile to .mo format
-			match Self::compile_po_to_mo(&po_file, &mo_file, _use_fuzzy) {
-				Ok(count) => {
-					ctx.verbose(&format!("Compiled {} messages", count));
-				}
-				Err(e) => {
-					ctx.warning(&format!("Failed to compile {}: {}", po_file.display(), e));
+				if !po_file.exists() {
+					ctx.warning(&format!(
+						"PO file not found for locale {}: {}",
+						locale,
+						po_file.display()
+					));
 					continue;
 				}
-			}
 
-			compiled_count += 1;
-			ctx.success(&format!("Compiled {}", locale));
+				ctx.verbose(&format!("Compiling {}", po_file.display()));
+
+				match Self::compile_po_to_mo(&po_file, &mo_file, _use_fuzzy) {
+					Ok(count) => ctx.verbose(&format!("Compiled {} messages", count)),
+					Err(e) => {
+						ctx.warning(&format!("Failed to compile {}: {}", po_file.display(), e));
+						continue;
+					}
+				}
+
+				compiled_count += 1;
+				ctx.success(&format!("Compiled {}", po_file.display()));
+			}
 		}
 
 		ctx.success(&format!(
-			"Successfully compiled {} locale(s)",
+			"Successfully compiled {} catalog(s)",
 			compiled_count
 		));
 		Ok(())
@@ -573,25 +769,30 @@ impl CompileMessagesCommand {
 
 	fn parse_po_file(content: &str) -> CommandResult<Vec<(String, String)>> {
 		let mut messages = Vec::new();
-		static MSGID_PARSE_RE: LazyLock<Regex> =
-			LazyLock::new(|| Regex::new(r#"msgid "([^"]*)"\s*msgstr "([^"]*)""#).unwrap());
+		for mut entry in parse_po_entries(content) {
+			let Some(mut msgid) = entry.msgid.take() else {
+				continue;
+			};
+			if msgid.is_empty() {
+				continue;
+			}
+			if let Some(context) = entry.context {
+				msgid = format!("{context}\u{4}{msgid}");
+			}
+			if let Some(plural) = entry.plural {
+				msgid.push('\0');
+				msgid.push_str(&plural);
+			}
 
-		for cap in MSGID_PARSE_RE.captures_iter(content) {
-			if let (Some(msgid), Some(msgstr)) = (cap.get(1), cap.get(2)) {
-				let msgid_str = msgid.as_str();
-				let msgstr_str = msgstr.as_str();
-
-				// Skip empty msgid (header entry)
-				if msgid_str.is_empty() {
-					continue;
-				}
-
-				// Skip untranslated messages (empty msgstr)
-				if msgstr_str.is_empty() {
-					continue;
-				}
-
-				messages.push((msgid_str.to_string(), msgstr_str.to_string()));
+			entry.translations.sort_by_key(|(index, _)| *index);
+			let msgstr = entry
+				.translations
+				.into_iter()
+				.map(|(_, translation)| translation)
+				.collect::<Vec<_>>()
+				.join("\0");
+			if !msgstr.is_empty() {
+				messages.push((msgid, msgstr));
 			}
 		}
 
@@ -700,34 +901,6 @@ impl CompileMessagesCommand {
 
 		Ok(content)
 	}
-
-	fn find_all_locales(base_path: &str) -> CommandResult<Vec<String>> {
-		let locale_dir = PathBuf::from(base_path).join("locale");
-
-		if !locale_dir.exists() {
-			return Ok(vec![]);
-		}
-
-		let mut locales = Vec::new();
-
-		for entry in std::fs::read_dir(locale_dir).map_err(CommandError::IoError)? {
-			let entry = entry.map_err(CommandError::IoError)?;
-			let path = entry.path();
-
-			if path.is_dir() {
-				// Check if LC_MESSAGES/reinhardt.po exists
-				let po_file = path.join("LC_MESSAGES").join("reinhardt.po");
-				if po_file.exists()
-					&& let Some(name) = path.file_name()
-					&& let Some(name_str) = name.to_str()
-				{
-					locales.push(name_str.to_string());
-				}
-			}
-		}
-
-		Ok(locales)
-	}
 }
 
 #[cfg(test)]
@@ -749,6 +922,49 @@ mod tests {
 		let result = escape_po_string(input);
 		// Assert: all special characters are properly escaped
 		assert_eq!(result, expected);
+	}
+
+	#[rstest]
+	#[case("plain text")]
+	#[case(r#"He said "hello""#)]
+	#[case("path\\to\\file")]
+	#[case("line1\nline2")]
+	#[case("col1\tcol2")]
+	#[case("cr\rend")]
+	#[case("mixed\n\"value\"")]
+	fn test_po_string_escape_round_trip(#[case] input: &str) {
+		assert_eq!(unescape_po_string(&escape_po_string(input)), input);
+	}
+
+	#[test]
+	fn test_parse_po_file_supports_wrapped_plural_and_contextual_entries() {
+		let content = r#"
+msgctxt "button"
+msgid ""
+"Save "
+"file"
+msgstr ""
+"Enregistrer "
+"le fichier"
+
+msgid "apple"
+msgid_plural "apples"
+msgstr[0] "pomme"
+msgstr[1] "pommes"
+"#;
+
+		let messages = CompileMessagesCommand::parse_po_file(content).unwrap();
+
+		assert_eq!(
+			messages,
+			vec![
+				(
+					"button\u{4}Save file".to_string(),
+					"Enregistrer le fichier".to_string(),
+				),
+				("apple\0apples".to_string(), "pomme\0pommes".to_string()),
+			]
+		);
 	}
 
 	#[rstest]
