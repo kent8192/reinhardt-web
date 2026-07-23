@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.4.0-alpha.1...reinhardt-macros@v0.4.0-alpha.2) - 2026-07-23
+
+### Documentation
+
+- *(di)* document mutable injection patterns
+
+### Fixed
+
+- *(macros)* add safe injected parameter identifiers
+- *(macros)* preserve injected argument order
+- *(macros)* forward mutable injected patterns safely
+- *(core)* remove obsolete route inject pattern metadata
+- *(di)* preserve interleaved handler argument order
+- *(macros)* remove obsolete inject pattern metadata
+- *(macros)* make injected temporaries hygienic
+- *(macros)* forward named injection arguments safely
+
+### Testing
+
+- *(macros)* compile mutable core inject paths
+
 ### Fixed
 
 - Preserve mutable and destructured `#[inject]` parameter patterns across
