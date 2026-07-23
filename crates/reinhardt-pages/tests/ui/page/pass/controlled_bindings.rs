@@ -2,6 +2,17 @@ use reinhardt_core::types::page::NumberParseError;
 use reinhardt_pages::page;
 use reinhardt_pages::reactive::{ReactiveScope, Signal};
 
+#[derive(Clone)]
+struct Fields {
+	name: Signal<String>,
+}
+
+impl Fields {
+	fn name(&self) -> &Signal<String> {
+		&self.name
+	}
+}
+
 fn main() {
 	ReactiveScope::run(|| {
 		let text = Signal::new(String::new());
@@ -11,6 +22,9 @@ fn main() {
 		let number_error = Signal::new(None::<NumberParseError>);
 		let selected = Signal::new(String::new());
 		let selected_many = Signal::new(Vec::<String>::new());
+		let fields = Fields {
+			name: Signal::new(String::new()),
+		};
 
 		let _ = page!({
 			input {
@@ -19,7 +33,7 @@ fn main() {
 			}
 			textarea {
 				a11y: off,
-				bind: text
+				bind: fields.name()
 			}
 			input {
 				a11y: off,

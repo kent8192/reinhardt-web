@@ -1,8 +1,11 @@
 //! `ClientLauncher` builder, lifecycle contexts, and the `launch()` pipeline.
 
 use reinhardt_urls::routers::ClientPathPattern;
+use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
+
+use crate::reactive::{Context, ContextGuard};
 
 #[cfg(wasm)]
 use super::link_interceptor::install_link_interceptor;
@@ -48,7 +51,10 @@ thread_local! {
 	static RENDER_COUNT: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
 	static PERSISTENT_LAYOUT_RENDERER: RefCell<PersistentLayoutRenderer> =
 		RefCell::new(PersistentLayoutRenderer::new());
+	static ROOT_CONTEXT_GUARDS: RefCell<Vec<Box<dyn Any>>> = const { RefCell::new(Vec::new()) };
 }
+
+type RootContextProvider = Box<dyn FnOnce() -> Box<dyn Any>>;
 
 #[cfg(wasm)]
 struct PersistentLayoutRenderer {
@@ -344,6 +350,8 @@ pub struct ClientLauncher {
 	#[cfg_attr(not(wasm), allow(dead_code))]
 	pub(super) before_launch_hooks: Vec<BeforeLaunchHook>,
 	#[cfg_attr(not(wasm), allow(dead_code))]
+	pub(super) root_context_providers: Vec<RootContextProvider>,
+	#[cfg_attr(not(wasm), allow(dead_code))]
 	pub(super) after_launch_hooks: Vec<AfterLaunchHook>,
 	#[cfg_attr(not(wasm), allow(dead_code))]
 	pub(super) path_subscriptions: Vec<PathSubscription>,
@@ -593,10 +601,41 @@ impl ClientLauncher {
 			client_router_init: None,
 			intercept_links: true,
 			before_launch_hooks: Vec::new(),
+			root_context_providers: Vec::new(),
 			after_launch_hooks: Vec::new(),
 			path_subscriptions: Vec::new(),
 			use_inventory: false,
 		}
+	}
+
+	/// Provide a root context for the lifetime of the launched application.
+	///
+	/// The context is installed after the reactive scheduler is configured and
+	/// before any `before_launch` callback or router construction. Its RAII guard
+	/// is retained for later SPA navigations. If launching fails, the guard is
+	/// dropped and the context is removed automatically.
+	pub fn provide_context<T>(mut self, context: &Context<T>, value: T) -> Self
+	where
+		T: Clone + 'static,
+	{
+		let context = *context;
+		self.root_context_providers.push(Box::new(move || {
+			Box::new(ContextGuard::new(&context, value))
+		}));
+		self
+	}
+
+	/// Provide an i18n context for the lifetime of the launched application.
+	///
+	/// This is the fresh-CSR counterpart to hydration's retained i18n context.
+	/// The context is available to the initial render, callbacks, and later SPA
+	/// route renders without an application-owned global guard.
+	#[cfg(feature = "i18n")]
+	pub fn i18n_context(mut self, context: crate::i18n::I18nContext) -> Self {
+		self.root_context_providers.push(Box::new(move || {
+			Box::new(crate::i18n::provide_i18n_context(context))
+		}));
+		self
 	}
 
 	/// Register a [`reinhardt_urls::routers::ClientRouter`] factory function.
@@ -1021,6 +1060,12 @@ impl ClientLauncher {
 			wasm_bindgen_futures::spawn_local(async move { task() });
 		});
 
+		let root_context_guards = self
+			.root_context_providers
+			.drain(..)
+			.map(|provider| provider())
+			.collect::<Vec<_>>();
+
 		// Step 3: drain before_launch callbacks before any router or DOM work.
 		for hook in self.before_launch_hooks.drain(..) {
 			hook();
@@ -1257,6 +1302,8 @@ impl ClientLauncher {
 			with_spa_router(|r| r.__diag_observer_count())
 		);
 
+		ROOT_CONTEXT_GUARDS.with(|guards| guards.borrow_mut().extend(root_context_guards));
+
 		Ok(())
 	}
 }
@@ -1321,6 +1368,57 @@ mod tests {
 		let launcher = ClientLauncher::new("#root");
 		// Assert
 		assert!(launcher.before_launch_hooks.is_empty());
+	}
+
+	#[rstest]
+	fn root_context_providers_start_empty() {
+		// Arrange / Act
+		let launcher = ClientLauncher::new("#root");
+
+		// Assert
+		assert!(launcher.root_context_providers.is_empty());
+	}
+
+	#[rstest]
+	fn provide_context_installs_context_when_launch_setup_runs() {
+		// Arrange
+		let context = crate::reactive::Context::new();
+		let mut launcher = ClientLauncher::new("#root").provide_context(&context, 42);
+
+		// Act
+		let guards = launcher
+			.root_context_providers
+			.drain(..)
+			.map(|provider| provider())
+			.collect::<Vec<_>>();
+
+		// Assert
+		assert_eq!(crate::reactive::get_context(&context), Some(42));
+		drop(guards);
+		assert_eq!(crate::reactive::get_context(&context), None);
+	}
+
+	#[rstest]
+	#[cfg(feature = "i18n")]
+	fn i18n_context_installs_context_when_launch_setup_runs() {
+		// Arrange
+		let context = crate::i18n::I18nContext::empty("en-US", "en-US");
+		let mut launcher = ClientLauncher::new("#root").i18n_context(context.clone());
+
+		// Act
+		let guards = launcher
+			.root_context_providers
+			.drain(..)
+			.map(|provider| provider())
+			.collect::<Vec<_>>();
+
+		// Assert
+		assert_eq!(
+			crate::i18n::use_i18n_context().map(|context| context.locale()),
+			Some(context.locale())
+		);
+		drop(guards);
+		assert!(crate::i18n::use_i18n_context().is_none());
 	}
 
 	#[rstest]

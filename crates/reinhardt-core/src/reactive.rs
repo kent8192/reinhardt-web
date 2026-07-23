@@ -69,4 +69,4 @@ pub use scope::{
 	NodeKey, ReactiveScope, ReactiveScopeError, ScopeId, current_scope_id, enter_scope,
 	on_scope_dispose, on_scope_dispose_after_nodes,
 };
-pub use signal::Signal;
+pub use signal::{IntoSignalHandle, Signal, copy_signal_handle};
