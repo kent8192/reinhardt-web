@@ -116,13 +116,12 @@ Provides compile-time code generation for common patterns.
     use reinhardt::views::{get, post};
     use reinhardt::http::{Response, ViewResult};
     use reinhardt::extractors::{Path, Json};
-    use std::sync::Arc;
     use uuid::Uuid;
 
     #[get("/users/{<uuid:id>}", use_inject = true)]
     async fn get_user(
         Path(id): Path<Uuid>,
-        #[inject] db: Arc<DatabaseConnection>,  // Injected from context
+        #[inject] db: DatabaseConnection,  // Injected from context
     ) -> ViewResult<Response> {
         // ...
     }
@@ -130,7 +129,7 @@ Provides compile-time code generation for common patterns.
     #[post("/users", use_inject = true)]
     async fn create_user(
         Json(data): Json<CreateUserRequest>,
-        #[inject] db: Arc<DatabaseConnection>,
+        #[inject] db: DatabaseConnection,
     ) -> ViewResult<Response> {
         // ...
     }

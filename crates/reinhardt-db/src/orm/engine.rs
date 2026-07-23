@@ -47,6 +47,70 @@ use reinhardt_core::exception::Result;
 use sqlx::{Any, AnyPool, pool::PoolOptions};
 use std::time::Duration;
 
+pub(crate) async fn connect_backend_with_pool_size(
+	url: &str,
+	pool_size: Option<u32>,
+) -> Result<crate::orm::connection::BackendsConnection> {
+	let postgres = url.starts_with("postgres://") || url.starts_with("postgresql://");
+	let mysql = url.starts_with("mysql://");
+	let sqlite = url.starts_with("sqlite://") || url.starts_with("sqlite:");
+
+	#[cfg(feature = "postgres")]
+	if postgres {
+		return crate::orm::connection::BackendsConnection::connect_postgres_with_pool_size(
+			url, pool_size,
+		)
+		.await;
+	}
+
+	#[cfg(feature = "mysql")]
+	if mysql {
+		return crate::orm::connection::BackendsConnection::connect_mysql(url).await;
+	}
+
+	#[cfg(feature = "sqlite")]
+	if sqlite {
+		return crate::orm::connection::BackendsConnection::connect_sqlite(url).await;
+	}
+
+	#[cfg(not(feature = "postgres"))]
+	let _ = pool_size;
+	let missing_feature = if postgres {
+		Some("postgres")
+	} else if mysql {
+		Some("mysql")
+	} else if sqlite {
+		Some("sqlite")
+	} else {
+		None
+	};
+	if let Some(feature) = missing_feature {
+		return Err(reinhardt_core::exception::DatabaseError::new(
+			reinhardt_core::exception::DatabaseErrorKind::Configuration,
+			format!("Database backend not compiled in. Enable the '{feature}' feature."),
+		)
+		.into());
+	}
+	Err(reinhardt_core::exception::DatabaseError::new(
+		reinhardt_core::exception::DatabaseErrorKind::Configuration,
+		format!("Unsupported database URL scheme: {url}"),
+	)
+	.into())
+}
+
+/// Registers a request-scoped ORM database owner and its copyable handle.
+#[cfg(feature = "di")]
+pub fn register_request_database(
+	context: &reinhardt_di::InjectionContext,
+	owner: crate::orm::connection::BackendsConnection,
+) -> Result<crate::orm::connection::DatabaseConnection> {
+	let lease = crate::orm::connection::DatabaseConnectionLease::register(owner)?;
+	let handle = lease.handle();
+	context.set_request(lease);
+	context.set_request(handle);
+	Ok(handle)
+}
+
 /// Database engine configuration
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]

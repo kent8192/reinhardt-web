@@ -533,6 +533,8 @@ mod database_tests {
 #[cfg(all(with_reinhardt, server))]
 mod server_fn_tests {
 	use reinhardt::DatabaseConnection;
+	use reinhardt::db::backends::DatabaseConnection as BackendsConnection;
+	use reinhardt::db::orm::DatabaseConnectionLease;
 	use reinhardt::db::orm::reinitialize_database;
 	use rstest::*;
 	use serial_test::serial;
@@ -549,7 +551,12 @@ mod server_fn_tests {
 	/// Fixture: SQLite database with tables, test data, and DatabaseConnection
 	/// Also initializes the global ORM database connection for server functions.
 	#[fixture]
-	async fn sqlite_with_test_data() -> (NamedTempFile, Arc<SqlitePool>, DatabaseConnection) {
+	async fn sqlite_with_test_data() -> (
+		NamedTempFile,
+		Arc<SqlitePool>,
+		DatabaseConnectionLease,
+		DatabaseConnection,
+	) {
 		// Create temp file
 		let temp_file = NamedTempFile::new().expect("Failed to create temp file");
 		let db_path = temp_file.path().to_str().unwrap().to_string();
@@ -627,20 +634,28 @@ mod server_fn_tests {
 			.expect("Failed to initialize global database");
 
 		// Create DatabaseConnection for server functions
-		let db_conn = DatabaseConnection::connect_sqlite(&orm_url)
+		let owner = BackendsConnection::connect_sqlite(&orm_url)
 			.await
-			.expect("Failed to create DatabaseConnection");
+			.expect("Failed to create backend connection");
+		let lease = DatabaseConnectionLease::register(owner)
+			.expect("Failed to register DatabaseConnection");
+		let db_conn = lease.handle();
 
-		(temp_file, pool, db_conn)
+		(temp_file, pool, lease, db_conn)
 	}
 
 	#[rstest]
 	#[tokio::test]
 	#[serial(server_fn_tests)]
 	async fn test_get_questions_server_fn(
-		#[future] sqlite_with_test_data: (NamedTempFile, Arc<SqlitePool>, DatabaseConnection),
+		#[future] sqlite_with_test_data: (
+			NamedTempFile,
+			Arc<SqlitePool>,
+			DatabaseConnectionLease,
+			DatabaseConnection,
+		),
 	) {
-		let (_file, _pool, db_conn) = sqlite_with_test_data.await;
+		let (_file, _pool, _lease, db_conn) = sqlite_with_test_data.await;
 
 		// Test: Get questions via server function (pass DatabaseConnection as argument)
 		let result = get_questions(db_conn).await;
@@ -653,9 +668,14 @@ mod server_fn_tests {
 	#[tokio::test]
 	#[serial(server_fn_tests)]
 	async fn test_get_question_detail_server_fn(
-		#[future] sqlite_with_test_data: (NamedTempFile, Arc<SqlitePool>, DatabaseConnection),
+		#[future] sqlite_with_test_data: (
+			NamedTempFile,
+			Arc<SqlitePool>,
+			DatabaseConnectionLease,
+			DatabaseConnection,
+		),
 	) {
-		let (_file, _pool, db_conn) = sqlite_with_test_data.await;
+		let (_file, _pool, _lease, db_conn) = sqlite_with_test_data.await;
 
 		// Test: Get question detail via server function
 		let result = get_question_detail(1, db_conn).await;
@@ -672,9 +692,14 @@ mod server_fn_tests {
 	#[tokio::test]
 	#[serial(server_fn_tests)]
 	async fn test_get_question_detail_not_found(
-		#[future] sqlite_with_test_data: (NamedTempFile, Arc<SqlitePool>, DatabaseConnection),
+		#[future] sqlite_with_test_data: (
+			NamedTempFile,
+			Arc<SqlitePool>,
+			DatabaseConnectionLease,
+			DatabaseConnection,
+		),
 	) {
-		let (_file, _pool, db_conn) = sqlite_with_test_data.await;
+		let (_file, _pool, _lease, db_conn) = sqlite_with_test_data.await;
 
 		// Test: Get non-existent question
 		let result = get_question_detail(999, db_conn).await;
@@ -688,9 +713,14 @@ mod server_fn_tests {
 	#[tokio::test]
 	#[serial(server_fn_tests)]
 	async fn test_get_question_results_server_fn(
-		#[future] sqlite_with_test_data: (NamedTempFile, Arc<SqlitePool>, DatabaseConnection),
+		#[future] sqlite_with_test_data: (
+			NamedTempFile,
+			Arc<SqlitePool>,
+			DatabaseConnectionLease,
+			DatabaseConnection,
+		),
 	) {
-		let (_file, _pool, db_conn) = sqlite_with_test_data.await;
+		let (_file, _pool, _lease, db_conn) = sqlite_with_test_data.await;
 
 		// Test: Get question results via server function
 		let result = get_question_results(1, db_conn).await;
@@ -706,9 +736,14 @@ mod server_fn_tests {
 	#[tokio::test]
 	#[serial(server_fn_tests)]
 	async fn test_vote_server_fn(
-		#[future] sqlite_with_test_data: (NamedTempFile, Arc<SqlitePool>, DatabaseConnection),
+		#[future] sqlite_with_test_data: (
+			NamedTempFile,
+			Arc<SqlitePool>,
+			DatabaseConnectionLease,
+			DatabaseConnection,
+		),
 	) {
-		let (_file, _pool, db_conn) = sqlite_with_test_data.await;
+		let (_file, _pool, _lease, db_conn) = sqlite_with_test_data.await;
 
 		// Test: Vote for a choice
 		let vote_request = VoteRequest {
@@ -728,9 +763,14 @@ mod server_fn_tests {
 	#[tokio::test]
 	#[serial(server_fn_tests)]
 	async fn test_vote_wrong_question(
-		#[future] sqlite_with_test_data: (NamedTempFile, Arc<SqlitePool>, DatabaseConnection),
+		#[future] sqlite_with_test_data: (
+			NamedTempFile,
+			Arc<SqlitePool>,
+			DatabaseConnectionLease,
+			DatabaseConnection,
+		),
 	) {
-		let (_file, _pool, db_conn) = sqlite_with_test_data.await;
+		let (_file, _pool, _lease, db_conn) = sqlite_with_test_data.await;
 
 		// Test: Vote with mismatched question_id and choice_id
 		let vote_request = VoteRequest {
@@ -829,28 +869,22 @@ mod server_fn_tests {
 		};
 
 		// First vote
-		let db_conn1 = DatabaseConnection::connect_sqlite(&orm_url)
+		let owner = BackendsConnection::connect_sqlite(&orm_url)
 			.await
-			.expect("Failed to create DatabaseConnection");
-		vote(vote_request.clone(), db_conn1).await.unwrap();
+			.expect("Failed to create backend connection");
+		let lease = DatabaseConnectionLease::register(owner)
+			.expect("Failed to register DatabaseConnection");
+		let db_conn = lease.handle();
+		vote(vote_request.clone(), db_conn).await.unwrap();
 
 		// Second vote
-		let db_conn2 = DatabaseConnection::connect_sqlite(&orm_url)
-			.await
-			.expect("Failed to create DatabaseConnection");
-		vote(vote_request.clone(), db_conn2).await.unwrap();
+		vote(vote_request.clone(), db_conn).await.unwrap();
 
 		// Third vote
-		let db_conn3 = DatabaseConnection::connect_sqlite(&orm_url)
-			.await
-			.expect("Failed to create DatabaseConnection");
-		vote(vote_request.clone(), db_conn3).await.unwrap();
+		vote(vote_request.clone(), db_conn).await.unwrap();
 
 		// Verify votes counted correctly
-		let db_conn_check = DatabaseConnection::connect_sqlite(&orm_url)
-			.await
-			.expect("Failed to create DatabaseConnection");
-		let results = get_question_results(1, db_conn_check).await.unwrap();
+		let results = get_question_results(1, db_conn).await.unwrap();
 		let blue_choice = results.1.iter().find(|c| c.choice_text == "Blue").unwrap();
 		assert_eq!(blue_choice.votes, 3, "Blue should have 3 votes");
 		assert_eq!(results.2, 3, "Total votes should be 3");
@@ -876,6 +910,8 @@ mod auth_tests {
 		update_question,
 	};
 	use examples_tutorial_basis::apps::users::models::User;
+	use reinhardt::db::backends::DatabaseConnection as BackendsConnection;
+	use reinhardt::db::orm::DatabaseConnectionLease;
 	use reinhardt::pages::server_fn::{ServerFnError, ServerFnErrorKind};
 	use reinhardt::{CurrentUser, DatabaseConnection};
 	use rstest::*;
@@ -885,14 +921,17 @@ mod auth_tests {
 	/// reinhardt-orm. No tables are created; the inactive-user guard below
 	/// short-circuits before any query runs.
 	#[fixture]
-	async fn empty_db_conn() -> (NamedTempFile, DatabaseConnection) {
+	async fn empty_db_conn() -> (NamedTempFile, DatabaseConnectionLease, DatabaseConnection) {
 		let temp_file = NamedTempFile::new().expect("Failed to create temp file");
 		let db_path = temp_file.path().to_str().unwrap().to_string();
 		let orm_url = format!("sqlite:///{}", db_path);
-		let db_conn = DatabaseConnection::connect_sqlite(&orm_url)
+		let owner = BackendsConnection::connect_sqlite(&orm_url)
 			.await
-			.expect("Failed to create DatabaseConnection");
-		(temp_file, db_conn)
+			.expect("Failed to create backend connection");
+		let lease = DatabaseConnectionLease::register(owner)
+			.expect("Failed to register DatabaseConnection");
+		let db_conn = lease.handle();
+		(temp_file, lease, db_conn)
 	}
 
 	fn inactive_current_user() -> CurrentUser<User> {
@@ -936,9 +975,9 @@ mod auth_tests {
 	#[rstest]
 	#[tokio::test]
 	async fn test_create_question_requires_auth(
-		#[future] empty_db_conn: (NamedTempFile, DatabaseConnection),
+		#[future] empty_db_conn: (NamedTempFile, DatabaseConnectionLease, DatabaseConnection),
 	) {
-		let (_file, db_conn) = empty_db_conn.await;
+		let (_file, _lease, db_conn) = empty_db_conn.await;
 		let current_user = inactive_current_user();
 
 		let result = create_question("Inactive attempt".to_string(), db_conn, current_user).await;
@@ -949,9 +988,9 @@ mod auth_tests {
 	#[rstest]
 	#[tokio::test]
 	async fn test_update_question_requires_auth(
-		#[future] empty_db_conn: (NamedTempFile, DatabaseConnection),
+		#[future] empty_db_conn: (NamedTempFile, DatabaseConnectionLease, DatabaseConnection),
 	) {
-		let (_file, db_conn) = empty_db_conn.await;
+		let (_file, _lease, db_conn) = empty_db_conn.await;
 		let current_user = inactive_current_user();
 
 		let result = update_question(1, "New text".to_string(), db_conn, current_user).await;
@@ -962,9 +1001,9 @@ mod auth_tests {
 	#[rstest]
 	#[tokio::test]
 	async fn test_delete_question_requires_auth(
-		#[future] empty_db_conn: (NamedTempFile, DatabaseConnection),
+		#[future] empty_db_conn: (NamedTempFile, DatabaseConnectionLease, DatabaseConnection),
 	) {
-		let (_file, db_conn) = empty_db_conn.await;
+		let (_file, _lease, db_conn) = empty_db_conn.await;
 		let current_user = inactive_current_user();
 
 		let result = delete_question(1, db_conn, current_user).await;
@@ -975,9 +1014,9 @@ mod auth_tests {
 	#[rstest]
 	#[tokio::test]
 	async fn test_create_choice_requires_auth(
-		#[future] empty_db_conn: (NamedTempFile, DatabaseConnection),
+		#[future] empty_db_conn: (NamedTempFile, DatabaseConnectionLease, DatabaseConnection),
 	) {
-		let (_file, db_conn) = empty_db_conn.await;
+		let (_file, _lease, db_conn) = empty_db_conn.await;
 		let current_user = inactive_current_user();
 
 		let result = create_choice(1, "Inactive choice".to_string(), db_conn, current_user).await;
@@ -988,9 +1027,9 @@ mod auth_tests {
 	#[rstest]
 	#[tokio::test]
 	async fn test_update_choice_requires_auth(
-		#[future] empty_db_conn: (NamedTempFile, DatabaseConnection),
+		#[future] empty_db_conn: (NamedTempFile, DatabaseConnectionLease, DatabaseConnection),
 	) {
-		let (_file, db_conn) = empty_db_conn.await;
+		let (_file, _lease, db_conn) = empty_db_conn.await;
 		let current_user = inactive_current_user();
 
 		let result = update_choice(1, "Hijack".to_string(), db_conn, current_user).await;
@@ -1001,9 +1040,9 @@ mod auth_tests {
 	#[rstest]
 	#[tokio::test]
 	async fn test_delete_choice_requires_auth(
-		#[future] empty_db_conn: (NamedTempFile, DatabaseConnection),
+		#[future] empty_db_conn: (NamedTempFile, DatabaseConnectionLease, DatabaseConnection),
 	) {
-		let (_file, db_conn) = empty_db_conn.await;
+		let (_file, _lease, db_conn) = empty_db_conn.await;
 		let current_user = inactive_current_user();
 
 		let result = delete_choice(1, db_conn, current_user).await;

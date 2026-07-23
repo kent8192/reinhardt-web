@@ -119,7 +119,7 @@ pub use database::{
 };
 
 // From mock module
-pub use mock::{MockDatabaseBackend, mock_connection, mock_database};
+pub use mock::{MockConnection, MockDatabaseBackend, mock_connection, mock_database};
 
 // From server module
 pub use server::{
@@ -137,7 +137,7 @@ pub use server::graphql_server;
 // From testcontainers module (conditional on feature)
 #[cfg(feature = "testcontainers")]
 pub use testcontainers::{
-	FileLockGuard, cockroachdb_container, create_test_any_pool, kafka_container,
+	FileLockGuard, MigrationDatabase, cockroachdb_container, create_test_any_pool, kafka_container,
 	localstack_fixture, mongodb_container, mysql_container, mysql_with_migrations_from,
 	postgres_container, postgres_with_migrations_from, postgres_with_migrations_from_dir,
 	rabbitmq_container, redis_container, shared_kafka_container, sqlite_with_migrations_from,

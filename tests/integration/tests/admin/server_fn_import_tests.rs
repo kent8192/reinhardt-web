@@ -18,7 +18,7 @@ async fn test_import_json_happy_path(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let http_request = make_staff_request();
 	let auth_user = make_auth_user();
 
@@ -55,7 +55,7 @@ async fn test_import_csv_happy_path(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let http_request = make_staff_request();
 	let auth_user = make_auth_user();
 
@@ -86,7 +86,7 @@ async fn test_import_tsv_happy_path(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let http_request = make_staff_request();
 	let auth_user = make_auth_user();
 
@@ -119,7 +119,7 @@ async fn test_import_file_size_limit(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let http_request = make_staff_request();
 	let auth_user = make_auth_user();
 
@@ -158,7 +158,7 @@ async fn test_import_record_count_limit(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let http_request = make_staff_request();
 	let auth_user = make_auth_user();
 
@@ -207,7 +207,7 @@ async fn test_import_invalid_json(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let http_request = make_staff_request();
 	let auth_user = make_auth_user();
 
@@ -236,7 +236,7 @@ async fn test_import_invalid_csv(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let http_request = make_staff_request();
 	let auth_user = make_auth_user();
 
@@ -275,7 +275,7 @@ async fn test_import_empty_data(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let http_request = make_staff_request();
 	let auth_user = make_auth_user();
 
@@ -307,7 +307,7 @@ async fn test_import_model_not_registered(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let http_request = make_staff_request();
 	let auth_user = make_auth_user();
 

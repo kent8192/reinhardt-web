@@ -9,8 +9,10 @@ use reinhardt_core::validators::{
 	MaxLengthValidator, MaxValueValidator, MinLengthValidator, MinValueValidator, RangeValidator,
 	ValidationError, Validator,
 };
-use reinhardt_db::DatabaseConnection;
 use reinhardt_db::orm::manager::reinitialize_database;
+use reinhardt_db::{
+	backends::DatabaseConnection as BackendsConnection, orm::DatabaseConnectionLease,
+};
 use reinhardt_integration_tests::{
 	migrations::apply_basic_test_migrations, validator_test_common::*,
 };
@@ -29,16 +31,22 @@ use testcontainers::{ContainerAsync, GenericImage};
 #[fixture]
 async fn validator_orm_test_db(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
-) -> (ContainerAsync<GenericImage>, TestDatabase, u16, String) {
-	let (container, _pool, port, url) = postgres_container.await;
+) -> (
+	ContainerAsync<GenericImage>,
+	DatabaseConnectionLease,
+	TestDatabase,
+	u16,
+	String,
+) {
+	let (container, pool, port, url) = postgres_container.await;
 
 	// Create ORM DatabaseConnection from URL
-	let connection = DatabaseConnection::connect(&url).await.unwrap();
+	let owner = BackendsConnection::connect(&url).await.unwrap();
 
 	// Apply basic test migrations using inner BackendsConnection
-	apply_basic_test_migrations(connection.inner())
-		.await
-		.unwrap();
+	apply_basic_test_migrations(&owner).await.unwrap();
+	let lease = DatabaseConnectionLease::register(owner).unwrap();
+	let connection = lease.handle();
 
 	// Initialize global database connection for ORM Manager API
 	reinitialize_database(&url)
@@ -47,11 +55,13 @@ async fn validator_orm_test_db(
 
 	// Create TestDatabase with the connection
 	let test_db = TestDatabase {
-		connection: Arc::new(connection),
+		connection,
+		pool,
+		_lease: lease.clone(),
 		_container: None, // Container is managed by fixture
 	};
 
-	(container, test_db, port, url)
+	(container, lease, test_db, port, url)
 }
 
 #[cfg(test)]
@@ -63,10 +73,16 @@ mod scalar_validation_tests {
 	#[tokio::test]
 	#[serial(validator_orm_db)]
 	async fn test_scalar_field_validation(
-		#[future] validator_orm_test_db: (ContainerAsync<GenericImage>, TestDatabase, u16, String),
+		#[future] validator_orm_test_db: (
+			ContainerAsync<GenericImage>,
+			DatabaseConnectionLease,
+			TestDatabase,
+			u16,
+			String,
+		),
 		_validator_db_guard: TeardownGuard<ValidatorDbGuard>,
 	) {
-		let (_container, test_db, _port, _database_url) = validator_orm_test_db.await;
+		let (_container, _lease, test_db, _port, _database_url) = validator_orm_test_db.await;
 
 		// No need to setup tables - migrations already applied
 
@@ -296,12 +312,18 @@ mod constraint_validation_tests {
 	#[tokio::test]
 	#[serial(validator_orm_db)]
 	async fn test_unique_constraint_database_violation(
-		#[future] validator_orm_test_db: (ContainerAsync<GenericImage>, TestDatabase, u16, String),
+		#[future] validator_orm_test_db: (
+			ContainerAsync<GenericImage>,
+			DatabaseConnectionLease,
+			TestDatabase,
+			u16,
+			String,
+		),
 		_validator_db_guard: TeardownGuard<ValidatorDbGuard>,
 	) {
 		use reinhardt_core::validators::UniqueValidator;
 
-		let (_container, test_db, _port, _database_url) = validator_orm_test_db.await;
+		let (_container, _lease, test_db, _port, _database_url) = validator_orm_test_db.await;
 
 		// Insert first user successfully using TestDatabase method
 		let user1_id = test_db
@@ -311,7 +333,7 @@ mod constraint_validation_tests {
 		assert!(user1_id > 0);
 
 		// Create a UniqueValidator for username field using pool from connection
-		let pool = test_db.connection.inner().into_postgres().unwrap().clone();
+		let pool = test_db.pool.clone();
 		let pool_clone = pool.clone();
 		let username_validator = UniqueValidator::new(
 			"username",
@@ -331,7 +353,7 @@ mod constraint_validation_tests {
 						.bind(&value)
 					};
 
-					let result = query.fetch_one(&pool).await;
+					let result = query.fetch_one(pool.as_ref()).await;
 					result.map(|(count,)| count > 0).unwrap_or(false)
 				})
 			}),
@@ -362,7 +384,7 @@ mod constraint_validation_tests {
 			sqlx::query("INSERT INTO test_users (username, email) VALUES ($1, $2) RETURNING id")
 				.bind("alice")
 				.bind("different@example.com")
-				.fetch_one(&pool)
+				.fetch_one(pool.as_ref())
 				.await;
 		assert!(insert_result.is_err());
 
@@ -387,10 +409,16 @@ mod relationship_validation_tests {
 	#[tokio::test]
 	#[serial(validator_orm_db)]
 	async fn test_foreign_key_validation(
-		#[future] validator_orm_test_db: (ContainerAsync<GenericImage>, TestDatabase, u16, String),
+		#[future] validator_orm_test_db: (
+			ContainerAsync<GenericImage>,
+			DatabaseConnectionLease,
+			TestDatabase,
+			u16,
+			String,
+		),
 		_validator_db_guard: TeardownGuard<ValidatorDbGuard>,
 	) {
-		let (_container, test_db, _port, _database_url) = validator_orm_test_db.await;
+		let (_container, _lease, test_db, _port, _database_url) = validator_orm_test_db.await;
 
 		// Insert user and verify it exists using TestDatabase method
 		let user_id = test_db
@@ -410,12 +438,18 @@ mod relationship_validation_tests {
 	#[tokio::test]
 	#[serial(validator_orm_db)]
 	async fn test_foreign_key_existence_validation(
-		#[future] validator_orm_test_db: (ContainerAsync<GenericImage>, TestDatabase, u16, String),
+		#[future] validator_orm_test_db: (
+			ContainerAsync<GenericImage>,
+			DatabaseConnectionLease,
+			TestDatabase,
+			u16,
+			String,
+		),
 		_validator_db_guard: TeardownGuard<ValidatorDbGuard>,
 	) {
 		use reinhardt_core::validators::ExistsValidator;
 
-		let (_container, test_db, _port, _database_url) = validator_orm_test_db.await;
+		let (_container, _lease, test_db, _port, _database_url) = validator_orm_test_db.await;
 
 		// Insert user and product for valid FK references using TestDatabase methods
 		let user_id = test_db
@@ -428,7 +462,7 @@ mod relationship_validation_tests {
 			.unwrap();
 
 		// Get pool from DatabaseConnection for raw SQL queries
-		let pool = test_db.connection.inner().into_postgres().unwrap().clone();
+		let pool = test_db.pool.clone();
 
 		// Create ExistsValidator for user_id
 		let user_pool = pool.clone();
@@ -443,7 +477,7 @@ mod relationship_validation_tests {
 							"SELECT COUNT(*) FROM test_users WHERE id = $1",
 						)
 						.bind(id)
-						.fetch_one(&pool)
+						.fetch_one(pool.as_ref())
 						.await;
 						result.map(|(count,)| count > 0).unwrap_or(false)
 					} else {
@@ -466,7 +500,7 @@ mod relationship_validation_tests {
 							"SELECT COUNT(*) FROM test_products WHERE id = $1",
 						)
 						.bind(id)
-						.fetch_one(&pool)
+						.fetch_one(pool.as_ref())
 						.await;
 						result.map(|(count,)| count > 0).unwrap_or(false)
 					} else {
@@ -514,7 +548,7 @@ mod relationship_validation_tests {
 		.bind(99999) // non-existent user_id
 		.bind(product_id)
 		.bind(1)
-		.execute(&pool)
+		.execute(pool.as_ref())
 		.await;
 
 		assert!(insert_result.is_err());
@@ -534,10 +568,16 @@ mod relationship_validation_tests {
 	#[tokio::test]
 	#[serial(validator_orm_db)]
 	async fn test_foreign_key_update_violation(
-		#[future] validator_orm_test_db: (ContainerAsync<GenericImage>, TestDatabase, u16, String),
+		#[future] validator_orm_test_db: (
+			ContainerAsync<GenericImage>,
+			DatabaseConnectionLease,
+			TestDatabase,
+			u16,
+			String,
+		),
 		_validator_db_guard: TeardownGuard<ValidatorDbGuard>,
 	) {
-		let (_container, test_db, _port, _database_url) = validator_orm_test_db.await;
+		let (_container, _lease, test_db, _port, _database_url) = validator_orm_test_db.await;
 
 		// Insert user and product
 		let user_id = test_db.insert_user("bob", "bob@example.com").await.unwrap();
@@ -551,12 +591,12 @@ mod relationship_validation_tests {
 		assert!(order_id > 0);
 
 		// Attempt to update order with non-existent user_id (should fail)
-		let pool = test_db.connection.inner().into_postgres().unwrap().clone();
+		let pool = test_db.pool.clone();
 		let update_result: Result<sqlx::postgres::PgQueryResult, sqlx::Error> =
 			sqlx::query("UPDATE test_orders SET user_id = $1 WHERE id = $2")
 				.bind(99999)
 				.bind(order_id)
-				.execute(&pool)
+				.execute(pool.as_ref())
 				.await;
 
 		assert!(update_result.is_err());
@@ -574,10 +614,16 @@ mod relationship_validation_tests {
 	#[tokio::test]
 	#[serial(validator_orm_db)]
 	async fn test_foreign_key_cascade_delete(
-		#[future] validator_orm_test_db: (ContainerAsync<GenericImage>, TestDatabase, u16, String),
+		#[future] validator_orm_test_db: (
+			ContainerAsync<GenericImage>,
+			DatabaseConnectionLease,
+			TestDatabase,
+			u16,
+			String,
+		),
 		_validator_db_guard: TeardownGuard<ValidatorDbGuard>,
 	) {
-		let (_container, test_db, _port, _database_url) = validator_orm_test_db.await;
+		let (_container, _lease, test_db, _port, _database_url) = validator_orm_test_db.await;
 
 		// Insert user and product
 		let user_id = test_db
@@ -595,11 +641,11 @@ mod relationship_validation_tests {
 
 		// Attempt to delete user (should fail because of FK constraint)
 		// Note: test_orders table does NOT have ON DELETE CASCADE
-		let pool = test_db.connection.inner().into_postgres().unwrap().clone();
+		let pool = test_db.pool.clone();
 		let delete_result: Result<sqlx::postgres::PgQueryResult, sqlx::Error> =
 			sqlx::query("DELETE FROM test_users WHERE id = $1")
 				.bind(user_id)
-				.execute(&pool)
+				.execute(pool.as_ref())
 				.await;
 
 		assert!(delete_result.is_err());

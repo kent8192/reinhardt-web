@@ -25,7 +25,7 @@ async fn test_get_list_denied_when_view_false(
 	#[future] server_fn_context_deny_all: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context_deny_all.await;
+	let (site, db, _connection_lease) = server_fn_context_deny_all.await;
 	let auth_user = make_auth_user();
 	let params = ListQueryParams::default();
 
@@ -53,7 +53,7 @@ async fn test_get_detail_denied_when_view_false(
 	#[future] server_fn_context_deny_all: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context_deny_all.await;
+	let (site, db, _connection_lease) = server_fn_context_deny_all.await;
 	let http_request = make_staff_request();
 	let auth_user = make_auth_user();
 
@@ -89,7 +89,7 @@ async fn test_get_fields_denied_when_view_false(
 	#[future] server_fn_context_deny_all: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context_deny_all.await;
+	let (site, db, _connection_lease) = server_fn_context_deny_all.await;
 	let http_request = make_staff_request();
 	let auth_user = make_auth_user();
 
@@ -125,7 +125,7 @@ async fn test_create_record_denied_when_add_false(
 	#[future] server_fn_context_deny_all: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context_deny_all.await;
+	let (site, db, _connection_lease) = server_fn_context_deny_all.await;
 	let http_request = make_staff_request();
 	let auth_user = make_auth_user();
 
@@ -166,7 +166,7 @@ async fn test_update_record_denied_when_change_false(
 	#[future] server_fn_context_deny_all: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context_deny_all.await;
+	let (site, db, _connection_lease) = server_fn_context_deny_all.await;
 	let http_request = make_staff_request();
 	let auth_user = make_auth_user();
 
@@ -208,7 +208,7 @@ async fn test_delete_record_denied_when_delete_false(
 	#[future] server_fn_context_deny_all: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context_deny_all.await;
+	let (site, db, _connection_lease) = server_fn_context_deny_all.await;
 	let http_request = make_staff_request();
 	let auth_user = make_auth_user();
 
@@ -245,7 +245,7 @@ async fn test_bulk_delete_denied_when_delete_false(
 	#[future] server_fn_context_deny_all: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context_deny_all.await;
+	let (site, db, _connection_lease) = server_fn_context_deny_all.await;
 	let http_request = make_staff_request();
 	let auth_user = make_auth_user();
 
@@ -286,7 +286,7 @@ async fn test_export_denied_when_view_false(
 	#[future] server_fn_context_deny_all: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context_deny_all.await;
+	let (site, db, _connection_lease) = server_fn_context_deny_all.await;
 	let http_request = make_staff_request();
 	let auth_user = make_auth_user();
 
@@ -322,7 +322,7 @@ async fn test_import_denied_when_add_false(
 	#[future] server_fn_context_deny_all: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context_deny_all.await;
+	let (site, db, _connection_lease) = server_fn_context_deny_all.await;
 	let http_request = make_staff_request();
 	let auth_user = make_auth_user();
 
@@ -366,7 +366,7 @@ async fn test_view_only_can_list_but_not_create(
 	#[future] server_fn_context_view_only: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context_view_only.await;
+	let (site, db, _connection_lease) = server_fn_context_view_only.await;
 	let params = ListQueryParams::default();
 
 	// Act — view operation should succeed
@@ -427,7 +427,7 @@ async fn test_view_only_can_detail_but_not_update(
 	#[future] server_fn_context_view_only: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context_view_only.await;
+	let (site, db, _connection_lease) = server_fn_context_view_only.await;
 
 	// Act — view operation should succeed (seeded record has id=1)
 	let detail_result = get_detail(
@@ -484,7 +484,7 @@ async fn test_view_only_can_export_but_not_import(
 	#[future] server_fn_context_view_only: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context_view_only.await;
+	let (site, db, _connection_lease) = server_fn_context_view_only.await;
 
 	// Act — view operation (export) should succeed
 	let export_result = export_data(
@@ -558,7 +558,7 @@ async fn test_permission_denial_for_all_mutation_endpoints(
 	#[case] endpoint: &str,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context_deny_all.await;
+	let (site, db, _connection_lease) = server_fn_context_deny_all.await;
 	let http_request = make_staff_request();
 	let auth_user = make_auth_user();
 

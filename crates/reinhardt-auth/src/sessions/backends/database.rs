@@ -45,18 +45,26 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
 use reinhardt_core::macros::model;
-use reinhardt_db::DatabaseConnection;
-use reinhardt_db::orm::{DatabaseBackend, Filter, FilterOperator, FilterValue, Model};
+use reinhardt_db::backends::DatabaseConnection as BackendsConnection;
+use reinhardt_db::orm::{
+	DatabaseBackend, DatabaseConnection, DatabaseConnectionLease, Filter, FilterOperator,
+	FilterValue, Model,
+};
 use reinhardt_query::prelude::{
 	Alias, ColumnDef, CreateIndexStatement, Expr, ExprTrait, IntoValue, MySqlQueryBuilder,
 	OnConflict, PostgresQueryBuilder, Query, QueryStatementBuilder, SqliteQueryBuilder,
 };
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 
 use crate::sessions::cleanup::{CleanupableBackend, SessionMetadata};
 
 use super::cache::{SessionBackend, SessionError};
+
+async fn connect_backend(database_url: &str) -> Result<BackendsConnection, SessionError> {
+	BackendsConnection::connect(database_url)
+		.await
+		.map_err(|error| SessionError::CacheError(format!("Database connection error: {error}")))
+}
 
 /// Database session model
 ///
@@ -125,13 +133,12 @@ pub struct Session {
 /// ```rust,no_run
 /// use reinhardt_auth::sessions::backends::{DatabaseSessionBackend, SessionBackend};
 /// use serde_json::json;
-/// use reinhardt_db::DatabaseConnection;
-/// use std::sync::Arc;
+/// use reinhardt_db::backends::DatabaseConnection as BackendsConnection;
 ///
 /// # async fn example() {
 /// // Initialize backend with database connection
-/// let connection = DatabaseConnection::connect("sqlite::memory:").await.unwrap();
-/// let backend = DatabaseSessionBackend::from_connection(Arc::new(connection));
+/// let owner = BackendsConnection::connect_sqlite("sqlite::memory:").await.unwrap();
+/// let backend = DatabaseSessionBackend::from_connection(owner).unwrap();
 ///
 /// // Note: Table should be created via migrations
 ///
@@ -147,7 +154,8 @@ pub struct Session {
 /// ```
 #[derive(Clone)]
 pub struct DatabaseSessionBackend {
-	connection: Arc<DatabaseConnection>,
+	_lease: DatabaseConnectionLease,
+	connection: DatabaseConnection,
 }
 
 impl DatabaseSessionBackend {
@@ -173,13 +181,9 @@ impl DatabaseSessionBackend {
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
 	/// ```
 	pub async fn new(database_url: &str) -> Result<Self, SessionError> {
-		let connection = DatabaseConnection::connect(database_url)
-			.await
-			.map_err(|e| SessionError::CacheError(format!("Database connection error: {}", e)))?;
+		let owner = connect_backend(database_url).await?;
 
-		Ok(Self {
-			connection: Arc::new(connection),
-		})
+		Self::from_connection(owner)
 	}
 
 	/// Create a new backend from an existing database connection
@@ -188,18 +192,22 @@ impl DatabaseSessionBackend {
 	///
 	/// ```rust,no_run
 	/// use reinhardt_auth::sessions::backends::DatabaseSessionBackend;
-	/// use reinhardt_db::DatabaseConnection;
-	/// use std::sync::Arc;
+	/// use reinhardt_db::backends::DatabaseConnection as BackendsConnection;
 	///
 	/// # async fn example() {
-	/// let connection = DatabaseConnection::connect("sqlite::memory:").await.unwrap();
-	/// let backend = DatabaseSessionBackend::from_connection(Arc::new(connection));
+	/// let owner = BackendsConnection::connect_sqlite("sqlite::memory:").await.unwrap();
+	/// let backend = DatabaseSessionBackend::from_connection(owner).unwrap();
 	/// // Backend created from existing connection
 	/// # }
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
 	/// ```
-	pub fn from_connection(connection: Arc<DatabaseConnection>) -> Self {
-		Self { connection }
+	pub fn from_connection(owner: BackendsConnection) -> Result<Self, SessionError> {
+		let lease = DatabaseConnectionLease::register(owner)
+			.map_err(|e| SessionError::CacheError(format!("Database connection error: {}", e)))?;
+		Ok(Self {
+			connection: lease.handle(),
+			_lease: lease,
+		})
 	}
 
 	/// Build SQL string for the current database backend

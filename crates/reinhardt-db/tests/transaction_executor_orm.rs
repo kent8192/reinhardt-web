@@ -17,7 +17,8 @@ use reinhardt_db::associations::{ManyToManyField, ManyToManyManager};
 use reinhardt_db::orm::annotation::{AnnotationValue, Expression, Value};
 use reinhardt_db::orm::composite_pk::{CompositePrimaryKey, PkValue};
 use reinhardt_db::orm::connection::{
-	DatabaseBackend, DatabaseConnection, OrmExecutor, QueryResult, QueryValue, Row,
+	BackendsConnection, DatabaseBackend, DatabaseConnectionLease, OrmExecutor, QueryResult,
+	QueryValue, Row,
 };
 use reinhardt_db::orm::custom_manager::CustomManager;
 use reinhardt_db::orm::events::{EventRegistry, EventResult, MapperEvents, set_active_registry};
@@ -32,6 +33,18 @@ use reinhardt_db::orm::{
 	ForeignKeyAccessor, ManyToManyAccessor, NPlusOneConfig, NPlusOneScope, QuerySet,
 };
 use reinhardt_query::prelude::{Alias, Query};
+
+async fn sqlite_connection(
+	url: &str,
+) -> (
+	DatabaseConnectionLease,
+	reinhardt_db::orm::DatabaseConnection,
+) {
+	let owner = BackendsConnection::connect_sqlite(url).await.unwrap();
+	let lease = DatabaseConnectionLease::register(owner).unwrap();
+	let handle = lease.handle();
+	(lease, handle)
+}
 
 #[derive(Debug, Clone, PartialEq)]
 struct RecordedCall {
@@ -539,9 +552,7 @@ async fn explicit_orm_paths_use_the_caller_owned_recording_executor() {
 
 #[tokio::test]
 async fn concrete_connection_and_atomic_transaction_support_explicit_orm_paths() {
-	let mut connection = DatabaseConnection::connect("sqlite::memory:")
-		.await
-		.expect("SQLite connection should be available");
+	let (_lease, mut connection) = sqlite_connection("sqlite::memory:").await;
 	connection
 		.execute(
 			"CREATE TABLE articles (article_id INTEGER PRIMARY KEY AUTOINCREMENT, article_title TEXT NOT NULL)",

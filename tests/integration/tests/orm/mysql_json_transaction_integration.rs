@@ -1,7 +1,10 @@
 //! MySQL JSON transaction integration tests.
 
 use reinhardt_db::backends::types::QueryValue;
-use reinhardt_db::orm::connection::{DatabaseConnection, OrmExecutor};
+use reinhardt_db::{
+	backends::DatabaseConnection as BackendsConnection,
+	orm::{DatabaseConnectionLease, OrmExecutor},
+};
 use reinhardt_test::fixtures::testcontainers::mysql_container;
 use rstest::rstest;
 use sqlx::MySqlPool;
@@ -15,7 +18,9 @@ async fn test_mysql_transaction_fetch_preserves_json_value(
 ) {
 	// Arrange
 	let (_container, _pool, _port, url) = mysql_container.await;
-	let connection = DatabaseConnection::connect(&url).await.unwrap();
+	let owner = BackendsConnection::connect(&url).await.unwrap();
+	let lease = DatabaseConnectionLease::register(owner).unwrap();
+	let connection = lease.handle();
 	connection
 		.execute(
 			"CREATE TABLE json_transaction_rows (id BIGINT PRIMARY KEY, payload JSON NOT NULL)",

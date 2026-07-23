@@ -11,7 +11,7 @@ use reinhardt_auth::JwtAuth;
 use reinhardt_core::reactive::ReactiveScope;
 use reinhardt_db::backends::connection::DatabaseConnection as BackendsConnection;
 use reinhardt_db::backends::dialect::PostgresBackend;
-use reinhardt_db::orm::connection::{DatabaseBackend, DatabaseConnection};
+use reinhardt_db::orm::connection::DatabaseConnectionLease;
 use reinhardt_di::{InjectionContext, SingletonScope};
 use reinhardt_middleware::LoggingMiddleware;
 use reinhardt_query::prelude::{Alias, PostgresQueryBuilder, Query, QueryStatementBuilder};
@@ -282,10 +282,13 @@ pub async fn middleware_e2e_context(
 
 	let backend = Arc::new(PostgresBackend::new(pool));
 	let backends_conn = BackendsConnection::new(backend);
-	let connection = DatabaseConnection::new(DatabaseBackend::Postgres, backends_conn);
-	let db_conn = Arc::new(connection);
+	let connection_lease = Arc::new(
+		DatabaseConnectionLease::register(backends_conn)
+			.expect("Failed to register database connection"),
+	);
+	let db_conn = Arc::new(connection_lease.handle());
 
-	let admin_db = AdminDatabase::new((*db_conn).clone());
+	let admin_db = AdminDatabase::new(*db_conn);
 
 	let mut site = AdminSite::new("Middleware E2E Test Admin");
 	site.set_jwt_secret(JWT_SECRET);
@@ -297,6 +300,7 @@ pub async fn middleware_e2e_context(
 
 	let singleton = Arc::new(SingletonScope::new());
 	singleton.set_arc(db_conn);
+	singleton.set_arc(connection_lease);
 	let di_ctx = Arc::new(InjectionContext::builder(singleton).build());
 
 	let router = ReactiveScope::run(|| {

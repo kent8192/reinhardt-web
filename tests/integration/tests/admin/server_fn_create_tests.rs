@@ -22,7 +22,7 @@ async fn test_create_record_happy_path(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let http_request = make_staff_request();
 	let auth_user = make_auth_user();
 
@@ -60,7 +60,7 @@ async fn test_create_record_returns_valid_response(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let http_request = make_staff_request();
 	let auth_user = make_auth_user();
 
@@ -106,7 +106,7 @@ async fn test_create_record_persists_to_database(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let http_request = make_staff_request();
 	let auth_user = make_auth_user();
 
@@ -153,7 +153,7 @@ async fn test_create_record_multiple_fields(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let http_request = make_staff_request();
 	let auth_user = make_auth_user();
 
@@ -192,7 +192,7 @@ async fn test_create_record_special_characters(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let http_request = make_staff_request();
 	let auth_user = make_auth_user();
 
@@ -236,7 +236,7 @@ async fn test_create_record_model_not_registered(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let http_request = make_staff_request();
 	let auth_user = make_auth_user();
 

@@ -37,7 +37,10 @@
 //! ❌ Template tag parsing (covered by template engine tests)
 //! ❌ Distributed template storage (requires multi-node setup)
 
-use reinhardt_db::orm::DatabaseConnection;
+use reinhardt_db::{
+	backends::DatabaseConnection as BackendsConnection,
+	orm::{DatabaseConnection, DatabaseConnectionLease},
+};
 use reinhardt_test::fixtures::testcontainers::postgres_container;
 use rstest::*;
 use serde::{Deserialize, Serialize};
@@ -192,12 +195,12 @@ impl FilesystemTemplateStorage {
 
 /// Database template storage
 struct DatabaseTemplateStorage {
-	connection: Arc<DatabaseConnection>,
+	connection: DatabaseConnection,
 	cache: Arc<TemplateCache>,
 }
 
 impl DatabaseTemplateStorage {
-	fn new(connection: Arc<DatabaseConnection>) -> Self {
+	fn new(connection: DatabaseConnection) -> Self {
 		Self {
 			connection,
 			cache: Arc::new(TemplateCache::new()),
@@ -293,13 +296,19 @@ fn temp_dir() -> TempDir {
 #[fixture]
 async fn postgres_fixture(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
-) -> (ContainerAsync<GenericImage>, Arc<DatabaseConnection>) {
+) -> (
+	ContainerAsync<GenericImage>,
+	DatabaseConnectionLease,
+	DatabaseConnection,
+) {
 	let (container, _pool, _port, database_url) = postgres_container.await;
 
 	// Create connection
-	let conn = DatabaseConnection::connect(&database_url)
+	let owner = BackendsConnection::connect(&database_url)
 		.await
 		.expect("Failed to connect to database");
+	let lease = DatabaseConnectionLease::register(owner).expect("Failed to register database");
+	let conn = lease.handle();
 
 	// Create template_metadata table
 	conn.execute(
@@ -315,7 +324,7 @@ async fn postgres_fixture(
 	.await
 	.expect("Failed to create template_metadata table");
 
-	(container, Arc::new(conn))
+	(container, lease, conn)
 }
 
 // ============ Filesystem Storage Tests ============
@@ -553,9 +562,13 @@ async fn test_template_cache_clear(temp_dir: TempDir) {
 #[rstest]
 #[tokio::test]
 async fn test_database_template_load_with_cache(
-	#[future] postgres_fixture: (ContainerAsync<GenericImage>, Arc<DatabaseConnection>),
+	#[future] postgres_fixture: (
+		ContainerAsync<GenericImage>,
+		DatabaseConnectionLease,
+		DatabaseConnection,
+	),
 ) {
-	let (_container, conn) = postgres_fixture.await;
+	let (_container, _lease, conn) = postgres_fixture.await;
 	let storage = DatabaseTemplateStorage::new(conn);
 
 	let template_name = "db_base.html";
@@ -585,10 +598,14 @@ async fn test_database_template_load_with_cache(
 #[rstest]
 #[tokio::test]
 async fn test_database_template_versioning(
-	#[future] postgres_fixture: (ContainerAsync<GenericImage>, Arc<DatabaseConnection>),
+	#[future] postgres_fixture: (
+		ContainerAsync<GenericImage>,
+		DatabaseConnectionLease,
+		DatabaseConnection,
+	),
 ) {
-	let (_container, conn) = postgres_fixture.await;
-	let storage = DatabaseTemplateStorage::new(Arc::clone(&conn));
+	let (_container, _lease, conn) = postgres_fixture.await;
+	let storage = DatabaseTemplateStorage::new(conn);
 
 	let template_name = "versioned.html";
 	let version1 = "Version 1 content";
@@ -631,9 +648,13 @@ async fn test_database_template_versioning(
 #[rstest]
 #[tokio::test]
 async fn test_database_template_cache_invalidation(
-	#[future] postgres_fixture: (ContainerAsync<GenericImage>, Arc<DatabaseConnection>),
+	#[future] postgres_fixture: (
+		ContainerAsync<GenericImage>,
+		DatabaseConnectionLease,
+		DatabaseConnection,
+	),
 ) {
-	let (_container, conn) = postgres_fixture.await;
+	let (_container, _lease, conn) = postgres_fixture.await;
 	let storage = DatabaseTemplateStorage::new(conn);
 
 	let template_name = "db_invalidate.html";
@@ -660,9 +681,13 @@ async fn test_database_template_cache_invalidation(
 #[rstest]
 #[tokio::test]
 async fn test_database_template_deletion(
-	#[future] postgres_fixture: (ContainerAsync<GenericImage>, Arc<DatabaseConnection>),
+	#[future] postgres_fixture: (
+		ContainerAsync<GenericImage>,
+		DatabaseConnectionLease,
+		DatabaseConnection,
+	),
 ) {
-	let (_container, conn) = postgres_fixture.await;
+	let (_container, _lease, conn) = postgres_fixture.await;
 	let storage = DatabaseTemplateStorage::new(conn);
 
 	let template_name = "db_delete.html";
@@ -690,9 +715,13 @@ async fn test_database_template_deletion(
 #[rstest]
 #[tokio::test]
 async fn test_database_multiple_templates(
-	#[future] postgres_fixture: (ContainerAsync<GenericImage>, Arc<DatabaseConnection>),
+	#[future] postgres_fixture: (
+		ContainerAsync<GenericImage>,
+		DatabaseConnectionLease,
+		DatabaseConnection,
+	),
 ) {
-	let (_container, conn) = postgres_fixture.await;
+	let (_container, _lease, conn) = postgres_fixture.await;
 	let storage = DatabaseTemplateStorage::new(conn);
 
 	let templates = vec![
@@ -717,9 +746,13 @@ async fn test_database_multiple_templates(
 #[rstest]
 #[tokio::test]
 async fn test_database_template_loading_performance(
-	#[future] postgres_fixture: (ContainerAsync<GenericImage>, Arc<DatabaseConnection>),
+	#[future] postgres_fixture: (
+		ContainerAsync<GenericImage>,
+		DatabaseConnectionLease,
+		DatabaseConnection,
+	),
 ) {
-	let (_container, conn) = postgres_fixture.await;
+	let (_container, _lease, conn) = postgres_fixture.await;
 	let storage = DatabaseTemplateStorage::new(conn);
 
 	let template_name = "db_perf.html";

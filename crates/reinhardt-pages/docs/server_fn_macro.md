@@ -22,6 +22,10 @@ The macro automatically generates client-side code that:
 
 Use `#[inject]` attribute to inject dependencies on the server side:
 
+The injected `DatabaseConnection` is a `Copy` ORM handle. Server bootstrap owns
+its `DatabaseConnectionLease`; handlers neither construct connections nor own
+the lease.
+
 ```rust,ignore
 use reinhardt::pages::server_fn::{ServerFnError, server_fn};
 use reinhardt::DatabaseConnection;
@@ -34,6 +38,16 @@ pub async fn get_data(
     // Server-side implementation
     // `db` is automatically resolved from DI context
     Ok(format!("Data for id: {}", id))
+}
+```
+
+The handle can be passed to concurrent operations without cloning:
+
+```rust,ignore
+#[server_fn]
+async fn dashboard(#[inject] db: DatabaseConnection) -> Result<(), ServerFnError> {
+    tokio::try_join!(load_users(db), load_posts(db))?;
+    Ok(())
 }
 ```
 
@@ -705,6 +719,10 @@ pub async fn public_endpoint() -> Result<String, ServerFnError> {
 
 ### 1. Use `#[inject]` for Server-Only Dependencies
 
+For ORM access, inject `DatabaseConnection` directly. The framework retains the
+owning lease for the server lifetime, so a server function must not create or
+store a `DatabaseConnectionLease`.
+
 ```rust
 #[server_fn]
 pub async fn get_user(
@@ -913,7 +931,6 @@ quote! {
 
 - [reinhardt-pages README](../README.md)
 - [Dependency Injection Guide](../../reinhardt-di/README.md)
-- [Server Functions Tutorial](../../../docs/tutorials/en/pages/server-functions.md) (coming soon)
 
 ## Contributing
 

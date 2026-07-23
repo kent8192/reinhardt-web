@@ -14,12 +14,12 @@ use reinhardt_db::backends::{
 use reinhardt_db::orm::annotation::Expression;
 use reinhardt_db::orm::expressions::{F, OuterRef};
 use reinhardt_db::orm::{
-	DatabaseBackend, DatabaseConnection, Filter, FilterCondition, FilterOperator, FilterValue,
+	DatabaseBackend, DatabaseConnectionLease, Filter, FilterCondition, FilterOperator, FilterValue,
 };
 use reinhardt_query::{
 	Alias, ColumnRef, Condition, PostgresQueryBuilder, Query, QueryStatementBuilder, Value,
 };
-use reinhardt_test::fixtures::mock::MockDatabaseBackend;
+use reinhardt_test::fixtures::mock::{MockConnection, MockDatabaseBackend};
 use reinhardt_test::fixtures::mock_connection;
 use rstest::*;
 use std::collections::HashMap;
@@ -34,19 +34,36 @@ struct User {
 
 reinhardt_test::impl_test_model!(User, i64, "users");
 
-fn admin_database_from_mock(mock: MockDatabaseBackend) -> AdminDatabase {
+struct TestAdminDatabase {
+	database: AdminDatabase,
+	_connection_lease: DatabaseConnectionLease,
+}
+
+impl std::ops::Deref for TestAdminDatabase {
+	type Target = AdminDatabase;
+
+	fn deref(&self) -> &Self::Target {
+		&self.database
+	}
+}
+
+fn admin_database_from_mock(mock: MockDatabaseBackend) -> TestAdminDatabase {
 	let backends_conn = BackendsConnection::new(Arc::new(mock));
-	let conn = DatabaseConnection::new(DatabaseBackend::Postgres, backends_conn);
-	AdminDatabase::new(conn)
+	let connection_lease = DatabaseConnectionLease::register(backends_conn)
+		.expect("Failed to register mock database connection");
+	TestAdminDatabase {
+		database: AdminDatabase::new(connection_lease.handle()),
+		_connection_lease: connection_lease,
+	}
 }
 
 // ==================== AdminDatabase CRUD tests ====================
 
 #[rstest]
 #[tokio::test]
-async fn test_admin_database_new(mock_connection: DatabaseConnection) {
+async fn test_admin_database_new(mock_connection: MockConnection) {
 	// Arrange
-	let db = AdminDatabase::new(mock_connection);
+	let db = AdminDatabase::new(*mock_connection);
 
 	// Act & Assert
 	assert_eq!(db.connection().backend(), DatabaseBackend::Postgres);
@@ -54,9 +71,9 @@ async fn test_admin_database_new(mock_connection: DatabaseConnection) {
 
 #[rstest]
 #[tokio::test]
-async fn test_bulk_delete_empty(mock_connection: DatabaseConnection) {
+async fn test_bulk_delete_empty(mock_connection: MockConnection) {
 	// Arrange
-	let db = AdminDatabase::new(mock_connection);
+	let db = AdminDatabase::new(*mock_connection);
 
 	// Act
 	let result = db.bulk_delete::<User>("users", "id", vec![]).await;
@@ -68,9 +85,9 @@ async fn test_bulk_delete_empty(mock_connection: DatabaseConnection) {
 
 #[rstest]
 #[tokio::test]
-async fn test_list_with_filters(mock_connection: DatabaseConnection) {
+async fn test_list_with_filters(mock_connection: MockConnection) {
 	// Arrange
-	let db = AdminDatabase::new(mock_connection);
+	let db = AdminDatabase::new(*mock_connection);
 	let filters = vec![Filter::new(
 		"is_active".to_string(),
 		FilterOperator::Eq,
@@ -86,9 +103,9 @@ async fn test_list_with_filters(mock_connection: DatabaseConnection) {
 
 #[rstest]
 #[tokio::test]
-async fn test_get_by_id(mock_connection: DatabaseConnection) {
+async fn test_get_by_id(mock_connection: MockConnection) {
 	// Arrange
-	let db = AdminDatabase::new(mock_connection);
+	let db = AdminDatabase::new(*mock_connection);
 
 	// Act
 	let result = db.get::<User>("users", "id", "1").await;
@@ -99,11 +116,11 @@ async fn test_get_by_id(mock_connection: DatabaseConnection) {
 
 #[rstest]
 #[tokio::test]
-async fn test_create(mock_connection: DatabaseConnection) {
+async fn test_create(mock_connection: MockConnection) {
 	// Arrange
 	// Default mock returns {"count": 0} without "id" field,
 	// so create() returns Err (missing pk field). Fixes #3029
-	let db = AdminDatabase::new(mock_connection);
+	let db = AdminDatabase::new(*mock_connection);
 	let mut data = HashMap::new();
 	data.insert("name".to_string(), serde_json::json!("Alice"));
 	data.insert("email".to_string(), serde_json::json!("alice@example.com"));
@@ -123,9 +140,9 @@ async fn test_create(mock_connection: DatabaseConnection) {
 
 #[rstest]
 #[tokio::test]
-async fn test_update(mock_connection: DatabaseConnection) {
+async fn test_update(mock_connection: MockConnection) {
 	// Arrange
-	let db = AdminDatabase::new(mock_connection);
+	let db = AdminDatabase::new(*mock_connection);
 	let mut data = HashMap::new();
 	data.insert("name".to_string(), serde_json::json!("Alice Updated"));
 
@@ -138,9 +155,9 @@ async fn test_update(mock_connection: DatabaseConnection) {
 
 #[rstest]
 #[tokio::test]
-async fn test_delete(mock_connection: DatabaseConnection) {
+async fn test_delete(mock_connection: MockConnection) {
 	// Arrange
-	let db = AdminDatabase::new(mock_connection);
+	let db = AdminDatabase::new(*mock_connection);
 
 	// Act
 	let result = db.delete::<User>("users", "id", "1").await;
@@ -151,9 +168,9 @@ async fn test_delete(mock_connection: DatabaseConnection) {
 
 #[rstest]
 #[tokio::test]
-async fn test_count(mock_connection: DatabaseConnection) {
+async fn test_count(mock_connection: MockConnection) {
 	// Arrange
-	let db = AdminDatabase::new(mock_connection);
+	let db = AdminDatabase::new(*mock_connection);
 	let filters = vec![];
 
 	// Act
@@ -165,9 +182,9 @@ async fn test_count(mock_connection: DatabaseConnection) {
 
 #[rstest]
 #[tokio::test]
-async fn test_bulk_delete_multiple_ids(mock_connection: DatabaseConnection) {
+async fn test_bulk_delete_multiple_ids(mock_connection: MockConnection) {
 	// Arrange
-	let db = AdminDatabase::new(mock_connection);
+	let db = AdminDatabase::new(*mock_connection);
 	let ids = vec!["1".to_string(), "2".to_string(), "3".to_string()];
 
 	// Act
@@ -353,9 +370,9 @@ fn test_build_composite_empty_and() {
 
 #[rstest]
 #[tokio::test]
-async fn test_list_with_condition_or_search(mock_connection: DatabaseConnection) {
+async fn test_list_with_condition_or_search(mock_connection: MockConnection) {
 	// Arrange
-	let db = AdminDatabase::new(mock_connection);
+	let db = AdminDatabase::new(*mock_connection);
 	let filter1 = Filter::new(
 		"name".to_string(),
 		FilterOperator::Contains,
@@ -382,9 +399,9 @@ async fn test_list_with_condition_or_search(mock_connection: DatabaseConnection)
 
 #[rstest]
 #[tokio::test]
-async fn test_list_with_condition_and_additional(mock_connection: DatabaseConnection) {
+async fn test_list_with_condition_and_additional(mock_connection: MockConnection) {
 	// Arrange
-	let db = AdminDatabase::new(mock_connection);
+	let db = AdminDatabase::new(*mock_connection);
 	let filter1 = Filter::new(
 		"name".to_string(),
 		FilterOperator::Contains,
@@ -416,9 +433,9 @@ async fn test_list_with_condition_and_additional(mock_connection: DatabaseConnec
 
 #[rstest]
 #[tokio::test]
-async fn test_count_with_condition_or_search(mock_connection: DatabaseConnection) {
+async fn test_count_with_condition_or_search(mock_connection: MockConnection) {
 	// Arrange
-	let db = AdminDatabase::new(mock_connection);
+	let db = AdminDatabase::new(*mock_connection);
 	let filter1 = Filter::new(
 		"name".to_string(),
 		FilterOperator::Contains,
@@ -445,9 +462,9 @@ async fn test_count_with_condition_or_search(mock_connection: DatabaseConnection
 
 #[rstest]
 #[tokio::test]
-async fn test_list_with_condition_none(mock_connection: DatabaseConnection) {
+async fn test_list_with_condition_none(mock_connection: MockConnection) {
 	// Arrange
-	let db = AdminDatabase::new(mock_connection);
+	let db = AdminDatabase::new(*mock_connection);
 
 	// Act
 	let result = db
@@ -460,9 +477,9 @@ async fn test_list_with_condition_none(mock_connection: DatabaseConnection) {
 
 #[rstest]
 #[tokio::test]
-async fn test_list_with_condition_empty_additional(mock_connection: DatabaseConnection) {
+async fn test_list_with_condition_empty_additional(mock_connection: MockConnection) {
 	// Arrange
-	let db = AdminDatabase::new(mock_connection);
+	let db = AdminDatabase::new(*mock_connection);
 	let filter = Filter::new(
 		"name".to_string(),
 		FilterOperator::Contains,
@@ -481,9 +498,9 @@ async fn test_list_with_condition_empty_additional(mock_connection: DatabaseConn
 
 #[rstest]
 #[tokio::test]
-async fn test_count_with_condition_none(mock_connection: DatabaseConnection) {
+async fn test_count_with_condition_none(mock_connection: MockConnection) {
 	// Arrange
-	let db = AdminDatabase::new(mock_connection);
+	let db = AdminDatabase::new(*mock_connection);
 
 	// Act
 	let result = db.count_with_condition::<User>("users", None, vec![]).await;
@@ -494,9 +511,9 @@ async fn test_count_with_condition_none(mock_connection: DatabaseConnection) {
 
 #[rstest]
 #[tokio::test]
-async fn test_count_with_condition_combined(mock_connection: DatabaseConnection) {
+async fn test_count_with_condition_combined(mock_connection: MockConnection) {
 	// Arrange
-	let db = AdminDatabase::new(mock_connection);
+	let db = AdminDatabase::new(*mock_connection);
 	let filter1 = Filter::new(
 		"name".to_string(),
 		FilterOperator::Contains,
@@ -888,12 +905,10 @@ fn test_filter_value_to_sea_value_expression_fallback() {
 
 #[rstest]
 #[tokio::test]
-async fn test_create_returns_error_when_response_has_no_id_field(
-	mock_connection: DatabaseConnection,
-) {
+async fn test_create_returns_error_when_response_has_no_id_field(mock_connection: MockConnection) {
 	// Arrange
 	// Default mock_connection.fetch_one returns Row with {"count": Int(0)}, no "id" field
-	let db = AdminDatabase::new(mock_connection);
+	let db = AdminDatabase::new(*mock_connection);
 	let mut data = HashMap::new();
 	data.insert("name".to_string(), serde_json::json!("Alice"));
 
@@ -947,8 +962,9 @@ async fn test_create_returns_id_when_response_has_id_field() {
 	});
 
 	let backends_conn = BackendsConnection::new(Arc::new(mock));
-	let conn = DatabaseConnection::new(DatabaseBackend::Postgres, backends_conn);
-	let db = AdminDatabase::new(conn);
+	let connection_lease = DatabaseConnectionLease::register(backends_conn)
+		.expect("Failed to register mock database connection");
+	let db = AdminDatabase::new(connection_lease.handle());
 
 	let mut data = HashMap::new();
 	data.insert("name".to_string(), serde_json::json!("Alice"));
@@ -1003,8 +1019,9 @@ async fn test_create_returns_error_when_pk_field_missing() {
 	});
 
 	let backends_conn = BackendsConnection::new(Arc::new(mock));
-	let conn = DatabaseConnection::new(DatabaseBackend::Postgres, backends_conn);
-	let db = AdminDatabase::new(conn);
+	let connection_lease = DatabaseConnectionLease::register(backends_conn)
+		.expect("Failed to register mock database connection");
+	let db = AdminDatabase::new(connection_lease.handle());
 
 	let mut data = HashMap::new();
 	data.insert("name".to_string(), serde_json::json!("Bob"));
@@ -1058,8 +1075,9 @@ async fn test_create_returns_one_for_string_pk() {
 	});
 
 	let backends_conn = BackendsConnection::new(Arc::new(mock));
-	let conn = DatabaseConnection::new(DatabaseBackend::Postgres, backends_conn);
-	let db = AdminDatabase::new(conn);
+	let connection_lease = DatabaseConnectionLease::register(backends_conn)
+		.expect("Failed to register mock database connection");
+	let db = AdminDatabase::new(connection_lease.handle());
 
 	let mut data = HashMap::new();
 	data.insert("name".to_string(), serde_json::json!("Bob"));
@@ -1080,10 +1098,10 @@ async fn test_create_returns_one_for_string_pk() {
 
 #[rstest]
 #[tokio::test]
-async fn test_update_returns_affected_count(mock_connection: DatabaseConnection) {
+async fn test_update_returns_affected_count(mock_connection: MockConnection) {
 	// Arrange
 	// Default mock returns rows_affected: 0
-	let db = AdminDatabase::new(mock_connection);
+	let db = AdminDatabase::new(*mock_connection);
 	let mut data = HashMap::new();
 	data.insert("name".to_string(), serde_json::json!("Updated Name"));
 
@@ -1101,10 +1119,10 @@ async fn test_update_returns_affected_count(mock_connection: DatabaseConnection)
 
 #[rstest]
 #[tokio::test]
-async fn test_delete_returns_affected_count(mock_connection: DatabaseConnection) {
+async fn test_delete_returns_affected_count(mock_connection: MockConnection) {
 	// Arrange
 	// Default mock returns rows_affected: 0
-	let db = AdminDatabase::new(mock_connection);
+	let db = AdminDatabase::new(*mock_connection);
 
 	// Act
 	let result = db.delete::<User>("users", "id", "999").await;
@@ -1120,9 +1138,9 @@ async fn test_delete_returns_affected_count(mock_connection: DatabaseConnection)
 
 #[rstest]
 #[tokio::test]
-async fn test_bulk_delete_with_many_ids(mock_connection: DatabaseConnection) {
+async fn test_bulk_delete_with_many_ids(mock_connection: MockConnection) {
 	// Arrange
-	let db = AdminDatabase::new(mock_connection);
+	let db = AdminDatabase::new(*mock_connection);
 	let ids: Vec<String> = (1..=10).map(|i| i.to_string()).collect();
 
 	// Act
