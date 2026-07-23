@@ -293,21 +293,21 @@ impl TestDatabaseBuilder {
 		apply_migrations(&connection, &migrations).await?;
 
 		let di_context = if self.di_context {
-			Some(create_di_context(&url).await?)
+			Some(create_di_context(connection.clone())?)
 		} else {
 			None
 		};
 
 		let orm_global_restore = if self.orm_global {
-			let orm_connection = reinhardt_db::orm::connection::DatabaseConnection::connect(&url)
-				.await
-				.map_err(|source| TestDatabaseError::OrmGlobalInit {
-					source: Box::new(source),
-				})?;
-			let previous = reinhardt_db::orm::manager::replace_database_connection_for_testing(
-				Some(orm_connection),
+			let lease = reinhardt_db::orm::connection::DatabaseConnectionLease::register(
+				connection.clone(),
 			)
-			.await;
+			.map_err(|source| TestDatabaseError::OrmGlobalInit {
+				source: Box::new(source),
+			})?;
+			let previous =
+				reinhardt_db::orm::manager::replace_database_connection_for_testing(Some(lease))
+					.await;
 
 			Some(OrmGlobalRestore { previous })
 		} else {
@@ -561,13 +561,17 @@ async fn apply_migrations(
 	Ok(())
 }
 
-async fn create_di_context(url: &str) -> Result<reinhardt_di::InjectionContext, TestDatabaseError> {
-	let orm_connection = reinhardt_db::orm::connection::DatabaseConnection::connect(url)
-		.await
-		.map_err(|source| TestDatabaseError::DiContextInit {
+fn create_di_context(
+	owner: reinhardt_db::backends::DatabaseConnection,
+) -> Result<reinhardt_di::InjectionContext, TestDatabaseError> {
+	let lease = reinhardt_db::orm::connection::DatabaseConnectionLease::register(owner).map_err(
+		|source| TestDatabaseError::DiContextInit {
 			source: Box::new(source),
-		})?;
+		},
+	)?;
+	let orm_connection = lease.handle();
 	let singleton_scope = std::sync::Arc::new(reinhardt_di::SingletonScope::new());
+	singleton_scope.set(lease);
 	singleton_scope.set(orm_connection);
 
 	Ok(reinhardt_di::InjectionContext::builder(singleton_scope).build())
@@ -589,7 +593,7 @@ enum TestDatabaseResource {
 }
 
 struct OrmGlobalRestore {
-	previous: Option<reinhardt_db::orm::connection::DatabaseConnection>,
+	previous: Option<reinhardt_db::orm::connection::DatabaseConnectionLease>,
 }
 
 impl OrmGlobalRestore {
@@ -1224,11 +1228,13 @@ pub fn migration() -> Migration {
 	#[serial_test::serial(test_database_orm_global)]
 	#[tokio::test]
 	async fn with_orm_global_restores_previous_connection_on_drop() {
+		let owner = reinhardt_db::backends::DatabaseConnection::connect_sqlite("sqlite::memory:")
+			.await
+			.unwrap();
 		let previous =
-			reinhardt_db::orm::connection::DatabaseConnection::connect("sqlite::memory:")
-				.await
-				.unwrap();
-		previous
+			reinhardt_db::orm::connection::DatabaseConnectionLease::register(owner).unwrap();
+		let previous_handle = previous.handle();
+		previous_handle
 			.execute(
 				"CREATE TABLE previous_marker (id INTEGER PRIMARY KEY)",
 				Vec::new(),

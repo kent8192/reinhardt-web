@@ -1,7 +1,7 @@
 //! # Transaction SQL and ORM Atomicity
 //!
-//! [`DatabaseConnection`](super::connection::DatabaseConnection) owns the ORM
-//! transaction lifecycle through
+//! [`DatabaseConnection`](super::connection::DatabaseConnection) provides the ORM
+//! transaction capability through
 //! [`DatabaseConnection::atomic`](super::connection::DatabaseConnection::atomic). Its callback
 //! receives an [`AtomicTransaction`], the only executor that may run ORM work
 //! until the callback returns. A successful outer callback commits; an error
@@ -13,10 +13,12 @@
 //!
 //! ```no_run
 //! use reinhardt_core::exception::Error;
-//! use reinhardt_db::orm::DatabaseConnection;
+//! use reinhardt_db::{backends::DatabaseConnection as BackendsConnection, orm::DatabaseConnectionLease};
 //!
 //! # async fn example() -> Result<(), Error> {
-//! let connection = DatabaseConnection::connect("sqlite::memory:").await?;
+//! let owner = BackendsConnection::connect_sqlite("sqlite::memory:").await?;
+//! let lease = DatabaseConnectionLease::register(owner)?;
+//! let connection = lease.handle();
 //! let answer = connection.atomic(async |transaction| {
 //!     transaction.atomic(async |_savepoint| {
 //!         Ok::<_, Error>(())
@@ -852,7 +854,7 @@ mod tests {
 	use crate::backends::error::Result;
 	use crate::backends::types::{DatabaseType, QueryResult, QueryValue, Row, TransactionExecutor};
 	use crate::orm::Manager;
-	use crate::orm::connection::{DatabaseBackend, DatabaseConnection, OrmExecutor};
+	use crate::orm::connection::{DatabaseConnection, DatabaseConnectionLease, OrmExecutor};
 	use crate::prelude::Model;
 	use futures::FutureExt;
 	use reinhardt_core::exception::{DatabaseError, DatabaseErrorKind};
@@ -886,6 +888,19 @@ mod tests {
 	}
 
 	type TransactionCalls = Arc<Mutex<Vec<String>>>;
+
+	struct TestDatabaseConnection {
+		handle: DatabaseConnection,
+		_lease: DatabaseConnectionLease,
+	}
+
+	impl std::ops::Deref for TestDatabaseConnection {
+		type Target = DatabaseConnection;
+
+		fn deref(&self) -> &Self::Target {
+			&self.handle
+		}
+	}
 
 	// Mock transaction executor for testing
 	struct MockTransactionExecutor {
@@ -1119,15 +1134,20 @@ mod tests {
 
 	fn mock_connection_with_failures(
 		failure_plan: FailurePlan,
-	) -> (DatabaseConnection, TransactionCalls) {
+	) -> (TestDatabaseConnection, TransactionCalls) {
 		let calls = Arc::new(Mutex::new(Vec::new()));
 		let mock_backend = Arc::new(MockBackend {
 			failure_plan,
 			calls: Arc::clone(&calls),
 		});
 		let backends_conn = BackendsConnection::new(mock_backend);
+		let lease = DatabaseConnectionLease::register(backends_conn).unwrap();
+		let handle = lease.handle();
 		(
-			DatabaseConnection::new(DatabaseBackend::Postgres, backends_conn),
+			TestDatabaseConnection {
+				handle,
+				_lease: lease,
+			},
 			calls,
 		)
 	}
@@ -1149,11 +1169,6 @@ mod tests {
 		} else {
 			"unknown panic payload".to_string()
 		}
-	}
-
-	#[fixture]
-	fn mock_connection() -> DatabaseConnection {
-		mock_connection_with_failures(FailurePlan::default()).0
 	}
 
 	#[derive(Clone, Default)]

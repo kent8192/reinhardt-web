@@ -10,12 +10,6 @@ use super::{
 
 #[cfg(any(feature = "postgres", feature = "sqlite", feature = "mysql"))]
 use super::error::map_sqlx_error;
-#[cfg(any(
-	feature = "postgres",
-	feature = "sqlite",
-	feature = "mysql",
-	feature = "settings"
-))]
 use super::error::{DatabaseError, DatabaseErrorKind};
 
 #[cfg(feature = "postgres")]
@@ -117,6 +111,50 @@ impl reinhardt_di::Injectable for DatabaseConnection {
 }
 
 impl DatabaseConnection {
+	/// Connects to the backend selected by the URL scheme.
+	pub async fn connect(url: &str) -> Result<Self> {
+		let postgres = url.starts_with("postgres://") || url.starts_with("postgresql://");
+		let mysql = url.starts_with("mysql://");
+		let sqlite = url.starts_with("sqlite://") || url.starts_with("sqlite:");
+
+		#[cfg(feature = "postgres")]
+		if postgres {
+			return Self::connect_postgres(url).await;
+		}
+
+		#[cfg(feature = "mysql")]
+		if mysql {
+			return Self::connect_mysql(url).await;
+		}
+
+		#[cfg(feature = "sqlite")]
+		if sqlite {
+			return Self::connect_sqlite(url).await;
+		}
+
+		let missing_feature = if postgres {
+			Some("postgres")
+		} else if mysql {
+			Some("mysql")
+		} else if sqlite {
+			Some("sqlite")
+		} else {
+			None
+		};
+		if let Some(feature) = missing_feature {
+			return Err(DatabaseError::new(
+				DatabaseErrorKind::Configuration,
+				format!("Database backend not compiled in. Enable the '{feature}' feature."),
+			)
+			.into());
+		}
+		Err(DatabaseError::new(
+			DatabaseErrorKind::Configuration,
+			format!("Unsupported database URL scheme: {url}"),
+		)
+		.into())
+	}
+
 	/// Creates a new instance.
 	///
 	/// Defaults to `is_cockroachdb = false`, which is the correct choice when
@@ -802,6 +840,35 @@ mod tests {
 	fn test_parse_postgres_url_rejects_invalid_configuration(#[case] url: &str) {
 		// Act
 		let error = super::DatabaseConnection::parse_postgres_url_for_creation(url).unwrap_err();
+
+		// Assert
+		assert_eq!(
+			error.database_kind(),
+			Some(super::DatabaseErrorKind::Configuration)
+		);
+	}
+
+	#[cfg(feature = "sqlite")]
+	#[rstest]
+	#[tokio::test]
+	async fn connect_selects_sqlite_from_url_scheme() {
+		// Act
+		let connection = super::DatabaseConnection::connect("sqlite::memory:")
+			.await
+			.unwrap();
+
+		// Assert
+		assert!(connection.into_sqlite().is_some());
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn connect_rejects_unknown_url_scheme() {
+		// Act
+		let Err(error) = super::DatabaseConnection::connect("unknown://localhost/database").await
+		else {
+			panic!("unknown URL schemes must be rejected");
+		};
 
 		// Assert
 		assert_eq!(

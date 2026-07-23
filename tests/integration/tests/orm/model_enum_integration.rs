@@ -558,9 +558,12 @@ async fn typed_model_enum_filters_lists_and_assignments_use_persistent_values() 
 #[serial(model_enum_database)]
 async fn typed_codec_errors_surface_before_filter_or_update_execution() {
 	let (_database, url) = sqlite_database_url();
-	let mut connection = reinhardt::db::orm::connection::DatabaseConnection::connect(&url)
+	let owner = reinhardt::db::backends::DatabaseConnection::connect(&url)
 		.await
 		.expect("SQLite connection should initialize");
+	let lease = reinhardt::db::orm::DatabaseConnectionLease::register(owner)
+		.expect("SQLite connection should register");
+	let mut connection = lease.handle();
 	connection
 		.execute(
 			"CREATE TABLE owners (id INTEGER PRIMARY KEY, name VARCHAR(40) NOT NULL)",

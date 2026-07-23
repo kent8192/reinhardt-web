@@ -401,7 +401,10 @@ where
 /// When it goes out of scope, the temporary database file will be deleted.
 #[fixture]
 pub async fn injection_context_with_sqlite() -> (tempfile::NamedTempFile, InjectionContext) {
-	use reinhardt_db::orm::connection::DatabaseConnection;
+	use reinhardt_db::{
+		backends::DatabaseConnection as BackendsConnection,
+		orm::connection::DatabaseConnectionLease,
+	};
 
 	// Create temp file for SQLite database
 	let temp_file = tempfile::NamedTempFile::new().expect("Failed to create temp file");
@@ -409,12 +412,15 @@ pub async fn injection_context_with_sqlite() -> (tempfile::NamedTempFile, Inject
 	let database_url = format!("sqlite://{}?mode=rwc", db_path);
 
 	// Create DatabaseConnection using ORM layer API
-	let db_conn = DatabaseConnection::connect_sqlite(&database_url)
+	let owner = BackendsConnection::connect_sqlite(&database_url)
 		.await
 		.expect("Failed to create DatabaseConnection");
+	let lease = DatabaseConnectionLease::register(owner).expect("Failed to register connection");
+	let db_conn = lease.handle();
 
 	// Build DI context with DatabaseConnection registered in singleton scope
 	let singleton_scope = Arc::new(SingletonScope::new());
+	singleton_scope.set(lease);
 	singleton_scope.set(db_conn);
 
 	let ctx = InjectionContext::builder(singleton_scope).build();
@@ -447,15 +453,21 @@ pub async fn injection_context_with_sqlite() -> (tempfile::NamedTempFile, Inject
 /// }
 /// ```
 pub async fn injection_context_with_database(database_url: &str) -> InjectionContext {
-	use reinhardt_db::orm::connection::DatabaseConnection;
+	use reinhardt_db::{
+		backends::DatabaseConnection as BackendsConnection,
+		orm::connection::DatabaseConnectionLease,
+	};
 
 	// Create DatabaseConnection
-	let db_conn = DatabaseConnection::connect(database_url)
+	let owner = BackendsConnection::connect(database_url)
 		.await
 		.expect("Failed to create DatabaseConnection");
+	let lease = DatabaseConnectionLease::register(owner).expect("Failed to register connection");
+	let db_conn = lease.handle();
 
 	// Build DI context with DatabaseConnection registered
 	let singleton_scope = Arc::new(SingletonScope::new());
+	singleton_scope.set(lease);
 	singleton_scope.set(db_conn);
 
 	InjectionContext::builder(singleton_scope).build()

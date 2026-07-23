@@ -5,9 +5,23 @@ use reinhardt_db::backends::{
 	connection::DatabaseConnection as BackendsConnection,
 	types::{DatabaseType, QueryResult, QueryValue, Row, TransactionExecutor},
 };
-use reinhardt_db::orm::{DatabaseBackend, DatabaseConnection};
+use reinhardt_db::orm::{DatabaseConnection, DatabaseConnectionLease};
 use rstest::*;
 use std::sync::Arc;
+
+/// RAII guard for a mock ORM connection.
+pub struct MockConnection {
+	connection: DatabaseConnection,
+	_connection_lease: DatabaseConnectionLease,
+}
+
+impl std::ops::Deref for MockConnection {
+	type Target = DatabaseConnection;
+
+	fn deref(&self) -> &Self::Target {
+		&self.connection
+	}
+}
 
 // ============================================================================
 // mockall-based Database Backend Mock
@@ -142,7 +156,7 @@ pub fn mock_database() -> MockDatabaseBackend {
 /// Note: Doctests cannot use rstest fixtures directly due to Rust's doctest limitations.
 /// For runnable examples, refer to the unit tests in the `#[cfg(test)]` section below.
 #[fixture]
-pub fn mock_connection() -> DatabaseConnection {
+pub fn mock_connection() -> MockConnection {
 	let mut mock = MockDatabaseBackend::new();
 
 	// Basic configuration
@@ -178,7 +192,12 @@ pub fn mock_connection() -> DatabaseConnection {
 	mock.expect_fetch_optional().returning(|_, _| Ok(None));
 
 	let backends_conn = BackendsConnection::new(Arc::new(mock));
-	DatabaseConnection::new(DatabaseBackend::Postgres, backends_conn)
+	let connection_lease =
+		DatabaseConnectionLease::register(backends_conn).expect("Failed to register connection");
+	MockConnection {
+		connection: connection_lease.handle(),
+		_connection_lease: connection_lease,
+	}
 }
 
 #[cfg(test)]
@@ -240,11 +259,11 @@ mod tests {
 	}
 
 	#[rstest]
-	fn test_mock_connection_fixture(mock_connection: DatabaseConnection) {
+	fn test_mock_connection_fixture(mock_connection: MockConnection) {
 		// Verify connection is usable
 		assert!(matches!(
 			mock_connection.backend(),
-			DatabaseBackend::Postgres
+			reinhardt_db::orm::DatabaseBackend::Postgres
 		));
 	}
 }

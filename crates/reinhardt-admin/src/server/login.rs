@@ -110,7 +110,7 @@ async fn complete_admin_login(
 	let jwt_auth = JwtAuth::new(jwt_secret);
 
 	// Authenticate user (username lookup + password verification + staff check)
-	let user_info = (authenticator.0)(username.clone(), password, db.connection_arc())
+	let user_info = (authenticator.0)(username.clone(), password, *db.connection())
 		.await
 		.map_err(|e| {
 			::tracing::warn!(error = ?e, "admin_login: Authentication failed");

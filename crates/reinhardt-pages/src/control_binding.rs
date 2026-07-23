@@ -3,6 +3,8 @@
 //! The `bind:` directive accepts [`Signal`](crate::reactive::Signal) values
 //! directly for text, checkbox, radio, and select controls. Numeric controls
 //! can additionally report rejected input through [`NumberParseError`].
+//! Binding lowering passes these `Copy` signal handles by value, so generated
+//! call sites remain clean under Clippy's `clone_on_copy` lint.
 //!
 //! # Target parity
 //!

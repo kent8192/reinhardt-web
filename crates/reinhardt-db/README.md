@@ -104,7 +104,10 @@ failures retain the same typed channel as domain failures:
 
 ```rust,no_run
 use reinhardt_core::exception::Error;
-use reinhardt_db::orm::connection::DatabaseConnection;
+use reinhardt_db::{
+    backends::DatabaseConnection as BackendsConnection,
+    orm::DatabaseConnectionLease,
+};
 
 #[derive(Debug, thiserror::Error)]
 enum ApplicationError {
@@ -115,7 +118,9 @@ enum ApplicationError {
 }
 
 # async fn example() -> Result<(), ApplicationError> {
-let connection = DatabaseConnection::connect("sqlite::memory:").await?;
+let owner = BackendsConnection::connect_sqlite("sqlite::memory:").await?;
+let lease = DatabaseConnectionLease::register(owner)?;
+let connection = lease.handle();
 let result: Result<(), ApplicationError> = connection.atomic(async |_transaction| {
     Err(ApplicationError::Rejected)
 }).await;
@@ -749,7 +754,7 @@ async fn test_with_database(
 
 For comprehensive testing standards, see:
 - [Testing Standards](../../instructions/TESTING_STANDARDS.md)
-- [Examples Database Integration](../../examples/examples-database-integration/README.md)
+- [REST Tutorial Database Integration](../../examples/examples-tutorial-rest/README.md)
 
 ### Troubleshooting
 

@@ -753,7 +753,7 @@ async fn build_from_state_from_db(
 	migrations_dir: &std::path::Path,
 	database_url: &str,
 ) -> Result<reinhardt_db::migrations::ProjectState, crate::CommandError> {
-	use reinhardt_db::DatabaseConnection;
+	use reinhardt_db::backends::DatabaseConnection;
 	use reinhardt_db::migrations::{
 		DatabaseMigrationRecorder, FilesystemSource, MigrationSource, MigrationStateLoader,
 	};
@@ -768,7 +768,7 @@ async fn build_from_state_from_db(
 	eprintln!("[DEBUG] Database connection successful");
 
 	// 3. Build state from database history
-	let recorder = DatabaseMigrationRecorder::new(connection.inner().clone());
+	let recorder = DatabaseMigrationRecorder::new(connection);
 	let applied_records = recorder.get_applied_migrations().await.map_err(|e| {
 		crate::CommandError::ExecutionError(format!("Failed to get applied migrations: {}", e))
 	})?;
@@ -1989,19 +1989,34 @@ struct AutoreloadChildOptions<'a> {
 }
 
 #[cfg(feature = "server")]
-fn configured_static_url(base_dir: &std::path::Path) -> Result<String, String> {
-	crate::StaticAssetSettings::from_project_dir(base_dir).map(|settings| settings.static_url)
+fn configured_static_assets(
+	base_dir: &std::path::Path,
+) -> Result<crate::StaticAssetSettings, String> {
+	crate::StaticAssetSettings::from_project_dir(base_dir)
+}
+
+#[cfg(feature = "server")]
+fn normalize_static_url_prefix(static_url: &str) -> String {
+	if static_url == "/" || static_url.ends_with('/') {
+		static_url.to_string()
+	} else {
+		format!("{static_url}/")
+	}
 }
 
 #[cfg(feature = "server")]
 fn spa_excluded_prefixes(generated_style_url: &str) -> Vec<String> {
 	let configured_admin_prefix = format!("{}/admin/", generated_style_url.trim_end_matches('/'));
-	vec![
+	let mut prefixes = vec![
 		"/api/".to_string(),
 		"/admin/".to_string(),
 		"/static/admin/".to_string(),
 		configured_admin_prefix,
-	]
+	];
+	if generated_style_url != "/" {
+		prefixes.push(generated_style_url.to_string());
+	}
+	prefixes
 }
 
 #[cfg(feature = "pages")]
@@ -2751,11 +2766,12 @@ impl RunServerCommand {
 		// and register it in the DI singleton scope. (#3186)
 		#[cfg(feature = "reinhardt-db")]
 		{
-			match reinhardt_db::orm::get_connection().await {
-				Ok(db_conn) => {
+			match reinhardt_db::orm::get_connection_registration().await {
+				Ok((database_lease, database_handle)) => {
 					// Register DatabaseConnection directly (not wrapped in Arc)
 					// The DI system wraps it in Arc internally via SingletonScope::set
-					singleton_scope.set(db_conn);
+					singleton_scope.set(database_lease);
+					singleton_scope.set(database_handle);
 					let url = std::env::var("DATABASE_URL").ok().unwrap_or_default();
 					ctx.info(&format!(
 						"💾 Database: {} (DI registered)",
@@ -2811,19 +2827,24 @@ impl RunServerCommand {
 				StaticFilesConfig, StaticFilesMiddleware,
 			};
 			use reinhardt_utils::staticfiles::{PathResolver, TemplateStaticConfig};
-			let generated_style_url =
+			let static_asset_settings =
 				match PathResolver::find_project_root().or_else(|| std::env::current_dir().ok()) {
-					Some(project_root) => match configured_static_url(&project_root) {
-						Ok(url) => url,
+					Some(project_root) => match configured_static_assets(&project_root) {
+						Ok(settings) => Some(settings),
 						Err(error) => {
 							ctx.warning(&format!(
 								"Failed to load static URL for generated component styles: {error}. Using /static/."
 							));
-							"/static/".to_string()
+							None
 						}
 					},
-					None => "/static/".to_string(),
+					None => None,
 				};
+			let generated_style_url = normalize_static_url_prefix(
+				static_asset_settings
+					.as_ref()
+					.map_or("/static/", |settings| settings.static_url.as_str()),
+			);
 
 			if let Some(generated_root) = generated_style_root {
 				let mut generated_config = StaticFilesConfig::new(generated_root.to_path_buf())
@@ -2875,6 +2896,26 @@ impl RunServerCommand {
 
 			// Automatically resolve static directory path
 			let resolved_static_dir = PathResolver::resolve_static_dir(static_dir);
+			let collected_static_dir = static_asset_settings.as_ref().map_or_else(
+				|| resolved_static_dir.clone(),
+				|settings| settings.static_root.clone(),
+			);
+
+			// Collected assets use the configured STATIC_URL, while the root mount
+			// below remains responsible for SPA routes and legacy bundle URLs.
+			if generated_style_url != "/" {
+				let mut collected_static_config = StaticFilesConfig::new(collected_static_dir)
+					.url_prefix(generated_style_url.clone())
+					.spa_mode(false)
+					.auto_inject_wasm(false);
+				#[cfg(debug_assertions)]
+				{
+					collected_static_config =
+						collected_static_config.cache_config(CacheControlConfig::disabled());
+				}
+				server =
+					server.with_middleware(StaticFilesMiddleware::new(collected_static_config));
+			}
 
 			let mut static_config = StaticFilesConfig::new(resolved_static_dir.clone())
 				.url_prefix("/")
@@ -5101,16 +5142,49 @@ mod tests {
 		)
 		.expect("write static settings");
 
-		let static_url = configured_static_url(directory.path())
-			.expect("resolve the generated stylesheet URL prefix");
+		let static_url = configured_static_assets(directory.path())
+			.expect("resolve static asset settings")
+			.static_url;
 
 		assert_eq!(static_url, "/assets/");
 	}
 
 	#[cfg(feature = "server")]
 	#[test]
+	fn collected_assets_use_the_configured_static_root() {
+		let directory = tempfile::tempdir().expect("create project directory");
+		let settings_dir = directory.path().join("settings");
+		std::fs::create_dir_all(&settings_dir).expect("create settings directory");
+		std::fs::write(
+			settings_dir.join("base.toml"),
+			"[static]\nroot = \"collected\"\n",
+		)
+		.expect("write static settings");
+
+		let settings = configured_static_assets(directory.path()).expect("resolve static settings");
+
+		assert_eq!(settings.static_root, directory.path().join("collected"));
+	}
+
+	#[cfg(feature = "server")]
+	#[test]
 	fn spa_fallback_excludes_the_configured_admin_static_prefix() {
 		assert!(spa_excluded_prefixes("/assets/").contains(&"/assets/admin/".to_string()));
+	}
+
+	#[cfg(feature = "server")]
+	#[test]
+	fn spa_fallback_excludes_the_configured_static_prefix() {
+		assert!(spa_excluded_prefixes("/assets/").contains(&"/assets/".to_string()));
+		assert!(!spa_excluded_prefixes("/").contains(&"/".to_string()));
+	}
+
+	#[cfg(feature = "server")]
+	#[test]
+	fn static_url_prefix_is_segment_terminated() {
+		assert_eq!(normalize_static_url_prefix("/assets"), "/assets/");
+		assert_eq!(normalize_static_url_prefix("/assets/"), "/assets/");
+		assert_eq!(normalize_static_url_prefix("/"), "/");
 	}
 
 	#[cfg(feature = "pages")]

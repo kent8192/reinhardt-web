@@ -2804,6 +2804,10 @@ fn find_case_insensitive(
 mod tests {
 	use super::*;
 	#[cfg(feature = "migrations")]
+	use crate::backends::DatabaseConnection as BackendsConnection;
+	#[cfg(feature = "migrations")]
+	use crate::orm::DatabaseConnectionLease;
+	#[cfg(feature = "migrations")]
 	use crate::orm::model::FieldSelector;
 
 	#[cfg(not(feature = "migrations"))]
@@ -5486,9 +5490,11 @@ mod tests {
 	#[serial_test::serial(sqlx_drivers)]
 	#[tokio::test]
 	async fn fixture_dump_and_load_hydrates_sqlite_json_text() {
-		let conn = DatabaseConnection::connect("sqlite::memory:")
+		let owner = BackendsConnection::connect("sqlite::memory:")
 			.await
 			.unwrap();
+		let lease = DatabaseConnectionLease::register(owner).unwrap();
+		let conn = lease.handle();
 		conn.execute(
 			"CREATE TABLE fixture_json_post (\
 				id INTEGER PRIMARY KEY, \
@@ -6164,9 +6170,12 @@ mod tests {
 			.into_iter()
 			.next()
 			.expect("model must expose its tags fixture field");
-		let conn = DatabaseConnection::connect("sqlite::memory:")
+		let owner = BackendsConnection::connect("sqlite::memory:")
 			.await
 			.expect("SQLite fixture database must connect");
+		let lease = DatabaseConnectionLease::register(owner)
+			.expect("SQLite fixture database must register");
+		let conn = lease.handle();
 		conn.execute(
 			&format!(
 				"CREATE TABLE {} ({} INTEGER NOT NULL, {} INTEGER NOT NULL, UNIQUE ({}, {}))",

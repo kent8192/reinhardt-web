@@ -37,6 +37,25 @@ use syn::spanned::Spanned;
 use syn::visit::{self, Visit};
 use syn::{Expr, Result, Token};
 
+fn macro_supports_named_arguments(path: &syn::Path) -> bool {
+	if path.leading_colon.is_none() {
+		return false;
+	}
+	let segments: Vec<_> = path
+		.segments
+		.iter()
+		.map(|segment| segment.ident.to_string())
+		.collect();
+	matches!(segments.as_slice(), [prefix, name]
+			if (prefix == "std" || prefix == "alloc") && matches!(name.as_str(), "format" | "format_args"))
+		|| matches!(segments.as_slice(), [prefix, name]
+			if prefix == "reinhardt_pages" && name == "t")
+		|| matches!(segments.as_slice(), [prefix, module, name]
+			if prefix == "reinhardt_pages" && module == "prelude" && name == "t")
+		|| matches!(segments.as_slice(), [facade, module, name]
+			if facade == "reinhardt" && module == "pages" && name == "t")
+}
+
 use reinhardt_manouche::core::{
 	ComponentEventProp, IntrinsicEvent, PageAttr, PageBody, PageComponent, PageElement, PageElse,
 	PageExpression, PageFor, PageIf, PageMacro, PageMacroForm, PageNode, PageParam, PageWatch,
@@ -141,7 +160,9 @@ fn collect_free_idents(
 /// `params` list. Item paths (`crate::util::fmt`), type identifiers
 /// (`Vec`, `Option`), and constants (`MAX_LEN`) are exempt. Macro invocation
 /// names (`format!`) are exempt, but macro arguments are scanned for free
-/// identifiers when they parse as Rust expressions.
+/// identifiers when they parse as Rust expressions. Named argument keys such
+/// as `name` in `::reinhardt_pages::t!("Hello {name}", name = source)` are not
+/// value captures when the macro path is absolute and resolution-safe.
 fn enforce_strict_captures(
 	head: Option<&Expr>,
 	body: &PageBody,
@@ -392,12 +413,17 @@ impl<'ast> Visit<'ast> for ExprIdentVisitor<'_> {
 	}
 
 	fn visit_expr_macro(&mut self, expr_macro: &'ast syn::ExprMacro) {
+		let has_named_arguments = macro_supports_named_arguments(&expr_macro.mac.path);
 		if let Ok(args) = expr_macro
 			.mac
 			.parse_body_with(Punctuated::<Expr, Token![,]>::parse_terminated)
 		{
 			for arg in args {
-				self.visit_expr(&arg);
+				if has_named_arguments && let Expr::Assign(assign) = arg {
+					self.visit_expr(&assign.right);
+				} else {
+					self.visit_expr(&arg);
+				}
 			}
 		}
 	}
@@ -3257,6 +3283,49 @@ mod capture_tests {
 
 		// Assert
 		assert_eq!(captures, vec!["outer_value"]);
+	}
+
+	#[rstest]
+	fn body_only_form_ignores_named_macro_argument_key() {
+		let ast = parse(quote! {
+			{ p { {::reinhardt_pages::t!("Project {id}", id = project_id)} } }
+		});
+
+		let result = validate(&ast).expect("implicit body should validate");
+		let captures: Vec<String> = result
+			.implicit_captures()
+			.iter()
+			.map(|capture| capture.ident.to_string())
+			.collect();
+
+		assert_eq!(captures, vec!["project_id"]);
+	}
+
+	#[rstest]
+	fn strict_form_ignores_named_macro_argument_key() {
+		let ast = parse(quote! {
+			|project_id: i64| { p { {::reinhardt::pages::t!("Project {id}", id = project_id)} } }
+		});
+
+		let result = enforce_strict_captures(ast.head.as_ref(), ast.body(), ast.params());
+
+		assert!(result.is_ok());
+	}
+
+	#[rstest]
+	fn relative_framework_macro_path_keeps_assignment_key_as_capture() {
+		let ast = parse(quote! {
+			{ p { {reinhardt_pages::t!("Project {id}", id = project_id)} } }
+		});
+
+		let result = validate(&ast).expect("implicit body should validate");
+		let captures: Vec<String> = result
+			.implicit_captures()
+			.iter()
+			.map(|capture| capture.ident.to_string())
+			.collect();
+
+		assert_eq!(captures, vec!["id", "project_id"]);
 	}
 
 	#[rstest]

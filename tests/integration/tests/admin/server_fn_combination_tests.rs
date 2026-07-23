@@ -49,7 +49,7 @@ async fn test_list_with_search_and_filter_combined(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange: Create records with various names and statuses
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 
 	create_test_record(&site, &db, "AlphaActive", "active").await;
 	create_test_record(&site, &db, "AlphaInactive", "inactive").await;
@@ -94,7 +94,7 @@ async fn test_list_with_search_and_pagination(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange: Create 10+ records with searchable names
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 
 	for i in 1..=12 {
 		create_test_record(&site, &db, &format!("SearchItem_{:02}", i), "active").await;
@@ -142,7 +142,7 @@ async fn test_list_with_sort_ascending_and_descending(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 
 	create_test_record(&site, &db, "Charlie", "active").await;
 	create_test_record(&site, &db, "Alice", "active").await;
@@ -212,7 +212,7 @@ async fn test_create_record_with_all_field_types(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let user = make_auth_user();
 	let request = make_staff_request();
 
@@ -281,7 +281,7 @@ async fn test_export_all_formats_produce_valid_output(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange: Create a record so export has data
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let user = make_auth_user();
 	let request = make_staff_request();
 
@@ -350,7 +350,7 @@ async fn test_list_with_filter_and_sort_combined(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 
 	create_test_record(&site, &db, "Charlie", "active").await;
 	create_test_record(&site, &db, "Alice", "inactive").await;
@@ -399,7 +399,7 @@ async fn test_concurrent_record_creation(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 
 	// Act: Create 10 records concurrently
 	let mut handles = Vec::new();

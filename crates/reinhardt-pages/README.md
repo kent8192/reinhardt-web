@@ -539,6 +539,19 @@ Arguments supplied from ambient context use `ambient_arguments`. The old
 transport layer: `#[server_fn]` client stubs attach `X-CSRFToken`, while
 non-WASM forms still render the hidden CSRF input for traditional posts.
 
+### Server-function injection
+
+Injected server-function parameters support mutable bindings and destructuring
+patterns while preserving those bindings in the server implementation.
+
+```rust,ignore
+#[inject] mut db: DatabaseConnection
+#[inject] Wrapper(mut value): Wrapper<Data>
+```
+
+Mutability applies only to the server function's internal binding; it does not
+change resolver ownership or caching.
+
 ### Structured server-function errors
 
 `ServerFnError` is a typed, versioned error contract shared by server handlers,
@@ -718,6 +731,25 @@ resolves reactive views, active suspense branches, and deferred content branches
 before exposing queryable text and roles.
 
 ## Architecture
+
+### Fresh CSR root contexts
+
+Install application-wide contexts on `ClientLauncher` so their RAII guards
+remain live for the initial render and later SPA navigations:
+
+```rust,ignore
+let i18n = I18nContext::empty("en-US", "en-US"); // Requires the `i18n` feature.
+
+ClientLauncher::new("#root")
+    .i18n_context(i18n)
+    .register_routes_from_inventory()
+    .launch()
+```
+
+For other context keys, use
+`ClientLauncher::provide_context(&context, value)`. The launcher installs all
+root contexts before lifecycle callbacks and router construction. A failed
+launch drops the guards automatically.
 
 This framework consists of several key modules:
 

@@ -22,7 +22,7 @@ async fn test_get_list_happy_path(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let auth_user = make_auth_user();
 
 	for i in 0..3 {
@@ -56,7 +56,7 @@ async fn test_get_list_with_search(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let auth_user = make_auth_user();
 
 	let mut data = HashMap::new();
@@ -89,7 +89,7 @@ async fn test_get_list_with_filter(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let auth_user = make_auth_user();
 
 	let mut data = HashMap::new();
@@ -125,7 +125,7 @@ async fn test_get_list_sort_descending(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let auth_user = make_auth_user();
 
 	let params = ListQueryParams {
@@ -153,7 +153,7 @@ async fn test_get_list_sort_by_invalid_field(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let auth_user = make_auth_user();
 
 	let params = ListQueryParams {
@@ -184,7 +184,7 @@ async fn test_get_list_unknown_filter_field(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let auth_user = make_auth_user();
 
 	let mut filters = HashMap::new();
@@ -220,7 +220,7 @@ async fn test_get_list_pagination_defaults(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let auth_user = make_auth_user();
 
 	// Act
@@ -249,7 +249,7 @@ async fn test_get_list_page_size_capped(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let auth_user = make_auth_user();
 
 	let params = ListQueryParams {
@@ -276,7 +276,7 @@ async fn test_get_list_page_zero_treated_as_one(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let auth_user = make_auth_user();
 
 	let params = ListQueryParams {
@@ -301,7 +301,7 @@ async fn test_get_list_empty_table(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let auth_user = make_auth_user();
 
 	// Act (no records inserted)
@@ -328,7 +328,7 @@ async fn test_get_list_columns_match_list_display(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let auth_user = make_auth_user();
 
 	// Act
@@ -364,7 +364,7 @@ async fn test_get_list_filters_match_list_filter(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let auth_user = make_auth_user();
 
 	// Act
@@ -399,7 +399,7 @@ async fn test_get_list_model_not_registered(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let auth_user = make_auth_user();
 
 	// Act

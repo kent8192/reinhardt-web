@@ -48,7 +48,7 @@ async fn test_list_uuid_pk_model(
 	#[future] uuid_pk_context: super::server_fn_helpers::UuidPkContext,
 ) {
 	// Arrange
-	let (site, db, pool) = uuid_pk_context.await;
+	let (site, db, pool, _connection_lease) = uuid_pk_context.await;
 	let auth_user = make_auth_user();
 
 	insert_uuid_record(&pool, "UUID List Item 1", "active").await;
@@ -91,7 +91,7 @@ async fn test_detail_uuid_pk_model(
 	#[future] uuid_pk_context: super::server_fn_helpers::UuidPkContext,
 ) {
 	// Arrange
-	let (site, db, pool) = uuid_pk_context.await;
+	let (site, db, pool, _connection_lease) = uuid_pk_context.await;
 	let http_request = make_staff_request();
 	let auth_user = make_auth_user();
 
@@ -125,7 +125,7 @@ async fn test_create_uuid_pk_model(
 	#[future] uuid_pk_context: super::server_fn_helpers::UuidPkContext,
 ) {
 	// Arrange
-	let (site, db, _pool) = uuid_pk_context.await;
+	let (site, db, _pool, _connection_lease) = uuid_pk_context.await;
 	let http_request = make_staff_request();
 	let auth_user = make_auth_user();
 
@@ -172,7 +172,7 @@ async fn test_update_uuid_pk_model(
 	#[future] uuid_pk_context: super::server_fn_helpers::UuidPkContext,
 ) {
 	// Arrange
-	let (site, db, pool) = uuid_pk_context.await;
+	let (site, db, pool, _connection_lease) = uuid_pk_context.await;
 	let uuid_id = insert_uuid_record(&pool, "UUID Before Update", "active").await;
 
 	let http_request = make_staff_request();
@@ -232,7 +232,7 @@ async fn test_delete_uuid_pk_model(
 	#[future] uuid_pk_context: super::server_fn_helpers::UuidPkContext,
 ) {
 	// Arrange
-	let (site, db, pool) = uuid_pk_context.await;
+	let (site, db, pool, _connection_lease) = uuid_pk_context.await;
 	let uuid_id = insert_uuid_record(&pool, "UUID To Delete", "active").await;
 
 	let http_request = make_staff_request();
@@ -270,7 +270,7 @@ async fn test_bulk_delete_uuid_pk_model(
 	#[future] uuid_pk_context: super::server_fn_helpers::UuidPkContext,
 ) {
 	// Arrange
-	let (site, db, pool) = uuid_pk_context.await;
+	let (site, db, pool, _connection_lease) = uuid_pk_context.await;
 
 	let id1 = insert_uuid_record(&pool, "UUID Bulk 1", "active").await;
 	let id2 = insert_uuid_record(&pool, "UUID Bulk 2", "draft").await;
@@ -315,7 +315,7 @@ async fn test_export_uuid_pk_model(
 	#[future] uuid_pk_context: super::server_fn_helpers::UuidPkContext,
 ) {
 	// Arrange
-	let (site, db, pool) = uuid_pk_context.await;
+	let (site, db, pool, _connection_lease) = uuid_pk_context.await;
 	let http_request = make_staff_request();
 	let auth_user = make_auth_user();
 

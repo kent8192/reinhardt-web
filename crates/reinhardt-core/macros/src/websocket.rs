@@ -211,6 +211,7 @@ pub(crate) fn websocket_impl(args: TokenStream, mut input: ItemFn) -> Result<Tok
 		})
 		.cloned()
 		.collect();
+	let source_inputs = input.sig.inputs.clone();
 
 	// Strip #[inject] attrs from parameters in the original fn
 	for arg in input.sig.inputs.iter_mut() {
@@ -235,21 +236,13 @@ pub(crate) fn websocket_impl(args: TokenStream, mut input: ItemFn) -> Result<Tok
 	let inject_field_decls: Vec<TokenStream> = inject_params
 		.iter()
 		.map(|p| {
-			let pat = &p.pat;
+			let resolved_ident = &p.resolved_ident;
 			let ty = &p.ty;
-			quote! { pub #pat: #ty }
+			quote! { pub #resolved_ident: #ty }
 		})
 		.collect();
 
-	let inject_field_clones: Vec<TokenStream> = inject_params
-		.iter()
-		.map(|p| {
-			let pat = &p.pat;
-			quote! { self.#pat.clone() }
-		})
-		.collect();
-
-	let inject_pat_names: Vec<&Pat> = inject_params.iter().map(|p| p.pat.as_ref()).collect();
+	let inject_field_names: Vec<_> = inject_params.iter().map(|p| &p.resolved_ident).collect();
 
 	// Consumer struct body
 	let consumer_struct_body = if has_inject {
@@ -260,8 +253,29 @@ pub(crate) fn websocket_impl(args: TokenStream, mut input: ItemFn) -> Result<Tok
 
 	// on_message call
 	let on_message_call = if has_inject {
+		let mut inject_args = inject_params.iter();
+		let call_args: Vec<_> = source_inputs
+			.iter()
+			.filter_map(|arg| {
+				let FnArg::Typed(pt) = arg else { return None };
+				if pt
+					.attrs
+					.iter()
+					.any(crate::injectable_common::is_inject_attr)
+				{
+					let resolved_ident = &inject_args
+						.next()
+						.expect("each injected argument must have detected metadata")
+						.resolved_ident;
+					Some(quote! { self.#resolved_ident.clone() })
+				} else {
+					let pat = &pt.pat;
+					Some(quote! { #pat })
+				}
+			})
+			.collect();
 		quote! {
-			#original_fn_ident(#(#non_inject_arg_pats,)* #(#inject_field_clones),*).await
+			#original_fn_ident(#(#call_args),*).await
 		}
 	} else {
 		quote! { #original_fn_ident(#(#non_inject_arg_pats),*).await }
@@ -273,12 +287,12 @@ pub(crate) fn websocket_impl(args: TokenStream, mut input: ItemFn) -> Result<Tok
 		let resolve_stmts: Vec<TokenStream> = inject_params
 			.iter()
 			.map(|p| {
-				let pat = &p.pat;
+				let resolved_ident = &p.resolved_ident;
 				let ty = &p.ty;
 				let resolve_expr =
 					generate_inject_resolver_expr(&di_crate, ty, quote! { &__di_ctx }, true);
 				quote! {
-					let #pat: #ty = #resolve_expr
+					let #resolved_ident: #ty = #resolve_expr
 						.expect("websocket dependency injection failed");
 				}
 			})
@@ -290,7 +304,7 @@ pub(crate) fn websocket_impl(args: TokenStream, mut input: ItemFn) -> Result<Tok
 				async fn build(ctx: &#ws_crate::InjectionContext) -> Self {
 					let __di_ctx = ctx.clone();
 					#(#resolve_stmts)*
-					Self { #(#inject_pat_names),* }
+					Self { #(#inject_field_names),* }
 				}
 			}
 		}
@@ -378,4 +392,21 @@ pub(crate) fn websocket_impl(args: TokenStream, mut input: ItemFn) -> Result<Tok
 		// URL resolver extension trait
 		#url_resolver_tokens
 	})
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use syn::parse_quote;
+
+	#[test]
+	fn preserves_interleaved_argument_order() {
+		let input: ItemFn = parse_quote! {
+			async fn chat(first: String, #[inject] mut left: Service, last: usize, #[inject] mut right: Service) -> Result<(), Error> { Ok(()) }
+		};
+		let generated = websocket_impl(quote! { "/chat" }, input)
+			.unwrap()
+			.to_string();
+		assert!(generated.contains("chat_original (first , self . __reinhardt_injected_0 . clone () , last , self . __reinhardt_injected_1 . clone ())"), "{generated}");
+	}
 }

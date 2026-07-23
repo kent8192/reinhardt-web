@@ -466,6 +466,11 @@ pub mod db {
 	pub use reinhardt_db::DatabaseError as Error;
 	pub use reinhardt_db::Json;
 
+	/// Low-level backend connections used to register ORM connection leases.
+	pub mod backends {
+		pub use reinhardt_db::backends::*;
+	}
+
 	/// Canonical many-to-many default naming helpers used by generated models.
 	pub mod m2m_naming {
 		pub use reinhardt_db::m2m_naming::*;
