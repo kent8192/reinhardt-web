@@ -18,6 +18,10 @@ include = [
 [lib]
 name = "reinhardt"
 
+[[test]]
+name = "pages_i18n_facade"
+required-features = ["pages", "i18n"]
+
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
@@ -383,6 +387,7 @@ cfg_aliases = "0.2"
 
 [dev-dependencies]
 rstest = { workspace = true }
+serial_test = { workspace = true }
 
 [workspace]
 resolver = "3"

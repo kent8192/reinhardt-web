@@ -354,7 +354,7 @@ locale and later locale switches update reactive snapshots without explicitly
 threading a resource through each component.
 
 ```rust,ignore
-use reinhardt_i18n::{MessageCatalog, TranslationContext};
+use reinhardt_pages::i18n::{I18nContext, MessageCatalog, TranslationContext};
 use reinhardt_pages::prelude::*;
 
 let mut translations = TranslationContext::new("ja", "en-US");
@@ -898,9 +898,8 @@ the same key order. Suspense boundaries keep fallback and content roots
 transparent; streaming metadata is emitted outside the branch DOM.
 
 ### I18n
-- `I18nContext`, `I18nStateError`, `TranslatedText`, `tr`, `tn`, `tp`, `tnp`
-- `provide_i18n_context`, `use_i18n_context`, `set_locale`, `locale`
-- `with_i18n_context`
+- Reactive Pages API: `I18nContext`, `I18nStateError`, `TranslatedText`, `tr`, `tn`, `tp`, `tnp`
+- Catalog and global API: `MessageCatalog`, `TranslationContext`, `I18nError`, `LazyString`, `TranslationGuard`, and the functions under `reinhardt_pages::i18n`
 
 ### Forms (native only)
 - `FormBinding`, `FormComponent`

@@ -1,7 +1,9 @@
 //! Reactive page translation support.
 //!
 //! This module connects `reinhardt-i18n` catalogs to page rendering, SSR state,
-//! and client hydration.
+//! and client hydration. It is also the canonical native and WASM facade for
+//! constructing catalogs and using target-neutral global translation APIs in
+//! Pages applications.
 
 use std::borrow::Cow;
 #[cfg(wasm)]
@@ -12,7 +14,12 @@ use std::future::Future;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use reinhardt_i18n::{I18nError, MessageCatalog, TranslationContext};
+pub use reinhardt_i18n::{
+	I18nError, LazyString, MessageCatalog, TranslationContext, TranslationGuard, activate,
+	activate_with_catalog, deactivate, get_active_translation, get_language, get_locale, gettext,
+	gettext_lazy, ngettext, ngettext_lazy, npgettext, pgettext, set_active_translation,
+	set_active_translation_permanent,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::component::{IntoPage, Page};
