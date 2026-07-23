@@ -13,8 +13,10 @@
 use reinhardt_core::validators::{MinValueValidator, RangeValidator, Validator};
 use reinhardt_db::orm::manager::reinitialize_database;
 use reinhardt_db::{
-	DatabaseConnection,
-	orm::{Filter, FilterOperator, FilterValue, Model},
+	backends::DatabaseConnection as BackendsConnection,
+	orm::{
+		DatabaseConnection, DatabaseConnectionLease, Filter, FilterOperator, FilterValue, Model,
+	},
 };
 use reinhardt_integration_tests::{
 	migrations::apply_constraint_test_migrations,
@@ -91,7 +93,8 @@ async fn validator_constraint_test_db(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<sqlx::PgPool>, u16, String),
 ) -> (
 	ContainerAsync<GenericImage>,
-	Arc<DatabaseConnection>,
+	DatabaseConnectionLease,
+	DatabaseConnection,
 	Arc<PgPool>,
 	u16,
 	String,
@@ -99,19 +102,19 @@ async fn validator_constraint_test_db(
 	let (container, pool, port, url) = postgres_container.await;
 
 	// Create ORM DatabaseConnection from URL
-	let connection = DatabaseConnection::connect(&url).await.unwrap();
+	let owner = BackendsConnection::connect(&url).await.unwrap();
 
 	// Apply constraint test migrations using inner BackendsConnection
-	apply_constraint_test_migrations(connection.inner())
-		.await
-		.unwrap();
+	apply_constraint_test_migrations(&owner).await.unwrap();
+	let lease = DatabaseConnectionLease::register(owner).unwrap();
+	let connection = lease.handle();
 
 	// Initialize global database connection for ORM Manager API
 	reinitialize_database(&url)
 		.await
 		.expect("Failed to reinitialize database");
 
-	(container, Arc::new(connection), pool, port, url)
+	(container, lease, connection, pool, port, url)
 }
 
 // ============================================================================
@@ -130,14 +133,16 @@ async fn validator_constraint_test_db(
 async fn test_composite_unique_constraint_validation(
 	#[future] validator_constraint_test_db: (
 		ContainerAsync<GenericImage>,
-		Arc<DatabaseConnection>,
+		DatabaseConnectionLease,
+		DatabaseConnection,
 		Arc<PgPool>,
 		u16,
 		String,
 	),
 	_validator_db_guard: TeardownGuard<ValidatorDbGuard>,
 ) {
-	let (_container, _connection, _pool, _port, _database_url) = validator_constraint_test_db.await;
+	let (_container, _lease, _connection, _pool, _port, _database_url) =
+		validator_constraint_test_db.await;
 
 	// Insert test users using ORM
 	let user1_id = {
@@ -236,14 +241,16 @@ async fn test_composite_unique_constraint_validation(
 async fn test_check_constraint_integration(
 	#[future] validator_constraint_test_db: (
 		ContainerAsync<GenericImage>,
-		Arc<DatabaseConnection>,
+		DatabaseConnectionLease,
+		DatabaseConnection,
 		Arc<PgPool>,
 		u16,
 		String,
 	),
 	_validator_db_guard: TeardownGuard<ValidatorDbGuard>,
 ) {
-	let (_container, _connection, pool, _port, _database_url) = validator_constraint_test_db.await;
+	let (_container, _lease, _connection, pool, _port, _database_url) =
+		validator_constraint_test_db.await;
 
 	// Application-level validator
 	let price_validator = MinValueValidator::new(0.0);
@@ -343,14 +350,16 @@ async fn test_check_constraint_integration(
 async fn test_cascade_delete_validation(
 	#[future] validator_constraint_test_db: (
 		ContainerAsync<GenericImage>,
-		Arc<DatabaseConnection>,
+		DatabaseConnectionLease,
+		DatabaseConnection,
 		Arc<PgPool>,
 		u16,
 		String,
 	),
 	_validator_db_guard: TeardownGuard<ValidatorDbGuard>,
 ) {
-	let (_container, _connection, _pool, _port, _database_url) = validator_constraint_test_db.await;
+	let (_container, _lease, _connection, _pool, _port, _database_url) =
+		validator_constraint_test_db.await;
 
 	// Setup: Create user, post, and comments
 	let user_id = {
@@ -480,14 +489,16 @@ async fn test_cascade_delete_validation(
 async fn test_validation_failure_transaction_rollback(
 	#[future] validator_constraint_test_db: (
 		ContainerAsync<GenericImage>,
-		Arc<DatabaseConnection>,
+		DatabaseConnectionLease,
+		DatabaseConnection,
 		Arc<PgPool>,
 		u16,
 		String,
 	),
 	_validator_db_guard: TeardownGuard<ValidatorDbGuard>,
 ) {
-	let (_container, _connection, pool, _port, _database_url) = validator_constraint_test_db.await;
+	let (_container, _lease, _connection, pool, _port, _database_url) =
+		validator_constraint_test_db.await;
 
 	// Get initial product count using ORM
 	let manager = TestProduct::objects();
@@ -586,14 +597,16 @@ async fn test_validation_failure_transaction_rollback(
 async fn test_partial_update_validation(
 	#[future] validator_constraint_test_db: (
 		ContainerAsync<GenericImage>,
-		Arc<DatabaseConnection>,
+		DatabaseConnectionLease,
+		DatabaseConnection,
 		Arc<PgPool>,
 		u16,
 		String,
 	),
 	_validator_db_guard: TeardownGuard<ValidatorDbGuard>,
 ) {
-	let (_container, _connection, _pool, _port, _database_url) = validator_constraint_test_db.await;
+	let (_container, _lease, _connection, _pool, _port, _database_url) =
+		validator_constraint_test_db.await;
 
 	// Insert initial product
 	let product_id = {

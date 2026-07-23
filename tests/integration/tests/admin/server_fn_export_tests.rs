@@ -21,7 +21,7 @@ async fn test_export_json_happy_path(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let http_request = make_staff_request();
 	let auth_user = make_auth_user();
 
@@ -62,7 +62,7 @@ async fn test_export_csv_succeeds(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let http_request = make_staff_request();
 	let auth_user = make_auth_user();
 
@@ -104,7 +104,7 @@ async fn test_export_tsv_succeeds(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let http_request = make_staff_request();
 	let auth_user = make_auth_user();
 
@@ -145,7 +145,7 @@ async fn test_export_truncation_flag(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let http_request = make_staff_request();
 	let auth_user = make_auth_user();
 
@@ -178,7 +178,7 @@ async fn test_export_empty_table(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let http_request = make_staff_request();
 	let auth_user = make_auth_user();
 
@@ -211,7 +211,7 @@ async fn test_export_json_content_type(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let http_request = make_staff_request();
 	let auth_user = make_auth_user();
 
@@ -240,7 +240,7 @@ async fn test_export_model_not_registered(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let http_request = make_staff_request();
 	let auth_user = make_auth_user();
 

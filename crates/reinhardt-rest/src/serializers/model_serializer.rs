@@ -9,8 +9,7 @@ use super::nested_config::{NestedFieldConfig, NestedSerializerConfig};
 use super::validator_config::{ModelLevelValidator, ValidatorConfig};
 use super::validators::{UniqueTogetherValidator, UniqueValidator};
 use super::{Serializer, SerializerError, ValidatorError};
-use reinhardt_db::backends::DatabaseConnection;
-use reinhardt_db::orm::Model;
+use reinhardt_db::orm::{DatabaseConnection, Model};
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -842,13 +841,12 @@ where
 	/// # impl reinhardt_db::orm::FieldSelector for UserFields {
 	/// #     fn with_alias(self, _alias: &str) -> Self { self }
 	/// # }
-	/// # use reinhardt_db::backends::DatabaseConnection;
-	/// #
-	/// # fn configured_database_connection() -> DatabaseConnection {
-	/// #     panic!("provide a configured database connection")
-	/// # }
+	/// # use reinhardt_db::backends::DatabaseConnection as BackendsConnection;
+	/// # use reinhardt_db::orm::DatabaseConnectionLease;
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// # let connection = configured_database_connection();
+	/// # let owner = BackendsConnection::connect_sqlite("sqlite::memory:").await?;
+	/// # let lease = DatabaseConnectionLease::register(owner)?;
+	/// # let connection = lease.handle();
 	/// let serializer = ModelSerializer::<User>::new();
 	/// let user = User {
 	///     id: Uuid::now_v7(),

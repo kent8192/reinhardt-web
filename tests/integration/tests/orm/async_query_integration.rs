@@ -16,7 +16,10 @@ use reinhardt_db::orm::{
 	expressions::Q, manager::reinitialize_database, query_execution::QueryCompiler,
 	types::DatabaseDialect,
 };
-use reinhardt_db::{DatabaseConnection, orm::Model};
+use reinhardt_db::{
+	backends::DatabaseConnection as BackendsConnection,
+	orm::{DatabaseConnection, DatabaseConnectionLease, Model},
+};
 use reinhardt_integration_tests::migrations::apply_async_query_test_migrations;
 use reinhardt_macros::model;
 use reinhardt_query::QueryStatementBuilder;
@@ -51,22 +54,23 @@ async fn async_query_test_db(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) -> (
 	ContainerAsync<GenericImage>,
-	Arc<DatabaseConnection>,
+	DatabaseConnectionLease,
+	DatabaseConnection,
 	u16,
 	String,
 ) {
 	let (container, _pool, port, url) = postgres_container.await;
 
 	// Create DatabaseConnection from URL (not from pool)
-	let connection = DatabaseConnection::connect(&url).await.unwrap();
+	let owner = BackendsConnection::connect(&url).await.unwrap();
 
 	// Apply async query test migrations using MigrationExecutor
 	// Note: apply_async_query_test_migrations expects BackendsConnection, so we use inner()
-	apply_async_query_test_migrations(connection.inner())
-		.await
-		.unwrap();
+	apply_async_query_test_migrations(&owner).await.unwrap();
+	let lease = DatabaseConnectionLease::register(owner).unwrap();
+	let connection = lease.handle();
 
-	(container, Arc::new(connection), port, url)
+	(container, lease, connection, port, url)
 }
 
 // ========================================================================
@@ -121,12 +125,13 @@ mod postgres_tests {
 	async fn test_postgres_async_query_execution(
 		#[future] async_query_test_db: (
 			ContainerAsync<GenericImage>,
-			Arc<DatabaseConnection>,
+			DatabaseConnectionLease,
+			DatabaseConnection,
 			u16,
 			String,
 		),
 	) {
-		let (_container, _connection, _port, url) = async_query_test_db.await;
+		let (_container, _lease, _connection, _port, url) = async_query_test_db.await;
 
 		// Initialize global database connection for ORM
 		reinitialize_database(&url)
@@ -165,12 +170,13 @@ mod postgres_tests {
 	async fn test_postgres_async_session(
 		#[future] async_query_test_db: (
 			ContainerAsync<GenericImage>,
-			Arc<DatabaseConnection>,
+			DatabaseConnectionLease,
+			DatabaseConnection,
 			u16,
 			String,
 		),
 	) {
-		let (_container, _connection, _port, url) = async_query_test_db.await;
+		let (_container, _lease, _connection, _port, url) = async_query_test_db.await;
 
 		// Initialize global database connection for ORM
 		reinitialize_database(&url)

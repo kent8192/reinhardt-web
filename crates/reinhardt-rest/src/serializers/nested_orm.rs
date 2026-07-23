@@ -583,9 +583,7 @@ mod tests {
 	use reinhardt_db::backends::types::{
 		DatabaseType, QueryResult, QueryValue, Row, TransactionExecutor,
 	};
-	use reinhardt_db::orm::connection::{
-		DatabaseBackend as OrmDatabaseBackend, DatabaseConnection as OrmDatabaseConnection,
-	};
+	use reinhardt_db::orm::connection::{DatabaseConnection, DatabaseConnectionLease};
 	use rstest::rstest;
 	use std::sync::{Arc, Mutex};
 
@@ -748,17 +746,20 @@ mod tests {
 
 	fn recording_connection(
 		failure_plan: FailurePlan,
-	) -> (OrmDatabaseConnection, TransactionCalls) {
+	) -> (
+		DatabaseConnection,
+		DatabaseConnectionLease,
+		TransactionCalls,
+	) {
 		let calls = Arc::new(Mutex::new(Vec::new()));
 		let backend = Arc::new(RecordingBackend {
 			failure_plan,
 			calls: Arc::clone(&calls),
 		});
 		let backend_connection = BackendsConnection::new(backend);
-		(
-			OrmDatabaseConnection::new(OrmDatabaseBackend::Postgres, backend_connection),
-			calls,
-		)
+		let lease = DatabaseConnectionLease::register(backend_connection)
+			.expect("Failed to register recording database connection");
+		(lease.handle(), lease, calls)
 	}
 
 	fn operation_error() -> SerializerError {
@@ -781,7 +782,7 @@ mod tests {
 	#[rstest]
 	#[tokio::test]
 	async fn nested_savepoint_uses_the_supplied_atomic_transaction() {
-		let (connection, calls) = recording_connection(FailurePlan::default());
+		let (connection, _connection_lease, calls) = recording_connection(FailurePlan::default());
 		let operation_calls = Arc::clone(&calls);
 
 		let result = TransactionHelper::with_transaction(&connection, async |transaction| {
@@ -806,7 +807,7 @@ mod tests {
 	#[rstest]
 	#[tokio::test]
 	async fn nested_savepoint_cleanup_error_maps_back_to_serializer_error() {
-		let (connection, calls) = recording_connection(FailurePlan {
+		let (connection, _connection_lease, calls) = recording_connection(FailurePlan {
 			rollback_to_savepoint: true,
 			rollback: false,
 		});
@@ -840,7 +841,7 @@ mod tests {
 	#[rstest]
 	#[tokio::test]
 	async fn outer_transaction_rollback_error_maps_back_to_serializer_error() {
-		let (connection, calls) = recording_connection(FailurePlan {
+		let (connection, _connection_lease, calls) = recording_connection(FailurePlan {
 			rollback_to_savepoint: false,
 			rollback: true,
 		});

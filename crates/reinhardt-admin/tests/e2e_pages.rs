@@ -26,7 +26,7 @@ use reinhardt_admin::core::{
 use reinhardt_auth::{Argon2Hasher, PasswordHasher};
 use reinhardt_db::backends::connection::DatabaseConnection as BackendsConnection;
 use reinhardt_db::backends::dialect::PostgresBackend;
-use reinhardt_db::orm::connection::{DatabaseBackend, DatabaseConnection};
+use reinhardt_db::orm::connection::{DatabaseConnection, DatabaseConnectionLease};
 use reinhardt_di::{InjectionContext, SingletonScope};
 use reinhardt_query::prelude::{
 	ColumnDef, Expr, OnConflict, PostgresQueryBuilder, Query, QueryBuilder, QueryStatementBuilder,
@@ -259,6 +259,7 @@ struct E2eContext {
 	pool: sqlx::PgPool,
 	// Hold server and db alive for the test lifetime.
 	_server: TestServer,
+	_db_lease: DatabaseConnectionLease,
 	_admin_db: Arc<AdminDatabase>,
 }
 
@@ -473,9 +474,10 @@ where
 
 	let backend = Arc::new(PostgresBackend::new(pool));
 	let backends_conn = BackendsConnection::new(backend);
-	let connection = DatabaseConnection::new(DatabaseBackend::Postgres, backends_conn);
-	let db_conn = Arc::new(connection);
-	let admin_db = Arc::new(AdminDatabase::new((*db_conn).clone()));
+	let db_lease = DatabaseConnectionLease::register(backends_conn)
+		.expect("PostgreSQL connection should register");
+	let db_conn = db_lease.handle();
+	let admin_db = Arc::new(AdminDatabase::new(db_conn));
 
 	let mut site = AdminSite::new("E2E Test Admin");
 	site.set_jwt_secret(JWT_SECRET);
@@ -485,7 +487,7 @@ where
 	let (admin_router, admin_di) = admin_routes_with_di(site);
 
 	let singleton = Arc::new(SingletonScope::new());
-	singleton.set_arc(db_conn);
+	singleton.set(db_conn);
 	let di_ctx = Arc::new(InjectionContext::builder(singleton).build());
 
 	let router = reinhardt_urls::routers::UnifiedRouter::new()
@@ -506,6 +508,7 @@ where
 		site_header,
 		pool: pool_for_ctx,
 		_server: server,
+		_db_lease: db_lease,
 		_admin_db: admin_db,
 	}
 }

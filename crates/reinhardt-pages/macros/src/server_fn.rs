@@ -709,18 +709,19 @@ fn add_native_mock_probe(
 
 				#[cfg(all(native, feature = "msw"))]
 				{
-					let __args = #name::Args {
-						#(#param_idents: #param_idents.clone()),*
-					};
-					if let Some(__mock_result) =
-						#pages_crate::server_fn::try_call_active_mock::<#name::marker>(__args)
-					{
-							match __mock_result {
-								Ok(__mock_value) => return Ok(__mock_value),
-								Err(__mock_error) => {
-									return Err(::std::convert::Into::into(__mock_error));
-								}
+					if #pages_crate::server_fn::has_active_server_fn_mock_scope() {
+						let __args = #name::Args {
+							#(#param_idents: #param_idents),*
+						};
+						let __mock_result =
+							#pages_crate::server_fn::try_call_active_mock::<#name::marker>(__args)
+								.expect("active server-function mock scope must return a result");
+						match __mock_result {
+							Ok(__mock_value) => return Ok(__mock_value),
+							Err(__mock_error) => {
+								return Err(::std::convert::Into::into(__mock_error));
 							}
+						}
 					}
 				}
 			}
@@ -1123,8 +1124,17 @@ fn generate_server_handler(
 	let regular_param_names: Vec<_> = regular_params.iter().map(|p| &p.pat).collect();
 	let regular_param_types: Vec<_> = regular_params.iter().map(|p| &p.ty).collect();
 
-	// Extract inject parameter names (types handled per-param in di_resolution below)
-	let inject_param_names: Vec<_> = inject_params.iter().map(|p| &p.pat).collect();
+	// Injected source patterns belong to the implementation signature. Generated
+	// calls use hygienic identifiers so mutable and destructuring patterns are
+	// never emitted in expression position or shadowed by call-site bindings.
+	let inject_param_names: Vec<_> = (0..inject_params.len())
+		.map(|index| {
+			proc_macro2::Ident::new(
+				&format!("__server_fn_inject_{}", index),
+				proc_macro2::Span::mixed_site(),
+			)
+		})
+		.collect();
 
 	// Extract extractor parameter names
 	let extractor_param_names: Vec<_> = extractor_params.iter().map(|p| &p.pat).collect();
@@ -1158,13 +1168,13 @@ fn generate_server_handler(
 
 		let param_resolutions: Vec<_> = inject_params
 			.iter()
-			.map(|p| {
-				let pat = &p.pat;
+			.zip(&inject_param_names)
+			.map(|(p, resolved_ident)| {
 				let ty = &p.ty;
 				let resolve_expr =
 					generate_inject_resolver_expr(&di_crate, ty, quote! { &__di_ctx }, true);
 				quote! {
-					let #pat: #ty =
+					let #resolved_ident: #ty =
 						#resolve_expr
 							.map_err(|e| {
 								// Auth errors (401/403) expose framework-provided user-facing
@@ -1311,25 +1321,32 @@ fn generate_server_handler(
 		quote! {}
 	};
 
-	// Build function call with regular, inject, and extractor parameters
 	let has_inject_or_extractor = !inject_params.is_empty() || !extractor_params.is_empty();
-	let function_call_params = if !has_inject_or_extractor {
-		quote! {
-			#(args.#regular_param_names),*
-		}
-	} else if regular_params.is_empty() {
-		// No regular params from Args
-		quote! {
-			#(#inject_param_names,)*
-			#(#extractor_param_names),*
-		}
-	} else {
-		quote! {
-			#(args.#regular_param_names,)*
-			#(#inject_param_names,)*
-			#(#extractor_param_names),*
-		}
-	};
+	let mut inject_names = inject_param_names.iter();
+	let mut extractor_names = extractor_param_names.iter();
+	let function_call_params: Vec<_> = sig
+		.inputs
+		.iter()
+		.filter_map(|arg| {
+			let syn::FnArg::Typed(pat_type) = arg else {
+				return None;
+			};
+			if pat_type.attrs.iter().any(is_inject_attr) {
+				let ident = inject_names
+					.next()
+					.expect("each injected argument must have detected metadata");
+				Some(quote! { #ident })
+			} else if is_extractor_type(&pat_type.ty) {
+				let pat = extractor_names
+					.next()
+					.expect("each extractor argument must have detected metadata");
+				Some(quote! { #pat })
+			} else {
+				let pat = &pat_type.pat;
+				Some(quote! { args.#pat })
+			}
+		})
+		.collect();
 
 	// Generate codec-specific deserialization code for server
 	let deserialize_code = match codec {
@@ -1376,16 +1393,21 @@ fn generate_server_handler(
 	// Generate pre_validate validation code
 	let validation_code = if pre_validate {
 		let core_crate = get_reinhardt_core_crate();
-		quote! {
-			if let Err(error) = #core_crate::validators::Validate::validate(&args) {
-				let error = #pages_crate::server_fn::ServerFnError::from(error);
-				let error_body = ::serde_json::to_vec(&error)
-					.map(#pages_crate::__private::bytes::Bytes::from)
-					.unwrap_or_else(|_| #pages_crate::__private::bytes::Bytes::from_static(
-						br#"{"version":1,"kind":"server","status":500,"message":"Internal server error","field_errors":[]}"#,
-					));
-				return Err(error_body);
+		let validation_statements = regular_param_names.iter().map(|param_name| {
+			quote! {
+				if let Err(error) = #core_crate::validators::Validate::validate(&args.#param_name) {
+					let error = #pages_crate::server_fn::ServerFnError::from(error);
+					let error_body = ::serde_json::to_vec(&error)
+						.map(#pages_crate::__private::bytes::Bytes::from)
+						.unwrap_or_else(|_| #pages_crate::__private::bytes::Bytes::from_static(
+							br#"{"version":1,"kind":"server","status":500,"message":"Internal server error","field_errors":[]}"#,
+						));
+					return Err(error_body);
+				}
 			}
+		});
+		quote! {
+			#(#validation_statements)*
 		}
 	} else {
 		quote! {}
@@ -1921,7 +1943,7 @@ fn generate_server_handler(
 				use ::serde::{Serialize, Deserialize};
 
 				/// Public Args struct for MSW type-safe mocking.
-				#[derive(Serialize, Deserialize, Clone)]
+				#[derive(Serialize, Deserialize)]
 				pub struct Args {
 					#(pub #regular_param_names: #regular_param_types),*
 				}
@@ -1966,7 +1988,7 @@ fn generate_server_handler(
 					use ::serde::{Serialize, Deserialize};
 
 					/// Public Args struct for MSW type-safe mocking.
-					#[derive(Serialize, Deserialize, Clone)]
+					#[derive(Serialize, Deserialize)]
 					pub struct Args {
 						#(pub #regular_param_names: #regular_param_types),*
 					}
@@ -2075,7 +2097,7 @@ fn generate_server_handler(
 			#extractor_resolution
 
 			// Call the original server function with regular, injected, and extractor parameters
-			let result: #return_type = #name(#function_call_params).await;
+			let result: #return_type = #name(#(#function_call_params),*).await;
 
 			// Handle Result and serialize
 			match result {
@@ -2488,6 +2510,10 @@ mod tests {
 			"pre-validation failures must convert ValidationErrors into ServerFnError: {generated}"
 		);
 		assert!(
+			generated.contains("Validate :: validate (& args . request)"),
+			"pre-validation must validate the deserialized argument instead of the generated wrapper: {generated}"
+		);
+		assert!(
 			generated.contains("serde_json :: to_vec"),
 			"pre-validation failures must serialize the versioned error envelope: {generated}"
 		);
@@ -2639,5 +2665,32 @@ mod tests {
 			})
 			.count();
 		assert_eq!(regular_count, 0, "All params should be extractors");
+	}
+
+	#[test]
+	fn server_handler_preserves_interleaved_argument_order() {
+		use syn::parse_quote;
+		let func: ItemFn = parse_quote! {
+			async fn handler(first: String, #[inject] mut left: Service, Json(last): Json<usize>, #[inject] mut right: Service) -> Result<(), ServerFnError> { Ok(()) }
+		};
+		let info = ServerFnInfo {
+			func,
+			options: ServerFnOptions::default(),
+			metadata_name: None,
+			endpoint_tokens: None,
+			metadata_name_tokens: None,
+			detail: false,
+			transactional: false,
+			structured_error: false,
+		};
+		let inject = detect_inject_params(&info.func.sig.inputs);
+		let extractors = detect_extractor_params(&info.func.sig.inputs);
+		let generated = generate_server_handler(&info, &inject, &extractors).to_string();
+		assert!(
+			generated.contains(
+				"handler (args . first , __server_fn_inject_0 , Json (last) , __server_fn_inject_1)"
+			),
+			"{generated}"
+		);
 	}
 }

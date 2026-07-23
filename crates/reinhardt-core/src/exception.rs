@@ -426,6 +426,7 @@ impl Error {
 					DatabaseErrorKind::Syntax
 					| DatabaseErrorKind::Type
 					| DatabaseErrorKind::ColumnNotFound
+					| DatabaseErrorKind::ConnectionHandleExpired
 					| DatabaseErrorKind::Transaction
 					| DatabaseErrorKind::Configuration
 					| DatabaseErrorKind::Serialization

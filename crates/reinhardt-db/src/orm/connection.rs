@@ -1,11 +1,15 @@
 //! Database connection management
 //!
-//! This module provides the main `DatabaseConnection` type which wraps
-//! the backend-specific connection implementations.
+//! This module separates backend ownership from the copyable ORM connection
+//! capability. [`DatabaseConnectionLease`] owns the registry lifetime and
+//! [`DatabaseConnection`] resolves the backend for each operation.
 
 use async_trait::async_trait;
-use reinhardt_core::exception::{DatabaseError, DatabaseErrorKind, Result};
+use std::sync::Arc;
 
+use reinhardt_core::exception::Result;
+
+use super::connection_registry::{self, ConnectionSlot, Generation, RegisteredConnection};
 use super::transaction::AtomicTransaction;
 
 /// Re-export backends types
@@ -15,7 +19,7 @@ pub use crate::backends::types::{
 	IsolationLevel, QueryResult, QueryValue, Row, TransactionExecutor,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 /// Defines possible database backend values.
 pub enum DatabaseBackend {
 	/// Postgres variant.
@@ -183,181 +187,51 @@ pub trait OrmExecutor: Send {
 	async fn fetch_optional(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<Option<Row>>;
 }
 
-/// Database connection wrapper
-#[derive(Clone)]
+/// Copyable capability for an ORM database connection.
+///
+/// A handle remains valid while at least one clone of its originating
+/// [`DatabaseConnectionLease`] exists. Operations started after the last lease
+/// drops return `DatabaseErrorKind::ConnectionHandleExpired`; operations that
+/// already resolved the backend are allowed to finish.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct DatabaseConnection {
+	slot: ConnectionSlot,
+	generation: Generation,
 	backend: DatabaseBackend,
-	inner: BackendsConnection,
+}
+
+/// RAII owner that keeps a database connection handle valid.
+///
+/// Retain this owner in standalone application or server-bootstrap state. The
+/// handle returned by [`Self::handle`] may be copied into concurrent operations,
+/// but no copied handle extends the lease lifetime.
+#[derive(Clone)]
+pub struct DatabaseConnectionLease {
+	registration: RegisteredConnection,
+}
+
+impl DatabaseConnectionLease {
+	/// Registers a backend connection and owns its registry lifetime.
+	pub fn register(owner: BackendsConnection) -> Result<Self> {
+		Ok(Self {
+			registration: connection_registry::register(owner)?,
+		})
+	}
+
+	/// Returns the copyable ORM capability associated with this lease.
+	pub fn handle(&self) -> DatabaseConnection {
+		let (slot, generation, backend) = self.registration.handle_parts();
+		DatabaseConnection {
+			slot,
+			generation,
+			backend,
+		}
+	}
 }
 
 impl DatabaseConnection {
-	/// Creates a new instance.
-	pub fn new(backend: DatabaseBackend, inner: BackendsConnection) -> Self {
-		Self { backend, inner }
-	}
-
-	/// Connect to a database from a connection URL
-	///
-	/// Automatically detects the database type from the URL scheme:
-	/// - `postgres://` or `postgresql://` → PostgreSQL
-	/// - `mysql://` → MySQL
-	/// - `sqlite://` or `sqlite:` → SQLite
-	///
-	/// # Examples
-	///
-	/// ```no_run
-	/// # async fn example() {
-	/// use reinhardt_db::orm::connection::DatabaseConnection;
-	///
-	/// let conn = DatabaseConnection::connect("postgres://localhost/mydb").await.unwrap();
-	/// # }
-	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
-	/// ```
-	pub async fn connect(url: &str) -> Result<Self> {
-		Self::connect_with_pool_size(url, None).await
-	}
-
-	/// Connect to a PostgreSQL database
-	///
-	/// # Examples
-	///
-	/// ```no_run
-	/// # async fn example() {
-	/// use reinhardt_db::orm::connection::DatabaseConnection;
-	///
-	/// let conn = DatabaseConnection::connect_postgres("postgres://localhost/mydb").await.unwrap();
-	/// # }
-	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
-	/// ```
-	#[cfg(feature = "postgres")]
-	pub async fn connect_postgres(url: &str) -> Result<Self> {
-		let inner = BackendsConnection::connect_postgres(url).await?;
-		Ok(Self {
-			backend: DatabaseBackend::Postgres,
-			inner,
-		})
-	}
-
-	/// Connect to a MySQL database
-	///
-	/// # Examples
-	///
-	/// ```no_run
-	/// # async fn example() {
-	/// use reinhardt_db::orm::connection::DatabaseConnection;
-	///
-	/// let conn = DatabaseConnection::connect_mysql("mysql://localhost/mydb").await.unwrap();
-	/// # }
-	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
-	/// ```
-	#[cfg(feature = "mysql")]
-	pub async fn connect_mysql(url: &str) -> Result<Self> {
-		let inner = BackendsConnection::connect_mysql(url).await?;
-		Ok(Self {
-			backend: DatabaseBackend::MySql,
-			inner,
-		})
-	}
-
-	/// Connect to a SQLite database
-	///
-	/// # Examples
-	///
-	/// ```no_run
-	/// # async fn example() {
-	/// use reinhardt_db::orm::connection::DatabaseConnection;
-	///
-	/// let conn = DatabaseConnection::connect_sqlite("sqlite::memory:").await.unwrap();
-	/// # }
-	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
-	/// ```
-	#[cfg(feature = "sqlite")]
-	pub async fn connect_sqlite(url: &str) -> Result<Self> {
-		let inner = BackendsConnection::connect_sqlite(url).await?;
-		Ok(Self {
-			backend: DatabaseBackend::Sqlite,
-			inner,
-		})
-	}
-
-	/// Connect to a database with a specific connection pool size
-	///
-	/// # Arguments
-	///
-	/// * `url` - Database connection URL
-	/// * `pool_size` - Maximum number of connections in the pool (None = use default)
-	///
-	/// # Examples
-	///
-	/// ```no_run
-	/// # async fn example() {
-	/// use reinhardt_db::orm::connection::DatabaseConnection;
-	///
-	/// // Use larger pool for high-concurrency scenarios
-	/// let conn = DatabaseConnection::connect_with_pool_size(
-	///     "postgres://localhost/mydb",
-	///     Some(50)
-	/// ).await.unwrap();
-	/// # }
-	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
-	/// ```
-	// Allow unused_variables because pool_size is only used with Postgres backend.
-	// MySQL and SQLite backends don't support pool size configuration yet.
-	#[allow(unused_variables)]
-	pub async fn connect_with_pool_size(url: &str, pool_size: Option<u32>) -> Result<Self> {
-		let backend_type = if url.starts_with("postgres://") || url.starts_with("postgresql://") {
-			DatabaseBackend::Postgres
-		} else if url.starts_with("mysql://") {
-			DatabaseBackend::MySql
-		} else if url.starts_with("sqlite://") || url.starts_with("sqlite:") {
-			DatabaseBackend::Sqlite
-		} else {
-			return Err(DatabaseError::new(
-				DatabaseErrorKind::Configuration,
-				format!("Unsupported database URL scheme: {url}"),
-			)
-			.into());
-		};
-
-		#[cfg(feature = "postgres")]
-		if backend_type == DatabaseBackend::Postgres {
-			let inner = BackendsConnection::connect_postgres_with_pool_size(url, pool_size).await?;
-			return Ok(Self {
-				backend: backend_type,
-				inner,
-			});
-		}
-
-		#[cfg(feature = "mysql")]
-		if backend_type == DatabaseBackend::MySql {
-			let inner = BackendsConnection::connect_mysql(url).await?;
-			return Ok(Self {
-				backend: backend_type,
-				inner,
-			});
-		}
-
-		#[cfg(feature = "sqlite")]
-		if backend_type == DatabaseBackend::Sqlite {
-			let inner = BackendsConnection::connect_sqlite(url).await?;
-			return Ok(Self {
-				backend: backend_type,
-				inner,
-			});
-		}
-
-		Err(DatabaseError::new(
-			DatabaseErrorKind::Configuration,
-			format!(
-				"Database backend not compiled in. Enable the '{}' feature.",
-				match backend_type {
-					DatabaseBackend::Postgres => "postgres",
-					DatabaseBackend::MySql => "mysql",
-					DatabaseBackend::Sqlite => "sqlite",
-				}
-			),
-		)
-		.into())
+	fn resolve(self) -> Result<Arc<BackendsConnection>> {
+		Ok(connection_registry::resolve(self.slot, self.generation)?)
 	}
 
 	/// Performs the backend operation.
@@ -365,38 +239,10 @@ impl DatabaseConnection {
 		self.backend
 	}
 
-	/// Get a reference to the inner backends connection
-	///
-	/// This provides access to the low-level connection for operations
-	/// that require direct database access.
-	///
-	/// # ORM warning
-	///
-	/// This is a backend-level escape hatch. It bypasses the connection affinity
-	/// and atomicity guarantees of [`Self::atomic`]. Do not use it for ORM
-	/// `*_with_conn` operations; run those through the callback-owned executor
-	/// supplied by [`Self::atomic`] instead.
-	pub fn inner(&self) -> &BackendsConnection {
-		&self.inner
-	}
-
-	/// Consume self and return the inner backends connection
-	///
-	/// This is useful when you need to pass ownership of the connection
-	/// to functions that expect a `BackendsConnection`.
-	///
-	/// # ORM warning
-	///
-	/// The returned backend connection is not an [`OrmExecutor`]. It bypasses
-	/// [`Self::atomic`] connection affinity and atomicity guarantees, so do not
-	/// use it for ORM `*_with_conn` operations.
-	pub fn into_inner(self) -> BackendsConnection {
-		self.inner
-	}
-
 	/// Execute a SQL query and return a single row
 	pub async fn query_one(&self, sql: &str, params: Vec<QueryValue>) -> Result<QueryRow> {
-		let row = self.inner.fetch_one(sql, params).await?;
+		let owner = self.resolve()?;
+		let row = owner.fetch_one(sql, params).await?;
 		Ok(QueryRow::from_backend_row(row))
 	}
 
@@ -406,24 +252,28 @@ impl DatabaseConnection {
 		sql: &str,
 		params: Vec<QueryValue>,
 	) -> Result<Option<QueryRow>> {
-		let row = self.inner.fetch_optional(sql, params).await?;
+		let owner = self.resolve()?;
+		let row = owner.fetch_optional(sql, params).await?;
 		Ok(row.map(QueryRow::from_backend_row))
 	}
 
 	/// Execute a SQL statement (INSERT, UPDATE, DELETE, etc.)
 	pub async fn execute(&self, sql: &str, params: Vec<QueryValue>) -> Result<u64> {
-		let result = self.inner.execute(sql, params).await?;
+		let owner = self.resolve()?;
+		let result = owner.execute(sql, params).await?;
 		Ok(result.rows_affected)
 	}
 
 	/// Execute a SQL query and return all rows
 	pub async fn query(&self, sql: &str, params: Vec<QueryValue>) -> Result<Vec<QueryRow>> {
-		let rows = self.inner.fetch_all(sql, params).await?;
+		let owner = self.resolve()?;
+		let rows = owner.fetch_all(sql, params).await?;
 		Ok(rows.into_iter().map(QueryRow::from_backend_row).collect())
 	}
 
 	async fn begin_atomic(&self) -> Result<AtomicTransaction> {
-		let executor = self.inner.begin().await?;
+		let owner = self.resolve()?;
+		let executor = owner.begin().await?;
 		Ok(AtomicTransaction::new(executor))
 	}
 
@@ -431,8 +281,8 @@ impl DatabaseConnection {
 		&self,
 		level: super::transaction::IsolationLevel,
 	) -> Result<AtomicTransaction> {
-		let executor = self
-			.inner
+		let owner = self.resolve()?;
+		let executor = owner
 			.begin_with_isolation(level.to_backends_level())
 			.await?;
 		Ok(AtomicTransaction::new(executor))
@@ -480,37 +330,41 @@ impl OrmExecutor for DatabaseConnection {
 	}
 
 	async fn execute(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<QueryResult> {
-		self.inner.execute(sql, params).await
+		let owner = self.resolve()?;
+		owner.execute(sql, params).await
 	}
 
 	async fn fetch_one(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<Row> {
-		self.inner.fetch_one(sql, params).await
+		let owner = self.resolve()?;
+		owner.fetch_one(sql, params).await
 	}
 
 	async fn fetch_all(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<Vec<Row>> {
-		self.inner.fetch_all(sql, params).await
+		let owner = self.resolve()?;
+		owner.fetch_all(sql, params).await
 	}
 
 	async fn fetch_optional(&mut self, sql: &str, params: Vec<QueryValue>) -> Result<Option<Row>> {
-		self.inner.fetch_optional(sql, params).await
+		let owner = self.resolve()?;
+		owner.fetch_optional(sql, params).await
 	}
 }
 
 /// Injectable implementation for DatabaseConnection
 ///
-/// DatabaseConnection must be explicitly registered in the DI context using
-/// `InjectionContextBuilder::singleton()`. It cannot be auto-injected because
-/// it requires runtime configuration (connection URL, pool settings, etc.).
+/// A `DatabaseConnection` handle must be registered in the DI context while its
+/// `DatabaseConnectionLease` remains owned by server bootstrap.
 ///
 /// # Example
 ///
 /// ```rust,no_run
-/// use reinhardt_db::orm::DatabaseConnection;
+/// use reinhardt_db::{backends::DatabaseConnection as BackendsConnection, orm::DatabaseConnectionLease};
 /// use reinhardt_di::InjectionContext;
 ///
 /// # async fn example() {
-/// // First, establish a database connection
-/// let db = DatabaseConnection::connect("postgres://localhost/mydb").await.unwrap();
+/// let owner = BackendsConnection::connect_postgres("postgres://localhost/mydb").await.unwrap();
+/// let lease = DatabaseConnectionLease::register(owner).unwrap();
+/// let db = lease.handle();
 ///
 /// // Then register it in the DI context as a singleton
 /// let singleton_scope = reinhardt_di::SingletonScope::new();
@@ -523,38 +377,107 @@ impl OrmExecutor for DatabaseConnection {
 #[async_trait]
 impl reinhardt_di::Injectable for DatabaseConnection {
 	async fn inject(ctx: &reinhardt_di::InjectionContext) -> reinhardt_di::DiResult<Self> {
-		// Try singleton scope first (primary expected location)
 		if let Some(conn) = ctx.get_singleton::<Self>() {
-			return Ok(std::sync::Arc::try_unwrap(conn).unwrap_or_else(|arc| (*arc).clone()));
+			return Ok(*conn);
 		}
 
-		// Try request scope as fallback
 		if let Some(conn) = ctx.get_request::<Self>() {
-			return Ok(std::sync::Arc::try_unwrap(conn).unwrap_or_else(|arc| (*arc).clone()));
+			return Ok(*conn);
 		}
 
-		// Not registered - provide helpful error
 		Err(reinhardt_di::DiError::NotRegistered {
 			type_name: std::any::type_name::<Self>().to_string(),
-			hint: "Use InjectionContextBuilder::singleton(db_connection) to register a \
-			       DatabaseConnection. Create it with DatabaseConnection::connect(), \
-			       connect_postgres(), connect_sqlite(), or connect_mysql()."
+			hint: "Server bootstrap must register a DatabaseConnectionLease and inject its \
+			       DatabaseConnection handle with InjectionContextBuilder::singleton()."
 				.to_string(),
 		})
 	}
 
 	async fn inject_uncached(ctx: &reinhardt_di::InjectionContext) -> reinhardt_di::DiResult<Self> {
-		// For DatabaseConnection, inject_uncached behaves the same as inject
-		// since database connections are typically shared (singleton or request-scoped)
 		Self::inject(ctx).await
 	}
 }
 
 #[cfg(test)]
 mod tests {
-	use super::{DatabaseBackend, DatabaseConnection, OrmExecutor};
-	use crate::backends::DatabaseErrorKind;
-	use crate::backends::types::DatabaseType;
+	use std::sync::Arc;
+
+	use async_trait::async_trait;
+	use reinhardt_core::exception::Result;
+
+	use super::{
+		BackendsConnection, DatabaseBackend, DatabaseConnection, DatabaseConnectionLease,
+		OrmExecutor,
+	};
+	use crate::backends::backend::DatabaseBackend as BackendsDatabaseBackend;
+	use crate::backends::types::{DatabaseType, QueryResult, QueryValue, Row, TransactionExecutor};
+
+	struct TestBackend;
+
+	#[async_trait]
+	impl BackendsDatabaseBackend for TestBackend {
+		fn database_type(&self) -> DatabaseType {
+			DatabaseType::Sqlite
+		}
+
+		fn placeholder(&self, index: usize) -> String {
+			format!("${index}")
+		}
+
+		fn supports_returning(&self) -> bool {
+			true
+		}
+
+		fn supports_on_conflict(&self) -> bool {
+			true
+		}
+
+		async fn execute(&self, _sql: &str, _params: Vec<QueryValue>) -> Result<QueryResult> {
+			unreachable!()
+		}
+
+		async fn fetch_one(&self, _sql: &str, _params: Vec<QueryValue>) -> Result<Row> {
+			unreachable!()
+		}
+
+		async fn fetch_all(&self, _sql: &str, _params: Vec<QueryValue>) -> Result<Vec<Row>> {
+			unreachable!()
+		}
+
+		async fn fetch_optional(
+			&self,
+			_sql: &str,
+			_params: Vec<QueryValue>,
+		) -> Result<Option<Row>> {
+			unreachable!()
+		}
+
+		async fn begin(&self) -> Result<Box<dyn TransactionExecutor>> {
+			unreachable!()
+		}
+
+		fn as_any(&self) -> &dyn std::any::Any {
+			self
+		}
+	}
+
+	fn mock_backends_connection() -> BackendsConnection {
+		BackendsConnection::new(Arc::new(TestBackend))
+	}
+
+	fn assert_connection_traits<T: Copy + Clone + Send + Sync + 'static>() {}
+
+	fn consume_connection(_connection: DatabaseConnection) {}
+
+	#[test]
+	fn database_connection_is_a_copy_capability() {
+		assert_connection_traits::<DatabaseConnection>();
+
+		let lease = DatabaseConnectionLease::register(mock_backends_connection()).unwrap();
+		let connection = lease.handle();
+		consume_connection(connection);
+		consume_connection(connection);
+	}
 
 	#[test]
 	fn test_database_backend_converts_each_database_type() {
@@ -572,53 +495,14 @@ mod tests {
 		);
 	}
 
-	#[tokio::test]
-	async fn test_error_kind_for_unsupported_url_scheme() {
-		let Err(error) = DatabaseConnection::connect("unsupported://database").await else {
-			panic!("an unsupported URL scheme must fail");
-		};
-
-		assert_eq!(
-			error.database_kind(),
-			Some(DatabaseErrorKind::Configuration)
-		);
-	}
-
-	#[cfg(feature = "postgres")]
-	#[tokio::test]
-	async fn test_error_kind_for_postgres_handshake_timeout() {
-		let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
-			.await
-			.expect("a local ephemeral port must be available");
-		let address = listener
-			.local_addr()
-			.expect("the bound listener must have a local address");
-		let _server = tokio::spawn(async move {
-			let (_stream, _) = listener
-				.accept()
-				.await
-				.expect("the timeout fixture must accept the PostgreSQL connection");
-			std::future::pending::<()>().await;
-		});
-		let url = format!(
-			"postgres://postgres@{}:{}/postgres?connect_timeout=1",
-			address.ip(),
-			address.port()
-		);
-
-		let Err(error) = DatabaseConnection::connect_postgres(&url).await else {
-			panic!("a PostgreSQL handshake that never completes must time out");
-		};
-
-		assert_eq!(error.database_kind(), Some(DatabaseErrorKind::Timeout));
-	}
-
 	#[cfg(feature = "sqlite")]
 	#[tokio::test]
 	async fn test_error_kind_for_missing_sqlite_column() {
-		let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		let owner = BackendsConnection::connect_sqlite("sqlite::memory:")
 			.await
 			.expect("the in-memory SQLite database must connect");
+		let lease = DatabaseConnectionLease::register(owner).unwrap();
+		let connection = lease.handle();
 		connection
 			.execute("CREATE TABLE records (id INTEGER PRIMARY KEY)", vec![])
 			.await
@@ -631,15 +515,20 @@ mod tests {
 			panic!("querying a missing column must fail");
 		};
 
-		assert_eq!(error.database_kind(), Some(DatabaseErrorKind::Query));
+		assert_eq!(
+			error.database_kind(),
+			Some(crate::backends::DatabaseErrorKind::Query)
+		);
 	}
 
 	#[cfg(feature = "sqlite")]
 	#[tokio::test]
 	async fn test_orm_executor_preserves_sqlite_query_result_metadata() {
-		let mut connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		let owner = BackendsConnection::connect_sqlite("sqlite::memory:")
 			.await
 			.expect("the in-memory SQLite database must connect");
+		let lease = DatabaseConnectionLease::register(owner).unwrap();
+		let mut connection = lease.handle();
 
 		let create_result = OrmExecutor::execute(
 			&mut connection,
@@ -666,9 +555,11 @@ mod tests {
 	#[cfg(feature = "sqlite")]
 	#[tokio::test]
 	async fn test_query_optional_preserves_sqlite_backend_errors() {
-		let mut connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+		let owner = BackendsConnection::connect_sqlite("sqlite::memory:")
 			.await
 			.expect("the in-memory SQLite database must connect");
+		let lease = DatabaseConnectionLease::register(owner).unwrap();
+		let mut connection = lease.handle();
 		OrmExecutor::execute(
 			&mut connection,
 			"CREATE TABLE records (id INTEGER PRIMARY KEY)",
@@ -685,6 +576,9 @@ mod tests {
 			Ok(_) => panic!("an invalid optional query must preserve its backend error"),
 		};
 
-		assert_eq!(error.database_kind(), Some(DatabaseErrorKind::Query));
+		assert_eq!(
+			error.database_kind(),
+			Some(crate::backends::DatabaseErrorKind::Query)
+		);
 	}
 }

@@ -110,6 +110,35 @@ impl<T: 'static> Clone for Signal<T> {
 
 impl<T: 'static> Copy for Signal<T> {}
 
+/// Converts an owned or borrowed signal expression into its copied handle.
+pub trait IntoSignalHandle<T: 'static> {
+	/// Returns the copied signal handle.
+	fn into_signal_handle(self) -> Signal<T>;
+}
+
+impl<T: 'static> IntoSignalHandle<T> for Signal<T> {
+	fn into_signal_handle(self) -> Signal<T> {
+		self
+	}
+}
+
+impl<T: 'static> IntoSignalHandle<T> for &Signal<T> {
+	fn into_signal_handle(self) -> Signal<T> {
+		*self
+	}
+}
+
+impl<T: 'static> IntoSignalHandle<T> for &mut Signal<T> {
+	fn into_signal_handle(self) -> Signal<T> {
+		*self
+	}
+}
+
+/// Copies a reactive signal handle from either an owned or borrowed expression.
+pub fn copy_signal_handle<T: 'static>(signal: impl IntoSignalHandle<T>) -> Signal<T> {
+	signal.into_signal_handle()
+}
+
 impl<T: 'static> Signal<T> {
 	/// Create a new Signal with the given initial value
 	///
@@ -366,6 +395,19 @@ mod tests {
 		fn assert_copy<T: Copy>() {}
 
 		assert_copy::<Signal<i32>>();
+	}
+
+	#[rstest]
+	#[serial(reactive_runtime)]
+	fn mutable_signal_borrow_converts_to_copied_handle() {
+		crate::reactive::ReactiveScope::run(|| {
+			let mut signal = Signal::new(41_i32);
+
+			let copied = copy_signal_handle(&mut signal);
+
+			copied.set(42);
+			assert_eq!(signal.get(), 42);
+		});
 	}
 
 	#[rstest]

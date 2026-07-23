@@ -40,6 +40,10 @@ All handlers receive a database connection through direct dependency injection
 `/api/snippets/config/` endpoint is a teaching aid for
 `KeyedDepends<K, Result<T, E>>`; see `src/apps/snippets/di.rs`.
 
+`DatabaseConnection` is a copyable ORM handle whose lease is retained by server
+bootstrap. Handlers pass it by value without `clone()` and never construct or
+own the underlying backend connection.
+
 ## Setup
 
 ### Prerequisites
@@ -201,6 +205,7 @@ This example is designed to be studied alongside the REST tutorial:
 - `src/apps/snippets/serializers.rs` defines `SnippetSerializer` with `Validate` length rules and `SnippetResponse::from_model()`.
 - `src/apps/snippets/di.rs` registers a self-keyed singleton config provider and a keyed fallible config provider with `KeyedFactoryOutput<K, T>`.
 - `src/apps/snippets/views.rs` exposes function-based CRUD handlers with `#[get]`, `#[post(pre_validate = true)]`, `#[put]`, and `#[delete]`, resolving `DatabaseConnection` through direct injection.
+- The injected ORM handle is `Copy`, while framework bootstrap retains its owning lease for the server lifetime.
 - `src/apps/snippets/views.rs` also exposes a `#[reinhardt::viewset(basename = "snippet")]` `ModelViewSet` with pagination, filtering, and ordering.
 - `src/apps/snippets/urls.rs` registers both function-based endpoints and ViewSet endpoints on one `ServerRouter`.
 - `src/config/urls.rs` uses `#[routes]` and mounts the snippets router under the literal `/api/` prefix.

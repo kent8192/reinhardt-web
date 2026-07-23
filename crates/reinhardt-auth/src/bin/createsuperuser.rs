@@ -26,7 +26,10 @@ use chrono::Utc;
 use reinhardt_core::macros::model;
 
 #[cfg(feature = "database")]
-use reinhardt_db::{DatabaseConnection, prelude::Model};
+use reinhardt_db::{
+	backends::DatabaseConnection as BackendsConnection, orm::DatabaseConnectionLease,
+	prelude::Model,
+};
 
 #[derive(Parser, Debug)]
 #[command(name = "createsuperuser")]
@@ -291,7 +294,9 @@ async fn create_database_user(
 	password: Option<&str>,
 ) -> Result<(), Box<dyn std::error::Error>> {
 	// Create database connection to initialize the ORM context
-	let _connection = DatabaseConnection::connect(database_url).await?;
+	let owner = BackendsConnection::connect(database_url).await?;
+	let lease = DatabaseConnectionLease::register(owner)?;
+	let _connection = lease.handle();
 
 	// Create user
 	create_user_in_database(username, email, password).await?;

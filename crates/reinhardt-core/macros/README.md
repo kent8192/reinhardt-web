@@ -116,13 +116,12 @@ Provides compile-time code generation for common patterns.
     use reinhardt::views::{get, post};
     use reinhardt::http::{Response, ViewResult};
     use reinhardt::extractors::{Path, Json};
-    use std::sync::Arc;
     use uuid::Uuid;
 
     #[get("/users/{<uuid:id>}", use_inject = true)]
     async fn get_user(
         Path(id): Path<Uuid>,
-        #[inject] db: Arc<DatabaseConnection>,  // Injected from context
+        #[inject] db: DatabaseConnection,  // Injected from context
     ) -> ViewResult<Response> {
         // ...
     }
@@ -130,11 +129,21 @@ Provides compile-time code generation for common patterns.
     #[post("/users", use_inject = true)]
     async fn create_user(
         Json(data): Json<CreateUserRequest>,
-        #[inject] db: Arc<DatabaseConnection>,
+        #[inject] db: DatabaseConnection,
     ) -> ViewResult<Response> {
         // ...
     }
     ```
+
+  Injected parameters may use mutable bindings and destructuring patterns:
+
+  ```rust,ignore
+  #[inject] mut db: DatabaseConnection
+  #[inject] Wrapper(mut value): Wrapper<Data>
+  ```
+
+  Mutability applies only to the function's internal binding; it does not
+  change resolver ownership or caching.
 
 **Pattern Comparison:**
 - `#[injectable]` - Creates an `Injectable` implementation for the return type (Factory/Provider pattern)

@@ -25,7 +25,7 @@
 //! #
 //! async fn on_message(&self, ctx: &mut ConsumerContext, msg: Message) -> WebSocketResult<()> {
 //!     // Resolve dependencies from DI context
-//!     // let db: Arc<DatabaseConnection> = ctx.resolve().await?;
+//!     // let db: DatabaseConnection = ctx.resolve().await?;
 //!     // let cache: CacheService = ctx.resolve_uncached().await?;
 //!
 //!     // Use the dependencies...
@@ -194,7 +194,7 @@ impl ConsumerContext {
 	/// # Examples
 	///
 	/// ```ignore
-	/// let db: Arc<DatabaseConnection> = ctx.resolve().await?;
+	/// let db: DatabaseConnection = ctx.resolve().await?;
 	/// ```
 	#[cfg(feature = "di")]
 	pub async fn resolve<T>(&self) -> WebSocketResult<T>

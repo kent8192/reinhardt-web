@@ -6174,7 +6174,7 @@ where
 	{
 		let mut queryset = self.clone();
 		queryset.limit = Some(queryset.limit.map_or(2, |limit| limit.min(2)));
-		let mut conn = conn.clone();
+		let mut conn = *conn;
 		queryset.all_with_db(&mut conn).await
 	}
 

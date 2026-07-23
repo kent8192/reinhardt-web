@@ -117,5 +117,11 @@ fn test_injectable_compile_pass_cases() {
 	t.pass("tests/di/ui/pass/self_keyed_result_in_server_fn.rs");
 }
 
+#[test]
+fn test_mutable_inject_patterns_core_paths_compile_pass() {
+	let t = trybuild::TestCases::new();
+	t.pass("tests/di/ui/pass/mutable_inject_patterns_core_paths.rs");
+}
+
 // Note: full provider registration behavior is covered by integration tests
 // because `inventory::submit!` requires linker-level static initialization.

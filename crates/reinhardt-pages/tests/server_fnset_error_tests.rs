@@ -6,7 +6,10 @@ use std::sync::Arc;
 
 use bytes::Bytes;
 use hyper::{Method, header};
-use reinhardt_db::orm::DatabaseConnection;
+use reinhardt_db::{
+	backends::DatabaseConnection as BackendsConnection,
+	orm::{DatabaseConnection, DatabaseConnectionLease},
+};
 use reinhardt_di::{InjectionContext, SingletonScope};
 use reinhardt_http::Request;
 use reinhardt_pages::server_fn::{
@@ -220,12 +223,16 @@ fn encoded(error: &impl serde::Serialize) -> Vec<u8> {
 }
 
 async fn model_request(uri: &str) -> Request {
-	let connection = DatabaseConnection::connect_sqlite("sqlite::memory:")
+	let owner = BackendsConnection::connect_sqlite("sqlite::memory:")
 		.await
 		.expect("SQLite connection should open");
+	let lease =
+		DatabaseConnectionLease::register(owner).expect("SQLite connection should register");
+	let connection = lease.handle();
 	let singleton = Arc::new(SingletonScope::new());
 	let context = Arc::new(
 		InjectionContext::builder(singleton)
+			.singleton(lease)
 			.singleton(connection)
 			.build(),
 	);

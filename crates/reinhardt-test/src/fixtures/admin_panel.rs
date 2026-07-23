@@ -25,10 +25,25 @@
 #[cfg(feature = "admin")]
 use {
 	reinhardt_admin::core::{AdminDatabase, AdminSite, ModelAdminConfig},
-	reinhardt_db::DatabaseConnection,
 	rstest::*,
 	std::sync::Arc,
 };
+
+/// RAII guard that keeps an admin database connection registered.
+#[cfg(feature = "admin")]
+pub struct AdminDatabaseFixture {
+	database: Arc<AdminDatabase>,
+	_connection_lease: reinhardt_db::orm::connection::DatabaseConnectionLease,
+}
+
+#[cfg(feature = "admin")]
+impl std::ops::Deref for AdminDatabaseFixture {
+	type Target = Arc<AdminDatabase>;
+
+	fn deref(&self) -> &Self::Target {
+		&self.database
+	}
+}
 
 // Import shared_db_pool fixture for testcontainers-based tests
 #[cfg(all(feature = "admin", feature = "testcontainers"))]
@@ -106,9 +121,10 @@ pub async fn model_admin_config() -> ModelAdminConfig {
 #[fixture]
 pub async fn admin_database(
 	#[future] shared_db_pool: (sqlx::PgPool, String),
-) -> Arc<AdminDatabase> {
+) -> AdminDatabaseFixture {
 	use reinhardt_db::backends::connection::DatabaseConnection as BackendsConnection;
 	use reinhardt_db::backends::dialect::PostgresBackend;
+	use reinhardt_db::orm::connection::DatabaseConnectionLease;
 	use std::sync::Arc as StdArc;
 
 	let (pool, _database_name) = shared_db_pool.await;
@@ -118,12 +134,14 @@ pub async fn admin_database(
 	let backends_conn = BackendsConnection::new(backend);
 
 	// Create ORM connection
-	let connection = DatabaseConnection::new(
-		reinhardt_db::orm::connection::DatabaseBackend::Postgres,
-		backends_conn,
-	);
+	let connection_lease =
+		DatabaseConnectionLease::register(backends_conn).expect("Failed to register connection");
+	let connection = connection_lease.handle();
 
-	Arc::new(AdminDatabase::new(connection))
+	AdminDatabaseFixture {
+		database: Arc::new(AdminDatabase::new(connection)),
+		_connection_lease: connection_lease,
+	}
 }
 
 /// Fixture providing a test database with a pre-created table
@@ -207,7 +225,7 @@ pub async fn test_model_with_table(
 /// #[rstest]
 /// #[tokio::test]
 /// async fn test_server_function_context(
-///     #[future] server_fn_test_context: (Arc<AdminSite>, Arc<AdminDatabase>),
+///     #[future] server_fn_test_context: (Arc<AdminSite>, AdminDatabaseFixture),
 /// ) {
 ///     let (site, db) = server_fn_test_context.await;
 ///     // Test server functions with proper DI context
@@ -218,8 +236,8 @@ pub async fn test_model_with_table(
 pub async fn server_fn_test_context(
 	#[future] admin_site: Arc<AdminSite>,
 	#[future] model_admin_config: ModelAdminConfig,
-	#[future] admin_database: Arc<AdminDatabase>,
-) -> (Arc<AdminSite>, Arc<AdminDatabase>) {
+	#[future] admin_database: AdminDatabaseFixture,
+) -> (Arc<AdminSite>, AdminDatabaseFixture) {
 	let site = admin_site.await;
 	let config = model_admin_config.await;
 	let db = admin_database.await;
@@ -237,9 +255,10 @@ pub async fn server_fn_test_context(
 pub async fn export_import_test_context(
 	#[future] admin_site: Arc<AdminSite>,
 	#[future] shared_db_pool: (sqlx::PgPool, String),
-) -> (Arc<AdminSite>, Arc<AdminDatabase>, String, sqlx::PgPool) {
+) -> (Arc<AdminSite>, AdminDatabaseFixture, String, sqlx::PgPool) {
 	use reinhardt_db::backends::connection::DatabaseConnection as BackendsConnection;
 	use reinhardt_db::backends::dialect::PostgresBackend;
+	use reinhardt_db::orm::connection::DatabaseConnectionLease;
 	use reinhardt_query::prelude::{
 		Alias, ColumnDef, Expr, Iden, PostgresQueryBuilder, Query, QueryStatementBuilder, Value,
 	};
@@ -255,13 +274,15 @@ pub async fn export_import_test_context(
 	let backends_conn = BackendsConnection::new(backend);
 
 	// Create ORM connection
-	let connection = DatabaseConnection::new(
-		reinhardt_db::orm::connection::DatabaseBackend::Postgres,
-		backends_conn,
-	);
+	let connection_lease =
+		DatabaseConnectionLease::register(backends_conn).expect("Failed to register connection");
+	let connection = connection_lease.handle();
 
 	// Create AdminDatabase
-	let db = Arc::new(AdminDatabase::new(connection));
+	let db = AdminDatabaseFixture {
+		database: Arc::new(AdminDatabase::new(connection)),
+		_connection_lease: connection_lease,
+	};
 
 	// Generate unique table name
 	let table_name = format!("test_exports_{}", Uuid::now_v7().simple());

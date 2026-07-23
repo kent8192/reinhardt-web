@@ -26,7 +26,7 @@ async fn test_create_then_update_then_delete_lifecycle(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 
 	// Step 1: Create a record
 	let mut data = HashMap::new();
@@ -203,7 +203,7 @@ async fn test_import_then_export_round_trip_json(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 
 	let import_records = serde_json::json!([
 		{"name": "Round Trip 1", "status": "active"},
@@ -304,7 +304,7 @@ async fn test_detail_nonexistent_id(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let http_request = make_staff_request();
 	let auth_user = make_auth_user();
 
@@ -333,7 +333,7 @@ async fn test_update_nonexistent_id(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let http_request = make_staff_request();
 	let auth_user = make_auth_user();
 
@@ -371,7 +371,7 @@ async fn test_delete_nonexistent_id(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let http_request = make_staff_request();
 	let auth_user = make_auth_user();
 
@@ -401,7 +401,7 @@ async fn test_list_page_exceeds_total(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let auth_user = make_auth_user();
 
 	// Insert one record to ensure there is at least some data
@@ -446,7 +446,7 @@ async fn test_bulk_delete_empty_ids_list(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let http_request = make_staff_request();
 	let auth_user = make_auth_user();
 

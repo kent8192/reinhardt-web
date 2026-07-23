@@ -23,7 +23,7 @@ async fn test_delete_record_happy_path(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let http_request = make_staff_request();
 	let auth_user = make_auth_user();
 
@@ -61,7 +61,7 @@ async fn test_delete_record_actually_removes(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let http_request = make_staff_request();
 	let auth_user = make_auth_user();
 
@@ -106,7 +106,7 @@ async fn test_delete_record_not_found(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let http_request = make_staff_request();
 	let auth_user = make_auth_user();
 
@@ -142,7 +142,7 @@ async fn test_delete_record_model_not_registered(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let http_request = make_staff_request();
 	let auth_user = make_auth_user();
 
@@ -174,7 +174,7 @@ async fn test_bulk_delete_happy_path(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let http_request = make_staff_request();
 	let auth_user = make_auth_user();
 
@@ -220,7 +220,7 @@ async fn test_bulk_delete_single_id(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let http_request = make_staff_request();
 	let auth_user = make_auth_user();
 
@@ -262,7 +262,7 @@ async fn test_bulk_delete_exceeds_limit(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let http_request = make_staff_request();
 	let auth_user = make_auth_user();
 
@@ -307,7 +307,7 @@ async fn test_bulk_delete_empty_ids(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let http_request = make_staff_request();
 	let auth_user = make_auth_user();
 
@@ -348,7 +348,7 @@ async fn test_bulk_delete_partial_match(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let http_request = make_staff_request();
 	let auth_user = make_auth_user();
 
@@ -393,7 +393,7 @@ async fn test_bulk_delete_model_not_registered(
 	#[future] server_fn_context: super::server_fn_helpers::ServerFnContext,
 ) {
 	// Arrange
-	let (site, db) = server_fn_context.await;
+	let (site, db, _connection_lease) = server_fn_context.await;
 	let http_request = make_staff_request();
 	let auth_user = make_auth_user();
 

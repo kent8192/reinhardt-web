@@ -5,8 +5,7 @@
 
 use super::ValidatorError;
 use super::validators::{DatabaseValidatorError, UniqueTogetherValidator, UniqueValidator};
-use reinhardt_db::backends::DatabaseConnection;
-use reinhardt_db::orm::Model;
+use reinhardt_db::orm::{DatabaseConnection, Model};
 use serde::Serialize;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -261,8 +260,12 @@ impl<M: Model> ValidatorConfig<M> {
 	///
 	/// ```ignore
 	/// use reinhardt_rest::serializers::validator_config::ValidatorConfig;
-	/// use reinhardt_db::connection::DatabaseConnection;
+	/// use reinhardt_db::backends::DatabaseConnection as BackendsConnection;
+	/// use reinhardt_db::orm::DatabaseConnectionLease;
 	///
+	/// let owner = BackendsConnection::connect_sqlite("sqlite::memory:").await?;
+	/// let lease = DatabaseConnectionLease::register(owner)?;
+	/// let connection = lease.handle();
 	/// let config = ValidatorConfig::new();
 	/// let user = User { id: None, username: "alice".into() };
 	/// config.validate_async(&connection, &user, None).await?;
@@ -511,7 +514,10 @@ mod tests {
 	async fn validate_async_runs_sync_model_validators_before_database_checks() {
 		let mut config = ValidatorConfig::<TestUser>::new();
 		config.add_sync_model_validator(Arc::new(RejectAdminUsers));
-		let connection = DatabaseConnection::new(Arc::new(UnusedDatabaseBackend));
+		let owner =
+			reinhardt_db::backends::DatabaseConnection::new(Arc::new(UnusedDatabaseBackend));
+		let lease = reinhardt_db::orm::DatabaseConnectionLease::register(owner).unwrap();
+		let connection = lease.handle();
 		let user = TestUser {
 			id: None,
 			username: "root".to_string(),

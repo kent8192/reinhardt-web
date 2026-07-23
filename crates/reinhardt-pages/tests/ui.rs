@@ -53,6 +53,8 @@ fn test_server_fn_macro_ui() {
 	t.pass("tests/ui/server_fn/query_key_non_query_args.rs");
 	t.pass("tests/ui/server_fn/query_key_private_interfaces.rs");
 	t.pass("tests/ui/server_fn/query_key_injected_no_msw.rs");
+	#[cfg(feature = "model-server-fnset")]
+	t.pass("tests/ui/server_fn/injected_database_connection_copy.rs");
 	// Codec tests
 	t.pass("tests/ui/server_fn/codec_json.rs");
 	t.pass("tests/ui/server_fn/codec_url.rs");
@@ -66,6 +68,11 @@ fn test_server_fn_macro_ui() {
 	t.pass("tests/ui/server_fn/structured_error_public_api.rs");
 	// Issue #3858: verify FromRequest extractor params work in #[server_fn]
 	t.pass("tests/ui/server_fn/with_extractors.rs");
+}
+
+#[test]
+fn test_server_fn_inject_patterns() {
+	trybuild::TestCases::new().pass("tests/ui/server_fn/with_inject.rs");
 }
 
 #[test]

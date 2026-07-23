@@ -5,15 +5,19 @@
 
 use reinhardt_core::{macros::model, validators::ValidationResult};
 use reinhardt_db::{
-	DatabaseConnection,
-	orm::{Filter, FilterOperator, FilterValue, Model},
+	backends::DatabaseConnection as BackendsConnection,
+	orm::{
+		DatabaseConnection, DatabaseConnectionLease, Filter, FilterOperator, FilterValue, Model,
+	},
 };
 use std::sync::Arc;
 use testcontainers::{GenericImage, ImageExt, core::WaitFor, runners::AsyncRunner};
 
 /// Test database setup and management with TestContainers
 pub struct TestDatabase {
-	pub connection: Arc<DatabaseConnection>,
+	pub connection: DatabaseConnection,
+	pub pool: Arc<sqlx::PgPool>,
+	pub _lease: DatabaseConnectionLease,
 	/// Container is managed by the TestDatabase and should not be directly accessed.
 	/// This field is public to allow fixture construction in integration tests.
 	pub _container: Option<testcontainers::ContainerAsync<GenericImage>>,
@@ -39,7 +43,7 @@ impl TestDatabase {
 		let database_url = format!("postgres://postgres@127.0.0.1:{}/postgres", port);
 
 		// Create DatabaseConnection
-		let connection = DatabaseConnection::connect(&database_url)
+		let owner = BackendsConnection::connect_postgres(&database_url)
 			.await
 			.map_err(|e| {
 				format!(
@@ -48,8 +52,14 @@ impl TestDatabase {
 				)
 			})?;
 
+		let pool = Arc::new(sqlx::PgPool::connect(&database_url).await?);
+		let lease = DatabaseConnectionLease::register(owner)?;
+		let connection = lease.handle();
+
 		Ok(Self {
-			connection: Arc::new(connection),
+			connection,
+			pool,
+			_lease: lease,
 			_container: Some(container),
 		})
 	}

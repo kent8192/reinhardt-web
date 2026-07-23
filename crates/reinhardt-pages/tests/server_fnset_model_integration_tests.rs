@@ -8,8 +8,8 @@ use std::sync::{Mutex, OnceLock};
 use async_trait::async_trait;
 use reinhardt_db::backends::types::QueryValue;
 use reinhardt_db::orm::{
-	DatabaseConnection, FieldSelector, Filter, FilterValue, Manager, Model, QuerySet,
-	TransactionExecutor, UniqueFieldRef,
+	DatabaseConnection, DatabaseConnectionLease, FieldSelector, Filter, FilterValue, Manager,
+	Model, QuerySet, TransactionExecutor, UniqueFieldRef,
 };
 use reinhardt_di::params::{FromRequest, ParamContext, ParamResult};
 use reinhardt_http::Request;
@@ -370,7 +370,11 @@ impl ModelServerFnResource for WidgetResource {
 	}
 }
 
-async fn database() -> (tempfile::TempDir, DatabaseConnection) {
+async fn database() -> (
+	tempfile::TempDir,
+	DatabaseConnectionLease,
+	DatabaseConnection,
+) {
 	let directory = tempfile::Builder::new()
 		.prefix("reinhardt-pages-server-fnset-")
 		.tempdir_in("/tmp")
@@ -379,9 +383,12 @@ async fn database() -> (tempfile::TempDir, DatabaseConnection) {
 		"sqlite:///{}",
 		directory.path().join("runtime.sqlite").display()
 	);
-	let connection = DatabaseConnection::connect_sqlite(&url)
+	let owner = reinhardt_db::backends::DatabaseConnection::connect_sqlite(&url)
 		.await
 		.expect("SQLite connection should open");
+	let lease =
+		DatabaseConnectionLease::register(owner).expect("SQLite connection should register");
+	let connection = lease.handle();
 	connection
 		.execute(
 			"CREATE TABLE tenant_42_widgets (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL)",
@@ -389,7 +396,7 @@ async fn database() -> (tempfile::TempDir, DatabaseConnection) {
 		)
 		.await
 		.expect("widget table should be created");
-	(directory, connection)
+	(directory, lease, connection)
 }
 
 async fn insert(connection: &DatabaseConnection, id: i64, name: &str) {
@@ -436,7 +443,7 @@ fn assert_events(expected: &[&'static str]) {
 #[tokio::test(flavor = "multi_thread")]
 #[serial(model_server_fnset_runtime)]
 async fn list_validates_and_applies_policy_before_count_and_slice() {
-	let (_directory, connection) = database().await;
+	let (_directory, _lease, connection) = database().await;
 	for id in 1..=30 {
 		insert(&connection, id, &format!("widget-{id:02}")).await;
 	}
@@ -528,7 +535,7 @@ async fn list_validates_and_applies_policy_before_count_and_slice() {
 #[tokio::test(flavor = "multi_thread")]
 #[serial(model_server_fnset_runtime)]
 async fn retrieve_maps_cardinality_and_authorization_deterministically() {
-	let (_directory, connection) = database().await;
+	let (_directory, _lease, connection) = database().await;
 	insert(&connection, 1, "unique").await;
 	reset_state();
 	let read =
@@ -600,7 +607,7 @@ async fn retrieve_maps_cardinality_and_authorization_deterministically() {
 #[tokio::test(flavor = "multi_thread")]
 #[serial(model_server_fnset_runtime)]
 async fn mutations_share_one_executor_and_rollback_post_persistence_failures() {
-	let (_directory, connection) = database().await;
+	let (_directory, _lease, connection) = database().await;
 	insert(&connection, 1, "original").await;
 
 	reset_state();
@@ -747,7 +754,7 @@ async fn mutations_share_one_executor_and_rollback_post_persistence_failures() {
 #[tokio::test(flavor = "current_thread")]
 #[serial(model_server_fnset_runtime)]
 async fn mutation_errors_rollback_explicitly_on_current_thread_runtimes() {
-	let (_directory, connection) = database().await;
+	let (_directory, _lease, connection) = database().await;
 	insert(&connection, 1, "original").await;
 
 	reset_state();
@@ -809,7 +816,7 @@ async fn mutation_errors_rollback_explicitly_on_current_thread_runtimes() {
 #[tokio::test(flavor = "current_thread")]
 #[serial(model_server_fnset_runtime)]
 async fn create_authorizes_the_created_object_before_committing() {
-	let (_directory, connection) = database().await;
+	let (_directory, _lease, connection) = database().await;
 	insert(&connection, 1, "original").await;
 	reset_state();
 	state()
@@ -838,7 +845,7 @@ async fn create_authorizes_the_created_object_before_committing() {
 #[tokio::test(flavor = "current_thread")]
 #[serial(model_server_fnset_runtime)]
 async fn update_and_patch_reauthorize_mutated_objects_before_committing() {
-	let (_directory, connection) = database().await;
+	let (_directory, _lease, connection) = database().await;
 	insert(&connection, 1, "original").await;
 
 	reset_state();
@@ -911,7 +918,7 @@ async fn update_and_patch_reauthorize_mutated_objects_before_committing() {
 #[tokio::test(flavor = "current_thread")]
 #[serial(model_server_fnset_runtime)]
 async fn transactional_custom_detail_actions_receive_authorized_object_and_rollback() {
-	let (_directory, connection) = database().await;
+	let (_directory, _lease, connection) = database().await;
 	insert(&connection, 1, "original").await;
 	reset_state();
 
@@ -953,7 +960,7 @@ async fn transactional_custom_detail_actions_receive_authorized_object_and_rollb
 #[tokio::test(flavor = "current_thread")]
 #[serial(model_server_fnset_runtime)]
 async fn transactional_detail_overrides_reauthorize_the_mutated_object() {
-	let (_directory, connection) = database().await;
+	let (_directory, _lease, connection) = database().await;
 	insert(&connection, 1, "original").await;
 	reset_state();
 	state()
@@ -1002,7 +1009,7 @@ async fn transactional_detail_overrides_reauthorize_the_mutated_object() {
 #[tokio::test(flavor = "current_thread")]
 #[serial(model_server_fnset_runtime)]
 async fn create_overrides_can_authorize_objects_before_persistence() {
-	let (_directory, connection) = database().await;
+	let (_directory, _lease, connection) = database().await;
 	insert(&connection, 1, "original").await;
 	reset_state();
 	state()
@@ -1042,7 +1049,7 @@ async fn create_overrides_can_authorize_objects_before_persistence() {
 #[tokio::test(flavor = "current_thread")]
 #[serial(model_server_fnset_runtime)]
 async fn transactional_create_overrides_authorize_without_scoping_and_rollback() {
-	let (_directory, connection) = database().await;
+	let (_directory, _lease, connection) = database().await;
 	insert(&connection, 1, "original").await;
 	reset_state();
 
