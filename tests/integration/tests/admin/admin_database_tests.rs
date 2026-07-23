@@ -9,7 +9,7 @@ use reinhardt_admin::core::database::{
 };
 use reinhardt_db::backends::{
 	connection::DatabaseConnection as BackendsConnection,
-	types::{QueryValue, Row},
+	types::{DatabaseType, QueryValue, Row},
 };
 use reinhardt_db::orm::annotation::Expression;
 use reinhardt_db::orm::expressions::{F, OuterRef};
@@ -47,7 +47,9 @@ impl std::ops::Deref for TestAdminDatabase {
 	}
 }
 
-fn admin_database_from_mock(mock: MockDatabaseBackend) -> TestAdminDatabase {
+fn admin_database_from_mock(mut mock: MockDatabaseBackend) -> TestAdminDatabase {
+	mock.expect_database_type()
+		.return_const(DatabaseType::Postgres);
 	let backends_conn = BackendsConnection::new(Arc::new(mock));
 	let connection_lease = DatabaseConnectionLease::register(backends_conn)
 		.expect("Failed to register mock database connection");
