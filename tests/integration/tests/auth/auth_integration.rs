@@ -413,7 +413,10 @@ mod user_model_tests {
 #[cfg(feature = "argon2-hasher")]
 mod database_integration_tests {
 	use super::*;
-	use reinhardt_db::DatabaseConnection;
+	use reinhardt_db::{
+		backends::DatabaseConnection as BackendsConnection,
+		orm::{DatabaseConnection, DatabaseConnectionLease},
+	};
 	use reinhardt_test::fixtures::postgres_container;
 	use serial_test::serial;
 	use sqlx::PgPool;
@@ -428,12 +431,15 @@ mod database_integration_tests {
 		#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 	) -> (
 		ContainerAsync<GenericImage>,
-		Arc<DatabaseConnection>,
+		DatabaseConnectionLease,
+		DatabaseConnection,
 		u16,
 		String,
 	) {
 		let (container, pool, port, url) = postgres_container.await;
-		let connection = DatabaseConnection::connect(&url).await.unwrap();
+		let owner = BackendsConnection::connect(&url).await.unwrap();
+		let lease = DatabaseConnectionLease::register(owner).unwrap();
+		let connection = lease.handle();
 
 		// Create simple auth_user table for testing
 		sqlx::query(
@@ -453,7 +459,7 @@ mod database_integration_tests {
 		.await
 		.unwrap();
 
-		(container, Arc::new(connection), port, url)
+		(container, lease, connection, port, url)
 	}
 
 	/// Test session authentication with database
@@ -467,12 +473,13 @@ mod database_integration_tests {
 	async fn test_session_auth_with_database(
 		#[future] auth_test_db: (
 			ContainerAsync<GenericImage>,
-			Arc<DatabaseConnection>,
+			DatabaseConnectionLease,
+			DatabaseConnection,
 			u16,
 			String,
 		),
 	) {
-		let (_container, _connection, _port, _url) = auth_test_db.await;
+		let (_container, _lease, _connection, _port, _url) = auth_test_db.await;
 
 		// Create a test user via TestUser
 		let user = TestUser {

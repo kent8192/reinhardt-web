@@ -7,8 +7,8 @@
 //!
 //! ```no_run
 //! use reinhardt_rest::serializers::validators::{UniqueValidator, UniqueTogetherValidator};
-//! use reinhardt_db::orm::Model;
-//! use reinhardt_db::backends::DatabaseConnection;
+//! use reinhardt_db::backends::DatabaseConnection as BackendsConnection;
+//! use reinhardt_db::orm::{DatabaseConnectionLease, Model};
 //! use serde::{Serialize, Deserialize};
 //!
 //! #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -33,12 +33,11 @@
 //!     fn with_alias(self, _alias: &str) -> Self { self }
 //! }
 //!
-//! # fn configured_database_connection() -> DatabaseConnection {
-//! #     panic!("provide a configured database connection")
-//! # }
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! // Use the database connection configured for your application.
-//! # let connection = configured_database_connection();
+//! # let owner = BackendsConnection::connect_sqlite("sqlite::memory:").await?;
+//! # let lease = DatabaseConnectionLease::register(owner)?;
+//! # let connection = lease.handle();
 //!
 //! // Validate that username is unique
 //! let validator = UniqueValidator::<User>::new("username");
@@ -57,8 +56,9 @@
 
 use super::{SerializerError, ValidatorError};
 use reinhardt_core::exception::{DatabaseError, DatabaseErrorKind};
-use reinhardt_db::backends::DatabaseConnection;
-use reinhardt_db::orm::{CustomManager, Filter, FilterOperator, FilterValue, Model};
+use reinhardt_db::orm::{
+	CustomManager, DatabaseConnection, Filter, FilterOperator, FilterValue, Model,
+};
 use std::marker::PhantomData;
 use thiserror::Error;
 
@@ -236,7 +236,8 @@ impl From<DatabaseValidatorError> for reinhardt_core::exception::Error {
 /// ```no_run
 /// # use reinhardt_rest::serializers::validators::UniqueValidator;
 /// # use reinhardt_db::orm::Model;
-/// # use reinhardt_db::backends::DatabaseConnection;
+/// # use reinhardt_db::backends::DatabaseConnection as BackendsConnection;
+/// # use reinhardt_db::orm::DatabaseConnectionLease;
 /// # use serde::{Serialize, Deserialize};
 /// #
 /// # #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -260,12 +261,11 @@ impl From<DatabaseValidatorError> for reinhardt_core::exception::Error {
 /// #     fn with_alias(self, _alias: &str) -> Self { self }
 /// # }
 /// #
-/// # fn configured_database_connection() -> DatabaseConnection {
-/// #     panic!("provide a configured database connection")
-/// # }
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// // Use the database connection configured for your application.
-/// # let connection = configured_database_connection();
+/// # let owner = BackendsConnection::connect_sqlite("sqlite::memory:").await?;
+/// # let lease = DatabaseConnectionLease::register(owner)?;
+/// # let connection = lease.handle();
 /// let validator = UniqueValidator::<User>::new("username");
 ///
 /// // Check if "alice" is unique
@@ -420,7 +420,8 @@ impl<M: Model> UniqueValidator<M> {
 /// ```no_run
 /// # use reinhardt_rest::serializers::validators::UniqueTogetherValidator;
 /// # use reinhardt_db::orm::Model;
-/// # use reinhardt_db::backends::DatabaseConnection;
+/// # use reinhardt_db::backends::DatabaseConnection as BackendsConnection;
+/// # use reinhardt_db::orm::DatabaseConnectionLease;
 /// # use serde::{Serialize, Deserialize};
 /// # use std::collections::HashMap;
 /// #
@@ -446,12 +447,11 @@ impl<M: Model> UniqueValidator<M> {
 /// #     fn with_alias(self, _alias: &str) -> Self { self }
 /// # }
 /// #
-/// # fn configured_database_connection() -> DatabaseConnection {
-/// #     panic!("provide a configured database connection")
-/// # }
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// // Use the database connection configured for your application.
-/// # let connection = configured_database_connection();
+/// # let owner = BackendsConnection::connect_sqlite("sqlite::memory:").await?;
+/// # let lease = DatabaseConnectionLease::register(owner)?;
+/// # let connection = lease.handle();
 /// let validator = UniqueTogetherValidator::<User>::new(vec!["username", "email"]);
 ///
 /// let mut values = HashMap::new();

@@ -11,7 +11,9 @@ use std::time::Duration;
 
 use reinhardt_core::exception::Error;
 use reinhardt_db::associations::ManyToManyManager;
-use reinhardt_db::orm::connection::DatabaseConnection;
+use reinhardt_db::orm::connection::{
+	BackendsConnection, DatabaseConnection, DatabaseConnectionLease,
+};
 use reinhardt_db::orm::custom_manager::CustomManager;
 use reinhardt_db::orm::manager::Manager;
 use reinhardt_db::orm::model::{FieldSelector, Model};
@@ -29,18 +31,28 @@ use testcontainers::{
 
 const MAX_CONNECT_RETRIES: u32 = 7;
 
+async fn sqlite_connection(url: &str) -> (DatabaseConnectionLease, DatabaseConnection) {
+	let owner = BackendsConnection::connect_sqlite(url).await.unwrap();
+	let lease = DatabaseConnectionLease::register(owner).unwrap();
+	let handle = lease.handle();
+	(lease, handle)
+}
+
 struct PostgresFixture {
 	connection: DatabaseConnection,
+	_lease: DatabaseConnectionLease,
 	_container: ContainerAsync<GenericImage>,
 }
 
 struct MySqlFixture {
 	connection: DatabaseConnection,
+	_lease: DatabaseConnectionLease,
 	_container: ContainerAsync<GenericImage>,
 }
 
 struct SqliteFixture {
 	connection: DatabaseConnection,
+	_lease: DatabaseConnectionLease,
 	_directory: TempDir,
 }
 
@@ -195,10 +207,11 @@ async fn postgres_fixture() -> PostgresFixture {
 		.expect("PostgreSQL container should start");
 	let port = container_port_with_retry(&container, 5432, "PostgreSQL").await;
 	let url = format!("postgres://postgres@127.0.0.1:{port}/postgres?sslmode=disable");
-	let connection = connect_postgres_with_retry(&url).await;
+	let (lease, connection) = connect_postgres_with_retry(&url).await;
 
 	PostgresFixture {
 		connection,
+		_lease: lease,
 		_container: container,
 	}
 }
@@ -216,10 +229,11 @@ async fn mysql_fixture() -> MySqlFixture {
 	let container = image.start().await.expect("MySQL container should start");
 	let port = container_port_with_retry(&container, 3306, "MySQL").await;
 	let url = format!("mysql://root:test@127.0.0.1:{port}/atomic_orm_test");
-	let connection = connect_mysql_with_retry(&url).await;
+	let (lease, connection) = connect_mysql_with_retry(&url).await;
 
 	MySqlFixture {
 		connection,
+		_lease: lease,
 		_container: container,
 	}
 }
@@ -232,12 +246,11 @@ async fn sqlite_fixture() -> SqliteFixture {
 		.expect("SQLite temporary directory should be created under /tmp");
 	let database_path = directory.path().join("atomic.sqlite");
 	let url = format!("sqlite:///{}", database_path.display());
-	let connection = DatabaseConnection::connect_sqlite(&url)
-		.await
-		.expect("SQLite temporary database should connect");
+	let (lease, connection) = sqlite_connection(&url).await;
 
 	SqliteFixture {
 		connection,
+		_lease: lease,
 		_directory: directory,
 	}
 }
@@ -270,12 +283,16 @@ async fn container_port_with_retry(
 	unreachable!("the final container port lookup either returns or panics")
 }
 
-async fn connect_postgres_with_retry(url: &str) -> DatabaseConnection {
+async fn connect_postgres_with_retry(url: &str) -> (DatabaseConnectionLease, DatabaseConnection) {
 	tokio::time::sleep(Duration::from_millis(500)).await;
 
 	for attempt in 0..=MAX_CONNECT_RETRIES {
-		match DatabaseConnection::connect_postgres(url).await {
-			Ok(connection) => return connection,
+		match BackendsConnection::connect_postgres(url).await {
+			Ok(owner) => {
+				let lease = DatabaseConnectionLease::register(owner).unwrap();
+				let connection = lease.handle();
+				return (lease, connection);
+			}
 			Err(error) if attempt < MAX_CONNECT_RETRIES => {
 				eprintln!(
 					"PostgreSQL connection attempt {} of {} failed: {error}",
@@ -294,12 +311,16 @@ async fn connect_postgres_with_retry(url: &str) -> DatabaseConnection {
 	unreachable!("the final PostgreSQL connection attempt either returns or panics")
 }
 
-async fn connect_mysql_with_retry(url: &str) -> DatabaseConnection {
+async fn connect_mysql_with_retry(url: &str) -> (DatabaseConnectionLease, DatabaseConnection) {
 	tokio::time::sleep(Duration::from_millis(500)).await;
 
 	for attempt in 0..=MAX_CONNECT_RETRIES {
-		match DatabaseConnection::connect_mysql(url).await {
-			Ok(connection) => return connection,
+		match BackendsConnection::connect_mysql(url).await {
+			Ok(owner) => {
+				let lease = DatabaseConnectionLease::register(owner).unwrap();
+				let connection = lease.handle();
+				return (lease, connection);
+			}
 			Err(error) if attempt < MAX_CONNECT_RETRIES => {
 				eprintln!(
 					"MySQL connection attempt {} of {} failed: {error}",

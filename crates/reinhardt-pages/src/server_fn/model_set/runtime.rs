@@ -95,7 +95,7 @@ where
 		let queryset =
 			<R::Policy as ServerFnSetPolicy<R>>::scope_query(principal, queryset, None).await?;
 		let queryset = R::apply_list_query(queryset, &query)?;
-		let mut read_connection = connection.clone();
+		let mut read_connection = *connection;
 		let total = queryset
 			.count_with_db(&mut read_connection)
 			.await

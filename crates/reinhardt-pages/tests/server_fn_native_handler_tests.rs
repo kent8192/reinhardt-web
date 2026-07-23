@@ -32,6 +32,17 @@ async fn invalid_choice(choice_id: String) -> Result<(), ServerFnError> {
 	Ok(())
 }
 
+#[derive(serde::Deserialize, serde::Serialize, reinhardt_core::validators::Validate)]
+struct CreateUserRequest {
+	#[validate(email)]
+	email: String,
+}
+
+#[server_fn(pre_validate = true)]
+async fn create_validated_user(request: CreateUserRequest) -> Result<String, ServerFnError> {
+	Ok(request.email)
+}
+
 #[derive(serde::Serialize)]
 struct CustomServerError(String);
 
@@ -199,6 +210,52 @@ async fn validation_handler_returns_versioned_error_envelope() {
 	assert_eq!(value["version"], 1);
 	assert_eq!(error.field_errors()[0].field(), "choice_id");
 	assert_eq!(error.field_errors()[0].message(), "Select a choice");
+}
+
+#[tokio::test]
+async fn pre_validate_rejects_invalid_dto_before_invocation() {
+	// Arrange
+	let request = Request::builder()
+		.method(Method::POST)
+		.uri("/api/server_fn/create_validated_user")
+		.body(Bytes::from_static(br#"{"request":{"email":"invalid"}}"#))
+		.build()
+		.expect("request should build");
+
+	// Act
+	let body = create_validated_user::marker::handle(request)
+		.await
+		.expect_err("pre-validation should reject an invalid DTO");
+	let error: ServerFnError = serde_json::from_slice(&body).expect("error should be valid JSON");
+
+	// Assert
+	assert_eq!(create_validated_user::marker::error_status(&body), 422);
+	assert_eq!(error.kind(), ServerFnErrorKind::Validation);
+	assert_eq!(error.field_errors()[0].field(), "email");
+}
+
+#[tokio::test]
+async fn pre_validate_invokes_endpoint_for_valid_dto() {
+	// Arrange
+	let request = Request::builder()
+		.method(Method::POST)
+		.uri("/api/server_fn/create_validated_user")
+		.body(Bytes::from_static(
+			br#"{"request":{"email":"user@example.com"}}"#,
+		))
+		.build()
+		.expect("request should build");
+
+	// Act
+	let body = create_validated_user::marker::handle(request)
+		.await
+		.expect("valid DTO should reach the endpoint");
+
+	// Assert
+	assert_eq!(
+		serde_json::from_slice::<String>(&body).expect("response should be valid JSON"),
+		"user@example.com"
+	);
 }
 
 #[tokio::test]

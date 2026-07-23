@@ -1,4 +1,9 @@
 //! Database, ORM, and query builder re-exports.
+//!
+//! [`DatabaseConnection`] is the copyable ORM handle exposed at the Reinhardt
+//! crate root. Its RAII owner, `DatabaseConnectionLease`, remains available
+//! explicitly under `reinhardt_db::orm` for standalone setup and framework
+//! bootstrap code.
 
 pub use reinhardt_db::orm::{
 	AtomicTransaction, DatabaseBackend, DatabaseConnection, FieldAssignment, Model, OrmExecutor,

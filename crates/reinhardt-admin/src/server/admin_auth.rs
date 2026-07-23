@@ -25,7 +25,7 @@ use std::sync::Arc;
 pub(crate) type AdminUserLoaderFn = Arc<
 	dyn Fn(
 			String,
-			Arc<DatabaseConnection>,
+			DatabaseConnection,
 		) -> Pin<Box<dyn Future<Output = Result<Arc<dyn AdminUser>, DiError>> + Send>>
 		+ Send
 		+ Sync,
@@ -118,7 +118,7 @@ impl Injectable for AdminAuthenticatedUser {
 				})?;
 
 		// Resolve DatabaseConnection from DI (singleton-first, request-scope fallback)
-		let db: Arc<DatabaseConnection> = ctx
+		let db = ctx
 			.get_singleton::<DatabaseConnection>()
 			.or_else(|| ctx.get_request::<DatabaseConnection>())
 			.ok_or_else(|| {
@@ -133,7 +133,7 @@ impl Injectable for AdminAuthenticatedUser {
 			})?;
 
 		// Call the type-erased loader to query the user from the database
-		let user = (loader.0)(user_id, db).await?;
+		let user = (loader.0)(user_id, *db).await?;
 
 		// Verify user account is active
 		if !user.is_active() {
@@ -188,7 +188,7 @@ where
 				})?;
 
 			let model_pk = <U as Model>::PrimaryKey::from(pk);
-			let mut db = (*db).clone();
+			let mut db = db;
 
 			// Query user from database
 			let user = U::objects()
@@ -239,7 +239,7 @@ pub(crate) type AdminLoginAuthenticatorFn = Arc<
 	dyn Fn(
 			String,
 			String,
-			Arc<DatabaseConnection>,
+			DatabaseConnection,
 		)
 			-> Pin<Box<dyn Future<Output = Result<Option<AuthenticatedUserInfo>, DiError>> + Send>>
 		+ Send
@@ -284,7 +284,7 @@ where
 
 	let authenticator: AdminLoginAuthenticatorFn = Arc::new(move |username, password, db| {
 		Box::pin(async move {
-			let mut db = (*db).clone();
+			let mut db = db;
 
 			// Query user by username
 			let user: Option<U> = U::objects()

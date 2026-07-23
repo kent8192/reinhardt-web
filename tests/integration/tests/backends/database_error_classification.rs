@@ -2,7 +2,10 @@
 
 use reinhardt_core::exception::Error;
 use reinhardt_db::DatabaseErrorKind;
-use reinhardt_db::orm::connection::{DatabaseBackend, DatabaseConnection};
+use reinhardt_db::{
+	backends::DatabaseConnection as BackendsConnection,
+	orm::connection::{DatabaseBackend, DatabaseConnection, DatabaseConnectionLease},
+};
 use reinhardt_query::prelude::{
 	ColumnDef, Expr, ExprTrait, Iden, IntoIden, MySqlQueryBuilder, PostgresQueryBuilder, Query,
 	QueryStatementWriter, SqliteQueryBuilder, Value,
@@ -191,9 +194,12 @@ async fn postgres_constraint_errors_have_portable_kinds(
 ) {
 	// Arrange
 	let (_container, _pool, _port, url) = postgres_container.await;
-	let connection = DatabaseConnection::connect(&url)
+	let owner = BackendsConnection::connect(&url)
 		.await
 		.expect("the PostgreSQL fixture must accept framework connections");
+	let lease =
+		DatabaseConnectionLease::register(owner).expect("connection registration must succeed");
+	let connection = lease.handle();
 	create_portable_schema(&connection).await;
 
 	// Act
@@ -208,9 +214,12 @@ async fn postgres_constraint_errors_have_portable_kinds(
 #[tokio::test]
 async fn sqlite_constraint_errors_have_portable_kinds() {
 	// Arrange
-	let connection = DatabaseConnection::connect("sqlite::memory:")
+	let owner = BackendsConnection::connect("sqlite::memory:")
 		.await
 		.expect("the in-memory SQLite database must connect");
+	let lease =
+		DatabaseConnectionLease::register(owner).expect("connection registration must succeed");
+	let connection = lease.handle();
 	// reinhardt-query has no builder for this backend session directive.
 	connection
 		.execute("PRAGMA foreign_keys = ON", vec![])
@@ -237,9 +246,12 @@ async fn mysql_constraint_errors_have_portable_kinds() {
 		.wait_ready()
 		.await
 		.expect("the MySQL container must become ready");
-	let connection = DatabaseConnection::connect(&container.connection_url())
+	let owner = BackendsConnection::connect(&container.connection_url())
 		.await
 		.expect("the MySQL fixture must accept framework connections");
+	let lease =
+		DatabaseConnectionLease::register(owner).expect("connection registration must succeed");
+	let connection = lease.handle();
 	create_portable_schema(&connection).await;
 
 	// Act
@@ -267,7 +279,7 @@ async fn unavailable_postgres_endpoint_is_classified_as_timeout() {
 	);
 
 	// Act
-	let result = DatabaseConnection::connect(&url).await;
+	let result = BackendsConnection::connect(&url).await;
 
 	// Assert
 	let Err(error) = result else {

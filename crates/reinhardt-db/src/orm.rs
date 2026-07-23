@@ -2,6 +2,11 @@
 //!
 //! Object-Relational Mapping for Reinhardt framework.
 //!
+//! [`DatabaseConnection`] is a copyable ORM capability. Standalone setup owns a
+//! backend connection through [`DatabaseConnectionLease`], and the lease must
+//! outlive all operations performed by its handles. Framework handlers receive
+//! the handle through `#[inject]` while server bootstrap retains the lease.
+//!
 //! Typed relation traversal lets `QuerySet` filters and relation loading cross
 //! model relations with generated `rel_<name>()` accessors. The typed path
 //! records the SQL joins required by the filter, so application code does not
@@ -17,10 +22,12 @@
 //!
 //! ```no_run
 //! use reinhardt_core::exception::Error;
-//! use reinhardt_db::orm::DatabaseConnection;
+//! use reinhardt_db::{backends::DatabaseConnection as BackendsConnection, orm::DatabaseConnectionLease};
 //!
 //! # async fn example() -> Result<(), Error> {
-//! let connection = DatabaseConnection::connect("sqlite::memory:").await?;
+//! let owner = BackendsConnection::connect_sqlite("sqlite::memory:").await?;
+//! let lease = DatabaseConnectionLease::register(owner)?;
+//! let connection = lease.handle();
 //! let result = connection.atomic(async |transaction| {
 //!     transaction.atomic(async |_savepoint| {
 //!         Ok::<_, Error>(())
@@ -39,6 +46,8 @@
 //!
 //! [`Transaction`], [`Savepoint`], and [`IsolationLevel`] remain SQL-builder
 //! values only. They may generate SQL but cannot control a live ORM transaction.
+//! [`AtomicTransaction`] is also intentionally non-`Copy` and stays bound to
+//! the callback and dedicated connection created by [`DatabaseConnection::atomic`].
 
 // Core modules - always available
 pub mod aggregation;
@@ -47,6 +56,7 @@ pub mod annotation;
 pub mod bulk_update;
 pub mod connection;
 pub mod connection_ext; // reinhardt-query connection support
+mod connection_registry;
 /// Constraints module.
 pub mod constraints;
 /// Expressions module.
@@ -144,8 +154,11 @@ pub mod custom_manager;
 pub mod query;
 
 pub use custom_manager::CustomManager;
+#[cfg(feature = "di")]
+pub use engine::register_request_database;
 pub use manager::{
-	get_connection, init_database, init_database_with_pool_size, reinitialize_database,
+	get_connection, get_connection_lease, get_connection_registration, init_database,
+	init_database_with_pool_size, reinitialize_database,
 };
 
 // Re-export paste for macro usage
@@ -156,8 +169,8 @@ pub use paste;
 pub use aggregation::{Aggregate, AggregateFunc, AggregateResult, AggregateValue};
 pub use annotation::{Annotation, AnnotationValue, Expression, Value, When};
 pub use connection::{
-	DatabaseBackend, DatabaseConnection, OrmExecutor, QueryResult, QueryRow, QueryValue, Row,
-	TransactionExecutor,
+	DatabaseBackend, DatabaseConnection, DatabaseConnectionLease, OrmExecutor, QueryResult,
+	QueryRow, QueryValue, Row, TransactionExecutor,
 };
 pub use constraints::{
 	CheckConstraint, Constraint, ForeignKeyConstraint, OnDelete, OnUpdate, UniqueConstraint,

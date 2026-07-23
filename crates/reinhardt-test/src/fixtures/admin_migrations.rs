@@ -48,6 +48,7 @@ use rstest::fixture;
 pub struct AdminTableCreator {
 	postgres_creator: PostgresTableCreator,
 	admin_db: Arc<reinhardt_admin::core::AdminDatabase>,
+	_connection_lease: reinhardt_db::orm::connection::DatabaseConnectionLease,
 }
 
 impl AdminTableCreator {
@@ -55,10 +56,12 @@ impl AdminTableCreator {
 	pub fn new(
 		postgres_creator: PostgresTableCreator,
 		admin_db: Arc<reinhardt_admin::core::AdminDatabase>,
+		connection_lease: reinhardt_db::orm::connection::DatabaseConnectionLease,
 	) -> Self {
 		Self {
 			postgres_creator,
 			admin_db,
+			_connection_lease: connection_lease,
 		}
 	}
 
@@ -146,9 +149,9 @@ impl AdminTableCreator {
 pub async fn admin_table_creator(
 	#[future] postgres_table_creator: PostgresTableCreator,
 ) -> AdminTableCreator {
-	use reinhardt_db::DatabaseConnection;
 	use reinhardt_db::backends::connection::DatabaseConnection as BackendsConnection;
 	use reinhardt_db::backends::dialect::PostgresBackend;
+	use reinhardt_db::orm::connection::DatabaseConnectionLease;
 	use std::sync::Arc as StdArc;
 
 	let creator = postgres_table_creator.await;
@@ -158,13 +161,12 @@ pub async fn admin_table_creator(
 	let backends_conn = BackendsConnection::new(backend);
 
 	// Create ORM connection
-	let connection = DatabaseConnection::new(
-		reinhardt_db::orm::connection::DatabaseBackend::Postgres,
-		backends_conn,
-	);
+	let connection_lease =
+		DatabaseConnectionLease::register(backends_conn).expect("Failed to register connection");
+	let connection = connection_lease.handle();
 
 	// Create AdminDatabase
 	let admin_db = Arc::new(reinhardt_admin::core::AdminDatabase::new(connection));
 
-	AdminTableCreator::new(creator, admin_db)
+	AdminTableCreator::new(creator, admin_db, connection_lease)
 }
