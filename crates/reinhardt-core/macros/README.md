@@ -135,6 +135,16 @@ Provides compile-time code generation for common patterns.
     }
     ```
 
+  Injected parameters may use mutable bindings and destructuring patterns:
+
+  ```rust,ignore
+  #[inject] mut db: DatabaseConnection
+  #[inject] Wrapper(mut value): Wrapper<Data>
+  ```
+
+  Mutability applies only to the function's internal binding; it does not
+  change resolver ownership or caching.
+
 **Pattern Comparison:**
 - `#[injectable]` - Creates an `Injectable` implementation for the return type (Factory/Provider pattern)
 - `#[<http_method>(..., use_inject = true)]` - Injects dependencies into function parameters

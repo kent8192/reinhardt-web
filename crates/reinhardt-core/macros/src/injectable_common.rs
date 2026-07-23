@@ -188,12 +188,12 @@ pub(crate) fn generate_inject_resolver_expr(
 /// by macro extensions like `#[action]` and `#[receiver]` with use_inject support.
 #[derive(Clone)]
 pub(crate) struct InjectParamInfo {
-	/// Parameter pattern (variable name)
-	pub pat: Box<syn::Pat>,
 	/// Parameter type
 	pub ty: Box<syn::Type>,
 	/// Inject options (cache, scope)
 	pub options: InjectOptions,
+	/// Expression-safe identifier for the resolved dependency
+	pub resolved_ident: syn::Ident,
 }
 
 /// Detects parameters with `#[inject]` attribute from function arguments.
@@ -212,15 +212,19 @@ pub(crate) fn detect_inject_params(
 	let mut inject_params = Vec::new();
 
 	for input in inputs {
-		if let syn::FnArg::Typed(syn::PatType { attrs, pat, ty, .. }) = input {
+		if let syn::FnArg::Typed(syn::PatType { attrs, ty, .. }) = input {
 			let has_inject = attrs.iter().any(is_inject_attr);
 
 			if has_inject {
 				let options = parse_inject_options(attrs);
+				let resolved_ident = syn::Ident::new(
+					&format!("__reinhardt_injected_{}", inject_params.len()),
+					proc_macro2::Span::mixed_site(),
+				);
 				inject_params.push(InjectParamInfo {
-					pat: pat.clone(),
 					ty: ty.clone(),
 					options,
+					resolved_ident,
 				});
 			}
 		}
@@ -280,7 +284,7 @@ pub(crate) fn generate_injection_calls(inject_params: &[InjectParamInfo]) -> Vec
 	inject_params
 		.iter()
 		.map(|param| {
-			let pat = &param.pat;
+			let resolved_ident = &param.resolved_ident;
 			let ty = &param.ty;
 			let use_cache = param.options.use_cache;
 			let resolve_expr = generate_inject_resolver_expr(
@@ -291,7 +295,7 @@ pub(crate) fn generate_injection_calls(inject_params: &[InjectParamInfo]) -> Vec
 			);
 
 			quote::quote! {
-				let #pat: #ty = #resolve_expr
+				let #resolved_ident: #ty = #resolve_expr
 					.map_err(|e| #core_crate::exception::Error::Internal(
 						format!("Dependency injection failed for {}: {:?}", stringify!(#ty), e)
 					))?;
@@ -317,7 +321,7 @@ where
 	inject_params
 		.iter()
 		.map(|param| {
-			let pat = &param.pat;
+			let resolved_ident = &param.resolved_ident;
 			let ty = &param.ty;
 			let use_cache = param.options.use_cache;
 			let error_conversion = error_mapper(ty);
@@ -329,8 +333,36 @@ where
 			);
 
 			quote::quote! {
-				let #pat: #ty = #resolve_expr
+				let #resolved_ident: #ty = #resolve_expr
 					.map_err(|e| #error_conversion)?;
+			}
+		})
+		.collect()
+}
+
+/// Generates expression-safe call arguments in their original source order.
+pub(crate) fn generate_injected_call_args<'a>(
+	inputs: impl IntoIterator<Item = &'a syn::FnArg>,
+	inject_params: &[InjectParamInfo],
+) -> Vec<TokenStream> {
+	let mut inject_params = inject_params.iter();
+
+	inputs
+		.into_iter()
+		.filter_map(|arg| {
+			let syn::FnArg::Typed(pat_type) = arg else {
+				return None;
+			};
+
+			if pat_type.attrs.iter().any(is_inject_attr) {
+				let resolved_ident = &inject_params
+					.next()
+					.expect("each injected argument must have detected metadata")
+					.resolved_ident;
+				Some(quote::quote! { #resolved_ident })
+			} else {
+				let pat = &pat_type.pat;
+				Some(quote::quote! { #pat })
 			}
 		})
 		.collect()
@@ -356,4 +388,26 @@ pub(crate) fn strip_inject_attrs(
 			}
 		})
 		.collect()
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use syn::{FnArg, parse_quote, punctuated::Punctuated};
+
+	#[test]
+	fn mutable_inject_patterns_use_expression_safe_resolved_identifiers() {
+		// Arrange
+		let inputs: Punctuated<FnArg, Token![,]> = parse_quote! {
+			#[inject] mut db: Database,
+			#[inject] Wrapper(mut value): Wrapper<Data>
+		};
+
+		// Act
+		let params = detect_inject_params(&inputs);
+
+		// Assert
+		assert_eq!(params[0].resolved_ident, "__reinhardt_injected_0");
+		assert_eq!(params[1].resolved_ident, "__reinhardt_injected_1");
+	}
 }

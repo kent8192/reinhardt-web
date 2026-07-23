@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Forward injected dependencies through generated bindings so mutable and destructuring handler parameters compile correctly.
+
 ## [0.4.0-alpha.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-grpc-macros@v0.3.2...reinhardt-grpc-macros@v0.4.0-alpha.1) - 2026-07-21
 
 ### Fixed

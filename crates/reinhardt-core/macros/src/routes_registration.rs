@@ -68,7 +68,7 @@ use crate::crate_paths::{get_reinhardt_crate, get_reinhardt_di_crate};
 use crate::injectable_common::generate_inject_resolver_expr;
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{FnArg, ItemFn, Pat, PatType, Result};
+use syn::{FnArg, ItemFn, PatType, Result, spanned::Spanned};
 
 /// Check if an attribute is `#[inject]`
 fn is_inject_attr(attr: &syn::Attribute) -> bool {
@@ -141,7 +141,11 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 			&& attrs.iter().any(is_inject_attr)
 		{
 			has_inject = true;
-			inject_params.push((pat.clone(), ty.clone()));
+			let resolved_ident = syn::Ident::new(
+				&format!("__reinhardt_injected_{}", inject_params.len()),
+				pat.span(),
+			);
+			inject_params.push((pat.clone(), ty.clone(), resolved_ident));
 		}
 	}
 
@@ -258,11 +262,11 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 		// Generate dependency resolution code
 		let inject_resolutions: Vec<_> = inject_params
 			.iter()
-			.map(|(pat, ty)| {
+			.map(|(_, ty, resolved_ident)| {
 				let resolve_expr =
 					generate_inject_resolver_expr(&di_crate, ty, quote! { &*__ctx }, true);
 				quote! {
-					let #pat: #ty = #resolve_expr
+					let #resolved_ident: #ty = #resolve_expr
 						.map_err(|e| -> ::std::boxed::Box<dyn ::std::error::Error + Send + Sync> {
 							::std::boxed::Box::new(e)
 						})?;
@@ -273,14 +277,7 @@ pub(crate) fn routes_impl(args: TokenStream, input: ItemFn) -> Result<TokenStrea
 		// Generate parameter names for the call
 		let inject_param_names: Vec<_> = inject_params
 			.iter()
-			.map(|(pat, _)| {
-				if let Pat::Ident(pat_ident) = pat.as_ref() {
-					let ident = &pat_ident.ident;
-					quote! { #ident }
-				} else {
-					quote! { #pat }
-				}
-			})
+			.map(|(_, _, resolved_ident)| resolved_ident)
 			.collect();
 
 		// Strip #[inject] from original function params
