@@ -1514,6 +1514,8 @@ reinhardt_di::inventory::submit! {
 
 #[cfg(all(test, server))]
 mod tests {
+	use std::sync::Arc;
+
 	use super::*;
 	use reinhardt_db::orm::annotation::Expression;
 	use reinhardt_db::orm::expressions::{F, OuterRef};
