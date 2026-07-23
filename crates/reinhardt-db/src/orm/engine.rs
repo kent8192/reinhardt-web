@@ -382,12 +382,11 @@ impl DatabaseEngine {
 	///
 	/// ```
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// use reinhardt_db::orm::connection::DatabaseConnection;
+	/// use reinhardt_db::backends::DatabaseType;
+	/// use reinhardt_db::orm::engine::DatabaseEngine;
 	///
-	/// // For doctest purposes, using mock connection (feature-gated methods not available)
-	/// // In production with 'postgres' feature: DatabaseEngine::from_postgres(url).await
-	/// let connection = DatabaseConnection::connect("postgres://localhost/mydb").await?;
-	/// assert_eq!(connection.backend(), reinhardt_db::orm::connection::DatabaseBackend::Postgres);
+	/// let engine = DatabaseEngine::from_postgres("postgres://localhost/mydb").await?;
+	/// assert_eq!(engine.database_type(), DatabaseType::Postgres);
 	/// # Ok(())
 	/// # }
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
@@ -404,12 +403,11 @@ impl DatabaseEngine {
 	///
 	/// ```
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// use reinhardt_db::orm::connection::DatabaseConnection;
+	/// use reinhardt_db::backends::DatabaseType;
+	/// use reinhardt_db::orm::engine::DatabaseEngine;
 	///
-	/// // For doctest purposes, using mock connection (feature-gated methods not available)
-	/// // In production with 'sqlite' feature: DatabaseEngine::from_sqlite(":memory:").await
-	/// let connection = DatabaseConnection::connect(":memory:").await?;
-	/// assert_eq!(connection.backend(), reinhardt_db::orm::connection::DatabaseBackend::Postgres);
+	/// let engine = DatabaseEngine::from_sqlite("sqlite::memory:").await?;
+	/// assert_eq!(engine.database_type(), DatabaseType::Sqlite);
 	/// # Ok(())
 	/// # }
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
@@ -448,21 +446,15 @@ impl DatabaseEngine {
 	///
 	/// ```no_run
 	/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-	/// use reinhardt_db::orm::connection::DatabaseConnection;
+	/// use reinhardt_db::orm::engine::DatabaseEngine;
 	///
-	/// // Create mock connection (URL is ignored in current mock implementation)
-	/// let connection = DatabaseConnection::connect("sqlite::memory:").await?;
-	///
-	/// // Execute SQL statements (mock always returns 0)
-	/// let rows_affected = connection.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)", vec![]).await?;
-	/// assert_eq!(rows_affected, 0);
-	///
-	/// let rows_affected = connection.execute("INSERT INTO users (id, name) VALUES (1, 'Alice')", vec![]).await?;
-	/// assert_eq!(rows_affected, 0);
-	///
-	/// // Query returns empty vec in mock
-	/// let rows = connection.query("SELECT * FROM users", vec![]).await?;
-	/// assert_eq!(rows.len(), 0);
+	/// let engine = DatabaseEngine::from_sqlite("sqlite::memory:").await?;
+	/// engine
+	///     .execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)")
+	///     .await?;
+	/// engine
+	///     .execute("INSERT INTO users (id, name) VALUES (1, 'Alice')")
+	///     .await?;
 	/// # Ok(())
 	/// # }
 	/// # tokio::runtime::Runtime::new().unwrap().block_on(example());
