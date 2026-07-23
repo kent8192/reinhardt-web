@@ -130,7 +130,9 @@ pub use crate::component::{
 // Headless UI primitives
 // ============================================================================
 
-pub use crate::ui::{ActionButton, ActionResultPanel, ResourcePanel};
+pub use crate::ui::{
+	ActionButton, ActionResultPanel, FormActionButton, FormActionResultPanel, ResourcePanel,
+};
 
 // ============================================================================
 // Events and Callbacks

@@ -619,6 +619,15 @@ take repeatable closures, so their slot signatures remain explicit and do not
 consume the values they render. See the `reinhardt_pages::ui` rustdoc for the
 complete constructor and builder signatures.
 
+Validated generated forms use `FormActionButton` rather than `ActionButton`.
+Attach `FormAction::submit_handler()` to the containing form so button clicks
+and Enter-key submission both run generated validation before dispatch.
+`FormActionResultPanel` provides a separate `validation_error` slot alongside
+typed mutation `error` and `success` slots. Use
+`Resource::latest_after_form(&save)` for resource reconciliation. The raw
+action remains private, so form validation cannot be bypassed through direct
+payload dispatch.
+
 ```rust,ignore
 use reinhardt::pages::prelude::*;
 use reinhardt::pages::server_fn::{ServerFnError, server_fn};

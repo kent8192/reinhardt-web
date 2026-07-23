@@ -1965,10 +1965,29 @@ where
 			.or_else(|| self.action.error().map(|error| error.to_string()))
 	}
 
+	pub(crate) fn action(&self) -> Action<T, E> {
+		self.action
+	}
+
+	/// Returns a submit-event handler that validates and dispatches this action.
+	///
+	/// Attach this handler to the containing `form` element. Native form submit
+	/// semantics then cover both submit-button activation and Enter-key submit.
+	pub fn submit_handler(&self) -> crate::component::PageEventHandler {
+		let action = self.clone();
+		crate::callback::event_handler(move |event| {
+			event.prevent_default();
+			action.submit();
+		})
+	}
+
 	/// Runs generated validation and dispatches the current values on success.
 	pub fn submit(&self) -> UseFormSubmitOutcome {
 		let outcome = self.form.begin_submit_lifecycle();
 		if outcome != UseFormSubmitOutcome::Submitted {
+			if outcome == UseFormSubmitOutcome::ValidationFailed {
+				self.action.reset();
+			}
 			return outcome;
 		}
 

@@ -8,11 +8,12 @@ use std::task::{Context, Poll, Waker};
 use reinhardt_core::reactive::ReactiveScope;
 use reinhardt_pages::reactive::Signal;
 use reinhardt_pages::server_fn::ServerFnErrorKind;
+use reinhardt_pages::ui::{FormActionButton, FormActionResultPanel};
 use reinhardt_pages::{
 	CollectionItem, CollectionItemKey, CustomWidgetContext, CustomWidgetRawValue, FieldError,
-	FormEvent, FormWidgetAdapter, FormWidgetError, FormWidgetValueKind, Page, ResetOnDeps,
-	RevalidateOn, ServerFnError, UseFormAsyncSubmitOutcome, UseFormSubmitOutcome, form, use_form,
-	use_form_action,
+	FormEvent, FormWidgetAdapter, FormWidgetError, FormWidgetValueKind, IntoPage, Page,
+	PageElement, ResetOnDeps, RevalidateOn, ServerFnError, UseFormAsyncSubmitOutcome,
+	UseFormSubmitOutcome, form, use_form, use_form_action, use_resource,
 };
 
 thread_local! {
@@ -2300,5 +2301,48 @@ fn use_form_action_dispatches_current_values_after_validation() {
 		assert_eq!(captured_name.borrow().as_deref(), Some("Grace"));
 		assert!(!save.is_pending());
 		assert!(save.error_message().is_none());
+	});
+}
+
+#[test]
+fn form_action_ui_preserves_submit_semantics_and_renders_validation_errors() {
+	ReactiveScope::run(|| {
+		let signup = form! {
+			name: SignupForm,
+			action: "/signup",
+			fields: {
+				email: CharField {
+					initial: "",
+					required,
+				}
+			}
+		};
+		let runtime = use_form(&signup).build();
+		let save = use_form_action(&runtime, |_values| async { Ok::<(), String>(()) });
+		let button = FormActionButton::new(save.clone(), Page::text("Save"))
+			.attr("type", "button")
+			.attr("aria-label", "Save signup");
+		let panel = FormActionResultPanel::new(save.clone())
+			.idle(|| Page::text("idle"))
+			.validation_error(|message| Page::text(format!("validation:{message}")));
+		let resource = use_resource(|| async { Ok::<(), String>(()) }, reinhardt_pages::deps![]);
+		let latest = resource.latest_after_form(&save);
+		let form_page = PageElement::new("form")
+			.on(reinhardt_pages::EventType::Submit, save.submit_handler())
+			.child(button)
+			.into_page();
+
+		assert_eq!(
+			form_page.render_to_string(),
+			r#"<form><button type="submit" formnovalidate="formnovalidate" aria-label="Save signup">Save</button></form>"#
+		);
+		assert_eq!(panel.render().render_to_string(), "idle");
+		assert_eq!(latest.value(), None);
+
+		assert_eq!(save.submit(), UseFormSubmitOutcome::ValidationFailed);
+		assert_eq!(
+			panel.render().render_to_string(),
+			"validation:email is required"
+		);
 	});
 }

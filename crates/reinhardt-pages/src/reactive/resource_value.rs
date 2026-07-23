@@ -5,6 +5,7 @@
 
 use std::borrow::Borrow;
 use std::cell::RefCell;
+use std::fmt::Display;
 use std::rc::Rc;
 
 use reinhardt_core::reactive::deps::{Deps, Trackable};
@@ -12,6 +13,7 @@ use reinhardt_core::reactive::deps::{Deps, Trackable};
 use super::Effect;
 use super::hooks::{Action, ActionPhase};
 use super::resource::{Resource, ResourceState};
+use crate::form_state::{FormAction, FormRuntimeSource};
 
 /// UI-oriented state for a latest resource value read.
 #[derive(Clone, Debug, PartialEq)]
@@ -80,6 +82,20 @@ impl<T: Clone + 'static, E: Clone + 'static> LatestResourceValueBuilder<T, E> {
 		A: Borrow<Action<T, E>>,
 	{
 		self.actions.push(*action.borrow());
+		self
+	}
+
+	/// Adds a validated form action without exposing its dispatch handle.
+	pub fn with_form_action<Form, FormDeps>(
+		mut self,
+		action: &FormAction<Form, FormDeps, T, E>,
+	) -> Self
+	where
+		Form: FormRuntimeSource,
+		FormDeps: Clone + PartialEq + 'static,
+		E: Display,
+	{
+		self.actions.push(action.action());
 		self
 	}
 
@@ -163,6 +179,21 @@ impl<T: Clone + 'static, E: Clone + 'static> LatestResourceValue<T, E> {
 		A: Borrow<Action<T, E>>,
 	{
 		self.actions.push(*action.borrow());
+		self.rebuild_refetch_effect();
+		self
+	}
+
+	/// Adds a validated form action with higher priority than prior actions.
+	pub fn latest_after_form<Form, FormDeps>(
+		mut self,
+		action: &FormAction<Form, FormDeps, T, E>,
+	) -> Self
+	where
+		Form: FormRuntimeSource,
+		FormDeps: Clone + PartialEq + 'static,
+		E: Display,
+	{
+		self.actions.push(action.action());
 		self.rebuild_refetch_effect();
 		self
 	}
@@ -268,6 +299,21 @@ impl<T: Clone + 'static, E: Clone + 'static> Resource<T, E> {
 		A: Borrow<Action<T, E>>,
 	{
 		use_latest_resource_value(*self).with_action(action).build()
+	}
+
+	/// Composes this resource with a validated form action's successful result.
+	pub fn latest_after_form<Form, FormDeps>(
+		&self,
+		action: &FormAction<Form, FormDeps, T, E>,
+	) -> LatestResourceValue<T, E>
+	where
+		Form: FormRuntimeSource,
+		FormDeps: Clone + PartialEq + 'static,
+		E: Display,
+	{
+		use_latest_resource_value(*self)
+			.with_form_action(action)
+			.build()
 	}
 }
 
