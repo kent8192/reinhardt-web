@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.4.0-alpha.1...reinhardt-pages-macros@v0.4.0-alpha.2) - 2026-07-23
+
+### Fixed
+
+- *(pages)* ignore named interpolation keys in captures
+- *(pages)* scope named macro argument capture skipping
+- *(pages)* preserve captures for shadowable macros
+- *(pages)* resolve named macro paths safely
+
 ### Fixed
 
 - Preserve mutable and destructuring `#[inject]` bindings in `#[server_fn]`

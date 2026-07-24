@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.2](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.4.0-alpha.1...reinhardt-admin@v0.4.0-alpha.2) - 2026-07-23
+
+### Added
+
+- *(db)* [**breaking**] add Copy-safe injected connection handles
+
+### Fixed
+
+- *(admin)* restore Arc import in database tests
+
+### Maintenance
+
+- auto-fix fmt and clippy
+
 ## [0.4.0-alpha.1](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.3.2...reinhardt-admin@v0.4.0-alpha.1) - 2026-07-21
 
 ### Added
