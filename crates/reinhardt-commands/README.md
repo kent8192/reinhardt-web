@@ -91,6 +91,9 @@ the configured `STATIC_URL`. This keeps SPA and WASM development URLs working
 while ensuring manifest-resolved `collectstatic` assets use the same URLs that
 `static_url()` emits. Missing assets under `STATIC_URL` return through the
 application router instead of receiving the SPA index fallback.
+Unhashed source paths under `STATIC_URL` are resolved through
+`manifest.json`, allowing source HTML to reference stable asset names while
+the collected files retain fingerprinted names.
 
 Patch application is gated by each mounted template's key and dynamic ABI.
 Patches for unloaded routes or branches are retained until their descriptor
