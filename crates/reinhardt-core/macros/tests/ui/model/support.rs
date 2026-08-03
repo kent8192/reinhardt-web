@@ -1262,7 +1262,7 @@ pub mod db {
 			Double,
 			Uuid,
 			Json,
-			JsonBinary,
+			Jsonb,
 			Vector { dimensions: usize },
 		}
 

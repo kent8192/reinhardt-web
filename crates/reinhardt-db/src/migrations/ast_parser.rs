@@ -4357,7 +4357,7 @@ fn parse_query_column_type(expr: &Expr) -> Option<super::ColumnType> {
 			"Blob" => Some(super::ColumnType::Blob),
 			"Uuid" => Some(super::ColumnType::Uuid),
 			"Json" => Some(super::ColumnType::Json),
-			"JsonBinary" => Some(super::ColumnType::JsonBinary),
+			"Jsonb" => Some(super::ColumnType::Jsonb),
 			_ => None,
 		},
 		Expr::Call(expr_call) => {
@@ -6257,7 +6257,7 @@ fn extract_field_type(
 						"LongBlob" => Some(FieldType::LongBlob),
 						"Bytea" => Some(FieldType::Bytea),
 						"Json" => Some(FieldType::Json),
-						"JsonBinary" => Some(FieldType::JsonBinary),
+						"Jsonb" => Some(FieldType::Jsonb),
 						"Uuid" => Some(FieldType::Uuid),
 						"Year" => Some(FieldType::Year),
 						_ => Some(FieldType::Custom(segments.join("::"))),
