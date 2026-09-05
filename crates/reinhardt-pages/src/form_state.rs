@@ -1,4 +1,42 @@
 //! Runtime behavior for `form!` generated forms.
+//!
+//! [`use_form`] is the owner of values, validation state, touched and dirty
+//! state, and explicit reset for a generated form. A runtime field handle is
+//! obtained with [`UseFormReturn::field`] and can be passed to `page!`'s
+//! existing `bind:` directive without exposing a DOM node or a second value
+//! store.
+//!
+//! The binding matrix is intentionally small and matches the existing native
+//! control categories:
+//!
+//! | Generated value | `page!` control categories |
+//! | --- | --- |
+//! | `String` | text/textarea, radio, select-one |
+//! | `T` implementing [`crate::NumberValue`] | number (`input[type=number]`) |
+//! | `bool` | checkbox |
+//! | `Vec<String>` | select-many |
+//!
+//! A field token from another form is a Rust type error. A token from the
+//! correct form paired with an incompatible control is a programming error
+//! reported as a clear panic while the page is built. Generated `form!` and
+//! static ModelForm tokens are intentionally opaque at the call site; use the
+//! generated `*_field()` accessors when the token type is not named.
+//! Runtime numeric bindings currently target only `input[type=number]`;
+//! `RangeInput` and `input[type=range]` are not compatible with this contract.
+//!
+//! `UseFormReturn::reset` is explicit and source-first. It applies current
+//! defaults, clears form-owned errors and interaction state, and resets
+//! actions created with [`use_form_action`]. It does not run automatically
+//! after success and is not connected automatically to a native reset button
+//! or reset event. A pending request is not cancelled; its stale completion is
+//! ignored by the form-owned action.
+//!
+//! Hydration remains DOM-first so edits made after SSR are preserved. A reset
+//! made before hydration marks runtime field bindings as source-preferred, so
+//! those bindings write the reset defaults instead of adopting stale SSR DOM.
+//! Invalid numeric text retains the raw editor text, keeps the last valid
+//! typed value, and reports a [`crate::NumberParseError`] until a valid write or an
+//! explicit reset clears the tracked error.
 
 use std::any::{Any, type_name};
 use std::cell::Cell;
@@ -16,6 +54,7 @@ use crate::reactive::{
 };
 use crate::server_fn::ServerFnError;
 use reinhardt_core::reactive::{ScopeId, current_scope_id, scope::enter_scope};
+use reinhardt_core::types::page::{ControlBinding, ControlKind};
 
 /// Polls form submission work inside the scope that owns the form state.
 ///
@@ -512,6 +551,12 @@ pub enum UseFormAsyncSubmitOutcome<T> {
 /// state. On native targets, `use_action` intentionally does not poll async
 /// mutations, so the helper validates and dispatches the payload, then clears
 /// the pending flag without manufacturing a success result.
+///
+/// The action is connected to its form runtime for explicit
+/// [`UseFormReturn::reset`] calls. Reset returns the visible action to idle but
+/// does not cancel an in-flight request; a stale completion is ignored. A
+/// successful action does not reset the form automatically. Standalone
+/// [`use_action`] handles are outside this ownership boundary.
 pub struct FormAction<Form, Deps, T, E>
 where
 	Form: FormRuntimeSource,
@@ -521,6 +566,9 @@ where
 {
 	form: UseFormReturn<Form, Deps>,
 	action: Action<T, E>,
+	dispatch_id: Rc<Cell<Option<u64>>>,
+	dispatch_generation: Rc<Cell<Option<u64>>>,
+	reset_callback: ConnectedActionReset,
 }
 
 /// Error returned by focus operations.
@@ -538,6 +586,20 @@ pub trait FormRuntimeSource: Clone + 'static {
 	type Values: Clone + 'static;
 	/// Generated field token enum for this form.
 	type Field: Copy + Eq + Hash + Debug + 'static;
+
+	/// Builds a controlled binding for one generated field.
+	#[doc(hidden)]
+	fn runtime_control_binding(
+		&self,
+		_field: Self::Field,
+		_request: RuntimeControlBindingRequest,
+	) -> Option<ControlBinding> {
+		None
+	}
+
+	/// Records an explicit reset for source-owned runtime state.
+	#[doc(hidden)]
+	fn runtime_reset_state(&self) {}
 
 	/// Returns the retained scope for a form constructed outside a page render.
 	fn runtime_reactive_scope(&self) -> Option<Rc<ReactiveScope>> {
@@ -659,6 +721,16 @@ pub trait FormRuntimeSource: Clone + 'static {
 	fn runtime_fields(&self) -> &'static [Self::Field];
 }
 
+/// Target-neutral request passed to a generated form binding hook.
+#[doc(hidden)]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RuntimeControlBindingRequest {
+	/// Requested control kind.
+	pub kind: ControlKind,
+	/// Radio choice, when the control is a radio input.
+	pub radio_value: Option<String>,
+}
+
 /// Trait implemented by `form!` generated forms that expose runtime collections.
 pub trait FormCollectionRuntimeSource: FormRuntimeSource {
 	/// Generated collection token enum for this form.
@@ -752,6 +824,8 @@ where
 type SubmitCallback<Form, Deps> = Rc<dyn Fn(&UseFormReturn<Form, Deps>)>;
 type Subscriber<Form> = Rc<dyn Fn(FormEvent<Form>)>;
 type SubscriberSlots<Form> = Rc<RefCell<Vec<Option<Subscriber<Form>>>>>;
+type ConnectedActionReset = Rc<dyn Fn()>;
+type ConnectedActionResetRegistry = Rc<RefCell<Vec<Weak<dyn Fn()>>>>;
 
 /// Owns the form synchronization effect until the final runtime handle drops.
 ///
@@ -973,6 +1047,8 @@ where
 			custom_widget_error_fields: Rc::clone(&handle.custom_widget_error_fields),
 			next_collection_item_key: Rc::clone(&handle.next_collection_item_key),
 			signal_sync_suppressed: Rc::clone(&handle.signal_sync_suppressed),
+			submit_generation: Rc::clone(&handle.submit_generation),
+			connected_action_resets: Rc::clone(&handle.connected_action_resets),
 			_signal_sync_effect: Rc::clone(&handle._signal_sync_effect),
 			on_submit_start: None,
 			on_submit_success: None,
@@ -1162,6 +1238,8 @@ where
 		let custom_widget_error_fields = Rc::new(RefCell::new(HashMap::new()));
 		let next_collection_item_key = Rc::new(Cell::new(1));
 		let signal_sync_suppressed = Rc::new(Cell::new(false));
+		let submit_generation = Rc::new(Cell::new(0_u64));
+		let connected_action_resets = Rc::new(RefCell::new(Vec::new()));
 		let signal_sync_effect = build_signal_sync_effect(
 			form.clone(),
 			Rc::clone(&default_values),
@@ -1199,6 +1277,8 @@ where
 			custom_widget_error_fields,
 			next_collection_item_key,
 			signal_sync_suppressed,
+			submit_generation,
+			connected_action_resets,
 			_signal_sync_effect: signal_sync_effect,
 			on_submit_start: self.on_submit_start,
 			on_submit_success: self.on_submit_success,
@@ -1208,6 +1288,12 @@ where
 }
 
 /// Dynamic behavior handle for a `form!` generated form.
+///
+/// `UseFormReturn` owns the runtime value snapshot, field and form errors,
+/// touched/dirty state, and submit lifecycle. Controls bound through
+/// [`Self::field`] share that state and are updated in place when the runtime
+/// changes. Call [`Self::reset`] explicitly when the application wants to
+/// restore the current defaults.
 pub struct UseFormReturn<Form, Deps = NoDeps>
 where
 	Form: FormRuntimeSource,
@@ -1233,10 +1319,83 @@ where
 	custom_widget_error_fields: Rc<RefCell<HashMap<Form::Field, FieldError>>>,
 	next_collection_item_key: Rc<Cell<u64>>,
 	signal_sync_suppressed: Rc<Cell<bool>>,
+	submit_generation: Rc<Cell<u64>>,
+	connected_action_resets: ConnectedActionResetRegistry,
 	_signal_sync_effect: Rc<SignalSyncEffectGuard>,
 	on_submit_start: Option<SubmitCallback<Form, Deps>>,
 	on_submit_success: Option<SubmitCallback<Form, Deps>>,
 	on_submit_error: Option<SubmitCallback<Form, Deps>>,
+}
+
+/// Opaque handle for binding a generated runtime field to a page control.
+///
+/// The handle carries the generated field token and its runtime, but does not
+/// expose a DOM node, element id, or string-based value store. Pass it directly
+/// to `page!`'s `bind:` directive. The generated token keeps fields from
+/// different forms distinct at compile time.
+///
+/// ```rust,no_run
+/// use reinhardt_pages::{form, page, use_form};
+/// use reinhardt_pages::reactive::ReactiveScope;
+///
+/// ReactiveScope::run(|| {
+///     let form = form! {
+///         name: LoginForm,
+///         action: "/login",
+///         fields: {
+///             email: EmailField { required },
+///         },
+///     };
+///     let runtime = use_form(&form).build();
+///
+///     let _page = page!({
+///         input {
+///             aria_label: "Email",
+///             bind: runtime.field(form.email_field()),
+///         }
+///     });
+///     runtime.reset();
+/// });
+/// ```
+pub struct RuntimeFieldBinding<Form, Deps = NoDeps>
+where
+	Form: FormRuntimeSource,
+	Deps: Clone + PartialEq + 'static,
+{
+	runtime: UseFormReturn<Form, Deps>,
+	field: Form::Field,
+}
+
+impl<Form, Deps> Clone for RuntimeFieldBinding<Form, Deps>
+where
+	Form: FormRuntimeSource,
+	Deps: Clone + PartialEq + 'static,
+{
+	fn clone(&self) -> Self {
+		Self {
+			runtime: self.runtime.clone(),
+			field: self.field,
+		}
+	}
+}
+
+impl<Form, Deps> RuntimeFieldBinding<Form, Deps>
+where
+	Form: FormRuntimeSource,
+	Deps: Clone + PartialEq + 'static,
+{
+	#[doc(hidden)]
+	pub(crate) fn field_token(&self) -> Form::Field {
+		self.field
+	}
+
+	#[doc(hidden)]
+	pub(crate) fn runtime_control_binding(
+		&self,
+		request: RuntimeControlBindingRequest,
+	) -> Option<ControlBinding> {
+		self.runtime.runtime_control_binding(self.field, request)
+	}
 }
 
 impl<Form, Deps> Clone for UseFormReturn<Form, Deps>
@@ -1266,6 +1425,8 @@ where
 			custom_widget_error_fields: Rc::clone(&self.custom_widget_error_fields),
 			next_collection_item_key: Rc::clone(&self.next_collection_item_key),
 			signal_sync_suppressed: Rc::clone(&self.signal_sync_suppressed),
+			submit_generation: Rc::clone(&self.submit_generation),
+			connected_action_resets: Rc::clone(&self.connected_action_resets),
 			_signal_sync_effect: Rc::clone(&self._signal_sync_effect),
 			on_submit_start: self.on_submit_start.clone(),
 			on_submit_success: self.on_submit_success.clone(),
@@ -1279,6 +1440,34 @@ where
 	Form: FormRuntimeSource,
 	Deps: Clone + PartialEq + 'static,
 {
+	/// Returns an opaque handle for binding one generated field in `page!`.
+	///
+	/// For a `ClientForm`, pass its generated enum token when that token is in
+	/// scope, for example `runtime.field(LoginClientFormField::Email)`. Ordinary
+	/// `form!` declarations and static ModelForm selections keep their generated
+	/// token type opaque, so use the generated accessor, for example
+	/// `runtime.field(login_form.email_field())`.
+	///
+	/// The token must be compatible with the control classified by `page!`.
+	/// A valid token paired with the wrong control kind panics with a field and
+	/// control description while the page is built; a token from another form is
+	/// rejected by Rust's type checker.
+	pub fn field(&self, field: Form::Field) -> RuntimeFieldBinding<Form, Deps> {
+		RuntimeFieldBinding {
+			runtime: self.clone(),
+			field,
+		}
+	}
+
+	#[doc(hidden)]
+	pub(crate) fn runtime_control_binding(
+		&self,
+		field: Form::Field,
+		request: RuntimeControlBindingRequest,
+	) -> Option<ControlBinding> {
+		self.form.runtime_control_binding(field, request)
+	}
+
 	/// Returns a signal containing the current value struct.
 	pub fn watch(&self) -> Signal<Form::Values> {
 		self.values_signal
@@ -1337,6 +1526,7 @@ where
 		self.refresh_dirty();
 		self.values_signal.set(self.get_values());
 		self.sync_observed_values();
+		self.sync_runtime_widget_errors();
 		if self.revalidate_on == RevalidateOn::Change {
 			let _ = self.trigger();
 		}
@@ -1356,6 +1546,7 @@ where
 		self.path_errors.set(HashMap::new());
 		self.values_signal.set(values);
 		self.sync_observed_values();
+		self.sync_runtime_widget_errors();
 		self.sync_first_error();
 		if self.revalidate_on == RevalidateOn::Change {
 			let _ = self.trigger();
@@ -1471,25 +1662,51 @@ where
 		self.state.clone()
 	}
 
-	/// Resets all values to current defaults.
+	/// Resets all values and form-owned state to the current defaults.
+	///
+	/// Reset is source-first and runs as one reactive batch: the generated form
+	/// source receives the reset marker before its defaults are applied, then
+	/// errors, touched/dirty/submitting state, and connected [`FormAction`]
+	/// handles are cleared. Mounted controls write the resulting values to their
+	/// existing DOM nodes, preserving node identity and focus.
+	///
+	/// Reset is never implicit after a successful submit and is not wired to a
+	/// native `<button type="reset">` or the browser's reset event. Use
+	/// [`Self::sync_after_native_reset`] explicitly when an application chooses
+	/// native reset behavior. A pending [`FormAction`] request continues running,
+	/// but its stale completion cannot restore form-owned submit state.
 	pub fn reset(&self) {
-		let defaults = self.default_values.borrow().clone();
-		let _guard = self.suppress_signal_sync();
-		self.form.runtime_apply_values(&defaults);
-		self.touched_fields.borrow_mut().clear();
-		self.touched_collections.borrow_mut().clear();
-		self.touched_paths.borrow_mut().clear();
-		self.state.is_touched.set(false);
-		self.state.is_dirty.set(false);
-		self.state.is_submitting.set(false);
-		self.state.is_submit_successful.set(false);
-		self.rebuild_path_default_values();
-		self.clear_errors();
-		self.values_signal.set(defaults);
-		self.sync_observed_values();
+		crate::reactive::batch(|| {
+			let _guard = self.suppress_signal_sync();
+			self.form.runtime_reset_state();
+			self.submit_generation
+				.set(self.submit_generation.get().wrapping_add(1));
+			let defaults = self.default_values.borrow().clone();
+			self.form.runtime_apply_values(&defaults);
+			self.touched_fields.borrow_mut().clear();
+			self.touched_collections.borrow_mut().clear();
+			self.touched_paths.borrow_mut().clear();
+			self.state.is_touched.set(false);
+			self.state.is_dirty.set(false);
+			self.state.is_submitting.set(false);
+			self.state.is_submit_successful.set(false);
+			self.rebuild_path_default_values();
+			self.clear_errors();
+			self.values_signal.set(defaults);
+			self.sync_observed_values();
+			self.reset_connected_actions();
+		});
 	}
 
-	/// Syncs runtime state after a native form reset has restored field values.
+	/// Syncs runtime state after an explicitly handled native form reset.
+	///
+	/// This compatibility method copies values already restored by the browser,
+	/// recomputes aggregate dirty state, clears field-level and aggregate
+	/// touched flags, and clears field, collection, path, form, and submit
+	/// errors. It does not clear collection/path touched tracking, submission
+	/// flags, or connected actions, and it does not replace the explicit
+	/// [`Self::reset`] contract. Native reset events are not connected
+	/// automatically.
 	pub fn sync_after_native_reset(&self) {
 		let current = self.get_values();
 		let is_dirty = form_values_are_dirty(&self.form, &current, &self.default_values.borrow());
@@ -1510,6 +1727,7 @@ where
 		self.refresh_dirty();
 		self.values_signal.set(self.get_values());
 		self.sync_observed_values();
+		self.sync_runtime_widget_errors();
 	}
 
 	/// Makes the current values the defaults and clears dirty state.
@@ -1623,6 +1841,21 @@ where
 		Fut: Future<Output = Result<Output, Error>>,
 		Error: Display,
 	{
+		self.submit_async_with_error_handler(submit, |_, _| {})
+			.await
+	}
+
+	async fn submit_async_with_error_handler<Submit, Fut, Output, Error, ErrorHandler>(
+		&self,
+		submit: Submit,
+		error_handler: ErrorHandler,
+	) -> Result<UseFormAsyncSubmitOutcome<Output>, Error>
+	where
+		Submit: FnOnce() -> Fut,
+		Fut: Future<Output = Result<Output, Error>>,
+		Error: Display,
+		ErrorHandler: Fn(&Self, &Error),
+	{
 		let Ok(is_submitting) = self.state.is_submitting.try_get_untracked() else {
 			return Ok(UseFormAsyncSubmitOutcome::AlreadyPending);
 		};
@@ -1704,6 +1937,7 @@ where
 					self.state.is_submit_successful.set(false);
 					self.state.submit_error.set(Some(error.to_string()));
 					self.sync_first_error();
+					error_handler(self, &error);
 					if let Some(callback) = &self.on_submit_error {
 						callback(self);
 					}
@@ -1723,21 +1957,10 @@ where
 		Submit: FnOnce() -> Fut,
 		Fut: Future<Output = Result<Output, ServerFnError>>,
 	{
-		match self.submit_async(submit).await {
-			Ok(outcome) => Ok(outcome),
-			Err(error) => {
-				if self.state.is_submitting.try_get_untracked().is_ok() {
-					self.apply_server_error(&error);
-					let _ = self.in_owner_scope(|| {
-						if let Some(callback) = &self.on_submit_error {
-							callback(self);
-						}
-						self.notify(FormEvent::SubmitFailed);
-					});
-				}
-				Err(error)
-			}
-		}
+		self.submit_async_with_error_handler(submit, |form, error| {
+			form.apply_server_error(error);
+		})
+		.await
 	}
 
 	/// Reconciles values and defaults from a newly generated form instance.
@@ -1764,6 +1987,7 @@ where
 			}
 			ResetOnDeps::ResetAll => {
 				let _guard = self.suppress_signal_sync();
+				self.form.runtime_reset_state();
 				self.form.runtime_apply_values(&new_defaults);
 				self.touched_fields.borrow_mut().clear();
 				self.touched_collections.borrow_mut().clear();
@@ -1869,8 +2093,47 @@ where
 		}
 	}
 
+	fn register_connected_action(&self, reset: &ConnectedActionReset) {
+		self.connected_action_resets
+			.borrow_mut()
+			.push(Rc::downgrade(reset));
+	}
+
+	fn reset_connected_actions(&self) {
+		let live_resets = {
+			let mut registry = self.connected_action_resets.borrow_mut();
+			registry.retain(|reset| reset.strong_count() != 0);
+			registry
+				.iter()
+				.filter_map(Weak::upgrade)
+				.collect::<Vec<_>>()
+		};
+		for reset in live_resets {
+			reset();
+		}
+	}
+
+	fn current_submit_generation(&self) -> u64 {
+		self.submit_generation.get()
+	}
+
+	fn is_current_submit_generation(&self, generation: Option<u64>) -> bool {
+		generation == Some(self.current_submit_generation())
+	}
+
 	fn sync_observed_values(&self) {
 		*self.observed_values.borrow_mut() = self.get_values();
+	}
+
+	fn sync_runtime_widget_errors(&self) {
+		let custom_widget_errors = collect_custom_widget_errors(&self.form);
+		sync_custom_widget_errors_in_state(
+			&self.state,
+			&self.custom_widget_error_fields,
+			&custom_widget_errors,
+			&self.collection_errors,
+			&self.path_errors,
+		);
 	}
 
 	fn rebuild_path_default_values(&self) {
@@ -1915,6 +2178,9 @@ where
 		Self {
 			form: self.form.clone(),
 			action: self.action,
+			dispatch_id: Rc::clone(&self.dispatch_id),
+			dispatch_generation: Rc::clone(&self.dispatch_generation),
+			reset_callback: Rc::clone(&self.reset_callback),
 		}
 	}
 }
@@ -1991,6 +2257,9 @@ where
 			return outcome;
 		}
 
+		self.dispatch_id.set(Some(self.action.next_dispatch_id()));
+		self.dispatch_generation
+			.set(Some(self.form.current_submit_generation()));
 		self.action.dispatch(self.form.get_values());
 
 		#[cfg(native)]
@@ -2007,12 +2276,21 @@ where
 		Callback: Fn(&UseFormReturn<Form, Deps>, &T) + 'static,
 	{
 		let form_for_callback = self.form.clone();
-		let action = self.action.on_success(move |value| {
-			callback(&form_for_callback, value);
-		});
+		let action_for_stale = self.action;
+		self.action
+			.append_identified_success_callback(move |_completed_id, accepted, value| {
+				if accepted {
+					callback(&form_for_callback, value);
+				} else {
+					action_for_stale.reset();
+				}
+			});
 		Self {
 			form: self.form,
-			action,
+			action: self.action,
+			dispatch_id: self.dispatch_id,
+			dispatch_generation: self.dispatch_generation,
+			reset_callback: self.reset_callback,
 		}
 	}
 
@@ -2024,12 +2302,21 @@ where
 		Callback: Fn(&UseFormReturn<Form, Deps>, &E) + 'static,
 	{
 		let form_for_callback = self.form.clone();
-		let action = self.action.on_error(move |error| {
-			callback(&form_for_callback, error);
-		});
+		let action_for_stale = self.action;
+		self.action
+			.append_identified_error_callback(move |_completed_id, accepted, error| {
+				if accepted {
+					callback(&form_for_callback, error);
+				} else {
+					action_for_stale.reset();
+				}
+			});
 		Self {
 			form: self.form,
-			action,
+			action: self.action,
+			dispatch_id: self.dispatch_id,
+			dispatch_generation: self.dispatch_generation,
+			reset_callback: self.reset_callback,
 		}
 	}
 }
@@ -2335,32 +2622,63 @@ where
 	F: Fn(Form::Values) -> Fut + 'static,
 	Fut: Future<Output = Result<T, E>> + 'static,
 {
+	let dispatch_id = Rc::new(Cell::new(None));
+	let dispatch_generation = Rc::new(Cell::new(None));
+	let action = use_action::<Form::Values, T, E, F, Fut>(action_fn);
+	let generation_for_guard = Rc::clone(&dispatch_generation);
+	let id_for_guard = Rc::clone(&dispatch_id);
+	let form_for_guard = form.clone();
+	action.set_completion_guard(move |completed_id| {
+		id_for_guard.get() == Some(completed_id)
+			&& generation_for_guard.get() == Some(form_for_guard.current_submit_generation())
+	});
+	let reset_callback: ConnectedActionReset = { Rc::new(move || action.reset()) };
+	form.register_connected_action(&reset_callback);
+
 	let form_for_success = form.clone();
-	let form_for_error = form.clone();
-	let action = use_action::<Form::Values, T, E, F, Fut>(action_fn)
-		.on_success(move |_| {
+	let generation_for_success = Rc::clone(&dispatch_generation);
+	let action_for_stale_success = action;
+	let action = action.on_success(move |_| {
+		if form_for_success.is_current_submit_generation(generation_for_success.get()) {
 			form_for_success.complete_submit_success();
-		})
-		.on_error(move |error| {
+		} else {
+			action_for_stale_success.reset();
+		}
+	});
+	let form_for_error = form.clone();
+	let generation_for_error = Rc::clone(&dispatch_generation);
+	let action_for_stale_error = action;
+	let action = action.on_error(move |error| {
+		if form_for_error.is_current_submit_generation(generation_for_error.get()) {
 			form_for_error.complete_submit_error(error.to_string());
-		});
+		} else {
+			action_for_stale_error.reset();
+		}
+	});
 
 	FormAction {
 		form: form.clone(),
 		action,
+		dispatch_id,
+		dispatch_generation,
+		reset_callback,
 	}
 }
 
 #[cfg(test)]
 mod tests {
 	use super::{
-		CollectionItem, CollectionItemKey, CollectionState, FieldError, FieldPathState,
-		FormRuntimeSource, SubmitPendingGuard, use_form,
+		CollectionItem, CollectionItemKey, CollectionState, ControlBinding, ControlKind,
+		FieldError, FieldPathState, FormRuntimeSource, ResetOnDeps, RuntimeControlBindingRequest,
+		ServerFnError, SubmitPendingGuard, use_form, use_form_action,
 	};
 	use crate::reactive::Signal;
 	use reinhardt_core::reactive::ReactiveScope;
+	use rstest::rstest;
 	use serial_test::serial;
 	use std::any::Any;
+	use std::cell::{Cell, RefCell};
+	use std::collections::VecDeque;
 	use std::rc::Rc;
 	use std::task::{Context, Poll, Waker};
 
@@ -2368,11 +2686,23 @@ mod tests {
 	struct RetainedScopeForm {
 		scope: Rc<ReactiveScope>,
 		value: Signal<String>,
+		reset_log: Rc<RefCell<Vec<&'static str>>>,
 	}
 
 	impl FormRuntimeSource for RetainedScopeForm {
 		type Values = String;
 		type Field = ();
+
+		fn runtime_control_binding(
+			&self,
+			_field: Self::Field,
+			request: RuntimeControlBindingRequest,
+		) -> Option<ControlBinding> {
+			match request.kind {
+				ControlKind::Text => Some(ControlBinding::text(self.value)),
+				_ => None,
+			}
+		}
 
 		fn runtime_reactive_scope(&self) -> Option<Rc<ReactiveScope>> {
 			Some(Rc::clone(&self.scope))
@@ -2387,7 +2717,12 @@ mod tests {
 		}
 
 		fn runtime_apply_values(&self, values: &Self::Values) {
+			self.reset_log.borrow_mut().push("apply");
 			self.value.set(values.clone());
+		}
+
+		fn runtime_reset_state(&self) {
+			self.reset_log.borrow_mut().push("reset");
 		}
 
 		fn runtime_set_field_value<T>(&self, _field: Self::Field, value: T)
@@ -2420,6 +2755,10 @@ mod tests {
 			None
 		}
 
+		fn runtime_field_by_name(&self, name: &str) -> Option<Self::Field> {
+			(name == "value").then_some(())
+		}
+
 		fn runtime_fields(&self) -> &'static [Self::Field] {
 			&[()]
 		}
@@ -2432,6 +2771,7 @@ mod tests {
 		let form = scope.enter(|| RetainedScopeForm {
 			scope: Rc::clone(&scope),
 			value: Signal::new("initial".to_string()),
+			reset_log: Rc::new(RefCell::new(Vec::new())),
 		});
 		let weak_scope = Rc::downgrade(&scope);
 		let runtime = use_form(&form).build();
@@ -2453,6 +2793,27 @@ mod tests {
 
 	#[test]
 	#[serial(reactive_runtime)]
+	fn reset_all_reconciliation_marks_values_source_preferred() {
+		let scope = Rc::new(ReactiveScope::new());
+		let reset_log = Rc::new(RefCell::new(Vec::new()));
+		let form = scope.enter(|| RetainedScopeForm {
+			scope: Rc::clone(&scope),
+			value: Signal::new("initial".to_owned()),
+			reset_log: Rc::clone(&reset_log),
+		});
+		let runtime = use_form(&form)
+			.deps(0_u8)
+			.reset_on_deps(ResetOnDeps::ResetAll)
+			.build();
+
+		runtime.reconcile_defaults("next".to_owned(), 1_u8);
+
+		assert_eq!(*reset_log.borrow(), vec!["reset", "apply"]);
+		assert_eq!(runtime.get_values(), "next");
+	}
+
+	#[test]
+	#[serial(reactive_runtime)]
 	fn submit_pending_guard_ignores_a_disposed_scope() {
 		let scope = ReactiveScope::new();
 		let pending_guard = scope.enter(|| SubmitPendingGuard::new(Signal::new(true)));
@@ -2468,6 +2829,7 @@ mod tests {
 		let form = scope.enter(|| RetainedScopeForm {
 			scope: Rc::clone(&scope),
 			value: Signal::new("initial".to_string()),
+			reset_log: Rc::new(RefCell::new(Vec::new())),
 		});
 		let runtime = use_form(&form).build();
 
@@ -2537,5 +2899,323 @@ mod tests {
 		assert!(!field_path_state.is_dirty);
 		assert!(field_path_state.is_touched);
 		assert_eq!(field_path_state.error, Some(error));
+	}
+
+	#[test]
+	#[serial(reactive_runtime)]
+	fn runtime_field_binding_adapts_to_text_descriptor() {
+		let scope = ReactiveScope::new();
+		let form = scope.enter(|| RetainedScopeForm {
+			scope: Rc::new(ReactiveScope::new()),
+			value: Signal::new("initial".to_string()),
+			reset_log: Rc::new(RefCell::new(Vec::new())),
+		});
+		let runtime = scope.enter(|| use_form(&form).build());
+		let binding = crate::control_binding::__private::into_control_binding::<
+			crate::control_binding::__private::TextBinding,
+			_,
+		>(runtime.field(()), ());
+
+		assert_eq!(
+			binding.read(),
+			reinhardt_core::types::page::ControlValue::Text("initial".into())
+		);
+	}
+
+	#[test]
+	#[should_panic(expected = "field () cannot bind to checkbox control")]
+	#[serial(reactive_runtime)]
+	fn runtime_field_binding_panics_for_incompatible_control() {
+		let scope = ReactiveScope::new();
+		let form = scope.enter(|| RetainedScopeForm {
+			scope: Rc::new(ReactiveScope::new()),
+			value: Signal::new("initial".to_string()),
+			reset_log: Rc::new(RefCell::new(Vec::new())),
+		});
+		let runtime = scope.enter(|| use_form(&form).build());
+		let _ = crate::control_binding::__private::into_control_binding::<
+			crate::control_binding::__private::CheckboxBinding,
+			_,
+		>(runtime.field(()), ());
+	}
+
+	#[rstest]
+	#[serial(reactive_runtime)]
+	fn reset_is_atomic_and_resets_source_before_applying_defaults() {
+		let scope = Rc::new(ReactiveScope::new());
+		let reset_log = Rc::new(RefCell::new(Vec::new()));
+		let form = scope.enter(|| RetainedScopeForm {
+			scope: Rc::clone(&scope),
+			value: Signal::new("initial".to_string()),
+			reset_log: Rc::clone(&reset_log),
+		});
+		let runtime = use_form(&form).build();
+
+		runtime.set_value((), "changed".to_string());
+		runtime.set_error((), FieldError::new("invalid"));
+		runtime.reset();
+
+		assert_eq!(reset_log.borrow().as_slice(), ["reset", "apply"]);
+		assert_eq!(runtime.get_values(), "initial");
+		assert!(!runtime.form_state().is_dirty.get());
+		assert!(!runtime.form_state().is_touched.get());
+		assert!(!runtime.form_state().is_submitting.get());
+		assert!(!runtime.form_state().is_submit_successful.get());
+		assert!(runtime.form_state().field_errors.get().is_empty());
+		assert_eq!(runtime.form_state().error.get(), None);
+	}
+
+	#[cfg(native)]
+	#[rstest]
+	#[serial(reactive_runtime)]
+	fn reset_makes_connected_action_completion_stale() {
+		let queued = Rc::new(RefCell::new(None));
+		let queued_for_sink = Rc::clone(&queued);
+		let _task_sink = crate::platform::install_task_sink(move |task| {
+			*queued_for_sink.borrow_mut() = Some(task);
+		});
+		let scope = Rc::new(ReactiveScope::new());
+		let form = scope.enter(|| RetainedScopeForm {
+			scope: Rc::clone(&scope),
+			value: Signal::new("initial".to_string()),
+			reset_log: Rc::new(RefCell::new(Vec::new())),
+		});
+		let runtime = use_form(&form).build();
+		let success_callbacks = Rc::new(Cell::new(0));
+		let error_callbacks = Rc::new(Cell::new(0));
+		let action = scope.enter(|| {
+			let success_callbacks = Rc::clone(&success_callbacks);
+			let error_callbacks = Rc::clone(&error_callbacks);
+			use_form_action(&runtime, |_: String| async {
+				Ok::<String, String>("done".to_string())
+			})
+			.on_success(move |_, _| success_callbacks.set(success_callbacks.get() + 1))
+			.on_error(move |_, _| error_callbacks.set(error_callbacks.get() + 1))
+		});
+
+		action.submit();
+		runtime.reset();
+		let mut task = queued
+			.borrow_mut()
+			.take()
+			.expect("connected action should queue its completion task");
+		let mut context = Context::from_waker(Waker::noop());
+		assert_eq!(task.as_mut().poll(&mut context), Poll::Ready(()));
+
+		assert!(action.phase().is_idle());
+		assert!(!action.is_success());
+		assert_eq!(action.result(), None);
+		assert_eq!(action.error(), None);
+		assert!(!action.form().form_state().is_submit_successful.get());
+		assert_eq!(action.form().form_state().submit_error.get(), None);
+		assert_eq!(success_callbacks.get(), 0);
+		assert_eq!(error_callbacks.get(), 0);
+	}
+
+	#[cfg(native)]
+	#[rstest]
+	#[serial(reactive_runtime)]
+	fn older_connected_completion_cannot_replace_a_newer_submission() {
+		let queued = Rc::new(RefCell::new(VecDeque::new()));
+		let queued_for_sink = Rc::clone(&queued);
+		let _task_sink = crate::platform::install_task_sink(move |task| {
+			queued_for_sink.borrow_mut().push_back(task);
+		});
+		let scope = Rc::new(ReactiveScope::new());
+		let form = scope.enter(|| RetainedScopeForm {
+			scope: Rc::clone(&scope),
+			value: Signal::new("initial".to_string()),
+			reset_log: Rc::new(RefCell::new(Vec::new())),
+		});
+		let runtime = use_form(&form).build();
+		let callbacks = Rc::new(Cell::new(0));
+		let action = scope.enter(|| {
+			let callbacks = Rc::clone(&callbacks);
+			use_form_action(&runtime, |value: String| async move {
+				Ok::<String, String>(value)
+			})
+			.on_success(move |_, _| callbacks.set(callbacks.get() + 1))
+		});
+
+		runtime.set_value((), "a".to_string());
+		action.submit();
+		runtime.reset();
+		runtime.set_value((), "b".to_string());
+		action.submit();
+
+		let mut context = Context::from_waker(Waker::noop());
+		let mut first = queued
+			.borrow_mut()
+			.pop_front()
+			.expect("first submission should be queued");
+		assert_eq!(first.as_mut().poll(&mut context), Poll::Ready(()));
+		assert!(action.phase().is_pending());
+		assert_eq!(callbacks.get(), 0);
+		assert!(!action.form().form_state().is_submit_successful.get());
+
+		let mut second = queued
+			.borrow_mut()
+			.pop_front()
+			.expect("second submission should be queued");
+		assert_eq!(second.as_mut().poll(&mut context), Poll::Ready(()));
+		assert_eq!(action.phase(), super::ActionPhase::Success("b".to_string()));
+		assert!(action.form().form_state().is_submit_successful.get());
+		assert_eq!(callbacks.get(), 1);
+	}
+
+	#[cfg(native)]
+	#[rstest]
+	#[serial(reactive_runtime)]
+	fn accepted_completion_survives_an_earlier_callback_dispatch() {
+		let queued = Rc::new(RefCell::new(VecDeque::new()));
+		let queued_for_sink = Rc::clone(&queued);
+		let _task_sink = crate::platform::install_task_sink(move |task| {
+			queued_for_sink.borrow_mut().push_back(task);
+		});
+		let scope = Rc::new(ReactiveScope::new());
+		let form = scope.enter(|| RetainedScopeForm {
+			scope: Rc::clone(&scope),
+			value: Signal::new("initial".to_string()),
+			reset_log: Rc::new(RefCell::new(Vec::new())),
+		});
+		let runtime = use_form(&form).build();
+		let callbacks = Rc::new(Cell::new(0));
+		let action = scope.enter(|| {
+			use_form_action(&runtime, |value: String| async move {
+				Ok::<String, String>(value)
+			})
+		});
+		let trigger_b: Rc<RefCell<Option<Rc<dyn Fn()>>>> = Rc::new(RefCell::new(None));
+		let trigger_b_for_callback = Rc::downgrade(&trigger_b);
+		let triggered = Rc::new(Cell::new(false));
+		action.action().on_success(move |_| {
+			if !triggered.replace(true)
+				&& let Some(trigger) = trigger_b_for_callback
+					.upgrade()
+					.and_then(|trigger| trigger.borrow().clone())
+			{
+				trigger();
+			}
+		});
+		let action_for_trigger = action.clone();
+		*trigger_b.borrow_mut() = Some(Rc::new(move || {
+			let form = action_for_trigger.form();
+			form.reset();
+			action_for_trigger.submit();
+		}));
+		let action = {
+			let callbacks = Rc::clone(&callbacks);
+			let action = action.on_success(move |_, _| callbacks.set(callbacks.get() + 1));
+			*trigger_b.borrow_mut() = Some({
+				let action_for_trigger = action.clone();
+				Rc::new(move || {
+					let form = action_for_trigger.form();
+					form.reset();
+					action_for_trigger.submit();
+				})
+			});
+			action
+		};
+
+		runtime.set_value((), "a".to_string());
+		action.submit();
+		let mut context = Context::from_waker(Waker::noop());
+		let mut first = queued
+			.borrow_mut()
+			.pop_front()
+			.expect("first submission should be queued");
+		assert_eq!(first.as_mut().poll(&mut context), Poll::Ready(()));
+		assert!(action.phase().is_pending());
+		assert_eq!(callbacks.get(), 1);
+
+		let mut second = queued
+			.borrow_mut()
+			.pop_front()
+			.expect("earlier callback should dispatch the next submission");
+		assert_eq!(second.as_mut().poll(&mut context), Poll::Ready(()));
+		assert_eq!(
+			action.phase(),
+			super::ActionPhase::Success("initial".to_string())
+		);
+		assert_eq!(callbacks.get(), 2);
+	}
+
+	#[rstest]
+	#[serial(reactive_runtime)]
+	fn dropped_connected_action_registration_is_pruned_on_reset() {
+		let scope = Rc::new(ReactiveScope::new());
+		let form = scope.enter(|| RetainedScopeForm {
+			scope: Rc::clone(&scope),
+			value: Signal::new("initial".to_string()),
+			reset_log: Rc::new(RefCell::new(Vec::new())),
+		});
+		let runtime = use_form(&form).build();
+		let action = scope.enter(|| {
+			use_form_action(&runtime, |_: String| async {
+				Ok::<String, String>("done".to_string())
+			})
+		});
+		assert_eq!(runtime.connected_action_resets.borrow().len(), 1);
+
+		drop(action);
+		runtime.reset();
+
+		assert!(runtime.connected_action_resets.borrow().is_empty());
+	}
+
+	#[rstest]
+	#[serial(reactive_runtime)]
+	fn submit_server_fn_routes_structured_error_through_one_lifecycle() {
+		let scope = Rc::new(ReactiveScope::new());
+		let form = scope.enter(|| RetainedScopeForm {
+			scope: Rc::clone(&scope),
+			value: Signal::new("initial".to_string()),
+			reset_log: Rc::new(RefCell::new(Vec::new())),
+		});
+		let callback_count = Rc::new(Cell::new(0));
+		let event_count = Rc::new(Cell::new(0));
+		let runtime = {
+			let callback_count = Rc::clone(&callback_count);
+			scope.enter(|| {
+				use_form(&form)
+					.on_submit_error(move |runtime| {
+						callback_count.set(callback_count.get() + 1);
+						assert_eq!(
+							runtime
+								.form_state()
+								.field_errors
+								.get()
+								.get(&())
+								.map(FieldError::message),
+							Some("must be valid")
+						);
+					})
+					.build()
+			})
+		};
+		let _subscription = runtime.subscribe({
+			let event_count = Rc::clone(&event_count);
+			move |event| {
+				if matches!(event, super::FormEvent::SubmitFailed) {
+					event_count.set(event_count.get() + 1);
+				}
+			}
+		});
+
+		let result = scope.enter(|| {
+			let mut submit = std::pin::pin!(runtime.submit_server_fn(|| async {
+				Err::<String, _>(ServerFnError::validation([("value", "must be valid")]))
+			}));
+			let mut context = Context::from_waker(Waker::noop());
+			submit.as_mut().poll(&mut context)
+		});
+
+		assert!(matches!(result, Poll::Ready(Err(_))));
+		assert_eq!(callback_count.get(), 1);
+		assert_eq!(event_count.get(), 1);
+		assert_eq!(
+			runtime.form_state().error.get(),
+			Some("must be valid".to_string())
+		);
 	}
 }
