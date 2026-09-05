@@ -1018,13 +1018,9 @@ fn binding_failures_are_structured_event_errors(reactive_scope: ReactiveScope) {
 }
 
 #[rstest]
-#[case("search")]
-#[case("email")]
 #[case("file")]
 #[case("range")]
-#[case("password")]
-#[case("url")]
-fn text_binding_rejects_non_text_input_types(
+fn text_binding_rejects_unsupported_input_types(
 	#[case] input_type: &str,
 	reactive_scope: ReactiveScope,
 ) {
@@ -1037,12 +1033,11 @@ fn text_binding_rejects_non_text_input_types(
 			.control_binding(ControlBinding::text(value)),
 	);
 	let input = screen.get_by_label("Invalid text target");
-	let value_before_dispatch = input.value();
 
 	// Act
 	let error = input
 		.dispatch(EventFixture::input().value("edited"))
-		.expect_err("non-text input type should fail");
+		.expect_err("unsupported input type should fail");
 
 	// Assert
 	assert_eq!(
@@ -1053,7 +1048,6 @@ fn text_binding_rejects_non_text_input_types(
 		})
 	);
 	if input_type == "file" {
-		assert_eq!(value_before_dispatch, None);
 		assert_eq!(input.value(), None);
 	}
 }
@@ -1084,9 +1078,285 @@ fn text_binding_accepts_exact_text_controls(
 }
 
 #[rstest]
+#[case("search", "bound", "edited")]
+#[case("tel", "bound", "edited")]
+#[case("url", "bound", "edited")]
+#[case("email", "bound", "edited")]
+#[case("password", "bound", "edited")]
+#[case("color", "#112233", "#abcdef")]
+#[case("date", "2026-08-30", "2026-08-31")]
+#[case("datetime-local", "2026-08-30T09:15", "2026-08-31T10:30")]
+#[case("month", "2026-08", "2026-09")]
+#[case("week", "2026-W35", "2026-W36")]
+#[case("time", "09:15", "10:30")]
+fn text_binding_accepts_supported_input_types(
+	#[case] input_type: &str,
+	#[case] initial: &str,
+	#[case] edited: &str,
+	reactive_scope: ReactiveScope,
+) {
+	// Arrange
+	let value = signal_in_scope(&reactive_scope, initial.to_owned());
+	let screen = render(
+		PageElement::new("input")
+			.attr("aria-label", "Text target")
+			.attr("type", input_type.to_owned())
+			.control_binding(ControlBinding::text(value.clone())),
+	);
+	let input = screen.get_by_label("Text target");
+
+	// Act
+	input.input(edited);
+
+	// Assert
+	assert_eq!(value.get(), edited);
+	assert_eq!(input.value().as_deref(), Some(edited));
+}
+
+#[rstest]
+fn number_binding_accepts_range_input_type(reactive_scope: ReactiveScope) {
+	// Arrange
+	let value = signal_in_scope(&reactive_scope, 10_i32);
+	let screen = render(
+		PageElement::new("input")
+			.attr("aria-label", "Range target")
+			.attr("type", "range")
+			.control_binding(ControlBinding::number(value.clone())),
+	);
+	let input = screen.get_by_label("Range target");
+
+	// Act
+	input.input("42");
+
+	// Assert
+	assert_eq!(value.get(), 42);
+	assert_eq!(input.value().as_deref(), Some("42"));
+}
+
+#[rstest]
+fn native_text_binding_applies_browser_value_sanitization(reactive_scope: ReactiveScope) {
+	// Arrange
+	let value = signal_in_scope(&reactive_scope, "  https://example.test\n".to_owned());
+
+	// Act
+	let screen = render(
+		PageElement::new("input")
+			.attr("aria-label", "URL")
+			.attr("type", "url")
+			.control_binding(ControlBinding::text(value.clone())),
+	);
+
+	// Assert
+	assert_eq!(value.get(), "https://example.test");
+	assert_eq!(
+		screen.get_by_label("URL").value().as_deref(),
+		Some("https://example.test")
+	);
+}
+
+#[rstest]
+#[case("date", "2026-02-28", "2026-02-30")]
+#[case("datetime-local", "2026-02-28T10:30", "2026-02-30T10:30")]
+#[case("month", "2026-02", "2026-13")]
+#[case("week", "2025-W52", "2025-W53")]
+#[case("time", "10:30", "24:00")]
+#[case("date", "2026-01-01", "2026-00-01")]
+#[case("month", "2026-02", "2026-00")]
+#[case("week", "2026-W53", "2026-W54")]
+#[case("time", "10:30:00", "10:30:00.1234")]
+#[case("date", "2026-01-01", "2026-\n08-31")]
+fn native_temporal_binding_sanitizes_invalid_values(
+	#[case] input_type: &str,
+	#[case] initial: &str,
+	#[case] edited: &str,
+	reactive_scope: ReactiveScope,
+) {
+	// Arrange
+	let value = signal_in_scope(&reactive_scope, initial.to_owned());
+	let screen = render(
+		PageElement::new("input")
+			.attr("aria-label", "Temporal target")
+			.attr("type", input_type.to_owned())
+			.control_binding(ControlBinding::text(value.clone())),
+	);
+	let input = screen.get_by_label("Temporal target");
+
+	// Act
+	input.input(edited);
+
+	// Assert
+	assert_eq!(value.get(), "");
+	assert_eq!(input.value().as_deref(), Some(""));
+}
+
+#[rstest]
+fn native_datetime_local_normalizes_a_space_separator(reactive_scope: ReactiveScope) {
+	// Arrange
+	let value = signal_in_scope(&reactive_scope, "2026-08-31 10:30".to_owned());
+
+	// Act
+	let screen = render(
+		PageElement::new("input")
+			.attr("aria-label", "Datetime target")
+			.attr("type", "datetime-local")
+			.control_binding(ControlBinding::text(value.clone())),
+	);
+
+	// Assert
+	assert_eq!(value.get(), "2026-08-31T10:30");
+	assert_eq!(
+		screen.get_by_label("Datetime target").value().as_deref(),
+		Some("2026-08-31T10:30")
+	);
+}
+
+#[rstest]
+#[case("2026-08-31 10:30:00", "2026-08-31T10:30")]
+#[case("2026-08-31 10:30:00.010", "2026-08-31T10:30:00.01")]
+fn native_datetime_local_uses_browser_shortest_serialization(
+	#[case] initial: &str,
+	#[case] expected: &str,
+	reactive_scope: ReactiveScope,
+) {
+	// Arrange
+	let value = signal_in_scope(&reactive_scope, initial.to_owned());
+
+	// Act
+	let screen = render(
+		PageElement::new("input")
+			.attr("aria-label", "Datetime target")
+			.attr("type", "datetime-local")
+			.control_binding(ControlBinding::text(value.clone())),
+	);
+
+	// Assert
+	assert_eq!(value.get(), expected);
+	assert_eq!(
+		screen.get_by_label("Datetime target").value().as_deref(),
+		Some(expected)
+	);
+}
+
+#[rstest]
+fn native_range_binding_applies_declared_step(reactive_scope: ReactiveScope) {
+	// Arrange
+	let value = signal_in_scope(&reactive_scope, 3_i32);
+
+	// Act
+	let screen = render(
+		PageElement::new("input")
+			.attr("aria-label", "Stepped range")
+			.attr("type", "range")
+			.attr("min", "0")
+			.attr("max", "10")
+			.attr("step", "2")
+			.control_binding(ControlBinding::number(value.clone())),
+	);
+
+	// Assert
+	assert_eq!(value.get(), 4);
+	assert_eq!(
+		screen.get_by_label("Stepped range").value().as_deref(),
+		Some("4")
+	);
+}
+
+#[rstest]
+fn native_initial_range_reconciliation_uses_the_bound_value_as_the_step_base(
+	reactive_scope: ReactiveScope,
+) {
+	// Arrange
+	let value = signal_in_scope(&reactive_scope, 3_i32);
+
+	// Act
+	let screen = render(
+		PageElement::new("input")
+			.attr("aria-label", "Implicit step base")
+			.attr("type", "range")
+			.attr("step", "2")
+			.control_binding(ControlBinding::number(value)),
+	);
+
+	// Assert
+	assert_eq!(value.get(), 3);
+	assert_eq!(
+		screen.get_by_label("Implicit step base").value().as_deref(),
+		Some("3")
+	);
+}
+
+#[rstest]
+#[case::leading_plus_min("min", "+10")]
+#[case::leading_plus_step("step", "+2")]
+fn native_range_ignores_constraints_outside_the_html_number_grammar(
+	reactive_scope: ReactiveScope,
+	#[case] attribute: &str,
+	#[case] invalid_value: &str,
+) {
+	// Arrange
+	let value = signal_in_scope(&reactive_scope, 3_i32);
+	let range = PageElement::new("input")
+		.attr("aria-label", "Invalid range constraint")
+		.attr("type", "range")
+		.attr("max", "10");
+	let range = match attribute {
+		"min" => range.attr("min", invalid_value.to_owned()),
+		"step" => range
+			.attr("min", "0")
+			.attr("step", invalid_value.to_owned()),
+		_ => unreachable!("the test cases cover range constraints"),
+	}
+	.control_binding(ControlBinding::number(value));
+
+	// Act
+	let screen = render(range);
+
+	// Assert
+	assert_eq!(value.get(), 3);
+	assert_eq!(
+		screen
+			.get_by_label("Invalid range constraint")
+			.value()
+			.as_deref(),
+		Some("3")
+	);
+}
+
+#[rstest]
+#[tokio::test]
+async fn range_binding_reconciles_native_control_bounds(reactive_scope: ReactiveScope) {
+	// Arrange
+	let value = signal_in_scope(&reactive_scope, 200_i32);
+	let screen = render(
+		PageElement::new("input")
+			.attr("aria-label", "Range target")
+			.attr("type", "range")
+			.control_binding(ControlBinding::number(value.clone())),
+	);
+
+	// Assert
+	assert_eq!(value.get(), 100);
+	assert_eq!(
+		screen.get_by_label("Range target").value().as_deref(),
+		Some("100")
+	);
+
+	// Act
+	value.set(-10);
+	screen.settle().await;
+
+	// Assert
+	assert_eq!(value.get(), 0);
+	assert_eq!(
+		screen.get_by_label("Range target").value().as_deref(),
+		Some("0")
+	);
+}
+
+#[rstest]
 fn text_binding_accepts_an_input_type_with_text_fallback_semantics(reactive_scope: ReactiveScope) {
 	// Arrange
-	let value = signal_in_scope(&reactive_scope, "old".to_owned());
+	let value = signal_in_scope(&reactive_scope, "old\r\nvalue".to_owned());
 	let screen = render(
 		PageElement::new("input")
 			.attr("aria-label", "Fallback text target")
@@ -1094,12 +1364,15 @@ fn text_binding_accepts_an_input_type_with_text_fallback_semantics(reactive_scop
 			.control_binding(ControlBinding::text(value.clone())),
 	);
 	let input = screen.get_by_label("Fallback text target");
+	assert_eq!(value.get(), "oldvalue");
+	assert_eq!(input.value().as_deref(), Some("oldvalue"));
 
 	// Act
 	input
-		.dispatch(EventFixture::input().value("edited"))
+		.dispatch(EventFixture::input().value("edited\r\nvalue"))
 		.expect("unknown input type should use text fallback semantics");
 
 	// Assert
-	assert_eq!(value.get(), "edited");
+	assert_eq!(value.get(), "editedvalue");
+	assert_eq!(input.value().as_deref(), Some("editedvalue"));
 }

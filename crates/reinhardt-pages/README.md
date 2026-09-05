@@ -49,7 +49,7 @@ selector whitespace.
 - **Simplified Conditional Compilation**: `cfg_aliases` integration and automatic event handler handling
 - **Action State Helpers**: `use_action_state` and `Action::dispatching*` reduce async mutation boilerplate
 - **Headless UI Primitives**: `reinhardt_pages::ui::{ActionButton, ActionResultPanel, ResourcePanel}` compose typed action and resource states without imposing visual styles
-- **Controlled Form Elements**: `bind:` synchronizes typed signals with text, checkbox, radio, numeric, and select controls
+- **Controlled Form Elements**: `bind:` synchronizes typed signals with string-valued, checkbox, radio, numeric, and select controls
 - **Model-backed Forms**: `#[model(form = true)]` supplies typed fields and one
   policy-safe payload to `form!` on native and WASM targets
 
@@ -249,9 +249,11 @@ node; removing a script cannot undo side effects that already executed.
 ### Controlled form elements
 
 Use `bind:` when a signal should own a native control after hydration. The
-control shape determines the signal type: `String` for text, radio, and
-single-select controls; `bool` for checkboxes; a supported numeric primitive
-for number inputs; and `Vec<String>` for multiple selects.
+control shape determines the signal type: `String` for string-valued inputs
+(`text`, `search`, `tel`, `url`, `email`, `password`, `color`, `date`,
+`datetime-local`, `month`, `week`, and `time`), radio, and single-select
+controls; `bool` for checkboxes; a supported numeric primitive for `number`
+and `range` inputs; and `Vec<String>` for multiple selects.
 
 ```rust
 use reinhardt_pages::prelude::*;
@@ -270,10 +272,35 @@ let _controls = page!({
 });
 ```
 
+Date/time bindings use the browser's serialized strings, for example
+`2026-08-31`, `2026-08-31T10:30`, `2026-08`, `2026-W36`, and `10:30`.
+The DOM-to-signal path stores the browser-normalized `HTMLInputElement.value`;
+empty, invalid, or incomplete editor values are exposed as `""` by these
+controls. Applications should write a browser-valid serialization or `""` to
+the signal. If the browser sanitizes an application-provided value, the
+binding does not silently rewrite the signal.
+
+SSR serializes the signal string into the `value` attribute. Hydration first
+adopts the live DOM property, preserving browser restoration and edits made
+before hydration. The adopted value also becomes the browser reset default, so
+a later form reset preserves the pre-hydration control state. Later signal
+changes update the existing control in place.
+
 Hydration first adopts the live DOM value, preserving browser restoration and
 edits made before hydration. The adopted value also becomes the browser reset
 default, so a later form reset preserves the pre-hydration control state. Later
-signal changes update the control. See the
+signal changes update the control. Password bindings set only the live value
+property and never expose the secret through an SSR or DOM `value` attribute.
+Reactive attributes reconcile a binding only when they can change the control's
+value, so unrelated presentation updates preserve an in-progress edit. A
+reactive `type` or `multiple` update that would make the control incompatible
+with its binding is ignored, keeping the mounted controller usable. During
+initial hydration, browser normalization caused by reactive `min`, `max`, or
+`step` constraints is written back for range inputs, while ordinary number
+inputs continue to preserve rejected editor text. Multiple range controls bound
+to one signal synchronize only when their overlapping constraints contain a
+value accepted by every stepped grid; `step="any"` makes only that control
+continuous. See the
 [React migration guide](docs/react_to_reinhardt.md#controlled-and-uncontrolled-form-controls)
 for event ordering, IME, numeric-error, and low-level escape-hatch details.
 For `input[type=number]`, the binding combines `beforeinput` metadata with the
