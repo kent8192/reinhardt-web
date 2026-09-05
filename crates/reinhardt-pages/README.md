@@ -436,6 +436,40 @@ Model-backed browser submits retain the server function's typed response;
 `submit_server_fn` exposes it through `UseFormAsyncSubmitOutcome` and routes
 structured field errors into the same runtime state.
 
+Pages validates an owned raw snapshot before generated submission, but the
+client is not a trust boundary. The server must repeat the generated pipeline,
+run any async application validator explicitly, and construct from the cleaned
+payload with server-owned context:
+
+```rust,ignore
+use reinhardt_core::model_form::{
+    ModelFormUpdatingPayload,
+    ModelFormValidatingPayload,
+};
+
+let cleaned = payload.clean_and_validate()?;
+ensure_cluster_name_available(&cleaned).await?;
+let cluster = cleaned.into_model(
+    ClusterModelFormServerContext::new().organization_id(organization_id),
+)?;
+
+let cleaned = update_payload.clean_and_validate_for_update(&existing)?;
+ensure_cluster_name_available(&cleaned).await?;
+let updated = cleaned.apply_to(existing)?;
+```
+
+Cleaned payloads are not deserializable. For partial updates, first call
+`update_payload.clean_and_validate_for_update(&existing)`. This validates the
+post-merge candidate, including synchronous cross-field rules, while returning
+a partial cleaned payload. Then `cleaned.apply_to(existing)` changes only
+supplied public fields and preserves primary keys, server-owned values, and
+omitted fields. Bring `ModelFormUpdatingPayload` into scope for the update
+method; `clean_and_validate()` remains the strict create boundary.
+Use `#[form(validate = path)]` for synchronous cross-field validation and
+`#[form(trim)]` for opt-in generated text, email, or URL trimming;
+`#[field(...)]` remains database and model metadata. Database failures remain
+the persistence boundary rather than form validation errors.
+
 For model-derived controls, explicit field allowlists, display overrides,
 trusted server setters, and native async persistence, see
 [Model-backed Pages forms](docs/model_forms.md). Model mode submits one

@@ -41,6 +41,16 @@ pub mod exception {
 	pub type Result<T> = core::result::Result<T, Error>;
 }
 
+pub mod validators {
+	#[derive(Debug, Clone)]
+	pub enum ValidationError {
+		Custom(String),
+	}
+
+	#[derive(Debug, Clone, Default)]
+	pub struct ValidationErrors;
+}
+
 pub mod model_info {
 	pub trait InfoModel {
 		type PrimaryKey;
@@ -227,6 +237,7 @@ pub mod model_form {
 		pub nullable: bool,
 		pub editable: bool,
 		pub generated_relation_id: bool,
+		pub trim: bool,
 	}
 
 	#[derive(Debug, Clone, PartialEq, Eq)]

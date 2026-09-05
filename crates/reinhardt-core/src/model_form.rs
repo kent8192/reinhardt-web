@@ -2,6 +2,8 @@
 
 mod policy;
 mod schema;
+#[cfg(feature = "validators")]
+mod validation;
 
 pub use policy::{
 	AllEditableModelFields, ModelFormPayload, ModelFormPayloadError, ModelFormPolicy,
@@ -10,4 +12,8 @@ pub use policy::{
 pub use schema::{
 	ModelFormFieldDescriptor, ModelFormFieldKind, ModelFormPrimaryKey, ModelFormPrimaryKeyFields,
 	ModelFormSchema, ModelFormTableName,
+};
+#[cfg(feature = "validators")]
+pub use validation::{
+	ModelFormCleanedPayload, ModelFormUpdatingPayload, ModelFormValidatingPayload,
 };

@@ -186,6 +186,34 @@ for unselected or unknown fields remain in `form_state().form_error`. Explicit
 field selections provide typed accessors such as `title_field()`; forms using
 `exclude` can resolve a selected field with `form.field("title")`.
 
+Model-form controls retain the raw browser value while the user is editing.
+For example, opt-in trimming does not rewrite the mounted input, and an invalid
+URL remains available for correction. Immediately before every generated
+submission, Pages builds an owned snapshot in generated schema order, applies
+field conversion and normalization, and runs the generated synchronous
+validation pipeline under the form's `fields` or `exclude` selection policy.
+Required fields outside that selection do not block the snapshot. The endpoint
+payload keeps its declared policy, which the server validates independently.
+The normalized raw payload is sent only when validation succeeds; the editable
+control state remains unchanged.
+
+URL snapshot validation uses `reinhardt_core::validators::UrlValidator` on
+native and WASM targets, matching generated server validation. Query strings
+and fragments may follow the host directly, as in
+`https://example.com?query=value` and `https://example.com#section`.
+
+Snapshot errors combine conversion failures with generated validation errors
+in schema order, with form-level errors last. A control that cannot be converted
+keeps its conversion error instead of a secondary missing-value error.
+
+Snapshot validation failures become the same structured `ServerFnError` used
+for server responses. A recognized selected field is routed to
+`get_field_state(field).error`; `_all`, excluded, and unknown field names are
+routed to `form_state().form_error`. Automatic form submission stops before
+the server-function adapter is called. The payload sent after successful
+client-side validation is still an ordinary raw payload, so native server code
+must independently call `clean_and_validate()` at its trust boundary.
+
 ## Excluded fields
 
 Use `exclude: [...]` when nearly every editable model field belongs in the

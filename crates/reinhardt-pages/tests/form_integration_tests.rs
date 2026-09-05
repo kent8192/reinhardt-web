@@ -25,10 +25,232 @@ use reinhardt_pages::{FieldMetadata, FormComponent, FormMetadata, Widget};
 use std::collections::HashMap;
 
 use reinhardt_core::model_form::{
-	ModelFormFieldDescriptor, ModelFormFieldKind, ModelFormPayload, ModelFormPayloadError,
-	ModelFormPolicy, ModelFormSchema,
+	ModelFormCleanedPayload, ModelFormFieldDescriptor, ModelFormFieldKind, ModelFormPayload,
+	ModelFormPayloadError, ModelFormPolicy, ModelFormSchema, ModelFormValidatingPayload,
 };
+use reinhardt_core::validators::{ValidationError, ValidationErrors};
 use reinhardt_pages::form::ModelFormState;
+use rstest::rstest;
+
+struct Cluster;
+
+struct ClusterSchema;
+
+const CLUSTER_FIELDS: [ModelFormFieldDescriptor; 2] = [
+	ModelFormFieldDescriptor {
+		name: "name",
+		kind: ModelFormFieldKind::Text {
+			min_length: Some(3),
+			max_length: Some(63),
+			multiline: false,
+		},
+		required: true,
+		has_default: false,
+		nullable: false,
+		editable: true,
+		generated_relation_id: false,
+		trim: true,
+	},
+	ModelFormFieldDescriptor {
+		name: "api_url",
+		kind: ModelFormFieldKind::Url {
+			min_length: None,
+			max_length: Some(2048),
+		},
+		required: true,
+		has_default: false,
+		nullable: false,
+		editable: true,
+		generated_relation_id: false,
+		trim: true,
+	},
+];
+
+impl ModelFormSchema for ClusterSchema {
+	type Model = Cluster;
+
+	fn fields() -> &'static [ModelFormFieldDescriptor] {
+		&CLUSTER_FIELDS
+	}
+}
+
+struct ClusterPolicy;
+
+impl ModelFormPolicy for ClusterPolicy {
+	fn allows(field: &str) -> bool {
+		matches!(field, "name" | "api_url")
+	}
+}
+
+#[derive(Debug, Default)]
+struct ClusterPayload {
+	name: Option<String>,
+	api_url: Option<String>,
+}
+
+impl ClusterPayload {
+	fn name(&self) -> Option<&String> {
+		self.name.as_ref()
+	}
+
+	fn api_url(&self) -> Option<&String> {
+		self.api_url.as_ref()
+	}
+}
+
+impl ModelFormPayload<ClusterPolicy> for ClusterPayload {
+	fn supplied_fields(&self) -> Vec<&'static str> {
+		CLUSTER_FIELDS
+			.iter()
+			.filter(|descriptor| self.get_json(descriptor.name).is_some())
+			.map(|descriptor| descriptor.name)
+			.collect()
+	}
+
+	fn forbidden_fields(&self) -> &[&'static str] {
+		&[]
+	}
+
+	fn get_json(&self, field: &str) -> Option<serde_json::Value> {
+		match field {
+			"name" => self.name.clone().map(serde_json::Value::String),
+			"api_url" => self.api_url.clone().map(serde_json::Value::String),
+			_ => None,
+		}
+	}
+
+	fn set_json(
+		&mut self,
+		field: &str,
+		value: serde_json::Value,
+	) -> Result<(), ModelFormPayloadError> {
+		let value =
+			serde_json::from_value(value).map_err(|error| ModelFormPayloadError::InvalidValue {
+				field: field.to_owned(),
+				message: error.to_string(),
+			})?;
+		match field {
+			"name" => self.name = Some(value),
+			"api_url" => self.api_url = Some(value),
+			_ => {
+				return Err(ModelFormPayloadError::UnknownField {
+					field: field.to_owned(),
+				});
+			}
+		}
+		Ok(())
+	}
+}
+
+struct CleanedClusterPayload(ClusterPayload);
+
+impl ModelFormCleanedPayload for CleanedClusterPayload {
+	type Raw = ClusterPayload;
+
+	fn into_raw(self) -> Self::Raw {
+		self.0
+	}
+}
+
+impl ModelFormValidatingPayload for ClusterPayload {
+	type Cleaned = CleanedClusterPayload;
+
+	fn clean_and_validate(self) -> Result<Self::Cleaned, ValidationErrors> {
+		if self.name == self.api_url {
+			let mut errors = ValidationErrors::new();
+			errors.add(
+				"_all",
+				ValidationError::Custom("Name and API URL must differ".to_owned()),
+			);
+			return Err(errors);
+		}
+		Ok(CleanedClusterPayload(self))
+	}
+}
+
+#[rstest]
+fn model_form_validated_snapshot_normalizes_without_mutating_raw_controls() {
+	// Arrange
+	let mut state = ModelFormState::<ClusterSchema, ClusterPolicy>::new();
+	state
+		.set_value("name", serde_json::json!("  cluster  "))
+		.expect("raw name control should be accepted");
+	state
+		.set_value("api_url", serde_json::json!("  https://example.com/api  "))
+		.expect("raw URL control should be accepted");
+
+	// Act
+	let payload = state
+		.build_validated_payload::<ClusterPayload>()
+		.expect("snapshot should validate");
+
+	// Assert
+	assert_eq!(payload.name(), Some(&"cluster".to_owned()));
+	assert_eq!(
+		payload.api_url(),
+		Some(&"https://example.com/api".to_owned())
+	);
+	assert_eq!(state.value("name"), Some(&serde_json::json!("  cluster  ")));
+}
+
+#[rstest]
+fn model_form_validated_snapshot_preserves_invalid_url_for_correction() {
+	// Arrange
+	let mut state = ModelFormState::<ClusterSchema, ClusterPolicy>::new();
+	state
+		.set_value("name", serde_json::json!("cluster"))
+		.expect("name control should be accepted");
+	state
+		.set_value("api_url", serde_json::json!("not a URL"))
+		.expect("raw invalid URL should remain editable");
+
+	// Act
+	let errors = state
+		.build_validated_payload::<ClusterPayload>()
+		.expect_err("invalid URL should reject the submission snapshot");
+
+	// Assert
+	let ordered = errors.ordered_field_errors().collect::<Vec<_>>();
+	assert_eq!(
+		ordered,
+		vec![(
+			"api_url",
+			&[ValidationError::Custom("Enter a valid URL".to_owned())][..],
+		)]
+	);
+	assert_eq!(
+		state.value("api_url"),
+		Some(&serde_json::json!("not a URL"))
+	);
+}
+
+#[rstest]
+fn model_form_validated_snapshot_runs_cross_field_validation_after_normalization() {
+	// Arrange
+	let mut state = ModelFormState::<ClusterSchema, ClusterPolicy>::new();
+	state
+		.set_value("name", serde_json::json!("  https://example.com/api  "))
+		.expect("raw name control should be accepted");
+	state
+		.set_value("api_url", serde_json::json!("https://example.com/api"))
+		.expect("URL control should be accepted");
+
+	// Act
+	let errors = state
+		.build_validated_payload::<ClusterPayload>()
+		.expect_err("equal normalized values should fail cross-field validation");
+
+	// Assert
+	let fields = errors
+		.ordered_field_errors()
+		.map(|(field, _)| field)
+		.collect::<Vec<_>>();
+	assert_eq!(fields, ["_all"]);
+	assert_eq!(
+		state.value("name"),
+		Some(&serde_json::json!("  https://example.com/api  "))
+	);
+}
 
 struct ModelFormQuestion;
 
@@ -47,6 +269,7 @@ const MODEL_FORM_QUESTION_FIELDS: [ModelFormFieldDescriptor; 2] = [
 		nullable: false,
 		editable: true,
 		generated_relation_id: false,
+		trim: false,
 	},
 	ModelFormFieldDescriptor {
 		name: "owner_id",
@@ -59,6 +282,7 @@ const MODEL_FORM_QUESTION_FIELDS: [ModelFormFieldDescriptor; 2] = [
 		nullable: false,
 		editable: true,
 		generated_relation_id: true,
+		trim: false,
 	},
 ];
 
@@ -155,18 +379,58 @@ fn model_form_builds_one_policy_safe_payload() {
 	assert_eq!(payload.get_json("owner_id"), None);
 }
 
-#[test]
-fn model_form_text_conversion_enforces_the_descriptor_minimum_length() {
+#[rstest]
+fn model_form_typed_setter_rejects_a_wrong_supported_primitive_immediately() {
+	// Arrange
 	let mut state = ModelFormState::<ModelFormQuestionSchema, ModelFormTitleOnly>::new();
 
+	// Act
+	let error = state
+		.set_any_value("title", 42_i64)
+		.expect_err("an integer must not be stored for a text descriptor");
+
+	// Assert
+	assert_eq!(
+		error,
+		ModelFormPayloadError::InvalidValue {
+			field: "title".to_owned(),
+			message: "expected a string".to_owned(),
+		}
+	);
+	assert_eq!(state.value("title"), None);
+}
+
+#[rstest]
+fn model_form_payload_conversion_enforces_the_descriptor_minimum_length() {
+	// Arrange
+	let mut state = ModelFormState::<ModelFormQuestionSchema, ModelFormTitleOnly>::new();
+	state
+		.set_value("title", serde_json::json!("no"))
+		.expect("raw short text should remain editable");
+
+	// Act & Assert
 	assert!(matches!(
-		state.set_value("title", serde_json::json!("no")),
+		state.build_payload::<ModelFormQuestionData>(),
 		Err(ModelFormPayloadError::InvalidValue { .. })
 	));
+	assert_eq!(state.value("title"), Some(&serde_json::json!("no")));
 	state
 		.set_value("title", serde_json::json!("valid"))
-		.expect("text at the inclusive minimum length should be accepted");
+		.expect("valid raw text should be accepted");
+	state
+		.build_payload::<ModelFormQuestionData>()
+		.expect("text at the inclusive minimum length should build a payload");
 	assert_eq!(state.value("title"), Some(&serde_json::json!("valid")));
+	state
+		.set_value("title", serde_json::json!("  valid  "))
+		.expect("untrimmed raw text should be accepted");
+	let payload = state
+		.build_payload::<ModelFormQuestionData>()
+		.expect("text without declared trimming should build a payload");
+	assert_eq!(
+		payload.get_json("title"),
+		Some(serde_json::json!("  valid  "))
+	);
 }
 
 struct ModelFormNumeric;
@@ -185,6 +449,7 @@ const MODEL_FORM_NUMERIC_FIELDS: [ModelFormFieldDescriptor; 3] = [
 		nullable: false,
 		editable: true,
 		generated_relation_id: false,
+		trim: false,
 	},
 	ModelFormFieldDescriptor {
 		name: "unsigned",
@@ -197,6 +462,7 @@ const MODEL_FORM_NUMERIC_FIELDS: [ModelFormFieldDescriptor; 3] = [
 		nullable: false,
 		editable: true,
 		generated_relation_id: false,
+		trim: false,
 	},
 	ModelFormFieldDescriptor {
 		name: "ratio",
@@ -209,6 +475,7 @@ const MODEL_FORM_NUMERIC_FIELDS: [ModelFormFieldDescriptor; 3] = [
 		nullable: false,
 		editable: true,
 		generated_relation_id: false,
+		trim: false,
 	},
 ];
 
@@ -254,6 +521,7 @@ impl ModelFormPayload<ModelFormAllNumericFields> for ModelFormNumericData {
 		let field = match field {
 			"bounded" => "bounded",
 			"unsigned" => "unsigned",
+			"ratio" => "ratio",
 			_ => {
 				return Err(ModelFormPayloadError::UnknownField {
 					field: field.to_owned(),
@@ -265,35 +533,55 @@ impl ModelFormPayload<ModelFormAllNumericFields> for ModelFormNumericData {
 	}
 }
 
-#[test]
+#[rstest]
 fn model_form_integer_conversion_preserves_signed_and_unsigned_boundaries() {
+	// Arrange
 	let mut state = ModelFormState::<ModelFormNumericSchema, ModelFormAllNumericFields>::new();
 
+	// Act & Assert
 	state
 		.set_value("bounded", serde_json::json!(-2))
-		.expect("inclusive signed minimum should be accepted");
+		.expect("raw signed minimum should be accepted");
+	state
+		.build_payload::<ModelFormNumericData>()
+		.expect("inclusive signed minimum should build a payload");
 	assert_eq!(state.value("bounded"), Some(&serde_json::json!(-2)));
 	state
 		.set_value("bounded", serde_json::json!(2))
-		.expect("inclusive signed maximum should be accepted");
+		.expect("raw signed maximum should be accepted");
+	state
+		.build_payload::<ModelFormNumericData>()
+		.expect("inclusive signed maximum should build a payload");
 	assert_eq!(state.value("bounded"), Some(&serde_json::json!(2)));
-	assert!(matches!(
-		state.set_value("bounded", serde_json::json!(-3)),
-		Err(ModelFormPayloadError::InvalidValue { .. })
-	));
+	state
+		.set_value("bounded", serde_json::json!(-3))
+		.expect("raw out-of-range input should remain editable");
 	assert_eq!(
 		state.value("bounded"),
-		None,
-		"an invalid edit must not retain the preceding valid control value"
+		Some(&serde_json::json!(-3)),
+		"an invalid edit must remain available for correction"
 	);
 	assert!(matches!(
-		state.set_value("bounded", serde_json::json!(3)),
+		state.build_payload::<ModelFormNumericData>(),
 		Err(ModelFormPayloadError::InvalidValue { .. })
 	));
+	state
+		.set_value("bounded", serde_json::json!(3))
+		.expect("raw out-of-range input should remain editable");
 	assert!(matches!(
-		state.set_value("bounded", serde_json::json!(u64::MAX)),
+		state.build_payload::<ModelFormNumericData>(),
 		Err(ModelFormPayloadError::InvalidValue { .. })
 	));
+	state
+		.set_value("bounded", serde_json::json!(u64::MAX))
+		.expect("raw unsigned input should remain editable");
+	assert!(matches!(
+		state.build_payload::<ModelFormNumericData>(),
+		Err(ModelFormPayloadError::InvalidValue { .. })
+	));
+	state
+		.set_value("bounded", serde_json::json!(0))
+		.expect("valid signed input should replace the rejected snapshot");
 
 	let above_i64_max = i64::MAX as u64 + 1;
 	state
@@ -315,25 +603,37 @@ fn model_form_integer_conversion_preserves_signed_and_unsigned_boundaries() {
 	);
 }
 
-#[test]
+#[rstest]
 fn model_form_float_conversion_enforces_descriptor_bounds() {
+	// Arrange
 	let mut state = ModelFormState::<ModelFormNumericSchema, ModelFormAllNumericFields>::new();
 
+	// Act & Assert
+	state
+		.set_value("ratio", serde_json::json!(1.4))
+		.expect("raw out-of-range float should remain editable");
 	assert!(matches!(
-		state.set_value("ratio", serde_json::json!(1.4)),
+		state.build_payload::<ModelFormNumericData>(),
 		Err(ModelFormPayloadError::InvalidValue { .. })
 	));
 	state
 		.set_value("ratio", serde_json::json!(2.5))
-		.expect("the inclusive float maximum should be accepted");
+		.expect("raw float maximum should be accepted");
+	state
+		.build_payload::<ModelFormNumericData>()
+		.expect("the inclusive float maximum should build a payload");
+	state
+		.set_value("ratio", serde_json::json!(2.6))
+		.expect("raw out-of-range float should remain editable");
 	assert!(matches!(
-		state.set_value("ratio", serde_json::json!(2.6)),
+		state.build_payload::<ModelFormNumericData>(),
 		Err(ModelFormPayloadError::InvalidValue { .. })
 	));
 }
 
-#[test]
+#[rstest]
 fn model_form_clearing_optional_control_removes_previous_payload_value() {
+	// Arrange
 	let mut state = ModelFormState::<ModelFormNumericSchema, ModelFormAllNumericFields>::new();
 	state
 		.set_value("unsigned", serde_json::json!(42_u64))
@@ -342,10 +642,13 @@ fn model_form_clearing_optional_control_removes_previous_payload_value() {
 		.set_value("unsigned", serde_json::json!(""))
 		.expect("empty optional input should unset the control");
 
-	assert_eq!(state.value("unsigned"), None);
+	// Act
 	let payload = state
 		.build_payload::<ModelFormNumericData>()
 		.expect("cleared optional input should build a payload");
+
+	// Assert
+	assert_eq!(state.value("unsigned"), Some(&serde_json::json!("")));
 	assert_eq!(payload.get_json("unsigned"), None);
 	assert!(payload.supplied_fields().is_empty());
 }
@@ -367,6 +670,7 @@ const MODEL_FORM_EMPTY_VALUE_FIELDS: [ModelFormFieldDescriptor; 3] = [
 		nullable: true,
 		editable: true,
 		generated_relation_id: false,
+		trim: false,
 	},
 	ModelFormFieldDescriptor {
 		name: "defaulted_label",
@@ -380,6 +684,7 @@ const MODEL_FORM_EMPTY_VALUE_FIELDS: [ModelFormFieldDescriptor; 3] = [
 		nullable: false,
 		editable: true,
 		generated_relation_id: false,
+		trim: false,
 	},
 	ModelFormFieldDescriptor {
 		name: "blank_label",
@@ -393,6 +698,7 @@ const MODEL_FORM_EMPTY_VALUE_FIELDS: [ModelFormFieldDescriptor; 3] = [
 		nullable: false,
 		editable: true,
 		generated_relation_id: false,
+		trim: false,
 	},
 ];
 
@@ -451,8 +757,9 @@ impl ModelFormPayload<ModelFormAllEmptyValueFields> for ModelFormEmptyValueData 
 	}
 }
 
-#[test]
+#[rstest]
 fn model_form_empty_nullable_control_clears_while_other_optional_inputs_are_absent() {
+	// Arrange
 	let mut state =
 		ModelFormState::<ModelFormEmptyValuesSchema, ModelFormAllEmptyValueFields>::new();
 	for field in ["nullable_note", "defaulted_label", "blank_label"] {
@@ -464,15 +771,18 @@ fn model_form_empty_nullable_control_clears_while_other_optional_inputs_are_abse
 			.expect("empty optional control should be accepted");
 	}
 
-	assert_eq!(state.value("nullable_note"), Some(&serde_json::Value::Null));
-	assert_eq!(state.value("defaulted_label"), None);
+	// Act
+	let payload = state
+		.build_payload::<ModelFormEmptyValueData>()
+		.expect("empty controls should assemble a typed payload");
+
+	// Assert
+	assert_eq!(state.value("nullable_note"), Some(&serde_json::json!("")));
+	assert_eq!(state.value("defaulted_label"), Some(&serde_json::json!("")));
 	assert_eq!(
 		state.value("blank_label"),
 		Some(&serde_json::Value::String(String::new()))
 	);
-	let payload = state
-		.build_payload::<ModelFormEmptyValueData>()
-		.expect("empty controls should assemble a typed payload");
 	assert_eq!(payload.supplied_fields(), ["nullable_note", "blank_label"]);
 	assert_eq!(
 		payload.get_json("nullable_note"),
@@ -497,6 +807,7 @@ const MODEL_FORM_DATETIME_FIELDS: [ModelFormFieldDescriptor; 2] = [
 		nullable: false,
 		editable: true,
 		generated_relation_id: false,
+		trim: false,
 	},
 	ModelFormFieldDescriptor {
 		name: "naive_at",
@@ -506,6 +817,7 @@ const MODEL_FORM_DATETIME_FIELDS: [ModelFormFieldDescriptor; 2] = [
 		nullable: false,
 		editable: true,
 		generated_relation_id: false,
+		trim: false,
 	},
 ];
 
@@ -564,8 +876,9 @@ impl ModelFormPayload<ModelFormAllDateTimeFields> for ModelFormDateTimeData {
 	}
 }
 
-#[test]
+#[rstest]
 fn model_form_datetime_local_values_normalize_for_aware_and_naive_payloads() {
+	// Arrange
 	let mut state = ModelFormState::<ModelFormDateTimesSchema, ModelFormAllDateTimeFields>::new();
 	state
 		.set_value("aware_at", serde_json::json!("2026-07-25T14:30"))
@@ -574,17 +887,20 @@ fn model_form_datetime_local_values_normalize_for_aware_and_naive_payloads() {
 		.set_value("naive_at", serde_json::json!("2026-07-25T14:30"))
 		.expect("browser local datetime should map to a naive ISO value");
 
-	assert_eq!(
-		state.value("aware_at"),
-		Some(&serde_json::json!("2026-07-25T14:30:00Z"))
-	);
-	assert_eq!(
-		state.value("naive_at"),
-		Some(&serde_json::json!("2026-07-25T14:30:00"))
-	);
+	// Act
 	let payload = state
 		.build_payload::<ModelFormDateTimeData>()
 		.expect("normalized datetimes should build a payload");
+
+	// Assert
+	assert_eq!(
+		state.value("aware_at"),
+		Some(&serde_json::json!("2026-07-25T14:30"))
+	);
+	assert_eq!(
+		state.value("naive_at"),
+		Some(&serde_json::json!("2026-07-25T14:30"))
+	);
 	assert_eq!(
 		payload.get_json("aware_at"),
 		Some(serde_json::json!("2026-07-25T14:30:00Z"))
