@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-manouche@v0.4.0-alpha.14...reinhardt-manouche@v0.4.0-alpha.15) - 2026-09-10
+
+### Fixed
+
+- *(manouche)* reject RadioInput model form overrides
+
+### Maintenance
+
+- chore!(sync): merge main into develop/0.4.0
+- merge develop/0.4.0 into RadioInput support
+
 ## [0.4.0-alpha.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-manouche@v0.4.0-alpha.13...reinhardt-manouche@v0.4.0-alpha.14) - 2026-09-07
 
 ### Maintenance

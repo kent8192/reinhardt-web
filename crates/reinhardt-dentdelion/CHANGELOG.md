@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dentdelion@v0.4.0-alpha.14...reinhardt-dentdelion@v0.4.0-alpha.15) - 2026-09-10
+
+### Documentation
+
+- update version references to v0.3.14
+- update version references to v0.3.15
+- update version references to v0.3.16
+
+### Fixed
+
+- *(dentdelion)* confine plugin loading to its root
+- *(dentdelion)* close plugin path race
+- *(dentdelion)* retain plugin root capability
+- *(dentdelion)* preserve anchored loader behavior
+
+### Maintenance
+
+- chore!(sync): merge main into develop/0.4.0
+
 ## [0.4.0-alpha.13](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dentdelion@v0.4.0-alpha.12...reinhardt-dentdelion@v0.4.0-alpha.13) - 2026-09-02
 
 ### Fixed

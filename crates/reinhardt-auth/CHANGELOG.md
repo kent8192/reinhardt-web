@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.4.0-alpha.14...reinhardt-auth@v0.4.0-alpha.15) - 2026-09-10
+
+### Documentation
+
+- update version references to v0.3.14
+- update version references to v0.3.15
+- update version references to v0.3.16
+
+### Maintenance
+
+- chore!(sync): merge main into develop/0.4.0
+
 ## [0.4.0-alpha.12](https://github.com/kent8192/reinhardt-web/compare/reinhardt-auth@v0.4.0-alpha.11...reinhardt-auth@v0.4.0-alpha.12) - 2026-08-30
 
 ### Added

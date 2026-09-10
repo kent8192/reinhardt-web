@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.4.0-alpha.14...reinhardt-pages-macros@v0.4.0-alpha.15) - 2026-09-10
+
+### Fixed
+
+- *(pages)* render form field attributes and help text
+- *(pages)* preserve form ownership across hydration and reset
+- *(pages)* evaluate static select choice expressions once
+- *(pages)* preserve reconciled defaults during hydration
+- *(pages)* reject unsupported RadioInput form overrides
+- *(pages)* complete native radio reset synchronization
+- *(pages)* validate required radios and synchronize saved defaults
+- *(pages)* preserve reset ownership and hydrated radio state
+
+### Maintenance
+
+- merge main into radio group accessibility
+- *(pages)* merge main field metadata and radio groups
+- chore!(sync): merge main into develop/0.4.0
+- merge develop/0.4.0 into RadioInput support
+
 ## [0.4.0-alpha.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages-macros@v0.4.0-alpha.13...reinhardt-pages-macros@v0.4.0-alpha.14) - 2026-09-07
 
 ### Fixed

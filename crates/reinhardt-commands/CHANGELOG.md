@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.4.0-alpha.14...reinhardt-commands@v0.4.0-alpha.15) - 2026-09-10
+
+### Documentation
+
+- update version references to v0.3.14
+- update version references to v0.3.15
+- update version references to v0.3.16
+
+### Maintenance
+
+- chore!(sync): merge main into develop/0.4.0
+
+### Testing
+
+- *(commands)* restore admin script process state
+- *(commands)* inject shared fixtures into admin suites
+
 ## [0.4.0-alpha.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-commands@v0.4.0-alpha.13...reinhardt-commands@v0.4.0-alpha.14) - 2026-09-07
 
 ### Maintenance

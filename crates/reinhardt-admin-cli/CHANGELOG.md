@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.4.0-alpha.14...reinhardt-admin-cli@v0.4.0-alpha.15) - 2026-09-10
+
+### Maintenance
+
+- chore!(sync): merge main into develop/0.4.0
+
+### Testing
+
+- *(admin)* cover migration source upgrade lifecycle
+- *(migrations)* enforce exact source upgrade assertions
+
 ## [0.4.0-alpha.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin-cli@v0.4.0-alpha.13...reinhardt-admin-cli@v0.4.0-alpha.14) - 2026-09-07
 
 ### Maintenance

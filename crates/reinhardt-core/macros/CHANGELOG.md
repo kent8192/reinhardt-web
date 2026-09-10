@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.4.0-alpha.14...reinhardt-macros@v0.4.0-alpha.15) - 2026-09-10
+
+### Maintenance
+
+- chore!(sync): merge main into develop/0.4.0
+- *(test)* allow cold native and wasm model parity builds
+
 ## [0.4.0-alpha.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.4.0-alpha.13...reinhardt-macros@v0.4.0-alpha.14) - 2026-09-07
 
 ### Fixed

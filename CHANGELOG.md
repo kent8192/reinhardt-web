@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.4.0-alpha.14...reinhardt-web@v0.4.0-alpha.15) - 2026-09-10
+
+### Documentation
+
+- add release announcement(s)
+
+### Fixed
+
+- *(core)* defer layout effects until reactive batches settle
+- *(pages)* preserve specific hydration installation errors
+- *(pages)* retain owners of unchanged reactive branches
+- *(core)* preserve batched notification semantics
+- *(pages)* reject unsupported RadioInput form overrides
+- *(pages)* complete native radio reset synchronization
+- *(manouche)* reject RadioInput model form overrides
+- *(pages)* validate required radios and synchronize saved defaults
+- *(pages)* preserve reset ownership and hydrated radio state
+
+### Maintenance
+
+- *(deps)* allow compatible hashlink 0.12 patch updates
+- chore!(sync): merge main into develop/0.4.0
+- merge develop/0.4.0 into RadioInput support
+- *(test)* allow cold native and wasm model parity builds
+
+### Testing
+
+- *(commands)* restore process state across admin script tests
+- *(macros)* refresh generated relation constructor diagnostics
+- *(pages)* align control assertions with effect timing
+- *(pages)* isolate upload alias diagnostics from MSW metadata
+- *(conf)* isolate audit backend database fixtures
+- compose regression setup from reinhardt fixtures
+- *(migrations)* enforce exact source upgrade assertions
+- *(migrations)* ship portable fixture capture tools
+
 ## [0.4.0-alpha.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.4.0-alpha.13...reinhardt-web@v0.4.0-alpha.14) - 2026-09-07
 
 ### Documentation

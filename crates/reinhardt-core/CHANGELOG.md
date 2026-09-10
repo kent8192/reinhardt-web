@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.4.0-alpha.14...reinhardt-core@v0.4.0-alpha.15) - 2026-09-10
+
+### Documentation
+
+- update version references to v0.3.14
+- update version references to v0.3.15
+- update version references to v0.3.16
+
+### Fixed
+
+- *(core)* validate rendered element contexts
+- *(pages)* reject executable elements in all renderers
+- *(pages)* enforce safe rendering boundaries
+- *(core)* validate batch boolean attributes
+- *(core)* enable security with the page feature
+- *(pages)* retain form control bindings through mount and hydration
+- *(core)* defer layout effects within explicit batches
+- *(pages)* preserve textarea and select state during hydration
+- *(pages)* preserve form ownership across hydration and reset
+- *(core)* flush batched layout work before passive effects
+- *(core)* deduplicate layout callbacks while flushing batches
+- *(pages)* preserve pristine textarea state through newline normalization
+- *(pages)* preserve reset ownership and hydrated radio state
+
+### Maintenance
+
+- chore!(sync): merge main into develop/0.4.0
+- *(test)* allow cold native and wasm model parity builds
+
 ## [0.4.0-alpha.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.4.0-alpha.13...reinhardt-core@v0.4.0-alpha.14) - 2026-09-07
 
 ### Fixed
