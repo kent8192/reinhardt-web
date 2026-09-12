@@ -293,6 +293,19 @@ where
 		Ok(())
 	}
 
+	/// Preserves incomplete scalar editor input until submission conversion.
+	#[doc(hidden)]
+	pub fn set_binding_editor_text(
+		&mut self,
+		field: &str,
+		value: String,
+	) -> Result<(), ModelFormPayloadError> {
+		let descriptor = self.binding_descriptor(field)?;
+		self.values
+			.insert(descriptor.name, serde_json::Value::String(value));
+		Ok(())
+	}
+
 	/// Stores a number emitted by a shared controlled numeric binding.
 	#[doc(hidden)]
 	pub fn set_binding_number(&mut self, field: &str, raw: &str) -> Result<(), NumberParseError> {
@@ -319,6 +332,7 @@ where
 							NumberParseError::from_raw_kind(raw, NumberParseErrorKind::OutOfRange)
 						})?
 				}
+				ModelFormFieldKind::Decimal { .. } => serde_json::Value::String(raw.to_owned()),
 				_ => {
 					return Err(NumberParseError::from_raw_kind(
 						raw,

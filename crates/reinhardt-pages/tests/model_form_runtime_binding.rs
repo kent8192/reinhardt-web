@@ -555,7 +555,7 @@ fn programmatic_numeric_updates_clear_parse_errors() {
 }
 
 #[rstest]
-fn static_model_form_bindings_reject_unsupported_control_pairs() {
+fn static_model_form_bindings_enforce_control_kinds() {
 	reinhardt_core::reactive::ReactiveScope::run(|| {
 		// Arrange
 		let form = binding_form!();
@@ -579,9 +579,23 @@ fn static_model_form_bindings_reject_unsupported_control_pairs() {
 		// Assert
 		assert!(file.is_none());
 		assert!(image.is_none());
-		assert!(metadata.is_none());
+		let metadata = metadata.expect("JSON fields expose a raw text editor");
+		assert_eq!(
+			metadata.write(ControlValue::Text("{unfinished".into())),
+			Ok(ControlWriteOutcome::Committed)
+		);
+		assert_eq!(metadata.read(), ControlValue::Text("{unfinished".into()));
+		assert_eq!(
+			form.value("metadata"),
+			Some(serde_json::json!("{unfinished"))
+		);
 		assert!(select_many.is_none());
-		assert!(file_control.is_none());
+		assert_eq!(
+			file_control
+				.expect("file fields use the single-file channel")
+				.read(),
+			ControlValue::Files(Vec::new())
+		);
 		assert!(text_as_file.is_none());
 	});
 }

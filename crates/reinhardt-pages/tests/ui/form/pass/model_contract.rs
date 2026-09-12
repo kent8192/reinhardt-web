@@ -30,6 +30,9 @@ fn main() {
 		let runtime = reinhardt_pages::use_form(&form).build();
 		let _: reinhardt_pages::FormServerMutationBuilder<_, _, _, QuestionResponse> =
 			form.server_mutation(&runtime);
+		let action = form.server_mutation(&runtime).build();
+		let _: reinhardt_pages::Page = action.page();
+		let _: Option<QuestionResponse> = action.result();
 
 		#[cfg(all(target_family = "wasm", target_os = "unknown"))]
 		{

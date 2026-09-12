@@ -197,3 +197,36 @@ fn named_model_form_runtime_accepts_uuid_and_chrono_values() {
 		);
 	});
 }
+
+#[cfg_attr(native, test)]
+#[cfg_attr(wasm, wasm_bindgen_test::wasm_bindgen_test)]
+fn named_model_form_binding_preserves_incomplete_scalar_edits() {
+	use reinhardt_pages::component::{ControlValue, ControlWriteOutcome};
+	use reinhardt_pages::control_binding::__private::{TextBinding, into_control_binding};
+
+	reinhardt_core::reactive::ReactiveScope::run(|| {
+		// Arrange
+		let form = form! {
+			name: ScalarEditorForm,
+			model_form: ScalarContract,
+			server_fn: save_scalars,
+		};
+		let runtime = use_form(&form).build();
+		let binding =
+			into_control_binding::<TextBinding, _>(runtime.field(ScalarField("date")), ());
+
+		// Act
+		assert_eq!(
+			binding.write(ControlValue::Text("2026-0".into())),
+			Ok(ControlWriteOutcome::Committed)
+		);
+
+		// Assert
+		assert_eq!(form.value("date"), Some(serde_json::json!("2026-0")));
+		assert_eq!(binding.read(), ControlValue::Text("2026-0".into()));
+		assert!(form.data().is_err());
+		runtime.reset();
+		assert_eq!(binding.read(), ControlValue::Text(String::new()));
+		assert!(!(runtime.get_field_state(ScalarField("date")).is_dirty));
+	});
+}
