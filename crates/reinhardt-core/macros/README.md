@@ -324,10 +324,41 @@ Provides compile-time code generation for common patterns.
 
 #### URL Pattern Registration
 
+- **`#[url_patterns]`** - Share a `UnifiedRouter` builder with native-only HTTP handlers
+  - Takes no arguments and adds no inventory registration
+  - Keeps each complete `.server(...)` argument only under
+    `all(server, not(all(target_family = "wasm", target_os = "unknown")))`
+    in the calling crate; other builds erase it before name resolution
+  - Accepts safe, synchronous functions without `const` or `extern` qualifiers,
+    with no parameters or generics and an
+    explicit `UnifiedRouter` return type, including qualified paths
+  - Requires one tail expression rooted at `UnifiedRouter::new()` or `default()`;
+    supported methods are `server`, `client`, `with_prefix`, `with_namespace`,
+    `mount_unified`, and `merge`
+  - Put native imports inside the server argument or in cfg-gated modules.
+    Extract nested server builders into separate annotated functions
+  - Available as `reinhardt::url_patterns`, including on WASM. Declare the
+    caller's custom `server` cfg in `build.rs` and enable it for native server
+    builds; `client-router` is required for browser routing
+  - Example:
+    ```rust
+    use reinhardt::url_patterns;
+    use reinhardt::urls::prelude::UnifiedRouter;
+
+    #[url_patterns]
+    pub fn url_patterns() -> UnifiedRouter {
+        UnifiedRouter::new()
+            .server(|server| server.endpoint(crate::native_handlers::health))
+            .with_namespace("demo")
+    }
+    ```
+
 - **`#[routes]`** - Attribute macro for automatic URL pattern registration
   - Registers URL pattern function for framework discovery (via `inventory` crate)
   - Apply to project-level `routes()` function in `src/config/urls.rs`
   - Return type must be `UnifiedRouter` (framework handles Arc wrapping internally)
+  - Can be stacked with `#[url_patterns]` in either order; only `#[routes]`
+    registers the root factory
   - Example:
     ```rust
     use reinhardt::prelude::*;
@@ -336,7 +367,7 @@ Provides compile-time code generation for common patterns.
     #[routes]
     pub fn routes() -> UnifiedRouter {
         UnifiedRouter::new()
-            .mount("/api/", api_router())
+            .mount_unified("/api/", api_url_patterns())
     }
     ```
 
