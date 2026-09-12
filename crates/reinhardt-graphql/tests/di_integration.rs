@@ -1,7 +1,8 @@
 //! Integration tests for GraphQL dependency injection
 //!
 //! These tests verify that the `#[graphql_handler]` macro correctly integrates
-//! with the DI system.
+//! with the DI system. Shared mock factories are registered once so parallel
+//! fixtures can safely create independent request contexts.
 
 #![cfg(feature = "di")]
 
@@ -11,7 +12,7 @@ use reinhardt_di::{
 };
 use reinhardt_graphql::{SchemaBuilderExt, graphql_handler};
 use rstest::*;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Once};
 
 /// Mock database connection for testing
 #[derive(Clone)]
@@ -111,17 +112,17 @@ impl User {
 
 /// Register mock types in the global registry for DI resolution.
 fn register_mock_types() {
-	let registry = global_registry();
-	if !registry.is_registered::<MockDatabase>() {
+	static REGISTER: Once = Once::new();
+	// Test fixtures run concurrently; checking and registering must be atomic.
+	REGISTER.call_once(|| {
+		let registry = global_registry();
 		registry.register_async::<MockDatabase, _, _>(DependencyScope::Request, |_ctx| async {
 			Ok(MockDatabase::new())
 		});
-	}
-	if !registry.is_registered::<MockCache>() {
 		registry.register_async::<MockCache, _, _>(DependencyScope::Request, |_ctx| async {
 			Ok(MockCache::new())
 		});
-	}
+	});
 }
 
 /// Fixture: Injection context with database and cache
