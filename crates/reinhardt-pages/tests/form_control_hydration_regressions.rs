@@ -27,6 +27,42 @@ use wasm_bindgen_test::*;
 
 wasm_bindgen_test_configure!(run_in_browser);
 
+#[rstest::rstest]
+#[test_attr(wasm_bindgen_test)]
+#[serial(form_control_hydration_dom)]
+async fn empty_presentation_text_preserves_sibling_alignment_during_hydration() {
+	form_scope::run(async {
+		for text in ["", " ", "\t\n"] {
+			// Arrange
+			let page = PageElement::new("div")
+				.child(Page::text(text))
+				.child(PageElement::new("label").child(Page::text(text)))
+				.child(
+					PageElement::new("select").child(
+						PageElement::new("option")
+							.attr("value", "none")
+							.child(Page::text(text)),
+					),
+				)
+				.child(Page::text("after"))
+				.into_page();
+			let mounted = MountedPage::new();
+			mounted.0.set_inner_html(&page.render_to_string());
+			// Act / Assert
+			assert_eq!(reconcile(&mounted.root(), &page), Ok(()));
+			assert_eq!(
+				reconcile_with_options(&mounted.root(), &page, &ReconcileOptions::default()),
+				Ok(())
+			);
+			assert_eq!(
+				attach_events_to_mounted_view(&mounted.root(), &page),
+				Ok(())
+			);
+		}
+	})
+	.await;
+}
+
 struct MountedPage(web_sys::Element);
 
 impl MountedPage {

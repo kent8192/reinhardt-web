@@ -2,6 +2,8 @@
 //!
 //! This module verifies that SSR-rendered DOM matches the expected
 //! component structure during hydration.
+//! Empty presentation text follows the browser's child-node filtering; textarea
+//! snapshots retain their raw whitespace and line feeds.
 
 use crate::component::Page;
 
@@ -548,6 +550,10 @@ fn reconcile_children_at_path(
 		}
 		return Ok(());
 	}
+	// Match the DOM traversal without discarding raw textarea snapshot content.
+	expected_children.retain(
+		|(_, child)| !matches!(child, Page::Text(text) if normalize_whitespace(text).is_empty()),
+	);
 	let actual_nodes = relevant_child_nodes(element);
 
 	for (index, (child_path, child_view)) in expected_children.iter().enumerate() {
@@ -905,6 +911,9 @@ fn reconcile_options_children_at_path(
 	let children_inside_controlled_select = inside_controlled_select
 		|| matches!(view, Page::Element(element) if is_controlled_select(element));
 	collect_expected_children(child_views, &parent_path, &mut expected_children);
+	expected_children.retain(
+		|(_, child)| !matches!(child, Page::Text(text) if normalize_whitespace(text).is_empty()),
+	);
 
 	for (index, (child_path, child_view)) in expected_children.iter().enumerate() {
 		let Some(actual_node) = actual_nodes.get(index) else {
