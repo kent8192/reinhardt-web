@@ -266,7 +266,9 @@ wasm-bindgen-test = "0.3"
 			&& (output.stderr.contains("no matching package named")
 				|| output.stderr.contains("failed to download")
 				|| output.stderr.contains("attempting to make an HTTP request")
-				|| output.stderr.contains("candidate versions found which didn't match"));
+				|| output
+					.stderr
+					.contains("candidate versions found which didn't match"));
 		if resolution_failed {
 			self.run_once(command.env("CARGO_NET_OFFLINE", "false"))
 		} else {
