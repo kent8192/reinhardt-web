@@ -33,6 +33,7 @@
 //! - [`request`]: Typed HTTP request wrapper with builder pattern and trusted proxy support
 //! - [`response`]: HTTP response with helpers for JSON, streaming, and error responses
 //! - [`middleware`]: Middleware trait and composition chain for request processing
+//! - [`exception`]: Exception handler hook for replacing the default error-to-response conversion
 //! - [`auth_state`]: Authentication state extensions stored in request context
 //! - [`upload`]: File upload handling (in-memory and temporary file backends)
 //! - [`chunked_upload`]: Resumable chunked upload session management
@@ -84,6 +85,8 @@
 pub mod auth_state;
 /// Chunked file upload handling with progress tracking.
 pub mod chunked_upload;
+/// Exception handler hook and adapter for replacing the default error conversion.
+pub mod exception;
 /// Request extension storage for passing data between middleware.
 pub mod extensions;
 /// Flash messages middleware for one-time notifications.
@@ -107,6 +110,7 @@ pub use auth_state::AuthState;
 pub use chunked_upload::{
 	ChunkedUploadError, ChunkedUploadManager, ChunkedUploadSession, UploadProgress,
 };
+pub use exception::{ExceptionHandler, ExceptionHandlingHandler};
 pub use extensions::{Extensions, IsActive, IsAdmin, IsAuthenticated};
 #[cfg(feature = "messages")]
 pub use messages_middleware::MessagesMiddleware;
