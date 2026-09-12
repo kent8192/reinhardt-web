@@ -106,7 +106,7 @@ impl Handler for ServerRouter {
 					// An installed handler answers the request directly. Without
 					// one the error stays an `Err`, which is what callers of a
 					// middleware-free router rely on.
-					let error = routing_error(error_kind, &method.to_string(), &path);
+					let error = routing_error(error_kind, method.as_ref(), &path);
 					return match self.exception_handler.as_ref() {
 						Some(exception_handler) => {
 							Ok(exception_handler.handle_exception(&req, error).await)
