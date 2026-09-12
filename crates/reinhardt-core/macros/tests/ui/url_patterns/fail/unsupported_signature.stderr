@@ -1,0 +1,43 @@
+error: #[url_patterns] requires a safe synchronous function without parameters, generics, const, or extern qualifiers
+ --> tests/ui/url_patterns/fail/unsupported_signature.rs:4:1
+  |
+4 | async fn asynchronous() -> UnifiedRouter {
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: #[url_patterns] requires a safe synchronous function without parameters, generics, const, or extern qualifiers
+ --> tests/ui/url_patterns/fail/unsupported_signature.rs:9:1
+  |
+9 | unsafe fn unsafe_builder() -> UnifiedRouter {
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: #[url_patterns] requires a safe synchronous function without parameters, generics, const, or extern qualifiers
+  --> tests/ui/url_patterns/fail/unsupported_signature.rs:14:1
+   |
+14 | const fn constant_builder() -> UnifiedRouter {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: #[url_patterns] requires a safe synchronous function without parameters, generics, const, or extern qualifiers
+  --> tests/ui/url_patterns/fail/unsupported_signature.rs:19:1
+   |
+19 | extern "C" fn external_builder() -> UnifiedRouter {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: #[url_patterns] requires a safe synchronous function without parameters, generics, const, or extern qualifiers
+  --> tests/ui/url_patterns/fail/unsupported_signature.rs:24:1
+   |
+24 | fn parameter(value: u8) -> UnifiedRouter {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: #[url_patterns] requires a safe synchronous function without parameters, generics, const, or extern qualifiers
+  --> tests/ui/url_patterns/fail/unsupported_signature.rs:29:1
+   |
+29 | fn generic<T>() -> UnifiedRouter {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: #[url_patterns] requires a safe synchronous function without parameters, generics, const, or extern qualifiers
+  --> tests/ui/url_patterns/fail/unsupported_signature.rs:34:1
+   |
+34 | / fn constrained() -> UnifiedRouter
+35 | | where
+36 | |     (): Sized,
+   | |______________^

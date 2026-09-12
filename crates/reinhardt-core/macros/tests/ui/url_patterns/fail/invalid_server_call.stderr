@@ -1,0 +1,17 @@
+error: #[url_patterns] .server(...) requires exactly one argument and no explicit generic arguments
+ --> tests/ui/url_patterns/fail/invalid_server_call.rs:5:2
+  |
+5 |     UnifiedRouter::new().server()
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: #[url_patterns] .server(...) requires exactly one argument and no explicit generic arguments
+  --> tests/ui/url_patterns/fail/invalid_server_call.rs:10:2
+   |
+10 |     UnifiedRouter::new().server(first, second)
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: #[url_patterns] .server(...) requires exactly one argument and no explicit generic arguments
+  --> tests/ui/url_patterns/fail/invalid_server_call.rs:15:2
+   |
+15 |     UnifiedRouter::new().server::<()>(configure)
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

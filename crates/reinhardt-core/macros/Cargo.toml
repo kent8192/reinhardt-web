@@ -12,7 +12,7 @@ authors.workspace = true
 proc-macro = true
 
 [dependencies]
-syn = { workspace = true, features = ["full", "extra-traits"] }
+syn = { workspace = true, features = ["full", "extra-traits", "visit"] }
 quote = { workspace = true }
 proc-macro2 = { workspace = true }
 proc-macro-crate = "3.1"

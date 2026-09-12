@@ -5,6 +5,7 @@
 //! ## Macros
 //!
 //! - `#[routes]` - Register URL pattern function for automatic discovery
+//! - `#[url_patterns]` - Share URL declarations by erasing native-only HTTP builders
 //! - `#[api_view]` - Convert function to API view
 //! - `#[action]` - Define custom ViewSet action
 //! - `#[get]`, `#[post]`, etc. - HTTP method decorators
@@ -56,6 +57,7 @@ pub(crate) mod settings_parser;
 mod settings_schema;
 mod streaming;
 mod streaming_patterns;
+mod url_patterns;
 mod use_inject;
 mod user_attribute;
 mod user_field_mapping;
@@ -83,8 +85,82 @@ use routes_registration::routes_impl;
 mod viewset_macro;
 mod websocket;
 use schema::derive_schema_impl;
+use url_patterns::url_patterns_impl;
 use use_inject::use_inject_impl;
 use user_attribute::user_attribute_impl;
+
+/// Declares shared URL patterns with native-only HTTP registration.
+///
+/// The complete `.server(...)` argument is retained only when the caller has
+/// `cfg(server)` enabled and the target is not browser WASM
+/// (`all(target_family = "wasm", target_os = "unknown")`). Other builds erase
+/// that argument before resolving handler paths or checking their types.
+/// Prefixes, namespaces, client configuration, mounts, and merges keep their
+/// existing target-specific behavior.
+///
+/// Unlike [`routes`](macro@routes), this attribute does not register a router in inventory.
+/// Multiple app functions can use it; keep one project-level `#[routes]` entry
+/// point. Both attributes can be stacked in either order on that root function.
+///
+/// # Supported syntax
+///
+/// The attribute accepts no arguments. Apply it to a safe, synchronous,
+/// parameterless, non-generic function returning `UnifiedRouter` (qualified
+/// paths are supported), without `const` or `extern` qualifiers.
+/// Its body must be one tail expression starting with
+/// `UnifiedRouter::new()` or `UnifiedRouter::default()`, followed by `server`,
+/// `client`, `with_prefix`, `with_namespace`, `mount_unified`, or `merge` calls.
+/// Parentheses are supported. A server call takes exactly one expression and
+/// no explicit generic arguments. Inline nested server builders in preserved
+/// arguments must be extracted into separately annotated functions.
+///
+/// Native imports and capture construction belong inside the server argument
+/// or a cfg-gated module. The attribute cannot erase external imports or
+/// target-independent Cargo dependencies.
+///
+/// # Example
+///
+/// This facade example is exercised by the `url_patterns_target_parity`
+/// consumer fixture in the integration test suite.
+///
+/// ```rust,ignore
+/// use reinhardt::url_patterns;
+/// use reinhardt::urls::prelude::UnifiedRouter;
+///
+/// #[url_patterns]
+/// pub fn url_patterns() -> UnifiedRouter {
+///     UnifiedRouter::new()
+///         .server(|server| {
+///             server
+///                 .endpoint(crate::native_handlers::health)
+///                 .endpoint(crate::native_handlers::protected)
+///         })
+///         .with_namespace("demo")
+/// }
+/// ```
+///
+/// # Caller configuration
+///
+/// Declare `server` in the application's `build.rs`, even when unset, and
+/// enable it for server builds. For a local `server = []` Cargo feature, place
+/// the following inside the build script's `main` function:
+///
+/// ```rust,no_run
+/// println!("cargo::rustc-check-cfg=cfg(server)");
+/// if std::env::var_os("CARGO_FEATURE_SERVER").is_some() {
+///     println!("cargo::rustc-cfg=server");
+/// }
+/// ```
+///
+/// Browser consumers need the facade's `client-router` feature. Setting
+/// `cfg(server)` on browser WASM still leaves native references erased.
+#[proc_macro_attribute]
+pub fn url_patterns(args: TokenStream, input: TokenStream) -> TokenStream {
+	let input = parse_macro_input!(input as ItemFn);
+	url_patterns_impl(args.into(), input)
+		.unwrap_or_else(|error| error.to_compile_error())
+		.into()
+}
 
 /// Decorator for function-based API views
 #[proc_macro_attribute]
