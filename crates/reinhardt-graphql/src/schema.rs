@@ -653,7 +653,11 @@ pub fn create_schema(storage: UserStorage) -> AppSchema {
 /// * `storage` - User data storage
 /// * `limits` - Query protection limits configuration
 pub fn create_schema_with_limits(storage: UserStorage, limits: QueryLimits) -> AppSchema {
-	Schema::build(Query, Mutation, EmptySubscription)
+	#[cfg(feature = "graphql-grpc")]
+	let builder = crate::GraphQLGrpcService::schema_builder(Query, Mutation, EmptySubscription);
+	#[cfg(not(feature = "graphql-grpc"))]
+	let builder = Schema::build(Query, Mutation, EmptySubscription);
+	builder
 		.data(storage)
 		.limit_depth(limits.max_depth)
 		.limit_complexity(limits.max_complexity)
