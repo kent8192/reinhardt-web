@@ -1,0 +1,5 @@
+error: `id` must be nonempty and contain no ASCII whitespace
+ --> tests/ui/client_form/view/fail/invalid_id.rs:9:7
+  |
+9 |         id: "invalid id"
+  |             ^^^^^^^^^^^^
