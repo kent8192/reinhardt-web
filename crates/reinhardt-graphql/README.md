@@ -81,6 +81,11 @@ Users should depend on `` `reinhardt-graphql` `` (this facade crate) for all Gra
   - `execute_query()`: Execute GraphQL queries via unary RPC
   - `execute_mutation()`: Execute GraphQL mutations via unary RPC
   - `execute_subscription()`: Execute GraphQL subscriptions via server streaming RPC
+- **Operation-Class Enforcement**: Each RPC validates the selected operation before
+  execution. Malformed documents, invalid or ambiguous operation selections, and
+  operation-class mismatches return gRPC `INVALID_ARGUMENT` before any resolver
+  runs. Subscription failures are reported as stream errors. Multiple operations
+  require an exact `operation_name`; a single operation may omit it or use an empty name.
 - **Protocol Buffers**: Complete proto definitions in `reinhardt-grpc` crate
   - `GraphQLRequest`: query, variables, operation_name
   - `GraphQLResponse`: data, errors, extensions
@@ -250,8 +255,20 @@ async fn handler(
 
 ### GraphQL over gRPC Server
 
+**Migration:** Replace `Schema::build(...)` or `Schema::new(...)` with
+`GraphQLGrpcService::schema_builder(...).finish()` (keep existing builder calls
+before `finish`). `GraphQLGrpcService::new` rejects schemas without the guard at
+construction time. The built-in `create_schema` helpers install it automatically
+when `graphql-grpc` is enabled.
+
+The guard runs after all `prepare_request` and `parse_query` extensions. Request
+rewrites, persisted documents, and parsing limits therefore retain their normal
+order, while the final selected operation must match the RPC. Schema validation
+and resolver authorization still apply. The finished schema can also serve HTTP
+requests without a gRPC operation restriction.
+
 ```rust
-use async_graphql::{EmptySubscription, Schema};
+use async_graphql::EmptySubscription;
 use reinhardt::graphql::grpc_service::GraphQLGrpcService;
 use reinhardt::graphql::schema::{Mutation, Query, UserStorage};
 use reinhardt::grpc::proto::graphql::graph_ql_service_server::GraphQlServiceServer;
@@ -260,7 +277,7 @@ use tonic::transport::Server;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let storage = UserStorage::new();
-    let schema = Schema::build(Query, Mutation, EmptySubscription)
+    let schema = GraphQLGrpcService::schema_builder(Query, Mutation, EmptySubscription)
         .data(storage)
         .finish();
 
