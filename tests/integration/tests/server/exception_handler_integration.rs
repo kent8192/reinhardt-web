@@ -5,8 +5,11 @@
 //! fixed error shape rather than the framework default.
 
 use async_trait::async_trait;
+// Imported through the facade prelude, mirroring what a generated project's
+// `src/config/urls.rs` sees with `use reinhardt::prelude::*`.
+use reinhardt::prelude::ExceptionHandler;
 use reinhardt_core::exception::Error;
-use reinhardt_http::{ExceptionHandler, Handler, Middleware, Request, Response};
+use reinhardt_http::{Handler, Middleware, Request, Response};
 use reinhardt_urls::routers::ServerRouter;
 use rstest::rstest;
 use std::sync::Arc;
@@ -41,7 +44,10 @@ impl Middleware for RejectingMiddleware {
 		_request: Request,
 		_next: Arc<dyn Handler>,
 	) -> reinhardt_core::exception::Result<Response> {
-		Err(Error::PermissionDenied(
+		// `Error::Authorization` maps to 403 and stands in for the kind of
+		// middleware rejection (CSRF, permission check) that must also reach the
+		// application's handler.
+		Err(Error::Authorization(
 			"token rejected by middleware".to_string(),
 		))
 	}
