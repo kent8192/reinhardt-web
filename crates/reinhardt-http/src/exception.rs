@@ -11,7 +11,7 @@
 use async_trait::async_trait;
 use std::sync::Arc;
 
-use crate::{Error, Handler, Request, Response};
+use crate::{Error, Handler, Request, Response, Result};
 
 /// A strategy for turning a dispatch error into an HTTP response.
 ///
@@ -150,7 +150,10 @@ impl Handler for ExceptionHandlingHandler {
 		let context = request.clone_for_di();
 		match self.inner.handle(request).await {
 			Ok(response) => Ok(response),
-			Err(error) => Ok(self.exception_handler.handle_exception(&context, error).await),
+			Err(error) => Ok(self
+				.exception_handler
+				.handle_exception(&context, error)
+				.await),
 		}
 	}
 }
@@ -348,7 +351,10 @@ mod tests {
 		);
 
 		// Act
-		let response = handler.handle(build_request(Method::GET, "/")).await.unwrap();
+		let response = handler
+			.handle(build_request(Method::GET, "/"))
+			.await
+			.unwrap();
 
 		// Assert
 		assert_eq!(response.status, StatusCode::OK);
@@ -372,7 +378,10 @@ mod tests {
 		);
 
 		// Act
-		handler.handle(build_request(Method::GET, "/")).await.unwrap();
+		handler
+			.handle(build_request(Method::GET, "/"))
+			.await
+			.unwrap();
 
 		// Assert
 		assert_eq!(*calls.lock().unwrap(), 1);

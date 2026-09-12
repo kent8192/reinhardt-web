@@ -42,7 +42,7 @@
 //! ```
 
 use async_trait::async_trait;
-use reinhardt_core::exception::Result;
+use reinhardt_core::exception::{Error, Result};
 use std::any::{Any, TypeId};
 use std::sync::Arc;
 
@@ -346,12 +346,12 @@ impl Handler for MiddlewareChain {
 				let context = capture_exception_context(self.exception_handler.as_ref(), &request);
 				return match self.handler.handle(request).await {
 					Ok(response) => Ok(response),
-					Err(e) => Ok(convert_error(
-						self.exception_handler.as_ref(),
-						context.as_ref(),
-						e,
-					)
-					.await),
+					Err(e) => {
+						Ok(
+							convert_error(self.exception_handler.as_ref(), context.as_ref(), e)
+								.await,
+						)
+					}
 				};
 			}
 
@@ -362,9 +362,7 @@ impl Handler for MiddlewareChain {
 			});
 			let response = match middleware.process(request, next).await {
 				Ok(response) => response,
-				Err(e) => {
-					convert_error(self.exception_handler.as_ref(), context.as_ref(), e).await
-				}
+				Err(e) => convert_error(self.exception_handler.as_ref(), context.as_ref(), e).await,
 			};
 			return Ok(response);
 		}
@@ -510,9 +508,8 @@ fn capture_exception_context(
 	exception_handler: Option<&Arc<dyn ExceptionHandler>>,
 	request: &Request,
 ) -> Option<Request> {
-	if exception_handler.is_none() {
-		return None;
-	}
+	// Bail out before cloning when no handler is installed.
+	exception_handler?;
 	Some(request.clone_for_di())
 }
 
@@ -547,12 +544,7 @@ impl Handler for ErrorToResponseHandler {
 		let context = capture_exception_context(self.exception_handler.as_ref(), &request);
 		match self.inner.handle(request).await {
 			Ok(response) => Ok(response),
-			Err(e) => Ok(convert_error(
-				self.exception_handler.as_ref(),
-				context.as_ref(),
-				e,
-			)
-			.await),
+			Err(e) => Ok(convert_error(self.exception_handler.as_ref(), context.as_ref(), e).await),
 		}
 	}
 }
@@ -577,9 +569,7 @@ impl Handler for ConditionalComposedHandler {
 		let context = capture_exception_context(self.exception_handler.as_ref(), &request);
 		let response = match self.middleware.process(request, self.next.clone()).await {
 			Ok(response) => response,
-			Err(e) => {
-				convert_error(self.exception_handler.as_ref(), context.as_ref(), e).await
-			}
+			Err(e) => convert_error(self.exception_handler.as_ref(), context.as_ref(), e).await,
 		};
 
 		Ok(response)
@@ -1241,10 +1231,7 @@ mod tests {
 
 		// Assert
 		assert_eq!(response.status, hyper::StatusCode::IM_A_TEAPOT);
-		assert_eq!(
-			String::from_utf8(response.body.to_vec()).unwrap(),
-			"teapot"
-		);
+		assert_eq!(String::from_utf8(response.body.to_vec()).unwrap(), "teapot");
 	}
 
 	#[rstest]
@@ -1290,10 +1277,7 @@ mod tests {
 
 		// Assert
 		assert_eq!(response.status, hyper::StatusCode::IM_A_TEAPOT);
-		assert_eq!(
-			String::from_utf8(response.body.to_vec()).unwrap(),
-			"teapot"
-		);
+		assert_eq!(String::from_utf8(response.body.to_vec()).unwrap(), "teapot");
 	}
 
 	#[rstest]
