@@ -2,8 +2,8 @@
 //!
 //! This module verifies that SSR-rendered DOM matches the expected
 //! component structure during hydration.
-//! Empty presentation text follows the browser's child-node filtering; textarea
-//! snapshots retain their raw whitespace and line feeds.
+//! Empty presentation text follows the browser's child-node filtering; raw-text
+//! snapshots such as `textarea` and `pre` retain their whitespace and line feeds.
 
 use crate::component::Page;
 
@@ -523,12 +523,13 @@ fn reconcile_children_at_path(
 ) -> Result<(), ReconcileError> {
 	let mut expected_children = Vec::new();
 	collect_expected_children(child_views, &path, &mut expected_children);
-	if element.tag_name().eq_ignore_ascii_case("textarea")
+	if (element.tag_name().eq_ignore_ascii_case("textarea")
+		|| element.tag_name().eq_ignore_ascii_case("pre"))
 		&& expected_children
 			.iter()
 			.all(|(_, view)| matches!(view, Page::Text(_)))
 	{
-		// Textarea snapshots retain whitespace, including an absent empty text node.
+		// Raw-text snapshots retain whitespace, including an absent empty text node.
 		let expected: String = expected_children
 			.iter()
 			.filter_map(|(_, view)| {

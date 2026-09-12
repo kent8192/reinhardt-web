@@ -63,6 +63,32 @@ async fn empty_presentation_text_preserves_sibling_alignment_during_hydration() 
 	.await;
 }
 
+#[rstest::rstest]
+#[test_attr(wasm_bindgen_test)]
+#[serial(form_control_hydration_dom)]
+async fn pre_whitespace_mismatch_is_not_filtered_during_hydration() {
+	form_scope::run(async {
+		// Arrange: whitespace is meaningful content inside a preformatted element.
+		let page = PageElement::new("pre").child(Page::text("\t")).into_page();
+		let mounted = MountedPage::new();
+		mounted.0.set_inner_html("<pre> </pre>");
+
+		// Act
+		let result = reconcile(&mounted.root(), &page);
+
+		// Assert: a whitespace-only difference remains a hydration mismatch.
+		let Err(ReconcileError::TextMismatch {
+			expected, actual, ..
+		}) = result
+		else {
+			panic!("expected pre text mismatch, got {result:?}");
+		};
+		assert_eq!(expected, "\t");
+		assert_eq!(actual, " ");
+	})
+	.await;
+}
+
 struct MountedPage(web_sys::Element);
 
 impl MountedPage {
