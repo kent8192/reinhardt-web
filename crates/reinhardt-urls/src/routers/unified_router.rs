@@ -51,6 +51,10 @@ use crate::routers::client_router::ClientRouter;
 use reinhardt_core::exception::Result;
 #[cfg(native)]
 use reinhardt_di::InjectionContext;
+// Both `UnifiedRouter` variants install an exception handler, so this import is
+// gated on `native` alone rather than on the `client-router` feature.
+#[cfg(native)]
+use reinhardt_http::ExceptionHandler;
 #[cfg(all(native, not(feature = "client-router")))]
 use reinhardt_http::{Request, Response};
 #[cfg(native)]
@@ -334,6 +338,15 @@ impl UnifiedRouter {
 		self
 	}
 
+	/// Install an exception handler for errors raised while serving requests.
+	///
+	/// This is a convenience method that delegates to
+	/// [`ServerRouter::with_exception_handler`].
+	pub fn with_exception_handler(mut self, exception_handler: Arc<dyn ExceptionHandler>) -> Self {
+		self.server = self.server.with_exception_handler(exception_handler);
+		self
+	}
+
 	/// Exclude a URL path from the most recently added server middleware.
 	///
 	/// This is a convenience method that delegates to [`ServerRouter::exclude`].
@@ -577,6 +590,15 @@ impl UnifiedRouter {
 		self
 	}
 
+	/// Install an exception handler for errors raised while serving requests.
+	///
+	/// This is a convenience method that delegates to
+	/// [`ServerRouter::with_exception_handler`].
+	pub fn with_exception_handler(mut self, exception_handler: Arc<dyn ExceptionHandler>) -> Self {
+		self.server = self.server.with_exception_handler(exception_handler);
+		self
+	}
+
 	/// Mount a child server router on this router.
 	pub fn mount(mut self, prefix: &str, child: ServerRouter) -> Self {
 		self.server = self.server.mount(prefix, child);
@@ -679,6 +701,11 @@ impl ServerRouter {
 		self
 	}
 
+	/// No-op for `ServerRouter::with_exception_handler`.
+	pub fn with_exception_handler<H>(self, _exception_handler: H) -> Self {
+		self
+	}
+
 	/// No-op for `ServerRouter::with_middleware`.
 	pub fn with_middleware<M>(self, _middleware: M) -> Self {
 		self
@@ -774,6 +801,7 @@ const _: fn() = || {
 			s.with_prefix("/api")
 				.with_namespace("api")
 				.with_di_context(())
+				.with_exception_handler(())
 				.with_middleware(())
 				.with_route_middleware(())
 				.exclude("/internal")

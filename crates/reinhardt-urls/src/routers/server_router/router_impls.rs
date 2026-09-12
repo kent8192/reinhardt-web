@@ -8,7 +8,9 @@ use super::ServerRouter;
 #[cfg(feature = "viewsets")]
 use super::types::ViewRoute;
 use async_trait::async_trait;
-use reinhardt_http::{Error, Handler, MiddlewareChain, Request, Response, Result};
+use reinhardt_http::{
+	Error, ExceptionHandlingHandler, Handler, MiddlewareChain, Request, Response, Result,
+};
 use std::sync::Arc;
 
 impl std::fmt::Debug for ServerRouter {
@@ -35,16 +37,37 @@ impl Default for ServerRouter {
 	}
 }
 
-/// Handler that always returns a pre-built response.
+/// The kind of routing failure produced when no route matches a request.
+#[derive(Clone, Copy)]
+enum RoutingErrorKind {
+	NotFound,
+	MethodNotAllowed,
+}
+
+fn routing_error(kind: RoutingErrorKind, method: &str, path: &str) -> Error {
+	match kind {
+		RoutingErrorKind::MethodNotAllowed => {
+			Error::MethodNotAllowed(format!("Method {method} not allowed for {path}"))
+		}
+		RoutingErrorKind::NotFound => Error::NotFound(format!("No route for {method} {path}")),
+	}
+}
+
+/// Handler that returns the routing error for the current request.
 ///
-/// Used internally to route framework-level error responses (404/405)
-/// through the middleware chain for post-processing. (#3234)
-struct FixedResponseHandler(Response);
+/// Keeping the error as an `Err` until the middleware chain reaches this
+/// handler lets middleware short-circuit an unmatched request without first
+/// invoking the exception handler for a response that will be discarded.
+struct RoutingErrorHandler {
+	kind: RoutingErrorKind,
+	method: String,
+	path: String,
+}
 
 #[async_trait]
-impl Handler for FixedResponseHandler {
+impl Handler for RoutingErrorHandler {
 	async fn handle(&self, _request: Request) -> Result<Response> {
-		Ok(self.0.clone())
+		Err(routing_error(self.kind, &self.method, &self.path))
 	}
 }
 
@@ -52,36 +75,69 @@ impl Handler for FixedResponseHandler {
 #[async_trait]
 impl Handler for ServerRouter {
 	async fn handle(&self, mut req: Request) -> Result<Response> {
-		let path = req.uri.path();
-		let method = &req.method;
+		let path = req.uri.path().to_owned();
+		let method = req.method.clone();
 
 		// Resolve route with HTTP method for matchit routing
-		let route_match = match self.resolve(path, method) {
+		let route_match = match self.resolve(&path, &method) {
 			Some(m) => m,
 			None => {
 				// Route not found for this method
 				// Check if path exists for any other method to determine 404 vs 405
-				let error = if self.path_exists_for_any_method(path) {
-					Error::MethodNotAllowed(format!("Method {} not allowed for {}", method, path))
+				let error_kind = if self.path_exists_for_any_method(&path) {
+					RoutingErrorKind::MethodNotAllowed
 				} else {
-					Error::NotFound(format!("No route for {} {}", method, path))
+					RoutingErrorKind::NotFound
 				};
+
+				// The route match normally installs the route's DI context below.
+				// Unmatched requests have no `RouteMatch`, so install the router
+				// context before an exception handler or router middleware observes
+				// the request.
+				if let Some(di_ctx) = &self.di_context {
+					req.set_di_context(di_ctx.clone());
+				}
 
 				// If router has middleware, route the error response through the
 				// middleware chain so post-processing (e.g., security headers) is
 				// applied to framework-level 404/405 responses. (#3234)
 				let own_middleware = self.build_middleware_with_exclusions();
 				if own_middleware.is_empty() {
-					return Err(error);
+					// An installed handler answers the request directly. Without
+					// one the error stays an `Err`, which is what callers of a
+					// middleware-free router rely on.
+					let error = routing_error(error_kind, method.as_ref(), &path);
+					return match self.exception_handler.as_ref() {
+						Some(exception_handler) => {
+							Ok(exception_handler.handle_exception(&req, error).await)
+						}
+						None => Err(error),
+					};
 				}
 
-				let response = Response::from(error);
-				let handler: Arc<dyn Handler> = Arc::new(FixedResponseHandler(response));
+				// Keep the routing error as an `Err` so the chain's exception
+				// handler runs only when middleware calls the inner handler. This
+				// preserves #3234 post-processing while avoiding duplicate custom
+				// responses when middleware rejects the request first.
+				let handler: Arc<dyn Handler> = Arc::new(RoutingErrorHandler {
+					kind: error_kind,
+					method: method.to_string(),
+					path,
+				});
 				let chain = own_middleware
 					.iter()
 					.fold(MiddlewareChain::new(handler), |chain, mw| {
 						chain.with_middleware(mw.clone())
 					});
+				// A middleware in this chain can fail too (a CSRF or permission
+				// rejection on an unmatched path), and that error must use the same
+				// handler as the 404/405 body above.
+				let chain = match self.exception_handler.as_ref() {
+					Some(exception_handler) => {
+						chain.with_exception_handler(Arc::clone(exception_handler))
+					}
+					None => chain,
+				};
 				return chain.handle(req).await;
 			}
 		};
@@ -93,15 +149,32 @@ impl Handler for ServerRouter {
 			req.set_di_context(di_ctx.clone());
 		}
 
+		// Route the matched handler's errors through an installed handler before
+		// the middleware chain wraps it. Without one the handler is used as-is, so
+		// the default conversion is unchanged.
+		let route_handler: Arc<dyn Handler> = match self.exception_handler.as_ref() {
+			Some(exception_handler) => Arc::new(ExceptionHandlingHandler::new(
+				route_match.handler.clone(),
+				Arc::clone(exception_handler),
+			)),
+			None => route_match.handler.clone(),
+		};
+
 		// Apply middleware stack using MiddlewareChain
 		if route_match.middleware_stack.is_empty() {
 			// No middleware, execute handler directly
-			route_match.handler.handle(req).await
+			route_handler.handle(req).await
 		} else {
-			let chain = MiddlewareChain::with_middlewares(
-				route_match.handler.clone(),
-				route_match.middleware_stack,
-			);
+			// The chain also converts errors raised by middleware itself, so it
+			// needs the handler independently of the adapter above.
+			let chain =
+				MiddlewareChain::with_middlewares(route_handler, route_match.middleware_stack);
+			let chain = match self.exception_handler.as_ref() {
+				Some(exception_handler) => {
+					chain.with_exception_handler(Arc::clone(exception_handler))
+				}
+				None => chain,
+			};
 
 			// Execute chain
 			chain.handle(req).await

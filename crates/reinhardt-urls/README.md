@@ -96,6 +96,28 @@ if let Some((handler, params)) = router.match_request(&request) {
 }
 ```
 
+### Router Exception Handling
+
+`ServerRouter::with_exception_handler` installs an application-defined
+response hook for unmatched routes (404), method mismatches (405), handler
+errors, and router middleware errors. `UnifiedRouter` exposes the same builder
+method for shared server/client route declarations:
+
+```rust
+use reinhardt::http::{ExceptionHandler, Error, Request, Response};
+use reinhardt::urls::routers::ServerRouter;
+use std::sync::Arc;
+
+let router = ServerRouter::new()
+    .with_exception_handler(Arc::new(MyExceptionHandler));
+```
+
+The hook runs only for errors that reach the configured router or middleware
+chain. Custom responses must set their own safe body and security headers;
+the default conversion hides internal details and sets
+`X-Content-Type-Options: nosniff`. Avoid copying an error's `Display` output
+into a public response without reviewing it for sensitive data.
+
 ### URL Reversal
 
 ```rust

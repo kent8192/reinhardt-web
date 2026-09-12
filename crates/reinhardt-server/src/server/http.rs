@@ -6,7 +6,9 @@ use hyper::server::conn::http1;
 use hyper::service::Service;
 use hyper_util::rt::TokioIo;
 use reinhardt_di::InjectionContext;
-use reinhardt_http::{Handler, Middleware, MiddlewareChain};
+use reinhardt_http::{
+	ExceptionHandler, ExceptionHandlingHandler, Handler, Middleware, MiddlewareChain,
+};
 use reinhardt_http::{Request, Response};
 use std::future::Future;
 use std::net::SocketAddr;
@@ -21,6 +23,9 @@ pub struct HttpServer {
 	handler: Arc<dyn Handler>,
 	pub(crate) middlewares: Vec<Arc<dyn Middleware>>,
 	di_context: Option<Arc<InjectionContext>>,
+	/// Applied instead of the default `Response::from` conversion when a request
+	/// fails. Set through [`HttpServer::with_exception_handler`].
+	exception_handler: Option<Arc<dyn ExceptionHandler>>,
 }
 
 impl HttpServer {
@@ -49,7 +54,50 @@ impl HttpServer {
 			handler: Arc::new(handler),
 			middlewares: Vec::new(),
 			di_context: None,
+			exception_handler: None,
 		}
+	}
+
+	/// Installs an exception handler for every failure this server produces.
+	///
+	/// Covers errors from the wrapped handler and errors raised by middleware
+	/// registered with [`HttpServer::with_middleware`]. Without one, errors are
+	/// converted by `impl From<Error> for Response`.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use async_trait::async_trait;
+	/// use hyper::StatusCode;
+	/// use reinhardt_http::{Error, ExceptionHandler, Request, Response};
+	/// use reinhardt_server::server::HttpServer;
+	/// use std::sync::Arc;
+	///
+	/// struct TeapotErrors;
+	///
+	/// #[async_trait]
+	/// impl ExceptionHandler for TeapotErrors {
+	///     async fn handle_exception(&self, _request: &Request, _error: Error) -> Response {
+	///         Response::new(StatusCode::IM_A_TEAPOT)
+	///     }
+	/// }
+	///
+	/// struct MyHandler;
+	///
+	/// #[async_trait]
+	/// impl reinhardt_http::Handler for MyHandler {
+	///     async fn handle(&self, _request: Request) -> reinhardt_core::exception::Result<Response> {
+	///         Ok(Response::ok())
+	///     }
+	/// }
+	///
+	/// let server = HttpServer::new(MyHandler)
+	///     .with_exception_handler(Arc::new(TeapotErrors));
+	/// # let _ = server;
+	/// ```
+	pub fn with_exception_handler(mut self, exception_handler: Arc<dyn ExceptionHandler>) -> Self {
+		self.exception_handler = Some(exception_handler);
+		self
 	}
 
 	/// Add a middleware to the server using builder pattern
@@ -131,11 +179,26 @@ impl HttpServer {
 	///
 	/// This creates a MiddlewareChain that wraps the handler with all configured middlewares.
 	fn build_handler(&self) -> Arc<dyn Handler> {
+		// Route the wrapped handler's errors through an installed handler. This is
+		// what covers the no-middleware case, where no chain exists to convert them.
+		let handler: Arc<dyn Handler> = match self.exception_handler.as_ref() {
+			Some(exception_handler) => Arc::new(ExceptionHandlingHandler::new(
+				self.handler.clone(),
+				Arc::clone(exception_handler),
+			)),
+			None => self.handler.clone(),
+		};
+
 		if self.middlewares.is_empty() {
-			return self.handler.clone();
+			return handler;
 		}
 
-		let mut chain = MiddlewareChain::new(self.handler.clone());
+		// The chain converts errors raised by middleware itself, so it needs the
+		// handler independently of the adapter above.
+		let mut chain = MiddlewareChain::new(handler);
+		if let Some(exception_handler) = self.exception_handler.as_ref() {
+			chain = chain.with_exception_handler(Arc::clone(exception_handler));
+		}
 		for middleware in &self.middlewares {
 			chain.add_middleware(middleware.clone());
 		}
@@ -691,5 +754,113 @@ mod tests {
 			!body.contains(leaked_fragment),
 			"Response body must not contain internal details '{leaked_fragment}', but got: {body}"
 		);
+	}
+
+	// ==========================================================================
+	// Exception handler installation (Issue #6294)
+	// ==========================================================================
+
+	use reinhardt_http::Middleware;
+
+	/// Exception handler producing a body identifiable in assertions.
+	struct TeapotErrors;
+
+	#[async_trait::async_trait]
+	impl ExceptionHandler for TeapotErrors {
+		async fn handle_exception(
+			&self,
+			_request: &Request,
+			_error: reinhardt_core::exception::Error,
+		) -> Response {
+			Response::new(StatusCode::IM_A_TEAPOT).with_body("teapot")
+		}
+	}
+
+	/// Middleware that always fails before reaching the next handler.
+	struct FailingMiddleware;
+
+	#[async_trait::async_trait]
+	impl Middleware for FailingMiddleware {
+		async fn process(
+			&self,
+			_request: Request,
+			_next: Arc<dyn Handler>,
+		) -> reinhardt_core::exception::Result<Response> {
+			Err(reinhardt_core::exception::Error::Internal(
+				"middleware failed".to_string(),
+			))
+		}
+	}
+
+	fn build_request() -> Request {
+		Request::builder()
+			.method(hyper::Method::GET)
+			.uri("/")
+			.version(hyper::Version::HTTP_11)
+			.headers(hyper::HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap()
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_server_exception_handler_converts_handler_error() {
+		// Arrange
+		let server = HttpServer::new(ErrorHandler {
+			error_message: "database unavailable".to_string(),
+		})
+		.with_exception_handler(Arc::new(TeapotErrors));
+		let handler = server.build_handler();
+
+		// Act
+		let response = handler
+			.handle(build_request())
+			.await
+			.unwrap_or_else(Response::from);
+
+		// Assert
+		assert_eq!(response.status, StatusCode::IM_A_TEAPOT);
+		assert_eq!(String::from_utf8(response.body.to_vec()).unwrap(), "teapot");
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_server_exception_handler_converts_middleware_error() {
+		// Arrange: a succeeding handler behind a failing middleware, so a 418 can
+		// only come from the chain converting the middleware's error
+		let server = HttpServer::new(TestHandler)
+			.with_middleware(FailingMiddleware)
+			.with_exception_handler(Arc::new(TeapotErrors));
+		let handler = server.build_handler();
+
+		// Act
+		let response = handler
+			.handle(build_request())
+			.await
+			.unwrap_or_else(Response::from);
+
+		// Assert
+		assert_eq!(response.status, StatusCode::IM_A_TEAPOT);
+		assert_eq!(String::from_utf8(response.body.to_vec()).unwrap(), "teapot");
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_server_without_exception_handler_keeps_default_conversion() {
+		// Arrange
+		let server = HttpServer::new(ErrorHandler {
+			error_message: "database unavailable".to_string(),
+		});
+		let handler = server.build_handler();
+
+		// Act
+		let response = handler
+			.handle(build_request())
+			.await
+			.unwrap_or_else(Response::from);
+
+		// Assert: the default conversion maps Error::Database to a bare 500
+		assert_eq!(response.status, StatusCode::INTERNAL_SERVER_ERROR);
 	}
 }
