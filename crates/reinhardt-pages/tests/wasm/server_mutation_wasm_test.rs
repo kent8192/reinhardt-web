@@ -84,6 +84,80 @@ struct FetchGuard {
 }
 
 impl FetchGuard {
+	fn for_page_cluster() -> Self {
+		let guard = Self::install();
+		let global = js_sys::global();
+		Reflect::set(
+			global.as_ref(),
+			&JsValue::from_str("__reinhardtPageClusterEndpoint"),
+			&JsValue::from_str(&reinhardt_pages::server_fn::resolve_endpoint(
+				"/api/server_fn/create_page_cluster",
+			)),
+		)
+		.expect("install page endpoint");
+		Reflect::set(
+			global.as_ref(),
+			&JsValue::from_str("__reinhardtPageClusterResolvers"),
+			&js_sys::Array::new(),
+		)
+		.expect("install page resolvers");
+		let stub = Function::new_no_args(
+			r#"return function(request) {
+    const expected = new URL(globalThis.__reinhardtPageClusterEndpoint,
+                             window.location.href).pathname;
+    if (new URL(request.url, window.location.href).pathname !== expected) {
+        throw new Error(`unexpected page endpoint: ${request.url}`);
+    }
+    globalThis.__reinhardtCreateClusterRequests += 1;
+    const ordinal = globalThis.__reinhardtCreateClusterRequests;
+    return request.clone().text().then(body => {
+        globalThis.__reinhardtCreateClusterBodies.push(body);
+        return new Promise(resolve => {
+            globalThis.__reinhardtPageClusterResolvers.push(() => {
+                if (ordinal === 1) {
+                    resolve(new Response(JSON.stringify({
+                        version: 1,
+                        kind: 'validation',
+                        status: 422,
+                        message: 'Validation failed',
+                        field_errors: [
+                            { field: 'name', message: 'Name is already used' },
+                            { field: '_all', message: 'Cluster cannot be created' },
+                            { field: 'org_id', message: 'Organization is unavailable' },
+                            { field: 'unknown', message: 'Unknown field failure' }
+                        ]
+                    }), { status: 422 }));
+                } else {
+                    resolve(new Response(JSON.stringify({ token: 'one-time-token' }),
+                                         { status: 200 }));
+                }
+            });
+        });
+    });
+};"#,
+		)
+		.call0(&JsValue::NULL)
+		.expect("build page fetch stub");
+		Reflect::set(guard.window.as_ref(), &JsValue::from_str("fetch"), &stub)
+			.expect("install page fetch stub");
+		guard
+	}
+
+	fn release_page_requests(&self) {
+		if let Ok(value) = Reflect::get(
+			js_sys::global().as_ref(),
+			&JsValue::from_str("__reinhardtPageClusterResolvers"),
+		) && let Ok(resolvers) = value.dyn_into::<js_sys::Array>()
+		{
+			for resolver in resolvers.iter() {
+				if let Some(resolver) = resolver.dyn_ref::<Function>() {
+					let _ = resolver.call0(&JsValue::NULL);
+				}
+			}
+			resolvers.set_length(0);
+		}
+	}
+
 	fn install() -> Self {
 		let window = web_sys::window().expect("browser window");
 		let global = js_sys::global();
@@ -282,6 +356,7 @@ impl FetchGuard {
 
 impl Drop for FetchGuard {
 	fn drop(&mut self) {
+		self.release_page_requests();
 		let global = js_sys::global();
 		let _ = Reflect::set(
 			self.window.as_ref(),
@@ -289,6 +364,8 @@ impl Drop for FetchGuard {
 			&self.previous_fetch,
 		);
 		for key in [
+			"__reinhardtPageClusterEndpoint",
+			"__reinhardtPageClusterResolvers",
 			"__reinhardtCreateClusterEndpoint",
 			"__reinhardtUpdateClusterEndpoint",
 			"__reinhardtDeleteClusterEndpoint",
@@ -334,6 +411,7 @@ async fn wait_until(
 }
 
 async fn settle_browser() {
+	reinhardt_pages::reactive::with_runtime(|runtime| runtime.flush_updates());
 	defer_yield().await;
 	TimeoutFuture::new(0).await;
 	TimeoutFuture::new(0).await;
@@ -990,3 +1068,499 @@ async fn disposing_the_owner_scope_blocks_completion_callbacks_and_side_effects(
 	assert_eq!(completion_calls.get(), 0);
 	assert_eq!(side_effect_calls.get(), 0);
 }
+
+#[reinhardt_macros::model(
+    app_label = "pages",
+    table_name = "mutation_page_clusters",
+    form(name = ClusterCreateForm, fields(name, api_url)),
+    info = false
+)]
+struct PageCluster {
+	#[field(primary_key = true)]
+	id: i64,
+	org_id: String,
+	#[field(max_length = 120)]
+	#[form(trim)]
+	name: String,
+	api_url: String,
+	token: String,
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
+struct ClusterTokenInfo {
+	token: String,
+}
+
+#[server_fn(model_form = true)]
+async fn create_page_cluster(
+	payload: ClusterCreateFormData,
+) -> Result<ClusterTokenInfo, ServerFnError> {
+	let _ = payload;
+	Ok(ClusterTokenInfo {
+		token: "native-unreachable".into(),
+	})
+}
+
+fn edit_input(input: &web_sys::HtmlInputElement, value: &str) {
+	input.set_value(value);
+	input
+		.dispatch_event(&web_sys::Event::new("input").expect("input event"))
+		.expect("dispatch input");
+}
+
+fn dispatch_submit(form: &web_sys::HtmlFormElement) {
+	let event = Function::new_no_args(
+		"return new SubmitEvent('submit', {cancelable: true, bubbles: true});",
+	)
+	.call0(&JsValue::NULL)
+	.unwrap()
+	.dyn_into::<web_sys::Event>()
+	.unwrap();
+	assert!(!(form.dispatch_event(&event).expect("dispatch submit")));
+	assert!(event.default_prevented());
+}
+
+#[wasm_bindgen_test(async)]
+#[serial(server_mutation_globals)]
+async fn named_mutation_page_preserves_runtime_dom_and_typed_result() {
+	let root = BodyRoot::new("named-mutation-page");
+	let fetch = FetchGuard::for_page_cluster();
+	let scope = ReactiveScope::new();
+	let client = QueryClient::new(QueryDefaults::default());
+	let runtime_success = Rc::new(Cell::new(0));
+	let mutation_success = Rc::new(Cell::new(0));
+	let mutation_errors = Rc::new(Cell::new(0));
+	let list_requests = Rc::new(Cell::new(0));
+	let (_list, form, runtime, action) = scope.enter(|| {
+		let list = client.observe_for_test(
+			CLUSTER_LIST_QUERY.query((), {
+				let calls = list_requests.clone();
+				move || {
+					calls.set(calls.get() + 1);
+					async { Ok::<Vec<String>, String>(Vec::new()) }
+				}
+			}),
+			QueryOptions::new(),
+		);
+		let form = form! {
+			name: CreateClusterPageForm,
+			model_form: ClusterCreateForm,
+			server_fn: create_page_cluster,
+			overrides: {
+				name: {
+					label: "Name",
+					help_text: "For example: prod-us-east"
+				},
+				api_url: {
+					label: "API URL",
+					help_text: "Use the Kubernetes API URL"
+				},
+			},
+		};
+		let runtime = use_form(&form)
+			.on_submit_success({
+				let calls = runtime_success.clone();
+				let client = client.clone();
+				move |_| {
+					calls.set(calls.get() + 1);
+					client.invalidate_family(CLUSTER_LIST_QUERY);
+				}
+			})
+			.build();
+		let action = form
+			.server_mutation(&runtime)
+			.reset_form_on_success()
+			.on_success({
+				let calls = mutation_success.clone();
+				move |_| calls.set(calls.get() + 1)
+			})
+			.on_error({
+				let calls = mutation_errors.clone();
+				move |_| calls.set(calls.get() + 1)
+			})
+			.build();
+		let generated = action.page();
+		let result_action = action.clone();
+		let dismissal_action = action.clone();
+		PageElement::new("section")
+			.child(generated)
+			.child(Page::reactive(move || {
+				result_action
+					.result()
+					.map(|token: ClusterTokenInfo| {
+						PageElement::new("output")
+							.attr("id", "created-token")
+							.child(token.token)
+							.into_page()
+					})
+					.unwrap_or(Page::Empty)
+			}))
+			.child(
+				PageElement::new("button")
+					.attr("type", "button")
+					.attr("id", "dismiss-token")
+					.child("Dismiss")
+					.on(
+						reinhardt_pages::event::KnownEvent::Click,
+						reinhardt_pages::typed_event_handler::<reinhardt_pages::event::ClickEvent, _>(
+							move |_| dismissal_action.reset(),
+						),
+					),
+			)
+			.into_page()
+			.mount(&Element::new(root.element.clone()))
+			.expect("mount page");
+		(list, form, runtime, action)
+	});
+	wait_until(
+		&fetch,
+		"initial list query",
+		|| list_requests.get() == 1,
+		|| format!("{:?}", action.phase()),
+	)
+	.await;
+	let form_node = root
+		.element
+		.query_selector("form")
+		.expect("form query")
+		.expect("generated form")
+		.dyn_into::<web_sys::HtmlFormElement>()
+		.expect("form");
+	let name = root
+		.element
+		.query_selector("input[name=name]")
+		.expect("name query")
+		.expect("name input")
+		.dyn_into::<web_sys::HtmlInputElement>()
+		.expect("input");
+	let api_url = root
+		.element
+		.query_selector("input[name=api_url]")
+		.expect("URL query")
+		.expect("URL input")
+		.dyn_into::<web_sys::HtmlInputElement>()
+		.expect("input");
+	let submit = form_node
+		.query_selector("button[type=submit]")
+		.expect("submit query")
+		.expect("submit button")
+		.dyn_into::<web_sys::HtmlButtonElement>()
+		.expect("button");
+	let reset = form_node
+		.query_selector("button[type=button]")
+		.expect("reset query")
+		.expect("reset button")
+		.dyn_into::<web_sys::HtmlButtonElement>()
+		.expect("button");
+	let selected = form_node
+		.query_selector_all("input[name]:not([type=hidden])")
+		.expect("selected fields");
+	let names: Vec<_> = (0..selected.length())
+		.map(|index| {
+			selected
+				.item(index)
+				.expect("selected input")
+				.dyn_into::<web_sys::HtmlInputElement>()
+				.expect("input")
+				.name()
+		})
+		.collect();
+	assert_eq!(names, vec!["name", "api_url"]);
+	assert_eq!(
+		root.element
+			.query_selector_all("[name=org_id],[name=token]")
+			.expect("server-owned fields")
+			.length(),
+		0
+	);
+
+	// Dispatch a submit event directly to test client validation independently of
+	// browser constraint-validation UI.
+	dispatch_submit(&form_node);
+	settle_browser().await;
+	assert_eq!(fetch.create_requests(), 0);
+	assert!(!(runtime.form_state().field_errors.get().is_empty()));
+	assert_eq!(runtime_success.get(), 0);
+	assert_eq!(mutation_success.get(), 0);
+
+	name.focus().expect("focus name");
+	edit_input(&name, "  existing  ");
+	edit_input(&api_url, "https://kubernetes.example.com:6443");
+	assert_eq!(form.value("name"), Some(serde_json::json!("  existing  ")));
+	for _ in 0..2 {
+		dispatch_submit(&form_node);
+	}
+	wait_until(
+		&fetch,
+		"one pending create",
+		|| fetch.create_bodies().len() == 1,
+		|| format!("{:?}", action.phase()),
+	)
+	.await;
+	settle_browser().await;
+	assert_eq!(fetch.create_requests(), 1);
+	assert!(action.is_pending());
+	assert!(submit.disabled(), "pending button: {}", submit.outer_html());
+	assert_eq!(name.value(), "  existing  ");
+	assert_eq!(
+		serde_json::from_str::<serde_json::Value>(&fetch.create_bodies()[0]).unwrap(),
+		serde_json::json!({"payload": {
+			"name": "existing", "api_url": "https://kubernetes.example.com:6443"
+		}})
+	);
+	fetch.release_page_requests();
+	wait_until(
+		&fetch,
+		"structured failure",
+		|| mutation_errors.get() == 1,
+		|| format!("{:?}", action.phase()),
+	)
+	.await;
+	settle_browser().await;
+	assert_eq!(
+		runtime.get_field_state(ClusterCreateFormField::Name).error,
+		Some(reinhardt_pages::FieldError::new("Name is already used"))
+	);
+	assert_eq!(name.get_attribute("aria-invalid").as_deref(), Some("true"));
+	let field_message = root
+		.element
+		.query_selector(&format!("[id='{}-error']", name.id()))
+		.expect("field error query")
+		.expect("field error");
+	assert_eq!(
+		field_message.text_content().as_deref(),
+		Some("Name is already used")
+	);
+	let global_message = root
+		.element
+		.query_selector(".reinhardt-form-global-error")
+		.expect("global error query")
+		.expect("global error");
+	assert_eq!(
+		global_message.text_content(),
+		runtime.form_state().form_error.get()
+	);
+	assert_eq!(
+		runtime.form_state().form_error.get().as_deref(),
+		Some(
+			"Validation failed\n_all: Cluster cannot be created\norg_id: Organization is unavailable\nunknown: Unknown field failure"
+		)
+	);
+	assert_eq!(
+		global_message
+			.query_selector_all("a")
+			.expect("global links")
+			.length(),
+		0
+	);
+	assert_eq!(runtime_success.get(), 0);
+	assert_eq!(mutation_success.get(), 0);
+	assert!(!(submit.disabled()));
+
+	edit_input(&name, "fresh");
+	dispatch_submit(&form_node);
+	wait_until(
+		&fetch,
+		"second create",
+		|| fetch.create_bodies().len() == 2,
+		|| format!("{:?}", action.phase()),
+	)
+	.await;
+	fetch.release_page_requests();
+	wait_until(
+		&fetch,
+		"success result",
+		|| action.result().is_some(),
+		|| format!("{:?}", action.phase()),
+	)
+	.await;
+	wait_until(
+		&fetch,
+		"invalidated list query",
+		|| list_requests.get() == 2,
+		|| format!("{:?}", action.phase()),
+	)
+	.await;
+	settle_browser().await;
+	assert_eq!(runtime_success.get(), 1);
+	assert_eq!(mutation_success.get(), 1);
+	assert_eq!(fetch.create_requests(), 2);
+	assert_eq!(list_requests.get(), 2);
+	assert_eq!(name.value(), "");
+	assert_eq!(api_url.value(), "");
+	assert!(!(runtime.form_state().is_dirty.get()));
+	assert!(!(runtime.form_state().is_touched.get()));
+	assert!(runtime.form_state().field_errors.get().is_empty());
+	assert_eq!(
+		action.result(),
+		Some(ClusterTokenInfo {
+			token: "one-time-token".into()
+		})
+	);
+
+	runtime.set_value(ClusterCreateFormField::Name, "another draft".to_owned());
+	settle_browser().await;
+	assert_eq!(name.value(), "another draft");
+	reset.click();
+	settle_browser().await;
+	assert_eq!(name.value(), "");
+	assert_eq!(
+		action.result(),
+		Some(ClusterTokenInfo {
+			token: "one-time-token".into()
+		})
+	);
+	root.element
+		.query_selector("#dismiss-token")
+		.expect("dismiss query")
+		.expect("dismiss button")
+		.dyn_into::<web_sys::HtmlButtonElement>()
+		.unwrap()
+		.click();
+	settle_browser().await;
+	assert_eq!(action.result(), None);
+	assert_eq!(
+		root.element
+			.query_selector_all("#created-token")
+			.unwrap()
+			.length(),
+		0
+	);
+	let current_name = root
+		.element
+		.query_selector("input[name=name]")
+		.unwrap()
+		.unwrap();
+	assert!(name.is_same_node(Some(current_name.as_ref())));
+	let current_form = root.element.query_selector("form").unwrap().unwrap();
+	assert!(form_node.is_same_node(Some(current_form.as_ref())));
+	assert_eq!(
+		web_sys::window()
+			.unwrap()
+			.document()
+			.unwrap()
+			.active_element()
+			.map(|element| element.is_same_node(Some(name.as_ref()))),
+		Some(true)
+	);
+}
+
+#[wasm_bindgen_test(async)]
+#[serial(server_mutation_globals)]
+async fn page_success_callback_reentry_preserves_next_submission() {
+	let root = BodyRoot::new("page-reentry");
+	let fetch = FetchGuard::for_page_cluster();
+	fetch.set_create_requests(1);
+	let scope = ReactiveScope::new();
+	let successes = Rc::new(Cell::new(0));
+	let next = Rc::new(RefCell::new(None::<Box<dyn Fn()>>));
+	let (runtime, action) = scope.enter(|| {
+		let form = form! {
+			name: ReentrantClusterPageForm,
+			model_form: ClusterCreateForm,
+			server_fn: create_page_cluster,
+		};
+		let runtime = use_form(&form).build();
+		runtime.set_value(ClusterCreateFormField::Name, "first".to_owned());
+		runtime.set_value(
+			ClusterCreateFormField::ApiUrl,
+			"https://cluster.example".to_owned(),
+		);
+		let action = form
+			.server_mutation(&runtime)
+			.reset_form_on_success()
+			.on_success({
+				let calls = successes.clone();
+				let next = Rc::downgrade(&next);
+				move |_| {
+					calls.set(calls.get() + 1);
+					if calls.get() == 1 {
+						let next = next.upgrade().expect("live reentry callback");
+						(next.borrow().as_ref().expect("configured callback"))();
+					}
+				}
+			})
+			.build();
+		let next_runtime = runtime.clone();
+		let next_action = action.clone();
+		*next.borrow_mut() = Some(Box::new(move || {
+			next_runtime.set_value(ClusterCreateFormField::Name, "second".to_owned());
+			assert_eq!(next_action.dispatch(), MutationDispatchOutcome::Dispatched);
+		}));
+		action
+			.page()
+			.mount(&Element::new(root.element.clone()))
+			.expect("mount page");
+		(runtime, action)
+	});
+	let input = root
+		.element
+		.query_selector("input[name=name]")
+		.unwrap()
+		.unwrap()
+		.dyn_into::<web_sys::HtmlInputElement>()
+		.unwrap();
+	assert_eq!(action.dispatch(), MutationDispatchOutcome::Dispatched);
+	wait_until(
+		&fetch,
+		"first request",
+		|| fetch.create_bodies().len() == 1,
+		|| format!("{:?}", action.phase()),
+	)
+	.await;
+	fetch.release_page_requests();
+	wait_until(
+		&fetch,
+		"reentrant request",
+		|| fetch.create_bodies().len() == 2,
+		|| format!("{:?}", action.phase()),
+	)
+	.await;
+	settle_browser().await;
+	assert_eq!(successes.get(), 1);
+	assert!(action.is_pending());
+	assert_eq!(input.value(), "second");
+	assert!(
+		runtime
+			.get_field_state(ClusterCreateFormField::Name)
+			.is_dirty
+	);
+	assert_eq!(
+		serde_json::from_str::<serde_json::Value>(&fetch.create_bodies()[1]).unwrap(),
+		serde_json::json!({"payload": {
+			"name": "second", "api_url": "https://cluster.example"
+		}})
+	);
+	fetch.release_page_requests();
+	wait_until(
+		&fetch,
+		"second success",
+		|| successes.get() == 2,
+		|| format!("{:?}", action.phase()),
+	)
+	.await;
+	settle_browser().await;
+	assert_eq!(fetch.create_bodies().len(), 2);
+	assert_eq!(input.value(), "");
+	assert_eq!(
+		action.result(),
+		Some(ClusterTokenInfo {
+			token: "one-time-token".into()
+		})
+	);
+	assert!(
+		input.is_same_node(Some(
+			root.element
+				.query_selector("input[name=name]")
+				.unwrap()
+				.unwrap()
+				.as_ref()
+		))
+	);
+}
+
+#[path = "mutation_page_cases.rs"]
+mod mutation_page_cases;
+
+#[path = "mutation_page_widgets.rs"]
+mod mutation_page_widgets;
