@@ -1,7 +1,340 @@
 use super::*;
+use async_graphql::extensions::{
+	Extension, ExtensionContext, ExtensionFactory, NextParseQuery, NextPrepareRequest,
+};
+use async_graphql::parser::types::ExecutableDocument;
 use async_graphql::parser::types::OperationType;
 use rstest::{fixture, rstest};
 use std::sync::atomic::{AtomicUsize, Ordering};
+
+#[derive(Clone, Default)]
+struct RequestExtension {
+	replacement: Option<String>,
+	operation_name: Option<String>,
+	max_bytes: Option<usize>,
+	replace_entire: bool,
+	prepared: Arc<AtomicUsize>,
+	parsed: Arc<AtomicUsize>,
+}
+
+impl ExtensionFactory for RequestExtension {
+	fn create(&self) -> Arc<dyn Extension> {
+		Arc::new(self.clone())
+	}
+}
+
+#[async_trait::async_trait]
+impl Extension for RequestExtension {
+	async fn prepare_request(
+		&self,
+		ctx: &ExtensionContext<'_>,
+		mut request: async_graphql::Request,
+		next: NextPrepareRequest<'_>,
+	) -> async_graphql::ServerResult<async_graphql::Request> {
+		self.prepared.fetch_add(1, Ordering::SeqCst);
+		if self
+			.max_bytes
+			.is_some_and(|limit| request.query.len() > limit)
+		{
+			return Err(async_graphql::ServerError::new(
+				"Document size limit exceeded",
+				None,
+			));
+		}
+		if let Some(query) = &self.replacement {
+			// Replacing the whole request must not discard the transport's constraint.
+			if self.replace_entire {
+				let variables = request.variables;
+				request = async_graphql::Request::new(query).variables(variables);
+			} else {
+				request.query.clone_from(query);
+			}
+			request.operation_name = self.operation_name.clone();
+		}
+		next.run(ctx, request).await
+	}
+
+	async fn parse_query(
+		&self,
+		ctx: &ExtensionContext<'_>,
+		query: &str,
+		variables: &async_graphql::Variables,
+		next: NextParseQuery<'_>,
+	) -> async_graphql::ServerResult<ExecutableDocument> {
+		self.parsed.fetch_add(1, Ordering::SeqCst);
+		next.run(ctx, query, variables).await
+	}
+}
+
+fn service_with_extension(extension: RequestExtension) -> (TestService, Arc<Calls>) {
+	let calls = Arc::new(Calls::default());
+	let schema = TestService::schema_builder(
+		Query(Arc::clone(&calls)),
+		Mutation(Arc::clone(&calls)),
+		Subscription(Arc::clone(&calls)),
+	)
+	.extension(extension)
+	.finish();
+	(TestService::new(schema), calls)
+}
+
+#[rstest]
+#[tokio::test]
+async fn rpc_executes_prepared_document(
+	#[values(
+		OperationType::Query,
+		OperationType::Mutation,
+		OperationType::Subscription
+	)]
+	rpc: OperationType,
+	#[values(false, true)] invalid_original: bool,
+	#[values(false, true)] replace_entire: bool,
+) {
+	// Arrange: preparation replaces the document, selected name, and request data.
+	let prepared = Arc::new(AtomicUsize::new(0));
+	let parsed = Arc::new(AtomicUsize::new(0));
+	let (service, calls) = service_with_extension(RequestExtension {
+		replacement: Some(format!(
+			"{rpc} Prepared($amount: Int!) {{ value(amount: $amount) }}"
+		)),
+		operation_name: Some("Prepared".into()),
+		max_bytes: None,
+		replace_entire,
+		prepared: Arc::clone(&prepared),
+		parsed: Arc::clone(&parsed),
+	});
+	let original = if invalid_original {
+		"not a GraphQL document".into()
+	} else {
+		format!("{rpc} Original {{ value(amount: 1) }}")
+	};
+
+	// Act
+	let response = dispatch(&service, rpc, request(&original, Some("Original")))
+		.await
+		.unwrap();
+
+	// Assert: only the prepared document executes, and hooks run once.
+	assert_eq!(response.errors, []);
+	assert_eq!(response.data.as_deref(), Some("{value: 7}"));
+	assert_eq!(calls.counts().iter().sum::<usize>(), 1);
+	assert_eq!(prepared.load(Ordering::SeqCst), 1);
+	assert_eq!(parsed.load(Ordering::SeqCst), 1);
+}
+
+#[rstest]
+#[tokio::test]
+async fn rpc_runs_preparation_limits_before_parsing(
+	#[values(
+		OperationType::Query,
+		OperationType::Mutation,
+		OperationType::Subscription
+	)]
+	rpc: OperationType,
+) {
+	// Arrange: this invalid document must be rejected by preparation, before parsing.
+	let prepared = Arc::new(AtomicUsize::new(0));
+	let parsed = Arc::new(AtomicUsize::new(0));
+	let (service, calls) = service_with_extension(RequestExtension {
+		replacement: None,
+		operation_name: None,
+		max_bytes: Some(8),
+		replace_entire: false,
+		prepared: Arc::clone(&prepared),
+		parsed: Arc::clone(&parsed),
+	});
+
+	// Act
+	let response = dispatch(&service, rpc, request("not a GraphQL document", None))
+		.await
+		.unwrap();
+
+	// Assert: preserve the extension's rejection and never run a resolver.
+	assert_eq!(response.data, None);
+	assert_eq!(response.errors.len(), 1);
+	assert_eq!(response.errors[0].message, "Document size limit exceeded");
+	assert_eq!(calls.counts(), [0, 0, 0]);
+	assert_eq!(prepared.load(Ordering::SeqCst), 1);
+	assert_eq!(parsed.load(Ordering::SeqCst), 0);
+}
+
+#[derive(Clone)]
+struct ReplaceDocument(String);
+
+impl ExtensionFactory for ReplaceDocument {
+	fn create(&self) -> Arc<dyn Extension> {
+		Arc::new(self.clone())
+	}
+}
+
+#[async_trait::async_trait]
+impl Extension for ReplaceDocument {
+	async fn parse_query(
+		&self,
+		ctx: &ExtensionContext<'_>,
+		query: &str,
+		variables: &async_graphql::Variables,
+		next: NextParseQuery<'_>,
+	) -> async_graphql::ServerResult<ExecutableDocument> {
+		next.run(ctx, query, variables).await?;
+		// A user extension can return a different AST after the parser finishes.
+		async_graphql::parser::parse_query(&self.0).map_err(Into::into)
+	}
+}
+
+#[rstest]
+#[case(OperationType::Query, OperationType::Mutation)]
+#[case(OperationType::Query, OperationType::Subscription)]
+#[case(OperationType::Mutation, OperationType::Query)]
+#[case(OperationType::Mutation, OperationType::Subscription)]
+#[case(OperationType::Subscription, OperationType::Query)]
+#[case(OperationType::Subscription, OperationType::Mutation)]
+#[tokio::test]
+async fn rpc_rejects_class_changes_from_extensions(
+	#[case] rpc: OperationType,
+	#[case] replacement: OperationType,
+	#[values(false, true)] replace_at_parse: bool,
+) {
+	// Arrange: the original document matches the RPC, but the final one does not.
+	let calls = Arc::new(Calls::default());
+	let builder = TestService::schema_builder(
+		Query(Arc::clone(&calls)),
+		Mutation(Arc::clone(&calls)),
+		Subscription(Arc::clone(&calls)),
+	);
+	let query = format!("{replacement} {{ value(amount: 7) }}");
+	let schema = if replace_at_parse {
+		builder.extension(ReplaceDocument(query)).finish()
+	} else {
+		builder
+			.extension(RequestExtension {
+				replacement: Some(query),
+				replace_entire: true,
+				..Default::default()
+			})
+			.finish()
+	};
+	let service = TestService::new(schema);
+	let original = format!("{rpc} {{ value(amount: 1) }}");
+
+	// Act
+	let error = dispatch(&service, rpc, request(&original, None))
+		.await
+		.unwrap_err();
+
+	// Assert: every transformed mismatch is rejected before side effects.
+	assert_eq!(error.code(), tonic::Code::InvalidArgument);
+	assert_eq!(
+		error.message(),
+		format!("Expected a {rpc} operation, received {replacement}")
+	);
+	assert_eq!(calls.counts(), [0, 0, 0]);
+}
+
+#[rstest]
+#[tokio::test]
+async fn rpc_executes_document_returned_by_parse_extension(
+	#[values(
+		OperationType::Query,
+		OperationType::Mutation,
+		OperationType::Subscription
+	)]
+	rpc: OperationType,
+) {
+	// Arrange
+	let calls = Arc::new(Calls::default());
+	let schema = TestService::schema_builder(
+		Query(Arc::clone(&calls)),
+		Mutation(Arc::clone(&calls)),
+		Subscription(Arc::clone(&calls)),
+	)
+	.extension(ReplaceDocument(format!("{rpc} {{ value(amount: 7) }}")))
+	.finish();
+	let service = TestService::new(schema);
+
+	// Act
+	let response = dispatch(
+		&service,
+		rpc,
+		request(&format!("{rpc} {{ value(amount: 1) }}"), None),
+	)
+	.await
+	.unwrap();
+
+	// Assert
+	assert_eq!(response.errors, []);
+	assert_eq!(response.data.as_deref(), Some("{value: 7}"));
+	assert_eq!(calls.counts().iter().sum::<usize>(), 1);
+}
+
+#[rstest]
+#[tokio::test]
+async fn schema_remains_shareable_with_ordinary_graphql_requests(
+	service: (TestService, Arc<Calls>),
+) {
+	// Arrange
+	let (service, calls) = service;
+
+	// Act: ordinary requests do not carry an RPC operation constraint.
+	let response = service
+		.schema
+		.execute("mutation { value(amount: 7) }")
+		.await;
+
+	// Assert
+	assert_eq!(response.errors, []);
+	assert_eq!(response.data, async_graphql::value!({"value": 7}));
+	assert_eq!(calls.counts(), [0, 1, 0]);
+}
+
+#[rstest]
+#[tokio::test]
+async fn concurrent_rpcs_keep_independent_constraints(service: (TestService, Arc<Calls>)) {
+	// Arrange
+	let (service, calls) = service;
+
+	// Act
+	let (query, mutation, subscription) = tokio::join!(
+		dispatch(
+			&service,
+			OperationType::Query,
+			request("mutation { value(amount: 1) }", None)
+		),
+		dispatch(
+			&service,
+			OperationType::Mutation,
+			request("mutation { value(amount: 7) }", None)
+		),
+		dispatch(
+			&service,
+			OperationType::Subscription,
+			request("subscription { value(amount: 7) }", None)
+		),
+	);
+
+	// Assert
+	assert_eq!(query.unwrap_err().code(), tonic::Code::InvalidArgument);
+	assert_eq!(mutation.unwrap().data.as_deref(), Some("{value: 7}"));
+	assert_eq!(subscription.unwrap().data.as_deref(), Some("{value: 7}"));
+	assert_eq!(calls.counts(), [0, 1, 1]);
+}
+
+#[rstest]
+#[should_panic(
+	expected = "GraphQLGrpcService requires a schema built with GraphQLGrpcService::schema_builder"
+)]
+fn service_rejects_schema_without_operation_guard() {
+	// Arrange
+	let calls = Arc::new(Calls::default());
+	let schema = Schema::new(
+		Query(Arc::clone(&calls)),
+		Mutation(Arc::clone(&calls)),
+		Subscription(calls),
+	);
+
+	// Act / Assert: an unguarded schema cannot become an executable gRPC service.
+	TestService::new(schema);
+}
 
 #[derive(Default)]
 struct Calls([AtomicUsize; 3]);
@@ -45,11 +378,12 @@ type TestService = GraphQLGrpcService<Query, Mutation, Subscription>;
 #[fixture]
 fn service() -> (TestService, Arc<Calls>) {
 	let calls = Arc::new(Calls::default());
-	let schema = Schema::new(
+	let schema = TestService::schema_builder(
 		Query(Arc::clone(&calls)),
 		Mutation(Arc::clone(&calls)),
 		Subscription(Arc::clone(&calls)),
-	);
+	)
+	.finish();
 	(TestService::new(schema), calls)
 }
 
@@ -115,12 +449,8 @@ async fn rpc_rejects_mismatched_operation_before_resolver_execution(
 	};
 	let request = request(&query, operation_name);
 
-	// Act: subscription mismatches must fail before a stream is returned.
-	let result = match rpc {
-		OperationType::Query => service.execute_query(request).await.map(|_| ()),
-		OperationType::Mutation => service.execute_mutation(request).await.map(|_| ()),
-		OperationType::Subscription => service.execute_subscription(request).await.map(|_| ()),
-	};
+	// Act: drive subscription preparation without allowing a resolver to run.
+	let result = dispatch(&service, rpc, request).await;
 
 	// Assert: no query, mutation, or subscription resolver ran.
 	assert_eq!(calls.counts(), [0, 0, 0]);
@@ -173,11 +503,7 @@ async fn rpc_rejects_invalid_or_ambiguous_selection(
 	let request = request(query, operation_name);
 
 	// Act
-	let result = match rpc {
-		OperationType::Query => service.execute_query(request).await.map(|_| ()),
-		OperationType::Mutation => service.execute_mutation(request).await.map(|_| ()),
-		OperationType::Subscription => service.execute_subscription(request).await.map(|_| ()),
-	};
+	let result = dispatch(&service, rpc, request).await;
 
 	// Assert
 	assert_eq!(
