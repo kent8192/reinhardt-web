@@ -37,8 +37,13 @@ resolver arguments are attacker-controlled.
 - GraphQL-over-gRPC binds the selected document operation to the advertised RPC
   class before execution. Malformed documents, invalid or ambiguous operation
   selections, and class mismatches fail with gRPC `INVALID_ARGUMENT` before
-  resolver execution or subscription stream creation. The validated document
-  is passed to the schema with its variables and operation name preserved.
+  resolver execution or resolver subscription creation. Subscription errors are
+  delivered through the response stream. Validation applies to the final document
+  and operation name produced by schema extensions, without parsing before their
+  preparation checks. Custom schemas must use `GraphQLGrpcService::schema_builder`
+  to register the guard before user extensions; service construction rejects
+  unguarded schemas. The built-in schema helpers install the guard automatically
+  when `graphql-grpc` is enabled.
   Deployments must still configure and enforce schema and resolver authorization,
   request isolation, and resource limits.
 
