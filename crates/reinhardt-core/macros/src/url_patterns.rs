@@ -2,7 +2,8 @@
 
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{Expr, ItemFn, PathArguments, ReturnType, Stmt, Type, visit::Visit};
+use std::collections::HashSet;
+use syn::{Expr, ItemFn, Pat, PathArguments, ReturnType, Stmt, Type, visit::Visit};
 
 pub(crate) fn url_patterns_impl(args: TokenStream, mut input: ItemFn) -> syn::Result<TokenStream> {
 	if !args.is_empty() {
@@ -161,13 +162,23 @@ fn is_unified_router_constructor(expr: &Expr) -> bool {
 	)
 }
 
-fn has_unified_router_root(mut expr: &Expr) -> bool {
-	loop {
-		expr = unparenthesized(expr);
-		match expr {
-			Expr::MethodCall(call) => expr = &call.receiver,
-			_ => return is_unified_router_constructor(expr),
+fn is_unified_router_builder(expr: &Expr, aliases: &HashSet<String>) -> bool {
+	let expr = unparenthesized(expr);
+	if is_unified_router_constructor(expr) {
+		return true;
+	}
+	match expr {
+		Expr::MethodCall(call) => is_unified_router_builder(&call.receiver, aliases),
+		Expr::Path(path) => {
+			let mut segments = path.path.segments.iter();
+			let Some(segment) = segments.next() else {
+				return false;
+			};
+			segments.next().is_none()
+				&& segment.arguments.is_empty()
+				&& aliases.contains(&segment.ident.to_string())
 		}
+		_ => false,
 	}
 }
 
@@ -175,14 +186,32 @@ fn reject_nested_server_builder(expr: &Expr) -> syn::Result<()> {
 	#[derive(Default)]
 	struct NestedServerBuilder {
 		error: Option<syn::Error>,
+		router_aliases: HashSet<String>,
 	}
 
 	impl<'ast> Visit<'ast> for NestedServerBuilder {
+		fn visit_local(&mut self, local: &'ast syn::Local) {
+			if let Pat::Ident(binding) = &local.pat {
+				let name = binding.ident.to_string();
+				let is_router = local.init.as_ref().is_some_and(|init| {
+					is_unified_router_builder(&init.expr, &self.router_aliases)
+				});
+				if is_router {
+					self.router_aliases.insert(name);
+				} else {
+					self.router_aliases.remove(&name);
+				}
+			}
+			syn::visit::visit_local(self, local);
+		}
+
 		fn visit_expr_method_call(&mut self, call: &'ast syn::ExprMethodCall) {
 			if self.error.is_some() {
 				return;
 			}
-			if call.method == "server" && has_unified_router_root(&call.receiver) {
+			if call.method == "server"
+				&& is_unified_router_builder(&call.receiver, &self.router_aliases)
+			{
 				self.error = Some(syn::Error::new_spanned(
 					&call.method,
 					"nested UnifiedRouter .server(...) calls are unsupported here; extract the nested builder into a separate #[url_patterns] function",
@@ -420,6 +449,7 @@ mod tests {
 
 	#[rstest]
 	#[case(quote!(UnifiedRouter::new().merge(UnifiedRouter::new().server(configure))))]
+	#[case(quote!(UnifiedRouter::new().merge({ let router = UnifiedRouter::new(); router.server(configure) })))]
 	#[case(quote!(UnifiedRouter::new().mount_unified("/", (UnifiedRouter::default()).server(configure))))]
 	#[case(quote!(UnifiedRouter::new().client(|client| { use_nested(UnifiedRouter::new().server(configure)); client })))]
 	fn nested_builders_require_separate_annotated_functions(#[case] expr: TokenStream) {

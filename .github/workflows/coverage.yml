@@ -475,6 +475,9 @@ jobs:
           rust-save-if: ${{ github.ref == 'refs/heads/main' }}
           protoc-token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Install browser WASM target for macro-parity fixtures
+        run: rustup target add wasm32-unknown-unknown
+
       - name: Install mold linker and build dependencies
         run: |
           sudo systemctl stop unattended-upgrades || true

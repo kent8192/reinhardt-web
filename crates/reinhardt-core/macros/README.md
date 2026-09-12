@@ -325,6 +325,7 @@ Provides compile-time code generation for common patterns.
 #### URL Pattern Registration
 
 - **`#[url_patterns]`** - Share a `UnifiedRouter` builder with native-only HTTP handlers
+  - **Parity: P1 (symbol parity)** - available on native and browser-WASM builds; the server configuration is inert on browser WASM
   - Takes no arguments and adds no inventory registration
   - Keeps each complete `.server(...)` argument only under
     `all(server, not(all(target_family = "wasm", target_os = "unknown")))`

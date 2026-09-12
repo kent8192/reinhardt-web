@@ -6,6 +6,14 @@ fn merged() -> UnifiedRouter {
 }
 
 #[url_patterns]
+fn aliased() -> UnifiedRouter {
+	UnifiedRouter::new().merge({
+		let router = UnifiedRouter::new();
+		router.server(configure)
+	})
+}
+
+#[url_patterns]
 fn mounted() -> UnifiedRouter {
 	UnifiedRouter::new().mount_unified("/", UnifiedRouter::new().server(configure))
 }

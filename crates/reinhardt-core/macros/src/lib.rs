@@ -91,6 +91,10 @@ use user_attribute::user_attribute_impl;
 
 /// Declares shared URL patterns with native-only HTTP registration.
 ///
+/// **Parity: P1 (symbol parity).** The attribute is available on native and
+/// browser-WASM builds. Native builds retain the `.server(...)` configuration;
+/// browser-WASM builds erase it before resolving native-only handler paths.
+///
 /// The complete `.server(...)` argument is retained only when the caller has
 /// `cfg(server)` enabled and the target is not browser WASM
 /// (`all(target_family = "wasm", target_os = "unknown")`). Other builds erase

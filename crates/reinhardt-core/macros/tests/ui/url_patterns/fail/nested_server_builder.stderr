@@ -5,13 +5,19 @@ error: nested UnifiedRouter .server(...) calls are unsupported here; extract the
   |                                                     ^^^^^^
 
 error: nested UnifiedRouter .server(...) calls are unsupported here; extract the nested builder into a separate #[url_patterns] function
-  --> tests/ui/url_patterns/fail/nested_server_builder.rs:10:63
+  --> tests/ui/url_patterns/fail/nested_server_builder.rs:12:10
    |
-10 |     UnifiedRouter::new().mount_unified("/", UnifiedRouter::new().server(configure))
+12 |         router.server(configure)
+   |                ^^^^^^
+
+error: nested UnifiedRouter .server(...) calls are unsupported here; extract the nested builder into a separate #[url_patterns] function
+  --> tests/ui/url_patterns/fail/nested_server_builder.rs:18:63
+   |
+18 |     UnifiedRouter::new().mount_unified("/", UnifiedRouter::new().server(configure))
    |                                                                  ^^^^^^
 
 error: nested UnifiedRouter .server(...) calls are unsupported here; extract the nested builder into a separate #[url_patterns] function
-  --> tests/ui/url_patterns/fail/nested_server_builder.rs:16:32
+  --> tests/ui/url_patterns/fail/nested_server_builder.rs:24:32
    |
-16 |         consume(UnifiedRouter::new().server(configure));
+24 |         consume(UnifiedRouter::new().server(configure));
    |                                      ^^^^^^
