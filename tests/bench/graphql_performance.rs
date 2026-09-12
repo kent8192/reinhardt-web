@@ -92,7 +92,7 @@ fn bench_direct_graphql(c: &mut Criterion) {
 #[cfg(feature = "graphql-grpc")]
 fn bench_grpc_graphql(c: &mut Criterion) {
 	let runtime = tokio::runtime::Runtime::new().unwrap();
-	let schema = Schema::build(Query, Mutation, EmptySubscription).finish();
+	let schema = GraphQLGrpcService::schema_builder(Query, Mutation, EmptySubscription).finish();
 	let service = GraphQLGrpcService::new(schema);
 
 	let mut group = c.benchmark_group("grpc_graphql");

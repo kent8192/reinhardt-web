@@ -10,6 +10,22 @@
 //! - **di**: Dependency injection support for GraphQL resolvers
 //! - **full**: All features enabled
 //!
+//! # GraphQL over gRPC
+//!
+//! Each RPC accepts only its advertised query, mutation, or subscription operation.
+//! The adapter returns gRPC `INVALID_ARGUMENT` for malformed documents, invalid or
+//! ambiguous operation selections, and operation-class mismatches before execution.
+//! Documents with multiple operations require an exact operation name. A single
+//! operation may omit the name or pass an empty name. Schema validation and resolver
+//! authorization still apply after this transport-level check. Subscription errors
+//! are delivered through the response stream.
+//!
+//! Build custom gRPC schemas with `GraphQLGrpcService::schema_builder` instead of
+//! `Schema::build` / `Schema::new`. This installs the operation guard before user
+//! extensions, so preparation limits and document rewrites run in their normal
+//! order. `GraphQLGrpcService::new` panics for unguarded schemas. The built-in
+//! `create_schema` helpers install the guard when `graphql-grpc` is enabled.
+//!
 //! # Dependency Injection
 //!
 //! Enable the `di` feature to use dependency injection in GraphQL resolvers:
