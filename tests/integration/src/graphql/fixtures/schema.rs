@@ -83,12 +83,12 @@ async fn grpc_fixture(
 	#[future] postgres_container: (ContainerAsync<GenericImage>, Arc<PgPool>, u16, String),
 ) -> (
 	Schema<Query, Mutation, EmptySubscription>,
-	GraphQLGrpcService,
+	reinhardt_graphql::GraphQLGrpcService<Query, Mutation, EmptySubscription>,
 ) {
 	use reinhardt_graphql::grpc_service::GraphQLGrpcService;
 
 	let (_container, pool, _port, _url) = postgres_container.await;
-	let schema = create_schema();
+	let schema = reinhardt_graphql::create_schema(UserStorage::new());
 	let grpc_service = GraphQLGrpcService::new(schema.clone());
 
 	(schema, grpc_service)
