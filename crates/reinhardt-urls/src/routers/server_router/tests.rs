@@ -1284,3 +1284,148 @@ fn test_validate_routes_includes_name_errors() {
 	let errors = result.unwrap_err();
 	assert!(errors.iter().any(|e| e.contains("Duplicate route name")));
 }
+
+// --- Exception handler installation (Issue #6294) ---
+
+/// Exception handler producing a body identifiable in assertions.
+struct TeapotErrors;
+
+#[async_trait::async_trait]
+impl reinhardt_http::ExceptionHandler for TeapotErrors {
+	async fn handle_exception(
+		&self,
+		_request: &reinhardt_http::Request,
+		_error: reinhardt_http::Error,
+	) -> reinhardt_http::Response {
+		reinhardt_http::Response::new(hyper::StatusCode::IM_A_TEAPOT).with_body("teapot")
+	}
+}
+
+/// Handler that always fails, used to produce a view error.
+struct FailingView;
+
+#[async_trait::async_trait]
+impl Handler for FailingView {
+	async fn handle(&self, _request: Request) -> Result<Response> {
+		Err(reinhardt_http::Error::Internal("view failed".to_string()))
+	}
+}
+
+/// Handler that always succeeds, used to prove middleware ran.
+struct OkView;
+
+#[async_trait::async_trait]
+impl Handler for OkView {
+	async fn handle(&self, _request: Request) -> Result<Response> {
+		Ok(Response::ok().with_body("ok"))
+	}
+}
+
+/// Middleware that always fails before reaching the next handler.
+struct FailingMiddleware;
+
+#[async_trait::async_trait]
+impl Middleware for FailingMiddleware {
+	async fn process(
+		&self,
+		_request: reinhardt_http::Request,
+		_next: Arc<dyn Handler>,
+	) -> reinhardt_http::Result<reinhardt_http::Response> {
+		Err(reinhardt_http::Error::Internal(
+			"middleware failed".to_string(),
+		))
+	}
+}
+
+#[rstest]
+#[tokio::test]
+async fn test_404_uses_installed_exception_handler() {
+	// Arrange: handler installed, no router middleware
+	let router = ServerRouter::new().with_exception_handler(Arc::new(TeapotErrors));
+
+	// Act
+	let response = Handler::handle(&router, create_test_request("/nonexistent"))
+		.await
+		.unwrap();
+
+	// Assert
+	assert_eq!(response.status, hyper::StatusCode::IM_A_TEAPOT);
+	assert_eq!(String::from_utf8(response.body.to_vec()).unwrap(), "teapot");
+}
+
+#[rstest]
+#[tokio::test]
+async fn test_404_with_router_middleware_still_runs_post_processing() {
+	// Arrange: handler plus router middleware that adds a security header
+	let router = ServerRouter::new()
+		.with_exception_handler(Arc::new(TeapotErrors))
+		.with_middleware(SecurityHeaderTestMiddleware);
+
+	// Act
+	let response = Handler::handle(&router, create_test_request("/nonexistent"))
+		.await
+		.unwrap();
+
+	// Assert: the handler built the body and the middleware still post-processed
+	// it, preserving the #3234 ordering.
+	assert_eq!(response.status, hyper::StatusCode::IM_A_TEAPOT);
+	assert_eq!(
+		response
+			.headers
+			.get("x-security-test")
+			.map(|v| v.to_str().unwrap()),
+		Some("applied"),
+	);
+}
+
+#[rstest]
+#[tokio::test]
+async fn test_view_error_uses_installed_exception_handler() {
+	// Arrange: a failing view on a router with no middleware, so the error can
+	// only be answered by the adapter around the route handler
+	let router = ServerRouter::new()
+		.with_exception_handler(Arc::new(TeapotErrors))
+		.handler_arc("/fail", Arc::new(FailingView));
+
+	// Act
+	let response = Handler::handle(&router, create_test_request("/fail"))
+		.await
+		.unwrap();
+
+	// Assert
+	assert_eq!(response.status, hyper::StatusCode::IM_A_TEAPOT);
+	assert_eq!(String::from_utf8(response.body.to_vec()).unwrap(), "teapot");
+}
+
+#[rstest]
+#[tokio::test]
+async fn test_middleware_error_uses_installed_exception_handler() {
+	// Arrange: a succeeding view behind a failing middleware, so a 418 can only
+	// come from the chain converting the middleware's error
+	let router = ServerRouter::new()
+		.with_exception_handler(Arc::new(TeapotErrors))
+		.with_middleware(FailingMiddleware)
+		.handler_arc("/ok", Arc::new(OkView));
+
+	// Act
+	let response = Handler::handle(&router, create_test_request("/ok"))
+		.await
+		.unwrap();
+
+	// Assert
+	assert_eq!(response.status, hyper::StatusCode::IM_A_TEAPOT);
+	assert_eq!(String::from_utf8(response.body.to_vec()).unwrap(), "teapot");
+}
+
+#[rstest]
+#[tokio::test]
+async fn test_without_exception_handler_keeps_default_conversion() {
+	// Arrange: the same failing view route, but no handler installed
+	let router = ServerRouter::new().handler_arc("/fail", Arc::new(FailingView));
+
+	// Act
+	let result = Handler::handle(&router, create_test_request("/fail")).await;
+
+	// Assert: a middleware-free router still propagates the error unchanged
+	assert!(result.is_err());
+}

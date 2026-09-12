@@ -8,7 +8,9 @@ use super::ServerRouter;
 #[cfg(feature = "viewsets")]
 use super::types::ViewRoute;
 use async_trait::async_trait;
-use reinhardt_http::{Error, Handler, MiddlewareChain, Request, Response, Result};
+use reinhardt_http::{
+	Error, ExceptionHandlingHandler, Handler, MiddlewareChain, Request, Response, Result,
+};
 use std::sync::Arc;
 
 impl std::fmt::Debug for ServerRouter {
@@ -72,10 +74,25 @@ impl Handler for ServerRouter {
 				// applied to framework-level 404/405 responses. (#3234)
 				let own_middleware = self.build_middleware_with_exclusions();
 				if own_middleware.is_empty() {
-					return Err(error);
+					// An installed handler answers the request directly. Without
+					// one the error stays an `Err`, which is what callers of a
+					// middleware-free router rely on.
+					return match self.exception_handler.as_ref() {
+						Some(exception_handler) => {
+							Ok(exception_handler.handle_exception(&req, error).await)
+						}
+						None => Err(error),
+					};
 				}
 
-				let response = Response::from(error);
+				// The handler builds the body and the router middleware below
+				// post-processes it, preserving the #3234 ordering.
+				let response = match self.exception_handler.as_ref() {
+					Some(exception_handler) => {
+						exception_handler.handle_exception(&req, error).await
+					}
+					None => Response::from(error),
+				};
 				let handler: Arc<dyn Handler> = Arc::new(FixedResponseHandler(response));
 				let chain = own_middleware
 					.iter()
@@ -93,15 +110,32 @@ impl Handler for ServerRouter {
 			req.set_di_context(di_ctx.clone());
 		}
 
+		// Route the matched handler's errors through an installed handler before
+		// the middleware chain wraps it. Without one the handler is used as-is, so
+		// the default conversion is unchanged.
+		let route_handler: Arc<dyn Handler> = match self.exception_handler.as_ref() {
+			Some(exception_handler) => Arc::new(ExceptionHandlingHandler::new(
+				route_match.handler.clone(),
+				Arc::clone(exception_handler),
+			)),
+			None => route_match.handler.clone(),
+		};
+
 		// Apply middleware stack using MiddlewareChain
 		if route_match.middleware_stack.is_empty() {
 			// No middleware, execute handler directly
-			route_match.handler.handle(req).await
+			route_handler.handle(req).await
 		} else {
-			let chain = MiddlewareChain::with_middlewares(
-				route_match.handler.clone(),
-				route_match.middleware_stack,
-			);
+			// The chain also converts errors raised by middleware itself, so it
+			// needs the handler independently of the adapter above.
+			let chain =
+				MiddlewareChain::with_middlewares(route_handler, route_match.middleware_stack);
+			let chain = match self.exception_handler.as_ref() {
+				Some(exception_handler) => {
+					chain.with_exception_handler(Arc::clone(exception_handler))
+				}
+				None => chain,
+			};
 
 			// Execute chain
 			chain.handle(req).await
