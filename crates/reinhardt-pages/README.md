@@ -645,9 +645,10 @@ Every native ModelForm submit supersedes earlier requests, including snapshots
 rejected during DOM value conversion. A rejected snapshot clears loading and
 success state while retaining its validation error and selected files.
 
-Typed runtime field bindings do not cover file inputs, named `model_form:`
-contracts, ModelForm `exclude: [...]`, or nested collection paths. Use the existing generated file,
-string, and collection APIs for those cases.
+Named `model_form:` contracts and ModelForm `exclude: [...]` declarations also
+expose selected typed field bindings. `page!` runtime bindings exclude file
+inputs and nested collection paths. Generated mutation pages bind their
+single-file controls through the existing ModelForm upload channel.
 
 DTO request types can opt in to generated client-form companions with
 `ClientForm`. This keeps request field names, enum choices, and typed request
@@ -770,6 +771,33 @@ client input:
 let remove = use_server_mutation(delete_cluster::mutation()).build();
 let outcome = remove.dispatch(cluster_id);
 ```
+
+### Generated model-form mutation pages
+
+Build the form runtime and mutation once, then call `action.page()` to render
+their generated controls. The page uses the runtime already attached to the
+mutation, including validation, error state, and configured callbacks.
+
+The generated **Submit** button dispatches that mutation and becomes disabled
+with **Submitting...** while pending. **Reset** restores the runtime's defaults
+and interaction state. With `reset_form_on_success()`, the latest typed result
+remains available after the controls reset. Render success content outside the
+form subtree and call `action.reset()` to dismiss it after the request completes.
+Resetting the action while it is pending does not cancel the request.
+
+Each form instance supports one mounted generated page. Labels, help text, and
+field errors refer to stable control IDs; the linked error summary follows field
+order. Form-level errors, including `_all`, excluded, and unknown fields, appear
+separately. Input elements remain mounted during editing and error/pending/reset
+updates. Server-owned fields outside the model-form selection do not become
+controls or mutation payload fields.
+
+Native page construction and rendering do not execute the server function or
+submission callbacks. Browser controls use the existing runtime bindings.
+Existing `into_page()` remains available for its standalone submission flow.
+
+See [Model-backed Pages forms](docs/model_forms.md#render-the-configured-mutation)
+for named-contract form and result composition.
 
 Native dispatch returns `MutationDispatchOutcome::UnsupportedTarget` and does
 not validate, invoke the server function, invalidate queries, reset forms, or
