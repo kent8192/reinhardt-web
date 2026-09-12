@@ -9,7 +9,11 @@ authors.workspace = true
 description = "Formatter for Reinhardt page!, form!, head!, and style! DSL macros"
 publish = true
 
+[features]
+testing = ["dep:reinhardt-manouche"]
+
 [dependencies]
+reinhardt-manouche = { workspace = true, optional = true }
 clap = { version = "4.5", features = ["derive"] }
 colored = { workspace = true }
 regex = "1.10"
@@ -25,6 +29,9 @@ walkdir = "2.5"
 zeroize = "1.8"
 
 [dev-dependencies]
+syn = { workspace = true, features = ["full", "visit"] }
+quote = { workspace = true }
+proc-macro2 = { workspace = true }
 rstest = { workspace = true }
 tempfile = "3.8"
 

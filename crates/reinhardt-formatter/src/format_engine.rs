@@ -2752,4 +2752,79 @@ static STYLES: Styles = style! { .card { color: red; } };\n";
 		assert_eq!(protected_source, source);
 		assert_eq!(restored, source);
 	}
+
+	#[cfg(feature = "testing")]
+	#[rstest]
+	#[case(include_str!("../tests/fixtures/form/client_form_view.input"))]
+	#[case(include_str!("../tests/fixtures/form/client_form_view_expressions.input"))]
+	fn named_client_form_preserves_parsed_expressions_and_is_idempotent(#[case] input: &str) {
+		use quote::ToTokens;
+		use reinhardt_manouche::core::{ClientFormViewClause, PresentationProperty};
+		use syn::visit::Visit;
+		struct Views(Vec<Vec<String>>);
+		impl<'ast> Visit<'ast> for Views {
+			fn visit_macro(&mut self, node: &'ast syn::Macro) {
+				if !node.path.is_ident("form") {
+					return;
+				}
+				let ast = reinhardt_manouche::parser::parse_client_form_view(node.tokens.clone())
+					.unwrap();
+				let mut expressions = vec![ast.companion.to_token_stream().to_string()];
+				fn properties(items: Vec<PresentationProperty>, out: &mut Vec<String>) {
+					for property in items {
+						out.push(property.name.to_string());
+						out.push(property.value.to_token_stream().to_string());
+					}
+				}
+				for clause in ast.clauses {
+					match clause {
+						ClientFormViewClause::Mutation(value) | ClientFormViewClause::Id(value) => {
+							expressions.push(value.to_token_stream().to_string())
+						}
+						ClientFormViewClause::Customize(fields) => {
+							for field in fields {
+								expressions.push(field.field.to_string());
+								properties(field.properties, &mut expressions);
+							}
+						}
+						ClientFormViewClause::Styling(items)
+						| ClientFormViewClause::Submit(items)
+						| ClientFormViewClause::Summary(items) => properties(items, &mut expressions),
+					}
+				}
+				self.0.push(expressions);
+			}
+		}
+		// Arrange
+		let formatter = FormatEngine::new();
+		let mut before = Views(Vec::new());
+		before.visit_file(&syn::parse_file(input).unwrap());
+		// Act
+		let formatted = formatter.format(input).unwrap().content;
+		let mut after = Views(Vec::new());
+		after.visit_file(&syn::parse_file(&formatted).unwrap());
+		// Assert
+		assert_eq!(before.0.len(), 1);
+		assert_eq!(before.0, after.0);
+		assert_eq!(formatter.format(&formatted).unwrap().content, formatted);
+		assert_eq!(
+			input.matches("// Reuse the configured mutation.").count(),
+			formatted
+				.matches("// Reuse the configured mutation.")
+				.count()
+		);
+	}
+
+	#[test]
+	fn named_client_form_matches_the_golden_layout() {
+		let result = FormatEngine::new()
+			.format(include_str!(
+				"../tests/fixtures/form/client_form_view.input"
+			))
+			.unwrap();
+		assert_eq!(
+			result.content,
+			include_str!("../tests/fixtures/form/client_form_view.expected.rs")
+		);
+	}
 }
