@@ -242,8 +242,12 @@ impl<T: Clone + 'static, E: Clone + 'static> Action<T, E> {
 	}
 
 	/// Returns `true` if the action is pending.
+	///
+	/// Tracks phase changes without cloning the success value or error.
 	pub fn is_pending(&self) -> bool {
-		self.phase().is_pending()
+		let state = self.state();
+		reinhardt_core::reactive::with_runtime(|runtime| runtime.track_dependency(state.id()));
+		state.with_untracked(ActionPhase::is_pending)
 	}
 
 	pub(crate) fn try_is_pending_untracked(&self) -> Option<bool> {
@@ -1036,6 +1040,45 @@ mod tests {
 		action.force_success_for_test(());
 		reinhardt_core::reactive::with_runtime(|runtime| runtime.flush_updates());
 		assert_eq!(runs.get(), 1);
+	}
+
+	#[rstest]
+	#[serial_test::serial(reactive_runtime)]
+	fn pending_observation_tracks_transitions_without_cloning_outputs() {
+		struct Counted(Rc<Cell<usize>>);
+		impl Clone for Counted {
+			fn clone(&self) -> Self {
+				self.0.set(self.0.get() + 1);
+				Self(Rc::clone(&self.0))
+			}
+		}
+
+		// Arrange
+		let scope = reinhardt_core::reactive::ReactiveScope::new();
+		let clones = Rc::new(Cell::new(0));
+		let observations = Rc::new(RefCell::new(Vec::new()));
+		let action = scope.enter(|| use_action(|value: Counted| async { Ok::<_, Counted>(value) }));
+		let _effect = scope.enter(|| {
+			let observations = Rc::clone(&observations);
+			reinhardt_core::reactive::Effect::new(move || {
+				observations.borrow_mut().push(action.is_pending());
+			})
+		});
+
+		// Act
+		for phase in [
+			ActionPhase::Pending,
+			ActionPhase::Success(Counted(Rc::clone(&clones))),
+			ActionPhase::Error(Counted(Rc::clone(&clones))),
+			ActionPhase::Idle,
+		] {
+			action.state().set(phase);
+			reinhardt_core::reactive::with_runtime(|runtime| runtime.flush_updates());
+		}
+
+		// Assert
+		assert_eq!(*observations.borrow(), [false, true, false, false, false]);
+		assert_eq!(clones.get(), 0);
 	}
 
 	#[rstest]

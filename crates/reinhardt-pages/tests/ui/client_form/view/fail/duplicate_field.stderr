@@ -1,0 +1,5 @@
+error: duplicate `text` field customization
+  --> tests/ui/client_form/view/fail/duplicate_field.rs:11:4
+   |
+11 |             text: {}
+   |             ^^^^

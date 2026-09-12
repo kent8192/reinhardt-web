@@ -169,6 +169,18 @@ fn test_client_form_fail() {
 }
 
 #[test]
+fn test_client_form_view_pass() {
+	let t = trybuild::TestCases::new();
+	t.pass("tests/ui/client_form/view/pass/*.rs");
+}
+
+#[test]
+fn test_client_form_view_fail() {
+	let t = trybuild::TestCases::new();
+	t.compile_fail("tests/ui/client_form/view/fail/*.rs");
+}
+
+#[test]
 fn test_wasm_server_api_macro_ui_pass() {
 	let t = trybuild::TestCases::new();
 	t.pass("tests/ui/wasm_server_api/pass/*.rs");

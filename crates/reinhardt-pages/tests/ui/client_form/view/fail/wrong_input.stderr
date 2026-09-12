@@ -1,0 +1,21 @@
+error[E0308]: mismatched types
+ --> tests/ui/client_form/view/fail/wrong_input.rs:5:14
+  |
+5 |       let _view = form! {
+  |  _________________^
+6 | |         client_form: RequestClientForm,
+7 | |         mutation: mutation
+8 | |     };
+  | |     ^
+  | |     |
+  | |_____expected `&FormServerMutation<..., _, ..., _>`, found `&FormServerMutation<..., ..., ..., ...>`
+  |       arguments to this function are incorrect
+  |
+  = note: expected reference `&FormServerMutation<RequestClientForm, _, Request, _>`
+             found reference `&FormServerMutation<RequestClientForm, Deps, std::string::String, std::string::String>`
+note: associated function defined here
+ --> tests/ui/client_form/view/fail/../support.rs
+  |
+  | #[client_form(server_fn = endpoint)]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  = note: this error originates in the macro `form` which comes from the expansion of the attribute macro `client_form` (in Nightly builds, run with -Z macro-backtrace for more info)

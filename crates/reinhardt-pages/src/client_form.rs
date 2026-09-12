@@ -2,6 +2,9 @@
 
 use std::hash::Hash;
 
+mod binding;
+mod view;
+
 /// One selectable option exposed by a DTO enum choice source.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ClientFormChoice<T> {
@@ -25,6 +28,10 @@ pub trait ClientFormChoiceSource: Sized + Clone + PartialEq + 'static {
 /// Private helpers used by generated client-form code.
 #[doc(hidden)]
 pub mod __private {
+	pub use super::binding::{
+		BOOLEAN_CHOICES, choice_binding, optional_choice_binding, optional_number_binding,
+	};
+	pub use super::view::*;
 	use super::*;
 	use crate::form_state::FormValidationError;
 	use reinhardt_core::validators::{Validate, ValidationErrors};

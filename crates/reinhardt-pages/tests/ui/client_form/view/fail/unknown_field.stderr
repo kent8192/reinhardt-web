@@ -1,0 +1,21 @@
+error[E0599]: no method named `__reinhardt_field_unknown` found for struct `__RequestClientFormView<Deps, Output>` in the current scope
+  --> tests/ui/client_form/view/fail/unknown_field.rs:10:4
+   |
+ 6 |       let _view = form! {
+   |  _________________-
+ 7 | |         client_form: RequestClientForm,
+ 8 | |         mutation: &mutation,
+ 9 | |         customize: {
+10 | |             unknown: {
+   | |____________-^^^^^^^
+   |
+  ::: tests/ui/client_form/view/fail/../support.rs
+   |
+   |   #[client_form(server_fn = endpoint)]
+   |   ------------------------------------ method `__reinhardt_field_unknown` not found for this struct
+   |
+help: there is a method `__reinhardt_field_count` with a similar name
+   |
+10 -             unknown: {
+10 +             __reinhardt_field_count: {
+   |

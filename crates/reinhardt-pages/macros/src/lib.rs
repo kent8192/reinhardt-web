@@ -187,6 +187,10 @@ pub fn derive_client_form(input: TokenStream) -> TokenStream {
 }
 
 /// Generates a `use_form` compatible companion form for a DTO request type.
+///
+/// Render its existing mutation through `form! { client_form: Companion,
+/// mutation: &mutation }`. Presentation adapters preserve the DTO's field
+/// order, serde names, and opted-in validation.
 #[proc_macro_attribute]
 pub fn client_form(args: TokenStream, input: TokenStream) -> TokenStream {
 	client_form::client_form_impl(args, input)
@@ -2337,6 +2341,14 @@ pub fn head(input: TokenStream) -> TokenStream {
 /// };
 /// # }
 /// ```
+/// # Named ClientForm views
+///
+/// Start with `client_form: SomeRequestClientForm` and supply `mutation:
+/// &mutation` to render an application-owned runtime. Optional `customize`,
+/// `styling`, `submit`, `summary`, and `id` entries configure presentation.
+/// The resulting descriptor implements `IntoPage` and has `into_page()`.
+/// Fields and validation come from the named DTO; incompatible field/widget
+/// combinations are rejected at compile time.
 #[proc_macro]
 pub fn form(input: TokenStream) -> TokenStream {
 	form::form_impl(input)
