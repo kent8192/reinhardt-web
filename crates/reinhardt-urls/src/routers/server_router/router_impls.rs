@@ -99,6 +99,15 @@ impl Handler for ServerRouter {
 					.fold(MiddlewareChain::new(handler), |chain, mw| {
 						chain.with_middleware(mw.clone())
 					});
+				// A middleware in this chain can fail too (a CSRF or permission
+				// rejection on an unmatched path), and that error must use the same
+				// handler as the 404/405 body above.
+				let chain = match self.exception_handler.as_ref() {
+					Some(exception_handler) => {
+						chain.with_exception_handler(Arc::clone(exception_handler))
+					}
+					None => chain,
+				};
 				return chain.handle(req).await;
 			}
 		};
