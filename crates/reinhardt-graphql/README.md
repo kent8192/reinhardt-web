@@ -81,6 +81,11 @@ Users should depend on `` `reinhardt-graphql` `` (this facade crate) for all Gra
   - `execute_query()`: Execute GraphQL queries via unary RPC
   - `execute_mutation()`: Execute GraphQL mutations via unary RPC
   - `execute_subscription()`: Execute GraphQL subscriptions via server streaming RPC
+- **Operation-Class Enforcement**: Each RPC validates the selected operation before
+  execution. Malformed documents, invalid or ambiguous operation selections, and
+  operation-class mismatches return gRPC `INVALID_ARGUMENT` before any resolver
+  runs or subscription stream is returned. Multiple operations require an exact
+  `operation_name`; a single operation may omit it or use an empty name.
 - **Protocol Buffers**: Complete proto definitions in `reinhardt-grpc` crate
   - `GraphQLRequest`: query, variables, operation_name
   - `GraphQLResponse`: data, errors, extensions
