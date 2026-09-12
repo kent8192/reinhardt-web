@@ -6206,18 +6206,11 @@ mod tests {
 			#[cfg_attr(native, validate(range(min = 0, max = 2147483647)))]
 		}
 		.to_string();
-		let suffixed = quote! {
-			#[cfg_attr(native, validate(range(min = 0i64, max = 2147483647i64)))]
-		}
-		.to_string();
 
-		assert!(
-			cfg_attrs.contains(&expected),
-			"range bounds must be emitted unsuffixed, got {cfg_attrs:?}"
-		);
-		assert!(
-			!cfg_attrs.contains(&suffixed),
-			"range bounds must not carry an i64 suffix, got {cfg_attrs:?}"
+		assert_eq!(
+			cfg_attrs,
+			vec![expected],
+			"range bounds must be emitted as the single expected unsuffixed attribute"
 		);
 	}
 
