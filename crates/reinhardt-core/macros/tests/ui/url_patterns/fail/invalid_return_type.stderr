@@ -1,0 +1,19 @@
+error: #[url_patterns] requires an explicit UnifiedRouter return type; qualified paths are supported
+ --> tests/ui/url_patterns/fail/invalid_return_type.rs:3:1
+  |
+3 | #[url_patterns]
+  | ^^^^^^^^^^^^^^^
+  |
+  = note: this error originates in the attribute macro `url_patterns` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: #[url_patterns] requires an explicit UnifiedRouter return type; qualified paths are supported
+ --> tests/ui/url_patterns/fail/invalid_return_type.rs:9:19
+  |
+9 | fn wrong_router() -> ServerRouter {
+  |                   ^^^^^^^^^^^^^^^
+
+error: #[url_patterns] requires an explicit UnifiedRouter return type; qualified paths are supported
+  --> tests/ui/url_patterns/fail/invalid_return_type.rs:14:14
+   |
+14 | fn aliased() -> AppRouter {
+   |              ^^^^^^^^^^^^

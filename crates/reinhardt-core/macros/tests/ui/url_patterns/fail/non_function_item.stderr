@@ -1,0 +1,5 @@
+error: expected `fn`
+ --> tests/ui/url_patterns/fail/non_function_item.rs:4:1
+  |
+4 | struct Router;
+  | ^^^^^^

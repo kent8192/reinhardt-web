@@ -1,0 +1,33 @@
+error: #[url_patterns] requires one tail builder expression, starting with UnifiedRouter::new() or UnifiedRouter::default()
+ --> tests/ui/url_patterns/fail/non_tail_body.rs:4:37
+  |
+4 |   fn local_binding() -> UnifiedRouter {
+  |  _____________________________________^
+5 | |     let router = UnifiedRouter::new();
+6 | |     router
+7 | | }
+  | |_^
+
+error: #[url_patterns] requires one tail builder expression, starting with UnifiedRouter::new() or UnifiedRouter::default()
+  --> tests/ui/url_patterns/fail/non_tail_body.rs:10:39
+   |
+10 |   fn explicit_return() -> UnifiedRouter {
+   |  _______________________________________^
+11 | |     return UnifiedRouter::new();
+12 | | }
+   | |_^
+
+error: #[url_patterns] requires one tail builder expression, starting with UnifiedRouter::new() or UnifiedRouter::default()
+  --> tests/ui/url_patterns/fail/non_tail_body.rs:15:29
+   |
+15 | fn empty() -> UnifiedRouter {}
+   |                             ^^
+
+error: #[url_patterns] requires one tail builder expression, starting with UnifiedRouter::new() or UnifiedRouter::default()
+  --> tests/ui/url_patterns/fail/non_tail_body.rs:18:33
+   |
+18 |   fn semicolon() -> UnifiedRouter {
+   |  _________________________________^
+19 | |     UnifiedRouter::new();
+20 | | }
+   | |_^

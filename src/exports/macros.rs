@@ -27,9 +27,9 @@ pub use reinhardt_macros::websocket;
 
 #[cfg(native)]
 pub use reinhardt_macros::flatten_imports;
-pub use reinhardt_macros::routes;
 #[cfg(native)]
 pub use reinhardt_macros::viewset;
+pub use reinhardt_macros::{routes, url_patterns};
 
 #[cfg(all(feature = "admin", native))]
 pub use reinhardt_macros::admin;

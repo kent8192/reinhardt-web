@@ -79,6 +79,9 @@ jobs:
           rust-save-if: ${{ github.ref == 'refs/heads/main' }}
           protoc-token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Install browser WASM target for consumer contract tests
+        run: rustup target add wasm32-unknown-unknown
+
       - name: Install mold linker and build dependencies
         run: |
           sudo systemctl stop unattended-upgrades || true
@@ -144,6 +147,9 @@ jobs:
           rm -rf ~/.cargo/git/db || true
           echo "Disk usage after additional cleanup:"
           df -h
+
+      - name: Fetch browser dependencies for offline consumer checks
+        run: cargo fetch --target wasm32-unknown-unknown
 
       - name: Run cross-crate integration tests (partition ${{ matrix.partition }}/${{ inputs.partition-count || '5' }})
         env:

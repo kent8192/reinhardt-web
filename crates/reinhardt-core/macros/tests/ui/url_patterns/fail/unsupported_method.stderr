@@ -1,0 +1,17 @@
+error: #[url_patterns] does not support the outer builder method `websocket`; supported methods are server, client, with_prefix, with_namespace, mount_unified, and merge
+ --> tests/ui/url_patterns/fail/unsupported_method.rs:5:23
+  |
+5 |     UnifiedRouter::new().websocket(configure)
+  |                          ^^^^^^^^^
+
+error: #[url_patterns] does not support the outer builder method `grpc`; supported methods are server, client, with_prefix, with_namespace, mount_unified, and merge
+  --> tests/ui/url_patterns/fail/unsupported_method.rs:10:23
+   |
+10 |     UnifiedRouter::new().grpc(configure)
+   |                          ^^^^
+
+error: #[url_patterns] does not support the outer builder method `custom`; supported methods are server, client, with_prefix, with_namespace, mount_unified, and merge
+  --> tests/ui/url_patterns/fail/unsupported_method.rs:15:23
+   |
+15 |     UnifiedRouter::new().custom(configure)
+   |                          ^^^^^^

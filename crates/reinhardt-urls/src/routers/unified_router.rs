@@ -181,6 +181,11 @@ impl UnifiedRouter {
 	/// Native builds execute the closure and store the configured `ServerRouter`.
 	/// The WASM counterpart type-checks and drops the closure without invoking it.
 	///
+	/// For native-only handler references, annotate the enclosing builder function
+	/// with the facade's `#[reinhardt::url_patterns]`. It removes the complete
+	/// server argument before name resolution unless the caller enables
+	/// `cfg(server)` on a non-browser-WASM target.
+	///
 	/// # Example
 	///
 	/// ```rust,ignore
@@ -549,6 +554,10 @@ impl UnifiedRouter {
 	/// This arm only exists when `client-router` is disabled, and `routers.rs`
 	/// only re-exports it on native targets. WASM builds require the
 	/// `client-router` feature for the P1 no-op `server` closure shape.
+	///
+	/// The facade's `#[reinhardt::url_patterns]` can remove this call entirely
+	/// when the calling crate does not enable `cfg(server)`. Direct builder
+	/// calls retain their existing behavior.
 	pub fn server<F>(mut self, f: F) -> Self
 	where
 		F: FnOnce(ServerRouter) -> ServerRouter,
@@ -1010,6 +1019,10 @@ impl UnifiedRouter {
 	/// cross-target type-checking — its `ServerRouter` parameter type is unified
 	/// with the native arm — and then discarded without being invoked, so the
 	/// shared route definitions compile on both targets at zero WASM runtime cost.
+	/// Handler names must still be available on WASM for a direct builder call.
+	/// The facade's `#[reinhardt::url_patterns]` removes the complete server
+	/// argument before name resolution on browser WASM, even if the caller has
+	/// `cfg(server)` enabled.
 	pub fn server<F>(self, _f: F) -> Self
 	where
 		F: FnOnce(ServerRouter) -> ServerRouter,
