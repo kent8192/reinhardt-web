@@ -1174,3 +1174,6 @@ async fn multipart_mutation_callbacks_continue_after_form_owner_disposal() {
 	assert_eq!(mutation_success_calls.get(), 1);
 	mutation_scope.dispose();
 }
+
+#[path = "wasm/model_form_page_upload_cases.rs"]
+mod mutation_page;

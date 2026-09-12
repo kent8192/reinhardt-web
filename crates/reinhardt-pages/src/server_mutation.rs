@@ -629,6 +629,23 @@ where
 	action_fn(input).await.map_err(Into::into)
 }
 
+impl<Form, Deps, Input, Output> FormServerMutation<Form, Deps, Input, Output>
+where
+	Form: crate::form::page::FormPageSource,
+	Deps: Clone + PartialEq + 'static,
+	Input: 'static,
+	Output: Clone + 'static,
+{
+	/// Renders this mutation's configured form without consuming the handle.
+	///
+	/// Native rendering is inert. Browser submission uses this mutation's
+	/// existing dispatch lifecycle; the reset control is disabled while a
+	/// submission is pending so its completion cannot overwrite a reset state.
+	pub fn page(&self) -> crate::Page {
+		crate::form::page::render_mutation_page(self)
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use std::any::Any;

@@ -185,6 +185,7 @@ where
 	P: ModelFormPolicy,
 {
 	values: HashMap<&'static str, serde_json::Value>,
+	json_editor_text: HashMap<&'static str, String>,
 	#[cfg(wasm)]
 	selected_files: HashMap<&'static str, web_sys::File>,
 	_schema: PhantomData<S>,
@@ -199,6 +200,7 @@ where
 	fn clone(&self) -> Self {
 		Self {
 			values: self.values.clone(),
+			json_editor_text: self.json_editor_text.clone(),
 			#[cfg(wasm)]
 			selected_files: self.selected_files.clone(),
 			_schema: PhantomData,
@@ -227,6 +229,7 @@ where
 		}
 		Self {
 			values,
+			json_editor_text: HashMap::new(),
 			#[cfg(wasm)]
 			selected_files: HashMap::new(),
 			_schema: PhantomData,
@@ -268,6 +271,7 @@ where
 		{
 			return Err(invalid_value(field, "field does not allow null"));
 		}
+		self.json_editor_text.remove(&descriptor.name);
 		self.values.insert(descriptor.name, value);
 		Ok(())
 	}
@@ -287,6 +291,25 @@ where
 				| ModelFormFieldKind::Url { .. }
 		) {
 			return Err(invalid_value(field, "expected a shared text control field"));
+		}
+		self.json_editor_text.remove(&descriptor.name);
+		self.values
+			.insert(descriptor.name, serde_json::Value::String(value));
+		Ok(())
+	}
+
+	/// Preserves incomplete scalar editor input until submission conversion.
+	#[doc(hidden)]
+	pub fn set_binding_editor_text(
+		&mut self,
+		field: &str,
+		value: String,
+	) -> Result<(), ModelFormPayloadError> {
+		let descriptor = self.binding_descriptor(field)?;
+		if matches!(descriptor.kind, ModelFormFieldKind::Json) {
+			self.json_editor_text.insert(descriptor.name, value.clone());
+		} else {
+			self.json_editor_text.remove(&descriptor.name);
 		}
 		self.values
 			.insert(descriptor.name, serde_json::Value::String(value));
@@ -319,6 +342,7 @@ where
 							NumberParseError::from_raw_kind(raw, NumberParseErrorKind::OutOfRange)
 						})?
 				}
+				ModelFormFieldKind::Decimal { .. } => serde_json::Value::String(raw.to_owned()),
 				_ => {
 					return Err(NumberParseError::from_raw_kind(
 						raw,
@@ -338,8 +362,14 @@ where
 			)
 		})?;
 		match value {
-			Some(value) => self.values.insert(descriptor.name, value),
-			None => self.values.remove(descriptor.name),
+			Some(value) => {
+				self.json_editor_text.remove(&descriptor.name);
+				self.values.insert(descriptor.name, value)
+			}
+			None => {
+				self.json_editor_text.remove(&descriptor.name);
+				self.values.remove(descriptor.name)
+			}
 		};
 		Ok(())
 	}
@@ -397,6 +427,7 @@ where
 			});
 		}
 		self.values.remove(descriptor.name);
+		self.json_editor_text.remove(&descriptor.name);
 		#[cfg(wasm)]
 		if is_file_kind(descriptor.kind) {
 			self.selected_files.remove(descriptor.name);
@@ -407,6 +438,12 @@ where
 	/// Returns the raw control value stored for a model field.
 	pub fn value(&self, field: &str) -> Option<&serde_json::Value> {
 		self.values.get(field)
+	}
+
+	/// Returns raw text retained by a JSON control while its editor value is being validated.
+	#[doc(hidden)]
+	pub fn binding_editor_text(&self, field: &str) -> Option<&str> {
+		self.json_editor_text.get(field).map(String::as_str)
 	}
 
 	/// Deserializes one scalar server-function argument from model-form state.
@@ -578,6 +615,11 @@ where
 	/// Clears every value that belongs to the active form policy.
 	pub fn clear_selected_values(&mut self) {
 		self.values.retain(|field, _| {
+			!S::contract_fields().iter().any(|descriptor| {
+				descriptor.name == *field && descriptor.editable && P::allows(field)
+			})
+		});
+		self.json_editor_text.retain(|field, _| {
 			!S::contract_fields().iter().any(|descriptor| {
 				descriptor.name == *field && descriptor.editable && P::allows(field)
 			})

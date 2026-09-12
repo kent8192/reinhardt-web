@@ -665,11 +665,10 @@
 //! Generated email, URL, and password widgets synchronize their mounted values
 //! on reset as well.
 //!
-//! Typed runtime bindings intentionally exclude file inputs, named `model_form:`
-//! contracts, ModelForm `exclude: [...]` declarations, and nested collection paths. Those forms
-//! keep their existing generated/file/collection APIs. The binding categories
-//! above reuse the existing `page!` classification and do not add a second DOM
-//! registry or application-facing adapter type.
+//! Named `model_form:` contracts and ModelForm `exclude: [...]` declarations
+//! also expose selected typed field bindings. `page!` runtime bindings exclude
+//! file inputs and nested collection paths; generated mutation pages bind their
+//! single-file controls through the existing ModelForm upload channel.
 //!
 //! DTO request types can opt in to generated client-form companions with
 //! [`ClientForm`]. The generated form keeps enum choices and typed request
@@ -946,6 +945,54 @@
 //! context. The old `strip_arguments` DSL name remains as a deprecated alias.
 //! CSRF should be supplied by `#[server_fn]` client stubs through the
 //! `X-CSRFToken` header rather than as a server function business argument.
+//!
+//! ## Generated model-form mutation pages
+//!
+//! Build the form runtime and mutation once, then call `action.page()` to render
+//! their generated controls. The page uses the runtime already attached to the
+//! mutation, including validation, error state, and configured callbacks.
+//!
+//! The generated **Submit** button dispatches that mutation and becomes disabled
+//! with **Submitting...** while pending. **Reset** restores the runtime's defaults
+//! and interaction state. With `reset_form_on_success()`, the latest typed result
+//! remains available after the controls reset. Render success content outside the
+//! form subtree and call `action.reset()` to dismiss it after the request completes.
+//! Resetting the action while it is pending does not cancel the request.
+//!
+//! Each form instance supports one mounted generated page. Labels, help text, and
+//! field errors refer to stable control IDs; the linked error summary follows field
+//! order. Form-level errors, including `_all`, excluded, and unknown fields, appear
+//! separately. Input elements remain mounted during editing and error/pending/reset
+//! updates. Server-owned fields outside the model-form selection do not become
+//! controls or mutation payload fields.
+//!
+//! Native page construction and rendering do not execute the server function or
+//! submission callbacks. Browser controls use the existing runtime bindings.
+//! Existing `into_page()` remains available for its standalone submission flow.
+//!
+//! ```rust
+//! use reinhardt_pages::{FormPageSource, FormServerMutation, Page, PageElement};
+//! use reinhardt_pages::component::IntoPage;
+//!
+//! fn page_with_confirmation<Form, Deps, Input, Output>(
+//!     action: FormServerMutation<Form, Deps, Input, Output>,
+//!     render_result: impl Fn(Output) -> Page + 'static,
+//! ) -> Page
+//! where
+//!     Form: FormPageSource,
+//!     Deps: Clone + PartialEq + 'static,
+//!     Input: 'static,
+//!     Output: Clone + 'static,
+//! {
+//!     let generated_form = action.page();
+//!     PageElement::new("section")
+//!         .child(generated_form)
+//!         .child(Page::reactive(move || {
+//!             action.result().map(&render_result).unwrap_or(Page::Empty)
+//!         }))
+//!         .into_page()
+//! }
+//! ```
 //!
 //! ## Macros
 //!
@@ -1245,6 +1292,7 @@ pub use dom::{CustomEventOptions, Document, Element, EventHandle, EventType, doc
 pub use form::{FormBinding, FormComponent};
 pub use reinhardt_core::{deps, deps_auto};
 // Static form metadata types (always available, used by form! macro)
+pub use form::page::FormPageSource;
 pub use form_generated::{StaticFieldMetadata, StaticFormMetadata};
 pub use form_state::{
 	CollectionItem, CollectionItemKey, CollectionState, CustomWidgetContext, CustomWidgetRawValue,

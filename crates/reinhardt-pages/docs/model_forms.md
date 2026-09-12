@@ -341,6 +341,50 @@ match mutation.dispatch() {
 }
 ```
 
+### Render the configured mutation
+
+```rust,ignore
+let form = form! {
+    name: CreateClusterPageForm,
+    model_form: ClusterCreateForm,
+    server_fn: create_cluster,
+};
+let runtime = use_form(&form).build();
+let action = form.server_mutation(&runtime).reset_form_on_success().build();
+let generated_form = action.page();
+let result_action = action.clone();
+let page = PageElement::new("section")
+    .child(generated_form)
+    .child(Page::reactive(move || {
+        result_action.result().map(|result: ClusterTokenInfo| {
+            PageElement::new("output").child(result.token).into_page()
+        }).unwrap_or(Page::Empty)
+    }))
+    .into_page();
+```
+
+Build the form runtime and mutation once, then call `action.page()` to render
+their generated controls. The page uses the runtime already attached to the
+mutation, including validation, error state, and configured callbacks.
+
+The generated **Submit** button dispatches that mutation and becomes disabled
+with **Submitting...** while pending. **Reset** restores the runtime's defaults
+and interaction state. With `reset_form_on_success()`, the latest typed result
+remains available after the controls reset. Render success content outside the
+form subtree and call `action.reset()` to dismiss it after the request completes.
+Resetting the action while it is pending does not cancel the request.
+
+Each form instance supports one mounted generated page. Labels, help text, and
+field errors refer to stable control IDs; the linked error summary follows field
+order. Form-level errors, including `_all`, excluded, and unknown fields, appear
+separately. Input elements remain mounted during editing and error/pending/reset
+updates. Server-owned fields outside the model-form selection do not become
+controls or mutation payload fields.
+
+Native page construction and rendering do not execute the server function or
+submission callbacks. Browser controls use the existing runtime bindings.
+Existing `into_page()` remains available for its standalone submission flow.
+
 Use `submit_response()` when the caller needs the immediate awaited response.
 Use `form.server_mutation(&runtime)` when the UI should observe phase, pending
 state, latest `ServerFnError`, and the latest successful typed result through a
