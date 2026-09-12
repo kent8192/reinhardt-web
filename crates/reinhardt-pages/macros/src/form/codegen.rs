@@ -2804,18 +2804,27 @@ fn generate_model_form(
 								_ => #pages_crate::component::ControlValue::Text(
 									value.map_or_else(
 										|| empty_display_value.clone(),
-										|value| match value {
-											#pages_crate::__private::serde_json::Value::Null => {
-												 empty_display_value.clone()
+										|value| {
+											if matches!(descriptor.kind, #pages_crate::form::ModelFormFieldKind::Json) {
+												state.binding_editor_text(field).map_or_else(
+													|| #pages_crate::__private::serde_json::to_string(value).unwrap_or_default(),
+													::std::borrow::ToOwned::to_owned,
+												)
+											} else {
+												match value {
+													#pages_crate::__private::serde_json::Value::Null => {
+														empty_display_value.clone()
+													}
+													#pages_crate::__private::serde_json::Value::String(value) => {
+														if value.is_empty() {
+															empty_display_value.clone()
+														} else if matches!(descriptor.kind, #pages_crate::form::ModelFormFieldKind::DateTime) {
+															value.strip_suffix('Z').unwrap_or(value).to_owned()
+														} else { value.clone() }
+													}
+													value => value.to_string(),
+												}
 											}
-											#pages_crate::__private::serde_json::Value::String(value) => {
-												if value.is_empty() {
-													empty_display_value.clone()
-												} else if matches!(descriptor.kind, #pages_crate::form::ModelFormFieldKind::DateTime) {
-													value.strip_suffix('Z').unwrap_or(value).to_owned()
-												} else { value.clone() }
-											}
-											value => value.to_string(),
 										},
 									),
 								),
@@ -3339,18 +3348,21 @@ fn generate_model_form(
 					field, #pages_crate::RuntimeControlBindingRequest { kind, radio_value: None }, true,
 				).expect("generated widget has a compatible model form binding");
 				let binding = if kind != #pages_crate::component::ControlKind::File {
-					let initial = self.value(field_name);
 					let default_display = binding.read_untracked();
 					let read_binding = binding.clone();
 					let source = self.clone();
+					let reset_runtime = runtime.clone();
 					binding.on_native_reset(move || {
 						// Browser defaults lose omitted, null, and structured scalar representations.
 						if read_binding.read_untracked() == default_display {
+							let defaults = reset_runtime.default_values();
+							let initial = defaults.0.get(field_name).cloned();
 							let mut state = source.__model_state.borrow_mut();
 							match initial.clone() {
 								Some(value) => state.set_value(field_name, value),
 								None => state.clear_value(field_name),
-							}.expect("validated native model form default");
+							}
+							.expect("validated native model form default");
 							drop(state);
 							source.__state_version.update(|value| *value = value.wrapping_add(1));
 						}

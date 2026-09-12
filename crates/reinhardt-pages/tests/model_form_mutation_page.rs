@@ -160,6 +160,28 @@ fn mutation_page_is_native_inert_and_preserves_field_metadata() {
 }
 
 #[test]
+fn mutation_page_disables_reset_while_submission_is_pending() {
+	// Arrange
+	ReactiveScope::run(|| {
+		let form = form! {
+			name: PendingResetPageForm,
+			model_form: QuestionCreateForm,
+			server_fn: save_question,
+		};
+		let runtime = use_form(&form).build();
+		let action = form.server_mutation(&runtime).build();
+		let page = action.page();
+		assert!(!(page.render_to_string().contains("disabled=\"disabled\"")));
+
+		// Act
+		runtime.form_state().is_submitting.set(true);
+
+		// Assert
+		assert!(page.render_to_string().contains("disabled=\"disabled\""));
+	});
+}
+
+#[test]
 fn mutation_page_uses_attached_runtime_and_distinct_instance_ids() {
 	ReactiveScope::run(|| {
 		// Arrange

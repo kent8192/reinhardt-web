@@ -347,6 +347,94 @@ async fn page_preserves_generated_widget_overrides() {
 
 #[wasm_bindgen_test(async)]
 #[serial(server_mutation_globals)]
+async fn page_json_binding_preserves_json_scalar_representations() {
+	// Arrange
+	let root = BodyRoot::new("page-json-scalars");
+	let scope = ReactiveScope::new();
+	let (form, _runtime) = scope.enter(|| {
+		let form = form! {
+			name: JsonScalarPageForm,
+			model_form: WidgetContract,
+			server_fn: save_page_widgets
+		};
+		form.set_value("json", serde_json::json!("true")).unwrap();
+		let runtime = use_form(&form).build();
+		form.server_mutation(&runtime)
+			.build()
+			.page()
+			.mount(&Element::new(root.element.clone()))
+			.unwrap();
+		(form, runtime)
+	});
+	let json = control(&root.element, "json")
+		.dyn_into::<web_sys::HtmlTextAreaElement>()
+		.unwrap();
+
+	// Act: update the source through each JSON scalar shape.
+	assert_eq!(json.value(), r#""true""#);
+	form.set_value("json", serde_json::Value::Null).unwrap();
+	settle_browser().await;
+	assert_eq!(json.value(), "null");
+	form.set_value("json", serde_json::json!(true)).unwrap();
+	settle_browser().await;
+	assert_eq!(json.value(), "true");
+
+	// Assert: structured values retain their JSON syntax as well.
+	form.set_value("json", serde_json::json!({"enabled": true}))
+		.unwrap();
+	settle_browser().await;
+	assert_eq!(json.value(), r#"{"enabled":true}"#);
+}
+
+#[wasm_bindgen_test(async)]
+#[serial(server_mutation_globals)]
+async fn page_native_reset_uses_current_runtime_defaults() {
+	// Arrange: mount with one value, then save a different value as the runtime default.
+	let root = BodyRoot::new("page-current-reset-default");
+	let scope = ReactiveScope::new();
+	let (form, runtime) = scope.enter(|| {
+		let form = form! {
+			name: CurrentResetDefaultPageForm,
+			model_form: WidgetContract,
+			server_fn: save_page_widgets
+		};
+		form.set_value("text", serde_json::json!("initial"))
+			.unwrap();
+		let runtime = use_form(&form).build();
+		form.server_mutation(&runtime)
+			.build()
+			.page()
+			.mount(&Element::new(root.element.clone()))
+			.unwrap();
+		(form, runtime)
+	});
+	let text = control(&root.element, "text")
+		.dyn_into::<web_sys::HtmlInputElement>()
+		.unwrap();
+	form.set_value("text", serde_json::json!("saved")).unwrap();
+	runtime.reset_default_values();
+	form.set_value("text", serde_json::json!("edited")).unwrap();
+	let form_node = root
+		.element
+		.query_selector("form")
+		.unwrap()
+		.unwrap()
+		.dyn_into::<web_sys::HtmlFormElement>()
+		.unwrap();
+
+	// Act: the browser still owns the original HTML default, so the binding must restore
+	// the newer runtime default after native reset.
+	form_node.reset();
+	settle_browser().await;
+
+	// Assert
+	assert_eq!(text.value(), "saved");
+	assert_eq!(form.value("text"), Some(serde_json::json!("saved")));
+	assert!(!(runtime.form_state().is_dirty.get()));
+}
+
+#[wasm_bindgen_test(async)]
+#[serial(server_mutation_globals)]
 async fn page_keeps_invalid_scalar_editor_text() {
 	// Arrange
 	let root = BodyRoot::new("page-scalar-editors");

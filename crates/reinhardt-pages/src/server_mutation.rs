@@ -639,7 +639,8 @@ where
 	/// Renders this mutation's configured form without consuming the handle.
 	///
 	/// Native rendering is inert. Browser submission uses this mutation's
-	/// existing dispatch lifecycle; form reset preserves its latest result.
+	/// existing dispatch lifecycle; the reset control is disabled while a
+	/// submission is pending so its completion cannot overwrite a reset state.
 	pub fn page(&self) -> crate::Page {
 		crate::form::page::render_mutation_page(self)
 	}

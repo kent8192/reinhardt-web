@@ -202,6 +202,10 @@ where
 		}));
 	let reset = PageElement::new("button")
 		.attr("type", "button")
+		.reactive_attr("disabled", {
+			let reset_action = action.clone();
+			move || reset_action.is_pending().then(|| "disabled".into())
+		})
 		.child("Reset");
 	#[cfg(wasm)]
 	let reset = reset.on(
