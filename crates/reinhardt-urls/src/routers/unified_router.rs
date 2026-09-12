@@ -701,6 +701,11 @@ impl ServerRouter {
 		self
 	}
 
+	/// No-op for `ServerRouter::with_exception_handler`.
+	pub fn with_exception_handler<H>(self, _exception_handler: H) -> Self {
+		self
+	}
+
 	/// No-op for `ServerRouter::with_middleware`.
 	pub fn with_middleware<M>(self, _middleware: M) -> Self {
 		self
@@ -796,6 +801,7 @@ const _: fn() = || {
 			s.with_prefix("/api")
 				.with_namespace("api")
 				.with_di_context(())
+				.with_exception_handler(())
 				.with_middleware(())
 				.with_route_middleware(())
 				.exclude("/internal")

@@ -131,6 +131,38 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+### Custom Exception Responses
+
+Install an `ExceptionHandler` when the application needs a consistent error
+schema for handler or middleware failures:
+
+```rust
+use async_trait::async_trait;
+use hyper::StatusCode;
+use reinhardt::http::{Error, ExceptionHandler, Request, Response};
+use reinhardt::server::HttpServer;
+use std::sync::Arc;
+
+struct ApiErrors;
+
+#[async_trait]
+impl ExceptionHandler for ApiErrors {
+    async fn handle_exception(&self, _request: &Request, _error: Error) -> Response {
+        Response::new(StatusCode::INTERNAL_SERVER_ERROR)
+            .with_body("request failed")
+    }
+}
+
+let server = HttpServer::new(handler)
+    .with_exception_handler(Arc::new(ApiErrors));
+```
+
+The custom handler is responsible for safe response bodies and security
+headers. The default conversion omits internal details and supplies
+`Content-Type: text/plain; charset=utf-8` and
+`X-Content-Type-Options: nosniff`; do not expose an error's `Display` output
+without reviewing it for sensitive data.
+
 ### WebSocket Server
 
 ```rust

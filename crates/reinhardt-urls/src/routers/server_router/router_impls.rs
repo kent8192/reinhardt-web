@@ -37,16 +37,37 @@ impl Default for ServerRouter {
 	}
 }
 
-/// Handler that always returns a pre-built response.
+/// The kind of routing failure produced when no route matches a request.
+#[derive(Clone, Copy)]
+enum RoutingErrorKind {
+	NotFound,
+	MethodNotAllowed,
+}
+
+fn routing_error(kind: RoutingErrorKind, method: &str, path: &str) -> Error {
+	match kind {
+		RoutingErrorKind::MethodNotAllowed => {
+			Error::MethodNotAllowed(format!("Method {method} not allowed for {path}"))
+		}
+		RoutingErrorKind::NotFound => Error::NotFound(format!("No route for {method} {path}")),
+	}
+}
+
+/// Handler that returns the routing error for the current request.
 ///
-/// Used internally to route framework-level error responses (404/405)
-/// through the middleware chain for post-processing. (#3234)
-struct FixedResponseHandler(Response);
+/// Keeping the error as an `Err` until the middleware chain reaches this
+/// handler lets middleware short-circuit an unmatched request without first
+/// invoking the exception handler for a response that will be discarded.
+struct RoutingErrorHandler {
+	kind: RoutingErrorKind,
+	method: String,
+	path: String,
+}
 
 #[async_trait]
-impl Handler for FixedResponseHandler {
+impl Handler for RoutingErrorHandler {
 	async fn handle(&self, _request: Request) -> Result<Response> {
-		Ok(self.0.clone())
+		Err(routing_error(self.kind, &self.method, &self.path))
 	}
 }
 
@@ -54,20 +75,28 @@ impl Handler for FixedResponseHandler {
 #[async_trait]
 impl Handler for ServerRouter {
 	async fn handle(&self, mut req: Request) -> Result<Response> {
-		let path = req.uri.path();
-		let method = &req.method;
+		let path = req.uri.path().to_owned();
+		let method = req.method.clone();
 
 		// Resolve route with HTTP method for matchit routing
-		let route_match = match self.resolve(path, method) {
+		let route_match = match self.resolve(&path, &method) {
 			Some(m) => m,
 			None => {
 				// Route not found for this method
 				// Check if path exists for any other method to determine 404 vs 405
-				let error = if self.path_exists_for_any_method(path) {
-					Error::MethodNotAllowed(format!("Method {} not allowed for {}", method, path))
+				let error_kind = if self.path_exists_for_any_method(&path) {
+					RoutingErrorKind::MethodNotAllowed
 				} else {
-					Error::NotFound(format!("No route for {} {}", method, path))
+					RoutingErrorKind::NotFound
 				};
+
+				// The route match normally installs the route's DI context below.
+				// Unmatched requests have no `RouteMatch`, so install the router
+				// context before an exception handler or router middleware observes
+				// the request.
+				if let Some(di_ctx) = &self.di_context {
+					req.set_di_context(di_ctx.clone());
+				}
 
 				// If router has middleware, route the error response through the
 				// middleware chain so post-processing (e.g., security headers) is
@@ -77,6 +106,7 @@ impl Handler for ServerRouter {
 					// An installed handler answers the request directly. Without
 					// one the error stays an `Err`, which is what callers of a
 					// middleware-free router rely on.
+					let error = routing_error(error_kind, &method.to_string(), &path);
 					return match self.exception_handler.as_ref() {
 						Some(exception_handler) => {
 							Ok(exception_handler.handle_exception(&req, error).await)
@@ -85,15 +115,15 @@ impl Handler for ServerRouter {
 					};
 				}
 
-				// The handler builds the body and the router middleware below
-				// post-processes it, preserving the #3234 ordering.
-				let response = match self.exception_handler.as_ref() {
-					Some(exception_handler) => {
-						exception_handler.handle_exception(&req, error).await
-					}
-					None => Response::from(error),
-				};
-				let handler: Arc<dyn Handler> = Arc::new(FixedResponseHandler(response));
+				// Keep the routing error as an `Err` so the chain's exception
+				// handler runs only when middleware calls the inner handler. This
+				// preserves #3234 post-processing while avoiding duplicate custom
+				// responses when middleware rejects the request first.
+				let handler: Arc<dyn Handler> = Arc::new(RoutingErrorHandler {
+					kind: error_kind,
+					method: method.to_string(),
+					path,
+				});
 				let chain = own_middleware
 					.iter()
 					.fold(MiddlewareChain::new(handler), |chain, mw| {

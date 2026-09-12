@@ -5,7 +5,10 @@ use hyper::Method;
 use reinhardt_core::endpoint::EndpointInfo;
 use reinhardt_http::{Handler, Request, Response, Result};
 use rstest::rstest;
-use std::sync::Arc;
+use std::sync::{
+	Arc,
+	atomic::{AtomicUsize, Ordering},
+};
 
 struct TestEndpoint<const ID: u8>;
 
@@ -1301,6 +1304,23 @@ impl reinhardt_http::ExceptionHandler for TeapotErrors {
 	}
 }
 
+/// Exception handler that records every invocation.
+struct CountingErrors {
+	calls: Arc<AtomicUsize>,
+}
+
+#[async_trait::async_trait]
+impl reinhardt_http::ExceptionHandler for CountingErrors {
+	async fn handle_exception(
+		&self,
+		_request: &reinhardt_http::Request,
+		_error: reinhardt_http::Error,
+	) -> reinhardt_http::Response {
+		self.calls.fetch_add(1, Ordering::SeqCst);
+		reinhardt_http::Response::new(hyper::StatusCode::IM_A_TEAPOT).with_body("teapot")
+	}
+}
+
 /// Handler that always fails, used to produce a view error.
 struct FailingView;
 
@@ -1375,6 +1395,73 @@ async fn test_404_with_router_middleware_still_runs_post_processing() {
 			.get("x-security-test")
 			.map(|v| v.to_str().unwrap()),
 		Some("applied"),
+	);
+}
+
+#[rstest]
+#[tokio::test]
+async fn test_unmatched_middleware_error_does_not_invoke_exception_handler_twice() {
+	// Arrange: middleware rejects before the synthetic unmatched-route handler
+	// can run, so only the middleware error should reach the exception handler.
+	let calls = Arc::new(AtomicUsize::new(0));
+	let router = ServerRouter::new()
+		.with_exception_handler(Arc::new(CountingErrors {
+			calls: Arc::clone(&calls),
+		}))
+		.with_middleware(FailingMiddleware);
+
+	// Act
+	let response = Handler::handle(&router, create_test_request("/nonexistent"))
+		.await
+		.unwrap();
+
+	// Assert
+	assert_eq!(response.status, hyper::StatusCode::IM_A_TEAPOT);
+	assert_eq!(calls.load(Ordering::SeqCst), 1);
+}
+
+/// Exception handler that verifies the router's DI context is visible.
+struct DiContextErrors {
+	expected: Arc<InjectionContext>,
+}
+
+#[async_trait::async_trait]
+impl reinhardt_http::ExceptionHandler for DiContextErrors {
+	async fn handle_exception(
+		&self,
+		request: &reinhardt_http::Request,
+		_error: reinhardt_http::Error,
+	) -> reinhardt_http::Response {
+		let has_context = request
+			.get_di_context::<Arc<InjectionContext>>()
+			.is_some_and(|actual| Arc::ptr_eq(actual.as_ref(), &self.expected));
+		let body = if has_context { "context" } else { "missing" };
+		reinhardt_http::Response::new(hyper::StatusCode::IM_A_TEAPOT).with_body(body)
+	}
+}
+
+#[rstest]
+#[tokio::test]
+async fn test_unmatched_exception_handler_receives_router_di_context() {
+	// Arrange
+	let di_context =
+		Arc::new(InjectionContext::builder(Arc::new(reinhardt_di::SingletonScope::new())).build());
+	let router = ServerRouter::new()
+		.with_di_context(Arc::clone(&di_context))
+		.with_exception_handler(Arc::new(DiContextErrors {
+			expected: Arc::clone(&di_context),
+		}));
+
+	// Act
+	let response = Handler::handle(&router, create_test_request("/nonexistent"))
+		.await
+		.unwrap();
+
+	// Assert
+	assert_eq!(response.status, hyper::StatusCode::IM_A_TEAPOT);
+	assert_eq!(
+		String::from_utf8(response.body.to_vec()).unwrap(),
+		"context"
 	);
 }
 
