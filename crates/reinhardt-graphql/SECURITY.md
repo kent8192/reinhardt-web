@@ -33,11 +33,19 @@ resolver arguments are attacker-controlled.
   resolver and subscription execution. Protected deployments must fork a
   request context for each GraphQL request; the schema-level
   `with_di_context` helper reuses one context and does not provide request
-  isolation automatically. GraphQL-over-gRPC preserves the same GraphQL and
-  gRPC authorization, validation, isolation, and resource limits only when
-  each RPC rejects documents whose operation type does not match the RPC and
-  applies the corresponding controls; the current service forwards documents
-  to schema execution without enforcing that operation-type match.
+  isolation automatically.
+- GraphQL-over-gRPC binds the selected document operation to the advertised RPC
+  class before execution. Malformed documents, invalid or ambiguous operation
+  selections, and class mismatches fail with gRPC `INVALID_ARGUMENT` before
+  resolver execution or resolver subscription creation. Subscription errors are
+  delivered through the response stream. Validation applies to the final document
+  and operation name produced by schema extensions, without parsing before their
+  preparation checks. Custom schemas must use `GraphQLGrpcService::schema_builder`
+  to register the guard before user extensions; service construction rejects
+  unguarded schemas. The built-in schema helpers install the guard automatically
+  when `graphql-grpc` is enabled.
+  Deployments must still configure and enforce schema and resolver authorization,
+  request isolation, and resource limits.
 
 ## Reportable Findings
 

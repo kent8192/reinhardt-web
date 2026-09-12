@@ -1,7 +1,16 @@
 //! GraphQL over gRPC service implementation
 
+mod operation_guard;
+
+#[cfg(test)]
+mod tests;
+
+use operation_guard::{GuardedSchema, OperationCheck, OperationGuard};
+
 #[cfg(feature = "graphql-grpc")]
-use async_graphql::Schema;
+use async_graphql::parser::types::OperationType;
+#[cfg(feature = "graphql-grpc")]
+use async_graphql::{Schema, SchemaBuilder};
 #[cfg(feature = "graphql-grpc")]
 use reinhardt_grpc::proto::graphql::{
 	GraphQlRequest, GraphQlResponse, SubscriptionEvent, graph_ql_service_server::GraphQlService,
@@ -13,7 +22,12 @@ use tokio_stream::{Stream, StreamExt};
 #[cfg(feature = "graphql-grpc")]
 use tonic::{Request, Response, Status};
 
-/// GraphQL service implementation for gRPC
+/// GraphQL service implementation for gRPC.
+///
+/// Build the schema with [`Self::schema_builder`] so operation checks run after
+/// request preparation and document transformations, before any resolver runs.
+/// Invalid documents, operation selections, and class mismatches return gRPC
+/// `INVALID_ARGUMENT`. Subscriptions report these errors through their stream.
 #[cfg(feature = "graphql-grpc")]
 pub struct GraphQLGrpcService<Query, Mutation, Subscription> {
 	schema: Arc<Schema<Query, Mutation, Subscription>>,
@@ -26,16 +40,60 @@ where
 	Mutation: async_graphql::ObjectType + 'static,
 	Subscription: async_graphql::SubscriptionType + 'static,
 {
-	/// Create a new GraphQL gRPC service
+	/// Create a new GraphQL gRPC service.
+	///
+	/// # Panics
+	///
+	/// Panics if the schema was not created with [`Self::schema_builder`] (or the
+	/// built-in `create_schema` helpers with `graphql-grpc` enabled). A completed
+	/// schema cannot be retrofitted with the operation guard.
 	pub fn new(schema: Schema<Query, Mutation, Subscription>) -> Self {
+		assert!(
+			schema.data::<GuardedSchema>().is_some(),
+			"GraphQLGrpcService requires a schema built with GraphQLGrpcService::schema_builder"
+		);
 		Self {
 			schema: Arc::new(schema),
 		}
 	}
 
-	/// Convert GraphQL request to async-graphql request
-	fn convert_request(&self, req: GraphQlRequest) -> async_graphql::Request {
-		let mut gql_req = async_graphql::Request::new(&req.query);
+	/// Build a schema with transport validation surrounding all user extensions.
+	///
+	/// Replace `Schema::build` with this method and keep subsequent builder calls.
+	/// The finished schema can be shared with HTTP handlers; ordinary requests are
+	/// unaffected by the gRPC operation constraint.
+	///
+	/// ```
+	/// use async_graphql::{EmptyMutation, EmptySubscription, Object};
+	/// use reinhardt_graphql::GraphQLGrpcService;
+	/// struct Query;
+	/// #[Object]
+	/// impl Query {
+	///     async fn value(&self) -> i32 { 7 }
+	/// }
+	/// let schema = GraphQLGrpcService::schema_builder(Query, EmptyMutation, EmptySubscription)
+	///     .limit_depth(10)
+	///     .finish();
+	/// let service = GraphQLGrpcService::new(schema);
+	/// ```
+	pub fn schema_builder(
+		query: Query,
+		mutation: Mutation,
+		subscription: Subscription,
+	) -> SchemaBuilder<Query, Mutation, Subscription> {
+		Schema::build(query, mutation, subscription)
+			.extension(OperationGuard)
+			.data(GuardedSchema)
+	}
+
+	/// Convert the request without parsing ahead of schema preparation hooks.
+	fn convert_request(
+		&self,
+		req: GraphQlRequest,
+		expected: OperationType,
+	) -> (async_graphql::Request, Arc<OperationCheck>) {
+		let check = OperationCheck::new(expected);
+		let mut gql_req = async_graphql::Request::new(req.query).data(Arc::clone(&check));
 
 		// Add variables if present
 		if let Some(variables) = req.variables
@@ -52,7 +110,7 @@ where
 			gql_req = gql_req.operation_name(operation_name);
 		}
 
-		gql_req
+		(gql_req, check)
 	}
 
 	/// Convert async-graphql response to gRPC response
@@ -151,10 +209,13 @@ where
 		request: Request<GraphQlRequest>,
 	) -> Result<Response<GraphQlResponse>, Status> {
 		let req = request.into_inner();
-		let gql_req = self.convert_request(req);
+		let (gql_req, check) = self.convert_request(req, OperationType::Query);
 
 		// Execute query
 		let gql_resp = self.schema.execute(gql_req).await;
+		if let Some(error) = check.error() {
+			return Err(error);
+		}
 
 		// Convert response
 		let grpc_resp = self.convert_response(gql_resp);
@@ -168,10 +229,13 @@ where
 		request: Request<GraphQlRequest>,
 	) -> Result<Response<GraphQlResponse>, Status> {
 		let req = request.into_inner();
-		let gql_req = self.convert_request(req);
+		let (gql_req, check) = self.convert_request(req, OperationType::Mutation);
 
 		// Execute mutation
 		let gql_resp = self.schema.execute(gql_req).await;
+		if let Some(error) = check.error() {
+			return Err(error);
+		}
 
 		// Convert response
 		let grpc_resp = self.convert_response(gql_resp);
@@ -188,7 +252,7 @@ where
 		request: Request<GraphQlRequest>,
 	) -> Result<Response<Self::ExecuteSubscriptionStream>, Status> {
 		let req = request.into_inner();
-		let gql_req = self.convert_request(req);
+		let (gql_req, check) = self.convert_request(req, OperationType::Subscription);
 
 		// Clone schema for 'static lifetime requirement
 		let schema = Arc::clone(&self.schema);
@@ -200,6 +264,10 @@ where
 
 			let mut event_id = 0u64;
 			while let Some(resp) = stream.next().await {
+				if let Some(error) = check.error() {
+					yield Err(error);
+					return;
+				}
 				event_id += 1;
 
 				let grpc_resp = GraphQlResponse {
