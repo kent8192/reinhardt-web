@@ -393,6 +393,9 @@ client-side mounting and hydration keep that fallback inert while scripts are
 active. Browser-owned file selections are excluded from `reset_default_values()`
 because a browser cannot restore a saved file handle, so `reset()` and
 `reset_field()` clear an active selection instead of attempting to restore it.
+Synthetic file and no-script marker names use reserved `__reinhardt_*` prefixes,
+and Decimal range defaults are calculated without converting bounds through
+binary floating point.
 
 Use `submit_response()` when the caller needs the immediate awaited response.
 Use `form.server_mutation(&runtime)` when the UI should observe phase, pending

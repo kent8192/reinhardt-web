@@ -104,7 +104,9 @@ pub trait NativeModelFormPayload: Sized {
 /// explicit JSON null is reconstructed from its marker. A no-script fallback
 /// marker keeps browser defaults supplied when inline/event scripting is
 /// unavailable; HTML does not expose whether the user interacted with a control
-/// in that mode. An explicit clear marker for a nullable, defaulted control takes
+/// in that mode. Generated control prefixes, including file and no-script
+/// markers, are reserved by the model derive so they cannot collide with model
+/// fields. An explicit clear marker for a nullable, defaulted control takes
 /// precedence over the control's submitted value. This conversion is intentionally
 /// limited to schema fields permitted by the selected policy; unrelated controls
 /// such as the CSRF token are removed before typed payload decoding.

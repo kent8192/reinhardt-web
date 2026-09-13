@@ -16,6 +16,29 @@ use reinhardt_core::model_form::{
 use reinhardt_core::types::page::{NumberParseError, NumberParseErrorKind, NumberValue};
 use reinhardt_core::validators::{UrlValidator, ValidationError, ValidationErrors, Validator};
 
+/// Computes the midpoint used by a decimal range control without converting
+/// the bounds through binary floating-point arithmetic.
+#[doc(hidden)]
+pub fn model_form_decimal_range_default(
+	min: Option<&str>,
+	max: Option<&str>,
+) -> Option<String> {
+	let min = min
+		.unwrap_or("0")
+		.parse::<Decimal>()
+		.unwrap_or_else(|_| Decimal::from(0u32));
+	let max = max
+		.unwrap_or("100")
+		.parse::<Decimal>()
+		.unwrap_or_else(|_| Decimal::from(100u32));
+	let midpoint = if max < min {
+		min
+	} else {
+		min + (max - min) / Decimal::from(2u32)
+	};
+	Some(midpoint.normalize().to_string())
+}
+
 /// Hidden compile-time selection marker for one model-form argument.
 #[doc(hidden)]
 pub trait ModelFormSelectionArgument<const INDEX: usize> {
@@ -1633,6 +1656,19 @@ mod tests {
 			any_value_to_json(rust_decimal::Decimal::new(125, 2)),
 			Some(serde_json::json!("1.25"))
 		);
+	}
+
+	#[rstest]
+	fn decimal_range_defaults_preserve_exact_midpoints() {
+		// Arrange
+		let min = Some("9007199254740993");
+		let max = Some("9007199254740993");
+
+		// Act
+		let default = super::model_form_decimal_range_default(min, max);
+
+		// Assert
+		assert_eq!(default.as_deref(), Some("9007199254740993"));
 	}
 
 	#[test]

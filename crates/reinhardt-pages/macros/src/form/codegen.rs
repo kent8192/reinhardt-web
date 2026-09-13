@@ -2667,9 +2667,7 @@ fn generate_model_form(
 				::core::option::Option::Some(if max < min { min } else { min + (max - min) / 2.0 }.to_string())
 			}
 			#pages_crate::form::ModelFormFieldKind::Decimal { min, max } => {
-				let min = min.unwrap_or("0").parse::<f64>().unwrap_or(0.0);
-				let max = max.unwrap_or("100").parse::<f64>().unwrap_or(100.0);
-				::core::option::Option::Some(if max < min { min } else { min + (max - min) / 2.0 }.to_string())
+				#pages_crate::form::model::model_form_decimal_range_default(min, max)
 			}
 			_ => ::core::option::Option::None,
 		}
@@ -4810,7 +4808,17 @@ fn generate_model_form(
 
 				fn runtime_default_values(&self, values: &Self::Values) -> Self::Values {
 					let mut values = values.clone();
-					values.0.retain(|field, _| !field.starts_with("__reinhardt_file_"));
+					for descriptor in self.__model_state.borrow().selected_descriptors() {
+						if matches!(
+							descriptor.kind,
+							#pages_crate::form::ModelFormFieldKind::File
+								| #pages_crate::form::ModelFormFieldKind::Image
+						) {
+							values
+								.0
+								.remove(&format!("__reinhardt_file_{}", descriptor.name));
+						}
+					}
 					values
 				}
 
@@ -11643,6 +11651,9 @@ mod tests {
 		assert!(output.contains("let checkbox_was_unchecked = is_checkbox"));
 		assert!(output.contains("values . get (& checkbox_sentinel)"));
 		assert!(output.contains("else if checkbox_was_unchecked"));
+		assert!(output.contains("model_form_decimal_range_default"));
+		assert!(output.contains("ModelFormFieldKind :: File"));
+		assert!(output.contains("format ! (\"__reinhardt_file_{}\""));
 		assert!(!output.contains("checkbox_was_unchecked && ! nullable"));
 		assert!(output.contains("\"unset\""));
 		assert!(output.contains("Clear value"));
