@@ -3544,6 +3544,38 @@ fn generate_model_form(
 				#model_form_number_error_clearer
 				#model_form_bound_page
 
+				fn __json_values_match(
+					current: &__ReinhardtModelFormValues,
+					defaults: &__ReinhardtModelFormValues,
+					field_name: &str,
+				) -> bool {
+					let current_editor = current.1.get(field_name);
+					let default_editor = defaults.1.get(field_name);
+					let current_json = current_editor.and_then(|text|
+						#pages_crate::__private::serde_json::from_str::<
+							#pages_crate::__private::serde_json::Value
+						>(text).ok()
+					);
+					let default_json = default_editor.and_then(|text|
+						#pages_crate::__private::serde_json::from_str::<
+							#pages_crate::__private::serde_json::Value
+						>(text).ok()
+					);
+					match (current_json, default_json) {
+						(Some(current_json), Some(default_json)) => current_json == default_json,
+						(Some(current_json), None) => {
+							defaults.0.get(field_name) == Some(&current_json)
+						}
+						(None, Some(default_json)) => {
+							current.0.get(field_name) == Some(&default_json)
+						}
+						(None, None) => {
+							current.0.get(field_name) == defaults.0.get(field_name)
+								&& current_editor == default_editor
+						}
+					}
+				}
+
 				fn new() -> Self {
 					let __model_state = ::std::rc::Rc::new(
 						::std::cell::RefCell::new(
@@ -3706,6 +3738,7 @@ fn generate_model_form(
 					value: ::core::option::Option<
 						&#pages_crate::__private::serde_json::Value,
 					>,
+					editor_text: ::core::option::Option<&str>,
 					kind: #pages_crate::form::ModelFormFieldKind,
 					default_true: bool,
 				) {
@@ -3721,17 +3754,20 @@ fn generate_model_form(
 					let Ok(elements) = form.query_selector_all("[name]") else {
 						return;
 					};
-					let mut text_value = value.map_or_else(::std::string::String::new, |value| {
-						if matches!(kind, #pages_crate::form::ModelFormFieldKind::Json) {
-							#pages_crate::__private::serde_json::to_string(value).unwrap_or_default()
-						} else {
-							match value {
-								#pages_crate::__private::serde_json::Value::Null => ::std::string::String::new(),
-								#pages_crate::__private::serde_json::Value::String(value) => value.clone(),
-								value => value.to_string(),
-							}
-						}
-					});
+					let mut text_value = if matches!(kind, #pages_crate::form::ModelFormFieldKind::Json) {
+						editor_text
+							.map(::std::borrow::ToOwned::to_owned)
+							.or_else(|| value.map(|value| {
+								#pages_crate::__private::serde_json::to_string(value).unwrap_or_default()
+							}))
+							.unwrap_or_default()
+					} else {
+						value.map_or_else(::std::string::String::new, |value| match value {
+							#pages_crate::__private::serde_json::Value::Null => ::std::string::String::new(),
+							#pages_crate::__private::serde_json::Value::String(value) => value.clone(),
+							value => value.to_string(),
+						})
+					};
 					if matches!(kind, #pages_crate::form::ModelFormFieldKind::DateTime) {
 						if let Some(value) = text_value.strip_suffix('Z') {
 							text_value = value.to_owned();
@@ -4815,6 +4851,7 @@ fn generate_model_form(
 							self.sync_mounted_field(
 								descriptor.name,
 								value.as_ref(),
+								state.binding_editor_text(descriptor.name),
 								descriptor.kind,
 								default_true,
 							);
@@ -4846,7 +4883,15 @@ fn generate_model_form(
 							.iter()
 							.find(|descriptor| descriptor.name == field_name)
 					{
-						let value = self.__model_state.borrow().value(field_name).cloned();
+						let (value, editor_text) = {
+							let state = self.__model_state.borrow();
+							(
+								state.value(field_name).cloned(),
+								state
+									.binding_editor_text(field_name)
+									.map(::std::borrow::ToOwned::to_owned),
+							)
+						};
 						let default_true = matches!(
 							descriptor.kind,
 							#pages_crate::form::ModelFormFieldKind::Boolean
@@ -4856,6 +4901,7 @@ fn generate_model_form(
 						self.sync_mounted_field(
 							field_name,
 							value.as_ref(),
+							editor_text.as_deref(),
 							descriptor.kind,
 							default_true,
 						);
@@ -4867,7 +4913,10 @@ fn generate_model_form(
 					current: &Self::Values,
 					defaults: &Self::Values,
 				) -> bool {
-					current != defaults
+					self.runtime_fields()
+						.iter()
+						.copied()
+						.any(|field| self.runtime_field_is_dirty(field, current, defaults))
 				}
 
 				fn runtime_apply_field_value(&self, field: Self::Field, values: &Self::Values) {
@@ -4912,7 +4961,15 @@ fn generate_model_form(
 								| #pages_crate::form::ModelFormFieldKind::Image
 						)
 					{
-						let value = self.__model_state.borrow().value(field_name).cloned();
+						let (value, editor_text) = {
+							let state = self.__model_state.borrow();
+							(
+								state.value(field_name).cloned(),
+								state
+									.binding_editor_text(field_name)
+									.map(::std::borrow::ToOwned::to_owned),
+							)
+						};
 						let default_true = matches!(
 							descriptor.kind,
 							#pages_crate::form::ModelFormFieldKind::Boolean
@@ -4922,6 +4979,7 @@ fn generate_model_form(
 						self.sync_mounted_field(
 							field_name,
 							value.as_ref(),
+							editor_text.as_deref(),
 							descriptor.kind,
 							default_true,
 						);
@@ -4938,6 +4996,16 @@ fn generate_model_form(
 					let field_name = #pages_crate::form::ModelFormContractField::name(field);
 					if field_name.is_empty() {
 						return current != defaults;
+					}
+					if <#schema_path as #pages_crate::form::ModelFormContractSchema>::contract_fields()
+						.iter()
+						.find(|descriptor| descriptor.name == field_name)
+						.is_some_and(|descriptor| matches!(
+							descriptor.kind,
+							#pages_crate::form::ModelFormFieldKind::Json
+						))
+					{
+						return !Self::__json_values_match(current, defaults, field_name);
 					}
 					if <#schema_path as #pages_crate::form::ModelFormContractSchema>::contract_fields()
 						.iter()

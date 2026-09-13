@@ -206,7 +206,7 @@ where
 			})
 		}));
 	let reset = PageElement::new("button")
-		.attr("type", "button")
+		.attr("type", "reset")
 		.reactive_attr("disabled", {
 			let reset_action = action.clone();
 			move || reset_action.is_pending().then(|| "disabled".into())

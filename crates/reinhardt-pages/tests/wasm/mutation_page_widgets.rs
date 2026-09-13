@@ -500,6 +500,51 @@ async fn standalone_model_form_input_parses_json_editor_text() {
 
 #[wasm_bindgen_test(async)]
 #[serial(server_mutation_globals)]
+async fn standalone_model_form_reset_restores_json_editor_text() {
+	// Arrange
+	let root = BodyRoot::new("standalone-json-reset-editor");
+	let scope = ReactiveScope::new();
+	let (form, runtime) = scope.enter(|| {
+		let form = form! {
+			name: StandaloneJsonResetEditorForm,
+			model_form: WidgetContract,
+			server_fn: save_page_widgets
+		};
+		form.set_value("json", serde_json::json!(false)).unwrap();
+		let runtime = use_form(&form).build();
+		form.clone()
+			.into_page()
+			.mount(&Element::new(root.element.clone()))
+			.unwrap();
+		(form, runtime)
+	});
+	let json = control(&root.element, "json")
+		.dyn_into::<web_sys::HtmlTextAreaElement>()
+		.unwrap();
+
+	// Act: save a raw editor representation as the new runtime default, then edit it again.
+	json.set_value("true");
+	json.dispatch_event(&web_sys::Event::new("input").unwrap())
+		.unwrap();
+	settle_browser().await;
+	runtime.reset_default_values();
+	json.set_value("false");
+	json.dispatch_event(&web_sys::Event::new("input").unwrap())
+		.unwrap();
+	settle_browser().await;
+	runtime.reset();
+	settle_browser().await;
+
+	// Assert: reset uses the saved editor text instead of serializing the raw Value::String.
+	assert_eq!(json.value(), "true");
+	assert_eq!(
+		form.data().unwrap().get_json("json"),
+		Some(serde_json::json!(true))
+	);
+}
+
+#[wasm_bindgen_test(async)]
+#[serial(server_mutation_globals)]
 async fn required_native_defaults_are_materialized_before_model_form_runtime_capture() {
 	// Arrange
 	let root = BodyRoot::new("required-native-defaults");

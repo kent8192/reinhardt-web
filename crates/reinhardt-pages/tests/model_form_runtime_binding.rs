@@ -723,6 +723,35 @@ fn json_runtime_defaults_restore_raw_editor_text() {
 	});
 }
 
+#[rstest]
+fn json_dirty_state_uses_the_effective_editor_value() {
+	reinhardt_core::reactive::ReactiveScope::run(|| {
+		// Arrange
+		let form = binding_form!();
+		form.set_value("metadata", serde_json::json!("true"))
+			.unwrap();
+		let runtime = use_form(&form).build();
+		let binding =
+			into_control_binding::<TextBinding, _>(runtime.field(form.metadata_field()), ());
+
+		// Act: the editor representation is valid JSON for the typed default string.
+		binding
+			.write(ControlValue::Text(r#""true""#.to_owned()))
+			.expect("valid JSON editor text commits");
+
+		// Assert: a different raw representation with the same effective JSON value is clean.
+		assert!(!runtime.get_field_state(form.metadata_field()).is_dirty);
+		assert!(!runtime.form_state().is_dirty.get());
+
+		// Invalid editor text remains a distinct dirty representation.
+		binding
+			.write(ControlValue::Text("{unfinished".to_owned()))
+			.expect("invalid JSON editor text commits");
+		assert!(runtime.get_field_state(form.metadata_field()).is_dirty);
+		assert!(runtime.form_state().is_dirty.get());
+	});
+}
+
 #[test]
 fn multipart_model_mutation_page_keeps_server_action() {
 	use reinhardt_pages::form::page::FormPageSource;

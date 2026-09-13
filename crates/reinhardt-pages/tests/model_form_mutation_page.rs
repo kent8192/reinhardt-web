@@ -136,6 +136,12 @@ fn mutation_page_is_native_inert_and_preserves_field_metadata() {
 		assert_eq!(labels[0].child_views()[0].render_to_string(), "Question");
 		assert_eq!(attribute(input, "type"), Some("text"));
 		assert_eq!(attribute(input, "required"), Some("required"));
+		let reset_buttons: Vec<_> = nodes
+			.iter()
+			.copied()
+			.filter(|node| attribute(node, "type") == Some("reset"))
+			.collect();
+		assert_eq!(reset_buttons.len(), 1);
 		let descriptions = format!("{input_id}-help {input_id}-error");
 		assert_eq!(
 			attribute(input, "aria-describedby"),
