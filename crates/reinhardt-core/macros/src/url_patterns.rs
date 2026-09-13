@@ -294,6 +294,39 @@ fn reject_nested_server_builder(expr: &Expr) -> syn::Result<()> {
 			self.router_aliases = aliases;
 		}
 
+		fn visit_expr_match(&mut self, expression: &'ast syn::ExprMatch) {
+			if self.error.is_some() {
+				return;
+			}
+			let scrutinee_is_router =
+				is_unified_router_builder(&expression.expr, &self.router_aliases);
+			self.visit_expr(&expression.expr);
+			if self.error.is_some() {
+				return;
+			}
+			for arm in &expression.arms {
+				if self.error.is_some() {
+					return;
+				}
+				let aliases = self.router_aliases.clone();
+				self.visit_pat(&arm.pat);
+				if self.error.is_some() {
+					return;
+				}
+				for name in pattern_binding_names(&arm.pat) {
+					self.router_aliases.remove(&name);
+				}
+				if scrutinee_is_router && let Some(binding) = router_binding_ident(&arm.pat) {
+					self.router_aliases.insert(binding.ident.to_string());
+				}
+				if let Some((_, guard)) = &arm.guard {
+					self.visit_expr(guard);
+				}
+				self.visit_expr(&arm.body);
+				self.router_aliases = aliases;
+			}
+		}
+
 		fn visit_local(&mut self, local: &'ast syn::Local) {
 			let is_router = local
 				.init
@@ -587,6 +620,7 @@ mod tests {
 	#[case(quote!(UnifiedRouter::new().merge(UnifiedRouter::server(UnifiedRouter::new(), configure))))]
 	#[case(quote!(UnifiedRouter::new().merge({ let router = UnifiedRouter::new(); UnifiedRouter::server(router, configure) })))]
 	#[case(quote!(UnifiedRouter::new().merge({ let router; router = UnifiedRouter::new(); router.server(configure) })))]
+	#[case(quote!(UnifiedRouter::new().merge(match UnifiedRouter::new() { router => router.server(configure) })))]
 	fn nested_builders_require_separate_annotated_functions(#[case] expr: TokenStream) {
 		// Arrange
 		let expr = syn::parse2(expr).unwrap();
@@ -609,6 +643,22 @@ mod tests {
 				let router = UnifiedRouter::new();
 				consume(|router: Other| router.server());
 				router
+			})
+		};
+
+		// Act
+		let result = erase_server_calls(&expr);
+
+		// Assert
+		assert!(result.is_ok());
+	}
+
+	#[rstest]
+	fn nested_builder_validation_respects_match_arm_scope() {
+		// Arrange
+		let expr: Expr = parse_quote! {
+			UnifiedRouter::new().merge(match unrelated {
+				router => router.server()
 			})
 		};
 
