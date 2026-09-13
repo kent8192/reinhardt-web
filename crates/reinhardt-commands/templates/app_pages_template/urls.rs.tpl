@@ -19,16 +19,23 @@ pub use client_router::{client_url_patterns, reverse};
 pub use server_router::server_url_patterns;
 
 use reinhardt::prelude::*;
+use reinhardt::url_patterns;
+
+// Keep the HTTP/server chain in the macro-compatible direct builder function.
+// Protocol and client routes are target-specific and remain in the aggregate.
+#[url_patterns]
+fn http_url_patterns() -> UnifiedRouter {
+	UnifiedRouter::new().server(|server| {
+		server.mount("/", server_router::server_url_patterns())
+	})
+}
 
 /// Aggregate the HTTP, WebSocket, gRPC, and client routes for this app.
 pub fn url_patterns() -> UnifiedRouter {
-	let router = UnifiedRouter::new();
+	let router = http_url_patterns();
 
 	#[cfg(server)]
 	let router = router
-		.server(|server| {
-			server.mount("/", server_router::server_url_patterns())
-		})
 		.websocket(|websocket| websocket.mount("/", ws_urls::ws_url_patterns()))
 		.grpc(|grpc| grpc.merge(grpc_urls::grpc_services()));
 

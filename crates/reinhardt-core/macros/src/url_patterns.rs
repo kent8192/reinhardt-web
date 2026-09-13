@@ -192,12 +192,20 @@ fn is_unified_router_server_function(expr: &Expr) -> bool {
 	let Expr::Path(path) = unparenthesized(expr) else {
 		return false;
 	};
-	if path.qself.is_some()
-		|| path
-			.path
-			.segments
-			.iter()
-			.any(|segment| !matches!(segment.arguments, PathArguments::None))
+	if let Some(qself) = &path.qself {
+		return qself.as_token.is_none()
+			&& qself.position == 0
+			&& is_unified_router_type(&qself.ty)
+			&& path.path.segments.len() == 1
+			&& path.path.segments.first().is_some_and(|segment| {
+				segment.ident == "server" && matches!(segment.arguments, PathArguments::None)
+			});
+	}
+	if path
+		.path
+		.segments
+		.iter()
+		.any(|segment| !matches!(segment.arguments, PathArguments::None))
 	{
 		return false;
 	}
@@ -207,6 +215,16 @@ fn is_unified_router_server_function(expr: &Expr) -> bool {
 		(Some(method), Some(router))
 			if method.ident == "server" && router.ident == "UnifiedRouter"
 	)
+}
+
+fn is_unified_router_type(ty: &Type) -> bool {
+	let Type::Path(path) = ty else {
+		return false;
+	};
+	path.qself.is_none()
+		&& path.path.segments.last().is_some_and(|segment| {
+			segment.ident == "UnifiedRouter" && matches!(segment.arguments, PathArguments::None)
+		})
 }
 
 fn pattern_binding_names(pattern: &Pat) -> HashSet<String> {
@@ -401,7 +419,7 @@ fn reject_nested_server_builder(expr: &Expr) -> syn::Result<()> {
 					.to_string();
 				if is_unified_router_builder(&assign.right, &self.router_aliases) {
 					self.router_aliases.insert(name);
-				} else {
+				} else if !self.router_aliases.contains(&name) {
 					self.router_aliases.remove(&name);
 				}
 				return;
@@ -540,14 +558,7 @@ fn reject_nested_server_builder(expr: &Expr) -> syn::Result<()> {
 			if self.error.is_some() {
 				return;
 			}
-			let aliases = self.router_aliases.clone();
-			for input in &function.sig.inputs {
-				if let syn::FnArg::Typed(input) = input {
-					for name in pattern_binding_names(&input.pat) {
-						self.router_aliases.remove(&name);
-					}
-				}
-			}
+			let aliases = std::mem::take(&mut self.router_aliases);
 			syn::visit::visit_item_fn(self, function);
 			self.router_aliases = aliases;
 		}
@@ -849,7 +860,9 @@ mod tests {
 	#[case(quote!(UnifiedRouter::new().merge({ let router = UnifiedRouter::new(); { let router = unrelated; use_it(router); } router.server(configure) })))]
 	#[case(quote!(UnifiedRouter::new().merge({ let router = UnifiedRouter::new(); let router = wrap(router.server(configure)); router })))]
 	#[case(quote!(UnifiedRouter::new().merge(UnifiedRouter::server(UnifiedRouter::new(), configure))))]
+	#[case(quote!(UnifiedRouter::new().merge(<UnifiedRouter>::server(UnifiedRouter::new(), configure))))]
 	#[case(quote!(UnifiedRouter::new().merge({ let router = UnifiedRouter::new(); UnifiedRouter::server(router, configure) })))]
+	#[case(quote!(UnifiedRouter::new().merge({ let router = UnifiedRouter::new(); <UnifiedRouter>::server(router, configure) })))]
 	#[case(quote!(UnifiedRouter::new().merge({ let router; router = UnifiedRouter::new(); router.server(configure) })))]
 	#[case(quote!(UnifiedRouter::new().merge(match UnifiedRouter::new() { router => router.server(configure) })))]
 	#[case(quote!(UnifiedRouter::new().merge({ let (router,) = (UnifiedRouter::new(),); router.server(configure) })))]
@@ -928,6 +941,49 @@ mod tests {
 
 		// Assert
 		assert!(result.is_ok());
+	}
+
+	#[rstest]
+	fn nested_builder_validation_does_not_inherit_nested_function_outer_aliases() {
+		// Arrange
+		let expr: Expr = parse_quote! {
+			UnifiedRouter::new().merge({
+				let router = UnifiedRouter::new();
+				fn configure() {
+					router.server();
+				}
+				configure();
+				router
+			})
+		};
+
+		// Act
+		let result = erase_server_calls(&expr);
+
+		// Assert
+		assert!(result.is_ok());
+	}
+
+	#[rstest]
+	fn nested_builder_validation_preserves_aliases_across_opaque_reassignment() {
+		// Arrange
+		let expr: Expr = parse_quote! {
+			UnifiedRouter::new().merge({
+				let mut router = UnifiedRouter::new();
+				router = normalize(router);
+				router.server(configure);
+				router
+			})
+		};
+
+		// Act
+		let error = erase_server_calls(&expr).unwrap_err();
+
+		// Assert
+		assert_eq!(
+			error.to_string(),
+			"nested UnifiedRouter .server(...) calls are unsupported here; extract the nested builder into a separate #[url_patterns] function"
+		);
 	}
 
 	#[rstest]

@@ -529,6 +529,12 @@ pub fn routes() -> UnifiedRouter {
 If the root also contains native handler references, stack `#[url_patterns]`
 and `#[routes]` in either order. For larger apps, compose separately annotated
 functions with `mount_unified` or `merge`; avoid inline nested server builders.
+The Pages app scaffold follows the same boundary: its private
+`http_url_patterns()` helper is the direct `UnifiedRouter` chain annotated with
+`#[url_patterns]`, while the public `url_patterns()` aggregate calls that
+helper and then adds the cfg-gated WebSocket, gRPC, and client routes. Keep
+protocol or client aggregation in the unannotated aggregate so those routes
+are not lost when native server handlers are erased for browser builds.
 
 **Note:** The `reinhardt::prelude` includes commonly used types. Key exports include:
 
