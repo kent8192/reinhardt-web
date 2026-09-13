@@ -149,7 +149,6 @@ pub use dispatcher::Dispatcher;
 pub use exception::{ExceptionHandler, adapt_exception_handler, convert_exception_to_response};
 pub use handler::BaseHandler;
 pub use middleware::MiddlewareChain;
-pub use reinhardt_http::ExceptionHandler as HttpExceptionHandler;
 
 use thiserror::Error;
 

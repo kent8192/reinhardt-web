@@ -174,11 +174,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-The custom handler is responsible for safe response bodies and security
-headers. The default conversion omits internal details and supplies
-`Content-Type: text/plain; charset=utf-8` and
-`X-Content-Type-Options: nosniff`; do not expose an error's `Display` output
-without reviewing it for sensitive data.
+The hook applies to failures that reach the configured handler or middleware
+chain. Request parsing, request-size, and transport failures that occur before
+a request enters that chain retain their server-level behavior. Custom
+handlers are responsible for safe response bodies and security headers. The
+default in-chain conversion omits internal details and returns a JSON
+`SafeErrorResponse` with `Content-Type: application/json`; do not expose an
+error's `Display` output without reviewing it for sensitive data.
 
 ### WebSocket Server
 

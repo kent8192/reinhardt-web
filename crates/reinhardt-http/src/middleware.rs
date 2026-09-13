@@ -551,10 +551,15 @@ struct ErrorToResponseHandler {
 #[async_trait]
 impl Handler for ErrorToResponseHandler {
 	async fn handle(&self, request: Request) -> Result<Response> {
-		let context = capture_exception_context(self.exception_handler.as_ref(), &request);
+		let mut context = capture_exception_context(self.exception_handler.as_ref(), &request);
 		match self.inner.handle(request).await {
 			Ok(response) => Ok(response),
-			Err(e) => Ok(convert_error(self.exception_handler.as_ref(), context.as_ref(), e).await),
+			Err(e) => {
+				if let Some(context) = context.as_mut() {
+					context.sync_path_params_from_shared_state();
+				}
+				Ok(convert_error(self.exception_handler.as_ref(), context.as_ref(), e).await)
+			}
 		}
 	}
 }

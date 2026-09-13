@@ -133,10 +133,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```
 
 The hook runs only for errors that reach the configured router or middleware
-chain. Custom responses must set their own safe body and security headers;
-the default conversion hides internal details and sets
-`X-Content-Type-Options: nosniff`. Avoid copying an error's `Display` output
-into a public response without reviewing it for sensitive data.
+chain. Custom responses must set their own safe body and security headers; the
+default conversion hides internal details and returns a JSON
+`SafeErrorResponse` with `Content-Type: application/json`. Avoid copying an
+error's `Display` output into a public response without reviewing it for
+sensitive data.
 
 ### URL Reversal
 

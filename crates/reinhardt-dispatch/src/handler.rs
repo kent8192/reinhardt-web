@@ -218,7 +218,7 @@ mod tests {
 	use async_trait::async_trait;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, Version};
-	use reinhardt_http::{ExceptionHandler, ExceptionHandlingHandler};
+	use reinhardt_http::{ExceptionHandler, ExceptionHandlingHandler, Middleware, MiddlewareChain};
 	use reinhardt_urls::routers::{DefaultRouter, Router, path};
 	use rstest::rstest;
 
@@ -493,6 +493,19 @@ mod tests {
 			}
 		}
 
+		struct PassthroughMiddleware;
+
+		#[async_trait]
+		impl Middleware for PassthroughMiddleware {
+			async fn process(
+				&self,
+				request: Request,
+				next: Arc<dyn Handler>,
+			) -> reinhardt_core::exception::Result<Response> {
+				next.handle(request).await
+			}
+		}
+
 		struct PathParamExceptionHandler {
 			observed: Arc<Mutex<Option<String>>>,
 		}
@@ -516,12 +529,11 @@ mod tests {
 		route.name = Some("item".to_owned());
 		router.add_route(route);
 		let base = Arc::new(BaseHandler::with_router(Arc::new(router)));
-		let handler = ExceptionHandlingHandler::new(
-			base,
-			Arc::new(PathParamExceptionHandler {
+		let handler = MiddlewareChain::new(base)
+			.with_middleware(Arc::new(PassthroughMiddleware))
+			.with_exception_handler(Arc::new(PathParamExceptionHandler {
 				observed: Arc::clone(&observed),
-			}),
-		);
+			}));
 		let request = Request::builder()
 			.method(Method::GET)
 			.uri("/items/42")

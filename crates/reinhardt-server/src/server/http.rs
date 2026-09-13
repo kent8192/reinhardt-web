@@ -23,8 +23,9 @@ pub struct HttpServer {
 	handler: Arc<dyn Handler>,
 	pub(crate) middlewares: Vec<Arc<dyn Middleware>>,
 	di_context: Option<Arc<InjectionContext>>,
-	/// Applied instead of the default `Response::from` conversion when a request
-	/// fails. Set through [`HttpServer::with_exception_handler`].
+	/// Applied instead of the default `Response::from` conversion for failures
+	/// that reach the configured handler or middleware chain. Set through
+	/// [`HttpServer::with_exception_handler`].
 	exception_handler: Option<Arc<dyn ExceptionHandler>>,
 }
 
@@ -58,11 +59,14 @@ impl HttpServer {
 		}
 	}
 
-	/// Installs an exception handler for every failure this server produces.
+	/// Installs an exception handler for failures that reach the configured
+	/// handler or middleware chain.
 	///
 	/// Covers errors from the wrapped handler and errors raised by middleware
-	/// registered with [`HttpServer::with_middleware`]. Without one, errors are
-	/// converted by `impl From<Error> for Response`.
+	/// registered with [`HttpServer::with_middleware`]. Request parsing,
+	/// request-size, and transport failures that occur before a request enters
+	/// that chain retain their server-level behavior. Without one, in-chain
+	/// errors are converted by `impl From<Error> for Response`.
 	///
 	/// # Examples
 	///
