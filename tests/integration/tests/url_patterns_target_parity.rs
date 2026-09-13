@@ -7,6 +7,8 @@ use reinhardt_test::fixtures::temp_dir;
 use rstest::{fixture, rstest};
 use serde_json::Value;
 use std::fs;
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::time::{Duration, Instant};
@@ -57,9 +59,37 @@ impl Scenario {
 
 struct ChildGuard(Child);
 
+impl ChildGuard {
+	fn spawn(command: &mut Command) -> Self {
+		#[cfg(unix)]
+		command.process_group(0);
+		Self(command.spawn().expect("spawn consumer command"))
+	}
+
+	fn try_wait(&mut self) -> std::io::Result<Option<ExitStatus>> {
+		self.0.try_wait()
+	}
+}
+
 impl Drop for ChildGuard {
 	fn drop(&mut self) {
-		// Reap even on timeout, panic, or an I/O error in the test harness.
+		// The command owns a process group on Unix, so descendants are terminated
+		// together with the cargo process even on timeout or a test panic.
+		#[cfg(unix)]
+		{
+			let process_group = nix::unistd::Pid::from_raw(
+				i32::try_from(self.0.id()).expect("Unix child PID must fit in pid_t"),
+			);
+			let _ = nix::sys::signal::killpg(process_group, nix::sys::signal::Signal::SIGKILL);
+		}
+		#[cfg(windows)]
+		{
+			let pid = self.0.id().to_string();
+			let _ = Command::new("taskkill")
+				.args(["/T", "/F", "/PID", pid.as_str()])
+				.status();
+		}
+		// Reap the direct child after the whole process tree has been stopped.
 		let _ = self.0.kill();
 		let _ = self.0.wait();
 	}
@@ -285,9 +315,9 @@ wasm-bindgen-test = "0.3"
 			.stderr(stderr.as_file().try_clone().unwrap());
 		let started = Instant::now();
 		eprintln!("Running {command:?}");
-		let mut child = ChildGuard(command.spawn().expect("spawn consumer command"));
+		let mut child = ChildGuard::spawn(command);
 		let status = loop {
-			if let Some(status) = child.0.try_wait().expect("poll consumer command") {
+			if let Some(status) = child.try_wait().expect("poll consumer command") {
 				break status;
 			}
 			assert!(

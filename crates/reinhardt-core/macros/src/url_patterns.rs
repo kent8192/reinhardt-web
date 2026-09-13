@@ -228,18 +228,23 @@ fn reject_nested_server_builder(expr: &Expr) -> syn::Result<()> {
 		}
 
 		fn visit_local(&mut self, local: &'ast syn::Local) {
+			let is_router = local
+				.init
+				.as_ref()
+				.is_some_and(|init| is_unified_router_builder(&init.expr, &self.router_aliases));
+			// Visit the initializer before the new binding shadows any outer router alias.
+			syn::visit::visit_local(self, local);
+			if self.error.is_some() {
+				return;
+			}
 			if let Some(binding) = router_binding_ident(&local.pat) {
 				let name = binding.ident.to_string();
-				let is_router = local.init.as_ref().is_some_and(|init| {
-					is_unified_router_builder(&init.expr, &self.router_aliases)
-				});
 				if is_router {
 					self.router_aliases.insert(name);
 				} else {
 					self.router_aliases.remove(&name);
 				}
 			}
-			syn::visit::visit_local(self, local);
 		}
 
 		fn visit_expr_method_call(&mut self, call: &'ast syn::ExprMethodCall) {
@@ -511,6 +516,7 @@ mod tests {
 	#[case(quote!(UnifiedRouter::new().merge({ let mut router: UnifiedRouter = UnifiedRouter::new(); router.server(configure) })))]
 	#[case(quote!(UnifiedRouter::new().merge({ let (router) = UnifiedRouter::new(); router.server(configure) })))]
 	#[case(quote!(UnifiedRouter::new().merge({ let router = UnifiedRouter::new(); { let router = unrelated; use_it(router); } router.server(configure) })))]
+	#[case(quote!(UnifiedRouter::new().merge({ let router = UnifiedRouter::new(); let router = wrap(router.server(configure)); router })))]
 	#[case(quote!(UnifiedRouter::new().merge(UnifiedRouter::server(UnifiedRouter::new(), configure))))]
 	#[case(quote!(UnifiedRouter::new().merge({ let router = UnifiedRouter::new(); UnifiedRouter::server(router, configure) })))]
 	fn nested_builders_require_separate_annotated_functions(#[case] expr: TokenStream) {

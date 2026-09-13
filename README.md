@@ -484,9 +484,9 @@ pub fn url_patterns() -> UnifiedRouter {
 	UnifiedRouter::new()
 		.server(|server| {
 			server
-				.endpoint(crate::apps::users::views::list_users)
-				.endpoint(crate::apps::users::views::get_user)
-				.endpoint(crate::apps::users::views::create_user)
+				.endpoint(crate::apps::users::server::views::list_users)
+				.endpoint(crate::apps::users::server::views::get_user)
+				.endpoint(crate::apps::users::server::views::create_user)
 		})
 		.with_namespace("users")
 }
