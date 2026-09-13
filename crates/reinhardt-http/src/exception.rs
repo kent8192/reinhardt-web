@@ -64,6 +64,11 @@ pub trait ExceptionHandler: Send + Sync + 'static {
 	async fn handle_exception(&self, request: &Request, error: Error) -> Response;
 }
 
+/// Records that an installed [`ExceptionHandler`] has handled an error.
+#[doc(hidden)]
+#[derive(Debug, Clone, Copy)]
+pub struct ExceptionHandlerInvoked;
+
 /// Applies an [`ExceptionHandler`] to the errors produced by an inner handler.
 ///
 /// Wrap the innermost handler of a chain with this adapter to route its errors
@@ -154,10 +159,13 @@ impl Handler for ExceptionHandlingHandler {
 		let context = request.clone_for_di();
 		match self.inner.handle(request).await {
 			Ok(response) => Ok(response),
-			Err(error) => Ok(self
-				.exception_handler
-				.handle_exception(&context, error)
-				.await),
+			Err(error) => {
+				context.extensions.insert(ExceptionHandlerInvoked);
+				Ok(self
+					.exception_handler
+					.handle_exception(&context, error)
+					.await)
+			}
 		}
 	}
 }

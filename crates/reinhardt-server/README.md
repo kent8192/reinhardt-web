@@ -134,8 +134,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ### Custom Exception Responses
 
 Install an `ExceptionHandler` when the application needs a consistent error
-schema for handler or middleware failures. Nested middleware chains and routers
-inherit this handler unless they install their own override:
+schema for handler or middleware failures. Nested middleware chains inherit the
+selected handler. The handler selected by the serving root router or server
+handles the request; a mounted child router cannot replace it during parent route
+resolution:
 
 ```rust
 use async_trait::async_trait;

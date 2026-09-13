@@ -343,7 +343,10 @@ impl Handler for MiddlewareChain {
 			let context = request.clone_for_di();
 			return match self.handler.handle(request).await {
 				Ok(response) => Ok(response),
-				Err(e) => Ok(exception_handler.handle_exception(&context, e).await),
+				Err(e) => {
+					context.extensions.insert(crate::ExceptionHandlerInvoked);
+					Ok(exception_handler.handle_exception(&context, e).await)
+				}
 			};
 		}
 
@@ -526,7 +529,10 @@ async fn convert_error(
 	error: Error,
 ) -> Response {
 	match (exception_handler, context) {
-		(Some(handler), Some(context)) => handler.handle_exception(context, error).await,
+		(Some(handler), Some(context)) => {
+			context.extensions.insert(crate::ExceptionHandlerInvoked);
+			handler.handle_exception(context, error).await
+		}
 		_ => Response::from(error),
 	}
 }

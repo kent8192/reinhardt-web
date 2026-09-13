@@ -116,6 +116,8 @@ impl Handler for ServerRouter {
 					let error = routing_error(error_kind, method.as_ref(), &path);
 					return match exception_handler.as_ref() {
 						Some(exception_handler) => {
+							req.extensions
+								.insert(reinhardt_http::ExceptionHandlerInvoked);
 							Ok(exception_handler.handle_exception(&req, error).await)
 						}
 						None => Err(error),

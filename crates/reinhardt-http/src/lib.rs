@@ -110,7 +110,7 @@ pub use auth_state::AuthState;
 pub use chunked_upload::{
 	ChunkedUploadError, ChunkedUploadManager, ChunkedUploadSession, UploadProgress,
 };
-pub use exception::{ExceptionHandler, ExceptionHandlingHandler};
+pub use exception::{ExceptionHandler, ExceptionHandlerInvoked, ExceptionHandlingHandler};
 pub use extensions::{Extensions, IsActive, IsAdmin, IsAuthenticated};
 #[cfg(feature = "messages")]
 pub use messages_middleware::MessagesMiddleware;

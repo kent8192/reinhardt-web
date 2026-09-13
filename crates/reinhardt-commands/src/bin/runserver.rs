@@ -358,7 +358,7 @@ async fn dispatch_router_request(
 		.await
 		.unwrap_or_else(reinhardt_http::Response::from);
 	if response.status == StatusCode::NOT_FOUND
-		&& !extensions.contains::<std::sync::Arc<dyn reinhardt_http::ExceptionHandler>>()
+		&& !extensions.contains::<reinhardt_http::ExceptionHandlerInvoked>()
 	{
 		return None;
 	}
@@ -1228,6 +1228,48 @@ mod tests {
 			(status, body.as_str()),
 			(StatusCode::NOT_FOUND, "custom missing")
 		);
+	}
+
+	#[cfg(feature = "routers")]
+	#[tokio::test]
+	async fn router_dispatch_does_not_treat_installed_handler_as_custom_not_found() {
+		struct MatchedNotFound;
+		#[async_trait::async_trait]
+		impl reinhardt_http::Handler for MatchedNotFound {
+			async fn handle(
+				&self,
+				_request: reinhardt_http::Request,
+			) -> reinhardt_http::Result<reinhardt_http::Response> {
+				Ok(reinhardt_http::Response::new(StatusCode::NOT_FOUND))
+			}
+		}
+
+		struct CustomNotFound;
+		#[async_trait::async_trait]
+		impl reinhardt_http::ExceptionHandler for CustomNotFound {
+			async fn handle_exception(
+				&self,
+				_: &reinhardt_http::Request,
+				_: reinhardt_http::Error,
+			) -> reinhardt_http::Response {
+				reinhardt_http::Response::new(StatusCode::NOT_FOUND).with_body("custom missing")
+			}
+		}
+
+		// Arrange
+		let request = reinhardt_http::Request::builder()
+			.uri("/matched-missing")
+			.build()
+			.unwrap();
+		request
+			.extensions
+			.insert(Arc::new(CustomNotFound) as Arc<dyn reinhardt_http::ExceptionHandler>);
+
+		// Act
+		let response = dispatch_router_request(&MatchedNotFound, request).await;
+
+		// Assert
+		assert!(response.is_none());
 	}
 
 	#[test]
