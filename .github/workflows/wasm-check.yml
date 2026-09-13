@@ -290,6 +290,16 @@ jobs:
               --test client_router_listener_panic_isolation_test \
               --test unified_router_target_parity_test
 
+      - name: Run URL-pattern browser runtime parity
+        # Compile and execute the downstream-shaped consumer against headless
+        # Chrome; cargo check alone cannot verify the generated client routes.
+        run: |
+          cargo test \
+            -p reinhardt-integration-tests \
+            --test url_patterns_target_parity \
+            url_patterns_browser_runtime \
+            -- --exact --ignored --nocapture
+
   # Native e2e regression test for the SPA link interceptor -> Router::push
   # -> re-render path. Boots a Chrome container via testcontainers and drives
   # it through the fixture SPA. Refs #4088.

@@ -424,6 +424,36 @@ fn reject_nested_server_builder(expr: &Expr) -> syn::Result<()> {
 			}
 		}
 
+		fn visit_expr_if(&mut self, expression: &'ast syn::ExprIf) {
+			if self.error.is_some() {
+				return;
+			}
+			let Expr::Let(condition) = unparenthesized(&expression.cond) else {
+				syn::visit::visit_expr_if(self, expression);
+				return;
+			};
+
+			// The condition expression is evaluated before its pattern bindings
+			// enter scope, just like a local initializer.
+			let router_bindings =
+				router_bindings_in_pattern(&condition.pat, &condition.expr, &self.router_aliases);
+			self.visit_expr(&condition.expr);
+			if self.error.is_some() {
+				return;
+			}
+			let aliases = self.router_aliases.clone();
+			for name in pattern_binding_names(&condition.pat) {
+				self.router_aliases.remove(&name);
+			}
+			self.router_aliases.extend(router_bindings);
+			self.visit_block(&expression.then_branch);
+			self.router_aliases = aliases.clone();
+			if let Some((_, else_branch)) = &expression.else_branch {
+				self.visit_expr(else_branch);
+			}
+			self.router_aliases = aliases;
+		}
+
 		fn visit_local(&mut self, local: &'ast syn::Local) {
 			let router_bindings = local.init.as_ref().map_or_else(HashSet::new, |init| {
 				router_bindings_in_pattern(&local.pat, &init.expr, &self.router_aliases)
@@ -701,6 +731,7 @@ mod tests {
 	#[rstest]
 	#[case(quote!(UnifiedRouter::new().merge(UnifiedRouter::new().server(configure))))]
 	#[case(quote!(UnifiedRouter::new().merge({ let router = UnifiedRouter::new(); router.server(configure) })))]
+	#[case(quote!(UnifiedRouter::new().merge(if let router = UnifiedRouter::new() { router.server(configure) } else { unreachable!() })))]
 	#[case(quote!(UnifiedRouter::new().mount_unified("/", (UnifiedRouter::default()).server(configure))))]
 	#[case(quote!(UnifiedRouter::new().client(|client| { use_nested(UnifiedRouter::new().server(configure)); client })))]
 	#[case(quote!(UnifiedRouter::new().merge({ let router: UnifiedRouter = UnifiedRouter::new(); router.server(configure) })))]
