@@ -1707,7 +1707,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn typed_json_strings_survive_submission_conversion() {
 		// Arrange
 		let mut state = ModelFormState::<JsonSchema, AllEditableModelFields>::new();
@@ -1755,7 +1755,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn aware_datetime_editor_values_use_the_canonical_storage_form() {
 		// Arrange
 		let mut state = ModelFormState::<DateTimeSchema, AllEditableModelFields>::new();

@@ -18,7 +18,8 @@ fn form_node(root: &web_sys::Element) -> web_sys::HtmlFormElement {
 		.unwrap()
 }
 
-#[wasm_bindgen_test(async)]
+#[rstest]
+#[test_attr(wasm_bindgen_test)]
 #[serial(server_mutation_globals)]
 async fn page_uses_attached_runtime_instead_of_builder_receiver() {
 	// Arrange
@@ -118,7 +119,8 @@ async fn page_uses_attached_runtime_instead_of_builder_receiver() {
 	.await;
 }
 
-#[wasm_bindgen_test(async)]
+#[rstest]
+#[test_attr(wasm_bindgen_test)]
 #[serial(server_mutation_globals)]
 async fn page_native_reset_retains_mutation_result_and_syncs_metadata() {
 	// Arrange
@@ -228,7 +230,8 @@ impl Component for RetainedMutationPage {
 	}
 }
 
-#[wasm_bindgen_test(async)]
+#[rstest]
+#[test_attr(wasm_bindgen_test)]
 #[serial(server_mutation_globals)]
 async fn page_hydration_keeps_edited_nodes() {
 	// Arrange
@@ -271,7 +274,8 @@ async fn page_hydration_keeps_edited_nodes() {
 	assert_eq!(action.result(), None);
 }
 
-#[wasm_bindgen_test(async)]
+#[rstest]
+#[test_attr(wasm_bindgen_test)]
 #[serial(server_mutation_globals)]
 async fn page_hydration_with_fresh_runtime_reconciles_instance_ids() {
 	// Arrange: server and client construct distinct instances of the same form.
@@ -350,7 +354,8 @@ async fn page_hydration_with_fresh_runtime_reconciles_instance_ids() {
 	assert_eq!(fetch.create_requests(), 0);
 }
 
-#[wasm_bindgen_test(async)]
+#[rstest]
+#[test_attr(wasm_bindgen_test)]
 #[serial(server_mutation_globals)]
 async fn page_unmount_releases_presentation_resources() {
 	// Arrange

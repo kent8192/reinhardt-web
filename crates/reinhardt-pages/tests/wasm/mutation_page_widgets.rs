@@ -221,7 +221,8 @@ fn control(root: &web_sys::Element, name: &str) -> web_sys::Element {
 		.unwrap()
 }
 
-#[wasm_bindgen_test(async)]
+#[rstest]
+#[test_attr(wasm_bindgen_test)]
 #[serial(server_mutation_globals)]
 async fn page_preserves_generated_widget_overrides() {
 	// Arrange
@@ -378,7 +379,8 @@ async fn page_preserves_generated_widget_overrides() {
 	assert!(action.result().is_none());
 }
 
-#[wasm_bindgen_test(async)]
+#[rstest]
+#[test_attr(wasm_bindgen_test)]
 #[serial(server_mutation_globals)]
 async fn page_json_binding_preserves_json_scalar_representations() {
 	// Arrange
@@ -419,7 +421,8 @@ async fn page_json_binding_preserves_json_scalar_representations() {
 	assert_eq!(json.value(), r#"{"enabled":true}"#);
 }
 
-#[wasm_bindgen_test(async)]
+#[rstest]
+#[test_attr(wasm_bindgen_test)]
 #[serial(server_mutation_globals)]
 async fn model_form_set_value_rerenders_when_json_editor_marker_is_removed() {
 	// Arrange
@@ -462,7 +465,8 @@ async fn model_form_set_value_rerenders_when_json_editor_marker_is_removed() {
 	);
 }
 
-#[wasm_bindgen_test(async)]
+#[rstest]
+#[test_attr(wasm_bindgen_test)]
 #[serial(server_mutation_globals)]
 async fn standalone_model_form_input_parses_json_editor_text() {
 	// Arrange
@@ -498,7 +502,8 @@ async fn standalone_model_form_input_parses_json_editor_text() {
 	);
 }
 
-#[wasm_bindgen_test(async)]
+#[rstest]
+#[test_attr(wasm_bindgen_test)]
 #[serial(server_mutation_globals)]
 async fn standalone_model_form_reset_restores_json_editor_text() {
 	// Arrange
@@ -543,7 +548,8 @@ async fn standalone_model_form_reset_restores_json_editor_text() {
 	);
 }
 
-#[wasm_bindgen_test(async)]
+#[rstest]
+#[test_attr(wasm_bindgen_test)]
 #[serial(server_mutation_globals)]
 async fn required_native_defaults_are_materialized_before_model_form_runtime_capture() {
 	// Arrange
@@ -591,7 +597,8 @@ async fn required_native_defaults_are_materialized_before_model_form_runtime_cap
 	);
 }
 
-#[wasm_bindgen_test(async)]
+#[rstest]
+#[test_attr(wasm_bindgen_test)]
 #[serial(server_mutation_globals)]
 async fn page_native_reset_uses_current_runtime_defaults() {
 	// Arrange: mount with one value, then save a different value as the runtime default.
@@ -638,7 +645,8 @@ async fn page_native_reset_uses_current_runtime_defaults() {
 	assert!(!(runtime.form_state().is_dirty.get()));
 }
 
-#[wasm_bindgen_test(async)]
+#[rstest]
+#[test_attr(wasm_bindgen_test)]
 #[serial(server_mutation_globals)]
 async fn page_keeps_invalid_scalar_editor_text() {
 	// Arrange
@@ -711,7 +719,8 @@ async fn page_keeps_invalid_scalar_editor_text() {
 	assert!(runtime.form_state().field_errors.get().is_empty());
 }
 
-#[wasm_bindgen_test(async)]
+#[rstest]
+#[test_attr(wasm_bindgen_test)]
 #[serial(server_mutation_globals)]
 async fn page_keeps_optional_native_defaults_unsupplied() {
 	// Arrange

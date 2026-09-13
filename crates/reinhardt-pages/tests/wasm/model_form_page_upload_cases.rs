@@ -19,7 +19,8 @@ async fn settle() {
 	TimeoutFuture::new(0).await;
 }
 
-#[wasm_bindgen_test(async)]
+#[rstest]
+#[test_attr(wasm_bindgen_test)]
 #[serial(model_form_file_upload_globals)]
 async fn page_default_clear_restores_configured_baseline() {
 	// Arrange
@@ -95,7 +96,8 @@ impl Component for UploadPage {
 	}
 }
 
-#[wasm_bindgen_test(async)]
+#[rstest]
+#[test_attr(wasm_bindgen_test)]
 #[serial(model_form_file_upload_globals)]
 async fn page_file_controls_use_the_existing_single_file_channel() {
 	// Arrange
