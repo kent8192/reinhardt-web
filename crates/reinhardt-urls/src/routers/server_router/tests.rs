@@ -1516,3 +1516,32 @@ async fn test_without_exception_handler_keeps_default_conversion() {
 	// Assert: a middleware-free router still propagates the error unchanged
 	assert!(result.is_err());
 }
+
+#[tokio::test]
+async fn inherited_exception_handler_reaches_router_middleware() {
+	// Arrange a parent adapter and routers without a locally installed handler.
+	let routers = [
+		ServerRouter::new().with_middleware(SecurityHeaderTestMiddleware),
+		ServerRouter::new()
+			.with_middleware(SecurityHeaderTestMiddleware)
+			.handler_arc("/fail", Arc::new(FailingView)),
+		ServerRouter::new()
+			.with_middleware(FailingMiddleware)
+			.handler_arc("/fail", Arc::new(OkView)),
+	];
+	for router in routers {
+		let calls = Arc::new(AtomicUsize::new(0));
+		let handler = reinhardt_http::ExceptionHandlingHandler::new(
+			Arc::new(router),
+			Arc::new(CountingErrors {
+				calls: Arc::clone(&calls),
+			}),
+		);
+		// Act
+		let response = handler.handle(create_test_request("/fail")).await.unwrap();
+		// Assert the inherited handler runs once for routing, view and middleware errors.
+		assert_eq!(response.status, hyper::StatusCode::IM_A_TEAPOT);
+		assert_eq!(response.body, bytes::Bytes::from_static(b"teapot"));
+		assert_eq!(calls.load(Ordering::SeqCst), 1);
+	}
+}

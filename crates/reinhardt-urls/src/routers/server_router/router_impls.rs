@@ -75,6 +75,13 @@ impl Handler for RoutingErrorHandler {
 #[async_trait]
 impl Handler for ServerRouter {
 	async fn handle(&self, mut req: Request) -> Result<Response> {
+		let exception_handler = self.exception_handler.clone().or_else(|| {
+			req.extensions
+				.get::<Arc<dyn reinhardt_http::ExceptionHandler>>()
+		});
+		if let Some(handler) = &exception_handler {
+			req.extensions.insert(Arc::clone(handler));
+		}
 		let path = req.uri.path().to_owned();
 		let method = req.method.clone();
 
@@ -107,7 +114,7 @@ impl Handler for ServerRouter {
 					// one the error stays an `Err`, which is what callers of a
 					// middleware-free router rely on.
 					let error = routing_error(error_kind, method.as_ref(), &path);
-					return match self.exception_handler.as_ref() {
+					return match exception_handler.as_ref() {
 						Some(exception_handler) => {
 							Ok(exception_handler.handle_exception(&req, error).await)
 						}
@@ -132,7 +139,7 @@ impl Handler for ServerRouter {
 				// A middleware in this chain can fail too (a CSRF or permission
 				// rejection on an unmatched path), and that error must use the same
 				// handler as the 404/405 body above.
-				let chain = match self.exception_handler.as_ref() {
+				let chain = match exception_handler.as_ref() {
 					Some(exception_handler) => {
 						chain.with_exception_handler(Arc::clone(exception_handler))
 					}
@@ -152,7 +159,7 @@ impl Handler for ServerRouter {
 		// Route the matched handler's errors through an installed handler before
 		// the middleware chain wraps it. Without one the handler is used as-is, so
 		// the default conversion is unchanged.
-		let route_handler: Arc<dyn Handler> = match self.exception_handler.as_ref() {
+		let route_handler: Arc<dyn Handler> = match exception_handler.as_ref() {
 			Some(exception_handler) => Arc::new(ExceptionHandlingHandler::new(
 				route_match.handler.clone(),
 				Arc::clone(exception_handler),
@@ -169,7 +176,7 @@ impl Handler for ServerRouter {
 			// needs the handler independently of the adapter above.
 			let chain =
 				MiddlewareChain::with_middlewares(route_handler, route_match.middleware_stack);
-			let chain = match self.exception_handler.as_ref() {
+			let chain = match exception_handler.as_ref() {
 				Some(exception_handler) => {
 					chain.with_exception_handler(Arc::clone(exception_handler))
 				}

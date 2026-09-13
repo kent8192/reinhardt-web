@@ -72,7 +72,8 @@ pub trait ExceptionHandler: Send + Sync + 'static {
 ///
 /// This adapter sees only errors that reach it as `Err`. Errors raised by
 /// middleware inside a [`MiddlewareChain`](crate::MiddlewareChain) are converted
-/// by that chain, which applies its own installed handler instead.
+/// by that chain. The adapter propagates its handler through request extensions so
+/// nested chains inherit it unless they have an explicitly installed handler.
 ///
 /// # Examples
 ///
@@ -147,6 +148,9 @@ impl Handler for ExceptionHandlingHandler {
 		// (auth state, DI context) through an internal `Arc`. This cost is paid
 		// only where a custom handler is installed, because this adapter is only
 		// constructed in that case.
+		request
+			.extensions
+			.insert(Arc::clone(&self.exception_handler));
 		let context = request.clone_for_di();
 		match self.inner.handle(request).await {
 			Ok(response) => Ok(response),

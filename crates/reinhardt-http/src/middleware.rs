@@ -325,12 +325,19 @@ impl MiddlewareChain {
 #[async_trait]
 impl Handler for MiddlewareChain {
 	async fn handle(&self, request: Request) -> Result<Response> {
+		let exception_handler = self
+			.exception_handler
+			.clone()
+			.or_else(|| request.extensions.get::<Arc<dyn ExceptionHandler>>());
+		if let Some(handler) = &exception_handler {
+			request.extensions.insert(Arc::clone(handler));
+		}
 		// A chain with no middleware neither converts nor swallows errors, so the
 		// installed handler is applied here to keep `with_exception_handler`
 		// meaningful for a bare chain. The error still propagates as `Err` when no
 		// handler is installed, which is the behaviour callers rely on today.
 		if self.middlewares.is_empty() {
-			let Some(exception_handler) = self.exception_handler.as_ref() else {
+			let Some(exception_handler) = exception_handler.as_ref() else {
 				return self.handler.handle(request).await;
 			};
 			let context = request.clone_for_di();
@@ -343,26 +350,23 @@ impl Handler for MiddlewareChain {
 		if self.middlewares.len() == 1 {
 			let middleware = &self.middlewares[0];
 			if !middleware.should_continue(&request) {
-				let context = capture_exception_context(self.exception_handler.as_ref(), &request);
+				let context = capture_exception_context(exception_handler.as_ref(), &request);
 				return match self.handler.handle(request).await {
 					Ok(response) => Ok(response),
 					Err(e) => {
-						Ok(
-							convert_error(self.exception_handler.as_ref(), context.as_ref(), e)
-								.await,
-						)
+						Ok(convert_error(exception_handler.as_ref(), context.as_ref(), e).await)
 					}
 				};
 			}
 
-			let context = capture_exception_context(self.exception_handler.as_ref(), &request);
+			let context = capture_exception_context(exception_handler.as_ref(), &request);
 			let next: Arc<dyn Handler> = Arc::new(ErrorToResponseHandler {
 				inner: self.handler.clone(),
-				exception_handler: self.exception_handler.clone(),
+				exception_handler: exception_handler.clone(),
 			});
 			let response = match middleware.process(request, next).await {
 				Ok(response) => response,
-				Err(e) => convert_error(self.exception_handler.as_ref(), context.as_ref(), e).await,
+				Err(e) => convert_error(exception_handler.as_ref(), context.as_ref(), e).await,
 			};
 			return Ok(response);
 		}
@@ -379,7 +383,7 @@ impl Handler for MiddlewareChain {
 		// all middleware post-processing runs even for error responses.
 		let mut current_handler: Arc<dyn Handler> = Arc::new(ErrorToResponseHandler {
 			inner: self.handler.clone(),
-			exception_handler: self.exception_handler.clone(),
+			exception_handler: exception_handler.clone(),
 		});
 
 		for middleware in self
@@ -394,7 +398,7 @@ impl Handler for MiddlewareChain {
 			current_handler = Arc::new(ConditionalComposedHandler {
 				middleware: mw,
 				next: handler,
-				exception_handler: self.exception_handler.clone(),
+				exception_handler: exception_handler.clone(),
 			});
 		}
 

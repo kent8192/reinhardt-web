@@ -845,6 +845,23 @@ mod tests {
 		assert_eq!(String::from_utf8(response.body.to_vec()).unwrap(), "teapot");
 	}
 
+	#[tokio::test]
+	async fn test_server_exception_handler_reaches_nested_middleware_chain() {
+		// Arrange a chain that would otherwise consume the error before the server.
+		let inner = MiddlewareChain::new(Arc::new(TestHandler))
+			.with_middleware(Arc::new(FailingMiddleware));
+		let server = HttpServer::new(inner).with_exception_handler(Arc::new(TeapotErrors));
+		// Act
+		let response = server
+			.build_handler()
+			.handle(build_request())
+			.await
+			.unwrap();
+		// Assert
+		assert_eq!(response.status, StatusCode::IM_A_TEAPOT);
+		assert_eq!(response.body, Bytes::from_static(b"teapot"));
+	}
+
 	#[rstest]
 	#[tokio::test]
 	async fn test_server_without_exception_handler_keeps_default_conversion() {
