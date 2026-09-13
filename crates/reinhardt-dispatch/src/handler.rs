@@ -10,7 +10,7 @@ use reinhardt_core::signals::{
 use reinhardt_http::Handler;
 use reinhardt_http::{Request, Response};
 use reinhardt_urls::routers::DefaultRouter;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use tracing::{debug, error, trace, warn};
 
 use crate::{DispatchError, exception::exception_to_dispatch_error};
