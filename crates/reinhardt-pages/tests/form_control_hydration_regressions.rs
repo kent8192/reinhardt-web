@@ -89,6 +89,29 @@ async fn pre_whitespace_mismatch_is_not_filtered_during_hydration() {
 	.await;
 }
 
+#[rstest::rstest]
+#[test_attr(wasm_bindgen_test)]
+#[serial(form_control_hydration_dom)]
+async fn pre_leading_newlines_survive_ssr_parsing_and_hydration() {
+	form_scope::run(async {
+		for source in ["\ncode", "\rcode", "\r\ncode"] {
+			// Arrange: parse the actual SSR markup with the browser's HTML parser.
+			let page = PageElement::new("pre")
+				.child(Page::text(source))
+				.into_page();
+			let mounted = MountedPage::new();
+			mounted.0.set_inner_html(&page.render_to_string());
+			let expected = source.replace("\r\n", "\n").replace('\r', "\n");
+			let pre = mounted.0.first_element_child().unwrap();
+			assert_eq!(pre.text_content().as_deref(), Some(expected.as_str()));
+
+			// Act and assert: hydration accepts the parser-normalized raw text.
+			assert_eq!(reconcile(&mounted.root(), &page), Ok(()));
+		}
+	})
+	.await;
+}
+
 struct MountedPage(web_sys::Element);
 
 impl MountedPage {
