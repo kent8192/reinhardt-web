@@ -19,10 +19,7 @@ use reinhardt_core::validators::{UrlValidator, ValidationError, ValidationErrors
 /// Computes the midpoint used by a decimal range control without converting
 /// the bounds through binary floating-point arithmetic.
 #[doc(hidden)]
-pub fn model_form_decimal_range_default(
-	min: Option<&str>,
-	max: Option<&str>,
-) -> Option<String> {
+pub fn model_form_decimal_range_default(min: Option<&str>, max: Option<&str>) -> Option<String> {
 	let min = min
 		.unwrap_or("0")
 		.parse::<Decimal>()
