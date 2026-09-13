@@ -129,9 +129,15 @@ let response = dispatcher.dispatch(request).await?;
 
 ### Exception Handling
 
-The exception module provides:
+`ExceptionHandler` is re-exported from `reinhardt-http`, so the framework has
+one application-facing exception hook. Its `handle_exception` method receives
+`reinhardt_core::exception::Error`, preserving the original HTTP status and
+error variant when a `BaseHandler` is wrapped by an exception-aware server or
+middleware chain. The dispatch-specific `DispatchError` type is converted to
+that unified error by `convert_exception_to_response`.
 
-- `ExceptionHandler` trait for custom exception handling
+The exception module also provides:
+
 - `convert_exception_to_response` helper function
 - `IntoResponse` trait for converting types to HTTP responses
 

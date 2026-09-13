@@ -13,7 +13,7 @@ use reinhardt_urls::routers::DefaultRouter;
 use std::sync::Arc;
 use tracing::{debug, error, trace, warn};
 
-use crate::DispatchError;
+use crate::{DispatchError, exception::exception_to_dispatch_error};
 
 /// Base HTTP request handler
 ///
@@ -84,6 +84,20 @@ impl BaseHandler {
 		&self,
 		request: Request,
 	) -> std::result::Result<Response, DispatchError> {
+		self.handle_request_with_framework_errors(request)
+			.await
+			.map_err(exception_to_dispatch_error)
+	}
+
+	/// Handle a request while preserving the original framework error variants.
+	///
+	/// The HTTP exception-handler adapter uses this path so an endpoint's
+	/// authentication, authorization, validation, or conflict error reaches the
+	/// application handler without being reclassified as a generic view error.
+	async fn handle_request_with_framework_errors(
+		&self,
+		request: Request,
+	) -> reinhardt_core::exception::Result<Response> {
 		trace!("Handling request: {:?}", request.uri);
 
 		// Emit request_started signal
@@ -114,7 +128,7 @@ impl BaseHandler {
 	async fn get_response_async(
 		request: Request,
 		router: Option<&Arc<DefaultRouter>>,
-	) -> std::result::Result<Response, DispatchError> {
+	) -> reinhardt_core::exception::Result<Response> {
 		debug!("Getting response for: {}", request.uri.path());
 
 		// URL resolution with router
@@ -129,19 +143,20 @@ impl BaseHandler {
 				}
 				Err(reinhardt_core::exception::Error::NotFound(msg)) => {
 					debug!("No route matched: {}", msg);
-					return Err(DispatchError::UrlResolution(msg));
+					return Err(reinhardt_core::exception::Error::NotFound(msg));
 				}
 				Err(e) => {
 					error!("Handler error: {}", e);
-					// Return error to allow middleware chain to handle it
-					return Err(DispatchError::View(e.to_string()));
+					// Return the original error so an installed exception handler can
+					// preserve its status and variant.
+					return Err(e);
 				}
 			}
 		}
 
 		// Fallback: router not configured, so no routes can match.
 		debug!("No router configured, returning a URL resolution error");
-		Err(DispatchError::UrlResolution(
+		Err(reinhardt_core::exception::Error::NotFound(
 			"No router configured".to_owned(),
 		))
 	}
@@ -173,27 +188,17 @@ impl Default for BaseHandler {
 	}
 }
 
-fn dispatch_error_to_exception(error: DispatchError) -> reinhardt_core::exception::Error {
-	match error {
-		DispatchError::Middleware(message)
-		| DispatchError::View(message)
-		| DispatchError::Internal(message) => reinhardt_core::exception::Error::Internal(message),
-		DispatchError::UrlResolution(message) => {
-			reinhardt_core::exception::Error::NotFound(message)
-		}
-		DispatchError::Http(message) => reinhardt_core::exception::Error::Http(message),
-	}
-}
-
 #[async_trait::async_trait]
 impl Handler for BaseHandler {
 	async fn handle(&self, request: Request) -> reinhardt_core::exception::Result<Response> {
 		let has_exception_handler = request
 			.extensions
 			.contains::<Arc<dyn reinhardt_http::ExceptionHandler>>();
+		if has_exception_handler {
+			return self.handle_request_with_framework_errors(request).await;
+		}
 		match self.handle_request_with_errors(request).await {
 			Ok(response) => Ok(response),
-			Err(error) if has_exception_handler => Err(dispatch_error_to_exception(error)),
 			Err(DispatchError::UrlResolution(_)) => Ok(Response::new(StatusCode::NOT_FOUND)),
 			Err(e) => {
 				// Log the detailed error server-side; return generic message to client
@@ -356,6 +361,21 @@ mod tests {
 		}
 	}
 
+	struct StatusExceptionHandler;
+
+	#[async_trait]
+	impl ExceptionHandler for StatusExceptionHandler {
+		async fn handle_exception(
+			&self,
+			_request: &Request,
+			error: reinhardt_core::exception::Error,
+		) -> Response {
+			let status = StatusCode::from_u16(error.status_code())
+				.unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+			Response::new(status)
+		}
+	}
+
 	#[rstest]
 	#[tokio::test]
 	async fn base_handler_routing_errors_reach_http_exception_handler() {
@@ -416,6 +436,44 @@ mod tests {
 		// Assert
 		assert_eq!(response.status, StatusCode::IM_A_TEAPOT);
 		assert_eq!(response.body, Bytes::from_static(b"teapot"));
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn base_handler_preserves_endpoint_error_status_for_http_exception_handler() {
+		struct AuthenticationHandler;
+
+		#[async_trait]
+		impl Handler for AuthenticationHandler {
+			async fn handle(
+				&self,
+				_request: Request,
+			) -> reinhardt_core::exception::Result<Response> {
+				Err(reinhardt_core::exception::Error::Authentication(
+					"credentials rejected".to_owned(),
+				))
+			}
+		}
+
+		// Arrange
+		let mut router = DefaultRouter::new();
+		router.add_route(path("/private", Arc::new(AuthenticationHandler)));
+		let base = Arc::new(BaseHandler::with_router(Arc::new(router)));
+		let handler = ExceptionHandlingHandler::new(base, Arc::new(StatusExceptionHandler));
+		let request = Request::builder()
+			.method(Method::GET)
+			.uri("/private")
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+
+		// Act
+		let response = handler.handle(request).await.unwrap();
+
+		// Assert: the endpoint's authentication error is not reclassified as 500.
+		assert_eq!(response.status, StatusCode::UNAUTHORIZED);
 	}
 
 	#[test]

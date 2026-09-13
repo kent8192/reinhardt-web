@@ -106,12 +106,30 @@ WASM). The standalone development server preserves custom 404 responses rather
 than treating them as a request for its static-file fallback:
 
 ```rust
-use reinhardt::http::{ExceptionHandler, Error, Request, Response};
+use async_trait::async_trait;
+use hyper::StatusCode;
+use reinhardt::http::{Error, ExceptionHandler, Request, Response};
 use reinhardt::urls::routers::ServerRouter;
 use std::sync::Arc;
 
-let router = ServerRouter::new()
-    .with_exception_handler(Arc::new(MyExceptionHandler));
+struct MyExceptionHandler;
+
+#[async_trait]
+impl ExceptionHandler for MyExceptionHandler {
+    async fn handle_exception(&self, _request: &Request, error: Error) -> Response {
+        let status = StatusCode::from_u16(error.status_code())
+            .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+        Response::new(status).with_body("request failed")
+    }
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let router = ServerRouter::new()
+        .with_exception_handler(Arc::new(MyExceptionHandler));
+    let _ = router;
+    Ok(())
+}
 ```
 
 The hook runs only for errors that reach the configured router or middleware

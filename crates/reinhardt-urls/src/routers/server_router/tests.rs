@@ -1517,6 +1517,7 @@ async fn test_without_exception_handler_keeps_default_conversion() {
 	assert!(result.is_err());
 }
 
+#[rstest]
 #[tokio::test]
 async fn inherited_exception_handler_reaches_router_middleware() {
 	// Arrange a parent adapter and routers without a locally installed handler.

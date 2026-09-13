@@ -13,8 +13,33 @@ use reinhardt_http::{Handler, Middleware, Request, Response};
 use reinhardt_urls::routers::ServerRouter;
 use rstest::rstest;
 use std::sync::Arc;
+use tokio::task::JoinHandle;
 
 use super::server_test_helpers::{shutdown_test_server, spawn_test_server};
+
+struct ServerGuard(Option<JoinHandle<()>>);
+
+impl ServerGuard {
+	fn new(handle: JoinHandle<()>) -> Self {
+		Self(Some(handle))
+	}
+
+	async fn shutdown(mut self) {
+		if let Some(handle) = self.0.take() {
+			shutdown_test_server(handle).await;
+		}
+	}
+}
+
+impl Drop for ServerGuard {
+	fn drop(&mut self) {
+		// Abort the accept loop if an assertion or request operation unwinds
+		// before the test reaches its explicit asynchronous shutdown.
+		if let Some(handle) = self.0.take() {
+			handle.abort();
+		}
+	}
+}
 
 /// Reproduces an application whose clients parse a fixed error body.
 struct ApiErrors;
@@ -59,6 +84,7 @@ async fn test_router_404_uses_installed_handler_over_http() {
 	// Arrange: the reporter's installation, on a real listener
 	let router = ServerRouter::new().with_exception_handler(Arc::new(ApiErrors));
 	let (url, handle) = spawn_test_server(Arc::new(router)).await;
+	let server = ServerGuard::new(handle);
 
 	// Act
 	let response = reqwest::get(format!("{}/missing", url)).await.unwrap();
@@ -70,7 +96,7 @@ async fn test_router_404_uses_installed_handler_over_http() {
 	assert_eq!(body["errMsg"], "The requested resource is not available.");
 
 	// Cleanup
-	shutdown_test_server(handle).await;
+	server.shutdown().await;
 }
 
 #[rstest]
@@ -82,6 +108,7 @@ async fn test_middleware_error_uses_installed_handler_over_http() {
 		.with_exception_handler(Arc::new(ApiErrors))
 		.with_middleware(RejectingMiddleware);
 	let (url, handle) = spawn_test_server(Arc::new(router)).await;
+	let server = ServerGuard::new(handle);
 
 	// Act
 	let response = reqwest::get(format!("{}/anything", url)).await.unwrap();
@@ -93,5 +120,5 @@ async fn test_middleware_error_uses_installed_handler_over_http() {
 	assert_eq!(body["errMsg"], "The requested resource is not available.");
 
 	// Cleanup
-	shutdown_test_server(handle).await;
+	server.shutdown().await;
 }

@@ -6,7 +6,7 @@
 use async_trait::async_trait;
 use bytes::Bytes;
 use hyper::StatusCode;
-use reinhardt_http::{Request, Response};
+use reinhardt_http::{ExceptionHandler, Request, Response};
 use std::fmt;
 use std::future::Future;
 use tracing::{error, warn};
@@ -17,11 +17,33 @@ use crate::build_error_response;
 /// Result type for exception handlers
 pub type ExceptionResult = Result<Response, DispatchError>;
 
-/// A trait for handling exceptions during request processing
-#[async_trait]
-pub trait ExceptionHandler: Send + Sync {
-	/// Handle an exception and convert it to a response
-	async fn handle_exception(&self, request: &Request, error: DispatchError) -> Response;
+/// Convert an internal dispatch error into the unified framework error used by
+/// [`reinhardt_http::ExceptionHandler`].
+pub(crate) fn dispatch_error_to_exception(
+	error: DispatchError,
+) -> reinhardt_core::exception::Error {
+	match error {
+		DispatchError::Middleware(message)
+		| DispatchError::View(message)
+		| DispatchError::Internal(message) => reinhardt_core::exception::Error::Internal(message),
+		DispatchError::UrlResolution(message) => {
+			reinhardt_core::exception::Error::NotFound(message)
+		}
+		DispatchError::Http(message) => reinhardt_core::exception::Error::Http(message),
+	}
+}
+
+/// Convert a framework error into the legacy dispatch error categories used by
+/// [`BaseHandler::handle_request`](crate::BaseHandler::handle_request).
+pub(crate) fn exception_to_dispatch_error(
+	error: reinhardt_core::exception::Error,
+) -> DispatchError {
+	match error {
+		reinhardt_core::exception::Error::NotFound(message) => {
+			DispatchError::UrlResolution(message)
+		}
+		error => DispatchError::View(error.to_string()),
+	}
 }
 
 /// Default exception handler implementation
@@ -30,31 +52,29 @@ pub trait ExceptionHandler: Send + Sync {
 pub struct DefaultExceptionHandler;
 
 #[async_trait]
-impl ExceptionHandler for DefaultExceptionHandler {
-	async fn handle_exception(&self, _request: &Request, error: DispatchError) -> Response {
+impl reinhardt_http::ExceptionHandler for DefaultExceptionHandler {
+	async fn handle_exception(
+		&self,
+		_request: &Request,
+		error: reinhardt_core::exception::Error,
+	) -> Response {
 		// Internal error details are logged server-side but never exposed
 		// in HTTP response bodies to prevent information disclosure.
-		let (status, client_message) = match &error {
-			DispatchError::View(msg) => {
-				warn!("View error: {}", msg);
-				(StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error")
-			}
-			DispatchError::UrlResolution(msg) => {
-				warn!("URL resolution error: {}", msg);
-				(StatusCode::NOT_FOUND, "Not Found")
-			}
-			DispatchError::Middleware(msg) => {
-				error!("Middleware error: {}", msg);
-				(StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error")
-			}
-			DispatchError::Http(msg) => {
-				warn!("HTTP error: {}", msg);
-				(StatusCode::BAD_REQUEST, "Bad Request")
-			}
-			DispatchError::Internal(msg) => {
-				error!("Internal error: {}", msg);
-				(StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error")
-			}
+		if error.status_code() >= 500 {
+			error!("Dispatch error: {}", error);
+		} else {
+			warn!("Dispatch error: {}", error);
+		}
+		let status =
+			StatusCode::from_u16(error.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+		let client_message = match status {
+			StatusCode::BAD_REQUEST => "Bad Request",
+			StatusCode::UNAUTHORIZED => "Unauthorized",
+			StatusCode::FORBIDDEN => "Forbidden",
+			StatusCode::NOT_FOUND => "Not Found",
+			StatusCode::METHOD_NOT_ALLOWED => "Method Not Allowed",
+			StatusCode::CONFLICT => "Conflict",
+			_ => "Internal Server Error",
 		};
 
 		build_error_response(status, client_message)
@@ -97,7 +117,7 @@ where
 			{
 				Ok(context_request) => {
 					exception_handler
-						.handle_exception(&context_request, error)
+						.handle_exception(&context_request, dispatch_error_to_exception(error))
 						.await
 				}
 				Err(_) => {
@@ -189,8 +209,9 @@ mod tests {
 		// Arrange
 		let handler = DefaultExceptionHandler;
 		let request = build_request();
-		let error =
-			DispatchError::Internal("database pool exhausted at /src/db/pool.rs:99".to_string());
+		let error = dispatch_error_to_exception(DispatchError::Internal(
+			"database pool exhausted at /src/db/pool.rs:99".to_string(),
+		));
 
 		// Act
 		let response = handler.handle_exception(&request, error).await;
@@ -208,9 +229,9 @@ mod tests {
 		// Arrange
 		let handler = DefaultExceptionHandler;
 		let request = build_request();
-		let error = DispatchError::Middleware(
+		let error = dispatch_error_to_exception(DispatchError::Middleware(
 			"JWT decode failed: invalid signature for key abc123".to_string(),
-		);
+		));
 
 		// Act
 		let response = handler.handle_exception(&request, error).await;
@@ -228,9 +249,9 @@ mod tests {
 		// Arrange
 		let handler = DefaultExceptionHandler;
 		let request = build_request();
-		let error = DispatchError::View(
+		let error = dispatch_error_to_exception(DispatchError::View(
 			"template rendering panicked at /src/views/admin.rs:42".to_string(),
-		);
+		));
 
 		// Act
 		let response = handler.handle_exception(&request, error).await;
@@ -248,7 +269,9 @@ mod tests {
 		// Arrange
 		let handler = DefaultExceptionHandler;
 		let request = build_request();
-		let error = DispatchError::UrlResolution("no route matched".to_string());
+		let error = dispatch_error_to_exception(DispatchError::UrlResolution(
+			"no route matched".to_string(),
+		));
 
 		// Act
 		let response = handler.handle_exception(&request, error).await;
@@ -264,7 +287,8 @@ mod tests {
 		// Arrange
 		let handler = DefaultExceptionHandler;
 		let request = build_request();
-		let error = DispatchError::Http("malformed header".to_string());
+		let error =
+			dispatch_error_to_exception(DispatchError::Http("malformed header".to_string()));
 
 		// Act
 		let response = handler.handle_exception(&request, error).await;
