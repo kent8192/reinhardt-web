@@ -1247,7 +1247,7 @@ async fn named_mutation_page_preserves_runtime_dom_and_typed_result() {
 		.dyn_into::<web_sys::HtmlButtonElement>()
 		.expect("button");
 	let reset = form_node
-		.query_selector("button[type=button]")
+		.query_selector("button[type=reset]")
 		.expect("reset query")
 		.expect("reset button")
 		.dyn_into::<web_sys::HtmlButtonElement>()

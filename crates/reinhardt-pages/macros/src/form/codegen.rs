@@ -4160,6 +4160,20 @@ fn generate_model_form(
 							control = control.attr("type", input_type);
 						}
 						let color_is_unset = input_type == "color" && stored_value.is_none();
+						let color_is_null = input_type == "color"
+							&& matches!(
+								stored_value.as_ref(),
+								::core::option::Option::Some(
+									#pages_crate::__private::serde_json::Value::Null
+								)
+							);
+						let range_is_null = input_type == "range"
+							&& matches!(
+								stored_value.as_ref(),
+								::core::option::Option::Some(
+									#pages_crate::__private::serde_json::Value::Null
+								)
+							);
 						if uses_nullable_boolean_select {
 							control = control
 								.child(
@@ -4419,16 +4433,32 @@ fn generate_model_form(
 							#pages_crate::PageElement::new("input")
 								.attr("type", "hidden")
 								.attr("name", color_sentinel)
-								.attr("value", if color_is_unset { "false" } else { "true" })
+								.attr(
+									"value",
+									if color_is_unset {
+										"false"
+									} else if color_is_null {
+										"null"
+									} else {
+										"true"
+									},
+								)
 						});
 						let range_sentinel = (input_type == "range"
 							&& !descriptor.required
-							&& stored_value.is_none())
+							&& (stored_value.is_none() || range_is_null))
 							.then(|| {
 								#pages_crate::PageElement::new("input")
 									.attr("type", "hidden")
 									.attr("name", range_sentinel)
-									.attr("value", range_default.clone().unwrap_or_default())
+									.attr(
+										"value",
+										if range_is_null {
+											"null".to_owned()
+										} else {
+											range_default.clone().unwrap_or_default()
+										},
+									)
 							});
 						let default_clear_control_id = format!("{control_id}-clear");
 						let can_clear_default = descriptor.nullable
@@ -4613,6 +4643,27 @@ fn generate_model_form(
 									.as_string()
 									.as_deref()
 									== ::core::option::Option::Some("__edited");
+							let color_was_null = is_color
+								&& !color_was_edited
+								&& values
+									.get(&format!("__reinhardt_color_{field}"))
+									.as_string()
+									.as_deref()
+									== ::core::option::Option::Some("null");
+							let range_was_null = is_range
+								&& !range_was_edited
+								&& values
+									.get(&format!("__reinhardt_range_{field}"))
+									.as_string()
+									.as_deref()
+									== ::core::option::Option::Some("null");
+							if color_was_null || range_was_null {
+								let _ = state.set_value(
+									field,
+									#pages_crate::__private::serde_json::Value::Null,
+								);
+								continue;
+							}
 							if (is_range || is_color)
 								&& !required
 								&& state.value(field).is_none()
@@ -4867,8 +4918,15 @@ fn generate_model_form(
 					let field_name = #pages_crate::form::ModelFormContractField::name(field);
 					let mut state = self.__model_state.borrow_mut();
 					let previous = state.value(field_name).cloned();
+					let previous_editor_text = state
+						.binding_editor_text(field_name)
+						.map(::std::borrow::ToOwned::to_owned);
 					let result = state.set_any_value(field_name, value);
-					let changed = previous != state.value(field_name).cloned();
+					let changed = previous != state.value(field_name).cloned()
+						|| previous_editor_text
+							!= state
+								.binding_editor_text(field_name)
+								.map(::std::borrow::ToOwned::to_owned);
 					drop(state);
 					if changed {
 						self.__state_version.update(|version| *version = version.wrapping_add(1));

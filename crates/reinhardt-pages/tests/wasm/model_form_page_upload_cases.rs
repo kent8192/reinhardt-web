@@ -64,7 +64,7 @@ async fn page_default_clear_restores_configured_baseline() {
 		FieldError::new("clear this error"),
 	);
 	root.0
-		.query_selector("button[type=button]")
+		.query_selector("button[type=reset]")
 		.unwrap()
 		.unwrap()
 		.dyn_into::<web_sys::HtmlButtonElement>()
