@@ -372,6 +372,13 @@ fn reconcile_dom_node_at_path(
 			}
 		}
 		Page::Text(expected_text) => {
+			if node.node_type() != web_sys::Node::TEXT_NODE {
+				return Err(ReconcileError::TagMismatch {
+					path,
+					expected: "#text".to_string(),
+					actual: node.node_name().to_lowercase(),
+				});
+			}
 			reconcile_text_at_path(node.text_content().unwrap_or_default(), expected_text, path)
 		}
 		Page::Fragment(views) => {
@@ -528,6 +535,9 @@ fn reconcile_children_at_path(
 		&& expected_children
 			.iter()
 			.all(|(_, view)| matches!(view, Page::Text(_)))
+		&& relevant_child_nodes(element)
+			.iter()
+			.all(|node| node.node_type() == web_sys::Node::TEXT_NODE)
 	{
 		// Raw-text snapshots retain whitespace, including an absent empty text node.
 		let expected: String = expected_children
