@@ -146,10 +146,10 @@ pub mod middleware;
 
 // Re-exports
 pub use dispatcher::Dispatcher;
-pub use exception::convert_exception_to_response;
+pub use exception::{ExceptionHandler, adapt_exception_handler, convert_exception_to_response};
 pub use handler::BaseHandler;
 pub use middleware::MiddlewareChain;
-pub use reinhardt_http::ExceptionHandler;
+pub use reinhardt_http::ExceptionHandler as HttpExceptionHandler;
 
 use thiserror::Error;
 

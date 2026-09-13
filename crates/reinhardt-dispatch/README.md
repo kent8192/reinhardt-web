@@ -129,12 +129,25 @@ let response = dispatcher.dispatch(request).await?;
 
 ### Exception Handling
 
-`ExceptionHandler` is re-exported from `reinhardt-http`, so the framework has
-one application-facing exception hook. Its `handle_exception` method receives
-`reinhardt_core::exception::Error`, preserving the original HTTP status and
-error variant when a `BaseHandler` is wrapped by an exception-aware server or
-middleware chain. The dispatch-specific `DispatchError` type is converted to
-that unified error by `convert_exception_to_response`.
+`ExceptionHandler` remains the legacy dispatch hook and receives
+`DispatchError`, preserving source compatibility for existing dispatch
+applications. The framework-wide HTTP hook is available as
+`HttpExceptionHandler` (the `reinhardt_http::ExceptionHandler` trait) and
+receives `reinhardt_core::exception::Error`, preserving the original HTTP
+status and error variant when a `BaseHandler` is wrapped by an
+exception-aware server or middleware chain. Adapt an existing dispatch hook
+when installing it through a server, router, or middleware API:
+
+```rust,ignore
+use std::sync::Arc;
+use reinhardt_dispatch::{adapt_exception_handler, ExceptionHandler};
+
+let legacy: Arc<dyn ExceptionHandler> = Arc::new(MyDispatchErrors);
+let http_handler = adapt_exception_handler(legacy);
+```
+
+The dispatch-specific `DispatchError` type is converted to the unified error
+by `convert_exception_to_response`.
 
 The exception module also provides:
 

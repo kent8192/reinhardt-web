@@ -6,9 +6,10 @@
 use async_trait::async_trait;
 use bytes::Bytes;
 use hyper::StatusCode;
-use reinhardt_http::{ExceptionHandler, Request, Response};
+use reinhardt_http::{ExceptionHandler as HttpExceptionHandler, Request, Response};
 use std::fmt;
 use std::future::Future;
+use std::sync::Arc;
 use tracing::{error, warn};
 
 use crate::DispatchError;
@@ -17,8 +18,21 @@ use crate::build_error_response;
 /// Result type for exception handlers
 pub type ExceptionResult = Result<Response, DispatchError>;
 
+/// A compatibility hook for handling the dispatch-specific error categories.
+///
+/// This trait preserves the public contract exposed by `reinhardt-dispatch`
+/// before the framework-wide HTTP exception hook was introduced. New server,
+/// router, and middleware APIs use [`reinhardt_http::ExceptionHandler`]; pass a
+/// legacy implementation through [`adapt_exception_handler`] when it must be
+/// installed through one of those APIs.
+#[async_trait]
+pub trait ExceptionHandler: Send + Sync {
+	/// Handle a dispatch error and convert it to a response.
+	async fn handle_exception(&self, request: &Request, error: DispatchError) -> Response;
+}
+
 /// Convert an internal dispatch error into the unified framework error used by
-/// [`reinhardt_http::ExceptionHandler`].
+/// [`HttpExceptionHandler`].
 pub(crate) fn dispatch_error_to_exception(
 	error: DispatchError,
 ) -> reinhardt_core::exception::Error {
@@ -46,13 +60,42 @@ pub(crate) fn exception_to_dispatch_error(
 	}
 }
 
+/// Adapts a legacy [`ExceptionHandler`] to the framework-wide HTTP hook.
+///
+/// Error variants that do not have a corresponding [`DispatchError`] variant
+/// are represented as legacy view errors. The original dispatch categories
+/// remain available to existing implementations, while new code should
+/// implement [`reinhardt_http::ExceptionHandler`] directly.
+pub fn adapt_exception_handler(
+	handler: Arc<dyn ExceptionHandler>,
+) -> Arc<dyn HttpExceptionHandler> {
+	Arc::new(LegacyExceptionHandlerAdapter { handler })
+}
+
+struct LegacyExceptionHandlerAdapter {
+	handler: Arc<dyn ExceptionHandler>,
+}
+
+#[async_trait]
+impl HttpExceptionHandler for LegacyExceptionHandlerAdapter {
+	async fn handle_exception(
+		&self,
+		request: &Request,
+		error: reinhardt_core::exception::Error,
+	) -> Response {
+		self.handler
+			.handle_exception(request, exception_to_dispatch_error(error))
+			.await
+	}
+}
+
 /// Default exception handler implementation
 ///
 /// Converts exceptions to appropriate HTTP error responses.
 pub struct DefaultExceptionHandler;
 
 #[async_trait]
-impl reinhardt_http::ExceptionHandler for DefaultExceptionHandler {
+impl HttpExceptionHandler for DefaultExceptionHandler {
 	async fn handle_exception(
 		&self,
 		_request: &Request,
@@ -78,6 +121,14 @@ impl reinhardt_http::ExceptionHandler for DefaultExceptionHandler {
 		};
 
 		build_error_response(status, client_message)
+	}
+}
+
+#[async_trait]
+impl ExceptionHandler for DefaultExceptionHandler {
+	async fn handle_exception(&self, request: &Request, error: DispatchError) -> Response {
+		HttpExceptionHandler::handle_exception(self, request, dispatch_error_to_exception(error))
+			.await
 	}
 }
 
@@ -116,9 +167,12 @@ where
 				.build()
 			{
 				Ok(context_request) => {
-					exception_handler
-						.handle_exception(&context_request, dispatch_error_to_exception(error))
-						.await
+					HttpExceptionHandler::handle_exception(
+						&exception_handler,
+						&context_request,
+						dispatch_error_to_exception(error),
+					)
+					.await
 				}
 				Err(_) => {
 					let mut response = Response::new(hyper::StatusCode::INTERNAL_SERVER_ERROR);
@@ -188,6 +242,9 @@ impl<T: IntoResponse, E: fmt::Display> IntoResponse for Result<T, E> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use reinhardt_http::ExceptionHandler as HttpExceptionHandler;
+	use rstest::rstest;
+	use std::sync::Arc;
 
 	fn build_request() -> Request {
 		Request::builder()
@@ -214,7 +271,7 @@ mod tests {
 		));
 
 		// Act
-		let response = handler.handle_exception(&request, error).await;
+		let response = HttpExceptionHandler::handle_exception(&handler, &request, error).await;
 
 		// Assert: generic message only, no internal details
 		let body = String::from_utf8(response.body.to_vec()).unwrap();
@@ -234,7 +291,7 @@ mod tests {
 		));
 
 		// Act
-		let response = handler.handle_exception(&request, error).await;
+		let response = HttpExceptionHandler::handle_exception(&handler, &request, error).await;
 
 		// Assert: generic message only, no internal details
 		let body = String::from_utf8(response.body.to_vec()).unwrap();
@@ -254,7 +311,7 @@ mod tests {
 		));
 
 		// Act
-		let response = handler.handle_exception(&request, error).await;
+		let response = HttpExceptionHandler::handle_exception(&handler, &request, error).await;
 
 		// Assert: generic message only, no internal details
 		let body = String::from_utf8(response.body.to_vec()).unwrap();
@@ -274,7 +331,7 @@ mod tests {
 		));
 
 		// Act
-		let response = handler.handle_exception(&request, error).await;
+		let response = HttpExceptionHandler::handle_exception(&handler, &request, error).await;
 
 		// Assert
 		let body = String::from_utf8(response.body.to_vec()).unwrap();
@@ -291,12 +348,41 @@ mod tests {
 			dispatch_error_to_exception(DispatchError::Http("malformed header".to_string()));
 
 		// Act
-		let response = handler.handle_exception(&request, error).await;
+		let response = HttpExceptionHandler::handle_exception(&handler, &request, error).await;
 
 		// Assert
 		let body = String::from_utf8(response.body.to_vec()).unwrap();
 		assert_eq!(response.status, StatusCode::BAD_REQUEST);
 		assert_eq!(body, "Bad Request");
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn legacy_exception_handler_can_be_adapted_to_http_hook() {
+		// Arrange
+		struct LegacyTeapot;
+
+		#[async_trait]
+		impl ExceptionHandler for LegacyTeapot {
+			async fn handle_exception(&self, _request: &Request, error: DispatchError) -> Response {
+				assert!(matches!(error, DispatchError::UrlResolution(_)));
+				Response::new(StatusCode::IM_A_TEAPOT)
+			}
+		}
+
+		let request = build_request();
+		let handler = adapt_exception_handler(Arc::new(LegacyTeapot));
+
+		// Act
+		let response = HttpExceptionHandler::handle_exception(
+			handler.as_ref(),
+			&request,
+			reinhardt_core::exception::Error::NotFound("missing".to_owned()),
+		)
+		.await;
+
+		// Assert
+		assert_eq!(response.status, StatusCode::IM_A_TEAPOT);
 	}
 
 	#[test]
