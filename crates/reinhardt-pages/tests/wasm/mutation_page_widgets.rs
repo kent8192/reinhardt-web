@@ -317,6 +317,11 @@ async fn page_preserves_generated_widget_overrides() {
 			.value(),
 		r#"{"enabled":true}"#
 	);
+	let timestamp = control(&root.element, "timestamp")
+		.dyn_into::<web_sys::HtmlInputElement>()
+		.unwrap();
+	edit_input(&timestamp, "2026-09-10T12:34:56");
+	assert!(!runtime.form_state().is_dirty.get());
 
 	// Act: nullable choices and alternate text editors update the attached source.
 	let choice = control(&root.element, "boolean")
@@ -539,6 +544,14 @@ async fn page_keeps_optional_native_defaults_unsupplied() {
 		.unwrap();
 
 	// Assert: browser display defaults do not supply omitted model fields.
+	assert_eq!(
+		color.get_attribute("oninput").as_deref(),
+		Some("this.form.elements['__reinhardt_color_color'].value='true'")
+	);
+	assert_eq!(
+		range.get_attribute("oninput").as_deref(),
+		Some("this.form.elements['__reinhardt_range_range'].value='__edited'")
+	);
 	assert_eq!(color.value(), "#000000");
 	assert_eq!(range.value(), "5");
 	assert_eq!(form.value("color"), None);

@@ -3361,9 +3361,19 @@ fn generate_model_form(
 						}
 						source.__native_reset_epoch.update(|value| *value = value.wrapping_add(1));
 					})
-				} else { binding };
-				let snapshot_source = self.clone();
-				control = control.control_binding(binding);
+					} else { binding };
+					let snapshot_source = self.clone();
+					if input_type == "color" || (input_type == "range" && !descriptor.required) {
+						let edit_value = if input_type == "color" { "true" } else { "__edited" };
+						let edit_sentinel = format!("__reinhardt_{input_type}_{field_name}");
+						control = control.attr(
+							"oninput",
+							format!(
+								"this.form.elements['{edit_sentinel}'].value='{edit_value}'"
+							),
+						);
+					}
+					control = control.control_binding(binding);
 				let mut auxiliary = ::std::vec::Vec::new();
 				if is_checkbox || uses_nullable_boolean_select {
 					auxiliary.push(#pages_crate::IntoPage::into_page(#pages_crate::PageElement::new("input")
@@ -4195,11 +4205,17 @@ fn generate_model_form(
 								_ => {}
 							}
 						}
-						if input_type == "color" {
-							let color_edit_script = format!(
-								"this.form.elements['{color_sentinel}'].value='true'"
+						if input_type == "color" || (input_type == "range" && !descriptor.required) {
+							let edit_value = if input_type == "color" { "true" } else { "__edited" };
+							let edit_sentinel = if input_type == "color" {
+								color_sentinel.as_str()
+							} else {
+								range_sentinel.as_str()
+							};
+							let edit_script = format!(
+								"this.form.elements['{edit_sentinel}'].value='{edit_value}'"
 							);
-							control = control.attr("oninput", color_edit_script);
+							control = control.attr("oninput", edit_script);
 						}
 						if matches!(
 							descriptor.kind,
@@ -4495,16 +4511,33 @@ fn generate_model_form(
 													.as_string()
 													.as_deref()
 													== ::core::option::Option::Some("true");
-											if clears_default {
+							if clears_default {
 												let _ = state.set_value(
 													field,
 													#pages_crate::__private::serde_json::Value::Null,
 												);
-												continue;
-											}
-											if (is_range || is_color) && !required && state.value(field).is_none() {
-												continue;
-											}
+								continue;
+							}
+							let color_was_edited = is_color
+								&& values
+									.get(&format!("__reinhardt_color_{field}"))
+									.as_string()
+									.as_deref()
+									== ::core::option::Option::Some("true");
+							let range_was_edited = is_range
+								&& values
+									.get(&format!("__reinhardt_range_{field}"))
+									.as_string()
+									.as_deref()
+									== ::core::option::Option::Some("__edited");
+							if (is_range || is_color)
+								&& !required
+								&& state.value(field).is_none()
+								&& !color_was_edited
+								&& !range_was_edited
+							{
+								continue;
+							}
 											if let Some(value) = values.get(field).as_string() {
 												let value = if is_checkbox {
 													#pages_crate::__private::serde_json::Value::Bool(true)

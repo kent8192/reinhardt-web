@@ -29,6 +29,7 @@ existing binding.
 |---|---|---|
 | `UnifiedRouter::server` | Invokes the closure and stores native server routes. | Type-checks and drops the closure without invoking it. |
 | `UnifiedRouter::client` | Type-checks and drops the closure without invoking it. | Invokes the closure and stores client routes. |
+| `FormPageSource` | Builds the page structure and remains inert with respect to browser submission. | Builds the page structure with the existing control-binding and mutation lifecycle. |
 
 Inactive `UnifiedRouter` closures must not contain required side effects. Each
 active target must have an executable test proving its route configuration.

@@ -306,6 +306,11 @@ where
 		value: String,
 	) -> Result<(), ModelFormPayloadError> {
 		let descriptor = self.binding_descriptor(field)?;
+		let value = if matches!(descriptor.kind, ModelFormFieldKind::DateTime) {
+			normalize_datetime_local(&value, true).unwrap_or(value)
+		} else {
+			value
+		};
 		if matches!(descriptor.kind, ModelFormFieldKind::Json) {
 			self.json_editor_text.insert(descriptor.name, value.clone());
 		} else {
@@ -598,7 +603,13 @@ where
 			}
 			match self.values.get(descriptor.name) {
 				Some(value) => {
-					match convert_snapshot_value(descriptor, value.clone())? {
+					match convert_snapshot_value_with_editor_text(
+						descriptor,
+						value.clone(),
+						self.json_editor_text
+							.get(descriptor.name)
+							.map(String::as_str),
+					)? {
 						Some(value) => validated.values.insert(descriptor.name, value),
 						None => validated.values.remove(descriptor.name),
 					};
@@ -685,7 +696,13 @@ where
 				continue;
 			}
 			if let Some(value) = self.values.get(descriptor.name) {
-				match convert_snapshot_value(descriptor, value.clone()) {
+				match convert_snapshot_value_with_editor_text(
+					descriptor,
+					value.clone(),
+					self.json_editor_text
+						.get(descriptor.name)
+						.map(String::as_str),
+				) {
 					Ok(Some(value)) => {
 						if let Err(error) = raw.set_json(descriptor.name, value) {
 							Self::append_payload_error_to_validation(&mut conversion_errors, error);
@@ -822,8 +839,13 @@ where
 				continue;
 			}
 			if let Some(value) = self.values.get(descriptor.name)
-				&& let Some(value) = convert_snapshot_value(descriptor, value.clone())?
-			{
+				&& let Some(value) = convert_snapshot_value_with_editor_text(
+					descriptor,
+					value.clone(),
+					self.json_editor_text
+						.get(descriptor.name)
+						.map(String::as_str),
+				)? {
 				payload.set_json(descriptor.name, value)?;
 			}
 		}
@@ -880,6 +902,18 @@ fn convert_snapshot_value(
 	descriptor: &ModelFormFieldDescriptor,
 	value: serde_json::Value,
 ) -> Result<Option<serde_json::Value>, ModelFormPayloadError> {
+	convert_snapshot_value_with_editor_text(descriptor, value, None)
+}
+
+fn convert_snapshot_value_with_editor_text(
+	descriptor: &ModelFormFieldDescriptor,
+	value: serde_json::Value,
+	editor_text: Option<&str>,
+) -> Result<Option<serde_json::Value>, ModelFormPayloadError> {
+	if matches!(descriptor.kind, ModelFormFieldKind::Json) && editor_text.is_none() {
+		return validate_json_depth(descriptor.name, value).map(Some);
+	}
+	let value = editor_text.map_or(value, |text| serde_json::Value::String(text.to_owned()));
 	if value.is_null() {
 		return if descriptor.nullable || matches!(descriptor.kind, ModelFormFieldKind::Json) {
 			Ok(Some(value))
@@ -1535,6 +1569,8 @@ mod tests {
 	use rstest::rstest;
 
 	struct NullableBooleanSchema;
+	struct JsonSchema;
+	struct DateTimeSchema;
 	struct LegacyServerFn;
 
 	impl ModelFormServerFn<(), NullableBooleanSchema, AllEditableModelFields> for LegacyServerFn {
@@ -1651,6 +1687,89 @@ mod tests {
 		let state = ModelFormState::<NullableBooleanSchema, AllEditableModelFields>::new();
 
 		assert_eq!(state.value("published"), None);
+	}
+
+	impl ModelFormSchema for JsonSchema {
+		type Model = ();
+
+		fn fields() -> &'static [ModelFormFieldDescriptor] {
+			const FIELDS: [ModelFormFieldDescriptor; 1] = [ModelFormFieldDescriptor {
+				name: "metadata",
+				kind: ModelFormFieldKind::Json,
+				required: true,
+				has_default: false,
+				nullable: false,
+				editable: true,
+				generated_relation_id: false,
+				trim: false,
+			}];
+			&FIELDS
+		}
+	}
+
+	#[test]
+	fn typed_json_strings_survive_submission_conversion() {
+		// Arrange
+		let mut state = ModelFormState::<JsonSchema, AllEditableModelFields>::new();
+		state
+			.set_value("metadata", serde_json::json!("true"))
+			.expect("typed JSON string should be accepted");
+
+		// Act
+		let typed_submission = state
+			.validated_for_submission()
+			.expect("typed JSON string should remain valid");
+		state
+			.set_binding_editor_text("metadata", "true".to_owned())
+			.expect("JSON editor text should be accepted");
+		let editor_submission = state
+			.validated_for_submission()
+			.expect("JSON editor text should parse");
+
+		// Assert
+		assert_eq!(
+			typed_submission.value("metadata"),
+			Some(&serde_json::json!("true"))
+		);
+		assert_eq!(
+			editor_submission.value("metadata"),
+			Some(&serde_json::json!(true))
+		);
+	}
+
+	impl ModelFormSchema for DateTimeSchema {
+		type Model = ();
+
+		fn fields() -> &'static [ModelFormFieldDescriptor] {
+			const FIELDS: [ModelFormFieldDescriptor; 1] = [ModelFormFieldDescriptor {
+				name: "published_at",
+				kind: ModelFormFieldKind::DateTime,
+				required: true,
+				has_default: false,
+				nullable: false,
+				editable: true,
+				generated_relation_id: false,
+				trim: false,
+			}];
+			&FIELDS
+		}
+	}
+
+	#[test]
+	fn aware_datetime_editor_values_use_the_canonical_storage_form() {
+		// Arrange
+		let mut state = ModelFormState::<DateTimeSchema, AllEditableModelFields>::new();
+
+		// Act
+		state
+			.set_binding_editor_text("published_at", "2026-09-10T12:34:56".to_owned())
+			.expect("datetime editor value should be accepted");
+
+		// Assert
+		assert_eq!(
+			state.value("published_at"),
+			Some(&serde_json::json!("2026-09-10T12:34:56Z"))
+		);
 	}
 
 	struct NullableDefaultSchema;

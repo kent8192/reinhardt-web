@@ -42,6 +42,11 @@ pub struct FormFieldDescription<Field> {
 ///
 /// This additive contract lets a server mutation render the controls of its
 /// attached runtime without creating another form or submission lifecycle.
+///
+/// **Parity: P1.** The trait and generated implementations are available on
+/// native and `wasm32` targets. Native page construction and rendering are
+/// inert with respect to browser submission; `wasm32` uses the runtime's
+/// existing control-binding and mutation lifecycle.
 pub trait FormPageSource: FormRuntimeSource {
 	/// Builds stable controls from the source retained by the supplied runtime.
 	#[doc(hidden)]
