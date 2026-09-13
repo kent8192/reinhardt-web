@@ -421,6 +421,49 @@ async fn page_json_binding_preserves_json_scalar_representations() {
 
 #[wasm_bindgen_test(async)]
 #[serial(server_mutation_globals)]
+async fn model_form_set_value_rerenders_when_json_editor_marker_is_removed() {
+	// Arrange
+	let root = BodyRoot::new("json-editor-marker-removal");
+	let scope = ReactiveScope::new();
+	let form = scope.enter(|| {
+		let form = form! {
+			name: JsonEditorMarkerRemovalForm,
+			model_form: WidgetContract,
+			server_fn: save_page_widgets
+		};
+		form.set_value("json", serde_json::json!("true")).unwrap();
+		let runtime = use_form(&form).build();
+		form.server_mutation(&runtime)
+			.build()
+			.page()
+			.mount(&Element::new(root.element.clone()))
+			.unwrap();
+		form
+	});
+	let json = control(&root.element, "json")
+		.dyn_into::<web_sys::HtmlTextAreaElement>()
+		.unwrap();
+	assert_eq!(json.value(), r#""true""#);
+
+	// Act
+	json.set_value("true");
+	json.dispatch_event(&web_sys::Event::new("input").unwrap())
+		.unwrap();
+	settle_browser().await;
+	assert_eq!(json.value(), "true");
+	form.set_value("json", serde_json::json!("true")).unwrap();
+	settle_browser().await;
+
+	// Assert
+	assert_eq!(json.value(), r#""true""#);
+	assert_eq!(
+		form.data().unwrap().get_json("json"),
+		Some(serde_json::json!("true")),
+	);
+}
+
+#[wasm_bindgen_test(async)]
+#[serial(server_mutation_globals)]
 async fn standalone_model_form_input_parses_json_editor_text() {
 	// Arrange
 	let root = BodyRoot::new("standalone-json-editor");

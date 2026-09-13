@@ -3582,8 +3582,15 @@ fn generate_model_form(
 				> {
 					let mut state = self.__model_state.borrow_mut();
 					let previous = state.value(field).cloned();
+					let previous_editor_text = state
+						.binding_editor_text(field)
+						.map(::std::borrow::ToOwned::to_owned);
 					let result = state.set_value(field, value);
-					let changed = previous != state.value(field).cloned();
+					let changed = previous != state.value(field).cloned()
+						|| previous_editor_text
+							!= state
+								.binding_editor_text(field)
+								.map(::std::borrow::ToOwned::to_owned);
 					drop(state);
 					if changed {
 						self.__state_version.update(|version| *version = version.wrapping_add(1));
@@ -11374,7 +11381,7 @@ mod tests {
 		assert!(output.contains("fn runtime_control_binding"));
 		assert!(output.contains("ControlBinding :: from_parts"));
 		assert_eq!(output.matches("set_binding_text").count(), 1);
-		assert_eq!(output.matches("set_binding_editor_text").count(), 2);
+		assert_eq!(output.matches("set_binding_editor_text").count(), 6);
 		assert_eq!(output.matches("let _ = read_version . get ()").count(), 2);
 		assert_eq!(output.matches("__title_binding_target").count(), 3);
 		assert_eq!(output.matches("__count_binding_target").count(), 3);
@@ -11501,7 +11508,7 @@ mod tests {
 			matches: Vec::new(),
 		};
 		visitor.visit_block(&block);
-		assert_eq!(visitor.matches.len(), 2);
+		assert_eq!(visitor.matches.len(), 3);
 
 		for expression in &visitor.matches {
 			let storage_arms = expression
