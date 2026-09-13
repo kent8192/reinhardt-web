@@ -113,11 +113,8 @@ fn erase_server_calls(expr: &Expr) -> syn::Result<Expr> {
 				));
 			}
 			let receiver = erase_server_calls(&call.receiver)?;
-			for (index, argument) in call.args.iter().enumerate() {
-				reject_nested_server_builder(
-					argument,
-					call.method == "merge" || (call.method == "mount_unified" && index == 1),
-				)?;
+			for argument in &call.args {
+				reject_nested_server_builder(argument)?;
 			}
 			let mut call = call.clone();
 			call.receiver = Box::new(receiver);
@@ -331,11 +328,26 @@ fn router_bindings_in_pattern(
 	collect(pattern, expr, aliases)
 }
 
-fn reject_nested_server_builder(expr: &Expr, reject_opaque_macros: bool) -> syn::Result<()> {
+fn router_bindings_in_for_pattern(
+	pattern: &Pat,
+	expr: &Expr,
+	aliases: &HashSet<String>,
+) -> HashSet<String> {
+	let items = match unparenthesized(expr) {
+		Expr::Array(array) => array.elems.iter().collect::<Vec<_>>(),
+		Expr::Tuple(tuple) => tuple.elems.iter().collect::<Vec<_>>(),
+		_ => return HashSet::new(),
+	};
+	items
+		.into_iter()
+		.flat_map(|item| router_bindings_in_pattern(pattern, item, aliases))
+		.collect()
+}
+
+fn reject_nested_server_builder(expr: &Expr) -> syn::Result<()> {
 	#[derive(Default)]
 	struct NestedServerBuilder {
 		error: Option<syn::Error>,
-		reject_opaque_macros: bool,
 		router_aliases: HashSet<String>,
 	}
 
@@ -504,6 +516,32 @@ fn reject_nested_server_builder(expr: &Expr, reject_opaque_macros: bool) -> syn:
 			self.router_aliases = aliases;
 		}
 
+		fn visit_expr_for_loop(&mut self, expression: &'ast syn::ExprForLoop) {
+			if self.error.is_some() {
+				return;
+			}
+
+			// The iterator expression is evaluated before the loop pattern enters
+			// scope. For array and tuple literals, track router-valued items in the
+			// pattern so aliases are visible only within the loop body.
+			let router_bindings = router_bindings_in_for_pattern(
+				&expression.pat,
+				&expression.expr,
+				&self.router_aliases,
+			);
+			self.visit_expr(&expression.expr);
+			if self.error.is_some() {
+				return;
+			}
+			let aliases = self.router_aliases.clone();
+			for name in pattern_binding_names(&expression.pat) {
+				self.router_aliases.remove(&name);
+			}
+			self.router_aliases.extend(router_bindings);
+			self.visit_block(&expression.body);
+			self.router_aliases = aliases;
+		}
+
 		fn visit_local(&mut self, local: &'ast syn::Local) {
 			let router_bindings = local.init.as_ref().map_or_else(HashSet::new, |init| {
 				router_bindings_in_pattern(&local.pat, &init.expr, &self.router_aliases)
@@ -556,21 +594,14 @@ fn reject_nested_server_builder(expr: &Expr, reject_opaque_macros: bool) -> syn:
 			if self.error.is_some() {
 				return;
 			}
-			if self.reject_opaque_macros {
-				self.error = Some(syn::Error::new_spanned(
-					expression,
-					"opaque macros in router-valued arguments are unsupported here; expand the router expression before using it",
-				));
-				return;
-			}
-			syn::visit::visit_expr_macro(self, expression);
+			self.error = Some(syn::Error::new_spanned(
+				expression,
+				"opaque macros in preserved router arguments are unsupported here; expand the expression before using it",
+			));
 		}
 	}
 
-	let mut visitor = NestedServerBuilder {
-		reject_opaque_macros,
-		..NestedServerBuilder::default()
-	};
+	let mut visitor = NestedServerBuilder::default();
 	visitor.visit_expr(expr);
 	visitor.error.map_or(Ok(()), Err)
 }
@@ -815,6 +846,7 @@ mod tests {
 	#[case(quote!(UnifiedRouter::new().merge({ let RouterParts { router } = RouterParts { router: UnifiedRouter::new() }; router.server(configure) })))]
 	#[case(quote!(UnifiedRouter::new().merge({ let router; { router = UnifiedRouter::new(); } router.server(configure) })))]
 	#[case(quote!(UnifiedRouter::new().merge(while let Some(router) = Some(UnifiedRouter::new()) { let _ = router.server(configure); break; })))]
+	#[case(quote!(UnifiedRouter::new().merge({ let mut result = UnifiedRouter::new(); for router in [UnifiedRouter::new()] { result = result.merge(router.server(configure)); } result })))]
 	fn nested_builders_require_separate_annotated_functions(#[case] expr: TokenStream) {
 		// Arrange
 		let expr = syn::parse2(expr).unwrap();
@@ -830,9 +862,12 @@ mod tests {
 	}
 
 	#[rstest]
-	fn opaque_macros_in_router_valued_arguments_are_rejected() {
+	#[case(quote!(UnifiedRouter::new().merge(nested_routes!())))]
+	#[case(quote!(UnifiedRouter::new().client(client_config!())))]
+	#[case(quote!(UnifiedRouter::new().with_prefix(prefix!())))]
+	fn opaque_macros_in_preserved_arguments_are_rejected(#[case] expr: TokenStream) {
 		// Arrange
-		let expr: Expr = parse_quote!(UnifiedRouter::new().merge(nested_routes!()));
+		let expr = syn::parse2(expr).unwrap();
 
 		// Act
 		let error = erase_server_calls(&expr).unwrap_err();
@@ -840,7 +875,7 @@ mod tests {
 		// Assert
 		assert_eq!(
 			error.to_string(),
-			"opaque macros in router-valued arguments are unsupported here; expand the router expression before using it"
+			"opaque macros in preserved router arguments are unsupported here; expand the expression before using it"
 		);
 	}
 
