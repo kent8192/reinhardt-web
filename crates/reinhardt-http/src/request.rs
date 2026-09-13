@@ -52,6 +52,9 @@ impl TrustedProxies {
 	}
 }
 
+#[derive(Clone)]
+struct ResolvedPathParams(PathParams);
+
 /// HTTP Request representation
 pub struct Request {
 	/// The HTTP method (GET, POST, PUT, etc.).
@@ -513,6 +516,27 @@ impl Request {
 	/// ```
 	pub fn set_di_context<T: Send + Sync + 'static>(&mut self, ctx: T) {
 		self.extensions.insert(Arc::new(ctx));
+	}
+
+	/// Replaces the path parameters after a router resolves a request.
+	///
+	/// The resolved values are also kept in the shared extensions store so an
+	/// exception context captured before routing can refresh its copied fields.
+	#[doc(hidden)]
+	pub fn set_path_params(&mut self, params: PathParams) {
+		self.path_params = params.clone();
+		self.extensions.insert(ResolvedPathParams(params));
+	}
+
+	/// Refreshes copied path parameters from the shared routing context.
+	///
+	/// Exception handlers call this after an inner router has consumed the
+	/// original request and populated its resolved parameters.
+	#[doc(hidden)]
+	pub fn sync_path_params_from_shared_state(&mut self) {
+		if let Some(params) = self.extensions.get::<ResolvedPathParams>() {
+			self.path_params = params.0;
+		}
 	}
 
 	/// Get the DI context from this request

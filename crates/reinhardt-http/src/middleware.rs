@@ -221,9 +221,9 @@ impl MiddlewareChain {
 	/// Installs an exception handler for every failure in this chain.
 	///
 	/// Without one, `Err` values are converted by `impl From<Error> for Response`,
-	/// which omits internal details and returns a plain-text body. The installed
-	/// handler replaces that conversion for errors raised by the base handler and
-	/// for errors raised by middleware in this chain.
+	/// which omits internal details and returns a JSON `SafeErrorResponse`. The
+	/// installed handler replaces that conversion for errors raised by the base
+	/// handler and for errors raised by middleware in this chain.
 	///
 	/// # Examples
 	///

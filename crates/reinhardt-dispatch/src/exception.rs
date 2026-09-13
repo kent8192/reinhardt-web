@@ -56,16 +56,18 @@ pub(crate) fn exception_to_dispatch_error(
 		reinhardt_core::exception::Error::NotFound(message) => {
 			DispatchError::UrlResolution(message)
 		}
+		reinhardt_core::exception::Error::Http(message) => DispatchError::Http(message),
 		error => DispatchError::View(error.to_string()),
 	}
 }
 
 /// Adapts a legacy [`ExceptionHandler`] to the framework-wide HTTP hook.
 ///
-/// Error variants that do not have a corresponding [`DispatchError`] variant
-/// are represented as legacy view errors. The original dispatch categories
-/// remain available to existing implementations, while new code should
-/// implement [`reinhardt_http::ExceptionHandler`] directly.
+/// `Error::NotFound` and `Error::Http` retain their corresponding legacy
+/// categories. Error variants without a corresponding [`DispatchError`]
+/// variant are represented as legacy view errors. The original dispatch
+/// categories remain available to existing implementations, while new code
+/// should implement [`reinhardt_http::ExceptionHandler`] directly.
 pub fn adapt_exception_handler(
 	handler: Arc<dyn ExceptionHandler>,
 ) -> Arc<dyn HttpExceptionHandler> {
@@ -378,6 +380,35 @@ mod tests {
 			handler.as_ref(),
 			&request,
 			reinhardt_core::exception::Error::NotFound("missing".to_owned()),
+		)
+		.await;
+
+		// Assert
+		assert_eq!(response.status, StatusCode::IM_A_TEAPOT);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn legacy_exception_handler_preserves_http_error_category() {
+		// Arrange
+		struct LegacyHttp;
+
+		#[async_trait]
+		impl ExceptionHandler for LegacyHttp {
+			async fn handle_exception(&self, _request: &Request, error: DispatchError) -> Response {
+				assert!(matches!(error, DispatchError::Http(_)));
+				Response::new(StatusCode::IM_A_TEAPOT)
+			}
+		}
+
+		let request = build_request();
+		let handler = adapt_exception_handler(Arc::new(LegacyHttp));
+
+		// Act
+		let response = HttpExceptionHandler::handle_exception(
+			handler.as_ref(),
+			&request,
+			reinhardt_core::exception::Error::Http("malformed header".to_owned()),
 		)
 		.await;
 

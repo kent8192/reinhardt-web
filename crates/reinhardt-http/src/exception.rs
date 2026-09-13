@@ -5,8 +5,9 @@
 //!
 //! Without an installed handler every error is converted by
 //! `impl From<Error> for Response`, which omits internal details and emits a
-//! plain-text body. Installing a handler replaces that conversion so an
-//! application can present a fixed error shape to its clients.
+//! JSON `SafeErrorResponse` with a safe category message and, for applicable
+//! client errors, a controlled detail. Installing a handler replaces that
+//! conversion so an application can present a fixed error shape to its clients.
 
 use async_trait::async_trait;
 use std::sync::Arc;
@@ -24,10 +25,11 @@ use crate::{Error, Handler, Request, Response, Result};
 ///
 /// Installing a handler transfers responsibility for the response body and
 /// headers to the handler. The default conversion never exposes internal
-/// details and sets `Content-Type: text/plain; charset=utf-8` together with
-/// `X-Content-Type-Options: nosniff`; a custom handler provides none of these
-/// unless it sets them itself. Interpolating `Display` output of the error into
-/// a response body can disclose internal paths and credentials.
+/// details and returns JSON with `Content-Type: application/json`; server
+/// errors use a generic category and client errors may include a safe detail.
+/// A custom handler owns the response headers and provides none of these
+/// guarantees unless it sets them itself. Interpolating `Display` output of
+/// the error into a response body can disclose internal paths and credentials.
 ///
 /// # Panics
 ///
@@ -156,10 +158,11 @@ impl Handler for ExceptionHandlingHandler {
 		request
 			.extensions
 			.insert(Arc::clone(&self.exception_handler));
-		let context = request.clone_for_di();
+		let mut context = request.clone_for_di();
 		match self.inner.handle(request).await {
 			Ok(response) => Ok(response),
 			Err(error) => {
+				context.sync_path_params_from_shared_state();
 				context.extensions.insert(ExceptionHandlerInvoked);
 				Ok(self
 					.exception_handler

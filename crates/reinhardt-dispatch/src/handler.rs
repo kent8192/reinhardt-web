@@ -10,7 +10,7 @@ use reinhardt_core::signals::{
 use reinhardt_http::Handler;
 use reinhardt_http::{Request, Response};
 use reinhardt_urls::routers::DefaultRouter;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tracing::{debug, error, trace, warn};
 
 use crate::{DispatchError, exception::exception_to_dispatch_error};
@@ -474,6 +474,69 @@ mod tests {
 
 		// Assert: the endpoint's authentication error is not reclassified as 500.
 		assert_eq!(response.status, StatusCode::UNAUTHORIZED);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn base_handler_exception_handler_receives_resolved_path_params() {
+		struct FailingHandler;
+
+		#[async_trait]
+		impl Handler for FailingHandler {
+			async fn handle(
+				&self,
+				_request: Request,
+			) -> reinhardt_core::exception::Result<Response> {
+				Err(reinhardt_core::exception::Error::Internal(
+					"view failed".to_owned(),
+				))
+			}
+		}
+
+		struct PathParamExceptionHandler {
+			observed: Arc<Mutex<Option<String>>>,
+		}
+
+		#[async_trait]
+		impl ExceptionHandler for PathParamExceptionHandler {
+			async fn handle_exception(
+				&self,
+				request: &Request,
+				_error: reinhardt_core::exception::Error,
+			) -> Response {
+				*self.observed.lock().unwrap() = request.path_params.get("id").cloned();
+				Response::new(StatusCode::IM_A_TEAPOT)
+			}
+		}
+
+		// Arrange
+		let observed = Arc::new(Mutex::new(None));
+		let mut router = DefaultRouter::new();
+		let mut route = path("/items/{id}", Arc::new(FailingHandler));
+		route.name = Some("item".to_owned());
+		router.add_route(route);
+		let base = Arc::new(BaseHandler::with_router(Arc::new(router)));
+		let handler = ExceptionHandlingHandler::new(
+			base,
+			Arc::new(PathParamExceptionHandler {
+				observed: Arc::clone(&observed),
+			}),
+		);
+		let request = Request::builder()
+			.method(Method::GET)
+			.uri("/items/42")
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+
+		// Act
+		let response = handler.handle(request).await.unwrap();
+
+		// Assert
+		assert_eq!(response.status, StatusCode::IM_A_TEAPOT);
+		assert_eq!(*observed.lock().unwrap(), Some("42".to_owned()));
 	}
 
 	#[test]
