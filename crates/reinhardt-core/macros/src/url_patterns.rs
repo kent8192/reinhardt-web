@@ -113,8 +113,11 @@ fn erase_server_calls(expr: &Expr) -> syn::Result<Expr> {
 				));
 			}
 			let receiver = erase_server_calls(&call.receiver)?;
-			for argument in &call.args {
-				reject_nested_server_builder(argument)?;
+			for (index, argument) in call.args.iter().enumerate() {
+				reject_nested_server_builder(
+					argument,
+					call.method == "merge" || (call.method == "mount_unified" && index == 1),
+				)?;
 			}
 			let mut call = call.clone();
 			call.receiver = Box::new(receiver);
@@ -328,10 +331,11 @@ fn router_bindings_in_pattern(
 	collect(pattern, expr, aliases)
 }
 
-fn reject_nested_server_builder(expr: &Expr) -> syn::Result<()> {
+fn reject_nested_server_builder(expr: &Expr, reject_opaque_macros: bool) -> syn::Result<()> {
 	#[derive(Default)]
 	struct NestedServerBuilder {
 		error: Option<syn::Error>,
+		reject_opaque_macros: bool,
 		router_aliases: HashSet<String>,
 	}
 
@@ -474,6 +478,32 @@ fn reject_nested_server_builder(expr: &Expr) -> syn::Result<()> {
 			self.router_aliases = aliases;
 		}
 
+		fn visit_expr_while(&mut self, expression: &'ast syn::ExprWhile) {
+			if self.error.is_some() {
+				return;
+			}
+			let Expr::Let(condition) = unparenthesized(&expression.cond) else {
+				syn::visit::visit_expr_while(self, expression);
+				return;
+			};
+
+			// The condition expression is evaluated before the while-let pattern
+			// bindings enter scope, just like a local initializer.
+			let router_bindings =
+				router_bindings_in_pattern(&condition.pat, &condition.expr, &self.router_aliases);
+			self.visit_expr(&condition.expr);
+			if self.error.is_some() {
+				return;
+			}
+			let aliases = self.router_aliases.clone();
+			for name in pattern_binding_names(&condition.pat) {
+				self.router_aliases.remove(&name);
+			}
+			self.router_aliases.extend(router_bindings);
+			self.visit_block(&expression.body);
+			self.router_aliases = aliases;
+		}
+
 		fn visit_local(&mut self, local: &'ast syn::Local) {
 			let router_bindings = local.init.as_ref().map_or_else(HashSet::new, |init| {
 				router_bindings_in_pattern(&local.pat, &init.expr, &self.router_aliases)
@@ -521,9 +551,26 @@ fn reject_nested_server_builder(expr: &Expr) -> syn::Result<()> {
 			}
 			syn::visit::visit_expr_call(self, call);
 		}
+
+		fn visit_expr_macro(&mut self, expression: &'ast syn::ExprMacro) {
+			if self.error.is_some() {
+				return;
+			}
+			if self.reject_opaque_macros {
+				self.error = Some(syn::Error::new_spanned(
+					expression,
+					"opaque macros in router-valued arguments are unsupported here; expand the router expression before using it",
+				));
+				return;
+			}
+			syn::visit::visit_expr_macro(self, expression);
+		}
 	}
 
-	let mut visitor = NestedServerBuilder::default();
+	let mut visitor = NestedServerBuilder {
+		reject_opaque_macros,
+		..NestedServerBuilder::default()
+	};
 	visitor.visit_expr(expr);
 	visitor.error.map_or(Ok(()), Err)
 }
@@ -767,6 +814,7 @@ mod tests {
 	#[case(quote!(UnifiedRouter::new().merge({ let (router,) = (UnifiedRouter::new(),); router.server(configure) })))]
 	#[case(quote!(UnifiedRouter::new().merge({ let RouterParts { router } = RouterParts { router: UnifiedRouter::new() }; router.server(configure) })))]
 	#[case(quote!(UnifiedRouter::new().merge({ let router; { router = UnifiedRouter::new(); } router.server(configure) })))]
+	#[case(quote!(UnifiedRouter::new().merge(while let Some(router) = Some(UnifiedRouter::new()) { let _ = router.server(configure); break; })))]
 	fn nested_builders_require_separate_annotated_functions(#[case] expr: TokenStream) {
 		// Arrange
 		let expr = syn::parse2(expr).unwrap();
@@ -778,6 +826,21 @@ mod tests {
 		assert_eq!(
 			error.to_string(),
 			"nested UnifiedRouter .server(...) calls are unsupported here; extract the nested builder into a separate #[url_patterns] function"
+		);
+	}
+
+	#[rstest]
+	fn opaque_macros_in_router_valued_arguments_are_rejected() {
+		// Arrange
+		let expr: Expr = parse_quote!(UnifiedRouter::new().merge(nested_routes!()));
+
+		// Act
+		let error = erase_server_calls(&expr).unwrap_err();
+
+		// Assert
+		assert_eq!(
+			error.to_string(),
+			"opaque macros in router-valued arguments are unsupported here; expand the router expression before using it"
 		);
 	}
 
