@@ -695,6 +695,34 @@ fn json_binding_snapshot_preserves_programmatic_strings_and_raw_editor_text() {
 	});
 }
 
+#[rstest]
+fn json_runtime_defaults_restore_raw_editor_text() {
+	reinhardt_core::reactive::ReactiveScope::run(|| {
+		// Arrange
+		let form = binding_form!();
+		let runtime = use_form(&form).build();
+		let binding =
+			into_control_binding::<TextBinding, _>(runtime.field(form.metadata_field()), ());
+		binding
+			.write(ControlValue::Text("{unfinished".to_owned()))
+			.expect("raw JSON editor text commits");
+		runtime.reset_default_values();
+
+		// Act
+		binding
+			.write(ControlValue::Text("{changed".to_owned()))
+			.expect("replacement JSON editor text commits");
+		runtime.reset();
+
+		// Assert: the runtime default includes the editor discriminator, not only its raw value.
+		assert_eq!(
+			form.value("metadata"),
+			Some(serde_json::json!("{unfinished")),
+		);
+		assert_eq!(binding.read(), ControlValue::Text("{unfinished".to_owned()),);
+	});
+}
+
 #[test]
 fn multipart_model_mutation_page_keeps_server_action() {
 	use reinhardt_pages::form::page::FormPageSource;

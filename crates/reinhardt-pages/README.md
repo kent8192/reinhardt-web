@@ -797,6 +797,11 @@ submission callbacks. Browser controls use the existing runtime bindings.
 Multipart forms retain both the server-function action and their encoding.
 Binding snapshots preserve typed JSON strings separately from raw editor text,
 including incomplete JSON input.
+Runtime defaults preserve that same editor discriminator, so `reset()` and
+native reset reconciliation restore incomplete JSON text without converting it
+into a JSON string literal. Required model-form `ColorInput` and `RangeInput`
+controls materialize their browser defaults in form state before runtime
+defaults are captured; optional controls continue to omit untouched defaults.
 Existing `into_page()` remains available for its standalone submission flow.
 
 See [Model-backed Pages forms](docs/model_forms.md#render-the-configured-mutation)

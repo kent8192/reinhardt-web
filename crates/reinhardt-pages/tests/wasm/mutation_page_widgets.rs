@@ -37,6 +37,18 @@ const fn field(name: &'static str, kind: Kind) -> ModelFormFieldDescriptor {
 		trim: false,
 	}
 }
+const fn required_field(name: &'static str, kind: Kind) -> ModelFormFieldDescriptor {
+	ModelFormFieldDescriptor {
+		name,
+		kind,
+		required: true,
+		has_default: false,
+		nullable: false,
+		editable: true,
+		generated_relation_id: false,
+		trim: false,
+	}
+}
 const FIELDS: &[ModelFormFieldDescriptor] = &[
 	field("text", TEXT),
 	field("notes", TEXT),
@@ -57,8 +69,16 @@ const FIELDS: &[ModelFormFieldDescriptor] = &[
 	field("password", TEXT),
 	field("hidden", TEXT),
 	field("color", TEXT),
+	required_field("required_color", TEXT),
 	field(
 		"range",
+		Kind::Integer {
+			min: Some(0),
+			max: Some(10),
+		},
+	),
+	required_field(
+		"required_range",
 		Kind::Integer {
 			min: Some(0),
 			max: Some(10),
@@ -101,8 +121,14 @@ impl WidgetContract {
 	const fn color() -> &'static ModelFormFieldDescriptor {
 		&FIELDS[6]
 	}
-	const fn range() -> &'static ModelFormFieldDescriptor {
+	const fn required_color() -> &'static ModelFormFieldDescriptor {
 		&FIELDS[7]
+	}
+	const fn range() -> &'static ModelFormFieldDescriptor {
+		&FIELDS[8]
+	}
+	const fn required_range() -> &'static ModelFormFieldDescriptor {
+		&FIELDS[9]
 	}
 }
 impl ModelFormContractSchema for WidgetContract {
@@ -170,7 +196,9 @@ impl ModelFormContract for WidgetContract {
 			WidgetField("password"),
 			WidgetField("hidden"),
 			WidgetField("color"),
+			WidgetField("required_color"),
 			WidgetField("range"),
+			WidgetField("required_range"),
 			WidgetField("integer"),
 			WidgetField("decimal"),
 			WidgetField("date"),
@@ -389,6 +417,90 @@ async fn page_json_binding_preserves_json_scalar_representations() {
 		.unwrap();
 	settle_browser().await;
 	assert_eq!(json.value(), r#"{"enabled":true}"#);
+}
+
+#[wasm_bindgen_test(async)]
+#[serial(server_mutation_globals)]
+async fn standalone_model_form_input_parses_json_editor_text() {
+	// Arrange
+	let root = BodyRoot::new("standalone-json-editor");
+	let scope = ReactiveScope::new();
+	let form = scope.enter(|| {
+		let form = form! {
+			name: StandaloneJsonEditorForm,
+			model_form: WidgetContract,
+			server_fn: save_page_widgets
+		};
+		form.set_value("json", serde_json::json!({"enabled": false}))
+			.unwrap();
+		form.clone()
+			.into_page()
+			.mount(&Element::new(root.element.clone()))
+			.unwrap();
+		form
+	});
+	let json = control(&root.element, "json")
+		.dyn_into::<web_sys::HtmlTextAreaElement>()
+		.unwrap();
+
+	// Act
+	json.set_value(r#"{"enabled":true}"#);
+	json.dispatch_event(&web_sys::Event::new("input").unwrap())
+		.unwrap();
+
+	// Assert: the standalone FormData path uses the same editor-aware conversion as bindings.
+	assert_eq!(
+		form.data().unwrap().get_json("json"),
+		Some(serde_json::json!({"enabled": true})),
+	);
+}
+
+#[wasm_bindgen_test(async)]
+#[serial(server_mutation_globals)]
+async fn required_native_defaults_are_materialized_before_model_form_runtime_capture() {
+	// Arrange
+	let root = BodyRoot::new("required-native-defaults");
+	let scope = ReactiveScope::new();
+	let (form, runtime) = scope.enter(|| {
+		let form = form! {
+			name: RequiredNativeDefaultsForm,
+			model_form: WidgetContract,
+			server_fn: save_page_widgets,
+			overrides: {
+				required_color: { widget: ColorInput },
+				required_range: { widget: RangeInput },
+			},
+		};
+		let runtime = use_form(&form).build();
+		form.clone()
+			.into_page()
+			.mount(&Element::new(root.element.clone()))
+			.unwrap();
+		(form, runtime)
+	});
+
+	// Assert: required native defaults are state values and therefore included in the runtime
+	// defaults captured before the page is mounted.
+	assert_eq!(
+		form.value("required_color"),
+		Some(serde_json::json!("#000000"))
+	);
+	assert_eq!(form.value("required_range"), Some(serde_json::json!("5")));
+	assert!(!(runtime.form_state().is_dirty.get()));
+	assert_eq!(
+		control(&root.element, "required_color")
+			.dyn_into::<web_sys::HtmlInputElement>()
+			.unwrap()
+			.value(),
+		"#000000"
+	);
+	assert_eq!(
+		control(&root.element, "required_range")
+			.dyn_into::<web_sys::HtmlInputElement>()
+			.unwrap()
+			.value(),
+		"5"
+	);
 }
 
 #[wasm_bindgen_test(async)]

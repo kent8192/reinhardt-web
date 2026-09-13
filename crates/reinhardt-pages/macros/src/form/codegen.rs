@@ -3244,6 +3244,28 @@ fn generate_model_form(
 		};
 
 	};
+	let model_form_required_native_defaults = quote! {
+		let __initial_descriptors = __reinhardt_form.__model_state.borrow().selected_descriptors();
+		for descriptor in __initial_descriptors {
+			#model_form_control_shape
+			let field_name = descriptor.name;
+			if descriptor.required
+				&& (input_type == "color" || input_type == "range")
+				&& __reinhardt_form.value(field_name).is_none()
+			{
+				let value = if input_type == "color" {
+					#pages_crate::__private::serde_json::Value::String("#000000".to_owned())
+				} else {
+					#pages_crate::__private::serde_json::Value::String(
+						(#model_form_range_default).unwrap_or_default(),
+					)
+				};
+				__reinhardt_form
+					.set_value(field_name, value)
+					.expect("required native model form default must be valid");
+			}
+		}
+	};
 	let model_form_bound_page = quote! {
 		fn __bound_page_parts<Deps>(&self, runtime: &#pages_crate::UseFormReturn<Self, Deps>)
 			-> #pages_crate::form::page::FormPageParts<__ReinhardtModelFormField>
@@ -3349,15 +3371,11 @@ fn generate_model_form(
 						// Browser defaults lose omitted, null, and structured scalar representations.
 						if read_binding.read_untracked() == default_display {
 							let defaults = reset_runtime.default_values();
-							let initial = defaults.0.get(field_name).cloned();
-							let mut state = source.__model_state.borrow_mut();
-							match initial.clone() {
-								Some(value) => state.set_value(field_name, value),
-								None => state.clear_value(field_name),
-							}
-							.expect("validated native model form default");
-							drop(state);
-							source.__state_version.update(|value| *value = value.wrapping_add(1));
+							<Self as #pages_crate::FormRuntimeSource>::runtime_apply_field_value(
+								&source,
+								field,
+								&defaults,
+							);
 						}
 						source.__native_reset_epoch.update(|value| *value = value.wrapping_add(1));
 					})
@@ -3478,7 +3496,8 @@ fn generate_model_form(
 
 			#[derive(Clone, PartialEq)]
 			struct __ReinhardtModelFormValues(
-				::std::collections::HashMap<::std::string::String, #pages_crate::__private::serde_json::Value>
+				::std::collections::HashMap<::std::string::String, #pages_crate::__private::serde_json::Value>,
+				::std::collections::HashMap<::std::string::String, ::std::string::String>,
 			);
 
 			#model_form_field_definition
@@ -3532,7 +3551,7 @@ fn generate_model_form(
 						),
 					);
 					let __form_id = #pages_crate::reactive::hooks::id::use_id_with_prefix(#form_id);
-					Self {
+					let __reinhardt_form = Self {
 						__model_state,
 						__form_id,
 						__state_version: #pages_crate::Signal::new(0),
@@ -3548,7 +3567,9 @@ fn generate_model_form(
 						loading: #pages_crate::Signal::new(false),
 						error: #pages_crate::Signal::new(::core::option::Option::None),
 						success: #pages_crate::Signal::new(false),
-					}
+					};
+					#model_form_required_native_defaults
+					__reinhardt_form
 				}
 
 				pub fn set_value(
@@ -4266,13 +4287,13 @@ fn generate_model_form(
 									#pages_crate::typed_event_handler::<
 										#pages_crate::event::ChangeEvent,
 										_,
-									>(move |event: #pages_crate::event::ChangeEvent| {
-										if let ::core::result::Result::Ok(value) = event.value() {
-											if let ::core::result::Result::Err(error) =
-												form.set_value(
-													field_name,
-													#pages_crate::__private::serde_json::Value::String(value),
-												)
+										>(move |event: #pages_crate::event::ChangeEvent| {
+											if let ::core::result::Result::Ok(value) = event.value() {
+												if let ::core::result::Result::Err(error) =
+													form.set_value(
+														field_name,
+														#pages_crate::__private::serde_json::Value::String(value),
+													)
 											{
 												#pages_crate::warn_log!(
 													"model form field `{}` rejected input: {}",
@@ -4292,14 +4313,29 @@ fn generate_model_form(
 									#pages_crate::typed_event_handler::<
 										#pages_crate::event::InputEvent,
 										_,
-									>(move |event: #pages_crate::event::InputEvent| {
-										if let ::core::result::Result::Ok(value) = event.value() {
-											if let ::core::result::Result::Err(error) =
-												form.set_value(
-													field_name,
-													#pages_crate::__private::serde_json::Value::String(value),
-												)
-											{
+										>(move |event: #pages_crate::event::InputEvent| {
+											if let ::core::result::Result::Ok(value) = event.value() {
+												let result = if matches!(
+													descriptor.kind,
+													#pages_crate::form::ModelFormFieldKind::Json
+												) {
+													let result = form
+														.__model_state
+														.borrow_mut()
+														.set_binding_editor_text(field_name, value);
+													if result.is_ok() {
+														form.__state_version.update(|version| {
+															*version = version.wrapping_add(1)
+														});
+													}
+													result
+												} else {
+													form.set_value(
+														field_name,
+														#pages_crate::__private::serde_json::Value::String(value),
+													)
+												};
+												if let ::core::result::Result::Err(error) = result {
 												let cleared = form
 													.__model_state
 													.borrow_mut()
@@ -4489,13 +4525,17 @@ fn generate_model_form(
 													)),
 													descriptor.nullable,
 													descriptor.required,
-													descriptor.has_default,
-													#is_range_override,
-													#is_color_override,
-											))
+																descriptor.has_default,
+																#is_range_override,
+																#is_color_override,
+																matches!(
+																	descriptor.kind,
+																	#pages_crate::form::ModelFormFieldKind::Json
+																),
+															))
 											.collect::<::std::vec::Vec<_>>();
 										let mut state = submit_form.__model_state.borrow_mut();
-										for (field, is_checkbox, nullable, required, has_default, is_range, is_color) in fields {
+										for (field, is_checkbox, nullable, required, has_default, is_range, is_color, is_json) in fields {
 											let checkbox_sentinel = format!("__reinhardt_checkbox_{field}");
 											let checkbox_was_unchecked = is_checkbox
 												&& values
@@ -4538,16 +4578,21 @@ fn generate_model_form(
 							{
 								continue;
 							}
-											if let Some(value) = values.get(field).as_string() {
-												let value = if is_checkbox {
-													#pages_crate::__private::serde_json::Value::Bool(true)
-												} else {
-													#pages_crate::__private::serde_json::Value::String(value)
-												};
-												if let ::core::result::Result::Err(error) = state.set_value(
-													field,
-													value,
-												) {
+												if let Some(value) = values.get(field).as_string() {
+													let result = if is_checkbox {
+														state.set_value(
+															field,
+															#pages_crate::__private::serde_json::Value::Bool(true),
+														)
+													} else if is_json {
+														state.set_binding_editor_text(field, value)
+													} else {
+														state.set_value(
+															field,
+															#pages_crate::__private::serde_json::Value::String(value),
+														)
+													};
+													if let ::core::result::Result::Err(error) = result {
 													snapshot_valid = false;
 													submit_form.error.set(::core::option::Option::Some(error.to_string()));
 												}
@@ -4667,9 +4712,18 @@ fn generate_model_form(
 								}
 								state.value(descriptor.name).cloned().map(|value| {
 									(descriptor.name.to_owned(), value)
-								})
 							})
-							.collect::<::std::collections::HashMap<_, _>>();
+						})
+						.collect::<::std::collections::HashMap<_, _>>();
+					let json_editor_text = state
+						.selected_descriptors()
+						.iter()
+						.filter_map(|descriptor| {
+							state
+								.binding_editor_text(descriptor.name)
+								.map(|value| (descriptor.name.to_owned(), value.to_owned()))
+						})
+						.collect::<::std::collections::HashMap<_, _>>();
 					#[cfg(all(target_family = "wasm", target_os = "unknown"))]
 					for descriptor in state.selected_descriptors() {
 						if let ::core::option::Option::Some(file) = state.file(descriptor.name) {
@@ -4685,7 +4739,7 @@ fn generate_model_form(
 							);
 						}
 					}
-					__ReinhardtModelFormValues(values)
+					__ReinhardtModelFormValues(values, json_editor_text)
 				}
 
 				fn runtime_server_error(
@@ -4714,6 +4768,9 @@ fn generate_model_form(
 					state.clear_selected_values();
 					for (field, value) in &values.0 {
 						let _ = state.set_value(field, value.clone());
+					}
+					for (field, value) in &values.1 {
+						let _ = state.set_binding_editor_text(field, value.clone());
 					}
 					drop(state);
 					#model_form_number_error_resets
@@ -4811,6 +4868,9 @@ fn generate_model_form(
 					let mut state = self.__model_state.borrow_mut();
 					if let ::core::option::Option::Some(value) = values.0.get(field_name) {
 						let _ = state.set_value(field_name, value.clone());
+						if let ::core::option::Option::Some(editor_text) = values.1.get(field_name) {
+							let _ = state.set_binding_editor_text(field_name, editor_text.clone());
+						}
 					} else if values
 						.0
 						.get(&format!("__reinhardt_file_{}", field_name))
@@ -4887,6 +4947,7 @@ fn generate_model_form(
 							!= defaults.0.get(&format!("__reinhardt_file_{}", field_name));
 					}
 					current.0.get(field_name) != defaults.0.get(field_name)
+						|| current.1.get(field_name) != defaults.1.get(field_name)
 				}
 
 				fn runtime_watch_field<T>(
