@@ -255,6 +255,11 @@ async fn handler(
 
 ### GraphQL over gRPC Server
 
+**0.3.17 security release:** Custom schema construction and subscription error
+delivery change in this release under a scoped patch compatibility exception.
+Read the [0.3.17 migration guide](https://github.com/kent8192/reinhardt-web/blob/main/instructions/MIGRATION_0.3.17.md)
+before upgrading.
+
 **Migration:** Replace `Schema::build(...)` or `Schema::new(...)` with
 `GraphQLGrpcService::schema_builder(...).finish()` (keep existing builder calls
 before `finish`). `GraphQLGrpcService::new` rejects schemas without the guard at

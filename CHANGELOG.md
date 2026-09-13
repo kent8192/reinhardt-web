@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- [**breaking**] **0.3.17 security exception:** GraphQL-over-gRPC validates
+  operation classes after request preparation and document transformations,
+  before resolvers run. Custom schemas must use
+  `GraphQLGrpcService::schema_builder`; constructing the service with an
+  unguarded schema now panics. Invalid subscription requests report errors
+  through the stream. Review the [migration guide](instructions/MIGRATION_0.3.17.md)
+  before updating; this is an explicit, narrowly scoped exception to patch
+  compatibility, not a fully backward-compatible update.
+
 ## [0.3.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.15...reinhardt-web@v0.3.16) - 2026-09-08
 
 ### Fixed
