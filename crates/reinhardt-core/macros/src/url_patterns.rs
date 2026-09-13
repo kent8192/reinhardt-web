@@ -213,6 +213,24 @@ fn router_binding_ident(pattern: &Pat) -> Option<&syn::PatIdent> {
 	}
 }
 
+fn pattern_binding_names(pattern: &Pat) -> HashSet<String> {
+	#[derive(Default)]
+	struct BindingNames {
+		names: HashSet<String>,
+	}
+
+	impl<'ast> Visit<'ast> for BindingNames {
+		fn visit_pat_ident(&mut self, binding: &'ast syn::PatIdent) {
+			self.names.insert(binding.ident.to_string());
+			syn::visit::visit_pat_ident(self, binding);
+		}
+	}
+
+	let mut bindings = BindingNames::default();
+	bindings.visit_pat(pattern);
+	bindings.names
+}
+
 fn reject_nested_server_builder(expr: &Expr) -> syn::Result<()> {
 	#[derive(Default)]
 	struct NestedServerBuilder {
@@ -224,6 +242,55 @@ fn reject_nested_server_builder(expr: &Expr) -> syn::Result<()> {
 		fn visit_block(&mut self, block: &'ast syn::Block) {
 			let aliases = self.router_aliases.clone();
 			syn::visit::visit_block(self, block);
+			self.router_aliases = aliases;
+		}
+
+		fn visit_expr_assign(&mut self, assign: &'ast syn::ExprAssign) {
+			if self.error.is_some() {
+				return;
+			}
+			// Assignment evaluates its right-hand side before updating the target.
+			self.visit_expr(&assign.right);
+			if self.error.is_some() {
+				return;
+			}
+			if let Expr::Path(path) = unparenthesized(&assign.left)
+				&& path.qself.is_none()
+				&& path.path.segments.len() == 1
+				&& path
+					.path
+					.segments
+					.first()
+					.is_some_and(|segment| matches!(segment.arguments, PathArguments::None))
+			{
+				let name = path
+					.path
+					.segments
+					.first()
+					.expect("a one-segment path has a first segment")
+					.ident
+					.to_string();
+				if is_unified_router_builder(&assign.right, &self.router_aliases) {
+					self.router_aliases.insert(name);
+				} else {
+					self.router_aliases.remove(&name);
+				}
+				return;
+			}
+			self.visit_expr(&assign.left);
+		}
+
+		fn visit_expr_closure(&mut self, closure: &'ast syn::ExprClosure) {
+			if self.error.is_some() {
+				return;
+			}
+			let aliases = self.router_aliases.clone();
+			for input in &closure.inputs {
+				for name in pattern_binding_names(input) {
+					self.router_aliases.remove(&name);
+				}
+			}
+			syn::visit::visit_expr_closure(self, closure);
 			self.router_aliases = aliases;
 		}
 
@@ -519,6 +586,7 @@ mod tests {
 	#[case(quote!(UnifiedRouter::new().merge({ let router = UnifiedRouter::new(); let router = wrap(router.server(configure)); router })))]
 	#[case(quote!(UnifiedRouter::new().merge(UnifiedRouter::server(UnifiedRouter::new(), configure))))]
 	#[case(quote!(UnifiedRouter::new().merge({ let router = UnifiedRouter::new(); UnifiedRouter::server(router, configure) })))]
+	#[case(quote!(UnifiedRouter::new().merge({ let router; router = UnifiedRouter::new(); router.server(configure) })))]
 	fn nested_builders_require_separate_annotated_functions(#[case] expr: TokenStream) {
 		// Arrange
 		let expr = syn::parse2(expr).unwrap();
@@ -531,6 +599,24 @@ mod tests {
 			error.to_string(),
 			"nested UnifiedRouter .server(...) calls are unsupported here; extract the nested builder into a separate #[url_patterns] function"
 		);
+	}
+
+	#[rstest]
+	fn nested_builder_validation_respects_closure_parameter_scope() {
+		// Arrange
+		let expr: Expr = parse_quote! {
+			UnifiedRouter::new().merge({
+				let router = UnifiedRouter::new();
+				consume(|router: Other| router.server());
+				router
+			})
+		};
+
+		// Act
+		let result = erase_server_calls(&expr);
+
+		// Assert
+		assert!(result.is_ok());
 	}
 
 	#[rstest]

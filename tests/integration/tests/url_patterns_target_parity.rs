@@ -7,7 +7,10 @@ use reinhardt_test::fixtures::temp_dir;
 use rstest::{fixture, rstest};
 use serde_json::Value;
 use std::fs;
-#[cfg(unix)]
+#[cfg(any(
+	target_os = "macos",
+	all(target_os = "linux", not(target_env = "uclibc"))
+))]
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
@@ -61,7 +64,10 @@ struct ChildGuard(Child);
 
 impl ChildGuard {
 	fn spawn(command: &mut Command) -> Self {
-		#[cfg(unix)]
+		#[cfg(any(
+			target_os = "macos",
+			all(target_os = "linux", not(target_env = "uclibc"))
+		))]
 		command.process_group(0);
 		Self(command.spawn().expect("spawn consumer command"))
 	}
@@ -75,7 +81,10 @@ impl Drop for ChildGuard {
 	fn drop(&mut self) {
 		// The command owns a process group on Unix, so descendants are terminated
 		// together with the cargo process even on timeout or a test panic.
-		#[cfg(unix)]
+		#[cfg(any(
+			target_os = "macos",
+			all(target_os = "linux", not(target_env = "uclibc"))
+		))]
 		{
 			let process_group = nix::unistd::Pid::from_raw(
 				i32::try_from(self.0.id()).expect("Unix child PID must fit in pid_t"),
