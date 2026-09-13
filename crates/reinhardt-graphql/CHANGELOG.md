@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-graphql@v0.3.16...reinhardt-graphql@v0.4.0) - 2026-09-13
+
+### Fixed
+
+- fix!(graphql): validate operations after request preparation
+
+### Security
+
+- *(graphql)* enforce gRPC operation classes
+
+### Testing
+
+- *(graphql)* initialize DI fixture registrations once
+
 ## [0.3.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-graphql@v0.3.8...reinhardt-graphql@v0.3.9) - 2026-08-21
 
 ### Documentation
