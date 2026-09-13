@@ -338,8 +338,28 @@ fn reject_nested_server_builder(expr: &Expr) -> syn::Result<()> {
 	impl<'ast> Visit<'ast> for NestedServerBuilder {
 		fn visit_block(&mut self, block: &'ast syn::Block) {
 			let aliases = self.router_aliases.clone();
+			let local_names = block
+				.stmts
+				.iter()
+				.filter_map(|statement| {
+					let Stmt::Local(local) = statement else {
+						return None;
+					};
+					Some(pattern_binding_names(&local.pat))
+				})
+				.flatten()
+				.collect::<HashSet<_>>();
 			syn::visit::visit_block(self, block);
-			self.router_aliases = aliases;
+
+			// Assignments to bindings declared outside this block remain visible after
+			// the block. Restore only names introduced by this block, while restoring
+			// any outer alias shadowed by a local declaration.
+			for name in local_names {
+				self.router_aliases.remove(&name);
+				if aliases.contains(&name) {
+					self.router_aliases.insert(name);
+				}
+			}
 		}
 
 		fn visit_expr_assign(&mut self, assign: &'ast syn::ExprAssign) {
@@ -746,6 +766,7 @@ mod tests {
 	#[case(quote!(UnifiedRouter::new().merge(match UnifiedRouter::new() { router => router.server(configure) })))]
 	#[case(quote!(UnifiedRouter::new().merge({ let (router,) = (UnifiedRouter::new(),); router.server(configure) })))]
 	#[case(quote!(UnifiedRouter::new().merge({ let RouterParts { router } = RouterParts { router: UnifiedRouter::new() }; router.server(configure) })))]
+	#[case(quote!(UnifiedRouter::new().merge({ let router; { router = UnifiedRouter::new(); } router.server(configure) })))]
 	fn nested_builders_require_separate_annotated_functions(#[case] expr: TokenStream) {
 		// Arrange
 		let expr = syn::parse2(expr).unwrap();
