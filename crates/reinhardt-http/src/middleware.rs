@@ -324,13 +324,13 @@ impl MiddlewareChain {
 
 #[async_trait]
 impl Handler for MiddlewareChain {
-	async fn handle(&self, request: Request) -> Result<Response> {
+	async fn handle(&self, mut request: Request) -> Result<Response> {
 		let exception_handler = self
 			.exception_handler
 			.clone()
 			.or_else(|| request.extensions.get::<Arc<dyn ExceptionHandler>>());
 		if let Some(handler) = &exception_handler {
-			request.extensions.insert(Arc::clone(handler));
+			request.install_exception_handler(Arc::clone(handler));
 		}
 		// A chain with no middleware neither converts nor swallows errors, so the
 		// installed handler is applied here to keep `with_exception_handler`

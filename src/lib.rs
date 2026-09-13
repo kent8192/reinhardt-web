@@ -364,6 +364,11 @@ pub mod urls {
 				{
 					self
 				}
+
+				/// Accepts and discards an exception handler in the no-op WASM stub.
+				pub fn with_exception_handler<H>(self, _exception_handler: H) -> Self {
+					self
+				}
 			}
 
 			impl Default for UnifiedRouter {

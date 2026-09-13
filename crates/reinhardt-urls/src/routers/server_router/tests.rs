@@ -6,7 +6,7 @@ use reinhardt_core::endpoint::EndpointInfo;
 use reinhardt_http::{Handler, Request, Response, Result};
 use rstest::rstest;
 use std::sync::{
-	Arc,
+	Arc, Mutex,
 	atomic::{AtomicUsize, Ordering},
 };
 
@@ -1304,6 +1304,23 @@ impl reinhardt_http::ExceptionHandler for TeapotErrors {
 	}
 }
 
+/// Exception handler that records the body visible in its lightweight context.
+struct BodyRecordingErrors {
+	observed: Arc<Mutex<bytes::Bytes>>,
+}
+
+#[async_trait::async_trait]
+impl reinhardt_http::ExceptionHandler for BodyRecordingErrors {
+	async fn handle_exception(
+		&self,
+		request: &reinhardt_http::Request,
+		_error: reinhardt_http::Error,
+	) -> reinhardt_http::Response {
+		*self.observed.lock().unwrap() = request.body().clone();
+		reinhardt_http::Response::new(hyper::StatusCode::IM_A_TEAPOT)
+	}
+}
+
 /// Exception handler that records every invocation.
 struct CountingErrors {
 	calls: Arc<AtomicUsize>,
@@ -1371,6 +1388,31 @@ async fn test_404_uses_installed_exception_handler() {
 	// Assert
 	assert_eq!(response.status, hyper::StatusCode::IM_A_TEAPOT);
 	assert_eq!(String::from_utf8(response.body.to_vec()).unwrap(), "teapot");
+}
+
+#[rstest]
+#[tokio::test]
+async fn test_unmatched_exception_handler_receives_empty_body_context() {
+	// Arrange
+	let observed = Arc::new(Mutex::new(bytes::Bytes::new()));
+	let router = ServerRouter::new().with_exception_handler(Arc::new(BodyRecordingErrors {
+		observed: Arc::clone(&observed),
+	}));
+	let request = reinhardt_http::Request::builder()
+		.method(Method::POST)
+		.uri("/nonexistent")
+		.version(hyper::Version::HTTP_11)
+		.headers(hyper::HeaderMap::new())
+		.body(bytes::Bytes::from("sensitive request body"))
+		.build()
+		.unwrap();
+
+	// Act
+	let response = Handler::handle(&router, request).await.unwrap();
+
+	// Assert
+	assert_eq!(response.status, hyper::StatusCode::IM_A_TEAPOT);
+	assert!(observed.lock().unwrap().is_empty());
 }
 
 #[rstest]

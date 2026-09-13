@@ -148,16 +148,14 @@ impl ExceptionHandlingHandler {
 
 #[async_trait]
 impl Handler for ExceptionHandlingHandler {
-	async fn handle(&self, request: Request) -> Result<Response> {
+	async fn handle(&self, mut request: Request) -> Result<Response> {
 		// `Request` is not `Clone` because it owns parsed-body state. Capture the
 		// context with `clone_for_di`, which copies method, URI, version, headers,
 		// path parameters and query parameters, and shares the extensions store
 		// (auth state, DI context) through an internal `Arc`. This cost is paid
 		// only where a custom handler is installed, because this adapter is only
 		// constructed in that case.
-		request
-			.extensions
-			.insert(Arc::clone(&self.exception_handler));
+		request.install_exception_handler(Arc::clone(&self.exception_handler));
 		let mut context = request.clone_for_di();
 		match self.inner.handle(request).await {
 			Ok(response) => Ok(response),

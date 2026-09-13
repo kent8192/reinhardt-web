@@ -80,7 +80,7 @@ impl Handler for ServerRouter {
 				.get::<Arc<dyn reinhardt_http::ExceptionHandler>>()
 		});
 		if let Some(handler) = &exception_handler {
-			req.extensions.insert(Arc::clone(handler));
+			req.install_exception_handler(Arc::clone(handler));
 		}
 		let path = req.uri.path().to_owned();
 		let method = req.method.clone();
@@ -116,9 +116,11 @@ impl Handler for ServerRouter {
 					let error = routing_error(error_kind, method.as_ref(), &path);
 					return match exception_handler.as_ref() {
 						Some(exception_handler) => {
-							req.extensions
+							let context = req.clone_for_di();
+							context
+								.extensions
 								.insert(reinhardt_http::ExceptionHandlerInvoked);
-							Ok(exception_handler.handle_exception(&req, error).await)
+							Ok(exception_handler.handle_exception(&context, error).await)
 						}
 						None => Err(error),
 					};
