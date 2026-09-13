@@ -794,6 +794,7 @@ controls or mutation payload fields.
 
 Native page construction and rendering do not execute the server function or
 submission callbacks. Browser controls use the existing runtime bindings.
+Multipart forms retain both the server-function action and their encoding.
 Binding snapshots preserve typed JSON strings separately from raw editor text,
 including incomplete JSON input.
 Existing `into_page()` remains available for its standalone submission flow.

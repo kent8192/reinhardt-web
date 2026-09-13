@@ -694,3 +694,27 @@ fn json_binding_snapshot_preserves_programmatic_strings_and_raw_editor_text() {
 		}
 	});
 }
+
+#[test]
+fn multipart_model_mutation_page_keeps_server_action() {
+	use reinhardt_pages::form::page::FormPageSource;
+	reinhardt_core::reactive::ReactiveScope::run(|| {
+		let form = binding_form!();
+		let runtime = reinhardt_pages::use_form(&form).build();
+		let parts = form.form_page_parts(&runtime);
+		let attrs = parts.container.attrs();
+		let attr = |name: &str| {
+			attrs
+				.iter()
+				.find(|(key, _)| key.as_ref() == name)
+				.map(|(_, v)| v.as_ref())
+		};
+		assert_eq!(attr("enctype"), Some("multipart/form-data"));
+		assert_eq!(
+			attr("action"),
+			Some(
+				<save_binding_record::marker as reinhardt_pages::server_fn::ServerFnMetadata>::PATH
+			)
+		);
+	});
+}

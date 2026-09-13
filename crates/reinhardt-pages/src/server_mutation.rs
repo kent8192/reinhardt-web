@@ -638,7 +638,7 @@ where
 {
 	/// Renders this mutation's configured form without consuming the handle.
 	///
-	/// Native rendering is inert. Browser submission uses this mutation's
+	/// Parity: P1. Native rendering is inert. Browser submission uses this mutation's
 	/// existing dispatch lifecycle; the reset control is disabled while a
 	/// submission is pending so its completion cannot overwrite a reset state.
 	pub fn page(&self) -> crate::Page {

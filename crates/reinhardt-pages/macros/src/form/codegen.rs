@@ -3445,8 +3445,8 @@ fn generate_model_form(
 				.attr("method", #method).attr("data-reinhardt-runtime-bound", "");
 			let has_files = descriptors.iter().any(|descriptor| matches!(descriptor.kind,
 				#pages_crate::form::ModelFormFieldKind::File | #pages_crate::form::ModelFormFieldKind::Image));
-			container = if has_files { container.attr("enctype", "multipart/form-data") }
-				else { container.attr("action", #native_action) };
+			container = container.attr("action", #native_action);
+			if has_files { container = container.attr("enctype", "multipart/form-data"); }
 			container = container.child(#pages_crate::PageElement::new("input")
 				.attr("type", "hidden").attr("name", #pages_crate::csrf::CSRF_FORM_FIELD)
 				.attr("value", #pages_crate::csrf::get_csrf_token().unwrap_or_default()));
@@ -4405,10 +4405,9 @@ fn generate_model_form(
 										| #pages_crate::form::ModelFormFieldKind::Image
 								)
 							});
+							form = form.attr("action", #native_action);
 							if has_file_fields {
 								form = form.attr("enctype", "multipart/form-data");
-							} else {
-								form = form.attr("action", #native_action);
 							}
 							form
 						.children(controls)
