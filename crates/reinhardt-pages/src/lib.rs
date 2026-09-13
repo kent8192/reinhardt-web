@@ -858,6 +858,12 @@
 //! survive HTML parsing, including selective hydration. Native reset clears touched
 //! state and errors without emitting edit or validation events, and preserves
 //! subscriptions to later custom widget errors and field edits.
+//! Server-rendered optional color/range controls include inert `<noscript>`
+//! fallback inputs so native submission preserves browser defaults when scripting
+//! is unavailable. CSR mounting and hydration omit those fallback descendants while
+//! scripts are active. Browser-owned file selections are excluded from runtime
+//! default snapshots because browsers cannot restore saved file handles; runtime
+//! resets clear the active file selection instead.
 //! Static choice values are evaluated once per option. Textarea hydration compares
 //! normalized HTML line endings so parsing alone does not create an edit.
 //! Unbound textarea snapshots preserve whitespace and validate parsed default text.

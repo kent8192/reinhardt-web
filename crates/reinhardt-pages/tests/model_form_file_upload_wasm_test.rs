@@ -945,6 +945,62 @@ async fn model_form_files_clear_only_after_success_or_reset() {
 }
 
 #[rstest]
+#[serial(model_form_file_upload_globals)]
+#[test_attr(wasm_bindgen_test)]
+async fn model_form_runtime_file_defaults_do_not_restore_browser_selections() {
+	// Arrange
+	let root = BodyRoot::new();
+	let document_file = browser_file("report.pdf");
+	let replacement_file = browser_file("replacement.pdf");
+	let scope = ReactiveScope::new();
+	let (form, runtime) = scope.enter(|| {
+		let form = form! {
+			name: UploadForm,
+			model: Upload,
+			policy: UploadPolicy,
+			fields: [title, document, avatar],
+			server_fn: upload,
+		};
+		let runtime = use_form(&form).build();
+		form.server_mutation(&runtime)
+			.build()
+			.page()
+			.mount(&Element::new(root.0.clone()))
+			.expect("model mutation page mounts");
+		(form, runtime)
+	});
+	let document = root
+		.0
+		.query_selector("input[name='document']")
+		.expect("query document input")
+		.expect("document input exists")
+		.dyn_into::<web_sys::HtmlInputElement>()
+		.expect("document input element");
+
+	// Act: capture defaults while a browser-owned file is selected, then replace it.
+	select_file(&document, &document_file);
+	defer_yield().await;
+	runtime.reset_default_values();
+	assert!(runtime.get_field_state(form.document_field()).is_dirty);
+	select_file(&document, &replacement_file);
+	defer_yield().await;
+	runtime.reset_field(form.document_field());
+	defer_yield().await;
+
+	// Assert: field reset clears the unrestorable selection instead of retaining the replacement.
+	assert_eq!(file_count(&document), 0);
+	assert!(!runtime.get_field_state(form.document_field()).is_dirty);
+
+	select_file(&document, &document_file);
+	defer_yield().await;
+	runtime.reset();
+	defer_yield().await;
+	assert_eq!(file_count(&document), 0);
+	assert!(!runtime.form_state().is_dirty.get());
+	scope.dispose();
+}
+
+#[rstest]
 #[case::stale_success(200.0)]
 #[case::stale_error(500.0)]
 #[serial(model_form_file_upload_globals)]

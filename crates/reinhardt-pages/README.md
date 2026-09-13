@@ -802,6 +802,12 @@ native reset reconciliation restore incomplete JSON text without converting it
 into a JSON string literal. Required model-form `ColorInput` and `RangeInput`
 controls materialize their browser defaults in form state before runtime
 defaults are captured; optional controls continue to omit untouched defaults.
+Server-rendered optional color/range controls include a `<noscript>` fallback so
+native submission preserves browser defaults when scripting is unavailable. CSR
+mounting and hydration keep that fallback inert while scripts are active. Browser
+file selections are excluded from `reset_default_values()` because browsers do
+not permit restoring a saved file handle; `reset()` and `reset_field()` clear
+the active selection instead.
 Existing `into_page()` remains available for its standalone submission flow.
 
 See [Model-backed Pages forms](docs/model_forms.md#render-the-configured-mutation)

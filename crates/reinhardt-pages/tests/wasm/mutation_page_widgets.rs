@@ -555,7 +555,7 @@ async fn required_native_defaults_are_materialized_before_model_form_runtime_cap
 	// Arrange
 	let root = BodyRoot::new("required-native-defaults");
 	let scope = ReactiveScope::new();
-	let (form, runtime) = scope.enter(|| {
+	let (form, runtime, _action) = scope.enter(|| {
 		let form = form! {
 			name: RequiredNativeDefaultsForm,
 			model_form: WidgetContract,
@@ -566,11 +566,12 @@ async fn required_native_defaults_are_materialized_before_model_form_runtime_cap
 			},
 		};
 		let runtime = use_form(&form).build();
-		form.clone()
-			.into_page()
+		let action = form.server_mutation(&runtime).build();
+		action
+			.page()
 			.mount(&Element::new(root.element.clone()))
 			.unwrap();
-		(form, runtime)
+		(form, runtime, action)
 	});
 
 	// Assert: required native defaults are state values and therefore included in the runtime
@@ -579,7 +580,7 @@ async fn required_native_defaults_are_materialized_before_model_form_runtime_cap
 		form.value("required_color"),
 		Some(serde_json::json!("#000000"))
 	);
-	assert_eq!(form.value("required_range"), Some(serde_json::json!("5")));
+	assert_eq!(form.value("required_range"), Some(serde_json::json!(5)));
 	assert!(!(runtime.form_state().is_dirty.get()));
 	assert_eq!(
 		control(&root.element, "required_color")
@@ -595,6 +596,15 @@ async fn required_native_defaults_are_materialized_before_model_form_runtime_cap
 			.value(),
 		"5"
 	);
+
+	// A numeric default must use the same representation as later browser edits so moving away
+	// and back to the default does not leave the runtime dirty.
+	let required_range = control(&root.element, "required_range")
+		.dyn_into::<web_sys::HtmlInputElement>()
+		.unwrap();
+	edit_input(&required_range, "7");
+	edit_input(&required_range, "5");
+	assert!(!(runtime.form_state().is_dirty.get()));
 }
 
 #[rstest]
@@ -753,13 +763,19 @@ async fn page_keeps_optional_native_defaults_unsupplied() {
 		.unwrap();
 
 	// Assert: browser display defaults do not supply omitted model fields.
+	assert_eq!(color.get_attribute("oninput"), None);
+	assert_eq!(range.get_attribute("oninput"), None);
 	assert_eq!(
-		color.get_attribute("oninput").as_deref(),
-		Some("this.form.elements['__reinhardt_color_color'].value='true'")
+		root.element
+			.query_selector("[name='__reinhardt_no_script_color']")
+			.unwrap(),
+		None
 	);
 	assert_eq!(
-		range.get_attribute("oninput").as_deref(),
-		Some("this.form.elements['__reinhardt_range_range'].value='__edited'")
+		root.element
+			.query_selector("[name='__reinhardt_no_script_range']")
+			.unwrap(),
+		None
 	);
 	assert_eq!(color.value(), "#000000");
 	assert_eq!(range.value(), "5");

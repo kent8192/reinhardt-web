@@ -198,8 +198,9 @@ fn named_model_form_runtime_accepts_uuid_and_chrono_values() {
 	});
 }
 
+#[rstest::rstest]
 #[cfg_attr(native, test)]
-#[cfg_attr(wasm, wasm_bindgen_test::wasm_bindgen_test)]
+#[cfg_attr(wasm, test_attr(wasm_bindgen_test::wasm_bindgen_test))]
 fn named_model_form_binding_preserves_incomplete_scalar_edits() {
 	use reinhardt_pages::component::{ControlValue, ControlWriteOutcome};
 	use reinhardt_pages::control_binding::__private::{TextBinding, into_control_binding};

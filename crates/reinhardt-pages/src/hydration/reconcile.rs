@@ -337,6 +337,11 @@ fn reconcile_element_at_path(
 	if el_view.tag_name().eq_ignore_ascii_case("textarea") && el_view.bound_control().is_some() {
 		return Ok(());
 	}
+	// Noscript children are fallback markup. With scripting enabled, the browser
+	// parses SSR fallback content as inert text and CSR mounting intentionally omits it.
+	if el_view.tag_name().eq_ignore_ascii_case("noscript") {
+		return Ok(());
+	}
 	reconcile_children_at_path(
 		element,
 		el_view.child_views(),
@@ -803,8 +808,11 @@ fn reconcile_options_children_at_path(
 	let keyed_child_views;
 	let child_views: &[Page] = match view {
 		Page::Element(el_view) => {
-			// Textarea children are raw text, so they cannot contain nested islands.
-			if el_view.tag_name().eq_ignore_ascii_case("textarea") {
+			// Textarea and noscript children are raw or inert content, so they cannot
+			// contain nested islands that hydration should traverse.
+			if el_view.tag_name().eq_ignore_ascii_case("textarea")
+				|| el_view.tag_name().eq_ignore_ascii_case("noscript")
+			{
 				return Ok(());
 			}
 			el_view.child_views()

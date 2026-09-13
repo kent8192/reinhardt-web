@@ -352,6 +352,9 @@ fn validate_hydrated_controls(element: &Element, view: &Page) -> Result<(), Hydr
 					return Ok(());
 				}
 			}
+			if element_view.tag_name().eq_ignore_ascii_case("noscript") {
+				return Ok(());
+			}
 			validate_hydrated_element_children(element, element_view.child_views())?;
 		}
 		Page::WithHead { view, .. } => validate_hydrated_controls(element, view)?,
@@ -524,7 +527,9 @@ fn install_hydrated_reactive_nodes(
 					element_view.tag_name().eq_ignore_ascii_case("textarea")
 						&& binding.kind() == crate::component::ControlKind::Text
 				});
-			if !suppress_bound_textarea_children {
+			let suppress_noscript_children =
+				element_view.tag_name().eq_ignore_ascii_case("noscript");
+			if !suppress_bound_textarea_children && !suppress_noscript_children {
 				install_hydrated_element_children(element, element_view.child_views(), registry)?;
 			}
 		}
@@ -1216,7 +1221,9 @@ pub(crate) fn attach_events_recursive(
 	match view {
 		Page::Element(el_view) => {
 			attach_hydrated_element_events(element, el_view, registry)?;
-			attach_events_to_child_views(element, el_view.child_views(), registry)?;
+			if !el_view.tag_name().eq_ignore_ascii_case("noscript") {
+				attach_events_to_child_views(element, el_view.child_views(), registry)?;
+			}
 		}
 		Page::Fragment(views) => {
 			attach_events_to_child_views(element, views, registry)?;

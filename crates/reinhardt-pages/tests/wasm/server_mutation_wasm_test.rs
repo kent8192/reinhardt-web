@@ -1120,7 +1120,8 @@ fn dispatch_submit(form: &web_sys::HtmlFormElement) {
 	assert!(event.default_prevented());
 }
 
-#[wasm_bindgen_test(async)]
+#[rstest]
+#[test_attr(wasm_bindgen_test)]
 #[serial(server_mutation_globals)]
 async fn named_mutation_page_preserves_runtime_dom_and_typed_result() {
 	let root = BodyRoot::new("named-mutation-page");
@@ -1445,7 +1446,8 @@ async fn named_mutation_page_preserves_runtime_dom_and_typed_result() {
 	);
 }
 
-#[wasm_bindgen_test(async)]
+#[rstest]
+#[test_attr(wasm_bindgen_test)]
 #[serial(server_mutation_globals)]
 async fn page_success_callback_reentry_preserves_next_submission() {
 	let root = BodyRoot::new("page-reentry");

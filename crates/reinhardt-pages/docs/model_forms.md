@@ -385,6 +385,15 @@ Native page construction and rendering do not execute the server function or
 submission callbacks. Browser controls use the existing runtime bindings.
 Existing `into_page()` remains available for its standalone submission flow.
 
+Required native color and range widgets materialize their browser defaults before
+the runtime captures its initial values, while optional widgets retain untouched
+field omission. Server-rendered optional color and range widgets include a
+`<noscript>` fallback input for native submissions when scripting is unavailable;
+client-side mounting and hydration keep that fallback inert while scripts are
+active. Browser-owned file selections are excluded from `reset_default_values()`
+because a browser cannot restore a saved file handle, so `reset()` and
+`reset_field()` clear an active selection instead of attempting to restore it.
+
 Use `submit_response()` when the caller needs the immediate awaited response.
 Use `form.server_mutation(&runtime)` when the UI should observe phase, pending
 state, latest `ServerFnError`, and the latest successful typed result through a

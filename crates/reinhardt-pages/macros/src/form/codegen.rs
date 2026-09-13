@@ -3253,16 +3253,21 @@ fn generate_model_form(
 				&& (input_type == "color" || input_type == "range")
 				&& __reinhardt_form.value(field_name).is_none()
 			{
-				let value = if input_type == "color" {
-					#pages_crate::__private::serde_json::Value::String("#000000".to_owned())
+				if input_type == "color" {
+					__reinhardt_form
+						.set_value(
+							field_name,
+							#pages_crate::__private::serde_json::Value::String("#000000".to_owned()),
+						)
+						.expect("required native model form default must be valid");
 				} else {
-					#pages_crate::__private::serde_json::Value::String(
-						(#model_form_range_default).unwrap_or_default(),
-					)
-				};
-				__reinhardt_form
-					.set_value(field_name, value)
-					.expect("required native model form default must be valid");
+					let value = (#model_form_range_default).unwrap_or_default();
+					__reinhardt_form
+						.__model_state
+						.borrow_mut()
+						.set_binding_number(field_name, &value)
+						.expect("required native model form numeric default must be valid");
+				}
 			}
 		}
 	};
@@ -3383,16 +3388,6 @@ fn generate_model_form(
 					})
 					} else { binding };
 					let snapshot_source = self.clone();
-					if input_type == "color" || (input_type == "range" && !descriptor.required) {
-						let edit_value = if input_type == "color" { "true" } else { "__edited" };
-						let edit_sentinel = format!("__reinhardt_{input_type}_{field_name}");
-						control = control.attr(
-							"oninput",
-							format!(
-								"this.form.elements['{edit_sentinel}'].value='{edit_value}'"
-							),
-						);
-					}
 					control = control.control_binding(binding);
 				let mut auxiliary = ::std::vec::Vec::new();
 				if is_checkbox || uses_nullable_boolean_select {
@@ -3426,6 +3421,20 @@ fn generate_model_form(
 								}.into())
 							}
 						})));
+				}
+				let no_script_sentinel = (input_type == "color"
+					|| (input_type == "range" && !descriptor.required))
+					.then(|| {
+						#pages_crate::PageElement::new("noscript")
+							.child(
+								#pages_crate::PageElement::new("input")
+									.attr("type", "hidden")
+									.attr("name", format!("__reinhardt_no_script_{field_name}"))
+									.attr("value", "true"),
+							)
+					});
+				if let ::core::option::Option::Some(no_script_sentinel) = no_script_sentinel {
+					auxiliary.push(#pages_crate::IntoPage::into_page(no_script_sentinel));
 				}
 				if descriptor.nullable && descriptor.has_default
 					&& !matches!(descriptor.kind, #pages_crate::form::ModelFormFieldKind::File | #pages_crate::form::ModelFormFieldKind::Image) {
@@ -4180,21 +4189,6 @@ fn generate_model_form(
 						if tag == "input" {
 							control = control.attr("type", input_type);
 						}
-						let color_is_unset = input_type == "color" && stored_value.is_none();
-						let color_is_null = input_type == "color"
-							&& matches!(
-								stored_value.as_ref(),
-								::core::option::Option::Some(
-									#pages_crate::__private::serde_json::Value::Null
-								)
-							);
-						let range_is_null = input_type == "range"
-							&& matches!(
-								stored_value.as_ref(),
-								::core::option::Option::Some(
-									#pages_crate::__private::serde_json::Value::Null
-								)
-							);
 						if uses_nullable_boolean_select {
 							control = control
 								.child(
@@ -4303,18 +4297,6 @@ fn generate_model_form(
 								}
 								_ => {}
 							}
-						}
-						if input_type == "color" || (input_type == "range" && !descriptor.required) {
-							let edit_value = if input_type == "color" { "true" } else { "__edited" };
-							let edit_sentinel = if input_type == "color" {
-								color_sentinel.as_str()
-							} else {
-								range_sentinel.as_str()
-							};
-							let edit_script = format!(
-								"this.form.elements['{edit_sentinel}'].value='{edit_value}'"
-							);
-							control = control.attr("oninput", edit_script);
 						}
 						if matches!(
 							descriptor.kind,
@@ -4451,34 +4433,49 @@ fn generate_model_form(
 							})
 						};
 						let color_sentinel = (input_type == "color").then(|| {
+							let source = self.clone();
 							#pages_crate::PageElement::new("input")
 								.attr("type", "hidden")
 								.attr("name", color_sentinel)
-								.attr(
-									"value",
-									if color_is_unset {
-										"false"
-									} else if color_is_null {
-										"null"
-									} else {
-										"true"
-									},
-								)
+								.reactive_attr("value", move || {
+									let _ = source.__state_version.get();
+									let value = source.value(field_name);
+									Some(match value {
+										::core::option::Option::None => "false",
+										::core::option::Option::Some(value) if value.is_null() => "null",
+										::core::option::Option::Some(_) => "true",
+									}.into())
+								})
 						});
-						let range_sentinel = (input_type == "range"
-							&& !descriptor.required
-							&& (stored_value.is_none() || range_is_null))
+						let range_sentinel = (input_type == "range" && !descriptor.required).then(|| {
+							let source = self.clone();
+							#pages_crate::PageElement::new("input")
+								.attr("type", "hidden")
+								.attr("name", range_sentinel)
+								.reactive_attr("value", move || {
+									let _ = source.__state_version.get();
+									match source.value(field_name) {
+										::core::option::Option::None => {
+											::core::option::Option::Some(
+												range_default.clone().unwrap_or_default().into(),
+											)
+										}
+										::core::option::Option::Some(value) if value.is_null() => {
+											::core::option::Option::Some("null".into())
+										}
+										::core::option::Option::Some(_) => ::core::option::Option::None,
+									}
+								})
+						});
+						let no_script_sentinel = (input_type == "color"
+							|| (input_type == "range" && !descriptor.required))
 							.then(|| {
-								#pages_crate::PageElement::new("input")
-									.attr("type", "hidden")
-									.attr("name", range_sentinel)
-									.attr(
-										"value",
-										if range_is_null {
-											"null".to_owned()
-										} else {
-											range_default.clone().unwrap_or_default()
-										},
+								#pages_crate::PageElement::new("noscript")
+									.child(
+										#pages_crate::PageElement::new("input")
+											.attr("type", "hidden")
+											.attr("name", format!("__reinhardt_no_script_{field_name}"))
+											.attr("value", "true"),
 									)
 							});
 						let default_clear_control_id = format!("{control_id}-clear");
@@ -4513,12 +4510,13 @@ fn generate_model_form(
 									.child("Clear value")
 							});
 
-						let mut wrapper = #pages_crate::PageElement::new("div")
-							.attr("class", "reinhardt-form-field")
-							.children(checkbox_sentinel)
-							.children(color_sentinel)
-							.children(range_sentinel)
-							.children(default_clear_sentinel)
+				let mut wrapper = #pages_crate::PageElement::new("div")
+					.attr("class", "reinhardt-form-field")
+					.children(checkbox_sentinel)
+					.children(color_sentinel)
+					.children(range_sentinel)
+					.children(no_script_sentinel)
+					.children(default_clear_sentinel)
 							.children(default_clear_label)
 							.child(
 								#pages_crate::PageElement::new("label")
@@ -4807,7 +4805,13 @@ fn generate_model_form(
 				}
 
 				fn runtime_initial_values(&self) -> Self::Values {
-					self.runtime_current_values()
+					self.runtime_default_values(&self.runtime_current_values())
+				}
+
+				fn runtime_default_values(&self, values: &Self::Values) -> Self::Values {
+					let mut values = values.clone();
+					values.0.retain(|field, _| !field.starts_with("__reinhardt_file_"));
+					values
 				}
 
 				fn runtime_field_by_name(&self, name: &str) -> ::core::option::Option<Self::Field> {
@@ -5001,16 +5005,22 @@ fn generate_model_form(
 				fn runtime_apply_field_value(&self, field: Self::Field, values: &Self::Values) {
 					let field_name = #pages_crate::form::ModelFormContractField::name(field);
 					let mut state = self.__model_state.borrow_mut();
-					if let ::core::option::Option::Some(value) = values.0.get(field_name) {
+					let is_file = <#schema_path as #pages_crate::form::ModelFormContractSchema>::contract_fields()
+						.iter()
+						.find(|descriptor| descriptor.name == field_name)
+						.is_some_and(|descriptor| matches!(
+							descriptor.kind,
+							#pages_crate::form::ModelFormFieldKind::File
+								| #pages_crate::form::ModelFormFieldKind::Image
+						));
+					if is_file {
+						let _ = state.clear_value(field_name);
+					} else if let ::core::option::Option::Some(value) = values.0.get(field_name) {
 						let _ = state.set_value(field_name, value.clone());
 						if let ::core::option::Option::Some(editor_text) = values.1.get(field_name) {
 							let _ = state.set_binding_editor_text(field_name, editor_text.clone());
 						}
-					} else if values
-						.0
-						.get(&format!("__reinhardt_file_{}", field_name))
-						.is_none()
-					{
+					} else {
 						let _ = state.clear_value(field_name);
 					}
 					drop(state);
@@ -11596,7 +11606,8 @@ mod tests {
 
 		assert!(output.contains("let fields = submit_form"));
 		assert!(output.contains("matches ! (descriptor . name , \"accent\")"));
-		assert!(output.contains("input_type == \"color\" && stored_value . is_none ()"));
+		assert!(output.contains("reactive_attr (\"value\""));
+		assert!(output.contains("__reinhardt_no_script_"));
 		assert!(output.contains("__reinhardt_defaulted_"));
 		assert!(output.contains("using the generated default"));
 	}

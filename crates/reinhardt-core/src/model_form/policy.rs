@@ -101,11 +101,13 @@ pub trait NativeModelFormPayload: Sized {
 /// untouched optional color control, an explicit JSON null, and an edited value
 /// when the browser supplies its synthetic black fallback. An untouched optional
 /// range control likewise omits its browser-generated minimum value, while an
-/// explicit JSON null is reconstructed from its marker. An explicit clear marker
-/// for a nullable, defaulted control takes precedence over the control's submitted
-/// value. This conversion is intentionally limited to schema fields permitted by
-/// the selected policy; unrelated controls such as the CSRF token are removed
-/// before typed payload decoding.
+/// explicit JSON null is reconstructed from its marker. A no-script fallback
+/// marker keeps browser defaults supplied when inline/event scripting is
+/// unavailable; HTML does not expose whether the user interacted with a control
+/// in that mode. An explicit clear marker for a nullable, defaulted control takes
+/// precedence over the control's submitted value. This conversion is intentionally
+/// limited to schema fields permitted by the selected policy; unrelated controls
+/// such as the CSRF token are removed before typed payload decoding.
 ///
 /// # Errors
 ///
@@ -149,6 +151,10 @@ where
 		let range_was_null = range_sentinel_value
 			.as_ref()
 			.is_some_and(|value| value == &serde_json::Value::String("null".to_owned()));
+		let no_script_sentinel = format!("__reinhardt_no_script_{}", descriptor.name);
+		let no_script_fallback = values
+			.remove(&no_script_sentinel)
+			.is_some_and(|value| value == serde_json::Value::String("true".to_owned()));
 		let default_clear_sentinel = format!("__reinhardt_defaulted_{}", descriptor.name);
 		let clears_default = descriptor.nullable
 			&& descriptor.has_default
@@ -172,11 +178,13 @@ where
 		let serde_json::Value::String(text) = control else {
 			continue;
 		};
-		if color_was_edited == Some(false) && text == "#000000" {
+		if color_was_edited == Some(false) && text == "#000000" && !no_script_fallback {
 			values.remove(descriptor.name);
 			continue;
 		}
-		if range_sentinel_value.as_ref() == Some(&serde_json::Value::String(text.clone())) {
+		if !no_script_fallback
+			&& range_sentinel_value.as_ref() == Some(&serde_json::Value::String(text.clone()))
+		{
 			values.remove(descriptor.name);
 			continue;
 		}
@@ -641,6 +649,30 @@ mod tests {
 		.expect("native form value should normalize");
 
 		assert_eq!(value, serde_json::json!({ "accent": "#000000" }));
+	}
+
+	#[rstest]
+	fn native_normalization_preserves_browser_defaults_without_script() {
+		// Arrange
+		let submitted = serde_json::json!({
+			"accent": "#000000",
+			"__reinhardt_color_accent": "false",
+			"range_value": "50",
+			"__reinhardt_range_range_value": "50",
+			"__reinhardt_no_script_accent": "true",
+			"__reinhardt_no_script_range_value": "true",
+		});
+
+		// Act
+		let value =
+			normalize_native_model_form_value::<TestSchema, AllEditableModelFields>(submitted)
+				.expect("no-script browser defaults should normalize");
+
+		// Assert
+		assert_eq!(
+			value,
+			serde_json::json!({ "accent": "#000000", "range_value": 50 })
+		);
 	}
 
 	#[rstest]
