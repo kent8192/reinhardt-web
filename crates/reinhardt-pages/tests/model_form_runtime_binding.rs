@@ -657,3 +657,40 @@ fn rejected_numeric_edits_touch_pristine_generated_forms() {
 		assert!(!model_runtime.form_state().is_touched.get());
 	});
 }
+
+#[test]
+fn json_binding_snapshot_preserves_programmatic_strings_and_raw_editor_text() {
+	reinhardt_core::reactive::ReactiveScope::run(|| {
+		let form = binding_form!();
+		let binding = form
+			.runtime_control_binding(
+				form.metadata_field(),
+				RuntimeControlBindingRequest {
+					kind: ControlKind::Text,
+					radio_value: None,
+				},
+			)
+			.unwrap();
+		for text in ["true", "42", "null", "{unfinished"] {
+			// Arrange a typed JSON string with no raw editor override.
+			form.set_value("metadata", serde_json::json!(text)).unwrap();
+			let snapshot = binding.snapshot();
+			// Act like hydration adopting a different DOM value, then failing.
+			binding.write(ControlValue::Text("false".into())).unwrap();
+			drop(snapshot);
+			// Assert JSON syntax and scalar type survive rollback.
+			assert_eq!(form.value("metadata"), Some(serde_json::json!(text)));
+			assert_eq!(
+				binding.read(),
+				ControlValue::Text(serde_json::to_string(text).unwrap())
+			);
+
+			binding.write(ControlValue::Text(text.into())).unwrap();
+			let snapshot = binding.snapshot();
+			form.set_value("metadata", serde_json::json!({"changed":true}))
+				.unwrap();
+			drop(snapshot);
+			assert_eq!(binding.read(), ControlValue::Text(text.into()));
+		}
+	});
+}

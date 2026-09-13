@@ -794,6 +794,8 @@ controls or mutation payload fields.
 
 Native page construction and rendering do not execute the server function or
 submission callbacks. Browser controls use the existing runtime bindings.
+Binding snapshots preserve typed JSON strings separately from raw editor text,
+including incomplete JSON input.
 Existing `into_page()` remains available for its standalone submission flow.
 
 See [Model-backed Pages forms](docs/model_forms.md#render-the-configured-mutation)

@@ -2927,6 +2927,7 @@ fn generate_model_form(
 						},
 						move || {
 							let previous_value = snapshot_state.borrow().value(field).cloned();
+							let previous_editor_text = snapshot_state.borrow().binding_editor_text(field).map(::std::borrow::ToOwned::to_owned);
 							#[cfg(all(target_family = "wasm", target_os = "unknown"))]
 							let previous_file = snapshot_state.borrow().file(field).cloned();
 							let previous_error = snapshot_error.get();
@@ -2939,24 +2940,16 @@ fn generate_model_form(
 										Some(file) => state.set_file(field, file),
 										None => state.clear_file(field),
 									}.expect("validated model form file snapshot");
-								} else { match (kind, previous_value) {
-									(
-										#pages_crate::component::ControlKind::Text
-										| #pages_crate::component::ControlKind::Radio
-										| #pages_crate::component::ControlKind::SelectOne,
-										::core::option::Option::Some(
-											#pages_crate::__private::serde_json::Value::String(value),
-										),
-									) => state
-										.set_binding_editor_text(field, value)
-										.expect("validated model form text snapshot"),
-									(_, ::core::option::Option::Some(value)) => state
-										.set_value(field, value)
-										.expect("validated model form value snapshot"),
-									(_, ::core::option::Option::None) => state
-										.clear_value(field)
-										.expect("validated model form empty snapshot"),
-								}
+								} else if let ::core::option::Option::Some(text) = previous_editor_text {
+									state.set_binding_editor_text(field, text)
+										.expect("validated model form editor snapshot");
+								} else {
+									match previous_value {
+										::core::option::Option::Some(value) => state.set_value(field, value)
+											.expect("validated model form value snapshot"),
+										::core::option::Option::None => state.clear_value(field)
+											.expect("validated model form empty snapshot"),
+									}
 								}
 								drop(state);
 								snapshot_error.set(previous_error);
