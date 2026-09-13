@@ -551,6 +551,124 @@ mod tests {
 		assert_eq!(*observed.lock().unwrap(), Some("42".to_owned()));
 	}
 
+	#[rstest]
+	#[tokio::test]
+	async fn middleware_chain_exception_handler_refreshes_path_params_for_all_error_paths() {
+		struct Endpoint {
+			fails: bool,
+		}
+
+		#[async_trait]
+		impl Handler for Endpoint {
+			async fn handle(
+				&self,
+				_request: Request,
+			) -> reinhardt_core::exception::Result<Response> {
+				if self.fails {
+					Err(reinhardt_core::exception::Error::Internal(
+						"endpoint failed".to_owned(),
+					))
+				} else {
+					Ok(Response::ok())
+				}
+			}
+		}
+
+		struct RecordingExceptionHandler {
+			observed: Arc<Mutex<Vec<Option<String>>>>,
+		}
+
+		#[async_trait]
+		impl ExceptionHandler for RecordingExceptionHandler {
+			async fn handle_exception(
+				&self,
+				request: &Request,
+				_error: reinhardt_core::exception::Error,
+			) -> Response {
+				self.observed
+					.lock()
+					.unwrap()
+					.push(request.path_params.get("id").cloned());
+				Response::new(StatusCode::IM_A_TEAPOT)
+			}
+		}
+
+		struct PostProcessingMiddleware {
+			fails: bool,
+		}
+
+		#[async_trait]
+		impl Middleware for PostProcessingMiddleware {
+			async fn process(
+				&self,
+				request: Request,
+				next: Arc<dyn Handler>,
+			) -> reinhardt_core::exception::Result<Response> {
+				let response = next.handle(request).await?;
+				if self.fails {
+					Err(reinhardt_core::exception::Error::Internal(
+						"middleware failed after next".to_owned(),
+					))
+				} else {
+					Ok(response)
+				}
+			}
+		}
+
+		let build_base = |fails| {
+			let mut router = DefaultRouter::new();
+			router.add_route(path("/items/{id}", Arc::new(Endpoint { fails })));
+			Arc::new(BaseHandler::with_router(Arc::new(router))) as Arc<dyn Handler>
+		};
+		let request = || {
+			Request::builder()
+				.method(Method::GET)
+				.uri("/items/42")
+				.version(Version::HTTP_11)
+				.headers(HeaderMap::new())
+				.body(Bytes::new())
+				.build()
+				.unwrap()
+		};
+		let observed = Arc::new(Mutex::new(Vec::new()));
+		let exception_handler = || {
+			Arc::new(RecordingExceptionHandler {
+				observed: Arc::clone(&observed),
+			})
+		};
+
+		// Arrange and act: the bare chain refreshes the context after routing.
+		let bare =
+			MiddlewareChain::new(build_base(true)).with_exception_handler(exception_handler());
+		let bare_response = bare.handle(request()).await.unwrap();
+
+		// Arrange and act: a single middleware can fail during post-processing.
+		let single = MiddlewareChain::new(build_base(false))
+			.with_middleware(Arc::new(PostProcessingMiddleware { fails: true }))
+			.with_exception_handler(exception_handler());
+		let single_response = single.handle(request()).await.unwrap();
+
+		// Arrange and act: the composed multi-middleware path has the same contract.
+		let composed = MiddlewareChain::new(build_base(false))
+			.with_middleware(Arc::new(PostProcessingMiddleware { fails: true }))
+			.with_middleware(Arc::new(PostProcessingMiddleware { fails: false }))
+			.with_exception_handler(exception_handler());
+		let composed_response = composed.handle(request()).await.unwrap();
+
+		// Assert
+		assert_eq!(bare_response.status, StatusCode::IM_A_TEAPOT);
+		assert_eq!(single_response.status, StatusCode::IM_A_TEAPOT);
+		assert_eq!(composed_response.status, StatusCode::IM_A_TEAPOT);
+		assert_eq!(
+			*observed.lock().unwrap(),
+			vec![
+				Some("42".to_owned()),
+				Some("42".to_owned()),
+				Some("42".to_owned())
+			]
+		);
+	}
+
 	#[test]
 	fn test_base_handler_async_mode() {
 		let mut handler = BaseHandler::new();

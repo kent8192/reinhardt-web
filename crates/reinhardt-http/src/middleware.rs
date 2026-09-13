@@ -340,10 +340,11 @@ impl Handler for MiddlewareChain {
 			let Some(exception_handler) = exception_handler.as_ref() else {
 				return self.handler.handle(request).await;
 			};
-			let context = request.clone_for_di();
+			let mut context = request.clone_for_di();
 			return match self.handler.handle(request).await {
 				Ok(response) => Ok(response),
 				Err(e) => {
+					context.sync_path_params_from_shared_state();
 					context.extensions.insert(crate::ExceptionHandlerInvoked);
 					Ok(exception_handler.handle_exception(&context, e).await)
 				}
@@ -353,23 +354,27 @@ impl Handler for MiddlewareChain {
 		if self.middlewares.len() == 1 {
 			let middleware = &self.middlewares[0];
 			if !middleware.should_continue(&request) {
-				let context = capture_exception_context(exception_handler.as_ref(), &request);
+				let mut context = capture_exception_context(exception_handler.as_ref(), &request);
 				return match self.handler.handle(request).await {
 					Ok(response) => Ok(response),
 					Err(e) => {
+						refresh_exception_context(&mut context);
 						Ok(convert_error(exception_handler.as_ref(), context.as_ref(), e).await)
 					}
 				};
 			}
 
-			let context = capture_exception_context(exception_handler.as_ref(), &request);
+			let mut context = capture_exception_context(exception_handler.as_ref(), &request);
 			let next: Arc<dyn Handler> = Arc::new(ErrorToResponseHandler {
 				inner: self.handler.clone(),
 				exception_handler: exception_handler.clone(),
 			});
 			let response = match middleware.process(request, next).await {
 				Ok(response) => response,
-				Err(e) => convert_error(exception_handler.as_ref(), context.as_ref(), e).await,
+				Err(e) => {
+					refresh_exception_context(&mut context);
+					convert_error(exception_handler.as_ref(), context.as_ref(), e).await
+				}
 			};
 			return Ok(response);
 		}
@@ -520,6 +525,12 @@ fn capture_exception_context(
 	Some(request.clone_for_di())
 }
 
+fn refresh_exception_context(context: &mut Option<Request>) {
+	if let Some(context) = context.as_mut() {
+		context.sync_path_params_from_shared_state();
+	}
+}
+
 /// Converts `error` into a response with the installed handler when both the
 /// handler and a captured context are present, and with the default
 /// `impl From<Error> for Response` otherwise.
@@ -581,10 +592,13 @@ impl Handler for ConditionalComposedHandler {
 		// Convert errors to responses so that outer middleware post-processing
 		// (e.g., security headers) always runs — matching Django's process_response
 		// semantics where the response hook executes for both success and error cases.
-		let context = capture_exception_context(self.exception_handler.as_ref(), &request);
+		let mut context = capture_exception_context(self.exception_handler.as_ref(), &request);
 		let response = match self.middleware.process(request, self.next.clone()).await {
 			Ok(response) => response,
-			Err(e) => convert_error(self.exception_handler.as_ref(), context.as_ref(), e).await,
+			Err(e) => {
+				refresh_exception_context(&mut context);
+				convert_error(self.exception_handler.as_ref(), context.as_ref(), e).await
+			}
 		};
 
 		Ok(response)
