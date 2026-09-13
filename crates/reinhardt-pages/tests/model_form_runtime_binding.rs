@@ -658,7 +658,7 @@ fn rejected_numeric_edits_touch_pristine_generated_forms() {
 	});
 }
 
-#[test]
+#[rstest]
 fn json_binding_snapshot_preserves_programmatic_strings_and_raw_editor_text() {
 	reinhardt_core::reactive::ReactiveScope::run(|| {
 		let form = binding_form!();
@@ -752,7 +752,7 @@ fn json_dirty_state_uses_the_effective_editor_value() {
 	});
 }
 
-#[test]
+#[rstest]
 fn multipart_model_mutation_page_keeps_server_action() {
 	use reinhardt_pages::form::page::FormPageSource;
 	reinhardt_core::reactive::ReactiveScope::run(|| {

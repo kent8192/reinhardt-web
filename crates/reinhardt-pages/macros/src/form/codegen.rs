@@ -3369,7 +3369,9 @@ fn generate_model_form(
 					let reset_runtime = runtime.clone();
 					binding.on_native_reset(move || {
 						// Browser defaults lose omitted, null, and structured scalar representations.
-						if read_binding.read_untracked() == default_display {
+						// Password controls also lose their value because the generated markup
+						// intentionally omits the HTML default value for secrets.
+						if input_type == "password" || read_binding.read_untracked() == default_display {
 							let defaults = reset_runtime.default_values();
 							<Self as #pages_crate::FormRuntimeSource>::runtime_apply_field_value(
 								&source,
@@ -3437,12 +3439,18 @@ fn generate_model_form(
 						},
 						move || {
 							let previous = snapshot_source.__model_state.borrow().value(field_name).cloned();
+							let previous_editor_text = snapshot_source
+								.__model_state
+								.borrow()
+								.binding_editor_text(field_name)
+								.map(::std::borrow::ToOwned::to_owned);
 							let source = snapshot_source.clone();
 							::std::boxed::Box::new(move || {
 								let mut state = source.__model_state.borrow_mut();
-								match previous {
-									Some(value) => state.set_value(field_name, value),
-									None => state.clear_value(field_name),
+								match (previous, previous_editor_text) {
+									(Some(_), Some(text)) => state.set_binding_editor_text(field_name, text),
+									(Some(value), None) => state.set_value(field_name, value),
+									(None, _) => state.clear_value(field_name),
 								}.expect("validated default-clear snapshot");
 								drop(state);
 								source.__state_version.update(|version| *version = version.wrapping_add(1));
@@ -11507,7 +11515,7 @@ mod tests {
 		assert!(output.contains("fn runtime_control_binding"));
 		assert!(output.contains("ControlBinding :: from_parts"));
 		assert_eq!(output.matches("set_binding_text").count(), 1);
-		assert_eq!(output.matches("set_binding_editor_text").count(), 6);
+		assert_eq!(output.matches("set_binding_editor_text").count(), 7);
 		assert_eq!(output.matches("let _ = read_version . get ()").count(), 2);
 		assert_eq!(output.matches("__title_binding_target").count(), 3);
 		assert_eq!(output.matches("__count_binding_target").count(), 3);

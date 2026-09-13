@@ -7,9 +7,10 @@ use reinhardt_pages::component::{ControlValue, ControlWriteOutcome, Page, PageEl
 use reinhardt_pages::control_binding::__private::{TextBinding, into_control_binding};
 use reinhardt_pages::reactive::ReactiveScope;
 use reinhardt_pages::{FieldError, MutationDispatchOutcome, form, use_form};
+use rstest::rstest;
 use support::{QuestionCreateForm, QuestionCreateFormField, save_question};
 
-#[test]
+#[rstest]
 fn named_contract_binding_updates_the_attached_runtime() {
 	// Arrange
 	ReactiveScope::run(|| {
@@ -86,7 +87,7 @@ fn attribute<'a>(element: &'a PageElement, name: &str) -> Option<&'a str> {
 		.map(|(_, value)| value.as_ref())
 }
 
-#[test]
+#[rstest]
 fn mutation_page_is_native_inert_and_preserves_field_metadata() {
 	// Arrange
 	ReactiveScope::run(|| {
@@ -165,7 +166,7 @@ fn mutation_page_is_native_inert_and_preserves_field_metadata() {
 	});
 }
 
-#[test]
+#[rstest]
 fn mutation_page_disables_reset_while_submission_is_pending() {
 	// Arrange
 	ReactiveScope::run(|| {
@@ -187,7 +188,7 @@ fn mutation_page_disables_reset_while_submission_is_pending() {
 	});
 }
 
-#[test]
+#[rstest]
 fn mutation_page_uses_attached_runtime_and_distinct_instance_ids() {
 	ReactiveScope::run(|| {
 		// Arrange
