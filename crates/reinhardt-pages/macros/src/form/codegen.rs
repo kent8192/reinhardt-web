@@ -3407,10 +3407,23 @@ fn generate_model_form(
 						.attr("type", "hidden").attr("name", format!("__reinhardt_{input_type}_{field_name}"))
 						.reactive_attr("value", move || {
 							let _ = source.__state_version.get();
+							let value = source.value(field_name);
 							if input_type == "range" {
-								source.value(field_name).is_none().then(|| (#model_form_range_default).unwrap_or_default().into())
+								match value {
+									::core::option::Option::None => {
+										::core::option::Option::Some((#model_form_range_default).unwrap_or_default().into())
+									}
+									::core::option::Option::Some(value) if value.is_null() => {
+										::core::option::Option::Some("null".into())
+									}
+									::core::option::Option::Some(_) => ::core::option::Option::None,
+								}
 							} else {
-								Some(if source.value(field_name).is_some() { "true" } else { "false" }.into())
+								::core::option::Option::Some(match value {
+									::core::option::Option::None => "false",
+									::core::option::Option::Some(value) if value.is_null() => "null",
+									::core::option::Option::Some(_) => "true",
+								}.into())
 							}
 						})));
 				}

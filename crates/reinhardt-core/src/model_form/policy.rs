@@ -97,14 +97,15 @@ pub trait NativeModelFormPayload: Sized {
 /// Normalizes controls produced by a native HTML model form before decoding.
 ///
 /// Browser form submissions represent every successful control as text and
-/// omit unchecked checkboxes. The generated color-control marker also omits an
-/// untouched optional color control when the browser supplies its synthetic
-/// black fallback. An untouched optional range control likewise omits its
-/// browser-generated minimum value. An explicit clear marker for a nullable,
-/// defaulted control takes precedence over the control's submitted value. This
-/// conversion is intentionally limited to schema fields permitted by the selected
-/// policy; unrelated controls such as the CSRF token are removed before typed
-/// payload decoding.
+/// omit unchecked checkboxes. The generated color-control marker distinguishes an
+/// untouched optional color control, an explicit JSON null, and an edited value
+/// when the browser supplies its synthetic black fallback. An untouched optional
+/// range control likewise omits its browser-generated minimum value, while an
+/// explicit JSON null is reconstructed from its marker. An explicit clear marker
+/// for a nullable, defaulted control takes precedence over the control's submitted
+/// value. This conversion is intentionally limited to schema fields permitted by
+/// the selected policy; unrelated controls such as the CSRF token are removed
+/// before typed payload decoding.
 ///
 /// # Errors
 ///
@@ -135,11 +136,19 @@ where
 			.as_ref()
 			.is_some_and(|value| value == &serde_json::Value::String("unset".to_owned()));
 		let color_sentinel = format!("__reinhardt_color_{}", descriptor.name);
-		let color_was_edited = values
-			.remove(&color_sentinel)
-			.map(|value| value == serde_json::Value::String("true".to_owned()));
+		let color_sentinel_value = values.remove(&color_sentinel);
+		let color_was_edited = color_sentinel_value
+			.as_ref()
+			.map(|value| value == &serde_json::Value::String("true".to_owned()));
+		let color_was_null = color_was_edited != Some(true)
+			&& color_sentinel_value
+				.as_ref()
+				.is_some_and(|value| value == &serde_json::Value::String("null".to_owned()));
 		let range_sentinel = format!("__reinhardt_range_{}", descriptor.name);
-		let range_default = values.remove(&range_sentinel);
+		let range_sentinel_value = values.remove(&range_sentinel);
+		let range_was_null = range_sentinel_value
+			.as_ref()
+			.is_some_and(|value| value == &serde_json::Value::String("null".to_owned()));
 		let default_clear_sentinel = format!("__reinhardt_defaulted_{}", descriptor.name);
 		let clears_default = descriptor.nullable
 			&& descriptor.has_default
@@ -147,6 +156,10 @@ where
 				.remove(&default_clear_sentinel)
 				.is_some_and(|value| value == serde_json::Value::String("true".to_owned()));
 		if clears_default {
+			values.insert(descriptor.name.to_owned(), serde_json::Value::Null);
+			continue;
+		}
+		if color_was_null || range_was_null {
 			values.insert(descriptor.name.to_owned(), serde_json::Value::Null);
 			continue;
 		}
@@ -163,7 +176,7 @@ where
 			values.remove(descriptor.name);
 			continue;
 		}
-		if range_default.as_ref() == Some(&serde_json::Value::String(text.clone())) {
+		if range_sentinel_value.as_ref() == Some(&serde_json::Value::String(text.clone())) {
 			values.remove(descriptor.name);
 			continue;
 		}
@@ -322,7 +335,7 @@ mod tests {
 		type Model = ();
 
 		fn fields() -> &'static [ModelFormFieldDescriptor] {
-			const FIELDS: [ModelFormFieldDescriptor; 8] = [
+			const FIELDS: [ModelFormFieldDescriptor; 9] = [
 				ModelFormFieldDescriptor {
 					name: "enabled",
 					kind: ModelFormFieldKind::Boolean,
@@ -403,6 +416,19 @@ mod tests {
 					},
 					required: false,
 					has_default: true,
+					nullable: true,
+					editable: true,
+					generated_relation_id: false,
+					trim: false,
+				},
+				ModelFormFieldDescriptor {
+					name: "range_value",
+					kind: ModelFormFieldKind::Integer {
+						min: None,
+						max: None,
+					},
+					required: false,
+					has_default: false,
 					nullable: true,
 					editable: true,
 					generated_relation_id: false,
@@ -615,5 +641,27 @@ mod tests {
 		.expect("native form value should normalize");
 
 		assert_eq!(value, serde_json::json!({ "accent": "#000000" }));
+	}
+
+	#[rstest]
+	fn native_normalization_reconstructs_runtime_bound_null_sentinels() {
+		// Arrange
+		let submitted = serde_json::json!({
+			"accent": "#000000",
+			"__reinhardt_color_accent": "null",
+			"range_value": "50",
+			"__reinhardt_range_range_value": "null",
+		});
+
+		// Act
+		let value =
+			normalize_native_model_form_value::<TestSchema, AllEditableModelFields>(submitted)
+				.expect("runtime-bound null sentinels should normalize");
+
+		// Assert
+		assert_eq!(
+			value,
+			serde_json::json!({ "accent": null, "range_value": null })
+		);
 	}
 }
