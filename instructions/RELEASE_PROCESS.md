@@ -261,6 +261,15 @@ the same comparison locally without opening a PR,
 run `GITHUB_REF_NAME=main bash scripts/run-release-pr.sh update` in an isolated
 worktree. The `update` command modifies local manifests and changelogs.
 
+For 0.3.17, [ST-2](STABILITY_POLICY.md#st-2-scoped-security-exception-for-0317)
+permits the already-landed GraphQL-over-gRPC construction and subscription
+error-delivery changes. Review the generated Release PR for the intended
+0.3.17 version across the release group and retain the prominent breaking
+security notice and [migration guide](MIGRATION_0.3.17.md). Runtime compatibility
+must be reviewed separately from `cargo-semver-checks`; keep the check enabled
+and investigate any additional incompatibility. Release-plz continues to own
+manifest version updates, and merging a preparation PR does not publish crates.
+
 **Release PR includes:**
 - Version bumps in `Cargo.toml`
 - Updated CHANGELOG.md files
