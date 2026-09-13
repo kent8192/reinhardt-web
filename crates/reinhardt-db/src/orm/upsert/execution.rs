@@ -1762,6 +1762,7 @@ mod tests {
 		);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn get_or_create_postgres_unique_violation_reloads_race_winner() {
 		// Arrange a race on an alternate unique column after the initial lookup.
@@ -1798,6 +1799,7 @@ mod tests {
 		assert_eq!(calls[2], calls[0]);
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn get_or_create_postgres_unique_violation_without_lookup_match_preserves_error() {
 		let (mut transaction, state) = Recorder::transaction(
