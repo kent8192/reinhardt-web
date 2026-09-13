@@ -44,7 +44,6 @@ use reinhardt_conf::settings::sources::{DefaultSource, LowPriorityEnvSource, Tom
 use {
 	http_body_util::{BodyExt, Limited},
 	reinhardt_commands::auto_register_router,
-	reinhardt_http::Handler,
 	reinhardt_urls::routers::get_router,
 };
 
@@ -345,19 +344,31 @@ async fn dispatch_through_router(
 		}
 	};
 
-	match router.handle(request).await {
-		Ok(response) => convert_to_hyper_response(response),
-		Err(e) => convert_to_hyper_response(reinhardt_http::Response::from(e)),
+	dispatch_router_request(router.as_ref(), request).await
+}
+
+#[cfg(feature = "routers")]
+async fn dispatch_router_request(
+	router: &dyn reinhardt_http::Handler,
+	request: reinhardt_http::Request,
+) -> Option<hyper::Response<Full<Bytes>>> {
+	let extensions = request.extensions.clone();
+	let response = router
+		.handle(request)
+		.await
+		.unwrap_or_else(reinhardt_http::Response::from);
+	if response.status == StatusCode::NOT_FOUND
+		&& !extensions.contains::<std::sync::Arc<dyn reinhardt_http::ExceptionHandler>>()
+	{
+		return None;
 	}
+	convert_to_hyper_response(response)
 }
 
 #[cfg(feature = "routers")]
 fn convert_to_hyper_response(
 	response: reinhardt_http::Response,
 ) -> Option<hyper::Response<Full<Bytes>>> {
-	if response.status == hyper::StatusCode::NOT_FOUND {
-		return None;
-	}
 	let mut hyper_resp = hyper::Response::builder().status(response.status);
 	for (key, value) in response.headers.iter() {
 		hyper_resp = hyper_resp.header(key, value);
@@ -1183,6 +1194,42 @@ mod tests {
 		assert_eq!(resolved.as_deref(), Some(index.as_path()));
 	}
 
+	#[cfg(feature = "routers")]
+	#[tokio::test]
+	async fn router_dispatch_preserves_custom_not_found_and_default_fallback() {
+		struct CustomNotFound;
+		#[async_trait::async_trait]
+		impl reinhardt_http::ExceptionHandler for CustomNotFound {
+			async fn handle_exception(
+				&self,
+				_: &reinhardt_http::Request,
+				_: reinhardt_http::Error,
+			) -> reinhardt_http::Response {
+				reinhardt_http::Response::new(StatusCode::NOT_FOUND).with_body("custom missing")
+			}
+		}
+		let request = || {
+			reinhardt_http::Request::builder()
+				.uri("/missing")
+				.build()
+				.unwrap()
+		};
+		// Arrange
+		let plain = reinhardt_urls::routers::ServerRouter::new();
+		let custom = reinhardt_urls::routers::ServerRouter::new()
+			.with_exception_handler(std::sync::Arc::new(CustomNotFound));
+		// Act
+		let missing = dispatch_router_request(&plain, request()).await;
+		let response = dispatch_router_request(&custom, request()).await.unwrap();
+		let (status, _, body) = response_text(response).await;
+		// Assert
+		assert!(missing.is_none());
+		assert_eq!(
+			(status, body.as_str()),
+			(StatusCode::NOT_FOUND, "custom missing")
+		);
+	}
+
 	#[test]
 	fn generated_fallback_secret_is_a_200_bit_hex_value() {
 		// Act
@@ -1195,7 +1242,7 @@ mod tests {
 
 	#[tokio::test]
 	#[cfg(feature = "routers")]
-	async fn router_response_conversion_preserves_success_and_skips_not_found() {
+	async fn router_response_conversion_preserves_success_and_not_found() {
 		// Act
 		let converted = convert_to_hyper_response(
 			reinhardt_http::Response::ok()
@@ -1211,7 +1258,7 @@ mod tests {
 		assert_eq!(status, StatusCode::OK);
 		assert_eq!(headers["X-Route"], "matched");
 		assert_eq!(body, "router body");
-		assert!(missing.is_none());
+		assert_eq!(missing.unwrap().status(), StatusCode::NOT_FOUND);
 	}
 
 	#[test]

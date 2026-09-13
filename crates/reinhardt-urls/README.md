@@ -101,7 +101,9 @@ if let Some((handler, params)) = router.match_request(&request) {
 `ServerRouter::with_exception_handler` installs an application-defined
 response hook for unmatched routes (404), method mismatches (405), handler
 errors, and router middleware errors. `UnifiedRouter` exposes the same builder
-method for shared server/client route declarations:
+method for shared server/client route declarations (an inert P1 operation on
+WASM). The standalone development server preserves custom 404 responses rather
+than treating them as a request for its static-file fallback:
 
 ```rust
 use reinhardt::http::{ExceptionHandler, Error, Request, Response};
