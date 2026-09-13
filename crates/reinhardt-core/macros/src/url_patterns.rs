@@ -164,6 +164,12 @@ fn is_unified_router_constructor(expr: &Expr) -> bool {
 
 fn is_unified_router_builder(expr: &Expr, aliases: &HashSet<String>) -> bool {
 	let expr = unparenthesized(expr);
+	if let Expr::Block(block) = expr {
+		let [Stmt::Expr(expr, None)] = block.block.stmts.as_slice() else {
+			return false;
+		};
+		return is_unified_router_builder(expr, aliases);
+	}
 	if is_unified_router_constructor(expr) {
 		return true;
 	}
@@ -201,16 +207,6 @@ fn is_unified_router_server_function(expr: &Expr) -> bool {
 		(Some(method), Some(router))
 			if method.ident == "server" && router.ident == "UnifiedRouter"
 	)
-}
-
-fn router_binding_ident(pattern: &Pat) -> Option<&syn::PatIdent> {
-	match pattern {
-		Pat::Ident(binding) => Some(binding),
-		Pat::Type(binding) => router_binding_ident(&binding.pat),
-		Pat::Paren(binding) => router_binding_ident(&binding.pat),
-		Pat::Reference(binding) => router_binding_ident(&binding.pat),
-		_ => None,
-	}
 }
 
 fn pattern_binding_names(pattern: &Pat) -> HashSet<String> {
@@ -431,8 +427,6 @@ fn reject_nested_server_builder(expr: &Expr) -> syn::Result<()> {
 			if self.error.is_some() {
 				return;
 			}
-			let scrutinee_is_router =
-				is_unified_router_builder(&expression.expr, &self.router_aliases);
 			self.visit_expr(&expression.expr);
 			if self.error.is_some() {
 				return;
@@ -442,6 +436,8 @@ fn reject_nested_server_builder(expr: &Expr) -> syn::Result<()> {
 					return;
 				}
 				let aliases = self.router_aliases.clone();
+				let router_bindings =
+					router_bindings_in_pattern(&arm.pat, &expression.expr, &self.router_aliases);
 				self.visit_pat(&arm.pat);
 				if self.error.is_some() {
 					return;
@@ -449,9 +445,7 @@ fn reject_nested_server_builder(expr: &Expr) -> syn::Result<()> {
 				for name in pattern_binding_names(&arm.pat) {
 					self.router_aliases.remove(&name);
 				}
-				if scrutinee_is_router && let Some(binding) = router_binding_ident(&arm.pat) {
-					self.router_aliases.insert(binding.ident.to_string());
-				}
+				self.router_aliases.extend(router_bindings);
 				if let Some((_, guard)) = &arm.guard {
 					self.visit_expr(guard);
 				}
@@ -539,6 +533,22 @@ fn reject_nested_server_builder(expr: &Expr) -> syn::Result<()> {
 			}
 			self.router_aliases.extend(router_bindings);
 			self.visit_block(&expression.body);
+			self.router_aliases = aliases;
+		}
+
+		fn visit_item_fn(&mut self, function: &'ast syn::ItemFn) {
+			if self.error.is_some() {
+				return;
+			}
+			let aliases = self.router_aliases.clone();
+			for input in &function.sig.inputs {
+				if let syn::FnArg::Typed(input) = input {
+					for name in pattern_binding_names(&input.pat) {
+						self.router_aliases.remove(&name);
+					}
+				}
+			}
+			syn::visit::visit_item_fn(self, function);
 			self.router_aliases = aliases;
 		}
 
@@ -847,6 +857,8 @@ mod tests {
 	#[case(quote!(UnifiedRouter::new().merge({ let router; { router = UnifiedRouter::new(); } router.server(configure) })))]
 	#[case(quote!(UnifiedRouter::new().merge(while let Some(router) = Some(UnifiedRouter::new()) { let _ = router.server(configure); break; })))]
 	#[case(quote!(UnifiedRouter::new().merge({ let mut result = UnifiedRouter::new(); for router in [UnifiedRouter::new()] { result = result.merge(router.server(configure)); } result })))]
+	#[case(quote!(UnifiedRouter::new().merge(match Some(UnifiedRouter::new()) { Some(router) => router.server(configure), None => UnifiedRouter::new() })))]
+	#[case(quote!(UnifiedRouter::new().merge({ let router = { UnifiedRouter::new() }; router.server(configure) })))]
 	fn nested_builders_require_separate_annotated_functions(#[case] expr: TokenStream) {
 		// Arrange
 		let expr = syn::parse2(expr).unwrap();
@@ -886,6 +898,27 @@ mod tests {
 			UnifiedRouter::new().merge({
 				let router = UnifiedRouter::new();
 				consume(|router: Other| router.server());
+				router
+			})
+		};
+
+		// Act
+		let result = erase_server_calls(&expr);
+
+		// Assert
+		assert!(result.is_ok());
+	}
+
+	#[rstest]
+	fn nested_builder_validation_respects_nested_function_parameter_scope() {
+		// Arrange
+		let expr: Expr = parse_quote! {
+			UnifiedRouter::new().merge({
+				let router = UnifiedRouter::new();
+				fn configure(router: Other) {
+					router.server();
+				}
+				configure(Other);
 				router
 			})
 		};
