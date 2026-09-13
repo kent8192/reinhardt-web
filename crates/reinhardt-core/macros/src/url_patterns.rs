@@ -182,6 +182,27 @@ fn is_unified_router_builder(expr: &Expr, aliases: &HashSet<String>) -> bool {
 	}
 }
 
+fn is_unified_router_server_function(expr: &Expr) -> bool {
+	let Expr::Path(path) = unparenthesized(expr) else {
+		return false;
+	};
+	if path.qself.is_some()
+		|| path
+			.path
+			.segments
+			.iter()
+			.any(|segment| !matches!(segment.arguments, PathArguments::None))
+	{
+		return false;
+	}
+	let mut segments = path.path.segments.iter().rev();
+	matches!(
+		(segments.next(), segments.next()),
+		(Some(method), Some(router))
+			if method.ident == "server" && router.ident == "UnifiedRouter"
+	)
+}
+
 fn router_binding_ident(pattern: &Pat) -> Option<&syn::PatIdent> {
 	match pattern {
 		Pat::Ident(binding) => Some(binding),
@@ -200,6 +221,12 @@ fn reject_nested_server_builder(expr: &Expr) -> syn::Result<()> {
 	}
 
 	impl<'ast> Visit<'ast> for NestedServerBuilder {
+		fn visit_block(&mut self, block: &'ast syn::Block) {
+			let aliases = self.router_aliases.clone();
+			syn::visit::visit_block(self, block);
+			self.router_aliases = aliases;
+		}
+
 		fn visit_local(&mut self, local: &'ast syn::Local) {
 			if let Some(binding) = router_binding_ident(&local.pat) {
 				let name = binding.ident.to_string();
@@ -229,6 +256,23 @@ fn reject_nested_server_builder(expr: &Expr) -> syn::Result<()> {
 				return;
 			}
 			syn::visit::visit_expr_method_call(self, call);
+		}
+
+		fn visit_expr_call(&mut self, call: &'ast syn::ExprCall) {
+			if self.error.is_some() {
+				return;
+			}
+			if is_unified_router_server_function(&call.func)
+				&& call.args.len() == 2
+				&& is_unified_router_builder(&call.args[0], &self.router_aliases)
+			{
+				self.error = Some(syn::Error::new_spanned(
+					&call.func,
+					"nested UnifiedRouter .server(...) calls are unsupported here; extract the nested builder into a separate #[url_patterns] function",
+				));
+				return;
+			}
+			syn::visit::visit_expr_call(self, call);
 		}
 	}
 
@@ -466,6 +510,9 @@ mod tests {
 	#[case(quote!(UnifiedRouter::new().merge({ let (router): UnifiedRouter = UnifiedRouter::new(); router.server(configure) })))]
 	#[case(quote!(UnifiedRouter::new().merge({ let mut router: UnifiedRouter = UnifiedRouter::new(); router.server(configure) })))]
 	#[case(quote!(UnifiedRouter::new().merge({ let (router) = UnifiedRouter::new(); router.server(configure) })))]
+	#[case(quote!(UnifiedRouter::new().merge({ let router = UnifiedRouter::new(); { let router = unrelated; use_it(router); } router.server(configure) })))]
+	#[case(quote!(UnifiedRouter::new().merge(UnifiedRouter::server(UnifiedRouter::new(), configure))))]
+	#[case(quote!(UnifiedRouter::new().merge({ let router = UnifiedRouter::new(); UnifiedRouter::server(router, configure) })))]
 	fn nested_builders_require_separate_annotated_functions(#[case] expr: TokenStream) {
 		// Arrange
 		let expr = syn::parse2(expr).unwrap();
