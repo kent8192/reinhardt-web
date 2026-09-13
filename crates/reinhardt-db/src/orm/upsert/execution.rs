@@ -45,9 +45,16 @@ where
 	let insert = sql::insert(&plan, backend)?;
 	if matches!(backend, DatabaseBackend::Postgres | DatabaseBackend::Sqlite) {
 		let insert_rows = if backend == DatabaseBackend::Postgres {
-			executor
+			match executor
 				.fetch_all_in_savepoint(&insert.sql, insert.params)
-				.await?
+				.await
+			{
+				Ok(rows) => rows,
+				Err(error) if error.database_kind() == Some(DatabaseErrorKind::UniqueViolation) => {
+					return reload_lookup(&plan, executor, false, Some(error)).await;
+				}
+				Err(error) => return Err(error),
+			}
 		} else {
 			executor.fetch_all(&insert.sql, insert.params).await?
 		};
@@ -1752,6 +1759,78 @@ mod tests {
 		assert_eq!(
 			calls[3].params,
 			vec![QueryValue::Int(2), QueryValue::Int(10)]
+		);
+	}
+
+	#[tokio::test]
+	async fn get_or_create_postgres_unique_violation_reloads_race_winner() {
+		// Arrange a race on an alternate unique column after the initial lookup.
+		let (mut transaction, state) = Recorder::transaction(
+			DatabaseType::Postgres,
+			Vec::new(),
+			vec![
+				Ok(Vec::new()),
+				Err(DatabaseError::new(
+					DatabaseErrorKind::UniqueViolation,
+					"duplicate alternate unique field",
+				)
+				.into()),
+				Ok(vec![article_row(10, "rust", 1, "winner", 13)]),
+			],
+		);
+
+		// Act after the insert savepoint restores the transaction.
+		let (article, created) =
+			execute_get_or_create(&Manager::<Article>::new(), get_plan(), &mut transaction)
+				.await
+				.expect("reload the matching race winner");
+
+		// Assert the winner is returned without another write.
+		assert_eq!(
+			(article.id, article.headline.as_str(), created),
+			(Some(10), "winner", false)
+		);
+		let calls = &state.lock().unwrap().calls;
+		assert_eq!(
+			calls.iter().map(|call| call.operation).collect::<Vec<_>>(),
+			["fetch_all", "fetch_all", "fetch_all"]
+		);
+		assert_eq!(calls[2], calls[0]);
+	}
+
+	#[tokio::test]
+	async fn get_or_create_postgres_unique_violation_without_lookup_match_preserves_error() {
+		let (mut transaction, state) = Recorder::transaction(
+			DatabaseType::Postgres,
+			Vec::new(),
+			vec![
+				Ok(Vec::new()),
+				Err(DatabaseError::new(
+					DatabaseErrorKind::UniqueViolation,
+					"duplicate alternate unique field",
+				)
+				.into()),
+				Ok(Vec::new()),
+			],
+		);
+
+		let error = execute_get_or_create(&Manager::<Article>::new(), get_plan(), &mut transaction)
+			.await
+			.expect_err("an unrelated unique violation must not be converted into a conflict");
+
+		assert_eq!(
+			error.database_kind(),
+			Some(DatabaseErrorKind::UniqueViolation)
+		);
+		assert_eq!(
+			state
+				.lock()
+				.unwrap()
+				.calls
+				.iter()
+				.map(|call| call.operation)
+				.collect::<Vec<_>>(),
+			["fetch_all", "fetch_all", "fetch_all"]
 		);
 	}
 
