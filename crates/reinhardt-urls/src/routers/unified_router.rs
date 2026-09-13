@@ -342,6 +342,9 @@ impl UnifiedRouter {
 	///
 	/// This is a convenience method that delegates to
 	/// [`ServerRouter::with_exception_handler`].
+	///
+	/// Parity: P1. Native builds install the handler; WASM builds accept and
+	/// discard it without executing server behavior.
 	pub fn with_exception_handler(mut self, exception_handler: Arc<dyn ExceptionHandler>) -> Self {
 		self.server = self.server.with_exception_handler(exception_handler);
 		self
@@ -594,6 +597,9 @@ impl UnifiedRouter {
 	///
 	/// This is a convenience method that delegates to
 	/// [`ServerRouter::with_exception_handler`].
+	///
+	/// Parity: P1. Native builds install the handler; WASM builds accept and
+	/// discard it without executing server behavior.
 	pub fn with_exception_handler(mut self, exception_handler: Arc<dyn ExceptionHandler>) -> Self {
 		self.server = self.server.with_exception_handler(exception_handler);
 		self
@@ -915,6 +921,14 @@ impl UnifiedRouter {
 		self
 	}
 
+	/// Accept an exception handler without installing server behavior on WASM.
+	///
+	/// Parity: P1. Native builds install the handler on the server router;
+	/// WASM builds discard it without invoking it.
+	pub fn with_exception_handler<H>(self, _exception_handler: H) -> Self {
+		self
+	}
+
 	/// No-op on WASM - server prefix is not applicable.
 	pub fn with_prefix(self, _prefix: impl Into<String>) -> Self {
 		self
@@ -956,6 +970,7 @@ impl Default for UnifiedRouter {
 #[allow(deprecated)]
 mod tests {
 	use super::*;
+
 	#[cfg(feature = "client-router")]
 	use reinhardt_core::page::Page;
 
