@@ -87,6 +87,11 @@ The exception handler automatically converts errors into HTTP responses:
 - `DispatchError::Http` → 400 Bad Request
 - `DispatchError::Internal` → 500 Internal Server Error
 
+When `BaseHandler` is wrapped by an exception-aware server or middleware
+chain, routing and view failures remain errors until the configured handler
+converts them. Direct calls to `BaseHandler::handle_request` retain the
+convenience 404 response for unmatched routes.
+
 ## Components
 
 ### BaseHandler

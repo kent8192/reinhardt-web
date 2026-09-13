@@ -142,7 +142,7 @@ resolution:
 ```rust
 use async_trait::async_trait;
 use hyper::StatusCode;
-use reinhardt::http::{Error, ExceptionHandler, Request, Response};
+use reinhardt::http::{Error, ExceptionHandler, Handler, Request, Response};
 use reinhardt::server::HttpServer;
 use std::sync::Arc;
 
@@ -156,8 +156,22 @@ impl ExceptionHandler for ApiErrors {
     }
 }
 
-let server = HttpServer::new(handler)
-    .with_exception_handler(Arc::new(ApiErrors));
+struct AppHandler;
+
+#[async_trait]
+impl Handler for AppHandler {
+    async fn handle(&self, _request: Request) -> Result<Response, Error> {
+        Ok(Response::ok())
+    }
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let server = HttpServer::new(AppHandler)
+        .with_exception_handler(Arc::new(ApiErrors));
+    server.listen("127.0.0.1:8000".parse()?).await?;
+    Ok(())
+}
 ```
 
 The custom handler is responsible for safe response bodies and security

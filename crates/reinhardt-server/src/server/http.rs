@@ -845,6 +845,7 @@ mod tests {
 		assert_eq!(String::from_utf8(response.body.to_vec()).unwrap(), "teapot");
 	}
 
+	#[rstest]
 	#[tokio::test]
 	async fn test_server_exception_handler_reaches_nested_middleware_chain() {
 		// Arrange a chain that would otherwise consume the error before the server.

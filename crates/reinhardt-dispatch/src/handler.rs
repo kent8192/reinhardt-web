@@ -67,7 +67,20 @@ impl BaseHandler {
 	/// 1. Emits `request_started` signal
 	/// 2. Resolves URL and dispatches to view
 	/// 3. Emits `request_finished` signal
+	/// 4. Converts an unmatched route into a 404 response
 	pub async fn handle_request(
+		&self,
+		request: Request,
+	) -> std::result::Result<Response, DispatchError> {
+		match self.handle_request_with_errors(request).await {
+			Err(DispatchError::UrlResolution(_)) => Ok(Response::new(StatusCode::NOT_FOUND)),
+			response => response,
+		}
+	}
+
+	/// Handle a request while preserving routing and view failures for an outer
+	/// exception handler.
+	async fn handle_request_with_errors(
 		&self,
 		request: Request,
 	) -> std::result::Result<Response, DispatchError> {
@@ -96,8 +109,8 @@ impl BaseHandler {
 	/// This is the core request processing logic that:
 	/// - Resolves the URL using the router
 	/// - Dispatches to the matched handler
-	/// - Returns a 404 response if no route matches
-	/// - Returns error for handler errors (will be converted to 500 by Handler trait)
+	/// - Returns a routing error if no route matches
+	/// - Returns an error for handler failures
 	async fn get_response_async(
 		request: Request,
 		router: Option<&Arc<DefaultRouter>>,
@@ -116,7 +129,7 @@ impl BaseHandler {
 				}
 				Err(reinhardt_core::exception::Error::NotFound(msg)) => {
 					debug!("No route matched: {}", msg);
-					return Ok(Response::new(StatusCode::NOT_FOUND));
+					return Err(DispatchError::UrlResolution(msg));
 				}
 				Err(e) => {
 					error!("Handler error: {}", e);
@@ -126,9 +139,11 @@ impl BaseHandler {
 			}
 		}
 
-		// Fallback: router not configured, return 404 since no routes can match
-		debug!("No router configured, returning 404 Not Found");
-		Ok(Response::new(StatusCode::NOT_FOUND))
+		// Fallback: router not configured, so no routes can match.
+		debug!("No router configured, returning a URL resolution error");
+		Err(DispatchError::UrlResolution(
+			"No router configured".to_owned(),
+		))
 	}
 
 	/// Process an exception and convert it to a response.
@@ -158,11 +173,28 @@ impl Default for BaseHandler {
 	}
 }
 
+fn dispatch_error_to_exception(error: DispatchError) -> reinhardt_core::exception::Error {
+	match error {
+		DispatchError::Middleware(message)
+		| DispatchError::View(message)
+		| DispatchError::Internal(message) => reinhardt_core::exception::Error::Internal(message),
+		DispatchError::UrlResolution(message) => {
+			reinhardt_core::exception::Error::NotFound(message)
+		}
+		DispatchError::Http(message) => reinhardt_core::exception::Error::Http(message),
+	}
+}
+
 #[async_trait::async_trait]
 impl Handler for BaseHandler {
 	async fn handle(&self, request: Request) -> reinhardt_core::exception::Result<Response> {
-		match self.handle_request(request).await {
+		let has_exception_handler = request
+			.extensions
+			.contains::<Arc<dyn reinhardt_http::ExceptionHandler>>();
+		match self.handle_request_with_errors(request).await {
 			Ok(response) => Ok(response),
+			Err(error) if has_exception_handler => Err(dispatch_error_to_exception(error)),
+			Err(DispatchError::UrlResolution(_)) => Ok(Response::new(StatusCode::NOT_FOUND)),
 			Err(e) => {
 				// Log the detailed error server-side; return generic message to client
 				error!("Handler error in BaseHandler::handle: {}", e);
@@ -181,7 +213,9 @@ mod tests {
 	use async_trait::async_trait;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, Version};
+	use reinhardt_http::{ExceptionHandler, ExceptionHandlingHandler};
 	use reinhardt_urls::routers::{DefaultRouter, Router, path};
+	use rstest::rstest;
 
 	// Test handler for routing tests
 	struct TestHandler {
@@ -307,6 +341,81 @@ mod tests {
 		assert!(!body.contains("handlers.rs"));
 		assert!(!body.contains("secret_handler"));
 		assert_eq!(body, "Internal Server Error");
+	}
+
+	struct TeapotExceptionHandler;
+
+	#[async_trait]
+	impl ExceptionHandler for TeapotExceptionHandler {
+		async fn handle_exception(
+			&self,
+			_request: &Request,
+			_error: reinhardt_core::exception::Error,
+		) -> Response {
+			Response::new(StatusCode::IM_A_TEAPOT).with_body("teapot")
+		}
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn base_handler_routing_errors_reach_http_exception_handler() {
+		// Arrange
+		let base = Arc::new(BaseHandler::with_router(Arc::new(DefaultRouter::new())));
+		let handler = ExceptionHandlingHandler::new(base, Arc::new(TeapotExceptionHandler));
+		let request = Request::builder()
+			.method(Method::GET)
+			.uri("/missing")
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+
+		// Act
+		let response = handler.handle(request).await.unwrap();
+
+		// Assert
+		assert_eq!(response.status, StatusCode::IM_A_TEAPOT);
+		assert_eq!(response.body, Bytes::from_static(b"teapot"));
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn base_handler_view_errors_reach_http_exception_handler() {
+		struct FailingHandler;
+
+		#[async_trait]
+		impl Handler for FailingHandler {
+			async fn handle(
+				&self,
+				_request: Request,
+			) -> reinhardt_core::exception::Result<Response> {
+				Err(reinhardt_core::exception::Error::Internal(
+					"view failed".to_owned(),
+				))
+			}
+		}
+
+		// Arrange
+		let mut router = DefaultRouter::new();
+		router.add_route(path("/fail", Arc::new(FailingHandler)));
+		let base = Arc::new(BaseHandler::with_router(Arc::new(router)));
+		let handler = ExceptionHandlingHandler::new(base, Arc::new(TeapotExceptionHandler));
+		let request = Request::builder()
+			.method(Method::GET)
+			.uri("/fail")
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+
+		// Act
+		let response = handler.handle(request).await.unwrap();
+
+		// Assert
+		assert_eq!(response.status, StatusCode::IM_A_TEAPOT);
+		assert_eq!(response.body, Bytes::from_static(b"teapot"));
 	}
 
 	#[test]

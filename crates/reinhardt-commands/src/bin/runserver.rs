@@ -1058,6 +1058,7 @@ mod tests {
 	use super::*;
 	use clap::Parser;
 	use http_body_util::BodyExt;
+	use rstest::rstest;
 
 	#[test]
 	fn args_apply_documented_defaults_and_explicit_server_options() {
@@ -1195,6 +1196,7 @@ mod tests {
 	}
 
 	#[cfg(feature = "routers")]
+	#[rstest]
 	#[tokio::test]
 	async fn router_dispatch_preserves_custom_not_found_and_default_fallback() {
 		struct CustomNotFound;
@@ -1231,6 +1233,7 @@ mod tests {
 	}
 
 	#[cfg(feature = "routers")]
+	#[rstest]
 	#[tokio::test]
 	async fn router_dispatch_does_not_treat_installed_handler_as_custom_not_found() {
 		struct MatchedNotFound;
