@@ -387,6 +387,10 @@ reinhardt-query = { workspace = true, optional = true }
 thiserror = { workspace = true }
 toml = { workspace = true }
 
+[dev-dependencies]
+# The root integration test target reuses `tests/build.rs`, which invokes this macro.
+cfg_aliases = "0.2"
+
 [build-dependencies]
 cfg_aliases = "0.2"
 
