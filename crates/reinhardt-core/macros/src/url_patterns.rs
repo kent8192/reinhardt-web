@@ -182,6 +182,16 @@ fn is_unified_router_builder(expr: &Expr, aliases: &HashSet<String>) -> bool {
 	}
 }
 
+fn router_binding_ident(pattern: &Pat) -> Option<&syn::PatIdent> {
+	match pattern {
+		Pat::Ident(binding) => Some(binding),
+		Pat::Type(binding) => router_binding_ident(&binding.pat),
+		Pat::Paren(binding) => router_binding_ident(&binding.pat),
+		Pat::Reference(binding) => router_binding_ident(&binding.pat),
+		_ => None,
+	}
+}
+
 fn reject_nested_server_builder(expr: &Expr) -> syn::Result<()> {
 	#[derive(Default)]
 	struct NestedServerBuilder {
@@ -191,7 +201,7 @@ fn reject_nested_server_builder(expr: &Expr) -> syn::Result<()> {
 
 	impl<'ast> Visit<'ast> for NestedServerBuilder {
 		fn visit_local(&mut self, local: &'ast syn::Local) {
-			if let Pat::Ident(binding) = &local.pat {
+			if let Some(binding) = router_binding_ident(&local.pat) {
 				let name = binding.ident.to_string();
 				let is_router = local.init.as_ref().is_some_and(|init| {
 					is_unified_router_builder(&init.expr, &self.router_aliases)
@@ -452,6 +462,10 @@ mod tests {
 	#[case(quote!(UnifiedRouter::new().merge({ let router = UnifiedRouter::new(); router.server(configure) })))]
 	#[case(quote!(UnifiedRouter::new().mount_unified("/", (UnifiedRouter::default()).server(configure))))]
 	#[case(quote!(UnifiedRouter::new().client(|client| { use_nested(UnifiedRouter::new().server(configure)); client })))]
+	#[case(quote!(UnifiedRouter::new().merge({ let router: UnifiedRouter = UnifiedRouter::new(); router.server(configure) })))]
+	#[case(quote!(UnifiedRouter::new().merge({ let (router): UnifiedRouter = UnifiedRouter::new(); router.server(configure) })))]
+	#[case(quote!(UnifiedRouter::new().merge({ let mut router: UnifiedRouter = UnifiedRouter::new(); router.server(configure) })))]
+	#[case(quote!(UnifiedRouter::new().merge({ let (router) = UnifiedRouter::new(); router.server(configure) })))]
 	fn nested_builders_require_separate_annotated_functions(#[case] expr: TokenStream) {
 		// Arrange
 		let expr = syn::parse2(expr).unwrap();

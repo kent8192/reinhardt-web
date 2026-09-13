@@ -337,7 +337,8 @@ Provides compile-time code generation for common patterns.
     supported methods are `server`, `client`, `with_prefix`, `with_namespace`,
     `mount_unified`, and `merge`
   - Put native imports inside the server argument or in cfg-gated modules.
-    Extract nested server builders into separate annotated functions
+    Extract nested server builders into separate annotated functions. This also
+    applies to local router bindings with type annotations or parentheses
   - Available as `reinhardt::url_patterns`, including on WASM. Declare the
     caller's custom `server` cfg in `build.rs` and enable it for native server
     builds; `client-router` is required for browser routing
