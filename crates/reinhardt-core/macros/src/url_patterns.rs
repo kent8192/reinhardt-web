@@ -231,6 +231,103 @@ fn pattern_binding_names(pattern: &Pat) -> HashSet<String> {
 	bindings.names
 }
 
+fn router_bindings_in_pattern(
+	pattern: &Pat,
+	expr: &Expr,
+	aliases: &HashSet<String>,
+) -> HashSet<String> {
+	fn collect(pattern: &Pat, expr: &Expr, aliases: &HashSet<String>) -> HashSet<String> {
+		match pattern {
+			Pat::Ident(binding) => {
+				let mut bindings = HashSet::new();
+				if is_unified_router_builder(expr, aliases) {
+					bindings.insert(binding.ident.to_string());
+				}
+				if let Some((_, subpattern)) = &binding.subpat {
+					bindings.extend(collect(subpattern, expr, aliases));
+				}
+				bindings
+			}
+			Pat::Type(binding) => collect(&binding.pat, expr, aliases),
+			Pat::Paren(binding) => collect(&binding.pat, expr, aliases),
+			Pat::Reference(binding) => {
+				let expr = match unparenthesized(expr) {
+					Expr::Reference(reference) => &reference.expr,
+					_ => expr,
+				};
+				collect(&binding.pat, expr, aliases)
+			}
+			Pat::Tuple(tuple) => {
+				let Expr::Tuple(expr_tuple) = unparenthesized(expr) else {
+					return HashSet::new();
+				};
+				if tuple.elems.len() != expr_tuple.elems.len() {
+					return HashSet::new();
+				}
+				tuple
+					.elems
+					.iter()
+					.zip(expr_tuple.elems.iter())
+					.flat_map(|(pattern, expr)| collect(pattern, expr, aliases))
+					.collect()
+			}
+			Pat::TupleStruct(tuple) => {
+				let Expr::Call(call) = unparenthesized(expr) else {
+					return HashSet::new();
+				};
+				if tuple.elems.len() != call.args.len() {
+					return HashSet::new();
+				}
+				tuple
+					.elems
+					.iter()
+					.zip(call.args.iter())
+					.flat_map(|(pattern, expr)| collect(pattern, expr, aliases))
+					.collect()
+			}
+			Pat::Struct(structure) => {
+				let Expr::Struct(expr_struct) = unparenthesized(expr) else {
+					return HashSet::new();
+				};
+				structure
+					.fields
+					.iter()
+					.filter_map(|field| {
+						expr_struct
+							.fields
+							.iter()
+							.find(|expr_field| expr_field.member == field.member)
+							.map(|expr_field| collect(&field.pat, &expr_field.expr, aliases))
+					})
+					.flatten()
+					.collect()
+			}
+			Pat::Slice(slice) => {
+				let Expr::Array(array) = unparenthesized(expr) else {
+					return HashSet::new();
+				};
+				if slice.elems.len() != array.elems.len() {
+					return HashSet::new();
+				}
+				slice
+					.elems
+					.iter()
+					.zip(array.elems.iter())
+					.flat_map(|(pattern, expr)| collect(pattern, expr, aliases))
+					.collect()
+			}
+			Pat::Or(or) => or
+				.cases
+				.iter()
+				.flat_map(|pattern| collect(pattern, expr, aliases))
+				.collect(),
+			_ => HashSet::new(),
+		}
+	}
+
+	collect(pattern, expr, aliases)
+}
+
 fn reject_nested_server_builder(expr: &Expr) -> syn::Result<()> {
 	#[derive(Default)]
 	struct NestedServerBuilder {
@@ -328,23 +425,18 @@ fn reject_nested_server_builder(expr: &Expr) -> syn::Result<()> {
 		}
 
 		fn visit_local(&mut self, local: &'ast syn::Local) {
-			let is_router = local
-				.init
-				.as_ref()
-				.is_some_and(|init| is_unified_router_builder(&init.expr, &self.router_aliases));
+			let router_bindings = local.init.as_ref().map_or_else(HashSet::new, |init| {
+				router_bindings_in_pattern(&local.pat, &init.expr, &self.router_aliases)
+			});
 			// Visit the initializer before the new binding shadows any outer router alias.
 			syn::visit::visit_local(self, local);
 			if self.error.is_some() {
 				return;
 			}
-			if let Some(binding) = router_binding_ident(&local.pat) {
-				let name = binding.ident.to_string();
-				if is_router {
-					self.router_aliases.insert(name);
-				} else {
-					self.router_aliases.remove(&name);
-				}
+			for name in pattern_binding_names(&local.pat) {
+				self.router_aliases.remove(&name);
 			}
+			self.router_aliases.extend(router_bindings);
 		}
 
 		fn visit_expr_method_call(&mut self, call: &'ast syn::ExprMethodCall) {
@@ -621,6 +713,8 @@ mod tests {
 	#[case(quote!(UnifiedRouter::new().merge({ let router = UnifiedRouter::new(); UnifiedRouter::server(router, configure) })))]
 	#[case(quote!(UnifiedRouter::new().merge({ let router; router = UnifiedRouter::new(); router.server(configure) })))]
 	#[case(quote!(UnifiedRouter::new().merge(match UnifiedRouter::new() { router => router.server(configure) })))]
+	#[case(quote!(UnifiedRouter::new().merge({ let (router,) = (UnifiedRouter::new(),); router.server(configure) })))]
+	#[case(quote!(UnifiedRouter::new().merge({ let RouterParts { router } = RouterParts { router: UnifiedRouter::new() }; router.server(configure) })))]
 	fn nested_builders_require_separate_annotated_functions(#[case] expr: TokenStream) {
 		// Arrange
 		let expr = syn::parse2(expr).unwrap();
