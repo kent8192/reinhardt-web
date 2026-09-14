@@ -206,13 +206,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Setup Rust
-        uses: ./.github/actions/setup-rust
+      - name: Setup test environment (Rust + protoc)
+        uses: ./.github/actions/setup-test-env
         with:
-          cache-key: "wasm-test"
+          rust-cache-key: "wasm-test"
           # Cache-seed pattern (Issue #4536, mirrors unit-test.yml): PR runs
           # restore from main's cache but do not save their own entries.
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          rust-save-if: ${{ github.ref == 'refs/heads/main' }}
+          protoc-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install wasm32-unknown-unknown target
         run: rustup target add wasm32-unknown-unknown

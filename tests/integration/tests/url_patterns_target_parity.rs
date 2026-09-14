@@ -2,6 +2,8 @@
 //!
 //! Consumer manifests resolve independently of the workspace lockfile and patches.
 //! Refresh missing registry entries when their first offline resolution fails.
+//! The browser harness is a native integration-test executable; building it
+//! requires `protoc` for the integration crate's gRPC dependencies.
 
 use reinhardt_test::fixtures::temp_dir;
 use rstest::{fixture, rstest};
