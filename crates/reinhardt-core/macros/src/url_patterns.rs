@@ -230,6 +230,17 @@ fn is_unified_router_type(ty: &Type) -> bool {
 		})
 }
 
+fn is_unified_router_type_with_aliases(ty: &Type, router_type_aliases: &HashSet<String>) -> bool {
+	is_unified_router_type(ty)
+		|| matches!(ty, Type::Path(path)
+		if path.qself.is_none()
+			&& path.path.segments.len() == 1
+			&& path.path.segments.first().is_some_and(|segment| {
+				matches!(segment.arguments, PathArguments::None)
+					&& router_type_aliases.contains(&segment.ident.to_string())
+			}))
+}
+
 fn pattern_binding_names(pattern: &Pat) -> HashSet<String> {
 	#[derive(Default)]
 	struct BindingNames {
@@ -252,8 +263,14 @@ fn router_bindings_in_pattern(
 	pattern: &Pat,
 	expr: &Expr,
 	aliases: &HashSet<String>,
+	router_type_aliases: &HashSet<String>,
 ) -> HashSet<String> {
-	fn collect(pattern: &Pat, expr: &Expr, aliases: &HashSet<String>) -> HashSet<String> {
+	fn collect(
+		pattern: &Pat,
+		expr: &Expr,
+		aliases: &HashSet<String>,
+		router_type_aliases: &HashSet<String>,
+	) -> HashSet<String> {
 		match pattern {
 			Pat::Ident(binding) => {
 				let mut bindings = HashSet::new();
@@ -261,27 +278,27 @@ fn router_bindings_in_pattern(
 					bindings.insert(binding.ident.to_string());
 				}
 				if let Some((_, subpattern)) = &binding.subpat {
-					bindings.extend(collect(subpattern, expr, aliases));
+					bindings.extend(collect(subpattern, expr, aliases, router_type_aliases));
 				}
 				bindings
 			}
 			Pat::Type(binding) => {
-				if is_unified_router_type(&binding.ty) {
+				if is_unified_router_type_with_aliases(&binding.ty, router_type_aliases) {
 					pattern_binding_names(&binding.pat)
 				} else if matches!(&*binding.ty, Type::Path(_)) {
 					// An explicit non-router type overrides an opaque initializer.
 					HashSet::new()
 				} else {
-					collect(&binding.pat, expr, aliases)
+					collect(&binding.pat, expr, aliases, router_type_aliases)
 				}
 			}
-			Pat::Paren(binding) => collect(&binding.pat, expr, aliases),
+			Pat::Paren(binding) => collect(&binding.pat, expr, aliases, router_type_aliases),
 			Pat::Reference(binding) => {
 				let expr = match unparenthesized(expr) {
 					Expr::Reference(reference) => &reference.expr,
 					_ => expr,
 				};
-				collect(&binding.pat, expr, aliases)
+				collect(&binding.pat, expr, aliases, router_type_aliases)
 			}
 			Pat::Tuple(tuple) => {
 				let Expr::Tuple(expr_tuple) = unparenthesized(expr) else {
@@ -294,7 +311,9 @@ fn router_bindings_in_pattern(
 					.elems
 					.iter()
 					.zip(expr_tuple.elems.iter())
-					.flat_map(|(pattern, expr)| collect(pattern, expr, aliases))
+					.flat_map(|(pattern, expr)| {
+						collect(pattern, expr, aliases, router_type_aliases)
+					})
 					.collect()
 			}
 			Pat::TupleStruct(tuple) => {
@@ -308,7 +327,9 @@ fn router_bindings_in_pattern(
 					.elems
 					.iter()
 					.zip(call.args.iter())
-					.flat_map(|(pattern, expr)| collect(pattern, expr, aliases))
+					.flat_map(|(pattern, expr)| {
+						collect(pattern, expr, aliases, router_type_aliases)
+					})
 					.collect()
 			}
 			Pat::Struct(structure) => {
@@ -323,7 +344,9 @@ fn router_bindings_in_pattern(
 							.fields
 							.iter()
 							.find(|expr_field| expr_field.member == field.member)
-							.map(|expr_field| collect(&field.pat, &expr_field.expr, aliases))
+							.map(|expr_field| {
+								collect(&field.pat, &expr_field.expr, aliases, router_type_aliases)
+							})
 					})
 					.flatten()
 					.collect()
@@ -339,19 +362,21 @@ fn router_bindings_in_pattern(
 					.elems
 					.iter()
 					.zip(array.elems.iter())
-					.flat_map(|(pattern, expr)| collect(pattern, expr, aliases))
+					.flat_map(|(pattern, expr)| {
+						collect(pattern, expr, aliases, router_type_aliases)
+					})
 					.collect()
 			}
 			Pat::Or(or) => or
 				.cases
 				.iter()
-				.flat_map(|pattern| collect(pattern, expr, aliases))
+				.flat_map(|pattern| collect(pattern, expr, aliases, router_type_aliases))
 				.collect(),
 			_ => HashSet::new(),
 		}
 	}
 
-	collect(pattern, expr, aliases)
+	collect(pattern, expr, aliases, router_type_aliases)
 }
 
 #[derive(Clone, Default)]
@@ -361,8 +386,13 @@ struct RouterBindings {
 }
 
 impl RouterBindings {
-	fn bind(&mut self, pattern: &Pat, mut inferred: HashSet<String>) {
-		let typed = typed_router_bindings(pattern);
+	fn bind(
+		&mut self,
+		pattern: &Pat,
+		mut inferred: HashSet<String>,
+		router_type_aliases: &HashSet<String>,
+	) {
+		let typed = typed_router_bindings(pattern, router_type_aliases);
 		for name in pattern_binding_names(pattern) {
 			self.routers.remove(&name);
 			self.non_routers.remove(&name);
@@ -387,13 +417,13 @@ impl RouterBindings {
 	}
 }
 
-fn typed_router_bindings(pattern: &Pat) -> RouterBindings {
-	#[derive(Default)]
-	struct TypedBindings {
+fn typed_router_bindings(pattern: &Pat, router_type_aliases: &HashSet<String>) -> RouterBindings {
+	struct TypedBindings<'a> {
 		bindings: RouterBindings,
+		router_type_aliases: &'a HashSet<String>,
 	}
 
-	impl TypedBindings {
+	impl TypedBindings<'_> {
 		fn collect(&mut self, pattern: &Pat, ty: &Type) {
 			match (pattern, ty) {
 				(Pat::Paren(pattern), _) => self.collect(&pattern.pat, ty),
@@ -405,7 +435,8 @@ fn typed_router_bindings(pattern: &Pat) -> RouterBindings {
 					}
 				}
 				(Pat::Ident(binding), Type::Path(_)) => {
-					let names = if is_unified_router_type(ty) {
+					let names = if is_unified_router_type_with_aliases(ty, self.router_type_aliases)
+					{
 						&mut self.bindings.routers
 					} else {
 						&mut self.bindings.non_routers
@@ -417,14 +448,17 @@ fn typed_router_bindings(pattern: &Pat) -> RouterBindings {
 		}
 	}
 
-	impl<'ast> Visit<'ast> for TypedBindings {
+	impl<'ast> Visit<'ast> for TypedBindings<'_> {
 		fn visit_pat_type(&mut self, binding: &'ast syn::PatType) {
 			self.collect(&binding.pat, &binding.ty);
 			syn::visit::visit_pat_type(self, binding);
 		}
 	}
 
-	let mut bindings = TypedBindings::default();
+	let mut bindings = TypedBindings {
+		bindings: RouterBindings::default(),
+		router_type_aliases,
+	};
 	bindings.visit_pat(pattern);
 	bindings.bindings
 }
@@ -473,6 +507,7 @@ fn router_bindings_in_for_pattern(
 	pattern: &Pat,
 	expr: &Expr,
 	aliases: &HashSet<String>,
+	router_type_aliases: &HashSet<String>,
 ) -> HashSet<String> {
 	let items = match unparenthesized(expr) {
 		Expr::Array(array) => array.elems.iter().collect::<Vec<_>>(),
@@ -481,7 +516,7 @@ fn router_bindings_in_for_pattern(
 	};
 	items
 		.into_iter()
-		.flat_map(|item| router_bindings_in_pattern(pattern, item, aliases))
+		.flat_map(|item| router_bindings_in_pattern(pattern, item, aliases, router_type_aliases))
 		.collect()
 }
 
@@ -490,6 +525,7 @@ fn reject_nested_server_builder(expr: &Expr) -> syn::Result<()> {
 	struct NestedServerBuilder {
 		error: Option<syn::Error>,
 		bindings: RouterBindings,
+		router_type_aliases: HashSet<String>,
 	}
 
 	impl NestedServerBuilder {
@@ -515,13 +551,15 @@ fn reject_nested_server_builder(expr: &Expr) -> syn::Result<()> {
 						&condition.pat,
 						&condition.expr,
 						&self.bindings.routers,
+						&self.router_type_aliases,
 					);
 					self.visit_pat(&condition.pat);
 					let introduced = pattern_binding_names(&condition.pat);
 					let new_names = introduced.difference(names).cloned().collect();
 					previous.restore_names(&self.bindings, new_names);
 					names.extend(introduced);
-					self.bindings.bind(&condition.pat, inferred);
+					self.bindings
+						.bind(&condition.pat, inferred, &self.router_type_aliases);
 				}
 				_ => self.visit_expr(condition),
 			}
@@ -531,6 +569,7 @@ fn reject_nested_server_builder(expr: &Expr) -> syn::Result<()> {
 	impl<'ast> Visit<'ast> for NestedServerBuilder {
 		fn visit_block(&mut self, block: &'ast syn::Block) {
 			let aliases = self.bindings.clone();
+			let router_type_aliases = self.router_type_aliases.clone();
 			let local_names = block
 				.stmts
 				.iter()
@@ -548,6 +587,7 @@ fn reject_nested_server_builder(expr: &Expr) -> syn::Result<()> {
 			// the block. Restore only names introduced by this block, while restoring
 			// any outer alias shadowed by a local declaration.
 			self.bindings.restore_names(&aliases, local_names);
+			self.router_type_aliases = router_type_aliases;
 		}
 
 		fn visit_expr_assign(&mut self, assign: &'ast syn::ExprAssign) {
@@ -576,7 +616,8 @@ fn reject_nested_server_builder(expr: &Expr) -> syn::Result<()> {
 			}
 			let aliases = self.bindings.clone();
 			for input in &closure.inputs {
-				self.bindings.bind(input, HashSet::new());
+				self.bindings
+					.bind(input, HashSet::new(), &self.router_type_aliases);
 			}
 			syn::visit::visit_expr_closure(self, closure);
 			self.bindings = aliases;
@@ -595,13 +636,18 @@ fn reject_nested_server_builder(expr: &Expr) -> syn::Result<()> {
 					return;
 				}
 				let aliases = self.bindings.clone();
-				let router_bindings =
-					router_bindings_in_pattern(&arm.pat, &expression.expr, &self.bindings.routers);
+				let router_bindings = router_bindings_in_pattern(
+					&arm.pat,
+					&expression.expr,
+					&self.bindings.routers,
+					&self.router_type_aliases,
+				);
 				self.visit_pat(&arm.pat);
 				if self.error.is_some() {
 					return;
 				}
-				self.bindings.bind(&arm.pat, router_bindings);
+				self.bindings
+					.bind(&arm.pat, router_bindings, &self.router_type_aliases);
 				if let Some((_, guard)) = &arm.guard {
 					self.visit_expr(guard);
 				}
@@ -647,13 +693,15 @@ fn reject_nested_server_builder(expr: &Expr) -> syn::Result<()> {
 				&expression.pat,
 				&expression.expr,
 				&self.bindings.routers,
+				&self.router_type_aliases,
 			);
 			self.visit_expr(&expression.expr);
 			if self.error.is_some() {
 				return;
 			}
 			let aliases = self.bindings.clone();
-			self.bindings.bind(&expression.pat, router_bindings);
+			self.bindings
+				.bind(&expression.pat, router_bindings, &self.router_type_aliases);
 			self.visit_block(&expression.body);
 			self.bindings = aliases;
 		}
@@ -665,24 +713,97 @@ fn reject_nested_server_builder(expr: &Expr) -> syn::Result<()> {
 			let aliases = std::mem::take(&mut self.bindings);
 			for input in &function.sig.inputs {
 				if let syn::FnArg::Typed(input) = input {
-					self.bindings
-						.bind(&Pat::Type(input.clone()), HashSet::new());
+					self.bindings.bind(
+						&Pat::Type(input.clone()),
+						HashSet::new(),
+						&self.router_type_aliases,
+					);
 				}
 			}
 			syn::visit::visit_item_fn(self, function);
 			self.bindings = aliases;
 		}
 
+		fn visit_impl_item_fn(&mut self, function: &'ast syn::ImplItemFn) {
+			if self.error.is_some() {
+				return;
+			}
+			let aliases = std::mem::take(&mut self.bindings);
+			for input in &function.sig.inputs {
+				if let syn::FnArg::Typed(input) = input {
+					self.bindings.bind(
+						&Pat::Type(input.clone()),
+						HashSet::new(),
+						&self.router_type_aliases,
+					);
+				}
+			}
+			syn::visit::visit_impl_item_fn(self, function);
+			self.bindings = aliases;
+		}
+
+		fn visit_trait_item_fn(&mut self, function: &'ast syn::TraitItemFn) {
+			if self.error.is_some() {
+				return;
+			}
+			let aliases = std::mem::take(&mut self.bindings);
+			for input in &function.sig.inputs {
+				if let syn::FnArg::Typed(input) = input {
+					self.bindings.bind(
+						&Pat::Type(input.clone()),
+						HashSet::new(),
+						&self.router_type_aliases,
+					);
+				}
+			}
+			syn::visit::visit_trait_item_fn(self, function);
+			self.bindings = aliases;
+		}
+
+		fn visit_item_type(&mut self, item: &'ast syn::ItemType) {
+			if self.error.is_some() {
+				return;
+			}
+			let is_router =
+				is_unified_router_type_with_aliases(&item.ty, &self.router_type_aliases);
+			let name = item.ident.to_string();
+			self.router_type_aliases.remove(&name);
+			if is_router {
+				self.router_type_aliases.insert(name);
+			}
+			syn::visit::visit_item_type(self, item);
+		}
+
+		fn visit_stmt(&mut self, statement: &'ast Stmt) {
+			if self.error.is_some() {
+				return;
+			}
+			if let Stmt::Macro(statement_macro) = statement {
+				self.error = Some(syn::Error::new_spanned(
+					&statement_macro.mac,
+					"opaque macros in preserved router arguments are unsupported here; expand the expression before using it",
+				));
+				return;
+			}
+			syn::visit::visit_stmt(self, statement);
+		}
+
 		fn visit_local(&mut self, local: &'ast syn::Local) {
 			let router_bindings = local.init.as_ref().map_or_else(HashSet::new, |init| {
-				router_bindings_in_pattern(&local.pat, &init.expr, &self.bindings.routers)
+				router_bindings_in_pattern(
+					&local.pat,
+					&init.expr,
+					&self.bindings.routers,
+					&self.router_type_aliases,
+				)
 			});
 			// Visit the initializer before the new binding shadows any outer router alias.
 			syn::visit::visit_local(self, local);
 			if self.error.is_some() {
 				return;
 			}
-			self.bindings.bind(&local.pat, router_bindings);
+			self.bindings
+				.bind(&local.pat, router_bindings, &self.router_type_aliases);
 		}
 
 		fn visit_expr_method_call(&mut self, call: &'ast syn::ExprMethodCall) {
@@ -1020,6 +1141,9 @@ mod tests {
 	#[case(quote!(UnifiedRouter::new().merge({ let (router) = UnifiedRouter::new(); router.server(configure) })))]
 	#[case(quote!(UnifiedRouter::new().merge({ let router = UnifiedRouter::new(); { let router = unrelated; use_it(router); } router.server(configure) })))]
 	#[case(quote!(UnifiedRouter::new().merge({ let router = UnifiedRouter::new(); let router = wrap(router.server(configure)); router })))]
+	#[case(quote!(UnifiedRouter::new().merge({ type Router = UnifiedRouter; let router: Router = make_router(); router.server(configure) })))]
+	#[case(quote!(UnifiedRouter::new().merge({ impl Builder { fn apply(router: UnifiedRouter) -> UnifiedRouter { router.server(configure) } } Builder::apply(UnifiedRouter::new()) })))]
+	#[case(quote!(UnifiedRouter::new().merge({ trait Builder { fn apply(router: UnifiedRouter) -> UnifiedRouter { router.server(configure) } } Builder::apply(UnifiedRouter::new()) })))]
 	#[case(quote!(UnifiedRouter::new().merge(UnifiedRouter::server(UnifiedRouter::new(), configure))))]
 	#[case(quote!(UnifiedRouter::new().merge(<UnifiedRouter>::server(UnifiedRouter::new(), configure))))]
 	#[case(quote!(UnifiedRouter::new().merge({ let router = UnifiedRouter::new(); UnifiedRouter::server(router, configure) })))]
@@ -1049,6 +1173,7 @@ mod tests {
 
 	#[rstest]
 	#[case(quote!(UnifiedRouter::new().merge(nested_routes!())))]
+	#[case(quote!(UnifiedRouter::new().merge({ nested_routes!(); UnifiedRouter::new() })))]
 	#[case(quote!(UnifiedRouter::new().client(client_config!())))]
 	#[case(quote!(UnifiedRouter::new().with_prefix(prefix!())))]
 	fn opaque_macros_in_preserved_arguments_are_rejected(#[case] expr: TokenStream) {

@@ -81,4 +81,45 @@ fn let_chain() -> UnifiedRouter {
 	)
 }
 
+#[url_patterns]
+fn statement_macro() -> UnifiedRouter {
+	UnifiedRouter::new().merge({
+		native_setup!();
+		UnifiedRouter::new()
+	})
+}
+
+#[url_patterns]
+fn type_alias() -> UnifiedRouter {
+	UnifiedRouter::new().merge({
+		type Router = UnifiedRouter;
+		let router: Router = make_router();
+		router.server(crate::native::configure)
+	})
+}
+
+#[url_patterns]
+fn impl_method() -> UnifiedRouter {
+	UnifiedRouter::new().merge({
+		impl Builder {
+			fn apply(router: UnifiedRouter) -> UnifiedRouter {
+				router.server(crate::native::configure)
+			}
+		}
+		Builder::apply(UnifiedRouter::new())
+	})
+}
+
+#[url_patterns]
+fn trait_method() -> UnifiedRouter {
+	UnifiedRouter::new().merge({
+		trait BuilderTrait {
+			fn apply(router: UnifiedRouter) -> UnifiedRouter {
+				router.server(crate::native::configure)
+			}
+		}
+		BuilderTrait::apply(UnifiedRouter::new())
+	})
+}
+
 fn main() {}
