@@ -95,11 +95,11 @@ Add `reinhardt` to your `Cargo.toml`:
 <!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = "0.3.17"
+reinhardt = "0.3.18"
 
 # Or use a preset with parsers support:
-# reinhardt = { version = "0.3.17", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.3.17", features = ["full"] }      # All features
+# reinhardt = { version = "0.3.18", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.3.18", features = ["full"] }      # All features
 ```
 
 **Note:** HTTP types are available through the main `reinhardt` crate, which provides a unified interface to all framework components.
