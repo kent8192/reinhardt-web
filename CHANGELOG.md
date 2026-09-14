@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.17...reinhardt-web@v0.3.18) - 2026-09-14
+
+### Documentation
+
+- *(dispatch)* make the legacy exception adapter example executable
+
+### Fixed
+
+- *(urls)* defer unmatched route errors through middleware
+- *(http)* inherit exception handlers in nested dispatch
+- *(commands)* preserve configured exception responses on routing misses
+- *(urls)* expose the exception handler builder on WASM
+- track exception handler invocation
+- preserve dispatch errors for exception handlers
+- *(http)* unify exception handler dispatch
+- *(dispatch)* preserve legacy exception handler contract
+- *(http)* preserve routing context for exception handlers
+- *(http)* preserve routing context through middleware
+- *(http)* refresh routing context across middleware paths
+- *(http)* narrow routing context snapshots
+- *(routing)* mirror exception handlers in wasm stubs
+- *(dispatch)* keep test mutex import out of production code
+
+### Maintenance
+
+- auto-fix fmt and clippy
+- auto-fix fmt and clippy
+
 ## [0.3.17](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.16...reinhardt-web@v0.3.17) - 2026-09-13
 
 ### Documentation
