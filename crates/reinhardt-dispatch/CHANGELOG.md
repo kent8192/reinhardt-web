@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dispatch@v0.3.17...reinhardt-dispatch@v0.3.18) - 2026-09-14
+
+### Documentation
+
+- *(dispatch)* make the legacy exception adapter example executable
+
+### Fixed
+
+- preserve dispatch errors for exception handlers
+- *(http)* unify exception handler dispatch
+- *(dispatch)* preserve legacy exception handler contract
+- *(http)* preserve routing context for exception handlers
+- *(http)* preserve routing context through middleware
+- *(http)* refresh routing context across middleware paths
+- *(dispatch)* keep test mutex import out of production code
+
+### Maintenance
+
+- auto-fix fmt and clippy
+
 ## [0.3.0](https://github.com/kent8192/reinhardt-web/compare/reinhardt-dispatch@v0.2.2...reinhardt-dispatch@v0.3.0) - 2026-06-28
 
 Stable release of `reinhardt-dispatch` for the Reinhardt 0.3.0 line. This

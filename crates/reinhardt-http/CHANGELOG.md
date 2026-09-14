@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-http@v0.3.17...reinhardt-http@v0.3.18) - 2026-09-14
+
+### Fixed
+
+- *(http)* add an installable exception handler hook
+- *(http)* resolve imports and clippy findings in the exception hook
+- *(urls)* defer unmatched route errors through middleware
+- *(http)* inherit exception handlers in nested dispatch
+- track exception handler invocation
+- *(http)* preserve routing context for exception handlers
+- *(http)* preserve routing context through middleware
+- *(http)* refresh routing context across middleware paths
+- *(http)* narrow routing context snapshots
+
 ## [0.3.9](https://github.com/kent8192/reinhardt-web/compare/reinhardt-http@v0.3.8...reinhardt-http@v0.3.9) - 2026-08-21
 
 ### Documentation
