@@ -122,4 +122,36 @@ fn trait_method() -> UnifiedRouter {
 	})
 }
 
+#[url_patterns]
+fn match_initializer() -> UnifiedRouter {
+	UnifiedRouter::new().merge({
+		let router = match flag {
+			true => UnifiedRouter::new(),
+			false => UnifiedRouter::default(),
+		};
+		router.server(configure)
+	})
+}
+
+#[url_patterns]
+fn impl_receiver() -> UnifiedRouter {
+	UnifiedRouter::new().merge({
+		impl SomeLocalTrait for UnifiedRouter {
+			fn apply(self) -> UnifiedRouter {
+				self.server(configure)
+			}
+		}
+		UnifiedRouter::new()
+	})
+}
+
+#[url_patterns]
+fn forward_type_alias() -> UnifiedRouter {
+	UnifiedRouter::new().merge({
+		let router: Router = make_router();
+		type Router = UnifiedRouter;
+		router.server(configure)
+	})
+}
+
 fn main() {}

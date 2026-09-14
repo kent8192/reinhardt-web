@@ -2,7 +2,7 @@
 
 use proc_macro2::TokenStream;
 use quote::quote;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use syn::{Expr, ItemFn, Pat, PathArguments, ReturnType, Stmt, Type, visit::Visit};
 
 pub(crate) fn url_patterns_impl(args: TokenStream, mut input: ItemFn) -> syn::Result<TokenStream> {
@@ -165,10 +165,7 @@ fn is_unified_router_constructor(expr: &Expr) -> bool {
 fn is_unified_router_builder(expr: &Expr, aliases: &HashSet<String>) -> bool {
 	let expr = unparenthesized(expr);
 	if let Expr::Block(block) = expr {
-		let [Stmt::Expr(expr, None)] = block.block.stmts.as_slice() else {
-			return false;
-		};
-		return is_unified_router_builder(expr, aliases);
+		return is_unified_router_block(&block.block, aliases);
 	}
 	if is_unified_router_constructor(expr) {
 		return true;
@@ -177,6 +174,17 @@ fn is_unified_router_builder(expr: &Expr, aliases: &HashSet<String>) -> bool {
 		// A procedural macro cannot resolve a helper's return type. Treat call
 		// results as potential routers so nested server builders fail on every target.
 		Expr::Call(_) => true,
+		Expr::If(expression) => expression.else_branch.as_ref().is_some_and(|(_, branch)| {
+			is_unified_router_block(&expression.then_branch, aliases)
+				&& is_unified_router_builder(branch, aliases)
+		}),
+		Expr::Match(expression) => {
+			!expression.arms.is_empty()
+				&& expression
+					.arms
+					.iter()
+					.all(|arm| is_unified_router_builder(&arm.body, aliases))
+		}
 		Expr::MethodCall(call) => is_unified_router_builder(&call.receiver, aliases),
 		Expr::Path(path) => {
 			let mut segments = path.path.segments.iter();
@@ -189,6 +197,13 @@ fn is_unified_router_builder(expr: &Expr, aliases: &HashSet<String>) -> bool {
 		}
 		_ => false,
 	}
+}
+
+fn is_unified_router_block(block: &syn::Block, aliases: &HashSet<String>) -> bool {
+	let [Stmt::Expr(expr, None)] = block.stmts.as_slice() else {
+		return false;
+	};
+	is_unified_router_builder(expr, aliases)
 }
 
 fn is_unified_router_server_function(expr: &Expr) -> bool {
@@ -415,6 +430,16 @@ impl RouterBindings {
 			}
 		}
 	}
+
+	fn bind_receiver(&mut self, is_router: bool) {
+		self.routers.remove("self");
+		self.non_routers.remove("self");
+		if is_router {
+			self.routers.insert("self".to_owned());
+		} else {
+			self.non_routers.insert("self".to_owned());
+		}
+	}
 }
 
 fn typed_router_bindings(pattern: &Pat, router_type_aliases: &HashSet<String>) -> RouterBindings {
@@ -520,12 +545,45 @@ fn router_bindings_in_for_pattern(
 		.collect()
 }
 
+fn predeclare_router_type_aliases(
+	block: &syn::Block,
+	outer_aliases: &HashSet<String>,
+) -> HashSet<String> {
+	let local_aliases = block
+		.stmts
+		.iter()
+		.filter_map(|statement| match statement {
+			Stmt::Item(syn::Item::Type(item)) => Some((item.ident.to_string(), item.ty.as_ref())),
+			_ => None,
+		})
+		.collect::<HashMap<_, _>>();
+	let mut aliases = outer_aliases.clone();
+	for name in local_aliases.keys() {
+		aliases.remove(name);
+	}
+
+	loop {
+		let previous_count = aliases.len();
+		for (name, ty) in &local_aliases {
+			if is_unified_router_type_with_aliases(ty, &aliases) {
+				aliases.insert(name.clone());
+			}
+		}
+		if aliases.len() == previous_count {
+			break;
+		}
+	}
+
+	aliases
+}
+
 fn reject_nested_server_builder(expr: &Expr) -> syn::Result<()> {
 	#[derive(Default)]
 	struct NestedServerBuilder {
 		error: Option<syn::Error>,
 		bindings: RouterBindings,
 		router_type_aliases: HashSet<String>,
+		impl_receiver_is_router: Option<bool>,
 	}
 
 	impl NestedServerBuilder {
@@ -570,6 +628,8 @@ fn reject_nested_server_builder(expr: &Expr) -> syn::Result<()> {
 		fn visit_block(&mut self, block: &'ast syn::Block) {
 			let aliases = self.bindings.clone();
 			let router_type_aliases = self.router_type_aliases.clone();
+			self.router_type_aliases =
+				predeclare_router_type_aliases(block, &self.router_type_aliases);
 			let local_names = block
 				.stmts
 				.iter()
@@ -730,16 +790,32 @@ fn reject_nested_server_builder(expr: &Expr) -> syn::Result<()> {
 			}
 			let aliases = std::mem::take(&mut self.bindings);
 			for input in &function.sig.inputs {
-				if let syn::FnArg::Typed(input) = input {
-					self.bindings.bind(
+				match input {
+					syn::FnArg::Receiver(_) => self
+						.bindings
+						.bind_receiver(self.impl_receiver_is_router.unwrap_or(false)),
+					syn::FnArg::Typed(input) => self.bindings.bind(
 						&Pat::Type(input.clone()),
 						HashSet::new(),
 						&self.router_type_aliases,
-					);
+					),
 				}
 			}
 			syn::visit::visit_impl_item_fn(self, function);
 			self.bindings = aliases;
+		}
+
+		fn visit_item_impl(&mut self, item: &'ast syn::ItemImpl) {
+			if self.error.is_some() {
+				return;
+			}
+			let previous = self.impl_receiver_is_router;
+			self.impl_receiver_is_router = Some(is_unified_router_type_with_aliases(
+				&item.self_ty,
+				&self.router_type_aliases,
+			));
+			syn::visit::visit_item_impl(self, item);
+			self.impl_receiver_is_router = previous;
 		}
 
 		fn visit_trait_item_fn(&mut self, function: &'ast syn::TraitItemFn) {
@@ -1157,6 +1233,9 @@ mod tests {
 	#[case(quote!(UnifiedRouter::new().merge({ let mut result = UnifiedRouter::new(); for router in [UnifiedRouter::new()] { result = result.merge(router.server(configure)); } result })))]
 	#[case(quote!(UnifiedRouter::new().merge(match Some(UnifiedRouter::new()) { Some(router) => router.server(configure), None => UnifiedRouter::new() })))]
 	#[case(quote!(UnifiedRouter::new().merge({ let router = { UnifiedRouter::new() }; router.server(configure) })))]
+	#[case(quote!(UnifiedRouter::new().merge({ let router = match flag { true => UnifiedRouter::new(), false => UnifiedRouter::default() }; router.server(configure) })))]
+	#[case(quote!(UnifiedRouter::new().merge({ impl SomeLocalTrait for UnifiedRouter { fn apply(self) -> UnifiedRouter { self.server(configure) } } UnifiedRouter::new() })))]
+	#[case(quote!(UnifiedRouter::new().merge({ let router: Router = make_router(); type Router = UnifiedRouter; router.server(configure) })))]
 	fn nested_builders_require_separate_annotated_functions(#[case] expr: TokenStream) {
 		// Arrange
 		let expr = syn::parse2(expr).unwrap();
