@@ -117,6 +117,9 @@ use user_attribute::user_attribute_impl;
 /// Parentheses are supported. A server call takes exactly one expression and
 /// no explicit generic arguments. Inline nested server builders in preserved
 /// arguments must be extracted into separately annotated functions.
+/// This includes explicitly typed router locals and closure parameters. Helper
+/// call results are conservatively treated as potential routers; an explicit
+/// unrelated local type disambiguates a different type's `server` method.
 ///
 /// Native imports and capture construction belong inside the server argument
 /// or a cfg-gated module. The attribute cannot erase external imports or

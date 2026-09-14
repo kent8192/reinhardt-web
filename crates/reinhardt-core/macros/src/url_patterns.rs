@@ -174,6 +174,9 @@ fn is_unified_router_builder(expr: &Expr, aliases: &HashSet<String>) -> bool {
 		return true;
 	}
 	match expr {
+		// A procedural macro cannot resolve a helper's return type. Treat call
+		// results as potential routers so nested server builders fail on every target.
+		Expr::Call(_) => true,
 		Expr::MethodCall(call) => is_unified_router_builder(&call.receiver, aliases),
 		Expr::Path(path) => {
 			let mut segments = path.path.segments.iter();
@@ -262,7 +265,16 @@ fn router_bindings_in_pattern(
 				}
 				bindings
 			}
-			Pat::Type(binding) => collect(&binding.pat, expr, aliases),
+			Pat::Type(binding) => {
+				if is_unified_router_type(&binding.ty) {
+					pattern_binding_names(&binding.pat)
+				} else if matches!(&*binding.ty, Type::Path(_)) {
+					// An explicit non-router type overrides an opaque initializer.
+					HashSet::new()
+				} else {
+					collect(&binding.pat, expr, aliases)
+				}
+			}
 			Pat::Paren(binding) => collect(&binding.pat, expr, aliases),
 			Pat::Reference(binding) => {
 				let expr = match unparenthesized(expr) {
@@ -340,6 +352,26 @@ fn router_bindings_in_pattern(
 	}
 
 	collect(pattern, expr, aliases)
+}
+
+fn typed_router_bindings(pattern: &Pat) -> HashSet<String> {
+	#[derive(Default)]
+	struct TypedBindings {
+		names: HashSet<String>,
+	}
+
+	impl<'ast> Visit<'ast> for TypedBindings {
+		fn visit_pat_type(&mut self, binding: &'ast syn::PatType) {
+			if is_unified_router_type(&binding.ty) {
+				self.names.extend(pattern_binding_names(&binding.pat));
+			}
+			syn::visit::visit_pat_type(self, binding);
+		}
+	}
+
+	let mut bindings = TypedBindings::default();
+	bindings.visit_pat(pattern);
+	bindings.names
 }
 
 fn router_bindings_in_for_pattern(
@@ -436,6 +468,7 @@ fn reject_nested_server_builder(expr: &Expr) -> syn::Result<()> {
 				for name in pattern_binding_names(input) {
 					self.router_aliases.remove(&name);
 				}
+				self.router_aliases.extend(typed_router_bindings(input));
 			}
 			syn::visit::visit_expr_closure(self, closure);
 			self.router_aliases = aliases;
@@ -564,9 +597,10 @@ fn reject_nested_server_builder(expr: &Expr) -> syn::Result<()> {
 		}
 
 		fn visit_local(&mut self, local: &'ast syn::Local) {
-			let router_bindings = local.init.as_ref().map_or_else(HashSet::new, |init| {
+			let mut router_bindings = local.init.as_ref().map_or_else(HashSet::new, |init| {
 				router_bindings_in_pattern(&local.pat, &init.expr, &self.router_aliases)
 			});
+			router_bindings.extend(typed_router_bindings(&local.pat));
 			// Visit the initializer before the new binding shadows any outer router alias.
 			syn::visit::visit_local(self, local);
 			if self.error.is_some() {
@@ -688,6 +722,10 @@ mod tests {
 	#[case::unrelated_server_method(
 		quote!(UnifiedRouter::new().server(native).client(|client| transport.server(client))),
 		quote!(UnifiedRouter::new().client(|client| transport.server(client)))
+	)]
+	#[case::typed_unrelated_call_result(
+		quote!(UnifiedRouter::new().client(|client| { let transport: Other = make_transport(); transport.server(client) })),
+		quote!(UnifiedRouter::new().client(|client| { let transport: Other = make_transport(); transport.server(client) }))
 	)]
 	#[case::opaque_server_argument(
 		quote!(UnifiedRouter::new().server(|server| configure(server, UnifiedRouter::new().server(nested)))),
@@ -848,6 +886,13 @@ mod tests {
 	}
 
 	#[rstest]
+	#[case(quote!(UnifiedRouter::new().merge({ let router: UnifiedRouter = make_router(); router.server(crate::native::configure) })))]
+	#[case(quote!(UnifiedRouter::new().merge({ let router: reinhardt::UnifiedRouter = router_value; router.server(crate::native::configure) })))]
+	#[case(quote!(UnifiedRouter::new().merge({ let router: UnifiedRouter; router = make_router(); router.server(crate::native::configure) })))]
+	#[case(quote!(UnifiedRouter::new().merge({ let apply = |router: UnifiedRouter| router.server(crate::native::configure); apply(UnifiedRouter::new()) })))]
+	#[case(quote!(UnifiedRouter::new().merge({ let apply = |(router): reinhardt::UnifiedRouter| router.server(crate::native::configure); apply(UnifiedRouter::new()) })))]
+	#[case(quote!(UnifiedRouter::new().merge(make_router().server(crate::native::configure))))]
+	#[case(quote!(UnifiedRouter::new().merge(make_router().with_prefix("/api/").server(crate::native::configure))))]
 	#[case(quote!(UnifiedRouter::new().merge(UnifiedRouter::new().server(configure))))]
 	#[case(quote!(UnifiedRouter::new().merge({ let router = UnifiedRouter::new(); router.server(configure) })))]
 	#[case(quote!(UnifiedRouter::new().merge(if let router = UnifiedRouter::new() { router.server(configure) } else { unreachable!() })))]

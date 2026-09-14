@@ -338,7 +338,12 @@ Provides compile-time code generation for common patterns.
     `mount_unified`, and `merge`
   - Put native imports inside the server argument or in cfg-gated modules.
     Extract nested server builders into separate annotated functions. This also
-    applies to local router bindings with type annotations or parentheses
+    applies to local router bindings and closure parameters explicitly typed as
+    `UnifiedRouter`, including qualified types and parenthesized bindings.
+    Call results are conservatively treated as potential routers because helper
+    return types are unavailable to the macro; move their nested `.server(...)`
+    calls into annotated functions. An explicit unrelated local type keeps its
+    own `server` method available
   - Available as `reinhardt::url_patterns`, including on WASM. Declare the
     caller's custom `server` cfg in `build.rs` and enable it for native server
     builds; `client-router` is required for browser routing
