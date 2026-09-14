@@ -330,6 +330,14 @@ pub mod urls {
 		mod stub {
 			/// Empty stand-in for `reinhardt_urls::routers::ServerRouter`.
 			pub struct ServerRouter;
+
+			impl ServerRouter {
+				/// Accepts and discards an exception handler in the no-op WASM stub.
+				pub fn with_exception_handler<H>(self, _exception_handler: H) -> Self {
+					self
+				}
+			}
+
 			/// Empty stand-in for `reinhardt_urls::routers::client_router::ClientRouter`.
 			pub struct ClientRouter;
 
@@ -362,6 +370,11 @@ pub mod urls {
 				where
 					F: FnOnce(ClientRouter) -> ClientRouter,
 				{
+					self
+				}
+
+				/// Accepts and discards an exception handler in the no-op WASM stub.
+				pub fn with_exception_handler<H>(self, _exception_handler: H) -> Self {
 					self
 				}
 			}

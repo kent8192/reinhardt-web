@@ -47,6 +47,7 @@
 use crate::routers::UrlReverser;
 use matchit::Router as MatchitRouter;
 use reinhardt_di::InjectionContext;
+use reinhardt_http::ExceptionHandler;
 use reinhardt_middleware::Middleware;
 #[cfg(feature = "viewsets")]
 use std::collections::HashMap;
@@ -211,4 +212,13 @@ pub struct ServerRouter {
 
 	/// Flag indicating if routes have been compiled (uses RwLock for thread-safety)
 	pub(crate) routes_compiled: RwLock<bool>,
+
+	/// Applied instead of the default `Response::from` conversion when a request
+	/// fails.
+	///
+	/// Set through [`ServerRouter::with_exception_handler`]. Errors raised by
+	/// this router's own middleware inherit the handler from the chain built in
+	/// the `Handler` impl. The setter is not propagated to child routers mounted
+	/// with `mount`; set the handler on the router that serves the request.
+	pub(crate) exception_handler: Option<Arc<dyn ExceptionHandler>>,
 }

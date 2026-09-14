@@ -13,7 +13,7 @@ use reinhardt_urls::routers::DefaultRouter;
 use std::sync::Arc;
 use tracing::{debug, error, trace, warn};
 
-use crate::DispatchError;
+use crate::{DispatchError, exception::exception_to_dispatch_error};
 
 /// Base HTTP request handler
 ///
@@ -67,10 +67,37 @@ impl BaseHandler {
 	/// 1. Emits `request_started` signal
 	/// 2. Resolves URL and dispatches to view
 	/// 3. Emits `request_finished` signal
+	/// 4. Converts an unmatched route into a 404 response
 	pub async fn handle_request(
 		&self,
 		request: Request,
 	) -> std::result::Result<Response, DispatchError> {
+		match self.handle_request_with_errors(request).await {
+			Err(DispatchError::UrlResolution(_)) => Ok(Response::new(StatusCode::NOT_FOUND)),
+			response => response,
+		}
+	}
+
+	/// Handle a request while preserving routing and view failures for an outer
+	/// exception handler.
+	async fn handle_request_with_errors(
+		&self,
+		request: Request,
+	) -> std::result::Result<Response, DispatchError> {
+		self.handle_request_with_framework_errors(request)
+			.await
+			.map_err(exception_to_dispatch_error)
+	}
+
+	/// Handle a request while preserving the original framework error variants.
+	///
+	/// The HTTP exception-handler adapter uses this path so an endpoint's
+	/// authentication, authorization, validation, or conflict error reaches the
+	/// application handler without being reclassified as a generic view error.
+	async fn handle_request_with_framework_errors(
+		&self,
+		request: Request,
+	) -> reinhardt_core::exception::Result<Response> {
 		trace!("Handling request: {:?}", request.uri);
 
 		// Emit request_started signal
@@ -96,12 +123,12 @@ impl BaseHandler {
 	/// This is the core request processing logic that:
 	/// - Resolves the URL using the router
 	/// - Dispatches to the matched handler
-	/// - Returns a 404 response if no route matches
-	/// - Returns error for handler errors (will be converted to 500 by Handler trait)
+	/// - Returns a routing error if no route matches
+	/// - Returns an error for handler failures
 	async fn get_response_async(
 		request: Request,
 		router: Option<&Arc<DefaultRouter>>,
-	) -> std::result::Result<Response, DispatchError> {
+	) -> reinhardt_core::exception::Result<Response> {
 		debug!("Getting response for: {}", request.uri.path());
 
 		// URL resolution with router
@@ -116,19 +143,22 @@ impl BaseHandler {
 				}
 				Err(reinhardt_core::exception::Error::NotFound(msg)) => {
 					debug!("No route matched: {}", msg);
-					return Ok(Response::new(StatusCode::NOT_FOUND));
+					return Err(reinhardt_core::exception::Error::NotFound(msg));
 				}
 				Err(e) => {
 					error!("Handler error: {}", e);
-					// Return error to allow middleware chain to handle it
-					return Err(DispatchError::View(e.to_string()));
+					// Return the original error so an installed exception handler can
+					// preserve its status and variant.
+					return Err(e);
 				}
 			}
 		}
 
-		// Fallback: router not configured, return 404 since no routes can match
-		debug!("No router configured, returning 404 Not Found");
-		Ok(Response::new(StatusCode::NOT_FOUND))
+		// Fallback: router not configured, so no routes can match.
+		debug!("No router configured, returning a URL resolution error");
+		Err(reinhardt_core::exception::Error::NotFound(
+			"No router configured".to_owned(),
+		))
 	}
 
 	/// Process an exception and convert it to a response.
@@ -161,8 +191,15 @@ impl Default for BaseHandler {
 #[async_trait::async_trait]
 impl Handler for BaseHandler {
 	async fn handle(&self, request: Request) -> reinhardt_core::exception::Result<Response> {
-		match self.handle_request(request).await {
+		let has_exception_handler = request
+			.extensions
+			.contains::<Arc<dyn reinhardt_http::ExceptionHandler>>();
+		if has_exception_handler {
+			return self.handle_request_with_framework_errors(request).await;
+		}
+		match self.handle_request_with_errors(request).await {
 			Ok(response) => Ok(response),
+			Err(DispatchError::UrlResolution(_)) => Ok(Response::new(StatusCode::NOT_FOUND)),
 			Err(e) => {
 				// Log the detailed error server-side; return generic message to client
 				error!("Handler error in BaseHandler::handle: {}", e);
@@ -177,11 +214,15 @@ impl Handler for BaseHandler {
 
 #[cfg(test)]
 mod tests {
+	use std::sync::Mutex;
+
 	use super::*;
 	use async_trait::async_trait;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, Version};
+	use reinhardt_http::{ExceptionHandler, ExceptionHandlingHandler, Middleware, MiddlewareChain};
 	use reinhardt_urls::routers::{DefaultRouter, Router, path};
+	use rstest::rstest;
 
 	// Test handler for routing tests
 	struct TestHandler {
@@ -307,6 +348,327 @@ mod tests {
 		assert!(!body.contains("handlers.rs"));
 		assert!(!body.contains("secret_handler"));
 		assert_eq!(body, "Internal Server Error");
+	}
+
+	struct TeapotExceptionHandler;
+
+	#[async_trait]
+	impl ExceptionHandler for TeapotExceptionHandler {
+		async fn handle_exception(
+			&self,
+			_request: &Request,
+			_error: reinhardt_core::exception::Error,
+		) -> Response {
+			Response::new(StatusCode::IM_A_TEAPOT).with_body("teapot")
+		}
+	}
+
+	struct StatusExceptionHandler;
+
+	#[async_trait]
+	impl ExceptionHandler for StatusExceptionHandler {
+		async fn handle_exception(
+			&self,
+			_request: &Request,
+			error: reinhardt_core::exception::Error,
+		) -> Response {
+			let status = StatusCode::from_u16(error.status_code())
+				.unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+			Response::new(status)
+		}
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn base_handler_routing_errors_reach_http_exception_handler() {
+		// Arrange
+		let base = Arc::new(BaseHandler::with_router(Arc::new(DefaultRouter::new())));
+		let handler = ExceptionHandlingHandler::new(base, Arc::new(TeapotExceptionHandler));
+		let request = Request::builder()
+			.method(Method::GET)
+			.uri("/missing")
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+
+		// Act
+		let response = handler.handle(request).await.unwrap();
+
+		// Assert
+		assert_eq!(response.status, StatusCode::IM_A_TEAPOT);
+		assert_eq!(response.body, Bytes::from_static(b"teapot"));
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn base_handler_view_errors_reach_http_exception_handler() {
+		struct FailingHandler;
+
+		#[async_trait]
+		impl Handler for FailingHandler {
+			async fn handle(
+				&self,
+				_request: Request,
+			) -> reinhardt_core::exception::Result<Response> {
+				Err(reinhardt_core::exception::Error::Internal(
+					"view failed".to_owned(),
+				))
+			}
+		}
+
+		// Arrange
+		let mut router = DefaultRouter::new();
+		router.add_route(path("/fail", Arc::new(FailingHandler)));
+		let base = Arc::new(BaseHandler::with_router(Arc::new(router)));
+		let handler = ExceptionHandlingHandler::new(base, Arc::new(TeapotExceptionHandler));
+		let request = Request::builder()
+			.method(Method::GET)
+			.uri("/fail")
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+
+		// Act
+		let response = handler.handle(request).await.unwrap();
+
+		// Assert
+		assert_eq!(response.status, StatusCode::IM_A_TEAPOT);
+		assert_eq!(response.body, Bytes::from_static(b"teapot"));
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn base_handler_preserves_endpoint_error_status_for_http_exception_handler() {
+		struct AuthenticationHandler;
+
+		#[async_trait]
+		impl Handler for AuthenticationHandler {
+			async fn handle(
+				&self,
+				_request: Request,
+			) -> reinhardt_core::exception::Result<Response> {
+				Err(reinhardt_core::exception::Error::Authentication(
+					"credentials rejected".to_owned(),
+				))
+			}
+		}
+
+		// Arrange
+		let mut router = DefaultRouter::new();
+		router.add_route(path("/private", Arc::new(AuthenticationHandler)));
+		let base = Arc::new(BaseHandler::with_router(Arc::new(router)));
+		let handler = ExceptionHandlingHandler::new(base, Arc::new(StatusExceptionHandler));
+		let request = Request::builder()
+			.method(Method::GET)
+			.uri("/private")
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+
+		// Act
+		let response = handler.handle(request).await.unwrap();
+
+		// Assert: the endpoint's authentication error is not reclassified as 500.
+		assert_eq!(response.status, StatusCode::UNAUTHORIZED);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn base_handler_exception_handler_receives_resolved_path_params() {
+		struct FailingHandler;
+
+		#[async_trait]
+		impl Handler for FailingHandler {
+			async fn handle(
+				&self,
+				_request: Request,
+			) -> reinhardt_core::exception::Result<Response> {
+				Err(reinhardt_core::exception::Error::Internal(
+					"view failed".to_owned(),
+				))
+			}
+		}
+
+		struct PassthroughMiddleware;
+
+		#[async_trait]
+		impl Middleware for PassthroughMiddleware {
+			async fn process(
+				&self,
+				request: Request,
+				next: Arc<dyn Handler>,
+			) -> reinhardt_core::exception::Result<Response> {
+				next.handle(request).await
+			}
+		}
+
+		struct PathParamExceptionHandler {
+			observed: Arc<Mutex<Option<String>>>,
+		}
+
+		#[async_trait]
+		impl ExceptionHandler for PathParamExceptionHandler {
+			async fn handle_exception(
+				&self,
+				request: &Request,
+				_error: reinhardt_core::exception::Error,
+			) -> Response {
+				*self.observed.lock().unwrap() = request.path_params.get("id").cloned();
+				Response::new(StatusCode::IM_A_TEAPOT)
+			}
+		}
+
+		// Arrange
+		let observed = Arc::new(Mutex::new(None));
+		let mut router = DefaultRouter::new();
+		let mut route = path("/items/{id}", Arc::new(FailingHandler));
+		route.name = Some("item".to_owned());
+		router.add_route(route);
+		let base = Arc::new(BaseHandler::with_router(Arc::new(router)));
+		let handler = MiddlewareChain::new(base)
+			.with_middleware(Arc::new(PassthroughMiddleware))
+			.with_exception_handler(Arc::new(PathParamExceptionHandler {
+				observed: Arc::clone(&observed),
+			}));
+		let request = Request::builder()
+			.method(Method::GET)
+			.uri("/items/42")
+			.version(Version::HTTP_11)
+			.headers(HeaderMap::new())
+			.body(Bytes::new())
+			.build()
+			.unwrap();
+
+		// Act
+		let response = handler.handle(request).await.unwrap();
+
+		// Assert
+		assert_eq!(response.status, StatusCode::IM_A_TEAPOT);
+		assert_eq!(*observed.lock().unwrap(), Some("42".to_owned()));
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn middleware_chain_exception_handler_refreshes_path_params_for_all_error_paths() {
+		struct Endpoint {
+			fails: bool,
+		}
+
+		#[async_trait]
+		impl Handler for Endpoint {
+			async fn handle(
+				&self,
+				_request: Request,
+			) -> reinhardt_core::exception::Result<Response> {
+				if self.fails {
+					Err(reinhardt_core::exception::Error::Internal(
+						"endpoint failed".to_owned(),
+					))
+				} else {
+					Ok(Response::ok())
+				}
+			}
+		}
+
+		struct RecordingExceptionHandler {
+			observed: Arc<Mutex<Vec<Option<String>>>>,
+		}
+
+		#[async_trait]
+		impl ExceptionHandler for RecordingExceptionHandler {
+			async fn handle_exception(
+				&self,
+				request: &Request,
+				_error: reinhardt_core::exception::Error,
+			) -> Response {
+				self.observed
+					.lock()
+					.unwrap()
+					.push(request.path_params.get("id").cloned());
+				Response::new(StatusCode::IM_A_TEAPOT)
+			}
+		}
+
+		struct PostProcessingMiddleware {
+			fails: bool,
+		}
+
+		#[async_trait]
+		impl Middleware for PostProcessingMiddleware {
+			async fn process(
+				&self,
+				request: Request,
+				next: Arc<dyn Handler>,
+			) -> reinhardt_core::exception::Result<Response> {
+				let response = next.handle(request).await?;
+				if self.fails {
+					Err(reinhardt_core::exception::Error::Internal(
+						"middleware failed after next".to_owned(),
+					))
+				} else {
+					Ok(response)
+				}
+			}
+		}
+
+		let build_base = |fails| {
+			let mut router = DefaultRouter::new();
+			router.add_route(path("/items/{id}", Arc::new(Endpoint { fails })));
+			Arc::new(BaseHandler::with_router(Arc::new(router))) as Arc<dyn Handler>
+		};
+		let request = || {
+			Request::builder()
+				.method(Method::GET)
+				.uri("/items/42")
+				.version(Version::HTTP_11)
+				.headers(HeaderMap::new())
+				.body(Bytes::new())
+				.build()
+				.unwrap()
+		};
+		let observed = Arc::new(Mutex::new(Vec::new()));
+		let exception_handler = || {
+			Arc::new(RecordingExceptionHandler {
+				observed: Arc::clone(&observed),
+			})
+		};
+
+		// Arrange and act: the bare chain refreshes the context after routing.
+		let bare =
+			MiddlewareChain::new(build_base(true)).with_exception_handler(exception_handler());
+		let bare_response = bare.handle(request()).await.unwrap();
+
+		// Arrange and act: a single middleware can fail during post-processing.
+		let single = MiddlewareChain::new(build_base(false))
+			.with_middleware(Arc::new(PostProcessingMiddleware { fails: true }))
+			.with_exception_handler(exception_handler());
+		let single_response = single.handle(request()).await.unwrap();
+
+		// Arrange and act: the composed multi-middleware path has the same contract.
+		let composed = MiddlewareChain::new(build_base(false))
+			.with_middleware(Arc::new(PostProcessingMiddleware { fails: true }))
+			.with_middleware(Arc::new(PostProcessingMiddleware { fails: false }))
+			.with_exception_handler(exception_handler());
+		let composed_response = composed.handle(request()).await.unwrap();
+
+		// Assert
+		assert_eq!(bare_response.status, StatusCode::IM_A_TEAPOT);
+		assert_eq!(single_response.status, StatusCode::IM_A_TEAPOT);
+		assert_eq!(composed_response.status, StatusCode::IM_A_TEAPOT);
+		assert_eq!(
+			*observed.lock().unwrap(),
+			vec![
+				Some("42".to_owned()),
+				Some("42".to_owned()),
+				Some("42".to_owned())
+			]
+		);
 	}
 
 	#[test]

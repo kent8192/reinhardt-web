@@ -8,7 +8,7 @@ use super::types::MiddlewareInfo;
 use crate::routers::UrlReverser;
 use matchit::Router as MatchitRouter;
 use reinhardt_di::InjectionContext;
-use reinhardt_http::ExcludeMiddleware;
+use reinhardt_http::{ExceptionHandler, ExcludeMiddleware};
 use reinhardt_middleware::Middleware;
 #[cfg(feature = "viewsets")]
 use std::collections::HashMap;
@@ -103,7 +103,50 @@ impl ServerRouter {
 			head_router: RwLock::new(MatchitRouter::new()),
 			options_router: RwLock::new(MatchitRouter::new()),
 			routes_compiled: RwLock::new(false),
+			exception_handler: None,
 		}
+	}
+
+	/// Installs an exception handler for every failure this router produces.
+	///
+	/// Covers unmatched routes (404), method mismatches (405), errors raised by
+	/// the view or handler of a matched route, and errors raised by this router's
+	/// own middleware. Without one, errors are converted by
+	/// `impl From<Error> for Response`.
+	///
+	/// The handler applies to this router only. A server that wraps the router
+	/// must be given the same handler separately; `runserver` reads it back with
+	/// [`ServerRouter::exception_handler`] and forwards it.
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use async_trait::async_trait;
+	/// use hyper::StatusCode;
+	/// use reinhardt_http::{Error, ExceptionHandler, Request, Response};
+	/// use reinhardt_urls::routers::ServerRouter;
+	/// use std::sync::Arc;
+	///
+	/// struct TeapotErrors;
+	///
+	/// #[async_trait]
+	/// impl ExceptionHandler for TeapotErrors {
+	///     async fn handle_exception(&self, _request: &Request, _error: Error) -> Response {
+	///         Response::new(StatusCode::IM_A_TEAPOT)
+	///     }
+	/// }
+	///
+	/// let router = ServerRouter::new().with_exception_handler(Arc::new(TeapotErrors));
+	/// assert!(router.exception_handler().is_some());
+	/// ```
+	pub fn with_exception_handler(mut self, exception_handler: Arc<dyn ExceptionHandler>) -> Self {
+		self.exception_handler = Some(exception_handler);
+		self
+	}
+
+	/// Returns the installed exception handler, if any.
+	pub fn exception_handler(&self) -> Option<&Arc<dyn ExceptionHandler>> {
+		self.exception_handler.as_ref()
 	}
 
 	/// Set the prefix for this router

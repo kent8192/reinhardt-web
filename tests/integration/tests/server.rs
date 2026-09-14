@@ -19,6 +19,9 @@ mod server_middleware_integration_tests;
 #[path = "server/server_test_helpers.rs"]
 mod server_test_helpers;
 
+#[path = "server/exception_handler_integration.rs"]
+mod exception_handler_integration;
+
 #[path = "server/server_tests.rs"]
 mod server_tests;
 

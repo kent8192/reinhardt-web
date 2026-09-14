@@ -52,6 +52,9 @@ impl TrustedProxies {
 	}
 }
 
+#[derive(Clone)]
+struct ResolvedPathParams(PathParams);
+
 /// HTTP Request representation
 pub struct Request {
 	/// The HTTP method (GET, POST, PUT, etc.).
@@ -83,6 +86,9 @@ pub struct Request {
 	body_consumed: AtomicBool,
 	/// Extensions for storing arbitrary typed data
 	pub extensions: Extensions,
+	/// Whether routing should publish a shared path-parameter snapshot for an
+	/// installed exception handler.
+	exception_handler_installed: bool,
 }
 
 /// Builder for constructing `Request` instances.
@@ -462,6 +468,7 @@ impl RequestBuilder {
 			parsed_data: Mutex::new(None),
 			body_consumed: AtomicBool::new(false),
 			extensions: Extensions::new(),
+			exception_handler_installed: false,
 		})
 	}
 }
@@ -513,6 +520,38 @@ impl Request {
 	/// ```
 	pub fn set_di_context<T: Send + Sync + 'static>(&mut self, ctx: T) {
 		self.extensions.insert(Arc::new(ctx));
+	}
+
+	/// Installs an exception handler and enables routing-context snapshots.
+	#[doc(hidden)]
+	pub fn install_exception_handler(&mut self, handler: Arc<dyn crate::ExceptionHandler>) {
+		self.extensions.insert(handler);
+		self.exception_handler_installed = true;
+	}
+
+	/// Replaces the path parameters after a router resolves a request.
+	///
+	/// When an exception handler is installed, the resolved values are also kept
+	/// in the shared extensions store so a context captured before routing can
+	/// refresh its copied fields.
+	#[doc(hidden)]
+	pub fn set_path_params(&mut self, params: PathParams) {
+		self.path_params = params;
+		if self.exception_handler_installed {
+			self.extensions
+				.insert(ResolvedPathParams(self.path_params.clone()));
+		}
+	}
+
+	/// Refreshes copied path parameters from the shared routing context.
+	///
+	/// Exception handlers call this after an inner router has consumed the
+	/// original request and populated its resolved parameters.
+	#[doc(hidden)]
+	pub fn sync_path_params_from_shared_state(&mut self) {
+		if let Some(params) = self.extensions.get::<ResolvedPathParams>() {
+			self.path_params = params.0;
+		}
 	}
 
 	/// Get the DI context from this request
@@ -983,6 +1022,7 @@ impl Request {
 			parsed_data: Mutex::new(None),
 			body_consumed: AtomicBool::new(false),
 			extensions: self.extensions.clone(),
+			exception_handler_installed: self.exception_handler_installed,
 		}
 	}
 }
@@ -1256,5 +1296,26 @@ mod tests {
 			request.extensions.get::<String>(),
 			Some("from_clone".to_string())
 		);
+	}
+
+	#[rstest]
+	fn test_set_path_params_skips_shared_snapshot_without_exception_handler() {
+		// Arrange
+		let mut request = Request::builder()
+			.method(Method::GET)
+			.uri("/items/42")
+			.build()
+			.unwrap();
+		let params = PathParams::from_iter([(String::from("id"), String::from("42"))]);
+
+		// Act
+		request.set_path_params(params);
+
+		// Assert
+		assert_eq!(
+			request.path_params.get("id").map(String::as_str),
+			Some("42")
+		);
+		assert!(request.extensions.get::<ResolvedPathParams>().is_none());
 	}
 }
