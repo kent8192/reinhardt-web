@@ -1,0 +1,5 @@
+error: unknown field presentation property `maxlength`
+  --> tests/ui/client_form/view/fail/validation_override.rs:10:12
+   |
+10 |             text: { maxlength: 10 }
+   |                     ^^^^^^^^^

@@ -11,6 +11,9 @@ use syn::{
 
 use crate::crate_paths::get_reinhardt_pages_crate;
 
+mod binding;
+mod view;
+
 const CLIENT_FORM_ATTRIBUTE_MARKER: &str = "__reinhardt_client_form_attribute";
 
 /// Derives a `use_form` compatible companion form for a DTO request type.
@@ -157,6 +160,7 @@ fn expand_client_form(input: DeriveInput) -> syn::Result<proc_macro2::TokenStrea
 			field.ty,
 			kind,
 			serialized_name,
+			view::positive_length_min(&field.attrs),
 		));
 	}
 
@@ -232,6 +236,7 @@ struct FormItemContext<'a> {
 }
 
 fn generate_form_items(context: FormItemContext<'_>) -> proc_macro2::TokenStream {
+	let view_items = view::generate(&context);
 	let FormItemContext {
 		dto_vis,
 		dto_ident,
@@ -250,7 +255,7 @@ fn generate_form_items(context: FormItemContext<'_>) -> proc_macro2::TokenStream
 	let numeric_field_tokens = field_token_fields
 		.iter()
 		.copied()
-		.filter(|field| matches!(&field.kind, FieldKind::Scalar))
+		.filter(|field| matches!(&field.kind, FieldKind::Scalar | FieldKind::OptionScalar))
 		.collect::<Vec<_>>();
 
 	let value_field_defs = fields.iter().map(|field| {
@@ -352,15 +357,17 @@ fn generate_form_items(context: FormItemContext<'_>) -> proc_macro2::TokenStream
 		let name = &field.name;
 		let variant = &field.variant;
 		let value_ty = field.value_ty();
-		let clear_number_error = matches!(&field.kind, FieldKind::Scalar).then(|| {
-			let error = field.number_error_ident();
-			quote! { self.#error.set(::core::option::Option::None); }
-		});
+		let clear_number_error = matches!(&field.kind, FieldKind::Scalar | FieldKind::OptionScalar)
+			.then(|| {
+				let error = field.number_error_ident();
+				quote! { self.#error.set(::core::option::Option::None); }
+			});
 		quote! {
 			#field_ident::#variant => {
 				let value = ::std::boxed::Box::new(value) as ::std::boxed::Box<dyn ::core::any::Any>;
 				match value.downcast::<#value_ty>() {
 					::core::result::Result::Ok(value) => #pages_crate::reactive::batch(|| {
+						self.__source_preferred_fields.borrow_mut().insert(field);
 						self.#name.set(*value);
 						#clear_number_error
 					}),
@@ -430,7 +437,7 @@ fn generate_form_items(context: FormItemContext<'_>) -> proc_macro2::TokenStream
 					::core::option::Option::Some(#pages_crate::component::ControlBinding::checkbox(self.#name))
 				},
 			}),
-			_ => None,
+			_ => binding::additional_arm(field, field_ident, pages_crate),
 		}
 	});
 	let custom_widget_error_arms = numeric_field_tokens.iter().map(|field| {
@@ -511,10 +518,13 @@ fn generate_form_items(context: FormItemContext<'_>) -> proc_macro2::TokenStream
 	};
 
 	quote! {
+		#view_items
 		#[derive(Clone)]
 		#dto_vis struct #form_ident {
 			__initial_values: ::std::rc::Rc<::std::cell::RefCell<#values_ident>>,
 			__explicitly_reset: ::std::rc::Rc<::std::cell::Cell<bool>>,
+			__source_preferred_fields: ::std::rc::Rc<::std::cell::RefCell<::std::collections::HashSet<#field_ident>>>,
+			__native_reset_epoch: #pages_crate::reactive::Signal<u64>,
 			#(#form_field_defs,)*
 			#(#number_error_field_defs,)*
 		}
@@ -545,6 +555,8 @@ fn generate_form_items(context: FormItemContext<'_>) -> proc_macro2::TokenStream
 				Self {
 					__initial_values: ::std::rc::Rc::new(::std::cell::RefCell::new(__initial_values.clone())),
 					__explicitly_reset: ::std::rc::Rc::new(::std::cell::Cell::new(false)),
+					__source_preferred_fields: ::std::rc::Rc::new(::std::cell::RefCell::new(::std::collections::HashSet::new())),
+					__native_reset_epoch: #pages_crate::reactive::Signal::new(0),
 					#(#signal_initializers,)*
 					#(#number_error_initializers,)*
 				}
@@ -557,6 +569,7 @@ fn generate_form_items(context: FormItemContext<'_>) -> proc_macro2::TokenStream
 				};
 				<#form_ident as #pages_crate::FormRuntimeSource>::runtime_apply_values(&self, &values);
 				*self.__initial_values.borrow_mut() = values;
+				self.__source_preferred_fields.borrow_mut().clear();
 				self
 			}
 
@@ -599,15 +612,24 @@ fn generate_form_items(context: FormItemContext<'_>) -> proc_macro2::TokenStream
 					_ => ::core::option::Option::None,
 				};
 				binding.map(|binding| {
+					let target = binding.target();
 					binding.prefer_source_on_hydration({
 						let explicitly_reset = self.__explicitly_reset.clone();
-						move || explicitly_reset.get()
+						let preferred_fields = self.__source_preferred_fields.clone();
+						move || explicitly_reset.get() || preferred_fields.borrow().contains(&field)
+					}).with_lifetime_target(target).on_native_reset({
+						let epoch = self.__native_reset_epoch;
+						move || epoch.set(epoch.get_untracked().wrapping_add(1))
 					})
 				})
 			}
 
 			fn runtime_reset_state(&self) {
 				self.__explicitly_reset.set(true);
+			}
+
+			fn runtime_native_reset_epoch(&self) -> u64 {
+				self.__native_reset_epoch.get()
 			}
 
 			fn runtime_field_by_name(&self, name: &str) -> ::core::option::Option<Self::Field> {
@@ -1056,6 +1078,7 @@ struct EditableField {
 	vis: Visibility,
 	ty: Type,
 	kind: FieldKind,
+	positive_length_min: bool,
 }
 
 impl EditableField {
@@ -1065,6 +1088,7 @@ impl EditableField {
 		ty: Type,
 		kind: FieldKind,
 		serialized_name: String,
+		positive_length_min: bool,
 	) -> Self {
 		let variant = format_ident!(
 			"{}",
@@ -1077,6 +1101,7 @@ impl EditableField {
 			vis,
 			ty,
 			kind,
+			positive_length_min,
 		}
 	}
 

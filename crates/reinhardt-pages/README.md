@@ -501,7 +501,12 @@ the catalog.
 
 ### Forms: Static Definition and Dynamic Behavior
 
-`form!` defines static form structure: field names, widgets, labels,
+`form!` can render a named ClientForm's existing mutation with
+`client_form: LoginRequestClientForm, mutation: &mutation`. The DTO owns the
+field set and validation, and the view shares the mutation's runtime. See the
+[named ClientForm guide](docs/client_forms.md) for complete examples.
+
+The standalone `form!` mode defines static form structure: field names, widgets, labels,
 validation metadata, server function binding, and rendering. `use_form` owns
 typed runtime behavior: values, field signals, dirty/touched state, validation
 errors, loading, success, reset, and submit orchestration.
@@ -606,6 +611,11 @@ The supported value/control matrix is:
 | `bool` | checkbox |
 | `Vec<String>` | select-many |
 
+Named `ClientForm` fields additionally support optional primitive numbers with
+number inputs, optional booleans with three-state selects, and required/optional
+`ClientFormChoiceSource` enums with select-one controls. Selects use opaque DOM
+tokens while the runtime and submitted DTO retain their typed values.
+
 `RangeInput` and `input[type=range]` are not currently compatible with a typed
 runtime field binding; use an unbound or application-specific path for range
 controls.
@@ -616,7 +626,7 @@ touched/dirty/submitting/success state, and returns `use_form_action` handles
 to idle. It is not automatic after a successful submit and is not connected to
 a native `<button type="reset">` or reset event. Use
 `runtime.sync_after_native_reset()` for application-owned controls after the
-browser resets them. Generated `form!` controls synchronize browser defaults
+browser resets them. Generated `form!` and `ClientForm` controls synchronize browser defaults
 automatically without invoking `runtime.reset()`. Pending network work continues;
 stale form-action completions cannot repopulate form-owned submit state, while
 standalone `use_action` handles are outside this reset boundary. Reset skips

@@ -27,6 +27,91 @@ use wasm_bindgen_test::*;
 
 wasm_bindgen_test_configure!(run_in_browser);
 
+#[rstest::rstest]
+#[test_attr(wasm_bindgen_test)]
+#[serial(form_control_hydration_dom)]
+async fn empty_presentation_text_preserves_sibling_alignment_during_hydration() {
+	form_scope::run(async {
+		for text in ["", " ", "\t\n"] {
+			// Arrange
+			let page = PageElement::new("div")
+				.child(Page::text(text))
+				.child(PageElement::new("label").child(Page::text(text)))
+				.child(
+					PageElement::new("select").child(
+						PageElement::new("option")
+							.attr("value", "none")
+							.child(Page::text(text)),
+					),
+				)
+				.child(Page::text("after"))
+				.into_page();
+			let mounted = MountedPage::new();
+			mounted.0.set_inner_html(&page.render_to_string());
+			// Act / Assert
+			assert_eq!(reconcile(&mounted.root(), &page), Ok(()));
+			assert_eq!(
+				reconcile_with_options(&mounted.root(), &page, &ReconcileOptions::default()),
+				Ok(())
+			);
+			assert_eq!(
+				attach_events_to_mounted_view(&mounted.root(), &page),
+				Ok(())
+			);
+		}
+	})
+	.await;
+}
+
+#[rstest::rstest]
+#[test_attr(wasm_bindgen_test)]
+#[serial(form_control_hydration_dom)]
+async fn pre_whitespace_mismatch_is_not_filtered_during_hydration() {
+	form_scope::run(async {
+		// Arrange: whitespace is meaningful content inside a preformatted element.
+		let page = PageElement::new("pre").child(Page::text("\t")).into_page();
+		let mounted = MountedPage::new();
+		mounted.0.set_inner_html("<pre> </pre>");
+
+		// Act
+		let result = reconcile(&mounted.root(), &page);
+
+		// Assert: a whitespace-only difference remains a hydration mismatch.
+		let Err(ReconcileError::TextMismatch {
+			expected, actual, ..
+		}) = result
+		else {
+			panic!("expected pre text mismatch, got {result:?}");
+		};
+		assert_eq!(expected, "\t");
+		assert_eq!(actual, " ");
+	})
+	.await;
+}
+
+#[rstest::rstest]
+#[test_attr(wasm_bindgen_test)]
+#[serial(form_control_hydration_dom)]
+async fn pre_leading_newlines_survive_ssr_parsing_and_hydration() {
+	form_scope::run(async {
+		for source in ["\ncode", "\rcode", "\r\ncode"] {
+			// Arrange: parse the actual SSR markup with the browser's HTML parser.
+			let page = PageElement::new("pre")
+				.child(Page::text(source))
+				.into_page();
+			let mounted = MountedPage::new();
+			mounted.0.set_inner_html(&page.render_to_string());
+			let expected = source.replace("\r\n", "\n").replace('\r', "\n");
+			let pre = mounted.0.first_element_child().unwrap();
+			assert_eq!(pre.text_content().as_deref(), Some(expected.as_str()));
+
+			// Act and assert: hydration accepts the parser-normalized raw text.
+			assert_eq!(reconcile(&mounted.root(), &page), Ok(()));
+		}
+	})
+	.await;
+}
+
 struct MountedPage(web_sys::Element);
 
 impl MountedPage {
