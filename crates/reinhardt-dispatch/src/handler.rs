@@ -214,6 +214,8 @@ impl Handler for BaseHandler {
 
 #[cfg(test)]
 mod tests {
+	use std::sync::Mutex;
+
 	use super::*;
 	use async_trait::async_trait;
 	use bytes::Bytes;
