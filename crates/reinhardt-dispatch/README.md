@@ -138,12 +138,37 @@ error variant when a `BaseHandler` is wrapped by an exception-aware server or
 middleware chain. Adapt an existing dispatch hook when installing it through a
 server, router, or middleware API:
 
-```rust,ignore
+```rust
 use std::sync::Arc;
-use reinhardt_dispatch::{adapt_exception_handler, ExceptionHandler};
+use async_trait::async_trait;
+use hyper::StatusCode;
+use reinhardt_core::exception::Error;
+use reinhardt_dispatch::{adapt_exception_handler, DispatchError, ExceptionHandler};
+use reinhardt_http::{Request, Response};
 
-let legacy: Arc<dyn ExceptionHandler> = Arc::new(MyDispatchErrors);
-let http_handler = adapt_exception_handler(legacy);
+struct MyDispatchErrors;
+
+#[async_trait]
+impl ExceptionHandler for MyDispatchErrors {
+    async fn handle_exception(&self, _request: &Request, error: DispatchError) -> Response {
+        let status = match error {
+            DispatchError::UrlResolution(_) => StatusCode::NOT_FOUND,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        };
+        Response::new(status)
+    }
+}
+
+#[tokio::main]
+async fn main() {
+    let legacy: Arc<dyn ExceptionHandler> = Arc::new(MyDispatchErrors);
+    let http_handler = adapt_exception_handler(legacy);
+    let request = Request::builder().uri("/missing").build().unwrap();
+    let response = http_handler
+        .handle_exception(&request, Error::NotFound("route not found".into()))
+        .await;
+    assert_eq!(response.status, StatusCode::NOT_FOUND);
+}
 ```
 
 The dispatch-specific `DispatchError` type is converted to the unified error
