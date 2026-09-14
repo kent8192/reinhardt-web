@@ -245,6 +245,31 @@ automatically:
 4. Generates/updates CHANGELOG.md files
 5. Creates a Release PR
 
+For `main`, `scripts/run-release-pr.sh` compares against the root package's
+current stable release tag (`reinhardt-web@v<VERSION>`) using release-plz's
+`--registry-manifest-path` option. The tag must exist, be reachable from the
+current commit, and contain the matching package name and stable version.
+A temporary detached worktree supplies that baseline and is removed on exit.
+Missing or inconsistent tags stop release generation instead of falling back
+to the registry's latest prerelease from `develop/*`. Develop release generation
+continues to use the registry baseline.
+
+This selects the comparison source; it does not suppress API incompatibilities
+or breaking Conventional Commits. Patch releases must satisfy the stability
+policy, including any explicitly version-scoped security exception. To inspect
+the same comparison locally without opening a PR,
+run `GITHUB_REF_NAME=main bash scripts/run-release-pr.sh update` in an isolated
+worktree. The `update` command modifies local manifests and changelogs.
+
+For 0.3.17, [ST-2](STABILITY_POLICY.md#st-2-scoped-security-exception-for-0317)
+permits the already-landed GraphQL-over-gRPC construction and subscription
+error-delivery changes. Review the generated Release PR for the intended
+0.3.17 version across the release group and retain the prominent breaking
+security notice and [migration guide](MIGRATION_0.3.17.md). Runtime compatibility
+must be reviewed separately from `cargo-semver-checks`; keep the check enabled
+and investigate any additional incompatibility. Release-plz continues to own
+manifest version updates, and merging a preparation PR does not publish crates.
+
 **Release PR includes:**
 - Version bumps in `Cargo.toml`
 - Updated CHANGELOG.md files

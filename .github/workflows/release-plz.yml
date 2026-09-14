@@ -140,49 +140,35 @@ jobs:
           version: "28.x"
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Run release-plz release-pr
-        id: release-plz-pr-action
-        uses: release-plz/action@v0.5
+      - name: Install cargo-semver-checks
+        uses: taiki-e/install-action@c3ec0de9ae7f1019cea21aa96aa0a895b9552063 # v2.87.9
         with:
-          command: release-pr
+          tool: cargo-semver-checks@0.50.0
+
+      - name: Install cargo-binstall
+        uses: cargo-bins/cargo-binstall@b874e25ea559687bec77e281e9b271aa1367b624 # v1.23.0
+        env:
+          BINSTALL_VERSION: 1.23.0
+
+      - name: Install release-plz
+        run: cargo-binstall release-plz@0.3.165 --force --strategies=crate-meta-data,compile --no-confirm
+
+      - name: Configure release commit author
+        uses: release-plz/git-config@59144859caf016f8b817a2ac9b051578729173c4
+        env:
+          GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
+
+      - name: Run release-plz against the release base
+        id: release-plz-pr
         env:
           GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-
-      - name: Validate release-plz release-pr result
-        id: release-plz-pr
-        env:
-          RAW_PR_JSON: ${{ steps.release-plz-pr-action.outputs.pr }}
-          RAW_PRS_JSON: ${{ steps.release-plz-pr-action.outputs.prs }}
-          RAW_PRS_CREATED: ${{ steps.release-plz-pr-action.outputs.prs_created }}
-          GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
         run: |
           set -euo pipefail
-
-          if [ "$RAW_PRS_CREATED" = "true" ] && [ -n "$RAW_PR_JSON" ] && [ "$RAW_PR_JSON" != "{}" ]; then
-            echo "release-plz/action created or updated a Release PR."
-            echo "pr=$RAW_PR_JSON" >> "$GITHUB_OUTPUT"
-            echo "prs=$RAW_PRS_JSON" >> "$GITHUB_OUTPUT"
-            echo "prs_created=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          echo "release-plz/action reported no Release PRs; rerunning release-plz CLI strictly."
-          release_pr_stderr=$(mktemp)
-          trap 'rm -f "$release_pr_stderr"' EXIT
-
-          if ! release_pr_output=$(release-plz release-pr \
-            --git-token "$GITHUB_TOKEN" \
-            --repo-url "https://github.com/${GITHUB_REPOSITORY}" \
-            --config release-plz.toml \
-            -o json 2>"$release_pr_stderr"); then
-            cat "$release_pr_stderr" >&2
-            echo "::error::release-plz release-pr failed after the action reported no PRs; refusing to mask this as a no-op."
-            exit 1
-          fi
-
+          # Propagate CLI failures directly; do not retry without the stable baseline.
+          release_pr_output=$(bash scripts/run-release-pr.sh)
           echo "release_pr_output: $release_pr_output"
-          prs=$(jq -c '.prs // []' <<< "$release_pr_output")
+          prs=$(jq -ce '.prs | if type == "array" then . else error("missing release PR array") end' <<< "$release_pr_output")
           prs_length=$(jq 'length' <<< "$prs")
           if [ "$prs_length" != "0" ]; then
             first_pr=$(jq -c '.[0]' <<< "$prs")

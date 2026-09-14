@@ -112,11 +112,11 @@ Add `reinhardt` to your `Cargo.toml`:
 <!-- reinhardt-version-sync:3 -->
 ```toml
 [dependencies]
-reinhardt = { version = "0.3.16", features = ["graphql"] }
+reinhardt = { version = "0.3.17", features = ["graphql"] }
 
 # Or use a preset:
-# reinhardt = { version = "0.3.16", features = ["standard"] }  # Recommended
-# reinhardt = { version = "0.3.16", features = ["full"] }      # All features
+# reinhardt = { version = "0.3.17", features = ["standard"] }  # Recommended
+# reinhardt = { version = "0.3.17", features = ["full"] }      # All features
 ```
 
 Then import GraphQL features:
@@ -133,10 +133,10 @@ use reinhardt::graphql::types::{UserStorage, UserEvent};
 <!-- reinhardt-version-sync:2 -->
 ```toml
 # With dependency injection
-reinhardt = { version = "0.3.16", features = ["graphql", "di"] }
+reinhardt = { version = "0.3.17", features = ["graphql", "di"] }
 
 # With gRPC transport
-reinhardt = { version = "0.3.16", features = ["graphql", "grpc"] }
+reinhardt = { version = "0.3.17", features = ["graphql", "grpc"] }
 ```
 
 ## Examples
@@ -254,6 +254,11 @@ async fn handler(
 ```
 
 ### GraphQL over gRPC Server
+
+**0.3.17 security release:** Custom schema construction and subscription error
+delivery change in this release under a scoped patch compatibility exception.
+Read the [0.3.17 migration guide](https://github.com/kent8192/reinhardt-web/blob/main/instructions/MIGRATION_0.3.17.md)
+before upgrading.
 
 **Migration:** Replace `Schema::build(...)` or `Schema::new(...)` with
 `GraphQLGrpcService::schema_builder(...).finish()` (keep existing builder calls

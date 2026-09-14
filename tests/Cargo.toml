@@ -96,6 +96,10 @@ async-stream = "0.3"
 
 [build-dependencies]
 tonic-prost-build = { workspace = true }
+# Declares the `wasm` / `native` cfg aliases consumed by generated model code.
+# Not a workspace dependency: `cfg_aliases` is declared directly in each package
+# that uses it.
+cfg_aliases = "0.2"
 
 [lib]
 path = "integration/src/lib.rs"

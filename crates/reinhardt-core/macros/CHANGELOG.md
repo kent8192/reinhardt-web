@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.17](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.3.16...reinhardt-macros@v0.3.17) - 2026-09-13
+
+### Fixed
+
+- *(macros)* emit unsuffixed integer bounds in generated range validators
+
+### Testing
+
+- *(macros)* assert exact generated range attributes
+
 ## [0.3.14](https://github.com/kent8192/reinhardt-web/compare/reinhardt-macros@v0.3.13...reinhardt-macros@v0.3.14) - 2026-08-29
 
 ### Added
