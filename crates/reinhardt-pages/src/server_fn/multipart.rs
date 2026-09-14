@@ -1,7 +1,7 @@
 use hyper::header;
 use reinhardt_core::model_form::{
 	ModelFormCleanedPayload, ModelFormPayload, ModelFormPolicy, ModelFormUpload,
-	ModelFormValidatingPayload,
+	ModelFormValidatingPayload, NativeModelFormPayload,
 };
 use reinhardt_core::parsers::multipart::MultipartPart;
 use reinhardt_core::parsers::{MediaType, MultiPartParser, UploadedFile};
@@ -72,7 +72,7 @@ impl MultipartArguments {
 	/// trusted endpoint metadata narrows validation to its selected arguments.
 	pub fn validate_model_form<D, P, M>(&mut self) -> Result<(), ServerFnError>
 	where
-		D: Default + ModelFormPayload<P> + ModelFormValidatingPayload,
+		D: ModelFormPayload<P> + ModelFormValidatingPayload + NativeModelFormPayload,
 		P: ModelFormPolicy,
 		M: ServerFnMetadata,
 	{
@@ -109,10 +109,26 @@ impl MultipartArguments {
 				_ => {}
 			}
 		}
-		let mut payload = D::default();
+		let native_value = self
+			.parts
+			.iter()
+			.filter_map(|part| match part {
+				MultipartPart::Field { name, data } => Some(
+					decode_native_field_value(data)
+						.map(|value| (name.clone(), value))
+						.map_err(|_| invalid_request("malformed_native_field", Some(name))),
+				),
+				MultipartPart::File(_) => None,
+			})
+			.collect::<Result<serde_json::Map<_, _>, _>>()?;
+		let payload = D::from_native_form_value(serde_json::Value::Object(native_value))
+			.map_err(|_| invalid_request("malformed_native_model_form", None))?;
 		let mut uploads = Vec::new();
 		for part in &self.parts {
 			let name = part_name(part);
+			if is_model_form_protocol_field(name) {
+				continue;
+			}
 			if !P::allows(name) {
 				return Err(ServerFnError::validation([(
 					name,
@@ -122,13 +138,7 @@ impl MultipartArguments {
 			let Some(argument) = arguments.iter().find(|argument| argument.name == name) else {
 				return Err(invalid_request("unexpected_argument", Some(name)));
 			};
-			if let MultipartPart::Field { name, data } = part {
-				let value = serde_json::from_slice(data)
-					.map_err(|_| invalid_request("malformed_json", Some(name)))?;
-				payload.set_json(name, value).map_err(|error| {
-					ServerFnError::validation([(name.as_str(), error.to_string())])
-				})?;
-			} else if let MultipartPart::File(file) = part
+			if let MultipartPart::File(file) = part
 				&& !is_empty_file_input(file)
 			{
 				uploads.push(ModelFormUpload {
@@ -139,6 +149,8 @@ impl MultipartArguments {
 				});
 			}
 		}
+		self.parts
+			.retain(|part| !is_model_form_protocol_field(part_name(part)));
 		let deferred_files = arguments
 			.iter()
 			.filter(|argument| argument.kind == ServerFnArgumentKind::File)
@@ -283,6 +295,18 @@ fn part_name(part: &MultipartPart) -> &str {
 	}
 }
 
+fn is_model_form_protocol_field(name: &str) -> bool {
+	name == "csrfmiddlewaretoken" || name.starts_with("__reinhardt_")
+}
+
+fn decode_native_field_value(data: &[u8]) -> Result<serde_json::Value, std::str::Utf8Error> {
+	let text = std::str::from_utf8(data)?;
+	Ok(match serde_json::from_str::<serde_json::Value>(text) {
+		Ok(serde_json::Value::String(value)) => serde_json::Value::String(value),
+		_ => serde_json::Value::String(text.to_owned()),
+	})
+}
+
 fn part_kind(part: &MultipartPart) -> &'static str {
 	match part {
 		MultipartPart::Field { .. } => "json",
@@ -400,5 +424,22 @@ mod tests {
 			arguments.take_optional_json::<String>("note").unwrap(),
 			Some("saved".to_owned())
 		);
+	}
+
+	#[rstest]
+	#[case::browser_text(b"Report", "Report")]
+	#[case::json_encoded_text(br#""Report""#, "Report")]
+	fn native_multipart_fields_are_decoded_as_text(#[case] input: &[u8], #[case] expected: &str) {
+		let value = decode_native_field_value(input).expect("native field should be valid UTF-8");
+
+		assert_eq!(value, serde_json::Value::String(expected.to_owned()));
+	}
+
+	#[rstest]
+	#[case("csrfmiddlewaretoken")]
+	#[case("__reinhardt_color_accent")]
+	#[case("__reinhardt_native_edited_accent")]
+	fn model_form_protocol_fields_are_reserved(#[case] name: &str) {
+		assert!(is_model_form_protocol_field(name));
 	}
 }

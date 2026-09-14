@@ -280,6 +280,55 @@ fn multipart_request(path: &str, body: Bytes) -> Request {
 		.expect("multipart request should build")
 }
 
+mod model_multipart_fixture {
+	include!("ui/form/model_multipart_support.rs");
+
+	#[cfg(test)]
+	mod tests {
+		use super::super::{MultipartTestPart, multipart_body, multipart_request};
+		use super::*;
+		use bytes::Bytes;
+		use reinhardt_pages::server_fn::ServerFnRegistration;
+		use rstest::rstest;
+
+		#[rstest]
+		#[tokio::test]
+		async fn native_text_and_protocol_fields_reach_model_multipart_handler() {
+			// Arrange
+			let request = multipart_request(
+				"/api/server_fn/upload",
+				multipart_body(&[
+					MultipartTestPart::Field {
+						name: "title",
+						data: b"Report",
+					},
+					MultipartTestPart::Field {
+						name: "csrfmiddlewaretoken",
+						data: b"token",
+					},
+					MultipartTestPart::Field {
+						name: "__reinhardt_native_edited_title",
+						data: b"true",
+					},
+					MultipartTestPart::File {
+						name: "document",
+						filename: "report.txt",
+						data: b"contents",
+					},
+				]),
+			);
+
+			// Act
+			let body = upload::marker::handle(request)
+				.await
+				.expect("native multipart model form should reach the handler");
+
+			// Assert
+			assert_eq!(body, Bytes::from_static(b"null"));
+		}
+	}
+}
+
 fn assert_invalid_request(body: Bytes) {
 	assert_eq!(body, Bytes::from_static(INVALID_REQUEST_BODY));
 }

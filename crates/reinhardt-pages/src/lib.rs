@@ -25,6 +25,10 @@
 //! `Option<UploadedFile>`. Argument identifiers become multipart part names;
 //! every other client-visible argument is encoded as a scalar JSON part.
 //! Multipart is inferred request framing, not a selectable codec.
+//! Native HTML submissions contain browser text for scalar parts;
+//! the model-form multipart adapter removes CSRF and internal control markers,
+//! normalizes those text values, and then applies typed validation. It also
+//! accepts JSON-encoded scalar strings emitted by generated browser clients.
 //!
 //! ```rust,no_run
 //! use reinhardt_core::parsers::UploadedFile;
@@ -346,7 +350,7 @@
 //! ```
 //!
 //! With the native `model-server-fnset` feature,
-//! [`ServerFnError::try_from_model_error_with`] maps only proven model
+//! `ServerFnError::try_from_model_error_with` maps only proven model
 //! constraint violations. The optional callback may supply fixed,
 //! client-safe text:
 //!

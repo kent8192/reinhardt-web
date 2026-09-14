@@ -141,6 +141,8 @@ pub fn style(input: TokenStream) -> TokenStream {
 /// - `codec = "json"` - Serialization codec (json, url, msgpack)
 /// - `model_form_payload = "UploadModelFormData<UploadPolicy>"` - Validates multipart
 ///   model scalars with this generated payload before invoking the server function
+///   (native browser scalar text and generated JSON-encoded scalar parts are both
+///   normalized before validation)
 ///
 /// ```ignore
 /// #[server_fn(endpoint = "/api/users/get")]

@@ -269,7 +269,10 @@ client-provided metadata; they do not become trusted storage paths or prove imag
 validity. Upload metadata is discarded by `into_raw()`. The handler receives the
 original upload bytes and performs storage validation and persistence explicitly.
 
-Scalar fields are encoded as JSON multipart parts, while `File` and `Image`
+Generated browser clients encode scalar fields as JSON multipart parts, while
+native HTML forms submit scalar controls as browser text. The native multipart
+adapter normalizes both representations before model validation and removes the
+CSRF token plus reserved `__reinhardt_*` control markers. `File` and `Image`
 fields use `UploadedFile` or `Option<UploadedFile>`. The direct multipart
 contract requires `fields: [...]`; `exclude: [...]` and
 `ambient_arguments` (including its deprecated `strip_arguments` alias) are not

@@ -4,7 +4,7 @@ use reinhardt_core::{
 	model_form::{
 		ModelFormCleanedPayload, ModelFormFieldDescriptor, ModelFormFieldKind, ModelFormPayload,
 		ModelFormPayloadError, ModelFormPolicy, ModelFormSchema, ModelFormUpload,
-		ModelFormValidatingPayload,
+		ModelFormValidatingPayload, NativeModelFormPayload, normalize_native_model_form_value,
 	},
 	validators::{ValidationError, ValidationErrors},
 };
@@ -130,6 +130,19 @@ impl<P: ModelFormPolicy> ModelFormPayload<P> for UploadModelFormData<P> {
 				field: field.to_owned(),
 			}),
 		}
+	}
+}
+
+impl<P: ModelFormPolicy> NativeModelFormPayload for UploadModelFormData<P> {
+	fn from_native_form_value(value: serde_json::Value) -> Result<Self, serde_json::Error> {
+		let value = normalize_native_model_form_value::<UploadFormSchema, P>(value)?;
+		Ok(Self {
+			title: value
+				.get("title")
+				.and_then(serde_json::Value::as_str)
+				.map(str::to_owned),
+			_policy: PhantomData,
+		})
 	}
 }
 
