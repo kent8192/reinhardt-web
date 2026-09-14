@@ -36,6 +36,9 @@ use crate::ssr::HYDRATION_ATTR_ID;
 #[cfg(wasm)]
 use reinhardt_core::types::page::{is_boolean_attr, is_boolean_attr_truthy};
 
+#[cfg(wasm)]
+use wasm_bindgen::{JsCast, closure::Closure};
+
 /// Errors that can occur during hydration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HydrationError {
@@ -250,6 +253,7 @@ pub fn hydrate<C: Component>(component: &C, root: &Element) -> Result<(), Hydrat
 	use super::events::EventRegistry;
 	use super::reconcile::reconcile;
 
+	install_native_model_form_interaction_tracker();
 	let scope = reinhardt_core::reactive::ReactiveScope::new();
 	let result = scope.enter(|| {
 		web_sys::console::log_1(&"[Hydration] Starting...".into());
@@ -1063,6 +1067,7 @@ pub fn hydrate<C: Component>(_component: &C, _root: &str) -> Result<(), Hydratio
 /// Hydrates a component at the default root element (#app).
 #[cfg(wasm)]
 pub fn hydrate_root<C: Component + Default>() -> Result<(), HydrationError> {
+	init_hydration_state();
 	let component = C::default();
 	let doc = document();
 	let root = doc
@@ -1445,6 +1450,8 @@ type HydrationListeners = Vec<HydrationListener>;
 thread_local! {
 	static HYDRATION_COMPLETE: std::cell::RefCell<bool> = const { std::cell::RefCell::new(false) };
 	static HYDRATION_LISTENERS: std::cell::RefCell<HydrationListeners> = const { std::cell::RefCell::new(Vec::new()) };
+	#[cfg(wasm)]
+	static NATIVE_MODEL_FORM_INTERACTION_TRACKER_INSTALLED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 /// Initialize hydration state (called before hydration starts)
@@ -1452,6 +1459,169 @@ pub fn init_hydration_state() {
 	HYDRATION_COMPLETE.with(|state| {
 		*state.borrow_mut() = false;
 	});
+	#[cfg(wasm)]
+	install_native_model_form_interaction_tracker();
+}
+
+#[cfg(wasm)]
+const NATIVE_MODEL_FORM_INTERACTION_FIELD_ATTRIBUTE: &str =
+	"data-reinhardt-native-interaction-field";
+
+#[cfg(wasm)]
+const NATIVE_MODEL_FORM_INTERACTION_PREFIX: &str = "__reinhardt_native_edited_";
+
+#[cfg(wasm)]
+struct DocumentEventHandle {
+	target: web_sys::EventTarget,
+	event_type: &'static str,
+	callback: Option<Closure<dyn FnMut(web_sys::Event)>>,
+}
+
+#[cfg(wasm)]
+impl DocumentEventHandle {
+	fn new<F>(
+		document: &web_sys::Document,
+		event_type: &'static str,
+		callback: F,
+	) -> Result<Self, wasm_bindgen::JsValue>
+	where
+		F: FnMut(web_sys::Event) + 'static,
+	{
+		let target: web_sys::EventTarget = document.clone().into();
+		let callback = Closure::wrap(Box::new(callback) as Box<dyn FnMut(web_sys::Event)>);
+		target.add_event_listener_with_callback_and_bool(
+			event_type,
+			callback.as_ref().unchecked_ref(),
+			true,
+		)?;
+		Ok(Self {
+			target,
+			event_type,
+			callback: Some(callback),
+		})
+	}
+}
+
+#[cfg(wasm)]
+impl Drop for DocumentEventHandle {
+	fn drop(&mut self) {
+		if let Some(callback) = self.callback.take() {
+			let _ = self.target.remove_event_listener_with_callback_and_bool(
+				self.event_type,
+				callback.as_ref().unchecked_ref(),
+				true,
+			);
+		}
+	}
+}
+
+#[cfg(wasm)]
+struct NativeModelFormInteractionTracker {
+	_input: DocumentEventHandle,
+	_change: DocumentEventHandle,
+	_reset: DocumentEventHandle,
+}
+
+#[cfg(wasm)]
+impl Drop for NativeModelFormInteractionTracker {
+	fn drop(&mut self) {
+		NATIVE_MODEL_FORM_INTERACTION_TRACKER_INSTALLED.with(|installed| installed.set(false));
+	}
+}
+
+#[cfg(wasm)]
+fn install_native_model_form_interaction_tracker() {
+	let already_installed =
+		NATIVE_MODEL_FORM_INTERACTION_TRACKER_INSTALLED.with(|installed| installed.replace(true));
+	if already_installed {
+		return;
+	}
+
+	let document = document().as_web_sys().clone();
+	let input = match DocumentEventHandle::new(&document, "input", record_native_model_form_edit) {
+		Ok(handle) => handle,
+		Err(error) => {
+			NATIVE_MODEL_FORM_INTERACTION_TRACKER_INSTALLED.with(|installed| installed.set(false));
+			web_sys::console::warn_1(
+				&format!("Failed to install native model-form input tracker: {error:?}").into(),
+			);
+			return;
+		}
+	};
+	let change = match DocumentEventHandle::new(&document, "change", record_native_model_form_edit)
+	{
+		Ok(handle) => handle,
+		Err(error) => {
+			NATIVE_MODEL_FORM_INTERACTION_TRACKER_INSTALLED.with(|installed| installed.set(false));
+			web_sys::console::warn_1(
+				&format!("Failed to install native model-form change tracker: {error:?}").into(),
+			);
+			return;
+		}
+	};
+	let reset = match DocumentEventHandle::new(&document, "reset", reset_native_model_form_edits) {
+		Ok(handle) => handle,
+		Err(error) => {
+			NATIVE_MODEL_FORM_INTERACTION_TRACKER_INSTALLED.with(|installed| installed.set(false));
+			web_sys::console::warn_1(
+				&format!("Failed to install native model-form reset tracker: {error:?}").into(),
+			);
+			return;
+		}
+	};
+	store_reactive_node(NativeModelFormInteractionTracker {
+		_input: input,
+		_change: change,
+		_reset: reset,
+	});
+}
+
+#[cfg(wasm)]
+fn record_native_model_form_edit(event: web_sys::Event) {
+	let Some(input) = event
+		.target()
+		.and_then(|target| target.dyn_into::<web_sys::HtmlInputElement>().ok())
+	else {
+		return;
+	};
+	let Some(marker_name) = input.get_attribute(NATIVE_MODEL_FORM_INTERACTION_FIELD_ATTRIBUTE)
+	else {
+		return;
+	};
+	let Some(form) = input.form() else {
+		return;
+	};
+	let Some(marker) = form.elements().named_item(&marker_name) else {
+		return;
+	};
+	if let Ok(marker) = marker.dyn_into::<web_sys::HtmlInputElement>() {
+		marker.set_value("true");
+	}
+}
+
+#[cfg(wasm)]
+fn reset_native_model_form_edits(event: web_sys::Event) {
+	let Some(form) = event
+		.target()
+		.and_then(|target| target.dyn_into::<web_sys::HtmlFormElement>().ok())
+	else {
+		return;
+	};
+	let elements = form.elements();
+	for index in 0..elements.length() {
+		let Some(element) = elements.item(index) else {
+			continue;
+		};
+		let Some(name) = element.get_attribute("name") else {
+			continue;
+		};
+		if !name.starts_with(NATIVE_MODEL_FORM_INTERACTION_PREFIX) {
+			continue;
+		}
+		if let Ok(marker) = element.dyn_into::<web_sys::HtmlInputElement>() {
+			marker.set_value("false");
+		}
+	}
 }
 
 /// Check if hydration is complete

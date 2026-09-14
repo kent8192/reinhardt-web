@@ -3302,9 +3302,18 @@ fn generate_model_form(
 				);
 
 				let control_id = format!("{}-{}", self.__form_id, field_name);
+				let native_interaction_marker =
+					(input_type == "color" || (input_type == "range" && !descriptor.required))
+						.then(|| format!("__reinhardt_native_edited_{field_name}"));
 				let mut control = #pages_crate::PageElement::new(tag)
 					.attr("name", field_name)
 					.bool_attr("required", descriptor.required && !is_checkbox);
+				if let Some(marker_name) = native_interaction_marker.as_ref() {
+					control = control.attr(
+						"data-reinhardt-native-interaction-field",
+						marker_name.clone(),
+					);
+				}
 				if tag == "input" { control = control.attr("type", input_type); }
 				if uses_nullable_boolean_select {
 					for (value, label) in [("", "Unset"), ("true", "True"), ("false", "False")] {
@@ -3385,9 +3394,17 @@ fn generate_model_form(
 						source.__native_reset_epoch.update(|value| *value = value.wrapping_add(1));
 					})
 					} else { binding };
-					let snapshot_source = self.clone();
-					control = control.control_binding(binding);
+				let snapshot_source = self.clone();
+				control = control.control_binding(binding);
 				let mut auxiliary = ::std::vec::Vec::new();
+				if let Some(marker_name) = native_interaction_marker.as_ref() {
+					auxiliary.push(#pages_crate::IntoPage::into_page(
+						#pages_crate::PageElement::new("input")
+							.attr("type", "hidden")
+							.attr("name", marker_name.clone())
+							.attr("value", "false"),
+					));
+				}
 				if is_checkbox || uses_nullable_boolean_select {
 					auxiliary.push(#pages_crate::IntoPage::into_page(#pages_crate::PageElement::new("input")
 						.attr("type", "hidden").attr("name", format!("__reinhardt_checkbox_{field_name}"))
@@ -4173,6 +4190,9 @@ fn generate_model_form(
 						let checkbox_sentinel = format!("__reinhardt_checkbox_{field_name}");
 						let color_sentinel = format!("__reinhardt_color_{field_name}");
 						let range_sentinel = format!("__reinhardt_range_{field_name}");
+						let native_interaction_marker =
+							(input_type == "color" || (input_type == "range" && !descriptor.required))
+								.then(|| format!("__reinhardt_native_edited_{field_name}"));
 						let default_clear_sentinel = format!("__reinhardt_defaulted_{field_name}");
 						let control_id = format!("{}-{}", #form_id, field_name);
 						let range_default = if input_type == "range" {
@@ -4184,6 +4204,12 @@ fn generate_model_form(
 							.attr("name", field_name)
 							.attr("id", control_id.clone())
 							.bool_attr("required", descriptor.required && !is_checkbox);
+						if let Some(marker_name) = native_interaction_marker.as_ref() {
+							control = control.attr(
+								"data-reinhardt-native-interaction-field",
+								marker_name.clone(),
+							);
+						}
 						if tag == "input" {
 							control = control.attr("type", input_type);
 						}
@@ -4476,6 +4502,14 @@ fn generate_model_form(
 											.attr("value", "true"),
 									)
 							});
+						let native_interaction_sentinel = native_interaction_marker
+							.as_ref()
+							.map(|marker_name| {
+								#pages_crate::PageElement::new("input")
+									.attr("type", "hidden")
+									.attr("name", marker_name.clone())
+									.attr("value", "false")
+							});
 						let default_clear_control_id = format!("{control_id}-clear");
 						let can_clear_default = descriptor.nullable
 							&& descriptor.has_default
@@ -4511,6 +4545,7 @@ fn generate_model_form(
 				let mut wrapper = #pages_crate::PageElement::new("div")
 					.attr("class", "reinhardt-form-field")
 					.children(checkbox_sentinel)
+					.children(native_interaction_sentinel)
 					.children(color_sentinel)
 					.children(range_sentinel)
 					.children(no_script_sentinel)
@@ -4646,20 +4681,27 @@ fn generate_model_form(
 													field,
 													#pages_crate::__private::serde_json::Value::Null,
 												);
-								continue;
-							}
-							let color_was_edited = is_color
-								&& values
-									.get(&format!("__reinhardt_color_{field}"))
-									.as_string()
-									.as_deref()
-									== ::core::option::Option::Some("true");
-							let range_was_edited = is_range
-								&& values
-									.get(&format!("__reinhardt_range_{field}"))
-									.as_string()
-									.as_deref()
-									== ::core::option::Option::Some("__edited");
+															continue;
+														}
+											let native_was_edited = values
+												.get(&format!("__reinhardt_native_edited_{field}"))
+												.as_string()
+												.as_deref()
+												== ::core::option::Option::Some("true");
+											let color_was_edited = is_color
+												&& (native_was_edited
+													|| values
+														.get(&format!("__reinhardt_color_{field}"))
+														.as_string()
+														.as_deref()
+														== ::core::option::Option::Some("true"));
+											let range_was_edited = is_range
+												&& (native_was_edited
+													|| values
+														.get(&format!("__reinhardt_range_{field}"))
+														.as_string()
+														.as_deref()
+														== ::core::option::Option::Some("__edited"));
 							let color_was_null = is_color
 								&& !color_was_edited
 								&& values
@@ -11503,6 +11545,8 @@ mod tests {
 		assert!(output_str.contains("__reinhardt_checkbox_"));
 		assert!(output_str.contains("__reinhardt_color_"));
 		assert!(output_str.contains("__reinhardt_range_"));
+		assert!(output_str.contains("data-reinhardt-native-interaction-field"));
+		assert!(output_str.contains("__reinhardt_native_edited_"));
 		assert!(output_str.contains("let changed = previous != state . value (field) . cloned ()"));
 		assert!(output_str.contains("let _ = self . __state_version . get ()"));
 		assert!(output_str.contains("ModelFormPolicy"));
@@ -11616,6 +11660,7 @@ mod tests {
 		assert!(output.contains("matches ! (descriptor . name , \"accent\")"));
 		assert!(output.contains("reactive_attr (\"value\""));
 		assert!(output.contains("__reinhardt_no_script_"));
+		assert!(output.contains("__reinhardt_native_edited_"));
 		assert!(output.contains("__reinhardt_defaulted_"));
 		assert!(output.contains("using the generated default"));
 	}

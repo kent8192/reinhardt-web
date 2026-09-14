@@ -103,8 +103,10 @@ pub trait NativeModelFormPayload: Sized {
 /// range control likewise omits its browser-generated minimum value, while an
 /// explicit JSON null is reconstructed from its marker. A no-script fallback
 /// marker keeps browser defaults supplied when inline/event scripting is
-/// unavailable; HTML does not expose whether the user interacted with a control
-/// in that mode. Generated control prefixes, including file and no-script
+/// unavailable. When hydration is initialized before interaction, the
+/// CSP-compatible runtime input/change listener records native edits in a
+/// separate marker so an edit back to the browser default remains supplied.
+/// Generated control prefixes, including file, no-script, and native interaction
 /// markers, are reserved by the model derive so they cannot collide with model
 /// fields. An explicit clear marker for a nullable, defaulted control takes
 /// precedence over the control's submitted value. This conversion is intentionally
@@ -141,18 +143,24 @@ where
 			.is_some_and(|value| value == &serde_json::Value::String("unset".to_owned()));
 		let color_sentinel = format!("__reinhardt_color_{}", descriptor.name);
 		let color_sentinel_value = values.remove(&color_sentinel);
-		let color_was_edited = color_sentinel_value
-			.as_ref()
-			.map(|value| value == &serde_json::Value::String("true".to_owned()));
-		let color_was_null = color_was_edited != Some(true)
+		let native_edited_sentinel = format!("__reinhardt_native_edited_{}", descriptor.name);
+		let native_was_edited = values
+			.remove(&native_edited_sentinel)
+			.is_some_and(|value| value == serde_json::Value::String("true".to_owned()));
+		let color_was_edited = native_was_edited
+			|| color_sentinel_value
+				.as_ref()
+				.is_some_and(|value| value == &serde_json::Value::String("true".to_owned()));
+		let color_was_null = !color_was_edited
 			&& color_sentinel_value
 				.as_ref()
 				.is_some_and(|value| value == &serde_json::Value::String("null".to_owned()));
 		let range_sentinel = format!("__reinhardt_range_{}", descriptor.name);
 		let range_sentinel_value = values.remove(&range_sentinel);
-		let range_was_null = range_sentinel_value
-			.as_ref()
-			.is_some_and(|value| value == &serde_json::Value::String("null".to_owned()));
+		let range_was_null = !native_was_edited
+			&& range_sentinel_value
+				.as_ref()
+				.is_some_and(|value| value == &serde_json::Value::String("null".to_owned()));
 		let no_script_sentinel = format!("__reinhardt_no_script_{}", descriptor.name);
 		let no_script_fallback = values
 			.remove(&no_script_sentinel)
@@ -180,11 +188,18 @@ where
 		let serde_json::Value::String(text) = control else {
 			continue;
 		};
-		if color_was_edited == Some(false) && text == "#000000" && !no_script_fallback {
+		if !native_was_edited
+			&& color_sentinel_value
+				.as_ref()
+				.is_some_and(|value| value == &serde_json::Value::String("false".to_owned()))
+			&& text == "#000000"
+			&& !no_script_fallback
+		{
 			values.remove(descriptor.name);
 			continue;
 		}
-		if !no_script_fallback
+		if !native_was_edited
+			&& !no_script_fallback
 			&& range_sentinel_value.as_ref() == Some(&serde_json::Value::String(text.clone()))
 		{
 			values.remove(descriptor.name);
@@ -651,6 +666,30 @@ mod tests {
 		.expect("native form value should normalize");
 
 		assert_eq!(value, serde_json::json!({ "accent": "#000000" }));
+	}
+
+	#[rstest]
+	fn native_normalization_preserves_edits_recorded_before_hydration() {
+		// Arrange
+		let submitted = serde_json::json!({
+			"accent": "#000000",
+			"__reinhardt_color_accent": "false",
+			"__reinhardt_native_edited_accent": "true",
+			"range_value": "50",
+			"__reinhardt_range_range_value": "50",
+			"__reinhardt_native_edited_range_value": "true",
+		});
+
+		// Act
+		let value =
+			normalize_native_model_form_value::<TestSchema, AllEditableModelFields>(submitted)
+				.expect("pre-hydration native edits should normalize");
+
+		// Assert
+		assert_eq!(
+			value,
+			serde_json::json!({ "accent": "#000000", "range_value": 50 }),
+		);
 	}
 
 	#[rstest]

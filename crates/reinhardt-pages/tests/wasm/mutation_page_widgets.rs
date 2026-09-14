@@ -12,6 +12,17 @@ use reinhardt_pages::control_binding::__private::{
 };
 use std::collections::HashMap;
 
+struct RetainedOptionalNativeDefaultsPage(reinhardt_pages::Page);
+impl reinhardt_pages::component::Component for RetainedOptionalNativeDefaultsPage {
+	fn render(&self) -> reinhardt_pages::Page {
+		self.0.clone()
+	}
+
+	fn name() -> &'static str {
+		"RetainedOptionalNativeDefaultsPage"
+	}
+}
+
 struct WidgetContract;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 struct WidgetField(&'static str);
@@ -846,4 +857,71 @@ async fn page_keeps_optional_native_defaults_unsupplied() {
 	assert_eq!(form.value("boolean"), None);
 	assert_eq!(form.data().unwrap().supplied_fields(), Vec::<&str>::new());
 	assert!(!(runtime.form_state().is_dirty.get()));
+}
+
+#[rstest]
+#[test_attr(wasm_bindgen_test)]
+#[serial(server_mutation_globals)]
+async fn page_hydration_preserves_native_default_edits() {
+	// Arrange
+	let root = BodyRoot::new("page-hydration-native-defaults");
+	let _state = SsrStateElement::install();
+	let scope = ReactiveScope::new();
+	let (form, component) = scope.enter(|| {
+		let form = form! {
+			name: HydratedOptionalNativeDefaultsForm,
+			model_form: WidgetContract,
+			server_fn: save_page_widgets,
+			overrides: {
+				color: { widget: ColorInput },
+				range: { widget: RangeInput }
+			},
+		};
+		let runtime = use_form(&form).build();
+		let action = form.server_mutation(&runtime).build();
+		let component = RetainedOptionalNativeDefaultsPage(action.page());
+		root.element
+			.set_inner_html(&component.render().render_to_string());
+		(form, component)
+	});
+	let color = control(&root.element, "color")
+		.dyn_into::<web_sys::HtmlInputElement>()
+		.unwrap();
+	let range = control(&root.element, "range")
+		.dyn_into::<web_sys::HtmlInputElement>()
+		.unwrap();
+
+	// Native interaction tracking must start before the browser dispatches edits.
+	reinhardt_pages::hydration::init_hydration_state();
+	edit_input(&color, "#000000");
+	edit_input(&range, "5");
+	assert_eq!(
+		control(&root.element, "__reinhardt_native_edited_color")
+			.dyn_into::<web_sys::HtmlInputElement>()
+			.unwrap()
+			.value(),
+		"true"
+	);
+	assert_eq!(
+		control(&root.element, "__reinhardt_native_edited_range")
+			.dyn_into::<web_sys::HtmlInputElement>()
+			.unwrap()
+			.value(),
+		"true"
+	);
+	let node = root
+		.element
+		.query_selector("form")
+		.unwrap()
+		.unwrap()
+		.dyn_into::<web_sys::HtmlFormElement>()
+		.unwrap();
+
+	// Act
+	scope.enter(|| hydrate(&component, &Element::new(node.clone().into())).unwrap());
+	settle_browser().await;
+
+	// Assert: edits back to browser defaults remain supplied after hydration.
+	assert_eq!(form.value("color"), Some(serde_json::json!("#000000")));
+	assert_eq!(form.value("range"), Some(serde_json::json!(5)));
 }
