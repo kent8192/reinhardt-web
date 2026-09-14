@@ -2554,7 +2554,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest::rstest]
 	fn render_noscript_fallback_children_as_markup() {
 		// Arrange
 		let view = PageElement::new("noscript")
