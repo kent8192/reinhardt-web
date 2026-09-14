@@ -47,4 +47,38 @@ fn helper_receiver() -> UnifiedRouter {
 	UnifiedRouter::new().merge(make_router().server(crate::native::configure))
 }
 
+#[url_patterns]
+fn nested_function() -> UnifiedRouter {
+	UnifiedRouter::new().merge({
+		fn apply(router: UnifiedRouter) -> UnifiedRouter {
+			router.server(crate::native::configure)
+		}
+		apply(UnifiedRouter::new())
+	})
+}
+
+#[url_patterns]
+fn tuple_assignment() -> UnifiedRouter {
+	UnifiedRouter::new().merge({
+		let router;
+		(router,) = (UnifiedRouter::new(),);
+		router.server(crate::native::configure)
+	})
+}
+
+#[url_patterns]
+fn let_chain() -> UnifiedRouter {
+	UnifiedRouter::new().merge(
+		if let Some(router) = Some(UnifiedRouter::new())
+			&& {
+				consume(router.server(crate::native::configure));
+				true
+			} {
+			router
+		} else {
+			UnifiedRouter::new()
+		},
+	)
+}
+
 fn main() {}

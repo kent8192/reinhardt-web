@@ -39,3 +39,21 @@ error: nested UnifiedRouter .server(...) calls are unsupported here; extract the
    |
 47 |     UnifiedRouter::new().merge(make_router().server(crate::native::configure))
    |                                              ^^^^^^
+
+error: nested UnifiedRouter .server(...) calls are unsupported here; extract the nested builder into a separate #[url_patterns] function
+  --> tests/ui/url_patterns/fail/nested_server_builder.rs:54:11
+   |
+54 |             router.server(crate::native::configure)
+   |                    ^^^^^^
+
+error: nested UnifiedRouter .server(...) calls are unsupported here; extract the nested builder into a separate #[url_patterns] function
+  --> tests/ui/url_patterns/fail/nested_server_builder.rs:65:10
+   |
+65 |         router.server(crate::native::configure)
+   |                ^^^^^^
+
+error: nested UnifiedRouter .server(...) calls are unsupported here; extract the nested builder into a separate #[url_patterns] function
+  --> tests/ui/url_patterns/fail/nested_server_builder.rs:74:20
+   |
+74 |                 consume(router.server(crate::native::configure));
+   |                                ^^^^^^

@@ -354,24 +354,119 @@ fn router_bindings_in_pattern(
 	collect(pattern, expr, aliases)
 }
 
-fn typed_router_bindings(pattern: &Pat) -> HashSet<String> {
+#[derive(Clone, Default)]
+struct RouterBindings {
+	routers: HashSet<String>,
+	non_routers: HashSet<String>,
+}
+
+impl RouterBindings {
+	fn bind(&mut self, pattern: &Pat, mut inferred: HashSet<String>) {
+		let typed = typed_router_bindings(pattern);
+		for name in pattern_binding_names(pattern) {
+			self.routers.remove(&name);
+			self.non_routers.remove(&name);
+		}
+		inferred.extend(typed.routers);
+		inferred.retain(|name| !typed.non_routers.contains(name));
+		self.routers.extend(inferred);
+		self.non_routers.extend(typed.non_routers);
+	}
+
+	fn restore_names(&mut self, previous: &Self, names: HashSet<String>) {
+		for name in names {
+			self.routers.remove(&name);
+			self.non_routers.remove(&name);
+			if previous.routers.contains(&name) {
+				self.routers.insert(name.clone());
+			}
+			if previous.non_routers.contains(&name) {
+				self.non_routers.insert(name);
+			}
+		}
+	}
+}
+
+fn typed_router_bindings(pattern: &Pat) -> RouterBindings {
 	#[derive(Default)]
 	struct TypedBindings {
-		names: HashSet<String>,
+		bindings: RouterBindings,
+	}
+
+	impl TypedBindings {
+		fn collect(&mut self, pattern: &Pat, ty: &Type) {
+			match (pattern, ty) {
+				(Pat::Paren(pattern), _) => self.collect(&pattern.pat, ty),
+				(_, Type::Paren(ty)) => self.collect(pattern, &ty.elem),
+				(_, Type::Group(ty)) => self.collect(pattern, &ty.elem),
+				(Pat::Tuple(pattern), Type::Tuple(ty)) => {
+					for (pattern, ty) in pattern.elems.iter().zip(&ty.elems) {
+						self.collect(pattern, ty);
+					}
+				}
+				(Pat::Ident(binding), Type::Path(_)) => {
+					let names = if is_unified_router_type(ty) {
+						&mut self.bindings.routers
+					} else {
+						&mut self.bindings.non_routers
+					};
+					names.insert(binding.ident.to_string());
+				}
+				_ => {}
+			}
+		}
 	}
 
 	impl<'ast> Visit<'ast> for TypedBindings {
 		fn visit_pat_type(&mut self, binding: &'ast syn::PatType) {
-			if is_unified_router_type(&binding.ty) {
-				self.names.extend(pattern_binding_names(&binding.pat));
-			}
+			self.collect(&binding.pat, &binding.ty);
 			syn::visit::visit_pat_type(self, binding);
 		}
 	}
 
 	let mut bindings = TypedBindings::default();
 	bindings.visit_pat(pattern);
-	bindings.names
+	bindings.bindings
+}
+
+fn router_bindings_in_assignment(
+	target: &Expr,
+	value: &Expr,
+	aliases: &HashSet<String>,
+) -> HashSet<String> {
+	let pairs: Vec<(&Expr, &Expr)> = match (unparenthesized(target), unparenthesized(value)) {
+		(Expr::Path(path), _) if path.qself.is_none() => {
+			return path
+				.path
+				.get_ident()
+				.filter(|_| is_unified_router_builder(value, aliases))
+				.map(|ident| HashSet::from([ident.to_string()]))
+				.unwrap_or_default();
+		}
+		(Expr::Tuple(target), Expr::Tuple(value)) => {
+			target.elems.iter().zip(&value.elems).collect()
+		}
+		(Expr::Array(target), Expr::Array(value)) => {
+			target.elems.iter().zip(&value.elems).collect()
+		}
+		(Expr::Call(target), Expr::Call(value)) => target.args.iter().zip(&value.args).collect(),
+		(Expr::Struct(target), Expr::Struct(value)) => target
+			.fields
+			.iter()
+			.filter_map(|field| {
+				value
+					.fields
+					.iter()
+					.find(|value| value.member == field.member)
+					.map(|value| (&field.expr, &value.expr))
+			})
+			.collect(),
+		_ => Vec::new(),
+	};
+	pairs
+		.into_iter()
+		.flat_map(|(target, value)| router_bindings_in_assignment(target, value, aliases))
+		.collect()
 }
 
 fn router_bindings_in_for_pattern(
@@ -394,12 +489,48 @@ fn reject_nested_server_builder(expr: &Expr) -> syn::Result<()> {
 	#[derive(Default)]
 	struct NestedServerBuilder {
 		error: Option<syn::Error>,
-		router_aliases: HashSet<String>,
+		bindings: RouterBindings,
+	}
+
+	impl NestedServerBuilder {
+		fn visit_condition(
+			&mut self,
+			condition: &Expr,
+			previous: &mut RouterBindings,
+			names: &mut HashSet<String>,
+		) {
+			if self.error.is_some() {
+				return;
+			}
+			match unparenthesized(condition) {
+				Expr::Binary(binary) if matches!(binary.op, syn::BinOp::And(_)) => {
+					self.visit_condition(&binary.left, previous, names);
+					self.visit_condition(&binary.right, previous, names);
+				}
+				Expr::Let(condition) => {
+					// Each initializer runs before its pattern enters scope. Its bindings
+					// are then visible to the remaining operands and the branch body.
+					self.visit_expr(&condition.expr);
+					let inferred = router_bindings_in_pattern(
+						&condition.pat,
+						&condition.expr,
+						&self.bindings.routers,
+					);
+					self.visit_pat(&condition.pat);
+					let introduced = pattern_binding_names(&condition.pat);
+					let new_names = introduced.difference(names).cloned().collect();
+					previous.restore_names(&self.bindings, new_names);
+					names.extend(introduced);
+					self.bindings.bind(&condition.pat, inferred);
+				}
+				_ => self.visit_expr(condition),
+			}
+		}
 	}
 
 	impl<'ast> Visit<'ast> for NestedServerBuilder {
 		fn visit_block(&mut self, block: &'ast syn::Block) {
-			let aliases = self.router_aliases.clone();
+			let aliases = self.bindings.clone();
 			let local_names = block
 				.stmts
 				.iter()
@@ -416,12 +547,7 @@ fn reject_nested_server_builder(expr: &Expr) -> syn::Result<()> {
 			// Assignments to bindings declared outside this block remain visible after
 			// the block. Restore only names introduced by this block, while restoring
 			// any outer alias shadowed by a local declaration.
-			for name in local_names {
-				self.router_aliases.remove(&name);
-				if aliases.contains(&name) {
-					self.router_aliases.insert(name);
-				}
-			}
+			self.bindings.restore_names(&aliases, local_names);
 		}
 
 		fn visit_expr_assign(&mut self, assign: &'ast syn::ExprAssign) {
@@ -433,29 +559,14 @@ fn reject_nested_server_builder(expr: &Expr) -> syn::Result<()> {
 			if self.error.is_some() {
 				return;
 			}
-			if let Expr::Path(path) = unparenthesized(&assign.left)
-				&& path.qself.is_none()
-				&& path.path.segments.len() == 1
-				&& path
-					.path
-					.segments
-					.first()
-					.is_some_and(|segment| matches!(segment.arguments, PathArguments::None))
-			{
-				let name = path
-					.path
-					.segments
-					.first()
-					.expect("a one-segment path has a first segment")
-					.ident
-					.to_string();
-				if is_unified_router_builder(&assign.right, &self.router_aliases) {
-					self.router_aliases.insert(name);
-				} else if !self.router_aliases.contains(&name) {
-					self.router_aliases.remove(&name);
-				}
-				return;
-			}
+			let inferred =
+				router_bindings_in_assignment(&assign.left, &assign.right, &self.bindings.routers);
+			// A reassignment cannot change the explicitly declared type of a binding.
+			self.bindings.routers.extend(
+				inferred
+					.into_iter()
+					.filter(|name| !self.bindings.non_routers.contains(name)),
+			);
 			self.visit_expr(&assign.left);
 		}
 
@@ -463,15 +574,12 @@ fn reject_nested_server_builder(expr: &Expr) -> syn::Result<()> {
 			if self.error.is_some() {
 				return;
 			}
-			let aliases = self.router_aliases.clone();
+			let aliases = self.bindings.clone();
 			for input in &closure.inputs {
-				for name in pattern_binding_names(input) {
-					self.router_aliases.remove(&name);
-				}
-				self.router_aliases.extend(typed_router_bindings(input));
+				self.bindings.bind(input, HashSet::new());
 			}
 			syn::visit::visit_expr_closure(self, closure);
-			self.router_aliases = aliases;
+			self.bindings = aliases;
 		}
 
 		fn visit_expr_match(&mut self, expression: &'ast syn::ExprMatch) {
@@ -486,22 +594,19 @@ fn reject_nested_server_builder(expr: &Expr) -> syn::Result<()> {
 				if self.error.is_some() {
 					return;
 				}
-				let aliases = self.router_aliases.clone();
+				let aliases = self.bindings.clone();
 				let router_bindings =
-					router_bindings_in_pattern(&arm.pat, &expression.expr, &self.router_aliases);
+					router_bindings_in_pattern(&arm.pat, &expression.expr, &self.bindings.routers);
 				self.visit_pat(&arm.pat);
 				if self.error.is_some() {
 					return;
 				}
-				for name in pattern_binding_names(&arm.pat) {
-					self.router_aliases.remove(&name);
-				}
-				self.router_aliases.extend(router_bindings);
+				self.bindings.bind(&arm.pat, router_bindings);
 				if let Some((_, guard)) = &arm.guard {
 					self.visit_expr(guard);
 				}
 				self.visit_expr(&arm.body);
-				self.router_aliases = aliases;
+				self.bindings = aliases;
 			}
 		}
 
@@ -509,56 +614,25 @@ fn reject_nested_server_builder(expr: &Expr) -> syn::Result<()> {
 			if self.error.is_some() {
 				return;
 			}
-			let Expr::Let(condition) = unparenthesized(&expression.cond) else {
-				syn::visit::visit_expr_if(self, expression);
-				return;
-			};
-
-			// The condition expression is evaluated before its pattern bindings
-			// enter scope, just like a local initializer.
-			let router_bindings =
-				router_bindings_in_pattern(&condition.pat, &condition.expr, &self.router_aliases);
-			self.visit_expr(&condition.expr);
-			if self.error.is_some() {
-				return;
-			}
-			let aliases = self.router_aliases.clone();
-			for name in pattern_binding_names(&condition.pat) {
-				self.router_aliases.remove(&name);
-			}
-			self.router_aliases.extend(router_bindings);
+			let mut aliases = RouterBindings::default();
+			let mut condition_names = HashSet::new();
+			self.visit_condition(&expression.cond, &mut aliases, &mut condition_names);
 			self.visit_block(&expression.then_branch);
-			self.router_aliases = aliases.clone();
+			self.bindings.restore_names(&aliases, condition_names);
 			if let Some((_, else_branch)) = &expression.else_branch {
 				self.visit_expr(else_branch);
 			}
-			self.router_aliases = aliases;
 		}
 
 		fn visit_expr_while(&mut self, expression: &'ast syn::ExprWhile) {
 			if self.error.is_some() {
 				return;
 			}
-			let Expr::Let(condition) = unparenthesized(&expression.cond) else {
-				syn::visit::visit_expr_while(self, expression);
-				return;
-			};
-
-			// The condition expression is evaluated before the while-let pattern
-			// bindings enter scope, just like a local initializer.
-			let router_bindings =
-				router_bindings_in_pattern(&condition.pat, &condition.expr, &self.router_aliases);
-			self.visit_expr(&condition.expr);
-			if self.error.is_some() {
-				return;
-			}
-			let aliases = self.router_aliases.clone();
-			for name in pattern_binding_names(&condition.pat) {
-				self.router_aliases.remove(&name);
-			}
-			self.router_aliases.extend(router_bindings);
+			let mut aliases = RouterBindings::default();
+			let mut condition_names = HashSet::new();
+			self.visit_condition(&expression.cond, &mut aliases, &mut condition_names);
 			self.visit_block(&expression.body);
-			self.router_aliases = aliases;
+			self.bindings.restore_names(&aliases, condition_names);
 		}
 
 		fn visit_expr_for_loop(&mut self, expression: &'ast syn::ExprForLoop) {
@@ -572,44 +646,43 @@ fn reject_nested_server_builder(expr: &Expr) -> syn::Result<()> {
 			let router_bindings = router_bindings_in_for_pattern(
 				&expression.pat,
 				&expression.expr,
-				&self.router_aliases,
+				&self.bindings.routers,
 			);
 			self.visit_expr(&expression.expr);
 			if self.error.is_some() {
 				return;
 			}
-			let aliases = self.router_aliases.clone();
-			for name in pattern_binding_names(&expression.pat) {
-				self.router_aliases.remove(&name);
-			}
-			self.router_aliases.extend(router_bindings);
+			let aliases = self.bindings.clone();
+			self.bindings.bind(&expression.pat, router_bindings);
 			self.visit_block(&expression.body);
-			self.router_aliases = aliases;
+			self.bindings = aliases;
 		}
 
 		fn visit_item_fn(&mut self, function: &'ast syn::ItemFn) {
 			if self.error.is_some() {
 				return;
 			}
-			let aliases = std::mem::take(&mut self.router_aliases);
+			let aliases = std::mem::take(&mut self.bindings);
+			for input in &function.sig.inputs {
+				if let syn::FnArg::Typed(input) = input {
+					self.bindings
+						.bind(&Pat::Type(input.clone()), HashSet::new());
+				}
+			}
 			syn::visit::visit_item_fn(self, function);
-			self.router_aliases = aliases;
+			self.bindings = aliases;
 		}
 
 		fn visit_local(&mut self, local: &'ast syn::Local) {
-			let mut router_bindings = local.init.as_ref().map_or_else(HashSet::new, |init| {
-				router_bindings_in_pattern(&local.pat, &init.expr, &self.router_aliases)
+			let router_bindings = local.init.as_ref().map_or_else(HashSet::new, |init| {
+				router_bindings_in_pattern(&local.pat, &init.expr, &self.bindings.routers)
 			});
-			router_bindings.extend(typed_router_bindings(&local.pat));
 			// Visit the initializer before the new binding shadows any outer router alias.
 			syn::visit::visit_local(self, local);
 			if self.error.is_some() {
 				return;
 			}
-			for name in pattern_binding_names(&local.pat) {
-				self.router_aliases.remove(&name);
-			}
-			self.router_aliases.extend(router_bindings);
+			self.bindings.bind(&local.pat, router_bindings);
 		}
 
 		fn visit_expr_method_call(&mut self, call: &'ast syn::ExprMethodCall) {
@@ -617,7 +690,7 @@ fn reject_nested_server_builder(expr: &Expr) -> syn::Result<()> {
 				return;
 			}
 			if call.method == "server"
-				&& is_unified_router_builder(&call.receiver, &self.router_aliases)
+				&& is_unified_router_builder(&call.receiver, &self.bindings.routers)
 			{
 				self.error = Some(syn::Error::new_spanned(
 					&call.method,
@@ -634,7 +707,7 @@ fn reject_nested_server_builder(expr: &Expr) -> syn::Result<()> {
 			}
 			if is_unified_router_server_function(&call.func)
 				&& call.args.len() == 2
-				&& is_unified_router_builder(&call.args[0], &self.router_aliases)
+				&& is_unified_router_builder(&call.args[0], &self.bindings.routers)
 			{
 				self.error = Some(syn::Error::new_spanned(
 					&call.func,
@@ -726,6 +799,38 @@ mod tests {
 	#[case::typed_unrelated_call_result(
 		quote!(UnifiedRouter::new().client(|client| { let transport: Other = make_transport(); transport.server(client) })),
 		quote!(UnifiedRouter::new().client(|client| { let transport: Other = make_transport(); transport.server(client) }))
+	)]
+	#[case::deferred_unrelated_call_result(
+		quote!(UnifiedRouter::new().client(|client| { let transport: Other; transport = make_transport(); transport.server(client) })),
+		quote!(UnifiedRouter::new().client(|client| { let transport: Other; transport = make_transport(); transport.server(client) }))
+	)]
+	#[case::reassigned_unrelated_call_result(
+		quote!(UnifiedRouter::new().client(|client| { let mut transport: Other = original; { transport = make_transport(); } transport.server(client) })),
+		quote!(UnifiedRouter::new().client(|client| { let mut transport: Other = original; { transport = make_transport(); } transport.server(client) }))
+	)]
+	#[case::typed_binding_restored_after_shadow(
+		quote!(UnifiedRouter::new().client(|client| { let transport: Other; { let transport = UnifiedRouter::new(); consume(transport); } transport = make_transport(); transport.server(client) })),
+		quote!(UnifiedRouter::new().client(|client| { let transport: Other; { let transport = UnifiedRouter::new(); consume(transport); } transport = make_transport(); transport.server(client) }))
+	)]
+	#[case::typed_closure_parameter_assignment(
+		quote!(UnifiedRouter::new().client(|client| { consume(|mut transport: Other| { transport = make_transport(); transport.server(client) }); client })),
+		quote!(UnifiedRouter::new().client(|client| { consume(|mut transport: Other| { transport = make_transport(); transport.server(client) }); client }))
+	)]
+	#[case::typed_function_parameter_assignment(
+		quote!(UnifiedRouter::new().client(|client| { fn apply(mut transport: Other) { transport = make_transport(); transport.server(); } client })),
+		quote!(UnifiedRouter::new().client(|client| { fn apply(mut transport: Other) { transport = make_transport(); transport.server(); } client }))
+	)]
+	#[case::typed_destructuring_assignment(
+		quote!(UnifiedRouter::new().client(|client| { let transport: Other; (transport,) = (make_transport(),); transport.server(client) })),
+		quote!(UnifiedRouter::new().client(|client| { let transport: Other; (transport,) = (make_transport(),); transport.server(client) }))
+	)]
+	#[case::let_chain_else_scope(
+		quote!(UnifiedRouter::new().client(|client| { let transport: Other = original; if let Some(transport) = Some(UnifiedRouter::new()) && ready { consume(transport); } else { transport.server(client); } transport.server(client) })),
+		quote!(UnifiedRouter::new().client(|client| { let transport: Other = original; if let Some(transport) = Some(UnifiedRouter::new()) && ready { consume(transport); } else { transport.server(client); } transport.server(client) }))
+	)]
+	#[case::while_let_chain_scope(
+		quote!(UnifiedRouter::new().client(|client| { let transport: Other; while let Some(transport) = Some(UnifiedRouter::new()) && ready { consume(transport); } transport = make_transport(); transport.server(client) })),
+		quote!(UnifiedRouter::new().client(|client| { let transport: Other; while let Some(transport) = Some(UnifiedRouter::new()) && ready { consume(transport); } transport = make_transport(); transport.server(client) }))
 	)]
 	#[case::opaque_server_argument(
 		quote!(UnifiedRouter::new().server(|server| configure(server, UnifiedRouter::new().server(nested)))),
@@ -886,6 +991,17 @@ mod tests {
 	}
 
 	#[rstest]
+	#[case(quote!(UnifiedRouter::new().merge({ let router: Other = original; let router; (router,) = (UnifiedRouter::new(),); router.server(configure) })))]
+	#[case(quote!(UnifiedRouter::new().merge({ fn apply((router,): (UnifiedRouter,)) -> UnifiedRouter { router.server(configure) } apply((UnifiedRouter::new(),)) })))]
+	#[case(quote!(UnifiedRouter::new().merge({ let router; if { router = UnifiedRouter::new(); true } && let Some(router) = other { consume(router); } router.server(configure) })))]
+	#[case(quote!(UnifiedRouter::new().merge({ let router; Holder(router) = Holder(UnifiedRouter::new()); router.server(configure) })))]
+	#[case(quote!(UnifiedRouter::new().merge({ fn apply(router: UnifiedRouter) -> UnifiedRouter { router.server(crate::native::configure) } apply(UnifiedRouter::new()) })))]
+	#[case(quote!(UnifiedRouter::new().merge({ let router; (router,) = (UnifiedRouter::new(),); router.server(crate::native::configure) })))]
+	#[case(quote!(UnifiedRouter::new().merge({ let router; [router] = [UnifiedRouter::new()]; router.server(crate::native::configure) })))]
+	#[case(quote!(UnifiedRouter::new().merge({ let router; Parts { router } = Parts { router: UnifiedRouter::new() }; router.server(crate::native::configure) })))]
+	#[case(quote!(UnifiedRouter::new().merge(if let Some(router) = Some(UnifiedRouter::new()) && { consume(router.server(crate::native::configure)); true } { router } else { UnifiedRouter::new() })))]
+	#[case(quote!(UnifiedRouter::new().merge(if true && let Some(router) = Some(UnifiedRouter::new()) { router.server(crate::native::configure) } else { UnifiedRouter::new() })))]
+	#[case(quote!(UnifiedRouter::new().merge({ while let Some(router) = Some(UnifiedRouter::new()) && true { consume(router.server(crate::native::configure)); } UnifiedRouter::new() })))]
 	#[case(quote!(UnifiedRouter::new().merge({ let router: UnifiedRouter = make_router(); router.server(crate::native::configure) })))]
 	#[case(quote!(UnifiedRouter::new().merge({ let router: reinhardt::UnifiedRouter = router_value; router.server(crate::native::configure) })))]
 	#[case(quote!(UnifiedRouter::new().merge({ let router: UnifiedRouter; router = make_router(); router.server(crate::native::configure) })))]
