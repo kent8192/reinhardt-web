@@ -1,4 +1,7 @@
 //! SSR Renderer for Component-based server-side rendering.
+//!
+//! Leading newlines in `<pre>` and `<textarea>` content are padded so the
+//! browser's HTML parser preserves the raw-text snapshot during hydration.
 
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeSet, VecDeque};
@@ -1371,6 +1374,7 @@ impl SsrRenderer {
 						html.push_str(" />");
 					} else {
 						html.push('>');
+						let content_start = html.len();
 						if el.tag_name().eq_ignore_ascii_case("textarea")
 							&& let Some(text) = projection.textarea_text.as_deref()
 						{
@@ -1398,6 +1402,7 @@ impl SsrRenderer {
 								);
 							}
 						}
+						preserve_leading_raw_text_newline(&mut html, content_start, el.tag_name());
 						html.push_str("</");
 						html.push_str(el.tag_name());
 						html.push('>');
@@ -1665,6 +1670,7 @@ impl SsrRenderer {
 						html.push_str(" />");
 					} else {
 						html.push('>');
+						let content_start = html.len();
 						if el.tag_name().eq_ignore_ascii_case("textarea")
 							&& let Some(text) = projection.textarea_text.as_deref()
 						{
@@ -1692,6 +1698,7 @@ impl SsrRenderer {
 								);
 							}
 						}
+						preserve_leading_raw_text_newline(&mut html, content_start, el.tag_name());
 						html.push_str("</");
 						html.push_str(el.tag_name());
 						html.push('>');
@@ -2369,6 +2376,16 @@ fn render_element_opening(
 	html
 }
 
+/// Adds the padding required to preserve a leading line feed in raw-text HTML elements.
+fn preserve_leading_raw_text_newline(html: &mut String, content_start: usize, tag_name: &str) {
+	if (tag_name.eq_ignore_ascii_case("textarea") || tag_name.eq_ignore_ascii_case("pre"))
+		&& html[content_start..].starts_with(['\n', '\r'])
+	{
+		// HTML parsing normalizes CR/CRLF before discarding one leading LF.
+		html.insert(content_start, '\n');
+	}
+}
+
 fn push_escaped_attribute(html: &mut String, name: &str, value: &str) {
 	html.push(' ');
 	html.push_str(name);
@@ -2926,6 +2943,24 @@ mod tests {
 				html.contains("<OPTION value=\"current\" selected=\"selected\">Current</OPTION>"),
 				"{html}"
 			);
+		}
+	}
+
+	#[tokio::test]
+	async fn preformatted_leading_newlines_are_padded_in_buffered_and_streaming_paths() {
+		let view = PageElement::new("pre").child("\ncode").into_page();
+		let mut buffered_renderer = SsrRenderer::new();
+		let mut streaming_renderer = SsrRenderer::new();
+
+		let buffered = buffered_renderer.render_view(&view).await;
+		let streaming = streaming_renderer
+			.render_page_with_view_head(view)
+			.await
+			.collect_string()
+			.await;
+
+		for html in [&buffered, &streaming] {
+			assert!(html.contains("<pre>\n\ncode</pre>"), "{html}");
 		}
 	}
 

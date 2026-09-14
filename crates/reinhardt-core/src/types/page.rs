@@ -1198,7 +1198,8 @@ impl Page {
 	/// This is the core SSR method that converts the view tree to HTML.
 	/// Bound password values are omitted and marked with `data-rh-password-omitted`
 	/// so browser hydration can restore the bound value without exposing it in HTML.
-	/// Leading textarea newlines are preserved through HTML parsing.
+	/// Leading newlines in `<textarea>` and `<pre>` content are preserved through
+	/// HTML parsing.
 	pub fn render_to_string(&self) -> String {
 		let mut output = String::new();
 		self.render_to_string_inner(&mut output, None);
@@ -1413,12 +1414,7 @@ impl Page {
 							);
 						}
 					}
-					if el.tag_name().eq_ignore_ascii_case("textarea")
-						&& output[content_start..].starts_with(['\n', '\r'])
-					{
-						// HTML parsing normalizes CR/CRLF before discarding one leading LF.
-						output.insert(content_start, '\n');
-					}
+					preserve_leading_raw_text_newline(output, content_start, el.tag_name());
 					output.push_str("</");
 					output.push_str(el.tag_name());
 					output.push('>');
@@ -1475,6 +1471,16 @@ impl Page {
 				view.render_to_string_inner(output, selection);
 			}
 		}
+	}
+}
+
+/// Adds the padding required to preserve a leading line feed in raw-text HTML elements.
+fn preserve_leading_raw_text_newline(output: &mut String, content_start: usize, tag_name: &str) {
+	if (tag_name.eq_ignore_ascii_case("textarea") || tag_name.eq_ignore_ascii_case("pre"))
+		&& output[content_start..].starts_with(['\n', '\r'])
+	{
+		// HTML parsing normalizes CR/CRLF before discarding one leading LF.
+		output.insert(content_start, '\n');
 	}
 }
 
@@ -2571,6 +2577,31 @@ mod tests {
 		] {
 			// Arrange: fragment children may hide the first rendered text node.
 			let view = PageElement::new("textarea")
+				.child(Page::fragment([Page::Empty, Page::text(value)]))
+				.into_page();
+
+			// Act and assert.
+			assert_eq!(view.render_to_string(), expected);
+		}
+	}
+
+	#[rstest::rstest]
+	fn render_pre_preserves_leading_line_feeds_through_html_parsing() {
+		for (value, expected) in [
+			("", "<pre></pre>"),
+			("notes", "<pre>notes</pre>"),
+			("\n", "<pre>\n\n</pre>"),
+			("\nnotes", "<pre>\n\nnotes</pre>"),
+			("\n\nnotes", "<pre>\n\n\nnotes</pre>"),
+			("\n<&", "<pre>\n\n&lt;&amp;</pre>"),
+			("\r", "<pre>\n\r</pre>"),
+			("\r\n", "<pre>\n\r\n</pre>"),
+			("\rnotes", "<pre>\n\rnotes</pre>"),
+			("\r\nnotes", "<pre>\n\r\nnotes</pre>"),
+			("\r\n\rnotes", "<pre>\n\r\n\rnotes</pre>"),
+		] {
+			// Arrange: fragment children may hide the first rendered text node.
+			let view = PageElement::new("pre")
 				.child(Page::fragment([Page::Empty, Page::text(value)]))
 				.into_page();
 

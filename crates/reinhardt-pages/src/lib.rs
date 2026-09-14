@@ -1169,6 +1169,7 @@ pub mod form_generated;
 // Typed form runtime state (WASM-compatible)
 pub mod form_state;
 // Runtime support for DTO-derived client forms.
+#[doc = include_str!("../docs/client_forms.md")]
 pub mod client_form;
 // Model-backed form state is target-neutral. Legacy FormComponent support is
 // gated inside the module because it still depends on reinhardt-forms.
@@ -1364,6 +1365,8 @@ pub mod __private {
 	#[cfg(native)]
 	pub use hyper;
 	pub use inventory;
+	#[cfg(native)]
+	pub use reinhardt_http;
 	pub use reinhardt_urls;
 	pub use serde;
 	pub use serde_json;

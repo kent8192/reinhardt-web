@@ -1,0 +1,21 @@
+error[E0599]: the method `empty_label` exists for struct `reinhardt_pages::client_form::__private::FieldPresentation<reinhardt_pages::client_form::__private::EnumKind<Mode>>`, but its trait bounds were not satisfied
+  --> tests/ui/client_form/view/fail/required_empty_label.rs:11:5
+   |
+ 6 |       let _view = form! {
+   |  _________________-
+ 7 | |         client_form: RequestClientForm,
+ 8 | |         mutation: &mutation,
+ 9 | |         customize: {
+10 | |             mode: {
+11 | |                 empty_label: "Unset"
+   | |                -^^^^^^^^^^^ method cannot be called due to unsatisfied trait bounds
+   | |________________|
+   |
+   |
+  ::: src/client_form/view/presentation.rs
+   |
+   |   pub struct EnumKind<T>(PhantomData<T>);
+   |   ---------------------- doesn't satisfy `_: OptionalChoice`
+   |
+   = note: the following trait bounds were not satisfied:
+           `reinhardt_pages::client_form::__private::EnumKind<Mode>: client_form::view::presentation::sealed::OptionalChoice`
