@@ -13,6 +13,17 @@
 //! - **Zero-Cost Abstractions**: High-level ergonomics without runtime overhead
 //! - **Async-First**: Built on tokio and async/await from the ground up
 //!
+//! ## Shared URL Declarations
+//!
+//! Apply [`macro@url_patterns`] to a synchronous function returning
+//! `UnifiedRouter` to share a builder chain containing native-only handlers.
+//! The attribute removes `.server(...)` calls unless the caller enables
+//! `cfg(server)` on a non-browser-WASM target. Client configuration, prefixes,
+//! namespaces, mounts, and merges retain their existing behavior. The macro
+//! is available on both targets; browser routing requires `client-router`.
+//! Keep [`macro@routes`] on the single project-level entry point for inventory
+//! registration. The attributes can be stacked in either order.
+//!
 //! ## Generated Model Form Facade
 //!
 //! Enable the `forms` feature to use generated model-backed forms through the

@@ -1,0 +1,157 @@
+use reinhardt_macros::url_patterns;
+
+#[url_patterns]
+fn merged() -> UnifiedRouter {
+	UnifiedRouter::new().merge(UnifiedRouter::new().server(configure))
+}
+
+#[url_patterns]
+fn aliased() -> UnifiedRouter {
+	UnifiedRouter::new().merge({
+		let router = UnifiedRouter::new();
+		router.server(configure)
+	})
+}
+
+#[url_patterns]
+fn mounted() -> UnifiedRouter {
+	UnifiedRouter::new().mount_unified("/", UnifiedRouter::new().server(configure))
+}
+
+#[url_patterns]
+fn client_argument() -> UnifiedRouter {
+	UnifiedRouter::new().client(|client| {
+		consume(UnifiedRouter::new().server(configure));
+		client
+	})
+}
+
+#[url_patterns]
+fn typed_local() -> UnifiedRouter {
+	UnifiedRouter::new().merge({
+		let router: UnifiedRouter = make_router();
+		router.server(crate::native::configure)
+	})
+}
+
+#[url_patterns]
+fn typed_closure() -> UnifiedRouter {
+	UnifiedRouter::new().merge({
+		let apply = |router: UnifiedRouter| router.server(crate::native::configure);
+		apply(UnifiedRouter::new())
+	})
+}
+
+#[url_patterns]
+fn helper_receiver() -> UnifiedRouter {
+	UnifiedRouter::new().merge(make_router().server(crate::native::configure))
+}
+
+#[url_patterns]
+fn nested_function() -> UnifiedRouter {
+	UnifiedRouter::new().merge({
+		fn apply(router: UnifiedRouter) -> UnifiedRouter {
+			router.server(crate::native::configure)
+		}
+		apply(UnifiedRouter::new())
+	})
+}
+
+#[url_patterns]
+fn tuple_assignment() -> UnifiedRouter {
+	UnifiedRouter::new().merge({
+		let router;
+		(router,) = (UnifiedRouter::new(),);
+		router.server(crate::native::configure)
+	})
+}
+
+#[url_patterns]
+fn let_chain() -> UnifiedRouter {
+	UnifiedRouter::new().merge(
+		if let Some(router) = Some(UnifiedRouter::new())
+			&& {
+				consume(router.server(crate::native::configure));
+				true
+			} {
+			router
+		} else {
+			UnifiedRouter::new()
+		},
+	)
+}
+
+#[url_patterns]
+fn statement_macro() -> UnifiedRouter {
+	UnifiedRouter::new().merge({
+		native_setup!();
+		UnifiedRouter::new()
+	})
+}
+
+#[url_patterns]
+fn type_alias() -> UnifiedRouter {
+	UnifiedRouter::new().merge({
+		type Router = UnifiedRouter;
+		let router: Router = make_router();
+		router.server(crate::native::configure)
+	})
+}
+
+#[url_patterns]
+fn impl_method() -> UnifiedRouter {
+	UnifiedRouter::new().merge({
+		impl Builder {
+			fn apply(router: UnifiedRouter) -> UnifiedRouter {
+				router.server(crate::native::configure)
+			}
+		}
+		Builder::apply(UnifiedRouter::new())
+	})
+}
+
+#[url_patterns]
+fn trait_method() -> UnifiedRouter {
+	UnifiedRouter::new().merge({
+		trait BuilderTrait {
+			fn apply(router: UnifiedRouter) -> UnifiedRouter {
+				router.server(crate::native::configure)
+			}
+		}
+		BuilderTrait::apply(UnifiedRouter::new())
+	})
+}
+
+#[url_patterns]
+fn match_initializer() -> UnifiedRouter {
+	UnifiedRouter::new().merge({
+		let router = match flag {
+			true => UnifiedRouter::new(),
+			false => UnifiedRouter::default(),
+		};
+		router.server(configure)
+	})
+}
+
+#[url_patterns]
+fn impl_receiver() -> UnifiedRouter {
+	UnifiedRouter::new().merge({
+		impl SomeLocalTrait for UnifiedRouter {
+			fn apply(self) -> UnifiedRouter {
+				self.server(configure)
+			}
+		}
+		UnifiedRouter::new()
+	})
+}
+
+#[url_patterns]
+fn forward_type_alias() -> UnifiedRouter {
+	UnifiedRouter::new().merge({
+		let router: Router = make_router();
+		type Router = UnifiedRouter;
+		router.server(configure)
+	})
+}
+
+fn main() {}

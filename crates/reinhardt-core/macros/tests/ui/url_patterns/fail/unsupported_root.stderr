@@ -1,0 +1,29 @@
+error: #[url_patterns] requires a direct UnifiedRouter::new() or UnifiedRouter::default() builder chain
+ --> tests/ui/url_patterns/fail/unsupported_root.rs:5:2
+  |
+5 |     make_router()
+  |     ^^^^^^^^^^^^^
+
+error: #[url_patterns] requires a direct UnifiedRouter::new() or UnifiedRouter::default() builder chain
+  --> tests/ui/url_patterns/fail/unsupported_root.rs:10:2
+   |
+10 |     router
+   |     ^^^^^^
+
+error: #[url_patterns] requires a direct UnifiedRouter::new() or UnifiedRouter::default() builder chain
+  --> tests/ui/url_patterns/fail/unsupported_root.rs:15:2
+   |
+15 | /     if enabled {
+16 | |         UnifiedRouter::new()
+17 | |     } else {
+18 | |         UnifiedRouter::default()
+19 | |     }
+   | |_____^
+
+error: #[url_patterns] requires a direct UnifiedRouter::new() or UnifiedRouter::default() builder chain
+  --> tests/ui/url_patterns/fail/unsupported_root.rs:24:2
+   |
+24 | /     match enabled {
+25 | |         _ => UnifiedRouter::new(),
+26 | |     }
+   | |_____^

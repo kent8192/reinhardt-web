@@ -26,6 +26,11 @@ not add target `cfg` branches around the apps in the project-level `routes`
 function. Retain gates inside an app's `urls.rs` only for its target-specific
 route modules.
 
+The generated Pages app keeps its HTTP/server chain in a private
+`#[url_patterns]` helper and lets the public `url_patterns()` function add
+target-specific WebSocket, gRPC, and client routes. This keeps the annotated
+builder direct while preserving every route in the aggregate.
+
 ## Endpoint and component macros
 
 - Use endpoint macros such as `#[get]` and `#[post]` for HTTP routes.

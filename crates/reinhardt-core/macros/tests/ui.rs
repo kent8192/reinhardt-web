@@ -105,6 +105,15 @@ fn test_routes_registration_macro_fail() {
 	t.compile_fail("tests/ui/routes_registration/fail/*.rs");
 }
 
+#[rstest::rstest]
+fn test_url_patterns_macro_fail() {
+	// Arrange
+	let cases = trybuild::TestCases::new();
+
+	// Act / Assert
+	cases.compile_fail("tests/ui/url_patterns/fail/*.rs");
+}
+
 // ===== Injectable =====
 
 #[test]
