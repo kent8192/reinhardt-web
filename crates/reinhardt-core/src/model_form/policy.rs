@@ -94,6 +94,17 @@ pub trait NativeModelFormPayload: Sized {
 	fn from_native_form_value(value: serde_json::Value) -> Result<Self, serde_json::Error>;
 }
 
+fn native_model_form_control_text(raw_text: &str, kind: ModelFormFieldKind) -> String {
+	if matches!(kind, ModelFormFieldKind::Json) {
+		return raw_text.to_owned();
+	}
+
+	match serde_json::from_str::<serde_json::Value>(raw_text) {
+		Ok(serde_json::Value::String(text)) => text,
+		_ => raw_text.to_owned(),
+	}
+}
+
 /// Normalizes controls produced by a native HTML model form before decoding.
 ///
 /// Browser form submissions represent every successful control as text and
@@ -112,6 +123,9 @@ pub trait NativeModelFormPayload: Sized {
 /// precedence over the control's submitted value. This conversion is intentionally
 /// limited to schema fields permitted by the selected policy; unrelated controls
 /// such as the CSRF token are removed before typed payload decoding.
+/// Multipart JSON-encoded scalar strings remain available to this schema-aware
+/// step, while ordinary scalar controls continue to decode generated JSON string
+/// values as their underlying text.
 ///
 /// # Errors
 ///
@@ -185,9 +199,10 @@ where
 			}
 			continue;
 		};
-		let serde_json::Value::String(text) = control else {
+		let serde_json::Value::String(raw_text) = control else {
 			continue;
 		};
+		let text = native_model_form_control_text(raw_text, descriptor.kind);
 		if !native_was_edited
 			&& color_sentinel_value
 				.as_ref()
@@ -258,7 +273,7 @@ where
 			ModelFormFieldKind::Time if text.len() == 5 && text.as_bytes()[2] == b':' => {
 				Some(serde_json::Value::String(format!("{text}:00")))
 			}
-			ModelFormFieldKind::Json => Some(serde_json::from_str(text)?),
+			ModelFormFieldKind::Json => Some(serde_json::from_str(&text)?),
 			ModelFormFieldKind::DateTime | ModelFormFieldKind::NaiveDateTime
 				if text.split_once('T').is_some_and(|(_, time)| {
 					!time.ends_with('Z') && !time.contains(['+', '-'])
@@ -289,6 +304,8 @@ where
 		};
 		if let Some(normalized) = normalized {
 			*control = normalized;
+		} else if !matches!(descriptor.kind, ModelFormFieldKind::Json) {
+			*control = serde_json::Value::String(text);
 		}
 	}
 
@@ -547,6 +564,23 @@ mod tests {
 				"metadata": {"draft": true},
 			}),
 		);
+	}
+
+	#[test]
+	fn native_normalization_preserves_json_string_scalars() {
+		let encoded_string =
+			normalize_native_model_form_value::<TestSchema, AllEditableModelFields>(
+				serde_json::json!({ "metadata": r#""true""# }),
+			)
+			.expect("JSON string scalar should normalize");
+		assert_eq!(encoded_string, serde_json::json!({ "metadata": "true" }));
+
+		let encoded_boolean =
+			normalize_native_model_form_value::<TestSchema, AllEditableModelFields>(
+				serde_json::json!({ "metadata": "true" }),
+			)
+			.expect("JSON boolean scalar should normalize");
+		assert_eq!(encoded_boolean, serde_json::json!({ "metadata": true }));
 	}
 
 	#[test]

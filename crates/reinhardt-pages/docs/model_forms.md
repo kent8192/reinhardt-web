@@ -252,6 +252,10 @@ fields outside the selection do not block submission, and requests containing
 unselected arguments are rejected. File argument kinds and required uploads are
 checked before application validation. The form's model and policy must produce
 exactly the declared endpoint payload type.
+Multipart scalar parts retain their wire text until schema-aware normalization;
+JSON fields therefore preserve quoted JSON string scalars such as `"true"`
+instead of coercing them to booleans, while ordinary scalar fields still decode
+generated JSON string values as text.
 Ordinary multipart endpoints without this binding cannot serve model-backed forms.
 
 Generated cleaned file and image getters return

@@ -299,12 +299,11 @@ fn is_model_form_protocol_field(name: &str) -> bool {
 	name == "csrfmiddlewaretoken" || name.starts_with("__reinhardt_")
 }
 
+/// Retains multipart wire text so the model-form schema can decode JSON fields
+/// without losing the distinction between a JSON string and a JSON scalar.
 fn decode_native_field_value(data: &[u8]) -> Result<serde_json::Value, std::str::Utf8Error> {
 	let text = std::str::from_utf8(data)?;
-	Ok(match serde_json::from_str::<serde_json::Value>(text) {
-		Ok(serde_json::Value::String(value)) => serde_json::Value::String(value),
-		_ => serde_json::Value::String(text.to_owned()),
-	})
+	Ok(serde_json::Value::String(text.to_owned()))
 }
 
 fn part_kind(part: &MultipartPart) -> &'static str {
@@ -428,8 +427,8 @@ mod tests {
 
 	#[rstest]
 	#[case::browser_text(b"Report", "Report")]
-	#[case::json_encoded_text(br#""Report""#, "Report")]
-	fn native_multipart_fields_are_decoded_as_text(#[case] input: &[u8], #[case] expected: &str) {
+	#[case::json_encoded_text(br#""Report""#, r#""Report""#)]
+	fn native_multipart_fields_preserve_wire_text(#[case] input: &[u8], #[case] expected: &str) {
 		let value = decode_native_field_value(input).expect("native field should be valid UTF-8");
 
 		assert_eq!(value, serde_json::Value::String(expected.to_owned()));
