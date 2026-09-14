@@ -218,6 +218,16 @@ For detailed guidelines on writing CHANGELOG-friendly commit messages, see [inst
 
 ## Automated Workflow
 
+Release announcement detection compares `reinhardt-web@v*` tag snapshots taken
+before and after publishing. Both snapshots use `LC_ALL=C sort`, and `comm` uses
+the same locale; version ordering is only used when selecting announcement tags.
+A missing snapshot or a failed fetch, tag enumeration, sort, or comparison fails
+the Release job. Only a successful comparison with no new tags emits
+`released=false`; detection errors must not silently suppress announcements.
+
+Run `bash scripts/tests/test-release-tag-snapshots.sh` to verify tag detection
+and failure handling without publishing or contacting a remote repository.
+
 ### Step 1: Develop with Conventional Commits
 
 Write commits following [Conventional Commits](https://www.conventionalcommits.org/):
