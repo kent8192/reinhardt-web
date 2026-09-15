@@ -640,11 +640,15 @@ async fn startapp_pages_layout_has_target_gated_route_surface() {
 	);
 	assert!(
 		urls_contents.contains("pub fn url_patterns() -> UnifiedRouter")
+			&& urls_contents.contains("use reinhardt::url_patterns;")
+			&& urls_contents.contains("#[url_patterns]\nfn http_url_patterns() -> UnifiedRouter")
+			&& urls_contents.contains("UnifiedRouter::new().server(|server|")
+			&& urls_contents.contains("let router = http_url_patterns();")
 			&& urls_contents.contains(".server(|server|")
 			&& urls_contents.contains(".websocket(|websocket|")
 			&& urls_contents.contains(".grpc(|grpc|")
 			&& urls_contents.contains(".with_namespace(\"foo\")"),
-		"apps/foo/urls.rs must aggregate HTTP, WebSocket, gRPC, and client routes:\n{urls_contents}"
+		"apps/foo/urls.rs must keep the HTTP chain macro-compatible while aggregating all routes:\n{urls_contents}"
 	);
 	assert!(
 		urls_contents

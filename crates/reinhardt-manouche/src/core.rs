@@ -7,6 +7,7 @@
 //! - Common types and utilities
 
 pub mod attr_utils;
+pub mod client_form_view;
 pub mod form_node;
 pub mod form_typed;
 pub mod head_node;
@@ -17,6 +18,7 @@ pub mod style_typed;
 pub mod typed_node;
 pub mod types;
 
+pub use client_form_view::*;
 pub use form_node::*;
 pub use form_typed::*;
 pub use head_node::*;

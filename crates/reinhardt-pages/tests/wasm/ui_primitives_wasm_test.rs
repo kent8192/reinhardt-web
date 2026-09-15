@@ -115,6 +115,31 @@ fn hydration_reconciles_the_effective_duplicate_boolean_attribute() {
 }
 
 #[wasm_bindgen_test]
+fn hydration_reconciliation_rejects_element_children_in_raw_text_snapshot() {
+	// Arrange
+	let document = web_sys::window()
+		.expect("window")
+		.document()
+		.expect("document");
+	let element = document.create_element("pre").expect("create pre");
+	element.set_inner_html("<span>code</span>");
+	let page = PageElement::new("pre").child("code").into_page();
+
+	// Act
+	let result = reconcile(&Element::new(element), &page);
+
+	// Assert
+	assert!(matches!(
+		result,
+		Err(reinhardt_pages::hydration::ReconcileError::TagMismatch {
+			expected,
+			actual,
+			..
+		}) if expected == "#text" && actual == "span"
+	));
+}
+
+#[wasm_bindgen_test]
 async fn action_button_mounts_dispatches_once_and_exposes_pending_attributes() {
 	let root = BodyRoot::new("ui-action-button-pending");
 	let scope = ReactiveScope::new();

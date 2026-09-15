@@ -285,7 +285,8 @@ web-sys = { version = "0.3.83", features = [
 ] }
 
 # Async support for WASM
-reinhardt-core = {workspace = true, default-features = false, features = ["reactive", "page", "parsers", "security", "validators"]}
+# Shared named DTOs retain the same validation derive on native and browser targets.
+reinhardt-core = {workspace = true, default-features = false, features = ["reactive", "page", "parsers", "security", "validators", "macros"]}
 smallvec = { workspace = true }
 [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
 wasm-bindgen-futures = "0.4.56"
@@ -391,6 +392,11 @@ required-features = ["testing"]
 [[test]]
 name = "server_mutation_wasm_test"
 path = "tests/wasm/server_mutation_wasm_test.rs"
+required-features = ["testing"]
+
+[[test]]
+name = "client_form_view_wasm_test"
+path = "tests/wasm/client_form_view_wasm_test.rs"
 required-features = ["testing"]
 
 [[test]]

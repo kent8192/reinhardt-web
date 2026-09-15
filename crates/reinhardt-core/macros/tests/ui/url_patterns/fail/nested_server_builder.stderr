@@ -1,0 +1,101 @@
+error: nested UnifiedRouter .server(...) calls are unsupported here; extract the nested builder into a separate #[url_patterns] function
+ --> tests/ui/url_patterns/fail/nested_server_builder.rs:5:50
+  |
+5 |     UnifiedRouter::new().merge(UnifiedRouter::new().server(configure))
+  |                                                     ^^^^^^
+
+error: nested UnifiedRouter .server(...) calls are unsupported here; extract the nested builder into a separate #[url_patterns] function
+  --> tests/ui/url_patterns/fail/nested_server_builder.rs:12:10
+   |
+12 |         router.server(configure)
+   |                ^^^^^^
+
+error: nested UnifiedRouter .server(...) calls are unsupported here; extract the nested builder into a separate #[url_patterns] function
+  --> tests/ui/url_patterns/fail/nested_server_builder.rs:18:63
+   |
+18 |     UnifiedRouter::new().mount_unified("/", UnifiedRouter::new().server(configure))
+   |                                                                  ^^^^^^
+
+error: nested UnifiedRouter .server(...) calls are unsupported here; extract the nested builder into a separate #[url_patterns] function
+  --> tests/ui/url_patterns/fail/nested_server_builder.rs:24:32
+   |
+24 |         consume(UnifiedRouter::new().server(configure));
+   |                                      ^^^^^^
+
+error: nested UnifiedRouter .server(...) calls are unsupported here; extract the nested builder into a separate #[url_patterns] function
+  --> tests/ui/url_patterns/fail/nested_server_builder.rs:33:10
+   |
+33 |         router.server(crate::native::configure)
+   |                ^^^^^^
+
+error: nested UnifiedRouter .server(...) calls are unsupported here; extract the nested builder into a separate #[url_patterns] function
+  --> tests/ui/url_patterns/fail/nested_server_builder.rs:40:46
+   |
+40 |         let apply = |router: UnifiedRouter| router.server(crate::native::configure);
+   |                                                    ^^^^^^
+
+error: nested UnifiedRouter .server(...) calls are unsupported here; extract the nested builder into a separate #[url_patterns] function
+  --> tests/ui/url_patterns/fail/nested_server_builder.rs:47:43
+   |
+47 |     UnifiedRouter::new().merge(make_router().server(crate::native::configure))
+   |                                              ^^^^^^
+
+error: nested UnifiedRouter .server(...) calls are unsupported here; extract the nested builder into a separate #[url_patterns] function
+  --> tests/ui/url_patterns/fail/nested_server_builder.rs:54:11
+   |
+54 |             router.server(crate::native::configure)
+   |                    ^^^^^^
+
+error: nested UnifiedRouter .server(...) calls are unsupported here; extract the nested builder into a separate #[url_patterns] function
+  --> tests/ui/url_patterns/fail/nested_server_builder.rs:65:10
+   |
+65 |         router.server(crate::native::configure)
+   |                ^^^^^^
+
+error: nested UnifiedRouter .server(...) calls are unsupported here; extract the nested builder into a separate #[url_patterns] function
+  --> tests/ui/url_patterns/fail/nested_server_builder.rs:74:20
+   |
+74 |                 consume(router.server(crate::native::configure));
+   |                                ^^^^^^
+
+error: opaque macros in preserved router arguments are unsupported here; expand the expression before using it
+  --> tests/ui/url_patterns/fail/nested_server_builder.rs:87:3
+   |
+87 |         native_setup!();
+   |         ^^^^^^^^^^^^^^^
+
+error: nested UnifiedRouter .server(...) calls are unsupported here; extract the nested builder into a separate #[url_patterns] function
+  --> tests/ui/url_patterns/fail/nested_server_builder.rs:97:10
+   |
+97 |         router.server(crate::native::configure)
+   |                ^^^^^^
+
+error: nested UnifiedRouter .server(...) calls are unsupported here; extract the nested builder into a separate #[url_patterns] function
+   --> tests/ui/url_patterns/fail/nested_server_builder.rs:106:12
+    |
+106 |                 router.server(crate::native::configure)
+    |                        ^^^^^^
+
+error: nested UnifiedRouter .server(...) calls are unsupported here; extract the nested builder into a separate #[url_patterns] function
+   --> tests/ui/url_patterns/fail/nested_server_builder.rs:118:12
+    |
+118 |                 router.server(crate::native::configure)
+    |                        ^^^^^^
+
+error: nested UnifiedRouter .server(...) calls are unsupported here; extract the nested builder into a separate #[url_patterns] function
+   --> tests/ui/url_patterns/fail/nested_server_builder.rs:132:10
+    |
+132 |         router.server(configure)
+    |                ^^^^^^
+
+error: nested UnifiedRouter .server(...) calls are unsupported here; extract the nested builder into a separate #[url_patterns] function
+   --> tests/ui/url_patterns/fail/nested_server_builder.rs:141:10
+    |
+141 |                 self.server(configure)
+    |                      ^^^^^^
+
+error: nested UnifiedRouter .server(...) calls are unsupported here; extract the nested builder into a separate #[url_patterns] function
+   --> tests/ui/url_patterns/fail/nested_server_builder.rs:153:10
+    |
+153 |         router.server(configure)
+    |                ^^^^^^

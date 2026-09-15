@@ -1057,6 +1057,10 @@ an `AtomicTransaction` created by `DatabaseConnection::atomic_write`;
 The returned `created` flag is true only when this invocation inserted the row.
 A losing get/create race reloads the winner with `false`; a losing
 update/create race locks and updates the winner before returning `false`.
+On PostgreSQL, get/create also recovers when a concurrent insert conflicts with
+an alternate unique field: it reloads the row matching the full lookup after
+rolling back the insert savepoint. If no row matches, the original unique
+constraint error is preserved.
 
 See the
 [typed manager upsert migration guide](../../docs/migration/0.4.0-typed-manager-upserts.md)

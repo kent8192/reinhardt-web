@@ -460,7 +460,7 @@ src/
 ├── config/
 │   ├── apps.rs                   # installed_apps! { polls: "polls" }
 │   ├── settings.rs               # #[cfg(server)] settings
-│   ├── urls.rs                   # #[routes(standalone)] entry
+│   ├── urls.rs                   # #[routes] entry
 │   └── wasm.rs                   # #[cfg(server)] wasm tooling config
 ├── lib.rs                        # crate root (`pub mod apps;` is un-gated)
 ├── shared.rs                     # bi-target shared module
@@ -471,56 +471,70 @@ src/
 
 ### 5. Register Routes
 
-Edit your app's `urls.rs`. **`urls.rs` plays two roles**: it **declares the URL
-submodules** of the app (via `pub mod ...;`) and **aggregates** them into a
-single `url_patterns` (or `server_url_patterns` / `unified_url_patterns`) entry
-point that `src/config/urls.rs` mounts:
+Edit your app's `urls.rs` to return a shared `UnifiedRouter`. Apply
+`#[url_patterns]` when its server handlers live in cfg-gated modules:
 
 ```rust
-// users/urls.rs
-//
-// 1. Module declarations for sub-URL files (optional, for larger apps):
-pub mod api;
-pub mod views;
-
-// 2. Aggregator — the single entry point mounted from src/config/urls.rs.
+// src/apps/users/urls.rs
 use reinhardt::url_patterns;
-use reinhardt::ServerRouter;
+use reinhardt::urls::prelude::UnifiedRouter;
 
-use crate::config::apps::InstalledApp;
-
-#[url_patterns(InstalledApp::users, mode = server)]
-pub fn server_url_patterns() -> ServerRouter {
-	ServerRouter::new()
-		.endpoint(views::list_users)
-		.endpoint(views::get_user)
-		.endpoint(views::create_user)
-		.mount("/api/v1/", api::routes())
+#[url_patterns]
+pub fn url_patterns() -> UnifiedRouter {
+	UnifiedRouter::new()
+		.server(|server| {
+			server
+				.endpoint(crate::apps::users::server::views::list_users)
+				.endpoint(crate::apps::users::server::views::get_user)
+				.endpoint(crate::apps::users::server::views::create_user)
+		})
+		.with_namespace("users")
 }
 ```
 
-The `#[url_patterns]` attribute registers this router with the framework for
-automatic discovery. For Pages apps, keep the app-level `urls.rs` as the
-target-neutral aggregate and put route implementations in
-`urls/client_router.rs` and `urls/server_router.rs`; the project-level
-`src/config/urls.rs` mounts the aggregate functions.
+The argumentless `#[url_patterns]` attribute keeps server configuration only
+when the calling crate enables `cfg(server)` on a non-browser-WASM target.
+Other builds erase the complete `.server(...)` argument before resolving
+handler names. Keep native imports and handler modules cfg-gated, and enable
+`client-router` for browser routing. The attribute adds no inventory entry.
 
-Include in `src/config/urls.rs`:
+Declare and activate the application's custom cfg in `build.rs`, for example
+using an application Cargo feature named `server` (`server = []`):
+
+```rust
+fn main() {
+	println!("cargo::rustc-check-cfg=cfg(server)");
+	if std::env::var_os("CARGO_FEATURE_SERVER").is_some() {
+		println!("cargo::rustc-cfg=server");
+	}
+}
+```
+
+Mount app-level functions in the single project-level entry point:
 
 ```rust
 // src/config/urls.rs
-use reinhardt::prelude::*;
 use reinhardt::routes;
+use reinhardt::urls::prelude::UnifiedRouter;
+use crate::apps::users;
 
 #[routes]
-pub fn routes() -> ServerRouter {
-	ServerRouter::new()
-		.mount("/api/", users::urls::url_patterns())
+pub fn routes() -> UnifiedRouter {
+	UnifiedRouter::new()
+		.mount_unified("/api/", users::urls::url_patterns())
 }
 ```
 
-The `#[routes]` attribute macro automatically registers this function with the
-framework for discovery via the `inventory` crate.
+`#[routes]` registers the root factory with the framework through `inventory`.
+If the root also contains native handler references, stack `#[url_patterns]`
+and `#[routes]` in either order. For larger apps, compose separately annotated
+functions with `mount_unified` or `merge`; avoid inline nested server builders.
+The Pages app scaffold follows the same boundary: its private
+`http_url_patterns()` helper is the direct `UnifiedRouter` chain annotated with
+`#[url_patterns]`, while the public `url_patterns()` aggregate calls that
+helper and then adds the cfg-gated WebSocket, gRPC, and client routes. Keep
+protocol or client aggregation in the unannotated aggregate so those routes
+are not lost when native server handlers are erased for browser builds.
 
 **Note:** The `reinhardt::prelude` includes commonly used types. Key exports include:
 

@@ -206,13 +206,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Setup Rust
-        uses: ./.github/actions/setup-rust
+      - name: Setup test environment (Rust + protoc)
+        uses: ./.github/actions/setup-test-env
         with:
-          cache-key: "wasm-test"
+          rust-cache-key: "wasm-test"
           # Cache-seed pattern (Issue #4536, mirrors unit-test.yml): PR runs
           # restore from main's cache but do not save their own entries.
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          rust-save-if: ${{ github.ref == 'refs/heads/main' }}
+          protoc-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install wasm32-unknown-unknown target
         run: rustup target add wasm32-unknown-unknown
@@ -289,6 +290,16 @@ jobs:
               --test client_router_subscription_drop_test \
               --test client_router_listener_panic_isolation_test \
               --test unified_router_target_parity_test
+
+      - name: Run URL-pattern browser runtime parity
+        # Compile and execute the downstream-shaped consumer against headless
+        # Chrome; cargo check alone cannot verify the generated client routes.
+        run: |
+          cargo test \
+            -p reinhardt-integration-tests \
+            --test url_patterns_target_parity \
+            url_patterns_browser_runtime \
+            -- --exact --ignored --nocapture
 
   # Native e2e regression test for the SPA link interceptor -> Router::push
   # -> re-render path. Boots a Chrome container via testcontainers and drives

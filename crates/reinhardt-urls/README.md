@@ -126,6 +126,44 @@ client routes, so `.server(...)` type-checks but is inert. Do not rely on an
 inactive closure for required side effects; test client route behavior by
 constructing `ClientRouter` directly inside a reactive scope on native.
 
+When server handlers live in cfg-gated modules, use the facade's
+`#[reinhardt::url_patterns]` attribute to remove their complete `.server(...)`
+arguments before name resolution on inactive targets:
+
+```rust
+use reinhardt::urls::prelude::UnifiedRouter;
+
+#[reinhardt::url_patterns]
+pub fn url_patterns() -> UnifiedRouter {
+	UnifiedRouter::new()
+		.server(|server| server.endpoint(crate::native_handlers::health))
+		.with_namespace("demo")
+}
+```
+
+The attribute preserves server calls only when the **calling crate** enables
+`cfg(server)` and the target is not browser WASM
+(`all(target_family = "wasm", target_os = "unknown")`). For example, a caller
+can declare a `server = []` Cargo feature and use this `build.rs`:
+
+```rust
+fn main() {
+	println!("cargo::rustc-check-cfg=cfg(server)");
+	if std::env::var_os("CARGO_FEATURE_SERVER").is_some() {
+		println!("cargo::rustc-cfg=server");
+	}
+}
+```
+
+Keep native handler modules and native Cargo dependencies target-gated.
+The attribute supports one builder expression starting at
+`UnifiedRouter::new()` or `default()`, followed by `server`, `client`,
+`with_prefix`, `with_namespace`, `mount_unified`, or `merge`. Use separate
+annotated functions for nested server builders. It adds no inventory entry;
+retain a single root `#[routes]`, which can be stacked in either order with
+`#[url_patterns]`. Existing builder calls without the attribute retain their
+original type-checking behavior.
+
 ### Synchronous Server Routes
 
 Use `endpoint_sync` or `handler_sync` for routes that can build a response

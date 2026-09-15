@@ -2,6 +2,8 @@
 //!
 //! This module verifies that SSR-rendered DOM matches the expected
 //! component structure during hydration.
+//! Empty presentation text follows the browser's child-node filtering; raw-text
+//! snapshots such as `textarea` and `pre` retain their whitespace and line feeds.
 
 use crate::component::Page;
 
@@ -375,6 +377,13 @@ fn reconcile_dom_node_at_path(
 			}
 		}
 		Page::Text(expected_text) => {
+			if node.node_type() != web_sys::Node::TEXT_NODE {
+				return Err(ReconcileError::TagMismatch {
+					path,
+					expected: "#text".to_string(),
+					actual: node.node_name().to_lowercase(),
+				});
+			}
 			reconcile_text_at_path(node.text_content().unwrap_or_default(), expected_text, path)
 		}
 		Page::Fragment(views) => {
@@ -539,12 +548,16 @@ fn reconcile_children_at_path(
 ) -> Result<(), ReconcileError> {
 	let mut expected_children = Vec::new();
 	collect_expected_children(child_views, &path, &mut expected_children);
-	if element.tag_name().eq_ignore_ascii_case("textarea")
+	if (element.tag_name().eq_ignore_ascii_case("textarea")
+		|| element.tag_name().eq_ignore_ascii_case("pre"))
 		&& expected_children
 			.iter()
 			.all(|(_, view)| matches!(view, Page::Text(_)))
+		&& relevant_child_nodes(element)
+			.iter()
+			.all(|node| node.node_type() == web_sys::Node::TEXT_NODE)
 	{
-		// Textarea snapshots retain whitespace, including an absent empty text node.
+		// Raw-text snapshots retain whitespace, including an absent empty text node.
 		let expected: String = expected_children
 			.iter()
 			.filter_map(|(_, view)| {
@@ -566,6 +579,10 @@ fn reconcile_children_at_path(
 		}
 		return Ok(());
 	}
+	// Match the DOM traversal without discarding raw textarea snapshot content.
+	expected_children.retain(
+		|(_, child)| !matches!(child, Page::Text(text) if normalize_whitespace(text).is_empty()),
+	);
 	let actual_nodes = relevant_child_nodes(element);
 
 	for (index, (child_path, child_view)) in expected_children.iter().enumerate() {
@@ -926,6 +943,9 @@ fn reconcile_options_children_at_path(
 	let children_inside_controlled_select = inside_controlled_select
 		|| matches!(view, Page::Element(element) if is_controlled_select(element));
 	collect_expected_children(child_views, &parent_path, &mut expected_children);
+	expected_children.retain(
+		|(_, child)| !matches!(child, Page::Text(text) if normalize_whitespace(text).is_empty()),
+	);
 
 	for (index, (child_path, child_view)) in expected_children.iter().enumerate() {
 		let Some(actual_node) = actual_nodes.get(index) else {
