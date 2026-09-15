@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Keep main's release comparison on its published stable release line.
+# Compare each release line against its published tag with buildable dependencies.
 set -euo pipefail
 
 fail() {
@@ -7,6 +7,7 @@ fail() {
 	exit 1
 }
 
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(git rev-parse --show-toplevel)"
 command="${1:-release-pr}"
 if [ "$#" -gt 0 ]; then
@@ -37,25 +38,28 @@ trap 'exit 143' TERM
 
 args=("$command" --manifest-path "$repo_root/Cargo.toml" --config "$repo_root/release-plz.toml")
 ref_name="${GITHUB_REF_NAME:-$(git branch --show-current)}"
+manifest=$(cargo read-manifest --manifest-path "$repo_root/Cargo.toml")
+package=$(jq -er '.name' <<< "$manifest")
+version=$(jq -er '.version' <<< "$manifest")
 if [ "$ref_name" = main ]; then
-	manifest=$(cargo read-manifest --manifest-path "$repo_root/Cargo.toml")
-	package=$(jq -er '.name' <<< "$manifest")
-	version=$(jq -er '.version' <<< "$manifest")
 	[[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "main requires a stable package version, found '$version'."
-	tag="$package@v$version"
-	baseline_commit=$(git rev-parse --verify "refs/tags/$tag^{commit}") || fail "Missing stable release tag '$tag'."
-	git merge-base --is-ancestor "$baseline_commit" HEAD || fail "Stable release tag '$tag' is not an ancestor of HEAD."
-
-	baseline_temp=$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/reinhardt-release-baseline.XXXXXX")
-	git worktree add --quiet --detach "$baseline_temp/repo" "$baseline_commit"
-	baseline_manifest="$baseline_temp/repo/Cargo.toml"
-	baseline_package=$(cargo read-manifest --manifest-path "$baseline_manifest" | jq -er '[.name, .version] | join("@")')
-	[ "$baseline_package" = "$package@$version" ] || fail "Stable release tag '$tag' contains '$baseline_package'."
-	printf 'Comparing main against stable release %s (%s).\n' "$tag" "$baseline_commit" >&2
-	args+=(--registry-manifest-path "$baseline_manifest")
-elif [[ ! "$ref_name" =~ ^develop/[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+elif [[ "$ref_name" =~ ^develop/[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+	[[ "$version" = "${ref_name#develop/}"-* ]] || fail "Release version '$version' does not match '$ref_name'."
+else
 	fail "Unsupported release base '$ref_name'; expected main or develop/X.Y.Z."
 fi
+tag="$package@v$version"
+baseline_commit=$(git rev-parse --verify "refs/tags/$tag^{commit}") || fail "Missing release tag '$tag'."
+git merge-base --is-ancestor "$baseline_commit" HEAD || fail "Release tag '$tag' is not an ancestor of HEAD."
+
+baseline_temp=$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/reinhardt-release-baseline.XXXXXX")
+git worktree add --quiet --detach "$baseline_temp/repo" "$baseline_commit"
+baseline_manifest="$baseline_temp/repo/Cargo.toml"
+baseline_package=$(cargo read-manifest --manifest-path "$baseline_manifest" | jq -er '[.name, .version] | join("@")')
+[ "$baseline_package" = "$package@$version" ] || fail "Release tag '$tag' contains '$baseline_package'."
+python3 "$script_dir/prepare-release-baseline.py" "$baseline_temp/repo"
+printf 'Comparing %s against release %s (%s).\n' "$ref_name" "$tag" "$baseline_commit" >&2
+args+=(--registry-manifest-path "$baseline_manifest")
 
 if [ "$command" = release-pr ]; then
 	: "${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required to create a release PR}"
