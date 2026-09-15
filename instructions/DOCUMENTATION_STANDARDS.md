@@ -6,6 +6,15 @@ This document defines documentation maintenance standards for the Reinhardt proj
 
 ---
 
+## Verification Scope
+
+Use [Agent Workflow](AGENT_WORKFLOW.md#verification-scope) to select checks.
+Prose-only Markdown and instruction edits need consistency, links, formatting,
+and any required mirror checks. Rustdoc or executable examples need the affected
+crate documentation build and doctests with the relevant features. The Rustdoc
+commands and diagrams below apply when that generated documentation changes;
+they are not a requirement to rebuild the workspace after every prose edit.
+
 ## Core Principles
 
 ### DM-1 (MUST): Documentation Updates with Code Changes
@@ -695,7 +704,7 @@ All doc comments should produce zero warnings.
 
 ### Standard Documentation Update Process
 
-When implementing or modifying a feature:
+For changes to Rust API documentation or executable examples:
 
 ```
 1. ✅ Implement the code

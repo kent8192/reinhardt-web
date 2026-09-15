@@ -1,84 +1,53 @@
 # Research Escalation Policy
 
-## Purpose
+## RE-1 (MUST): Reassess After Two Failed Attempts
 
-This file defines when and how to escalate from local investigation to external research tools when troubleshooting or designing solutions. The goal is to avoid repeated unproductive attempts and to bring in authoritative external context promptly.
+After two distinct failed repairs or disproved hypotheses, stop speculative
+edits and reassess the evidence before another attempt. Read-only inspection and
+diagnostic commands are not repair attempts. Reproduce the symptom, identify
+what each result ruled out, and seek authoritative documentation for uncertain
+external behavior.
 
----
+## RE-2 (MUST): Use Available Authoritative Sources
 
-## RE-1 (MUST): Escalation Trigger
+Start with the relevant local implementation, configuration, dependency version,
+and official documentation. Use a callable documentation lookup or web search
+when current external facts are needed. Open the original source before relying
+on a search summary.
 
-If a problem is not resolved after **2 or more** unsuccessful improvement attempts (e.g., two distinct fixes that did not resolve the symptom), the agent **MUST** escalate to external research before further trial-and-error attempts.
+Context7, Fetch, Perplexity, Tavily, and Brave are optional capabilities, not a
+mandatory chain. Use a working equivalent when one is absent or fails. Missing
+optional tooling does not require installation or a pause in independent work.
+Respect task-specific source restrictions and avoid exposing secrets or private
+repository content in external queries.
 
-**What counts as an "attempt":**
-- A code change intended to fix the issue that did not resolve it
-- A configuration change intended to fix the issue that did not resolve it
-- A documented hypothesis tested and disproved
+If external access is unavailable, state the unresolved fact and use additional
+local evidence where it can decide the issue. Do not repeat the same ineffective
+repair or claim an unverified hypothesis as the root cause.
 
-**What does NOT count:**
-- Reading code or documentation
-- Running diagnostic commands without making changes
+## RE-3 (MUST): Ask a Discriminating Research Question
 
----
+Include the exact symptom, relevant version/target/environment, attempted
+hypotheses, and evidence that ruled them out. Identify what new fact would change
+the next implementation decision. Query only the context necessary to answer it.
 
-## RE-2 (MUST): Research Tool Order
+## RE-4 (SHOULD): Preserve Durable Findings
 
-When escalating, use the following tool order:
+Record the technical cause, supporting source, and working fix in the relevant
+project documentation when needed. Use OBSIDIAN_WIKI.md for non-duplicated durable
+knowledge. Follow the active memory system's write permissions; research does
+not independently authorize writing private memory or changing user settings.
 
-1. **Context7 / Fetch** (primary): Verify the current documentation of any library, framework, or tool involved. Cheaper and lower-latency than search engines.
-2. **Perplexity MCP** (preferred for research): Search with reasoning + citations. Use when documentation alone is insufficient or when the issue is not strictly a documentation gap.
-3. **Tavily MCP** (alternative): Use when Perplexity is unavailable or when broader coverage is needed.
-4. **Brave Search MCP** (fallback): Use when Perplexity and Tavily both fail to surface useful results, or for cross-checking citations.
-5. **Fetch MCP**: Always use to retrieve and verify the original text of any URL cited by a search result before relying on it.
+## RE-5 (SHOULD): Keep Reasoning Useful
 
----
-
-## RE-3 (MUST): Information to Include in Research Queries
-
-When escalating, the research query MUST include:
-
-- **Symptoms**: The exact error message, failure mode, or unexpected behavior
-- **Constraints**: Project tech stack (Rust 2024, SeaQuery via `reinhardt-query`, TestContainers, etc.) and any environmental constraints (macOS, Docker not Podman, etc.)
-- **Attempts**: A summary of the 2+ attempts already tried
-- **Reasons attempts failed**: What evidence ruled each attempt out
-
-This structure prevents the research tool from suggesting solutions already disproved.
-
----
-
-## RE-4 (SHOULD): Persist Findings
-
-After a successful escalation:
-
-- Save authoritative findings (root cause, working fix, citations) to **serena memory** when the knowledge will likely apply to future work
-- For project-specific decisions (architecture, library trade-offs), prefer GitWhy via `gitwhy_save` so the reasoning is captured alongside the commit
-- Verify URLs cited by Perplexity/Tavily/Brave by fetching the original source before relying on them
-
----
-
-## RE-5 (SHOULD): Use Sequential Thinking for Complex Problems
-
-For multi-step problems where the failure is unclear or the solution space is large, use the `sequentialThinking` MCP tool to externalize reasoning steps before further trial-and-error.
-
----
-
-## Quick Reference
-
-### ✅ MUST DO
-- Escalate to external research after 2 failed improvement attempts
-- Include symptoms, constraints, attempts, and failure reasons in research queries
-- Verify citation URLs via Fetch before acting on search results
-- Try Context7/Fetch first, then Perplexity, then Tavily, then Brave Search
-
-### ❌ NEVER DO
-- Continue trial-and-error past 2 failed attempts without external research
-- Trust search-tool summaries without verifying the original source
-- Skip recording authoritative findings that future sessions will need
-
----
+Use a concise hypothesis/evidence summary for complex failures. A separate
+reasoning tool or another agent is optional and must satisfy the task's tool and
+delegation rules. Communicate conclusions and evidence, not a transcript of
+internal reasoning.
 
 ## Related Documentation
 
-- **Issue Handling**: instructions/ISSUE_HANDLING.md
-- **Upstream Issue Reporting**: instructions/UPSTREAM_ISSUE_REPORTING.md
-- **GitHub Interaction**: instructions/GITHUB_INTERACTION.md
+- [Agent Workflow](AGENT_WORKFLOW.md)
+- [Issue Handling](ISSUE_HANDLING.md)
+- [Upstream Issue Reporting](UPSTREAM_ISSUE_REPORTING.md)
+- [GitHub Interaction](GITHUB_INTERACTION.md)

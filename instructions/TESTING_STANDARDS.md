@@ -6,6 +6,15 @@ This document defines comprehensive testing standards for the Reinhardt project,
 
 ---
 
+## Verification Scope
+
+Select the local test surface using
+[Agent Workflow](AGENT_WORKFLOW.md#verification-scope). Protect changed behavior
+with meaningful assertions, preserve explicit exhaustive coverage requests, and
+complete applicable CI/merge gates. Reuse passing results for unchanged inputs;
+expand or repeat checks when affected consumers, later edits, or unresolved
+failures require it. Prose-only instruction changes do not need Rust tests.
+
 ## Testing Philosophy
 
 ### TP-1 (MUST): Test Completeness
