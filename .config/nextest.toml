@@ -93,6 +93,14 @@ filter = 'package(=reinhardt-macros) & binary(=model_wasm_parity) & test(=model_
 threads-required = 2
 slow-timeout = { period = "1200s", terminate-after = 3 }
 
+# The renamed ClientForm consumer runs native tests and WASM checks twice,
+# once per public facade, in an isolated target directory. Reserve both slots
+# and apply the same cold-build allowance as the other cross-target fixtures.
+[[profile.default.overrides]]
+filter = 'package(=reinhardt-pages) & binary(=client_form_view_facade_compile) & test(=renamed_pages_and_facade_support_external_dtos_on_native_and_wasm)'
+threads-required = 2
+slow-timeout = { period = "1200s", terminate-after = 3 }
+
 # Note: trybuild UI tests are now separated into a dedicated profile
 # Use `cargo make ui-test` to run UI tests with the ui-test profile
 # UI tests are identified by binary(/ui/) filter pattern
