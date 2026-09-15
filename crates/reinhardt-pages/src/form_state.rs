@@ -611,6 +611,12 @@ pub trait FormRuntimeSource: Clone + 'static {
 	/// Returns current defaults captured by the form definition.
 	fn runtime_initial_values(&self) -> Self::Values;
 
+	/// Removes runtime values that cannot be restored as form defaults.
+	#[doc(hidden)]
+	fn runtime_default_values(&self, values: &Self::Values) -> Self::Values {
+		values.clone()
+	}
+
 	/// Updates the generated native-reset baseline when runtime defaults change.
 	#[doc(hidden)]
 	fn runtime_set_default_values(&self, _values: &Self::Values) {}
@@ -1908,16 +1914,22 @@ where
 		self.sync_runtime_widget_errors();
 	}
 
-	/// Makes the current values the defaults and clears dirty state.
+	/// Makes restorable current values the defaults and clears dirty state.
 	///
 	/// Generated forms also update their native-reset baseline and collection-key
-	/// mapping, so subsequent browser resets use the same saved defaults.
+	/// mapping, so subsequent browser resets use the same saved defaults. Browser
+	/// file selections are excluded because browsers do not allow a file input to
+	/// be restored programmatically; an active file selection therefore remains
+	/// dirty until it is cleared.
 	pub fn reset_default_values(&self) {
-		let values = self.get_values();
+		let current = self.get_values();
+		let values = self.form.runtime_default_values(&current);
 		self.form.runtime_set_default_values(&values);
 		*self.default_values.borrow_mut() = values.clone();
 		*self.path_default_values.borrow_mut() = self.form.runtime_path_values_from_values(&values);
-		self.state.is_dirty.set(false);
+		self.state
+			.is_dirty
+			.set(form_values_are_dirty(&self.form, &current, &values));
 	}
 
 	/// Attempts to focus one field.
@@ -2192,6 +2204,7 @@ where
 			return;
 		}
 		*self.deps.borrow_mut() = deps;
+		let new_defaults = self.form.runtime_default_values(&new_defaults);
 
 		let old_defaults = self.default_values.borrow().clone();
 		let current = self.get_values();

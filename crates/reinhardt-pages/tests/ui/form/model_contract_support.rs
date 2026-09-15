@@ -164,7 +164,7 @@ impl ModelFormContract for QuestionCreateForm {
 	}
 }
 
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 pub(crate) struct QuestionResponse {
 	pub(crate) token: String,
 }

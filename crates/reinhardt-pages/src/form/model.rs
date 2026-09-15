@@ -16,6 +16,26 @@ use reinhardt_core::model_form::{
 use reinhardt_core::types::page::{NumberParseError, NumberParseErrorKind, NumberValue};
 use reinhardt_core::validators::{UrlValidator, ValidationError, ValidationErrors, Validator};
 
+/// Computes the midpoint used by a decimal range control without converting
+/// the bounds through binary floating-point arithmetic.
+#[doc(hidden)]
+pub fn model_form_decimal_range_default(min: Option<&str>, max: Option<&str>) -> Option<String> {
+	let min = min
+		.unwrap_or("0")
+		.parse::<Decimal>()
+		.unwrap_or_else(|_| Decimal::from(0u32));
+	let max = max
+		.unwrap_or("100")
+		.parse::<Decimal>()
+		.unwrap_or_else(|_| Decimal::from(100u32));
+	let midpoint = if max < min {
+		min
+	} else {
+		min + (max - min) / Decimal::from(2u32)
+	};
+	Some(midpoint.normalize().to_string())
+}
+
 /// Hidden compile-time selection marker for one model-form argument.
 #[doc(hidden)]
 pub trait ModelFormSelectionArgument<const INDEX: usize> {
@@ -185,6 +205,7 @@ where
 	P: ModelFormPolicy,
 {
 	values: HashMap<&'static str, serde_json::Value>,
+	json_editor_text: HashMap<&'static str, String>,
 	#[cfg(wasm)]
 	selected_files: HashMap<&'static str, web_sys::File>,
 	_schema: PhantomData<S>,
@@ -199,6 +220,7 @@ where
 	fn clone(&self) -> Self {
 		Self {
 			values: self.values.clone(),
+			json_editor_text: self.json_editor_text.clone(),
 			#[cfg(wasm)]
 			selected_files: self.selected_files.clone(),
 			_schema: PhantomData,
@@ -227,6 +249,7 @@ where
 		}
 		Self {
 			values,
+			json_editor_text: HashMap::new(),
 			#[cfg(wasm)]
 			selected_files: HashMap::new(),
 			_schema: PhantomData,
@@ -268,6 +291,7 @@ where
 		{
 			return Err(invalid_value(field, "field does not allow null"));
 		}
+		self.json_editor_text.remove(&descriptor.name);
 		self.values.insert(descriptor.name, value);
 		Ok(())
 	}
@@ -287,6 +311,30 @@ where
 				| ModelFormFieldKind::Url { .. }
 		) {
 			return Err(invalid_value(field, "expected a shared text control field"));
+		}
+		self.json_editor_text.remove(&descriptor.name);
+		self.values
+			.insert(descriptor.name, serde_json::Value::String(value));
+		Ok(())
+	}
+
+	/// Preserves incomplete scalar editor input until submission conversion.
+	#[doc(hidden)]
+	pub fn set_binding_editor_text(
+		&mut self,
+		field: &str,
+		value: String,
+	) -> Result<(), ModelFormPayloadError> {
+		let descriptor = self.binding_descriptor(field)?;
+		let value = if matches!(descriptor.kind, ModelFormFieldKind::DateTime) {
+			normalize_datetime_local(&value, true).unwrap_or(value)
+		} else {
+			value
+		};
+		if matches!(descriptor.kind, ModelFormFieldKind::Json) {
+			self.json_editor_text.insert(descriptor.name, value.clone());
+		} else {
+			self.json_editor_text.remove(&descriptor.name);
 		}
 		self.values
 			.insert(descriptor.name, serde_json::Value::String(value));
@@ -319,6 +367,7 @@ where
 							NumberParseError::from_raw_kind(raw, NumberParseErrorKind::OutOfRange)
 						})?
 				}
+				ModelFormFieldKind::Decimal { .. } => serde_json::Value::String(raw.to_owned()),
 				_ => {
 					return Err(NumberParseError::from_raw_kind(
 						raw,
@@ -338,8 +387,14 @@ where
 			)
 		})?;
 		match value {
-			Some(value) => self.values.insert(descriptor.name, value),
-			None => self.values.remove(descriptor.name),
+			Some(value) => {
+				self.json_editor_text.remove(&descriptor.name);
+				self.values.insert(descriptor.name, value)
+			}
+			None => {
+				self.json_editor_text.remove(&descriptor.name);
+				self.values.remove(descriptor.name)
+			}
 		};
 		Ok(())
 	}
@@ -397,6 +452,7 @@ where
 			});
 		}
 		self.values.remove(descriptor.name);
+		self.json_editor_text.remove(&descriptor.name);
 		#[cfg(wasm)]
 		if is_file_kind(descriptor.kind) {
 			self.selected_files.remove(descriptor.name);
@@ -407,6 +463,12 @@ where
 	/// Returns the raw control value stored for a model field.
 	pub fn value(&self, field: &str) -> Option<&serde_json::Value> {
 		self.values.get(field)
+	}
+
+	/// Returns raw text retained by a JSON control while its editor value is being validated.
+	#[doc(hidden)]
+	pub fn binding_editor_text(&self, field: &str) -> Option<&str> {
+		self.json_editor_text.get(field).map(String::as_str)
 	}
 
 	/// Deserializes one scalar server-function argument from model-form state.
@@ -561,7 +623,13 @@ where
 			}
 			match self.values.get(descriptor.name) {
 				Some(value) => {
-					match convert_snapshot_value(descriptor, value.clone())? {
+					match convert_snapshot_value_with_editor_text(
+						descriptor,
+						value.clone(),
+						self.json_editor_text
+							.get(descriptor.name)
+							.map(String::as_str),
+					)? {
 						Some(value) => validated.values.insert(descriptor.name, value),
 						None => validated.values.remove(descriptor.name),
 					};
@@ -578,6 +646,11 @@ where
 	/// Clears every value that belongs to the active form policy.
 	pub fn clear_selected_values(&mut self) {
 		self.values.retain(|field, _| {
+			!S::contract_fields().iter().any(|descriptor| {
+				descriptor.name == *field && descriptor.editable && P::allows(field)
+			})
+		});
+		self.json_editor_text.retain(|field, _| {
 			!S::contract_fields().iter().any(|descriptor| {
 				descriptor.name == *field && descriptor.editable && P::allows(field)
 			})
@@ -643,7 +716,13 @@ where
 				continue;
 			}
 			if let Some(value) = self.values.get(descriptor.name) {
-				match convert_snapshot_value(descriptor, value.clone()) {
+				match convert_snapshot_value_with_editor_text(
+					descriptor,
+					value.clone(),
+					self.json_editor_text
+						.get(descriptor.name)
+						.map(String::as_str),
+				) {
 					Ok(Some(value)) => {
 						if let Err(error) = raw.set_json(descriptor.name, value) {
 							Self::append_payload_error_to_validation(&mut conversion_errors, error);
@@ -780,8 +859,13 @@ where
 				continue;
 			}
 			if let Some(value) = self.values.get(descriptor.name)
-				&& let Some(value) = convert_snapshot_value(descriptor, value.clone())?
-			{
+				&& let Some(value) = convert_snapshot_value_with_editor_text(
+					descriptor,
+					value.clone(),
+					self.json_editor_text
+						.get(descriptor.name)
+						.map(String::as_str),
+				)? {
 				payload.set_json(descriptor.name, value)?;
 			}
 		}
@@ -838,6 +922,18 @@ fn convert_snapshot_value(
 	descriptor: &ModelFormFieldDescriptor,
 	value: serde_json::Value,
 ) -> Result<Option<serde_json::Value>, ModelFormPayloadError> {
+	convert_snapshot_value_with_editor_text(descriptor, value, None)
+}
+
+fn convert_snapshot_value_with_editor_text(
+	descriptor: &ModelFormFieldDescriptor,
+	value: serde_json::Value,
+	editor_text: Option<&str>,
+) -> Result<Option<serde_json::Value>, ModelFormPayloadError> {
+	if matches!(descriptor.kind, ModelFormFieldKind::Json) && editor_text.is_none() {
+		return validate_json_depth(descriptor.name, value).map(Some);
+	}
+	let value = editor_text.map_or(value, |text| serde_json::Value::String(text.to_owned()));
 	if value.is_null() {
 		return if descriptor.nullable || matches!(descriptor.kind, ModelFormFieldKind::Json) {
 			Ok(Some(value))
@@ -1493,6 +1589,8 @@ mod tests {
 	use rstest::rstest;
 
 	struct NullableBooleanSchema;
+	struct JsonSchema;
+	struct DateTimeSchema;
 	struct LegacyServerFn;
 
 	impl ModelFormServerFn<(), NullableBooleanSchema, AllEditableModelFields> for LegacyServerFn {
@@ -1557,6 +1655,19 @@ mod tests {
 		);
 	}
 
+	#[rstest]
+	fn decimal_range_defaults_preserve_exact_midpoints() {
+		// Arrange
+		let min = Some("9007199254740993");
+		let max = Some("9007199254740993");
+
+		// Act
+		let default = super::model_form_decimal_range_default(min, max);
+
+		// Assert
+		assert_eq!(default.as_deref(), Some("9007199254740993"));
+	}
+
 	#[test]
 	fn native_chrono_values_convert_to_form_strings() {
 		use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
@@ -1609,6 +1720,89 @@ mod tests {
 		let state = ModelFormState::<NullableBooleanSchema, AllEditableModelFields>::new();
 
 		assert_eq!(state.value("published"), None);
+	}
+
+	impl ModelFormSchema for JsonSchema {
+		type Model = ();
+
+		fn fields() -> &'static [ModelFormFieldDescriptor] {
+			const FIELDS: [ModelFormFieldDescriptor; 1] = [ModelFormFieldDescriptor {
+				name: "metadata",
+				kind: ModelFormFieldKind::Json,
+				required: true,
+				has_default: false,
+				nullable: false,
+				editable: true,
+				generated_relation_id: false,
+				trim: false,
+			}];
+			&FIELDS
+		}
+	}
+
+	#[rstest]
+	fn typed_json_strings_survive_submission_conversion() {
+		// Arrange
+		let mut state = ModelFormState::<JsonSchema, AllEditableModelFields>::new();
+		state
+			.set_value("metadata", serde_json::json!("true"))
+			.expect("typed JSON string should be accepted");
+
+		// Act
+		let typed_submission = state
+			.validated_for_submission()
+			.expect("typed JSON string should remain valid");
+		state
+			.set_binding_editor_text("metadata", "true".to_owned())
+			.expect("JSON editor text should be accepted");
+		let editor_submission = state
+			.validated_for_submission()
+			.expect("JSON editor text should parse");
+
+		// Assert
+		assert_eq!(
+			typed_submission.value("metadata"),
+			Some(&serde_json::json!("true"))
+		);
+		assert_eq!(
+			editor_submission.value("metadata"),
+			Some(&serde_json::json!(true))
+		);
+	}
+
+	impl ModelFormSchema for DateTimeSchema {
+		type Model = ();
+
+		fn fields() -> &'static [ModelFormFieldDescriptor] {
+			const FIELDS: [ModelFormFieldDescriptor; 1] = [ModelFormFieldDescriptor {
+				name: "published_at",
+				kind: ModelFormFieldKind::DateTime,
+				required: true,
+				has_default: false,
+				nullable: false,
+				editable: true,
+				generated_relation_id: false,
+				trim: false,
+			}];
+			&FIELDS
+		}
+	}
+
+	#[rstest]
+	fn aware_datetime_editor_values_use_the_canonical_storage_form() {
+		// Arrange
+		let mut state = ModelFormState::<DateTimeSchema, AllEditableModelFields>::new();
+
+		// Act
+		state
+			.set_binding_editor_text("published_at", "2026-09-10T12:34:56".to_owned())
+			.expect("datetime editor value should be accepted");
+
+		// Assert
+		assert_eq!(
+			state.value("published_at"),
+			Some(&serde_json::json!("2026-09-10T12:34:56Z"))
+		);
 	}
 
 	struct NullableDefaultSchema;

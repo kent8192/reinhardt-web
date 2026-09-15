@@ -368,6 +368,9 @@ fn mount_inner(
 			let mount_children_before_binding = tag.eq_ignore_ascii_case("select");
 			let skip_bound_textarea_children =
 				control_binding.is_some() && tag.eq_ignore_ascii_case("textarea");
+			// A noscript fallback is serialized for browsers without scripting. When the
+			// page is mounted with scripting enabled, its fallback markup must remain inert.
+			let skip_noscript_children = tag.eq_ignore_ascii_case("noscript");
 			let append_file_binding_before_controller = control_binding
 				.as_ref()
 				.is_some_and(|binding| binding.kind() == ControlKind::File);
@@ -501,7 +504,7 @@ fn mount_inner(
 					));
 				}
 
-				if !skip_bound_textarea_children {
+				if !skip_bound_textarea_children && !skip_noscript_children {
 					for child in children {
 						mount_inner(child, &element, child_form_owner.clone())?;
 					}

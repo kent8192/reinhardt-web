@@ -90,6 +90,8 @@ redis = { workspace = true, optional = true, features = ["tokio-comp", "cluster-
 cassandra-cpp = { version = "3.0", optional = true }
 aws-sdk-dynamodb = { version = "1.0", optional = true }
 aws-config = { version = "1.0", optional = true }
+# Activate the workspace AWS compatibility constraint (reinhardt-web#6318).
+aws-smithy-types = { workspace = true, optional = true }
 time = { workspace = true, optional = true }
 neo4rs = { version = "0.7", optional = true }
 dashmap = { version = "6.1.0", optional = true }
@@ -237,7 +239,7 @@ db-mysql = ["db-deps"]
 mongodb = ["db-deps", "dep:mongodb", "nosql"]
 redis = ["db-deps", "dep:redis"]
 cassandra = ["db-deps", "dep:cassandra-cpp"]
-dynamodb = ["db-deps", "dep:aws-sdk-dynamodb", "dep:aws-config", "time"]
+dynamodb = ["db-deps", "dep:aws-sdk-dynamodb", "dep:aws-config", "dep:aws-smithy-types", "time"]
 neo4j = ["db-deps", "dep:neo4rs"]
 nosql-document = ["mongodb"]
 nosql-key-value = ["redis", "dynamodb"]

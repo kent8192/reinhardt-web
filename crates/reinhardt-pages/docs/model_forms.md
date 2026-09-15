@@ -252,6 +252,10 @@ fields outside the selection do not block submission, and requests containing
 unselected arguments are rejected. File argument kinds and required uploads are
 checked before application validation. The form's model and policy must produce
 exactly the declared endpoint payload type.
+Multipart scalar parts retain their wire text until schema-aware normalization;
+JSON fields therefore preserve quoted JSON string scalars such as `"true"`
+instead of coercing them to booleans, while ordinary scalar fields still decode
+generated JSON string values as text.
 Ordinary multipart endpoints without this binding cannot serve model-backed forms.
 
 Generated cleaned file and image getters return
@@ -269,7 +273,10 @@ client-provided metadata; they do not become trusted storage paths or prove imag
 validity. Upload metadata is discarded by `into_raw()`. The handler receives the
 original upload bytes and performs storage validation and persistence explicitly.
 
-Scalar fields are encoded as JSON multipart parts, while `File` and `Image`
+Generated browser clients encode scalar fields as JSON multipart parts, while
+native HTML forms submit scalar controls as browser text. The native multipart
+adapter normalizes both representations before model validation and removes the
+CSRF token plus reserved `__reinhardt_*` control markers. `File` and `Image`
 fields use `UploadedFile` or `Option<UploadedFile>`. The direct multipart
 contract requires `fields: [...]`; `exclude: [...]` and
 `ambient_arguments` (including its deprecated `strip_arguments` alias) are not
@@ -340,6 +347,75 @@ match mutation.dispatch() {
     | MutationDispatchOutcome::UnsupportedTarget => {}
 }
 ```
+
+### Render the configured mutation
+
+```rust,ignore
+let form = form! {
+    name: CreateClusterPageForm,
+    model_form: ClusterCreateForm,
+    server_fn: create_cluster,
+};
+let runtime = use_form(&form).build();
+let action = form.server_mutation(&runtime).reset_form_on_success().build();
+let generated_form = action.page();
+let result_action = action.clone();
+let page = PageElement::new("section")
+    .child(generated_form)
+    .child(Page::reactive(move || {
+        result_action.result().map(|result: ClusterTokenInfo| {
+            PageElement::new("output").child(result.token).into_page()
+        }).unwrap_or(Page::Empty)
+    }))
+    .into_page();
+```
+
+Build the form runtime and mutation once, then call `action.page()` to render
+their generated controls. The page uses the runtime already attached to the
+mutation, including validation, error state, and configured callbacks.
+
+The generated **Submit** button dispatches that mutation and becomes disabled
+with **Submitting...** while pending. **Reset** restores the runtime's defaults
+and interaction state. With `reset_form_on_success()`, the latest typed result
+remains available after the controls reset. Render success content outside the
+form subtree and call `action.reset()` to dismiss it after the request completes.
+Resetting the action while it is pending does not cancel the request.
+
+Each form instance supports one mounted generated page. Labels, help text, and
+field errors refer to stable control IDs; the linked error summary follows field
+order. Form-level errors, including `_all`, excluded, and unknown fields, appear
+separately. Input elements remain mounted during editing and error/pending/reset
+updates. Server-owned fields outside the model-form selection do not become
+controls or mutation payload fields.
+
+Native page construction and rendering do not execute the server function or
+submission callbacks. Browser controls use the existing runtime bindings.
+Existing `into_page()` remains available for its standalone submission flow.
+
+Required native color and range widgets materialize their browser defaults before
+the runtime captures its initial values, while optional widgets retain untouched
+field omission. Server-rendered optional color and range widgets include a
+`<noscript>` checkbox labeled **Submit this value even if unchanged**. With
+scripting disabled, leaving it unchecked preserves omission of the browser
+fallback and allows declared model defaults to apply. Checking it explicitly
+supplies the displayed value, including black or the range midpoint. Client-side
+mounting and hydration keep that choice inert while scripts are active.
+
+Full documents rendered by `SsrRenderer` (including `wrap_in_html`) install an
+input/change tracker in the head before controls become interactive. It preserves
+edits made while WASM loads, even when a value is changed back to its browser
+default. Hydration takes over the listeners after initializing its own tracker.
+Both trackers clear edit markers only after an uncanceled native reset. Set
+`SsrOptions::script_nonce()` to the nonce allowed by the response's Content
+Security Policy. Fragment-only rendering does not install document scripts; use
+the full-document renderer or `wrap_in_html` for automatic early tracking.
+
+Browser-owned file selections are excluded from `reset_default_values()`
+because a browser cannot restore a saved file handle, so `reset()` and
+`reset_field()` clear an active selection instead of attempting to restore it.
+Synthetic file and no-script marker names use reserved `__reinhardt_*` prefixes,
+and Decimal range defaults are calculated without converting bounds through
+binary floating point.
 
 Use `submit_response()` when the caller needs the immediate awaited response.
 Use `form.server_mutation(&runtime)` when the UI should observe phase, pending

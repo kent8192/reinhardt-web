@@ -74,7 +74,7 @@ pub struct SsrOptions {
 	pub query_defaults: QueryDefaults,
 	/// Enables streaming Suspense replacement chunks.
 	pub suspense_streaming: bool,
-	/// Optional nonce for inline streaming scripts.
+	/// Optional nonce for inline streaming and native model-form tracking scripts.
 	pub script_nonce: Option<String>,
 }
 
@@ -223,7 +223,7 @@ impl SsrOptions {
 		self
 	}
 
-	/// Sets the nonce used by inline Suspense replacement scripts.
+	/// Sets the nonce used by inline Suspense replacement and model-form tracking scripts.
 	pub fn script_nonce(mut self, nonce: impl Into<String>) -> Self {
 		self.script_nonce = Some(nonce.into());
 		self
@@ -2005,6 +2005,15 @@ impl SsrRenderer {
 			));
 		}
 
+		// Install before any body controls become interactive, including streamed forms.
+		html.push_str("<script data-reinhardt-model-form-bootstrap");
+		if let Some(nonce) = &self.options.script_nonce {
+			write!(html, " nonce=\"{}\"", html_escape(nonce)).expect("write to String");
+		}
+		html.push('>');
+		html.push_str(include_str!("native_model_form.js"));
+		html.push_str("</script>\n");
+
 		html.push_str("</head>\n");
 	}
 
@@ -2663,6 +2672,43 @@ mod tests {
 	use reinhardt_core::types::page::{DeferredNode, EventFile, NativeEventFile};
 	use rstest::rstest;
 	use serial_test::serial;
+
+	#[rstest]
+	#[case::buffered(false)]
+	#[case::minified(true)]
+	#[tokio::test]
+	async fn full_pages_install_model_form_tracking_before_body(#[case] minify: bool) {
+		// Arrange: the same head writer serves streaming and buffered document wrappers.
+		let options = SsrOptions {
+			minify,
+			..SsrOptions::new().script_nonce("nonce\"<&")
+		};
+		let mut renderer = SsrRenderer::with_options(options);
+		let page = PageElement::new("form").into_page();
+
+		// Act
+		let wrapped = renderer.wrap_in_html("<form></form>");
+		let rendered = renderer.render_page_into_page_to_string(page.clone()).await;
+		let headed = renderer.render_page_with_view_head_to_string(page).await;
+
+		// Assert: the exact executable bytes and escaped nonce precede interactive controls.
+		for html in [wrapped, rendered, headed] {
+			let opening =
+				"<script data-reinhardt-model-form-bootstrap nonce=\"nonce&quot;&lt;&amp;\">";
+			let script_start = html.find(opening).expect("bootstrap script");
+			let body_start = html.find("<body>").expect("body");
+			assert!(script_start < body_start);
+			let source = &html[script_start + opening.len()..];
+			assert_eq!(
+				source.split_once("</script>").unwrap().0,
+				include_str!("native_model_form.js")
+			);
+			assert_eq!(
+				html.matches("data-reinhardt-model-form-bootstrap").count(),
+				1
+			);
+		}
+	}
 
 	#[cfg(feature = "hmr")]
 	#[rstest::fixture]

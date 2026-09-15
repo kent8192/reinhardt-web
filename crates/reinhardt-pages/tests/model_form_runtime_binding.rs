@@ -555,7 +555,7 @@ fn programmatic_numeric_updates_clear_parse_errors() {
 }
 
 #[rstest]
-fn static_model_form_bindings_reject_unsupported_control_pairs() {
+fn static_model_form_bindings_enforce_control_kinds() {
 	reinhardt_core::reactive::ReactiveScope::run(|| {
 		// Arrange
 		let form = binding_form!();
@@ -579,9 +579,23 @@ fn static_model_form_bindings_reject_unsupported_control_pairs() {
 		// Assert
 		assert!(file.is_none());
 		assert!(image.is_none());
-		assert!(metadata.is_none());
+		let metadata = metadata.expect("JSON fields expose a raw text editor");
+		assert_eq!(
+			metadata.write(ControlValue::Text("{unfinished".into())),
+			Ok(ControlWriteOutcome::Committed)
+		);
+		assert_eq!(metadata.read(), ControlValue::Text("{unfinished".into()));
+		assert_eq!(
+			form.value("metadata"),
+			Some(serde_json::json!("{unfinished"))
+		);
 		assert!(select_many.is_none());
-		assert!(file_control.is_none());
+		assert_eq!(
+			file_control
+				.expect("file fields use the single-file channel")
+				.read(),
+			ControlValue::Files(Vec::new())
+		);
 		assert!(text_as_file.is_none());
 	});
 }
@@ -641,5 +655,123 @@ fn rejected_numeric_edits_touch_pristine_generated_forms() {
 		model_runtime.reset();
 		assert!(!regular_runtime.form_state().is_touched.get());
 		assert!(!model_runtime.form_state().is_touched.get());
+	});
+}
+
+#[rstest]
+fn json_binding_snapshot_preserves_programmatic_strings_and_raw_editor_text() {
+	reinhardt_core::reactive::ReactiveScope::run(|| {
+		let form = binding_form!();
+		let binding = form
+			.runtime_control_binding(
+				form.metadata_field(),
+				RuntimeControlBindingRequest {
+					kind: ControlKind::Text,
+					radio_value: None,
+				},
+			)
+			.unwrap();
+		for text in ["true", "42", "null", "{unfinished"] {
+			// Arrange a typed JSON string with no raw editor override.
+			form.set_value("metadata", serde_json::json!(text)).unwrap();
+			let snapshot = binding.snapshot();
+			// Act like hydration adopting a different DOM value, then failing.
+			binding.write(ControlValue::Text("false".into())).unwrap();
+			drop(snapshot);
+			// Assert JSON syntax and scalar type survive rollback.
+			assert_eq!(form.value("metadata"), Some(serde_json::json!(text)));
+			assert_eq!(
+				binding.read(),
+				ControlValue::Text(serde_json::to_string(text).unwrap())
+			);
+
+			binding.write(ControlValue::Text(text.into())).unwrap();
+			let snapshot = binding.snapshot();
+			form.set_value("metadata", serde_json::json!({"changed":true}))
+				.unwrap();
+			drop(snapshot);
+			assert_eq!(binding.read(), ControlValue::Text(text.into()));
+		}
+	});
+}
+
+#[rstest]
+fn json_runtime_defaults_restore_raw_editor_text() {
+	reinhardt_core::reactive::ReactiveScope::run(|| {
+		// Arrange
+		let form = binding_form!();
+		let runtime = use_form(&form).build();
+		let binding =
+			into_control_binding::<TextBinding, _>(runtime.field(form.metadata_field()), ());
+		binding
+			.write(ControlValue::Text("{unfinished".to_owned()))
+			.expect("raw JSON editor text commits");
+		runtime.reset_default_values();
+
+		// Act
+		binding
+			.write(ControlValue::Text("{changed".to_owned()))
+			.expect("replacement JSON editor text commits");
+		runtime.reset();
+
+		// Assert: the runtime default includes the editor discriminator, not only its raw value.
+		assert_eq!(
+			form.value("metadata"),
+			Some(serde_json::json!("{unfinished")),
+		);
+		assert_eq!(binding.read(), ControlValue::Text("{unfinished".to_owned()),);
+	});
+}
+
+#[rstest]
+fn json_dirty_state_uses_the_effective_editor_value() {
+	reinhardt_core::reactive::ReactiveScope::run(|| {
+		// Arrange
+		let form = binding_form!();
+		form.set_value("metadata", serde_json::json!("true"))
+			.unwrap();
+		let runtime = use_form(&form).build();
+		let binding =
+			into_control_binding::<TextBinding, _>(runtime.field(form.metadata_field()), ());
+
+		// Act: the editor representation is valid JSON for the typed default string.
+		binding
+			.write(ControlValue::Text(r#""true""#.to_owned()))
+			.expect("valid JSON editor text commits");
+
+		// Assert: a different raw representation with the same effective JSON value is clean.
+		assert!(!runtime.get_field_state(form.metadata_field()).is_dirty);
+		assert!(!runtime.form_state().is_dirty.get());
+
+		// Invalid editor text remains a distinct dirty representation.
+		binding
+			.write(ControlValue::Text("{unfinished".to_owned()))
+			.expect("invalid JSON editor text commits");
+		assert!(runtime.get_field_state(form.metadata_field()).is_dirty);
+		assert!(runtime.form_state().is_dirty.get());
+	});
+}
+
+#[rstest]
+fn multipart_model_mutation_page_keeps_server_action() {
+	use reinhardt_pages::form::page::FormPageSource;
+	reinhardt_core::reactive::ReactiveScope::run(|| {
+		let form = binding_form!();
+		let runtime = reinhardt_pages::use_form(&form).build();
+		let parts = form.form_page_parts(&runtime);
+		let attrs = parts.container.attrs();
+		let attr = |name: &str| {
+			attrs
+				.iter()
+				.find(|(key, _)| key.as_ref() == name)
+				.map(|(_, v)| v.as_ref())
+		};
+		assert_eq!(attr("enctype"), Some("multipart/form-data"));
+		assert_eq!(
+			attr("action"),
+			Some(
+				<save_binding_record::marker as reinhardt_pages::server_fn::ServerFnMetadata>::PATH
+			)
+		);
 	});
 }

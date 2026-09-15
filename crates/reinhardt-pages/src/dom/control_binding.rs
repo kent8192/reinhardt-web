@@ -14,6 +14,21 @@ use reinhardt_core::{reactive::runtime::NodeId, types::page::ControlBindingSnaps
 type HydrationSnapshotStore = Rc<RefCell<Vec<ControlBindingSnapshot>>>;
 type RejectedNumberSnapshotStore = Rc<RefCell<Vec<RejectedNumberSnapshot>>>;
 
+fn native_model_form_was_edited(element: &Element) -> bool {
+	element
+		.as_web_sys()
+		.dyn_ref::<web_sys::HtmlInputElement>()
+		.and_then(|input| {
+			let name = input.get_attribute("data-reinhardt-native-interaction-field")?;
+			if !name.starts_with("__reinhardt_native_edited_") {
+				return None;
+			}
+			input.form()?.elements().named_item(&name)
+		})
+		.and_then(|marker| marker.dyn_into::<web_sys::HtmlInputElement>().ok())
+		.is_some_and(|marker| marker.type_() == "hidden" && marker.value() == "true")
+}
+
 thread_local! {
 	static ACTIVE_HYDRATION_SNAPSHOT_STORE: RefCell<Option<HydrationSnapshotStore>> =
 		const { RefCell::new(None) };
@@ -841,7 +856,7 @@ impl ControlBindingController {
 			write_control_and_reconcile(&element, &binding, &expected_value)?;
 			crate::component::into_page::initialize_control_default(&element, &binding);
 			false
-		} else if matches_source {
+		} else if matches_source && !native_model_form_was_edited(&element) {
 			false
 		} else {
 			let snapshot = binding.snapshot();
