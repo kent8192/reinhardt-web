@@ -93,6 +93,14 @@ filter = 'package(=reinhardt-macros) & binary(=model_wasm_parity) & test(=model_
 threads-required = 2
 slow-timeout = { period = "1200s", terminate-after = 3 }
 
+# The renamed ClientForm consumer runs native tests and WASM checks twice,
+# once per public facade, in an isolated target directory. Reserve both slots
+# and apply the same cold-build allowance as the other cross-target fixtures.
+[[profile.default.overrides]]
+filter = 'package(=reinhardt-pages) & binary(=client_form_view_facade_compile) & test(=renamed_pages_and_facade_support_external_dtos_on_native_and_wasm)'
+threads-required = 2
+slow-timeout = { period = "1200s", terminate-after = 3 }
+
 # This single consumer matrix runs 64 nested Cargo commands across native and
 # browser targets, including linked runtime tests and diagnostic controls.
 # Its measured duration exceeds the default timeout even with shared artifacts.

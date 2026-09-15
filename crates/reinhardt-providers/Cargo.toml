@@ -14,6 +14,8 @@ categories = ["api-bindings", "web-programming"]
 aws-config = { version = "1", optional = true, features = ["behavior-version-latest"] }
 aws-credential-types = { version = "1", optional = true }
 aws-types = { version = "1", optional = true }
+# Activate the workspace AWS compatibility constraint (reinhardt-web#6318).
+aws-smithy-types = { workspace = true, optional = true }
 bytes = { workspace = true, optional = true }
 chrono = { workspace = true, optional = true }
 hmac = { workspace = true, optional = true }
@@ -29,6 +31,7 @@ aws = [
   "aws-config",
   "aws-credential-types",
   "aws-types",
+  "dep:aws-smithy-types",
   "bytes",
   "chrono",
   "hmac",

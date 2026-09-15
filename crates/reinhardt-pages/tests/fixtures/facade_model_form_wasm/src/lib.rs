@@ -17,7 +17,7 @@ pub struct Profile {
 	pub enabled: bool,
 }
 
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 pub struct ProfileResponse {
 	pub token: String,
 }
@@ -46,4 +46,23 @@ pub fn compile_facade_form() {
 			.expect("the generated response type is concrete");
 		let _: ProfileResponse = response;
 	};
+}
+
+pub fn compile_facade_mutation_page() {
+	reinhardt::pages::reactive::ReactiveScope::run(|| {
+		let form = form! {
+			name: ProfileMutationForm,
+			model_form: ProfileCreateForm,
+			server_fn: save_profile,
+		};
+		let runtime = reinhardt::pages::use_form(&form).build();
+		let action = form
+			.server_mutation(&runtime)
+			.reset_form_on_success()
+			.build();
+		let _: reinhardt::pages::Page = action.page();
+		let _: Option<ProfileResponse> = action.result();
+		let _pending: bool = action.is_pending();
+		action.reset();
+	});
 }

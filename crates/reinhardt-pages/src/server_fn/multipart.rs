@@ -1,7 +1,7 @@
 use hyper::header;
 use reinhardt_core::model_form::{
 	ModelFormCleanedPayload, ModelFormPayload, ModelFormPolicy, ModelFormUpload,
-	ModelFormValidatingPayload,
+	ModelFormValidatingPayload, NativeModelFormPayload,
 };
 use reinhardt_core::parsers::multipart::MultipartPart;
 use reinhardt_core::parsers::{MediaType, MultiPartParser, UploadedFile};
@@ -12,6 +12,16 @@ use std::collections::HashSet;
 use super::{ServerFnArgumentKind, ServerFnError, ServerFnMetadata};
 
 const INVALID_REQUEST_MESSAGE: &str = "Invalid server function request";
+const MODEL_FORM_PROTOCOL_PREFIXES: &[&str] = &[
+	"__reinhardt_checkbox_",
+	"__reinhardt_color_",
+	"__reinhardt_range_",
+	"__reinhardt_defaulted_",
+	"__reinhardt_file_",
+	"__reinhardt_no_script_",
+	"__reinhardt_native_edited_",
+	"__reinhardt_json_encoded_",
+];
 
 struct MultipartArgumentPolicy<M>(std::marker::PhantomData<fn() -> M>);
 
@@ -67,12 +77,13 @@ impl MultipartArguments {
 
 	/// Revalidates model scalars and upload metadata before user-handler execution.
 	///
-	/// File argument kinds and required uploads are checked before model validation.
+	/// Argument allowlists, file kinds, and required uploads are checked before
+	/// decoding model scalars, so forbidden fields retain structured validation errors.
 	/// The concrete payload binds the generated rules and server-owned policy;
 	/// trusted endpoint metadata narrows validation to its selected arguments.
 	pub fn validate_model_form<D, P, M>(&mut self) -> Result<(), ServerFnError>
 	where
-		D: Default + ModelFormPayload<P> + ModelFormValidatingPayload,
+		D: ModelFormPayload<P> + ModelFormValidatingPayload + NativeModelFormPayload,
 		P: ModelFormPolicy,
 		M: ServerFnMetadata,
 	{
@@ -109,10 +120,12 @@ impl MultipartArguments {
 				_ => {}
 			}
 		}
-		let mut payload = D::default();
 		let mut uploads = Vec::new();
 		for part in &self.parts {
 			let name = part_name(part);
+			if is_model_form_protocol_field(name) {
+				continue;
+			}
 			if !P::allows(name) {
 				return Err(ServerFnError::validation([(
 					name,
@@ -122,13 +135,7 @@ impl MultipartArguments {
 			let Some(argument) = arguments.iter().find(|argument| argument.name == name) else {
 				return Err(invalid_request("unexpected_argument", Some(name)));
 			};
-			if let MultipartPart::Field { name, data } = part {
-				let value = serde_json::from_slice(data)
-					.map_err(|_| invalid_request("malformed_json", Some(name)))?;
-				payload.set_json(name, value).map_err(|error| {
-					ServerFnError::validation([(name.as_str(), error.to_string())])
-				})?;
-			} else if let MultipartPart::File(file) = part
+			if let MultipartPart::File(file) = part
 				&& !is_empty_file_input(file)
 			{
 				uploads.push(ModelFormUpload {
@@ -139,6 +146,22 @@ impl MultipartArguments {
 				});
 			}
 		}
+		let native_value = self
+			.parts
+			.iter()
+			.filter_map(|part| match part {
+				MultipartPart::Field { name, data } => Some(
+					decode_native_field_value(data)
+						.map(|value| (name.clone(), value))
+						.map_err(|_| invalid_request("malformed_native_field", Some(name))),
+				),
+				MultipartPart::File(_) => None,
+			})
+			.collect::<Result<serde_json::Map<_, _>, _>>()?;
+		let payload = D::from_native_form_value(serde_json::Value::Object(native_value))
+			.map_err(|_| invalid_request("malformed_native_model_form", None))?;
+		self.parts
+			.retain(|part| !is_model_form_protocol_field(part_name(part)));
 		let deferred_files = arguments
 			.iter()
 			.filter(|argument| argument.kind == ServerFnArgumentKind::File)
@@ -283,6 +306,20 @@ fn part_name(part: &MultipartPart) -> &str {
 	}
 }
 
+fn is_model_form_protocol_field(name: &str) -> bool {
+	name == "csrfmiddlewaretoken"
+		|| MODEL_FORM_PROTOCOL_PREFIXES
+			.iter()
+			.any(|prefix| name.starts_with(prefix))
+}
+
+/// Retains multipart wire text so the model-form schema can decode JSON fields
+/// without losing the distinction between a JSON string and a JSON scalar.
+fn decode_native_field_value(data: &[u8]) -> Result<serde_json::Value, std::str::Utf8Error> {
+	let text = std::str::from_utf8(data)?;
+	Ok(serde_json::Value::String(text.to_owned()))
+}
+
 fn part_kind(part: &MultipartPart) -> &'static str {
 	match part {
 		MultipartPart::Field { .. } => "json",
@@ -400,5 +437,30 @@ mod tests {
 			arguments.take_optional_json::<String>("note").unwrap(),
 			Some("saved".to_owned())
 		);
+	}
+
+	#[rstest]
+	#[case::browser_text(b"Report", "Report")]
+	#[case::json_encoded_text(br#""Report""#, r#""Report""#)]
+	fn native_multipart_fields_preserve_wire_text(#[case] input: &[u8], #[case] expected: &str) {
+		let value = decode_native_field_value(input).expect("native field should be valid UTF-8");
+
+		assert_eq!(value, serde_json::Value::String(expected.to_owned()));
+	}
+
+	#[rstest]
+	#[case("csrfmiddlewaretoken")]
+	#[case("__reinhardt_color_accent")]
+	#[case("__reinhardt_native_edited_accent")]
+	#[case("__reinhardt_json_encoded_title")]
+	fn model_form_protocol_fields_are_reserved(#[case] name: &str) {
+		assert!(is_model_form_protocol_field(name));
+	}
+
+	#[rstest]
+	#[case("__reinhardt_note")]
+	#[case("__reinhardt_custom_field")]
+	fn model_form_fields_outside_reserved_prefixes_are_not_protocol_fields(#[case] name: &str) {
+		assert!(!is_model_form_protocol_field(name));
 	}
 }

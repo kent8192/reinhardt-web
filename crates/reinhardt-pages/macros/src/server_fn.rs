@@ -1229,9 +1229,21 @@ fn generate_client_stub(
 		}
 	};
 	if uses_multipart {
+		let emits_model_form_json_markers = info.options.model_form_payload.is_some();
 		let multipart_append_code = wire_params.iter().map(|parameter| {
 			let name = &parameter.name;
 			let field_name = wire_param_name(parameter);
+			let model_form_json_marker =
+				if emits_model_form_json_markers && matches!(parameter.kind, WireParamKind::Json) {
+					let marker_name = format!("__reinhardt_json_encoded_{field_name}");
+					quote! {
+						__form_data
+							.append_with_str(#marker_name, "true")
+							.map_err(|error| #pages_crate::server_fn::ServerFnError::network(format!("{error:?}")))?;
+					}
+				} else {
+					quote! {}
+				};
 			match parameter.kind {
 				WireParamKind::Json => quote! {
 					let __value = ::serde_json::to_string(&#name)
@@ -1239,6 +1251,7 @@ fn generate_client_stub(
 					__form_data
 						.append_with_str(#field_name, &__value)
 						.map_err(|error| #pages_crate::server_fn::ServerFnError::network(format!("{error:?}")))?;
+					#model_form_json_marker
 				},
 				WireParamKind::File => quote! {
 					__form_data
@@ -3421,6 +3434,7 @@ mod tests {
 		// Both target handlers validate and decode the same normalized wire name.
 		assert_eq!(generated.matches("json_argument (\"type\")").count(), 4);
 		assert_eq!(generated.matches("json_argument (\"r#type\")").count(), 0);
+		assert!(generated.contains("__reinhardt_json_encoded_type"));
 		let validation = generated.find("arguments . validate_model_form").unwrap();
 		let extraction = generated.find("arguments . take_json").unwrap();
 		assert!(validation < extraction);

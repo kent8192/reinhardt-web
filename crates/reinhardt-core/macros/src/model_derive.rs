@@ -54,6 +54,10 @@ const MODEL_FORM_RESERVED_CONTROL_PREFIXES: &[&str] = &[
 	"__reinhardt_color_",
 	"__reinhardt_range_",
 	"__reinhardt_defaulted_",
+	"__reinhardt_file_",
+	"__reinhardt_no_script_",
+	"__reinhardt_native_edited_",
+	"__reinhardt_json_encoded_",
 ];
 
 /// Returns whether a field name is consumed by model-form HTML controls.
@@ -15224,6 +15228,10 @@ mod tests {
 			"__reinhardt_color_accent",
 			"__reinhardt_range_amount",
 			"__reinhardt_defaulted_summary",
+			"__reinhardt_file_document",
+			"__reinhardt_no_script_accent",
+			"__reinhardt_native_edited_accent",
+			"__reinhardt_json_encoded_title",
 			"csrfmiddlewaretoken",
 		] {
 			let field_name = Ident::new(field_name, proc_macro2::Span::call_site());

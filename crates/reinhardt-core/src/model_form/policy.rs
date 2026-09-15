@@ -94,21 +94,34 @@ pub trait NativeModelFormPayload: Sized {
 	fn from_native_form_value(value: serde_json::Value) -> Result<Self, serde_json::Error>;
 }
 
+const NATIVE_MODEL_FORM_JSON_ENCODED_PREFIX: &str = "__reinhardt_json_encoded_";
+
 /// Normalizes controls produced by a native HTML model form before decoding.
 ///
 /// Browser form submissions represent every successful control as text and
-/// omit unchecked checkboxes. The generated color-control marker also omits an
-/// untouched optional color control when the browser supplies its synthetic
-/// black fallback. An untouched optional range control likewise omits its
-/// browser-generated minimum value. An explicit clear marker for a nullable,
-/// defaulted control takes precedence over the control's submitted value. This
-/// conversion is intentionally limited to schema fields permitted by the selected
-/// policy; unrelated controls such as the CSRF token are removed before typed
-/// payload decoding.
+/// omit unchecked checkboxes. The generated color-control marker distinguishes an
+/// untouched optional color control, an explicit JSON null, and an edited value
+/// when the browser supplies its synthetic black fallback. An untouched optional
+/// range control likewise omits its browser-generated minimum value, while an
+/// explicit JSON null is reconstructed from its marker. A no-script fallback
+/// checkbox explicitly supplies a browser default when scripting is unavailable;
+/// leaving it unchecked preserves omission. The SSR bootstrap records native
+/// input/change events before WASM loads, and hydration takes over that tracking
+/// so an edit back to the browser default remains supplied.
+/// Generated control prefixes, including file, no-script, and native interaction
+/// markers, are reserved by the model derive so they cannot collide with model
+/// fields. An explicit clear marker for a nullable, defaulted control takes
+/// precedence over the control's submitted value. This conversion is intentionally
+/// limited to schema fields permitted by the selected policy; unrelated controls
+/// such as the CSRF token are removed before typed payload decoding.
+/// Multipart JSON-encoded scalar strings remain available to this schema-aware
+/// step. Generated browser clients mark JSON-encoded scalar controls so this
+/// step can restore their exact JSON types, including null and empty strings.
+/// Unmarked native text controls retain their literal text before normalization.
 ///
 /// # Errors
 ///
-/// Returns a JSON error when a JSON control does not contain valid JSON text.
+/// Returns a JSON error when a JSON control or marked scalar contains invalid JSON.
 pub fn normalize_native_model_form_value<S, P>(
 	mut value: serde_json::Value,
 ) -> Result<serde_json::Value, serde_json::Error>
@@ -135,18 +148,46 @@ where
 			.as_ref()
 			.is_some_and(|value| value == &serde_json::Value::String("unset".to_owned()));
 		let color_sentinel = format!("__reinhardt_color_{}", descriptor.name);
-		let color_was_edited = values
-			.remove(&color_sentinel)
-			.map(|value| value == serde_json::Value::String("true".to_owned()));
+		let color_sentinel_value = values.remove(&color_sentinel);
+		let native_edited_sentinel = format!("__reinhardt_native_edited_{}", descriptor.name);
+		let no_script_sentinel = format!("__reinhardt_no_script_{}", descriptor.name);
+		let no_script_was_selected = values
+			.remove(&no_script_sentinel)
+			.is_some_and(|value| value == serde_json::Value::String("true".to_owned()));
+		let native_was_edited = values
+			.remove(&native_edited_sentinel)
+			.is_some_and(|value| value == serde_json::Value::String("true".to_owned()))
+			|| no_script_was_selected;
+		let color_was_edited = native_was_edited
+			|| color_sentinel_value
+				.as_ref()
+				.is_some_and(|value| value == &serde_json::Value::String("true".to_owned()));
+		let color_was_null = !color_was_edited
+			&& color_sentinel_value
+				.as_ref()
+				.is_some_and(|value| value == &serde_json::Value::String("null".to_owned()));
 		let range_sentinel = format!("__reinhardt_range_{}", descriptor.name);
-		let range_default = values.remove(&range_sentinel);
+		let range_sentinel_value = values.remove(&range_sentinel);
+		let range_was_null = !native_was_edited
+			&& range_sentinel_value
+				.as_ref()
+				.is_some_and(|value| value == &serde_json::Value::String("null".to_owned()));
 		let default_clear_sentinel = format!("__reinhardt_defaulted_{}", descriptor.name);
 		let clears_default = descriptor.nullable
 			&& descriptor.has_default
 			&& values
 				.remove(&default_clear_sentinel)
 				.is_some_and(|value| value == serde_json::Value::String("true".to_owned()));
+		let json_encoded_sentinel =
+			format!("{NATIVE_MODEL_FORM_JSON_ENCODED_PREFIX}{}", descriptor.name);
+		let generated_json_encoded = values
+			.remove(&json_encoded_sentinel)
+			.is_some_and(|value| value == serde_json::Value::String("true".to_owned()));
 		if clears_default {
+			values.insert(descriptor.name.to_owned(), serde_json::Value::Null);
+			continue;
+		}
+		if color_was_null || range_was_null {
 			values.insert(descriptor.name.to_owned(), serde_json::Value::Null);
 			continue;
 		}
@@ -156,14 +197,26 @@ where
 			}
 			continue;
 		};
-		let serde_json::Value::String(text) = control else {
+		let serde_json::Value::String(raw_text) = control else {
 			continue;
 		};
-		if color_was_edited == Some(false) && text == "#000000" {
+		if generated_json_encoded {
+			*control = serde_json::from_str(raw_text)?;
+			continue;
+		}
+		let text = raw_text.to_owned();
+		if !native_was_edited
+			&& color_sentinel_value
+				.as_ref()
+				.is_some_and(|value| value == &serde_json::Value::String("false".to_owned()))
+			&& text == "#000000"
+		{
 			values.remove(descriptor.name);
 			continue;
 		}
-		if range_default.as_ref() == Some(&serde_json::Value::String(text.clone())) {
+		if !native_was_edited
+			&& range_sentinel_value.as_ref() == Some(&serde_json::Value::String(text.clone()))
+		{
 			values.remove(descriptor.name);
 			continue;
 		}
@@ -220,7 +273,7 @@ where
 			ModelFormFieldKind::Time if text.len() == 5 && text.as_bytes()[2] == b':' => {
 				Some(serde_json::Value::String(format!("{text}:00")))
 			}
-			ModelFormFieldKind::Json => Some(serde_json::from_str(text)?),
+			ModelFormFieldKind::Json => Some(serde_json::from_str(&text)?),
 			ModelFormFieldKind::DateTime | ModelFormFieldKind::NaiveDateTime
 				if text.split_once('T').is_some_and(|(_, time)| {
 					!time.ends_with('Z') && !time.contains(['+', '-'])
@@ -251,6 +304,8 @@ where
 		};
 		if let Some(normalized) = normalized {
 			*control = normalized;
+		} else if !matches!(descriptor.kind, ModelFormFieldKind::Json) {
+			*control = serde_json::Value::String(text);
 		}
 	}
 
@@ -322,7 +377,7 @@ mod tests {
 		type Model = ();
 
 		fn fields() -> &'static [ModelFormFieldDescriptor] {
-			const FIELDS: [ModelFormFieldDescriptor; 8] = [
+			const FIELDS: [ModelFormFieldDescriptor; 9] = [
 				ModelFormFieldDescriptor {
 					name: "enabled",
 					kind: ModelFormFieldKind::Boolean,
@@ -403,6 +458,19 @@ mod tests {
 					},
 					required: false,
 					has_default: true,
+					nullable: true,
+					editable: true,
+					generated_relation_id: false,
+					trim: false,
+				},
+				ModelFormFieldDescriptor {
+					name: "range_value",
+					kind: ModelFormFieldKind::Integer {
+						min: None,
+						max: None,
+					},
+					required: false,
+					has_default: false,
 					nullable: true,
 					editable: true,
 					generated_relation_id: false,
@@ -496,6 +564,84 @@ mod tests {
 				"metadata": {"draft": true},
 			}),
 		);
+	}
+
+	#[rstest]
+	fn native_normalization_preserves_json_string_scalars() {
+		let encoded_string =
+			normalize_native_model_form_value::<TestSchema, AllEditableModelFields>(
+				serde_json::json!({ "metadata": r#""true""# }),
+			)
+			.expect("JSON string scalar should normalize");
+		assert_eq!(encoded_string, serde_json::json!({ "metadata": "true" }));
+
+		let encoded_boolean =
+			normalize_native_model_form_value::<TestSchema, AllEditableModelFields>(
+				serde_json::json!({ "metadata": "true" }),
+			)
+			.expect("JSON boolean scalar should normalize");
+		assert_eq!(encoded_boolean, serde_json::json!({ "metadata": true }));
+	}
+
+	#[rstest]
+	fn native_normalization_preserves_quoted_native_text() {
+		let native_text = normalize_native_model_form_value::<TestSchema, AllEditableModelFields>(
+			serde_json::json!({ "title": r#""Report""# }),
+		)
+		.expect("literal quoted text should normalize");
+		assert_eq!(native_text, serde_json::json!({ "title": r#""Report""# }));
+
+		let generated_text =
+			normalize_native_model_form_value::<TestSchema, AllEditableModelFields>(
+				serde_json::json!({
+					"title": r#""Report""#,
+					"__reinhardt_json_encoded_title": "true",
+				}),
+			)
+			.expect("generated JSON text should normalize");
+		assert_eq!(generated_text, serde_json::json!({ "title": "Report" }));
+	}
+
+	#[rstest]
+	#[case("title", serde_json::json!("null"))]
+	#[case("summary", serde_json::Value::Null)]
+	#[case("summary", serde_json::json!(""))]
+	#[case("metadata", serde_json::json!("true"))]
+	#[case("metadata", serde_json::json!(true))]
+	#[case("count", serde_json::json!(42))]
+	fn native_normalization_preserves_marked_json_types(
+		#[case] field: &str,
+		#[case] expected: serde_json::Value,
+	) {
+		// Arrange
+		let input = serde_json::json!({
+			(field): serde_json::to_string(&expected).unwrap(),
+			(format!("__reinhardt_json_encoded_{field}")): "true",
+		});
+
+		// Act
+		let normalized =
+			normalize_native_model_form_value::<TestSchema, AllEditableModelFields>(input)
+				.expect("marked JSON should retain its wire type");
+
+		// Assert
+		assert_eq!(normalized, serde_json::json!({ (field): expected }));
+	}
+
+	#[rstest]
+	fn native_normalization_rejects_malformed_marked_json() {
+		// Arrange
+		let input = serde_json::json!({
+			"title": "{",
+			"__reinhardt_json_encoded_title": "true",
+		});
+
+		// Act
+		let error = normalize_native_model_form_value::<TestSchema, AllEditableModelFields>(input)
+			.expect_err("marked values must contain valid JSON");
+
+		// Assert
+		assert_eq!(error.classify(), serde_json::error::Category::Eof);
 	}
 
 	#[test]
@@ -615,5 +761,100 @@ mod tests {
 		.expect("native form value should normalize");
 
 		assert_eq!(value, serde_json::json!({ "accent": "#000000" }));
+	}
+
+	#[rstest]
+	fn native_normalization_preserves_edits_recorded_before_hydration() {
+		// Arrange
+		let submitted = serde_json::json!({
+			"accent": "#000000",
+			"__reinhardt_color_accent": "false",
+			"__reinhardt_native_edited_accent": "true",
+			"range_value": "50",
+			"__reinhardt_range_range_value": "50",
+			"__reinhardt_native_edited_range_value": "true",
+		});
+
+		// Act
+		let value =
+			normalize_native_model_form_value::<TestSchema, AllEditableModelFields>(submitted)
+				.expect("pre-hydration native edits should normalize");
+
+		// Assert
+		assert_eq!(
+			value,
+			serde_json::json!({ "accent": "#000000", "range_value": 50 }),
+		);
+	}
+
+	#[rstest]
+	fn native_normalization_preserves_explicitly_selected_no_script_defaults() {
+		// Arrange
+		let submitted = serde_json::json!({
+			"accent": "#000000",
+			"__reinhardt_color_accent": "false",
+			"range_value": "50",
+			"__reinhardt_range_range_value": "50",
+			"__reinhardt_no_script_accent": "true",
+			"__reinhardt_no_script_range_value": "true",
+		});
+
+		// Act
+		let value =
+			normalize_native_model_form_value::<TestSchema, AllEditableModelFields>(submitted)
+				.expect("no-script browser defaults should normalize");
+
+		// Assert
+		assert_eq!(
+			value,
+			serde_json::json!({ "accent": "#000000", "range_value": 50 })
+		);
+	}
+
+	#[rstest]
+	#[case::omitted(false, serde_json::json!({}))]
+	#[case::selected(true, serde_json::json!({"summary": "#000000"}))]
+	fn native_normalization_preserves_no_script_model_default_omission(
+		#[case] selected: bool,
+		#[case] expected: serde_json::Value,
+	) {
+		// Arrange: summary is nullable and has a declared model default.
+		let mut submitted = serde_json::json!({
+			"summary": "#000000",
+			"__reinhardt_color_summary": "false",
+		});
+		if selected {
+			submitted["__reinhardt_no_script_summary"] = "true".into();
+		}
+
+		// Act
+		let value =
+			normalize_native_model_form_value::<TestSchema, AllEditableModelFields>(submitted)
+				.unwrap();
+
+		// Assert: only explicit selection bypasses the normal model-default application.
+		assert_eq!(value, expected);
+	}
+
+	#[rstest]
+	fn native_normalization_reconstructs_runtime_bound_null_sentinels() {
+		// Arrange
+		let submitted = serde_json::json!({
+			"accent": "#000000",
+			"__reinhardt_color_accent": "null",
+			"range_value": "50",
+			"__reinhardt_range_range_value": "null",
+		});
+
+		// Act
+		let value =
+			normalize_native_model_form_value::<TestSchema, AllEditableModelFields>(submitted)
+				.expect("runtime-bound null sentinels should normalize");
+
+		// Assert
+		assert_eq!(
+			value,
+			serde_json::json!({ "accent": null, "range_value": null })
+		);
 	}
 }

@@ -154,6 +154,9 @@ fn multipart_request_with_avatar(
 			"--upload\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{}\r\n",
 			serde_json::to_string(value).expect("text scalar encodes as JSON"),
 		));
+		body.push_str(&format!(
+			"--upload\r\nContent-Disposition: form-data; name=\"__reinhardt_json_encoded_{name}\"\r\n\r\ntrue\r\n",
+		));
 	}
 	if document {
 		body.push_str("--upload\r\nContent-Disposition: form-data; name=\"document\"; filename=\"note.txt\"\r\nContent-Type: text/plain\r\n\r\nfile\r\n");

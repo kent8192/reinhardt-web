@@ -2561,6 +2561,28 @@ mod tests {
 	}
 
 	#[rstest::rstest]
+	fn render_noscript_fallback_children_as_markup() {
+		// Arrange
+		let view = PageElement::new("noscript")
+			.child(
+				PageElement::new("input")
+					.attr("type", "hidden")
+					.attr("name", "fallback")
+					.attr("value", "true"),
+			)
+			.into_page();
+
+		// Act
+		let html = view.render_to_string();
+
+		// Assert
+		assert_eq!(
+			html,
+			"<noscript><input type=\"hidden\" name=\"fallback\" value=\"true\" /></noscript>"
+		);
+	}
+
+	#[rstest::rstest]
 	fn render_textarea_preserves_leading_line_feeds_through_html_parsing() {
 		for (value, expected) in [
 			("", "<textarea></textarea>"),

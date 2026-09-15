@@ -65,6 +65,7 @@ pub mod binding;
 pub mod component;
 pub mod generated;
 pub mod model;
+pub mod page;
 pub mod validators;
 
 // Server-side only modules for HTML rendering and asset management
