@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.4.0-alpha.15...reinhardt-urls@v0.4.0-alpha.16) - 2026-09-15
+
+### Added
+
+- *(routing)* expose shared URL pattern declarations through the facade
+
+### Documentation
+
+- *(routing)* explain native handler erasure in shared URL patterns
+
 ## [0.4.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.4.0-alpha.14...reinhardt-urls@v0.4.0-alpha.15) - 2026-09-10
 
 ### Documentation

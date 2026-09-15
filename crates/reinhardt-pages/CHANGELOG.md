@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.4.0-alpha.15...reinhardt-pages@v0.4.0-alpha.16) - 2026-09-15
+
+### Added
+
+- *(pages)* render pages from the attached form mutation runtime
+- *(pages)* generate runtime-bound ModelForm controls
+
+### Documentation
+
+- *(pages)* explain configured ModelForm mutation rendering
+
+### Fixed
+
+- *(pages)* stabilize model mutation form resets
+- *(pages)* preserve JSON editor representation in binding snapshots
+- *(pages)* retain server actions on multipart mutation forms
+- *(pages)* preserve model form control snapshots
+- *(pages)* preserve model form editor defaults
+- *(pages)* notify model form editor marker changes
+- *(pages)* preserve model form editor representations
+- *(pages)* preserve native model form sentinels
+- *(pages)* preserve reset state metadata
+- *(pages)* preserve null runtime sentinels
+- *(pages)* preserve native model form defaults
+- *(pages)* harden model form default metadata
+- *(pages)* preserve native model form edits before hydration
+- *(pages)* normalize native model form multipart fields
+- *(pages)* preserve JSON string scalars in multipart forms
+- *(pages)* retain native edits when hydrating model forms
+- *(pages)* preserve JSON types in multipart model forms
+- *(pages)* preserve native model form intent across startup and reset
+
+### Maintenance
+
+- auto-fix fmt and clippy
+- merge develop/0.4.0 into model form mutation pages
+
+### Testing
+
+- *(pages)* cover ModelForm mutation pages in browsers
+- *(pages)* standardize model form test attributes
+
 ## [0.4.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-pages@v0.4.0-alpha.14...reinhardt-pages@v0.4.0-alpha.15) - 2026-09-10
 
 ### Fixed

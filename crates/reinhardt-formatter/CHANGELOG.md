@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-formatter@v0.4.0-alpha.15...reinhardt-formatter@v0.4.0-alpha.16) - 2026-09-15
+
+### Testing
+
+- *(formatter)* preserve named ClientForm view syntax
+
 ## [0.4.0-alpha.11](https://github.com/kent8192/reinhardt-web/compare/reinhardt-formatter@v0.4.0-alpha.10...reinhardt-formatter@v0.4.0-alpha.11) - 2026-08-27
 
 ### Fixed

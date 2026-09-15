@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.4.0-alpha.15...reinhardt-web@v0.4.0-alpha.16) - 2026-09-15
+
+### Documentation
+
+- add release announcement(s)
+- remove Tachyon Inc. attribution
+- preserve release announcement history
+
+### Fixed
+
+- *(macros)* reject aliased nested URL builders
+- *(db)* reload get-or-create winners after alternate unique races
+- *(macros)* track wrapped router binding patterns
+- *(routing)* scope nested URL router analysis
+- *(routing)* harden URL pattern parity checks
+- *(routing)* track nested builder aliases
+- *(routing)* track match arm router aliases
+- *(routing)* track destructured router aliases
+- *(routing)* validate if-let router aliases
+- *(routing)* preserve aliases across nested blocks
+- *(routing)* cover while aliases and opaque builders
+- *(routing)* track loop aliases and preserved macros
+- *(routing)* cover match blocks and function scopes
+- *(routing)* harden URL pattern scope analysis
+- *(routing)* reject typed and opaque nested server builders
+- *(routing)* cover alias flow in URL pattern analysis
+- *(routing)* cover additional URL pattern alias flows
+- *(routing)* cover control-flow router aliases
+- *(ci)* build develop release baselines with compatible Smithy types
+
+### Maintenance
+
+- *(wasm)* install protoc for the native browser harness
+
+### Testing
+
+- *(db)* standardize race recovery tests
+
 ## [0.4.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.4.0-alpha.14...reinhardt-web@v0.4.0-alpha.15) - 2026-09-10
 
 ### Documentation

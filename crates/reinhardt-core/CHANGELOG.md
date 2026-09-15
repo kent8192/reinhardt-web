@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.4.0-alpha.15...reinhardt-core@v0.4.0-alpha.16) - 2026-09-15
+
+### Fixed
+
+- *(pages)* preserve null runtime sentinels
+- *(pages)* preserve native model form defaults
+- *(pages)* harden model form default metadata
+- *(pages)* preserve native model form edits before hydration
+- *(pages)* preserve JSON string scalars in multipart forms
+- *(pages)* preserve JSON types in multipart model forms
+- *(pages)* preserve native model form intent across startup and reset
+
+### Maintenance
+
+- merge develop/0.4.0 into model form mutation pages
+
+### Testing
+
+- *(core)* use rstest for noscript fallback coverage
+
 ## [0.4.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.4.0-alpha.14...reinhardt-core@v0.4.0-alpha.15) - 2026-09-10
 
 ### Documentation
