@@ -19,53 +19,46 @@ Key principles from the specification:
 
 ## Commit Execution Policy
 
-### CE-1 (MUST): Explicit User Authorization
+### CE-1 (MUST): Execution Authorization
 
-- **NEVER** create commits without explicit user instruction
-- **NEVER** push commits without explicit user instruction
-- Always wait for user confirmation before committing changes
-- Prepare changes and inform the user, but let them decide when to commit
-- **EXCEPTION (Reinhardt family)**: When operating inside `reinhardt-web` / `reinhardt-cloud` / `awesome-delions` / `reinhardt-cc`, the **Autonomous Operation Policy** in `CLAUDE.md` / `AGENTS.md` (see the "Autonomous Operation Policy (Reinhardt Family)" subsection of `### Git Workflow`) authorizes commit and push on any non-protected branch without further confirmation. Protected branches (`main`, `master`, `develop/*`, `release/*`) and history-rewriting pushes (force-push, rebase-push) still require explicit user instruction.
+Use this table before Git or GitHub mutations. It is the canonical authorization
+policy referenced by AGENTS.md and CLAUDE.md. Existing task authorization persists;
+do not ask again for the same operation. An explicit task limit (for example,
+local-only work, no push, or keeping a PR in Draft) takes precedence.
 
-The following diagram summarizes the commit authorization decision flow:
+**Reinhardt-family scope:** `kent8192/reinhardt-web`,
+`kent8192/reinhardt-cloud`, `kent8192/awesome-delions`, and
+`kent8192/reinhardt-cc`. The standing authorization below applies when working
+inside one of these repositories.
 
-```mermaid
-flowchart TD
-    A[Want to create a commit] --> B{Explicit user instruction?}
-    B -->|Yes| C[Create commit]
-    B -->|No| D{Plan Mode approved?}
-    D -->|Yes| E{Implementation + tests passed?}
-    E -->|Yes| C
-    E -->|No| F[Report failure to user, do NOT commit]
-    D -->|No| G[Do NOT commit, wait for instruction]
-```
+| Operation | Authorization and conditions |
+|-----------|------------------------------|
+| Commit on a non-protected branch | Standing authorization in the Reinhardt family; review the owned staged diff and complete applicable local checks |
+| Normal push to a non-protected branch | Standing authorization in the Reinhardt family; preserve history and verify the intended remote |
+| Create a Draft PR | Standing authorization in the Reinhardt family; follow the PR template and target-branch policy |
+| Create an Issue | Standing authorization in the Reinhardt family; follow its template and apply at least one type label |
+| Draft PR to Ready | Follow PR_GUIDELINE.md PC-4a; CI completion is not required |
+| Comments, replies, or reviews | Explicit task instruction or an approved plan covering the posting, under GITHUB_INTERACTION.md PP-1 |
+| Commit or push on `main`, `master`, `develop/*`, or `release/*` | Explicit user authorization required; these are protected branches |
+| Force-push, rebase, hard reset, forced branch deletion, tag deletion, or other history-destructive operations | Explicit user authorization required; resolve PR conflicts with a worktree merge and normal push |
+| Close, merge, or delete PRs; close/delete Issues, comments, or review threads | Explicit user authorization required |
+| Release publication or a PR carrying the `release` label | Explicit user authorization and RELEASE_PROCESS.md apply; release-plz creates release tags, never create them manually |
 
-**EXCEPTION: Plan Mode Approval**
+Read-only investigation and scoped implementation do not need a separate Git
+approval. Permission to create a Draft PR or Issue does not grant permission to
+post comments, merge, or publish a release. Preserve private security reporting
+under SECURITY.md and the release-plz branch restrictions in RELEASE_PROCESS.md.
 
-When a user approves a plan by accepting Exit Plan Mode, this constitutes explicit authorization for both:
-1. Implementation of the planned changes
-2. Creation of all commits associated with the implementation
+Outside the family scope, commits and pushes require explicit user instruction.
+An approved implementation plan authorizes its planned commits after successful
+implementation and applicable checks. Plan approval alone does not grant push
+permission, but the standing non-protected-branch push authorization above
+continues to apply inside the family.
 
-**Automatic Commit Workflow after Plan Mode Approval:**
-
-1. **Success Case**: If implementation completes successfully and all tests pass:
-   - Automatically create all commits as planned in the approved plan
-   - NO additional user confirmation required for each commit
-   - Follow commit granularity rules (CE-2) and commit message format (CM-1, CM-2, CM-3)
-   - Commits are created sequentially in the logical order defined in the plan
-
-2. **Failure Case**: If implementation fails or tests fail:
-   - **DO NOT** create any commits
-   - Report the failure to the user with detailed information
-   - Wait for user instruction on how to proceed
-
-**Important Notes:**
-
-- Plan Mode approval does NOT authorize pushing commits to remote
-- Pushing still requires explicit user instruction
-- The approved plan should clearly outline the planned commits (number, scope, messages)
-- If the implementation deviates significantly from the plan, seek user confirmation before committing
-- Batch commits are still prohibited - commits are created one at a time, but automatically without confirmation
+Create commits one at a time, each with one intent (CE-2). A requested or approved
+commit sequence may proceed sequentially without renewed per-commit questions.
+Do not run an unreviewed batch-commit command. When no authorization applies,
+prepare the diff and proposed action before asking; continue independent work.
 
 ### CE-2 (MUST): Commit Granularity
 
@@ -347,35 +340,14 @@ Refs: a1b2c3d, e4f5g6h
 
 ### CM-2 (MUST): Body Format
 
-```
-Brief summary paragraph explaining the changes.
+Lead with the concrete behavior changed and the technical reason. Write in
+English and scale detail to the change: a small correction may need one short
+paragraph; a larger change may need grouped implementation and validation notes.
 
-Module/Component Section 1:
-- file/path.rs: +XXX lines - Description
-  - Sub-detail 1
-  - Sub-detail 2
-- file/path2.rs: Description
-
-Module/Component Section 2:
-- file/path.rs: Changes
-- Removed: old_file.rs (reason)
-
-Features:
-- Feature 1
-- Feature 2
-- Feature 3
-
-Additional context or explanation.
-```
-
-**Requirements:**
-
-- Write in English
-- Organize changes by module or component
-- List modified files with line count changes where significant
-- Include "Removed:" entries for deleted files with reasons
-- Summarize new features in a dedicated "Features:" section
-- Provide context for complex changes
+Explain tradeoffs or compatibility effects that the diff alone does not make
+clear. Include file names when they help a reviewer locate the change. Avoid
+mechanically listing every file, line count, or empty template section.
+Descriptions should stand on their own as useful CHANGELOG entries.
 
 ### CM-3 (MUST): Footer Format
 
@@ -404,6 +376,14 @@ or
 | `Fixes` | Fixes related issues | `Fixes #789` |
 | `Reviewed-by` | Reviewer credit | `Reviewed-by: Name <email>` |
 
+**Required Footer for Codex:**
+
+```text
+🤖 Generated with [Codex](https://openai.com/codex/)
+
+Co-Authored-By: Codex <noreply@openai.com>
+```
+
 **Required Footer for Claude Code:**
 
 ```
@@ -417,7 +397,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 
 - **EXACTLY one blank line** between body and footer section
 - Footer tokens MUST use `-` in place of whitespace (except `BREAKING CHANGE`)
-- Footer **MUST** include the Claude Code attribution when AI-assisted
+- Footer **MUST** identify the actual assisting agent (Codex or Claude Code)
 - Footer **MUST** include Co-Authored-By line when AI-assisted
 
 ---

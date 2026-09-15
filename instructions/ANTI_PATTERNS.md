@@ -673,26 +673,16 @@ rm /tmp/analysis_results.md /tmp/output.txt
 
 ## Workflow Anti-Patterns
 
-### ❌ Committing Without User Instruction
+### ❌ Ignoring Commit Authorization or Task Scope
 
-**DON'T:**
+Check [Commit Execution Policy](COMMIT_GUIDELINE.md#ce-1-must-execution-authorization)
+before committing or pushing. Apply standing non-protected-branch authorization
+within the Reinhardt family and preserve explicit task restrictions. Stage only
+owned changes, inspect the staged diff, and create one focused commit at a time.
 
-```bash
-# ❌ AI creates commit automatically
-git add .
-git commit -m "feat: Add feature"
-```
-
-**DO:**
-
-```bash
-# ✅ Wait for explicit user instruction
-# User: "Please commit these changes"
-git add <specific files>
-git commit -m "..."
-```
-
-**Why?** Commits should only be made with explicit user authorization.
+Do not ask for permission already supplied by CE-1 or the task. Do not infer
+permission for protected branches, history rewriting, or unrelated changes from
+a request to implement a feature.
 
 ### ❌ Committing Directly to Protected Branches
 
@@ -717,7 +707,7 @@ git commit -m "docs: update some instruction files"
 # Then create a Pull Request from docs/update-instructions to develop/0.2.0
 ```
 
-**Why?** Protected branches (`main`, `master`, `develop/*`, `release/*`) receive changes exclusively through Pull Requests. Direct commits bypass review, CI validation, and branch protection rules.
+**Why?** Protected branches (`main`, `master`, `develop/*`, `release/*`) normally receive changes through reviewed Pull Requests. Direct commits or pushes require explicit authorization under CE-1.
 
 ### ❌ Batch Operations Without Dry-Run
 
@@ -738,7 +728,7 @@ EOF
 
 bash /tmp/dryrun.sh  # Review scope
 
-# Only proceed after confirmation
+# Proceed after reviewing the dry-run and confirming existing authorization
 cat > /tmp/replace.sh << 'EOF'
 sed -i 's/old_pattern/new_pattern/g' **/*.rs
 EOF

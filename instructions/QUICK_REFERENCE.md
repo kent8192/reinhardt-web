@@ -1,236 +1,34 @@
 # Quick Reference
 
-> Shared between `CLAUDE.md` and `AGENTS.md`. Edit this file once; both agents pick up the change.
+Use this index to load the standard for the operation at hand. Paths in the table
+resolve from this directory. The linked documents own their rules; this index
+does not duplicate their checklists.
 
+| Task or decision | Read |
+|------------------|------|
+| Task execution, skills, clarification, verification scope | [Agent Workflow](AGENT_WORKFLOW.md) |
+| Writing an implementation, review, CI, or continuation prompt | [Task Prompts](TASK_PROMPTS.md) |
+| API design and conventions | [Design Philosophy](DESIGN_PHILOSOPHY.md) |
+| New modules, exports, crate placement | [Module System](MODULE_SYSTEM.md), [Crate Structure](CRATE_STRUCTURE.md) |
+| Resource ownership, placeholders, lint exceptions, cleanup | [Anti-Patterns](ANTI_PATTERNS.md) |
+| Tests, fixtures, assertions, infrastructure | [Testing Standards](TESTING_STANDARDS.md) |
+| Build-time or cache optimization | [Build Performance](BUILD_PERFORMANCE.md) |
+| Macro use or generated code | [Macro Usage](MACRO_USAGE.md) |
+| Native/WASM contracts and shared APIs | [API Parity](API_PARITY.md), [Pages cfg migration](PAGES_CFG_MIGRATION.md) |
+| README, rustdoc, examples, migration notes | [Documentation Standards](DOCUMENTATION_STANDARDS.md) |
+| Commit/push permission, granularity, attribution | [Commit Guidelines](COMMIT_GUIDELINE.md) |
+| Branch source, PR target, backports | [PR Base Branch Policy](PR_BASE_BRANCH_POLICY.md) |
+| PR creation, readiness, labels, merge gates | [PR Guidelines](PR_GUIDELINE.md) |
+| GitHub tools, comments, review replies and resolution | [GitHub Interaction](GITHUB_INTERACTION.md) |
+| Issue creation, type labels, good first issues | [Issue Guidelines](ISSUE_GUIDELINES.md) |
+| Multiple issues and shared prerequisites | [Issue Handling](ISSUE_HANDLING.md) |
+| Two failed repair attempts or uncertain external behavior | [Research Escalation](RESEARCH_ESCALATION.md) |
+| External dependency defects and workarounds | [Upstream Issue Reporting](UPSTREAM_ISSUE_REPORTING.md) |
+| RC approvals, breaking changes, independent bug verification | [Stability Policy](STABILITY_POLICY.md) |
+| Versioning, release-plz, publish ordering, partial releases | [Release Process](RELEASE_PROCESS.md) |
+| Durable knowledge retrieval and capture | [Obsidian Wiki](OBSIDIAN_WIKI.md) |
+| Consumer upgrades | [0.2 migration](MIGRATION_0.2.md), [0.3 migration](MIGRATION_0.3.md), [0.3.17 migration](MIGRATION_0.3.17.md) |
 
-### ✅ MUST DO
-- Write ALL code comments in English (no exceptions)
-- Use `module.rs` + `module/` directory (NO `mod.rs`)
-- Update docs with code changes (same workflow)
-- Clean up ALL test artifacts
-- Delete temp files from `/tmp` immediately
-- Wait for explicit user instruction before commits (except where the Autonomous Operation Policy applies)
-- Understand that Plan Mode approval authorizes both implementation and commits
-- Treat the Autonomous Operation Policy (Reinhardt family) as a standing exception that allows commit and push on any non-protected branch (anything other than `main`/`master`/`develop/*`/`release/*`), Draft PR creation, Draft→Ready conversion (implementation-complete only — no CI requirement), and Issue creation without further confirmation
-- When editing `CLAUDE.md` or `AGENTS.md`, mirror the change into the other file in the same commit (sync policy)
-- Convert Draft PRs to Ready for Review autonomously once the implementation is complete (CI completion is NOT required under the Autonomous Operation Policy) OR upon explicit user instruction (see instructions/PR_GUIDELINE.md § PC-4a)
-- Mark placeholders with `todo!()` or `// TODO:`
-- Use `#[serial(group_name)]` for global state tests
-- Manage all resources via RAII (Drop-based guards) — wrap locks, files, DB transactions, spawned tasks, temp dirs, and FFI handles in guard types (see instructions/ANTI_PATTERNS.md)
-- Split commits by specific intent, not features
-- Follow Conventional Commits v1.0.0 format: `<type>[scope]: <description>`
-- Start commit description with lowercase letter (e.g., `feat: add feature`)
-- Use `!` notation for breaking changes (e.g., `feat!:` or `feat(scope)!:`)
-- Use conventional commit format for proper version detection by release-plz
-- Write commit descriptions as standalone CHANGELOG entries (meaningful without additional context)
-- Use `security` type for security vulnerability fixes (dedicated CHANGELOG section)
-- Use `deprecated` type for marking features/APIs as deprecated (dedicated CHANGELOG section)
-- Review Release PRs created by release-plz before merging
-- Fix Release PR issues via a `fix/`/`hotfix/` branch targeting the Release PR's base branch (e.g., `main` or `develop/*`), not by pushing to the release-plz branch directly
-- Verify no circular dev-dependency chains exist before publishing (functional crates must not dev-depend on other Reinhardt crates)
-- Include `version` field in `reinhardt-test` workspace dependency (published crate, same as others)
-- Follow RP-1 procedure in instructions/RELEASE_PROCESS.md for partial release failures
-- Use GitHub MCP by default for all GitHub operations (PR, issues, releases); use `gh` CLI only as fallback when MCP is unavailable or errors
-- Search existing issues before creating new ones
-- Use appropriate issue templates for all issues
-- Apply at least one type label to every issue
-- Report security vulnerabilities privately via GitHub Security Advisories
-- Use `.github/labels.yml` as source of truth for label definitions
-- Follow PR/Issue template structure when creating via `gh` CLI
-- Use 1 PR = 1 crate x 1 fix pattern as the basic work unit for batch issue handling
-- Create preceding PRs for cross-crate shared changes before per-crate fix PRs
-- Organize batch work into phases by severity and execute independent crate work in the current agent; delegate only on explicit user request (HA-3)
-- Use `rstest` for ALL test cases (no plain `#[test]`)
-- Follow Arrange-Act-Assert (AAA) pattern with `// Arrange`, `// Act`, `// Assert` comments for test structure
-- Use `reinhardt-test` fixtures for test setup/teardown
-- Create specialized fixtures wrapping generic `reinhardt-test` fixtures for test data injection
-- Use `reinhardt-query` (not raw SQL or direct SeaQuery) for SQL construction in tests
-- Wrap generic types in backticks in doc comments: `` `Result<T>` ``, NOT `Result<T>`
-- Wrap macro attributes in backticks: `` `#[inject]` ``, NOT `#[inject]`
-- Wrap URLs in angle brackets or backticks: `<https://...>` or `` `https://...` ``
-- Specify language for code blocks: ` ```rust `, NOT ` ``` `
-- Wrap bracket patterns in backticks: `` `array[0]` ``, NOT `array[0]`
-- Use backticks (not intra-doc links) for feature-gated types: `` `FeatureType` ``, NOT `` [`FeatureType`] ``
-- Do not write redundant explicit link targets in intra-doc links: `` [`Foo`] ``, NOT `` [`Foo`](crate::Foo) `` when the label already resolves (instructions/DOCUMENTATION_STANDARDS.md § RD-8)
-- Use backticks (not intra-doc links) for removed/deprecated items: `` `RemovedType` ``, NOT `` [`RemovedType`] `` (instructions/DOCUMENTATION_STANDARDS.md § RD-9)
-- Use backticks (not intra-doc links) for private/`pub(crate)` items in public docs: `` `InternalType` ``, NOT `` [`InternalType`] `` (instructions/DOCUMENTATION_STANDARDS.md § RD-10)
-- Avoid starting continuation lines of `//` and `///` comments with a Rust keyword or trigger macro — restructure prose so the token is wrapped in backticks or appears mid-line (Semgrep `rust-commented-out-code` rule trips otherwise; canonical token list in instructions/DOCUMENTATION_STANDARDS.md § RD-7)
-- Use Mermaid diagrams (via `aquamarine`) for architecture documentation instead of ASCII art
-- Ensure `.stderr` files in trybuild tests contain only single error type (no warning/error mixing)
-- Resolve all `todo!()` and `// TODO:` before merging PR (enforced by TODO Check CI)
-- Preview and get user confirmation before posting self-initiated GitHub comments
-- Include the appropriate agent attribution footer (Claude Code / Codex) on all GitHub comments
-- Use repository-relative paths (not absolute) in GitHub comments
-- Provide structured agent context using AC-2 template format
-- Fall back to `gh` CLI when GitHub MCP tools return errors
-- Verify branch name uniqueness before creation (`git worktree list` and `git branch -a`)
-- Use `issue-XXXX-to-YYYY` for consecutive issue ranges and `and` for multiple ranges in branch names
-- Check known CI failure patterns before deep investigation
-- Run `cargo doc --no-deps` locally before pushing doc-related fixes
-- Run `cargo make semver-check` locally and post the output as a PR comment with the `<!-- local-semver-check -->` marker before converting Draft → Ready on any PR touching public API (see instructions/PR_GUIDELINE.md § RP-1a)
-- Cross-target APIs must declare P0/P1/P2 parity and follow
-  `instructions/API_PARITY.md`.
-- Execute merge/conflict resolution and straightforward operations immediately without Plan Mode
-- Update the Obsidian wiki frequently and proactively — at the end of every meaningful work unit and whenever you learn, decide, or discover something worth preserving; when in doubt, write a short page (OW-1)
-- Check Obsidian MCP availability before attempting wiki updates; skip entirely if unavailable (OW-2, OW-3)
-- Read `wiki/hot.md` before creating new pages to avoid duplicates (OW-2)
-- Update all three meta pages (`wiki/index.md`, `wiki/hot.md`, `wiki/log.md`) after every wiki page creation or update (OW-2)
-- Use `/wiki-query` to retrieve existing wiki knowledge before answering questions or making decisions (OW-5)
-- Dual-write: when saving to any memory system (claude-mem, auto-memory, Serena), simultaneously `/wiki-ingest` to the Obsidian wiki (OW-6)
-- Route each wiki page to the most specific category and use the full vault category set, not just `knowledge/` (OW-2, OW-7)
-- Spread wiki knowledge across categories — split one work unit into multiple cross-linked pages and populate under-used categories (`modules/`, `components/`, `flows/`, `concepts/`, `entities/`, `comparisons/`, `questions/`) (OW-7)
-- Use worktree-based merge strategy for PR conflict resolution (NOT rebase/force-push)
-- Apply `migration-approved` label to develop/* → main PRs (requires maintainer approval for version transition)
-- Apply `agent-suspect` label to all agent-detected bug Issues
-- Apply the `breaking-change` label to ALL breaking change PRs and Issues
-- Complete the "Breaking Change Assessment" section (Yes/No) on every PR
-- Fill the "Breaking Changes" section with migration guide when the assessment is "Yes"
-- Verify agent-detected bugs independently before removing `agent-suspect` label
-- Create `develop/0.x+1.0` branch when version group enters RC phase (DB-1)
-- Direct next-version features and breaking changes to `develop/0.x+1.0` during RC (DB-2)
-- Apply RC bug fixes to `main` first, then forward-merge to develop (DB-3)
-- Forward-merge `main` into develop branch regularly (DB-4)
-- Merge develop branch into `main` after stable release using merge commit, not squash (DB-5)
-- Initialize a freshly-created develop branch with `scripts/init-develop-branch.sh m.n.l` so release-plz on `develop/**` produces alpha Release PRs (DBR-1)
-- Run `scripts/freeze-develop-to-rc.sh` at API freeze to transition the develop branch from `alpha.N` to `rc.1` (DBR-2)
-- Trigger `release-plz-promote.yml` (`gh workflow run release-plz-promote.yml -f develop_branch=develop/m.n.l`) after merging the develop branch into `main` to graduate the prerelease suffix to stable (DBR-3)
-- When the user explicitly requests delegated re-evaluation of `agent-suspect` Issues, use a separate agent session with independent context; retain the label until independent verification is complete (SC-2a)
-- Obtain SP-6 approval before adding non-breaking APIs during RC phase (`enhancement` + `rc-addition` labels + maintainer approval)
-- Use three-dot diff (`main...branch`) for PR diff verification to exclude merge history noise
-- Evaluate, respond to, and resolve Copilot review comments after PR creation (CR-1 ~ CR-4)
-- Reply to every Copilot review thread before resolving it (no silent resolves)
-- Use GraphQL `resolveReviewThread` mutation to resolve Copilot review threads
-- Create upstream issue before implementing any workaround for external dependency bugs (WP-2)
-- Include the ideal implementation as a comment when introducing workaround code (WP-3)
-- Create a tracking issue in reinhardt-web for every upstream dependency issue with `upstream-tracking` label (UR-4)
-- Apply `good first issue` only when all GFI-1 criteria are met (single crate, ≤3 files, unambiguous fix)
-- Ensure issue description has file paths, expected behavior, and verification steps before applying `good first issue` (GFI-4)
-
-### ❌ NEVER DO
-- Use `mod.rs` files (deprecated pattern)
-- Commit without user instruction (except Plan Mode approval or the Autonomous Operation Policy for Reinhardt-family repos)
-- Push directly to any protected branch (`main`, `master`, `develop/*`, `release/*`) — even under the Autonomous Operation Policy these require explicit user authorization
-- Force-push, rebase-and-push, or otherwise rewrite history without explicit user authorization (the Autonomous Operation Policy does NOT cover history-rewriting pushes)
-- Close, merge, or delete PRs / Issues / comments without explicit user authorization (autonomy covers creation only, not destruction)
-- Create release tags or any PR with the `release` label without explicit user authorization
-- Commit a change that touches only `CLAUDE.md` or only `AGENTS.md` without mirroring it into the other
-- Convert Draft PRs to Ready for Review when implementation is incomplete, without explicit user override
-- Leave docs outdated after code changes
-- Document user requests or AI interactions in project documentation
-- Save files to project directory (use `/tmp`)
-- Leave backup files (`.bak`, `.backup`, `.old`, `~`)
-- Create skeleton tests (tests without assertions)
-- Use loose assertions (`contains`) without justification
-- Use glob imports (`use module::*`)
-- Create circular dependencies
-- Leave unmarked placeholder implementations
-- Use `#[allow(...)]` without explanatory comments
-- Release resources manually in a way that can be skipped on an early `return` / `?` / panic (use RAII Drop instead)
-- Bypass Drop with `mem::forget` / `ManuallyDrop` / immediate-drop `let _ = lock()` without a justifying comment
-- Use alternative TODO notations (`FIXME:`, `NOTE:` for unimplemented features)
-- Create batch commits without user confirmation
-- Use relative paths beyond `../`
-- Manually bump versions in feature branches (let release-plz handle it)
-- Create release tags manually (release-plz creates them automatically)
-- Skip reviewing Release PRs before merging
-- Use `reinhardt-test = { workspace = true }` in functional crate `[dev-dependencies]` (workspace deps include version, causing publish failures; use optional dep or path-only dev-dep instead)
-- Omit `version` field from `reinhardt-test` workspace dependency (causes publish failure for dependents)
-- Change `pr_branch_prefix` from `"release-plz-"` on `main` (breaks two-step release workflow); on `develop/*` the prefix MUST be `"develop-release-plz-"` to prevent cross-branch PR closure
-- Push code fixes directly to release-plz branches (`release-plz-*` or `develop-release-plz-*`) — create a fix/hotfix branch targeting the base branch instead (CHANGELOG/version edits via GitHub UI are acceptable)
-- Merge Release PR without rolling back unpublished crate versions after partial release failure
-- Write vague commit descriptions that are unclear as CHANGELOG entries (e.g., "fix issue", "update code")
-- Start commit description with uppercase letter
-- End commit description with a period
-- Omit `!` or `BREAKING CHANGE:` for API-breaking changes
-- Submit a breaking change PR or Issue without the `breaking-change` label
-- Skip the Breaking Change Assessment section in PRs
-- Check "Yes" in Breaking Change Assessment without filling the Breaking Changes section
-- Create issues without appropriate labels
-- Create public issues for security vulnerabilities
-- Create duplicate issues without searching first
-- Skip issue templates when creating issues
-- Use non-English in issue titles or descriptions
-- Apply `release` label to issues (only for PRs)
-- Mix changes to unrelated crates in a single issue-fix PR
-- Mix unrelated fix patterns in a single PR
-- Skip preceding PRs for cross-crate shared utilities
-- Use plain `#[test]` instead of `#[rstest]`
-- Use non-standard phase labels in tests (`// Setup`, `// Execute`, `// Verify` -- use `// Arrange`, `// Act`, `// Assert`)
-- Write raw SQL strings or call SeaQuery directly in tests (use `reinhardt-query` instead)
-- Duplicate infrastructure setup code (use `reinhardt-test` fixtures)
-- Write generic types without backticks in doc comments (causes HTML tag warnings)
-- Write macro attributes without backticks in doc comments (causes unresolved link warnings)
-- Write bare URLs in doc comments (causes bare URL warnings)
-- Use intra-doc links for feature-gated items (causes unresolved link warnings)
-- Write redundant explicit link targets in intra-doc links: `` [`Foo`](crate::Foo) `` when `` [`Foo`] `` suffices (nightly `redundant_explicit_links` warning; § RD-8)
-- Use intra-doc links for removed/deprecated items (causes `broken_intra_doc_links` error; use backticks — § RD-9)
-- Use intra-doc links for `pub(crate)` or private items in public docs (causes `private_intra_doc_links` error; use backticks — § RD-10)
-- Start a continuation line of a `//` or `///` comment with a Rust keyword or trigger macro — Semgrep flags the line as commented-out code and blocks the TODO Check CI; wrap the token in backticks or move it mid-line (canonical token list in instructions/DOCUMENTATION_STANDARDS.md § RD-7)
-- Create new ASCII art diagrams in doc comments (use Mermaid instead)
-- Mix warnings and errors in trybuild `.stderr` files
-- Merge PR with unresolved `todo!()` or `// TODO:` comments (blocked by TODO Check CI)
-- Post GitHub comments without authorization (explicit instruction or Plan Mode approval)
-- Include absolute local paths in GitHub comments (`/Users/...`, `/home/...`)
-- Post vague or non-actionable GitHub comments
-- Skip the agent attribution footer (Claude Code / Codex) on GitHub comments
-- Create PRs/Issues without following template structure
-- Enter Plan Mode for merge operations, branch deletion, or worktree cleanup
-- Retry GitHub MCP tools after errors instead of falling back to `gh` CLI
-- Create branches without checking for name conflicts
-- Use hyphens between issue numbers for ranges in branch names (use `to` and `and` instead)
-- Use rebase or force-push to resolve PR conflicts (use worktree merge instead)
-- Convert a Draft PR to Ready for Review on a PR touching public API without first running `cargo make semver-check` locally and posting the result to the PR with the `<!-- local-semver-check -->` marker
-- Create duplicate `<!-- local-semver-check -->` comments on re-runs (update the existing marked comment instead)
-- Merge develop/* branches into main without `migration-approved` label and CI version validation
-- Remove `agent-suspect` label without independent verification (separate agent or human)
-- Count `agent-suspect` labeled Issues toward stability timer reset (SC-2a)
-- Merge next-version features or breaking changes directly into `main` during RC (use `develop/0.x+1.0`)
-- Apply bug fixes only to the develop branch without fixing on `main` first (DB-3)
-- Push to `develop/m.n.l` before running `scripts/init-develop-branch.sh m.n.l` — release-plz would otherwise publish a stable `m.n.l` immediately, bypassing the alpha phase (DBR-1)
-- Hand-edit Cargo.toml to graduate prerelease identifiers instead of running `scripts/freeze-develop-to-rc.sh` or `release-plz-promote.yml` — the scripts are the single source of truth (DBR-2, DBR-3)
-- Delete the develop branch before merging into `main` (DB-5)
-- Squash-merge the develop branch into `main` (DB-5)
-- Use the same agent context for both detection and verification of a bug
-- Use two-dot diff (`main..branch`) for PR verification (includes merge history noise)
-- Resolve Copilot review threads without posting a reply first
-- Poll in a loop waiting for Copilot review to appear
-- Dismiss valid Copilot review concerns without fixing the code
-- Implement workarounds for upstream dependency issues without creating an upstream issue first (WP-2)
-- Introduce workaround code without an ideal implementation comment (WP-3)
-- Create upstream issues without corresponding reinhardt-web tracking issues (UR-4)
-- Apply `good first issue` to security, breaking-change, agent-suspect, or high/critical priority issues (GFI-2)
-- Apply `good first issue` without verifying issue description has sufficient guidance for new contributors (GFI-4)
-- Block primary work due to Obsidian MCP unavailability (OW-3)
-- Default every wiki page to `wiki/knowledge/troubleshooting/` or let one category dominate the vault (OW-7)
-- Create wiki pages for trivial changes or operational records (OW-1)
-- Duplicate information already in CLAUDE.md or `instructions/` in the wiki (OW-4)
-- Perform partial meta-page updates (update all three meta pages or none) (OW-2)
-
-### 📚 Detailed Standards
-
-For comprehensive guidelines, see:
-- **Module System**: instructions/MODULE_SYSTEM.md
-- **Crate Structure**: instructions/CRATE_STRUCTURE.md (workspace layout and crate organization)
-- **Testing**: instructions/TESTING_STANDARDS.md
-- **Anti-Patterns**: instructions/ANTI_PATTERNS.md
-- **Build Performance**: instructions/BUILD_PERFORMANCE.md (measurement-first build optimization)
-- **Macro Usage**: instructions/MACRO_USAGE.md (includes `#[model(...)]` rules)
-- **Documentation**: instructions/DOCUMENTATION_STANDARDS.md
-- **Git Commits**: instructions/COMMIT_GUIDELINE.md (includes CHANGELOG generation guidelines and excluded artifacts)
-- **Research Escalation**: instructions/RESEARCH_ESCALATION.md (when to use Perplexity/Tavily/Brave)
-- **Release Process**: instructions/RELEASE_PROCESS.md
-- **Stability Policy**: instructions/STABILITY_POLICY.md (includes DB-1 ~ DB-7 develop branch strategy and DBR-1 ~ DBR-3 release workflow gates)
-- **Agent Bug Discovery**: instructions/STABILITY_POLICY.md (SC-2a)
-- **Issues**: instructions/ISSUE_GUIDELINES.md
-- **Good First Issue Policy**: instructions/ISSUE_GUIDELINES.md (GFI-1 ~ GFI-5)
-- **Issue Handling**: instructions/ISSUE_HANDLING.md
-- **Upstream Issue Reporting**: instructions/UPSTREAM_ISSUE_REPORTING.md
-- **GitHub Interactions**: instructions/GITHUB_INTERACTION.md
-- **Copilot Review Handling**: instructions/GITHUB_INTERACTION.md (CR-1 ~ CR-5)
-- **Obsidian Wiki Maintenance**: instructions/OBSIDIAN_WIKI.md (OW-1 ~ OW-7)
-- **Migration Guides**: instructions/MIGRATION_0.2.md (0.1.x → 0.2.0), instructions/MIGRATION_0.3.md (0.2.x → 0.3.0), instructions/PAGES_CFG_MIGRATION.md (reinhardt-pages cfg simplification)
-- **GitHub Discussions**: https://github.com/kent8192/reinhardt-web/discussions
-- **Security Policy**: SECURITY.md
-- **Code of Conduct**: CODE_OF_CONDUCT.md
-- **Label Definitions**: .github/labels.yml
-- **Project Overview**: README.md
+Repository resources: `README.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`,
+`.github/labels.yml`, `.github/PULL_REQUEST_TEMPLATE.md`,
+`.github/ISSUE_TEMPLATE/`, and `examples/AGENTS.md`.
