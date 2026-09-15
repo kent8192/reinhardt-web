@@ -1574,6 +1574,10 @@ fn install_native_model_form_interaction_tracker() {
 		_change: change,
 		_reset: reset,
 	});
+	// Release the parser-installed bootstrap only after the Rust listeners are ready.
+	if let Ok(event) = web_sys::Event::new("reinhardt:model-form-tracker-ready") {
+		let _ = document.dispatch_event(&event);
+	}
 }
 
 #[cfg(wasm)]
@@ -1607,21 +1611,29 @@ fn reset_native_model_form_edits(event: web_sys::Event) {
 	else {
 		return;
 	};
-	let elements = form.elements();
-	for index in 0..elements.length() {
-		let Some(element) = elements.item(index) else {
-			continue;
-		};
-		let Some(name) = element.get_attribute("name") else {
-			continue;
-		};
-		if !name.starts_with(NATIVE_MODEL_FORM_INTERACTION_PREFIX) {
-			continue;
+	// A later listener may cancel the reset; wait until its default action finishes.
+	let after_reset = gloo_timers::future::TimeoutFuture::new(0);
+	crate::platform::spawn_task(async move {
+		after_reset.await;
+		if event.default_prevented() {
+			return;
 		}
-		if let Ok(marker) = element.dyn_into::<web_sys::HtmlInputElement>() {
-			marker.set_value("false");
+		let elements = form.elements();
+		for index in 0..elements.length() {
+			let Some(element) = elements.item(index) else {
+				continue;
+			};
+			let Some(name) = element.get_attribute("name") else {
+				continue;
+			};
+			if !name.starts_with(NATIVE_MODEL_FORM_INTERACTION_PREFIX) {
+				continue;
+			}
+			if let Ok(marker) = element.dyn_into::<web_sys::HtmlInputElement>() {
+				marker.set_value("false");
+			}
 		}
-	}
+	});
 }
 
 /// Check if hydration is complete

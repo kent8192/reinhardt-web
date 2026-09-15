@@ -395,9 +395,22 @@ Existing `into_page()` remains available for its standalone submission flow.
 Required native color and range widgets materialize their browser defaults before
 the runtime captures its initial values, while optional widgets retain untouched
 field omission. Server-rendered optional color and range widgets include a
-`<noscript>` fallback input for native submissions when scripting is unavailable;
-client-side mounting and hydration keep that fallback inert while scripts are
-active. Browser-owned file selections are excluded from `reset_default_values()`
+`<noscript>` checkbox labeled **Submit this value even if unchanged**. With
+scripting disabled, leaving it unchecked preserves omission of the browser
+fallback and allows declared model defaults to apply. Checking it explicitly
+supplies the displayed value, including black or the range midpoint. Client-side
+mounting and hydration keep that choice inert while scripts are active.
+
+Full documents rendered by `SsrRenderer` (including `wrap_in_html`) install an
+input/change tracker in the head before controls become interactive. It preserves
+edits made while WASM loads, even when a value is changed back to its browser
+default. Hydration takes over the listeners after initializing its own tracker.
+Both trackers clear edit markers only after an uncanceled native reset. Set
+`SsrOptions::script_nonce()` to the nonce allowed by the response's Content
+Security Policy. Fragment-only rendering does not install document scripts; use
+the full-document renderer or `wrap_in_html` for automatic early tracking.
+
+Browser-owned file selections are excluded from `reset_default_values()`
 because a browser cannot restore a saved file handle, so `reset()` and
 `reset_field()` clear an active selection instead of attempting to restore it.
 Synthetic file and no-script marker names use reserved `__reinhardt_*` prefixes,

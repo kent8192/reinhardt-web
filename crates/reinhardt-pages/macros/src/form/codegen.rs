@@ -3442,10 +3442,12 @@ fn generate_model_form(
 					.then(|| {
 						#pages_crate::PageElement::new("noscript")
 							.child(
-								#pages_crate::PageElement::new("input")
-									.attr("type", "hidden")
-									.attr("name", format!("__reinhardt_no_script_{field_name}"))
-									.attr("value", "true"),
+								#pages_crate::PageElement::new("label")
+									.child(#pages_crate::PageElement::new("input")
+										.attr("type", "checkbox")
+										.attr("name", format!("__reinhardt_no_script_{field_name}"))
+										.attr("value", "true"))
+									.child("Submit this value even if unchanged"),
 							)
 					});
 				if let ::core::option::Option::Some(no_script_sentinel) = no_script_sentinel {
@@ -4496,10 +4498,12 @@ fn generate_model_form(
 							.then(|| {
 								#pages_crate::PageElement::new("noscript")
 									.child(
-										#pages_crate::PageElement::new("input")
-											.attr("type", "hidden")
-											.attr("name", format!("__reinhardt_no_script_{field_name}"))
-											.attr("value", "true"),
+										#pages_crate::PageElement::new("label")
+											.child(#pages_crate::PageElement::new("input")
+												.attr("type", "checkbox")
+												.attr("name", format!("__reinhardt_no_script_{field_name}"))
+												.attr("value", "true"))
+											.child("Submit this value even if unchanged"),
 									)
 							});
 						let native_interaction_sentinel = native_interaction_marker

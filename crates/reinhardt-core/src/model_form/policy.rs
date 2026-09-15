@@ -104,10 +104,10 @@ const NATIVE_MODEL_FORM_JSON_ENCODED_PREFIX: &str = "__reinhardt_json_encoded_";
 /// when the browser supplies its synthetic black fallback. An untouched optional
 /// range control likewise omits its browser-generated minimum value, while an
 /// explicit JSON null is reconstructed from its marker. A no-script fallback
-/// marker keeps browser defaults supplied when inline/event scripting is
-/// unavailable. When hydration is initialized before interaction, the
-/// CSP-compatible runtime input/change listener records native edits in a
-/// separate marker so an edit back to the browser default remains supplied.
+/// checkbox explicitly supplies a browser default when scripting is unavailable;
+/// leaving it unchecked preserves omission. The SSR bootstrap records native
+/// input/change events before WASM loads, and hydration takes over that tracking
+/// so an edit back to the browser default remains supplied.
 /// Generated control prefixes, including file, no-script, and native interaction
 /// markers, are reserved by the model derive so they cannot collide with model
 /// fields. An explicit clear marker for a nullable, defaulted control takes
@@ -150,9 +150,14 @@ where
 		let color_sentinel = format!("__reinhardt_color_{}", descriptor.name);
 		let color_sentinel_value = values.remove(&color_sentinel);
 		let native_edited_sentinel = format!("__reinhardt_native_edited_{}", descriptor.name);
+		let no_script_sentinel = format!("__reinhardt_no_script_{}", descriptor.name);
+		let no_script_was_selected = values
+			.remove(&no_script_sentinel)
+			.is_some_and(|value| value == serde_json::Value::String("true".to_owned()));
 		let native_was_edited = values
 			.remove(&native_edited_sentinel)
-			.is_some_and(|value| value == serde_json::Value::String("true".to_owned()));
+			.is_some_and(|value| value == serde_json::Value::String("true".to_owned()))
+			|| no_script_was_selected;
 		let color_was_edited = native_was_edited
 			|| color_sentinel_value
 				.as_ref()
@@ -167,10 +172,6 @@ where
 			&& range_sentinel_value
 				.as_ref()
 				.is_some_and(|value| value == &serde_json::Value::String("null".to_owned()));
-		let no_script_sentinel = format!("__reinhardt_no_script_{}", descriptor.name);
-		let no_script_fallback = values
-			.remove(&no_script_sentinel)
-			.is_some_and(|value| value == serde_json::Value::String("true".to_owned()));
 		let default_clear_sentinel = format!("__reinhardt_defaulted_{}", descriptor.name);
 		let clears_default = descriptor.nullable
 			&& descriptor.has_default
@@ -209,13 +210,11 @@ where
 				.as_ref()
 				.is_some_and(|value| value == &serde_json::Value::String("false".to_owned()))
 			&& text == "#000000"
-			&& !no_script_fallback
 		{
 			values.remove(descriptor.name);
 			continue;
 		}
 		if !native_was_edited
-			&& !no_script_fallback
 			&& range_sentinel_value.as_ref() == Some(&serde_json::Value::String(text.clone()))
 		{
 			values.remove(descriptor.name);
@@ -789,7 +788,7 @@ mod tests {
 	}
 
 	#[rstest]
-	fn native_normalization_preserves_browser_defaults_without_script() {
+	fn native_normalization_preserves_explicitly_selected_no_script_defaults() {
 		// Arrange
 		let submitted = serde_json::json!({
 			"accent": "#000000",
@@ -810,6 +809,31 @@ mod tests {
 			value,
 			serde_json::json!({ "accent": "#000000", "range_value": 50 })
 		);
+	}
+
+	#[rstest]
+	#[case::omitted(false, serde_json::json!({}))]
+	#[case::selected(true, serde_json::json!({"summary": "#000000"}))]
+	fn native_normalization_preserves_no_script_model_default_omission(
+		#[case] selected: bool,
+		#[case] expected: serde_json::Value,
+	) {
+		// Arrange: summary is nullable and has a declared model default.
+		let mut submitted = serde_json::json!({
+			"summary": "#000000",
+			"__reinhardt_color_summary": "false",
+		});
+		if selected {
+			submitted["__reinhardt_no_script_summary"] = "true".into();
+		}
+
+		// Act
+		let value =
+			normalize_native_model_form_value::<TestSchema, AllEditableModelFields>(submitted)
+				.unwrap();
+
+		// Assert: only explicit selection bypasses the normal model-default application.
+		assert_eq!(value, expected);
 	}
 
 	#[rstest]

@@ -860,12 +860,15 @@ async fn page_keeps_optional_native_defaults_unsupplied() {
 }
 
 #[rstest]
+#[case::ssr_bootstrap(false)]
+#[case::wasm_tracker(true)]
 #[test_attr(wasm_bindgen_test)]
 #[serial(server_mutation_globals)]
-async fn page_hydration_preserves_native_default_edits() {
+async fn page_hydration_preserves_native_default_edits(#[case] initialize_wasm: bool) {
 	// Arrange
 	let root = BodyRoot::new("page-hydration-native-defaults");
 	let _state = SsrStateElement::install();
+	let _bootstrap = NativeFormBootstrap::install();
 	let scope = ReactiveScope::new();
 	let (form, component) = scope.enter(|| {
 		let form = form! {
@@ -891,8 +894,12 @@ async fn page_hydration_preserves_native_default_edits() {
 		.dyn_into::<web_sys::HtmlInputElement>()
 		.unwrap();
 
-	// Native interaction tracking must start before the browser dispatches edits.
-	reinhardt_pages::hydration::init_hydration_state();
+	// The parser-installed script must observe edits before any hydration entry point.
+	if initialize_wasm {
+		reinhardt_pages::hydration::init_hydration_state();
+	}
+	edit_input(&color, "#123456");
+	edit_input(&range, "7");
 	edit_input(&color, "#000000");
 	edit_input(&range, "5");
 	assert_eq!(
@@ -917,6 +924,36 @@ async fn page_hydration_preserves_native_default_edits() {
 		.dyn_into::<web_sys::HtmlFormElement>()
 		.unwrap();
 
+	// Act: a later listener cancels reset, preserving the values and edit markers.
+	let cancellation = CancelNativeReset::install(&node);
+	node.reset();
+	settle_browser().await;
+	for field in ["color", "range"] {
+		assert_eq!(
+			web_sys::FormData::new_with_form(&node)
+				.unwrap()
+				.get(&format!("__reinhardt_native_edited_{field}")),
+			JsValue::from_str("true")
+		);
+	}
+	assert_eq!(color.value(), "#000000");
+	assert_eq!(range.value(), "5");
+	drop(cancellation);
+
+	// An uncanceled reset clears the records, and subsequent edits are recorded again.
+	node.reset();
+	settle_browser().await;
+	for field in ["color", "range"] {
+		assert_eq!(
+			web_sys::FormData::new_with_form(&node)
+				.unwrap()
+				.get(&format!("__reinhardt_native_edited_{field}")),
+			JsValue::from_str("false")
+		);
+	}
+	edit_input(&color, "#000000");
+	edit_input(&range, "5");
+
 	// Act
 	scope.enter(|| hydrate(&component, &Element::new(node.clone().into())).unwrap());
 	settle_browser().await;
@@ -934,4 +971,138 @@ async fn page_hydration_preserves_native_default_edits() {
 			Some("true")
 		);
 	}
+}
+
+struct NativeFormBootstrap(web_sys::Element);
+
+impl NativeFormBootstrap {
+	fn install() -> Self {
+		let document = web_sys::window().unwrap().document().unwrap();
+		let script = document.create_element("script").unwrap();
+		script.set_text_content(Some(include_str!(concat!(
+			env!("CARGO_MANIFEST_DIR"),
+			"/src/ssr/native_model_form.js"
+		))));
+		document.body().unwrap().append_child(&script).unwrap();
+		Self(script)
+	}
+}
+
+impl Drop for NativeFormBootstrap {
+	fn drop(&mut self) {
+		let document = self.0.owner_document().unwrap();
+		document
+			.dispatch_event(&web_sys::Event::new("reinhardt:model-form-tracker-ready").unwrap())
+			.unwrap();
+		self.0.remove();
+	}
+}
+
+struct CancelNativeReset {
+	form: web_sys::HtmlFormElement,
+	callback: wasm_bindgen::closure::Closure<dyn FnMut(web_sys::Event)>,
+}
+
+impl CancelNativeReset {
+	fn install(form: &web_sys::HtmlFormElement) -> Self {
+		let callback = wasm_bindgen::closure::Closure::wrap(Box::new(|event: web_sys::Event| {
+			event.prevent_default()
+		}) as Box<dyn FnMut(web_sys::Event)>);
+		form.add_event_listener_with_callback("reset", callback.as_ref().unchecked_ref())
+			.unwrap();
+		Self {
+			form: form.clone(),
+			callback,
+		}
+	}
+}
+
+impl Drop for CancelNativeReset {
+	fn drop(&mut self) {
+		self.form
+			.remove_event_listener_with_callback("reset", self.callback.as_ref().unchecked_ref())
+			.unwrap();
+	}
+}
+
+#[rstest]
+#[case::standalone(false)]
+#[case::mutation(true)]
+#[test_attr(wasm_bindgen_test)]
+#[serial(server_mutation_globals)]
+fn no_script_model_forms_require_explicit_default_selection(#[case] mutation_page: bool) {
+	// Arrange: DOMParser creates a document with scripting disabled.
+	ReactiveScope::run(|| {
+		let form = form! {
+			name: NoScriptOptionalDefaultsForm,
+			model_form: WidgetContract,
+			server_fn: save_page_widgets,
+			overrides: {
+				color: { widget: ColorInput },
+				range: { widget: RangeInput }
+			},
+		};
+		let runtime = use_form(&form).build();
+		let page = if mutation_page {
+			form.server_mutation(&runtime).build().page()
+		} else {
+			form.into_page()
+		};
+		let document = Function::new_with_args(
+			"html",
+			"return new DOMParser().parseFromString(html, 'text/html');",
+		)
+		.call1(&JsValue::NULL, &JsValue::from_str(&page.render_to_string()))
+		.unwrap()
+		.dyn_into::<web_sys::Document>()
+		.unwrap();
+		let node = document
+			.query_selector("form")
+			.unwrap()
+			.unwrap()
+			.dyn_into::<web_sys::HtmlFormElement>()
+			.unwrap();
+		let normalized = || {
+			let data = web_sys::FormData::new_with_form(&node).unwrap();
+			let mut values = serde_json::Map::new();
+			for name in [
+				"color",
+				"range",
+				"__reinhardt_color_color",
+				"__reinhardt_range_range",
+				"__reinhardt_no_script_color",
+				"__reinhardt_no_script_range",
+			] {
+				if let Some(value) = data.get(name).as_string() {
+					values.insert(name.into(), value.into());
+				}
+			}
+			reinhardt_core::model_form::normalize_native_model_form_value::<
+				WidgetContract,
+				AllEditableModelFields,
+			>(values.into())
+			.unwrap()
+		};
+
+		// Assert: untouched controls omit their synthetic defaults.
+		assert_eq!(normalized(), serde_json::json!({}));
+
+		// Act: a user can explicitly supply even the unchanged browser default.
+		for field in ["color", "range"] {
+			let selector = format!("[name='__reinhardt_no_script_{field}']");
+			let choice = document
+				.query_selector(&selector)
+				.unwrap()
+				.unwrap()
+				.dyn_into::<web_sys::HtmlInputElement>()
+				.unwrap();
+			assert_eq!(choice.type_(), "checkbox");
+			assert!(!choice.checked());
+			choice.set_checked(true);
+		}
+		assert_eq!(
+			normalized(),
+			serde_json::json!({"color": "#000000", "range": 5})
+		);
+	});
 }
