@@ -245,6 +245,30 @@ automatically:
 4. Generates/updates CHANGELOG.md files
 5. Creates a Release PR
 
+`scripts/run-release-pr.sh` compares each release line against the root package's
+current release tag (`reinhardt-web@v<VERSION>`) using release-plz's
+`--registry-manifest-path` option. Main requires a stable version; a develop
+version must match its `develop/X.Y.Z` branch. The tag must exist, be reachable
+from the current commit, and contain the matching package name and version.
+A temporary detached worktree supplies that baseline and is removed on exit.
+Missing or inconsistent tags stop release generation rather than selecting a
+release from another branch.
+
+The disposable baseline receives the AWS Smithy `=1.6.3` dependency constraint
+where an AWS integration lacks it. Published versions predate this constraint,
+so fixing current manifests alone cannot make baseline rustdoc compilation pass.
+Only dependency metadata changes in the temporary checkout; package versions
+and API source remain those of the published tag. This workaround is tracked in
+[issue #6318](https://github.com/kent8192/reinhardt-web/issues/6318) and can be
+removed when the published baselines compile with fresh AWS dependencies.
+
+This selects the comparison source; it does not suppress API incompatibilities
+or breaking Conventional Commits. Patch releases must satisfy the stability
+policy, including any explicitly version-scoped security exception. To inspect
+the same comparison locally without opening a PR,
+run `GITHUB_REF_NAME=main bash scripts/run-release-pr.sh update` in an isolated
+worktree. The `update` command modifies local manifests and changelogs.
+
 **Release PR includes:**
 - Version bumps in `Cargo.toml`
 - Updated CHANGELOG.md files
