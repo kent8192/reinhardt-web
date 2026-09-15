@@ -115,7 +115,7 @@ sys.exit(int(os.environ.get("RELEASE_TEST_EXIT_CODE", "0")))
         self.run_git("tag", "-d", "reinhardt-web@v0.3.16")
         result = self.invoke()
         self.assertEqual(result.returncode, 1)
-        self.assertEqual(result.stderr.splitlines()[-1], "::error::Missing stable release tag 'reinhardt-web@v0.3.16'.")
+        self.assertEqual(result.stderr.splitlines()[-1], "::error::Missing release tag 'reinhardt-web@v0.3.16'.")
         self.assertFalse(self.capture.exists())
         self.assert_no_baseline_left()
 
@@ -123,7 +123,7 @@ sys.exit(int(os.environ.get("RELEASE_TEST_EXIT_CODE", "0")))
         self.run_git("tag", "-f", "reinhardt-web@v0.3.16", "develop/0.4.0")
         result = self.invoke()
         self.assertEqual(result.returncode, 1)
-        self.assertEqual(result.stderr.splitlines()[-1], "::error::Stable release tag 'reinhardt-web@v0.3.16' is not an ancestor of HEAD.")
+        self.assertEqual(result.stderr.splitlines()[-1], "::error::Release tag 'reinhardt-web@v0.3.16' is not an ancestor of HEAD.")
         self.assertFalse(self.capture.exists())
         self.assert_no_baseline_left()
 
@@ -135,7 +135,7 @@ sys.exit(int(os.environ.get("RELEASE_TEST_EXIT_CODE", "0")))
         self.commit("chore: restore version")
         result = self.invoke()
         self.assertEqual(result.returncode, 1)
-        self.assertEqual(result.stderr.splitlines()[-1], "::error::Stable release tag 'reinhardt-web@v0.3.16' contains 'reinhardt-web@0.3.15'.")
+        self.assertEqual(result.stderr.splitlines()[-1], "::error::Release tag 'reinhardt-web@v0.3.16' contains 'reinhardt-web@0.3.15'.")
         self.assertFalse(self.capture.exists())
         self.assert_no_baseline_left()
 
@@ -146,12 +146,59 @@ sys.exit(int(os.environ.get("RELEASE_TEST_EXIT_CODE", "0")))
         self.assertEqual(result.stderr.splitlines()[-1], "::error::main requires a stable package version, found '0.4.0-alpha.15'.")
         self.assertFalse(self.capture.exists())
 
-    def test_develop_keeps_registry_comparison(self):
+    def test_develop_uses_its_published_tag(self):
         self.run_git("checkout", "-q", "develop/0.4.0")
         result = self.invoke(GITHUB_REF_NAME="develop/0.4.0")
         self.assertEqual(result.returncode, 0, result.stderr)
         record = json.loads(self.capture.read_text())
-        self.assertNotIn("--registry-manifest-path", record["args"])
+        self.assertEqual(record["sha"], self.run_git("rev-parse", "reinhardt-web@v0.4.0-alpha.15"))
+        self.assertEqual(record["source"], "pub fn develop_api() {}\n")
+        self.assert_no_baseline_left()
+
+    def test_develop_rejects_mismatched_release_line(self):
+        self.run_git("checkout", "-q", "develop/0.4.0")
+        result = self.invoke(GITHUB_REF_NAME="develop/0.5.0")
+        self.assertEqual(result.returncode, 1)
+        self.assertFalse(self.capture.exists())
+        self.assert_no_baseline_left()
+
+    def test_aws_baseline_pin_preserves_source_and_checkout(self):
+        manifest = self.repo / "Cargo.toml"
+        manifest.write_text(manifest.read_text() +
+                            '\n[dependencies]\naws-config = { version = "1", optional = true }\n')
+        self.commit("fix: AWS fixture")
+        self.run_git("tag", "-f", "reinhardt-web@v0.3.16")
+        original = manifest.read_text()
+        result = self.invoke("update")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        record = json.loads(self.capture.read_text())
+        self.assertEqual(record["version"], original +
+                         '\n[dependencies.aws-smithy-types]\nversion = "=1.6.3"\n')
+        self.assertEqual(record["source"], "pub fn stable_api() { /* fixed */ }\n")
+        self.assertEqual(manifest.read_text(), original)
+        self.assert_no_baseline_left()
+
+    def test_conflicting_baseline_constraint_stops_and_cleans_up(self):
+        manifest = self.repo / "Cargo.toml"
+        manifest.write_text(manifest.read_text() +
+                            '\n[dependencies]\naws-config = "1"\naws-smithy-types = "=1.7.0"\n')
+        self.commit("fix: incompatible AWS fixture")
+        self.run_git("tag", "-f", "reinhardt-web@v0.3.16")
+        result = self.invoke()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(self.capture.exists())
+        self.assert_no_baseline_left()
+
+    def test_existing_constraint_is_preserved(self):
+        manifest = self.repo / "Cargo.toml"
+        manifest.write_text(manifest.read_text() +
+                            '\n[dependencies]\naws-config = "1"\naws-smithy-types = "=1.6.3"\n')
+        self.commit("fix: compatible AWS fixture")
+        self.run_git("tag", "-f", "reinhardt-web@v0.3.16")
+        result = self.invoke()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        record = json.loads(self.capture.read_text())
+        self.assertEqual(record["version"], manifest.read_text())
         self.assert_no_baseline_left()
 
     def test_local_update_uses_same_baseline_without_opening_pr(self):
@@ -166,6 +213,7 @@ sys.exit(int(os.environ.get("RELEASE_TEST_EXIT_CODE", "0")))
     def invoke_workflow(self, **env):
         (self.repo / "scripts").mkdir()
         shutil.copyfile(SCRIPT, self.repo / "scripts/run-release-pr.sh")
+        shutil.copyfile(SCRIPT.parent / "prepare-release-baseline.py", self.repo / "scripts/prepare-release-baseline.py")
         step = subprocess.check_output([
             "ruby", "-ryaml", "-e",
             'print YAML.load_file(ARGV[0])["jobs"]["release-plz-pr"]["steps"].find { |s| s["id"] == "release-plz-pr" }.fetch("run")',
