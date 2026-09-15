@@ -218,6 +218,16 @@ For detailed guidelines on writing CHANGELOG-friendly commit messages, see [inst
 
 ## Automated Workflow
 
+Release announcement detection compares `reinhardt-web@v*` tag snapshots taken
+before and after publishing. Both snapshots use `LC_ALL=C sort`, and `comm` uses
+the same locale; version ordering is only used when selecting announcement tags.
+A missing snapshot or a failed fetch, tag enumeration, sort, or comparison fails
+the Release job. Only a successful comparison with no new tags emits
+`released=false`; detection errors must not silently suppress announcements.
+
+Run `bash scripts/tests/test-release-tag-snapshots.sh` to verify tag detection
+and failure handling without publishing or contacting a remote repository.
+
 ### Step 1: Develop with Conventional Commits
 
 Write commits following [Conventional Commits](https://www.conventionalcommits.org/):
@@ -268,6 +278,16 @@ policy, including any explicitly version-scoped security exception. To inspect
 the same comparison locally without opening a PR,
 run `GITHUB_REF_NAME=main bash scripts/run-release-pr.sh update` in an isolated
 worktree. The `update` command modifies local manifests and changelogs.
+
+
+For 0.3.17, [ST-2](STABILITY_POLICY.md#st-2-scoped-security-exception-for-0317)
+permits the already-landed GraphQL-over-gRPC construction and subscription
+error-delivery changes. Review the generated Release PR for the intended
+0.3.17 version across the release group and retain the prominent breaking
+security notice and [migration guide](MIGRATION_0.3.17.md). Runtime compatibility
+must be reviewed separately from `cargo-semver-checks`; keep the check enabled
+and investigate any additional incompatibility. Release-plz continues to own
+manifest version updates, and merging a preparation PR does not publish crates.
 
 **Release PR includes:**
 - Version bumps in `Cargo.toml`

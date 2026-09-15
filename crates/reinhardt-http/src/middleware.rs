@@ -59,10 +59,11 @@
 //! ```
 
 use async_trait::async_trait;
-use reinhardt_core::exception::Result;
+use reinhardt_core::exception::{Error, Result};
 use std::any::{Any, TypeId};
 use std::sync::Arc;
 
+use crate::exception::ExceptionHandler;
 use crate::{Request, Response};
 
 /// Type-erased DI singleton registration entry contributed by a middleware.
@@ -267,6 +268,9 @@ pub trait Middleware: Send + Sync {
 pub struct MiddlewareChain {
 	middlewares: Vec<Arc<dyn Middleware>>,
 	handler: Arc<dyn Handler>,
+	/// Applied instead of the default `Response::from` conversion when a request
+	/// fails anywhere in this chain, including inside middleware.
+	exception_handler: Option<Arc<dyn ExceptionHandler>>,
 }
 
 impl MiddlewareChain {
@@ -294,6 +298,7 @@ impl MiddlewareChain {
 		Self {
 			middlewares: Vec::new(),
 			handler,
+			exception_handler: None,
 		}
 	}
 
@@ -305,7 +310,48 @@ impl MiddlewareChain {
 		Self {
 			middlewares,
 			handler,
+			exception_handler: None,
 		}
+	}
+
+	/// Installs an exception handler for every failure in this chain.
+	///
+	/// Without one, `Err` values are converted by `impl From<Error> for Response`,
+	/// which omits internal details and returns a JSON `SafeErrorResponse`. The
+	/// installed handler replaces that conversion for errors raised by the base
+	/// handler and for errors raised by middleware in this chain.
+	///
+	/// # Examples
+	///
+	/// ```rust
+	/// use async_trait::async_trait;
+	/// use reinhardt_http::{
+	///     Error, ExceptionHandler, Handler, MiddlewareChain, Request, Response,
+	/// };
+	/// use std::sync::Arc;
+	///
+	/// # struct MyHandler;
+	/// # #[async_trait]
+	/// # impl Handler for MyHandler {
+	/// #     async fn handle(&self, _request: Request) -> reinhardt_core::exception::Result<Response> {
+	/// #         Ok(Response::ok())
+	/// #     }
+	/// # }
+	/// struct TeapotErrors;
+	///
+	/// #[async_trait]
+	/// impl ExceptionHandler for TeapotErrors {
+	///     async fn handle_exception(&self, _request: &Request, _error: Error) -> Response {
+	///         Response::new(hyper::StatusCode::IM_A_TEAPOT)
+	///     }
+	/// }
+	///
+	/// let chain = MiddlewareChain::new(Arc::new(MyHandler))
+	///     .with_exception_handler(Arc::new(TeapotErrors));
+	/// ```
+	pub fn with_exception_handler(mut self, exception_handler: Arc<dyn ExceptionHandler>) -> Self {
+		self.exception_handler = Some(exception_handler);
+		self
 	}
 
 	/// Adds a middleware to the chain using builder pattern.
@@ -374,26 +420,57 @@ impl MiddlewareChain {
 
 #[async_trait]
 impl Handler for MiddlewareChain {
-	async fn handle(&self, request: Request) -> Result<Response> {
+	async fn handle(&self, mut request: Request) -> Result<Response> {
+		let exception_handler = self
+			.exception_handler
+			.clone()
+			.or_else(|| request.extensions.get::<Arc<dyn ExceptionHandler>>());
+		if let Some(handler) = &exception_handler {
+			request.install_exception_handler(Arc::clone(handler));
+		}
+		// A chain with no middleware neither converts nor swallows errors, so the
+		// installed handler is applied here to keep `with_exception_handler`
+		// meaningful for a bare chain. The error still propagates as `Err` when no
+		// handler is installed, which is the behaviour callers rely on today.
 		if self.middlewares.is_empty() {
-			return self.handler.as_ref().handle(request).await;
+			let Some(exception_handler) = exception_handler.as_ref() else {
+				return self.handler.as_ref().handle(request).await;
+			};
+			let mut context = request.clone_for_di();
+			return match self.handler.as_ref().handle(request).await {
+				Ok(response) => Ok(response),
+				Err(e) => {
+					context.sync_path_params_from_shared_state();
+					context.extensions.insert(crate::ExceptionHandlerInvoked);
+					Ok(exception_handler.handle_exception(&context, e).await)
+				}
+			};
 		}
 
 		if self.middlewares.len() == 1 {
 			let middleware = &self.middlewares[0];
 			if !middleware.should_continue(&request) {
+				let mut context = capture_exception_context(exception_handler.as_ref(), &request);
 				return match self.handler.as_ref().handle(request).await {
 					Ok(response) => Ok(response),
-					Err(e) => Ok(Response::from(e)),
+					Err(e) => {
+						refresh_exception_context(&mut context);
+						Ok(convert_error(exception_handler.as_ref(), context.as_ref(), e).await)
+					}
 				};
 			}
 
+			let mut context = capture_exception_context(exception_handler.as_ref(), &request);
 			let next: Arc<dyn Handler> = Arc::new(ErrorToResponseHandler {
 				inner: self.handler.clone(),
+				exception_handler: exception_handler.clone(),
 			});
 			let response = match middleware.process(request, next).await {
 				Ok(response) => response,
-				Err(e) => Response::from(e),
+				Err(e) => {
+					refresh_exception_context(&mut context);
+					convert_error(exception_handler.as_ref(), context.as_ref(), e).await
+				}
 			};
 			return Ok(response);
 		}
@@ -410,6 +487,7 @@ impl Handler for MiddlewareChain {
 		// all middleware post-processing runs even for error responses.
 		let mut current_handler: Arc<dyn Handler> = Arc::new(ErrorToResponseHandler {
 			inner: self.handler.clone(),
+			exception_handler: exception_handler.clone(),
 		});
 
 		for middleware in self
@@ -424,6 +502,7 @@ impl Handler for MiddlewareChain {
 			current_handler = Arc::new(ConditionalComposedHandler {
 				middleware: mw,
 				next: handler,
+				exception_handler: exception_handler.clone(),
 			});
 		}
 
@@ -527,6 +606,44 @@ impl Middleware for ExcludeMiddleware {
 	}
 }
 
+/// Captures the request context an installed exception handler needs.
+///
+/// Returns `None` when no handler is installed, so the default error path pays
+/// nothing. The context is produced by `Request::clone_for_di`, which copies
+/// method, URI, version, headers, path parameters and query parameters and
+/// shares the extensions store through an internal `Arc`.
+fn capture_exception_context(
+	exception_handler: Option<&Arc<dyn ExceptionHandler>>,
+	request: &Request,
+) -> Option<Request> {
+	// Bail out before cloning when no handler is installed.
+	exception_handler?;
+	Some(request.clone_for_di())
+}
+
+fn refresh_exception_context(context: &mut Option<Request>) {
+	if let Some(context) = context.as_mut() {
+		context.sync_path_params_from_shared_state();
+	}
+}
+
+/// Converts `error` into a response with the installed handler when both the
+/// handler and a captured context are present, and with the default
+/// `impl From<Error> for Response` otherwise.
+async fn convert_error(
+	exception_handler: Option<&Arc<dyn ExceptionHandler>>,
+	context: Option<&Request>,
+	error: Error,
+) -> Response {
+	match (exception_handler, context) {
+		(Some(handler), Some(context)) => {
+			context.extensions.insert(crate::ExceptionHandlerInvoked);
+			handler.handle_exception(context, error).await
+		}
+		_ => Response::from(error),
+	}
+}
+
 /// Internal handler wrapper that converts errors to HTTP responses.
 ///
 /// Wraps the base handler so that middleware always receives `Ok(Response)`
@@ -535,14 +652,21 @@ impl Middleware for ExcludeMiddleware {
 /// responses, matching Django's `process_response` semantics.
 struct ErrorToResponseHandler {
 	inner: Arc<dyn Handler>,
+	exception_handler: Option<Arc<dyn ExceptionHandler>>,
 }
 
 #[async_trait]
 impl Handler for ErrorToResponseHandler {
 	async fn handle(&self, request: Request) -> Result<Response> {
+		let mut context = capture_exception_context(self.exception_handler.as_ref(), &request);
 		match self.inner.as_ref().handle(request).await {
 			Ok(response) => Ok(response),
-			Err(e) => Ok(Response::from(e)),
+			Err(e) => {
+				if let Some(context) = context.as_mut() {
+					context.sync_path_params_from_shared_state();
+				}
+				Ok(convert_error(self.exception_handler.as_ref(), context.as_ref(), e).await)
+			}
 		}
 	}
 }
@@ -554,6 +678,7 @@ impl Handler for ErrorToResponseHandler {
 struct ConditionalComposedHandler {
 	middleware: Arc<dyn Middleware>,
 	next: Arc<dyn Handler>,
+	exception_handler: Option<Arc<dyn ExceptionHandler>>,
 }
 
 #[async_trait]
@@ -563,9 +688,13 @@ impl Handler for ConditionalComposedHandler {
 		// Convert errors to responses so that outer middleware post-processing
 		// (e.g., security headers) always runs — matching Django's process_response
 		// semantics where the response hook executes for both success and error cases.
+		let mut context = capture_exception_context(self.exception_handler.as_ref(), &request);
 		let response = match self.middleware.process(request, self.next.clone()).await {
 			Ok(response) => response,
-			Err(e) => Response::from(e),
+			Err(e) => {
+				refresh_exception_context(&mut context);
+				convert_error(self.exception_handler.as_ref(), context.as_ref(), e).await
+			}
 		};
 
 		Ok(response)
@@ -577,6 +706,7 @@ mod tests {
 	use super::*;
 	use bytes::Bytes;
 	use hyper::{HeaderMap, Method, Version};
+	use rstest::rstest;
 
 	// Mock handler for testing
 	struct MockHandler {
@@ -1175,5 +1305,116 @@ mod tests {
 
 		// Assert: status code correctly reflects the error
 		assert_eq!(response.status, hyper::StatusCode::UNAUTHORIZED);
+	}
+
+	// ==========================================================================
+	// Exception handler support (Issue #6294)
+	// ==========================================================================
+
+	/// Middleware that always fails.
+	struct FailingMiddleware;
+
+	#[async_trait]
+	impl Middleware for FailingMiddleware {
+		async fn process(&self, _request: Request, _next: Arc<dyn Handler>) -> Result<Response> {
+			Err(Error::Http("rejected by middleware".to_string()))
+		}
+	}
+
+	/// Base handler that always fails.
+	struct ErroringHandler;
+
+	#[async_trait]
+	impl Handler for ErroringHandler {
+		async fn handle(&self, _request: Request) -> Result<Response> {
+			Err(Error::NotFound("no route".to_string()))
+		}
+	}
+
+	/// Exception handler producing a body identifiable in assertions.
+	struct TeapotHandler;
+
+	#[async_trait]
+	impl ExceptionHandler for TeapotHandler {
+		async fn handle_exception(&self, _request: &Request, _error: Error) -> Response {
+			Response::new(hyper::StatusCode::IM_A_TEAPOT).with_body("teapot")
+		}
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_chain_exception_handler_converts_middleware_error() {
+		// Arrange
+		let chain = MiddlewareChain::new(Arc::new(MockHandler {
+			response_body: "unused".to_string(),
+		}))
+		.with_middleware(Arc::new(FailingMiddleware))
+		.with_exception_handler(Arc::new(TeapotHandler));
+
+		// Act
+		let response = chain.handle(create_test_request()).await.unwrap();
+
+		// Assert
+		assert_eq!(response.status, hyper::StatusCode::IM_A_TEAPOT);
+		assert_eq!(String::from_utf8(response.body.to_vec()).unwrap(), "teapot");
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_chain_without_exception_handler_keeps_default_middleware_error() {
+		// Arrange
+		let chain = MiddlewareChain::new(Arc::new(MockHandler {
+			response_body: "unused".to_string(),
+		}))
+		.with_middleware(Arc::new(FailingMiddleware));
+
+		// Act
+		let response = chain.handle(create_test_request()).await.unwrap();
+
+		// Assert: the default conversion maps Error::Http to 400, not to the handler's status
+		assert_eq!(response.status, hyper::StatusCode::BAD_REQUEST);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_chain_exception_handler_converts_base_handler_error() {
+		// Arrange
+		let chain = MiddlewareChain::new(Arc::new(ErroringHandler))
+			.with_middleware(Arc::new(PassthroughMiddleware))
+			.with_exception_handler(Arc::new(TeapotHandler));
+
+		// Act
+		let response = chain.handle(create_test_request()).await.unwrap();
+
+		// Assert
+		assert_eq!(response.status, hyper::StatusCode::IM_A_TEAPOT);
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_bare_chain_with_exception_handler_converts_base_handler_error() {
+		// Arrange: no middleware, so the chain takes its early-return path
+		let chain = MiddlewareChain::new(Arc::new(ErroringHandler))
+			.with_exception_handler(Arc::new(TeapotHandler));
+
+		// Act
+		let response = chain.handle(create_test_request()).await.unwrap();
+
+		// Assert
+		assert_eq!(response.status, hyper::StatusCode::IM_A_TEAPOT);
+		assert_eq!(String::from_utf8(response.body.to_vec()).unwrap(), "teapot");
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn test_bare_chain_without_exception_handler_propagates_error() {
+		// Arrange
+		let chain = MiddlewareChain::new(Arc::new(ErroringHandler));
+
+		// Act
+		let result = chain.handle(create_test_request()).await;
+
+		// Assert: a chain with no middleware must not start swallowing errors
+		assert!(result.is_err());
 	}
 }

@@ -161,6 +161,11 @@ trybuild = { workspace = true }
 nix = { version = "0.31", features = ["process", "signal"] }
 rexpect = "0.6"
 
+[build-dependencies]
+# Declares the `wasm` / `native` cfg aliases consumed by generated model code and by test modules.
+# Not a workspace dependency: `cfg_aliases` is declared directly in each package that uses it.
+cfg_aliases = "0.2"
+
 [features]
 default = ["postgres", "sqlite", "caching", "hot-reload", "dynamic-redis"]
 testcontainers = []

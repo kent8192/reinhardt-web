@@ -87,6 +87,14 @@ Core HTTP abstractions for the Reinhardt framework. Provides comprehensive reque
 - `SyncHandler` - Synchronous fast path for routes that only inspect the request and build a response
 - `SyncHandlerAdapter` - Compatibility adapter used when synchronous handlers pass through async middleware APIs
 
+#### Exception Handling
+
+- `ExceptionHandler` converts dispatch errors into application-defined responses and can be installed on a router, server, or `MiddlewareChain` with `with_exception_handler`
+- The hook receives the request context and the framework error, covering handler, middleware, and routing failures that reach the configured chain
+- A custom handler owns the response body and all security headers; the default conversion is safer because it omits internal error details and returns a JSON `SafeErrorResponse` with `Content-Type: application/json` (with safe detail only for applicable 4xx errors)
+
+Do not interpolate an error's `Display` output into a public response unless the details have been reviewed for disclosure of internal paths, credentials, or other sensitive data.
+
 ## Installation
 
 Add `reinhardt` to your `Cargo.toml`:

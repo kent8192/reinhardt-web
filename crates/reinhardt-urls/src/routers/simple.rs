@@ -202,7 +202,7 @@ impl super::router::Router for SimpleRouter {
 
 				if expected_id == handler_id {
 					// Add path parameters to request
-					request.path_params = params;
+					request.set_path_params(params);
 					return route.handler().handle(request).await;
 				}
 			}

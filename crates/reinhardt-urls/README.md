@@ -184,6 +184,53 @@ impl SyncHandler for HealthHandler {
 let router = ServerRouter::new().handler_sync("/health", HealthHandler);
 ```
 
+### Router Exception Handling
+
+`ServerRouter::with_exception_handler` installs an application-defined
+response hook for unmatched routes (404), method mismatches (405), handler
+errors, and router middleware errors. `UnifiedRouter` exposes the same builder
+method for shared server/client route declarations (an inert P1 operation on
+WASM). The standalone development server preserves custom 404 responses rather
+than treating them as a request for its static-file fallback:
+
+```rust
+use async_trait::async_trait;
+use hyper::StatusCode;
+use reinhardt::http::{Error, ExceptionHandler, Request, Response};
+use reinhardt::urls::routers::ServerRouter;
+use std::sync::Arc;
+
+struct MyExceptionHandler;
+
+#[async_trait]
+impl ExceptionHandler for MyExceptionHandler {
+    async fn handle_exception(&self, _request: &Request, error: Error) -> Response {
+        let status = StatusCode::from_u16(error.status_code())
+            .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+        Response::new(status).with_body("request failed")
+    }
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let router = ServerRouter::new()
+        .with_exception_handler(Arc::new(MyExceptionHandler));
+    let _ = router;
+    Ok(())
+}
+```
+
+With an exception handler installed, synchronous and requestless routes use
+async dispatch so their failures reach the same hook. The synchronous
+`try_dispatch_*` entry points decline requests that require that conversion.
+
+The hook runs only for errors that reach the configured router or middleware
+chain. Custom responses must set their own safe body and security headers; the
+default conversion hides internal details and returns a JSON
+`SafeErrorResponse` with `Content-Type: application/json`. Avoid copying an
+error's `Display` output into a public response without reviewing it for
+sensitive data.
+
 ### URL Reversal
 
 ```rust
