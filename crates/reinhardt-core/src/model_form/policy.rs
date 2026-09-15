@@ -94,16 +94,7 @@ pub trait NativeModelFormPayload: Sized {
 	fn from_native_form_value(value: serde_json::Value) -> Result<Self, serde_json::Error>;
 }
 
-fn native_model_form_control_text(raw_text: &str, kind: ModelFormFieldKind) -> String {
-	if matches!(kind, ModelFormFieldKind::Json) {
-		return raw_text.to_owned();
-	}
-
-	match serde_json::from_str::<serde_json::Value>(raw_text) {
-		Ok(serde_json::Value::String(text)) => text,
-		_ => raw_text.to_owned(),
-	}
-}
+const NATIVE_MODEL_FORM_JSON_ENCODED_PREFIX: &str = "__reinhardt_json_encoded_";
 
 /// Normalizes controls produced by a native HTML model form before decoding.
 ///
@@ -124,12 +115,13 @@ fn native_model_form_control_text(raw_text: &str, kind: ModelFormFieldKind) -> S
 /// limited to schema fields permitted by the selected policy; unrelated controls
 /// such as the CSRF token are removed before typed payload decoding.
 /// Multipart JSON-encoded scalar strings remain available to this schema-aware
-/// step, while ordinary scalar controls continue to decode generated JSON string
-/// values as their underlying text.
+/// step. Generated browser clients mark JSON-encoded scalar controls so this
+/// step can restore their exact JSON types, including null and empty strings.
+/// Unmarked native text controls retain their literal text before normalization.
 ///
 /// # Errors
 ///
-/// Returns a JSON error when a JSON control does not contain valid JSON text.
+/// Returns a JSON error when a JSON control or marked scalar contains invalid JSON.
 pub fn normalize_native_model_form_value<S, P>(
 	mut value: serde_json::Value,
 ) -> Result<serde_json::Value, serde_json::Error>
@@ -185,6 +177,11 @@ where
 			&& values
 				.remove(&default_clear_sentinel)
 				.is_some_and(|value| value == serde_json::Value::String("true".to_owned()));
+		let json_encoded_sentinel =
+			format!("{NATIVE_MODEL_FORM_JSON_ENCODED_PREFIX}{}", descriptor.name);
+		let generated_json_encoded = values
+			.remove(&json_encoded_sentinel)
+			.is_some_and(|value| value == serde_json::Value::String("true".to_owned()));
 		if clears_default {
 			values.insert(descriptor.name.to_owned(), serde_json::Value::Null);
 			continue;
@@ -202,7 +199,11 @@ where
 		let serde_json::Value::String(raw_text) = control else {
 			continue;
 		};
-		let text = native_model_form_control_text(raw_text, descriptor.kind);
+		if generated_json_encoded {
+			*control = serde_json::from_str(raw_text)?;
+			continue;
+		}
+		let text = raw_text.to_owned();
 		if !native_was_edited
 			&& color_sentinel_value
 				.as_ref()
@@ -566,7 +567,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn native_normalization_preserves_json_string_scalars() {
 		let encoded_string =
 			normalize_native_model_form_value::<TestSchema, AllEditableModelFields>(
@@ -581,6 +582,67 @@ mod tests {
 			)
 			.expect("JSON boolean scalar should normalize");
 		assert_eq!(encoded_boolean, serde_json::json!({ "metadata": true }));
+	}
+
+	#[rstest]
+	fn native_normalization_preserves_quoted_native_text() {
+		let native_text = normalize_native_model_form_value::<TestSchema, AllEditableModelFields>(
+			serde_json::json!({ "title": r#""Report""# }),
+		)
+		.expect("literal quoted text should normalize");
+		assert_eq!(native_text, serde_json::json!({ "title": r#""Report""# }));
+
+		let generated_text =
+			normalize_native_model_form_value::<TestSchema, AllEditableModelFields>(
+				serde_json::json!({
+					"title": r#""Report""#,
+					"__reinhardt_json_encoded_title": "true",
+				}),
+			)
+			.expect("generated JSON text should normalize");
+		assert_eq!(generated_text, serde_json::json!({ "title": "Report" }));
+	}
+
+	#[rstest]
+	#[case("title", serde_json::json!("null"))]
+	#[case("summary", serde_json::Value::Null)]
+	#[case("summary", serde_json::json!(""))]
+	#[case("metadata", serde_json::json!("true"))]
+	#[case("metadata", serde_json::json!(true))]
+	#[case("count", serde_json::json!(42))]
+	fn native_normalization_preserves_marked_json_types(
+		#[case] field: &str,
+		#[case] expected: serde_json::Value,
+	) {
+		// Arrange
+		let input = serde_json::json!({
+			(field): serde_json::to_string(&expected).unwrap(),
+			(format!("__reinhardt_json_encoded_{field}")): "true",
+		});
+
+		// Act
+		let normalized =
+			normalize_native_model_form_value::<TestSchema, AllEditableModelFields>(input)
+				.expect("marked JSON should retain its wire type");
+
+		// Assert
+		assert_eq!(normalized, serde_json::json!({ (field): expected }));
+	}
+
+	#[rstest]
+	fn native_normalization_rejects_malformed_marked_json() {
+		// Arrange
+		let input = serde_json::json!({
+			"title": "{",
+			"__reinhardt_json_encoded_title": "true",
+		});
+
+		// Act
+		let error = normalize_native_model_form_value::<TestSchema, AllEditableModelFields>(input)
+			.expect_err("marked values must contain valid JSON");
+
+		// Assert
+		assert_eq!(error.classify(), serde_json::error::Category::Eof);
 	}
 
 	#[test]

@@ -12,6 +12,16 @@ use std::collections::HashSet;
 use super::{ServerFnArgumentKind, ServerFnError, ServerFnMetadata};
 
 const INVALID_REQUEST_MESSAGE: &str = "Invalid server function request";
+const MODEL_FORM_PROTOCOL_PREFIXES: &[&str] = &[
+	"__reinhardt_checkbox_",
+	"__reinhardt_color_",
+	"__reinhardt_range_",
+	"__reinhardt_defaulted_",
+	"__reinhardt_file_",
+	"__reinhardt_no_script_",
+	"__reinhardt_native_edited_",
+	"__reinhardt_json_encoded_",
+];
 
 struct MultipartArgumentPolicy<M>(std::marker::PhantomData<fn() -> M>);
 
@@ -67,7 +77,8 @@ impl MultipartArguments {
 
 	/// Revalidates model scalars and upload metadata before user-handler execution.
 	///
-	/// File argument kinds and required uploads are checked before model validation.
+	/// Argument allowlists, file kinds, and required uploads are checked before
+	/// decoding model scalars, so forbidden fields retain structured validation errors.
 	/// The concrete payload binds the generated rules and server-owned policy;
 	/// trusted endpoint metadata narrows validation to its selected arguments.
 	pub fn validate_model_form<D, P, M>(&mut self) -> Result<(), ServerFnError>
@@ -109,20 +120,6 @@ impl MultipartArguments {
 				_ => {}
 			}
 		}
-		let native_value = self
-			.parts
-			.iter()
-			.filter_map(|part| match part {
-				MultipartPart::Field { name, data } => Some(
-					decode_native_field_value(data)
-						.map(|value| (name.clone(), value))
-						.map_err(|_| invalid_request("malformed_native_field", Some(name))),
-				),
-				MultipartPart::File(_) => None,
-			})
-			.collect::<Result<serde_json::Map<_, _>, _>>()?;
-		let payload = D::from_native_form_value(serde_json::Value::Object(native_value))
-			.map_err(|_| invalid_request("malformed_native_model_form", None))?;
 		let mut uploads = Vec::new();
 		for part in &self.parts {
 			let name = part_name(part);
@@ -149,6 +146,20 @@ impl MultipartArguments {
 				});
 			}
 		}
+		let native_value = self
+			.parts
+			.iter()
+			.filter_map(|part| match part {
+				MultipartPart::Field { name, data } => Some(
+					decode_native_field_value(data)
+						.map(|value| (name.clone(), value))
+						.map_err(|_| invalid_request("malformed_native_field", Some(name))),
+				),
+				MultipartPart::File(_) => None,
+			})
+			.collect::<Result<serde_json::Map<_, _>, _>>()?;
+		let payload = D::from_native_form_value(serde_json::Value::Object(native_value))
+			.map_err(|_| invalid_request("malformed_native_model_form", None))?;
 		self.parts
 			.retain(|part| !is_model_form_protocol_field(part_name(part)));
 		let deferred_files = arguments
@@ -296,7 +307,10 @@ fn part_name(part: &MultipartPart) -> &str {
 }
 
 fn is_model_form_protocol_field(name: &str) -> bool {
-	name == "csrfmiddlewaretoken" || name.starts_with("__reinhardt_")
+	name == "csrfmiddlewaretoken"
+		|| MODEL_FORM_PROTOCOL_PREFIXES
+			.iter()
+			.any(|prefix| name.starts_with(prefix))
 }
 
 /// Retains multipart wire text so the model-form schema can decode JSON fields
@@ -438,7 +452,15 @@ mod tests {
 	#[case("csrfmiddlewaretoken")]
 	#[case("__reinhardt_color_accent")]
 	#[case("__reinhardt_native_edited_accent")]
+	#[case("__reinhardt_json_encoded_title")]
 	fn model_form_protocol_fields_are_reserved(#[case] name: &str) {
 		assert!(is_model_form_protocol_field(name));
+	}
+
+	#[rstest]
+	#[case("__reinhardt_note")]
+	#[case("__reinhardt_custom_field")]
+	fn model_form_fields_outside_reserved_prefixes_are_not_protocol_fields(#[case] name: &str) {
+		assert!(!is_model_form_protocol_field(name));
 	}
 }

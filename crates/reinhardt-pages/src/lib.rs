@@ -29,6 +29,10 @@
 //! the model-form multipart adapter removes CSRF and internal control markers,
 //! normalizes those text values, and then applies typed validation. It also
 //! accepts JSON-encoded scalar strings emitted by generated browser clients.
+//! Generated model-form clients attach reserved provenance markers to those
+//! scalar parts, so a native text value that happens to be valid JSON remains
+//! literal instead of being unwrapped. Marked parts preserve JSON null and empty
+//! strings through normalization before model validation.
 //!
 //! ```rust,no_run
 //! use reinhardt_core::parsers::UploadedFile;
