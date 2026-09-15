@@ -503,6 +503,19 @@ fn reconcile_attrs_at_path(
 		}
 		let expected = expected_dom_attr_value(name_str, value.as_ref());
 		let actual = element.get_attribute(name_str);
+		// Hidden input values reflect into their attributes when the pre-hydration
+		// interaction tracker records an edit. Preserve that mutable protocol state.
+		if name_str.eq_ignore_ascii_case("value")
+			&& el_view.tag_name().eq_ignore_ascii_case("input")
+			&& element.get_attribute("type").as_deref() == Some("hidden")
+			&& element
+				.get_attribute("name")
+				.is_some_and(|name| name.starts_with("__reinhardt_native_edited_"))
+			&& expected.as_deref() == Some("false")
+			&& matches!(actual.as_deref(), Some("true" | "false"))
+		{
+			continue;
+		}
 
 		if actual != expected {
 			return Err(ReconcileError::AttributeMismatch {

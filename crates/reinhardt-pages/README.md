@@ -327,6 +327,9 @@ Reevaluating an unchanged condition retains the mounted branch's reactive scope,
 so its callbacks and controlled values remain active until the branch is replaced.
 Hydration failures preserve their specific error variant, including control
 attachment errors.
+Model-form interaction markers retain edits recorded before hydration, including
+explicit color and range edits back to the browser default. Their hidden values
+remain available to native form submission after hydration.
 Resetting a connected password form clears its bound signal in a deferred
 task, after the browser reset completes. Cancelled resets preserve the
 value, and unmounting a control cancels its queued reset reconciliation.

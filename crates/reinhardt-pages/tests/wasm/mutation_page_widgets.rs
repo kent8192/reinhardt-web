@@ -924,4 +924,14 @@ async fn page_hydration_preserves_native_default_edits() {
 	// Assert: edits back to browser defaults remain supplied after hydration.
 	assert_eq!(form.value("color"), Some(serde_json::json!("#000000")));
 	assert_eq!(form.value("range"), Some(serde_json::json!(5)));
+	let submitted = web_sys::FormData::new_with_form(&node).unwrap();
+	for field in ["color", "range"] {
+		assert_eq!(
+			submitted
+				.get(&format!("__reinhardt_native_edited_{field}"))
+				.as_string()
+				.as_deref(),
+			Some("true")
+		);
+	}
 }
