@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.3.17...reinhardt-conf@v0.3.18) - 2026-09-16
+
+### Fixed
+
+- *(deps)* constrain AWS Smithy releases on the stable line
+
 ## [0.3.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-conf@v0.3.15...reinhardt-conf@v0.3.16) - 2026-09-08
 
 ### Testing

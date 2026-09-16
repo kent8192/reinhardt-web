@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-server@v0.3.17...reinhardt-server@v0.3.18) - 2026-09-16
+
+### Fixed
+
+- *(server)* install the exception handler on HttpServer
+- *(urls)* defer unmatched route errors through middleware
+- *(http)* inherit exception handlers in nested dispatch
+- track exception handler invocation
+- preserve dispatch errors for exception handlers
+- *(http)* preserve routing context through middleware
+
 ## [0.3.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-server@v0.3.15...reinhardt-server@v0.3.16) - 2026-09-08
 
 ### Maintenance

@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.3.17...reinhardt-urls@v0.3.18) - 2026-09-16
+
+### Fixed
+
+- *(urls)* install the exception handler on the router
+- *(urls)* route 404/405 middleware failures through the handler
+- *(urls)* defer unmatched route errors through middleware
+- *(http)* inherit exception handlers in nested dispatch
+- *(commands)* preserve configured exception responses on routing misses
+- *(urls)* expose the exception handler builder on WASM
+- track exception handler invocation
+- *(http)* unify exception handler dispatch
+- *(http)* preserve routing context for exception handlers
+- *(http)* preserve routing context through middleware
+- *(http)* narrow routing context snapshots
+
+### Maintenance
+
+- auto-fix fmt and clippy
+
 ## [0.3.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-urls@v0.3.15...reinhardt-urls@v0.3.16) - 2026-09-08
 
 ### Testing
