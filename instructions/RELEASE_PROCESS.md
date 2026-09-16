@@ -638,6 +638,26 @@ secondary expression error.
 
 (Ref: [#4828](https://github.com/kent8192/reinhardt-web/issues/4828))
 
+### KI-8: Workspace Patch Constraints Leak into CI Package Lockfiles
+
+`cargo package` removes workspace patches from the normalized manifest. The
+workspace lockfile can therefore select versions that conflict with an unpatched
+registry dependency. Topiary 0.7.3 requires `wasm-bindgen = "=0.2.100"`, while the
+workspace's patched graph resolves newer `js-sys` and `wasm-bindgen` versions.
+This can fail packaging `reinhardt-formatter` even though native checks pass.
+
+The Publish Check workflow uses `cargo package --workspace --exclude-lockfile
+--no-verify --allow-dirty` for its temporary CI tarballs and then builds the WASM
+consumer fixture against their normalized manifests. Keep every publishable
+workspace member in that packaging check. When validating this workaround, also
+build the extracted Formatter package with a fresh dependency resolution.
+
+This flag applies to CI artifacts; release-plz publishing retains its own
+packaging settings. Remove the flag when a compatible Topiary release makes the
+workspace lockfile valid without local patches. See the
+[Cargo package reference](https://doc.rust-lang.org/cargo/commands/cargo-package.html)
+and [the Topiary tracking issue](https://github.com/kent8192/reinhardt-web/issues/4827).
+
 ---
 
 ## Recovery Procedures
