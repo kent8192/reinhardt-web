@@ -79,8 +79,18 @@ jobs:
           EXCLUDES=$(cargo metadata --no-deps --format-version=1 \
             | jq -r '.packages[] | select(.publish == [] or .publish == ["!crates-io"]) | "--exclude \(.name)"' \
             | tr '\n' ' ')
+          read -r -a exclude_args <<< "$EXCLUDES"
 
-          eval cargo package --workspace --no-verify --allow-dirty $EXCLUDES
+          # Workaround for topiary/topiary#1246 (tracked in reinhardt-web#4827).
+          # Packaging removes workspace patches, so the workspace lockfile's
+          # newer js-sys conflicts with the registry Topiary wasm-bindgen pin.
+          # Omit lockfiles from these CI tarballs; the consumer fixture below
+          # resolves the packaged manifests independently.
+          # Remove this flag when Topiary publishes compatible constraints.
+          #
+          # Ideal implementation (without workaround):
+          #   cargo package --workspace --no-verify --allow-dirty "${exclude_args[@]}"
+          cargo package --workspace --exclude-lockfile --no-verify --allow-dirty "${exclude_args[@]}"
           echo ""
           echo "=== All crates passed packaging check ==="
 
