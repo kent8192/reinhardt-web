@@ -12528,10 +12528,10 @@ fn unsuffixed_int_literal(value: i64) -> TokenStream {
 fn generate_validate_attrs(config: &FieldConfig, ty: &Type) -> Vec<TokenStream> {
 	let mut attrs = Vec::new();
 
-	// Storage-backed fields enforce path length through their database context
-	// and upload policy; string validators cannot validate FileField/ImageField.
-	let has_length = storage_field_kind(ty).is_none()
-		&& (config.min_length.is_some() || config.max_length.is_some());
+	// Length validators accept text values. ModelEnum storage lengths are checked
+	// by database-field validation; FileField/ImageField use their storage policy.
+	let has_length =
+		is_string_type(ty) && (config.min_length.is_some() || config.max_length.is_some());
 	if has_length {
 		let mut parts = Vec::new();
 		if let Some(min) = config.min_length {
@@ -15903,6 +15903,40 @@ mod tests {
 		// remain governed by their existing storage-specific length checks.
 		let expected = quote! {
 			#[cfg_attr(native, validate(length(max = 100u64)))]
+		}
+		.to_string();
+		assert_eq!(cfg_attrs, vec![expected]);
+	}
+
+	#[rstest]
+	#[case(quote!(Status), quote!(String))]
+	#[case(quote!(Option<Status>), quote!(Option<String>))]
+	#[case(quote!(domain::Status), quote!(std::string::String))]
+	#[case(quote!(std::option::Option<domain::Status>), quote!(std::option::Option<String>))]
+	fn test_validate_model_enum_fields_preserve_string_validation(
+		#[case] enum_ty: TokenStream,
+		#[case] string_ty: TokenStream,
+	) {
+		// Arrange
+		let input = quote! {
+			#[model(app_label = "test", table_name = "test")]
+			pub struct TestModel {
+				#[field(primary_key = true)]
+				pub id: i64,
+				#[field(min_length = 3, max_length = 100)]
+				pub title: #string_ty,
+				#[field(max_length = 32)]
+				pub status: #enum_ty,
+			}
+		};
+
+		// Act
+		let output = model_derive_impl(syn::parse2(input).unwrap()).unwrap();
+		let cfg_attrs = generated_info_field_cfg_attrs(output);
+
+		// Assert
+		let expected = quote! {
+			#[cfg_attr(native, validate(length(min = 3u64, max = 100u64)))]
 		}
 		.to_string();
 		assert_eq!(cfg_attrs, vec![expected]);

@@ -215,9 +215,11 @@ Provides compile-time code generation for common patterns.
   - Cleaner syntax without explicit `#[derive(Model)]`
   - Same attributes as `#[derive(Model)]`
   - Requires an explicit `app_label`
-  - Generated companion validation leaves `FileField` and `ImageField` path
-    lengths to their database context and upload policy; their `max_length`
-    metadata does not generate a string validator on the storage value
+  - Generated companion length validation applies to `String` and
+    `Option<String>`. String-backed `ModelEnum` values retain their compile-time
+    database length checks; `FileField` and `ImageField` retain their database
+    context and upload policy. Their storage metadata does not generate a string
+    validator on the typed value.
   - `form = true` preserves the legacy generated model-form schema and generic
     payload types
   - `form(name = Contract, fields(field, ...))` generates one named,
