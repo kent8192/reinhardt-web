@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.4.0-alpha.15...reinhardt-tasks@v0.4.0-alpha.16) - 2026-09-16
+
+### Fixed
+
+- *(deps)* constrain incompatible AWS Smithy releases
+
 ## [0.4.0-alpha.7](https://github.com/kent8192/reinhardt-web/compare/reinhardt-tasks@v0.4.0-alpha.6...reinhardt-tasks@v0.4.0-alpha.7) - 2026-08-19
 
 ### Changed

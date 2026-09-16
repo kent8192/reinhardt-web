@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.4.0-alpha.15...reinhardt-db@v0.4.0-alpha.16) - 2026-09-16
+
+### Fixed
+
+- *(db)* reload get-or-create winners after alternate unique races
+- *(deps)* constrain incompatible AWS Smithy releases
+
+### Testing
+
+- *(db)* standardize race recovery tests
+
 ## [0.4.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-db@v0.4.0-alpha.14...reinhardt-db@v0.4.0-alpha.15) - 2026-09-10
 
 ### Added
