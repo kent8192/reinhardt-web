@@ -132,6 +132,57 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+### Custom Exception Responses
+
+Install an `ExceptionHandler` when the application needs a consistent error
+schema for handler or middleware failures. Nested middleware chains inherit the
+selected handler. The handler selected by the serving root router or server
+handles the request; a mounted child router cannot replace it during parent route
+resolution:
+
+```rust
+use async_trait::async_trait;
+use hyper::StatusCode;
+use reinhardt::http::{Error, ExceptionHandler, Handler, Request, Response};
+use reinhardt::server::HttpServer;
+use std::sync::Arc;
+
+struct ApiErrors;
+
+#[async_trait]
+impl ExceptionHandler for ApiErrors {
+    async fn handle_exception(&self, _request: &Request, _error: Error) -> Response {
+        Response::new(StatusCode::INTERNAL_SERVER_ERROR)
+            .with_body("request failed")
+    }
+}
+
+struct AppHandler;
+
+#[async_trait]
+impl Handler for AppHandler {
+    async fn handle(&self, _request: Request) -> Result<Response, Error> {
+        Ok(Response::ok())
+    }
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let server = HttpServer::new(AppHandler)
+        .with_exception_handler(Arc::new(ApiErrors));
+    server.listen("127.0.0.1:8000".parse()?).await?;
+    Ok(())
+}
+```
+
+The hook applies to failures that reach the configured handler or middleware
+chain. Request parsing, request-size, and transport failures that occur before
+a request enters that chain retain their server-level behavior. Custom
+handlers are responsible for safe response bodies and security headers. The
+default in-chain conversion omits internal details and returns a JSON
+`SafeErrorResponse` with `Content-Type: application/json`; do not expose an
+error's `Display` output without reviewing it for sensitive data.
+
 ### WebSocket Server
 
 ```rust

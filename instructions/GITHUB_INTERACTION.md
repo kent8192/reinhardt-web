@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This file defines the policy for Claude Code to participate in GitHub discussions on existing pull requests and issues in the Reinhardt project. These rules ensure appropriate authorization, consistent formatting, and useful technical context when commenting on PRs and Issues.
+This file defines the policy for coding agents to participate in GitHub discussions on existing pull requests and issues in the Reinhardt project. These rules ensure appropriate authorization, consistent formatting, and useful technical context when commenting on PRs and Issues.
 
 ---
 
@@ -25,7 +25,7 @@ This file defines the policy for Claude Code to participate in GitHub discussion
 
 ### PP-1 (MUST): Posting Authorization Flow
 
-Claude Code MUST follow this authorization model before posting any comment:
+The agent MUST follow this authorization model before posting any comment:
 
 | Authorization Source | Action |
 |---------------------|--------|
@@ -33,7 +33,10 @@ Claude Code MUST follow this authorization model before posting any comment:
 | Plan Mode approval | Post directly |
 | Self-initiated (no instruction) | MUST preview and get user confirmation |
 
-**Scope clarification (Reinhardt family Autonomous Operation Policy):** The Autonomous Operation Policy defined in `CLAUDE.md` / `AGENTS.md` authorizes *creation* of Draft PRs and Issues without further confirmation in the four Reinhardt-family repos, but the comment authorization model above is **unchanged**. Posting comments, replies, or reviews on PRs/Issues still requires explicit user instruction or Plan Mode approval, even in the four repos covered by the autonomous policy.
+**Scope:** COMMIT_GUIDELINE.md CE-1 authorizes certain Git and creation operations.
+Comment, reply, and review permission is separate. An explicit request to address
+and reply to feedback covers the requested replies; do not ask again. A plan
+covers only the interactions it actually approves.
 
 **Self-Initiated Comment Flow:**
 
@@ -43,9 +46,10 @@ Claude Code MUST follow this authorization model before posting any comment:
 4. Post only after confirmation
 
 **Important Notes:**
-- This mirrors CE-1 (Commit Execution Policy) authorization model
+- Commit/push permission alone does not authorize comments
 - "Post directly" still means using proper tools (PP-3), not bypassing quality standards
-- When in doubt about authorization, always preview and confirm
+- Check the current task and prior authorization before asking. If permission is
+  still missing, prepare the exact comment and target before requesting it.
 
 The following diagram summarizes the comment authorization decision flow:
 
@@ -84,27 +88,24 @@ Thread: src/auth/jwt.rs line 15
 Shall I post this comment?
 ```
 
-### PP-3 (MUST): Use GitHub MCP or CLI for Posting
+### PP-3 (MUST): GitHub Tool Selection
 
-- **MUST** prefer GitHub MCP tools for posting comments when available
-- **Fallback**: Use GitHub CLI (`gh`) when GitHub MCP is not available
-- **NEVER** use raw `curl` or web browser for posting comments
+Prefer a callable GitHub MCP capability that supports the operation. If it is
+unavailable, lacks the needed operation or pagination, or returns an error,
+use `gh` immediately; do not retry the failed integration. An explicit task
+instruction to use `gh` is sufficient to select it directly. Use `gh api` when
+higher-level commands do not expose the required endpoint.
 
-**GitHub MCP Tools:**
-- `add_issue_comment` - Comment on issues
-- `add_comment_to_pending_review` - Add PR review comments
-- `pull_request_review_write` - Submit PR reviews
+Use authenticated tools or `gh` for GitHub operations, never raw `curl` or a
+browser. Verify actual tool names and schemas rather than assuming a historical
+MCP method is installed. For multiline content, write a task-owned temporary
+file and use `--body-file` or a structured tool argument. Remove the temporary
+file after posting.
 
-**GitHub CLI Fallback:**
 ```bash
-# Comment on a PR
-gh pr comment <number> --body "Comment text"
-
-# Comment on an issue
-gh issue comment <number> --body "Comment text"
-
-# Review a PR
-gh pr review <number> --comment --body "Review comment"
+gh pr comment <number> --body-file /tmp/review-reply.md
+gh issue comment <number> --body-file /tmp/issue-comment.md
+gh pr review <number> --comment --body-file /tmp/review.md
 ```
 
 ---
@@ -220,72 +221,56 @@ When changes affect multiple crates or modules, provide impact analysis:
 
 ## Copilot Review Handling
 
-### CR-1 (MUST): Post-PR Copilot Review Workflow
+### CR-1 (MUST): Authorized Review Workflow
 
-After creating a PR, Claude Code MUST handle GitHub Copilot's automated review comments as part of the PR workflow when authorized by PP-1 (explicit user instruction or Plan Mode approval).
-
-**Workflow:**
+Process requested reviewers and feedback under PP-1. PR creation alone does not
+authorize replies, reviews, or thread resolution; an approved workflow covers
+only its stated interactions. Validate actionable concerns in the current agent
+and preserve unrelated changes.
 
 ```mermaid
 flowchart TD
-    A[PR created] --> B[Fetch review threads via GraphQL]
-    B --> C{Copilot review exists?}
-    C -->|No| D[Report to user and wait]
-    C -->|Yes| E[Filter unresolved Copilot threads]
-    E --> F[Evaluate each thread]
-    F --> G{Valid concern?}
-    G -->|Yes| H[Fix code + reply + resolve]
-    G -->|False positive| I[Reply with explanation + resolve]
-    G -->|Already addressed| J[Reply with reference + resolve]
-    H --> K[Commit fixes]
-    I --> K
-    J --> K
-    K --> L[Report summary to user]
+    A[Collect complete review inventory] --> B{Unprocessed in-scope feedback?}
+    B -->|No| C[Report current result]
+    B -->|Yes| D[Evaluate concerns and fix where needed]
+    D --> E[Run applicable local checks]
+    E --> F[Commit and push under CE-1]
+    F --> G[Verify local, upstream, remote, and PR heads]
+    G --> H[Reply with evidence under PP-1]
+    H --> I[Resolve addressed threads]
+    I --> J[Fetch complete inventory again]
+    J --> B
 ```
 
-**Authorization:**
-- Follows PP-1: requires explicit user instruction or Plan Mode approval
-- When Plan Mode approves a PR creation workflow, Copilot review handling is included in that authorization scope
-- Fix commits follow standard commit policy (CE-1)
+A false positive or an already-delivered fix needs an evidence-backed reply and
+resolution when authorized; it does not need an empty commit. If publication or
+reply permission is absent, finish independent local work and report that exact
+remaining action.
 
-### CR-2 (MUST): Fetching Copilot Review Threads
+### CR-2 (MUST): Complete Review Inventory
 
-Use `gh api graphql` to retrieve review threads from a PR:
+Resolve the repository and PR from current task context. For this repository the
+GitHub identity is `kent8192/reinhardt-web`. Prefer the selected review skill's
+inventory helper when available, or use the callable GitHub tools/`gh api`.
 
-```bash
-gh api graphql -f query='
-query($owner: String!, $repo: String!, $pr: Int!) {
-  repository(owner: $owner, name: $repo) {
-    pullRequest(number: $pr) {
-      reviewThreads(first: 100) {
-        nodes {
-          id
-          isResolved
-          comments(first: 10) {
-            nodes {
-              author {
-                login
-              }
-              body
-              path
-              line
-              diffHunk
-            }
-          }
-        }
-      }
-    }
-  }
-}' -f owner='kent8192' -f repo='reinhardt' -F pr=<PR_NUMBER>
-```
+Fetch all pages of:
 
-**Filtering Criteria:**
-- Filter by `author.login` matching Copilot bot (e.g., `copilot-pull-request-reviewer[bot]`)
-- Filter by `isResolved == false` to process only unresolved threads
+- Review threads, including resolved state and stable GraphQL thread IDs.
+- Comments in every thread, including author identity and code locations.
+- Review bodies and PR conversation comments within the requested feedback scope.
 
-**Polling Prohibition:**
-- **NEVER** poll in a loop waiting for Copilot review to appear
-- If no Copilot review exists yet, report to user once and wait for further instruction
+Follow `pageInfo.hasNextPage` / `endCursor` for each GraphQL connection, including
+nested comments. REST lists need their pagination too. A `first: 100` query or a
+default CLI page is not evidence that the inventory is complete.
+
+Classify authors by verified identity, not a loose substring. Preserve human or
+unknown-author feedback unless it is explicitly in scope. Track actionable
+body-level findings as well as inline threads.
+
+Fetch a fresh complete inventory after every push and again before closeout;
+include new in-scope findings. If no review exists, report that observed state.
+Use an available persistent monitor only when future monitoring is requested;
+avoid repeated polling of an unchanged PR.
 
 ### CR-3 (MUST): Evaluating and Responding to Comments
 
@@ -293,7 +278,7 @@ Evaluate each Copilot comment against these categories:
 
 | Category | Action | Response |
 |----------|--------|----------|
-| Valid concern | Fix code | Reply with fix description → Resolve |
+| Valid concern | Fix, validate, push, and verify delivery | Reply with fix evidence → Resolve |
 | False positive | No code change | Reply with technical explanation → Resolve |
 | Already addressed | No code change | Reply with reference to existing handling → Resolve |
 
@@ -323,11 +308,16 @@ Reference: `path/to/file.rs:L42` — [Description of existing handling]
 
 **Guidelines:**
 - Follow RR-3 for code reference format (repository-relative paths)
-- Follow FF-1 for Claude Code attribution footer
+- Follow FF-1 for the actual agent's attribution footer
 - Follow CG-2 content restrictions (no absolute paths, no user request details)
 - Every thread MUST receive a reply before being resolved (no silent resolves)
 
 ### CR-4 (MUST): Resolving Threads via GraphQL
+
+**Prerequisite:** Follow PP-1 authorization. For code fixes, verify that local
+HEAD, upstream, remote branch, and PR head contain the fix before replying or
+resolving. Use the GraphQL thread ID from the complete inventory, not a numeric
+comment/database ID.
 
 **Step 1: Reply to the thread**
 
@@ -364,10 +354,13 @@ mutation($threadId: ID!) {
 - **MUST** reply before resolving (CR-3 compliance)
 - **NEVER** resolve a thread without posting a reply first
 - Verify `isResolved: true` in the mutation response
+- Re-fetch the complete inventory before claiming that all actionable feedback is resolved
 
 ### CR-5 (SHOULD): Completion Summary
 
-After processing all Copilot review threads, report a summary to the user:
+After a fresh complete inventory, report selected, addressed, and remaining
+feedback counts, any unresolved body-level findings, and the verified PR head.
+Report current CI separately. The summary may include:
 
 **Summary Format:**
 
@@ -544,9 +537,15 @@ When providing context for external coding agents (GitHub Copilot, Devin, etc.) 
 
 ## Footer Format
 
-### FF-1 (MUST): Claude Code Attribution
+### FF-1 (MUST): Agent Attribution
 
-All GitHub comments posted by Claude Code MUST include the following footer:
+Use the footer matching the agent that produced the comment. For Codex:
+
+```markdown
+🤖 Generated with [Codex](https://openai.com/codex/)
+```
+
+For Claude Code:
 
 ```markdown
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
@@ -568,7 +567,7 @@ All GitHub comments posted by Claude Code MUST include the following footer:
 - Preview self-initiated comments and wait for user confirmation
 - Write ALL comments in English
 - Use GitHub MCP tools or CLI for posting
-- Include Claude Code attribution footer on all comments
+- Include the actual agent's attribution footer on all comments
 - Use repository-relative paths for code references
 - Include line numbers when referencing specific code
 - Use markdown code blocks with language specifiers
@@ -587,9 +586,9 @@ All GitHub comments posted by Claude Code MUST include the following footer:
 - Include user requests or AI interaction details in comments
 - Include sensitive information (credentials, tokens, API keys)
 - Post non-actionable or noise comments ("+1", "same here")
-- Skip Claude Code attribution footer
+- Skip the actual agent's attribution footer
 - Post vague comments without code references or technical detail
-- Use raw `curl` for GitHub operations when MCP or CLI is available
+- Use raw `curl` or a browser for GitHub operations
 - Reference code without file path and line number
 - Resolve Copilot review threads without posting a reply first
 - Poll in a loop waiting for Copilot review to appear

@@ -554,7 +554,7 @@ impl Router for DefaultRouter {
 
 			if let Some(route) = route {
 				// Add path parameters to request
-				request.path_params = params;
+				request.set_path_params(params);
 				return route.handler().handle(request).await;
 			}
 
@@ -563,7 +563,7 @@ impl Router for DefaultRouter {
 				&& let Ok(index) = handler_id.strip_prefix("route_").unwrap().parse::<usize>()
 				&& let Some(route) = self.routes.get(index)
 			{
-				request.path_params = params;
+				request.set_path_params(params);
 				return route.handler().handle(request).await;
 			}
 		}
