@@ -1597,6 +1597,9 @@ let options = SsrOptions::new()
     .resource_timeout(Duration::from_secs(2));
 ```
 
+When the timeout expires, unresolved queries retain their loading fallback in
+the complete HTML document, including the native model-form bootstrap script.
+
 ### Query client v2 migration
 
 Query client v2 moves fetchers and policies out of keys and handles:
