@@ -111,6 +111,8 @@ skip = [
   { crate = "sha1:>=0.10,<0.11", reason = "Upstream dependencies retain sha1 0.10 while AWS SDK components use sha1 0.11." },
   { crate = "spin:>=0.9,<0.10", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   { crate = "syn:>=2,<3", reason = "Workspace macro crates use syn 2 while upstream proc-macro dependencies retain the incompatible syn 3 line." },
+  # Remove this exception when the proc-macro dependencies converge on one line.
+  { crate = "synstructure:>=0.13,<0.14", reason = "ASN.1, Boa, and older ICU proc macros require synstructure 0.13 while current yoke-derive and zerofrom-derive use the incompatible 0.14 line." },
   { crate = "tinystr@0.7.6", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   { crate = "toml@0.8.23", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },
   { crate = "toml_datetime@0.6.11", reason = "Duplicate line retained by upstream dependency constraints in the full feature graph." },

@@ -12373,7 +12373,7 @@ fn generate_info_struct(
 		}
 
 		let ty = &f.ty;
-		let validate_attrs = generate_validate_attrs(&f.config);
+		let validate_attrs = generate_validate_attrs(&f.config, ty);
 		let (is_option, _) = extract_option_type(ty);
 		let setter_kind = if is_string_type(ty) && !is_option {
 			InfoSetterKind::String
@@ -12504,12 +12504,34 @@ fn generate_info_struct(
 	})
 }
 
+/// Render a signed integer bound as an unsuffixed literal.
+///
+/// `quote!` renders a typed integer as a suffixed literal (`0i64`). The suffix
+/// pins the validator's type parameter before the annotated field is
+/// considered, so `#[field(min_value = 0)] quantity: i32` fails to compile with
+/// `E0308`. Emitting the literal without a suffix lets it infer from the field
+/// type instead.
+///
+/// The sign is emitted as a separate token because a leading `-` is a unary
+/// operator rather than part of the literal, which would otherwise produce an
+/// invalid literal token.
+fn unsuffixed_int_literal(value: i64) -> TokenStream {
+	let magnitude = proc_macro2::Literal::u64_unsuffixed(value.unsigned_abs());
+	if value < 0 {
+		quote!(-#magnitude)
+	} else {
+		quote!(#magnitude)
+	}
+}
+
 /// Generate `#[validate(...)]` attributes from `FieldConfig` metadata.
-fn generate_validate_attrs(config: &FieldConfig) -> Vec<TokenStream> {
+fn generate_validate_attrs(config: &FieldConfig, ty: &Type) -> Vec<TokenStream> {
 	let mut attrs = Vec::new();
 
-	// Length validation: combine min_length and max_length
-	let has_length = config.min_length.is_some() || config.max_length.is_some();
+	// Length validators accept text values. ModelEnum storage lengths are checked
+	// by database-field validation; FileField/ImageField use their storage policy.
+	let has_length =
+		is_string_type(ty) && (config.min_length.is_some() || config.max_length.is_some());
 	if has_length {
 		let mut parts = Vec::new();
 		if let Some(min) = config.min_length {
@@ -12542,9 +12564,11 @@ fn generate_validate_attrs(config: &FieldConfig) -> Vec<TokenStream> {
 	if has_range {
 		let mut parts = Vec::new();
 		if let Some(min) = config.min_value {
+			let min = unsuffixed_int_literal(min);
 			parts.push(quote!(min = #min));
 		}
 		if let Some(max) = config.max_value {
+			let max = unsuffixed_int_literal(max);
 			parts.push(quote!(max = #max));
 		}
 		attrs.push(quote! {
@@ -15804,5 +15828,160 @@ mod tests {
 			}
 			.to_string()
 		);
+	}
+
+	/// Collect the `#[cfg_attr(...)]` attributes rendered on the generated
+	/// `{Model}Info` struct fields, as normalized token strings.
+	fn generated_info_field_cfg_attrs(output: TokenStream) -> Vec<String> {
+		let file: syn::File = syn::parse2(output).expect("generated model output should parse");
+		file.items
+			.iter()
+			.filter_map(|item| match item {
+				syn::Item::Struct(item) if item.ident.to_string().ends_with("Info") => Some(item),
+				_ => None,
+			})
+			.flat_map(|item| item.fields.iter())
+			.flat_map(|field| field.attrs.iter())
+			.filter(|attr| attr.path().is_ident("cfg_attr"))
+			.map(|attr| attr.to_token_stream().to_string())
+			.collect()
+	}
+
+	#[test]
+	fn test_validate_range_bounds_are_unsuffixed() {
+		let input = quote! {
+			#[model(app_label = "test", table_name = "test")]
+			pub struct TestModel {
+				#[field(primary_key = true)]
+				pub id: i64,
+				#[field(null = true, min_value = 0, max_value = 2147483647)]
+				pub quantity: Option<i32>,
+			}
+		};
+
+		let output = model_derive_impl(syn::parse2(input).unwrap()).unwrap();
+		let cfg_attrs = generated_info_field_cfg_attrs(output);
+
+		// A suffixed bound would pin `MinValueValidator<T>` / `MaxValueValidator<T>`
+		// to `i64` and make the `Option<i32>` field fail to compile with E0308.
+		let expected = quote! {
+			#[cfg_attr(native, validate(range(min = 0, max = 2147483647)))]
+		}
+		.to_string();
+
+		assert_eq!(
+			cfg_attrs,
+			vec![expected],
+			"range bounds must be emitted as the single expected unsuffixed attribute"
+		);
+	}
+
+	#[rstest]
+	#[case(quote!(FileField))]
+	#[case(quote!(Option<FileField>))]
+	#[case(quote!(ImageField))]
+	#[case(quote!(Option<ImageField>))]
+	fn test_validate_storage_fields_preserve_string_validation(#[case] storage_ty: TokenStream) {
+		// Arrange
+		let input = quote! {
+			#[model(app_label = "test", table_name = "test")]
+			pub struct TestModel {
+				#[field(primary_key = true)]
+				pub id: i64,
+				#[field(max_length = 100)]
+				pub title: String,
+				#[field(upload_to = "assets", max_length = 100)]
+				pub attachment: #storage_ty,
+			}
+		};
+
+		// Act
+		let output = model_derive_impl(syn::parse2(input).unwrap()).unwrap();
+		let cfg_attrs = generated_info_field_cfg_attrs(output);
+
+		// Assert: the String field retains its validator, while storage values
+		// remain governed by their existing storage-specific length checks.
+		let expected = quote! {
+			#[cfg_attr(native, validate(length(max = 100u64)))]
+		}
+		.to_string();
+		assert_eq!(cfg_attrs, vec![expected]);
+	}
+
+	#[rstest]
+	#[case(quote!(Status), quote!(String))]
+	#[case(quote!(Option<Status>), quote!(Option<String>))]
+	#[case(quote!(domain::Status), quote!(std::string::String))]
+	#[case(quote!(std::option::Option<domain::Status>), quote!(std::option::Option<String>))]
+	fn test_validate_model_enum_fields_preserve_string_validation(
+		#[case] enum_ty: TokenStream,
+		#[case] string_ty: TokenStream,
+	) {
+		// Arrange
+		let input = quote! {
+			#[model(app_label = "test", table_name = "test")]
+			pub struct TestModel {
+				#[field(primary_key = true)]
+				pub id: i64,
+				#[field(min_length = 3, max_length = 100)]
+				pub title: #string_ty,
+				#[field(max_length = 32)]
+				pub status: #enum_ty,
+			}
+		};
+
+		// Act
+		let output = model_derive_impl(syn::parse2(input).unwrap()).unwrap();
+		let cfg_attrs = generated_info_field_cfg_attrs(output);
+
+		// Assert
+		let expected = quote! {
+			#[cfg_attr(native, validate(length(min = 3u64, max = 100u64)))]
+		}
+		.to_string();
+		assert_eq!(cfg_attrs, vec![expected]);
+	}
+
+	/// Parse an emitted bound and return its value, rejecting any type suffix.
+	///
+	/// `MinValueValidator::new` infers its type parameter from the field it
+	/// validates, so a suffix on the literal is the defect this module guards
+	/// against. Asserting on the parsed literal keeps the check independent of
+	/// how the token stream renders whitespace.
+	fn unsuffixed_literal_value(tokens: TokenStream) -> i64 {
+		let expr: syn::Expr = syn::parse2(tokens).expect("bound should parse as an expression");
+		let (negative, expr) = match expr {
+			syn::Expr::Unary(syn::ExprUnary {
+				op: syn::UnOp::Neg(_),
+				expr,
+				..
+			}) => (true, *expr),
+			other => (false, other),
+		};
+		let syn::Expr::Lit(syn::ExprLit {
+			lit: syn::Lit::Int(lit),
+			..
+		}) = expr
+		else {
+			panic!("bound should be an integer literal");
+		};
+
+		assert_eq!(lit.suffix(), "", "bound must not carry a type suffix");
+
+		let value: i64 = lit.base10_parse().unwrap();
+		if negative { -value } else { value }
+	}
+
+	#[test]
+	fn test_unsuffixed_int_literal_is_unsuffixed_and_signed() {
+		// Arrange / Act
+		let zero = unsuffixed_literal_value(unsuffixed_int_literal(0));
+		let boundary = unsuffixed_literal_value(unsuffixed_int_literal(2147483647));
+		let negative = unsuffixed_literal_value(unsuffixed_int_literal(-5));
+
+		// Assert
+		assert_eq!(zero, 0);
+		assert_eq!(boundary, 2147483647);
+		assert_eq!(negative, -5);
 	}
 }

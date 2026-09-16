@@ -4196,6 +4196,12 @@ impl RunServerCommand {
 		let launch_plan = Self::prepare_native_launch_plan(ctx).await?;
 		let base_router = launch_plan.router.clone();
 
+		// Forward any exception handler installed on the router to the server, so
+		// errors raised by server-level middleware use the same handler as the
+		// router's own 404/405 and view errors. Read before the router is wrapped
+		// and moved into `HttpServer`. (Issue #6294)
+		let router_exception_handler = base_router.exception_handler().cloned();
+
 		// Wrap with OpenAPI endpoints if enabled
 		#[cfg(feature = "openapi-router")]
 		let router = if !no_docs {
@@ -4333,6 +4339,12 @@ impl RunServerCommand {
 			.with_middleware(reinhardt_middleware::LoggingMiddleware::new());
 		#[cfg(feature = "grpc")]
 		let grpc_routes = launch_plan.grpc;
+
+		// Errors raised by the server-level middleware registered above, or by the
+		// static-file middleware below, must use the router's handler too.
+		if let Some(exception_handler) = router_exception_handler {
+			server = server.with_exception_handler(exception_handler);
+		}
 
 		// Add static files middleware for WASM frontend if enabled
 		if with_pages {

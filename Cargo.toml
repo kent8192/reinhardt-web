@@ -477,6 +477,8 @@ toml = { workspace = true }
 cfg_aliases = "0.2"
 
 [dev-dependencies]
+# The root integration test target reuses `tests/build.rs`, which invokes this macro.
+cfg_aliases = "0.2"
 rstest = { workspace = true }
 serial_test = { workspace = true }
 tokio = { workspace = true, features = ["full"] }

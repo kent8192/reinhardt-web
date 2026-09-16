@@ -467,6 +467,28 @@ Once a crate reaches stable (`0.1.0`), it follows [Semantic Versioning 2.0.0](ht
 
 **Note:** Per SemVer, versions with major version `0` (e.g., `0.1.0`) have relaxed stability rules -- the MINOR version may contain breaking changes. Reinhardt treats `0.1.0` as its first stable release within the `0.x` series and follows the spirit of SemVer for patch releases.
 
+### ST-2: Scoped Security Exception for 0.3.17
+
+The 0.3.17 release includes the GraphQL-over-gRPC security correction in
+commit `b3245858d19a98f1a3acaf4348e8c5aca46c693d` as an explicit exception
+to the 0.3 patch compatibility guarantee and the version-bump requirement in
+BC-3. Custom schemas must use `GraphQLGrpcService::schema_builder`, and
+`GraphQLGrpcService::new` panics for unguarded schemas. Invalid subscription
+requests now report stream status errors before any resolver is created.
+
+The guard must validate the final operation after schema extensions prepare
+requests and transform documents. Accepting arbitrary completed schemas would
+leave this check outside those transformations and permit operation-class
+bypasses. The security correction therefore takes precedence over retaining
+the previous construction and error-delivery behavior in this release.
+
+This exception applies only to those already-landed behaviors in 0.3.17.
+All other changes and later releases retain the normal compatibility policy.
+The release must identify the breaking security change prominently in the
+root and GraphQL changelogs and provide the
+[0.3.17 migration guide](MIGRATION_0.3.17.md). SemVer checks remain enabled;
+an API-compatible check result does not cover these runtime changes.
+
 ---
 
 ## Breaking Change Policy

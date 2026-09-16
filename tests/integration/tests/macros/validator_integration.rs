@@ -1,7 +1,9 @@
 //! Integration tests for validator support in Model derive macro
 
+use reinhardt_core::validators::Validate;
 use reinhardt_db::orm::Model as ModelTrait;
-use reinhardt_macros::model;
+use reinhardt_macros::{ModelEnum, model};
+use rstest::rstest;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
@@ -156,4 +158,173 @@ fn test_no_validators() {
 	assert!(!name_field.attributes.contains_key("min_length"));
 	assert!(!name_field.attributes.contains_key("min_value"));
 	assert!(!name_field.attributes.contains_key("max_value"));
+}
+
+// ============================================================================
+// Generated validator execution
+//
+// `field_metadata()` only proves the validator attributes were recorded as
+// metadata. The tests below exercise the `Validate` impl `#[model]` generates
+// for `{Model}Info` — the code path that regressed in issue #6295, where a bound
+// carrying a type suffix pinned the validator's type parameter and failed to
+// compile.
+//
+// That impl only exists when `cfg(native)` is defined, which this package's
+// `build.rs` now does. These tests are deliberately NOT `#[cfg]`-gated: if the
+// alias stops being defined they must fail to compile rather than silently
+// disappear, which is exactly how #6295 stayed hidden.
+// ============================================================================
+
+/// `UserInfo` with values satisfying every validator except the field under test.
+fn valid_user_info() -> UserInfo {
+	UserInfo {
+		id: 1,
+		email: "user@example.com".to_string(),
+		website: "https://example.com".to_string(),
+		username: "user".to_string(),
+		age: 30,
+	}
+}
+
+#[rstest]
+fn generated_validators_accept_in_bounds_values() {
+	// Arrange
+	let info = valid_user_info();
+
+	// Act
+	let result = info.validate();
+
+	// Assert
+	assert!(
+		result.is_ok(),
+		"expected in-bounds info to validate: {result:?}"
+	);
+}
+
+#[rstest]
+#[case(0, true)]
+#[case(120, true)]
+#[case(-1, false)]
+#[case(121, false)]
+fn generated_range_validator_enforces_bounds(#[case] age: i32, #[case] expected_ok: bool) {
+	// Arrange
+	let mut info = valid_user_info();
+	info.age = age;
+
+	// Act
+	let result = info.validate();
+
+	// Assert
+	assert_eq!(result.is_ok(), expected_ok, "age {age} => {result:?}");
+}
+
+#[rstest]
+#[case("abc", true)]
+#[case("user", true)]
+#[case("ab", false)]
+fn generated_length_validator_enforces_min_bound(
+	#[case] username: &str,
+	#[case] expected_ok: bool,
+) {
+	// Arrange
+	let mut info = valid_user_info();
+	info.username = username.to_string();
+
+	// Act
+	let result = info.validate();
+
+	// Assert
+	assert_eq!(
+		result.is_ok(),
+		expected_ok,
+		"username {username:?} => {result:?}"
+	);
+}
+
+#[rstest]
+#[case("ok", false, true)]
+#[case("four", true, true)]
+#[case("x", false, false)]
+#[case("longer", true, false)]
+fn generated_length_validation_preserves_model_enum_fields(
+	#[case] title: &str,
+	#[case] has_fallback: bool,
+	#[case] expected_ok: bool,
+) {
+	// Arrange
+	#[derive(ModelEnum, Clone, Debug, PartialEq, Serialize, Deserialize)]
+	#[model_enum(repr = "string")]
+	enum Status {
+		#[model_enum(value = "queued")]
+		Queued,
+		#[model_enum(value = "running")]
+		Running,
+	}
+
+	#[derive(Serialize, Deserialize)]
+	#[model(app_label = "test_app", table_name = "validator_model_enum_items")]
+	struct EnumItem {
+		#[field(primary_key = true)]
+		id: i64,
+		#[field(min_length = 2, max_length = 4)]
+		title: String,
+		#[field(max_length = 7)]
+		status: Status,
+		#[field(max_length = 7)]
+		fallback: Option<Status>,
+	}
+
+	let fallback = has_fallback.then_some(Status::Queued);
+	let info = EnumItemInfo {
+		id: 1,
+		title: title.to_owned(),
+		status: Status::Running,
+		fallback: fallback.clone(),
+	};
+
+	// Act
+	let result = info.validate();
+	let model: EnumItem = info.into();
+
+	// Assert
+	assert_eq!(result.is_ok(), expected_ok, "title {title:?} => {result:?}");
+	assert_eq!(model.status, Status::Running);
+	assert_eq!(model.fallback, fallback);
+}
+
+/// Regression test for issue #6295: a `min_value` / `max_value` bound applied to
+/// a 32-bit field. The pre-fix macro emitted `validate(range(min = 0i64, ...))`,
+/// which pinned `MinValueValidator<T>` to `i64` and failed to compile against an
+/// `Option<i32>` field with `E0308: expected &i64, found &i32`.
+#[rstest]
+#[case(Some(0), true)]
+#[case(Some(2147483647), true)]
+#[case(Some(-1), false)]
+#[case(None, true)]
+fn generated_range_validator_supports_32_bit_fields(
+	#[case] quantity: Option<i32>,
+	#[case] expected_ok: bool,
+) {
+	// Arrange
+	#[derive(Serialize, Deserialize)]
+	#[model(app_label = "test_app", table_name = "validator_range_bound_items")]
+	struct RangeBoundItem {
+		#[field(primary_key = true)]
+		id: i64,
+
+		#[field(null = true, min_value = 0, max_value = 2147483647)]
+		quantity: Option<i32>,
+	}
+
+	let info = RangeBoundItemInfo { id: 1, quantity };
+
+	// Act
+	let result = info.validate();
+
+	// Assert
+	assert_eq!(
+		result.is_ok(),
+		expected_ok,
+		"quantity {quantity:?} => {result:?}"
+	);
 }

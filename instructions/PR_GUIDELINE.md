@@ -155,71 +155,33 @@ gitGraph
 
 ### PC-4 (SHOULD): Draft PRs for Work in Progress
 
-- Use draft PRs for incomplete work
-- **MUST** convert to Ready for Review **immediately once the implementation is complete** — CI completion is **not** a prerequisite (the Reinhardt-family Autonomous Operation Policy in `CLAUDE.md` / `AGENTS.md` overrides any "wait for all tests to pass" criterion for the Draft→Ready transition)
-- Draft PRs allow early feedback without formal review requests
+Use Draft PRs for incomplete work. Permission to create one follows
+COMMIT_GUIDELINE.md CE-1. Keep an explicit task request for Draft state; otherwise
+apply PC-4a when the work is ready.
 
-**Example:**
-```bash
-gh pr create --draft --title "feat(auth): add JWT validation (WIP)"
+### PC-4a (MUST): Draft to Ready Criteria
 
-# MUST convert to Ready immediately once implementation is complete (CI completion NOT required):
-gh pr ready <number>
-```
+Ready for Review means the implementation is complete, relevant documentation
+and the PR description are current, and applicable local format/lint checks
+pass. Absence of placeholder markers alone does not establish completion.
 
-### PC-4a (MUST): Mandatory Draft → Ready Conversion on Implementation Completion
+- Verify the acceptance criteria and remove new unfinished placeholders.
+- Complete applicable local verification under AGENT_WORKFLOW.md.
+- Follow the PR template, update relevant docs, and complete RP-1a for public APIs.
+- When these criteria are met, the Reinhardt-family policy authorizes conversion
+  without another confirmation. CI completion is not a prerequisite.
+- Preserve an explicit instruction to keep the PR in Draft.
+- An explicit instruction to mark Ready overrides these readiness criteria;
+  report any unverified checks or known failures accurately.
 
-Converting a Draft PR to Ready for Review is **mandatory once the implementation is complete**. "Implementation complete" means no `todo!()` / `// TODO:` markers introduced by this PR remain in the diff. **CI completion is NOT a prerequisite** — the Reinhardt-family Autonomous Operation Policy explicitly waives "wait for CI green / tests to pass". The agent MUST convert immediately upon implementation completion, and MUST NOT leave the PR in Draft state once the implementation is complete.
-
-**Rules:**
-- The agent **MUST** convert a Draft PR to Ready for Review immediately once the implementation is complete
-- The agent **MUST** convert immediately upon explicit user instruction (regardless of CI state)
-- The agent **MUST NOT** leave a PR in Draft state after the implementation is complete
-- Use `gh pr ready <number>` (or the equivalent GitHub MCP call) for conversion
-
-**Readiness Criterion (single check):**
-- [ ] Implementation is complete (no remaining `todo!()` or `// TODO:` introduced by this PR)
-
-> Other quality requirements (fmt-clippy clean, PR description following the template, documentation updated) are already enforced by the commit/push policies and the PR creation policy — they are NOT additional preconditions for the Draft → Ready transition.
-
-**Example:**
-```bash
-# Mandatory conversion once implementation is complete
-gh pr ready 123
-
-# Verify PR status after conversion
-gh pr view 123 --json isDraft
-```
-
-**Authorization Comparison:**
-
-| Action | Explicit Instruction | Plan Mode Approval | Implementation Complete |
-|--------|---------------------|-------------------|--------------------------|
-| Commit | ✅ Authorized | ✅ Authorized | n/a |
-| Push | ✅ Authorized | ✅ Authorized | n/a |
-| GitHub Comments | ✅ Authorized | ✅ Authorized | n/a |
-| Draft PR → Ready | ✅ **REQUIRED** | ✅ **REQUIRED** | ✅ **REQUIRED (MUST convert immediately)** |
-
-The following diagram illustrates the Draft PR lifecycle:
-
-```mermaid
-stateDiagram-v2
-    [*] --> Draft: gh pr create --draft
-    Draft --> Draft: Implementation continues
-    Draft --> Draft: CI checks run
-    Draft --> ReadyForReview: Implementation complete OR user instructs (MANDATORY)
-    note right of ReadyForReview: Agent MUST convert immediately\nonce implementation is complete
-    ReadyForReview --> Review: Reviewers notified (incl. Copilot)
-    Review --> Merged: Approved and merged
-    Review --> Draft: Converted back to draft
-    Merged --> [*]
-```
+Use `gh pr ready <number>` or the equivalent GitHub tool, then read back
+`isDraft`. Readiness is separate from merge permission and RP-1 merge gates.
 
 ### PC-5 (MUST): PR Labels
 
 - **MUST** add appropriate labels to every PR
 - Labels help categorize, prioritize, and track PRs
-- Use GitHub MCP (`update_pull_request`), GitHub CLI, or web UI to add labels
+- Use the available GitHub tools or CLI to add labels (GITHUB_INTERACTION.md PP-3)
 
 **Required Labels by PR Type:**
 
@@ -415,7 +377,7 @@ PR descriptions MUST follow the structure defined in `.github/PULL_REQUEST_TEMPL
 
 **Optional Sections:** Performance Impact, Breaking Changes, Screenshots, Related Issues, Additional Context
 
-**Footer:** Include Claude Code attribution for AI-assisted PRs
+**Footer:** Include the actual agent's attribution under GITHUB_INTERACTION.md FF-1
 
 **See:** `.github/PULL_REQUEST_TEMPLATE.md` for the complete template structure.
 
@@ -468,22 +430,20 @@ Include additional sections when relevant:
 
 ### RP-1 (MUST): Pre-Merge Checklist
 
-Before **merging** (NOT before Draft → Ready conversion — see § PC-4a, which mandates immediate Ready conversion upon implementation completion), ensure:
+Before **merging**, confirm explicit merge authorization under CE-1 and ensure:
 
 - [ ] All CI checks pass
-- [ ] All tests pass locally
+- [ ] Applicable local verification passes under AGENT_WORKFLOW.md; record its scope
 - [ ] Code follows project style guidelines
 - [ ] Documentation is updated
 - [ ] Commit history is clean and logical
 - [ ] PR description is complete and accurate
 
-**Commands to run:**
-```bash
-cargo check --workspace --all --all-features
-cargo test --workspace --all --all-features
-cargo make fmt-check
-cargo make clippy-check
-```
+**Local checks:** Use [Verification Scope](AGENT_WORKFLOW.md#verification-scope).
+Run the workspace matrix for broad Rust changes. Prose-only documentation and
+prompt edits use document/format checks; Rustdoc and executable examples use
+the affected documentation build and doctests. Required remote CI gates remain
+in force, and local results must not be described as remote CI results.
 
 **Breaking-change warning check:**
 `Warn Invalid Breaking Change Target` is required alongside `CI Success` on
@@ -514,6 +474,20 @@ Lint job. Run `node --test scripts/tests/test-breaking-change-target.cjs` and
 the policy. Keep its check name synchronized with the required status check in
 the main-branch ruleset.
 
+### RP-1a (MUST): Local SemVer Evidence for Public API Changes
+
+For a PR touching public API, run `cargo make semver-check` locally once, capture
+the output and exit status, and assess the result against the intended base and
+STABILITY_POLICY.md. Preserve the result for the checked revision; rerun only
+when changes invalidate it. A failed or unavailable check is not a pass.
+
+Before Ready conversion, include the result in the PR comment marked
+`<!-- local-semver-check -->`. Reuse and update an existing marked comment
+instead of adding duplicates. Posting requires GITHUB_INTERACTION.md PP-1
+authorization; running the check does not grant it. If posting is not authorized,
+prepare the comment and request that specific permission after completing
+independent work. An explicit Ready instruction is handled under PC-4a.
+
 ### RP-2 (SHOULD): Self-Review
 
 - Review your own PR before requesting review from others
@@ -526,9 +500,10 @@ the main-branch ruleset.
 
 ### RP-3 (MUST): Address Review Comments
 
-- Respond to all review comments
-- Mark conversations as resolved when addressed
-- Request re-review after making changes
+- Within GITHUB_INTERACTION.md PP-1 authorization, address all in-scope review comments
+- Verify pushed fixes and post a reply before resolving an addressed thread
+- Fetch a fresh complete inventory after each push and before reporting completion
+- Request re-review only when authorized and useful
 - Be respectful and constructive in discussions
 
 ### RP-4 (SHOULD): Keep PRs Small
@@ -846,11 +821,11 @@ docs(readme): add installation instructions
 - Follow Conventional Commits format for titles
 - Include Summary, Type of Change, Breaking Change Assessment, Motivation and Context, How Was This Tested, Checklist sections
 - Include Labels to Apply section with appropriate type and scope labels
-- Run all checks before **merging** (NOT before Draft → Ready conversion — § PC-4a mandates immediate Ready conversion)
+- Complete applicable local verification and required remote checks before merging (RP-1)
 - Address all review comments
 - Ensure all CI checks pass before merge
 - Use three-dot diff (`main...branch`) for PR verification to exclude merge history noise
-- **MUST** convert Draft PRs to Ready for Review **immediately** once the implementation is complete (CI completion is NOT required), OR upon explicit user instruction (see § PC-4a)
+- Apply PC-4a for Ready conversion; preserve explicit Draft state and do not wait for CI
 - Apply the `breaking-change` label to ALL breaking change PRs
 - Complete the "Breaking Change Assessment" section (Yes/No) on every PR
 - Fill the "Breaking Changes" section with migration guide when the assessment is "Yes"
@@ -867,8 +842,8 @@ docs(readme): add installation instructions
 - Force push after review has started (unless explicitly requested)
 - Use rebase or force-push to resolve PR conflicts (use worktree merge instead)
 - Use two-dot diff (`main..branch`) for PR verification (includes merge history noise)
-- Convert Draft PRs to Ready for Review while the implementation is incomplete (`todo!()` or `// TODO:` introduced by the PR still present), without explicit user override
-- Leave a PR in Draft state after the implementation is complete (MUST convert to Ready for Review immediately; CI completion is NOT a prerequisite)
+- Mark Ready with unmet PC-4a criteria unless the user explicitly overrides them
+- Override an explicit request to keep a PR in Draft
 
 ---
 

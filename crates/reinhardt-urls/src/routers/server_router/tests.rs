@@ -5,7 +5,10 @@ use hyper::Method;
 use reinhardt_core::endpoint::EndpointInfo;
 use reinhardt_http::{Handler, Request, Response, Result, SyncHandler};
 use rstest::rstest;
-use std::sync::Arc;
+use std::sync::{
+	Arc, Mutex,
+	atomic::{AtomicUsize, Ordering},
+};
 
 #[cfg(feature = "viewsets")]
 use reinhardt_views::viewsets::{
@@ -1834,4 +1837,374 @@ fn mounted_contract_uses_explicit_erased_handler_metadata() {
 		contract.metadata.handler == "tests::OpaqueEndpoint"
 			&& contract.metadata.authentication == reinhardt_core::endpoint::AuthProtection::Public
 	}));
+}
+
+// --- Exception handler installation (Issue #6294) ---
+
+/// Exception handler producing a body identifiable in assertions.
+struct TeapotErrors;
+
+#[async_trait::async_trait]
+impl reinhardt_http::ExceptionHandler for TeapotErrors {
+	async fn handle_exception(
+		&self,
+		_request: &reinhardt_http::Request,
+		_error: reinhardt_http::Error,
+	) -> reinhardt_http::Response {
+		reinhardt_http::Response::new(hyper::StatusCode::IM_A_TEAPOT).with_body("teapot")
+	}
+}
+
+/// Exception handler that records the body visible in its lightweight context.
+struct BodyRecordingErrors {
+	observed: Arc<Mutex<bytes::Bytes>>,
+}
+
+#[async_trait::async_trait]
+impl reinhardt_http::ExceptionHandler for BodyRecordingErrors {
+	async fn handle_exception(
+		&self,
+		request: &reinhardt_http::Request,
+		_error: reinhardt_http::Error,
+	) -> reinhardt_http::Response {
+		*self.observed.lock().unwrap() = request.body().clone();
+		reinhardt_http::Response::new(hyper::StatusCode::IM_A_TEAPOT)
+	}
+}
+
+/// Exception handler that records every invocation.
+struct CountingErrors {
+	calls: Arc<AtomicUsize>,
+}
+
+#[async_trait::async_trait]
+impl reinhardt_http::ExceptionHandler for CountingErrors {
+	async fn handle_exception(
+		&self,
+		_request: &reinhardt_http::Request,
+		_error: reinhardt_http::Error,
+	) -> reinhardt_http::Response {
+		self.calls.fetch_add(1, Ordering::SeqCst);
+		reinhardt_http::Response::new(hyper::StatusCode::IM_A_TEAPOT).with_body("teapot")
+	}
+}
+
+/// Handler that always fails, used to produce a view error.
+struct FailingView;
+
+#[async_trait::async_trait]
+impl Handler for FailingView {
+	async fn handle(&self, _request: Request) -> Result<Response> {
+		Err(reinhardt_http::Error::Internal("view failed".to_string()))
+	}
+}
+
+/// Handler that always succeeds, used to prove middleware ran.
+struct OkView;
+
+#[async_trait::async_trait]
+impl Handler for OkView {
+	async fn handle(&self, _request: Request) -> Result<Response> {
+		Ok(Response::ok().with_body("ok"))
+	}
+}
+
+/// Middleware that always fails before reaching the next handler.
+struct FailingMiddleware;
+
+#[async_trait::async_trait]
+impl Middleware for FailingMiddleware {
+	async fn process(
+		&self,
+		_request: reinhardt_http::Request,
+		_next: Arc<dyn Handler>,
+	) -> reinhardt_http::Result<reinhardt_http::Response> {
+		Err(reinhardt_http::Error::Internal(
+			"middleware failed".to_string(),
+		))
+	}
+}
+
+#[rstest]
+#[tokio::test]
+async fn test_404_uses_installed_exception_handler() {
+	// Arrange: handler installed, no router middleware
+	let router = ServerRouter::new().with_exception_handler(Arc::new(TeapotErrors));
+
+	// Act
+	let response = Handler::handle(&router, create_test_request("/nonexistent"))
+		.await
+		.unwrap();
+
+	// Assert
+	assert_eq!(response.status, hyper::StatusCode::IM_A_TEAPOT);
+	assert_eq!(String::from_utf8(response.body.to_vec()).unwrap(), "teapot");
+}
+
+#[rstest]
+#[tokio::test]
+async fn test_unmatched_exception_handler_receives_empty_body_context() {
+	// Arrange
+	let observed = Arc::new(Mutex::new(bytes::Bytes::new()));
+	let router = ServerRouter::new().with_exception_handler(Arc::new(BodyRecordingErrors {
+		observed: Arc::clone(&observed),
+	}));
+	let request = reinhardt_http::Request::builder()
+		.method(Method::POST)
+		.uri("/nonexistent")
+		.version(hyper::Version::HTTP_11)
+		.headers(hyper::HeaderMap::new())
+		.body(bytes::Bytes::from("sensitive request body"))
+		.build()
+		.unwrap();
+
+	// Act
+	let response = Handler::handle(&router, request).await.unwrap();
+
+	// Assert
+	assert_eq!(response.status, hyper::StatusCode::IM_A_TEAPOT);
+	assert!(observed.lock().unwrap().is_empty());
+}
+
+#[rstest]
+#[tokio::test]
+async fn test_404_with_router_middleware_still_runs_post_processing() {
+	// Arrange: handler plus router middleware that adds a security header
+	let router = ServerRouter::new()
+		.with_exception_handler(Arc::new(TeapotErrors))
+		.with_middleware(SecurityHeaderTestMiddleware);
+
+	// Act
+	let response = Handler::handle(&router, create_test_request("/nonexistent"))
+		.await
+		.unwrap();
+
+	// Assert: the handler built the body and the middleware still post-processed
+	// it, preserving the #3234 ordering.
+	assert_eq!(response.status, hyper::StatusCode::IM_A_TEAPOT);
+	assert_eq!(
+		response
+			.headers
+			.get("x-security-test")
+			.map(|v| v.to_str().unwrap()),
+		Some("applied"),
+	);
+}
+
+#[rstest]
+#[tokio::test]
+async fn test_unmatched_middleware_error_does_not_invoke_exception_handler_twice() {
+	// Arrange: middleware rejects before the synthetic unmatched-route handler
+	// can run, so only the middleware error should reach the exception handler.
+	let calls = Arc::new(AtomicUsize::new(0));
+	let router = ServerRouter::new()
+		.with_exception_handler(Arc::new(CountingErrors {
+			calls: Arc::clone(&calls),
+		}))
+		.with_middleware(FailingMiddleware);
+
+	// Act
+	let response = Handler::handle(&router, create_test_request("/nonexistent"))
+		.await
+		.unwrap();
+
+	// Assert
+	assert_eq!(response.status, hyper::StatusCode::IM_A_TEAPOT);
+	assert_eq!(calls.load(Ordering::SeqCst), 1);
+}
+
+/// Exception handler that verifies the router's DI context is visible.
+struct DiContextErrors {
+	expected: Arc<InjectionContext>,
+}
+
+#[async_trait::async_trait]
+impl reinhardt_http::ExceptionHandler for DiContextErrors {
+	async fn handle_exception(
+		&self,
+		request: &reinhardt_http::Request,
+		_error: reinhardt_http::Error,
+	) -> reinhardt_http::Response {
+		let has_context = request
+			.get_di_context::<Arc<InjectionContext>>()
+			.is_some_and(|actual| Arc::ptr_eq(actual.as_ref(), &self.expected));
+		let body = if has_context { "context" } else { "missing" };
+		reinhardt_http::Response::new(hyper::StatusCode::IM_A_TEAPOT).with_body(body)
+	}
+}
+
+#[rstest]
+#[tokio::test]
+async fn test_unmatched_exception_handler_receives_router_di_context() {
+	// Arrange
+	let di_context =
+		Arc::new(InjectionContext::builder(Arc::new(reinhardt_di::SingletonScope::new())).build());
+	let router = ServerRouter::new()
+		.with_di_context(Arc::clone(&di_context))
+		.with_exception_handler(Arc::new(DiContextErrors {
+			expected: Arc::clone(&di_context),
+		}));
+
+	// Act
+	let response = Handler::handle(&router, create_test_request("/nonexistent"))
+		.await
+		.unwrap();
+
+	// Assert
+	assert_eq!(response.status, hyper::StatusCode::IM_A_TEAPOT);
+	assert_eq!(
+		String::from_utf8(response.body.to_vec()).unwrap(),
+		"context"
+	);
+}
+
+#[rstest]
+#[tokio::test]
+async fn test_view_error_uses_installed_exception_handler() {
+	// Arrange: a failing view on a router with no middleware, so the error can
+	// only be answered by the adapter around the route handler
+	let router = ServerRouter::new()
+		.with_exception_handler(Arc::new(TeapotErrors))
+		.handler_arc("/fail", Arc::new(FailingView));
+
+	// Act
+	let response = Handler::handle(&router, create_test_request("/fail"))
+		.await
+		.unwrap();
+
+	// Assert
+	assert_eq!(response.status, hyper::StatusCode::IM_A_TEAPOT);
+	assert_eq!(String::from_utf8(response.body.to_vec()).unwrap(), "teapot");
+}
+
+#[rstest]
+#[tokio::test]
+async fn test_middleware_error_uses_installed_exception_handler() {
+	// Arrange: a succeeding view behind a failing middleware, so a 418 can only
+	// come from the chain converting the middleware's error
+	let router = ServerRouter::new()
+		.with_exception_handler(Arc::new(TeapotErrors))
+		.with_middleware(FailingMiddleware)
+		.handler_arc("/ok", Arc::new(OkView));
+
+	// Act
+	let response = Handler::handle(&router, create_test_request("/ok"))
+		.await
+		.unwrap();
+
+	// Assert
+	assert_eq!(response.status, hyper::StatusCode::IM_A_TEAPOT);
+	assert_eq!(String::from_utf8(response.body.to_vec()).unwrap(), "teapot");
+}
+
+#[rstest]
+#[tokio::test]
+async fn test_without_exception_handler_keeps_default_conversion() {
+	// Arrange: the same failing view route, but no handler installed
+	let router = ServerRouter::new().handler_arc("/fail", Arc::new(FailingView));
+
+	// Act
+	let result = Handler::handle(&router, create_test_request("/fail")).await;
+
+	// Assert: a middleware-free router still propagates the error unchanged
+	assert!(result.is_err());
+}
+
+#[rstest]
+#[tokio::test]
+async fn inherited_exception_handler_reaches_router_middleware() {
+	// Arrange a parent adapter and routers without a locally installed handler.
+	let routers = [
+		ServerRouter::new().with_middleware(SecurityHeaderTestMiddleware),
+		ServerRouter::new()
+			.with_middleware(SecurityHeaderTestMiddleware)
+			.handler_arc("/fail", Arc::new(FailingView)),
+		ServerRouter::new()
+			.with_middleware(FailingMiddleware)
+			.handler_arc("/fail", Arc::new(OkView)),
+	];
+	for router in routers {
+		let calls = Arc::new(AtomicUsize::new(0));
+		let handler = reinhardt_http::ExceptionHandlingHandler::new(
+			Arc::new(router),
+			Arc::new(CountingErrors {
+				calls: Arc::clone(&calls),
+			}),
+		);
+		// Act
+		let response = handler.handle(create_test_request("/fail")).await.unwrap();
+		// Assert the inherited handler runs once for routing, view and middleware errors.
+		assert_eq!(response.status, hyper::StatusCode::IM_A_TEAPOT);
+		assert_eq!(response.body, bytes::Bytes::from_static(b"teapot"));
+		assert_eq!(calls.load(Ordering::SeqCst), 1);
+	}
+}
+
+struct FailingSyncRoute;
+
+impl SyncHandler for FailingSyncRoute {
+	fn handle_sync(&self, _request: Request) -> Result<Response> {
+		Err(reinhardt_http::Error::Internal(
+			"sync route failed".to_owned(),
+		))
+	}
+}
+
+impl reinhardt_http::RequestlessSyncHandler for FailingSyncRoute {
+	fn handle_requestless_sync(&self) -> Result<Response> {
+		Err(reinhardt_http::Error::Internal(
+			"requestless route failed".to_owned(),
+		))
+	}
+}
+
+#[rstest]
+#[case(false, false)]
+#[case(false, true)]
+#[case(true, false)]
+#[case(true, true)]
+#[tokio::test]
+async fn sync_routes_preserve_exception_handling(
+	#[case] requestless: bool,
+	#[case] inherited: bool,
+) {
+	// Arrange
+	let calls = Arc::new(AtomicUsize::new(0));
+	let exception_handler: Arc<dyn reinhardt_http::ExceptionHandler> = Arc::new(CountingErrors {
+		calls: Arc::clone(&calls),
+	});
+	let router = if requestless {
+		ServerRouter::new().handler_requestless_sync("/fail", FailingSyncRoute)
+	} else {
+		ServerRouter::new().handler_sync("/fail", FailingSyncRoute)
+	};
+	let router = if inherited {
+		router
+	} else {
+		router.with_exception_handler(Arc::clone(&exception_handler))
+	};
+	let request = || {
+		let request = create_test_request("/fail");
+		if inherited {
+			request.extensions.insert(Arc::clone(&exception_handler));
+		}
+		request
+	};
+
+	// Act and assert: async exception conversion must bypass synchronous entry points.
+	assert!(router.try_dispatch_sync(request()).is_none());
+	if !inherited {
+		assert!(
+			router
+				.try_dispatch_requestless_sync("/fail", &Method::GET)
+				.is_none()
+		);
+	}
+	assert_eq!(calls.load(Ordering::SeqCst), 0);
+	let response = router.dispatch(request()).await.unwrap();
+
+	// Assert
+	assert_eq!(response.status, hyper::StatusCode::IM_A_TEAPOT);
+	assert_eq!(response.body, bytes::Bytes::from_static(b"teapot"));
+	assert_eq!(calls.load(Ordering::SeqCst), 1);
 }

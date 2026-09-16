@@ -16,6 +16,7 @@ fn wasm_server_builder_is_inert_and_client_composition_remains_active() {
 
 	let client = UnifiedRouter::new()
 		.server(|_| panic!("WASM server builder must not be invoked"))
+		.with_exception_handler(())
 		.client(|client| client.route("home", "/", || Page::Empty))
 		.mount_unified("/ignored-native-prefix/", child)
 		.into_client();

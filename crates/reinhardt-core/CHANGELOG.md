@@ -131,6 +131,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - *(macros)* keep server_only Info compile-fail on SecretInfo
 - *(macros)* isolate server_only Info compile-fail from serde bounds
 
+## [0.3.17](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.3.16...reinhardt-core@v0.3.17) - 2026-09-13
+
+### Fixed
+
+- *(macros)* emit unsuffixed integer bounds in generated range validators
+
+### Testing
+
+- *(macros)* assert exact generated range attributes
+
 ## [0.3.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-core@v0.3.15...reinhardt-core@v0.3.16) - 2026-09-08
 
 ### Fixed
