@@ -1,8 +1,6 @@
 use std::future::Future;
 
-use reinhardt_pages::reactive::query::{
-	QueryClient, QueryFamily, QueryHandle, QueryKey,
-};
+use reinhardt_pages::reactive::query::{QueryClient, QueryFamily, QueryHandle, QueryKey};
 use serde::{Deserialize, Serialize};
 
 /// Typed event emitted when a deployment status may have changed.

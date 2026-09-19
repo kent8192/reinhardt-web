@@ -5,10 +5,10 @@
 //! for broad changes, while logout removes the family at the authentication
 //! boundary. Synchronization status is kept separate from age-based freshness.
 
-#[path = "realtime_state/status.rs"]
-mod status;
 #[path = "realtime_state/logs.rs"]
 mod logs;
+#[path = "realtime_state/status.rs"]
+mod status;
 #[cfg(test)]
 #[path = "realtime_state/tests.rs"]
 mod tests;
@@ -66,9 +66,6 @@ fn demonstrate_log_model() {
 		..token
 	};
 	logs.begin(retry);
-	logs.fail(
-		retry,
-		LogGap::CursorExpired,
-	);
+	logs.fail(retry, LogGap::CursorExpired);
 	logs.stop();
 }

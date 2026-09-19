@@ -22,7 +22,9 @@ fn invoke_subscription_callback(
 	callback: impl FnOnce(),
 ) {
 	if let Some(owner_scope) = owner_scope {
-		invoke_in_owner_scope(owner_scope, || reinhardt_core::reactive::untracked(callback));
+		invoke_in_owner_scope(owner_scope, || {
+			reinhardt_core::reactive::untracked(callback)
+		});
 	} else {
 		reinhardt_core::reactive::untracked(callback);
 	}
@@ -291,11 +293,10 @@ pub fn use_websocket_subscription<T, D, E, F>(
 	E: Fn(T) + 'static,
 	F: Fn(WebSocketEventError) + 'static,
 {
-	let scope = reinhardt_core::reactive::scope::require_active_scope(
-		"use_websocket_subscription",
-	);
+	let scope = reinhardt_core::reactive::scope::require_active_scope("use_websocket_subscription");
 	let subscription = handle.subscribe(options, decode, on_event, on_error);
-	if reinhardt_core::reactive::scope::on_scope_dispose(scope, move || drop(subscription)).is_err() {
+	if reinhardt_core::reactive::scope::on_scope_dispose(scope, move || drop(subscription)).is_err()
+	{
 		panic!("use_websocket_subscription requires a live reactive scope");
 	}
 }
@@ -314,11 +315,11 @@ pub fn use_websocket_json_subscription<T, E, F>(
 	E: Fn(T) + 'static,
 	F: Fn(WebSocketEventError) + 'static,
 {
-	let scope = reinhardt_core::reactive::scope::require_active_scope(
-		"use_websocket_json_subscription",
-	);
+	let scope =
+		reinhardt_core::reactive::scope::require_active_scope("use_websocket_json_subscription");
 	let subscription = handle.subscribe_json(options, on_event, on_error);
-	if reinhardt_core::reactive::scope::on_scope_dispose(scope, move || drop(subscription)).is_err() {
+	if reinhardt_core::reactive::scope::on_scope_dispose(scope, move || drop(subscription)).is_err()
+	{
 		panic!("use_websocket_json_subscription requires a live reactive scope");
 	}
 }
@@ -600,13 +601,13 @@ mod tests {
 	#[cfg(native)]
 	use crate::reactive::ReactiveScope;
 	#[cfg(native)]
+	use serde::Deserialize;
+	#[cfg(native)]
 	use std::cell::Cell;
 	#[cfg(native)]
 	use std::cell::RefCell;
 	#[cfg(native)]
 	use std::rc::Rc;
-	#[cfg(native)]
-	use serde::Deserialize;
 
 	#[cfg(native)]
 	#[derive(Debug, Deserialize, PartialEq)]
@@ -775,9 +776,8 @@ mod tests {
 				),
 				|_| Ok(()),
 				move |_| {
-					callback_reads_for_callback.set(
-						callback_reads_for_callback.get() + observed_for_callback.get(),
-					);
+					callback_reads_for_callback
+						.set(callback_reads_for_callback.get() + observed_for_callback.get());
 				},
 				|_| {},
 			);

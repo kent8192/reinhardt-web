@@ -22,8 +22,7 @@ fn limits(rows: usize, bytes: usize, record_bytes: usize) -> LogLimits {
 	LogLimits {
 		rows: NonZeroUsize::new(rows).expect("test row limit must be positive"),
 		bytes: NonZeroUsize::new(bytes).expect("test byte limit must be positive"),
-		record_bytes: NonZeroUsize::new(record_bytes)
-			.expect("test record limit must be positive"),
+		record_bytes: NonZeroUsize::new(record_bytes).expect("test record limit must be positive"),
 	}
 }
 
@@ -71,7 +70,9 @@ fn bounded_realtime_log_cases_use_signal_updates() {
 					};
 					state.update(|state| state.begin(token));
 					state.update(|state| {
-						state.push(token, row(Some(2), Some(20), "overlap")).unwrap();
+						state
+							.push(token, row(Some(2), Some(20), "overlap"))
+							.unwrap();
 						state.push(token, row(Some(3), Some(30), "live")).unwrap();
 					});
 					state.update(|state| {
@@ -133,7 +134,7 @@ fn bounded_realtime_log_cases_use_signal_updates() {
 								token,
 								LogSnapshot {
 									rows: vec![row(Some(1), Some(10), "first")],
-								watermark: Some(10),
+									watermark: Some(10),
 								},
 							)
 							.unwrap();
@@ -150,7 +151,9 @@ fn bounded_realtime_log_cases_use_signal_updates() {
 					};
 					state.update(|state| state.begin(token));
 					state.update(|state| {
-						state.push(token, row(Some(2), Some(20), "duplicate")).unwrap();
+						state
+							.push(token, row(Some(2), Some(20), "duplicate"))
+							.unwrap();
 						state.push(token, row(Some(3), Some(30), "three")).unwrap();
 					});
 					state.update(|state| {
@@ -182,7 +185,9 @@ fn bounded_realtime_log_cases_use_signal_updates() {
 					};
 					state.update(|state| state.begin(token));
 					state.update(|state| {
-						state.push(token, row(None, None, "ambiguous-live")).unwrap();
+						state
+							.push(token, row(None, None, "ambiguous-live"))
+							.unwrap();
 					});
 					state.update(|state| {
 						state
@@ -195,10 +200,7 @@ fn bounded_realtime_log_cases_use_signal_updates() {
 							)
 							.unwrap();
 					});
-					assert_eq!(
-						state.get().rows(),
-						vec![row(None, None, "history")]
-					);
+					assert_eq!(state.get().rows(), vec![row(None, None, "history")]);
 					assert_eq!(
 						state.get().sync(),
 						LogSync::Degraded(LogGap::UnverifiedContinuity)
@@ -321,10 +323,7 @@ fn bounded_realtime_log_cases_use_signal_updates() {
 					};
 					state.update(|state| state.begin(token));
 					state.update(|state| state.fail(token, LogGap::CursorExpired));
-					assert_eq!(
-						state.get().sync(),
-						LogSync::Degraded(LogGap::CursorExpired)
-					);
+					assert_eq!(state.get().sync(), LogSync::Degraded(LogGap::CursorExpired));
 
 					let next = ReconcileToken {
 						selection: 11,
@@ -333,10 +332,7 @@ fn bounded_realtime_log_cases_use_signal_updates() {
 					};
 					state.update(|state| state.begin(next));
 					state.update(|state| state.fail(next, LogGap::FetchFailed));
-					assert_eq!(
-						state.get().sync(),
-						LogSync::Degraded(LogGap::FetchFailed)
-					);
+					assert_eq!(state.get().sync(), LogSync::Degraded(LogGap::FetchFailed));
 					state.update(LogState::stop);
 					state.update(|state| {
 						state.push(next, row(Some(99), Some(99), "late")).unwrap();

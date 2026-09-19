@@ -29,8 +29,7 @@ impl Default for LogLimits {
 		Self {
 			rows: NonZeroUsize::new(1_000).expect("fixed row limit is positive"),
 			bytes: NonZeroUsize::new(1024 * 1024).expect("fixed byte limit is positive"),
-			record_bytes: NonZeroUsize::new(16 * 1024)
-				.expect("fixed record limit is positive"),
+			record_bytes: NonZeroUsize::new(16 * 1024).expect("fixed record limit is positive"),
 		}
 	}
 }
@@ -105,11 +104,7 @@ impl LogState {
 		self._sync = LogSync::Syncing;
 	}
 
-	pub(crate) fn push(
-		&mut self,
-		token: ReconcileToken,
-		row: LogRow,
-	) -> Result<(), LogError> {
+	pub(crate) fn push(&mut self, token: ReconcileToken, row: LogRow) -> Result<(), LogError> {
 		if !self.accepts_token(token) {
 			return Ok(());
 		}
@@ -123,7 +118,10 @@ impl LogState {
 		} else {
 			let mut conflict = false;
 			if let Some(id) = row.id
-				&& let Some(existing) = self._visible.iter().find(|existing| existing.id == Some(id))
+				&& let Some(existing) = self
+					._visible
+					.iter()
+					.find(|existing| existing.id == Some(id))
 			{
 				if existing != &row {
 					conflict = true;
@@ -160,8 +158,9 @@ impl LogState {
 		let watermark_mode = watermark.is_some() && all_ids && all_cursors;
 		let history_exceeds_watermark = watermark_mode
 			&& snapshot_rows.iter().any(|row| {
-				row.cursor
-					.is_some_and(|cursor| cursor > watermark.expect("watermark mode has a watermark"))
+				row.cursor.is_some_and(|cursor| {
+					cursor > watermark.expect("watermark mode has a watermark")
+				})
 			});
 		let mut continuity_verified = watermark_mode && !pending_overflow;
 		if history_exceeds_watermark {
@@ -277,7 +276,8 @@ impl LogState {
 	fn trim_pending(&mut self) -> bool {
 		let mut removed = false;
 		while self._pending.len() > self._limits.rows.get()
-			|| Self::deque_bytes(&self._pending).is_some_and(|bytes| bytes > self._limits.bytes.get())
+			|| Self::deque_bytes(&self._pending)
+				.is_some_and(|bytes| bytes > self._limits.bytes.get())
 		{
 			if self._pending.pop_front().is_none() {
 				break;
@@ -289,7 +289,8 @@ impl LogState {
 
 	fn trim_visible(&mut self) {
 		while self._visible.len() > self._limits.rows.get()
-			|| Self::deque_bytes(&self._visible).is_some_and(|bytes| bytes > self._limits.bytes.get())
+			|| Self::deque_bytes(&self._visible)
+				.is_some_and(|bytes| bytes > self._limits.bytes.get())
 		{
 			if self._visible.pop_front().is_none() {
 				break;
@@ -299,9 +300,8 @@ impl LogState {
 	}
 
 	fn deque_bytes(rows: &VecDeque<LogRow>) -> Option<usize> {
-		rows.iter().try_fold(0usize, |total, row| {
-			total.checked_add(row_bytes(row)?)
-		})
+		rows.iter()
+			.try_fold(0usize, |total, row| total.checked_add(row_bytes(row)?))
 	}
 
 	fn push_unique(rows: &mut Vec<LogRow>, row: LogRow, conflict: &mut bool) {

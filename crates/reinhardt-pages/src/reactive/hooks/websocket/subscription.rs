@@ -284,9 +284,10 @@ mod tests {
 			first_calls.borrow_mut().push("first");
 			if !added_for_first.replace(true) {
 				let calls_for_new = Rc::clone(&first_calls);
-				*guard_for_first.borrow_mut() = Some(hub_for_first.subscribe(Rc::new(
-					move |_| calls_for_new.borrow_mut().push("new"),
-				)));
+				*guard_for_first.borrow_mut() = Some(
+					hub_for_first
+						.subscribe(Rc::new(move |_| calls_for_new.borrow_mut().push("new"))),
+				);
 			}
 		}));
 
@@ -373,7 +374,10 @@ mod tests {
 
 		hub.dispatch(&WebSocketMessage::Binary(vec![1, 2, 3]));
 
-		assert_eq!(*errors.borrow(), vec![WebSocketEventError::UnsupportedFrame]);
+		assert_eq!(
+			*errors.borrow(),
+			vec![WebSocketEventError::UnsupportedFrame]
+		);
 	}
 
 	#[test]
