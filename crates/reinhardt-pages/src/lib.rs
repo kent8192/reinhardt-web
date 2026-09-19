@@ -119,6 +119,14 @@
 //! jitter never exceeds the nominal delay, and `QuerySnapshot::is_fetching` is
 //! `false` while a retry waits in backoff.
 //!
+//! A realtime event should invalidate the exact typed key or family and let the
+//! query client fetch authoritative state. Use [`QueryHandle::is_invalidated`]
+//! to keep a status view in `Syncing` until a completion covers the newest
+//! invalidation generation; [`QueryHandle::is_stale`] also includes age-based
+//! freshness and therefore is not a synchronization barrier. The executable
+//! `examples/realtime_state.rs` recipe shows exact-key invalidation, family
+//! invalidation, and authentication-boundary removal.
+//!
 //! Observer polling suspends while the browser document is hidden and resumes
 //! according to freshness. Retry attempts are shared by the cache entry across
 //! observers. Hidden time does not consume retry backoff: stale data retries

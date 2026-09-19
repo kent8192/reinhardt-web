@@ -103,6 +103,13 @@ or log state. Use QueryClient invalidation for status snapshots and keep ordered
 logs in one bounded application-owned state rather than appending directly to
 the DOM.
 
+For status views, [`QueryHandle::is_invalidated`](src/reactive/query/hook.rs)
+separates an outstanding realtime reconciliation from age-based
+`QueryHandle::is_stale()`. The executable
+[`realtime_state`](examples/realtime_state.rs) recipe invalidates an exact
+typed deployment key, supports family invalidation, and removes the family at
+logout.
+
 ## Headless UI primitives
 
 The `reinhardt_pages::ui` module provides small, headless building blocks for
