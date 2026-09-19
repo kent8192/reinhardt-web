@@ -1300,6 +1300,10 @@ impl<T: Clone + 'static, E: Clone + 'static> QueryEntry<T, E> {
 		self.runtime.now_ms().saturating_sub(last_fetched_ms) >= duration_ms(stale_time)
 	}
 
+	pub(super) fn is_invalidated(&self) -> bool {
+		self.invalidated.get()
+	}
+
 	#[cfg(native)]
 	fn clear_ssr_omission(&self) {
 		let _ = crate::ssr::resource_context::with_active_context(|context| {

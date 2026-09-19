@@ -1915,6 +1915,180 @@ fn invalidation_notifies_a_disabled_observer_of_staleness() {
 }
 
 #[test]
+fn realtime_invalidation_waits_for_the_follow_up() {
+	ReactiveScope::run(|| {
+		let runtime = TestQueryRuntime::new();
+		let client = QueryClient::with_runtime(QueryDefaults::default(), runtime.handle());
+		let family = QueryFamily::<(), String, String>::new("tests.realtime-race");
+		let gates = Rc::new(vec![
+			Rc::new(Cell::new(false)),
+			Rc::new(Cell::new(false)),
+			Rc::new(Cell::new(false)),
+		]);
+		let started = Rc::new(Cell::new(0usize));
+		let descriptor = family.query((), {
+			let gates = Rc::clone(&gates);
+			let started = Rc::clone(&started);
+			move || {
+				let index = started.get();
+				started.set(index + 1);
+				TestGate {
+					ready: Rc::clone(&gates[index]),
+					dropped: Rc::new(Cell::new(0)),
+					result: Some(Ok(format!("response-{index}"))),
+				}
+			}
+		});
+		let key = descriptor.key().clone();
+		let query = client.observe(descriptor, QueryOptions::default());
+		runtime.run_until_stalled();
+
+		assert_eq!(started.get(), 1);
+		assert_eq!(query.data(), None);
+		assert!(query.is_fetching());
+		client.invalidate(&key);
+		assert!(query.is_invalidated());
+
+		gates[0].set(true);
+		runtime.run_until_stalled();
+		assert_eq!(started.get(), 2);
+		assert_eq!(query.data(), Some("response-0".to_string()));
+		assert!(query.is_invalidated());
+
+		client.invalidate(&key);
+		assert!(query.is_invalidated());
+		gates[1].set(true);
+		runtime.run_until_stalled();
+		assert_eq!(started.get(), 3);
+		assert_eq!(query.data(), Some("response-1".to_string()));
+		assert!(query.is_invalidated());
+
+		gates[2].set(true);
+		runtime.run_until_stalled();
+		assert_eq!(query.data(), Some("response-2".to_string()));
+		assert!(!query.is_invalidated());
+	});
+}
+
+#[test]
+fn disabled_realtime_observer_stays_stale_without_starting_a_request() {
+	let runtime = TestQueryRuntime::new();
+	let client = QueryClient::with_runtime(QueryDefaults::default(), runtime.handle());
+	let family = QueryFamily::<(), String, String>::new("tests.realtime-disabled");
+	let fetch_count = Rc::new(Cell::new(0));
+	let descriptor = family.query((), {
+		let fetch_count = Rc::clone(&fetch_count);
+		move || {
+			fetch_count.set(fetch_count.get() + 1);
+			async { Ok("cached".to_string()) }
+		}
+	});
+	let key = descriptor.key().clone();
+	let enabled = client.observe(descriptor.clone(), QueryOptions::default());
+	runtime.run_until_stalled();
+	drop(enabled);
+
+	let disabled = client.observe(descriptor, QueryOptions::new().enabled(false));
+	client.invalidate(&key);
+	runtime.run_until_stalled();
+
+	assert_eq!(fetch_count.get(), 1);
+	assert_eq!(disabled.data(), Some("cached".to_string()));
+	assert!(disabled.is_invalidated());
+}
+
+#[test]
+fn zero_stale_time_does_not_report_unresolved_realtime_invalidation() {
+	let runtime = TestQueryRuntime::new();
+	let client = QueryClient::with_runtime(QueryDefaults::default(), runtime.handle());
+	let family = QueryFamily::<(), String, String>::new("tests.realtime-zero-stale");
+	let query = client.observe(
+		family.query((), || async { Ok("fresh".to_string()) }),
+		QueryOptions::new().stale_time(Duration::ZERO),
+	);
+	runtime.run_until_stalled();
+
+	assert_eq!(query.data(), Some("fresh".to_string()));
+	assert!(query.is_stale());
+	assert!(!query.is_invalidated());
+}
+
+#[test]
+fn failed_realtime_refetch_is_degraded_without_pending_invalidation() {
+	let runtime = TestQueryRuntime::new();
+	let client = QueryClient::with_runtime(QueryDefaults::default(), runtime.handle());
+	let family = QueryFamily::<(), String, String>::new("tests.realtime-refetch-error");
+	let attempts = Rc::new(Cell::new(0));
+	let query = client.observe(
+		family.query((), {
+			let attempts = Rc::clone(&attempts);
+			move || {
+				let attempt = attempts.get() + 1;
+				attempts.set(attempt);
+				async move {
+					if attempt == 1 {
+						Ok("cached".to_string())
+					} else {
+						Err("temporary failure".to_string())
+					}
+				}
+			}
+		}),
+		QueryOptions::default(),
+	);
+	runtime.run_until_stalled();
+
+	query.refetch();
+	runtime.run_until_stalled();
+
+	assert_eq!(attempts.get(), 2);
+	assert_eq!(query.data(), Some("cached".to_string()));
+	assert_eq!(query.error(), None);
+	assert_eq!(query.refetch_error(), Some("temporary failure".to_string()));
+	assert!(!query.is_invalidated());
+}
+
+#[test]
+fn realtime_family_invalidation_does_not_cross_family_boundaries() {
+	let runtime = TestQueryRuntime::new();
+	let client = QueryClient::with_runtime(QueryDefaults::default(), runtime.handle());
+	let deployments = QueryFamily::<u64, String, String>::new("tests.realtime-family-a");
+	let users = QueryFamily::<u64, String, String>::new("tests.realtime-family-b");
+	let deployment = client.observe(
+		deployments.query(1, || async { Ok("deployment".to_string()) }),
+		QueryOptions::default(),
+	);
+	let user = client.observe(
+		users.query(1, || async { Ok("user".to_string()) }),
+		QueryOptions::default(),
+	);
+	runtime.run_until_stalled();
+
+	client.invalidate_family(deployments);
+
+	assert!(deployment.is_invalidated());
+	assert!(!user.is_invalidated());
+}
+
+#[test]
+fn removing_a_realtime_family_clears_invalidated_state() {
+	let runtime = TestQueryRuntime::new();
+	let client = QueryClient::with_runtime(QueryDefaults::default(), runtime.handle());
+	let family = QueryFamily::<(), String, String>::new("tests.realtime-eviction");
+	let descriptor = family.query((), || async { Ok("cached".to_string()) });
+	let key = descriptor.key().clone();
+	let query = client.observe(descriptor, QueryOptions::default());
+	runtime.run_until_stalled();
+	client.invalidate(&key);
+	assert!(query.is_invalidated());
+
+	client.remove_family(family);
+
+	assert_eq!(query.data(), None);
+	assert!(!query.is_invalidated());
+}
+
+#[test]
 fn disabled_refetch_prefers_the_earliest_live_enabled_observer_fetcher() {
 	let runtime = TestQueryRuntime::new();
 	let client = QueryClient::with_runtime(QueryDefaults::default(), runtime.handle());

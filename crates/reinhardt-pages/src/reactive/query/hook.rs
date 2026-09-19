@@ -112,6 +112,17 @@ impl<T: Clone + 'static, E: Clone + 'static> QueryHandle<T, E> {
 		self.snapshot().is_stale
 	}
 
+	/// Returns whether an invalidation still requires a successful follow-up.
+	///
+	/// This is independent from [`Self::is_stale`], which also reflects
+	/// age-based freshness and normalization recovery state. The flag remains
+	/// set when an older request publishes provisional data after a newer
+	/// invalidation and clears only when a completion covers the latest
+	/// invalidation generation.
+	pub fn is_invalidated(&self) -> bool {
+		self.entry.is_invalidated()
+	}
+
 	/// Manually refetches this query.
 	pub fn refetch(&self) {
 		self.entry.start_observer_refetch(&self.lease.inner);
