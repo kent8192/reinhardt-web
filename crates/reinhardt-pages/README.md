@@ -110,6 +110,16 @@ separates an outstanding realtime reconciliation from age-based
 typed deployment key, supports family invalidation, and removes the family at
 logout.
 
+The [`realtime_state`](examples/realtime_state.rs) example keeps fetched
+history and live log events in one bounded state owner. It uses a snapshot
+watermark with stable IDs when available, retains history order followed by
+receipt order when only IDs are available, and replaces the ambiguous overlap
+when neither IDs nor a watermark exists. Visible rows and pending events have
+separate row and byte caps; overflow or missing ordering metadata is shown as
+degraded continuity rather than silently presented as gapless. The example's
+default limits are 1,000 visible rows, 1 MiB of retained row bytes, 16 KiB per
+record, and a 2 MiB snapshot body budget.
+
 ## Headless UI primitives
 
 The `reinhardt_pages::ui` module provides small, headless building blocks for

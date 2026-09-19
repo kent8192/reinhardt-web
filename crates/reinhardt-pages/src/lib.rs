@@ -242,6 +242,14 @@
 //! `QueryOptions`, invalidation, polling, and the public `QueryStatus` are
 //! unchanged.
 //!
+//! The executable `examples/realtime_state.rs` also demonstrates bounded log
+//! reconciliation. History and live events share one state owner; a server
+//! watermark and stable IDs enable cursor-aware merging, while ID-only and
+//! no-metadata fallbacks retain an explicit degraded continuity state. Row,
+//! UTF-8 byte, record, pending, and snapshot limits are enforced before the
+//! example accepts more data, and old selection or connection tokens cannot
+//! commit late results.
+//!
 //! ## Features
 //!
 //! - **Fine-grained Reactivity**: Leptos/Solid.js-style Signal system with React-aligned hooks
