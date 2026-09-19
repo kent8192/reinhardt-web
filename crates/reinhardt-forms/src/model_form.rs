@@ -5,8 +5,10 @@
 
 mod error;
 mod field_factory;
+mod patch;
 
 pub use error::ModelFormError;
+pub use patch::{ModelFormPatchContract, PatchError, PatchOutcome, ValidatedFormPatch};
 
 use crate::Form;
 use crate::form::ALL_FIELDS_KEY;
@@ -321,11 +323,45 @@ where
 	clean_generated_payload_with_trusted_values::<S, P, D>(data, None, true, &[deferred_field])
 }
 
+/// Cleans a patch without defaulting or converting submitted blank text to omission.
+///
+/// **Parity: P0.** Native generated patch validation uses this shared field cleaner.
+#[doc(hidden)]
+pub fn clean_generated_patch_payload<S, P, D>(data: &mut D) -> Result<(), ValidationErrors>
+where
+	S: ModelFormSchema,
+	P: ModelFormPolicy,
+	D: ModelFormPayload<P>,
+{
+	clean_generated_payload_options::<S, P, D>(data, None, false, &[], true)
+}
+
 fn clean_generated_payload_with_trusted_values<S, P, D>(
 	data: &mut D,
 	trusted_values: Option<&Value>,
 	require_all: bool,
 	deferred_required_fields: &[&str],
+) -> Result<(), ValidationErrors>
+where
+	S: ModelFormSchema,
+	P: ModelFormPolicy,
+	D: ModelFormPayload<P>,
+{
+	clean_generated_payload_options::<S, P, D>(
+		data,
+		trusted_values,
+		require_all,
+		deferred_required_fields,
+		false,
+	)
+}
+
+fn clean_generated_payload_options<S, P, D>(
+	data: &mut D,
+	trusted_values: Option<&Value>,
+	require_all: bool,
+	deferred_required_fields: &[&str],
+	preserve_submission: bool,
 ) -> Result<(), ValidationErrors>
 where
 	S: ModelFormSchema,
@@ -346,7 +382,8 @@ where
 		return Err(errors);
 	}
 	for descriptor in S::fields() {
-		if descriptor.editable
+		if !preserve_submission
+			&& descriptor.editable
 			&& P::allows(descriptor.name)
 			&& descriptor.trim
 			&& !descriptor.required

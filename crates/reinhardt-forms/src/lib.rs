@@ -123,6 +123,50 @@
 //! access. `save(executor).await` persists through the caller's executor and
 //! preserves structured database failures in [`ModelFormError`].
 //!
+//! ## Scoped form patches
+//!
+//! Named model-form contracts can validate a partial edit and write only its
+//! submitted fields through an existing QuerySet. The caller supplies scope,
+//! a target implementing `IntoPrimaryKey<Model>`, and an ORM executor.
+//!
+//! ```rust,no_run
+//! use reinhardt_db::orm::{Model, OrmExecutor, QuerySet};
+//! use reinhardt_forms::{PatchError, PatchOutcome};
+//! use reinhardt_macros::model;
+//! # mod model_form { pub use reinhardt_forms::model_form::*; }
+//!
+//! #[model(app_label = "forms", info = false, form(name = EditProfile, fields(name)))]
+//! #[derive(Clone, serde::Serialize, serde::Deserialize)]
+//! struct Profile {
+//!     #[field(primary_key = true)]
+//!     id: Option<i64>,
+//!     #[field(editable = false)]
+//!     organization_id: i64,
+//!     #[field(max_length = 120)]
+//!     #[form(trim)]
+//!     name: String,
+//! }
+//!
+//! async fn edit<E: OrmExecutor>(
+//!     payload: EditProfileData,
+//!     authorized_scope: QuerySet<Profile>,
+//!     id: i64,
+//!     executor: &mut E,
+//! ) -> Result<PatchOutcome, PatchError> {
+//!     EditProfile::validate_patch(payload)?
+//!         .apply_to(authorized_scope, id, executor)
+//!         .await
+//! }
+//! # fn main() {}
+//! ```
+//!
+//! This native bridge reuses `QuerySet::update_fields_with_conn`. It never loads
+//! or saves an entire model. Empty patches fail before execution; zero affected
+//! rows remain ambiguous. Model-wide validators require an explicit snapshot via
+//! `validate_patch_with_existing`; its key must equal the target key. Shared
+//! `ModelFormPatchPayload` validation is also available on WASM, but grants no
+//! persistence capability. See [`ValidatedFormPatch`] for execution semantics.
+//!
 //! ## Available Field Types
 //!
 //! | Field | Description |
@@ -239,7 +283,10 @@ pub use formsets::{
 	InlineFormSet,
 	ModelFormSet as AdvancedModelFormSet, // Renamed to avoid conflict
 };
-pub use model_form::{FormModel, ModelForm, ModelFormError, ModelFormPersistenceMode};
+pub use model_form::{
+	FormModel, ModelForm, ModelFormError, ModelFormPersistenceMode, PatchError, PatchOutcome,
+	ValidatedFormPatch,
+};
 pub use model_formset::{ModelFormSet, ModelFormSetBuilder, ModelFormSetConfig};
 pub use validators::{SlugValidator, UrlValidator};
 pub use wizard::{FormWizard, WizardStep};
