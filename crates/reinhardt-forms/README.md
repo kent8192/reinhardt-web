@@ -13,6 +13,22 @@ Target-neutral model schemas and payloads can be shared with WASM code. Native
 candidate construction and persistence use the caller's asynchronous ORM
 executor. For HTML rendering and WASM form submission, see `reinhardt-pages`.
 
+## Scoped partial updates
+
+Generated named model-form contracts expose native `validate_patch(data)` and
+`validate_patch_with_existing(data, &model)` adapters. The resulting opaque
+`ValidatedFormPatch` consumes itself through
+`apply_to(scoped_queryset, target, &mut executor)`, reusing the ORM conditional
+update primitive. `target` accepts existing `IntoPrimaryKey` conversions.
+
+Only submitted, allowlisted fields are written. Omission preserves existing
+values; explicit null clears nullable columns; false, zero, and permitted empty
+strings remain assignments. Empty patches return `PatchError::EmptyPatch`.
+Authorization and same-field concurrency predicates belong to the caller.
+
+See the [model-form update guide](../reinhardt-pages/docs/model_forms.md#validated-patches-on-scoped-querysets)
+for a complete path, snapshot validation, counts, and transaction semantics.
+
 ## Installation
 
 Add `reinhardt` to your `Cargo.toml`:
