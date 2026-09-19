@@ -7,6 +7,8 @@
 use crate::reactive::Signal;
 use std::rc::Rc;
 
+mod subscription;
+
 #[cfg(any(wasm, test))]
 fn invoke_in_owner_scope(owner_scope: reinhardt_core::reactive::ScopeId, callback: impl FnOnce()) {
 	let _ = reinhardt_core::reactive::scope::enter_scope(owner_scope, callback);
