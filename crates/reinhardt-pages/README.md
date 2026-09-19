@@ -53,6 +53,8 @@ selector whitespace.
 - **Model-backed Forms**: legacy `#[model(form = true)]` remains supported;
   `#[model(form(name = Contract, fields(...)))]` supplies one named,
   target-neutral payload contract to `form!` on native and WASM targets
+- **Typed WebSocket Events**: owned callback subscriptions decode each frame,
+  report safe error categories, and can be retained by a reactive scope
 
 For a React concept mapping, see
 [Reinhardt Pages for React developers](docs/react_to_reinhardt.md).
@@ -63,6 +65,43 @@ SSR hydration, see [Route-level data loaders](docs/route_loaders.md).
 For asynchronous route access checks across navigation, loaders, prefetch,
 SSR, hydration, and authentication invalidation, see
 [Asynchronous navigation guards](docs/navigation_guards.md).
+
+## Typed WebSocket subscriptions
+
+`WebSocketHandle::subscribe_json` delivers every accepted frame, including
+consecutive equal values, through an application callback. Retain the returned
+`WebSocketSubscription` guard for as long as delivery is needed; dropping it
+revokes delivery. `use_websocket_json_subscription` stores that guard in the
+current reactive scope and disposes it with the scope.
+
+```rust,ignore
+use reinhardt_pages::reactive::hooks::{
+    use_websocket, use_websocket_json_subscription, UseWebSocketOptions,
+    WebSocketEventError, WebSocketSubscriptionOptions,
+};
+use serde::Deserialize;
+use std::num::NonZeroUsize;
+
+#[derive(Deserialize)]
+struct DeploymentEvent { deployment_id: u64 }
+
+let socket = use_websocket("wss://example.invalid/events", UseWebSocketOptions::default());
+use_websocket_json_subscription(
+    &socket,
+    WebSocketSubscriptionOptions::new(NonZeroUsize::new(16 * 1024).unwrap()),
+    |event: DeploymentEvent| invalidate_deployment(event.deployment_id),
+    |error: WebSocketEventError| record_realtime_error(error),
+);
+```
+
+Frame-size limits are measured in bytes before decoding. Decode errors do not
+stop later valid frames, and framework diagnostics never include raw payloads.
+Native/SSR handles remain inert and do not invoke subscription callbacks. A
+connected socket does not imply that an application subscription is current;
+after recovery, applications must resubscribe and reconcile authoritative query
+or log state. Use QueryClient invalidation for status snapshots and keep ordered
+logs in one bounded application-owned state rather than appending directly to
+the DOM.
 
 ## Headless UI primitives
 

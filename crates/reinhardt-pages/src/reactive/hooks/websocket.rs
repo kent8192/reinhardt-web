@@ -5,13 +5,27 @@
 //! fine-grained reactivity system.
 
 use crate::reactive::Signal;
+use serde::de::DeserializeOwned;
 use std::rc::Rc;
 
 mod subscription;
 
-#[cfg(any(wasm, test))]
+use subscription::EventHub;
+pub use subscription::{WebSocketEventError, WebSocketSubscription, WebSocketSubscriptionOptions};
+
 fn invoke_in_owner_scope(owner_scope: reinhardt_core::reactive::ScopeId, callback: impl FnOnce()) {
 	let _ = reinhardt_core::reactive::scope::enter_scope(owner_scope, callback);
+}
+
+fn invoke_subscription_callback(
+	owner_scope: Option<reinhardt_core::reactive::ScopeId>,
+	callback: impl FnOnce(),
+) {
+	if let Some(owner_scope) = owner_scope {
+		invoke_in_owner_scope(owner_scope, || reinhardt_core::reactive::untracked(callback));
+	} else {
+		reinhardt_core::reactive::untracked(callback);
+	}
 }
 
 /// WebSocket connection state
@@ -85,6 +99,9 @@ struct WsClosures {
 /// This struct provides methods to interact with the WebSocket connection,
 /// monitor its state, and send/receive messages reactively.
 ///
+/// Typed subscription methods have P1 symbol parity: WASM dispatches transport
+/// frames, while native/SSR retains the same types and remains inert.
+///
 /// Event listener closures are stored in this handle instead of being leaked
 /// via `Closure::forget()`. When the handle is dropped, the closures are also
 /// dropped, preventing memory leaks in long-running single-page applications.
@@ -93,6 +110,8 @@ pub struct WebSocketHandle {
 	latest_message: Signal<Option<WebSocketMessage>>,
 	send_fn: Rc<dyn Fn(WebSocketMessage) -> Result<(), String>>,
 	close_fn: Rc<dyn Fn()>,
+	event_hub: Rc<EventHub>,
+	owner_scope: Option<reinhardt_core::reactive::ScopeId>,
 	/// Stored closures to keep event listeners alive without leaking memory.
 	/// When the last `WebSocketHandle` clone is dropped, the closures are cleaned up.
 	#[cfg(wasm)]
@@ -161,6 +180,84 @@ impl WebSocketHandle {
 	pub fn is_open(&self) -> bool {
 		matches!(self.current_connection_state(), ConnectionState::Open)
 	}
+
+	/// Subscribe to decoded WebSocket events.
+	///
+	/// Native/SSR returns an inert guard because its transport never receives
+	/// browser frames.
+	pub fn subscribe<T, D, E, F>(
+		&self,
+		options: WebSocketSubscriptionOptions,
+		decode: D,
+		on_event: E,
+		on_error: F,
+	) -> WebSocketSubscription
+	where
+		T: 'static,
+		D: Fn(&WebSocketMessage) -> Result<T, WebSocketEventError> + 'static,
+		E: Fn(T) + 'static,
+		F: Fn(WebSocketEventError) + 'static,
+	{
+		let owner_scope = self.owner_scope;
+		let on_event = Rc::new(on_event);
+		let on_error = Rc::new(on_error);
+		self.event_hub.subscribe_typed(
+			options,
+			decode,
+			{
+				let on_event = Rc::clone(&on_event);
+				move |value| {
+					let on_event = Rc::clone(&on_event);
+					invoke_subscription_callback(owner_scope, move || on_event(value));
+				}
+			},
+			{
+				let on_error = Rc::clone(&on_error);
+				move |error| {
+					let on_error = Rc::clone(&on_error);
+					invoke_subscription_callback(owner_scope, move || on_error(error));
+				}
+			},
+		)
+	}
+
+	/// Subscribe to JSON text events without repeating deserialization boilerplate.
+	///
+	/// Native/SSR returns an inert guard because its transport never receives
+	/// browser frames.
+	pub fn subscribe_json<T, E, F>(
+		&self,
+		options: WebSocketSubscriptionOptions,
+		on_event: E,
+		on_error: F,
+	) -> WebSocketSubscription
+	where
+		T: DeserializeOwned + 'static,
+		E: Fn(T) + 'static,
+		F: Fn(WebSocketEventError) + 'static,
+	{
+		self.subscribe(
+			options,
+			|frame| match frame {
+				WebSocketMessage::Text(text) => {
+					serde_json::from_str(text).map_err(|_| WebSocketEventError::Decode)
+				}
+				WebSocketMessage::Binary(_) => Err(WebSocketEventError::UnsupportedFrame),
+			},
+			on_event,
+			on_error,
+		)
+	}
+
+	#[cfg(test)]
+	fn dispatch_for_test(&self, frame: &WebSocketMessage) {
+		self.event_hub.dispatch(frame);
+	}
+
+	#[cfg(test)]
+	fn dispatch_error_for_test(&self, error: WebSocketEventError) {
+		self.event_hub.dispatch_error(error);
+	}
 }
 
 impl Clone for WebSocketHandle {
@@ -170,9 +267,59 @@ impl Clone for WebSocketHandle {
 			latest_message: self.latest_message,
 			send_fn: Rc::clone(&self.send_fn),
 			close_fn: Rc::clone(&self.close_fn),
+			event_hub: Rc::clone(&self.event_hub),
+			owner_scope: self.owner_scope,
 			#[cfg(wasm)]
 			_closures: Rc::clone(&self._closures),
 		}
+	}
+}
+
+/// Register a typed WebSocket subscription owned by the current reactive scope.
+///
+/// Native/SSR registers cleanup but does not open a connection or invoke the
+/// callback.
+pub fn use_websocket_subscription<T, D, E, F>(
+	handle: &WebSocketHandle,
+	options: WebSocketSubscriptionOptions,
+	decode: D,
+	on_event: E,
+	on_error: F,
+) where
+	T: 'static,
+	D: Fn(&WebSocketMessage) -> Result<T, WebSocketEventError> + 'static,
+	E: Fn(T) + 'static,
+	F: Fn(WebSocketEventError) + 'static,
+{
+	let scope = reinhardt_core::reactive::scope::require_active_scope(
+		"use_websocket_subscription",
+	);
+	let subscription = handle.subscribe(options, decode, on_event, on_error);
+	if reinhardt_core::reactive::scope::on_scope_dispose(scope, move || drop(subscription)).is_err() {
+		panic!("use_websocket_subscription requires a live reactive scope");
+	}
+}
+
+/// Register a JSON WebSocket subscription owned by the current reactive scope.
+///
+/// Native/SSR registers cleanup but does not open a connection or invoke the
+/// callback.
+pub fn use_websocket_json_subscription<T, E, F>(
+	handle: &WebSocketHandle,
+	options: WebSocketSubscriptionOptions,
+	on_event: E,
+	on_error: F,
+) where
+	T: DeserializeOwned + 'static,
+	E: Fn(T) + 'static,
+	F: Fn(WebSocketEventError) + 'static,
+{
+	let scope = reinhardt_core::reactive::scope::require_active_scope(
+		"use_websocket_json_subscription",
+	);
+	let subscription = handle.subscribe_json(options, on_event, on_error);
+	if reinhardt_core::reactive::scope::on_scope_dispose(scope, move || drop(subscription)).is_err() {
+		panic!("use_websocket_json_subscription requires a live reactive scope");
 	}
 }
 
@@ -257,6 +404,7 @@ pub fn use_websocket(url: &str, options: UseWebSocketOptions) -> WebSocketHandle
 	// WebSocket instance holder
 	let ws_ref: Rc<RefCell<Option<WebSocket>>> = Rc::new(RefCell::new(None));
 	let closures_ref: Rc<RefCell<Option<WsClosures>>> = Rc::new(RefCell::new(None));
+	let event_hub = EventHub::new();
 	let url = url.to_string();
 
 	// State signals
@@ -271,6 +419,7 @@ pub fn use_websocket(url: &str, options: UseWebSocketOptions) -> WebSocketHandle
 		let on_open = options.on_open.clone();
 		let on_close = options.on_close.clone();
 		let on_error = options.on_error.clone();
+		let event_hub = Rc::clone(&event_hub);
 
 		move || {
 			// Create WebSocket connection
@@ -306,17 +455,22 @@ pub fn use_websocket(url: &str, options: UseWebSocketOptions) -> WebSocketHandle
 
 			// onmessage handler
 			let latest_message_recv = latest_message;
+			let event_hub_recv = Rc::clone(&event_hub);
 			let onmessage = Closure::wrap(Box::new(move |e: MessageEvent| {
 				// Try text message first
 				if let Ok(txt) = e.data().dyn_into::<js_sys::JsString>() {
 					let text = txt.as_string().unwrap_or_default();
-					let _ = latest_message_recv.try_set(Some(WebSocketMessage::Text(text)));
+					let message = WebSocketMessage::Text(text);
+					let _ = latest_message_recv.try_set(Some(message.clone()));
+					event_hub_recv.dispatch(&message);
 				}
 				// Try binary message (ArrayBuffer)
 				else if let Ok(array_buffer) = e.data().dyn_into::<js_sys::ArrayBuffer>() {
 					let array = js_sys::Uint8Array::new(&array_buffer);
 					let vec = array.to_vec();
-					let _ = latest_message_recv.try_set(Some(WebSocketMessage::Binary(vec)));
+					let message = WebSocketMessage::Binary(vec);
+					let _ = latest_message_recv.try_set(Some(message.clone()));
+					event_hub_recv.dispatch(&message);
 				}
 			}) as Box<dyn FnMut(MessageEvent)>);
 			ws.set_onmessage(Some(onmessage.as_ref().unchecked_ref()));
@@ -340,6 +494,7 @@ pub fn use_websocket(url: &str, options: UseWebSocketOptions) -> WebSocketHandle
 			// onerror handler
 			let connection_state_error = connection_state;
 			let on_error_cb = on_error.clone();
+			let event_hub_error = Rc::clone(&event_hub);
 			let onerror = Closure::wrap(Box::new(move |_: ErrorEvent| {
 				let error_msg = "WebSocket error occurred".to_string();
 				if connection_state_error
@@ -348,6 +503,7 @@ pub fn use_websocket(url: &str, options: UseWebSocketOptions) -> WebSocketHandle
 				{
 					return;
 				}
+				event_hub_error.dispatch_error(WebSocketEventError::Transport);
 				if let Some(cb) = &on_error_cb {
 					invoke_in_owner_scope(owner_scope, || cb(error_msg));
 				}
@@ -402,6 +558,8 @@ pub fn use_websocket(url: &str, options: UseWebSocketOptions) -> WebSocketHandle
 		latest_message,
 		send_fn,
 		close_fn,
+		event_hub,
+		owner_scope: Some(owner_scope),
 		_closures: closures_ref,
 	}
 }
@@ -431,6 +589,8 @@ pub fn use_websocket(_url: &str, _options: UseWebSocketOptions) -> WebSocketHand
 		latest_message: Signal::new(None),
 		send_fn: Rc::new(|_| Err("WebSocket not available on server".to_string())),
 		close_fn: Rc::new(|| {}),
+		event_hub: EventHub::new(),
+		owner_scope: reinhardt_core::reactive::current_scope_id(),
 	}
 }
 
@@ -438,9 +598,21 @@ pub fn use_websocket(_url: &str, _options: UseWebSocketOptions) -> WebSocketHand
 mod tests {
 	use super::*;
 	#[cfg(native)]
+	use crate::reactive::ReactiveScope;
+	#[cfg(native)]
 	use std::cell::Cell;
 	#[cfg(native)]
+	use std::cell::RefCell;
+	#[cfg(native)]
 	use std::rc::Rc;
+	#[cfg(native)]
+	use serde::Deserialize;
+
+	#[cfg(native)]
+	#[derive(Debug, Deserialize, PartialEq)]
+	struct TestPayload {
+		value: u32,
+	}
 
 	#[cfg(native)]
 	#[test]
@@ -492,6 +664,142 @@ mod tests {
 		assert!(!handle.is_open());
 		assert_eq!(handle.current_connection_state(), ConnectionState::Closed);
 		assert_eq!(handle.current_message(), None);
+	}
+
+	#[test]
+	#[cfg(native)]
+	fn typed_handle_subscription_delivers_in_owner_scope() {
+		ReactiveScope::run(|| {
+			let handle = use_websocket("ignored", UseWebSocketOptions::default());
+			let values = Rc::new(RefCell::new(Vec::new()));
+			let errors = Rc::new(RefCell::new(Vec::new()));
+			let values_for_callback = Rc::clone(&values);
+			let errors_for_callback = Rc::clone(&errors);
+			let _guard = handle.subscribe_json(
+				WebSocketSubscriptionOptions::new(
+					std::num::NonZeroUsize::new(128).expect("non-zero test limit"),
+				),
+				move |payload: TestPayload| values_for_callback.borrow_mut().push(payload),
+				move |error| errors_for_callback.borrow_mut().push(error),
+			);
+
+			handle.dispatch_for_test(&WebSocketMessage::Text(r#"{"value":2}"#.into()));
+			handle.dispatch_for_test(&WebSocketMessage::Text("secret-invalid".into()));
+
+			assert_eq!(*values.borrow(), vec![TestPayload { value: 2 }]);
+			assert_eq!(*errors.borrow(), vec![WebSocketEventError::Decode]);
+		});
+	}
+
+	#[test]
+	#[cfg(native)]
+	fn raw_subscription_outside_scope_is_guard_owned() {
+		let owner = ReactiveScope::new();
+		let handle = owner.enter(|| use_websocket("ignored", UseWebSocketOptions::default()));
+		let calls = Rc::new(Cell::new(0));
+		let calls_for_callback = Rc::clone(&calls);
+		let guard = handle.subscribe_json::<TestPayload, _, _>(
+			WebSocketSubscriptionOptions::new(
+				std::num::NonZeroUsize::new(128).expect("non-zero test limit"),
+			),
+			move |_| calls_for_callback.set(calls_for_callback.get() + 1),
+			|_| {},
+		);
+
+		handle.dispatch_for_test(&WebSocketMessage::Text(r#"{"value":4}"#.into()));
+		assert_eq!(calls.get(), 1);
+		drop(guard);
+		handle.dispatch_for_test(&WebSocketMessage::Text(r#"{"value":5}"#.into()));
+		assert_eq!(calls.get(), 1);
+		owner.dispose();
+	}
+
+	#[test]
+	#[cfg(native)]
+	fn scoped_typed_subscription_is_revoked_with_owner() {
+		let scope = ReactiveScope::new();
+		let (handle, calls) = scope.enter(|| {
+			let handle = use_websocket("ignored", UseWebSocketOptions::default());
+			let calls = Rc::new(Cell::new(0));
+			let calls_for_callback = Rc::clone(&calls);
+			use_websocket_json_subscription(
+				&handle,
+				WebSocketSubscriptionOptions::new(
+					std::num::NonZeroUsize::new(128).expect("non-zero test limit"),
+				),
+				move |_: TestPayload| calls_for_callback.set(calls_for_callback.get() + 1),
+				|_| {},
+			);
+			(handle, calls)
+		});
+
+		scope.dispose();
+		handle.dispatch_for_test(&WebSocketMessage::Text(r#"{"value":3}"#.into()));
+
+		assert_eq!(calls.get(), 0);
+	}
+
+	#[test]
+	#[cfg(native)]
+	fn typed_subscription_reports_transport_category_without_payload() {
+		ReactiveScope::run(|| {
+			let handle = use_websocket("ignored", UseWebSocketOptions::default());
+			let errors = Rc::new(RefCell::new(Vec::new()));
+			let errors_for_callback = Rc::clone(&errors);
+			let _guard = handle.subscribe_json::<TestPayload, _, _>(
+				WebSocketSubscriptionOptions::new(
+					std::num::NonZeroUsize::new(128).expect("non-zero test limit"),
+				),
+				|_| {},
+				move |error| errors_for_callback.borrow_mut().push(error),
+			);
+			handle.dispatch_error_for_test(WebSocketEventError::Transport);
+			assert_eq!(*errors.borrow(), vec![WebSocketEventError::Transport]);
+		});
+	}
+
+	#[test]
+	#[cfg(native)]
+	fn typed_callback_reads_do_not_subscribe_the_dispatching_effect() {
+		ReactiveScope::run(|| {
+			let handle = use_websocket("ignored", UseWebSocketOptions::default());
+			let trigger = Signal::new(0_u32);
+			let observed = Signal::new(0_u32);
+			let effect_runs = Rc::new(Cell::new(0));
+			let callback_reads = Rc::new(Cell::new(0));
+			let observed_for_callback = observed;
+			let callback_reads_for_callback = Rc::clone(&callback_reads);
+			let _guard = handle.subscribe(
+				WebSocketSubscriptionOptions::new(
+					std::num::NonZeroUsize::new(128).expect("non-zero test limit"),
+				),
+				|_| Ok(()),
+				move |_| {
+					callback_reads_for_callback.set(
+						callback_reads_for_callback.get() + observed_for_callback.get(),
+					);
+				},
+				|_| {},
+			);
+
+			let effect_runs_for_effect = Rc::clone(&effect_runs);
+			let handle_for_effect = handle.clone();
+			let _effect = crate::reactive::Effect::new(move || {
+				let _ = trigger.get();
+				effect_runs_for_effect.set(effect_runs_for_effect.get() + 1);
+				handle_for_effect.dispatch_for_test(&WebSocketMessage::Text("event".into()));
+			});
+
+			assert_eq!(effect_runs.get(), 1);
+			observed.set(7);
+			crate::reactive::runtime::with_runtime(|runtime| runtime.flush_updates());
+			assert_eq!(effect_runs.get(), 1);
+			assert_eq!(callback_reads.get(), 0);
+			trigger.set(1);
+			crate::reactive::runtime::with_runtime(|runtime| runtime.flush_updates());
+			assert_eq!(effect_runs.get(), 2);
+			assert_eq!(callback_reads.get(), 7);
+		});
 	}
 
 	#[test]

@@ -142,5 +142,7 @@ pub use state::{
 pub use sync::{SignalWithSubscription, SubscriptionHandle, use_sync_external_store};
 pub use transition::{TransitionState, use_deferred_value, use_transition};
 pub use websocket::{
-	ConnectionState, UseWebSocketOptions, WebSocketHandle, WebSocketMessage, use_websocket,
+	ConnectionState, UseWebSocketOptions, WebSocketEventError, WebSocketHandle,
+	WebSocketMessage, WebSocketSubscription, WebSocketSubscriptionOptions, use_websocket,
+	use_websocket_json_subscription, use_websocket_subscription,
 };

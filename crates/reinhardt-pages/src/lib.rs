@@ -1158,6 +1158,33 @@
 //!
 //! **Note**: WebSocket functionality is WASM-only. On the server side (SSR),
 //! `use_websocket` returns a no-op handle with connection state always set to `Closed`.
+//!
+//! For event sequences, use an owned typed subscription instead of treating
+//! `latest_message` as a delivery queue:
+//!
+//! ```ignore
+//! use reinhardt_pages::reactive::hooks::{
+//!     use_websocket, WebSocketEventError, WebSocketSubscriptionOptions,
+//! };
+//! use serde::Deserialize;
+//! use std::num::NonZeroUsize;
+//!
+//! #[derive(Deserialize)]
+//! struct DeploymentEvent { deployment_id: u64 }
+//!
+//! let socket = use_websocket("wss://example.invalid/events", Default::default());
+//! let _subscription = socket.subscribe_json(
+//!     WebSocketSubscriptionOptions::new(NonZeroUsize::new(16 * 1024).unwrap()),
+//!     |event: DeploymentEvent| invalidate_deployment(event.deployment_id),
+//!     |error: WebSocketEventError| record_realtime_error(error),
+//! );
+//! ```
+//!
+//! The subscription guard owns delivery. Equal consecutive events remain
+//! observable, malformed frames report a safe category and do not stop later
+//! frames, and native/SSR subscriptions remain inert. Reconnection requires
+//! application-owned resubscription and authoritative reconciliation; a live
+//! socket alone does not prove synchronized query or log state.
 
 #![warn(missing_docs)]
 
