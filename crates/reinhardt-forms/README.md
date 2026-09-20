@@ -24,6 +24,8 @@ update primitive. `target` accepts existing `IntoPrimaryKey` conversions.
 Only submitted, allowlisted fields are written. Omission preserves existing
 values; explicit null clears nullable columns; false, zero, and permitted empty
 strings remain assignments. Empty patches return `PatchError::EmptyPatch`.
+Explicit null is rejected before field cleaning when `null = false`, including
+`Option<T>` fields with a create default or `blank = true`.
 Authorization and same-field concurrency predicates belong to the caller.
 
 See the [model-form update guide](../reinhardt-pages/docs/model_forms.md#validated-patches-on-scoped-querysets)

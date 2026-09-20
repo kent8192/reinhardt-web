@@ -112,6 +112,21 @@ pub(super) fn payload_patch(
 				if #needs_context && existing.is_none() {
 					return ::core::result::Result::Err(#core::model_form::PatchValidationError::ExistingValuesRequired);
 				}
+				// Enforce nullability before target-specific cleaners can coerce null.
+				let mut errors = #core::validators::ValidationErrors::new();
+				for descriptor in <#schema as #core::model_form::ModelFormSchema>::fields() {
+					if descriptor.editable
+						&& P::allows(descriptor.name)
+						&& !descriptor.nullable
+						&& <Self as #core::model_form::ModelFormPayload<P>>::get_json(&self, descriptor.name)
+							.is_some_and(|value| value.is_null())
+					{
+						errors.add(descriptor.name, #core::validators::ValidationError::Custom("This field may not be null.".to_owned()));
+					}
+				}
+				if !errors.is_empty() {
+					return ::core::result::Result::Err(errors.into());
+				}
 				let cleaned = self.__reinhardt_clean_patch()?;
 				#validate_blank_fields
 				#validate_context
