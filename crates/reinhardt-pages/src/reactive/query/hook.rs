@@ -118,7 +118,9 @@ impl<T: Clone + 'static, E: Clone + 'static> QueryHandle<T, E> {
 	/// age-based freshness and normalization recovery state. The flag remains
 	/// set when an older request publishes provisional data after a newer
 	/// invalidation and clears only when a completion covers the latest
-	/// invalidation generation.
+	/// invalidation generation. Hydration staleness alone does not set this flag.
+	///
+	/// Parity: P2. Native and WASM observers expose the same reactive state.
 	pub fn is_invalidated(&self) -> bool {
 		self.entry.is_invalidated()
 	}

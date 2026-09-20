@@ -3374,7 +3374,10 @@ impl QueryClient {
 				.replace_reverse_dependencies(dependent, &HashSet::new(), &next);
 		}
 		entry.refetch_error.set(snapshot.refetch_error);
-		entry.invalidated.set(snapshot.is_stale);
+		// Hydration staleness requires a refresh but is not a client invalidation.
+		if snapshot.is_stale {
+			entry.last_fetched_ms.set(None);
+		}
 		self.inner
 			.entries
 			.borrow_mut()

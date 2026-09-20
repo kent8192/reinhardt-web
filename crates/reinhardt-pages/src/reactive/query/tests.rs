@@ -1914,7 +1914,7 @@ fn invalidation_notifies_a_disabled_observer_of_staleness() {
 	});
 }
 
-#[test]
+#[rstest]
 fn realtime_invalidation_waits_for_the_follow_up() {
 	ReactiveScope::run(|| {
 		let runtime = TestQueryRuntime::new();
@@ -1970,7 +1970,7 @@ fn realtime_invalidation_waits_for_the_follow_up() {
 	});
 }
 
-#[test]
+#[rstest]
 fn disabled_realtime_observer_stays_stale_without_starting_a_request() {
 	let runtime = TestQueryRuntime::new();
 	let client = QueryClient::with_runtime(QueryDefaults::default(), runtime.handle());
@@ -1997,7 +1997,7 @@ fn disabled_realtime_observer_stays_stale_without_starting_a_request() {
 	assert!(disabled.is_invalidated());
 }
 
-#[test]
+#[rstest]
 fn zero_stale_time_does_not_report_unresolved_realtime_invalidation() {
 	let runtime = TestQueryRuntime::new();
 	let client = QueryClient::with_runtime(QueryDefaults::default(), runtime.handle());
@@ -2013,7 +2013,7 @@ fn zero_stale_time_does_not_report_unresolved_realtime_invalidation() {
 	assert!(!query.is_invalidated());
 }
 
-#[test]
+#[rstest]
 fn failed_realtime_refetch_is_degraded_without_pending_invalidation() {
 	let runtime = TestQueryRuntime::new();
 	let client = QueryClient::with_runtime(QueryDefaults::default(), runtime.handle());
@@ -2048,7 +2048,7 @@ fn failed_realtime_refetch_is_degraded_without_pending_invalidation() {
 	assert!(!query.is_invalidated());
 }
 
-#[test]
+#[rstest]
 fn realtime_family_invalidation_does_not_cross_family_boundaries() {
 	let runtime = TestQueryRuntime::new();
 	let client = QueryClient::with_runtime(QueryDefaults::default(), runtime.handle());
@@ -2070,7 +2070,7 @@ fn realtime_family_invalidation_does_not_cross_family_boundaries() {
 	assert!(!user.is_invalidated());
 }
 
-#[test]
+#[rstest]
 fn removing_a_realtime_family_clears_invalidated_state() {
 	let runtime = TestQueryRuntime::new();
 	let client = QueryClient::with_runtime(QueryDefaults::default(), runtime.handle());
@@ -3729,6 +3729,46 @@ mod normalized_hydration {
 			.cloned()
 			.or_else(|| panic.downcast_ref::<&str>().map(ToString::to_string))
 			.expect("hydration validation should panic with a string")
+	}
+
+	#[rstest]
+	#[case::fresh(false)]
+	#[case::stale(true)]
+	fn hydration_staleness_does_not_create_an_invalidation(#[case] stale: bool) {
+		ReactiveScope::run(|| {
+			// Arrange: a disabled observer must retain stale hydrated data without fetching.
+			let runtime = TestQueryRuntime::new();
+			let client = QueryClient::with_runtime(QueryDefaults::default(), runtime.handle());
+			let descriptor =
+				QueryFamily::<u64, Project, String>::new("tests.hydrated-invalidation")
+					.query(1, || async { Ok(project(7, "refreshed")) })
+					.with_entities(EntityValue::new());
+			let mut hydrated = snapshot(7);
+			hydrated["is_stale"] = serde_json::json!(stale);
+			let mut state = SsrState::new();
+			state.add_resource_state(ENTITY_TABLE_HYDRATION_ID, table(project(7, "hydrated")));
+			state.add_resource_state(descriptor.key().hydration_id(), hydrated);
+
+			// Act
+			HydrationContext::from_state(state)
+				.seed_query_descriptor(&client, &descriptor)
+				.unwrap();
+			let query = client.observe(descriptor.clone(), QueryOptions::new().enabled(false));
+
+			// Assert: only explicit invalidation enters the pending synchronization state.
+			assert_eq!(query.data(), Some(project(7, "hydrated")));
+			assert_eq!(query.is_stale(), stale);
+			assert!(!query.is_invalidated());
+			assert_eq!(runtime.pending_task_count(), 0);
+			client.invalidate(descriptor.key());
+			assert!(query.is_invalidated());
+			assert_eq!(runtime.pending_task_count(), 0);
+			query.refetch();
+			runtime.run_until_stalled();
+			assert_eq!(query.data(), Some(project(7, "refreshed")));
+			assert!(!query.is_invalidated());
+			assert!(!query.is_stale());
+		});
 	}
 
 	#[test]
