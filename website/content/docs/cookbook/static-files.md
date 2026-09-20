@@ -265,6 +265,32 @@ deterministically after rewriting. Source maps retain original source contents
 and remap generated positions through URL edits. Unsupported or unverifiable map
 transformations fail rather than publishing stale positions.
 
+`AssetPublisher::new(configured_static_root).publish(complete)` writes a private
+staging directory on the destination filesystem, flushes all files, promotes the
+complete `builds/<build-id>/` directory, and atomically replaces `manifest.json`
+last. The immutable directory contains an identical manifest. An OS file lock
+serializes publishers; a killed process releases the lock automatically. Reusing
+an existing ID requires that its manifest and every output still match. Atomic
+activation currently requires Unix filesystem rename semantics; unsupported
+platforms return an error before writing output.
+
+`ManifestSnapshot::load` verifies the manifest, complete inventory, expected mode,
+sizes, and digests. `SnapshotOptions::expected_build_id` additionally pins a
+deployment's required ID. `ManifestStore` holds the active and retained snapshots;
+clone `active()` once per request or select `generation(id)` for an old asset URL.
+`reload()` validates a candidate before swapping state, and a failed reload
+preserves the last-good snapshot. These readers are available with `staticfiles`
+without the packaging parsers.
+
+Retain the asset root across deployments. Activation never deletes old
+generations, so a page already using generation A can continue loading its assets
+after B activates. Rollback selects A's complete immutable manifest again. Choose
+a retention policy that accounts for open pages and deployed entry documents;
+replacing the entire asset volume loses that compatibility. Production and
+development publications must use different roots. Abandoned `.asset-staging-*`
+directories are reported and ignored, while incomplete or modified retained
+generations fail validation with a diagnostic.
+
 ## Development vs Production
 
 ### Development
