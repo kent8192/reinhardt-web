@@ -7,6 +7,8 @@ use std::num::NonZeroUsize;
 use std::rc::{Rc, Weak};
 
 /// Errors reported while decoding or delivering a typed WebSocket event.
+///
+/// Parity: P2. The same payload-free error variants are available on both targets.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum WebSocketEventError {
@@ -21,13 +23,17 @@ pub enum WebSocketEventError {
 }
 
 /// Limits applied before a typed subscription decodes a frame.
+///
+/// Parity: P2. Both targets represent the same nonzero frame-size limit.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct WebSocketSubscriptionOptions {
 	max_frame_bytes: NonZeroUsize,
 }
 
 impl WebSocketSubscriptionOptions {
-	/// Creates subscription options with a maximum UTF-8 frame size.
+	/// Creates subscription options with a maximum frame size in bytes.
+	///
+	/// Parity: P2. Both targets validate the limit through [`NonZeroUsize`].
 	pub const fn new(max_frame_bytes: NonZeroUsize) -> Self {
 		Self { max_frame_bytes }
 	}
@@ -61,6 +67,9 @@ struct SubscriptionEntry {
 ///
 /// Dropping the guard revokes delivery. The guard is intentionally not cloneable
 /// so that ownership of cleanup remains explicit.
+///
+/// Parity: P1. WASM owns browser event delivery; native/SSR owns inert local
+/// cleanup without opening a connection or invoking callbacks.
 #[must_use = "retain the subscription guard while events should be delivered"]
 pub struct WebSocketSubscription {
 	hub: Weak<EventHub>,

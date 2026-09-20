@@ -13,6 +13,17 @@ mod subscription;
 use subscription::EventHub;
 pub use subscription::{WebSocketEventError, WebSocketSubscription, WebSocketSubscriptionOptions};
 
+// Shared with native component tests so ownership is checked without browser transport.
+#[cfg(any(wasm, test))]
+fn receive_message(
+	latest_message: Signal<Option<WebSocketMessage>>,
+	event_hub: &EventHub,
+	message: WebSocketMessage,
+) {
+	event_hub.dispatch(&message);
+	let _ = latest_message.try_set(Some(message));
+}
+
 fn invoke_in_owner_scope<R>(
 	owner_scope: reinhardt_core::reactive::ScopeId,
 	callback: impl FnOnce() -> R,
@@ -190,9 +201,10 @@ impl WebSocketHandle {
 	///
 	/// The decoder and callbacks run untracked in the handle's live owner scope.
 	/// Disposing that scope prevents further decoding and callback delivery.
+	/// Delivery precedes replacing the [`Self::latest_message`] snapshot.
 	///
-	/// Native/SSR returns an inert guard because its transport never receives
-	/// browser frames.
+	/// Parity: P1. WASM dispatches browser frames. Native/SSR returns an inert
+	/// guard without opening a connection or delivering events.
 	pub fn subscribe<T, D, E, F>(
 		&self,
 		options: WebSocketSubscriptionOptions,
@@ -233,8 +245,8 @@ impl WebSocketHandle {
 
 	/// Subscribe to JSON text events without repeating deserialization boilerplate.
 	///
-	/// Native/SSR returns an inert guard because its transport never receives
-	/// browser frames.
+	/// Parity: P1. WASM decodes browser text frames. Native/SSR returns an inert
+	/// guard without opening a connection or delivering events.
 	pub fn subscribe_json<T, E, F>(
 		&self,
 		options: WebSocketSubscriptionOptions,
@@ -287,8 +299,29 @@ impl Clone for WebSocketHandle {
 
 /// Register a typed WebSocket subscription owned by the current reactive scope.
 ///
-/// Native/SSR registers cleanup but does not open a connection or invoke the
-/// callback.
+/// Parity: P1. WASM dispatches decoded browser frames. Native/SSR retains only
+/// local cleanup ownership without opening a connection or invoking callbacks.
+///
+/// ```no_run
+/// use reinhardt_pages::reactive::{ReactiveScope, hooks::{
+///     use_websocket, use_websocket_subscription, WebSocketSubscriptionOptions,
+///     WebSocketMessage, WebSocketEventError,
+/// }};
+///
+/// ReactiveScope::run(|| {
+///     let socket = use_websocket("wss://example.invalid/events", Default::default());
+///     use_websocket_subscription(
+///         &socket,
+///         WebSocketSubscriptionOptions::new(std::num::NonZeroUsize::new(4096).unwrap()),
+///         |frame| match frame {
+///             WebSocketMessage::Binary(bytes) => Ok(bytes.len()),
+///             _ => Err(WebSocketEventError::UnsupportedFrame),
+///         },
+///         |length| println!("Received {length} bytes"),
+///         |error| eprintln!("Event error: {error:?}"),
+///     );
+/// });
+/// ```
 pub fn use_websocket_subscription<T, D, E, F>(
 	handle: &WebSocketHandle,
 	options: WebSocketSubscriptionOptions,
@@ -311,8 +344,24 @@ pub fn use_websocket_subscription<T, D, E, F>(
 
 /// Register a JSON WebSocket subscription owned by the current reactive scope.
 ///
-/// Native/SSR registers cleanup but does not open a connection or invoke the
-/// callback.
+/// Parity: P1. WASM decodes browser text frames. Native/SSR retains only local
+/// cleanup ownership without opening a connection or invoking callbacks.
+///
+/// ```no_run
+/// use reinhardt_pages::reactive::{ReactiveScope, hooks::{
+///     use_websocket, use_websocket_json_subscription, WebSocketSubscriptionOptions,
+/// }};
+///
+/// ReactiveScope::run(|| {
+///     let socket = use_websocket("wss://example.invalid/events", Default::default());
+///     use_websocket_json_subscription(
+///         &socket,
+///         WebSocketSubscriptionOptions::new(std::num::NonZeroUsize::new(4096).unwrap()),
+///         |event: serde_json::Value| println!("Received {event}"),
+///         |error| eprintln!("Event error: {error:?}"),
+///     );
+/// });
+/// ```
 pub fn use_websocket_json_subscription<T, E, F>(
 	handle: &WebSocketHandle,
 	options: WebSocketSubscriptionOptions,
@@ -470,16 +519,14 @@ pub fn use_websocket(url: &str, options: UseWebSocketOptions) -> WebSocketHandle
 				if let Ok(txt) = e.data().dyn_into::<js_sys::JsString>() {
 					let text = txt.as_string().unwrap_or_default();
 					let message = WebSocketMessage::Text(text);
-					let _ = latest_message_recv.try_set(Some(message.clone()));
-					event_hub_recv.dispatch(&message);
+					receive_message(latest_message_recv, &event_hub_recv, message);
 				}
 				// Try binary message (ArrayBuffer)
 				else if let Ok(array_buffer) = e.data().dyn_into::<js_sys::ArrayBuffer>() {
 					let array = js_sys::Uint8Array::new(&array_buffer);
 					let vec = array.to_vec();
 					let message = WebSocketMessage::Binary(vec);
-					let _ = latest_message_recv.try_set(Some(message.clone()));
-					event_hub_recv.dispatch(&message);
+					receive_message(latest_message_recv, &event_hub_recv, message);
 				}
 			}) as Box<dyn FnMut(MessageEvent)>);
 			ws.set_onmessage(Some(onmessage.as_ref().unchecked_ref()));
@@ -675,6 +722,46 @@ mod tests {
 		assert!(!handle.is_open());
 		assert_eq!(handle.current_connection_state(), ConnectionState::Closed);
 		assert_eq!(handle.current_message(), None);
+	}
+
+	#[rstest]
+	#[case::text(WebSocketMessage::Text("payload".to_owned()))]
+	#[case::binary(WebSocketMessage::Binary(vec![1, 2, 3]))]
+	#[cfg(native)]
+	fn received_frame_moves_into_snapshot_after_delivery(
+		#[case] frame: WebSocketMessage,
+		#[values(false, true)] with_subscriber: bool,
+	) {
+		// Arrange
+		fn payload_pointer(frame: &WebSocketMessage) -> *const u8 {
+			match frame {
+				WebSocketMessage::Text(text) => text.as_ptr(),
+				WebSocketMessage::Binary(bytes) => bytes.as_ptr(),
+			}
+		}
+		ReactiveScope::run(|| {
+			let latest = Signal::new(None);
+			let hub = EventHub::new();
+			let received_pointer = payload_pointer(&frame);
+			let deliveries = Rc::new(Cell::new(0));
+			let deliveries_in_callback = Rc::clone(&deliveries);
+			let _guard = with_subscriber.then(|| {
+				hub.subscribe(Rc::new(move |message| {
+					assert_eq!(payload_pointer(message), received_pointer);
+					latest.with_untracked(|value| assert!(value.is_none()));
+					deliveries_in_callback.set(deliveries_in_callback.get() + 1);
+				}))
+			});
+
+			// Act
+			receive_message(latest, &hub, frame);
+
+			// Assert: the legacy snapshot owns the original allocation, even without subscribers.
+			assert_eq!(deliveries.get(), usize::from(with_subscriber));
+			latest.with_untracked(|value| {
+				assert_eq!(payload_pointer(value.as_ref().unwrap()), received_pointer);
+			});
+		});
 	}
 
 	#[rstest]

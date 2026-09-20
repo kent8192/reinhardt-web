@@ -75,6 +75,8 @@ revokes delivery. `use_websocket_json_subscription` stores that guard in the
 current reactive scope and disposes it with the scope. Custom decoders and
 callbacks run untracked in the handle's live owner scope; disposing that scope
 also prevents decoding through a retained raw subscription guard.
+After synchronous delivery, the received frame moves into `latest_message`
+without an additional payload copy.
 
 ```rust,ignore
 use reinhardt_pages::reactive::hooks::{
