@@ -15,6 +15,9 @@ use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 
+#[cfg(all(test, unix))]
+type CheckpointHook = dyn Fn(Checkpoint) -> Result<(), AssetBuildError> + Send + Sync;
+
 /// Publish under a configured static root without removing older generations (P0).
 ///
 /// Publication is supported on Unix filesystems with atomic same-filesystem rename
@@ -23,7 +26,7 @@ use std::path::PathBuf;
 pub struct AssetPublisher {
 	root: PathBuf,
 	#[cfg(all(test, unix))]
-	checkpoint: Option<Box<dyn Fn(Checkpoint) -> Result<(), AssetBuildError> + Send + Sync>>,
+	checkpoint: Option<Box<CheckpointHook>>,
 }
 
 impl AssetPublisher {
@@ -133,20 +136,14 @@ impl AssetPublisher {
 			.map_err(|e| AssetBuildError::io(root.join("builds"), e))?
 		{
 			let entry = entry.map_err(|e| AssetBuildError::io(root.join("builds"), e))?;
-			let bytes = builds
-				.read(PathBuf::from(entry.file_name()).join("manifest.json"))
-				.map_err(|e| AssetBuildError::io(root.join("builds").join(entry.file_name()), e))?;
-			let DecodedAssetManifest::V2(existing) = decode_manifest(&bytes)? else {
-				return Err(AssetBuildError::manifest(
-					"retained generation uses a legacy manifest",
-				));
-			};
-			if existing.mode != mode {
-				return Err(AssetBuildError::ModeMismatch {
-					expected: mode,
-					observed: existing.mode,
-				});
-			}
+			let id = entry
+				.file_name()
+				.into_string()
+				.map_err(|_| AssetBuildError::manifest("retained generation name must be UTF-8"))?;
+			let options = SnapshotOptions::for_mode(mode)
+				.manifest_path(PathBuf::from("builds").join(&id).join("manifest.json"))
+				.expected_build_id(id);
+			ManifestSnapshot::load(&root, &options)?;
 		}
 		let generation = format!("builds/{}", manifest.build_id);
 		let generation_manifest = PathBuf::from(&generation).join("manifest.json");

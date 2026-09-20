@@ -143,3 +143,45 @@ fn publication_uses_captured_bytes_when_source_overlaps_output_root() {
 		b"changed after capture"
 	);
 }
+
+#[rstest]
+#[case(false)]
+#[case(true)]
+fn corrupt_retained_generation_cannot_activate_new_output(#[case] missing: bool) {
+	// Arrange
+	let root = tempfile::tempdir().unwrap();
+	let publisher = AssetPublisher::new(root.path().into());
+	let retained = publisher
+		.publish(prepare(b"old", AssetMode::Production))
+		.unwrap();
+	let active = publisher
+		.publish(prepare(b"current", AssetMode::Production))
+		.unwrap();
+	let pointer = std::fs::read(root.path().join("manifest.json")).unwrap();
+	let path = root.path().join(&retained.manifest().paths["a.txt"]);
+	if missing {
+		std::fs::remove_file(path).unwrap();
+	} else {
+		std::fs::write(path, b"bad").unwrap();
+	}
+	let next = prepare(b"next", AssetMode::Production);
+	let next_dir = root
+		.path()
+		.join(format!("builds/{}", next.manifest().build_id));
+	// Act
+	let result = publisher.publish(next);
+	// Assert
+	assert!(result.is_err());
+	assert_eq!(
+		std::fs::read(root.path().join("manifest.json")).unwrap(),
+		pointer
+	);
+	assert_eq!(
+		ManifestSnapshot::load(root.path(), &SnapshotOptions::production())
+			.unwrap()
+			.manifest()
+			.build_id,
+		active.manifest().build_id
+	);
+	assert!(!next_dir.exists());
+}
