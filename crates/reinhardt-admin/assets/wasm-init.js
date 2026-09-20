@@ -9,7 +9,8 @@
 const scriptEl = document.querySelector('script[data-wasm-entry]');
 const entryUrl = scriptEl?.dataset.wasmEntry;
 if (entryUrl) {
-	const { default: init } = await import(entryUrl);
+	// Resolve against the document, independently of this script's published location.
+	const { default: init } = await import(new URL(entryUrl, document.baseURI).href);
 	await init();
 } else {
 	console.error('reinhardt-admin: missing data-wasm-entry attribute on init script');

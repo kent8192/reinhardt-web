@@ -258,3 +258,34 @@ fn parameterized_css_mime_still_rewrites_dependencies() {
 	let css = String::from_utf8(packed.read_asset("theme.css").unwrap()).unwrap();
 	assert!(css.contains("../vectors/logo.svg"), "{css}");
 }
+
+#[rstest]
+fn explicit_document_relative_runtime_import_survives_relocation() {
+	// Arrange
+	let source = b"const entry = document.querySelector('script').dataset.wasmEntry; await import(new URL(entry, document.baseURI).href);";
+	let pipeline = pipeline(&[("runtime.js", source)]);
+	// Act
+	let packed = pipeline.prepare(AssetMode::Production).unwrap();
+	// Assert
+	assert_eq!(packed.read_asset("runtime.js").unwrap(), source);
+	assert_eq!(
+		packed.manifest().assets["runtime.js"].dependencies,
+		Vec::<String>::new()
+	);
+}
+
+#[rstest]
+#[case("await import(entry);")]
+#[case("await import(new URL(entry, import.meta.url).href);")]
+#[case("await import(new URL(entry, base).href);")]
+fn computed_module_relative_imports_still_fail(#[case] source: &str) {
+	// Arrange
+	let pipeline = pipeline(&[("runtime.js", source.as_bytes())]);
+	// Act
+	let result = pipeline.prepare(AssetMode::Production);
+	// Assert
+	assert!(matches!(
+		result,
+		Err(reinhardt_utils::staticfiles::publication::AssetBuildError::Input { .. })
+	));
+}

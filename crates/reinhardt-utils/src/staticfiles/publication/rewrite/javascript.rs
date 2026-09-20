@@ -106,7 +106,7 @@ impl<'a> Visit<'a> for References<'_> {
 	fn visit_import_expression(&mut self, node: &ImportExpression<'a>) {
 		if let Expression::StringLiteral(value) = &node.source {
 			self.literal(value.value.as_str(), value.span, true);
-		} else {
+		} else if !document_absolute_url(&node.source) {
 			self.fail(
 				node.span,
 				"computed dynamic import cannot be relocated automatically",
@@ -138,4 +138,21 @@ impl<'a> Visit<'a> for References<'_> {
 		}
 		walk::walk_call_expression(self, node);
 	}
+}
+
+// Explicit document-relative runtime URLs are independent of the module's
+// publication path. Keep rejecting computed module-relative dependencies.
+fn document_absolute_url(expression: &Expression<'_>) -> bool {
+	let Expression::StaticMemberExpression(member) = expression else {
+		return false;
+	};
+	let Expression::NewExpression(url) = &member.object else {
+		return false;
+	};
+	member.property.name == "href"
+		&& matches!(&url.callee, Expression::Identifier(name) if name.name == "URL")
+		&& url.arguments.len() == 2
+		&& matches!(&url.arguments[1], Argument::StaticMemberExpression(base)
+            if base.property.name == "baseURI"
+            && matches!(&base.object, Expression::Identifier(name) if name.name == "document"))
 }
