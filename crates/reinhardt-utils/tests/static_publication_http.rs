@@ -798,3 +798,84 @@ async fn static_mount_precedes_overlapping_passthrough(
 	assert_eq!(routed.body.as_ref(), b"navigation-probe");
 	assert_eq!(probe.call_count(), 1);
 }
+
+#[rstest]
+#[case(vec![], true)]
+#[case(vec!["base.css"], true)]
+#[case(vec!["base.css", "overrides.css"], true)]
+#[case(vec!["overrides.css"], false)]
+#[case(vec!["overrides.css", "base.css"], false)]
+fn template_styles_preserve_declared_cascade(#[case] links: Vec<&str>, #[case] valid: bool) {
+	// Arrange
+	let root = tempfile::tempdir().unwrap();
+	let mut pipeline = AssetPipeline::new();
+	for (name, bytes) in [
+		(
+			"app.js",
+			&b"export const wasm=new URL('app.wasm',import.meta.url);"[..],
+		),
+		("app.wasm", b"\0asm\x01\0\0\0"),
+		("base.css", b"body{color:red}"),
+		("overrides.css", b"body{color:blue}"),
+	] {
+		pipeline
+			.add_input(AssetInput::bytes(name, bytes.to_vec()).with_producer(
+				if name.ends_with(".js") || name.ends_with(".wasm") {
+					AssetProducer::Pages
+				} else {
+					AssetProducer::Static
+				},
+			))
+			.unwrap();
+	}
+	let tags = links
+		.iter()
+		.map(|name| format!("<link rel=\"stylesheet\" href=\"{name}\">"))
+		.collect::<String>();
+	pipeline
+		.add_input(
+			AssetInput::bytes(
+				"index.html",
+				format!("<html><head>{tags}</head><body></body></html>").into_bytes(),
+			)
+			.with_role(AssetRole::EntryDocument),
+		)
+		.unwrap();
+	pipeline
+		.set_entrypoint(
+			"app",
+			PagesEntrypoint {
+				javascript: "app.js".into(),
+				wasm: "app.wasm".into(),
+				styles: vec!["base.css".into(), "overrides.css".into()],
+				document: Some("index.html".into()),
+			},
+		)
+		.unwrap();
+	// Act
+	let result = pipeline.prepare(AssetMode::Production);
+	// Assert
+	if valid {
+		let snapshot = AssetPublisher::new(root.path().into())
+			.publish(result.unwrap())
+			.unwrap();
+		let template = String::from_utf8(snapshot.read_asset("index.html").unwrap()).unwrap();
+		let html = reinhardt_utils::staticfiles::publication::render_entry_document(
+			&snapshot, "/static/", "app", &template,
+		)
+		.unwrap();
+		let projection = snapshot.url_snapshot("/static/").unwrap();
+		let base = projection.resolve("base.css").unwrap();
+		let overrides = projection.resolve("overrides.css").unwrap();
+		let base_link = format!("<link rel=\"stylesheet\" href=\"{base}\">");
+		let override_link = format!("<link rel=\"stylesheet\" href=\"{overrides}\">");
+		assert_eq!(html.matches(&base_link).count(), 1);
+		assert_eq!(html.matches(&override_link).count(), 1);
+		assert!(html.find(&base_link).unwrap() < html.find(&override_link).unwrap());
+	} else {
+		assert_eq!(
+			result.unwrap_err().to_string(),
+			"invalid static asset manifest: entrypoint \"app\" template stylesheet links must form a prefix of its declared cascade order before the styles slot; include all styles in order or leave them for injection"
+		);
+	}
+}

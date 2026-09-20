@@ -301,6 +301,31 @@ pub(super) fn validate_manifest(manifest: &AssetManifestV2) -> Result<(), AssetB
 					"entrypoint {name:?} has invalid document {logical:?}"
 				)));
 			}
+			let program = record
+				.document
+				.as_ref()
+				.expect("validated document program");
+			let linked: Vec<_> = program
+				.styles
+				.iter()
+				.filter(|style| entry.styles.contains(style))
+				.cloned()
+				.collect();
+			let styles_slot = program
+				.chunks
+				.iter()
+				.position(|chunk| matches!(chunk, super::DocumentChunk::Styles))
+				.expect("validated styles slot");
+			if !entry.styles.starts_with(&linked)
+				|| (linked.len() < entry.styles.len()
+					&& program.chunks[styles_slot + 1..].iter().any(|chunk| {
+						matches!(chunk, super::DocumentChunk::Asset { logical, .. } if linked.contains(logical))
+					}))
+			{
+				return Err(invalid(format!(
+					"entrypoint {name:?} template stylesheet links must form a prefix of its declared cascade order before the styles slot; include all styles in order or leave them for injection"
+				)));
+			}
 		}
 	}
 	Ok(())
