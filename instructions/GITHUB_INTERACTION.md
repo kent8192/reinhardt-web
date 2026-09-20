@@ -2,7 +2,9 @@
 
 ## Purpose
 
-This file defines the policy for coding agents to participate in GitHub discussions on existing pull requests and issues in the Reinhardt project. These rules ensure appropriate authorization, consistent formatting, and useful technical context when commenting on PRs and Issues.
+This file defines authorization and content requirements for GitHub publication,
+including Issue/PR creation, body edits, comments, replies, and reviews. External
+destinations require the policy and authorization checks in PP-0 before posting.
 
 ---
 
@@ -23,9 +25,82 @@ This file defines the policy for coding agents to participate in GitHub discussi
 
 ## Posting Policy
 
+### PP-0 (MUST): External Publication
+
+Resolve the actual destination host and full repository name before each
+publication. The exact Reinhardt-family repositories listed in
+[COMMIT_GUIDELINE.md CE-1](COMMIT_GUIDELINE.md#ce-1-must-execution-authorization)
+use their existing authorization rules. All other destinations are external,
+regardless of the current checkout, tool, credentials, or dependency relationship.
+
+For external Issue/PR creation, body edits, comments, replies, or reviews:
+
+1. Read the destination's current contribution guidelines, applicable template,
+   and AI/LLM policy, including policies linked from them. Check which repository,
+   team, and contribution type the policy covers; an organization name alone
+   does not establish its scope.
+2. Record the policy URLs, access date, relevant conditions, and applicability
+   in the private task evidence. Establish whether the proposed authorship and
+   posting method are permitted. Missing, inaccessible, ambiguous, or unchecked
+   rules do not establish permission; keep publication blocked and continue
+   local investigation or internal tracking.
+3. If permitted, prepare the exact destination, action, title/body or reply, and
+   required disclosures for review. Obtain explicit authorization covering that
+   concrete publication. A general implementation, CI-repair, or upstream-fix
+   request is insufficient. An approved plan qualifies only if it includes the
+   concrete publication. Reuse authorization only while its destination, action,
+   content, and applicable policy remain unchanged.
+4. Immediately before sending, verify those conditions still hold and that the
+   actual tool destination matches the reviewed destination. After sending,
+   read back the result and report its URL.
+
+The destination's restrictions remain binding even with user authorization.
+Attribution is disclosure, not permission. If generated prose or autonomous
+submission is prohibited, provide private factual investigation materials and
+leave authorship/submission to the human contributor as the policy requires.
+Do not generate a replacement apology or report for prohibited publication,
+hide AI involvement, or treat lightly edited generated text as human-originated.
+Apply any translation or quotation exception only on its stated terms.
+
+For example, consult the [Rust LLM policy](https://forge.rust-lang.org/policies/llm-usage.html)
+for its adopted repositories and teams. Separately consult
+[rust-analyzer's AI policy](https://github.com/rust-lang/rust-analyzer/blob/master/AI_POLICY.md):
+it requires issues in the contributor's own words and prohibits autonomous
+agents from opening issues or PRs. Recheck live policy rather than treating
+these examples as a permanent allowlist or a rule for all `rust-lang` repositories.
+
+The same checks apply to MCP, `gh`, `gh api`, scripts, and any fallback. Changing
+tools never grants permission. Internal English/attribution templates apply
+only where the destination permits the proposed contribution.
+
+#### Runtime enforcement
+
+These instructions guide behavior; they do not restrict credentials. For a
+deployment that must block external writes independently of agent compliance:
+
+- Use credentials or a GitHub App whose write access is restricted to an explicit
+  repository allowlist, with read-only access for external investigation.
+- Apply the restriction to every connector and CLI/API route. Run in an isolated
+  environment without access to unrestricted personal credentials, host login
+  sessions, or browser sessions that could bypass it.
+- Deny external writes at the authorization boundary. A shell wrapper or a
+  confirmation sentence alone is not a complete enforcement mechanism.
+- Configure this separately through the operator; repository documentation does
+  not install it. Do not silently modify personal authentication/configuration.
+
+Validate enforcement in a controlled environment using dry-run authorization
+checks or a mock destination, never by submitting test content to an upstream
+project. Cover an external target selected from a family checkout, MCP and
+CLI/API routes, a missing policy, forbidden generated content despite approval,
+and changed content or destination after approval. Report actual enforcement
+results separately from document review; do not claim writes are technically
+blocked until the runtime restrictions have been installed and tested.
+
 ### PP-1 (MUST): Posting Authorization Flow
 
-The agent MUST follow this authorization model before posting any comment:
+The agent MUST follow this authorization model for comments in Reinhardt-family
+destinations. External publication must first satisfy PP-0; this table and its
+diagram do not bypass that requirement.
 
 | Authorization Source | Action |
 |---------------------|--------|
@@ -47,7 +122,7 @@ covers only the interactions it actually approves.
 
 **Important Notes:**
 - Commit/push permission alone does not authorize comments
-- "Post directly" still means using proper tools (PP-3), not bypassing quality standards
+- "Post directly" still requires the applicable destination policy, PP-0, and PP-3
 - Check the current task and prior authorization before asking. If permission is
   still missing, prepare the exact comment and target before requesting it.
 
