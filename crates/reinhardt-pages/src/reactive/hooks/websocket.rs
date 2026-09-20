@@ -13,20 +13,23 @@ mod subscription;
 use subscription::EventHub;
 pub use subscription::{WebSocketEventError, WebSocketSubscription, WebSocketSubscriptionOptions};
 
-fn invoke_in_owner_scope(owner_scope: reinhardt_core::reactive::ScopeId, callback: impl FnOnce()) {
-	let _ = reinhardt_core::reactive::scope::enter_scope(owner_scope, callback);
+fn invoke_in_owner_scope<R>(
+	owner_scope: reinhardt_core::reactive::ScopeId,
+	callback: impl FnOnce() -> R,
+) -> Option<R> {
+	reinhardt_core::reactive::scope::enter_scope(owner_scope, callback).ok()
 }
 
-fn invoke_subscription_callback(
+fn invoke_subscription_callback<R>(
 	owner_scope: Option<reinhardt_core::reactive::ScopeId>,
-	callback: impl FnOnce(),
-) {
+	callback: impl FnOnce() -> R,
+) -> Option<R> {
 	if let Some(owner_scope) = owner_scope {
 		invoke_in_owner_scope(owner_scope, || {
 			reinhardt_core::reactive::untracked(callback)
-		});
+		})
 	} else {
-		reinhardt_core::reactive::untracked(callback);
+		Some(reinhardt_core::reactive::untracked(callback))
 	}
 }
 
@@ -185,6 +188,9 @@ impl WebSocketHandle {
 
 	/// Subscribe to decoded WebSocket events.
 	///
+	/// The decoder and callbacks run untracked in the handle's live owner scope.
+	/// Disposing that scope prevents further decoding and callback delivery.
+	///
 	/// Native/SSR returns an inert guard because its transport never receives
 	/// browser frames.
 	pub fn subscribe<T, D, E, F>(
@@ -205,19 +211,21 @@ impl WebSocketHandle {
 		let on_error = Rc::new(on_error);
 		self.event_hub.subscribe_typed(
 			options,
-			decode,
+			move |frame| invoke_subscription_callback(owner_scope, || decode(frame)).transpose(),
 			{
 				let on_event = Rc::clone(&on_event);
 				move |value| {
-					let on_event = Rc::clone(&on_event);
-					invoke_subscription_callback(owner_scope, move || on_event(value));
+					if let Some(value) = value {
+						let on_event = Rc::clone(&on_event);
+						let _ = invoke_subscription_callback(owner_scope, move || on_event(value));
+					}
 				}
 			},
 			{
 				let on_error = Rc::clone(&on_error);
 				move |error| {
 					let on_error = Rc::clone(&on_error);
-					invoke_subscription_callback(owner_scope, move || on_error(error));
+					let _ = invoke_subscription_callback(owner_scope, move || on_error(error));
 				}
 			},
 		)
@@ -449,7 +457,7 @@ pub fn use_websocket(url: &str, options: UseWebSocketOptions) -> WebSocketHandle
 					return;
 				}
 				if let Some(cb) = &on_open_cb {
-					invoke_in_owner_scope(owner_scope, || cb());
+					let _ = invoke_in_owner_scope(owner_scope, || cb());
 				}
 			}) as Box<dyn FnMut(JsValue)>);
 			ws.set_onopen(Some(onopen.as_ref().unchecked_ref()));
@@ -487,7 +495,7 @@ pub fn use_websocket(url: &str, options: UseWebSocketOptions) -> WebSocketHandle
 					return;
 				}
 				if let Some(cb) = &on_close_cb {
-					invoke_in_owner_scope(owner_scope, || cb());
+					let _ = invoke_in_owner_scope(owner_scope, || cb());
 				}
 			}) as Box<dyn FnMut(CloseEvent)>);
 			ws.set_onclose(Some(onclose.as_ref().unchecked_ref()));
@@ -506,7 +514,7 @@ pub fn use_websocket(url: &str, options: UseWebSocketOptions) -> WebSocketHandle
 				}
 				event_hub_error.dispatch_error(WebSocketEventError::Transport);
 				if let Some(cb) = &on_error_cb {
-					invoke_in_owner_scope(owner_scope, || cb(error_msg));
+					let _ = invoke_in_owner_scope(owner_scope, || cb(error_msg));
 				}
 			}) as Box<dyn FnMut(ErrorEvent)>);
 			ws.set_onerror(Some(onerror.as_ref().unchecked_ref()));
@@ -601,6 +609,8 @@ mod tests {
 	#[cfg(native)]
 	use crate::reactive::ReactiveScope;
 	#[cfg(native)]
+	use rstest::rstest;
+	#[cfg(native)]
 	use serde::Deserialize;
 	#[cfg(native)]
 	use std::cell::Cell;
@@ -623,7 +633,7 @@ mod tests {
 		let callback_ran = Rc::new(Cell::new(false));
 		let callback_ran_for_callback = Rc::clone(&callback_ran);
 
-		invoke_in_owner_scope(scope.id(), move || {
+		let _ = invoke_in_owner_scope(scope.id(), move || {
 			let signal = Signal::new(42_i32);
 			assert_eq!(signal.get(), 42);
 			callback_ran_for_callback.set(true);
@@ -667,7 +677,7 @@ mod tests {
 		assert_eq!(handle.current_message(), None);
 	}
 
-	#[test]
+	#[rstest]
 	#[cfg(native)]
 	fn typed_handle_subscription_delivers_in_owner_scope() {
 		ReactiveScope::run(|| {
@@ -692,7 +702,7 @@ mod tests {
 		});
 	}
 
-	#[test]
+	#[rstest]
 	#[cfg(native)]
 	fn raw_subscription_outside_scope_is_guard_owned() {
 		let owner = ReactiveScope::new();
@@ -715,7 +725,7 @@ mod tests {
 		owner.dispose();
 	}
 
-	#[test]
+	#[rstest]
 	#[cfg(native)]
 	fn scoped_typed_subscription_is_revoked_with_owner() {
 		let scope = ReactiveScope::new();
@@ -740,7 +750,7 @@ mod tests {
 		assert_eq!(calls.get(), 0);
 	}
 
-	#[test]
+	#[rstest]
 	#[cfg(native)]
 	fn typed_subscription_reports_transport_category_without_payload() {
 		ReactiveScope::run(|| {
@@ -759,7 +769,7 @@ mod tests {
 		});
 	}
 
-	#[test]
+	#[rstest]
 	#[cfg(native)]
 	fn typed_callback_reads_do_not_subscribe_the_dispatching_effect() {
 		ReactiveScope::run(|| {
@@ -774,7 +784,7 @@ mod tests {
 				WebSocketSubscriptionOptions::new(
 					std::num::NonZeroUsize::new(128).expect("non-zero test limit"),
 				),
-				|_| Ok(()),
+				move |_| Ok(observed.get()),
 				move |_| {
 					callback_reads_for_callback
 						.set(callback_reads_for_callback.get() + observed_for_callback.get());
@@ -800,6 +810,36 @@ mod tests {
 			assert_eq!(effect_runs.get(), 2);
 			assert_eq!(callback_reads.get(), 7);
 		});
+	}
+
+	#[rstest]
+	#[cfg(native)]
+	fn custom_decoder_uses_owner_scope_and_stops_after_disposal() {
+		// Arrange: keep the raw subscription alive beyond its owner scope.
+		let owner = ReactiveScope::new();
+		let owner_id = owner.id();
+		let handle = owner.enter(|| use_websocket("ignored", UseWebSocketOptions::default()));
+		let decoded = Rc::new(Cell::new(0));
+		let delivered = Rc::new(Cell::new(0));
+		let decoded_in_callback = Rc::clone(&decoded);
+		let delivered_in_callback = Rc::clone(&delivered);
+		let _guard = handle.subscribe(
+			WebSocketSubscriptionOptions::new(std::num::NonZeroUsize::new(128).unwrap()),
+			move |_| {
+				assert_eq!(reinhardt_core::reactive::scope::active_scope_id(), owner_id);
+				decoded_in_callback.set(decoded_in_callback.get() + 1);
+				Ok(())
+			},
+			move |_| delivered_in_callback.set(delivered_in_callback.get() + 1),
+			|error| panic!("unexpected decoding failure: {error:?}"),
+		);
+
+		// Act and assert: dispatch outside any scope must reenter the owner.
+		handle.dispatch_for_test(&WebSocketMessage::Text("event".into()));
+		assert_eq!((decoded.get(), delivered.get()), (1, 1));
+		owner.dispose();
+		handle.dispatch_for_test(&WebSocketMessage::Text("event".into()));
+		assert_eq!((decoded.get(), delivered.get()), (1, 1));
 	}
 
 	#[test]

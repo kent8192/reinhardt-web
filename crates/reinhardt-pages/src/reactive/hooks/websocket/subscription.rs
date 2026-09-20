@@ -201,6 +201,7 @@ impl Drop for WebSocketSubscription {
 mod tests {
 	use super::*;
 	use crate::reactive::ReactiveScope;
+	use rstest::rstest;
 	use serde::Deserialize;
 	use std::cell::{Cell, RefCell};
 	use std::rc::Rc;
@@ -226,7 +227,7 @@ mod tests {
 		});
 	}
 
-	#[test]
+	#[rstest]
 	fn dropping_the_current_guard_stops_later_frames() {
 		let hub = EventHub::new();
 		let calls = Rc::new(Cell::new(0));
@@ -245,7 +246,7 @@ mod tests {
 		assert_eq!(calls.get(), 1);
 	}
 
-	#[test]
+	#[rstest]
 	fn dropping_the_next_guard_prevents_its_turn() {
 		let hub = EventHub::new();
 		let calls = Rc::new(RefCell::new(Vec::new()));
@@ -269,7 +270,7 @@ mod tests {
 		drop(first);
 	}
 
-	#[test]
+	#[rstest]
 	fn subscriber_added_during_dispatch_starts_on_the_next_frame() {
 		let hub = EventHub::new();
 		let calls = Rc::new(RefCell::new(Vec::new()));
@@ -298,7 +299,7 @@ mod tests {
 		drop(first);
 	}
 
-	#[test]
+	#[rstest]
 	fn dropping_the_hub_before_the_guard_is_safe() {
 		let hub = EventHub::new();
 		let weak_hub = Rc::downgrade(&hub);
@@ -309,7 +310,7 @@ mod tests {
 		drop(guard);
 	}
 
-	#[test]
+	#[rstest]
 	fn dropping_a_guard_releases_callback_captures() {
 		let hub = EventHub::new();
 		let captured = Rc::new(());
@@ -330,7 +331,7 @@ mod tests {
 		value: u32,
 	}
 
-	#[test]
+	#[rstest]
 	fn json_subscription_reports_one_decode_error_and_continues() {
 		let hub = EventHub::new();
 		let values = Rc::new(RefCell::new(Vec::new()));
@@ -359,7 +360,7 @@ mod tests {
 		assert_eq!(format!("{:?}", errors.borrow()[0]), "Decode");
 	}
 
-	#[test]
+	#[rstest]
 	fn json_subscription_rejects_binary_frames() {
 		let hub = EventHub::new();
 		let errors = Rc::new(RefCell::new(Vec::new()));
@@ -380,7 +381,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn typed_subscription_decodes_binary_and_enforces_utf8_bytes() {
 		let hub = EventHub::new();
 		let values = Rc::new(RefCell::new(Vec::new()));
