@@ -17,11 +17,16 @@ The level applies per symbol. A type can be P1 while selected methods are P0.
 
 | API | Native behavior | WASM behavior |
 |---|---|---|
+| Generated `ModelFormPatchPayload::clean_and_validate_patch` implementation with native forms support | Requires `reinhardt-forms` or facade `forms`; validates submitted values through the native forms engine. | Core `macros` and `validators` or facade `pages` validate the same submitted values without persistence dependencies. |
 | `page!` controlled `bind:` directive and `control_binding` support types | Renders signal state during SSR and synchronizes values in native component tests. | Adopts the live control property during hydration, then synchronizes user and signal writes. |
 
 Both targets apply browser text-fallback sanitization for unknown input types
 and ignore reactive type or select-cardinality changes that would invalidate an
 existing binding.
+
+Without native forms support, generated model-form patch validation has P0
+(WASM-only) parity. The core trait remains nameable on both targets, but native
+core-only derives do not emit its implementation or named cleaned payload type.
 
 ## P1 API Surface
 

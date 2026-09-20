@@ -82,6 +82,69 @@ fn patch_cleaning_rejects_empty_required_string() {
 	assert!(matches!(result, Err(PatchValidationError::Validation(_))));
 }
 
+#[model(app_label = "patch_test", info = false, form(name = EditText, fields(defaulted, nullable, untrimmed, allowed)))]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct TextRecord {
+	#[field(primary_key = true)]
+	id: Option<i64>,
+	#[field(max_length = 64, blank = false, default = forbidden_create_default())]
+	#[form(trim)]
+	defaulted: String,
+	#[field(max_length = 64, blank = false)]
+	#[form(trim)]
+	nullable: Option<String>,
+	#[field(max_length = 64, blank = false)]
+	untrimmed: Option<String>,
+	#[field(max_length = 64, blank = true)]
+	#[form(trim)]
+	allowed: Option<String>,
+}
+
+#[rstest]
+#[case::defaulted_empty("defaulted", "")]
+#[case::defaulted_whitespace("defaulted", "  ")]
+#[case::nullable_empty("nullable", "")]
+#[case::nullable_whitespace("nullable", "  ")]
+#[case::untrimmed_empty("untrimmed", "")]
+fn patch_rejects_blank_text_independently_of_create_requirements(
+	#[case] field: &str,
+	#[case] value: &str,
+) {
+	// Arrange
+	let data: EditTextData = serde_json::from_value(json!({field: value})).unwrap();
+	// Act
+	let result = data.clean_and_validate_patch(None);
+	// Assert
+	let Err(PatchValidationError::Validation(errors)) = result else {
+		panic!("blank=false must reject explicitly submitted empty text");
+	};
+	assert_eq!(errors.field_errors().len(), 1);
+	assert_eq!(
+		errors.field_errors().get(field).unwrap(),
+		&vec![reinhardt_core::validators::ValidationError::Custom(
+			"This field is required.".to_owned()
+		)]
+	);
+}
+
+#[rstest]
+#[case::omitted(json!({}), json!({}))]
+#[case::null(json!({"nullable": null}), json!({"nullable": null}))]
+#[case::allowed_blank(json!({"allowed": "  "}), json!({"allowed": ""}))]
+#[case::untrimmed_whitespace(json!({"untrimmed": "  "}), json!({"untrimmed": "  "}))]
+#[case::nonempty(json!({"defaulted": " New "}), json!({"defaulted": "New"}))]
+fn patch_text_validation_preserves_omission_null_and_allowed_values(
+	#[case] raw: serde_json::Value,
+	#[case] expected: serde_json::Value,
+) {
+	// Arrange
+	let data: EditTextData = serde_json::from_value(raw).unwrap();
+	// Act
+	let cleaned = data.clean_and_validate_patch(None).unwrap();
+	// Assert
+	assert_eq!(serde_json::to_value(cleaned.into_raw()).unwrap(), expected);
+}
+
 #[model(app_label = "patch_test", info = false, form(name = EditInterval, fields(start, end)))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[form(validate = interval_order)]

@@ -127,3 +127,53 @@ pub fn compile_contextual_patch() {
 		serde_json::json!({"start":2})
 	);
 }
+
+fn unreachable_patch_default() -> String {
+	panic!("patches must not evaluate create defaults")
+}
+
+#[model(app_label = "patch_test", info = false, form(name = EditText, fields(defaulted, nullable, untrimmed, allowed)))]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+struct TextRecord {
+	#[field(primary_key = true)]
+	id: Option<i64>,
+	#[field(max_length = 64, blank = false, default = unreachable_patch_default())]
+	#[form(trim)]
+	defaulted: String,
+	#[field(max_length = 64, blank = false)]
+	#[form(trim)]
+	nullable: Option<String>,
+	#[field(max_length = 64, blank = false)]
+	untrimmed: Option<String>,
+	#[field(max_length = 64, blank = true)]
+	#[form(trim)]
+	allowed: Option<String>,
+}
+
+/// Shared validation preserves the same blank/null/default boundary on WASM.
+pub fn compile_patch_blank_validation() {
+	use reinhardt::pages::form::{ModelFormPatchPayload, PatchValidationError};
+	for field in ["defaulted", "nullable", "untrimmed"] {
+		let raw: EditTextData = serde_json::from_value(serde_json::json!({field: ""})).unwrap();
+		assert!(matches!(
+			raw.clean_and_validate_patch(None),
+			Err(PatchValidationError::Validation(_))
+		));
+	}
+	for field in ["defaulted", "nullable"] {
+		let raw: EditTextData = serde_json::from_value(serde_json::json!({field: "  "})).unwrap();
+		assert!(matches!(
+			raw.clean_and_validate_patch(None),
+			Err(PatchValidationError::Validation(_))
+		));
+	}
+	let raw: EditTextData = serde_json::from_value(
+		serde_json::json!({"nullable": null, "allowed": "  ", "untrimmed": "  "}),
+	)
+	.unwrap();
+	let cleaned = raw.clean_and_validate_patch(None).unwrap();
+	assert_eq!(
+		serde_json::to_value(cleaned.into_raw()).unwrap(),
+		serde_json::json!({"nullable": null, "allowed": "", "untrimmed": "  "})
+	);
+}

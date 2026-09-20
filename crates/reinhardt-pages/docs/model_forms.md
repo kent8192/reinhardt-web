@@ -697,6 +697,14 @@ model-wide validator). This shared cleaned result is advisory, not a write
 capability. Native construction always validates again. The persistence methods
 and database dependencies are absent from the browser contract.
 
+The generated validator's P2 parity assumes native forms support: native crates
+must depend on `reinhardt-forms` directly or enable the facade's `forms` feature.
+Native `reinhardt-core`-only derives expose payload shapes and trait declarations,
+but do not generate the patch validation implementation; this configuration has
+P0 (WASM-only) generated validation. WASM advisory validation
+requires only core `macros` and `validators` (or the facade's `pages` feature).
+Use the native dependency set when sharing the same validation call across targets.
+
 `PatchOutcome::rows_affected` is the executor's backend count, not a commit receipt
 or portable changed-value count. PostgreSQL counts updated rows, including
 same-value updates. SQLite reports matched direct updates, including same-value

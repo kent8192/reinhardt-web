@@ -20,9 +20,21 @@ pub enum PatchValidationError {
 
 /// Validates only submitted fields, without applying create defaults.
 ///
-/// **Parity: P2.** The context contains shared form values, not an ORM model.
+/// **Parity: P2 with native forms support.** The context contains shared form
+/// values, not an ORM model. Generated implementations use `reinhardt-forms` on
+/// native targets and the target-neutral core validator on WASM.
 /// Validation is advisory on the client; native persistence always validates
 /// raw input again. The cleaned result is not a persistence capability.
+///
+/// # Generated implementation requirements
+///
+/// Native model derives require a direct `reinhardt-forms` dependency, or the
+/// `forms` feature when using the `reinhardt-web` facade. A native crate using
+/// only `reinhardt-core` can name this trait but does not receive a generated
+/// implementation: generated patch validation is P0 (WASM-only) in that
+/// dependency configuration. On `wasm32-unknown-unknown`, `reinhardt-core` with `macros`
+/// and `validators` suffices for generated advisory validation; the facade's
+/// `pages` feature also exposes it without browser database dependencies.
 pub trait ModelFormPatchPayload: Sized {
 	/// Normalized partial values; omitted fields remain omitted.
 	type Cleaned;
@@ -32,6 +44,8 @@ pub trait ModelFormPatchPayload: Sized {
 	/// Normalizes submitted fields and validates the resulting candidate.
 	///
 	/// A supplied context contributes validation values only, never assignments.
+	/// Explicit empty strings require `blank = true`, independently of nullability
+	/// or create defaults. Trimming runs before this blank check.
 	fn clean_and_validate_patch(
 		self,
 		existing: Option<&Self::Context>,

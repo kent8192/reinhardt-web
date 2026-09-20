@@ -6176,7 +6176,7 @@ pub(crate) fn generate_named_model_form_contract(
 		#native_adapter
 
 		#validation_cfg
-		#[doc = "A normalized named model-form payload. Parity: P2 on native and WASM targets."]
+		#[doc = "A normalized named model-form payload. Parity: P2 with native forms support; P0 (WASM-only) in core-only dependency configurations."]
 		#visibility struct #cleaned_data_name(#legacy_cleaned_name<#policy_name>);
 
 		#validation_cfg

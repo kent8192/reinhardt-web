@@ -18,6 +18,8 @@ pub(super) fn payload_patch(
 	let enabled = if forms.is_some() {
 		quote!()
 	} else {
+		// Native validation uses the optional forms engine, as documented by
+		// ModelFormPatchPayload; core-only derives provide advisory WASM validation.
 		quote!(#[cfg(all(target_family = "wasm", target_os = "unknown"))])
 	};
 	let forms = forms.unwrap_or_else(|| quote!(::reinhardt_forms));
@@ -32,6 +34,33 @@ pub(super) fn payload_patch(
 		})
 		.collect();
 	let names: Vec<_> = editable.iter().map(|field| &field.name).collect();
+	let reject_blank_fields: Vec<_> = editable
+		.iter()
+		.filter(|field| is_string_type(&field.ty) && field.config.blank != Some(true))
+		.map(|field| {
+			let name = &field.name;
+			let wire = ident_to_wire_name(name);
+			let value = if extract_option_type(&field.ty).0 {
+				quote!(cleaned.#name.as_ref().and_then(::core::option::Option::as_ref))
+			} else {
+				quote!(cleaned.#name.as_ref())
+			};
+			quote! {
+				if #value.is_some_and(|value| value.is_empty()) {
+					errors.add(#wire, #core::validators::ValidationError::Custom("This field is required.".to_owned()));
+				}
+			}
+		})
+		.collect();
+	let validate_blank_fields = (!reject_blank_fields.is_empty()).then(|| {
+		quote! {
+			let mut errors = #core::validators::ValidationErrors::new();
+			#(#reject_blank_fields)*
+			if !errors.is_empty() {
+				return ::core::result::Result::Err(errors.into());
+			}
+		}
+	});
 	let primary_keys = editable.iter().filter(|field| field.config.primary_key).map(|field| {
 		let name = &field.name;
 		let wire = ident_to_wire_name(name);
@@ -84,6 +113,7 @@ pub(super) fn payload_patch(
 					return ::core::result::Result::Err(#core::model_form::PatchValidationError::ExistingValuesRequired);
 				}
 				let cleaned = self.__reinhardt_clean_patch()?;
+				#validate_blank_fields
 				#validate_context
 				::core::result::Result::Ok(cleaned)
 			}
