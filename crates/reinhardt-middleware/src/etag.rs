@@ -232,7 +232,7 @@ impl Middleware for ETagMiddleware {
 		if response.file_body().is_some() && !response.headers.contains_key(hyper::header::ETAG) {
 			return Ok(response);
 		}
-		let etag = if response.file_body().is_some() {
+		let etag = if response.headers.contains_key(hyper::header::ETAG) {
 			response
 				.headers
 				.get(hyper::header::ETAG)
@@ -321,6 +321,50 @@ mod tests {
 		async fn handle(&self, _request: Request) -> Result<Response> {
 			Ok(Response::new(StatusCode::OK).with_body(self.body.clone()))
 		}
+	}
+
+	struct TaggedHandler {
+		status: StatusCode,
+	}
+
+	#[async_trait]
+	impl Handler for TaggedHandler {
+		async fn handle(&self, _: Request) -> Result<Response> {
+			Ok(Response::new(self.status).with_header("etag", "\"asset-sha256\""))
+		}
+	}
+
+	#[rstest::rstest]
+	#[case(Method::HEAD, StatusCode::OK, None, StatusCode::OK)]
+	#[case(Method::GET, StatusCode::NOT_MODIFIED, None, StatusCode::NOT_MODIFIED)]
+	#[case(
+		Method::HEAD,
+		StatusCode::OK,
+		Some("\"asset-sha256\""),
+		StatusCode::NOT_MODIFIED
+	)]
+	#[tokio::test]
+	async fn preserves_existing_representation_etag(
+		#[case] method: Method,
+		#[case] status: StatusCode,
+		#[case] conditional: Option<&str>,
+		#[case] expected: StatusCode,
+	) {
+		// Arrange
+		let middleware = ETagMiddleware::with_defaults();
+		let mut request = Request::builder().method(method).uri("/asset.css");
+		if let Some(value) = conditional {
+			request = request.header("if-none-match", value);
+		}
+		// Act
+		let response = middleware
+			.process(request.build().unwrap(), Arc::new(TaggedHandler { status }))
+			.await
+			.unwrap();
+		// Assert
+		assert_eq!(response.status, expected);
+		assert_eq!(response.headers[hyper::header::ETAG], "\"asset-sha256\"");
+		assert!(response.body.is_empty());
 	}
 
 	#[tokio::test]
