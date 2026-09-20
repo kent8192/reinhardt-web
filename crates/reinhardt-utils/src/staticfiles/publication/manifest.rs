@@ -164,7 +164,10 @@ pub(super) fn validate_manifest(manifest: &AssetManifestV2) -> Result<(), AssetB
 		}
 	}
 	for (name, record) in &manifest.assets {
-		if !valid_digest(&record.sha256) || record.mime.parse::<mime_guess::Mime>().is_err() {
+		let concrete_mime = record.mime.parse::<mime_guess::Mime>().is_ok_and(|mime| {
+			!mime.subtype().as_str().is_empty() && mime.type_() != "*" && mime.subtype() != "*"
+		});
+		if !valid_digest(&record.sha256) || !concrete_mime {
 			return Err(invalid(format!(
 				"asset {name:?} has an invalid SHA-256 or MIME type"
 			)));
