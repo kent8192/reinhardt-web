@@ -20,10 +20,11 @@ does not duplicate their checklists.
 | Branch source, PR target, backports | [PR Base Branch Policy](PR_BASE_BRANCH_POLICY.md) |
 | PR creation, readiness, labels, merge gates | [PR Guidelines](PR_GUIDELINE.md) |
 | GitHub tools, comments, review replies and resolution | [GitHub Interaction](GITHUB_INTERACTION.md) |
+| External publication, destination AI policy, posting approval | [External Publication](GITHUB_INTERACTION.md#pp-0-must-external-publication) |
 | Issue creation, type labels, good first issues | [Issue Guidelines](ISSUE_GUIDELINES.md) |
 | Multiple issues and shared prerequisites | [Issue Handling](ISSUE_HANDLING.md) |
 | Two failed repair attempts or uncertain external behavior | [Research Escalation](RESEARCH_ESCALATION.md) |
-| External dependency defects and workarounds | [Upstream Issue Reporting](UPSTREAM_ISSUE_REPORTING.md) |
+| External dependency evidence, internal tracking, and workarounds | [Upstream Issue Reporting](UPSTREAM_ISSUE_REPORTING.md) |
 | RC approvals, breaking changes, independent bug verification | [Stability Policy](STABILITY_POLICY.md) |
 | Versioning, release-plz, publish ordering, partial releases | [Release Process](RELEASE_PROCESS.md) |
 | Durable knowledge retrieval and capture | [Obsidian Wiki](OBSIDIAN_WIKI.md) |

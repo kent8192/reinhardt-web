@@ -35,7 +35,13 @@ Issues MUST be created using:
 gh issue create --title "Bug: Connection pool leak" --body "Description..."
 ```
 
-**Autonomy (Reinhardt family):** Creating an Issue is authorized without further user confirmation in `reinhardt-web` / `reinhardt-cloud` / `awesome-delions` / `reinhardt-cc` (see Autonomous Operation Policy in `CLAUDE.md` / `AGENTS.md`); the Issue body MUST still follow the appropriate template under `.github/ISSUE_TEMPLATE/` and carry at least one type label. Closing or deleting Issues remains subject to explicit user authorization.
+**Autonomy (Reinhardt family):** Use the exact destination allowlist in
+[COMMIT_GUIDELINE.md CE-1](COMMIT_GUIDELINE.md#ce-1-must-execution-authorization).
+For those destinations, Issue creation has standing authorization; use the
+destination's template and at least one type label. The current checkout does
+not extend permission to external repositories. External creation and body edits
+must satisfy [GITHUB_INTERACTION.md PP-0](GITHUB_INTERACTION.md#pp-0-must-external-publication).
+Closing or deleting Issues still requires explicit user authorization.
 
 ### IC-2 (MUST): Search Before Creating
 

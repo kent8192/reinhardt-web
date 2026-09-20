@@ -46,8 +46,8 @@ Read [README.md](README.md) for the product overview.
   when changing documentation or examples.
 - For external dependency workarounds, read
   [Upstream Issue Reporting](instructions/UPSTREAM_ISSUE_REPORTING.md) before editing:
-  report the upstream issue, create a tracking issue, and document the removal
-  condition and ideal implementation.
+  record evidence internally and document the removal condition and ideal
+  implementation. External reporting is not a prerequisite for a local fix.
 - Before changing public or cross-target APIs, read
   [Stability Policy](instructions/STABILITY_POLICY.md) and
   [API Parity](instructions/API_PARITY.md). Preserve native/WASM and compatibility
@@ -84,6 +84,11 @@ that need explicit permission. Its standing authorization applies to this
 repository; do not turn it into a repeated approval question. An explicit task
 restriction such as local-only work still controls the delivery scope.
 
+- Before creating or editing an external Issue, PR, comment, reply, or review,
+  follow [External Publication](instructions/GITHUB_INTERACTION.md#pp-0-must-external-publication).
+  Check the actual destination's contribution/AI policy and specific posting
+  authorization. The working directory does not authorize external publication;
+  prohibited or unverified publication stays blocked even with user approval.
 - `main`, `master`, `develop/*`, and `release/*` are protected. Direct commits
   or pushes, history rewriting, PR merges, and destructive operations need explicit
   authorization. Release tags are created by release-plz, not manually.

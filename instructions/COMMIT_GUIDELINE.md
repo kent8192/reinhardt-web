@@ -28,15 +28,19 @@ local-only work, no push, or keeping a PR in Draft) takes precedence.
 
 **Reinhardt-family scope:** `kent8192/reinhardt-web`,
 `kent8192/reinhardt-cloud`, `kent8192/awesome-delions`, and
-`kent8192/reinhardt-cc`. The standing authorization below applies when working
-inside one of these repositories.
+`kent8192/reinhardt-cc`. For local commits, resolve the checkout's repository.
+For remote operations, resolve the actual destination host and full repository
+name; only these exact repositories on `github.com` have standing authorization.
+A working directory, repository name without its owner, fork, redirect, or
+similarly named organization does not extend that authorization. External
+publication requires [GITHUB_INTERACTION.md PP-0](GITHUB_INTERACTION.md#pp-0-must-external-publication).
 
 | Operation | Authorization and conditions |
 |-----------|------------------------------|
 | Commit on a non-protected branch | Standing authorization in the Reinhardt family; review the owned staged diff and complete applicable local checks |
 | Normal push to a non-protected branch | Standing authorization in the Reinhardt family; preserve history and verify the intended remote |
-| Create a Draft PR | Standing authorization in the Reinhardt family; follow the PR template and target-branch policy |
-| Create an Issue | Standing authorization in the Reinhardt family; follow its template and apply at least one type label |
+| Create a Draft PR | Standing authorization only for a Reinhardt-family destination; follow the PR template and target-branch policy |
+| Create an Issue | Standing authorization only for a Reinhardt-family destination; follow its template and apply at least one type label |
 | Draft PR to Ready | Follow PR_GUIDELINE.md PC-4a; CI completion is not required |
 | Comments, replies, or reviews | Explicit task instruction or an approved plan covering the posting, under GITHUB_INTERACTION.md PP-1 |
 | Commit or push on `main`, `master`, `develop/*`, or `release/*` | Explicit user authorization required; these are protected branches |
@@ -48,6 +52,8 @@ Read-only investigation and scoped implementation do not need a separate Git
 approval. Permission to create a Draft PR or Issue does not grant permission to
 post comments, merge, or publish a release. Preserve private security reporting
 under SECURITY.md and the release-plz branch restrictions in RELEASE_PROCESS.md.
+Permission to fix a dependency or CI failure does not authorize publication to
+the dependency's repository. Issue/PR body edits are publication operations too.
 
 Outside the family scope, commits and pushes require explicit user instruction.
 An approved implementation plan authorizes its planned commits after successful
