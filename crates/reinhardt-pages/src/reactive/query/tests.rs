@@ -2049,6 +2049,56 @@ fn failed_realtime_refetch_is_degraded_without_pending_invalidation() {
 }
 
 #[rstest]
+#[case::initial_error(false)]
+#[case::cached_success(true)]
+fn realtime_invalidation_survives_terminal_failure_until_success(#[case] initial_success: bool) {
+	// Arrange
+	let runtime = TestQueryRuntime::new();
+	let client = QueryClient::with_runtime(QueryDefaults::default(), runtime.handle());
+	let family = QueryFamily::<(), String, String>::new("tests.realtime-terminal-error");
+	let attempts = Rc::new(Cell::new(0));
+	let descriptor = family.query((), {
+		let attempts = Rc::clone(&attempts);
+		move || {
+			let attempt = attempts.get() + 1;
+			attempts.set(attempt);
+			async move {
+				if attempt == 3 || (attempt == 1 && initial_success) {
+					Ok(format!("value-{attempt}"))
+				} else {
+					Err(format!("failure-{attempt}"))
+				}
+			}
+		}
+	});
+	let key = descriptor.key().clone();
+	let query = client.observe(descriptor, QueryOptions::default());
+	runtime.run_until_stalled();
+	assert!(!query.is_invalidated());
+
+	// Act: the invalidation's follow-up exhausts its attempts without success.
+	client.invalidate(&key);
+	assert!(query.is_invalidated());
+	runtime.run_until_stalled();
+
+	// Assert: retaining an error does not acknowledge the invalidation.
+	assert_eq!(attempts.get(), 2);
+	assert!(!query.is_fetching());
+	assert!(query.is_invalidated());
+	if initial_success {
+		assert_eq!(query.data().as_deref(), Some("value-1"));
+		assert_eq!(query.refetch_error().as_deref(), Some("failure-2"));
+	} else {
+		assert_eq!(query.error().as_deref(), Some("failure-2"));
+	}
+	query.refetch();
+	runtime.run_until_stalled();
+	assert_eq!(attempts.get(), 3);
+	assert_eq!(query.data().as_deref(), Some("value-3"));
+	assert!(!query.is_invalidated());
+}
+
+#[rstest]
 fn realtime_family_invalidation_does_not_cross_family_boundaries() {
 	let runtime = TestQueryRuntime::new();
 	let client = QueryClient::with_runtime(QueryDefaults::default(), runtime.handle());
@@ -7357,6 +7407,51 @@ fn promoted_navigation_lease_refetches_on_invalidation() {
 
 	// Assert
 	assert_eq!(fetch_count.get(), 2);
+}
+
+#[rstest]
+#[tokio::test]
+#[serial(query_cache)]
+async fn ssr_invalidation_only_read_resolves_and_serializes_query() {
+	// Arrange
+	let owner = Rc::new(ReactiveScope::new());
+	let _registration = crate::ssr::resource_context::register_render_owner(&owner);
+	let context = Rc::new(RefCell::new(
+		crate::ssr::resource_context::SsrResourceContext::new(Duration::from_secs(1)),
+	));
+	let client = QueryClient::new_ssr(QueryDefaults::default());
+	let query = with_query_client_async(
+		client.clone(),
+		crate::ssr::resource_context::scope_context(Rc::clone(&context), async {
+			owner.enter(|| {
+				let query = use_query(
+					QueryFamily::<(), String, String>::new("tests.ssr-invalidation-only")
+						.query((), || async { Ok("loaded".to_owned()) }),
+					QueryOptions::default(),
+				);
+				// Act: render only the invalidation flag, without a snapshot/data read.
+				assert!(!query.is_invalidated());
+				query
+			})
+		}),
+	)
+	.await;
+
+	// Assert: streaming SSR discovers this read and includes its hydration payload.
+	assert!(context.borrow().has_pending_external());
+	assert!(crate::ssr::resource_context::resolve_external_resources(&context).await);
+	assert!(!context.borrow().has_pending());
+	let context = context.borrow();
+	let resources = context.resolved_resources();
+	assert_eq!(resources.len(), 1);
+	assert_eq!(resources[0].0, query.ssr_key());
+	let snapshot: super::state::QueryHydrationSnapshot<String, String> =
+		serde_json::from_value(resources[0].1.clone()).unwrap();
+	assert!(matches!(
+		snapshot.state,
+		super::state::QueryHydrationState::Success(value) if value == "loaded"
+	));
+	assert!(!snapshot.is_fetching);
 }
 
 #[tokio::test]

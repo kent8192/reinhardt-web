@@ -109,6 +109,9 @@ For status views, [`QueryHandle::is_invalidated`](src/reactive/query/hook.rs)
 separates an outstanding realtime reconciliation from age-based or hydrated
 `QueryHandle::is_stale()`. A stale hydrated snapshot alone does not represent an
 explicit invalidation. The method has P2 behavioral parity on native and WASM.
+Failed follow-ups retain invalidation until a successful completion covers it.
+Reading only this flag during SSR still registers the query for resolution and
+hydration output.
 The executable [`realtime_state`](examples/realtime_state.rs) recipe invalidates an exact
 typed deployment key, supports family invalidation, and removes the family at
 logout.

@@ -122,6 +122,7 @@ impl<T: Clone + 'static, E: Clone + 'static> QueryHandle<T, E> {
 	///
 	/// Parity: P2. Native and WASM observers expose the same reactive state.
 	pub fn is_invalidated(&self) -> bool {
+		self.mark_ssr_read();
 		self.entry.is_invalidated()
 	}
 
