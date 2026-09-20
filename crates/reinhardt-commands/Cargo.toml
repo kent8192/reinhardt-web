@@ -67,6 +67,19 @@ inventory = "0.3"
 notify = { version = "8.2.0", optional = true }
 rustyline = { version = "17.0.2", optional = true }
 evcxr = { version = "0.22.0", optional = true }
+# Compatibility constraint tracked in reinhardt-web#6341.
+# Keep evcxr's lexer on Unicode 17, matching unicode-properties 0.1.4.
+# Remove when evcxr's lexer supports a compatible current Unicode dependency graph.
+# Ideal implementation: depend on evcxr alone, without this compatibility dependency
+# or the dep:unicode-ident entry in the shell feature.
+unicode-ident = { version = "=1.0.24", optional = true }
+# Compatibility constraints tracked in reinhardt-web#6342.
+# rust-analyzer 0.0.347 requires Salsa's pre-0.28.3 HashEqLike contract.
+# Remove when evcxr uses rust-analyzer compatible with current Salsa internals.
+# Ideal implementation: depend on evcxr alone, without these compatibility
+# dependencies or their dep:salsa / dep:salsa-macro-rules shell entries.
+salsa = { version = "=0.28.2", default-features = false, optional = true }
+salsa-macro-rules = { version = "=0.28.2", optional = true }
 dirs = { version = "6.0.0", optional = true }
 
 # AST dependencies for robust code generation
@@ -123,7 +136,7 @@ introspect = ["routers", "dep:serde_yaml"]
 openapi-router = ["dep:reinhardt-openapi", "openapi"]
 server = ["dep:reinhardt-server", "dep:reinhardt-middleware", "dep:reinhardt-core", "routers", "di", "dep:reinhardt-admin", "dep:reqwest"]
 autoreload = ["dep:notify", "server"]
-shell = ["dep:evcxr", "dep:rustyline", "dep:dirs", "reinhardt-db", "di"]
+shell = ["dep:evcxr", "dep:unicode-ident", "dep:salsa", "dep:salsa-macro-rules", "dep:rustyline", "dep:dirs", "reinhardt-db", "di"]
 reinhardt-db = ["dep:reinhardt-db"]
 postgres = ["reinhardt-db?/postgres", "dep:sqlx", "sqlx/postgres"]
 sqlite = ["reinhardt-db?/sqlite", "dep:sqlx", "sqlx/sqlite"]

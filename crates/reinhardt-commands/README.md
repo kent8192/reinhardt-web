@@ -545,6 +545,18 @@ projects enable the shell implementation through a native-only
 enter WASM builds. `config::shell` defines the aliases used by the evaluator,
 and `get_shell_config()` identifies the package, crate, settings factory,
 installed apps, and optional project prelude.
+
+The `shell` feature constrains `unicode-ident` to 1.0.24 so evcxr's Rust lexer
+uses Unicode 17 tables consistently with `unicode-properties` 0.1.4. This
+compatibility dependency also applies to fresh downstream builds; see
+[the internal compatibility record](https://github.com/kent8192/reinhardt-web/issues/6341).
+It also constrains Salsa and its macro-rules to 0.28.2 because rust-analyzer
+0.0.347 implements an internal trait method removed in later Salsa releases;
+see [the Salsa compatibility record](https://github.com/kent8192/reinhardt-web/issues/6342).
+Remove these constraints only after fresh dependency resolution verifies a
+compatible evcxr dependency graph. Tracker closure alone does not establish
+compatibility.
+
 When the management binary enables additional project features, pass the same
 selection to `ShellConfig::with_dependency_features`; also call
 `without_default_features` when the binary was built without defaults. This
