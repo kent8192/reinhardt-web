@@ -182,6 +182,36 @@ fn entry_document_retains_logical_template_until_rendering() {
 }
 
 #[rstest]
+fn imported_entry_document_aliases_are_normalized_to_logical_names() {
+	// Arrange
+	let mut pipeline = pipeline(&[("styles/main.css", b"body{}")]);
+	pipeline
+		.add_input(
+			AssetInput::bytes(
+				"views/index.html",
+				br#"<link rel="stylesheet" href="/console/static/styles/main.hash.css">"#.to_vec(),
+			)
+			.with_role(reinhardt_utils::staticfiles::publication::AssetRole::EntryDocument),
+		)
+		.unwrap();
+	pipeline
+		.add_alias("console/static/styles/main.hash.css", "styles/main.css")
+		.unwrap();
+	// Act
+	let packed = pipeline.prepare(AssetMode::Production).unwrap();
+	let bytes = packed.read_asset("views/index.html").unwrap();
+	let references = reinhardt_utils::staticfiles::publication::analyze_asset_references(
+		"views/index.html",
+		"text/html",
+		&bytes,
+	)
+	.unwrap();
+	// Assert: the request renderer needs only the logical manifest, never discarded input aliases.
+	assert_eq!(references[0].target, "styles/main.css");
+	assert!(!String::from_utf8(bytes).unwrap().contains("main.hash.css"));
+}
+
+#[rstest]
 fn escaped_syntax_and_percent_encoded_names_resolve_exactly_once() {
 	// Arrange
 	let inputs: &[(&str, &[u8])] = &[

@@ -43,7 +43,10 @@ fn legacy_flat_settings_and_directories_are_preserved() {
 	assert_eq!(resolved.static_root, PathBuf::from("/srv/static"));
 	assert_eq!(
 		resolved.staticfiles_dirs,
-		vec![PathBuf::from("assets"), PathBuf::from("vendor")]
+		vec![
+			PathBuf::from("/project/assets"),
+			PathBuf::from("/project/vendor")
+		]
 	);
 }
 
@@ -56,4 +59,32 @@ fn defaults_use_static_url_and_project_staticfiles() {
 	assert_eq!(resolved.static_url, "/static/");
 	assert_eq!(resolved.static_root, PathBuf::from("/project/staticfiles"));
 	assert!(resolved.staticfiles_dirs.is_empty());
+}
+
+#[rstest]
+fn flat_relative_paths_use_the_selected_project_directory() {
+	// Arrange
+	let settings = SettingsBuilder::new()
+		.add_source(
+			DefaultSource::new()
+				.with_value("static_root", json!("public"))
+				.with_value("staticfiles_dirs", json!(["assets", "/vendor"])),
+		)
+		.build()
+		.unwrap();
+	// Act
+	let resolved =
+		StaticAssetSettings::from_merged(&settings, PathBuf::from("/another-project").as_path());
+	// Assert
+	assert_eq!(
+		resolved.static_root,
+		PathBuf::from("/another-project/public")
+	);
+	assert_eq!(
+		resolved.staticfiles_dirs,
+		[
+			PathBuf::from("/another-project/assets"),
+			PathBuf::from("/vendor")
+		]
+	);
 }

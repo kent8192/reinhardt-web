@@ -60,42 +60,16 @@ impl AssetProcessor for BuiltinProcessor {
 		Ok(Vec::new())
 	}
 	fn analyze(&self, asset: &PreparedAsset) -> Result<Vec<AssetReference>, AssetBuildError> {
-		let mime = asset
-			.mime()
-			.parse::<mime_guess::Mime>()
-			.map_err(|e| AssetBuildError::input(asset.logical_path(), e.to_string()))?;
-		if mime
-			.get_param("charset")
-			.is_some_and(|value| !value.as_str().eq_ignore_ascii_case("utf-8"))
-		{
-			return Err(AssetBuildError::input(
-				asset.logical_path(),
-				"built-in reference processing requires a UTF-8 charset; convert the input or register a custom processor",
-			));
-		}
-		let bytes = asset.read()?;
-		let source = std::str::from_utf8(&bytes).map_err(|e| {
-			AssetBuildError::input(
-				asset.logical_path(),
-				format!("reference processing requires UTF-8: {e}"),
-			)
-		})?;
-		match mime.essence_str() {
-			"text/javascript" | "application/javascript" => {
-				javascript::analyze(asset.logical_path(), source)
-			}
-			"text/css" => css::analyze(asset.logical_path(), source),
-			"text/html" => html::analyze(asset.logical_path(), source),
-			_ => Ok(Vec::new()),
-		}
+		analyze_asset_references(asset.logical_path(), asset.mime(), &asset.read()?)
 	}
+
 	fn rewrite(
 		&self,
 		asset: &AnalyzedAsset,
 		paths: &BTreeMap<String, String>,
 	) -> Result<RewriteOutput, AssetBuildError> {
 		let bytes = asset.asset.read()?;
-		if asset.asset.role() == AssetRole::EntryDocument || asset.references.is_empty() {
+		if asset.references.is_empty() {
 			return Ok(RewriteOutput {
 				bytes,
 				source_map: None,
@@ -103,6 +77,39 @@ impl AssetProcessor for BuiltinProcessor {
 		}
 		let source = std::str::from_utf8(&bytes)
 			.map_err(|e| AssetBuildError::input(asset.asset.logical_path(), e.to_string()))?;
+		if asset.asset.role() == AssetRole::EntryDocument {
+			let logical = asset.asset.logical_path();
+			let already_logical = analyze_asset_references(logical, asset.asset.mime(), &bytes)
+				.is_ok_and(|references| {
+					references.len() == asset.references.len()
+						&& references
+							.iter()
+							.zip(&asset.references)
+							.all(|(original, resolved)| {
+								original.target == resolved.target
+									&& original.suffix == resolved.suffix
+							})
+				});
+			if already_logical {
+				return Ok(RewriteOutput {
+					bytes,
+					source_map: None,
+				});
+			}
+			// Input aliases are not a second runtime manifest. Canonicalize those references
+			// into the document's logical namespace before hashing the render template.
+			let rewritten = html::rewrite(logical, source, &asset.references, |reference| {
+				Ok(format!(
+					"{}{}",
+					relative_asset_url(logical, &reference.target)?,
+					reference.suffix
+				))
+			})?;
+			return Ok(RewriteOutput {
+				bytes: rewritten.into_bytes(),
+				source_map: None,
+			});
+		}
 		let location = &paths[asset.asset.logical_path()];
 		let url = |reference: &AssetReference| -> Result<String, AssetBuildError> {
 			Ok(format!(
@@ -129,6 +136,42 @@ impl AssetProcessor for BuiltinProcessor {
 			bytes: rewritten.into_bytes(),
 			source_map: None,
 		})
+	}
+}
+
+/// Discover built-in JS, CSS, or HTML dependencies in a specified input namespace (P0).
+/// This performs syntax analysis only; the complete pipeline validates target existence.
+pub fn analyze_asset_references(
+	logical: &str,
+	mime: &str,
+	bytes: &[u8],
+) -> Result<Vec<AssetReference>, AssetBuildError> {
+	let mime = mime
+		.parse::<mime_guess::Mime>()
+		.map_err(|e| AssetBuildError::input(logical, e.to_string()))?;
+	if !matches!(
+		mime.essence_str(),
+		"text/javascript" | "application/javascript" | "text/css" | "text/html"
+	) {
+		return Ok(Vec::new());
+	}
+	if mime
+		.get_param("charset")
+		.is_some_and(|value| !value.as_str().eq_ignore_ascii_case("utf-8"))
+	{
+		return Err(AssetBuildError::input(
+			logical,
+			"built-in reference processing requires a UTF-8 charset; convert the input or register a custom processor",
+		));
+	}
+	let source = std::str::from_utf8(bytes).map_err(|e| {
+		AssetBuildError::input(logical, format!("reference processing requires UTF-8: {e}"))
+	})?;
+	match mime.essence_str() {
+		"text/javascript" | "application/javascript" => javascript::analyze(logical, source),
+		"text/css" => css::analyze(logical, source),
+		"text/html" => html::analyze(logical, source),
+		_ => Ok(Vec::new()),
 	}
 }
 

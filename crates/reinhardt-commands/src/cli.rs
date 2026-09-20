@@ -29,7 +29,9 @@ use reinhardt_conf::settings::{ComposedSettings, PendingSettings};
 use reinhardt_conf::{HasCommonSettings, MigrationSettings, SettingsResolutionMetadata};
 #[cfg(feature = "migrations")]
 use reinhardt_db::migrations::DependencyResolutionContext;
-use reinhardt_utils::staticfiles::{PathResolver, StaticFilesConfig};
+#[cfg(feature = "migrations")]
+use reinhardt_utils::staticfiles::PathResolver;
+use reinhardt_utils::staticfiles::StaticFilesConfig;
 use serde_json::Value;
 use std::env;
 use std::ffi::{OsStr, OsString};
@@ -50,6 +52,9 @@ use crate::builtin::ShowUrlsCommand;
 #[command(name = "manage")]
 #[command(about = "Reinhardt management interface", long_about = None)]
 #[command(version)]
+#[command(
+	after_help = "Additional built-in command:\n  buildstatic  Publish a complete static generation (use buildstatic --help)"
+)]
 pub struct Cli {
 	/// Subcommand to execute
 	#[command(subcommand)]
@@ -2317,6 +2322,35 @@ async fn run_command_core_with_contract_state(
 			.await
 		}
 		Commands::Custom { name, args } => {
+			if registry.get(&name).is_none() && name == "buildstatic" {
+				let parsed = parse_buildstatic_command(&args)?;
+				let base = env::current_dir()?;
+				let static_settings = crate::StaticAssetSettings::from_project_dir(&base)?;
+				let result = crate::buildstatic::BuildStaticCommand::new(static_settings)
+					.execute(parsed.into_request(base))?;
+				match result {
+					crate::buildstatic::BuildStaticResult::Published(snapshot) => println!(
+						"Published static generation {} ({} assets)",
+						snapshot.manifest().build_id,
+						snapshot.manifest().assets.len()
+					),
+					crate::buildstatic::BuildStaticResult::DryRun(preview) => {
+						for (logical, path) in preview.assignments {
+							println!("{logical} -> {path}");
+						}
+						for conflict in &preview.conflicts {
+							eprintln!("Conflict: {conflict}");
+						}
+						for pending in preview.pending_checks {
+							println!("Pending: {pending}");
+						}
+						if !preview.conflicts.is_empty() {
+							return Err("static discovery has conflicting inputs".into());
+						}
+					}
+				}
+				return Ok(());
+			}
 			#[cfg(feature = "reinhardt-db")]
 			if registry.get(&name).is_none()
 				&& let Some(command) = parse_fixture_command(&name, &args)?
@@ -2368,6 +2402,14 @@ enum DriverParseError {
 	Command(crate::CommandError),
 }
 
+fn parse_buildstatic_command(
+	args: &[String],
+) -> Result<crate::buildstatic::BuildStaticArgs, clap::Error> {
+	crate::buildstatic::BuildStaticArgs::try_parse_from(
+		std::iter::once("buildstatic").chain(args.iter().map(String::as_str)),
+	)
+}
+
 fn parse_cli_arguments(
 	raw_args: &[OsString],
 	registry: &CommandRegistry,
@@ -2381,6 +2423,12 @@ fn parse_cli_arguments(
 		Err(clap_error) => {
 			match resolve_custom_command(raw_args, registry).map_err(DriverParseError::Command)? {
 				Some((name, args, verbosity)) => {
+					if registry.get(&name).is_none()
+						&& name == "buildstatic"
+						&& let Err(error) = parse_buildstatic_command(&args)
+					{
+						return Err(DriverParseError::Clap(Box::new(error)));
+					}
 					#[cfg(feature = "reinhardt-db")]
 					if registry.get(&name).is_none()
 						&& is_fixture_command_name(&name)
@@ -2496,7 +2544,10 @@ fn resolve_custom_command<T: AsRef<OsStr>>(
 		return Ok(None);
 	};
 	let subcommand = utf8_custom_argument(subcommand.as_ref())?;
-	if registry.get(subcommand).is_some() || is_fixture_command_name(subcommand) {
+	if registry.get(subcommand).is_some()
+		|| is_fixture_command_name(subcommand)
+		|| subcommand == "buildstatic"
+	{
 		let remaining = iter
 			.map(|argument| utf8_custom_argument(argument.as_ref()).map(str::to_string))
 			.collect::<crate::CommandResult<Vec<_>>>()?;
@@ -3371,6 +3422,33 @@ pub(crate) fn generate_random_secret_key() -> String {
 
 #[cfg(test)]
 mod tests {
+	#[rstest::rstest]
+	fn buildstatic_driver_keeps_custom_enum_compatibility_and_validates_help() {
+		// Arrange
+		let registry = super::CommandRegistry::new();
+		let args = [
+			"manage",
+			"buildstatic",
+			"--pages",
+			"--package",
+			"dashboard",
+			"--release",
+		]
+		.map(std::ffi::OsString::from);
+		// Act
+		let (command, _) = super::parse_cli_arguments(&args, &registry).unwrap();
+		let help = ["manage", "buildstatic", "--help"].map(std::ffi::OsString::from);
+		// Assert
+		assert!(matches!(command, super::Commands::Custom { name, .. } if name == "buildstatic"));
+		let super::DriverParseError::Clap(error) =
+			super::parse_cli_arguments(&help, &registry).unwrap_err()
+		else {
+			panic!("clap help expected")
+		};
+		assert_eq!(error.kind(), clap::error::ErrorKind::DisplayHelp);
+		assert!(error.to_string().contains("--pages-dir"));
+	}
+
 	use super::*;
 	use async_trait::async_trait;
 	use clap::error::ErrorKind;

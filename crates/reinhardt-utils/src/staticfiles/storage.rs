@@ -292,6 +292,65 @@ impl StaticFilesFinder {
 		all_files
 	}
 
+	/// Discover sources without hiding I/O errors or traversing symlinks.
+	///
+	/// Each result retains its source root so duplicate logical names can be
+	/// diagnosed by publication. Excluded paths prune whole directory subtrees.
+	/// Missing optional application static directories are skipped.
+	pub fn find_all_checked(&self, excluded: &[PathBuf]) -> io::Result<Vec<(PathBuf, String)>> {
+		fn walk(
+			root: &std::path::Path,
+			current: &std::path::Path,
+			excluded: &[PathBuf],
+			files: &mut Vec<(PathBuf, String)>,
+		) -> io::Result<()> {
+			let mut entries = fs::read_dir(current)?.collect::<io::Result<Vec<_>>>()?;
+			entries.sort_by_key(|entry| entry.file_name());
+			for entry in entries {
+				let path = entry.path();
+				if excluded.iter().any(|excluded| path.starts_with(excluded)) {
+					continue;
+				}
+				let kind = entry.file_type()?;
+				if kind.is_dir() {
+					walk(root, &path, excluded, files)?;
+				} else if kind.is_file() {
+					let relative = path
+						.strip_prefix(root)
+						.expect("entry belongs to source root");
+					let relative = relative.to_str().ok_or_else(|| {
+						io::Error::new(
+							io::ErrorKind::InvalidData,
+							format!("non-UTF-8 static path: {}", path.display()),
+						)
+					})?;
+					files.push((
+						root.into(),
+						relative.replace(std::path::MAIN_SEPARATOR, "/"),
+					));
+				} else {
+					return Err(io::Error::new(
+						io::ErrorKind::InvalidInput,
+						format!(
+							"static input {} is a symlink or special file; materialize it inside the source root",
+							path.display()
+						),
+					));
+				}
+			}
+			Ok(())
+		}
+		let mut files = Vec::new();
+		for root in &self.directories {
+			match fs::metadata(root) {
+				Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+				Err(error) => return Err(error),
+				Ok(_) => walk(root, root, excluded, &mut files)?,
+			}
+		}
+		Ok(files)
+	}
+
 	/// Recursively walk a directory and collect all file paths
 	#[allow(clippy::only_used_in_recursion)]
 	fn walk_directory(&self, base_dir: &PathBuf, current_dir: &PathBuf) -> io::Result<Vec<String>> {

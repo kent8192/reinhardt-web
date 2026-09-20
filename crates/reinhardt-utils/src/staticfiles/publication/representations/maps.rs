@@ -2,7 +2,7 @@
 
 use super::super::manifest::canonical_json;
 use super::super::model::*;
-use super::super::pipeline::{AnalyzedAsset, PreparedAsset};
+use super::super::pipeline::{AnalyzedAsset, InputNamespace, PreparedAsset};
 use super::super::rewrite::{
 	Site, apply_edits, external, relative_asset_url, replacement, resolve_asset_reference,
 };
@@ -14,6 +14,7 @@ pub(crate) fn rewrite(
 	paths: &BTreeMap<String, String>,
 	inputs: &BTreeMap<String, PreparedAsset>,
 	processor: &str,
+	namespace: &InputNamespace,
 ) -> Result<Option<(String, Vec<u8>)>, AssetBuildError> {
 	let maps: Vec<_> = asset
 		.references
@@ -153,7 +154,7 @@ pub(crate) fn rewrite(
 				} else {
 					format!("{}/{name}", root.trim_end_matches('/'))
 				};
-				let resolved = match resolve_asset_reference(map_name, &reference) {
+				let resolved = match resolve_asset_reference(namespace.base(map_name), &reference) {
 					Ok(value) => value,
 					Err(_) if contents.get(index).is_some_and(|v| v.is_string()) => {
 						// Embedded sources are debugger identities, not filesystem reads.
@@ -163,7 +164,7 @@ pub(crate) fn rewrite(
 					Err(error) => return Err(error),
 				};
 				if let Some((target, suffix)) = resolved {
-					if let Some(path) = paths.get(&target) {
+					if let Some(path) = paths.get(namespace.logical(&target)) {
 						*source =
 							format!("{}{}", relative_asset_url(&paths[map_name], path)?, suffix)
 								.into();

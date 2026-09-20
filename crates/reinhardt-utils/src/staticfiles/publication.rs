@@ -35,4 +35,4 @@ pub use pipeline::{
 #[cfg(feature = "asset-publication")]
 pub use publisher::AssetPublisher;
 #[cfg(feature = "asset-publication")]
-pub use rewrite::{relative_asset_url, resolve_asset_reference};
+pub use rewrite::{analyze_asset_references, relative_asset_url, resolve_asset_reference};

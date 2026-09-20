@@ -270,6 +270,21 @@ impl PreparedGeneration {
 	}
 }
 
+#[derive(Default)]
+pub(super) struct InputNamespace {
+	pub bases: BTreeMap<String, String>,
+	pub aliases: BTreeMap<String, String>,
+}
+
+impl InputNamespace {
+	pub(super) fn base<'a>(&'a self, logical: &'a str) -> &'a str {
+		self.bases.get(logical).map_or(logical, String::as_str)
+	}
+	pub(super) fn logical<'a>(&'a self, physical: &'a str) -> &'a str {
+		self.aliases.get(physical).map_or(physical, String::as_str)
+	}
+}
+
 /// Prepare all static input types under one generation identity (P0).
 pub struct AssetPipeline {
 	inputs: BTreeMap<String, AssetInput>,
@@ -277,7 +292,7 @@ pub struct AssetPipeline {
 	processors: Vec<RegisteredProcessor>,
 	byte_processors: Vec<ByteProcessor>,
 	entrypoints: BTreeMap<String, PagesEntrypoint>,
-	aliases: BTreeMap<String, String>,
+	namespace: InputNamespace,
 }
 
 impl Default for AssetPipeline {
@@ -295,7 +310,7 @@ impl AssetPipeline {
 			processors: Vec::new(),
 			byte_processors: Vec::new(),
 			entrypoints: BTreeMap::new(),
-			aliases: BTreeMap::new(),
+			namespace: InputNamespace::default(),
 		}
 	}
 	/// Register one unique logical input.
@@ -401,7 +416,7 @@ impl AssetPipeline {
 	pub fn add_alias(&mut self, published: &str, logical: &str) -> Result<(), AssetBuildError> {
 		validate_asset_path(published)?;
 		validate_asset_path(logical)?;
-		if let Some(existing) = self.aliases.get(published)
+		if let Some(existing) = self.namespace.aliases.get(published)
 			&& existing != logical
 		{
 			return Err(AssetBuildError::Collision {
@@ -410,7 +425,27 @@ impl AssetPipeline {
 				path: published.into(),
 			});
 		}
-		self.aliases.insert(published.into(), logical.into());
+		self.namespace
+			.aliases
+			.insert(published.into(), logical.into());
+		Ok(())
+	}
+
+	/// Use a previously published source location when analyzing imported references.
+	/// Aliases translate targets back to their stable logical names before rewriting.
+	pub fn add_reference_base(
+		&mut self,
+		logical: &str,
+		source_path: &str,
+	) -> Result<(), AssetBuildError> {
+		validate_asset_path(logical)?;
+		validate_asset_path(source_path)?;
+		if self.namespace.bases.contains_key(logical) {
+			return Err(AssetBuildError::input(logical, "duplicate reference base"));
+		}
+		self.namespace
+			.bases
+			.insert(logical.into(), source_path.into());
 		Ok(())
 	}
 
@@ -452,7 +487,7 @@ impl AssetPipeline {
 				}
 			}
 		}
-		process_bytes(&self.byte_processors, &captured, &variants)?;
+		process_bytes(&self.byte_processors, &captured, &variants, &self.namespace)?;
 		let mut analyses = BTreeMap::new();
 		for (logical, asset) in &captured {
 			if variants.contains_key(logical) {
@@ -460,11 +495,15 @@ impl AssetPipeline {
 				continue;
 			}
 			let mut references = match self.processor_for(asset)? {
-				Some(processor) => processor.analyze(asset)?,
+				Some(processor) => {
+					let mut input = asset.clone();
+					input.logical = self.namespace.base(logical).into();
+					processor.analyze(&input)?
+				}
 				None => Vec::new(),
 			};
 			for reference in &mut references {
-				if let Some(original) = self.aliases.get(&reference.target) {
+				if let Some(original) = self.namespace.aliases.get(&reference.target) {
 					reference.target = original.clone();
 				}
 				if !captured.contains_key(&reference.target) {
@@ -508,6 +547,7 @@ impl AssetPipeline {
 						&paths,
 						&captured,
 						&processor.identity().id,
+						&self.namespace,
 					)?;
 				}
 				std::fs::write(&asset.path, &output.bytes)
@@ -545,7 +585,8 @@ impl AssetPipeline {
 				for reference in processor.analyze(&relocated)? {
 					let original = if asset.role == AssetRole::EntryDocument {
 						Some(
-							self.aliases
+							self.namespace
+								.aliases
 								.get(&reference.target)
 								.unwrap_or(&reference.target)
 								.as_str(),
@@ -652,6 +693,7 @@ fn process_bytes(
 	processors: &[ByteProcessor],
 	captured: &BTreeMap<String, PreparedAsset>,
 	variants: &BTreeMap<String, representations::Representation>,
+	namespace: &InputNamespace,
 ) -> Result<(), AssetBuildError> {
 	if processors.is_empty() {
 		return Ok(());
@@ -664,7 +706,11 @@ fn process_bytes(
 				for (logical, asset) in captured {
 					if variants.contains_key(logical) || !registered.processor.can_process(std::path::Path::new(logical)) { continue; }
 					let before = asset.read()?;
-					let mapped = if BuiltinProcessor.matches(asset) { BuiltinProcessor.analyze(asset)?.iter().any(|r| captured.get(&r.target).is_some_and(|map| map.role == AssetRole::SourceMap)) } else { false };
+					let mapped = if BuiltinProcessor.matches(asset) {
+                        let mut input = asset.clone();
+                        input.logical = namespace.base(logical).into();
+                        BuiltinProcessor.analyze(&input)?.iter().any(|r| captured.get(namespace.logical(&r.target)).is_some_and(|map| map.role == AssetRole::SourceMap))
+                    } else { false };
 					let after = registered.processor.process(&before, std::path::Path::new(logical)).await.map_err(|e| AssetBuildError::Processor { processor: registered.identity.id.clone(), asset: logical.clone(), reason: e.to_string() })?;
 					if mapped && before != after {
 						let lengths = |bytes: &[u8]| std::str::from_utf8(bytes).ok().map(|text| text.split('\n').map(|line| line.encode_utf16().count()).collect::<Vec<_>>());

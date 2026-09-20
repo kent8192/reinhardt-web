@@ -12,6 +12,7 @@ Guide to serving static files (CSS, JavaScript, images, etc.).
 - [Basic Setup](#basic-setup)
 - [Storage Backends](#storage-backends)
 - [Unified Asset Classification](#unified-asset-classification)
+- [Building a Complete Asset Set](#building-a-complete-asset-set)
 - [Development vs Production](#development-vs-production)
 - [Path Resolution](#path-resolution)
 - [Cache Strategies](#cache-strategies)
@@ -46,6 +47,70 @@ let middleware = StaticFilesMiddleware::new(config);
 > - `middleware::StaticFilesConfig` - For middleware configuration (`root_dir`, `url_prefix`, `spa_mode`, etc.)
 >
 > This example uses the storage version. The storage config is also re-exported at `reinhardt_utils::staticfiles::StaticFilesConfig`.
+
+---
+
+## Building a Complete Asset Set
+
+`buildstatic` uses the same settings precedence as static serving. `[static]`
+and typed `[static_files]` accept `url` and `root`; legacy flat `static_url`,
+`static_root`, and `staticfiles_dirs` remain supported. Relative filesystem paths
+are resolved against the selected project directory. There is no independent
+final output-directory flag.
+
+```toml
+staticfiles_dirs = ["assets"]
+
+[static]
+url = "/console/static/"
+root = "staticfiles"
+```
+
+```text
+manage buildstatic
+manage buildstatic --pages --package my-dashboard --release
+manage buildstatic --pages --package my-dashboard --features theme --mode development
+manage buildstatic --dry-run
+```
+
+Ordinary packaging needs no WASM tools. `--pages` selects the same Cargo package
+and features for component CSS extraction and WASM compilation, then captures the
+complete wasm-bindgen web output from a private intermediate directory. The JS
+entry's actual WASM reference is validated; publication does not guess its name.
+`--release` (or `--profile <cargo-profile>`) controls compilation, independently
+of `--mode` and its cache contract.
+
+To reuse existing build stages, supply their complete materialized outputs:
+
+```text
+manage buildstatic --static-manifest /build/collected/manifest.json \
+  --pages-dir /build/wasm-dist --pages-entry dashboard.js \
+  --pages-document index.html --pages-style css/site.css
+```
+
+`--static-manifest` replaces source collection and component style extraction;
+`--pages-dir` replaces Cargo/wasm-bindgen execution and requires `--pages-entry`.
+The Pages directory includes snippets, maps, and other companions. Ordinary
+styles remain classified under `css/`, including `__reinhardt__/components.css`.
+`--pages-document` selects a collected HTML render template; legacy collectstatic's
+explicit `index.html` beside its manifest is also supported. Repeat `--pages-style`
+to select additional styles in cascade order. Generated component CSS is included
+once when available. Template stylesheet order is preserved during rendering.
+
+Dry-run performs no compilation, vendor download, output writes, or activation.
+It lists known assignments, collisions, and checks requiring generated content;
+it deliberately does not claim a final build ID. Physical discovery rejects
+symlinks/special files and skips generation directories, manifests, locks, and
+private staging. Materialize symlinked sources inside the configured input root.
+
+Legacy version 1, `paths`, `files`, and flat manifests use explicit import adapters.
+Their physical names map back to the original logical namespace before rewriting.
+Version 2 imports validate the full source generation and retain its entrypoints.
+Legacy `collectstatic` refuses to clear or overwrite version 2 output. For a root
+containing `staticfiles.json`, select a separate `STATIC_ROOT` for migration (or
+explicitly archive the old manifest first); `buildstatic` never silently deletes
+or renames a competing manifest. Keep manual packaging until the new manifest
+serving path and a real browser load have passed for the application.
 
 ---
 

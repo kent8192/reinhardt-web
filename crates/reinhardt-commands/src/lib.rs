@@ -22,6 +22,20 @@
 //! - **Native Protocol Launch**: Aggregated HTTP, WebSocket, and gRPC startup
 //! - **Tera Template Engine**: Powerful template rendering for project/app generation
 //!
+//! ## Unified Static Publication
+//!
+//! `manage buildstatic` publishes collected files under configured `STATIC_ROOT`.
+//! Add `--pages --package my-dashboard --release` to compile Pages JavaScript,
+//! WASM, and component CSS with one package/feature selection. Pages companions
+//! use `pages/`; ordinary files are classified by extension. A version 2
+//! `manifest.json` activates only after every `builds/<id>/` output is verified.
+//!
+//! `--static-manifest collected/manifest.json --pages-dir wasm-dist
+//! --pages-entry dashboard.js` imports materialized outputs without recompiling
+//! those inputs. `--dry-run` reports discovery and pending generated checks;
+//! `--mode development` explicitly selects development publication semantics.
+//! Legacy `collectstatic` remains available and refuses to overwrite version 2.
+//!
 //! ## Squashing Migrations
 //!
 //! The `squashmigrations` command supports Django-compatible range syntax:
@@ -348,6 +362,8 @@
 
 /// Base command trait and argument/option definitions.
 pub mod base;
+/// Unified static asset generation and publication command.
+pub mod buildstatic;
 /// Built-in management commands (migrate, runserver, shell, etc.).
 pub mod builtin;
 /// CLI argument parsing and command dispatch.

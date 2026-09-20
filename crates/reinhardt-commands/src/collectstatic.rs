@@ -107,6 +107,7 @@ pub struct CollectStaticCommand {
 	index_source: Option<PathBuf>,
 	style_context: Option<StylePackageContext>,
 	virtual_assets: Vec<VirtualStaticAsset>,
+	source_base: Option<PathBuf>,
 }
 
 impl CollectStaticCommand {
@@ -119,6 +120,7 @@ impl CollectStaticCommand {
 			index_source: None,
 			style_context: None,
 			virtual_assets: Vec::new(),
+			source_base: None,
 		}
 	}
 
@@ -140,8 +142,133 @@ impl CollectStaticCommand {
 		self.virtual_assets.push(asset);
 	}
 
+	/// Resolve application-registered relative static directories against a project base.
+	pub fn set_source_base(&mut self, base: PathBuf) {
+		self.source_base = Some(base);
+	}
+
+	/// Discover ordinary/vendor inputs and generated styles without writing a public manifest.
+	///
+	/// A dry run performs no download or style compilation. Publication captures the
+	/// returned physical sources before activating a new generation. Unlike legacy
+	/// copying, duplicate logical inputs are retained so publication can reject them.
+	pub fn collect_inputs(&mut self) -> io::Result<crate::buildstatic::CollectedStaticInputs> {
+		use reinhardt_utils::staticfiles::publication::AssetInput;
+		self.validate_config()?;
+		let mut result = crate::buildstatic::CollectedStaticInputs::default();
+		let all_dirs = self.static_source_dirs();
+		self.validate_reserved_sources(&all_dirs)?;
+		let mut virtual_assets = self.virtual_assets.clone();
+		if let Some(context) = &self.style_context {
+			if self.options.dry_run {
+				result
+					.pending_checks
+					.push("component style extraction".into());
+			} else {
+				let bundle = StyleExtractor::new(context.clone())
+					.extract()
+					.map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+				virtual_assets.retain(|a| a.logical_path != COMPONENT_STYLES_PATH);
+				virtual_assets.push(VirtualStaticAsset {
+					logical_path: COMPONENT_STYLES_PATH.into(),
+					bytes: bundle.css,
+				});
+			}
+		}
+		#[cfg(feature = "server")]
+		if self.options.dry_run {
+			result
+				.pending_checks
+				.push("registered vendor downloads and integrity validation".into());
+		} else {
+			self.download_publication_vendors()?;
+		}
+		let mut excluded = Vec::new();
+		for root in &all_dirs {
+			for name in [
+				"builds",
+				"manifest.json",
+				"staticfiles.json",
+				".publication.lock",
+			] {
+				excluded.push(root.join(name));
+			}
+			if root.is_dir() {
+				for entry in fs::read_dir(root)? {
+					let entry = entry?;
+					if entry.file_name().to_string_lossy().starts_with(".asset-")
+						|| entry
+							.file_name()
+							.to_string_lossy()
+							.starts_with(".manifest-")
+					{
+						excluded.push(entry.path());
+					}
+				}
+			}
+			if self.config.static_root != *root && self.config.static_root.starts_with(root) {
+				excluded.push(self.config.static_root.clone());
+			}
+		}
+		for (root, logical) in StaticFilesFinder::new(all_dirs).find_all_checked(&excluded)? {
+			if !self.should_ignore(&logical) {
+				result
+					.inputs
+					.push(AssetInput::from_directory(root, &logical, &logical));
+			}
+		}
+		self.register_virtual_assets(&virtual_assets)?;
+		for asset in virtual_assets {
+			result
+				.inputs
+				.push(AssetInput::bytes(&asset.logical_path, asset.bytes));
+		}
+		Ok(result)
+	}
+
+	#[cfg(feature = "server")]
+	fn download_publication_vendors(&self) -> io::Result<()> {
+		use reinhardt_utils::staticfiles::vendor::{Verbosity, download_all_vendor_assets};
+		let roots: std::collections::HashMap<_, _> = ::reinhardt_apps::get_app_static_files()
+			.iter()
+			.map(|app| {
+				let path = PathBuf::from(app.static_dir);
+				let path = self
+					.source_base
+					.as_ref()
+					.filter(|_| path.is_relative())
+					.map_or_else(|| path.clone(), |base| base.join(&path));
+				(app.app_label, path)
+			})
+			.collect();
+		if roots.is_empty() {
+			return Ok(());
+		}
+		for root in roots.values() {
+			fs::create_dir_all(root)?;
+		}
+		// An owned scoped thread also works when called from a current-thread async runtime.
+		std::thread::scope(|scope| {
+			scope
+				.spawn(move || {
+					let runtime = tokio::runtime::Builder::new_current_thread()
+						.enable_all()
+						.build()?;
+					runtime
+						.block_on(download_all_vendor_assets(
+							|label| roots.get(label).cloned(),
+							Verbosity::Silent,
+						))
+						.map_err(io::Error::other)
+				})
+				.join()
+				.map_err(|_| io::Error::other("vendor download worker panicked"))?
+		})
+	}
+
 	/// Execute the collectstatic command
 	pub fn execute(&mut self) -> Result<CollectStaticStats, io::Error> {
+		self.refuse_generation_overwrite()?;
 		let mut stats = CollectStaticStats::new();
 		self.manifest.clear();
 
@@ -364,7 +491,43 @@ impl CollectStaticCommand {
 				directories.push(static_dir);
 			}
 		}
+		if let Some(base) = &self.source_base {
+			for path in &mut directories {
+				if path.is_relative() {
+					*path = base.join(&*path);
+				}
+			}
+		}
 		directories
+	}
+
+	fn refuse_generation_overwrite(&self) -> io::Result<()> {
+		for name in ["manifest.json", "staticfiles.json"] {
+			let path = self.config.static_root.join(name);
+			if path.is_file() {
+				let bytes = fs::read(&path)?;
+				let value: serde_json::Value = serde_json::from_slice(&bytes).map_err(|error| {
+					io::Error::new(
+						io::ErrorKind::InvalidData,
+						format!(
+							"invalid existing manifest {}: {error}; select a separate static root",
+							path.display()
+						),
+					)
+				})?;
+				if value
+					.get("version")
+					.and_then(|v| v.as_str())
+					.is_some_and(|version| version != "1.0")
+				{
+					return Err(io::Error::new(
+						io::ErrorKind::InvalidInput,
+						"collectstatic cannot overwrite a generation publication; use buildstatic or a separate legacy static root",
+					));
+				}
+			}
+		}
+		Ok(())
 	}
 
 	fn validate_reserved_sources(&self, sources: &[PathBuf]) -> Result<(), io::Error> {
@@ -843,6 +1006,7 @@ impl Clone for CollectStaticCommand {
 			index_source: self.index_source.clone(),
 			style_context: self.style_context.clone(),
 			virtual_assets: self.virtual_assets.clone(),
+			source_base: self.source_base.clone(),
 		}
 	}
 }
