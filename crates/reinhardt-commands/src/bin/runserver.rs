@@ -53,16 +53,18 @@ use {
 	reinhardt_urls::routers::get_router,
 };
 
-type BoxBody = http_body_util::combinators::UnsyncBoxBody<Bytes, Infallible>;
+type BoxBody = http_body_util::combinators::UnsyncBoxBody<Bytes, std::io::Error>;
 
 fn full_body(body: impl Into<Bytes>) -> BoxBody {
-	Full::new(body.into()).boxed_unsync()
+	Full::new(body.into())
+		.map_err(|never| match never {})
+		.boxed_unsync()
 }
 
 fn ssr_stream_body(
 	stream: impl futures_util::Stream<Item = reinhardt_pages::ssr::SsrChunk> + Send + 'static,
 ) -> BoxBody {
-	let frames = stream.map(|chunk| Ok::<_, Infallible>(Frame::data(chunk.into_bytes())));
+	let frames = stream.map(|chunk| Ok::<_, std::io::Error>(Frame::data(chunk.into_bytes())));
 	StreamBody::new(frames).boxed_unsync()
 }
 
@@ -466,6 +468,25 @@ async fn dispatch_router_request(
 }
 
 #[cfg(feature = "routers")]
+fn framework_response_body(response: reinhardt_http::Response) -> BoxBody {
+	let Some(source) = response.file_body().cloned() else {
+		return full_body(response.body);
+	};
+	let chunks = futures_util::stream::try_unfold((source, 0), |(source, position)| async move {
+		if position == source.len() {
+			return Ok(None);
+		}
+		let reader = source.clone();
+		let bytes = tokio::task::spawn_blocking(move || reader.read_chunk(position, 64 * 1024))
+			.await
+			.map_err(std::io::Error::other)??;
+		let next = position + bytes.len() as u64;
+		Ok::<_, std::io::Error>(Some((Frame::data(bytes), (source, next))))
+	});
+	StreamBody::new(chunks).boxed_unsync()
+}
+
+#[cfg(feature = "routers")]
 fn convert_to_hyper_response(
 	response: reinhardt_http::Response,
 ) -> Option<hyper::Response<BoxBody>> {
@@ -473,12 +494,7 @@ fn convert_to_hyper_response(
 	for (key, value) in response.headers.iter() {
 		hyper_resp = hyper_resp.header(key, value);
 	}
-	let body = if let Some(file) = response.file_body() {
-		let length = usize::try_from(file.len()).ok()?;
-		full_body(file.read_chunk(0, length).ok()?)
-	} else {
-		full_body(response.body)
-	};
+	let body = framework_response_body(response);
 	hyper_resp.body(body).ok()
 }
 
@@ -510,12 +526,7 @@ fn convert_manifest_response(
 	for (key, value) in response.headers.iter() {
 		hyper_resp = hyper_resp.header(key, value);
 	}
-	let body = if let Some(file) = response.file_body() {
-		let length = usize::try_from(file.len()).ok()?;
-		full_body(file.read_chunk(0, length).ok()?)
-	} else {
-		full_body(response.body)
-	};
+	let body = framework_response_body(response);
 	hyper_resp.body(body).ok()
 }
 
@@ -1339,6 +1350,60 @@ mod tests {
 	use clap::Parser;
 	use http_body_util::BodyExt;
 	use rstest::rstest;
+
+	#[rstest]
+	#[case(false)]
+	#[case(true)]
+	#[cfg(feature = "routers")]
+	#[tokio::test]
+	async fn file_response_converters_stream_owned_ranges(#[case] manifest: bool) {
+		use std::io::Write;
+		// Arrange
+		let mut file = tempfile::tempfile().unwrap();
+		let data: Vec<_> = (0..200_000).map(|i| (i % 251) as u8).collect();
+		file.write_all(&data).unwrap();
+		let response = reinhardt_http::Response::new(StatusCode::PARTIAL_CONTENT)
+			.with_file_body(file, 17, 180_000)
+			.unwrap();
+		// Act
+		let converted = if manifest {
+			convert_manifest_response(response)
+		} else {
+			convert_to_hyper_response(response)
+		}
+		.unwrap();
+		assert_eq!(converted.status(), StatusCode::PARTIAL_CONTENT);
+		assert_eq!(converted.headers()["content-length"], "180000");
+		let mut body = converted.into_body();
+		let mut received = Vec::new();
+		let mut sizes = Vec::new();
+		while let Some(frame) = body.frame().await {
+			let chunk = frame.unwrap().into_data().unwrap();
+			sizes.push(chunk.len());
+			received.extend_from_slice(&chunk);
+		}
+		// Assert
+		assert_eq!(sizes, vec![65_536, 65_536, 48_928]);
+		assert_eq!(received, data[17..180_017]);
+	}
+
+	#[rstest]
+	#[cfg(feature = "routers")]
+	#[tokio::test]
+	async fn truncated_file_response_reports_transport_error() {
+		use std::io::Write;
+		// Arrange
+		let mut file = tempfile::tempfile().unwrap();
+		file.write_all(b"original").unwrap();
+		let truncate = file.try_clone().unwrap();
+		let response = reinhardt_http::Response::ok()
+			.with_file_body(file, 0, 8)
+			.unwrap();
+		let converted = convert_manifest_response(response).unwrap();
+		truncate.set_len(0).unwrap();
+		// Act & Assert
+		assert!(converted.into_body().collect().await.is_err());
+	}
 
 	#[rstest]
 	#[tokio::test]
