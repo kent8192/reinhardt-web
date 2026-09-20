@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.19](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.18...reinhardt-web@v0.3.19) - 2026-09-20
+
+### Documentation
+
+- add release announcement(s)
+- *(agents)* gate external publication by destination policy
+
+### Fixed
+
+- *(pages)* honor WebSocket retry options with owned cancellation
+
 ## [0.3.18](https://github.com/kent8192/reinhardt-web/compare/reinhardt-web@v0.3.17...reinhardt-web@v0.3.18) - 2026-09-16
 
 ### Documentation
