@@ -56,6 +56,10 @@ oxc_span = { version = "0.96.0", optional = true }
 oxc_minifier = { version = "0.96.0", optional = true }
 oxc_mangler = { version = "0.96.0", optional = true }
 oxc_codegen = { version = "0.96.0", optional = true }
+oxc_ast = { version = "0.96.0", optional = true }
+oxc_ast_visit = { version = "0.96.0", optional = true }
+cssparser = { version = "0.34.0", optional = true }
+html5ever = { version = "0.29.1", optional = true }
 aws-config = { version = "1.0", optional = true }
 aws-sdk-s3 = { version = "1.0", optional = true }
 # Activate the workspace AWS compatibility constraint (reinhardt-web#6318).
@@ -84,6 +88,8 @@ logging = []
 cache = []
 storage = []
 staticfiles = []
+# Native deterministic packaging; readers and serving do not require these tools.
+asset-publication = ["staticfiles", "compression", "dep:percent-encoding", "dep:oxc_allocator", "dep:oxc_parser", "dep:oxc_span", "dep:oxc_ast", "dep:oxc_ast_visit", "dep:cssparser", "dep:html5ever"]
 utils-core = []
 all = ["logging", "cache", "storage", "staticfiles", "utils-core"]
 utils-full = ["logging", "cache", "storage", "staticfiles", "utils-core"]
@@ -95,7 +101,7 @@ all-backends = [
   "redis-sentinel",
   "memcached-backend",
 ]
-full = ["advanced-minification", "all-backends", "azure", "compression", "dev-server", "gcs", "image-optimization", "processing", "s3", "source-maps"]
+full = ["advanced-minification", "all-backends", "asset-publication", "azure", "compression", "dev-server", "gcs", "image-optimization", "processing", "s3", "source-maps"]
 s3 = ["dep:aws-config", "dep:aws-sdk-s3", "dep:aws-smithy-types", "time"]
 azure = ["dep:hmac", "dep:percent-encoding"]
 gcs = ["dep:google-cloud-storage", "dep:google-cloud-auth"]

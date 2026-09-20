@@ -220,6 +220,51 @@ static root. `STATIC_URL` supplies only the public URL prefix, including nested
 prefixes or an HTTP(S) origin. Unknown logical names return errors. Existing
 prefix-only resolvers remain available for legacy pipelines.
 
+With the native `asset-publication` feature, `AssetPipeline` captures inputs,
+discovers their dependencies, assigns all paths, rewrites references, and hashes
+the final bytes into one generation. Discovery order, source directory location,
+and `STATIC_URL` do not determine that identity. Mode, processor versions/options,
+stylesheet order, and every published asset do.
+
+```rust
+use reinhardt_utils::staticfiles::publication::{
+    AssetInput, AssetMode, AssetPipeline,
+};
+
+let mut pipeline = AssetPipeline::new();
+pipeline.add_input(AssetInput::bytes("images/logo.svg", b"<svg/>".to_vec()))?;
+pipeline.add_input(AssetInput::bytes(
+    "theme.css", b".logo { mask: url('images/logo.svg'); }".to_vec(),
+))?;
+let complete = pipeline.prepare(AssetMode::Production)?;
+assert!(complete.manifest().paths["images/logo.svg"].ends_with("/vectors/logo.svg"));
+# Ok::<(), reinhardt_utils::staticfiles::publication::AssetBuildError>(())
+```
+
+Built-in reference processing supports UTF-8 CSS `url()`/`@import`, literal ESM
+imports/exports and dynamic imports, `new URL(literal, import.meta.url)`,
+wasm-bindgen snippets, and local source-map directives. HTML processing covers
+asset attributes, `srcset`, inline CSS/module scripts, and
+`{{ static_url('logical/path') }}` expressions; navigation and form actions retain
+their meaning. Query strings, fragments, external URLs, and data/blob URLs are
+preserved. Local dependencies must be included. Computed imports, import maps,
+CommonJS loading, and HTML `base href` need a custom processor or prior bundling;
+the publisher reports these cases instead of guessing filenames.
+
+Custom `AssetProcessor` implementations declare extra inputs during `prepare`,
+local dependencies during `analyze`, and final references during `rewrite`.
+Rewriting receives generation-relative paths, so import cycles work without
+recursive hashes. The pipeline reanalyzes output to reject undeclared references.
+`register_byte_processor` also accepts existing asynchronous `Processor`
+implementations with an explicit version and options. A transform that changes
+mapped code must preserve positions or return an updated source map.
+
+Recognized gzip/Brotli representations must agree with their canonical source.
+An encoded-only input creates that source, and enabled variants are regenerated
+deterministically after rewriting. Source maps retain original source contents
+and remap generated positions through URL edits. Unsupported or unverifiable map
+transformations fail rather than publishing stale positions.
+
 ## Development vs Production
 
 ### Development

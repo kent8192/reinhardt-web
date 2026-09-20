@@ -249,12 +249,10 @@ pub(super) fn validate_manifest(manifest: &AssetManifestV2) -> Result<(), AssetB
 				))
 			})?;
 			let mime_ok = if kind == "WASM" {
-				record.mime == "application/wasm"
+				mime_is(&record.mime, "application/wasm")
 			} else {
-				matches!(
-					record.mime.as_str(),
-					"text/javascript" | "application/javascript"
-				)
+				mime_is(&record.mime, "text/javascript")
+					|| mime_is(&record.mime, "application/javascript")
 			};
 			if record.category != AssetCategory::Pages
 				|| record.role != AssetRole::Asset
@@ -280,7 +278,7 @@ pub(super) fn validate_manifest(manifest: &AssetManifestV2) -> Result<(), AssetB
 			let record = manifest.assets.get(logical).ok_or_else(|| {
 				invalid(format!("entrypoint {name:?} lacks stylesheet {logical:?}"))
 			})?;
-			if record.mime != "text/css"
+			if !mime_is(&record.mime, "text/css")
 				|| record.role != AssetRole::Asset
 				|| record.encoding.is_some()
 				|| !styles.insert(logical)
@@ -295,7 +293,7 @@ pub(super) fn validate_manifest(manifest: &AssetManifestV2) -> Result<(), AssetB
 				invalid(format!("entrypoint {name:?} lacks document {logical:?}"))
 			})?;
 			if record.role != AssetRole::EntryDocument
-				|| record.mime != "text/html"
+				|| !mime_is(&record.mime, "text/html")
 				|| record.encoding.is_some()
 			{
 				return Err(invalid(format!(
@@ -305,6 +303,15 @@ pub(super) fn validate_manifest(manifest: &AssetManifestV2) -> Result<(), AssetB
 		}
 	}
 	Ok(())
+}
+
+fn mime_is(value: &str, expected: &str) -> bool {
+	value
+		.split(';')
+		.next()
+		.unwrap_or_default()
+		.trim()
+		.eq_ignore_ascii_case(expected)
 }
 
 /// A JSON value reader that rejects duplicates before conversion into typed data.
