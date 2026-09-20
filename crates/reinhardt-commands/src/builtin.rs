@@ -3948,6 +3948,11 @@ impl BaseCommand for RunServerCommand {
 	}
 
 	async fn execute(&self, ctx: &CommandContext) -> CommandResult<()> {
+		if ctx.option("expected-asset-build-id").is_some() && !ctx.has_option("with-pages") {
+			return Err(crate::CommandError::ExecutionError(
+				"--expected-asset-build-id requires --with-pages to enable manifest serving".into(),
+			));
+		}
 		// Route inventory is materialized once by `prepare_native_launch_plan`.
 		// This keeps HTTP, WebSocket, and gRPC registrations on one startup path.
 
@@ -4463,72 +4468,18 @@ impl RunServerCommand {
 				.option("asset-manifest")
 				.map(PathBuf::from)
 				.unwrap_or_else(|| collected_static_dir.join("manifest.json"));
-			let manifest_root = manifest_path
-				.parent()
-				.map(std::path::Path::to_path_buf)
-				.unwrap_or_else(|| collected_static_dir.clone());
-			let asset_mode = match ctx
-				.option("asset-mode")
-				.map_or("production", String::as_str)
-			{
-				"production" => reinhardt_utils::staticfiles::publication::AssetMode::Production,
-				"development" => reinhardt_utils::staticfiles::publication::AssetMode::Development,
-				other => {
-					return Err(crate::CommandError::ExecutionError(format!(
-						"invalid --asset-mode {other:?}; expected production or development"
-					)));
-				}
-			};
-			let manifest_v2 = if manifest_path.is_file() {
-				let bytes = tokio::fs::read(&manifest_path).await.map_err(|error| {
-					crate::CommandError::ExecutionError(format!(
-						"failed to read unified static asset manifest {}: {error}",
-						manifest_path.display()
-					))
-				})?;
-				match reinhardt_utils::staticfiles::publication::decode_manifest(&bytes) {
-					Ok(reinhardt_utils::staticfiles::publication::DecodedAssetManifest::V2(_)) => {
-						true
-					}
-					Ok(
-						reinhardt_utils::staticfiles::publication::DecodedAssetManifest::Legacy(_),
-					) => false,
-					Err(error) => {
-						return Err(crate::CommandError::ExecutionError(format!(
-							"invalid unified static asset manifest {}: {error}",
-							manifest_path.display()
-						)));
-					}
-				}
-			} else {
-				false
-			};
+			let store = crate::runserver_assets::load_store(
+				Some(&collected_static_dir),
+				ctx.option("asset-manifest").map(std::path::Path::new),
+				ctx.option("asset-mode")
+					.map_or("production", String::as_str),
+				ctx.option("expected-asset-build-id").map(String::as_str),
+			)
+			.map_err(|error| crate::CommandError::ExecutionError(error.to_string()))?;
 			let mut unified_manifest_mounted = false;
-			if manifest_v2 {
-				let snapshot_options = match asset_mode {
-					reinhardt_utils::staticfiles::publication::AssetMode::Production => {
-						reinhardt_utils::staticfiles::publication::SnapshotOptions::production()
-					}
-					reinhardt_utils::staticfiles::publication::AssetMode::Development => {
-						reinhardt_utils::staticfiles::publication::SnapshotOptions::development()
-					}
-				};
-				let snapshot_options = if let Some(id) = ctx.option("expected-asset-build-id") {
-					snapshot_options.expected_build_id(id.to_string())
-				} else {
-					snapshot_options
-				};
-				let store = std::sync::Arc::new(
-					reinhardt_utils::staticfiles::publication::ManifestStore::open(
-						manifest_root.clone(),
-						snapshot_options,
-					)
-					.map_err(|error| {
-						crate::CommandError::ExecutionError(format!(
-							"unified static asset publication is incomplete: {error}"
-						))
-					})?,
-				);
+			if let Some(store) = store {
+				let navigation = !no_spa && !store.active().manifest().entrypoints.is_empty();
+				let store = std::sync::Arc::new(store);
 				let config = reinhardt_utils::staticfiles::publication::ManifestServingConfig::new(
 					store,
 					generated_style_url.clone(),
@@ -4538,7 +4489,7 @@ impl RunServerCommand {
 						"invalid static asset serving configuration: {error}"
 					))
 				})?
-				.with_navigation_fallback(!no_spa);
+				.with_navigation_fallback(navigation);
 				config.validate().map_err(|error| {
 					crate::CommandError::ExecutionError(format!(
 						"invalid Pages entrypoint configuration: {error}"
@@ -6854,6 +6805,21 @@ mod tests {
 		fn drop(&mut self) {
 			let _ = std::env::set_current_dir(&self.original);
 		}
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn expected_asset_build_cannot_be_ignored_without_serving() {
+		// Arrange
+		let mut ctx = CommandContext::new(Vec::new());
+		ctx.set_option("expected-asset-build-id".into(), "required".into());
+		// Act
+		let result = RunServerCommand.execute(&ctx).await;
+		// Assert
+		assert_eq!(
+			result.unwrap_err().to_string(),
+			"Execution error: --expected-asset-build-id requires --with-pages to enable manifest serving"
+		);
 	}
 
 	#[test]

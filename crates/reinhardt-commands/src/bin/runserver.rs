@@ -5,6 +5,9 @@
 // Uses deprecated Settings type; retained for backward compatibility until migration is complete.
 #![allow(deprecated)]
 
+#[path = "../runserver_assets.rs"]
+mod runserver_assets;
+
 use clap::Parser;
 use colored::Colorize;
 use futures_util::StreamExt;
@@ -363,61 +366,30 @@ fn load_unified_manifest_middleware(
 	Option<Arc<reinhardt_utils::staticfiles::publication::ManifestStaticMiddleware>>,
 	Box<dyn std::error::Error>,
 > {
-	let root = settings
-		.static_root
-		.clone()
-		.or_else(|| asset_manifest.and_then(Path::parent).map(Path::to_path_buf));
-	let Some(root) = root else {
+	let Some(store) = runserver_assets::load_store(
+		settings.static_root.as_deref(),
+		asset_manifest,
+		asset_mode,
+		expected_asset_build_id,
+	)?
+	else {
 		return Ok(None);
 	};
-	let manifest_path = asset_manifest
-		.map(Path::to_path_buf)
-		.unwrap_or_else(|| root.join("manifest.json"));
-	if !manifest_path.is_file() {
-		return Ok(None);
-	}
-	let bytes = std::fs::read(&manifest_path)?;
-	let decoded = reinhardt_utils::staticfiles::publication::decode_manifest(&bytes)?;
-	if !matches!(
-		decoded,
-		reinhardt_utils::staticfiles::publication::DecodedAssetManifest::V2(_)
-	) {
-		return Ok(None);
-	}
-	let mode = match asset_mode {
-		"production" => reinhardt_utils::staticfiles::publication::AssetMode::Production,
-		"development" => reinhardt_utils::staticfiles::publication::AssetMode::Development,
-		other => return Err(format!("invalid --asset-mode {other:?}").into()),
-	};
-	let snapshot_options = match mode {
-		reinhardt_utils::staticfiles::publication::AssetMode::Production => {
-			reinhardt_utils::staticfiles::publication::SnapshotOptions::production()
-		}
-		reinhardt_utils::staticfiles::publication::AssetMode::Development => {
-			reinhardt_utils::staticfiles::publication::SnapshotOptions::development()
-		}
-	};
-	let snapshot_options = if let Some(id) = expected_asset_build_id {
-		snapshot_options.expected_build_id(id.to_string())
-	} else {
-		snapshot_options
-	};
-	let manifest_root = manifest_path
-		.parent()
-		.map(Path::to_path_buf)
-		.unwrap_or_else(|| root.clone());
-	let store = Arc::new(
-		reinhardt_utils::staticfiles::publication::ManifestStore::open(
-			manifest_root,
-			snapshot_options,
-		)?,
-	);
+	let navigation = !store.active().manifest().entrypoints.is_empty();
+	let store = Arc::new(store);
 	let config = reinhardt_utils::staticfiles::publication::ManifestServingConfig::new(
 		store,
 		settings.static_url.clone(),
 	)?
-	.with_navigation_fallback(true);
+	.with_navigation_fallback(navigation);
 	config.validate()?;
+	let manifest_path = asset_manifest.map(Path::to_path_buf).unwrap_or_else(|| {
+		settings
+			.static_root
+			.as_ref()
+			.expect("manifest root is configured")
+			.join("manifest.json")
+	});
 	println!(
 		"{}",
 		format!(
@@ -426,6 +398,7 @@ fn load_unified_manifest_middleware(
 		)
 		.green()
 	);
+
 	Ok(Some(Arc::new(
 		reinhardt_utils::staticfiles::publication::ManifestStaticMiddleware::new(config),
 	)))
@@ -1367,6 +1340,31 @@ mod tests {
 	use http_body_util::BodyExt;
 	use rstest::rstest;
 
+	#[rstest]
+	#[tokio::test]
+	async fn asset_only_publication_loads_without_navigation() {
+		use reinhardt_utils::staticfiles::publication::{
+			AssetInput, AssetMode, AssetPipeline, AssetPublisher,
+		};
+		// Arrange
+		let root = tempfile::tempdir().unwrap();
+		let mut pipeline = AssetPipeline::new();
+		pipeline
+			.add_input(AssetInput::bytes("a.txt", b"asset".to_vec()))
+			.unwrap();
+		AssetPublisher::new(root.path().into())
+			.publish(pipeline.prepare(AssetMode::Production).unwrap())
+			.unwrap();
+		let settings = RunServerSettings {
+			static_root: Some(root.path().into()),
+			..Default::default()
+		};
+		// Act
+		let result = load_unified_manifest_middleware(&settings, "production", None, None).unwrap();
+		// Assert
+		assert!(result.is_some());
+	}
+
 	#[test]
 	fn component_styles_do_not_start_after_a_wasm_build_failure() {
 		assert!(should_abort_after_wasm_build(true, false));
@@ -1733,8 +1731,9 @@ mod tests {
 		// Assert
 		assert!(!settings.debug);
 		assert_eq!(settings.static_url, "/assets/");
-		assert_eq!(settings.static_root, Some(PathBuf::from("public")));
-		assert_eq!(settings.staticfiles_dirs, vec![PathBuf::from("assets")]);
+		let project_root = temp_dir.path().canonicalize().unwrap();
+		assert_eq!(settings.static_root, Some(project_root.join("public")));
+		assert_eq!(settings.staticfiles_dirs, vec![project_root.join("assets")]);
 	}
 
 	#[test]

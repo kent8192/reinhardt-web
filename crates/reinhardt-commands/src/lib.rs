@@ -418,6 +418,8 @@ pub mod project_config;
 pub mod registry;
 #[cfg(feature = "contract")]
 mod resolved_contract;
+#[cfg(feature = "server")]
+mod runserver_assets;
 /// Runserver lifecycle hooks for concurrent services and pre-listen validation.
 #[cfg(feature = "server")]
 pub mod runserver_hooks;
