@@ -727,3 +727,74 @@ async fn encoded_unicode_and_percent_filenames_are_decoded_once() {
 	assert_eq!(body_bytes(&response), b"<svg/>");
 	assert!(url.contains("%2520.svg"));
 }
+
+#[rstest]
+#[case("/docs/static/", "/docs/guide")]
+#[case("/api/assets/", "/api/items")]
+#[tokio::test]
+async fn static_mount_precedes_overlapping_passthrough(
+	#[case] prefix: &str,
+	#[case] application: &str,
+) {
+	// Arrange
+	let fixture = Fixture::new(prefix, AssetMode::Production);
+	let probe = NavigationProbe::new(StatusCode::OK);
+	// Act
+	let asset = fixture
+		.middleware
+		.process(
+			Request::builder()
+				.uri(fixture.url("site.css"))
+				.build()
+				.unwrap(),
+			probe.clone(),
+		)
+		.await
+		.unwrap();
+	let manifest = fixture
+		.middleware
+		.process(
+			Request::builder()
+				.uri(format!("{prefix}manifest.json"))
+				.build()
+				.unwrap(),
+			probe.clone(),
+		)
+		.await
+		.unwrap();
+	let missing = fixture
+		.middleware
+		.process(
+			Request::builder()
+				.uri(format!("{prefix}missing.js"))
+				.build()
+				.unwrap(),
+			probe.clone(),
+		)
+		.await
+		.unwrap();
+	// Assert
+	assert_eq!(asset.status, StatusCode::OK);
+	assert_eq!(
+		asset
+			.file_body()
+			.unwrap()
+			.read_chunk(0, 1024)
+			.unwrap()
+			.as_ref(),
+		b"body{color:rgb(1,2,3)}"
+	);
+	assert_eq!(manifest.status, StatusCode::OK);
+	assert_eq!(missing.status, StatusCode::NOT_FOUND);
+	assert_eq!(probe.call_count(), 0);
+	let routed = fixture
+		.middleware
+		.process(
+			Request::builder().uri(application).build().unwrap(),
+			probe.clone(),
+		)
+		.await
+		.unwrap();
+	assert_eq!(routed.body.as_ref(), b"navigation-probe");
+	assert_eq!(probe.call_count(), 1);
+}

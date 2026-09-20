@@ -67,7 +67,7 @@ impl ManifestServingConfig {
 		self.legacy_aliases = enabled;
 		self
 	}
-	/// Preserve framework/application routes before this mount, at segment boundaries.
+	/// Preserve framework/application routes outside this mount, at segment boundaries.
 	pub fn with_passthrough_prefixes(
 		mut self,
 		prefixes: Vec<String>,
@@ -133,14 +133,6 @@ impl Middleware for ManifestStaticMiddleware {
 			Ok(path) => path,
 			Err(_) => return Ok(error(StatusCode::BAD_REQUEST, &request.method)),
 		};
-		if self
-			.config
-			.passthrough
-			.iter()
-			.any(|prefix| matches_prefix(&path, prefix))
-		{
-			return next.handle(request).await;
-		}
 		let active = self.config.store.active();
 		let relative = path
 			.strip_prefix(&self.config.prefix)
@@ -185,6 +177,14 @@ impl Middleware for ManifestStaticMiddleware {
 			if self.config.prefix != "/" || reserved(relative) {
 				return Ok(error(StatusCode::NOT_FOUND, &request.method));
 			}
+		}
+		if self
+			.config
+			.passthrough
+			.iter()
+			.any(|prefix| matches_prefix(&path, prefix))
+		{
+			return next.handle(request).await;
 		}
 		if path
 			.rsplit('/')
