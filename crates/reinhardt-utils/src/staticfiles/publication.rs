@@ -4,6 +4,7 @@
 //! version 2 generation can supply the production Pages publication contract.
 
 mod classify;
+mod document;
 mod inventory;
 mod manifest;
 mod model;
@@ -15,9 +16,11 @@ mod publisher;
 mod representations;
 #[cfg(feature = "asset-publication")]
 mod rewrite;
+mod serving;
 mod snapshot;
 
 pub use classify::{AssetClassifier, validate_assignments};
+pub use document::{DocumentChunk, DocumentEscaping, DocumentProgram, render_entry_document};
 pub use manifest::{decode_manifest, discover_manifest, encode_manifest};
 pub use model::{
 	AssetBuildError, AssetCategory, AssetEncoding, AssetManifestV2, AssetMode, AssetProducer,
@@ -25,6 +28,7 @@ pub use model::{
 	PagesEntrypoint, ProcessorIdentity,
 };
 pub use reinhardt_core::types::static_assets::{AssetUrlError, AssetUrlSnapshot};
+pub use serving::{ManifestServingConfig, ManifestStaticMiddleware};
 pub use snapshot::{ManifestSnapshot, ManifestStore, SnapshotOptions};
 
 #[cfg(feature = "asset-publication")]

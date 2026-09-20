@@ -164,6 +164,7 @@ pub(super) fn validate_manifest(manifest: &AssetManifestV2) -> Result<(), AssetB
 		}
 	}
 	for (name, record) in &manifest.assets {
+		super::document::validate_program(name, manifest)?;
 		let concrete_mime = record.mime.parse::<mime_guess::Mime>().is_ok_and(|mime| {
 			!mime.subtype().as_str().is_empty() && mime.type_() != "*" && mime.subtype() != "*"
 		});

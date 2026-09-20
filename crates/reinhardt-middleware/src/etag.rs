@@ -227,7 +227,21 @@ impl Middleware for ETagMiddleware {
 		};
 
 		// Generate ETag
-		let etag = self.generate_etag(&response.body);
+		// File responses already own their representation and expose an empty
+		// compatibility buffer. Never hash that buffer as the entity body.
+		if response.file_body().is_some() && !response.headers.contains_key(hyper::header::ETAG) {
+			return Ok(response);
+		}
+		let etag = if response.file_body().is_some() {
+			response
+				.headers
+				.get(hyper::header::ETAG)
+				.and_then(|value| value.to_str().ok())
+				.unwrap_or_default()
+				.to_owned()
+		} else {
+			self.generate_etag(&response.body)
+		};
 
 		// Check If-None-Match header (for GET/HEAD requests)
 		// Uses weak comparison per RFC 7232 Section 2.3.2:

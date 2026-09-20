@@ -1,9 +1,13 @@
+use super::response_body::{
+	ServerResponseBody, into_hyper_response, request_body_too_large_response,
+};
 use bytes::Bytes;
-use http_body_util::Full;
+#[cfg(test)]
+use hyper::StatusCode;
 use hyper::body::Incoming;
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
-use hyper::{HeaderMap, Method, StatusCode, Uri};
+use hyper::{HeaderMap, Method, Uri};
 use hyper_util::rt::TokioIo;
 use reinhardt_di::InjectionContext;
 use reinhardt_http::{
@@ -696,7 +700,7 @@ async fn handle_request_with<F, Fut>(
 	di_context: Option<Arc<InjectionContext>>,
 	max_body_size: u64,
 	upgrade_tasks: Option<mpsc::UnboundedSender<UpgradeTask>>,
-) -> Result<hyper::Response<Full<Bytes>>, BoxError>
+) -> Result<hyper::Response<ServerResponseBody>, BoxError>
 where
 	F: Fn(Request) -> Fut + Clone + Send + Sync + 'static,
 	Fut: Future<Output = reinhardt_http::Result<Response>> + Send + 'static,
@@ -770,7 +774,7 @@ async fn handle_request_sync_with_precheck<F, P>(
 	di_context: Option<Arc<InjectionContext>>,
 	max_body_size: u64,
 	upgrade_tasks: Option<mpsc::UnboundedSender<UpgradeTask>>,
-) -> Result<hyper::Response<Full<Bytes>>, BoxError>
+) -> Result<hyper::Response<ServerResponseBody>, BoxError>
 where
 	F: Fn(Request) -> reinhardt_http::Result<Response> + Clone + Send + Sync + 'static,
 	P: Fn(&Method, &Uri, &HeaderMap) -> Option<reinhardt_http::Result<Response>>
@@ -852,26 +856,6 @@ fn is_upgrade_candidate(headers: &HeaderMap) -> bool {
 			.filter_map(|value| value.to_str().ok())
 			.flat_map(|value| value.split(','))
 			.any(|token| token.trim().eq_ignore_ascii_case("upgrade"))
-}
-
-fn into_hyper_response(response: Response) -> hyper::Response<Full<Bytes>> {
-	let status = response.status;
-	let headers = response.headers;
-	let mut hyper_response = hyper::Response::new(Full::new(response.body));
-	if status != StatusCode::OK {
-		*hyper_response.status_mut() = status;
-	}
-	if !headers.is_empty() {
-		*hyper_response.headers_mut() = headers;
-	}
-	hyper_response
-}
-
-fn request_body_too_large_response() -> hyper::Response<Full<Bytes>> {
-	hyper::Response::builder()
-		.status(StatusCode::PAYLOAD_TOO_LARGE)
-		.body(Full::new(Bytes::from_static(b"Request body too large")))
-		.expect("Failed to build 413 response")
 }
 
 /// Helper function to create and run a server

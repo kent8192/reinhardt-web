@@ -22,6 +22,8 @@ use reinhardt_commands::{CollectStaticCommand, CollectStaticOptions};
 use reinhardt_commands::{
 	WasmBuildConfig, WasmBuilder, detect_cdylib_in_cargo_toml, is_wasm_stale_for_roots,
 };
+#[cfg(feature = "routers")]
+use reinhardt_http::Middleware;
 use reinhardt_pages::ssr::SsrRenderer;
 use reinhardt_utils::safe_path_join;
 use reinhardt_utils::staticfiles::StaticFilesConfig;
@@ -68,6 +70,8 @@ struct RunServerSettings {
 	static_root: Option<PathBuf>,
 	staticfiles_dirs: Vec<PathBuf>,
 	generated_style_root: Option<PathBuf>,
+	manifest_middleware:
+		Option<Arc<reinhardt_utils::staticfiles::publication::ManifestStaticMiddleware>>,
 }
 
 impl Default for RunServerSettings {
@@ -78,6 +82,7 @@ impl Default for RunServerSettings {
 			static_root: None,
 			staticfiles_dirs: Vec::new(),
 			generated_style_root: None,
+			manifest_middleware: None,
 		}
 	}
 }
@@ -135,6 +140,18 @@ struct Args {
 	/// Skip collectstatic at startup
 	#[arg(long)]
 	no_collectstatic: bool,
+
+	/// Unified asset publication mode (production or development)
+	#[arg(long, default_value = "production", value_parser = ["production", "development"])]
+	asset_mode: String,
+
+	/// Explicit unified asset manifest path
+	#[arg(long)]
+	asset_manifest: Option<PathBuf>,
+
+	/// Require a specific unified asset build identifier
+	#[arg(long)]
+	expected_asset_build_id: Option<String>,
 
 	/// Cargo package containing component style definitions
 	#[arg(long, value_name = "NAME")]
@@ -314,6 +331,7 @@ fn load_settings() -> RunServerSettings {
 						static_root: Some(static_settings.static_root),
 						staticfiles_dirs: static_settings.staticfiles_dirs,
 						generated_style_root: None,
+						manifest_middleware: None,
 					}
 				}
 				Err(e) => {
@@ -334,6 +352,83 @@ fn load_settings() -> RunServerSettings {
 			RunServerSettings::default()
 		}
 	}
+}
+
+fn load_unified_manifest_middleware(
+	settings: &RunServerSettings,
+	asset_mode: &str,
+	asset_manifest: Option<&Path>,
+	expected_asset_build_id: Option<&str>,
+) -> Result<
+	Option<Arc<reinhardt_utils::staticfiles::publication::ManifestStaticMiddleware>>,
+	Box<dyn std::error::Error>,
+> {
+	let root = settings
+		.static_root
+		.clone()
+		.or_else(|| asset_manifest.and_then(Path::parent).map(Path::to_path_buf));
+	let Some(root) = root else {
+		return Ok(None);
+	};
+	let manifest_path = asset_manifest
+		.map(Path::to_path_buf)
+		.unwrap_or_else(|| root.join("manifest.json"));
+	if !manifest_path.is_file() {
+		return Ok(None);
+	}
+	let bytes = std::fs::read(&manifest_path)?;
+	let decoded = reinhardt_utils::staticfiles::publication::decode_manifest(&bytes)?;
+	if !matches!(
+		decoded,
+		reinhardt_utils::staticfiles::publication::DecodedAssetManifest::V2(_)
+	) {
+		return Ok(None);
+	}
+	let mode = match asset_mode {
+		"production" => reinhardt_utils::staticfiles::publication::AssetMode::Production,
+		"development" => reinhardt_utils::staticfiles::publication::AssetMode::Development,
+		other => return Err(format!("invalid --asset-mode {other:?}").into()),
+	};
+	let snapshot_options = match mode {
+		reinhardt_utils::staticfiles::publication::AssetMode::Production => {
+			reinhardt_utils::staticfiles::publication::SnapshotOptions::production()
+		}
+		reinhardt_utils::staticfiles::publication::AssetMode::Development => {
+			reinhardt_utils::staticfiles::publication::SnapshotOptions::development()
+		}
+	};
+	let snapshot_options = if let Some(id) = expected_asset_build_id {
+		snapshot_options.expected_build_id(id.to_string())
+	} else {
+		snapshot_options
+	};
+	let manifest_root = manifest_path
+		.parent()
+		.map(Path::to_path_buf)
+		.unwrap_or_else(|| root.clone());
+	let store = Arc::new(
+		reinhardt_utils::staticfiles::publication::ManifestStore::open(
+			manifest_root,
+			snapshot_options,
+		)?,
+	);
+	let config = reinhardt_utils::staticfiles::publication::ManifestServingConfig::new(
+		store,
+		settings.static_url.clone(),
+	)?
+	.with_navigation_fallback(true);
+	config.validate()?;
+	println!(
+		"{}",
+		format!(
+			"Unified static asset manifest enabled: {}",
+			manifest_path.display()
+		)
+		.green()
+	);
+	Ok(Some(Arc::new(
+		reinhardt_utils::staticfiles::publication::ManifestStaticMiddleware::new(config),
+	)))
 }
 
 #[cfg(feature = "routers")]
@@ -405,7 +500,99 @@ fn convert_to_hyper_response(
 	for (key, value) in response.headers.iter() {
 		hyper_resp = hyper_resp.header(key, value);
 	}
-	hyper_resp.body(full_body(response.body)).ok()
+	let body = if let Some(file) = response.file_body() {
+		let length = usize::try_from(file.len()).ok()?;
+		full_body(file.read_chunk(0, length).ok()?)
+	} else {
+		full_body(response.body)
+	};
+	hyper_resp.body(body).ok()
+}
+
+#[cfg(feature = "routers")]
+struct StandaloneManifestNext {
+	router: Option<Arc<dyn reinhardt_http::Handler>>,
+}
+
+#[cfg(feature = "routers")]
+#[async_trait::async_trait]
+impl reinhardt_http::Handler for StandaloneManifestNext {
+	async fn handle(
+		&self,
+		request: reinhardt_http::Request,
+	) -> reinhardt_http::Result<reinhardt_http::Response> {
+		if let Some(router) = &self.router {
+			return router.handle(request).await;
+		}
+		let _ = request;
+		Ok(reinhardt_http::Response::new(StatusCode::NOT_FOUND))
+	}
+}
+
+#[cfg(feature = "routers")]
+fn convert_manifest_response(
+	response: reinhardt_http::Response,
+) -> Option<hyper::Response<BoxBody>> {
+	let mut hyper_resp = hyper::Response::builder().status(response.status);
+	for (key, value) in response.headers.iter() {
+		hyper_resp = hyper_resp.header(key, value);
+	}
+	let body = if let Some(file) = response.file_body() {
+		let length = usize::try_from(file.len()).ok()?;
+		full_body(file.read_chunk(0, length).ok()?)
+	} else {
+		full_body(response.body)
+	};
+	hyper_resp.body(body).ok()
+}
+
+#[cfg(feature = "routers")]
+async fn dispatch_manifest_request(
+	req: Request<Incoming>,
+	middleware: Arc<reinhardt_utils::staticfiles::publication::ManifestStaticMiddleware>,
+	remote_addr: SocketAddr,
+) -> hyper::Response<BoxBody> {
+	let (parts, body) = req.into_parts();
+	let body_bytes = match Limited::new(body, 10 * 1024 * 1024).collect().await {
+		Ok(collected) => collected.to_bytes(),
+		Err(_) => {
+			return hyper::Response::builder()
+				.status(StatusCode::PAYLOAD_TOO_LARGE)
+				.header("Content-Type", "text/plain; charset=utf-8")
+				.body(full_body("Request body exceeds 10 MiB"))
+				.expect("failed to build request size response");
+		}
+	};
+	let request = match reinhardt_http::Request::builder()
+		.method(parts.method)
+		.uri(parts.uri)
+		.version(parts.version)
+		.headers(parts.headers)
+		.body(body_bytes)
+		.remote_addr(remote_addr)
+		.build()
+	{
+		Ok(request) => request,
+		Err(error) => {
+			return hyper::Response::builder()
+				.status(StatusCode::BAD_REQUEST)
+				.header("Content-Type", "text/plain; charset=utf-8")
+				.body(full_body(error.to_string()))
+				.expect("failed to build request error response");
+		}
+	};
+	let router = get_router().map(|router| router as Arc<dyn reinhardt_http::Handler>);
+	let next = Arc::new(StandaloneManifestNext { router });
+	let response = middleware
+		.process(request, next)
+		.await
+		.unwrap_or_else(reinhardt_http::Response::from);
+	convert_manifest_response(response).unwrap_or_else(|| {
+		hyper::Response::builder()
+			.status(StatusCode::INTERNAL_SERVER_ERROR)
+			.body(full_body("failed to encode static response"))
+			.expect("failed to build response error")
+	})
 }
 
 /// Resolve a non-router request path against static files, SPA fallback, or the welcome page.
@@ -520,6 +707,10 @@ async fn handle_request(
 	spa_index: Option<Arc<PathBuf>>,
 	#[cfg_attr(not(feature = "routers"), allow(unused_variables))] remote_addr: SocketAddr,
 ) -> Result<Response<BoxBody>, Infallible> {
+	#[cfg(feature = "routers")]
+	if let Some(middleware) = settings.manifest_middleware.clone() {
+		return Ok(dispatch_manifest_request(req, middleware, remote_addr).await);
+	}
 	let path = req.uri().path().to_string();
 
 	// Route dispatch through registered ServerRouter
@@ -1001,6 +1192,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 		loaded_settings.generated_style_root =
 			Some(component_style_state.generated_root().to_path_buf());
 	}
+	loaded_settings.manifest_middleware = load_unified_manifest_middleware(
+		&loaded_settings,
+		&args.asset_mode,
+		args.asset_manifest.as_deref(),
+		args.expected_asset_build_id.as_deref(),
+	)?;
 	let settings = Arc::new(loaded_settings);
 
 	// Phase 2: Run collectstatic

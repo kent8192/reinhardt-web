@@ -6,6 +6,28 @@ use super::{ManifestStaticFilesStorage, StaticFilesConfig};
 use std::collections::HashMap;
 use std::io;
 
+/// A fallible template resolver pinned to a single publication generation (P0).
+/// Unlike legacy configuration, this never guesses an unpublished URL.
+#[derive(Debug, Clone)]
+pub struct ManifestTemplateResolver {
+	snapshot: super::publication::AssetUrlSnapshot,
+}
+
+impl ManifestTemplateResolver {
+	/// Own the validated projection selected for the current rendered document.
+	pub fn new(snapshot: super::publication::AssetUrlSnapshot) -> Self {
+		Self { snapshot }
+	}
+	/// Resolve a logical name using the projection's URL prefix and generation.
+	pub fn resolve(&self, logical: &str) -> Result<String, super::publication::AssetUrlError> {
+		self.snapshot.resolve(logical)
+	}
+	/// Borrow the pinned projection for application-specific template integration.
+	pub fn snapshot(&self) -> &super::publication::AssetUrlSnapshot {
+		&self.snapshot
+	}
+}
+
 /// Configuration for static files in templates
 ///
 /// This configuration can be used with template systems to generate URLs for static files.

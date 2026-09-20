@@ -1,5 +1,7 @@
 //! Token-based HTML asset attributes and inline CSS/module references.
 
+pub(super) mod document;
+
 use super::{Site, apply_edits, css, javascript, reference, replacement};
 use crate::staticfiles::publication::{AssetBuildError, AssetReference};
 use html5ever::buffer_queue::BufferQueue;

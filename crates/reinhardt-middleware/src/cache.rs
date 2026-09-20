@@ -409,6 +409,12 @@ impl CacheMiddleware {
 
 	/// Check if a response is safe to store in a shared cache.
 	fn is_shareable_response(&self, response: &Response) -> bool {
+		// A file source is intentionally kept outside the legacy buffered cache.
+		// Caching `response.body` here would store an empty body and silently
+		// replace the verified file stream with invalid content on the next hit.
+		if response.file_body().is_some() {
+			return false;
+		}
 		!response.headers.contains_key(SET_COOKIE)
 			&& response.headers.get_all(CACHE_CONTROL).iter().all(|value| {
 				value

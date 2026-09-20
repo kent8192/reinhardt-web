@@ -194,6 +194,8 @@ use std::{cell::RefCell, sync::RwLock};
 #[cfg(native)]
 use reinhardt_utils::staticfiles::TemplateStaticConfig;
 
+pub use reinhardt_core::types::static_assets::{AssetUrlError, AssetUrlSnapshot};
+
 /// Global static configuration storage.
 ///
 /// This is initialized once at application startup and provides
@@ -221,6 +223,47 @@ thread_local! {
 /// server-side manifest processing.
 #[cfg(wasm)]
 static STATIC_URL_PREFIX: OnceLock<String> = OnceLock::new();
+
+/// Browser projection consumed lazily from the server-rendered document (P2).
+#[cfg(wasm)]
+static BROWSER_ASSET_SNAPSHOT: OnceLock<Result<AssetUrlSnapshot, AssetUrlError>> = OnceLock::new();
+
+/// Resolve a logical asset through an immutable request/build projection (P2).
+pub fn try_resolve_static(
+	snapshot: &AssetUrlSnapshot,
+	logical: &str,
+) -> Result<String, AssetUrlError> {
+	snapshot.resolve(logical)
+}
+
+/// Resolve the generated component stylesheet through the selected projection (P2).
+pub fn try_component_stylesheet_url(snapshot: &AssetUrlSnapshot) -> Result<String, AssetUrlError> {
+	snapshot.resolve("__reinhardt__/components.css")
+}
+
+/// Read and validate the server projection once, before Pages startup code runs (P2).
+#[cfg(wasm)]
+pub fn browser_asset_snapshot() -> Result<&'static AssetUrlSnapshot, AssetUrlError> {
+	BROWSER_ASSET_SNAPSHOT
+		.get_or_init(|| {
+			let text = web_sys::window()
+				.and_then(|window| window.document())
+				.and_then(|document| document.get_element_by_id("reinhardt-static-assets"))
+				.and_then(|element| element.text_content())
+				.ok_or_else(|| AssetUrlError::InvalidProjection {
+					reason: "missing reinhardt-static-assets JSON element".into(),
+				})?;
+			AssetUrlSnapshot::from_json(&text)
+		})
+		.as_ref()
+		.map_err(Clone::clone)
+}
+
+/// Resolve a browser asset without falling back to an unhashed static prefix (P2).
+#[cfg(wasm)]
+pub fn try_resolve_browser_static(logical: &str) -> Result<String, AssetUrlError> {
+	browser_asset_snapshot()?.resolve(logical)
+}
 
 /// Initializes the static resolver with the given configuration.
 ///

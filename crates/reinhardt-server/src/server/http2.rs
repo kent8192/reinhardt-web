@@ -1,6 +1,7 @@
+use super::response_body::{
+	ServerResponseBody, into_hyper_response, request_body_too_large_response,
+};
 use bytes::Bytes;
-use http_body_util::Full;
-use hyper::StatusCode;
 use hyper::body::Incoming;
 use hyper::server::conn::http2;
 use hyper::service::service_fn;
@@ -233,7 +234,7 @@ async fn handle_request(
 	req: hyper::Request<Incoming>,
 	handler: Arc<dyn Handler>,
 	max_body_size: u64,
-) -> Result<hyper::Response<Full<Bytes>>, BoxError> {
+) -> Result<hyper::Response<ServerResponseBody>, BoxError> {
 	// Extract request parts
 	let (parts, body) = req.into_parts();
 
@@ -267,26 +268,6 @@ async fn handle_request(
 		.unwrap_or_else(Response::from);
 
 	Ok(into_hyper_response(response))
-}
-
-fn into_hyper_response(response: Response) -> hyper::Response<Full<Bytes>> {
-	let status = response.status;
-	let headers = response.headers;
-	let mut hyper_response = hyper::Response::new(Full::new(response.body));
-	if status != StatusCode::OK {
-		*hyper_response.status_mut() = status;
-	}
-	if !headers.is_empty() {
-		*hyper_response.headers_mut() = headers;
-	}
-	hyper_response
-}
-
-fn request_body_too_large_response() -> hyper::Response<Full<Bytes>> {
-	hyper::Response::builder()
-		.status(StatusCode::PAYLOAD_TOO_LARGE)
-		.body(Full::new(Bytes::from_static(b"Request body too large")))
-		.expect("Failed to build 413 response")
 }
 
 /// Helper function to create and run an HTTP/2 server

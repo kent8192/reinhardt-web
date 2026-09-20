@@ -219,6 +219,9 @@ pub struct AssetRecord {
 	/// Canonical logical parent of an encoded representation.
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub parent: Option<String>,
+	/// Packaging-time HTML instructions for a canonical entry template.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub document: Option<super::document::DocumentProgram>,
 }
 
 /// Explicit relationships used by the Pages loader, without filename scans (P0).

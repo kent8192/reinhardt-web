@@ -274,7 +274,31 @@ impl BuildStaticCommand {
 			for asset in compiled.styles {
 				collector.add_virtual_asset(asset);
 			}
-			collector.collect_inputs().map_err(|e| io_error(&root, e))?
+			let mut collected = collector.collect_inputs().map_err(|e| io_error(&root, e))?;
+			// A Pages entry document commonly lives beside the application crate
+			// (for example, `dashboard/index.html`) rather than in a configured
+			// static source directory. Include that explicit input in the same
+			// generation so `--pages-document` never falls back to an unrelated
+			// legacy copy or requires a second publication step.
+			if let Some(document) = &request.pages_document
+				&& !collected
+					.inputs
+					.iter()
+					.any(|input| input.logical_path == *document)
+			{
+				let source = absolute(base, Path::new(document));
+				if source.is_file() {
+					AssetClassifier::default().classify(
+						document,
+						reinhardt_utils::staticfiles::publication::AssetProducer::Static,
+					)?;
+					collected.inputs.push(
+						AssetInput::from_directory(base.clone(), document, document)
+							.with_role(AssetRole::EntryDocument),
+					);
+				}
+			}
+			collected
 		};
 		let pages = match &request.pages {
 			Some(PagesSource::Directory { directory, entry }) => Some(
@@ -528,5 +552,52 @@ mod tests {
 		// Assert
 		assert!(result.is_ok(), "{result:?}");
 		assert_eq!(calls.get(), 0);
+	}
+
+	#[test]
+	fn pages_document_can_live_at_the_project_root() {
+		// Arrange
+		let root = tempfile::tempdir().unwrap();
+		let pages = root.path().join("wasm-dist");
+		std::fs::create_dir(&pages).unwrap();
+		std::fs::write(
+			pages.join("app.js"),
+			"export default ({module_or_path}) => module_or_path;\nconst wasm = new URL('app_bg.wasm', import.meta.url);",
+		)
+		.unwrap();
+		std::fs::write(pages.join("app_bg.wasm"), b"\0asm\x01\0\0\0").unwrap();
+		std::fs::write(
+			root.path().join("index.html"),
+			"<!doctype html><script type=\"module\" src=\"app.js\"></script>",
+		)
+		.unwrap();
+		let output = root.path().join("static");
+		let command = BuildStaticCommand::new(StaticAssetSettings {
+			static_root: output.clone(),
+			static_url: "/static/".into(),
+			staticfiles_dirs: Vec::new(),
+		});
+		let mut request = BuildStaticRequest::new(root.path().into());
+		request.pages = Some(PagesSource::Directory {
+			directory: pages,
+			entry: "app.js".into(),
+		});
+		request.pages_document = Some("index.html".into());
+
+		// Act
+		let result = command.execute(request).unwrap();
+
+		// Assert
+		let BuildStaticResult::Published(snapshot) = result else {
+			panic!("expected a published generation");
+		};
+		assert_eq!(
+			snapshot.manifest().entrypoints["default"]
+				.document
+				.as_deref(),
+			Some("index.html")
+		);
+		assert!(snapshot.manifest().paths["index.html"].ends_with("/other/index.html"));
+		assert!(output.join("manifest.json").is_file());
 	}
 }

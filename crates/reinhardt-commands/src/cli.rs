@@ -410,6 +410,18 @@ pub enum Commands {
 		#[arg(long)]
 		index: Option<String>,
 
+		/// Unified asset publication mode (production or development)
+		#[arg(long, default_value = "production", value_parser = ["production", "development"])]
+		asset_mode: String,
+
+		/// Explicit unified asset manifest path
+		#[arg(long)]
+		asset_manifest: Option<String>,
+
+		/// Require a specific unified asset build identifier
+		#[arg(long)]
+		expected_asset_build_id: Option<String>,
+
 		/// Cargo package containing component style definitions
 		#[arg(long, value_name = "NAME")]
 		package: Option<String>,
@@ -758,6 +770,9 @@ impl fmt::Debug for Commands {
 				static_dir,
 				no_spa,
 				index,
+				asset_mode,
+				asset_manifest,
+				expected_asset_build_id,
 				package,
 				features,
 				all_features,
@@ -779,6 +794,9 @@ impl fmt::Debug for Commands {
 				static_dir,
 				no_spa,
 				index,
+				asset_mode,
+				asset_manifest,
+				expected_asset_build_id,
 				package,
 				features,
 				all_features,
@@ -1778,6 +1796,9 @@ fn builtin_command_plan(command: Commands, verbosity: u8) -> BuiltinCommandPlan 
 			static_dir,
 			no_spa,
 			index,
+			asset_mode,
+			asset_manifest,
+			expected_asset_build_id,
 			package,
 			features,
 			all_features,
@@ -1797,6 +1818,9 @@ fn builtin_command_plan(command: Commands, verbosity: u8) -> BuiltinCommandPlan 
 			static_dir,
 			no_spa,
 			index,
+			asset_mode,
+			asset_manifest,
+			expected_asset_build_id,
 			package,
 			features,
 			all_features,
@@ -2202,6 +2226,9 @@ async fn run_command_core_with_contract_state(
 			static_dir,
 			no_spa,
 			index,
+			asset_mode,
+			asset_manifest,
+			expected_asset_build_id,
 			package,
 			features,
 			all_features,
@@ -2222,6 +2249,9 @@ async fn run_command_core_with_contract_state(
 				static_dir,
 				no_spa,
 				index,
+				asset_mode,
+				asset_manifest,
+				expected_asset_build_id,
 				package,
 				features,
 				all_features,
@@ -2773,6 +2803,9 @@ struct RunServerOptions {
 	static_dir: String,
 	no_spa: bool,
 	index: Option<String>,
+	asset_mode: String,
+	asset_manifest: Option<String>,
+	expected_asset_build_id: Option<String>,
 	package: Option<String>,
 	features: Vec<String>,
 	all_features: bool,
@@ -2819,6 +2852,15 @@ fn runserver_context_from_options(options: &RunServerOptions) -> CommandContext 
 	}
 	if let Some(ref index) = options.index {
 		ctx.set_option("index".to_string(), index.clone());
+	}
+	if options.asset_mode != "production" {
+		ctx.set_option("asset-mode".to_string(), options.asset_mode.clone());
+	}
+	if let Some(ref manifest) = options.asset_manifest {
+		ctx.set_option("asset-manifest".to_string(), manifest.clone());
+	}
+	if let Some(ref build_id) = options.expected_asset_build_id {
+		ctx.set_option("expected-asset-build-id".to_string(), build_id.clone());
 	}
 	if let Some(ref package) = options.package {
 		ctx.set_option("package".to_string(), package.clone());
@@ -4652,6 +4694,9 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: None,
+			asset_mode: "production".to_string(),
+			asset_manifest: None,
+			expected_asset_build_id: None,
 			package: None,
 			features: vec![],
 			all_features: false,
@@ -4863,6 +4908,9 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: Some("./index.html".to_string()),
+			asset_mode: "production".to_string(),
+			asset_manifest: None,
+			expected_asset_build_id: None,
 			package: None,
 			features: vec![],
 			all_features: false,
@@ -4895,6 +4943,9 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: None,
+			asset_mode: "production".to_string(),
+			asset_manifest: None,
+			expected_asset_build_id: None,
 			package: None,
 			features: vec![],
 			all_features: false,
@@ -4927,6 +4978,9 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: true,
 			index: Some("./index.html".to_string()),
+			asset_mode: "production".to_string(),
+			asset_manifest: None,
+			expected_asset_build_id: None,
 			package: None,
 			features: vec![],
 			all_features: false,
@@ -4960,6 +5014,9 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: Some("./index.html".to_string()),
+			asset_mode: "production".to_string(),
+			asset_manifest: None,
+			expected_asset_build_id: None,
 			package: None,
 			features: vec![],
 			all_features: false,
@@ -4996,6 +5053,9 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: None,
+			asset_mode: "production".to_string(),
+			asset_manifest: None,
+			expected_asset_build_id: None,
 			package: None,
 			features: vec![],
 			all_features: false,
@@ -5029,6 +5089,9 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: None,
+			asset_mode: "production".to_string(),
+			asset_manifest: None,
+			expected_asset_build_id: None,
 			package: None,
 			features: vec![],
 			all_features: false,
@@ -5064,6 +5127,9 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: None,
+			asset_mode: "production".to_string(),
+			asset_manifest: None,
+			expected_asset_build_id: None,
 			package: None,
 			features: vec![],
 			all_features: false,
@@ -5096,6 +5162,9 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: None,
+			asset_mode: "production".to_string(),
+			asset_manifest: None,
+			expected_asset_build_id: None,
 			package: None,
 			features: vec![],
 			all_features: false,
@@ -5442,6 +5511,38 @@ mod tests {
 		assert!(all_features);
 	}
 
+	#[rstest]
+	fn runserver_unified_asset_options_parse_and_forward() {
+		let cli = Cli::try_parse_from([
+			"manage",
+			"runserver",
+			"--asset-mode",
+			"development",
+			"--asset-manifest",
+			"public/manifest.json",
+			"--expected-asset-build-id",
+			"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+		])
+		.expect("unified asset options should parse");
+
+		let Commands::Runserver {
+			asset_mode,
+			asset_manifest,
+			expected_asset_build_id,
+			..
+		} = cli.command
+		else {
+			panic!("expected runserver command");
+		};
+
+		assert_eq!(asset_mode, "development");
+		assert_eq!(asset_manifest.as_deref(), Some("public/manifest.json"));
+		assert_eq!(
+			expected_asset_build_id.as_deref(),
+			Some("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+		);
+	}
+
 	#[cfg(feature = "reinhardt-db")]
 	#[rstest]
 	fn test_requires_database_for_runserver() {
@@ -5462,6 +5563,9 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: None,
+			asset_mode: "production".to_string(),
+			asset_manifest: None,
+			expected_asset_build_id: None,
 			package: None,
 			features: vec![],
 			all_features: false,

@@ -633,6 +633,17 @@ impl AssetPipeline {
 						.collect(),
 					encoding: variants.get(logical).map(|v| v.encoding),
 					parent: variants.get(logical).map(|v| v.parent.clone()),
+					document: if asset.role == AssetRole::EntryDocument
+						&& !variants.contains_key(logical)
+					{
+						Some(super::rewrite::compile_document(
+							logical,
+							std::str::from_utf8(&asset.read()?)
+								.map_err(|e| AssetBuildError::input(logical, e.to_string()))?,
+						)?)
+					} else {
+						None
+					},
 				},
 			);
 		}

@@ -4,6 +4,8 @@ mod css;
 mod html;
 mod javascript;
 
+pub(super) use html::document::compile as compile_document;
+
 use super::model::*;
 use super::pipeline::*;
 use reinhardt_core::types::static_assets::{encode_asset_path, validate_asset_path};

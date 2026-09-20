@@ -118,6 +118,7 @@ pgvector = ["reinhardt-db/pgvector"]
 insta = { workspace = true }
 reinhardt-db = { workspace = true, features = ["orm", "backends", "associations"] }
 reinhardt-test = { path = "../reinhardt-test", features = ["e2e-cdp", "testcontainers"] }
+reinhardt-utils = { workspace = true, features = ["asset-publication"] }
 reinhardt-pages = { workspace = true, features = ["testing"] }
 reinhardt-server = { workspace = true }
 reinhardt-di = { workspace = true }

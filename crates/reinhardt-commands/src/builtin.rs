@@ -3343,6 +3343,9 @@ struct RunServerExecutionOptions {
 	force_wasm_legacy: bool,
 	wasm_optional: bool,
 	index: Option<String>,
+	asset_mode: String,
+	asset_manifest: Option<String>,
+	expected_asset_build_id: Option<String>,
 }
 
 impl RunServerExecutionOptions {
@@ -3374,6 +3377,14 @@ impl RunServerExecutionOptions {
 			force_wasm_legacy: ctx.has_option("force-wasm"),
 			wasm_optional: ctx.has_option("wasm-optional"),
 			index: ctx.option("index").map(ToString::to_string),
+			asset_mode: ctx
+				.option("asset-mode")
+				.map(ToString::to_string)
+				.unwrap_or_else(|| "production".to_string()),
+			asset_manifest: ctx.option("asset-manifest").map(ToString::to_string),
+			expected_asset_build_id: ctx
+				.option("expected-asset-build-id")
+				.map(ToString::to_string),
 		}
 	}
 }
@@ -3389,6 +3400,9 @@ struct AutoreloadChildOptions<'a> {
 	no_spa: bool,
 	no_project_static: bool,
 	index: Option<&'a str>,
+	asset_mode: &'a str,
+	asset_manifest: Option<&'a str>,
+	expected_asset_build_id: Option<&'a str>,
 	hmr_port: Option<u16>,
 	no_wasm: bool,
 	no_override_wasm: bool,
@@ -3887,6 +3901,22 @@ impl BaseCommand for RunServerCommand {
 				"Static files directory for WASM frontend",
 			)
 			.with_default("dist"),
+			CommandOption::option(
+				None,
+				"asset-mode",
+				"Unified asset publication mode (production or development)",
+			)
+			.with_default("production"),
+			CommandOption::option(
+				None,
+				"asset-manifest",
+				"Explicit unified asset manifest path",
+			),
+			CommandOption::option(
+				None,
+				"expected-asset-build-id",
+				"Require the selected unified asset build identifier",
+			),
 			CommandOption::flag(None, "no-spa", "Disable SPA mode (no index.html fallback)"),
 			CommandOption::flag(
 				None,
@@ -3943,6 +3973,9 @@ impl BaseCommand for RunServerCommand {
 			force_wasm_legacy,
 			wasm_optional,
 			index,
+			asset_mode: _asset_mode,
+			asset_manifest: _asset_manifest,
+			expected_asset_build_id: _expected_asset_build_id,
 		} = RunServerExecutionOptions::from_context(ctx);
 		#[cfg(feature = "pages")]
 		let requested_package = ctx.option("package").cloned();
@@ -4426,13 +4459,114 @@ impl RunServerCommand {
 				|| resolved_static_dir.clone(),
 				|settings| settings.static_root.clone(),
 			);
-			let manifest_aliases = match load_static_manifest(&collected_static_dir).await {
-				Ok(aliases) => aliases,
-				Err(error) => {
-					ctx.warning(&format!(
-						"Failed to load collectstatic manifest aliases: {error}"
-					));
-					std::collections::HashMap::new()
+			let manifest_path = ctx
+				.option("asset-manifest")
+				.map(PathBuf::from)
+				.unwrap_or_else(|| collected_static_dir.join("manifest.json"));
+			let manifest_root = manifest_path
+				.parent()
+				.map(std::path::Path::to_path_buf)
+				.unwrap_or_else(|| collected_static_dir.clone());
+			let asset_mode = match ctx
+				.option("asset-mode")
+				.map_or("production", String::as_str)
+			{
+				"production" => reinhardt_utils::staticfiles::publication::AssetMode::Production,
+				"development" => reinhardt_utils::staticfiles::publication::AssetMode::Development,
+				other => {
+					return Err(crate::CommandError::ExecutionError(format!(
+						"invalid --asset-mode {other:?}; expected production or development"
+					)));
+				}
+			};
+			let manifest_v2 = if manifest_path.is_file() {
+				let bytes = tokio::fs::read(&manifest_path).await.map_err(|error| {
+					crate::CommandError::ExecutionError(format!(
+						"failed to read unified static asset manifest {}: {error}",
+						manifest_path.display()
+					))
+				})?;
+				match reinhardt_utils::staticfiles::publication::decode_manifest(&bytes) {
+					Ok(reinhardt_utils::staticfiles::publication::DecodedAssetManifest::V2(_)) => {
+						true
+					}
+					Ok(
+						reinhardt_utils::staticfiles::publication::DecodedAssetManifest::Legacy(_),
+					) => false,
+					Err(error) => {
+						return Err(crate::CommandError::ExecutionError(format!(
+							"invalid unified static asset manifest {}: {error}",
+							manifest_path.display()
+						)));
+					}
+				}
+			} else {
+				false
+			};
+			let mut unified_manifest_mounted = false;
+			if manifest_v2 {
+				let snapshot_options = match asset_mode {
+					reinhardt_utils::staticfiles::publication::AssetMode::Production => {
+						reinhardt_utils::staticfiles::publication::SnapshotOptions::production()
+					}
+					reinhardt_utils::staticfiles::publication::AssetMode::Development => {
+						reinhardt_utils::staticfiles::publication::SnapshotOptions::development()
+					}
+				};
+				let snapshot_options = if let Some(id) = ctx.option("expected-asset-build-id") {
+					snapshot_options.expected_build_id(id.to_string())
+				} else {
+					snapshot_options
+				};
+				let store = std::sync::Arc::new(
+					reinhardt_utils::staticfiles::publication::ManifestStore::open(
+						manifest_root.clone(),
+						snapshot_options,
+					)
+					.map_err(|error| {
+						crate::CommandError::ExecutionError(format!(
+							"unified static asset publication is incomplete: {error}"
+						))
+					})?,
+				);
+				let config = reinhardt_utils::staticfiles::publication::ManifestServingConfig::new(
+					store,
+					generated_style_url.clone(),
+				)
+				.map_err(|error| {
+					crate::CommandError::ExecutionError(format!(
+						"invalid static asset serving configuration: {error}"
+					))
+				})?
+				.with_navigation_fallback(!no_spa);
+				config.validate().map_err(|error| {
+					crate::CommandError::ExecutionError(format!(
+						"invalid Pages entrypoint configuration: {error}"
+					))
+				})?;
+				server = server.with_middleware(
+					reinhardt_utils::staticfiles::publication::ManifestStaticMiddleware::new(
+						config,
+					),
+				);
+				unified_manifest_mounted = true;
+				ctx.verbose(&format!(
+					"Unified static asset manifest enabled: {} (mounted at {})",
+					manifest_path.display(),
+					generated_style_url
+				));
+			}
+			let manifest_aliases = if unified_manifest_mounted {
+				std::collections::HashMap::new()
+			} else {
+				match load_static_manifest(&collected_static_dir).await {
+					Ok(aliases) => aliases,
+					Err(error) => {
+						ctx.warning(&format!(
+							"Failed to load collectstatic manifest aliases: {error}"
+						));
+						std::collections::HashMap::new()
+					}
 				}
 			};
 			let root_static_dir = if generated_style_url == "/" {
@@ -4443,7 +4577,7 @@ impl RunServerCommand {
 
 			// Collected assets use the configured STATIC_URL, while the root mount
 			// below remains responsible for SPA routes and legacy bundle URLs.
-			if generated_style_url != "/" {
+			if generated_style_url != "/" && !unified_manifest_mounted {
 				let mut collected_static_config = StaticFilesConfig::new(collected_static_dir)
 					.url_prefix(generated_style_url.clone())
 					.spa_mode(false)
@@ -4521,7 +4655,9 @@ impl RunServerCommand {
 				}
 			}
 
-			server = server.with_middleware(StaticFilesMiddleware::new(static_config));
+			if !unified_manifest_mounted {
+				server = server.with_middleware(StaticFilesMiddleware::new(static_config));
+			}
 			ctx.verbose(&format!(
 				"Static files middleware enabled: {} (resolved from: {})",
 				resolved_static_dir.display(),
@@ -4930,6 +5066,14 @@ impl RunServerCommand {
 		let grpc_address_owned = grpc_address.to_string();
 		let static_dir_owned = static_dir.to_string();
 		let index_owned = index.map(|s| s.to_string());
+		let asset_mode_owned = ctx
+			.option("asset-mode")
+			.map_or("production", String::as_str)
+			.to_string();
+		let asset_manifest_owned = ctx.option("asset-manifest").map(ToString::to_string);
+		let expected_asset_build_id_owned = ctx
+			.option("expected-asset-build-id")
+			.map(ToString::to_string);
 		let package_owned = package.map(str::to_string);
 		let style_feature_selection = Self::style_feature_selection_from_context(ctx);
 		let style_features = style_feature_selection.features().to_vec();
@@ -4958,6 +5102,9 @@ impl RunServerCommand {
 				no_spa,
 				no_project_static,
 				index_owned.as_deref(),
+				&asset_mode_owned,
+				asset_manifest_owned.as_deref(),
+				expected_asset_build_id_owned.as_deref(),
 				hmr_port,
 				no_wasm,
 				no_override_wasm,
@@ -5181,6 +5328,9 @@ impl RunServerCommand {
 		no_spa: bool,
 		no_project_static: bool,
 		index: Option<&str>,
+		asset_mode: &str,
+		asset_manifest: Option<&str>,
+		expected_asset_build_id: Option<&str>,
 		hmr_port: Option<u16>,
 		no_wasm: bool,
 		no_override_wasm: bool,
@@ -5223,6 +5373,9 @@ impl RunServerCommand {
 			no_spa,
 			no_project_static,
 			index,
+			asset_mode,
+			asset_manifest,
+			expected_asset_build_id,
 			hmr_port,
 			no_wasm,
 			no_override_wasm,
@@ -5299,6 +5452,18 @@ impl RunServerCommand {
 		if let Some(index_path) = options.index {
 			args.push("--index".to_string());
 			args.push(index_path.to_string());
+		}
+		if options.asset_mode != "production" {
+			args.push("--asset-mode".to_string());
+			args.push(options.asset_mode.to_string());
+		}
+		if let Some(manifest) = options.asset_manifest {
+			args.push("--asset-manifest".to_string());
+			args.push(manifest.to_string());
+		}
+		if let Some(build_id) = options.expected_asset_build_id {
+			args.push("--expected-asset-build-id".to_string());
+			args.push(build_id.to_string());
 		}
 		if options.no_wasm {
 			args.push("--no-wasm".to_string());
@@ -7661,6 +7826,9 @@ name = "db.sqlite3"
 			no_spa: true,
 			no_project_static: true,
 			index: Some("index.html"),
+			asset_mode: "production",
+			asset_manifest: None,
+			expected_asset_build_id: None,
 			hmr_port: Some(35729),
 			no_wasm: true,
 			no_override_wasm: true,
@@ -7714,6 +7882,9 @@ name = "db.sqlite3"
 			no_spa: false,
 			no_project_static: false,
 			index: None,
+			asset_mode: "production",
+			asset_manifest: None,
+			expected_asset_build_id: None,
 			hmr_port: None,
 			no_wasm: false,
 			no_override_wasm: false,
@@ -7752,6 +7923,9 @@ name = "db.sqlite3"
 			no_spa: false,
 			no_project_static: false,
 			index: None,
+			asset_mode: "production",
+			asset_manifest: None,
+			expected_asset_build_id: None,
 			hmr_port: None,
 			no_wasm: false,
 			no_override_wasm: false,
