@@ -11,6 +11,7 @@ Guide to serving static files (CSS, JavaScript, images, etc.).
 
 - [Basic Setup](#basic-setup)
 - [Storage Backends](#storage-backends)
+- [Unified Asset Classification](#unified-asset-classification)
 - [Development vs Production](#development-vs-production)
 - [Path Resolution](#path-resolution)
 - [Cache Strategies](#cache-strategies)
@@ -160,6 +161,64 @@ Ok(())
 ```
 
 ---
+
+## Unified Asset Classification
+
+`reinhardt_utils::staticfiles::publication` provides one versioned manifest reader
+for collected assets and Pages outputs. Version 2 describes a complete generation;
+version 1, unversioned `paths`, legacy `files`, and flat mappings retain their
+legacy capabilities. Invalid values and duplicate names are errors. When both
+`manifest.json` and `staticfiles.json` exist, select a manifest explicitly before
+migrating; neither file silently takes precedence.
+
+The classifier preserves each logical name and assigns a publication path from
+its producer and extension. Pages-generated JavaScript, WASM, snippets, and maps
+stay together under `pages/`. Ordinary assets use the following categories:
+
+| Directory | Formats |
+|---|---|
+| `videos/` | MP4, WebM, MOV, M4V, OGV, AVI, MKV, MPEG, MPG |
+| `vectors/` | SVG, SVGZ, EPS, AI |
+| `images/` | PNG, JPEG, GIF, WebP, AVIF, APNG, BMP, TIFF, ICO, HEIC, HEIF, JXL |
+| `css/` | CSS |
+| `js/` | JS, MJS, CJS |
+| `fonts/` | WOFF, WOFF2, TTF, OTF, EOT |
+| `audio/` | MP3, WAV, OGG, OGA, FLAC, M4A, AAC, OPUS, AIFF, AIF |
+| `other/` | Unknown and extensionless files, ordinary JSON/PDF, and non-Pages WASM |
+
+Matching ignores extension case; filenames keep their original case. Recognized
+compressed assets and source maps inherit the underlying category: `app.js.gz`
+belongs to JS and `theme.css.map.br` to CSS. Download archives such as
+`backup.tar.gz` remain opaque `other/` files. Classification does not imply browser
+support or convert CommonJS to ESM.
+
+```rust
+use reinhardt_utils::staticfiles::publication::{
+    AssetCategory, AssetClassifier, AssetProducer,
+};
+
+let mut classifier = AssetClassifier::default();
+classifier.register_extension("lottie", AssetCategory::Vectors)?;
+let (_, path) = classifier.classify("images/brand/logo.svg", AssetProducer::Static)?;
+assert_eq!(path, "vectors/brand/logo.svg");
+let (_, glue) = classifier.classify("dashboard.js", AssetProducer::Pages)?;
+assert_eq!(glue, "pages/dashboard.js");
+# Ok::<(), reinhardt_utils::staticfiles::publication::AssetBuildError>(())
+```
+
+At most one leading ordinary category directory is removed before adding the
+selected category. Nested application/vendor namespaces are preserved. Duplicate
+logical names or case-insensitive output collisions fail with both source names;
+choose distinct logical namespaces to resolve them. Custom mappings cannot claim
+the reserved `pages` category. Generated component CSS retains the logical name
+`__reinhardt__/components.css` and is assigned to `css/__reinhardt__/components.css`.
+
+Generation-bound URL resolution uses
+`reinhardt_core::types::static_assets::AssetUrlSnapshot`, identically on native and
+WASM. Its mapping contains `builds/<build-id>/...` paths relative to the configured
+static root. `STATIC_URL` supplies only the public URL prefix, including nested
+prefixes or an HTTP(S) origin. Unknown logical names return errors. Existing
+prefix-only resolvers remain available for legacy pipelines.
 
 ## Development vs Production
 

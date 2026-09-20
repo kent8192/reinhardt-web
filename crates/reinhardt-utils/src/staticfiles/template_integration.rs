@@ -106,31 +106,12 @@ impl TemplateStaticConfig {
 
 		let manifest_content = tokio::fs::read_to_string(&manifest_path).await?;
 
-		// Try parsing as structured format first: {"version": "...", "paths": {...}} or {"paths": {...}}
-		let manifest =
-			if let Ok(structured) = serde_json::from_str::<serde_json::Value>(&manifest_content) {
-				if let Some(paths) = structured.get("paths").and_then(|v| v.as_object()) {
-					paths
-						.iter()
-						.filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
-						.collect()
-				} else if let Some(files) = structured.get("files").and_then(|v| v.as_object()) {
-					// Legacy format with "files" key
-					files
-						.iter()
-						.filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
-						.collect()
-				} else {
-					// Try as simple HashMap (legacy flat format)
-					serde_json::from_str::<HashMap<String, String>>(&manifest_content)
-						.map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?
-				}
-			} else {
-				return Err(io::Error::new(
-					io::ErrorKind::InvalidData,
-					"Invalid manifest JSON",
-				));
-			};
+		let manifest = super::publication::decode_manifest(manifest_content.as_bytes())
+			.map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?
+			.paths()
+			.iter()
+			.map(|(logical, published)| (logical.clone(), published.clone()))
+			.collect();
 
 		Ok(Self {
 			static_url: storage.base_url.clone(),

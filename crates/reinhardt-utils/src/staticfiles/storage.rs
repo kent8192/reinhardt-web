@@ -640,21 +640,17 @@ impl ManifestStaticFilesStorage {
 		}
 
 		let manifest_content = tokio::fs::read_to_string(manifest_path).await?;
-		let manifest_data: serde_json::Value =
-			serde_json::from_str(&manifest_content).map_err(io::Error::other)?;
-
-		// Extract "paths" object from manifest
-		if let Some(paths) = manifest_data.get("paths").and_then(|p| p.as_object()) {
-			let mut hashed_files = write_or_recover(
-				&self.hashed_files,
-				"ManifestStaticFilesStorage::load_manifest",
-			);
-			for (key, value) in paths {
-				if let Some(hashed_name) = value.as_str() {
-					hashed_files.insert(key.clone(), hashed_name.to_string());
-				}
-			}
-		}
+		let decoded = super::publication::decode_manifest(manifest_content.as_bytes())
+			.map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+		let mut hashed_files = write_or_recover(
+			&self.hashed_files,
+			"ManifestStaticFilesStorage::load_manifest",
+		);
+		*hashed_files = decoded
+			.paths()
+			.iter()
+			.map(|(logical, published)| (logical.clone(), published.clone()))
+			.collect();
 
 		Ok(())
 	}
