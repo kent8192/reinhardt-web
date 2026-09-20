@@ -4,7 +4,16 @@
 
 use reinhardt_core::macros::model;
 use reinhardt_core::model_form::{ModelFormPatchPayload, PatchValidationError};
-use rstest::rstest;
+use reinhardt_query::prelude::{
+	ColumnDef, Expr, ExprTrait, IntoIden, Order, Query, QueryBuilderTrait, QueryStatementBuilder,
+	SqliteQueryBuilder, Value,
+};
+#[cfg(all(feature = "postgres", feature = "mysql"))]
+use reinhardt_query::prelude::{MySqlQueryBuilder, PostgresQueryBuilder};
+use reinhardt_test::fixtures::{TestDatabase, TestDatabaseBuilder, test_database};
+#[cfg(all(feature = "postgres", feature = "mysql"))]
+use reinhardt_test::fixtures::{mysql_container, postgres_container};
+use rstest::{fixture, rstest};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -146,39 +155,160 @@ fn empty_patch_is_a_native_error() {
 
 use reinhardt_db::orm::{DatabaseConnection, DatabaseConnectionLease, Model};
 
+#[derive(Debug, reinhardt_query::Iden)]
+enum PatchTestRecord {
+	Table,
+	Id,
+	Tenant,
+	Name,
+	Active,
+	Notes,
+	Token,
+	Revision,
+}
+
+struct EmptyMigrations;
+
+impl reinhardt_db::migrations::MigrationProvider for EmptyMigrations {
+	fn migrations() -> Vec<reinhardt_db::migrations::Migration> {
+		Vec::new()
+	}
+}
+
 struct PatchDatabase {
 	connection: DatabaseConnection,
 	_lease: DatabaseConnectionLease,
-	_directory: tempfile::TempDir,
+	database: TestDatabase,
 }
 
-async fn patch_database() -> PatchDatabase {
-	let directory = tempfile::Builder::new()
-		.prefix("reinhardt-patch-")
-		.tempdir_in("/tmp")
-		.unwrap();
-	let url = format!(
-		"sqlite://{}",
-		directory.path().join("patch.sqlite").display()
-	);
-	let owner = reinhardt_db::backends::DatabaseConnection::connect_sqlite(&url)
+async fn seed_patch_database<B: QueryBuilderTrait + Clone>(
+	connection: &DatabaseConnection,
+	builder: B,
+) {
+	let schema = Query::create_table()
+		.table(PatchTestRecord::Table.into_iden())
+		.col(
+			ColumnDef::new(PatchTestRecord::Id)
+				.big_integer()
+				.primary_key(true),
+		)
+		.col(
+			ColumnDef::new(PatchTestRecord::Tenant)
+				.big_integer()
+				.not_null(true),
+		)
+		.col(
+			ColumnDef::new(PatchTestRecord::Name)
+				.string_len(64)
+				.not_null(true)
+				.unique(true),
+		)
+		.col(
+			ColumnDef::new(PatchTestRecord::Active)
+				// Preserve the declared type used by SQLite's boolean decoder.
+				.custom("BOOLEAN")
+				.not_null(true),
+		)
+		.col(ColumnDef::new(PatchTestRecord::Notes).string_len(128))
+		.col(
+			ColumnDef::new(PatchTestRecord::Token)
+				.string_len(128)
+				.not_null(true),
+		)
+		.col(
+			ColumnDef::new(PatchTestRecord::Revision)
+				.big_integer()
+				.not_null(true),
+		)
+		.to_string(builder.clone());
+	connection.execute(&schema, vec![]).await.unwrap();
+	let seed = Query::insert()
+		.into_table(PatchTestRecord::Table.into_iden())
+		.columns([
+			PatchTestRecord::Id,
+			PatchTestRecord::Tenant,
+			PatchTestRecord::Name,
+			PatchTestRecord::Active,
+			PatchTestRecord::Notes,
+			PatchTestRecord::Token,
+			PatchTestRecord::Revision,
+		])
+		.values_panic([
+			Value::from(1_i64),
+			7_i64.into(),
+			"Old".into(),
+			true.into(),
+			"note".into(),
+			"secret".into(),
+			Value::from(1_i64),
+		])
+		.values_panic([
+			Value::from(2_i64),
+			8_i64.into(),
+			"Other".into(),
+			true.into(),
+			Value::String(None),
+			"other_secret".into(),
+			Value::from(1_i64),
+		])
+		.to_string(builder);
+	connection.execute(&seed, vec![]).await.unwrap();
+}
+
+fn select_records(id: Option<i64>) -> String {
+	let mut query = Query::select();
+	query
+		.expr(Expr::asterisk())
+		.from(PatchTestRecord::Table.into_iden())
+		.order_by(PatchTestRecord::Id, Order::Asc);
+	if let Some(id) = id {
+		query.and_where(Expr::col(PatchTestRecord::Id).eq(id));
+	}
+	query.to_string(SqliteQueryBuilder)
+}
+
+#[fixture]
+async fn patch_database(test_database: TestDatabaseBuilder) -> PatchDatabase {
+	let database = test_database
+		.sqlite()
+		.migrations::<EmptyMigrations>()
+		.build()
 		.await
 		.unwrap();
-	let lease = DatabaseConnectionLease::register(owner).unwrap();
+	let lease = DatabaseConnectionLease::register(database.connection().clone()).unwrap();
 	let connection = lease.handle();
-	connection.execute("CREATE TABLE patch_test_record (id INTEGER PRIMARY KEY, tenant INTEGER NOT NULL, name TEXT NOT NULL UNIQUE, active BOOLEAN NOT NULL, notes TEXT, token TEXT NOT NULL, revision BIGINT NOT NULL)", vec![]).await.unwrap();
-	connection.execute("INSERT INTO patch_test_record VALUES (1, 7, 'Old', true, 'note', 'secret', 1), (2, 8, 'Other', true, NULL, 'other_secret', 1)", vec![]).await.unwrap();
+	seed_patch_database(&connection, SqliteQueryBuilder).await;
 	PatchDatabase {
 		connection,
 		_lease: lease,
-		_directory: directory,
+		database,
+	}
+}
+
+struct PatchConnections {
+	second: DatabaseConnection,
+	_second_lease: DatabaseConnectionLease,
+	first: PatchDatabase,
+}
+
+#[fixture]
+async fn patch_connections(#[future] patch_database: PatchDatabase) -> PatchConnections {
+	let first = patch_database.await;
+	let owner = reinhardt_db::backends::DatabaseConnection::connect_sqlite(first.database.url())
+		.await
+		.unwrap();
+	let lease = DatabaseConnectionLease::register(owner).unwrap();
+	PatchConnections {
+		first,
+		second: lease.handle(),
+		_second_lease: lease,
 	}
 }
 
 #[rstest]
 #[tokio::test]
-async fn patch_preserves_scope_and_unrelated_fields() {
-	let mut db = patch_database().await;
+async fn patch_preserves_scope_and_unrelated_fields(#[future] patch_database: PatchDatabase) {
+	let mut db = patch_database.await;
 	let payload: EditRecordData =
 		serde_json::from_value(json!({"name":" New ","active":false,"notes":null})).unwrap();
 	let patch = EditRecord::validate_patch(payload).unwrap();
@@ -193,7 +323,7 @@ async fn patch_preserves_scope_and_unrelated_fields() {
 	assert_eq!(result.rows_affected, 1);
 	let rows = db
 		.connection
-		.query("SELECT * FROM patch_test_record ORDER BY id", vec![])
+		.query(&select_records(None), vec![])
 		.await
 		.unwrap();
 	assert_eq!(rows.len(), 2);
@@ -205,8 +335,8 @@ async fn patch_preserves_scope_and_unrelated_fields() {
 
 #[rstest]
 #[tokio::test]
-async fn patch_cannot_escape_tenant_scope() {
-	let mut db = patch_database().await;
+async fn patch_cannot_escape_tenant_scope(#[future] patch_database: PatchDatabase) {
+	let mut db = patch_database.await;
 	let payload: EditRecordData = serde_json::from_value(json!({"name":" New "})).unwrap();
 	let patch = EditRecord::validate_patch(payload).unwrap();
 	let result = patch
@@ -220,7 +350,7 @@ async fn patch_cannot_escape_tenant_scope() {
 	assert_eq!(result.rows_affected, 0);
 	let rows = db
 		.connection
-		.query("SELECT name FROM patch_test_record ORDER BY id", vec![])
+		.query(&select_records(None), vec![])
 		.await
 		.unwrap();
 	assert_eq!(
@@ -244,8 +374,8 @@ fn patch_wire_boundary_rejects_invalid_inputs(#[case] raw: &str) {
 
 #[rstest]
 #[tokio::test]
-async fn contextual_patch_checks_target_identity() {
-	let mut db = patch_database().await;
+async fn contextual_patch_checks_target_identity(#[future] patch_database: PatchDatabase) {
+	let mut db = patch_database.await;
 	let existing = Record {
 		id: Some(1),
 		tenant: 7,
@@ -344,8 +474,8 @@ fn create_defaults_cannot_become_patch_assignments() {
 
 #[rstest]
 #[tokio::test]
-async fn patch_accepts_model_reference_and_optional_key() {
-	let mut db = patch_database().await;
+async fn patch_accepts_model_reference_and_optional_key(#[future] patch_database: PatchDatabase) {
+	let mut db = patch_database.await;
 	let existing = Record {
 		id: Some(1),
 		tenant: 7,
@@ -377,9 +507,11 @@ async fn patch_accepts_model_reference_and_optional_key() {
 
 #[rstest]
 #[tokio::test]
-async fn patch_preserves_typed_constraint_error_and_rolls_back() {
+async fn patch_preserves_typed_constraint_error_and_rolls_back(
+	#[future] patch_database: PatchDatabase,
+) {
 	use reinhardt_forms::model_form::PatchError;
-	let db = patch_database().await;
+	let db = patch_database.await;
 	let result: Result<(), PatchError> = db
 		.connection
 		.atomic(async |transaction| {
@@ -407,10 +539,7 @@ async fn patch_preserves_typed_constraint_error_and_rolls_back() {
 	);
 	let rows = db
 		.connection
-		.query(
-			"SELECT name, active FROM patch_test_record WHERE id = 1",
-			vec![],
-		)
+		.query(&select_records(Some(1)), vec![])
 		.await
 		.unwrap();
 	assert_eq!(rows[0].get::<String>("name"), Some("Old".to_owned()));
@@ -419,9 +548,9 @@ async fn patch_preserves_typed_constraint_error_and_rolls_back() {
 
 #[rstest]
 #[tokio::test]
-async fn patch_validation_error_rolls_back_transaction() {
+async fn patch_validation_error_rolls_back_transaction(#[future] patch_database: PatchDatabase) {
 	use reinhardt_forms::model_form::PatchError;
-	let db = patch_database().await;
+	let db = patch_database.await;
 	let result: Result<(), PatchError> = db
 		.connection
 		.atomic(async |transaction| {
@@ -438,7 +567,7 @@ async fn patch_validation_error_rolls_back_transaction() {
 	));
 	let rows = db
 		.connection
-		.query("SELECT active FROM patch_test_record WHERE id = 1", vec![])
+		.query(&select_records(Some(1)), vec![])
 		.await
 		.unwrap();
 	assert_eq!(rows[0].get::<bool>("active"), Some(true));
@@ -449,21 +578,15 @@ async fn patch_validation_error_rolls_back_transaction() {
 #[case::legacy_rotation_control(true, "Old")]
 #[tokio::test]
 async fn two_connections_preserve_disjoint_patches_after_stale_reads(
+	#[future] patch_connections: PatchConnections,
 	#[case] legacy_rotation: bool,
 	#[case] expected_name: &str,
 ) {
 	// Both independent connection pools read the old state before either writer
 	// proceeds. A channel orders commits deterministically without sleeps.
-	let mut db = patch_database().await;
-	let url = format!(
-		"sqlite://{}",
-		db._directory.path().join("patch.sqlite").display()
-	);
-	let owner = reinhardt_db::backends::DatabaseConnection::connect_sqlite(&url)
-		.await
-		.unwrap();
-	let lease = DatabaseConnectionLease::register(owner).unwrap();
-	let mut second = lease.handle();
+	let mut connections = patch_connections.await;
+	let db = &mut connections.first;
+	let second = &mut connections.second;
 	let first_snapshot = Record::objects()
 		.filter(Record::field_id().eq(1_i64))
 		.first_with_db(&mut db.connection)
@@ -472,7 +595,7 @@ async fn two_connections_preserve_disjoint_patches_after_stale_reads(
 		.unwrap();
 	let mut second_snapshot = Record::objects()
 		.filter(Record::field_id().eq(1_i64))
-		.first_with_db(&mut second)
+		.first_with_db(second)
 		.await
 		.unwrap()
 		.unwrap();
@@ -504,7 +627,7 @@ async fn two_connections_preserve_disjoint_patches_after_stale_reads(
 		if legacy_rotation {
 			second_snapshot.token = "rotated".to_owned();
 			Record::objects()
-				.update_with_conn(&mut second, &second_snapshot)
+				.update_with_conn(second, &second_snapshot)
 				.await
 				.unwrap();
 		} else {
@@ -513,7 +636,7 @@ async fn two_connections_preserve_disjoint_patches_after_stale_reads(
 					.filter(Record::field_tenant().eq(7))
 					.filter(Record::field_id().eq(1_i64))
 					.update_fields_with_conn(
-						&mut second,
+						second,
 						[Record::field_token().assign("rotated".to_owned())]
 					)
 					.await
@@ -528,10 +651,7 @@ async fn two_connections_preserve_disjoint_patches_after_stale_reads(
 	.await
 	.expect("bounded writer schedule");
 	let rows = second
-		.query(
-			"SELECT name, token FROM patch_test_record WHERE id = 1",
-			vec![],
-		)
+		.query(&select_records(Some(1)), vec![])
 		.await
 		.unwrap();
 	assert_eq!(
@@ -573,8 +693,8 @@ async fn patch_uses_typed_columns_and_preserves_zero() {
 
 #[rstest]
 #[tokio::test]
-async fn caller_predicate_controls_same_field_conflicts() {
-	let mut db = patch_database().await;
+async fn caller_predicate_controls_same_field_conflicts(#[future] patch_database: PatchDatabase) {
+	let mut db = patch_database.await;
 	for (name, expected) in [("Winner", 1), ("Stale", 0)] {
 		let patch =
 			EditRecord::validate_patch(serde_json::from_value(json!({"name":name})).unwrap())
@@ -593,7 +713,7 @@ async fn caller_predicate_controls_same_field_conflicts() {
 	}
 	let rows = db
 		.connection
-		.query("SELECT name FROM patch_test_record WHERE id = 1", vec![])
+		.query(&select_records(Some(1)), vec![])
 		.await
 		.unwrap();
 	assert_eq!(rows[0].get::<String>("name").as_deref(), Some("Winner"));
@@ -665,60 +785,72 @@ async fn invalid_or_empty_input_cannot_reach_executor() {
 }
 
 #[cfg(all(feature = "postgres", feature = "mysql"))]
-#[rstest]
-#[case::postgres(true)]
-#[case::mysql(false)]
-#[tokio::test]
-async fn live_backend_counts_and_version_predicates(#[case] postgres: bool) {
-	use std::time::Duration;
-	use testcontainers::{
-		GenericImage, ImageExt,
-		core::{IntoContainerPort, WaitFor},
-		runners::AsyncRunner,
-	};
-	let (image, tag, port, ready) = if postgres {
-		(
-			"postgres",
-			"16-alpine",
-			5432,
-			"database system is ready to accept connections",
-		)
-	} else {
-		("mysql", "8.0", 3306, "port: 3306  MySQL Community Server")
-	};
-	let container = GenericImage::new(image, tag)
-		.with_exposed_port(port.tcp())
-		.with_wait_for(WaitFor::message_on_stderr(ready))
-		.with_env_var("POSTGRES_HOST_AUTH_METHOD", "trust")
-		.with_env_var("MYSQL_ROOT_PASSWORD", "test")
-		.with_env_var("MYSQL_DATABASE", "patch_test")
-		.with_startup_timeout(Duration::from_secs(120))
-		.start()
+struct BackendPatchDatabase {
+	connection: DatabaseConnection,
+	_lease: DatabaseConnectionLease,
+	_container: testcontainers::ContainerAsync<testcontainers::GenericImage>,
+}
+
+#[cfg(all(feature = "postgres", feature = "mysql"))]
+#[fixture]
+async fn postgres_patch_database(
+	#[future] postgres_container: (
+		testcontainers::ContainerAsync<testcontainers::GenericImage>,
+		std::sync::Arc<sqlx::PgPool>,
+		u16,
+		String,
+	),
+) -> BackendPatchDatabase {
+	let (container, _pool, _port, url) = postgres_container.await;
+	let owner = reinhardt_db::backends::DatabaseConnection::connect_postgres(&url)
 		.await
 		.unwrap();
-	let host = container.get_host().await.unwrap();
-	let port = container.get_host_port_ipv4(port).await.unwrap();
-	let url = if postgres {
-		format!("postgres://postgres@{host}:{port}/postgres?sslmode=disable")
-	} else {
-		format!("mysql://root:test@{host}:{port}/patch_test")
-	};
-	let owner = if postgres {
-		reinhardt_db::backends::DatabaseConnection::connect_postgres(&url).await
-	} else {
-		reinhardt_db::backends::DatabaseConnection::connect_mysql(&url).await
-	}
-	.unwrap();
 	let lease = DatabaseConnectionLease::register(owner).unwrap();
-	let mut connection = lease.handle();
-	connection.execute("CREATE TABLE patch_test_record (id BIGINT PRIMARY KEY, tenant BIGINT NOT NULL, name VARCHAR(64) NOT NULL UNIQUE, active BOOLEAN NOT NULL, notes VARCHAR(128), token VARCHAR(128) NOT NULL, revision BIGINT NOT NULL)", vec![]).await.unwrap();
-	connection
-		.execute(
-			"INSERT INTO patch_test_record VALUES (1, 7, 'Old', true, NULL, 'secret', 1)",
-			vec![],
-		)
+	let connection = lease.handle();
+	seed_patch_database(&connection, PostgresQueryBuilder).await;
+	BackendPatchDatabase {
+		connection,
+		_lease: lease,
+		_container: container,
+	}
+}
+
+#[cfg(all(feature = "postgres", feature = "mysql"))]
+#[fixture]
+async fn mysql_patch_database(
+	#[future] mysql_container: (
+		testcontainers::ContainerAsync<testcontainers::GenericImage>,
+		std::sync::Arc<sqlx::MySqlPool>,
+		u16,
+		String,
+	),
+) -> BackendPatchDatabase {
+	let (container, _pool, _port, url) = mysql_container.await;
+	let owner = reinhardt_db::backends::DatabaseConnection::connect_mysql(&url)
 		.await
 		.unwrap();
+	let lease = DatabaseConnectionLease::register(owner).unwrap();
+	let connection = lease.handle();
+	seed_patch_database(&connection, MySqlQueryBuilder).await;
+	BackendPatchDatabase {
+		connection,
+		_lease: lease,
+		_container: container,
+	}
+}
+
+#[cfg(all(feature = "postgres", feature = "mysql"))]
+#[rstest]
+#[case::postgres(postgres_patch_database::default())]
+#[case::mysql(mysql_patch_database::default())]
+#[tokio::test]
+async fn live_backend_counts_and_version_predicates(
+	#[case]
+	#[future]
+	database: BackendPatchDatabase,
+) {
+	let mut database = database.await;
+	let connection = &mut database.connection;
 	// Changed, identical, nonexistent, and out-of-scope writes retain the
 	// configured driver's exact count semantics on each live backend.
 	for (id, tenant, expected) in [(1, 7, 1), (1, 7, 1), (99, 7, 0), (1, 8, 0)] {
@@ -730,7 +862,7 @@ async fn live_backend_counts_and_version_predicates(#[case] postgres: bool) {
 				.apply_to(
 					Record::objects().filter(Record::field_tenant().eq(tenant)),
 					id,
-					&mut connection
+					connection
 				)
 				.await
 				.unwrap()
@@ -773,7 +905,7 @@ async fn live_backend_counts_and_version_predicates(#[case] postgres: bool) {
 					.filter(Record::field_revision().eq(1))
 					.filter(Record::field_tenant().eq(7)),
 				1_i64,
-				&mut connection
+				connection
 			)
 			.await
 			.unwrap()
@@ -782,7 +914,7 @@ async fn live_backend_counts_and_version_predicates(#[case] postgres: bool) {
 	);
 	let final_record = Record::objects()
 		.filter(Record::field_id().eq(1_i64))
-		.first_with_db(&mut connection)
+		.first_with_db(connection)
 		.await
 		.unwrap()
 		.unwrap();
@@ -831,18 +963,76 @@ async fn cloud_edit(
 		.await?)
 }
 
+#[derive(Debug, reinhardt_query::Iden)]
+enum PatchTestCluster {
+	Table,
+	Id,
+	OrganizationId,
+	Name,
+	ApiUrl,
+	IsActive,
+}
+
+#[fixture]
+async fn cluster_database(#[future] patch_database: PatchDatabase) -> PatchDatabase {
+	let db = patch_database.await;
+	let schema = Query::create_table()
+		.table(PatchTestCluster::Table.into_iden())
+		.col(
+			ColumnDef::new(PatchTestCluster::Id)
+				.integer()
+				.primary_key(true),
+		)
+		.col(
+			ColumnDef::new(PatchTestCluster::OrganizationId)
+				.big_integer()
+				.not_null(true),
+		)
+		.col(
+			ColumnDef::new(PatchTestCluster::Name)
+				.string_len(64)
+				.not_null(true),
+		)
+		.col(
+			ColumnDef::new(PatchTestCluster::ApiUrl)
+				.string_len(2048)
+				.not_null(true),
+		)
+		.col(
+			ColumnDef::new(PatchTestCluster::IsActive)
+				// Preserve the declared type used by SQLite's boolean decoder.
+				.custom("BOOLEAN")
+				.not_null(true),
+		)
+		.to_string(SqliteQueryBuilder);
+	db.connection.execute(&schema, vec![]).await.unwrap();
+	let seed = Query::insert()
+		.into_table(PatchTestCluster::Table.into_iden())
+		.columns([
+			PatchTestCluster::Id,
+			PatchTestCluster::OrganizationId,
+			PatchTestCluster::Name,
+			PatchTestCluster::ApiUrl,
+			PatchTestCluster::IsActive,
+		])
+		.values_panic([
+			Value::from(1_i64),
+			7_i64.into(),
+			"Old".into(),
+			"https://old.example".into(),
+			true.into(),
+		])
+		.to_string(SqliteQueryBuilder);
+	db.connection.execute(&seed, vec![]).await.unwrap();
+	db
+}
+
 #[rstest]
 #[tokio::test]
-async fn cloud_consumer_keeps_rbac_scope_validation_and_response_refresh() {
-	let mut db = patch_database().await;
-	db.connection.execute("CREATE TABLE patch_test_cluster (id INTEGER PRIMARY KEY, organization_id BIGINT NOT NULL, name TEXT NOT NULL, api_url TEXT NOT NULL, is_active BOOLEAN NOT NULL)", vec![]).await.unwrap();
-	db.connection
-		.execute(
-			"INSERT INTO patch_test_cluster VALUES (1, 7, 'Old', 'https://old.example', true)",
-			vec![],
-		)
-		.await
-		.unwrap();
+async fn cloud_consumer_keeps_rbac_scope_validation_and_response_refresh(
+	#[future] cluster_database: PatchDatabase,
+) {
+	let mut db = cluster_database.await;
 	let payload = || {
 		serde_json::from_value(
 			json!({"name":" New ", "api_url":" https://api.example ", "is_active":false}),
@@ -881,14 +1071,14 @@ async fn cloud_consumer_keeps_rbac_scope_validation_and_response_refresh() {
 		.unwrap();
 	assert_eq!(response.name, "New");
 	assert_eq!(response.api_url, "https://api.example");
-	assert_eq!(response.is_active, false);
+	assert!(!response.is_active);
 	assert_eq!(response.organization_id, 7);
 }
 
 #[rstest]
 #[tokio::test]
-async fn grouped_scope_cannot_expand_target_on_database() {
-	let mut db = patch_database().await;
+async fn grouped_scope_cannot_expand_target_on_database(#[future] patch_database: PatchDatabase) {
+	let mut db = patch_database.await;
 	let scope = Record::objects().filter(
 		Record::field_tenant()
 			.eq(7)
@@ -907,7 +1097,7 @@ async fn grouped_scope_cannot_expand_target_on_database() {
 	);
 	let rows = db
 		.connection
-		.query("SELECT active FROM patch_test_record ORDER BY id", vec![])
+		.query(&select_records(None), vec![])
 		.await
 		.unwrap();
 	assert_eq!(
@@ -919,13 +1109,26 @@ async fn grouped_scope_cannot_expand_target_on_database() {
 }
 
 #[rstest]
+#[case::without_snapshot(false)]
+#[case::with_snapshot(true)]
 #[tokio::test]
-async fn named_subset_contract_does_not_reference_unselected_model_fields() {
+async fn named_subset_contract_does_not_reference_unselected_model_fields(
+	#[case] with_snapshot: bool,
+) {
 	use reinhardt_db::orm::connection::QueryValue;
 	let mut executor = RecordingExecutor::default();
-	let patch =
-		EditSubset::validate_patch(serde_json::from_value(json!({"title": "New"})).unwrap())
-			.unwrap();
+	let data = serde_json::from_value(json!({"title": "New"})).unwrap();
+	let existing = Subset {
+		id: Some(4),
+		title: "Old".to_owned(),
+		untouched: "Preserved".to_owned(),
+	};
+	let patch = if with_snapshot {
+		EditSubset::validate_patch_with_existing(data, &existing)
+	} else {
+		EditSubset::validate_patch(data)
+	}
+	.unwrap();
 	patch
 		.apply_to(Subset::objects().all(), 4_i64, &mut executor)
 		.await
