@@ -72,7 +72,9 @@ SSR, hydration, and authentication invalidation, see
 consecutive equal values, through an application callback. Retain the returned
 `WebSocketSubscription` guard for as long as delivery is needed; dropping it
 revokes delivery. `use_websocket_json_subscription` stores that guard in the
-current reactive scope and disposes it with the scope.
+current reactive scope and disposes it with the scope. Custom decoders and
+callbacks run untracked in the handle's live owner scope; disposing that scope
+also prevents decoding through a retained raw subscription guard.
 
 ```rust,ignore
 use reinhardt_pages::reactive::hooks::{
@@ -104,9 +106,10 @@ logs in one bounded application-owned state rather than appending directly to
 the DOM.
 
 For status views, [`QueryHandle::is_invalidated`](src/reactive/query/hook.rs)
-separates an outstanding realtime reconciliation from age-based
-`QueryHandle::is_stale()`. The executable
-[`realtime_state`](examples/realtime_state.rs) recipe invalidates an exact
+separates an outstanding realtime reconciliation from age-based or hydrated
+`QueryHandle::is_stale()`. A stale hydrated snapshot alone does not represent an
+explicit invalidation. The method has P2 behavioral parity on native and WASM.
+The executable [`realtime_state`](examples/realtime_state.rs) recipe invalidates an exact
 typed deployment key, supports family invalidation, and removes the family at
 logout.
 

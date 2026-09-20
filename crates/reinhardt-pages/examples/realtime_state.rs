@@ -14,21 +14,38 @@ mod status;
 mod tests;
 
 use reinhardt_pages::reactive::query::{QueryClient, QueryDefaults};
+use reinhardt_pages::reactive::{
+	ReactiveScope,
+	hooks::{WebSocketSubscriptionOptions, use_websocket},
+};
 
 use logs::{LogGap, LogLimits, LogRow, LogSnapshot, LogState, ReconcileToken};
 
 fn main() {
-	let client = QueryClient::new(QueryDefaults::default());
-	let _status_classifier = status::status_sync::<status::DeploymentStatus, String>;
+	ReactiveScope::run(|| {
+		let client = QueryClient::new(QueryDefaults::default());
+		let _status_classifier = status::status_sync::<status::DeploymentStatus, String>;
 
-	status::invalidate_deployment(
-		&client,
-		status::DeploymentEvent { deployment_id: 42 },
-		|| async { Ok(status::DeploymentStatus::Running) },
-	);
-	status::invalidate_all_deployments(&client);
-	status::remove_deployments_on_logout(&client);
-	demonstrate_log_model();
+		status::invalidate_deployment(
+			&client,
+			status::DeploymentEvent { deployment_id: 42 },
+			|| async { Ok(status::DeploymentStatus::Running) },
+		);
+		status::invalidate_all_deployments(&client);
+		status::remove_deployments_on_logout(&client);
+		let socket = use_websocket("wss://example.invalid/events", Default::default());
+		let callback_client = client.clone();
+		let _subscription = socket.subscribe_json(
+			WebSocketSubscriptionOptions::new(std::num::NonZeroUsize::new(16 * 1024).unwrap()),
+			move |event: status::DeploymentEvent| {
+				status::invalidate_deployment(&callback_client, event, || async {
+					Ok(status::DeploymentStatus::Running)
+				})
+			},
+			|error| eprintln!("Realtime error: {error:?}"),
+		);
+		demonstrate_log_model();
+	});
 }
 
 fn demonstrate_log_model() {

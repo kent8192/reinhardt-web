@@ -1178,22 +1178,33 @@
 //! For event sequences, use an owned typed subscription instead of treating
 //! `latest_message` as a delivery queue:
 //!
-//! ```ignore
+//! ```no_run
 //! use reinhardt_pages::reactive::hooks::{
 //!     use_websocket, WebSocketEventError, WebSocketSubscriptionOptions,
 //! };
+//! use reinhardt_pages::reactive::ReactiveScope;
+//! use reinhardt_pages::reactive::query::{QueryClient, QueryDefaults, QueryFamily};
 //! use serde::Deserialize;
 //! use std::num::NonZeroUsize;
 //!
 //! #[derive(Deserialize)]
 //! struct DeploymentEvent { deployment_id: u64 }
 //!
-//! let socket = use_websocket("wss://example.invalid/events", Default::default());
-//! let _subscription = socket.subscribe_json(
-//!     WebSocketSubscriptionOptions::new(NonZeroUsize::new(16 * 1024).unwrap()),
-//!     |event: DeploymentEvent| invalidate_deployment(event.deployment_id),
-//!     |error: WebSocketEventError| record_realtime_error(error),
-//! );
+//! ReactiveScope::run(|| {
+//!     let client = QueryClient::new(QueryDefaults::default());
+//!     let family = QueryFamily::<u64, String, String>::new("deployment-status");
+//!     let socket = use_websocket("wss://example.invalid/events", Default::default());
+//!     let _subscription = socket.subscribe_json(
+//!         WebSocketSubscriptionOptions::new(NonZeroUsize::new(16 * 1024).unwrap()),
+//!         move |event: DeploymentEvent| {
+//!             let descriptor = family.query(event.deployment_id, || async {
+//!                 Ok("running".to_owned())
+//!             });
+//!             client.invalidate(descriptor.key());
+//!         },
+//!         |error: WebSocketEventError| eprintln!("Realtime error: {error:?}"),
+//!     );
+//! });
 //! ```
 //!
 //! The subscription guard owns delivery. Equal consecutive events remain

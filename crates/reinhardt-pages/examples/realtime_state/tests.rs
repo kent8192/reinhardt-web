@@ -2,6 +2,7 @@ use super::logs::{
 	LogError, LogGap, LogLimits, LogRow, LogSnapshot, LogState, LogSync, ReconcileToken,
 };
 use reinhardt_pages::reactive::{ReactiveScope, Signal};
+use rstest::rstest;
 use std::num::NonZeroUsize;
 
 #[derive(Clone, Copy)]
@@ -43,7 +44,7 @@ fn ids(state: &Signal<LogState>) -> Vec<u64> {
 		.collect()
 }
 
-#[test]
+#[rstest]
 fn bounded_realtime_log_cases_use_signal_updates() {
 	ReactiveScope::run(|| {
 		let cases = [
@@ -354,7 +355,7 @@ fn bounded_realtime_log_cases_use_signal_updates() {
 	});
 }
 
-#[test]
+#[rstest]
 fn conflicting_ids_degrade_watermark_reconciliation() {
 	ReactiveScope::run(|| {
 		let state = Signal::new(LogState::new(limits(8, 512, 128)));
@@ -387,7 +388,7 @@ fn conflicting_ids_degrade_watermark_reconciliation() {
 	});
 }
 
-#[test]
+#[rstest]
 fn oversized_snapshot_is_rejected_before_replacing_state() {
 	ReactiveScope::run(|| {
 		let state = Signal::new(LogState::new(limits(8, 32, 128)));
@@ -420,7 +421,7 @@ fn oversized_snapshot_is_rejected_before_replacing_state() {
 	});
 }
 
-#[test]
+#[rstest]
 fn pending_byte_limit_trims_oldest_rows_and_records_a_gap() {
 	ReactiveScope::run(|| {
 		let state = Signal::new(LogState::new(limits(8, 30, 128)));
