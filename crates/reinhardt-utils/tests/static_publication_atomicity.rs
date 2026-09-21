@@ -185,3 +185,44 @@ fn corrupt_retained_generation_cannot_activate_new_output(#[case] missing: bool)
 	);
 	assert!(!next_dir.exists());
 }
+
+#[rstest]
+#[case(false)]
+#[case(true)]
+fn competing_legacy_manifest_is_rejected_before_activation(#[case] existing: bool) {
+	// Arrange
+	let root = tempfile::tempdir().unwrap();
+	let publisher = AssetPublisher::new(root.path().into());
+	let previous = existing.then(|| {
+		publisher
+			.publish(prepare(b"old", AssetMode::Production))
+			.unwrap()
+	});
+	let legacy = br#"{"paths":{}}"#;
+	std::fs::write(root.path().join("staticfiles.json"), legacy).unwrap();
+	let next = prepare(b"new", AssetMode::Production);
+	let next_id = next.manifest().build_id.clone();
+	// Act
+	let error = publisher.publish(next).unwrap_err();
+	// Assert
+	assert!(
+		error
+			.to_string()
+			.contains("competing legacy staticfiles.json"),
+		"{error}"
+	);
+	assert_eq!(
+		std::fs::read(root.path().join("staticfiles.json")).unwrap(),
+		legacy
+	);
+	assert!(!root.path().join("builds").join(next_id).exists());
+	if let Some(previous) = previous {
+		assert_eq!(
+			std::fs::read(root.path().join("manifest.json")).unwrap(),
+			previous.manifest_bytes()
+		);
+	} else {
+		assert!(!root.path().join("manifest.json").exists());
+		assert!(!root.path().join("builds").exists());
+	}
+}

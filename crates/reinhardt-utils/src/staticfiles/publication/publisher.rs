@@ -104,6 +104,15 @@ impl AssetPublisher {
 			.map_err(|e| AssetBuildError::io(&lock_path, e))?;
 		// The file owns the OS lock until this scope exits, including error paths.
 		let _lock_guard = lock;
+		match directory.symlink_metadata("staticfiles.json") {
+			Ok(_) => {
+				return Err(AssetBuildError::manifest(
+					"destination contains a competing legacy staticfiles.json; import it into a separate publication root or archive it before migration",
+				));
+			}
+			Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+			Err(error) => return Err(AssetBuildError::io(root.join("staticfiles.json"), error)),
+		}
 		let manifest = prepared.manifest();
 		let mode = manifest.mode;
 		if directory.exists("manifest.json") {
