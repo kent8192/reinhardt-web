@@ -78,7 +78,16 @@ fn overlapping_source_and_destination_excludes_publication_metadata_on_rebuild()
 	};
 	// Assert
 	assert_eq!(second.manifest().build_id, first.manifest().build_id);
-	assert_eq!(second.manifest().assets.len(), 1);
+	assert_eq!(second.manifest().assets, first.manifest().assets);
+	assert_eq!(second.read_asset("logo.svg").unwrap(), b"<svg/>");
+	// Registered applications may contribute assets in addition to this fixture.
+	for logical in second.manifest().assets.keys() {
+		assert!(!logical.starts_with("builds/"), "{logical}");
+		assert!(
+			!["manifest.json", "staticfiles.json", ".publication.lock"].contains(&logical.as_str()),
+			"{logical}"
+		);
+	}
 }
 
 #[rstest]
