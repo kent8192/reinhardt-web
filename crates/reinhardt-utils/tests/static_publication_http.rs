@@ -444,6 +444,9 @@ async fn every_category_streams_the_actual_bytes_and_supports_ranges(
 #[case("gzip;q=0, br;q=0", None, 200)]
 #[case("identity;q=0, *;q=0", None, 406)]
 #[case("gzip;q=0.5, identity;q=0.1", Some("gzip"), 200)]
+#[case("br;Q=0, identity;q=0", None, 406)]
+#[case("gzip;Q=0.5, br;q=0.2, identity;Q=0.1", Some("gzip"), 200)]
+#[case("gzip;q=0, br;Q=0", None, 200)]
 #[tokio::test]
 async fn negotiated_representations_have_distinct_etags_and_correct_bytes(
 	#[case] accept: &str,
@@ -948,6 +951,8 @@ async fn unsupported_ranges_serve_the_full_asset(#[case] range: &str) {
 #[rstest]
 #[case("/static/")]
 #[case("/console/assets/")]
+#[case("/assets%20v2/")]
+#[case("/assets%2520v2/")]
 #[case("/")]
 #[tokio::test]
 async fn explicit_nested_admin_mount_reaches_router(#[case] prefix: &str) {

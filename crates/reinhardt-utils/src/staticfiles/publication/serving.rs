@@ -73,10 +73,12 @@ impl ManifestServingConfig {
 		mut self,
 		prefixes: Vec<String>,
 	) -> Result<Self, AssetBuildError> {
-		for prefix in &prefixes {
-			decode_path(prefix).map_err(|reason| AssetBuildError::input(prefix, reason))?;
-		}
-		self.passthrough = prefixes;
+		self.passthrough = prefixes
+			.into_iter()
+			.map(|prefix| {
+				decode_path(&prefix).map_err(|reason| AssetBuildError::input(&prefix, reason))
+			})
+			.collect::<Result<_, _>>()?;
 		Ok(self)
 	}
 	/// Reject unknown or ambiguous entrypoint selection before accepting requests.
@@ -547,7 +549,12 @@ fn representation<'a>(
 				.trim()
 				.to_ascii_lowercase();
 			let quality = fields
-				.find_map(|field| field.trim().strip_prefix("q="))
+				.find_map(|field| {
+					let (name, value) = field.trim().split_once('=')?;
+					name.trim()
+						.eq_ignore_ascii_case("q")
+						.then_some(value.trim())
+				})
 				.map_or(1.0, |value| {
 					value
 						.parse::<f32>()

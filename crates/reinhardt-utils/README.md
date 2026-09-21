@@ -560,8 +560,10 @@ an explicit `text/html` media range with positive quality; `q=0` preserves the
 application response. Single byte ranges are supported, while multipart ranges
 and unknown range units are ignored and receive the full representation.
 
+Passthrough prefixes are percent-decoded exactly once, like request paths and
+the static mount. Encoding quality parameter names are case-insensitive (`q` or `Q`).
 Explicit passthrough prefixes nested inside the static mount take precedence at
-path-segment boundaries. Management `runserver` uses this for admin static routes;
+path-segment boundaries. Both runserver entrypoints use this for admin static routes;
 ancestor passthroughs such as `/docs` do not shadow a `/docs/static/` asset mount.
 `AssetPublisher` refuses roots containing `staticfiles.json` before activating a
 generation, so default manifest selection remains unambiguous.
