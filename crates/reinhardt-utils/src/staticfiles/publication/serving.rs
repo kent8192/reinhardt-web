@@ -410,6 +410,8 @@ fn serve(
 					.headers
 					.get(header::RANGE)
 					.and_then(|value| value.to_str().ok())
+					// Multipart ranges and unknown units are unsupported; serve the full representation.
+					.filter(|value| value.starts_with("bytes=") && !value.contains(','))
 			} else {
 				None
 			};

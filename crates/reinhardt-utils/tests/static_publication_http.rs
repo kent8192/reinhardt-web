@@ -914,3 +914,33 @@ async fn navigation_honors_html_quality(#[case] accept: &str, #[case] status: u1
 		assert_eq!(response.body.as_ref(), b"navigation-probe");
 	}
 }
+
+#[rstest]
+#[case("bytes=0-1,4-5")]
+#[case("bytes=0-1,999-1000")]
+#[case("items=0-1")]
+#[tokio::test]
+async fn unsupported_ranges_serve_the_full_asset(#[case] range: &str) {
+	// Arrange
+	let fixture = Fixture::new("/static/", AssetMode::Production);
+	let probe = NavigationProbe::new(StatusCode::OK);
+	// Act
+	let response = fixture
+		.middleware
+		.process(
+			Request::builder()
+				.uri(fixture.url("site.css"))
+				.header(header::RANGE, range)
+				.build()
+				.unwrap(),
+			probe.clone(),
+		)
+		.await
+		.unwrap();
+	// Assert
+	assert_eq!(response.status, StatusCode::OK);
+	assert_eq!(body_bytes(&response), b"body{color:rgb(1,2,3)}");
+	assert_eq!(response.headers[header::CONTENT_LENGTH], "22");
+	assert!(!response.headers.contains_key(header::CONTENT_RANGE));
+	assert_eq!(probe.call_count(), 0);
+}
