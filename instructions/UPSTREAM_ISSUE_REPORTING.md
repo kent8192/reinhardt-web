@@ -2,303 +2,170 @@
 
 ## Purpose
 
-This file defines the policy for reporting issues discovered in downstream projects during reinhardt-web development. reinhardt-web's downstream consumers (awesome-delions, reinhardt-cloud) may surface issues that originate in reinhardt-web, and conversely, issues in those projects may be discovered during reinhardt-web development. Such issues MUST be reported to the appropriate repository promptly.
-
----
+Preserve evidence about dependency problems without making external publication
+a prerequisite for fixing Reinhardt. Record findings internally first; report
+externally only when the destination policy and posting authorization permit it.
 
 ## Scope
 
 ### US-1 (MUST): Target Repositories
 
-This policy applies to the following upstream repositories:
+This workflow covers Reinhardt-family dependencies and third-party upstreams.
+Resolve the repository responsible for the affected package or behavior instead
+of inferring ownership from a crate name, organization, or source-file path.
 
-| Repository | URL | Relationship |
-|------------|-----|-------------|
-| awesome-delions | `https://github.com/kent8192/awesome-delions` | Official collection of Reinhardt Dentdelion plugins |
-| reinhardt-cloud | `https://github.com/kent8192/reinhardt-cloud` | Kubernetes operator & CLI for Reinhardt apps |
-
-**Future upstream dependencies** should be added to this table as the project grows.
-
----
+The exact destination allowlist in
+[COMMIT_GUIDELINE.md CE-1](COMMIT_GUIDELINE.md#ce-1-must-execution-authorization)
+defines standing authorization. Every other destination must satisfy
+[GITHUB_INTERACTION.md PP-0](GITHUB_INTERACTION.md#pp-0-must-external-publication).
+The current checkout does not confer permission to publish elsewhere.
 
 ## Reporting Policy
 
-### UR-1 (MUST): Immediate Reporting
+### UR-1 (MUST): Internal Evidence Before External Reporting
 
-When a bug, missing feature, documentation gap, or unexpected behavior in an upstream dependency is discovered during reinhardt-web development, an issue MUST be created in the upstream repository **immediately** upon discovery.
+When a dependency problem is discovered:
 
-**Rationale:** Delaying upstream issue reporting increases the risk of:
-- Forgetting the issue details
-- Building workarounds that mask the root cause
-- Other contributors hitting the same problem without context
-
-The following diagram summarizes the upstream issue reporting flow:
+1. Preserve the exact error, minimal reproduction, environment, affected versions,
+   dependency graph, and observed impact. Distinguish reproduced facts from an
+   inferred cause or unsupported expectation.
+2. Verify the intended behavior and the responsible repository. Search existing
+   open and closed issues and the relevant contribution documentation. An
+   intentional assertion or unsupported dependency combination is not by itself
+   proof of an upstream defect.
+3. Create or update an internal record under UR-4. A local-only task may use a
+   repository note instead of publishing an Issue. Security-sensitive evidence
+   follows [SECURITY.md](../SECURITY.md), never a public tracker.
+4. Continue a documented, verified local workaround when needed. An external
+   issue is optional and is never a prerequisite for that work.
+5. Before any external publication, complete PP-0. If publication is prohibited
+   or unverified, retain the internal evidence and report that boundary. Do not
+   post an Issue, policy question, apology, or follow-up to work around the gate.
 
 ```mermaid
 flowchart TD
-    A[Discover issue during reinhardt-web development] --> B{Is the issue in reinhardt-web code?}
-    B -->|Yes| C[Create issue in reinhardt-web repo]
-    B -->|No| D{Is the issue in an upstream dependency?}
-    D -->|Yes| E[Create issue in upstream repo immediately]
-    D -->|No| F[Investigate further]
-    E --> E2["Create tracking issue in reinhardt-web repo<br/>with upstream-tracking label"]
-    E2 --> E3["Cross-reference both issues"]
-    E3 --> G{Does reinhardt-web need a workaround?}
-    G -->|Yes| H["Add workaround in reinhardt-web with<br/>comment referencing both issues"]
-    G -->|No| I[Continue reinhardt-web development]
-    H --> I
+    A[Reproduce and identify the responsible component] --> B[Record evidence internally]
+    B --> C[Implement and verify a documented local workaround if needed]
+    B --> D{External publication needed?}
+    D -->|No| C
+    D -->|Yes| E{Destination policy verified and publication permitted?}
+    E -->|No or unknown| F[Keep evidence internal]
+    E -->|Yes| G{Exact publication authorized?}
+    G -->|No| F
+    G -->|Yes| H[Publish and verify the result]
+    H --> I[Link the internal record to the external report]
 ```
 
-### UR-2 (MUST): Use GitHub CLI with Repository Flag
+### UR-2 (MUST): Explicit Destination and Approved Tools
 
-Issues in upstream repositories MUST be created using `gh issue create` with the `-R` flag:
+After the applicable authorization checks, use
+[GITHUB_INTERACTION.md PP-3](GITHUB_INTERACTION.md#pp-3-must-github-tool-selection).
+Specify the complete destination repository in the tool arguments; with `gh`,
+use `--repo owner/repository`. For multiline content, use a structured argument
+or a task-owned temporary body file, not shell interpolation. Read back the
+published result. A tool fallback must preserve the same destination, content,
+policy requirements, and authorization.
 
-```bash
-# Create issue in an upstream repository (example: awesome-delions)
-gh issue create -R kent8192/awesome-delions \
-  --title "Bug: description of the issue" \
-  --body "$(cat <<'EOF'
-## Description
+### UR-3 (MUST): Evidence and Authorship Requirements
 
-[Clear description of the issue]
+A permitted report must follow the destination's template, contribution rules,
+and authorship/AI policy. Include verified reproduction steps, actual and
+expected behavior with a basis for the expectation, relevant versions, and
+only the context necessary to assess the report. Mark untested environments
+and uncertainty explicitly; omit private data and absolute local paths.
 
-## Reproduction Steps
+Reinhardt-family reports use English and the applicable agent attribution.
+For external destinations, disclosure does not make otherwise prohibited
+AI-generated text acceptable. Follow PP-0, including its human-authorship,
+translation, and quotation boundaries. Supply private factual materials when
+human authorship is required; do not generate a public report on that person's
+behalf. Do not copy a family template into an external tracker without checking
+its policy.
 
-1. [Step 1]
-2. [Step 2]
+### UR-4 (MUST): Internal Tracking
 
-## Expected Behavior
+Maintain a Reinhardt record for a dependency workaround, whether or not an
+external issue exists. Search and reuse an existing record before creating one.
+For a new internal Issue, follow [Issue Guidelines](ISSUE_GUIDELINES.md), use
+an appropriate template and type label, and add `upstream-tracking`. Creating
+or updating the record still follows CE-1 and PP-1; internal tracking does not
+independently authorize comments or body edits.
 
-[What should happen]
+Record:
 
-## Actual Behavior
+- The affected component and package versions, reproduction, and evidence.
+- The compatibility requirement or suspected defect, with uncertainty stated.
+- The workaround location, validation performed, and concrete removal conditions.
+- The external reporting status: not submitted, policy prohibits submission,
+  policy not verified, awaiting specific authorization, or submitted with a URL.
+- Policy references and check date, without private conversation details.
 
-[What actually happens]
+When an external report is submitted, link it from the internal record under
+the applicable update authorization. An external cross-reference, body edit,
+or follow-up needs its own PP-0 check; creating the original Issue does not
+implicitly authorize subsequent messages.
 
-## Context
-
-Discovered during reinhardt-web development while [brief context].
-
-reinhardt-web tracking issue: https://github.com/kent8192/reinhardt-web/issues/N
-
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
-EOF
-)"
-```
-
-### UR-3 (MUST): Issue Content Requirements
-
-Upstream issues MUST:
-- Be written in **English**
-- Follow the upstream repository's issue templates and contribution guidelines if available
-- Include clear reproduction steps
-- Include the discovery context (e.g., "discovered during reinhardt-web ORM implementation")
-- Reference related reinhardt-web issues or PRs if applicable
-- Include Claude Code attribution footer
-- **NOT** include absolute local paths or user-specific information
-
-**Note:** External upstream projects may have their own contributing guidelines, issue templates, and community norms. Always review the upstream project's CONTRIBUTING.md or issue template before filing.
-
-### UR-4 (MUST): Tracking Issues in reinhardt-web
-
-When an upstream issue is created, a corresponding **tracking issue** MUST also be created in the reinhardt-web repository.
-
-**Rationale:** Creating a tracking issue in reinhardt-web ensures that:
-- Upstream dependencies are visible in the reinhardt-web issue tracker
-- Workaround removal can be tracked alongside reinhardt-web development milestones
-- Contributors can discover upstream blockers without checking external repositories
-
-**Procedure:**
-
-1. **Create the upstream issue** in the external repository (UR-1, UR-2)
-2. **Create a tracking issue** in the reinhardt-web repository referencing the upstream issue
-3. **Update the upstream issue** to reference the reinhardt-web tracking issue (SHOULD — external projects may not accept downstream cross-references)
-4. **In the reinhardt-web codebase**: Add a comment referencing both issues where a workaround is applied
-
-The following diagram shows the cross-referencing workflow:
-
-```mermaid
-sequenceDiagram
-    participant D as Developer
-    participant U as Upstream Repo
-    participant RW as reinhardt-web
-
-    D->>U: 1. Create upstream issue (upstream-repo#42)
-    D->>RW: 2. Create tracking issue (reinhardt-web#15)<br/>References upstream-repo#42
-    D->>U: 3. Update upstream-repo#42<br/>Add link to reinhardt-web#15 (if accepted)
-    D->>RW: 4. Add workaround code comment<br/>referencing both issues
-```
-
-**reinhardt-web tracking issue template:**
-
-```bash
-gh issue create \
-  --title "Upstream: [brief description] (upstream-repo#N)" \
-  --label upstream-tracking \
-  --body "$(cat <<'EOF'
-## Upstream Issue
-
-Tracking upstream issue: https://github.com/[owner]/[repo]/issues/N
-
-## Impact on reinhardt-web
-
-[Describe how this upstream issue affects reinhardt-web]
-
-## Workaround
-
-- [ ] Workaround applied in reinhardt-web (if needed)
-- [ ] Code comment added referencing upstream issue
-
-## Resolution Criteria
-
-This issue should be closed when:
-- The upstream issue is resolved AND
-- The reinhardt-web workaround (if any) is removed
-
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
-EOF
-)"
-```
-
-**Workaround comment format:**
-```rust
-// Workaround for upstream-repo#42 (tracked in reinhardt-web#15)
-// Remove this workaround when the upstream issue is resolved.
-//
-// Ideal implementation (without workaround):
-//   [code showing the intended implementation without the workaround]
-```
+Track reporting disposition separately from technical resolution. Closure of
+an external Issue or internal tracker does not demonstrate a dependency fix
+and does not justify removing a working compatibility constraint.
 
 ### UR-5 (SHOULD): Label Application
 
-Apply appropriate labels to upstream issues based on the issue type:
-
-| Issue Type | Labels |
-|------------|--------|
-| Bug | `bug` |
-| Missing feature | `enhancement` |
-| Documentation gap | `documentation` |
-| Performance issue | `performance` |
-
-**Note:** Available labels depend on the upstream repository's configuration. Check available labels before applying.
-
----
+Use the destination's available labels and template requirements for permitted
+reports. Do not assume Reinhardt's type or agent-discovery labels exist in an
+external repository. Policy and authorization checks precede label mutations.
 
 ## Issue Categories
 
-### IC-1: What Qualifies as an Upstream Issue
+### IC-1: Candidates for Upstream Investigation
 
-Report to the upstream repository when:
+Unexpected API behavior, missing generally applicable functionality, incorrect
+documentation, dependency incompatibility, or infrastructure failures may merit
+upstream investigation. Establish the responsible component and supported
+contract before describing the finding as an upstream bug. Qualification as a
+technical finding does not grant external posting permission.
 
-- An awesome-delions or reinhardt-cloud API behaves unexpectedly or inconsistently with its documentation
-- A downstream project is missing a feature that reinhardt-web integration requires
-- Documentation in a downstream project is incorrect, incomplete, or misleading
-- A dependency in a downstream project causes a conflict or vulnerability
-- A downstream project's build or test infrastructure has issues that affect reinhardt-web
-- A downstream project's type signatures or trait implementations are incorrect
+### IC-2: Findings to Keep Local
 
-### IC-2: What Does NOT Qualify
-
-Do **NOT** report to the upstream repository when:
-
-- The issue is in reinhardt-web-specific code (report in reinhardt-web repo)
-- The issue is a reinhardt-web design decision that differs from downstream project conventions
-- The issue is a feature request specific to reinhardt-web with no applicability to the downstream project
-- The issue is a misunderstanding of the downstream project's intended behavior (check docs and discussions first)
-- The downstream project has a discussion forum — use that for usage questions instead of filing issues
-
----
+Reinhardt-specific behavior, deliberate design differences, misunderstood APIs,
+or unsupported usage belong in internal investigation. Usage questions may
+belong in the destination's discussion forum, but that forum is not a bypass
+for policy or authorization checks. Follow private disclosure rules for
+vulnerabilities.
 
 ## Workaround Policy
 
 ### WP-1 (SHOULD): Temporary Workarounds
 
-When an upstream issue blocks reinhardt-web development:
+Use the smallest isolated compatibility repair supported by the evidence.
+Document and verify the affected behavior. For dependency constraints, verify
+fresh resolution and relevant external consumers rather than relying only on
+a workspace lockfile. Reassess the workaround when the dependency changes.
 
-1. Create the upstream issue first (UR-1)
-2. Create the reinhardt-web tracking issue with `upstream-tracking` label (UR-4)
-3. Cross-reference both issues (UR-4)
-4. Implement a minimal workaround in reinhardt-web
-5. Mark the workaround with a comment referencing both issues (UR-4)
-6. Track the upstream issue for resolution; close the reinhardt-web tracking issue when resolved
+### WP-2 (MUST): Documented Workarounds Without Mandatory Publication
 
-**Workaround rules:**
-- Keep workarounds minimal and isolated
-- Document the workaround clearly
-- Remove the workaround when the upstream issue is resolved
+Before adding a workaround, preserve an internal record under UR-4 and add a
+code comment referencing that record, the technical reason, and the removal
+condition. Include an external Issue reference only if one actually exists.
+A local record is sufficient when publication is not authorized or appropriate.
 
-### WP-2 (MUST): No Silent Workarounds
-
-**NEVER** implement workarounds for upstream issues without:
-1. Creating an upstream issue first
-2. Adding a reference comment in the workaround code
+External reporting is not required to implement or retain the workaround.
+Remove it only after its technical removal conditions are verified, not because
+an Issue was closed, rejected, or withdrawn. Closing trackers requires the
+separate authorization in CE-1.
 
 ### WP-3 (MUST): Include Ideal Implementation in Workaround Comments
 
-Every workaround comment MUST include the **ideal implementation** — the code that should replace the workaround once the upstream issue is resolved. This enables future developers to remove the workaround without re-investigating the intended design.
-
-**Rationale:**
-- Issue references explain *why* a workaround exists, but not *what the code should look like* without it
-- The ideal implementation reduces the cost and risk of workaround removal
-- Without it, developers must reverse-engineer the intended behavior from issue discussions
-
-**Extended workaround comment template:**
-```rust
-// Workaround for kent8192/awesome-delions#42 (tracked in reinhardt-web#15)
-// Remove this workaround when the upstream issue is resolved.
-//
-// Ideal implementation (without workaround):
-//   let plugin = DentdelionPlugin::load("auth-plugin")?;
-//   plugin.register(&mut app)?;
-```
-
-**Rules:**
-- The ideal implementation MUST be syntactically plausible (not necessarily compilable against the current upstream API)
-- Keep the ideal implementation concise — show only the key difference, not the entire function
-- If the ideal implementation depends on an upstream API that does not yet exist, describe it in pseudocode with a brief note
-
-**Example with pseudocode:**
-```rust
-// Workaround for kent8192/reinhardt-cloud#99 (tracked in reinhardt-web#30)
-// Remove this workaround when the upstream issue is resolved.
-//
-// Ideal implementation (without workaround):
-//   // Requires reinhardt-cloud to expose `CloudConfig::validate_manifest()`
-//   config.validate_manifest(&manifest)?;
-```
-
----
-
-## Quick Reference
-
-### MUST DO
-- Create issues in the appropriate repo immediately upon discovering cross-project bugs (UR-1)
-- Use `gh issue create -R [owner]/[repo]` for cross-project issue creation (UR-2)
-- Write all upstream issues in English (UR-3)
-- Follow upstream repository's issue templates and contribution guidelines when available (UR-3)
-- Create a tracking issue in reinhardt-web for every upstream issue with `upstream-tracking` label (UR-4)
-- Add workaround comments referencing both upstream and reinhardt-web tracking issues (UR-4)
-- Include ideal implementation in all workaround comments (WP-3)
-- Create upstream issue before implementing any workaround (WP-2)
-
-### NEVER DO
-- Delay reporting upstream issues discovered during reinhardt-web development
-- Implement workarounds without creating upstream issues first (WP-2)
-- Introduce workaround code without an ideal implementation comment (WP-3)
-- Create upstream issues without corresponding reinhardt-web tracking issues (UR-4)
-- Include absolute local paths in upstream issues (UR-3)
-- Report reinhardt-web-specific issues to downstream project repositories (IC-2)
-- File usage questions as issues when the downstream project has a discussion forum (IC-2)
-
----
+Include the intended implementation without the workaround. Keep it concise
+and syntactically plausible; clearly identify pseudocode or an API that does
+not yet exist. For a dependency constraint, describe the dependency/feature
+entries that should remain after removal. The comment must make the intended
+replacement clear without repeating the investigation.
 
 ## Related Documentation
 
-- **Issue Guidelines**: instructions/ISSUE_GUIDELINES.md
-- **Issue Handling**: instructions/ISSUE_HANDLING.md
-- **GitHub Interaction**: instructions/GITHUB_INTERACTION.md
-- **Main Quick Reference**: CLAUDE.md (see Quick Reference section)
-
----
-
-**Note**: This document focuses on reporting issues to upstream dependencies. For reinhardt-web-specific issue management, see instructions/ISSUE_GUIDELINES.md. For batch issue handling strategy, see instructions/ISSUE_HANDLING.md.
+- [GitHub publication policy](GITHUB_INTERACTION.md#pp-0-must-external-publication)
+- [Commit and destination authorization](COMMIT_GUIDELINE.md#ce-1-must-execution-authorization)
+- [Issue Guidelines](ISSUE_GUIDELINES.md)
+- [Issue Handling](ISSUE_HANDLING.md)
+- [Quick Reference](QUICK_REFERENCE.md)
