@@ -94,6 +94,39 @@ pub(crate) fn load_store(
 	ManifestStore::open(root, options).map(Some)
 }
 
+// Keep framework-owned routes and Pages selection identical in both servers.
+pub(crate) fn serving_config(
+	store: std::sync::Arc<ManifestStore>,
+	static_url: String,
+	entrypoint: Option<&str>,
+	navigation: bool,
+) -> Result<reinhardt_utils::staticfiles::publication::ManifestServingConfig, AssetBuildError> {
+	use reinhardt_utils::staticfiles::publication::ManifestServingConfig;
+
+	let mut config =
+		ManifestServingConfig::new(store, static_url.clone())?.with_navigation_fallback(navigation);
+	if let Some(entrypoint) = entrypoint {
+		config = config.with_pages(entrypoint.into());
+	}
+	let uri: hyper::Uri = static_url
+		.parse()
+		.map_err(
+			|error: hyper::http::uri::InvalidUri| AssetBuildError::Input {
+				asset: static_url.clone(),
+				reason: error.to_string(),
+			},
+		)?;
+	let config = config.with_passthrough_prefixes(vec![
+		"/api".into(),
+		"/docs".into(),
+		"/openapi.json".into(),
+		"/static/admin".into(),
+		format!("{}/admin", uri.path().trim_end_matches('/')),
+	])?;
+	config.validate()?;
+	Ok(config)
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -113,6 +146,120 @@ mod tests {
 			.manifest()
 			.build_id
 			.clone()
+	}
+
+	#[rstest]
+	#[case(Some("second"), true, Some("second"))]
+	#[case(Some("first"), true, Some("first"))]
+	#[case(Some("second"), false, None)]
+	#[case(None, true, None)]
+	#[case(None, false, None)]
+	#[case(Some("missing"), true, None)]
+	#[case(Some("missing"), false, None)]
+	#[tokio::test]
+	async fn named_entrypoint_controls_navigation(
+		#[case] selected: Option<&str>,
+		#[case] navigation: bool,
+		#[case] expected_document: Option<&str>,
+	) {
+		use reinhardt_http::{Handler, Middleware, Request, Response};
+		use reinhardt_utils::staticfiles::publication::{
+			AssetProducer, AssetRole, ManifestStaticMiddleware, PagesEntrypoint,
+		};
+		use std::sync::Arc;
+		struct Missing;
+		#[async_trait::async_trait]
+		impl Handler for Missing {
+			async fn handle(&self, _: Request) -> reinhardt_core::exception::Result<Response> {
+				Ok(Response::not_found())
+			}
+		}
+		// Arrange
+		let root = tempfile::tempdir().unwrap();
+		let mut pipeline = AssetPipeline::new();
+		pipeline
+			.add_input(
+				AssetInput::bytes("app.js", b"export default function init(){};export const wasm=new URL('app.wasm',import.meta.url);".to_vec())
+					.with_producer(AssetProducer::Pages),
+			)
+			.unwrap();
+		pipeline
+			.add_input(
+				AssetInput::bytes("app.wasm", b"\0asm\x01\0\0\0".to_vec())
+					.with_producer(AssetProducer::Pages),
+			)
+			.unwrap();
+		for name in ["first", "second"] {
+			let document = format!("{name}.html");
+			pipeline
+				.add_input(
+					AssetInput::bytes(
+						&document,
+						format!("<html><head></head><body>{name}</body></html>").into_bytes(),
+					)
+					.with_role(AssetRole::EntryDocument),
+				)
+				.unwrap();
+			pipeline
+				.set_entrypoint(
+					name,
+					PagesEntrypoint {
+						javascript: "app.js".into(),
+						wasm: "app.wasm".into(),
+						styles: vec![],
+						document: Some(document),
+					},
+				)
+				.unwrap();
+		}
+		AssetPublisher::new(root.path().into())
+			.publish(pipeline.prepare(AssetMode::Production).unwrap())
+			.unwrap();
+		let store = Arc::new(
+			load_store(Some(root.path()), None, "production", None)
+				.unwrap()
+				.unwrap(),
+		);
+		// Act
+		let config = serving_config(store.clone(), "/static/".into(), selected, navigation);
+		// Assert
+		if selected.is_none() || selected == Some("missing") {
+			assert_eq!(
+				config.unwrap_err().to_string(),
+				if selected.is_none() {
+					"invalid static asset manifest: select a Pages entrypoint explicitly for navigation or a multi-entry publication"
+				} else {
+					"invalid asset \"missing\": unknown Pages entrypoint; select a manifest entrypoint name"
+				}
+			);
+			return;
+		}
+		let response = ManifestStaticMiddleware::new(config.unwrap())
+			.process(
+				Request::builder()
+					.uri("/dashboard")
+					.header("accept", "text/html")
+					.build()
+					.unwrap(),
+				Arc::new(Missing),
+			)
+			.await
+			.unwrap();
+		if let Some(name) = expected_document {
+			assert_eq!(response.status, hyper::StatusCode::OK);
+			let snapshot = store.active();
+			let template = snapshot.read_asset(&format!("{name}.html")).unwrap();
+			let expected = reinhardt_utils::staticfiles::publication::render_entry_document(
+				&snapshot,
+				"/static/",
+				name,
+				std::str::from_utf8(&template).unwrap(),
+			)
+			.unwrap();
+			assert_eq!(response.body.as_ref(), expected.as_bytes());
+		} else {
+			assert_eq!(response.status, hyper::StatusCode::NOT_FOUND);
+		}
 	}
 
 	#[rstest]

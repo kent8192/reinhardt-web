@@ -1160,6 +1160,12 @@ reinhardt-admin startproject myproject
 or the standalone `runserver` binary. Both accept `--asset-manifest` to select a
 custom manifest or a retained `builds/<id>/manifest.json`; the selected generation
 is used even when the canonical active pointer names another build.
+Use `--asset-entrypoint NAME` to select a named Pages entrypoint when a manifest
+contains multiple entries (also required with `manage runserver --no-spa`).
+A single entry is selected automatically; unknown names fail startup. The management
+command requires `--with-pages` for this selector and forwards it to autoreload children.
+Both servers preserve `/static/admin/` and the configured static mount's `admin/`
+routes, including percent-encoded mount paths.
 
 `--expected-asset-build-id` requires a complete version 2 manifest with that
 identity. Missing, legacy, or mismatched manifests fail startup. Asset-only

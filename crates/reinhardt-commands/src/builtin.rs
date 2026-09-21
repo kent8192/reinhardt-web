@@ -3345,6 +3345,7 @@ struct RunServerExecutionOptions {
 	index: Option<String>,
 	asset_mode: String,
 	asset_manifest: Option<String>,
+	asset_entrypoint: Option<String>,
 	expected_asset_build_id: Option<String>,
 }
 
@@ -3382,6 +3383,7 @@ impl RunServerExecutionOptions {
 				.map(ToString::to_string)
 				.unwrap_or_else(|| "production".to_string()),
 			asset_manifest: ctx.option("asset-manifest").map(ToString::to_string),
+			asset_entrypoint: ctx.option("asset-entrypoint").map(ToString::to_string),
 			expected_asset_build_id: ctx
 				.option("expected-asset-build-id")
 				.map(ToString::to_string),
@@ -3402,6 +3404,7 @@ struct AutoreloadChildOptions<'a> {
 	index: Option<&'a str>,
 	asset_mode: &'a str,
 	asset_manifest: Option<&'a str>,
+	asset_entrypoint: Option<&'a str>,
 	expected_asset_build_id: Option<&'a str>,
 	hmr_port: Option<u16>,
 	no_wasm: bool,
@@ -3914,6 +3917,11 @@ impl BaseCommand for RunServerCommand {
 			),
 			CommandOption::option(
 				None,
+				"asset-entrypoint",
+				"Named Pages entrypoint in the unified asset manifest",
+			),
+			CommandOption::option(
+				None,
 				"expected-asset-build-id",
 				"Require the selected unified asset build identifier",
 			),
@@ -3953,6 +3961,11 @@ impl BaseCommand for RunServerCommand {
 				"--expected-asset-build-id requires --with-pages to enable manifest serving".into(),
 			));
 		}
+		if ctx.option("asset-entrypoint").is_some() && !ctx.has_option("with-pages") {
+			return Err(crate::CommandError::ExecutionError(
+				"--asset-entrypoint requires --with-pages to enable manifest serving".into(),
+			));
+		}
 		// Route inventory is materialized once by `prepare_native_launch_plan`.
 		// This keeps HTTP, WebSocket, and gRPC registrations on one startup path.
 
@@ -3980,6 +3993,7 @@ impl BaseCommand for RunServerCommand {
 			index,
 			asset_mode: _asset_mode,
 			asset_manifest: _asset_manifest,
+			asset_entrypoint: _asset_entrypoint,
 			expected_asset_build_id: _expected_asset_build_id,
 		} = RunServerExecutionOptions::from_context(ctx);
 		#[cfg(feature = "pages")]
@@ -4480,35 +4494,13 @@ impl RunServerCommand {
 			if let Some(store) = store {
 				let navigation = !no_spa && !store.active().manifest().entrypoints.is_empty();
 				let store = std::sync::Arc::new(store);
-				let config = reinhardt_utils::staticfiles::publication::ManifestServingConfig::new(
+				let config = crate::runserver_assets::serving_config(
 					store,
 					generated_style_url.clone(),
+					ctx.option("asset-entrypoint").map(String::as_str),
+					navigation,
 				)
-				.map_err(|error| {
-					crate::CommandError::ExecutionError(format!(
-						"invalid static asset serving configuration: {error}"
-					))
-				})?
-				.with_navigation_fallback(navigation)
-				.with_passthrough_prefixes(vec![
-					"/api".into(),
-					"/docs".into(),
-					"/openapi.json".into(),
-					"/static/admin".into(),
-					format!(
-						"{}admin",
-						generated_style_url
-							.parse::<hyper::Uri>()
-							.expect("validated static URL")
-							.path()
-					),
-				])
 				.map_err(|error| crate::CommandError::ExecutionError(error.to_string()))?;
-				config.validate().map_err(|error| {
-					crate::CommandError::ExecutionError(format!(
-						"invalid Pages entrypoint configuration: {error}"
-					))
-				})?;
 				server = server.with_middleware(
 					reinhardt_utils::staticfiles::publication::ManifestStaticMiddleware::new(
 						config,
@@ -5036,6 +5028,7 @@ impl RunServerCommand {
 			.map_or("production", String::as_str)
 			.to_string();
 		let asset_manifest_owned = ctx.option("asset-manifest").map(ToString::to_string);
+		let asset_entrypoint_owned = ctx.option("asset-entrypoint").map(ToString::to_string);
 		let expected_asset_build_id_owned = ctx
 			.option("expected-asset-build-id")
 			.map(ToString::to_string);
@@ -5069,6 +5062,7 @@ impl RunServerCommand {
 				index_owned.as_deref(),
 				&asset_mode_owned,
 				asset_manifest_owned.as_deref(),
+				asset_entrypoint_owned.as_deref(),
 				expected_asset_build_id_owned.as_deref(),
 				hmr_port,
 				no_wasm,
@@ -5295,6 +5289,7 @@ impl RunServerCommand {
 		index: Option<&str>,
 		asset_mode: &str,
 		asset_manifest: Option<&str>,
+		asset_entrypoint: Option<&str>,
 		expected_asset_build_id: Option<&str>,
 		hmr_port: Option<u16>,
 		no_wasm: bool,
@@ -5340,6 +5335,7 @@ impl RunServerCommand {
 			index,
 			asset_mode,
 			asset_manifest,
+			asset_entrypoint,
 			expected_asset_build_id,
 			hmr_port,
 			no_wasm,
@@ -5425,6 +5421,10 @@ impl RunServerCommand {
 		if let Some(manifest) = options.asset_manifest {
 			args.push("--asset-manifest".to_string());
 			args.push(manifest.to_string());
+		}
+		if let Some(entrypoint) = options.asset_entrypoint {
+			args.push("--asset-entrypoint".to_string());
+			args.push(entrypoint.to_string());
 		}
 		if let Some(build_id) = options.expected_asset_build_id {
 			args.push("--expected-asset-build-id".to_string());
@@ -6836,6 +6836,33 @@ mod tests {
 		);
 	}
 
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn asset_entrypoint_requires_manifest_serving() {
+		// Arrange
+		let mut ctx = CommandContext::new(Vec::new());
+		ctx.set_option("asset-entrypoint".into(), "dashboard".into());
+		// Act
+		let result = RunServerCommand.execute(&ctx).await;
+		// Assert
+		assert_eq!(
+			result.unwrap_err().to_string(),
+			"Execution error: --asset-entrypoint requires --with-pages to enable manifest serving"
+		);
+		assert_eq!(
+			RunServerExecutionOptions::from_context(&ctx)
+				.asset_entrypoint
+				.as_deref(),
+			Some("dashboard")
+		);
+		assert!(
+			RunServerCommand
+				.options()
+				.iter()
+				.any(|option| option.long == "asset-entrypoint")
+		);
+	}
+
 	#[test]
 	#[cfg(feature = "autoreload")]
 	fn runserver_execution_options_preserve_all_context_values() {
@@ -7808,6 +7835,7 @@ name = "db.sqlite3"
 			index: Some("index.html"),
 			asset_mode: "production",
 			asset_manifest: None,
+			asset_entrypoint: Some("dashboard"),
 			expected_asset_build_id: None,
 			hmr_port: Some(35729),
 			no_wasm: true,
@@ -7837,6 +7865,8 @@ name = "db.sqlite3"
 				"--no-project-static",
 				"--index",
 				"index.html",
+				"--asset-entrypoint",
+				"dashboard",
 				"--no-wasm",
 				"--no-override-wasm",
 				"--force-wasm",
@@ -7864,6 +7894,7 @@ name = "db.sqlite3"
 			index: None,
 			asset_mode: "production",
 			asset_manifest: None,
+			asset_entrypoint: None,
 			expected_asset_build_id: None,
 			hmr_port: None,
 			no_wasm: false,
@@ -7905,6 +7936,7 @@ name = "db.sqlite3"
 			index: None,
 			asset_mode: "production",
 			asset_manifest: None,
+			asset_entrypoint: None,
 			expected_asset_build_id: None,
 			hmr_port: None,
 			no_wasm: false,

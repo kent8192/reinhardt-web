@@ -154,6 +154,10 @@ struct Args {
 	#[arg(long)]
 	asset_manifest: Option<PathBuf>,
 
+	/// Named Pages entrypoint in the unified asset manifest
+	#[arg(long)]
+	asset_entrypoint: Option<String>,
+
 	/// Require a specific unified asset build identifier
 	#[arg(long)]
 	expected_asset_build_id: Option<String>,
@@ -363,6 +367,7 @@ fn load_unified_manifest_middleware(
 	settings: &RunServerSettings,
 	asset_mode: &str,
 	asset_manifest: Option<&Path>,
+	asset_entrypoint: Option<&str>,
 	expected_asset_build_id: Option<&str>,
 ) -> Result<
 	Option<Arc<reinhardt_utils::staticfiles::publication::ManifestStaticMiddleware>>,
@@ -379,12 +384,12 @@ fn load_unified_manifest_middleware(
 	};
 	let navigation = !store.active().manifest().entrypoints.is_empty();
 	let store = Arc::new(store);
-	let config = reinhardt_utils::staticfiles::publication::ManifestServingConfig::new(
+	let config = runserver_assets::serving_config(
 		store,
 		settings.static_url.clone(),
-	)?
-	.with_navigation_fallback(navigation);
-	config.validate()?;
+		asset_entrypoint,
+		navigation,
+	)?;
 	let manifest_path = asset_manifest.map(Path::to_path_buf).unwrap_or_else(|| {
 		settings
 			.static_root
@@ -1180,6 +1185,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 		&loaded_settings,
 		&args.asset_mode,
 		args.asset_manifest.as_deref(),
+		args.asset_entrypoint.as_deref(),
 		args.expected_asset_build_id.as_deref(),
 	)?;
 	let settings = Arc::new(loaded_settings);
@@ -1406,11 +1412,23 @@ mod tests {
 	}
 
 	#[rstest]
+	#[case("/static/")]
+	#[case("/console/assets/")]
+	#[case("/assets%20v2/")]
+	#[case("https://cdn.example.test/assets/")]
 	#[tokio::test]
-	async fn asset_only_publication_loads_without_navigation() {
+	async fn asset_only_publication_loads_without_navigation(#[case] static_url: &str) {
+		use reinhardt_http::{Handler, Middleware, Request, Response};
 		use reinhardt_utils::staticfiles::publication::{
 			AssetInput, AssetMode, AssetPipeline, AssetPublisher,
 		};
+		struct Admin;
+		#[async_trait::async_trait]
+		impl Handler for Admin {
+			async fn handle(&self, _: Request) -> reinhardt_core::exception::Result<Response> {
+				Ok(Response::ok().with_body("admin asset"))
+			}
+		}
 		// Arrange
 		let root = tempfile::tempdir().unwrap();
 		let mut pipeline = AssetPipeline::new();
@@ -1421,13 +1439,42 @@ mod tests {
 			.publish(pipeline.prepare(AssetMode::Production).unwrap())
 			.unwrap();
 		let settings = RunServerSettings {
+			static_url: static_url.into(),
 			static_root: Some(root.path().into()),
 			..Default::default()
 		};
 		// Act
-		let result = load_unified_manifest_middleware(&settings, "production", None, None).unwrap();
+		let result =
+			load_unified_manifest_middleware(&settings, "production", None, None, None).unwrap();
 		// Assert
-		assert!(result.is_some());
+
+		let middleware = result.unwrap();
+		let uri: hyper::Uri = static_url.parse().unwrap();
+		for path in [
+			"/static/admin/style.css".into(),
+			format!("{}admin/style.css", uri.path()),
+		] {
+			let response = middleware
+				.process(
+					Request::builder().uri(path).build().unwrap(),
+					Arc::new(Admin),
+				)
+				.await
+				.unwrap();
+			assert_eq!(response.status, StatusCode::OK);
+			assert_eq!(response.body.as_ref(), b"admin asset");
+		}
+		let response = middleware
+			.process(
+				Request::builder()
+					.uri(format!("{}administrator/style.css", uri.path()))
+					.build()
+					.unwrap(),
+				Arc::new(Admin),
+			)
+			.await
+			.unwrap();
+		assert_eq!(response.status, StatusCode::NOT_FOUND);
 	}
 
 	#[test]
@@ -1462,6 +1509,8 @@ mod tests {
 			"--no-override-wasm",
 			"--force-wasm",
 			"--no-collectstatic",
+			"--asset-entrypoint",
+			"dashboard",
 		])
 		.expect("explicit server arguments parse");
 
@@ -1469,6 +1518,8 @@ mod tests {
 		assert_eq!(defaults.address, "127.0.0.1:8000");
 		assert_eq!(defaults.watch_delay, 120);
 		assert!(!defaults.noreload && !defaults.self_signed && !defaults.no_wasm);
+		assert_eq!(configured.asset_entrypoint.as_deref(), Some("dashboard"));
+		assert_eq!(defaults.asset_entrypoint, None);
 		assert_eq!(configured.address, "0.0.0.0:9443");
 		assert_eq!(configured.watch_delay, 275);
 		assert_eq!(configured.cert.as_deref(), Some(Path::new("server.pem")));
