@@ -132,6 +132,7 @@ pub(super) fn analyze(logical: &str, source: &str) -> Result<Vec<AssetReference>
 												"stylesheet",
 												"icon",
 												"preload",
+												"prefetch",
 												"modulepreload",
 												"apple-touch-icon",
 												"manifest",

@@ -289,3 +289,28 @@ fn computed_module_relative_imports_still_fail(#[case] source: &str) {
 		Err(reinhardt_utils::staticfiles::publication::AssetBuildError::Input { .. })
 	));
 }
+
+#[rstest]
+#[case("prefetch")]
+#[case("PREFETCH")]
+#[case("alternate prefetch")]
+fn html_prefetch_declares_and_rewrites_asset_dependencies(#[case] relation: &str) {
+	// Arrange
+	let html = format!(r#"<link rel="{relation}" href="chunks/next.js?v=2#module">"#);
+	let inputs: &[(&str, &[u8])] = &[
+		("index.html", html.as_bytes()),
+		("chunks/next.js", b"export const next=1;"),
+	];
+	// Act
+	let prepared = pipeline(inputs).prepare(AssetMode::Production).unwrap();
+	// Assert
+	assert_eq!(
+		prepared.manifest().assets["index.html"].dependencies,
+		["chunks/next.js"]
+	);
+	let rewritten = String::from_utf8(prepared.read_asset("index.html").unwrap()).unwrap();
+	assert!(
+		rewritten.contains("../js/chunks/next.js?v=2#module"),
+		"{rewritten}"
+	);
+}
