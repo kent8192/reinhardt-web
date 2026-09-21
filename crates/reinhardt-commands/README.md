@@ -549,12 +549,13 @@ installed apps, and optional project prelude.
 The `shell` feature constrains `unicode-ident` to 1.0.24 so evcxr's Rust lexer
 uses Unicode 17 tables consistently with `unicode-properties` 0.1.4. This
 compatibility dependency also applies to fresh downstream builds; see
-[the upstream lexer issue](https://github.com/rust-lang/rust/issues/163012) and
-[the removal tracker](https://github.com/kent8192/reinhardt-web/issues/6341).
+[the internal compatibility record](https://github.com/kent8192/reinhardt-web/issues/6341).
 It also constrains Salsa and its macro-rules to 0.28.2 because rust-analyzer
 0.0.347 implements an internal trait method removed in later Salsa releases;
-see [the rust-analyzer issue](https://github.com/rust-lang/rust-analyzer/issues/23394)
-and [its removal tracker](https://github.com/kent8192/reinhardt-web/issues/6342).
+see [the Salsa compatibility record](https://github.com/kent8192/reinhardt-web/issues/6342).
+Remove these constraints only after fresh dependency resolution verifies a
+compatible evcxr dependency graph. Tracker closure alone does not establish
+compatibility.
 
 When the management binary enables additional project features, pass the same
 selection to `ShellConfig::with_dependency_features`; also call

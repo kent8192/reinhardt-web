@@ -67,13 +67,13 @@ inventory = "0.3"
 notify = { version = "8.2.0", optional = true }
 rustyline = { version = "17.0.2", optional = true }
 evcxr = { version = "0.22.0", optional = true }
-# Workaround for rust-lang/rust#163012 (tracked in reinhardt-web#6341).
+# Compatibility constraint tracked in reinhardt-web#6341.
 # Keep evcxr's lexer on Unicode 17, matching unicode-properties 0.1.4.
 # Remove when evcxr's lexer supports a compatible current Unicode dependency graph.
 # Ideal implementation: depend on evcxr alone, without this compatibility dependency
 # or the dep:unicode-ident entry in the shell feature.
 unicode-ident = { version = "=1.0.24", optional = true }
-# Workaround for rust-lang/rust-analyzer#23394 (tracked in reinhardt-web#6342).
+# Compatibility constraints tracked in reinhardt-web#6342.
 # rust-analyzer 0.0.347 requires Salsa's pre-0.28.3 HashEqLike contract.
 # Remove when evcxr uses rust-analyzer compatible with current Salsa internals.
 # Ideal implementation: depend on evcxr alone, without these compatibility
