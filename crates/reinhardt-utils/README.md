@@ -552,6 +552,20 @@ logger.log_disallowed_host("malicious.com");
   - Debugger statement removal
 
 
+### Manifest-backed static publication
+
+With `asset-publication`, HTML resource hints including `rel="prefetch"` are
+tracked and rewritten into the selected generation. Navigation fallback requires
+an explicit `text/html` media range with positive quality; `q=0` preserves the
+application response. Single byte ranges are supported, while multipart ranges
+and unknown range units are ignored and receive the full representation.
+
+Explicit passthrough prefixes nested inside the static mount take precedence at
+path-segment boundaries. Management `runserver` uses this for admin static routes;
+ancestor passthroughs such as `/docs` do not shadow a `/docs/static/` asset mount.
+`AssetPublisher` refuses roots containing `staticfiles.json` before activating a
+generation, so default manifest selection remains unambiguous.
+
 ## storage
 
 ### Features
