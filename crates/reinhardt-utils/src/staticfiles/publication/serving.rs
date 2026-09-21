@@ -204,9 +204,20 @@ impl Middleware for ManifestStaticMiddleware {
 				.get(header::ACCEPT)
 				.and_then(|value| value.to_str().ok())
 				.is_some_and(|value| {
-					value
-						.split(',')
-						.any(|part| part.trim().split(';').next() == Some("text/html"))
+					value.split(',').any(|part| {
+						let mut parameters = part.trim().split(';');
+						if !parameters
+							.next()
+							.is_some_and(|media| media.trim().eq_ignore_ascii_case("text/html"))
+						{
+							return false;
+						}
+						let quality = parameters
+							.filter_map(|parameter| parameter.trim().split_once('='))
+							.find(|(name, _)| name.trim().eq_ignore_ascii_case("q"))
+							.map_or(Some(1.0), |(_, value)| value.trim().parse::<f32>().ok());
+						quality.is_some_and(|quality| quality > 0.0 && quality <= 1.0)
+					})
 				});
 		let response = next.handle(request).await?;
 		if response.status == StatusCode::NOT_FOUND && self.config.navigation_fallback && navigation

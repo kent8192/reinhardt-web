@@ -879,3 +879,38 @@ fn template_styles_preserve_declared_cascade(#[case] links: Vec<&str>, #[case] v
 		);
 	}
 }
+
+#[rstest]
+#[case("text/html;q=0", 404)]
+#[case("text/html;q=0.000, */*;q=1", 404)]
+#[case("application/json, text/html; q=0", 404)]
+#[case("text/html;q=invalid", 404)]
+#[case("text/html;q=1.1", 404)]
+#[case("text/html;q=0.5", 200)]
+#[case("TEXT/HTML; Q=1", 200)]
+#[case("text/html; charset=utf-8", 200)]
+#[tokio::test]
+async fn navigation_honors_html_quality(#[case] accept: &str, #[case] status: u16) {
+	// Arrange
+	let fixture = Fixture::new("/static/", AssetMode::Production);
+	let probe = NavigationProbe::new(StatusCode::NOT_FOUND);
+	// Act
+	let response = fixture
+		.middleware
+		.process(
+			Request::builder()
+				.uri("/screen")
+				.header(header::ACCEPT, accept)
+				.build()
+				.unwrap(),
+			probe.clone(),
+		)
+		.await
+		.unwrap();
+	// Assert
+	assert_eq!(response.status.as_u16(), status);
+	assert_eq!(probe.call_count(), 1);
+	if status == 404 {
+		assert_eq!(response.body.as_ref(), b"navigation-probe");
+	}
+}
