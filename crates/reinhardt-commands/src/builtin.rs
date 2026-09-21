@@ -4489,7 +4489,21 @@ impl RunServerCommand {
 						"invalid static asset serving configuration: {error}"
 					))
 				})?
-				.with_navigation_fallback(navigation);
+				.with_navigation_fallback(navigation)
+				.with_passthrough_prefixes(vec![
+					"/api".into(),
+					"/docs".into(),
+					"/openapi.json".into(),
+					"/static/admin".into(),
+					format!(
+						"{}admin",
+						generated_style_url
+							.parse::<hyper::Uri>()
+							.expect("validated static URL")
+							.path()
+					),
+				])
+				.map_err(|error| crate::CommandError::ExecutionError(error.to_string()))?;
 				config.validate().map_err(|error| {
 					crate::CommandError::ExecutionError(format!(
 						"invalid Pages entrypoint configuration: {error}"

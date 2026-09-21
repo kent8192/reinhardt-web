@@ -67,7 +67,8 @@ impl ManifestServingConfig {
 		self.legacy_aliases = enabled;
 		self
 	}
-	/// Preserve framework/application routes outside this mount, at segment boundaries.
+	/// Preserve framework/application routes at segment boundaries.
+	/// Explicit prefixes nested inside the static mount take precedence over assets.
 	pub fn with_passthrough_prefixes(
 		mut self,
 		prefixes: Vec<String>,
@@ -133,6 +134,16 @@ impl Middleware for ManifestStaticMiddleware {
 			Ok(path) => path,
 			Err(_) => return Ok(error(StatusCode::BAD_REQUEST, &request.method)),
 		};
+		// Explicit nested mounts (for example admin assets) belong to the router.
+		// An ancestor passthrough such as /docs must not shadow /docs/static/.
+		if self
+			.config
+			.passthrough
+			.iter()
+			.any(|prefix| prefix.starts_with(&self.config.prefix) && matches_prefix(&path, prefix))
+		{
+			return next.handle(request).await;
+		}
 		let active = self.config.store.active();
 		let relative = path
 			.strip_prefix(&self.config.prefix)

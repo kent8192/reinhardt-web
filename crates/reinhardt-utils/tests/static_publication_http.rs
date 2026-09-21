@@ -944,3 +944,69 @@ async fn unsupported_ranges_serve_the_full_asset(#[case] range: &str) {
 	assert!(!response.headers.contains_key(header::CONTENT_RANGE));
 	assert_eq!(probe.call_count(), 0);
 }
+
+#[rstest]
+#[case("/static/")]
+#[case("/console/assets/")]
+#[case("/")]
+#[tokio::test]
+async fn explicit_nested_admin_mount_reaches_router(#[case] prefix: &str) {
+	// Arrange
+	let fixture = Fixture::new(prefix, AssetMode::Production);
+	let middleware = ManifestStaticMiddleware::new(
+		ManifestServingConfig::new(fixture.store.clone(), prefix.into())
+			.unwrap()
+			.with_passthrough_prefixes(vec![format!("{prefix}admin")])
+			.unwrap(),
+	);
+	let probe = NavigationProbe::new(StatusCode::OK);
+	// Act
+	for name in [
+		"admin/style.css",
+		"admin/main.js",
+		"admin/vendor/open-props.min.css",
+	] {
+		let response = middleware
+			.process(
+				Request::builder()
+					.uri(format!("{prefix}{name}"))
+					.build()
+					.unwrap(),
+				probe.clone(),
+			)
+			.await
+			.unwrap();
+		// Assert
+		assert_eq!(response.body.as_ref(), b"navigation-probe");
+	}
+	assert_eq!(probe.call_count(), 3);
+	for name in [
+		"administrator/style.css",
+		"missing.js",
+		"builds/missing/admin/style.css",
+	] {
+		let response = middleware
+			.process(
+				Request::builder()
+					.uri(format!("{prefix}{name}"))
+					.build()
+					.unwrap(),
+				probe.clone(),
+			)
+			.await
+			.unwrap();
+		assert_eq!(response.status, StatusCode::NOT_FOUND);
+	}
+	assert_eq!(probe.call_count(), 3);
+	let asset = middleware
+		.process(
+			Request::builder()
+				.uri(fixture.url("site.css"))
+				.build()
+				.unwrap(),
+			probe,
+		)
+		.await
+		.unwrap();
+	assert_eq!(body_bytes(&asset), b"body{color:rgb(1,2,3)}");
+}
