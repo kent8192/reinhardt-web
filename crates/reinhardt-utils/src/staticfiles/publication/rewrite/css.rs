@@ -8,7 +8,7 @@ pub(super) fn analyze(logical: &str, source: &str) -> Result<Vec<AssetReference>
 	let mut input = ParserInput::new(source);
 	let mut parser = Parser::new(&mut input);
 	let mut references = Vec::new();
-	scan(logical, &mut parser, &mut references)?;
+	scan(logical, &mut parser, &mut references, false)?;
 	Ok(references)
 }
 
@@ -16,8 +16,10 @@ fn scan<'i, 't>(
 	logical: &str,
 	parser: &mut Parser<'i, 't>,
 	refs: &mut Vec<AssetReference>,
+	image_set: bool,
 ) -> Result<(), AssetBuildError> {
 	let mut import = false;
+	let mut image_candidate = image_set;
 	loop {
 		let start = parser.position().byte_index();
 		let token = match parser.next_including_whitespace_and_comments() {
@@ -25,9 +27,22 @@ fn scan<'i, 't>(
 			Err(_) => break,
 		};
 		let end = parser.position().byte_index();
+		let is_image_candidate = image_candidate;
+		// Only the first token of each image-set option can be a string URL.
+		image_candidate = match &token {
+			Token::WhiteSpace(_) | Token::Comment(_) => image_candidate,
+			Token::Comma => image_set,
+			_ => false,
+		};
+		let nested_image_set = matches!(
+			&token,
+			Token::Function(name)
+				if name.eq_ignore_ascii_case("image-set")
+					|| name.eq_ignore_ascii_case("-webkit-image-set")
+		);
 		match token {
 			Token::AtKeyword(name) if name.eq_ignore_ascii_case("import") => import = true,
-			Token::QuotedString(value) if import => {
+			Token::QuotedString(value) if import || is_image_candidate => {
 				if let Some(reference) = reference(logical, &value, Site::CssString { start, end })?
 				{
 					refs.push(reference);
@@ -65,7 +80,7 @@ fn scan<'i, 't>(
 			| Token::CurlyBracketBlock => {
 				parser
 					.parse_nested_block(|nested| {
-						scan(logical, nested, refs).map_err(|error| {
+						scan(logical, nested, refs, nested_image_set).map_err(|error| {
 							nested.new_custom_error::<String, String>(error.to_string())
 						})
 					})
