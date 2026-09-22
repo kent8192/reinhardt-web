@@ -97,6 +97,9 @@ impl TemplateStaticConfig {
 
 	/// Load manifest from ManifestStaticFilesStorage
 	///
+	/// Version 2 filesystem paths are percent-encoded for use in template URLs.
+	/// Legacy manifest values retain their existing URL encoding.
+	///
 	/// # Examples
 	///
 	/// ```rust,no_run
@@ -128,12 +131,22 @@ impl TemplateStaticConfig {
 
 		let manifest_content = tokio::fs::read_to_string(&manifest_path).await?;
 
-		let manifest = super::publication::decode_manifest(manifest_content.as_bytes())
-			.map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?
+		let decoded = super::publication::decode_manifest(manifest_content.as_bytes())
+			.map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+		let encode_paths = matches!(&decoded, super::publication::DecodedAssetManifest::V2(_));
+		let manifest = decoded
 			.paths()
 			.iter()
-			.map(|(logical, published)| (logical.clone(), published.clone()))
-			.collect();
+			.map(|(logical, published)| {
+				let published = if encode_paths {
+					reinhardt_core::types::static_assets::encode_asset_path(published)
+						.map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?
+				} else {
+					published.clone()
+				};
+				Ok((logical.clone(), published))
+			})
+			.collect::<io::Result<HashMap<_, _>>>()?;
 
 		Ok(Self {
 			static_url: storage.base_url.clone(),
