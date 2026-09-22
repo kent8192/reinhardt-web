@@ -15,7 +15,7 @@ use reinhardt_utils::staticfiles::publication::{
 	AssetBuildError, AssetClassifier, AssetInput, AssetMode, AssetPipeline, AssetPublisher,
 	AssetRole, AssetUrlSnapshot, ManifestSnapshot,
 };
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 /// Typed parser carried through the existing extensible management-command dispatcher.
@@ -374,12 +374,27 @@ impl BuildStaticCommand {
 			preview.pending_checks.push("final reference closure, representations, content hashes, and publication readiness".into());
 			return Ok(BuildStaticResult::DryRun(preview));
 		}
+		let logical_names: BTreeSet<_> = collected
+			.inputs
+			.iter()
+			.map(|input| input.logical_path.clone())
+			.collect();
+		let add_alias = |pipeline: &mut AssetPipeline, alias: &str, logical: &str| {
+			// Alias lookup must never silently redirect a relative logical reference.
+			if alias != logical && logical_names.contains(alias) {
+				return Err(invalid(
+					alias,
+					format!("asset URL alias for {logical:?} collides with a logical input"),
+				));
+			}
+			pipeline.add_alias(alias, logical)
+		};
 		let mut pipeline = AssetPipeline::new();
 		for (logical, source) in collected.reference_bases {
 			pipeline.add_reference_base(&logical, &source)?;
 		}
 		for (published, logical) in &collected.aliases {
-			pipeline.add_alias(published, logical)?;
+			add_alias(&mut pipeline, published, logical)?;
 		}
 		let prefix = url::Url::parse(projection.static_url())
 			.ok()
@@ -390,14 +405,15 @@ impl BuildStaticCommand {
 			.map_err(|error| invalid("STATIC_URL", error.to_string()))?;
 		let prefix = prefix.trim_start_matches('/');
 		for input in collected.inputs {
-			pipeline.add_alias(
+			add_alias(
+				&mut pipeline,
 				&format!("{prefix}{}", input.logical_path),
 				&input.logical_path,
 			)?;
 			pipeline.add_input(input)?;
 		}
 		for (physical, logical) in collected.aliases {
-			pipeline.add_alias(&format!("{prefix}{physical}"), &logical)?;
+			add_alias(&mut pipeline, &format!("{prefix}{physical}"), &logical)?;
 		}
 		for (name, entry) in collected.entrypoints {
 			pipeline.set_entrypoint(&name, entry)?;
@@ -599,5 +615,59 @@ mod tests {
 		);
 		assert!(snapshot.manifest().paths["index.html"].ends_with("/other/index.html"));
 		assert!(output.join("manifest.json").is_file());
+	}
+
+	#[rstest::rstest]
+	#[case("/assets/", true)]
+	#[case("https://cdn.example.test/assets/", true)]
+	#[case("/ass%65ts/", true)]
+	#[case("/", false)]
+	fn static_url_aliases_never_shadow_logical_inputs(
+		#[case] static_url: &str,
+		#[case] collision: bool,
+	) {
+		// Arrange
+		let root = tempfile::tempdir().unwrap();
+		let source = root.path().join("source");
+		std::fs::create_dir_all(source.join("assets")).unwrap();
+		std::fs::write(source.join("logo.svg"), b"<svg id='root'/>").unwrap();
+		std::fs::write(source.join("assets/logo.svg"), b"<svg id='nested'/>").unwrap();
+		std::fs::write(
+			source.join("main.css"),
+			"body { background: url('assets/logo.svg'); }",
+		)
+		.unwrap();
+		std::fs::write(
+			source.join("staticfiles.json"),
+			br#"{"version":"1.0","paths":{"logo.svg":"logo.svg","assets/logo.svg":"assets/logo.svg","main.css":"main.css"}}"#,
+		)
+		.unwrap();
+		let output = root.path().join("output");
+		let command = BuildStaticCommand::new(StaticAssetSettings {
+			static_root: output.clone(),
+			static_url: static_url.into(),
+			staticfiles_dirs: Vec::new(),
+		});
+		let mut request = BuildStaticRequest::new(root.path().into());
+		request.static_manifest = Some(source.join("staticfiles.json"));
+
+		// Act
+		let result = command.execute(request);
+
+		// Assert
+		if collision {
+			let error = result.unwrap_err().to_string();
+			assert!(error.contains("asset URL alias"), "{error}");
+			assert!(error.contains("assets/logo.svg"), "{error}");
+			assert!(!output.join("manifest.json").exists());
+		} else {
+			let BuildStaticResult::Published(snapshot) = result.unwrap() else {
+				panic!("expected a published generation");
+			};
+			assert_eq!(
+				snapshot.manifest().assets["main.css"].dependencies,
+				["assets/logo.svg"]
+			);
+		}
 	}
 }
