@@ -1,0 +1,208 @@
+name: PR 6347 CLI entrypoint validation
+
+on:
+  push:
+    branches: [fix/pr-6347-cli-entrypoint-validation]
+    paths: [.github/workflows/pr-6347-cli-entrypoint-validation.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    if: github.repository == 'kent8192/reinhardt-web' && github.event.head_commit.message == 'ci: validate PR 6347 management entrypoint'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      CARGO_BUILD_JOBS: 2
+      CARGO_INCREMENTAL: 0
+      CARGO_PROFILE_DEV_DEBUG: 0
+      CARGO_PROFILE_TEST_DEBUG: 0
+      CARGO_TERM_COLOR: never
+      BASE_SHA: 2521df26a050f14848188c1c1a34458fb912e560
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: 2521df26a050f14848188c1c1a34458fb912e560
+          persist-credentials: false
+      - name: Install the repository Rust toolchain
+        run: rustup toolchain install 1.96.0 --profile minimal --component rustfmt,clippy
+      - name: Add focused regression tests
+        shell: python
+        run: |
+          import hashlib
+          from pathlib import Path
+          p = Path('crates/reinhardt-commands/src/cli.rs')
+          original = p.read_bytes()
+          assert hashlib.sha1(b'blob ' + str(len(original)).encode() + b'\0' + original).hexdigest() == '977dd9db3504213226a6a444df84ade2e53c810f'
+          source = original.decode()
+          marker = '#[cfg(test)]\nmod tests {\n'
+          assert source.count(marker) == 1
+          tests = r'''
+          #[rstest::rstest]
+          #[case(false)]
+          #[case(true)]
+          fn runserver_asset_entrypoint_parses_and_forwards(#[case] no_spa: bool) {
+              // Arrange
+              let mut args = vec!["manage", "-vv", "runserver", "--with-pages", "--asset-entrypoint", "dashboard"];
+              if no_spa {
+                  args.push("--no-spa");
+              }
+              // Act
+              let cli = Cli::try_parse_from(args).expect("management entrypoint selector should parse");
+              let BuiltinCommandPlan::Runserver(ctx) = builtin_command_plan(cli.command, cli.verbosity) else {
+                  panic!("runserver should produce a runserver context");
+              };
+              // Assert
+              assert_eq!(ctx.option("asset-entrypoint").map(String::as_str), Some("dashboard"));
+              assert_eq!(ctx.option("with-pages").map(String::as_str), Some("true"));
+              assert_eq!(ctx.has_option("no-spa"), no_spa);
+              assert_eq!(ctx.verbosity(), 2);
+          }
+
+          #[rstest::rstest]
+          fn runserver_asset_entrypoint_is_omitted_by_default() {
+              // Arrange
+              let cli = Cli::try_parse_from(["manage", "runserver"]).expect("existing runserver arguments should parse");
+              // Act
+              let BuiltinCommandPlan::Runserver(ctx) = builtin_command_plan(cli.command, cli.verbosity) else {
+                  panic!("runserver should produce a runserver context");
+              };
+              // Assert
+              assert!(!ctx.has_option("asset-entrypoint"));
+          }
+
+          #[rstest::rstest]
+          fn runserver_asset_entrypoint_requires_a_value() {
+              // Arrange
+              let args = ["manage", "runserver", "--asset-entrypoint"];
+              // Act
+              let error = Cli::try_parse_from(args).expect_err("entrypoint requires a name");
+              // Assert
+              assert_eq!(error.kind(), ErrorKind::InvalidValue);
+              assert!(error.to_string().contains("--asset-entrypoint <NAME>"));
+          }
+
+          #[rstest::rstest]
+          fn runserver_asset_entrypoint_is_listed_in_help() {
+              // Arrange
+              let args = ["manage", "runserver", "--help"];
+              // Act
+              let help = Cli::try_parse_from(args).expect_err("help should be displayed");
+              // Assert
+              assert_eq!(help.kind(), ErrorKind::DisplayHelp);
+              assert!(help.to_string().contains("--asset-entrypoint <NAME>"));
+          }
+          '''
+          p.write_text(source.replace(marker, marker + tests + '\n'))
+          evidence = Path('/tmp/pr6347-evidence')
+          evidence.mkdir(exist_ok=True)
+      - name: Reproduce the missing CLI selector
+        id: red
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          cargo test --locked -p reinhardt-commands --features migrations --lib cli::tests::runserver_asset_entrypoint -- --nocapture 2>&1 | tee /tmp/pr6347-evidence/red.log
+          result=${PIPESTATUS[0]}
+          echo "exit_code=$result" >> "$GITHUB_OUTPUT"
+          if [ "$result" -eq 0 ]; then
+            echo 'Regression did not reproduce the missing selector.'
+            exit 1
+          fi
+          if grep -q 'management entrypoint selector should parse' /tmp/pr6347-evidence/red.log && grep -q 'test result: FAILED' /tmp/pr6347-evidence/red.log; then
+            echo 'verified=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'verified=false' >> "$GITHUB_OUTPUT"
+            echo 'Baseline did not reach the expected regression assertion; inspect red.log.'
+            exit 1
+          fi
+      - name: Wire the selector through the management CLI
+        shell: python
+        run: |
+          import re
+          from pathlib import Path
+          p = Path('crates/reinhardt-commands/src/cli.rs')
+          source = p.read_text()
+          old = '\t\t/// Require a specific unified asset build identifier\n'
+          assert source.count(old) == 1
+          source = source.replace(old, '\t\t/// Select a Pages entrypoint from a multi-entry asset manifest\n\t\t#[arg(long, value_name = "NAME")]\n\t\tasset_entrypoint: Option<String>,\n\n' + old)
+          old = '\tasset_manifest: Option<String>,\n\texpected_asset_build_id: Option<String>,'
+          assert source.count(old) == 1
+          source = source.replace(old, '\tasset_manifest: Option<String>,\n\tasset_entrypoint: Option<String>,\n\texpected_asset_build_id: Option<String>,')
+          source, bindings = re.subn(r'(?m)^(\t+)asset_manifest,\n\1expected_asset_build_id,', lambda m: m[1] + 'asset_manifest,\n' + m[1] + 'asset_entrypoint,\n' + m[1] + 'expected_asset_build_id,', source)
+          assert 5 <= bindings <= 10, bindings
+          source, defaults = re.subn(r'(?m)^(\t+)asset_manifest: None,\n\1expected_asset_build_id: None,', lambda m: m[1] + 'asset_manifest: None,\n' + m[1] + 'asset_entrypoint: None,\n' + m[1] + 'expected_asset_build_id: None,', source)
+          assert 8 <= defaults <= 20, defaults
+          old = '\tif let Some(ref build_id) = options.expected_asset_build_id {\n'
+          assert source.count(old) == 1
+          source = source.replace(old, '\tif let Some(ref entrypoint) = options.asset_entrypoint {\n\t\tctx.set_option("asset-entrypoint".to_string(), entrypoint.clone());\n\t}\n' + old)
+          p.write_text(source)
+          print(f'Updated {bindings} binding/forwarding sites and {defaults} default constructors.')
+      - name: Format and inspect the narrow diff
+        run: |
+          rustfmt --edition 2024 crates/reinhardt-commands/src/cli.rs
+          git diff --check
+          git diff --stat
+          git diff -- crates/reinhardt-commands/src/cli.rs | tee /tmp/pr6347-evidence/change.patch
+          cp crates/reinhardt-commands/src/cli.rs /tmp/pr6347-evidence/cli.rs
+      - name: Store a candidate tree without updating any branch
+        id: candidate
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require('fs');
+            const owner = 'kent8192', repo = 'reinhardt-web';
+            const parent = process.env.BASE_SHA;
+            const path = 'crates/reinhardt-commands/src/cli.rs';
+            const { data: commit } = await github.rest.git.getCommit({owner, repo, commit_sha: parent});
+            const { data: blob } = await github.rest.git.createBlob({owner, repo, content: fs.readFileSync(path, 'utf8'), encoding: 'utf-8'});
+            const { data: tree } = await github.rest.git.createTree({owner, repo, base_tree: commit.tree.sha, tree: [{path, mode: '100644', type: 'blob', sha: blob.sha}]});
+            const result = {parent, tree: tree.sha, blob: blob.sha, path};
+            fs.writeFileSync('/tmp/pr6347-evidence/candidate.json', JSON.stringify(result, null, 2));
+            core.notice(JSON.stringify(result));
+      - name: Run all management CLI component tests
+        id: green
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test --locked -p reinhardt-commands --features migrations --lib cli::tests:: -- --nocapture 2>&1 | tee /tmp/pr6347-evidence/green.log
+      - name: Check the affected crate and standalone consumer
+        id: check
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo check --locked -p reinhardt-commands --features migrations 2>&1 | tee /tmp/pr6347-evidence/check.log
+      - name: Lint the affected library
+        id: clippy
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo clippy --locked -p reinhardt-commands --features migrations --lib -- -D warnings 2>&1 | tee /tmp/pr6347-evidence/clippy.log
+      - name: Summarize validation
+        if: always()
+        env:
+          RED: ${{ steps.red.outputs.verified }}
+          GREEN: ${{ steps.green.outcome }}
+          CHECK: ${{ steps.check.outcome }}
+          CLIPPY: ${{ steps.clippy.outcome }}
+        run: |
+          mkdir -p /tmp/pr6347-evidence
+          printf 'Expected regression failure verified: %s\nCLI component tests: %s\nAffected build check: %s\nScoped Clippy: %s\n' "$RED" "$GREEN" "$CHECK" "$CLIPPY" | tee /tmp/pr6347-evidence/results.txt >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pr6347-cli-entrypoint-evidence
+          path: /tmp/pr6347-evidence
+          retention-days: 7
+      - name: Enforce the validation result
+        if: always()
+        env:
+          RED: ${{ steps.red.outputs.verified }}
+          GREEN: ${{ steps.green.outcome }}
+          CHECK: ${{ steps.check.outcome }}
+          CLIPPY: ${{ steps.clippy.outcome }}
+        run: test "$RED" = true && test "$GREEN" = success && test "$CHECK" = success && test "$CLIPPY" = success
