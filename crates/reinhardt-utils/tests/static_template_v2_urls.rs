@@ -55,5 +55,8 @@ async fn legacy_template_urls_are_not_double_encoded() {
 	let config = TemplateStaticConfig::from_storage(&storage).await.unwrap();
 
 	// Assert
-	assert_eq!(config.resolve_url("logo.svg"), "/static/images/logo%20%231.svg");
+	assert_eq!(
+		config.resolve_url("logo.svg"),
+		"/static/images/logo%20%231.svg"
+	);
 }
