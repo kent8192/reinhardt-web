@@ -10,7 +10,8 @@ permissions:
 
 jobs:
   validate:
-    if: github.repository == 'kent8192/reinhardt-web' && github.event.head_commit.message == 'ci: validate PR 6347 management entrypoint'
+    if: >-
+      github.repository == 'kent8192/reinhardt-web' && github.event.head_commit.message == 'ci: validate PR 6347 management entrypoint'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
