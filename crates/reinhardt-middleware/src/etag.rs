@@ -256,8 +256,11 @@ impl Middleware for ETagMiddleware {
 							== strip_etag_for_weak_comparison(&etag)
 					})
 			}) {
-			// Return 304 Not Modified
-			let mut not_modified = Response::new(StatusCode::NOT_MODIFIED);
+			// Keep representation metadata while dropping buffered and owned file bodies.
+			let mut not_modified = response.with_body(bytes::Bytes::new());
+			not_modified.status = StatusCode::NOT_MODIFIED;
+			not_modified.headers.remove(hyper::header::CONTENT_LENGTH);
+			not_modified.headers.remove(hyper::header::CONTENT_RANGE);
 			not_modified.headers.insert(
 				hyper::header::ETAG,
 				hyper::header::HeaderValue::from_str(&etag)
@@ -330,7 +333,11 @@ mod tests {
 	#[async_trait]
 	impl Handler for TaggedHandler {
 		async fn handle(&self, _: Request) -> Result<Response> {
-			Ok(Response::new(self.status).with_header("etag", "\"asset-sha256\""))
+			Ok(Response::new(self.status)
+				.with_header("etag", "\"asset-sha256\"")
+				.with_header("cache-control", "public, max-age=31536000, immutable")
+				.with_header("vary", "Accept-Encoding")
+				.with_header("content-encoding", "br"))
 		}
 	}
 
@@ -340,6 +347,12 @@ mod tests {
 	#[case(
 		Method::HEAD,
 		StatusCode::OK,
+		Some("\"asset-sha256\""),
+		StatusCode::NOT_MODIFIED
+	)]
+	#[case(
+		Method::GET,
+		StatusCode::NOT_MODIFIED,
 		Some("\"asset-sha256\""),
 		StatusCode::NOT_MODIFIED
 	)]
@@ -364,7 +377,62 @@ mod tests {
 		// Assert
 		assert_eq!(response.status, expected);
 		assert_eq!(response.headers[hyper::header::ETAG], "\"asset-sha256\"");
+		assert_eq!(
+			response.headers[hyper::header::CACHE_CONTROL],
+			"public, max-age=31536000, immutable"
+		);
+		assert_eq!(response.headers[hyper::header::VARY], "Accept-Encoding");
+		assert_eq!(response.headers[hyper::header::CONTENT_ENCODING], "br");
 		assert!(response.body.is_empty());
+	}
+
+	struct FileHandler;
+
+	#[async_trait]
+	impl Handler for FileHandler {
+		async fn handle(&self, _: Request) -> Result<Response> {
+			use std::io::Write;
+
+			let mut file = tempfile::tempfile().unwrap();
+			file.write_all(b"asset").unwrap();
+			Ok(Response::ok()
+				.with_file_body(file, 0, 5)
+				.unwrap()
+				.with_header("etag", "\"asset-sha256\"")
+				.with_header("cache-control", "public, max-age=31536000, immutable")
+				.with_header("vary", "Accept-Encoding"))
+		}
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn conditional_file_response_drops_owned_body_and_keeps_metadata() {
+		// Arrange
+		let middleware = ETagMiddleware::with_defaults();
+		let request = Request::builder()
+			.method(Method::GET)
+			.uri("/asset.css")
+			.header("if-none-match", "\"asset-sha256\"")
+			.build()
+			.unwrap();
+
+		// Act
+		let response = middleware
+			.process(request, Arc::new(FileHandler))
+			.await
+			.unwrap();
+
+		// Assert
+		assert_eq!(response.status, StatusCode::NOT_MODIFIED);
+		assert!(response.body.is_empty());
+		assert!(response.file_body().is_none());
+		assert!(!response.headers.contains_key(hyper::header::CONTENT_LENGTH));
+		assert_eq!(response.headers[hyper::header::ETAG], "\"asset-sha256\"");
+		assert_eq!(response.headers[hyper::header::VARY], "Accept-Encoding");
+		assert_eq!(
+			response.headers[hyper::header::CACHE_CONTROL],
+			"public, max-age=31536000, immutable"
+		);
 	}
 
 	#[tokio::test]
