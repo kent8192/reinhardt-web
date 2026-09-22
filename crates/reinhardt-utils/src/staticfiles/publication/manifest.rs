@@ -16,8 +16,12 @@ pub fn decode_manifest(bytes: &[u8]) -> Result<DecodedAssetManifest, AssetBuildE
 		.0
 		.as_object()
 		.ok_or_else(|| AssetBuildError::manifest("expected a JSON object"))?;
+	// In a flat manifest every key is a logical asset name, including metadata names.
+	// Inspect the value shape before interpreting version, paths, or files.
+	let flat = object.values().all(Value::is_string);
 	let version = object
 		.get("version")
+		.filter(|_| !flat)
 		.map(|v| {
 			v.as_str()
 				.ok_or_else(|| AssetBuildError::manifest("version must be a string"))
@@ -36,12 +40,14 @@ pub fn decode_manifest(bytes: &[u8]) -> Result<DecodedAssetManifest, AssetBuildE
 			"unsupported version {version:?}; use an explicit supported migration"
 		)));
 	}
-	if object.contains_key("paths") && object.contains_key("files") {
+	if !flat && object.contains_key("paths") && object.contains_key("files") {
 		return Err(AssetBuildError::manifest(
 			"both paths and files are present; choose one manifest format",
 		));
 	}
-	let (mapping, shape) = if let Some(paths) = object.get("paths") {
+	let (mapping, shape) = if flat {
+		(&value.0, LegacyManifestShape::Flat)
+	} else if let Some(paths) = object.get("paths") {
 		(
 			paths,
 			if version.is_some() {

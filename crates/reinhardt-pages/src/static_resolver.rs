@@ -184,6 +184,10 @@
 //!
 //! The static resolver uses `OnceLock` for thread-safe lazy initialization in
 //! production builds. It can only be initialized once per application lifecycle.
+//!
+//! In browsers, the injected `reinhardt-static-assets` projection takes precedence
+//! over prefix configuration and remains pinned for the page's lifetime. Prefix-only
+//! resolution is retained for documents without an injected projection.
 
 #[cfg(any(wasm, all(native, not(feature = "testing"))))]
 use std::sync::OnceLock;
@@ -217,10 +221,7 @@ thread_local! {
 		const { RefCell::new(None) };
 }
 
-/// WASM-specific static URL prefix.
-///
-/// In WASM environments, we use a simple prefix since there's no
-/// server-side manifest processing.
+/// WASM-specific fallback prefix for documents without an asset projection.
 #[cfg(wasm)]
 static STATIC_URL_PREFIX: OnceLock<String> = OnceLock::new();
 
@@ -242,20 +243,31 @@ pub fn try_component_stylesheet_url(snapshot: &AssetUrlSnapshot) -> Result<Strin
 }
 
 /// Read and validate the server projection once, before Pages startup code runs (P2).
+///
+/// Absence is not cached: an early lookup must not prevent later document injection.
+/// Once an element is present, its validated projection or validation error is pinned.
 #[cfg(wasm)]
 pub fn browser_asset_snapshot() -> Result<&'static AssetUrlSnapshot, AssetUrlError> {
+	optional_browser_asset_snapshot()?.ok_or_else(|| AssetUrlError::InvalidProjection {
+		reason: "missing reinhardt-static-assets JSON element".into(),
+	})
+}
+
+#[cfg(wasm)]
+fn optional_browser_asset_snapshot() -> Result<Option<&'static AssetUrlSnapshot>, AssetUrlError> {
+	if let Some(snapshot) = BROWSER_ASSET_SNAPSHOT.get() {
+		return snapshot.as_ref().map(Some).map_err(Clone::clone);
+	}
+	let Some(element) = web_sys::window()
+		.and_then(|window| window.document())
+		.and_then(|document| document.get_element_by_id("reinhardt-static-assets"))
+	else {
+		return Ok(None);
+	};
 	BROWSER_ASSET_SNAPSHOT
-		.get_or_init(|| {
-			let text = web_sys::window()
-				.and_then(|window| window.document())
-				.and_then(|document| document.get_element_by_id("reinhardt-static-assets"))
-				.and_then(|element| element.text_content())
-				.ok_or_else(|| AssetUrlError::InvalidProjection {
-					reason: "missing reinhardt-static-assets JSON element".into(),
-				})?;
-			AssetUrlSnapshot::from_json(&text)
-		})
+		.get_or_init(|| AssetUrlSnapshot::from_json(&element.text_content().unwrap_or_default()))
 		.as_ref()
+		.map(Some)
 		.map_err(Clone::clone)
 }
 
@@ -308,10 +320,9 @@ pub fn init_static_resolver(config: TemplateStaticConfig) {
 	*slot = Some(config);
 }
 
-/// Initializes the static resolver with a URL prefix (WASM version).
+/// Initializes the fallback URL prefix for documents without a projection (WASM, P2).
 ///
-/// In WASM environments, static files are typically served from a
-/// fixed prefix without manifest-based hashing.
+/// An injected asset projection always takes precedence over this legacy prefix.
 ///
 /// ## Example
 ///
@@ -401,12 +412,26 @@ fn fallback_static_url(path: &str) -> String {
 	format!("/static/{}", path)
 }
 
-/// Resolves a static file path to its URL (WASM version).
+/// Resolves a static file path through the document projection (WASM, P2).
 ///
-/// In WASM environments, this simply concatenates the configured
-/// prefix with the path.
+/// An injected projection takes precedence over prefix configuration. Documents
+/// without a projection retain prefix-only resolution for development and legacy use.
+///
+/// # Panics
+///
+/// Panics if an injected projection is invalid or does not declare the requested
+/// logical asset. Use [`try_resolve_browser_static`] to handle these errors explicitly.
 #[cfg(wasm)]
 pub fn resolve_static(path: &str) -> String {
+	match optional_browser_asset_snapshot() {
+		Ok(Some(snapshot)) => {
+			return snapshot
+				.resolve(path.trim_start_matches('/'))
+				.unwrap_or_else(|error| panic!("failed to resolve static asset {path:?}: {error}"));
+		}
+		Ok(None) => {}
+		Err(error) => panic!("invalid browser static asset snapshot: {error}"),
+	}
 	let prefix = STATIC_URL_PREFIX
 		.get()
 		.map(|s| s.as_str())
@@ -458,10 +483,15 @@ pub fn is_initialized() -> bool {
 			.is_some()
 }
 
-/// Checks if the static resolver has been initialized (WASM version).
+/// Checks for a valid document projection or a legacy prefix (WASM, P2).
+/// Invalid injected projections never count as initialized.
 #[cfg(wasm)]
 pub fn is_initialized() -> bool {
-	STATIC_URL_PREFIX.get().is_some()
+	match optional_browser_asset_snapshot() {
+		Ok(Some(_)) => true,
+		Ok(None) => STATIC_URL_PREFIX.get().is_some(),
+		Err(_) => false,
+	}
 }
 
 #[cfg(test)]

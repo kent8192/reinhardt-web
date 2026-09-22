@@ -176,7 +176,8 @@ impl WasmBuilder {
 
 	fn artifact_profile(&self) -> &str {
 		match self.profile.as_deref() {
-			Some("dev") => "debug",
+			Some("dev" | "test") => "debug",
+			Some("bench") => "release",
 			Some(profile) => profile,
 			None if self.config.release => "release",
 			None => "debug",
@@ -624,6 +625,9 @@ mod tests {
 	#[rstest::rstest]
 	#[case("production", "production")]
 	#[case("dev", "debug")]
+	#[case("test", "debug")]
+	#[case("bench", "release")]
+	#[case("release", "release")]
 	fn named_profiles_select_the_matching_bindgen_input(
 		#[case] profile: &str,
 		#[case] artifact: &str,

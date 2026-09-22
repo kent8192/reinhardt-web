@@ -183,31 +183,34 @@ impl CollectStaticCommand {
 		} else {
 			self.download_publication_vendors()?;
 		}
+		// Publication names are reserved only within the actual output root.
+		// Independent sources may contain a PWA manifest or a builds/ directory.
+		let publication_root = &self.config.static_root;
 		let mut excluded = Vec::new();
-		for root in &all_dirs {
-			for name in [
-				"builds",
-				"manifest.json",
-				"staticfiles.json",
-				".publication.lock",
-			] {
-				excluded.push(root.join(name));
-			}
-			if root.is_dir() {
-				for entry in fs::read_dir(root)? {
-					let entry = entry?;
-					if entry.file_name().to_string_lossy().starts_with(".asset-")
-						|| entry
-							.file_name()
-							.to_string_lossy()
-							.starts_with(".manifest-")
-					{
-						excluded.push(entry.path());
-					}
+		for name in [
+			"builds",
+			"manifest.json",
+			"staticfiles.json",
+			".publication.lock",
+		] {
+			excluded.push(publication_root.join(name));
+		}
+		if publication_root.is_dir() {
+			for entry in fs::read_dir(publication_root)? {
+				let entry = entry?;
+				if entry.file_name().to_string_lossy().starts_with(".asset-")
+					|| entry
+						.file_name()
+						.to_string_lossy()
+						.starts_with(".manifest-")
+				{
+					excluded.push(entry.path());
 				}
 			}
-			if self.config.static_root != *root && self.config.static_root.starts_with(root) {
-				excluded.push(self.config.static_root.clone());
+		}
+		for root in &all_dirs {
+			if publication_root != root && publication_root.starts_with(root) {
+				excluded.push(publication_root.clone());
 			}
 		}
 		for (root, logical) in StaticFilesFinder::new(all_dirs).find_all_checked(&excluded)? {

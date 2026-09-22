@@ -156,6 +156,19 @@ pub(super) fn analyze(logical: &str, source: &str) -> Result<Vec<AssetReference>
 								candidate: None,
 							},
 						)? {
+						// Local targets may be rewritten after analysis. Retaining their
+						// input integrity would publish a resource the browser rejects.
+						if matches!(name, "script" | "link")
+							&& attribute("integrity").is_some_and(|value| !value.trim().is_empty())
+						{
+							return Err(AssetBuildError::input(
+								logical,
+								format!(
+									"integrity on local asset {:?} requires a custom processor that verifies final published bytes",
+									r.target
+								),
+							));
+						}
 						references.push(r);
 					}
 				}

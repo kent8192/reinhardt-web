@@ -199,7 +199,9 @@ impl Middleware for ManifestStaticMiddleware {
 		{
 			return next.handle(request).await;
 		}
-		if path
+		// Outside the owned mount, asset suffixes only disable HTML fallback.
+		// The application may serve root-scoped workers or generated CSS/JS.
+		let asset_like = path
 			.rsplit('/')
 			.next()
 			.and_then(|name| name.rsplit_once('.'))
@@ -208,10 +210,13 @@ impl Middleware for ManifestStaticMiddleware {
 					extension.to_ascii_lowercase().as_str(),
 					"js" | "mjs" | "cjs" | "wasm" | "css"
 				)
-			}) {
+			});
+		// A root static mount owns asset-like URLs unless explicitly passed through.
+		if self.config.prefix == "/" && asset_like {
 			return Ok(error(StatusCode::NOT_FOUND, &request.method));
 		}
-		let navigation = matches!(request.method, Method::GET | Method::HEAD)
+		let navigation = !asset_like
+			&& matches!(request.method, Method::GET | Method::HEAD)
 			&& request
 				.headers
 				.get(header::ACCEPT)

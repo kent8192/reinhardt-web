@@ -243,7 +243,7 @@ async fn immutable_assets_have_mime_head_and_conditional_response_parity(
 #[case("/static/builds/%ZZ")]
 #[case("/static/.publication.lock")]
 #[case("/static/unknown")]
-#[case("/missing.js")]
+#[case("/static/missing.js")]
 #[tokio::test]
 async fn invalid_or_reserved_asset_paths_never_become_successful_html(#[case] uri: &str) {
 	// Arrange
@@ -612,8 +612,8 @@ async fn retained_document_urls_and_asset_urls_stay_bound_during_activation_and_
 	let a_doc = fixture.url("index.html");
 	let mut b = AssetPipeline::new();
 	for (logical, bytes) in [("app.js", &b"export const wasm = new URL('app_bg.wasm',import.meta.url); export default function init(){return 2;}"[..]), ("app_bg.wasm", b"\0asm\x01\0\0\0")] {
-        b.add_input(AssetInput::bytes(logical, bytes.to_vec()).with_producer(AssetProducer::Pages)).unwrap();
-    }
+		b.add_input(AssetInput::bytes(logical, bytes.to_vec()).with_producer(AssetProducer::Pages)).unwrap();
+	}
 	b.set_entrypoint(
 		"default",
 		PagesEntrypoint {
