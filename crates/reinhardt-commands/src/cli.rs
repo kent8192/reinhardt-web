@@ -418,6 +418,10 @@ pub enum Commands {
 		#[arg(long)]
 		asset_manifest: Option<String>,
 
+		/// Select a Pages entrypoint from a multi-entry asset manifest
+		#[arg(long, value_name = "NAME")]
+		asset_entrypoint: Option<String>,
+
 		/// Require a specific unified asset build identifier
 		#[arg(long)]
 		expected_asset_build_id: Option<String>,
@@ -772,6 +776,7 @@ impl fmt::Debug for Commands {
 				index,
 				asset_mode,
 				asset_manifest,
+				asset_entrypoint,
 				expected_asset_build_id,
 				package,
 				features,
@@ -796,6 +801,7 @@ impl fmt::Debug for Commands {
 				index,
 				asset_mode,
 				asset_manifest,
+				asset_entrypoint,
 				expected_asset_build_id,
 				package,
 				features,
@@ -1798,6 +1804,7 @@ fn builtin_command_plan(command: Commands, verbosity: u8) -> BuiltinCommandPlan 
 			index,
 			asset_mode,
 			asset_manifest,
+			asset_entrypoint,
 			expected_asset_build_id,
 			package,
 			features,
@@ -1820,6 +1827,7 @@ fn builtin_command_plan(command: Commands, verbosity: u8) -> BuiltinCommandPlan 
 			index,
 			asset_mode,
 			asset_manifest,
+			asset_entrypoint,
 			expected_asset_build_id,
 			package,
 			features,
@@ -2228,6 +2236,7 @@ async fn run_command_core_with_contract_state(
 			index,
 			asset_mode,
 			asset_manifest,
+			asset_entrypoint,
 			expected_asset_build_id,
 			package,
 			features,
@@ -2251,6 +2260,7 @@ async fn run_command_core_with_contract_state(
 				index,
 				asset_mode,
 				asset_manifest,
+				asset_entrypoint,
 				expected_asset_build_id,
 				package,
 				features,
@@ -2805,6 +2815,7 @@ struct RunServerOptions {
 	index: Option<String>,
 	asset_mode: String,
 	asset_manifest: Option<String>,
+	asset_entrypoint: Option<String>,
 	expected_asset_build_id: Option<String>,
 	package: Option<String>,
 	features: Vec<String>,
@@ -2858,6 +2869,9 @@ fn runserver_context_from_options(options: &RunServerOptions) -> CommandContext 
 	}
 	if let Some(ref manifest) = options.asset_manifest {
 		ctx.set_option("asset-manifest".to_string(), manifest.clone());
+	}
+	if let Some(ref entrypoint) = options.asset_entrypoint {
+		ctx.set_option("asset-entrypoint".to_string(), entrypoint.clone());
 	}
 	if let Some(ref build_id) = options.expected_asset_build_id {
 		ctx.set_option("expected-asset-build-id".to_string(), build_id.clone());
@@ -3464,6 +3478,74 @@ pub(crate) fn generate_random_secret_key() -> String {
 
 #[cfg(test)]
 mod tests {
+	#[rstest::rstest]
+	#[case(false)]
+	#[case(true)]
+	fn runserver_asset_entrypoint_parses_and_forwards(#[case] no_spa: bool) {
+		// Arrange
+		let mut args = vec![
+			"manage",
+			"-vv",
+			"runserver",
+			"--with-pages",
+			"--asset-entrypoint",
+			"dashboard",
+		];
+		if no_spa {
+			args.push("--no-spa");
+		}
+		// Act
+		let cli = Cli::try_parse_from(args).expect("management entrypoint selector should parse");
+		let BuiltinCommandPlan::Runserver(ctx) = builtin_command_plan(cli.command, cli.verbosity)
+		else {
+			panic!("runserver should produce a runserver context");
+		};
+		// Assert
+		assert_eq!(
+			ctx.option("asset-entrypoint").map(String::as_str),
+			Some("dashboard")
+		);
+		assert_eq!(ctx.option("with-pages").map(String::as_str), Some("true"));
+		assert_eq!(ctx.has_option("no-spa"), no_spa);
+		assert_eq!(ctx.verbosity(), 2);
+	}
+
+	#[rstest::rstest]
+	fn runserver_asset_entrypoint_is_omitted_by_default() {
+		// Arrange
+		let cli = Cli::try_parse_from(["manage", "runserver"])
+			.expect("existing runserver arguments should parse");
+		// Act
+		let BuiltinCommandPlan::Runserver(ctx) = builtin_command_plan(cli.command, cli.verbosity)
+		else {
+			panic!("runserver should produce a runserver context");
+		};
+		// Assert
+		assert!(!ctx.has_option("asset-entrypoint"));
+	}
+
+	#[rstest::rstest]
+	fn runserver_asset_entrypoint_requires_a_value() {
+		// Arrange
+		let args = ["manage", "runserver", "--asset-entrypoint"];
+		// Act
+		let error = Cli::try_parse_from(args).expect_err("entrypoint requires a name");
+		// Assert
+		assert_eq!(error.kind(), ErrorKind::InvalidValue);
+		assert!(error.to_string().contains("--asset-entrypoint <NAME>"));
+	}
+
+	#[rstest::rstest]
+	fn runserver_asset_entrypoint_is_listed_in_help() {
+		// Arrange
+		let args = ["manage", "runserver", "--help"];
+		// Act
+		let help = Cli::try_parse_from(args).expect_err("help should be displayed");
+		// Assert
+		assert_eq!(help.kind(), ErrorKind::DisplayHelp);
+		assert!(help.to_string().contains("--asset-entrypoint <NAME>"));
+	}
+
 	#[rstest::rstest]
 	fn buildstatic_driver_keeps_custom_enum_compatibility_and_validates_help() {
 		// Arrange
@@ -4696,6 +4778,7 @@ mod tests {
 			index: None,
 			asset_mode: "production".to_string(),
 			asset_manifest: None,
+			asset_entrypoint: None,
 			expected_asset_build_id: None,
 			package: None,
 			features: vec![],
@@ -4910,6 +4993,7 @@ mod tests {
 			index: Some("./index.html".to_string()),
 			asset_mode: "production".to_string(),
 			asset_manifest: None,
+			asset_entrypoint: None,
 			expected_asset_build_id: None,
 			package: None,
 			features: vec![],
@@ -4945,6 +5029,7 @@ mod tests {
 			index: None,
 			asset_mode: "production".to_string(),
 			asset_manifest: None,
+			asset_entrypoint: None,
 			expected_asset_build_id: None,
 			package: None,
 			features: vec![],
@@ -4980,6 +5065,7 @@ mod tests {
 			index: Some("./index.html".to_string()),
 			asset_mode: "production".to_string(),
 			asset_manifest: None,
+			asset_entrypoint: None,
 			expected_asset_build_id: None,
 			package: None,
 			features: vec![],
@@ -5016,6 +5102,7 @@ mod tests {
 			index: Some("./index.html".to_string()),
 			asset_mode: "production".to_string(),
 			asset_manifest: None,
+			asset_entrypoint: None,
 			expected_asset_build_id: None,
 			package: None,
 			features: vec![],
@@ -5055,6 +5142,7 @@ mod tests {
 			index: None,
 			asset_mode: "production".to_string(),
 			asset_manifest: None,
+			asset_entrypoint: None,
 			expected_asset_build_id: None,
 			package: None,
 			features: vec![],
@@ -5091,6 +5179,7 @@ mod tests {
 			index: None,
 			asset_mode: "production".to_string(),
 			asset_manifest: None,
+			asset_entrypoint: None,
 			expected_asset_build_id: None,
 			package: None,
 			features: vec![],
@@ -5129,6 +5218,7 @@ mod tests {
 			index: None,
 			asset_mode: "production".to_string(),
 			asset_manifest: None,
+			asset_entrypoint: None,
 			expected_asset_build_id: None,
 			package: None,
 			features: vec![],
@@ -5164,6 +5254,7 @@ mod tests {
 			index: None,
 			asset_mode: "production".to_string(),
 			asset_manifest: None,
+			asset_entrypoint: None,
 			expected_asset_build_id: None,
 			package: None,
 			features: vec![],
@@ -5528,6 +5619,7 @@ mod tests {
 		let Commands::Runserver {
 			asset_mode,
 			asset_manifest,
+			asset_entrypoint,
 			expected_asset_build_id,
 			..
 		} = cli.command
@@ -5536,6 +5628,7 @@ mod tests {
 		};
 
 		assert_eq!(asset_mode, "development");
+		assert!(asset_entrypoint.is_none());
 		assert_eq!(asset_manifest.as_deref(), Some("public/manifest.json"));
 		assert_eq!(
 			expected_asset_build_id.as_deref(),
@@ -5565,6 +5658,7 @@ mod tests {
 			index: None,
 			asset_mode: "production".to_string(),
 			asset_manifest: None,
+			asset_entrypoint: None,
 			expected_asset_build_id: None,
 			package: None,
 			features: vec![],
