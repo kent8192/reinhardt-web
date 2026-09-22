@@ -555,7 +555,9 @@ mod tests {
 			if request.method == Method::HEAD {
 				Ok(response)
 			} else if let Some(file) = &self.file {
-				Ok(response.with_file_body(file.try_clone().unwrap(), 0, 8).unwrap())
+				Ok(response
+					.with_file_body(file.try_clone().unwrap(), 0, 8)
+					.unwrap())
 			} else {
 				Ok(response.with_body(Bytes::from_static(b"asset-v2")))
 			}
@@ -568,7 +570,12 @@ mod tests {
 	#[case(IF_NONE_MATCH, "\"published\"", Method::GET, false)]
 	#[case(IF_MODIFIED_SINCE, "Wed, 21 Oct 2015 07:28:00 GMT", Method::GET, false)]
 	#[case(IF_NONE_MATCH, "\"published\"", Method::HEAD, false)]
-	#[case(IF_MODIFIED_SINCE, "Wed, 21 Oct 2015 07:28:00 GMT", Method::HEAD, false)]
+	#[case(
+		IF_MODIFIED_SINCE,
+		"Wed, 21 Oct 2015 07:28:00 GMT",
+		Method::HEAD,
+		false
+	)]
 	#[tokio::test]
 	async fn conditional_responses_preserve_representation_headers(
 		#[case] condition: hyper::header::HeaderName,
@@ -600,7 +607,10 @@ mod tests {
 		assert!(response.body.is_empty());
 		assert!(response.file_body().is_none());
 		assert_eq!(response.headers[ETAG], "\"published\"");
-		assert_eq!(response.headers[LAST_MODIFIED], "Wed, 21 Oct 2015 07:28:00 GMT");
+		assert_eq!(
+			response.headers[LAST_MODIFIED],
+			"Wed, 21 Oct 2015 07:28:00 GMT"
+		);
 		assert_eq!(response.headers[hyper::header::VARY], "Accept-Encoding");
 		assert_eq!(response.headers[hyper::header::CONTENT_ENCODING], "gzip");
 		assert_eq!(

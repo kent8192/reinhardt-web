@@ -57,5 +57,9 @@ fn structured_metadata_and_flat_paths_remain_strict(#[case] input: &[u8]) {
 	let result = decode_manifest(input);
 
 	// Assert
-	assert!(result.is_err(), "must reject {}", String::from_utf8_lossy(input));
+	assert!(
+		result.is_err(),
+		"must reject {}",
+		String::from_utf8_lossy(input)
+	);
 }

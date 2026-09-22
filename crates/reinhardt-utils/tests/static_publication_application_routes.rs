@@ -77,9 +77,8 @@ async fn asset_like_paths_outside_mount_preserve_application_responses(
 	AssetPublisher::new(root.path().into())
 		.publish(pipeline.prepare(AssetMode::Production).unwrap())
 		.unwrap();
-	let store = Arc::new(
-		ManifestStore::open(root.path().into(), SnapshotOptions::production()).unwrap(),
-	);
+	let store =
+		Arc::new(ManifestStore::open(root.path().into(), SnapshotOptions::production()).unwrap());
 	let config = ManifestServingConfig::new(store, "/static/".into())
 		.unwrap()
 		.with_navigation_fallback(true);
@@ -108,6 +107,9 @@ async fn asset_like_paths_outside_mount_preserve_application_responses(
 	assert_eq!(application.calls.load(Ordering::SeqCst), 1);
 	assert_eq!(response.status, status);
 	assert_eq!(response.headers["x-application-route"], "preserved");
-	assert_eq!(response.headers[header::CONTENT_TYPE], "application/octet-stream");
+	assert_eq!(
+		response.headers[header::CONTENT_TYPE],
+		"application/octet-stream"
+	);
 	assert_eq!(response.body.as_ref(), b"application response");
 }

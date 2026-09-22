@@ -21,7 +21,11 @@ impl Drop for ProjectionElement {
 fn established_resolvers_use_and_pin_the_injected_projection() {
 	// Arrange: an early legacy lookup must not permanently cache an absent projection.
 	let document = web_sys::window().unwrap().document().unwrap();
-	assert!(document.get_element_by_id("reinhardt-static-assets").is_none());
+	assert!(
+		document
+			.get_element_by_id("reinhardt-static-assets")
+			.is_none()
+	);
 	assert!(!is_initialized());
 	assert!(browser_asset_snapshot().is_err());
 	assert_eq!(resolve_static("/logo.svg"), "/static/logo.svg");
@@ -35,7 +39,10 @@ fn established_resolvers_use_and_pin_the_injected_projection() {
 		id.clone(),
 		prefix.into(),
 		BTreeMap::from([
-			("logo.svg".into(), format!("builds/{id}/vectors/logo.hash.svg")),
+			(
+				"logo.svg".into(),
+				format!("builds/{id}/vectors/logo.hash.svg"),
+			),
 			(
 				"__reinhardt__/components.css".into(),
 				format!("builds/{id}/css/components.hash.css"),
@@ -46,7 +53,9 @@ fn established_resolvers_use_and_pin_the_injected_projection() {
 	let element = ProjectionElement(document.create_element("script").unwrap());
 	element.0.set_id("reinhardt-static-assets");
 	element.0.set_attribute("type", "application/json").unwrap();
-	element.0.set_text_content(Some(&projection.to_json().unwrap()));
+	element
+		.0
+		.set_text_content(Some(&projection.to_json().unwrap()));
 	document.body().unwrap().append_child(&element.0).unwrap();
 
 	// Act
@@ -57,7 +66,10 @@ fn established_resolvers_use_and_pin_the_injected_projection() {
 	// Assert: existing component calls do not require an opt-in resolver API.
 	assert_eq!(logo, format!("{prefix}builds/{id}/vectors/logo.hash.svg"));
 	assert_eq!(leading_slash, logo);
-	assert_eq!(stylesheet, format!("{prefix}builds/{id}/css/components.hash.css"));
+	assert_eq!(
+		stylesheet,
+		format!("{prefix}builds/{id}/css/components.hash.css")
+	);
 	assert_eq!(browser_asset_snapshot().unwrap().build_id(), id);
 	assert!(matches!(
 		try_resolve_browser_static("missing.css"),

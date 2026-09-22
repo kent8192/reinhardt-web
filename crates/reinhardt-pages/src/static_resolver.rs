@@ -427,7 +427,9 @@ pub fn resolve_static(path: &str) -> String {
 		Ok(Some(snapshot)) => {
 			return snapshot
 				.resolve(path.trim_start_matches('/'))
-				.unwrap_or_else(|error| panic!("failed to resolve static asset {path:?}: {error}"));
+				.unwrap_or_else(|error| {
+					panic!("failed to resolve static asset {path:?}: {error}")
+				});
 		}
 		Ok(None) => {}
 		Err(error) => panic!("invalid browser static asset snapshot: {error}"),

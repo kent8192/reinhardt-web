@@ -9,7 +9,9 @@ use rstest::rstest;
 #[case(r#"<link rel="stylesheet" href="site.css" integrity="sha384-original">"#)]
 #[case(r#"<script src="app.js" integrity="sha256-original"></script>"#)]
 #[case(r#"<link integrity="sha384-original" rel="modulepreload" href="app.js">"#)]
-#[case(r#"<link rel="stylesheet" href="{{ static_url('site.css') }}" integrity="sha384-original">"#)]
+#[case(
+	r#"<link rel="stylesheet" href="{{ static_url('site.css') }}" integrity="sha384-original">"#
+)]
 fn local_integrity_is_rejected_before_publication(#[case] tag: &str) {
 	// Arrange: both target resources have dependencies that change their published bytes.
 	let mut pipeline = AssetPipeline::new();
@@ -26,8 +28,7 @@ fn local_integrity_is_rejected_before_publication(#[case] tag: &str) {
 	pipeline
 		.add_input(AssetInput::bytes(
 			"index.html",
-			format!("<!doctype html><html><head>{tag}</head><body></body></html>")
-				.into_bytes(),
+			format!("<!doctype html><html><head>{tag}</head><body></body></html>").into_bytes(),
 		))
 		.unwrap();
 
@@ -75,9 +76,7 @@ fn external_integrity_survives_html_rewriting(#[case] source: &str) {
 #[case(" ")]
 fn empty_integrity_does_not_block_local_assets(#[case] integrity: &str) {
 	// Arrange
-	let html = format!(
-		r#"<link rel="stylesheet" href="site.css" integrity="{integrity}">"#
-	);
+	let html = format!(r#"<link rel="stylesheet" href="site.css" integrity="{integrity}">"#);
 
 	// Act
 	let references = analyze_asset_references("index.html", "text/html", html.as_bytes()).unwrap();
