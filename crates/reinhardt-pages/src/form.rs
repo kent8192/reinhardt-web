@@ -86,8 +86,9 @@ pub use model::{
 };
 pub use reinhardt_core::model_form::{
 	AllEditableModelFields, ModelFormContract, ModelFormContractField, ModelFormContractSchema,
-	ModelFormFieldDescriptor, ModelFormFieldKind, ModelFormPayload, ModelFormPayloadError,
-	ModelFormPolicy, ModelFormPrimaryKey, ModelFormSchema, NativeModelFormPayload,
+	ModelFormFieldDescriptor, ModelFormFieldKind, ModelFormPatchPayload, ModelFormPayload,
+	ModelFormPayloadError, ModelFormPolicy, ModelFormPrimaryKey, ModelFormSchema,
+	NativeModelFormPayload, PatchValidationError,
 };
 pub use validators::{ClientValidator, ValidatorRegistry};
 

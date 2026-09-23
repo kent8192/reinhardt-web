@@ -58,6 +58,31 @@ fn facade_only_named_model_form_compiles_for_wasm() {
 		String::from_utf8_lossy(&output.stdout),
 		String::from_utf8_lossy(&output.stderr),
 	);
+	let negative = Command::new(std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()))
+		.args(["check", "--manifest-path"])
+		.arg(&fixture_manifest)
+		.args([
+			"--target",
+			"wasm32-unknown-unknown",
+			"--features",
+			"patch-persistence-must-not-compile",
+			"--target-dir",
+		])
+		.arg(target_dir.path())
+		.env_remove("CARGO_BUILD_BUILD_DIR")
+		.env_remove("CARGO_TARGET_DIR")
+		.env_remove("RUSTC_WRAPPER")
+		.output()
+		.expect("check persistence boundary on WASM");
+	let stderr = String::from_utf8_lossy(&negative.stderr);
+	assert!(
+		!negative.status.success(),
+		"WASM must not expose validate_patch"
+	);
+	assert!(
+		stderr.contains("error[E0599]") && stderr.contains("`validate_patch`"),
+		"unexpected negative fixture failure: {stderr}"
+	);
 }
 
 fn offline_dependency_resolution_failed(output: &Output) -> bool {

@@ -17,6 +17,7 @@ The level applies per symbol. A type can be P1 while selected methods are P0.
 
 | API | Native behavior | WASM behavior |
 |---|---|---|
+| Generated `ModelFormPatchPayload::clean_and_validate_patch` implementation with native forms support | Requires `reinhardt-forms` or facade `forms`; validates submitted values through the native forms engine. | Core `macros` and `validators` or facade `pages` validate the same submitted values without persistence dependencies. |
 | `QueryHandle::is_invalidated` | Reports whether an explicit invalidation still needs a successful completion, independently of hydration staleness. | Reports the same reactive invalidation state. |
 | `WebSocketEventError` | Represents the same payload-free error categories. | Represents the same payload-free error categories. |
 | `WebSocketSubscriptionOptions` | Stores the nonzero frame-size limit. | Stores the same limit for event decoding. |
@@ -26,6 +27,10 @@ The level applies per symbol. A type can be P1 while selected methods are P0.
 Both targets apply browser text-fallback sanitization for unknown input types
 and ignore reactive type or select-cardinality changes that would invalidate an
 existing binding.
+
+Without native forms support, generated model-form patch validation has P0
+(WASM-only) parity. The core trait remains nameable on both targets, but native
+core-only derives do not emit its implementation or named cleaned payload type.
 
 ## P1 API Surface
 

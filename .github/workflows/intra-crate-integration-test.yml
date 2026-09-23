@@ -194,8 +194,8 @@ jobs:
 
       # Offline target-parity fixtures need WASM-only dependencies that a native
       # test build does not download. Fetch after cleanup removes registry caches.
-      # The workspace Cargo.lock is not tracked, so this initial fetch must be
-      # allowed to generate it on a fresh checkout.
+      # Cargo.lock is intentionally untracked for this library workspace, so
+      # allow Cargo to generate it on a clean checkout instead of using --locked.
       - name: Fetch WASM fixture dependencies
         run: cargo fetch --target wasm32-unknown-unknown
 

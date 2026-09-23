@@ -629,6 +629,107 @@ by `atomic`. Database failures remain
 `ModelFormError::Persistence { source: DatabaseError }`; use
 `ModelFormError::database_error()` to inspect the structured error kind.
 
+## Validated patches on scoped QuerySets
+
+Named model-backed scalar contracts also support partial persistence. On native,
+`EditCluster::validate_patch(raw)` produces an opaque `ValidatedFormPatch` after
+server normalization and validation. It reuses the generated contract's field
+rules and `#[form(validate = ...)]` callback. It does not apply create defaults.
+
+```rust
+use reinhardt::db::orm::{IntoPrimaryKey, OrmExecutor, QuerySet};
+use reinhardt::forms::{PatchError, PatchOutcome};
+
+async fn edit_cluster<K: IntoPrimaryKey<Cluster>, E: OrmExecutor>(
+    raw: EditClusterData,
+    authorized_clusters: QuerySet<Cluster>,
+    target: K,
+    executor: &mut E,
+) -> Result<PatchOutcome, PatchError> {
+    EditCluster::validate_patch(raw)?
+        .apply_to(authorized_clusters, target, executor)
+        .await
+}
+```
+
+Here `EditCluster` is declared by
+`#[model(form(name = EditCluster, fields(name, api_url, is_active)))]`. The model
+must mark organization IDs, credentials, and other server-owned fields as
+`editable = false`. Unknown, excluded, and incompatible wire fields are rejected
+by the generated payload. An explicitly selected assigned primary key is still
+rejected as patch input. This bridge supports the scalar kinds accepted by named
+contracts; arbitrary DTO mapping, file uploads, and relationship writes are not
+inferred.
+
+`apply_to` adds the explicit target key with AND to the caller's **complete**
+QuerySet condition, including grouped OR expressions, and delegates to
+`QuerySet::update_fields_with_conn`. It performs no read, full-model save, implicit
+commit, locking, or version increment. Supported `IntoPrimaryKey<Cluster>` inputs
+include a key, `Some(key)`, and `&cluster`; the existing conversion panics for
+`None` or a keyless model reference. Composite primary keys are rejected.
+
+| Submitted update value | Meaning |
+| --- | --- |
+| Omitted field | No assignment; do not evaluate its create default |
+| Explicit `null` | SQL NULL for a nullable field; rejected for non-nullable fields, except that a non-optional JSON field retains JSON `null` |
+| `false` or `0` | Supplied value, never omission |
+| Empty string | Retained if field validation permits blank; otherwise a validation error |
+| Whitespace | Existing normalization runs; a trimmed empty string follows the preceding rule |
+| Empty object | Native `PatchError::EmptyPatch`; no SQL, even for an empty QuerySet |
+| Create-cleaned data with default provenance | `PatchValidationError::DefaultedValues` |
+
+The earlier browser control conversion rules still apply before wire submission.
+A control that removes an empty value sends omission. The patch API does not
+reconstruct missing fields from dirty flags or reinterpret omission as a clear.
+
+A model-wide validator requires explicit context. Use
+`EditCluster::validate_patch_with_existing(raw, &existing)` when it needs omitted
+values. The merged candidate is validated, but only submitted values enter the
+assignments. Context is trusted caller-owned data, and the bridge checks that its
+primary key equals the target before issuing SQL. It does not refresh the snapshot
+or guarantee a concurrent invariant: supply a version predicate or appropriate
+locking policy when necessary. Field normalization operates only on submitted
+values; generated callbacks borrow the candidate immutably.
+
+On WASM, import `ModelFormPatchPayload` from `reinhardt::pages::form` and call
+`raw.clean_and_validate_patch(Some(&existing_form_values))` (or `None` without a
+model-wide validator). This shared cleaned result is advisory, not a write
+capability. Native construction always validates again. The persistence methods
+and database dependencies are absent from the browser contract.
+
+The generated validator's P2 parity assumes native forms support: native crates
+must depend on `reinhardt-forms` directly or enable the facade's `forms` feature.
+Native `reinhardt-core`-only derives expose payload shapes and trait declarations,
+but do not generate the patch validation implementation; this configuration has
+P0 (WASM-only) generated validation. WASM advisory validation
+requires only core `macros` and `validators` (or the facade's `pages` feature).
+Use the native dependency set when sharing the same validation call across targets.
+
+`PatchOutcome::rows_affected` is the executor's backend count, not a commit receipt
+or portable changed-value count. PostgreSQL counts updated rows, including
+same-value updates. SQLite reports matched direct updates, including same-value
+updates, excluding auxiliary trigger writes. The SQLx MySQL connection enables
+`CLIENT_FOUND_ROWS`, so its UPDATE count reports matched rows. Custom executors
+can have different count semantics. Zero rows can mean missing, out-of-scope,
+stale, or an explicitly empty QuerySet; applications own the public error policy
+and must not add an existence probe that leaks another tenant's resources.
+
+Pass the executor supplied by `connection.atomic(...)` to include the patch in a
+transaction. Validation errors remain typed `PatchError::Validation`; execution
+errors remain `PatchError::Database` with the underlying structured database
+error. Propagating either error rolls back through the existing transaction API.
+A successful patch outcome alone does not commit the caller's transaction.
+
+For a Cloud-style edit, retain RBAC checks and build the QuerySet from the
+organization filter before applying the resource key. Token rotation should use
+its own scoped `update_fields_with_conn` assignment list without exposing the
+token in the form. **Both writers must use partial writes**: a remaining whole
+model save can still overwrite an edit from its stale snapshot. Disjoint partial
+writes preserve each other's columns; same-field writes still need an explicit
+concurrency policy. The two-connection regression includes the stale full-save
+interleaving as a control. Existing `Manager::update` replacement semantics are
+unchanged.
+
 ## Build without saving
 
 `build_instance()` is the `commit=False` equivalent:
