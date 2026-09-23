@@ -17,11 +17,39 @@ pub trait ConfigSource: Send + Sync {
 	/// Load configuration from this source
 	fn load(&self) -> Result<IndexMap<String, Value>, SourceError>;
 
+	/// Load syntax-checked values without resolving environment references.
+	///
+	/// Custom sources must opt in explicitly. Falling back to `load` would allow
+	/// an eager source to evaluate unrelated secrets during a scoped command.
+	fn load_scoped(&self) -> Result<ScopedSource, SourceError> {
+		Err(SourceError::InvalidSource(format!(
+			"{} does not support scoped loading; implement load_scoped or use the legacy eager entry point",
+			self.description()
+		)))
+	}
+
 	/// Get the priority of this source (higher = more important)
 	fn priority(&self) -> u8;
 
 	/// Get a description of this source
 	fn description(&self) -> String;
+}
+
+/// Raw values and the TOML file whose effective leaves need interpolation.
+pub struct ScopedSource {
+	/// Values before `${VAR}` expansion.
+	pub values: IndexMap<String, Value>,
+	/// Origin of interpolated values, if interpolation is enabled.
+	pub interpolation_file: Option<PathBuf>,
+}
+
+impl ScopedSource {
+	fn plain(values: IndexMap<String, Value>) -> Self {
+		Self {
+			values,
+			interpolation_file: None,
+		}
+	}
 }
 
 /// Error type for configuration sources
@@ -132,6 +160,10 @@ impl Default for EnvSource {
 }
 
 impl ConfigSource for EnvSource {
+	fn load_scoped(&self) -> Result<ScopedSource, SourceError> {
+		Ok(ScopedSource::plain(self.load()?))
+	}
+
 	fn load(&self) -> Result<IndexMap<String, Value>, SourceError> {
 		let mut config = IndexMap::new();
 
@@ -281,6 +313,16 @@ impl Default for DotEnvSource {
 }
 
 impl ConfigSource for DotEnvSource {
+	fn load_scoped(&self) -> Result<ScopedSource, SourceError> {
+		if self.interpolate {
+			return Err(SourceError::InvalidSource(
+				"interpolating .env sources are eager; disable .env interpolation for scoped loading"
+					.to_owned(),
+			));
+		}
+		Ok(ScopedSource::plain(self.load()?))
+	}
+
 	fn load(&self) -> Result<IndexMap<String, Value>, SourceError> {
 		let path = match &self.path {
 			Some(p) => p.clone(),
@@ -412,6 +454,30 @@ impl TomlFileSource {
 }
 
 impl ConfigSource for TomlFileSource {
+	fn load_scoped(&self) -> Result<ScopedSource, SourceError> {
+		if !self.path.exists() {
+			return Ok(ScopedSource::plain(IndexMap::new()));
+		}
+		let content = fs::read_to_string(&self.path)?;
+		let toml_value: toml::Value = toml::from_str(&content).map_err(|_| {
+			SourceError::Parse(format!(
+				"invalid TOML syntax in {}; fix the file before scoped settings can load",
+				self.path.display()
+			))
+		})?;
+		let json_value = serde_json::to_value(toml_value)?;
+		let map = json_value
+			.as_object()
+			.ok_or_else(|| SourceError::Parse("Expected object at root".to_owned()))?;
+		Ok(ScopedSource {
+			values: map
+				.iter()
+				.map(|(key, value)| (key.clone(), value.clone()))
+				.collect(),
+			interpolation_file: self.interpolate.then(|| self.path.clone()),
+		})
+	}
+
 	fn load(&self) -> Result<IndexMap<String, Value>, SourceError> {
 		if !self.path.exists() {
 			return Ok(IndexMap::new());
@@ -516,6 +582,10 @@ impl Default for DefaultSource {
 }
 
 impl ConfigSource for DefaultSource {
+	fn load_scoped(&self) -> Result<ScopedSource, SourceError> {
+		Ok(ScopedSource::plain(self.load()?))
+	}
+
 	fn load(&self) -> Result<IndexMap<String, Value>, SourceError> {
 		Ok(self.values.clone())
 	}
@@ -604,6 +674,10 @@ impl Default for LowPriorityEnvSource {
 }
 
 impl ConfigSource for LowPriorityEnvSource {
+	fn load_scoped(&self) -> Result<ScopedSource, SourceError> {
+		self.inner.load_scoped()
+	}
+
 	fn load(&self) -> Result<IndexMap<String, Value>, SourceError> {
 		self.inner.load()
 	}
@@ -695,6 +769,10 @@ impl Default for HighPriorityEnvSource {
 }
 
 impl ConfigSource for HighPriorityEnvSource {
+	fn load_scoped(&self) -> Result<ScopedSource, SourceError> {
+		self.inner.load_scoped()
+	}
+
 	fn load(&self) -> Result<IndexMap<String, Value>, SourceError> {
 		self.inner.load()
 	}

@@ -9,6 +9,7 @@
 //!
 //! - **Multiple configuration sources**: Files, environment variables, command-line arguments
 //! - **Type-safe settings**: Strong type validation with custom validators
+//! - **Scoped settings**: Resolve only selected effective paths for command-aware bootstrap
 //! - **Secrets management**: Integration with HashiCorp Vault, AWS Secrets Manager, Azure Key Vault
 //! - **Encryption**: Built-in encryption for sensitive settings
 //! - **Dynamic backends**: Redis and database-backed dynamic settings
