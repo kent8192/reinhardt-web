@@ -21,3 +21,6 @@ pub use store::{
 	ClientKind, ClientRegistration, CodeRedemption, MemoryOAuthStore, OAuthServerStore,
 	PendingRecord, ResourceRegistration, StoredCode, StoredToken,
 };
+
+#[cfg(test)]
+mod tests;
