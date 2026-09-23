@@ -673,6 +673,28 @@ fn create_server<L: SharedOAuthRateLimiter + 'static>(
 }
 ```
 
+Mount the handlers in the host router (the example uses a root-path issuer):
+
+```rust
+use reinhardt_auth::oauth2_server::{
+    OAuthConsentPresenter, OAuthEndpoint, OAuthHandler, OAuthServer,
+};
+use reinhardt_urls::routers::ServerRouter;
+use std::sync::Arc;
+
+fn oauth_routes(
+    server: Arc<OAuthServer>,
+    presenter: Arc<dyn OAuthConsentPresenter>,
+) -> ServerRouter {
+    ServerRouter::new()
+        .handler_arc("/oauth/authorize", Arc::new(OAuthHandler::authorization(server.clone(), presenter)))
+        .handler_arc("/oauth/token", Arc::new(OAuthHandler::new(server.clone(), OAuthEndpoint::Token)))
+        .handler_arc("/oauth/revoke", Arc::new(OAuthHandler::new(server.clone(), OAuthEndpoint::Revocation)))
+        .handler_arc("/oauth/introspect", Arc::new(OAuthHandler::new(server.clone(), OAuthEndpoint::Introspection)))
+        .handler_arc("/.well-known/oauth-authorization-server", Arc::new(OAuthHandler::new(server, OAuthEndpoint::Metadata)))
+}
+```
+
 The previous `OAuth2Authentication`, `OAuth2Application`, and `OAuth2TokenStore`
 remain in-process compatibility helpers. They do not implement a routable
 authorization server and cannot be supplied as the new server's store. Their
