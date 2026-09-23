@@ -24,15 +24,33 @@ mod native {
     use {{ crate_name }} as _;
     #[cfg(feature = "commands-shell")]
     use {{ crate_name }}::config::shell::get_shell_config;
-    use {{ crate_name }}::config::settings::get_settings;
-    #[cfg(feature = "commands-shell")]
-    use reinhardt::commands::execute_from_command_line_with_pending_settings_and_cargo_context_and_shell;
+    use {{ crate_name }}::config::settings::{get_scoped_settings, get_settings, ProjectSettings};
+    use reinhardt::commands::{
+        command_error_exit_code, CapabilityProvider, CargoCheckContext, CommandRegistry,
+    };
     #[cfg(not(feature = "commands-shell"))]
-    use reinhardt::commands::execute_from_command_line_with_pending_settings_and_cargo_context;
-    use reinhardt::commands::CargoCheckContext;
-    use reinhardt::commands::command_error_exit_code;
+    use reinhardt::commands::execute_from_command_line_with_capabilities;
+    #[cfg(feature = "commands-shell")]
+    use reinhardt::commands::execute_from_command_line_with_capabilities_and_shell;
+    use reinhardt::conf::settings::builder::BuildError;
+    use reinhardt::conf::settings::scoped::ScopedSettings;
+    use reinhardt::conf::settings::PendingSettings;
     use std::path::PathBuf;
     use std::process;
+
+    struct ProjectProvider;
+
+    impl CapabilityProvider for ProjectProvider {
+        type Settings = ProjectSettings;
+
+        fn scoped_settings(&self) -> Result<ScopedSettings, BuildError> {
+            get_scoped_settings()
+        }
+
+        fn full_settings(&self) -> Result<PendingSettings<ProjectSettings>, BuildError> {
+            get_settings()
+        }
+    }
 
     #[tokio::main]
     pub(super) async fn main() {
@@ -47,26 +65,22 @@ mod native {
             Some("manage".to_owned()),
         );
 
-        // Hand the project's composed settings to the runtime so that
-        // database-requiring commands (migrate, makemigrations, runserver,
-        // createsuperuser) resolve the connection from settings/*.toml
-        // (`[core.databases.default]`) without requiring DATABASE_URL.
-        // Router registration still happens automatically inside the runtime
-        // via the #[routes] attribute macro in src/config/urls.rs.
+        // The command is selected before either settings provider runs.
+        // Static commands resolve selected asset inputs; runtime commands
+        // retain the full composed-settings validation path.
         #[cfg(feature = "commands-shell")]
         let result =
-            execute_from_command_line_with_pending_settings_and_cargo_context_and_shell(
-                get_settings,
+            execute_from_command_line_with_capabilities_and_shell(
+                CommandRegistry::new(),
+                ProjectProvider,
+                Some(cargo_context),
                 get_shell_config(),
-                cargo_context,
             )
                 .await;
         #[cfg(not(feature = "commands-shell"))]
-        let result = execute_from_command_line_with_pending_settings_and_cargo_context(
-            get_settings,
-            cargo_context,
-        )
-        .await;
+        let result = execute_from_command_line_with_capabilities(
+            CommandRegistry::new(), ProjectProvider, Some(cargo_context),
+        ).await;
 
         if let Err(e) = result {
             #[cfg(feature = "commands-shell")]

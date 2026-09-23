@@ -80,6 +80,62 @@ details.
   feature)
 - **contract export** - Export deterministic application metadata as JSON
 
+### Command-aware bootstrap
+
+Generated Pages and RESTful `manage` binaries use
+`execute_from_command_line_with_capabilities`. It parses the command (including
+help, version, and argument errors) before asking the application for settings.
+`collectstatic` and `buildstatic` resolve only their static asset settings. A
+missing `static.root`, malformed selected value, or invalid asset still fails;
+an unrelated runtime secret, database alias, or service is not initialized.
+The static URL defaults to `/static/` and may be a slash-prefixed path or an
+HTTP(S) URL ending in `/`.
+
+An application provides `CapabilityProvider::scoped_settings` using
+`SettingsBuilder::build_scoped` and `CapabilityProvider::full_settings` using
+`build_pending_composed`. The scoped builder parses every selected source for
+syntax, merges sources in priority order, then expands and deserializes only
+the effective paths requested by the command. It rejects a custom source that
+does not implement `load_scoped`; migrate that source or keep the legacy eager
+entry point. Shadowed and unused `${VAR}` references do not block static
+collection. Strict full settings resolution remains in place for `runserver`
+and legacy commands. `verify` retains its incomplete-input diagnostic behavior,
+while `contract export` still needs fully resolved settings.
+
+Register an opt-in custom command with
+`CommandRegistry::register_capability`. Its `CapabilityCommand::cli` supplies
+clap metadata, `requirements` declares typed settings views and service
+types/aliases after parsing, and `execute` receives a prepared
+`CapabilityContext`. The application provider validates all requested settings
+views before preparing services in declaration order. An undeclared context
+access fails instead of starting another service. Prepared resources are owned
+by the invocation and dropped when its context is released. Commands registered
+through the legacy `BaseCommand` interface retain full bootstrap on this new
+entry point; the existing entry points retain their behavior.
+
+The new `makemigrations` parser chooses a state source explicitly:
+
+```bash
+manage makemigrations --state-source files
+manage makemigrations --state-source temporary-db
+manage makemigrations --state-source database --database analytics
+```
+
+Ordinary generation defaults to `temporary-db`. `--check`, `--empty`, and
+`--merge` are database-free; `--force-empty-state` explicitly selects empty
+state. These modes reject incompatible state-source arguments before settings
+load. A failed selected source never falls back to another source on the new
+entry point. `--dry-run` suppresses file writes but does not change state
+selection. The legacy entry points keep their existing fallback strategy.
+
+Configuration resolution is separate from application service preparation.
+Static collection can still invoke a compiler or optional vendor-asset fetch;
+its build dependencies must be available for offline builds. A Cloud consumer
+can migrate its existing registry to the provider entry point and remove
+temporary Docker build secrets after its own secret-free collection test passes.
+See the [launcher migration guide](../../docs/migration/0.4.0-command-capability-bootstrap.md)
+for the provider and custom-registry steps.
+
 ### Native protocol launch
 
 `runserver` consumes the generated native URL aggregate. HTTP and application

@@ -43,6 +43,7 @@
 
 use reinhardt::conf::settings::builder::{BuildError, SettingsBuilder};
 use reinhardt::conf::settings::PendingSettings;
+use reinhardt::conf::settings::scoped::ScopedSettings;
 use reinhardt::conf::settings::profile::Profile;
 use reinhardt::conf::settings::sources::{DefaultSource, HighPriorityEnvSource, TomlFileSource};
 use reinhardt::settings;
@@ -69,6 +70,15 @@ pub struct ProjectSettings;
 ///
 /// Returns an error when a settings source cannot be loaded or parsed.
 pub fn get_settings() -> Result<PendingSettings<ProjectSettings>, BuildError> {
+    settings_builder().build_pending_composed::<ProjectSettings>()
+}
+
+/// Merge settings without expanding unselected runtime secrets.
+pub fn get_scoped_settings() -> Result<ScopedSettings, BuildError> {
+    settings_builder().build_scoped()
+}
+
+fn settings_builder() -> SettingsBuilder {
     let profile_str = env::var("REINHARDT_ENV").unwrap_or_else(|_| "local".to_string());
     let profile = Profile::parse(&profile_str);
 
@@ -77,7 +87,7 @@ pub fn get_settings() -> Result<PendingSettings<ProjectSettings>, BuildError> {
     let settings_dir = base_dir.join("settings");
 
     // Build settings by merging sources in priority order.
-    // `build_resolved_composed::<T>()` uses `MergeStrategy::Deep` by default, so a
+    // The composed and scoped paths use deep merging, so a
     // single key in `production.toml` overrides only that key — sibling
     // entries inside the same nested table inherit from `base.toml`.
     SettingsBuilder::new()
@@ -96,7 +106,6 @@ pub fn get_settings() -> Result<PendingSettings<ProjectSettings>, BuildError> {
         ))
         // Highest priority: explicit process environment overrides
         .add_source(HighPriorityEnvSource::new().with_prefix("REINHARDT_"))
-        .build_pending_composed::<ProjectSettings>()
 }
 
 /// Return plain project settings for consumers whose evaluator type is `ProjectSettings`.
