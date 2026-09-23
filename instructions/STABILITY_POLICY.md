@@ -18,7 +18,6 @@ This document defines the stability guarantees and versioning policies for the R
 - [Migration Guide Requirements](#migration-guide-requirements)
 - [RC to Stable Criteria](#rc-to-stable-criteria)
 - [Version Bump Rules During RC](#version-bump-rules-during-rc)
-- [SemVer Verification](#semver-verification)
 - [Quick Reference](#quick-reference)
 - [References](#references)
 
@@ -94,7 +93,7 @@ Items explicitly documented as experimental are **experimental** and may change 
 
 > **Note**: There is currently no `unstable` feature flag in the codebase. Experimental items are identified by documentation annotations rather than feature-gating.
 >
-> **Enforcement mechanism**: Because experimental items are still part of the public API surface, `cargo-semver-checks` run locally will flag breaking changes to them just like changes to stable APIs. Permission to break an experimental API in a MINOR release is granted at review time via the `breaking-change` label combined with a CHANGELOG migration note — not through any automated SemVer exemption. Maintainers MUST verify, before applying the label, that the affected item is documented as experimental.
+> **Enforcement mechanism**: Permission to break an experimental API in a MINOR release is granted at review time via the `breaking-change` label combined with a CHANGELOG migration note. Maintainers MUST verify, before applying the label, that the affected item is documented as experimental.
 
 ### Internal API
 
@@ -286,7 +285,7 @@ Non-breaking API additions during the RC phase require a lightweight approval pr
 - Additions that require changes to existing API signatures
 - Additions that alter the behavior of existing APIs
 
-**Rationale:** SemVer and industry practice (e.g., Bevy) permit non-breaking additions in pre-release versions. A lightweight approval process ensures quality without unnecessarily blocking improvements. The local `cargo-semver-checks --release-type minor` check validates that additions are non-breaking.
+**Rationale:** SemVer and industry practice (e.g., Bevy) permit non-breaking additions in pre-release versions. A lightweight approval process ensures quality without unnecessarily blocking improvements.
 
 ---
 
@@ -450,7 +449,6 @@ excluded by a stable-tag regex filter in `release-plz.yml`.
 The existing CI configuration (`ci.yml`) runs on all pull requests regardless of target branch:
 
 - PRs targeting `develop/0.x+1.0` are automatically covered by CI
-- SemVer compatibility is verified locally rather than by an automatic PR workflow
 - All other CI checks (tests, clippy, fmt, docs) apply normally
 
 ---
@@ -486,8 +484,7 @@ This exception applies only to those already-landed behaviors in 0.3.17.
 All other changes and later releases retain the normal compatibility policy.
 The release must identify the breaking security change prominently in the
 root and GraphQL changelogs and provide the
-[0.3.17 migration guide](MIGRATION_0.3.17.md). SemVer checks remain enabled;
-an API-compatible check result does not cover these runtime changes.
+[0.3.17 migration guide](MIGRATION_0.3.17.md).
 
 ---
 
@@ -689,14 +686,6 @@ During the RC phase:
 
 ---
 
-## SemVer Verification
-
-SemVer compatibility is verified locally with [`cargo-semver-checks`](https://github.com/obi1kenobi/cargo-semver-checks). The shared GitHub Actions workflow remains available for explicit dispatch or reuse by another workflow, but does not run automatically on pull requests.
-
-- **Shared workflow**: `.github/workflows/semver-check.yml` supports `workflow_dispatch` and `workflow_call`.
-- **Local verification**: `cargo make semver-check` mirrors the shared workflow and MUST be run before converting a Draft PR to Ready for Review on any PR touching public API (see `instructions/PR_GUIDELINE.md` § RP-1a).
-- **Audit trail**: A full breaking change audit is maintained at `docs/breaking-change-audit.md`.
-
 ---
 
 ## Quick Reference
@@ -761,8 +750,6 @@ SemVer compatibility is verified locally with [`cargo-semver-checks`](https://gi
 - [RFC 1105: API Evolution](https://rust-lang.github.io/rfcs/1105-api-evolution.html)
 - [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/)
 - [Breaking Change Audit](../docs/breaking-change-audit.md)
-- [cargo-semver-checks](https://github.com/obi1kenobi/cargo-semver-checks)
-
 ---
 
 **Note**: This document governs the stability guarantees of Reinhardt's public API surface. For release mechanics (publishing, tagging, CI/CD), see instructions/RELEASE_PROCESS.md.
