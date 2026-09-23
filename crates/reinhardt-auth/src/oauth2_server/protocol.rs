@@ -306,6 +306,23 @@ impl OAuthServer {
 			production: false,
 		})
 	}
+	/// Production constructor requiring PostgreSQL and a host-provided shared limiter.
+	#[cfg(feature = "database")]
+	pub fn for_production<L: SharedOAuthRateLimiter + 'static>(
+		config: OAuthServerConfig,
+		store: super::postgres::PostgresOAuthStore,
+		users: Arc<dyn UserRepository>,
+		limiter: Arc<L>,
+	) -> Result<Self, OAuthError> {
+		config.validate()?;
+		Ok(Self {
+			config,
+			store: Arc::new(store),
+			users,
+			limiter,
+			production: true,
+		})
+	}
 	/// Whether this server requires transport security for incoming requests.
 	pub fn is_production(&self) -> bool {
 		self.production
