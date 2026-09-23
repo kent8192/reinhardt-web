@@ -57,6 +57,27 @@ struct Natural {
 	label: String,
 }
 
+#[model(app_label = "patch_test", info = false, form(name = EditJson, fields(config)))]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct JsonRecord {
+	#[field(primary_key = true)]
+	id: Option<i64>,
+	config: serde_json::Value,
+}
+
+#[rstest]
+fn patch_distinguishes_json_null_from_sql_null() {
+	// Arrange
+	let data: EditJsonData = serde_json::from_value(json!({"config": null})).unwrap();
+	// Act
+	let cleaned = data.clean_and_validate_patch(None).unwrap();
+	// Assert
+	assert_eq!(
+		serde_json::to_value(cleaned.into_raw()).unwrap(),
+		json!({"config": null})
+	);
+}
+
 #[rstest]
 #[case(json!({"name":" New "}), json!({"name":"New"}))]
 #[case(json!({"active":false}), json!({"active":false}))]

@@ -118,6 +118,7 @@ pub(super) fn payload_patch(
 					if descriptor.editable
 						&& P::allows(descriptor.name)
 						&& !descriptor.nullable
+						&& !matches!(descriptor.kind, #core::model_form::ModelFormFieldKind::Json)
 						&& <Self as #core::model_form::ModelFormPayload<P>>::get_json(&self, descriptor.name)
 							.is_some_and(|value| value.is_null())
 					{
