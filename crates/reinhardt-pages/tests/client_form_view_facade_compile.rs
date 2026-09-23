@@ -62,6 +62,10 @@ fn run_fixture_checks(browser: bool) {
 		if browser && !facade {
 			continue;
 		}
+		if facade && !browser {
+			// The facade adds dependencies with different exact version pins.
+			fs::remove_file(workspace.path().join("Cargo.lock")).unwrap();
+		}
 		let (dependency, alias) = if facade {
 			(
 				format!(
