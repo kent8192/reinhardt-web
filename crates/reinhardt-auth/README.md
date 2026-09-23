@@ -618,44 +618,76 @@ let code = "123456"; // from user's authenticator app
 assert!(mfa.verify_code("alice", code).await?);
 ```
 
-### OAuth2 Support
+### OAuth2 Authorization Server
 
-#### OAuth2 Authentication
+Enable `oauth` for the authorization server and `database` for its PostgreSQL
+store. The server supports Authorization Code with mandatory PKCE `S256` and
+Client Credentials. It issues audience-bound opaque Bearer tokens. Refresh and
+Implicit grants are unavailable; no refresh token is issued.
 
-- **OAuth2Authentication**: Full OAuth2 provider implementation
-- **Grant Types**: Authorization Code, Client Credentials, Refresh Token,
-  Implicit
-- **Application Management**: `OAuth2Application` with client credentials
-- **Token Management**: `OAuth2Token` with access and refresh tokens
-- **Authorization Flow**:
-  - Authorization code generation and validation
-  - Token exchange (code → access token)
-  - Token refresh with refresh tokens
-- **OAuth2TokenStore Trait**: Persistent token storage interface
-- **InMemoryTokenStore**: Built-in in-memory token storage
+`OAuthServer` provides administrative client and resource registration, typed
+pending authorization requests, explicit host approval, token inspection,
+revocation, and introspection. `OAuthHandler` implements Reinhardt's `Handler`
+for the authorization, token, revocation, introspection, and metadata routes.
+Mount those handlers at the exact HTTPS URLs configured in `OAuthServerConfig`;
+mount metadata at the URL returned by `metadata_url()`.
+The host must insert `OAuthBrowserSession` from its browser
+session into authorization requests and implement `OAuthConsentPresenter` for
+login and consent. The session binding must be unpredictable and retained
+across login redirects. Approval must call `complete_authorization` with that same
+browser-session binding and an authenticated active user ID. The host controls
+remembered consent and calls `revoke_user` after account security events.
+
+Register resource servers before clients. A confidential client receives a
+secret once at registration; store it securely. A public client has no secret.
+Secrets are Argon2 hashes at rest. Codes and tokens are SHA-256 lookup digests.
+Resource servers authenticate separately to introspection. Use
+`PostgresOAuthStore::migration()` in the host's Reinhardt migration graph before
+serving requests; enable `reinhardt-db/postgres` in the host that runs it.
+Production construction uses `OAuthServer::for_production` with
+a PostgreSQL store and a host-provided shared `OAuthRateLimiter`. The
+`for_development` constructor accepts an in-memory store and limiter.
 
 ```rust
-use reinhardt::auth::{OAuth2Authentication, OAuth2Application, GrantType};
-
-// OAuth2Authentication::new() takes no arguments; use ::with_repository() for custom storage.
-let oauth2 = OAuth2Authentication::new();
-
-// Register an OAuth2 application by passing an OAuth2Application struct.
-let app = OAuth2Application {
-    client_id: "client123".to_string(),
-    client_secret: "secret456".to_string(),
-    redirect_uris: vec!["https://example.com/callback".to_string()],
-    grant_types: vec![GrantType::AuthorizationCode],
+use reinhardt_auth::UserRepository;
+use reinhardt_auth::oauth2_server::{
+    OAuthError, OAuthServer, OAuthServerConfig, PostgresOAuthStore,
+    SharedOAuthRateLimiter,
 };
-oauth2.register_application(app).await;
+use sqlx::PgPool;
+use std::sync::Arc;
 
-// Authorization code flow
-let code = oauth2.generate_authorization_code("client123", "user123", vec!["read", "write"]).await?;
-let token = oauth2.exchange_code(&code, "client123").await?;
-
-// Use access token
-let claims = oauth2.verify_token(&token.access_token).await?;
+fn create_server<L: SharedOAuthRateLimiter + 'static>(
+    pool: PgPool,
+    users: Arc<dyn UserRepository>,
+    limiter: Arc<L>,
+) -> Result<OAuthServer, OAuthError> {
+    let config = OAuthServerConfig::new(
+        "https://auth.example.com",
+        "https://auth.example.com/oauth/authorize",
+        "https://auth.example.com/oauth/token",
+        "https://auth.example.com/oauth/revoke",
+        "https://auth.example.com/oauth/introspect",
+    )?;
+    OAuthServer::for_production(config, PostgresOAuthStore::new(pool), users, limiter)
+}
 ```
+
+The previous `OAuth2Authentication`, `OAuth2Application`, and `OAuth2TokenStore`
+remain in-process compatibility helpers. They do not implement a routable
+authorization server and cannot be supplied as the new server's store. Their
+code flow validates registered clients and redirect URIs, expires in-memory
+tokens, and does not issue refresh tokens. Existing client registrations must
+be explicitly recreated with the typed `ClientRegistration` API, including
+redirect URIs, scopes, audience, grant permissions, and a new secret.
+Legacy codes and tokens are not imported.
+
+For migration, apply the OAuth server migration first, register each intended
+resource audience, then recreate each client with its allowed grants, exact
+redirect URIs, scopes, default scopes, audiences, default audience, and browser
+origins. Distribute each new confidential-client secret once. Update clients to
+use the mounted HTTPS endpoints and PKCE `S256`; users must authorize again.
+Retire the legacy helper only after its existing callers have moved.
 
 #### Browser-Bound Social OAuth State
 
