@@ -1300,6 +1300,10 @@ impl<T: Clone + 'static, E: Clone + 'static> QueryEntry<T, E> {
 		self.runtime.now_ms().saturating_sub(last_fetched_ms) >= duration_ms(stale_time)
 	}
 
+	pub(super) fn is_invalidated(&self) -> bool {
+		self.invalidated.get()
+	}
+
 	#[cfg(native)]
 	fn clear_ssr_omission(&self) {
 		let _ = crate::ssr::resource_context::with_active_context(|context| {
@@ -1961,12 +1965,7 @@ impl<T: Clone + 'static, E: Clone + 'static> QueryEntry<T, E> {
 			let manual_observer = manual_id
 				.and_then(|observer_id| self.observer_by_id(observer_id))
 				.map(|observer| Rc::downgrade(&observer));
-			self.publish_terminal_failure(
-				completion_generation,
-				invalidation_generation,
-				had_success,
-				error,
-			);
+			self.publish_terminal_failure(completion_generation, had_success, error);
 			self.finish_terminal_sequence(manual_observer, invalidation_generation, None);
 		} else {
 			self.recompute_retry_deadline();
@@ -2361,12 +2360,7 @@ impl<T: Clone + 'static, E: Clone + 'static> QueryEntry<T, E> {
 					.as_ref()
 					.map(|retry| (retry.completion_generation, retry.had_success))
 					.unwrap_or_default();
-				self.publish_terminal_failure(
-					completion_generation,
-					request_invalidation_generation,
-					had_success,
-					error,
-				);
+				self.publish_terminal_failure(completion_generation, had_success, error);
 				self.finish_terminal_sequence(
 					manual_observer,
 					request_invalidation_generation,
@@ -2481,13 +2475,7 @@ impl<T: Clone + 'static, E: Clone + 'static> QueryEntry<T, E> {
 		self.start_attempt(sequence_generation, manual_observer);
 	}
 
-	fn publish_terminal_failure(
-		&self,
-		completion_generation: u64,
-		request_invalidation_generation: u64,
-		had_success: bool,
-		error: E,
-	) {
+	fn publish_terminal_failure(&self, completion_generation: u64, had_success: bool, error: E) {
 		if had_success {
 			self.refetch_error.set(Some(error.clone()));
 		} else {
@@ -2495,10 +2483,8 @@ impl<T: Clone + 'static, E: Clone + 'static> QueryEntry<T, E> {
 			self.state.set(ResourceState::Error(error.clone()));
 		}
 		if !had_success && self.retain_lease_count.get() > 0 {
+			// A retained error may be fresh, but cannot satisfy an invalidation.
 			self.last_fetched_ms.set(Some(self.runtime.now_ms()));
-			if self.invalidation_generation.get() == request_invalidation_generation {
-				self.invalidated.set(false);
-			}
 		} else if !had_success {
 			self.last_fetched_ms.set(None);
 		}
@@ -3370,7 +3356,10 @@ impl QueryClient {
 				.replace_reverse_dependencies(dependent, &HashSet::new(), &next);
 		}
 		entry.refetch_error.set(snapshot.refetch_error);
-		entry.invalidated.set(snapshot.is_stale);
+		// Hydration staleness requires a refresh but is not a client invalidation.
+		if snapshot.is_stale {
+			entry.last_fetched_ms.set(None);
+		}
 		self.inner
 			.entries
 			.borrow_mut()

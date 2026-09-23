@@ -119,6 +119,14 @@
 //! jitter never exceeds the nominal delay, and `QuerySnapshot::is_fetching` is
 //! `false` while a retry waits in backoff.
 //!
+//! A realtime event should invalidate the exact typed key or family and let the
+//! query client fetch authoritative state. Use [`QueryHandle::is_invalidated`]
+//! to keep a status view in `Syncing` until a completion covers the newest
+//! invalidation generation; [`QueryHandle::is_stale`] also includes age-based
+//! freshness and therefore is not a synchronization barrier. The executable
+//! `examples/realtime_state.rs` recipe shows exact-key invalidation, family
+//! invalidation, and authentication-boundary removal.
+//!
 //! Observer polling suspends while the browser document is hidden and resumes
 //! according to freshness. Retry attempts are shared by the cache entry across
 //! observers. Hidden time does not consume retry backoff: stale data retries
@@ -233,6 +241,14 @@
 //! `.with_entities(...)` participate in normalization. Query family IDs,
 //! `QueryOptions`, invalidation, polling, and the public `QueryStatus` are
 //! unchanged.
+//!
+//! The executable `examples/realtime_state.rs` also demonstrates bounded log
+//! reconciliation. History and live events share one state owner; a server
+//! watermark and stable IDs enable cursor-aware merging, while ID-only and
+//! no-metadata fallbacks retain an explicit degraded continuity state. Row,
+//! UTF-8 byte, record, pending, and snapshot limits are enforced before the
+//! example accepts more data, and old selection or connection tokens cannot
+//! commit late results.
 //!
 //! ## Features
 //!
@@ -1158,6 +1174,44 @@
 //!
 //! **Note**: WebSocket functionality is WASM-only. On the server side (SSR),
 //! `use_websocket` returns a no-op handle with connection state always set to `Closed`.
+//!
+//! For event sequences, use an owned typed subscription instead of treating
+//! `latest_message` as a delivery queue:
+//!
+//! ```no_run
+//! use reinhardt_pages::reactive::hooks::{
+//!     use_websocket, WebSocketEventError, WebSocketSubscriptionOptions,
+//! };
+//! use reinhardt_pages::reactive::ReactiveScope;
+//! use reinhardt_pages::reactive::query::{QueryClient, QueryDefaults, QueryFamily};
+//! use serde::Deserialize;
+//! use std::num::NonZeroUsize;
+//!
+//! #[derive(Deserialize)]
+//! struct DeploymentEvent { deployment_id: u64 }
+//!
+//! ReactiveScope::run(|| {
+//!     let client = QueryClient::new(QueryDefaults::default());
+//!     let family = QueryFamily::<u64, String, String>::new("deployment-status");
+//!     let socket = use_websocket("wss://example.invalid/events", Default::default());
+//!     let _subscription = socket.subscribe_json(
+//!         WebSocketSubscriptionOptions::new(NonZeroUsize::new(16 * 1024).unwrap()),
+//!         move |event: DeploymentEvent| {
+//!             let descriptor = family.query(event.deployment_id, || async {
+//!                 Ok("running".to_owned())
+//!             });
+//!             client.invalidate(descriptor.key());
+//!         },
+//!         |error: WebSocketEventError| eprintln!("Realtime error: {error:?}"),
+//!     );
+//! });
+//! ```
+//!
+//! The subscription guard owns delivery. Equal consecutive events remain
+//! observable, malformed frames report a safe category and do not stop later
+//! frames, and native/SSR subscriptions remain inert. Reconnection requires
+//! application-owned resubscription and authoritative reconciliation; a live
+//! socket alone does not prove synchronized query or log state.
 
 #![warn(missing_docs)]
 
