@@ -58,6 +58,9 @@ fn client(kind: ClientKind) -> ClientRegistration {
 		client_id: "client-a".into(),
 		kind,
 		secret_hash: None,
+		previous_secret_hash: None,
+		previous_secret_expires_at: None,
+		oidc_enabled: false,
 		authorization_code: true,
 		client_credentials: kind == ClientKind::Confidential,
 		redirect_uris: vec![
@@ -417,6 +420,7 @@ async fn postgres_single_use_and_cross_instance_replay() {
 		user_id: "user-a".into(),
 		scopes: vec!["read".into()],
 		audience: "https://api.example".into(),
+		oidc: false,
 		expires_at: i64::MAX,
 		redeemed: false,
 		replayed: false,
@@ -432,6 +436,7 @@ async fn postgres_single_use_and_cross_instance_replay() {
 			code_challenge: "challenge".into(),
 			state: None,
 		},
+		oidc: false,
 		session_digest: "session-digest".into(),
 		expires_at: i64::MAX,
 	};

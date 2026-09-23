@@ -24,6 +24,15 @@ pub struct ClientRegistration {
 	pub kind: ClientKind,
 	/// Password hash for a confidential client's secret.
 	pub secret_hash: Option<String>,
+	/// Previous secret during a bounded administrative rotation overlap.
+	#[serde(default)]
+	pub previous_secret_hash: Option<String>,
+	/// UNIX time when the previous secret stops authenticating.
+	#[serde(default)]
+	pub previous_secret_expires_at: Option<i64>,
+	/// Whether this registration may use the OpenID Provider Code Flow.
+	#[serde(default)]
+	pub oidc_enabled: bool,
 	/// Whether the code grant is enabled.
 	pub authorization_code: bool,
 	/// Whether the client credentials grant is enabled.
@@ -62,6 +71,9 @@ pub struct ResourceRegistration {
 pub struct PendingRecord {
 	/// Request data to present to the host.
 	pub request: PendingAuthorization,
+	/// OIDC requests may only be completed by the OIDC provider.
+	#[serde(default)]
+	pub oidc: bool,
 	/// SHA-256 digest of the host's browser-session binding.
 	pub session_digest: String,
 	/// UNIX expiry time.
@@ -85,6 +97,9 @@ pub struct StoredCode {
 	pub scopes: Vec<String>,
 	/// Approved audience.
 	pub audience: String,
+	/// Whether this code belongs to the OpenID Connect token endpoint.
+	#[serde(default)]
+	pub oidc: bool,
 	/// UNIX expiry time.
 	pub expires_at: i64,
 	/// Whether a successful redemption has occurred.
