@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-middleware@v0.4.0-alpha.15...reinhardt-middleware@v0.4.0-alpha.16) - 2026-09-23
+
+### Added
+
+- *(staticfiles)* unify pages and collected asset publication
+
+### Fixed
+
+- *(middleware)* preserve existing representation etags
+- *(middleware)* log owned file response lengths
+- *(middleware)* retain representation metadata on conditional responses
+- *(staticfiles)* address publication and browser review findings
+
+### Maintenance
+
+- auto-fix fmt and clippy
+
 ## [0.4.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-middleware@v0.4.0-alpha.14...reinhardt-middleware@v0.4.0-alpha.15) - 2026-09-10
 
 ### Documentation

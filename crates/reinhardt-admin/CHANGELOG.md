@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.4.0-alpha.15...reinhardt-admin@v0.4.0-alpha.16) - 2026-09-23
+
+### Added
+
+- *(staticfiles)* unify pages and collected asset publication
+
+### Fixed
+
+- *(staticfiles)* preserve explicit document-relative runtime imports
+
 ## [0.4.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-admin@v0.4.0-alpha.14...reinhardt-admin@v0.4.0-alpha.15) - 2026-09-10
 
 ### Documentation

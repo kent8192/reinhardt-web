@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-alpha.16](https://github.com/kent8192/reinhardt-web/compare/reinhardt-forms@v0.4.0-alpha.15...reinhardt-forms@v0.4.0-alpha.16) - 2026-09-23
+
+### Added
+
+- *(forms)* add scoped validated form patches
+
+### Fixed
+
+- *(forms)* reject non-nullable null patch values before cleaning
+- *(forms)* reject SQL null in optional JSON form patches
+
 ## [0.4.0-alpha.15](https://github.com/kent8192/reinhardt-web/compare/reinhardt-forms@v0.4.0-alpha.14...reinhardt-forms@v0.4.0-alpha.15) - 2026-09-10
 
 ### Documentation
