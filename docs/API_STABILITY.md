@@ -12,7 +12,7 @@ See [`instructions/STABILITY_POLICY.md`](../instructions/STABILITY_POLICY.md) fo
 - Breaking change policy and `#[non_exhaustive]` guidance
 - Deprecation policy
 - Migration guide requirements
-- RC-to-stable criteria (SC-1 〜 SC-3, including agent-detected bug verification)
+- RC-to-stable criteria (SC-1 〜 SC-3)
 - Continuous SemVer verification
 
 ## Legacy Anchor Compatibility

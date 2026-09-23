@@ -619,7 +619,7 @@ rc.2 released (fix)    → Timer restarts (Day 0)
 No issues for 14 days  → Ready for stable (Day 14)
 ```
 
-The following diagram visualizes the stability timer behavior including agent-detected bug handling:
+The following diagram visualizes the stability timer behavior:
 
 ```mermaid
 flowchart LR
@@ -628,42 +628,7 @@ flowchart LR
     C -->|"New rc.N+1"| D["RESET to Day 0"]
     C -->|"Critical/High bug fix"| D
     C -->|"Breaking change (SP-3)"| D
-    C -->|"Agent detects bug"| E["agent-suspect label<br/>Timer NOT reset"]
-    E --> F{Independent verification}
-    F -->|Confirmed| G["Remove label<br/>Timer RESETS"]
-    F -->|False positive| H["Close issue<br/>No impact"]
     C -->|"14 days clear"| I["Ready for stable"]
-```
-
-### SC-2a (MUST): Agent-Detected Bug Verification (Two-Step Process)
-
-Bugs detected by LLM agents follow a **two-step verification process** before affecting the stability timer:
-
-**Step 1: Initial Detection**
-- Agent creates an Issue with the `agent-suspect` label
-- Issues with `agent-suspect` label are **excluded** from SC-2 stability timer reset
-- Even if labeled `critical` or `high`, the timer does NOT reset while `agent-suspect` is present
-
-**Step 2: Independent Verification**
-- An independent agent (with separate context) OR a human reviewer verifies the issue
-- Delegate verification only on an explicit user request for the current task; otherwise, keep `agent-suspect` until independent verification is available
-- Verification must be performed by an entity that did NOT participate in the initial detection
-- If confirmed as a real bug:
-  - Remove the `agent-suspect` label
-  - The issue now counts toward SC-2 stability timer reset (if `critical` or `high`)
-- If determined to be a false positive:
-  - Close the issue with explanation
-  - No impact on stability timer
-
-**Rationale:** LLM agents have a 5-15% false positive rate. Without verification, agent-detected issues could repeatedly reset the stability timer and indefinitely delay stable releases.
-
-**Example Timeline:**
-```
-rc.1 released                          → Timer starts (Day 0)
-Agent finds critical bug (agent-suspect) → Timer NOT reset (Day 5)
-Human verifies bug is real             → agent-suspect removed, Timer resets (Day 7)
-rc.2 released (fix)                    → Timer restarts (Day 0)
-No issues for 14 days                  → Ready for stable (Day 14)
 ```
 
 ### SC-3 (SHOULD): Pre-Release Validation
@@ -750,8 +715,6 @@ SemVer compatibility is verified locally with [`cargo-semver-checks`](https://gi
 - Increment RC version for each bug fix release (`rc.1` → `rc.2`)
 - Use the API Change Proposal template for breaking changes during RC
 - Obtain SP-6 approval (issue + `rc-addition` label + maintainer sign-off) before adding non-breaking APIs during RC
-- Verify agent-detected bugs independently before removing `agent-suspect` label (SC-2a)
-- Exclude `agent-suspect` labeled issues from stability timer reset
 - Create `develop/0.x+1.0` branch when version group enters RC phase (DB-1)
 - Direct next-version features and breaking changes to `develop/0.x+1.0` during RC (DB-2)
 - Apply RC bug fixes to `main` first, then forward-merge to develop (DB-3)
@@ -774,8 +737,6 @@ SemVer compatibility is verified locally with [`cargo-semver-checks`](https://gi
 - Skip the 2-week stability period
 - Publish stable release with open critical or high severity bugs
 - Introduce new pre-release identifiers during RC (e.g., `-beta`)
-- Remove `agent-suspect` label without independent verification (separate agent or human)
-- Count `agent-suspect` labeled issues toward stability timer reset
 - Merge next-version features or breaking changes directly into `main` during RC (use `develop/0.x+1.0`)
 - Apply bug fixes only to the develop branch without fixing on `main` first (DB-3)
 - Push to `develop/m.n.l` before running `scripts/init-develop-branch.sh m.n.l` (release-plz would otherwise publish a stable `m.n.l` immediately, bypassing the alpha phase) (DBR-1)
