@@ -1172,6 +1172,17 @@
 //! }
 //! ```
 //!
+//! A browser connection retries after a peer disconnect or connection failure
+//! when `auto_reconnect` is enabled. `max_reconnect_attempts` counts consecutive
+//! retries after the initial attempt; every successful open resets that count.
+//! Retries use the fixed `reconnect_delay` in milliseconds. `on_open` runs for
+//! both the first connection and each recovery, so applications can send their
+//! subscription messages again and refetch authoritative state. Messages sent
+//! while disconnected are not replayed. Calling `close()`, disposing the owning
+//! reactive scope (such as on logout), or dropping the last handle clone cancels
+//! pending retries and detaches browser callbacks. An explicit close is terminal;
+//! create a new hook for a new session.
+//!
 //! **Note**: WebSocket functionality is WASM-only. On the server side (SSR),
 //! `use_websocket` returns a no-op handle with connection state always set to `Closed`.
 //!

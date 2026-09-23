@@ -8,13 +8,15 @@ use crate::reactive::Signal;
 use serde::de::DeserializeOwned;
 use std::rc::Rc;
 
+#[cfg(wasm)]
+mod connection;
 mod subscription;
 
 use subscription::EventHub;
 pub use subscription::{WebSocketEventError, WebSocketSubscription, WebSocketSubscriptionOptions};
 
-// Shared with native component tests so ownership is checked without browser transport.
-#[cfg(any(wasm, test))]
+// Native component tests check ownership without a browser transport.
+#[cfg(all(test, native))]
 fn receive_message(
 	latest_message: Signal<Option<WebSocketMessage>>,
 	event_hub: &EventHub,
@@ -70,17 +72,18 @@ pub enum WebSocketMessage {
 
 /// Options for configuring WebSocket behavior
 pub struct UseWebSocketOptions {
-	/// Enable automatic reconnection on disconnect
+	/// Reconnect after a transport failure or peer disconnect, unless explicitly closed.
 	pub auto_reconnect: bool,
-	/// Maximum number of reconnection attempts
+	/// Maximum consecutive retries, excluding the initial connection.
+	/// A successful open resets the budget; zero disables retries.
 	pub max_reconnect_attempts: usize,
-	/// Initial delay before reconnecting (in milliseconds)
+	/// Fixed delay between retries in milliseconds, clamped to `i32::MAX`.
 	pub reconnect_delay: u32,
-	/// Callback when connection opens
+	/// Called on every open, including reconnects, to restore subscriptions.
 	pub on_open: Option<Rc<dyn Fn()>>,
-	/// Callback when connection closes
+	/// Callback for a peer or transport close; intentional shutdown is silent.
 	pub on_close: Option<Rc<dyn Fn()>>,
-	/// Callback when error occurs
+	/// Callback when an error occurs, including WebSocket construction failure.
 	pub on_error: Option<Rc<dyn Fn(String)>>,
 }
 
@@ -97,19 +100,6 @@ impl Default for UseWebSocketOptions {
 	}
 }
 
-/// Stored event listener closures for proper lifecycle management.
-///
-/// On WASM targets, this holds the actual `Closure` instances so they remain
-/// alive as long as the `WebSocketHandle` exists, and are released when the
-/// handle is dropped (instead of being leaked via `forget()`).
-#[cfg(wasm)]
-struct WsClosures {
-	_onopen: Closure<dyn FnMut(JsValue)>,
-	_onmessage: Closure<dyn FnMut(MessageEvent)>,
-	_onclose: Closure<dyn FnMut(CloseEvent)>,
-	_onerror: Closure<dyn FnMut(ErrorEvent)>,
-}
-
 /// Handle for controlling a WebSocket connection
 ///
 /// This struct provides methods to interact with the WebSocket connection,
@@ -118,9 +108,8 @@ struct WsClosures {
 /// Typed subscription methods have P1 symbol parity: WASM dispatches transport
 /// frames, while native/SSR retains the same types and remains inert.
 ///
-/// Event listener closures are stored in this handle instead of being leaked
-/// via `Closure::forget()`. When the handle is dropped, the closures are also
-/// dropped, preventing memory leaks in long-running single-page applications.
+/// Clones share one connection and retry budget. Owner disposal terminates the
+/// connection even if clones survive; dropping the last clone also closes it.
 pub struct WebSocketHandle {
 	connection_state: Signal<ConnectionState>,
 	latest_message: Signal<Option<WebSocketMessage>>,
@@ -128,10 +117,8 @@ pub struct WebSocketHandle {
 	close_fn: Rc<dyn Fn()>,
 	event_hub: Rc<EventHub>,
 	owner_scope: Option<reinhardt_core::reactive::ScopeId>,
-	/// Stored closures to keep event listeners alive without leaking memory.
-	/// When the last `WebSocketHandle` clone is dropped, the closures are cleaned up.
 	#[cfg(wasm)]
-	_closures: Rc<RefCell<Option<WsClosures>>>,
+	_connection: Rc<connection::Connection>,
 }
 
 impl WebSocketHandle {
@@ -187,7 +174,8 @@ impl WebSocketHandle {
 		self.send_text(json)
 	}
 
-	/// Close the WebSocket connection
+	/// Close the connection and cancel retries for every clone.
+	/// This is terminal and idempotent; create a new hook to reconnect.
 	pub fn close(&self) {
 		(self.close_fn)()
 	}
@@ -292,7 +280,7 @@ impl Clone for WebSocketHandle {
 			event_hub: Rc::clone(&self.event_hub),
 			owner_scope: self.owner_scope,
 			#[cfg(wasm)]
-			_closures: Rc::clone(&self._closures),
+			_connection: Rc::clone(&self._connection),
 		}
 	}
 }
@@ -385,13 +373,6 @@ pub fn use_websocket_json_subscription<T, E, F>(
 // WASM Implementation
 // ============================================================================
 
-#[cfg(wasm)]
-use {
-	std::cell::RefCell,
-	wasm_bindgen::{JsCast, JsValue, closure::Closure},
-	web_sys::{CloseEvent, ErrorEvent, MessageEvent, WebSocket},
-};
-
 /// Establish and manage a WebSocket connection (WASM implementation)
 ///
 /// This hook creates a reactive WebSocket connection that integrates with
@@ -459,156 +440,37 @@ use {
 #[cfg(wasm)]
 pub fn use_websocket(url: &str, options: UseWebSocketOptions) -> WebSocketHandle {
 	let owner_scope = reinhardt_core::reactive::scope::require_active_scope("use_websocket");
-	// WebSocket instance holder
-	let ws_ref: Rc<RefCell<Option<WebSocket>>> = Rc::new(RefCell::new(None));
-	let closures_ref: Rc<RefCell<Option<WsClosures>>> = Rc::new(RefCell::new(None));
-	let event_hub = EventHub::new();
-	let url = url.to_string();
-
-	// State signals
 	let connection_state = Signal::new(ConnectionState::Connecting);
 	let latest_message = Signal::new(None);
-
-	// Connection function
-	let connect = {
-		let ws_ref = Rc::clone(&ws_ref);
-		let closures_ref = Rc::clone(&closures_ref);
-		let url = url.clone();
-		let on_open = options.on_open.clone();
-		let on_close = options.on_close.clone();
-		let on_error = options.on_error.clone();
-		let event_hub = Rc::clone(&event_hub);
-
-		move || {
-			// Create WebSocket connection
-			let ws = match WebSocket::new(&url) {
-				Ok(ws) => ws,
-				Err(e) => {
-					connection_state.set(ConnectionState::Error(format!(
-						"Failed to create WebSocket: {:?}",
-						e
-					)));
-					return;
-				}
-			};
-
-			// Set binary type to arraybuffer for binary message support
-			ws.set_binary_type(web_sys::BinaryType::Arraybuffer);
-
-			// onopen handler
-			let connection_state_open = connection_state;
-			let on_open_cb = on_open.clone();
-			let onopen = Closure::wrap(Box::new(move |_: JsValue| {
-				if connection_state_open
-					.try_set(ConnectionState::Open)
-					.is_err()
-				{
-					return;
-				}
-				if let Some(cb) = &on_open_cb {
-					let _ = invoke_in_owner_scope(owner_scope, || cb());
-				}
-			}) as Box<dyn FnMut(JsValue)>);
-			ws.set_onopen(Some(onopen.as_ref().unchecked_ref()));
-
-			// onmessage handler
-			let latest_message_recv = latest_message;
-			let event_hub_recv = Rc::clone(&event_hub);
-			let onmessage = Closure::wrap(Box::new(move |e: MessageEvent| {
-				// Try text message first
-				if let Ok(txt) = e.data().dyn_into::<js_sys::JsString>() {
-					let text = txt.as_string().unwrap_or_default();
-					let message = WebSocketMessage::Text(text);
-					receive_message(latest_message_recv, &event_hub_recv, message);
-				}
-				// Try binary message (ArrayBuffer)
-				else if let Ok(array_buffer) = e.data().dyn_into::<js_sys::ArrayBuffer>() {
-					let array = js_sys::Uint8Array::new(&array_buffer);
-					let vec = array.to_vec();
-					let message = WebSocketMessage::Binary(vec);
-					receive_message(latest_message_recv, &event_hub_recv, message);
-				}
-			}) as Box<dyn FnMut(MessageEvent)>);
-			ws.set_onmessage(Some(onmessage.as_ref().unchecked_ref()));
-
-			// onclose handler
-			let connection_state_close = connection_state;
-			let on_close_cb = on_close.clone();
-			let onclose = Closure::wrap(Box::new(move |_: CloseEvent| {
-				if connection_state_close
-					.try_set(ConnectionState::Closed)
-					.is_err()
-				{
-					return;
-				}
-				if let Some(cb) = &on_close_cb {
-					let _ = invoke_in_owner_scope(owner_scope, || cb());
-				}
-			}) as Box<dyn FnMut(CloseEvent)>);
-			ws.set_onclose(Some(onclose.as_ref().unchecked_ref()));
-
-			// onerror handler
-			let connection_state_error = connection_state;
-			let on_error_cb = on_error.clone();
-			let event_hub_error = Rc::clone(&event_hub);
-			let onerror = Closure::wrap(Box::new(move |_: ErrorEvent| {
-				let error_msg = "WebSocket error occurred".to_string();
-				if connection_state_error
-					.try_set(ConnectionState::Error(error_msg.clone()))
-					.is_err()
-				{
-					return;
-				}
-				event_hub_error.dispatch_error(WebSocketEventError::Transport);
-				if let Some(cb) = &on_error_cb {
-					let _ = invoke_in_owner_scope(owner_scope, || cb(error_msg));
-				}
-			}) as Box<dyn FnMut(ErrorEvent)>);
-			ws.set_onerror(Some(onerror.as_ref().unchecked_ref()));
-
-			*ws_ref.borrow_mut() = Some(ws);
-
-			// Store closures to keep event listeners alive without leaking memory
-			closures_ref.borrow_mut().replace(WsClosures {
-				_onopen: onopen,
-				_onmessage: onmessage,
-				_onclose: onclose,
-				_onerror: onerror,
-			});
+	let event_hub = EventHub::new();
+	let connection = connection::Connection::new(
+		url,
+		options,
+		owner_scope,
+		connection_state,
+		latest_message,
+		Rc::clone(&event_hub),
+	);
+	let weak = Rc::downgrade(&connection);
+	reinhardt_core::reactive::scope::on_scope_dispose(owner_scope, move || {
+		if let Some(connection) = weak.upgrade() {
+			connection.close();
 		}
-	};
-
-	// Initial connection
-	connect();
-
-	// Send function
-	let send_fn = {
-		let ws_ref = Rc::clone(&ws_ref);
-		Rc::new(move |message: WebSocketMessage| {
-			let ws = ws_ref.borrow();
-			let ws = ws.as_ref().ok_or("WebSocket not initialized")?;
-
-			match message {
-				WebSocketMessage::Text(text) => ws
-					.send_with_str(&text)
-					.map_err(|e| format!("Failed to send text: {:?}", e)),
-				WebSocketMessage::Binary(data) => ws
-					.send_with_u8_array(&data)
-					.map_err(|e| format!("Failed to send binary: {:?}", e)),
-			}
-		})
-	};
-
-	// Close function
-	let close_fn = {
-		let ws_ref = Rc::clone(&ws_ref);
-		Rc::new(move || {
-			if let Some(ws) = ws_ref.borrow().as_ref() {
-				let _ = ws.close();
-			}
-		})
-	};
-
+	})
+	.expect("use_websocket requires a live reactive scope");
+	connection.start();
+	let weak = Rc::downgrade(&connection);
+	let send_fn = Rc::new(move |message| {
+		weak.upgrade()
+			.ok_or_else(|| "WebSocket has been dropped".to_owned())?
+			.send(message)
+	});
+	let weak = Rc::downgrade(&connection);
+	let close_fn = Rc::new(move || {
+		if let Some(connection) = weak.upgrade() {
+			connection.close();
+		}
+	});
 	WebSocketHandle {
 		connection_state,
 		latest_message,
@@ -616,7 +478,7 @@ pub fn use_websocket(url: &str, options: UseWebSocketOptions) -> WebSocketHandle
 		close_fn,
 		event_hub,
 		owner_scope: Some(owner_scope),
-		_closures: closures_ref,
+		_connection: connection,
 	}
 }
 
