@@ -73,7 +73,7 @@ impl OAuthHandler {
 		request: Request,
 	) -> reinhardt_core::exception::Result<Response> {
 		if request.method != Method::GET {
-			return Ok(method_not_allowed());
+			return Ok(method_not_allowed("GET"));
 		}
 		let Some(browser_session) = request.extensions.get::<OAuthBrowserSession>() else {
 			return Ok(oauth_error(
@@ -129,25 +129,36 @@ impl OAuthHandler {
 	}
 	async fn token_request(&self, request: Request) -> Response {
 		if request.method != Method::POST {
-			return method_not_allowed();
+			return self
+				.registered_origin(method_not_allowed("POST"), &request)
+				.await;
 		}
 		let params = match form_params(&request) {
 			Ok(p) => p,
-			Err(e) => return oauth_error(e, StatusCode::BAD_REQUEST),
+			Err(e) => {
+				return self
+					.registered_origin(oauth_error(e, StatusCode::BAD_REQUEST), &request)
+					.await;
+			}
 		};
 		let credentials = match client_auth(&request, &params) {
 			Ok(v) => v,
-			Err(e) => return oauth_error(e, StatusCode::UNAUTHORIZED),
+			Err(e) => {
+				return self
+					.registered_origin(oauth_error(e, StatusCode::UNAUTHORIZED), &request)
+					.await;
+			}
 		};
 		let (client_id, secret) = credentials;
 		let response = match params.get("grant_type").map(String::as_str) {
-			Some("authorization_code") => {
+			Some("authorization_code")
 				if !["code", "redirect_uri", "code_verifier"]
 					.iter()
-					.all(|key| params.get(*key).is_some_and(|v| !v.is_empty()))
-				{
-					return oauth_error(OAuthError::InvalidRequest, StatusCode::BAD_REQUEST);
-				}
+					.all(|key| params.get(*key).is_some_and(|v| !v.is_empty())) =>
+			{
+				Err(OAuthError::InvalidRequest)
+			}
+			Some("authorization_code") => {
 				self.server
 					.exchange_code(
 						params.get("code").map(String::as_str).unwrap_or_default(),
@@ -196,19 +207,35 @@ impl OAuthHandler {
 	}
 	async fn revocation_request(&self, request: Request) -> Response {
 		if request.method != Method::POST {
-			return method_not_allowed();
+			return self
+				.registered_origin(method_not_allowed("POST"), &request)
+				.await;
 		}
 		let params = match form_params(&request) {
 			Ok(p) => p,
-			Err(e) => return oauth_error(e, StatusCode::BAD_REQUEST),
+			Err(e) => {
+				return self
+					.registered_origin(oauth_error(e, StatusCode::BAD_REQUEST), &request)
+					.await;
+			}
 		};
 		let (client_id, secret) = match client_auth(&request, &params) {
 			Ok(v) => v,
-			Err(e) => return oauth_error(e, StatusCode::UNAUTHORIZED),
+			Err(e) => {
+				return self
+					.registered_origin(oauth_error(e, StatusCode::UNAUTHORIZED), &request)
+					.await;
+			}
 		};
 		let token = params.get("token").map(String::as_str).unwrap_or_default();
 		if token.is_empty() {
-			return oauth_error(OAuthError::InvalidRequest, StatusCode::BAD_REQUEST);
+			return self
+				.cors(
+					oauth_error(OAuthError::InvalidRequest, StatusCode::BAD_REQUEST),
+					&request,
+					&client_id,
+				)
+				.await;
 		}
 		let response = match self
 			.server
@@ -229,7 +256,7 @@ impl OAuthHandler {
 	}
 	async fn introspection_request(&self, request: Request) -> Response {
 		if request.method != Method::POST {
-			return method_not_allowed();
+			return method_not_allowed("POST");
 		}
 		let params = match form_params(&request) {
 			Ok(p) => p,
@@ -270,7 +297,7 @@ impl OAuthHandler {
 	}
 	async fn metadata_request(&self, request: Request) -> Response {
 		if request.method != Method::GET {
-			return method_not_allowed();
+			return method_not_allowed("GET");
 		}
 		let c = self.server.config();
 		let response = json_response(
@@ -328,16 +355,17 @@ impl OAuthHandler {
 #[async_trait]
 impl Handler for OAuthHandler {
 	async fn handle(&self, request: Request) -> reinhardt_core::exception::Result<Response> {
-		if self.server.is_production() && !request.is_secure {
+		if self.server.is_production() && !request.is_secure() {
+			return Ok(no_store(Response::new(StatusCode::BAD_REQUEST)));
+		}
+		let client_ip = request.get_client_ip();
+		if self.server.is_production() && client_ip.is_none() {
 			return Ok(no_store(Response::new(StatusCode::BAD_REQUEST)));
 		}
 		let key = format!(
 			"{:?}:{}",
 			self.endpoint,
-			request
-				.remote_addr
-				.map(|a| a.ip().to_string())
-				.unwrap_or_default()
+			client_ip.map_or_else(|| "unknown".to_owned(), |ip| ip.to_string())
 		);
 		if !self.server.allow(&key).await {
 			return Ok(no_store(Response::new(StatusCode::TOO_MANY_REQUESTS)));
@@ -387,12 +415,11 @@ fn form_params(request: &Request) -> Result<HashMap<String, String>, OAuthError>
 	parse_params(request.body())
 }
 fn basic_auth(request: &Request) -> Option<(String, String)> {
-	let value = request
-		.headers
-		.get("authorization")?
-		.to_str()
-		.ok()?
-		.strip_prefix("Basic ")?;
+	let header = request.headers.get("authorization")?.to_str().ok()?;
+	let (scheme, value) = header.split_once(' ')?;
+	if !scheme.eq_ignore_ascii_case("Basic") {
+		return None;
+	}
 	let raw = STANDARD.decode(value).ok()?;
 	let raw = std::str::from_utf8(&raw).ok()?;
 	let (id, secret) = raw.split_once(':')?;
@@ -449,6 +476,6 @@ fn oauth_error(error: OAuthError, status: StatusCode) -> Response {
 fn redirect(location: &str) -> Response {
 	no_store(Response::new(StatusCode::FOUND).with_header("Location", location))
 }
-fn method_not_allowed() -> Response {
-	no_store(Response::new(StatusCode::METHOD_NOT_ALLOWED))
+fn method_not_allowed(allowed: &'static str) -> Response {
+	no_store(Response::new(StatusCode::METHOD_NOT_ALLOWED).with_header("Allow", allowed))
 }

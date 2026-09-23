@@ -110,7 +110,7 @@ url = "2.5"
 totp-lite = "2.0"
 data-encoding = "2.6"
 sqlx = { workspace = true, optional = true, features = ["any", "runtime-tokio", "sqlite"]}
-reinhardt-query = { workspace = true, optional = true }
+reinhardt-query = { workspace = true, optional = true, features = ["with-json"] }
 reinhardt-apps = { workspace = true, optional = true }
 ctor = { workspace = true, optional = true }
 redis = { workspace = true, optional = true }
