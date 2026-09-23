@@ -194,8 +194,10 @@ jobs:
 
       # Offline target-parity fixtures need WASM-only dependencies that a native
       # test build does not download. Fetch after cleanup removes registry caches.
+      # The workspace Cargo.lock is not tracked, so this initial fetch must be
+      # allowed to generate it on a fresh checkout.
       - name: Fetch WASM fixture dependencies
-        run: cargo fetch --locked --target wasm32-unknown-unknown
+        run: cargo fetch --target wasm32-unknown-unknown
 
       - name: Run intra-crate integration tests (partition ${{ matrix.partition }}/${{ inputs.partition-count || '5' }})
         env:
