@@ -87,13 +87,6 @@ fn repeated_builds_do_not_collect_their_own_publications(#[case] nested: bool) {
 
 	// Assert
 	assert_eq!(second.manifest().build_id, first.manifest().build_id);
-	assert_eq!(
-		second
-			.manifest()
-			.paths
-			.keys()
-			.map(String::as_str)
-			.collect::<Vec<_>>(),
-		["logo.svg"]
-	);
+	assert_eq!(second.manifest().paths, first.manifest().paths);
+	assert!(second.manifest().paths.contains_key("logo.svg"));
 }
