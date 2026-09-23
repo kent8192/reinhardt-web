@@ -106,12 +106,13 @@ Register an opt-in custom command with
 `CommandRegistry::register_capability`. Its `CapabilityCommand::cli` supplies
 clap metadata, `requirements` declares typed settings views and service
 types/aliases after parsing, and `execute` receives a prepared
-`CapabilityContext`. The application provider validates all requested settings
-views before preparing services in declaration order. An undeclared context
-access fails instead of starting another service. Prepared resources are owned
-by the invocation and dropped when its context is released. Commands registered
-through the legacy `BaseCommand` interface retain full bootstrap on this new
-entry point; the existing entry points retain their behavior.
+`CapabilityContext` with the global CLI verbosity. The application provider
+validates all requested settings views before preparing services in declaration
+order. An undeclared context access fails instead of starting another service.
+Prepared resources are owned by the invocation and dropped when its context is
+released. Commands registered through the legacy `BaseCommand` interface retain
+full bootstrap on this new entry point; existing entry points retain their
+behavior.
 
 The new `makemigrations` parser chooses a state source explicitly:
 

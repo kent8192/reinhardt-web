@@ -45,6 +45,7 @@ impl Drop for Guard {
 struct Provider {
 	scoped_calls: Arc<AtomicUsize>,
 	service_calls: Arc<AtomicUsize>,
+	service_verbosity: Arc<AtomicUsize>,
 	drops: Arc<AtomicUsize>,
 }
 
@@ -72,6 +73,8 @@ impl CapabilityProvider for Provider {
 	) -> CommandResult<PreparedValue> {
 		assert_eq!(context.settings::<ExampleView>(None)?.0, "ready");
 		self.service_calls.fetch_add(1, Ordering::SeqCst);
+		self.service_verbosity
+			.store(context.verbosity().into(), Ordering::SeqCst);
 		if requirement.alias() == Some("fail") {
 			return Err(CommandError::ExecutionError("service failed".to_owned()));
 		}
@@ -83,8 +86,24 @@ fn provider() -> Provider {
 	Provider {
 		scoped_calls: Arc::new(AtomicUsize::new(0)),
 		service_calls: Arc::new(AtomicUsize::new(0)),
+		service_verbosity: Arc::new(AtomicUsize::new(0)),
 		drops: Arc::new(AtomicUsize::new(0)),
 	}
+}
+
+#[rstest]
+#[tokio::test]
+async fn global_verbosity_is_available_during_service_preparation_and_execution() {
+	let provider = provider();
+	let requirements = [
+		CapabilityRequirement::settings::<ExampleView>(None),
+		CapabilityRequirement::service::<Guard>("guard", None),
+	];
+	let context = CapabilityContext::prepare_with_verbosity("example", 3, &requirements, &provider)
+		.await
+		.unwrap();
+	assert_eq!(provider.service_verbosity.load(Ordering::SeqCst), 3);
+	assert_eq!(context.verbosity(), 3);
 }
 
 #[rstest]

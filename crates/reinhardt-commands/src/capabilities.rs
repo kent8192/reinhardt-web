@@ -363,10 +363,16 @@ struct CapabilityKey {
 /// Values prepared before the command body and dropped with its invocation.
 pub struct CapabilityContext {
 	command: String,
+	verbosity: u8,
 	values: HashMap<CapabilityKey, PreparedValue>,
 }
 
 impl CapabilityContext {
+	/// Global management CLI verbosity selected for this invocation.
+	pub fn verbosity(&self) -> u8 {
+		self.verbosity
+	}
+
 	/// Access a declared settings view. This never initializes new capabilities.
 	pub fn settings<T: SettingsView>(&self, alias: Option<&str>) -> CommandResult<Arc<T>> {
 		self.get::<T>(CapabilityKind::Settings, T::NAME, alias)
@@ -416,8 +422,19 @@ impl CapabilityContext {
 		requirements: &[CapabilityRequirement],
 		provider: &P,
 	) -> CommandResult<Self> {
+		Self::prepare_with_verbosity(command, 0, requirements, provider).await
+	}
+
+	/// Prepare capabilities with the management CLI's global verbosity.
+	pub async fn prepare_with_verbosity<P: CapabilityProvider + Sync>(
+		command: &str,
+		verbosity: u8,
+		requirements: &[CapabilityRequirement],
+		provider: &P,
+	) -> CommandResult<Self> {
 		let mut context = Self {
 			command: command.to_owned(),
+			verbosity,
 			values: HashMap::new(),
 		};
 		let scoped = if requirements

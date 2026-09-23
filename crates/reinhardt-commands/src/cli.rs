@@ -1392,7 +1392,9 @@ async fn execute_with_capabilities<P: CapabilityProvider>(
 			Err(error) => error.exit(),
 		};
 		let requirements = custom.requirements(&matches);
-		let context = CapabilityContext::prepare(name, &requirements, &provider).await?;
+		let context =
+			CapabilityContext::prepare_with_verbosity(name, verbosity, &requirements, &provider)
+				.await?;
 		return custom.execute(&matches, &context).await.map_err(Into::into);
 	}
 	#[cfg(feature = "migrations")]
@@ -3189,7 +3191,29 @@ fn parse_capability_cli_arguments(
 #[cfg(all(test, feature = "contract", feature = "migrations"))]
 mod capability_cli_tests {
 	use super::*;
+	use crate::capabilities::CapabilityCommand;
 	use rstest::*;
+
+	struct OverrideCommand(&'static str);
+
+	#[async_trait::async_trait]
+	impl CapabilityCommand for OverrideCommand {
+		fn cli(&self) -> clap::Command {
+			clap::Command::new(self.0).arg(Arg::new("custom-opt").long("custom-opt").num_args(1))
+		}
+
+		fn requirements(&self, _matches: &clap::ArgMatches) -> Vec<CapabilityRequirement> {
+			Vec::new()
+		}
+
+		async fn execute(
+			&self,
+			_matches: &clap::ArgMatches,
+			_context: &CapabilityContext,
+		) -> crate::CommandResult<()> {
+			Ok(())
+		}
+	}
 
 	fn parse(
 		args: &[&str],
@@ -3213,6 +3237,34 @@ mod capability_cli_tests {
 		};
 		assert_eq!(selection.source, MigrationStateSource::Database);
 		assert_eq!(selection.database.as_deref(), Some("analytics"));
+	}
+
+	#[rstest]
+	#[case("buildstatic")]
+	#[case("dumpdata")]
+	fn capability_override_uses_its_own_arguments(#[case] name: &'static str) {
+		let mut registry = CommandRegistry::new();
+		registry.register_capability(Box::new(OverrideCommand(name)));
+		let args: Vec<OsString> = ["manage", name, "--custom-opt", "ready"]
+			.into_iter()
+			.map(OsString::from)
+			.collect();
+		let (command, _, _) = parse_capability_cli_arguments(&args, &registry).unwrap();
+		let Commands::Custom { name, args } = command else {
+			panic!("capability override must reach custom dispatch");
+		};
+		let matches = registry
+			.get_capability(&name)
+			.unwrap()
+			.cli()
+			.try_get_matches_from(
+				std::iter::once(name.as_str()).chain(args.iter().map(String::as_str)),
+			)
+			.unwrap();
+		assert_eq!(
+			matches.get_one::<String>("custom-opt").map(String::as_str),
+			Some("ready")
+		);
 	}
 
 	#[rstest]
@@ -3267,6 +3319,7 @@ fn parse_cli_arguments(
 			match resolve_custom_command(raw_args, registry).map_err(DriverParseError::Command)? {
 				Some((name, args, verbosity)) => {
 					if registry.get(&name).is_none()
+						&& registry.get_capability(&name).is_none()
 						&& name == "buildstatic"
 						&& let Err(error) = parse_buildstatic_command(&args)
 					{
@@ -3274,6 +3327,7 @@ fn parse_cli_arguments(
 					}
 					#[cfg(feature = "reinhardt-db")]
 					if registry.get(&name).is_none()
+						&& registry.get_capability(&name).is_none()
 						&& is_fixture_command_name(&name)
 						&& let Err(error) = parse_fixture_command(&name, &args)
 					{
