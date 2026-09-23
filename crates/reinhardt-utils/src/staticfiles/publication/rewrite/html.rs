@@ -159,6 +159,7 @@ pub(super) fn analyze(logical: &str, source: &str) -> Result<Vec<AssetReference>
 												"prefetch",
 												"modulepreload",
 												"apple-touch-icon",
+												"mask-icon",
 												"manifest",
 											]
 											.iter()

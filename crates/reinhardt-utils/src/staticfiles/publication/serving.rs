@@ -237,11 +237,8 @@ impl Middleware for ManifestStaticMiddleware {
 		}
 		let navigation = !asset_like
 			&& matches!(request.method, Method::GET | Method::HEAD)
-			&& request
-				.headers
-				.get(header::ACCEPT)
-				.and_then(|value| value.to_str().ok())
-				.is_some_and(|value| {
+			&& request.headers.get_all(header::ACCEPT).iter().any(|value| {
+				value.to_str().ok().is_some_and(|value| {
 					value.split(',').any(|part| {
 						let mut parameters = part.trim().split(';');
 						if !parameters
@@ -256,7 +253,8 @@ impl Middleware for ManifestStaticMiddleware {
 							.map_or(Some(1.0), |(_, value)| value.trim().parse::<f32>().ok());
 						quality.is_some_and(|quality| quality > 0.0 && quality <= 1.0)
 					})
-				});
+				})
+			});
 		let response = next.handle(request).await?;
 		if response.status == StatusCode::NOT_FOUND && self.config.navigation_fallback && navigation
 		{
@@ -427,7 +425,9 @@ fn serve(
 				.with_header("etag", &etag)
 				.with_header("accept-ranges", "bytes")
 				.with_header("x-content-type-options", "nosniff");
-			if !snapshot.manifest().assets[&logical].variants.is_empty() {
+			if record.encoding.is_some()
+				|| !snapshot.manifest().assets[&logical].variants.is_empty()
+			{
 				response = response.with_header("vary", "Accept-Encoding");
 			}
 			if let Some(encoding) = record.encoding {

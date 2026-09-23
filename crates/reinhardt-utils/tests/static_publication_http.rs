@@ -661,6 +661,23 @@ async fn negotiated_representations_have_distinct_etags_and_correct_bytes(
 		response.headers[header::ETAG] == identity.headers[header::ETAG],
 		encoding.is_none()
 	);
+	let direct_url = snapshot
+		.url_snapshot("/static/")
+		.unwrap()
+		.resolve("site.css.br")
+		.unwrap();
+	let direct = middleware
+		.process(
+			Request::builder()
+				.uri(&direct_url)
+				.header(header::ACCEPT_ENCODING, "br")
+				.build()
+				.unwrap(),
+			NavigationProbe::new(StatusCode::OK),
+		)
+		.await
+		.unwrap();
+	assert_eq!(direct.headers[header::VARY], "Accept-Encoding");
 }
 
 #[rstest]
@@ -1037,6 +1054,103 @@ async fn navigation_honors_html_quality(#[case] accept: &str, #[case] status: u1
 	if status == 404 {
 		assert_eq!(response.body.as_ref(), b"navigation-probe");
 	}
+}
+
+#[rstest]
+#[tokio::test]
+async fn navigation_accepts_html_in_a_repeated_accept_field() {
+	// Arrange
+	let fixture = Fixture::new("/static/", AssetMode::Production);
+	let probe = NavigationProbe::new(StatusCode::NOT_FOUND);
+	// Act
+	let response = fixture
+		.middleware
+		.process(
+			Request::builder()
+				.uri("/screen")
+				.header(header::ACCEPT, "application/json")
+				.header(header::ACCEPT, "text/html;q=0.5")
+				.build()
+				.unwrap(),
+			probe.clone(),
+		)
+		.await
+		.unwrap();
+	// Assert
+	assert_eq!(response.status, StatusCode::OK);
+	assert_eq!(probe.call_count(), 1);
+}
+
+#[rstest]
+#[tokio::test]
+async fn navigation_rewrites_mask_icon_to_the_published_generation() {
+	// Arrange
+	let root = tempfile::tempdir().unwrap();
+	let mut pipeline = AssetPipeline::new();
+	for (name, content) in [
+		(
+			"app.js",
+			&b"export const wasm=new URL('app_bg.wasm',import.meta.url);"[..],
+		),
+		("app_bg.wasm", &b"\0asm\x01\0\0\0"[..]),
+	] {
+		pipeline
+			.add_input(
+				AssetInput::bytes(name, content.to_vec()).with_producer(AssetProducer::Pages),
+			)
+			.unwrap();
+	}
+	pipeline
+		.add_input(AssetInput::bytes("icons/pinned.svg", b"<svg/>".to_vec()))
+		.unwrap();
+	pipeline.add_input(AssetInput::bytes("index.html", br#"<html><head><link rel="mask-icon" href="icons/pinned.svg#mark"></head><body></body></html>"#.to_vec()).with_role(AssetRole::EntryDocument)).unwrap();
+	pipeline
+		.set_entrypoint(
+			"default",
+			PagesEntrypoint {
+				javascript: "app.js".into(),
+				wasm: "app_bg.wasm".into(),
+				styles: Vec::new(),
+				document: Some("index.html".into()),
+			},
+		)
+		.unwrap();
+	let snapshot = AssetPublisher::new(root.path().into())
+		.publish(pipeline.prepare(AssetMode::Production).unwrap())
+		.unwrap();
+	let icon_url = snapshot
+		.url_snapshot("/static/")
+		.unwrap()
+		.resolve("icons/pinned.svg")
+		.unwrap();
+	let store =
+		Arc::new(ManifestStore::open(root.path().into(), SnapshotOptions::production()).unwrap());
+	let middleware = ManifestStaticMiddleware::new(
+		ManifestServingConfig::new(store, "/static/".into())
+			.unwrap()
+			.with_pages("default".into())
+			.with_navigation_fallback(true),
+	);
+	// Act
+	let response = middleware
+		.process(
+			Request::builder()
+				.uri("/screen")
+				.header(header::ACCEPT, "text/html")
+				.build()
+				.unwrap(),
+			NavigationProbe::new(StatusCode::NOT_FOUND),
+		)
+		.await
+		.unwrap();
+	// Assert
+	assert_eq!(response.status, StatusCode::OK);
+	let html = String::from_utf8(body_bytes(&response)).unwrap();
+	assert!(
+		html.contains(&format!("href=\"{icon_url}#mark\"")),
+		"{html}"
+	);
+	assert!(!html.contains("href=\"icons/pinned.svg#mark\""), "{html}");
 }
 
 #[rstest]

@@ -106,6 +106,9 @@ private staging. Materialize symlinked sources inside the configured input root.
 Legacy version 1, `paths`, `files`, and flat manifests use explicit import adapters.
 Their physical names map back to the original logical namespace before rewriting.
 Version 2 imports validate the full source generation and retain its entrypoints.
+The framework Pages loader is regenerated when importing a version 2 Pages build.
+`ManifestStaticFilesStorage` can read version 2 paths, but its legacy writer rejects
+writes after loading a version 2 manifest; use `buildstatic` to publish changes.
 Legacy `collectstatic` refuses to clear or overwrite version 2 output. For a root
 containing `staticfiles.json`, select a separate `STATIC_ROOT` for migration (or
 explicitly archive the old manifest first); `buildstatic` never silently deletes

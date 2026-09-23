@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 
+pub(super) const PAGES_LOADER_LOGICAL: &str = "__reinhardt__/pages-loader.js";
+
 /// Versioned rendering instructions stored inside an entry asset record (P0).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -227,7 +229,7 @@ pub fn render_entry_document(
 			DocumentChunk::Loader => {
 				output.push_str("<script type=\"module\" id=\"reinhardt-pages-loader\" src=\"");
 				output.push_str(&escape_attribute(
-					&projection.resolve(super::pipeline::PAGES_LOADER_LOGICAL)?,
+					&projection.resolve(PAGES_LOADER_LOGICAL)?,
 				));
 				output.push_str("\"></script>");
 			}

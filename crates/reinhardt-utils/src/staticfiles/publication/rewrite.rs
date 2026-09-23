@@ -169,7 +169,7 @@ impl AssetProcessor for BuiltinProcessor {
 }
 
 fn is_generated_pages_loader(logical: &str) -> bool {
-	let reserved = super::pipeline::PAGES_LOADER_LOGICAL;
+	let reserved = super::document::PAGES_LOADER_LOGICAL;
 	logical == reserved
 		|| logical
 			.strip_suffix(reserved)

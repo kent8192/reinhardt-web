@@ -64,3 +64,28 @@ async fn legacy_template_urls_are_not_double_encoded() {
 	);
 	assert_eq!(storage.url("logo.svg"), "/static/images/logo%20%231.svg");
 }
+
+#[rstest]
+#[tokio::test]
+async fn legacy_storage_rejects_writes_after_loading_a_v2_manifest() {
+	// Arrange
+	let root = tempfile::tempdir().unwrap();
+	let mut pipeline = AssetPipeline::new();
+	pipeline
+		.add_input(AssetInput::bytes("logo.svg", b"<svg/>".to_vec()))
+		.unwrap();
+	let packed = pipeline.prepare(AssetMode::Production).unwrap();
+	let storage = ManifestStaticFilesStorage::new(root.path(), "/static/");
+	let manifest_path = root.path().join(&storage.manifest_name);
+	let original = encode_manifest(packed.manifest()).unwrap();
+	std::fs::write(&manifest_path, &original).unwrap();
+	storage.load_manifest().await.unwrap();
+	let mut files = std::collections::HashMap::new();
+	files.insert("new.css".into(), b"body{}".to_vec());
+	// Act
+	let error = storage.save_with_dependencies(files).await.unwrap_err();
+	// Assert
+	assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+	assert_eq!(std::fs::read(&manifest_path).unwrap(), original);
+	assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 1);
+}

@@ -13,7 +13,7 @@ use std::io::{Read, Write};
 use std::path::PathBuf;
 use tempfile::TempDir;
 
-pub(super) const PAGES_LOADER_LOGICAL: &str = "__reinhardt__/pages-loader.js";
+use super::document::PAGES_LOADER_LOGICAL;
 const PAGES_LOADER_SOURCE: &[u8] =
 	br#"const entry = JSON.parse(document.getElementById('reinhardt-pages-entry').textContent);
 const module = await import(entry.javascript);

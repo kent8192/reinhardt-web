@@ -615,6 +615,15 @@ impl ManifestStaticFilesStorage {
 		&self,
 		files: HashMap<String, Vec<u8>>,
 	) -> io::Result<usize> {
+		if *read_or_recover(
+			&self.v2_manifest_paths,
+			"ManifestStaticFilesStorage::save_with_dependencies version",
+		) {
+			return Err(io::Error::new(
+				io::ErrorKind::InvalidInput,
+				"version 2 publication manifests are read-only in legacy storage; use AssetPublisher",
+			));
+		}
 		let mut hashed_map = HashMap::new();
 		let mut processed_files = HashMap::new();
 

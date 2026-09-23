@@ -316,6 +316,25 @@ fn html_prefetch_declares_and_rewrites_asset_dependencies(#[case] relation: &str
 }
 
 #[rstest]
+fn html_mask_icon_is_recorded_and_rewritten() {
+	// Arrange
+	let html = br#"<link rel="mask-icon" href="icons/pinned.svg#mark">"#;
+	let inputs = pipeline(&[("index.html", html), ("icons/pinned.svg", b"<svg/>")]);
+	// Act
+	let prepared = inputs.prepare(AssetMode::Production).unwrap();
+	let rewritten = String::from_utf8(prepared.read_asset("index.html").unwrap()).unwrap();
+	// Assert
+	assert_eq!(
+		prepared.manifest().assets["index.html"].dependencies,
+		["icons/pinned.svg"]
+	);
+	assert!(
+		rewritten.contains("href=\"../vectors/icons/pinned.svg#mark\""),
+		"{rewritten}"
+	);
+}
+
+#[rstest]
 fn image_preload_candidates_and_iframe_sources_follow_published_paths() {
 	// Arrange
 	let html = br#"<link rel="preload" as="image" imagesrcset="images/small.png 1x, images/large.png 2x"><iframe src="docs/frame.html"></iframe>"#;

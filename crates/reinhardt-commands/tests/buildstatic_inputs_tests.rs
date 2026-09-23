@@ -265,6 +265,23 @@ fn materialized_pages_and_legacy_styles_publish_without_project_compilation() {
 		snapshot.manifest().entrypoints["default"].styles,
 		["__reinhardt__/components.css"]
 	);
+	let mut reimport = BuildStaticRequest::new(root.path().into());
+	reimport.static_manifest = Some(output.join("manifest.json"));
+	let BuildStaticResult::Published(republished) = command.execute(reimport).unwrap() else {
+		panic!("republication expected")
+	};
+	assert_eq!(
+		republished.manifest().build_id,
+		snapshot.manifest().build_id
+	);
+	assert_eq!(
+		republished
+			.read_asset("__reinhardt__/pages-loader.js")
+			.unwrap(),
+		snapshot
+			.read_asset("__reinhardt__/pages-loader.js")
+			.unwrap()
+	);
 }
 
 #[rstest]
