@@ -81,6 +81,7 @@ base64 = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
+tempfile = "3.14"
 insta = { workspace = true }
 # Workaround for KI-2 (rust-lang/cargo#4242, rust-lang/cargo#15151):
 # Path-only dev-dep (no version) is stripped from published manifest by cargo,

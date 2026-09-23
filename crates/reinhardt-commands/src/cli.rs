@@ -29,7 +29,9 @@ use reinhardt_conf::settings::{ComposedSettings, PendingSettings};
 use reinhardt_conf::{HasCommonSettings, MigrationSettings, SettingsResolutionMetadata};
 #[cfg(feature = "migrations")]
 use reinhardt_db::migrations::DependencyResolutionContext;
-use reinhardt_utils::staticfiles::{PathResolver, StaticFilesConfig};
+#[cfg(feature = "migrations")]
+use reinhardt_utils::staticfiles::PathResolver;
+use reinhardt_utils::staticfiles::StaticFilesConfig;
 use serde_json::Value;
 use std::env;
 use std::ffi::{OsStr, OsString};
@@ -50,6 +52,9 @@ use crate::builtin::ShowUrlsCommand;
 #[command(name = "manage")]
 #[command(about = "Reinhardt management interface", long_about = None)]
 #[command(version)]
+#[command(
+	after_help = "Additional built-in command:\n  buildstatic  Publish a complete static generation (use buildstatic --help)"
+)]
 pub struct Cli {
 	/// Subcommand to execute
 	#[command(subcommand)]
@@ -405,6 +410,22 @@ pub enum Commands {
 		#[arg(long)]
 		index: Option<String>,
 
+		/// Unified asset publication mode (production or development)
+		#[arg(long, default_value = "production", value_parser = ["production", "development"])]
+		asset_mode: String,
+
+		/// Explicit unified asset manifest path
+		#[arg(long)]
+		asset_manifest: Option<String>,
+
+		/// Select a Pages entrypoint from a multi-entry asset manifest
+		#[arg(long, value_name = "NAME")]
+		asset_entrypoint: Option<String>,
+
+		/// Require a specific unified asset build identifier
+		#[arg(long)]
+		expected_asset_build_id: Option<String>,
+
 		/// Cargo package containing component style definitions
 		#[arg(long, value_name = "NAME")]
 		package: Option<String>,
@@ -753,6 +774,10 @@ impl fmt::Debug for Commands {
 				static_dir,
 				no_spa,
 				index,
+				asset_mode,
+				asset_manifest,
+				asset_entrypoint,
+				expected_asset_build_id,
 				package,
 				features,
 				all_features,
@@ -774,6 +799,10 @@ impl fmt::Debug for Commands {
 				static_dir,
 				no_spa,
 				index,
+				asset_mode,
+				asset_manifest,
+				asset_entrypoint,
+				expected_asset_build_id,
 				package,
 				features,
 				all_features,
@@ -1773,6 +1802,10 @@ fn builtin_command_plan(command: Commands, verbosity: u8) -> BuiltinCommandPlan 
 			static_dir,
 			no_spa,
 			index,
+			asset_mode,
+			asset_manifest,
+			asset_entrypoint,
+			expected_asset_build_id,
 			package,
 			features,
 			all_features,
@@ -1792,6 +1825,10 @@ fn builtin_command_plan(command: Commands, verbosity: u8) -> BuiltinCommandPlan 
 			static_dir,
 			no_spa,
 			index,
+			asset_mode,
+			asset_manifest,
+			asset_entrypoint,
+			expected_asset_build_id,
 			package,
 			features,
 			all_features,
@@ -2197,6 +2234,10 @@ async fn run_command_core_with_contract_state(
 			static_dir,
 			no_spa,
 			index,
+			asset_mode,
+			asset_manifest,
+			asset_entrypoint,
+			expected_asset_build_id,
 			package,
 			features,
 			all_features,
@@ -2217,6 +2258,10 @@ async fn run_command_core_with_contract_state(
 				static_dir,
 				no_spa,
 				index,
+				asset_mode,
+				asset_manifest,
+				asset_entrypoint,
+				expected_asset_build_id,
 				package,
 				features,
 				all_features,
@@ -2317,6 +2362,35 @@ async fn run_command_core_with_contract_state(
 			.await
 		}
 		Commands::Custom { name, args } => {
+			if registry.get(&name).is_none() && name == "buildstatic" {
+				let parsed = parse_buildstatic_command(&args)?;
+				let base = env::current_dir()?;
+				let static_settings = crate::StaticAssetSettings::from_project_dir(&base)?;
+				let result = crate::buildstatic::BuildStaticCommand::new(static_settings)
+					.execute(parsed.into_request(base))?;
+				match result {
+					crate::buildstatic::BuildStaticResult::Published(snapshot) => println!(
+						"Published static generation {} ({} assets)",
+						snapshot.manifest().build_id,
+						snapshot.manifest().assets.len()
+					),
+					crate::buildstatic::BuildStaticResult::DryRun(preview) => {
+						for (logical, path) in preview.assignments {
+							println!("{logical} -> {path}");
+						}
+						for conflict in &preview.conflicts {
+							eprintln!("Conflict: {conflict}");
+						}
+						for pending in preview.pending_checks {
+							println!("Pending: {pending}");
+						}
+						if !preview.conflicts.is_empty() {
+							return Err("static discovery has conflicting inputs".into());
+						}
+					}
+				}
+				return Ok(());
+			}
 			#[cfg(feature = "reinhardt-db")]
 			if registry.get(&name).is_none()
 				&& let Some(command) = parse_fixture_command(&name, &args)?
@@ -2368,6 +2442,14 @@ enum DriverParseError {
 	Command(crate::CommandError),
 }
 
+fn parse_buildstatic_command(
+	args: &[String],
+) -> Result<crate::buildstatic::BuildStaticArgs, clap::Error> {
+	crate::buildstatic::BuildStaticArgs::try_parse_from(
+		std::iter::once("buildstatic").chain(args.iter().map(String::as_str)),
+	)
+}
+
 fn parse_cli_arguments(
 	raw_args: &[OsString],
 	registry: &CommandRegistry,
@@ -2381,6 +2463,12 @@ fn parse_cli_arguments(
 		Err(clap_error) => {
 			match resolve_custom_command(raw_args, registry).map_err(DriverParseError::Command)? {
 				Some((name, args, verbosity)) => {
+					if registry.get(&name).is_none()
+						&& name == "buildstatic"
+						&& let Err(error) = parse_buildstatic_command(&args)
+					{
+						return Err(DriverParseError::Clap(Box::new(error)));
+					}
 					#[cfg(feature = "reinhardt-db")]
 					if registry.get(&name).is_none()
 						&& is_fixture_command_name(&name)
@@ -2496,7 +2584,10 @@ fn resolve_custom_command<T: AsRef<OsStr>>(
 		return Ok(None);
 	};
 	let subcommand = utf8_custom_argument(subcommand.as_ref())?;
-	if registry.get(subcommand).is_some() || is_fixture_command_name(subcommand) {
+	if registry.get(subcommand).is_some()
+		|| is_fixture_command_name(subcommand)
+		|| subcommand == "buildstatic"
+	{
 		let remaining = iter
 			.map(|argument| utf8_custom_argument(argument.as_ref()).map(str::to_string))
 			.collect::<crate::CommandResult<Vec<_>>>()?;
@@ -2722,6 +2813,10 @@ struct RunServerOptions {
 	static_dir: String,
 	no_spa: bool,
 	index: Option<String>,
+	asset_mode: String,
+	asset_manifest: Option<String>,
+	asset_entrypoint: Option<String>,
+	expected_asset_build_id: Option<String>,
 	package: Option<String>,
 	features: Vec<String>,
 	all_features: bool,
@@ -2768,6 +2863,18 @@ fn runserver_context_from_options(options: &RunServerOptions) -> CommandContext 
 	}
 	if let Some(ref index) = options.index {
 		ctx.set_option("index".to_string(), index.clone());
+	}
+	if options.asset_mode != "production" {
+		ctx.set_option("asset-mode".to_string(), options.asset_mode.clone());
+	}
+	if let Some(ref manifest) = options.asset_manifest {
+		ctx.set_option("asset-manifest".to_string(), manifest.clone());
+	}
+	if let Some(ref entrypoint) = options.asset_entrypoint {
+		ctx.set_option("asset-entrypoint".to_string(), entrypoint.clone());
+	}
+	if let Some(ref build_id) = options.expected_asset_build_id {
+		ctx.set_option("expected-asset-build-id".to_string(), build_id.clone());
 	}
 	if let Some(ref package) = options.package {
 		ctx.set_option("package".to_string(), package.clone());
@@ -3371,6 +3478,101 @@ pub(crate) fn generate_random_secret_key() -> String {
 
 #[cfg(test)]
 mod tests {
+	#[rstest::rstest]
+	#[case(false)]
+	#[case(true)]
+	fn runserver_asset_entrypoint_parses_and_forwards(#[case] no_spa: bool) {
+		// Arrange
+		let mut args = vec![
+			"manage",
+			"-vv",
+			"runserver",
+			"--with-pages",
+			"--asset-entrypoint",
+			"dashboard",
+		];
+		if no_spa {
+			args.push("--no-spa");
+		}
+		// Act
+		let cli = Cli::try_parse_from(args).expect("management entrypoint selector should parse");
+		let BuiltinCommandPlan::Runserver(ctx) = builtin_command_plan(cli.command, cli.verbosity)
+		else {
+			panic!("runserver should produce a runserver context");
+		};
+		// Assert
+		assert_eq!(
+			ctx.option("asset-entrypoint").map(String::as_str),
+			Some("dashboard")
+		);
+		assert_eq!(ctx.option("with-pages").map(String::as_str), Some("true"));
+		assert_eq!(ctx.has_option("no-spa"), no_spa);
+		assert_eq!(ctx.verbosity(), 2);
+	}
+
+	#[rstest::rstest]
+	fn runserver_asset_entrypoint_is_omitted_by_default() {
+		// Arrange
+		let cli = Cli::try_parse_from(["manage", "runserver"])
+			.expect("existing runserver arguments should parse");
+		// Act
+		let BuiltinCommandPlan::Runserver(ctx) = builtin_command_plan(cli.command, cli.verbosity)
+		else {
+			panic!("runserver should produce a runserver context");
+		};
+		// Assert
+		assert!(!ctx.has_option("asset-entrypoint"));
+	}
+
+	#[rstest::rstest]
+	fn runserver_asset_entrypoint_requires_a_value() {
+		// Arrange
+		let args = ["manage", "runserver", "--asset-entrypoint"];
+		// Act
+		let error = Cli::try_parse_from(args).expect_err("entrypoint requires a name");
+		// Assert
+		assert_eq!(error.kind(), ErrorKind::InvalidValue);
+		assert!(error.to_string().contains("--asset-entrypoint <NAME>"));
+	}
+
+	#[rstest::rstest]
+	fn runserver_asset_entrypoint_is_listed_in_help() {
+		// Arrange
+		let args = ["manage", "runserver", "--help"];
+		// Act
+		let help = Cli::try_parse_from(args).expect_err("help should be displayed");
+		// Assert
+		assert_eq!(help.kind(), ErrorKind::DisplayHelp);
+		assert!(help.to_string().contains("--asset-entrypoint <NAME>"));
+	}
+
+	#[rstest::rstest]
+	fn buildstatic_driver_keeps_custom_enum_compatibility_and_validates_help() {
+		// Arrange
+		let registry = super::CommandRegistry::new();
+		let args = [
+			"manage",
+			"buildstatic",
+			"--pages",
+			"--package",
+			"dashboard",
+			"--release",
+		]
+		.map(std::ffi::OsString::from);
+		// Act
+		let (command, _) = super::parse_cli_arguments(&args, &registry).unwrap();
+		let help = ["manage", "buildstatic", "--help"].map(std::ffi::OsString::from);
+		// Assert
+		assert!(matches!(command, super::Commands::Custom { name, .. } if name == "buildstatic"));
+		let super::DriverParseError::Clap(error) =
+			super::parse_cli_arguments(&help, &registry).unwrap_err()
+		else {
+			panic!("clap help expected")
+		};
+		assert_eq!(error.kind(), clap::error::ErrorKind::DisplayHelp);
+		assert!(error.to_string().contains("--pages-dir"));
+	}
+
 	use super::*;
 	use async_trait::async_trait;
 	use clap::error::ErrorKind;
@@ -4574,6 +4776,10 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: None,
+			asset_mode: "production".to_string(),
+			asset_manifest: None,
+			asset_entrypoint: None,
+			expected_asset_build_id: None,
 			package: None,
 			features: vec![],
 			all_features: false,
@@ -4785,6 +4991,10 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: Some("./index.html".to_string()),
+			asset_mode: "production".to_string(),
+			asset_manifest: None,
+			asset_entrypoint: None,
+			expected_asset_build_id: None,
 			package: None,
 			features: vec![],
 			all_features: false,
@@ -4817,6 +5027,10 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: None,
+			asset_mode: "production".to_string(),
+			asset_manifest: None,
+			asset_entrypoint: None,
+			expected_asset_build_id: None,
 			package: None,
 			features: vec![],
 			all_features: false,
@@ -4849,6 +5063,10 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: true,
 			index: Some("./index.html".to_string()),
+			asset_mode: "production".to_string(),
+			asset_manifest: None,
+			asset_entrypoint: None,
+			expected_asset_build_id: None,
 			package: None,
 			features: vec![],
 			all_features: false,
@@ -4882,6 +5100,10 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: Some("./index.html".to_string()),
+			asset_mode: "production".to_string(),
+			asset_manifest: None,
+			asset_entrypoint: None,
+			expected_asset_build_id: None,
 			package: None,
 			features: vec![],
 			all_features: false,
@@ -4918,6 +5140,10 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: None,
+			asset_mode: "production".to_string(),
+			asset_manifest: None,
+			asset_entrypoint: None,
+			expected_asset_build_id: None,
 			package: None,
 			features: vec![],
 			all_features: false,
@@ -4951,6 +5177,10 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: None,
+			asset_mode: "production".to_string(),
+			asset_manifest: None,
+			asset_entrypoint: None,
+			expected_asset_build_id: None,
 			package: None,
 			features: vec![],
 			all_features: false,
@@ -4986,6 +5216,10 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: None,
+			asset_mode: "production".to_string(),
+			asset_manifest: None,
+			asset_entrypoint: None,
+			expected_asset_build_id: None,
 			package: None,
 			features: vec![],
 			all_features: false,
@@ -5018,6 +5252,10 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: None,
+			asset_mode: "production".to_string(),
+			asset_manifest: None,
+			asset_entrypoint: None,
+			expected_asset_build_id: None,
 			package: None,
 			features: vec![],
 			all_features: false,
@@ -5364,6 +5602,40 @@ mod tests {
 		assert!(all_features);
 	}
 
+	#[rstest]
+	fn runserver_unified_asset_options_parse_and_forward() {
+		let cli = Cli::try_parse_from([
+			"manage",
+			"runserver",
+			"--asset-mode",
+			"development",
+			"--asset-manifest",
+			"public/manifest.json",
+			"--expected-asset-build-id",
+			"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+		])
+		.expect("unified asset options should parse");
+
+		let Commands::Runserver {
+			asset_mode,
+			asset_manifest,
+			asset_entrypoint,
+			expected_asset_build_id,
+			..
+		} = cli.command
+		else {
+			panic!("expected runserver command");
+		};
+
+		assert_eq!(asset_mode, "development");
+		assert!(asset_entrypoint.is_none());
+		assert_eq!(asset_manifest.as_deref(), Some("public/manifest.json"));
+		assert_eq!(
+			expected_asset_build_id.as_deref(),
+			Some("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+		);
+	}
+
 	#[cfg(feature = "reinhardt-db")]
 	#[rstest]
 	fn test_requires_database_for_runserver() {
@@ -5384,6 +5656,10 @@ mod tests {
 			static_dir: "dist".to_string(),
 			no_spa: false,
 			index: None,
+			asset_mode: "production".to_string(),
+			asset_manifest: None,
+			asset_entrypoint: None,
+			expected_asset_build_id: None,
 			package: None,
 			features: vec![],
 			all_features: false,

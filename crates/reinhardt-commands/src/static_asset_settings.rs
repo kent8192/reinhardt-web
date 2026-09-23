@@ -74,6 +74,14 @@ impl StaticAssetSettings {
 				}
 			}
 		}
+		if resolved.static_root.is_relative() {
+			resolved.static_root = base_dir.join(&resolved.static_root);
+		}
+		for source in &mut resolved.staticfiles_dirs {
+			if source.is_relative() {
+				*source = base_dir.join(&*source);
+			}
+		}
 		resolved
 	}
 }

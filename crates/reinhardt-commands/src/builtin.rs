@@ -3343,6 +3343,10 @@ struct RunServerExecutionOptions {
 	force_wasm_legacy: bool,
 	wasm_optional: bool,
 	index: Option<String>,
+	asset_mode: String,
+	asset_manifest: Option<String>,
+	asset_entrypoint: Option<String>,
+	expected_asset_build_id: Option<String>,
 }
 
 impl RunServerExecutionOptions {
@@ -3374,6 +3378,15 @@ impl RunServerExecutionOptions {
 			force_wasm_legacy: ctx.has_option("force-wasm"),
 			wasm_optional: ctx.has_option("wasm-optional"),
 			index: ctx.option("index").map(ToString::to_string),
+			asset_mode: ctx
+				.option("asset-mode")
+				.map(ToString::to_string)
+				.unwrap_or_else(|| "production".to_string()),
+			asset_manifest: ctx.option("asset-manifest").map(ToString::to_string),
+			asset_entrypoint: ctx.option("asset-entrypoint").map(ToString::to_string),
+			expected_asset_build_id: ctx
+				.option("expected-asset-build-id")
+				.map(ToString::to_string),
 		}
 	}
 }
@@ -3389,6 +3402,10 @@ struct AutoreloadChildOptions<'a> {
 	no_spa: bool,
 	no_project_static: bool,
 	index: Option<&'a str>,
+	asset_mode: &'a str,
+	asset_manifest: Option<&'a str>,
+	asset_entrypoint: Option<&'a str>,
+	expected_asset_build_id: Option<&'a str>,
 	hmr_port: Option<u16>,
 	no_wasm: bool,
 	no_override_wasm: bool,
@@ -3414,6 +3431,17 @@ fn normalize_static_url_prefix(static_url: &str) -> String {
 	} else {
 		format!("{static_url}/")
 	}
+}
+
+#[cfg(feature = "server")]
+fn project_static_passthrough_prefixes(static_url: &str, manifest_serving: bool) -> Vec<String> {
+	let mount = static_url.trim_end_matches('/');
+	let mut prefixes = vec![format!("{mount}/admin/")];
+	if manifest_serving {
+		prefixes.push(format!("{mount}/builds/"));
+		prefixes.push(format!("{mount}/manifest.json"));
+	}
+	prefixes
 }
 
 #[cfg(feature = "server")]
@@ -3887,6 +3915,27 @@ impl BaseCommand for RunServerCommand {
 				"Static files directory for WASM frontend",
 			)
 			.with_default("dist"),
+			CommandOption::option(
+				None,
+				"asset-mode",
+				"Unified asset publication mode (production or development)",
+			)
+			.with_default("production"),
+			CommandOption::option(
+				None,
+				"asset-manifest",
+				"Explicit unified asset manifest path",
+			),
+			CommandOption::option(
+				None,
+				"asset-entrypoint",
+				"Named Pages entrypoint in the unified asset manifest",
+			),
+			CommandOption::option(
+				None,
+				"expected-asset-build-id",
+				"Require the selected unified asset build identifier",
+			),
 			CommandOption::flag(None, "no-spa", "Disable SPA mode (no index.html fallback)"),
 			CommandOption::flag(
 				None,
@@ -3918,6 +3967,21 @@ impl BaseCommand for RunServerCommand {
 	}
 
 	async fn execute(&self, ctx: &CommandContext) -> CommandResult<()> {
+		if ctx.option("asset-manifest").is_some() && !ctx.has_option("with-pages") {
+			return Err(crate::CommandError::ExecutionError(
+				"--asset-manifest requires --with-pages to enable manifest serving".into(),
+			));
+		}
+		if ctx.option("expected-asset-build-id").is_some() && !ctx.has_option("with-pages") {
+			return Err(crate::CommandError::ExecutionError(
+				"--expected-asset-build-id requires --with-pages to enable manifest serving".into(),
+			));
+		}
+		if ctx.option("asset-entrypoint").is_some() && !ctx.has_option("with-pages") {
+			return Err(crate::CommandError::ExecutionError(
+				"--asset-entrypoint requires --with-pages to enable manifest serving".into(),
+			));
+		}
 		// Route inventory is materialized once by `prepare_native_launch_plan`.
 		// This keeps HTTP, WebSocket, and gRPC registrations on one startup path.
 
@@ -3943,6 +4007,10 @@ impl BaseCommand for RunServerCommand {
 			force_wasm_legacy,
 			wasm_optional,
 			index,
+			asset_mode: _asset_mode,
+			asset_manifest: _asset_manifest,
+			asset_entrypoint: _asset_entrypoint,
+			expected_asset_build_id: _expected_asset_build_id,
 		} = RunServerExecutionOptions::from_context(ctx);
 		#[cfg(feature = "pages")]
 		let requested_package = ctx.option("package").cloned();
@@ -4385,40 +4453,13 @@ impl RunServerCommand {
 				server = server.with_middleware(StaticFilesMiddleware::new(generated_config));
 			}
 
-			// Auto-mount <project-root>/static/ at the configured static URL unless opted out.
-			// This is registered BEFORE the dist/ middleware so that, when
-			// MiddlewareChain::handle reverses registration order at request
-			// time, the project-static middleware sits outermost and runs
-			// first; misses fall through to the dist/ middleware and then to
-			// the application router (Issue #4484).
-			if !no_project_static && let Some(project_root) = PathResolver::find_project_root() {
-				let project_static_dir = project_root.join("static");
-				if project_static_dir.is_dir() {
-					let project_static_url = generated_style_url.clone();
-					let project_static_admin_url =
-						format!("{}/admin/", project_static_url.trim_end_matches('/'));
-					let mut project_static_config =
-						StaticFilesConfig::new(project_static_dir.clone())
-							.url_prefix(project_static_url.clone())
-							.spa_mode(false)
-							.auto_inject_wasm(false)
-							.passthrough_prefixes(vec![project_static_admin_url]);
-					// Disable long-lived caching in dev (mirrors #4383 for the
-					// dist/ bundle so hot-reload picks up CSS/JS edits).
-					#[cfg(debug_assertions)]
-					{
-						project_static_config =
-							project_static_config.cache_config(CacheControlConfig::disabled());
-					}
-					server =
-						server.with_middleware(StaticFilesMiddleware::new(project_static_config));
-					ctx.verbose(&format!(
-						"Project static files middleware enabled: {} (mounted at {})",
-						project_static_dir.display(),
-						project_static_url
-					));
-				}
-			}
+			// Resolve the optional project-static root here and register it below,
+			// once we know whether generation-owned paths must pass through to the
+			// manifest middleware.
+			let project_static_dir = (!no_project_static)
+				.then(|| PathResolver::find_project_root().map(|root| root.join("static")))
+				.flatten()
+				.filter(|directory| directory.is_dir());
 
 			// Automatically resolve static directory path
 			let resolved_static_dir = PathResolver::resolve_static_dir(static_dir);
@@ -4426,13 +4467,88 @@ impl RunServerCommand {
 				|| resolved_static_dir.clone(),
 				|settings| settings.static_root.clone(),
 			);
-			let manifest_aliases = match load_static_manifest(&collected_static_dir).await {
-				Ok(aliases) => aliases,
-				Err(error) => {
-					ctx.warning(&format!(
-						"Failed to load collectstatic manifest aliases: {error}"
-					));
-					std::collections::HashMap::new()
+			let manifest_path = ctx
+				.option("asset-manifest")
+				.map(PathBuf::from)
+				.unwrap_or_else(|| collected_static_dir.join("manifest.json"));
+			let store = crate::runserver_assets::load_store(
+				Some(&collected_static_dir),
+				ctx.option("asset-manifest").map(std::path::Path::new),
+				ctx.option("asset-mode")
+					.map_or("production", String::as_str),
+				ctx.option("expected-asset-build-id").map(String::as_str),
+			)
+			.map_err(|error| crate::CommandError::ExecutionError(error.to_string()))?;
+			let has_unified_manifest = store.is_some();
+			if let Some(project_static_dir) = project_static_dir {
+				let project_static_url = generated_style_url.clone();
+				let passthrough =
+					project_static_passthrough_prefixes(&project_static_url, has_unified_manifest);
+				let mut project_static_config = StaticFilesConfig::new(project_static_dir.clone())
+					.url_prefix(project_static_url.clone())
+					.spa_mode(false)
+					.auto_inject_wasm(false)
+					.passthrough_prefixes(passthrough);
+				#[cfg(debug_assertions)]
+				{
+					project_static_config =
+						project_static_config.cache_config(CacheControlConfig::disabled());
+				}
+				server = server.with_middleware(StaticFilesMiddleware::new(project_static_config));
+				ctx.verbose(&format!(
+					"Project static files middleware enabled: {} (mounted at {})",
+					project_static_dir.display(),
+					project_static_url
+				));
+			}
+			let mut unified_manifest_mounted = false;
+			if let Some(store) = store {
+				let navigation = !no_spa && !store.active().manifest().entrypoints.is_empty();
+				let store = std::sync::Arc::new(store);
+				let hmr_injection: Option<String> = {
+					#[cfg(feature = "pages")]
+					{
+						Self::autoreload_hmr_port_from_env(ctx)
+							.map(reinhardt_pages::hmr::hmr_script_tag)
+					}
+					#[cfg(not(feature = "pages"))]
+					{
+						None
+					}
+				};
+				let mut config = crate::runserver_assets::serving_config(
+					store,
+					generated_style_url.clone(),
+					ctx.option("asset-entrypoint").map(String::as_str),
+					navigation,
+				)
+				.map_err(|error| crate::CommandError::ExecutionError(error.to_string()))?;
+				if let Some(injection) = &hmr_injection {
+					config = config.with_trusted_html_injection(injection.clone());
+				}
+				server = server.with_middleware(
+					reinhardt_utils::staticfiles::publication::ManifestStaticMiddleware::new(
+						config,
+					),
+				);
+				unified_manifest_mounted = true;
+				ctx.verbose(&format!(
+					"Unified static asset manifest enabled: {} (mounted at {})",
+					manifest_path.display(),
+					generated_style_url
+				));
+			}
+			let manifest_aliases = if unified_manifest_mounted {
+				std::collections::HashMap::new()
+			} else {
+				match load_static_manifest(&collected_static_dir).await {
+					Ok(aliases) => aliases,
+					Err(error) => {
+						ctx.warning(&format!(
+							"Failed to load collectstatic manifest aliases: {error}"
+						));
+						std::collections::HashMap::new()
+					}
 				}
 			};
 			let root_static_dir = if generated_style_url == "/" {
@@ -4443,7 +4559,7 @@ impl RunServerCommand {
 
 			// Collected assets use the configured STATIC_URL, while the root mount
 			// below remains responsible for SPA routes and legacy bundle URLs.
-			if generated_style_url != "/" {
+			if generated_style_url != "/" && !unified_manifest_mounted {
 				let mut collected_static_config = StaticFilesConfig::new(collected_static_dir)
 					.url_prefix(generated_style_url.clone())
 					.spa_mode(false)
@@ -4483,10 +4599,12 @@ impl RunServerCommand {
 				static_config = static_config.cache_config(CacheControlConfig::disabled());
 			}
 
-			#[cfg(feature = "pages")]
-			if let Some(hmr_port) = Self::autoreload_hmr_port_from_env(ctx) {
-				static_config = static_config
-					.trusted_html_injection(reinhardt_pages::hmr::hmr_script_tag(hmr_port));
+			if !unified_manifest_mounted {
+				#[cfg(feature = "pages")]
+				if let Some(hmr_port) = Self::autoreload_hmr_port_from_env(ctx) {
+					static_config = static_config
+						.trusted_html_injection(reinhardt_pages::hmr::hmr_script_tag(hmr_port));
+				}
 			}
 
 			// Resolve index file for SPA fallback (only when SPA mode is enabled)
@@ -4521,7 +4639,9 @@ impl RunServerCommand {
 				}
 			}
 
-			server = server.with_middleware(StaticFilesMiddleware::new(static_config));
+			if !unified_manifest_mounted {
+				server = server.with_middleware(StaticFilesMiddleware::new(static_config));
+			}
 			ctx.verbose(&format!(
 				"Static files middleware enabled: {} (resolved from: {})",
 				resolved_static_dir.display(),
@@ -4930,6 +5050,15 @@ impl RunServerCommand {
 		let grpc_address_owned = grpc_address.to_string();
 		let static_dir_owned = static_dir.to_string();
 		let index_owned = index.map(|s| s.to_string());
+		let asset_mode_owned = ctx
+			.option("asset-mode")
+			.map_or("production", String::as_str)
+			.to_string();
+		let asset_manifest_owned = ctx.option("asset-manifest").map(ToString::to_string);
+		let asset_entrypoint_owned = ctx.option("asset-entrypoint").map(ToString::to_string);
+		let expected_asset_build_id_owned = ctx
+			.option("expected-asset-build-id")
+			.map(ToString::to_string);
 		let package_owned = package.map(str::to_string);
 		let style_feature_selection = Self::style_feature_selection_from_context(ctx);
 		let style_features = style_feature_selection.features().to_vec();
@@ -4958,6 +5087,10 @@ impl RunServerCommand {
 				no_spa,
 				no_project_static,
 				index_owned.as_deref(),
+				&asset_mode_owned,
+				asset_manifest_owned.as_deref(),
+				asset_entrypoint_owned.as_deref(),
+				expected_asset_build_id_owned.as_deref(),
 				hmr_port,
 				no_wasm,
 				no_override_wasm,
@@ -5181,6 +5314,10 @@ impl RunServerCommand {
 		no_spa: bool,
 		no_project_static: bool,
 		index: Option<&str>,
+		asset_mode: &str,
+		asset_manifest: Option<&str>,
+		asset_entrypoint: Option<&str>,
+		expected_asset_build_id: Option<&str>,
 		hmr_port: Option<u16>,
 		no_wasm: bool,
 		no_override_wasm: bool,
@@ -5223,6 +5360,10 @@ impl RunServerCommand {
 			no_spa,
 			no_project_static,
 			index,
+			asset_mode,
+			asset_manifest,
+			asset_entrypoint,
+			expected_asset_build_id,
 			hmr_port,
 			no_wasm,
 			no_override_wasm,
@@ -5299,6 +5440,22 @@ impl RunServerCommand {
 		if let Some(index_path) = options.index {
 			args.push("--index".to_string());
 			args.push(index_path.to_string());
+		}
+		if options.asset_mode != "production" {
+			args.push("--asset-mode".to_string());
+			args.push(options.asset_mode.to_string());
+		}
+		if let Some(manifest) = options.asset_manifest {
+			args.push("--asset-manifest".to_string());
+			args.push(manifest.to_string());
+		}
+		if let Some(entrypoint) = options.asset_entrypoint {
+			args.push("--asset-entrypoint".to_string());
+			args.push(entrypoint.to_string());
+		}
+		if let Some(build_id) = options.expected_asset_build_id {
+			args.push("--expected-asset-build-id".to_string());
+			args.push(build_id.to_string());
 		}
 		if options.no_wasm {
 			args.push("--no-wasm".to_string());
@@ -6691,6 +6848,134 @@ mod tests {
 		}
 	}
 
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn expected_asset_build_cannot_be_ignored_without_serving() {
+		// Arrange
+		let mut ctx = CommandContext::new(Vec::new());
+		ctx.set_option("expected-asset-build-id".into(), "required".into());
+		// Act
+		let result = RunServerCommand.execute(&ctx).await;
+		// Assert
+		assert_eq!(
+			result.unwrap_err().to_string(),
+			"Execution error: --expected-asset-build-id requires --with-pages to enable manifest serving"
+		);
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn asset_manifest_requires_manifest_serving() {
+		// Arrange
+		let mut ctx = CommandContext::new(Vec::new());
+		ctx.set_option("asset-manifest".into(), "custom.json".into());
+		// Act
+		let result = RunServerCommand.execute(&ctx).await;
+		// Assert
+		assert_eq!(
+			result.unwrap_err().to_string(),
+			"Execution error: --asset-manifest requires --with-pages to enable manifest serving"
+		);
+	}
+
+	#[cfg(feature = "server")]
+	#[tokio::test]
+	async fn project_static_mount_passes_generation_assets_to_manifest_server() {
+		use reinhardt_http::{Handler, Middleware, MiddlewareChain, Request, Response};
+		use reinhardt_utils::staticfiles::middleware::{StaticFilesConfig, StaticFilesMiddleware};
+		use reinhardt_utils::staticfiles::publication::{
+			AssetInput, AssetMode, AssetPipeline, AssetPublisher, ManifestServingConfig,
+			ManifestStaticMiddleware, ManifestStore, SnapshotOptions,
+		};
+		use std::sync::Arc;
+
+		struct NotFound;
+		#[async_trait::async_trait]
+		impl Handler for NotFound {
+			async fn handle(&self, _: Request) -> reinhardt_core::exception::Result<Response> {
+				Ok(Response::not_found())
+			}
+		}
+
+		// Arrange
+		let root = tempfile::tempdir().unwrap();
+		let mut pipeline = AssetPipeline::new();
+		pipeline
+			.add_input(AssetInput::bytes("app.txt", b"published".to_vec()))
+			.unwrap();
+		AssetPublisher::new(root.path().into())
+			.publish(pipeline.prepare(AssetMode::Production).unwrap())
+			.unwrap();
+		let store = Arc::new(
+			ManifestStore::open(root.path().into(), SnapshotOptions::production()).unwrap(),
+		);
+		let published_path = store.active().manifest().paths["app.txt"].clone();
+		let config = StaticFilesConfig::new(root.path())
+			.url_prefix("/static/")
+			.spa_mode(false)
+			.passthrough_prefixes(project_static_passthrough_prefixes("/static/", true));
+		let manifest = ManifestStaticMiddleware::new(
+			ManifestServingConfig::new(store, "/static/".into()).unwrap(),
+		);
+		let chain = MiddlewareChain::new(Arc::new(NotFound))
+			.with_middleware(Arc::new(StaticFilesMiddleware::new(config)) as Arc<dyn Middleware>)
+			.with_middleware(Arc::new(manifest) as Arc<dyn Middleware>);
+
+		// Act
+		let response = chain
+			.handle(
+				Request::builder()
+					.uri(format!("/static/{published_path}"))
+					.build()
+					.unwrap(),
+			)
+			.await
+			.unwrap();
+
+		// Assert
+		assert_eq!(response.status, hyper::StatusCode::OK);
+		assert!(response.file_body().is_some());
+		drop(response);
+		std::fs::write(root.path().join(&published_path), b"modified!").unwrap();
+		let modified = chain
+			.handle(
+				Request::builder()
+					.uri(format!("/static/{published_path}"))
+					.build()
+					.unwrap(),
+			)
+			.await
+			.unwrap();
+		assert_eq!(modified.status, hyper::StatusCode::SERVICE_UNAVAILABLE);
+	}
+
+	#[rstest::rstest]
+	#[tokio::test]
+	async fn asset_entrypoint_requires_manifest_serving() {
+		// Arrange
+		let mut ctx = CommandContext::new(Vec::new());
+		ctx.set_option("asset-entrypoint".into(), "dashboard".into());
+		// Act
+		let result = RunServerCommand.execute(&ctx).await;
+		// Assert
+		assert_eq!(
+			result.unwrap_err().to_string(),
+			"Execution error: --asset-entrypoint requires --with-pages to enable manifest serving"
+		);
+		assert_eq!(
+			RunServerExecutionOptions::from_context(&ctx)
+				.asset_entrypoint
+				.as_deref(),
+			Some("dashboard")
+		);
+		assert!(
+			RunServerCommand
+				.options()
+				.iter()
+				.any(|option| option.long == "asset-entrypoint")
+		);
+	}
+
 	#[test]
 	#[cfg(feature = "autoreload")]
 	fn runserver_execution_options_preserve_all_context_values() {
@@ -7661,6 +7946,10 @@ name = "db.sqlite3"
 			no_spa: true,
 			no_project_static: true,
 			index: Some("index.html"),
+			asset_mode: "production",
+			asset_manifest: None,
+			asset_entrypoint: Some("dashboard"),
+			expected_asset_build_id: None,
 			hmr_port: Some(35729),
 			no_wasm: true,
 			no_override_wasm: true,
@@ -7689,6 +7978,8 @@ name = "db.sqlite3"
 				"--no-project-static",
 				"--index",
 				"index.html",
+				"--asset-entrypoint",
+				"dashboard",
 				"--no-wasm",
 				"--no-override-wasm",
 				"--force-wasm",
@@ -7714,6 +8005,10 @@ name = "db.sqlite3"
 			no_spa: false,
 			no_project_static: false,
 			index: None,
+			asset_mode: "production",
+			asset_manifest: None,
+			asset_entrypoint: None,
+			expected_asset_build_id: None,
 			hmr_port: None,
 			no_wasm: false,
 			no_override_wasm: false,
@@ -7752,6 +8047,10 @@ name = "db.sqlite3"
 			no_spa: false,
 			no_project_static: false,
 			index: None,
+			asset_mode: "production",
+			asset_manifest: None,
+			asset_entrypoint: None,
+			expected_asset_build_id: None,
 			hmr_port: None,
 			no_wasm: false,
 			no_override_wasm: false,

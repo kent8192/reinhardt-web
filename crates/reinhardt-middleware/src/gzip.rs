@@ -211,6 +211,9 @@ impl Middleware for GZipMiddleware {
 			Ok(resp) => resp,
 			Err(e) => Response::from(e),
 		};
+		if response.file_body().is_some() {
+			return Ok(response);
+		}
 
 		// Only compress if client accepts gzip and response is not already compressed
 		if !accepts_gzip || response.headers.contains_key(CONTENT_ENCODING) {

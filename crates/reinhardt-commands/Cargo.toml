@@ -95,7 +95,7 @@ tokio-rustls = "0.26"
 hyper-rustls = { version = "0.27", features = ["http1", "http2"] }
 rustls-pemfile = "2.0"
 rcgen = { version = "0.14.5", default-features = false, features = ["crypto", "ring"] }
-reinhardt-utils = {workspace = true, features = ["utils-core", "staticfiles"]}
+reinhardt-utils = {workspace = true, features = ["utils-core", "staticfiles", "asset-publication"]}
 reinhardt-rest = {workspace = true, features = ["openapi"], optional = true}
 reinhardt-openapi = { workspace = true, optional = true }
 reinhardt-grpc = { workspace = true, optional = true }

@@ -1153,6 +1153,52 @@ reinhardt-admin startproject myproject
 
 **Precedence:** `--template` > `--template-dir` CLI flag > `REINHARDT_TEMPLATE_DIR` env > embedded defaults.
 
+## Unified static publications
+
+`buildstatic` publishes collected assets and optional Pages output under
+`STATIC_ROOT`. Serve a publication with `manage runserver --with-pages --no-wasm`
+or the standalone `runserver` binary. Both accept `--asset-manifest` to select a
+custom manifest or a retained `builds/<id>/manifest.json`; the selected generation
+is used even when the canonical active pointer names another build.
+Use `--asset-entrypoint NAME` to select a named Pages entrypoint when a manifest
+contains multiple entries (also required with `manage runserver --no-spa`).
+A single entry is selected automatically; unknown names fail startup. The management
+command requires `--with-pages` for `--asset-manifest` and `--asset-entrypoint`, and
+forwards both selectors to autoreload children.
+Both servers preserve `/static/admin/` and the configured static mount's `admin/`
+routes, including percent-encoded mount paths.
+
+`--expected-asset-build-id` requires a complete version 2 manifest with that
+identity. Missing, legacy, or mismatched manifests fail startup. Asset-only
+publications are supported and do not enable Pages navigation fallback. The
+configured static mount takes precedence over overlapping application passthrough
+prefixes such as `/docs/static/` and `/api/assets/`.
+
+Pages styles follow the entrypoint's declared cascade order. Existing template
+links must form a prefix of that order before the injection slot. For example,
+when the order is `[base.css, overrides.css]`, linking only `overrides.css` is
+rejected during packaging; link both in order or leave both for injection.
+Retained generations must also remain complete and unmodified before another
+publication can be activated.
+
+Production Pages documents load their bootstrap code from a published same-origin
+module, so a strict `script-src 'self'` policy can permit it without allowing inline
+scripts. The autoreload child also injects the HMR client into manifest-rendered
+Pages documents; that development client is inline, so the development CSP must
+allow it.
+
+Web App Manifest icon, screenshot, and shortcut icon paths are rewritten when assets
+move between publication categories. Relative navigation URLs such as `start_url`
+are rejected because relocation would change their meaning; use root-relative or
+absolute URLs for those members.
+
+Module-relative computed imports are rejected because their targets cannot be
+relocated safely. An application that supplies the final URL at runtime may use
+`import(new URL(value, document.baseURI).href)`: this explicitly resolves against
+the document independently of the module's published location. The caller owns
+resolution and availability of that runtime URL. The admin initializer uses this
+form for the manifest-resolved URL supplied by its HTML shell.
+
 ## Testing
 
 Run the admin script regression suites with the default parallel test runner:

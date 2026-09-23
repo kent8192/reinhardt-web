@@ -106,6 +106,18 @@ pub struct WasmBuildOutput {
 	pub output_dir: PathBuf,
 }
 
+impl WasmBuildOutput {
+	/// Capture the complete output tree for unified publication, validating the actual WASM import.
+	pub fn publication_inputs(
+		&self,
+		entry: &str,
+	) -> Result<crate::buildstatic::PagesBuildInputs, WasmBuildError> {
+		crate::buildstatic::PagesBuildInputs::from_directory(&self.output_dir, entry).map_err(
+			|error| WasmBuildError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, error)),
+		)
+	}
+}
+
 /// Error types for WASM build operations.
 #[derive(Debug, thiserror::Error)]
 pub enum WasmBuildError {
@@ -142,6 +154,7 @@ pub struct WasmBuilder {
 	config: WasmBuildConfig,
 	features: Vec<String>,
 	all_features: bool,
+	profile: Option<String>,
 }
 
 impl WasmBuilder {
@@ -151,6 +164,23 @@ impl WasmBuilder {
 			config,
 			features: Vec::new(),
 			all_features: false,
+			profile: None,
+		}
+	}
+
+	/// Compile a named Cargo profile, preserving existing build configuration fields.
+	pub fn profile(mut self, profile: impl Into<String>) -> Self {
+		self.profile = Some(profile.into());
+		self
+	}
+
+	fn artifact_profile(&self) -> &str {
+		match self.profile.as_deref() {
+			Some("dev" | "test") => "debug",
+			Some("bench") => "release",
+			Some(profile) => profile,
+			None if self.config.release => "release",
+			None => "debug",
 		}
 	}
 
@@ -238,11 +268,7 @@ impl WasmBuilder {
 			.as_ref()
 			.cloned()
 			.unwrap_or_else(|| self.detect_target_dir_with_runner(runner));
-		let profile = if self.config.release {
-			"release"
-		} else {
-			"debug"
-		};
+		let profile = self.artifact_profile();
 		let wasm_path = target_base
 			.join("wasm32-unknown-unknown")
 			.join(profile)
@@ -371,7 +397,9 @@ impl WasmBuilder {
 			arguments.push("--package".to_string());
 			arguments.push(package.clone());
 		}
-		if self.config.release {
+		if let Some(profile) = &self.profile {
+			arguments.extend(["--profile".into(), profile.clone()]);
+		} else if self.config.release {
 			arguments.push("--release".to_string());
 		}
 		if self.all_features {
@@ -593,6 +621,41 @@ mod tests {
 	use std::fs;
 
 	use super::*;
+
+	#[rstest::rstest]
+	#[case("production", "production")]
+	#[case("dev", "debug")]
+	#[case("test", "debug")]
+	#[case("bench", "release")]
+	#[case("release", "release")]
+	fn named_profiles_select_the_matching_bindgen_input(
+		#[case] profile: &str,
+		#[case] artifact: &str,
+	) {
+		// Arrange
+		let project = make_wasm_crate();
+		let target = project.path().join("target");
+		let runner = FakeProcessRunner::new(successful_build_outcomes(&target));
+		let builder = WasmBuilder::new(WasmBuildConfig::new(project.path())).profile(profile);
+		// Act
+		builder.build_with_runner(&runner).unwrap();
+		// Assert
+		let requests = runner.requests();
+		assert!(
+			requests[2]
+				.args
+				.windows(2)
+				.any(|pair| pair == [OsString::from("--profile"), OsString::from(profile)])
+		);
+		assert_eq!(
+			requests[4].args[4],
+			target
+				.join("wasm32-unknown-unknown")
+				.join(artifact)
+				.join("demo_app.wasm")
+				.into_os_string()
+		);
+	}
 
 	fn make_wasm_crate() -> tempfile::TempDir {
 		let temp = tempfile::tempdir().expect("create temporary crate");

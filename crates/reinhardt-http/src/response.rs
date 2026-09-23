@@ -1,3 +1,7 @@
+mod file_body;
+
+pub use file_body::FileResponseBody;
+
 use bytes::Bytes;
 use futures::stream::Stream;
 use hyper::{HeaderMap, StatusCode};
@@ -221,6 +225,7 @@ pub struct Response {
 	/// Indicates whether the middleware chain should stop processing
 	/// When true, no further middleware or handlers will be executed
 	stop_chain: bool,
+	file_body: Option<FileResponseBody>,
 }
 
 /// Streaming HTTP Response
@@ -256,6 +261,7 @@ impl Response {
 			headers: HeaderMap::new(),
 			body: Bytes::new(),
 			stop_chain: false,
+			file_body: None,
 		}
 	}
 
@@ -295,6 +301,7 @@ impl Response {
 			headers,
 			body: body.into(),
 			stop_chain: false,
+			file_body: None,
 		}
 	}
 
@@ -309,6 +316,7 @@ impl Response {
 			headers: json_content_type_headers().clone(),
 			body: body.into(),
 			stop_chain: false,
+			file_body: None,
 		}
 	}
 	/// Create a Response with HTTP 200 OK status
@@ -542,9 +550,49 @@ impl Response {
 	/// assert_eq!(response.body, Bytes::from("Hello, World!"));
 	/// ```
 	pub fn with_body(mut self, body: impl Into<Bytes>) -> Self {
+		if self.file_body.take().is_some() {
+			self.headers.remove(hyper::header::CONTENT_LENGTH);
+		}
 		self.body = body.into();
 		self
 	}
+	/// Set an owned file range without allocating its complete body (experimental, P0).
+	///
+	/// Native Reinhardt transports stream this source in bounded chunks. The legacy
+	/// `body` field is empty for a file response; body-transforming middleware must
+	/// check [`Self::file_body`] before treating that field as the representation.
+	/// Replacing the body through a builder method drops the file source.
+	///
+	/// ```
+	/// use reinhardt_http::Response;
+	/// use std::io::Write;
+	/// let mut file = tempfile::tempfile()?;
+	/// file.write_all(b"asset")?;
+	/// let response = Response::ok().with_file_body(file, 0, 5)?;
+	/// assert!(response.body.is_empty());
+	/// assert_eq!(response.file_body().unwrap().read_chunk(0, 2)?.as_ref(), b"as");
+	/// # Ok::<(), std::io::Error>(())
+	/// ```
+	pub fn with_file_body(
+		mut self,
+		file: std::fs::File,
+		offset: u64,
+		length: u64,
+	) -> std::io::Result<Self> {
+		self.file_body = Some(FileResponseBody::new(file, offset, length)?);
+		self.body = Bytes::new();
+		self.headers.insert(
+			hyper::header::CONTENT_LENGTH,
+			hyper::header::HeaderValue::from(length),
+		);
+		Ok(self)
+	}
+
+	/// Borrow the owned source when this response streams a file range.
+	pub fn file_body(&self) -> Option<&FileResponseBody> {
+		self.file_body.as_ref()
+	}
+
 	/// Set the response body from static bytes without allocating.
 	///
 	/// This is useful for small constant responses such as health checks.
@@ -559,6 +607,9 @@ impl Response {
 	/// assert_eq!(response.body, Bytes::from_static(b"ok"));
 	/// ```
 	pub fn with_static_body(mut self, body: &'static [u8]) -> Self {
+		if self.file_body.take().is_some() {
+			self.headers.remove(hyper::header::CONTENT_LENGTH);
+		}
 		self.body = Bytes::from_static(body);
 		self
 	}
@@ -808,6 +859,9 @@ impl Response {
 	pub fn with_json<T: Serialize>(mut self, data: &T) -> crate::Result<Self> {
 		use crate::Error;
 		let json = serde_json::to_vec(data).map_err(|e| Error::Serialization(e.to_string()))?;
+		if self.file_body.take().is_some() {
+			self.headers.remove(hyper::header::CONTENT_LENGTH);
+		}
 		self.body = Bytes::from(json);
 		self.headers.insert(
 			hyper::header::CONTENT_TYPE,

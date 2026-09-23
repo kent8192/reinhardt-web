@@ -286,7 +286,7 @@ web-sys = { version = "0.3.83", features = [
 
 # Async support for WASM
 # Shared named DTOs retain the same validation derive on native and browser targets.
-reinhardt-core = {workspace = true, default-features = false, features = ["reactive", "page", "parsers", "security", "validators", "macros"]}
+reinhardt-core = {workspace = true, default-features = false, features = ["types", "reactive", "page", "parsers", "security", "validators", "macros"]}
 smallvec = { workspace = true }
 [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
 wasm-bindgen-futures = "0.4.56"

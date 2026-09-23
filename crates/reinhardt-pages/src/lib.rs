@@ -1430,8 +1430,11 @@ pub use ssr::SsrState;
 #[cfg(native)]
 pub use ssr::{SsrChunk, SsrOptions, SsrRenderer, SsrRouteOutput, SsrStream};
 pub use static_resolver::{
-	component_stylesheet_url, init_static_resolver, is_initialized, resolve_static,
+	AssetUrlError, AssetUrlSnapshot, component_stylesheet_url, init_static_resolver,
+	is_initialized, resolve_static, try_component_stylesheet_url, try_resolve_static,
 };
+#[cfg(wasm)]
+pub use static_resolver::{browser_asset_snapshot, try_resolve_browser_static};
 pub use style::{
 	ClassList, ClassToken, CssAngle, CssColor, CssInteger, CssLength, CssLengthPercentage,
 	CssNumber, CssPercentage, CssTime, CssValueError, StyleValue, StyleVars,

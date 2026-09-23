@@ -887,8 +887,26 @@ impl APIClient {
 			for (key, value) in fw_response.headers.iter() {
 				builder = builder.header(key, value);
 			}
+			let body = if let Some(source) = fw_response.file_body().cloned() {
+				// The test client buffers its result, but file I/O must stay off the executor.
+				tokio::task::spawn_blocking(move || {
+					let mut body = bytes::BytesMut::new();
+					let mut position = 0;
+					while position < source.len() {
+						let chunk = source.read_chunk(position, 64 * 1024)?;
+						position += chunk.len() as u64;
+						body.extend_from_slice(&chunk);
+					}
+					Ok::<_, std::io::Error>(body.freeze())
+				})
+				.await
+				.map_err(|error| ClientError::RequestFailed(error.to_string()))?
+				.map_err(|error| ClientError::RequestFailed(error.to_string()))?
+			} else {
+				fw_response.body
+			};
 			builder
-				.body(Full::new(fw_response.body))
+				.body(Full::new(body))
 				.expect("Failed to build http::Response")
 		} else if let Some(handler) = &self.handler {
 			// Use custom sync handler if set
@@ -1095,6 +1113,61 @@ mod tests {
 	use async_trait::async_trait;
 	use reinhardt_core::exception::{Error as HttpError, Result as HttpResult};
 	use rstest::rstest;
+
+	struct FileHandler {
+		response: HttpResponse,
+	}
+
+	#[async_trait]
+	impl HttpHandler for FileHandler {
+		async fn handle(&self, _: HttpRequest) -> HttpResult<HttpResponse> {
+			Ok(self.response.clone())
+		}
+	}
+
+	#[rstest]
+	#[case(0, 150_000)]
+	#[case(13, 75_000)]
+	#[case(0, 0)]
+	#[tokio::test]
+	async fn in_process_client_reads_owned_file_range(#[case] offset: u64, #[case] length: u64) {
+		use std::io::Write;
+		// Arrange
+		let mut file = tempfile::tempfile().unwrap();
+		let data: Vec<_> = (0..150_000).map(|i| (i % 251) as u8).collect();
+		file.write_all(&data).unwrap();
+		let response = HttpResponse::new(http::StatusCode::PARTIAL_CONTENT)
+			.with_file_body(file, offset, length)
+			.unwrap();
+		let client = APIClient::from_handler(FileHandler { response });
+		// Act
+		let result = client.get("/asset").await.unwrap();
+		// Assert
+		assert_eq!(result.status(), http::StatusCode::PARTIAL_CONTENT);
+		assert_eq!(
+			result.body().as_ref(),
+			&data[offset as usize..(offset + length) as usize]
+		);
+		assert_eq!(result.headers()["content-length"], length.to_string());
+	}
+
+	#[rstest]
+	#[tokio::test]
+	async fn in_process_client_propagates_truncated_file_error() {
+		use std::io::Write;
+		// Arrange
+		let mut file = tempfile::tempfile().unwrap();
+		file.write_all(b"original").unwrap();
+		let truncate = file.try_clone().unwrap();
+		let response = HttpResponse::ok().with_file_body(file, 0, 8).unwrap();
+		let client = APIClient::from_handler(FileHandler { response });
+		truncate.set_len(0).unwrap();
+		// Act & Assert
+		assert!(matches!(
+			client.get("/asset").await,
+			Err(ClientError::RequestFailed(_))
+		));
+	}
 
 	/// Handler that echoes request metadata through X-Echo-* response headers.
 	struct EchoHandler;

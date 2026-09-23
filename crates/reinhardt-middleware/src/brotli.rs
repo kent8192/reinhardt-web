@@ -240,6 +240,9 @@ impl Middleware for BrotliMiddleware {
 			Ok(resp) => resp,
 			Err(e) => Response::from(e),
 		};
+		if response.file_body().is_some() {
+			return Ok(response);
+		}
 
 		// Don't compress if already compressed
 		if response.headers.contains_key(CONTENT_ENCODING) {

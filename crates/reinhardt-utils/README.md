@@ -376,7 +376,8 @@ logger.log_disallowed_host("malicious.com");
 
 - **Manifest System** (`ManifestStaticFilesStorage`)
   - JSON manifest for mapping original filenames to hashed versions
-  - Versioned manifest format (currently V1)
+  - Supports legacy V1 manifests and generation-manifest V2 paths
+  - Encodes decoded V2 filesystem paths once when producing static URLs, while preserving legacy pre-encoded values
   - Enables efficient static file lookup in production
   - Supports deployment workflows with pre-collected assets
 
@@ -551,6 +552,22 @@ logger.log_disallowed_host("malicious.com");
   - Console.log removal option
   - Debugger statement removal
 
+
+### Manifest-backed static publication
+
+With `asset-publication`, HTML resource hints including `rel="prefetch"` are
+tracked and rewritten into the selected generation. Navigation fallback requires
+an explicit `text/html` media range with positive quality; `q=0` preserves the
+application response. Single byte ranges are supported, while multipart ranges
+and unknown range units are ignored and receive the full representation.
+
+Passthrough prefixes are percent-decoded exactly once, like request paths and
+the static mount. Encoding quality parameter names are case-insensitive (`q` or `Q`).
+Explicit passthrough prefixes nested inside the static mount take precedence at
+path-segment boundaries. Both runserver entrypoints use this for admin static routes;
+ancestor passthroughs such as `/docs` do not shadow a `/docs/static/` asset mount.
+`AssetPublisher` refuses roots containing `staticfiles.json` before activating a
+generation, so default manifest selection remains unambiguous.
 
 ## storage
 
